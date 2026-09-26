@@ -150,8 +150,70 @@ def test_music_candidates_are_presented_as_text_for_plain_message_channel():
     notification = post_message.call_args.args[0]
     assert "请回复对应数字选择" in notification.title
     assert notification.buttons is None
+    assert notification.parse_mode == ""
     assert "1. [单曲] 晴天 — 周杰伦" in notification.text
     assert "2. [专辑] 叶惠美 — 周杰伦" in notification.text
+
+
+@pytest.mark.parametrize("channel", [NotificationChannel.Wechat, NotificationChannel.Telegram])
+def test_music_torrents_show_original_titles_and_keep_selection(channel):
+    """音乐资源选择显示原始音乐标题，并保留当前渠道的序号或按钮操作。"""
+    chain = MediaInteractionChain()
+    album = MusicInfo(
+        media_source=MediaSource.MusicBrainz,
+        media_id="album-1",
+        music_type=MUSIC_ENTITY_ALBUM,
+        title="叶惠美",
+        artists=["周杰伦"],
+    )
+    request = media_interaction_manager.create_or_replace(
+        user_id="music-user",
+        channel=channel,
+        source="music-test",
+        username="tester",
+        action="MusicReSearch",
+        keyword="周杰伦 叶惠美",
+        title="叶惠美",
+        meta=MetaMusic.parse_query("周杰伦 叶惠美"),
+        items=[],
+    )
+    request.current_media = album
+    request.phase = "torrent"
+    request.items = [
+        Context(
+            media_info=album,
+            meta_info=MetaMusic.parse_resource("周杰伦 - 叶惠美 FLAC 24bit 96kHz"),
+            torrent_info=TorrentInfo(
+                title="周杰伦 - 叶惠美 FLAC 24bit 96kHz",
+                site_name="TestSite",
+                size=1024,
+                seeders=10,
+            ),
+        )
+    ]
+
+    with (
+        patch.object(chain, "post_message") as post_message,
+        patch.object(chain, "post_torrents_message") as post_torrents_message,
+    ):
+        chain._post_torrents_message(
+            request=request,
+            channel=channel,
+            source="music-test",
+            userid="music-user",
+        )
+
+    notification = post_message.call_args.args[0]
+    assert "1.【TestSite】周杰伦 - 叶惠美 FLAC 24bit 96kHz" in notification.text
+    assert notification.parse_mode == ""
+    assert notification.link == chain.runtime_config.resource_url
+    assert "0: 自动选择" in notification.title or notification.buttons
+    if notification.buttons:
+        assert any(
+            button["callback_data"].endswith(":download:1")
+            for row in notification.buttons for button in row
+        )
+    post_torrents_message.assert_not_called()
 
 
 def test_music_subscription_selection_preserves_selected_music_type():

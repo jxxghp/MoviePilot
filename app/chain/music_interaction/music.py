@@ -211,6 +211,7 @@ def post_music_candidates(
             buttons=buttons,
             original_message_id=original_message_id,
             original_chat_id=original_chat_id,
+            parse_mode="",
             save_history=False,
         )
     )

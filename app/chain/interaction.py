@@ -25,6 +25,7 @@ from app.chain.subscribe.facade import SubscribeChain
 from app.domain import episode as episode_rules
 from app.domain.context import Context, MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
+from app.foundation import size as size_tools
 from app.runtime.log import logger
 from app.schemas.download import DownloadDirectory
 from app.schemas.file import FileURI
@@ -1104,6 +1105,46 @@ class MediaInteractionChain(ChainBase):
         )
         request.page = page
         total = len(request.items)
+        if isinstance(request.current_media, MusicInfo):
+            if self._supports_interactive_buttons(channel):
+                title = f"【{request.title}】共找到{total}条相关资源，请选择下载"
+                buttons = self._create_torrent_buttons(
+                    channel=channel,
+                    request=request,
+                    items=page_items,
+                    total=total,
+                    total_pages=total_pages,
+                )
+            else:
+                page_hint = " p: 上一页 n: 下一页" if total > self._page_size(channel) else ""
+                title = (
+                    f"【{request.title}】共找到{total}条相关资源，"
+                    f"请回复对应数字下载（0: 自动选择{page_hint}）"
+                )
+                buttons = None
+            text = "\n".join(
+                f"{index}.【{context.torrent_info.site_name}】"
+                f"{context.torrent_info.title} "
+                f"{size_tools.format_compact_size(context.torrent_info.size)} "
+                f"{context.torrent_info.seeders}↑"
+                for index, context in enumerate(page_items, start=1)
+            )
+            self.post_message(
+                Message(
+                    channel=channel,
+                    source=source,
+                    title=title,
+                    text=text,
+                    userid=userid,
+                    link=self.runtime_config.resource_url,
+                    buttons=buttons,
+                    original_message_id=original_message_id,
+                    original_chat_id=original_chat_id,
+                    parse_mode="",
+                    save_history=False,
+                )
+            )
+            return
         if self._supports_interactive_buttons(channel):
             title = f"【{request.title}】共找到{total}条相关资源，请选择下载"
             buttons = self._create_torrent_buttons(
