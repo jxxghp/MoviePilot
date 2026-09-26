@@ -453,11 +453,18 @@ class TransferExecutionOwner(_TransferOwnerBase):
                             and download_history.media_id
                             and not history_year_conflict
                     ):
+                        # 下载历史类型与原生 ID 成对保存；目录类型只在快照缺少有效类型时兜底。
+                        try:
+                            history_mtype = MediaType(download_history.type)
+                        except (TypeError, ValueError):
+                            history_mtype = None
+                        if history_mtype in (None, MediaType.UNKNOWN):
+                            history_mtype = task.mtype
                         # 下载记录中已存在识别信息。这里不再重复标注类型：函数开头
                         # 已把 mediainfo 声明为 MediaInfo | MusicInfo | None，重复
                         # 声明会遮蔽它，把音乐识别结果判成类型错误
                         mediainfo = MediaChain().recognize_media(
-                            mtype=task.mtype or MediaType(download_history.type),
+                            mtype=history_mtype,
                             media_source=download_history.media_source,
                             media_id=download_history.media_id,
                             music_type=self._download_history_music_type(download_history),
