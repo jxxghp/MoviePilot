@@ -176,8 +176,12 @@ class TransferDispatcher:
     @staticmethod
     def _pending_key(storage: str, event_path: Path) -> str:
         """
-        生成待重试文件的唯一键。
+        生成待重试键；同一蓝光原盘的事件共享一个目录级重试条目。
         """
+        if TransferDispatcher._is_bluray_sub(event_path):
+            bluray_dir = TransferDispatcher._get_bluray_dir(event_path)
+            if bluray_dir:
+                return f"{storage}:{bluray_dir.as_posix()}/"
         return f"{storage}:{Path(event_path).as_posix()}"
 
     @staticmethod
@@ -215,7 +219,7 @@ class TransferDispatcher:
 
     def _register_pending(self, storage: str, event_path: Path, file_size: float = None,
                           file_modify_time: float = None, fileid: Optional[str] = None,
-                          reason: str = "整理历史查询失败"):
+                          reason: str = "整理历史查询失败", count_attempt: bool = True):
         """
         登记暂时性故障的文件待重试，重复失败累计次数，超限后放弃。
         :param storage: 存储
@@ -224,13 +228,15 @@ class TransferDispatcher:
         :param file_modify_time: 文件修改时间
         :param fileid: 文件唯一标识
         :param reason: 登记原因，用于日志
+        :param count_attempt: 等待正在下载的文件时不消耗故障重试次数
         """
         key = self._pending_key(storage, event_path)
         abandoned_reason: Optional[str] = None
         with self._pending_guard:
             entry = self._pending_retries.get(key)
             if entry:
-                entry["attempts"] += 1
+                if count_attempt:
+                    entry["attempts"] += 1
                 if entry["attempts"] >= self.MAX_RETRY_ATTEMPTS:
                     self._pending_retries.pop(key, None)
                     logger.error(f"{reason}持续失败，已放弃重试: {key}")
@@ -245,7 +251,7 @@ class TransferDispatcher:
                     "file_size": file_size,
                     "file_modify_time": file_modify_time,
                     "fileid": fileid,
-                    "attempts": 1
+                    "attempts": 1 if count_attempt else 0
                 }
         if abandoned_reason:
             self._notify_retry_abandoned(storage, event_path, abandoned_reason)
@@ -361,12 +367,31 @@ class TransferDispatcher:
         # 登记重试用原始事件路径，蓝光目录解析在重试时重新执行
         origin_path = event_path
         is_bluray_folder = False
+        if self._has_suffix_in(event_path, get_runtime_setting('DOWNLOAD_TMPEXT')):
+            return False
         # 蓝光原盘文件处理
         if self._is_bluray_sub(event_path):
             event_path = self._get_bluray_dir(event_path)
             if not event_path:
                 return False
             is_bluray_folder = True
+            if storage == "local":
+                try:
+                    has_temp_file = fsproxy.has_file_suffix(
+                        event_path, get_runtime_setting('DOWNLOAD_TMPEXT')
+                    )
+                except OSError as err:
+                    logger.warning(f"扫描蓝光原盘临时文件失败，延后整理: {event_path} - {err}")
+                    self._register_pending(storage=storage, event_path=origin_path,
+                                           file_size=file_size, file_modify_time=file_modify_time,
+                                           fileid=fileid, reason="扫描蓝光原盘临时文件失败")
+                    return False
+                if has_temp_file:
+                    self._register_pending(storage=storage, event_path=origin_path,
+                                           file_size=file_size, file_modify_time=file_modify_time,
+                                           fileid=fileid, reason="蓝光原盘仍有下载临时文件",
+                                           count_attempt=False)
+                    return False
         elif not self.is_transfer_candidate_path(event_path):
             return False
 
