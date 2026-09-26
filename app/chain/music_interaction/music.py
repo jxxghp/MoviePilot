@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol, Tuple
 
 from app.chain.media import MediaChain
 from app.domain import title as title_rules
-from app.domain.context import MediaInfo, MusicInfo
+from app.domain.context import Context, MediaInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.foundation import url as url_tools
 from app.schemas.message import Message
@@ -58,6 +58,10 @@ class MusicInteractionHost(Protocol):
 
     def post_message(self, message: Message) -> None:
         """将渠道通知交给宿主消息发送实现。"""
+        ...
+
+    def post_torrents_message(self, message: Message, torrents: List[Context]) -> None:
+        """由宿主按既有影视资源卡片格式发送资源列表。"""
         ...
 
 
@@ -215,3 +219,21 @@ def post_music_candidates(
             save_history=False,
         )
     )
+
+
+def post_music_aware_torrents(
+    host: MusicInteractionHost,
+    message: Message,
+    torrents: List[Context],
+) -> None:
+    """音乐资源直接展示原始标题，影视资源沿用既有渠道卡片。"""
+    if not torrents or not isinstance(torrents[0].media_info, MusicInfo):
+        host.post_torrents_message(message, torrents)
+        return
+    message.text = "\n".join(
+        f"{index}.【{context.torrent_info.site_name}】"
+        f"{context.torrent_info.title} {context.torrent_info.seeders}↑"
+        for index, context in enumerate(torrents, start=1)
+    )
+    message.parse_mode = ""
+    host.post_message(message)

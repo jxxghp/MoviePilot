@@ -14,6 +14,7 @@ from app.chain.media import MediaChain
 from app.chain.music_interaction.music import (
     format_music_candidate,
     media_exists_retry_prompt,
+    post_music_aware_torrents,
     post_music_candidates,
     resolve_media_action,
     search_music_candidates,
@@ -1104,45 +1105,6 @@ class MediaInteractionChain(ChainBase):
         )
         request.page = page
         total = len(request.items)
-        if isinstance(request.current_media, MusicInfo):
-            if self._supports_interactive_buttons(channel):
-                title = f"【{request.title}】共找到{total}条相关资源，请选择下载"
-                buttons = self._create_torrent_buttons(
-                    channel=channel,
-                    request=request,
-                    items=page_items,
-                    total=total,
-                    total_pages=total_pages,
-                )
-            else:
-                page_hint = " p: 上一页 n: 下一页" if total > self._page_size(channel) else ""
-                title = (
-                    f"【{request.title}】共找到{total}条相关资源，"
-                    f"请回复对应数字下载（0: 自动选择{page_hint}）"
-                )
-                buttons = None
-            text = "\n".join(
-                f"{index}.【{context.torrent_info.site_name}】"
-                f"{context.torrent_info.title} "
-                f"{context.torrent_info.seeders}↑"
-                for index, context in enumerate(page_items, start=1)
-            )
-            self.post_message(
-                Message(
-                    channel=channel,
-                    source=source,
-                    title=title,
-                    text=text,
-                    userid=userid,
-                    link=self.runtime_config.resource_url,
-                    buttons=buttons,
-                    original_message_id=original_message_id,
-                    original_chat_id=original_chat_id,
-                    parse_mode="",
-                    save_history=False,
-                )
-            )
-            return
         if self._supports_interactive_buttons(channel):
             title = f"【{request.title}】共找到{total}条相关资源，请选择下载"
             buttons = self._create_torrent_buttons(
@@ -1153,13 +1115,12 @@ class MediaInteractionChain(ChainBase):
                 total_pages=total_pages,
             )
         else:
-            if total > self._page_size(channel):
-                title = f"【{request.title}】共找到{total}条相关资源，请回复对应数字下载（0: 自动选择 p: 上一页 n: 下一页）"
-            else:
-                title = f"【{request.title}】共找到{total}条相关资源，请回复对应数字下载（0: 自动选择）"
+            page_hint = " p: 上一页 n: 下一页" if total > self._page_size(channel) else ""
+            title = f"【{request.title}】共找到{total}条相关资源，请回复对应数字下载（0: 自动选择{page_hint}）"
             buttons = None
 
-        self.post_torrents_message(
+        post_music_aware_torrents(
+            self,
             Message(
                 channel=channel,
                 source=source,
