@@ -4,7 +4,8 @@ from fastapi import Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 
 from app.adapters.web.security.access import verify_apikey
-from app.agent.tools.manager import moviepilot_tool_manager
+from app.agent.tools.manager import ToolDefinition, moviepilot_tool_manager
+from app.agent.tools.schema_budget import MCP_TOOL_SCHEMA_BUDGET_BYTES, project_tool_schema
 from app.api.response import (
     RAW_RESPONSE_OPENAPI_KEY,
     CompatibleCountParam,
@@ -38,6 +39,14 @@ MCP_HIDDEN_TOOLS = {
     "read_skill",
     "view_image",
 }
+
+# 客户端 schema 模式：auto 在超出体积预算时投影，full 返回完整 oneOf 合同。
+MCP_SCHEMA_MODE_AUTO = "auto"
+MCP_SCHEMA_MODE_FULL = "full"
+MCP_SCHEMA_MODES = (MCP_SCHEMA_MODE_AUTO, MCP_SCHEMA_MODE_FULL)
+MCP_SCHEMA_MODE_HEADER = "X-MCP-Schema-Mode"
+MCP_SCHEMA_MODE_QUERY_KEY = "schema_mode"
+
 MCP_JSONRPC_ERROR_RESPONSES = {
     400: {"model": _SchemaMcpJsonRpcError, "description": "JSON-RPC 请求错误"},
     401: {"model": _SchemaMcpJsonRpcError, "description": "JSON-RPC 认证失败"},
@@ -51,9 +60,40 @@ MCP_JSONRPC_ERROR_RESPONSES = {
 
 def list_exposed_tools():
     """
-    获取 MCP 可见工具列表
+    获取 MCP 可见工具列表（完整合同）
     """
     return [tool for tool in moviepilot_tool_manager.list_tools() if tool.name not in MCP_HIDDEN_TOOLS]
+
+
+def resolve_schema_mode(request: Request) -> str:
+    """读取客户端的 schema 模式，未知取值回落到 auto。"""
+    raw = request.headers.get(MCP_SCHEMA_MODE_HEADER) or request.query_params.get(MCP_SCHEMA_MODE_QUERY_KEY) or ""
+    mode = raw.strip().lower()
+    return mode if mode in MCP_SCHEMA_MODES else MCP_SCHEMA_MODE_AUTO
+
+
+def list_client_tools(schema_mode: str = MCP_SCHEMA_MODE_AUTO) -> List[ToolDefinition]:
+    """按客户端 schema 模式返回工具：超出体积预算时投影为顶层对象合同。"""
+    tools = list_exposed_tools()
+    if schema_mode == MCP_SCHEMA_MODE_FULL:
+        return tools
+
+    client_tools: List[ToolDefinition] = []
+    projected_names: List[str] = []
+    for tool in tools:
+        schema, projected = project_tool_schema(tool.input_schema)
+        if not projected:
+            client_tools.append(tool)
+            continue
+        projected_names.append(tool.name)
+        client_tools.append(ToolDefinition(name=tool.name, description=tool.description, input_schema=schema))
+    if projected_names:
+        logger.debug(
+            "MCP schema 投影（预算 %s 字节）：%s",
+            MCP_TOOL_SCHEMA_BUDGET_BYTES,
+            ", ".join(projected_names),
+        )
+    return client_tools
 
 
 def create_jsonrpc_response(request_id: Union[str, int, None], result: Any) -> Dict[str, Any]:
@@ -84,6 +124,7 @@ async def _dispatch_jsonrpc_method(
     method: Any,
     params: Dict[str, Any],
     request_id: Union[str, int, None],
+    schema_mode: str = MCP_SCHEMA_MODE_AUTO,
 ) -> Union[JSONResponse, Response]:
     """分派一个已经通过基础格式校验的 MCP JSON-RPC 方法。"""
     if method == "initialize":
@@ -97,7 +138,7 @@ async def _dispatch_jsonrpc_method(
             content=create_jsonrpc_error(request_id, -32600, "initialized must be a notification"),
         )
     if method == "tools/list":
-        result = await handle_tools_list()
+        result = await handle_tools_list(schema_mode)
         return JSONResponse(content=create_jsonrpc_response(request_id, result))
     if method == "tools/call":
         result = await handle_tools_call(params)
@@ -152,7 +193,7 @@ async def mcp_jsonrpc(
     request_id = body.get("id")
 
     try:
-        return await _dispatch_jsonrpc_method(method, params, request_id)
+        return await _dispatch_jsonrpc_method(method, params, request_id, schema_mode=resolve_schema_mode(request))
 
     except ValueError as e:
         logger.warning(f"MCP 请求参数错误: {e}")
@@ -204,11 +245,11 @@ async def handle_initialize(params: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-async def handle_tools_list() -> Dict[str, Any]:
+async def handle_tools_list(schema_mode: str = MCP_SCHEMA_MODE_AUTO) -> Dict[str, Any]:
     """
     处理工具列表请求
     """
-    tools = list_exposed_tools()
+    tools = list_client_tools(schema_mode)
 
     # 转换为 MCP 工具格式
     mcp_tools = []
@@ -276,15 +317,20 @@ async def delete_mcp_session(
     summary="列出所有可用工具",
     response_model=List[_SchemaMcpToolInfo],
 )
-async def list_tools(_: Annotated[str, Depends(verify_apikey)], page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
+async def list_tools(
+    request: Request,
+    _: Annotated[str, Depends(verify_apikey)],
+    page: CompatiblePageParam = None,
+    count: CompatibleCountParam = None,
+) -> Any:
     """
     获取所有可用的工具列表
 
     返回每个工具的名称、描述和参数定义
     """
     try:
-        # 获取所有工具定义
-        tools = list_exposed_tools()
+        # 获取所有工具定义（按客户端 schema 模式投影）
+        tools = list_client_tools(resolve_schema_mode(request))
 
         # 转换为字典格式
         tools_list = []
