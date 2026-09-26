@@ -25,7 +25,6 @@ from app.chain.subscribe.facade import SubscribeChain
 from app.domain import episode as episode_rules
 from app.domain.context import Context, MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
-from app.foundation import size as size_tools
 from app.runtime.log import logger
 from app.schemas.download import DownloadDirectory
 from app.schemas.file import FileURI
@@ -1125,7 +1124,6 @@ class MediaInteractionChain(ChainBase):
             text = "\n".join(
                 f"{index}.【{context.torrent_info.site_name}】"
                 f"{context.torrent_info.title} "
-                f"{size_tools.format_compact_size(context.torrent_info.size)} "
                 f"{context.torrent_info.seeders}↑"
                 for index, context in enumerate(page_items, start=1)
             )
