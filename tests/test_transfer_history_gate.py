@@ -82,14 +82,14 @@ def test_evaluate_history_gate_skips_when_success_size_unchanged():
 @pytest.mark.parametrize(
     "current_modify_time, expected",
     [
-        (100.0005, HistoryGateAction.SKIP),
-        (100.01, HistoryGateAction.PASS_SIZE_CHANGED),
+        (101.0, HistoryGateAction.SKIP),
+        (101.01, HistoryGateAction.PASS_SIZE_CHANGED),
     ],
 )
 def test_evaluate_history_gate_uses_tolerance_for_modify_time(
         current_modify_time, expected,
 ):
-    """修改时间仅有毫秒级浮点漂移时应保持原版本，明显变化仍应放行。"""
+    """修改时间变化不超过 1 秒时应保持原版本，超过 1 秒仍应放行。"""
     history = make_history(status=True, size=1024, modify_time=100.0)
 
     action = evaluate_history_gate(
