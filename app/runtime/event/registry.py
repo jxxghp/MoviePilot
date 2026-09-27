@@ -30,10 +30,18 @@ class EventRegistry:
         self._disabled_classes = disabled_classes
 
     @staticmethod
+    def _module_name(target: Callable | type) -> str:
+        """优先读取对象保留的模块名，避免卸载缓存后事件标识漂移。"""
+        module_name = getattr(target, "__module__", None)
+        if module_name:
+            return module_name
+        module = inspect.getmodule(target)
+        return module.__name__ if module else "unknown_module"
+
+    @staticmethod
     def handler_identifier(target: Callable | type) -> str:
         """返回包含模块和限定名的稳定处理器标识。"""
-        module = inspect.getmodule(target)
-        module_name = module.__name__ if module else "unknown_module"
+        module_name = EventRegistry._module_name(target)
         return f"{module_name}.{target.__qualname__}"
 
     @classmethod
@@ -46,8 +54,7 @@ class EventRegistry:
         qualname_parts = handler.__qualname__.split(".")
         if len(qualname_parts) <= 1:
             return None
-        module = inspect.getmodule(handler)
-        module_name = module.__name__ if module else "unknown_module"
+        module_name = cls._module_name(handler)
         return f"{module_name}.{'.'.join(qualname_parts[:-1])}"
 
     def is_handler_enabled(self, handler: Callable) -> bool:
