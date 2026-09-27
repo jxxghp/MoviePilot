@@ -124,7 +124,7 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.modules.filemanager.storages.smb", "smbprotocol"): "f02686afd99c59820dffa7b4c2627a0be1ad62980c98a9cd33b7564697842b22",
     ("app.modules.filemanager.storages.u115", "oss2"): "f7b89c8ae6dad2603f0a9e0caaa159769aef5b3581d7e728f62445b979366eae",
     ("app.modules.jellyfin.jellyfin", "requests"): "5c46d09ca9a4bcc0bae21ca5d554ef09baa3f901c562b27c5f5ee1439c7746b5",
-    ("app.modules.plex.plex", "plexapi"): "76c1334863dc6c6623ce6ad3415bec5ff92656f51c31e4d982285898f193e57e",
+    ("app.modules.plex.plex", "plexapi"): "55baa4290bb62468d504e954add3921c0068f3a3c77aa3db92667ae9022909ca",
     ("app.modules.qbittorrent.qbittorrent", "qbittorrentapi"): "b2f5a27f0c54cf95ed42fe99848fd6c9c0641caca8bc4ff8006a411cb427066d",
     ("app.modules.qqbot.gateway", "websocket"): "6f6b7d61f3a95e620e67c450d544f0aa077f087a188d98f32e4501d94c6b37ae",
     ("app.modules.rtorrent.rtorrent", "http.client"): "6adc93b3bc479dfe81197554c7977930a60abc51714f14ef29298eb40730aaf7",

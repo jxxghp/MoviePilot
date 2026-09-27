@@ -370,8 +370,9 @@ def test_sync_targets_one_server_without_excluding_other_enabled_servers(monkeyp
     assert excluded_server_calls == [["plex-a", "plex-b"]]
 
 
-def test_sync_preserves_cached_rows_when_plex_item_timeout_aborts_library(database):
-    """Plex 条目读取超时中止同步时，应保留上一轮缓存而不执行陈旧数据清理。"""
+@pytest.mark.parametrize("failure", [TimeoutError("read timeout"), ConnectionError("connection refused")])
+def test_sync_preserves_cached_rows_when_plex_read_fails(database, failure):
+    """Plex 读取中断时，应保留上一轮缓存且不报告同步完成。"""
     with database() as session:
         session.add(
             MediaServerItem(
@@ -390,8 +391,8 @@ def test_sync_preserves_cached_rows_when_plex_item_timeout_aborts_library(databa
     chain.media_count = lambda _server: 1
     chain.items_count = lambda **_kwargs: pytest.fail("整服统计存在时不应逐库计数")
 
-    def items_with_timeout(**_kwargs):
-        """模拟 Plex 已返回部分条目后，分页请求最终仍超时。"""
+    def items_with_failure(**_kwargs):
+        """模拟 Plex 已返回部分条目后，下一次分页读取失败。"""
         yield schemas.MediaServerItem(
             server="plex",
             library="movies",
@@ -399,11 +400,12 @@ def test_sync_preserves_cached_rows_when_plex_item_timeout_aborts_library(databa
             item_type="Movie",
             title="已读取媒体",
         )
-        raise TimeoutError("Plex read timeout")
+        raise failure
 
-    chain.items = items_with_timeout
+    chain.items = items_with_failure
     chain.episodes = lambda *_args, **_kwargs: []
     chain.media_server_repository = TransactionalMediaServerRepository(database)
+    progress = []
 
     with (
         patch.object(
@@ -411,9 +413,9 @@ def test_sync_preserves_cached_rows_when_plex_item_timeout_aborts_library(databa
             "get_mediaserver_configs",
             return_value=[SimpleNamespace(name="plex", enabled=True, sync_libraries=["all"])],
         ),
-        pytest.raises(TimeoutError, match="Plex read timeout"),
+        pytest.raises(type(failure), match=str(failure)),
     ):
-        chain.sync()
+        chain.sync(progress_callback=lambda **kwargs: progress.append(kwargs))
 
     with database() as session:
         item_ids = {
@@ -422,6 +424,7 @@ def test_sync_preserves_cached_rows_when_plex_item_timeout_aborts_library(databa
         }
 
     assert item_ids == {"not-reached-before-timeout", "received-before-timeout"}
+    assert not any("同步完成" in entry.get("text", "") for entry in progress)
 
 
 def test_sync_partial_commit_preserves_stale_rows_until_next_run(

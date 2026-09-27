@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Union
 from urllib.parse import quote_plus
 
+from plexapi.base import PlexPartialObject
 from plexapi.exceptions import NotFound
 from plexapi.myplex import MyPlexAccount
 from plexapi.server import PlexServer
@@ -26,6 +27,9 @@ from app.schemas.types import MediaSource, MediaType
 PLEX_LIBRARY_SYNC_PAGE_SIZE = 50
 PLEX_SYNC_TIMEOUT_MAX_ATTEMPTS = 3
 PLEX_SYNC_TIMEOUT_RETRY_DELAY_SECONDS = 1
+PLEX_SYNC_EXCLUDE_ELEMENTS = (
+    "Genre,Country,Rating,Collection,Director,Writer,Role,Producer,Similar,Style,Mood,Format"
+)
 
 
 class Plex:
@@ -708,7 +712,7 @@ class Plex:
     def get_items(self, parent: Union[str, int], start_index: Optional[int] = 0, limit: Optional[int] = -1) \
             -> Generator[MediaServerItem | None, Any, None]:
         """
-        分页获取媒体服务器项目列表；超时会有限重试，重试耗尽时中止同步。
+        分页读取包含媒体路径和 Guid 的列表；读取失败时中止同步以保护旧缓存。
 
         :param parent: 媒体库ID，用于标识要获取的媒体库
         :param start_index: 起始索引，用于分页获取数据。默认为 0，即从第一个项目开始获取
@@ -716,8 +720,10 @@ class Plex:
 
         :return: 返回一个生成器对象，用于逐步获取媒体服务器中的项目
         """
-        if not parent or not self._plex:
-            return None
+        if not parent:
+            raise ValueError("Plex 媒体库 ID 不能为空")
+        if not self._plex:
+            raise ConnectionError("Plex 服务器未连接")
         plex = self._plex
         try:
             section = self._retry_timeout(
@@ -725,7 +731,7 @@ class Plex:
                 f"获取媒体库 {parent}",
             )
             if not section:
-                return None
+                raise ValueError(f"Plex 媒体库 {parent} 不存在")
 
             if limit is None or limit == -1:
                 fetch_all = True
@@ -736,12 +742,19 @@ class Plex:
                     return None
                 page_size = limit
             page_start = max(start_index or 0, 0)
+            # section.all() 的默认列表会排除 Media；读取 locations 会让局部对象逐条请求详情。
+            search_key = section._buildSearchKey(libtype=section.TYPE)
             while True:
                 items = self._retry_timeout(
-                    lambda: section.all(
+                    lambda: section.fetchItems(
+                        search_key,
                         container_start=page_start,
                         container_size=page_size,
                         maxresults=page_size,
+                        params={
+                            "excludeElements": PLEX_SYNC_EXCLUDE_ELEMENTS,
+                            "skipRefresh": 1,
+                        },
                     ),
                     f"读取媒体库 {parent} 的第 {page_start} 项分页",
                 )
@@ -751,16 +764,17 @@ class Plex:
                 for item in items:
                     if not item:
                         continue
+                    if isinstance(item, PlexPartialObject):
+                        # 缺失的可选字段不得触发详情重载或 Plex 对网盘文件的重新读取。
+                        item._autoReload = False
                     try:
                         media_item = self._retry_timeout(
                             lambda: self.__build_media_server_item(item),
                             f"处理媒体项目 {getattr(item, 'key', '')}",
                         )
                     except Exception as err:
-                        if self._is_timeout_exception(err):
-                            raise
-                        logger.error(f"处理媒体项目时出错：{str(err)}, 跳过此项目")
-                        continue
+                        logger.error(f"处理媒体项目时出错，同步中止：{str(err)}")
+                        raise
                     if media_item is not None:
                         yield media_item
 
@@ -768,10 +782,8 @@ class Plex:
                     break
                 page_start += len(items)
         except Exception as err:
-            if self._is_timeout_exception(err):
-                raise
-            logger.error(f"获取媒体库列表出错：{str(err)}")
-        return None
+            logger.error(f"同步读取 Plex 媒体库 {parent} 出错：{str(err)}")
+            raise
 
     @staticmethod
     def _is_timeout_exception(error: Exception) -> bool:

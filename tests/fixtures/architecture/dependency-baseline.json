@@ -704,11 +704,12 @@
       },
       {
         "bindings": [
+          "from:plexapi.base.PlexPartialObject as PlexPartialObject",
           "from:plexapi.exceptions.NotFound as NotFound",
           "from:plexapi.myplex.MyPlexAccount as MyPlexAccount",
           "from:plexapi.server.PlexServer as PlexServer"
         ],
-        "fingerprint": "76c1334863dc6c6623ce6ad3415bec5ff92656f51c31e4d982285898f193e57e",
+        "fingerprint": "55baa4290bb62468d504e954add3921c0068f3a3c77aa3db92667ae9022909ca",
         "kind": "network_sdk",
         "source": "app.modules.plex.plex",
         "target": "plexapi",

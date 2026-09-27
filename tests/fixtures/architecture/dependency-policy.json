@@ -143,7 +143,7 @@
           {"source": "app.modules.feishu.feishu", "target": "lark_oapi", "kind": "network_sdk", "fingerprint": "99d16968a59932b5980f6d42ea2bbc8fa35ccdb1a27933beec29b4bdc093d78b"},
           {"source": "app.modules.filemanager.storages.smb", "target": "smbclient", "kind": "network_sdk", "fingerprint": "62e0585282ef206ac81b2bf9e93a58423fb058685edc0ef4ee592453bbf30376"},
           {"source": "app.modules.filemanager.storages.u115", "target": "oss2", "kind": "network_sdk", "fingerprint": "f7b89c8ae6dad2603f0a9e0caaa159769aef5b3581d7e728f62445b979366eae"},
-          {"source": "app.modules.plex.plex", "target": "plexapi", "kind": "network_sdk", "fingerprint": "76c1334863dc6c6623ce6ad3415bec5ff92656f51c31e4d982285898f193e57e"},
+          {"source": "app.modules.plex.plex", "target": "plexapi", "kind": "network_sdk", "fingerprint": "55baa4290bb62468d504e954add3921c0068f3a3c77aa3db92667ae9022909ca"},
           {"source": "app.modules.qbittorrent.qbittorrent", "target": "qbittorrentapi", "kind": "network_sdk", "fingerprint": "b2f5a27f0c54cf95ed42fe99848fd6c9c0641caca8bc4ff8006a411cb427066d"},
           {"source": "app.modules.slack.slack", "target": "slack_bolt", "kind": "network_sdk", "fingerprint": "be5dcb032ece8d8627abeb243f98143aaf60f26751ab6e5e098813d4048419e6"},
           {"source": "app.modules.slack.slack", "target": "slack_sdk", "kind": "network_sdk", "fingerprint": "7559f31e4172ad3bbbaf161e1164ea48b997c56d05c77b49b82626298c39aa14"},
