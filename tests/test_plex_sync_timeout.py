@@ -4,7 +4,9 @@ from xml.etree.ElementTree import fromstring
 
 import pytest
 from plexapi.library import MovieSection
-from plexapi.video import Movie  # pylint: disable=unused-import
+
+# 注册真实 Plex 电影类型，供列表 XML 解析测试使用。
+from plexapi.video import Movie  # noqa: F401  # pylint: disable=unused-import
 
 from app.modules.plex import plex as plex_module
 from app.modules.plex.plex import Plex
