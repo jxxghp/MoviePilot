@@ -1,8 +1,8 @@
 import json
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
-from app.runtime.cache import FileCache
+from app.runtime.cache import CacheBackend, FileCache
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 
@@ -13,14 +13,29 @@ class SnapshotStore:
     """
     VERSION = 2
 
-    def __init__(self, cache: Optional[FileCache] = None):
+    def __init__(self, cache: Optional[CacheBackend] = None):
         """
         初始化快照存储。
+
+        快照是整个远程目录树的 JSON，文件数多时可达数十 MB，且丢失会被当作首次快照
+        静默重建基线、漏处理期间新增的文件，因此始终保存在本地文件系统：不进入 Redis，
+        既避免占用 Redis 内存，也避免被 ``allkeys-lru`` 淘汰。
+        Redis 模式下升级前的快照仍在 Redis 中，读取时作为一次性旧数据来源兜底，
+        下一次保存落盘后删除旧键，避免升级后首轮轮询丢失基线。
         :param cache: 快照文件缓存，默认使用 CACHE_PATH/snapshots
         """
-        self._cache = cache if cache is not None else FileCache(
-            base=get_runtime_setting('CACHE_PATH') / "snapshots"
-        )
+        self._cache: CacheBackend
+        self._legacy_cache: Optional[CacheBackend] = None
+        # 已完成旧键清理的快照键，避免每次轮询保存都访问 Redis
+        self._legacy_dropped: Set[str] = set()
+        if cache is not None:
+            self._cache = cache
+            return
+        base = get_runtime_setting('CACHE_PATH') / "snapshots"
+        self._cache = FileCache(base=base, local_only=True)
+        legacy_cache = FileCache(base=base)
+        if legacy_cache.is_redis():
+            self._legacy_cache = legacy_cache
 
     def save(self, storage: str, snapshot: Dict, file_count: int = 0,
              last_snapshot_time: Optional[float] = None,
@@ -53,6 +68,7 @@ class SnapshotStore:
             cache_key = f"{storage}_snapshot"
             snapshot_json = json.dumps(snapshot_data, ensure_ascii=False, indent=2)
             self._cache.set(cache_key, snapshot_json.encode('utf-8'), region="snapshots")
+            self._drop_legacy(cache_key)
             logger.debug(f"快照已保存到缓存: {storage}")
             return True
         except Exception as e:
@@ -69,6 +85,10 @@ class SnapshotStore:
         try:
             cache_key = f"{storage}_snapshot"
             snapshot_data = self._cache.get(cache_key, region="snapshots")
+            if not snapshot_data and self._legacy_cache is not None:
+                snapshot_data = self._legacy_cache.get(cache_key, region="snapshots")
+                if snapshot_data:
+                    logger.info(f"从 Redis 读取升级前的快照，下次保存后迁移到本地文件: {storage}")
             if snapshot_data:
                 data = json.loads(snapshot_data.decode('utf-8'))
                 logger.debug(f"成功加载快照: {storage}, 包含 {len(data.get('snapshot', {}))} 个文件")
@@ -96,7 +116,8 @@ class SnapshotStore:
         """
         try:
             cache_key = f"{storage}_snapshot"
-            if self._cache.exists(cache_key, region="snapshots"):
+            legacy_exists = self._drop_legacy(cache_key)
+            if self._cache.exists(cache_key, region="snapshots") or legacy_exists:
                 self._cache.delete(cache_key, region="snapshots")
                 logger.info(f"快照已重置: {storage}")
                 return True
@@ -104,6 +125,26 @@ class SnapshotStore:
             return True
         except Exception as e:
             logger.error(f"重置快照失败: {storage} - {e}")
+            return False
+
+    def _drop_legacy(self, cache_key: str) -> bool:
+        """
+        删除 Redis 中升级前遗留的快照键。
+
+        仅在 Redis 模式下生效；删除失败只记录日志，不影响本地快照的保存与重置。
+        :param cache_key: 快照缓存键
+        :return: 删除前旧键是否存在
+        """
+        if self._legacy_cache is None or cache_key in self._legacy_dropped:
+            return False
+        try:
+            existed = self._legacy_cache.exists(cache_key, region="snapshots")
+            if existed:
+                self._legacy_cache.delete(cache_key, region="snapshots")
+            self._legacy_dropped.add(cache_key)
+            return existed
+        except Exception as err:
+            logger.warning(f"删除 Redis 中的旧快照失败: {cache_key} - {err}")
             return False
 
     @staticmethod
