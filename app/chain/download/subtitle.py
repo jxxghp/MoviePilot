@@ -100,7 +100,7 @@ def _resolve_site_subtitle_target_dir(
     downloader: Optional[str],
     list_torrents: Callable[..., Optional[List[DownloaderTorrent]]],
 ) -> Tuple[Optional[str], Optional[Path]]:
-    """结合下载器当前内容路径解析站点字幕的原下载目录。"""
+    """结合下载器当前内容路径解析字幕目录，避免已包含的种子目录名被重复追加。"""
     file_uri = FileURI.from_uri(download_dir.as_posix())
     storage = file_uri.storage or "local"
     if not file_uri.path:
@@ -114,6 +114,9 @@ def _resolve_site_subtitle_target_dir(
     )
     if content_dir:
         storage = content_storage or storage
+        # content_path 指向同名目录内的单文件时，父目录已经是种子根目录。
+        if folder_name and content_dir.name == folder_name:
+            return storage, content_dir
         download_dir = content_dir
     return storage, download_dir / folder_name
 

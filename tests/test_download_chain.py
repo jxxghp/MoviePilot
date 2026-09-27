@@ -231,10 +231,27 @@ def test_download_single_submits_download_added_to_background(monkeypatch):
     )
 
 
+@pytest.mark.parametrize(
+    ("content_path", "expected_target_dir"),
+    [
+        pytest.param(
+            "/downloading/Demo.Movie",
+            Path("/downloading/Demo.Movie"),
+            id="multi-file-torrent-root",
+        ),
+        pytest.param(
+            "/downloading/Demo.Movie/Demo.Movie.mkv",
+            Path("/downloading/Demo.Movie"),
+            id="single-file-inside-same-name-folder",
+        ),
+    ],
+)
 def test_download_site_subtitles_uses_downloader_content_path_without_creating_save_folder(
         monkeypatch,
+        content_path,
+        expected_target_dir,
 ):
-    """TempPath 任务应使用下载器当前内容目录，不能在 save_path 预建同名目录。"""
+    """TempPath 字幕应定位到种子根目录，避免同名目录内单文件重复拼接。"""
     accessed_paths = []
 
     class _FakeTorrentHelper:
@@ -250,7 +267,7 @@ def test_download_site_subtitles_uses_downloader_content_path_without_creating_s
         def get_file_item(self, storage, path):
             """记录查询并返回 TempPath 内容目录。"""
             accessed_paths.append((storage, path))
-            if path == Path("/downloading/Demo.Movie"):
+            if path == expected_target_dir:
                 return FileItem(
                     storage=storage,
                     type="dir",
@@ -277,12 +294,13 @@ def test_download_site_subtitles_uses_downloader_content_path_without_creating_s
     chain.list_torrents = MagicMock(return_value=[DownloaderTorrent(
         hash="hash123",
         downloader="qb",
-        content_path="/downloading/Demo.Movie",
+        content_path=content_path,
     )])
     chain._site_subtitle_links = MagicMock(return_value=[])
     context = Context(
         torrent_info=TorrentInfo(page_url="https://example.com/torrent/1"),
     )
+    monkeypatch.setattr(download_subtitle.time, "sleep", lambda _seconds: None)
 
     chain.download_site_subtitles(
         context=context,
@@ -292,7 +310,7 @@ def test_download_site_subtitles_uses_downloader_content_path_without_creating_s
         downloader="qb",
     )
 
-    assert accessed_paths == [("local", Path("/downloading/Demo.Movie"))]
+    assert accessed_paths == [("local", expected_target_dir)]
     chain.list_torrents.assert_called_once_with(
         hashs=["hash123"],
         downloader="qb",
