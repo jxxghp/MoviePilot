@@ -352,10 +352,17 @@ def _build_external_media_rules(settings: SettingsReader) -> list[NetworkTestRul
             id="imdb_graphql",
             name="IMDb GraphQL 服务",
             icon="imdb",
-            url="https://caching.graphql.imdb.com",
+            url="https://caching.graphql.imdb.com/",
             proxy=True,
             allowed_redirect_prefixes=("https://caching.graphql.imdb.com/",),
             module_ids=("ImdbModule",),
+            http_method="POST",
+            request_json=(("query", "{ __typename }"),),
+            headers=(
+                ("Accept", "application/graphql+json, application/json"),
+                ("Content-Type", "application/json"),
+                ("x-imdb-client-name", "imdb-web-next-localized"),
+            ),
         ),
     ]
 
@@ -385,7 +392,7 @@ def _build_music_service_rules() -> list[NetworkTestRule]:
             id="theaudiodb_api",
             name="TheAudioDB 音乐信息",
             icon="theaudiodb",
-            url=("https://www.theaudiodb.com/api/v1/json/2/searchalbum.php?s=radiohead"),
+            url=("https://www.theaudiodb.com/api/v1/json/123/search.php?s=coldplay"),
             proxy=True,
             allowed_redirect_prefixes=("https://www.theaudiodb.com/",),
             module_ids=("TheAudioDbModule",),
