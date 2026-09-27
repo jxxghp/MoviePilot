@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.modules.filemanager.storages.u115 import U115Pan
-from app.schemas import FileItem
+from app.schemas.file import FileItem
 
 
 def _target_dir() -> FileItem:
