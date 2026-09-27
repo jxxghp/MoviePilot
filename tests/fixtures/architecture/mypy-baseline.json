@@ -2405,7 +2405,6 @@
   },
   "app/monitor/snapshot.py": {
     "type-arg": 5,
-    "valid-type": 1,
     "var-annotated": 1
   },
   "app/monitor/syslimits.py": {

@@ -367,12 +367,21 @@ class ImageHelper(metaclass=Singleton):
     """统一管理同步和异步图片缓存。"""
 
     def __init__(self):
-        """按全局图片缓存天数初始化文件缓存。"""
+        """
+        按全局图片缓存天数初始化文件缓存。
+
+        图片缓存始终落在 ``CACHE_PATH/images``，即使启用了 Redis 缓存后端：图片是
+        大体积二进制载荷，写入 Redis 会占据其绝大部分内存并放大 RDB 重写量。
+        过期由启动清理任务按 ``GLOBAL_IMAGE_CACHE_DAYS`` 与文件修改时间回收；
+        升级前已写入 Redis 的 ``images`` 键不再读取，由其自身 TTL 自然过期。
+        """
         config = get_chain_runtime_config_snapshot()
         _base_path = config.cache_path
         _ttl = config.global_image_cache_days * 24 * 3600
-        self.file_cache = FileCache(base=_base_path, ttl=_ttl)
-        self.async_file_cache = AsyncFileCache(base=_base_path, ttl=_ttl)
+        self.file_cache = FileCache(base=_base_path, ttl=_ttl, local_only=True)
+        self.async_file_cache = AsyncFileCache(
+            base=_base_path, ttl=_ttl, local_only=True
+        )
 
     @staticmethod
     def _prepare_cache_path(url: str) -> str:
