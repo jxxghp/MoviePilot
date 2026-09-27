@@ -2,11 +2,13 @@
 内存回收装饰器模块
 提供装饰器用于在函数执行后立即回收内存
 """
+import ctypes
 import gc
 import functools
 import logging
 import psutil
 import os
+import sys
 from typing import Callable, Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -81,6 +83,45 @@ def get_memory_usage() -> float:
     except Exception as e:
         logger.warning(f"获取内存使用情况失败: {e}")
         return 0.0
+
+
+# jemalloc 的 MALLCTL_ARENAS_ALL：对全部 arena 执行 purge
+_JEMALLOC_ARENAS_ALL_PURGE = b"arena.4096.purge"
+
+
+def release_allocator_memory() -> Optional[str]:
+    """
+    把 C 分配器中已释放但尚未归还的空闲页交还操作系统。
+
+    ``gc.collect()`` 只把 Python 对象交还分配器，jemalloc 默认没有后台回收线程，空闲 arena
+    的脏页会一直计入 RSS，glibc 的堆顶碎片同理。官方镜像通过 ``LD_PRELOAD`` 加载 jemalloc 时
+    调用 ``mallctl`` purge；源码部署等使用 glibc 的环境调用 ``malloc_trim(0)``。两者都只归还
+    空闲页、不影响存活对象，其他平台或符号不存在时不做任何事。
+
+    Returns:
+        实际使用的机制（``jemalloc`` 或 ``glibc``），未执行时返回 None
+    """
+    if not sys.platform.startswith("linux"):
+        return None
+    try:
+        # CDLL(None) 取当前进程的全局符号表，包含 LD_PRELOAD 进来的 jemalloc
+        libc = ctypes.CDLL(None)
+    except OSError:
+        return None
+    mallctl = getattr(libc, "mallctl", None)  # 动态符号：仅 jemalloc 提供
+    if mallctl is not None:
+        mallctl.argtypes = [ctypes.c_char_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t]
+        mallctl.restype = ctypes.c_int
+        if mallctl(_JEMALLOC_ARENAS_ALL_PURGE, None, None, None, 0) == 0:
+            return "jemalloc"
+        return None
+    malloc_trim = getattr(libc, "malloc_trim", None)  # 动态符号：仅 glibc 提供
+    if malloc_trim is not None:
+        malloc_trim.argtypes = [ctypes.c_size_t]
+        malloc_trim.restype = ctypes.c_int
+        malloc_trim(0)
+        return "glibc"
+    return None
 
 
 def memory_monitor(threshold_mb: Optional[float] = None) -> Callable:
