@@ -30,10 +30,10 @@ class EventRegistry:
         self._disabled_classes = disabled_classes
 
     @staticmethod
-    def _module_name(target: Callable | type) -> str:
+    def _module_name(target: Callable[..., Any] | type[Any]) -> str:
         """优先读取对象保留的模块名，避免卸载缓存后事件标识漂移。"""
         module_name = getattr(target, "__module__", None)
-        if module_name:
+        if isinstance(module_name, str) and module_name:
             return module_name
         module = inspect.getmodule(target)
         return module.__name__ if module else "unknown_module"
