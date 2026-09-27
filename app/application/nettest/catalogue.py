@@ -8,6 +8,8 @@ from app.foundation.url import UrlUtils
 
 from .domain import NetworkTestRule, SettingsReader
 
+_DEFAULT_THEAUDIODB_API_KEY = "123"
+
 
 def _configured_service_rule(
     *,
@@ -90,7 +92,7 @@ def build_network_rules(
     rules.extend(_build_metadata_module_rules(settings))
     rules.extend(_build_notification_module_rules())
     rules.extend(_build_external_media_rules(settings))
-    rules.extend(_build_music_service_rules())
+    rules.extend(_build_music_service_rules(settings))
     rules.extend(_build_configured_module_rules(settings))
     rules.extend(_build_fixed_service_rules(settings, github_proxy))
     if enabled_module_ids is None:
@@ -325,10 +327,16 @@ def _build_external_media_rules(settings: SettingsReader) -> list[NetworkTestRul
             id="anilist_api",
             name="AniList 番剧元数据",
             icon="anilist",
-            url=("https://graphql.anilist.co/?query=%7B%20Media%28id%3A1%29%20%7Bid%7D%20%7D"),
+            url="https://graphql.anilist.co",
             proxy=True,
             allowed_redirect_prefixes=("https://graphql.anilist.co/",),
             module_ids=("AniListModule",),
+            http_method="POST",
+            request_json=(("query", "{ Media(id: 1) { id } }"),),
+            headers=(
+                ("Accept", "application/json"),
+                ("Content-Type", "application/json"),
+            ),
         ),
         NetworkTestRule(
             id="anilist_trace",
@@ -367,8 +375,8 @@ def _build_external_media_rules(settings: SettingsReader) -> list[NetworkTestRul
     ]
 
 
-def _build_music_service_rules() -> list[NetworkTestRule]:
-    """构建 MusicBrainz、ListenBrainz 和 TheAudioDB 服务目标。"""
+def _build_music_service_rules(settings: SettingsReader) -> list[NetworkTestRule]:
+    """构建音乐服务目标，并让 TheAudioDB 使用模块当前配置的 API Key。"""
     return [
         NetworkTestRule(
             id="musicbrainz_api",
@@ -392,7 +400,11 @@ def _build_music_service_rules() -> list[NetworkTestRule]:
             id="theaudiodb_api",
             name="TheAudioDB 音乐信息",
             icon="theaudiodb",
-            url=("https://www.theaudiodb.com/api/v1/json/123/search.php?s=coldplay"),
+            url=(
+                "https://www.theaudiodb.com/api/v1/json/"
+                f"{settings('THEAUDIODB_API_KEY', _DEFAULT_THEAUDIODB_API_KEY)}"
+                "/search.php?s=coldplay"
+            ),
             proxy=True,
             allowed_redirect_prefixes=("https://www.theaudiodb.com/",),
             module_ids=("TheAudioDbModule",),
