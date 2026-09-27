@@ -28,6 +28,10 @@ def test_storage_discovery_and_api_routes_keep_optional_sdks_cold() -> None:
 import json
 import sys
 
+from app.testing.bootstrap import ensure_sites_stub, isolate_config_dir
+
+isolate_config_dir()
+ensure_sites_stub()
 import app.api.apiv1
 from app.foundation.reflection import ModuleHelper
 
