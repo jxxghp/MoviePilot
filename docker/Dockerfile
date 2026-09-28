@@ -285,11 +285,12 @@ RUN mkdir -p \
 # final 阶段: 安装运行时依赖和配置最终镜像
 FROM prepare_package AS final
 
-# jemalloc 默认按 CPU 数×4 建 arena 且没有后台回收线程，空闲 arena 的脏页会长期计入 RSS。
-# 后台线程按 5 秒衰减归还脏页（muzzy 直接归还，避免 MADV_FREE 页继续计入 RSS）；
-# arena 限制为 8 个，带 GIL 的 Python 大块分配竞争很小。用户可在 compose 中覆盖 MALLOC_CONF。
+# jemalloc 默认按 CPU 数×4 建 arena，空闲 arena 的脏页会长期计入 RSS。脏页按 5 秒衰减归还
+# （muzzy 直接归还，避免 MADV_FREE 页继续计入 RSS）；arena 限制为 8 个，带 GIL 的 Python 大块分配竞争很小。
+# 后台回收线程由主进程启动时自行开启，不能写在这里：子进程继承 MALLOC_CONF 后 Chromium 无法启动。
+# 用户可在 compose 中覆盖 MALLOC_CONF。
 ENV LD_PRELOAD="/usr/local/lib/libjemalloc.so" \
-    MALLOC_CONF="background_thread:true,max_background_threads:1,narenas:8,dirty_decay_ms:5000,muzzy_decay_ms:0" \
+    MALLOC_CONF="narenas:8,dirty_decay_ms:5000,muzzy_decay_ms:0" \
     MOVIEPILOT_DOCKER_SUPERVISOR="true"
 
 # 引入支持 amr 编码的静态 ffmpeg
