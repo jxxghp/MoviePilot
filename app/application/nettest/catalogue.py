@@ -513,7 +513,7 @@ def _build_network_proxy_rules(
 
 
 def _build_network_proxy_rule(settings: SettingsReader) -> Optional[NetworkTestRule]:
-    """用 GitHub API 请求验证当前配置的通用出站代理。"""
+    """沿用 GitHub 身份请求 API，验证当前配置的通用出站代理。"""
     proxy_config = settings("PROXY", None)
     proxy_address = settings("PROXY_HOST", None)
     if not proxy_address and isinstance(proxy_config, Mapping):
@@ -530,6 +530,7 @@ def _build_network_proxy_rule(settings: SettingsReader) -> Optional[NetworkTestR
         url="https://api.github.com",
         proxy=True,
         allowed_redirect_prefixes=("https://api.github.com/",),
+        headers=_freeze_headers(settings("GITHUB_HEADERS", None)),
         display_address=(proxy_url if "://" in proxy_url else f"http://{proxy_url}"),
     )
 

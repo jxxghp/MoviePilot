@@ -4,6 +4,8 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
+import pytest
+
 from app.application.network import NetworkTestService
 
 
@@ -82,3 +84,38 @@ def test_theaudiodb_probe_uses_configured_key_and_module_health_endpoint() -> No
         "https://www.theaudiodb.com/api/v1/json/"
         "custom-audio-key/search.php?s=coldplay"
     )
+
+
+@pytest.mark.parametrize("github_headers", [None, {"Authorization": "Bearer github-token"}])
+def test_network_proxy_probe_uses_configured_github_identity(github_headers) -> None:
+    """通用代理探针应沿用 GitHub API 身份，且公开目录不泄漏认证头。"""
+    captured = {}
+
+    async def respond(method, url, **options):
+        """按请求是否携带预期身份模拟 GitHub API 响应。"""
+        captured.update(method=method, url=url, **options)
+        return SimpleNamespace(
+            status_code=200 if options["headers"] == github_headers else 403,
+            headers={},
+            text="{}",
+            aclose=AsyncMock(),
+        )
+
+    transport = SimpleNamespace(request=AsyncMock(side_effect=respond))
+    service = _network_test_service(
+        transport,
+        PROXY={"https": "http://proxy.example:7890"},
+        PROXY_HOST="http://proxy.example:7890",
+        GITHUB_HEADERS=github_headers,
+    )
+
+    public_target = next(target for target in service.list_targets() if target.id == "network_proxy")
+    result = asyncio.run(service.execute(target_id="network_proxy"))
+
+    assert result.success
+    assert captured["method"] == "GET"
+    assert captured["url"] == "https://api.github.com"
+    assert captured["proxy"] == {"https": "http://proxy.example:7890"}
+    assert captured["headers"] == github_headers
+    assert public_target.address == "http://proxy.example:7890"
+    assert "github-token" not in public_target.address
