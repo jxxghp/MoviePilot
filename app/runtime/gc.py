@@ -89,6 +89,9 @@ def get_memory_usage() -> float:
 _JEMALLOC_ARENAS_ALL_PURGE = b"arena.4096.purge"
 # 把调用线程的线程缓存（tcache）交还所属 arena
 _JEMALLOC_THREAD_TCACHE_FLUSH = b"thread.tcache.flush"
+# 后台回收线程开关与数量上限，均可在运行时写入
+_JEMALLOC_BACKGROUND_THREAD = b"background_thread"
+_JEMALLOC_MAX_BACKGROUND_THREADS = b"max_background_threads"
 
 
 @functools.cache
@@ -132,6 +135,32 @@ def flush_thread_allocator_cache() -> bool:
     if mallctl is None:
         return False
     return mallctl(_JEMALLOC_THREAD_TCACHE_FLUSH, None, None, None, 0) == 0
+
+
+def enable_allocator_background_thread(max_threads: int = 1) -> bool:
+    """
+    在当前进程内开启 jemalloc 后台回收线程，按衰减时间把空闲脏页归还系统。
+
+    后台线程不能写进 ``MALLOC_CONF``：该环境变量与 ``LD_PRELOAD`` 一起被所有子进程继承，
+    Chromium 的 GPU 进程在后台线程开启时无法启动，浏览器仿真会整体 abort。运行时开启只
+    作用于主进程。用户在 ``MALLOC_CONF`` 中显式配置过后台线程时尊重其选择，不再改写。
+
+    Args:
+        max_threads: 后台线程上限
+
+    Returns:
+        是否实际开启
+    """
+    if "background_thread" in os.environ.get("MALLOC_CONF", ""):
+        return False
+    mallctl = _jemalloc_mallctl()
+    if mallctl is None:
+        return False
+    limit = ctypes.c_size_t(max_threads)
+    if mallctl(_JEMALLOC_MAX_BACKGROUND_THREADS, None, None, ctypes.byref(limit), ctypes.sizeof(limit)) != 0:
+        return False
+    enabled = ctypes.c_bool(True)
+    return mallctl(_JEMALLOC_BACKGROUND_THREAD, None, None, ctypes.byref(enabled), ctypes.sizeof(enabled)) == 0
 
 
 def release_allocator_memory() -> Optional[str]:

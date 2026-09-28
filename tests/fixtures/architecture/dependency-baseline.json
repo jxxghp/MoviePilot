@@ -1097,8 +1097,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8920,
-  "edge_sha256": "68bc7f63a754251cc91fcc5ed5c8652e2492f60faa805f9533eedbccc8517bdd",
+  "edge_count": 8921,
+  "edge_sha256": "e34590c0ec863317ddeec72b19cd935a13b48e51bd56b31f5a3aae93f26a4953",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -6578,6 +6578,7 @@
     "app.main -> app.adapters.system.stdio",
     "app.main -> app.factory",
     "app.main -> app.runtime",
+    "app.main -> app.runtime.gc",
     "app.main -> app.runtime.settings",
     "app.main -> app.runtime.stop",
     "app.main -> app.runtime.topology",
