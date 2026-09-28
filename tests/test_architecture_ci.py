@@ -28,7 +28,9 @@ def _step_commands(workflow: dict, job_name: str) -> str:
 def test_unit_test_workflow_has_independent_host_architecture_gate():
     """主仓 PR 与推送必须在全量分片外快速执行宿主架构门禁。"""
     workflow = _load_workflow("test.yml")
-    commands = _step_commands(workflow, "architecture")
+    commands = "\n".join(
+        _step_commands(workflow, job_name) for job_name in ("architecture", "architecture-ratchets")
+    )
     steps = workflow["jobs"]["architecture"]["steps"]
     semantic_step = next(
         step for step in steps if step.get("name") == "Check event semantic policy"
@@ -47,7 +49,6 @@ def test_unit_test_workflow_has_independent_host_architecture_gate():
     assert "tests/test_architecture_dependencies.py" in semantic_step["run"]
     assert "tests/test_architecture_adapter_imports.py" in semantic_step["run"]
     assert "tests/test_architecture_egress.py" in semantic_step["run"]
-    assert "scripts/architecture/event_policy.py" in semantic_step["run"]
     assert "scripts/architecture/baseline.py" not in semantic_step["run"]
     assert not {
         "tests/test_architecture_dependencies.py",
@@ -178,7 +179,7 @@ def test_coverage_jobs_parallelize_data_and_keep_one_global_ratchet() -> None:
 def test_ci_reuse_requires_successful_proof_for_every_gate() -> None:
     """证明必须依赖全部硬门禁，推送只能通过保守判定跳过昂贵任务。"""
     for filename, gates in {
-        "test.yml": ["architecture", "coverage-shard", "coverage-report"],
+        "test.yml": ["architecture", "architecture-ratchets", "coverage-shard", "coverage-report"],
         "pylint.yml": ["pylint"],
     }.items():
         jobs = _load_workflow(filename)["jobs"]
