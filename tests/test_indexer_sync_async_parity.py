@@ -259,12 +259,12 @@ def test_generic_torrent_search_uses_identical_request_projection(monkeypatch):
     def spider_search(**kwargs):
         calls.append(("sync", kwargs))
         events.append(("io", kwargs))
-        return False, [{"title": "generic"}]
+        return False, [{"title": "generic"}], None
 
     async def async_spider_search(**kwargs):
         calls.append(("async", kwargs))
         events.append(("io", kwargs))
-        return False, [{"title": "generic"}]
+        return False, [{"title": "generic"}], None
 
     monkeypatch.setattr(
         IndexerModule,
@@ -338,12 +338,12 @@ def test_subtitle_search_uses_one_request_and_preserves_order(monkeypatch):
     def spider_search(**kwargs):
         calls.append(("sync", kwargs))
         events.append(("io", kwargs))
-        return True, []
+        return True, [], None
 
     async def async_spider_search(**kwargs):
         calls.append(("async", kwargs))
         events.append(("io", kwargs))
-        return True, []
+        return True, [], None
 
     monkeypatch.setattr(
         IndexerModule,

@@ -425,3 +425,49 @@ def test_site_spider_sync_async_share_admission_and_decoding(monkeypatch):
     rejected = SiteSpider(indexer={**indexer, "media_type": "music"}, mtype=MediaType.MOVIE)
     assert rejected.get_torrents() == []
     assert asyncio.run(rejected.async_get_torrents()) == []
+
+
+@pytest.mark.parametrize(
+    ("response", "detail"),
+    [
+        (None, "站点无响应（网络错误或超时）"),
+        (
+            _FakeResponse(
+                status_code=403,
+                text="<html><head><title>\n  Just a moment...\n</title></head>"
+                     "<body>Enable JavaScript and cookies to continue</body></html>",
+            ),
+            "HTTP 403，页面标题：Just a moment...",
+        ),
+        (_FakeResponse(status_code=502, text="Bad Gateway"), "HTTP 502，响应内容：Bad Gateway"),
+        (_FakeResponse(status_code=200, text=""), "HTTP 200，响应内容为空"),
+        (
+            _FakeResponse(text="<html><head><title>登录</title></head><body></body></html>"),
+            "返回登录或权限提示页",
+        ),
+    ],
+)
+def test_site_spider_records_failure_detail_for_unusable_page(monkeypatch, response, detail):
+    """未拿到可用页面时同步、异步入口都记录状态码与页面摘要，供搜索失败原因展示。"""
+    indexer = {
+        "id": "generic",
+        "name": "Generic",
+        "domain": "https://tracker.example/",
+        "search": {"paths": [{"path": "browse.php"}]},
+        "torrents": {"list": {}, "fields": {}},
+    }
+
+    async def async_request(*_args, **_kwargs):
+        """回放普通页面异步响应。"""
+        return response
+
+    monkeypatch.setattr(RequestUtils, "get_res", lambda *_args, **_kwargs: response)
+    monkeypatch.setattr(AsyncRequestUtils, "get_res", async_request)
+
+    sync_spider = SiteSpider(indexer=indexer, keyword="Movie")
+    async_spider = SiteSpider(indexer=indexer, keyword="Movie")
+
+    assert sync_spider.get_torrents() == []
+    assert asyncio.run(async_spider.async_get_torrents()) == []
+    assert sync_spider.is_error and async_spider.is_error
+    assert sync_spider.error_detail == async_spider.error_detail == detail
