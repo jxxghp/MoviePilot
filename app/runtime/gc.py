@@ -92,6 +92,8 @@ _JEMALLOC_THREAD_TCACHE_FLUSH = b"thread.tcache.flush"
 # 后台回收线程开关与数量上限，均可在运行时写入
 _JEMALLOC_BACKGROUND_THREAD = b"background_thread"
 _JEMALLOC_MAX_BACKGROUND_THREADS = b"max_background_threads"
+# MALLOC_CONF 中与后台线程相关、不能被子进程继承的配置项
+_BACKGROUND_THREAD_OPTIONS = frozenset({"background_thread", "max_background_threads"})
 
 
 @functools.cache
@@ -137,21 +139,25 @@ def flush_thread_allocator_cache() -> bool:
     return mallctl(_JEMALLOC_THREAD_TCACHE_FLUSH, None, None, None, 0) == 0
 
 
-def enable_allocator_background_thread(max_threads: int = 1) -> bool:
+def configure_allocator_background_thread(max_threads: int = 1) -> bool:
     """
-    在当前进程内开启 jemalloc 后台回收线程，按衰减时间把空闲脏页归还系统。
+    让 jemalloc 后台回收线程只在主进程运行，并从子进程将继承的 ``MALLOC_CONF`` 中移除相关项。
 
-    后台线程不能写进 ``MALLOC_CONF``：该环境变量与 ``LD_PRELOAD`` 一起被所有子进程继承，
-    Chromium 的 GPU 进程在后台线程开启时无法启动，浏览器仿真会整体 abort。运行时开启只
-    作用于主进程。用户在 ``MALLOC_CONF`` 中显式配置过后台线程时尊重其选择，不再改写。
+    后台线程按衰减时间把空闲脏页归还系统，但 ``MALLOC_CONF`` 与 ``LD_PRELOAD`` 会被所有子进程
+    继承，Chromium 的 GPU 进程在后台线程开启时无法启动，浏览器仿真整体 abort。
+    - ``MALLOC_CONF`` 已配置后台线程（v3.0.10 镜像默认值或用户显式配置）时，主进程启动时已按其生效，不再改写。
+    - 未配置时通过 ``mallctl`` 在主进程内开启。
+    - 两种情况下都从 ``os.environ`` 中去掉后台线程项。内建更新只替换程序代码、不改镜像环境变量，
+      因此必须由代码清理，才能修复从 v3.0.10 镜像内建更新上来的实例。
 
     Args:
         max_threads: 后台线程上限
 
     Returns:
-        是否实际开启
+        是否在运行时实际开启了后台线程
     """
-    if "background_thread" in os.environ.get("MALLOC_CONF", ""):
+    configured = _strip_background_thread_conf()
+    if configured:
         return False
     mallctl = _jemalloc_mallctl()
     if mallctl is None:
@@ -161,6 +167,22 @@ def enable_allocator_background_thread(max_threads: int = 1) -> bool:
         return False
     enabled = ctypes.c_bool(True)
     return mallctl(_JEMALLOC_BACKGROUND_THREAD, None, None, ctypes.byref(enabled), ctypes.sizeof(enabled)) == 0
+
+
+def _strip_background_thread_conf() -> bool:
+    """从 ``os.environ["MALLOC_CONF"]`` 去掉后台线程项，返回原配置是否包含这些项。"""
+    conf = os.environ.get("MALLOC_CONF")
+    if not conf:
+        return False
+    options = [option for option in conf.split(",") if option]
+    kept = [option for option in options if option.split(":", 1)[0] not in _BACKGROUND_THREAD_OPTIONS]
+    if len(kept) == len(options):
+        return False
+    if kept:
+        os.environ["MALLOC_CONF"] = ",".join(kept)
+    else:
+        del os.environ["MALLOC_CONF"]
+    return True
 
 
 def release_allocator_memory() -> Optional[str]:
