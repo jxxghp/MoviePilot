@@ -125,22 +125,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - shard: '1/8'
+          - shard: '1/6'
             index: '1'
-          - shard: '2/8'
+          - shard: '2/6'
             index: '2'
-          - shard: '3/8'
+          - shard: '3/6'
             index: '3'
-          - shard: '4/8'
+          - shard: '4/6'
             index: '4'
-          - shard: '5/8'
+          - shard: '5/6'
             index: '5'
-          - shard: '6/8'
+          - shard: '6/6'
             index: '6'
-          - shard: '7/8'
-            index: '7'
-          - shard: '8/8'
-            index: '8'
 
     steps:
       - name: Checkout code
@@ -160,7 +156,7 @@ jobs:
 
       - name: Generate coverage data
         timeout-minutes: 10
-        run: uv run --locked --no-sync python -m coverage run --parallel-mode tests/run.py --shard "${{ matrix.shard }}"
+        run: uv run --locked --no-sync python -m coverage run --parallel-mode tests/run.py --exclude-architecture-gate --shard "${{ matrix.shard }}"
 
       - name: Upload coverage data
         uses: actions/upload-artifact@v7

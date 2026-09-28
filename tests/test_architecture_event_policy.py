@@ -7,7 +7,6 @@ from typing import Any, Callable
 
 import pytest
 
-from scripts.architecture.baseline import collect_current_event_facts
 from scripts.architecture.event_facts import fingerprint_event_fact
 from scripts.architecture.event_policy import (
     DEFAULT_EVENT_POLICY_PATH,
@@ -19,6 +18,7 @@ from scripts.architecture.event_policy import (
     parse_args,
     validate_event_consumer_policy,
 )
+from tests.architecture_cache import current_event_facts
 
 
 def _fact(
@@ -112,7 +112,7 @@ def test_event_policy_accepts_exact_static_and_dynamic_facts() -> None:
 
 def test_current_event_consumer_policy_matches_exact_reviewed_set() -> None:
     """当前 17 条宿主 consumer 必须逐条匹配人工政策且没有非法成员。"""
-    facts = collect_current_event_facts()["consumers"]
+    facts = current_event_facts()["consumers"]
     policy = json.loads(DEFAULT_EVENT_POLICY_PATH.read_text(encoding="utf-8"))
     entries = policy["event_consumers"]["entries"]
 

@@ -5,9 +5,9 @@ from collections import Counter
 from pathlib import Path
 
 from scripts.architecture.baseline import (
-    collect_dependency_baseline,
     collect_direct_adapter_imports,
 )
+from tests.architecture_cache import dependency_baseline
 
 PROJECT_ROOT = Path(__file__).parents[1]
 DEPENDENCY_POLICY_PATH = (
@@ -208,7 +208,7 @@ def test_direct_adapter_collector_handles_relative_imports_and_scope(
 
 def test_current_direct_adapter_imports_are_stable_generated_facts() -> None:
     """生成事实必须有稳定排序、自洽统计，且不保存符号或行号。"""
-    contract = collect_dependency_baseline()["direct_adapter_imports"]
+    contract = dependency_baseline()["direct_adapter_imports"]
     edges = contract["edges"]
     sources = sorted({edge["source"] for edge in edges})
     targets = sorted({edge["target"] for edge in edges})
@@ -237,7 +237,7 @@ def test_current_direct_adapter_imports_are_stable_generated_facts() -> None:
 def test_current_direct_adapter_imports_match_temporary_debt_policy() -> None:
     """现存直连必须逐条绑定冻结 owner，并允许债务集合只减不增。"""
     policy = json.loads(DEPENDENCY_POLICY_PATH.read_text(encoding="utf-8"))
-    contract = collect_dependency_baseline()["direct_adapter_imports"]
+    contract = dependency_baseline()["direct_adapter_imports"]
     adapter_policy = policy["direct_adapter_imports"]
     entries = adapter_policy["entries"]
 

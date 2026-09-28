@@ -5,9 +5,6 @@ from pathlib import Path
 
 from app.runtime.compat.manifest import MODULE_ALIASES, SYMBOL_ALIASES
 from scripts.architecture.baseline import (
-    collect_current_event_facts as _collect_current_event_facts,
-)
-from scripts.architecture.baseline import (
     discover_modules as _discover_modules,
 )
 from scripts.architecture.baseline import (
@@ -16,6 +13,11 @@ from scripts.architecture.baseline import (
 from scripts.architecture.baseline import (
     strongly_connected_components as _strongly_connected_components,
 )
+from tests.architecture_cache import (
+    current_event_facts as _collect_current_event_facts,
+)
+from tests.architecture_cache import parse_module as _parse_source
+from tests.architecture_cache import walk_module as _walk_module
 
 PROJECT_ROOT = Path(__file__).parents[1]
 APP_ROOT = PROJECT_ROOT / "app"
@@ -212,9 +214,9 @@ FORBIDDEN_IMPORT_PREFIXES = {
 
 def _legacy_imports(path: Path) -> set[str]:
     """提取源码中的静态和常量动态旧路径导入。"""
-    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    tree = _parse_source(path)
     imports: set[str] = set()
-    for node in ast.walk(tree):
+    for node in _walk_module(tree):
         candidates: list[str] = []
         if isinstance(node, ast.Import):
             candidates.extend(alias.name for alias in node.names)
@@ -251,7 +253,7 @@ def _compat_symbol_references(tree: ast.AST) -> set[tuple[int, str]]:
     module_bindings: dict[str, str] = {}
     references: set[tuple[int, str]] = set()
 
-    for node in ast.walk(tree):
+    for node in _walk_module(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:
                 binding = alias.asname or alias.name.split(".", maxsplit=1)[0]
@@ -264,7 +266,7 @@ def _compat_symbol_references(tree: ast.AST) -> set[tuple[int, str]]:
                 binding = alias.asname or alias.name
                 module_bindings[binding] = f"{node.module}.{alias.name}"
 
-    for node in ast.walk(tree):
+    for node in _walk_module(tree):
         if not isinstance(node, ast.Attribute):
             continue
         parts = _attribute_parts(node)
@@ -282,7 +284,7 @@ def _compat_symbol_references(tree: ast.AST) -> set[tuple[int, str]]:
 
 def _class_annotations(path: Path, class_name: str) -> dict[str, str]:
     """返回指定类的源码级字段注解。"""
-    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    tree = _parse_source(path)
     class_node = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == class_name)
     return {
         node.target.id: ast.unparse(node.annotation)
@@ -373,8 +375,8 @@ def test_runtime_dependencies_use_same_named_single_word_package() -> None:
         relative = path.relative_to(APP_ROOT)
         if relative.parts[0] == "plugins":
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
+        tree = _parse_source(path)
+        for node in _walk_module(tree):
             if isinstance(node, ast.ImportFrom) and node.module == "app.runtime.dependencies":
                 violations.append(f"{relative}:{node.lineno}:from-package-root")
             elif isinstance(node, ast.Import):
@@ -416,8 +418,8 @@ def test_domain_classification_is_a_pure_direct_import_package() -> None:
     )
     violations: list[str] = []
     for path in package.glob("*.py"):
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
+        tree = _parse_source(path)
+        for node in _walk_module(tree):
             imported_modules: list[str] = []
             if isinstance(node, ast.ImportFrom) and node.module:
                 imported_modules.append(node.module)
@@ -434,8 +436,8 @@ def test_domain_classification_is_a_pure_direct_import_package() -> None:
     for path in APP_ROOT.rglob("*.py"):
         if path.is_relative_to(APP_ROOT / "plugins"):
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
+        tree = _parse_source(path)
+        for node in _walk_module(tree):
             if isinstance(node, ast.ImportFrom) and node.module == "app.domain.classification":
                 root_imports.append(f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}")
             elif isinstance(node, ast.Import):
@@ -492,8 +494,8 @@ def test_application_torrent_uses_same_named_single_word_package() -> None:
         for path in root.rglob("*.py"):
             if path.is_relative_to(APP_ROOT / "plugins"):
                 continue
-            tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-            for node in ast.walk(tree):
+            tree = _parse_source(path)
+            for node in _walk_module(tree):
                 if isinstance(node, ast.ImportFrom) and node.module == "app.application.torrent":
                     root_imports.append(f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}")
     assert root_imports == []
@@ -510,15 +512,15 @@ def test_host_module_package_roots_only_export_capability_entrypoints() -> None:
     for path in (APP_ROOT / "modules").rglob("*.py"):
         if path.is_relative_to(APP_ROOT / "plugins"):
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
+        tree = _parse_source(path)
+        for node in _walk_module(tree):
             if isinstance(node, ast.ImportFrom) and node.module == "app.modules._base":
                 root_imports.append(f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}")
     assert root_imports == []
 
     for package_name, expected_exports in HOST_MODULE_PACKAGE_EXPORTS.items():
         path = APP_ROOT / "modules" / package_name / "__init__.py"
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        tree = _parse_source(path)
         assignments = {
             target.id: ast.literal_eval(node.value)
             for node in tree.body
@@ -588,8 +590,8 @@ def test_domain_media_projection_uses_single_word_owner_package() -> None:
         relative = path.relative_to(APP_ROOT)
         if relative.parts[0] == "plugins" or path == context_path:
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
+        tree = _parse_source(path)
+        for node in _walk_module(tree):
             if not isinstance(node, ast.Attribute) or not isinstance(node.value, ast.Name):
                 continue
             if node.value.id == "MediaInfo" and node.attr in {
@@ -605,7 +607,7 @@ def test_domain_media_projection_uses_single_word_owner_package() -> None:
 def test_workflow_query_contract_returns_only_typed_snapshots():
     """工作流正式查询端口不得退化为 Any 或 ORM 返回值。"""
     path = APP_ROOT / "application" / "workflow.py"
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    tree = _parse_source(path)
     query_classes = {
         node.name: node
         for node in tree.body
@@ -1085,10 +1087,10 @@ def test_runtime_composition_is_the_sole_host_and_domain_runtime_owner():
     for path in APP_ROOT.rglob("*.py"):
         if path.is_relative_to(APP_ROOT / "plugins"):
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        tree = _parse_source(path)
         if any(
             isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "HostRuntime"
-            for node in ast.walk(tree)
+            for node in _walk_module(tree)
         ):
             constructors.append(path.relative_to(APP_ROOT).as_posix())
     assert constructors == ["startup/composition/runtime.py"]
@@ -1218,8 +1220,8 @@ def test_plugin_route_refresh_is_imported_from_its_application_owner():
         relative = path.relative_to(APP_ROOT)
         if relative.parts[0] == "plugins":
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
+        tree = _parse_source(path)
+        for node in _walk_module(tree):
             if not isinstance(node, ast.ImportFrom) or node.level:
                 continue
             if node.module == owner:
@@ -1299,7 +1301,7 @@ def test_host_code_does_not_use_compat_symbol_aliases() -> None:
             or relative.parts[:2] == ("sdk", "_legacy")
         ):
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        tree = _parse_source(path)
         violations.extend(
             f"{relative.as_posix()}:{line}:{symbol}" for line, symbol in sorted(_compat_symbol_references(tree))
         )
@@ -1321,8 +1323,8 @@ def test_host_code_uses_explicit_runtime_facade_getters():
             "compat",
         ):
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
+        tree = _parse_source(path)
+        for node in _walk_module(tree):
             if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name):
                 target_names = {target.id for target in node.targets if isinstance(target, ast.Name)}
                 if "SystemConfigOper" in target_names and node.value.id == "get_configured_system_config":
@@ -1371,8 +1373,8 @@ def test_user_chain_and_agent_ports_are_typed_and_orm_free():
     ]
     violations: list[str] = []
     for path in production_paths:
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
+        tree = _parse_source(path)
+        for node in _walk_module(tree):
             if isinstance(node, ast.ClassDef) and node.name == "UserOper":
                 violations.append(f"{path.relative_to(PROJECT_ROOT)}:{node.lineno}:class")
             if isinstance(node, ast.ImportFrom) and node.module == "app.db.oper.user":
@@ -1411,8 +1413,8 @@ def test_transfer_pending_oper_import_is_confined_to_database_boundary():
         relative = path.relative_to(PROJECT_ROOT).as_posix()
         if relative.startswith("app/plugins/") or relative in allowed_paths:
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
+        tree = _parse_source(path)
+        for node in _walk_module(tree):
             if isinstance(node, ast.Import):
                 if any(alias.name == "app.db.oper.transferpending" for alias in node.names):
                     violations.append(f"{relative}:{node.lineno}")
@@ -1431,16 +1433,16 @@ def test_transfer_pending_oper_import_is_confined_to_database_boundary():
 def test_startup_injects_transactional_transfer_admission_repository():
     """启动组合根必须向 Chain 注入事务型整理准入仓储。"""
     path = APP_ROOT / "startup" / "composition" / "chain.py"
-    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    tree = _parse_source(path)
     imports_repository = any(
         isinstance(node, ast.ImportFrom)
         and node.module == "app.db.adapters.transfer.admission"
         and any(alias.name == "TransactionalTransferAdmissionRepository" for alias in node.names)
-        for node in ast.walk(tree)
+        for node in _walk_module(tree)
     )
     chain_context_calls = [
         node
-        for node in ast.walk(tree)
+        for node in _walk_module(tree)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "ChainRuntimeContext"
     ]
 
@@ -1480,10 +1482,10 @@ def test_scheduler_does_not_depend_on_database_implementation():
 def test_monitor_dispatcher_uses_explicit_history_port_getter():
     """监控分发器不得把兼容 TransferHistoryPort 伪装成数据库 Oper。"""
     path = APP_ROOT / "monitor" / "dispatcher.py"
-    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    tree = _parse_source(path)
     violations = [
         f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}"
-        for node in ast.walk(tree)
+        for node in _walk_module(tree)
         if isinstance(node, ast.ImportFrom)
         and node.module == "app.application.history"
         and any(alias.name == "TransferHistoryPort" for alias in node.names)
@@ -1505,8 +1507,8 @@ def test_canonical_service_config_consumers_use_application_directory():
     ]
     violations: list[str] = []
     for path in paths:
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
+        tree = _parse_source(path)
+        for node in _walk_module(tree):
             if isinstance(node, ast.ImportFrom) and node.module == "app.runtime.extensions.service":
                 violations.append(f"{path.relative_to(PROJECT_ROOT).as_posix()}:{node.lineno}")
             if (
@@ -1526,7 +1528,7 @@ def test_plugin_components_do_not_reexport_legacy_abi_names():
     manager_path = APP_ROOT / "runtime" / "extensions" / "plugin" / "manager.py"
     for root in PLUGIN_COMPONENT_ROOTS:
         for path in (PROJECT_ROOT / root).rglob("*.py"):
-            tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+            tree = _parse_source(path)
             for node in tree.body:
                 if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                     if node.name == "__getattr__" or node.name in PLUGIN_LEGACY_ABI_NAMES:
@@ -1562,8 +1564,8 @@ def test_host_code_uses_precise_schema_modules():
         relative = path.relative_to(APP_ROOT)
         if relative.parts[0] in {"plugins", "schemas"}:
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
+        tree = _parse_source(path)
+        for node in _walk_module(tree):
             if isinstance(node, ast.ImportFrom) and node.module == "app":
                 if any(alias.name == "schemas" for alias in node.names):
                     violations.append(str(relative))
@@ -1580,9 +1582,9 @@ def test_database_internals_do_not_import_db_facades():
     for path in (APP_ROOT / "db").rglob("*.py"):
         if path.name == "__init__.py":
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        tree = _parse_source(path)
         if any(
-            isinstance(node, ast.ImportFrom) and node.module in {"app.db", "app.db.models"} for node in ast.walk(tree)
+            isinstance(node, ast.ImportFrom) and node.module in {"app.db", "app.db.models"} for node in _walk_module(tree)
         ):
             violations.append(str(path.relative_to(PROJECT_ROOT)))
     assert violations == []
@@ -1593,8 +1595,8 @@ def test_database_opers_use_dboper_transaction_dispatchers():
     runner_names = {"run_sync_transaction", "run_async_transaction"}
     violations: list[str] = []
     for path in (APP_ROOT / "db" / "oper").rglob("*.py"):
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
+        tree = _parse_source(path)
+        for node in _walk_module(tree):
             if not isinstance(node, ast.ImportFrom) or node.module != "app.db.uow":
                 continue
             imported = {alias.name for alias in node.names} & runner_names
@@ -1621,9 +1623,9 @@ def test_models_and_base_require_explicit_database_sessions():
     paths = [APP_ROOT / "db" / "base.py"]
     paths.extend((APP_ROOT / "db" / "models").rglob("*.py"))
     for path in paths:
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        tree = _parse_source(path)
         relative = str(path.relative_to(PROJECT_ROOT))
-        nodes = list(ast.walk(tree))
+        nodes = list(_walk_module(tree))
         for node in nodes:
             if isinstance(node, ast.ImportFrom) and node.module == "app.db.decorators":
                 violations.append(f"{relative}:{node.lineno}:decorator-import")
@@ -1662,8 +1664,8 @@ def test_plugin_sdk_does_not_import_or_export_host_models():
     violations: list[str] = []
     for path in (APP_ROOT / "sdk").rglob("*.py"):
         relative = path.relative_to(PROJECT_ROOT).as_posix()
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
+        tree = _parse_source(path)
+        for node in _walk_module(tree):
             if (
                 isinstance(node, ast.ImportFrom)
                 and node.module
@@ -1753,9 +1755,9 @@ def test_application_does_not_import_transport_frameworks():
     """应用层不得依赖 FastAPI、Starlette 或宿主 HTTP 适配器。"""
     violations: dict[str, set[str]] = {}
     for path in (APP_ROOT / "application").rglob("*.py"):
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        tree = _parse_source(path)
         forbidden: set[str] = set()
-        for node in ast.walk(tree):
+        for node in _walk_module(tree):
             candidates: list[str] = []
             if isinstance(node, ast.Import):
                 candidates.extend(alias.name for alias in node.names)
@@ -1790,8 +1792,8 @@ def test_host_code_does_not_use_string_utils_facade():
         relative = path.relative_to(APP_ROOT)
         if relative.parts[0] in {"plugins", "sdk"}:
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        if any(isinstance(node, ast.Name) and node.id == "StringUtils" for node in ast.walk(tree)):
+        tree = _parse_source(path)
+        if any(isinstance(node, ast.Name) and node.id == "StringUtils" for node in _walk_module(tree)):
             violations.append(str(relative))
     assert violations == []
 
@@ -1804,8 +1806,8 @@ def test_host_code_does_not_import_chain_plugin_abi_roots() -> None:
         relative = path.relative_to(APP_ROOT)
         if relative.parts[0] == "plugins":
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
+        tree = _parse_source(path)
+        for node in _walk_module(tree):
             if isinstance(node, ast.ImportFrom) and node.module in compatibility_roots:
                 violations.append(f"{relative}:{node.lineno}:{node.module}")
             elif isinstance(node, ast.Import):
@@ -1833,8 +1835,8 @@ def test_foundation_does_not_emit_runtime_logs():
     """基础机制不打印或初始化日志系统，运行期诊断由上层调用方负责。"""
     violations: list[str] = []
     for path in (APP_ROOT / "foundation").rglob("*.py"):
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
+        tree = _parse_source(path)
+        for node in _walk_module(tree):
             if isinstance(node, ast.Import) and any(alias.name == "logging" for alias in node.names):
                 violations.append(str(path.relative_to(PROJECT_ROOT)))
                 break
@@ -1880,12 +1882,12 @@ def test_passkey_application_does_not_select_cache_backend():
 def test_startup_explicitly_configures_passkey_challenge_cache():
     """PassKey challenge 缓存必须由启动组合根显式装配。"""
     path = APP_ROOT / "startup" / "composition" / "security.py"
-    tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+    tree = _parse_source(path)
     configured = any(
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
         and node.func.id == "configure_passkey_challenge_cache"
-        for node in ast.walk(tree)
+        for node in _walk_module(tree)
     )
 
     assert configured is True
@@ -1947,8 +1949,8 @@ def test_chain_does_not_import_downloader_sdks():
     forbidden_sdks = {"qbittorrentapi", "transmission_rpc"}
     violations: list[str] = []
     for path in (APP_ROOT / "chain").rglob("*.py"):
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
+        tree = _parse_source(path)
+        for node in _walk_module(tree):
             names: list[str] = []
             if isinstance(node, ast.Import):
                 names.extend(alias.name for alias in node.names)
@@ -2110,10 +2112,10 @@ def test_host_consumers_get_agent_manager_through_application_facade():
     for module_name, path in _discover_modules().items():
         if module_name.startswith(("app.agent", "app.startup")):
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        tree = _parse_source(path)
         imported = {
             alias.name
-            for node in ast.walk(tree)
+            for node in _walk_module(tree)
             if isinstance(node, ast.ImportFrom) and node.module == "app.agent.loader"
             for alias in node.names
             if alias.name in forbidden
@@ -2127,7 +2129,7 @@ def test_agent_package_roots_do_not_duplicate_implementation_exports():
     """Agent 与 LLM 包根不得实现动态转发，旧符号只能由精确 Compat 路由承接。"""
     for relative_path in ("app/agent/__init__.py", "app/agent/llm/__init__.py"):
         path = PROJECT_ROOT / relative_path
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        tree = _parse_source(path)
         assert all(isinstance(node, ast.Expr) for node in tree.body), relative_path
 
     assert set(SYMBOL_ALIASES["app.agent"]) == {
@@ -2150,10 +2152,10 @@ def test_host_code_imports_agent_and_llm_symbols_from_owner_modules():
     """宿主不得消费 Agent 包根兼容符号，避免包根再次成为第二公开面。"""
     violations: dict[str, set[str]] = {}
     for module_name, path in _discover_modules().items():
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        tree = _parse_source(path)
         imported = {
             f"{node.module}.{alias.name}"
-            for node in ast.walk(tree)
+            for node in _walk_module(tree)
             if isinstance(node, ast.ImportFrom) and node.module in {"app.agent", "app.agent.llm"}
             for alias in node.names
         }
@@ -2169,10 +2171,10 @@ def test_host_consumers_resolve_llm_provider_runtime_through_gateway():
     for module_name, path in _discover_modules().items():
         if module_name.startswith(("app.agent", "app.startup")):
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        tree = _parse_source(path)
         imported = {
             alias.name
-            for node in ast.walk(tree)
+            for node in _walk_module(tree)
             if isinstance(node, ast.ImportFrom) and node.module in {"app.agent.llm", "app.agent.llm.provider"}
             for alias in node.names
             if alias.name == "LLMProviderManager"
@@ -2191,10 +2193,10 @@ def test_host_consumers_use_agent_audio_capability_application_port():
     for module_name, path in _discover_modules().items():
         if module_name.startswith(("app.agent", "app.startup")):
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        tree = _parse_source(path)
         imported = {
             alias.name
-            for node in ast.walk(tree)
+            for node in _walk_module(tree)
             if isinstance(node, ast.ImportFrom) and node.module in {"app.agent.llm", "app.agent.llm.capability"}
             for alias in node.names
             if alias.name == "AgentCapabilityManager"
@@ -2246,8 +2248,8 @@ def test_modules_read_deployment_settings_through_runtime_port():
     """宿主 Module 不得绕过 runtime 配置端口直接依赖 Settings 实例。"""
     violations: list[str] = []
     for path in (APP_ROOT / "modules").rglob("*.py"):
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
+        tree = _parse_source(path)
+        for node in _walk_module(tree):
             if not isinstance(node, ast.ImportFrom) or node.module != "app.runtime.config":
                 continue
             if any(alias.name == "settings" for alias in node.names):
@@ -2263,8 +2265,8 @@ def test_runtime_implementation_does_not_use_legacy_settings_proxy():
     for path in (APP_ROOT / "runtime").rglob("*.py"):
         if path == APP_ROOT / "runtime" / "settings.py":
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
-        for node in ast.walk(tree):
+        tree = _parse_source(path)
+        for node in _walk_module(tree):
             if not isinstance(node, ast.ImportFrom):
                 continue
             if node.module != "app.runtime.settings":
@@ -2295,12 +2297,12 @@ def test_deprecated_settings_proxy_imports_are_zero():
             continue
         if path.is_relative_to(APP_ROOT / "plugins"):
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        tree = _parse_source(path)
         imports_compat = any(
             isinstance(node, ast.ImportFrom)
             and node.module == "app.runtime.settings"
             and any(alias.name.lower().endswith("compat") for alias in node.names)
-            for node in ast.walk(tree)
+            for node in _walk_module(tree)
         )
         if not imports_compat:
             continue
@@ -2324,12 +2326,12 @@ def test_global_settings_imports_stay_within_compatibility_baseline():
     for path in APP_ROOT.rglob("*.py"):
         if path.is_relative_to(APP_ROOT / "plugins"):
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
+        tree = _parse_source(path)
         if any(
             isinstance(node, ast.ImportFrom)
             and node.module == "app.runtime.config"
             and any(alias.name == "settings" for alias in node.names)
-            for node in ast.walk(tree)
+            for node in _walk_module(tree)
         ):
             imports.add(path.relative_to(PROJECT_ROOT).as_posix())
 
