@@ -89,7 +89,6 @@ def get_memory_usage() -> float:
 _JEMALLOC_ARENAS_ALL_PURGE = b"arena.4096.purge"
 # 把调用线程的线程缓存（tcache）交还所属 arena
 _JEMALLOC_THREAD_TCACHE_FLUSH = b"thread.tcache.flush"
-# 后台回收线程开关与数量上限，均可在运行时写入
 _JEMALLOC_BACKGROUND_THREAD = b"background_thread"
 _JEMALLOC_MAX_BACKGROUND_THREADS = b"max_background_threads"
 # MALLOC_CONF 中与后台线程相关、不能被子进程继承的配置项
