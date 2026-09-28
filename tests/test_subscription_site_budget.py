@@ -460,8 +460,22 @@ def test_search_provider_aggregates_swallowed_indexer_failure(monkeypatch):
     assert snapshot.cooldown_seconds == 900.0
 
 
-def test_search_provider_explains_error_flag_without_exception(monkeypatch):
-    """索引器仅返回错误标志时也必须持久化可读原因，不能向任务暴露裸 `error`。"""
+@pytest.mark.parametrize(
+    ("failure_detail", "expected_error"),
+    [
+        (None, "站点请求或页面解析失败"),
+        (
+            "HTTP 403，页面标题：Just a moment...",
+            "站点请求或页面解析失败（HTTP 403，页面标题：Just a moment...）",
+        ),
+    ],
+)
+def test_search_provider_explains_error_flag_without_exception(
+    monkeypatch,
+    failure_detail,
+    expected_error,
+):
+    """索引器仅返回错误标志时也必须持久化可读原因，爬虫给出的失败原因附在兜底文案后且不改变冷却分类。"""
     captured = {}
 
     class _Repository(_WaitingRepository):
@@ -491,7 +505,7 @@ def test_search_provider_explains_error_flag_without_exception(monkeypatch):
     monkeypatch.setattr(
         IndexerModule,
         "_IndexerModule__execute_search",
-        staticmethod(lambda _site, _request: (True, [])),
+        staticmethod(lambda _site, _request: (True, [], failure_detail)),
     )
     monkeypatch.setattr(
         IndexerModule,
@@ -527,11 +541,11 @@ def test_search_provider_explains_error_flag_without_exception(monkeypatch):
 
     assert result == []
     assert captured["outcome"] == "error"
-    assert captured["error"] == "站点请求或页面解析失败"
+    assert captured["error"] == expected_error
     assert chain.consume_subscription_site_budget_failures() == (
-        "站点 Generic 搜索失败：站点请求或页面解析失败",
+        f"站点 Generic 搜索失败：{expected_error}",
     )
-    assert warnings == ["站点 Generic 搜索失败：站点请求或页面解析失败"]
+    assert warnings == [f"站点 Generic 搜索失败：{expected_error}"]
 
 
 def test_search_provider_logs_site_budget_release_failure(monkeypatch):
