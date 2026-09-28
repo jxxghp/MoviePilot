@@ -205,8 +205,8 @@ def run_application() -> None:
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
     # 只在主进程开启分配器后台回收，浏览器等子进程不继承
-    from app.runtime.gc import enable_allocator_background_thread
-    enable_allocator_background_thread()
+    from app.runtime.gc import configure_allocator_background_thread
+    configure_allocator_background_thread()
 
     start_tray()
     run_api_server()

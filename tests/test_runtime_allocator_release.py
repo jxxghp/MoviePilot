@@ -149,29 +149,43 @@ def test_thread_cache_flush_is_a_no_op_without_jemalloc(linux, monkeypatch):
     assert trim.calls == []
 
 
+
 def test_background_thread_enabled_at_runtime(linux, monkeypatch):
-    """后台回收线程在主进程内开启，先设上限再打开开关。"""
-    monkeypatch.delenv("MALLOC_CONF", raising=False)
+    """未配置后台线程时在主进程内开启，先设上限再打开开关，子进程环境保持不变。"""
+    monkeypatch.setenv("MALLOC_CONF", "narenas:8,dirty_decay_ms:5000")
     mallctl = _FakeSymbol()
     _use_lib(monkeypatch, _FakeLib(mallctl=mallctl))
 
-    assert runtime_gc.enable_allocator_background_thread() is True
+    assert runtime_gc.configure_allocator_background_thread() is True
     assert [call[0] for call in mallctl.calls] == [b"max_background_threads", b"background_thread"]
     assert all(call[1] is None and call[2] is None for call in mallctl.calls)
+    assert runtime_gc.os.environ["MALLOC_CONF"] == "narenas:8,dirty_decay_ms:5000"
 
 
-def test_background_thread_respects_explicit_malloc_conf(linux, monkeypatch):
-    """用户在 MALLOC_CONF 里显式配置后台线程时不再改写。"""
-    monkeypatch.setenv("MALLOC_CONF", "background_thread:false")
+def test_inherited_background_thread_conf_is_stripped(linux, monkeypatch):
+    """v3.0.10 镜像把后台线程写进了 MALLOC_CONF；主进程已按其生效，只需从子进程将继承的环境中去掉。"""
+    monkeypatch.setenv(
+        "MALLOC_CONF",
+        "background_thread:true,max_background_threads:1,narenas:8,dirty_decay_ms:5000,muzzy_decay_ms:0",
+    )
     mallctl = _FakeSymbol()
     _use_lib(monkeypatch, _FakeLib(mallctl=mallctl))
 
-    assert runtime_gc.enable_allocator_background_thread() is False
+    assert runtime_gc.configure_allocator_background_thread() is False
     assert mallctl.calls == []
+    assert runtime_gc.os.environ["MALLOC_CONF"] == "narenas:8,dirty_decay_ms:5000,muzzy_decay_ms:0"
+
+
+def test_conf_with_only_background_thread_is_removed(linux, monkeypatch):
+    monkeypatch.setenv("MALLOC_CONF", "background_thread:false")
+    _use_lib(monkeypatch, _FakeLib(mallctl=_FakeSymbol()))
+
+    assert runtime_gc.configure_allocator_background_thread() is False
+    assert "MALLOC_CONF" not in runtime_gc.os.environ
 
 
 def test_background_thread_is_a_no_op_without_jemalloc(linux, monkeypatch):
     monkeypatch.delenv("MALLOC_CONF", raising=False)
     _use_lib(monkeypatch, _FakeLib(malloc_trim=_FakeSymbol()))
 
-    assert runtime_gc.enable_allocator_background_thread() is False
+    assert runtime_gc.configure_allocator_background_thread() is False
