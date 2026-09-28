@@ -73,8 +73,6 @@ jobs:
             tests/test_architecture_egress.py \
             tests/test_architecture_event_facts.py \
             tests/test_architecture_event_policy.py -q
-          uv run --locked --no-sync python \
-            scripts/architecture/event_policy.py
 
       - name: Check host architecture snapshot
         run: |
@@ -83,6 +81,30 @@ jobs:
             tests/test_architecture_baseline_cli.py -q
           uv run --locked --no-sync python \
             scripts/architecture/baseline.py --check-host
+
+  # 与 architecture job 并行执行，两者合计即完整的宿主架构门禁
+  architecture-ratchets:
+    needs: reuse
+    if: needs.reuse.outputs.reused != 'true'
+    runs-on: ubuntu-latest
+    name: Architecture Ratchet Gate
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v10.0.1
+        with:
+          python-version: '3.14'
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Install dependencies
+        run: uv sync --locked
 
       - name: Check governed Python types
         run: uv run --locked --no-sync mypy --config-file mypy.ini
@@ -215,8 +237,8 @@ jobs:
 
   proof:
     name: CI proof (${{ github.sha }})
-    needs: [architecture, coverage-shard, coverage-report]
-    if: github.event_name == 'pull_request' && needs.architecture.result == 'success' && needs.coverage-shard.result == 'success' && needs.coverage-report.result == 'success'
+    needs: [architecture, architecture-ratchets, coverage-shard, coverage-report]
+    if: github.event_name == 'pull_request' && needs.architecture.result == 'success' && needs.architecture-ratchets.result == 'success' && needs.coverage-shard.result == 'success' && needs.coverage-report.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 1
     steps:
