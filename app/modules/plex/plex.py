@@ -655,14 +655,15 @@ class Plex:
 
     def __build_media_server_item(self, item) -> Optional[_SchemaMediaServerItem]:
         """
-        构造MediaServerItem
+        按 Plex 条目实际具备的字段构造媒体信息，兼容艺人、专辑和曲目
         :param item: Plex媒体项目
         :return: MediaServerItem
         """
         if not item:
             return None
         ids = self.__get_ids(item.guids)
-        path = item.locations[0] if item.locations else None
+        locations = getattr(item, "locations", None)
+        path = locations[0] if locations else None
         playback_position = getattr(item, "viewOffset", None) or 0
         duration = getattr(item, "duration", None) or 0
         percentage = (playback_position / duration * 100) if duration > 0 else None
@@ -685,8 +686,8 @@ class Plex:
             item_id=item.key,
             item_type=item.type,
             title=item.title,
-            original_title=item.originalTitle,
-            year=item.year,
+            original_title=getattr(item, "originalTitle", None),
+            year=getattr(item, "year", None),
             media_source=MediaServerIdentityHelper.from_provider_ids(ids)[0],
             media_id=MediaServerIdentityHelper.from_provider_ids(ids)[1],
             path=path,
