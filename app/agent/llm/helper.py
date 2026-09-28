@@ -565,6 +565,142 @@ def _patch_openai_responses_empty_output_support():
     logger.debug("已修补 langchain-openai responses API 空 output 兼容性")
 
 
+_SCHEMA_MAP_KEYWORDS = frozenset({"properties", "$defs", "definitions"})
+_SCHEMA_LIST_KEYWORDS = frozenset({"anyOf", "oneOf", "allOf"})
+_SCHEMA_NODE_KEYWORDS = frozenset({"items", "additionalProperties"})
+_SCHEMA_UNION_KEYWORDS = ("anyOf", "oneOf")
+
+
+def _schema_variant_type(variant: Any) -> str | None:
+    """返回联合分支声明的单一 JSON 类型，无法确定时返回 None。"""
+    schema_type = variant.get("type") if isinstance(variant, dict) else None
+    return schema_type if isinstance(schema_type, str) else None
+
+
+def _collapse_schema_union(schema: dict[str, Any], *, gemini_compatible: bool) -> dict[str, Any]:
+    """把不带顶层 type 的 anyOf/oneOf 折叠为单一分支，字段级关键字优先保留。"""
+    if "type" in schema:
+        return schema
+    for keyword in _SCHEMA_UNION_KEYWORDS:
+        variants = schema.get(keyword)
+        if not isinstance(variants, list):
+            continue
+        candidates = [variant for variant in variants if _schema_variant_type(variant) != "null"]
+        candidate_types = {_schema_variant_type(variant) for variant in candidates}
+        single_type = len(candidate_types) == 1 and None not in candidate_types
+        if not candidates or not (single_type or gemini_compatible):
+            return schema
+        chosen = next(
+            (variant for variant in candidates if _schema_variant_type(variant)),
+            candidates[0],
+        )
+        field_keywords = {key: value for key, value in schema.items() if key != keyword}
+        return {**(chosen if isinstance(chosen, dict) else {}), **field_keywords}
+    return schema
+
+
+def _infer_gemini_schema_type(schema: dict[str, Any]) -> dict[str, Any]:
+    """为 Gemini 补齐无法从联合推断类型的节点，默认 string 与原生转换一致。"""
+    if "type" in schema or any(key in schema for key in ("$ref", *_SCHEMA_LIST_KEYWORDS)):
+        return schema
+    if "properties" in schema:
+        return {**schema, "type": "object"}
+    if "items" in schema:
+        return {**schema, "type": "array"}
+    return {**schema, "type": "string"}
+
+
+def _normalize_tool_schema(schema: Any, *, gemini_compatible: bool) -> Any:
+    """
+    返回规整后的工具参数 JSON Schema 副本，不修改入参。
+
+    所有模型：anyOf/oneOf 的非 null 分支只有一种类型时折叠为该类型，保留字段级
+    描述与默认值；参数仍由工具的 Pydantic 模型校验，省略可选字段与传 null 等价。
+    Gemini 模型：其函数声明要求每个节点都带 type 且不支持 additionalProperties，
+    多类型联合取首个非 null 分支、丢弃 schema 形式的 additionalProperties、无法
+    推断类型的节点按 string 处理，与 langchain-google-genai 的原生转换保持一致。
+
+    :param schema: 工具参数 schema 节点，非字典节点原样返回
+    :param gemini_compatible: 是否输出 Gemini 函数声明可接受的 schema
+    :return: 规整后的新 schema
+    """
+    if not isinstance(schema, dict):
+        return schema
+
+    def _normalize(child: Any) -> Any:
+        return _normalize_tool_schema(child, gemini_compatible=gemini_compatible)
+
+    normalized: dict[str, Any] = {}
+    for key, value in schema.items():
+        if key in _SCHEMA_MAP_KEYWORDS and isinstance(value, dict):
+            normalized[key] = {name: _normalize(child) for name, child in value.items()}
+        elif key in _SCHEMA_LIST_KEYWORDS and isinstance(value, list):
+            normalized[key] = [_normalize(child) for child in value]
+        elif key in _SCHEMA_NODE_KEYWORDS and isinstance(value, dict):
+            if gemini_compatible and key == "additionalProperties":
+                continue
+            normalized[key] = _normalize(value)
+        else:
+            normalized[key] = value
+    normalized = _collapse_schema_union(normalized, gemini_compatible=gemini_compatible)
+    return _infer_gemini_schema_type(normalized) if gemini_compatible else normalized
+
+
+def _normalize_function_tool(tool: Any, *, gemini_compatible: bool) -> Any:
+    """规整 Chat Completions 或 Responses 格式的函数工具；strict 工具保持原样。"""
+    if not isinstance(tool, dict) or tool.get("type") != "function":
+        return tool
+    function = tool.get("function")
+    definition = function if isinstance(function, dict) else tool
+    parameters = definition.get("parameters")
+    if definition.get("strict") is True or not isinstance(parameters, dict):
+        return tool
+    normalized = {
+        **definition,
+        "parameters": _normalize_tool_schema(parameters, gemini_compatible=gemini_compatible),
+    }
+    return {**tool, "function": normalized} if definition is function else normalized
+
+
+def _patch_tool_schema_request_support(model_cls: Any, *, patch_marker: str) -> None:
+    """
+    为 OpenAI 兼容模型在请求上线前规整函数工具的参数 schema。
+
+    Pydantic 为 Optional[T] 字段生成不带顶层 type 的 anyOf；把 OpenAI tools 转成
+    Gemini functionDeclaration 的网关不处理 anyOf，整次请求会因字段缺少 type 被
+    400 拒绝。在请求构造出口统一规整，可覆盖主 Agent、子代理与内部模型调用的
+    全部工具，且不修改已绑定的工具定义。
+
+    :param model_cls: 需要修补的 ChatOpenAI 兼容模型类
+    :param patch_marker: 记录已修补状态的类属性名
+    """
+    if getattr(model_cls, patch_marker, False):
+        return
+    original_get_request_payload = getattr(model_cls, "_get_request_payload", None)
+    if not callable(original_get_request_payload):
+        logger.debug(f"{model_cls.__name__} 缺少 _get_request_payload，跳过工具 schema 规整")
+        return
+
+    @wraps(original_get_request_payload)
+    def _patched_get_request_payload(self: Any, input_: Any, *, stop: Any = None, **kwargs: Any) -> Any:
+        payload = original_get_request_payload(self, input_, stop=stop, **kwargs)
+        tools = payload.get("tools") if isinstance(payload, dict) else None
+        if not isinstance(tools, list):
+            return payload
+        model_name = getattr(self, "model_name", None) or getattr(self, "model", None)
+        gemini_compatible = "gemini" in str(model_name or "").lower()
+        return {
+            **payload,
+            "tools": [
+                _normalize_function_tool(tool, gemini_compatible=gemini_compatible)
+                for tool in tools
+            ],
+        }
+
+    setattr(model_cls, "_get_request_payload", _patched_get_request_payload)
+    setattr(model_cls, patch_marker, True)
+
+
 class LLMHelper:
     """LLM模型相关辅助功能"""
 
@@ -1554,6 +1690,10 @@ class LLMHelper:
             from langchain_openai import ChatOpenAI
 
             _patch_openai_responses_instructions_support()
+            _patch_tool_schema_request_support(
+                ChatOpenAI,
+                patch_marker="_moviepilot_tool_schema_patched",
+            )
 
             # ChatGPT Codex 端点强制要求 stream: True
             if runtime.get("use_responses_api") and "chatgpt.com/backend-api/codex" in str(runtime.get("base_url") or ""):
