@@ -3,8 +3,8 @@
 import json
 from pathlib import Path
 
-from scripts.architecture.baseline import collect_dependency_baseline
 from scripts.architecture.egress import collect_direct_egress
+from tests.architecture_cache import dependency_baseline
 
 PROJECT_ROOT = Path(__file__).parents[1]
 DEPENDENCY_POLICY_PATH = (
@@ -672,7 +672,7 @@ class Service:
 
 def test_current_egress_facts_are_complete_and_self_consistent() -> None:
     """当前宿主 egress identity 必须完整、可收缩、排序且统计自洽。"""
-    value = collect_dependency_baseline()["direct_egress"]
+    value = dependency_baseline()["direct_egress"]
     entries = value["entries"]
     application_entries = [
         entry
@@ -722,7 +722,7 @@ def test_current_egress_facts_are_complete_and_self_consistent() -> None:
 
 def test_current_egress_facts_match_exact_policy() -> None:
     """现存事实必须逐条分类，且 registry/scope 不得与 collector 漂移。"""
-    facts = collect_dependency_baseline()["direct_egress"]
+    facts = dependency_baseline()["direct_egress"]
     policy = json.loads(DEPENDENCY_POLICY_PATH.read_text(encoding="utf-8"))
     egress_policy = policy["direct_egress"]
     groups = egress_policy["groups"]

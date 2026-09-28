@@ -5,6 +5,8 @@ from pathlib import Path
 
 from ruamel.yaml import YAML
 
+from tests.run import ARCHITECTURE_GATE_TESTS
+
 PROJECT_ROOT = Path(__file__).parents[1]
 WORKFLOW_ROOT = PROJECT_ROOT / ".github" / "workflows"
 
@@ -64,6 +66,13 @@ def test_unit_test_workflow_has_independent_host_architecture_gate():
     assert "scripts/architecture/mypy_ratchet.py --write" not in commands
     assert "scripts/architecture/service_locator.py" in commands
     assert "scripts/startup/performance.py --check --repeat 3" in commands
+    # 覆盖率分片跳过的文件必须恰好由门禁运行，否则会有测试在 CI 中无人执行
+    gate_test_files = {
+        token.removeprefix("tests/")
+        for token in commands.split()
+        if token.startswith("tests/test_") and token.endswith(".py")
+    }
+    assert gate_test_files == set(ARCHITECTURE_GATE_TESTS)
 
 
 def test_official_plugin_observation_is_scheduled_and_never_writes_fixture():
@@ -98,17 +107,8 @@ def test_coverage_jobs_parallelize_data_and_keep_one_global_ratchet() -> None:
     assert shard_job["name"] == "Unit Tests with Coverage (${{ matrix.shard }})"
     assert shard_job["timeout-minutes"] == 15
     shard_matrix = shard_job["strategy"]["matrix"]["include"]
-    assert [item["shard"] for item in shard_matrix] == [
-        "1/8",
-        "2/8",
-        "3/8",
-        "4/8",
-        "5/8",
-        "6/8",
-        "7/8",
-        "8/8",
-    ]
-    assert [item["index"] for item in shard_matrix] == [str(index) for index in range(1, 9)]
+    assert [item["shard"] for item in shard_matrix] == [f"{index}/6" for index in range(1, 7)]
+    assert [item["index"] for item in shard_matrix] == [str(index) for index in range(1, 7)]
     assert report_job["needs"] == "coverage-shard"
     assert report_job["runs-on"] == "ubuntu-latest"
     assert report_job["timeout-minutes"] == 10
@@ -121,7 +121,10 @@ def test_coverage_jobs_parallelize_data_and_keep_one_global_ratchet() -> None:
         step for step in shard_steps if step.get("name") == "Generate coverage data"
     )
     assert generate_step["timeout-minutes"] == 10
-    assert "coverage run --parallel-mode tests/run.py --shard" in generate_step["run"]
+    assert (
+        "coverage run --parallel-mode tests/run.py --exclude-architecture-gate --shard"
+        in generate_step["run"]
+    )
     upload_data_step = next(
         step for step in shard_steps if step.get("name") == "Upload coverage data"
     )
