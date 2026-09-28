@@ -7,6 +7,7 @@ import importlib.util
 import sys
 import threading
 import traceback
+import typing
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, Optional
@@ -35,6 +36,83 @@ def _undeclared_runtime(_: str) -> Mapping[str, bool]:
 
 
 PluginRuntimeStatusWriter = Callable[[str, PluginRuntimeStatus], None]
+
+
+# ---- 插件模块卸载后释放第三方类型缓存 ----
+# 插件重载或卸载只把模块移出 sys.modules；若旧插件类仍被进程级类型缓存引用，
+# 整份旧模块（函数、类、模块全局）会一直留在内存中，每重载一次多留一份。
+
+# 类型参数嵌套深度上限，防止病态注解导致递归过深
+_MAX_TYPE_DEPTH = 8
+
+
+def release_plugin_type_caches(module_prefix: str) -> None:
+    """释放缓存中引用指定插件模块前缀下类型的条目。
+
+    - Pydantic 泛型模型缓存：值是弱引用，但键以强引用保存参数化用到的类，而参数化
+      结果又引用这些类，两者互相保活永不释放；顶层参数化还会在泛型基类模块留下全局
+      引用。只删除键里含有该插件类型的条目及其全局引用，其余模型的参数化结果与类身份
+      保持不变。
+    - ``typing`` 下标缓存：``Optional[X]`` 等注解按参数强引用缓存（每个函数 128 条），
+      只影响注解构造性能，整体清空。
+
+    :param module_prefix: 插件模块前缀，例如 ``app.plugins.demo``；为 ``app.plugins`` 时覆盖全部插件
+    """
+    _purge_pydantic_generic_cache(module_prefix)
+    # typing 私有清理入口，与标准库测试清理类型缓存的方式一致；版本不提供时跳过
+    for cleanup in getattr(typing, "_cleanups", ()):
+        cleanup()
+
+
+def _purge_pydantic_generic_cache(module_prefix: str) -> None:
+    """删除 Pydantic 泛型缓存中键引用了插件类型的条目，以及它们留下的模块全局引用。"""
+    try:
+        from pydantic._internal._generics import _GENERIC_TYPES_CACHE
+    except ImportError:
+        # 私有实现随 Pydantic 版本变化，缺失时不影响插件卸载
+        return
+    for key in list(_GENERIC_TYPES_CACHE.keys()):
+        if not _references_module(key, module_prefix, 0):
+            continue
+        model = _GENERIC_TYPES_CACHE.pop(key, None)
+        if model is not None:
+            _drop_pickle_reference(model)
+
+
+def _drop_pickle_reference(model: type) -> None:
+    """移除 Pydantic 为支持 pickle 写入泛型基类所在模块的全局引用。
+
+    在模块顶层参数化泛型模型（如 ``RootModel[list[Payload]]``）时，Pydantic 会把结果以
+    ``RootModel[list[Payload]]``（重名时追加下划线）登记到泛型基类所在模块的全局命名空间，
+    该引用与缓存无关、永不删除。只移除以模型名开头且确实指向该模型的登记项。
+    """
+    module = sys.modules.get(model.__module__)
+    if module is None:
+        return
+    namespace = vars(module)
+    for name, value in list(namespace.items()):
+        if value is model and name.startswith(model.__name__):
+            namespace.pop(name, None)
+
+
+def _references_module(value: Any, module_prefix: str, depth: int) -> bool:
+    """判断缓存键（类型、元组或参数化注解）是否引用了指定模块前缀下定义的类型。"""
+    if depth > _MAX_TYPE_DEPTH:
+        return False
+    if isinstance(value, type):
+        module = value.__dict__.get("__module__")
+        return isinstance(module, str) and (
+            module == module_prefix or module.startswith(f"{module_prefix}.")
+        )
+    if isinstance(value, tuple):
+        return any(_references_module(item, module_prefix, depth + 1) for item in value)
+    origin = typing.get_origin(value)
+    if origin is None:
+        return False
+    return _references_module(origin, module_prefix, depth + 1) or any(
+        _references_module(arg, module_prefix, depth + 1)
+        for arg in typing.get_args(value)
+    )
 
 
 class PluginLoader:
@@ -393,6 +471,9 @@ class PluginLoader:
         for module_name in removed:
             sys.modules.pop(module_name, None)
             self._logger.debug(f"已清除插件模块缓存：{module_name}")
+        if removed:
+            # 只移出 sys.modules 不足以释放旧模块：第三方类型缓存仍强引用旧插件类
+            release_plugin_type_caches(prefix)
         importlib.invalidate_caches()
         self._logger.debug("已清除查找器的缓存")
         if plugin_id:
