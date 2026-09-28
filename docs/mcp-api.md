@@ -604,6 +604,13 @@ TMDB 缓存查询响应的 `data` 包含 `count`、`recognized`、`unrecognized`
 
 取消是幂等的状态请求，不会撤销已经提交到下载器的任务；批次详情中的状态和任务结果才是最终事实。
 
+### 跨来源订阅回显
+
+`GET /api/v1/subscribe/media/{media_id}` 先按 `media_source`、`media_id` 和可选季号查询当前用户可访问的订阅。
+影视身份未命中且提供 `mtype`、`title` 时，会按类型、规范标题和可选季号跨来源查找；
+有年份时优先精确年份，其次匹配订阅年份为空的未定档媒体；没有年份时只匹配年份也为空的订阅。
+音乐订阅始终只按媒体身份查询。
+
 ### 单条订阅搜索周期
 
 `POST /api/v1/subscribe/` 和 `PUT /api/v1/subscribe/` 支持 `search_interval`：
