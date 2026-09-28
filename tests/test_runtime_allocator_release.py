@@ -151,7 +151,6 @@ def test_thread_cache_flush_is_a_no_op_without_jemalloc(linux, monkeypatch):
 
 
 def test_background_thread_enabled_at_runtime(linux, monkeypatch):
-    """未配置后台线程时在主进程内开启，先设上限再打开开关，子进程环境保持不变。"""
     monkeypatch.setenv("MALLOC_CONF", "narenas:8,dirty_decay_ms:5000")
     mallctl = _FakeSymbol()
     _use_lib(monkeypatch, _FakeLib(mallctl=mallctl))
@@ -163,7 +162,6 @@ def test_background_thread_enabled_at_runtime(linux, monkeypatch):
 
 
 def test_inherited_background_thread_conf_is_stripped(linux, monkeypatch):
-    """v3.0.10 镜像把后台线程写进了 MALLOC_CONF；主进程已按其生效，只需从子进程将继承的环境中去掉。"""
     monkeypatch.setenv(
         "MALLOC_CONF",
         "background_thread:true,max_background_threads:1,narenas:8,dirty_decay_ms:5000,muzzy_decay_ms:0",
