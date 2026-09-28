@@ -145,10 +145,6 @@ def configure_allocator_background_thread(max_threads: int = 1) -> bool:
 
     后台线程按衰减时间把空闲脏页归还系统，但 ``MALLOC_CONF`` 与 ``LD_PRELOAD`` 会被所有子进程
     继承，Chromium 的 GPU 进程在后台线程开启时无法启动，浏览器仿真整体 abort。
-    - ``MALLOC_CONF`` 已配置后台线程（v3.0.10 镜像默认值或用户显式配置）时，主进程启动时已按其生效，不再改写。
-    - 未配置时通过 ``mallctl`` 在主进程内开启。
-    - 两种情况下都从 ``os.environ`` 中去掉后台线程项。内建更新只替换程序代码、不改镜像环境变量，
-      因此必须由代码清理，才能修复从 v3.0.10 镜像内建更新上来的实例。
 
     Args:
         max_threads: 后台线程上限
