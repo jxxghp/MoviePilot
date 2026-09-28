@@ -89,6 +89,7 @@ class Telegram:
             self,
             TELEGRAM_TOKEN: Optional[str] = None,
             TELEGRAM_CHAT_ID: Optional[str] = None,
+            TELEGRAM_TOPIC_ID: Optional[str] = None,
             **kwargs,
     ):
         """
@@ -97,6 +98,13 @@ class Telegram:
         # 即使配置不完整也保留基础属性，便于测试和未启用实例安全调用发送方法。
         self._telegram_token = TELEGRAM_TOKEN
         self._telegram_chat_id = TELEGRAM_CHAT_ID
+        self._telegram_topic_id = None
+        if TELEGRAM_TOPIC_ID and str(TELEGRAM_TOPIC_ID).strip():
+            topic_id = str(TELEGRAM_TOPIC_ID).strip()
+            if topic_id.isdecimal() and int(topic_id) > 0:
+                self._telegram_topic_id = int(topic_id)
+            else:
+                logger.warning("Telegram话题ID无效，通知将发送到默认话题")
         self._polling_thread = None
         # 一个 Telegram 配置对应一个 SDK client，运行状态不能被其他配置共享。
         self._user_chat_mapping: Dict[str, str] = {}
@@ -845,6 +853,7 @@ class Telegram:
                     voice=fp,
                     caption=self._prepare_text(caption, parse_mode),
                     parse_mode=parse_mode if caption else None,
+                    **self._topic_kwargs(chat_id),
                 )
             self._stop_typing_if_needed(chat_id, stop_typing)
             if sent and hasattr(sent, "message_id"):
@@ -909,6 +918,7 @@ class Telegram:
                         photo=fp,
                         caption=self._prepare_text(caption, parse_mode),
                         parse_mode=parse_mode if caption else None,
+                        **self._topic_kwargs(chat_id),
                     )
                 else:
                     sent = self._bot.send_document(
@@ -916,6 +926,7 @@ class Telegram:
                         document=(send_name, fp),
                         caption=self._prepare_text(caption, parse_mode),
                         parse_mode=parse_mode if caption else None,
+                        **self._topic_kwargs(chat_id),
                     )
             self._stop_typing_if_needed(chat_id, stop_typing)
             if sent and hasattr(sent, "message_id"):
@@ -960,6 +971,13 @@ class Telegram:
 
         # 3. 最后使用默认聊天ID
         return self._telegram_chat_id
+
+    def _topic_kwargs(self, chat_id: Optional[Union[str, int]]) -> dict[str, int]:
+        """仅向本渠道配置的群组投递话题参数，避免影响私聊和其它会话。"""
+        topic_id = getattr(self, "_telegram_topic_id", None)
+        if topic_id and chat_id is not None and str(chat_id) == str(self._telegram_chat_id):
+            return {"message_thread_id": topic_id}
+        return {}
 
     def send_medias_msg(
             self,
@@ -1516,6 +1534,7 @@ class Telegram:
                     rich_message=chunk,
                     reply_markup=reply_markup if index == 0 else None,
                     reply_parameters=reply_parameters if index == 0 else None,
+                    **self._topic_kwargs(chat_id),
                 )
             return sent
         except Exception as err:
@@ -1545,6 +1564,7 @@ class Telegram:
             "parse_mode": parse_mode,
             "reply_markup": reply_markup,
         }
+        kwargs.update(self._topic_kwargs(kwargs["chat_id"]))
         if reply_to_message_id:
             kwargs["reply_to_message_id"] = reply_to_message_id
         # 处理图片
