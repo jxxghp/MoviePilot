@@ -65,7 +65,8 @@ class SystemUpdateManager(metaclass=SingletonClass):
         "https://github.com/jxxghp/MoviePilot/archive/refs/tags/{tag}.zip"
     )
     _VERSION_PATTERN = re.compile(r"^v3\.\d+\.\d+(?:[-.](?:alpha|beta|rc)\d*)?$", re.I)
-    _STABLE_VERSION_PATTERN = re.compile(r"^v3\.\d+\.\d+$", re.I)
+    # 稳定版允许 -N 后缀，用于不升小版本的临时修复（如 v3.0.10-1）
+    _STABLE_VERSION_PATTERN = re.compile(r"^v3\.\d+\.\d+(?:-\d+)?$", re.I)
 
     def __init__(self) -> None:
         self._lock = threading.RLock()

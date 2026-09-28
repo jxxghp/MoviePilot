@@ -771,3 +771,25 @@ def test_apply_prepared_resources_replaces_complete_docker_resource_package(
     assert not (resource_dir / "sites.cpython-old.so").exists()
     assert not manager._install_file.exists()
     assert not (manager._root / "prepared.json").exists()
+
+
+@pytest.mark.parametrize(
+    ("current", "expected_state"),
+    [("v3.0.10", "available"), ("v3.0.10-1", "idle")],
+)
+def test_check_accepts_hotfix_release_suffix(monkeypatch, tmp_path, current, expected_state):
+    """-N 后缀的临时修复版本视为稳定版，并按数字大于同号正式版。"""
+    manager = _manager(monkeypatch, tmp_path)
+    releases = [
+        {"tag_name": "v3.0.11-beta", "prerelease": True, "draft": False},
+        {"tag_name": "v3.0.10-1", "name": "v3.0.10-1", "prerelease": False, "draft": False},
+        {"tag_name": "v3.0.10", "name": "v3.0.10", "prerelease": False, "draft": False},
+    ]
+    monkeypatch.setattr(manager, "_request", lambda: SimpleNamespace(get_res=lambda _url: _response(releases)))
+    monkeypatch.setattr(update_module, "get_app_version", lambda: current)
+
+    status = manager.check("application")
+
+    assert status.state == expected_state
+    if expected_state == "available":
+        assert status.version == "v3.0.10-1"
