@@ -534,9 +534,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
 
         # 汇总错误信息
         err_msgs: List[str] = []
-        transfer_exclude_words = get_configured_system_config().get(
-            SystemConfigKey.TransferExcludeWords
-        )
+        transfer_exclude_words = get_configured_system_config().get(SystemConfigKey.TransferExcludeWords)
 
         candidate_planner = _TransferCandidatePlanner(
             self,
@@ -827,10 +825,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     elif inherited_meta:
                         file_meta = deepcopy(inherited_meta)
                     else:
-                        file_meta = build_file_meta(
-                            file_path, self._get_subscribe_custom_words(download_history),
-                            download_history,
-                        )
+                        custom_words = self._get_subscribe_custom_words(download_history)
+                        file_meta = build_file_meta(file_path, custom_words, download_history)
                 else:
                     file_meta = build_file_meta(file_path, None, None)
 
