@@ -1097,8 +1097,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8917,
-  "edge_sha256": "ebb1ec1add5985e11541c5e37ed2d580758b2ec6c4a72a7e0596984860ea8968",
+  "edge_count": 8920,
+  "edge_sha256": "68bc7f63a754251cc91fcc5ed5c8652e2492f60faa805f9533eedbccc8517bdd",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -8450,6 +8450,8 @@
     "app.runtime.events -> app.schemas",
     "app.runtime.events -> app.schemas.event",
     "app.runtime.events -> app.schemas.types",
+    "app.runtime.execution -> app.runtime",
+    "app.runtime.execution -> app.runtime.gc",
     "app.runtime.execution -> app.schemas",
     "app.runtime.execution -> app.schemas.exception",
     "app.runtime.extensions.module.adapter -> app.runtime",
@@ -8709,6 +8711,7 @@
     "app.scheduler.catalog -> app.application.plugin.runtime",
     "app.scheduler.catalog -> app.application.scheduling",
     "app.scheduler.catalog -> app.runtime",
+    "app.scheduler.catalog -> app.runtime.execution",
     "app.scheduler.catalog -> app.runtime.scheduling",
     "app.scheduler.catalog -> app.scheduler",
     "app.scheduler.catalog -> app.scheduler.contract",

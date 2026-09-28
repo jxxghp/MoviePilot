@@ -9,7 +9,7 @@ import logging
 import psutil
 import os
 import sys
-from typing import Callable, Any, Optional
+from typing import Callable, Any, Optional, cast
 
 logger = logging.getLogger(__name__)
 
@@ -87,6 +87,51 @@ def get_memory_usage() -> float:
 
 # jemalloc 的 MALLCTL_ARENAS_ALL：对全部 arena 执行 purge
 _JEMALLOC_ARENAS_ALL_PURGE = b"arena.4096.purge"
+# 把调用线程的线程缓存（tcache）交还所属 arena
+_JEMALLOC_THREAD_TCACHE_FLUSH = b"thread.tcache.flush"
+
+
+@functools.cache
+def _process_libc() -> Optional[ctypes.CDLL]:
+    """返回当前进程的全局符号表；非 Linux 或无法加载时返回 None。"""
+    if not sys.platform.startswith("linux"):
+        return None
+    try:
+        # CDLL(None) 取当前进程的全局符号表，包含 LD_PRELOAD 进来的 jemalloc
+        return ctypes.CDLL(None)
+    except OSError:
+        return None
+
+
+@functools.cache
+def _jemalloc_mallctl() -> Optional[Callable[..., int]]:
+    """返回 jemalloc 的 ``mallctl``；进程未加载 jemalloc 时返回 None。只解析一次，供高频调用复用。"""
+    libc = _process_libc()
+    if libc is None:
+        return None
+    mallctl = getattr(libc, "mallctl", None)  # 动态符号：仅 jemalloc 提供
+    if mallctl is None:
+        return None
+    mallctl.argtypes = [ctypes.c_char_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t]
+    mallctl.restype = ctypes.c_int
+    return cast(Callable[..., int], mallctl)
+
+
+def flush_thread_allocator_cache() -> bool:
+    """
+    把调用线程在 jemalloc 线程缓存中囤积的空闲块交还 arena。
+
+    jemalloc 只在线程自身继续分配时才回收它的线程缓存，线程池里空闲等待的 worker
+    不再分配，最后一个任务留下的缓存会一直计入 RSS（线程越多越明显）。交还后的空闲页
+    再由 arena 的衰减机制归还系统。只能由持有缓存的线程自己调用；未使用 jemalloc 时不做任何事。
+
+    Returns:
+        是否实际执行了刷新
+    """
+    mallctl = _jemalloc_mallctl()
+    if mallctl is None:
+        return False
+    return mallctl(_JEMALLOC_THREAD_TCACHE_FLUSH, None, None, None, 0) == 0
 
 
 def release_allocator_memory() -> Optional[str]:
@@ -101,17 +146,11 @@ def release_allocator_memory() -> Optional[str]:
     Returns:
         实际使用的机制（``jemalloc`` 或 ``glibc``），未执行时返回 None
     """
-    if not sys.platform.startswith("linux"):
+    libc = _process_libc()
+    if libc is None:
         return None
-    try:
-        # CDLL(None) 取当前进程的全局符号表，包含 LD_PRELOAD 进来的 jemalloc
-        libc = ctypes.CDLL(None)
-    except OSError:
-        return None
-    mallctl = getattr(libc, "mallctl", None)  # 动态符号：仅 jemalloc 提供
+    mallctl = _jemalloc_mallctl()
     if mallctl is not None:
-        mallctl.argtypes = [ctypes.c_char_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t]
-        mallctl.restype = ctypes.c_int
         if mallctl(_JEMALLOC_ARENAS_ALL_PURGE, None, None, None, 0) == 0:
             return "jemalloc"
         return None
