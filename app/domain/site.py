@@ -35,6 +35,10 @@ def extract_domain(url: str) -> str:
     _scheme, netloc = split_netloc(url)
     if not netloc:
         return ""
+    # Cookie Domain 常带前导点；不去掉会被当成多一级域名，无法并入站点域名。
+    netloc = netloc.lstrip(".")
+    if not netloc:
+        return ""
     labels = netloc.split(".")
     if len(labels) > 3:
         return netloc
