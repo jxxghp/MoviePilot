@@ -419,6 +419,7 @@ def _scrape_impl(
     media_id: Optional[str] = None,
     type_name: Optional[MediaType] = None,
     music_type: Optional[str] = None,
+    episode_group: Optional[str] = None,
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
@@ -430,6 +431,7 @@ def _scrape_impl(
     :param media_id: 数据源原生ID
     :param type_name: 媒体类型
     :param music_type: 音乐实体类型，支持 recording 和 album
+    :param episode_group: TMDB 电视剧剧集组
     :param _: Token校验
     """
     if not fileitem or not fileitem.path:
@@ -485,6 +487,7 @@ def _scrape_impl(
             mtype=type_name,
             media_source=media_source,
             media_id=normalized_media_id,
+            episode_group=episode_group,
         )
         if media_info:
             media_info.scrape_source = media_source
@@ -493,6 +496,7 @@ def _scrape_impl(
         context = chain.recognize_by_path(
             fileitem.path,
             media_source=media_source,
+            episode_group=episode_group,
             obtain_images=True,
         )
         meta_info = context.meta_info if context else None
@@ -523,10 +527,23 @@ def scrape(
     media_id: Optional[str] = None,
     type_name: Optional[MediaType] = None,
     music_type: Optional[str] = None,
+    episode_group: Annotated[
+        Optional[str],
+        Query(description="TMDB 剧集组编号，用于按指定季集顺序识别电视剧"),
+    ] = None,
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
-    """刮削媒体信息的兼容公开入口。"""
-    return _scrape_impl(fileitem, storage, media_source, media_id, type_name, music_type, _)
+    """按请求级媒体身份、剧集组和音乐实体设置刮削单项媒体。"""
+    return _scrape_impl(
+        fileitem,
+        storage,
+        media_source,
+        media_id,
+        type_name,
+        music_type,
+        episode_group,
+        _,
+    )
 
 
 @router.get(

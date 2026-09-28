@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import sys
 import time
@@ -29,6 +30,27 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from app.runtime.config import settings  # noqa: E402
+
+
+def github_headers_for_repo(repo: str) -> dict[str, str]:
+    """按仓库专属配置、全局设置和运行环境顺序解析 Issue 提交 Token。"""
+    try:
+        headers = dict(settings.REPO_GITHUB_HEADERS(repo=repo))
+    except Exception:
+        headers = {}
+    has_authorization = any(
+        key.lower() == "authorization" and value for key, value in headers.items()
+    )
+    if not has_authorization:
+        token = (
+            os.environ.get("MOVIEPILOT_GITHUB_TOKEN")
+            or os.environ.get("GITHUB_TOKEN")
+            or os.environ.get("GH_TOKEN")
+            or ""
+        ).strip()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+    return headers
 
 
 FEEDBACK_REPO_OWNER = "jxxghp"

@@ -208,8 +208,8 @@ def _selected_music_fileitems(
     explicitly_selected: bool,
     media_type: Optional[MediaType],
 ) -> Optional[List[FileItem]]:
-    """返回需要共享专辑上下文的显式多选音轨。"""
-    if not explicitly_selected or media_type not in (None, MediaType.MUSIC):
+    """仅在用户明确选择音乐类型时，将显式多选音轨作为专辑批次处理。"""
+    if not explicitly_selected or media_type != MediaType.MUSIC:
         return None
     if not _is_music_file_batch(fileitems):
         return None

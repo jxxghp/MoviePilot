@@ -7,6 +7,7 @@ from contextvars import Context, copy_context
 from functools import partial, wraps
 from typing import Any, Callable, TypeVar, cast
 
+from app.runtime.gc import flush_thread_allocator_cache
 from app.schemas.exception import ImmediateException
 from anyio.to_thread import run_sync
 
@@ -31,7 +32,42 @@ def submit_with_context(
     return Context().run(submit)
 
 
-class OwnedThreadPoolExecutor(ThreadPoolExecutor):
+class IdleCacheReleasingThreadPoolExecutor(ThreadPoolExecutor):
+    """
+    worker 执行完任务、且队列里暂无待办时，由该 worker 交还自己的分配器线程缓存。
+
+    标准库线程池只按需增长、从不收缩，高峰期建出的 worker 此后长期空闲；jemalloc 只在线程
+    继续分配时才回收其线程缓存，空闲 worker 在最后一个任务里囤积的空闲块会一直计入 RSS。
+    刷新只发生在即将转入空闲时：连续任务之间不刷新，不影响突发期的分配性能。
+    """
+
+    def submit(
+            self,
+            fn: Callable[..., ExecutorResult],
+            /,
+            *args: Any,
+            **kwargs: Any,
+    ) -> Future[ExecutorResult]:
+        """提交任务，任务结束后在同一 worker 线程里按需交还线程缓存。"""
+        return super().submit(self._run_then_release_cache, fn, *args, **kwargs)
+
+    def _run_then_release_cache(
+            self,
+            fn: Callable[..., ExecutorResult],
+            /,
+            *args: Any,
+            **kwargs: Any,
+    ) -> ExecutorResult:
+        """在 worker 线程中执行任务；队列已空说明该 worker 即将等待，此时刷新其线程缓存。"""
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            # _work_queue 是标准库线程池的待办队列，自 Python 3.2 起稳定存在
+            if self._work_queue.empty():
+                flush_thread_allocator_cache()
+
+
+class OwnedThreadPoolExecutor(IdleCacheReleasingThreadPoolExecutor):
     """
     追踪已接受 Future，并提供可重试的有界关闭合同。
 

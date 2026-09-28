@@ -1,4 +1,4 @@
-from typing import Optional, Union, Tuple, List
+from typing import Any, List, Optional, Tuple, Union, cast
 
 import transmission_rpc
 from transmission_rpc import Client, Torrent, File
@@ -65,7 +65,7 @@ class Transmission:
 
     def __login_transmission(self) -> Optional[Client]:
         """
-        连接transmission
+        连接 Transmission；缩短 TCP 建连等待，同时保留原有 HTTP 响应读取时限。
         :return: transmission对象
         """
         if not self._host or not self._port:
@@ -78,7 +78,8 @@ class Transmission:
                                           port=self._port,
                                           username=self._username,
                                           password=self._password,
-                                          timeout=60)
+                                          # transmission-rpc supports Requests timeout tuples at runtime.
+                                          timeout=cast(Any, (3, 60)))
             self.__sync_incomplete_file_suffix(trt, enabled=bool(self._rename_partial_files))
             return trt
         except Exception as err:

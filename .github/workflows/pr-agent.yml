@@ -1,18 +1,7 @@
 name: PR-Agent
 
 on:
-  pull_request_target:
-    # Fork 审查需要目标仓库凭据；该 job 仅通过 GitHub API 读取 PR 内容，不 checkout 或执行 PR 分支代码。
-    types:
-      - opened
-      - reopened
-      - ready_for_review
-      - review_requested
-      - synchronize
-  issue_comment:
-    types:
-      - created
-      - edited
+  workflow_dispatch:
 
 permissions:
   contents: read

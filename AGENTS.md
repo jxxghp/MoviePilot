@@ -155,7 +155,6 @@ uv run --locked --no-sync pytest \
   tests/test_architecture_egress.py \
   tests/test_architecture_event_facts.py \
   tests/test_architecture_event_policy.py -q
-uv run --locked --no-sync python scripts/architecture/event_policy.py
 uv run --locked --no-sync pytest \
   tests/test_architecture_contract_baseline.py \
   tests/test_architecture_baseline_cli.py -q

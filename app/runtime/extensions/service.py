@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Any, List, Optional, Type
+from typing import Any, List, Type
 
 from pydantic import ValidationError
 
@@ -87,9 +87,9 @@ class ServiceConfigHelper:
         )
 
     @staticmethod
-    def get_notification_switch(mtype: MessageType) -> Optional[str]:
-        """返回指定通知场景的目标范围。"""
+    def get_notification_switch(mtype: MessageType) -> str:
+        """返回指定通知场景的目标范围，缺少配置时默认仅管理员。"""
         for switch in ServiceConfigHelper.get_notification_switches():
             if switch.type == mtype.value:
-                return switch.action
-        return None
+                return switch.action or "admin"
+        return "admin"

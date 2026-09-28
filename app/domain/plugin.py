@@ -13,6 +13,8 @@ from packaging.version import InvalidVersion, Version
 
 LOCAL_PLUGIN_SOURCE_PREFIX = "local://"
 PLUGIN_SYSTEM_VERSION_FIELD = "system_version"
+# free-threaded 运行时（v3t）专用的插件声明字段；缺省视为兼容，只有显式 false 才拒绝
+PLUGIN_FREE_THREADED_FIELD = "v3t"
 _PHYSICAL_PLUGIN_ID_PATTERN = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,127}$")
 PLUGIN_GENERATION_COMPATIBILITY: dict[str, tuple[str, ...]] = {
     "v3": ("v2",),
@@ -158,12 +160,15 @@ def is_plugin_generation_compatible(
     package_generation: str | None,
     *,
     current_generation: str | None,
-    free_threaded: bool,
 ) -> bool:
-    """按当前代际、兼容代际和基础索引规则判断一个市场条目。"""
+    """按当前代际、兼容代际和基础索引规则判断一个市场条目。
+
+    只回答代际问题。运行时（free-threaded）兼容性由
+    :func:`check_plugin_runtime_compatibility` 单独判断并标注给前端，
+    不在这里把条目从目录里剔除——用户需要看到插件和不可用的原因，
+    而不是插件凭空消失。
+    """
     if not isinstance(plugin_info, Mapping):
-        return False
-    if free_threaded and plugin_info.get("v3t") is False:
         return False
     if not current_generation:
         return not package_generation
@@ -185,6 +190,29 @@ def is_plugin_generation_compatible(
             current_generation, ()
         )
     )
+
+
+def check_plugin_runtime_compatibility(
+    plugin_info: object,
+    *,
+    free_threaded: bool,
+) -> tuple[bool, str]:
+    """检查插件声明与当前解释器运行时是否兼容，返回兼容状态和用户可读原因。
+
+    公开可调用：市场标注、安装准入和运行目录加载共用这一条判据，避免三处各写一份
+    规则后出现"市场说能装、准入放行、加载又跳过"的分裂。当前只有 free-threaded
+    一个维度，未声明该字段的插件一律保持兼容。
+    :param plugin_info: 插件 package 条目
+    :param free_threaded: 当前是否运行在 free-threaded 解释器上
+    """
+    if not isinstance(plugin_info, Mapping):
+        return True, ""
+    if free_threaded and plugin_info.get(PLUGIN_FREE_THREADED_FIELD) is False:
+        return False, (
+            "插件声明不支持 free-threaded 运行时（v3t），"
+            "请改用同版本标准 V3 镜像安装"
+        )
+    return True, ""
 
 
 def check_plugin_system_version(

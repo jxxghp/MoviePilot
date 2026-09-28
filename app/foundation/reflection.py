@@ -4,12 +4,46 @@ import importlib
 import inspect
 import pkgutil
 import textwrap
+import threading
+import tokenize
+import weakref
 from pathlib import Path
-from types import FunctionType
-from typing import Any, Callable, List, get_type_hints
+from types import CodeType, FunctionType
+from typing import Any, Callable, List, Optional, get_type_hints
 
 
 FilterFuncType = Callable[[str, Any], bool]
+
+
+# check_method 结果缓存：弱引用代码对象，模块或插件卸载后自动清理
+_implemented_cache: "weakref.WeakKeyDictionary[CodeType, bool]" = weakref.WeakKeyDictionary()
+_implemented_cache_lock = threading.Lock()
+
+
+def _read_function_source(code: CodeType) -> str:
+    """
+    读取函数定义源码。
+
+    与 inspect.getsource 的定位方式一致，但直接读文件而不经 linecache：
+    getsource 会把整份源文件留在 linecache 中常驻，所有模块和插件累计约 10MB。
+    """
+    with tokenize.open(code.co_filename) as fh:
+        lines = fh.readlines()
+    return "".join(inspect.getblock(lines[code.co_firstlineno - 1:]))
+
+
+def _is_placeholder_stmt(stmt: ast.stmt) -> bool:
+    """pass、docstring、... 与 raise NotImplementedError 视为未实现的占位语句。"""
+    if isinstance(stmt, ast.Pass):
+        return True
+    if isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Constant):
+        return isinstance(stmt.value.value, str) or stmt.value.value is Ellipsis
+    if isinstance(stmt, ast.Raise):
+        exc = stmt.exc
+        if isinstance(exc, ast.Call):
+            exc = exc.func
+        return isinstance(exc, ast.Name) and exc.id == "NotImplementedError"
+    return False
 
 
 def _default_filter(name: str, obj: Any) -> bool:
@@ -151,35 +185,32 @@ class ObjectUtils:
     def check_method(func: Callable[..., Any]) -> bool:
         """
         检查函数是否已实现
+
+        模块链每次分发都会调用，结果按代码对象缓存；插件热重载生成新代码对象后自然重新判定，
+        旧代码对象回收时缓存项随之释放。
         """
+        target = inspect.unwrap(func)
+        code = getattr(getattr(target, "__func__", target), "__code__", None)
+        if code is None:
+            return ObjectUtils._check_method_uncached(func, None)
+        cached = _implemented_cache.get(code)
+        if cached is None:
+            cached = ObjectUtils._check_method_uncached(func, code)
+            with _implemented_cache_lock:
+                _implemented_cache[code] = cached
+        return cached
+
+    @staticmethod
+    def _check_method_uncached(func: Callable[..., Any], code: Optional[CodeType]) -> bool:
+        """按源码语法判断函数体是否只有占位语句，源码不可得时退回字节码判断。"""
         try:
-            src = inspect.getsource(func)
-            tree = ast.parse(textwrap.dedent(src))
+            if code is None:
+                raise OSError("callable without code object")
+            tree = ast.parse(textwrap.dedent(_read_function_source(code)))
             node = tree.body[0]
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 return True
-            body = node.body
-
-            for stmt in body:
-                # 跳过 pass
-                if isinstance(stmt, ast.Pass):
-                    continue
-                # 跳过 docstring 或 ...
-                if isinstance(stmt, ast.Expr):
-                    expr = stmt.value
-                    if isinstance(expr, ast.Constant):
-                        if isinstance(expr.value, str) or expr.value is Ellipsis:
-                            continue
-                # 检查 raise NotImplementedError
-                if isinstance(stmt, ast.Raise):
-                    exc = stmt.exc
-                    if isinstance(exc, ast.Call) and getattr(exc.func, "id", None) == "NotImplementedError":
-                        continue
-                    if isinstance(exc, ast.Name) and exc.id == "NotImplementedError":
-                        continue
-
-                return True
-            return False
+            return not all(_is_placeholder_stmt(stmt) for stmt in node.body)
         except Exception:
             # 源代码分析失败时，进行字节码分析
             code_obj = func.__code__  # type: ignore[attr-defined]

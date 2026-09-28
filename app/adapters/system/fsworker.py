@@ -22,6 +22,8 @@ import os
 import shutil
 import sys
 import time
+from pathlib import Path
+from typing import Any, Callable, Dict
 
 
 def _stat(payload, _emit):
@@ -114,6 +116,20 @@ def _count_entries(payload, _emit):
     return {"file_count": file_count, "dir_count": dir_count}
 
 
+def _has_file_suffix(payload: Dict[str, Any], _emit: Callable[..., None]) -> bool:
+    """遍历目录树；读取失败必须抛出，避免将未完成的扫描视为安全。"""
+    suffixes = {ext.casefold() for ext in payload["extensions"]}
+
+    def raise_walk_error(error: OSError) -> None:
+        """向调用方传递目录扫描错误。"""
+        raise error
+
+    for _, _, files in os.walk(payload["path"], onerror=raise_walk_error):
+        if any(Path(name).suffix.casefold() in suffixes for name in files):
+            return True
+    return False
+
+
 def _rename(payload, _emit):
     """
     同一存储内重命名/移动。
@@ -155,6 +171,7 @@ _HANDLERS = {
     "listdir": _listdir,
     "copy": _copy,
     "count_entries": _count_entries,
+    "has_file_suffix": _has_file_suffix,
     "rename": _rename,
     "unlink": _unlink,
     "rmtree": _rmtree,

@@ -49,7 +49,6 @@ _META_NOISE_MODULES = frozenset({
     "callback",
     "prompt",
     "memory.py",
-    "activity_log.py",
     "message.py",
     "event.py",
     "chain",
@@ -132,6 +131,7 @@ def collect_doctor_report() -> dict:
     if moviepilot_bin:
         commands.append([moviepilot_bin, "doctor", "--json"])
     commands.append([sys.executable, "-m", "app.cli", "doctor", "--json"])
+    last_error = "doctor 命令不可用"
 
     for command in commands:
         try:
@@ -168,7 +168,7 @@ def collect_doctor_report() -> dict:
 
     return {
         "success": False,
-        "error": last_error if "last_error" in locals() else "doctor 命令不可用",
+        "error": last_error,
     }
 
 

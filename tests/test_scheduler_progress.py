@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 
 from app.runtime.loop import main_loop_registry
+from app.runtime.progress import AsyncProgressHelper
 from app.scheduler.facade import Scheduler
 from app.scheduler.registry import ExecutionRegistry
 
@@ -235,3 +236,42 @@ def test_scheduler_returns_none_for_unknown_job():
     scheduler._registry = ExecutionRegistry(scheduler._lock)
 
     assert scheduler.get_progress(job_id) is None
+
+
+def test_async_progress_end_rebuilds_terminal_snapshot_after_read_failure():
+    """进度快照读取失败时，终态写入仍应生成可展示的完成状态。"""
+
+    class BrokenProgress:
+        """模拟读取失败但仍可写入的进度后端。"""
+
+        def __init__(self):
+            self.value = None
+
+        async def get(self, _key):
+            """模拟 Redis 读取失败后的空结果。"""
+            return None
+
+        async def set(self, _key, value):
+            """记录进度终态写入。"""
+            self.value = value
+
+    async def run_end():
+        """执行一次终态写入。"""
+        progress = AsyncProgressHelper("scheduler:read-failure")
+        backend = BrokenProgress()
+        progress._progress = backend
+        await progress.end(
+            text="任务执行完成",
+            data={"status": "success"},
+            value=100,
+        )
+        return backend.value
+
+    detail = asyncio.run(run_end())
+
+    assert detail == {
+        "enable": False,
+        "value": 100.0,
+        "text": "任务执行完成",
+        "data": {"status": "success"},
+    }

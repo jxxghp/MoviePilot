@@ -134,11 +134,23 @@ def music_base_title(value: Optional[str], *, preserve_editions: bool = False) -
     return _BARE_VERSION_SUFFIX.sub(strip_version, _VERSION_SUFFIX.sub(strip_version, text)).strip()
 
 
+def _music_title_key(value: Optional[str], *, preserve_editions: bool = False) -> str:
+    """生成音乐标题比较键，纯符号名称在普通归一化为空时保留其符号身份。"""
+    base = music_base_title(
+        normalize("NFKC", str(value or "")),
+        preserve_editions=preserve_editions,
+    )
+    key = music_text_key(base)
+    if key:
+        return key
+    return re.sub(r"\s+", "", base).casefold()
+
+
 def music_title_matches(music: MusicInfo, title: Optional[str], *, preserve_editions: bool = False) -> bool:
-    """统一全半角后比较完整名称及别名，允许数据源保持既有发行版本边界。"""
-    expected = music_text_key(music_base_title(normalize("NFKC", str(title or "")), preserve_editions=preserve_editions))
+    """统一全半角后比较完整名称及别名，纯符号名称也保留其身份。"""
+    expected = _music_title_key(title, preserve_editions=preserve_editions)
     return bool(expected and any(
-        expected == music_text_key(music_base_title(normalize("NFKC", name), preserve_editions=preserve_editions))
+        expected == _music_title_key(name, preserve_editions=preserve_editions)
         for name in music_titles(music)
     ))
 
@@ -229,7 +241,7 @@ def _resource_names(primary: MetaMusic, artists: list[str], *, album: bool = Fal
             variants.append(parts[0])
         for part in variants:
             name = music_base_title(_TITLE_LABEL.sub("", part.strip()))
-            key = music_text_key(name)
+            key = _music_title_key(name)
             if not key:
                 continue
             names.append(key)
@@ -323,7 +335,7 @@ def match_music_resource(
         else any(_contains_artist(content, artist) for artist in artists)
     if not title_matched:
         if music.music_type != MUSIC_ENTITY_ALBUM and artist_matched and any(
-            music_text_key(music_base_title(item)) in names
+            _music_title_key(item) in names
             for item in music_titles(music, album=True)
         ):
             return MusicMatch("album", "related_album")
@@ -338,7 +350,7 @@ def match_music_resource(
         # 所属专辑只说明单曲归属，不能代替资源主标题证明整专范围。
         primary_names = _resource_names(resource, artists)
         if resource.track_number or (resource.album and not any(
-            music_text_key(music_base_title(item)) in primary_names for item in titles
+            _music_title_key(item) in primary_names for item in titles
         )):
             return MusicMatch("candidate", "partial_album")
         if music.year and resource.year and str(music.year) != str(resource.year):

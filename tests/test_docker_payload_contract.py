@@ -84,6 +84,13 @@ def test_dockerfile_assigns_each_payload_to_an_independent_stage() -> None:
     assert final.count("COPY --from=ffmpeg ") == 1
     assert "RUN rm -rf /app/frontend-dist" in dockerfile
 
+    plugin_stage_start = dockerfile.index("FROM prepare_payload AS prepare_plugins")
+    plugin_stage_end = dockerfile.index("# 准备站点资源", plugin_stage_start)
+    plugin_stage = dockerfile[plugin_stage_start:plugin_stage_end]
+    assert 'cp -a "${plugin_root}/plugins.v3/." /plugins/' in plugin_stage
+    assert "plugins.v2" not in plugin_stage
+    assert '"${plugin_root}/package.json"' not in plugin_stage
+
 
 def test_plugin_runtime_updates_preserve_host_entrypoint() -> None:
     """更新载荷只迁移插件内容，不得覆盖新版宿主包根兼容入口。"""
@@ -96,6 +103,18 @@ def test_plugin_runtime_updates_preserve_host_entrypoint() -> None:
     assert "find /app/app/plugins -mindepth 1 -maxdepth 1" in perf_script
     assert "! -name '__init__.py'" in perf_script
     assert "cp -a /app/app/plugins/." not in perf_script
+
+
+def test_dev_update_marker_stays_with_container_payload() -> None:
+    """Dev 更新标记必须与容器载荷同层，避免持久化卷残留半完成事务。"""
+    marker = "/var/lib/moviepilot/update/__update_pending__"
+    update_script = _read(ROOT / "docker" / "update.sh")
+    launcher_script = _read(ROOT / "docker" / "launcher.sh")
+
+    assert f"MOVIEPILOT_UPDATE_PENDING_FILE:-{marker}" in update_script
+    assert f"MOVIEPILOT_UPDATE_PENDING_FILE:-{marker}" in launcher_script
+    assert "/config/temp/__update_pending__" not in update_script
+    assert "/config/temp/__update_pending__" not in launcher_script
 
 
 def test_update_script_keeps_new_host_entrypoint_during_runtime_migration(

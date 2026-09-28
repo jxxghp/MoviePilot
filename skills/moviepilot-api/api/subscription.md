@@ -56,7 +56,7 @@ Purpose: Read local library and transfer-file coverage for one accessible subscr
 
 ### `subscription.find`
 `GET /api/v1/subscribe/media/{media_id}`; policy effect: `safe_read`.
-Purpose: Find one accessible subscription by canonical media identity and optional season.
+Purpose: Find one accessible subscription by canonical media identity and optional season. For movies and TV, if exact identity misses and mtype/title are supplied, match across sources by type, normalized title, optional season, and year. An exact year ranks first; a subscription with no year may match when the card has a year, while a card with no year only matches a subscription with no year. Music uses exact identity only.
 - `path_params`: `media_id*` (string): Source-native media ID. Always pair it with the exact media_source returned by search.
 - `query`: `media_source*` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `mtype` (MediaType|null): MoviePilot media type or subscription-history category required by the operation.; `music_type` (string|null): Music identity level: recording, album, or artist where supported.; `season` (integer|null): Season number used by the media, search, subscription, or transfer operation.; `title` (string|null): Media, torrent, subscription, or history title used by the operation.; `year` (string|null): Release or premiere year used to disambiguate the media title.
 - `body`: none

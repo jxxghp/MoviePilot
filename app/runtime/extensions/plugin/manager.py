@@ -35,6 +35,7 @@ from app.runtime.extensions.plugin.dependency import (
 from app.runtime.extensions.plugin.metadata import PluginMetadataMapper
 from app.runtime.extensions.plugin.monitor import PluginChangeMonitor
 from app.runtime.extensions.plugin.projection import PluginProjection
+from app.runtime.extensions.plugin.registry import PluginRegistry
 from app.runtime.extensions.plugin.runtime import PluginRuntime
 from app.runtime.extensions.plugin.tools import PluginToolCatalog
 from app.runtime.log import clear_plugin_instance_log_level as clear_instance_log_level_override
@@ -86,17 +87,25 @@ def _warn_if_plugin_enabled_gil(
         *,
         gil_enabled_before: bool,
         plugin_id: Optional[str],
+        registry: PluginRegistry,
 ) -> None:
-    """记录插件加载使 free-threaded 进程重新启用 GIL 的真实转换。"""
+    """
+    记录插件加载使 free-threaded 进程重新启用 GIL 的真实转换。
+
+    加载器与生命周期已按单个插件归因；这里是整次加载的兜底：定向加载时把转换补记到该插件
+    （覆盖事件注册等未被逐插件包裹的阶段），全量加载时用已归因的插件替代笼统的"集合"。
+    """
     if (
         not is_free_threaded_runtime()
         or gil_enabled_before
         or not is_gil_enabled()
     ):
         return
+    if plugin_id:
+        registry.mark_gil_fallback(plugin_id)
     logger.warning(
         "加载插件%s后 free-threaded 运行时已启用 GIL，请检查原生扩展兼容性",
-        plugin_id or "集合",
+        plugin_id or "、".join(registry.gil_fallback_snapshot()) or "集合",
     )
 
 
@@ -282,6 +291,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                         _warn_if_plugin_enabled_gil(
                             gil_enabled_before=gil_enabled_before,
                             plugin_id=pid,
+                            registry=self._plugin_registry,
                         )
         except PluginMutationRejectedError as error:
             logger.warning(str(error))
@@ -641,6 +651,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                         _warn_if_plugin_enabled_gil(
                             gil_enabled_before=gil_enabled_before,
                             plugin_id=plugin_id,
+                            registry=self._plugin_registry,
                         )
         except PluginMutationRejectedError as error:
             logger.warning(str(error))
@@ -746,6 +757,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     def get_plugin_restart_requirements(self) -> Dict[str, tuple[str, ...]]:
         """返回当前进程的插件原生依赖重启要求。"""
         return self._plugin_registry.restart_required_snapshot()
+
+    def get_plugin_gil_fallbacks(self) -> list[str]:
+        """返回当前进程内加载时导致 free-threaded 运行时回退到 GIL 的插件 ID。"""
+        return self._plugin_registry.gil_fallback_snapshot()
 
     def is_plugin_settling(self) -> bool:
         """返回插件源码和依赖是否仍在后台恢复。"""

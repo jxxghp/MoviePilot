@@ -105,6 +105,7 @@ def _build_lifecycle(**overrides: Any) -> PluginLifecycle:
         enable_events=lambda _plugin: None,
         disable_events=lambda _plugin: None,
         runtime_status_writer=lambda _plugin_id, _status: None,
+        runtime_compatible=lambda _plugin_id: True,
         database=lambda: PluginDatabase(),
         log=logging.getLogger(__name__),
         event_sender=lambda *_args, **_kwargs: None,

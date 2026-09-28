@@ -7,6 +7,7 @@ import json
 from app.agent.tools.impl.edit_file import EditFileTool
 from app.agent.tools.impl.read_file import MAX_READ_SIZE, ReadFileTool
 from app.agent.tools.impl.write_file import WriteFileTool
+from app.foundation.identity import build_user_memory_key
 
 
 def _make_admin_tool(tool_class):
@@ -121,6 +122,41 @@ def test_read_file_can_return_sha256_metadata(tmp_path):
     assert payload["size_bytes"] == len("插件内容".encode("utf-8"))
     assert payload["sha256"] == hashlib.sha256("插件内容".encode("utf-8")).hexdigest()
     assert payload["truncated"] is False
+
+
+def test_non_admin_memory_access_is_scoped_to_current_user(tmp_path, monkeypatch):
+    """普通用户只能写自己的记忆，公共记忆和其他用户记忆不可写读。"""
+    config_path = tmp_path / "config"
+    monkeypatch.setattr(
+        "app.agent.tools.base.get_runtime_setting",
+        lambda name: config_path if name == "CONFIG_PATH" else None,
+    )
+    user_id = "10001"
+    user_key = build_user_memory_key(user_id)
+    assert user_key is not None
+    own_memory = config_path / "agent" / "memory" / "users" / user_key / "MEMORY.md"
+    global_memory = config_path / "agent" / "memory" / "MEMORY.md"
+    other_memory = config_path / "agent" / "memory" / "users" / "other" / "MEMORY.md"
+    global_memory.parent.mkdir(parents=True)
+    global_memory.write_text("公共规则", encoding="utf-8")
+    other_memory.parent.mkdir(parents=True)
+    other_memory.write_text("其他用户规则", encoding="utf-8")
+    tool = WriteFileTool(session_id="session-1", user_id=user_id)
+    tool.set_agent_context({"is_admin": False})
+
+    own_result = asyncio.run(tool.run(str(own_memory), "我的偏好"))
+    global_result = asyncio.run(tool.run(str(global_memory), "不应写入", overwrite=True))
+    other_result = asyncio.run(tool.run(str(other_memory), "不应写入", overwrite=True))
+
+    assert "成功写入文件" in own_result
+    assert own_memory.read_text(encoding="utf-8") == "我的偏好"
+    assert "全局公共记忆" in global_result
+    assert "其他用户的记忆" in other_result
+
+    read_tool = ReadFileTool(session_id="session-1", user_id=user_id)
+    read_tool.set_agent_context({"is_admin": False})
+    read_other_result = asyncio.run(read_tool.run(str(other_memory)))
+    assert "其他用户的记忆" in read_other_result
 
 
 def test_read_file_rejects_invalid_line_ranges(tmp_path):

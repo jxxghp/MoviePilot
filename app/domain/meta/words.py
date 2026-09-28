@@ -29,6 +29,24 @@ _COMBINED_WORD_RE = re.compile(r'^\s*(.*?)\s*=>\s*(.*?)\s*&&\s*(.*?)\s*<>\s*(.*?
 _LEADING_ZERO_RE = re.compile(r"^0+")
 _EP_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9_])EP(?![A-Za-z0-9_])")
 _IMPLICIT_EP_EXPRESSION_RE = re.compile(r"(?:\d|\))\s*EP|EP\s*(?:\d|\()")
+_SUBTITLE_EPISODE_RANGE_RE = re.compile(
+    r"(?<!\d)\[?\s*(?P<begin>\d{1,4})\s*-\s*(?P<end>\d{1,4})\s*"
+    r"(?:(?:Fin|End)(?![a-z0-9])|完结(?![\u4e00-\u9fff]))"
+    r"(?:\s*\](?!\d)|(?!\s*(?:\]\d|\d))\s*)",
+    re.IGNORECASE,
+)
+_SUBTITLE_EPISODE_RE = re.compile(
+    r"(?<![全共])(?P<episode>[0-9一二三四五六七八九十百零]+)\s*[集话話期幕](?!\s*[全共])",
+    re.IGNORECASE,
+)
+_SUBTITLE_EPISODE_TITLE_RE = re.compile(
+    r"(?<![A-Za-z0-9_])Episode\s+(?P<episode>\d{1,4})(?![A-Za-z0-9_])",
+    re.IGNORECASE,
+)
+_SUBTITLE_EPISODE_TOKEN_RE = re.compile(
+    r"(?<![A-Za-z0-9_])(?:EP|E)(?P<episode>\d{1,4})(?![A-Za-z0-9_])",
+    re.IGNORECASE,
+)
 _EPISODE_OFFSET_OPS = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
@@ -104,6 +122,32 @@ class WordsMatcher(metaclass=Singleton):
         2：被替换词 => 替换词
         3：前定位词 <> 后定位词 >> 偏移量（EP）
         """
+        title, _, appley_words = self.__prepare(title, None, custom_words)
+        return title, appley_words
+
+    def prepare_with_subtitle(
+        self,
+        title: str,
+        subtitle: Optional[str] = None,
+        custom_words: Optional[List[str]] = None,
+    ) -> Tuple[str, Optional[str], List[str]]:
+        """
+        预处理标题和副标题，支持跨字段应用集数偏移规则。
+
+        :param title: 主标题、种子名或文件名
+        :param subtitle: 副标题或站点描述
+        :param custom_words: 临时自定义识别词列表
+        :return: 处理后的标题、副标题和已应用的识别词
+        """
+        return self.__prepare(title, subtitle, custom_words)
+
+    def __prepare(
+        self,
+        title: str,
+        subtitle: Optional[str],
+        custom_words: Optional[List[str]] = None,
+    ) -> Tuple[str, Optional[str], List[str]]:
+        """按识别词顺序处理标题，并在需要时更新副标题中的集数。"""
         appley_words = []
         # 读取自定义识别词
         words: List[str] = custom_words or get_custom_words() or []
@@ -121,11 +165,15 @@ class WordsMatcher(metaclass=Singleton):
                     title, message, state = self.__replace_regex(title, thc, bthc)
                     if state:
                         # 替换词成功再进行集偏移
-                        title, message, state = self.__episode_offset(title, pyq, pyh, offsets)
+                        title, subtitle, message, state = self.__episode_offset_with_subtitle(
+                            title, subtitle, pyq, pyh, offsets
+                        )
                 elif word_type == "replace":
                     title, message, state = self.__replace_regex(title, params[0], params[1])
                 elif word_type == "offset":
-                    title, message, state = self.__episode_offset(title, params[0], params[1], params[2])
+                    title, subtitle, message, state = self.__episode_offset_with_subtitle(
+                        title, subtitle, params[0], params[1], params[2]
+                    )
                 else:  # block
                     title, message, state = self.__replace_regex(title, params[0], "")
 
@@ -135,7 +183,7 @@ class WordsMatcher(metaclass=Singleton):
             except Exception as err:
                 logger.warning(f"自定义识别词 {word} 预处理标题失败：{str(err)} - 标题：{title}")
 
-        return title, appley_words
+        return title, subtitle, appley_words
 
     @staticmethod
     def __parse_word(word: str) -> Optional[Tuple[str, Tuple[str, ...]]]:
@@ -219,3 +267,83 @@ class WordsMatcher(metaclass=Singleton):
         except Exception as err:
             logger.warning(f"自定义识别词集数偏移失败：{str(err)} - 标题：{title}，前定位词：{front}，后定位词：{back}，偏移量：{offset}")
             return title, str(err), False
+
+    def __episode_offset_with_subtitle(
+        self,
+        title: str,
+        subtitle: Optional[str],
+        front: str,
+        back: str,
+        offset: str,
+    ) -> Tuple[str, Optional[str], str, bool]:
+        """
+        在标题或副标题中应用集数偏移，必要时跨字段定位副标题集数。
+        """
+        title, message, state = self.__episode_offset(title, front, back, offset)
+        if state:
+            return title, subtitle, message, True
+        if not subtitle:
+            return title, subtitle, message, False
+
+        parsed_subtitle, message, state = self.__episode_offset(subtitle, front, back, offset)
+        if state:
+            return title, parsed_subtitle, message, True
+        if not self.__locators_match(f"{title} {subtitle}", front, back):
+            return title, subtitle, message, False
+
+        parsed_subtitle, message, state = self.__episode_offset_subtitle(subtitle, offset)
+        return title, parsed_subtitle if state else subtitle, message, state
+
+    @staticmethod
+    def __locators_match(text: str, front: str, back: str) -> bool:
+        """判断前后定位词是否在标题和副标题组成的上下文中同时出现。"""
+        try:
+            if front and not _compile_custom_word_regex(front).search(text):
+                return False
+            if back and not _compile_custom_word_regex(back).search(text):
+                return False
+            return True
+        except Exception:
+            return False
+
+    @staticmethod
+    def __subtitle_episode_spans(subtitle: str) -> List[Tuple[int, int]]:
+        """提取副标题中会被 MetaBase 识别为集数的数字范围。"""
+        spans: List[Tuple[int, int]] = []
+        patterns = (
+            (_SUBTITLE_EPISODE_RANGE_RE, ("begin", "end")),
+            (_SUBTITLE_EPISODE_RE, ("episode",)),
+            (_SUBTITLE_EPISODE_TITLE_RE, ("episode",)),
+            (_SUBTITLE_EPISODE_TOKEN_RE, ("episode",)),
+        )
+        for pattern, group_names in patterns:
+            for match in pattern.finditer(subtitle):
+                for group_name in group_names:
+                    start, end = match.span(group_name)
+                    if start < 0 or end < 0:
+                        continue
+                    if not any(start < old_end and end > old_start for old_start, old_end in spans):
+                        spans.append((start, end))
+        return sorted(spans)
+
+    @staticmethod
+    def __episode_offset_subtitle(subtitle: str, offset: str) -> Tuple[str, str, bool]:
+        """只偏移副标题中的集数表达式，避免修改副标题里的季数或年份。"""
+        spans = WordsMatcher.__subtitle_episode_spans(subtitle)
+        if not spans:
+            return subtitle, "", False
+        try:
+            replacements = []
+            for start, end in spans:
+                episode_num_str = subtitle[start:end]
+                episode_num_int = int(cn2an.cn2an(episode_num_str, "smart"))
+                episode_num_offset_int = calculate_episode_offset(offset, episode_num_int)
+                replacements.append(
+                    (start, end, _format_episode_offset(episode_num_str, episode_num_offset_int))
+                )
+            for start, end, replacement in reversed(replacements):
+                subtitle = f"{subtitle[:start]}{replacement}{subtitle[end:]}"
+            return subtitle, "", True
+        except Exception as err:
+            logger.warning(f"自定义识别词副标题集数偏移失败：{str(err)} - 副标题：{subtitle}，偏移量：{offset}")
+            return subtitle, str(err), False

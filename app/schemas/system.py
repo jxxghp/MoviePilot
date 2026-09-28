@@ -62,7 +62,7 @@ class MediaServerConf(BaseModel):
                 return None
         try:
             return int(value)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return None
 
 
@@ -318,9 +318,12 @@ class RuleTestData(BaseModel):
 class NetTestTarget(BaseModel):
     """前端可选择的网络测试目标。"""
 
-    id: str
-    name: str
-    icon: str
+    id: str = Field(description="Stable identifier used to run the approved network test.")
+    name: str = Field(description="Short description of the tested function or service.")
+    address: str = Field(
+        description="Sanitized destination origin; paths, query parameters, and credentials are omitted."
+    )
+    icon: str = Field(description="Frontend logo key for the tested service.")
 
 
 class SystemModuleInfo(BaseModel):

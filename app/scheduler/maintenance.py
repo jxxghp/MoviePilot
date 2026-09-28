@@ -4,7 +4,7 @@ import gc
 
 from app.application.backup import BackupArtifact
 from app.application.database import get_database_governance
-from app.runtime.gc import get_memory_usage
+from app.runtime.gc import get_memory_usage, release_allocator_memory
 from app.runtime.log import logger
 from app.scheduler.contract import _SchedulerOwnerBase
 
@@ -30,9 +30,14 @@ class SchedulerMaintenanceOwner(_SchedulerOwnerBase):
         """
         memory_before = get_memory_usage()
         collected = gc.collect()
+        # gc 只把对象还给分配器，还需让分配器把空闲页交还系统，RSS 才会真正下降
+        allocator = release_allocator_memory()
         memory_after = get_memory_usage()
         memory_freed = memory_before - memory_after
-        logger.info(f"主动内存回收完成，回收对象数: {collected}，释放内存: {memory_freed:.2f} MB")
+        logger.info(
+            f"主动内存回收完成，回收对象数: {collected}，分配器归还: {allocator or '未执行'}，"
+            f"释放内存: {memory_freed:.2f} MB"
+        )
 
     @staticmethod
     async def agent_heartbeat() -> None:

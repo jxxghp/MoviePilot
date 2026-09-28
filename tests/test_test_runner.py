@@ -53,11 +53,11 @@ def test_split_test_files_rejects_nonpositive_shard_count() -> None:
 
 
 def test_recorded_durations_balance_the_current_ci_suite() -> None:
-    """慢文件权重必须有效，并将当前全集的八分片预计耗时维持均衡。"""
+    """慢文件权重必须有效，并将 CI 分片实际运行的文件集的六分片预计耗时维持均衡。"""
     durations = test_runner.load_test_durations()
     assert all(value > 0 for value in durations.values())
-    test_files = test_runner.collect_test_files()
-    shards = test_runner.split_test_files(test_files, shard_count=8)
+    test_files = test_runner.collect_test_files(exclude_architecture_gate=True)
+    shards = test_runner.split_test_files(test_files, shard_count=6)
     totals = [sum(durations.get(path.name, 1.0) for path in shard) for shard in shards]
 
     assert sorted(path for shard in shards for path in shard) == test_files
@@ -71,9 +71,9 @@ def test_main_defaults_to_four_parallel_shards(monkeypatch) -> None:
     """无 runner 参数时应并行执行四个独立 pytest 文件分片。"""
     test_files = _test_files(10)
     captured = {}
-    monkeypatch.setattr(test_runner, "collect_test_files", lambda: test_files)
+    monkeypatch.setattr(test_runner, "collect_test_files", lambda *_: test_files)
 
-    def fake_run_parallel(shards, pytest_args):
+    def fake_run_parallel(shards, pytest_args, _exclude_architecture_gate=False):
         """记录默认并行入口接收的分片与 pytest 参数。"""
         captured["shards"] = shards
         captured["pytest_args"] = pytest_args
@@ -90,7 +90,7 @@ def test_main_runs_requested_ci_shard_in_current_process(monkeypatch) -> None:
     """CI 指定分片时只运行该分片，并继续透传 pytest 参数。"""
     test_files = _test_files(10)
     captured = {}
-    monkeypatch.setattr(test_runner, "collect_test_files", lambda: test_files)
+    monkeypatch.setattr(test_runner, "collect_test_files", lambda *_: test_files)
 
     def fake_run_pytest(paths, pytest_args):
         """记录 pytest 入口接收的文件与透传参数。"""
@@ -122,6 +122,24 @@ def test_main_serial_preserves_legacy_full_suite_entry(monkeypatch) -> None:
     assert captured["pytest_args"] == ["-q", "--maxfail=1"]
 
 
+def test_architecture_gate_files_are_excluded_only_on_request() -> None:
+    """默认全量包含门禁文件；排除后剩余文件与门禁文件恰好构成全集。"""
+    full = test_runner.collect_test_files()
+    remaining = test_runner.collect_test_files(exclude_architecture_gate=True)
+    gate = [path for path in full if path.name in test_runner.ARCHITECTURE_GATE_TESTS]
+
+    assert sorted(path.name for path in gate) == sorted(test_runner.ARCHITECTURE_GATE_TESTS)
+    assert sorted([*remaining, *gate]) == full
+
+
+def test_parallel_workers_inherit_architecture_gate_exclusion() -> None:
+    """并行 worker 必须收到同一排除选项，否则各自划分的分片会遗漏或重复文件。"""
+    command = test_runner._worker_command(2, 4, ["-q"], exclude_architecture_gate=True)
+
+    assert command[2:] == ["--shard", "2/4", "--exclude-architecture-gate", "-q"]
+    assert "--exclude-architecture-gate" not in test_runner._worker_command(2, 4, ["-q"])
+
+
 @pytest.mark.parametrize("value", ["0/4", "5/4", "1/0", "invalid"])
 def test_invalid_shard_values_are_rejected(value: str) -> None:
     """分片参数必须使用有效的一基 N/TOTAL 范围。"""
@@ -134,6 +152,6 @@ def test_workflow_uses_the_shared_runner_contract() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
     assert 'run: uv run --locked --no-sync python tests/run.py --shard' not in workflow
-    assert "python -m coverage run --parallel-mode tests/run.py --shard" in workflow
+    assert "python -m coverage run --parallel-mode tests/run.py --exclude-architecture-gate --shard" in workflow
     assert "mapfile" not in workflow
     assert "SHARD_INDEX" not in workflow

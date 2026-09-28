@@ -25,7 +25,7 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union, cast
 
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
@@ -116,6 +116,10 @@ class FileSystemProxy:
         :return: {"file_count", "dir_count"}
         """
         return self._call("count_entries", path=str(path), max_check=max_check)
+
+    def has_file_suffix(self, path: Path, extensions: List[str]) -> bool:
+        """在可超时的代理中检查目录树是否包含指定后缀的文件。"""
+        return cast(bool, self._call("has_file_suffix", path=str(path), extensions=extensions))
 
     def rename(self, src: Path, dst: Path) -> bool:
         """
@@ -306,6 +310,17 @@ class FileSystemProxy:
                 if file_count > (payload.get("max_check") or 10000):
                     break
             return {"file_count": file_count, "dir_count": dir_count}
+        if op == "has_file_suffix":
+            suffixes = {ext.casefold() for ext in payload["extensions"]}
+
+            def raise_walk_error(error: OSError) -> None:
+                """目录读取失败时阻止调用方误把扫描结果当作完整。"""
+                raise error
+
+            for _, _, files in os.walk(payload["path"], onerror=raise_walk_error):
+                if any(Path(name).suffix.casefold() in suffixes for name in files):
+                    return True
+            return False
         if op == "rename":
             os.rename(payload["src"], payload["dst"])
             return True

@@ -4,14 +4,6 @@ import time
 from pathlib import Path
 from typing import List, Optional, Union
 
-import smbclient
-from smbclient import ClientConfig, register_session, reset_connection_cache
-from smbprotocol.exceptions import (
-    SMBAuthenticationError,
-    SMBException,
-    SMBResponseException,
-)
-
 from app.foundation.singleton import WeakSingleton
 from app.modules.filemanager.storages import StorageBase, transfer_process
 from app.runtime.log import logger
@@ -21,6 +13,9 @@ from app.schemas.exception import StorageQueryError
 from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.types import StorageSchema
 from app.schemas.workflow import FileItem as _SchemaFileItem
+
+# SMB SDK（smbclient/smbprotocol/spnego）约 12MB，存储发现会导入全部存储实现，
+# 因此各方法内按需导入，未配置 SMB 时不加载
 
 lock = threading.Lock()
 
@@ -65,6 +60,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         """
         初始化SMB连接配置
         """
+        from smbclient import ClientConfig, register_session
         try:
             conf = self.get_conf()
             if not conf:
@@ -125,6 +121,8 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         """
         测试SMB连接
         """
+        import smbclient
+        from smbprotocol.exceptions import SMBAuthenticationError, SMBException, SMBResponseException
         try:
             # 尝试列出根目录来测试连接
             smbclient.listdir(self._server_path)
@@ -177,6 +175,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         """
         创建文件项
         """
+        import smbclient
         try:
             # 检查是否为目录
             is_directory = smbclient.path.isdir(file_path)
@@ -231,6 +230,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         """
         初始化存储
         """
+        from smbclient import reset_connection_cache
         # 重置连接缓存
         reset_connection_cache()
         self._init_connection()
@@ -254,6 +254,8 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         """
         浏览文件
         """
+        import smbclient
+        from smbprotocol.exceptions import SMBException, SMBResponseException
         try:
             self._check_connection()
 
@@ -301,6 +303,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         """
         创建目录
         """
+        import smbclient
         try:
             self._check_connection()
 
@@ -354,6 +357,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         """
         获取文件或目录，不存在返回None
         """
+        import smbclient
         try:
             self._check_connection()
 
@@ -389,6 +393,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         只有 ENOENT/ENOTDIR 才是「确认不存在」，连接中断、认证失败等都无法确认
         目标状态，必须保守失败以免覆盖保护被绕过。
         """
+        import smbclient
         try:
             self._check_connection()
 
@@ -426,6 +431,8 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         """
         删除文件或目录
         """
+        import smbclient
+        from smbprotocol.exceptions import SMBException, SMBResponseException
         try:
             self._check_connection()
 
@@ -465,6 +472,8 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         """
         递归删除目录及其所有内容
         """
+        import smbclient
+        from smbprotocol.exceptions import SMBException, SMBResponseException
         try:
             # 检查路径是否存在
             if not smbclient.path.exists(smb_path):
@@ -528,6 +537,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         """
         重命名文件
         """
+        import smbclient
         try:
             self._check_connection()
 
@@ -548,6 +558,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         """
         带实时进度显示的下载
         """
+        import smbclient
         local_path = self._build_download_path(fileitem, path or get_runtime_setting('TEMP_PATH'))
         if not local_path:
             return None
@@ -601,6 +612,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         """
         带实时进度显示的上传
         """
+        import smbclient
         target_name = new_name or path.name
         target_path = Path(fileitem.path) / target_name
         smb_path = self._normalize_path(str(target_path))
@@ -695,6 +707,8 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         硬链接文件
         Samba服务器需要开启 unix extensions 支持
         """
+        import smbclient
+        from smbprotocol.exceptions import SMBResponseException
         try:
             self._check_connection()
             src_path = self._normalize_path(fileitem.path)
@@ -730,6 +744,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         """
         存储使用情况
         """
+        import smbclient
         try:
             self._check_connection()
             volume_stat = smbclient.stat_volume(self._server_path)
@@ -748,6 +763,8 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         """
         try:
             if self._connected:
+                from smbclient import reset_connection_cache
+
                 reset_connection_cache()
         except Exception as e:
             logger.debug(f"【SMB】清理连接失败: {e}")

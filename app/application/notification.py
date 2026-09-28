@@ -44,12 +44,12 @@ def get_notification_configs(
     )
 
 
-def get_notification_switch(mtype: MessageType) -> Optional[str]:
-    """返回指定通知场景的目标范围。"""
+def get_notification_switch(mtype: MessageType) -> str:
+    """返回指定通知场景的目标范围，缺少配置时默认仅管理员。"""
     for switch in get_service_configs(
         SystemConfigKey.NotificationSwitchs,
         NotificationSwitchConf,
     ):
         if switch.type == mtype.value:
-            return switch.action
-    return None
+            return switch.action or "admin"
+    return "admin"

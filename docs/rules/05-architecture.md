@@ -979,6 +979,11 @@ expired claimed task remains exclusively owned by fenced recovery APIs.
 - 符号级插件 ABI 只保证显式导入和属性访问；兼容符号不加入物理包的 `__all__`，
   不支持依赖 `from ... import *` 获得迁移符号。宿主源码不得消费 `SYMBOL_ALIASES`
   中的旧符号，必须直接导入 canonical owner，避免包根形成第二份宿主导出面。
+- 运行目录的 `app/plugins/__init__.py` 由后端源码提供。UI 内更新的插件目录迁移由
+  替换前的旧版本执行，旧版包根会随之进入新版运行目录并遮蔽兼容符号，使全部插件导入
+  失败；`app/startup/initializers/plugins.py` 在装配插件 Runtime 前把它备份为
+  `__init__.py.legacy-bak` 并写回命名空间入口，判定只看顶层类/函数/赋值，重新导入
+  canonical 对象的包根不动。运行目录只读时保留既有硬报错与诊断，不静默跳过。
 - Canonical implementation packages may not import `app/runtime/compat` or
   `app/sdk`.
 - Host code uses canonical paths. Only `app/plugins/` and compatibility tests

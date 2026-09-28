@@ -25,6 +25,7 @@ from app.application.agent import AgentDataContext
 from app.application.messaging.channel.admin import matches_channel_admin
 from app.application.notification import get_notification_configs
 from app.chain.base import ChainBase
+from app.foundation.identity import build_user_memory_key
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.message import Message
@@ -611,9 +612,14 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         """子类实现具体的工具执行逻辑"""
         raise NotImplementedError
 
+    def _get_run_timeout_seconds(self, **kwargs: Any) -> Optional[float]:
+        """获取本次工具调用的等待上限，默认沿用全局配置。"""
+        del kwargs
+        return _get_tool_timeout_seconds()
+
     async def run_with_timeout(self, **kwargs) -> str:
         """按系统配置限制单个工具调用的最长执行时间。"""
-        timeout = _get_tool_timeout_seconds()
+        timeout = self._get_run_timeout_seconds(**kwargs)
         if not timeout:
             return await self.run(**kwargs)
         try:
@@ -746,17 +752,46 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
             return resolved_path, None
 
         allowed_roots = self._get_non_admin_local_file_roots()
-        if any(
+        if not any(
             self._is_path_relative_to(resolved_path, root)
             for root in allowed_roots
         ):
+            allowed_text = "、".join(str(root) for root in allowed_roots)
+            return (
+                resolved_path,
+                f"抱歉，普通用户只能{operation}Agent配置目录内的文件或目录：{allowed_text}",
+            )
+
+        agent_root = allowed_roots[0]
+        memory_root = agent_root / "memory"
+        runtime_root = agent_root / "runtime"
+        if self._is_path_relative_to(resolved_path, runtime_root) and operation != "读取":
+            return (
+                resolved_path,
+                "抱歉，Agent 人格及运行时配置只有系统管理员才能修改。",
+            )
+
+        if not self._is_path_relative_to(resolved_path, memory_root):
             return resolved_path, None
 
-        allowed_text = "、".join(str(root) for root in allowed_roots)
-        return (
-            resolved_path,
-            f"抱歉，普通用户只能{operation}Agent配置目录内的文件或目录：{allowed_text}",
-        )
+        user_memory_root = memory_root / "users"
+        if self._is_path_relative_to(resolved_path, user_memory_root):
+            user_key = build_user_memory_key(self._user_id)
+            own_memory_root = user_memory_root / user_key if user_key else None
+            if not own_memory_root or not self._is_path_relative_to(resolved_path, own_memory_root):
+                return (
+                    resolved_path,
+                    "抱歉，普通用户只能访问自己的用户级记忆，不能读取或修改其他用户的记忆。",
+                )
+            return resolved_path, None
+
+        if operation != "读取":
+            return (
+                resolved_path,
+                "抱歉，全局公共记忆只有系统管理员才能写入；请将个人偏好写入当前用户的记忆目录。",
+            )
+
+        return resolved_path, None
 
     async def _check_local_storage_access(
         self,

@@ -29,6 +29,10 @@ class _UnusedPort:
 class _EmptyCache:
     """隔离种子下载测试的文件缓存。"""
 
+    def __init__(self, **kwargs):
+        """种子是二进制载荷，必须按本地文件系统路由构造缓存。"""
+        assert kwargs == {"local_only": True}
+
     @staticmethod
     def get(*_args, **_kwargs):
         """固定返回未命中。"""
@@ -139,6 +143,10 @@ def test_torrent_binary_is_parsed_before_first_download_html_detection(monkeypat
 
     class Cache:
         """记录合法种子缓存写入，不接触真实缓存后端。"""
+
+        def __init__(self, **kwargs):
+            """种子是二进制载荷，必须按本地文件系统路由构造缓存。"""
+            assert kwargs == {"local_only": True}
 
         @staticmethod
         def get(*_args, **_kwargs):

@@ -4,7 +4,7 @@ from unittest.mock import Mock
 
 from app.application.transfer.execution import TransferExecutionCheckpoint
 from app.application.transfer.workflow import TransferTask
-from app.chain.transfer import TransferChain
+from app.chain.transfer import TransferChain  # pylint: disable=no-name-in-module
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.schemas.file import FileItem
@@ -161,7 +161,7 @@ def test_transfer_stops_when_automatic_category_has_no_tmdb_result(monkeypatch) 
     state, message = chain._TransferChain__handle_transfer(task)
 
     assert not state
-    assert message == "未识别到 TMDB 辅助信息，无法按媒体类别整理"
+    assert message == "媒体识别结果未匹配到媒体分类，无法按媒体类别整理"
     assert task.mediainfo.media_source == MediaSource.AniList
     assert task.mediainfo.media_id == "1234"
     assert task.plan_checkpoint is not None

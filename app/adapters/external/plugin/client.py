@@ -22,6 +22,7 @@ from requests import Response
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.domain.plugin import (
     build_local_plugin_source,
+    check_plugin_runtime_compatibility,
     check_plugin_system_version,
     is_local_plugin_source,
     is_physical_plugin_id,
@@ -50,6 +51,7 @@ PluginPayload = dict[str, Any]
 PluginIndex = dict[str, PluginPayload]
 PluginReleaseList = list[PluginPayload]
 PluginRequestOptions = dict[str, Any]
+PluginIndexTaskResult = tuple[Optional[PluginIndex], Optional[Exception]]
 PluginReleaseTask = asyncio.Task[Optional[PluginReleaseList]]
 
 PLUGIN_INDEX_MAX_BYTES = 1024 * 1024
@@ -215,7 +217,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
     _index_task_lock = threading.Lock()
     _index_tasks: dict[
         tuple[asyncio.AbstractEventLoop, str, str],
-        asyncio.Task[Optional[PluginIndex]],
+        asyncio.Task[PluginIndexTaskResult],
     ] = {}
     _release_task_lock = threading.Lock()
     _release_tasks: dict[
@@ -305,8 +307,6 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         """
         if not isinstance(plugin_info, dict):
             return False
-        if is_free_threaded_runtime() and plugin_info.get("v3t") is False:
-            return False
         if not get_runtime_setting('VERSION_FLAG'):
             return True
         current_flag = get_runtime_setting('VERSION_FLAG')
@@ -334,8 +334,6 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         除非条目显式声明 ``v3: false``；默认索引仍需先声明 ``v2: true``。
         """
         if not isinstance(plugin_info, dict):
-            return False
-        if is_free_threaded_runtime() and plugin_info.get("v3t") is False:
             return False
         current_flag = get_runtime_setting('VERSION_FLAG')
         if not current_flag:
@@ -413,6 +411,48 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         return False, (
             f"插件要求 MoviePilot 版本 {raw_specifier}，当前版本 {get_app_version()} 不满足，已拒绝安装"
         )
+
+    @staticmethod
+    def check_plugin_runtime_compatibility(
+        plugin_info: Optional[PluginPayload],
+    ) -> tuple[bool, str]:
+        """
+        检查插件声明与当前解释器运行时是否兼容，返回兼容状态和用户可读原因。
+        """
+        return check_plugin_runtime_compatibility(
+            plugin_info,
+            free_threaded=is_free_threaded_runtime(),
+        )
+
+    @classmethod
+    def annotate_plugin_runtime_compatibility(
+        cls, plugin_info: PluginPayload
+    ) -> PluginPayload:
+        """
+        为插件 package 元数据补充运行时兼容状态，便于市场展示和安装流程复用。
+        """
+        if not isinstance(plugin_info, dict):
+            return plugin_info
+
+        compatible, message = cls.check_plugin_runtime_compatibility(plugin_info)
+        plugin_info["runtime_compatible"] = compatible
+        plugin_info["runtime_message"] = message
+        return plugin_info
+
+    @classmethod
+    def check_plugin_install_compatibility(
+        cls, plugin_info: Optional[PluginPayload]
+    ) -> tuple[bool, str]:
+        """
+        安装准入的唯一兼容判据：先判运行时，再判主程序版本。
+
+        运行时不兼容先于版本判断返回，否则 v3t 上会把"该插件不支持 free-threaded"
+        报成一条与版本有关的提示。
+        """
+        compatible, message = cls.check_plugin_runtime_compatibility(plugin_info)
+        if not compatible:
+            return compatible, message
+        return cls.check_plugin_system_version(plugin_info)
 
     @classmethod
     def annotate_plugin_system_version(
@@ -530,6 +570,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                         package_version or None,
                     )
                     self.annotate_plugin_system_version(candidate)
+                    self.annotate_plugin_runtime_compatibility(candidate)
                     candidate_version = str(candidate.get("version") or "0")
 
                     existing = candidates.get(pid)
@@ -605,7 +646,13 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                                 f"插件索引条目不兼容 {get_runtime_setting('VERSION_FLAG')}"
                             )
                         self.annotate_plugin_system_version(candidate)
-                        if strict_system_version and candidate.get("system_version_compatible") is False:
+                        self.annotate_plugin_runtime_compatibility(candidate)
+                        # 运行时不兼容与代际、版本不兼容一样要投影为不可安装候选：
+                        # 本地热同步只认 compatible 位，漏掉这一位会让每次源码变更都发起一次必败安装。
+                        if candidate.get("runtime_compatible") is False:
+                            candidate["compatible"] = False
+                            candidate["skip_reason"] = candidate.get("runtime_message")
+                        elif strict_system_version and candidate.get("system_version_compatible") is False:
                             candidate["compatible"] = False
                             candidate["skip_reason"] = candidate.get("system_version_message")
                         elif not strict_system_version and is_compatible:
@@ -760,9 +807,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
 
     @classmethod
     def __parse_plugin_index_response(cls, content: str) -> Optional[PluginIndex]:
-        """解析并规范化插件索引，仅缓存满足索引级边界的结果。"""
+        """解析并规范化插件索引，兼容 BOM 与 plugins 列表包装格式。"""
         try:
-            payload = json.loads(content)
+            payload = json.loads(content.lstrip("\ufeff"))
         except (ValueError, RecursionError):
             logger.warning("插件包数据解析失败：响应不是有效 JSON")
             return None
@@ -777,9 +824,25 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                 f"插件包 JSON 嵌套超过上限：{PLUGIN_INDEX_MAX_NESTING} 层"
             )
             return None
-        if len(payload) > PLUGIN_INDEX_MAX_ENTRIES:
+        plugin_entries: list[tuple[object, object]]
+        wrapped_plugins = payload.get("plugins")
+        if isinstance(wrapped_plugins, list):
+            plugin_entries = [
+                (
+                    plugin_info.get("id")
+                    if isinstance(plugin_info, dict)
+                    else None,
+                    plugin_info,
+                )
+                for plugin_info in wrapped_plugins
+            ]
+        else:
+            plugin_entries = list(payload.items())
+
+        if len(plugin_entries) > PLUGIN_INDEX_MAX_ENTRIES:
             logger.warning(
-                f"插件包条目超过上限：{len(payload)} > {PLUGIN_INDEX_MAX_ENTRIES}"
+                f"插件包条目超过上限：{len(plugin_entries)} > "
+                f"{PLUGIN_INDEX_MAX_ENTRIES}"
             )
             return None
 
@@ -787,7 +850,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         skipped_reasons: Counter[str] = Counter()
         dropped_fields: Counter[str] = Counter()
         skipped_examples: list[str] = []
-        for plugin_id, plugin_info in payload.items():
+        for plugin_id, plugin_info in plugin_entries:
             item, reason, dropped = cls.__normalize_plugin_index_entry(
                 plugin_id,
                 plugin_info,
@@ -797,6 +860,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                 if len(skipped_examples) < 5:
                     skipped_examples.append(cls.__safe_plugin_id(plugin_id))
                 continue
+            assert isinstance(plugin_id, str)
             normalized[plugin_id] = item
             dropped_fields.update(dropped)
 
@@ -1162,7 +1226,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
     def _remove_index_task(
         cls,
         key: tuple[asyncio.AbstractEventLoop, str, str],
-        task: asyncio.Future[Optional[PluginIndex]],
+        task: asyncio.Future[PluginIndexTaskResult],
     ) -> None:
         """异步索引请求结束后释放事件循环和仓库引用。"""
         with cls._index_task_lock:
@@ -1209,6 +1273,17 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         finally:
             _PLUGIN_INDEX_FETCH_GATE.release()
         return self._resolve_plugin_index_result(response)
+
+    async def _fetch_plugin_index_async_task(
+        self,
+        package_url: str,
+        headers: Optional[dict[str, str]],
+    ) -> PluginIndexTaskResult:
+        """把预期的索引读取失败转成共享任务结果，交由调用方记录仓库失败。"""
+        try:
+            return await self._fetch_plugin_index_async(package_url, headers), None
+        except Exception as error:  # noqa: BLE001 - 结果由读取调用方统一转换
+            return None, error
 
     @cached(maxsize=1024, ttl=1800, skip_none=False)  # type: ignore[misc]
     def get_plugin_index_result(
@@ -1590,23 +1665,29 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             task = self._index_tasks.get(task_key)
             if task is None:
                 task = cast(
-                    asyncio.Task[Optional[PluginIndex]],
+                    asyncio.Task[PluginIndexTaskResult],
                     get_task_registry().create(
-                        self._fetch_plugin_index_async(package_url, headers),
+                        self._fetch_plugin_index_async_task(
+                            package_url,
+                            headers,
+                        ),
                         owner="plugin.market.index",
                     ),
                 )
                 self._index_tasks[task_key] = task
 
                 def on_index_task_done(
-                    completed_task: asyncio.Future[Optional[PluginIndex]],
+                    completed_task: asyncio.Future[PluginIndexTaskResult],
                 ) -> None:
                     self._remove_index_task(task_key, completed_task)
 
                 task.add_done_callback(on_index_task_done)
 
         # 单个调用方取消等待时不能连带取消共享请求。
-        return await asyncio.shield(task)
+        result, error = await asyncio.shield(task)
+        if error is not None:
+            raise error
+        return result
 
     async def async_get_plugins(self, repo_url: str,
                                 package_version: Optional[str] = None) -> Optional[PluginIndex]:
@@ -1870,6 +1951,17 @@ class PluginMarketClient:
         return plugin_info
 
     @staticmethod
+    def annotate_runtime_compatibility(plugin_info: PluginPayload) -> PluginPayload:
+        """补充插件声明的运行时兼容状态。"""
+        compatible, message = check_plugin_runtime_compatibility(
+            plugin_info,
+            free_threaded=is_free_threaded_runtime(),
+        )
+        plugin_info["runtime_compatible"] = compatible
+        plugin_info["runtime_message"] = message
+        return plugin_info
+
+    @staticmethod
     def is_package_compatible(
         plugin_info: PluginPayload,
         package_version: Optional[str],
@@ -1879,7 +1971,6 @@ class PluginMarketClient:
             plugin_info,
             package_version,
             current_generation=get_runtime_setting('VERSION_FLAG'),
-            free_threaded=is_free_threaded_runtime(),
         )
 
 
@@ -1949,6 +2040,21 @@ class PluginPackageSourceClient:
         plugin_info: PluginPayload,
     ) -> tuple[bool, str]:
         """校验插件声明的宿主版本约束。"""
+        return check_plugin_system_version(
+            plugin_info, current_version=get_app_version()
+        )
+
+    @staticmethod
+    def check_plugin_install_compatibility(
+        plugin_info: PluginPayload,
+    ) -> tuple[bool, str]:
+        """安装准入的唯一兼容判据：先判运行时，再判宿主版本。"""
+        compatible, message = check_plugin_runtime_compatibility(
+            plugin_info,
+            free_threaded=is_free_threaded_runtime(),
+        )
+        if not compatible:
+            return compatible, message
         return check_plugin_system_version(
             plugin_info, current_version=get_app_version()
         )

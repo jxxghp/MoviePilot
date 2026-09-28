@@ -292,6 +292,17 @@ class TransferSettlementOwner(_TransferOwnerBase):
         if not isinstance(result, TransferSettlementResult):
             raise RuntimeError("旧整理兼容命令没有返回 durable 结算结果")
         task.mark_terminal_settled()
+        if transferinfo.success:
+            scrape_transferinfo = transferinfo
+            if (
+                    task.planning_input
+                    and task.planning_input.need_scrape
+                    and not transferinfo.need_scrape
+            ):
+                scrape_transferinfo = transferinfo.model_copy(
+                    update={"need_scrape": True}
+                )
+            self._send_metadata_scrape_event(task, scrape_transferinfo)
         assert task.admission_task_id is not None
         assert task.lease_token is not None
         self._TransferChain__forget_owned_lease(task.admission_task_id, task.lease_token)

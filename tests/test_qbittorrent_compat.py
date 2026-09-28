@@ -319,13 +319,18 @@ def test_login_uses_api_key_header_without_auth_login():
     fake_client = MagicMock()
     fake_client.app_version.return_value = "v5.2.0"
 
-    with patch.object(qbittorrent_module.qbittorrentapi, "Client", return_value=fake_client) as client_cls:
+    with patch.object(
+        qbittorrent_module.qbittorrentapi, "Client", return_value=fake_client
+    ) as client_cls:
         downloader = Qbittorrent(host="http://127.0.0.1", port=8080, apikey="secret-token")
 
     assert downloader.qbc is fake_client
     fake_client.auth_log_in.assert_not_called()
     fake_client.app_version.assert_called_once_with()
     assert client_cls.call_args.kwargs["EXTRA_HEADERS"] == {"Authorization": "Bearer secret-token"}
+    assert client_cls.call_args.kwargs["REQUESTS_ARGS"] == {"timeout": (3, 60)}
+    assert client_cls.call_args.kwargs["HTTPADAPTER_ARGS"] == {"max_retries": 0}
+    assert client_cls.call_args.kwargs["FORCE_SCHEME_FROM_HOST"] is True
 
 
 def test_login_enables_incomplete_file_suffix_by_default():

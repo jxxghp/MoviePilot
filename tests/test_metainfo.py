@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
+from app.domain import metainfo as metainfo_module
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo, MetaInfoPath, find_metainfo
 from app.domain.meta.metabase import MetaBase, MetaInfoSnapshot
@@ -275,6 +276,34 @@ def test_python_metainfo_fallback_preserves_xxx_movie_title():
     assert meta.audio_encode == "DDP 5.1"
 
 
+@pytest.mark.parametrize("use_path", [False, True])
+def test_python_metainfo_fallback_keeps_title_token_matching_subtitle_extension(
+    use_path, monkeypatch
+):
+    """Python 回退解析在标题和路径入口都应保留与字幕扩展名同名的词元。"""
+    title = (
+        "Kick-Ass.2010.PROPER.2160p.BluRay.REMUX.HEVC.DTS-HD.MA."
+        "TrueHD.7.1.Atmos-FGT.mkv"
+    )
+    monkeypatch.setattr(
+        metainfo_module,
+        "get_media_extensions",
+        lambda: (".mkv", ".ass"),
+    )
+    with (
+        patch("app.adapters.system.rust.parse_metainfo", return_value=None),
+        patch("app.adapters.system.rust.parse_metainfo_path", return_value=None),
+    ):
+        meta = (
+            MetaInfoPath(Path("/movies") / title)
+            if use_path
+            else MetaInfo(title)
+        )
+
+    assert meta.en_name == "Kick Ass"
+    assert meta.year == "2010"
+
+
 def test_python_metainfo_fallback_recognizes_eac3_audio_codec():
     """Python 兜底解析应识别 EAC3 及其声道信息。"""
     with patch("app.adapters.system.rust.parse_metainfo", return_value=None):
@@ -480,6 +509,25 @@ def test_custom_words_replace_then_episode_offset():
     meta = MetaInfo(title="旧名 第03集", custom_words=custom_words)
     assert meta.name == "新名"
     assert meta.episode == "E04"
+    assert meta.apply_words == custom_words
+
+
+def test_custom_words_episode_offset_applies_to_subtitle():
+    """标题无集数时，自定义偏移应只修改副标题中的集数而保留季数。"""
+    custom_words = [
+        "BLEACH Thousand-Year Blood War S04 => BLEACH 2004 S02 && S02 <> 1080p >> EP+40"
+    ]
+
+    with patch("app.adapters.system.rust.parse_metainfo", return_value=None):
+        meta = MetaInfo(
+            title="BLEACH Thousand-Year Blood War S04 1080p Disney+ WEB-DL AAC 2.0 H.264-CHDWEB",
+            subtitle="死神 千年血战篇 -祸进谭- 第四季 第8集 ...",
+            custom_words=custom_words,
+        )
+
+    assert meta.begin_season == 2
+    assert meta.begin_episode == 48
+    assert meta.subtitle == "死神 千年血战篇 -祸进谭- 第四季 第48集 ..."
     assert meta.apply_words == custom_words
 
 

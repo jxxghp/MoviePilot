@@ -187,7 +187,7 @@ OPERATION_DESCRIPTIONS = {
     "system.module.catalog": "List MoviePilot host modules and service-type options for UI selectors.",
     "system.module.settings": "List built-in MoviePilot modules that can be enabled or disabled by an administrator.",
     "system.module.test": "Run the built-in availability test for one enabled MoviePilot module.",
-    "system.network.targets": "List approved built-in network-test targets without exposing their request URLs.",
+    "system.network.targets": "List approved network-test targets with sanitized destination addresses, without exposing request paths, query parameters, or credentials.",
     "system.network.test": "Test connectivity to one approved target or the legacy constrained URL input.",
     "torrent.cache.clear": "Delete every cached torrent context.",
     "torrent.cache.delete": "Delete one cached torrent context by site domain and cache hash.",

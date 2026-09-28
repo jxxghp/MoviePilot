@@ -800,6 +800,7 @@ class MetaMusic(MetaBase):
                         meta.artists = list(secondary.artists)
             album = cls._resource_label(
                 subtitle, r"专辑(?:名|名称)?|專輯(?:名|名稱)?|album",
+                allow_unlabelled=True,
             )
             if album and not meta.album:
                 meta.album = album
@@ -899,11 +900,19 @@ class MetaMusic(MetaBase):
         return None
 
     @staticmethod
-    def _resource_label(subtitle: str, labels: str) -> Optional[str]:
-        """读取明确的副标题字段，允许管道、中文逗号或独立连字符作为字段边界。"""
+    def _resource_label(
+        subtitle: str, labels: str, *, allow_unlabelled: bool = False,
+    ) -> Optional[str]:
+        """读取明确的副标题字段，专辑标签兼容无冒号的末尾字段写法。"""
+        boundaries = r"^|[;；\n|｜，]|\s+[-–—−－]+\s+"
+        if allow_unlabelled:
+            boundaries += r"|\s+"
+        separator = r"\s*[:：]\s*"
+        if allow_unlabelled:
+            separator = r"(?:\s*[:：]\s*|\s+)"
         match = re.search(
-            rf"(?:^|[;；\n|｜，]|\s+[-–—−－]+\s+)\s*(?:{labels})"
-            r"\s*[:：]\s*([^;；\n|｜，]+?)"
+            rf"(?:{boundaries})\s*(?:{labels})"
+            rf"{separator}([^;；\n|｜，]+?)"
             r"(?=\s+[-–—−－]+\s+[^:：;；\n|｜，]+[:：]|[;；\n|｜，]|$)", subtitle, re.I,
         )
         return match.group(1).strip() if match else None

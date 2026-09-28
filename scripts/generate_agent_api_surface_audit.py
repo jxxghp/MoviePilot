@@ -113,6 +113,10 @@ EXPLICIT_TRANSPORT_PATHS = frozenset(
         "/api/v1/system/ping",
     }
 )
+GITHUB_AUTH_PATH_PREFIXES = (
+    "/api/v1/github/auth/",
+    "/api/v1/login/github-auth/",
+)
 SUBSCRIPTION_EXECUTION_UI_PREFIX = "/api/v1/subscribe/execution/"
 MUSIC_LIBRARY_STATUS_UI_PATH = "/api/v1/music/library/status"
 
@@ -204,6 +208,13 @@ def _classify(
             "transport_or_identity",
             "host-runtime",
             "Health, bootstrap, federation, or external webhook transport endpoint; it is not recursively callable as an Agent business action.",
+            [],
+        )
+    if path.startswith(GITHUB_AUTH_PATH_PREFIXES):
+        return (
+            "transport_or_identity",
+            "host-runtime",
+            "GitHub Token authorization and first-run credential setup are host identity/configuration flows; they are not Agent business actions.",
             [],
         )
     if path.startswith(PROVIDER_PATH_PREFIXES):

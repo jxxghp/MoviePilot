@@ -68,8 +68,8 @@ class _DownloaderModuleBase(_ModuleBase, _DownloaderBase[TService]):
                 if content.exists():
                     torrent_content = content.read_bytes()
                 else:
-                    # 读取缓存的种子文件
-                    torrent_content = FileCache().get(
+                    # 读取缓存的种子文件；与 TorrentHelper 写入路由一致，只在本地文件系统
+                    torrent_content = FileCache(local_only=True).get(
                         content.as_posix(), region="torrents"
                     )
             else:

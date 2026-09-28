@@ -178,6 +178,7 @@ def _build_world(
         logger=_logger(),
         set_default_target=lambda _plugin_id, _instance_id: True,
         clear_default_target=lambda _plugin_id: None,
+        runtime_declaration=lambda _plugin_id: {},
     )
     runtime = build_plugin_runtime(
         SimpleNamespace(

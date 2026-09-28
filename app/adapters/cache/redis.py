@@ -2,6 +2,7 @@ import asyncio
 import json
 import pickle
 import threading
+import weakref
 from typing import Any, AsyncGenerator, Generator, Optional, Tuple, Union
 from urllib.parse import quote, unquote
 
@@ -381,33 +382,59 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
         self.redis_url = get_runtime_setting('CACHE_BACKEND_URL')
         self.client: Optional[Redis] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._connect_lock: Optional[asyncio.Lock] = None
-        self._connect_lock_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._clients: weakref.WeakKeyDictionary[
+            asyncio.AbstractEventLoop, Redis
+        ] = weakref.WeakKeyDictionary()
+        self._connect_locks: weakref.WeakKeyDictionary[
+            asyncio.AbstractEventLoop, asyncio.Lock
+        ] = weakref.WeakKeyDictionary()
+        self._state_lock = threading.RLock()
 
     def _get_connect_lock(self, current_loop: asyncio.AbstractEventLoop) -> asyncio.Lock:
         """
         获取当前事件循环对应的异步连接锁
         """
-        if self._connect_lock is None or self._connect_lock_loop is not current_loop:
-            self._connect_lock = asyncio.Lock()
-            self._connect_lock_loop = current_loop
-        return self._connect_lock
+        with self._state_lock:
+            connect_lock = self._connect_locks.get(current_loop)
+            if connect_lock is None:
+                connect_lock = asyncio.Lock()
+                self._connect_locks[current_loop] = connect_lock
+            return connect_lock
 
-    async def _connect(self):
+    async def _close_client_instance(self, client: Redis) -> None:
+        """在客户端所属事件循环中关闭连接池。"""
+        try:
+            close = getattr(client, "aclose", None) or getattr(client, "close")
+            await close()
+        except Exception:
+            pass
+        await self._close_client_pool(client)
+
+    async def _close_client_pool(self, client: Redis) -> None:
+        """关闭异步 Redis 客户端显式持有的连接池。"""
+        pool = getattr(client, "connection_pool", None)
+        close_pool = getattr(pool, "aclose", None)
+        if close_pool is not None:
+            try:
+                await close_pool()
+            except Exception:
+                pass
+
+    async def _connect(self) -> Redis:
         """
         建立异步Redis连接
         """
         current_loop = asyncio.get_running_loop()
         connect_lock = self._get_connect_lock(current_loop)
-        client = None
+        client: Optional[Redis] = None
         try:
             async with connect_lock:
-                # 检测事件循环是否发生变化，如果变化则重新连接
-                if self.client is not None and self._loop is not current_loop:
-                    logger.debug("Event loop changed, reconnecting Redis (async)")
-                    await self._close_client()
-                if self.client is not None:
-                    return
+                with self._state_lock:
+                    client = self._clients.get(current_loop)
+                if client is not None:
+                    self.client = client
+                    self._loop = current_loop
+                    return client
                 self.redis_url = get_runtime_setting('CACHE_BACKEND_URL')
                 connection_pool = AsyncBlockingConnectionPool.from_url(
                     self.redis_url,
@@ -419,31 +446,51 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
                     timeout=get_runtime_setting('CACHE_REDIS_POOL_TIMEOUT'),
                 )
                 client = Redis(connection_pool=connection_pool)
-                self._loop = current_loop
                 # 测试连接，确保Redis可用
                 await client.ping()
+                with self._state_lock:
+                    self._clients[current_loop] = client
                 self.client = client
+                self._loop = current_loop
                 logger.info(f"Successfully connected to Redis (async)：{self.redis_url}")
-                await self.set_memory_limit()
+                await self.set_memory_limit(client=client)
+                return client
         except Exception as e:
             if client:
-                await client.close()
+                await self._close_client_instance(client)
+                with self._state_lock:
+                    if self._clients.get(current_loop) is client:
+                        self._clients.pop(current_loop, None)
+                if self.client is client:
+                    self.client = None
+                    self._loop = None
             logger.error(f"Failed to connect to Redis (async): {e}")
-            self.client = None
-            self._loop = None
             raise RuntimeError("Redis async connection failed") from e
 
     async def _close_client(self):
         """
-        关闭当前Redis客户端连接
+        关闭当前事件循环拥有的Redis客户端连接
         """
-        if self.client:
-            try:
-                await self.client.close()
-            except Exception:
-                pass
-            self.client = None
-            self._loop = None
+        current_loop = asyncio.get_running_loop()
+        connect_lock = self._get_connect_lock(current_loop)
+        async with connect_lock:
+            with self._state_lock:
+                client = self._clients.pop(current_loop, None)
+                client_is_current = self.client is client
+            if client is not None:
+                try:
+                    if client_is_current and self.client is client:
+                        await self.client.close()
+                    else:
+                        close = getattr(client, "aclose", None) or getattr(client, "close")
+                        await close()
+                except Exception:
+                    pass
+                await self._close_client_pool(client)
+                with self._state_lock:
+                    if self.client is client:
+                        self.client = None
+                        self._loop = None
 
     async def on_config_changed(self):
         """缓存配置变化后异步重建 Redis 连接。"""
@@ -455,19 +502,27 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
         """返回异步 Redis 配置重载名称。"""
         return "Redis (async)"
 
-    async def set_memory_limit(self, policy: Optional[str] = "allkeys-lru"):
+    async def set_memory_limit(
+        self,
+        policy: Optional[str] = "allkeys-lru",
+        client: Optional[Redis] = None,
+    ):
         """
         动态设置Redis最大内存和内存淘汰策略
 
         :param policy: 淘汰策略（如'allkeys-lru'）
+        :param client: 已建立的异步 Redis 客户端
         """
+        if client is None:
+            client = await self._connect()
         try:
             # 如果有显式值，则直接使用，为0时说明不限制，如果未配置，开启BIG_MEMORY_MODE时为"1024mb"，未开启时为"256mb"
             maxmemory = get_runtime_setting('CACHE_REDIS_MAXMEMORY') or (
                 "1024mb" if get_runtime_setting('BIG_MEMORY_MODE') else "256mb"
             )
-            await self.client.config_set("maxmemory", maxmemory)
-            await self.client.config_set("maxmemory-policy", policy)
+            target_client = self.client if self.client is client else client
+            await target_client.config_set("maxmemory", maxmemory)
+            await target_client.config_set("maxmemory-policy", policy)
             logger.debug(f"Redis maxmemory set to {maxmemory}, policy: {policy} (async)")
         except Exception as e:
             logger.error(f"Failed to set Redis maxmemory or policy (async): {e}")
@@ -513,12 +568,13 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
         :param kwargs: 其他参数
         """
         try:
-            await self._connect()
+            current_client = await self._connect()
+            client = self.client if self.client is current_client else current_client
             redis_key = self.__make_redis_key(region, key)
             # 对值进行序列化
             serialized_value = serialize(value)
             kwargs.pop("maxsize", None)
-            await self.client.set(redis_key, serialized_value, ex=ttl, **kwargs)
+            await client.set(redis_key, serialized_value, ex=ttl, **kwargs)
         except Exception as e:
             logger.error(f"Failed to set key (async): {key} in region: {region}, error: {e}")
 
@@ -531,9 +587,10 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
         :return: 存在返回True，否则返回False
         """
         try:
-            await self._connect()
+            current_client = await self._connect()
+            client = self.client if self.client is current_client else current_client
             redis_key = self.__make_redis_key(region, key)
-            result = await self.client.exists(redis_key)
+            result = await client.exists(redis_key)
             return result == 1
         except Exception as e:
             logger.error(f"Failed to exists key (async): {key} region: {region}, error: {e}")
@@ -548,9 +605,10 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
         :return: 返回缓存的值，如果缓存不存在返回None
         """
         try:
-            await self._connect()
+            current_client = await self._connect()
+            client = self.client if self.client is current_client else current_client
             redis_key = self.__make_redis_key(region, key)
-            value = await self.client.get(redis_key)
+            value = await client.get(redis_key)
             if value is not None:
                 return deserialize(value)
             return None
@@ -566,9 +624,10 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
         :param region: 缓存的区
         """
         try:
-            await self._connect()
+            current_client = await self._connect()
+            client = self.client if self.client is current_client else current_client
             redis_key = self.__make_redis_key(region, key)
-            await self.client.delete(redis_key)
+            await client.delete(redis_key)
         except Exception as e:
             logger.error(f"Failed to delete key (async): {key} in region: {region}, error: {e}")
 
@@ -579,17 +638,18 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
         :param region: 缓存的区
         """
         try:
-            await self._connect()
+            current_client = await self._connect()
+            client = self.client if self.client is current_client else current_client
             if region:
                 cache_region = self.__get_region(region)
                 redis_key = f"{cache_region}:key:*"
-                async with self.client.pipeline() as pipe:
-                    async for key in self.client.scan_iter(redis_key):
+                async with client.pipeline() as pipe:
+                    async for key in client.scan_iter(redis_key):
                         await pipe.delete(key)
                     await pipe.execute()
                 logger.debug(f"Cleared Redis cache for region (async): {region}")
             else:
-                await self.client.flushdb()
+                await client.flushdb()
                 logger.info("Cleared all Redis cache (async)")
         except Exception as e:
             logger.error(f"Failed to clear cache (async), region: {region}, error: {e}")
@@ -602,17 +662,18 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
         :return: 返回键值对生成器
         """
         try:
-            await self._connect()
+            current_client = await self._connect()
+            client = self.client if self.client is current_client else current_client
             if region:
                 cache_region = self.__get_region(region)
                 redis_key = f"{cache_region}:key:*"
-                async for key in self.client.scan_iter(redis_key):
-                    value = await self.client.get(key)
+                async for key in client.scan_iter(redis_key):
+                    value = await client.get(key)
                     if value is not None:
                         yield self.__get_original_key(key), deserialize(value)
             else:
-                async for key in self.client.scan_iter("*"):
-                    value = await self.client.get(key)
+                async for key in client.scan_iter("*"):
+                    value = await client.get(key)
                     if value is not None:
                         yield self.__get_original_key(key), deserialize(value)
         except Exception as e:

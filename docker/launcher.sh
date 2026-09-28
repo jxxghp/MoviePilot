@@ -12,7 +12,8 @@ export PATH
 SOURCE_CONTROL_DIR="${MOVIEPILOT_SOURCE_CONTROL_DIR:-/app/docker}"
 IMAGE_CONTROL_DIR="${MOVIEPILOT_IMAGE_CONTROL_DIR:-/usr/local/lib/moviepilot/control}"
 RUNTIME_ROOT="${MOVIEPILOT_RUNTIME_CONTROL_ROOT:-/run/moviepilot/control}"
-UPDATE_PENDING_FILE="${CONFIG_DIR:-/config}/temp/__update_pending__"
+# 与 update.sh 共用容器可写层中的 Dev 事务标记；容器重建时不保留旧半成品状态。
+UPDATE_PENDING_FILE="${MOVIEPILOT_UPDATE_PENDING_FILE:-/var/lib/moviepilot/update/__update_pending__}"
 UPDATE_PREVIOUS_APP="/app.__update_previous__"
 CONTROL_FILES=()
 CONTROL_REQUIRED_FILES=(entrypoint.sh update.sh browser.sh cert.sh)

@@ -10,6 +10,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = ROOT / "docker" / "launcher.sh"
 UPDATER = ROOT / "docker" / "update.sh"
+UPDATE_WORKER = ROOT / "docker" / "update-worker.sh"
 BASE_CONTROL_FILES = ("entrypoint.sh", "update.sh", "browser.sh", "cert.sh")
 
 
@@ -942,6 +943,32 @@ def test_release_update_worker_applies_before_supervisor_shutdown() -> None:
     assert worker.index("apply-prepared-update") < worker.index("shutdown")
 
 
+def test_release_update_worker_skips_without_install_manifest(tmp_path: Path) -> None:
+    """普通 supervisor 重启误启动 worker 时，无安装清单应安全跳过。"""
+    python_bin = tmp_path / "venv" / "bin" / "python3"
+    python_bin.parent.mkdir(parents=True)
+    python_bin.write_text("#!/bin/bash\nexit 99\n", encoding="utf-8")
+    python_bin.chmod(0o755)
+
+    script = textwrap.dedent(
+        f"""\
+        CONFIG_DIR={shlex.quote(str(tmp_path / "config"))}
+        VENV_PATH={shlex.quote(str(tmp_path / "venv"))}
+        source {shlex.quote(str(UPDATE_WORKER))}
+        """
+    )
+
+    result = subprocess.run(
+        ["bash", "-c", script, "update-worker-noop"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "未检测到待安装的更新清单" in result.stdout
+
+
 def test_update_reexec_uses_stable_working_directory() -> None:
     """更新替换 /app 后，入口重入和 worker 控制面调用必须离开旧工作目录。"""
     entrypoint = (ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
@@ -1159,6 +1186,7 @@ def test_failed_dependency_sync_does_not_replace_program_files(tmp_path: Path) -
         UV_BIN="$4"
         PIP_PROXY= PROXY_HOST=
         GITHUB_PROXY= CURL_OPTIONS=
+        MOVIEPILOT_UPDATE_PENDING_FILE="$1/temp/__update_pending__"
         source {UPDATER!s}
         APP_DIR="$5"
         PUBLIC_DIR="$6"
@@ -1255,6 +1283,7 @@ def test_pending_update_recovers_previous_payload_on_next_start(tmp_path: Path) 
         CONFIG_DIR="$1"
         VENV_PATH="$2"
         UV_BIN="$7"
+        MOVIEPILOT_UPDATE_PENDING_FILE="$1/temp/__update_pending__"
         PIP_PROXY= PROXY_HOST= GITHUB_PROXY= CURL_OPTIONS=
         source {UPDATER!s}
         APP_DIR="$3"
@@ -1319,6 +1348,7 @@ def test_pending_dependency_update_keeps_current_payload_for_database_safety(
     script = textwrap.dedent(
         f"""\
         CONFIG_DIR="$1"
+        MOVIEPILOT_UPDATE_PENDING_FILE="$1/temp/__update_pending__"
         source {UPDATER!s}
         APP_DIR="$2"
         PUBLIC_DIR="$3"
@@ -1409,6 +1439,7 @@ def test_update_transaction_keeps_marker_when_backup_cleanup_fails(tmp_path: Pat
     script = textwrap.dedent(
         f"""\
         CONFIG_DIR="$1"
+        MOVIEPILOT_UPDATE_PENDING_FILE="$2"
         UPDATE_PENDING_FILE="$2"
         UPDATE_PREVIOUS_APP="$3"
         UPDATE_PREVIOUS_PUBLIC="$4"
@@ -1555,6 +1586,7 @@ def test_staged_payload_swap_failure_restores_previous_generation(tmp_path: Path
         CONFIG_DIR="$1"
         TMP_PATH="$2"
         PIP_PROXY= PROXY_HOST= GITHUB_PROXY= CURL_OPTIONS=
+        MOVIEPILOT_UPDATE_PENDING_FILE="$1/temp/__update_pending__"
         source {UPDATER!s}
         APP_DIR="$3"
         PUBLIC_DIR="$4"

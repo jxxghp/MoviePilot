@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 33
+version: 35
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -91,7 +91,9 @@ use a more specific skill or explain that the structured operation is unavailabl
 3. The selected category file already includes the shared body Models needed to
    construct its calls; do not load a second Models document.
 4. Build one gateway call with only declared fields. Preserve source-native
-   identifiers and use the documented pagination fields.
+   identifiers and use the documented pagination fields. Pass object and array
+   bodies as native JSON values, and pass null only when the selected operation
+   allows it. The only string body is the literal `"dev"` for `system.upgrade.dev`.
 5. Obtain confirmation for confirmation-protected or side-effecting operations,
    then execute the gateway call once.
 6. Inspect `success`, `execution_outcome`, errors, empty results, and collection

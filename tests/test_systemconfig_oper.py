@@ -1,6 +1,8 @@
+import json
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy import text
@@ -98,6 +100,25 @@ def test_load_snapshot_repairs_malformed_json_and_allows_follow_up_write():
     assert oper.set(key, {"recovered": True}) is True
     assert oper.get(key) == {"recovered": True}
     assert _stored_config(key).value == {"recovered": True}
+
+
+def test_load_snapshot_preserves_postgresql_json_string_scalar():
+    """PostgreSQL JSON 字符串标量经文本投影后应只解码一次。"""
+    key = _unique_key()
+    session = MagicMock()
+    session.get_bind.return_value.dialect.name = "postgresql"
+    result = MagicMock()
+    result.mappings.return_value = [
+        {"id": 99, "key": key, "value": json.dumps(".agent-assistant-fab{color:red}")}
+    ]
+    session.execute.return_value = result
+
+    oper = object.__new__(SystemConfigOper)
+    snapshot = oper._load_snapshot_values(session)
+
+    assert snapshot[key] == ".agent-assistant-fab{color:red}"
+    assert session.execute.call_count == 1
+    assert "CAST(value AS TEXT)" in str(session.execute.call_args.args[0])
 
 
 def test_read_does_not_wait_for_slow_write_transaction(monkeypatch):

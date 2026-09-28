@@ -7,8 +7,8 @@ from langchain_core.messages import AIMessage, HumanMessage
 from app.agent.contracts import ReplyMode
 from app.agent.manager import AgentManager
 from app.agent.memory import memory_manager
-from app.agent.middleware.activity import QUERY_ACTIVITY_LOG_TOOL_NAME
 from app.agent.middleware.invocation import GET_TOOL_EXECUTION_NAME, InvocationMiddleware
+from app.agent.middleware.memory import SEARCH_MEMORY_TOOL_NAME
 from app.agent.middleware.output import READ_TOOL_RESULT_NAME, ToolOutputMiddleware
 from app.agent.middleware.plan import PLAN_TOOL_NAME, PlanMiddleware
 from app.agent.middleware.selection import TOOL_DISCOVERY_NAME, ToolSelectorMiddleware
@@ -79,9 +79,9 @@ def _fake_skills_middleware(tool=None):
     return SimpleNamespace(name="skills", tools=[] if tool is None else [tool])
 
 
-def _fake_activity_log_middleware(tool=None):
-    """构造带 tools 属性的 ActivityLogMiddleware 测试替身。"""
-    return SimpleNamespace(name="activity", tools=[] if tool is None else [tool])
+def _fake_memory_middleware(tool=None):
+    """构造带 tools 属性的统一 MemoryMiddleware 测试替身。"""
+    return SimpleNamespace(name="memory", tools=[] if tool is None else [tool])
 
 
 def _capture_tool_selector(captured, **kwargs):
@@ -421,8 +421,8 @@ class TestAgentBackgroundOutput:
             has_audio_input=True,
         )
 
-    async def test_create_agent_excludes_activity_log_for_heartbeat_session(self):
-        """心跳任务保留计划上下文，但不注入渠道活动日志。"""
+    async def test_create_agent_disables_activity_recording_for_heartbeat_session(self):
+        """心跳任务保留统一记忆能力，但不启用渠道活动记录。"""
         agent = MoviePilotAgent(
             session_id=f"{HEARTBEAT_SESSION_PREFIX}test__",
             user_id="system",
@@ -446,10 +446,6 @@ class TestAgentBackgroundOutput:
             patch("app.agent.orchestrator.JobsMiddleware", side_effect=lambda *args, **kwargs: "jobs"),
             patch("app.agent.orchestrator.RuntimeConfigMiddleware", side_effect=lambda *args, **kwargs: "runtime"),
             patch("app.agent.orchestrator.MemoryMiddleware", side_effect=lambda *args, **kwargs: "memory"),
-            patch(
-                "app.agent.orchestrator.ActivityLogMiddleware",
-                side_effect=lambda *args, **kwargs: _fake_activity_log_middleware(),
-            ),
             patch("app.agent.orchestrator.SummarizationMiddleware", side_effect=lambda *args, **kwargs: "summary"),
             patch("app.agent.orchestrator.PatchToolCallsMiddleware", side_effect=lambda *args, **kwargs: "patch"),
             patch("app.agent.orchestrator.UsageMiddleware", side_effect=lambda *args, **kwargs: "usage"),
@@ -504,10 +500,6 @@ class TestAgentBackgroundOutput:
             ),
             patch("app.agent.orchestrator.MemoryMiddleware", side_effect=lambda *args, **kwargs: "memory"),
             patch(
-                "app.agent.orchestrator.ActivityLogMiddleware",
-                side_effect=lambda *args, **kwargs: _fake_activity_log_middleware(),
-            ),
-            patch(
                 "app.agent.orchestrator.SummarizationMiddleware",
                 side_effect=lambda *args, **kwargs: "summary",
             ),
@@ -527,8 +519,8 @@ class TestAgentBackgroundOutput:
         assert SKILL_TOOL_NAME in captured["always_include"]
         _assert_internal_tool_registration(created, captured)
 
-    async def test_create_agent_excludes_activity_log_without_message_context(self):
-        """无渠道信息的后台捕获任务不应注入活动日志。"""
+    async def test_create_agent_disables_activity_recording_without_message_context(self):
+        """无渠道信息的后台捕获任务不应启用活动记录。"""
         agent = MoviePilotAgent(
             session_id="background-capture-session",
             user_id="system",
@@ -556,10 +548,6 @@ class TestAgentBackgroundOutput:
                 side_effect=lambda *args, **kwargs: "runtime",
             ),
             patch("app.agent.orchestrator.MemoryMiddleware", side_effect=lambda *args, **kwargs: "memory"),
-            patch(
-                "app.agent.orchestrator.ActivityLogMiddleware",
-                side_effect=lambda *args, **kwargs: _fake_activity_log_middleware(),
-            ),
             patch(
                 "app.agent.orchestrator.SummarizationMiddleware",
                 side_effect=lambda *args, **kwargs: "summary",
@@ -598,20 +586,20 @@ class TestAgentBackgroundOutput:
 
         assert "send_message" not in always_include
 
-    def test_activity_log_tool_is_not_registered_by_tool_factory(self):
-        """活动日志查询工具不应再由全局工具工厂保留。"""
-        activity_log_tool = SimpleNamespace(name=QUERY_ACTIVITY_LOG_TOOL_NAME)
+    def test_memory_tool_is_always_included_by_tool_selector(self):
+        """记忆检索工具应作为常驻候选，但不由全局工具工厂重复注册。"""
+        memory_tool = SimpleNamespace(name=SEARCH_MEMORY_TOOL_NAME)
 
         always_include = MoviePilotToolFactory.get_tool_selector_always_include_names(
-            [activity_log_tool]
+            [memory_tool]
         )
 
-        assert QUERY_ACTIVITY_LOG_TOOL_NAME not in always_include
+        assert SEARCH_MEMORY_TOOL_NAME in always_include
 
-    async def test_create_agent_registers_activity_log_tool_from_middleware(self):
-        """ActivityLogMiddleware 暴露的工具应进入 Agent 工具和筛选候选。"""
+    async def test_create_agent_registers_memory_tool_from_middleware(self):
+        """MemoryMiddleware 暴露的工具应进入 Agent 工具和筛选候选。"""
         captured = {}
-        activity_tool = SimpleNamespace(name=QUERY_ACTIVITY_LOG_TOOL_NAME)
+        memory_tool = SimpleNamespace(name=SEARCH_MEMORY_TOOL_NAME)
         agent = MoviePilotAgent(
             session_id="normal-session",
             user_id="system",
@@ -643,12 +631,9 @@ class TestAgentBackgroundOutput:
                 "app.agent.orchestrator.RuntimeConfigMiddleware",
                 side_effect=lambda *args, **kwargs: "runtime",
             ),
-            patch("app.agent.orchestrator.MemoryMiddleware", side_effect=lambda *args, **kwargs: "memory"),
             patch(
-                "app.agent.orchestrator.ActivityLogMiddleware",
-                side_effect=lambda *args, **kwargs: _fake_activity_log_middleware(
-                    activity_tool
-                ),
+                "app.agent.orchestrator.MemoryMiddleware",
+                side_effect=lambda *args, **kwargs: _fake_memory_middleware(memory_tool),
             ),
             patch(
                 "app.agent.orchestrator.SummarizationMiddleware",
@@ -665,9 +650,9 @@ class TestAgentBackgroundOutput:
         ):
             created = await agent._create_agent(streaming=False)
 
-        assert activity_tool in created["tools"]
-        assert activity_tool in captured["selection_tools"]
-        assert QUERY_ACTIVITY_LOG_TOOL_NAME in captured["always_include"]
+        assert memory_tool in created["tools"]
+        assert memory_tool in captured["selection_tools"]
+        assert SEARCH_MEMORY_TOOL_NAME in captured["always_include"]
         _assert_internal_tool_registration(created, captured)
 
     async def test_create_agent_always_includes_subagent_tools(self):
@@ -710,10 +695,6 @@ class TestAgentBackgroundOutput:
             ),
             patch("app.agent.orchestrator.MemoryMiddleware", side_effect=lambda *args, **kwargs: "memory"),
             patch(
-                "app.agent.orchestrator.ActivityLogMiddleware",
-                side_effect=lambda *args, **kwargs: _fake_activity_log_middleware(),
-            ),
-            patch(
                 "app.agent.orchestrator.SummarizationMiddleware",
                 side_effect=lambda *args, **kwargs: "summary",
             ),
@@ -732,8 +713,8 @@ class TestAgentBackgroundOutput:
         assert SUBAGENT_CONTROL_TOOL_NAME in captured["always_include"]
         _assert_internal_tool_registration(created, captured)
 
-    async def test_create_agent_keeps_activity_log_for_normal_session(self):
-        """普通渠道会话在计划和记忆上下文后保留活动日志。"""
+    async def test_create_agent_uses_one_memory_middleware_for_normal_session(self):
+        """普通渠道会话用同一个中间件提供记忆检索和活动记录。"""
         agent = MoviePilotAgent(
             session_id="normal-session",
             user_id="system",
@@ -763,10 +744,6 @@ class TestAgentBackgroundOutput:
             ),
             patch("app.agent.orchestrator.MemoryMiddleware", side_effect=lambda *args, **kwargs: "memory"),
             patch(
-                "app.agent.orchestrator.ActivityLogMiddleware",
-                side_effect=lambda *args, **kwargs: _fake_activity_log_middleware(),
-            ),
-            patch(
                 "app.agent.orchestrator.SummarizationMiddleware",
                 side_effect=lambda *args, **kwargs: "summary",
             ),
@@ -788,7 +765,6 @@ class TestAgentBackgroundOutput:
             "runtime",
             "PlanMiddleware",
             "memory",
-            "activity",
             "patch",
             "FinalRequestCompactionMiddleware",
             "VisionMiddleware",

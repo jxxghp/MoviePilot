@@ -12,14 +12,20 @@ def test_registry_owns_classes_instances_and_stable_snapshots():
     registry.classes["Demo"] = plugin_class
     registry.running["Demo"] = plugin_instance
 
+    classes_snapshot = registry.classes_snapshot()
     snapshot = registry.running_snapshot()
-    registry.running["Other"] = SimpleNamespace(plugin_name="其它")
 
     assert registry.has_class("Demo")
     assert registry.plugin_class("Demo") is plugin_class
     assert registry.instance("Demo") is plugin_instance
     assert registry.plugin_ids() == ["Demo"]
+    assert registry.running_ids() == ["Demo"]
+
+    registry.classes["Other"] = type("Other", (), {})
+    registry.running["Other"] = SimpleNamespace(plugin_name="其它")
+
     assert registry.running_ids() == ["Demo", "Other"]
+    assert list(classes_snapshot) == ["Demo"]
     assert list(snapshot) == ["Demo"]
 
 

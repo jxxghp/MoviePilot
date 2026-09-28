@@ -238,6 +238,25 @@ def test_rust_metainfo_parser_handles_video_from_entry():
     assert result["fps"] == 120
 
 
+def test_rust_metainfo_keeps_title_token_matching_subtitle_extension():
+    """Rust 标题和路径入口都应保留与字幕扩展名同名的片名词元。"""
+    title = (
+        "Kick-Ass.2010.PROPER.2160p.BluRay.REMUX.HEVC.DTS-HD.MA."
+        "TrueHD.7.1.Atmos-FGT.mkv"
+    )
+    options = _metainfo_options()
+    parsed_title = rust_accel.parse_metainfo(title, options=options)
+    parsed_path = rust_accel.parse_metainfo_path(
+        f"/movies/{title}",
+        options=options,
+    )
+
+    assert parsed_title["en_name"] == "Kick Ass"
+    assert parsed_title["year"] == "2010"
+    assert parsed_path["en_name"] == "Kick Ass"
+    assert parsed_path["year"] == "2010"
+
+
 def test_rust_metainfo_parser_handles_anime_from_entry():
     """
     Rust MetaInfo 入口应完整识别 Anime 标题。

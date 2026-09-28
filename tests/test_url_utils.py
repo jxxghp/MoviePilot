@@ -1,6 +1,6 @@
 import pytest
 
-from app.foundation.url import UrlUtils
+from app.foundation.url import UrlUtils, url_matches_trusted_hosts
 
 
 @pytest.mark.parametrize(
@@ -29,3 +29,18 @@ def test_normalize_http_url_preserves_address_except_outer_whitespace(url):
 def test_standardize_base_url_keeps_permissive_contract():
     assert UrlUtils.standardize_base_url("example.com") == "http://example.com/"
     assert UrlUtils.normalize_http_url("example.com") is None
+
+
+@pytest.mark.parametrize(
+    ("url", "trusted_hosts", "expected"),
+    [
+        ("https://Media.Example:8096/image", {"media.example:8096"}, True),
+        ("http://media.example:8096/image", {"MEDIA.EXAMPLE"}, True),
+        ("http://media.example:8096/image", {"media.example:8097"}, False),
+        ("ftp://media.example/image", {"media.example"}, False),
+        ("http://[::1/image", {"::1"}, False),
+    ],
+)
+def test_url_matches_trusted_hosts_requires_exact_http_host(url, trusted_hosts, expected):
+    """受信主机匹配只放行 HTTP(S) 且端口或主机名精确命中的地址。"""
+    assert url_matches_trusted_hosts(url, trusted_hosts) is expected

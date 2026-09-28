@@ -140,6 +140,7 @@ def test_metadata_mapper_preserves_package_generation_without_serializing_it():
         plugin_instance=lambda _plugin_id: None,
         plugin_class=lambda _plugin_id: None,
         annotate_system_version=lambda info: info,
+        annotate_runtime_compatibility=lambda info: info,
         is_package_compatible=lambda _info, _version: True,
         auth_checker=lambda _plugin, _source: True,
         version_compare=lambda _left, _operator, _right: False,

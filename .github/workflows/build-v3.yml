@@ -67,8 +67,11 @@ jobs:
         run: |
           plugins_revision=$(git ls-remote https://github.com/jxxghp/MoviePilot-Plugins.git refs/heads/main | awk '{print $1}')
           resources_revision=$(git ls-remote https://github.com/jxxghp/MoviePilot-Resources.git refs/heads/main | awk '{print $1}')
-          frontend_digest=$(gh api "repos/jxxghp/MoviePilot-Frontend/releases/tags/${FRONTEND_VERSION}" \
-            --jq '.assets[] | select(.name == "dist.zip") | .digest')
+          frontend_release_id=$(gh api "repos/jxxghp/MoviePilot-Frontend/releases/tags/${FRONTEND_VERSION}" \
+            --jq '.id')
+          [[ "$frontend_release_id" =~ ^[0-9]+$ ]]
+          frontend_digest=$(gh api "repos/jxxghp/MoviePilot-Frontend/releases/${frontend_release_id}/assets" \
+            --jq '.[] | select(.name == "dist.zip") | .digest')
 
           [[ "$plugins_revision" =~ ^[0-9a-f]{40}$ ]]
           [[ "$resources_revision" =~ ^[0-9a-f]{40}$ ]]

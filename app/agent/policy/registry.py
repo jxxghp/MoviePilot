@@ -118,7 +118,7 @@ class ToolPolicyRegistry:
                 )
             return ActionPolicy(
                 effect=(ActionEffect.REVERSIBLE_WRITE if action in {"switch", "update"} else ActionEffect.UNKNOWN),
-                required_role=(PrincipalRole.SYSTEM_ADMIN if action == "update" else PrincipalRole.USER),
+                required_role=PrincipalRole.SYSTEM_ADMIN,
                 confirmation=ConfirmationMode.REQUIRED,
                 recovery=RecoveryMode.BEFORE_STATE,
                 result_sensitivity=ResultSensitivity.NORMAL,

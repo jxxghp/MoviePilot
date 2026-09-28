@@ -634,6 +634,12 @@
     },
     "target": "asyncio.to_thread"
   },
+  "app/startup/composition/network.py:asyncio.to_thread": {
+    "owners": {
+      "_NetworkTestTransportAdapter.websocket": 1
+    },
+    "target": "asyncio.to_thread"
+  },
   "app/startup/composition/subscription.py:asyncio.to_thread": {
     "owners": {
       "async_rule_group_mutation_scope": 1

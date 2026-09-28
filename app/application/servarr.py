@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional, Protocol
+from typing import TYPE_CHECKING, Any, Optional, Protocol
 
 from app.schemas.types import MediaSource
+
+if TYPE_CHECKING:
+    from app.application.subscription.delete import AsyncUnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,10 +82,12 @@ class ServarrSubscriptionService:
         *,
         async_repository: ServarrAsyncSubscriptionRepository,
         sync_repository: ServarrSyncSubscriptionRepository,
+        unit_of_work: Optional[AsyncUnitOfWork] = None,
     ) -> None:
-        """保存请求级同步和异步订阅仓储。"""
+        """保存订阅仓储，并按需保存请求级异步事务端口。"""
         self._async_repository = async_repository
         self._sync_repository = sync_repository
+        self._unit_of_work = unit_of_work
 
     async def list(self) -> list[ServarrSubscription]:
         """读取全部订阅并转换为脱离 ORM 会话的投影。"""
@@ -136,7 +141,14 @@ class ServarrSubscriptionService:
         """删除存在的订阅并报告是否实际命中。"""
         if not await self._async_repository.async_get(subscribe_id):
             return False
-        await self._async_repository.async_delete(subscribe_id)
+        try:
+            await self._async_repository.async_delete(subscribe_id)
+            if self._unit_of_work is not None:
+                await self._unit_of_work.commit()
+        except Exception:
+            if self._unit_of_work is not None:
+                await self._unit_of_work.rollback()
+            raise
         return True
 
     @staticmethod

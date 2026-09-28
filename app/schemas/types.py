@@ -406,6 +406,8 @@ class SystemConfigKey(Enum):
     NotificationSendTime = "NotificationSendTime"
     # AI智能体配置
     AIAgentConfig = "AIAgentConfig"
+    # GitHub OAuth 设备授权元数据
+    GithubAuth = "GithubAuth"
     # AI智能体外部MCP服务器配置
     AIAgentMcpServers = "AIAgentMcpServers"
     # 通知消息格式模板

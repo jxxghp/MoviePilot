@@ -20,6 +20,7 @@ from feedback_issue_common import (
     classify_failure,
     format_doctor_summary,
     format_log_selection,
+    github_headers_for_repo,
     issue_api_url,
     issue_labels,
     load_diagnostics_logs,
@@ -103,10 +104,14 @@ def build_no_token_result(payload: dict[str, Any], logs: str) -> dict[str, Any]:
     }
 
 
-def post_github_issue(payload: dict[str, Any], body: str) -> Any:
+def post_github_issue(
+    payload: dict[str, Any],
+    body: str,
+    auth_headers: dict[str, str],
+) -> Any:
     """调用 GitHub REST API 创建 Issue 并返回响应对象。"""
     request_headers = {
-        **settings.GITHUB_HEADERS,
+        **auth_headers,
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
         "Content-Type": "application/json",
@@ -223,14 +228,18 @@ def submit_issue(payload_file: str | Path, username: str) -> dict[str, Any]:
         return result
 
     record_user_submission(username, state)
-    if not settings.GITHUB_TOKEN:
+    auth_headers = github_headers_for_repo(payload["target_repo"])
+    has_authorization = any(
+        key.lower() == "authorization" and value for key, value in auth_headers.items()
+    )
+    if not has_authorization:
         save_submission_state(state)
         return build_no_token_result(payload, combined_logs)
 
     record_submission(payload["title"], body, state, payload["target_repo"])
     save_submission_state(state)
     try:
-        response = post_github_issue(payload, body)
+        response = post_github_issue(payload, body, auth_headers)
     except Exception as err:
         return build_api_failure_result(
             reason="network_error",

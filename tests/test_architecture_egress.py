@@ -3,8 +3,8 @@
 import json
 from pathlib import Path
 
-from scripts.architecture.baseline import collect_dependency_baseline
 from scripts.architecture.egress import collect_direct_egress
+from tests.architecture_cache import dependency_baseline
 
 PROJECT_ROOT = Path(__file__).parents[1]
 DEPENDENCY_POLICY_PATH = (
@@ -52,6 +52,7 @@ FROZEN_EGRESS_EDGES_BY_REASON = {
         ("app.modules.webpush", "pywebpush"),
     },
     "streaming_protocol": {
+        ("app.startup.composition.network", "websocket"),
         ("app.modules.qqbot.gateway", "websocket"),
         ("app.modules.rtorrent.rtorrent", "socket.create_connection"),
         ("app.modules.rtorrent.rtorrent", "xmlrpc.client.ServerProxy"),
@@ -95,8 +96,8 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.adapters.network.doh", "socket.getaddrinfo"): "4ff03419dfacc6bf582b7d4421dd5a0666a63f8ca79be2b1e625f4c8f4c96b71",
     ("app.adapters.network.doh", "urllib.request"): "6f5f5fd3da02a9e780ea5e7cc1e47bd962314a1a358f14b4ee698485f96ab52b",
     ("app.adapters.network.http", "httpx"): "c00458c868240f1adfe6278ba22bd5c4782e9bd2fcf896114c2288bf82981ee3",
-    ("app.adapters.network.http", "httpx2"): "a70799e9930ff79cd28ebed92836c8108cd2d18bc668e0081f68533d84f69d0d",
-    ("app.adapters.network.http", "requests"): "dffac27a2e24803dd7c50b238ba44b4f106b7b105e63a487edc12258f65c710d",
+    ("app.adapters.network.http", "httpx2"): "73879afc31531cc27241f21e0edf3b8e493a7d9aef973d0c2e28165d006e631d",
+    ("app.adapters.network.http", "requests"): "c95df710a8536328f5ee005c0ce065b9528f2f4ebae1f077315102d8c0f4c01f",
     ("app.adapters.network.http", "urllib3"): "66cbd8ec4e7552bd458db0baada30f1953e6d0493793822d23a2199567bca98a",
     ("app.adapters.network.ip", "socket.gethostbyname"): "a43e8969e2f26546fcf925b258728b309f1b9b966ff3c7b48a64273b8c82d048",
     ("app.adapters.network.resolver", "socket.getaddrinfo"): "1b1ce6763d730d7aa9c35d32a668560013c939467dcb3087357ffa53653ff306",
@@ -123,7 +124,7 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.modules.filemanager.storages.smb", "smbprotocol"): "f02686afd99c59820dffa7b4c2627a0be1ad62980c98a9cd33b7564697842b22",
     ("app.modules.filemanager.storages.u115", "oss2"): "f7b89c8ae6dad2603f0a9e0caaa159769aef5b3581d7e728f62445b979366eae",
     ("app.modules.jellyfin.jellyfin", "requests"): "5c46d09ca9a4bcc0bae21ca5d554ef09baa3f901c562b27c5f5ee1439c7746b5",
-    ("app.modules.plex.plex", "plexapi"): "76c1334863dc6c6623ce6ad3415bec5ff92656f51c31e4d982285898f193e57e",
+    ("app.modules.plex.plex", "plexapi"): "55baa4290bb62468d504e954add3921c0068f3a3c77aa3db92667ae9022909ca",
     ("app.modules.qbittorrent.qbittorrent", "qbittorrentapi"): "b2f5a27f0c54cf95ed42fe99848fd6c9c0641caca8bc4ff8006a411cb427066d",
     ("app.modules.qqbot.gateway", "websocket"): "6f6b7d61f3a95e620e67c450d544f0aa077f087a188d98f32e4501d94c6b37ae",
     ("app.modules.rtorrent.rtorrent", "http.client"): "6adc93b3bc479dfe81197554c7977930a60abc51714f14ef29298eb40730aaf7",
@@ -137,6 +138,7 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.modules.transmission.transmission", "transmission_rpc"): "1652e661cb17dbadb039fdc4ab73d6d06e47eb118292ba3693313e45834959cf",
     ("app.modules.webpush", "pywebpush"): "389c73b06150e3d5bcaf31f35a25178873d2ed38ef9a28354cb9bab691eeab76",
     ("app.modules.wechat.wechatbot", "websocket"): "1bae78270eadce0571e2caaa111a5c0a9065ba2da97ebb26b8a5b76d3ed5eef6",
+    ("app.startup.composition.network", "websocket"): "09e1909ac750fe40b145dde8fee52eedf84aaf2123f6a1bc38109252c89d6000",
     ("app.modules.zspace.zspace", "requests"): "9df3fd27b9696d45a72e7c8f67b5a9ad79a7371d1fe690bbaa17485bd1960d51",
     ("app.startup.lifecycle", "urllib3"): "cb6f0a314aeb1e2d3e76c240aa20460ac0c36d9f5c18c1a6ea3170f64dd3366b",
     ("app.testing.network", "socket.getaddrinfo"): "ebf33718b54c81e1f575401da4a0bef5aa0e1ddc284e201f557897feeca71c6d",
@@ -670,7 +672,7 @@ class Service:
 
 def test_current_egress_facts_are_complete_and_self_consistent() -> None:
     """当前宿主 egress identity 必须完整、可收缩、排序且统计自洽。"""
-    value = collect_dependency_baseline()["direct_egress"]
+    value = dependency_baseline()["direct_egress"]
     entries = value["entries"]
     application_entries = [
         entry
@@ -720,7 +722,7 @@ def test_current_egress_facts_are_complete_and_self_consistent() -> None:
 
 def test_current_egress_facts_match_exact_policy() -> None:
     """现存事实必须逐条分类，且 registry/scope 不得与 collector 漂移。"""
-    facts = collect_dependency_baseline()["direct_egress"]
+    facts = dependency_baseline()["direct_egress"]
     policy = json.loads(DEPENDENCY_POLICY_PATH.read_text(encoding="utf-8"))
     egress_policy = policy["direct_egress"]
     groups = egress_policy["groups"]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import json
 import os
@@ -64,7 +65,8 @@ class SystemUpdateManager(metaclass=SingletonClass):
         "https://github.com/jxxghp/MoviePilot/archive/refs/tags/{tag}.zip"
     )
     _VERSION_PATTERN = re.compile(r"^v3\.\d+\.\d+(?:[-.](?:alpha|beta|rc)\d*)?$", re.I)
-    _STABLE_VERSION_PATTERN = re.compile(r"^v3\.\d+\.\d+$", re.I)
+    # 稳定版允许 -N 后缀，用于不升小版本的临时修复（如 v3.0.10-1）
+    _STABLE_VERSION_PATTERN = re.compile(r"^v3\.\d+\.\d+(?:-\d+)?$", re.I)
 
     def __init__(self) -> None:
         self._lock = threading.RLock()
@@ -316,16 +318,13 @@ class SystemUpdateManager(metaclass=SingletonClass):
                         }
                     )
                     changed = True
-                elif item.get("state") == "installing" and self._is_install_applied(item, target):
-                    self._reset_item_after_install(item)
-                    changed = True
                 elif (
-                    target == _RESOURCES
-                    and item.get("state") == "ready"
+                    item.get("state") in {"installing", "ready"}
                     and self._is_install_applied(item, target)
                 ):
-                    # 容器替换或手工安装可能先让运行资源达到目标版本，需丢弃残留待安装包。
-                    self._discard_prepared_target(target)
+                    if item.get("state") == "ready":
+                        # 容器替换或手工安装可能先让运行版本达到目标，需丢弃残留待安装包。
+                        self._discard_prepared_target(target)
                     self._reset_item_after_install(item)
                     changed = True
             resources_changed = (
@@ -343,7 +342,10 @@ class SystemUpdateManager(metaclass=SingletonClass):
     def _is_install_applied(self, item: dict[str, Any], target: SystemUpdateType) -> bool:
         """判断启动器应用后的当前版本是否已经达到安装目标。"""
         if target == _APPLICATION:
-            return bool(item.get("version")) and item["version"] == get_app_version()
+            target_version = str(item.get("version") or "")
+            return bool(target_version) and compare_version(
+                get_app_version(), ">=", target_version
+            ) is True
         current_auth, current_indexer = get_resource_versions()
         checks = []
         if item.get("auth_version"):
@@ -754,7 +756,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
         return str(value or os.getenv(key, default) or default).strip()
 
     def _sync_docker_dependencies(self, project_dir: Path, *, force: bool = False) -> bool:
-        """按新后端清单同步 Docker 共享虚拟环境依赖。"""
+        """按新后端清单同步依赖，自定义包源时冻结锁文件避免重新求解。"""
         current_dir = self._docker_app_dir
         if not force and all(
             (current_dir / name).read_bytes() == (project_dir / name).read_bytes()
@@ -764,12 +766,13 @@ class SystemUpdateManager(metaclass=SingletonClass):
 
         venv_path = self._setting_text("VENV_PATH", "/opt/venv")
         uv_bin = self._setting_text("UV_BIN", "/usr/local/bin/uv")
+        package_index = self._setting_text("PIP_PROXY")
         command = [
             uv_bin,
             "sync",
             "--project",
             str(project_dir),
-            "--locked",
+            "--frozen" if package_index else "--locked",
             "--inexact",
             "--no-dev",
             "--no-install-project",
@@ -777,7 +780,6 @@ class SystemUpdateManager(metaclass=SingletonClass):
             f"{venv_path}/bin/python3",
             *runtime_sync_arguments(),
         ]
-        package_index = self._setting_text("PIP_PROXY")
         if package_index:
             command.extend(("--default-index", package_index))
         environment = os.environ.copy()
@@ -995,10 +997,33 @@ class SystemUpdateManager(metaclass=SingletonClass):
                 self._remove_path(current)
             previous.replace(current)
 
+    def _backup_docker_current(
+        self, current: Path, previous: Path, temporary_root: Path
+    ) -> None:
+        """
+        将 Docker 当前目录移入回滚备份，并兼容 OverlayFS 的目录重命名限制。
+
+        OverlayFS 的镜像层目录可能无法直接 ``rename`` 到 upper 层。此时先完整复制
+        到更新事务的临时目录，复制成功后再把临时备份提升为正式回滚目录，避免将未
+        完成的备份交给回滚逻辑。
+        """
+        try:
+            current.replace(previous)
+            return
+        except OSError as error:
+            if error.errno != errno.EXDEV:
+                raise
+
+        temporary_previous = temporary_root / f"{current.name}.__update_previous__"
+        shutil.copytree(current, temporary_previous, symlinks=True)
+        self._preserve_tree_ownership(current, temporary_previous)
+        temporary_previous.replace(previous)
+        self._remove_path(current)
+
     def _apply_docker_application(
         self, prepared: dict[str, Any], *, include_resources: bool
     ) -> None:
-        """原子替换 Docker 后端源码和前端静态目录，并同步依赖。"""
+        """Docker 事务替换后端源码和前端静态目录，并同步依赖。"""
         app_dir = self._docker_app_dir
         public_dir = self._docker_public_dir
         previous_app = self._docker_previous_app_dir
@@ -1027,9 +1052,11 @@ class SystemUpdateManager(metaclass=SingletonClass):
                     dependency_sync_started = True
                     self._sync_docker_dependencies(stage_app)
                 self._set_docker_pending("prepared")
-                app_dir.replace(previous_app)
+                self._backup_docker_current(app_dir, previous_app, temporary_root)
                 try:
-                    public_dir.replace(previous_public)
+                    self._backup_docker_current(
+                        public_dir, previous_public, temporary_root
+                    )
                     stage_app.replace(app_dir)
                     stage_public.replace(public_dir)
                 except OSError:

@@ -166,7 +166,13 @@ class AsyncProgressHelper:
         """
         current = await self._progress.get(self._key)
         if not current:
-            return
+            # 读取快照失败时仍需落地终态，避免 Redis 短暂故障让任务永久显示运行中。
+            current = {
+                "enable": False,
+                "value": 0,
+                "text": "",
+                "data": {},
+            }
         if data is not None:
             if not current.get('data'):
                 current['data'] = {}

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional, TypedDict
 
 import pytz  # type: ignore[import-untyped]
-from apscheduler.executors.pool import ThreadPoolExecutor
+from apscheduler.executors.pool import BasePoolExecutor
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.adapters.external.server import MoviePilotServerHelper
@@ -21,6 +21,7 @@ from app.application.scheduling import (  # noqa: E402
     JobRecoveryPolicy,
     JobSpec,
 )
+from app.runtime.execution import IdleCacheReleasingThreadPoolExecutor
 from app.runtime.scheduling import TimerUtils
 from app.scheduler.contract import _SchedulerOwnerBase
 from app.scheduler.services import SchedulerServices
@@ -70,6 +71,15 @@ def _wallpaper_job_specs(
     if not wallpaper:
         return ()
     return (JobSpec("random_wallpager", "壁纸缓存", services.get_wallpapers, "image"),)
+
+
+# APScheduler 未提供类型注解，基类在 mypy 中是 Any
+class _SchedulerThreadPoolExecutor(BasePoolExecutor):  # type: ignore[misc]
+    """APScheduler 线程池执行器：定时任务线程按需增长、不收缩，空闲时交还各自的分配器线程缓存。"""
+
+    def __init__(self, max_workers: int) -> None:
+        """以空闲时刷新线程缓存的线程池作为 APScheduler 的底层池。"""
+        super().__init__(IdleCacheReleasingThreadPoolExecutor(max_workers))
 
 
 class SchedulerCatalogOwner(_SchedulerOwnerBase):
@@ -232,7 +242,7 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
 
         self._scheduler = BackgroundScheduler(
             timezone=config.timezone,
-            executors={"default": ThreadPoolExecutor(config.scheduler_workers)},
+            executors={"default": _SchedulerThreadPoolExecutor(config.scheduler_workers)},
         )
 
         self._register_database_backup_job(config)

@@ -6,12 +6,12 @@ from app.api.endpoints.message import clear_notification_message, get_notificati
 from app.chain.base import ChainBase
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
-from app.db import AsyncSessionFactory, SessionFactory
+from app.db.session import AsyncSessionFactory, SessionFactory
 from app.db.oper.message import MessageOper
 from app.db.models.message import Message as MessageModel
 from app.db.oper.systemconfig import SystemConfigOper
 from app.application.messaging.message import MessageHelper, MessageQueryService
-from app.schemas import Message, MessageClearScope
+from app.schemas.message import Message, MessageClearScope
 from app.schemas.types import MediaType, MessageType, SystemConfigKey
 
 
@@ -182,6 +182,11 @@ def test_notification_post_message_is_persisted_without_sse_queue(monkeypatch) -
     chain = ChainBase()
 
     # messagequeue 是全局单例，用 monkeypatch 避免用例间污染
+    monkeypatch.setattr(
+        chain.user_repository,
+        "get_notification_settings",
+        lambda _username: {"telegram_userid": "admin-1"},
+    )
     send_message = Mock()
     monkeypatch.setattr(chain.messagequeue, "send_message", send_message)
     monkeypatch.setattr(chain.eventmanager, "send_event", Mock())
@@ -212,6 +217,11 @@ def test_agent_notification_post_message_is_persisted_without_sse_queue(monkeypa
     chain = ChainBase()
 
     # messagequeue 是全局单例，用 monkeypatch 避免用例间污染
+    monkeypatch.setattr(
+        chain.user_repository,
+        "get_notification_settings",
+        lambda _username: {"telegram_userid": "admin-1"},
+    )
     send_message = Mock()
     monkeypatch.setattr(chain.messagequeue, "send_message", send_message)
     monkeypatch.setattr(chain.eventmanager, "send_event", Mock())
@@ -240,6 +250,11 @@ def test_transient_notification_post_message_skips_history_but_dispatches(monkey
     chain = ChainBase()
 
     # messagequeue 是全局单例，用 monkeypatch 避免用例间污染
+    monkeypatch.setattr(
+        chain.user_repository,
+        "get_notification_settings",
+        lambda _username: {"telegram_userid": "admin-1"},
+    )
     send_message = Mock()
     monkeypatch.setattr(chain.messagequeue, "send_message", send_message)
     send_event = Mock()

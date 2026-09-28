@@ -1,0 +1,85 @@
+# Trusted run for jxxghp/MoviePilot. The protected control ref follows main.
+name: MoviePilot Codex trusted run
+
+on:
+  workflow_dispatch:
+    inputs:
+      prompt_name:
+        required: true
+        type: string
+      source_event:
+        required: true
+        type: string
+      target_kind:
+        required: true
+        type: string
+      target_number:
+        required: false
+        type: string
+      target_ref:
+        required: false
+        type: string
+      target_sha:
+        required: false
+        type: string
+      target_run_id:
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  shadow:
+    if: ${{ vars.CODEX_ENABLED == 'true' && vars.CODEX_PUBLISH_COMMENTS != 'true' }}
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    uses: jxxghp/MoviePilot-Maintenance/.github/workflows/codex-event.yml@main
+    with:
+      control_repository: jxxghp/MoviePilot-Maintenance
+      control_ref: main
+      prompt_name: ${{ inputs.prompt_name }}
+      codex_model: ${{ vars.CODEX_MODEL }}
+      codex_effort: ${{ vars.CODEX_EFFORT || 'max' }}
+      openai_base_url: ${{ vars.OPENAI_BASE_URL }}
+      publish_comments: false
+      autofix_enabled: false
+      telegram_enabled: false
+      source_event: ${{ inputs.source_event }}
+      target_kind: ${{ inputs.target_kind }}
+      target_number: ${{ inputs.target_number }}
+      target_ref: ${{ inputs.target_ref }}
+      target_sha: ${{ inputs.target_sha }}
+      target_run_id: ${{ inputs.target_run_id }}
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+  propose:
+    if: ${{ vars.CODEX_ENABLED == 'true' && vars.CODEX_PUBLISH_COMMENTS == 'true' }}
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    uses: jxxghp/MoviePilot-Maintenance/.github/workflows/codex-propose.yml@main
+    with:
+      control_repository: jxxghp/MoviePilot-Maintenance
+      control_ref: main
+      prompt_name: ${{ inputs.prompt_name }}
+      codex_model: ${{ vars.CODEX_MODEL }}
+      codex_effort: ${{ vars.CODEX_EFFORT || 'max' }}
+      openai_base_url: ${{ vars.OPENAI_BASE_URL }}
+      telegram_enabled: ${{ vars.TELEGRAM_ENABLED == 'true' && vars.TELEGRAM_CHAT_ID != '' }}
+      telegram_chat_id: ${{ vars.TELEGRAM_ENABLED == 'true' && vars.TELEGRAM_CHAT_ID || '' }}
+      source_event: ${{ inputs.source_event }}
+      target_kind: ${{ inputs.target_kind }}
+      target_number: ${{ inputs.target_number }}
+      target_ref: ${{ inputs.target_ref }}
+      target_sha: ${{ inputs.target_sha }}
+      target_run_id: ${{ inputs.target_run_id }}
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}

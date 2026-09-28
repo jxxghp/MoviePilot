@@ -144,6 +144,20 @@ def apply_allowed_episodes(need_episodes: Set[int], context: Context) -> Set[int
     return effective
 
 
+def allows_full_pack(episodes: Set[int], context: Context) -> bool:
+    """整包下载前确认包内每一集均获当前候选的允许集放行。"""
+    return apply_allowed_episodes(episodes, context) == episodes
+
+
+def allows_full_season(
+        seasons: List[int], required_episodes: Set[int], context: Context,
+) -> bool:
+    """整季候选仅在无按集约束，或单季目标全集均获准时整体下载。"""
+    if context.allowed_episodes is None:
+        return True
+    return len(seasons) == 1 and bool(required_episodes) and allows_full_pack(required_episodes, context)
+
+
 def get_movie_download_key(context: Context) -> str:
     """
     获取电影下载去重键，确保失败候选不会阻断后续同名资源尝试。

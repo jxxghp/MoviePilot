@@ -1,7 +1,7 @@
 """搜索身份、关键词和缺集计划 owner。"""
 
 from copy import deepcopy
-from typing import Dict, List, Optional, Tuple, Union, cast
+from typing import Dict, List, Optional, Tuple, Union
 
 from app.application.configuration import (
     get_chain_runtime_config_snapshot,
@@ -58,7 +58,8 @@ class SearchPlanOwner(_SearchOwnerBase):
         if not isinstance(mediainfo, MusicInfo) and not mediainfo.tmdb_id:
             meta = MetaInfo(title=mediainfo.title)
             mediainfo.title = meta.name
-            mediainfo.season = cast(int, meta.begin_season)
+            if meta.begin_season is not None:
+                mediainfo.season = meta.begin_season
         return mediainfo
 
     @staticmethod

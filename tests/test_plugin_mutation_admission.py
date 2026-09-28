@@ -216,6 +216,7 @@ def test_reload_attributes_gil_transition_to_plugin(
 
     warning.assert_called_once()
     assert warning.call_args.args[1] == "DemoPlugin"
+    assert plugin_manager.get_plugin_gil_fallbacks() == ["DemoPlugin"]
 
 
 @pytest.mark.asyncio

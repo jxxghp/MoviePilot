@@ -6,8 +6,12 @@ from io import BytesIO
 from typing import Any, Optional
 
 import pytest
+from langchain.agents import create_agent
+from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langgraph.checkpoint.memory import InMemorySaver
 from PIL import Image
-from pydantic import ValidationError
+from pydantic import Field, ValidationError
 
 from app.adapters.network.http import AsyncRequestUtils
 from app.agent.middleware.vision import VisionMiddleware
@@ -17,6 +21,7 @@ from app.agent.tools.impl.view_image import (
     ViewImageInput,
     ViewImageTool,
 )
+from app.agent.tools.result import TOOL_OBSERVATION_MARKER
 from app.application.security.url import SecurityUtils
 
 
@@ -64,6 +69,21 @@ class _StreamContext:
 def _tool() -> ViewImageTool:
     """构造不依赖宿主启动组合根的工具实例。"""
     return ViewImageTool(session_id="view-image-test", user_id="owner")
+
+
+class _RecordingImageModel(FakeMessagesListChatModel):
+    """记录真实 Agent 图发送给模型的消息，验证图片不是只停留在 formatter。"""
+
+    requests: list[list[Any]] = Field(default_factory=list)
+
+    def bind_tools(self, _tools, **_kwargs):
+        """接受 LangGraph 的工具绑定并保留预设模型响应。"""
+        return self
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+        """保存模型出站消息后返回预设的工具调用或最终答复。"""
+        self.requests.append([message.model_copy(deep=True) for message in messages])
+        return await super()._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
 
 
 def test_input_requires_exactly_one_image_source() -> None:
@@ -208,3 +228,58 @@ def test_image_tool_is_registered_for_agent_but_keeps_raw_data_out_of_generic_fo
     tool_names = {tool_class.model_fields["name"].default for tool_class in MoviePilotToolFactory.BUILTIN_TOOL_CLASSES}
     assert "view_image" in tool_names
     assert IMAGE_MAX_BYTES == 768 * 1024
+
+
+@pytest.mark.asyncio
+async def test_view_image_reaches_multimodal_model_through_real_agent_graph() -> None:
+    """真实 ToolNode 与 VisionMiddleware 应把 view_image 图块送进模型 HumanMessage。"""
+    encoded = base64.b64encode(_image_bytes()).decode("ascii")
+    tool = _tool()
+    model = _RecordingImageModel(
+        responses=[
+            AIMessage(
+                content="",
+                tool_calls=[
+                    {
+                        "id": "view-image-call",
+                        "name": "view_image",
+                        "args": {"image_data": encoded, "detail": "high"},
+                    }
+                ],
+            ),
+            AIMessage(content="已收到图片。"),
+        ]
+    )
+    graph = create_agent(
+        model=model,
+        tools=[tool],
+        middleware=[VisionMiddleware(supports_images=lambda _model: True)],
+        checkpointer=InMemorySaver(),
+    )
+
+    result = await graph.ainvoke(
+        {"messages": [HumanMessage(content="请看看这张图片")]},
+        {"configurable": {"thread_id": "view-image-integration"}},
+    )
+
+    assert result["messages"][-1].content == "已收到图片。"
+    assert len(model.requests) == 2
+    model_request = model.requests[-1]
+    tool_messages = [message for message in model_request if isinstance(message, ToolMessage)]
+    assert len(tool_messages) == 1
+    assert isinstance(tool_messages[0].content, list)
+    assert not any(block.get("type") == "image_url" for block in tool_messages[0].content)
+
+    observations = [
+        message
+        for message in model_request
+        if isinstance(message, HumanMessage)
+        and message.additional_kwargs.get(TOOL_OBSERVATION_MARKER) is True
+    ]
+    assert len(observations) == 1
+    observation_blocks = observations[0].content
+    assert isinstance(observation_blocks, list)
+    image_blocks = [block for block in observation_blocks if block.get("type") == "image_url"]
+    assert len(image_blocks) == 1
+    assert image_blocks[0]["image_url"]["detail"] == "high"
+    assert image_blocks[0]["image_url"]["url"].startswith("data:image/png;base64,")

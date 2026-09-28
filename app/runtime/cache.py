@@ -755,11 +755,28 @@ def is_fresh() -> bool:
         return False
 
 
-def FileCache(base: Optional[Path] = None, ttl: Optional[int] = None) -> CacheBackend:
+def FileCache(
+    base: Optional[Path] = None,
+    ttl: Optional[int] = None,
+    *,
+    local_only: bool = False,
+) -> CacheBackend:
     """
     获取文件缓存后端实例（Redis或文件系统），ttl仅在Redis环境中有效
+
+    默认路由保持历史契约：``CACHE_BACKEND_TYPE=redis`` 时返回 Redis 后端，
+    供 Chain pickle 缓存、机器人登录态等小体积结构化状态在 Redis 中统一管理；
+    插件通过 SDK 调用 ``FileCache()`` 的行为也因此保持不变。
+
+    :param base: 文件系统缓存根目录，未传入时使用 ``TEMP_PATH``
+    :param ttl: Redis 后端的默认存活时间，单位秒；文件系统后端不按键过期，
+        由启动清理任务按目录与文件修改时间回收
+    :param local_only: 为真时始终使用本地文件系统，忽略 Redis 配置。图片、种子、
+        远程目录快照等大体积二进制载荷必须设置此项：写入 Redis 会占满其内存，
+        在 ``allkeys-lru`` 策略下挤出共享实例中的其他数据，并让 RDB 快照反复
+        重写整库造成持续磁盘写入
     """
-    if _backend_type_provider() == "redis":
+    if not local_only and _backend_type_provider() == "redis":
         if _redis_factory is None:
             raise RuntimeError("Redis 缓存适配器尚未由启动层配置")
         return _redis_factory(ttl if ttl is not None else _file_ttl_provider())
@@ -771,11 +788,20 @@ def FileCache(base: Optional[Path] = None, ttl: Optional[int] = None) -> CacheBa
 def AsyncFileCache(
     base: Optional[Path] = None,
     ttl: Optional[int] = None,
+    *,
+    local_only: bool = False,
 ) -> AsyncCacheBackend:
     """
     获取文件异步缓存后端实例（Redis或文件系统），ttl仅在Redis环境中有效
+
+    路由规则与 ``FileCache`` 一致；大体积二进制载荷须设置 ``local_only=True``，
+    使同一缓存区的同步与异步实例始终落在同一存储上。
+
+    :param base: 文件系统缓存根目录，未传入时使用 ``TEMP_PATH``
+    :param ttl: Redis 后端的默认存活时间，单位秒
+    :param local_only: 为真时始终使用本地文件系统，忽略 Redis 配置
     """
-    if _backend_type_provider() == "redis":
+    if not local_only and _backend_type_provider() == "redis":
         if _async_redis_factory is None:
             raise RuntimeError("异步 Redis 缓存适配器尚未由启动层配置")
         return _async_redis_factory(
@@ -788,16 +814,20 @@ def AsyncFileCache(
 
 def Cache(cache_type: Literal['ttl', 'lru'] = 'ttl',
           maxsize: Optional[int] = None,
-          ttl: Optional[int] = None) -> AtomicCacheBackend:
+          ttl: Optional[int] = None,
+          *,
+          local_only: bool = False) -> AtomicCacheBackend:
     """
     根据配置获取缓存后端实例（内存或Redis），maxsize仅在未启用Redis时生效
 
     :param cache_type: 缓存类型，仅使用内存缓存时生效，支持 'ttl'（默认）和 'lru'
     :param maxsize: 缓存的最大条目数，仅使用cachetools时生效
     :param ttl: 缓存的默认存活时间，单位秒
+    :param local_only: 为真时始终使用进程内有界内存缓存，忽略 Redis 配置；
+        用于图片等二进制载荷，Redis 后端不支持 maxsize，写入后只能等 TTL 回收
     :return: 返回缓存后端实例
     """
-    if _backend_type_provider() == "redis":
+    if not local_only and _backend_type_provider() == "redis":
         if _redis_factory is None:
             raise RuntimeError("Redis 缓存适配器尚未由启动层配置")
         return _redis_factory(ttl)
@@ -806,16 +836,19 @@ def Cache(cache_type: Literal['ttl', 'lru'] = 'ttl',
 
 def AsyncCache(cache_type: Literal['ttl', 'lru'] = 'ttl',
                maxsize: Optional[int] = None,
-               ttl: Optional[int] = None) -> AsyncCacheBackend:
+               ttl: Optional[int] = None,
+               *,
+               local_only: bool = False) -> AsyncCacheBackend:
     """
     根据配置获取异步缓存后端实例（内存或Redis），maxsize仅在未启用Redis时生效
 
     :param cache_type: 缓存类型，仅使用内存缓存时生效，支持 'ttl'（默认）和 'lru'
     :param maxsize: 缓存的最大条目数，仅使用cachetools时生效
     :param ttl: 缓存的默认存活时间，单位秒
+    :param local_only: 为真时始终使用进程内有界内存缓存，忽略 Redis 配置
     :return: 返回异步缓存后端实例
     """
-    if _backend_type_provider() == "redis":
+    if not local_only and _backend_type_provider() == "redis":
         if _async_redis_factory is None:
             raise RuntimeError("异步 Redis 缓存适配器尚未由启动层配置")
         return _async_redis_factory(ttl)
@@ -826,7 +859,8 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
            ttl_provider: Optional[Callable[[], Optional[int]]] = None,
            skip_none: Optional[bool] = True, skip_empty: Optional[bool] = False, shared_key: Optional[str] = None,
            skip_if: Optional[Callable[[Any], bool]] = None,
-           empty_ttl: Optional[int] = None, empty_if: Optional[Callable[[Any], bool]] = None):
+           empty_ttl: Optional[int] = None, empty_if: Optional[Callable[[Any], bool]] = None,
+           local_only: bool = False):
     """
     自定义缓存装饰器，支持配置缓存区域的 maxsize 和每个 key 的 ttl
 
@@ -847,6 +881,8 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
     :param empty_if: 判断返回值是否为空结果的谓词，返回真值时按 empty_ttl 写入；
         未传入时按假值判断（None, [], {}, "", set() 等视为空）；用于「结构合法但
         内容为空」的返回值（如 TMDB 搜索结果快照中 results 为空列表）
+    :param local_only: 为真时始终使用进程内有界内存缓存，忽略 Redis 配置；
+        返回值包含图片等二进制内容时必须设置，否则 Redis 模式下 maxsize 失效
     :return: 装饰器函数
     """
 
@@ -975,6 +1011,7 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
                 cache_type="ttl" if ttl is not None or ttl_provider is not None else "lru",
                 maxsize=maxsize,
                 ttl=ttl if ttl is not None else 1,
+                local_only=local_only,
             )
             # 异步函数的缓存装饰器
 
@@ -1033,6 +1070,7 @@ def cached(region: Optional[str] = None, maxsize: Optional[int] = 1024, ttl: Opt
                 cache_type="ttl" if ttl is not None or ttl_provider is not None else "lru",
                 maxsize=maxsize,
                 ttl=ttl if ttl is not None else 1,
+                local_only=local_only,
             )
             # 同步函数的缓存装饰器
 

@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
@@ -80,6 +80,7 @@ from app.application.plugin.transaction import (
 )
 from app.application.scheduling import update_plugin_job
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+from app.db.adapters.pluginidentity import TransactionalPluginIdentityStore
 from app.db.models.plugininstance import PluginInstance as PluginInstanceRecord
 from app.db.oper.plugindata import PluginDataOper
 from app.db.oper.plugininstance import PluginInstanceOper
@@ -90,11 +91,16 @@ from app.db.plugin.registry import (
 )
 from app.db.session import SessionFactory
 from app.db.uow import SqlAlchemyUnitOfWork
+from app.foundation.environment import is_free_threaded_runtime
 from app.foundation.version import compare_version
 from app.runtime.cache import async_fresh
 from app.runtime.compat.diagnostics import (
     configure_legacy_import_diagnostics,
     scan_plugin_legacy_imports,
+)
+from app.runtime.compat.imports import (
+    detect_plugins_package_root_shadowing,
+    restore_plugins_package_root,
 )
 from app.runtime.compat.resources import scan_plugin_resource_imports
 from app.runtime.execution import run_in_threadpool_to_completion
@@ -195,6 +201,21 @@ def _delete_plugin_data(plugin_id: str) -> None:
         ).execute(plugin_id)
     finally:
         session.close()
+
+
+def _read_plugin_runtime_declaration(plugin_id: str) -> Mapping[str, bool]:
+    """读取插件安装时随载荷提交的 package 运行时声明，供加载门禁判定代际与变体。
+
+    声明快照是运行目录唯一可离线信任的来源：插件目录里不存在主程序写入的 package
+    文件，市场索引又要联网才能取。存量安装可能还没有身份行或声明快照，这里一律回落
+    成空映射，保持"未声明即兼容"的历史语义。
+    """
+    identity = TransactionalPluginIdentityStore(SessionFactory).get(plugin_id)
+    declared = identity.declared_metadata if identity else None
+    if declared is None:
+        return {}
+    runtime = declared.to_json().get("runtime")
+    return runtime if isinstance(runtime, dict) else {}
 
 
 def _read_plugin_log_level(instance_id: str) -> LogLevelOverride:
@@ -415,13 +436,45 @@ def build_plugin_runtime_graph(host: PluginRuntimeHost) -> PluginRuntime:
             logger=logger,
             set_default_target=_set_plugin_default_target,
             clear_default_target=_clear_plugin_default_target,
+            runtime_declaration=_read_plugin_runtime_declaration,
         ),
         tool_build_max_attempts=PluginManager.AGENT_TOOLS_BUILD_MAX_ATTEMPTS,
     )
 
 
+def repair_plugin_package_root() -> list[str]:
+    """在导入任何插件前修复被旧版本实现遮蔽的插件安装包根。
+
+    UI 内更新由替换前的旧版本执行插件目录迁移，旧版 ``app/plugins/__init__.py``
+    会随插件目录进入新版运行目录并遮蔽 SDK 兼容符号，使全部插件导入失败。运行
+    目录只读时保留既有硬报错和诊断，不静默跳过。
+
+    :return: 被遮蔽的兼容符号名，包根正常时为空列表
+    """
+    init_file = (
+        Path(get_runtime_setting('ROOT_PATH')) / "app" / "plugins" / "__init__.py"
+    )
+    shadowed = detect_plugins_package_root_shadowing(init_file)
+    if not shadowed:
+        return []
+    symbols = "、".join(shadowed)
+    try:
+        backup_file = restore_plugins_package_root(init_file)
+    except OSError as error:
+        logger.error(
+            f"插件包根 {init_file} 自带旧版实现（{symbols}）且无法自动修复：{error}"
+        )
+        return shadowed
+    logger.warning(
+        f"插件包根 {init_file} 自带旧版实现（{symbols}），"
+        f"已备份为 {backup_file.name} 并恢复为命名空间入口"
+    )
+    return shadowed
+
+
 def configure_plugin_runtime_services() -> None:
-    """在模块对象图构造前发布插件 Runtime 工厂和应用层提供器。"""
+    """在模块对象图构造前修复插件包根，并发布插件 Runtime 工厂和应用层提供器。"""
+    repair_plugin_package_root()
     configure_plugin_catalog_factory(_build_plugin_catalog)
     configure_plugin_runtime_factory(build_plugin_runtime_graph)
     configure_plugin_runtime(
@@ -479,6 +532,7 @@ def configure_plugin_services() -> None:
             has_release_cache=market_transport.async_has_plugin_release_cache,
             releases=market_transport.async_get_plugin_release_versions,
             refresh_releases=refresh_plugin_releases,
+            free_threaded=is_free_threaded_runtime,
         )
     )
     configure_plugin_catalog_query(
@@ -489,6 +543,7 @@ def configure_plugin_services() -> None:
             online_candidates=plugin_manager.async_get_online_plugin_candidates,
             process_plugins=plugin_manager.process_plugins_list,
             identities=persistence.list_identities,
+            free_threaded=is_free_threaded_runtime,
         )
     )
     configure_plugin_rating_service(
@@ -553,7 +608,7 @@ def configure_plugin_services() -> None:
         inventory=load_inventory,
         identity=persistence.get_identity,
         candidate_compatibility=lambda candidate: (
-            market_transport.check_plugin_system_version(candidate.dto)
+            market_transport.check_plugin_install_compatibility(candidate.dto)
         ),
         executor=command,
         clock=lambda: datetime.now(timezone.utc),

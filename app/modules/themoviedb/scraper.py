@@ -234,6 +234,15 @@ class TmdbScraper:
         return {}
 
     @staticmethod
+    def __normalize_tmdb_id(value: object) -> Optional[int]:
+        """将外部集数据中的 TMDB ID 规范化为正整数。"""
+        try:
+            normalized = int(str(value).strip())
+        except (TypeError, ValueError):
+            return None
+        return normalized if normalized > 0 else None
+
+    @staticmethod
     def __gen_common_nfo(
         mediainfo: MediaInfo, doc: minidom.Document, root: minidom.Element
     ):
@@ -404,12 +413,13 @@ class TmdbScraper:
         doc = minidom.Document()
         root = DomUtils.add_node(doc, doc, "episodedetails")
         # TMDBID
-        uniqueid = DomUtils.add_node(doc, root, "uniqueid", str(episodeinfo.get("id")))
-        uniqueid.setAttribute("type", "tmdb")
-        uniqueid.setAttribute("default", "true")
-        # tmdbid
-        # 应与uniqueid一致 使用剧集id 否则jellyfin/emby会将此id覆盖上面的uniqueid
-        DomUtils.add_node(doc, root, "tmdbid", str(episodeinfo.get("id")))
+        episode_tmdb_id = TmdbScraper.__normalize_tmdb_id(episodeinfo.get("id"))
+        if episode_tmdb_id:
+            uniqueid = DomUtils.add_node(doc, root, "uniqueid", str(episode_tmdb_id))
+            uniqueid.setAttribute("type", "tmdb")
+            uniqueid.setAttribute("default", "true")
+            # 应与uniqueid一致，使用剧集id否则Jellyfin/Emby会覆盖上面的uniqueid。
+            DomUtils.add_node(doc, root, "tmdbid", str(episode_tmdb_id))
         # 标题
         DomUtils.add_node(
             doc, root, "title", episodeinfo.get("name") or "第 %s 集" % episode

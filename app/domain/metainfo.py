@@ -290,7 +290,9 @@ def _prepare_meta_input(
     应用识别词、显式标签和文件后缀规则，生成稳定的解析阶段输入。
     """
     original_title = title
-    parsed_title, apply_words = WordsMatcher().prepare(title, custom_words=custom_words)
+    parsed_title, parsed_subtitle, apply_words = WordsMatcher().prepare_with_subtitle(
+        title, subtitle, custom_words=custom_words
+    )
     # 完整 Rust 入口已经失败或被禁用，参考实现不得再次跨边界调用部分 Rust 解析器。
     parsed_title, explicit_metainfo = _find_metainfo_python(parsed_title)
     media_exts = get_media_extensions()
@@ -303,7 +305,7 @@ def _prepare_meta_input(
     return _PreparedMetaInput(
         original_title=original_title,
         parsed_title=parsed_title,
-        subtitle=subtitle,
+        subtitle=parsed_subtitle,
         isfile=isfile,
         apply_words=tuple(apply_words or ()),
         explicit_metainfo=explicit_metainfo,

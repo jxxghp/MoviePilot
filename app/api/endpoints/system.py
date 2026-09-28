@@ -38,6 +38,7 @@ from app.application.configuration import (
 )
 from app.application.database import get_database_governance
 from app.application.image import ImageHelper
+from app.application.mediaserver import get_mediaserver_configs
 from app.application.messaging.message import MessageHelper
 from app.application.network import get_configured_network_test_service
 from app.application.rules import RuleHelper
@@ -123,6 +124,24 @@ def _get_image_proxy_allowed_domains() -> set[str]:
     return allowed_domains
 
 
+def _get_image_proxy_trusted_hosts() -> set[str]:
+    """返回已启用媒体服务器的主机（host / play_host），图片代理可直接信任。"""
+    trusted_hosts: set[str] = set()
+    try:
+        for conf in get_mediaserver_configs():
+            for key in ("host", "play_host"):
+                host = str((conf.config or {}).get(key) or "").strip()
+                if not host:
+                    continue
+                parsed = urlsplit(host if "://" in host else f"https://{host}")
+                if parsed.scheme in {"http", "https"} and parsed.netloc:
+                    trusted_hosts.add(parsed.netloc.lower())
+    except Exception as err:  # noqa: BLE001 - 配置不可用时不影响图片代理
+        logger.debug(f"读取媒体服务器配置失败，图片代理不信任任何媒体服务器主机：{err}")
+        return set()
+    return trusted_hosts
+
+
 def _database_backup_artifact_data(artifact: Any) -> _SchemaDatabaseBackupArtifactData:
     """将内部备份制品映射为不含宿主路径的 Web DTO。"""
     return _SchemaDatabaseBackupArtifactData(
@@ -203,6 +222,7 @@ async def fetch_image(
             "IMAGE_PROXY_ALLOWED_PRIVATE_RANGES",
             [],
         ),
+        trusted_hosts=_get_image_proxy_trusted_hosts(),
     ):
         return None
 
@@ -490,6 +510,9 @@ async def get_env_setting(
     查询系统环境变量，包括当前版本号（仅管理员）
     """
     info = get_runtime_settings().snapshot(exclude={"SECRET_KEY", "RESOURCE_SECRET_KEY"})
+    # GitHub Token 只通过专用授权状态接口返回脱敏摘要，不能随系统设置快照进入浏览器。
+    if "GITHUB_TOKEN" in info:
+        info["GITHUB_TOKEN"] = None
     info.update(
         {
             "VERSION": get_app_version(),
@@ -857,13 +880,21 @@ async def nettest_targets(
     """
     获取网络测试目标。
 
-    这里只返回前端渲染所需的最小信息，避免把可请求 URL、内容校验规则和
-    跳转白名单暴露给客户端。
+    这里只返回前端渲染所需的最小信息；展示地址只包含来源主机，隐藏请求路径、
+    查询参数和凭据，内容校验规则与跳转白名单也不会暴露给客户端。
     """
     targets = get_configured_network_test_service().list_targets()
     return _SchemaResponse(
         success=True,
-        data=[{"id": item.id, "name": item.name, "icon": item.icon} for item in targets],
+        data=[
+            {
+                "id": item.id,
+                "name": item.name,
+                "address": item.address,
+                "icon": item.icon,
+            }
+            for item in targets
+        ],
     )
 
 

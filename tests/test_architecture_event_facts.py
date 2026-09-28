@@ -7,6 +7,7 @@ from scripts.architecture.event_facts import (
     collect_event_facts,
     fingerprint_event_fact,
 )
+from tests.architecture_cache import current_event_facts
 
 EVENT_MEMBERS = {
     "EventType": ("Alpha", "Beta", "Gamma"),
@@ -1135,15 +1136,7 @@ def handler(event):
 
 def test_collect_event_facts_matches_current_host_inventory() -> None:
     """统一事实覆盖当前 86 个 producer 调用与 17 个 consumer 调用。"""
-    from scripts.architecture.baseline import (
-        _event_enum_members,
-        discover_modules,
-    )
-
-    facts = collect_event_facts(
-        discover_modules(),
-        {enum_name: _event_enum_members(enum_name) for enum_name in ("EventType", "ChainEventType")},
-    )
+    facts = current_event_facts()
     producers = facts["producers"]
     consumers = facts["consumers"]
 

@@ -8,7 +8,6 @@ from langchain_core.messages import ToolMessage
 from pydantic import BaseModel, Field
 
 import app.agent.orchestrator as agent_module
-from app.agent.middleware.activity import ActivityLogMiddleware
 from app.agent.middleware.memory import MemoryMiddleware
 from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.middleware.summarization import FinalRequestCompactionMiddleware
@@ -155,6 +154,11 @@ def test_registry_applies_safe_read_exceptions_and_defaults_to_shadow() -> None:
         arguments={"action": "list"},
         requires_admin=False,
     )
+    persona_switch_policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
+        tool_name="persona",
+        arguments={"action": "switch", "persona_id": "concise"},
+        requires_admin=False,
+    )
     admin_safe_policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
         tool_name="moviepilot_api",
         arguments={"operation_id": "scheduler.list"},
@@ -174,6 +178,7 @@ def test_registry_applies_safe_read_exceptions_and_defaults_to_shadow() -> None:
     assert safe_policy.effect is ActionEffect.SAFE_READ
     assert safe_policy.result_sensitivity is ResultSensitivity.NORMAL
     assert safe_policy.migration_state is MigrationState.ENFORCED
+    assert persona_switch_policy.required_role is PrincipalRole.SYSTEM_ADMIN
 
     assert admin_safe_policy.effect is ActionEffect.SAFE_READ
     assert admin_safe_policy.required_role is PrincipalRole.SYSTEM_ADMIN
@@ -850,8 +855,8 @@ def test_main_agent_registers_policy_middleware_as_outermost() -> None:
     assert isinstance(captured["middleware"][0], AgentPolicyMiddleware)
 
 
-def test_main_agent_preserves_activity_log_middleware_order() -> None:
-    """策略层加入后，ActivityLog 仍应位于 Memory 后、摘要前。"""
+def test_main_agent_preserves_memory_middleware_order() -> None:
+    """策略层加入后，统一 MemoryMiddleware 仍位于摘要压缩之前。"""
     agent = agent_module.MoviePilotAgent(
         session_id="session-1",
         user_id="user-1",
@@ -882,15 +887,19 @@ def test_main_agent_preserves_activity_log_middleware_order() -> None:
     memory_index = next(
         index for index, middleware in enumerate(middlewares) if isinstance(middleware, MemoryMiddleware)
     )
-    activity_index = next(
-        index for index, middleware in enumerate(middlewares) if isinstance(middleware, ActivityLogMiddleware)
-    )
     compaction_index = next(
         index
         for index, middleware in enumerate(middlewares)
         if isinstance(middleware, FinalRequestCompactionMiddleware)
     )
+    memory_middleware = middlewares[memory_index]
 
     assert policy_index == 0
-    assert activity_index == memory_index + 1
-    assert compaction_index > activity_index
+    assert compaction_index > memory_index
+    assert memory_middleware.user_memory_dir == str(
+        agent_module.agent_runtime_manager.get_user_memory_dir("user-1")
+    )
+    assert memory_middleware.user_activity_dir == str(
+        agent_module.agent_runtime_manager.get_user_activity_dir("user-1")
+    )
+    assert memory_middleware.activity_dir is None

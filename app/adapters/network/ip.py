@@ -37,9 +37,11 @@ class IpUtils:
     @staticmethod
     def is_internal(hostname):
         """
-        判断一个host是内网还是外网
+        判断一个 host 是否为内网地址，无法提取主机名时按外网处理
         """
         hostname = urlparse(hostname).hostname
+        if not hostname:
+            return False
         if IpUtils.is_ip(hostname):
             return IpUtils.is_private_ip(hostname)
         else:

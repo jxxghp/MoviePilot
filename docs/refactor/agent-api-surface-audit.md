@@ -5,7 +5,7 @@
 
 ## Result
 
-- OpenAPI HTTP operations: **411**
+- OpenAPI HTTP operations: **421**
 - Stable `moviepilot_api` operations: **231**
 - Exact HTTP routes used by the gateway: **229**
 - OpenAPI routes matched directly by the gateway: **228**
@@ -22,7 +22,7 @@
 | `gateway` | 228 | Approved structured MoviePilot Agent operation. |
 | `provider-skill` | 12 | Low-level downloader or media-server capability owned by a provider Skill. |
 | `stream_or_binary` | 10 | Streaming or binary response owned by a direct client transport. |
-| `transport_or_identity` | 66 | Authentication, protocol, callback, account, or conversation transport boundary. |
+| `transport_or_identity` | 76 | Authentication, protocol, callback, account, or conversation transport boundary. |
 | `ui_presentation` | 13 | Frontend or plugin-rendered presentation contract. |
 
 ## Bounded Dynamic Routes
@@ -93,6 +93,11 @@
 | `DELETE` | `/api/v1/download/{hashString}` | download | `provider-skill` | downloader-operation | 删除下载任务 |
 | `PATCH` | `/api/v1/download/{hashString}` | download | `provider-skill` | downloader-operation | 高级更新下载任务 |
 | `POST` | `/api/v1/download/{hashString}/classify-source` | download | `provider-skill` | downloader-operation | 识别并归类已有下载任务 |
+| `POST` | `/api/v1/github/auth/manual` | github | `transport_or_identity` | host-runtime | 保存手动 GitHub Token |
+| `POST` | `/api/v1/github/auth/poll` | github | `transport_or_identity` | host-runtime | 轮询 GitHub 设备授权 |
+| `POST` | `/api/v1/github/auth/start` | github | `transport_or_identity` | host-runtime | 启动 GitHub 设备授权 |
+| `GET` | `/api/v1/github/auth/status` | github | `transport_or_identity` | host-runtime | 查询 GitHub Token 状态 |
+| `DELETE` | `/api/v1/github/auth/token` | github | `transport_or_identity` | host-runtime | 清除 GitHub Token |
 | `DELETE` | `/api/v1/history/download` | history | `gateway` | download.history.delete | 删除下载历史记录 |
 | `GET` | `/api/v1/history/download` | history | `gateway` | download.history.list | 查询下载历史记录 |
 | `DELETE` | `/api/v1/history/transfer` | history | `gateway` | transfer.history.delete | 删除整理记录 |
@@ -105,6 +110,11 @@
 | `POST` | `/api/v1/llm/manage` | llm | `transport_or_identity` | host-runtime | LLM提供商统一管理 |
 | `GET` | `/api/v1/llm/provider-auth/callback/{provider_id}` | llm | `transport_or_identity` | host-runtime | LLM提供商OAuth回调 |
 | `POST` | `/api/v1/login/access-token` | login | `transport_or_identity` | host-runtime | 获取token |
+| `POST` | `/api/v1/login/github-auth/manual` | login | `transport_or_identity` | host-runtime | 从初始化页保存手动 GitHub Token |
+| `POST` | `/api/v1/login/github-auth/poll` | login | `transport_or_identity` | host-runtime | 从初始化页轮询 GitHub 设备授权 |
+| `POST` | `/api/v1/login/github-auth/start` | login | `transport_or_identity` | host-runtime | 从初始化页启动 GitHub 设备授权 |
+| `GET` | `/api/v1/login/github-auth/status` | login | `transport_or_identity` | host-runtime | 查询初始化阶段 GitHub Token 状态 |
+| `DELETE` | `/api/v1/login/github-auth/token` | login | `transport_or_identity` | host-runtime | 从初始化页清除 GitHub Token |
 | `GET` | `/api/v1/login/initialization` | login | `transport_or_identity` | host-runtime | 查询首次初始化状态 |
 | `POST` | `/api/v1/login/initialization` | login | `transport_or_identity` | host-runtime | 完成首次初始化 |
 | `GET` | `/api/v1/login/wallpaper` | login | `transport_or_identity` | host-runtime | 登录页面电影海报 |

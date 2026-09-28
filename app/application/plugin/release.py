@@ -46,6 +46,7 @@ class PluginReleaseService:
         has_release_cache: ReleaseCacheProbe,
         releases: ReleaseLoader,
         refresh_releases: ReleaseRefresher,
+        free_threaded: Callable[[], bool],
     ) -> None:
         """保存源身份归一、运行态、来源身份和市场读取窄端口。"""
         self._source_plugin_id = source_plugin_id
@@ -59,6 +60,7 @@ class PluginReleaseService:
         self._has_release_cache = has_release_cache
         self._releases = releases
         self._refresh_releases = refresh_releases
+        self._free_threaded = free_threaded
 
     async def history(self, plugin_id: str, *, force: bool = True) -> Plugin | None:
         """按可信绑定仓库读取单个已安装插件的更新说明。
@@ -80,6 +82,7 @@ class PluginReleaseService:
             installed_plugin = apply_declared_metadata_fallback(
                 [installed_plugin],
                 {identity.normalized_plugin_id: identity},
+                free_threaded=self._free_threaded(),
             )[0]
 
         local_plugin = next(
@@ -219,6 +222,11 @@ def _merge_market_metadata(plugin: Plugin, market_plugin: Plugin) -> Plugin:
                 "system_version_message": (
                     market_plugin.system_version_message
                     or plugin.system_version_message
+                ),
+                # 版本历史弹窗的"更新到最新版"同样按运行时兼容状态禁用并说明原因
+                "runtime_compatible": market_plugin.runtime_compatible,
+                "runtime_message": (
+                    market_plugin.runtime_message or plugin.runtime_message
                 ),
             }
         ),

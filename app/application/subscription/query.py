@@ -127,11 +127,11 @@ class SubscriptionQueryService:
         self,
         *,
         title: str,
-        year: str,
+        year: Optional[str],
         media_type: MediaType,
         season: Optional[int] = None,
     ) -> list[SubscribeView]:
-        """按影视类型、规范标题、年份和可选季号读取跨来源订阅。"""
+        """按影视类型、规范标题和可用年份读取跨来源订阅，优先精确年份。"""
         if self._async_repository is None:
             raise RuntimeError("异步订阅查询端口未注册")
         if media_type not in (MediaType.MOVIE, MediaType.TV):
@@ -140,13 +140,14 @@ class SubscriptionQueryService:
             title=title,
             season=season,
         )
-        expected_year = str(year).strip()
-        return [
-            self._to_public_view(record)
-            for record in records
-            if record.type == media_type.value
-            and str(record.year or "").strip() == expected_year
+        expected_year = str(year or "").strip()
+        matching_type = [record for record in records if record.type == media_type.value]
+        exact_year = [
+            record for record in matching_type
+            if expected_year and str(record.year or "").strip() == expected_year
         ]
+        unknown_year = [record for record in matching_type if not str(record.year or "").strip()]
+        return [self._to_public_view(record) for record in exact_year + unknown_year]
 
     async def list_history(
         self,

@@ -203,6 +203,8 @@ def test_success_history_without_size_info_is_skipped(monkeypatch):
 def test_bluray_folder_without_file_size_is_skipped(monkeypatch):
     """蓝光原盘目录没有文件大小可比对，已成功整理过时应跳过。"""
     dispatcher = _build_dispatcher()
+    monkeypatch.setattr("app.monitor.dispatcher.fsproxy.has_file_suffix",
+                        MagicMock(return_value=False))
     oper = _patch_history(monkeypatch, record=_history(status=True, size=100))
     chain = _patch_chain(monkeypatch)
 
@@ -274,10 +276,69 @@ def test_transfer_exception_retry_keeps_attempt_count(monkeypatch):
 def test_bluray_retry_uses_origin_event_path(monkeypatch):
     """蓝光原盘整理异常后应按原始事件路径重试，重试时重新解析目录。"""
     dispatcher = _build_dispatcher()
+    monkeypatch.setattr("app.monitor.dispatcher.fsproxy.has_file_suffix",
+                        MagicMock(return_value=False))
     _patch_history(monkeypatch, record=None)
     _patch_chain(monkeypatch, side_effect=RuntimeError("整理失败"))
     event_path = Path("/downloads/Movie/BDMV/STREAM/00000.m2ts")
 
     dispatcher.handle_file(storage="local", event_path=event_path, file_size=None)
 
-    assert list(dispatcher._pending_retries) == [f"local:{event_path.as_posix()}"]
+    assert list(dispatcher._pending_retries) == ["local:/downloads/Movie/"]
+
+
+def test_bluray_waits_for_all_download_temp_files_before_transfer(tmp_path, monkeypatch):
+    """蓝光文件事件遇到其他未完成文件时延后，并在临时后缀消失后重试。"""
+    stream = tmp_path / "Movie" / "BDMV" / "STREAM"
+    stream.mkdir(parents=True)
+    event_path = stream / "00001.m2ts"
+    event_path.write_bytes(b"complete")
+    temporary = stream / "00002.m2ts.!qB"
+    temporary.write_bytes(b"partial")
+    dispatcher = _build_dispatcher()
+    _patch_history(monkeypatch, record=None)
+    chain = _patch_chain(monkeypatch)
+    monkeypatch.setattr(dispatcher, "_get_monitor_media_type", lambda **_kwargs: None)
+
+    assert dispatcher.handle_file("local", event_path, file_size=8) is False
+    chain.do_transfer.assert_not_called()
+    key = f"local:{(tmp_path / 'Movie').as_posix()}/"
+    assert dispatcher._pending_retries[key]["attempts"] == 0
+    another_event = stream / "00003.m2ts"
+    another_event.write_bytes(b"complete")
+    assert dispatcher.handle_file("local", another_event, file_size=8) is False
+    assert list(dispatcher._pending_retries) == [key]
+
+    for _ in range(dispatcher.MAX_RETRY_ATTEMPTS + 1):
+        dispatcher.retry_pending()
+    assert dispatcher._pending_retries[key]["attempts"] == 0
+    chain.do_transfer.assert_not_called()
+
+    temporary.rename(stream / "00002.m2ts")
+    dispatcher.retry_pending()
+    chain.do_transfer.assert_called_once()
+    assert dispatcher._pending_retries == {}
+
+
+def test_bluray_scan_error_defers_transfer(tmp_path, monkeypatch):
+    """扫描错误不可当作目录已完整，健康检查应保留重试机会。"""
+    event_path = tmp_path / "Movie" / "BDMV" / "STREAM" / "00001.m2ts"
+    dispatcher = _build_dispatcher()
+    chain = _patch_chain(monkeypatch)
+    monkeypatch.setattr("app.monitor.dispatcher.fsproxy.has_file_suffix",
+                        MagicMock(side_effect=OSError("mount unavailable")))
+
+    assert dispatcher.handle_file("local", event_path, file_size=8) is False
+    chain.do_transfer.assert_not_called()
+    assert list(dispatcher._pending_retries) == [f"local:{(tmp_path / 'Movie').as_posix()}/"]
+
+
+def test_bluray_temporary_event_never_enters_transfer(tmp_path, monkeypatch):
+    """直接派发临时后缀事件时也不能绕过普通文件的候选过滤。"""
+    event_path = tmp_path / "Movie" / "BDMV" / "STREAM" / "00001.m2ts.!qB"
+    dispatcher = _build_dispatcher()
+    chain = _patch_chain(monkeypatch)
+
+    assert dispatcher.handle_file("local", event_path, file_size=8) is False
+    chain.do_transfer.assert_not_called()
+    assert dispatcher._pending_retries == {}

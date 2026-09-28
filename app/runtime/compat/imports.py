@@ -1,11 +1,13 @@
+import ast
 import importlib
 import importlib.abc
 import importlib.machinery
 import importlib.util
 import sys
 import threading
+from pathlib import Path
 from types import ModuleType
-from typing import Dict, List, Tuple
+from typing import Dict, List, Set, Tuple
 
 from app.runtime.compat.diagnostics import record_legacy_import
 from app.runtime.compat.manifest import (
@@ -138,6 +140,65 @@ def detect_shadowed_exports(
         if module.__dict__[name] is not getattr(target, symbol.target_name):
             shadowed.append((name, symbol.replacement))
     return shadowed
+
+
+PLUGINS_PACKAGE = "app.plugins"
+PLUGINS_PACKAGE_ROOT_BACKUP_SUFFIX = ".legacy-bak"
+# 必须与 app/plugins/__init__.py 完全一致，tests/test_legacy_import_compat.py 校验同步
+PLUGINS_PACKAGE_ROOT_SOURCE = (
+    '"""插件安装命名空间；契约基类由 app.sdk.plugin 拥有，旧包根符号由 Compat 惰性解析。"""\n'
+)
+
+
+def _top_level_bindings(source: str) -> Set[str]:
+    """返回模块顶层由类、函数或赋值绑定的名称，导入绑定不计入。"""
+    names: Set[str] = set()
+    for node in ast.parse(source).body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            names.update(
+                target.id for target in node.targets if isinstance(target, ast.Name)
+            )
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+    return names
+
+
+def detect_plugins_package_root_shadowing(init_file: Path) -> List[str]:
+    """返回插件安装包根源码里自带第二份实现的兼容符号名。
+
+    只统计顶层类、函数和赋值：重新导入同一个 canonical 对象无害，判定口径与
+    :func:`detect_shadowed_exports` 一致。源码缺失、不可读或语法错误时返回空列表，
+    把这些故障留给标准导入流程如实报告。
+
+    :param init_file: 运行目录中的 ``app/plugins/__init__.py``
+    :return: 被遮蔽的兼容符号名，按名称排序；正常包根为空列表
+    """
+    try:
+        bindings = _top_level_bindings(init_file.read_text(encoding="utf-8-sig"))
+    except (OSError, SyntaxError, ValueError):
+        return []
+    return sorted(bindings & set(SYMBOL_ALIASES.get(PLUGINS_PACKAGE, {})))
+
+
+def restore_plugins_package_root(init_file: Path) -> Path:
+    """备份自带实现的插件安装包根，并写回只含说明的命名空间入口。
+
+    包根属于后端源码提供的兼容入口，旧版本的同名实现随插件运行目录迁移进来后会遮蔽
+    兼容符号；改写后本进程尚未导入的插件即可正常解析旧符号。运行目录只读时抛出
+    ``OSError``，由调用方决定如何降级。
+
+    :param init_file: 运行目录中的 ``app/plugins/__init__.py``
+    :return: 备份文件路径
+    """
+    backup_file = init_file.with_name(
+        init_file.name + PLUGINS_PACKAGE_ROOT_BACKUP_SUFFIX
+    )
+    backup_file.write_bytes(init_file.read_bytes())
+    init_file.write_text(PLUGINS_PACKAGE_ROOT_SOURCE, encoding="utf-8")
+    importlib.invalidate_caches()
+    return backup_file
 
 
 class LegacySymbolOverlayLoader(importlib.abc.Loader):

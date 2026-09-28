@@ -17,6 +17,7 @@ from app.adapters.external.plugin.client import (
     _format_request_error,
 )
 from app.domain.plugin import split_plugin_market_repo_urls
+from app.runtime.tasks import TaskRegistry
 
 SYNC_INDEX_REQUEST = "_PluginMarketTransport__request_plugin_index_with_fallback"
 ASYNC_INDEX_REQUEST = "_PluginMarketTransport__async_request_plugin_index_with_fallback"
@@ -472,6 +473,39 @@ def test_plugin_index_entry_count_boundary(entry_count: int, accepted: bool) -> 
         assert len(result) == PLUGIN_INDEX_MAX_ENTRIES
 
 
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        (
+            '\ufeff{"BomPlugin": {"version": "1.0.0"}}',
+            {"BomPlugin": {"version": "1.0.0"}},
+        ),
+        (
+            json.dumps(
+                {
+                    "plugins": [
+                        {
+                            "id": "WrappedPlugin",
+                            "version": "1.2.3",
+                        }
+                    ]
+                }
+            ),
+            {"WrappedPlugin": {"id": "WrappedPlugin", "version": "1.2.3"}},
+        ),
+    ],
+)
+def test_plugin_index_accepts_bom_and_wrapped_entries(
+    content: str,
+    expected: dict,
+) -> None:
+    """插件索引应兼容 UTF-8 BOM 与 plugins 数组包装格式。"""
+    assert (
+        PluginMarketTransport()._resolve_plugin_index_response(200, content)
+        == expected
+    )
+
+
 def test_plugin_index_isolates_bad_entries_and_preserves_unknown_fields() -> None:
     """决策字段非法只隔离该条目，展示字段降级且未知字段保持前向兼容。"""
     history = {str(index): "change" for index in range(513)}
@@ -690,6 +724,42 @@ async def test_async_plugin_index_result_preserves_absent_state(monkeypatch) -> 
     )
 
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_async_plugin_index_failure_is_not_reported_as_background_task_error(
+    monkeypatch,
+) -> None:
+    """异步索引失败交给市场调用方处理，不应再被任务登记器重复上报。"""
+    helper = PluginMarketTransport()
+    registry = TaskRegistry()
+    reports: list[dict[str, object]] = []
+    loop = asyncio.get_running_loop()
+    previous_handler = loop.get_exception_handler()
+
+    async def request(_url: str, *, headers: dict):
+        return 200, "not-json"
+
+    monkeypatch.setattr(helper, ASYNC_INDEX_REQUEST, request)
+    monkeypatch.setattr(
+        plugin_client_module,
+        "get_task_registry",
+        lambda: registry,
+    )
+    await helper.async_get_plugin_index_result.cache_clear()
+    loop.set_exception_handler(lambda _, context: reports.append(context))
+
+    try:
+        with pytest.raises(RuntimeError, match="插件索引响应格式无效"):
+            await helper.async_get_plugin_index_result(
+                "https://github.com/policy-owner/async-failed-index",
+                "v3",
+            )
+        await asyncio.sleep(0)
+        assert reports == []
+        assert registry.records == ()
+    finally:
+        loop.set_exception_handler(previous_handler)
 
 
 @pytest.mark.asyncio

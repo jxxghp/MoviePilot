@@ -2,10 +2,11 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+import webauthn
+import webauthn.helpers
 from webauthn.helpers.exceptions import InvalidRegistrationResponse
 
 from app.api.endpoints import mfa as mfa_endpoint
-from app.application.security import passkey as passkey_helper
 from app.application.security.passkey import (
     PASSKEY_CHALLENGE_TTL_SECONDS,
     PasskeyChallengeStore,
@@ -52,12 +53,13 @@ def test_passkey_helper_classifies_origin_mismatch():
         'expected "http://localhost:3000"'
     )
 
+    # passkey 在方法内按需导入 webauthn，替身打在 webauthn 的来源模块上
     with patch.object(
-        passkey_helper,
+        webauthn.helpers,
         "parse_registration_credential_json",
         return_value=object(),
     ), patch.object(
-        passkey_helper,
+        webauthn,
         "verify_registration_response",
         side_effect=library_error,
     ), pytest.raises(PassKeyRegistrationOriginMismatchError) as exc_info:
@@ -75,12 +77,13 @@ def test_passkey_helper_classifies_other_verification_failure():
         "Client data challenge was not expected challenge"
     )
 
+    # passkey 在方法内按需导入 webauthn，替身打在 webauthn 的来源模块上
     with patch.object(
-        passkey_helper,
+        webauthn.helpers,
         "parse_registration_credential_json",
         return_value=object(),
     ), patch.object(
-        passkey_helper,
+        webauthn,
         "verify_registration_response",
         side_effect=library_error,
     ), pytest.raises(PassKeyRegistrationVerificationError) as exc_info:

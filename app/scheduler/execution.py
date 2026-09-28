@@ -343,19 +343,23 @@ class SchedulerExecutionOwner(_SchedulerOwnerBase):
 
     def list(self) -> list[_SchemaScheduleInfo]:
         """
-        当前所有任务
+        当前所有任务；热重载尚未启动新调度器时返回重载前的目录快照。
         """
-        if not self._scheduler:
-            return []
         with self._lock:
+            scheduler = self._scheduler
+            if not scheduler or not scheduler.running:
+                if (
+                    self._lifecycle_state in {"reloading", "starting"}
+                    and self._reload_schedule_snapshot is not None
+                ):
+                    # 新任务目录尚未就绪时，避免仪表盘把热重载显示为空任务列表。
+                    return list(self._reload_schedule_snapshot)
+                return []
             # 返回计时任务
             schedulers = []
             # 去重
             added = []
-            # 避免_scheduler.shutdown()处于阻塞状态导致的死锁
-            if not self._scheduler or not self._scheduler.running:
-                return []
-            jobs = self._scheduler.get_jobs()
+            jobs = scheduler.get_jobs()
             # 按照下次运行时间排序
             jobs.sort(key=lambda x: x.next_run_time)
             # 将正在运行的任务提取出来 (保障一次性任务正常显示)

@@ -13,7 +13,10 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.servarr import arr_add_series, arr_series_lookup
-from app.schemas import SonarrSeason, SonarrSeries
+from app.application.servarr import ServarrSubscriptionService
+from app.db.adapters.subscription import SessionSubscriptionRepository
+from app.db.models.subscribe import Subscribe
+from app.schemas.servarr import SonarrSeason, SonarrSeries
 from app.schemas.types import MediaSource, MediaType
 
 _TVDB_ID = 454898
@@ -130,6 +133,39 @@ def test_add_series_already_subscribed_returns_existing():
 
     assert result.id == 1
     subscribe_chain.async_add_batch.assert_not_awaited()
+
+
+def test_add_series_existing_subscription_uses_async_repository(db):
+    """真实请求仓储查到已有季订阅时，兼容端点应幂等返回而不抛异常。"""
+    db.add(
+        Subscribe(
+            name="已存在的 Servarr 订阅",
+            type=MediaType.TV.value,
+            media_source=MediaSource.TMDB.value,
+            media_id=str(_TMDB_ID),
+            season=1,
+        )
+    )
+
+    async def execute(session):
+        """通过真实请求级仓储执行新增剧集检查。"""
+        service = ServarrSubscriptionService(
+            async_repository=SessionSubscriptionRepository(session),
+            sync_repository=SessionSubscriptionRepository(db.session),
+        )
+        return await arr_add_series(
+            tv=_series(
+                tmdb_id=_TMDB_ID,
+                seasons=[SonarrSeason(seasonNumber=1, monitored=True)],
+            ),
+            _="api-token",
+            subscriptions=service,
+            batch_writer=MagicMock(),
+        )
+
+    result = db.run_async_session(execute)
+
+    assert result.id == 1
 
 
 def test_add_series_identity_resolution_failure_returns_500():

@@ -28,7 +28,9 @@ UV_BIN="${UV_BIN:-/usr/local/bin/uv}"
 CONFIG_DIR="${CONFIG_DIR:-/config}"
 APP_DIR=/app
 PUBLIC_DIR=/public
-UPDATE_PENDING_FILE="${CONFIG_DIR}/temp/__update_pending__"
+# Dev 更新只需要跨同一容器重启恢复；标记必须和 /app、/public 位于同一容器可写层，
+# 避免容器重建后 /config 遗留旧标记阻断新镜像启动。
+UPDATE_PENDING_FILE="${MOVIEPILOT_UPDATE_PENDING_FILE:-/var/lib/moviepilot/update/__update_pending__}"
 UPDATE_PREVIOUS_APP="${APP_DIR}.__update_previous__"
 UPDATE_PREVIOUS_PUBLIC="${PUBLIC_DIR}.__update_previous__"
 

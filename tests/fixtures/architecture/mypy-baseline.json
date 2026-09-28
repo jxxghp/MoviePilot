@@ -10,11 +10,11 @@
   "app/adapters/cache/redis.py": {
     "arg-type": 9,
     "no-any-return": 2,
-    "no-untyped-call": 21,
-    "no-untyped-def": 16,
+    "no-untyped-call": 12,
+    "no-untyped-def": 15,
     "return-value": 2,
     "str-bytes-safe": 2,
-    "union-attr": 27
+    "union-attr": 14
   },
   "app/adapters/external/cookiecloud.py": {
     "arg-type": 1
@@ -154,11 +154,6 @@
     "return-value": 2,
     "type-arg": 7,
     "type-var": 1
-  },
-  "app/agent/middleware/activity.py": {
-    "misc": 3,
-    "type-arg": 5,
-    "valid-type": 1
   },
   "app/agent/middleware/config.py": {
     "misc": 1
@@ -846,12 +841,7 @@
     "no-any-return": 28
   },
   "app/chain/interaction.py": {
-    "arg-type": 4,
-    "assignment": 1,
-    "no-untyped-call": 1,
-    "return-value": 1,
-    "union-attr": 16,
-    "var-annotated": 1
+    "no-untyped-call": 1
   },
   "app/chain/mediaserver.py": {
     "arg-type": 3,
@@ -1287,7 +1277,7 @@
     "operator": 1
   },
   "app/domain/metainfo.py": {
-    "arg-type": 6,
+    "arg-type": 5,
     "assignment": 4,
     "no-untyped-call": 3,
     "no-untyped-def": 1,
@@ -1922,13 +1912,13 @@
   },
   "app/modules/plex/plex.py": {
     "arg-type": 2,
-    "assignment": 3,
+    "assignment": 2,
     "misc": 1,
     "no-any-return": 1,
-    "no-untyped-def": 10,
+    "no-untyped-def": 9,
     "operator": 5,
     "return-value": 1,
-    "type-arg": 4,
+    "type-arg": 3,
     "union-attr": 4,
     "var-annotated": 3
   },
@@ -2415,7 +2405,6 @@
   },
   "app/monitor/snapshot.py": {
     "type-arg": 5,
-    "valid-type": 1,
     "var-annotated": 1
   },
   "app/monitor/syslimits.py": {

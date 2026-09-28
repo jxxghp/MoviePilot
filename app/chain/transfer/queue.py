@@ -7,7 +7,7 @@ import time
 import traceback
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 from pydantic_core import to_jsonable_python
 
@@ -496,6 +496,27 @@ class TransferQueueOwner(_TransferOwnerBase):
             if not self._closing:
                 self._TransferChain__start_lease_heartbeat_owner_locked()
 
+    def _TransferChain__claim_recovery_batch(self) -> List[TransferAdmission]:
+        """按 worker 并发度 claim 当前可安全占用的恢复租约槽位。"""
+        runtime_config = getattr(self, "runtime_config", None)
+        worker_capacity = max(
+            1,
+            int(getattr(runtime_config, "transfer_threads", 1)),
+        )
+        with self._worker_state_lock:
+            owned_count = len(self._owned_leases)
+        recovery_capacity = max(0, worker_capacity - owned_count)
+        if recovery_capacity <= 0:
+            return []
+        return cast(
+            List[TransferAdmission],
+            self._transfer_admissions.claim_recoverable(
+                owner_id=self._worker_owner_id,
+                limit=min(self._RECOVERY_CLAIM_LIMIT, recovery_capacity),
+                lease_seconds=self._WORKER_LEASE_SECONDS,
+            ),
+        )
+
     def _TransferChain__run_lease_heartbeat(self, stop_event: threading.Event) -> None:
         """按固定周期续期本进程已 claim 且尚未结算的任务。"""
         try:
@@ -745,11 +766,7 @@ class TransferQueueOwner(_TransferOwnerBase):
             return
         self._TransferChain__ensure_lease_runtime_state()
         try:
-            pendings = self._transfer_admissions.claim_recoverable(
-                owner_id=self._worker_owner_id,
-                limit=self._RECOVERY_CLAIM_LIMIT,
-                lease_seconds=self._WORKER_LEASE_SECONDS,
-            )
+            pendings = self._TransferChain__claim_recovery_batch()
         except Exception as err:
             logger.error(f"读取待整理文件登记失败：{err}")
             return

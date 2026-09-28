@@ -217,6 +217,20 @@ def test_projection_builds_federation_and_auth_provider_entries():
     }]
 
 
+def test_projection_versions_federation_remote_entry_after_plugin_update():
+    """插件版本变化时，联邦入口 URL 应生成新的缓存键。"""
+    plugin = _Plugin(
+        plugin_version="1.2.3+build 4",
+        get_render_mode=lambda: ("vue", "dist/assets"),
+    )
+    projection = PluginProjection(
+        {"Demo": plugin},
+        remote_entry_factory=lambda plugin_id, path: f"/{plugin_id}/{path}",
+    )
+
+    assert projection.remotes()[0]["url"] == "/Demo/dist/assets?v=1.2.3%2Bbuild+4"
+
+
 def test_projection_exposes_source_identity_for_virtual_frontend_instance():
     """虚拟实例的联邦入口保留实例 URL，并补充共享源码身份。"""
     plugin = _Plugin(

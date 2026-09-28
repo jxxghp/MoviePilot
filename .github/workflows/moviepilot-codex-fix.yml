@@ -1,0 +1,43 @@
+# Manual fix dispatch. Codex receives write permissions only in the reusable workflow.
+name: MoviePilot Codex fix
+
+on:
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: Issue or PR number to investigate.
+        required: true
+        type: string
+      prompt_name:
+        description: issue-fix, ci-fix, or delivery.
+        required: false
+        default: issue-fix
+        type: string
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  codex:
+    if: ${{ vars.CODEX_ENABLED == 'true' && vars.CODEX_AUTOFIX_ENABLED == 'true' }}
+    uses: jxxghp/MoviePilot-Maintenance/.github/workflows/codex-fix.yml@main
+    with:
+      control_repository: jxxghp/MoviePilot-Maintenance
+      control_ref: main
+      prompt_name: ${{ inputs.prompt_name }}
+      codex_model: ${{ vars.CODEX_MODEL }}
+      codex_effort: ${{ vars.CODEX_EFFORT || 'max' }}
+      target_number: ${{ inputs.issue_number }}
+      target_ref: ${{ github.ref_name }}
+      target_sha: ${{ github.sha }}
+      openai_base_url: ${{ vars.OPENAI_BASE_URL }}
+      publish_comments: true
+      autofix_enabled: ${{ vars.CODEX_AUTOFIX_ENABLED == 'true' }}
+      telegram_enabled: ${{ vars.TELEGRAM_ENABLED == 'true' && vars.TELEGRAM_CHAT_ID != '' }}
+      telegram_chat_id: ${{ vars.TELEGRAM_ENABLED == 'true' && vars.TELEGRAM_CHAT_ID || '' }}
+    secrets:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      MAINTENANCE_TARGET_GH_TOKEN: ${{ secrets.MAINTENANCE_TARGET_GH_TOKEN }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}

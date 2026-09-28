@@ -154,7 +154,11 @@ def test_supervisor_restart_command_restarts_frontend_and_backend(monkeypatch):
 
     SystemHelper._schedule_supervisor_restart()
 
-    assert popen_mock.call_args.args[0][-2:] == ["restart", "all"]
+    assert popen_mock.call_args.args[0][-3:] == [
+        "restart",
+        "moviepilot-nginx",
+        "moviepilot-backend",
+    ]
 
 
 def test_supervisor_shutdown_command(monkeypatch):

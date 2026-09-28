@@ -16,6 +16,7 @@ DOCKERFILE = ROOT / "docker" / "Dockerfile"
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "build-v3.yml"
 BETA_WORKFLOW = ROOT / ".github" / "workflows" / "beta.yml"
 PR_AGENT_WORKFLOW = ROOT / ".github" / "workflows" / "pr-agent.yml"
+CODEX_EVENT_WORKFLOW = ROOT / ".github" / "workflows" / "moviepilot-codex-events.yml"
 TRIVY_IGNORE = ROOT / ".trivyignore.yaml"
 WORKFLOW_ROOT = ROOT / ".github" / "workflows"
 
@@ -295,20 +296,21 @@ def test_all_workflows_are_valid_yaml() -> None:
         assert isinstance(workflow.get("jobs"), dict), workflow_path
 
 
-def test_pr_agent_keeps_pull_request_target_api_only_boundary() -> None:
-    """带凭据的 PR 审查只读 GitHub API，不 checkout 或执行 PR 分支代码。"""
-    workflow = _load_workflow(PR_AGENT_WORKFLOW)
+def test_codex_event_intake_replaces_legacy_pr_agent_trigger() -> None:
+    """旧 PR-Agent 仅保留手工入口，Issue/PR 自动分析统一交给 Codex 事件桥。"""
+    legacy_workflow = _load_workflow(PR_AGENT_WORKFLOW)
+    assert set(legacy_workflow["on"]) == {"workflow_dispatch"}
+
+    workflow = _load_workflow(CODEX_EVENT_WORKFLOW)
+    assert "issues" in workflow["on"]
     assert "pull_request_target" in workflow["on"]
-    assert workflow["permissions"] == {
-        "contents": "read",
-        "pull-requests": "write",
-        "issues": "write",
-    }
-    steps = workflow["jobs"]["pr-agent"]["steps"]
+    assert workflow["permissions"] == {"actions": "write", "contents": "read"}
+    steps = workflow["jobs"]["dispatch"]["steps"]
     assert len(steps) == 1
-    review_step = steps[0]
-    assert review_step["uses"] == "docker://ghcr.io/infinitypacer/pr-review-runner:latest"
-    assert "run" not in review_step
+    dispatch_step = steps[0]
+    assert "gh workflow run" in dispatch_step["run"]
+    assert "OPENAI_API_KEY" not in dispatch_step["run"]
+    assert "TELEGRAM_BOT_TOKEN" not in dispatch_step["run"]
 
 
 def test_release_uses_github_cli_for_tag_and_release_lifecycle() -> None:

@@ -15,11 +15,22 @@ RUNNER_PATH = Path(__file__).resolve()
 DEFAULT_SHARD_COUNT = 4
 DURATIONS_PATH = TESTS_DIR / "fixtures" / "durations.json"
 DEFAULT_TEST_DURATION = 1.0
+# CI 架构门禁 job 独立运行的测试文件；分片使用 --exclude-architecture-gate 时不再重复执行
+ARCHITECTURE_GATE_TESTS = (
+    "test_architecture_dependencies.py",
+    "test_architecture_adapter_imports.py",
+    "test_architecture_egress.py",
+    "test_architecture_event_facts.py",
+    "test_architecture_event_policy.py",
+    "test_architecture_contract_baseline.py",
+    "test_architecture_baseline_cli.py",
+)
 
 
-def collect_test_files() -> list[Path]:
-    """按稳定路径顺序返回根测试目录中的全部测试文件。"""
-    return sorted(TESTS_DIR.glob("test_*.py"))
+def collect_test_files(exclude_architecture_gate: bool = False) -> list[Path]:
+    """按稳定路径顺序返回根测试目录中的测试文件，可排除已由架构门禁运行的文件。"""
+    excluded = set(ARCHITECTURE_GATE_TESTS) if exclude_architecture_gate else set()
+    return sorted(path for path in TESTS_DIR.glob("test_*.py") if path.name not in excluded)
 
 
 def load_test_durations() -> dict[str, float]:
@@ -77,9 +88,16 @@ def parse_args(argv: Sequence[str]) -> tuple[argparse.Namespace, list[str]]:
         metavar="N/TOTAL",
         help="只运行指定文件分片；CI 使用同一参数启动独立 job。",
     )
+    parser.add_argument(
+        "--exclude-architecture-gate",
+        action="store_true",
+        help="跳过 CI 架构门禁已运行的测试文件，供覆盖率分片使用。",
+    )
     args, pytest_args = parser.parse_known_args(argv)
     if args.serial and args.shard is not None:
         parser.error("--serial 不能与 --shard 同时使用")
+    if args.serial and args.exclude_architecture_gate:
+        parser.error("--serial 不能与 --exclude-architecture-gate 同时使用")
     return args, pytest_args
 
 
@@ -89,20 +107,23 @@ def run_pytest(paths: Sequence[Path], pytest_args: Sequence[str]) -> int:
 
 
 def _worker_command(
-    shard_index: int, shard_count: int, pytest_args: Sequence[str]
+    shard_index: int, shard_count: int, pytest_args: Sequence[str],
+    exclude_architecture_gate: bool = False,
 ) -> list[str]:
-    """构造与 CI 完全相同的单分片 worker 命令。"""
+    """构造与 CI 完全相同的单分片 worker 命令；排除选项必须一并传递，否则分片划分不一致。"""
     return [
         sys.executable,
         str(RUNNER_PATH),
         "--shard",
         f"{shard_index}/{shard_count}",
+        *(["--exclude-architecture-gate"] if exclude_architecture_gate else []),
         *pytest_args,
     ]
 
 
 def run_parallel_shards(
-    shards: Sequence[Sequence[Path]], pytest_args: Sequence[str]
+    shards: Sequence[Sequence[Path]], pytest_args: Sequence[str],
+    exclude_architecture_gate: bool = False,
 ) -> int:
     """启动独立 pytest 进程并等待全部文件分片结束。"""
     shard_count = len(shards)
@@ -116,7 +137,9 @@ def run_parallel_shards(
         )
         processes.append((
             shard_index,
-            subprocess.Popen(_worker_command(shard_index, shard_count, pytest_args)),
+            subprocess.Popen(_worker_command(
+                shard_index, shard_count, pytest_args, exclude_architecture_gate,
+            )),
         ))
 
     exit_code = 0
@@ -146,7 +169,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.serial:
         return run_pytest([TESTS_DIR], pytest_args)
 
-    test_files = collect_test_files()
+    test_files = collect_test_files(args.exclude_architecture_gate)
     if not test_files:
         print(f"未在 {TESTS_DIR} 找到 test_*.py", file=sys.stderr)
         return 2
@@ -164,7 +187,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return run_pytest(selected, pytest_args)
 
     shards = split_test_files(test_files, DEFAULT_SHARD_COUNT)
-    return run_parallel_shards(shards, pytest_args)
+    return run_parallel_shards(shards, pytest_args, args.exclude_architecture_gate)
 
 
 if __name__ == "__main__":

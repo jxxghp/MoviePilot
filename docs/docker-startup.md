@@ -102,7 +102,7 @@ source 其他脚本，可能出现同一次启动混用新旧脚本的情况。�
 
 ### 3.3 更新恢复时的代际选择
 
-`/config/temp/__update_pending__` 的值会影响 launcher：
+`/var/lib/moviepilot/update/__update_pending__` 的值会影响 launcher：
 
 | 状态 | 控制脚本选择原则 |
 | --- | --- |
@@ -169,8 +169,12 @@ entrypoint 会删除该标记，并只在本次启动中把 `MOVIEPILOT_UPDATE_D
 ```text
 /app.__update_previous__
 /public.__update_previous__
-/config/temp/__update_pending__
+/var/lib/moviepilot/update/__update_pending__
 ```
+
+Dev 更新标记与程序载荷都位于容器可写层，只用于跨同一容器重启恢复；容器重建时它会和旧的
+`/app`、`/public` 载荷一起丢弃，避免持久化卷残留旧事务标记而阻断新镜像启动。稳定版
+Release/资源更新的 `prepared.json`、`install.json` 和 `state.json` 仍保存在 `/config`，不受此规则影响。
 
 状态含义与启动处理：
 
@@ -422,7 +426,8 @@ Python lifespan 会先撤销 readiness，再按组件声明的 `stop_order` 停�
 
 ### 9.2 应用内重启
 
-普通应用重启通过本地 `supervisorctl restart all` 同时重启 Nginx 和后端。确认安装 Release 时，
+普通应用重启通过本地 `supervisorctl restart moviepilot-nginx moviepilot-backend` 同时重启 Nginx 和后端，
+避免把按需运行的更新 worker 拉起。确认安装 Release 时，
 `SystemHelper` 只启动 root `moviepilot-update-worker`；worker 先替换 `/app`、`/public` 或站点资源，
 再写入 `moviepilot.pending_supervisor_restart` 并执行 `supervisorctl shutdown`。外层 entrypoint 看到标记后
 重新执行 launcher，加载新代码。载荷替换期间外层 entrypoint、worker 的控制面调用和所有入口重入都使用 `/`
@@ -446,7 +451,7 @@ Docker restart policy。
 | `/config/app.env` | Docker 启动脚本和应用配置。 |
 | `/config/.cache/uv` | 默认 uv 持久缓存。 |
 | `/config/.browser/cloakbrowser` | 默认 CloakBrowser 持久缓存。 |
-| `/config/temp/__update_pending__` | 载荷切换事务状态。 |
+| `/var/lib/moviepilot/update/__update_pending__` | Dev 载荷切换事务状态；与 `/app`、`/public` 同属容器可写层。 |
 | `/app.__update_previous__` | 更新前后端备份。 |
 | `/public.__update_previous__` | 更新前前端备份。 |
 | `/config/temp/moviepilot-update/` | 后台下载的 Release/资源包及安装状态。 |
@@ -459,7 +464,7 @@ Docker restart policy。
 
 | 变量 | 默认值 | 影响 |
 | --- | --- | --- |
-| `CONFIG_DIR` | `/config` | 配置、缓存、更新状态和证书根目录。 |
+| `CONFIG_DIR` | `/config` | 配置、缓存、Release/资源更新状态和证书根目录。 |
 | `PUID` / `PGID` | `0` / `0` | 映射 `moviepilot` 运行用户。 |
 | `UMASK` | `000` | 后端进程文件权限掩码。 |
 | `PORT` | `3001` | 后端监听和 readiness 端口。 |
@@ -473,7 +478,7 @@ Docker restart policy。
 | `PIP_PROXY` | 空 | Python 包索引镜像。 |
 | `GITHUB_PROXY` | 空 | GitHub 下载 URL 前缀。 |
 | `PROXY_HOST` | 空 | GitHub/包命令使用的 HTTP(S) 代理。 |
-| `GITHUB_TOKEN` | 空 | Dev 更新访问 GitHub 时的令牌。 |
+| `GITHUB_TOKEN` | 空 | GitHub API 与 Agent Issue/PR Skill 共用的服务端 Token；可在设置页或首次初始化页通过 Device Flow 或手动 PAT 配置。 |
 | `CLOAKBROWSER_CACHE_DIR` | 自动选择 | 浏览器内核缓存位置。 |
 | `ENABLE_SSL` | `false` | 是否渲染并启用 HTTPS server。 |
 | `AUTO_ISSUE_CERT` | `false` | 是否自动签发证书。 |

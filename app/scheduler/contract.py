@@ -19,6 +19,7 @@ if TYPE_CHECKING:
         _jobs: dict[str, dict[str, Any]]
         _lifecycle_state: str
         _lock: Any
+        _reload_schedule_snapshot: list[Any] | None
         _registry: ExecutionRegistry
         _scheduler: Any
         _services: SchedulerServices | None

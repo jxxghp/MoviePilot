@@ -362,15 +362,15 @@ class TestAgentToolStreaming:
                 tool_kwargs={"name": "moviepilot-api"},
             )
             handler.record_tool_call(
-                tool_name="query_activity_log",
-                tool_message="Query recent MoviePilot Agent activity logs",
-                tool_kwargs={"keyword": "整理"},
+                tool_name="search_memory",
+                tool_message="Search MoviePilot Agent memory",
+                tool_kwargs={"query": "整理", "category": "activity"},
             )
             return await handler.take()
 
         buffered_message = asyncio.run(_run())
 
-        assert buffered_message == "处理中：\n\n（查询了 1 个技能说明，查询了 1 次活动日志）\n\n"
+        assert buffered_message == "处理中：\n\n（查询了 1 个技能说明，检索了 1 次记忆）\n\n"
 
     def test_non_verbose_tool_summary_counts_subagent_batch_tasks(self):
         """校验批量子代理控制工具按子任务数统计。"""

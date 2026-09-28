@@ -178,8 +178,10 @@ class SystemHelper(ConfigReloadMixin):
 
     @staticmethod
     def _schedule_supervisor_restart() -> None:
-        """延迟调用本地 supervisor，确保重启接口有机会完成响应。"""
-        SystemHelper._schedule_supervisor_command("restart", "all")
+        """延迟只重启 Nginx 和后端，避免按需更新 worker 被普通重启拉起。"""
+        SystemHelper._schedule_supervisor_command(
+            "restart", ("moviepilot-nginx", "moviepilot-backend")
+        )
 
     @staticmethod
     def _schedule_supervisor_shutdown() -> None:
@@ -187,7 +189,9 @@ class SystemHelper(ConfigReloadMixin):
         SystemHelper._schedule_supervisor_command("shutdown")
 
     @staticmethod
-    def _schedule_supervisor_command(action: str, target: Optional[str] = None) -> None:
+    def _schedule_supervisor_command(
+        action: str, target: Optional[str | tuple[str, ...]] = None
+    ) -> None:
         """延迟调用本地 supervisor 控制命令，确保重启接口有机会完成响应。"""
         def run_command() -> None:
             command = [
@@ -197,7 +201,10 @@ class SystemHelper(ConfigReloadMixin):
                 action,
             ]
             if target is not None:
-                command.append(target)
+                if isinstance(target, str):
+                    command.append(target)
+                else:
+                    command.extend(target)
             try:
                 subprocess.Popen(
                     command,

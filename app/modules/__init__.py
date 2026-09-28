@@ -262,6 +262,9 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
         # 检查消息来源
         if message.source and message.source != source:
             return False
+        # 没有类型且没有显式目标时不得进入渠道的默认广播路径。
+        if not message.userid and not message.mtype:
+            return bool(message.targets)
         # 不是定向发送时，检查消息类型开关
         if not message.userid and message.mtype:
             conf = self.get_config(source)

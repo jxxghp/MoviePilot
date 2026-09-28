@@ -15,6 +15,9 @@ from app.application.security.token import create_access_token
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 
+_DEFAULT_API_REQUEST_TIMEOUT_SECONDS = 30
+_SEARCH_TORRENTS_REQUEST_TIMEOUT_SECONDS = 290
+
 
 class ApiExecutionError(RuntimeError):
     """固定 API 路由无法构造或请求失败。"""
@@ -176,9 +179,14 @@ class MoviePilotApiExecutor:
                 raise ApiExecutionError("GET operation 的 body 必须是 JSON 对象")
             query_data.update(body_data)
             body_data = None
+        request_timeout = (
+            _SEARCH_TORRENTS_REQUEST_TIMEOUT_SECONDS
+            if operation_id == "search.torrents"
+            else _DEFAULT_API_REQUEST_TIMEOUT_SECONDS
+        )
         request = self._request_factory(
             headers=self._build_headers(),
-            timeout=30,
+            timeout=request_timeout,
             verify=False,
             trust_env=False,
         )

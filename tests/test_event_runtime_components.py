@@ -10,7 +10,9 @@ from app.runtime.event.binding import (
     EventBindingResolver,
     EventHandlerBinding,
 )
+from app.runtime.event.dispatch import EventDispatcher
 from app.runtime.event.errors import EventErrorPolicy
+from app.runtime.event.registry import EventRegistry
 from app.runtime.events import Event
 from app.runtime.extensions.plugin import manager as plugin_manager_module
 from app.runtime.extensions.plugin.manager import PluginManager
@@ -85,10 +87,65 @@ def test_unloaded_module_class_handler_is_skipped() -> None:
             resolvers=lambda: {},
         )
         assert binding.resolve(residual_handler) is None
-        # 模块卸载后 identifier 回退为 unknown_module 前缀，与线上日志一致
         assert binding.unresolved_handlers() == (
-            "unknown_module._ResidualPlugin.reload",
+            f"{fake_name}._ResidualPlugin.reload",
         )
+    finally:
+        sys.modules.pop(fake_name, None)
+
+
+def test_quiesced_handler_stays_disabled_after_module_unload() -> None:
+    """事件快照中的旧 handler 在模块卸载后仍应按已禁用状态跳过。"""
+    fake_name = "tests._fake_quiesced_plugin"
+    fake_module = types.ModuleType(fake_name)
+    sys.modules[fake_name] = fake_module
+    try:
+        exec(
+            "class _QuiescedPlugin:\n"
+            "    def reload(self, event):\n"
+            "        raise AssertionError('quiesced handler must not run')\n",
+            fake_module.__dict__,
+        )
+        residual_handler = fake_module._QuiescedPlugin.reload
+        broadcast_subscribers: dict = {}
+        disabled_handlers: set[str] = set()
+        disabled_classes: set[str] = set()
+        registry = EventRegistry(
+            lock=threading.Lock(),
+            broadcast_subscribers=lambda: broadcast_subscribers,
+            chain_subscribers=lambda: {},
+            disabled_handlers=lambda: disabled_handlers,
+            disabled_classes=lambda: disabled_classes,
+        )
+        registry.add(EventType.PluginReload, residual_handler, 0)
+        registry.disable(fake_module._QuiescedPlugin)
+        del sys.modules[fake_name]
+
+        assert EventRegistry.handler_identifier(residual_handler) == (
+            f"{fake_name}._QuiescedPlugin.reload"
+        )
+        assert EventRegistry.handler_class_identifier(residual_handler) == (
+            f"{fake_name}._QuiescedPlugin"
+        )
+        assert not registry.is_handler_enabled(residual_handler)
+
+        binding = EventBindingResolver(
+            lock=threading.Lock(),
+            resolvers=lambda: {},
+        )
+        dispatcher = EventDispatcher(
+            registry=registry,
+            binding_resolver=binding,
+            event_factory=Event,
+            error_handler=lambda **_kwargs: None,
+            async_handle_sink=lambda _handle: True,
+            sync_handle_sink=lambda _callback, _args: True,
+        )
+        dispatcher.dispatch_broadcast_strict(
+            Event(EventType.PluginReload, {"plugin_id": "_QuiescedPlugin"}),
+            lambda _awaitable: None,
+        )
+        assert binding.unresolved_handlers() == ()
     finally:
         sys.modules.pop(fake_name, None)
 
@@ -121,7 +178,7 @@ def test_unloaded_module_decorator_wrapped_method_is_skipped() -> None:
         )
         assert binding.resolve(residual_handler) is None
         assert binding.unresolved_handlers() == (
-            "unknown_module._deco.<locals>.wrapper",
+            f"{fake_name}._deco.<locals>.wrapper",
         )
     finally:
         sys.modules.pop(fake_name, None)

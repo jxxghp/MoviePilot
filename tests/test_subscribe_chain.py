@@ -999,6 +999,48 @@ class TestSubscribeChain:
         assert result["media-key"][1].start_episode == 1
         assert result["media-key"][1].total_episode == 48
 
+    def test_resolve_subscribe_missing_uses_subscription_season_when_meta_has_none(self):
+        """搜索词未携带季号时，开始集数裁剪必须覆盖原缺失季键。"""
+        subscribe = self._build_subscribe(
+            best_version=0,
+            start_episode=239,
+            total_episode=240,
+            lack_episode=4,
+        )
+        meta = SimpleNamespace(type=MediaType.TV, begin_season=None, season=None)
+        mediainfo = SimpleNamespace(
+            type=MediaType.TV,
+            seasons={1: list(range(1, 241))},
+            title_year="Test Show (2026)",
+        )
+        library_missing = {
+            1: {
+                1: SimpleNamespace(
+                    season=1,
+                    episodes=[1, 2, 239, 240],
+                    total_episode=240,
+                    start_episode=1,
+                    require_complete_coverage=False,
+                )
+            }
+        }
+
+        class _DownloadChain:
+            def get_no_exists_info(self, **_kwargs):
+                return False, library_missing
+
+        with patch.object(SUBSCRIBE_CHAIN_MODULE, "DownloadChain", _DownloadChain):
+            satisfied, no_exists = SubscribeChain().resolve_subscribe_missing(
+                subscribe=subscribe,
+                meta=meta,
+                mediainfo=mediainfo,
+                mediakey=1,
+            )
+
+        assert not (satisfied)
+        assert set(no_exists[1]) == {1}
+        assert set(no_exists[1][1].episodes) == {239, 240}
+
     def test_resolve_subscribe_missing_combines_library_gap_and_download_history_without_side_effects(self):
         """目标满足查询应复用主程序媒体库缺集与订阅下载历史的合并口径，且不推进订阅状态。"""
         subscribe = self._build_subscribe(

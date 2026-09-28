@@ -6,10 +6,7 @@ from pathlib import Path
 from threading import Lock
 from typing import List, Optional, Tuple, Union
 
-import oss2
 from cryptography.hazmat.primitives import hashes
-from oss2 import SizedFileAdapter, determine_part_size
-from oss2.models import PartInfo
 
 from app.adapters.network.http import HttpRequestError, RequestUtils
 from app.foundation import size as size_tools
@@ -600,6 +597,10 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         """
         实现带秒传、断点续传和二次认证的文件上传
         """
+        # oss2 连同阿里云 SDK 约 19MB，存储发现会导入全部存储实现，上传时才按需导入
+        import oss2
+        from oss2 import SizedFileAdapter, determine_part_size
+        from oss2.models import PartInfo
 
         def encode_callback(cb: str) -> str:
             """

@@ -415,7 +415,10 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             torrent_content = (
                 torrent_file.read_bytes()
                 if torrent_file.exists()
-                else FileCache().get(torrent_file.as_posix(), region="torrents")
+                # 与 TorrentHelper.download_torrent 的写入路由一致，种子只缓存在本地文件系统
+                else FileCache(local_only=True).get(
+                    torrent_file.as_posix(), region="torrents"
+                )
             )
         if not torrent_content:
             self._record_download_failure(

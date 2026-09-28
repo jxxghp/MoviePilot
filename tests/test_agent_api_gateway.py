@@ -4,6 +4,8 @@ import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
+import pytest
+
 # pylint: disable=no-name-in-module  # 策略包根通过 __getattr__ 惰性导出，Pylint 无法静态解析。
 from app.agent.policy import (
     DEFAULT_TOOL_POLICY_REGISTRY,
@@ -194,14 +196,65 @@ def test_mcp_tools_list_preserves_all_moviepilot_api_operation_branches() -> Non
     assert operation_ids == set(API_OPERATION_ROUTES)
 
 
-def test_local_agent_tool_uses_the_same_precise_operation_schema() -> None:
-    """本地 Agent 绑定的工具 schema 至少必须提示 body 是 JSON 结构值。"""
+def test_local_agent_tool_rejects_json_encoded_object_bodies() -> None:
+    """本地 Agent 工具 schema 不得把 JSON 对象字符串化作为合法请求体。"""
     tool = MoviePilotApiTool(session_id="session", user_id="api_user")
     schema = tool.tool_call_schema
     assert not isinstance(schema, dict)
-    body = schema.model_json_schema()["properties"]["body"]
+    body_schema = schema.model_json_schema()["properties"]["body"]
+    body_branches = body_schema["anyOf"]
+    body_types = {branch.get("type") for branch in body_branches}
 
-    assert body["$ref"].endswith("/JsonData")
+    assert {"object", "array", "string", "null"}.issubset(body_types)
+    assert any(branch.get("const") == "dev" for branch in body_branches)
+    assert all(
+        branch.get("type") != "string" or branch.get("const") == "dev"
+        for branch in body_branches
+    )
+
+    body = {
+        "torrent_in": {
+            "title": "示例种子",
+            "enclosure": "https://example.com/test.torrent",
+        },
+    }
+    canonical = tool.canonical_arguments({"operation_id": "download.add", "body": body})
+    assert canonical["body"]["torrent_in"]["enclosure"] == body["torrent_in"]["enclosure"]
+
+    with pytest.raises(ValueError):
+        tool.canonical_arguments(
+            {
+                "operation_id": "download.add",
+                "body": json.dumps(body, ensure_ascii=False),
+            }
+        )
+
+
+def test_operation_body_shapes_fit_local_agent_input_schema() -> None:
+    """所有 MCP operation 请求体必须可由内置 Agent 输入类型表达。"""
+    tool = MoviePilotApiTool(session_id="session", user_id="api_user")
+    api_schema = tool.get_mcp_input_schema()
+    definitions = api_schema.get("$defs", {})
+    string_bodies = set()
+
+    for operation in api_schema["oneOf"]:
+        properties = operation.get("properties", {})
+        body_schema = properties.get("body")
+        if body_schema is None:
+            continue
+        while "$ref" in body_schema:
+            body_schema = definitions[body_schema["$ref"].rsplit("/", 1)[-1]]
+        variants = body_schema.get("anyOf", body_schema.get("oneOf", [body_schema]))
+        operation_id = properties["operation_id"]["const"]
+        for variant in variants:
+            while "$ref" in variant:
+                variant = definitions[variant["$ref"].rsplit("/", 1)[-1]]
+            if variant.get("type") == "string":
+                string_bodies.add((operation_id, variant.get("const")))
+            else:
+                assert variant.get("type") in {"object", "array", "null"}
+
+    assert string_bodies == {("system.upgrade.dev", "dev")}
 
 
 def test_mcp_collection_contract_distinguishes_exact_and_unavailable_totals() -> None:

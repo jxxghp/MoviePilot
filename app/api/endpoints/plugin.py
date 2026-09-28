@@ -1,6 +1,7 @@
 import asyncio
 import mimetypes
 from typing import Annotated, Any, Dict, List, Optional
+from urllib.parse import urlsplit
 
 import aiofiles
 from anyio import Path as AsyncPath
@@ -155,7 +156,7 @@ def _is_plugin_auth_remote_file(plugin_id: str, filepath: str) -> bool:
         remote = provider.get("remote") or {}
         if str(remote.get("id") or "").lower() != normalized_plugin_id:
             continue
-        remote_path = str(remote.get("url") or "").lstrip("/")
+        remote_path = urlsplit(str(remote.get("url") or "")).path.lstrip("/")
         remote_path_lower = remote_path.lower()
         expected_prefix = f"plugin/file/{normalized_plugin_id}/"
         if not remote_path_lower.startswith(expected_prefix):
@@ -250,6 +251,7 @@ async def runtime_status(
         _SchemaPluginRuntimeStatus.SYNC_FAILED,
         _SchemaPluginRuntimeStatus.BLOCKED_BY_POLICY,
         _SchemaPluginRuntimeStatus.LOAD_FAILED,
+        _SchemaPluginRuntimeStatus.INCOMPATIBLE_RUNTIME,
     }
     return _SchemaPluginRuntimeSummary(
         ready=not plugin_manager.is_plugin_settling(),
@@ -257,6 +259,11 @@ async def runtime_status(
         pending_count=sum(status in pending for status in statuses.values()),
         failed_count=sum(status in failed for status in statuses.values()),
         restart_required_plugin_ids=sorted(restart_requirements),
+        gil_enabled_plugin_ids=[
+            plugin_id
+            for plugin_id in plugin_manager.get_plugin_gil_fallbacks()
+            if plugin_id.lower() in installed_plugin_ids
+        ],
     )
 
 
@@ -393,14 +400,14 @@ def reload_plugin(plugin_id: str, _: ApiPrincipal = Depends(get_current_active_s
         return _SchemaResponse(success=False, message=str(error))
     if runtime_status is _SchemaPluginRuntimeStatus.ACTIVE:
         return _SchemaResponse(success=True)
-    return _SchemaResponse(
-        success=False,
-        message=(
-            "未通过用户认证，请查看日志"
-            if runtime_status is _SchemaPluginRuntimeStatus.BLOCKED_BY_POLICY
-            else "插件加载失败，请查看插件日志"
-        ),
-    )
+    if runtime_status is _SchemaPluginRuntimeStatus.BLOCKED_BY_POLICY:
+        message = "未通过用户认证，请查看日志"
+    elif runtime_status is _SchemaPluginRuntimeStatus.INCOMPATIBLE_RUNTIME:
+        # 与插件卡片保持同一说法：重载不会改变载荷自身的运行时声明
+        message = "插件声明不支持当前运行环境，请查看日志"
+    else:
+        message = "插件加载失败，请查看插件日志"
+    return _SchemaResponse(success=False, message=message)
 
 
 @router.get(
@@ -756,7 +763,10 @@ async def plugin_static_file(
         return StreamingResponse(
             file_generator(),
             media_type=response_type,
-            headers={"Content-Disposition": f"inline; filename={plugin_file_path.name}"},
+            headers={
+                "Content-Disposition": f"inline; filename={plugin_file_path.name}",
+                "Cache-Control": "no-cache, must-revalidate",
+            },
         )
     except Exception as e:
         logger.error(

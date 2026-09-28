@@ -11,13 +11,21 @@ from app.application.torrent.download import TorrentHelper
 from app.chain.base import ChainBase
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
+from app.chain.music_interaction.music import (
+    format_music_candidate,
+    media_exists_retry_prompt,
+    post_music_aware_torrents,
+    post_music_candidates,
+    resolve_media_action,
+    search_music_candidates,
+    selected_music_type,
+)
+from app.chain.music_interaction.subscribe import subscribe_media
 from app.chain.search.facade import SearchChain
 from app.chain.subscribe.facade import SubscribeChain
 from app.domain import episode as episode_rules
-from app.domain import title as title_rules
-from app.domain.context import Context, MediaInfo
+from app.domain.context import Context, MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
-from app.foundation import url as url_tools
 from app.runtime.log import logger
 from app.schemas.download import DownloadDirectory
 from app.schemas.file import FileURI
@@ -31,7 +39,7 @@ from app.schemas.types import MediaType, NotificationChannel
 
 class MediaInteractionChain(ChainBase):
     """
-    处理媒体搜索、订阅、资源选择和翻页等交互流程。
+    处理影视与音乐搜索、订阅、资源选择和翻页等消息交互流程。
     """
 
     _button_page_size = 8
@@ -47,34 +55,37 @@ class MediaInteractionChain(ChainBase):
 
     @staticmethod
     def _get_noexits_info(
-            meta: MetaBase, mediainfo: MediaInfo
+            meta: MetaBase, mediainfo: MediaInfo | MusicInfo
     ) -> Dict[Union[int, str], Dict[int, NotExistMediaInfo]]:
         """
         构造媒体缺失集信息，用于全量重搜或自动下载补全集数。
         """
         if mediainfo.type == MediaType.TV:
             if not mediainfo.seasons:
-                mediainfo = MediaChain().recognize_media(
+                recognized_media = MediaChain().recognize_media(
                     mtype=mediainfo.type,
                     media_source=resolve_media_identity(media=mediainfo)[0],
                     media_id=resolve_media_identity(media=mediainfo)[1],
                     cache=False,
                 )
-                if not mediainfo:
+                if not recognized_media:
                     logger.warn("媒体信息识别失败，无法补充季集信息")
                     return {}
-                if not mediainfo.seasons:
+                if not recognized_media.seasons:
                     logger.warn(
                         "媒体信息中没有季集信息，标题：%s，tmdbid：%s，doubanid：%s",
-                        mediainfo.title,
-                        mediainfo.tmdb_id,
-                        mediainfo.douban_id,
+                        recognized_media.title,
+                        recognized_media.tmdb_id,
+                        recognized_media.douban_id,
                     )
                     return {}
+                mediainfo = recognized_media
 
             media_source, media_id = resolve_media_identity(media=mediainfo)
             mediakey = build_media_key(media_source, media_id)
-            no_exists = {mediakey: {}}
+            no_exists: Dict[Union[int, str], Dict[int, NotExistMediaInfo]] = {
+                mediakey: {}
+            }
             if meta.begin_season is not None:
                 episodes = mediainfo.seasons.get(meta.begin_season)
                 if not episodes:
@@ -394,19 +405,9 @@ class MediaInteractionChain(ChainBase):
     @staticmethod
     def _resolve_action(text: str) -> Tuple[Optional[str], str]:
         """
-        将用户输入归类为搜索、订阅或普通聊天。
+        将消息文本归类为影视或音乐搜索、订阅及普通聊天。
         """
-        if text.startswith("订阅"):
-            return "Subscribe", re.sub(r"订阅[:：\s]*", "", text)
-        if text.startswith("洗版"):
-            return "ReSubscribe", re.sub(r"洗版[:：\s]*", "", text)
-        if text.startswith("搜索") or text.startswith("下载"):
-            return "ReSearch", re.sub(r"(搜索|下载)[:：\s]*", "", text)
-        if url_tools.is_link(text):
-            return None, text
-        if not title_rules.is_media_title_like(text):
-            return None, text
-        return "Search", text
+        return resolve_media_action(text)
 
     def _start_media_interaction(
             self,
@@ -418,10 +419,19 @@ class MediaInteractionChain(ChainBase):
             username: str,
     ) -> None:
         """
-        根据用户输入搜索媒体，并进入媒体选择阶段。
+        根据用户输入搜索影视或音乐，并进入对应候选选择阶段。
         """
-        meta, medias = MediaChain().search(content)
-        if not meta.name:
+        meta: Optional[MetaBase]
+        medias: List[MediaInfo | MusicInfo] = []
+        if action.startswith("Music"):
+            music_meta, title, music_candidates = search_music_candidates(content)
+            meta = music_meta
+            medias.extend(music_candidates)
+        else:
+            meta, media_candidates = MediaChain().search(content)
+            medias.extend(media_candidates)
+            title = meta.name if meta else ""
+        if not meta or not title:
             self._post_invalid_input(
                 channel=channel,
                 source=source,
@@ -437,7 +447,7 @@ class MediaInteractionChain(ChainBase):
                     source=source,
                     userid=userid,
                     username=username,
-                    title=f"{meta.name} 没有找到对应的媒体信息！",
+                    title=f"{title} 没有找到对应的媒体信息！",
                     save_history=False,
                 )
             )
@@ -451,7 +461,7 @@ class MediaInteractionChain(ChainBase):
             username=username,
             action=action,
             keyword=content,
-            title=meta.name,
+            title=title,
             meta=meta,
             items=medias,
         )
@@ -491,10 +501,10 @@ class MediaInteractionChain(ChainBase):
             )
             return
 
-        mediainfo: MediaInfo = page_items[page_index - 1]
+        mediainfo: MediaInfo | MusicInfo = page_items[page_index - 1]
         request.current_media = mediainfo
 
-        if request.action in {"Search", "ReSearch"}:
+        if request.action in {"Search", "ReSearch", "MusicSearch", "MusicReSearch"}:
             self._search_media_resources(
                 request=request,
                 mediainfo=mediainfo,
@@ -507,8 +517,14 @@ class MediaInteractionChain(ChainBase):
             )
             return
 
-        if request.action in {"Subscribe", "ReSubscribe"}:
-            self._subscribe_media(
+        if request.action in {
+            "Subscribe",
+            "ReSubscribe",
+            "MusicSubscribe",
+            "MusicReSubscribe",
+        }:
+            subscribe_media(
+                host=self,
                 request=request,
                 mediainfo=mediainfo,
                 channel=channel,
@@ -520,7 +536,7 @@ class MediaInteractionChain(ChainBase):
     def _search_media_resources(
             self,
             request: PendingMediaInteraction,
-            mediainfo: MediaInfo,
+            mediainfo: MediaInfo | MusicInfo,
             channel: NotificationChannel,
             source: str,
             userid: Union[str, int],
@@ -531,24 +547,31 @@ class MediaInteractionChain(ChainBase):
         """
         根据已选媒体搜索资源，并切换到资源选择阶段。
         """
+        meta = request.meta
         exist_flag, no_exists = DownloadChain().get_no_exists_info(
-            meta=request.meta,
+            meta=meta,
             mediainfo=mediainfo,
         )
-        if exist_flag and request.action == "Search":
+        if exist_flag and request.action in {"Search", "MusicSearch"}:
+            media_label, retry_hint = media_exists_retry_prompt(
+                mediainfo=mediainfo,
+                meta=meta,
+                keyword=request.keyword,
+                subscription=False,
+            )
             self.post_message(
                 Message(
                     channel=channel,
                     source=source,
                     userid=userid,
                     username=username,
-                    title=f"【{mediainfo.title_year}{request.meta.sea} 媒体库中已存在，如需重新下载请发送：搜索 名称 或 下载 名称】",
+                    title=f"【{media_label} 媒体库中已存在，如需重新下载请发送：{retry_hint}】",
                     save_history=False,
                 )
             )
             return
-        if exist_flag:
-            no_exists = self._get_noexits_info(request.meta, mediainfo)
+        if exist_flag and meta:
+            no_exists = self._get_noexits_info(meta, mediainfo)
 
         messages = self._build_no_exists_messages(
             mediainfo=mediainfo,
@@ -581,13 +604,14 @@ class MediaInteractionChain(ChainBase):
 
         contexts = SearchChain().process(mediainfo=mediainfo, no_exists=no_exists)
         if not contexts:
+            season = meta.sea if meta else ""
             self.post_message(
                 Message(
                     channel=channel,
                     source=source,
                     userid=userid,
                     username=username,
-                    title=f"{mediainfo.title}{request.meta.sea} 未搜索到需要的资源！",
+                    title=f"{mediainfo.title}{season} 未搜索到需要的资源！",
                     save_history=False,
                 )
             )
@@ -598,7 +622,7 @@ class MediaInteractionChain(ChainBase):
             logger.info("用户 %s 在自动下载用户中，开始自动择优下载 ...", userid)
             request.phase = "torrent"
             request.page = 0
-            request.title = mediainfo.title
+            request.title = mediainfo.title or ""
             request.items = list(contexts)
             if self._prompt_download_dir_selection(
                     request=request,
@@ -625,7 +649,7 @@ class MediaInteractionChain(ChainBase):
 
         request.phase = "torrent"
         request.page = 0
-        request.title = mediainfo.title
+        request.title = mediainfo.title or ""
         request.items = list(contexts)
         self._render_interaction(
             request=request,
@@ -634,58 +658,6 @@ class MediaInteractionChain(ChainBase):
             userid=userid,
             original_message_id=original_message_id,
             original_chat_id=original_chat_id,
-        )
-
-    def _subscribe_media(
-            self,
-            request: PendingMediaInteraction,
-            mediainfo: MediaInfo,
-            channel: NotificationChannel,
-            source: str,
-            userid: Union[str, int],
-            username: str,
-    ) -> None:
-        """
-        根据已选媒体创建订阅或洗版订阅。
-        """
-        best_version = request.action == "ReSubscribe"
-        if not best_version:
-            exist_flag, _ = DownloadChain().get_no_exists_info(
-                meta=request.meta,
-                mediainfo=mediainfo,
-            )
-            if exist_flag:
-                self.post_message(
-                    Message(
-                        channel=channel,
-                        source=source,
-                        userid=userid,
-                        username=username,
-                        title=f"【{mediainfo.title_year}{request.meta.sea} 媒体库中已存在，如需洗版请发送：洗版 XXX】",
-                        save_history=False,
-                    )
-                )
-                return
-
-        mp_name = (
-            self.user_repository.find_name_by_bindings(
-                {f"{channel.name.lower()}_userid": userid}
-            )
-            if channel
-            else None
-        )
-        SubscribeChain().add(
-            title=mediainfo.title,
-            year=mediainfo.year,
-            mtype=mediainfo.type,
-            media_source=mediainfo.media_source,
-            media_id=mediainfo.media_id,
-            season=request.meta.begin_season,
-            channel=channel,
-            source=source,
-            userid=str(userid),
-            username=mp_name or username,
-            best_version=best_version,
         )
 
     def _handle_torrent_selection(
@@ -948,14 +920,25 @@ class MediaInteractionChain(ChainBase):
         """
         自动择优下载当前资源列表，并在未完成时补建订阅。
         """
+        current_media = request.current_media
+        meta = request.meta
+        if not current_media or not meta:
+            self._post_invalid_input(
+                channel=channel,
+                source=source,
+                userid=userid,
+                username=username,
+                title="下载交互信息已失效，请重新搜索媒体",
+            )
+            return
         downloadchain = DownloadChain()
         if no_exists is None:
             exist_flag, no_exists = downloadchain.get_no_exists_info(
-                meta=request.meta,
-                mediainfo=request.current_media,
+                meta=meta,
+                mediainfo=current_media,
             )
             if exist_flag:
-                no_exists = self._get_noexits_info(request.meta, request.current_media)
+                no_exists = self._get_noexits_info(meta, current_media)
 
         downloads, lefts = downloadchain.batch_download(
             contexts=cache_list,
@@ -967,11 +950,11 @@ class MediaInteractionChain(ChainBase):
             username=username,
         )
         if downloads and not lefts:
-            logger.info("%s 下载完成", request.current_media.title_year)
+            logger.info("%s 下载完成", current_media.title_year)
             return
 
-        logger.info("%s 未下载未完整，添加订阅 ...", request.current_media.title_year)
-        if downloads and request.current_media.type == MediaType.TV:
+        logger.info("%s 未下载未完整，添加订阅 ...", current_media.title_year)
+        if downloads and current_media.type == MediaType.TV:
             note = [
                 download.meta_info.begin_episode
                 for download in downloads
@@ -988,18 +971,19 @@ class MediaInteractionChain(ChainBase):
             else None
         )
         SubscribeChain().add(
-            title=request.current_media.title,
-            year=request.current_media.year,
-            mtype=request.current_media.type,
-            media_source=request.current_media.media_source,
-            media_id=request.current_media.media_id,
-            season=request.meta.begin_season,
+            title=current_media.title or "",
+            year=str(current_media.year or ""),
+            mtype=current_media.type,
+            media_source=current_media.media_source,
+            media_id=current_media.media_id,
+            season=meta.begin_season,
             channel=channel,
             source=source,
             userid=str(userid),
             username=mp_name or username,
             state="R",
             note=note,
+            music_type=selected_music_type(current_media),
         )
 
     def _render_interaction(
@@ -1054,6 +1038,17 @@ class MediaInteractionChain(ChainBase):
         """
         发送或更新媒体选择列表。
         """
+        if request.action.startswith("Music"):
+            post_music_candidates(
+                host=self,
+                request=request,
+                channel=channel,
+                source=source,
+                userid=userid,
+                original_message_id=original_message_id,
+                original_chat_id=original_chat_id,
+            )
+            return
         page_items, page, total_pages = self._page_items(
             items=request.items,
             page=request.page,
@@ -1120,13 +1115,12 @@ class MediaInteractionChain(ChainBase):
                 total_pages=total_pages,
             )
         else:
-            if total > self._page_size(channel):
-                title = f"【{request.title}】共找到{total}条相关资源，请回复对应数字下载（0: 自动选择 p: 上一页 n: 下一页）"
-            else:
-                title = f"【{request.title}】共找到{total}条相关资源，请回复对应数字下载（0: 自动选择）"
+            page_hint = " p: 上一页 n: 下一页" if total > self._page_size(channel) else ""
+            title = f"【{request.title}】共找到{total}条相关资源，请回复对应数字下载（0: 自动选择{page_hint}）"
             buttons = None
 
-        self.post_torrents_message(
+        post_music_aware_torrents(
+            self,
             Message(
                 channel=channel,
                 source=source,
@@ -1198,7 +1192,7 @@ class MediaInteractionChain(ChainBase):
             self,
             channel: NotificationChannel,
             request: PendingMediaInteraction,
-            items: List[MediaInfo],
+            items: List[MediaInfo | MusicInfo],
             total: int,
             total_pages: int,
     ) -> List[List[Dict[str, str]]]:
@@ -1212,7 +1206,11 @@ class MediaInteractionChain(ChainBase):
         current_row: List[Dict[str, str]] = []
         for index, media in enumerate(items, start=1):
             if max_per_row == 1:
-                button_text = f"{index}. {media.title_year}"
+                button_text = (
+                    format_music_candidate(index, media)
+                    if isinstance(media, MusicInfo)
+                    else f"{index}. {media.title_year}"
+                )
                 if len(button_text) > max_text_length:
                     button_text = button_text[: max_text_length - 3] + "..."
                 buttons.append(
@@ -1401,7 +1399,9 @@ class MediaInteractionChain(ChainBase):
         return items[start:end], page, total_pages
 
     @classmethod
-    def _get_download_dirs(cls, media_info: Optional[MediaInfo] = None) -> List[DownloadDirectory]:
+    def _get_download_dirs(
+            cls, media_info: Optional[MediaInfo | MusicInfo] = None
+    ) -> List[DownloadDirectory]:
         """
         获取可供消息交互选择的下载目录。
         """
@@ -1458,7 +1458,7 @@ class MediaInteractionChain(ChainBase):
     @staticmethod
     def _match_download_dir_media(
             dir_info: TransferDirectoryConf,
-            media_info: Optional[MediaInfo],
+            media_info: Optional[MediaInfo | MusicInfo],
     ) -> bool:
         """
         判断下载目录是否适用于当前媒体。
@@ -1499,7 +1499,7 @@ class MediaInteractionChain(ChainBase):
 
     @staticmethod
     def _build_no_exists_messages(
-            mediainfo: MediaInfo,
+            mediainfo: MediaInfo | MusicInfo,
             no_exists: Optional[Dict[Union[int, str], Dict[int, NotExistMediaInfo]]],
             show_missing_only: bool,
     ) -> List[str]:

@@ -1,5 +1,6 @@
 """网络应用端口的宿主组合根。"""
 
+import asyncio
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Callable, Optional, Union, cast
@@ -59,7 +60,7 @@ from app.runtime.log import logger
 
 
 class _NetworkTestTransportAdapter:
-    """把通用异步 HTTP Adapter 收窄为网络探测 GET 端口。"""
+    """把通用异步 HTTP 与 WebSocket Adapter 收窄为网络探测端口。"""
 
     async def get(
         self,
@@ -80,10 +81,95 @@ class _NetworkTestTransportAdapter:
         ).get_res(url, allow_redirects=False)
         return cast(Optional[NetworkTestResponse], response)
 
+    async def request(
+        self,
+        method: str,
+        url: str,
+        *,
+        proxy: Any = None,
+        headers: Optional[Mapping[str, str]] = None,
+        user_agent: Optional[str] = None,
+        json_body: Optional[Mapping[str, Any]] = None,
+    ) -> Optional[NetworkTestResponse]:
+        """按请求规则发送 HTTP 请求并保持证书校验与重定向关闭。"""
+        if method.upper() == "GET":
+            return await self.get(
+                url,
+                proxy=proxy,
+                headers=headers,
+                user_agent=user_agent,
+            )
+        request = AsyncRequestUtils(
+            proxies=proxy,
+            headers=dict(headers) if headers else None,
+            timeout=10,
+            ua=user_agent or "",
+            verify=True,
+            follow_redirects=False,
+        )
+        if method.upper() == "POST":
+            response = await request.post_res(
+                url,
+                json=dict(json_body) if json_body is not None else None,
+                allow_redirects=False,
+            )
+        else:
+            response = await request.request(
+                method=method,
+                url=url,
+                follow_redirects=False,
+            )
+        return cast(Optional[NetworkTestResponse], response)
+
+    async def websocket(
+        self,
+        url: str,
+        *,
+        headers: Optional[Mapping[str, str]] = None,
+        user_agent: Optional[str] = None,
+        timeout: float = 10,
+    ) -> bool:
+        """执行一次不跟随重定向的 WSS 握手，并在线路建立后关闭连接。"""
+
+        def connect() -> bool:
+            """同步建立 WebSocket 握手，供 asyncio.to_thread 调用。"""
+            import websocket
+
+            connection = None
+            try:
+                request_headers = dict(headers) if headers else {}
+                if user_agent:
+                    request_headers.setdefault("User-Agent", user_agent)
+                connection = websocket.create_connection(
+                    url,
+                    timeout=timeout,
+                    header=request_headers or None,
+                    redirect_limit=0,
+                )
+                handshake = getattr(connection, "handshake_response", None)
+                return getattr(handshake, "status", None) == 101
+            except Exception:
+                return False
+            finally:
+                if connection is not None:
+                    try:
+                        connection.close()
+                    except Exception:
+                        pass
+
+        return await asyncio.to_thread(connect)
+
 
 def _read_network_test_setting(key: str, default: Any = None) -> Any:
     """延迟读取已由组合根发布的部署设置，避免装配阶段提前取值。"""
     return get_runtime_settings().get(key, default)
+
+
+def _list_enabled_network_module_ids() -> tuple[str, ...]:
+    """按模块运行时的当前配置投影网络相关的已启用宿主模块。"""
+    from app.application.module import get_module_manager
+
+    return tuple(spec.id for spec in get_module_manager().list_enabled_specs())
 
 
 class _ImageTransportAdapter:
@@ -211,9 +297,7 @@ class _DownloadHttpAdapter:
         raise_exception: bool = False,
     ) -> Optional[DownloadResponsePort]:
         """发送下载链 GET 请求并原样保留响应三态。"""
-        request = self._request(
-            cookies=cookies, ua=ua, headers=headers, proxies=proxies, timeout=timeout
-        )
+        request = self._request(cookies=cookies, ua=ua, headers=headers, proxies=proxies, timeout=timeout)
         kwargs: dict[str, Any] = {"raise_exception": raise_exception}
         if params is not None:
             kwargs["params"] = params
@@ -232,9 +316,7 @@ class _DownloadHttpAdapter:
         params: Optional[dict[str, Any]] = None,
     ) -> Optional[DownloadResponsePort]:
         """发送下载链 POST 请求并原样保留响应三态。"""
-        request = self._request(
-            cookies=cookies, ua=ua, headers=headers, proxies=proxies, timeout=timeout
-        )
+        request = self._request(cookies=cookies, ua=ua, headers=headers, proxies=proxies, timeout=timeout)
         kwargs: dict[str, Any] = {}
         if params is not None:
             kwargs["params"] = params
@@ -253,9 +335,7 @@ class _DownloadArchiveAdapter:
         archive_format: Optional[str],
     ) -> None:
         """使用宿主统一归档实现解压字幕文件。"""
-        SystemUtils.unpack_archive(
-            archive_file, extract_dir, archive_format=archive_format
-        )
+        SystemUtils.unpack_archive(archive_file, extract_dir, archive_format=archive_format)
 
     def list_files(self, directory: Path, extensions: tuple[str, ...]) -> list[Path]:
         """使用宿主统一文件扫描实现列出字幕文件。"""
@@ -287,9 +367,7 @@ class _ScrapingHttpAdapter:
             "proxies": proxies,
             "ua": ua,
             "timeout": timeout,
-            "referer": (
-                "https://movie.douban.com/" if "doubanio.com" in url else None
-            ),
+            "referer": ("https://movie.douban.com/" if "doubanio.com" in url else None),
         }
         response = RequestUtils(**options).get_res(url)
         return cast(Optional[ScrapingResponsePort], response)
@@ -305,9 +383,7 @@ class _ScrapingHttpAdapter:
         options: dict[str, Any] = {
             "proxies": proxies,
             "ua": ua,
-            "referer": (
-                "https://movie.douban.com/" if "doubanio.com" in url else None
-            ),
+            "referer": ("https://movie.douban.com/" if "doubanio.com" in url else None),
         }
         response = RequestUtils(**options).get_stream(url=url)
         return cast(ScrapingStreamResponsePort, response)
@@ -348,6 +424,7 @@ def configure_application_network_ports() -> None:
             transport=network_test_transport,
             settings=_read_network_test_setting,
             logger=logger,
+            enabled_module_ids=_list_enabled_network_module_ids,
         )
     )
     configure_image_ports(

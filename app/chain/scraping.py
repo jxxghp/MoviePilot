@@ -1240,7 +1240,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     @cached(
         maxsize=64,
         ttl_provider=lambda: get_chain_runtime_config_snapshot().metadata_cache_ttl,
-        skip_none=True,
+        skip_none=True, local_only=True,  # 封面为图片二进制，固定用进程内有界缓存，Redis 不支持 maxsize
     )
     def _request_music_cover(url: str) -> Optional[tuple[Optional[bytes], str]]:
         """下载并缓存音乐封面；仅稳定 404 与成功响应进入有界缓存。"""

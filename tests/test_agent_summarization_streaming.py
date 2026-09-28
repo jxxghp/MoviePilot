@@ -302,6 +302,7 @@ def test_streaming_agent_uses_non_streaming_llm_for_model_middlewares(with_invoc
         "execute_command",
         "agent_task",
         "read_skill",
+        "search_memory",
         PLAN_TOOL_NAME,
         READ_TOOL_RESULT_NAME,
         *([GET_TOOL_EXECUTION_NAME] if with_invocations else []),
@@ -309,7 +310,7 @@ def test_streaming_agent_uses_non_streaming_llm_for_model_middlewares(with_invoc
     ]
     assert tool_selector_middleware.selection_tools[: len(fake_tools)] == fake_tools
     assert [getattr(tool, "name", None) for tool in tool_selector_middleware.selection_tools[len(fake_tools) :]] == [
-        "read_skill", PLAN_TOOL_NAME, READ_TOOL_RESULT_NAME,
+        "read_skill", "search_memory", PLAN_TOOL_NAME, READ_TOOL_RESULT_NAME,
         *([GET_TOOL_EXECUTION_NAME] if with_invocations else []), TOOL_DISCOVERY_NAME,
     ]
     middlewares = captured["middleware"]
