@@ -8,7 +8,7 @@ import smbclient
 
 from app.application.storage import StorageHelper
 from app.modules.filemanager.module import FileManagerModule
-from app.modules.filemanager.storages.smb import SMB, SMBConnectionError
+from app.modules.filemanager.storages import smb as smb_module
 
 
 @pytest.fixture
@@ -29,10 +29,11 @@ def smb_storage(monkeypatch):
         assert storage == "smb"
         state["conf"] = conf.copy()
 
-    monkeypatch.setattr(SMB, "get_conf", get_conf)
+    # 存储发现会重载实现模块，按当前模块取类，避免保留收集阶段的旧类型身份。
+    monkeypatch.setattr(smb_module.SMB, "get_conf", get_conf)
     monkeypatch.setattr(StorageHelper, "set_storage", set_storage)
-    storage = object.__new__(SMB)
-    SMB.__init__(storage)
+    storage = object.__new__(smb_module.SMB)
+    smb_module.SMB.__init__(storage)
     module = object.__new__(FileManagerModule)
     module._support_storages = ["smb"]
     monkeypatch.setattr(module, "_FileManagerModule__get_storage_oper", Mock(return_value=storage))
@@ -62,7 +63,7 @@ def test_save_retries_unchanged_config_until_connection_recovers(smb_storage, fa
             smb_storage.storage._check_connection()
             smb_storage.client.listdir.assert_called_once_with(r"\\smb.example\video")
         else:
-            with pytest.raises(SMBConnectionError, match="连接未建立"):
+            with pytest.raises(smb_module.SMBConnectionError, match="连接未建立"):
                 smb_storage.storage._check_connection()
 
 
@@ -81,5 +82,5 @@ def test_save_incomplete_config_clears_previous_connection(smb_storage, conf):
     assert smb_storage.storage._server_path is None
     smb_storage.client.reset_connection_cache.assert_called_once_with()
     smb_storage.client.register_session.assert_not_called()
-    with pytest.raises(SMBConnectionError, match="连接未建立"):
+    with pytest.raises(smb_module.SMBConnectionError, match="连接未建立"):
         smb_storage.storage._check_connection()
