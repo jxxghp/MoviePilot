@@ -5,7 +5,7 @@ from uuid import UUID
 from mutagen import File as MutagenFile
 from mutagen.apev2 import APEBinaryValue
 from mutagen.flac import FLAC, Picture
-from mutagen.id3 import APIC, SYLT, USLT
+from mutagen.id3 import APIC, ID3, SYLT, USLT
 from mutagen.monkeysaudio import MonkeysAudio
 from mutagen.mp4 import MP4, MP4Cover
 
@@ -52,15 +52,18 @@ class AudioMetadataHelper:
         except Exception as err:
             logger.warning(f"读取音频标签失败：{path} - {err}")
             return None
-        if not audio:
+        # FileType 的真值取决于标签数量；无标签的有效音频仍包含整专对位所需的时长。
+        if audio is None:
             return None
 
-        tags = audio.tags or {}
+        tags = cls._readable_tags(audio.tags)
         track_number, total_tracks = cls._number_pair(
-            cls._first_of(tags, "tracknumber", "track")
+            cls._first_of(tags, "tracknumber", "track"),
+            cls._first_of(tags, "tracktotal", "totaltracks"),
         )
         disc_number, total_discs = cls._number_pair(
-            cls._first_of(tags, "discnumber", "disc")
+            cls._first_of(tags, "discnumber", "disc"),
+            cls._first_of(tags, "disctotal", "totaldiscs"),
         )
         musicbrainz_id = cls._normalize_musicbrainz_id(
             cls._first_of(
@@ -91,6 +94,35 @@ class AudioMetadataHelper:
             media_source=MediaSource.MusicBrainz if musicbrainz_id else None,
             media_id=musicbrainz_id,
         )
+
+    @staticmethod
+    def _readable_tags(tags: Any) -> Any:
+        """统一 WAV/DSF 的原生 ID3 与其它容器的 Easy 标签，不修改文件标签。
+
+        Mutagen 的 easy=True 只适用于提供 Easy 包装的容器；WAV/DSF 仍返回
+        ID3 帧。Recording 的身份只取专用字段，不能误用 Release Track ID。
+        """
+        if not isinstance(tags, ID3):
+            return tags or {}
+        fields = {
+            "title": "TIT2", "artist": "TPE1", "album": "TALB",
+            "albumartist": "TPE2", "date": "TDRC", "originaldate": "TDOR",
+            "tracknumber": "TRCK", "discnumber": "TPOS", "isrc": "TSRC",
+            "subtitle": "TIT3",
+        }
+        values = {
+            key: [str(value) for frame in tags.getall(frame_id) for value in frame.text]
+            for key, frame_id in fields.items()
+        }
+        for frame in tags.getall("TXXX"):
+            key = str(frame.desc).casefold().replace(" ", "_")
+            if not values.get(key):
+                values[key] = [str(value) for value in frame.text]
+        for frame in tags.getall("UFID"):
+            if frame.owner == "http://musicbrainz.org":
+                values["musicbrainz_trackid"] = [frame.data.decode("ascii", errors="replace")]
+                break
+        return values
 
     @classmethod
     def read_lyrics(cls, path: Path) -> Optional[MusicLyrics]:
@@ -365,14 +397,22 @@ class AudioMetadataHelper:
             return None
 
     @staticmethod
-    def _number_pair(value: Optional[str]) -> tuple[Optional[int], Optional[int]]:
-        """解析 track/disc 标签中的当前编号和总数。"""
-        if not value:
-            return None, None
-        parts = str(value).split("/", 1)
-        current = AudioMetadataHelper._optional_int(parts[0])
-        total = AudioMetadataHelper._optional_int(parts[1]) if len(parts) > 1 else None
+    def _number_pair(
+            value: Optional[str],
+            total_value: Optional[str] = None,
+    ) -> tuple[Optional[int], Optional[int]]:
+        """读取组合或独立曲数/碟数，优先有效组合总数并排除非正编号。"""
+        parts = str(value or "").split("/", 1)
+        current = AudioMetadataHelper._positive_int(parts[0])
+        total = AudioMetadataHelper._positive_int(parts[1]) if len(parts) > 1 else None
+        total = total or AudioMetadataHelper._positive_int(total_value)
         return current, total
+
+    @staticmethod
+    def _positive_int(value: Any) -> Optional[int]:
+        """曲序、碟号和总数必须为正数，零及无效文本不构成位置证据。"""
+        number = AudioMetadataHelper._optional_int(value)
+        return number if number is not None and number > 0 else None
 
     @staticmethod
     def _year(value: Optional[str]) -> Optional[int]:
