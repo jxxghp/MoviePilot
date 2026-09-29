@@ -9,6 +9,7 @@ import pytest
 from app.application.configuration import configure_runtime_settings
 from app.startup.composition import configuration as configuration_composition
 from app.startup.composition import database as database_composition
+from app.startup.composition.cache import CacheComposition
 from app.startup.initializers import modules as modules_initializer
 
 
@@ -55,10 +56,15 @@ def _isolate_startup_failure_cleanup(monkeypatch) -> None:
         "ModuleManager",
         "EventManager",
         "ThreadHelper",
-        "RedisHelper",
-        "AsyncRedisHelper",
     ):
         monkeypatch.setattr(modules_initializer, name, absent_owner)
+    # Redis 连接 owner 由缓存组合根按启动配置提供，模拟已接入但尚未建连。
+    composition = CacheComposition(
+        redis_enabled=True,
+        sync_redis_owner=absent_owner,
+        async_redis_owner=absent_owner,
+    )
+    monkeypatch.setattr(modules_initializer, "get_cache_composition", lambda: composition)
     monkeypatch.setattr(
         modules_initializer,
         "stop_doh_composition",

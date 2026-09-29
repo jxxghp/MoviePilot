@@ -30,26 +30,40 @@ _async_file_factory: Optional[
     Callable[[Optional[Path]], "AsyncCacheBackend"]
 ] = None
 _file_ttl_provider: Callable[[], int] = lambda: DEFAULT_CACHE_TTL
+_redis_probe: Optional[Callable[[], bool]] = None
 
 
 def configure_cache_factories(
     *,
     backend_type_provider: Callable[[], str],
-    redis_factory: Callable[[Optional[int]], "AtomicCacheBackend"],
-    async_redis_factory: Callable[[Optional[int]], "AsyncCacheBackend"],
     file_factory: Callable[[Optional[Path]], "CacheBackend"],
     async_file_factory: Callable[[Optional[Path]], "AsyncCacheBackend"],
     file_ttl_provider: Callable[[], int],
+    redis_factory: Optional[Callable[[Optional[int]], "AtomicCacheBackend"]] = None,
+    async_redis_factory: Optional[Callable[[Optional[int]], "AsyncCacheBackend"]] = None,
+    redis_probe: Optional[Callable[[], bool]] = None,
 ) -> None:
-    """注入配置读取器和具体缓存适配器工厂。"""
+    """注入配置读取器和具体缓存适配器工厂。
+
+    Redis 工厂与探测器只在启动层选用 Redis 缓存时传入；此时 ``backend_type_provider``
+    才可能返回 ``redis``，未接入 Redis 的进程不会走到 Redis 分支。
+    """
     global _backend_type_provider, _redis_factory, _async_redis_factory
-    global _file_factory, _async_file_factory, _file_ttl_provider
+    global _file_factory, _async_file_factory, _file_ttl_provider, _redis_probe
     _backend_type_provider = backend_type_provider
     _redis_factory = redis_factory
     _async_redis_factory = async_redis_factory
     _file_factory = file_factory
     _async_file_factory = async_file_factory
     _file_ttl_provider = file_ttl_provider
+    _redis_probe = redis_probe
+
+
+def probe_redis_cache() -> Optional[bool]:
+    """探测启动时接入的 Redis 缓存是否可连接；本进程未接入 Redis 时返回 None。"""
+    if _redis_probe is None:
+        return None
+    return _redis_probe()
 
 
 # 上下文变量来控制缓存行为

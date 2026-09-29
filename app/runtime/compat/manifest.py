@@ -782,7 +782,18 @@ _MESSAGE_NOTIFICATION_SYMBOL_ALIASES: Dict[str, SymbolAlias] = {
     },
 }
 
+# Redis 缓存后端只在启动时选用 Redis 后由缓存组合根导入；旧入口惰性解析，文件缓存实例不加载 redis。
+_REDIS_CACHE_BACKEND_SYMBOL_ALIASES: Dict[str, SymbolAlias] = {
+    name: SymbolAlias(
+        target_module="app.adapters.cache.redis",
+        target_name=name,
+        replacement=f"app.adapters.cache.redis.{name}",
+    )
+    for name in ("AsyncRedisBackend", "RedisBackend")
+}
+
 SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
+    "app.adapters.cache.backends": _REDIS_CACHE_BACKEND_SYMBOL_ALIASES,
     "app.agent": {
         "AgentChain": SymbolAlias(
             target_module="app.chain.agent",
@@ -978,6 +989,17 @@ SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
             for name in ("TransferTask", "TransferQueue")
         },
         **_MESSAGE_NOTIFICATION_SYMBOL_ALIASES,
+        # 对话记忆模型迁到智能体记忆模块后不再进入 schema 导出清单，根包旧入口惰性解析。
+        "BaseMessage": SymbolAlias(
+            target_module="langchain_core.messages",
+            target_name="BaseMessage",
+            replacement="langchain_core.messages.BaseMessage",
+        ),
+        "ConversationMemory": SymbolAlias(
+            target_module="app.agent.memory",
+            target_name="ConversationMemory",
+            replacement="app.agent.memory.ConversationMemory",
+        ),
     },
     "app.schemas.transfer": {
         **{
@@ -1010,12 +1032,19 @@ SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
         ),
     },
     "app.schemas.agent": {
+        # 对话记忆模型依赖 langchain_core，归属智能体记忆模块；旧路径惰性解析。
+        "ConversationMemory": SymbolAlias(
+            target_module="app.agent.memory",
+            target_name="ConversationMemory",
+            replacement="app.agent.memory.ConversationMemory",
+        ),
         "ReplyMode": SymbolAlias(
             target_module="app.schemas.types",
             target_name="ReplyMode",
             replacement="app.schemas.types.ReplyMode",
         ),
     },
+    "app.sdk.cache": _REDIS_CACHE_BACKEND_SYMBOL_ALIASES,
     "app.sdk.logging": {
         name: SymbolAlias(
             target_module="app.runtime.log",
