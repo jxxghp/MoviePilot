@@ -47,6 +47,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
     chunk_size = 10 * 1024 * 1024
 
     def __init__(self):
+        """加载当前 SMB 配置并尝试建立连接。"""
         super().__init__()
         self._connected = False
         self._server_path = None
@@ -58,8 +59,10 @@ class SMB(StorageBase, metaclass=WeakSingleton):
 
     def _init_connection(self):
         """
-        初始化SMB连接配置
+        按当前配置建立连接，清除上次状态以免配置无效时继续使用旧共享。
         """
+        self._connected = False
+        self._server_path = None
         from smbclient import ClientConfig, register_session
         try:
             conf = self.get_conf()
@@ -228,7 +231,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
 
     def init_storage(self):
         """
-        初始化存储
+        保存或重置配置后清理旧会话并重新连接，即使配置未变或上次连接失败。
         """
         from smbclient import reset_connection_cache
         # 重置连接缓存
