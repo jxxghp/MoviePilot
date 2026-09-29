@@ -102,6 +102,7 @@ if TYPE_CHECKING:
         _register_scrape_batch_task: Callable[..., Any]
         _request_durable_transfer_retry: Callable[..., Any]
         _requires_automatic_category: Callable[..., Any]
+        _transfer_validation_error: Callable[..., Any]
         _resolve_download_history: Callable[..., Any]
         _resolve_music_batch_file_context: Callable[..., Any]
         _restore_music_download_context: Callable[..., Any]

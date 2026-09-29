@@ -522,6 +522,13 @@ SSE 的 `candidate_items` 是站点原始返回数量，`match_counts` 记录身
 `field_sources` 按字段记录 `tag`、`album_tags`、`stream`、`filename`、`directory`、`torrent`、
 `remote` 或 `manual` 等来源，缺失表示来源未记录；该说明不等于远端身份已验证，也不用于绕过整理准入。
 
+有效 CUE 可补充专辑和逐轨信息，相关字段来源为 `cue`。`music_layout=image_cue` 表示
+一个音频文件包含多个逻辑音轨，`music_type=album`，不使用开头的 Recording 指纹替代整张专辑。
+整轨归档会保留音频及 `cue_filename` 的原名，只规范专辑目录，避免破坏 `FILE` 引用；不自动切轨。
+`cue_tracks` 保留逻辑曲目及每秒 75 帧的索引。`tracks_cue` 的分轨索引仅辅助元数据，
+原 CUE 不随改名自动复制。绝对/跨目录引用、冲突索引、超出音频时长等问题通过
+`organization_error` 返回，并在实际文件操作前阻止整理；原始文件内容不被修改。
+
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
 | GET | `/api/v1/media/search` | 当 `type=music` 或指定音乐 `media_source` 时按歌曲或专辑关键词搜索音乐元数据；艺术家统一由 `type=person` 搜索，支持 TMDB 与 MusicBrainz 来源。参数：`title`、`type`、`count`、可重复的 `media_source` 枚举，以及可选的 `music_type` 实体过滤 |

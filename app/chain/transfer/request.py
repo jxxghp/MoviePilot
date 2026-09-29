@@ -11,6 +11,7 @@ from app.application.history import (
 from app.application.transfer.workflow import TransferTask
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
+from app.chain.transfer.music import append_cue_companions
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.metainfo import MetaInfoPath
@@ -371,7 +372,7 @@ class _TransferCandidatePlanner:
                         )
                         if main_meta:
                             inherited_map[self._chain._get_file_key(current_item)] = deepcopy(main_meta)
-                    return list(items), inherited_map
+                    return append_cue_companions(self._chain, list(items), inherited_map, self._has_reliable_video_source(), self._transfer_exclude_words)
 
         if not main_items:
             remaining = [
@@ -382,7 +383,7 @@ class _TransferCandidatePlanner:
                     and self._chain._is_music_lyrics_file(item[0])
                 )
             ]
-            return remaining, inherited_map
+            return append_cue_companions(self._chain, remaining, inherited_map, self._has_reliable_video_source(), self._transfer_exclude_words)
 
         planned_items: List[Tuple[FileItem, bool]] = []
         seen_file_keys: set[Tuple[str, str]] = set()
@@ -478,7 +479,7 @@ class _TransferCandidatePlanner:
                 continue
             self._append_item(planned_items, seen_file_keys, item, is_bluray_dir)
 
-        return planned_items, inherited_map
+        return append_cue_companions(self._chain, planned_items, inherited_map, self._has_reliable_video_source(), self._transfer_exclude_words)
 
 
 def build_transfer_preview_item(task: TransferTask, transferinfo: TransferInfo) -> dict[str, Any]:

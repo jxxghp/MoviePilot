@@ -975,7 +975,7 @@
     "assignment": 4,
     "no-any-return": 2,
     "type-arg": 2,
-    "union-attr": 17
+    "union-attr": 15
   },
   "app/chain/transfer/facade.py": {
     "attr-defined": 2,

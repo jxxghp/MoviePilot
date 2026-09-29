@@ -759,6 +759,10 @@ class MetaMusic(MetaBase):
         music_type: Optional[str] = None,
         album_type: Optional[str] = None,
         secondary_types: Optional[list[str]] = None,
+        music_layout: Optional[str] = None,
+        cue_filename: Optional[str] = None,
+        cue_tracks: Optional[list[dict[str, Any]]] = None,
+        organization_error: Optional[str] = None,
     ):
         """初始化音乐标题、标签、音频规格和统一媒体身份。"""
         # 音乐无季集概念，仅复用 MetaBase 的基础字段初始化，不触发副标题季集识别
@@ -779,6 +783,10 @@ class MetaMusic(MetaBase):
         self.music_type = music_type
         self.album_type = album_type
         self.secondary_types = list(secondary_types or [])
+        self.music_layout = music_layout
+        self.cue_filename = cue_filename
+        self.cue_tracks = [dict(track) for track in cue_tracks or []]
+        self.organization_error = organization_error
         self.disc_number = disc_number
         self.track_number = track_number
         self.total_discs = total_discs
@@ -809,6 +817,10 @@ class MetaMusic(MetaBase):
         self.music_type = state.get("music_type")
         self.album_type = state.get("album_type")
         self.secondary_types = list(state.get("secondary_types") or [])
+        self.music_layout = state.get("music_layout")
+        self.cue_filename = state.get("cue_filename")
+        self.cue_tracks = [dict(track) for track in state.get("cue_tracks") or []]
+        self.organization_error = state.get("organization_error")
 
     @classmethod
     def parse_query(cls, query: str) -> "MetaMusic":
@@ -1036,6 +1048,8 @@ class MetaMusic(MetaBase):
             music_type=getattr(info, "music_type", None),
             album_type=getattr(info, "album_type", None),
             secondary_types=getattr(info, "secondary_types", None),
+            music_layout=getattr(info, "music_layout", None),
+            organization_error=getattr(info, "organization_error", None),
             musicbrainz_release_id=getattr(info, "musicbrainz_release_id", None),
             musicbrainz_release_group_id=getattr(info, "musicbrainz_release_group_id", None),
             musicbrainz_release_track_id=getattr(info, "musicbrainz_release_track_id", None),
@@ -1944,6 +1958,10 @@ class MetaMusic(MetaBase):
             "music_type": self.music_type,
             "album_type": self.album_type,
             "secondary_types": list(self.secondary_types),
+            "music_layout": self.music_layout,
+            "cue_filename": self.cue_filename,
+            "cue_tracks": [dict(track) for track in self.cue_tracks],
+            "organization_error": self.organization_error,
         }
 
     @classmethod
@@ -1982,6 +2000,10 @@ class MetaMusic(MetaBase):
             music_type=data.get("music_type"),
             album_type=data.get("album_type"),
             secondary_types=_string_list(data.get("secondary_types")),
+            music_layout=data.get("music_layout"),
+            cue_filename=data.get("cue_filename"),
+            cue_tracks=data.get("cue_tracks"),
+            organization_error=data.get("organization_error"),
         )
         meta.apply_words = data.get("apply_words")
         return meta

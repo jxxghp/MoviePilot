@@ -46,6 +46,14 @@ Music recognition, exploration, album and artist navigation, and recognition-cac
   `field_sources` in round trips. Sources such as `tag`, `album_tags`, `stream`,
   `filename`, `directory`, `torrent`, `remote`, and `manual` explain field origins;
   they do not independently prove that an online identity was verified.
+- CUE-derived fields use the `cue` evidence source. `music_layout=image_cue`
+  represents a whole album in one physical audio file; do not identify it as the
+  first Recording or assume it has been split. Organization keeps the audio and
+  companion `cue_filename` unchanged within the organized album directory.
+  `cue_tracks` stores logical tracks and 75-frames-per-second indexes. Split
+  `tracks_cue` metadata may supplement tracks, but the original multi-file CUE
+  is not copied after track renaming. Treat `organization_error` as a blocking
+  structural issue rather than overriding it with an unrelated media ID.
 
 ## Operations
 

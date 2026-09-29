@@ -29,6 +29,7 @@ class MusicBatchContext:
     resolved_contexts: dict[Tuple[str, str], tuple[MetaMusic, MusicInfo]] = field(default_factory=dict)
     tags_by_file: dict[Tuple[str, str], Optional[MetaMusic]] = field(default_factory=dict)
     release_by_main_key: dict[Tuple[str, str], "MusicReleaseGroup"] = field(default_factory=dict)
+    cue_by_main_key: dict[Tuple[str, str], MetaMusic] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +56,45 @@ def _release_item_path(item: FileItem) -> Path:
     if not item.path:
         raise ValueError("发行分组中的音轨缺少路径")
     return Path(item.path)
+
+
+def append_cue_companions(
+        owner: _TransferOwnerBase,
+        items: list[tuple[FileItem, bool]],
+        inherited: dict[Tuple[str, str], Any],
+        video_source: bool,
+        exclude_words: Any,
+) -> tuple[list[tuple[FileItem, bool]], dict[Tuple[str, str], Any]]:
+    """把有效整轨 CUE 排在其音频后归档；分轨 CUE 仅供识别，避免复制失效引用。"""
+    if video_source:
+        return items, inherited
+    result = list(items)
+    known = {owner._get_file_key(item) for item, _ in items}
+    for item, bluray in items:
+        if bluray or item.storage != "local" or not item.path or not owner._is_audio_file(item):
+            continue
+        path = Path(item.path)
+        meta = AudioMetadataHelper.read(path)
+        if meta.music_layout != "image_cue" or not meta.cue_filename or meta.organization_error:
+            continue
+        cue_path = path.parent / meta.cue_filename
+        if owner._is_blocked_by_exclude_words(str(cue_path), exclude_words):
+            logger.info(f"{cue_path.name} 被用户的整理过滤规则排除，保留源索引")
+            continue
+        cue_item = owner._transfer_storage_chain().get_item(FileItem(
+            storage="local", path=str(cue_path), type="file", name=cue_path.name,
+            basename=cue_path.stem, extension=cue_path.suffix.lstrip("."),
+        ))
+        if not cue_item:
+            meta.organization_error = "关联 CUE 已不可读取，请重新预览"
+            inherited[owner._get_file_key(item)] = meta
+            continue
+        key = owner._get_file_key(cue_item)
+        if key not in known:
+            result.append((cue_item, False))
+            known.add(key)
+        inherited[key] = deepcopy(meta)
+    return result, inherited
 
 
 def restore_music_resource_meta(
@@ -346,10 +386,15 @@ def _local_music_context(
         file_item: FileItem,
         file_path: Path,
         batch_context: MusicBatchContext,
+        file_meta: MetaMusic,
 ) -> Optional[tuple[MetaMusic, MusicInfo]]:
     """仅以本地真实标签建立快速整理上下文，不向在线来源确认身份。"""
     if file_item.storage != "local" or not owner._is_audio_file(file_item):
         return None
+    if file_meta.organization_error:
+        return file_meta, MusicInfo.from_meta(file_meta)
+    if file_meta.music_layout in {"image_cue", "tracks_cue"} and music_tags_are_usable(file_meta):
+        return file_meta, MusicInfo.from_meta(file_meta)
     tags = batch_context.tags_by_file.get(_music_file_key(file_item)) if _music_file_key(file_item) in batch_context.tags_by_file else AudioMetadataHelper.read_tags(file_path)
     if tags:
         tags = deepcopy(tags)
@@ -382,6 +427,10 @@ def prepare_music_batch_context(
                 release_items.setdefault((current_item.storage or "local", str(_release_directory(current_item))), []).append(current_item)
                 if current_item.storage == "local":
                     context.tags_by_file[_music_file_key(current_item)] = AudioMetadataHelper.read_tags(Path(current_item.path))
+                    tags = context.tags_by_file[_music_file_key(current_item)] or AudioMetadataHelper.read_filename(Path(current_item.path))
+                    cue_meta = AudioMetadataHelper.with_cue_context(Path(current_item.path), tags)
+                    if cue_meta.music_layout:
+                        context.cue_by_main_key[owner._get_file_key(current_item)] = cue_meta
     context.single_main_keys = {
         owner._get_file_key(items[0])
         for items in release_items.values()
@@ -398,6 +447,10 @@ def prepare_music_batch_context(
                 if evidence and len(group.files) > 1 and evidence.album and (evidence.album_artist or evidence.artists):
                     context.album_main_keys.add(item_key)
     for current_item, _current_bluray_dir in file_items:
+        if str(current_item.extension or "").casefold() == "cue":
+            for main_key, cue_meta in context.cue_by_main_key.items():
+                if cue_meta.music_layout == "image_cue" and current_item.path == str(Path(main_key[1]).parent / str(cue_meta.cue_filename)):
+                    context.related_main_keys[owner._get_file_key(current_item)] = main_key
         if not owner._is_music_lyrics_file(current_item):
             continue
         related_key = owner._get_related_main_file_key(
@@ -491,8 +544,23 @@ def resolve_music_batch_file_context(
         fallback,
     )
     selected_context = task_mediainfo is not None
+    cue_meta = batch_context.cue_by_main_key.get(file_key)
+    if cue_meta:
+        incoming_error = file_meta.organization_error if isinstance(file_meta, MetaMusic) else None
+        if selected_context and isinstance(file_meta, MetaMusic):
+            file_meta = deepcopy(file_meta)
+            for name in ("music_layout", "cue_filename", "cue_tracks", "organization_error"):
+                setattr(file_meta, name, deepcopy(getattr(cue_meta, name)))
+            if cue_meta.music_layout == "image_cue":
+                file_meta.track_number = None
+                if isinstance(task_mediainfo, MusicInfo) and task_mediainfo.music_type != "album":
+                    file_meta.organization_error = "整轨 CUE 包含多首歌曲，请选择专辑身份整理"
+        else:
+            file_meta = deepcopy(cue_meta)
+        if incoming_error:
+            file_meta.organization_error = incoming_error
     local_context = (
-        _local_music_context(owner, file_item, file_path, batch_context)
+        _local_music_context(owner, file_item, file_path, batch_context, file_meta)
         if not task_mediainfo and isinstance(file_meta, MetaMusic)
         else None
     )

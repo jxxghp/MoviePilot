@@ -613,6 +613,8 @@ class MusicInfo:
     listen_count: int | None = None
     raw_data: dict[str, Any] = field(default_factory=dict)
     field_sources: dict[str, str] = field(default_factory=dict, kw_only=True)
+    music_layout: str | None = field(default=None, kw_only=True)
+    organization_error: str | None = field(default=None, kw_only=True)
     # 内部标记：是否命中本地识别缓存，不参与序列化；与 MediaInfo 保持一致，
     # 显式声明以保留 getattr(..., False) 的默认值语义（__getattr__ 兜底会覆盖它）
     recognize_cache_hit = False
@@ -848,6 +850,8 @@ class MusicInfo:
             music_type=meta.music_type or MUSIC_ENTITY_RECORDING,
             album_type=meta.album_type,
             secondary_types=list(meta.secondary_types),
+            music_layout=meta.music_layout,
+            organization_error=meta.organization_error,
             musicbrainz_release_id=meta.musicbrainz_release_id,
             musicbrainz_release_group_id=meta.musicbrainz_release_group_id,
             musicbrainz_release_track_id=meta.musicbrainz_release_track_id,

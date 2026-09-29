@@ -1,7 +1,10 @@
-from pathlib import Path
+import re
+from dataclasses import asdict
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, Optional, Union
 from uuid import UUID
 
+import chardet
 from mutagen import File as MutagenFile
 from mutagen import MutagenError
 from mutagen.aiff import AIFF
@@ -17,8 +20,141 @@ from mutagen.wave import WAVE
 
 from app.domain.context import MusicInfo, MusicLyrics
 from app.domain.meta.metamusic import MetaMusic, parse_music_release_types
+from app.domain.music import MusicCueSheet, parse_music_cue
 from app.runtime.log import logger
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
+
+
+def _read_cue_text(path: Path) -> str:
+    """有界读取 CUE，优先 Unicode，再用已有编码探测与 GB18030 兼容中文旧文件。"""
+    with path.open("rb") as stream:
+        payload = stream.read(1024 * 1024 + 1)
+    if len(payload) > 1024 * 1024:
+        raise ValueError("CUE 文件超过 1 MiB，无法自动处理")
+    if payload.startswith((b"\xff\xfe", b"\xfe\xff")):
+        text = payload.decode("utf-16")
+    else:
+        try:
+            text = payload.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            detected = chardet.detect(payload)
+            encoding = detected.get("encoding") if (detected.get("confidence") or 0) >= 0.5 else None
+            text = payload.decode(encoding or "gb18030")
+    return text
+
+
+def _cue_mentions_audio(text: str, path: Path) -> bool:
+    """即使索引结构损坏，也保留 FILE 对当前音频的明确关联，避免错误回退指纹。"""
+    for line in text.splitlines():
+        match = re.match(r'\s*FILE\s+(?:"([^"\r\n]+)"|(\S+))', line, re.IGNORECASE)
+        if match:
+            name = (match.group(1) or match.group(2)).replace("\\", "/")
+            if PurePosixPath(name).stem.casefold() == path.stem.casefold():
+                return True
+    return False
+
+
+def _cue_candidates(path: Path) -> list[Path]:
+    """只扫描音频同目录的有限 CUE，不遍历全集或其它目录。"""
+    candidates = []
+    for item in path.parent.iterdir():
+        if item.is_file() and item.suffix.casefold() == ".cue" and not item.name.startswith("."):
+            candidates.append(item)
+            if len(candidates) > 32:
+                raise ValueError("同目录 CUE 超过 32 个，请按专辑分别整理")
+    return sorted(candidates, key=lambda item: (item.stem.casefold() != path.stem.casefold(), item.name))
+
+
+def _cue_reference_name(name: str) -> str:
+    """只允许同目录相对文件名，绝对路径、目录穿越及跨目录引用必须人工处理。"""
+    normalized = PurePosixPath(name.replace("\\", "/"))
+    if PureWindowsPath(name).drive or normalized.is_absolute() or len(normalized.parts) != 1 or name in {".", ".."}:
+        raise ValueError("CUE 引用了目录外或跨目录音频，请保留原目录结构后处理")
+    return normalized.name
+
+
+def _find_audio_cue(path: Path) -> Optional[tuple[Path, MusicCueSheet]]:
+    """以 FILE 引用定位关联 CUE，冲突或同名损坏索引不能退回首曲指纹识别。"""
+    matches: list[tuple[Path, MusicCueSheet]] = []
+    for candidate in _cue_candidates(path):
+        try:
+            text = _read_cue_text(candidate)
+        except (ValueError, OSError, UnicodeError, LookupError):
+            if candidate.stem.casefold() == path.stem.casefold():
+                raise ValueError(f"关联 CUE 无法解析：{candidate.name}") from None
+            continue
+        try:
+            sheet = parse_music_cue(text)
+        except ValueError as error:
+            if candidate.stem.casefold() == path.stem.casefold() or _cue_mentions_audio(text, path):
+                raise ValueError(f"关联 CUE 无法解析：{candidate.name} - {error}") from error
+            continue
+        references = {track.file_name for track in sheet.tracks}
+        related = [name for name in references if PurePosixPath(name.replace("\\", "/")).stem.casefold() == path.stem.casefold()]
+        if not related:
+            continue
+        for name in related:
+            if _cue_reference_name(name) != path.name:
+                raise ValueError(f"CUE 引用的文件名与当前音频不一致：{name}")
+        matches.append((candidate, sheet))
+    if len(matches) > 1 and any(sheet != matches[0][1] for _, sheet in matches[1:]):
+        raise ValueError("存在多个内容冲突的 CUE，请保留需要的索引后重试")
+    return matches[0] if matches else None
+
+
+def _apply_audio_cue(path: Path, meta: MetaMusic) -> MetaMusic:
+    """读取实际关联 CUE 补全曲目或整轨专辑，保留音频本体与索引文件的原始内容。"""
+    if path.suffix.casefold() == ".cue" or not path.is_file():
+        return meta
+    try:
+        found = _find_audio_cue(path)
+        if not found:
+            return meta
+        cue_path, sheet = found
+        tracks = [track for track in sheet.tracks if _cue_reference_name(track.file_name) == path.name]
+        if meta.duration is not None and any(track.start_frame >= meta.duration * 75 for track in tracks):
+            raise ValueError("CUE 索引超出音频实际时长")
+        meta.cue_filename = cue_path.name
+        meta.cue_tracks = [asdict(track) for track in tracks]
+        image = len(tracks) > 1
+        if image and len({track.file_name for track in sheet.tracks}) != 1:
+            raise ValueError("多文件整轨 CUE 需要保留完整原目录，暂不自动归档")
+        meta.music_layout = "image_cue" if image else "tracks_cue"
+        fields: dict[str, Any] = {"album": sheet.title, "album_artist": sheet.artist, "year": sheet.year,
+                                  "disc_number": sheet.disc_number, "total_discs": sheet.total_discs}
+        origins: dict[str, str] = {}
+        if image:
+            artist = sheet.artist or meta.album_artist or next(iter(meta.artists), None)
+            fields.update(title=sheet.title or meta.album, album=sheet.title or meta.album,
+                          album_artist=artist, artists=[artist] if artist else [])
+            if not sheet.title:
+                origins["title"] = origins["album"] = meta.field_sources.get("album", "unknown")
+            if not sheet.artist:
+                origins["artists"] = origins["album_artist"] = meta.field_sources.get("album_artist", meta.field_sources.get("artists", "unknown"))
+            meta.music_type = "album"
+            meta.album_type = meta.album_type or "Album"
+            meta.track_number = None
+            meta.total_tracks = len(tracks)
+            meta.musicbrainz_release_track_id = None
+            meta.media_source = None
+            meta.media_id = None
+            for key in ("media_id", "media_source", "track_number", "musicbrainz_release_track_id"):
+                meta.field_sources.pop(key, None)
+        else:
+            track = tracks[0]
+            fields.update(title=track.title, artists=[track.artist or sheet.artist] if track.artist or sheet.artist else [],
+                          track_number=track.number, isrc=track.isrc)
+        for key, value in fields.items():
+            if value in (None, "", []):
+                continue
+            if (image and key in {"title", "artists", "album", "album_artist"}) or not getattr(meta, key) or meta.field_sources.get(key) in {"filename", "directory"}:
+                setattr(meta, key, value)
+                meta.field_sources[key] = origins.get(key, "cue")
+        return meta
+    except (ValueError, OSError, UnicodeError, LookupError) as error:
+        meta.music_layout = "cue_invalid"
+        meta.organization_error = str(error)
+        return meta
 
 
 def _read_mp4_tags(tags: MP4Tags) -> dict[str, list[str]]:
@@ -77,9 +213,8 @@ class AudioMetadataHelper:
     def read(cls, path: Path) -> MetaMusic:
         """读取本地音频标签，并以完整文件名模式和目录线索补充缺失字段。"""
         tag_meta = cls.read_tags(path)
-        if tag_meta:
-            return tag_meta.apply_path_context(path)
-        return cls.read_filename(path)
+        meta = tag_meta.apply_path_context(path) if tag_meta else cls.read_filename(path)
+        return _apply_audio_cue(path, meta)
 
     @classmethod
     def read_evidence(
@@ -90,14 +225,19 @@ class AudioMetadataHelper:
         filename_meta = cls.read_filename(path)
         tag_meta = cls.read_tags(path) if path.exists() and path.is_file() else None
         if not tag_meta:
-            return filename_meta, None, filename_meta
+            return _apply_audio_cue(path, MetaMusic.from_dict(filename_meta.to_dict())), None, filename_meta
         merged_meta = MetaMusic.from_dict(tag_meta.to_dict()).apply_path_context(path)
-        return merged_meta, tag_meta, filename_meta
+        return _apply_audio_cue(path, merged_meta), tag_meta, filename_meta
 
     @classmethod
     def read_many(cls, paths: list[Path]) -> list[MetaMusic]:
         """批量读取一组音频路径的标签与文件名元数据。"""
         return [cls.read(path) for path in paths]
+
+    @staticmethod
+    def with_cue_context(path: Path, meta: MetaMusic) -> MetaMusic:
+        """在隔离副本上附加 CUE 事实，批次缓存的纯标签不能被路径或索引污染。"""
+        return _apply_audio_cue(path, MetaMusic.from_dict(meta.to_dict()).apply_path_context(path))
 
     @classmethod
     def read_tags(cls, path: Path) -> Optional[MetaMusic]:

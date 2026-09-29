@@ -645,6 +645,10 @@ class MediaPathOwner(_MediaOwnerBase):
     ) -> Tuple[MetaMusic, MusicInfo]:
         """按指纹、文件标签、文件名三级顺序识别本地音乐。"""
         meta, tag_meta, filename_meta = AudioMetadataHelper.read_evidence(Path(path))
+        if meta.music_layout == "image_cue" or meta.organization_error:
+            # 整轨包含多个逻辑音轨，不能把开头的指纹 Recording 当作整个文件。
+            cue_info = MusicInfo.from_meta(meta)
+            return meta, cast(MusicInfo, self._finalize_recognition_result(cue_info, allow_enrichment=False))
         filename_meta = _merge_music_path_evidence(filename_meta, meta)
         if contextual_meta:
             meta = _merge_contextual_music_evidence(meta, contextual_meta)
@@ -715,6 +719,9 @@ class MediaPathOwner(_MediaOwnerBase):
             AudioMetadataHelper.read_evidence,
             Path(path),
         )
+        if meta.music_layout == "image_cue" or meta.organization_error:
+            cue_info = MusicInfo.from_meta(meta)
+            return meta, cast(MusicInfo, await self._async_finalize_recognition_result(cue_info, allow_enrichment=False))
         filename_meta = _merge_music_path_evidence(filename_meta, meta)
         if contextual_meta:
             meta = _merge_contextual_music_evidence(meta, contextual_meta)

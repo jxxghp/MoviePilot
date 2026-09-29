@@ -59,6 +59,129 @@ _ISRC = re.compile(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}", re.IGNORECASE | re.ASCII)
 _CJK = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
 
 
+@dataclass(frozen=True, slots=True)
+class MusicCueTrack:
+    """CUE 中一个逻辑音轨的文件引用与 INDEX 01 起点，单位为每秒 75 帧。"""
+
+    number: int
+    file_name: str
+    start_frame: int
+    title: Optional[str] = None
+    artist: Optional[str] = None
+    isrc: Optional[str] = None
+
+
+@dataclass(frozen=True, slots=True)
+class MusicCueSheet:
+    """不读取文件系统的 CUE 解析结果，专辑字段与逐轨字段保持独立。"""
+
+    title: Optional[str]
+    artist: Optional[str]
+    year: Optional[int]
+    disc_number: Optional[int]
+    total_discs: Optional[int]
+    tracks: tuple[MusicCueTrack, ...]
+
+
+def _cue_text(value: str) -> str:
+    """读取带引号或未加引号的文本，不执行反斜线转义或路径展开。"""
+    value = value.strip()
+    if value.startswith('"'):
+        if not value.endswith('"') or len(value) < 2:
+            raise ValueError("CUE 文本引号未闭合")
+        return value[1:-1]
+    return value
+
+
+def _cue_frames(value: str) -> int:
+    """校验分、秒、帧或直接帧数，禁止负值和超范围的秒/帧。"""
+    if value.isdigit():
+        return int(value)
+    match = re.fullmatch(r"(\d{1,5}):(\d{2}):(\d{2})", value)
+    if not match:
+        raise ValueError("CUE 时间索引无效")
+    minutes, seconds, frames = map(int, match.groups())
+    if seconds >= 60 or frames >= 75:
+        raise ValueError("CUE 时间索引超出范围")
+    return (minutes * 60 + seconds) * 75 + frames
+
+
+def parse_music_cue(text: str) -> MusicCueSheet:
+    """解析音频 CUE 的专辑、FILE/TRACK/INDEX 结构，拒绝缺索引和逆序音轨。
+
+    索引表示同一文件内的逻辑曲目，不代表已拆出独立音频。未消费的 REM、
+    FLAGS 等信息继续保留在原文件中，解析器不重写用户内容。
+    """
+    album: dict[str, str] = {}
+    rows: list[dict[str, str | int]] = []
+    current: Optional[dict[str, str | int]] = None
+    file_name: Optional[str] = None
+    for line in text.lstrip("\ufeff").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        fields = line.split(maxsplit=1)
+        command, value = fields[0].upper(), fields[1].strip() if len(fields) > 1 else ""
+        if command == "FILE":
+            match = re.fullmatch(r'(?:"([^"\r\n]+)"|(\S+))\s+(\w+)', value)
+            if not match or match.group(3).upper() not in {"WAVE", "MP3", "FLAC", "AIFF"}:
+                raise ValueError("CUE FILE 格式无效或不是受支持的音频")
+            file_name = match.group(1) or match.group(2)
+        elif command == "TRACK":
+            match = re.fullmatch(r"(\d{1,3})\s+AUDIO", value, re.IGNORECASE)
+            if not match or not file_name or len(rows) >= 999:
+                raise ValueError("CUE 音轨缺少 FILE 或不是有效音频轨")
+            number = int(match.group(1))
+            if number < 1 or (rows and number <= int(rows[-1]["number"])):
+                raise ValueError("CUE 音轨编号重复或逆序")
+            current = {"number": number, "file_name": file_name}
+            rows.append(current)
+        elif command == "INDEX":
+            match = re.fullmatch(r"(\d{1,2})\s+(\S+)", value)
+            if current is None or not match:
+                raise ValueError("CUE 索引缺少所属音轨")
+            frames = _cue_frames(match.group(2))
+            if int(match.group(1)) == 1:
+                if "start_frame" in current:
+                    raise ValueError("CUE 音轨重复声明 INDEX 01")
+                current["start_frame"] = frames
+        elif command in {"TITLE", "PERFORMER", "ISRC"}:
+            key = {"TITLE": "title", "PERFORMER": "artist", "ISRC": "isrc"}[command]
+            if current is not None:
+                current[key] = _cue_text(value)
+            elif command != "ISRC":
+                album[key] = _cue_text(value)
+        elif command == "REM" and current is None:
+            fields = value.split(maxsplit=1)
+            key, raw = (fields[0], fields[1]) if len(fields) == 2 else ("", "")
+            if key.upper() in {"DATE", "DISCNUMBER", "TOTALDISCS"}:
+                album[key.lower()] = _cue_text(raw)
+    if not rows:
+        raise ValueError("CUE 没有音轨")
+    tracks = []
+    previous: dict[str, int] = {}
+    for row in rows:
+        if "start_frame" not in row:
+            raise ValueError("CUE 音轨缺少 INDEX 01")
+        name, start = str(row["file_name"]), int(row["start_frame"])
+        if start <= previous.get(name, -1):
+            raise ValueError("CUE 同一文件的时间索引重复或逆序")
+        previous[name] = start
+        tracks.append(MusicCueTrack(
+            number=int(row["number"]), file_name=name, start_frame=start,
+            title=str(row["title"]) if row.get("title") else None,
+            artist=str(row["artist"]) if row.get("artist") else None,
+            isrc=str(row["isrc"]) if row.get("isrc") else None,
+        ))
+    year = album.get("date", "")[:4]
+    return MusicCueSheet(
+        title=album.get("title"), artist=album.get("artist"), year=int(year) if year.isdigit() else None,
+        disc_number=int(album["discnumber"]) if album.get("discnumber", "").isdigit() else None,
+        total_discs=int(album["totaldiscs"]) if album.get("totaldiscs", "").isdigit() else None,
+        tracks=tuple(tracks),
+    )
+
+
 def music_tags_are_usable(meta: Optional[MetaMusic]) -> bool:
     """判断纯标签是否足以确定本地整理路径，不把文件名或目录猜测当作标签。
 

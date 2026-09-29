@@ -15,6 +15,10 @@ class MusicMeta(OptionalMediaIdentityMixin, BaseModel):
     music_type: Optional[MusicEntityType] = Field(default=None, description="已知主身份的实体类型，未知时不推断")
     album_type: Optional[str] = Field(default=None, description="标签声明的发行主类型，例如 Album、EP、Single")
     secondary_types: list[str] = Field(default_factory=list, description="标签声明的 Compilation、Soundtrack 等副类型")
+    music_layout: Optional[str] = Field(default=None, description="音频资源形态，例如整轨 image_cue 或分轨 tracks_cue")
+    cue_filename: Optional[str] = Field(default=None, description="同目录关联的 CUE 文件名")
+    cue_tracks: list[dict[str, JsonData]] = Field(default_factory=list, description="CUE 逻辑曲目，INDEX 起点单位为 75 帧每秒")
+    organization_error: Optional[str] = Field(default=None, description="阻止自动整理的资源结构错误")
     org_string: Optional[str] = None
     apply_words: list[str] = Field(default_factory=list, description="资源解析时实际应用的自定义识别词")
     title: Optional[str] = None
@@ -106,6 +110,8 @@ class MusicInfo(OptionalMediaIdentityMixin, BaseModel):
     listen_count: Optional[int] = None
     raw_data: dict[str, JsonData] = Field(default_factory=dict)
     field_sources: dict[str, str] = Field(default_factory=dict)
+    music_layout: Optional[str] = None
+    organization_error: Optional[str] = None
     title_year: Optional[str] = None
     poster_path: Optional[str] = None
     backdrop_path: Optional[str] = None

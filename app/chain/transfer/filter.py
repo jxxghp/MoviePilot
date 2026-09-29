@@ -4,6 +4,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, Optional, Protocol, Union, cast
 
+from app.application.audio import AudioMetadataHelper
 from app.application.configuration import (
     get_chain_runtime_config_snapshot,
 )
@@ -95,6 +96,18 @@ class _MusicFileFilterBase(_TransferOwnerBase):
     """提供通用文件识别及 MusicBrainz 专辑、曲目匹配能力。"""
 
     __mixin_host_protocol__ = TransferMixinHost
+
+    @classmethod
+    def _transfer_validation_error(cls, task: TransferTask) -> Optional[str]:
+        """在产生文件副作用前拒绝损坏音乐结构或未满足的分类要求。"""
+        if isinstance(task.meta, MetaMusic) and task.meta.organization_error:
+            return task.meta.organization_error
+        if not (cls._requires_automatic_category(task) and task.mediainfo and not task.mediainfo.category):
+            return None
+        return (
+            "TMDB 信息未匹配到媒体分类，无法按媒体类别整理" if task.mediainfo.tmdb_id
+            else "媒体识别结果未匹配到媒体分类，无法按媒体类别整理"
+        )
 
     @staticmethod
     def _requires_automatic_category(task: TransferTask) -> bool:
@@ -329,6 +342,7 @@ class FileFilterMixin(_TransferOwnerBase):
     """提供整理文件筛选、音乐批次上下文和源目录清理判定。"""
 
     __mixin_host_protocol__ = TransferMixinHost
+    _transfer_validation_error = cast(Any, classmethod(cast(Any, _MusicFileFilterBase._transfer_validation_error).__func__))
     _prepare_music_batch_context = prepare_music_batch_context
     _resolve_music_batch_file_context = resolve_music_batch_file_context
     _requires_automatic_category = cast(Any, staticmethod(
@@ -372,7 +386,9 @@ class FileFilterMixin(_TransferOwnerBase):
         ]
         if not audio_paths:
             return {}, None
-        aligned_tracks = MediaChain._align_selected_music_album(audio_paths, album)
+        image_paths = {path for path in audio_paths if AudioMetadataHelper.read(path).music_layout == "image_cue"}
+        aligned_tracks = MediaChain._align_selected_music_album([path for path in audio_paths if path not in image_paths], album)
+        aligned_tracks.update({str(path.resolve()): album.to_music_info() for path in image_paths})
         if len(aligned_tracks) != len(audio_paths):
             return {}, (
                 f"所选专辑只能对齐 {len(aligned_tracks)} / {len(audio_paths)} "
@@ -465,6 +481,8 @@ class FileFilterMixin(_TransferOwnerBase):
             return restore_music_resource_meta(download_history, file_path), None
 
         file_tags = MediaChain.read_path_meta(file_path)
+        if file_tags.music_layout == "image_cue" and saved_info.music_type == MUSIC_ENTITY_RECORDING:
+            return file_tags, None
         should_discard_identity = discard_saved_identity or (
             discard_recording_identity
             and saved_info.music_type == MUSIC_ENTITY_RECORDING
@@ -531,6 +549,8 @@ class FileFilterMixin(_TransferOwnerBase):
             key: source for key, source in file_tags.field_sources.items()
             if getattr(file_meta, key, None) == getattr(file_tags, key, None)
         })
+        for key in ("music_layout", "cue_filename", "cue_tracks", "organization_error"):
+            setattr(file_meta, key, deepcopy(getattr(file_tags, key)))
         file_meta.media_source = saved_info.media_source or saved_meta.media_source
         file_meta.media_id = saved_info.media_id or saved_meta.media_id
         file_meta.music_type = saved_info.music_type
