@@ -10362,6 +10362,11 @@
       },
       {
         "kind": "import",
+        "name": "add_plugin_once_job",
+        "target": "app.application.scheduling.add_plugin_once_job"
+      },
+      {
+        "kind": "import",
         "name": "get_agent_task_next_run",
         "target": "app.application.scheduling.get_agent_task_next_run"
       },
@@ -10379,6 +10384,11 @@
         "kind": "import",
         "name": "remove_plugin_job",
         "target": "app.application.scheduling.remove_plugin_job"
+      },
+      {
+        "kind": "import",
+        "name": "remove_plugin_once_job",
+        "target": "app.application.scheduling.remove_plugin_once_job"
       },
       {
         "kind": "import",

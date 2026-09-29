@@ -1097,8 +1097,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8921,
-  "edge_sha256": "e34590c0ec863317ddeec72b19cd935a13b48e51bd56b31f5a3aae93f26a4953",
+  "edge_count": 8930,
+  "edge_sha256": "54d148d934657cd03ad7c96c6e127bba632b803ac1fb82baa183ba219e2bc47f",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -8753,6 +8753,7 @@
     "app.scheduler.facade -> app.scheduler.execution",
     "app.scheduler.facade -> app.scheduler.lifecycle",
     "app.scheduler.facade -> app.scheduler.maintenance",
+    "app.scheduler.facade -> app.scheduler.oncejob",
     "app.scheduler.facade -> app.scheduler.progress",
     "app.scheduler.facade -> app.scheduler.reconcile",
     "app.scheduler.facade -> app.scheduler.registry",
@@ -8776,6 +8777,14 @@
     "app.scheduler.maintenance -> app.runtime.log",
     "app.scheduler.maintenance -> app.scheduler",
     "app.scheduler.maintenance -> app.scheduler.contract",
+    "app.scheduler.oncejob -> app.application",
+    "app.scheduler.oncejob -> app.application.plugin",
+    "app.scheduler.oncejob -> app.application.plugin.runtime",
+    "app.scheduler.oncejob -> app.application.scheduling",
+    "app.scheduler.oncejob -> app.runtime",
+    "app.scheduler.oncejob -> app.runtime.log",
+    "app.scheduler.oncejob -> app.scheduler",
+    "app.scheduler.oncejob -> app.scheduler.contract",
     "app.scheduler.progress -> app.application",
     "app.scheduler.progress -> app.application.scheduling",
     "app.scheduler.progress -> app.runtime",
@@ -10022,7 +10031,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 1051,
+  "module_count": 1052,
   "modules": [
     "app",
     "app.adapters",
@@ -10939,6 +10948,7 @@
     "app.scheduler.facade",
     "app.scheduler.lifecycle",
     "app.scheduler.maintenance",
+    "app.scheduler.oncejob",
     "app.scheduler.progress",
     "app.scheduler.reconcile",
     "app.scheduler.registry",
