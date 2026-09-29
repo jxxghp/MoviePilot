@@ -119,6 +119,7 @@ def _musicbrainz_recording_meta(meta: MetaMusic, recording_id: str) -> MetaMusic
     identity_meta = MetaMusic.from_dict(meta.to_dict())
     identity_meta.media_source = MediaSource.MusicBrainz
     identity_meta.media_id = recording_id
+    identity_meta.music_type = MUSIC_ENTITY_RECORDING
     return identity_meta
 
 
@@ -184,6 +185,8 @@ def _merge_music_audio_quality(info: MusicInfo, meta: MetaMusic) -> MusicInfo:
         value = getattr(meta, key, None)
         if value is not None:
             setattr(info, key, value)
+            if key in meta.field_sources:
+                info.field_sources[key] = meta.field_sources[key]
     return info
 
 

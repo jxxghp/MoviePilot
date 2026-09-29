@@ -4,7 +4,7 @@ import threading
 import time
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from typing import Any, Iterable, Optional, Tuple, Union
+from typing import Any, Iterable, Optional, Tuple, TypeVar, Union
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.domain.classification.evaluator import read_fact
@@ -54,6 +54,20 @@ from app.schemas.types import (
     ModuleType,
     MusicEntityType,
 )
+
+_MusicEvidenceModel = TypeVar("_MusicEvidenceModel", MusicInfo, MusicAlbumInfo)
+
+
+def _remote_music_evidence(info: _MusicEvidenceModel) -> _MusicEvidenceModel:
+    """只为响应中实际存在的标准字段标记远端来源，不给空值制造证据。"""
+    fields = ("title", "artists", "album", "album_artist", "year", "original_year", "release_year",
+              "release_date", "disc_number", "track_number", "total_tracks", "total_discs",
+              "version", "media_id", "musicbrainz_release_id", "musicbrainz_release_group_id",
+              "musicbrainz_release_track_id")
+    info.field_sources.update({
+        key: "remote" for key in fields if getattr(info, key, None) not in (None, "", [])
+    })
+    return info
 
 
 @dataclass(frozen=True, slots=True)
@@ -1162,8 +1176,12 @@ class MusicBrainzModule(_ModuleBase):
         artists, artist_ids = cls._artist_credits(detail.get("artist-credit"))
         album = MusicAlbumInfo(
             media_source=cls._source,
-            # 优先使用 Release Group ID，与专辑详情和封面入口保持一致
-            media_id=str(group_id or release_id),
+            # Release 与 Release Group 是不同实体，缺少 Group 时不能用 Release ID 补位。
+            media_id=str(group_id) if group_id else None,
+            musicbrainz_release_id=str(release_id),
+            musicbrainz_release_group_id=str(group_id) if group_id else None,
+            original_year=cls._year(release_group.get("first-release-date")),
+            total_discs=len(detail.get("media") or []) or None,
             title=str(title),
             artists=artists,
             artist_ids=artist_ids,
@@ -1185,7 +1203,7 @@ class MusicBrainzModule(_ModuleBase):
             for track in medium.get("tracks") or []
             if (info := cls._track_to_info(album, medium, track))
         ]
-        return album
+        return _remote_music_evidence(album)
 
     def recognize_media(
             self,
@@ -2014,7 +2032,7 @@ class MusicBrainzModule(_ModuleBase):
             if (value := cls._stripped(item))
         ]
         category_parts = [cls._stripped(release_group.get("primary-type")), *secondary_types]
-        return MusicInfo(
+        return _remote_music_evidence(MusicInfo(
             media_source=cls._source,
             media_id=str(media_id),
             title=str(title),
@@ -2023,6 +2041,10 @@ class MusicBrainzModule(_ModuleBase):
             album=album,
             album_artist=" / ".join(album_artists) if album_artists else None,
             album_id=str(release_group["id"]) if release_group.get("id") else None,
+            musicbrainz_release_id=str(release["id"]) if release.get("id") else None,
+            musicbrainz_release_group_id=str(release_group["id"]) if release_group.get("id") else None,
+            original_year=cls._year(recording.get("first-release-date") or release_group.get("first-release-date")),
+            release_year=cls._year(release.get("date")),
             album_type=cls._stripped(release_group.get("primary-type")),
             secondary_types=secondary_types,
             year=cls._year(release_date),
@@ -2040,7 +2062,7 @@ class MusicBrainzModule(_ModuleBase):
             artist_aliases=cls._credit_aliases(recording.get("artist-credit")),
             detail_link=f"{cls._detail_url}/{media_id}",
             raw_data=recording,
-        )
+        ))
 
     @classmethod
     def _release_group_to_album(cls, release_group: dict[str, Any]) -> Optional[MusicAlbumInfo]:
@@ -2051,9 +2073,11 @@ class MusicBrainzModule(_ModuleBase):
             return None
         artists, artist_ids = cls._artist_credits(release_group.get("artist-credit"))
         rating = release_group.get("rating") or {}
-        return MusicAlbumInfo(
+        return _remote_music_evidence(MusicAlbumInfo(
             media_source=cls._source,
             media_id=str(media_id),
+            musicbrainz_release_group_id=str(media_id),
+            original_year=cls._year(release_group.get("first-release-date")),
             title=str(title),
             artists=artists,
             artist_ids=artist_ids,
@@ -2070,7 +2094,7 @@ class MusicBrainzModule(_ModuleBase):
             rating_votes=rating.get("votes-count"),
             detail_link=f"{cls._album_detail_url}/{media_id}",
             raw_data=release_group,
-        )
+        ))
 
     @classmethod
     def _release_variants(cls, releases: list[dict[str, Any]]) -> list[MusicRelease]:
@@ -2202,12 +2226,15 @@ class MusicBrainzModule(_ModuleBase):
             album.title = title
         if release_date := cls._stripped(payload.get("date")):
             album.release_date = release_date
+        album.musicbrainz_release_id = cls._stripped(payload.get("id"))
+        album.total_discs = len(payload.get("media") or []) or None
         album.raw_data = {
             **(album.raw_data or {}),
             "release_id": cls._stripped(payload.get("id")),
             "release_country": cls._stripped(payload.get("country")),
             "release_script": cls._release_script(payload) or None,
         }
+        _remote_music_evidence(album)
 
     @classmethod
     def _project_album_tracks(
@@ -2240,7 +2267,7 @@ class MusicBrainzModule(_ModuleBase):
         artists, artist_ids = cls._artist_credits(
             track.get("artist-credit") or recording.get("artist-credit")
         )
-        return MusicInfo(
+        return _remote_music_evidence(MusicInfo(
             media_source=cls._source,
             media_id=str(media_id),
             title=str(title),
@@ -2249,9 +2276,15 @@ class MusicBrainzModule(_ModuleBase):
             album=album.title,
             album_artist=album.artist or None,
             album_id=album.media_id,
+            musicbrainz_release_id=album.musicbrainz_release_id,
+            musicbrainz_release_group_id=album.musicbrainz_release_group_id or album.media_id,
+            musicbrainz_release_track_id=cls._stripped(track.get("id")),
+            original_year=cls._year(recording.get("first-release-date")) or album.original_year,
+            release_year=album.year if album.musicbrainz_release_id else None,
+            total_discs=album.total_discs,
             album_type=album.album_type,
             year=album.year,
-            release_date=recording.get("first-release-date") or album.release_date,
+            release_date=album.release_date,
             disc_number=cls._optional_int(medium.get("position")),
             track_number=cls._optional_int(track.get("position")),
             total_tracks=cls._optional_int(medium.get("track-count")),
@@ -2266,7 +2299,7 @@ class MusicBrainzModule(_ModuleBase):
             release_status=album.release_status,
             names=[str(title)],
             detail_link=f"{cls._detail_url}/{media_id}",
-        )
+        ))
 
     @classmethod
     def _select_release(cls, releases: list[dict[str, Any]]) -> dict[str, Any]:

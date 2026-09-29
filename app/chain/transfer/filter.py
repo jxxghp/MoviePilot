@@ -246,8 +246,10 @@ class _MusicFileFilterBase(_TransferOwnerBase):
             cls,
             file_meta: MetaMusic,
             info: MusicInfo,
+            *,
+            selected_release: bool = False,
     ) -> tuple[MetaMusic, MusicInfo]:
-        """以已选发行版的曲目身份更新文件元数据，同时保留本地音频参数。"""
+        """合并曲目身份与实际音频；用户显式选发行时替换旧发行标识，自动识别只补缺。"""
         merged_meta = deepcopy(file_meta)
         # 保留本地音频的实际技术参数，仅回填身份和名称字段
         if info.title:
@@ -260,18 +262,42 @@ class _MusicFileFilterBase(_TransferOwnerBase):
             merged_meta.album_artist = info.album_artist
         if info.year:
             merged_meta.year = cast(Any, info.year)
+        merged_meta.field_sources.update({
+            key: "manual" if selected_release else info.field_sources.get(key, "remote")
+            for key in ("title", "artists", "album", "album_artist", "year")
+            if getattr(info, key)
+        })
+        for key in ("musicbrainz_release_id", "musicbrainz_release_group_id", "musicbrainz_release_track_id",
+                    "original_year", "release_year"):
+            value = getattr(info, key)
+            if selected_release or (not getattr(merged_meta, key) and value):
+                setattr(merged_meta, key, value)
+                if value:
+                    merged_meta.field_sources[key] = "manual" if selected_release else info.field_sources.get(key, "remote")
+                else:
+                    merged_meta.field_sources.pop(key, None)
         # 曲序和碟号描述的是当前物理文件在本地发行目录中的位置。MusicBrainz
         # Recording 可能同时属于多个发行版，候选 release 的曲序并不一定对应
         # 用户手里的这一版；只有本地没有这些字段时才用远端值补齐，避免同一
         # 专辑的多首歌被错误写到相同目标文件名并相互覆盖。
         if not merged_meta.disc_number and info.disc_number:
             merged_meta.disc_number = info.disc_number
+            merged_meta.field_sources["disc_number"] = info.field_sources.get("disc_number", "remote")
         if not merged_meta.track_number and info.track_number:
             merged_meta.track_number = info.track_number
+            merged_meta.field_sources["track_number"] = info.field_sources.get("track_number", "remote")
         if not merged_meta.total_tracks and info.total_tracks:
             merged_meta.total_tracks = info.total_tracks
+            merged_meta.field_sources["total_tracks"] = info.field_sources.get("total_tracks", "remote")
+        if not merged_meta.total_discs and info.total_discs:
+            merged_meta.total_discs = info.total_discs
+            merged_meta.field_sources["total_discs"] = info.field_sources.get("total_discs", "remote")
         merged_meta.media_source = info.media_source
         merged_meta.media_id = info.media_id
+        merged_meta.music_type = info.music_type
+        if info.media_id:
+            source = "manual" if selected_release else info.field_sources.get("media_id", "remote")
+            merged_meta.field_sources.update(media_id=source, media_source=source)
         merged_info = cls._music_info_from_meta(merged_meta)
         # 补齐曲目级远端信息，供后续刮削和展示使用
         merged_info.music_type = info.music_type
@@ -375,7 +401,7 @@ class FileFilterMixin(_TransferOwnerBase):
         if selected and isinstance(file_meta, MetaMusic):
             return cast(
                 tuple[Any, Optional[Union[MediaInfo, MusicInfo]]],
-                self._merge_music_track_context(file_meta, selected),
+                self._merge_music_track_context(file_meta, selected, selected_release=True),
             )
         return file_meta, fallback
 
@@ -494,8 +520,23 @@ class FileFilterMixin(_TransferOwnerBase):
         ):
             if getattr(file_tags, field_name, None):
                 setattr(file_meta, field_name, getattr(file_tags, field_name))
+        for field_name in ("musicbrainz_release_id", "musicbrainz_release_group_id", "musicbrainz_release_track_id",
+                           "original_year", "release_year"):
+            if getattr(file_tags, field_name):
+                setattr(file_meta, field_name, getattr(file_tags, field_name))
+        file_meta.field_sources.update({
+            key: source for key, source in file_tags.field_sources.items()
+            if getattr(file_meta, key, None) == getattr(file_tags, key, None)
+        })
         file_meta.media_source = saved_info.media_source or saved_meta.media_source
         file_meta.media_id = saved_info.media_id or saved_meta.media_id
+        file_meta.music_type = saved_info.music_type
+        for key in ("media_id", "media_source"):
+            source = saved_info.field_sources.get(key) or saved_meta.field_sources.get(key)
+            if source:
+                file_meta.field_sources[key] = source
+            else:
+                file_meta.field_sources.pop(key, None)
 
         file_info = cls._music_info_from_meta(file_meta)
         file_info.media_source = saved_info.media_source

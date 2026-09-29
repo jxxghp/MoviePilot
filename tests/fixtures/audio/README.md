@@ -6,3 +6,8 @@
 
 生成过程：标准库 `wave` 写入三秒零值 PCM，通过 ffmpeg 的 `flac` 编码器转换，再使用
 `mutagen.flac.FLAC.clear()` 和 `save(padding=lambda _: 0)` 清除标签及填充。
+
+`silence.m4a`（ALAC）与 `silence.mp3`（32 kbps MP3）由同一静音 FLAC 本地转换，
+移除了输入元数据，用于验证原生 MP4 atom/freeform 与 MP3 ID3 字段。
+测试直接通过 Mutagen 写入独立 MBID 和日期，CI 不依赖编码器。
+M4A 的 ORIGINALDATE 是可选自定义 freeform 兼容样本，不声明它是 MP4 标准日期字段。

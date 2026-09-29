@@ -511,6 +511,15 @@ SSE 的 `candidate_items` 是站点原始返回数量，`match_counts` 记录身
 
 音乐识别结果同时提供 `audio_format`、`audio_lossless`、`audio_quality`、`bit_depth`、`sample_rate`、`bitrate`、`audio_specs` 和 `audio_quality_score`。本地文件识别读取实际音频流参数，并使用 Chromaprint 的 `fpcalc` 在本地生成指纹后查询 AcoustID；音频文件本身不会上传。站点资源识别从标题和描述提取声明参数；码率、采样率的存储单位分别为 bps 和 Hz。
 
+`MusicMeta.music_type` 保留已绑定主身份的实体类型；仅从名称推测时可为空。
+`media_source`、`media_id` 与 `music_type` 必须一起解释，不能把专辑 ID 当作 Recording ID。
+补充字段 `musicbrainz_release_id`、`musicbrainz_release_group_id`、`musicbrainz_release_track_id`
+分别表示具体发行、发行组和发行中的曲目，不能替代主身份。`original_year` 与 `release_year`
+分别保留原始发行年份和当前发行年份，`year` 继续用于兼容展示；发行组尚未选定具体 Release 时
+不能凭首发年份填充 `release_year`。`total_discs` 保留真实碟数。
+`field_sources` 按字段记录 `tag`、`album_tags`、`stream`、`filename`、`directory`、`torrent`、
+`remote` 或 `manual` 等来源，缺失表示来源未记录；该说明不等于远端身份已验证，也不用于绕过整理准入。
+
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
 | GET | `/api/v1/media/search` | 当 `type=music` 或指定音乐 `media_source` 时按歌曲或专辑关键词搜索音乐元数据；艺术家统一由 `type=person` 搜索，支持 TMDB 与 MusicBrainz 来源。参数：`title`、`type`、`count`、可重复的 `media_source` 枚举，以及可选的 `music_type` 实体过滤 |

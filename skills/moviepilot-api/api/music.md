@@ -32,6 +32,17 @@ Music recognition, exploration, album and artist navigation, and recognition-cac
   rules. Album lookup uses the album credit without replacing the track's
   performer. Conflicting explicit recording dates are version mismatches;
   missing dates alone do not reject a candidate.
+- Preserve `MusicMeta.music_type` when metadata carries a bound identity. Read
+  `media_source`, `media_id`, and `music_type` together; an album ID is not a
+  recording ID. The optional `musicbrainz_release_id`,
+  `musicbrainz_release_group_id`, and `musicbrainz_release_track_id` refer to
+  distinct MusicBrainz entities and never replace the primary identity.
+- `original_year` and `release_year` distinguish the original and current
+  edition; `year` remains the display-compatible value. A release group's first
+  release date does not prove the current edition. Preserve `total_discs` and
+  `field_sources` in round trips. Sources such as `tag`, `album_tags`, `stream`,
+  `filename`, `directory`, `torrent`, `remote`, and `manual` explain field origins;
+  they do not independently prove that an online identity was verified.
 
 ## Operations
 

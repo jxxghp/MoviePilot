@@ -565,16 +565,23 @@ class MusicInfo:
     album_artist: str | None = None
     # 所属专辑标准 ID（MusicBrainz Release Group）
     album_id: str | None = None
+    # 发行、发行组和发行曲目身份独立于 Recording 主身份，不能相互代用。
+    musicbrainz_release_id: str | None = field(default=None, kw_only=True)
+    musicbrainz_release_group_id: str | None = field(default=None, kw_only=True)
+    musicbrainz_release_track_id: str | None = field(default=None, kw_only=True)
     # 专辑主类型：Album、EP、Single 等
     album_type: str | None = None
     # 专辑副类型：Live、Compilation、Soundtrack 等
     secondary_types: list[str] = field(default_factory=list)
     year: int | None = None
+    original_year: int | None = field(default=None, kw_only=True)
+    release_year: int | None = field(default=None, kw_only=True)
     release_date: str | None = None
     release_status: str | None = None
     disc_number: int | None = None
     track_number: int | None = None
     total_tracks: int | None = None
+    total_discs: int | None = field(default=None, kw_only=True)
     duration: int | None = None
     isrc: str | None = None
     cover_url: str | None = None
@@ -605,6 +612,7 @@ class MusicInfo:
     detail_link: str | None = None
     listen_count: int | None = None
     raw_data: dict[str, Any] = field(default_factory=dict)
+    field_sources: dict[str, str] = field(default_factory=dict, kw_only=True)
     # 内部标记：是否命中本地识别缓存，不参与序列化；与 MediaInfo 保持一致，
     # 显式声明以保留 getattr(..., False) 的默认值语义（__getattr__ 兜底会覆盖它）
     recognize_cache_hit = False
@@ -614,9 +622,12 @@ class MusicInfo:
         self.__dict__.update(state)
         for name in ("title_aliases", "album_aliases", "artist_aliases"):
             self.__dict__.setdefault(name, [])
+        self.__dict__.setdefault("field_sources", {})
 
     def __post_init__(self) -> None:
         """规范化媒体身份，并兼容拆分旧音乐分类字段。"""
+        self.field_sources = dict(self.field_sources or {})
+        self.year = self.year if self.year is not None else self.release_year or self.original_year
         self.media_source, self.media_id = resolve_media_identity(media=self)
         classification = _classification_result(self.classification)
         library_category, metadata_category = _resolve_music_categories(
@@ -787,6 +798,7 @@ class MusicInfo:
             values.get("audio_format"), values.get("audio_lossless")
         )
         values["raw_data"] = dict(values.get("raw_data") or {})
+        values["field_sources"] = dict(values.get("field_sources") or {})
         if "library_category" in data or "metadata_category" in data:
             library_value = (
                 data.get("library_category")
@@ -812,9 +824,12 @@ class MusicInfo:
             values["metadata_category"] = metadata_category
         for key in (
             "year",
+            "original_year",
+            "release_year",
             "disc_number",
             "track_number",
             "total_tracks",
+            "total_discs",
             "duration",
             "listen_count",
             "bit_depth",
@@ -830,6 +845,13 @@ class MusicInfo:
         return cls(
             media_source=normalize_media_source(meta.media_source),
             media_id=meta.media_id,
+            music_type=meta.music_type or MUSIC_ENTITY_RECORDING,
+            musicbrainz_release_id=meta.musicbrainz_release_id,
+            musicbrainz_release_group_id=meta.musicbrainz_release_group_id,
+            musicbrainz_release_track_id=meta.musicbrainz_release_track_id,
+            original_year=meta.original_year,
+            release_year=meta.release_year,
+            field_sources=dict(meta.field_sources),
             title=meta.title,
             artists=list(meta.artists),
             album=meta.album,
@@ -838,6 +860,7 @@ class MusicInfo:
             disc_number=meta.disc_number,
             track_number=meta.track_number,
             total_tracks=meta.total_tracks,
+            total_discs=meta.total_discs,
             duration=meta.duration,
             isrc=meta.isrc,
             version=meta.version,
@@ -892,6 +915,10 @@ class MusicAlbumInfo:
     music_type: str = field(default=MUSIC_ENTITY_ALBUM, init=False)
     media_source: MediaSource | None = None
     media_id: str | None = None
+    musicbrainz_release_id: str | None = field(default=None, kw_only=True)
+    musicbrainz_release_group_id: str | None = field(default=None, kw_only=True)
+    original_year: int | None = field(default=None, kw_only=True)
+    total_discs: int | None = field(default=None, kw_only=True)
     title: str | None = None
     artists: list[str] = field(default_factory=list)
     artist_ids: list[str] = field(default_factory=list)
@@ -921,15 +948,18 @@ class MusicAlbumInfo:
     # 同一专辑下的其它发行版本
     releases: list[MusicRelease] = field(default_factory=list)
     raw_data: dict[str, Any] = field(default_factory=dict)
+    field_sources: dict[str, str] = field(default_factory=dict, kw_only=True)
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         """恢复旧版专辑缓存时补齐别名列表，保留既有媒体身份及曲目数据。"""
         self.__dict__.update(state)
         for name in ("title_aliases", "artist_aliases"):
             self.__dict__.setdefault(name, [])
+        self.__dict__.setdefault("field_sources", {})
 
     def __post_init__(self) -> None:
         """规范化媒体身份，并补全专辑描述分类和分类结果。"""
+        self.field_sources = dict(self.field_sources or {})
         self.media_source, self.media_id = resolve_media_identity(media=self)
         self.library_category = str(self.library_category or "").strip()
         self.metadata_category = str(self.metadata_category or "").strip() or (
@@ -1056,6 +1086,9 @@ class MusicAlbumInfo:
             for item in data.get("releases") or []
         ]
         values["raw_data"] = dict(values.get("raw_data") or {})
+        values["field_sources"] = dict(values.get("field_sources") or {})
+        values["original_year"] = _music_optional_int(values.get("original_year"))
+        values["total_discs"] = _music_optional_int(values.get("total_discs"))
         if "library_category" in data or "metadata_category" in data:
             library_value = (
                 data.get("library_category")
@@ -1084,6 +1117,12 @@ class MusicAlbumInfo:
         return MusicInfo(
             media_source=self.media_source,
             media_id=self.media_id,
+            musicbrainz_release_id=self.musicbrainz_release_id,
+            musicbrainz_release_group_id=self.musicbrainz_release_group_id,
+            original_year=self.original_year,
+            release_year=self.year if self.musicbrainz_release_id else None,
+            total_discs=self.total_discs,
+            field_sources=dict(self.field_sources),
             music_type=MUSIC_ENTITY_ALBUM,
             title=self.title,
             artists=list(self.artists),

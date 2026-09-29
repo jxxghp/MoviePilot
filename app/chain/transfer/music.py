@@ -65,18 +65,23 @@ def restore_music_resource_meta(
     artists = [artist for artist in resource.artists if music_text_key(artist) not in collective]
     if not meta.artists and artists:
         meta.artists = list(artists)
+        meta.field_sources["artists"] = "torrent"
     if not meta.album_artist and len(resource.artists) == 1:
         meta.album_artist = resource.artists[0]
+        meta.field_sources["album_artist"] = "torrent"
     if direct_release and not collection:
         album = resource.album
         if root != path and not resource.track_number:
             album = album or resource.title
         if not meta.album and album:
             meta.album = album
+            meta.field_sources["album"] = "torrent"
         if not meta.year and resource.year:
             meta.year = resource.year
+            meta.field_sources["year"] = "torrent"
         if not meta.version and resource.version:
             meta.version = resource.version
+            meta.field_sources["version"] = "torrent"
     return meta
 
 
@@ -174,10 +179,13 @@ def _apply_music_directory_evidence(
     merged = deepcopy(meta)
     if not merged.artists and evidence.artists:
         merged.artists = list(evidence.artists)
+        merged.field_sources["artists"] = "album_tags"
     if not merged.album_artist and evidence.album_artist:
         merged.album_artist = evidence.album_artist
+        merged.field_sources["album_artist"] = "album_tags"
     if not merged.album and evidence.album:
         merged.album = evidence.album
+        merged.field_sources["album"] = "album_tags"
     return merged
 
 
@@ -189,6 +197,7 @@ def _apply_music_directory_year(meta: MetaMusic, file_path: Path) -> MetaMusic:
             continue
         merged = deepcopy(meta)
         merged.year = cast(Any, int(match.group(1)))
+        merged.field_sources["year"] = "directory"
         return merged
     return meta
 
@@ -344,9 +353,11 @@ def resolve_music_batch_file_context(
         if directory_evidence.album:
             file_meta.album = directory_evidence.album
             task_mediainfo.album = directory_evidence.album
+            file_meta.field_sources["album"] = task_mediainfo.field_sources["album"] = "album_tags"
         if directory_evidence.album_artist:
             file_meta.album_artist = directory_evidence.album_artist
             task_mediainfo.album_artist = directory_evidence.album_artist
+            file_meta.field_sources["album_artist"] = task_mediainfo.field_sources["album_artist"] = "album_tags"
         if file_meta.year:
             task_mediainfo.year = file_meta.year
     if (

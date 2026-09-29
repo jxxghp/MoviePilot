@@ -87,8 +87,8 @@ class MediaRecognitionOwner(_MediaOwnerBase):
                     "media_id": module_kwargs.get("media_id"),
                     "cache": cache,
                 }
-                if "music_type" in module_kwargs:
-                    recognize_kwargs["music_type"] = module_kwargs["music_type"]
+                if "music_type" in module_kwargs or (isinstance(meta, MetaMusic) and meta.music_type):
+                    recognize_kwargs["music_type"] = module_kwargs.get("music_type") or getattr(meta, "music_type", None)
                 return _NativeRecognitionPlan(
                     action=_NativeRecognitionAction.MUSIC,
                     kwargs=recognize_kwargs,
@@ -101,7 +101,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
                         "media_source": self._music_primary_source,
                         "meta": meta,
                         "cache": cache,
-                        "music_type": module_kwargs.get("music_type") or MUSIC_ENTITY_RECORDING,
+                        "music_type": module_kwargs.get("music_type") or meta.music_type or MUSIC_ENTITY_RECORDING,
                     },
                 )
             return _NativeRecognitionPlan(

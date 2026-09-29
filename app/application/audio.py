@@ -3,16 +3,55 @@ from typing import Any, Optional, Union
 from uuid import UUID
 
 from mutagen import File as MutagenFile
-from mutagen.apev2 import APEBinaryValue
+from mutagen.apev2 import APEBinaryValue, APETextValue
 from mutagen.flac import FLAC, Picture
 from mutagen.id3 import APIC, ID3, SYLT, USLT
 from mutagen.monkeysaudio import MonkeysAudio
-from mutagen.mp4 import MP4, MP4Cover
+from mutagen.mp4 import MP4, MP4Cover, MP4Tags
 
 from app.domain.context import MusicInfo, MusicLyrics
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.log import logger
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
+
+
+def _read_mp4_tags(tags: MP4Tags) -> dict[str, list[str]]:
+    """读取标准 MP4 atom 与明确的文本 freeform，覆盖 EasyMP4 未注册的发行 ID。"""
+    atoms = {"title": "\xa9nam", "artist": "\xa9ART", "album": "\xa9alb",
+             "albumartist": "aART", "date": "\xa9day", "genre": "\xa9gen"}
+    values = {key: [str(value) for value in tags.get(atom, [])] for key, atom in atoms.items()}
+    for key, atom in (("tracknumber", "trkn"), ("discnumber", "disk")):
+        positions = tags.get(atom) or []
+        if positions:
+            current, total = positions[0]
+            values[key] = [f"{current}/{total}"]
+    normalized = {key.casefold(): value for key, value in tags.items()}
+    for name in ("MusicBrainz Track Id", "MusicBrainz Album Id", "MusicBrainz Release Group Id",
+                 "MusicBrainz Release Track Id", "ISRC", "ORIGINALDATE", "ORIGINALYEAR", "VERSION", "SUBTITLE"):
+        raw = normalized.get(f"----:com.apple.itunes:{name.casefold()}", [])
+        values[name.casefold().replace(" ", "_")] = [
+            value.decode("utf-8", errors="replace") if isinstance(value, bytes) else str(value)
+            for value in raw
+        ]
+    return values
+
+
+def _mark_audio_evidence(meta: MetaMusic, info: Any) -> MetaMusic:
+    """记录实际标签和流参数的来源，名称推测不能获得标签级可信度。"""
+    tag_fields = (
+        "title", "artists", "album", "album_artist", "year", "original_year", "release_year",
+        "disc_number", "track_number", "total_discs", "total_tracks", "version", "isrc",
+        "media_source", "media_id", "musicbrainz_release_id", "musicbrainz_release_group_id",
+        "musicbrainz_release_track_id",
+    )
+    meta.field_sources = {key: "tag" for key in tag_fields if getattr(meta, key) not in (None, "", [])}
+    for key in ("bit_depth", "sample_rate", "bitrate", "duration"):
+        if getattr(meta, key) is not None:
+            meta.field_sources[key] = "stream"
+    if meta.audio_format:
+        source = "stream" if getattr(info, "codec", None) or getattr(info, "codec_description", None) else "filename"
+        meta.field_sources.update(audio_format=source, audio_lossless=source)
+    return meta
 
 
 class AudioMetadataHelper:
@@ -48,7 +87,7 @@ class AudioMetadataHelper:
     def read_tags(cls, path: Path) -> Optional[MetaMusic]:
         """只读取本地音频标签和流参数，不使用文件名或目录补齐。"""
         try:
-            audio = MutagenFile(path, easy=True)
+            audio = MutagenFile(path, easy=False)
         except Exception as err:
             logger.warning(f"读取音频标签失败：{path} - {err}")
             return None
@@ -70,16 +109,22 @@ class AudioMetadataHelper:
                 tags,
                 "musicbrainz_trackid",
                 "musicbrainz_recordingid",
+                "musicbrainz_track_id",
+                "musicbrainz_recording_id",
             )
         )
         info = getattr(audio, "info", None)
-        return MetaMusic(
+        original_year = cls._year(cls._first_of(tags, "originaldate", "originalyear"))
+        release_year = cls._year(cls._first_of(tags, "date", "year"))
+        meta = MetaMusic(
             org_string=path.name,
             title=cls._first(tags, "title"),
             artists=cls._values(tags, "artist"),
             album=cls._first(tags, "album"),
             album_artist=cls._first_of(tags, "albumartist", "album artist"),
-            year=cls._year(cls._first_of(tags, "date", "year", "originaldate")),
+            year=release_year or original_year,
+            original_year=original_year,
+            release_year=release_year,
             disc_number=disc_number,
             track_number=track_number,
             total_discs=total_discs,
@@ -93,15 +138,25 @@ class AudioMetadataHelper:
             isrc=cls._first(tags, "isrc"),
             media_source=MediaSource.MusicBrainz if musicbrainz_id else None,
             media_id=musicbrainz_id,
+            music_type=MUSIC_ENTITY_RECORDING,
+            musicbrainz_release_id=cls._normalize_musicbrainz_id(
+                cls._first_of(tags, "musicbrainz_albumid", "musicbrainz_album_id")),
+            musicbrainz_release_group_id=cls._normalize_musicbrainz_id(
+                cls._first_of(tags, "musicbrainz_releasegroupid", "musicbrainz_release_group_id")),
+            musicbrainz_release_track_id=cls._normalize_musicbrainz_id(
+                cls._first_of(tags, "musicbrainz_releasetrackid", "musicbrainz_release_track_id")),
         )
+        return _mark_audio_evidence(meta, info)
 
     @staticmethod
     def _readable_tags(tags: Any) -> Any:
-        """统一 WAV/DSF 的原生 ID3 与其它容器的 Easy 标签，不修改文件标签。
+        """将原生 ID3/MP4 及 Vorbis/APEv2 映射到统一键，不修改音频。
 
-        Mutagen 的 easy=True 只适用于提供 Easy 包装的容器；WAV/DSF 仍返回
-        ID3 帧。Recording 的身份只取专用字段，不能误用 Release Track ID。
+        原生读取可保留 Easy 包装未注册的发行字段；Recording 的身份只取
+        专用字段，不能误用 Release Track ID。
         """
+        if isinstance(tags, MP4Tags):
+            return _read_mp4_tags(tags)
         if not isinstance(tags, ID3):
             return tags or {}
         fields = {
@@ -286,7 +341,7 @@ class AudioMetadataHelper:
         """仅将 MusicBrainz 单曲身份写入 recording 标签，避免误写专辑 ID。"""
         if (
                 getattr(music, "media_source", None) == MediaSource.MusicBrainz
-                and getattr(music, "music_type", MUSIC_ENTITY_RECORDING)
+                and (getattr(music, "music_type", None) or MUSIC_ENTITY_RECORDING)
                 == MUSIC_ENTITY_RECORDING
         ):
             media_id = getattr(music, "media_id", None)
@@ -368,9 +423,9 @@ class AudioMetadataHelper:
     def _values(tags: Any, key: str) -> list[str]:
         """从 Mutagen Easy 标签中提取非空字符串列表。"""
         value = tags.get(key) if hasattr(tags, "get") else None
-        if value is None:
+        if value is None or isinstance(value, APEBinaryValue):
             return []
-        if isinstance(value, (list, tuple)):
+        if isinstance(value, (list, tuple, APETextValue)):
             return [str(item).strip() for item in value if str(item).strip()]
         return [str(value).strip()] if str(value).strip() else []
 
