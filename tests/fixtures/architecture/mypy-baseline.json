@@ -2,16 +2,16 @@
   "app/adapters/cache/backends.py": {
     "import-untyped": 1,
     "no-any-return": 1,
-    "no-untyped-call": 2,
-    "no-untyped-def": 4,
+    "no-untyped-def": 2,
     "operator": 5,
-    "override": 16
+    "override": 9
   },
   "app/adapters/cache/redis.py": {
     "arg-type": 9,
     "no-any-return": 2,
-    "no-untyped-call": 12,
-    "no-untyped-def": 15,
+    "no-untyped-call": 14,
+    "no-untyped-def": 17,
+    "override": 7,
     "return-value": 2,
     "str-bytes-safe": 2,
     "union-attr": 14
@@ -154,6 +154,9 @@
     "return-value": 2,
     "type-arg": 7,
     "type-var": 1
+  },
+  "app/agent/memory/__init__.py": {
+    "misc": 2
   },
   "app/agent/middleware/config.py": {
     "misc": 1
@@ -1969,7 +1972,6 @@
   },
   "app/modules/redis/__init__.py": {
     "empty-body": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 1
   },
   "app/modules/rtorrent/__init__.py": {
@@ -2587,7 +2589,7 @@
     "unused-ignore": 1
   },
   "app/schemas/agent.py": {
-    "misc": 26
+    "misc": 24
   },
   "app/schemas/cache.py": {
     "misc": 3
@@ -2717,6 +2719,9 @@
     "attr-defined": 1,
     "no-untyped-def": 2,
     "type-arg": 1
+  },
+  "app/startup/composition/cache.py": {
+    "no-untyped-call": 1
   },
   "app/startup/composition/database.py": {
     "assignment": 1

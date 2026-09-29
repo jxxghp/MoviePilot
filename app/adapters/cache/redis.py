@@ -11,6 +11,7 @@ from redis.asyncio import BlockingConnectionPool as AsyncBlockingConnectionPool
 from redis.asyncio import Redis
 
 from app.foundation.singleton import Singleton
+from app.runtime.cache import DEFAULT_CACHE_REGION, AsyncCacheBackend, AtomicCacheBackend
 from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
 from app.runtime.settings import get_runtime_setting
@@ -696,3 +697,163 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
         """
         await self._close_client()
         logger.debug("Redis async connection closed")
+
+
+class RedisBackend(AtomicCacheBackend):
+    """通过同步 Redis 客户端实现缓存后端。"""
+
+    def __init__(self, ttl: Optional[int] = None) -> None:
+        """初始化 Redis 缓存并保存默认 TTL。"""
+        self.ttl = ttl
+        self.redis_helper = RedisHelper()
+
+    def set(
+        self,
+        key: str,
+        value: Any,
+        ttl: Optional[int] = None,
+        region: Optional[str] = DEFAULT_CACHE_REGION,
+        **kwargs,
+    ) -> None:
+        """写入缓存，非正 TTL 视为立即删除。"""
+        ttl = self.ttl if ttl is None else ttl
+        if ttl is not None and ttl <= 0:
+            self.redis_helper.delete(key, region=region)
+            return
+        self.redis_helper.set(key, value, ttl=ttl, region=region, **kwargs)
+
+    def store(
+        self,
+        key: str,
+        value: Any,
+        ttl: Optional[int] = None,
+        region: Optional[str] = DEFAULT_CACHE_REGION,
+        **kwargs: Any,
+    ) -> None:
+        """严格写入 Redis，供安全敏感的一次性状态使用。"""
+        ttl = self.ttl if ttl is None else ttl
+        if ttl is not None and ttl <= 0:
+            self.redis_helper.consume(key, region=region)
+            return
+        self.redis_helper.store(key, value, ttl=ttl, region=region, **kwargs)
+
+    def consume(
+        self,
+        key: str,
+        region: Optional[str] = DEFAULT_CACHE_REGION,
+    ) -> Optional[Any]:
+        """通过 Redis 原子命令严格领取一个缓存值。"""
+        return self.redis_helper.consume(key, region=region)
+
+    def exists(
+        self,
+        key: str,
+        region: Optional[str] = DEFAULT_CACHE_REGION,
+    ) -> bool:
+        """判断缓存键是否存在。"""
+        return self.redis_helper.exists(key, region=region)
+
+    def get(
+        self,
+        key: str,
+        region: Optional[str] = DEFAULT_CACHE_REGION,
+    ) -> Optional[Any]:
+        """读取缓存值，不存在时返回空值。"""
+        return self.redis_helper.get(key, region=region)
+
+    def delete(
+        self,
+        key: str,
+        region: Optional[str] = DEFAULT_CACHE_REGION,
+    ) -> None:
+        """删除缓存键。"""
+        self.redis_helper.delete(key, region=region)
+
+    def clear(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:
+        """清空指定缓存区或全部缓存。"""
+        self.redis_helper.clear(region=region)
+
+    def items(
+        self,
+        region: Optional[str] = DEFAULT_CACHE_REGION,
+    ) -> Generator[Tuple[str, Any], None, None]:
+        """遍历指定缓存区的键值对。"""
+        return self.redis_helper.items(region=region)
+
+    def close(self) -> None:
+        """关闭同步 Redis 连接池。"""
+        self.redis_helper.close()
+
+    @staticmethod
+    def is_redis() -> bool:
+        """标记当前后端为 Redis。"""
+        return True
+
+
+class AsyncRedisBackend(AsyncCacheBackend):
+    """通过异步 Redis 客户端实现缓存后端。"""
+
+    def __init__(self, ttl: Optional[int] = None) -> None:
+        """初始化异步 Redis 缓存并保存默认 TTL。"""
+        self.ttl = ttl
+        self.redis_helper = AsyncRedisHelper()
+
+    async def set(
+        self,
+        key: str,
+        value: Any,
+        ttl: Optional[int] = None,
+        region: Optional[str] = DEFAULT_CACHE_REGION,
+        **kwargs,
+    ) -> None:
+        """异步写入缓存，非正 TTL 视为立即删除。"""
+        ttl = self.ttl if ttl is None else ttl
+        if ttl is not None and ttl <= 0:
+            await self.redis_helper.delete(key, region=region)
+            return
+        await self.redis_helper.set(key, value, ttl=ttl, region=region, **kwargs)
+
+    async def exists(
+        self,
+        key: str,
+        region: Optional[str] = DEFAULT_CACHE_REGION,
+    ) -> bool:
+        """异步判断缓存键是否存在。"""
+        return await self.redis_helper.exists(key, region=region)
+
+    async def get(
+        self,
+        key: str,
+        region: Optional[str] = DEFAULT_CACHE_REGION,
+    ) -> Optional[Any]:
+        """异步读取缓存值，不存在时返回空值。"""
+        return await self.redis_helper.get(key, region=region)
+
+    async def delete(
+        self,
+        key: str,
+        region: Optional[str] = DEFAULT_CACHE_REGION,
+    ) -> None:
+        """异步删除缓存键。"""
+        await self.redis_helper.delete(key, region=region)
+
+    async def clear(self, region: Optional[str] = DEFAULT_CACHE_REGION) -> None:
+        """异步清空指定缓存区或全部缓存。"""
+        await self.redis_helper.clear(region=region)
+
+    async def items(
+        self,
+        region: Optional[str] = DEFAULT_CACHE_REGION,
+    ) -> AsyncGenerator[Tuple[str, Any], None]:
+        """异步遍历指定缓存区的键值对。"""
+        async for item in self.redis_helper.items(region=region):
+            yield item
+
+    async def close(self) -> None:
+        """关闭异步 Redis 连接池。"""
+        await self.redis_helper.close()
+
+    @staticmethod
+    def is_redis() -> bool:
+        """标记当前后端为 Redis。"""
+        return True

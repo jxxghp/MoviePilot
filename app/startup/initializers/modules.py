@@ -3,8 +3,6 @@ import inspect
 import sys
 from typing import Callable, cast
 
-from app.adapters.cache.redis import AsyncRedisHelper, RedisHelper
-
 # SitesHelper涉及资源包拉取，提前引入并容错提示
 try:
     from app.application.site.sites import SitesHelper  # noqa  # pylint: disable=import-error,no-name-in-module
@@ -67,6 +65,7 @@ from app.startup.composition.agent import (
     publish_agent_services,
     reset_agent_services,
 )
+from app.startup.composition.cache import get_cache_composition
 from app.startup.composition.chain import (
     configure_chain_runtime_context,
     configure_directory_classification_service,
@@ -259,8 +258,10 @@ def _existing_singleton(instance_type: type) -> object | None:
     return getter() if callable(getter) else None
 
 
-def _call_existing_singleton(instance_type: type, method_name: str) -> object:
-    """调用已存在 Singleton 的关闭方法；owner 未创建时视为已经收敛。"""
+def _call_existing_singleton(instance_type: type | None, method_name: str) -> object:
+    """调用已存在 Singleton 的关闭方法；owner 未接入或未创建时视为已经收敛。"""
+    if instance_type is None:
+        return True
     instance = _existing_singleton(instance_type)
     if instance is None:
         return True
@@ -310,8 +311,11 @@ def get_config_reload_handler_providers(
     system_helper = SystemHelper()
     providers: dict[type, Callable[[], object | None]] = {
         SystemHelper: lambda: system_helper,
-        RedisHelper: RedisHelper.get_existing_instance,
-        AsyncRedisHelper: AsyncRedisHelper.get_existing_instance,
+        # Redis 连接 owner 只在启动时选用 Redis 缓存后存在。
+        **{
+            owner: owner.get_existing_instance
+            for owner in get_cache_composition().redis_owners
+        },
         TransferChain: TransferChain.get_existing_instance,
         Monitor: Monitor.get_existing_instance,
     }
@@ -583,12 +587,12 @@ async def stop_modules() -> bool:
     )
     await run_step(
         "Redis缓存连接",
-        lambda: _call_existing_singleton(RedisHelper, "close"),
+        lambda: _call_existing_singleton(get_cache_composition().sync_redis_owner, "close"),
         offload=True,
     )
     await run_step(
         "异步Redis缓存连接",
-        lambda: _call_existing_singleton(AsyncRedisHelper, "close"),
+        lambda: _call_existing_singleton(get_cache_composition().async_redis_owner, "close"),
     )
     # Web Agent 的取消 finally 可能还要写入最终展示快照，必须先完成任务收尾，再关闭写入准入。
     web_agent_drained = await run_step(
