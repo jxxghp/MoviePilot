@@ -114,10 +114,16 @@ def _shared_recording() -> MusicInfo:
 
 
 def _patch_local_music_reads(monkeypatch, local_metas: dict[Path, MetaMusic]) -> None:
-    """把批次规划中的本地标签读取固定为测试证据。"""
+    """为在线匹配用例提供缺曲名的部分标签，完整曲名由路径解析测试桩补齐。"""
+    def partial_tags(path):
+        """保留专辑分组证据，让本组用例仍实际执行远端候选对齐分支。"""
+        meta = deepcopy(local_metas[Path(path)])
+        meta.title = None
+        return meta
+
     monkeypatch.setattr(
-        "app.chain.transfer.filter.AudioMetadataHelper.read_tags",
-        lambda path: deepcopy(local_metas[Path(path)]),
+        "app.chain.transfer.music.AudioMetadataHelper.read_tags",
+        partial_tags,
     )
     monkeypatch.setattr(
         MediaChain,

@@ -40,6 +40,7 @@ def test_transfer_package_retires_monolith_and_keeps_thin_facade() -> None:
         "filter.py",
         "format.py",
         "history.py",
+        "music.py",
         "plan.py",
         "queue.py",
         "records.py",

@@ -305,8 +305,9 @@ class _RecognitionFinalizationOwner:
         *,
         effective_override: ClassificationSelection | None = None,
         refresh: bool = False,
+        allow_enrichment: bool = True,
     ) -> Optional[_ClassificationSubjectT]:
-        """在唯一应用服务中复制并分类完整识别结果。"""
+        """统一复制并分类结果，离线整理可禁止外部补充而不绕过用户分类规则。"""
         if mediainfo is None:
             return None
         service = getattr(cast(ChainRuntimeMixinHost, self), "classification_service", None)
@@ -318,6 +319,7 @@ class _RecognitionFinalizationOwner:
                 mediainfo,
                 effective_override=effective_override,
                 refresh=refresh,
+                **({"allow_enrichment": False} if not allow_enrichment else {}),
             ),
         )
 
@@ -327,8 +329,9 @@ class _RecognitionFinalizationOwner:
         *,
         effective_override: ClassificationSelection | None = None,
         refresh: bool = False,
+        allow_enrichment: bool = True,
     ) -> Optional[_ClassificationSubjectT]:
-        """通过异步应用服务复制、补充并分类完整识别结果。"""
+        """异步复制并分类结果，保留调用方禁止外部补充的离线约束。"""
         if mediainfo is None:
             return None
         service = getattr(cast(ChainRuntimeMixinHost, self), "classification_service", None)
@@ -340,6 +343,7 @@ class _RecognitionFinalizationOwner:
                 mediainfo,
                 effective_override=effective_override,
                 refresh=refresh,
+                **({"allow_enrichment": False} if not allow_enrichment else {}),
             ),
         )
 

@@ -87,6 +87,7 @@ if TYPE_CHECKING:
             *,
             effective_override: ClassificationSelection | None = None,
             refresh: bool = False,
+            allow_enrichment: bool = True,
         ) -> Optional[_ClassificationSubjectT]:
             """通过注入的应用服务分类一个完整识别结果。"""
             ...
@@ -97,6 +98,7 @@ if TYPE_CHECKING:
             *,
             effective_override: ClassificationSelection | None = None,
             refresh: bool = False,
+            allow_enrichment: bool = True,
         ) -> Optional[_ClassificationSubjectT]:
             """通过注入的应用服务异步补充并分类完整识别结果。"""
             ...

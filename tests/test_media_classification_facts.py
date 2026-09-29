@@ -151,3 +151,24 @@ def test_incomplete_identity_is_rejected(
 
     with pytest.raises(ValueError, match="media_source"):
         build_classification_facts(media)
+
+
+def test_local_music_facts_require_explicit_opt_in_and_keep_empty_identity() -> None:
+    """完整本地音乐可在离线整理中分类，但不伪造在线身份或改变默认校验。"""
+    media = MusicInfo(title="晴天", artists=["周杰伦"], album="叶惠美")
+
+    with pytest.raises(ValueError, match="media_source"):
+        build_classification_facts(media)
+    facts = build_classification_facts(media, allow_local_music=True)
+
+    assert facts.identity.media_source == facts.identity.media_id == ""
+    assert facts.media.type == "音乐"
+    assert facts.media.title == "晴天"
+    assert facts.music.artists == ["周杰伦"]
+
+
+def test_local_music_opt_in_does_not_accept_incomplete_or_video_evidence() -> None:
+    """离线许可不能让残缺音乐标签或缺身份影视进入已完成分类。"""
+    for media in (MusicInfo(title="Track 01"), MediaInfo(title="Example", type=MediaType.MOVIE)):
+        with pytest.raises(ValueError, match="media_source"):
+            build_classification_facts(media, allow_local_music=True)

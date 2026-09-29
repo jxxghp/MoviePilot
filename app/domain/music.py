@@ -59,6 +59,32 @@ _ISRC = re.compile(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}", re.IGNORECASE | re.ASCII)
 _CJK = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
 
 
+def music_tags_are_usable(meta: Optional[MetaMusic]) -> bool:
+    """判断纯标签是否足以确定本地整理路径，不把文件名或目录猜测当作标签。
+
+    年份和远端 ID 不影响本地可整理性；占位、乱码或宣传 URL 不能成为
+    歌曲/专辑身份。调用方必须传入未经路径补写的原始标签证据。
+    """
+    if meta is None or re.fullmatch(r"\d{1,3}", str(meta.title or "").strip()):
+        return False
+    artist = meta.album_artist or next(iter(meta.artists), None)
+    required = [meta.title, meta.album, artist]
+    return all(_usable_music_tag(value) for value in required)
+
+
+def _usable_music_tag(value: Optional[str]) -> bool:
+    """保守排除占位值及乱码，不误删数字专辑名和包含 Unknown 的正常标题。"""
+    text = str(value or "").strip()
+    placeholders = {"unknown", "unknown artist", "unknown album", "untitled", "未知", "未知艺术家", "未知专辑"}
+    return bool(
+        text
+        and text.casefold() not in placeholders
+        and "\ufffd" not in text
+        and not re.search(r"https?://|www\.", text, re.IGNORECASE)
+        and not re.fullmatch(r"(?:track|audio|音轨|曲目)\s*[-._ ]*\d+", text, re.IGNORECASE)
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class MusicMatch:
     """区分可自动采用的精确命中、仅可人工确认的候选和无关资源。"""
