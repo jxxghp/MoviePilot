@@ -391,7 +391,12 @@ _MUSIC_DIR_YEAR_RE = re.compile(r"[(\[]\s*(?P<year>(?:19|20)\d{2})\s*[)\]]")
 _MUSIC_DIR_PREFIX_YEAR_RE = re.compile(
     r"^(?P<year>(?:19|20)\d{2})\s*[-._\s]+(?!(?:19|20)\d{2}\b)"
 )
-# 目录名中的括号补充说明（格式、音质、厂牌等），如 [FLAC 24bit-96kHz]
+# 独立中间年份不能与数字专辑名混淆，必须同时存在艺人、年份及作品三个部分。
+_MUSIC_ALBUM_YEAR_RE = re.compile(
+    r"^(?P<artist>.+?)\s*[-–—−－]\s*(?P<year>(?:19|20)\d{2})"
+    r"\s*[-–—−－]\s*(?P<title>\S.*)$"
+)
+# 目录括号既可能是规格，也可能是作品或发行版本的一部分，需要按内容区分。
 _MUSIC_BRACKET_RE = re.compile(r"\[[^\]]*\]|【[^】]*】|\([^)]*\)")
 _MUSIC_RECORDING_VERSION_RE = re.compile(
     r"[\[(（【]([^\])）】]*(?:\blive\b|\bremix\b|\binstrumental\b|\bacoustic\b|"
@@ -1002,6 +1007,7 @@ class MetaMusic(MetaBase):
             if artist or directory.get("artist") else [],
             album_artist=artist or directory.get("artist"),
             year=directory.get("year"),
+            version=directory.get("version"),
         )
 
     @property
@@ -1060,7 +1066,7 @@ class MetaMusic(MetaBase):
         公共层先完成字符归一、音质与干扰信息剔除；随后由注册中心依次匹配
         命名模式和对应解析器，最后统一回填结构化字段并提取曲序前缀。
         """
-        raw = str(value or "")
+        raw = self._normalize_album_year(str(value or ""))
         if not self.version:
             self.version = self._resource_version(raw, None)
         accelerator = get_metainfo_accelerator()
@@ -1665,15 +1671,35 @@ class MetaMusic(MetaBase):
         match = _MUSIC_DISC_DIR_RE.match(str(name or "").strip())
         return int(match.group("num")) if match else None
 
+    @staticmethod
+    def _normalize_album_year(value: str) -> str:
+        """在 Python/Rust 分流前统一艺人-年份-作品，保留数字作品及年份区间。"""
+        if _MUSIC_YEAR_RANGE_DETECT_RE.search(value) or _MUSIC_AUDIO_RELEASE_TAIL_RE.search(value):
+            return value
+        match = _MUSIC_ALBUM_YEAR_RE.fullmatch(value.strip())
+        if not match or match.group("artist").strip().isdigit():
+            return value
+        artist, year, title = match.group("artist", "year", "title")
+        return f"{artist.strip()} - {title.strip()} ({year})"
+
+    @staticmethod
+    def _clean_directory_bracket(match: re.Match[str]) -> str:
+        """只删除已知规格/内容评级，未知括号及版本名称保留作为作品证据。"""
+        content = match.group()[1:-1].strip()
+        if _MUSIC_SPEC_SEGMENT_RE.fullmatch(content) or content.casefold() in {"explicit", "clean"}:
+            return " "
+        return match.group()
+
     @classmethod
     def parse_album_dir(cls, name: str) -> dict[str, Any]:
         """解析专辑目录名，提取歌手、专辑名、年份和音质描述。
 
         支持 `歌手 - 专辑 (2004) [FLAC 24bit-96kHz]` 等常见命名。
         """
-        text = cls._clean_text(name)
+        text = cls._normalize_album_year(cls._normalize_text(name))
         if not text:
             return {}
+        quality_text = text
         year = None
         prefixed_year = False
         year_match = _MUSIC_DIR_YEAR_RE.search(text)
@@ -1686,9 +1712,10 @@ class MetaMusic(MetaBase):
                 year = int(prefix_year_match.group("year"))
                 text = text[prefix_year_match.end():]
                 prefixed_year = True
-        # 括号内的格式/音质描述先剥离出专辑名，但仍可用于音质解析
-        brackets = " ".join(fragment for fragment in _MUSIC_BRACKET_RE.findall(text))
-        album_text = cls._clean_text(_MUSIC_BRACKET_RE.sub(" ", text))
+        # Live/Deluxe 以及未知副标题均参与身份确认，不能像音质标签一样整体删除。
+        album_text = cls._clean_text(cls._strip_spec_segments(
+            _MUSIC_BRACKET_RE.sub(cls._clean_directory_bracket, text)
+        ))
         if not album_text:
             return {}
         artist, album = (
@@ -1700,7 +1727,8 @@ class MetaMusic(MetaBase):
             "artist": artist,
             "album": album,
             "year": year,
-            "quality_text": cls._clean_text(f"{album_text} {brackets}"),
+            "version": cls._resource_version(album, None),
+            "quality_text": quality_text,
         }
 
     def apply_path_context(self, path: "str | Path") -> "MetaMusic":
@@ -1771,6 +1799,9 @@ class MetaMusic(MetaBase):
                     self.album_artist = dir_info["artist"]
             if self.year is None and dir_info.get("year"):
                 self.year = dir_info["year"]
+            if title_from_name and not self.version and dir_info.get("version"):
+                # 目录版本可补无标签曲目，真实歌曲标签不能被整张专辑的版本推测覆盖。
+                self.version = dir_info["version"]
             # 目录名里的格式、位深、采样率可补齐本地标签未声明的音质参数
             if dir_info.get("quality_text"):
                 self.apply_audio_quality(dir_info["quality_text"])
