@@ -208,7 +208,7 @@ def music_tags_are_usable(meta: Optional[MetaMusic]) -> bool:
     年份和远端 ID 不影响本地可整理性；占位、乱码或宣传 URL 不能成为
     歌曲/专辑身份。调用方必须传入未经路径补写的原始标签证据。
     """
-    if meta is None or re.fullmatch(r"\d{1,3}", str(meta.title or "").strip()):
+    if meta is None or music_track_title_is_weak(meta):
         return False
     artist = meta.album_artist or next(iter(meta.artists), None)
     required = [meta.title, meta.album, artist]
@@ -218,11 +218,20 @@ def music_tags_are_usable(meta: Optional[MetaMusic]) -> bool:
 def music_track_title_is_weak(meta: MetaMusic) -> bool:
     """编号或占位文件名不能否决实际曲目，但真实标签中的数字歌曲名仍是证据。"""
     title = str(meta.title or "").strip()
-    if not title:
+    if not _usable_music_tag(title):
         return True
     if title.isdigit():
+        if len(title) > 1 and title.startswith("0") and not meta.media_id and meta.music_type != MUSIC_ENTITY_ALBUM:
+            return True
         return meta.field_sources.get("title") not in {"tag", "cue", "manual", "remote"}
+    if meta.field_sources.get("title") not in {"tag", "cue", "manual", "remote"} and re.fullmatch(r"[a-f\d]{16,64}", title, re.I):
+        return True
     return bool(re.fullmatch(r"(?:(?:track|audio|音轨|曲目)[\s._-]*\d*|unknown|untitled)", title, re.I))
+
+
+def music_usable_artists(artists: Iterable[str]) -> list[str]:
+    """剔除抓轨占位、宣传链接和乱码署名；缺失艺人不是与指纹候选冲突的证据。"""
+    return [artist for artist in artists if _usable_music_tag(artist)]
 
 
 def music_album_title_is_weak(meta: MetaMusic) -> bool:

@@ -511,6 +511,16 @@ SSE 的 `candidate_items` 是站点原始返回数量，`match_counts` 记录身
 
 音乐识别结果同时提供 `audio_format`、`audio_lossless`、`audio_quality`、`bit_depth`、`sample_rate`、`bitrate`、`audio_specs` 和 `audio_quality_score`。本地文件识别读取实际音频流参数，并使用 Chromaprint 的 `fpcalc` 在本地生成指纹后查询 AcoustID；音频文件本身不会上传。站点资源识别从标题和描述提取声明参数；码率、采样率的存储单位分别为 bps 和 Hz。
 
+原生 AcoustID 识别会核验最多五个 Recording 候选，以实际时长、有效曲名、艺人和版本排除冲突。
+唯一高分且时长吻合的指纹可补齐无标签或纯编号文件；`Unknown Artist` 等占位不是艺人冲突。
+真实数字歌曲标签仍可整理，`01`、`Track 01` 等抓轨占位不会仅凭完整字段认定为可信歌曲。
+近分歧义或候选被截断时保留 `raw_data.recognition.status=ambiguous`，不能由返回顺序自动选中。
+原生指纹命中的诊断含 `method=fingerprint`、`identity_type=recording`、`release_verified=false`；
+指纹不证明实际发行，补充发行 ID 只保留实际标签提供的值，`album_id` 只沿用标签发行组 ID。
+旧插件的单 ID 接口保持兼容，不人为添加 AcoustID 分数或降低其文本核验要求。
+指纹生成和候选详情共用最多 90 秒、16 次 HTTP 尝试的预算；嵌套调用服从已有更早的预算。
+指纹缓存保留全部候选，成功、无匹配、临时故障分别在 3600、300、15 秒后过期。
+
 `MusicMeta.music_type` 保留已绑定主身份的实体类型；仅从名称推测时可为空。
 `MusicMeta.album_type` 和 `secondary_types` 保留标签声明的发行主副类型，例如 EP、Single、Compilation；
 它们与 recording/album/artist 实体类型不同，不能根据曲目数量覆盖明确的标签类型。

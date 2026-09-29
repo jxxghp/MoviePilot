@@ -5,10 +5,15 @@ from copy import deepcopy
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Generator, Optional, Tuple, TypeGuard, Union, cast
+from typing import Any, Awaitable, Callable, Generator, Optional, Tuple, TypeGuard, Union, cast
 
 from app.application.audio import AudioMetadataHelper
 from app.application.configuration import get_chain_runtime_config_snapshot
+from app.application.music.observation import (
+    capture_music_recognition,
+    music_recognition_failed,
+    report_music_fingerprints,
+)
 from app.chain.acoustid import AcoustIdChain
 from app.chain.media.contract import _MediaOwnerBase
 from app.domain.context import (
@@ -19,6 +24,7 @@ from app.domain.context import (
 from app.domain.media import is_music_media_source
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfoPath
+from app.domain.music import music_album_title_is_weak, music_track_title_is_weak
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
 from app.schemas.media import normalize_media_source
@@ -210,42 +216,46 @@ def _fingerprint_info_matches_evidence(
     info: Optional[MusicInfo],
     tag_meta: Optional[MetaMusic],
     filename_meta: Optional[MetaMusic],
+    *,
+    fingerprint_score: Optional[float] = None,
+    fingerprint_duration: Optional[int] = None,
 ) -> bool:
-    """Require an AcoustID candidate to agree with local textual evidence.
-
-    Public AcoustID mappings can point to the wrong MusicBrainz recording even
-    at a high score.  A hit is therefore only authoritative when its title and
-    version, plus any locally available artist credit, agree with the tags or
-    parsed filename.
-    """
-    from difflib import SequenceMatcher
-
+    """保留强标签冲突检查；原生高分指纹可用真实时长弥补占位名称或缺失署名。"""
     from app.domain.music import (  # pylint: disable=import-outside-toplevel
         music_album_matches,
         music_artist_matches,
-        music_base_title,
         music_text_key,
-        music_title_matches,
-        music_titles,
+        music_usable_artists,
         music_version_matches,
         music_year_matches,
     )
 
     if not _has_remote_music_identity(info):
         return False
-    primary = tag_meta if tag_meta and tag_meta.title else filename_meta
-    if not primary or not primary.title:
+    primary = tag_meta if tag_meta and not music_track_title_is_weak(tag_meta) else filename_meta or tag_meta
+    if not primary:
         return False
-    artist_evidence = primary.artists or (
+    weak_title = music_track_title_is_weak(primary)
+    local_duration = fingerprint_duration or (tag_meta.duration if tag_meta else None) or primary.duration
+    close_duration = bool(local_duration and info.duration and abs(local_duration - info.duration) <= max(3, min(8, local_duration * 0.025)))
+    native_strong = fingerprint_score is not None and fingerprint_score >= 0.98 and close_duration
+    if local_duration and info.duration and abs(local_duration - info.duration) > max(10, local_duration * 0.08):
+        return False
+    artist_meta = tag_meta if tag_meta and tag_meta.artists else primary
+    artist_evidence = music_usable_artists(artist_meta.artists) or music_usable_artists(
         filename_meta.artists if filename_meta else []
     )
-    # 只有曲名时，公开 AcoustID 映射中的同名录音无法排除。
-    # 必须由文件标签、文件名或同目录共识提供艺人证据。
-    if not artist_evidence:
+    collective = {music_text_key(value) for value in ("Various Artists", "Various", "VA", "群星", "众艺人", "眾藝人")}
+    if (fingerprint_score is not None and artist_meta.field_sources.get("artists") in {"directory", "torrent", "album_tags"}
+            and all(music_text_key(artist) in collective for artist in artist_evidence)):
+        artist_evidence = []
+    if not artist_evidence and not native_strong:
         return False
-    if not music_artist_matches(info, artist_evidence):
+    if artist_evidence and not music_artist_matches(info, artist_evidence):
         return False
-    if not music_version_matches(info, primary):
+    if (not weak_title or primary.version) and not music_version_matches(info, primary):
+        return False
+    if tag_meta and tag_meta is not primary and tag_meta.version and not music_version_matches(info, tag_meta):
         return False
     standalone_single = _is_standalone_single_evidence(primary)
     if (
@@ -253,16 +263,31 @@ def _fingerprint_info_matches_evidence(
         and info.album
         and not music_album_matches(info, primary.album)
         and not standalone_single
+        and not native_strong
     ):
         return False
-    if not standalone_single and not music_year_matches(info, primary):
+    if not native_strong and not standalone_single and not music_year_matches(info, primary):
         return False
-    if music_title_matches(info, primary.title):
+    if weak_title:
+        return native_strong
+    return _fingerprint_title_matches(info, primary.title)
+
+
+def _fingerprint_title_matches(info: MusicInfo, title_evidence: str) -> bool:
+    """在音频与署名已核验后比较曲名别称及展示差异，避免混入发行身份判断。"""
+    from difflib import SequenceMatcher
+
+    from app.domain.music import (  # pylint: disable=import-outside-toplevel
+        music_base_title,
+        music_text_key,
+        music_title_matches,
+        music_titles,
+    )
+
+    if music_title_matches(info, title_evidence):
         return True
-    # AcoustID is strong audio evidence once the artist agrees.  Allow common
-    # radio/edit/remaster suffixes and very small legacy-tag typos, while still
-    # rejecting unrelated recordings.
-    evidence_key = music_text_key(music_base_title(primary.title))
+    # 上层已核验音频、艺人及版本，允许常见展示后缀与轻微标签拼写差异。
+    evidence_key = music_text_key(music_base_title(title_evidence))
     version_suffix = re.compile(
         r"(?:radio|single|version|edit|mix|remix|remaster(?:ed)?|live|acoustic|"
         r"demo|mono|stereo|recorded)+"
@@ -275,7 +300,7 @@ def _fingerprint_info_matches_evidence(
         if shorter and longer.startswith(shorter) and version_suffix.fullmatch(longer[len(shorter):]):
             return True
         qualified_evidence_key = music_text_key(
-            music_base_title(_FINGERPRINT_TITLE_QUALIFIER.sub("", primary.title))
+            music_base_title(_FINGERPRINT_TITLE_QUALIFIER.sub("", title_evidence))
         )
         qualified_candidate_key = music_text_key(
             music_base_title(_FINGERPRINT_TITLE_QUALIFIER.sub("", title))
@@ -317,12 +342,14 @@ def _reconcile_fingerprint_release(
     info: MusicInfo,
     tag_meta: Optional[MetaMusic],
     filename_meta: Optional[MetaMusic],
+    *,
+    verified_audio: bool = False,
 ) -> MusicInfo:
-    """用明确的本地单曲标签校正指纹录音所选中的任意关联发行版。
+    """指纹只确认录音，用本地发行证据校正远端随意选取的关联专辑。
 
     MusicBrainz Recording 可以同时收录于单曲和原声专辑。指纹证明的是录音
-    身份，而不是具体发行版；当本地标题和专辑同名时，保留录音 MBID，并把
-    发行层字段收敛为本地单曲证据，避免错误归入远端返回的另一张专辑。
+    身份，不能确认实际发行；采用本地专辑字段时移除没有证明的发行标识，
+    保留字段来源，旧插件的单ID回执仍只适用原有同名单曲纠正。
     """
     from app.domain.music import (  # pylint: disable=import-outside-toplevel
         music_album_matches,
@@ -331,9 +358,9 @@ def _reconcile_fingerprint_release(
     primary = tag_meta if tag_meta and tag_meta.title else filename_meta
     if (
         not primary
-        or not _is_standalone_single_evidence(primary)
+        or not (_is_standalone_single_evidence(primary) or verified_audio)
         or not primary.album
-        or not info.album
+        or music_album_title_is_weak(primary)
         or (
             music_album_matches(info, primary.album)
             and music_year_matches(info, primary)
@@ -345,19 +372,135 @@ def _reconcile_fingerprint_release(
     reconciled.album = primary.album
     reconciled.album_artist = primary.album_artist or info.artist
     reconciled.album_id = None
-    reconciled.album_type = "Single"
-    reconciled.secondary_types = []
+    reconciled.musicbrainz_release_id = primary.musicbrainz_release_id
+    reconciled.musicbrainz_release_group_id = primary.musicbrainz_release_group_id
+    reconciled.musicbrainz_release_track_id = primary.musicbrainz_release_track_id
+    reconciled.release_year = primary.release_year
+    reconciled.original_year = primary.original_year or info.original_year
+    reconciled.album_type = primary.album_type or ("Single" if _is_standalone_single_evidence(primary) else None)
+    reconciled.secondary_types = list(primary.secondary_types)
     reconciled.year = int(primary.year) if primary.year is not None else None
     reconciled.release_date = None
     reconciled.release_status = None
     reconciled.disc_number = primary.disc_number
     reconciled.track_number = primary.track_number
     reconciled.total_tracks = primary.total_tracks
+    reconciled.total_discs = primary.total_discs
+    reconciled.album_aliases = []
     reconciled.cover_url = None
     reconciled.category = ""
-    reconciled.metadata_category = "Single"
+    reconciled.metadata_category = reconciled.album_type or ""
     reconciled.classification = None
+    for key in ("album", "album_artist", "year", "release_year", "disc_number", "track_number", "total_tracks", "total_discs",
+                "musicbrainz_release_id", "musicbrainz_release_group_id", "musicbrainz_release_track_id"):
+        if getattr(reconciled, key, None) is not None:
+            reconciled.field_sources[key] = primary.field_sources.get(key, "tag" if primary is tag_meta else "filename")
+        else:
+            reconciled.field_sources.pop(key, None)
     return reconciled
+
+
+def _select_fingerprint_info(
+        meta: MetaMusic, matches: list[tuple[Optional[float], MusicInfo]],
+        tag_meta: Optional[MetaMusic], filename_meta: Optional[MetaMusic],
+        *, truncated: bool = False,
+) -> Optional[MusicInfo]:
+    """只采用唯一可解释的录音候选，近分多录音保留待确认，不用文本回退掩盖歧义。"""
+    if not matches:
+        return None
+    if tag_meta and tag_meta.media_source == MediaSource.MusicBrainz and tag_meta.media_id:
+        tagged = next(((score, info) for score, info in matches if info.media_id == tag_meta.media_id), None)
+        if tagged is None:
+            return None
+        score, info = tagged
+        return _finish_fingerprint_recording(score, info, tag_meta, filename_meta)
+    ranked = sorted(matches, key=lambda item: item[0] if item[0] is not None else 1.0, reverse=True)
+    if truncated or (len(ranked) > 1 and round((ranked[0][0] or 0) - (ranked[1][0] or 0), 6) <= 0.05):
+        pending = MusicInfo.from_meta(meta)
+        pending.media_source, pending.media_id = None, None
+        pending.raw_data["recognition"] = {"status": "ambiguous", "message": "指纹对应多个合理的录音，请手动选择歌曲或专辑", "candidates": [
+            {"media_source": str(info.media_source), "media_id": info.media_id, "title": info.title, "artist": info.artist, "score": score}
+            for score, info in ranked[:5]
+        ]}
+        return pending
+    score, info = ranked[0]
+    return _finish_fingerprint_recording(score, info, tag_meta, filename_meta)
+
+
+def _finish_fingerprint_recording(
+        score: Optional[float], info: MusicInfo, tag_meta: Optional[MetaMusic], filename_meta: Optional[MetaMusic],
+) -> MusicInfo:
+    """仅确认Recording；发行ID只能沿用实际标签，不能从指纹详情所选关联发行推断。"""
+    if score is None:
+        # 旧插件的单ID回执沿用既有对象及文本核验契约，不伪造原生指纹结论。
+        return _reconcile_fingerprint_release(info, tag_meta, filename_meta)
+    result = deepcopy(_reconcile_fingerprint_release(info, tag_meta, filename_meta,
+                                                     verified_audio=score is not None and score >= 0.98))
+    result.album_id = tag_meta.musicbrainz_release_group_id if tag_meta else None
+    result.field_sources.pop("album_id", None)
+    for key in ("musicbrainz_release_id", "musicbrainz_release_group_id", "musicbrainz_release_track_id"):
+        value = getattr(tag_meta, key, None)
+        setattr(result, key, value)
+        if value:
+            result.field_sources[key] = tag_meta.field_sources.get(key, "tag") if tag_meta else "tag"
+        else:
+            result.field_sources.pop(key, None)
+    result.raw_data["recognition"] = {"status": "matched", "method": "fingerprint", "score": score,
+                                       "identity_type": "recording", "release_verified": False}
+    return result
+
+
+def _fingerprint_candidate_list(recording_id: Optional[str], observed: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """旧插件仍只给ID时保持原核验要求，不给它制造AcoustID分数。"""
+    if observed:
+        return observed[:5]
+    return [{"recording_id": recording_id, "score": None, "duration": None}] if recording_id else []
+
+
+def _matching_fingerprint(
+        candidate: dict[str, Any], info: Optional[MusicInfo],
+        tag_meta: Optional[MetaMusic], filename_meta: Optional[MetaMusic],
+) -> bool:
+    """同步和异步候选采用同一证据核验规则。"""
+    return _fingerprint_info_matches_evidence(info, tag_meta, filename_meta,
+                                             fingerprint_score=candidate.get("score"),
+                                             fingerprint_duration=candidate.get("duration"))
+
+
+def _recognize_fingerprints(
+        path: Union[str, Path], meta: MetaMusic, tag_meta: Optional[MetaMusic], filename_meta: Optional[MetaMusic],
+        recognize: Callable[[MetaMusic, str], Optional[MusicInfo]],
+) -> Optional[MusicInfo]:
+    """在一次有界调用中逐个核验原生候选，保留旧指纹插件的调用顺序。"""
+    with capture_music_recognition(seconds=90, request_limit=16) as observation:
+        report_music_fingerprints([])
+        recording_id = AcoustIdChain().identify_music_by_fingerprint(path)
+        matches: list[tuple[Optional[float], MusicInfo]] = []
+        for candidate in _fingerprint_candidate_list(recording_id, observation.fingerprint_candidates):
+            info = recognize(meta, str(candidate["recording_id"]))
+            if info and _matching_fingerprint(candidate, info, tag_meta, filename_meta):
+                matches.append((candidate.get("score"), info))
+        return None if music_recognition_failed() else _select_fingerprint_info(
+            meta, matches, tag_meta, filename_meta, truncated=any(item.get("truncated") for item in observation.fingerprint_candidates),
+        )
+
+
+async def _async_recognize_fingerprints(
+        path: Union[str, Path], meta: MetaMusic, tag_meta: Optional[MetaMusic], filename_meta: Optional[MetaMusic],
+        recognize: Callable[[MetaMusic, str], Awaitable[Optional[MusicInfo]]],
+) -> Optional[MusicInfo]:
+    """异步路径使用相同候选集合、预算和最终歧义判断。"""
+    with capture_music_recognition(seconds=90, request_limit=16) as observation:
+        report_music_fingerprints([])
+        recording_id = await AcoustIdChain().async_identify_music_by_fingerprint(path)
+        matches: list[tuple[Optional[float], MusicInfo]] = []
+        for candidate in _fingerprint_candidate_list(recording_id, observation.fingerprint_candidates):
+            info = await recognize(meta, str(candidate["recording_id"]))
+            if info and _matching_fingerprint(candidate, info, tag_meta, filename_meta):
+                matches.append((candidate.get("score"), info))
+        return None if music_recognition_failed() else _select_fingerprint_info(
+            meta, matches, tag_meta, filename_meta, truncated=any(item.get("truncated") for item in observation.fingerprint_candidates),
+        )
 
 
 def _music_info_matches_text_evidence(
@@ -421,7 +564,7 @@ def _music_path_plan(
     normalized_source = normalize_media_source(media_source)
     if normalized_source in (None, MediaSource.MusicBrainz):
         info = yield _MusicPathAction(kind=_MusicPathActionKind.FINGERPRINT)
-        if _has_remote_music_identity(info):
+        if _has_remote_music_identity(info) or (info and info.raw_data.get("recognition", {}).get("status") == "ambiguous"):
             return info
     info = yield _MusicPathAction(
         kind=_MusicPathActionKind.TAG,
@@ -665,24 +808,7 @@ class MediaPathOwner(_MediaOwnerBase):
             action = next(plan)
             while True:
                 if action.kind is _MusicPathActionKind.FINGERPRINT:
-                    recording_id = AcoustIdChain().identify_music_by_fingerprint(path)
-                    info = self._recognize_musicbrainz_recording(meta, recording_id) if recording_id else None
-                    if self._is_remote_music_info(info):
-                        if not _fingerprint_info_matches_evidence(
-                            info, tag_meta, filename_meta,
-                        ):
-                            logger.warning(
-                                "AcoustID 候选与本地标签/文件名不符，"
-                                f"已回退文本识别：{Path(path).name} -> {info.artist} - {info.title}"
-                            )
-                            info = None
-                    if self._is_remote_music_info(info):
-                        info = _reconcile_fingerprint_release(
-                            info,
-                            tag_meta,
-                            filename_meta,
-                        )
-                        logger.info("音乐识别命中 AcoustID 指纹层，已跳过标签和文件名识别")
+                    info = _recognize_fingerprints(path, meta, tag_meta, filename_meta, self._recognize_musicbrainz_recording)
                 elif action.kind is _MusicPathActionKind.ALBUM:
                     info = self._music_album_dir_fallback(path)
                     if info and not _music_info_matches_text_evidence(info, meta):
@@ -735,31 +861,7 @@ class MediaPathOwner(_MediaOwnerBase):
             action = next(plan)
             while True:
                 if action.kind is _MusicPathActionKind.FINGERPRINT:
-                    recording_id = await AcoustIdChain().async_identify_music_by_fingerprint(path)
-                    info = (
-                        await self._async_recognize_musicbrainz_recording(
-                            meta,
-                            recording_id,
-                        )
-                        if recording_id
-                        else None
-                    )
-                    if self._is_remote_music_info(info):
-                        if not _fingerprint_info_matches_evidence(
-                            info, tag_meta, filename_meta,
-                        ):
-                            logger.warning(
-                                "AcoustID 候选与本地标签/文件名不符，"
-                                f"已回退文本识别：{Path(path).name} -> {info.artist} - {info.title}"
-                            )
-                            info = None
-                    if self._is_remote_music_info(info):
-                        info = _reconcile_fingerprint_release(
-                            info,
-                            tag_meta,
-                            filename_meta,
-                        )
-                        logger.info("音乐识别命中 AcoustID 指纹层，已跳过标签和文件名识别")
+                    info = await _async_recognize_fingerprints(path, meta, tag_meta, filename_meta, self._async_recognize_musicbrainz_recording)
                 elif action.kind is _MusicPathActionKind.ALBUM:
                     info = await self._async_music_album_dir_fallback(path)
                     if info and not _music_info_matches_text_evidence(info, meta):

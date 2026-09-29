@@ -79,6 +79,21 @@ Music recognition, exploration, album and artist navigation, and recognition-cac
 - Track-title discovery uses the Recording search index and its related
   releases. Release search has no `recording` field. At similar relevance,
   releases supported by multiple recordings precede editions of one single.
+- Native AcoustID recognition verifies at most five Recording candidates using
+  duration, meaningful titles, artists, and versions. A unique high-score match
+  with consistent duration can identify untagged or numbered files. Placeholder
+  artist tags are missing evidence, while explicit conflicting artists or live
+  versions still reject a candidate. Real numeric song tags remain meaningful;
+  zero-padded rip numbers and `Track 01` do not establish a trusted local title.
+  Near ties or truncated candidates remain `ambiguous`. A native fingerprint
+  result has `raw_data.recognition.method=fingerprint`,
+  `identity_type=recording`, and `release_verified=false`; supplemental release
+  IDs and `album_id` must come from actual tags, with `album_id` retaining only
+  a release-group ID. Legacy single-ID plugins keep their text-validation
+  contract and are not assigned an invented AcoustID score. Fingerprint work
+  shares a 90-second, 16-HTTP-attempt budget, or the existing enclosing budget.
+  Cached fingerprints retain candidates and expire after 3600 seconds for a
+  hit, 300 seconds for no match, and 15 seconds for a transient failure.
 - Recognition has an eight-attempt HTTP budget with 45 seconds for waits and
   request timeouts. Cached HTTP results cost no request slots. Album-directory
   success, no-match, and transient failures expire after 3600, 300, and 15

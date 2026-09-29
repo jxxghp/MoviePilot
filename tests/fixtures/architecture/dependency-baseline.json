@@ -1097,8 +1097,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8985,
-  "edge_sha256": "8b77394a0e5714e776ab92c5bdbfbea6a253e530e8288c79c24cd4e8e40a4c46",
+  "edge_count": 8990,
+  "edge_sha256": "0f702bc0a98c671186cf06117094b842de518f45935f4b98096577ee78483dfe",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -4708,6 +4708,8 @@
     "app.chain.media.path -> app.application",
     "app.chain.media.path -> app.application.audio",
     "app.chain.media.path -> app.application.configuration",
+    "app.chain.media.path -> app.application.music",
+    "app.chain.media.path -> app.application.music.observation",
     "app.chain.media.path -> app.chain",
     "app.chain.media.path -> app.chain.acoustid",
     "app.chain.media.path -> app.chain.media",
@@ -6687,6 +6689,9 @@
     "app.modules.acoustid -> app.adapters",
     "app.modules.acoustid -> app.adapters.network",
     "app.modules.acoustid -> app.adapters.network.http",
+    "app.modules.acoustid -> app.application",
+    "app.modules.acoustid -> app.application.music",
+    "app.modules.acoustid -> app.application.music.observation",
     "app.modules.acoustid -> app.modules",
     "app.modules.acoustid -> app.runtime",
     "app.modules.acoustid -> app.runtime.execution",

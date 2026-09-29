@@ -21,6 +21,7 @@ class MusicRecognitionObservation:
     status: str = "not_found"
     message: str = "没有匹配到足够可靠的音乐信息"
     candidates: list[dict[str, Any]] = field(default_factory=list)
+    fingerprint_candidates: list[dict[str, Any]] = field(default_factory=list)
     lock: Any = field(default_factory=RLock, repr=False)
 
     @property
@@ -80,6 +81,14 @@ def music_recognition_diagnostics() -> dict[str, Any]:
     """读取隔离的诊断副本，供无身份返回值携带失败原因而不是伪造成功。"""
     observation = _current_observation.get()
     return observation.to_dict() if observation is not None else {}
+
+
+def report_music_fingerprints(candidates: list[dict[str, Any]]) -> None:
+    """保留指纹原始候选证据，不把指纹关联提前宣布为已确认录音。"""
+    observation = _current_observation.get()
+    if observation is not None:
+        with observation.lock:
+            observation.fingerprint_candidates = [dict(item) for item in candidates[:5]]
 
 
 def music_wait_allowed(delay: float) -> bool:

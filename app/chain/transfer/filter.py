@@ -264,6 +264,8 @@ class _MusicFileFilterBase(_TransferOwnerBase):
         except Exception as err:
             logger.debug(f"音乐曲目兜底识别失败：{file_path} - {err}")
             return file_meta, None
+        if info and (info.raw_data.get("recognition") or {}).get("status") in BLOCKING_MUSIC_RECOGNITION_STATES:
+            return file_meta, info
         if not info or not info.media_id:
             return file_meta, None
         logger.info(f"{file_path.name} 通过曲目证据识别为：{info.artist} - {info.title}")
