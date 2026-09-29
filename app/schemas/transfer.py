@@ -172,7 +172,7 @@ class TransferManualReviewRequest(BaseModel):  # type: ignore[misc]
     decision: Literal["not_applied", "applied"] = Field(
         description="人工判定；不公开 failed，失败终态只能由 durable 结算写入",
     )
-    reason: str = Field(min_length=1, max_length=2000, description="人工判定理由")
+    reason: str = Field(default="", max_length=2000, description="人工判定理由，可选")
     result_payload: Optional[dict[str, JsonData]] = Field(
         default=None,
         description="判定为 applied 时必填的外部结果证据",
