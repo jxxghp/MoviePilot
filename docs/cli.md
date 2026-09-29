@@ -259,8 +259,11 @@ moviepilot setup --config-dir /path/to/moviepilot-config
   可按需启用，并配置 `LLM_PROVIDER`、`LLM_MODEL`、`LLM_API_KEY`、`LLM_BASE_URL`
   与 `LLM_WEB_SEARCH_MODE`。联网搜索支持 MoviePilot 本地搜索、模型服务端搜索、
   服务端优先自动回退与完全关闭；服务端模式仅在当前模型目录声明支持时生效。
+  向导会尝试读取当前提供商的模型目录；目录服务不可用时仍可手动输入模型 ID。
   当前可识别 OpenAI、Anthropic Claude、Google Gemini、xAI Grok 与 DeepSeek
   官方端点已公布的服务端联网搜索能力，第三方兼容端点不会被自动误判。
+- 下载目录按下载器内部路径原样保存，可用于远程下载器和路径映射；向导不会在本机解析或创建它。
+  媒体库目录是 MoviePilot 本地路径，向导会确保其存在。
 - 用户站点认证
   可按需选择认证站点，并按站点要求填写用户名、UID、Passkey 等参数
 - 开机自启

@@ -1379,6 +1379,10 @@ def _prompt_provider_choice(label: str, choices: dict[str, str], default: str) -
 
 
 def _load_llm_provider_module():
+    """确保本地安装脚本可按应用包路径加载 LLM provider。"""
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+
     provider_path = ROOT / "app" / "agent" / "llm" / "provider.py"
     module_name = f"moviepilot_local_llm_provider_{uuid.uuid4().hex}"
     spec = importlib.util.spec_from_file_location(module_name, provider_path)
@@ -1773,11 +1777,14 @@ def _collect_path_mapping() -> list[tuple[str, str]]:
 
 
 def _collect_directory_config() -> dict[str, Any]:
+    """收集下载器内部路径与 MoviePilot 本地媒体库路径。"""
     default_download_dir = ROOT.parent / "downloads"
     default_library_dir = ROOT.parent / "media"
 
     print_step("目录配置")
-    download_path = _prompt_path("下载目录", default=default_download_dir)
+    download_path = _prompt_text(
+        "下载器中的下载目录根路径", default=str(default_download_dir)
+    )
     library_path = _prompt_path("媒体库目录", default=default_library_dir)
     transfer_type = _prompt_choice(
         "整理方式",
@@ -2205,13 +2212,42 @@ def _collect_agent_config(
     return config
 
 
+def _empty_site_auth_sync_query(_operation: Any) -> list[Any]:
+    """向导尚未初始化数据库时，将已启用站点查询视为空集。"""
+    return []
+
+
+async def _empty_site_auth_async_query(_operation: Any) -> list[Any]:
+    """提供认证目录查询所需的空异步事务结果。"""
+    return []
+
+
 def _load_auth_site_definitions_inner() -> dict[str, Any]:
+    """读取站点认证资源定义，不要求初始化向导先创建业务数据库。"""
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
 
-    from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+    from app.db import uow
 
-    auth_sites = SitesHelper().get_authsites() or {}
+    needs_transaction_runner_cleanup = (
+        uow._sync_transaction_runner is None
+        and uow._async_transaction_runner is None
+    )
+    if needs_transaction_runner_cleanup:
+        # 认证字段来自本地资源；向导此时只需字段定义，不需要数据库中的站点记录。
+        uow.configure_transaction_runners(
+            sync=_empty_site_auth_sync_query,
+            async_=_empty_site_auth_async_query,
+        )
+
+    try:
+        from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+
+        auth_sites = SitesHelper().get_authsites() or {}
+    finally:
+        if needs_transaction_runner_cleanup:
+            uow.reset_transaction_runners()
+
     definitions: dict[str, Any] = {}
     for site_key, site_conf in auth_sites.items():
         site_name = str(site_conf.get("name") or site_key).strip()
@@ -2478,11 +2514,9 @@ def _merge_notification_switches(existing_items: list[dict]) -> list[dict]:
 
 
 def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
+    """应用向导配置并确保本地媒体库路径存在，由下载器管理下载路径。"""
     for directory in config_payload.get("directories") or []:
-        download_path = directory.get("download_path")
         library_path = directory.get("library_path")
-        if download_path:
-            Path(download_path).mkdir(parents=True, exist_ok=True)
         if library_path:
             Path(library_path).mkdir(parents=True, exist_ok=True)
 
