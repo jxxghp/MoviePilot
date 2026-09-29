@@ -278,6 +278,7 @@ def test_update_plugin_job_binds_instance_around_service_callback(monkeypatch):
     owner._jobs = {}
     owner.start = MagicMock()
     owner.remove_plugin_job = lambda _pid, job_id=None: None
+    owner._detach_live_plugin_once_jobs = lambda _pid: {}
     owner._assign_job_generation = lambda _job_id, _job: None
 
     owner.update_plugin_job("DemoPluginWork")

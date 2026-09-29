@@ -408,8 +408,11 @@ class SchedulerReconcileOwner(_SchedulerOwnerBase):
         """
         if not self._scheduler or not pid:
             return
-        # 移除该插件的全部服务
-        self.remove_plugin_job(pid)
+        # 移除该插件的全部服务，仍有效的一次性任务不受周期服务重建影响
+        with self._lock:
+            live_once_jobs = self._detach_live_plugin_once_jobs(pid)
+            self.remove_plugin_job(pid)
+            self._jobs.update(live_once_jobs)
         # 获取插件服务列表
         with self._lock:
             plugin_manager = get_plugin_manager()

@@ -168,6 +168,38 @@ def remove_plugin_job(plugin_id: str) -> None:
     get_scheduler().remove_plugin_job(plugin_id)
 
 
+def add_plugin_once_job(
+    plugin_id: str,
+    job_id: str,
+    func: Callable[..., Any],
+    name: str,
+    delay_seconds: float = 0,
+    func_kwargs: Optional[dict[str, Any]] = None,
+) -> bool:
+    """
+    在宿主调度器追加插件一次性任务，替代插件自建 BackgroundScheduler。
+
+    不重建该插件 get_service() 声明的周期服务；同 ID 重复追加时替换未执行的旧任务。
+    :return: 调度器运行中且注册成功时返回 True
+    """
+    return cast(
+        bool,
+        get_scheduler().add_plugin_once_job(
+            plugin_id,
+            job_id,
+            func,
+            name,
+            delay_seconds=delay_seconds,
+            func_kwargs=func_kwargs,
+        ),
+    )
+
+
+def remove_plugin_once_job(plugin_id: str, job_id: str) -> None:
+    """取消插件尚未执行的一次性任务。"""
+    get_scheduler().remove_plugin_once_job(plugin_id, job_id)
+
+
 def start_agent_task(task_id: int) -> bool:
     """立即执行 Agent 自主定时任务。"""
     return cast(bool, get_scheduler().start_agent_task(task_id))
