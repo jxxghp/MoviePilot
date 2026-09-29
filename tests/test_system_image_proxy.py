@@ -18,6 +18,78 @@ from app.application.image import (
     configure_image_ports,
     reset_image_ports,
 )
+from app.schemas.site import Site
+
+
+@pytest.fixture(autouse=True)
+def configured_image_sites(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """隔离图片白名单的站点查询，避免其他用例的数据库状态影响结果。"""
+    query = AsyncMock()
+    query.list.return_value = []
+    monkeypatch.setattr(system_endpoint, "get_configured_site_query_service", lambda: query)
+    return query
+
+
+@pytest.mark.parametrize("endpoint", ["proxy", "cache"])
+@pytest.mark.parametrize(
+    ("url", "address", "ranges", "expected"),
+    [
+        ("https://www.qingwapt.com/favicon.svg", "8.8.8.8", [], True),
+        ("https://www.qingwapt.com/favicon.svg", "198.18.0.1", ["198.18.0.0/15"], True),
+        ("https://www.qingwapt.com/favicon.svg", "198.18.0.1", [], False),
+        ("https://www.qingwapt.com/favicon.svg", "127.0.0.1", ["198.18.0.0/15"], False),
+        ("https://www.qingwapt.com.evil.example/favicon.svg", "8.8.8.8", [], False),
+        ("https://evilqingwapt.com/favicon.svg", "8.8.8.8", [], False),
+        ("https://qingwapt.com@evil.example/favicon.svg", "8.8.8.8", [], False),
+        ("https://mirror.example:8443/favicon.svg", "8.8.8.8", [], True),
+        ("https://mirror.example:9443/favicon.svg", "8.8.8.8", [], False),
+    ],
+)
+def test_site_image_endpoints_preserve_dns_safety(
+    configured_image_sites: AsyncMock,
+    endpoint: str,
+    url: str,
+    address: str,
+    ranges: list[str],
+    expected: bool,
+) -> None:
+    """站点图片自动放行，两个接口均保留私网、相似域名及端口边界。"""
+    configured_image_sites.list.return_value = [
+        Site(domain="qingwapt.com", url="https://mirror.example:8443/", is_active=False),
+    ]
+    image_helper = Mock()
+    image_helper.async_fetch_image_with_mime_type = AsyncMock(return_value=(b"image", "image/png"))
+    with patch.object(system_endpoint, "get_runtime_settings", return_value={
+        "IMAGE_PROXY_ALLOWED_PRIVATE_RANGES": ranges,
+    }), patch.object(system_endpoint, "_get_image_proxy_trusted_hosts", return_value=set()), patch.object(
+        system_endpoint.SecurityUtils, "_hostname_addresses_async",
+        new=AsyncMock(return_value=[ipaddress.ip_address(address)]),
+    ), patch.object(system_endpoint, "ImageHelper", return_value=image_helper), patch(
+        "app.application.security.url._emit_image_proxy_block_warning", new=AsyncMock(),
+    ):
+        if endpoint == "proxy":
+            response = asyncio.run(system_endpoint.proxy_img(imgurl=url))
+        else:
+            response = asyncio.run(system_endpoint.cache_img(url=url))
+    assert (response is not None) is expected
+    assert image_helper.async_fetch_image_with_mime_type.await_count == int(expected)
+
+
+def test_site_image_allowlist_tracks_configuration(configured_image_sites: AsyncMock) -> None:
+    """站点改址、删除不残留白名单，非法地址不能打断其他图片请求。"""
+    configured_image_sites.list.side_effect = [
+        [Site(domain="qingwapt.com", url="https://old.example/")],
+        [Site(domain="qingwapt.com", url="https://new.example/")],
+        [Site(url=url) for url in (None, "https://[", "file://host/path", "https://user@host/")],
+    ]
+    with patch.object(system_endpoint, "get_runtime_settings", return_value={}):
+        assert asyncio.run(system_endpoint._get_image_proxy_allowed_domains()) == {
+            "https://qingwapt.com", "https://old.example",
+        }
+        assert asyncio.run(system_endpoint._get_image_proxy_allowed_domains()) == {
+            "https://qingwapt.com", "https://new.example",
+        }
+        assert asyncio.run(system_endpoint._get_image_proxy_allowed_domains()) == set()
 
 
 class _FakeImageTransport:
@@ -82,6 +154,7 @@ def restore_image_ports() -> Iterator[None]:
 
 
 def _image_bytes(image_format: str, trailing: bytes = b"") -> bytes:
+    """生成离线图片载荷，用于验证内容识别和响应头。"""
     buffer = io.BytesIO()
     Image.new("RGB", (2, 2), color=(32, 96, 160)).save(buffer, format=image_format)
     return buffer.getvalue() + trailing
@@ -98,7 +171,7 @@ def test_bangumi_image_proxy_domain_is_added_to_allowlist() -> None:
             "SECURITY_IMAGE_DOMAINS": ["lain.bgm.tv"],
         },
     ):
-        assert system_endpoint._get_image_proxy_allowed_domains() == {
+        assert asyncio.run(system_endpoint._get_image_proxy_allowed_domains()) == {
             "lain.bgm.tv",
             "image-proxy.example",
         }

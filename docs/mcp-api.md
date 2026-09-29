@@ -21,6 +21,11 @@ MCP 使用系统配置中的 `API_TOKEN` 作为认证密钥，文档中的 API K
 
 `POST /api/v1/history/transfer/{history_id}/discard-corrupt` 属于需要管理权限的整理恢复 REST 接口，不向 Agent gateway 暴露。成功响应的 `data.history_id` 为保留的整理历史 ID；任务已清理时同样返回该结构，历史不存在时返回业务失败。
 
+图片 REST 接口 `/api/v1/system/img/{proxy}` 和 `/api/v1/system/cache/image` 自动将已配置
+站点的主域名及访问地址加入图片域名白名单（含停用站点，便于展示图标），无需手动配置
+`SECURITY_IMAGE_DOMAINS`。站点新增、改址或删除后按最新配置生效；仍执行 DNS/私网校验，
+Fake-IP 等非公网解析地址需要通过 `IMAGE_PROXY_ALLOWED_PRIVATE_RANGES` 明确允许。
+
 ## 2. 标准 MCP 协议 (JSON-RPC 2.0)
 
 ### 端点
