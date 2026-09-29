@@ -1,7 +1,12 @@
 import re
-from dataclasses import asdict
+from collections import OrderedDict
+from contextlib import contextmanager
+from contextvars import ContextVar
+from copy import deepcopy
+from dataclasses import asdict, dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import Any, Optional, Union
+from threading import RLock
+from typing import Any, Iterator, Optional, Union
 from uuid import UUID
 
 import chardet
@@ -24,8 +29,70 @@ from app.domain.music import MusicCueSheet, parse_music_cue
 from app.runtime.log import logger
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
 
+_AudioSignature = tuple[str, int, int, int, int]
+
+
+@dataclass(slots=True)
+class _AudioScan:
+    """仅在当前扫描中保存元数据副本，不保留可写 Mutagen 对象或文件句柄。"""
+
+    tags: OrderedDict[_AudioSignature, Optional[MetaMusic]] = field(default_factory=OrderedDict)
+    cues: OrderedDict[_AudioSignature, str] = field(default_factory=OrderedDict)
+    lock: Any = field(default_factory=RLock)
+    active: bool = True
+
+
+_audio_scan: ContextVar[Optional[_AudioScan]] = ContextVar("audio_metadata_scan", default=None)
+
+
+@contextmanager
+def capture_audio_metadata() -> Iterator[None]:
+    """一次整理共享有界只读快照，退出后连同继承上下文的 worker 也不能继续复用。"""
+    existing = _audio_scan.get()
+    if existing is not None and existing.active:
+        yield
+        return
+    scan = _AudioScan()
+    token = _audio_scan.set(scan)
+    try:
+        yield
+    finally:
+        with scan.lock:
+            scan.active = False
+            scan.tags.clear()
+            scan.cues.clear()
+        _audio_scan.reset(token)
+
+
+def _audio_signature(path: Path) -> Optional[_AudioSignature]:
+    """文件替换、内容或元数据变更都使扫描快照失效；保留路径别名的目录语义。"""
+    try:
+        stat = path.stat()
+        return str(path.absolute()), stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
+    except OSError:
+        return None
+
 
 def _read_cue_text(path: Path) -> str:
+    """同一扫描复用 CUE 文本，文件发生变化时重新读取。"""
+    scan, signature = _audio_scan.get(), _audio_signature(path)
+    if scan is None or not scan.active or signature is None:
+        return _load_cue_text(path)
+    with scan.lock:
+        if not scan.active:
+            return _load_cue_text(path)
+        if signature in scan.cues:
+            scan.cues.move_to_end(signature)
+            return scan.cues[signature]
+        text = _load_cue_text(path)
+        if signature == _audio_signature(path):
+            scan.cues[signature] = text
+            while len(scan.cues) > 32:
+                scan.cues.popitem(last=False)
+        return text
+
+
+def _load_cue_text(path: Path) -> str:
     """有界读取 CUE，优先 Unicode，再用已有编码探测与 GB18030 兼容中文旧文件。"""
     with path.open("rb") as stream:
         payload = stream.read(1024 * 1024 + 1)
@@ -242,6 +309,25 @@ class AudioMetadataHelper:
     @classmethod
     def read_tags(cls, path: Path) -> Optional[MetaMusic]:
         """只读取本地音频标签和流参数，不使用文件名或目录补齐。"""
+        scan, signature = _audio_scan.get(), _audio_signature(path)
+        if scan is None or not scan.active or signature is None:
+            return cls._read_tags(path)
+        with scan.lock:
+            if not scan.active:
+                return cls._read_tags(path)
+            if signature in scan.tags:
+                scan.tags.move_to_end(signature)
+                return deepcopy(scan.tags[signature])
+            meta = cls._read_tags(path)
+            if signature == _audio_signature(path):
+                scan.tags[signature] = deepcopy(meta)
+                while len(scan.tags) > 1024:
+                    scan.tags.popitem(last=False)
+            return meta
+
+    @classmethod
+    def _read_tags(cls, path: Path) -> Optional[MetaMusic]:
+        """解析实际容器的原生标签；扫描缓存只包裹此只读操作。"""
         try:
             try:
                 audio = MutagenFile(path, easy=False)

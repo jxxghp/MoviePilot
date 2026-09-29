@@ -9,6 +9,7 @@ from typing import Any, Optional, Tuple, Union, cast
 
 from app.application.audio import AudioMetadataHelper
 from app.application.history import DownloadHistorySnapshot
+from app.application.music.observation import BLOCKING_MUSIC_RECOGNITION_STATES
 from app.chain.transfer.contract import _TransferOwnerBase
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
@@ -477,6 +478,9 @@ def _finalize_music_group_context(
 ) -> tuple[Any, Optional[Union[MediaInfo, MusicInfo]]]:
     """统一同一发行的专辑名称与分类，保留各曲艺人及用户明确选择。"""
     if not isinstance(meta, MetaMusic) or not isinstance(info, MusicInfo):
+        return meta, info
+    recognition = info.raw_data.get("recognition")
+    if isinstance(recognition, dict) and recognition.get("status") in BLOCKING_MUSIC_RECOGNITION_STATES:
         return meta, info
     key = owner._get_file_key(item)
     grouped = key in context.album_main_keys and not preserve_selection

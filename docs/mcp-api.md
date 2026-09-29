@@ -549,6 +549,15 @@ SSE 的 `candidate_items` 是站点原始返回数量，`match_counts` 记录身
 匹配成功时 `raw_data.match_score` 是 0–100 的排序分数，不是概率；`match_coverage=1` 仅表示当前输入文件全覆盖。
 整轨 CUE 以逻辑歌曲数和相邻索引时长参与匹配，返回仍为物理文件的专辑身份；修改 CUE 会使目录缓存失效。
 
+来源识别默认最多 8 次 HTTP 尝试，等待与请求超时按 45 秒预算约束，HTTP 缓存命中不消耗请求额度。
+无匹配与服务故障分开处理：目录成功结果缓存一小时，无匹配缓存五分钟，服务故障仅冷却十五秒；
+无身份的 MusicBrainz 元数据负缓存最多五分钟，连接失败或预算耗尽不写成这种负缓存。
+`MusicInfo.raw_data.recognition` 可携带 `status`、`message`、`requests`、`candidates` 诊断。
+`ambiguous`、`conflict`、`service_error`、`budget_exhausted` 均不能冒充远端匹配成功；整理规划遇到这些状态时停止文件操作，
+歧义不再回退为逐曲猜测。目录结果在 Python 调用方中保持字典兼容，并额外保留 `recognition` 属性。
+音乐缓存删除/清空同时清理来源响应及目录状态；刷新前进行中的目录查询不能回填刷新后的缓存。
+同一整理批次复用有界只读音频/CUE快照；文件指纹变化、批次退出都会失效，不缓存可写音频对象。
+
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
 | GET | `/api/v1/media/search` | 当 `type=music` 或指定音乐 `media_source` 时按歌曲或专辑关键词搜索音乐元数据；艺术家统一由 `type=person` 搜索，支持 TMDB 与 MusicBrainz 来源。参数：`title`、`type`、`count`、可重复的 `media_source` 枚举，以及可选的 `music_type` 实体过滤 |

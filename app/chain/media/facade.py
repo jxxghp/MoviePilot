@@ -128,6 +128,8 @@ class MediaChain(ChainBase, metaclass=Singleton):
         MediaAlbumOwner._directory_audio_files.__func__  # type: ignore[attr-defined]
     )
     _album_directory_signature = staticmethod(MediaAlbumOwner._album_directory_signature)
+    _directory_audio_scan = MediaAlbumOwner._directory_audio_scan
+    clear_music_album_cache = cast(Any, classmethod(cast(Any, MediaAlbumOwner.clear_music_album_cache).__func__))
     _music_release_preferences = staticmethod(MediaAlbumOwner._music_release_preferences)
     _music_track_title_key = staticmethod(MediaAlbumOwner._music_track_title_key)
     _align_music_album_tracks = classmethod(  # type: ignore[var-annotated]

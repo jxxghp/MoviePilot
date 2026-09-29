@@ -334,7 +334,7 @@
   "app/chain/media/album.py:app.runtime.execution.run_in_threadpool": {
     "owners": {
       "MediaAlbumOwner._async_match_music_album_directory": 1,
-      "MediaAlbumOwner.async_recognize_music_album_directory": 2
+      "MediaAlbumOwner.async_recognize_music_album_directory": 1
     },
     "target": "app.runtime.execution.run_in_threadpool"
   },

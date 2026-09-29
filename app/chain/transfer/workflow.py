@@ -5,6 +5,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+from app.application.audio import capture_audio_metadata
 from app.application.classification.reference import (
     category_path_below_media_type,
 )
@@ -420,6 +421,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         """兼容旧内部钩子，统一委托请求工作流 owner。"""
         return self._run_transfer_workflow(*args, **kwargs)
 
+    @capture_audio_metadata()
     def _run_transfer_workflow(
         self,
         fileitem: FileItem,

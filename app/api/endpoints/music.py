@@ -144,6 +144,7 @@ async def delete_music_recognition_cache(
     deleted_item = MusicBrainzChain().delete_cache(cache_key)
     if not deleted_item:
         return _SchemaResponse(success=False, message="音乐识别缓存不存在")
+    MediaChain.clear_music_album_cache()
     return _SchemaResponse(success=True, message="音乐识别缓存删除成功")
 
 
@@ -155,6 +156,7 @@ async def clear_music_recognition_cache(
 ) -> _SchemaResponse:
     """清空全部 MusicBrainz 识别缓存。"""
     MusicBrainzChain().clear_cache()
+    MediaChain.clear_music_album_cache()
     return _SchemaResponse(success=True, message="音乐识别缓存清理完成")
 
 

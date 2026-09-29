@@ -14,6 +14,7 @@ from app.application.history import (
     TransferHistorySnapshot,
 )
 from app.application.history.retry import resolve_history
+from app.application.music.observation import BLOCKING_MUSIC_RECOGNITION_STATES
 from app.application.transfer.workflow import TransferTask
 from app.chain._contracts import TransferMixinHost
 from app.chain.media import MediaChain
@@ -29,6 +30,7 @@ from app.domain.context import MediaInfo, MusicAlbumInfo, MusicInfo
 from app.domain.media import normalize_music_type
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.music import (
+    MusicDirectoryMatch,
     music_album_matches,
     music_artist_matches,
     music_release_year_matches,
@@ -102,6 +104,10 @@ class _MusicFileFilterBase(_TransferOwnerBase):
         """在产生文件副作用前拒绝损坏音乐结构或未满足的分类要求。"""
         if isinstance(task.meta, MetaMusic) and task.meta.organization_error:
             return task.meta.organization_error
+        if isinstance(task.mediainfo, MusicInfo):
+            recognition = task.mediainfo.raw_data.get("recognition")
+            if isinstance(recognition, dict) and recognition.get("status") in BLOCKING_MUSIC_RECOGNITION_STATES:
+                return str(recognition.get("message") or "音乐识别尚需确认，请重新预览或手动选择专辑")
         if not (cls._requires_automatic_category(task) and task.mediainfo and not task.mediainfo.category):
             return None
         return (
@@ -215,6 +221,10 @@ class _MusicFileFilterBase(_TransferOwnerBase):
         except Exception as err:
             logger.debug(f"音乐专辑目录匹配失败：{file_path} - {err}")
             return file_meta, None
+        if isinstance(matched, MusicDirectoryMatch) and matched.recognition.get("status") in BLOCKING_MUSIC_RECOGNITION_STATES:
+            pending_info = MusicInfo.from_meta(file_meta)
+            pending_info.raw_data["recognition"] = deepcopy(matched.recognition)
+            return file_meta, pending_info
         info = matched.get(str(file_path.resolve()))
         if not info or not info.media_id:
             return file_meta, None

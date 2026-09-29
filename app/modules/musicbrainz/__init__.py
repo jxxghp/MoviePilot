@@ -7,6 +7,14 @@ from difflib import SequenceMatcher
 from typing import Any, Iterable, Optional, Tuple, TypeVar, Union
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+from app.application.music.observation import (
+    capture_music_recognition,
+    music_recognition_diagnostics,
+    music_recognition_failed,
+    music_request_timeout,
+    music_wait_allowed,
+    report_music_recognition,
+)
 from app.domain.classification.evaluator import read_fact
 from app.domain.classification.facts import build_classification_facts
 from app.domain.context import (
@@ -274,8 +282,7 @@ class MusicBrainzModule(_ModuleBase):
     def clear_cache(self) -> None:
         """响应全局缓存清理事件，清空音乐识别缓存。"""
         logger.info("开始清除音乐识别缓存 ...")
-        if self.cache:
-            self.cache.clear()
+        self.music_cache_clear()
         logger.info("音乐识别缓存清除完成")
 
     def music_cache_items(self) -> list[dict]:
@@ -284,12 +291,16 @@ class MusicBrainzModule(_ModuleBase):
 
     def music_cache_delete(self, cache_key: str) -> dict:
         """按缓存键删除单条音乐识别缓存。"""
-        return self.cache.delete(cache_key) if self.cache else {}
+        deleted = self.cache.delete(cache_key) if self.cache else {}
+        if deleted:
+            getattr(self._request_json, "cache_clear")()
+        return deleted
 
     def music_cache_clear(self) -> None:
         """清空全部音乐识别缓存。"""
         if self.cache:
             self.cache.clear()
+        getattr(self._request_json, "cache_clear")()
 
     def test(self) -> Tuple[bool, str]:
         """测试 MusicBrainz 搜索接口连通性。"""
@@ -809,25 +820,29 @@ class MusicBrainzModule(_ModuleBase):
         适用于无标签整专目录：用专辑名、歌手搜索候选发行版本，再用曲目数、
         总时长和逐曲时长相似度打分，选出最可信的版本并返回其曲目表。
         """
-        if not tracks or meta.organization_error:
-            return None
-        preference = self._release_preference(
-            music_release_regions,
-            music_release_scripts,
-        )
-        details: list[dict[str, Any]] = []
-        releases = [{"id": meta.musicbrainz_release_id}] if meta.musicbrainz_release_id else self._search_release_candidates(
-            meta,
-            tracks,
-            limit=limit,
-            preference=preference,
-        )
-        for request in self._release_detail_requests(releases):
-            detail = self._request_json(request.path, params=request.params)
-            if not detail:
-                continue
-            details.append(detail)
-        return self._select_release_match(meta, tracks, details, preference)
+        with capture_music_recognition():
+            if not tracks or meta.organization_error:
+                return None
+            preference = self._release_preference(
+                music_release_regions,
+                music_release_scripts,
+            )
+            details: list[dict[str, Any]] = []
+            releases = [{"id": meta.musicbrainz_release_id}] if meta.musicbrainz_release_id else self._search_release_candidates(
+                meta,
+                tracks,
+                limit=limit,
+                preference=preference,
+            )
+            for request in self._release_detail_requests(releases):
+                detail = self._request_json(request.path, params=request.params)
+                if detail is None or music_recognition_failed():
+                    report_music_recognition("service_error", "音乐发行详情暂时无法获取，请稍后重试")
+                    return None
+                if not detail:
+                    continue
+                details.append(detail)
+            return self._select_release_match(meta, tracks, details, preference)
 
     async def async_match_music_album(
             self,
@@ -838,27 +853,31 @@ class MusicBrainzModule(_ModuleBase):
             music_release_scripts: Optional[list[str]] = None,
     ) -> Optional[MusicAlbumInfo]:
         """异步按目录线索和曲目特征匹配 MusicBrainz 发行版本。"""
-        if not tracks or meta.organization_error:
-            return None
-        preference = self._release_preference(
-            music_release_regions,
-            music_release_scripts,
-        )
-        details: list[dict[str, Any]] = []
-        releases = [{"id": meta.musicbrainz_release_id}] if meta.musicbrainz_release_id else await self._async_search_release_candidates(
-            meta,
-            tracks,
-            limit=limit,
-            preference=preference,
-        )
-        for request in self._release_detail_requests(releases):
-            detail = await self._async_request_json(
-                request.path, params=request.params
+        with capture_music_recognition():
+            if not tracks or meta.organization_error:
+                return None
+            preference = self._release_preference(
+                music_release_regions,
+                music_release_scripts,
             )
-            if not detail:
-                continue
-            details.append(detail)
-        return self._select_release_match(meta, tracks, details, preference)
+            details: list[dict[str, Any]] = []
+            releases = [{"id": meta.musicbrainz_release_id}] if meta.musicbrainz_release_id else await self._async_search_release_candidates(
+                meta,
+                tracks,
+                limit=limit,
+                preference=preference,
+            )
+            for request in self._release_detail_requests(releases):
+                detail = await self._async_request_json(
+                    request.path, params=request.params
+                )
+                if detail is None or music_recognition_failed():
+                    report_music_recognition("service_error", "音乐发行详情暂时无法获取，请稍后重试")
+                    return None
+                if not detail:
+                    continue
+                details.append(detail)
+            return self._select_release_match(meta, tracks, details, preference)
 
     @classmethod
     def _select_release_match(
@@ -883,6 +902,7 @@ class MusicBrainzModule(_ModuleBase):
             if album and score > 0:
                 ranked.append((score, cls._release_preference_sort_key(detail, selected_preference), album))
         if not ranked:
+            report_music_recognition("not_found", "没有候选发行通过曲目信息核对")
             return None
         ranked.sort(key=lambda entry: (-entry[0], entry[1]))
         best_score, _preference, best = ranked[0]
@@ -891,9 +911,15 @@ class MusicBrainzModule(_ModuleBase):
         equivalent = cls._release_content_key(best)
         for score, _rank, candidate in ranked[1:]:
             if best_score - score <= 5 and cls._release_content_key(candidate) != equivalent:
+                report_music_recognition("ambiguous", "多个发行版本均符合现有信息，请手动选择专辑版本", [
+                    {"release_id": item.musicbrainz_release_id, "album_id": item.media_id,
+                     "title": item.title, "artist": item.artist, "year": item.year, "score": round(points, 2)}
+                    for points, _preference_rank, item in ranked[:5]
+                ])
                 return None
         best.raw_data.update(match_score=round(best_score, 2), match_coverage=1.0,
                              match_basis="release_id" if meta.musicbrainz_release_id else "track_evidence")
+        report_music_recognition("matched", "专辑及当前曲目已匹配")
         return best
 
     @staticmethod
@@ -922,6 +948,9 @@ class MusicBrainzModule(_ModuleBase):
                 request.path, params=request.params
             )
             self._merge_release_candidates(releases, seen, payload)
+            if payload is None or music_recognition_failed():
+                report_music_recognition("service_error", "音乐元数据服务暂时不可用，请稍后重试")
+                return []
         return self._rank_release_candidates(
             releases,
             preference or self._release_preference(),
@@ -943,6 +972,9 @@ class MusicBrainzModule(_ModuleBase):
                 request.path, params=request.params
             )
             self._merge_release_candidates(releases, seen, payload)
+            if payload is None or music_recognition_failed():
+                report_music_recognition("service_error", "音乐元数据服务暂时不可用，请稍后重试")
+                return []
         return self._rank_release_candidates(
             releases,
             preference or self._release_preference(),
@@ -1220,29 +1252,30 @@ class MusicBrainzModule(_ModuleBase):
             **kwargs,
     ) -> Optional[MusicInfo]:
         """跟随统一媒体识别分发，仅在音乐类型请求下返回 MusicBrainz 识别结果。"""
-        plan = self._recognition_plan(
-            meta=meta,
-            mtype=mtype,
-            media_source=media_source,
-            media_id=media_id,
-            music_type=kwargs.get("music_type"),
-            cache_enabled=bool(kwargs.get("cache", True)),
-        )
-        if not plan:
-            return None
-        if plan.media_id:
-            info = self.recognize_music(
-                plan.media_source,
-                plan.require_media_id(),
-                **plan.detail_kwargs(),
+        with capture_music_recognition():
+            plan = self._recognition_plan(
+                meta=meta,
+                mtype=mtype,
+                media_source=media_source,
+                media_id=media_id,
+                music_type=kwargs.get("music_type"),
+                cache_enabled=bool(kwargs.get("cache", True)),
             )
-            return self._finalize_detail_recognition(plan, info)
-        return self._recognize_from_candidates_sync(plan)
+            if not plan:
+                return None
+            if plan.media_id:
+                info = self.recognize_music(
+                    plan.media_source,
+                    plan.require_media_id(),
+                    **plan.detail_kwargs(),
+                )
+                return self._finalize_detail_recognition(plan, info)
+            return self._recognize_from_candidates_sync(plan)
 
     def _update_recognize_cache(self, meta: MetaMusic, info: Optional[MusicInfo],
                                 music_type: Optional[str] = None) -> None:
         """识别完成后把结果写入本地识别缓存，未挂载缓存时静默跳过。"""
-        if self.cache:
+        if self.cache and (info and info.media_id or not music_recognition_failed()):
             self.cache.update(meta, info, music_type=music_type)
 
     def update_recognize_cache(
@@ -1279,24 +1312,25 @@ class MusicBrainzModule(_ModuleBase):
             **kwargs,
     ) -> Optional[MusicInfo]:
         """异步识别 MusicBrainz 音乐详情或按元数据匹配单曲。"""
-        plan = self._recognition_plan(
-            meta=meta,
-            mtype=mtype,
-            media_source=media_source,
-            media_id=media_id,
-            music_type=kwargs.get("music_type"),
-            cache_enabled=bool(kwargs.get("cache", True)),
-        )
-        if not plan:
-            return None
-        if plan.media_id:
-            info = await self.async_recognize_music(
-                plan.media_source,
-                plan.require_media_id(),
-                **plan.detail_kwargs(),
+        with capture_music_recognition():
+            plan = self._recognition_plan(
+                meta=meta,
+                mtype=mtype,
+                media_source=media_source,
+                media_id=media_id,
+                music_type=kwargs.get("music_type"),
+                cache_enabled=bool(kwargs.get("cache", True)),
             )
-            return self._finalize_detail_recognition(plan, info)
-        return await self._recognize_from_candidates_async(plan)
+            if not plan:
+                return None
+            if plan.media_id:
+                info = await self.async_recognize_music(
+                    plan.media_source,
+                    plan.require_media_id(),
+                    **plan.detail_kwargs(),
+                )
+                return self._finalize_detail_recognition(plan, info)
+            return await self._recognize_from_candidates_async(plan)
 
     @classmethod
     def _recognition_plan(
@@ -1422,6 +1456,8 @@ class MusicBrainzModule(_ModuleBase):
         """统一生成候选识别兜底并写入本地缓存。"""
         meta = plan.require_meta()
         result = matched or self._info_from_meta(meta)
+        if not result.media_id and music_recognition_failed():
+            result.raw_data["recognition"] = music_recognition_diagnostics()
         self._update_recognize_cache(meta, result, music_type=plan.music_type)
         return result
 
@@ -2499,20 +2535,30 @@ class MusicBrainzModule(_ModuleBase):
         with cls._request_lock:
             now = time.monotonic()
             request_at = max(now, cls._last_request_at + cls._request_interval)
+            if not music_wait_allowed(request_at - now):
+                return -1
             cls._last_request_at = request_at
             return max(0.0, request_at - now)
 
     @classmethod
-    def _wait_for_rate_limit(cls) -> None:
+    def _wait_for_rate_limit(cls) -> bool:
         """同步等待 MusicBrainz 公共接口的已预留请求时间。"""
-        if delay := cls._reserve_request_delay():
+        delay = cls._reserve_request_delay()
+        if delay < 0:
+            return False
+        if delay:
             time.sleep(delay)
+        return True
 
     @classmethod
-    async def _async_wait_for_rate_limit(cls) -> None:
+    async def _async_wait_for_rate_limit(cls) -> bool:
         """异步等待 MusicBrainz 公共接口的已预留请求时间。"""
-        if delay := cls._reserve_request_delay():
+        delay = cls._reserve_request_delay()
+        if delay < 0:
+            return False
+        if delay:
             await asyncio.sleep(delay)
+        return True
 
     @classmethod
     def _response_decision(
@@ -2535,23 +2581,29 @@ class MusicBrainzModule(_ModuleBase):
                 return _MusicBrainzResponseDecision(
                     retry_delay=cls._busy_backoff * (2 ** attempt)
                 )
+            report_music_recognition("service_error", "音乐元数据服务繁忙，请稍后重试")
             return _MusicBrainzResponseDecision()
         if status_code != 200:
             logger.warning(
                 f"MusicBrainz 请求失败：{status_code} {response.text[:200]}"
             )
+            report_music_recognition("service_error", "音乐元数据服务请求失败，请稍后重试")
             return _MusicBrainzResponseDecision()
         try:
             payload = response.json()
         except (TypeError, ValueError) as err:
             logger.warning(f"MusicBrainz 响应解析失败：{err}")
+            report_music_recognition("service_error", "音乐元数据服务返回了无效响应，请稍后重试")
             return _MusicBrainzResponseDecision()
+        if not isinstance(payload, dict):
+            report_music_recognition("service_error", "音乐元数据服务返回了无效响应，请稍后重试")
         return _MusicBrainzResponseDecision(
             payload=payload if isinstance(payload, dict) else None
         )
 
     @classmethod
-    @cached(maxsize=get_runtime_setting('CONF').musicbrainz, ttl=get_runtime_setting('CONF').meta, skip_none=True)
+    @cached(region="musicbrainz:http:v2", maxsize=get_runtime_setting('CONF').musicbrainz, ttl=get_runtime_setting('CONF').meta, skip_none=True,
+            empty_ttl=300, empty_if=lambda value: not value or value.get("count") == 0)
     def _request_json(
             cls,
             path: str,
@@ -2564,11 +2616,16 @@ class MusicBrainzModule(_ModuleBase):
         """
         attempts = cls._busy_retries + 1
         for attempt in range(attempts):
-            cls._wait_for_rate_limit()
+            if music_request_timeout() is None or cls._wait_for_rate_limit() is False:
+                return None
+            timeout = music_request_timeout(claim=False)
+            if timeout is None:
+                return None
             response = cls._get_request().get_res(
-                f"{cls._base_url}{path}", params=params
+                f"{cls._base_url}{path}", params=params, timeout=timeout,
             )
             if response is None:
+                report_music_recognition("service_error", "音乐元数据服务连接失败，请稍后重试")
                 return None
             try:
                 decision = cls._response_decision(
@@ -2577,6 +2634,8 @@ class MusicBrainzModule(_ModuleBase):
             finally:
                 response.close()
             if decision.retry_delay is not None:
+                if not music_wait_allowed(decision.retry_delay):
+                    return None
                 time.sleep(decision.retry_delay)
                 continue
             return decision.payload
@@ -2584,10 +2643,13 @@ class MusicBrainzModule(_ModuleBase):
 
     @classmethod
     @cached(
+        region="musicbrainz:http:v2",
         maxsize=get_runtime_setting('CONF').musicbrainz,
         ttl=get_runtime_setting('CONF').meta,
         skip_none=True,
         shared_key="_request_json",
+        empty_ttl=300,
+        empty_if=lambda value: not value or value.get("count") == 0,
     )
     async def _async_request_json(
             cls,
@@ -2597,7 +2659,11 @@ class MusicBrainzModule(_ModuleBase):
         """异步请求 MusicBrainz JSON 接口并统一处理限流与响应错误。"""
         attempts = cls._busy_retries + 1
         for attempt in range(attempts):
-            await cls._async_wait_for_rate_limit()
+            if music_request_timeout() is None or await cls._async_wait_for_rate_limit() is False:
+                return None
+            timeout = music_request_timeout(claim=False)
+            if timeout is None:
+                return None
             response = await AsyncRequestUtils(
                 headers={
                     "User-Agent": f"{get_runtime_setting('USER_AGENT')} (https://github.com/jxxghp/MoviePilot)",
@@ -2605,8 +2671,9 @@ class MusicBrainzModule(_ModuleBase):
                 },
                 proxies=get_runtime_setting('PROXY'),
                 timeout=20,
-            ).get_res(f"{cls._base_url}{path}", params=params)
+            ).get_res(f"{cls._base_url}{path}", params=params, timeout=timeout)
             if response is None:
+                report_music_recognition("service_error", "音乐元数据服务连接失败，请稍后重试")
                 return None
             try:
                 decision = cls._response_decision(
@@ -2615,6 +2682,8 @@ class MusicBrainzModule(_ModuleBase):
             finally:
                 await response.aclose()
             if decision.retry_delay is not None:
+                if not music_wait_allowed(decision.retry_delay):
+                    return None
                 await asyncio.sleep(decision.retry_delay)
                 continue
             return decision.payload

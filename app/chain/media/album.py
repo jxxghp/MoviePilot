@@ -8,6 +8,7 @@ from typing import Optional, Union, cast
 
 from app.application.audio import AudioMetadataHelper
 from app.application.configuration import get_chain_runtime_config_snapshot
+from app.application.music.observation import capture_music_recognition
 from app.chain.media.cache import AlbumSignature
 from app.chain.media.contract import _MediaOwnerBase
 from app.chain.musicbrainz import MusicBrainzChain
@@ -16,14 +17,15 @@ from app.domain.context import (
     MusicInfo,
 )
 from app.domain.meta.metamusic import MetaMusic
-from app.domain.music import align_music_tracks, expand_music_tracks, music_text_key
+from app.domain.music import (
+    MusicDirectoryMatch,
+    align_music_tracks,
+    expand_music_tracks,
+    music_album_title_is_weak,
+    music_text_key,
+)
 from app.foundation.text import convert as zhconv_convert
 from app.runtime.execution import run_in_threadpool
-
-
-def _is_directory(path: Path) -> bool:
-    """判断路径是否仍指向目录。"""
-    return path.is_dir()
 
 
 def _album_directory_cache_key(
@@ -37,12 +39,14 @@ def _album_directory_cache_key(
     evidence = {
         key: getattr(contextual_meta, key, None)
         for key in ("album", "artists", "album_artist", "year", "version", "musicbrainz_release_id",
-                    "musicbrainz_release_group_id", "original_year", "release_year", "field_sources")
+                    "musicbrainz_release_group_id", "original_year", "release_year")
     } if contextual_meta else None
     if evidence and evidence["album_artist"]:
         evidence["artists"] = [evidence["album_artist"]]
     if evidence and not any(evidence.values()):
         evidence = None
+    if evidence and contextual_meta:
+        evidence["weak_album"] = not contextual_meta.album or music_album_title_is_weak(contextual_meta)
     return json.dumps([os.path.abspath(directory), regions, scripts, evidence, file_scope], ensure_ascii=False, sort_keys=True)
 
 
@@ -104,6 +108,11 @@ def _album_context_with_resource(
 
 class MediaAlbumOwner(_MediaOwnerBase):
     """专辑目录扫描、曲目对齐与缓存编排 owner。"""
+
+    @classmethod
+    def clear_music_album_cache(cls) -> None:
+        """手动刷新音乐识别时清空所有目录状态，并隔离此前仍在进行的查询。"""
+        cls._album_dir_cache.clear()
 
     @classmethod
     def _directory_audio_files(cls, directory: Path, file_paths: Optional[list[Path]] = None) -> list[Path]:
@@ -171,6 +180,13 @@ class MediaAlbumOwner(_MediaOwnerBase):
                     )
                 )
         return tuple(signature)
+
+    def _directory_audio_scan(self, directory: Path, file_paths: Optional[list[Path]] = None) -> tuple[list[Path], AlbumSignature]:
+        """在同一工作线程收集文件和CUE签名，避免异步入口直接执行目录和stat I/O。"""
+        if not directory.is_dir():
+            return [], ()
+        files = self._directory_audio_files(directory, file_paths) if file_paths is not None else self._directory_audio_files(directory)
+        return files, self._album_directory_signature(directory, files)
 
     @staticmethod
     def _music_track_title_key(value: Optional[str]) -> str:
@@ -249,7 +265,9 @@ class MediaAlbumOwner(_MediaOwnerBase):
         metas = AudioMetadataHelper.read_many(files)
         album_meta = _album_context_with_resource(directory, metas, contextual_meta)
         logical, _owners = expand_music_tracks(metas)
-        if not logical or album_meta.organization_error or (
+        if album_meta.organization_error:
+            return MusicDirectoryMatch(recognition={"status": "conflict", "message": album_meta.organization_error})
+        if not logical or (
             len(logical) < self._album_match_min_files
             and not (album_meta.musicbrainz_release_id or album_meta.musicbrainz_release_group_id)
         ):
@@ -258,15 +276,19 @@ class MediaAlbumOwner(_MediaOwnerBase):
             list(music_release_regions) if music_release_regions is not None else None,
             list(music_release_scripts) if music_release_scripts is not None else None,
         )
-        album = MusicBrainzChain().match_music_album(
-            album_meta,
-            logical,
-            music_release_regions=list(regions),
-            music_release_scripts=list(scripts),
-        )
-        if not album or not album.tracks:
-            return {}
-        return self._album_track_map(files, metas, album)
+        with capture_music_recognition() as observation:
+            try:
+                album = MusicBrainzChain().match_music_album(
+                    album_meta, logical, music_release_regions=list(regions), music_release_scripts=list(scripts),
+                )
+            except Exception:
+                return MusicDirectoryMatch(recognition={"status": "service_error", "message": "音乐元数据服务暂时不可用，请稍后重试"})
+            if observation.failed or not album or not album.tracks:
+                return MusicDirectoryMatch(recognition=observation.to_dict())
+            result = self._album_track_map(files, metas, album)
+            if len(result) != len(files):
+                return MusicDirectoryMatch(recognition={"status": "conflict", "message": "候选专辑无法覆盖当前全部音频，请核对文件范围或发行版本"})
+            return MusicDirectoryMatch(result, recognition={**observation.to_dict(), "status": "matched", "message": "专辑及当前曲目已匹配"})
 
     async def _async_match_music_album_directory(
         self,
@@ -280,7 +302,9 @@ class MediaAlbumOwner(_MediaOwnerBase):
         metas = await run_in_threadpool(AudioMetadataHelper.read_many, files)
         album_meta = _album_context_with_resource(directory, metas, contextual_meta)
         logical, _owners = expand_music_tracks(metas)
-        if not logical or album_meta.organization_error or (
+        if album_meta.organization_error:
+            return MusicDirectoryMatch(recognition={"status": "conflict", "message": album_meta.organization_error})
+        if not logical or (
             len(logical) < self._album_match_min_files
             and not (album_meta.musicbrainz_release_id or album_meta.musicbrainz_release_group_id)
         ):
@@ -289,15 +313,19 @@ class MediaAlbumOwner(_MediaOwnerBase):
             list(music_release_regions) if music_release_regions is not None else None,
             list(music_release_scripts) if music_release_scripts is not None else None,
         )
-        album = await MusicBrainzChain().async_match_music_album(
-            album_meta,
-            logical,
-            music_release_regions=list(regions),
-            music_release_scripts=list(scripts),
-        )
-        if not album or not album.tracks:
-            return {}
-        return self._album_track_map(files, metas, album)
+        with capture_music_recognition() as observation:
+            try:
+                album = await MusicBrainzChain().async_match_music_album(
+                    album_meta, logical, music_release_regions=list(regions), music_release_scripts=list(scripts),
+                )
+            except Exception:
+                return MusicDirectoryMatch(recognition={"status": "service_error", "message": "音乐元数据服务暂时不可用，请稍后重试"})
+            if observation.failed or not album or not album.tracks:
+                return MusicDirectoryMatch(recognition=observation.to_dict())
+            result = self._album_track_map(files, metas, album)
+            if len(result) != len(files):
+                return MusicDirectoryMatch(recognition={"status": "conflict", "message": "候选专辑无法覆盖当前全部音频，请核对文件范围或发行版本"})
+            return MusicDirectoryMatch(result, recognition={**observation.to_dict(), "status": "matched", "message": "专辑及当前曲目已匹配"})
 
     def recognize_music_album_directory(
         self,
@@ -340,7 +368,7 @@ class MediaAlbumOwner(_MediaOwnerBase):
                 MusicInfo,
                 self._finalize_recognition_result(info),
             )
-        return finalized
+        return MusicDirectoryMatch(finalized, recognition=matched.recognition) if isinstance(matched, MusicDirectoryMatch) else finalized
 
     async def async_recognize_music_album_directory(
         self,
@@ -352,12 +380,7 @@ class MediaAlbumOwner(_MediaOwnerBase):
     ) -> dict[str, MusicInfo]:
         """异步按目录级线索批量识别整张专辑。"""
         directory = Path(path).absolute()
-        if not await run_in_threadpool(_is_directory, directory):
-            return {}
-        files = (
-            await run_in_threadpool(self._directory_audio_files, directory, file_paths)
-            if file_paths is not None else await run_in_threadpool(self._directory_audio_files, directory)
-        )
+        files, signature = await run_in_threadpool(self._directory_audio_scan, directory, file_paths)
         if not files:
             return {}
         regions, scripts = self._music_release_preferences(
@@ -367,7 +390,6 @@ class MediaAlbumOwner(_MediaOwnerBase):
         custom_preference = music_release_regions is not None or music_release_scripts is not None
         scope = [str(file.relative_to(directory)) for file in files] if file_paths is not None else None
         key = _album_directory_cache_key(directory, regions, scripts, contextual_meta, scope)
-        signature = self._album_directory_signature(directory, files)
         matched = await self._album_dir_cache.async_resolve(
             key,
             signature,
@@ -380,13 +402,14 @@ class MediaAlbumOwner(_MediaOwnerBase):
             ),
         )
         simplified = self._simplify_recognized_music_mapping(matched)
-        return {
+        finalized = {
             item_path: cast(
                 MusicInfo,
                 await self._async_finalize_recognition_result(info),
             )
             for item_path, info in simplified.items()
         }
+        return MusicDirectoryMatch(finalized, recognition=matched.recognition) if isinstance(matched, MusicDirectoryMatch) else finalized
 
     @staticmethod
     def _music_release_preferences(

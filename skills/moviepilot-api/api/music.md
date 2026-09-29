@@ -79,6 +79,17 @@ Music recognition, exploration, album and artist navigation, and recognition-cac
 - Track-title discovery uses the Recording search index and its related
   releases. Release search has no `recording` field. At similar relevance,
   releases supported by multiple recordings precede editions of one single.
+- Recognition has an eight-attempt HTTP budget with 45 seconds for waits and
+  request timeouts. Cached HTTP results cost no request slots. Album-directory
+  success, no-match, and transient failures expire after 3600, 300, and 15
+  seconds respectively. Unidentified metadata expires within 300 seconds;
+  service errors and exhausted budgets are not stored as unidentified metadata.
+  `MusicInfo.raw_data.recognition` may carry `status`, `message`, `requests`, and
+  `candidates`. Ambiguity, conflicts, service errors, and exhausted budgets stop
+  organization before file operations. Clearing/deleting music cache also
+  invalidates HTTP responses and album directories. Audio/CUE evidence is reused
+  only within a bounded read-only scan and invalidated by file changes or scope
+  exit.
 
 ## Operations
 

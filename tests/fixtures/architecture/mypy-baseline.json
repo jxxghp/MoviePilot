@@ -1885,7 +1885,7 @@
     "arg-type": 1,
     "assignment": 5,
     "misc": 4,
-    "no-untyped-call": 3,
+    "no-untyped-call": 2,
     "no-untyped-def": 2,
     "type-arg": 2
   },

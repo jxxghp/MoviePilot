@@ -63,7 +63,7 @@ def test_match_music_album_selects_release_by_count_and_duration(monkeypatch):
         if path == "/release/release-1":
             detail_request_params = params
             return detail
-        return None
+        return {"recordings": []}
 
     monkeypatch.setattr(module, "_request_json", fake_request)
 
@@ -96,7 +96,7 @@ def test_match_music_album_rejects_mismatched_trackset(monkeypatch):
             return {"releases": [{"id": "release-1", "title": "七里香"}]}
         if path == "/release/release-1":
             return detail
-        return None
+        return {"recordings": []}
 
     monkeypatch.setattr(module, "_request_json", fake_request)
 
@@ -376,7 +376,7 @@ def test_async_recognize_album_directory_checks_path_in_threadpool(
         monkeypatch,
 ):
     """异步专辑识别应把目录元数据检查移出事件循环。"""
-    check_directory = AsyncMock(return_value=False)
+    check_directory = AsyncMock(return_value=([], ()))
     monkeypatch.setattr("app.chain.media.album.run_in_threadpool", check_directory)
 
     result = asyncio.run(

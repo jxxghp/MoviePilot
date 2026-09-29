@@ -1,9 +1,10 @@
 """音乐名称、版本与站点候选匹配的纯业务规则。"""
 
 import re
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date
-from typing import Iterable, Literal, Optional
+from typing import Any, Iterable, Literal, Optional
 from unicodedata import combining, normalize
 
 from app.domain.context import MusicInfo
@@ -57,6 +58,15 @@ _VERSION_YEAR = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
 _VERSION_DATE = re.compile(r"(?<!\d)((?:19|20)\d{2})(?:[-./]|年)\s*(\d{1,2})(?:[-./]|月)\s*(\d{1,2})日?(?!\d)")
 _ISRC = re.compile(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}", re.IGNORECASE | re.ASCII)
 _CJK = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
+
+
+class MusicDirectoryMatch(dict[str, MusicInfo]):
+    """保持旧文件映射合同，同时保存专辑目录识别的可解释诊断。"""
+
+    def __init__(self, values: Optional[dict[str, MusicInfo]] = None, *, recognition: Optional[dict[str, Any]] = None) -> None:
+        """复制映射与诊断，读取和缓存使用方不共享可变摘要。"""
+        super().__init__(values or {})
+        self.recognition = deepcopy(recognition or {})
 
 
 def music_package_error(filename: str) -> Optional[str]:
