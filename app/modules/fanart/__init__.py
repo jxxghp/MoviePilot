@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
@@ -307,8 +308,10 @@ class FanartModule(_ModuleBase):
     """
 
     def init_module(self) -> None:
-        """初始化 Fanart 模块并清理旧配置 generation 的请求缓存。"""
-        self.clear_cache()
+        """初始化 Fanart 模块。
+
+        请求缓存键包含 API Key 指纹，更换 Key 后自然使用新键，无需在每次启动或重载时清空缓存。
+        """
 
     def stop(self):
         """停止 Fanart 模块；请求资源由每次调用按当前配置创建。"""
@@ -416,7 +419,7 @@ class FanartModule(_ModuleBase):
         query = self.__fanart_query(mediainfo=mediainfo)
         if not query:
             return None
-        result = self.__request_fanart(*query)
+        result = self.__request_fanart(*query, _key_token=self.__key_token())
         return self.__extract_images(mediainfo=mediainfo, result=result, season=season)
 
     async def __async_obtain_fanart_images(
@@ -430,7 +433,7 @@ class FanartModule(_ModuleBase):
         query = self.__fanart_query(mediainfo=mediainfo)
         if not query:
             return None
-        result = await self.__async_request_fanart(*query)
+        result = await self.__async_request_fanart(*query, _key_token=self.__key_token())
         return self.__extract_images(mediainfo=mediainfo, result=result, season=season)
 
     @staticmethod
@@ -573,7 +576,7 @@ class FanartModule(_ModuleBase):
     @classmethod
     @cached(maxsize=get_runtime_setting('CONF').fanart, ttl=get_runtime_setting('CONF').meta, shared_key="get")
     def __request_fanart(
-        cls, media_type: MediaType, queryid: Union[str, int]
+        cls, media_type: MediaType, queryid: Union[str, int], _key_token: str = ""
     ) -> Optional[dict]:
         image_url = cls.__fanart_url(media_type=media_type, queryid=queryid)
         try:
@@ -592,7 +595,7 @@ class FanartModule(_ModuleBase):
     @classmethod
     @cached(maxsize=get_runtime_setting('CONF').fanart, ttl=get_runtime_setting('CONF').meta, shared_key="get")
     async def __async_request_fanart(
-        cls, media_type: MediaType, queryid: Union[str, int]
+        cls, media_type: MediaType, queryid: Union[str, int], _key_token: str = ""
     ) -> Optional[dict]:
         image_url = cls.__fanart_url(media_type=media_type, queryid=queryid)
         try:
@@ -608,6 +611,15 @@ class FanartModule(_ModuleBase):
         except Exception as err:
             logger.error(f"获取{queryid}的Fanart图片失败：{str(err)}")
             return None
+
+    @staticmethod
+    def __key_token() -> str:
+        """返回当前 API Key 的指纹，只用于区分缓存键，不把 Key 原文写进缓存。
+
+        Key 无效时 Fanart 返回空图集并被长期缓存；换 Key 后指纹变化，旧结果不再命中。
+        """
+        api_key = str(get_runtime_setting("FANART_API_KEY") or "")
+        return hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:16]
 
     @classmethod
     def __fanart_url(cls, media_type: MediaType, queryid: Union[str, int]) -> str:

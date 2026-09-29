@@ -585,15 +585,6 @@ async def stop_modules() -> bool:
         lambda: _call_existing_singleton(ThreadHelper, "shutdown"),
         offload=True,
     )
-    await run_step(
-        "Redis缓存连接",
-        lambda: _call_existing_singleton(get_cache_composition().sync_redis_owner, "close"),
-        offload=True,
-    )
-    await run_step(
-        "异步Redis缓存连接",
-        lambda: _call_existing_singleton(get_cache_composition().async_redis_owner, "close"),
-    )
     # Web Agent 的取消 finally 可能还要写入最终展示快照，必须先完成任务收尾，再关闭写入准入。
     web_agent_drained = await run_step(
         "Web Agent后台任务",
@@ -635,6 +626,17 @@ async def stop_modules() -> bool:
             logger.error(
                 "数据库任务未收敛，保留全部 Provider 和数据库连接以供诊断与重试"
             )
+    # Redis 连接池由全部缓存共享，前面的 Agent 收尾、数据库任务和 Provider 撤销都可能读写缓存；
+    # 放在最后关闭，避免关闭后又被自动重连且再无步骤收口。
+    await run_step(
+        "Redis缓存连接",
+        lambda: _call_existing_singleton(get_cache_composition().sync_redis_owner, "close"),
+        offload=True,
+    )
+    await run_step(
+        "异步Redis缓存连接",
+        lambda: _call_existing_singleton(get_cache_composition().async_redis_owner, "close"),
+    )
     return all_converged
 
 
