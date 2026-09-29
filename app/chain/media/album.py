@@ -30,6 +30,7 @@ def _album_directory_cache_key(
     regions: tuple[str, ...],
     scripts: tuple[str, ...],
     contextual_meta: Optional[MetaMusic] = None,
+    file_scope: Optional[list[str]] = None,
 ) -> str:
     """将发行偏好及资源证据纳入缓存键，同目录更换种子线索时重新识别。"""
     evidence = {
@@ -40,7 +41,7 @@ def _album_directory_cache_key(
         evidence["artists"] = [evidence["album_artist"]]
     if evidence and not any(evidence.values()):
         evidence = None
-    return json.dumps([os.path.abspath(directory), regions, scripts, evidence], ensure_ascii=False, sort_keys=True)
+    return json.dumps([os.path.abspath(directory), regions, scripts, evidence, file_scope], ensure_ascii=False, sort_keys=True)
 
 
 def _album_context_with_resource(
@@ -76,8 +77,15 @@ class MediaAlbumOwner(_MediaOwnerBase):
     """专辑目录扫描、曲目对齐与缓存编排 owner。"""
 
     @classmethod
-    def _directory_audio_files(cls, directory: Path) -> list[Path]:
+    def _directory_audio_files(cls, directory: Path, file_paths: Optional[list[Path]] = None) -> list[Path]:
         """收集专辑目录及其一级碟片子目录中的音频文件。"""
+        if file_paths is not None:
+            root = directory.absolute()
+            return sorted({
+                path for raw_path in file_paths if ".." not in raw_path.parts
+                for path in (raw_path.absolute(),) if path.is_relative_to(root)
+                and path.is_file() and path.suffix.lower() in get_chain_runtime_config_snapshot().audio_extensions
+            })
         files: list[Path] = []
 
         def collect(current: Path) -> None:
@@ -292,12 +300,13 @@ class MediaAlbumOwner(_MediaOwnerBase):
         music_release_regions: Optional[list[str]] = None,
         music_release_scripts: Optional[list[str]] = None,
         contextual_meta: Optional[MetaMusic] = None,
+        file_paths: Optional[list[Path]] = None,
     ) -> dict[str, MusicInfo]:
         """按目录级线索批量识别整张专辑并返回文件到曲目的映射。"""
-        directory = Path(path)
+        directory = Path(path).absolute()
         if not directory.is_dir():
             return {}
-        files = self._directory_audio_files(directory)
+        files = self._directory_audio_files(directory, file_paths) if file_paths is not None else self._directory_audio_files(directory)
         if len(files) < self._album_match_min_files:
             return {}
         regions, scripts = self._music_release_preferences(
@@ -305,7 +314,8 @@ class MediaAlbumOwner(_MediaOwnerBase):
             music_release_scripts,
         )
         custom_preference = music_release_regions is not None or music_release_scripts is not None
-        key = _album_directory_cache_key(directory, regions, scripts, contextual_meta)
+        scope = [str(file.relative_to(directory)) for file in files] if file_paths is not None else None
+        key = _album_directory_cache_key(directory, regions, scripts, contextual_meta, scope)
         signature = self._album_directory_signature(directory, files)
         matched = self._album_dir_cache.resolve(
             key,
@@ -333,12 +343,16 @@ class MediaAlbumOwner(_MediaOwnerBase):
         music_release_regions: Optional[list[str]] = None,
         music_release_scripts: Optional[list[str]] = None,
         contextual_meta: Optional[MetaMusic] = None,
+        file_paths: Optional[list[Path]] = None,
     ) -> dict[str, MusicInfo]:
         """异步按目录级线索批量识别整张专辑。"""
-        directory = Path(path)
+        directory = Path(path).absolute()
         if not await run_in_threadpool(_is_directory, directory):
             return {}
-        files = await run_in_threadpool(self._directory_audio_files, directory)
+        files = (
+            await run_in_threadpool(self._directory_audio_files, directory, file_paths)
+            if file_paths is not None else await run_in_threadpool(self._directory_audio_files, directory)
+        )
         if len(files) < self._album_match_min_files:
             return {}
         regions, scripts = self._music_release_preferences(
@@ -346,7 +360,8 @@ class MediaAlbumOwner(_MediaOwnerBase):
             music_release_scripts,
         )
         custom_preference = music_release_regions is not None or music_release_scripts is not None
-        key = _album_directory_cache_key(directory, regions, scripts, contextual_meta)
+        scope = [str(file.relative_to(directory)) for file in files] if file_paths is not None else None
+        key = _album_directory_cache_key(directory, regions, scripts, contextual_meta, scope)
         signature = self._album_directory_signature(directory, files)
         matched = await self._album_dir_cache.async_resolve(
             key,

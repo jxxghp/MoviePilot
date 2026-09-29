@@ -172,6 +172,7 @@ if TYPE_CHECKING:
             music_release_regions: Optional[list[str]] = None,
             music_release_scripts: Optional[list[str]] = None,
             contextual_meta: Optional[MetaMusic] = None,
+            file_paths: Optional[list[Path]] = None,
         ) -> dict[str, MusicInfo]:
             """同步识别音乐专辑目录。"""
             ...
@@ -192,6 +193,7 @@ if TYPE_CHECKING:
             music_release_regions: Optional[list[str]] = None,
             music_release_scripts: Optional[list[str]] = None,
             contextual_meta: Optional[MetaMusic] = None,
+            file_paths: Optional[list[Path]] = None,
         ) -> dict[str, MusicInfo]:
             """异步识别音乐专辑目录。"""
             ...

@@ -45,6 +45,28 @@ _LOSSY_AUDIO_FORMATS = frozenset({"MP3", "AAC", "OGG", "OPUS", "WMA"})
 logger = logging.getLogger(__name__)
 
 
+def parse_music_release_types(values: Any, compilation: Optional[str] = None) -> tuple[Optional[str], list[str]]:
+    """将标签中的发行主副类型归一，保留 EP/Single，不从曲目数推断类型。"""
+    primary_names = {"album": "Album", "studio album": "Album", "专辑": "Album", "專輯": "Album",
+                     "single": "Single", "单曲": "Single", "單曲": "Single", "ep": "EP",
+                     "broadcast": "Broadcast", "other": "Other"}
+    secondary_names = {"compilation": "Compilation", "精选集": "Compilation", "合辑": "Compilation",
+                       "soundtrack": "Soundtrack", "ost": "Soundtrack", "原声": "Soundtrack",
+                       "live": "Live", "现场": "Live", "remix": "Remix", "dj-mix": "DJ-mix",
+                       "mixtape": "Mixtape/Street", "spokenword": "Spokenword"}
+    primary: Optional[str] = None
+    secondary: list[str] = []
+    for value in _string_list(values):
+        for token in re.split(r"[;,/+\\]", value):
+            key = token.strip().casefold()
+            primary = primary or primary_names.get(key)
+            if key in secondary_names and secondary_names[key] not in secondary:
+                secondary.append(secondary_names[key])
+    if str(compilation or "").strip().casefold() in {"1", "true", "yes"} and "Compilation" not in secondary:
+        secondary.append("Compilation")
+    return primary, secondary
+
+
 def normalize_audio_format(value: Any) -> Optional[str]:
     """将音频格式名称归一为订阅筛选和展示使用的规范值。"""
     text = str(value or "").strip().upper()
@@ -735,6 +757,8 @@ class MetaMusic(MetaBase):
         release_year: Optional[int] = None,
         field_sources: Optional[dict[str, str]] = None,
         music_type: Optional[str] = None,
+        album_type: Optional[str] = None,
+        secondary_types: Optional[list[str]] = None,
     ):
         """初始化音乐标题、标签、音频规格和统一媒体身份。"""
         # 音乐无季集概念，仅复用 MetaBase 的基础字段初始化，不触发副标题季集识别
@@ -753,6 +777,8 @@ class MetaMusic(MetaBase):
         self.musicbrainz_release_track_id = musicbrainz_release_track_id
         self.field_sources = dict(field_sources or {})
         self.music_type = music_type
+        self.album_type = album_type
+        self.secondary_types = list(secondary_types or [])
         self.disc_number = disc_number
         self.track_number = track_number
         self.total_discs = total_discs
@@ -781,6 +807,8 @@ class MetaMusic(MetaBase):
             self.__dict__.setdefault(key, None)
         self.field_sources = dict(state.get("field_sources") or {})
         self.music_type = state.get("music_type")
+        self.album_type = state.get("album_type")
+        self.secondary_types = list(state.get("secondary_types") or [])
 
     @classmethod
     def parse_query(cls, query: str) -> "MetaMusic":
@@ -1006,6 +1034,8 @@ class MetaMusic(MetaBase):
             media_source=info.media_source,
             media_id=info.media_id,
             music_type=getattr(info, "music_type", None),
+            album_type=getattr(info, "album_type", None),
+            secondary_types=getattr(info, "secondary_types", None),
             musicbrainz_release_id=getattr(info, "musicbrainz_release_id", None),
             musicbrainz_release_group_id=getattr(info, "musicbrainz_release_group_id", None),
             musicbrainz_release_track_id=getattr(info, "musicbrainz_release_track_id", None),
@@ -1710,7 +1740,7 @@ class MetaMusic(MetaBase):
     def parse_disc_dir(cls, name: str) -> Optional[int]:
         """识别 CD1、Disc 2 这类碟片子目录并返回碟号。"""
         match = _MUSIC_DISC_DIR_RE.match(str(name or "").strip())
-        return int(match.group("num")) if match else None
+        return int(match.group("num")) if match and int(match.group("num")) > 0 else None
 
     @staticmethod
     def _normalize_album_year(value: str) -> str:
@@ -1912,6 +1942,8 @@ class MetaMusic(MetaBase):
             "release_year": self.release_year,
             "field_sources": dict(self.field_sources),
             "music_type": self.music_type,
+            "album_type": self.album_type,
+            "secondary_types": list(self.secondary_types),
         }
 
     @classmethod
@@ -1948,6 +1980,8 @@ class MetaMusic(MetaBase):
             release_year=_optional_int(data.get("release_year")),
             field_sources=data.get("field_sources"),
             music_type=data.get("music_type"),
+            album_type=data.get("album_type"),
+            secondary_types=_string_list(data.get("secondary_types")),
         )
         meta.apply_words = data.get("apply_words")
         return meta

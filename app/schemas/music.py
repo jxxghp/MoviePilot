@@ -13,6 +13,8 @@ class MusicMeta(OptionalMediaIdentityMixin, BaseModel):
 
     type: Literal["音乐"] = "音乐"
     music_type: Optional[MusicEntityType] = Field(default=None, description="已知主身份的实体类型，未知时不推断")
+    album_type: Optional[str] = Field(default=None, description="标签声明的发行主类型，例如 Album、EP、Single")
+    secondary_types: list[str] = Field(default_factory=list, description="标签声明的 Compilation、Soundtrack 等副类型")
     org_string: Optional[str] = None
     apply_words: list[str] = Field(default_factory=list, description="资源解析时实际应用的自定义识别词")
     title: Optional[str] = None

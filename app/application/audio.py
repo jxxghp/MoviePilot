@@ -3,14 +3,20 @@ from typing import Any, Optional, Union
 from uuid import UUID
 
 from mutagen import File as MutagenFile
+from mutagen import MutagenError
+from mutagen.aiff import AIFF
 from mutagen.apev2 import APEBinaryValue, APETextValue
+from mutagen.dsdiff import DSDIFF
+from mutagen.dsf import DSF
 from mutagen.flac import FLAC, Picture
 from mutagen.id3 import APIC, ID3, SYLT, USLT
 from mutagen.monkeysaudio import MonkeysAudio
+from mutagen.mp3 import MP3
 from mutagen.mp4 import MP4, MP4Cover, MP4Tags
+from mutagen.wave import WAVE
 
 from app.domain.context import MusicInfo, MusicLyrics
-from app.domain.meta.metamusic import MetaMusic
+from app.domain.meta.metamusic import MetaMusic, parse_music_release_types
 from app.runtime.log import logger
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
 
@@ -27,28 +33,38 @@ def _read_mp4_tags(tags: MP4Tags) -> dict[str, list[str]]:
             values[key] = [f"{current}/{total}"]
     normalized = {key.casefold(): value for key, value in tags.items()}
     for name in ("MusicBrainz Track Id", "MusicBrainz Album Id", "MusicBrainz Release Group Id",
-                 "MusicBrainz Release Track Id", "ISRC", "ORIGINALDATE", "ORIGINALYEAR", "VERSION", "SUBTITLE"):
+                 "MusicBrainz Release Track Id", "MusicBrainz Album Type", "ISRC", "ORIGINALDATE",
+                 "ORIGINALYEAR", "VERSION", "SUBTITLE", "RELEASETYPE"):
         raw = normalized.get(f"----:com.apple.itunes:{name.casefold()}", [])
         values[name.casefold().replace(" ", "_")] = [
             value.decode("utf-8", errors="replace") if isinstance(value, bytes) else str(value)
             for value in raw
         ]
+    if "cpil" in tags:
+        values["compilation"] = ["1" if tags["cpil"] else "0"]
     return values
 
 
-def _mark_audio_evidence(meta: MetaMusic, info: Any) -> MetaMusic:
+def _mark_audio_evidence(meta: MetaMusic, audio: Any) -> MetaMusic:
     """记录实际标签和流参数的来源，名称推测不能获得标签级可信度。"""
     tag_fields = (
         "title", "artists", "album", "album_artist", "year", "original_year", "release_year",
         "disc_number", "track_number", "total_discs", "total_tracks", "version", "isrc",
         "media_source", "media_id", "musicbrainz_release_id", "musicbrainz_release_group_id",
-        "musicbrainz_release_track_id",
+        "musicbrainz_release_track_id", "album_type", "secondary_types",
     )
     meta.field_sources = {key: "tag" for key in tag_fields if getattr(meta, key) not in (None, "", [])}
     for key in ("bit_depth", "sample_rate", "bitrate", "duration"):
         if getattr(meta, key) is not None:
             meta.field_sources[key] = "stream"
-    if meta.audio_format:
+    info = getattr(audio, "info", None)
+    detected = next((name for kind, name in (
+        (FLAC, "FLAC"), (MP3, "MP3"), (WAVE, "WAV"), (AIFF, "AIFF"),
+        (MonkeysAudio, "APE"), (DSF, "DSD"), (DSDIFF, "DSD"),
+    ) if isinstance(audio, kind)), None)
+    if detected:
+        meta.apply_audio_quality(detected, overwrite=True, evidence_source="stream")
+    elif meta.audio_format:
         source = "stream" if getattr(info, "codec", None) or getattr(info, "codec_description", None) else "filename"
         meta.field_sources.update(audio_format=source, audio_lossless=source)
     return meta
@@ -87,7 +103,12 @@ class AudioMetadataHelper:
     def read_tags(cls, path: Path) -> Optional[MetaMusic]:
         """只读取本地音频标签和流参数，不使用文件名或目录补齐。"""
         try:
-            audio = MutagenFile(path, easy=False)
+            try:
+                audio = MutagenFile(path, easy=False)
+            except MutagenError:
+                # 错误后缀可能让 Mutagen 选错解析器；重试时保留流式读取，仅去掉扩展名提示。
+                with path.open("rb") as stream:
+                    audio = MutagenFile(fileobj=stream, filename="audio", easy=False)
         except Exception as err:
             logger.warning(f"读取音频标签失败：{path} - {err}")
             return None
@@ -116,12 +137,17 @@ class AudioMetadataHelper:
         info = getattr(audio, "info", None)
         original_year = cls._year(cls._first_of(tags, "originaldate", "originalyear"))
         release_year = cls._year(cls._first_of(tags, "date", "year"))
+        release_types = [value for key in ("releasetype", "musicbrainz_albumtype", "musicbrainz_album_type")
+                         for value in cls._values(tags, key)]
+        album_type, secondary_types = parse_music_release_types(release_types, cls._first(tags, "compilation"))
         meta = MetaMusic(
             org_string=path.name,
             title=cls._first(tags, "title"),
             artists=cls._values(tags, "artist"),
             album=cls._first(tags, "album"),
             album_artist=cls._first_of(tags, "albumartist", "album artist"),
+            album_type=album_type,
+            secondary_types=secondary_types,
             year=release_year or original_year,
             original_year=original_year,
             release_year=release_year,
@@ -146,7 +172,7 @@ class AudioMetadataHelper:
             musicbrainz_release_track_id=cls._normalize_musicbrainz_id(
                 cls._first_of(tags, "musicbrainz_releasetrackid", "musicbrainz_release_track_id")),
         )
-        return _mark_audio_evidence(meta, info)
+        return _mark_audio_evidence(meta, audio)
 
     @staticmethod
     def _readable_tags(tags: Any) -> Any:
@@ -163,7 +189,7 @@ class AudioMetadataHelper:
             "title": "TIT2", "artist": "TPE1", "album": "TALB",
             "albumartist": "TPE2", "date": "TDRC", "originaldate": "TDOR",
             "tracknumber": "TRCK", "discnumber": "TPOS", "isrc": "TSRC",
-            "subtitle": "TIT3",
+            "subtitle": "TIT3", "compilation": "TCMP",
         }
         values = {
             key: [str(value) for frame in tags.getall(frame_id) for value in frame.text]
@@ -263,6 +289,7 @@ class AudioMetadataHelper:
             org_string=path.name,
             title=path.stem,
             audio_format=path.suffix.lstrip(".").upper() or None,
+            field_sources={"audio_format": "filename", "audio_lossless": "filename"} if path.suffix else None,
         ).apply_path_context(path)
 
     @classmethod

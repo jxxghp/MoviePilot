@@ -846,6 +846,8 @@ class MusicInfo:
             media_source=normalize_media_source(meta.media_source),
             media_id=meta.media_id,
             music_type=meta.music_type or MUSIC_ENTITY_RECORDING,
+            album_type=meta.album_type,
+            secondary_types=list(meta.secondary_types),
             musicbrainz_release_id=meta.musicbrainz_release_id,
             musicbrainz_release_group_id=meta.musicbrainz_release_group_id,
             musicbrainz_release_track_id=meta.musicbrainz_release_track_id,

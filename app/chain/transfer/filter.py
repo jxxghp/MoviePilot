@@ -20,6 +20,7 @@ from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.transfer.contract import _TransferOwnerBase
 from app.chain.transfer.music import (
+    MusicReleaseGroup,
     prepare_music_batch_context,
     resolve_music_batch_file_context,
     restore_music_resource_meta,
@@ -180,6 +181,7 @@ class _MusicFileFilterBase(_TransferOwnerBase):
             file_meta: MetaMusic,
             music_release_regions: Optional[list[str]] = None,
             music_release_scripts: Optional[list[str]] = None,
+            release_group: Optional[MusicReleaseGroup] = None,
     ) -> tuple[MetaMusic, Optional[MusicInfo]]:
         """为缺少远端身份的本地音频尝试目录级专辑匹配，命中后回填文件元数据。
 
@@ -191,10 +193,11 @@ class _MusicFileFilterBase(_TransferOwnerBase):
             return file_meta, None
         try:
             matched = MediaChain().recognize_music_album_directory(
-                file_path.parent,
+                release_group.directory if release_group else file_path.parent,
                 music_release_regions=music_release_regions,
                 music_release_scripts=music_release_scripts,
                 contextual_meta=file_meta,
+                **({"file_paths": release_group.paths} if release_group else {}),
             )
         except Exception as err:
             logger.debug(f"音乐专辑目录匹配失败：{file_path} - {err}")

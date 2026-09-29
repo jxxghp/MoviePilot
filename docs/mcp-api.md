@@ -512,6 +512,8 @@ SSE 的 `candidate_items` 是站点原始返回数量，`match_counts` 记录身
 音乐识别结果同时提供 `audio_format`、`audio_lossless`、`audio_quality`、`bit_depth`、`sample_rate`、`bitrate`、`audio_specs` 和 `audio_quality_score`。本地文件识别读取实际音频流参数，并使用 Chromaprint 的 `fpcalc` 在本地生成指纹后查询 AcoustID；音频文件本身不会上传。站点资源识别从标题和描述提取声明参数；码率、采样率的存储单位分别为 bps 和 Hz。
 
 `MusicMeta.music_type` 保留已绑定主身份的实体类型；仅从名称推测时可为空。
+`MusicMeta.album_type` 和 `secondary_types` 保留标签声明的发行主副类型，例如 EP、Single、Compilation；
+它们与 recording/album/artist 实体类型不同，不能根据曲目数量覆盖明确的标签类型。
 `media_source`、`media_id` 与 `music_type` 必须一起解释，不能把专辑 ID 当作 Recording ID。
 补充字段 `musicbrainz_release_id`、`musicbrainz_release_group_id`、`musicbrainz_release_track_id`
 分别表示具体发行、发行组和发行中的曲目，不能替代主身份。`original_year` 与 `release_year`

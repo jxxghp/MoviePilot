@@ -25,9 +25,36 @@ class MusicBatchContext:
     related_main_keys: dict[Tuple[str, str], Tuple[str, str]] = field(default_factory=dict)
     single_main_keys: set[Tuple[str, str]] = field(default_factory=set)
     album_main_keys: set[Tuple[str, str]] = field(default_factory=set)
-    directory_evidence: dict[Tuple[str, str], MetaMusic] = field(default_factory=dict)
     album_evidence_by_main_key: dict[Tuple[str, str], MetaMusic] = field(default_factory=dict)
     resolved_contexts: dict[Tuple[str, str], tuple[MetaMusic, MusicInfo]] = field(default_factory=dict)
+    tags_by_file: dict[Tuple[str, str], Optional[MetaMusic]] = field(default_factory=dict)
+    release_by_main_key: dict[Tuple[str, str], "MusicReleaseGroup"] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class MusicReleaseGroup:
+    """同一物理发行单元的文件范围和仅供专辑级补缺的标签共识。"""
+
+    directory: Path
+    files: tuple[FileItem, ...]
+    evidence: Optional[MetaMusic]
+
+    @property
+    def paths(self) -> list[Path]:
+        """返回完整音轨路径列表，路径失效时拒绝悄悄缩小识别范围。"""
+        return [_release_item_path(item) for item in self.files]
+
+
+def _music_file_key(item: FileItem) -> Tuple[str, str]:
+    """按存储与规范路径隔离标签快照，远端同名路径不能借用本机文件标签。"""
+    return item.storage or "local", str(Path(item.path)) if item.path else ""
+
+
+def _release_item_path(item: FileItem) -> Path:
+    """发行分组只接受已经解析的实际文件路径，不能把空路径解释成当前目录。"""
+    if not item.path:
+        raise ValueError("发行分组中的音轨缺少路径")
+    return Path(item.path)
 
 
 def restore_music_resource_meta(
@@ -85,10 +112,10 @@ def restore_music_resource_meta(
     return meta
 
 
-def _music_directory_consensus(values: list[str]) -> Optional[str]:
+def _music_directory_consensus(values: list[str], *, artist: bool = False) -> Optional[str]:
     """只在同目录至少两个标签高度一致时返回共识值。"""
     normalized = [
-        (music_text_key(value), value.strip())
+        ("variousartists" if artist and _collective_artist(value) else music_text_key(value), value.strip())
         for value in values
         if value and music_text_key(value)
     ]
@@ -101,72 +128,168 @@ def _music_directory_consensus(values: list[str]) -> Optional[str]:
     return next(value for current_key, value in normalized if current_key == key)
 
 
-def _music_directory_evidence(items: list[FileItem]) -> Optional[MetaMusic]:
+def _music_directory_evidence(
+        items: list[FileItem], tags_by_file: dict[Tuple[str, str], Optional[MetaMusic]],
+) -> Optional[MetaMusic]:
     """从同一发行目录的原始音频标签提取可信艺人与专辑共识。"""
     artist_values: list[str] = []
+    track_artists: list[str] = []
     album_values: list[str] = []
-    collective_keys = {
-        music_text_key(value)
-        for value in ("Various Artists", "Various", "VA", "群星", "众艺人", "眾藝人")
-    }
+    metas: list[MetaMusic] = []
     for item in items:
         if getattr(item, "storage", "local") != "local" or not item.path:
             continue
-        tag_meta = AudioMetadataHelper.read_tags(Path(item.path))
+        tag_meta = tags_by_file.get(_music_file_key(item))
         if not tag_meta:
             continue
-        artist = tag_meta.album_artist
-        if not artist and len(tag_meta.artists) == 1:
-            artist = tag_meta.artists[0]
-        if artist and music_text_key(artist) not in collective_keys:
+        artist = _album_artist(tag_meta, _release_directory(item))
+        if artist:
             artist_values.append(artist)
         if tag_meta.album:
             album_values.append(tag_meta.album)
-    artist = _music_directory_consensus(artist_values)
+        if len(tag_meta.artists) == 1:
+            track_artists.append(tag_meta.artists[0])
+        metas.append(tag_meta)
+    artist = _music_directory_consensus(artist_values, artist=True)
+    track_artist = _music_directory_consensus(track_artists, artist=True)
     album = _music_directory_consensus(album_values)
     if not artist and not album:
         return None
-    return MetaMusic(
-        artists=[artist] if artist else None,
+    evidence = MetaMusic(
+        artists=[track_artist] if track_artist and not _collective_artist(track_artist) else None,
         album_artist=artist,
         album=album,
     )
-
-
-def _music_tagged_album_groups(
-        items: list[FileItem],
-) -> list[tuple[list[FileItem], MetaMusic]]:
-    """按精确的专辑艺人和专辑标签划分同目录内的多碟/多发行分组。"""
-    grouped: dict[tuple[str, str], tuple[list[FileItem], str, str]] = {}
-    collective_keys = {
-        music_text_key(value)
-        for value in ("Various Artists", "Various", "VA", "群星", "众艺人", "眾藝人")
-    }
-    for item in items:
-        if getattr(item, "storage", "local") != "local" or not item.path:
-            continue
-        tag_meta = AudioMetadataHelper.read_tags(Path(item.path))
-        if not tag_meta or not tag_meta.album:
-            continue
-        artist = tag_meta.album_artist
-        if not artist and len(tag_meta.artists) == 1:
-            artist = tag_meta.artists[0]
-        artist_key = music_text_key(artist)
-        album_key = music_text_key(tag_meta.album)
-        if not artist or artist_key in collective_keys or not album_key:
-            continue
-        key = (artist_key, album_key)
-        if key not in grouped:
-            grouped[key] = ([], artist.strip(), tag_meta.album.strip())
-        grouped[key][0].append(item)
-    return [
-        (
-            grouped_items,
-            MetaMusic(artists=[artist], album_artist=artist, album=album),
+    for key in ("musicbrainz_release_id", "musicbrainz_release_group_id", "album_type", "original_year", "release_year"):
+        values = {getattr(meta, key) for meta in metas if getattr(meta, key)}
+        if len(values) == 1:
+            setattr(evidence, key, next(iter(values)))
+    secondary = {tuple(meta.secondary_types) for meta in metas if meta.secondary_types}
+    if len(secondary) == 1:
+        evidence.secondary_types = list(next(iter(secondary)))
+    discs = [meta.total_discs or meta.disc_number or 1 for meta in metas]
+    discs.extend(MetaMusic.parse_disc_dir(_release_item_path(item).parent.name) or 1 for item in items)
+    evidence.total_discs = max(discs, default=1) if max(discs, default=1) > 1 else None
+    if evidence.total_discs:
+        evidence.field_sources["total_discs"] = (
+            "album_tags" if any(meta.total_discs == evidence.total_discs for meta in metas) else "directory"
         )
-        for grouped_items, artist, album in grouped.values()
-        if len(grouped_items) >= 2
-    ]
+    return evidence
+
+
+def _collective_artist(value: Optional[str]) -> bool:
+    """识别专辑层的群星署名，不把它复制成每首歌曲的演唱者。"""
+    return music_text_key(value) in {
+        music_text_key(name) for name in ("Various Artists", "Various", "VA", "群星", "众艺人", "眾藝人")
+    }
+
+
+def _album_artist(meta: MetaMusic, directory: Path) -> Optional[str]:
+    """专辑署名优先读 Album Artist，明确的合辑标志可补群星，但不改逐曲艺人。"""
+    if meta.album_artist:
+        return meta.album_artist
+    if "Compilation" in meta.secondary_types:
+        return "Various Artists"
+    parsed = MetaMusic.parse_album_dir(directory.name)
+    if _collective_artist(parsed.get("artist")) and music_text_key(parsed.get("album")) == music_text_key(meta.album):
+        return cast(str, parsed["artist"])
+    return meta.artists[0] if len(meta.artists) == 1 else None
+
+
+def _release_signature(meta: MetaMusic, directory: Path) -> tuple[str, str, Any]:
+    """缺少发行 ID 时，以专辑署名、标题和当前年份限定可关联的标签。"""
+    artist = _album_artist(meta, directory)
+    artist_key = "variousartists" if _collective_artist(artist) else music_text_key(artist)
+    return artist_key, music_text_key(meta.album), meta.release_year or meta.year
+
+
+def _rendition_groups(group: list[FileItem], tags: dict[Tuple[str, str], Optional[MetaMusic]]) -> list[list[FileItem]]:
+    """同一曲序存在多份时按实际编码区分版本，正常混合介质的多碟仍保持一组。"""
+    positions = Counter(
+        (meta.disc_number or MetaMusic.parse_disc_dir(_release_item_path(item).parent.name) or 1, meta.track_number)
+        for item in group if (meta := tags.get(_music_file_key(item))) and meta.track_number
+    )
+    if not any(count > 1 for count in positions.values()):
+        return [group]
+    renditions: dict[tuple[Any, ...], list[FileItem]] = {}
+    for item in group:
+        meta = tags.get(_music_file_key(item))
+        key = (meta.audio_format, meta.bit_depth, meta.sample_rate) if meta else (None,)
+        renditions.setdefault(key, []).append(item)
+    return list(renditions.values())
+
+
+def _release_groups(items: list[FileItem], tags_by_file: dict[Tuple[str, str], Optional[MetaMusic]]) -> list[MusicReleaseGroup]:
+    """优先按具体发行 ID 分组，缺 ID 时按专辑署名、标题及发行年隔离同目录多专辑。"""
+    grouped: dict[tuple[Any, ...], list[FileItem]] = {}
+    unassigned: list[FileItem] = []
+    known: dict[tuple[str, str, Any], set[str]] = {}
+    for item in items:
+        meta = tags_by_file.get(_music_file_key(item))
+        if meta and meta.musicbrainz_release_id:
+            known.setdefault(_release_signature(meta, _release_directory(item)), set()).add(meta.musicbrainz_release_id)
+    for item in items:
+        meta = tags_by_file.get(_music_file_key(item))
+        if not meta:
+            unassigned.append(item)
+            continue
+        signature = _release_signature(meta, _release_directory(item))
+        matching_ids = known.get(signature, set())
+        key: tuple[Any, ...]
+        if meta.musicbrainz_release_id:
+            key = ("release", meta.musicbrainz_release_id)
+        elif len(matching_ids) == 1:
+            key = ("release", next(iter(matching_ids)))
+        elif signature[0] and signature[1]:
+            key = ("tags", *signature)
+        else:
+            unassigned.append(item)
+            continue
+        grouped.setdefault(key, []).append(item)
+    if len(grouped) == 1:
+        existing = next(iter(grouped.values()))
+        album_names = {music_text_key(meta.album) for item in existing if (meta := tags_by_file.get(_music_file_key(item))) and meta.album}
+        album_artists = {_album_artist(meta, _release_directory(item)) for item in existing
+                         if (meta := tags_by_file.get(_music_file_key(item)))}
+        artist_keys = {music_text_key(artist) for artist in album_artists if artist}
+        collective = any(_collective_artist(artist) for artist in album_artists)
+        directory = MetaMusic.parse_album_dir(_release_directory(existing[0]).name)
+        directory_matches = bool(
+            (directory.get("artist") or directory.get("year"))
+            and music_text_key(directory.get("album")) in album_names
+        )
+        enough_tags = len(existing) * 2 >= len(items) or directory_matches
+        remaining = []
+        for item in unassigned:
+            meta = tags_by_file.get(_music_file_key(item))
+            if not enough_tags:
+                remaining.append(item)
+                continue
+            if meta and not meta.album and meta.artists and not collective and not (
+                artist_keys & {music_text_key(artist) for artist in meta.artists}
+            ):
+                remaining.append(item)
+                continue
+            if not meta or not meta.album or music_text_key(meta.album) in album_names:
+                existing.append(item)
+            else:
+                remaining.append(item)
+        unassigned = remaining
+    if unassigned:
+        grouped[("unassigned",)] = unassigned
+    output = []
+    for group in grouped.values():
+        for rendition in _rendition_groups(group, tags_by_file):
+            root = _release_directory(rendition[0])
+            evidence = _music_directory_evidence(rendition, tags_by_file)
+            output.append(MusicReleaseGroup(root, tuple(rendition), evidence))
+    return output
+
+
+def _release_directory(item: FileItem) -> Path:
+    """把 CD/Disc 子目录定位到所属专辑根，不跨越其它子专辑目录。"""
+    parent = _release_item_path(item).parent
+    return parent.parent if MetaMusic.parse_disc_dir(parent.name) is not None else parent
 
 
 def _apply_music_directory_evidence(
@@ -186,11 +309,27 @@ def _apply_music_directory_evidence(
     if not merged.album and evidence.album:
         merged.album = evidence.album
         merged.field_sources["album"] = "album_tags"
+    for key in ("musicbrainz_release_id", "musicbrainz_release_group_id", "total_discs", "album_type",
+                "original_year", "release_year"):
+        if not getattr(merged, key) and getattr(evidence, key):
+            setattr(merged, key, getattr(evidence, key))
+            merged.field_sources[key] = evidence.field_sources.get(key, "album_tags")
+    if not merged.secondary_types and evidence.secondary_types:
+        merged.secondary_types = list(evidence.secondary_types)
+        merged.field_sources["secondary_types"] = "album_tags"
+    if not merged.year and (merged.release_year or merged.original_year):
+        merged.year = cast(Any, merged.release_year or merged.original_year)
+        merged.field_sources["year"] = merged.field_sources.get("release_year", merged.field_sources.get("original_year", "album_tags"))
     return merged
 
 
 def _apply_music_directory_year(meta: MetaMusic, file_path: Path) -> MetaMusic:
-    """用最近发行目录开头的四位年份纠正合集内不可靠的音频年份标签。"""
+    """保留明确的标签发行年，仅用目录年份补正旧版未区分语义的 year。"""
+    if meta.release_year and meta.field_sources.get("release_year") in {"tag", "album_tags"}:
+        merged = deepcopy(meta)
+        merged.year = cast(Any, meta.release_year)
+        merged.field_sources["year"] = meta.field_sources["release_year"]
+        return merged
     for parent in list(file_path.parents)[:4]:
         match = re.match(r"^((?:19|20)\d{2})(?:\D|$)", parent.name)
         if not match:
@@ -206,11 +345,16 @@ def _local_music_context(
         owner: _TransferOwnerBase,
         file_item: FileItem,
         file_path: Path,
+        batch_context: MusicBatchContext,
 ) -> Optional[tuple[MetaMusic, MusicInfo]]:
     """仅以本地真实标签建立快速整理上下文，不向在线来源确认身份。"""
     if file_item.storage != "local" or not owner._is_audio_file(file_item):
         return None
-    tags = AudioMetadataHelper.read_tags(file_path)
+    tags = batch_context.tags_by_file.get(_music_file_key(file_item)) if _music_file_key(file_item) in batch_context.tags_by_file else AudioMetadataHelper.read_tags(file_path)
+    if tags:
+        tags = deepcopy(tags)
+        if owner._get_file_key(file_item) in batch_context.album_main_keys:
+            tags = _apply_music_directory_evidence(tags, batch_context.album_evidence_by_main_key.get(owner._get_file_key(file_item)))
     if tags is None or not music_tags_are_usable(tags):
         return None
     meta = tags.apply_path_context(file_path)
@@ -225,35 +369,34 @@ def prepare_music_batch_context(
 ) -> MusicBatchContext:
     """建立同目录音轨、歌词和单音轨目录的批次索引。"""
     context = MusicBatchContext()
-    if batch_mtype != MediaType.MUSIC:
+    if batch_mtype not in (None, MediaType.MUSIC):
         return context
     main_items_by_dir: dict[Tuple[str, str], list[FileItem]] = {}
+    release_items: dict[Tuple[str, str], list[FileItem]] = {}
     for current_item, current_bluray_dir in file_items:
         if not current_bluray_dir and owner._is_media_file(current_item, MediaType.MUSIC):
             main_items_by_dir.setdefault(
                 owner._get_file_parent_key(current_item), []
             ).append(current_item)
+            if current_item.path:
+                release_items.setdefault((current_item.storage or "local", str(_release_directory(current_item))), []).append(current_item)
+                if current_item.storage == "local":
+                    context.tags_by_file[_music_file_key(current_item)] = AudioMetadataHelper.read_tags(Path(current_item.path))
     context.single_main_keys = {
         owner._get_file_key(items[0])
-        for items in main_items_by_dir.values()
+        for items in release_items.values()
         if len(items) == 1
     }
-    for parent_key, items in main_items_by_dir.items():
-        evidence = _music_directory_evidence(items)
-        if evidence:
-            context.directory_evidence[parent_key] = evidence
-        # 两首及以上音轨，且目录内艺人和专辑标签均达到高一致性时，足以在
-        # 远端临时不可用时证明这是一个专辑目录；不能把整个艺术家合集根目录
-        # 当成一张专辑，也不能仅凭文件夹名称猜测类别。
-        if evidence and len(items) > 1 and evidence.artists and evidence.album:
-            context.album_main_keys.update(
-                owner._get_file_key(item) for item in items
-            )
-        for grouped_items, grouped_evidence in _music_tagged_album_groups(items):
-            for item in grouped_items:
+    for items in release_items.values():
+        for group in _release_groups(items, context.tags_by_file):
+            evidence = group.evidence
+            for item in group.files:
                 item_key = owner._get_file_key(item)
-                context.album_main_keys.add(item_key)
-                context.album_evidence_by_main_key[item_key] = grouped_evidence
+                context.release_by_main_key[item_key] = group
+                if evidence:
+                    context.album_evidence_by_main_key[item_key] = evidence
+                if evidence and len(group.files) > 1 and evidence.album and (evidence.album_artist or evidence.artists):
+                    context.album_main_keys.add(item_key)
     for current_item, _current_bluray_dir in file_items:
         if not owner._is_music_lyrics_file(current_item):
             continue
@@ -264,6 +407,55 @@ def prepare_music_batch_context(
         if related_key:
             context.related_main_keys[owner._get_file_key(current_item)] = related_key
     return context
+
+
+def _finalize_music_group_context(
+        owner: _TransferOwnerBase,
+        context: MusicBatchContext,
+        item: FileItem,
+        meta: Any,
+        info: Optional[Union[MediaInfo, MusicInfo]],
+        *,
+        local: bool,
+        preserve_selection: bool,
+) -> tuple[Any, Optional[Union[MediaInfo, MusicInfo]]]:
+    """统一同一发行的专辑名称与分类，保留各曲艺人及用户明确选择。"""
+    if not isinstance(meta, MetaMusic) or not isinstance(info, MusicInfo):
+        return meta, info
+    key = owner._get_file_key(item)
+    grouped = key in context.album_main_keys and not preserve_selection
+    if grouped:
+        meta, info = deepcopy(meta), deepcopy(info)
+        evidence = context.album_evidence_by_main_key.get(key)
+        for name in ("album", "album_artist", "total_discs"):
+            value = getattr(evidence, name, None)
+            if value:
+                setattr(meta, name, value)
+                setattr(info, name, value)
+                source = evidence.field_sources.get(name, "album_tags") if evidence else "album_tags"
+                meta.field_sources[name] = info.field_sources[name] = source
+        if meta.year:
+            info.year = meta.year
+        if meta.album_type:
+            info.album_type = meta.album_type
+            info.field_sources["album_type"] = meta.field_sources.get("album_type", "album_tags")
+        elif str(info.album_type or "").casefold() not in {"ep", "broadcast", "other"}:
+            # 未声明具体类型的多音轨标签共识沿用 Album 兜底，不能覆盖已声明的 EP/Single。
+            info.album_type = "Album"
+            info.field_sources["album_type"] = "album_tags"
+        if meta.secondary_types:
+            info.secondary_types = list(meta.secondary_types)
+            info.field_sources["secondary_types"] = meta.field_sources.get("secondary_types", "album_tags")
+    if local or grouped:
+        finalized = owner._finalize_recognition_result(
+            info, **({"allow_enrichment": False} if local else {"refresh": True}),
+        )
+        if isinstance(finalized, MusicInfo):
+            info = finalized
+        if not local and grouped and not info.classification and info.album_type == "Album":
+            # 没有装配分类服务的旧调用方保留兼容目录；真实策略结果不能被硬编码覆盖。
+            info.set_library_category("Album")
+    return meta, info
 
 
 def resolve_music_batch_file_context(
@@ -298,8 +490,9 @@ def resolve_music_batch_file_context(
         selected_tracks,
         fallback,
     )
+    selected_context = task_mediainfo is not None
     local_context = (
-        _local_music_context(owner, file_item, file_path)
+        _local_music_context(owner, file_item, file_path, batch_context)
         if not task_mediainfo and isinstance(file_meta, MetaMusic)
         else None
     )
@@ -309,8 +502,7 @@ def resolve_music_batch_file_context(
         file_key = owner._get_file_key(file_item)
         file_meta = _apply_music_directory_evidence(
             file_meta,
-            batch_context.album_evidence_by_main_key.get(file_key)
-            or batch_context.directory_evidence.get(owner._get_file_parent_key(file_item)),
+            batch_context.album_evidence_by_main_key.get(file_key),
         )
         if discard_shared_identity and not local_context:
             file_meta = _apply_music_directory_year(file_meta, file_path)
@@ -334,51 +526,10 @@ def resolve_music_batch_file_context(
         if isinstance(task_mediainfo, MusicInfo) and file_meta.year:
             task_mediainfo = deepcopy(task_mediainfo)
             task_mediainfo.year = file_meta.year
-    directory_evidence = (
-        batch_context.album_evidence_by_main_key.get(owner._get_file_key(file_item))
-        or batch_context.directory_evidence.get(owner._get_file_parent_key(file_item))
+    file_meta, task_mediainfo = _finalize_music_group_context(
+        owner, batch_context, file_item, file_meta, task_mediainfo,
+        local=bool(local_context), preserve_selection=selected_context,
     )
-    if (
-            owner._is_audio_file(file_item)
-            and isinstance(file_meta, MetaMusic)
-            and isinstance(task_mediainfo, MusicInfo)
-            and owner._get_file_key(file_item) in batch_context.album_main_keys
-            and directory_evidence
-    ):
-        # 同一物理发行目录只能生成一个专辑目录。逐曲远端识别可能因服务
-        # 波动而混用正式标题、别名或本地兜底；用已验证的目录标签共识统一
-        # 专辑和专辑艺人，但保留每首曲目的远端 ID、曲名、封面等信息。
-        file_meta = deepcopy(file_meta)
-        task_mediainfo = deepcopy(task_mediainfo)
-        if directory_evidence.album:
-            file_meta.album = directory_evidence.album
-            task_mediainfo.album = directory_evidence.album
-            file_meta.field_sources["album"] = task_mediainfo.field_sources["album"] = "album_tags"
-        if directory_evidence.album_artist:
-            file_meta.album_artist = directory_evidence.album_artist
-            task_mediainfo.album_artist = directory_evidence.album_artist
-            file_meta.field_sources["album_artist"] = task_mediainfo.field_sources["album_artist"] = "album_tags"
-        if file_meta.year:
-            task_mediainfo.year = file_meta.year
-    if (
-            owner._is_audio_file(file_item)
-            and isinstance(task_mediainfo, MusicInfo)
-            and owner._get_file_key(file_item) in batch_context.album_main_keys
-            and str(task_mediainfo.album_type or "").casefold()
-            not in {"ep", "broadcast", "other"}
-    ):
-        # 曲目可能同时作为 Single 单独发行。整理完整多音轨目录时，目录内
-        # 高一致性的专辑/专辑艺人标签是当前文件归属的更强证据，不能让某一
-        # 首歌的单曲发行身份把同一张专辑拆进 Single 分类。
-        task_mediainfo = deepcopy(task_mediainfo)
-        task_mediainfo.album_type = "Album"
-        if not local_context:
-            finalized = owner._finalize_recognition_result(task_mediainfo, refresh=True)
-            if isinstance(finalized, MusicInfo):
-                task_mediainfo = finalized
-            task_mediainfo.set_library_category("Album")
-    if local_context:
-        task_mediainfo = owner._finalize_recognition_result(task_mediainfo, allow_enrichment=False)
     if (
             owner._is_audio_file(file_item)
             and isinstance(file_meta, MetaMusic)
@@ -410,6 +561,7 @@ def _recognize_music_batch_file(
         file_meta,
         release_regions,
         release_scripts,
+        release_group=batch_context.release_by_main_key.get(owner._get_file_key(file_item)),
     )
     if not task_mediainfo and discard_shared_identity and owner._is_audio_file(file_item):
         file_meta, task_mediainfo = owner._match_music_recording_context(
@@ -425,23 +577,23 @@ def _recognize_music_batch_file(
             multi_track_batch
             and owner._get_file_key(file_item) in batch_context.album_main_keys
     ):
-        task_mediainfo.album_type = "Album"
-        finalized = owner._finalize_recognition_result(task_mediainfo)
+        task_mediainfo.album_type = file_meta.album_type or "Album"
+        finalized = owner._finalize_recognition_result(task_mediainfo, allow_enrichment=False)
         if isinstance(finalized, MusicInfo):
             task_mediainfo = finalized
-        if not task_mediainfo.library_category:
-            task_mediainfo.set_library_category("Album")
+        if not task_mediainfo.library_category and not task_mediainfo.classification:
+            task_mediainfo.set_library_category(task_mediainfo.album_type)
         return file_meta, task_mediainfo
     if owner._get_file_key(file_item) not in batch_context.single_main_keys:
         return file_meta, task_mediainfo
 
     # 远端识别均未命中时，仅单音轨子目录可安全按 Single 兜底；
     # 多音轨目录仍保持未识别，避免把缺失专辑误判为单曲。
-    task_mediainfo.album_type = "Single"
-    finalized = owner._finalize_recognition_result(task_mediainfo)
+    task_mediainfo.album_type = file_meta.album_type or "Single"
+    finalized = owner._finalize_recognition_result(task_mediainfo, allow_enrichment=False)
     if isinstance(finalized, MusicInfo):
         task_mediainfo = finalized
-    if not task_mediainfo.library_category:
+    if not task_mediainfo.library_category and not task_mediainfo.classification:
         # 隔离测试可能没有装配分类服务，保留旧分类路径作为测试兼容。
-        task_mediainfo.set_library_category("Single")
+        task_mediainfo.set_library_category(task_mediainfo.album_type)
     return file_meta, task_mediainfo

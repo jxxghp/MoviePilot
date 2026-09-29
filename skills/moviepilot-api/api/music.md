@@ -37,6 +37,9 @@ Music recognition, exploration, album and artist navigation, and recognition-cac
   recording ID. The optional `musicbrainz_release_id`,
   `musicbrainz_release_group_id`, and `musicbrainz_release_track_id` refer to
   distinct MusicBrainz entities and never replace the primary identity.
+- `MusicMeta.album_type` and `secondary_types` retain declared release types,
+  including EP, Single, and Compilation. These differ from the recording/album/
+  artist entity type; track count alone must not override a declared release type.
 - `original_year` and `release_year` distinguish the original and current
   edition; `year` remains the display-compatible value. A release group's first
   release date does not prove the current edition. Preserve `total_discs` and
