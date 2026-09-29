@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from app.application.site import mutation as site_mutation
 from app.application.site.contract import SiteMutation, SitePriorityMutation
 from app.application.site.mutation import SiteMutationCommand
 from app.schemas.site import Site
@@ -56,6 +57,32 @@ async def test_create_site_commits_before_updated_event():
     assert mutation.values["url"] == "https://demo.example/"
     assert mutation.values["name"] == "Demo"
     assert mutation.values["public"] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("commit_fails", [False, True])
+async def test_site_commit_invalidates_images_only_after_success(monkeypatch, commit_fails):
+    """图片授权只在提交成功后失效，并先于站点事件发布。"""
+    calls = []
+    monkeypatch.setattr(site_mutation.site_image_domains, "invalidate", lambda: calls.append("invalidate"))
+
+    async def commit():
+        """模拟提交成功或失败，记录真实调用顺序。"""
+        calls.append("commit")
+        if commit_fails:
+            raise RuntimeError("commit failed")
+
+    command, _ = _command(
+        unit_of_work=Mock(commit=AsyncMock(side_effect=commit), rollback=AsyncMock()),
+        publish_deleted=AsyncMock(side_effect=lambda _payload: calls.append("event")),
+    )
+    if commit_fails:
+        with pytest.raises(RuntimeError, match="commit failed"):
+            await command.delete(1)
+        assert calls == ["commit"]
+    else:
+        await command.delete(1)
+        assert calls == ["commit", "invalidate", "event"]
 
 
 @pytest.mark.asyncio

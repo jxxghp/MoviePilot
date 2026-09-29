@@ -43,6 +43,7 @@ from app.application.messaging.message import MessageHelper
 from app.application.network import get_configured_network_test_service
 from app.application.rules import RuleHelper
 from app.application.scheduling import get_scheduler
+from app.application.security.image import normalize_image_domain, site_image_domains
 from app.application.security.url import SecurityUtils
 from app.application.site.query import get_configured_site_query_service
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
@@ -109,32 +110,20 @@ _PUBLIC_SETTINGS_KEYS = {"PLUGIN_MARKET"}
 
 
 async def _get_image_proxy_allowed_domains() -> set[str]:
-    """合并静态白名单、已配置站点和 Bangumi 图片主机，仍保留 DNS 安全校验。"""
+    """合并站点快照与当前图片代理配置，仍逐请求执行 DNS 安全校验。"""
     runtime_settings = get_runtime_settings()
     allowed_domains = set(runtime_settings.get("SECURITY_IMAGE_DOMAINS", []))
-    # 停用站点仍需展示图标；每次读取配置，新增、改址和删除立即生效。
-    for site in await get_configured_site_query_service().list():
-        for address in (site.domain, site.url):
-            if not address:
-                continue
-            candidate = address if "://" in address else f"https://{address}"
-            try:
-                parsed = urlsplit(candidate)
-            except ValueError:
-                continue
-            if parsed.scheme in {"http", "https"} and parsed.netloc and not parsed.username:
-                # 保留协议，避免白名单解析器把 host:port 的主机误认成 scheme。
-                allowed_domains.add(f"{parsed.scheme}://{parsed.netloc.lower()}")
-    if not runtime_settings.get("BANGUMI_PROXY_ENABLE"):
-        return allowed_domains
-
-    image_proxy = str(runtime_settings.get("BANGUMI_IMAGE_DOMAIN") or "").strip()
-    if not image_proxy:
-        return allowed_domains
-    candidate = image_proxy if "://" in image_proxy else f"https://{image_proxy}"
-    parsed = urlsplit(candidate)
-    if parsed.scheme in {"http", "https"} and parsed.netloc:
-        allowed_domains.add(parsed.netloc)
+    allowed_domains.update(await site_image_domains.get(get_configured_site_query_service()))
+    image_keys = [
+        "TMDB_IMAGE_DOMAIN", "MUSIC_COVER_PROXY",
+        "WALLPAPER_IMAGE_URL", "CUSTOMIZE_WALLPAPER_API_URL",
+    ]
+    if runtime_settings.get("BANGUMI_PROXY_ENABLE"):
+        image_keys.append("BANGUMI_IMAGE_DOMAIN")
+    for key in image_keys:
+        domain = normalize_image_domain(runtime_settings.get(key))
+        if domain:
+            allowed_domains.add(domain)
     return allowed_domains
 
 

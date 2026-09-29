@@ -18,6 +18,7 @@ from app.application.image import (
     configure_image_ports,
     reset_image_ports,
 )
+from app.application.security.image import SiteImageDomainCache
 from app.schemas.site import Site
 
 
@@ -26,6 +27,7 @@ def configured_image_sites(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
     """隔离图片白名单的站点查询，避免其他用例的数据库状态影响结果。"""
     query = AsyncMock()
     query.list.return_value = []
+    monkeypatch.setattr(system_endpoint, "site_image_domains", SiteImageDomainCache())
     monkeypatch.setattr(system_endpoint, "get_configured_site_query_service", lambda: query)
     return query
 
@@ -86,9 +88,11 @@ def test_site_image_allowlist_tracks_configuration(configured_image_sites: Async
         assert asyncio.run(system_endpoint._get_image_proxy_allowed_domains()) == {
             "https://qingwapt.com", "https://old.example",
         }
+        system_endpoint.site_image_domains.invalidate()
         assert asyncio.run(system_endpoint._get_image_proxy_allowed_domains()) == {
             "https://qingwapt.com", "https://new.example",
         }
+        system_endpoint.site_image_domains.invalidate()
         assert asyncio.run(system_endpoint._get_image_proxy_allowed_domains()) == set()
 
 
@@ -173,8 +177,30 @@ def test_bangumi_image_proxy_domain_is_added_to_allowlist() -> None:
     ):
         assert asyncio.run(system_endpoint._get_image_proxy_allowed_domains()) == {
             "lain.bgm.tv",
-            "image-proxy.example",
+            "https://image-proxy.example",
         }
+
+
+@pytest.mark.parametrize("key", [
+    "TMDB_IMAGE_DOMAIN", "MUSIC_COVER_PROXY", "BANGUMI_IMAGE_DOMAIN",
+    "WALLPAPER_IMAGE_URL", "CUSTOMIZE_WALLPAPER_API_URL",
+])
+@pytest.mark.parametrize("enabled", [False, True])
+def test_custom_image_proxy_settings_are_live(
+    configured_image_sites: AsyncMock, key: str, enabled: bool,
+) -> None:
+    """图片代理配置即时更新；Bangumi 关闭时不放行其自定义代理。"""
+    settings = {key: "https://proxy.example:8443/base/?url=", "BANGUMI_PROXY_ENABLE": enabled}
+    with patch.object(system_endpoint, "get_runtime_settings", return_value=settings):
+        expected = key != "BANGUMI_IMAGE_DOMAIN" or enabled
+        assert ("https://proxy.example:8443" in asyncio.run(
+            system_endpoint._get_image_proxy_allowed_domains(),
+        )) is expected
+        settings[key] = "https://new.example/path/"
+        domains = asyncio.run(system_endpoint._get_image_proxy_allowed_domains())
+        assert "https://proxy.example:8443" not in domains
+        assert ("https://new.example" in domains) is expected
+    assert configured_image_sites.list.await_count == 1
 
 
 def test_image_proxy_trusts_enabled_mediaserver_hosts() -> None:
