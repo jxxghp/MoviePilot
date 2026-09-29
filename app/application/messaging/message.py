@@ -5,6 +5,7 @@ import asyncio
 import json
 import queue
 import re
+import socket
 import threading
 import time
 from contextvars import Context, copy_context
@@ -123,8 +124,8 @@ class TemplateContextBuilder:
         """
         构建一次性渲染上下文字典。
 
-        每次调用都新建本地 ``context`` 字典，依次填充各业务来源后返回过滤掉
-        None 值的副本，调用之间互不影响。
+        每次调用都新建本地 ``context`` 字典，依次填充各业务来源和当前实例的
+        主机名后返回过滤掉 None 值的副本，调用之间互不影响。
 
         :param meta: 媒体元数据
         :param mediainfo: 识别的媒体信息
@@ -144,8 +145,7 @@ class TemplateContextBuilder:
         self._add_transfer_info(context, transferinfo)
         self._add_torrent_info(context, torrentinfo)
         self._add_file_info(context, file_extension)
-        if kwargs:
-            context.update(kwargs)
+        context.update(kwargs, instance_name=socket.gethostname())
 
         if include_raw_objects:
             self._add_raw_objects(context, meta, mediainfo, torrentinfo, transferinfo, episodes_info)
