@@ -875,10 +875,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 )
                 cleanup_intent = cleanup_dest_fileitem if not preview and not cleanup_intent_assigned else None
                 transfer_task.bind_planning_input(
-                    self._TransferChain__build_planning_input(
-                        transfer_task,
-                        cleanup_dest_fileitem=cleanup_intent,
-                    )
+                    self._build_music_planning_input(transfer_task, music_batch_context, cleanup_intent,
+                                                    music_release_regions, music_release_scripts)
                 )
                 if (
                     recovery_admission

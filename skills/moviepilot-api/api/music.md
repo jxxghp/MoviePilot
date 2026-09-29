@@ -90,6 +90,13 @@ Music recognition, exploration, album and artist navigation, and recognition-cac
   invalidates HTTP responses and album directories. Audio/CUE evidence is reused
   only within a bounded read-only scan and invalidated by file changes or scope
   exit.
+- Transient recognition failures before a file plan exists stay durably accepted
+  and retry recognition after 30 seconds, within the existing transfer retry
+  budget. Recovery keeps the original release file selection and preferences.
+  Retrying a settled music planning rejection with no file/provider operations
+  may create a new recognition task; the old history and settlement receipt stay
+  available. Existing file-operation evidence always keeps its frozen plan.
+  A retry-wait response is pending work, never proof that files were organized.
 
 ## Operations
 

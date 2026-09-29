@@ -8,6 +8,7 @@ from time import monotonic
 from typing import Any, Iterator, Optional
 
 BLOCKING_MUSIC_RECOGNITION_STATES = frozenset({"ambiguous", "conflict", "service_error", "budget_exhausted"})
+RETRYABLE_MUSIC_RECOGNITION_STATES = frozenset({"service_error", "budget_exhausted"})
 
 
 @dataclass(slots=True)
@@ -25,7 +26,7 @@ class MusicRecognitionObservation:
     @property
     def failed(self) -> bool:
         """瞬时故障或预算耗尽不能被解释为目录中没有相应作品。"""
-        return self.status in {"service_error", "budget_exhausted"}
+        return self.status in RETRYABLE_MUSIC_RECOGNITION_STATES
 
     def to_dict(self) -> dict[str, Any]:
         """输出用户可解释的结果，不包含内部时钟或同步对象。"""

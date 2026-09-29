@@ -30,6 +30,7 @@ from app.application.transfer.workflow import (
 from app.chain.media import MediaChain
 from app.chain.tmdb import TmdbChain
 from app.chain.transfer.contract import _TransferOwnerBase
+from app.chain.transfer.music import defer_music_recognition, refresh_music_retry_context
 from app.chain.transfer.records import apply_download_history_classification
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.media import is_music_media_source
@@ -436,6 +437,19 @@ class TransferExecutionOwner(_TransferOwnerBase):
             self._TransferChain__record_uncheckpointed_failure(task, result[1])
         return result
 
+    @staticmethod
+    def _recognize_task_meta(task: TransferTask, *, restore_history: bool = True) -> Optional[Union[MediaInfo, MusicInfo]]:
+        """按任务限定的来源和类型识别元数据，仅在历史语义兼容时恢复其分类。"""
+        options: dict[str, Any] = {"obtain_images": True}
+        if task.media_source:
+            options["media_source"] = task.media_source
+        if task.mtype:
+            options["mtype"] = task.mtype
+        info = MediaChain().recognize_by_meta(task.meta, **options)
+        if info and restore_history and task.download_history:
+            info = apply_download_history_classification(info, task.download_history)
+        return info
+
     def _TransferChain__perform_transfer(
             self, task: TransferTask, callback: Optional[Callable] = None
     ) -> Optional[Tuple[bool, str]]:
@@ -445,6 +459,7 @@ class TransferExecutionOwner(_TransferOwnerBase):
         try:
             if task.plan_checkpoint is not None:
                 return self._TransferChain__handle_planned_transfer(task, callback)
+            refresh_music_retry_context(self, task)
             # 识别
             transferhis = self.transfer_history_repository
             # 显式标注联合：下面既会赋回音乐识别结果（MusicInfo），也会赋回影视识别
@@ -492,26 +507,9 @@ class TransferExecutionOwner(_TransferOwnerBase):
                                 f"{task.fileitem.name} 文件年份 {task.meta.year} 与下载记录年份 "
                                 f"{download_history.year} 不一致，按文件名重新识别"
                             )
-                        recognize_kwargs = {"obtain_images": True}
-                        if task.media_source:
-                            recognize_kwargs["media_source"] = task.media_source
-                        if task.mtype:
-                            recognize_kwargs["mtype"] = task.mtype
-                        mediainfo = MediaChain().recognize_by_meta(
-                            task.meta, **recognize_kwargs
-                        )
-                        if mediainfo and not history_music_conflict:
-                            mediainfo = apply_download_history_classification(mediainfo, download_history)
+                        mediainfo = self._recognize_task_meta(task, restore_history=not history_music_conflict)
                 else:
-                    # 识别媒体信息
-                    recognize_kwargs = {"obtain_images": True}
-                    if task.media_source:
-                        recognize_kwargs["media_source"] = task.media_source
-                    if task.mtype:
-                        recognize_kwargs["mtype"] = task.mtype
-                    mediainfo = MediaChain().recognize_by_meta(
-                        task.meta, **recognize_kwargs
-                    )
+                    mediainfo = self._recognize_task_meta(task)
 
                 # 音乐必须先经过音乐元数据模块识别；远端不可用时再保留本地标签结果，
                 # 避免因离线兜底提前赋值而跳过音乐识别链。
@@ -542,6 +540,8 @@ class TransferExecutionOwner(_TransferOwnerBase):
             if not task.planning_context_restored:
                 mediainfo = MediaChain().supplement_tmdb_info(mediainfo, task.meta)
             task.mediainfo = mediainfo
+            if deferred := defer_music_recognition(self, task):
+                return deferred
 
             # 只有 TMDB 主源沿用历史 TMDB 标题，避免辅助 ID 改写其它识别源标题。
             if (

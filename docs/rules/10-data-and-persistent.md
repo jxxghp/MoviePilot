@@ -91,6 +91,14 @@ Application owns use-case commands and persistence Protocols, but does not impor
 UnitOfWork and Oper objects. `app/startup/composition/` creates and injects the
 adapters; it does not retain reusable repository implementations.
 
+音乐识别的临时失败可在 `TransferPending.state=accepted` 且不存在计划、步骤、执行结果和历史回执时，
+以当前有效租约 CAS 写入 `execution_state=retry_wait`、到期时间及重试计数，并释放租约。
+这些重试字段也受原有总重试预算约束；它们不是文件操作已发生的证据。接纳恢复必须重新读取
+冻结的音乐范围，已规划任务则继续消费原检查点。人工重试零文件操作的音乐拒绝时，只能在同一事务内
+验证唯一成功步骤确为原检查点的 `planning/reject`，删除该内部拒绝步骤和旧 pending，再创建新准入；
+旧失败历史只解除旧任务映射，记录与独立结算回执不删除，避免留下无法维护的悬空任务关联。
+任何外部操作步骤或版本/租约冲突都禁止走这条重规划路径。
+
 ### Transaction ownership ratchet
 
 - `tests/fixtures/architecture/transaction-debt-baseline.json` records formal

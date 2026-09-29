@@ -792,6 +792,11 @@ class TransferAdmission:
 class TransferAdmissionRepository(Protocol):
     """整理任务 durable admission 所需的类型化持久化端口。"""
 
+    def defer_planning(self, *, task_id: str, lease_token: str, error: str,
+                       retry_after: int, max_retries: int) -> bool:
+        """仅将无计划、无步骤的接纳任务退避；预算用尽返回False，租约或状态冲突抛错。"""
+        ...
+
     def admit(
             self,
             *,
@@ -867,4 +872,3 @@ class TransferAdmissionRepository(Protocol):
     def abandon_unstarted(self, *, task_id: str, lease_token: str) -> int:
         """仅允许当前 lease owner 删除确认未开始且源已消失的登记。"""
         ...
-

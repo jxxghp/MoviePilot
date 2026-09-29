@@ -3,13 +3,15 @@
 import re
 from collections import Counter
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Optional, Tuple, Union, cast
 
-from app.application.audio import AudioMetadataHelper
+from app.application.audio import AudioMetadataHelper, capture_audio_metadata
 from app.application.history import DownloadHistorySnapshot
-from app.application.music.observation import BLOCKING_MUSIC_RECOGNITION_STATES
+from app.application.history.retry import max_failed_retries
+from app.application.music.observation import BLOCKING_MUSIC_RECOGNITION_STATES, RETRYABLE_MUSIC_RECOGNITION_STATES
+from app.application.transfer.workflow import TransferPlanningInput, TransferTask
 from app.chain.transfer.contract import _TransferOwnerBase
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
@@ -45,6 +47,146 @@ class MusicReleaseGroup:
     def paths(self) -> list[Path]:
         """返回完整音轨路径列表，路径失效时拒绝悄悄缩小识别范围。"""
         return [_release_item_path(item) for item in self.files]
+
+
+def music_planning_input(
+        owner: _TransferOwnerBase, task: TransferTask, context: MusicBatchContext,
+        cleanup: Optional[FileItem], regions: Optional[list[str]], scripts: Optional[list[str]],
+) -> TransferPlanningInput:
+    """冻结需要重新识别的原发行范围，重启恢复不能扩大到未选择的其他专辑。"""
+    planning = cast(TransferPlanningInput, owner._TransferChain__build_planning_input(task, cleanup_dest_fileitem=cleanup))
+    if not isinstance(task.meta, MetaMusic):
+        return planning
+    recognition = task.mediainfo.raw_data.get("recognition", {}) if isinstance(task.mediainfo, MusicInfo) else {}
+    recognition = recognition if isinstance(recognition, dict) else {}
+    if task.mediainfo and not task.meta.organization_error and recognition.get("status") not in BLOCKING_MUSIC_RECOGNITION_STATES:
+        return planning
+    if task.fileitem.storage != "local":
+        return replace(planning, options={**planning.options, "music_recognition_scope": {
+            "name_only": True, "storage": task.fileitem.storage,
+        }})
+    key = owner._get_file_key(task.fileitem)
+    main_key = context.related_main_keys.get(key, key)
+    group = context.release_by_main_key.get(main_key)
+    if not group:
+        return planning
+    directory = group.directory.absolute()
+    scope: dict[str, Any] = {
+        "storage": "local", "directory": str(directory), "main": str(Path(main_key[1]).absolute().relative_to(directory)),
+        "files": [str(path.absolute().relative_to(directory)) for path in group.paths],
+        "regions": regions, "scripts": scripts,
+    }
+    return replace(planning, options={**planning.options, "music_recognition_scope": scope})
+
+
+def _music_retry_files(task: TransferTask, scope: dict[str, Any]) -> tuple[list[FileItem], FileItem]:
+    """恢复已选音频范围并拒绝越过当前发行目录的路径。"""
+    current = Path(str(task.fileitem.path)).absolute()
+    directory = Path(str(scope.get("directory", ""))).absolute()
+    expected = current.parent.parent if MetaMusic.parse_disc_dir(current.parent.name) else current.parent
+    if directory != expected or task.fileitem.storage != "local":
+        raise ValueError("音乐重试目录与源文件不一致，请重新选择文件")
+    names = scope.get("files")
+    if not isinstance(names, list) or not names:
+        raise ValueError("音乐重试缺少原文件范围，请重新选择文件")
+    files = []
+    for name in names:
+        relative = Path(str(name))
+        path = directory / relative
+        if (relative.is_absolute() or ".." in relative.parts or not path.is_relative_to(directory)
+                or (path.parent != directory and not (
+                    path.parent.parent == directory and MetaMusic.parse_disc_dir(path.parent.name)))):
+            raise ValueError("音乐重试文件超出原发行范围，请重新选择文件")
+        files.append(FileItem(storage="local", path=str(path), type="file", name=path.name,
+                              basename=path.stem, extension=path.suffix.lstrip(".")))
+    main = directory / str(scope.get("main", ""))
+    item = next((item for item in files if item.path == str(main)), None)
+    if item is None or (current != main and current.parent != main.parent):
+        raise ValueError("音乐重试主音频与源文件不一致，请重新选择文件")
+    return files, item
+
+
+def _music_retry_preferences(scope: dict[str, Any], key: str) -> Optional[list[str]]:
+    """校验冻结的发行偏好，损坏的恢复输入不能悄悄改变候选选择。"""
+    values = scope.get(key)
+    if values is None:
+        return None
+    if not isinstance(values, list) or not all(isinstance(value, str) for value in values):
+        raise ValueError("音乐发行偏好数据无效，请重新选择文件")
+    return cast(list[str], list(values))
+
+
+@capture_audio_metadata()
+def refresh_music_retry_context(owner: _TransferOwnerBase, task: TransferTask) -> None:
+    """仅在未规划的 accepted 重放中重新识别，已有检查点必须沿用冻结身份和路径。"""
+    planning = task.planning_input
+    scope = planning.options.get("music_recognition_scope") if planning else None
+    if task.plan_checkpoint is not None or not task.planning_context_restored:
+        return
+    if planning and planning.options.get("music_replan_classification") and isinstance(task.mediainfo, MusicInfo):
+        task.mediainfo = owner._finalize_recognition_result(task.mediainfo, refresh=True)
+        return
+    if not isinstance(scope, dict):
+        return
+    try:
+        if scope.get("storage") != task.fileitem.storage:
+            raise ValueError("音乐重试存储与原任务不一致，请重新选择文件")
+        if scope.get("name_only"):
+            path = Path(str(task.fileitem.path))
+            history = owner._resolve_download_history(repository=owner.download_history_repository,
+                                                      file_path=path, bluray_dir=False, download_hash=task.download_hash)
+            task.meta = restore_music_resource_meta(history, path, AudioMetadataHelper.read_filename(path),
+                                                   storage=task.fileitem.storage)
+            task.mediainfo = None
+            return
+        files, main = _music_retry_files(task, scope)
+        main_path = Path(str(main.path))
+        context = prepare_music_batch_context(owner, [(item, False) for item in files], MediaType.MUSIC)
+        meta = AudioMetadataHelper.read(main_path)
+        if main.path != task.fileitem.path:
+            related = owner._get_related_main_file_key(task.fileitem, files)
+            cue_related = meta.music_layout == "image_cue" and meta.cue_filename == task.fileitem.name
+            if not cue_related and related != owner._get_file_key(main):
+                raise ValueError("关联文件与音频的对应关系已改变，请重新预览")
+        # 下载时的原种子线索仍有效，但不能恢复上次失败或误选的媒体身份。
+        history = owner._resolve_download_history(repository=owner.download_history_repository,
+                                                  file_path=main_path, bluray_dir=False, download_hash=task.download_hash)
+        meta = restore_music_resource_meta(history, main_path, meta) or meta
+        task.meta, task.mediainfo = resolve_music_batch_file_context(
+            owner, batch_context=context, file_item=main, file_path=main_path, file_meta=meta,
+            selected_tracks={}, fallback=None, discard_shared_identity=False,
+            multi_track_batch=len(files) > 1, release_regions=_music_retry_preferences(scope, "regions"),
+            release_scripts=_music_retry_preferences(scope, "scripts"),
+        )
+    except (TypeError, ValueError) as error:
+        info = MusicInfo.from_meta(task.meta) if isinstance(task.meta, MetaMusic) else MusicInfo()
+        info.raw_data["recognition"] = {"status": "conflict", "message": str(error)}
+        task.mediainfo = info
+
+
+def defer_music_recognition(owner: _TransferOwnerBase, task: TransferTask) -> Optional[tuple[bool, str]]:
+    """临时来源故障保留未规划任务并有界退避，预算耗尽后交给普通失败结算。"""
+    if task.plan_checkpoint is not None or not isinstance(task.mediainfo, MusicInfo):
+        return None
+    if not task.planning_input or not task.planning_input.options.get("music_recognition_scope"):
+        return None
+    recognition = task.mediainfo.raw_data.get("recognition")
+    if not isinstance(recognition, dict) or recognition.get("status") not in RETRYABLE_MUSIC_RECOGNITION_STATES:
+        return None
+    message = str(recognition.get("message") or "音乐识别暂时不可用")
+    if task.preview:
+        return False, message
+    owner._TransferChain__claim_task_for_execution(task)
+    owner._TransferChain__assert_owned_lease(task)
+    if owner._transfer_admissions.defer_planning(
+        task_id=task.admission_task_id, lease_token=task.lease_token, error=message,
+        retry_after=30, max_retries=max_failed_retries(),
+    ):
+        owner._TransferChain__forget_owned_lease(task.admission_task_id, task.lease_token)
+        owner._TransferChain__ensure_recovery_scheduler(immediate=False)
+        return False, f"{message}；已安排自动重新识别"
+    recognition["message"] = f"{message}；自动重试已达上限，请重新识别或手动选择专辑"
+    return None
 
 
 def _music_file_key(item: FileItem) -> Tuple[str, str]:

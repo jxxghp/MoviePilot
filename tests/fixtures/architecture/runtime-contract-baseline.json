@@ -8020,7 +8020,7 @@
     }
   },
   "run_module": {
-    "call_count": 262,
+    "call_count": 263,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
     "method_count": 211,
@@ -9174,6 +9174,11 @@
       "music_cache_clear": [
         {
           "caller": "app.chain.musicbrainz",
+          "count": 1,
+          "mode": "sync"
+        },
+        {
+          "caller": "app.chain.transfer.retry",
           "count": 1,
           "mode": "sync"
         }

@@ -972,7 +972,6 @@
   },
   "app/chain/transfer/execution.py": {
     "arg-type": 1,
-    "assignment": 4,
     "no-any-return": 2,
     "type-arg": 2,
     "union-attr": 15

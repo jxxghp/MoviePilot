@@ -1063,7 +1063,7 @@ class TransferQueueOwner(_TransferOwnerBase):
         task.bind_admission_task_id(admission.task_id)
         self._TransferChain__bind_claimed_admission(task, admission)
         task.bind_planning_input(planning_input)
-        if planning_input.mediainfo:
+        if planning_input.mediainfo or planning_input.options.get("music_recognition_scope"):
             task.mark_planning_context_restored()
         return self.put_to_queue(task)
 
