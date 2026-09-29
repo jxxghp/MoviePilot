@@ -60,6 +60,12 @@ Music recognition, exploration, album and artist navigation, and recognition-cac
   Explicit music transfers reject disc images and archives with an extraction
   message. Explicit movie/TV transfers do not inherit old music identities for
   accompanying audio tracks.
+- Album track alignment requires unique identity, title, disc/track position,
+  or duration evidence; file order never fills unresolved tracks. Numeric file
+  names are weak evidence, while numeric titles in tags remain meaningful.
+  Manual album selection may correct names using unique positions, but still
+  rejects clear duration conflicts. An incomplete manual alignment stops before
+  file operations and asks the caller to check the selected edition and tracks.
 
 ## Operations
 

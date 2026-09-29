@@ -33,6 +33,7 @@ from app.domain.music import (
     music_album_matches,
     music_artist_matches,
     music_title_matches,
+    music_track_title_is_weak,
     music_version_matches,
     music_year_matches,
 )
@@ -218,11 +219,12 @@ class _MusicFileFilterBase(_TransferOwnerBase):
         info = matched.get(str(file_path.resolve()))
         if not info or not info.media_id:
             return file_meta, None
+        weak_title = music_track_title_is_weak(file_meta)
         evidence_matches = (
             (not file_meta.artists or music_artist_matches(info, file_meta.artists))
-            and (not file_meta.title or music_title_matches(info, file_meta.title))
+            and (weak_title or music_title_matches(info, file_meta.title))
             and (not file_meta.album or not info.album or music_album_matches(info, file_meta.album))
-            and music_version_matches(info, file_meta)
+            and ((weak_title and not file_meta.version) or music_version_matches(info, file_meta))
             and music_year_matches(info, file_meta)
         )
         if not evidence_matches:
@@ -392,8 +394,8 @@ class FileFilterMixin(_TransferOwnerBase):
         if len(aligned_tracks) != len(audio_paths):
             return {}, (
                 f"所选专辑只能对齐 {len(aligned_tracks)} / {len(audio_paths)} "
-                "个音频文件，目录中可能包含重复版本或额外曲目；"
-                "请分别选择单个版本后再整理"
+                "个音频文件，存在重复版本、曲目信息冲突或无法唯一对位的曲目；"
+                "请按单个发行版本选择文件并核对曲目"
             )
         selected_tracks: dict[str, MusicInfo] = {}
         for resolved_path, track in aligned_tracks.items():

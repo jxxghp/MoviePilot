@@ -16,6 +16,7 @@ from app.domain.context import (
     MusicInfo,
 )
 from app.domain.meta.metamusic import MetaMusic
+from app.domain.music import align_music_tracks
 from app.foundation.text import convert as zhconv_convert
 from app.runtime.execution import run_in_threadpool
 
@@ -152,62 +153,16 @@ class MediaAlbumOwner(_MediaOwnerBase):
         files: list[Path],
         metas: list[MetaMusic],
         tracks: list[MusicInfo],
+        *,
+        allow_title_override: bool = False,
     ) -> dict[Path, MusicInfo]:
-        """优先按精确曲名、再按碟号和曲序把专辑曲目对位到本地文件。"""
-        matched: dict[Path, MusicInfo] = {}
-        used: set[int] = set()
-        indexed_tracks = list(enumerate(tracks))
-        by_title: dict[str, list[int]] = {}
-        for index, track in indexed_tracks:
-            title_key = cls._music_track_title_key(track.title)
-            if title_key:
-                by_title.setdefault(title_key, []).append(index)
-
-        pending: list[tuple[Path, MetaMusic]] = []
-        for file, meta in zip(files, metas):
-            candidates = [
-                index for index in by_title.get(cls._music_track_title_key(meta.title), []) if index not in used
-            ]
-            if candidates:
-                local_position = (meta.disc_number or 1, meta.track_number or 0)
-                index = next(
-                    (
-                        candidate
-                        for candidate in candidates
-                        if (
-                            tracks[candidate].disc_number or 1,
-                            tracks[candidate].track_number or 0,
-                        )
-                        == local_position
-                    ),
-                    candidates[0],
-                )
-                matched[file] = tracks[index]
-                used.add(index)
-            else:
-                pending.append((file, meta))
-
-        by_position: dict[tuple[int, int], list[int]] = {}
-        for index, track in indexed_tracks:
-            if track.track_number:
-                by_position.setdefault((track.disc_number or 1, track.track_number), []).append(index)
-        unresolved: list[tuple[Path, MetaMusic]] = []
-        for file, meta in pending:
-            position_key = (meta.disc_number or 1, meta.track_number or 0)
-            candidates = (
-                [index for index in by_position.get(position_key, []) if index not in used] if meta.track_number else []
-            )
-            if candidates:
-                index = candidates[0]
-                matched[file] = tracks[index]
-                used.add(index)
-            else:
-                unresolved.append((file, meta))
-        remaining = [track for index, track in indexed_tracks if index not in used]
-        unresolved.sort(key=lambda item: (item[1].disc_number or 1, item[0].name.casefold()))
-        for (file, _), track in zip(unresolved, remaining):
-            matched[file] = track
-        return matched
+        """只输出有唯一曲目证据的文件，不对剩余文件进行排序猜测。"""
+        if len(files) != len(metas):
+            return {}
+        return {
+            files[index]: tracks[remote]
+            for index, remote in align_music_tracks(metas, tracks, allow_title_override=allow_title_override).items()
+        }
 
     @classmethod
     def _align_selected_music_album(
@@ -223,6 +178,7 @@ class MediaAlbumOwner(_MediaOwnerBase):
                 files,
                 metas,
                 album.tracks,
+                allow_title_override=True,
             ).items()
         }
 

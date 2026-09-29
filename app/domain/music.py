@@ -205,6 +205,103 @@ def music_tags_are_usable(meta: Optional[MetaMusic]) -> bool:
     return all(_usable_music_tag(value) for value in required)
 
 
+def music_track_title_is_weak(meta: MetaMusic) -> bool:
+    """编号或占位文件名不能否决实际曲目，但真实标签中的数字歌曲名仍是证据。"""
+    title = str(meta.title or "").strip()
+    if not title:
+        return True
+    if title.isdigit():
+        return meta.field_sources.get("title") not in {"tag", "cue", "manual", "remote"}
+    return bool(re.fullmatch(r"(?:(?:track|audio|音轨|曲目)[\s._-]*\d*|unknown|untitled)", title, re.I))
+
+
+def _alignment_title_key(title: Optional[str]) -> str:
+    """对位仅忽略名称排版差异，保留 live/remix 等版本正文和纯符号歌曲名。"""
+    return music_text_key(title) or re.sub(r"\s+", "", normalize("NFKC", str(title or ""))).casefold()
+
+
+def _music_track_pair_score(meta: MetaMusic, track: MusicInfo, allow_title_override: bool) -> float:
+    """评估一条文件与发行曲目的证据；明确身份或时长冲突不能被其它分数抵消。"""
+    identity_match = False
+    for field in ("musicbrainz_release_id", "musicbrainz_release_track_id"):
+        local_id, remote_id = getattr(meta, field), getattr(track, field)
+        if local_id and remote_id:
+            if local_id != remote_id and not allow_title_override:
+                return 0.0
+            if field == "musicbrainz_release_track_id" and local_id == remote_id:
+                identity_match = True
+    if meta.media_id and track.media_id and meta.media_source == track.media_source and meta.music_type != MUSIC_ENTITY_ALBUM:
+        if meta.media_id != track.media_id and not allow_title_override:
+            return 0.0
+        identity_match = identity_match or meta.media_id == track.media_id
+    duration_close = False
+    if meta.duration and track.duration:
+        delta = abs(meta.duration - track.duration)
+        longest = max(meta.duration, track.duration)
+        if delta > max(10, longest * 0.08):
+            return 0.0
+        duration_close = delta <= max(3, min(8, longest * 0.025))
+    title_key = _alignment_title_key(meta.title)
+    weak_title = music_track_title_is_weak(meta)
+    title_match = not weak_title and bool(title_key) and any(
+        title_key == _alignment_title_key(value) for value in music_titles(track)
+    )
+    position_match = bool(
+        meta.track_number and meta.track_number == track.track_number
+        and (not meta.disc_number or meta.disc_number == (track.disc_number or 1))
+    )
+    if not identity_match and not title_match and not weak_title and not (allow_title_override and position_match):
+        return 0.0
+    if not identity_match and not title_match and meta.duration and track.duration and not duration_close:
+        return 0.0
+    if not (identity_match or title_match or position_match or (weak_title and duration_close)):
+        return 0.0
+    # 同一容差内的多个时长候选保持同分，不能以一秒的测量差异打破歧义。
+    return 1000 * identity_match + 60 * title_match + 30 * position_match + 20 * duration_close
+
+
+def _unique_track_choice(scores: dict[int, float]) -> Optional[int]:
+    """只选择有唯一最强证据的候选，不用列表顺序消除歧义。"""
+    if not scores:
+        return None
+    maximum = max(scores.values())
+    choices = [index for index, score in scores.items() if score == maximum]
+    return choices[0] if len(choices) == 1 else None
+
+
+def align_music_tracks(
+        metas: list[MetaMusic], tracks: list[MusicInfo], *, allow_title_override: bool = False,
+) -> dict[int, int]:
+    """以双向唯一证据对位曲目，返回本地索引到远端索引；无证据项保持未匹配。
+
+    手选发行可依据唯一位置纠正旧曲名及旧身份，但仍拒绝显著时长冲突。
+    双向检查使重复版本不能抢占一个位置，输入排序不会改变歌曲身份。
+    """
+    scores = {
+        index: {
+            remote: score for remote, track in enumerate(tracks)
+            if (score := _music_track_pair_score(meta, track, allow_title_override)) > 0
+        }
+        for index, meta in enumerate(metas)
+    }
+    matched: dict[int, int] = {}
+    while scores:
+        choices = {index: choice for index, values in scores.items() if (choice := _unique_track_choice(values)) is not None}
+        accepted = {
+            index: remote for index, remote in choices.items()
+            if _unique_track_choice({local: values[remote] for local, values in scores.items() if remote in values}) == index
+        }
+        if not accepted:
+            break
+        matched.update(accepted)
+        used = set(accepted.values())
+        scores = {
+            index: {remote: score for remote, score in values.items() if remote not in used}
+            for index, values in scores.items() if index not in accepted
+        }
+    return matched
+
+
 def _usable_music_tag(value: Optional[str]) -> bool:
     """保守排除占位值及乱码，不误删数字专辑名和包含 Unknown 的正常标题。"""
     text = str(value or "").strip()

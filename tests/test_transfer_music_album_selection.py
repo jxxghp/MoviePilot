@@ -702,5 +702,5 @@ def test_selected_album_rejects_duplicate_local_editions(tmp_path, monkeypatch):
     )
 
     assert state is False
-    assert "只能对齐 2 / 4" in message
+    assert "只能对齐 0 / 4" in message
     assert "重复版本" in message
