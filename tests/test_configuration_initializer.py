@@ -1,6 +1,7 @@
 """配置快照启动顺序测试。"""
 
 import asyncio
+import sys
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -55,10 +56,14 @@ def _isolate_startup_failure_cleanup(monkeypatch) -> None:
         "ModuleManager",
         "EventManager",
         "ThreadHelper",
-        "RedisHelper",
-        "AsyncRedisHelper",
     ):
         monkeypatch.setattr(modules_initializer, name, absent_owner)
+    # Redis 适配器按需导入，关闭流程只处理已导入的 owner。
+    monkeypatch.setitem(
+        sys.modules,
+        "app.adapters.cache.redis",
+        SimpleNamespace(RedisHelper=absent_owner, AsyncRedisHelper=absent_owner),
+    )
     monkeypatch.setattr(
         modules_initializer,
         "stop_doh_composition",

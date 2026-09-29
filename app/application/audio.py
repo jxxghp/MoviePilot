@@ -1,18 +1,18 @@
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import TYPE_CHECKING, Any, Optional, Union
 from uuid import UUID
 
+# mutagen 包入口很轻；各容器格式实现（FLAC、ID3、MP4、APE）在读写音频时才导入，
+# 未处理音乐的实例不为它们常驻内存。File() 识别格式时本身也会按需导入这些子模块。
 from mutagen import File as MutagenFile
-from mutagen.apev2 import APEBinaryValue
-from mutagen.flac import FLAC, Picture
-from mutagen.id3 import APIC, SYLT, USLT
-from mutagen.monkeysaudio import MonkeysAudio
-from mutagen.mp4 import MP4, MP4Cover
 
 from app.domain.context import MusicInfo, MusicLyrics
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.log import logger
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
+
+if TYPE_CHECKING:
+    from mutagen.id3 import SYLT
 
 
 class AudioMetadataHelper:
@@ -147,6 +147,8 @@ class AudioMetadataHelper:
     @staticmethod
     def _tag_text(tags: dict[str, Any], *keys: str) -> Optional[str]:
         """从不同容器的单值或列表标签中提取首个非空文本。"""
+        from mutagen.id3 import SYLT, USLT
+
         for key in keys:
             value = tags.get(key.casefold())
             if isinstance(value, (list, tuple)) and value:
@@ -159,7 +161,7 @@ class AudioMetadataHelper:
         return None
 
     @staticmethod
-    def _sylt_to_lrc(frame: SYLT) -> Optional[str]:
+    def _sylt_to_lrc(frame: "SYLT") -> Optional[str]:
         """把 ID3 SYLT 的毫秒时间戳转换为通用 LRC 行。"""
         output = []
         for text, timestamp in frame.text or []:
@@ -276,6 +278,12 @@ class AudioMetadataHelper:
             overwrite: bool,
     ) -> None:
         """为 MP3、FLAC、MP4/M4A 和 APE 写入内嵌封面，其它格式保留标签写入结果。"""
+        from mutagen.apev2 import APEBinaryValue
+        from mutagen.flac import FLAC, Picture
+        from mutagen.id3 import APIC
+        from mutagen.monkeysaudio import MonkeysAudio
+        from mutagen.mp4 import MP4, MP4Cover
+
         audio = MutagenFile(path)
         if isinstance(audio, MonkeysAudio):
             if audio.tags is None:

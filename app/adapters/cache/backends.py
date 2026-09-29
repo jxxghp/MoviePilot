@@ -7,7 +7,6 @@ import aiofiles
 import aioshutil
 from anyio import Path as AsyncPath
 
-from app.adapters.cache.redis import AsyncRedisHelper, RedisHelper
 from app.runtime.cache import (
     DEFAULT_CACHE_REGION,
     AsyncCacheBackend,
@@ -23,6 +22,9 @@ class RedisBackend(AtomicCacheBackend):
 
     def __init__(self, ttl: Optional[int] = None) -> None:
         """初始化 Redis 缓存并保存默认 TTL。"""
+        # redis 客户端库只在实际选用 Redis 缓存时导入，文件缓存实例不为它常驻内存。
+        from app.adapters.cache.redis import RedisHelper
+
         self.ttl = ttl
         self.redis_helper = RedisHelper()
 
@@ -114,6 +116,8 @@ class AsyncRedisBackend(AsyncCacheBackend):
 
     def __init__(self, ttl: Optional[int] = None) -> None:
         """初始化异步 Redis 缓存并保存默认 TTL。"""
+        from app.adapters.cache.redis import AsyncRedisHelper
+
         self.ttl = ttl
         self.redis_helper = AsyncRedisHelper()
 

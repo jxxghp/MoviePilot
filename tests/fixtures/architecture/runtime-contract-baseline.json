@@ -1173,6 +1173,11 @@
         }
       },
       "app.schemas.agent": {
+        "ConversationMemory": {
+          "replacement": "app.schemas.conversation.ConversationMemory",
+          "target_module": "app.schemas.conversation",
+          "target_name": "ConversationMemory"
+        },
         "ReplyMode": {
           "replacement": "app.schemas.types.ReplyMode",
           "target_module": "app.schemas.types",

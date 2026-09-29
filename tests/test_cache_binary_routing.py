@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import pytest
 
-import app.adapters.cache.backends as backends_module
+import app.adapters.cache.redis as redis_adapter_module
 import app.application.image as image_module
 import app.monitor.snapshot as snapshot_module
 from app.adapters.cache.backends import (
@@ -76,8 +76,8 @@ def redis_mode(monkeypatch):
     """切换到 Redis 缓存后端，并用内存替身替换 Redis 客户端。"""
     _FakeRedisHelper.store = {}
     monkeypatch.setattr(settings, "CACHE_BACKEND_TYPE", "redis")
-    monkeypatch.setattr(backends_module, "RedisHelper", _FakeRedisHelper)
-    monkeypatch.setattr(backends_module, "AsyncRedisHelper", _FakeAsyncRedisHelper)
+    monkeypatch.setattr(redis_adapter_module, "RedisHelper", _FakeRedisHelper)
+    monkeypatch.setattr(redis_adapter_module, "AsyncRedisHelper", _FakeAsyncRedisHelper)
     return _FakeRedisHelper.store
 
 

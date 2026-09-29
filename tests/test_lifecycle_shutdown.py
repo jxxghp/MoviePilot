@@ -1,5 +1,6 @@
 import asyncio
 import signal
+import sys
 import threading
 from contextlib import asynccontextmanager
 from types import SimpleNamespace
@@ -1542,7 +1543,6 @@ def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
         ("ModuleManager", "shutdown"),
         ("EventManager", "stop_async"),
         ("ThreadHelper", "shutdown"),
-        ("RedisHelper", "close"),
     ):
         instance = MagicMock()
         setattr(instance, method_name, MagicMock())
@@ -1551,6 +1551,13 @@ def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
         monkeypatch.setattr(modules_initializer, name, instance_type)
         key = name.removesuffix("Helper").removesuffix("Manager").lower()
         dependencies[key] = getattr(instance, method_name)
+
+    # Redis 适配器按需导入，关闭流程从已导入模块读取 owner，这里注入替身模块。
+    redis = MagicMock()
+    redis.close = MagicMock()
+    redis_type = MagicMock(return_value=redis)
+    redis_type.get_existing_instance.return_value = redis
+    dependencies["redis"] = redis.close
 
     stop_doh_composition = MagicMock()
     monkeypatch.setattr(
@@ -1591,7 +1598,11 @@ def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
     async_redis.close = AsyncMock()
     async_redis_type = MagicMock(return_value=async_redis)
     async_redis_type.get_existing_instance.return_value = async_redis
-    monkeypatch.setattr(modules_initializer, "AsyncRedisHelper", async_redis_type)
+    monkeypatch.setitem(
+        sys.modules,
+        "app.adapters.cache.redis",
+        SimpleNamespace(RedisHelper=redis_type, AsyncRedisHelper=async_redis_type),
+    )
     dependencies["async_redis"] = async_redis.close
     close_database = AsyncMock()
     monkeypatch.setattr(modules_initializer, "close_database", close_database)

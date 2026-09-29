@@ -16,7 +16,7 @@ from app.application.messaging.chat import (
 )
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
-from app.schemas.agent import ConversationMemory
+from app.schemas.conversation import ConversationMemory
 
 
 class MemoryManager:

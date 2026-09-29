@@ -1010,6 +1010,12 @@ SYMBOL_ALIASES: Dict[str, Dict[str, SymbolAlias]] = {
         ),
     },
     "app.schemas.agent": {
+        # 对话记忆模型依赖 langchain_core，已拆到独立模块；旧路径惰性解析以免普通 schema 导入加载 LangChain。
+        "ConversationMemory": SymbolAlias(
+            target_module="app.schemas.conversation",
+            target_name="ConversationMemory",
+            replacement="app.schemas.conversation.ConversationMemory",
+        ),
         "ReplyMode": SymbolAlias(
             target_module="app.schemas.types",
             target_name="ReplyMode",

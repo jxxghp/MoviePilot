@@ -13,6 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
 OUTPUT_PATH = PROJECT_ROOT / "app" / "schemas" / "exports.py"
 SCHEMA_MODULES = (
     "agent",
+    "conversation",
     "cache",
     "category",
     "common",

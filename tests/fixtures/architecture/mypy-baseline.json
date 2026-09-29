@@ -2587,7 +2587,7 @@
     "unused-ignore": 1
   },
   "app/schemas/agent.py": {
-    "misc": 26
+    "misc": 24
   },
   "app/schemas/cache.py": {
     "misc": 3
@@ -2600,6 +2600,9 @@
   },
   "app/schemas/context.py": {
     "misc": 18
+  },
+  "app/schemas/conversation.py": {
+    "misc": 2
   },
   "app/schemas/dashboard.py": {
     "misc": 10

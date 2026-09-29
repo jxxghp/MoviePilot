@@ -1,9 +1,7 @@
 import asyncio
 import inspect
 import sys
-from typing import Callable, cast
-
-from app.adapters.cache.redis import AsyncRedisHelper, RedisHelper
+from typing import Any, Callable, cast
 
 # SitesHelper涉及资源包拉取，提前引入并容错提示
 try:
@@ -267,6 +265,38 @@ def _call_existing_singleton(instance_type: type, method_name: str) -> object:
     return getattr(instance, method_name)()
 
 
+_REDIS_ADAPTER_MODULE = "app.adapters.cache.redis"
+_REDIS_HELPER_NAMES = ("RedisHelper", "AsyncRedisHelper")
+
+
+def _loaded_redis_helper_types() -> tuple[type[Any], ...]:
+    """返回已导入的 Redis 客户端 owner 类型。
+
+    Redis 适配器只在选用 Redis 缓存后才导入。模块未导入说明本进程从未创建连接，
+    也没有登记它的配置重载处理器，关闭与 resolver 都不需要处理，更不应为此导入 redis。
+    """
+    module = sys.modules.get(_REDIS_ADAPTER_MODULE)
+    if module is None:
+        return ()
+    return tuple(getattr(module, name) for name in _REDIS_HELPER_NAMES)
+
+
+def _redis_reload_handler_providers() -> dict[type, Callable[[], object | None]]:
+    """为已导入的 Redis owner 提供当前实例；每次调用重新读取，覆盖运行中切换到 Redis 的情况。"""
+    return {
+        helper_type: helper_type.get_existing_instance
+        for helper_type in _loaded_redis_helper_types()
+    }
+
+
+def _close_existing_redis_helper(name: str) -> object:
+    """关闭已创建的 Redis 连接池；适配器未导入时视为已经收敛。"""
+    module = sys.modules.get(_REDIS_ADAPTER_MODULE)
+    if module is None:
+        return True
+    return _call_existing_singleton(getattr(module, name), "close")
+
+
 def notify_event_error(title: str, message: str) -> None:
     """将事件总线错误转发到系统消息通道。"""
     MessageHelper().put(
@@ -310,8 +340,7 @@ def get_config_reload_handler_providers(
     system_helper = SystemHelper()
     providers: dict[type, Callable[[], object | None]] = {
         SystemHelper: lambda: system_helper,
-        RedisHelper: RedisHelper.get_existing_instance,
-        AsyncRedisHelper: AsyncRedisHelper.get_existing_instance,
+        **_redis_reload_handler_providers(),
         TransferChain: TransferChain.get_existing_instance,
         Monitor: Monitor.get_existing_instance,
     }
@@ -334,7 +363,8 @@ def configure_config_reload_event_handler_resolver() -> None:
 
     def resolve(owner_class: type) -> EventHandlerBinding | None:
         """按类型身份读取当前 owner，不在事件分发路径构造资源。"""
-        provider = providers.get(owner_class)
+        # Redis 适配器可能在 resolver 登记后才导入，此时按导入后的类型补查。
+        provider = providers.get(owner_class) or _redis_reload_handler_providers().get(owner_class)
         if provider is not None:
             instance = provider()
             if instance is not None and type(instance) is not owner_class:
@@ -583,12 +613,12 @@ async def stop_modules() -> bool:
     )
     await run_step(
         "Redis缓存连接",
-        lambda: _call_existing_singleton(RedisHelper, "close"),
+        lambda: _close_existing_redis_helper("RedisHelper"),
         offload=True,
     )
     await run_step(
         "异步Redis缓存连接",
-        lambda: _call_existing_singleton(AsyncRedisHelper, "close"),
+        lambda: _close_existing_redis_helper("AsyncRedisHelper"),
     )
     # Web Agent 的取消 finally 可能还要写入最终展示快照，必须先完成任务收尾，再关闭写入准入。
     web_agent_drained = await run_step(

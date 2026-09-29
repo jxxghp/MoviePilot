@@ -527,7 +527,7 @@ def test_symbol_alias_manifest_covers_all_moved_public_symbols():
         "TmdbEpisode",
         "MediaType",
     }
-    assert set(SYMBOL_ALIASES["app.schemas.agent"]) == {"ReplyMode"}
+    assert set(SYMBOL_ALIASES["app.schemas.agent"]) == {"ConversationMemory", "ReplyMode"}
     assert set(SYMBOL_ALIASES["app.sdk.logging"]) == {
         "CustomFormatter",
         "LogConfigModel",

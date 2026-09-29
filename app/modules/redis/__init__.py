@@ -1,6 +1,5 @@
 from typing import Tuple, Union
 
-from app.adapters.cache.redis import RedisHelper
 from app.modules import _ModuleBase
 from app.runtime.settings import get_runtime_setting
 from app.schemas.types import ModuleType, OtherModulesType
@@ -55,6 +54,9 @@ class RedisModule(_ModuleBase):
         """
         if get_runtime_setting('CACHE_BACKEND_TYPE') != "redis":
             return None
+        # 本模块始终加载；redis 客户端库只在确实使用 Redis 缓存时才导入。
+        from app.adapters.cache.redis import RedisHelper
+
         if RedisHelper().test():
             return True, ""
         return False, "Redis连接失败，请检查配置"
