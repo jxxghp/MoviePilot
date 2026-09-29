@@ -59,6 +59,16 @@ _ISRC = re.compile(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}", re.IGNORECASE | re.ASCII)
 _CJK = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
 
 
+def music_package_error(filename: str) -> Optional[str]:
+    """明确音乐模式下拒绝尚未展开的发行包，不将整包误识别为单首歌曲。"""
+    lowered = filename.casefold()
+    if lowered.endswith((".iso", ".img", ".nrg", ".bin", ".mdf")):
+        return "音乐镜像暂不支持直接整理，请先提取音频和 CUE 后重试"
+    if lowered.endswith((".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".001")):
+        return "音乐压缩包暂不支持直接整理，请先解压音频后重试"
+    return None
+
+
 @dataclass(frozen=True, slots=True)
 class MusicCueTrack:
     """CUE 中一个逻辑音轨的文件引用与 INDEX 01 起点，单位为每秒 75 帧。"""

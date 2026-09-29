@@ -2,7 +2,6 @@
 
 import re
 import uuid
-from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -28,6 +27,7 @@ from app.chain.storage import StorageChain
 from app.chain.transfer.contract import _TransferOwnerBase
 from app.domain.context import MediaInfo, MusicAlbumInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
+from app.domain.music import music_package_error
 from app.runtime.log import logger
 from app.runtime.progress import ProgressHelper
 from app.runtime.stop import runtime_stop_state
@@ -319,7 +319,9 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             if batch_mtype == MediaType.MUSIC:
                 if self._is_music_lyrics_file(item):
                     return not self._is_blocked_by_exclude_words(item.path, exclude_words)
-                if not self._is_media_file(item, batch_mtype):
+                if not self._is_media_file(item, batch_mtype) and not (
+                    item.type == "file" and music_package_error(item.path or "")
+                ):
                     return False
                 if not self._is_allow_filesize(item, min_filesize):
                     return False
@@ -596,8 +598,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             ) = self._build_transfer_tasks(
                 file_items=file_items,
                 inherited_meta_map=inherited_meta_map,
-                build_file_meta=candidate_planner._build_file_meta,
-                meta=meta,
+                candidate_planner=candidate_planner,
                 mediainfo=mediainfo,
                 media_source=media_source,
                 media_id=media_id,
@@ -664,8 +665,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         *,
         file_items: List[Tuple[FileItem, bool]],
         inherited_meta_map: Dict[Tuple[str, str], MetaBase],
-        build_file_meta: Callable[[Path, Optional[List[str]]], Optional[MetaBase]],
-        meta: Optional[MetaBase],
+        candidate_planner: _TransferCandidatePlanner,
         mediainfo: Optional[Union[MediaInfo, MusicInfo]],
         media_source: Optional[MediaSource],
         media_id: Optional[str],
@@ -712,6 +712,13 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 if continue_callback and not continue_callback():
                     raise OperationInterrupted()
                 file_path = Path(file_item.path)
+                package_error = music_package_error(file_path.name) if batch_mtype == MediaType.MUSIC else None
+                if package_error:
+                    message = f"{file_path.name}：{package_error}"
+                    submission.record(file_item, "failed", message)
+                    all_success = False
+                    err_msgs.append(message)
+                    continue
 
                 # 自动整理按 app/application/history/ 的统一判定去重（失败记录放行重试、
                 # 成功但源文件已变化放行交 overwrite_mode 决断）；手动整理可清理失败记录，
@@ -805,26 +812,11 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     mediainfo=mediainfo,
                     history_music_type=self._download_history_music_type(download_history),
                 )
-                history_music_meta, history_music_info = self._restore_music_download_context(
-                    download_history=download_history,
-                    file_path=file_path,
-                    discard_saved_identity=discard_music_identity,
+                file_meta, history_music_info = candidate_planner._build_file_context(
+                    file_item, download_history,
+                    inherited_meta_map.get(self._get_file_key(file_item)),
+                    discard_music_identity,
                 )
-
-                if not meta:
-                    # 文件元数据(优先使用订阅识别词)
-                    inherited_meta = inherited_meta_map.get(self._get_file_key(file_item))
-                    if history_music_meta:
-                        file_meta = history_music_meta
-                    elif inherited_meta:
-                        file_meta = deepcopy(inherited_meta)
-                    else:
-                        file_meta = build_file_meta(
-                            file_path,
-                            self._get_subscribe_custom_words(download_history),
-                        )
-                else:
-                    file_meta = build_file_meta(file_path, None)
 
                 if not file_meta:
                     submission.record(file_item, "failed", f"{file_path.name} 无法识别有效信息")

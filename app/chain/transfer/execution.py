@@ -32,6 +32,7 @@ from app.chain.tmdb import TmdbChain
 from app.chain.transfer.contract import _TransferOwnerBase
 from app.chain.transfer.records import apply_download_history_classification
 from app.domain.context import MediaInfo, MusicInfo
+from app.domain.media import is_music_media_source
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.log import logger
 from app.schemas.transfer import TransferInfo
@@ -460,10 +461,17 @@ class TransferExecutionOwner(_TransferOwnerBase):
                     history_year_conflict = self._is_movie_year_conflict(
                         task.meta, download_history
                     )
+                    # 本次明确按影视整理时，旧音乐身份不能抢占随片音轨的归属。
+                    history_music_conflict = task.mtype in (MediaType.MOVIE, MediaType.TV) and (
+                        download_history.type == MediaType.MUSIC.value
+                        or is_music_media_source(download_history.media_source)
+                        or self._download_history_music_type(download_history) is not None
+                    )
                     if (
                             download_history.media_source
                             and download_history.media_id
                             and not history_year_conflict
+                            and not history_music_conflict
                     ):
                         # 下载记录中已存在识别信息。这里不再重复标注类型：函数开头
                         # 已把 mediainfo 声明为 MediaInfo | MusicInfo | None，重复
@@ -492,7 +500,7 @@ class TransferExecutionOwner(_TransferOwnerBase):
                         mediainfo = MediaChain().recognize_by_meta(
                             task.meta, **recognize_kwargs
                         )
-                        if mediainfo:
+                        if mediainfo and not history_music_conflict:
                             mediainfo = apply_download_history_classification(mediainfo, download_history)
                 else:
                     # 识别媒体信息

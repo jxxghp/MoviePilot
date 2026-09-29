@@ -940,7 +940,7 @@ def test_automatic_multi_track_recording_context_rematches_album(tmp_path, monke
     monkeypatch.setattr(
         MediaChain,
         "read_path_meta",
-        Mock(side_effect=lambda path: file_metas[Path(path)]),
+        Mock(side_effect=lambda path, **_kwargs: file_metas[Path(path)]),
     )
     album_match = Mock(return_value=matched_tracks)
     monkeypatch.setattr(MediaChain, "recognize_music_album_directory", album_match)
@@ -1072,7 +1072,7 @@ def test_manual_history_batch_rematches_album_and_groups_preview(tmp_path, monke
     monkeypatch.setattr(
         MediaChain,
         "read_path_meta",
-        Mock(side_effect=lambda path: file_metas[Path(path)]),
+        Mock(side_effect=lambda path, **_kwargs: file_metas[Path(path)]),
     )
     album_match = Mock(return_value=matched_tracks)
     monkeypatch.setattr(MediaChain, "recognize_music_album_directory", album_match)

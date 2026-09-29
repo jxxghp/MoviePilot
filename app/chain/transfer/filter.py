@@ -452,6 +452,9 @@ class FileFilterMixin(_TransferOwnerBase):
             file_path: Path,
             discard_recording_identity: bool = False,
             discard_saved_identity: bool = False,
+            *,
+            storage: Optional[str] = "local",
+            batch_mtype: Optional[MediaType] = None,
     ) -> tuple[Optional[MetaMusic], Optional[MusicInfo]]:
         """从下载历史恢复音乐上下文，并用当前音频标签覆盖曲目级字段。
 
@@ -462,25 +465,32 @@ class FileFilterMixin(_TransferOwnerBase):
         手动选中多条历史且未要求复用历史身份时，专辑身份也必须丢弃，确保
         目录级识别能够重新补齐发行版、分类和规范名称。
         """
+        if batch_mtype in (MediaType.MOVIE, MediaType.TV) or not MediaChain.is_audio_path(file_path):
+            return None, None
+        if getattr(download_history, "type", None) in (MediaType.MOVIE.value, MediaType.TV.value):
+            return None, None
+        root_text = getattr(download_history, "path", None)
+        if root_text and Path(root_text) != file_path and not file_path.is_relative_to(Path(root_text)):
+            return None, None
         note = getattr(download_history, "note", None)
         music_note = note.get("music") if isinstance(note, dict) else None
         if not isinstance(music_note, dict) or music_note.get("version") != 1:
             if not download_history or not MediaChain.is_audio_path(file_path):
                 return None, None
-            return restore_music_resource_meta(download_history, file_path), None
+            return restore_music_resource_meta(download_history, file_path, storage=storage), None
         try:
             saved_meta = MetaMusic.from_dict(music_note.get("meta") or {})
             saved_info = MusicInfo.from_dict(music_note.get("media") or {})
         except (TypeError, ValueError):
             resource_meta = (
-                restore_music_resource_meta(download_history, file_path)
+                restore_music_resource_meta(download_history, file_path, storage=storage)
                 if MediaChain.is_audio_path(file_path) else None
             )
             return resource_meta, None
         if not (saved_info.title or saved_meta.title or saved_meta.album):
-            return restore_music_resource_meta(download_history, file_path), None
+            return restore_music_resource_meta(download_history, file_path, storage=storage), None
 
-        file_tags = MediaChain.read_path_meta(file_path)
+        file_tags = MediaChain.read_path_meta(file_path, storage=storage)
         if file_tags.music_layout == "image_cue" and saved_info.music_type == MUSIC_ENTITY_RECORDING:
             return file_tags, None
         should_discard_identity = discard_saved_identity or (
@@ -492,7 +502,7 @@ class FileFilterMixin(_TransferOwnerBase):
             file_meta = deepcopy(file_tags)
             file_meta.org_string = file_path.name
             file_meta.title = file_meta.title or file_path.stem
-            return restore_music_resource_meta(download_history, file_path, file_meta), None
+            return restore_music_resource_meta(download_history, file_path, file_meta, storage=storage), None
 
         file_meta = deepcopy(saved_meta)
         # 新旧历史都可能仅在 media 中保留已选专辑；先补缺，再沿用文件标签的

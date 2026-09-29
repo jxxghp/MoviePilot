@@ -529,6 +529,11 @@ SSE 的 `candidate_items` 是站点原始返回数量，`match_counts` 记录身
 原 CUE 不随改名自动复制。绝对/跨目录引用、冲突索引、超出音频时长等问题通过
 `organization_error` 返回，并在实际文件操作前阻止整理；原始文件内容不被修改。
 
+音乐整理按每个文件的 `storage` 决定证据来源：远端仅使用名称、目录和原始种子线索，
+不读取本机同路径的标签、时长或 CUE。仅有 `.m4a` 扩展名时不声明 AAC/ALAC 或有损/无损。
+明确按音乐整理的镜像（如 ISO）及压缩包会返回先提取/解压的失败提示，不执行自动转换。
+明确按影视整理的附加音轨不继承旧音乐历史身份。
+
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
 | GET | `/api/v1/media/search` | 当 `type=music` 或指定音乐 `media_source` 时按歌曲或专辑关键词搜索音乐元数据；艺术家统一由 `type=person` 搜索，支持 TMDB 与 MusicBrainz 来源。参数：`title`、`type`、`count`、可重复的 `media_source` 枚举，以及可选的 `music_type` 实体过滤 |

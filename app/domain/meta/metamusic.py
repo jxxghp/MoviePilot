@@ -35,7 +35,6 @@ _AUDIO_FORMAT_ALIASES = {
     "WAVE": "WAV",
     "AIF": "AIFF",
     "VORBIS": "OGG",
-    "M4A": "AAC",
     "DSF": "DSD",
     "DFF": "DSD",
     "SACD": "DSD",

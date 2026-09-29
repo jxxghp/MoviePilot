@@ -1097,8 +1097,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8960,
-  "edge_sha256": "d2cda607ba5da01f35e97435ae204e02936ef4d9167b3e76b540cdf59ef9069d",
+  "edge_count": 8962,
+  "edge_sha256": "22c4168cb2468ec6a446bab6366a95dc12984608ab0ce34f40bf7aa0851c4dfe",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -5484,6 +5484,7 @@
     "app.chain.transfer.execution -> app.chain.transfer.records",
     "app.chain.transfer.execution -> app.domain",
     "app.chain.transfer.execution -> app.domain.context",
+    "app.chain.transfer.execution -> app.domain.media",
     "app.chain.transfer.execution -> app.domain.meta",
     "app.chain.transfer.execution -> app.domain.meta.metamusic",
     "app.chain.transfer.execution -> app.runtime",
@@ -5779,6 +5780,7 @@
     "app.chain.transfer.workflow -> app.domain.context",
     "app.chain.transfer.workflow -> app.domain.meta",
     "app.chain.transfer.workflow -> app.domain.meta.metabase",
+    "app.chain.transfer.workflow -> app.domain.music",
     "app.chain.transfer.workflow -> app.runtime",
     "app.chain.transfer.workflow -> app.runtime.log",
     "app.chain.transfer.workflow -> app.runtime.progress",

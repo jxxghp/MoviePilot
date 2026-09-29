@@ -54,6 +54,12 @@ Music recognition, exploration, album and artist navigation, and recognition-cac
   `tracks_cue` metadata may supplement tracks, but the original multi-file CUE
   is not copied after track renaming. Treat `organization_error` as a blocking
   structural issue rather than overriding it with an unrelated media ID.
+- Organization uses each file's `storage`: remote items use names and original
+  torrent evidence, never local tags, duration, or CUE at an identical path.
+  An `.m4a` suffix alone does not establish AAC/ALAC or lossless status.
+  Explicit music transfers reject disc images and archives with an extraction
+  message. Explicit movie/TV transfers do not inherit old music identities for
+  accompanying audio tracks.
 
 ## Operations
 

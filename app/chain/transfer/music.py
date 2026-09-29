@@ -101,6 +101,8 @@ def restore_music_resource_meta(
         history: Optional[DownloadHistorySnapshot],
         path: Path,
         file_meta: Optional[MetaMusic] = None,
+        *,
+        storage: Optional[str] = "local",
 ) -> Optional[MetaMusic]:
     """从原始种子主副标题补足文件的发行线索，不复用已丢弃的远端身份。
 
@@ -120,7 +122,7 @@ def restore_music_resource_meta(
         return file_meta
     resource = MetaMusic.parse_resource(title, description)
     meta = deepcopy(file_meta) if file_meta else (
-        AudioMetadataHelper.read(path) if path.is_file() else AudioMetadataHelper.read_filename(path)
+        AudioMetadataHelper.read(path) if storage == "local" and path.is_file() else AudioMetadataHelper.read_filename(path)
     )
     parent = path.parent.parent if MetaMusic.parse_disc_dir(path.parent.name) else path.parent
     direct_release = bool(root and (root == path or root == parent))
@@ -449,7 +451,8 @@ def prepare_music_batch_context(
     for current_item, _current_bluray_dir in file_items:
         if str(current_item.extension or "").casefold() == "cue":
             for main_key, cue_meta in context.cue_by_main_key.items():
-                if cue_meta.music_layout == "image_cue" and current_item.path == str(Path(main_key[1]).parent / str(cue_meta.cue_filename)):
+                if (cue_meta.music_layout == "image_cue" and current_item.storage == main_key[0]
+                        and current_item.path == str(Path(main_key[1]).parent / str(cue_meta.cue_filename))):
                     context.related_main_keys[owner._get_file_key(current_item)] = main_key
         if not owner._is_music_lyrics_file(current_item):
             continue

@@ -128,7 +128,7 @@ def _patch_local_music_reads(monkeypatch, local_metas: dict[Path, MetaMusic]) ->
     monkeypatch.setattr(
         MediaChain,
         "read_path_meta",
-        staticmethod(lambda path: deepcopy(local_metas[Path(path)])),
+        staticmethod(lambda path, **_kwargs: deepcopy(local_metas[Path(path)])),
     )
 
 
@@ -152,7 +152,7 @@ def test_selected_album_tracks_override_source_tag_names(tmp_path, monkeypatch):
     monkeypatch.setattr(
         MediaChain,
         "read_path_meta",
-        staticmethod(lambda path: deepcopy(local_metas[path])),
+        staticmethod(lambda path, **_kwargs: deepcopy(local_metas[path])),
     )
     planned = []
     monkeypatch.setattr(
@@ -207,7 +207,7 @@ def test_selected_music_fileitems_keep_album_batch_context(tmp_path, monkeypatch
     monkeypatch.setattr(
         MediaChain,
         "read_path_meta",
-        staticmethod(lambda path: deepcopy(local_metas[path])),
+        staticmethod(lambda path, **_kwargs: deepcopy(local_metas[path])),
     )
     planned = []
     monkeypatch.setattr(
@@ -262,7 +262,7 @@ def test_automatic_music_fileitems_receive_album_identity_and_category(tmp_path,
     monkeypatch.setattr(
         MediaChain,
         "read_path_meta",
-        staticmethod(lambda path: deepcopy(local_metas[path])),
+        staticmethod(lambda path, **_kwargs: deepcopy(local_metas[path])),
     )
     monkeypatch.setattr(
         MediaChain,
@@ -319,7 +319,7 @@ def test_manual_single_track_directory_uses_local_single_and_directory_year(
     monkeypatch.setattr(
         MediaChain,
         "read_path_meta",
-        staticmethod(lambda _path: deepcopy(local_meta)),
+        staticmethod(lambda _path, **_kwargs: deepcopy(local_meta)),
     )
     monkeypatch.setattr(
         MediaChain,

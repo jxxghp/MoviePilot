@@ -478,10 +478,10 @@ class MediaPathOwner(_MediaOwnerBase):
         return Path(path).suffix.lower() in get_chain_runtime_config_snapshot().audio_extensions
 
     @classmethod
-    def read_path_meta(cls, path: Union[str, Path]) -> MetaMusic:
-        """读取本地音频标签，不可访问时回退到文件名和目录线索。"""
+    def read_path_meta(cls, path: Union[str, Path], *, storage: Optional[str] = "local") -> MetaMusic:
+        """本地文件读取音频证据；远端只解析名称，不能借用本机同名路径。"""
         file_path = Path(path)
-        if file_path.exists() and file_path.is_file():
+        if storage == "local" and file_path.is_file():
             return AudioMetadataHelper.read(file_path)
         return AudioMetadataHelper.read_filename(file_path)
 
