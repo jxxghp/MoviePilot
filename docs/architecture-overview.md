@@ -763,7 +763,7 @@ flowchart LR
 | 指标 | 当前值 |
 |---|---:|
 | Python 模块 | 1054 |
-| 内部导入边 | 8,955 |
+| 内部导入边 | 8,956 |
 | 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 53（债务已清零，53 条精确 containment） |
@@ -773,7 +773,7 @@ flowchart LR
 | Model/Oper 自动事务与自建 Session | 0 |
 | 组合根外 `SystemConfigOper()` | 0 |
 
-整理失败反馈由 `app.application.transfer.feedback` 集中投影；已整理下载的站点字幕复用 `app.chain.transfer` 自动整理队列；网络连通性检测按 `app.application.nettest` 归档，并覆盖 HTTP 与 WebSocket 探测。未启用智能助手的消息音乐交互由 `app.chain.music_interaction` 包中的解析展示与订阅协调模块处理；音乐标签准入与批次共识由 `app.chain.transfer.music` 负责；宿主依赖边现为 8,955，音乐交互包未新增 SCC，插件一次性任务 owner `app.scheduler.oncejob` 带来 1 个模块和 9 条依赖边。Agent 持久回执新增 Application 端口及 DB Model/Oper/Adapter 四个冷导入模块。缓存组合根只在启动时选用 Redis 缓存才导入 Redis 适配器，依赖 langchain_core 的对话记忆模型归属 `app.agent.memory`，文件缓存且未启用智能体的实例不再加载 redis 与 langchain_core。当前 `app.startup.lifecycle` 为 574、`app.factory` 为 586、`app.main` 为 588。站点图片域名快照新增 `app.application.security.image`，各启动入口增加一个模块；性能基线只同步模块数量，原有耗时预算、历史采样和生命周期资源约束保持有效。
+整理失败反馈由 `app.application.transfer.feedback` 集中投影；已整理下载的站点字幕复用 `app.chain.transfer` 自动整理队列；网络连通性检测按 `app.application.nettest` 归档，并覆盖 HTTP 与 WebSocket 探测。未启用智能助手的消息音乐交互由 `app.chain.music_interaction` 包中的解析展示与订阅协调模块处理；音乐标签准入与批次共识由 `app.chain.transfer.music` 负责；宿主依赖边现为 8,956，音乐交互包未新增 SCC，插件一次性任务 owner `app.scheduler.oncejob` 带来 1 个模块和 9 条依赖边。Agent 持久回执新增 Application 端口及 DB Model/Oper/Adapter 四个冷导入模块。缓存组合根只在启动时选用 Redis 缓存才导入 Redis 适配器，依赖 langchain_core 的对话记忆模型归属 `app.agent.memory`，文件缓存且未启用智能体的实例不再加载 redis 与 langchain_core。当前 `app.startup.lifecycle` 为 574、`app.factory` 为 586、`app.main` 为 588。站点图片域名快照新增 `app.application.security.image`，各启动入口增加一个模块；性能基线只同步模块数量，原有耗时预算、历史采样和生命周期资源约束保持有效。
 
 架构专项验证分为两个 CI 投影：`Check event semantic policy` 先运行依赖、Adapter、出口和 Event
 语义门禁，`Check host architecture snapshot` 再执行快照测试及一次

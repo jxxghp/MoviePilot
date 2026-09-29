@@ -19,7 +19,11 @@ from app.chain._contracts import TransferMixinHost
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.transfer.contract import _TransferOwnerBase
-from app.chain.transfer.music import prepare_music_batch_context, resolve_music_batch_file_context
+from app.chain.transfer.music import (
+    prepare_music_batch_context,
+    resolve_music_batch_file_context,
+    restore_music_resource_meta,
+)
 from app.domain.context import MediaInfo, MusicAlbumInfo, MusicInfo
 from app.domain.media import normalize_music_type
 from app.domain.meta.metamusic import MetaMusic
@@ -186,14 +190,12 @@ class _MusicFileFilterBase(_TransferOwnerBase):
         if file_meta.media_id or getattr(file_item, "storage", "local") != "local":
             return file_meta, None
         try:
-            if music_release_regions is None and music_release_scripts is None:
-                matched = MediaChain().recognize_music_album_directory(file_path.parent)
-            else:
-                matched = MediaChain().recognize_music_album_directory(
-                    file_path.parent,
-                    music_release_regions=music_release_regions,
-                    music_release_scripts=music_release_scripts,
-                )
+            matched = MediaChain().recognize_music_album_directory(
+                file_path.parent,
+                music_release_regions=music_release_regions,
+                music_release_scripts=music_release_scripts,
+                contextual_meta=file_meta,
+            )
         except Exception as err:
             logger.debug(f"音乐专辑目录匹配失败：{file_path} - {err}")
             return file_meta, None
@@ -410,20 +412,28 @@ class FileFilterMixin(_TransferOwnerBase):
 
         种子未提供的语义字段由历史中已选媒体补缺；实体类型和来源身份始终
         沿用已选媒体，不根据专辑名或文件曲名在单曲与专辑之间转换。
-        多音轨批次误带单曲身份时只保留文件自身标签，避免把同一 recording
-        身份传播到整张专辑；调用方随后可使用目录级证据重新匹配专辑。
+        多音轨批次误带单曲身份时保留文件标签和独立的原始种子线索，避免
+        把同一 recording 身份传播到整张专辑；随后可按目录重新匹配专辑。
         手动选中多条历史且未要求复用历史身份时，专辑身份也必须丢弃，确保
         目录级识别能够重新补齐发行版、分类和规范名称。
         """
         note = getattr(download_history, "note", None)
         music_note = note.get("music") if isinstance(note, dict) else None
         if not isinstance(music_note, dict) or music_note.get("version") != 1:
-            return None, None
+            if not download_history or not MediaChain.is_audio_path(file_path):
+                return None, None
+            return restore_music_resource_meta(download_history, file_path), None
         try:
             saved_meta = MetaMusic.from_dict(music_note.get("meta") or {})
             saved_info = MusicInfo.from_dict(music_note.get("media") or {})
         except (TypeError, ValueError):
-            return None, None
+            resource_meta = (
+                restore_music_resource_meta(download_history, file_path)
+                if MediaChain.is_audio_path(file_path) else None
+            )
+            return resource_meta, None
+        if not (saved_info.title or saved_meta.title or saved_meta.album):
+            return restore_music_resource_meta(download_history, file_path), None
 
         file_tags = MediaChain.read_path_meta(file_path)
         should_discard_identity = discard_saved_identity or (
@@ -431,12 +441,11 @@ class FileFilterMixin(_TransferOwnerBase):
             and saved_info.music_type == MUSIC_ENTITY_RECORDING
         )
         if should_discard_identity:
-            # 共享 recording 上下文可能包含错误的专辑、年份等字段；整张丢弃，
-            # 只保留当前文件实际标签，目录级匹配失败时也不会回落到错误身份。
+            # 丢弃选错媒体产生的快照，原始资源标题仍可独立作为无身份的查询线索。
             file_meta = deepcopy(file_tags)
             file_meta.org_string = file_path.name
             file_meta.title = file_meta.title or file_path.stem
-            return file_meta, None
+            return restore_music_resource_meta(download_history, file_path, file_meta), None
 
         file_meta = deepcopy(saved_meta)
         # 新旧历史都可能仅在 media 中保留已选专辑；先补缺，再沿用文件标签的

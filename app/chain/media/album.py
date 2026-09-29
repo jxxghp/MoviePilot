@@ -1,5 +1,6 @@
 """专辑目录扫描、曲目对齐与缓存编排 owner。"""
 
+import json
 import os
 from copy import deepcopy
 from pathlib import Path
@@ -28,9 +29,47 @@ def _album_directory_cache_key(
     directory: Path,
     regions: tuple[str, ...],
     scripts: tuple[str, ...],
+    contextual_meta: Optional[MetaMusic] = None,
 ) -> str:
-    """返回包含发行偏好的目录键，避免不同手动选择错误共享结果。"""
-    return "|".join((os.path.abspath(directory), ",".join(regions), ",".join(scripts)))
+    """将发行偏好及资源证据纳入缓存键，同目录更换种子线索时重新识别。"""
+    evidence = {
+        key: getattr(contextual_meta, key, None)
+        for key in ("album", "artists", "album_artist", "year", "version")
+    } if contextual_meta else None
+    if evidence and evidence["album_artist"]:
+        evidence["artists"] = [evidence["album_artist"]]
+    if evidence and not any(evidence.values()):
+        evidence = None
+    return json.dumps([os.path.abspath(directory), regions, scripts, evidence], ensure_ascii=False, sort_keys=True)
+
+
+def _album_context_with_resource(
+    directory: Path,
+    metas: list[MetaMusic],
+    contextual_meta: Optional[MetaMusic],
+) -> MetaMusic:
+    """以文件自身专辑线索为先，用绑定到本次文件的资源证据补足目录查询。"""
+    album_meta = MetaMusic.from_album_context(directory.name, metas)
+    if not contextual_meta:
+        return album_meta
+    if contextual_meta.album and not any(meta.album for meta in metas):
+        album_meta.album = contextual_meta.album
+        album_meta.title = contextual_meta.album
+    if not album_meta.artists:
+        album_meta.artists = (
+            [contextual_meta.album_artist] if contextual_meta.album_artist
+            else list(contextual_meta.artists)
+        )
+    if not album_meta.album_artist and contextual_meta.album_artist:
+        album_meta.album_artist = contextual_meta.album_artist
+    for key in ("year", "version"):
+        local_values = {getattr(meta, key) for meta in metas if getattr(meta, key)}
+        if not getattr(album_meta, key):
+            if len(local_values) == 1:
+                setattr(album_meta, key, next(iter(local_values)))
+            elif not local_values:
+                setattr(album_meta, key, getattr(contextual_meta, key))
+    return album_meta
 
 
 class MediaAlbumOwner(_MediaOwnerBase):
@@ -203,10 +242,11 @@ class MediaAlbumOwner(_MediaOwnerBase):
         files: list[Path],
         music_release_regions: Optional[tuple[str, ...]] = None,
         music_release_scripts: Optional[tuple[str, ...]] = None,
+        contextual_meta: Optional[MetaMusic] = None,
     ) -> dict[str, MusicInfo]:
         """同步汇总本地专辑证据并委托 MusicBrainz 来源链匹配。"""
         metas = AudioMetadataHelper.read_many(files)
-        album_meta = MetaMusic.from_album_context(directory.name, metas)
+        album_meta = _album_context_with_resource(directory, metas, contextual_meta)
         regions, scripts = self._music_release_preferences(
             list(music_release_regions) if music_release_regions is not None else None,
             list(music_release_scripts) if music_release_scripts is not None else None,
@@ -227,10 +267,11 @@ class MediaAlbumOwner(_MediaOwnerBase):
         files: list[Path],
         music_release_regions: Optional[tuple[str, ...]] = None,
         music_release_scripts: Optional[tuple[str, ...]] = None,
+        contextual_meta: Optional[MetaMusic] = None,
     ) -> dict[str, MusicInfo]:
         """异步汇总本地专辑证据并委托 MusicBrainz 来源链匹配。"""
         metas = await run_in_threadpool(AudioMetadataHelper.read_many, files)
-        album_meta = MetaMusic.from_album_context(directory.name, metas)
+        album_meta = _album_context_with_resource(directory, metas, contextual_meta)
         regions, scripts = self._music_release_preferences(
             list(music_release_regions) if music_release_regions is not None else None,
             list(music_release_scripts) if music_release_scripts is not None else None,
@@ -250,6 +291,7 @@ class MediaAlbumOwner(_MediaOwnerBase):
         path: Union[str, Path],
         music_release_regions: Optional[list[str]] = None,
         music_release_scripts: Optional[list[str]] = None,
+        contextual_meta: Optional[MetaMusic] = None,
     ) -> dict[str, MusicInfo]:
         """按目录级线索批量识别整张专辑并返回文件到曲目的映射。"""
         directory = Path(path)
@@ -263,12 +305,14 @@ class MediaAlbumOwner(_MediaOwnerBase):
             music_release_scripts,
         )
         custom_preference = music_release_regions is not None or music_release_scripts is not None
-        key = _album_directory_cache_key(directory, regions, scripts)
+        key = _album_directory_cache_key(directory, regions, scripts, contextual_meta)
         signature = self._album_directory_signature(directory, files)
         matched = self._album_dir_cache.resolve(
             key,
             signature,
             lambda: (
+                self._match_music_album_directory(directory, files, regions, scripts, contextual_meta)
+                if contextual_meta is not None else
                 self._match_music_album_directory(directory, files, regions, scripts)
                 if custom_preference
                 else self._match_music_album_directory(directory, files)
@@ -288,6 +332,7 @@ class MediaAlbumOwner(_MediaOwnerBase):
         path: Union[str, Path],
         music_release_regions: Optional[list[str]] = None,
         music_release_scripts: Optional[list[str]] = None,
+        contextual_meta: Optional[MetaMusic] = None,
     ) -> dict[str, MusicInfo]:
         """异步按目录级线索批量识别整张专辑。"""
         directory = Path(path)
@@ -301,12 +346,14 @@ class MediaAlbumOwner(_MediaOwnerBase):
             music_release_scripts,
         )
         custom_preference = music_release_regions is not None or music_release_scripts is not None
-        key = _album_directory_cache_key(directory, regions, scripts)
+        key = _album_directory_cache_key(directory, regions, scripts, contextual_meta)
         signature = self._album_directory_signature(directory, files)
         matched = await self._album_dir_cache.async_resolve(
             key,
             signature,
             lambda: (
+                self._async_match_music_album_directory(directory, files, regions, scripts, contextual_meta)
+                if contextual_meta is not None else
                 self._async_match_music_album_directory(directory, files, regions, scripts)
                 if custom_preference
                 else self._async_match_music_album_directory(directory, files)

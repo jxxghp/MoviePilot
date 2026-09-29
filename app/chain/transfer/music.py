@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Optional, Tuple, Union, cast
 
 from app.application.audio import AudioMetadataHelper
+from app.application.history import DownloadHistorySnapshot
 from app.chain.transfer.contract import _TransferOwnerBase
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
@@ -27,6 +28,56 @@ class MusicBatchContext:
     directory_evidence: dict[Tuple[str, str], MetaMusic] = field(default_factory=dict)
     album_evidence_by_main_key: dict[Tuple[str, str], MetaMusic] = field(default_factory=dict)
     resolved_contexts: dict[Tuple[str, str], tuple[MetaMusic, MusicInfo]] = field(default_factory=dict)
+
+
+def restore_music_resource_meta(
+        history: Optional[DownloadHistorySnapshot],
+        path: Path,
+        file_meta: Optional[MetaMusic] = None,
+) -> Optional[MetaMusic]:
+    """从原始种子主副标题补足文件的发行线索，不复用已丢弃的远端身份。
+
+    专辑字段只传到下载根及其碟片目录；全集或更深的独立专辑目录只继承
+    可信艺人。文件曲名、曲序和已有标签不被整包标题覆盖。
+    """
+    title = str(getattr(history, "torrent_name", None) or "")
+    description = str(getattr(history, "torrent_description", None) or "")
+    history_type = getattr(history, "type", None)
+    if history_type in (MediaType.MOVIE, MediaType.TV, MediaType.MOVIE.value, MediaType.TV.value):
+        return file_meta
+    if not title and not description:
+        return file_meta
+    root_text = getattr(history, "path", None)
+    root = Path(root_text) if root_text else None
+    if root and root != path and not path.is_relative_to(root):
+        return file_meta
+    resource = MetaMusic.parse_resource(title, description)
+    meta = deepcopy(file_meta) if file_meta else (
+        AudioMetadataHelper.read(path) if path.is_file() else AudioMetadataHelper.read_filename(path)
+    )
+    parent = path.parent.parent if MetaMusic.parse_disc_dir(path.parent.name) else path.parent
+    direct_release = bool(root and (root == path or root == parent))
+    collection = bool(re.search(
+        r"全集|专辑合集|專輯合集|\bdiscography\b|\bcomplete\s+(?:albums?|collection)\b|\d+\s*张专辑",
+        f"{title} {description}", re.IGNORECASE,
+    ))
+    collective = {music_text_key(value) for value in ("Various Artists", "Various", "VA", "群星", "众艺人", "眾藝人")}
+    artists = [artist for artist in resource.artists if music_text_key(artist) not in collective]
+    if not meta.artists and artists:
+        meta.artists = list(artists)
+    if not meta.album_artist and len(resource.artists) == 1:
+        meta.album_artist = resource.artists[0]
+    if direct_release and not collection:
+        album = resource.album
+        if root != path and not resource.track_number:
+            album = album or resource.title
+        if not meta.album and album:
+            meta.album = album
+        if not meta.year and resource.year:
+            meta.year = resource.year
+        if not meta.version and resource.version:
+            meta.version = resource.version
+    return meta
 
 
 def _music_directory_consensus(values: list[str]) -> Optional[str]:
