@@ -250,11 +250,15 @@ the narrow `app.sdk.scheduler` facade; internal Scheduler owners must not be
 re-exported from the package root, SDK or Compat.
 
 Complexity and concurrency governance covers the complete canonical execution
-surface rather than only public methods. `scripts/architecture/complexity.py --v2`
-uses complete AST child traversal to ratchet private/dunder/nested methods,
-class/file hotspots, and the `app/scheduler/` package, including owners nested
-under `Match`, `TryStar`, and other control-flow nodes. Its generated baseline
-is an evidence ledger, not permission to add another oversized owner.
+surface rather than only public methods. `scripts/architecture/complexity.py`
+checks Ruff C901 (McCabe complexity, limit 15) and PLR1702 (nested blocks, limit 5)
+throughout `app/**/*.py`, excluding only runtime plugin copies in `app/plugins/**`.
+Complete AST traversal maps diagnostics to stable private/dunder/nested function
+owners, including definitions under `Match` and `TryStar`. Existing over-limit
+functions may only decrease; growth is rejected even by `--write`, and reductions
+must be recorded before the check passes. `--report` also records method/class/file
+line-span hotspots for review, but physical line counts never block CI. The former
+v1/v2 line-budget gates are retired; see [code quality](../code-quality.md).
 `scripts/architecture/concurrency.py` resolves canonical imports and aliases for
 native Thread, Timer, thread/process executors, Process, TaskGroup, event-loop
 task submission, asyncio task/thread helpers, and executor hand-off calls. It

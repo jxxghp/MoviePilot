@@ -66,6 +66,22 @@ def test_unit_test_workflow_has_independent_host_architecture_gate():
     assert "scripts/architecture/ruff_ratchet.py --write" not in commands
     assert "scripts/architecture/mypy_ratchet.py --write" not in commands
     assert "scripts/architecture/service_locator.py" in commands
+    assert "scripts/architecture/complexity.py" in commands
+    assert "complexity.py --v2" not in commands
+    assert "--report complexity-report.json" in commands
+    complexity_step = next(
+        step for step in workflow["jobs"]["architecture-ratchets"]["steps"]
+        if step.get("name") == "Check structural complexity ratchet"
+    )
+    assert "--write" not in complexity_step["run"]
+    assert "|| true" not in complexity_step["run"]
+    assert not complexity_step.get("continue-on-error")
+    report_step = next(
+        step for step in workflow["jobs"]["architecture-ratchets"]["steps"]
+        if step.get("name") == "Upload complexity and source size report"
+    )
+    assert report_step["if"] == "always()"
+    assert report_step["with"]["path"] == "complexity-report.json"
     assert "scripts/startup/performance.py --check --repeat 3" in commands
     # 覆盖率分片跳过的文件必须恰好由门禁运行，否则会有测试在 CI 中无人执行
     gate_test_files = {
@@ -244,6 +260,7 @@ def test_upload_artifact_actions_share_node24_major():
         "pylint.yml": ["actions/upload-artifact@v7"],
         "site-adapter-collector.yml": ["actions/upload-artifact@v7"],
         "test.yml": [
+            "actions/upload-artifact@v7",
             "actions/upload-artifact@v7",
             "actions/upload-artifact@v7",
         ],

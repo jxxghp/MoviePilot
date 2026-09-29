@@ -20,11 +20,13 @@
 | RES-003 | `DELIVERED`（R3） | Outbox after_commit 失败只有内存 pending 标记，重启不可恢复 | `9d06f91bb`：持久 intent、唯一 handler、claim/fencing、重启回放、幂等和失败观测完整闭环 |
 | RES-004 | `DELIVERED`（R4） | Startup initializer 与插件市场存在多套 Transport/Adapter/Manager 构造 | `7f5b8b469` 至 `046b0b305`：构造回收到 composition，兼容门面消费同一 owner，canonical 无重复正式实现 |
 | RES-005 | `DELIVERED`（R5） | 审计声明、机器门禁、CI 与远端交付状态需要重新校准 | 当前文档、固定 80% 覆盖率门禁与规则一致；Pylint `10.00/10`、架构/兼容、真实启动和最终 exact-head GitHub CI 闭环，远端 `0/0` |
-R2 门禁现已完整覆盖私有、dunder、任意控制流嵌套方法、类、文件与
-`app/scheduler/`；`concurrency.py` 扫描完整宿主源码，按 canonical import/alias、
-TaskGroup、可证明的 loop/executor 来源和词法 owner 聚合数量。新增 owner、数量增长以及
-复杂度与静态质量事实下降后未刷新低水位都会阻断 CI；覆盖率只要求 Application 与 Domain
-达到固定 80%，行号移动和普通同名方法不会制造噪音。
+R2 原复杂度 v1/v2 实际使用源码行跨度，只覆盖 API、Application、Chain 和 Scheduler，
+且未强制固化下降后的低水位。2026-09-30 门禁调整将其替换为全宿主函数的 C901 圈复杂度
+（15）与 PLR1702 嵌套深度（5），源码尺寸降为观察报告；增长禁止写入，下降必须固化。
+范围、初始基线与后续建议见 [代码门禁说明](../code-quality.md)。
+`concurrency.py` 扫描完整宿主源码，按 canonical import/alias、TaskGroup、可证明的
+loop/executor 来源和词法 owner 聚合数量。新增 owner、数量增长以及静态质量事实下降后
+未刷新低水位都会阻断 CI；覆盖率只要求 Application 与 Domain 达到固定 80%。
 
 ## 1. 结论摘要
 

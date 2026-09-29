@@ -243,6 +243,23 @@ Ruff/Mypy 基线只允许收紧，不接受新增诊断或类型错误增长；�
 跳过测试或产物规避超时。Coverage 只接受 GitHub Actions 的 Ubuntu/Python 3.14、locked
 依赖和全量测试工件，本机 macOS 报告仅供诊断，不得写入并提交 canonical baseline。
 
+### 6.1 结构复杂度门禁
+
+复杂度按全宿主函数的 Ruff C901（上限 15）与 PLR1702（嵌套上限 5）检查，排除
+`app/plugins/**`。方法、类和文件行数只生成观察报告，注释、空行和格式换行不再消耗硬预算。
+原来的 `--v2` 行数检查已退役。阈值以内允许正常开发；存量超限函数不能新增或继续增长。
+
+```bash
+uv run --locked --no-sync python scripts/architecture/complexity.py --report /tmp/moviepilot-complexity-report.json
+# 仅在消除全部回退、确认真实下降后固化低水位
+uv run --locked --no-sync python scripts/architecture/complexity.py --write
+uv run --locked --no-sync python scripts/architecture/complexity.py
+```
+
+`--write` 拒绝接受已有基线上的增长；减少或删除热点后必须固化低水位。
+CI 上传 `complexity-report` 工件，门禁失败时也保留已生成的指标。指标含义、限制与后续扩围见
+[代码门禁说明](code-quality.md)。
+
 ### 7. 参考资源
 
 - [uv 官方文档](https://docs.astral.sh/uv/)
