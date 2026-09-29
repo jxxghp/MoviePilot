@@ -1318,6 +1318,27 @@ def test_stop_modules_drains_web_agent_tasks_before_persistence(monkeypatch):
     ]
 
 
+def test_stop_modules_closes_shared_redis_pool_last(monkeypatch):
+    """Redis 连接池必须在 Provider 撤销等仍会读写缓存的步骤之后关闭，避免关闭后被重连。"""
+    order = []
+    dependencies = _patch_module_shutdown_dependencies(monkeypatch)
+    monkeypatch.setattr(
+        modules_initializer,
+        "get_configured_agent_chat_persistence",
+        MagicMock(return_value=None),
+    )
+    monkeypatch.setattr(modules_initializer, "database_runtime_active", lambda: False)
+    dependencies["reset_module_providers"].side_effect = lambda: order.append(
+        "providers"
+    ) or True
+    dependencies["close_database"].side_effect = lambda: order.append("connection")
+    dependencies["redis"].side_effect = lambda: order.append("redis")
+    dependencies["async_redis"].side_effect = lambda: order.append("async-redis")
+
+    asyncio.run(modules_initializer.stop_modules())
+
+    assert order == ["providers", "connection", "redis", "async-redis"]
+
 def test_stop_modules_retains_providers_when_database_worker_remains_active(
     monkeypatch,
 ) -> None:

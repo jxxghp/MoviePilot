@@ -3,7 +3,7 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -580,6 +580,20 @@ def test_memory_backend_uses_zero_default_ttl():
 
     assert cache.get("key", region="zero_default_ttl") is None
 
+
+def test_redis_backend_close_keeps_shared_pool(monkeypatch):
+    """关闭单个 Redis 缓存不得关闭全部缓存共享的连接池，连接池由关闭流程统一收口。"""
+    helper = MagicMock()
+    async_helper = MagicMock()
+    async_helper.close = AsyncMock()
+    monkeypatch.setattr("app.adapters.cache.redis.RedisHelper", lambda: helper)
+    monkeypatch.setattr("app.adapters.cache.redis.AsyncRedisHelper", lambda: async_helper)
+
+    RedisBackend().close()
+    asyncio.run(AsyncRedisBackend().close())
+
+    helper.close.assert_not_called()
+    async_helper.close.assert_not_awaited()
 
 def test_redis_backend_treats_zero_ttl_as_expired():
     """

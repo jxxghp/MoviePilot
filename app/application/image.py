@@ -185,6 +185,9 @@ def reset_wallpaper_providers() -> None:
 class WallpaperHelper(metaclass=Singleton):
     """
     壁纸帮助类
+
+    壁纸缓存键不区分来源，启动装配与生命周期撤销时需要清空；每个方法只缓存一条地址，
+    因此固定使用进程内缓存（local_only），清空不触及 Redis，也不跨进程沿用旧来源的结果。
     """
 
     def clear_cache(self) -> None:
@@ -234,21 +237,21 @@ class WallpaperHelper(metaclass=Singleton):
         wallpaper = self.get_static_wallpaper()
         return [wallpaper] if wallpaper else []
 
-    @cached(maxsize=1, ttl=3600)
+    @cached(maxsize=1, ttl=3600, local_only=True)
     def get_tmdb_wallpaper(self) -> Optional[str]:
         """
         获取TMDB每日壁纸
         """
         return _tmdb_wallpaper_provider()
 
-    @cached(maxsize=1, ttl=3600, skip_empty=True)
+    @cached(maxsize=1, ttl=3600, skip_empty=True, local_only=True)
     def get_tmdb_wallpapers(self, num: int = 10) -> List[str]:
         """
         获取7天的TMDB每日壁纸
         """
         return _tmdb_wallpaper_list_provider(num)
 
-    @cached(maxsize=1, ttl=3600)
+    @cached(maxsize=1, ttl=3600, local_only=True)
     def get_bing_wallpaper(self) -> Optional[str]:
         """
         获取Bing每日壁纸
@@ -266,7 +269,7 @@ class WallpaperHelper(metaclass=Singleton):
                 print(str(err))
         return None
 
-    @cached(maxsize=1, ttl=3600, skip_empty=True)
+    @cached(maxsize=1, ttl=3600, skip_empty=True, local_only=True)
     def get_bing_wallpapers(self, num: int = 7) -> List[str]:
         """
         获取7天的Bing每日壁纸
@@ -283,21 +286,21 @@ class WallpaperHelper(metaclass=Singleton):
                 print(str(err))
         return []
 
-    @cached(maxsize=1, ttl=3600)
+    @cached(maxsize=1, ttl=3600, local_only=True)
     def get_mediaserver_wallpaper(self) -> Optional[str]:
         """
         获取媒体服务器壁纸
         """
         return _mediaserver_wallpaper_provider()
 
-    @cached(maxsize=1, ttl=3600, skip_empty=True)
+    @cached(maxsize=1, ttl=3600, skip_empty=True, local_only=True)
     def get_mediaserver_wallpapers(self, num: int = 10) -> List[str]:
         """
         获取媒体服务器壁纸列表
         """
         return _mediaserver_wallpaper_list_provider(num)
 
-    @cached(maxsize=1, ttl=3600)
+    @cached(maxsize=1, ttl=3600, local_only=True)
     def get_customize_wallpaper(self) -> Optional[str]:
         """
         获取自定义壁纸api壁纸
@@ -307,7 +310,7 @@ class WallpaperHelper(metaclass=Singleton):
             return wallpaper_list[0]
         return None
 
-    @cached(maxsize=1, ttl=3600, skip_empty=True)
+    @cached(maxsize=1, ttl=3600, skip_empty=True, local_only=True)
     def get_customize_wallpapers(self) -> List[str]:
         """
         获取自定义壁纸api壁纸

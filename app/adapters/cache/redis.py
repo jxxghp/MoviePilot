@@ -781,8 +781,11 @@ class RedisBackend(AtomicCacheBackend):
         return self.redis_helper.items(region=region)
 
     def close(self) -> None:
-        """关闭同步 Redis 连接池。"""
-        self.redis_helper.close()
+        """释放当前缓存实例；共享的 Redis 连接池不在此关闭。
+
+        所有 Redis 缓存共用同一个 ``RedisHelper`` 连接池，由关闭流程的「Redis缓存连接」步骤统一关闭。
+        单个缓存在这里关池会断开其他仍在使用的缓存，随后又被自动重连。
+        """
 
     @staticmethod
     def is_redis() -> bool:
@@ -850,8 +853,7 @@ class AsyncRedisBackend(AsyncCacheBackend):
             yield item
 
     async def close(self) -> None:
-        """关闭异步 Redis 连接池。"""
-        await self.redis_helper.close()
+        """释放当前异步缓存实例；共享的异步 Redis 连接池由关闭流程的「异步Redis缓存连接」步骤统一关闭。"""
 
     @staticmethod
     def is_redis() -> bool:
