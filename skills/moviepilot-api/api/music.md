@@ -66,6 +66,19 @@ Music recognition, exploration, album and artist navigation, and recognition-cac
   Manual album selection may correct names using unique positions, but still
   rejects clear duration conflicts. An incomplete manual alignment stops before
   file operations and asks the caller to check the selected edition and tracks.
+- A concrete `musicbrainz_release_id` uses direct release lookup; a release-group
+  ID constrains release search. Generic inbox directory names are not album
+  evidence. All local logical tracks must align, even for a partial download.
+  Conflicting identities, current edition years, and performer tags reject a
+  candidate. Near ties with different recording sequences remain unmatched;
+  equivalent editions in one release group retain region/script preferences.
+  Successful `raw_data.match_score` is a ranking score, not a probability, and
+  `match_coverage=1` covers the supplied files, not necessarily the full album.
+  CUE images contribute logical tracks/durations and keep an album identity;
+  changing the CUE invalidates the directory match cache.
+- Track-title discovery uses the Recording search index and its related
+  releases. Release search has no `recording` field. At similar relevance,
+  releases supported by multiple recordings precede editions of one single.
 
 ## Operations
 

@@ -215,6 +215,63 @@ def music_track_title_is_weak(meta: MetaMusic) -> bool:
     return bool(re.fullmatch(r"(?:(?:track|audio|音轨|曲目)[\s._-]*\d*|unknown|untitled)", title, re.I))
 
 
+def music_album_title_is_weak(meta: MetaMusic) -> bool:
+    """普通收件目录不是专辑证据，标签或种子明确提供的同名专辑仍有效。"""
+    title = meta.album or meta.title
+    if not title:
+        return True
+    source = meta.field_sources.get("album" if meta.album else "title")
+    if source in {"tag", "album_tags", "cue", "torrent", "manual", "remote"}:
+        return False
+    return music_text_key(title) in {
+        "music", "musics", "audio", "downloads", "download", "inbox", "unknown", "untitled",
+        "various", "variousartists", "va", "音乐", "音樂", "下载", "下載", "未分类", "未分類",
+    }
+
+
+def expand_music_tracks(metas: list[MetaMusic]) -> tuple[list[MetaMusic], list[int]]:
+    """把整轨 CUE 投影为用于匹配的逻辑曲目，并保留各曲所属物理文件索引。"""
+    tracks: list[MetaMusic] = []
+    owners: list[int] = []
+    for owner, meta in enumerate(metas):
+        if meta.organization_error:
+            return [], []
+        if meta.music_layout != "image_cue":
+            tracks.append(meta)
+            owners.append(owner)
+            continue
+        if not meta.cue_tracks:
+            return [], []
+        for index, cue in enumerate(meta.cue_tracks):
+            start, number = cue.get("start_frame"), cue.get("number")
+            end = meta.cue_tracks[index + 1].get("start_frame") if index + 1 < len(meta.cue_tracks) else (
+                meta.duration * 75 if meta.duration else None
+            )
+            if not isinstance(start, int) or start < 0 or not isinstance(number, int) or not 1 <= number <= 999:
+                return [], []
+            if end is not None and (not isinstance(end, (int, float)) or end <= start):
+                return [], []
+            track = MetaMusic.from_dict(meta.to_dict())
+            track.title = str(cue.get("title") or f"Track {number}")
+            track.field_sources["title"] = "cue" if cue.get("title") else "filename"
+            track.artists = [str(cue["artist"])] if cue.get("artist") else list(meta.artists)
+            track.track_number = number
+            track.duration = round((end - start) / 75) if end is not None else None
+            track.isrc = str(cue["isrc"]) if cue.get("isrc") else None
+            track.field_sources["track_number"] = "cue"
+            for key in ("duration", "isrc"):
+                if getattr(track, key) is not None:
+                    track.field_sources[key] = "cue"
+                else:
+                    track.field_sources.pop(key, None)
+            track.music_type = "recording"
+            track.music_layout, track.cue_filename, track.cue_tracks = None, None, []
+            track.media_id, track.media_source, track.musicbrainz_release_track_id = None, None, None
+            tracks.append(track)
+            owners.append(owner)
+    return tracks, owners
+
+
 def _alignment_title_key(title: Optional[str]) -> str:
     """对位仅忽略名称排版差异，保留 live/remix 等版本正文和纯符号歌曲名。"""
     return music_text_key(title) or re.sub(r"\s+", "", normalize("NFKC", str(title or ""))).casefold()
@@ -234,6 +291,10 @@ def _music_track_pair_score(meta: MetaMusic, track: MusicInfo, allow_title_overr
         if meta.media_id != track.media_id and not allow_title_override:
             return 0.0
         identity_match = identity_match or meta.media_id == track.media_id
+    if (not allow_title_override and meta.artists and track.artists
+            and meta.field_sources.get("artists") not in {"directory", "torrent", "album_tags"}
+            and not music_artist_matches(track, meta.artists)):
+        return 0.0
     duration_close = False
     if meta.duration and track.duration:
         delta = abs(meta.duration - track.duration)
@@ -434,6 +495,15 @@ def music_year_matches(music: MusicInfo, meta: MetaMusic) -> bool:
         return int(music.year) == int(meta.year)
     except (TypeError, ValueError):
         return str(music.year).strip() == str(meta.year).strip()
+
+
+def music_release_year_matches(music: MusicInfo, meta: MetaMusic) -> bool:
+    """具体发行按当前发行年核验；已分离的原始年不能再冒充当前年制造再版冲突。"""
+    if meta.release_year:
+        return not music.release_year or meta.release_year == music.release_year
+    if meta.original_year or (meta.musicbrainz_release_id and meta.musicbrainz_release_id == music.musicbrainz_release_id):
+        return True
+    return music_year_matches(music, meta) or bool(meta.year and str(meta.year) == str(music.original_year))
 
 
 def _isrc_key(value: Optional[str]) -> Optional[str]:

@@ -1097,8 +1097,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8963,
-  "edge_sha256": "dd3d4f1797a5e9d4094a118a571323123d70086ff4e26597f6bb7dbe85b21493",
+  "edge_count": 8962,
+  "edge_sha256": "5498df1985d898c3224ff07cea295817da004a04bb08283bd642a32f143c9354",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -5516,7 +5516,6 @@
     "app.chain.transfer.facade -> app.runtime",
     "app.chain.transfer.facade -> app.runtime.reload",
     "app.chain.transfer.filter -> app.application",
-    "app.chain.transfer.filter -> app.application.audio",
     "app.chain.transfer.filter -> app.application.configuration",
     "app.chain.transfer.filter -> app.application.directory",
     "app.chain.transfer.filter -> app.application.history",

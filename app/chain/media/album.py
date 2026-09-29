@@ -16,7 +16,7 @@ from app.domain.context import (
     MusicInfo,
 )
 from app.domain.meta.metamusic import MetaMusic
-from app.domain.music import align_music_tracks
+from app.domain.music import align_music_tracks, expand_music_tracks, music_text_key
 from app.foundation.text import convert as zhconv_convert
 from app.runtime.execution import run_in_threadpool
 
@@ -36,7 +36,8 @@ def _album_directory_cache_key(
     """将发行偏好及资源证据纳入缓存键，同目录更换种子线索时重新识别。"""
     evidence = {
         key: getattr(contextual_meta, key, None)
-        for key in ("album", "artists", "album_artist", "year", "version")
+        for key in ("album", "artists", "album_artist", "year", "version", "musicbrainz_release_id",
+                    "musicbrainz_release_group_id", "original_year", "release_year", "field_sources")
     } if contextual_meta else None
     if evidence and evidence["album_artist"]:
         evidence["artists"] = [evidence["album_artist"]]
@@ -52,11 +53,38 @@ def _album_context_with_resource(
 ) -> MetaMusic:
     """以文件自身专辑线索为先，用绑定到本次文件的资源证据补足目录查询。"""
     album_meta = MetaMusic.from_album_context(directory.name, metas)
+    for key in ("album", "album_artist"):
+        tagged = {
+            music_text_key(str(getattr(meta, key))) for meta in metas
+            if getattr(meta, key) and meta.field_sources.get(key) in {"tag", "cue", "manual", "album_tags"}
+        }
+        if len(tagged) > 1:
+            album_meta.organization_error = "同一发行范围内的专辑标签冲突，请分别选择发行版本"
+        elif tagged:
+            album_meta.field_sources[key] = "album_tags"
+            if len(metas) == 1:
+                setattr(album_meta, key, getattr(metas[0], key))
+                if key == "album":
+                    album_meta.title = metas[0].album or album_meta.title
+                elif key == "album_artist":
+                    album_meta.artists = [str(metas[0].album_artist)]
+    for key in ("musicbrainz_release_id", "musicbrainz_release_group_id", "release_year", "original_year"):
+        values = {getattr(meta, key) for meta in metas if getattr(meta, key)}
+        if len(values) > 1 and key != "original_year":
+            album_meta.organization_error = "同一发行范围内的发行身份或年份冲突，请核对标签"
+        elif len(values) == 1:
+            setattr(album_meta, key, next(iter(values)))
+            album_meta.field_sources[key] = "album_tags"
+        elif contextual_meta:
+            setattr(album_meta, key, getattr(contextual_meta, key))
+            if key in contextual_meta.field_sources:
+                album_meta.field_sources[key] = contextual_meta.field_sources[key]
     if not contextual_meta:
         return album_meta
     if contextual_meta.album and not any(meta.album for meta in metas):
         album_meta.album = contextual_meta.album
         album_meta.title = contextual_meta.album
+        album_meta.field_sources["album"] = contextual_meta.field_sources.get("album", "torrent")
     if not album_meta.artists:
         album_meta.artists = (
             [contextual_meta.album_artist] if contextual_meta.album_artist
@@ -120,9 +148,16 @@ class MediaAlbumOwner(_MediaOwnerBase):
         directory: Path,
         files: list[Path],
     ) -> AlbumSignature:
-        """按相对路径、大小和纳秒修改时间生成目录缓存签名。"""
+        """把音频及同目录 CUE 的路径、大小和修改时间纳入缓存签名。"""
         signature: list[tuple[str, int, int]] = []
-        for path in files:
+        paths = set(files)
+        for parent in {path.parent for path in files}:
+            try:
+                paths.update(sorted(path for path in parent.iterdir()
+                                    if not path.name.startswith(".") and path.suffix.casefold() == ".cue" and path.is_file())[:32])
+            except OSError:
+                continue
+        for path in sorted(paths):
             try:
                 stat = path.stat()
             except OSError:
@@ -171,16 +206,7 @@ class MediaAlbumOwner(_MediaOwnerBase):
         album: MusicAlbumInfo,
     ) -> dict[str, MusicInfo]:
         """读取本地标签，并把手动选择发行版的曲目对齐到文件。"""
-        metas = AudioMetadataHelper.read_many(files)
-        return {
-            str(file.resolve()): info
-            for file, info in cls._align_music_album_tracks(
-                files,
-                metas,
-                album.tracks,
-                allow_title_override=True,
-            ).items()
-        }
+        return cls._album_track_map(files, AudioMetadataHelper.read_many(files), album, allow_title_override=True)
 
     @classmethod
     def _album_track_map(
@@ -188,17 +214,28 @@ class MediaAlbumOwner(_MediaOwnerBase):
         files: list[Path],
         metas: list[MetaMusic],
         album: MusicAlbumInfo,
+        *,
+        allow_title_override: bool = False,
     ) -> dict[str, MusicInfo]:
-        """将专辑分类与识别事实传递给每条已对位曲目。"""
-        aligned = cls._align_music_album_tracks(files, metas, album.tracks)
-        for info in aligned.values():
+        """逻辑曲目全部对位后才输出对应物理文件，整轨始终保持 Album 身份。"""
+        if len(files) != len(metas):
+            return {}
+        logical, owners = expand_music_tracks(metas)
+        aligned = align_music_tracks(logical, album.tracks, allow_title_override=allow_title_override)
+        result: dict[str, MusicInfo] = {}
+        for index, path in enumerate(files):
+            positions = [position for position, owner in enumerate(owners) if owner == index]
+            if not positions or any(position not in aligned for position in positions):
+                continue
+            info = album.to_music_info() if metas[index].music_layout == "image_cue" else deepcopy(album.tracks[aligned[positions[0]]])
+            for key in ("match_score", "match_coverage", "match_basis"):
+                if key in album.raw_data:
+                    info.raw_data[key] = album.raw_data[key]
             info.set_library_category(album.library_category)
             info.classification = deepcopy(album.classification)
             info.classification_facts = dict(album.classification_facts)
-        return {
-            str(file.resolve()): info
-            for file, info in aligned.items()
-        }
+            result[str(path.resolve())] = info
+        return result
 
     def _match_music_album_directory(
         self,
@@ -211,13 +248,19 @@ class MediaAlbumOwner(_MediaOwnerBase):
         """同步汇总本地专辑证据并委托 MusicBrainz 来源链匹配。"""
         metas = AudioMetadataHelper.read_many(files)
         album_meta = _album_context_with_resource(directory, metas, contextual_meta)
+        logical, _owners = expand_music_tracks(metas)
+        if not logical or album_meta.organization_error or (
+            len(logical) < self._album_match_min_files
+            and not (album_meta.musicbrainz_release_id or album_meta.musicbrainz_release_group_id)
+        ):
+            return {}
         regions, scripts = self._music_release_preferences(
             list(music_release_regions) if music_release_regions is not None else None,
             list(music_release_scripts) if music_release_scripts is not None else None,
         )
         album = MusicBrainzChain().match_music_album(
             album_meta,
-            metas,
+            logical,
             music_release_regions=list(regions),
             music_release_scripts=list(scripts),
         )
@@ -236,13 +279,19 @@ class MediaAlbumOwner(_MediaOwnerBase):
         """异步汇总本地专辑证据并委托 MusicBrainz 来源链匹配。"""
         metas = await run_in_threadpool(AudioMetadataHelper.read_many, files)
         album_meta = _album_context_with_resource(directory, metas, contextual_meta)
+        logical, _owners = expand_music_tracks(metas)
+        if not logical or album_meta.organization_error or (
+            len(logical) < self._album_match_min_files
+            and not (album_meta.musicbrainz_release_id or album_meta.musicbrainz_release_group_id)
+        ):
+            return {}
         regions, scripts = self._music_release_preferences(
             list(music_release_regions) if music_release_regions is not None else None,
             list(music_release_scripts) if music_release_scripts is not None else None,
         )
         album = await MusicBrainzChain().async_match_music_album(
             album_meta,
-            metas,
+            logical,
             music_release_regions=list(regions),
             music_release_scripts=list(scripts),
         )
@@ -263,7 +312,7 @@ class MediaAlbumOwner(_MediaOwnerBase):
         if not directory.is_dir():
             return {}
         files = self._directory_audio_files(directory, file_paths) if file_paths is not None else self._directory_audio_files(directory)
-        if len(files) < self._album_match_min_files:
+        if not files:
             return {}
         regions, scripts = self._music_release_preferences(
             music_release_regions,
@@ -309,7 +358,7 @@ class MediaAlbumOwner(_MediaOwnerBase):
             await run_in_threadpool(self._directory_audio_files, directory, file_paths)
             if file_paths is not None else await run_in_threadpool(self._directory_audio_files, directory)
         )
-        if len(files) < self._album_match_min_files:
+        if not files:
             return {}
         regions, scripts = self._music_release_preferences(
             music_release_regions,

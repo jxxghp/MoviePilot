@@ -4,7 +4,6 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Dict, Optional, Protocol, Union, cast
 
-from app.application.audio import AudioMetadataHelper
 from app.application.configuration import (
     get_chain_runtime_config_snapshot,
 )
@@ -32,10 +31,10 @@ from app.domain.meta.metamusic import MetaMusic
 from app.domain.music import (
     music_album_matches,
     music_artist_matches,
+    music_release_year_matches,
     music_title_matches,
     music_track_title_is_weak,
     music_version_matches,
-    music_year_matches,
 )
 from app.runtime.log import logger
 from app.schemas.transfer import TransferInfo
@@ -203,7 +202,7 @@ class _MusicFileFilterBase(_TransferOwnerBase):
         按目录缓存，同一专辑目录内的后续文件不会重复请求远端。
         """
         # 目录级匹配需要读取本地音频时长，远端存储文件无法参与
-        if file_meta.media_id or getattr(file_item, "storage", "local") != "local":
+        if (file_meta.media_id and not file_meta.musicbrainz_release_id) or getattr(file_item, "storage", "local") != "local":
             return file_meta, None
         try:
             matched = MediaChain().recognize_music_album_directory(
@@ -221,11 +220,12 @@ class _MusicFileFilterBase(_TransferOwnerBase):
             return file_meta, None
         weak_title = music_track_title_is_weak(file_meta)
         evidence_matches = (
-            (not file_meta.artists or music_artist_matches(info, file_meta.artists))
+            (not file_meta.artists or file_meta.field_sources.get("artists") in {"directory", "torrent", "album_tags"}
+             or music_artist_matches(info, file_meta.artists))
             and (weak_title or music_title_matches(info, file_meta.title))
             and (not file_meta.album or not info.album or music_album_matches(info, file_meta.album))
             and ((weak_title and not file_meta.version) or music_version_matches(info, file_meta))
-            and music_year_matches(info, file_meta)
+            and music_release_year_matches(info, file_meta)
         )
         if not evidence_matches:
             logger.warning(
@@ -388,9 +388,7 @@ class FileFilterMixin(_TransferOwnerBase):
         ]
         if not audio_paths:
             return {}, None
-        image_paths = {path for path in audio_paths if AudioMetadataHelper.read(path).music_layout == "image_cue"}
-        aligned_tracks = MediaChain._align_selected_music_album([path for path in audio_paths if path not in image_paths], album)
-        aligned_tracks.update({str(path.resolve()): album.to_music_info() for path in image_paths})
+        aligned_tracks = MediaChain._align_selected_music_album(audio_paths, album)
         if len(aligned_tracks) != len(audio_paths):
             return {}, (
                 f"所选专辑只能对齐 {len(aligned_tracks)} / {len(audio_paths)} "

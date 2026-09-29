@@ -539,6 +539,16 @@ SSE 的 `candidate_items` 是站点原始返回数量，`match_counts` 记录身
 重复版本、同分候选和明显时长冲突保留未匹配；手选发行允许按唯一位置纠正旧曲名，
 但不绕过时长冲突。手选批次不能完整对位时会在文件操作前返回核对提示。
 
+目录匹配优先直查明确的 `musicbrainz_release_id`，`musicbrainz_release_group_id` 只约束发行搜索。
+普通 `Music`/`inbox` 等目录名不作为专辑名；真实标签或种子明确给出的同名作品仍可搜索。
+曲名反查使用 MusicBrainz 的 Recording 搜索及其关联发行；Release 搜索不支持 `recording` 字段。
+同等搜索相关度优先检查被多首录音共同命中的发行，避免单曲的多个版本占满候选预算。
+候选必须覆盖全部本地逻辑曲目；部分下载不要求覆盖远端专辑的全部歌曲。
+身份、当前发行年和明确艺人冲突不能靠其它分数抵消；原始年份只辅助排名。
+不同录音序列的近分候选不自动采用，同发行组且录音序列相同的地区/文字版本沿用用户偏好。
+匹配成功时 `raw_data.match_score` 是 0–100 的排序分数，不是概率；`match_coverage=1` 仅表示当前输入文件全覆盖。
+整轨 CUE 以逻辑歌曲数和相邻索引时长参与匹配，返回仍为物理文件的专辑身份；修改 CUE 会使目录缓存失效。
+
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
 | GET | `/api/v1/media/search` | 当 `type=music` 或指定音乐 `media_source` 时按歌曲或专辑关键词搜索音乐元数据；艺术家统一由 `type=person` 搜索，支持 TMDB 与 MusicBrainz 来源。参数：`title`、`type`、`count`、可重复的 `media_source` 枚举，以及可选的 `music_type` 实体过滤 |

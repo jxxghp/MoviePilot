@@ -417,17 +417,16 @@ def test_async_album_fallback_propagates_cancellation_during_path_check(
 
 
 def test_recognize_album_directory_skips_single_file(tmp_path, media_chain, monkeypatch):
-    """单文件目录不走专辑匹配，交给单曲识别链路。"""
+    """没有专辑证据的普通单文件目录不发起整专查询，整轨 CUE 另按逻辑曲数判断。"""
     album_dir = tmp_path / "单曲"
     album_dir.mkdir()
     (album_dir / "晴天.wav").write_bytes(b"RIFF")
 
-    def fake_run_module(method, **kwargs):
-        raise AssertionError("单文件目录不应触发专辑匹配")
-
-    monkeypatch.setattr(media_chain, "_match_music_album_directory", fake_run_module)
+    source = Mock(match_music_album=Mock(side_effect=AssertionError("无专辑证据的单文件不应发起查询")))
+    monkeypatch.setattr("app.chain.media.album.MusicBrainzChain", Mock(return_value=source))
 
     assert media_chain.recognize_music_album_directory(album_dir) == {}
+    source.match_music_album.assert_not_called()
 
 
 def test_recognize_album_directory_invalidates_cache_after_same_count_rename(

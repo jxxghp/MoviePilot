@@ -19,7 +19,9 @@ from app.domain.media import is_media_source_enabled, is_media_source_selected
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.music import (
+    align_music_tracks,
     music_album_matches,
+    music_album_title_is_weak,
     music_artist_affix_matches,
     music_artist_matches,
     music_base_title,
@@ -27,6 +29,7 @@ from app.domain.music import (
     music_text_key,
     music_title_matches,
     music_titles,
+    music_track_title_is_weak,
     music_version_matches,
     music_year_matches,
     unique_music_texts,
@@ -806,14 +809,14 @@ class MusicBrainzModule(_ModuleBase):
         适用于无标签整专目录：用专辑名、歌手搜索候选发行版本，再用曲目数、
         总时长和逐曲时长相似度打分，选出最可信的版本并返回其曲目表。
         """
-        if not tracks:
+        if not tracks or meta.organization_error:
             return None
         preference = self._release_preference(
             music_release_regions,
             music_release_scripts,
         )
         details: list[dict[str, Any]] = []
-        releases = self._search_release_candidates(
+        releases = [{"id": meta.musicbrainz_release_id}] if meta.musicbrainz_release_id else self._search_release_candidates(
             meta,
             tracks,
             limit=limit,
@@ -835,14 +838,14 @@ class MusicBrainzModule(_ModuleBase):
             music_release_scripts: Optional[list[str]] = None,
     ) -> Optional[MusicAlbumInfo]:
         """异步按目录线索和曲目特征匹配 MusicBrainz 发行版本。"""
-        if not tracks:
+        if not tracks or meta.organization_error:
             return None
         preference = self._release_preference(
             music_release_regions,
             music_release_scripts,
         )
         details: list[dict[str, Any]] = []
-        releases = await self._async_search_release_candidates(
+        releases = [{"id": meta.musicbrainz_release_id}] if meta.musicbrainz_release_id else await self._async_search_release_candidates(
             meta,
             tracks,
             limit=limit,
@@ -866,24 +869,40 @@ class MusicBrainzModule(_ModuleBase):
             preference: Optional[_MusicReleasePreference] = None,
     ) -> Optional[MusicAlbumInfo]:
         """对已获取的发行详情统一打分并投影最佳专辑。"""
-        best_album: Optional[MusicAlbumInfo] = None
-        best_score = 0.0
-        best_key: Optional[tuple[float, int, int]] = None
         selected_preference = preference or cls._release_preference()
+        ranked: list[tuple[float, tuple[int, int], MusicAlbumInfo]] = []
+        seen: set[str] = set()
         for detail in details:
+            release_id = str(detail.get("id") or "")
+            if not release_id or release_id in seen:
+                continue
+            seen.add(release_id)
             summary = cls._release_track_summary(detail)
             score = cls._score_release(meta, tracks, detail, summary)
-            region_rank, script_rank = cls._release_preference_sort_key(
-                detail,
-                selected_preference,
-            )
-            candidate_key = (score, -region_rank, -script_rank)
-            if best_key is None or candidate_key > best_key:
-                best_score = score
-                best_key = candidate_key
-                best_album = cls._release_to_album(detail)
-        # 得分低于阈值时宁可不匹配，避免把曲目写到错误的专辑上
-        return best_album if best_score >= cls._album_match_threshold else None
+            album = cls._release_to_album(detail)
+            if album and score > 0:
+                ranked.append((score, cls._release_preference_sort_key(detail, selected_preference), album))
+        if not ranked:
+            return None
+        ranked.sort(key=lambda entry: (-entry[0], entry[1]))
+        best_score, _preference, best = ranked[0]
+        if best_score < cls._album_match_threshold:
+            return None
+        equivalent = cls._release_content_key(best)
+        for score, _rank, candidate in ranked[1:]:
+            if best_score - score <= 5 and cls._release_content_key(candidate) != equivalent:
+                return None
+        best.raw_data.update(match_score=round(best_score, 2), match_coverage=1.0,
+                             match_basis="release_id" if meta.musicbrainz_release_id else "track_evidence")
+        return best
+
+    @staticmethod
+    def _release_content_key(album: MusicAlbumInfo) -> tuple[Optional[str], tuple[tuple[int, int, str], ...]]:
+        """同发行组且录音序列一致的文字/地区版本可按偏好选取，其他近分结果保持歧义。"""
+        return (album.musicbrainz_release_group_id or album.musicbrainz_release_id, tuple(sorted(
+            (track.disc_number or 1, track.track_number or 0, track.media_id or "")
+            for track in album.tracks
+        )))
 
     _album_match_threshold = 60.0
 
@@ -903,8 +922,6 @@ class MusicBrainzModule(_ModuleBase):
                 request.path, params=request.params
             )
             self._merge_release_candidates(releases, seen, payload)
-            if len(releases) >= search_limit:
-                break
         return self._rank_release_candidates(
             releases,
             preference or self._release_preference(),
@@ -926,8 +943,6 @@ class MusicBrainzModule(_ModuleBase):
                 request.path, params=request.params
             )
             self._merge_release_candidates(releases, seen, payload)
-            if len(releases) >= search_limit:
-                break
         return self._rank_release_candidates(
             releases,
             preference or self._release_preference(),
@@ -941,8 +956,8 @@ class MusicBrainzModule(_ModuleBase):
     ) -> list[dict[str, Any]]:
         """在相近搜索相关度内优先目标地区与字形，保留强相关性边界。"""
 
-        def sort_key(release: dict[str, Any]) -> tuple[int, int, int, int]:
-            """相关度每五分成组，组内应用发行偏好并保留原始得分。"""
+        def sort_key(release: dict[str, Any]) -> tuple[int, int, int, int, int]:
+            """同等相关度先看多首录音的共同支持，再应用地区和字形偏好。"""
             try:
                 score = int(release.get("score") or 0)
             except (TypeError, ValueError):
@@ -951,7 +966,7 @@ class MusicBrainzModule(_ModuleBase):
                 release,
                 preference,
             )
-            return -(score // 5), region_rank, script_rank, -score
+            return -(score // 5), -len(release.get("_recording_hits") or []), region_rank, script_rank, -score
 
         return sorted(releases, key=sort_key)
 
@@ -961,12 +976,27 @@ class MusicBrainzModule(_ModuleBase):
             seen: set[str],
             payload: Optional[dict[str, Any]],
     ) -> None:
-        """按首次命中顺序合并并去重 Release 搜索响应。"""
-        for item in (payload or {}).get("releases") or []:
+        """合并发行搜索与录音搜索关联的发行，保留不同录音共同支持的证据。"""
+        candidates = list((payload or {}).get("releases") or [])
+        for recording in (payload or {}).get("recordings") or []:
+            candidates.extend({**release, "score": recording.get("score", 0),
+                               "_recording_hits": [recording["id"]] if recording.get("id") else []}
+                              for release in recording.get("releases") or [])
+        existing = {item["id"]: item for item in releases}
+        for item in candidates:
             release_id = item.get("id")
             if release_id and release_id not in seen:
                 seen.add(release_id)
-                releases.append(item)
+                copied = dict(item)
+                releases.append(copied)
+                existing[release_id] = copied
+            elif release_id and release_id in existing:
+                previous = existing[release_id]
+                previous["_recording_hits"] = sorted(set(previous.get("_recording_hits") or []) | set(item.get("_recording_hits") or []))
+                try:
+                    previous["score"] = max(int(previous.get("score") or 0), int(item.get("score") or 0))
+                except (TypeError, ValueError):
+                    pass
 
     @classmethod
     def _release_search_requests(
@@ -975,11 +1005,11 @@ class MusicBrainzModule(_ModuleBase):
             tracks: list[MetaMusic],
             limit: int,
     ) -> list[_MusicBrainzRequestPlan]:
-        """构造发行候选查询计划，统一同步与异步的限额和参数。"""
+        """曲名必须查询 recording 索引，再从响应提取发行；release 索引不支持 recording 字段。"""
         normalized_limit = max(1, min(limit, 25))
         return [
             _MusicBrainzRequestPlan(
-                path="/release",
+                path="/recording" if query.startswith("(") else "/release",
                 params={
                     "query": query,
                     "limit": normalized_limit,
@@ -1013,7 +1043,9 @@ class MusicBrainzModule(_ModuleBase):
     def _release_queries(cls, meta: MetaMusic, tracks: list[MetaMusic]) -> list[str]:
         """构造专辑搜索表达式：优先专辑名+歌手，无专辑线索时用曲名兜底。"""
         queries: list[str] = []
-        album_title = meta.album or meta.title
+        if meta.musicbrainz_release_group_id:
+            return [f'rgid:{cls._escape_query(meta.musicbrainz_release_group_id)}']
+        album_title = None if music_album_title_is_weak(meta) else meta.album or meta.title
         artist = meta.artists[0] if meta.artists else meta.album_artist
         if album_title:
             if artist:
@@ -1023,7 +1055,7 @@ class MusicBrainzModule(_ModuleBase):
             queries.append(f'release:"{cls._escape_query(album_title)}"')
         # 目录名无意义时（如 Various Artists 合集），用代表性曲名反查所属发行版本
         titles = cls._unique_texts(
-            [track.title for track in tracks if track.title and not track.title.strip().isdigit()]
+            [track.title for track in tracks if track.title and not music_track_title_is_weak(track)]
         )[:3]
         if titles:
             recording_clause = " OR ".join(
@@ -1062,75 +1094,49 @@ class MusicBrainzModule(_ModuleBase):
             summary: list[dict[str, Any]],
     ) -> float:
         """给候选发行版本打分（0-100），综合标题、歌手、曲目数和时长相似度。"""
-        local_count = len(tracks)
-        release_count = len(summary)
-        if not release_count:
+        album = cls._release_to_album(detail)
+        if not album or not tracks or len(album.tracks) != len(summary):
             return 0.0
-        # 曲目数差异过大直接排除，避免单曲误命中整专或反之
-        diff = abs(local_count - release_count)
-        if diff > max(4, int(local_count * 0.5)):
+        for field in ("musicbrainz_release_id", "musicbrainz_release_group_id"):
+            expected = getattr(meta, field)
+            if expected and expected != getattr(album, field):
+                return 0.0
+        if meta.release_year and album.year and meta.release_year != album.year:
             return 0.0
-        # 本地文件比发行版本多出的曲目无法被覆盖，超出容忍范围视为错误候选
-        if local_count > release_count and diff > max(1, int(release_count * 0.25)):
+        known_title = not music_album_title_is_weak(meta)
+        title_sim = cls._text_similarity(meta.album or meta.title, album.title) if known_title else 0.0
+        if known_title and title_sim < 0.7 and not music_album_matches(album.to_music_info(), meta.album or meta.title):
             return 0.0
-        score = 0.0
-        # 标题相似度：专辑目录名或文件标签中的专辑名/曲名
-        title_hints = cls._unique_texts([meta.album, meta.title])
-        title_sim = max(
-            (cls._text_similarity(hint, detail.get("title")) for hint in title_hints),
-            default=0.0,
-        )
-        artist_names = cls._artist_credits(detail.get("artist-credit"))[0]
-        if meta.artists and artist_names:
-            artist_sim = max(
-                cls._text_similarity(meta.artists[0], name) for name in artist_names
-            )
-            score += 40 * title_sim + 15 * artist_sim
-        else:
-            # 缺少歌手线索时把权重让给标题
-            score += 50 * title_sim
-        # 曲目数：完全一致是最强信号
-        if diff == 0:
-            score += 15
-        elif diff == 1:
-            score += 8
-        elif diff <= max(2, int(local_count * 0.15)):
-            score += 2
-        # 曲名重合度：部分曲目目录（只下载了整专的一部分）依靠曲名对位确认
-        release_titles = {cls._match_text(item["title"]) for item in summary}
-        named_tracks = [track for track in tracks if track.title and not track.title.strip().isdigit()]
-        if named_tracks and release_titles:
-            overlap = sum(
-                1 for track in named_tracks if cls._match_text(track.title) in release_titles
-            )
-            score += 15 * overlap / len(named_tracks)
-        # 总时长：无损整专 rip 的总时长与 MusicBrainz 记录高度接近
-        local_total = sum(track.duration or 0 for track in tracks)
-        release_total = sum(item["length"] or 0 for item in summary)
-        local_durations = [track.duration for track in tracks if track.duration]
-        if local_durations and release_total:
-            delta = abs(local_total - release_total) / max(local_total, release_total)
-            if delta <= 0.02:
-                score += 15
-            elif delta <= 0.05:
-                score += 10
-            elif delta <= 0.10:
-                score += 5
-        # 逐曲时长对位：曲目数一致时逐首比较
-        if diff == 0 and len(local_durations) == local_count:
-            similarities = []
-            for track, item in zip(
-                sorted(tracks, key=lambda item: (item.disc_number or 1, item.track_number or 0)),
-                summary,
-            ):
-                if track.duration and item["length"]:
-                    similarities.append(cls._duration_similarity(track.duration, item["length"]))
-            if similarities:
-                score += 15 * sum(similarities) / len(similarities)
-        return score
+        artists = [meta.album_artist] if meta.album_artist else meta.artists
+        artist_match = bool(artists and music_artist_matches(album.to_music_info(), artists))
+        if artists and not artist_match:
+            return 0.0
+        if meta.version and not music_version_matches(album.to_music_info(), meta):
+            return 0.0
+        aligned = align_music_tracks(tracks, album.tracks)
+        if len(aligned) != len(tracks):
+            return 0.0
+        # 曲序只是槽位。无标签曲名且没有可比时长时，除非提供具体发行ID，否则不能确认内容。
+        named = sum(not music_track_title_is_weak(track) for track in tracks)
+        durations = [
+            cls._duration_similarity(tracks[local].duration, album.tracks[remote].duration)
+            for local, remote in aligned.items() if tracks[local].duration and album.tracks[remote].duration
+        ]
+        if not meta.musicbrainz_release_id and (not named and not durations or not known_title and len(tracks) < 2):
+            return 0.0
+        score = 40.0 + 25 * title_sim + 15 * artist_match
+        year_hint = meta.original_year or meta.year
+        score += (10 if year_hint else 15) * sum(durations) / len(tracks)
+        # 原始年份也可能描述合辑中歌曲的首发年，仅用于排名；当前发行年份才是版本约束。
+        year_matches = str(year_hint) == str(album.original_year) or (not meta.original_year and str(year_hint) == str(album.year))
+        score += 5 if year_hint and year_matches else 0
+        score += 5 if len(tracks) == len(album.tracks) else 0
+        if meta.musicbrainz_release_id:
+            score += 40
+        return min(score, 100.0)
 
     @staticmethod
-    def _duration_similarity(left: int, right: int) -> float:
+    def _duration_similarity(left: Optional[int], right: Optional[int]) -> float:
         """比较两个时长的接近程度，完全一致为 1，差异越大越接近 0。"""
         if not left or not right:
             return 0.0
