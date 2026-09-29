@@ -43,6 +43,30 @@ def test_llm_provider_module_loads_when_repository_root_is_not_on_import_path(
     monkeypatch.delitem(module.sys.modules, provider_module.__name__)
 
 
+def test_startup_python_resolution_preserves_virtualenv_symlink(
+    monkeypatch, tmp_path: Path
+):
+    """Autostart must invoke the venv launcher instead of its base interpreter."""
+    module = load_local_setup_module()
+    venv_dir = tmp_path / "venv"
+    python_launcher = module.get_venv_python(venv_dir)
+    python_launcher.parent.mkdir(parents=True)
+    python_launcher.symlink_to(Path(sys.executable))
+    expected_path = python_launcher.absolute()
+    monkeypatch.setattr(
+        module,
+        "_can_run_moviepilot_cli",
+        lambda candidate: candidate == expected_path,
+    )
+
+    runtime_python = module._resolve_runtime_python_for_startup(
+        python_launcher, venv_dir
+    )
+
+    assert runtime_python == expected_path
+    assert runtime_python.is_symlink()
+
+
 def test_directory_config_keeps_download_path_as_downloader_path(monkeypatch):
     """The wizard must preserve downloader paths without resolving them locally."""
     module = load_local_setup_module()

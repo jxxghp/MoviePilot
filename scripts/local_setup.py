@@ -2990,6 +2990,7 @@ def _startup_platform_name() -> str:
 def _runtime_python_candidates(
     runtime_python: Optional[Path], venv_dir: Optional[Path]
 ) -> list[Path]:
+    """按优先级列出启动解释器，并保留 venv 的 Python 启动器软链接。"""
     candidates: list[Path] = []
     seen: set[str] = set()
 
@@ -3001,16 +3002,17 @@ def _runtime_python_candidates(
     for candidate in raw_candidates:
         if not candidate:
             continue
-        resolved = Path(candidate).expanduser().resolve()
-        key = str(resolved)
+        absolute = Path(candidate).expanduser().absolute()
+        key = str(absolute)
         if key in seen:
             continue
         seen.add(key)
-        candidates.append(resolved)
+        candidates.append(absolute)
     return candidates
 
 
 def _can_run_moviepilot_cli(python_bin: Path) -> bool:
+    """通过 CLI 帮助命令确认解释器可加载项目代码及其运行依赖。"""
     if not python_bin.exists():
         return False
 
@@ -3027,6 +3029,7 @@ def _can_run_moviepilot_cli(python_bin: Path) -> bool:
 def _resolve_runtime_python_for_startup(
     runtime_python: Optional[Path], venv_dir: Optional[Path]
 ) -> Path:
+    """选择可启动 MoviePilot 的运行环境，否则给出安装依赖提示。"""
     for candidate in _runtime_python_candidates(runtime_python, venv_dir):
         if _can_run_moviepilot_cli(candidate):
             return candidate
