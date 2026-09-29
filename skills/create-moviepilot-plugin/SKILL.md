@@ -364,6 +364,14 @@ Use only the extension points the requested plugin actually needs:
   through MoviePilot events.
 - Services: return scheduler services from `get_service()` and always clean
   them up in `stop_service()`.
+- One-shot or delayed jobs (for example "run once now" or "run N seconds after
+  an event"): call `app.sdk.scheduler.add_plugin_once_job(plugin_id, job_id,
+  self.method, name, delay_seconds=..., func_kwargs=...)` instead of creating a
+  private `BackgroundScheduler`. It does not reset the plugin's periodic
+  services, replaces a pending job with the same ID, and is cleared when the
+  plugin is reloaded or uninstalled. Pass a bound method of the plugin
+  instance, and cancel pending jobs with `remove_plugin_once_job()` in
+  `stop_service()` when they must not run after the plugin stops.
 - Dashboards: use `get_dashboard_meta()` and `get_dashboard()` for homepage
   widgets.
 - Workflow actions: use `get_actions()`; action functions receive
