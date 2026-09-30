@@ -404,12 +404,6 @@ def create_app() -> FastAPI:
         verify_token=verify_token,
         verify_apikey=verify_apikey,
         prefix=f"{get_runtime_setting('API_V1_STR')}/plugin",
-        protected_routes={
-            openapi_path,
-            "/docs",
-            "/docs/oauth2-redirect",
-            "/redoc",
-        },
         log=logger,
         event_loop=lambda: main_loop_registry.current,
     ))
