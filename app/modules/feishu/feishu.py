@@ -7,12 +7,12 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
+from app.adapters.network.feishu import FeishuLongConnection
 from app.adapters.network.http import RequestUtils
 from app.application.messaging.channel.admin import matches_channel_admin
 from app.application.messaging.ingress import submit_message_to_host
 from app.application.security.user import get_configured_user_channel_lookup
 from app.domain.context import Context, MediaInfo
-from app.modules.feishu.longconn import FeishuLongConnection
 from app.modules.feishu.openapi import FEISHU_DOMAIN, FeishuOpenApi, JsonDict
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting

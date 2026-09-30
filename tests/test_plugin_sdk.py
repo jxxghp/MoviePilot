@@ -160,6 +160,16 @@ for name in (
     assert result.returncode == 0, result.stderr
 
 
+def test_feishu_sdk_exports_host_long_connection():
+    """飞书 SDK 复用宿主传输实现，插件与宿主飞书模块是同一个类。"""
+    from app.adapters.network import feishu as feishu_adapter
+    from app.sdk import feishu as feishu_sdk
+
+    assert feishu_sdk.FeishuLongConnection is feishu_adapter.FeishuLongConnection
+    assert feishu_sdk.FatalConnectionError is feishu_adapter.FatalConnectionError
+    assert feishu_sdk.FEISHU_DOMAIN == "https://open.feishu.cn"
+
+
 def test_browser_sdk_delegates_sync_and_async_launch(monkeypatch):
     """SDK 只转发浏览器参数，不复制宿主生命周期实现。"""
     from app.sdk import browser as browser_sdk

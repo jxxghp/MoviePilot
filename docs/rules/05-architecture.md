@@ -400,6 +400,7 @@ API 中允许丢失或可重建的进程内任务必须登记到 `app/runtime/ta
 进入 Outbox 或持久任务表，不能把 TaskRegistry 当成 durable queue。
 Runtime 关闭后不可逆；完整应用生命周期的再次启动必须由新进程承载，不能在同一解释器中重建局部资源域。
 插件需要浏览器时使用 `app.sdk.browser`，由宿主浏览器适配器协调资源，不直接依赖资源实现。
+插件需要飞书事件长连接时使用 `app.sdk.feishu.FeishuLongConnection`，与宿主飞书模块共用同一传输实现，不再各自依赖 lark-oapi。
 旧插件若直接导入有资源前置条件的第三方包，compat 在插件 import 前递归扫描源码并保守准备资源；
 无法精确解析的文件按全部已登记资源降级，最终可导入性仍由 Python loader 判断。
 
@@ -1214,7 +1215,7 @@ driven workflow registration.
 | `app/application/security/url.py` | URL/path validation, SSRF protection and signed image policy |
 | `app/application/mediaserver.py` | Configured media-server discovery and identity matching |
 | `app/runtime/compat/manifest.py` | Exact legacy-to-canonical import manifest |
-| `app/sdk/` | Stable plugin imports, including provider-neutral browser launch functions |
+| `app/sdk/` | Stable plugin imports, including provider-neutral browser launch functions and the Feishu event long connection |
 | `app/sdk/plugin/` | Plugin contract base class (`base.py`) and runtime manager facade (`manager.py`); the package root is a lazy export map so importing the contract does not load the managers |
 
 Run `tests/test_architecture_dependencies.py` after every ownership or import

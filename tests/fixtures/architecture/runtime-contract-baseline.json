@@ -9985,6 +9985,23 @@
         "target": "app.runtime.event.snapshot.snapshot_event_data"
       }
     ],
+    "app.sdk.feishu": [
+      {
+        "kind": "import",
+        "name": "FEISHU_DOMAIN",
+        "target": "app.adapters.network.feishu.FEISHU_DOMAIN"
+      },
+      {
+        "kind": "import",
+        "name": "FatalConnectionError",
+        "target": "app.adapters.network.feishu.FatalConnectionError"
+      },
+      {
+        "kind": "import",
+        "name": "FeishuLongConnection",
+        "target": "app.adapters.network.feishu.FeishuLongConnection"
+      }
+    ],
     "app.sdk.logging": [
       {
         "kind": "import",
