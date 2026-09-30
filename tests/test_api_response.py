@@ -21,6 +21,7 @@ from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
 from app.api.response import (
     COLLECTION_PAGINATION_OPENAPI_KEY,
     COLLECTION_TOTAL_OPENAPI_KEY,
+    ERROR_RESPONSES,
     RAW_RESPONSE_OPENAPI_KEY,
     CompatibleCountParam,
     CompatiblePageParam,
@@ -923,6 +924,68 @@ def test_all_openapi_error_responses_use_json_schemas():
                     invalid_responses.append((path, method, status_code))
 
     assert invalid_responses == []
+
+
+def test_host_routes_share_default_error_response_fields():
+    """全部统一响应路由的默认错误响应共用同一组字段，路由声明仍保留完整的错误模型。"""
+    routes = [
+        route
+        for _, route in _v1_compat_routes()
+        if isinstance(route, ResponseAPIRoute)
+    ]
+    assert len(routes) > 100
+
+    for status, spec in ERROR_RESPONSES.items():
+        default_routes = [
+            route for route in routes if route.responses.get(status) is spec
+        ]
+        assert default_routes, status
+        assert len({id(route.response_fields[status]) for route in default_routes}) == 1
+
+
+class _PerRouteErrorResponseRoute(ResponseAPIRoute):
+    """对照组：按 FastAPI 原生方式为每个路由单独创建错误响应字段。"""
+
+    @staticmethod
+    def _merge_error_responses(responses):
+        merged = dict(ERROR_RESPONSES)
+        merged.update(responses or {})
+        return merged
+
+    def _attach_shared_error_response_fields(self) -> None:
+        pass
+
+
+def _error_response_openapi(route_class: type[APIRoute]) -> dict[str, Any]:
+    """构造包含默认错误响应和端点自定义 404 的最小应用并返回 OpenAPI。"""
+    app = FastAPI()
+    app.router.route_class = route_class
+    router = APIRouter(route_class=route_class)
+
+    @router.get("/items", response_model=list[Item])
+    async def list_items() -> list[Item]:
+        return []
+
+    @router.get(
+        "/items/{item_id}",
+        response_model=Item,
+        responses={404: {"model": Item, "description": "自定义缺失"}},
+    )
+    async def get_item(item_id: int) -> Item:
+        return Item(id=item_id)
+
+    app.include_router(router, prefix="/v1")
+    return app.openapi()
+
+
+def test_shared_error_response_fields_keep_openapi_identical():
+    """共用错误响应字段后生成的 OpenAPI 与逐路由建字段完全一致，端点自定义响应不受影响。"""
+    shared = _error_response_openapi(ResponseAPIRoute)
+    per_route = _error_response_openapi(_PerRouteErrorResponseRoute)
+
+    assert shared == per_route
+    not_found = shared["paths"]["/v1/items/{item_id}"]["get"]["responses"]["404"]
+    assert not_found["content"]["application/json"]["schema"]["$ref"].endswith("/Item")
 
 
 def test_openapi_success_models_have_no_implicit_empty_nested_schemas():

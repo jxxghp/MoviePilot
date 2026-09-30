@@ -7,6 +7,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.datastructures import DefaultPlaceholder
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute, get_typed_return_annotation
+from fastapi.utils import ModelField, create_model_field
 from starlette.responses import Response as StarletteResponse
 
 from app.schemas.common import JsonData
@@ -23,6 +24,19 @@ ERROR_RESPONSES: dict[int, dict[str, Any]] = {
         "description": "请求参数校验失败",
     },
     500: {"model": Response[None], "description": "服务器内部错误"},
+}
+# 默认错误响应只用于生成 OpenAPI 文档。FastAPI 会为每个路由的每个带 model 的附加响应单独创建
+# ModelField，并各自编译一套 pydantic 校验器与序列化器；全部路由改为共用下面这一组字段，文档输出不变。
+# 构造路由时先传入去掉 model 的声明，使 FastAPI 不再逐路由创建字段，构造后再换回原声明并挂上共享字段。
+_ERROR_RESPONSES_WITHOUT_MODEL: dict[int, dict[str, Any]] = {
+    status: {key: value for key, value in spec.items() if key != "model"}
+    for status, spec in ERROR_RESPONSES.items()
+}
+_SHARED_ERROR_RESPONSE_FIELDS: dict[int, ModelField] = {
+    status: create_model_field(
+        name=f"Response_{status}", type_=spec["model"], mode="serialization"
+    )
+    for status, spec in ERROR_RESPONSES.items()
 }
 RAW_RESPONSE_OPENAPI_KEY = "x-moviepilot-raw-response"
 COLLECTION_PAGINATION_OPENAPI_KEY = "x-moviepilot-compatible-pagination"
@@ -167,6 +181,7 @@ class ResponseAPIRoute(APIRoute):
         )
 
         super().__init__(path=path, endpoint=endpoint, **kwargs)
+        self._attach_shared_error_response_fields()
 
     def get_route_handler(
         self,
@@ -371,10 +386,32 @@ class ResponseAPIRoute(APIRoute):
     def _merge_error_responses(
         responses: dict[int | str, dict[str, Any]] | None,
     ) -> dict[int | str, dict[str, Any]]:
-        """补齐统一错误模型，并保留端点已经显式声明的响应。"""
+        """补齐统一错误模型，并保留端点已经显式声明的响应。
+
+        仍是默认声明的状态码换成不带 model 的副本，交给 ``_attach_shared_error_response_fields``
+        在路由构造后接上共享字段；端点显式覆盖的响应原样保留，由 FastAPI 按原逻辑建字段。
+        """
         merged_responses: dict[int | str, dict[str, Any]] = dict(ERROR_RESPONSES)
         merged_responses.update(responses or {})
-        return merged_responses
+        return {
+            status: (
+                _ERROR_RESPONSES_WITHOUT_MODEL[status]
+                if isinstance(status, int) and spec is ERROR_RESPONSES.get(status)
+                else spec
+            )
+            for status, spec in merged_responses.items()
+        }
+
+    def _attach_shared_error_response_fields(self) -> None:
+        """把默认错误响应换回原声明并挂上共享字段。
+
+        ``responses`` 保留完整声明，``include_router`` 用它重建路由时按对象身份再次走共享路径；
+        FastAPI 生成 OpenAPI 时只从 ``response_fields`` 取 schema，字段名不进入输出。
+        """
+        for status, spec in ERROR_RESPONSES.items():
+            if self.responses.get(status) is _ERROR_RESPONSES_WITHOUT_MODEL[status]:
+                self.responses[status] = spec
+                self.response_fields[status] = _SHARED_ERROR_RESPONSE_FIELDS[status]
 
     @staticmethod
     def _wrap_endpoint(endpoint: Callable[..., Any]) -> Callable[..., Any]:
