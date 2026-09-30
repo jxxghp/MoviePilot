@@ -762,8 +762,8 @@ flowchart LR
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 1072 |
-| 内部导入边 | 9,137 |
+| Python 模块 | 1085 |
+| 内部导入边 | 9,198 |
 | 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 48（债务已清零，48 条精确 containment） |
@@ -773,7 +773,7 @@ flowchart LR
 | Model/Oper 自动事务与自建 Session | 0 |
 | 组合根外 `SystemConfigOper()` | 0 |
 
-整理失败反馈由 `app.application.transfer.feedback` 集中投影；已整理下载的站点字幕复用 `app.chain.transfer` 自动整理队列；网络连通性检测按 `app.application.nettest` 归档，并覆盖 HTTP 与 WebSocket 探测。未启用智能助手的消息音乐交互由 `app.chain.music_interaction` 包中的解析展示与订阅协调模块处理；音乐标签准入与批次共识由 `app.chain.transfer.music` 负责，预览证据由 `app.application.transfer.projection` 只读投影；宿主依赖边现为 9,137，音乐来源链与识别缓存复用领域身份核验，音乐交互包未新增 SCC，插件一次性任务 owner `app.scheduler.oncejob` 带来 1 个模块和 9 条依赖边。Agent 持久回执新增 Application 端口及 DB Model/Oper/Adapter 四个冷导入模块。缓存组合根只在启动时选用 Redis 缓存才导入 Redis 适配器，依赖 langchain_core 的对话记忆模型归属 `app.agent.memory`，文件缓存且未启用智能体的实例不再加载 redis 与 langchain_core。Telegram 渠道改用模块内 `app.modules.telegram.botapi` 精简 Bot API 客户端，经 `RequestUtils` 出站，宿主不再导入 pyTelegramBotAPI，启用 Telegram 的实例也不会因该 SDK 加载 redis；该依赖暂时保留给插件使用。Web Push 协议（aes128gcm 加密、VAPID 签名与经 `RequestUtils` 投递）由网络适配器 `app.adapters.network.webpush` 直接基于 http-ece 与 py-vapid 实现，消息端点与 `WebPushModule` 共用，宿主不再导入 pywebpush 及其连带的 aiohttp；该依赖同样暂时保留给插件使用。飞书渠道改用模块内 `app.modules.feishu.openapi` OpenAPI 客户端（经 `RequestUtils` 出站）与网络适配器 `app.adapters.network.feishu` 事件长连接（websocket-client 同步收发 pbbp2 帧），宿主不再导入 lark-oapi 及其上万个生成模块，长连接也不再依赖 SDK 的模块级事件循环；插件经 `app.sdk.feishu` 复用同一长连接，lark-oapi 暂时保留给尚未迁移的插件使用。当前 `app.startup.lifecycle` 为 578、`app.factory` 为 590、`app.main` 为 592。音乐调用观察 `app.application.music.observation` 新增一个轻量模块，记录来源结果及请求预算；AcoustID及路径识别复用此上下文传递有界指纹候选，保留旧单ID模块合同。站点图片域名快照新增 `app.application.security.image`，各启动入口增加一个模块；性能基线只同步模块数量，原有耗时预算、历史采样和生命周期资源约束保持有效。
+整理失败反馈由 `app.application.transfer.feedback` 集中投影；已整理下载的站点字幕复用 `app.chain.transfer` 自动整理队列；网络连通性检测按 `app.application.nettest` 归档，并覆盖 HTTP 与 WebSocket 探测。未启用智能助手的消息音乐交互由 `app.chain.music_interaction` 包中的解析展示与订阅协调模块处理；音乐标签准入与批次共识由 `app.chain.transfer.music` 负责，预览证据由 `app.application.transfer.projection` 只读投影；宿主依赖边现为 9,198，音乐来源链与识别缓存复用领域身份核验，音乐交互包未新增 SCC，插件一次性任务 owner `app.scheduler.oncejob` 带来 1 个模块和 9 条依赖边。Agent 持久回执新增 Application 端口及 DB Model/Oper/Adapter 四个冷导入模块。缓存组合根只在启动时选用 Redis 缓存才导入 Redis 适配器，依赖 langchain_core 的对话记忆模型归属 `app.agent.memory`，文件缓存且未启用智能体的实例不再加载 redis 与 langchain_core。Telegram 渠道改用模块内 `app.modules.telegram.botapi` 精简 Bot API 客户端，经 `RequestUtils` 出站，宿主不再导入 pyTelegramBotAPI，启用 Telegram 的实例也不会因该 SDK 加载 redis；该依赖暂时保留给插件使用。Web Push 协议（aes128gcm 加密、VAPID 签名与经 `RequestUtils` 投递）由网络适配器 `app.adapters.network.webpush` 直接基于 http-ece 与 py-vapid 实现，消息端点与 `WebPushModule` 共用，宿主不再导入 pywebpush 及其连带的 aiohttp；该依赖同样暂时保留给插件使用。飞书渠道改用模块内 `app.modules.feishu.openapi` OpenAPI 客户端（经 `RequestUtils` 出站）与网络适配器 `app.adapters.network.feishu` 事件长连接（websocket-client 同步收发 pbbp2 帧），宿主不再导入 lark-oapi 及其上万个生成模块，长连接也不再依赖 SDK 的模块级事件循环；插件经 `app.sdk.feishu` 复用同一长连接，lark-oapi 暂时保留给尚未迁移的插件使用。当前 `app.startup.lifecycle` 为 578、`app.factory` 为 590、`app.main` 为 592。音乐调用观察 `app.application.music.observation` 新增一个轻量模块，记录来源结果及请求预算；AcoustID及路径识别复用此上下文传递有界指纹候选，保留旧单ID模块合同。站点图片域名快照新增 `app.application.security.image`，各启动入口增加一个模块；性能基线只同步模块数量，原有耗时预算、历史采样和生命周期资源约束保持有效。
 
 架构专项验证分为两个 CI 投影：`Check event semantic policy` 先运行依赖、Adapter、出口和 Event
 语义门禁，`Check host architecture snapshot` 再执行快照测试及一次
@@ -839,3 +839,5 @@ Agent 历史回忆由 `application.messaging.recall` 的 DTO/Port 和有界 work
 宿主 TaskRegistry 按批调度，关停时取消并留下持久游标；启动导入不打开消息库。
 
 历史检索新增 11 个宿主模块，宿主模块总数为 1,072；依赖图新增 78 条、移除 3 条依赖边，没有新增循环。启动冷路径仅增加 2 个模块；SQLite 实现与 Agent runtime 仍在组合函数执行时加载。性能基线仅更新模块计数，不修改时间预算或历史采样。
+
+Agent 个人技能与后台学习新增13个宿主模块、61条内部依赖边，宿主为1085模块/9198边；没有新增SCC、具体Adapter越层依赖或边界债务。冷启动不物化学习实现，三入口模块数量仍为578/590/592，耗时预算和历史采样未调整。

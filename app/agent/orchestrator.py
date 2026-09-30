@@ -24,6 +24,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from app.agent.callback import StreamingHandler
 from app.agent.contracts import ReplyMode, build_display_message
+from app.agent.learning.session import LearningSession
 from app.agent.llm.helper import LLMHelper
 from app.agent.llm.tools import ServerToolRegistry
 from app.agent.mcp import agent_mcp_manager
@@ -33,6 +34,7 @@ from app.agent.middleware.invocation import InvocationMiddleware
 from app.agent.middleware.jobs import (
     JobsMiddleware,
 )
+from app.agent.middleware.learning import LearningCaptureMiddleware, LearningMiddleware
 from app.agent.middleware.memory import MemoryMiddleware
 from app.agent.middleware.output import ToolOutputMiddleware
 from app.agent.middleware.patching import PatchToolCallsMiddleware
@@ -399,6 +401,12 @@ class MoviePilotAgent:
         )
         self._steering_inbox = SteeringInbox(session_id, str(user_id or ""))
         self._scheduled_terminal_scopes: set[TerminalScope] = set()
+        learning_dir = agent_runtime_manager.get_user_learning_dir(user_id)
+        user_memory_dir = agent_runtime_manager.get_user_memory_dir(user_id)
+        self._learning = LearningSession(
+            session_id=session_id, skill_root=learning_dir / 'skills', memory_root=user_memory_dir,
+            public_roots=(agent_runtime_manager.skills_dir,), on_usage=self._record_review_usage,
+        ) if learning_dir and user_memory_dir else None
         self.channel = channel
         self.source = source
         self.username = username
@@ -654,7 +662,12 @@ class MoviePilotAgent:
         self._request_sequence += 1
         return self._request_sequence
 
+    def _record_review_usage(self, usage: dict[str, Any]) -> None:
+        """累计后台模型花费，但不覆盖用户当前请求的上下文窗口与使用率快照。"""
+        self._record_usage({**usage, 'request_sequence': -1})
+
     def _record_usage(self, usage: dict[str, Any]) -> None:
+        """累计会话模型用量，只有当前请求序号可以更新最近上下文预算。"""
         if not usage:
             return
 
@@ -1676,6 +1689,8 @@ class MoviePilotAgent:
 
     def begin_shutdown(self) -> None:
         """在任何异步等待前封住当前 Agent 的子代理提交和终端作用域。"""
+        if self._learning:
+            self._learning.seal()
         self._terminal_scope.seal()
         for scope in self._scheduled_terminal_scopes:
             scope.seal()
@@ -1891,9 +1906,13 @@ class MoviePilotAgent:
             memory_middleware = MemoryMiddleware(
                 memory_dir=str(agent_runtime_manager.memory_dir),
                 user_memory_dir=str(user_memory_dir) if user_memory_dir else None,
+                store=self._learning.tools.memory if self._learning else None,
                 stream_handler=self.stream_handler,
             )
             memory_tools = list(getattr(memory_middleware, "tools", []) or [])
+            learning_middleware = LearningMiddleware(self._learning) if self._learning is not None and self._learning_enabled() else None
+            if learning_middleware:
+                memory_tools.extend(learning_middleware.tools)
             recall_service = getattr(self._data, "recall", None)
             recall_middlewares = []
             if recall_service and build_user_memory_key(self.user_id):
@@ -1981,6 +2000,7 @@ class MoviePilotAgent:
                 # 稳定偏好与原始会话证据分别管理。
                 memory_middleware,
                 *recall_middlewares,
+                *([learning_middleware] if learning_middleware else []),
                 # 错误工具调用修复
                 PatchToolCallsMiddleware(),
                 # 子代理委派
@@ -1998,6 +2018,8 @@ class MoviePilotAgent:
                 )
             )
             middlewares.append(VisionMiddleware())
+            if learning_middleware:
+                middlewares.append(LearningCaptureMiddleware(learning_middleware.session))
 
             # 预算观察器必须位于最内层，才能看到动态 system 和最终筛选后的工具。
             middlewares.append(
@@ -2097,6 +2119,8 @@ class MoviePilotAgent:
             )
             self._refresh_tool_context(await self._build_tool_context(should_dispatch_reply=self.should_dispatch_reply))
             self._streamed_output = ""
+            if self._learning:
+                await self._learning.wait_cancelled()
 
             confirmation_result = await self._handle_secret_confirmation_control(
                 message=message,
@@ -2149,6 +2173,10 @@ class MoviePilotAgent:
                 ]
             )
             user_display_saved = True
+
+            learning_reply = await self._handle_learning_control(message)
+            if learning_reply is not None:
+                return learning_reply
 
             # 执行推理
             result = await self._execute_agent(messages)
@@ -2365,6 +2393,43 @@ class MoviePilotAgent:
         finally:
             await self._invalidate_cached_agent()
 
+    def _learning_enabled(self) -> bool:
+        """仅已认证交互会话启用学习，定时任务和内部后台任务始终跳过。"""
+        scope = current_terminal_scope()
+        return bool(self._learning and not self.is_background and not (scope and scope.kind == 'scheduled'))
+
+    async def _handle_learning_control(self, message: str) -> str | None:
+        """直接使用宿主收到的用户文本处理审批，不能从模型生成的 HumanMessage 中提取权限。"""
+        if not self._learning_enabled() or self._learning is None:
+            return None
+        await self._learning.wait_cancelled()
+        reply = await self._learning.command(message)
+        if reply is not None:
+            self._emit_output(reply)
+            await self._save_assistant_display_message_once(reply)
+            if self.should_dispatch_reply:
+                await self.send_agent_message(reply)
+        return reply
+
+    async def _save_final_agent_state(self, agent: Any, agent_config: dict[str, Any]) -> str:
+        """在触发学习前保存已交付回复与可恢复快照；失败时不得启动成功复盘。"""
+        display_text = self._streamed_output
+        if not display_text:
+            final_messages = agent.get_state(agent_config).values.get("messages", [])
+            for msg in reversed(final_messages):
+                if hasattr(msg, "type") and msg.type == "ai" and msg.content:
+                    display_text = LLMHelper.extract_text_content(msg.content).strip()
+                    break
+        await self._save_assistant_display_message_once(display_text)
+
+        if self._should_persist_agent_chat():
+            await self._memory.async_save_agent_messages(
+                session_id=self.session_id,
+                user_id=self.user_id,
+                messages=agent.get_state(agent_config).values.get("messages", []),
+            )
+        return display_text
+
     async def _execute_agent(self, messages: List[BaseMessage]):
         """
         调用 LangGraph Agent 执行推理。
@@ -2383,6 +2448,8 @@ class MoviePilotAgent:
         agent = None
         agent_config: dict[str, Any] = {}
         try:
+            if self._learning_enabled() and self._learning is not None:
+                await self._learning.begin(messages)
             # Agent运行配置
             agent_config = {
                 "configurable": {
@@ -2474,22 +2541,10 @@ class MoviePilotAgent:
                         # 非流式渠道：发送最终回复
                         await self.send_agent_message(final_text)
 
-            display_text = self._streamed_output
-            if not display_text:
-                final_messages = agent.get_state(agent_config).values.get("messages", [])
-                for msg in reversed(final_messages):
-                    if hasattr(msg, "type") and msg.type == "ai" and msg.content:
-                        display_text = LLMHelper.extract_text_content(msg.content).strip()
-                        break
-            await self._save_assistant_display_message_once(display_text)
-
-            if self._should_persist_agent_chat():
-                await self._memory.async_save_agent_messages(
-                    session_id=self.session_id,
-                    user_id=self.user_id,
-                    messages=agent.get_state(agent_config).values.get("messages", []),
-                )
+            display_text = await self._save_final_agent_state(agent, agent_config)
             execution_success = True
+            if self._learning_enabled() and self._learning is not None:
+                self._learning.finish(delivered=bool(display_text))
 
         except asyncio.CancelledError:
             logger.info(f"Agent执行被取消: session_id={self.session_id}")
@@ -2554,12 +2609,13 @@ class MoviePilotAgent:
         """
         self.begin_shutdown()
         await self._steering_inbox.close()
+        learning_closed = await self._learning.wait_cancelled() if self._learning else True
         children_closed = await self._invalidate_cached_agent()
         terminals_closed = await close_terminal_scope(self._terminal_scope)
         for scope in tuple(self._scheduled_terminal_scopes):
             if not await self.release_terminal_scope(scope):
                 terminals_closed = False
-        if not children_closed or not terminals_closed:
+        if not children_closed or not terminals_closed or not learning_closed:
             logger.error(f"MoviePilot智能体仍有子代理或终端未收敛: session_id={self.session_id}")
             return False
         self._pending_secret_confirmation = None

@@ -765,11 +765,19 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         agent_root = allowed_roots[0]
         memory_root = agent_root / "memory"
         runtime_root = agent_root / "runtime"
+        for protected in (runtime_root / 'learning' / 'users', runtime_root / 'history' / 'users'):
+            if self._is_path_relative_to(resolved_path, protected):
+                user_key = build_user_memory_key(self._user_id)
+                if not user_key or not self._is_path_relative_to(resolved_path, protected / user_key):
+                    return resolved_path, '抱歉，不能读取或修改其他用户的 Agent 消息和个人技能。'
         if self._is_path_relative_to(resolved_path, runtime_root) and operation != "读取":
             return (
                 resolved_path,
                 "抱歉，Agent 人格及运行时配置只有系统管理员才能修改。",
             )
+
+        if self._is_path_relative_to(resolved_path, agent_root / 'skills') and operation != '读取':
+            return resolved_path, '抱歉，公共技能只有系统管理员才能修改；个人学习请使用 skill_manage。'
 
         if not self._is_path_relative_to(resolved_path, memory_root):
             return resolved_path, None

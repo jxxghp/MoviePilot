@@ -310,6 +310,11 @@ class AgentRuntimeManager:
             self._cached_signature_checked_at = 0.0
             self._layout_ready = False
 
+    def get_user_learning_dir(self, user_id: Optional[str]) -> Optional[Path]:
+        """个人技能和维护元数据使用独立用户目录，不混入公共市场技能。"""
+        user_key = build_user_memory_key(user_id)
+        return self.agent_root_dir / SYSTEM_RUNTIME_DIR / 'learning' / 'users' / user_key if user_key else None
+
     def get_user_memory_dir(self, user_id: Optional[str]) -> Optional[Path]:
         """
         获取指定用户的记忆目录，不创建目录或暴露原始用户标识。

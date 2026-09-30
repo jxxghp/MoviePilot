@@ -134,6 +134,10 @@ class ToolOutputMiddleware(AgentMiddleware):  # type: ignore[misc]
         # 历史工具已经按消息/窗口预算裁剪；再次套通用预览会丢失锚点与书挡结构。
         if request.tool_call.get("name") == "session_search" and getattr(request.tool, "_agent_tool_source", None) == "middleware:recall":
             return await handler(request)
+        # 学习工具已限制单文件、条目及批次；预览截断会破坏 JSON 和写前读取证据。
+        if (request.tool_call.get('name') in {'memory', 'skill_manage', 'skill_view', 'skills_list'}
+                and getattr(getattr(request, 'tool', None), '_agent_tool_source', None) == 'middleware:learning'):
+            return await handler(request)
         thread_id = self._thread_id(request.runtime)
         requires_admin = bool(self.context.agent_context.get("is_admin"))
         token = TOOL_RESULT_RECORDER.set(lambda name, text: self._store(thread_id, name, text, requires_admin))

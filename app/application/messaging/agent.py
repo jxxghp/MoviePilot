@@ -1193,7 +1193,7 @@ def is_web_agent_traditional_message(text: str) -> bool:
     :return: 需要交给 MessageChain 时返回 True
     """
     normalized = str(text or "").strip()
-    return normalized.startswith("/") or normalized.startswith("CALLBACK:")
+    return not agent_interaction.is_agent_learning_command(normalized) and (normalized.startswith("/") or normalized.startswith("CALLBACK:"))
 
 
 def has_web_agent_traditional_interaction(user_id: str) -> bool:
@@ -1496,8 +1496,8 @@ async def build_web_agent_stream(
             )
         )
 
-    is_traditional_message = is_web_agent_traditional_message(prompt) or has_web_agent_traditional_interaction(
-        str(current_user.id)
+    is_traditional_message = not agent_interaction.is_agent_learning_command(prompt) and (
+        is_web_agent_traditional_message(prompt) or has_web_agent_traditional_interaction(str(current_user.id))
     )
     if is_traditional_message:
         denied_message = ensure_web_agent_command_allowed(current_user)

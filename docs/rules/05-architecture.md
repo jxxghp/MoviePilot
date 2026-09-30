@@ -90,6 +90,7 @@ to make the directory tree look symmetrical.
 | `app/agent/orchestrator.py` | One `MoviePilotAgent` execution instance: prompt/tool/middleware assembly, model invocation, streaming and per-agent state |
 | `app/agent/middleware/plan.py` | Current task objective, step status and evidence in graph state; sanitized snapshots travel through existing message persistence and never authorize tool effects |
 | `app/application/messaging/recall.py` / `app/agent/history/` | Application 持有独立消息库 DTO/Port 和后台维护服务；Agent 专属 SQLite/FTS5 schema、存储、检索、窗口与旧快照导入由 `agent/history/` 拥有，数据库位于 Agent 运行目录且不共享主库 Session。`db/adapters/recall.py` 仅负责一次性旧快照只读导出 |
+| `app/agent/learning/` / `app/agent/middleware/learning.py` | Agent 专属个人技能、稳定记忆和复盘生命周期；独立文件目录按用户隔离，模型仅能调用受控维护工具。`session.py` 管理计数及 TaskRegistry owner，`review.py` 复用最终模型请求并在派发处限制工具，`files.py` 只封装该存储的路径、进程锁与原子替换，不作为通用文件 Adapter。人工提案/技能控制命令经 messaging interaction 契约路由，只有宿主收到的用户原文可以触发，后台快照没有执行权限 |
 | `app/agent/middleware/selection.py` | First-turn tool selection and bounded, on-demand discovery within the same authorized catalog; discovered tool names remain local to the current user request |
 | `app/agent/middleware/invocation.py` | Claims write executions through the injected Application port; owns per-turn API deduplication, durable receipt projection and narrowly scoped read-only reconciliation |
 | `app/agent/middleware/output.py` | Bounded, expiring in-memory tool output and thread-scoped pagination; never persists raw tool results |

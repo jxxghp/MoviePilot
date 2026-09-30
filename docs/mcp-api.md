@@ -45,7 +45,7 @@ Fake-IP 等非公网解析地址需要通过 `IMAGE_PROXY_ALLOWED_PRIVATE_RANGES
 
 ### 动态插件工具
 
-内置 Agent 的 `update_plan`、`search_memory`、`session_search`、`search_tools`、`read_tool_result`、`get_tool_execution` 为会话中间件工具，不通过外部 `tools/list` 发布；它们维护计划、检索用户隔离的历史证据、发现工具、续读结果或查询执行回执，不能授予业务操作权限。`search_memory` 只保留稳定偏好和主题文件检索，旧 `activity` 分类已废弃。历史查询使用宿主绑定的 user_id，不接受模型指定身份。使用与恢复语义见 [Agent 复杂任务执行与恢复](agent.md)。
+内置 Agent 的 `update_plan`、`search_memory`、`session_search`、`memory`、`skills_list`、`skill_view`、`skill_manage`、`search_tools`、`read_tool_result`、`get_tool_execution` 为会话中间件工具，不通过外部 `tools/list` 发布；它们维护计划、检索用户隔离的历史证据、发现工具、续读结果或查询执行回执，不能授予业务操作权限。`search_memory` 只保留稳定偏好和主题文件检索，旧 `activity` 分类已废弃。历史查询使用宿主绑定的 user_id，不接受模型指定身份。使用与恢复语义见 [Agent 复杂任务执行与恢复](agent.md)。
 
 `tools/list` 会同时返回 MoviePilot 内置工具和已启用插件通过 `get_agent_tools()` 声明的工具。插件启动、停止、重载或配置生效后，MCP 工具管理器会在下一次列出或调用工具时按注册表版本惰性刷新，避免继续暴露已移除的工具或遗漏新工具。
 

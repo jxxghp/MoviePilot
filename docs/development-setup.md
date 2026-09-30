@@ -270,3 +270,10 @@ CI 上传 `complexity-report` 工件，门禁失败时也保留已生成的指�
 ### Agent 历史消息索引验证
 
 独立消息库位于 Agent 运行目录，不参与主库 Alembic。使用临时运行目录运行 `tests/test_agent_recall_persistence.py`，不得用真实用户的 `state.db` 做索引破坏或重建测试。可选 CJK tokenizer 保留 Hermes 原版源码及许可证于 `native/fts5_cjk/`；构建命令见该目录 README。测试有本地 C 编译器时在临时目录构建，无编译器时只跳过原生扩展用例，不能宣称该分词路径已验证。常规 FTS5 与 trigram、短中文回退无需该扩展，扩展缺失或失效时索引状态会明确降级。独立 schema 版本不等于产品版本；后续新增主库升级脚本从 3.1.0 命名。
+
+### Agent 学习验证
+
+`tests/test_agent_learning_skills.py`、`tests/test_agent_learning_memory.py` 和
+`tests/test_agent_learning_review.py` 用临时目录与确定性模型核对 Hermes 学习契约，
+不访问实际 LLM 或个人记忆。匹配器、威胁模式和提示词的上游来源及 MIT 许可在
+`app/agent/learning/LICENSE.hermes`；不得以这些离线测试替代固定真实模型的效果评测。
