@@ -17,7 +17,7 @@ from app.sdk.media import (
     set_custom_separator,
 )
 from app.sdk.network import RequestUtils, RssHelper, SitesHelper
-from app.sdk.plugin import ModuleManager, PluginChain, PluginManager, _PluginBase
+from app.sdk.plugin import ModuleManager, PluginChain, PluginManager, _PluginBase  # pylint: disable=no-name-in-module  # 惰性导出，静态分析不可见
 from app.sdk.services import NotificationHelper
 from app.sdk.utilities import StringUtils as UtilityStringUtils
 from app.sdk.utilities import convert, decrypt, encrypt
