@@ -603,13 +603,20 @@ class AudioMetadataHelper:
     @classmethod
     def _needs_tag_write(cls, audio: Any, music: Union[MetaMusic, MusicInfo], overwrite: bool) -> bool:
         """先只读比较已有标签，完整元数据不应触发大音频文件的副本创建。"""
+        return bool(cls._tag_updates(audio, music, overwrite))
+
+    @classmethod
+    def _tag_updates(cls, audio: Any, music: Union[MetaMusic, MusicInfo], overwrite: bool) -> dict[str, list[str]]:
+        """预检和实际写入共用字段差异，年份模型不能抹掉标签中同年的完整日期。"""
         tags = cls._readable_tags(audio.tags)
         aliases = {"albumartist": ("albumartist", "album artist"), "date": ("date", "year"),
+                   "originaldate": ("originaldate", "originalyear"),
                    "tracknumber": ("tracknumber", "track"), "discnumber": ("discnumber", "disc"),
                    "musicbrainz_trackid": ("musicbrainz_trackid", "musicbrainz_track_id"),
                    "musicbrainz_albumid": ("musicbrainz_albumid", "musicbrainz_album_id"),
                    "musicbrainz_releasegroupid": ("musicbrainz_releasegroupid", "musicbrainz_release_group_id"),
                    "musicbrainz_releasetrackid": ("musicbrainz_releasetrackid", "musicbrainz_release_track_id")}
+        updates = {}
         for key, value in cls._tag_values(music).items():
             if value in (None, "", []):
                 continue
@@ -618,9 +625,11 @@ class AudioMetadataHelper:
             if current and key in {"tracknumber", "discnumber"} and cls._number_pair(current[0]) == cls._number_pair(expected[0]):
                 # MP4用(1, 0)表达未知总数，与文本标签的1具有相同位置语义。
                 continue
+            if key in {"date", "originaldate"} and current and len(expected[0]) == 4 and current[0].startswith(f"{expected[0]}-"):
+                continue
             if not current or (overwrite and current != expected):
-                return True
-        return False
+                updates[key] = expected
+        return updates
 
     @staticmethod
     def _has_cover(audio: Any) -> bool:
@@ -641,8 +650,7 @@ class AudioMetadataHelper:
         """按标签策略保存可支持的字段；空标签音频仍然是可写的有效容器。"""
         if audio.tags is None:
             audio.add_tags()
-        values = {key: value if isinstance(value, list) else [str(value)]
-                  for key, value in cls._tag_values(music).items() if value not in (None, "", [])}
+        values = cls._tag_updates(audio, music, overwrite)
         if isinstance(audio.tags, ID3):
             changed = cls._write_id3_tags(audio.tags, values, overwrite)
         elif isinstance(audio.tags, MP4Tags):
@@ -655,9 +663,9 @@ class AudioMetadataHelper:
     @classmethod
     def _write_text_tags(cls, audio: Any, values: dict[str, list[str]], overwrite: bool, path: Path) -> bool:
         """写入Vorbis/APEv2文本字段，并使用APE播放器通用的字段名。"""
-        ape_fields = {"albumartist": "Album Artist", "date": "Year", "tracknumber": "Track", "discnumber": "Disc",
-                      "musicbrainz_trackid": "MusicBrainz Track Id", "musicbrainz_albumid": "MusicBrainz Album Id",
-                      "musicbrainz_releasegroupid": "MusicBrainz Release Group Id", "musicbrainz_releasetrackid": "MusicBrainz Release Track Id"}
+        # APEv2的MusicBrainz字段沿用下划线名称，不能套用ID3 TXXX描述中的空格。
+        ape_fields = {"albumartist": "Album Artist", "date": "Year", "originaldate": "Originalyear",
+                      "tracknumber": "Track", "discnumber": "Disc"}
         changed = False
         for name, value in values.items():
             key = ape_fields.get(name, name) if isinstance(audio.tags, APEv2) else name

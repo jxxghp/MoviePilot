@@ -64,7 +64,9 @@ Music recognition, exploration, album and artist navigation, and recognition-cac
   Untagged files can be written, and incorrect extensions use the actual
   container. Native ID3 and MP4/freeform writers keep recording/release/group/
   release-track identities separate. An original year alone writes
-  `ORIGINALDATE`, never a fabricated current-release date.
+  the original-year tag (`ORIGINALDATE` or its native equivalent), never a
+  fabricated current-release date. Preserve more precise existing dates in the
+  same year. APEv2 MusicBrainz keys use underscores, not ID3's spaced descriptions.
 - Organization uses each file's `storage`: remote items use names and original
   torrent evidence, never local tags, duration, or CUE at an identical path.
   An `.m4a` suffix alone does not establish AAC/ALAC or lossless status.

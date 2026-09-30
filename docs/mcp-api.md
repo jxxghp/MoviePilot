@@ -545,7 +545,9 @@ SSE 的 `candidate_items` 是站点原始返回数量，`match_counts` 记录身
 写入失败或目标在处理期间改变时，丢弃临时副本，不覆盖原目标。LRC 与 Lyricsfile 旁挂也按目录项原子替换。
 WAV、DSF 和 MP3 使用原生 ID3 帧，MP4/M4A 使用标准 atom 及文本 freeform；无标签音频可直接补写，
 错误扩展名按实际容器处理。Recording、Release、Release Group、Release Track ID 分别写入专用标签；
-仅有首发年份时只写 `ORIGINALDATE`，不能据此生成当前发行日期。
+仅有首发年份时只写原始年份标签，不能据此生成当前发行日期；已有同年的完整日期不因模型只携带年份而截断。
+APEv2 按[标准标签映射](https://picard-docs.musicbrainz.org/en/latest/appendices/tag_mapping.html)
+使用下划线形式的 MusicBrainz 字段和 `Originalyear`，不套用 ID3 的带空格描述；读取仍兼容旧字段别名。
 
 音乐整理按每个文件的 `storage` 决定证据来源：远端仅使用名称、目录和原始种子线索，
 不读取本机同路径的标签、时长或 CUE。仅有 `.m4a` 扩展名时不声明 AAC/ALAC 或有损/无损。

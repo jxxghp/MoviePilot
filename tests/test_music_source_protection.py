@@ -12,7 +12,7 @@ import pytest
 from mutagen import File as MutagenFile
 from mutagen.apev2 import APEv2
 from mutagen.flac import FLAC
-from mutagen.id3 import ID3
+from mutagen.id3 import ID3, TDOR, TDRC
 from mutagen.mp4 import MP4
 
 from app.application.audio import AudioMetadataHelper
@@ -268,14 +268,44 @@ def test_native_ape_tags_keep_standard_names_and_identity_namespaces(tmp_path):
 
     path = tmp_path / "native-ape-tags"
     path.touch()
-    info = MusicInfo(title="Song", album_artist="Artist", year=2020, track_number=2, total_tracks=8,
+    info = MusicInfo(title="Song", album_artist="Artist", year=2020, original_year=2003, track_number=2, total_tracks=8,
                      media_source="musicbrainz", media_id=_RECORDING, musicbrainz_release_id=_RELEASE,
                      musicbrainz_release_group_id=_GROUP, musicbrainz_release_track_id=_TRACK)
     AudioMetadataHelper._write_tag_values(ApeTagFile(), info, True, path)
     tags = APEv2(path)
     assert str(tags["Album Artist"]) == "Artist" and str(tags["Track"]) == "2/8"
+    assert str(tags["Originalyear"]) == "2003"
+    assert "MusicBrainz Track Id" not in tags
     readable = AudioMetadataHelper._readable_tags(tags)
-    assert AudioMetadataHelper._values(readable, "musicbrainz_track_id") == [_RECORDING]
-    assert AudioMetadataHelper._values(readable, "musicbrainz_album_id") == [_RELEASE]
-    assert AudioMetadataHelper._values(readable, "musicbrainz_release_group_id") == [_GROUP]
-    assert AudioMetadataHelper._values(readable, "musicbrainz_release_track_id") == [_TRACK]
+    assert AudioMetadataHelper._values(readable, "musicbrainz_trackid") == [_RECORDING]
+    assert AudioMetadataHelper._values(readable, "musicbrainz_albumid") == [_RELEASE]
+    assert AudioMetadataHelper._values(readable, "musicbrainz_releasegroupid") == [_GROUP]
+    assert AudioMetadataHelper._values(readable, "musicbrainz_releasetrackid") == [_TRACK]
+    reloaded = ApeTagFile()
+    reloaded.tags = tags
+    assert not AudioMetadataHelper._needs_tag_write(reloaded, info, True)
+
+
+@pytest.mark.parametrize("container", ["wav", "dsf", "flac", "mp3", "m4a"])
+def test_writing_other_fields_preserves_more_precise_tag_dates(tmp_path, container):
+    """改曲名时不能把已有完整日期截断成年份；各容器都保留同年日期的精度。"""
+    path = _audio_file(tmp_path, container)
+    assert AudioMetadataHelper.write(path, MusicInfo(title="Old"))
+    audio = MutagenFile(path)
+    if isinstance(audio.tags, ID3):
+        audio.tags.add(TDRC(encoding=3, text=["2020-06-01"]))
+        audio.tags.add(TDOR(encoding=3, text=["2003-05-02"]))
+    elif isinstance(audio, MP4):
+        audio.tags["\xa9day"] = ["2020-06-01"]
+        audio.tags["----:com.apple.iTunes:ORIGINALDATE"] = [b"2003-05-02"]
+    else:
+        audio["date"] = ["2020-06-01"]
+        audio["originaldate"] = ["2003-05-02"]
+    audio.save()
+
+    assert AudioMetadataHelper.write(path, MusicInfo(title="New", year=2020, release_year=2020, original_year=2003))
+
+    tags = AudioMetadataHelper._readable_tags(MutagenFile(path).tags)
+    assert AudioMetadataHelper._values(tags, "title") == ["New"]
+    assert AudioMetadataHelper._values(tags, "date") == ["2020-06-01"]
+    assert AudioMetadataHelper._values(tags, "originaldate") == ["2003-05-02"]
