@@ -453,7 +453,7 @@ class ConfigModel(BaseModel):
             serialize=_serialize_bool,
         ),
     ] = False
-    # 独立控制启动时跟踪 v3 开发分支。
+    # Docker 启动时跟踪开发分支；本地 CLI 仅在手动 update 时默认使用 DEV 模式。
     MOVIEPILOT_UPDATE_DEV: Annotated[
         bool, SettingPolicy(serialize=_serialize_bool)
     ] = False

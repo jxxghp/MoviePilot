@@ -15,7 +15,7 @@ Bootstrap Commands:
   moviepilot init [--skip-resources] [--force-token] [--wizard] [--superuser NAME] [--superuser-password PASSWORD] [--config-dir PATH]
   moviepilot setup [--python PYTHON] [--venv PATH] [--recreate] [--frontend-version TAG] [--node-version 20.12.1] [--wizard] [--superuser NAME] [--superuser-password PASSWORD] [--config-dir PATH]
   moviepilot uninstall [--venv PATH] [--config-dir PATH]
-  moviepilot update {backend|frontend|all} [OPTIONS]
+  moviepilot update [backend|frontend|all] [OPTIONS]
   moviepilot startup {enable|disable|status} [--venv PATH] [--config-dir PATH]
   moviepilot agent [OPTIONS] MESSAGE...
 
@@ -184,11 +184,12 @@ show_update_help() {
 Usage:
   moviepilot update backend [OPTIONS]
   moviepilot update frontend [OPTIONS]
-  moviepilot update all [OPTIONS]
+  moviepilot update [all] [OPTIONS]
 
 Options:
-  --ref REF                 后端 Git 版本，默认 latest
-  --frontend-version TAG    前端版本，默认使用 version.py 中的 FRONTEND_VERSION
+  --ref REF                 后端 Git 版本，默认当前分支；DEV 下 detached HEAD 回到 v3
+  --dev / --no-dev          指定 DEV 更新模式，默认读取 MOVIEPILOT_UPDATE_DEV
+  --frontend-version TAG    前端版本，DEV 默认 latest，否则使用 FRONTEND_VERSION
   --node-version VER        本地 Node 运行时版本，默认 20.12.1
   --python PYTHON           用于安装后端依赖的 Python 解释器，默认自动选择本地 3.14+ 版本
   --venv PATH               虚拟环境目录，默认 ./venv

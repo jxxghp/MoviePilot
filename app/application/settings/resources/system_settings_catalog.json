@@ -1040,7 +1040,7 @@
       "source_line": 195
     },
     "MOVIEPILOT_UPDATE_DEV": {
-      "description": "独立控制启动时跟踪 v3 开发分支。",
+      "description": "Docker 启动时跟踪开发分支；本地 CLI 仅在手动 update 时默认使用 DEV 模式。",
       "group": "system_update",
       "source_file": "app/runtime/config.py",
       "source_line": 457

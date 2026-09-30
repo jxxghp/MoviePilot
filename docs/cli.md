@@ -345,7 +345,9 @@ moviepilot update frontend --frontend-version v3.0.0
 整体更新：
 
 ```shell
-moviepilot update all
+moviepilot update
+moviepilot update all --dev
+moviepilot update all --no-dev
 moviepilot update all --ref latest --frontend-version latest
 moviepilot update all --skip-resources
 ```
@@ -353,8 +355,10 @@ moviepilot update all --skip-resources
 说明：
 
 - `update backend` 会更新 Git 仓库并重新安装后端依赖，包括 `moviepilot-rust` 加速扩展
-- `update frontend` 会按当前仓库 `version.py` 中的 `FRONTEND_VERSION` 下载并替换前端 release
-- `update all` 会先更新后端，再按更新后代码中的 `FRONTEND_VERSION` 更新前端，默认也会同步资源文件
+- `MOVIEPILOT_UPDATE_DEV=true` 时，`moviepilot update` 默认使用 DEV 模式；`--dev` / `--no-dev` 可临时覆盖，省略目标时更新全部组件。进程环境变量优先于配置目录中的 `app.env`
+- DEV 模式后端跟踪当前开发分支，处于 Release 的 detached HEAD 时回到 `v3`；前端下载最新 Release 的 `dist.zip`。显式 `--ref` / `--frontend-version` 优先于默认选择
+- 非 DEV 模式下，`update frontend` 会按当前仓库 `version.py` 中的 `FRONTEND_VERSION` 下载并替换前端 release
+- `update all` 会先更新后端，再按所选模式更新前端，默认也会同步资源文件
 - 更新前请先执行 `moviepilot stop`
 
 ## Agent 命令
@@ -394,10 +398,10 @@ moviepilot version
 
 说明：
 
-- `start` 会先启动后端，再启动前端
+- `start` 会先启动后端，再启动前端；普通 `start` / `restart` 不检查、不下载、不安装更新，DEV 模式也不例外
 - `start --safe` 会以安全模式启动后端，本次启动跳过插件、调度器、监控、命令和工作流等后台扩展能力，不修改用户配置
-- `MOVIEPILOT_AUTO_UPDATE` 为布尔开关，默认 `false`；只有 `true` 启用后台 Release 检查和版本提醒，保存后定时服务热更新。`AUTO_UPDATE_RESOURCE` 独立控制站点资源检查和提醒；任一开关开启即启用检测服务，且只检查对应目标，两者均关闭才移除服务。`MOVIEPILOT_UPDATE_DEV` 为独立布尔开关，默认 `false`；设为 `true` 时在每次启动/重启前跟踪当前 v3 开发分支，更新失败只告警，不阻断当前启动。旧 `dev/release` 值统一转换为 `MOVIEPILOT_AUTO_UPDATE=true`；旧 `dev` 在未显式配置新开关时迁移为 `MOVIEPILOT_UPDATE_DEV=true`
-- Release 更新由后台每 6 小时检查 GitHub Release；管理员确认后先静默下载安装包并显示进度，下载完成后再次确认重启，启动阶段只安装已下载且通过 SHA-256 校验的包
+- `MOVIEPILOT_AUTO_UPDATE` 为布尔开关，默认 `false`；只有 `true` 启用后台 Release 检查和版本提醒，保存后定时服务热更新。`AUTO_UPDATE_RESOURCE` 独立控制站点资源检查和提醒；任一开关开启即启用检测服务，且只检查对应目标，两者均关闭才移除服务。`MOVIEPILOT_UPDATE_DEV` 为独立布尔开关，默认 `false`；设为 `true` 时手动 `moviepilot update` 默认使用 DEV 更新模式。旧 `dev/release` 值统一转换为 `MOVIEPILOT_AUTO_UPDATE=true`；旧 `dev` 在未显式配置新开关时迁移为 `MOVIEPILOT_UPDATE_DEV=true`
+- Release 更新由后台每 6 小时检查 GitHub Release；管理员确认后先静默下载安装包并显示进度，下载完成后再次确认重启，通过专门的内部更新入口安装已下载且通过 SHA-256 校验的包后再启动服务
 - 页面中的“稍后”会在当前浏览器暂停提醒 24 小时，“忽略此版本”只屏蔽当前版本；出现更高版本时会重新提示
 - 通过系统内置的重启入口触发重启时，本地 CLI 安装模式也会复用同一套前后端进程管理完成重启
 - 前端默认监听 `NGINX_PORT`，默认值 `3000`

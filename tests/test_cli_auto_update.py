@@ -16,8 +16,11 @@ MODULE_PATH = Path(__file__).resolve().parents[1] / "app" / "cli.py"
 
 
 class _DummySystemHelper:
+    """隔离一次性更新请求的系统状态。"""
+
     @staticmethod
     def consume_one_shot_dev_update():
+        """默认没有用户确认的更新请求。"""
         return False
 
 
@@ -91,11 +94,12 @@ def load_cli_module():
         return module
 
 
-def test_resolve_auto_update_targets_keeps_dev_branch_tracking():
+def test_resolve_dev_update_target_keeps_dev_branch_tracking():
+    """确认的 DEV 更新继续跟踪当前开发分支。"""
     module = load_cli_module()
     with patch.object(module, "_git_current_branch", return_value="v3"):
-        assert module._resolve_auto_update_targets("dev") == "latest"
-    assert module._resolve_auto_update_targets("release") is None
+        assert module._resolve_dev_update_target("dev") == "latest"
+    assert module._resolve_dev_update_target("release") is None
 
 
 def test_one_shot_dev_update_overrides_disabled_default():
@@ -106,29 +110,31 @@ def test_one_shot_dev_update_overrides_disabled_default():
     with patch.object(
         module.SystemHelper, "consume_one_shot_dev_update", return_value=True
     ):
-        assert module._auto_update_mode() == "dev"
+        assert module._requested_update_mode() == "dev"
 
 
 @pytest.mark.parametrize("auto_update", [True, False])
 @pytest.mark.parametrize("update_dev", [True, False])
 def test_dev_tracking_is_independent_of_automatic_checks(auto_update, update_dev):
-    """检查开关不触发启动更新，Dev 开关单独选择开发分支。"""
+    """配置开关不能替代用户明确发起的更新请求。"""
     module = load_cli_module()
     module.settings.MOVIEPILOT_AUTO_UPDATE = auto_update
     module.settings.MOVIEPILOT_UPDATE_DEV = update_dev
-    assert module._auto_update_mode() == ("dev" if update_dev else "false")
+    assert module._requested_update_mode() == "false"
 
 
 def test_release_mode_does_not_update_during_start():
+    """没有一次性 DEV 请求时不执行在线更新。"""
     module = load_cli_module()
-    with patch.object(module, "_auto_update_mode", return_value="release"), patch.object(
+    with patch.object(module, "_requested_update_mode", return_value="release"), patch.object(
         module.subprocess, "run"
     ) as run_mock:
-        module._best_effort_auto_update()
+        module._apply_requested_update()
     run_mock.assert_not_called()
 
 
 def test_prepared_release_uses_downloaded_package_before_dev_mode():
+    """确认的离线安装包优先于一次性 DEV 更新。"""
     module = load_cli_module()
     module.PREPARED_UPDATE_ROOT.mkdir(parents=True)
     backend = module.PREPARED_UPDATE_ROOT / "backend.zip"
@@ -150,10 +156,10 @@ def test_prepared_release_uses_downloaded_package_before_dev_mode():
     )
     run_result = SimpleNamespace(returncode=0, stdout="ok")
 
-    with patch.object(module, "_auto_update_mode", return_value="dev") as mode, patch.object(
+    with patch.object(module, "_requested_update_mode", return_value="dev") as mode, patch.object(
         module.subprocess, "run", return_value=run_result
     ) as run_mock, patch.object(module.click, "echo"):
-        module._best_effort_auto_update()
+        module._apply_requested_update()
 
     command = run_mock.call_args.args[0]
     assert "--offline-backend" in command
@@ -163,6 +169,7 @@ def test_prepared_release_uses_downloaded_package_before_dev_mode():
 
 
 def test_prepared_release_passes_package_env_and_overrides_proxy():
+    """离线更新子进程继承缓存目录和当前代理。"""
     module = load_cli_module()
     module.settings.PROXY_HOST = "http://proxy.example:7890"
     module.settings.PIP_PROXY = "https://mirror.example/simple"
@@ -202,39 +209,43 @@ def test_prepared_release_passes_package_env_and_overrides_proxy():
     assert env["UV_CACHE_DIR"] == str(module.settings.PACKAGE_CACHE_PATH / "uv")
 
 
-def test_best_effort_auto_update_does_not_pass_frontend_version_override():
+def test_apply_requested_update_does_not_pass_frontend_version_override():
+    """明确 DEV 模式由安装器解析最新前端 Release。"""
     module = load_cli_module()
     run_result = SimpleNamespace(returncode=0, stdout="ok")
 
-    with patch.object(module, "_auto_update_mode", return_value="dev"), patch.object(
-        module, "_resolve_auto_update_targets", return_value="latest"
+    with patch.object(module, "_requested_update_mode", return_value="dev"), patch.object(
+        module, "_resolve_dev_update_target", return_value="latest"
     ), patch.object(module.subprocess, "run", return_value=run_result) as run_mock, patch.object(
         module.click, "echo"
     ):
-        module._best_effort_auto_update()
+        module._apply_requested_update()
 
     command = run_mock.call_args.args[0]
-    assert command[1:5] == [
+    assert command[1:6] == [
         str(module._repo_root() / "scripts" / "local_setup.py"),
         "update",
         "all",
+        "--dev",
         "--ref",
     ]
     assert "--frontend-version" not in command
+    assert "--dev" in command
 
 
-def test_best_effort_auto_update_passes_package_env_and_overrides_proxy():
+def test_apply_requested_update_passes_package_env_and_overrides_proxy():
+    """DEV 更新使用配置中的包缓存和代理。"""
     module = load_cli_module()
     module.settings.PROXY_HOST = "http://proxy.example:7890"
     module.settings.PIP_PROXY = "https://mirror.example/simple"
     run_result = SimpleNamespace(returncode=0, stdout="ok")
 
     with patch.dict(module.os.environ, {"HTTPS_PROXY": "http://old.example:8080"}, clear=True), patch.object(
-        module, "_auto_update_mode", return_value="dev"
-    ), patch.object(module, "_resolve_auto_update_targets", return_value="latest"), patch.object(
+        module, "_requested_update_mode", return_value="dev"
+    ), patch.object(module, "_resolve_dev_update_target", return_value="latest"), patch.object(
         module.subprocess, "run", return_value=run_result
     ) as run_mock, patch.object(module.click, "echo"):
-        module._best_effort_auto_update()
+        module._apply_requested_update()
 
     env = run_mock.call_args.kwargs["env"]
     assert env["HTTPS_PROXY"] == "http://proxy.example:7890"
@@ -243,7 +254,8 @@ def test_best_effort_auto_update_passes_package_env_and_overrides_proxy():
     assert env["UV_CACHE_DIR"] == str(module.settings.PACKAGE_CACHE_PATH / "uv")
 
 
-def test_best_effort_auto_update_derives_tool_cache_from_existing_root():
+def test_apply_requested_update_derives_tool_cache_from_existing_root():
+    """已有包缓存根目录优先于配置默认值。"""
     module = load_cli_module()
     run_result = SimpleNamespace(returncode=0, stdout="ok")
     package_cache_root = Path("/custom/package-cache-root")
@@ -252,12 +264,12 @@ def test_best_effort_auto_update_derives_tool_cache_from_existing_root():
         module.os.environ,
         {"PACKAGE_CACHE_ROOT": str(package_cache_root)},
         clear=True,
-    ), patch.object(module, "_auto_update_mode", return_value="dev"), patch.object(
-        module, "_resolve_auto_update_targets", return_value="latest"
+    ), patch.object(module, "_requested_update_mode", return_value="dev"), patch.object(
+        module, "_resolve_dev_update_target", return_value="latest"
     ), patch.object(module.subprocess, "run", return_value=run_result) as run_mock, patch.object(
         module.click, "echo"
     ):
-        module._best_effort_auto_update()
+        module._apply_requested_update()
 
     env = run_mock.call_args.kwargs["env"]
     assert env["PACKAGE_CACHE_ROOT"] == str(package_cache_root)
@@ -265,6 +277,7 @@ def test_best_effort_auto_update_derives_tool_cache_from_existing_root():
 
 
 def _prepared_resource_files(module):
+    """构造带摘要的离线资源包清单。"""
     resource_dir = module.PREPARED_UPDATE_ROOT / "resources"
     resource_dir.mkdir(parents=True, exist_ok=True)
     resources = []
@@ -285,6 +298,7 @@ def _prepared_resource_files(module):
 
 
 def test_prepared_resource_update_uses_offline_resource_install_only():
+    """资源更新仅应用已校验的本地资源包。"""
     module = load_cli_module()
     module.PREPARED_UPDATE_ROOT.mkdir(parents=True, exist_ok=True)
     module.PREPARED_UPDATE_MANIFEST.write_text(
@@ -306,6 +320,7 @@ def test_prepared_resource_update_uses_offline_resource_install_only():
 
 
 def test_prepared_application_and_resources_install_in_order():
+    """同时更新时先安装主程序再安装资源包。"""
     module = load_cli_module()
     module.PREPARED_UPDATE_ROOT.mkdir(parents=True, exist_ok=True)
     backend = module.PREPARED_UPDATE_ROOT / "backend.zip"
@@ -339,3 +354,68 @@ def test_prepared_application_and_resources_install_in_order():
     assert "update" in commands[0]
     assert "install-resources" in commands[1]
     assert not module.PREPARED_UPDATE_MANIFEST.exists()
+
+
+@pytest.mark.parametrize("command", ["start", "restart"])
+@pytest.mark.parametrize("dev", [False, True])
+def test_service_start_never_applies_updates(command, dev):
+    """普通启动和重启均不能读取更新请求或执行安装，即使开启 DEV。"""
+    from click.testing import CliRunner
+
+    module = load_cli_module()
+    module.settings.MOVIEPILOT_UPDATE_DEV = dev
+    result = {
+        "runtime": {"port": 3001}, "process": SimpleNamespace(pid=123),
+        "started": True, "health": {},
+    }
+    with patch.object(module, "_ensure_frontend_not_running_alone"), patch.object(
+        module, "_start_backend_service", return_value=result
+    ), patch.object(module, "_start_frontend_service", return_value=result), patch.object(
+        module, "_stop_backend_service"
+    ), patch.object(module, "_stop_frontend_service"), patch.object(
+        module, "_apply_requested_update"
+    ) as update:
+        response = CliRunner().invoke(module.cli, [command])
+    assert response.exit_code == 0, response.output
+    update.assert_not_called()
+
+
+def test_confirmed_update_runs_between_stop_and_start():
+    """系统确认的升级通过显式内部入口执行，安装完成后再启动服务。"""
+    from click.testing import CliRunner
+
+    module = load_cli_module()
+    calls = []
+    with patch.object(module, "_stop_frontend_service", side_effect=lambda **_: calls.append("stop_frontend")), patch.object(
+        module, "_stop_backend_service", side_effect=lambda **_: calls.append("stop_backend")
+    ), patch.object(module, "_apply_requested_update", side_effect=lambda: calls.append("update")), patch.object(
+        module, "_start_backend_service", side_effect=lambda **_: calls.append("start_backend") or {"runtime": {"port": 3001}}
+    ), patch.object(module, "_start_frontend_service", return_value={"runtime": {"port": 3000}}):
+        response = CliRunner().invoke(module.cli, ["restart", "--apply-update"])
+    assert response.exit_code == 0, response.output
+    assert calls == ["stop_frontend", "stop_backend", "update", "start_backend"]
+
+
+@pytest.mark.parametrize("pending", [None, "release", "dev"])
+def test_restart_helper_only_applies_confirmed_updates(monkeypatch, tmp_path, pending):
+    """内部重启助手只在明确的升级清单或一次性请求存在时传递更新选项。"""
+    import subprocess
+    import time
+
+    from app.runtime.state import SystemHelper
+
+    for attribute, name in (
+        ("_SystemHelper__prepared_update_manifest", "release"),
+        ("_SystemHelper__one_shot_dev_update_flag_file", "dev"),
+        ("_SystemHelper__local_restart_log_file", "restart.log"),
+    ):
+        path = tmp_path / name
+        monkeypatch.setattr(SystemHelper, attribute, path)
+        if pending == name:
+            path.touch()
+    with patch.object(subprocess, "Popen", return_value=SimpleNamespace(pid=123)) as spawn:
+        SystemHelper._spawn_local_restart_helper()
+    helper_code = spawn.call_args.args[0][2]
+    with patch.object(time, "sleep"), patch.object(subprocess, "run") as run:
+        exec(helper_code, {})
+    assert ("--apply-update" in run.call_args.args[0]) is (pending is not None)
