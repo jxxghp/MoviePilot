@@ -4,16 +4,23 @@ import threading
 import time
 from dataclasses import dataclass
 from difflib import SequenceMatcher
+from itertools import chain
 from typing import Any, Iterable, Optional, Tuple, TypeVar, Union
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.application.music.observation import (
+    BLOCKING_MUSIC_RECOGNITION_STATES,
     capture_music_recognition,
     music_recognition_diagnostics,
     music_recognition_failed,
     music_request_timeout,
     music_wait_allowed,
     report_music_recognition,
+)
+from app.application.music.recognition import (
+    async_enrich_music_artist_aliases,
+    enrich_music_artist_aliases,
+    unique_music_match,
 )
 from app.domain.classification.evaluator import read_fact
 from app.domain.classification.facts import build_classification_facts
@@ -519,6 +526,11 @@ class MusicBrainzModule(_ModuleBase):
                 params={"query": query, "limit": max(1, min(limit, 100)), "fmt": "json"},
             )
             results = self._project_recording_search(payload)
+            if require_match:
+                enrich_music_artist_aliases(
+                    ((meta, item) for item in results), self._source,
+                    lambda identity: self._lookup_artist_aliases([identity], []),
+                )
             if results and (not require_match or self._select_candidate(meta, results, self._source)):
                 return results
         return []
@@ -540,6 +552,11 @@ class MusicBrainzModule(_ModuleBase):
                 },
             )
             results = self._project_recording_search(payload)
+            if require_match:
+                await async_enrich_music_artist_aliases(
+                    ((meta, item) for item in results), self._source,
+                    lambda identity: self._async_lookup_artist_aliases([identity], []),
+                )
             if results and (not require_match or self._select_candidate(meta, results, self._source)):
                 return results
         return []
@@ -680,6 +697,11 @@ class MusicBrainzModule(_ModuleBase):
                 },
             )
             results = self._project_album_search(payload)
+            if require_match:
+                enrich_music_artist_aliases(
+                    ((meta, item) for item in results), self._source,
+                    lambda identity: self._lookup_artist_aliases([identity], []),
+                )
             if results and (not require_match or self._select_album_candidate(meta, results)):
                 return results
         return []
@@ -701,6 +723,11 @@ class MusicBrainzModule(_ModuleBase):
                 },
             )
             results = self._project_album_search(payload)
+            if require_match:
+                await async_enrich_music_artist_aliases(
+                    ((meta, item) for item in results), self._source,
+                    lambda identity: self._async_lookup_artist_aliases([identity], []),
+                )
             if results and (not require_match or self._select_album_candidate(meta, results)):
                 return results
         return []
@@ -842,7 +869,15 @@ class MusicBrainzModule(_ModuleBase):
                 if not detail:
                     continue
                 details.append(detail)
-            return self._select_release_match(meta, tracks, details, preference)
+            albums = {str(detail["id"]): album for detail in details if (album := self._release_to_album(detail))}
+            pairs: Iterable[tuple[MetaMusic, MusicInfo | MusicAlbumInfo]] = chain(
+                ((meta, album) for album in albums.values()),
+                ((local, remote) for album in albums.values() for remote in album.tracks for local in tracks),
+            )
+            enrich_music_artist_aliases(pairs, self._source, lambda identity: self._lookup_artist_aliases([identity], []))
+            if music_recognition_failed():
+                return None
+            return self._select_release_match(meta, tracks, details, preference, albums)
 
     async def async_match_music_album(
             self,
@@ -877,7 +912,15 @@ class MusicBrainzModule(_ModuleBase):
                 if not detail:
                     continue
                 details.append(detail)
-            return self._select_release_match(meta, tracks, details, preference)
+            albums = {str(detail["id"]): album for detail in details if (album := self._release_to_album(detail))}
+            pairs: Iterable[tuple[MetaMusic, MusicInfo | MusicAlbumInfo]] = chain(
+                ((meta, album) for album in albums.values()),
+                ((local, remote) for album in albums.values() for remote in album.tracks for local in tracks),
+            )
+            await async_enrich_music_artist_aliases(pairs, self._source, lambda identity: self._async_lookup_artist_aliases([identity], []))
+            if music_recognition_failed():
+                return None
+            return self._select_release_match(meta, tracks, details, preference, albums)
 
     @classmethod
     def _select_release_match(
@@ -886,8 +929,9 @@ class MusicBrainzModule(_ModuleBase):
             tracks: list[MetaMusic],
             details: Iterable[dict[str, Any]],
             preference: Optional[_MusicReleasePreference] = None,
+            albums: Optional[dict[str, MusicAlbumInfo]] = None,
     ) -> Optional[MusicAlbumInfo]:
-        """对已获取的发行详情统一打分并投影最佳专辑。"""
+        """统一比较发行；复用本次已补证的模型，避免重新投影丢失Artist别名。"""
         selected_preference = preference or cls._release_preference()
         ranked: list[tuple[float, tuple[int, int], MusicAlbumInfo]] = []
         seen: set[str] = set()
@@ -897,8 +941,8 @@ class MusicBrainzModule(_ModuleBase):
                 continue
             seen.add(release_id)
             summary = cls._release_track_summary(detail)
-            score = cls._score_release(meta, tracks, detail, summary)
-            album = cls._release_to_album(detail)
+            album = albums.get(release_id) if albums is not None else cls._release_to_album(detail)
+            score = cls._score_release(meta, tracks, detail, summary, album=album)
             if album and score > 0:
                 ranked.append((score, cls._release_preference_sort_key(detail, selected_preference), album))
         if not ranked:
@@ -1124,9 +1168,10 @@ class MusicBrainzModule(_ModuleBase):
             tracks: list[MetaMusic],
             detail: dict[str, Any],
             summary: list[dict[str, Any]],
+            *, album: Optional[MusicAlbumInfo] = None,
     ) -> float:
         """给候选发行版本打分（0-100），综合标题、歌手、曲目数和时长相似度。"""
-        album = cls._release_to_album(detail)
+        album = album or cls._release_to_album(detail)
         if not album or not tracks or len(album.tracks) != len(summary):
             return 0.0
         for field in ("musicbrainz_release_id", "musicbrainz_release_group_id"):
@@ -1223,6 +1268,7 @@ class MusicBrainzModule(_ModuleBase):
             title=str(title),
             artists=artists,
             artist_ids=artist_ids,
+            artist_aliases=cls._credit_aliases(detail.get("artist-credit")),
             album_type=cls._stripped(release_group.get("primary-type")),
             secondary_types=[cls._stripped(item) for item in release_group.get("secondary-types") or [] if cls._stripped(item)],
             release_date=detail.get("date") or None,
@@ -1455,9 +1501,12 @@ class MusicBrainzModule(_ModuleBase):
     ) -> MusicInfo:
         """统一生成候选识别兜底并写入本地缓存。"""
         meta = plan.require_meta()
+        diagnostic = music_recognition_diagnostics()
+        if diagnostic.get("status") in BLOCKING_MUSIC_RECOGNITION_STATES:
+            result = self._info_from_meta(meta)
+            result.raw_data["recognition"] = diagnostic
+            return result
         result = matched or self._info_from_meta(meta)
-        if not result.media_id and music_recognition_failed():
-            result.raw_data["recognition"] = music_recognition_diagnostics()
         self._update_recognize_cache(meta, result, music_type=plan.music_type)
         return result
 
@@ -1481,7 +1530,7 @@ class MusicBrainzModule(_ModuleBase):
             else []
         )
         matched = self._select_recognition_candidate(plan, recordings, albums)
-        if plan.music_type == MUSIC_ENTITY_ALBUM:
+        if plan.music_type == MUSIC_ENTITY_ALBUM and music_recognition_diagnostics().get("status") not in BLOCKING_MUSIC_RECOGNITION_STATES:
             return matched
         return self._finalize_recognition(plan, matched)
 
@@ -1505,7 +1554,7 @@ class MusicBrainzModule(_ModuleBase):
             else []
         )
         matched = self._select_recognition_candidate(plan, recordings, albums)
-        if plan.music_type == MUSIC_ENTITY_ALBUM:
+        if plan.music_type == MUSIC_ENTITY_ALBUM and music_recognition_diagnostics().get("status") not in BLOCKING_MUSIC_RECOGNITION_STATES:
             return matched
         return self._finalize_recognition(plan, matched)
 
@@ -1523,6 +1572,7 @@ class MusicBrainzModule(_ModuleBase):
         clean_title = cls._strip_artist_prefix(original_title, meta.artists)
         bare_title = music_base_title(clean_title)
         ranked: list[tuple[bool, int, MusicInfo]] = []
+        identities: list[MusicInfo] = []
         for candidate in candidates:
             if normalized_source and str(candidate.media_source or "").casefold() != normalized_source:
                 continue
@@ -1530,7 +1580,8 @@ class MusicBrainzModule(_ModuleBase):
             release_matches = album_matches and music_year_matches(candidate, meta)
             if music_isrc_matches(candidate, meta) and release_matches:
                 # 相同 ISRC 是明确录音身份，不能被另一条纯标题命中的得分压过。
-                return candidate
+                identities.append(candidate)
+                continue
             score = 0
             title_match = False
             # 多艺术家资源任一命中即可，联名候选不会因主艺术家顺序失配
@@ -1563,10 +1614,10 @@ class MusicBrainzModule(_ModuleBase):
             ):
                 continue
             ranked.append((exact_title, score, candidate))
-        if not ranked:
-            return None
+        if identities or not ranked:
+            return unique_music_match(identities)
         ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
-        return ranked[0][2]
+        return unique_music_match([item[2] for item in ranked if item[:2] == ranked[0][:2]])
 
     @classmethod
     def _select_album_candidate(cls, meta: MetaMusic, albums: Iterable[MusicInfo]) -> Optional[MusicInfo]:
@@ -1645,7 +1696,7 @@ class MusicBrainzModule(_ModuleBase):
         if not ranked:
             return None
         ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
-        return ranked[0][2]
+        return unique_music_match([item[2] for item in ranked if item[:2] == ranked[0][:2]])
 
     @classmethod
     def _info_from_meta(cls, meta: MetaMusic) -> MusicInfo:
@@ -2315,6 +2366,7 @@ class MusicBrainzModule(_ModuleBase):
             title=str(title),
             artists=artists or list(album.artists),
             artist_ids=artist_ids or list(album.artist_ids),
+            artist_aliases=cls._credit_aliases(track.get("artist-credit") or recording.get("artist-credit")) if artists else list(album.artist_aliases),
             album=album.title,
             album_artist=album.artist or None,
             album_id=album.media_id,

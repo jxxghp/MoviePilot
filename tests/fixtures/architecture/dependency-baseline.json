@@ -1021,8 +1021,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9027,
-  "edge_sha256": "3f8eaae519865c26335851f18585d73b8a1d7536e20b3d4cc3e8c64bc8ec098b",
+  "edge_count": 9031,
+  "edge_sha256": "f8fa4f7716fae3befc89650d4d6d0185a5f9b318a5c88e8ebcb1143a23bae108",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -3667,6 +3667,9 @@
     "app.application.music.recognition -> app.application.music.observation",
     "app.application.music.recognition -> app.domain",
     "app.application.music.recognition -> app.domain.context",
+    "app.application.music.recognition -> app.domain.meta",
+    "app.application.music.recognition -> app.domain.meta.metamusic",
+    "app.application.music.recognition -> app.domain.music",
     "app.application.music.recognition -> app.runtime",
     "app.application.music.recognition -> app.runtime.log",
     "app.application.music.recognition -> app.schemas",
@@ -7516,6 +7519,7 @@
     "app.modules.musicbrainz -> app.application",
     "app.modules.musicbrainz -> app.application.music",
     "app.modules.musicbrainz -> app.application.music.observation",
+    "app.modules.musicbrainz -> app.application.music.recognition",
     "app.modules.musicbrainz -> app.domain",
     "app.modules.musicbrainz -> app.domain.classification",
     "app.modules.musicbrainz -> app.domain.classification.evaluator",

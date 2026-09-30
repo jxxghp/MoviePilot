@@ -1,6 +1,6 @@
 """音乐来源的有序识别回退；来源失败隔离，身份、候选校验由注入的业务入口负责。"""
 
-from typing import Any, Awaitable, Callable, Optional, Sequence, TypeVar
+from typing import Any, Awaitable, Callable, Iterable, Optional, Sequence, TypeVar
 
 from app.application.music.observation import (
     MusicRecognitionObservation,
@@ -11,11 +11,35 @@ from app.application.music.observation import (
     report_music_recognition,
 )
 from app.domain.context import MusicAlbumInfo, MusicInfo
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.music import music_artist_alias_targets, unique_music_texts
 from app.runtime.log import logger
 from app.schemas.types import MediaSource
 
 _Result = TypeVar("_Result")
 _Candidate = TypeVar("_Candidate", MusicInfo, MusicAlbumInfo)
+
+
+def enrich_music_artist_aliases(
+        pairs: Iterable[tuple[MetaMusic, MusicInfo | MusicAlbumInfo]], source: MediaSource,
+        lookup: Callable[[str], list[str]],
+) -> None:
+    """按需补充本次候选别名；来源回调须校验精确ID，缓存和请求预算仍由来源边界执行。"""
+    for artist_id, candidates in music_artist_alias_targets(pairs, source).items():
+        aliases = lookup(artist_id)
+        for candidate in candidates:
+            candidate.artist_aliases = unique_music_texts([*candidate.artist_aliases, *aliases])
+
+
+async def async_enrich_music_artist_aliases(
+        pairs: Iterable[tuple[MetaMusic, MusicInfo | MusicAlbumInfo]], source: MediaSource,
+        lookup: Callable[[str], Awaitable[list[str]]],
+) -> None:
+    """异步别名补证使用相同候选准入与去重上限，取消向调用方传播。"""
+    for artist_id, candidates in music_artist_alias_targets(pairs, source).items():
+        aliases = await lookup(artist_id)
+        for candidate in candidates:
+            candidate.artist_aliases = unique_music_texts([*candidate.artist_aliases, *aliases])
 
 
 def unique_music_match(candidates: Sequence[_Candidate]) -> Optional[_Candidate]:

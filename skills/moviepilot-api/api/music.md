@@ -115,6 +115,14 @@ Music recognition, exploration, album and artist navigation, and recognition-cac
   (24 attempts / 135 seconds total). Smaller enclosing budgets still apply;
   changing source cannot reset them. HTTP cache hits consume no request quota.
   A service failure allows the next source; ambiguity or conflict stops fallback.
+- MusicBrainz and TheAudioDB can verify mismatched artist names through actual
+  source Artist IDs when title, version and year remain compatible. At most three
+  distinct Artist IDs are queried per candidate batch, within the existing HTTP
+  budget and cache. Romanized names need a source-provided alias; do not infer
+  identities from transliteration. Evidence is added to `artist_aliases` without
+  changing `artists`, aligned `artist_ids` or primary identities. Album details
+  inherit aliases only for the same source and Artist ID. Equal candidates and
+  distinct recordings sharing an ISRC remain ambiguous.
 - Secondary album catalogs require a complete track list and unique alignment
   covering all local files. They do not prove a release edition:
   `identity_type=album`, `release_verified=false`. Local disc/track numbers,

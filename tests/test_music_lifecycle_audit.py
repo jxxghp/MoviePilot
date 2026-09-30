@@ -146,8 +146,8 @@ def test_batch_matches_registered_site_domain(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
-def test_real_recording_response_matches_tie_in_title(asynchronous, monkeypatch):
-    """实站名称和公共响应离线重放，确认修复能识别单曲而非回退到同名专辑。"""
+def test_real_recording_response_preserves_ambiguous_identity(asynchronous, monkeypatch):
+    """真实响应有两条同名同年但不同ISRC的录音，仅凭种子名称须待确认且不退到专辑。"""
     fixture = json.loads((Path(__file__).parent / "fixtures/music_lifecycle_recording.json").read_text(encoding="utf-8"))
     module = MusicBrainzModule()
 
@@ -165,6 +165,27 @@ def test_real_recording_response_matches_tie_in_title(asynchronous, monkeypatch)
                   media_source=MediaSource.MusicBrainz, mtype=MediaType.MUSIC, music_type="recording", cache=False)
     result = asyncio.run(module.async_recognize_media(**kwargs)) if asynchronous else module.recognize_media(**kwargs)
 
+    assert result.media_id is None
+    assert result.music_type == "recording"
+    assert result.artists == ["李佳薇"]
+    assert result.raw_data["recognition"]["status"] == "ambiguous"
+    assert {item["media_id"] for item in result.raw_data["recognition"]["candidates"]} == {
+        fixture["expected_id"], "9f29834c-f965-4f70-a7f2-17171bba2338",
+    }
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_real_recording_response_uses_isrc_to_disambiguate(reverse):
+    """同一公共响应的两条录音可用本地明确ISRC消歧，不依赖返回顺序。"""
+    fixture = json.loads((Path(__file__).parent / "fixtures/music_lifecycle_recording.json").read_text(encoding="utf-8"))
+    recordings = next(item["payload"]["recordings"] for item in fixture["requests"] if item["payload"].get("recordings"))
+    candidates = [MusicBrainzModule._recording_to_info(item) for item in recordings]
+    meta = MetaMusic.parse_resource(fixture["title"], fixture["description"])
+    meta.isrc = "HKD012291069"
+
+    result = MusicBrainzModule._select_candidate(meta, candidates[::-1] if reverse else candidates, MediaSource.MusicBrainz)
+
     assert result.media_id == fixture["expected_id"]
+    assert result.isrc == meta.isrc
     assert result.music_type == "recording"
     assert result.artists == ["李佳薇"]

@@ -3,7 +3,11 @@ from typing import Any, Iterable, Optional, Tuple, Union
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.application.music.observation import music_request_timeout, report_music_recognition
-from app.application.music.recognition import unique_music_match
+from app.application.music.recognition import (
+    async_enrich_music_artist_aliases,
+    enrich_music_artist_aliases,
+    unique_music_match,
+)
 from app.domain.context import (
     MusicAlbumInfo,
     MusicArtistInfo,
@@ -445,7 +449,9 @@ class TheAudioDbModule(_ModuleBase):
         if not params:
             return []
         payload = self._request_json("searchtrack.php", params)
-        return self._project_track_search(payload)
+        candidates = self._project_track_search(payload)
+        enrich_music_artist_aliases(((meta, candidate) for candidate in candidates), self._source, self._artist_aliases)
+        return candidates
 
     async def _async_search_tracks(self, meta: MetaMusic) -> list[MusicInfo]:
         """异步使用曲名和艺术家搜索 TheAudioDB 单曲。"""
@@ -453,7 +459,9 @@ class TheAudioDbModule(_ModuleBase):
         if not params:
             return []
         payload = await self._async_request_json("searchtrack.php", params)
-        return self._project_track_search(payload)
+        candidates = self._project_track_search(payload)
+        await async_enrich_music_artist_aliases(((meta, candidate) for candidate in candidates), self._source, self._async_artist_aliases)
+        return candidates
 
     @staticmethod
     def _track_search_params(meta: MetaMusic) -> Optional[dict[str, str]]:
@@ -480,7 +488,9 @@ class TheAudioDbModule(_ModuleBase):
         if not params:
             return []
         payload = self._request_json("searchalbum.php", params)
-        return self._project_album_search(payload)
+        candidates = self._project_album_search(payload)
+        enrich_music_artist_aliases(((meta, candidate) for candidate in candidates), self._source, self._artist_aliases)
+        return candidates
 
     async def _async_search_albums(
             self,
@@ -491,7 +501,9 @@ class TheAudioDbModule(_ModuleBase):
         if not params:
             return []
         payload = await self._async_request_json("searchalbum.php", params)
-        return self._project_album_search(payload)
+        candidates = self._project_album_search(payload)
+        await async_enrich_music_artist_aliases(((meta, candidate) for candidate in candidates), self._source, self._async_artist_aliases)
+        return candidates
 
     @staticmethod
     def _album_search_params(meta: MetaMusic) -> Optional[dict[str, str]]:
@@ -522,6 +534,24 @@ class TheAudioDbModule(_ModuleBase):
             self._artist_to_info(item)
             for item in self._entities(payload, "artists", "artist")
         ]
+
+    @classmethod
+    def _artist_alias_values(cls, payload: Optional[dict[str, Any]], artist_id: str) -> list[str]:
+        """只消费精确Artist ID响应中的真实名字与别名，拒绝同名但不同身份的结果。"""
+        names = []
+        for item in cls._entities(payload, "artists", "artist"):
+            artist = cls._artist_to_info(item)
+            if artist.media_id == artist_id:
+                names.extend([artist.name, *artist.aliases])
+        return cls._unique_texts(names)
+
+    def _artist_aliases(self, artist_id: str) -> list[str]:
+        """通过已有缓存及HTTP预算查询一个确定的艺人身份。"""
+        return self._artist_alias_values(self._request_json("artist.php", {"i": artist_id}), artist_id)
+
+    async def _async_artist_aliases(self, artist_id: str) -> list[str]:
+        """异步按同一身份补证，沿用与同步来源共享的缓存。"""
+        return self._artist_alias_values(await self._async_request_json("artist.php", {"i": artist_id}), artist_id)
 
     @staticmethod
     def _select_track(

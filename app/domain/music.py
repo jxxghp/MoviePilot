@@ -103,6 +103,7 @@ def music_album_lookup_plan(
 ) -> Generator[MusicAlbumLookup, list[MusicInfo] | MusicAlbumInfo | None, list[MusicAlbumInfo]]:
     """收集同来源的专辑ID并优先读取被多首歌共同支持的候选，最多核验五个详情。"""
     support: dict[str, int] = {}
+    artist_aliases: dict[str, list[str]] = {}
     for query in music_album_queries(meta, tracks):
         cards = yield MusicAlbumLookup(meta=query)
         if not isinstance(cards, list):
@@ -113,6 +114,9 @@ def music_album_lookup_plan(
                 continue
             if not music_title_matches(card, query.title, preserve_editions=True) or not music_version_matches(card, query):
                 continue
+            if len(card.artist_ids) == 1 and card.artist_ids[0] and card.artist_aliases:
+                identity = card.artist_ids[0]
+                artist_aliases[identity] = unique_music_texts([*artist_aliases.get(identity, []), *card.artist_aliases])
             album_id = card.media_id if query.music_type == MUSIC_ENTITY_ALBUM else card.album_id
             if album_id and album_id not in ids:
                 ids.add(album_id)
@@ -124,8 +128,20 @@ def music_album_lookup_plan(
     for album_id in sorted(support, key=support.__getitem__, reverse=True):
         album = yield MusicAlbumLookup(album_id=album_id)
         if isinstance(album, MusicAlbumInfo) and album.media_source == source and album.media_id == album_id:
-            albums.append(album)
+            albums.append(music_album_with_artist_aliases(album, artist_aliases))
     return albums
+
+
+def music_album_with_artist_aliases(album: MusicAlbumInfo, aliases: dict[str, list[str]]) -> MusicAlbumInfo:
+    """把同来源且已绑定Artist ID的搜索证据传给详情副本，不污染缓存或其它演唱者。"""
+    result = deepcopy(album)
+    candidates: list[MusicInfo | MusicAlbumInfo] = [result, *result.tracks]
+    for candidate in candidates:
+        if candidate.media_source != album.media_source:
+            continue
+        values = [name for identity in candidate.artist_ids for name in aliases.get(identity, [])]
+        candidate.artist_aliases = unique_music_texts([*candidate.artist_aliases, *values])
+    return result
 
 
 def music_album_candidate_matches(album: MusicAlbumInfo, meta: MetaMusic, tracks: list[MetaMusic]) -> bool:
@@ -541,6 +557,33 @@ def music_artist_matches(music: MusicInfo, parsed_artists: Iterable[str]) -> boo
     if len(parsed) > 1 and any(any(separator in artist for separator in ("/", "&", ",")) for artist in artists):
         keys.add(music_text_key(" / ".join(parsed)))
     return bool(keys & {music_text_key(artist) for artist in artists})
+
+
+def music_artist_alias_targets(
+        pairs: Iterable[tuple[MetaMusic, MusicInfo | MusicAlbumInfo]], source: MediaSource,
+) -> dict[str, list[MusicInfo | MusicAlbumInfo]]:
+    """仅为其它证据合理且署名不一致的候选补证，按真实Artist ID去重并限制三个身份。
+
+    返回当前候选的引用供应用层附加已验证别名；不从拼音推导身份，不改变署名与ID对应关系。
+    """
+    targets: dict[str, list[MusicInfo | MusicAlbumInfo]] = {}
+    for meta, candidate in pairs:
+        info = candidate.to_music_info() if isinstance(candidate, MusicAlbumInfo) else candidate
+        artists = music_usable_artists([meta.album_artist] if info.music_type == MUSIC_ENTITY_ALBUM and meta.album_artist else meta.artists)
+        if candidate.media_source != source or not artists or music_artist_matches(info, artists):
+            continue
+        title = (meta.album or meta.title) if info.music_type == MUSIC_ENTITY_ALBUM else meta.title
+        if not music_title_matches(info, title, preserve_editions=True) or not music_version_matches(info, meta):
+            continue
+        if not music_release_year_matches(info, meta):
+            continue
+        for artist_id in candidate.artist_ids:
+            if not artist_id or (artist_id not in targets and len(targets) >= 3):
+                continue
+            candidates = targets.setdefault(artist_id, [])
+            if not any(item is candidate for item in candidates):
+                candidates.append(candidate)
+    return targets
 
 
 def music_base_title(value: Optional[str], *, preserve_editions: bool = False) -> str:
