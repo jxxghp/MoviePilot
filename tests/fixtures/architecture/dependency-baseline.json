@@ -617,7 +617,7 @@
           "from:smbclient.reset_connection_cache as reset_connection_cache",
           "import:smbclient as smbclient"
         ],
-        "fingerprint": "e3e1a302951dcc44f3216fb2a0c9f5cf42d233b1415923efb27bb49c6680f163",
+        "fingerprint": "37619f050b03598fa559c6ae2df94bda6adf7cffd1cc42d9db9059f1fb41af47",
         "kind": "network_sdk",
         "source": "app.modules.filemanager.storages.smb",
         "target": "smbclient",
@@ -626,6 +626,8 @@
           "SMB._create_fileitem|call:path.isdir",
           "SMB._init_connection|call:ClientConfig",
           "SMB._init_connection|call:register_session",
+          "SMB._move_between_shares|call:remove",
+          "SMB._move_between_shares|call:stat",
           "SMB._recursive_delete|call:listdir",
           "SMB._recursive_delete|call:path.exists",
           "SMB._recursive_delete|call:path.isdir",

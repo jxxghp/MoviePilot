@@ -705,8 +705,9 @@ method names. The directory remains unchanged because discovery and plugin code
 depend on this established runtime root.
 
 SMB 同存储整理由 `app.modules.filemanager.storages.smb` 持有协议调用边界：
-复制调用 `smbclient.copyfile`（CopyChunk），移动调用 `smbclient.rename`，硬链接调用
-`smbclient.link`。源目标同文件检查也通过 SMB 查询，不能使用本地临时下载/上传回退。
+复制调用 `smbclient.copyfile`（CopyChunk），共享内移动调用 `smbclient.rename`，硬链接调用
+`smbclient.link`；跨共享移动先用 SMB 查询确认目标未占用，服务端复制成功后才调用
+`smbclient.remove` 删除源文件。多共享挂载仍属于同一 SMB owner，路径首段选择已配置的共享。源目标同文件检查也通过 SMB 查询，不能使用本地临时下载/上传回退。
 下载器返回的远程路径保留存储 URI，整理 Chain 通过 `StorageChain` 查询源文件，
 不直接依赖 SMB SDK；断线后目标状态不明沿用持久步骤的保守恢复合同。
 

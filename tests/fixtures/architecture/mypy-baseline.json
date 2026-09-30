@@ -1574,14 +1574,13 @@
     "union-attr": 5
   },
   "app/modules/filemanager/storages/smb.py": {
-    "arg-type": 9,
+    "arg-type": 8,
     "assignment": 2,
     "attr-defined": 1,
     "empty-body": 1,
     "no-untyped-call": 5,
     "no-untyped-def": 7,
     "override": 1,
-    "return-value": 2,
     "union-attr": 5
   },
   "app/modules/filemanager/storages/u115.py": {

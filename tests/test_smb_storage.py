@@ -180,3 +180,134 @@ def test_server_copy_query_failure_does_not_overwrite_target(server_transfer, mo
 
     assert state.storage.copy(state.source, Path("/media/Movie"), "renamed.mkv") is False
     state.client.copyfile.assert_not_called()
+
+
+@pytest.fixture
+def multi_share(server_transfer):
+    """在同一个 SMB 服务中挂载两个共享，拦截所有文件副作用。"""
+    state = server_transfer
+    state.storage._configure_shares({"shares": ["video", "downloads"]})
+    state.source.path = "/downloads/Movie/movie.mkv"
+    state.target.path = "/video/Movie/renamed.mkv"
+    return state
+
+
+def test_multiple_shares_share_one_session_and_virtual_root(smb_storage):
+    """保存多共享仅建立一次会话，根目录返回所有已配置共享。"""
+    smb_storage.module.storage_manage(storage="smb", action="save_config", conf={
+        "host": "10.10.10.11", "shares": ["video", "downloads"],
+    })
+    storage = smb_storage.storage
+    smb_storage.client.register_session.assert_called_once()
+    assert [call.args[0] for call in smb_storage.client.listdir.call_args_list] == [
+        r"\\10.10.10.11\video", r"\\10.10.10.11\downloads",
+    ]
+    smb_storage.client.listdir.reset_mock()
+    items = storage.list(FileItem(path="/", type="dir", storage="smb"))
+    assert [(item.name, item.path, item.storage) for item in items] == [
+        ("video", "/video/", "smb"), ("downloads", "/downloads/", "smb"),
+    ]
+    smb_storage.client.listdir.assert_not_called()
+    assert storage.get_item_strict(Path("/")).type == "dir"
+
+
+@pytest.mark.parametrize("shares", [[], "video,downloads", ["../video"], ["video", "VIDEO"], [None], [""]])
+def test_invalid_share_config_clears_old_mounts(smb_storage, shares):
+    """非法多共享配置不能继续访问之前的共享，也不能退回旧 share 字段。"""
+    smb_storage.module.storage_manage(storage="smb", action="save_config", conf={"host": "host", "share": "old"})
+    smb_storage.module.storage_manage(storage="smb", action="save_config", conf={"host": "host", "share": "old", "shares": shares})
+    assert smb_storage.storage._connected is False
+    assert smb_storage.storage._server_path is None
+    assert smb_storage.storage._shares == {}
+
+
+def test_single_legacy_share_keeps_paths_and_multi_mode_survives_one_share(smb_storage):
+    """旧配置路径不变，多共享减至一项也不会重新解释已保存路径。"""
+    storage = smb_storage.storage
+    smb_storage.module.storage_manage(storage="smb", action="save_config", conf={"host": "host", "share": "video"})
+    assert storage._normalize_path("/Movies/a.mkv") == r"\\host\video\Movies\a.mkv"
+    smb_storage.module.storage_manage(storage="smb", action="save_config", conf={"host": "host", "shares": ["video"]})
+    assert storage._normalize_path("/video/Movies/a.mkv") == r"\\host\video\Movies\a.mkv"
+    assert storage._relative_path(r"\\host\video\Movies\a.mkv") == "/video/Movies/a.mkv"
+
+
+@pytest.mark.parametrize("path", ["/unknown/a.mkv", "/downloads/../video/a.mkv", r"\downloads\..\video\a.mkv", "smb:/video/a"])
+def test_multi_share_rejects_unknown_or_escaping_paths(multi_share, path):
+    """共享选择受配置约束，不能通过路径跳转到未配置的共享。"""
+    with pytest.raises(ValueError):
+        multi_share.storage._normalize_path(path)
+
+
+@pytest.mark.parametrize("path", ["/", "/video/", "/downloads/"])
+def test_multi_share_roots_cannot_be_deleted_or_renamed(multi_share, path, monkeypatch):
+    """共享根是挂载入口，禁止把删除目录变成清空整个共享。"""
+    storage = multi_share.storage
+    remove = Mock()
+    monkeypatch.setattr(smbclient, "rmdir", remove)
+    item = FileItem(storage="smb", path=path, type="dir")
+    assert smb_module.SMB.delete(storage, item) is False
+    assert storage.rename(item, "renamed") is False
+    remove.assert_not_called()
+    multi_share.client.rename.assert_not_called()
+
+
+def test_multi_share_listing_and_strict_query_preserve_share_name(multi_share, monkeypatch):
+    """浏览和整理查询都返回包含共享名称的路径，不混淆同名文件。"""
+    monkeypatch.setattr(smbclient, "listdir", Mock(return_value=["movie.mkv"]))
+    monkeypatch.setattr(smbclient, "stat", Mock(return_value=SimpleNamespace(st_size=1024, st_mtime=1)))
+    monkeypatch.setattr(smbclient.path, "isdir", Mock(return_value=False))
+    items = multi_share.storage.list(FileItem(storage="smb", path="/downloads/", type="dir"))
+    assert items[0].path == "/downloads/movie.mkv"
+    assert multi_share.storage.get_item_strict(Path("/video/movie.mkv")).path == "/video/movie.mkv"
+
+
+@pytest.mark.parametrize("mode", ["copy", "move"])
+def test_cross_share_transfer_uses_copychunk_then_optional_delete(multi_share, monkeypatch, mode):
+    """跨共享只调用服务端 CopyChunk，移动严格在复制完成之后删除源。"""
+    state = multi_share
+    monkeypatch.setattr(smbclient, "stat", Mock(side_effect=FileNotFoundError(errno.ENOENT, "missing")))
+    monkeypatch.setattr(smbclient, "remove", state.client.remove)
+    state.client.reset_mock()
+    assert getattr(state.storage, mode)(state.source, Path("/video/Movie"), "renamed.mkv") is True
+    state.client.copyfile.assert_called_once_with(
+        r"\\10.10.10.11\downloads\Movie\movie.mkv", r"\\10.10.10.11\video\Movie\renamed.mkv",
+    )
+    assert [call[0] for call in state.client.mock_calls] == (["copyfile", "remove"] if mode == "move" else ["copyfile"])
+    state.storage.download.assert_not_called()
+    state.storage.upload.assert_not_called()
+
+
+@pytest.mark.parametrize("failure", ["target_exists", "target_denied", "copy", "remove"])
+def test_cross_share_move_failure_is_conservative(multi_share, monkeypatch, failure):
+    """目标冲突、查询失败和复制失败不删源；删源失败报错并保留已复制结果。"""
+    state = multi_share
+    stat = Mock(side_effect=FileNotFoundError(errno.ENOENT, "missing"))
+    if failure == "target_exists":
+        stat.side_effect = None
+    elif failure == "target_denied":
+        stat.side_effect = PermissionError(errno.EACCES, "denied")
+    monkeypatch.setattr(smbclient, "stat", stat)
+    monkeypatch.setattr(smbclient, "remove", state.client.remove)
+    if failure in ("copy", "remove"):
+        getattr(state.client, "copyfile" if failure == "copy" else "remove").side_effect = OSError("failed")
+    assert state.storage.move(state.source, Path("/video/Movie"), "renamed.mkv") is False
+    assert state.client.remove.call_count == (1 if failure == "remove" else 0)
+    assert state.client.copyfile.call_count == (1 if failure in ("copy", "remove") else 0)
+    state.storage.download.assert_not_called()
+    state.storage.upload.assert_not_called()
+
+
+def test_cross_share_hardlink_fails_without_side_effects(multi_share):
+    """标准 SMB 不支持跨共享硬链接，不能偷偷改为复制或中转。"""
+    assert multi_share.storage.link(multi_share.source, Path(multi_share.target.path)) is False
+    multi_share.client.link.assert_not_called()
+    multi_share.client.copyfile.assert_not_called()
+    multi_share.client.makedirs.assert_not_called()
+
+
+def test_multi_share_usage_is_not_double_counted(multi_share, monkeypatch):
+    """多个共享可能共用磁盘，不把容量相加伪装成准确的服务用量。"""
+    stat_volume = Mock()
+    monkeypatch.setattr(smbclient, "stat_volume", stat_volume)
+    assert multi_share.storage.usage() is None
+    stat_volume.assert_not_called()
