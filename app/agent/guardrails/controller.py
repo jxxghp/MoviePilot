@@ -1,7 +1,6 @@
 """Pure tool-call loop guardrail primitives.
 
-Adapted from NousResearch/hermes-agent f42f579cf8bac4918ac9599bece71618afadd846.
-Copyright (c) 2025 Nous Research; MIT license in LICENSE.hermes.
+Copyright (c) 2025 Nous Research; see the accompanying MIT license.
 
 The controller is side-effect free: it tracks per-turn tool-call observations
 and returns decisions. Runtime code decides whether a decision becomes warning

@@ -120,7 +120,8 @@ def _assert_internal_tool_registration(created, captured):
     selector = captured["selector"]
     policy = middlewares[0]
     assert policy.name == "AgentPolicyMiddleware"
-    assert middlewares[1] is output
+    assert middlewares[1].name == "CodeExecutionMiddleware"
+    assert middlewares[2] is output
     assert not any(isinstance(item, InvocationMiddleware) for item in middlewares)
     assert policy.catalog.resolve_unique(GET_TOOL_EXECUTION_NAME) is None
     assert captured["enable_discovery"] is True
@@ -129,7 +130,8 @@ def _assert_internal_tool_registration(created, captured):
         assert policy.catalog.resolve_unique(tool.name).tool is tool
         assert tool in selector.selection_tools
     assert middlewares.index(plan) < middlewares.index(selector)
-    assert middlewares.index(selector) == len(middlewares) - 4
+    assert middlewares.index(selector) == len(middlewares) - 5
+    assert middlewares[-4].name == "CodeCaptureMiddleware"
     assert middlewares[-3].name == "FinalRequestCompactionMiddleware"
     assert middlewares[-2].name == "VisionMiddleware"
     assert middlewares[-1] == "usage"
@@ -476,6 +478,7 @@ class TestAgentBackgroundOutput:
 
         assert [getattr(item, "name", item) for item in created["middleware"]] == [
             "AgentPolicyMiddleware",
+            "CodeExecutionMiddleware",
             "ToolOutputMiddleware",
             "skills",
             "jobs",
@@ -484,6 +487,7 @@ class TestAgentBackgroundOutput:
             "memory",
             "ToolGuardrailsMiddleware",
             "patch",
+            "CodeCaptureMiddleware",
             "FinalRequestCompactionMiddleware",
             "VisionMiddleware",
             "usage",
@@ -585,6 +589,7 @@ class TestAgentBackgroundOutput:
 
         assert [getattr(item, "name", item) for item in created["middleware"]] == [
             "AgentPolicyMiddleware",
+            "CodeExecutionMiddleware",
             "ToolOutputMiddleware",
             "skills",
             "jobs",
@@ -593,6 +598,7 @@ class TestAgentBackgroundOutput:
             "memory",
             "ToolGuardrailsMiddleware",
             "patch",
+            "CodeCaptureMiddleware",
             "FinalRequestCompactionMiddleware",
             "VisionMiddleware",
             "usage",
@@ -781,6 +787,7 @@ class TestAgentBackgroundOutput:
 
         assert [getattr(item, "name", item) for item in created["middleware"]] == [
             "AgentPolicyMiddleware",
+            "CodeExecutionMiddleware",
             "ToolOutputMiddleware",
             "skills",
             "jobs",
@@ -789,6 +796,7 @@ class TestAgentBackgroundOutput:
             "memory",
             "ToolGuardrailsMiddleware",
             "patch",
+            "CodeCaptureMiddleware",
             "FinalRequestCompactionMiddleware",
             "VisionMiddleware",
             "usage",

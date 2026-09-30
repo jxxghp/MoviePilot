@@ -1,8 +1,6 @@
-"""Hermes FTS5 查询语义：短语、布尔、前缀、CJK 与无结果放宽。"""
+"""FTS5 查询语义：短语、布尔、前缀、CJK 与无结果放宽。"""
 
-# Query normalization/routing adapted from NousResearch/hermes-agent
-# f42f579cf8bac4918ac9599bece71618afadd846, hermes_state_search.py (MIT).
-# Copyright (c) 2025 Nous Research. See native/fts5_cjk/LICENSE.hermes.
+# Copyright (c) 2025 Nous Research. See the MIT license in native/fts5_cjk/.
 import re
 
 CJK = re.compile(r"[\u1100-\u11ff\u3040-\u30ff\u3130-\u318f\u31f0-\u31ff\u3400-\u4dbf\u4e00-\u9fff\ua960-\ua97f\uac00-\ud7ff\uf900-\ufaff\U00020000-\U0002fa1f]+")
@@ -49,7 +47,7 @@ def terms(query: str) -> list[str]:
 
 
 def cjk_eligible(query: str) -> bool:
-    """孤立单字不能在长 CJK 词中命中 bigram，保持 Hermes 的 LIKE 回退。"""
+    """孤立单字不能在长 CJK 词中命中 bigram，需要回退到 LIKE。"""
     runs = CJK.findall(query)
     return bool(runs) and all(len(run) >= 2 for run in runs)
 
@@ -61,7 +59,7 @@ def trigram_eligible(query: str) -> bool:
 
 
 def like_predicate(query: str) -> tuple[str, list[str], str]:
-    """把 Hermes 支持的布尔子集变为绑定参数的字面量 LIKE。"""
+    """把支持的布尔子集变为绑定参数的字面量 LIKE。"""
     groups: list[list[str]] = [[]]
     params: list[str] = []
     negate = False
@@ -88,7 +86,7 @@ def like_predicate(query: str) -> tuple[str, list[str], str]:
 
 
 def quote_tokens(query: str) -> str:
-    """沿用 Hermes 子串路由逐单元加引号，保留布尔操作符。"""
+    """对子串路由逐单元加引号，保留布尔操作符。"""
     return ' '.join(token if token.upper() in {'AND', 'OR', 'NOT'} else '"' + token.replace('"', '""') + '"'
                     for token in query.strip('"').strip().split())
 

@@ -165,7 +165,7 @@ class SqliteRecallRepository:
             return dict(success=False, error='storage_unavailable', complete=False)
 
     def _query(self, user_id: str, query: RecallQuery) -> dict[str, Any]:
-        """四种形态与 Hermes 同义；索引缺失或查询超时不能伪报检索完整。"""
+        """统一处理四种检索形态；索引缺失或查询超时不能伪报检索完整。"""
         if not 1 <= query.limit <= 10 or not 0 <= query.window <= 20 or len(query.exclude_session_ids) > 20:
             raise ValueError('历史检索预算无效')
         try:

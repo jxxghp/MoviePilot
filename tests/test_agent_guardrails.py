@@ -196,7 +196,7 @@ def test_evicted_reference_uses_fresh_full_result_and_cap_blocks_before_executio
 
 
 def test_moviepilot_file_edit_restarts_failed_terminal_experiment():
-    """宿主 edit_file 名称映射到 Hermes patch，真实修改后重试不能累积成原样失败循环。"""
+    """宿主 edit_file 名称映射到 patch 修改类别，真实修改后重试不能累积成原样失败循环。"""
     async def scenario():
         """七次失败之间每次有不同修复，最终正常返回，不在第五次失败处截断。"""
         attempts = []
@@ -315,7 +315,7 @@ def test_continuation_recovers_to_actual_work_and_normal_answer():
 
 
 def test_short_answers_and_nonterminal_plans_do_not_trigger_continuation():
-    """保留 Hermes 窄匹配边界，数字、正常中文短答、已交付内容和礼貌提议都不触发。"""
+    """保留尾部动作的窄匹配边界，数字、正常中文短答、已交付内容和礼貌提议都不触发。"""
     for text in ('42', 'SQLite', 'report.csv', '你好。', 'Done.', ':8080', 'Let me now check. The answer is 42.', "I'll help if needed."):
         assert not trailing_continue_intent(text)
         assert not degenerate_final(text, '正常中文问题')

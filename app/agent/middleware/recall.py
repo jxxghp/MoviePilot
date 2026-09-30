@@ -1,4 +1,4 @@
-"""保存压缩前与工具截断前的消息，并提供 Hermes 式 session_search。"""
+"""保存压缩前与工具截断前的消息，并提供会话检索工具 session_search。"""
 
 import json
 import re
@@ -36,7 +36,7 @@ deleted messages and unavailable indexes never prove the source or event does no
 
 
 def _time_bound(value: str) -> float | None:
-    """对齐 Hermes 的 ISO 日期和 7d/24h/2w 相对时间，before 为开区间。"""
+    """接受 ISO 日期和 7d/24h/2w 相对时间，before 为开区间。"""
     if not value.strip():
         return None
     relative = re.fullmatch(r'(\d+)\s*(h|d|w)', value.strip(), re.IGNORECASE)
@@ -47,7 +47,7 @@ def _time_bound(value: str) -> float | None:
 
 
 class SearchHistoryInput(BaseModel):  # type: ignore[misc]
-    """沿用 Hermes 工具形态；不暴露可跨用户访问的 profile 或数据库路径。"""
+    """检索参数只描述查询，不暴露可跨用户访问的 profile 或数据库路径。"""
 
     query: str = Field(default='', max_length=1024, description='FTS5 keywords, quoted phrases, AND/OR/NOT or prefix*. Omit to browse.')
     session_id: str = Field(default='', max_length=255, description='Read a returned session; add around_message_id to scroll.')

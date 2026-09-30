@@ -1,4 +1,4 @@
-"""Hermes 式有界稳定记忆：整条修订、原子批次、后台删除提案和磁盘漂移保护。"""
+"""有界稳定记忆：整条修订、原子批次、后台删除提案和磁盘漂移保护。"""
 
 import json
 from collections.abc import Callable
@@ -99,7 +99,7 @@ class MemoryStore:
 
     @staticmethod
     def _operations(request: MemoryInput) -> list[MemoryOperation]:
-        """批次字段优先，与 Hermes 一次调用的同一目标约定一致。"""
+        """批次字段优先，一次调用中的所有操作必须属于同一目标。"""
         if request.operations:
             return request.operations
         return [MemoryOperation(action=request.action, content=request.content, old_text=request.old_text, new_text=request.new_text)]

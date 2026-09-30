@@ -1,4 +1,4 @@
-"""在独立消息库上按 Hermes 策略召回候选，禁止加载全库正文后筛选。"""
+"""在独立消息库上按索引路由召回候选，禁止加载全库正文后筛选。"""
 
 import sqlite3
 from typing import Any
@@ -68,7 +68,7 @@ def scan(connection: sqlite3.Connection, text: str, query: RecallQuery) -> list[
 
 
 def candidates(connection: sqlite3.Connection, indexes: tuple[str, ...], query: RecallQuery) -> tuple[list[dict[str, Any]], str]:
-    """对齐 Hermes 的普通词、CJK、trigram 和 OR 放宽路由，显式报告所走路径。"""
+    """选择普通词、CJK、trigram 和 OR 放宽路由，显式报告所走路径。"""
     text = normalize(query.query)
     if not text:
         return [], 'empty'
@@ -83,7 +83,7 @@ def candidates(connection: sqlite3.Connection, indexes: tuple[str, ...], query: 
         cjk_terms = [unit for unit in terms(raw) if CJK.search(unit)]
         if 'messages_fts_trigram' in indexes and cjk_terms and all(sum(map(len, CJK.findall(unit))) >= 3 for unit in cjk_terms):
             return match(connection, 'messages_fts_trigram', expression, query), 'trigram'
-        # Hermes 短 CJK 回退按非运算符词项 OR 匹配，不冒充普通 FTS 的严格 AND。
+        # 短 CJK 回退按非运算符词项 OR 匹配，不冒充普通 FTS 的严格 AND。
         fallback = ' OR '.join('"' + unit.replace('"', '') + '"' for unit in raw.split() if unit.upper() not in {'AND', 'OR', 'NOT'})
         return scan(connection, fallback, query), 'like'
     rows = match(connection, 'messages_fts', text, query) if 'messages_fts' in indexes else []

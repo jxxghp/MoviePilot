@@ -29,6 +29,7 @@ from app.agent.llm.helper import LLMHelper
 from app.agent.llm.tools import ServerToolRegistry
 from app.agent.mcp import agent_mcp_manager
 from app.agent.memory import MemoryManager, memory_manager
+from app.agent.middleware.code import CodeCaptureMiddleware, CodeExecutionMiddleware
 from app.agent.middleware.config import RuntimeConfigMiddleware
 from app.agent.middleware.guardrails import GUARDRAIL_KEY, ToolGuardrailsMiddleware
 from app.agent.middleware.invocation import InvocationMiddleware
@@ -1978,14 +1979,14 @@ class MoviePilotAgent:
 
             # 中间件
             guardrails = ToolGuardrailsMiddleware(policy_context)
+            policy_middleware = AgentPolicyMiddleware(
+                context=policy_context, catalog=tool_catalog, tools=tools, guardrails=guardrails,
+            )
+            code_middleware = CodeExecutionMiddleware(policy_middleware)
             middlewares = [
                 # 宿主策略必须位于最外层，确保插件覆盖工具基类也不能绕过。
-                AgentPolicyMiddleware(
-                    context=policy_context,
-                    catalog=tool_catalog,
-                    tools=tools,
-                    guardrails=guardrails,
-                ),
+                policy_middleware,
+                code_middleware,
                 # 运行中补充消息只在模型回合边界进入同一张图，不启动并行 Agent。
                 *([SteeringMiddleware()] if self._steering_inbox.running else []),
                 output_middleware,
@@ -2015,6 +2016,7 @@ class MoviePilotAgent:
             # 工具选择
             if tool_selector is not None:
                 middlewares.append(tool_selector)
+            middlewares.append(CodeCaptureMiddleware(code_middleware))
 
             # 所有压缩都在最终请求边界完成，避免主模型失败前写入摘要状态。
             middlewares.append(

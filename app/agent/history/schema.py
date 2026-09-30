@@ -1,4 +1,4 @@
-"""独立 state.db 模式与 FTS5 投影，沿用 Hermes 的 external-content 布局。"""
+"""独立 state.db 模式与 FTS5 投影，采用 external-content 布局。"""
 
 import sqlite3
 from pathlib import Path
@@ -39,7 +39,7 @@ INDEXES = {"messages_fts": "unicode61", "messages_fts_trigram": "trigram", "mess
 
 
 def load_cjk(connection: sqlite3.Connection, extension: Path) -> bool:
-    """只加载宿主固定目录的 Hermes tokenizer，加载结束立即关闭扩展权限。"""
+    """只加载宿主固定目录的 CJK tokenizer，加载结束立即关闭扩展权限。"""
     if not extension.is_file() or not hasattr(connection, "enable_load_extension"):
         return False
     try:

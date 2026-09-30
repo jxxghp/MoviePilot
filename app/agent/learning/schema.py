@@ -1,4 +1,4 @@
-"""沿用 Hermes skill_manage 的按动作区分参数形态，避免正文写进错误字段。"""
+"""skill_manage 按动作区分参数形态，避免正文写进错误字段。"""
 
 from typing import Literal
 
@@ -31,7 +31,7 @@ class PatchSkill(SkillOperation):
 
 
 class RewriteSkill(SkillOperation):
-    """Hermes 兼容的完整重写形态；不能与局部修改字段混用。"""
+    """完整重写形态；不能与局部修改字段混用。"""
 
     action: Literal['patch']
     content: str = Field(min_length=1, max_length=100_000)
@@ -87,7 +87,7 @@ class MemoryOperation(BaseModel):  # type: ignore[misc]
 
 
 class MemoryInput(BaseModel):  # type: ignore[misc]
-    """沿用 Hermes 单操作及原子批次形态，pending 只读列出等待人工处理的提案。"""
+    """支持单操作及原子批次形态，pending 只读列出等待人工处理的提案。"""
 
     model_config = ConfigDict(extra='forbid')
     action: Literal['add', 'replace', 'remove', 'pending'] | None = None

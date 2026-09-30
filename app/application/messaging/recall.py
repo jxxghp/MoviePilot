@@ -59,7 +59,7 @@ class RecallLegacyRepository(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class RecallQuery:
-    """对应 Hermes 四种检索形态；时间过滤作用于会话开始时间。"""
+    """支持发现、阅读、锚点滚动和近期浏览四种检索形态；时间过滤作用于会话开始时间。"""
 
     query: str = ""
     session_id: str = ""
@@ -150,7 +150,7 @@ class RecallService:
                 status = await self._executor.run(lambda: self._repository.maintain(user_id))
                 if not status.get('pending'):
                     break
-                # Hermes 以至少四倍批次耗时让出写入机会，限制后台回填占空比。
+                # 以至少四倍批次耗时让出写入机会，限制后台回填占空比。
                 await asyncio.sleep(max(0.2, 4 * (monotonic() - started)))
         except Exception as error:
             logger.warning('历史消息后台维护未完成: %s', type(error).__name__)

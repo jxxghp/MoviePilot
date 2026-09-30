@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 39
+version: 40
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -286,6 +286,8 @@ sessions, scans, refreshes, and other native media-server capabilities.
 3. Downloads, transfers, configuration/rule/plugin writes, scheduler/workflow runs, and deletions have side effects; obtain confirmation and inspect the result.
 4. `success=false`, HTTP errors, validation errors, and empty results are real outcomes. Never report them as success.
 5. Use `database-operation`, `downloader-operation`, or `mediaserver-operation` for their native capabilities. Never bypass the gateway with an arbitrary URL.
+
+For three or more read-only calls with paging or aggregation, load [Python aggregation](code-execution.md) and use `execute_code` when available.
 
 ## Reusable learning
 

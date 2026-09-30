@@ -1,4 +1,4 @@
-"""用户独立的技能维护：Hermes 式批次、所有权保护与本轮写前读取。"""
+"""用户独立的技能维护：原子批次、所有权保护与本轮写前读取。"""
 
 import hashlib
 import json
@@ -100,7 +100,7 @@ class SkillLibrary:
 
     @staticmethod
     def _target(directory: Path, file_path: str) -> Path:
-        """支持文件仅能位于 Hermes 允许的包内目录，所有权 sidecar 不可由工具改写。"""
+        """支持文件仅能位于明确允许的包内目录，所有权 sidecar 不可由工具改写。"""
         parts = Path(file_path).parts
         skill_document = bool(parts and parts[-1] == 'SKILL.md' and len(parts) in {1, 2})
         if not skill_document and (len(parts) < 2 or parts[0] not in {'references', 'templates', 'scripts', 'assets'}):
@@ -187,7 +187,7 @@ class SkillLibrary:
 
     @staticmethod
     def _new_content(operation: SkillOperation, target: Path, writes: dict[Path, str | None]) -> str | None:
-        """对齐 Hermes 九级匹配、歧义拒绝和转义保护，保留原文缩进及 Unicode。"""
+        """依次尝试九级匹配、歧义拒绝和转义保护，保留原文缩进及 Unicode。"""
         if isinstance(operation, RewriteSkill):
             return operation.content
         if isinstance(operation, WriteSkillFile):

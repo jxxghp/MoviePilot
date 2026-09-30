@@ -15,6 +15,7 @@ from langchain_core.messages import ToolMessage
 from langchain_core.tools import StructuredTool, create_schema_from_function
 from pydantic import Field
 
+from app.agent.code.authority import RPC_RESULT_KEY
 from app.agent.policy.contracts import ToolPolicyContext
 from app.agent.tools.base import TOOL_RESULT_RECORDER, format_tool_result_for_agent
 from app.agent.tools.result import inspect_tool_result
@@ -131,6 +132,8 @@ class ToolOutputMiddleware(AgentMiddleware):  # type: ignore[misc]
         """让内置工具在截断前归档，并覆盖返回大文本的外部 MCP 工具。"""
         if request.tool_call.get("name") == READ_TOOL_RESULT_NAME:
             return await handler(request)
+        if request.tool_call.get('name') == 'execute_code' and getattr(request.tool, '_agent_tool_source', None) == 'builtin':
+            return await handler(request)
         # 历史工具已经按消息/窗口预算裁剪；再次套通用预览会丢失锚点与书挡结构。
         if request.tool_call.get("name") == "session_search" and getattr(request.tool, "_agent_tool_source", None) == "middleware:recall":
             return await handler(request)
@@ -140,7 +143,15 @@ class ToolOutputMiddleware(AgentMiddleware):  # type: ignore[misc]
             return await handler(request)
         thread_id = self._thread_id(request.runtime)
         requires_admin = bool(self.context.agent_context.get("is_admin"))
-        token = TOOL_RESULT_RECORDER.set(lambda name, text: self._store(thread_id, name, text, requires_admin))
+        def record(name: str, text: str) -> dict[str, Any]:
+            """Python 聚合读取完整结果，同时保持普通工具的有界展示和归档引用。"""
+            state = getattr(request, 'state', None)
+            raw = state.get(RPC_RESULT_KEY) if isinstance(state, dict) else None
+            if isinstance(raw, dict):
+                raw[name] = text
+            return self._store(thread_id, name, text, requires_admin)
+
+        token = TOOL_RESULT_RECORDER.set(record)
         try:
             result = await handler(request)
             if isinstance(result, ToolMessage) and isinstance(result.content, str):
