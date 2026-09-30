@@ -930,8 +930,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9198,
-  "edge_sha256": "a6b0717f35561891a28ba8da3ff6dad27aa8ffd7a1eb95007fc0ffa93ae12d56",
+  "edge_count": 9199,
+  "edge_sha256": "ad0a66de22bf8cbef0a94ebb5b3ebd1e857977f78139d1cf3c27f9290db14664",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -6596,6 +6596,7 @@
     "app.factory -> app.adapters.observability.otel",
     "app.factory -> app.adapters.web",
     "app.factory -> app.adapters.web.correlation",
+    "app.factory -> app.adapters.web.docs",
     "app.factory -> app.adapters.web.health",
     "app.factory -> app.adapters.web.metrics",
     "app.factory -> app.adapters.web.plugin",
@@ -10132,7 +10133,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 1085,
+  "module_count": 1086,
   "modules": [
     "app",
     "app.adapters",
@@ -10181,6 +10182,7 @@
     "app.adapters.system.update",
     "app.adapters.web",
     "app.adapters.web.correlation",
+    "app.adapters.web.docs",
     "app.adapters.web.health",
     "app.adapters.web.metrics",
     "app.adapters.web.plugin",
