@@ -47,6 +47,16 @@ class SMB(StorageBase, metaclass=WeakSingleton):
     # 文件块大小，默认10MB
     chunk_size = 10 * 1024 * 1024
 
+    @property
+    def snapshot_check_folder_modtime(self) -> bool:
+        """SMB 目录时间不保证传播后代变化，快照必须遍历到配置的深度上限。"""
+        return False
+
+    @property
+    def snapshot_strict_query(self) -> bool:
+        """SMB 快照必须区分真实空目录与读取失败，防止错误更新监控基线。"""
+        return True
+
     def __init__(self):
         """加载当前 SMB 配置并尝试建立连接。"""
         super().__init__()
@@ -202,10 +212,10 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         return "/" + file_path[len(prefix):].replace("\\", "/")
 
     def _create_fileitem(
-        self, stat_result, file_path: str, name: str
+        self, stat_result, file_path: str, name: str, *, strict: bool = False
     ) -> _SchemaFileItem:
         """
-        创建文件项
+        创建文件项；严格查询不能把元数据读取失败回退成普通文件。
         """
         import smbclient
         try:
@@ -247,6 +257,8 @@ class SMB(StorageBase, metaclass=WeakSingleton):
                     modify_time=modify_time,
                 )
         except Exception as e:
+            if strict:
+                raise StorageQueryError(f"【SMB】创建文件项失败: {file_path} - {e}") from e
             logger.error(f"【SMB】创建文件项失败：{e}")
             # 返回基本的文件项信息
             return _SchemaFileItem(
@@ -282,9 +294,18 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             self._connected = False
             return False
 
-    def list(self, fileitem: _SchemaFileItem) -> List[_SchemaFileItem]:
+    def list_strict(self, fileitem: _SchemaFileItem) -> List[_SchemaFileItem]:
+        """用于快照的完整目录查询，任一子项读取失败都拒绝返回部分结果。"""
+        try:
+            return self.list(fileitem, strict=True)
+        except StorageQueryError:
+            raise
+        except Exception as err:
+            raise StorageQueryError(f"【SMB】查询目录失败: {fileitem.path} - {err}") from err
+
+    def list(self, fileitem: _SchemaFileItem, *, strict: bool = False) -> List[_SchemaFileItem]:
         """
-        浏览文件
+        浏览文件；strict 供快照查询传播异常，普通浏览沿用容错回退。
         """
         import smbclient
         from smbprotocol.exceptions import SMBException, SMBResponseException
@@ -292,7 +313,9 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             self._check_connection()
 
             if fileitem.type == "file":
-                item = self.detail(fileitem)
+                if not fileitem.path:
+                    raise StorageQueryError("【SMB】文件查询缺少路径")
+                item = self.get_item_strict(Path(fileitem.path)) if strict else self.detail(fileitem)
                 if item:
                     return [item]
                 return []
@@ -310,11 +333,10 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             # 列出目录内容
             try:
                 entries = smbclient.listdir(smb_path)
-            except SMBResponseException as e:
+            except (SMBResponseException, SMBException) as e:
                 logger.error(f"【SMB】列出目录失败: {smb_path} - {e}")
-                return []
-            except SMBException as e:
-                logger.error(f"【SMB】列出目录失败: {smb_path} - {e}")
+                if strict:
+                    raise
                 return []
 
             items = []
@@ -325,14 +347,18 @@ class SMB(StorageBase, metaclass=WeakSingleton):
                 entry_path = f"{smb_path}\\{entry}"
                 try:
                     stat_result = smbclient.stat(entry_path)
-                    item = self._create_fileitem(stat_result, entry_path, entry)
+                    item = self._create_fileitem(stat_result, entry_path, entry, strict=strict)
                     items.append(item)
                 except Exception as e:
+                    if strict:
+                        raise
                     logger.debug(f"【SMB】获取文件信息失败: {entry_path} - {e}")
                     continue
 
             return items
         except Exception as e:
+            if strict:
+                raise
             logger.error(f"【SMB】列出文件失败: {e}")
             return []
 
@@ -453,7 +479,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
                 if err.errno in (errno.ENOENT, errno.ENOTDIR):
                     return None
                 raise StorageQueryError(f"【SMB】查询文件项失败: {path} - {err}") from err
-            return self._create_fileitem(stat_result, smb_path, Path(path).name)
+            return self._create_fileitem(stat_result, smb_path, Path(path).name, strict=True)
         except StorageQueryError:
             raise
         except Exception as e:

@@ -1,4 +1,4 @@
-"""SMB 保存重连和同一共享内服务端整理的回归测试。"""
+"""SMB 保存重连、服务端整理与远程快照恢复的回归测试。"""
 
 import errno
 from pathlib import Path
@@ -12,6 +12,8 @@ from app.application.storage import StorageHelper
 from app.modules.filemanager.module import FileManagerModule
 from app.modules.filemanager.storages import smb as smb_module
 from app.modules.filemanager.transhandler import TransHandler
+from app.monitor.poller import RemotePoller
+from app.monitor.snapshot import SnapshotStore
 from app.schemas.file import FileItem
 
 
@@ -332,3 +334,175 @@ def test_multi_share_usage_query_failure_remains_unavailable(multi_share, monkey
     monkeypatch.setattr(smbclient, "stat_volume", stat_volume)
     assert multi_share.storage.usage() is None
     stat_volume.assert_called_once_with(r"\\10.10.10.11\video")
+
+
+@pytest.fixture
+def snapshot_server(smb_storage, monkeypatch):
+    """仅替换 SMB SDK 的文件系统边界，保留真实目录映射、文件项构造和快照遍历。"""
+    storage = smb_storage.storage
+    smb_storage.state["conf"] = {"host": "smb.example", "share": "media"}
+    storage.init_storage()
+    tree = {
+        "/downloads": {"directory": True, "mtime": 50},
+        "/downloads/Series": {"directory": True, "mtime": 50},
+        "/downloads/Series/Season01": {"directory": True, "mtime": 50},
+        "/downloads/Series/Season01/old.mkv": {"directory": False, "mtime": 100, "size": 10},
+    }
+    fault = {"operation": None, "path": None}
+
+    def relative(path):
+        return storage._relative_path(path).rstrip("/")
+
+    def read_node(operation, path):
+        key = relative(path)
+        if fault == {"operation": operation, "path": key}:
+            raise OSError(errno.EIO, "temporary SMB read failure")
+        if key not in tree:
+            raise FileNotFoundError(errno.ENOENT, "missing")
+        return key, tree[key]
+
+    def list_directory(path):
+        key, _node = read_node("list", path)
+        return [Path(item).name for item in tree if Path(item).parent.as_posix() == key]
+
+    def stat_item(path):
+        _key, node = read_node("stat", path)
+        return SimpleNamespace(st_mtime=node["mtime"], st_size=node.get("size", 0))
+
+    def is_directory(path):
+        _key, node = read_node("type", path)
+        return node["directory"]
+
+    smb_storage.client.listdir.side_effect = list_directory
+    monkeypatch.setattr(smbclient, "stat", Mock(side_effect=stat_item))
+    monkeypatch.setattr(smbclient.path, "isdir", Mock(side_effect=is_directory))
+    monkeypatch.setattr(smbclient.path, "exists", Mock(side_effect=lambda path: relative(path) in tree))
+    return SimpleNamespace(
+        storage=storage, module=smb_storage.module, client=smb_storage.client,
+        tree=tree, fault=fault, root=Path("/downloads"),
+    )
+
+
+@pytest.mark.parametrize("multiple_shares", [False, True])
+@pytest.mark.parametrize("change", ["added", "modified", "moved_old", "deleted"])
+def test_snapshot_detects_descendant_changes_without_parent_mtime(snapshot_server, multiple_shares, change):
+    """SMB 祖先目录时间不变时，单共享与多共享仍能发现后代新增、修改、旧文件移入和删除。"""
+    state = snapshot_server
+    if multiple_shares:
+        state.storage._configure_shares({"shares": ["downloads", "library"]})
+    old_path = "/downloads/Series/Season01/old.mkv"
+    new_path = "/downloads/Series/Season01/new.mkv"
+    baseline = state.storage.snapshot(state.root)
+    assert set(baseline) == {old_path}
+
+    if change in {"added", "moved_old"}:
+        state.tree[new_path] = {
+            "directory": False, "mtime": 200 if change == "added" else 1, "size": 20,
+        }
+    elif change == "modified":
+        state.tree[old_path].update(size=20, mtime=200)
+    else:
+        del state.tree[old_path]
+
+    snapshot = state.module.snapshot_storage(
+        "smb", state.root, last_snapshot_time=100, previous_snapshot=baseline,
+    )
+    assert snapshot is not None
+    changes = SnapshotStore.compare(baseline, snapshot)
+    expected = {"added": [], "modified": []}
+    if change == "deleted":
+        assert old_path not in snapshot
+    else:
+        expected["added" if change == "moved_old" else change] = [
+            new_path if change in {"added", "moved_old"} else old_path
+        ]
+    assert changes == expected
+    assert baseline[old_path]["size"] == 10
+
+
+@pytest.mark.parametrize(
+    ("operation", "path"),
+    [
+        ("stat", "/downloads"),
+        ("list", "/downloads"),
+        ("list", "/downloads/Series/Season01"),
+        ("stat", "/downloads/Series/Season01/old.mkv"),
+        ("type", "/downloads/Series"),
+    ],
+)
+def test_snapshot_query_failure_is_not_an_empty_or_partial_tree(snapshot_server, operation, path):
+    """根目录、子目录或文件元数据读取失败时，整个监控路径都不能提交为有效快照。"""
+    state = snapshot_server
+    baseline = state.storage.snapshot(state.root)
+    state.fault.update(operation=operation, path=path)
+
+    assert state.module.snapshot_storage(
+        "smb", state.root, last_snapshot_time=0, previous_snapshot=baseline,
+    ) is None
+    assert len(baseline) == 1
+
+
+def test_disconnected_snapshot_preserves_failure_semantics(snapshot_server):
+    """连接失效不能冒充目录已删除；普通文件浏览仍沿用空列表回退。"""
+    state = snapshot_server
+    state.storage._connected = False
+
+    assert state.module.snapshot_storage("smb", state.root) is None
+    assert state.storage.list(FileItem(storage="smb", type="dir", path="/downloads")) == []
+
+
+@pytest.mark.parametrize("root_missing", [False, True])
+def test_confirmed_empty_snapshot_is_success(snapshot_server, root_missing):
+    """确认目录已清空或根目录已删除时应返回空快照，而不是失败。"""
+    state = snapshot_server
+    baseline = state.storage.snapshot(state.root)
+    if root_missing:
+        state.tree.clear()
+    else:
+        del state.tree["/downloads/Series/Season01/old.mkv"]
+
+    assert state.module.snapshot_storage(
+        "smb", state.root, last_snapshot_time=100, previous_snapshot=baseline,
+    ) == {}
+
+
+def test_snapshot_keeps_depth_limit(snapshot_server):
+    """遍历不因 mtime 剪枝，但仍遵守调用方的递归深度预算。"""
+    state = snapshot_server
+    state.client.listdir.reset_mock()
+
+    assert state.storage.snapshot(state.root, max_depth=2) == {}
+    assert state.client.listdir.call_count == 2
+
+
+def test_poll_retries_failed_smb_scan_without_losing_baseline(snapshot_server, monkeypatch):
+    """SMB 断线时保留旧基线，恢复后发现保留旧 mtime 的移入文件且只派发一次。"""
+    state = snapshot_server
+    records = {}
+    cache = Mock()
+    cache.get.side_effect = lambda key, **_kwargs: records.get(key)
+    cache.set.side_effect = lambda key, value, **_kwargs: records.__setitem__(key, value)
+    store = SnapshotStore(cache=cache)
+    baseline = state.storage.snapshot(state.root)
+    assert store.save("smb", baseline, file_count=1, last_snapshot_time=100)
+    saved_baseline = store.load("smb")
+    dispatcher = Mock()
+    dispatcher.is_transfer_candidate_path.return_value = True
+    dispatcher.handle_file.return_value = True
+    chain = SimpleNamespace(snapshot_storage=state.module.snapshot_storage)
+    monkeypatch.setattr("app.monitor.poller.StorageChain", lambda: chain)
+    poller = RemotePoller(store=store, dispatcher=dispatcher)
+    new_path = "/downloads/Series/Season01/new.mkv"
+    state.tree[new_path] = {"directory": False, "mtime": 1, "size": 20}
+    state.fault.update(operation="list", path="/downloads/Series/Season01")
+
+    assert poller.poll("smb", [state.root]) is None
+    assert store.load("smb") == saved_baseline
+    dispatcher.handle_file.assert_not_called()
+
+    state.fault.update(operation=None, path=None)
+    assert poller.poll("smb", [state.root]) == 2
+    dispatcher.handle_file.assert_called_once()
+    assert dispatcher.handle_file.call_args.kwargs["event_path"] == Path(new_path)
+    assert poller.poll("smb", [state.root]) == 2
+    dispatcher.handle_file.assert_called_once()
