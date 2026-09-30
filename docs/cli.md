@@ -41,6 +41,8 @@ curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v3/scripts/bootst
 - macOS：`~/Library/Application Support/MoviePilot`
 - Linux：`${XDG_CONFIG_HOME:-~/.config}/moviepilot`
 
+从程序目录内的旧 `config/` 迁移配置时，仅复制目标目录中缺失的文件或目录，不覆盖已有内容。只有实际复制了内容才显示“已将现有本地配置迁移到”提示；重复执行且无需复制时不再提示。
+
 如果在交互式终端中执行一键安装脚本，或直接执行 `moviepilot setup` / `moviepilot init` 且未传入 `--config-dir`，程序会先询问配置目录，并把上面的默认路径作为默认值展示出来。
 
 可以在安装或初始化时手动指定：

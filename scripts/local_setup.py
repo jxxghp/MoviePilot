@@ -419,6 +419,7 @@ def _seed_default_config_files(target_dir: Path) -> None:
 
 
 def _migrate_legacy_config_if_needed(target_dir: Path) -> None:
+    """补充目标目录缺失的旧配置，仅在实际复制后提示迁移成功。"""
     target_dir = target_dir.expanduser().resolve()
     if target_dir == LEGACY_CONFIG_DIR.resolve():
         return
@@ -427,6 +428,7 @@ def _migrate_legacy_config_if_needed(target_dir: Path) -> None:
         return
 
     target_dir.mkdir(parents=True, exist_ok=True)
+    migrated = False
     for source in sorted(LEGACY_CONFIG_DIR.iterdir()):
         target = target_dir / source.name
         if target.exists():
@@ -435,7 +437,9 @@ def _migrate_legacy_config_if_needed(target_dir: Path) -> None:
             shutil.copytree(source, target)
         else:
             shutil.copy2(source, target)
-    print_step(f"已将现有本地配置迁移到 {target_dir}")
+        migrated = True
+    if migrated:
+        print_step(f"已将现有本地配置迁移到 {target_dir}")
 
 
 def configure_config_dir(
