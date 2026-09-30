@@ -662,6 +662,17 @@ remain. Download history, file rows and the durable Outbox intent commit in one
 transaction; notifications, background post-processing and immediate event
 publication run only after that commit succeeds.
 
+`batch.py` keeps its candidate state in a private per-invocation runner, never on
+the shared Chain. After one selection/sort pass, it executes movie/music, whole
+season, labelled episode-pack and partial-pack phases in that order. The phases
+share failure cooldown and update missing seasons/episodes only after successful
+submission, using the rules in `app.application.download.selection`. Whole-season
+file inspection retains its metadata update even when coverage is insufficient,
+so later phases can still evaluate the candidate's identified episode range.
+Partial-pack inspection updates that range only after successful submission.
+The public `batch_download` signature and the supplied missing-map identity remain
+unchanged.
+
 Search orchestration is owned by the same-named `app.chain.search` package. Its
 root lazily exposes only the stable `SearchChain`; `facade.py` preserves the
 direct `SearchChain -> ChainBase` MRO, event identity and the three exact private
