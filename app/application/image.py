@@ -389,18 +389,14 @@ class ImageHelper(metaclass=Singleton):
     @staticmethod
     def _prepare_cache_path(url: str) -> str:
         """
-        根据图片 URL 生成缓存路径。
+        根据完整图片 URL 的哈希生成缓存路径，并保留原路径的扩展名。
 
-        根路径或其他无有效文件名的 URL 使用完整 URL 的短哈希兜底，避免
-        `Path.with_suffix()` 对空路径抛出异常，并保证不同 URL 不共用该缓存名。
+        域名、端口和查询参数都参与缓存身份，避免同路径图片串图。
+        旧的纯路径缓存无法确认来源，不回退读取，由既有过期清理任务回收。
         """
         cache_path = Path(SecurityUtils.sanitize_url_path(url))
-        if not cache_path.name:
-            hash_value = sha256(url.encode()).hexdigest()[:_IMAGE_CACHE_HASH_LENGTH]
-            cache_path = Path(f"{_IMAGE_CACHE_PATH_PREFIX}{hash_value}")
-        if not cache_path.suffix:
-            cache_path = cache_path.with_suffix(".jpg")
-        return cache_path.as_posix()
+        hash_value = sha256(url.encode()).hexdigest()[:_IMAGE_CACHE_HASH_LENGTH]
+        return f"{_IMAGE_CACHE_PATH_PREFIX}{hash_value}{cache_path.suffix or '.jpg'}"
 
     @staticmethod
     def get_image_mime_type(content: bytes, verify: bool = True) -> Optional[str]:
