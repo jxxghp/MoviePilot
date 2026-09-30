@@ -2,7 +2,7 @@ import asyncio
 import json
 import re
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -28,6 +28,7 @@ from app.agent.tools.impl.agent_task import AgentTaskTool
 from app.agent.tools.impl.api import MoviePilotApiTool
 from app.agent.tools.impl.execute_command import ExecuteCommandTool
 from app.agent.tools.manager import MoviePilotToolsManager
+from app.schemas.types import NotificationChannel
 
 
 def test_api_operation_registry_matches_migration_batches() -> None:
@@ -465,7 +466,7 @@ def test_policy_classifies_api_operation_by_operation_id() -> None:
     )
 
     assert delete_policy.effect is ActionEffect.DESTRUCTIVE_WRITE
-    assert delete_policy.required_role is PrincipalRole.SYSTEM_ADMIN
+    assert delete_policy.required_role is PrincipalRole.USER
     assert delete_policy.confirmation is ConfirmationMode.REQUIRED
     assert unknown_policy.machine_allowed is False
 
@@ -595,6 +596,73 @@ def test_gateway_maps_verified_channel_admin_only_for_admin_operation() -> None:
         )
 
     assert identity == ("7", "admin", True)
+
+
+@pytest.mark.parametrize("is_channel_admin", [False, True])
+@pytest.mark.parametrize("user_id,username", [(11, "alice"), (12, "bob")])
+@pytest.mark.parametrize(
+    "operation_id,arguments",
+    [
+        ("subscription.add", {"body": {"name": "示例"}}),
+        ("subscription.update", {"body": {"id": 1}}),
+        ("subscription.delete", {"path_params": {"subscribe_id": 1}}),
+    ],
+)
+def test_subscription_writes_keep_bound_channel_identity(
+    is_channel_admin, user_id, username, operation_id, arguments,
+) -> None:
+    """不同飞书发送者的订阅写入使用各自绑定用户，不因渠道管理员资格提权。"""
+    users = SimpleNamespace(
+        find_name_by_bindings=Mock(return_value=username),
+        async_get_by_name=AsyncMock(return_value=SimpleNamespace(
+            id=user_id, name=username, is_active=True, is_superuser=False,
+        )),
+    )
+    gateway = MoviePilotApiTool(
+        session_id="session", user_id=f"ou_{username}", data=SimpleNamespace(users=users),
+    )
+    gateway.set_message_attr(channel=NotificationChannel.Feishu.value, source="main-bot", username="")
+    gateway.set_agent_context({"is_admin": is_channel_admin})
+    policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
+        tool_name="moviepilot_api", arguments={"operation_id": operation_id}, requires_admin=False,
+    )
+    assert policy.required_role is PrincipalRole.USER
+    assert policy.confirmation is ConfirmationMode.REQUIRED
+    with patch("app.agent.tools.impl.api.MoviePilotApiExecutor") as executor_type, patch(
+        "app.application.security.auth.build_superuser_token_payload",
+    ) as superuser:
+        executor_type.return_value.execute = AsyncMock(return_value='{"success": true}')
+        result = asyncio.run(gateway.run(operation_id=operation_id, **arguments))
+
+    assert json.loads(result)["success"] is True
+    context = executor_type.call_args.kwargs["context"]
+    assert (context.user_id, context.username, context.is_admin) == (str(user_id), username, False)
+    users.find_name_by_bindings.assert_called_once_with({
+        "feishu_userid": f"ou_{username}", "feishu_openid": f"ou_{username}",
+    })
+    superuser.assert_not_called()
+
+
+@pytest.mark.parametrize("is_bound", [False, True])
+def test_subscription_write_rejects_unbound_or_inactive_channel_admin(is_bound) -> None:
+    """渠道管理员未绑定有效用户时不得回退超级管理员创建订阅。"""
+    users = SimpleNamespace(
+        find_name_by_bindings=Mock(return_value="disabled" if is_bound else None),
+        async_get_by_name=AsyncMock(return_value=SimpleNamespace(is_active=False)),
+    )
+    gateway = MoviePilotApiTool(
+        session_id="session", user_id="ou_user", data=SimpleNamespace(users=users),
+    )
+    gateway.set_message_attr(channel=NotificationChannel.Feishu.value, source="main-bot", username="")
+    gateway.set_agent_context({"is_admin": True})
+    with patch("app.agent.tools.impl.api.MoviePilotApiExecutor") as executor_type, patch(
+        "app.application.security.auth.build_superuser_token_payload",
+    ) as superuser:
+        result = asyncio.run(gateway.run(operation_id="subscription.add", body={"name": "示例"}))
+
+    assert json.loads(result)["error"] == "operation_unavailable"
+    executor_type.assert_not_called()
+    superuser.assert_not_called()
 
 
 def test_factory_uses_api_catalog_by_default(monkeypatch) -> None:

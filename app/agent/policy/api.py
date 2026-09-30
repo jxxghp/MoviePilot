@@ -110,14 +110,15 @@ API_FIRST_BATCH_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
     _spec("media.scrape", effect=ActionEffect.EXTERNAL_SIDE_EFFECT, required_role=_ADMIN, confirmation=_CONFIRM),
     _spec("media.episode_schedule"),
     _spec("media.detail"),
-    _write("subscription.add"),
-    _write("subscription.update"),
+    # 订阅归属由 API 当前用户决定，渠道管理员也必须使用绑定用户身份。
+    _user_write("subscription.add"),
+    _user_write("subscription.update"),
     _user_write("subscription.search", effect=ActionEffect.EXTERNAL_SIDE_EFFECT),
     _spec("subscription.list"),
     _spec("subscription.shares"),
     _spec("subscription.popular"),
     _spec("subscription.history"),
-    _write("subscription.delete", effect=ActionEffect.DESTRUCTIVE_WRITE, recovery=_DELETE_RECOVERABLE),
+    _user_write("subscription.delete", effect=ActionEffect.DESTRUCTIVE_WRITE, recovery=_DELETE_RECOVERABLE),
     _spec("download.add", effect=ActionEffect.EXTERNAL_SIDE_EFFECT, confirmation=_CONFIRM, recovery=_IDEMPOTENT),
     _spec(
         "download.artist_collection",

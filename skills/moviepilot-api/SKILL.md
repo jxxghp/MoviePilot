@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 37
+version: 38
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -77,6 +77,13 @@ Use `moviepilot_api` for normal MoviePilot business operations. The tool accepts
 only `operation_id`, `path_params`, `query`, and `body`. The host chooses the
 fixed HTTP method and path, creates the current user's authentication token,
 applies authorization and confirmation policy, and returns the API response.
+
+`subscription.add`, `subscription.update`, and `subscription.delete` require
+confirmation and use the active MoviePilot user bound to the channel account,
+including for channel administrators. Creation belongs to that user; ordinary
+users may update or delete only their own subscriptions. An unbound or inactive
+channel user must bind an active account before retrying, not switch to an
+administrator identity.
 
 This file is intentionally kept as the routing and execution guide. Detailed
 operation contracts live in the linked category files under `api/`; load only

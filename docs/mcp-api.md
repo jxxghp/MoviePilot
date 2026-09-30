@@ -897,6 +897,9 @@ SDK method。普通 MCP 客户端如需这些 provider 原生能力，应使用�
 宿主按 `operation_id` 决定固定 method 与 path，使用真实持久化管理员身份为
 API KEY 集成签发短期本机令牌，并按 operation 执行权限、确认、结果脱敏和恢复策略。
 调用方不能注入 host、URL、认证头或 API Token。
+通知渠道的 `subscription.add`、`subscription.update`、`subscription.delete` 使用渠道账号绑定的
+有效 MoviePilot 用户身份，渠道管理员也不会借用超级管理员身份。创建时订阅归属绑定用户，
+普通用户只能修改或删除自己的订阅；未绑定或绑定用户已停用时拒绝执行。三项操作仍保留确认机制。
 Web Agent 直接调用 `moviepilot_api` 时，宿主会自动加载 `moviepilot-api` Skill
 的 operation 白名单后再执行；这只是授权兜底，不会放宽固定 operation、身份、权限
 或确认策略。
