@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 from mutagen import File as MutagenFile
+from mutagen.asf import ASFTags
 from mutagen.id3 import ID3, TALB, TCOM, TIPL, TIT2, TMCL, TPE1, TPE3, TXXX
 from mutagen.mp4 import MP4Tags
 
@@ -33,7 +34,7 @@ from app.modules.musicbrainz import MusicBrainzModule
 from app.modules.musicbrainz.cache import MusicBrainzCache
 from app.modules.theaudiodb import TheAudioDbModule
 from app.schemas.types import MediaSource, MediaType
-from tests.test_audio_containers import _write_dsf, _write_wave
+from tests.test_audio_containers import _write_aiff, _write_dff, _write_dsf, _write_wave
 from tests.test_transfer_sync_extra_files import make_fileitem, make_transfer_chain
 
 CREDITS = {"composers": ["Ludwig van Beethoven"], "conductors": ["Herbert von Karajan"],
@@ -48,6 +49,10 @@ def _native_audio(tmp_path, container):
         _write_wave(path)
     elif container == "dsf":
         _write_dsf(path)
+    elif container == "aiff":
+        _write_aiff(path)
+    elif container == "dff":
+        _write_dff(path)
     else:
         shutil.copyfile(Path(__file__).parent / f"fixtures/audio/silence.{container}", path)
     audio = MutagenFile(path)
@@ -64,6 +69,10 @@ def _native_audio(tmp_path, container):
                            "\xa9wrt": CREDITS["composers"], "----:com.apple.iTunes:CONDUCTOR": [b"Herbert von Karajan"],
                            "----:com.apple.iTunes:ORCHESTRA": [b"Berliner Philharmoniker"],
                            "----:com.apple.iTunes:PERFORMER": [b"Anne-Sophie Mutter (violin)"]})
+    elif isinstance(audio.tags, ASFTags):
+        audio.tags.update({"Title": [TITLE], "Author": CREDITS["composers"], "WM/AlbumTitle": ["Violin Concerto"],
+                           "WM/Composer": CREDITS["composers"], "WM/Conductor": CREDITS["conductors"],
+                           "WM/Orchestra": CREDITS["orchestras"], "WM/Performer": ["Anne-Sophie Mutter (violin)"]})
     else:
         audio.tags.update({"title": [TITLE], "artist": CREDITS["composers"], "album": ["Violin Concerto"],
                            "composer": CREDITS["composers"], "conductor": CREDITS["conductors"],
@@ -72,7 +81,7 @@ def _native_audio(tmp_path, container):
     return path
 
 
-@pytest.mark.parametrize("container", ["flac", "mp3", "wav", "dsf", "m4a"])
+@pytest.mark.parametrize("container", ["flac", "mp3", "wav", "dsf", "m4a", "aiff", "dff", "wma"])
 def test_native_credits_survive_read_models_and_write_without_touching_seed(tmp_path, container):
     """原生角色到模型/API/pickle均不丢失，库内改写指挥不会修改硬链接做种源或主署名。"""
     source = _native_audio(tmp_path, container)

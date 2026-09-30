@@ -1,5 +1,6 @@
 import re
 import shutil
+import struct
 from collections import OrderedDict
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -17,6 +18,7 @@ from mutagen import File as MutagenFile
 from mutagen import MutagenError
 from mutagen.aiff import AIFF
 from mutagen.apev2 import APEBinaryValue, APETextValue, APEv2
+from mutagen.asf import ASF, ASFBoolAttribute, ASFByteArrayAttribute, ASFTags
 from mutagen.dsdiff import DSDIFF
 from mutagen.dsf import DSF
 from mutagen.flac import FLAC, Picture
@@ -33,6 +35,23 @@ from app.runtime.log import logger
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
 
 _AudioSignature = tuple[str, int, int, int, int]
+
+# 首项是写入键，其余是只读兼容别名；独立乐团/演奏者是自定义字段。
+_ASF_FIELDS = {
+    "title": ("Title",), "artist": ("Author",), "album": ("WM/AlbumTitle",),
+    "albumartist": ("WM/AlbumArtist", "album artist"), "date": ("WM/Year", "year"),
+    "originaldate": ("WM/OriginalReleaseTime", "WM/OriginalReleaseYear", "originalyear"),
+    "tracknumber": ("WM/TrackNumber", "track"), "discnumber": ("WM/PartOfSet", "disc"),
+    "isrc": ("WM/ISRC",), "subtitle": ("WM/SubTitle",),
+    "composer": ("WM/Composer",), "conductor": ("WM/Conductor",),
+    "orchestra": ("WM/Orchestra", "WM/Ensemble", "ensemble"), "performer": ("WM/Performer",),
+    "compilation": ("WM/IsCompilation",), "lyrics": ("WM/Lyrics",),
+    "musicbrainz_trackid": ("MusicBrainz/Track Id", "musicbrainz_track_id"),
+    "musicbrainz_albumid": ("MusicBrainz/Album Id", "musicbrainz_album_id"),
+    "musicbrainz_releasegroupid": ("MusicBrainz/Release Group Id", "musicbrainz_release_group_id"),
+    "musicbrainz_releasetrackid": ("MusicBrainz/Release Track Id", "musicbrainz_releasetrack_id"),
+    "musicbrainz_albumtype": ("MusicBrainz/Album Type",),
+}
 
 
 @dataclass(slots=True)
@@ -281,6 +300,72 @@ def _read_mp4_tags(tags: MP4Tags) -> dict[str, list[str]]:
     return values
 
 
+def _asf_text_values(values: Any) -> list[str]:
+    """ASF文本/整数/布尔属性均有合法文本含义，二进制属性不能伪装成标题或MBID。"""
+    return [str(int(item.value)) if isinstance(item, ASFBoolAttribute) else str(item).strip()
+            for item in values or [] if not isinstance(item, (ASFByteArrayAttribute, bytes)) and str(item).strip()]
+
+
+def _read_asf_tags(tags: ASFTags) -> dict[str, list[str]]:
+    """优先读取Windows Media原生键，再兼容旧小写写入；WM/Track为零基编号。"""
+    values = {key.casefold(): _asf_text_values(items) for key, items in tags.items()}
+    for key, aliases in _ASF_FIELDS.items():
+        values[key] = next((items for alias in (*aliases, key)
+                            if (items := _asf_text_values(tags.get(alias)) or values.get(alias.casefold()))), [])
+    current = next(iter(values.get("tracknumber", [])), "").split("/", 1)[0]
+    if not current.isdecimal() or int(current) < 1:
+        legacy = next(iter(values.get("wm/track", [])), "")
+        if legacy.isdecimal():
+            values["tracknumber"] = [str(int(legacy) + 1)]
+    return values
+
+
+def _write_asf_tags(tags: ASFTags, values: dict[str, list[str]]) -> bool:
+    """差异预检后只替换所需字段及其兼容别名，保留用户其它ASF属性。"""
+    for key, value in values.items():
+        names = _ASF_FIELDS.get(key, (key,))
+        aliases = {name.casefold() for name in (*names, key)}
+        if key == "tracknumber":
+            aliases.add("wm/track")
+        if key in {"tracknumber", "discnumber"} and "/" in value[0]:
+            aliases.update(("tracktotal", "totaltracks") if key == "tracknumber" else ("disctotal", "totaldiscs"))
+        for existing in list(tags.keys()):
+            if existing.casefold() in aliases or (key == "performer" and existing.casefold().startswith("performer:")):
+                del tags[existing]
+        tags[names[0]] = value
+    return bool(values)
+
+
+def _mark_asf_quality(meta: MetaMusic, audio: ASF) -> None:
+    """ASF编码类型来自音频流的Codec List；不能从码率、扩展名或描述中的宣传词推断无损。"""
+    codec = audio.info.codec_type.casefold()
+    if codec.startswith("windows media audio"):
+        meta.apply_audio_quality("WMA lossless" if "lossless" in codec else "WMA", overwrite=True, evidence_source="stream")
+    else:
+        # 未知编码的ASF不沿用可能错误的.flac/.mp3扩展名声明实际流格式。
+        meta.audio_format = None
+        meta.audio_lossless = None
+        meta.field_sources.pop("audio_format", None)
+        meta.field_sources.pop("audio_lossless", None)
+
+
+def _write_binary_cover(audio: Any, path: Path, data: bytes, mime: str, overwrite: bool) -> None:
+    """ASF与APE使用专用二进制属性保存封面，保留缺失才补写的策略。"""
+    if audio.tags is None:
+        audio.add_tags()
+    key = "WM/Picture" if isinstance(audio, ASF) else "Cover Art (Front)"
+    if audio.tags.get(key) and not overwrite:
+        return
+    if isinstance(audio, ASF):
+        # ASF_FLAT_PICTURE：类型、图像字节数、两个UTF-16LE终止字符串及图像数据。
+        payload = struct.pack("<BI", 3, len(data)) + (mime + "\0\0").encode("utf-16-le") + data
+        audio.tags[key] = [ASFByteArrayAttribute(payload)]
+    else:
+        filename = "cover.png" if mime == "image/png" else "cover.jpg"
+        audio.tags[key] = APEBinaryValue(filename.encode("ascii") + b"\x00" + data)
+    audio.save(path)
+
+
 def _performer_pair(value: str) -> tuple[str, str]:
     """解析PERFORMER专用的“人名 (乐器)”标签，不拆分人名内部的逗号或斜线。"""
     match = re.fullmatch(r"(.+?)\s+\(([^()]+)\)", value.strip())
@@ -371,7 +456,9 @@ def _mark_audio_evidence(meta: MetaMusic, audio: Any) -> MetaMusic:
         (FLAC, "FLAC"), (MP3, "MP3"), (WAVE, "WAV"), (AIFF, "AIFF"),
         (MonkeysAudio, "APE"), (DSF, "DSD"), (DSDIFF, "DSD"),
     ) if isinstance(audio, kind)), None)
-    if detected:
+    if isinstance(audio, ASF):
+        _mark_asf_quality(meta, audio)
+    elif detected:
         meta.apply_audio_quality(detected, overwrite=True, evidence_source="stream")
     elif meta.audio_format:
         source = "stream" if getattr(info, "codec", None) or getattr(info, "codec_description", None) else "filename"
@@ -513,13 +600,15 @@ class AudioMetadataHelper:
 
     @staticmethod
     def _readable_tags(tags: Any) -> Any:
-        """将原生 ID3/MP4 及 Vorbis/APEv2 映射到统一键，不修改音频。
+        """将原生ID3/MP4/ASF及Vorbis/APEv2映射到统一键，不修改音频。
 
         原生读取可保留 Easy 包装未注册的发行字段；Recording 的身份只取
         专用字段，不能误用 Release Track ID。
         """
         if isinstance(tags, MP4Tags):
             return _read_mp4_tags(tags)
+        if isinstance(tags, ASFTags):
+            return _read_asf_tags(tags)
         if isinstance(tags, APEv2):
             values = {key.casefold(): value for key, value in tags.items()}
             values.update({key.replace(" ", "_"): value for key, value in list(values.items())})
@@ -587,6 +676,8 @@ class AudioMetadataHelper:
             str(key).casefold(): value
             for key, value in getattr(tags, "items", lambda: [])()
         }
+        if isinstance(tags, ASFTags):
+            normalized.update(_read_asf_tags(tags))
         synced = synced or cls._tag_text(
             normalized,
             "syncedlyrics",
@@ -706,6 +797,7 @@ class AudioMetadataHelper:
                    "musicbrainz_albumid": ("musicbrainz_albumid", "musicbrainz_album_id"),
                    "musicbrainz_releasegroupid": ("musicbrainz_releasegroupid", "musicbrainz_release_group_id"),
                    "musicbrainz_releasetrackid": ("musicbrainz_releasetrackid", "musicbrainz_release_track_id")}
+        totals = {"tracknumber": ("tracktotal", "totaltracks"), "discnumber": ("disctotal", "totaldiscs")}
         updates = {}
         for key, value in cls._tag_values(music).items():
             if value in (None, "", []):
@@ -716,8 +808,10 @@ class AudioMetadataHelper:
                 current = credits[key]
                 if set(current) == set(expected):
                     continue
-            if current and key in {"tracknumber", "discnumber"} and cls._number_pair(current[0]) == cls._number_pair(expected[0]):
-                # MP4用(1, 0)表达未知总数，与文本标签的1具有相同位置语义。
+            if current and key in totals and cls._number_pair(
+                    current[0], cls._first_of(tags, *totals[key]),
+            ) == cls._number_pair(expected[0]):
+                # 组合与独立总数按相同位置语义比较，避免为等价标签复制整个音频。
                 continue
             if key in {"date", "originaldate"} and current and len(expected[0]) == 4 and current[0].startswith(f"{expected[0]}-"):
                 continue
@@ -737,6 +831,8 @@ class AudioMetadataHelper:
             return bool(tags.get("Cover Art (Front)"))
         if isinstance(audio, MP4):
             return bool(tags.get("covr"))
+        if isinstance(audio, ASF):
+            return bool(tags.get("WM/Picture"))
         return bool(hasattr(tags, "getall") and tags.getall("APIC"))
 
     @classmethod
@@ -749,6 +845,8 @@ class AudioMetadataHelper:
             changed = cls._write_id3_tags(audio.tags, values, overwrite)
         elif isinstance(audio.tags, MP4Tags):
             changed = cls._write_mp4_tags(audio.tags, values, overwrite)
+        elif isinstance(audio.tags, ASFTags):
+            changed = _write_asf_tags(audio.tags, values)
         else:
             changed = cls._write_text_tags(audio, values, overwrite, path)
         if changed:
@@ -896,19 +994,10 @@ class AudioMetadataHelper:
             cover_mime: str,
             overwrite: bool,
     ) -> None:
-        """为原生 ID3、FLAC、MP4/M4A 和 APE 写入内嵌封面，其它格式保留标签写入结果。"""
+        """按容器写入内嵌封面，链接隔离由外层写入事务统一负责。"""
         audio = cls._open_audio(path)
-        if isinstance(audio, MonkeysAudio):
-            if audio.tags is None:
-                audio.add_tags()
-            cover_key = "Cover Art (Front)"
-            if cover_key in audio.tags and not overwrite:
-                return
-            cover_filename = "cover.png" if cover_mime == "image/png" else "cover.jpg"
-            audio.tags[cover_key] = APEBinaryValue(
-                cover_filename.encode("ascii") + b"\x00" + cover_data
-            )
-            audio.save(path)
+        if isinstance(audio, (MonkeysAudio, ASF)):
+            _write_binary_cover(audio, path, cover_data, cover_mime, overwrite)
             return
         if isinstance(audio, FLAC):
             if audio.pictures and not overwrite:
@@ -957,7 +1046,7 @@ class AudioMetadataHelper:
 
     @staticmethod
     def _values(tags: Any, key: str) -> list[str]:
-        """从 Mutagen Easy 标签中提取非空字符串列表。"""
+        """从容器的统一文本字段或兼容标签中提取非空字符串列表。"""
         value = tags.get(key) if hasattr(tags, "get") else None
         if value is None or isinstance(value, APEBinaryValue):
             return []

@@ -11,6 +11,7 @@ from unittest.mock import Mock
 import pytest
 from mutagen import File as MutagenFile
 from mutagen.apev2 import APEv2
+from mutagen.asf import ASF
 from mutagen.flac import FLAC
 from mutagen.id3 import ID3, TDOR, TDRC
 from mutagen.mp4 import MP4
@@ -23,7 +24,7 @@ from app.domain.meta.metamusic import MetaMusic
 from app.modules.filemanager.storages.local import LocalStorage
 from app.modules.filemanager.transhandler import TransHandler
 from app.schemas.file import FileItem
-from tests.test_audio_containers import _write_dsf, _write_wave
+from tests.test_audio_containers import _write_aiff, _write_dff, _write_dsf, _write_wave
 
 _COVER = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=")
 _RECORDING = "38035858-f990-4fbb-b3b2-f2f8b958eeba"
@@ -35,15 +36,14 @@ _TRACK = "b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d"
 def _audio_file(tmp_path, container):
     """构造真实静音容器，编码来源与读取回归共用，不需要网络或ffmpeg。"""
     path = tmp_path / f"seed.{container}"
-    if container == "wav":
-        return _write_wave(path)
-    if container == "dsf":
-        return _write_dsf(path)
+    factories = {"wav": _write_wave, "dsf": _write_dsf, "aiff": _write_aiff, "dff": _write_dff}
+    if container in factories:
+        return factories[container](path)
     shutil.copyfile(Path(__file__).parent / f"fixtures/audio/silence.{container}", path)
     return path
 
 
-@pytest.mark.parametrize("container", ["wav", "dsf", "flac", "mp3", "m4a"])
+@pytest.mark.parametrize("container", ["wav", "dsf", "flac", "mp3", "m4a", "aiff", "dff", "wma"])
 @pytest.mark.parametrize("link_type", ["hardlink", "symlink"])
 @pytest.mark.parametrize("wrong_extension", [False, True])
 def test_native_container_writes_metadata_cover_and_release_ids_without_touching_seed(
@@ -76,6 +76,10 @@ def test_native_container_writes_metadata_cover_and_release_ids_without_touching
         assert native.pictures[0].data == _COVER
     elif isinstance(native, MP4):
         assert bytes(native.tags["covr"][0]) == _COVER
+    elif isinstance(native, ASF):
+        picture = native.tags["WM/Picture"][0].value
+        assert picture[:5] == bytes([3]) + len(_COVER).to_bytes(4, "little")
+        assert picture[5:] == "image/png\0\0".encode("utf-16-le") + _COVER
     else:
         assert isinstance(native.tags, ID3) and native.tags.getall("APIC")[0].data == _COVER
 

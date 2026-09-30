@@ -80,6 +80,14 @@ Music recognition, exploration, album and artist navigation, and recognition-cac
   the original-year tag (`ORIGINALDATE` or its native equivalent), never a
   fabricated current-release date. Preserve more precise existing dates in the
   same year. APEv2 MusicBrainz keys use underscores, not ID3's spaced descriptions.
+  WMA/ASF uses native Title/Author/WM and MusicBrainz properties, with legacy
+  lowercase aliases accepted. WM/TrackNumber is one-based; legacy WM/Track is
+  zero-based. WM/Lyrics supplies plain lyrics, and WM/Picture embeds covers under
+  the same link-isolation and overwrite policy. Only the actual codec type can
+  establish WMA Lossless; high bitrate and filename extensions cannot. Missing
+  bit depth stays unknown. WM/Orchestra and WM/Performer are custom compatibility
+  properties. Equivalent separate/combined track totals retain existing links.
+  AIFF and DSDIFF use the same native ID3 path as WAV and DSF.
 - Organization uses each file's `storage`: remote items use names and original
   torrent evidence, never local tags, duration, or CUE at an identical path.
   An `.m4a` suffix alone does not establish AAC/ALAC or lossless status.

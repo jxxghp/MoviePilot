@@ -600,11 +600,17 @@ SSE 的 `candidate_items` 是站点原始返回数量，`match_counts` 记录身
 全部成功后原子替换目标；源文件字节与权限保持不变。实际发生写入后，目标成为普通文件，
 会独立占用磁盘空间。未发生标签变化且没有其它写入时保留原链接；跳过标签及封面可保持链接整理。
 写入失败或目标在处理期间改变时，丢弃临时副本，不覆盖原目标。LRC 与 Lyricsfile 旁挂也按目录项原子替换。
-WAV、DSF 和 MP3 使用原生 ID3 帧，MP4/M4A 使用标准 atom 及文本 freeform；无标签音频可直接补写，
+WAV、DSF、AIFF、DSDIFF 和 MP3 使用原生 ID3 帧，MP4/M4A 使用标准 atom 及文本 freeform；无标签音频可直接补写，
 错误扩展名按实际容器处理。Recording、Release、Release Group、Release Track ID 分别写入专用标签；
 仅有首发年份时只写原始年份标签，不能据此生成当前发行日期；已有同年的完整日期不因模型只携带年份而截断。
 APEv2 按[标准标签映射](https://picard-docs.musicbrainz.org/en/latest/appendices/tag_mapping.html)
 使用下划线形式的 MusicBrainz 字段和 `Originalyear`，不套用 ID3 的带空格描述；读取仍兼容旧字段别名。
+WMA/ASF 使用 `Title`、`Author`、`WM/AlbumTitle`、`WM/PartOfSet`、`MusicBrainz/*` 等原生属性，
+兼容旧版小写字段；标准 `WM/TrackNumber` 从 1 开始，旧 `WM/Track` 从 0 开始。
+`WM/Lyrics` 可读取纯文本歌词，`WM/Picture` 可补写封面，沿用相同的链接隔离与覆盖策略。
+WMA Lossless 只由实际 Codec List 类型确认，不从高码率或扩展名猜测，未提供的位深保持未知。
+独立乐团/演奏者字段 `WM/Orchestra`、`WM/Performer` 为自定义兼容属性。
+等价的组合/独立曲数标签不会触发音频复制；曲数、碟数和更精确的原有日期保持有效。
 
 音乐整理按每个文件的 `storage` 决定证据来源：远端仅使用名称、目录和原始种子线索，
 不读取本机同路径的标签、时长或 CUE。仅有 `.m4a` 扩展名时不声明 AAC/ALAC 或有损/无损。

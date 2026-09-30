@@ -7,7 +7,7 @@ import wave
 from pathlib import Path
 
 import pytest
-from mutagen.dsf import DSF
+from mutagen import File as MutagenFile
 from mutagen.flac import FLAC
 from mutagen.id3 import TALB, TDRC, TIT2, TPE1, TPE2, TPOS, TRCK, TSRC, TXXX, UFID
 from mutagen.wave import WAVE
@@ -36,6 +36,29 @@ def _write_dsf(path: Path) -> Path:
     return path
 
 
+def _write_aiff(path: Path) -> Path:
+    """标准FORM/COMM/SSND块生成三秒44.1kHz PCM，采样率使用AIFF扩展浮点格式。"""
+    common = struct.pack(">hIh", 2, 44100 * 3, 16) + bytes.fromhex("400eac44000000000000")
+    sound = b"\0" * (8 + 44100 * 4 * 3)
+    chunks = b"COMM" + struct.pack(">I", len(common)) + common + b"SSND" + struct.pack(">I", len(sound)) + sound
+    path.write_bytes(b"FORM" + struct.pack(">I", len(chunks) + 4) + b"AIFF" + chunks)
+    return path
+
+
+def _write_dff(path: Path) -> Path:
+    """生成合法DSDIFF声道交织DSD数据及PROP，验证与DSF不同的原生ID3容器。"""
+    def chunk(name: bytes, data: bytes) -> bytes:
+        """DSDIFF块以64位大端长度计数，奇数字节补齐不计入内容长度。"""
+        return name + struct.pack(">Q", len(data)) + data + b"\0" * (len(data) % 2)
+
+    properties = b"SND " + chunk(b"FS  ", struct.pack(">I", 2822400))
+    properties += chunk(b"CHNL", struct.pack(">H", 2) + b"SLFTSRGT") + chunk(b"CMPR", b"DSD \x00")
+    content = b"DSD " + chunk(b"FVER", struct.pack(">I", 0x01050000)) + chunk(b"PROP", properties)
+    content += chunk(b"DSD ", b"\x69" * (2822400 * 3 * 2 // 8))
+    path.write_bytes(chunk(b"FRM8", content))
+    return path
+
+
 @pytest.fixture
 def flac_path(tmp_path):
     """复制无标签的三秒静音 FLAC，所有标签写入仅作用于测试临时文件。"""
@@ -61,11 +84,12 @@ def test_untagged_audio_keeps_stream_and_path_evidence(container, tmp_path, flac
     assert hashlib.sha256(path.read_bytes()).digest() == before
 
 
-@pytest.mark.parametrize("container", ["wav", "dsf"])
+@pytest.mark.parametrize("container", ["wav", "dsf", "aiff", "dff"])
 def test_raw_id3_container_reads_track_identity(container, tmp_path):
-    """WAV/DSF 原生 ID3 帧能提供曲目字段及 Recording 身份。"""
+    """WAV/DSF/AIFF/DSDIFF原生ID3帧能提供曲目字段及Recording身份。"""
     path = tmp_path / f"03.{container}"
-    audio = WAVE(_write_wave(path)) if container == "wav" else DSF(_write_dsf(path))
+    factory = {"wav": _write_wave, "dsf": _write_dsf, "aiff": _write_aiff, "dff": _write_dff}
+    audio = MutagenFile(factory[container](path))
     audio.add_tags()
     for frame in (
         TIT2(encoding=3, text=["晴天"]),
