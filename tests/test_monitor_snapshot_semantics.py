@@ -136,6 +136,8 @@ def test_storage_snapshot_reconciles_deleted_children_and_keeps_skipped_subtree(
     """
     storage = MagicMock()
     storage.snapshot_check_folder_modtime = True
+    storage.snapshot_strict_query = False
+    storage._snapshot_list = lambda item: StorageBase._snapshot_list(storage, item)
     root = schemas.FileItem(storage="alist", type="dir", path="/mon/", name="mon", modify_time=200)
     kept_dir = schemas.FileItem(
         storage="alist", type="dir", path="/mon/keep/", name="keep", modify_time=50
@@ -163,6 +165,8 @@ def test_storage_snapshot_always_lists_monitor_root_for_deletions():
     """
     storage = MagicMock()
     storage.snapshot_check_folder_modtime = True
+    storage.snapshot_strict_query = False
+    storage._snapshot_list = lambda item: StorageBase._snapshot_list(storage, item)
     storage.get_item.return_value = schemas.FileItem(
         storage="alist", type="dir", path="/mon/", name="mon", modify_time=50
     )

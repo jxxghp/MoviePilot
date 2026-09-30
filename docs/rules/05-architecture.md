@@ -717,6 +717,12 @@ SMB 同存储整理由 `app.modules.filemanager.storages.smb` 持有协议调用
 下载器返回的远程路径保留存储 URI，整理 Chain 通过 `StorageChain` 查询源文件，
 不直接依赖 SMB SDK；断线后目标状态不明沿用持久步骤的保守恢复合同。
 
+SMB 目录快照不依赖祖先目录 mtime 推断后代变化，而在既有递归深度上限内逐层列举。
+存储通过 `snapshot_strict_query` 声明已实现 `get_item_strict` / `list_strict`；
+严格快照的任一查询失败必须返回 `None`，由远程轮询器保留旧基线并重试。
+只有确认目录清空或根路径不存在时才返回空字典。SMB 普通文件浏览继续允许容错回退，
+严格快照不能复用其部分结果；其他存储需按各自查询合同逐步接入。
+
 `app.modules.filemanager` is a lazy compatibility entrypoint. The concrete
 `FileManagerModule` implementation lives in `app.modules.filemanager.module`,
 while the historical capability path and class module identity remain

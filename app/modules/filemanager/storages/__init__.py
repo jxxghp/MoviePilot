@@ -51,6 +51,11 @@ class StorageBase(metaclass=ABCMeta):
         """返回存储快照目录时间检查的默认开关。"""
         return True
 
+    @property
+    def snapshot_strict_query(self) -> bool:
+        """声明快照是否使用严格查询；未适配的存储沿用原查询合同。"""
+        return False
+
     def __init__(self):
         self.storagehelper = StorageHelper()
 
@@ -163,6 +168,10 @@ class StorageBase(metaclass=ABCMeta):
         浏览文件
         """
         pass
+
+    def list_strict(self, fileitem: _SchemaFileItem) -> List[_SchemaFileItem]:
+        """完整列举目录；空列表表示确认无子项，无法确认时抛出 StorageQueryError。"""
+        raise StorageQueryError(f"存储 {self.schema} 未实现严格目录查询: {fileitem.path}")
 
     @abstractmethod
     def create_folder(self, fileitem: _SchemaFileItem, name: str) -> Optional[_SchemaFileItem]:
@@ -286,15 +295,34 @@ class StorageBase(metaclass=ABCMeta):
         """
         pass
 
+    def _snapshot_list(self, fileitem: _SchemaFileItem) -> Optional[List[_SchemaFileItem]]:
+        """按存储能力读取目录，严格快照不能把无结果当作可以跳过的子树。"""
+        if not self.snapshot_strict_query:
+            return self.list(fileitem)
+        items = self.list_strict(fileitem)
+        if items is None:
+            raise StorageQueryError(f"目录查询没有返回完整结果: {fileitem.path}")
+        return items
+
+    def _snapshot_read_error(self, fileitem: _SchemaFileItem, error: Exception) -> None:
+        """严格快照传播读取故障；未适配的存储保留原来的子树容错行为。"""
+        if self.snapshot_strict_query:
+            if isinstance(error, StorageQueryError):
+                raise error
+            raise StorageQueryError(f"读取快照路径失败: {fileitem.path} - {error}") from error
+        logger.debug(f"Snapshot error for {fileitem.path}: {error}")
+
     def snapshot(self, path: Path, last_snapshot_time: float = None, max_depth: int = 5,
-                 previous_snapshot: Optional[Dict[str, Dict]] = None) -> Dict[str, Dict]:
+                 previous_snapshot: Optional[Dict[str, Dict]] = None) -> Optional[Dict[str, Dict]]:
         """
         快照文件系统，输出所有层级文件信息（不含目录）
         :param path: 路径
         :param last_snapshot_time: 上次快照时间，用于增量快照
         :param max_depth: 最大递归深度，避免过深遍历
         :param previous_snapshot: 上次完整快照，用于保留未变化目录并清理已删除文件
+        :return: 有效快照（允许为空）；严格查询失败返回 None，调用方必须保留旧基线
         """
+        strict_query = self.snapshot_strict_query
         root_path = PurePosixPath(path.as_posix())
         files_info = {
             file_path: file_info
@@ -340,7 +368,7 @@ class StorageBase(metaclass=ABCMeta):
                         return
 
                     # 只有目录列表成功返回后才清理旧基线，查询异常时继续保留待下轮重试
-                    sub_files = self.list(_fileitm)
+                    sub_files = self._snapshot_list(_fileitm)
                     if sub_files is None:
                         return
                     sub_files = list(sub_files)
@@ -357,12 +385,15 @@ class StorageBase(metaclass=ABCMeta):
                     }
 
             except Exception as e:
-                logger.debug(f"Snapshot error for {_fileitm.path}: {e}")
+                self._snapshot_read_error(_fileitm, e)
 
-        fileitem = self.get_item(path)
-        if not fileitem:
-            return {}
-
-        __snapshot_file(fileitem)
+        try:
+            fileitem = self.get_item_strict(path) if strict_query else self.get_item(path)
+            if not fileitem:
+                return {}
+            __snapshot_file(fileitem)
+        except StorageQueryError as err:
+            logger.warning(f"存储快照失败，保留上次基线: {self.schema}:{path} - {err}")
+            return None
 
         return files_info
