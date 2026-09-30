@@ -14,6 +14,7 @@ from app.application.audio import AudioMetadataHelper
 from app.application.transfer.workflow import TransferPlanningInput, TransferTask
 from app.chain.acoustid import AcoustIdChain
 from app.chain.media import MediaChain
+from app.chain.scraping import ScrapingChain
 from app.chain.transfer.facade import TransferChain
 from app.chain.transfer.music import append_cue_companions
 from app.domain.context import MusicInfo
@@ -145,8 +146,9 @@ def test_single_audio_collects_nonmatching_stem_cue_companion(tmp_path, monkeypa
     assert inherited[owner._get_file_key(items[-1][0])].music_layout == "image_cue"
 
 
-@pytest.mark.parametrize("mode", ["copy", "link"])
-def test_real_archive_preserves_cue_references_and_source_bytes(tmp_path, monkeypatch, mode):
+@pytest.mark.parametrize("mode", ["copy", "link", "softlink"])
+@pytest.mark.parametrize("scrape", [False, True])
+def test_real_archive_preserves_cue_references_and_source_bytes(tmp_path, monkeypatch, mode, scrape):
     """真实规划与存储执行可规范专辑目录，同时保留索引引用和原始做种内容。"""
     audio, cue = _image_pair(tmp_path)
     original = {path: path.read_bytes() for path in (audio, cue)}
@@ -165,7 +167,7 @@ def test_real_archive_preserves_cue_references_and_source_bytes(tmp_path, monkey
         checkpoint = handler.plan_transfer(
             planning_input, meta=meta, mediainfo=info, source_oper=storage,
             target_storage="local", target_path=tmp_path / "library", transfer_type=mode,
-            need_scrape=False, need_rename=True, need_notify=False, overwrite_mode="never",
+            need_scrape=scrape, need_rename=True, need_notify=False, overwrite_mode="never",
             episodes_info=None, preview=False,
         )
         result = handler.execute_transfer_plan(checkpoint, meta=meta, mediainfo=info, source_oper=storage, target_oper=storage)
@@ -175,9 +177,20 @@ def test_real_archive_preserves_cue_references_and_source_bytes(tmp_path, monkey
         assert target.parent == tmp_path / "library" / "测试歌手" / "专辑示例 (2003)"
         assert target.read_bytes() == original[source]
         assert source.read_bytes() == original[source]
-        if mode == "link":
+        if mode != "copy":
             assert source.samefile(target)
         targets.append(target)
+    if scrape:
+        chain = object.__new__(ScrapingChain)
+        chain.storagechain = SimpleNamespace(download_file=storage.download)
+        chain.scraping_policies = SimpleNamespace(
+            option=lambda _target, kind: SimpleNamespace(is_skip=kind != "nfo", is_overwrite=True))
+        success, message = chain.scrape_music_metadata(storage.get_item(targets[0]), mediainfo=info)
+        assert success, message
+        assert not audio.samefile(targets[0])
+        assert AudioMetadataHelper.read_tags(targets[0]).album == "专辑示例"
+        assert AudioMetadataHelper.read_tags(targets[0]).media_id is None
+        assert all(source.read_bytes() == content for source, content in original.items())
     assert (targets[1].parent / parse_music_cue(targets[1].read_text()).tracks[0].file_name).exists()
 
 

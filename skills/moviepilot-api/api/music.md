@@ -54,6 +54,17 @@ Music recognition, exploration, album and artist navigation, and recognition-cac
   `tracks_cue` metadata may supplement tracks, but the original multi-file CUE
   is not copied after track renaming. Treat `organization_error` as a blocking
   structural issue rather than overriding it with an unrelated media ID.
+- Writing music tags or embedded covers to a local hardlink/symlink uses an
+  independent copy and atomically replaces only the library entry after all
+  writes succeed. Seed bytes and permissions remain unchanged. A changed target
+  becomes a regular file and consumes independent disk space; unchanged tags
+  without other writes retain the link. Skip tags and covers to keep linked
+  audio. Failed writes or a concurrently changed target discard the temporary
+  copy. LRC and Lyricsfile sidecars also replace directory entries atomically.
+  Untagged files can be written, and incorrect extensions use the actual
+  container. Native ID3 and MP4/freeform writers keep recording/release/group/
+  release-track identities separate. An original year alone writes
+  `ORIGINALDATE`, never a fabricated current-release date.
 - Organization uses each file's `storage`: remote items use names and original
   torrent evidence, never local tags, duration, or CUE at an identical path.
   An `.m4a` suffix alone does not establish AAC/ALAC or lossless status.

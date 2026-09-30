@@ -289,26 +289,32 @@ def test_read_audio_metadata_distinguishes_alac_inside_m4a(monkeypatch):
     assert meta.audio_quality == "hires"
 
 
-def test_write_audio_metadata_maps_music_info_to_easy_tags(monkeypatch):
+def test_write_audio_metadata_maps_music_info_to_easy_tags(monkeypatch, tmp_path):
     """音乐刮削应把标准歌曲、专辑和曲序字段写回音频标签。"""
     class FakeAudio:
         """记录 Mutagen Easy 标签写入结果。"""
 
         def __init__(self):
+            """初始化测试标签及保存状态。"""
             self.tags = {}
             self.saved = False
 
         def __setitem__(self, key, value):
+            """记录标准标签写入。"""
             self.tags[key] = value
 
-        def save(self):
+        def save(self, _path):
+            """记录已执行标签保存。"""
             self.saved = True
 
     audio = FakeAudio()
     monkeypatch.setattr("app.application.audio.MutagenFile", lambda *_args, **_kwargs: audio)
 
+    path = tmp_path / '08 - Get Lucky.flac'
+    path.write_bytes(b"audio")
+
     success = AudioMetadataHelper.write(
-        Path("/music/08 - Get Lucky.flac"),
+        path,
         MusicInfo(
             media_source="musicbrainz",
             media_id=RECORDING_ID,
@@ -331,7 +337,7 @@ def test_write_audio_metadata_maps_music_info_to_easy_tags(monkeypatch):
     assert audio.tags["musicbrainz_trackid"] == [RECORDING_ID]
 
 
-def test_write_audio_metadata_does_not_write_album_id_as_recording_tag(monkeypatch):
+def test_write_audio_metadata_does_not_write_album_id_as_recording_tag(monkeypatch, tmp_path):
     """MusicBrainz 专辑身份不得写入只接受 recording ID 的曲目标签。"""
     class FakeAudio:
         """记录专辑元数据写入结果。"""
@@ -344,14 +350,17 @@ def test_write_audio_metadata_does_not_write_album_id_as_recording_tag(monkeypat
             """记录 Easy 标签赋值。"""
             self.tags[key] = value
 
-        def save(self):
+        def save(self, _path):
             """模拟 Mutagen 保存。"""
 
     audio = FakeAudio()
     monkeypatch.setattr("app.application.audio.MutagenFile", lambda *_args, **_kwargs: audio)
 
+    path = tmp_path / 'Random Access Memories.flac'
+    path.write_bytes(b"audio")
+
     success = AudioMetadataHelper.write(
-        Path("/music/Random Access Memories.flac"),
+        path,
         MusicInfo(
             media_source="musicbrainz",
             media_id="release-group-1",
@@ -364,15 +373,18 @@ def test_write_audio_metadata_does_not_write_album_id_as_recording_tag(monkeypat
     assert "musicbrainz_trackid" not in audio.tags
 
 
-def test_write_audio_metadata_can_embed_cover_without_rewriting_tags(monkeypatch):
+def test_write_audio_metadata_can_embed_cover_without_rewriting_tags(monkeypatch, tmp_path):
     """音乐封面策略应能在标签策略关闭时独立执行。"""
     audio = SimpleNamespace(tags={"title": ["Original"]})
     monkeypatch.setattr("app.application.audio.MutagenFile", lambda *_args, **_kwargs: audio)
     write_cover = Mock()
     monkeypatch.setattr(AudioMetadataHelper, "_write_cover", write_cover)
 
+    path = tmp_path / 'track.flac'
+    path.write_bytes(b"audio")
+
     success = AudioMetadataHelper.write(
-        Path("/music/track.flac"),
+        path,
         MusicInfo(title="Changed"),
         cover_data=b"cover",
         write_tags=False,
@@ -382,7 +394,7 @@ def test_write_audio_metadata_can_embed_cover_without_rewriting_tags(monkeypatch
     assert success is True
     assert audio.tags == {"title": ["Original"]}
     write_cover.assert_called_once_with(
-        path=Path("/music/track.flac"),
+        path=path,
         cover_data=b"cover",
         cover_mime="image/jpeg",
         overwrite=False,
@@ -395,10 +407,12 @@ def test_write_audio_metadata_embeds_apev2_front_cover(monkeypatch):
         """记录 Monkey's Audio 封面写入结果。"""
 
         def __init__(self):
+            """初始化标签及保存状态。"""
             self.tags = {}
             self.saved = False
 
         def save(self, *_args, **_kwargs):
+            """记录音频保存操作。"""
             self.saved = True
 
     audio = FakeMonkeysAudio()
@@ -423,12 +437,14 @@ def test_write_audio_metadata_preserves_existing_apev2_cover(monkeypatch):
         """记录 Monkey's Audio 封面覆盖行为。"""
 
         def __init__(self):
+            """预置已有封面并记录保存状态。"""
             self.tags = {
                 "Cover Art (Front)": APEBinaryValue(b"old.jpg\x00old-data")
             }
             self.saved = False
 
         def save(self, *_args, **_kwargs):
+            """记录音频保存操作。"""
             self.saved = True
 
     audio = FakeMonkeysAudio()

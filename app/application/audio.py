@@ -1,10 +1,13 @@
 import re
+import shutil
 from collections import OrderedDict
 from contextlib import contextmanager
 from contextvars import ContextVar
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
+from stat import S_IWUSR
+from tempfile import NamedTemporaryFile
 from threading import RLock
 from typing import Any, Iterator, Optional, Union
 from uuid import UUID
@@ -13,11 +16,11 @@ import chardet
 from mutagen import File as MutagenFile
 from mutagen import MutagenError
 from mutagen.aiff import AIFF
-from mutagen.apev2 import APEBinaryValue, APETextValue
+from mutagen.apev2 import APEBinaryValue, APETextValue, APEv2
 from mutagen.dsdiff import DSDIFF
 from mutagen.dsf import DSF
 from mutagen.flac import FLAC, Picture
-from mutagen.id3 import APIC, ID3, SYLT, USLT
+from mutagen.id3 import APIC, ID3, SYLT, TXXX, UFID, USLT, Frames
 from mutagen.monkeysaudio import MonkeysAudio
 from mutagen.mp3 import MP3
 from mutagen.mp4 import MP4, MP4Cover, MP4Tags
@@ -71,6 +74,36 @@ def _audio_signature(path: Path) -> Optional[_AudioSignature]:
         return str(path.absolute()), stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
     except OSError:
         return None
+
+
+@contextmanager
+def _audio_write_target(path: Path) -> Iterator[Path]:
+    """链接目标在独立副本上完成全部标签写入，成功后只替换媒体库中的目录项。
+
+    不解析并改写符号链接指向的源文件。临时文件与目标同目录，以便原子替换；
+    任一写入失败或期间目标发生变化时保留原链接，并清理未提交副本。
+    """
+    stat = path.stat()
+    link_inode = path.lstat().st_ino
+    if not path.is_symlink() and stat.st_nlink <= 1:
+        yield path
+        return
+    signature = _audio_signature(path)
+    with NamedTemporaryFile(dir=path.parent, prefix=f".{path.name[:40]}.", suffix=".mp-audio-partial", delete=False) as stream:
+        temporary = Path(stream.name)
+    try:
+        shutil.copy2(path, temporary)
+        # 做种源可以只读；只给独立副本增加写权限，源权限保持不变。
+        temporary.chmod(stat.st_mode | S_IWUSR)
+        initial_copy = _audio_signature(temporary)
+        yield temporary
+        if _audio_signature(temporary) == initial_copy:
+            return
+        if path.lstat().st_ino != link_inode or _audio_signature(path) != signature:
+            raise OSError("标签写入期间目标文件已变化，保留当前目标并取消替换")
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _read_cue_text(path: Path) -> str:
@@ -329,12 +362,7 @@ class AudioMetadataHelper:
     def _read_tags(cls, path: Path) -> Optional[MetaMusic]:
         """解析实际容器的原生标签；扫描缓存只包裹此只读操作。"""
         try:
-            try:
-                audio = MutagenFile(path, easy=False)
-            except MutagenError:
-                # 错误后缀可能让 Mutagen 选错解析器；重试时保留流式读取，仅去掉扩展名提示。
-                with path.open("rb") as stream:
-                    audio = MutagenFile(fileobj=stream, filename="audio", easy=False)
+            audio = cls._open_audio(path)
         except Exception as err:
             logger.warning(f"读取音频标签失败：{path} - {err}")
             return None
@@ -401,6 +429,15 @@ class AudioMetadataHelper:
         return _mark_audio_evidence(meta, audio)
 
     @staticmethod
+    def _open_audio(path: Path) -> Any:
+        """读取实际容器；错误扩展名重试不带后缀提示，保存时必须明确传入目标路径。"""
+        try:
+            return MutagenFile(path, easy=False)
+        except MutagenError:
+            with path.open("rb") as stream:
+                return MutagenFile(fileobj=stream, filename="audio", easy=False)
+
+    @staticmethod
     def _readable_tags(tags: Any) -> Any:
         """将原生 ID3/MP4 及 Vorbis/APEv2 映射到统一键，不修改音频。
 
@@ -409,6 +446,10 @@ class AudioMetadataHelper:
         """
         if isinstance(tags, MP4Tags):
             return _read_mp4_tags(tags)
+        if isinstance(tags, APEv2):
+            values = {key.casefold(): value for key, value in tags.items()}
+            values.update({key.replace(" ", "_"): value for key, value in list(values.items())})
+            return values
         if not isinstance(tags, ID3):
             return tags or {}
         fields = {
@@ -529,44 +570,156 @@ class AudioMetadataHelper:
             write_tags: bool = True,
             cover_overwrite: Optional[bool] = None,
     ) -> bool:
-        """按独立策略写入标准音乐标签，并为常见格式嵌入专辑封面。"""
+        """按独立策略写入标签与封面；链接目标仅在独立副本写入成功后替换。"""
+        if not write_tags and not cover_data:
+            return True
         try:
-            audio = MutagenFile(path, easy=True)
-            if not audio:
-                logger.warning(f"无法写入音频标签：{path}")
-                return False
-            if write_tags:
-                if audio.tags is None:
-                    audio.add_tags()
-                for key, value in cls._tag_values(music).items():
-                    if value in (None, "", []):
-                        continue
-                    if not overwrite and audio.tags.get(key):
-                        continue
-                    try:
-                        audio[key] = value if isinstance(value, list) else [str(value)]
-                    except (KeyError, TypeError, ValueError) as err:
-                        logger.debug(f"音频格式不支持标签 {key}：{path} - {err}")
-                audio.save()
-            if cover_data:
-                cls._write_cover(
-                    path=path,
-                    cover_data=cover_data,
-                    cover_mime=cover_mime,
-                    overwrite=(
-                        overwrite
-                        if cover_overwrite is None
-                        else cover_overwrite
-                    ),
-                )
+            audio = cls._open_audio(path)
+            if audio is None:
+                raise ValueError("文件不是受支持的音频")
+            needs_tags = write_tags and cls._needs_tag_write(audio, music, overwrite)
+            overwrite_cover = overwrite if cover_overwrite is None else cover_overwrite
+            needs_cover = bool(cover_data) and (overwrite_cover or not cls._has_cover(audio))
+            if not needs_tags and not needs_cover:
+                return True
+            with _audio_write_target(path) as write_path:
+                audio = cls._open_audio(write_path)
+                if audio is None:
+                    raise ValueError("文件不是受支持的音频")
+                if needs_tags:
+                    cls._write_tag_values(audio, music, overwrite, write_path)
+                if needs_cover and cover_data is not None:
+                    cls._write_cover(
+                        path=write_path,
+                        cover_data=cover_data,
+                        cover_mime=cover_mime,
+                        overwrite=overwrite_cover,
+                    )
             return True
         except Exception as err:
             logger.warning(f"写入音频标签失败：{path} - {err}")
             return False
 
     @classmethod
+    def _needs_tag_write(cls, audio: Any, music: Union[MetaMusic, MusicInfo], overwrite: bool) -> bool:
+        """先只读比较已有标签，完整元数据不应触发大音频文件的副本创建。"""
+        tags = cls._readable_tags(audio.tags)
+        aliases = {"albumartist": ("albumartist", "album artist"), "date": ("date", "year"),
+                   "tracknumber": ("tracknumber", "track"), "discnumber": ("discnumber", "disc"),
+                   "musicbrainz_trackid": ("musicbrainz_trackid", "musicbrainz_track_id"),
+                   "musicbrainz_albumid": ("musicbrainz_albumid", "musicbrainz_album_id"),
+                   "musicbrainz_releasegroupid": ("musicbrainz_releasegroupid", "musicbrainz_release_group_id"),
+                   "musicbrainz_releasetrackid": ("musicbrainz_releasetrackid", "musicbrainz_release_track_id")}
+        for key, value in cls._tag_values(music).items():
+            if value in (None, "", []):
+                continue
+            current = next((items for alias in aliases.get(key, (key,)) if (items := cls._values(tags, alias))), [])
+            expected = value if isinstance(value, list) else [str(value)]
+            if current and key in {"tracknumber", "discnumber"} and cls._number_pair(current[0]) == cls._number_pair(expected[0]):
+                # MP4用(1, 0)表达未知总数，与文本标签的1具有相同位置语义。
+                continue
+            if not current or (overwrite and current != expected):
+                return True
+        return False
+
+    @staticmethod
+    def _has_cover(audio: Any) -> bool:
+        """按现有封面支持范围判定缺失策略，避免为已存在的图片复制整段音频。"""
+        if isinstance(audio, FLAC):
+            return bool(audio.pictures)
+        tags = getattr(audio, "tags", None)
+        if tags is None:
+            return False
+        if isinstance(audio, MonkeysAudio):
+            return bool(tags.get("Cover Art (Front)"))
+        if isinstance(audio, MP4):
+            return bool(tags.get("covr"))
+        return bool(hasattr(tags, "getall") and tags.getall("APIC"))
+
+    @classmethod
+    def _write_tag_values(cls, audio: Any, music: Union[MetaMusic, MusicInfo], overwrite: bool, path: Path) -> None:
+        """按标签策略保存可支持的字段；空标签音频仍然是可写的有效容器。"""
+        if audio.tags is None:
+            audio.add_tags()
+        values = {key: value if isinstance(value, list) else [str(value)]
+                  for key, value in cls._tag_values(music).items() if value not in (None, "", [])}
+        if isinstance(audio.tags, ID3):
+            changed = cls._write_id3_tags(audio.tags, values, overwrite)
+        elif isinstance(audio.tags, MP4Tags):
+            changed = cls._write_mp4_tags(audio.tags, values, overwrite)
+        else:
+            changed = cls._write_text_tags(audio, values, overwrite, path)
+        if changed:
+            audio.save(path)
+
+    @classmethod
+    def _write_text_tags(cls, audio: Any, values: dict[str, list[str]], overwrite: bool, path: Path) -> bool:
+        """写入Vorbis/APEv2文本字段，并使用APE播放器通用的字段名。"""
+        ape_fields = {"albumartist": "Album Artist", "date": "Year", "tracknumber": "Track", "discnumber": "Disc",
+                      "musicbrainz_trackid": "MusicBrainz Track Id", "musicbrainz_albumid": "MusicBrainz Album Id",
+                      "musicbrainz_releasegroupid": "MusicBrainz Release Group Id", "musicbrainz_releasetrackid": "MusicBrainz Release Track Id"}
+        changed = False
+        for name, value in values.items():
+            key = ape_fields.get(name, name) if isinstance(audio.tags, APEv2) else name
+            if cls._values(audio.tags, key) == value or (not overwrite and audio.tags.get(key)):
+                continue
+            try:
+                audio[key] = value
+                changed = True
+            except (KeyError, TypeError, ValueError) as err:
+                logger.debug(f"音频格式不支持标签 {key}：{path} - {err}")
+        return changed
+
+    @staticmethod
+    def _write_id3_tags(tags: ID3, values: dict[str, list[str]], overwrite: bool) -> bool:
+        """按原生ID3帧写入WAV/DSF/MP3等容器，不把Easy字段名当作ID3帧名。"""
+        fields = {"title": "TIT2", "artist": "TPE1", "album": "TALB", "albumartist": "TPE2",
+                  "date": "TDRC", "originaldate": "TDOR", "tracknumber": "TRCK", "discnumber": "TPOS", "isrc": "TSRC"}
+        custom = {"musicbrainz_albumid": "MusicBrainz Album Id", "musicbrainz_releasegroupid": "MusicBrainz Release Group Id",
+                  "musicbrainz_releasetrackid": "MusicBrainz Release Track Id", "musicbrainz_albumtype": "MusicBrainz Album Type"}
+        changed = False
+        for key, value in values.items():
+            if key == "musicbrainz_trackid":
+                frame = UFID(owner="http://musicbrainz.org", data=value[0].encode("ascii"))
+            elif key in fields:
+                frame = Frames[fields[key]](encoding=3, text=value)
+            elif key in custom:
+                frame = TXXX(encoding=3, desc=custom[key], text=value)
+            else:
+                continue
+            if tags.get(frame.HashKey) != frame and (overwrite or not tags.get(frame.HashKey)):
+                tags.add(frame)
+                changed = True
+        return changed
+
+    @classmethod
+    def _write_mp4_tags(cls, tags: MP4Tags, values: dict[str, list[str]], overwrite: bool) -> bool:
+        """写入MP4标准atom和文本freeform，保留曲序/总数及各类发行身份。"""
+        atoms = {"title": "\xa9nam", "artist": "\xa9ART", "album": "\xa9alb", "albumartist": "aART", "date": "\xa9day"}
+        custom = {"musicbrainz_trackid": "MusicBrainz Track Id", "musicbrainz_albumid": "MusicBrainz Album Id",
+                  "musicbrainz_releasegroupid": "MusicBrainz Release Group Id", "musicbrainz_releasetrackid": "MusicBrainz Release Track Id",
+                  "musicbrainz_albumtype": "MusicBrainz Album Type", "originaldate": "ORIGINALDATE", "isrc": "ISRC"}
+        changed = False
+        encoded: list[str] | list[tuple[int, int]] | list[bytes]
+        for key, value in values.items():
+            if key in atoms:
+                atom, encoded = atoms[key], value
+            elif key in {"tracknumber", "discnumber"}:
+                current, total = cls._number_pair(value[0])
+                atom, encoded = ("trkn" if key == "tracknumber" else "disk"), [(current or 0, total or 0)]
+            elif key in custom:
+                atom = f"----:com.apple.iTunes:{custom[key]}"
+                encoded = [item.encode("utf-8") for item in value]
+            else:
+                continue
+            if tags.get(atom) != encoded and (overwrite or not tags.get(atom)):
+                tags[atom] = encoded
+                changed = True
+        return changed
+
+    @classmethod
     def _tag_values(cls, music: Union[MetaMusic, MusicInfo]) -> dict[str, Any]:
-        """把标准音乐对象转换为 Mutagen Easy 标签字典。"""
+        """把标准音乐对象转换为容器无关的文本字段，身份与年份保持各自语义。"""
         track_number = cls._number_text(
             getattr(music, "track_number", None),
             getattr(music, "total_tracks", None),
@@ -575,16 +728,25 @@ class AudioMetadataHelper:
             getattr(music, "disc_number", None),
             getattr(music, "total_discs", None),
         )
+        original_year = getattr(music, "original_year", None)
+        release_year = getattr(music, "release_year", None)
+        year = getattr(music, "year", None)
+        # 来源只确认首发年份时写ORIGINALDATE，不能把展示year伪装成当前发行日期。
+        date = release_year or (year if not original_year or str(year) != str(original_year) else None)
         return {
             "title": getattr(music, "title", None),
             "artist": list(getattr(music, "artists", None) or []),
             "album": getattr(music, "album", None),
             "albumartist": getattr(music, "album_artist", None),
-            "date": getattr(music, "year", None),
+            "date": date,
+            "originaldate": original_year,
             "tracknumber": track_number,
             "discnumber": disc_number,
             "isrc": getattr(music, "isrc", None),
             "musicbrainz_trackid": cls._musicbrainz_recording_id(music),
+            "musicbrainz_albumid": cls._normalize_musicbrainz_id(getattr(music, "musicbrainz_release_id", None)),
+            "musicbrainz_releasegroupid": cls._normalize_musicbrainz_id(getattr(music, "musicbrainz_release_group_id", None)),
+            "musicbrainz_releasetrackid": cls._normalize_musicbrainz_id(getattr(music, "musicbrainz_release_track_id", None)),
         }
 
     @staticmethod
@@ -598,7 +760,7 @@ class AudioMetadataHelper:
                 == MUSIC_ENTITY_RECORDING
         ):
             media_id = getattr(music, "media_id", None)
-            return str(media_id) if media_id else None
+            return AudioMetadataHelper._normalize_musicbrainz_id(media_id)
         return None
 
     @staticmethod
@@ -608,15 +770,16 @@ class AudioMetadataHelper:
             return None
         return f"{current}/{total}" if total else str(current)
 
-    @staticmethod
+    @classmethod
     def _write_cover(
+            cls,
             path: Path,
             cover_data: bytes,
             cover_mime: str,
             overwrite: bool,
     ) -> None:
-        """为 MP3、FLAC、MP4/M4A 和 APE 写入内嵌封面，其它格式保留标签写入结果。"""
-        audio = MutagenFile(path)
+        """为原生 ID3、FLAC、MP4/M4A 和 APE 写入内嵌封面，其它格式保留标签写入结果。"""
+        audio = cls._open_audio(path)
         if isinstance(audio, MonkeysAudio):
             if audio.tags is None:
                 audio.add_tags()
@@ -627,7 +790,7 @@ class AudioMetadataHelper:
             audio.tags[cover_key] = APEBinaryValue(
                 cover_filename.encode("ascii") + b"\x00" + cover_data
             )
-            audio.save()
+            audio.save(path)
             return
         if isinstance(audio, FLAC):
             if audio.pictures and not overwrite:
@@ -640,7 +803,7 @@ class AudioMetadataHelper:
             if overwrite:
                 audio.clear_pictures()
             audio.add_picture(picture)
-            audio.save()
+            audio.save(path)
             return
         if isinstance(audio, MP4):
             if audio.tags is None:
@@ -653,8 +816,10 @@ class AudioMetadataHelper:
                 else MP4Cover.FORMAT_JPEG
             )
             audio.tags["covr"] = [MP4Cover(cover_data, imageformat=image_format)]
-            audio.save()
+            audio.save(path)
             return
+        if isinstance(audio, (MP3, WAVE, DSF, AIFF, DSDIFF)) and audio.tags is None:
+            audio.add_tags()
         tags = getattr(audio, "tags", None)
         if tags is not None and hasattr(tags, "add"):
             if tags.getall("APIC") and not overwrite:
@@ -670,7 +835,7 @@ class AudioMetadataHelper:
                     data=cover_data,
                 )
             )
-            audio.save()
+            audio.save(path)
 
     @staticmethod
     def _values(tags: Any, key: str) -> list[str]:
