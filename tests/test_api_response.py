@@ -1102,7 +1102,6 @@ def test_plugin_routes_only_register_v1(monkeypatch):
         verify_token=lambda: None,
         verify_apikey=lambda: None,
         prefix="/api/v1/plugin",
-        protected_routes=set(),
         log=SimpleNamespace(debug=lambda *_args: None, error=lambda *_args: None),
     ))
 
@@ -1148,7 +1147,6 @@ async def test_plugin_routes_ignore_included_router_wrappers():
         verify_token=lambda: None,
         verify_apikey=lambda: None,
         prefix="/api/v1/plugin",
-        protected_routes=set(),
         log=SimpleNamespace(debug=lambda *_args: None, error=lambda *_args: None),
     ))
 
@@ -1188,18 +1186,12 @@ async def test_plugin_route_updates_run_on_application_event_loop() -> None:
     main_thread = threading.get_ident()
     mutation_threads: list[int] = []
     original_add_api_route = app.router.add_api_route
-    original_setup = app.setup
 
     def record_add_api_route(*args, **kwargs):
         mutation_threads.append(threading.get_ident())
         return original_add_api_route(*args, **kwargs)
 
-    def record_setup() -> None:
-        mutation_threads.append(threading.get_ident())
-        original_setup()
-
     app.router.add_api_route = record_add_api_route
-    app.setup = record_setup
     loop = asyncio.get_running_loop()
     registry = FastAPIDynamicRouteRegistry(
         app=app,
@@ -1213,7 +1205,6 @@ async def test_plugin_route_updates_run_on_application_event_loop() -> None:
         verify_token=lambda: None,
         verify_apikey=lambda: None,
         prefix="/api/v1/plugin",
-        protected_routes=set(),
         log=SimpleNamespace(debug=lambda *_args: None, error=lambda *_args: None),
         event_loop=lambda: loop,
     )
@@ -1237,7 +1228,6 @@ def test_plugin_route_update_rejects_stopped_application_loop() -> None:
         verify_token=lambda: None,
         verify_apikey=lambda: None,
         prefix="/api/v1/plugin",
-        protected_routes=set(),
         log=SimpleNamespace(debug=lambda *_args: None, error=lambda *_args: None),
         event_loop=lambda: None,
     )
@@ -1261,7 +1251,6 @@ async def test_plugin_route_update_abandons_late_application_loop_callback() -> 
         verify_token=lambda: None,
         verify_apikey=lambda: None,
         prefix="/api/v1/plugin",
-        protected_routes=set(),
         log=SimpleNamespace(debug=lambda *_args: None, error=lambda *_args: None),
         event_loop=lambda: loop,
     )
@@ -1306,7 +1295,6 @@ async def test_started_plugin_route_update_waits_for_terminal_result() -> None:
         verify_token=lambda: None,
         verify_apikey=lambda: None,
         prefix="/api/v1/plugin",
-        protected_routes=set(),
         log=SimpleNamespace(debug=lambda *_args: None, error=lambda *_args: None),
         event_loop=lambda: loop,
     )
@@ -1434,7 +1422,6 @@ def build_plugin_api_app(monkeypatch) -> FastAPI:
         verify_token=lambda: None,
         verify_apikey=lambda: None,
         prefix="/api/v1/plugin",
-        protected_routes=set(),
         log=SimpleNamespace(debug=lambda *_args: None, error=lambda *_args: None),
     ))
     plugin_routes.register_plugin_api("DemoPlugin")
