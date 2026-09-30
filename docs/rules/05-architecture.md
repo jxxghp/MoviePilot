@@ -965,7 +965,9 @@ expired claimed task remains exclusively owned by fenced recovery APIs.
   application service.
 - Configured notification discovery lives in
   `app/application/notification.py`. Web Push subscription and manual-send HTTP
-  behavior stays in `app/api/endpoints/message.py`.
+  behavior stays in `app/api/endpoints/message.py`; the Web Push protocol
+  (aes128gcm encryption, VAPID signing, delivery) is the network adapter
+  `app/adapters/network/webpush.py`, shared by that endpoint and `WebPushModule`.
 - System network testing lives in `app/application/network.py`: it owns the
   server-only target catalog, exact legacy URL matching, HTTPS and credential
   checks, per-target redirect allowlists and content validation. The System API

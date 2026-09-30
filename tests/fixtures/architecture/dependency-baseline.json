@@ -43,9 +43,9 @@
       "app.application": 0,
       "app.chain": 0
     },
-    "count": 50,
+    "count": 48,
     "counts_by_kind": {
-      "network_sdk": 25,
+      "network_sdk": 23,
       "protocol_operation": 7,
       "raw_transport": 18
     },
@@ -416,19 +416,6 @@
         "uses": [
           "SearchWebTool._search_ddgs.sync_search|call:DDGS",
           "SearchWebTool._search_ddgs.sync_search|call:text"
-        ]
-      },
-      {
-        "bindings": [
-          "from:pywebpush.WebPushException as WebPushException",
-          "from:pywebpush.webpush as webpush"
-        ],
-        "fingerprint": "7d83ca0dc89dfb6af1cdd7bc90d922105de94222e4e3a44bba4f53bbd97bc31b",
-        "kind": "network_sdk",
-        "source": "app.api.endpoints.message",
-        "target": "pywebpush",
-        "uses": [
-          "send_notification|call:webpush"
         ]
       },
       {
@@ -894,19 +881,6 @@
       },
       {
         "bindings": [
-          "from:pywebpush.WebPushException as WebPushException",
-          "from:pywebpush.webpush as webpush"
-        ],
-        "fingerprint": "389c73b06150e3d5bcaf31f35a25178873d2ed38ef9a28354cb9bab691eeab76",
-        "kind": "network_sdk",
-        "source": "app.modules.webpush",
-        "target": "pywebpush",
-        "uses": [
-          "WebPushModule.post_message|call:webpush"
-        ]
-      },
-      {
-        "bindings": [
           "import:websocket as websocket"
         ],
         "fingerprint": "1bae78270eadce0571e2caaa111a5c0a9065ba2da97ebb26b8a5b76d3ed5eef6",
@@ -1021,8 +995,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9033,
-  "edge_sha256": "f522f58bff01f9a88f784c346dec18d467f3efd72898b134073bb6a1756b0d9b",
+  "edge_count": 9041,
+  "edge_sha256": "5d588f777a2453573d913ff6a0c4a403656a3a22eb1041a2397d50b9ba8c5b61",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -1134,6 +1108,9 @@
     "app.adapters.network.doh -> app.runtime.settings",
     "app.adapters.network.http -> app.runtime",
     "app.adapters.network.http -> app.runtime.correlation",
+    "app.adapters.network.webpush -> app.adapters",
+    "app.adapters.network.webpush -> app.adapters.network",
+    "app.adapters.network.webpush -> app.adapters.network.http",
     "app.adapters.observability.otel -> app.runtime",
     "app.adapters.observability.otel -> app.runtime.observability",
     "app.adapters.system.backup.files -> app.runtime",
@@ -2505,6 +2482,8 @@
     "app.api.endpoints.message -> app.adapters",
     "app.api.endpoints.message -> app.adapters.external",
     "app.api.endpoints.message -> app.adapters.external.wechat",
+    "app.api.endpoints.message -> app.adapters.network",
+    "app.api.endpoints.message -> app.adapters.network.webpush",
     "app.api.endpoints.message -> app.adapters.web",
     "app.api.endpoints.message -> app.adapters.web.security",
     "app.api.endpoints.message -> app.adapters.web.security.access",
@@ -8203,6 +8182,9 @@
     "app.modules.vocechat.vocechat -> app.runtime",
     "app.modules.vocechat.vocechat -> app.runtime.execution",
     "app.modules.vocechat.vocechat -> app.runtime.log",
+    "app.modules.webpush -> app.adapters",
+    "app.modules.webpush -> app.adapters.network",
+    "app.modules.webpush -> app.adapters.network.webpush",
     "app.modules.webpush -> app.modules",
     "app.modules.webpush -> app.runtime",
     "app.modules.webpush -> app.runtime.log",
@@ -10058,7 +10040,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 1056,
+  "module_count": 1057,
   "modules": [
     "app",
     "app.adapters",
@@ -10082,6 +10064,7 @@
     "app.adapters.network.http",
     "app.adapters.network.ip",
     "app.adapters.network.resolver",
+    "app.adapters.network.webpush",
     "app.adapters.observability",
     "app.adapters.observability.otel",
     "app.adapters.system",
