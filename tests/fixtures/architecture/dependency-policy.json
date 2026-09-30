@@ -141,7 +141,7 @@
           {"source": "app.api.endpoints.message", "target": "pywebpush", "kind": "network_sdk", "fingerprint": "7d83ca0dc89dfb6af1cdd7bc90d922105de94222e4e3a44bba4f53bbd97bc31b"},
           {"source": "app.modules.discord.discord", "target": "discord", "kind": "network_sdk", "fingerprint": "e1486525fedbfe574aa47d60b483426c8c48e4e27fa35dbe34f6cd2f47d37c86"},
           {"source": "app.modules.feishu.feishu", "target": "lark_oapi", "kind": "network_sdk", "fingerprint": "99d16968a59932b5980f6d42ea2bbc8fa35ccdb1a27933beec29b4bdc093d78b"},
-          {"source": "app.modules.filemanager.storages.smb", "target": "smbclient", "kind": "network_sdk", "fingerprint": "62e0585282ef206ac81b2bf9e93a58423fb058685edc0ef4ee592453bbf30376"},
+          {"source": "app.modules.filemanager.storages.smb", "target": "smbclient", "kind": "network_sdk", "fingerprint": "e3e1a302951dcc44f3216fb2a0c9f5cf42d233b1415923efb27bb49c6680f163"},
           {"source": "app.modules.filemanager.storages.u115", "target": "oss2", "kind": "network_sdk", "fingerprint": "f7b89c8ae6dad2603f0a9e0caaa159769aef5b3581d7e728f62445b979366eae"},
           {"source": "app.modules.plex.plex", "target": "plexapi", "kind": "network_sdk", "fingerprint": "55baa4290bb62468d504e954add3921c0068f3a3c77aa3db92667ae9022909ca"},
           {"source": "app.modules.qbittorrent.qbittorrent", "target": "qbittorrentapi", "kind": "network_sdk", "fingerprint": "b2f5a27f0c54cf95ed42fe99848fd6c9c0641caca8bc4ff8006a411cb427066d"},

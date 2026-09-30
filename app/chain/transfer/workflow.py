@@ -26,16 +26,17 @@ from app.application.transfer.workflow import (
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
 from app.chain.transfer.contract import _TransferOwnerBase
-from app.domain.context import MediaInfo, MusicAlbumInfo, MusicInfo, TorrentInfo
+from app.domain.context import MediaInfo, MusicAlbumInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.music import music_package_error
 from app.runtime.log import logger
 from app.runtime.progress import ProgressHelper
 from app.runtime.stop import runtime_stop_state
-from app.schemas.exception import OperationInterrupted
+from app.schemas.exception import OperationInterrupted, StorageQueryError
+from app.schemas.file import FileURI
 from app.schemas.media import resolve_media_identity
 from app.schemas.system import TransferDirectoryConf
-from app.schemas.transfer import EpisodeFormat, TransferInfo
+from app.schemas.transfer import DownloaderTorrent, EpisodeFormat, TransferInfo
 from app.schemas.types import (
     MediaSource,
     MediaType,
@@ -100,17 +101,41 @@ class TransferWorkflowOwner(_TransferOwnerBase):
     """协调请求级候选构建并委托规划、执行与结算 owner。"""
 
     @staticmethod
-    def _build_transfer_fileitem(torrent: TorrentInfo) -> FileItem:
-        """把下载器任务路径转换为整理链使用的本地文件项。"""
-        file_path = torrent.path
-        return FileItem(
-            storage="local",
-            path=file_path.as_posix() + ("/" if file_path.is_dir() else ""),
-            type="dir" if not file_path.is_file() else "file",
-            name=file_path.name,
-            size=file_path.stat().st_size,
-            extension=file_path.suffix.lstrip("."),
-        )
+    def _build_transfer_fileitem(
+            torrent: DownloaderTorrent,
+            download_dirs: List[TransferDirectoryConf],
+    ) -> Optional[FileItem]:
+        """按任务映射后的存储和目录准入，再从实际存储读取源文件。
+
+        远程 URI 仅用于路径解析，不能执行本地 exists/stat。连接或权限异常
+        与确认不存在分别记录，保留任务供下一次下载器监控重试。
+        """
+        if not torrent.path:
+            return None
+        file_uri = FileURI.from_uri(torrent.path.as_posix())
+        file_path = Path(file_uri.path or "/")
+        if ".." in file_path.parts:
+            logger.warning(f"下载器整理源路径包含越界目录：{file_uri.uri}")
+            return None
+        if not any(
+                directory.monitor_type == "downloader"
+                and directory.storage == file_uri.storage
+                and directory.download_path
+                and file_path.is_relative_to(Path(directory.download_path))
+                for directory in download_dirs
+        ):
+            logger.debug(f"文件 {file_uri.uri} 不在下载器监控目录中，不通过下载器进行整理")
+            return None
+        try:
+            fileitem = StorageChain().get_file_item_strict(
+                storage=file_uri.storage or "local", path=file_path,
+            )
+        except StorageQueryError as err:
+            logger.warning(f"下载器整理源文件查询失败：{file_uri.uri}，等待下次重试：{err}")
+            return None
+        if not fileitem:
+            logger.warning(f"文件不存在：{file_uri.uri}")
+        return fileitem
 
     def _TransferChain__get_trans_fileitems(
         self,

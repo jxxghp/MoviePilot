@@ -144,7 +144,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         """
         return not self._username and not self._password
 
-    def _check_connection(self):
+    def _check_connection(self) -> None:
         """
         检查SMB连接状态
         """
@@ -660,55 +660,54 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             return None
 
     def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
+        """在当前共享内执行服务端复制，失败时不回退到本地下载和上传。
+
+        使用 SMB CopyChunk；不能使用会自动回退客户端流式复制的 shutil 接口。
+        失败后的目标状态由整理步骤恢复机制核验，避免擅自删除已产生的结果。
         """
-        复制文件
-        """
+        import smbclient
         try:
-            # 下载到临时文件
-            temp_file = self.download(fileitem)
-            if not temp_file:
-                return False
-
-            # 获取目标目录
-            target_folder = self.get_item(path)
-            if not target_folder:
-                return False
-
-            # 上传到目标位置
-            result = self.upload(target_folder, temp_file, new_name)
-
-            # 删除临时文件
-            if temp_file.exists():
-                temp_file.unlink()
-
-            return result is not None
+            self._check_connection()
+            if not fileitem.path:
+                raise ValueError("源文件路径不能为空")
+            src_path = self._normalize_path(fileitem.path)
+            dst_path = self._normalize_path(path / new_name)
+            try:
+                if smbclient.path.samefile(src_path, dst_path):
+                    raise ValueError("源文件和目标是同一文件，不能执行服务端复制")
+            except OSError as err:
+                if err.errno != errno.ENOENT:
+                    raise
+            smbclient.copyfile(src_path, dst_path)
+            logger.info(f"【SMB】服务端复制成功: {src_path} -> {dst_path}")
+            return True
         except Exception as e:
-            logger.error(f"【SMB】复制失败: {e}")
+            logger.error(f"【SMB】服务端复制失败，不进行本地中转: {e}")
             return False
 
     def move(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
+        """通过服务端重命名移动文件，失败时不复制或删除源文件。
+
+        目标冲突由上层覆盖策略处理；跨文件系统等不支持的移动明确失败，
+        不隐式改成下载、上传和删除，也不使用无条件覆盖目标的 replace。
         """
-        移动文件
-        """
+        import smbclient
         try:
-            # 先复制
-            if not self.copy(fileitem, path, new_name):
-                return False
-
-            # 再删除原文件
-            if not self.delete(fileitem):
-                logger.warn(f"【SMB】删除原文件失败: {fileitem.path}")
-                return False
-
+            self._check_connection()
+            if not fileitem.path:
+                raise ValueError("源文件路径不能为空")
+            src_path = self._normalize_path(fileitem.path)
+            dst_path = self._normalize_path(path / new_name)
+            smbclient.rename(src_path, dst_path)
+            logger.info(f"【SMB】服务端移动成功: {src_path} -> {dst_path}")
             return True
         except Exception as e:
-            logger.error(f"【SMB】移动失败: {e}")
+            logger.error(f"【SMB】服务端移动失败，不进行本地中转: {e}")
             return False
 
     def link(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
         """
-        硬链接文件
-        Samba服务器需要开启 unix extensions 支持
+        在当前共享内创建服务端硬链接，要求同一文件系统且服务器支持硬链接。
         """
         import smbclient
         from smbprotocol.exceptions import SMBResponseException
@@ -741,6 +740,7 @@ class SMB(StorageBase, metaclass=WeakSingleton):
             return False
 
     def softlink(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
+        """当前 SMB 存储未提供软链接整理能力。"""
         pass
 
     def usage(self) -> Optional[_SchemaStorageUsage]:

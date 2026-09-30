@@ -82,6 +82,13 @@ Never fall back to a retired tool name or `moviepilot tool` MCP command. If an
 operation is not listed in this skill, do not simulate it through arbitrary HTTP;
 use a more specific skill or explain that the structured operation is unavailable.
 
+For SMB organization, keep the source `FileItem.storage` and share-relative
+`path` together. Downloader task paths mapped to SMB retain the `smb:` prefix;
+never interpret them as local filesystem paths. Same-storage SMB copy, move,
+and hard-link operations execute on the server and fail without downloading
+and re-uploading the media when the server cannot perform them. This does not
+change separate content-processing operations such as embedded music tags.
+
 ## Overall Workflow
 
 1. Select the exact `operation_id` from the category index below.

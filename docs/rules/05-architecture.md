@@ -704,6 +704,12 @@ exceptions and value domains used by both modules and upper layers live in
 method names. The directory remains unchanged because discovery and plugin code
 depend on this established runtime root.
 
+SMB 同存储整理由 `app.modules.filemanager.storages.smb` 持有协议调用边界：
+复制调用 `smbclient.copyfile`（CopyChunk），移动调用 `smbclient.rename`，硬链接调用
+`smbclient.link`。源目标同文件检查也通过 SMB 查询，不能使用本地临时下载/上传回退。
+下载器返回的远程路径保留存储 URI，整理 Chain 通过 `StorageChain` 查询源文件，
+不直接依赖 SMB SDK；断线后目标状态不明沿用持久步骤的保守恢复合同。
+
 `app.modules.filemanager` is a lazy compatibility entrypoint. The concrete
 `FileManagerModule` implementation lives in `app.modules.filemanager.module`,
 while the historical capability path and class module identity remain

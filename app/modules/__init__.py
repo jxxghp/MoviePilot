@@ -389,11 +389,11 @@ class _DownloaderBase(ServiceBase[TService, DownloaderConf]):
 
     def normalize_return_path(self, path: Path, downloader: Optional[str]) -> str:
         """
-        将下载器返回的路径反向映射为 MoviePilot 可访问的存储路径。
+        将下载器路径反向映射为存储 URI，远程前缀用于选择实际文件访问接口。
 
         :param path: 下载器返回的路径
         :param downloader: 下载器名称
-        :return: MoviePilot 可访问的路径
+        :return: 本地路径或带存储前缀的远程 URI；不能对远程 URI 调用本地文件接口
         """
         normalized_path = path.as_posix()
         conf = self.get_config(downloader)
@@ -403,7 +403,8 @@ class _DownloaderBase(ServiceBase[TService, DownloaderConf]):
                 if mapped_path:
                     normalized_path = mapped_path
                     break
-        return self.__strip_storage_prefix(normalized_path)
+        # 下发下载器时才移除远程前缀；返回时必须保留，否则整理会误查本地同名路径。
+        return normalized_path.removeprefix("local:")
 
 
 class _MediaServerBase(ServiceBase[TService, MediaServerConf]):

@@ -617,7 +617,7 @@
           "from:smbclient.reset_connection_cache as reset_connection_cache",
           "import:smbclient as smbclient"
         ],
-        "fingerprint": "62e0585282ef206ac81b2bf9e93a58423fb058685edc0ef4ee592453bbf30376",
+        "fingerprint": "e3e1a302951dcc44f3216fb2a0c9f5cf42d233b1415923efb27bb49c6680f163",
         "kind": "network_sdk",
         "source": "app.modules.filemanager.storages.smb",
         "target": "smbclient",
@@ -634,6 +634,8 @@
           "SMB._recursive_delete|call:remove",
           "SMB._recursive_delete|call:rmdir",
           "SMB._test_connection|call:listdir",
+          "SMB.copy|call:copyfile",
+          "SMB.copy|call:path.samefile",
           "SMB.create_folder|call:mkdir",
           "SMB.delete|call:path.exists",
           "SMB.delete|call:remove",
@@ -649,6 +651,7 @@
           "SMB.link|call:path.exists",
           "SMB.list|call:listdir",
           "SMB.list|call:stat",
+          "SMB.move|call:rename",
           "SMB.rename|call:rename",
           "SMB.upload|call:open_file",
           "SMB.upload|call:write",
@@ -1097,8 +1100,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 8990,
-  "edge_sha256": "0f702bc0a98c671186cf06117094b842de518f45935f4b98096577ee78483dfe",
+  "edge_count": 8991,
+  "edge_sha256": "850d665dc8cfd1f279d53e36252cc3cc45d0b8b097d7705c35489f2aa071a67c",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -5807,6 +5810,7 @@
     "app.chain.transfer.workflow -> app.runtime.stop",
     "app.chain.transfer.workflow -> app.schemas",
     "app.chain.transfer.workflow -> app.schemas.exception",
+    "app.chain.transfer.workflow -> app.schemas.file",
     "app.chain.transfer.workflow -> app.schemas.media",
     "app.chain.transfer.workflow -> app.schemas.system",
     "app.chain.transfer.workflow -> app.schemas.transfer",

@@ -1042,7 +1042,7 @@
   "app/chain/transfer/workflow.py": {
     "arg-type": 9,
     "assignment": 10,
-    "attr-defined": 2,
+    "attr-defined": 1,
     "operator": 1,
     "return-value": 1,
     "type-arg": 6,
@@ -1578,8 +1578,8 @@
     "assignment": 2,
     "attr-defined": 1,
     "empty-body": 1,
-    "no-untyped-call": 15,
-    "no-untyped-def": 8,
+    "no-untyped-call": 5,
+    "no-untyped-def": 7,
     "override": 1,
     "return-value": 2,
     "union-attr": 5

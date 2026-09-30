@@ -1254,6 +1254,13 @@ def test_downloader_process_forwards_music_history_type(tmp_path, monkeypatch):
     monkeypatch.setattr("app.chain.transfer.filter.MediaChain", lambda: media_chain)
     monkeypatch.setattr(chain, "do_transfer", Mock(return_value=(True, "")))
     monkeypatch.setattr(chain, "run_module", run_module)
+    monkeypatch.setattr(
+        "app.chain.transfer.workflow.StorageChain.get_file_item_strict",
+        Mock(return_value=FileItem(
+            storage="local", path=audio_path.as_posix(), name=audio_path.name,
+            type="file", size=audio_path.stat().st_size, extension=audio_path.suffix.lstrip("."),
+        )),
+    )
 
     state = chain.process()
 

@@ -70,7 +70,7 @@
       "app/chain/transfer/music.py:prepare_music_batch_context": 18,
       "app/chain/transfer/queue.py:TransferQueueOwner._TransferChain__replay_pending": 26,
       "app/chain/transfer/queue.py:TransferQueueOwner._TransferChain__start_transfer": 21,
-      "app/chain/transfer/queue.py:TransferQueueOwner.process": 21,
+      "app/chain/transfer/queue.py:TransferQueueOwner.process": 16,
       "app/chain/transfer/request.py:_TransferCandidatePlanner._plan_file_items": 24,
       "app/chain/transfer/retry.py:FailedRetryMixin._re_transfer": 21,
       "app/chain/transfer/settlement.py:TransferSettlementOwner._TransferChain__default_callback": 18,

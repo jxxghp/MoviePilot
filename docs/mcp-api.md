@@ -419,6 +419,31 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 | GET | `/api/v1/transfer/tasks/{task_id}/manual-review` | 管理员查询单个 durable 人工复核任务详情；仅可读取 `manual_review` 或已经人工判定的 `retry_wait` 任务，其余状态按不存在处理 |
 | POST | `/api/v1/transfer/tasks/{task_id}/manual-review` | 管理员判定处于 `manual_review` 的 durable 整理步骤；请求包含 `operation_id`、`decision=not_applied|applied`，`reason` 选填，省略或空白时记为空字符串，最多 2000 字符；`applied` 还必须提供 `result_payload`。`failed` 不属于公开决策，失败终态只能由持租约的 durable 结算写入；响应仅返回任务、操作、决策、后续状态和复核修订号 |
 
+#### SMB 下载器监控与服务端整理
+
+下载器原生保存路径与 MoviePilot 的存储访问路径是两个地址空间。下载器配置的
+`path_mapping` 每项按 `[存储路径, 下载器路径]` 保存，例如
+`["smb:/incoming", "/downloads"]`：任务下发使用 `/downloads`，任务返回的
+`path`、`save_path`、`content_path` 保留映射后的 `smb:` 前缀。本地路径仍不带前缀。
+调用方不能把远程 URI 直接交给本地 `Path.exists/stat`。
+
+例如下载器在 `10.10.10.11`，MoviePilot 在 `10.10.10.10`：配置 SMB 主机
+`10.10.10.11`、共享 `data`；目录配置选择资源存储 `smb`、资源目录 `/incoming`、
+监控方式 `downloader`、媒体库存储 `smb`、媒体库目录 `/media`；再配置上述下载器映射。
+`/incoming` 和 `/media` 均相对于共享根目录，不是 MoviePilot 本地目录。
+自动整理按存储和完整目录段匹配源文件，通过实际存储查询文件和目录；查询失败
+与确认不存在分别记录，未入队任务保留给下一次监控重试。
+
+同一 SMB 存储内，`copy` 使用服务端 CopyChunk，`move` 使用服务端重命名，
+`link` 使用服务端硬链接。复制拒绝源目标实际为同一文件；连接、权限、协议能力
+或跨文件系统限制导致操作失败时，不回退为本地下载再上传，也不额外删除源文件。
+移动目标冲突仍由上层覆盖策略处理，不无条件覆盖；中断后的不确定结果继续由
+持久整理步骤核验，不能仅凭目标文件存在就判定远程复制成功。
+
+源、目标使用同一 SMB 共享最直接；同一服务器的不同共享或不同文件系统不等于
+支持硬链接或重命名。该保证针对文件整理操作，不改变远程到本地的显式下载，
+也不改变音乐内嵌标签写入等内容处理流程。
+
 #### 媒体自动分类
 
 媒体自动分类使用完整、可版本化的策略作为唯一写入合同。先读取当前策略的
