@@ -124,7 +124,19 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 and file_path.is_relative_to(Path(directory.download_path))
                 for directory in download_dirs
         ):
-            logger.debug(f"文件 {file_uri.uri} 不在下载器监控目录中，不通过下载器进行整理")
+            if file_uri.storage == "local" and any(
+                    directory.monitor_type == "downloader"
+                    and directory.storage != "local"
+                    and directory.download_path
+                    and file_path.is_relative_to(Path(directory.download_path))
+                    for directory in download_dirs
+            ):
+                logger.warning(
+                    f"下载器 {torrent.downloader} 返回的路径 {file_uri.uri} 缺少远程存储标识，"
+                    "请在下载器设置中配置含存储类型前缀的路径映射（如 smb:/downloads → /downloads）"
+                )
+            else:
+                logger.debug(f"文件 {file_uri.uri} 不在下载器监控目录中，不通过下载器进行整理")
             return None
         try:
             fileitem = StorageChain().get_file_item_strict(

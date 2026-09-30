@@ -93,3 +93,19 @@ def test_unavailable_source_is_not_enqueued_and_can_retry(monitored_source, fail
 
     state.chain.do_transfer.assert_called_once()
     assert state.storage.get_file_item_strict.call_count == 2
+
+
+def test_unmapped_remote_directory_reports_actionable_warning(monitored_source, monkeypatch):
+    """远程监控目录收到未映射的本地路径时，提示配置映射且不能误读本地文件。"""
+    state = monitored_source
+    state.torrent.path = Path("/incoming/Movie/movie.mkv")
+    warning = Mock()
+    monkeypatch.setattr(workflow_module.logger, "warning", warning)
+
+    queue_module.TransferQueueOwner.process(state.chain)
+
+    warning.assert_called_once()
+    assert "路径映射" in warning.call_args.args[0]
+    assert "remote-qb" in warning.call_args.args[0]
+    state.storage.get_file_item_strict.assert_not_called()
+    state.chain.do_transfer.assert_not_called()

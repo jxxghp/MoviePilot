@@ -800,15 +800,12 @@ class SMB(StorageBase, metaclass=WeakSingleton):
         pass
 
     def usage(self) -> Optional[_SchemaStorageUsage]:
-        """
-        存储使用情况
-        """
+        """返回首个共享报告的卷容量和当前账号可用空间，不累计可能重叠的共享。"""
         import smbclient
         try:
             self._check_connection()
-            # 多个共享可能指向同一卷，也可能分属不同卷；现有用量合同不能准确聚合。
-            if self._multi_share and len(self._shares) > 1:
-                return None
+            # 多个共享可能共用存储池；SMB 的卷序列号也可能按共享生成，不能据此累加。
+            # 沿用单卷用量合同，以配置首项作为容量查询入口，保持卡片和仪表板可用。
             share = next(iter(self._shares.values()))
             volume_stat = smbclient.stat_volume(f"\\\\{self._host}\\{share}")
             return _SchemaStorageUsage(

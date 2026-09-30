@@ -305,9 +305,30 @@ def test_cross_share_hardlink_fails_without_side_effects(multi_share):
     multi_share.client.makedirs.assert_not_called()
 
 
-def test_multi_share_usage_is_not_double_counted(multi_share, monkeypatch):
-    """多个共享可能共用磁盘，不把容量相加伪装成准确的服务用量。"""
-    stat_volume = Mock()
+@pytest.mark.parametrize("conf, share", [
+    ({"share": "video"}, "video"),
+    ({"shares": ["video"]}, "video"),
+    ({"shares": ["video", "downloads"]}, "video"),
+    ({"shares": ["downloads", "video"]}, "downloads"),
+])
+def test_storage_usage_reports_first_share_without_double_counting(multi_share, monkeypatch, conf, share):
+    """单共享兼容旧容量合同，多共享按首项返回可用容量，不能重复累计卷空间。"""
+    multi_share.storage._configure_shares(conf)
+    stat_volume = Mock(return_value=SimpleNamespace(
+        total_size=4096, caller_available_size=1024, actual_available_size=2048,
+    ))
+    monkeypatch.setattr(smbclient, "stat_volume", stat_volume)
+
+    result = multi_share.storage.usage()
+
+    assert result.total == 4096
+    assert result.available == 1024
+    stat_volume.assert_called_once_with(f"\\\\10.10.10.11\\{share}")
+
+
+def test_multi_share_usage_query_failure_remains_unavailable(multi_share, monkeypatch):
+    """首项不可查询时保留失败语义，不能悄悄改用另一共享的容量。"""
+    stat_volume = Mock(side_effect=PermissionError("denied"))
     monkeypatch.setattr(smbclient, "stat_volume", stat_volume)
     assert multi_share.storage.usage() is None
-    stat_volume.assert_not_called()
+    stat_volume.assert_called_once_with(r"\\10.10.10.11\video")
