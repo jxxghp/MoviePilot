@@ -47,7 +47,6 @@ FROZEN_EGRESS_EDGES_BY_REASON = {
         ("app.modules.qbittorrent.qbittorrent", "qbittorrentapi"),
         ("app.modules.slack.slack", "slack_bolt"),
         ("app.modules.slack.slack", "slack_sdk"),
-        ("app.modules.telegram.telegram", "telebot"),
         ("app.modules.transmission.transmission", "transmission_rpc"),
         ("app.modules.webpush", "pywebpush"),
     },
@@ -75,9 +74,7 @@ FROZEN_EGRESS_EDGES_BY_REASON = {
         ("app.modules.filemanager.storages.smb", "smbprotocol"),
         ("app.modules.jellyfin.jellyfin", "requests"),
         ("app.modules.rtorrent.rtorrent", "http.client"),
-        ("app.modules.telegram.compat", "urllib3"),
         ("app.modules.zspace.zspace", "requests"),
-        ("app.startup.lifecycle", "urllib3"),
     },
     "test_network_guard": {
         ("app.testing.network", "socket.getaddrinfo"),
@@ -132,15 +129,12 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.modules.rtorrent.rtorrent", "xmlrpc.client.ServerProxy"): "2ac64b5670c930bc28bb2135cc4b73891c1cae01a74a9586f74e302878c45c85",
     ("app.modules.slack.slack", "slack_bolt"): "be5dcb032ece8d8627abeb243f98143aaf60f26751ab6e5e098813d4048419e6",
     ("app.modules.slack.slack", "slack_sdk"): "7559f31e4172ad3bbbaf161e1164ea48b997c56d05c77b49b82626298c39aa14",
-    ("app.modules.telegram.compat", "urllib3"): "18862bbdb252b59573f57ea776b5d64bfb775e7739603fecd23cc8f2c38a7e0d",
-    ("app.modules.telegram.telegram", "telebot"): "78f5ab18bfd67ba4fa0f3c0fc4a1a561a7b1d9e81e335fb80de86edb480b84b8",
     ("app.modules.themoviedb.tmdbv3api.tmdb", "requests"): "d605eb176a203b3f4d205c5d183469b3002426682eb9cb4e7408bb6013652484",
     ("app.modules.transmission.transmission", "transmission_rpc"): "1652e661cb17dbadb039fdc4ab73d6d06e47eb118292ba3693313e45834959cf",
     ("app.modules.webpush", "pywebpush"): "389c73b06150e3d5bcaf31f35a25178873d2ed38ef9a28354cb9bab691eeab76",
     ("app.modules.wechat.wechatbot", "websocket"): "1bae78270eadce0571e2caaa111a5c0a9065ba2da97ebb26b8a5b76d3ed5eef6",
     ("app.startup.composition.network", "websocket"): "09e1909ac750fe40b145dde8fee52eedf84aaf2123f6a1bc38109252c89d6000",
     ("app.modules.zspace.zspace", "requests"): "9df3fd27b9696d45a72e7c8f67b5a9ad79a7371d1fe690bbaa17485bd1960d51",
-    ("app.startup.lifecycle", "urllib3"): "cb6f0a314aeb1e2d3e76c240aa20460ac0c36d9f5c18c1a6ea3170f64dd3366b",
     ("app.testing.network", "socket.getaddrinfo"): "ebf33718b54c81e1f575401da4a0bef5aa0e1ddc284e201f557897feeca71c6d",
 }
 

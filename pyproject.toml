@@ -65,6 +65,7 @@ dependencies = [
     "pyparsing~=3.3.2",
     "pyquery~=2.0.1",
     "pystray~=0.19.5",
+    # 宿主 Telegram 渠道已改用自研 Bot API 客户端，此 SDK 暂时保留给插件使用。
     "pytelegrambotapi~=4.36.0",
     "python-dateutil~=2.9.0.post0",
     "python-dotenv~=1.2.2",

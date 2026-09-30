@@ -350,7 +350,7 @@
     "I001": 1
   },
   "app/modules/telegram/telegram.py": {
-    "I001": 3
+    "I001": 2
   },
   "app/modules/themoviedb/cache.py": {
     "I001": 1
