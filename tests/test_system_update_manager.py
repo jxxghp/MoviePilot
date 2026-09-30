@@ -321,6 +321,77 @@ def test_ready_application_update_is_discarded_when_runtime_reaches_target(
     assert not (manager._root / "prepared.json").exists()
 
 
+def test_failed_application_update_clears_after_external_upgrade(monkeypatch, tmp_path):
+    """旧版本安装失败后改用镜像升级，残留的失败记录和重试包应被清理。"""
+    manager = _manager(monkeypatch, tmp_path)
+    monkeypatch.setattr(update_module, "get_app_version", lambda: "v3.0.10-1")
+    manager._merge_prepared_manifest(
+        {
+            "version": "v3.0.4",
+            "backend_archive": "/tmp/backend.zip",
+            "frontend_archive": "/tmp/frontend.zip",
+        }
+    )
+    manager._write_item(
+        "application",
+        state="failed",
+        version="v3.0.4",
+        error="Docker 更新包替换失败：[Errno 18] Invalid cross-device link",
+        can_update=True,
+        can_install=False,
+    )
+
+    status = manager.get_status()
+
+    application = next(item for item in status.updates if item.type == "application")
+    assert application.state == "idle"
+    assert application.version is None
+    assert application.error is None
+    assert application.can_update is False
+    assert status.state == "idle"
+    assert status.error is None
+    assert not (manager._root / "prepared.json").exists()
+
+
+def test_available_application_update_clears_after_external_upgrade(monkeypatch, tmp_path):
+    """关闭自动检查时，外部升级后不应继续提示已低于当前版本的可用更新。"""
+    manager = _manager(monkeypatch, tmp_path)
+    monkeypatch.setattr(update_module, "get_app_version", lambda: "v3.0.10-1")
+    manager._write_item(
+        "application",
+        state="available",
+        version="v3.0.10",
+        can_update=True,
+    )
+
+    status = manager.get_status()
+
+    application = next(item for item in status.updates if item.type == "application")
+    assert application.state == "idle"
+    assert application.version is None
+    assert status.can_update is False
+
+
+def test_failed_application_update_is_kept_below_target(monkeypatch, tmp_path):
+    """当前版本仍低于目标时应保留失败原因和重试入口。"""
+    manager = _manager(monkeypatch, tmp_path)
+    monkeypatch.setattr(update_module, "get_app_version", lambda: "v3.0.3")
+    manager._write_item(
+        "application",
+        state="failed",
+        version="v3.0.4",
+        error="Docker 更新包替换失败",
+        can_update=True,
+    )
+
+    status = manager.get_status()
+
+    application = next(item for item in status.updates if item.type == "application")
+    assert application.state == "failed"
+    assert application.version == "v3.0.4"
+    assert application.can_update is True
+
+
 def test_ready_resource_update_clears_after_loaded_version_reaches_target(
     monkeypatch,
     tmp_path,
