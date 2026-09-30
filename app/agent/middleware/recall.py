@@ -8,7 +8,7 @@ from dataclasses import replace
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from langchain.agents.middleware.types import AgentMiddleware, ExtendedModelResponse, ToolCallRequest
+from langchain.agents.middleware.types import AgentMiddleware, ToolCallRequest
 from langchain_core.messages import BaseMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from langgraph.types import Command
@@ -84,6 +84,7 @@ class RecallMiddleware(AgentMiddleware):  # type: ignore[misc]
         """绑定用户和元数据，复用已编译图时不会把新用户身份写进旧工具。"""
         self._service, self._user_id, self._session = service, user_id, session
         self._seen: set[str] = set()
+        self._active_message_ids: set[str] = set()
         tool = StructuredTool.from_function(coroutine=self.session_search, name=HISTORY_TOOL_NAME,
             description='Recall actual past conversations using FTS5. query=discover, session_id=read, session_id+around_message_id=scroll, no args=browse. No LLM summaries.',
             args_schema=SearchHistoryInput, tags=[ToolTag.Read, ToolTag.System])
@@ -119,12 +120,23 @@ class RecallMiddleware(AgentMiddleware):  # type: ignore[misc]
     async def abefore_model(self, state: dict[str, Any], runtime: Any) -> None:
         """在最终请求压缩前保存原始消息。"""
         del runtime
-        await self._archive(state.get('messages', []))
+        messages = state.get('messages', [])
+        self._active_message_ids = {message.id for message in messages if message.id}
+        await self._archive(messages)
 
     async def aafter_model(self, state: dict[str, Any], runtime: Any) -> None:
-        """保存最终无工具回复，不能只依赖下一次模型调用进行归档。"""
+        """基于已提交图状态标记实际移出的原文，同时保存最终回复。"""
         del runtime
-        await self._archive(state.get('messages', []))
+        messages = state.get('messages', [])
+        kept = {message.id for message in messages if message.id}
+        removed = tuple(self._active_message_ids - kept)
+        # 模型包装链会剥离内部状态命令，只有后置节点能观察到真实提交结果。
+        try:
+            await self._service.compact(self._user_id, self._session.session_id, removed)
+        except Exception as error:
+            logger.warning('历史消息压缩标记未完成: %s', type(error).__name__)
+        self._active_message_ids = kept
+        await self._archive(messages)
 
     async def awrap_tool_call(self, request: ToolCallRequest, handler: Callable[[ToolCallRequest], Awaitable[Any]]) -> Any:
         """组合现有输出 recorder，在内置工具截断之前保留正文，外层引用行为不变。"""
@@ -147,17 +159,8 @@ class RecallMiddleware(AgentMiddleware):  # type: ignore[misc]
             TOOL_RESULT_RECORDER.reset(token)
 
     async def awrap_model_call(self, request: Any, handler: Callable[[Any], Awaitable[Any]]) -> Any:
-        """在压缩成功提交时标记原文离开活动上下文，失败时不改历史可见性。"""
-        result = await handler(request.override(system_message=append_to_system_message(request.system_message, HISTORY_PROMPT)))
-        if isinstance(result, ExtendedModelResponse) and result.command and isinstance(result.command.update, dict):
-            messages = result.command.update.get('messages', [])
-            kept = {message.id for message in messages if isinstance(message, BaseMessage)}
-            removed = tuple(message.id for message in request.messages if message.id and message.id not in kept)
-            try:
-                await self._service.compact(self._user_id, self._session.session_id, removed)
-            except Exception as error:
-                logger.warning('历史消息压缩标记未完成: %s', type(error).__name__)
-        return result
+        """最终请求注入检索说明；原文可见性只由已提交图状态更新。"""
+        return await handler(request.override(system_message=append_to_system_message(request.system_message, HISTORY_PROMPT)))
 
     async def session_search(self, **kwargs: Any) -> str:
         """四种形态返回实际消息，不生成检索摘要；身份与当前会话不可由模型覆盖。"""

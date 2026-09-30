@@ -17,12 +17,15 @@
 | `browser_navigation` | 打开回环动态页并按快照 ref 点击 | 由真实浏览器状态核验导航、点击和动态正文 |
 | `terminal_session` | 启动 pipe 后台会话，写入 stdin，再等待退出 | 核验 session_id、动作顺序、输入、增量输出和退出码 |
 | `terminal_pty_session` | 启动 PTY 后台会话，写入 stdin，再等待退出 | 核验 PTY 输入事件、增量输出和真实退出码 |
+| `code_readonly_report` | 加载 API Skill 后执行固定的只读 Python 汇总程序 | 核验真实持久 Python 会话、跨页 API 回执、缓存资源和整理队列证据；程序改写、写入或缺页均失败 |
 | `long_context` | 在长订阅列表中按固定分页读取并定位第 6 页目标 | 核验上下文压缩、首条任务约束保留、page1–6 证据和无副作用终态 |
 | `steering_multi_message` | 在第 1、3 次业务读取后分别追加两条补充要求 | 核验每条消息按 queued → applied 顺序进入真实模型边界，并保持分页、停止条件和 JSON 输出约束 |
 | `subagent_parallel_status` | 两个相互独立的只读检查必须由通用子代理并行完成 | 核验子代理授权、真实委派轨迹、订阅与启用站点证据和零副作用 |
 | `subagent_cancel_recovery` | 派发一个会保持只读请求在途的通用子代理，主 Agent 取消后继续读取启用站点 | 核验真实启动/取消动作、取消收口、主任务恢复和零副作用 |
 
 这些代号只供控制器和人使用。模型输入必须通过 `Scenario.model_input()` 生成，不能传入场景 ID、业务初态、故障布置、账本或验收器。下载查询在第三种场景的首次提交前仍然可用，避免错误惩罚合理的重复检查策略。
+
+`code_readonly_report` 的 Python 文本是评测公开任务输入中的固定程序，评测运行时只接受它的逐字内容。程序通过真实 `moviepilot_api` helper 分页读取订阅、站点、下载和整理队列，并读取已缓存搜索资源；`site.resource` 等有副作用操作不在只读合同内。每一次 helper 调用仍经过真实 Agent RPC、身份和策略检查，所有工具回执先进入 Python，再由脚本打印最终 JSON。验收器独立从隐藏终态计算答案，同时要求完整分页观察、成功回执和零副作用，因此固定程序的通过证明编排链路与安全边界，不单独证明模型的开放式编程能力。
 
 ## 离线使用
 
@@ -46,6 +49,8 @@ uv run --locked --no-sync python -m scripts.evaluation --live \
   --max-model-calls 12 --max-output-tokens 8192 --timeout-seconds 180 \
   --output report.json
 ```
+
+真实模型报告必须包含 `intelligence_evaluated=true`、模型/协议/推理预算、调用与 token 用量、场景和 harness 指纹。`scripted_replay` 或受控模型回放只能验证机制，不能冒充模型能力。当前受控实测使用显式 provider、固定 `gpt-6-astra`、`xhigh`、12 次调用和 8192 输出上限；两次 `code_readonly_report` 均通过，分别记录 5/4 次模型调用、7 次业务只读调用、45 条订阅完整分页、3 条资源和 0 副作用。该结果是固定场景下的重复证据，不能外推为所有任务或模型均通过。
 
 ### 2026-09-11 Google Gemini 供应商实测
 

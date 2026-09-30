@@ -16,6 +16,7 @@ from pydantic import Field
 from app.agent.learning.review import ReviewLoop, ReviewSnapshot
 from app.agent.learning.session import LearningSession
 from app.agent.middleware.learning import LearningCaptureMiddleware, LearningMiddleware
+from app.agent.middleware.memory import MemoryMiddleware
 from app.runtime.tasks import TaskRegistry
 
 
@@ -103,6 +104,65 @@ def test_real_graph_capture_is_final_and_does_not_share_state(tmp_path):
         owner.snapshot.messages[-1].content = '仅复盘副本'
         assert result['messages'][-1].content == '完成'
         assert owner.snapshot.model is not model
+
+    asyncio.run(scenario())
+
+
+def test_delivered_graph_review_is_consumed_by_next_user_session(tmp_path, monkeypatch):
+    """真实工具迭代触发隔离复盘，落盘成果由下一会话读取且不会泄漏给另一用户。"""
+    async def scenario():
+        """只脚本化模型决定；图、计数、复盘、存储与下一轮加载都使用实际实现。"""
+        registry = TaskRegistry()
+        monkeypatch.setattr('app.agent.learning.session.get_task_registry', lambda: registry)
+        owner = session(tmp_path / 'alice')
+        fact = '订阅记录应按媒体来源与媒体编号核对。'
+        document = '---\nname: subscription-check\ndescription: 核对订阅记录\n---\n读取全部分页，按媒体来源和编号核对。\n'
+        observed = []
+
+        async def inspect_subscription(index: int) -> str:
+            """返回隔离业务快照，十次真实工具回合不能直接伪造计数。"""
+            observed.append(index)
+            return json.dumps({'success': True, 'media_source': 'themoviedb', 'media_id': str(index)})
+
+        model = ReviewModel(responses=[
+            *[response('inspect_subscription', {'index': index}, f'inspect-{index}') for index in range(10)],
+            AIMessage(content='已核对十条记录。'),
+            response('memory', {'action': 'add', 'content': fact}, 'save-memory'),
+            response('skill_manage', {'operations': [{'action': 'create', 'name': 'subscription-check',
+                                                      'content': document}]}, 'save-skill'),
+            AIMessage(content='复盘完成。'),
+        ])
+        messages = [HumanMessage(content=f'请核对记录 {index}', id=f'user-{index}') for index in range(10)]
+        await owner.begin(messages)
+        graph = create_agent(model=model, tools=[StructuredTool.from_function(coroutine=inspect_subscription)],
+                             middleware=[LearningMiddleware(owner), LearningCaptureMiddleware(owner)])
+        result = await graph.ainvoke({'messages': messages}, {'recursion_limit': 100})
+        before = deepcopy(result['messages'])
+        assert observed == list(range(10)) and owner.iterations == 10 and owner.memory_due
+        owner.finish(delivered=True)
+        assert owner.run and owner.run.task
+        await owner.run.task
+        assert result['messages'] == before
+        assert [action['tool'] for action in owner.last_actions] == ['memory', 'skill_manage']
+        assert (owner.memory_root / 'MEMORY.md').read_text() == fact
+        assert (owner.skill_root / 'subscription-check' / 'SKILL.md').read_text() == document
+
+        for username in ('alice', 'bob'):
+            following = session(tmp_path / username)
+            responses = ([response('skill_view', {'name': 'subscription-check'}, 'load-skill')]
+                         if username == 'alice' else [])
+            next_model = ReviewModel(responses=[*responses, AIMessage(content='下一任务')])
+            next_graph = create_agent(model=next_model, middleware=[
+                MemoryMiddleware(memory_dir=str(tmp_path / 'public'), user_memory_dir=str(following.memory_root),
+                                 store=following.tools.memory),
+                LearningMiddleware(following), LearningCaptureMiddleware(following),
+            ])
+            await next_graph.ainvoke({'messages': [HumanMessage(content='再次核对订阅')]})
+            sent = '\n'.join(message.text for request, _kwargs in next_model.requests for message in request)
+            assert (fact in sent) == (username == 'alice')
+            assert ('subscription-check' in sent) == (username == 'alice')
+            assert ('读取全部分页，按媒体来源和编号核对。' in sent) == (username == 'alice')
+        assert await registry.shutdown()
 
     asyncio.run(scenario())
 

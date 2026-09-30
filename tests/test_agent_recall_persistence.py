@@ -325,34 +325,68 @@ def test_independent_retention_uses_shared_cutoff_and_disable(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_compaction_success_preserves_same_session_recall(repository):
-    """实际压缩提交删除的原文可在同会话召回，而未压缩尾部不重复进入历史。"""
+@pytest.mark.parametrize('streaming', [False, True])
+@pytest.mark.parametrize('fail_first', [False, True])
+async def test_compaction_success_preserves_same_session_recall(repository, monkeypatch, streaming, fail_first):
+    """真实图提交压缩后，被移出的原文在同会话可查，活动尾部与摘要不冒充历史。"""
+    from unittest.mock import AsyncMock
 
-    from langchain.agents.middleware.types import ExtendedModelResponse, ModelResponse
-    from langgraph.types import Command
-    middleware = RecallMiddleware(RecallService(repository, _Executor()), 'alice', RecallSession('current'))
-    old = HumanMessage(id='old', content='needle old request')
-    tail = HumanMessage(id='tail', content='current query')
-    await middleware.abefore_model({'messages': [old, tail]}, None)
+    from langchain.agents import create_agent
+    from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
+    from langgraph.checkpoint.memory import InMemorySaver
 
-    class Request:
-        """只实现中间件需要的请求覆写协议。"""
+    from app.agent.middleware.summarization import (
+        ContextPreservingSummarizationMiddleware,
+        FinalRequestCompactionMiddleware,
+    )
 
-        messages = [old, tail]
-        system_message = None
+    failure_pending = [fail_first]
 
-        def override(self, **_values):
-            """返回同一受控请求，测试只关注压缩提交的历史可见性。"""
+    class Model(FakeMessagesListChatModel):
+        """固定主模型响应，只验证生产图的压缩提交与归档边界。"""
+
+        def bind_tools(self, _tools, **_kwargs):
+            """保留真实工具绑定路径而不访问模型服务。"""
             return self
 
-    async def handler(_request):
-        """模拟最内层压缩中间件在模型成功后提交状态。"""
-        return ExtendedModelResponse(model_response=ModelResponse(result=[AIMessage(content='done')]),
-                                     command=Command(update={'messages': [tail]}))
+        async def _agenerate(self, messages, **kwargs):
+            """故障只发生在摘要完成后的主模型调用，验证失败不会提交压缩。"""
+            if failure_pending[0]:
+                failure_pending[0] = False
+                raise TimeoutError('main model unavailable')
+            return await super()._agenerate(messages, **kwargs)
 
-    await middleware.awrap_model_call(Request(), handler)
-    assert json.loads(await middleware.session_search(query='needle'))['count'] == 1
+    model = Model(responses=[AIMessage(content='done')], profile={'max_input_tokens': 4096})
+    summarizer = ContextPreservingSummarizationMiddleware(model=model, trigger=('fraction', 0.85), keep=('messages', 2))
+    summary = AsyncMock(return_value='old context summary')
+    monkeypatch.setattr(summarizer, 'acreate_summary', summary)
+    middleware = RecallMiddleware(RecallService(repository, _Executor()), 'alice', RecallSession('current'))
+    graph = create_agent(model=model, tools=[], middleware=[middleware, FinalRequestCompactionMiddleware(summarizer=summarizer)],
+                         checkpointer=InMemorySaver())
+    messages = [HumanMessage(id='task', content='核对历史证据')]
+    messages += [HumanMessage(id=f'old-{index}', content=f'needle evidence {index} ' * 2000) for index in range(4)]
+    messages += [HumanMessage(id='tail', content='current query')]
+    config = {'configurable': {'thread_id': 'current'}}
+    payload = {'messages': messages}
+    if fail_first:
+        with pytest.raises(TimeoutError, match='main model unavailable'):
+            await graph.ainvoke(payload, config=config)
+        assert json.loads(await middleware.session_search(query='needle'))['count'] == 0
+        assert {message.id for message in (await graph.aget_state(config)).values['messages']} == {message.id for message in messages}
+        payload = None
+    if streaming:
+        async for _ in graph.astream(payload, config=config):
+            pass
+    else:
+        await graph.ainvoke(payload, config=config)
+    state = (await graph.aget_state(config)).values
+    assert summary.await_count > 0
+    kept = {message.id for message in state['messages']}
+    assert any(message.id not in kept for message in messages[1:-1])
+    result = json.loads(await middleware.session_search(query='needle'))
+    assert result['count'] == 1
     assert json.loads(await middleware.session_search(query='current'))['count'] == 0
+    assert json.loads(await middleware.session_search(query='summary'))['count'] == 0
 
 
 @pytest.mark.asyncio

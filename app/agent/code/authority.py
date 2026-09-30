@@ -71,7 +71,8 @@ class CellAuthority:
         if type(tool) is not MoviePilotApiTool:
             return type(tool) in {ReadFileTool, SearchWebTool}
         operation = resolve_api_operation(str(arguments.get('operation_id') or ''))
-        if operation is None or operation.effect is not ActionEffect.SAFE_READ or operation.result_sensitivity is not ResultSensitivity.NORMAL:
+        if (operation is None or operation.effect is not ActionEffect.SAFE_READ
+                or operation.result_sensitivity not in {ResultSensitivity.NORMAL, ResultSensitivity.PRIVATE}):
             return False
         normalized = tool.canonical_arguments(arguments)
         return not requests_system_setting_secrets(normalized)
@@ -89,7 +90,7 @@ class CellAuthority:
         started = time.monotonic()
         try:
             if not self._read_allowed(tool, arguments):
-                result = self._error(name, '代码内只允许安全只读操作，写入和敏感读取不可调用。')
+                result = self._error(name, '代码内只允许安全只读操作，写入、凭据与未知敏感级别的读取不可调用。')
             else:
                 task = self._context.run(get_task_registry().create, self._invoke(tool, arguments), owner='agent.code.dispatch')
                 self._pending.add(task)

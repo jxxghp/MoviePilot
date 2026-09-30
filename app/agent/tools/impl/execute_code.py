@@ -31,7 +31,7 @@ class ExecuteCodeTool(MoviePilotTool):
         'Import enabled helpers with `from moviepilot_tools import moviepilot_api, read_file, search_web`; '
         'only helpers enabled in the current model request are available. Helpers return parsed JSON. '
         'Load the relevant domain Skill first and use its exact moviepilot_api operation IDs and arguments. '
-        'The API helper permits only safe read operations, never writes or secret reads. '
+        'The API helper permits only safe read operations, never writes, secret or unknown-sensitivity reads. '
         'json_parse, shell_quote and retry are also available from moviepilot_tools. '
         'Limits: 300 seconds, 50 tool calls per cell, stdout 50KB, stderr 10KB, full stdout spill up to 5MB. '
         'Print only the useful answer; oversized output returns a file to read in slices. '

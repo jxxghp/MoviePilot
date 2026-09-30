@@ -6,8 +6,8 @@ paging, joins, filtering, or aggregation. Load this domain skill first. Import
 and argument buckets shown above; helpers return parsed JSON. Inspect each
 response's success and pagination structure before aggregating and print only
 the useful result. The host checks every call automatically; no additional user
-approval is needed for these read-only calls. Writes and sensitive reads are not
-available through Python RPC. Only currently enabled built-in helpers exist.
+approval is needed for these read-only calls. Writes, secret reads and unknown-sensitivity results are not
+available through Python RPC; private business data still requires the current host identity. Only currently enabled built-in helpers exist.
 
 Python variables survive consecutive cells. Check `kernel.reused` and
 `execution_count`; reset, timeout, cancellation, explicit exit, or an evicted
