@@ -282,6 +282,10 @@ class ManualTransferItem(OptionalMediaIdentityMixin, BaseModel):
     media_id: Optional[str] = None
     # 音乐实体类型
     music_type: Optional[MusicTargetEntityType] = None
+    # 显式选择具体发行版；media_id 仍为 Release Group，不能互换
+    musicbrainz_release_id: Optional[str] = Field(
+        default=None, pattern=r"^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$",
+    )
     # 本次手动整理的 MusicBrainz 发行地区优先级；空值继承系统设置
     music_release_regions: Optional[List[str]] = Field(default=None, max_length=3)
     # 本次手动整理的 MusicBrainz 文字字形优先级；空值继承系统设置
@@ -318,6 +322,18 @@ class ManualTransferItem(OptionalMediaIdentityMixin, BaseModel):
     reorganize: Optional[bool] = False
     # 跳过成功历史，优先于重新整理；预览与执行使用相同过滤范围
     skip_success: bool = False
+
+    @model_validator(mode="after")  # type: ignore[misc]
+    def validate_music_release_selection(self) -> "ManualTransferItem":
+        """具体发行只用于明确的 MusicBrainz 专辑，禁止混用录音或其它来源身份。"""
+        if self.musicbrainz_release_id is None:
+            return self
+        if self.media_source != MediaSource.MusicBrainz or not self.media_id or self.music_type != "album":
+            raise ValueError("指定音乐发行版需要 MusicBrainz 专辑来源、Release Group ID 和 music_type=album")
+        if (self.type_name or "").strip().lower() not in {"", "自动", "auto", "none", "音乐"}:
+            raise ValueError("音乐发行版不能用于影视整理")
+        self.musicbrainz_release_id = self.musicbrainz_release_id.lower()
+        return self
 
     @model_validator(mode="after")  # type: ignore[misc]
     def normalize_music_release_preferences(self) -> "ManualTransferItem":

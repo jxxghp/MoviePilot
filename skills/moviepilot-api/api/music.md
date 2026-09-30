@@ -175,13 +175,21 @@ online confirmation; album corrections must preserve the returned source-file sc
   available. Existing file-operation evidence always keeps its frozen plan.
   A retry-wait response is pending work, never proof that files were organized.
 
+- Manual MusicBrainz album correction may set `musicbrainz_release_id` to an exact
+  Release UUID while keeping `media_id` as the Release Group ID and `music_type=album`.
+  The same parameter on `music.album.get` previews that edition's track list. The
+  backend verifies group membership even when the embedded releases list is truncated;
+  missing or mismatched editions never fall back to regional/script defaults.
+  Keep the same edition and source file selection for preview and execution. Explicit
+  edition organization currently requires local audio so its tracks can be aligned.
+
 ## Operations
 
 ### `music.album.get`
 `GET /api/v1/music/album/{album_id}`; policy effect: `safe_read`.
 Purpose: Read one album's details, tracks, releases, and aligned artist names and IDs.
 - `path_params`: `album_id*` (string): Source-native album ID returned by music search, exploration, or artist-album browsing.
-- `query`: `media_source` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.
+- `query`: `media_source` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `musicbrainz_release_id` (string|null): Optional exact MusicBrainz Release UUID belonging to the selected album Release Group; never use it as media_id.
 - `body`: none
 
 ### `music.album.related`

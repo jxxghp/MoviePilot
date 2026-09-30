@@ -1973,9 +1973,13 @@ class MusicBrainzModule(_ModuleBase):
             media_id: str,
             music_release_regions: Optional[list[str]] = None,
             music_release_scripts: Optional[list[str]] = None,
+            musicbrainz_release_id: Optional[str] = None,
     ) -> Optional[MusicAlbumInfo]:
         """异步按 MusicBrainz Release Group ID 获取专辑详情及曲目。"""
         if not self._detail_plan(media_source, media_id, MUSIC_ENTITY_ALBUM):
+            return None
+        if musicbrainz_release_id is not None and not re.fullmatch(
+                r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", musicbrainz_release_id):
             return None
         payload = await self._async_request_json(
             f"/release-group/{media_id}",
@@ -1985,7 +1989,7 @@ class MusicBrainzModule(_ModuleBase):
             },
         )
         album = self._project_album_detail(payload)
-        if not album:
+        if not album or (musicbrainz_release_id is not None and album.media_id != media_id):
             return None
         tracks_payload = await self._async_album_tracks_payload(
             payload.get("releases") or [],
@@ -1993,9 +1997,15 @@ class MusicBrainzModule(_ModuleBase):
                 music_release_regions,
                 music_release_scripts,
             ),
+            release_id=musicbrainz_release_id,
+            group_id=media_id,
         )
+        if musicbrainz_release_id is not None and not tracks_payload:
+            return None
         self._apply_selected_release(album, tracks_payload)
         album.tracks = self._project_album_tracks(album, tracks_payload)
+        if musicbrainz_release_id is not None and not album.tracks:
+            return None
         album.artist_aliases = await self._async_lookup_artist_aliases(album.artist_ids, album.artist_aliases)
         return album
 
@@ -2005,9 +2015,13 @@ class MusicBrainzModule(_ModuleBase):
             media_id: str,
             music_release_regions: Optional[list[str]] = None,
             music_release_scripts: Optional[list[str]] = None,
+            musicbrainz_release_id: Optional[str] = None,
     ) -> Optional[MusicAlbumInfo]:
         """按 MusicBrainz Release Group ID 获取标准化专辑详情及曲目。"""
         if not self._detail_plan(media_source, media_id, MUSIC_ENTITY_ALBUM):
+            return None
+        if musicbrainz_release_id is not None and not re.fullmatch(
+                r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}", musicbrainz_release_id):
             return None
         payload = self._request_json(
             f"/release-group/{media_id}",
@@ -2017,7 +2031,7 @@ class MusicBrainzModule(_ModuleBase):
             },
         )
         album = self._project_album_detail(payload)
-        if not album:
+        if not album or (musicbrainz_release_id is not None and album.media_id != media_id):
             return None
         tracks_payload = self._album_tracks_payload(
             payload.get("releases") or [],
@@ -2025,9 +2039,15 @@ class MusicBrainzModule(_ModuleBase):
                 music_release_regions,
                 music_release_scripts,
             ),
+            release_id=musicbrainz_release_id,
+            group_id=media_id,
         )
+        if musicbrainz_release_id is not None and not tracks_payload:
+            return None
         self._apply_selected_release(album, tracks_payload)
         album.tracks = self._project_album_tracks(album, tracks_payload)
+        if musicbrainz_release_id is not None and not album.tracks:
+            return None
         album.artist_aliases = self._lookup_artist_aliases(album.artist_ids, album.artist_aliases)
         return album
 
@@ -2373,32 +2393,57 @@ class MusicBrainzModule(_ModuleBase):
             cls,
             releases: list[dict[str, Any]],
             preference: Optional[_MusicReleasePreference] = None,
+            *,
+            release_id: Optional[str] = None,
+            group_id: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
-        """同步读取专辑代表性发行版本的原始曲目响应。"""
-        release = cls._select_track_release(releases, preference)
+        """同步读取指定发行或默认代表版本的曲目，显式版本失败不回退。"""
+        release = {"id": release_id.lower()} if release_id is not None else cls._select_track_release(releases, preference)
         if not release.get("id"):
             return None
         payload = cls._request_json(
             f"/release/{release['id']}",
-            params={"inc": "recordings+artist-credits" + _RELEASE_RELATIONS, "fmt": "json"},
+            params={"inc": "recordings+artist-credits" + _RELEASE_RELATIONS
+                    + ("+release-groups" if release_id is not None else ""), "fmt": "json"},
         )
-        return payload if isinstance(payload, dict) else None
+        return cls._validate_album_release(payload, release_id=release_id, group_id=group_id)
 
     @classmethod
     async def _async_album_tracks_payload(
             cls,
             releases: list[dict[str, Any]],
             preference: Optional[_MusicReleasePreference] = None,
+            *,
+            release_id: Optional[str] = None,
+            group_id: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
-        """异步读取专辑代表性发行版本的原始曲目响应。"""
-        release = cls._select_track_release(releases, preference)
+        """异步读取指定发行或默认代表版本的曲目，显式版本失败不回退。"""
+        release = {"id": release_id.lower()} if release_id is not None else cls._select_track_release(releases, preference)
         if not release.get("id"):
             return None
         payload = await cls._async_request_json(
             f"/release/{release['id']}",
-            params={"inc": "recordings+artist-credits" + _RELEASE_RELATIONS, "fmt": "json"},
+            params={"inc": "recordings+artist-credits" + _RELEASE_RELATIONS
+                    + ("+release-groups" if release_id is not None else ""), "fmt": "json"},
         )
-        return payload if isinstance(payload, dict) else None
+        return cls._validate_album_release(payload, release_id=release_id, group_id=group_id)
+
+    @staticmethod
+    def _validate_album_release(
+            payload: Optional[dict[str, Any]],
+            *,
+            release_id: Optional[str],
+            group_id: Optional[str],
+    ) -> Optional[dict[str, Any]]:
+        """核验具体发行及所属发行组，不以可能截断的内嵌发行列表决定归属。"""
+        if not isinstance(payload, dict):
+            return None
+        if release_id is not None:
+            release_group = payload.get("release-group")
+            if (payload.get("id") != release_id.lower() or not isinstance(release_group, dict)
+                    or release_group.get("id") != group_id):
+                return None
+        return payload
 
     @classmethod
     def _apply_selected_release(

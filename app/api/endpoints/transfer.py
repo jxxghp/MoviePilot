@@ -805,6 +805,11 @@ def _execute_manual_transfer(
     mtype = MediaType.MUSIC if selected_music_fileitems is not None else mtype
     explicit_selected_files = explicit_selected_files and selected_music_fileitems is None
 
+    release_kwargs: dict[str, Any] = (
+        {"musicbrainz_release_id": transer_item.musicbrainz_release_id}
+        if transer_item.musicbrainz_release_id is not None else {}
+    )
+
     # 前端显式传入文件列表时，按选中的文件逐个处理，避免将目录整体展开。
     if explicit_selected_files:
         preview_items: List[dict] = []
@@ -821,6 +826,7 @@ def _execute_manual_transfer(
                 music_type=_resolve_music_type(src_fileitem),
                 music_release_regions=transer_item.music_release_regions,
                 music_release_scripts=transer_item.music_release_scripts,
+                **release_kwargs,
                 mtype=mtype,
                 season=transer_item.season,
                 episode_group=transer_item.episode_group,
@@ -916,6 +922,7 @@ def _execute_manual_transfer(
         ),
         music_release_regions=transer_item.music_release_regions,
         music_release_scripts=transer_item.music_release_scripts,
+        **release_kwargs,
         mtype=mtype,
         season=transer_item.season,
         episode_group=transer_item.episode_group,
