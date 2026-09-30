@@ -357,6 +357,7 @@ moviepilot update all --skip-resources
 - `update backend` 会更新 Git 仓库并重新安装后端依赖，包括 `moviepilot-rust` 加速扩展
 - `MOVIEPILOT_UPDATE_DEV=true` 时，`moviepilot update` 默认使用 DEV 模式；`--dev` / `--no-dev` 可临时覆盖，省略目标时更新全部组件。进程环境变量优先于配置目录中的 `app.env`
 - DEV 模式后端跟踪当前开发分支，处于 Release 的 detached HEAD 时回到 `v3`；前端下载最新 Release 的 `dist.zip`。显式 `--ref` / `--frontend-version` 优先于默认选择
+- DEV 模式每次更新前端都会重新下载并替换发布包，即使版本号相同或显式指定了 `--frontend-version`，以获取同版本重新打包的内容
 - 非 DEV 模式下，`update frontend` 会按当前仓库 `version.py` 中的 `FRONTEND_VERSION` 下载并替换前端 release
 - `update all` 会先更新后端，再按所选模式更新前端，默认也会同步资源文件
 - 更新前请先执行 `moviepilot stop`

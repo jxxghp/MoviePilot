@@ -189,6 +189,7 @@ Usage:
 Options:
   --ref REF                 后端 Git 版本，默认当前分支；DEV 下 detached HEAD 回到 v3
   --dev / --no-dev          指定 DEV 更新模式，默认读取 MOVIEPILOT_UPDATE_DEV
+                            DEV 模式下同版本前端也会重新下载并替换
   --frontend-version TAG    前端版本，DEV 默认 latest，否则使用 FRONTEND_VERSION
   --node-version VER        本地 Node 运行时版本，默认 20.12.1
   --python PYTHON           用于安装后端依赖的 Python 解释器，默认自动选择本地 3.14+ 版本

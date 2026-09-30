@@ -152,3 +152,66 @@ def test_switching_to_dev_branch_fetches_latest_tip(monkeypatch, tmp_path, fetch
         assert module._update_backend_ref("v3", fetch=fetch) == "v3"
     pull_calls = [call.args[0] for call in run.call_args_list if call.args[0][:2] == ["git", "pull"]]
     assert pull_calls == ([["git", "pull", "--ff-only", "origin", "v3"]] if fetch and branch == "v3" else [])
+
+
+@pytest.mark.parametrize("target", ["frontend", "all"])
+@pytest.mark.parametrize("version_args", [[], ["--frontend-version", "v3.0.11"]])
+@pytest.mark.parametrize("saved_dev, mode_args, refresh", [
+    ("true", [], True),
+    ("false", ["--dev"], True),
+    ("true", ["--no-dev"], False),
+    ("false", [], False),
+])
+def test_update_reinstalls_repacked_frontend_in_dev_mode(
+    monkeypatch, tmp_path, target, version_args, saved_dev, mode_args, refresh
+):
+    """连续更新同版本不同内容的 ZIP：DEV 真正替换文件，普通模式仍复用已安装版本。"""
+    import zipfile
+
+    module = load_local_setup_module()
+    public = tmp_path / "public"
+    (public / "node_modules" / "express").mkdir(parents=True)
+    (public / "version.txt").write_text("v3.0.11", encoding="utf-8")
+    (public / "service.js").touch()
+    (public / "index.html").write_text("original", encoding="utf-8")
+    npm = tmp_path / "npm"
+    npm.touch()
+    monkeypatch.setattr(module, "PUBLIC_DIR", public)
+    monkeypatch.delenv("MOVIEPILOT_UPDATE_DEV", raising=False)
+    monkeypatch.setattr(module, "read_env_value", lambda _key: saved_dev)
+    monkeypatch.setattr(module, "configure_config_dir", lambda **_: tmp_path)
+    monkeypatch.setattr(module, "ensure_services_stopped", lambda: None)
+    monkeypatch.setattr(module, "update_backend", lambda **_: None)
+    monkeypatch.setattr(module, "_git_output", lambda *_: "v3")
+    monkeypatch.setattr(module, "_repo_frontend_version", lambda: "v3.0.11")
+    monkeypatch.setattr(module, "install_node_runtime", lambda _version: tmp_path / "node")
+    monkeypatch.setattr(module, "get_npm_bin", lambda: npm)
+    monkeypatch.setattr(module, "fetch_json", lambda _url: {
+        "tag_name": "v3.0.11",
+        "assets": [{"name": "dist.zip", "browser_download_url": "https://example.com/dist.zip"}],
+    })
+    monkeypatch.setattr(module.sys, "argv", [
+        "local_setup.py", "update", *version_args, target, *mode_args, "--skip-resources"
+    ])
+    downloads = []
+
+    def download_repacked_release(url, path):
+        """模拟同一个 Release URL 每次提供重新构建的内容。"""
+        downloads.append(url)
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("dist/version.txt", "v3.0.11")
+            archive.writestr("dist/index.html", f"build-{len(downloads)}")
+
+    def install_runtime_deps(*_args, **_kwargs):
+        """恢复已安装依赖标记，保证第二次确实面对完整的同版本前端。"""
+        (public / "node_modules" / "express").mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(module, "download_file", download_repacked_release)
+    monkeypatch.setattr(module, "run", install_runtime_deps)
+    for attempt in (1, 2):
+        assert module._frontend_runtime_ready("v3.0.11")
+        assert module.main() == 0
+        assert (public / "index.html").read_text(encoding="utf-8") == (
+            f"build-{attempt}" if refresh else "original"
+        )
+    assert downloads == (["https://example.com/dist.zip"] * 2 if refresh else [])

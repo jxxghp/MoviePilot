@@ -938,7 +938,10 @@ def install_frontend(
     frontend_version: str,
     node_version: str,
     archive: Optional[Path] = None,
+    *,
+    force: bool = False,
 ) -> dict[str, str]:
+    """安装前端发布包；DEV 更新强制替换同版本重新打包的制品。"""
     if archive:
         version_tag = (frontend_version or "").strip()
         if not version_tag:
@@ -950,7 +953,7 @@ def install_frontend(
         version_tag, download_url = _resolve_frontend_release(frontend_version)
     node_bin = install_node_runtime(node_version)
 
-    if _frontend_runtime_ready(version_tag):
+    if not force and _frontend_runtime_ready(version_tag):
         _write_local_frontend_service_script(PUBLIC_DIR)
         print_step(f"前端发布包已是最新版本：{version_tag}")
         return {"version": version_tag, "node": str(node_bin)}
@@ -3831,15 +3834,20 @@ def _update_backend_ref(ref: str, *, fetch: bool = True) -> str:
     return ref
 
 
-def _resolve_update_versions(args: argparse.Namespace) -> tuple[str, Optional[str]]:
-    """更新命令读取 Dev 偏好；显式版本优先，离线安装始终使用已确认制品。"""
+def _dev_update_enabled(args: argparse.Namespace) -> bool:
+    """按命令选项及配置判定 DEV 模式，离线安装不继承 DEV 偏好。"""
     value = os.environ.get("MOVIEPILOT_UPDATE_DEV")
     if value is None:
         value = read_env_value("MOVIEPILOT_UPDATE_DEV") or "false"
     dev = args.dev if args.dev is not None else value.strip().lower() in {
         "1", "true", "yes", "y", "on"
     }
-    dev = dev and not args.offline_backend
+    return dev and not args.offline_backend
+
+
+def _resolve_update_versions(args: argparse.Namespace) -> tuple[str, Optional[str]]:
+    """更新命令读取 Dev 偏好；显式版本优先，离线安装始终使用已确认制品。"""
+    dev = _dev_update_enabled(args)
     ref = args.ref
     if not ref:
         ref = "latest"
@@ -4308,6 +4316,7 @@ def main() -> int:
                     frontend_version=frontend_version,
                     node_version=args.node_version,
                     archive=Path(args.frontend_archive) if args.frontend_archive else None,
+                    force=_dev_update_enabled(args),
                 )
                 print_step(f"前端更新完成，版本：{frontend_result['version']}")
             if args.target == "all" and not args.skip_resources:
