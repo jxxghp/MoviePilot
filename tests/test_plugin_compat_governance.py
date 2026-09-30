@@ -166,10 +166,9 @@ def test_official_plugin_legacy_imports_are_exactly_routed_or_retired() -> None:
     }
     routed = set(MODULE_ALIASES) | set(PACKAGE_ALIASES)
 
-    # V2 AgentResourceOfficer 对该模块使用可选导入；宿主已明确删除，不应为它恢复源码或猜测映射。
-    explicitly_retired = {"app.helper.subscribe"}
-    assert legacy_imports - routed == explicitly_retired
-    assert explicitly_retired.isdisjoint(routed)
+    # app.helper.subscribe 已由宿主删除，不应恢复源码或猜测映射。
+    assert legacy_imports - routed == set()
+    assert "app.helper.subscribe" not in routed
 
 
 def test_plugin_manager_legacy_and_sdk_paths_share_canonical_identity() -> None:
