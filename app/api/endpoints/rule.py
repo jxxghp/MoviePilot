@@ -246,7 +246,7 @@ async def reorder_rule_groups(
 
 
 @router.put(  # type: ignore[misc]
-    "/groups/{name}",
+    "/groups/{name:path}",
     summary="更新过滤规则组",
     response_model=_SchemaResponse[_SchemaJsonObject],
 )
@@ -268,7 +268,7 @@ async def update_rule_group(
 
 
 @router.delete(  # type: ignore[misc]
-    "/groups/{name}",
+    "/groups/{name:path}",
     summary="删除过滤规则组",
     response_model=_SchemaResponse[_SchemaJsonObject],
 )
