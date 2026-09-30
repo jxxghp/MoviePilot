@@ -144,9 +144,29 @@ def music_album_with_artist_aliases(album: MusicAlbumInfo, aliases: dict[str, li
     return result
 
 
+def music_album_has_consistent_tracks(album: MusicAlbumInfo) -> bool:
+    """专辑与曲目须处于同一来源和发行身份中；缺失的可选身份不构成冲突。"""
+    source = album.media_source or next((track.media_source for track in album.tracks if track.media_source), None)
+    identities = {
+        "album_id": album.media_id,
+        "musicbrainz_release_id": album.musicbrainz_release_id,
+        "musicbrainz_release_group_id": album.musicbrainz_release_group_id,
+    }
+    if source == MediaSource.MusicBrainz:
+        identities["musicbrainz_release_group_id"] = album.musicbrainz_release_group_id or album.media_id
+        if album.media_id and album.musicbrainz_release_group_id and album.media_id != album.musicbrainz_release_group_id:
+            return False
+    return all(
+        track.media_source == source and all(
+            not expected or not getattr(track, key) or getattr(track, key) == expected
+            for key, expected in identities.items()
+        ) for track in album.tracks
+    )
+
+
 def music_album_candidate_matches(album: MusicAlbumInfo, meta: MetaMusic, tracks: list[MetaMusic]) -> bool:
     """来源专辑必须满足名称、署名、版本与完整本地对位；弱专辑名需要额外曲目证据。"""
-    if not tracks or not album.tracks:
+    if not tracks or not album.tracks or not music_album_has_consistent_tracks(album):
         return False
     info = album.to_music_info()
     known_title = not music_album_title_is_weak(meta)
@@ -413,24 +433,34 @@ def _alignment_title_key(title: Optional[str]) -> str:
     return music_text_key(title) or re.sub(r"\s+", "", normalize("NFKC", str(title or ""))).casefold()
 
 
+def _music_track_identity_match(meta: MetaMusic, track: MusicInfo, allow_title_override: bool) -> Optional[bool]:
+    """返回明确录音身份的命中状态；None表示冲突，手选纠正允许覆盖原标签身份。"""
+    if not allow_title_override and music_isrc_conflicts(track, meta):
+        return None
+    identity_match = music_isrc_matches(track, meta)
+    for field in ("musicbrainz_release_id", "musicbrainz_release_track_id"):
+        local_id, remote_id = getattr(meta, field), getattr(track, field)
+        if local_id and remote_id:
+            if local_id != remote_id and not allow_title_override:
+                return None
+            if field == "musicbrainz_release_track_id" and local_id == remote_id:
+                identity_match = True
+    if meta.media_id and track.media_id and meta.media_source == track.media_source and meta.music_type != MUSIC_ENTITY_ALBUM:
+        if meta.media_id != track.media_id and not allow_title_override:
+            return None
+        identity_match = identity_match or meta.media_id == track.media_id
+    return identity_match
+
+
 def _music_track_pair_score(meta: MetaMusic, track: MusicInfo, allow_title_override: bool) -> float:
     """评估一条文件与发行曲目的证据；明确身份或时长冲突不能被其它分数抵消。"""
     if not allow_title_override and music_credit_conflicts(track, meta):
         return 0.0
     if not allow_title_override and any(music_credit_values(meta).values()) and not music_artist_evidence_matches(track, meta):
         return 0.0
-    identity_match = False
-    for field in ("musicbrainz_release_id", "musicbrainz_release_track_id"):
-        local_id, remote_id = getattr(meta, field), getattr(track, field)
-        if local_id and remote_id:
-            if local_id != remote_id and not allow_title_override:
-                return 0.0
-            if field == "musicbrainz_release_track_id" and local_id == remote_id:
-                identity_match = True
-    if meta.media_id and track.media_id and meta.media_source == track.media_source and meta.music_type != MUSIC_ENTITY_ALBUM:
-        if meta.media_id != track.media_id and not allow_title_override:
-            return 0.0
-        identity_match = identity_match or meta.media_id == track.media_id
+    identity_match = _music_track_identity_match(meta, track, allow_title_override)
+    if identity_match is None:
+        return 0.0
     artists = music_usable_artists(meta.artists)
     if (not allow_title_override and artists and track.artists
             and meta.field_sources.get("artists") not in {"directory", "torrent", "album_tags"}
@@ -739,10 +769,24 @@ def _isrc_key(value: Optional[str]) -> Optional[str]:
     return code.upper() if _ISRC.fullmatch(code) else None
 
 
+def music_isrc_codes(music: MusicInfo) -> set[str]:
+    """保留同一MusicBrainz录音实际返回的多个ISRC，兼容旧缓存中的原始响应。"""
+    values = music.raw_data.get("isrcs") if music.media_source == MediaSource.MusicBrainz else None
+    values = values if isinstance(values, (list, tuple)) else []
+    return {key for value in (music.isrc, *values) if (key := _isrc_key(value))}
+
+
 def music_isrc_matches(music: MusicInfo, meta: MetaMusic) -> bool:
-    """只有格式有效且相同的 ISRC 才能作为优先于文本匹配的录音身份。"""
+    """只有格式有效且属于同一录音的ISRC才能作为优先于文本匹配的身份。"""
     expected = _isrc_key(meta.isrc)
-    return bool(expected and expected == _isrc_key(music.isrc))
+    return bool(expected and expected in music_isrc_codes(music))
+
+
+def music_isrc_conflicts(music: MusicInfo, meta: MetaMusic) -> bool:
+    """双方均有有效ISRC且没有交集才构成冲突，缺失或无效标签继续按其它证据核验。"""
+    expected = _isrc_key(meta.isrc)
+    actual = music_isrc_codes(music)
+    return bool(expected and actual and expected not in actual)
 
 
 def _artist_match_text(text: str) -> str:

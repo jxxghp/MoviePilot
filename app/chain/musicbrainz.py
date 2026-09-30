@@ -3,6 +3,7 @@ from typing import Any, Iterable, Optional
 from app.chain.base import ChainBase
 from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
+from app.domain.music import music_album_has_consistent_tracks
 from app.schemas.types import MediaSource, MediaType, MusicEntityType
 
 
@@ -253,7 +254,7 @@ class MusicMetadataSourceChain(ChainBase):
             media_id: Optional[str] = None,
             musicbrainz_release_id: Optional[str] = None,
     ) -> Optional[MusicAlbumInfo]:
-        """将模块或插件结果统一转换为专辑详情。"""
+        """转换专辑详情并拒绝曲目混源或明确发行身份冲突，手选版另要求身份完整。"""
         if isinstance(result, MusicAlbumInfo):
             album = result
         elif isinstance(result, dict):
@@ -261,6 +262,8 @@ class MusicMetadataSourceChain(ChainBase):
         else:
             return None
         if album.media_source != self.source:
+            return None
+        if not music_album_has_consistent_tracks(album):
             return None
         if media_id and album.media_id != media_id:
             return None

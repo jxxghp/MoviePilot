@@ -25,6 +25,7 @@ from app.domain.music import (
     align_music_tracks,
     expand_music_tracks,
     music_album_candidate_matches,
+    music_album_has_consistent_tracks,
     music_album_lookup_plan,
     music_album_title_is_weak,
     music_text_key,
@@ -347,7 +348,7 @@ class MediaAlbumOwner(_MediaOwnerBase):
         allow_title_override: bool = False,
     ) -> dict[str, MusicInfo]:
         """逻辑曲目全部对位后才输出对应物理文件，整轨始终保持 Album 身份。"""
-        if len(files) != len(metas):
+        if len(files) != len(metas) or not music_album_has_consistent_tracks(album):
             return {}
         logical, owners = expand_music_tracks(metas)
         aligned = align_music_tracks(logical, album.tracks, allow_title_override=allow_title_override)

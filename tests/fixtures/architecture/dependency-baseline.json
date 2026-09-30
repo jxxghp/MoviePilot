@@ -930,8 +930,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9060,
-  "edge_sha256": "cb948f057f3a8075ddf419370773b879f73aa13f6a13b1c0d9690f8c49f7f8a8",
+  "edge_count": 9062,
+  "edge_sha256": "27870b9cb98a47174fa1dcad7e44ecb1fa9dab8f6ba23c0952e2ca31b23f8abd",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -4723,6 +4723,7 @@
     "app.chain.musicbrainz -> app.domain.context",
     "app.chain.musicbrainz -> app.domain.meta",
     "app.chain.musicbrainz -> app.domain.meta.metamusic",
+    "app.chain.musicbrainz -> app.domain.music",
     "app.chain.musicbrainz -> app.schemas",
     "app.chain.musicbrainz -> app.schemas.types",
     "app.chain.notification -> app.chain",
@@ -7477,6 +7478,7 @@
     "app.modules.musicbrainz.cache -> app.domain.context",
     "app.modules.musicbrainz.cache -> app.domain.meta",
     "app.modules.musicbrainz.cache -> app.domain.meta.metamusic",
+    "app.modules.musicbrainz.cache -> app.domain.music",
     "app.modules.musicbrainz.cache -> app.foundation",
     "app.modules.musicbrainz.cache -> app.foundation.singleton",
     "app.modules.musicbrainz.cache -> app.runtime",

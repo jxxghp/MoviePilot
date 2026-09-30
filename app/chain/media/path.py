@@ -142,7 +142,7 @@ def _merge_music_path_evidence(
     meta: MetaMusic,
     evidence: Optional[MetaMusic],
 ) -> MetaMusic:
-    """把已确认的标签证据补入文件名搜索，但不传播远程身份。"""
+    """把同一文件的标签证据补入文件名搜索，保留ISRC约束但不传播来源实体ID。"""
     if not meta or not evidence:
         return meta
     merged = MetaMusic.from_dict(meta.to_dict())
@@ -156,6 +156,8 @@ def _merge_music_path_evidence(
         merged.year = evidence.year
     if not merged.version and evidence.version:
         merged.version = evidence.version
+    if not merged.isrc and evidence.isrc:
+        merged.isrc = evidence.isrc
     return merged
 
 
@@ -238,6 +240,7 @@ def _fingerprint_info_matches_evidence(
         music_album_matches,
         music_artist_evidence_matches,
         music_credit_conflicts,
+        music_isrc_conflicts,
         music_text_key,
         music_usable_artists,
         music_version_matches,
@@ -247,7 +250,7 @@ def _fingerprint_info_matches_evidence(
     if not _has_remote_music_identity(info):
         return False
     primary = tag_meta if tag_meta and not music_track_title_is_weak(tag_meta) else filename_meta or tag_meta
-    if not primary:
+    if not primary or music_isrc_conflicts(info, tag_meta or primary):
         return False
     weak_title = music_track_title_is_weak(primary)
     local_duration = fingerprint_duration or (tag_meta.duration if tag_meta else None) or primary.duration
@@ -521,10 +524,11 @@ def _music_info_matches_text_evidence(
     info: Optional[MusicInfo],
     meta: Optional[MetaMusic],
 ) -> bool:
-    """统一校验各识别层的版本、发行年份和演奏证据，插件结果也不能绕过角色冲突。"""
+    """统一校验版本、年份、ISRC和演奏证据，插件结果也不能绕过明确冲突。"""
     from app.domain.music import (  # pylint: disable=import-outside-toplevel
         music_artist_evidence_matches,
         music_credit_conflicts,
+        music_isrc_conflicts,
         music_isrc_matches,
         music_version_matches,
         music_year_matches,
@@ -534,6 +538,7 @@ def _music_info_matches_text_evidence(
         return False
     return bool(music_version_matches(info, meta) and music_year_matches(info, meta)
                 and not music_credit_conflicts(info, meta)
+                and not music_isrc_conflicts(info, meta)
                 and (not any(music_credit_values(meta).values()) or music_isrc_matches(info, meta)
                      or music_artist_evidence_matches(info, meta)))
 

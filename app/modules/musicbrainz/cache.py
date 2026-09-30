@@ -9,6 +9,7 @@ from typing import Optional
 
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic, music_credit_values
+from app.domain.music import music_isrc_codes
 from app.foundation.singleton import WeakSingleton
 from app.runtime.cache import FileCache, TTLCache
 from app.runtime.log import logger
@@ -184,8 +185,11 @@ class MusicBrainzCache(metaclass=WeakSingleton):
             return
         key = self.__get_key(meta, music_type)
         cache_data = info.to_dict()
-        # 上游原始响应体积大且不参与身份恢复，不入缓存
+        # 原始响应不入缓存，只保留核验录音身份必需的有效ISRC集合。
         cache_data.pop("raw_data", None)
+        codes = music_isrc_codes(info)
+        if codes:
+            cache_data["raw_data"] = {"isrcs": sorted(codes)}
         with lock:
             self._set(key, cache_data)
 

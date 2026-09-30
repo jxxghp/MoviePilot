@@ -43,6 +43,7 @@ from app.domain.music import (
     music_artist_evidence_matches,
     music_base_title,
     music_credit_conflicts,
+    music_isrc_conflicts,
     music_isrc_matches,
     music_query_artists,
     music_text_key,
@@ -1194,7 +1195,7 @@ class MusicBrainzModule(_ModuleBase):
                     # Release lookup 默认只返回 Release Group 的最小引用，
                     # 不包含 primary-type / secondary-types。目录级专辑识别
                     # 后续需要这些字段执行音乐分类，因此必须显式展开。
-                    "inc": "recordings+media+artist-credits+release-groups" + _RELEASE_RELATIONS,
+                    "inc": "recordings+media+artist-credits+release-groups+isrcs" + _RELEASE_RELATIONS,
                     "fmt": "json",
                 },
             )
@@ -1525,7 +1526,8 @@ class MusicBrainzModule(_ModuleBase):
                 and (not meta.title or music_title_matches(cached_info, meta.title))
                 and music_version_matches(cached_info, meta)
             )
-            if music_credit_conflicts(cached_info, meta) or not release_matches or (not music_isrc_matches(cached_info, meta) and not identity_matches):
+            if (music_credit_conflicts(cached_info, meta) or music_isrc_conflicts(cached_info, meta) or not release_matches
+                    or (not music_isrc_matches(cached_info, meta) and not identity_matches)):
                 return None
         if cached_info.media_id:
             logger.info(f"{meta.title} 使用音乐识别缓存：{cached_info.title}")
@@ -1664,7 +1666,7 @@ class MusicBrainzModule(_ModuleBase):
         for candidate in candidates:
             if normalized_source and str(candidate.media_source or "").casefold() != normalized_source:
                 continue
-            if music_credit_conflicts(candidate, meta):
+            if music_credit_conflicts(candidate, meta) or music_isrc_conflicts(candidate, meta):
                 continue
             album_matches = not meta.album or not candidate.album or music_album_matches(candidate, meta.album)
             release_matches = album_matches and music_year_matches(candidate, meta)
@@ -2403,7 +2405,7 @@ class MusicBrainzModule(_ModuleBase):
             return None
         payload = cls._request_json(
             f"/release/{release['id']}",
-            params={"inc": "recordings+artist-credits" + _RELEASE_RELATIONS
+            params={"inc": "recordings+artist-credits+isrcs" + _RELEASE_RELATIONS
                     + ("+release-groups" if release_id is not None else ""), "fmt": "json"},
         )
         return cls._validate_album_release(payload, release_id=release_id, group_id=group_id)
@@ -2423,7 +2425,7 @@ class MusicBrainzModule(_ModuleBase):
             return None
         payload = await cls._async_request_json(
             f"/release/{release['id']}",
-            params={"inc": "recordings+artist-credits" + _RELEASE_RELATIONS
+            params={"inc": "recordings+artist-credits+isrcs" + _RELEASE_RELATIONS
                     + ("+release-groups" if release_id is not None else ""), "fmt": "json"},
         )
         return cls._validate_album_release(payload, release_id=release_id, group_id=group_id)
@@ -2524,6 +2526,7 @@ class MusicBrainzModule(_ModuleBase):
             track_number=cls._optional_int(track.get("position")),
             total_tracks=cls._optional_int(medium.get("track-count")),
             duration=cls._duration_seconds(track.get("length") or recording.get("length")),
+            isrc=next(iter(recording.get("isrcs") or []), None),
             cover_url=album.cover_url,
             version=recording.get("disambiguation") or None,
             secondary_types=list(album.secondary_types),
@@ -2534,6 +2537,7 @@ class MusicBrainzModule(_ModuleBase):
             release_status=album.release_status,
             names=[str(title)],
             detail_link=f"{cls._detail_url}/{media_id}",
+            raw_data={"isrcs": list(recording.get("isrcs") or [])},
         ))
 
     @classmethod
