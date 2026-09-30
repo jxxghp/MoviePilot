@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 from dataclasses import dataclass
@@ -6,7 +7,8 @@ from pathlib import Path
 from threading import RLock
 from typing import Any, Callable, Optional
 
-from Pinyin2Hanzi import DefaultHmmParams, is_pinyin
+import Pinyin2Hanzi
+from Pinyin2Hanzi import is_pinyin
 
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.runtime import get_metainfo_accelerator
@@ -775,9 +777,17 @@ class MusicNameRegistry:
 
 
 @lru_cache(maxsize=1)
-def _music_pinyin_parameters() -> DefaultHmmParams:
-    """按需复用已有拼音库的字音模型，仅校验副标题原文，不生成猜测名称。"""
-    return DefaultHmmParams()
+def _music_pinyin_states() -> dict[str, str]:
+    """按需读取拼音库的「音节 → 候选汉字」表，仅校验副标题原文，不生成猜测名称。
+
+    只读取 ``DefaultHmmParams.get_states()`` 依赖的 ``hmm_py2hz.json``（约 260KB）。
+    ``DefaultHmmParams()`` 会同时载入约 14MB JSON 的起始、发射与转移概率表，
+    常驻约 50MB 且这里用不到。数据文件路径随锁定的 pinyin2hanzi 版本固定。
+    """
+    path = Path(Pinyin2Hanzi.__file__).parent / "data" / "hmm_py2hz.json"
+    with path.open(encoding="utf-8") as file:
+        states: dict[str, str] = json.load(file)
+    return states
 
 
 class MetaMusic(MetaBase):
@@ -1083,7 +1093,7 @@ class MetaMusic(MetaBase):
             if len(characters) != len(parts) or not re.fullmatch(r"[\u3400-\u9fff]+", characters):
                 continue
             try:
-                if all(char in _music_pinyin_parameters().get_states(part) for char, part in zip(characters, parts)):
+                if all(char in _music_pinyin_states()[part] for char, part in zip(characters, parts)):
                     return candidate
             except KeyError:
                 # 字音模型不覆盖的音节不提供名称替换证据。
