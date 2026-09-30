@@ -22,6 +22,8 @@ class MusicRecognitionObservation:
     message: str = "没有匹配到足够可靠的音乐信息"
     candidates: list[dict[str, Any]] = field(default_factory=list)
     fingerprint_candidates: list[dict[str, Any]] = field(default_factory=list)
+    sources: list[dict[str, Any]] = field(default_factory=list)
+    parent: Optional["MusicRecognitionObservation"] = field(default=None, repr=False)
     lock: Any = field(default_factory=RLock, repr=False)
 
     @property
@@ -31,8 +33,11 @@ class MusicRecognitionObservation:
 
     def to_dict(self) -> dict[str, Any]:
         """输出用户可解释的结果，不包含内部时钟或同步对象。"""
-        return {"status": self.status, "message": self.message,
-                "requests": self.requests, "candidates": [dict(item) for item in self.candidates]}
+        result = {"status": self.status, "message": self.message,
+                  "requests": self.requests, "candidates": [dict(item) for item in self.candidates]}
+        if self.sources:
+            result["sources"] = [dict(item) for item in self.sources]
+        return result
 
 
 _current_observation: ContextVar[Optional[MusicRecognitionObservation]] = ContextVar(
@@ -56,15 +61,71 @@ def capture_music_recognition(*, seconds: float = 45, request_limit: int = 8) ->
             _current_observation.reset(token)
 
 
+@contextmanager
+def capture_music_source(source: str) -> Iterator[MusicRecognitionObservation]:
+    """每个来源独立记录失败，全部祖先预算在同一锁下计数，不能通过换来源重置总额度。"""
+    parent = _current_observation.get()
+    observation = MusicRecognitionObservation(
+        deadline=min(parent.deadline, monotonic() + 45) if parent else monotonic() + 45,
+        parent=parent, lock=parent.lock if parent else RLock(),
+    )
+    if parent and parent.status in BLOCKING_MUSIC_RECOGNITION_STATES:
+        observation.status, observation.message = parent.status, parent.message
+        observation.candidates = [dict(item) for item in parent.candidates]
+    token = _current_observation.set(observation)
+    try:
+        yield observation
+    except Exception:
+        report_music_recognition("service_error", "音乐元数据来源暂时不可用")
+        raise
+    finally:
+        _current_observation.reset(token)
+        if parent is not None:
+            with parent.lock:
+                parent.sources = [*parent.sources, {"source": source, **observation.to_dict()}][-8:]
+
+
+def _result_diagnostic(info: Any) -> dict[str, Any]:
+    """只读取音乐结果的诊断，避免改变影视识别的插件及共享回退行为。"""
+    if not hasattr(info, "music_type"):
+        return {}
+    raw = getattr(info, "raw_data", None)
+    diagnostic = raw.get("recognition") if isinstance(raw, dict) else None
+    return diagnostic if isinstance(diagnostic, dict) else {}
+
+
+def music_recognition_needs_confirmation(info: Any) -> bool:
+    """明确的歧义或冲突需要用户确认，不能由下一层弱搜索或共享结果覆盖。"""
+    return _result_diagnostic(info).get("status") in {"ambiguous", "conflict"}
+
+
+def music_recognition_is_blocked(info: Any) -> bool:
+    """来源及插件回退均未解决的诊断，必须保留给整理准入和持久重试处理。"""
+    return _result_diagnostic(info).get("status") in BLOCKING_MUSIC_RECOGNITION_STATES
+
+
+def _observation_ancestors(observation: MusicRecognitionObservation) -> list[MusicRecognitionObservation]:
+    """收集当前来源及外层操作预算；父引用只在创建子范围时建立。"""
+    scopes = []
+    current: Optional[MusicRecognitionObservation] = observation
+    while current is not None:
+        scopes.append(current)
+        current = current.parent
+    return scopes
+
+
 def report_music_recognition(status: str, message: str = "", candidates: Optional[list[dict[str, Any]]] = None) -> None:
     """来源在不改返回值的前提下报告诊断；已有服务故障不能被空结果掩盖。"""
     observation = _current_observation.get()
     if observation is None:
         return
     with observation.lock:
-        if observation.status == "budget_exhausted" and status != "budget_exhausted":
+        confirmations = {"ambiguous", "conflict"}
+        if observation.status in confirmations and status not in confirmations:
             return
-        if observation.failed and status not in {"service_error", "budget_exhausted"}:
+        if observation.status == "budget_exhausted" and status not in {"budget_exhausted", *confirmations}:
+            return
+        if observation.failed and status not in {"service_error", "budget_exhausted", *confirmations}:
             return
         observation.status, observation.message = status, message
         if candidates is not None:
@@ -72,9 +133,9 @@ def report_music_recognition(status: str, message: str = "", candidates: Optiona
 
 
 def music_recognition_failed() -> bool:
-    """供识别与缓存调用判断本次空结果是否实际来自故障。"""
+    """检查当前来源及祖先故障，子范围或缓存命中不能绕过已失败的外层操作。"""
     observation = _current_observation.get()
-    return bool(observation and observation.failed)
+    return bool(observation and any(scope.failed for scope in _observation_ancestors(observation)))
 
 
 def music_recognition_diagnostics() -> dict[str, Any]:
@@ -106,12 +167,14 @@ def music_request_timeout(*, claim: bool = True, maximum: float = 20) -> Optiona
     if observation is None:
         return maximum
     with observation.lock:
-        if observation.failed:
+        scopes = _observation_ancestors(observation)
+        if any(scope.status in BLOCKING_MUSIC_RECOGNITION_STATES for scope in scopes):
             return None
-        remaining = observation.deadline - monotonic()
-        if remaining <= 0 or (claim and observation.requests >= observation.request_limit):
+        remaining = min(scope.deadline for scope in scopes) - monotonic()
+        if remaining <= 0 or (claim and any(scope.requests >= scope.request_limit for scope in scopes)):
             report_music_recognition("budget_exhausted", "音乐识别已达到本次请求上限，请稍后重试或手动选择专辑")
             return None
         if claim:
-            observation.requests += 1
+            for scope in scopes:
+                scope.requests += 1
         return min(maximum, remaining)

@@ -443,7 +443,7 @@ def test_recognize_album_directory_invalidates_cache_after_same_count_rename(
     second.write_bytes(b"RIFF")
     calls = []
 
-    def fake_match(_dir_path, files):
+    def fake_match(_dir_path, files, *_options):
         """记录目录匹配输入，返回空映射以专注验证缓存签名。"""
         calls.append([file.name for file in files])
         return {}
@@ -473,7 +473,7 @@ def test_recognize_album_directory_invalidates_cache_after_content_change(
         file.write_bytes(b"RIFF")
     calls = 0
 
-    def fake_match(_directory, _files):
+    def fake_match(_directory, _files, *_options):
         """记录缓存未命中的目录识别次数。"""
         nonlocal calls
         calls += 1
@@ -524,7 +524,7 @@ def test_album_directory_cache_keeps_symbolic_link_directory_aliases_distinct(
     second_alias.symlink_to(physical, target_is_directory=True)
     calls = []
 
-    def fake_match(directory, files):
+    def fake_match(directory, files, *_options):
         """用目录别名生成结果，暴露错误共享物理路径缓存的行为。"""
         calls.append(directory.name)
         return {
@@ -560,7 +560,7 @@ async def test_async_album_directory_cache_keeps_symbolic_link_aliases_distinct(
     second_alias.symlink_to(physical, target_is_directory=True)
     calls = []
 
-    async def fake_match(directory, files):
+    async def fake_match(directory, files, *_options):
         """用目录别名生成异步结果，验证两个别名分别执行。"""
         calls.append(directory.name)
         return {

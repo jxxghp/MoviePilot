@@ -50,7 +50,7 @@ class _ProjectionEventManagerPort(Protocol):
 
 
 if TYPE_CHECKING:
-    from app.application.music.catalog import MusicCatalogService
+    from app.application.music.catalog import MusicCatalogService, MusicSourcePort
 
     class _MediaOwnerBase:
         """声明各媒体 owner 组合后可依赖的精确静态合同。"""
@@ -62,6 +62,11 @@ if TYPE_CHECKING:
         _music_simplified_text_fields: ClassVar[tuple[str, ...]]
         _music_simplified_list_fields: ClassVar[tuple[str, ...]]
         eventmanager: _ProjectionEventManagerPort
+
+        @staticmethod
+        def _music_source_chain(media_source: MediaSource) -> Optional[MusicSourcePort]:
+            """解析固定音乐来源链，目录匹配与目录搜索使用同一来源端口。"""
+            ...
 
         def run_module(
             self,

@@ -4,13 +4,13 @@ import re
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Iterable, Literal, Optional
+from typing import Any, Generator, Iterable, Literal, Optional
 from unicodedata import combining, normalize
 
-from app.domain.context import MusicInfo
+from app.domain.context import MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.foundation.text import convert as zhconv_convert
-from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaType
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType
 
 _EDITION = re.compile(
     r"\s*[\[(（【](?:[^\])）】]*\b(?:deluxe|expanded|special|limited|anniversary|remaster(?:ed)?)\b"
@@ -67,6 +67,93 @@ class MusicDirectoryMatch(dict[str, MusicInfo]):
         """复制映射与诊断，读取和缓存使用方不共享可变摘要。"""
         super().__init__(values or {})
         self.recognition = deepcopy(recognition or {})
+
+
+@dataclass(frozen=True, slots=True)
+class MusicAlbumLookup:
+    """专辑来源匹配所需的一次搜索或详情动作，不在领域层执行I/O。"""
+
+    meta: Optional[MetaMusic] = None
+    album_id: Optional[str] = None
+    truncated: bool = False
+
+
+def music_album_queries(meta: MetaMusic, tracks: list[MetaMusic]) -> list[MetaMusic]:
+    """优先按已知专辑检索；专辑名缺失时最多用三首有效曲名反查所属专辑。"""
+    artists = music_usable_artists([meta.album_artist] if meta.album_artist else meta.artists)
+    if not music_album_title_is_weak(meta):
+        title = meta.album or meta.title
+        return [MetaMusic(title=title, album=title, artists=artists, album_artist=meta.album_artist,
+                          version=meta.version, music_type=MUSIC_ENTITY_ALBUM)]
+    queries = []
+    seen = set()
+    for track in tracks:
+        if music_track_title_is_weak(track) or music_text_key(track.title) in seen:
+            continue
+        seen.add(music_text_key(track.title))
+        queries.append(MetaMusic(title=track.title, artists=music_usable_artists(track.artists) or artists,
+                                 version=track.version, music_type=MUSIC_ENTITY_RECORDING))
+        if len(queries) == 3:
+            break
+    return queries
+
+
+def music_album_lookup_plan(
+        source: MediaSource, meta: MetaMusic, tracks: list[MetaMusic],
+) -> Generator[MusicAlbumLookup, list[MusicInfo] | MusicAlbumInfo | None, list[MusicAlbumInfo]]:
+    """收集同来源的专辑ID并优先读取被多首歌共同支持的候选，最多核验五个详情。"""
+    support: dict[str, int] = {}
+    for query in music_album_queries(meta, tracks):
+        cards = yield MusicAlbumLookup(meta=query)
+        if not isinstance(cards, list):
+            continue
+        ids = set()
+        for card in cards:
+            if card.media_source != source or card.music_type != query.music_type:
+                continue
+            if not music_title_matches(card, query.title, preserve_editions=True) or not music_version_matches(card, query):
+                continue
+            album_id = card.media_id if query.music_type == MUSIC_ENTITY_ALBUM else card.album_id
+            if album_id and album_id not in ids:
+                ids.add(album_id)
+                support[album_id] = support.get(album_id, 0) + 1
+    if len(support) > 5:
+        yield MusicAlbumLookup(truncated=True)
+        return []
+    albums = []
+    for album_id in sorted(support, key=support.__getitem__, reverse=True):
+        album = yield MusicAlbumLookup(album_id=album_id)
+        if isinstance(album, MusicAlbumInfo) and album.media_source == source and album.media_id == album_id:
+            albums.append(album)
+    return albums
+
+
+def music_album_candidate_matches(album: MusicAlbumInfo, meta: MetaMusic, tracks: list[MetaMusic]) -> bool:
+    """来源专辑必须满足名称、署名、版本与完整本地对位；弱专辑名需要额外曲目证据。"""
+    if not tracks or not album.tracks:
+        return False
+    info = album.to_music_info()
+    known_title = not music_album_title_is_weak(meta)
+    if known_title and not music_title_matches(info, meta.album or meta.title, preserve_editions=True):
+        return False
+    artists = music_usable_artists([meta.album_artist] if meta.album_artist else meta.artists)
+    if artists and not music_artist_matches(info, artists):
+        return False
+    evidence = MetaMusic(title=meta.album or meta.title, version=meta.version)
+    if not music_version_matches(info, evidence) or not music_release_year_matches(info, meta):
+        return False
+    aligned = align_music_tracks(tracks, album.tracks)
+    if len(aligned) != len(tracks):
+        return False
+    if known_title and artists:
+        return True
+    named = sum(not music_track_title_is_weak(track) for track in tracks)
+    durations = 0
+    for index, track in enumerate(tracks):
+        remote_duration = album.tracks[aligned[index]].duration
+        if track.duration and remote_duration and abs(track.duration - remote_duration) <= max(2, min(5, track.duration * .02)):
+            durations += 1
+    return named >= 2 or (durations == len(tracks) and durations >= 2)
 
 
 def music_package_error(filename: str) -> Optional[str]:
@@ -237,7 +324,7 @@ def music_usable_artists(artists: Iterable[str]) -> list[str]:
 def music_album_title_is_weak(meta: MetaMusic) -> bool:
     """普通收件目录不是专辑证据，标签或种子明确提供的同名专辑仍有效。"""
     title = meta.album or meta.title
-    if not title:
+    if not _usable_music_tag(title):
         return True
     source = meta.field_sources.get("album" if meta.album else "title")
     if source in {"tag", "album_tags", "cue", "torrent", "manual", "remote"}:
@@ -310,9 +397,10 @@ def _music_track_pair_score(meta: MetaMusic, track: MusicInfo, allow_title_overr
         if meta.media_id != track.media_id and not allow_title_override:
             return 0.0
         identity_match = identity_match or meta.media_id == track.media_id
-    if (not allow_title_override and meta.artists and track.artists
+    artists = music_usable_artists(meta.artists)
+    if (not allow_title_override and artists and track.artists
             and meta.field_sources.get("artists") not in {"directory", "torrent", "album_tags"}
-            and not music_artist_matches(track, meta.artists)):
+            and not music_artist_matches(track, artists)):
         return 0.0
     duration_close = False
     if meta.duration and track.duration:
@@ -323,9 +411,9 @@ def _music_track_pair_score(meta: MetaMusic, track: MusicInfo, allow_title_overr
         duration_close = delta <= max(3, min(8, longest * 0.025))
     title_key = _alignment_title_key(meta.title)
     weak_title = music_track_title_is_weak(meta)
-    title_match = not weak_title and bool(title_key) and any(
+    title_match = not weak_title and bool(title_key) and (any(
         title_key == _alignment_title_key(value) for value in music_titles(track)
-    )
+    ) or bool(meta.version and music_title_matches(track, meta.title) and music_version_matches(track, meta)))
     position_match = bool(
         meta.track_number and meta.track_number == track.track_number
         and (not meta.disc_number or meta.disc_number == (track.disc_number or 1))

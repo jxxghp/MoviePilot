@@ -762,8 +762,8 @@ flowchart LR
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 1055 |
-| 内部导入边 | 8,991 |
+| Python 模块 | 1056 |
+| 内部导入边 | 9,022 |
 | 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
 | Direct egress | 53（债务已清零，53 条精确 containment） |
@@ -773,7 +773,7 @@ flowchart LR
 | Model/Oper 自动事务与自建 Session | 0 |
 | 组合根外 `SystemConfigOper()` | 0 |
 
-整理失败反馈由 `app.application.transfer.feedback` 集中投影；已整理下载的站点字幕复用 `app.chain.transfer` 自动整理队列；网络连通性检测按 `app.application.nettest` 归档，并覆盖 HTTP 与 WebSocket 探测。未启用智能助手的消息音乐交互由 `app.chain.music_interaction` 包中的解析展示与订阅协调模块处理；音乐标签准入与批次共识由 `app.chain.transfer.music` 负责；宿主依赖边现为 8,991，音乐交互包未新增 SCC，插件一次性任务 owner `app.scheduler.oncejob` 带来 1 个模块和 9 条依赖边。Agent 持久回执新增 Application 端口及 DB Model/Oper/Adapter 四个冷导入模块。缓存组合根只在启动时选用 Redis 缓存才导入 Redis 适配器，依赖 langchain_core 的对话记忆模型归属 `app.agent.memory`，文件缓存且未启用智能体的实例不再加载 redis 与 langchain_core。当前 `app.startup.lifecycle` 为 575、`app.factory` 为 587、`app.main` 为 589。音乐调用观察 `app.application.music.observation` 新增一个轻量模块，记录来源结果及请求预算；AcoustID及路径识别复用此上下文传递有界指纹候选，保留旧单ID模块合同。站点图片域名快照新增 `app.application.security.image`，各启动入口增加一个模块；性能基线只同步模块数量，原有耗时预算、历史采样和生命周期资源约束保持有效。
+整理失败反馈由 `app.application.transfer.feedback` 集中投影；已整理下载的站点字幕复用 `app.chain.transfer` 自动整理队列；网络连通性检测按 `app.application.nettest` 归档，并覆盖 HTTP 与 WebSocket 探测。未启用智能助手的消息音乐交互由 `app.chain.music_interaction` 包中的解析展示与订阅协调模块处理；音乐标签准入与批次共识由 `app.chain.transfer.music` 负责；宿主依赖边现为 9,022，音乐交互包未新增 SCC，插件一次性任务 owner `app.scheduler.oncejob` 带来 1 个模块和 9 条依赖边。Agent 持久回执新增 Application 端口及 DB Model/Oper/Adapter 四个冷导入模块。缓存组合根只在启动时选用 Redis 缓存才导入 Redis 适配器，依赖 langchain_core 的对话记忆模型归属 `app.agent.memory`，文件缓存且未启用智能体的实例不再加载 redis 与 langchain_core。当前 `app.startup.lifecycle` 为 576、`app.factory` 为 588、`app.main` 为 590。音乐调用观察 `app.application.music.observation` 新增一个轻量模块，记录来源结果及请求预算；AcoustID及路径识别复用此上下文传递有界指纹候选，保留旧单ID模块合同。站点图片域名快照新增 `app.application.security.image`，各启动入口增加一个模块；性能基线只同步模块数量，原有耗时预算、历史采样和生命周期资源约束保持有效。
 
 架构专项验证分为两个 CI 投影：`Check event semantic policy` 先运行依赖、Adapter、出口和 Event
 语义门禁，`Check host architecture snapshot` 再执行快照测试及一次
@@ -828,3 +828,5 @@ flowchart LR
 | [`docs/refactor/refactor-roadmap.md`](refactor/refactor-roadmap.md) | 多级 Goal、叶子依赖、清零条件与交付状态 |
 | [`docs/v3t-runtime-governance.md`](v3t-runtime-governance.md) | V3/V3t 运行依赖、故障恢复、GIL 可观测性与兼容退场门禁 |
 | [`docs/adr/0007-background-action-reliability.md`](adr/0007-background-action-reliability.md) | 后台动作 E0–E3 可靠性分级与完成语义决策 |
+
+音乐来源回退由 `app.application.music.recognition` 持有独立来源诊断和共享祖先预算，新增一个轻量启动模块。来源顺序由现有配置冻结，Chain通过已声明的音乐目录Port获取专辑与完整曲目；领域层只负责检索计划、身份和唯一对位。新增31条内部依赖均符合分层边界，不增加SCC或具体Adapter直连；启动性能仍使用原耗时预算。

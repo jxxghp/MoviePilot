@@ -1447,7 +1447,7 @@
     "no-any-return": 4,
     "no-untyped-def": 132,
     "return-value": 1,
-    "type-arg": 26,
+    "type-arg": 22,
     "var-annotated": 1
   },
   "app/modules/douban/scraper.py": {

@@ -12,6 +12,7 @@ from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.music.observation import (
     capture_music_recognition,
     music_recognition_failed,
+    music_recognition_is_blocked,
     report_music_fingerprints,
 )
 from app.chain.acoustid import AcoustIdChain
@@ -24,7 +25,7 @@ from app.domain.context import (
 from app.domain.media import is_music_media_source
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfoPath
-from app.domain.music import music_album_title_is_weak, music_track_title_is_weak
+from app.domain.music import MusicDirectoryMatch, music_album_title_is_weak, music_track_title_is_weak
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
 from app.schemas.media import normalize_media_source
@@ -201,7 +202,11 @@ def _finalize_music_path_info(
     info: Optional[MusicInfo],
 ) -> MusicInfo:
     """统一远端命中和本地兜底的音频质量合并。"""
-    result = _merge_music_audio_quality(info or MusicInfo.from_meta(meta), meta)
+    if info and music_recognition_is_blocked(info) and not _has_remote_music_identity(info):
+        result = MusicInfo.from_meta(meta)
+        result.raw_data["recognition"] = deepcopy(info.raw_data["recognition"])
+    else:
+        result = _merge_music_audio_quality(info or MusicInfo.from_meta(meta), meta)
     if (
         _has_remote_music_identity(result)
         and result.music_type == MUSIC_ENTITY_RECORDING
@@ -540,6 +545,8 @@ def _music_tier_plan(
                     info=direct,
                     message=f"音乐识别命中{tier_name}层 MusicBrainz ID 直查",
                 )
+            if music_recognition_is_blocked(direct):
+                return _MusicTierOutcome(info=direct, message="音乐识别需要重试或确认")
         search_meta = _without_music_identity(meta)
     if not search_meta.title:
         return _MusicTierOutcome()
@@ -547,6 +554,8 @@ def _music_tier_plan(
         kind=_MusicTierActionKind.SEARCH,
         meta=search_meta,
     )
+    if music_recognition_is_blocked(result):
+        return _MusicTierOutcome(info=result, message="音乐识别需要重试或确认")
     if _has_remote_music_identity(result):
         return _MusicTierOutcome(
             info=result,
@@ -564,21 +573,21 @@ def _music_path_plan(
     normalized_source = normalize_media_source(media_source)
     if normalized_source in (None, MediaSource.MusicBrainz):
         info = yield _MusicPathAction(kind=_MusicPathActionKind.FINGERPRINT)
-        if _has_remote_music_identity(info) or (info and info.raw_data.get("recognition", {}).get("status") == "ambiguous"):
+        if _has_remote_music_identity(info) or music_recognition_is_blocked(info):
             return info
     info = yield _MusicPathAction(
         kind=_MusicPathActionKind.TAG,
         meta=tag_meta,
         tier_name="文件标签",
     )
-    if _has_remote_music_identity(info):
+    if _has_remote_music_identity(info) or music_recognition_is_blocked(info):
         return info
     info = yield _MusicPathAction(
         kind=_MusicPathActionKind.FILENAME,
         meta=filename_meta,
         tier_name="文件名",
     )
-    if _has_remote_music_identity(info):
+    if _has_remote_music_identity(info) or music_recognition_is_blocked(info):
         return info
     if normalized_source in (None, MediaSource.MusicBrainz):
         return (yield _MusicPathAction(kind=_MusicPathActionKind.ALBUM))
@@ -703,6 +712,8 @@ class MediaPathOwner(_MediaOwnerBase):
                 action = plan.send(result)
         except StopIteration as completed:
             outcome = cast(_MusicTierOutcome, completed.value)
+        if music_recognition_is_blocked(outcome.info):
+            return outcome.info
         if outcome.info and not _music_info_matches_text_evidence(outcome.info, meta):
             logger.warning(
                 f"{tier_name}音乐候选与本地版本或发行年份冲突，已忽略："
@@ -740,6 +751,8 @@ class MediaPathOwner(_MediaOwnerBase):
                 action = plan.send(result)
         except StopIteration as completed:
             outcome = cast(_MusicTierOutcome, completed.value)
+        if music_recognition_is_blocked(outcome.info):
+            return outcome.info
         if outcome.info and not _music_info_matches_text_evidence(outcome.info, meta):
             logger.warning(
                 f"{tier_name}音乐候选与本地版本或发行年份冲突，已忽略："
@@ -763,6 +776,10 @@ class MediaPathOwner(_MediaOwnerBase):
         except Exception as err:
             logger.debug(f"专辑目录匹配失败：{file_path.parent} - {err}")
             return None
+        if isinstance(matched, MusicDirectoryMatch):
+            pending = MusicInfo(raw_data={"recognition": deepcopy(matched.recognition)})
+            if music_recognition_is_blocked(pending):
+                return pending
         return matched.get(str(file_path.resolve()))
 
     async def _async_music_album_dir_fallback(
@@ -778,6 +795,10 @@ class MediaPathOwner(_MediaOwnerBase):
         except Exception as err:
             logger.debug(f"专辑目录匹配失败：{file_path.parent} - {err}")
             return None
+        if isinstance(matched, MusicDirectoryMatch):
+            pending = MusicInfo(raw_data={"recognition": deepcopy(matched.recognition)})
+            if music_recognition_is_blocked(pending):
+                return pending
         return matched.get(str(file_path.resolve()))
 
     def recognize_music_by_path(
@@ -811,7 +832,7 @@ class MediaPathOwner(_MediaOwnerBase):
                     info = _recognize_fingerprints(path, meta, tag_meta, filename_meta, self._recognize_musicbrainz_recording)
                 elif action.kind is _MusicPathActionKind.ALBUM:
                     info = self._music_album_dir_fallback(path)
-                    if info and not _music_info_matches_text_evidence(info, meta):
+                    if info and not music_recognition_is_blocked(info) and not _music_info_matches_text_evidence(info, meta):
                         logger.warning(
                             "音乐目录候选与本地版本或发行年份冲突，已忽略："
                             f"{Path(path).name} -> {info.artist} - {info.album or info.title} "
@@ -864,7 +885,7 @@ class MediaPathOwner(_MediaOwnerBase):
                     info = await _async_recognize_fingerprints(path, meta, tag_meta, filename_meta, self._async_recognize_musicbrainz_recording)
                 elif action.kind is _MusicPathActionKind.ALBUM:
                     info = await self._async_music_album_dir_fallback(path)
-                    if info and not _music_info_matches_text_evidence(info, meta):
+                    if info and not music_recognition_is_blocked(info) and not _music_info_matches_text_evidence(info, meta):
                         logger.warning(
                             "音乐目录候选与本地版本或发行年份冲突，已忽略："
                             f"{Path(path).name} -> {info.artist} - {info.album or info.title} "

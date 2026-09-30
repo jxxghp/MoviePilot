@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Optional, Tuple, Union
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+from app.application.music.observation import music_request_timeout, report_music_recognition
+from app.application.music.recognition import unique_music_match
 from app.domain.context import (
     MusicAlbumInfo,
     MusicArtistInfo,
@@ -10,7 +12,13 @@ from app.domain.context import (
 from app.domain.media import is_media_source_selected
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
-from app.domain.music import music_artist_matches, music_isrc_matches, music_title_matches, music_version_matches
+from app.domain.music import (
+    music_artist_matches,
+    music_isrc_matches,
+    music_release_year_matches,
+    music_title_matches,
+    music_version_matches,
+)
 from app.modules import _ModuleBase
 from app.runtime.cache import cached
 from app.runtime.log import logger
@@ -121,13 +129,13 @@ class TheAudioDbModule(_ModuleBase):
             music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> Optional[list[MusicInfo]]:
         """按请求来源搜索 TheAudioDB 单曲、专辑和艺术家，并兼容实体过滤参数。"""
-        del music_types
         if not is_media_source_selected(media_source, self._source):
             return None
         normalized_limit = max(1, min(limit, 100))
-        tracks = self._search_tracks(meta)
-        albums = self._search_albums(meta)
-        artists = self._search_artists(meta)
+        selected: set[str] = set(music_types) if music_types else ({meta.music_type} if meta.music_type else {"recording", "album", "artist"})
+        tracks = self._search_tracks(meta) if "recording" in selected else []
+        albums = self._search_albums(meta) if "album" in selected else []
+        artists = self._search_artists(meta) if "artist" in selected else []
         return self._interleave_results(
             tracks,
             albums,
@@ -521,16 +529,19 @@ class TheAudioDbModule(_ModuleBase):
             candidates: list[MusicInfo],
     ) -> Optional[MusicInfo]:
         """复用统一音乐证据确认单曲，明确 ISRC 优先于名称候选。"""
-        identity = next((candidate for candidate in candidates if music_isrc_matches(candidate, meta)), None)
-        if identity is not None:
-            return identity
+        identities = [candidate for candidate in candidates if music_isrc_matches(candidate, meta)]
+        if identities:
+            return unique_music_match(identities)
+        matches = []
         for candidate in candidates:
             if not music_title_matches(candidate, meta.title, preserve_editions=True) or not music_version_matches(candidate, meta):
                 continue
             if meta.artists and not music_artist_matches(candidate, meta.artists):
                 continue
-            return candidate
-        return None
+            if not music_release_year_matches(candidate, meta):
+                continue
+            matches.append(candidate)
+        return unique_music_match(matches)
 
     @staticmethod
     def _select_album(
@@ -541,14 +552,17 @@ class TheAudioDbModule(_ModuleBase):
         expected_title = meta.album or meta.title
         expected_artists = [meta.album_artist] if meta.album_artist else meta.artists
         album_meta = MetaMusic(title=expected_title, version=meta.version)
+        matches = []
         for candidate in candidates:
             music = candidate.to_music_info()
             if not music_title_matches(music, expected_title, preserve_editions=True) or not music_version_matches(music, album_meta):
                 continue
             if expected_artists and not music_artist_matches(music, expected_artists):
                 continue
-            return candidate
-        return None
+            if not music_release_year_matches(music, meta):
+                continue
+            matches.append(candidate)
+        return unique_music_match(matches)
 
     @classmethod
     def _track_to_info(
@@ -692,10 +706,12 @@ class TheAudioDbModule(_ModuleBase):
     ) -> Optional[dict[str, Any]]:
         """统一校验并解析 TheAudioDB 响应，避免同步异步错误语义漂移。"""
         if response.status_code != 200:
+            report_music_recognition("service_error", "TheAudioDB 服务暂时不可用")
             return None
         diagnostic = cls._response_diagnostic(response, endpoint)
         if getattr(response, "content", None) in (b"", ""):
             logger.warning(f"TheAudioDB 返回空响应：{diagnostic}")
+            report_music_recognition("service_error", "TheAudioDB 返回空响应")
             return None
         try:
             payload = response.json()
@@ -703,8 +719,12 @@ class TheAudioDbModule(_ModuleBase):
             logger.warning(
                 f"TheAudioDB 响应解析失败：{diagnostic}，错误：{str(err)}"
             )
+            report_music_recognition("service_error", "TheAudioDB 返回了无效响应")
             return None
-        return payload if isinstance(payload, dict) else None
+        if not isinstance(payload, dict) or payload.get("error") or payload.get("success") is False:
+            report_music_recognition("service_error", "TheAudioDB 返回了无效响应")
+            return None
+        return payload
 
     @classmethod
     def _request_plan(
@@ -723,7 +743,8 @@ class TheAudioDbModule(_ModuleBase):
         )
 
     @classmethod
-    @cached(maxsize=get_runtime_setting('CONF').theaudiodb, ttl=get_runtime_setting('CONF').meta, skip_none=True)
+    @cached(maxsize=get_runtime_setting('CONF').theaudiodb, ttl=get_runtime_setting('CONF').meta, skip_none=True,
+            shared_key="music_http_v2", empty_ttl=300, empty_if=lambda payload: isinstance(payload, dict) and not any(payload.values()))
     def _request_json(
             cls,
             endpoint: str,
@@ -736,6 +757,9 @@ class TheAudioDbModule(_ModuleBase):
         if not plan:
             logger.warning("TheAudioDB API Key 未配置，跳过请求")
             return None
+        timeout = music_request_timeout(maximum=30)
+        if timeout is None:
+            return None
         response = RequestUtils(
             ua=get_runtime_setting('USER_AGENT'),
             proxies=get_runtime_setting('PROXY'),
@@ -743,8 +767,10 @@ class TheAudioDbModule(_ModuleBase):
         ).get_res(
             url=plan.url,
             params=plan.params,
+            timeout=timeout,
         )
         if response is None:
+            report_music_recognition("service_error", "TheAudioDB 连接失败")
             return None
         try:
             return cls._response_payload(response, endpoint)
@@ -756,7 +782,9 @@ class TheAudioDbModule(_ModuleBase):
         maxsize=get_runtime_setting('CONF').theaudiodb,
         ttl=get_runtime_setting('CONF').meta,
         skip_none=True,
-        shared_key="_request_json",
+        shared_key="music_http_v2",
+        empty_ttl=300,
+        empty_if=lambda payload: isinstance(payload, dict) and not any(payload.values()),
     )
     async def _async_request_json(
             cls,
@@ -770,6 +798,9 @@ class TheAudioDbModule(_ModuleBase):
         if not plan:
             logger.warning("TheAudioDB API Key 未配置，跳过请求")
             return None
+        timeout = music_request_timeout(maximum=30)
+        if timeout is None:
+            return None
         response = await AsyncRequestUtils(
             ua=get_runtime_setting('USER_AGENT'),
             proxies=get_runtime_setting('PROXY'),
@@ -777,8 +808,10 @@ class TheAudioDbModule(_ModuleBase):
         ).get_res(
             url=plan.url,
             params=plan.params,
+            timeout=timeout,
         )
         if response is None:
+            report_music_recognition("service_error", "TheAudioDB 连接失败")
             return None
         try:
             return cls._response_payload(response, endpoint)

@@ -403,7 +403,7 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 
 媒体来源列表 `/api/v1/media/source` 仅预置上述九个来源，其余来源由启用插件注册后提供。哔哩哔哩、芒果 TV、咪咕视频、腾讯视频、爱奇艺不再占用内置来源标识，宿主也不再转换这些插件来源的旧别名；调用方应使用插件声明的准确来源 ID。
 
-影视自动识别在未指定来源时只使用 TMDB，未命中时不会继续查询其它影视源。音乐路径识别严格按 AcoustID 音频指纹、文件标签、文件名三级依次执行；指纹或标签直接提供 MusicBrainz Recording ID 时，会直接查询 MusicBrainz 详情，标签和文件名标题识别也只使用 MusicBrainz。其它元数据源仅在手动操作通过请求级 `media_source`，或通过完整的 `media_source` + `media_id` 精确指定时使用，不修改系统默认值，也不会跨来源兜底。`MediaInfo` 响应仍可能包含 `tmdb_id`、`douban_id`、`bangumi_id`、`anilist_id` 等跨源映射辅助字段，但这些字段不是通用请求入口。明确归属 `/tmdb`、`/douban`、`/bangumi`、`/anilist` 的接口，以及固定使用 TMDB 的剧集组和排期接口，仍可按其单数据源契约接收原生 ID。
+影视自动识别在未指定来源时只使用 TMDB，未命中时不会继续查询其它影视源。音乐路径识别严格按 AcoustID 音频指纹、文件标签、文件名三级依次执行；指纹或标签直接提供 MusicBrainz Recording ID 时，会直接查询 MusicBrainz 详情，未绑定身份的音乐标题及目录识别按 `SEARCH_SOURCE` 中内置音乐来源的配置顺序回退（MusicBrainz、TheAudioDB、豆瓣音乐），未选择音乐来源时兼容默认 MusicBrainz。显式 `media_source` / 主身份或 MusicBrainz 发行标签固定所属来源；来源之间不转换或拼接 ID。`MediaInfo` 响应仍可能包含 `tmdb_id`、`douban_id`、`bangumi_id`、`anilist_id` 等跨源映射辅助字段，但这些字段不是通用请求入口。明确归属 `/tmdb`、`/douban`、`/bangumi`、`/anilist` 的接口，以及固定使用 TMDB 的剧集组和排期接口，仍可按其单数据源契约接收原生 ID。
 
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
@@ -594,10 +594,12 @@ APEv2 按[标准标签映射](https://picard-docs.musicbrainz.org/en/latest/appe
 匹配成功时 `raw_data.match_score` 是 0–100 的排序分数，不是概率；`match_coverage=1` 仅表示当前输入文件全覆盖。
 整轨 CUE 以逻辑歌曲数和相邻索引时长参与匹配，返回仍为物理文件的专辑身份；修改 CUE 会使目录缓存失效。
 
-来源识别默认最多 8 次 HTTP 尝试，等待与请求超时按 45 秒预算约束，HTTP 缓存命中不消耗请求额度。
+每个来源最多 8 次 HTTP 尝试、45 秒，最多回退三个内置来源（总上限 24 次、135 秒）；已有更小的外层预算继续生效，切换来源不能恢复额度。HTTP 缓存命中不消耗请求额度。来源故障允许尝试下一来源，歧义或证据冲突立即停止。
+TheAudioDB 和豆瓣音乐的正常无匹配 HTTP 响应缓存五分钟，网络故障、非法响应和预算耗尽不缓存为空。
+次级来源整专识别必须取得完整曲目表并唯一对位当前全部文件；普通专辑目录不证明具体发行，返回 `identity_type=album`、`release_verified=false`，保留本地碟号、曲序、总数、当前发行年和首发年。配置来源顺序也参与目录缓存键。
 无匹配与服务故障分开处理：目录成功结果缓存一小时，无匹配缓存五分钟，服务故障仅冷却十五秒；
 无身份的 MusicBrainz 元数据负缓存最多五分钟，连接失败或预算耗尽不写成这种负缓存。
-`MusicInfo.raw_data.recognition` 可携带 `status`、`message`、`requests`、`candidates` 诊断。
+`MusicInfo.raw_data.recognition` 可携带 `status`、`message`、`requests`、`candidates` 诊断；多来源回退还包含 `sources` 数组，各项含 `source` 及该来源自己的诊断和请求数。
 `ambiguous`、`conflict`、`service_error`、`budget_exhausted` 均不能冒充远端匹配成功；整理规划遇到这些状态时停止文件操作，
 歧义不再回退为逐曲猜测。目录结果在 Python 调用方中保持字典兼容，并额外保留 `recognition` 属性。
 音乐缓存删除/清空同时清理来源响应及目录状态；刷新前进行中的目录查询不能回填刷新后的缓存。

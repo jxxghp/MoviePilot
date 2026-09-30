@@ -5,12 +5,16 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Mapping, Optional, cast
 
+from app.application.configuration import get_chain_runtime_config_snapshot
+from app.application.music.observation import music_recognition_needs_confirmation
+from app.application.music.recognition import async_recognize_music_sources, recognize_music_sources
 from app.chain.base import ChainBase
 from app.chain.media.contract import _MediaOwnerBase
 from app.domain.context import (
     MediaInfo,
+    MusicInfo,
 )
-from app.domain.media import is_music_media_source
+from app.domain.media import is_music_media_source, music_recognition_sources
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.runtime.cache import async_fresh, fresh
@@ -38,6 +42,20 @@ class _NativeRecognitionPlan:
     action: _NativeRecognitionAction
     kwargs: Mapping[str, Any]
     refresh_cache: bool = False
+    sources: tuple[MediaSource, ...] = ()
+
+
+def _music_fallback_info(info: Optional[MusicInfo], meta: MetaMusic, diagnostic: dict[str, Any]) -> MusicInfo:
+    """附加来源尝试记录而不污染来源缓存对象；未命中只保留本地元数据。"""
+    result = deepcopy(info) if info is not None else MusicInfo.from_meta(meta)
+    result.raw_data = {**(result.raw_data or {}), "recognition": diagnostic}
+    return result
+
+
+def _native_music_candidate(info: Optional[MusicInfo], source: MediaSource, kind: Optional[str]) -> bool:
+    """回退只能采用同一来源及所请求实体类型的有效主身份。"""
+    return bool(isinstance(info, MusicInfo) and info.media_id and info.media_source == source
+                and (not kind or info.music_type == kind))
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,14 +113,19 @@ class MediaRecognitionOwner(_MediaOwnerBase):
                     refresh_cache=not cache,
                 )
             if isinstance(meta, MetaMusic):
+                sources = music_recognition_sources(get_chain_runtime_config_snapshot().search_source, self._music_primary_source)
+                if any((meta.musicbrainz_release_id, meta.musicbrainz_release_group_id, meta.musicbrainz_release_track_id)):
+                    sources = (MediaSource.MusicBrainz,)
                 return _NativeRecognitionPlan(
                     action=_NativeRecognitionAction.MUSIC,
                     kwargs={
-                        "media_source": self._music_primary_source,
+                        "media_source": sources[0],
                         "meta": meta,
                         "cache": cache,
                         "music_type": module_kwargs.get("music_type") or meta.music_type or MUSIC_ENTITY_RECORDING,
                     },
+                    sources=sources if sources != (self._music_primary_source,) else (),
+                    refresh_cache=not cache,
                 )
             return _NativeRecognitionPlan(
                 action=_NativeRecognitionAction.NONE,
@@ -121,7 +144,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         module_kwargs: dict[str, Any],
         cache: bool,
     ) -> Optional[MediaInfo]:
-        """统一同步媒体识别路由，未指定来源时影视和音乐只使用各自主数据源。"""
+        """影视使用原主来源；未绑定身份的音乐按已配置内置来源有序回退。"""
         plan = MediaRecognitionOwner._native_recognition_plan(
             self, module_kwargs, cache
         )
@@ -129,6 +152,13 @@ class MediaRecognitionOwner(_MediaOwnerBase):
             return None
         if plan.action is _NativeRecognitionAction.MUSIC:
             with fresh(plan.refresh_cache):
+                if plan.sources:
+                    info, diagnostic = recognize_music_sources(
+                        plan.sources,
+                        lambda source: self.recognize_music_from_source(**{**plan.kwargs, "media_source": source}),
+                        lambda item, source: _native_music_candidate(item, source, plan.kwargs.get("music_type")),
+                    )
+                    return cast(MediaInfo, _music_fallback_info(info, plan.kwargs["meta"], diagnostic))
                 return cast(
                     Optional[MediaInfo],
                     self.recognize_music_from_source(**plan.kwargs),
@@ -142,7 +172,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         module_kwargs: dict[str, Any],
         cache: bool,
     ) -> Optional[MediaInfo]:
-        """统一异步媒体识别路由，未指定来源时影视和音乐只使用各自主数据源。"""
+        """异步识别使用与同步入口相同的来源计划，保留显式来源与主身份约束。"""
         plan = MediaRecognitionOwner._native_recognition_plan(
             self, module_kwargs, cache
         )
@@ -150,6 +180,13 @@ class MediaRecognitionOwner(_MediaOwnerBase):
             return None
         if plan.action is _NativeRecognitionAction.MUSIC:
             async with async_fresh(plan.refresh_cache):
+                if plan.sources:
+                    info, diagnostic = await async_recognize_music_sources(
+                        plan.sources,
+                        lambda source: self.async_recognize_music_from_source(**{**plan.kwargs, "media_source": source}),
+                        lambda item, source: _native_music_candidate(item, source, plan.kwargs.get("music_type")),
+                    )
+                    return cast(MediaInfo, _music_fallback_info(info, plan.kwargs["meta"], diagnostic))
                 return cast(
                     Optional[MediaInfo],
                     await self.async_recognize_music_from_source(**plan.kwargs),
@@ -183,6 +220,11 @@ class MediaRecognitionOwner(_MediaOwnerBase):
     def _has_remote_identity(result: Optional[MediaInfo]) -> bool:
         """音乐识别仅在取得远端来源身份后视为完整命中。"""
         return bool(result and result.media_source and result.media_id)
+
+    @staticmethod
+    def _music_recognition_is_terminal(result: Optional[MediaInfo]) -> bool:
+        """远端命中或已知歧义都结束自动层级选择，后者继续作为待确认结果返回。"""
+        return MediaRecognitionOwner._has_remote_identity(result) or music_recognition_needs_confirmation(result)
 
     @staticmethod
     def _accepted_recognition(
@@ -290,7 +332,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
             native_fn=native_recognize,
             plugin_fn=plugin_recognize,
             is_recognized=(
-                MediaRecognitionOwner._has_remote_identity
+                MediaRecognitionOwner._music_recognition_is_terminal
                 if request.is_music
                 else None
             ),
@@ -399,7 +441,7 @@ class MediaRecognitionOwner(_MediaOwnerBase):
             native_fn=native_recognize,
             plugin_fn=plugin_recognize,
             is_recognized=(
-                MediaRecognitionOwner._has_remote_identity
+                MediaRecognitionOwner._music_recognition_is_terminal
                 if request.is_music
                 else None
             ),

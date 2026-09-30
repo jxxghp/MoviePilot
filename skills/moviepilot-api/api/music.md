@@ -107,17 +107,31 @@ Music recognition, exploration, album and artist navigation, and recognition-cac
   shares a 90-second, 16-HTTP-attempt budget, or the existing enclosing budget.
   Cached fingerprints retain candidates and expire after 3600 seconds for a
   hit, 300 seconds for no match, and 15 seconds for a transient failure.
-- Recognition has an eight-attempt HTTP budget with 45 seconds for waits and
-  request timeouts. Cached HTTP results cost no request slots. Album-directory
-  success, no-match, and transient failures expire after 3600, 300, and 15
-  seconds respectively. Unidentified metadata expires within 300 seconds;
-  service errors and exhausted budgets are not stored as unidentified metadata.
-  `MusicInfo.raw_data.recognition` may carry `status`, `message`, `requests`, and
-  `candidates`. Ambiguity, conflicts, service errors, and exhausted budgets stop
-  organization before file operations. Clearing/deleting music cache also
-  invalidates HTTP responses and album directories. Audio/CUE evidence is reused
-  only within a bounded read-only scan and invalidated by file changes or scope
-  exit.
+- Unbound music recognition follows the built-in music sources selected in
+  `SEARCH_SOURCE`, in configured order; no music selection keeps MusicBrainz as
+  the default. Explicit sources, primary IDs and MusicBrainz release evidence
+  stay pinned. Never relabel an ID as belonging to another source.
+- Each source has eight HTTP attempts and 45 seconds, with at most three sources
+  (24 attempts / 135 seconds total). Smaller enclosing budgets still apply;
+  changing source cannot reset them. HTTP cache hits consume no request quota.
+  A service failure allows the next source; ambiguity or conflict stops fallback.
+- Secondary album catalogs require a complete track list and unique alignment
+  covering all local files. They do not prove a release edition:
+  `identity_type=album`, `release_verified=false`. Local disc/track numbers,
+  totals, release year and original year remain intact. Source order is included
+  in the directory cache key.
+- Directory successes, misses and transient failures expire after 3600, 300 and
+  15 seconds respectively. TheAudioDB and Douban Music HTTP misses expire after
+  300 seconds; transport errors, malformed responses and exhausted budgets are
+  not cached as misses. MusicBrainz identity-free misses also expire after 300 seconds.
+- `MusicInfo.raw_data.recognition` may carry `status`, `message`, `requests`,
+  `candidates`, and a `sources` array of per-source reports with a `source` field.
+  `ambiguous`, `conflict`, `service_error` and `budget_exhausted` block automatic
+  file actions and survive path fallback. Python directory results retain dict
+  compatibility and expose the same diagnostics as their `recognition` attribute.
+- Clearing/deleting music cache also invalidates HTTP responses and album
+  directories. Audio/CUE evidence is reused only within a bounded read-only scan
+  and invalidated by file changes or scope exit.
 - Transient recognition failures before a file plan exists stay durably accepted
   and retry recognition after 30 seconds, within the existing transfer retry
   budget. Recovery keeps the original release file selection and preferences.
