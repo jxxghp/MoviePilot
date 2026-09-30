@@ -251,7 +251,7 @@ async def create_subscribe(
     """
     # 类型转换
     if subscribe_in.type:
-        mtype = MediaType(subscribe_in.type)
+        mtype = MediaType.from_agent(subscribe_in.type) or MediaType(subscribe_in.type)
     else:
         mtype = None
     # 非 TMDB 来源的标题可能自带季标记，入库前统一拆分。
@@ -625,7 +625,7 @@ async def popular_subscribes(
             if min_sub and count < min_sub:
                 continue
             media = MediaInfo()
-            media.type = MediaType(sub.get("type"))
+            media.type = MediaType.from_agent(sub.get("type")) or MediaType(sub.get("type"))
             media.media_source = normalize_media_source(sub.get("media_source"))
             media.media_id = str(sub.get("media_id")) if sub.get("media_id") is not None else None
             # 处理标题

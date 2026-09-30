@@ -166,7 +166,7 @@ def not_exists(
     """
     # 媒体信息
     meta = MetaInfo(title=media_in.title)
-    mtype = MediaType(media_in.type) if media_in.type else None
+    mtype = MediaType.from_agent(media_in.type) or MediaType(media_in.type) if media_in.type else None
     if mtype:
         meta.type = mtype
     if media_in.season is not None:

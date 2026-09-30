@@ -697,7 +697,7 @@ async def detail(
     """
     根据媒体来源和原生 ID 查询影视或音乐信息
     """
-    mtype = MediaType(type_name)
+    mtype = MediaType.from_agent(type_name) or MediaType(type_name)
     normalized_source, normalized_media_id = resolve_media_identity(
         media_source=media_source,
         media_id=media_id,
