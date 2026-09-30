@@ -189,3 +189,42 @@ def test_real_recording_response_uses_isrc_to_disambiguate(reverse):
     assert result.isrc == meta.isrc
     assert result.music_type == "recording"
     assert result.artists == ["李佳薇"]
+
+
+def test_batch_postgresql_is_read_only_and_closes(monkeypatch, tmp_path):
+    """显式 PostgreSQL 配置必须从只读连接取凭据，且不依赖旧 SQLite 文件。"""
+    from unittest.mock import MagicMock
+
+    import psycopg2
+
+    config = tmp_path / "app.env"
+    config.write_text("DB_TYPE=postgresql\nDB_POSTGRESQL_PASSWORD=fixture-password\n", encoding="utf-8")
+    connection = MagicMock()
+    cursor = connection.cursor.return_value.__enter__.return_value
+    cursor.fetchall.return_value = [("example.org", "fixture-cookie", "fixture-ua", 1)]
+    connect = Mock(return_value=connection)
+    monkeypatch.setattr(psycopg2, "connect", connect)
+
+    result = batch.load_site_credentials(["pt.example.org"], tmp_path)
+
+    assert result == {"pt.example.org": {"cookie": "fixture-cookie", "ua": "fixture-ua", "proxy": True}}
+    assert connect.call_args.kwargs["options"] == "-c default_transaction_read_only=on"
+    assert connect.call_args.kwargs["connect_timeout"] == 5
+    assert cursor.execute.call_args.args[1] == (["example.org"],)
+    connection.close.assert_called_once()
+
+
+def test_batch_postgresql_closes_on_read_error(monkeypatch):
+    """采样查询失败也须释放生产连接，不保持悬挂的只读事务。"""
+    from unittest.mock import MagicMock
+
+    import psycopg2
+
+    connection = MagicMock()
+    connection.cursor.return_value.__enter__.return_value.execute.side_effect = RuntimeError("read failed")
+    monkeypatch.setattr(psycopg2, "connect", Mock(return_value=connection))
+
+    with pytest.raises(RuntimeError, match="read failed"):
+        batch.load_postgresql_credentials(["example.org"], {})
+
+    connection.close.assert_called_once()

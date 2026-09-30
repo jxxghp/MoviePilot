@@ -24,6 +24,8 @@ R2 原复杂度 v1/v2 实际使用源码行跨度，只覆盖 API、Application�
 且未强制固化下降后的低水位。2026-09-30 门禁调整将其替换为全宿主函数的 C901 圈复杂度
 （15）与 PLR1702 嵌套深度（5），源码尺寸降为观察报告；增长禁止写入，下降必须固化。
 范围、初始基线与后续建议见 [代码门禁说明](../code-quality.md)。
+2026-09-30 音乐真实样本回归统一了文件名曲序入口，删除 `MetaMusic.apply_path_context`
+重复的曲序回填分支，C901 从 16 降至阈值 15 以内，已同步固化低水位。
 `concurrency.py` 扫描完整宿主源码，按 canonical import/alias、TaskGroup、可证明的
 loop/executor 来源和词法 owner 聚合数量。新增 owner、数量增长以及静态质量事实下降后
 未刷新低水位都会阻断 CI；覆盖率只要求 Application 与 Domain 达到固定 80%。
