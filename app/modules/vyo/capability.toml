@@ -1,13 +1,13 @@
 schema_version = 1
-id = "MediaVaultModule"
+id = "VyoModule"
 kind = "host_module"
-entrypoint = "app.modules.mediavault:MediaVaultModule"
+entrypoint = "app.modules.vyo:VyoModule"
 depends_on = []
 
 [metadata]
-name = "MediaVault"
+name = "Vyo"
 type = "mediaserver"
-subtype = "MediaVault"
+subtype = "Vyo"
 priority = 7
 
 [activation]

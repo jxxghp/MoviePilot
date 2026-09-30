@@ -35,7 +35,7 @@ PROVIDER_CLASSES = {
     "ugreen": "app.modules.ugreen.ugreen:Ugreen",
     "trimemedia": "app.modules.trimemedia.trimemedia:TrimeMedia",
     "navidrome": "app.modules.navidrome.navidrome:Navidrome",
-    "mediavault": "app.modules.mediavault.mediavault:MediaVault",
+    "mediavault": "app.modules.vyo.vyo:Vyo",
 }
 _UNSET = object()
 

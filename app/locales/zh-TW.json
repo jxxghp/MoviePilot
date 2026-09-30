@@ -57,9 +57,9 @@
         "name": "Jellyfin",
         "description": "媒體伺服器適配器：同步 Jellyfin 媒體庫並執行重新整理、播放等操作。"
       },
-      "MediaVaultModule": {
-        "name": "MediaVault",
-        "description": "媒體伺服器適配器：連接 MediaVault 並同步媒體庫資訊。"
+      "VyoModule": {
+        "name": "Vyo",
+        "description": "媒體伺服器適配器：連接 Vyo（Muvyo 內建媒體服務）並同步媒體庫資訊。"
       },
       "LrclibModule": {
         "name": "LRCLIB",
