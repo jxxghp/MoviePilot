@@ -682,6 +682,7 @@ async def _initialize_modules() -> HostRuntime:
         runtime=database_runtime,
         system_config=system_config,
         dependencies=runtime_dependencies,
+        tasks=get_task_registry(),
     )
     if agent_composition.data.invocations is not None:
         await database_runtime.worker.run(agent_composition.data.invocations.recover_running)

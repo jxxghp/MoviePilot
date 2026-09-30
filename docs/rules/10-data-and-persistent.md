@@ -213,6 +213,11 @@ shared `DATA_CLEANUP_ENABLE` policy when it has a safe time boundary:
   `transferhistory`, `downloadfailure`, and `subscribehistory` use their own
   user-configurable retention periods.
 - `agentchat` removes only expired sessions not referenced by an `agenttask`;
+  Agent 原始会话存于独立 `config/agent/runtime/history/users/<user-key>/state.db`，
+  不新增主库模型或 Alembic 表。独立库沿用 `DATA_CLEANUP_ENABLE` 和 Agent 会话保留期，
+  活跃用户后台维护按 last_active 分批删除；显式删除同步收回原文和 FTS，墓碑阻止在途复活。
+  恢复快照与原始证据分开，压缩不删除原文。旧快照只读分批导出并标记 legacy_snapshot，
+  导入完成后查询不依赖主库。SQLite schema 由 Agent 独立版本管理。
   `agenttaskrun` removes only expired terminal runs that are neither running nor
   the task's current `last_run_id`.
 - `agentinvocation` stores only write-call identity, argument digests and fixed

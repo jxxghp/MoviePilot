@@ -11,6 +11,7 @@ from weakref import WeakValueDictionary
 from app.application.database import (
     AsyncDatabaseExecutor,
 )
+from app.application.messaging.recall import RecallService
 from app.runtime.observability import record_metric
 from app.schemas.agent import AgentChatSessionDetail, AgentChatSessionSummary
 from app.schemas.exception import AgentChatPersistenceUnavailableError
@@ -183,10 +184,12 @@ class AgentChatService:
         self,
         repository: AsyncAgentChatRepository,
         unit_of_work: Optional[AsyncUnitOfWork] = None,
+        recall: RecallService | None = None,
     ) -> None:
         """保存会话持久化端口和可选请求级事务。"""
         self._repository = repository
         self._unit_of_work = unit_of_work
+        self._recall = recall
 
     async def list(
         self,
@@ -242,6 +245,9 @@ class AgentChatService:
         record = await self.get_accessible(session_id, principal)
         if record is None:
             return False
+        # 两个数据库没有共享事务：先收回证据并落删除墓碑，主库失败可安全重试。
+        if self._recall is not None and record.user_id:
+            await self._recall.delete(record.user_id, session_id)
         if self._unit_of_work is None:
             return await self._repository.async_delete(session_id=session_id)
         try:

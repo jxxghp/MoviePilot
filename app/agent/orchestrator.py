@@ -38,6 +38,7 @@ from app.agent.middleware.output import ToolOutputMiddleware
 from app.agent.middleware.patching import PatchToolCallsMiddleware
 from app.agent.middleware.plan import PLAN_SNAPSHOT_KEY, PlanMiddleware, attach_plan_snapshot
 from app.agent.middleware.policy import AgentPolicyMiddleware
+from app.agent.middleware.recall import RecallMiddleware
 from app.agent.middleware.selection import ToolSelectorMiddleware
 from app.agent.middleware.skills import SkillsMiddleware
 from app.agent.middleware.steering import SteeringMiddleware
@@ -73,6 +74,7 @@ from app.agent.terminal.ownership import (
     TerminalScope,
     bind_terminal_scope,
     close_terminal_scope,
+    current_terminal_scope,
 )
 from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.agent.tools.impl.api import MoviePilotApiTool
@@ -84,8 +86,10 @@ from app.application.messaging.chat import (
     get_configured_agent_chat_service,
     has_custom_agent_chat_title,
 )
+from app.application.messaging.recall import RecallSession
 from app.application.plugin.runtime import get_plugin_manager
 from app.chain.agent import AgentChain
+from app.foundation.identity import build_user_memory_key
 from app.runtime.events import eventmanager
 from app.runtime.execution import run_in_threadpool
 from app.runtime.log import logger
@@ -879,7 +883,7 @@ class MoviePilotAgent:
         """
         是否为后台心跳会话。
 
-        心跳场景只负责检查并执行待处理 job，不需要携带近期活动日志，
+        心跳场景只负责检查并执行待处理 job，不具有个人会话历史，
         否则会让这类高频后台调用持续带入无关动态上下文，影响缓存命中率。
         """
         return self.session_id.startswith(HEARTBEAT_SESSION_PREFIX)
@@ -1557,6 +1561,20 @@ class MoviePilotAgent:
             runtime_config.get("web_search_mode"),
         )
 
+    async def _recall_session(self, model: Any) -> RecallSession | None:
+        """交互会话沿用真实身份；用户定时执行独立归档为 cron，系统内部工作不公开。"""
+        scope = current_terminal_scope()
+        if scope is not None and scope.kind == "scheduled":
+            return RecallSession(f"agent-run:{scope.task_id}", source="cron", model=self._get_model_name(model) or "")
+        if self._data is None or not self._should_persist_agent_chat():
+            return None
+        chat = await self._data.chat.get(self.session_id, user_id=str(self.user_id))
+        return RecallSession(
+            self.session_id, source=str(self.source), model=self._get_model_name(model) or "",
+            title=(chat.title or "") if chat else "",
+            started_at=datetime.fromisoformat(chat.created_at).timestamp() if chat and chat.created_at else 0,
+        )
+
     async def _agent_bundle_signature(
         self,
         streaming: bool,
@@ -1565,7 +1583,9 @@ class MoviePilotAgent:
     ) -> tuple[Any, ...]:
         """构造会话内 Agent 图缓存签名。"""
         runtime_config = await self._resolve_llm_runtime_config()
+        scope = current_terminal_scope()
         return (
+            scope.task_id if scope is not None and scope.kind == "scheduled" else None,
             streaming,
             self.channel,
             self.source,
@@ -1868,19 +1888,19 @@ class MoviePilotAgent:
             )
             skill_tools = list(getattr(skills_middleware, "tools", []) or [])
             user_memory_dir = agent_runtime_manager.get_user_memory_dir(self.user_id)
-            user_activity_dir = agent_runtime_manager.get_user_activity_dir(self.user_id)
             memory_middleware = MemoryMiddleware(
                 memory_dir=str(agent_runtime_manager.memory_dir),
-                activity_dir=(
-                    str(agent_runtime_manager.activity_dir)
-                    if self.has_message_context and user_memory_dir is None
-                    else None
-                ),
                 user_memory_dir=str(user_memory_dir) if user_memory_dir else None,
-                user_activity_dir=str(user_activity_dir) if user_activity_dir else None,
                 stream_handler=self.stream_handler,
             )
             memory_tools = list(getattr(memory_middleware, "tools", []) or [])
+            recall_service = getattr(self._data, "recall", None)
+            recall_middlewares = []
+            if recall_service and build_user_memory_key(self.user_id):
+                history_session = await self._recall_session(agent_model)
+                if history_session is not None:
+                    recall_middlewares.append(RecallMiddleware(recall_service, str(self.user_id), history_session))
+            memory_tools.extend(tool for middleware in recall_middlewares for tool in middleware.tools)
             policy_context = self._build_policy_context()
             subagent_middlewares, subagent_task_tools = create_subagent_middlewares(
                 model=non_streaming_model,
@@ -1958,8 +1978,9 @@ class MoviePilotAgent:
                 RuntimeConfigMiddleware(),
                 # 计划独立保存，最终请求压缩仍计入其系统上下文预算。
                 plan_middleware,
-                # 记忆、按需检索与活动记录统一由一个中间件管理。
+                # 稳定偏好与原始会话证据分别管理。
                 memory_middleware,
+                *recall_middlewares,
                 # 错误工具调用修复
                 PatchToolCallsMiddleware(),
                 # 子代理委派

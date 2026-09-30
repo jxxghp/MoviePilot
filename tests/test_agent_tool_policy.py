@@ -899,7 +899,3 @@ def test_main_agent_preserves_memory_middleware_order() -> None:
     assert memory_middleware.user_memory_dir == str(
         agent_module.agent_runtime_manager.get_user_memory_dir("user-1")
     )
-    assert memory_middleware.user_activity_dir == str(
-        agent_module.agent_runtime_manager.get_user_activity_dir("user-1")
-    )
-    assert memory_middleware.activity_dir is None

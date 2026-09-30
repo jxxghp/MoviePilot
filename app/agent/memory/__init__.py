@@ -7,6 +7,7 @@ from typing import Dict, List, Optional
 from langchain_core.messages import BaseMessage, messages_from_dict, messages_to_dict
 from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
+from app.agent.history.message import legacy_identity
 from app.agent.tools.result import messages_for_persistence
 from app.application.messaging.chat import (
     AgentChatPersistenceService,
@@ -139,6 +140,9 @@ class MemoryManager:
             return []
         try:
             messages = messages_for_persistence(messages_from_dict(chat.agent_messages))
+            for position, message in enumerate(messages):
+                if not message.id:
+                    message.id = legacy_identity(session_id, position, message)
         except Exception as e:
             logger.debug(f"恢复持久化Agent消息失败: {e}")
             return []

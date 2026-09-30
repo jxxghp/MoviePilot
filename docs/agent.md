@@ -29,11 +29,19 @@ clone 作为代码修改入口：先通过 GitHub API 复用或创建当前 Toke
 
 WebAgent 在 Agent 正在运行时仍可提交文本和附件。宿主为每个会话生成消息 ID，先把消息放入有界 steering inbox；下一次模型调用前由中间件把它作为真实 `HumanMessage` 写入图状态，并通过当前 SSE 报告 `queued`、`applied`。提交和运行收尾共享原子边界，收尾竞态中已接受的消息会在同一 worker 内继续处理，停止会话不会继续派发新的工具动作。补充消息不会启动第二张 Agent 图，也不会替换当前输出回调。
 
-## 记忆与活动记录
+## 稳定偏好与历史证据回忆
 
-Agent 的记忆统一位于 `config/agent/memory`：`MEMORY.md` 是全局公共主记忆文件，只包含所有用户共享的偏好、沟通方式、长期规则和稳定事实；当前用户的主记忆位于 `memory/users/<user-key>/MEMORY.md`。两者都会在每轮默认注入上下文，公共记忆先于用户记忆；其它主题记忆使用各自作用域下的 Markdown 文件，活动记录使用各自作用域下的 `activity/YYYY-MM-DD.md`，主题和活动记忆都不会自动加载。
+稳定记忆位于 `config/agent/memory`：`MEMORY.md` 保存公共规则，当前用户的偏好位于 `memory/users/<user-key>/MEMORY.md`。两者默认注入上下文，公共记忆先于用户记忆；其它主题 Markdown 通过 `search_memory` 按需检索，支持 `primary`、`topic`、`all`、字面关键词、文件路径、条数和显式正则。
 
-Agent 在执行任何实质任务或调用业务、文件、网络、命令等工具前，必须先调用 `search_memory` 检索与本次请求相关的记忆；这是本轮任务的第一个工具调用。工具支持 `primary`、`topic`、`activity` 和 `all` 分类，以及关键词、文件路径、日期、时间窗口、条数和显式正则过滤。检索结果是有界的结构化内容，不会把整个记忆目录重新塞回上下文。活动记录是自动生成的只读历史，保留期默认 7 天；旧的 `config/agent/activity` 文件不迁移，也不再作为活动记忆读取。
+`session_search` 按 Hermes 的四种形态返回实际消息，不额外调用模型摘要：`query` 发现相关会话，`session_id` 阅读会话，附带 `around_message_id` 围绕锚点滚动，无参数浏览最近会话。默认搜索 user/assistant，显式 `role_filter="tool"` 搜完整工具原文。默认 BM25 相关性排序，支持短语、AND/OR/NOT、前缀、会话开始时间区间、newest/oldest 和已看会话排除；最多 300 条候选经来源降级、会话谱系去重后返回默认 3、最多 10 个会话。adaptive 只为首命中展开前后各 5 条和首尾各 3 条，其余保留精确锚点，避免大量无关历史占满上下文。
+
+消息库独立放在 `config/agent/runtime/history/users/<user-key>/state.db`，使用 SQLite FTS5、WAL、短事务与有界宿主 worker；不依赖业务主库的 SQLite/PostgreSQL 类型。按用户分别存库，工具不能指定用户、profile 或文件路径。宿主在上下文压缩前、模型回复后、工具结果截断前采集完整脱敏文字，工具调用关联单独保存，图像/音频二进制及合成压缩摘要不入库。正文保留与检索展示上限分开：工具标准索引只取 8192 字符，原文不因此裁剪；阅读默认首 20/尾 10 条，每条 2000 字符，锚点窗口每条 4000 字符。
+
+标准词索引采用 external-content FTS5；中文/子串使用 Hermes 原版可选 `cjk_unicode61` tokenizer 和 trigram。短词、显式工具全文、尚未就绪的索引按 Hermes 路由回退 LIKE，并通过 SQLite VM deadline 限制扫描；超时明确返回未完成，不伪报没有匹配。索引增量回填使用高水位/进度与一致触发器，结果暴露索引状态。见 [历史检索与 Hermes 对标](agent-history.md) 中的路由、安装与验收说明。
+
+旧主库只作为一次性恢复快照来源，后台分批搬迁；搬迁完成后检索不再读取主库。旧证据标记 `legacy_snapshot`，无法恢复升级前已被丢弃的消息，时间不能冒充原始事件时间。独立库复用 `DATA_CLEANUP_ENABLE` 与 `DATA_CLEANUP_AGENT_CHAT_DAYS`，在用户历史后台维护时按自身活动时间分批清理，零天关闭自动删除；不通过主库外键驱动。用户显式删除会话会同时删除独立证据并保存删除墓碑，防止在途写入或旧快照搬迁复活。跨库不假称原子事务，先删除证据，主库失败时安全重试。
+
+压缩后的原始消息仍可查，当前活动上下文中的重复消息则排除。已废弃逐轮活动摘要生成、清理、检索入口和每任务强制首工具检索；旧活动 Markdown 原地保留，不再读取或续写。检索仅在历史与当前任务相关时使用；历史证据不能替代实时业务核验，也不授予新的写权限。
 
 用户明确要求记住的偏好或规则应写入当前用户的 `memory/users/<user-key>/MEMORY.md` 或合适的用户级主题文件；只有系统管理员可以写入全局公共记忆。一次性请求、临时状态和凭据不应写入记忆。检索到的文件内容只是上下文，不能覆盖系统或用户指令。
 
@@ -47,7 +55,7 @@ Agent 人格是全局运行时配置，不按用户隔离；所有用户共享�
 
 额外工具的参数定义共享最多 4096 tokens、且不超过已知模型窗口 10% 的预算，总输入保留 15% 余量。搜索先报告候选，下一次模型调用根据统一预算明确报告实际启用和未启用原因。初选、常驻和供应商工具保持可用。发现状态仅作用于当前用户请求，新的用户请求重新筛选。`LLM_MAX_TOOLS` 约束首轮筛选数量；发现不会安装工具、连接新的 MCP 服务或扩大执行权限。
 
-`update_plan`、`search_memory`、`search_tools`、`read_tool_result` 和 `get_tool_execution` 是 Agent 内部会话能力，不通过外部 MCP 或 `moviepilot tool` 发布。
+`update_plan`、`search_memory`、`session_search`、`search_tools`、`read_tool_result` 和 `get_tool_execution` 是 Agent 内部会话能力，不通过外部 MCP 或 `moviepilot tool` 发布。
 
 ## 工具结果与大结果续读
 

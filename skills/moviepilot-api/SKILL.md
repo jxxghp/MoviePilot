@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 35
+version: 36
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -66,6 +66,12 @@ allowed-api-operations: >-
 ---
 
 # MoviePilot API
+
+For relevant prior conversations or previous tool evidence, use the host-provided
+`session_search` tool when available. Discover a session, then read its anchored
+messages; past results are context, not proof of current state or permission to
+repeat a write. Stable preferences use `search_memory`; its former `activity`
+category no longer exists. Neither tool is an API operation or an external MCP tool.
 
 Use `moviepilot_api` for normal MoviePilot business operations. The tool accepts
 only `operation_id`, `path_params`, `query`, and `body`. The host chooses the

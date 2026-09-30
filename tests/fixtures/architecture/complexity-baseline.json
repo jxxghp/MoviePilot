@@ -12,7 +12,6 @@
       "app/agent/lifecycle.py:AgentLifecycleOwner.close": 21,
       "app/agent/llm/helper.py:_patch_gemini_thought_signature": 16,
       "app/agent/llm/runtime.py:_ProviderRuntime.resolve_runtime": 17,
-      "app/agent/middleware/memory.py:query_memory_files": 28,
       "app/agent/orchestrator.py:MoviePilotAgent._execute_agent": 22,
       "app/agent/policy/mcp.py:build_api_mcp_input_schema": 17,
       "app/agent/policy/sanitizer.py:sanitize_for_host": 45,

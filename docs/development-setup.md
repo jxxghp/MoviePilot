@@ -266,3 +266,7 @@ CI 上传 `complexity-report` 工件，门禁失败时也保留已生成的指�
 - [pip-audit](https://github.com/pypa/pip-audit)
 - [MoviePilot-Resources](https://github.com/jxxghp/MoviePilot-Resources)
 - [MoviePilot-Plugins](https://github.com/jxxghp/MoviePilot-Plugins)
+
+### Agent 历史消息索引验证
+
+独立消息库位于 Agent 运行目录，不参与主库 Alembic。使用临时运行目录运行 `tests/test_agent_recall_persistence.py`，不得用真实用户的 `state.db` 做索引破坏或重建测试。可选 CJK tokenizer 保留 Hermes 原版源码及许可证于 `native/fts5_cjk/`；构建命令见该目录 README。测试有本地 C 编译器时在临时目录构建，无编译器时只跳过原生扩展用例，不能宣称该分词路径已验证。常规 FTS5 与 trigram、短中文回退无需该扩展，扩展缺失或失效时索引状态会明确降级。独立 schema 版本不等于产品版本；后续新增主库升级脚本从 3.1.0 命名。

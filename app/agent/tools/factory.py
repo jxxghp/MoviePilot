@@ -87,6 +87,7 @@ class MoviePilotToolFactory:
         "ask_user_choice",
         "agent_task",
         "search_memory",
+        "session_search",
     )
 
     CATALOG_BUILD_MAX_ATTEMPTS = 3
