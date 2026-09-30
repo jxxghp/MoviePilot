@@ -45,6 +45,7 @@ dependencies = [
     "langchain-openai~=1.3.2",
     "langgraph~=1.2.11",
     "langgraph-checkpoint~=4.2.0",
+    # 宿主飞书渠道已改用自研 OpenAPI 与长连接客户端，此 SDK 暂时保留给插件使用。
     "lark-oapi~=1.6.8",
     "moviepilot-rust~=0.3.7",
     "mutagen~=1.47.0",
