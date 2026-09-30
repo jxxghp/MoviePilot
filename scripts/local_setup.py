@@ -2997,13 +2997,19 @@ def _startup_platform_name() -> str:
 def _runtime_python_candidates(
     runtime_python: Optional[Path], venv_dir: Optional[Path]
 ) -> list[Path]:
-    """按优先级列出启动解释器，并保留 venv 的 Python 启动器软链接。"""
+    """按优先级列出项目专用入口、venv 解释器和外部启动解释器。"""
     candidates: list[Path] = []
     seen: set[str] = set()
 
+    resolved_venv_dir = (venv_dir or (ROOT / "venv")).expanduser().resolve()
+    venv_bin_dir = get_venv_bin_dir(resolved_venv_dir)
+    project_runtime_python = venv_bin_dir / (
+        "moviepilot-python.exe" if os.name == "nt" else "moviepilot-python"
+    )
     raw_candidates = [
+        project_runtime_python,
+        get_venv_python(resolved_venv_dir),
         runtime_python,
-        get_venv_python((venv_dir or (ROOT / "venv")).expanduser().resolve()),
         Path(sys.executable) if sys.executable else None,
     ]
     for candidate in raw_candidates:

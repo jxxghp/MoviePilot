@@ -67,6 +67,30 @@ def test_startup_python_resolution_preserves_virtualenv_symlink(
     assert runtime_python.is_symlink()
 
 
+def test_startup_python_resolution_prefers_project_runtime_launcher(
+    monkeypatch, tmp_path: Path
+):
+    """Autostart must prefer the project runtime launcher over an external interpreter."""
+    module = load_local_setup_module()
+    venv_dir = tmp_path / "venv"
+    runtime_launcher = module.get_venv_bin_dir(venv_dir) / "moviepilot-python"
+    runtime_launcher.parent.mkdir(parents=True)
+    runtime_launcher.symlink_to(Path(sys.executable))
+    expected_path = runtime_launcher.absolute()
+    external_python = tmp_path / "external-python"
+    monkeypatch.setattr(
+        module,
+        "_can_run_moviepilot_cli",
+        lambda candidate: candidate == expected_path,
+    )
+
+    runtime_python = module._resolve_runtime_python_for_startup(
+        external_python, venv_dir
+    )
+
+    assert runtime_python == expected_path
+
+
 def test_directory_config_keeps_download_path_as_downloader_path(monkeypatch):
     """The wizard must preserve downloader paths without resolving them locally."""
     module = load_local_setup_module()

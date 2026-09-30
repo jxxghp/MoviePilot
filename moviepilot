@@ -456,11 +456,11 @@ legacy_config_exists() {
 }
 
 run_runtime_cli() {
-  if [ ! -x "$VENV_PYTHON" ]; then
+  if [ ! -x "$MOVIEPILOT_PYTHON" ]; then
     echo "未找到项目虚拟环境，请先执行 moviepilot install deps 或 moviepilot setup" >&2
     exit 1
   fi
-  exec "$VENV_PYTHON" -m app.cli "$@"
+  exec "$MOVIEPILOT_PYTHON" -m app.cli "$@"
 }
 
 show_command_help() {
@@ -541,6 +541,13 @@ done
 
 ROOT="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 VENV_PYTHON="$ROOT/venv/bin/python"
+# 优先使用项目环境提供的专用 Python 入口，保留其运行身份和系统权限。
+PROJECT_RUNTIME_PYTHON="$ROOT/venv/bin/moviepilot-python"
+if [ -x "$PROJECT_RUNTIME_PYTHON" ]; then
+  MOVIEPILOT_PYTHON="$PROJECT_RUNTIME_PYTHON"
+else
+  MOVIEPILOT_PYTHON="$VENV_PYTHON"
+fi
 SETUP_SCRIPT="$ROOT/scripts/local_setup.py"
 
 if [ -z "${CONFIG_DIR:-}" ] && [ -f "$ROOT/.moviepilot.env" ]; then
@@ -559,8 +566,8 @@ export CONFIG_DIR
 
 BOOTSTRAP_PYTHON=""
 EXTERNAL_BOOTSTRAP_PYTHON="$(find_external_python || true)"
-if [ -x "$VENV_PYTHON" ]; then
-  BOOTSTRAP_PYTHON="$VENV_PYTHON"
+if [ -x "$MOVIEPILOT_PYTHON" ]; then
+  BOOTSTRAP_PYTHON="$MOVIEPILOT_PYTHON"
 else
   BOOTSTRAP_PYTHON="$EXTERNAL_BOOTSTRAP_PYTHON"
 fi
@@ -643,9 +650,9 @@ case "${1:-}" in
     ;;
 esac
 
-if [ ! -x "$VENV_PYTHON" ]; then
+if [ ! -x "$MOVIEPILOT_PYTHON" ]; then
   echo "未找到项目虚拟环境，请先执行 moviepilot install deps 或 moviepilot setup" >&2
   exit 1
 fi
 
-exec "$VENV_PYTHON" -m app.cli "$@"
+exec "$MOVIEPILOT_PYTHON" -m app.cli "$@"
