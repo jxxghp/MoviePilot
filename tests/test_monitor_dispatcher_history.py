@@ -3,6 +3,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
+
 from app.application.history.retry import (
     clear_transfer_failures,
     record_transfer_failure,
@@ -82,6 +84,57 @@ def test_no_history_goes_to_transfer(monkeypatch):
 
     assert dispatcher.handle_file(storage="local", event_path=Path("/downloads/a.mkv"), file_size=100) is True
     chain.do_transfer.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("event_path", "duplicate_path"),
+    [
+        ("/downloads/a.mkv", "/downloads/a.mkv"),
+        ("/downloads/Movie/BDMV/STREAM/00001.m2ts",
+         "/downloads/Movie/BDMV/STREAM/00002.m2ts"),
+    ],
+)
+def test_dedup_is_scoped_to_storage(monkeypatch, event_path, duplicate_path):
+    """不同存储的同路径文件独立整理，同存储的文件或蓝光目录仍保持去重。"""
+    dispatcher = _build_dispatcher()
+    _patch_history(monkeypatch, record=None)
+    chain = _patch_chain(monkeypatch)
+    monkeypatch.setattr(dispatcher, "_get_monitor_media_type", lambda **_kwargs: None)
+
+    for storage in ("smb", "alist"):
+        assert dispatcher.handle_file(storage, Path(event_path), file_size=100) is True
+        assert dispatcher.handle_file(storage, Path(duplicate_path), file_size=100) is False
+
+    assert [
+        call.kwargs["fileitem"].storage
+        for call in chain.do_transfer.call_args_list
+    ] == ["smb", "alist"]
+
+
+@pytest.mark.parametrize(
+    "event_path",
+    ["/downloads/a.mkv", "/downloads/Movie/BDMV/STREAM/00001.m2ts"],
+)
+def test_failed_transfer_retries_independently_of_other_storage(monkeypatch, event_path):
+    """失败重试只清理当前存储的去重记录，其他存储成功后不能阻塞该重试。"""
+    dispatcher = _build_dispatcher()
+    _patch_history(monkeypatch, record=None)
+    chain = _patch_chain(monkeypatch, side_effect=[RuntimeError("整理失败"), None, None])
+    monkeypatch.setattr(dispatcher, "_get_monitor_media_type", lambda **_kwargs: None)
+    path = Path(event_path)
+
+    assert dispatcher.handle_file("smb", path, file_size=100) is False
+    assert dispatcher.handle_file("alist", path, file_size=100) is True
+    dispatcher.retry_pending()
+
+    assert [
+        call.kwargs["fileitem"].storage
+        for call in chain.do_transfer.call_args_list
+    ] == ["smb", "alist", "smb"]
+    assert dispatcher._pending_retries == {}
+    assert dispatcher.handle_file("alist", path, file_size=100) is False
+    assert dispatcher.handle_file("smb", path, file_size=100) is False
+    assert chain.do_transfer.call_count == 3
 
 
 def test_failed_history_is_retried_within_retry_budget(monkeypatch):

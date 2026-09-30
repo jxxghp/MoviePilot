@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 
 from app import schemas
 from app.modules.filemanager.storages import StorageBase
+from app.monitor.dispatcher import TransferDispatcher
 from app.monitor.poller import RemotePoller
 from app.monitor.snapshot import SnapshotStore
 from app.monitor.watcher import LocalDirectoryWatcher
@@ -42,6 +43,40 @@ BASELINE = {
     'file_count': 1,
     'snapshot': {'/mon/a.mkv': {'size': 1, 'modify_time': 100}}
 }
+
+
+def test_poll_preserves_same_path_events_from_different_storages(monkeypatch):
+    """共享去重缓存不能吞掉另一存储的事件，否则新快照落盘后不会再补发。"""
+    dedup_cache = {}
+    dispatcher = TransferDispatcher(all_exts=[".mkv"], cache=dedup_cache)
+    monkeypatch.setattr(dispatcher, "_should_skip_by_history", lambda **_kwargs: False)
+    monkeypatch.setattr(dispatcher, "_get_monitor_media_type", lambda **_kwargs: None)
+    chain = MagicMock()
+    monkeypatch.setattr("app.monitor.dispatcher.TransferChain", lambda: chain)
+    snapshots = {}
+    cache = MagicMock()
+    cache.get.side_effect = lambda key, **_kwargs: snapshots.get(key)
+    cache.set.side_effect = lambda key, value, **_kwargs: snapshots.__setitem__(key, value)
+    store = SnapshotStore(cache=cache)
+    for storage in ("smb", "alist"):
+        assert store.save(storage, {}, last_snapshot_time=100)
+    path = "/downloads/series/episode.mkv"
+    _mock_storage_chain(monkeypatch, [
+        {path: {"size": 20, "modify_time": 200}}
+        for _ in range(3)
+    ])
+    poller = RemotePoller(store=store, dispatcher=dispatcher)
+
+    for storage in ("smb", "alist"):
+        assert poller.poll(storage, [Path("/downloads")]) == 1
+    # 模拟去重窗口已结束，再轮询时不能依赖同一个快照重新派发被遗漏的事件。
+    dedup_cache.clear()
+    assert poller.poll("alist", [Path("/downloads")]) == 1
+
+    assert [
+        call.kwargs["fileitem"].storage
+        for call in chain.do_transfer.call_args_list
+    ] == ["smb", "alist"]
 
 
 def test_poll_merges_incremental_into_baseline(monkeypatch):
