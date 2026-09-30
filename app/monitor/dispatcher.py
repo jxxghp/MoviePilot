@@ -395,6 +395,8 @@ class TransferDispatcher:
         elif not self.is_transfer_candidate_path(event_path):
             return False
 
+        # 去重键包含存储，避免不同存储的同路径文件互相抑制。
+        cache_key = f"{storage}:{event_path}"
         # TTL 缓存控重。这是本方法唯一需要互斥的临界区，锁只保护「查缓存 + 写缓存」
         # 这一步的原子性。
         #
@@ -404,13 +406,13 @@ class TransferDispatcher:
         # 锁死所有 watcher 线程的事件派发、监控恢复后的补偿扫描和重试队列——监控层
         # 即使完成自愈也送不进任何文件，漏件永远补不回来。
         #
-        # 并发是安全的：TTL 去重保证同一路径不会并发进入；TransferChain 是单例，
+        # 并发是安全的：TTL 去重保证同一存储的同一路径不会并发进入；TransferChain 是单例，
         # 内部用 job_lock/task_lock 保护共享状态、入队走线程安全的 queue.Queue，
         # 本来就被下载完成事件、定时任务与工作流并发调用。
         with self._lock:
-            if self._cache.get(str(event_path)):
+            if self._cache.get(cache_key):
                 return False
-            self._cache[str(event_path)] = True
+            self._cache[cache_key] = True
 
         src_path = self._build_transfer_src_path(
             event_path=event_path,
@@ -467,7 +469,7 @@ class TransferDispatcher:
             logger.error("目录监控整理文件发生错误：%s - %s" % (str(e), traceback.format_exc()))
             # 去重缓存在入口已写入，整理抛异常时必须失效，否则 TTL 窗口内该文件的
             # 后续事件会被静默吞掉，等于一次异常就丢一个文件
-            self._invalidate_cache(str(event_path))
+            self._invalidate_cache(cache_key)
             # 已稳定落地的文件不会再产生任何事件，批量整理期间撞上一次 DB/网络瞬断
             # 就是永久丢件，因此与历史查询失败同样登记待重试；登记用原始事件路径，
             # 重试时重新解析蓝光目录并重走完整流程。异常未清空登记，重试次数会持续
