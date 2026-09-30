@@ -116,7 +116,7 @@
     "union-attr": 1
   },
   "app/adapters/web/plugin/routes.py": {
-    "type-arg": 2
+    "type-arg": 1
   },
   "app/agent/callback/__init__.py": {
     "no-untyped-call": 5,
