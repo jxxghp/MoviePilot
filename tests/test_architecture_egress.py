@@ -49,7 +49,7 @@ FROZEN_EGRESS_EDGES_BY_REASON = {
     },
     "streaming_protocol": {
         ("app.startup.composition.network", "websocket"),
-        ("app.modules.feishu.longconn", "websocket"),
+        ("app.adapters.network.feishu", "websocket"),
         ("app.modules.qqbot.gateway", "websocket"),
         ("app.modules.rtorrent.rtorrent", "socket.create_connection"),
         ("app.modules.rtorrent.rtorrent", "xmlrpc.client.ServerProxy"),
@@ -113,7 +113,7 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.doctor.checks", "urllib.request"): "d8dd2279263ef58c3b4c59c70451533a4fc27d2ccd76960ca3aff29cd73f3354",
     ("app.modules.discord.discord", "discord"): "e1486525fedbfe574aa47d60b483426c8c48e4e27fa35dbe34f6cd2f47d37c86",
     ("app.modules.emby.emby", "requests"): "6c4c17fe170226ea1272f5859bc119c2775442cabe8ce2a9edcabaf9c37bec31",
-    ("app.modules.feishu.longconn", "websocket"): "8ccfc3b86ad029942cdf0cab9d01fa2e1498576ee59e0df7239e1a744b370eae",
+    ("app.adapters.network.feishu", "websocket"): "95aca65eed288e0c7654ab49aad6c535d9313d5e38c44b1cb1768dcdfc772453",
     ("app.modules.filemanager.storages.smb", "smbclient"): "37619f050b03598fa559c6ae2df94bda6adf7cffd1cc42d9db9059f1fb41af47",
     ("app.modules.filemanager.storages.smb", "smbprotocol"): "f02686afd99c59820dffa7b4c2627a0be1ad62980c98a9cd33b7564697842b22",
     ("app.modules.filemanager.storages.u115", "oss2"): "f7b89c8ae6dad2603f0a9e0caaa159769aef5b3581d7e728f62445b979366eae",

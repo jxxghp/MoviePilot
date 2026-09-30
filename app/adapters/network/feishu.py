@@ -7,6 +7,8 @@
 
 整个连接在一个线程内同步运行：阻塞 recv 以心跳间隔为超时，超时即发送 ping，因此收发都在
 同一线程，无需发送锁或事件循环。
+
+宿主飞书模块与插件共用本实现，插件经 ``app.sdk.feishu`` 获取，不必再依赖 lark-oapi。
 """
 
 import base64
@@ -23,7 +25,7 @@ import websocket
 from app.adapters.network.http import RequestUtils
 from app.runtime.log import logger
 
-# 本模块不引用同包的 openapi，避免子模块经父包形成导入环；域名默认值与其保持一致。
+# 适配层不反向引用飞书模块的 openapi；域名默认值与 app.modules.feishu.openapi 保持一致。
 FEISHU_DOMAIN = "https://open.feishu.cn"
 # 事件报文与应答结果的 JSON 结构。
 JsonDict = Dict[str, Any]

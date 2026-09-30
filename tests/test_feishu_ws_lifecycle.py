@@ -11,8 +11,8 @@ ensure_optional_stub("psutil")
 ensure_optional_stub("dateparser")
 ensure_optional_stub("Pinyin2Hanzi", is_pinyin=lambda value: False)
 
+from app.adapters.network.feishu import FeishuLongConnection  # noqa: E402
 from app.modules.feishu.feishu import Feishu  # noqa: E402
-from app.modules.feishu.longconn import FeishuLongConnection  # noqa: E402
 from app.modules.feishu.openapi import FeishuOpenApi  # noqa: E402
 
 # 停止单个配置实例的耗时上限；远小于 Feishu._ws_join_timeout_seconds，证明停止不是靠等待超时。

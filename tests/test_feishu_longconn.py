@@ -10,8 +10,8 @@ import pytest
 import websocket
 from websockets.sync.server import serve
 
-from app.modules.feishu import longconn
-from app.modules.feishu.longconn import FatalConnectionError, FeishuLongConnection, Frame
+from app.adapters.network import feishu as longconn
+from app.adapters.network.feishu import FatalConnectionError, FeishuLongConnection, Frame
 
 # 以下字节由 lark-oapi 1.6 的 pbbp2_pb2.Frame.SerializeToString() 生成，作为协议对照样本。
 SDK_PING_FRAME = bytes.fromhex("08001000180720002a0c0a0474797065120470696e67")

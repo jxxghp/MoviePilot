@@ -164,6 +164,18 @@
       },
       {
         "bindings": [
+          "import:websocket as websocket"
+        ],
+        "fingerprint": "95aca65eed288e0c7654ab49aad6c535d9313d5e38c44b1cb1768dcdfc772453",
+        "kind": "raw_transport",
+        "source": "app.adapters.network.feishu",
+        "target": "websocket",
+        "uses": [
+          "FeishuLongConnection._run_once|call:create_connection"
+        ]
+      },
+      {
+        "bindings": [
           "import:httpx as httpx"
         ],
         "fingerprint": "c00458c868240f1adfe6278ba22bd5c4782e9bd2fcf896114c2288bf82981ee3",
@@ -519,18 +531,6 @@
         "source": "app.modules.emby.emby",
         "target": "requests",
         "uses": []
-      },
-      {
-        "bindings": [
-          "import:websocket as websocket"
-        ],
-        "fingerprint": "8ccfc3b86ad029942cdf0cab9d01fa2e1498576ee59e0df7239e1a744b370eae",
-        "kind": "raw_transport",
-        "source": "app.modules.feishu.longconn",
-        "target": "websocket",
-        "uses": [
-          "FeishuLongConnection._run_once|call:create_connection"
-        ]
       },
       {
         "bindings": [
@@ -930,8 +930,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9057,
-  "edge_sha256": "81d2d96d462b2069f5e01f6ca7f58ee2d377cb91be21c1341a57805c78204e7c",
+  "edge_count": 9060,
+  "edge_sha256": "cb948f057f3a8075ddf419370773b879f73aa13f6a13b1c0d9690f8c49f7f8a8",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -1041,6 +1041,11 @@
     "app.adapters.network.doh -> app.runtime.log",
     "app.adapters.network.doh -> app.runtime.reload",
     "app.adapters.network.doh -> app.runtime.settings",
+    "app.adapters.network.feishu -> app.adapters",
+    "app.adapters.network.feishu -> app.adapters.network",
+    "app.adapters.network.feishu -> app.adapters.network.http",
+    "app.adapters.network.feishu -> app.runtime",
+    "app.adapters.network.feishu -> app.runtime.log",
     "app.adapters.network.http -> app.runtime",
     "app.adapters.network.http -> app.runtime.correlation",
     "app.adapters.network.webpush -> app.adapters",
@@ -6777,6 +6782,7 @@
     "app.modules.fanart -> app.schemas.types",
     "app.modules.feishu.feishu -> app.adapters",
     "app.modules.feishu.feishu -> app.adapters.network",
+    "app.modules.feishu.feishu -> app.adapters.network.feishu",
     "app.modules.feishu.feishu -> app.adapters.network.http",
     "app.modules.feishu.feishu -> app.application",
     "app.modules.feishu.feishu -> app.application.messaging",
@@ -6789,7 +6795,6 @@
     "app.modules.feishu.feishu -> app.domain.context",
     "app.modules.feishu.feishu -> app.modules",
     "app.modules.feishu.feishu -> app.modules.feishu",
-    "app.modules.feishu.feishu -> app.modules.feishu.longconn",
     "app.modules.feishu.feishu -> app.modules.feishu.openapi",
     "app.modules.feishu.feishu -> app.runtime",
     "app.modules.feishu.feishu -> app.runtime.log",
@@ -6798,11 +6803,6 @@
     "app.modules.feishu.feishu -> app.schemas",
     "app.modules.feishu.feishu -> app.schemas.message",
     "app.modules.feishu.feishu -> app.schemas.types",
-    "app.modules.feishu.longconn -> app.adapters",
-    "app.modules.feishu.longconn -> app.adapters.network",
-    "app.modules.feishu.longconn -> app.adapters.network.http",
-    "app.modules.feishu.longconn -> app.runtime",
-    "app.modules.feishu.longconn -> app.runtime.log",
     "app.modules.feishu.module -> app.application",
     "app.modules.feishu.module -> app.application.messaging",
     "app.modules.feishu.module -> app.application.messaging.channel",
@@ -8956,6 +8956,9 @@
     "app.sdk.events -> app.runtime.events",
     "app.sdk.events -> app.schemas",
     "app.sdk.events -> app.schemas.event",
+    "app.sdk.feishu -> app.adapters",
+    "app.sdk.feishu -> app.adapters.network",
+    "app.sdk.feishu -> app.adapters.network.feishu",
     "app.sdk.logging -> app.runtime",
     "app.sdk.logging -> app.runtime.log",
     "app.sdk.media -> app.domain",
@@ -9991,7 +9994,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 1060,
+  "module_count": 1061,
   "modules": [
     "app",
     "app.adapters",
@@ -10012,6 +10015,7 @@
     "app.adapters.network.browser",
     "app.adapters.network.cloudflare",
     "app.adapters.network.doh",
+    "app.adapters.network.feishu",
     "app.adapters.network.http",
     "app.adapters.network.ip",
     "app.adapters.network.resolver",
@@ -10673,7 +10677,6 @@
     "app.modules.fanart",
     "app.modules.feishu",
     "app.modules.feishu.feishu",
-    "app.modules.feishu.longconn",
     "app.modules.feishu.module",
     "app.modules.feishu.openapi",
     "app.modules.filemanager",
@@ -10980,6 +10983,7 @@
     "app.sdk.config",
     "app.sdk.database",
     "app.sdk.events",
+    "app.sdk.feishu",
     "app.sdk.logging",
     "app.sdk.media",
     "app.sdk.network",
