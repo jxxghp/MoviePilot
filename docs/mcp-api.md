@@ -188,6 +188,15 @@ operation ID、权限、副作用、确认、恢复、结果敏感性及精确�
 
 只允许传 `tools/list` 对应 operation 分支中声明的 `path_params`、`query` 和 `body` 字段。不得传 URL、认证头、API Token 或任意 HTTP 方法。
 
+内置 Agent 工具同样禁止额外顶层字段。业务参数不能平铺在 `operation_id` 旁边：
+例如 `media.detail` 的 `media_id` 属于 `path_params`，`media_source` 与 `type_name` 属于 `query`；
+`subscription.execution.list` 使用 `query.limit`，不能套用其它列表的 `page` / `count`；
+`site.rss` 支持 `query.page` / `query.count`，不接受 `site_id` 筛选。
+工具说明内联了这三个接口的完整 JSON 示例，示例 ID 必须替换为前序查询返回的真实 ID。
+参数错误在请求发出前返回纠错回执和该 operation 的 `input_contract`（网关错误码为 `invalid_input`），
+并指出具体缺失或错误字段（如 `query.media_source`）、未声明字段或顶层参数的正确位置，
+不回显参数值。模型应根据该合同修正参数后重试；写入参数错误不会创建执行认领。
+
 `body` 使用原生 JSON 值。对象和数组直接传入；仅在选定的 operation 允许时传 `null`。当前唯一的字符串请求体为 `system.upgrade.dev` 的固定值 `"dev"`。网关会按选定的 operation 合同校验请求体类型和字段。
 
 `search.torrents` 可能按媒体标题与别名分轮搜索站点：MoviePilot 内层请求最多等待 290 秒，Agent 工具总等待上限为 300 秒，预留 10 秒处理超时与返回结果；V3 MCP 包装层继续使用原有 `mcp_proxy_timeout` 配置（默认 600 秒）。其它 operation 沿用原有超时配置。`page` / `count` 只分页已完成的搜索结果，不会缩短站点搜索过程。

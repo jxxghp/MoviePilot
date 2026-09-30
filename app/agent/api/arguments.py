@@ -1,5 +1,6 @@
 """按已生成的 API 输入合同规范实际请求，使相同写入使用稳定参数身份。"""
 
+import re
 from copy import deepcopy
 from typing import Any
 
@@ -15,6 +16,49 @@ _SCALAR_ADAPTERS = {
 }
 _MISSING = object()
 _CONTRACT_DESCRIPTION_MAX_CHARS = 180
+
+
+class ApiArgumentError(ValueError):
+    """只携带字段位置和合同说明，不回显模型提交的参数值。"""
+
+    def __init__(self, message: str, *, path: str = "") -> None:
+        """保留独立字段路径，便于嵌套对象逐层补齐错误位置。"""
+        self.detail = message
+        self.path = path
+        super().__init__(f"{path}: {message}" if path else message)
+
+
+def _field_error(field: str, error: ValueError) -> ApiArgumentError:
+    """拼接由合同声明的字段路径，同时移除 Pydantic 错误中的原始输入。"""
+    if isinstance(error, ApiArgumentError):
+        path = f"{field}.{error.path}" if error.path else field
+        return ApiArgumentError(error.detail, path=path)
+    detail = "API 参数类型不符合输入合同" if isinstance(error, ValidationError) else str(error)
+    return ApiArgumentError(detail, path=field)
+
+
+def _unknown_fields_message(fields: set[str]) -> str:
+    """仅展示有界参数标识符，避免把误作字段名的 URL 或凭据带回模型。"""
+    names = sorted(name for name in fields if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", name))
+    suffix = "；其余字段名已省略" if len(names) != len(fields) or len(names) > 8 else ""
+    return f"API 参数包含合同未声明的字段：{', '.join(names[:8])}{suffix}"
+
+
+def _validate_argument_locations(arguments: dict[str, Any], schema: dict[str, Any]) -> None:
+    """在通用模型丢弃额外字段前拒绝平铺参数，并按精确合同提示合法位置。"""
+    unknown = set(arguments) - {"operation_id", "path_params", "query", "body"}
+    if not unknown:
+        return
+    contract = api_input_contract(str(arguments.get("operation_id") or ""), schema)
+    hints = []
+    for container in ("path_params", "query", "body"):
+        fields = contract.get(container, {}).get("fields", {})
+        for name in sorted(unknown.intersection(fields))[:8]:
+            hints.append(f"{name} 应移入 {container}.{name}")
+    message = _unknown_fields_message(unknown)
+    if hints:
+        message += "；" + "；".join(hints)
+    raise ApiArgumentError(message)
 
 
 def _resolve_schema(schema: dict[str, Any], definitions: dict[str, Any]) -> dict[str, Any]:
@@ -144,6 +188,8 @@ def _normalize_union(value: Any, schema: dict[str, Any], definitions: dict[str, 
     """优先选择原始类型匹配的联合，歧义时不猜测不同分支的默认值。"""
     alternatives = [_resolve_schema(item, definitions) for item in schema.get("oneOf", schema.get("anyOf", []))]
     exact = [item for item in alternatives if item.get("type") == _value_type(value)]
+    if len(exact) == 1:
+        return _normalize_value(value, exact[0], definitions, depth + 1)
     candidates = []
     for option in exact or alternatives:
         try:
@@ -166,7 +212,7 @@ def _normalize_object(value: dict[str, Any], schema: dict[str, Any], definitions
     extra = schema.get("additionalProperties")
     unknown = set(value) - set(properties)
     if unknown and extra is False:
-        raise ValueError("API 参数包含合同未声明的字段")
+        raise ApiArgumentError(_unknown_fields_message(unknown))
     normalized = {key: deepcopy(value[key]) for key in unknown} if extra is True or isinstance(extra, dict) else {}
     required = schema.get("required", [])
     for key, declaration in properties.items():
@@ -174,9 +220,12 @@ def _normalize_object(value: dict[str, Any], schema: dict[str, Any], definitions
         current = value.get(key, field_schema.get("default", _MISSING))
         if current is _MISSING:
             if key in required:
-                raise ValueError("API 参数缺少必需字段")
+                raise ApiArgumentError("API 参数缺少必需字段", path=key)
             continue
-        normalized[key] = _normalize_value(current, field_schema, definitions, depth + 1)
+        try:
+            normalized[key] = _normalize_value(current, field_schema, definitions, depth + 1)
+        except ValueError as error:
+            raise _field_error(key, error) from error
     return normalized
 
 
@@ -219,6 +268,7 @@ def canonical_api_arguments(arguments: dict[str, Any], schema: dict[str, Any]) -
     route = resolve_api_route(str(operation_id or ""))
     if branch is None or route is None:
         raise ValueError("API 操作没有规范参数合同")
+    _validate_argument_locations(arguments, schema)
     values = deepcopy(arguments)
     if route.method == "GET" and isinstance(values.get("body"), dict):
         values["query"] = {**(values.get("query") or {}), **values.pop("body")}

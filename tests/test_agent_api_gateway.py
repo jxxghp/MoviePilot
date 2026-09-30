@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from langchain_core.utils.function_calling import convert_to_openai_tool
 
 # pylint: disable=no-name-in-module  # 策略包根通过 __getattr__ 惰性导出，Pylint 无法静态解析。
 from app.agent.policy import (
@@ -25,7 +26,7 @@ from app.agent.policy.api import (
 )
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.impl.agent_task import AgentTaskTool
-from app.agent.tools.impl.api import MoviePilotApiTool
+from app.agent.tools.impl.api import MoviePilotApiInput, MoviePilotApiTool
 from app.agent.tools.impl.execute_command import ExecuteCommandTool
 from app.agent.tools.manager import MoviePilotToolsManager
 from app.schemas.types import NotificationChannel
@@ -256,6 +257,56 @@ def test_operation_body_shapes_fit_local_agent_input_schema() -> None:
                 assert variant.get("type") in {"object", "array", "null"}
 
     assert string_bodies == {("system.upgrade.dev", "dev")}
+
+
+def test_local_api_schema_forbids_flattened_arguments_and_examples_match_contracts() -> None:
+    """模型实际接收的 schema 禁止额外顶层字段，内联示例均通过真实 operation 合同。"""
+    tool = MoviePilotApiTool(session_id="session", user_id="1")
+    definition = convert_to_openai_tool(tool)["function"]
+    schema = definition["parameters"]
+    assert definition["description"] == tool.description
+    assert schema["additionalProperties"] is False
+    assert set(schema["properties"]) == {"operation_id", "path_params", "query", "body"}
+    with pytest.raises(ValueError):
+        MoviePilotApiInput.model_validate({"operation_id": "site.rss", "page": 1})
+
+    examples = tool.description.split("Examples (replace sample IDs with IDs from prior results): ")[1]
+    decoder = json.JSONDecoder()
+    operations = []
+    for _ in range(3):
+        example, end = decoder.raw_decode(examples)
+        operations.append(tool.canonical_arguments(example)["operation_id"])
+        examples = examples[end:].lstrip("; ")
+    assert operations == ["media.detail", "subscription.execution.list", "site.rss"]
+
+
+@pytest.mark.parametrize(("arguments", "expected"), [
+    ({"operation_id": "media.detail", "media_id": "secret-value", "media_source": "tmdb"},
+     ["media_id 应移入 path_params.media_id", "media_source 应移入 query.media_source"]),
+    ({"operation_id": "subscription.execution.list", "limit": 2}, ["limit 应移入 query.limit"]),
+    ({"operation_id": "site.rss", "query": {"site_id": "secret-value"}}, ["query", "site_id"]),
+    ({"operation_id": "media.detail"}, ["path_params.media_id"]),
+    ({"operation_id": "media.detail", "path_params": {"media_id": "27205"}}, ["query.media_source"]),
+    ({"operation_id": "subscription.execution.list", "query": {"limit": "secret-value"}}, ["query.limit"]),
+    ({"operation_id": "site.list", "query": {"status": "secret-value"}}, ["query.status"]),
+    ({"operation_id": "download.add", "torrent_in": {}}, ["torrent_in 应移入 body.torrent_in"]),
+    ({"operation_id": "config.system.update", "body": {"value": "secret-value"}}, ["body.setting_key"]),
+    ({"operation_id": "site.rss", "https://secret-value.invalid/": "secret-value"}, ["字段名已省略"]),
+])
+@pytest.mark.asyncio
+async def test_gateway_raw_tool_inputs_return_actionable_errors_without_execution(arguments, expected) -> None:
+    """覆盖 LangChain 和直接调用入口，错误字段不能静默丢弃、执行或泄露参数值。"""
+    executor = AsyncMock()
+    gateway = MoviePilotApiTool(session_id="session", user_id="1", executor=executor)
+    message = await gateway.ainvoke({"name": gateway.name, "args": arguments, "id": "invalid", "type": "tool_call"})
+    assert message.status == "error"
+    for result in (message.content, await gateway.run(**arguments)):
+        payload = json.loads(result)
+        assert payload["error"] == "invalid_input"
+        assert payload["input_contract"]["operation_id"] == arguments["operation_id"]
+        assert all(item in payload["message"] for item in expected)
+        assert "secret-value" not in result
+    executor.execute.assert_not_awaited()
 
 
 def test_mcp_collection_contract_distinguishes_exact_and_unavailable_totals() -> None:
