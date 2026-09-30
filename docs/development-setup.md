@@ -277,3 +277,7 @@ CI 上传 `complexity-report` 工件，门禁失败时也保留已生成的指�
 `tests/test_agent_learning_review.py` 用临时目录与确定性模型核对 Hermes 学习契约，
 不访问实际 LLM 或个人记忆。匹配器、威胁模式和提示词的上游来源及 MIT 许可在
 `app/agent/learning/LICENSE.hermes`；不得以这些离线测试替代固定真实模型的效果评测。
+
+`tests/test_agent_guardrail_controller.py` 保留 Hermes 原始循环规则的纯行为回归，
+`tests/test_agent_guardrails.py` 使用真实 LangGraph 验证并行顺序、逐运行隔离、正常轮询、
+未知结果、尾部行动继续提示和流式停止交付。派生代码许可在 `app/agent/guardrails/LICENSE.hermes`。

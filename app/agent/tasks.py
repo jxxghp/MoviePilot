@@ -6,6 +6,7 @@ from typing import Callable, Optional
 
 from app.agent.contracts import ReplyMode
 from app.agent.lifecycle import AgentLifecycleOwner
+from app.agent.middleware.guardrails import GUARDRAIL_REPLY_PREFIX
 from app.agent.middleware.jobs import filter_active_jobs, load_jobs_metadata
 from app.agent.orchestrator import AGENT_EXECUTION_ERROR_PREFIX, HEARTBEAT_SESSION_PREFIX
 from app.agent.prompt import prompt_manager
@@ -114,7 +115,7 @@ class AgentTaskOwner(AgentLifecycleOwner):
             )
             result_text = str(result or "").strip()
             success = not result_text.startswith(
-                (AGENT_EXECUTION_ERROR_PREFIX, "处理消息时发生错误")
+                (AGENT_EXECUTION_ERROR_PREFIX, GUARDRAIL_REPLY_PREFIX, "处理消息时发生错误")
             )
         except asyncio.CancelledError:
             success = False

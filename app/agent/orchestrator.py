@@ -30,6 +30,7 @@ from app.agent.llm.tools import ServerToolRegistry
 from app.agent.mcp import agent_mcp_manager
 from app.agent.memory import MemoryManager, memory_manager
 from app.agent.middleware.config import RuntimeConfigMiddleware
+from app.agent.middleware.guardrails import GUARDRAIL_KEY, ToolGuardrailsMiddleware
 from app.agent.middleware.invocation import InvocationMiddleware
 from app.agent.middleware.jobs import (
     JobsMiddleware,
@@ -1976,12 +1977,14 @@ class MoviePilotAgent:
             )
 
             # 中间件
+            guardrails = ToolGuardrailsMiddleware(policy_context)
             middlewares = [
                 # 宿主策略必须位于最外层，确保插件覆盖工具基类也不能绕过。
                 AgentPolicyMiddleware(
                     context=policy_context,
                     catalog=tool_catalog,
                     tools=tools,
+                    guardrails=guardrails,
                 ),
                 # 运行中补充消息只在模型回合边界进入同一张图，不启动并行 Agent。
                 *([SteeringMiddleware()] if self._steering_inbox.running else []),
@@ -2000,6 +2003,8 @@ class MoviePilotAgent:
                 # 稳定偏好与原始会话证据分别管理。
                 memory_middleware,
                 *recall_middlewares,
+                # 以工具原文及模型请求顺序检测循环，外层归档仍保留真实回执。
+                guardrails,
                 *([learning_middleware] if learning_middleware else []),
                 # 错误工具调用修复
                 PatchToolCallsMiddleware(),
@@ -2286,6 +2291,21 @@ class MoviePilotAgent:
                         stripper.process(content, on_token)
 
         stripper.flush(on_token)
+        final_notice = MoviePilotAgent._guardrail_final_text(agent, config)
+        if final_notice:
+            on_token('\n\n' + final_notice)
+
+    @staticmethod
+    def _guardrail_final_text(agent: Any, config: dict[str, Any]) -> str:
+        """受控停止由宿主生成，不产生模型 token；流式入口须显式交付最终说明。"""
+        get_state = getattr(agent, 'get_state', None)
+        if not callable(get_state):
+            return ''
+        messages = get_state(config).values.get('messages', [])
+        if isinstance(messages, list) and messages and isinstance(messages[-1], AIMessage):
+            if messages[-1].additional_kwargs.get(GUARDRAIL_KEY):
+                return str(LLMHelper.extract_text_content(messages[-1].content))
+        return ''
 
     @staticmethod
     def _sanitize_recovery_message(message: BaseMessage) -> BaseMessage:
@@ -2544,7 +2564,9 @@ class MoviePilotAgent:
             display_text = await self._save_final_agent_state(agent, agent_config)
             execution_success = True
             if self._learning_enabled() and self._learning is not None:
-                self._learning.finish(delivered=bool(display_text))
+                final_state = agent.get_state(agent_config).values.get('messages', [])
+                halted = bool(final_state and final_state[-1].additional_kwargs.get(GUARDRAIL_KEY))
+                self._learning.finish(delivered=bool(display_text) and not halted)
 
         except asyncio.CancelledError:
             logger.info(f"Agent执行被取消: session_id={self.session_id}")

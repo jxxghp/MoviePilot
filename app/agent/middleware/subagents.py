@@ -24,6 +24,7 @@ from langchain_core.tools import BaseTool, StructuredTool
 from pydantic import BaseModel, Field
 
 from app.agent.llm.helper import LLMHelper
+from app.agent.middleware.guardrails import ToolGuardrailsMiddleware
 from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.middleware.summarization import (
     ContextPreservingSummarizationMiddleware,
@@ -444,6 +445,7 @@ class _SubAgentAgentProvider:
         self._policy_context = policy_context or _default_subagent_policy_context(tools)
         self._catalog = catalog
         self._agents = {}
+        self._guardrails: dict[str, ToolGuardrailsMiddleware] = {}
         self._default_agent_name = "general-purpose"
 
     def _resolve_profile(self, _agent_name: Optional[str] = None) -> _SubAgentProfile:
@@ -464,6 +466,7 @@ class _SubAgentAgentProvider:
         logger.info(
             f"创建子代理图: subagent_type={profile.name}, tools={len(subagent_tools)}"
         )
+        guardrails = ToolGuardrailsMiddleware(self._policy_context)
         agent = create_agent(
             model=self._model,
             tools=[*subagent_tools, *self._server_tools],
@@ -473,7 +476,9 @@ class _SubAgentAgentProvider:
                 AgentPolicyMiddleware(
                     context=self._policy_context,
                     catalog=subagent_catalog,
+                    guardrails=guardrails,
                 ),
+                guardrails,
                 FinalRequestCompactionMiddleware(
                     summarizer=ContextPreservingSummarizationMiddleware(
                         model=self._model,
@@ -484,6 +489,7 @@ class _SubAgentAgentProvider:
             ],
         )
         self._agents[profile.name] = agent
+        self._guardrails[profile.name] = guardrails
         return profile.name, agent
 
     async def run_task(
@@ -527,6 +533,10 @@ class _SubAgentAgentProvider:
                 f"task_id={log_task_id}, error={summarize_error(err)}"
             )
             raise
+        finally:
+            guardrails = self._guardrails.get(agent_name)
+            if guardrails:
+                guardrails.release(f"subagent-{agent_name}-{thread_suffix}")
         final_text = _extract_final_text(result)
         logger.info(
             f"子代理调用完成: subagent_type={agent_name}, "

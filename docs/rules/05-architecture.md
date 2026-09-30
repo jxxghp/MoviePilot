@@ -96,6 +96,7 @@ to make the directory tree look symmetrical.
 | `app/agent/middleware/output.py` | Bounded, expiring in-memory tool output and thread-scoped pagination; never persists raw tool results |
 | `app/agent/middleware/vision.py` | Request-only tool-image observations after compaction; complete tool-reply batches, per-invocation visual fallback and unchanged user authorization |
 | `app/agent/tools/result.py` | Pure interpretation of explicit tool outcomes and portable tool-image history; image observation copies never replace original user attachments |
+| `app/agent/guardrails/` / `app/agent/middleware/guardrails.py` | Agent 专属的 Hermes 循环检测与结束纠偏；纯控制器只产出决策，中间件在实际工具派发和模型边界应用，按宿主图线程隔离临时状态。不可替代授权、持久写入回执或业务成功校验；检测复用已有模型包装及策略后置节点，不能因增加图节点缩减任务预算；子任务 owner 在取消路径释放检测状态 |
 | `app/agent/api/arguments.py` | Canonical API request fingerprints from the generated operation schema and the executor's GET projection; no endpoint imports or live discovery |
 | `app/agent/shell.py` | Shared command interpreter, login mode, launch directory and subprocess text-encoding policy for run, pipe and PTY; preserves Windows default priority and UTF-8 behavior |
 | `app/agent/terminal/` | `ownership.py` owns host task identity, invocation context and lazy scope closure; `session.py` owns process state, input serialization and UTF-8 capture; `output.py` owns pure paging and bounded projections; `manager.py` owns launch, access grants and process lifecycle. Package root contains no implementation exports |

@@ -15,6 +15,7 @@ from app.agent.learning.review import ReviewLoop, ReviewSnapshot
 from app.agent.learning.skills import SkillLibrary
 from app.agent.learning.tools import LearningTools
 from app.agent.tools.base import run_agent_blocking
+from app.agent.tools.result import TOOL_OBSERVATION_MARKER
 from app.application.messaging.interaction.agent import is_agent_learning_command
 from app.runtime.log import logger
 from app.runtime.tasks import get_task_registry
@@ -69,7 +70,8 @@ class LearningSession:
         """先让旧复盘退出，再推进真实用户轮次；恢复会话用历史 human 条数初始化。"""
         await self.wait_cancelled()
         if not self.initialized:
-            self.turns = max(0, sum(isinstance(message, HumanMessage) for message in messages) - 1) % 10
+            self.turns = max(0, sum(isinstance(message, HumanMessage) and not message.additional_kwargs.get(TOOL_OBSERVATION_MARKER)
+                                   for message in messages) - 1) % 10
             self.initialized = True
         self.turns = (self.turns + 1) % 10
         self.memory_due = self.turns == 0
