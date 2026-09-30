@@ -9,8 +9,8 @@ import pytest
 from app.modules import _MessageBase
 from app.modules.discord import DiscordModule
 from app.modules.discord.discord import Discord
-from app.modules.feishu import FeishuModule
 from app.modules.feishu.feishu import Feishu
+from app.modules.feishu.module import FeishuModule
 from app.modules.filter import FilterModule
 from app.modules.plex import PlexModule
 from app.modules.qqbot import gateway as qq_gateway
@@ -713,12 +713,11 @@ def test_wechat_clawbot_stop_keeps_poll_owner_until_retry() -> None:
 
 
 def test_feishu_stop_reports_live_ws_thread_until_retry() -> None:
-    """飞书 SDK 清理后线程仍存活时不得报告关闭完成。"""
+    """飞书长连接停止后线程仍存活时不得报告关闭完成。"""
     client = Feishu.__new__(Feishu)
-    client._stop_event = threading.Event()
     client._ready = threading.Event()
-    client._ws_client = None
-    client._ws_loop = None
+    client._ws_client = Mock()
+    client._api_client = Mock()
     ws_thread = Mock()
     ws_thread.is_alive.return_value = True
     client._ws_thread = ws_thread
@@ -726,9 +725,12 @@ def test_feishu_stop_reports_live_ws_thread_until_retry() -> None:
 
     assert client.stop() is False
     assert client._ws_thread is ws_thread
+    client._ws_client.stop.assert_called_once_with()
+    client._api_client.close.assert_not_called()
 
     ws_thread.is_alive.return_value = False
     assert client.stop() is True
+    client._api_client.close.assert_called_once_with()
 
 
 def test_discord_stop_reports_live_event_loop_thread_until_retry() -> None:

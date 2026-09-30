@@ -1,60 +1,19 @@
-import asyncio
 import json
 import re
 import tempfile
 import threading
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
-
-import lark_oapi as lark
-import lark_oapi.ws.client as lark_ws_client_module
-from lark_oapi.api.cardkit.v1 import (
-    ContentCardElementRequest,
-    ContentCardElementRequestBody,
-    CreateCardRequest,
-    CreateCardRequestBody,
-    SettingsCardRequest,
-    SettingsCardRequestBody,
-)
-from lark_oapi.api.im.v1 import (
-    CreateFileRequest,
-    CreateFileRequestBody,
-    CreateImageRequest,
-    CreateImageRequestBody,
-    CreateMessageReactionRequest,
-    CreateMessageReactionRequestBody,
-    CreateMessageRequest,
-    CreateMessageRequestBody,
-    DeleteMessageReactionRequest,
-    Emoji,
-    GetFileRequest,
-    GetImageRequest,
-    GetMessageResourceRequest,
-    P2ImChatAccessEventBotP2pChatEnteredV1,
-    P2ImMessageMessageReadV1,
-    P2ImMessageReactionCreatedV1,
-    P2ImMessageReactionDeletedV1,
-    P2ImMessageRecalledV1,
-    P2ImMessageReceiveV1,
-    PatchMessageRequest,
-    PatchMessageRequestBody,
-    ReplyMessageRequest,
-    ReplyMessageRequestBody,
-)
-from lark_oapi.core.const import FEISHU_DOMAIN
-from lark_oapi.core.enum import LogLevel
-from lark_oapi.event.callback.model.p2_card_action_trigger import (
-    P2CardActionTrigger,
-    P2CardActionTriggerResponse,
-)
 
 from app.adapters.network.http import RequestUtils
 from app.application.messaging.channel.admin import matches_channel_admin
 from app.application.messaging.ingress import submit_message_to_host
 from app.application.security.user import get_configured_user_channel_lookup
 from app.domain.context import Context, MediaInfo
+from app.modules.feishu.longconn import FeishuLongConnection
+from app.modules.feishu.openapi import FEISHU_DOMAIN, FeishuOpenApi, JsonDict
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.runtime.thread import ThreadHelper
@@ -62,62 +21,10 @@ from app.schemas.message import IncomingMessage, Message
 from app.schemas.types import MessageType, NotificationChannel
 
 
-class _ThreadLocalEventLoopProxy:
-    """为使用模块级 loop 的飞书 SDK 路由当前实例线程的事件循环。"""
-
-    def __init__(self, fallback: asyncio.AbstractEventLoop) -> None:
-        """保存 SDK 原始循环，并初始化互不共享的线程绑定。"""
-        self._fallback = fallback
-        self._state = threading.local()
-
-    def bind(
-            self,
-            loop: asyncio.AbstractEventLoop,
-            stop_event: threading.Event,
-    ) -> None:
-        """为当前飞书实例线程绑定循环和停止信号。"""
-        self._state.loop = loop
-        self._state.stop_event = stop_event
-
-    def unbind(self) -> None:
-        """清除当前线程绑定，防止复用线程时误取已关闭循环。"""
-        self._state.__dict__.clear()
-
-    def stop_event(self) -> Optional[threading.Event]:
-        """返回当前实例线程的停止信号，未绑定时返回空。"""
-        return getattr(self._state, "stop_event", None)
-
-    def __getattr__(self, name: str) -> Any:
-        """把 SDK loop 操作转发给当前线程循环或原始兼容循环。"""
-        loop = getattr(self._state, "loop", self._fallback)
-        return getattr(loop, name)
-
-
-_LARK_WS_ORIGINAL_SELECT = lark_ws_client_module._select
-_lark_ws_loop_proxy = _ThreadLocalEventLoopProxy(lark_ws_client_module.loop)
-
-
-async def _select_bound_ws_client() -> None:
-    """按当前实例的停止信号结束 SDK 阻塞选择；未绑定时保持 SDK 原行为。"""
-    stop_event = _lark_ws_loop_proxy.stop_event()
-    if stop_event is None:
-        await _LARK_WS_ORIGINAL_SELECT()
-        return
-    while not stop_event.is_set():
-        await asyncio.sleep(1)
-
-
-# lark_oapi 以模块全局 loop 驱动所有 Client；静态安装线程路由后，多配置实例
-# 不再在启动/退出时反复覆盖同一全局对象。
-lark_ws_client_module.loop = _lark_ws_loop_proxy
-lark_ws_client_module._select = _select_bound_ws_client
-
-
 class Feishu:
     """飞书通知客户端，负责长连接收消息与主动发送通知。"""
 
     PROCESSING_REACTION_EMOJI = "GLANCE"
-    _ws_shutdown_timeout_seconds = 5
     _ws_join_timeout_seconds = 5
     STREAM_CARD_TITLE_ELEMENT_ID = "mp_stream_title"
     STREAM_CARD_BODY_ELEMENT_ID = "mp_stream_body"
@@ -146,13 +53,10 @@ class Feishu:
         self._verification_token = (FEISHU_VERIFICATION_TOKEN or "").strip()
         self._encrypt_key = (FEISHU_ENCRYPT_KEY or "").strip()
 
-        self._api_client: Optional[lark.Client] = None
-        self._ws_client: Optional[lark.ws.Client] = None
+        self._api_client: Optional[FeishuOpenApi] = None
+        self._ws_client: Optional[FeishuLongConnection] = None
         self._ready = threading.Event()
-        self._stop_event = threading.Event()
         self._ws_thread: Optional[threading.Thread] = None
-        self._ws_loop: Optional[asyncio.AbstractEventLoop] = None
-        self._ws_tasks: Set[asyncio.Task] = set()
         self._user_chat_mapping: Dict[str, str] = {}
         self._user_receive_id_type_mapping: Dict[str, str] = {}
         self._chat_open_mapping: Dict[str, str] = {}
@@ -179,155 +83,69 @@ class Feishu:
             *user_ids,
         )
 
-    def _build_api_client(self) -> lark.Client:
+    def _build_api_client(self) -> FeishuOpenApi:
         """构建飞书 OpenAPI client，用于发送和编辑消息。"""
-        return (
-            lark.Client.builder()
-            .app_id(self._app_id)
-            .app_secret(self._app_secret)
-            .domain(FEISHU_DOMAIN)
-            .log_level(LogLevel.INFO)
-            .build()
-        )
+        return FeishuOpenApi(self._app_id, self._app_secret, domain=FEISHU_DOMAIN)
 
-    def _build_event_handler(self) -> lark.EventDispatcherHandler:
-        """构建飞书事件分发器，将消息与卡片回调接到本地消息链。"""
-        builder = lark.EventDispatcherHandler.builder(
-            self._encrypt_key,
-            self._verification_token,
-            level=LogLevel.INFO,
-        )
-        builder.register_p2_im_message_receive_v1(self._on_message)
-        builder.register_p2_im_message_message_read_v1(self._on_message_read)
-        builder.register_p2_im_message_reaction_created_v1(self._on_message_reaction_created)
-        builder.register_p2_im_message_reaction_deleted_v1(self._on_message_reaction_deleted)
-        builder.register_p2_im_message_recalled_v1(self._on_message_recalled)
-        builder.register_p2_im_chat_access_event_bot_p2p_chat_entered_v1(self._on_bot_p2p_chat_entered)
-        builder.register_p2_card_action_trigger(self._on_card_action)
-        return builder.build()
+    def _event_handlers(self) -> Dict[str, Callable[[JsonDict], Optional[JsonDict]]]:
+        """事件类型到处理函数的映射；未列出的事件只记录调试日志并正常应答。"""
+        return {
+            "im.message.receive_v1": self._on_message,
+            "im.message.message_read_v1": self._on_message_read,
+            "im.message.reaction.created_v1": self._on_message_reaction_created,
+            "im.message.reaction.deleted_v1": self._on_message_reaction_deleted,
+            "im.message.recalled_v1": self._on_message_recalled,
+            "im.chat.access_event.bot_p2p_chat_entered_v1": self._on_bot_p2p_chat_entered,
+            "card.action.trigger": self._on_card_action,
+        }
+
+    def _dispatch_event(self, payload: bytes) -> Optional[JsonDict]:
+        """
+        分发长连接收到的 2.0 版事件，返回值由长连接编码进应答帧。
+
+        长连接事件不经过加密与签名校验（与 lark-oapi 长连接模式一致），
+        FEISHU_ENCRYPT_KEY / FEISHU_VERIFICATION_TOKEN 只对 HTTP 回调模式有意义。
+        """
+        body = json.loads(payload.decode("utf-8"))
+        if not isinstance(body, dict):
+            return None
+        header = body.get("header") or {}
+        event_type = str(header.get("event_type") or "")
+        handler = self._event_handlers().get(event_type)
+        if handler is None:
+            logger.debug("忽略未处理的飞书事件：%s", event_type)
+            return None
+        event = body.get("event")
+        return handler(event if isinstance(event, dict) else {})
 
     def _start_ws_client(self) -> None:
         """启动飞书长连接客户端线程。"""
         if self._ws_thread and self._ws_thread.is_alive():
             return
 
-        self._stop_event.clear()
+        self._ws_client = FeishuLongConnection(
+            self._app_id,
+            self._app_secret,
+            on_event=self._dispatch_event,
+            domain=FEISHU_DOMAIN,
+            name=self._name,
+        )
         self._ws_thread = threading.Thread(target=self._run_ws_client, daemon=True)
         self._ws_thread.start()
 
     def _run_ws_client(self) -> None:
-        """在后台线程中运行飞书长连接客户端。"""
-        loop = asyncio.new_event_loop()
-        original_create_task = loop.create_task
-        self._ws_loop = loop
-        asyncio.set_event_loop(loop)
-        _lark_ws_loop_proxy.bind(loop, self._stop_event)
-
-        def _create_tracked_task(coro, *args, **kwargs) -> asyncio.Task:
-            """跟踪 SDK 后台任务，避免关闭时产生未取回的任务异常。"""
-            task = original_create_task(coro, *args, **kwargs)
-            coro_name = getattr(coro, "__qualname__", "")
-            if coro_name in {
-                "Client._ping_loop",
-                "Client._receive_message_loop",
-                "Client._handle_message",
-            }:
-                self._ws_tasks.add(task)
-                task.add_done_callback(self._consume_ws_task_result)
-            return task
-
-        loop.create_task = _create_tracked_task
-        try:
-            self._ws_client = lark.ws.Client(
-                self._app_id,
-                self._app_secret,
-                log_level=LogLevel.INFO,
-                event_handler=self._build_event_handler(),
-                domain=FEISHU_DOMAIN,
-                auto_reconnect=True,
-            )
-            self._ready.set()
-            logger.info("飞书长连接服务启动：%s", self._name)
-            self._ws_client.start()
-        except Exception as err:
-            self._ready.clear()
-            if not self._stop_event.is_set():
-                logger.error(f"飞书长连接服务启动失败：{err}")
-        finally:
-            if not loop.is_closed():
-                loop.run_until_complete(self._shutdown_ws_client())
-            loop.create_task = original_create_task
-            pending_tasks = [
-                task
-                for task in asyncio.all_tasks(loop)
-                if not task.done()
-            ]
-            for task in pending_tasks:
-                task.cancel()
-            if pending_tasks:
-                loop.run_until_complete(
-                    asyncio.gather(*pending_tasks, return_exceptions=True)
-                )
-            loop.close()
-            asyncio.set_event_loop(None)
-            self._ws_loop = None
-            _lark_ws_loop_proxy.unbind()
-
-    def _consume_ws_task_result(self, task: asyncio.Task) -> None:
-        """取回飞书 SDK 后台任务结果，防止 asyncio 在关机时输出未消费异常。"""
-        self._ws_tasks.discard(task)
-        if task.cancelled():
-            return
-        try:
-            err = task.exception()
-        except asyncio.CancelledError:
-            return
-        if not err:
-            return
-        if self._stop_event.is_set():
-            logger.debug(f"飞书长连接后台任务已随停止退出：{err}")
-            return
-        logger.error(f"飞书长连接后台任务异常：{err}")
-
-    async def _shutdown_ws_client(self) -> None:
-        """在飞书长连接线程内有序取消后台任务并关闭 WebSocket。"""
+        """在后台线程中运行飞书长连接，直到停止或遇到不可重试的错误。"""
         ws_client = self._ws_client
-        if ws_client:
-            ws_client._auto_reconnect = False
-        current_task = asyncio.current_task()
-        running_tasks = [
-            task
-            for task in list(self._ws_tasks)
-            if task is not current_task and not task.done()
-        ]
-        for task in running_tasks:
-            task.cancel()
-        if running_tasks:
-            await asyncio.gather(*running_tasks, return_exceptions=True)
-        if ws_client:
-            try:
-                await self._disconnect_ws_client_quietly(ws_client)
-            except Exception as err:
-                logger.debug(f"关闭飞书长连接失败：{err}")
-
-    @staticmethod
-    async def _disconnect_ws_client_quietly(ws_client: lark.ws.Client) -> None:
-        """静默关闭飞书 WebSocket，避免 SDK 在关机时打印带敏感参数的连接地址。"""
-        if ws_client._conn is None:
-            ws_client._conn_url = ""
-            ws_client._conn_id = ""
-            ws_client._service_id = ""
+        if ws_client is None:
             return
-        await ws_client._lock.acquire()
+        self._ready.set()
+        logger.info("飞书长连接服务启动：%s", self._name)
         try:
-            if ws_client._conn is not None:
-                await ws_client._conn.close()
+            ws_client.run()
+        except Exception as err:
+            logger.error(f"飞书长连接服务异常退出：{err}")
         finally:
-            ws_client._conn = None
-            ws_client._conn_url = ""
-            ws_client._conn_id = ""
-            ws_client._service_id = ""
-            ws_client._lock.release()
+            self._ready.clear()
 
     def _forward_to_message_chain(self, payload: dict) -> bool:
         """将飞书入站消息转发到统一消息入口，复用现有交互主链。"""
@@ -338,11 +156,11 @@ class Feishu:
         )
 
     @staticmethod
-    def _parse_message_content(message) -> Tuple[
+    def _parse_message_content(message: JsonDict) -> Tuple[
         str, Optional[List[IncomingMessage.MessageImage]], Optional[List[str]], Optional[
             List[IncomingMessage.MessageAttachment]]]:
         """从飞书事件消息体中提取文本、图片、音频和文件引用。"""
-        raw_content = getattr(message, "content", None)
+        raw_content = message.get("content")
         if not raw_content:
             return "", None, None, None
         try:
@@ -352,8 +170,8 @@ class Feishu:
         if not isinstance(content, dict):
             return "", None, None, None
 
-        message_type = getattr(message, "message_type", None)
-        message_id = str(getattr(message, "message_id", None) or "").strip()
+        message_type = message.get("message_type")
+        message_id = str(message.get("message_id") or "").strip()
         text = content.get("text", "").strip() if isinstance(content.get("text"), str) else ""
         images = None
         audio_refs = None
@@ -517,24 +335,28 @@ class Feishu:
                 logger.debug(f"解析飞书用户绑定失败：{err}")
         return fallback
 
-    def _on_message(self, data: P2ImMessageReceiveV1) -> None:
-        """处理飞书长连接收到的普通消息事件。"""
-        event = getattr(data, "event", None)
-        sender = getattr(event, "sender", None)
-        message = getattr(event, "message", None)
-        sender_id = getattr(sender, "sender_id", None)
-        open_id = getattr(sender_id, "open_id", None)
-        user_id = getattr(sender_id, "user_id", None)
-        chat_id = getattr(message, "chat_id", None)
+    @staticmethod
+    def _sender_ids(user: Any) -> Tuple[Optional[str], Optional[str]]:
+        """从事件中的用户 ID 结构（open_id/user_id/union_id）取出 open_id 与 user_id。"""
+        if not isinstance(user, dict):
+            return None, None
+        return user.get("open_id") or None, user.get("user_id") or None
+
+    def _on_message(self, event: JsonDict) -> None:
+        """处理飞书长连接收到的普通消息事件（im.message.receive_v1）。"""
+        sender = event.get("sender") or {}
+        message = event.get("message") or {}
+        open_id, user_id = self._sender_ids(sender.get("sender_id"))
+        chat_id = message.get("chat_id")
         text, images, audio_refs, files = self._parse_message_content(message)
-        message_type = getattr(message, "message_type", None)
+        message_type = message.get("message_type")
 
         payload = {
             "type": "message",
             "source": self._name,
-            "message_id": getattr(message, "message_id", None),
+            "message_id": message.get("message_id"),
             "chat_id": chat_id,
-            "chat_type": getattr(message, "chat_type", None),
+            "chat_type": message.get("chat_type"),
             "message_type": message_type,
             "text": text,
             "images": [image.model_dump() for image in images] if images else None,
@@ -559,34 +381,30 @@ class Feishu:
         )
         self._forward_to_message_chain(payload)
 
-    def _on_card_action(self, data: P2CardActionTrigger) -> P2CardActionTriggerResponse:
-        """处理飞书卡片按钮回调，并同步回统一消息链。"""
-        event = getattr(data, "event", None)
-        operator = getattr(event, "operator", None)
-        action = getattr(event, "action", None)
-        context = getattr(event, "context", None)
+    def _on_card_action(self, event: JsonDict) -> JsonDict:
+        """处理飞书卡片按钮回调（card.action.trigger），同步回统一消息链并返回 toast。"""
+        open_id, user_id = self._sender_ids(event.get("operator"))
+        action = event.get("action") or {}
+        context = event.get("context") or {}
         callback_data = self._extract_card_callback_data(
-            value=getattr(action, "value", None),
-            name=getattr(action, "name", None),
+            value=action.get("value"),
+            name=action.get("name"),
         )
 
         payload = {
             "type": "cardAction",
             "source": self._name,
-            "message_id": getattr(context, "open_message_id", None),
-            "chat_id": getattr(context, "open_chat_id", None),
+            "message_id": context.get("open_message_id"),
+            "chat_id": context.get("open_chat_id"),
             "callback_data": callback_data,
             "sender": {
-                "open_id": getattr(operator, "open_id", None),
-                "user_id": getattr(operator, "user_id", None),
-                "name": getattr(operator, "open_id", None) or getattr(operator, "user_id", None),
+                "open_id": open_id,
+                "user_id": user_id,
+                "name": open_id or user_id,
             },
         }
-        userid = payload["sender"].get("open_id") or payload["sender"].get("user_id")
-        self._remember_user_id_type(
-            open_id=payload["sender"].get("open_id"),
-            user_id=payload["sender"].get("user_id"),
-        )
+        userid = open_id or user_id
+        self._remember_user_id_type(open_id=open_id, user_id=user_id)
         self._remember_target(userid=userid, chat_id=payload.get("chat_id"))
         logger.info(
             "收到来自 %s 的飞书按钮回调：userid=%s, callback_data=%s",
@@ -596,72 +414,62 @@ class Feishu:
         )
         self._forward_to_message_chain(payload)
 
-        return P2CardActionTriggerResponse(
-            {
-                "toast": {
-                    "type": "info",
-                    "content": "操作已提交",
-                }
+        return {
+            "toast": {
+                "type": "info",
+                "content": "操作已提交",
             }
-        )
+        }
 
-    @staticmethod
-    def _on_message_read(data: P2ImMessageMessageReadV1) -> None:
-        """忽略消息已读事件，避免长连接打印未注册处理器错误。"""
-        event = getattr(data, "event", None)
-        reader = getattr(event, "reader", None)
+    @classmethod
+    def _on_message_read(cls, event: JsonDict) -> None:
+        """忽略消息已读事件，只记录调试日志。"""
+        open_id, user_id = cls._sender_ids((event.get("reader") or {}).get("reader_id"))
         logger.debug(
             "收到飞书消息已读事件：reader=%s, message_count=%s",
-            getattr(reader, "open_id", None) or getattr(reader, "user_id", None),
-            len(getattr(event, "message_id_list", None) or []),
+            open_id or user_id,
+            len(event.get("message_id_list") or []),
         )
 
-    @staticmethod
-    def _on_message_reaction_created(data: P2ImMessageReactionCreatedV1) -> None:
-        """忽略消息表情新增事件，避免长连接打印未注册处理器错误。"""
-        event = getattr(data, "event", None)
-        operator = getattr(event, "operator", None)
-        reaction = getattr(event, "reaction", None)
+    @classmethod
+    def _on_message_reaction_created(cls, event: JsonDict) -> None:
+        """忽略消息表情新增事件，只记录调试日志。"""
+        open_id, user_id = cls._sender_ids(event.get("user_id"))
         logger.debug(
             "收到飞书消息表情新增事件：message_id=%s, user=%s, emoji=%s",
-            getattr(event, "message_id", None),
-            getattr(operator, "open_id", None) or getattr(operator, "user_id", None),
-            getattr(reaction, "emoji_type", None),
+            event.get("message_id"),
+            open_id or user_id,
+            (event.get("reaction_type") or {}).get("emoji_type"),
         )
 
-    @staticmethod
-    def _on_message_reaction_deleted(data: P2ImMessageReactionDeletedV1) -> None:
-        """忽略消息表情删除事件，避免长连接打印未注册处理器错误。"""
-        event = getattr(data, "event", None)
-        operator = getattr(event, "operator", None)
-        reaction = getattr(event, "reaction", None)
+    @classmethod
+    def _on_message_reaction_deleted(cls, event: JsonDict) -> None:
+        """忽略消息表情删除事件，只记录调试日志。"""
+        open_id, user_id = cls._sender_ids(event.get("user_id"))
         logger.debug(
             "收到飞书消息表情删除事件：message_id=%s, user=%s, emoji=%s",
-            getattr(event, "message_id", None),
-            getattr(operator, "open_id", None) or getattr(operator, "user_id", None),
-            getattr(reaction, "emoji_type", None),
+            event.get("message_id"),
+            open_id or user_id,
+            (event.get("reaction_type") or {}).get("emoji_type"),
         )
 
     @staticmethod
-    def _on_message_recalled(data: P2ImMessageRecalledV1) -> None:
-        """忽略消息撤回事件，避免长连接打印未注册处理器错误。"""
-        event = getattr(data, "event", None)
-        operator = getattr(event, "operator", None)
+    def _on_message_recalled(event: JsonDict) -> None:
+        """忽略消息撤回事件，只记录调试日志。"""
         logger.debug(
-            "收到飞书消息撤回事件：message_id=%s, user=%s",
-            getattr(event, "message_id", None),
-            getattr(operator, "open_id", None) or getattr(operator, "user_id", None),
+            "收到飞书消息撤回事件：message_id=%s, chat_id=%s",
+            event.get("message_id"),
+            event.get("chat_id"),
         )
 
-    @staticmethod
-    def _on_bot_p2p_chat_entered(data: P2ImChatAccessEventBotP2pChatEnteredV1) -> None:
-        """忽略机器人进入单聊事件，避免长连接打印未注册处理器错误。"""
-        event = getattr(data, "event", None)
-        operator = getattr(event, "operator_id", None)
+    @classmethod
+    def _on_bot_p2p_chat_entered(cls, event: JsonDict) -> None:
+        """忽略机器人进入单聊事件，只记录调试日志。"""
+        open_id, user_id = cls._sender_ids(event.get("operator_id"))
         logger.debug(
             "收到飞书机器人进入单聊事件：chat_id=%s, user=%s",
-            getattr(event, "chat_id", None),
-            getattr(operator, "open_id", None) or getattr(operator, "user_id", None),
+            event.get("chat_id"),
+            open_id or user_id,
         )
 
     def get_state(self) -> bool:
@@ -670,22 +478,11 @@ class Feishu:
 
     def stop(self) -> bool:
         """停止飞书客户端，并返回长连接线程是否已经终止。"""
-        self._stop_event.set()
         self._ready.clear()
         ws_client = self._ws_client
-        ws_loop = self._ws_loop
         ws_thread = self._ws_thread
         if ws_client:
-            try:
-                ws_client._auto_reconnect = False
-                if ws_loop and ws_loop.is_running():
-                    shutdown_future = asyncio.run_coroutine_threadsafe(
-                        self._shutdown_ws_client(),
-                        ws_loop,
-                    )
-                    shutdown_future.result(timeout=self._ws_shutdown_timeout_seconds)
-            except Exception as err:
-                logger.debug(f"停止飞书客户端失败：{err}")
+            ws_client.stop()
         if (
             ws_thread
             and ws_thread.is_alive()
@@ -695,6 +492,8 @@ class Feishu:
         if ws_thread and ws_thread.is_alive():
             logger.error("飞书长连接线程未在关闭预算内退出")
             return False
+        if self._api_client:
+            self._api_client.close()
         return True
 
     def parse_message(self, body: Any) -> Optional[IncomingMessage]:
@@ -1262,24 +1061,16 @@ class Feishu:
     def _create_streaming_card(self, title: Optional[str], text: Optional[str]) -> Optional[str]:
         if not self._api_client:
             return None
-        response = self._api_client.cardkit.v1.card.create(
-            CreateCardRequest.builder()
-            .request_body(
-                CreateCardRequestBody.builder()
-                .type("card_json")
-                .data(json.dumps(self._build_streaming_card_payload(title=title, text=text), ensure_ascii=False))
-                .build()
-            )
-            .build()
+        response = self._api_client.create_card(
+            json.dumps(self._build_streaming_card_payload(title=title, text=text), ensure_ascii=False)
         )
         if response.success():
-            data = getattr(response, "data", None)
-            return getattr(data, "card_id", None)
+            return response.data.get("card_id")
         logger.warn(
             "飞书流式卡片创建失败：code=%s, msg=%s, log_id=%s",
             response.code,
             response.msg,
-            response.get_log_id(),
+            response.log_id,
         )
         return None
 
@@ -1370,18 +1161,12 @@ class Feishu:
     ) -> bool:
         if not self._api_client:
             return False
-        response = self._api_client.cardkit.v1.card_element.content(
-            ContentCardElementRequest.builder()
-            .card_id(card_id)
-            .element_id(element_id)
-            .request_body(
-                ContentCardElementRequestBody.builder()
-                .uuid(str(uuid.uuid4()))
-                .content(content or " ")
-                .sequence(sequence)
-                .build()
-            )
-            .build()
+        response = self._api_client.update_card_element_content(
+            card_id=card_id,
+            element_id=element_id,
+            content=content or " ",
+            sequence=sequence,
+            uuid=str(uuid.uuid4()),
         )
         if response.success():
             logger.debug("飞书流式卡片更新成功：card_id=%s, sequence=%s, content_len=%s", card_id, sequence, len(content))
@@ -1393,24 +1178,18 @@ class Feishu:
             sequence,
             response.code,
             response.msg,
-            response.get_log_id(),
+            response.log_id,
         )
         return False
 
     def close_streaming_card(self, card_id: str, sequence: int) -> bool:
         if not self._api_client or not card_id:
             return False
-        response = self._api_client.cardkit.v1.card.settings(
-            SettingsCardRequest.builder()
-            .card_id(card_id)
-            .request_body(
-                SettingsCardRequestBody.builder()
-                .settings(json.dumps({"config": {"streaming_mode": False}}, ensure_ascii=False))
-                .uuid(str(uuid.uuid4()))
-                .sequence(sequence)
-                .build()
-            )
-            .build()
+        response = self._api_client.update_card_settings(
+            card_id=card_id,
+            settings=json.dumps({"config": {"streaming_mode": False}}, ensure_ascii=False),
+            sequence=sequence,
+            uuid=str(uuid.uuid4()),
         )
         if response.success():
             return True
@@ -1420,7 +1199,7 @@ class Feishu:
             sequence,
             response.code,
             response.msg,
-            response.get_log_id(),
+            response.log_id,
         )
         return False
 
@@ -1429,39 +1208,32 @@ class Feishu:
         if not self._api_client:
             raise RuntimeError("飞书客户端未初始化")
 
-        request = (
-            CreateMessageRequest.builder()
-            .receive_id_type(receive_id_type)
-            .request_body(
-                CreateMessageRequestBody.builder()
-                .receive_id(receive_id)
-                .msg_type(msg_type)
-                .content(json.dumps(content, ensure_ascii=False))
-                .uuid(str(uuid.uuid4()))
-                .build()
-            )
-            .build()
+        response = self._api_client.create_message(
+            receive_id_type=receive_id_type,
+            receive_id=receive_id,
+            msg_type=msg_type,
+            content=json.dumps(content, ensure_ascii=False),
+            uuid=str(uuid.uuid4()),
         )
-        response = self._api_client.im.v1.message.create(request)
         if not response.success():
             logger.error(
                 "飞书消息发送失败：code=%s, msg=%s, log_id=%s",
                 response.code,
                 response.msg,
-                response.get_log_id(),
+                response.log_id,
             )
             return None
 
-        data = getattr(response, "data", None)
+        data = response.data
         logger.info(
             "_send_message 飞书回复消息成功：message_id=%s",
-            getattr(data, "message_id", None),
+            data.get("message_id"),
         )
         return {
             "success": True,
-            "message_id": getattr(data, "message_id", None),
-            "chat_id": getattr(data, "chat_id", None),
-            "msg_type": getattr(data, "msg_type", None),
+            "message_id": data.get("message_id"),
+            "chat_id": data.get("chat_id"),
+            "msg_type": data.get("msg_type"),
         }
 
     def _reply_message(
@@ -1475,42 +1247,35 @@ class Feishu:
         if not self._api_client:
             raise RuntimeError("飞书客户端未初始化")
 
-        request = (
-            ReplyMessageRequest.builder()
-            .message_id(message_id)
-            .request_body(
-                ReplyMessageRequestBody.builder()
-                .content(json.dumps(content, ensure_ascii=False))
-                .msg_type(msg_type)
-                .reply_in_thread(reply_in_thread)
-                .uuid(str(uuid.uuid4()))
-                .build()
-            )
-            .build()
+        response = self._api_client.reply_message(
+            message_id=message_id,
+            msg_type=msg_type,
+            content=json.dumps(content, ensure_ascii=False),
+            reply_in_thread=reply_in_thread,
+            uuid=str(uuid.uuid4()),
         )
-        response = self._api_client.im.v1.message.reply(request)
         if not response.success():
             logger.error(
                 "飞书回复消息失败：code=%s, msg=%s, log_id=%s",
                 response.code,
                 response.msg,
-                response.get_log_id(),
+                response.log_id,
             )
             return None
 
-        data = getattr(response, "data", None)
+        data = response.data
         logger.info(
             "_reply_message 飞书回复消息成功：message_id=%s",
-            getattr(data, "message_id", None),
+            data.get("message_id"),
         )
         return {
             "success": True,
-            "message_id": getattr(data, "message_id", None),
-            "chat_id": getattr(data, "chat_id", None),
-            "msg_type": getattr(data, "msg_type", None),
-            "root_id": getattr(data, "root_id", None),
-            "parent_id": getattr(data, "parent_id", None),
-            "thread_id": getattr(data, "thread_id", None),
+            "message_id": data.get("message_id"),
+            "chat_id": data.get("chat_id"),
+            "msg_type": data.get("msg_type"),
+            "root_id": data.get("root_id"),
+            "parent_id": data.get("parent_id"),
+            "thread_id": data.get("thread_id"),
         }
 
     @staticmethod
@@ -1527,98 +1292,52 @@ class Feishu:
     def _upload_image(self, file_path: Path) -> Optional[str]:
         if not self._api_client:
             return None
-        with file_path.open("rb") as fp:
-            response = self._api_client.im.v1.image.create(
-                CreateImageRequest.builder()
-                .request_body(
-                    CreateImageRequestBody.builder()
-                    .image_type("message")
-                    .image(fp)
-                    .build()
-                )
-                .build()
-            )
+        response = self._api_client.upload_image(file_path)
         if not response.success():
             logger.error(
                 "飞书图片上传失败：code=%s, msg=%s, log_id=%s",
                 response.code,
                 response.msg,
-                response.get_log_id(),
+                response.log_id,
             )
             return None
-        data = getattr(response, "data", None)
-        return getattr(data, "image_key", None)
+        return response.data.get("image_key")
 
     def _upload_file(self, file_path: Path, file_name: Optional[str] = None, duration: Optional[int] = None) -> \
             Optional[str]:
         if not self._api_client:
             return None
-        with file_path.open("rb") as fp:
-            builder = (
-                CreateFileRequestBody.builder()
-                .file_type(self._guess_file_type(file_path))
-                .file_name(file_name or file_path.name)
-                .file(fp)
-            )
-            if duration is not None:
-                builder.duration(duration)
-            response = self._api_client.im.v1.file.create(
-                CreateFileRequest.builder().request_body(builder.build()).build()
-            )
+        response = self._api_client.upload_file(
+            file_path,
+            file_type=self._guess_file_type(file_path),
+            file_name=file_name or file_path.name,
+            duration=duration,
+        )
         if not response.success():
             logger.error(
                 "飞书文件上传失败：code=%s, msg=%s, log_id=%s",
                 response.code,
                 response.msg,
-                response.get_log_id(),
+                response.log_id,
             )
             return None
-        data = getattr(response, "data", None)
-        return getattr(data, "file_key", None)
+        return response.data.get("file_key")
 
     def download_image_bytes(self, image_key: str) -> Optional[Tuple[bytes, Optional[str], Optional[str]]]:
         if not self._api_client or not image_key:
             return None
-        response = self._api_client.im.v1.image.get(
-            GetImageRequest.builder().image_key(image_key).build()
-        )
-        if getattr(response, "code", -1) != 0 or not getattr(response, "file", None):
-            return None
-        content_type = None
-        if getattr(response, "raw", None) and getattr(response.raw, "headers", None):
-            content_type = response.raw.headers.get("Content-Type")
-        return response.file.read(), response.file_name, content_type
+        return self._api_client.download_image(image_key)
 
     def download_file_bytes(self, file_key: str) -> Optional[Tuple[bytes, Optional[str], Optional[str]]]:
         if not self._api_client or not file_key:
             return None
-        response = self._api_client.im.v1.file.get(
-            GetFileRequest.builder().file_key(file_key).build()
-        )
-        if getattr(response, "code", -1) != 0 or not getattr(response, "file", None):
-            return None
-        content_type = None
-        if getattr(response, "raw", None) and getattr(response.raw, "headers", None):
-            content_type = response.raw.headers.get("Content-Type")
-        return response.file.read(), response.file_name, content_type
+        return self._api_client.download_file(file_key)
 
     def download_message_resource_bytes(self, message_id: str, file_key: str, resource_type: str) -> Optional[
             Tuple[bytes, Optional[str], Optional[str]]]:
         if not self._api_client or not message_id or not file_key:
             return None
-        response = self._api_client.im.v1.message_resource.get(
-            GetMessageResourceRequest.builder()
-            .message_id(message_id)
-            .file_key(file_key)
-            .type(resource_type)
-            .build()
-        )
-        if getattr(response, "code", -1) != 0 or not getattr(response, "file", None):
-            return None
-        content_type = None
-        if getattr(response, "raw", None) and getattr(response.raw, "headers", None):
-            content_type = response.raw.headers.get("Content-Type")
-        return response.file.read(), response.file_name, content_type
+        return self._api_client.download_message_resource(message_id, file_key, resource_type)
 
     def send_text(
             self,
@@ -1903,15 +1622,8 @@ class Feishu:
 
         card = self._build_card(title=title, text=text, link=None, buttons=buttons)
         try:
-            response = self._api_client.im.v1.message.patch(
-                PatchMessageRequest.builder()
-                .message_id(message_id)
-                .request_body(
-                    PatchMessageRequestBody.builder()
-                    .content(json.dumps(card, ensure_ascii=False))
-                    .build()
-                )
-                .build()
+            response = self._api_client.patch_message(
+                message_id, json.dumps(card, ensure_ascii=False)
             )
             if response.success():
                 return True
@@ -1919,7 +1631,7 @@ class Feishu:
                 "飞书消息更新失败：code=%s, msg=%s, log_id=%s",
                 response.code,
                 response.msg,
-                response.get_log_id(),
+                response.log_id,
             )
         except Exception as err:
             logger.error(f"飞书消息更新失败：{err}")
@@ -1935,18 +1647,7 @@ class Feishu:
             return None
 
         try:
-            response = self._api_client.im.v1.message_reaction.create(
-                CreateMessageReactionRequest.builder()
-                .message_id(message_id)
-                .request_body(
-                    CreateMessageReactionRequestBody.builder()
-                    .reaction_type(
-                        Emoji.builder().emoji_type(emoji_type).build()
-                    )
-                    .build()
-                )
-                .build()
-            )
+            response = self._api_client.create_message_reaction(message_id, emoji_type)
             if not response.success():
                 logger.error(
                     "飞书消息表情添加失败：message_id=%s, emoji_type=%s, code=%s, msg=%s, log_id=%s",
@@ -1954,11 +1655,10 @@ class Feishu:
                     emoji_type,
                     response.code,
                     response.msg,
-                    response.get_log_id(),
+                    response.log_id,
                 )
                 return None
-            data = getattr(response, "data", None)
-            return getattr(data, "reaction_id", None)
+            return response.data.get("reaction_id")
         except Exception as err:
             logger.error(f"飞书消息表情添加失败：{err}")
             return None
@@ -1969,12 +1669,7 @@ class Feishu:
             return False
 
         try:
-            response = self._api_client.im.v1.message_reaction.delete(
-                DeleteMessageReactionRequest.builder()
-                .message_id(message_id)
-                .reaction_id(reaction_id)
-                .build()
-            )
+            response = self._api_client.delete_message_reaction(message_id, reaction_id)
             if response.success():
                 return True
             logger.error(
@@ -1983,7 +1678,7 @@ class Feishu:
                 reaction_id,
                 response.code,
                 response.msg,
-                response.get_log_id(),
+                response.log_id,
             )
         except Exception as err:
             logger.error(f"飞书消息表情删除失败：{err}")

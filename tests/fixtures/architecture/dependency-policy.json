@@ -139,7 +139,6 @@
           {"source": "app.agent.llm.discovery", "target": "openai", "kind": "network_sdk", "fingerprint": "fff154461ff3fdfdf1daea0530dcb68589d6ad7a67f3966e3b86338b483e6dfd"},
           {"source": "app.agent.tools.impl.search_web", "target": "ddgs", "kind": "network_sdk", "fingerprint": "377e73bb3be804b825d60ad6e792344ca633de107f8c4dbb45d50a34a4dfa04b"},
           {"source": "app.modules.discord.discord", "target": "discord", "kind": "network_sdk", "fingerprint": "e1486525fedbfe574aa47d60b483426c8c48e4e27fa35dbe34f6cd2f47d37c86"},
-          {"source": "app.modules.feishu.feishu", "target": "lark_oapi", "kind": "network_sdk", "fingerprint": "99d16968a59932b5980f6d42ea2bbc8fa35ccdb1a27933beec29b4bdc093d78b"},
           {"source": "app.modules.filemanager.storages.smb", "target": "smbclient", "kind": "network_sdk", "fingerprint": "37619f050b03598fa559c6ae2df94bda6adf7cffd1cc42d9db9059f1fb41af47"},
           {"source": "app.modules.filemanager.storages.u115", "target": "oss2", "kind": "network_sdk", "fingerprint": "f7b89c8ae6dad2603f0a9e0caaa159769aef5b3581d7e728f62445b979366eae"},
           {"source": "app.modules.plex.plex", "target": "plexapi", "kind": "network_sdk", "fingerprint": "55baa4290bb62468d504e954add3921c0068f3a3c77aa3db92667ae9022909ca"},
@@ -156,6 +155,7 @@
         "reason": "产品长连接与 WSS 连通探测由协议适配器精确持有，SCGI/XML-RPC transport 由对应模块持有。",
         "facts": [
           {"source": "app.startup.composition.network", "target": "websocket", "kind": "raw_transport", "fingerprint": "09e1909ac750fe40b145dde8fee52eedf84aaf2123f6a1bc38109252c89d6000"},
+          {"source": "app.modules.feishu.longconn", "target": "websocket", "kind": "raw_transport", "fingerprint": "8ccfc3b86ad029942cdf0cab9d01fa2e1498576ee59e0df7239e1a744b370eae"},
           {"source": "app.modules.qqbot.gateway", "target": "websocket", "kind": "raw_transport", "fingerprint": "6f6b7d61f3a95e620e67c450d544f0aa077f087a188d98f32e4501d94c6b37ae"},
           {"source": "app.modules.rtorrent.rtorrent", "target": "socket.create_connection", "kind": "protocol_operation", "fingerprint": "878114d6b1bda091bd3b3d8aa819831d84381682feba78267592d2593295af90"},
           {"source": "app.modules.rtorrent.rtorrent", "target": "xmlrpc.client.ServerProxy", "kind": "protocol_operation", "fingerprint": "2ac64b5670c930bc28bb2135cc4b73891c1cae01a74a9586f74e302878c45c85"},

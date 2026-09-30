@@ -1482,23 +1482,22 @@
     "type-arg": 9,
     "var-annotated": 1
   },
-  "app/modules/feishu/__init__.py": {
+  "app/modules/feishu/feishu.py": {
+    "arg-type": 5,
+    "assignment": 1,
+    "call-overload": 1,
+    "no-untyped-def": 1,
+    "return-value": 1,
+    "type-arg": 22,
+    "union-attr": 2
+  },
+  "app/modules/feishu/module.py": {
     "arg-type": 4,
     "assignment": 6,
     "attr-defined": 1,
     "no-untyped-def": 1,
     "return-value": 1,
     "type-arg": 5,
-    "union-attr": 8
-  },
-  "app/modules/feishu/feishu.py": {
-    "arg-type": 5,
-    "assignment": 1,
-    "call-overload": 1,
-    "method-assign": 2,
-    "no-untyped-def": 3,
-    "return-value": 1,
-    "type-arg": 25,
     "union-attr": 8
   },
   "app/modules/filemanager/module.py": {
