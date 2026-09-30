@@ -754,6 +754,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 package_error = music_package_error(file_path.name) if batch_mtype == MediaType.MUSIC else None
                 if package_error:
                     message = f"{file_path.name}：{package_error}"
+                    submission.record_music_package_preview(file_item, message, preview=preview)
                     submission.record(file_item, "failed", message)
                     all_success = False
                     err_msgs.append(message)

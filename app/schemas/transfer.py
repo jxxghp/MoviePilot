@@ -377,10 +377,58 @@ class ManualTransferPreviewSummary(BaseModel):
     failed: int = 0
 
 
+# 与下方执行回执相同：mypy将Pydantic基类视为Any，字段仍由公开模型校验。
+class MusicTransferCandidate(BaseModel):  # type: ignore[misc]
+    """待确认候选的最小身份摘要；录音、发行组和发行ID保持各自语义。"""
+
+    media_source: Optional[str] = None
+    media_id: Optional[str] = None
+    music_type: Optional[str] = None
+    release_id: Optional[str] = None
+    album_id: Optional[str] = None
+    title: Optional[str] = None
+    artist: Optional[str] = None
+    year: Optional[str] = None
+
+
+class MusicTransferPreview(BaseModel):  # type: ignore[misc]
+    """音乐识别证据与当前扫描分组；与文件执行成功状态相互独立。"""
+
+    status: Literal["local_tags", "local_cue", "matched", "manual", "metadata", "not_found",
+                    "ambiguous", "conflict", "service_error", "budget_exhausted", "unsupported"]
+    online_confirmed: bool = False
+    music_type: Optional[str] = None
+    media_source: Optional[str] = None
+    media_id: Optional[str] = None
+    title: Optional[str] = None
+    album: Optional[str] = None
+    artists: list[str] = Field(default_factory=list)
+    album_artist: Optional[str] = None
+    year: Optional[int] = None
+    musicbrainz_release_id: Optional[str] = None
+    musicbrainz_release_group_id: Optional[str] = None
+    disc_number: Optional[int] = None
+    track_number: Optional[int] = None
+    total_discs: Optional[int] = None
+    total_tracks: Optional[int] = None
+    layout: Optional[str] = None
+    field_sources: dict[str, str] = Field(default_factory=dict)
+    candidates: list[MusicTransferCandidate] = Field(default_factory=list)
+    read_status: Literal["tags", "stream_only", "unreadable", "name_only", "companion", "unknown"] = "unknown"
+    file_role: Literal["audio", "companion"] = "audio"
+    # 标识只供当前已预览文件分组；不授予权限，也不授权展开该目录。
+    group_id: Optional[str] = None
+    group_directory: Optional[str] = None
+    group_size: int = 0
+
+
 class ManualTransferPreviewItem(BaseModel):
     """单个文件的手动整理预览。"""
 
     source: Optional[str] = None
+    source_storage: Optional[str] = None
+    source_item: Optional[FileItem] = None
+    music: Optional[MusicTransferPreview] = None
     target: Optional[str] = None
     target_dir: Optional[str] = None
     success: bool = False

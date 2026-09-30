@@ -2,6 +2,24 @@
 
 Transfer queue, history, file, naming, manual review, retry, and target-path operations.
 
+## Music preview evidence
+
+Manual previews optionally return `source_storage`, `source_item` and `music` on each item.
+`source_item` preserves opaque storage IDs but omits download URLs, thumbnails and child trees.
+Music recognition is independent of file `success`: `local_tags` and `local_cue` use local
+evidence; `matched` means online confirmation; `manual` means an explicit selection;
+`metadata` has existing information without confirmed online provenance. Other states are
+`not_found`, `ambiguous`, `conflict`, `service_error`, `budget_exhausted`, and `unsupported`.
+Only `matched` sets `online_confirmed=true`; a tag containing an MBID is insufficient.
+`field_sources` preserves field provenance and `candidates` contains at most five identity
+summaries, with Recording, Release Group and Release IDs kept separate and no confidence probability.
+`read_status` is `tags`, `stream_only`, `unreadable`, `name_only`, `companion`, or `unknown`.
+Use `group_id` to aggregate the actual scanned release members, including CUE/lyrics
+companions (`file_role=companion`). `group_size` counts audio members. The identifier is
+neither authorization nor a persistent media identity. Correct only the group's returned
+source items and preview again; never expand `group_directory` or apply a selection to
+other albums with the same display name. Unsupported packages appear as failed items.
+
 ## Operations
 
 ### `transfer.episode_format.recommend`

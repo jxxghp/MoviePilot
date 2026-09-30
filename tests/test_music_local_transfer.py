@@ -19,7 +19,7 @@ from app.runtime.config import ConfigModel
 from app.schemas.category import CategoryConfig, ClassificationPolicy
 from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
-from app.schemas.transfer import TransferInfo
+from app.schemas.transfer import ManualTransferResultData, TransferInfo
 from app.schemas.types import MediaType
 from tests.test_transfer_sync_extra_files import bind_empty_history_repositories, make_fileitem, make_transfer_chain
 
@@ -106,6 +106,14 @@ def test_complete_tags_preview_offline_and_preserve_custom_category(tmp_path, mo
 
     assert state is True
     assert preview["summary"] == {"total": 2, "success": 2, "failed": 0}
+    projected = ManualTransferResultData.model_validate(preview)
+    assert {item.music.status for item in projected.items} == {"local_tags"}
+    assert {item.music.read_status for item in projected.items} == {"tags"}
+    assert len({item.music.group_id for item in projected.items}) == 1
+    assert {item.music.group_size for item in projected.items} == {2}
+    assert all(not item.music.online_confirmed and item.source_storage == "local" for item in projected.items)
+    assert [item.music.disc_number for item in projected.items] == [1, 2]
+    assert [item.source_item.path for item in projected.items] == [str(path) for path in paths]
     assert destinations == [
         "收藏/周杰伦/叶惠美 (2003)/Disc 1/01 - 晴天.flac",
         "收藏/周杰伦/叶惠美 (2003)/Disc 2/01 - 以父之名.flac",

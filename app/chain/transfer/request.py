@@ -9,6 +9,7 @@ from app.application.history import (
     DownloadHistoryQueryPort,
     DownloadHistorySnapshot,
 )
+from app.application.transfer.projection import music_transfer_preview
 from app.application.transfer.workflow import TransferTask
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
@@ -524,6 +525,10 @@ def build_transfer_preview_item(task: TransferTask, transferinfo: TransferInfo) 
     return (
         {
             "source": task.fileitem.path,
+            "source_storage": task.fileitem.storage,
+            "source_item": task.fileitem.model_dump(exclude={"children", "url", "thumbnail"}),
+            "music": music_transfer_preview(item_meta, item_media, task.music_preview_context,
+                                            selected=bool(task.manual and task.media_source and task.media_id)),
             "target": transferinfo.target_item.path if transferinfo.target_item else None,
             "target_dir": transferinfo.target_diritem.path if transferinfo.target_diritem else None,
             "success": transferinfo.success,
@@ -546,7 +551,7 @@ def build_transfer_preview_item(task: TransferTask, transferinfo: TransferInfo) 
             "episode_end": item_meta.end_episode if item_meta else None,
             "part": item_meta.part if item_meta else None,
             "org_string": item_meta.org_string if item_meta else None,
-            "apply_words": item_meta.apply_words if item_meta else [],
+            "apply_words": (item_meta.apply_words or []) if item_meta else [],
             "resource_team": item_meta.resource_team if item_meta else None,
             "customization": item_meta.customization if item_meta else None,
         }
@@ -564,6 +569,19 @@ class _TransferSubmissionCollector:
         self._skipped_history_count = 0
         self._results: dict[int, TransferInfo] = {}
         self._pending: dict[tuple[Optional[str], Optional[str]], FileItem] = {}
+        self._preview_rejections: list[dict[str, Any]] = []
+
+    def record_music_package_preview(self, fileitem: FileItem, message: str, *, preview: bool) -> None:
+        """保留尚未生成任务的音乐包拒绝项，混合目录也能逐文件显示能力边界。"""
+        if not preview:
+            return
+        self._preview_rejections.append({
+            "source": fileitem.path, "source_storage": fileitem.storage,
+            "source_item": fileitem.model_dump(exclude={"children", "url", "thumbnail"}),
+            "success": False, "message": message, "type": MediaType.MUSIC.value,
+            "failure_stage": "recognition", "recovery_action": message,
+            "music": {"status": "unsupported", "online_confirmed": False},
+        })
 
     def expect(self, fileitems: list[tuple[FileItem, bool]]) -> None:
         """保留候选快照，取消发生后仍能说明哪些文件没有被执行。"""
@@ -639,6 +657,7 @@ class _TransferSubmissionCollector:
         if self._skipped_history_count:
             message = "；".join(filter(None, [f"已跳过 {self._skipped_history_count} 条成功整理记录", message]))
         if preview:
+            preview_items = [*self._preview_rejections, *preview_items]
             return success, {
                 "summary": {
                     "total": len(preview_items),

@@ -995,8 +995,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9041,
-  "edge_sha256": "5d588f777a2453573d913ff6a0c4a403656a3a22eb1041a2397d50b9ba8c5b61",
+  "edge_count": 9044,
+  "edge_sha256": "c87e5a9dab7075419d7b7ff25f703bc291e2f489019848bc75ae5b49d788f59f",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -4150,8 +4150,10 @@
     "app.application.transfer.notifications -> app.schemas",
     "app.application.transfer.notifications -> app.schemas.media",
     "app.application.transfer.projection -> app.domain",
+    "app.application.transfer.projection -> app.domain.context",
     "app.application.transfer.projection -> app.domain.meta",
     "app.application.transfer.projection -> app.domain.meta.metabase",
+    "app.application.transfer.projection -> app.domain.meta.metamusic",
     "app.application.transfer.recovery -> app.application",
     "app.application.transfer.recovery -> app.application.transfer",
     "app.application.transfer.recovery -> app.application.transfer.execution",
@@ -5627,6 +5629,7 @@
     "app.chain.transfer.request -> app.application.history",
     "app.chain.transfer.request -> app.application.transfer",
     "app.chain.transfer.request -> app.application.transfer.feedback",
+    "app.chain.transfer.request -> app.application.transfer.projection",
     "app.chain.transfer.request -> app.application.transfer.workflow",
     "app.chain.transfer.request -> app.chain",
     "app.chain.transfer.request -> app.chain.media",

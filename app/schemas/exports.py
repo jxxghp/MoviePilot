@@ -301,6 +301,8 @@ SCHEMA_EXPORTS = {
     'MusicRecognizeRequest': ('app.schemas.music', 'MusicRecognizeRequest'),
     'MusicRelease': ('app.schemas.music', 'MusicRelease'),
     'MusicTargetEntityType': ('app.schemas.transfer', 'MusicTargetEntityType'),
+    'MusicTransferCandidate': ('app.schemas.transfer', 'MusicTransferCandidate'),
+    'MusicTransferPreview': ('app.schemas.transfer', 'MusicTransferPreview'),
     'NameData': ('app.schemas.common', 'NameData'),
     'NameRecognizeEventData': ('app.schemas.event', 'NameRecognizeEventData'),
     'NameValueOption': ('app.schemas.workflow', 'NameValueOption'),

@@ -481,6 +481,21 @@ SMB 配置支持两种明确的路径模式：旧字段 `share: "data"` 保持�
 | POST | `/api/v1/media/classification/rollback/{revision}` | 超级管理员将指定历史策略作为新版本发布，需要当前 `expected_revision` 和写操作确认 |
 
 `transfer/manual` 在 `preview=true` 时保留预览的 `summary/items/message`，不返回执行状态。
+预览项新增可选 `source_storage/source_item/music`。`source_item` 保留本次源文件的存储标识，
+不包含下载 URL、缩略图和递归子节点；纠正时可复用实际选中文件，不能根据目录名扩大范围。
+音乐 `music.status` 区分 `local_tags`（可信标签）、`local_cue`（本地 CUE）、
+`matched`（在线已确认）、`manual`（本次或已记录的人工选择）、`metadata`（已有信息但没有在线核验证据）、
+`not_found`、`ambiguous`、`conflict`、`service_error`、`budget_exhausted`、`unsupported`。
+它与预览项 `success` 独立：已确认身份仍可能因目标目录或分类失败；仅标签含 MBID 不算在线确认。
+`online_confirmed` 仅在 `matched` 时为真。`field_sources` 表明曲名、专辑、艺人、曲序等字段的实际来源，
+`candidates` 最多五条，只保留身份及展示摘要，不把评分显示为置信概率。
+`read_status` 区分 `tags/stream_only/unreadable/name_only/companion/unknown`：
+无标签、读取失败及仅有远端名称证据不是同一种状态。
+`group_id/group_directory/group_size` 由本次实际发行分组生成（数量为音频成员数），
+CUE 和歌词通过 `file_role=companion` 与音频共享组；同目录不同发行以及不同存储不混组。
+该分组只供当前已预览文件聚合，不是访问凭证、数据库身份或展开目录的授权；
+按组纠正必须只提交该组已预览的 `source_item`，并重新预览，不能把选定专辑应用到整包其它发行。
+尚未解包或提取的音乐包返回逐文件 `unsupported`，计入失败统计，不再仅在批次总提示中出现。
 请求可传入 `skip_success=true`，在预览与执行中跳过同存储、同源路径已成功整理的文件，
 也识别成功移动后的目标现址。该选项优先于 `reorganize` 和历史入口的强制整理，
 不清理被跳过文件的历史和旧目标；失败记录及未处理文件继续原有流程，默认 `false` 保持现有行为。

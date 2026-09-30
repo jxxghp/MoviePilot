@@ -103,6 +103,8 @@ def _build_failure_preview_item(file_item: FileItem, message: Optional[str]) -> 
     feedback = classify_transfer_failure(message)
     return {
         "source": file_item.path if file_item else None,
+        "source_storage": file_item.storage if file_item else None,
+        "source_item": file_item.model_dump(exclude={"children", "url", "thumbnail"}) if file_item else None,
         "target": None,
         "target_dir": None,
         "success": False,
@@ -868,7 +870,7 @@ def _execute_manual_transfer(
             merged_preview_items: List[dict] = []
             seen_sources = set()
             for preview_item in preview_items:
-                source = preview_item.get("source")
+                source = (preview_item.get("source_storage"), preview_item.get("source"))
                 if source in seen_sources:
                     continue
                 seen_sources.add(source)

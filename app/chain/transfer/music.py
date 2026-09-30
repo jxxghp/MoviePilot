@@ -1,5 +1,7 @@
 """音乐整理批次的本地标签准入、目录共识和曲目上下文编排。"""
 
+import hashlib
+import json
 import re
 from collections import Counter
 from copy import deepcopy
@@ -42,6 +44,12 @@ class MusicReleaseGroup:
     directory: Path
     files: tuple[FileItem, ...]
     evidence: Optional[MetaMusic]
+    preview_id: str = field(init=False)
+
+    def __post_init__(self) -> None:
+        """按实际成员及存储生成稳定展示分组，不用同名专辑或父目录合并不同发行。"""
+        members = sorted((item.storage or "local", item.path) for item in self.files)
+        object.__setattr__(self, "preview_id", hashlib.sha256(json.dumps(members).encode()).hexdigest())
 
     @property
     def paths(self) -> list[Path]:
@@ -57,6 +65,8 @@ def music_planning_input(
     planning = cast(TransferPlanningInput, owner._TransferChain__build_planning_input(task, cleanup_dest_fileitem=cleanup))
     if not isinstance(task.meta, MetaMusic):
         return planning
+    if task.preview:
+        task.bind_music_preview_context(_music_preview_context(owner, task, context))
     recognition = task.mediainfo.raw_data.get("recognition", {}) if isinstance(task.mediainfo, MusicInfo) else {}
     recognition = recognition if isinstance(recognition, dict) else {}
     if task.mediainfo and not task.meta.organization_error and recognition.get("status") not in BLOCKING_MUSIC_RECOGNITION_STATES:
@@ -77,6 +87,28 @@ def music_planning_input(
         "regions": regions, "scripts": scripts,
     }
     return replace(planning, options={**planning.options, "music_recognition_scope": scope})
+
+
+def _music_preview_context(owner: _TransferOwnerBase, task: TransferTask, context: MusicBatchContext) -> dict[str, Any]:
+    """复用本次标签扫描和发行边界；远端及读取失败都不能冒充没有标签。"""
+    key = owner._get_file_key(task.fileitem)
+    main_key = context.related_main_keys.get(key, key)
+    group = context.release_by_main_key.get(main_key)
+    tags = context.tags_by_file.get(key)
+    if main_key != key:
+        read_status = "companion"
+    elif task.fileitem.storage != "local":
+        read_status = "name_only"
+    elif key not in context.tags_by_file:
+        read_status = "unknown"
+    elif tags is None:
+        read_status = "unreadable"
+    else:
+        read_status = "tags" if "tag" in tags.field_sources.values() else "stream_only"
+    result: dict[str, Any] = {"read_status": read_status, "file_role": "companion" if main_key != key else "audio"}
+    if group:
+        result.update(group_id=group.preview_id, group_directory=str(group.directory), group_size=len(group.files))
+    return result
 
 
 def _music_retry_files(task: TransferTask, scope: dict[str, Any]) -> tuple[list[FileItem], FileItem]:
@@ -543,7 +575,7 @@ def _local_music_context(
     if file_meta.organization_error:
         return file_meta, MusicInfo.from_meta(file_meta)
     if file_meta.music_layout in {"image_cue", "tracks_cue"} and music_tags_are_usable(file_meta):
-        return file_meta, MusicInfo.from_meta(file_meta)
+        return file_meta, _local_music_info(file_meta, "local_cue")
     tags = batch_context.tags_by_file.get(_music_file_key(file_item)) if _music_file_key(file_item) in batch_context.tags_by_file else AudioMetadataHelper.read_tags(file_path)
     if tags:
         tags = deepcopy(tags)
@@ -553,7 +585,14 @@ def _local_music_context(
         return None
     meta = tags.apply_path_context(file_path)
     logger.info(f"{file_path.name} 使用完整音频标签整理：{meta.artist} - {meta.title}")
-    return meta, MusicInfo.from_meta(meta)
+    return meta, _local_music_info(meta, "local_tags")
+
+
+def _local_music_info(meta: MetaMusic, status: str) -> MusicInfo:
+    """记录已通过本地整理准入的证据类型，标签即使含MBID也不声明在线确认。"""
+    info = MusicInfo.from_meta(meta)
+    info.raw_data["recognition"] = {"status": status}
+    return info
 
 
 def prepare_music_batch_context(

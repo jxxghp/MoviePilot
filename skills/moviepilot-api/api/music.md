@@ -2,6 +2,12 @@
 
 Music recognition, exploration, album and artist navigation, and recognition-cache administration.
 
+Music organization previews expose local tag/CUE, confirmed online, manual, ambiguous,
+conflicting, and temporary failure states separately from file success. For the optional
+`music` evidence, bounded candidates and actual release grouping contract, see
+[Music preview evidence](transfer.md#music-preview-evidence). Tag IDs alone never imply
+online confirmation; album corrections must preserve the returned source-file scope.
+
 ## Music Navigation
 
 - Search titles, albums, or artists with `media.search` using `type=music`. Preserve

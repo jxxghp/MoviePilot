@@ -118,6 +118,9 @@ def test_music_package_has_actionable_failure_before_recognition(tmp_path, monke
     assert state is False
     assert message in str(result)
     assert "重试" in str(result)
+    assert result["summary"] == {"total": 1, "success": 0, "failed": 1}
+    assert result["items"][0]["source"] == str(path)
+    assert result["items"][0]["music"]["status"] == "unsupported"
     assert path.read_bytes() == b"not unpacked"
     recognize.assert_not_called()
     plan.assert_not_called()
