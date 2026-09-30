@@ -1,12 +1,12 @@
-"""MediaVault 自建媒体库客户端的行为契约，全部走假 API 不发真实请求。"""
+"""Vyo 媒体服务客户端的行为契约，全部走假 API 不发真实请求。"""
 
 from pathlib import Path
 from typing import Optional
 
 import pytest
 
-from app.modules.mediavault.api import Api, Result
-from app.modules.mediavault.mediavault import MediaVault
+from app.modules.vyo.api import Api, Result
+from app.modules.vyo.vyo import Vyo
 from app.schemas.mediaserver import RefreshMediaItem
 from app.schemas.types import MediaSource, MediaType
 
@@ -40,9 +40,9 @@ class _FakeApi:
         return handler(params or {}, data) if callable(handler) else handler
 
 
-def _client(routes: dict, **kwargs) -> MediaVault:
+def _client(routes: dict, **kwargs) -> Vyo:
     """构造一个绕过网络探测的客户端。"""
-    client = MediaVault.__new__(MediaVault)
+    client = Vyo.__new__(Vyo)
     client._host = "http://mv.local"
     client._playhost = kwargs.get("play_host")
     client._apikey = "k"
@@ -62,7 +62,7 @@ def _item_row(index: int, kind: str = "Movie", **extra) -> dict:
 
 
 def _paged_items(total_rows: list):
-    """按 page/page_size 切分预置条目，模拟 MediaVault 的分页语义。"""
+    """按 page/page_size 切分预置条目，模拟 Vyo 的分页语义。"""
 
     def handler(params, _data):
         page = int(params.get("page", 1))
@@ -107,7 +107,7 @@ def test_get_items_always_requests_full_pages():
     list(client.get_items("lib-1", limit=130))
     sizes = {call["params"]["page_size"] for call in client._api.calls}
     pages = [call["params"]["page"] for call in client._api.calls]
-    assert sizes == {MediaVault.PAGE_LIMIT}
+    assert sizes == {Vyo.PAGE_LIMIT}
     assert pages == [1, 2]
 
 
@@ -130,7 +130,7 @@ def test_get_items_stops_when_request_fails():
 
 
 def test_get_librarys_maps_type_and_builds_image_url():
-    """媒体库类型按 MediaVault 的 library_type 映射，封面走带鉴权的图片直链。"""
+    """媒体库类型按 Vyo 的 library_type 映射，封面走带鉴权的图片直链。"""
     routes = {
         "/libraries": Result(True, {"items": [
             {"id": "lib-1", "name": "电影库", "library_type": "movies", "root_paths": ["/mnt/movies"]},
@@ -421,7 +421,7 @@ def test_unconfigured_client_never_reports_inactive():
 
 
 def test_authenticate_posts_to_user_auth_and_returns_token():
-    """用户认证走 MediaVault 账号体系，返回访问令牌。"""
+    """用户认证走 Vyo 账号体系，返回访问令牌。"""
     routes = {"/login": Result(True, {"access_token": "jwt-token", "token": "legacy"})}
     client = _client(routes)
     assert client.authenticate("someone", "secret") == "jwt-token"
@@ -449,7 +449,7 @@ def test_disconnect_closes_session():
 
 def test_get_movies_pages_past_the_first_page():
     """关键字命中超过单页上限时，仍要能找到排在后面的目标电影。"""
-    rows = [_item_row(i, title=f"其它{i}") for i in range(MediaVault.PAGE_LIMIT)]
+    rows = [_item_row(i, title=f"其它{i}") for i in range(Vyo.PAGE_LIMIT)]
     rows.append(_item_row(999, title="沙丘", year=2021, tmdb_id=438631))
     client = _client({"/items": _paged_items(rows)})
 
@@ -461,7 +461,7 @@ def test_get_movies_pages_past_the_first_page():
 
 def test_find_series_pages_past_the_first_page():
     """按标题定位剧集时同样要翻页，否则整部剧会被误判成未入库。"""
-    rows = [_item_row(i, kind="Series", title=f"其它{i}") for i in range(MediaVault.PAGE_LIMIT)]
+    rows = [_item_row(i, kind="Series", title=f"其它{i}") for i in range(Vyo.PAGE_LIMIT)]
     rows.append(_item_row(999, kind="Series", title="剧A", year=2020))
     routes = {
         "/items": _paged_items(rows),
@@ -550,7 +550,7 @@ def _failing_second_page(total_rows: list):
 def test_get_movies_reports_unreachable_when_a_later_page_fails():
     """翻页中途断连必须返回 None，不能把残缺结果当成「不在库中」。"""
     # total 必须超过一页，否则第一页就判定取完，构造不出「中途失败」
-    rows = [_item_row(i, title=f"沙丘{i}") for i in range(MediaVault.PAGE_LIMIT + 1)]
+    rows = [_item_row(i, title=f"沙丘{i}") for i in range(Vyo.PAGE_LIMIT + 1)]
     client = _client({"/items": _failing_second_page(rows)})
 
     assert client.get_movies(title="沙丘") is None
@@ -558,7 +558,7 @@ def test_get_movies_reports_unreachable_when_a_later_page_fails():
 
 def test_find_series_reports_unreachable_when_a_later_page_fails():
     """同上：剧集定位不能把断连误判成整部剧未入库。"""
-    rows = [_item_row(i, kind="Series", title=f"剧{i}") for i in range(MediaVault.PAGE_LIMIT + 1)]
+    rows = [_item_row(i, kind="Series", title=f"剧{i}") for i in range(Vyo.PAGE_LIMIT + 1)]
     client = _client({"/items": _failing_second_page(rows)})
 
     assert client.get_tv_episodes(title="剧A") == (None, None)
@@ -566,19 +566,19 @@ def test_find_series_reports_unreachable_when_a_later_page_fails():
 
 def test_search_stops_at_reported_total_without_an_extra_request():
     """末页恰好满额时用 total 判定取完，不再多发一次可能失败的请求。"""
-    rows = [_item_row(i, title="沙丘", year=2021) for i in range(MediaVault.PAGE_LIMIT)]
+    rows = [_item_row(i, title="沙丘", year=2021) for i in range(Vyo.PAGE_LIMIT)]
     client = _client({"/items": _paged_items(rows)})
 
     matched = client.get_movies(title="沙丘")
 
-    assert len(matched) == MediaVault.PAGE_LIMIT
+    assert len(matched) == Vyo.PAGE_LIMIT
     assert [call["params"]["page"] for call in client._api.calls] == [1]
 
 
 def test_find_series_returns_first_page_hit_even_if_a_later_page_fails():
     """第一页已命中就该直接返回，不因后续页失败被误报成服务不可达。"""
     rows = [_item_row(0, kind="Series", title="剧A", year=2020)]
-    rows += [_item_row(i, kind="Series", title=f"其它{i}") for i in range(1, MediaVault.PAGE_LIMIT + 1)]
+    rows += [_item_row(i, kind="Series", title=f"其它{i}") for i in range(1, Vyo.PAGE_LIMIT + 1)]
     routes = {
         "/items": _failing_second_page(rows),
         "/items/id-0/episodes": Result(True, {"seasons": {"1": [1]}}),

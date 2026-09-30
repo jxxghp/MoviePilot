@@ -1,10 +1,10 @@
-"""MediaVault 宿主模块的惰性兼容入口。"""
+"""Vyo 宿主模块的惰性兼容入口。"""
 
 from importlib import import_module
 from typing import Any
 
 _EXPORTS = {
-    "MediaVaultModule": ("app.modules.mediavault.module", "MediaVaultModule"),
+    "VyoModule": ("app.modules.vyo.module", "VyoModule"),
 }
 
 
@@ -15,7 +15,7 @@ def __getattr__(name: str) -> Any:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     module_name, symbol_name = contract
     value = getattr(import_module(module_name), symbol_name)
-    if name == "MediaVaultModule":
+    if name == "VyoModule":
         value.__module__ = __name__
     globals()[name] = value
     return value
@@ -26,4 +26,4 @@ def __dir__() -> list[str]:
     return sorted({*globals(), *_EXPORTS})
 
 
-__all__ = ["MediaVaultModule"]
+__all__ = ["VyoModule"]

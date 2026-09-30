@@ -57,9 +57,9 @@
         "name": "Jellyfin",
         "description": "Media-server adapter that synchronizes Jellyfin libraries and runs refresh or playback actions."
       },
-      "MediaVaultModule": {
-        "name": "MediaVault",
-        "description": "Media-server adapter that connects to MediaVault and synchronizes its library."
+      "VyoModule": {
+        "name": "Vyo",
+        "description": "Media-server adapter that connects to Vyo (the built-in media service of Muvyo) and synchronizes its library."
       },
       "LrclibModule": {
         "name": "LRCLIB",

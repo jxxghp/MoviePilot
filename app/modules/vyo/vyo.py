@@ -3,7 +3,7 @@ from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 from app.application.mediaserver import MediaServerIdentityHelper
 from app.foundation.url import UrlUtils
-from app.modules.mediavault.api import Api
+from app.modules.vyo.api import Api
 from app.runtime.log import logger
 from app.schemas.dashboard import Statistic as _SchemaStatistic
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
@@ -22,14 +22,14 @@ class _SearchInterrupted(Exception):
     """
 
 
-class MediaVault:
-    """MediaVault 自建媒体库客户端。
+class Vyo:
+    """Vyo 媒体服务客户端。
 
-    只使用 MediaVault 管理端口的原生接口，凭据是管理面板的长效 API Key；
-    自建媒体库没有音乐库，也不主动外发 Webhook，相关能力在模块层显式留空。
+    只使用 Muvyo 管理端口的原生接口，凭据是 Muvyo 管理面板的长效 API Key；
+    Vyo 没有音乐库，也不主动外发 Webhook，相关能力在模块层显式留空。
     """
 
-    # MediaVault 单次列表请求的最大条数，与服务端 page_size 上限一致
+    # Vyo 单次列表请求的最大条数，与服务端 page_size 上限一致
     PAGE_LIMIT = 100
     # 媒体库类型到 MoviePilot 媒体类型的映射
     LIBRARY_TYPES = {"movies": MediaType.MOVIE.value, "tvshows": MediaType.TV.value}
@@ -51,7 +51,7 @@ class MediaVault:
         self._api = Api(host=host, apikey=apikey)
         self._active = False
         if not self.is_configured():
-            logger.error("MediaVault 配置不完整！")
+            logger.error("Vyo 配置不完整！")
             return
         self.reconnect()
 
@@ -85,7 +85,7 @@ class MediaVault:
         self._api.close()
 
     def authenticate(self, username: str, password: str) -> Optional[str]:
-        """用 MediaVault 账号完成用户认证，返回访问令牌。"""
+        """用 Vyo 账号完成用户认证，返回访问令牌。"""
         if not self.is_configured() or not username or not password:
             return None
         result = self._api.request(
@@ -209,7 +209,7 @@ class MediaVault:
         sort_by: str = "",
         sort_order: str = "",
     ) -> Optional[Dict[str, Any]]:
-        """调用条目列表接口；MediaVault 只接受页码，偏移量由调用方换算。"""
+        """调用条目列表接口；Vyo 只接受页码，偏移量由调用方换算。"""
         params: Dict[str, Any] = {"page": max(1, page), "page_size": page_size}
         if library_id:
             params["library_id"] = library_id
@@ -233,7 +233,7 @@ class MediaVault:
     def __search_rows(self, keyword: str, kinds: str) -> Optional[Generator[Dict[str, Any], Any, None]]:
         """按关键字翻页产出条目原始记录。
 
-        MediaVault 的关键字查询是模糊匹配，命中数可能超过单页上限；只读第一页会让
+        Vyo 的关键字查询是模糊匹配，命中数可能超过单页上限；只读第一页会让
         存在性判断把排在后面的目标误判成「未入库」，因此这里翻页直到取完。
         连接失败返回 None，与「查得到但没有」区分开。
         """
@@ -422,7 +422,7 @@ class MediaVault:
             page += 1
 
     def __format_item_info(self, row: Dict[str, Any]) -> Optional[_SchemaMediaServerItem]:
-        """把 MediaVault 条目转换为统一媒体服务器模型。"""
+        """把 Vyo 条目转换为统一媒体服务器模型。"""
         try:
             metadata = row.get("metadata_info") or {}
             provider_ids: Dict[str, Any] = {}
@@ -454,7 +454,7 @@ class MediaVault:
                 ) if user_data else None,
             )
         except Exception as err:
-            logger.error(f"解析 MediaVault 条目失败：{err}")
+            logger.error(f"解析 Vyo 条目失败：{err}")
             return None
 
     @staticmethod
@@ -615,7 +615,7 @@ class MediaVault:
                 matched.add(library_id)
             else:
                 unmatched = True
-                logger.info(f"MediaVault 中未找到 {item.title} 对应的媒体库，将扫描全部媒体库")
+                logger.info(f"Vyo 中未找到 {item.title} 对应的媒体库，将扫描全部媒体库")
         if unmatched:
             return self.refresh_root_library()
         # 先全部发出排队请求再汇总：交给 all() 的生成器会在首个失败处短路，
@@ -641,7 +641,7 @@ class MediaVault:
         return ""
 
     def __queue_scan(self, library_id: str) -> bool:
-        """把媒体库扫描排进 MediaVault 的后台队列，不阻塞入库流程。"""
+        """把媒体库扫描排进 Vyo 的后台队列，不阻塞入库流程。"""
         if not library_id:
             return False
         result = self._api.request(f"/libraries/{library_id}/scan-task", method="post")
