@@ -341,7 +341,7 @@ MoviePilot 也提供普通 REST API 给前端和自动化客户端使用。所�
 - 成功和失败响应都只包含 `success`、`message`、`data` 三个顶层字段；各接口只有 `data` 的模型可以变化。
 - 成功响应为 `{"success": true, "message": "", "data": <接口数据>}`。HTTP 错误保留原状态码，返回 `{"success": false, "message": <错误原因>, "data": null}`；请求参数校验错误会在 `data` 中附带结构化错误列表。
 - 查询接口未命中但请求已正常完成时仍返回 `success=true`，存在性等业务状态通过 `data` 表达。例如 `/mediaserver/exists` 未命中时返回空的 `data.item`。
-- 每个普通 JSON 端点都会在 OpenAPI 中声明具体的 `Response[DataModel]`，调用方可从 `/docs` 或 `/api/v1/openapi.json` 查询数据结构。
+- 每个普通 JSON 端点都会在 OpenAPI 中声明具体的 `Response[DataModel]`，开放 API 文档后，调用方可从 `/docs` 或 `/api/v1/openapi.json` 查询数据结构。
 - SSE、文件、图片、HTML、空响应，以及 OAuth2 登录、OpenAI、Anthropic、MCP JSON-RPC 等标准协议端点保持协议原生响应体；它们会在 OpenAPI 中显式声明对应的流、文件或协议模型。
 - 插件通过 `get_api()` 动态注册的 `/api/v1/plugin/...` 端点不属于主程序统一响应信封范围。插件自行声明响应模型、状态码和返回体，宿主只补充路径与鉴权依赖。
 
@@ -383,7 +383,7 @@ GitHub Token 是可选的管理员配置，可在设置页或首次初始化页�
 
 FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返回顶层 `detail` / `detail_i18n`。
 
-交互式接口文档 `/docs` 读取 `/api/v1/openapi.json`，页面版本号直接使用 `version.py` 中的后端 `APP_VERSION`。
+交互式接口文档 `/docs`（Swagger UI）和 `/redoc` 读取 `/api/v1/openapi.json`，页面版本号直接使用 `version.py` 中的后端 `APP_VERSION`。这三个地址默认关闭，返回 404；在系统设置「高级设置 → 实验室」中打开「开放 API 文档」（`API_DOCS_ENABLE`）后立即可用，无需重启。文档在首次访问时生成，之后会常驻约 20–30MB 内存；关闭开关后，下一次文档请求会释放缓存的文档，其余内部缓存在重启后释放。镜像内置的 nginx 只转发 `/api` 路径，`/docs` 和 `/redoc` 需要直接访问后端端口。
 
 #### 系统更新
 
