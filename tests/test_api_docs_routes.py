@@ -3,6 +3,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from app.application.plugin import routes as plugin_routes
 from app.application.settings.contract import build_setting_specs
 from app.factory import create_app
 from app.runtime.config import settings
@@ -42,6 +43,29 @@ def test_api_docs_follow_runtime_toggle_without_restart(monkeypatch: pytest.Monk
     monkeypatch.setattr(settings, "API_DOCS_ENABLE", False)
     assert client.get("/api/v1/openapi.json").status_code == 404
     assert app.openapi_schema is None
+
+
+def test_api_docs_survive_plugin_route_updates(monkeypatch: pytest.MonkeyPatch) -> None:
+    """插件路由增删后文档路由仍在，FastAPI.setup() 不再补注册它们。"""
+    app = create_app()
+    registry = plugin_routes._get_route_registry()
+    # 测试进程没有运行中的主 loop，改为当前线程同步更新路由表。
+    monkeypatch.setattr(registry, "_event_loop", None)
+    monkeypatch.setattr(registry, "_plugin_apis", lambda _plugin_id: [{
+        "path": "/DemoPlugin/health",
+        "endpoint": lambda: {"ok": True},
+        "methods": ["GET"],
+        "allow_anonymous": True,
+    }])
+    monkeypatch.setattr(settings, "API_DOCS_ENABLE", True)
+    client = TestClient(app)
+
+    registry.update("DemoPlugin", "add")
+    assert client.get("/api/v1/plugin/DemoPlugin/health").json() == {"ok": True}
+    registry.update("DemoPlugin", "remove")
+
+    for path in DOC_PATHS:
+        assert client.get(path).status_code == 200, path
 
 
 def test_api_docs_pages_keep_reverse_proxy_prefix(monkeypatch: pytest.MonkeyPatch) -> None:

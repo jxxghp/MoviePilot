@@ -1,4 +1,4 @@
-"""个人学习技能与 Hermes 批次、写前读取和所有权语义回归。"""
+"""个人学习技能的批次、写前读取和所有权语义回归。"""
 
 import json
 
@@ -116,7 +116,7 @@ def test_document_validation_and_field_shapes():
 
 
 def test_fuzzy_patch_preserves_unicode_and_refuses_ambiguity(tmp_path):
-    """Hermes 的排版差异匹配保留 Unicode；多义锚点仍拒绝写入。"""
+    """排版差异匹配保留 Unicode；多义锚点仍拒绝写入。"""
     library = SkillLibrary(tmp_path)
     manage(library, dict(action='create', name='workflow', content=document(body='  使用“旧名称” — 校验\n重复\n重复')))
     manage(library, dict(action='patch', name='workflow', old_string='使用"旧名称" -- 校验', new_string='使用"新名称" -- 校验'))

@@ -1,4 +1,4 @@
-"""Hermes 工具结果分类的纯 JSON 部分；MIT 来源见 controller.py 和 LICENSE.hermes。"""
+"""对 JSON 工具回执分类，为循环检测提供结果语义。"""
 
 import json
 from typing import Any

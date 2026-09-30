@@ -100,6 +100,8 @@ to make the directory tree look symmetrical.
 | `app/agent/api/arguments.py` | Canonical API request fingerprints from the generated operation schema and the executor's GET projection; no endpoint imports or live discovery |
 | `app/agent/shell.py` | Shared command interpreter, login mode, launch directory and subprocess text-encoding policy for run, pipe and PTY; preserves Windows default priority and UTF-8 behavior |
 | `app/agent/terminal/` | `ownership.py` owns host task identity, invocation context and lazy scope closure; `session.py` owns process state, input serialization and UTF-8 capture; `output.py` owns pure paging and bounded projections; `manager.py` owns launch, access grants and process lifecycle. Package root contains no implementation exports |
+| `app/agent/code/` / `app/agent/middleware/code.py` | Agent 专属持久 Python 会话、当前 cell 身份、只读工具交集、50次 RPC 预算与回执投影；复用真实 TerminalScope owner 和既有工具链，默认自动执行，不新增用户批准步骤。模型包装在工具筛选后、压缩前生成 helper 合同，不新增图节点；后台任务归 TaskRegistry，文件工作复用 Agent 有界线程池 |
+| `app/adapters/system/code/` | 通用本地 Python 子进程、生成客户端、私有 socket/令牌、随机输出分帧、父死亡看护与输出暂存。阻塞工作由调用方注入受控执行器；不导入 Agent、业务工具、配置或数据库，也不拥有用户及 API 权限策略 |
 | `app/agent/middleware/terminal.py` | Explicit child terminal grants and per-invocation scope binding; cached child graphs never receive mutable task identities, and sharing never bypasses tool role permissions |
 | `app/agent/policy/api.py` | Fixed `moviepilot_api` operation registry, HTTP route templates and per-operation authorization/effect policy; no arbitrary URL or method input |
 | `app/agent/policy/mcp.py` | Generated external MCP input-contract builder for the fixed API registry; owns exact English oneOf parameter projection, not runtime authorization |

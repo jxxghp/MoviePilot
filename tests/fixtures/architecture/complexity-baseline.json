@@ -82,7 +82,6 @@
       "app/domain/meta/metaanime.py:MetaAnime.__prepare_title": 16,
       "app/domain/meta/metabase.py:MetaBase.init_subtitle": 41,
       "app/domain/meta/metamusic.py:MetaMusic._parse_music_scene_tokens": 19,
-      "app/domain/meta/metamusic.py:MetaMusic.apply_path_context": 16,
       "app/domain/meta/metamusic.py:MetaMusic.parse_resource": 20,
       "app/domain/meta/metavideo.py:MetaVideo.__init__": 18,
       "app/domain/meta/metavideo.py:MetaVideo.__init_episode": 17,

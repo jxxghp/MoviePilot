@@ -157,7 +157,7 @@ def test_cancel_before_start_clears_owner_and_no_unrequested_review(tmp_path, mo
 def test_memory_interval_resume_counter_and_native_tools_skip(tmp_path):
     """恢复轮次按历史用户数初始化；技能维护重置工具计数，原生工具不冒充可控派发。"""
     async def scenario():
-        """核对与 Hermes 默认触发条件一致的计数边界。"""
+        """核对记忆和技能复盘的默认触发计数边界。"""
         owner = session(tmp_path)
         await owner.begin([HumanMessage(content=str(index)) for index in range(10)])
         assert owner.memory_due

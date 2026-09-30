@@ -40,6 +40,7 @@ BUILTIN_LEGACY_SHADOW_INVENTORY = frozenset(
         "agent_task",
         "edit_file",
         "execute_command",
+        "execute_code",
         "query_doctor_report",
         "read_file",
         "recognize_captcha",
@@ -88,6 +89,17 @@ class ToolPolicyRegistry:
     ) -> ActionPolicy:
         """根据工具名和宿主权限声明解析当前参数级策略。"""
         required_role = PrincipalRole.SYSTEM_ADMIN if requires_admin else PrincipalRole.USER
+        if tool_name == 'execute_code':
+            return ActionPolicy(
+                effect=ActionEffect.ARBITRARY_EXECUTION,
+                required_role=PrincipalRole.SYSTEM_ADMIN,
+                confirmation=ConfirmationMode.NONE,
+                recovery=RecoveryMode.MANUAL_ONLY,
+                result_sensitivity=ResultSensitivity.NORMAL,
+                migration_state=MigrationState.ENFORCED,
+                machine_allowed=False,
+                subagent_allowed=False,
+            )
         if tool_name == "agent_task":
             action = str(arguments.get("action") or "")
             effect = {

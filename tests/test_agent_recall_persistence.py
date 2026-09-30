@@ -1,4 +1,4 @@
-"""Hermes 对标：独立数据库、真实消息、检索语义、压缩和输出预算。"""
+"""验证独立数据库、真实消息、检索语义、压缩和输出预算。"""
 
 import asyncio
 import json
@@ -192,7 +192,7 @@ def test_invalid_query_rejected(kwargs):
 
 @pytest.fixture(scope='session')
 def cjk_extension(tmp_path_factory):
-    """只编译一次原版 Hermes tokenizer；不安装到用户运行目录。"""
+    """只编译一次随仓库提供的 CJK tokenizer；不安装到用户运行目录。"""
     import shutil
     import subprocess
     compiler = shutil.which('cc')

@@ -1,4 +1,4 @@
-"""Hermes 式会话阅读、锚点窗口与首末书挡；只展开最终选择的消息。"""
+"""会话阅读、锚点窗口与首末书挡；只展开最终选择的消息。"""
 
 import sqlite3
 from typing import Any
@@ -95,7 +95,7 @@ def hydrate(connection: sqlite3.Connection, hit: dict[str, Any], *, full: bool) 
 
 
 def read(connection: sqlite3.Connection, session_id: str) -> dict[str, Any]:
-    """对齐 Hermes 首20/尾10，每条2000字符；不把消息数限制误当字节限制。"""
+    """阅读首20/尾10条消息，每条2000字符；不把消息数限制误当字节限制。"""
     meta = metadata(connection, session_id)
     if not meta:
         return dict(success=False, error='session_not_found')
@@ -109,7 +109,7 @@ def read(connection: sqlite3.Connection, session_id: str) -> dict[str, Any]:
 
 
 def title_hit(connection: sqlite3.Connection, title: str) -> dict[str, Any] | None:
-    """按 Hermes 先尝试精确标题及最新 #N 续篇，不把标题命中冒充正文命中。"""
+    """先尝试精确标题及最新 #N 续篇，不把标题命中冒充正文命中。"""
     title = title.strip().strip("`'\"")
     escaped = title.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
     row = connection.execute(

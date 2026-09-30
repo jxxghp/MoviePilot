@@ -30,7 +30,7 @@ class ReviewRun:
 
 
 class LearningSession:
-    """计数跨图缓存重建保留，按 Hermes 默认十轮记忆/十次工具迭代触发。"""
+    """计数跨图缓存重建保留，默认每十轮触发记忆复盘、每十次工具迭代触发技能复盘。"""
 
     def __init__(self, *, session_id: str, skill_root: Path, memory_root: Path,
                  public_roots: tuple[Path, ...], on_usage: Callable[[dict[str, Any]], None]) -> None:

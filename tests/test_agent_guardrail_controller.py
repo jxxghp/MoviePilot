@@ -1,4 +1,4 @@
-"""Hermes 循环原语的原始行为回归；MIT 来源见 app/agent/guardrails/LICENSE.hermes。"""
+"""工具循环检测的阈值、恢复及回执语义回归。"""
 
 import json
 
@@ -16,12 +16,12 @@ _RED = '{"output": "1 failed", "exit_code": 1}'
 
 
 def _HARD():
-    """构造 Hermes 无人值守的默认强制停止策略。"""
+    """构造无人值守的默认强制停止策略。"""
     return ToolCallGuardrailController(ToolCallGuardrailConfig(hard_stop_enabled=True))
 
 
 def test_tool_call_signature_hashes_canonical_nested_unicode_args_without_exposing_raw_args():
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     args_a = {
         "z": [{"β": "☤", "a": 1}],
         "a": {"y": 2, "x": "secret-token-value"},
@@ -44,7 +44,7 @@ def test_tool_call_signature_hashes_canonical_nested_unicode_args_without_exposi
 
 
 def test_config_parses_nested_warn_and_hard_stop_thresholds():
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     cfg = ToolCallGuardrailConfig.from_mapping(
         {
             "warnings_enabled": False,
@@ -73,7 +73,7 @@ def test_config_parses_nested_warn_and_hard_stop_thresholds():
 
 
 def test_gateway_platform_defaults_to_hard_stop_without_changing_interactive_defaults():
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     interactive_configs = [
         ToolCallGuardrailConfig.from_mapping({}, platform=platform)
         for platform in ("cli", "tui", "desktop", "acp")
@@ -87,7 +87,7 @@ def test_gateway_platform_defaults_to_hard_stop_without_changing_interactive_def
 
 
 def test_non_interactive_hard_stop_can_be_disabled_explicitly():
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     cfg = ToolCallGuardrailConfig.from_mapping(
         {"non_interactive_hard_stop_enabled": False},
         platform="telegram",
@@ -98,7 +98,7 @@ def test_non_interactive_hard_stop_can_be_disabled_explicitly():
 
 
 def test_default_repeated_identical_failed_call_warns_without_blocking():
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     controller = ToolCallGuardrailController()
     args = {"query": "same"}
 
@@ -117,7 +117,7 @@ def test_default_repeated_identical_failed_call_warns_without_blocking():
 
 
 def test_hard_stop_enabled_blocks_repeated_exact_failure_before_next_execution():
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     controller = ToolCallGuardrailController(
         ToolCallGuardrailConfig(
             hard_stop_enabled=True,
@@ -144,7 +144,7 @@ def test_hard_stop_enabled_blocks_repeated_exact_failure_before_next_execution()
 
 
 def test_skill_read_tools_are_idempotent_and_block_repeated_identical_success_output():
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     cases = [
         (
             "skill_view",
@@ -180,7 +180,7 @@ def test_skill_read_tools_are_idempotent_and_block_repeated_identical_success_ou
 
 
 def test_mutating_or_unknown_tools_are_not_blocked_for_repeated_identical_success_output_by_default():
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     controller = ToolCallGuardrailController(
         ToolCallGuardrailConfig(no_progress_warn_after=2, no_progress_block_after=2)
     )
@@ -197,7 +197,7 @@ def test_identical_call_streak_halts_any_tool_when_hard_stop_enabled():
     # terminal/skill_view call with a byte-identical result is not covered by
     # the idempotent_tools no-progress block. The consecutive-identical
     # streak (observe_call) is tool-agnostic; under hard_stop it must halt.
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     controller = ToolCallGuardrailController(
         ToolCallGuardrailConfig(hard_stop_enabled=True, no_progress_block_after=5)
     )
@@ -216,7 +216,7 @@ def test_identical_call_streak_halts_any_tool_when_hard_stop_enabled():
 
 
 def test_identical_call_streak_never_halts_when_hard_stop_disabled_or_for_pollers():
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     soft = ToolCallGuardrailController(
         ToolCallGuardrailConfig(hard_stop_enabled=False, no_progress_block_after=2)
     )
@@ -239,7 +239,7 @@ def test_identical_call_streak_never_halts_when_hard_stop_disabled_or_for_poller
 
 def test_loop_cap_zero_disables_and_junk_falls_back():
     # 0 is a legitimate "unlimited" value; negatives / junk fall back to default.
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     assert LoopCapConfig.from_mapping({"max_web_searches": 0}).max_web_searches == 0
     assert LoopCapConfig.from_mapping({"max_web_searches": -5}).max_web_searches == LoopCapConfig().max_web_searches
     assert LoopCapConfig.from_mapping({"max_subagents": "nope"}).max_subagents == LoopCapConfig().max_subagents
@@ -249,7 +249,7 @@ def test_web_search_cap_blocks_after_limit_regardless_of_hard_stop():
     # Loop caps fire even with hard_stop_enabled=False (the per-turn loop
     # detector's flag). Each distinct query avoids the loop detector so we know
     # the block came from the loop cap, not exact-failure repetition.
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     controller = ToolCallGuardrailController(
         ToolCallGuardrailConfig(
             hard_stop_enabled=False,
@@ -265,13 +265,13 @@ def test_web_search_cap_blocks_after_limit_regardless_of_hard_stop():
 
 
 def _run_red(c, args=_PYTEST):
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     assert c.before_call("terminal", args).allows_execution
     return c.after_call("terminal", args, _RED, failed=True)
 
 
 def test_fix_retest_loop_is_never_hard_stopped():
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     c = _HARD()
     for i in range(12):
         d = _run_red(c)
@@ -284,7 +284,7 @@ def test_fix_retest_loop_is_never_hard_stopped():
 
 
 def test_pure_replay_with_no_intervening_change_is_still_blocked():
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     c = _HARD()
     for _ in range(5):
         _run_red(c)
@@ -295,7 +295,7 @@ def test_pure_replay_with_no_intervening_change_is_still_blocked():
 def test_intervening_mutation_resets_the_replay_streak_only_once():
     # 4 reds, one edit, then 4 reds with NO edit: the second run of 4 is a
     # fresh streak, and the 5th unchanged retry after it is blocked.
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     c = _HARD()
     for _ in range(4):
         _run_red(c)
@@ -308,7 +308,7 @@ def test_intervening_mutation_resets_the_replay_streak_only_once():
 
 def test_distinct_failing_terminal_commands_warn_but_never_halt():
     # A diagnostic sweep: grep with no matches, missing binaries, red builds.
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     c = _HARD()
     for i in range(12):
         args = {"command": f"grep -q needle{i} haystack.txt"}
@@ -324,7 +324,7 @@ def test_distinct_failing_terminal_commands_warn_but_never_halt():
 
 
 def test_browser_retry_after_action_is_not_a_replay():
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     c = _HARD()
     nav = {"url": "https://example.test/app"}
     for _ in range(8):
@@ -335,7 +335,7 @@ def test_browser_retry_after_action_is_not_a_replay():
 
 
 def test_supervised_task_platforms_keep_warning_only_default():
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     for platform in ("subagent", "api_server", "cli"):
         cfg = ToolCallGuardrailConfig.from_mapping({}, platform=platform)
         assert cfg.hard_stop_enabled is False, platform
@@ -358,14 +358,14 @@ def test_identical_streak_ignores_volatile_execution_metadata():
     # execute_code results carry per-call metadata (execution_count, duration_seconds) that
     # changes on every run. Hashing it made each empty replay look "new", so a model re-ran
     # the same empty probe 147 times without the identical-call halt ever firing.
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     controller = ToolCallGuardrailController(
         ToolCallGuardrailConfig(hard_stop_enabled=True, no_progress_block_after=5)
     )
     args = {"code": "import subprocess\nprint(subprocess.run(['true']).returncode) if False else None"}
 
     def result(n):
-        """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+        """验证循环检测合同，保持阈值、恢复及回执语义。"""
         return json.dumps({
             "status": "success", "output": "", "exit_code": 0, "tool_calls_made": 0,
             "duration_seconds": 1.0 + n / 100,
@@ -383,7 +383,7 @@ def test_identical_streak_ignores_volatile_execution_metadata():
 
 
 def test_identical_streak_still_resets_when_real_output_changes():
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     controller = ToolCallGuardrailController(
         ToolCallGuardrailConfig(hard_stop_enabled=True, no_progress_block_after=3)
     )
@@ -399,7 +399,7 @@ def test_other_tools_keep_duration_and_execution_count_as_real_output():
     # Only execute_code's known metadata locations are volatile. For any other tool these keys
     # can be the actual answer (e.g. a job-status tool reporting how long a job ran), so results
     # that differ only there are different results and must not form an identical streak.
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     controller = ToolCallGuardrailController(
         ToolCallGuardrailConfig(hard_stop_enabled=True, no_progress_block_after=3)
     )
@@ -415,12 +415,12 @@ def test_execute_code_replay_streak_notice_fires_on_warn_only_desktop_config():
     # #124072: on an interactive surface hard stops are off, so the appended notice is
     # the only signal the model gets. 186 no-op print("...") cells whose results differed
     # only in kernel.execution_count / duration_seconds produced zero notices.
-    """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+    """验证循环检测合同，保持阈值、恢复及回执语义。"""
     controller = ToolCallGuardrailController(ToolCallGuardrailConfig.from_mapping({}, platform="desktop"))
     args = {"code": 'print("...")'}
 
     def result(n):
-        """验证 Hermes 原始循环检测合同，保持阈值、恢复及回执语义。"""
+        """验证循环检测合同，保持阈值、恢复及回执语义。"""
         return json.dumps({
             "status": "success", "output": "...\n", "exit_code": 0, "tool_calls_made": 0,
             "duration_seconds": 0.001 * n,

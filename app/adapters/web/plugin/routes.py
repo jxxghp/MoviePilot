@@ -37,7 +37,6 @@ class FastAPIDynamicRouteRegistry:
         verify_token: Callable[..., Any],
         verify_apikey: Callable[..., Any],
         prefix: str,
-        protected_routes: set[str],
         log: Any,
         event_loop: Callable[[], asyncio.AbstractEventLoop | None] | None = None,
     ) -> None:
@@ -48,7 +47,6 @@ class FastAPIDynamicRouteRegistry:
         self._verify_token = verify_token
         self._verify_apikey = verify_apikey
         self._prefix = prefix
-        self._protected_routes = protected_routes
         self._logger = log
         self._event_loop = event_loop
 
@@ -111,11 +109,6 @@ class FastAPIDynamicRouteRegistry:
 
         modified = False
         removed = False
-        existing_paths = {
-            path: route
-            for route in self._app.routes
-            if (path := self._route_path(route)) is not None
-        }
         plugin_ids = [plugin_id] if plugin_id else self._plugin_ids()
         for current_id in plugin_ids:
             if self.remove(current_id):
@@ -150,9 +143,8 @@ class FastAPIDynamicRouteRegistry:
                         f"Error adding plugin route {api_path}: {str(error)}"
                     )
         if modified:
-            self.clean(existing_paths)
+            # 文档路由由 app.adapters.web.docs 一次性注册，这里只让已缓存的文档按新路由表重建。
             self._app.openapi_schema = None
-            self._app.setup()
         if removed:
             # 旧路由已不在路由表中，此后不会再有请求把旧端点写回缓存
             _clear_fastapi_callable_caches()
@@ -184,15 +176,3 @@ class FastAPIDynamicRouteRegistry:
         """返回公开路由路径，跳过 FastAPI 内部的无路径 include 包装器。"""
         path = getattr(route, "path", None)
         return path if isinstance(path, str) else None
-
-    def clean(self, existing_paths: dict) -> None:
-        """清理 FastAPI 重建时可能重复的受保护文档路由。"""
-        for protected_route in self._protected_routes:
-            try:
-                existing_route = existing_paths.get(protected_route)
-                if existing_route:
-                    self._app.routes.remove(existing_route)
-            except Exception as error:
-                self._logger.error(
-                    f"Error removing protected route {protected_route}: {str(error)}"
-                )

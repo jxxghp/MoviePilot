@@ -1,6 +1,6 @@
-"""Hermes 复盘提示词；保留学习策略，只替换宿主产品与技能所有权操作名称。"""
+"""后台复盘提示词：依据本轮证据维护稳定记忆与个人技能。"""
 
-# Copyright (c) 2025 Nous Research. MIT; see LICENSE.hermes.
+# Copyright (c) 2025 Nous Research. See the accompanying MIT license.
 # Source f42f579cf8bac4918ac9599bece71618afadd846/agent/background_review.py.
 
 MEMORY_REVIEW_PROMPT = (

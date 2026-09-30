@@ -1,4 +1,4 @@
-"""把 Hermes 每轮循环检测接入真实工具回执，不把重复读取变成缓存命中。"""
+"""把每轮循环检测接入真实工具回执，不把重复读取变成缓存命中。"""
 
 import asyncio
 import json
@@ -13,6 +13,7 @@ from langgraph.config import get_config
 from langgraph.graph.message import add_messages
 from langgraph.types import Command
 
+from app.agent.code.authority import RPC_RESULT_KEY
 from app.agent.guardrails.completion import (
     CONTINUATION_NUDGE,
     FRAGMENT_NUDGE,
@@ -218,6 +219,8 @@ class ToolGuardrailsMiddleware(AgentMiddleware):  # type: ignore[misc]
 
     async def awrap_tool_call(self, request: ToolCallRequest, handler: Callable[[ToolCallRequest], Awaitable[Any]]) -> Any:
         """执行前检查上轮证据和总预算，执行后暂存原文而不改变真实工具结果。"""
+        if isinstance(request.state, dict) and RPC_RESULT_KEY in request.state:
+            return await handler(request)
         name = self._name(request)
         arguments = dict(request.tool_call.get('args') or {})
         if name == 'delegate_task' and arguments.get('action') in {'cancel', 'update'}:

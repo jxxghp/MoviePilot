@@ -1,5 +1,4 @@
-# Copyright (c) 2025 Nous Research. MIT; see LICENSE.hermes.
-# Adapted from hermes-agent f42f579cf8bac4918ac9599bece71618afadd846/tools/fuzzy_match.py.
+# Copyright (c) 2025 Nous Research. See the accompanying MIT license.
 """Fuzzy find-and-replace for LLM-generated edits.
 
 An ordered chain of increasingly permissive strategies (``STRATEGIES``) lets

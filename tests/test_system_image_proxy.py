@@ -1,8 +1,10 @@
 import asyncio
 import io
 import ipaddress
+import os
 from collections.abc import Iterator, Mapping
 from hashlib import sha256
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Optional
 from unittest.mock import AsyncMock, Mock, patch
@@ -10,6 +12,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from PIL import Image
 
+from app.adapters.system.host import SystemUtils
 from app.api.endpoints import system as system_endpoint
 from app.application import image as image_service
 from app.application.image import (
@@ -19,6 +22,7 @@ from app.application.image import (
     reset_image_ports,
 )
 from app.application.security.image import SiteImageDomainCache
+from app.runtime.cache import AsyncFileCache, FileCache
 from app.schemas.site import Site
 
 
@@ -157,11 +161,25 @@ def restore_image_ports() -> Iterator[None]:
     reset_image_ports(*previous)
 
 
-def _image_bytes(image_format: str, trailing: bytes = b"") -> bytes:
+def _image_bytes(
+    image_format: str,
+    trailing: bytes = b"",
+    *,
+    color: tuple[int, int, int] = (32, 96, 160),
+) -> bytes:
     """生成离线图片载荷，用于验证内容识别和响应头。"""
     buffer = io.BytesIO()
-    Image.new("RGB", (2, 2), color=(32, 96, 160)).save(buffer, format=image_format)
+    Image.new("RGB", (2, 2), color=color).save(buffer, format=image_format)
     return buffer.getvalue() + trailing
+
+
+@pytest.fixture
+def isolated_image_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> ImageHelper:
+    """让真实同步、异步文件缓存共用临时目录，用例结束后恢复单例属性。"""
+    helper = ImageHelper()
+    monkeypatch.setattr(helper, "file_cache", FileCache(base=tmp_path, local_only=True))
+    monkeypatch.setattr(helper, "async_file_cache", AsyncFileCache(base=tmp_path, local_only=True))
+    return helper
 
 
 def test_bangumi_image_proxy_domain_is_added_to_allowlist() -> None:
@@ -405,6 +423,82 @@ def test_async_fetch_image_with_mime_type_validates_network_content_once():
     assert result == (content, "image/png")
     get_mime_type.assert_called_once_with(content)
     assert transport.async_calls[0][0] == "https://images.example/wallpaper.png"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["sync", "async"])
+@pytest.mark.parametrize(
+    ("first_url", "second_url"),
+    [
+        ("https://one.example/cover.jpg", "https://two.example/cover.jpg"),
+        ("https://images.example/cover.jpg?id=one", "https://images.example/cover.jpg?id=two"),
+        ("https://images.example:8443/cover.jpg", "https://images.example:9443/cover.jpg"),
+        ("http://images.example/cover.jpg", "https://images.example/cover.jpg"),
+    ],
+    ids=["host", "query", "port", "scheme"],
+)
+async def test_image_cache_separates_url_identity(
+    isolated_image_cache, mode, first_url, second_url,
+):
+    """不同来源的同路径图片独立缓存，重复请求仍返回各自内容且不再访问网络。"""
+    first_content = _image_bytes("PNG", color=(255, 0, 0))
+    second_content = _image_bytes("PNG", color=(0, 0, 255))
+    response = Mock(status_code=200, content=first_content)
+    transport = _FakeImageTransport(sync_response=response, async_response=response)
+    configure_image_ports(transport=transport, internal_address=_FakeInternalAddress())
+
+    async def fetch(url):
+        if mode == "sync":
+            return isolated_image_cache.fetch_image_with_mime_type(url)
+        return await isolated_image_cache.async_fetch_image_with_mime_type(url)
+
+    assert await fetch(first_url) == (first_content, "image/png")
+    response.content = second_content
+    assert await fetch(second_url) == (second_content, "image/png")
+    assert await fetch(first_url) == (first_content, "image/png")
+    assert await fetch(second_url) == (second_content, "image/png")
+    calls = transport.sync_calls + transport.async_calls
+    assert [url for url, _options in calls] == [first_url, second_url]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["sync", "async"])
+async def test_image_cache_does_not_reuse_legacy_path_entry(isolated_image_cache, mode):
+    """旧路径缓存无法确认来源，升级后应重新获取对应 URL 的图片。"""
+    stale_content = _image_bytes("PNG", color=(255, 0, 0))
+    fresh_content = _image_bytes("PNG", color=(0, 0, 255))
+    isolated_image_cache.file_cache.set("covers/cover.png", stale_content, region="images")
+    response = Mock(status_code=200, content=fresh_content)
+    transport = _FakeImageTransport(sync_response=response, async_response=response)
+    configure_image_ports(transport=transport, internal_address=_FakeInternalAddress())
+    url = "https://images.example/covers/cover.png"
+
+    if mode == "sync":
+        result = isolated_image_cache.fetch_image_with_mime_type(url)
+    else:
+        result = await isolated_image_cache.async_fetch_image_with_mime_type(url)
+
+    assert result == (fresh_content, "image/png")
+    assert len(transport.sync_calls + transport.async_calls) == 1
+    assert isolated_image_cache.file_cache.get(
+        ImageHelper._prepare_cache_path(url), region="images",
+    ) == fresh_content
+
+
+def test_image_cache_paths_remain_subject_to_age_cleanup(isolated_image_cache, tmp_path):
+    """新旧缓存均留在 images 目录，既有清理能删除过期文件并保留新文件。"""
+    old_key = ImageHelper._prepare_cache_path("https://images.example/old.png")
+    fresh_key = ImageHelper._prepare_cache_path("https://images.example/fresh.png")
+    for key in (old_key, "legacy/cover.jpg", fresh_key):
+        isolated_image_cache.file_cache.set(key, _image_bytes("PNG"), region="images")
+    for key in (old_key, "legacy/cover.jpg"):
+        os.utime(tmp_path / "images" / key, (1, 1))
+
+    SystemUtils.clear(tmp_path / "images", days=7)
+
+    assert isolated_image_cache.file_cache.get(old_key, region="images") is None
+    assert isolated_image_cache.file_cache.get("legacy/cover.jpg", region="images") is None
+    assert isolated_image_cache.file_cache.get(fresh_key, region="images") == _image_bytes("PNG")
 
 
 @pytest.mark.parametrize(

@@ -1,5 +1,4 @@
-# Copyright (c) 2025 Nous Research. MIT; see LICENSE.hermes.
-# hermes-agent f42f579cf8bac4918ac9599bece71618afadd846/tools/threat_patterns.py.
+# Copyright (c) 2025 Nous Research. See the accompanying MIT license.
 """Shared threat-pattern library (prompt injection / promptware / exfiltration) for
 ``agent/prompt_builder.py``, ``tools/memory_tool.py`` and ``agent/tool_dispatch_helpers.py``.
 Each pattern is ``(regex, pattern_id, scope)``; scope is cumulative: ``"all"`` everywhere,

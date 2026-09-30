@@ -765,7 +765,7 @@ class MoviePilotTool(BaseTool, metaclass=ABCMeta):
         agent_root = allowed_roots[0]
         memory_root = agent_root / "memory"
         runtime_root = agent_root / "runtime"
-        for protected in (runtime_root / 'learning' / 'users', runtime_root / 'history' / 'users'):
+        for protected in (runtime_root / 'learning' / 'users', runtime_root / 'history' / 'users', runtime_root / 'code' / 'users'):
             if self._is_path_relative_to(resolved_path, protected):
                 user_key = build_user_memory_key(self._user_id)
                 if not user_key or not self._is_path_relative_to(resolved_path, protected / user_key):

@@ -14,7 +14,8 @@
 用法：
     .venv/bin/python scripts/music_recognize_batch_test.py --fetch          # 抓取并测试
     .venv/bin/python scripts/music_recognize_batch_test.py --fetch --sites ptsbao,springsunday
-    .venv/bin/python scripts/music_recognize_batch_test.py                  # 用已保存标题离线重测
+    .venv/bin/python scripts/music_recognize_batch_test.py                  # 复用标题，在线识别
+    .venv/bin/python scripts/music_recognize_batch_test.py --fetch-only --config-dir /path/to/config --samples-per-site 250
 """
 
 import argparse
@@ -23,9 +24,11 @@ import os
 import sqlite3
 import sys
 from pathlib import Path
+from typing import Optional
 from urllib.parse import urlsplit
 
 import yaml
+from dotenv import dotenv_values
 
 # 保证从仓库根目录外执行时也能导入 app 包
 ROOT = Path(__file__).resolve().parents[1]
@@ -42,6 +45,8 @@ REPORT_FILE = ROOT / "config" / "temp" / "music_batch_report.csv"
 # 各站点音乐分区浏览配置：yml 配置、浏览路径（{page} 由 SiteSpider 渲染）、每站抓取上限
 # NexusPHP 站点统一用 torrents.php?cat=<音乐分类>，憨憨音乐专区走 special.php
 SITES = [
+    {"key": "musopia", "name": "音乐乌托邦", "yml": "musopia.yml",
+     "browse": "torrents.php?page={page}", "limit": 30},
     {"key": "hhanclub", "name": "憨憨", "yml": "hhanclub.yml",
      "browse": "special.php?page={page}", "limit": 30},
     {"key": "ptsbao", "name": "烧包乐园", "yml": "ptsbao.yml",
@@ -63,14 +68,20 @@ SITES = [
 ]
 
 
-def load_site_credentials(domains: list[str]) -> dict[str, dict]:
-    """只读打开生产库，按域名批量取出站点 Cookie 与 UA。"""
+def load_site_credentials(domains: list[str], config_dir: Optional[Path] = None) -> dict[str, dict]:
+    """只读取得 Cookie 与 UA；显式配置目录支持当前 PostgreSQL，旧 SQLite 路径仍兼容。"""
     from app.domain.site import extract_domain
 
-    if not DB_PATH.exists():
-        sys.exit(f"生产数据库不存在：{DB_PATH}")
+    config = dotenv_values(config_dir / "app.env") if config_dir else {}
+    if config.get("DB_TYPE") == "postgresql":
+        return load_postgresql_credentials(domains, config)
+    if config.get("DB_TYPE") not in (None, "sqlite", "sqllite"):
+        sys.exit("采样仅支持 PostgreSQL 或 SQLite，不能回退到其他数据库")
+    database = config_dir / "user.db" if config_dir else DB_PATH
+    if not database.exists():
+        sys.exit(f"生产数据库不存在：{database}")
     credentials: dict[str, dict] = {}
-    con = sqlite3.connect(f"file:{DB_PATH}?mode=ro", uri=True)
+    con = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
     try:
         for domain in domains:
             row = con.execute(
@@ -81,6 +92,33 @@ def load_site_credentials(domains: list[str]) -> dict[str, dict]:
     finally:
         con.close()
     return credentials
+
+
+def load_postgresql_credentials(domains: list[str], config: dict) -> dict[str, dict]:
+    """连接时强制只读事务；仅在内存中持有站点认证材料，不输出连接串或密码。"""
+    import psycopg2
+
+    from app.domain.site import extract_domain
+
+    con = psycopg2.connect(
+        host=config.get("DB_POSTGRESQL_HOST") or "localhost",
+        port=config.get("DB_POSTGRESQL_PORT") or "5432",
+        dbname=config.get("DB_POSTGRESQL_DATABASE") or "moviepilot",
+        user=config.get("DB_POSTGRESQL_USERNAME") or "moviepilot",
+        password=config.get("DB_POSTGRESQL_PASSWORD") or "moviepilot",
+        connect_timeout=5, options="-c default_transaction_read_only=on",
+    )
+    try:
+        with con.cursor() as cursor:
+            cursor.execute("SELECT domain, cookie, ua, proxy FROM site WHERE domain = ANY(%s)",
+                           ([extract_domain(domain) for domain in domains],))
+            rows = {row[0]: row[1:] for row in cursor.fetchall()}
+        return {
+            domain: {"cookie": row[0], "ua": row[1] or None, "proxy": bool(row[2])}
+            for domain in domains if (row := rows.get(extract_domain(domain))) and row[0]
+        }
+    finally:
+        con.close()
 
 
 def build_indexer(site: dict, credential: dict) -> dict:
@@ -126,9 +164,10 @@ def fetch_site_titles(site: dict, indexer: dict, max_pages: int) -> list[tuple[s
     return titles[:site["limit"]]
 
 
-def fetch_titles(site_keys: list[str], max_pages: int) -> list[tuple[str, str, str]]:
+def fetch_titles(site_keys: list[str], max_pages: int, *, config_dir: Optional[Path] = None,
+                 samples_per_site: int = 30) -> list[tuple[str, str, str]]:
     """按配置抓取多个站点音乐分区标题，返回 (站点名, 标题, 副标题) 列表。"""
-    sites = [site for site in SITES if not site_keys or site["key"] in site_keys]
+    sites = [dict(site, limit=samples_per_site) for site in SITES if not site_keys or site["key"] in site_keys]
     unknown = set(site_keys) - {site["key"] for site in sites}
     if unknown:
         sys.exit(f"未知站点：{', '.join(sorted(unknown))}；可选：{', '.join(site['key'] for site in SITES)}")
@@ -138,7 +177,7 @@ def fetch_titles(site_keys: list[str], max_pages: int) -> list[tuple[str, str, s
             domain = urlsplit(yaml.safe_load(f).get("domain") or "").hostname or ""
         site["domain"] = domain
         domains.append(domain)
-    credentials = load_site_credentials(domains)
+    credentials = load_site_credentials(domains, config_dir)
 
     results: list[tuple[str, str, str]] = []
     for site in sites:
@@ -248,17 +287,27 @@ def main() -> None:
     parser.add_argument("--fetch", action="store_true", help="重新抓取种子标题（默认复用已保存列表）")
     parser.add_argument("--sites", default="", help="指定站点 key 逗号分隔，缺省抓取全部配置站点")
     parser.add_argument("--pages", type=int, default=3, help="每站最大翻页数")
+    parser.add_argument("--config-dir", type=Path, help="只读站点凭据的生产配置目录，支持 PostgreSQL/SQLite")
+    parser.add_argument("--samples-per-site", type=int, default=30, help="每站采样上限，默认 30")
     parser.add_argument("--fetch-only", action="store_true", help="只采样，不请求音乐元数据")
     parser.add_argument("--limit", type=int, default=0, help="最多识别多少条，0 表示全部")
     parser.add_argument("--music-type", choices=("recording", "album"), help="限定单曲或专辑，避免混合命中掩盖实体错误")
     args = parser.parse_args()
-    if args.pages < 1 or args.limit < 0:
-        parser.error("pages 必须大于 0，limit 不能小于 0")
+    if args.pages < 1 or args.limit < 0 or args.samples_per_site < 1:
+        parser.error("pages 和 samples-per-site 必须大于 0，limit 不能小于 0")
+    if args.config_dir:
+        if not (args.config_dir / "app.env").is_file():
+            parser.error("config-dir 必须包含 app.env")
+        config = dotenv_values(args.config_dir / "app.env")
+        for key in ("PROXY_HOST", "USER_AGENT"):
+            if config.get(key):
+                os.environ[key] = str(config[key])
     os.environ["CONFIG_DIR"] = str(ROOT / "config" / "temp" / "music-batch-runtime")
 
     if args.fetch or args.fetch_only or not TITLES_FILE.exists():
         site_keys = [key.strip() for key in args.sites.split(",") if key.strip()]
-        entries = fetch_titles(site_keys, max_pages=args.pages)
+        entries = fetch_titles(site_keys, max_pages=args.pages, config_dir=args.config_dir,
+                               samples_per_site=args.samples_per_site)
         if not entries:
             sys.exit("未抓取到任何种子标题")
         TITLES_FILE.parent.mkdir(parents=True, exist_ok=True)
