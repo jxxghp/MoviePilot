@@ -1021,8 +1021,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9031,
-  "edge_sha256": "f8fa4f7716fae3befc89650d4d6d0185a5f9b318a5c88e8ebcb1143a23bae108",
+  "edge_count": 9033,
+  "edge_sha256": "f522f58bff01f9a88f784c346dec18d467f3efd72898b134073bb6a1756b0d9b",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -3660,6 +3660,8 @@
     "app.application.music.catalog -> app.schemas.types",
     "app.application.music.projection -> app.domain",
     "app.application.music.projection -> app.domain.context",
+    "app.application.music.projection -> app.domain.meta",
+    "app.application.music.projection -> app.domain.meta.metamusic",
     "app.application.music.projection -> app.schemas",
     "app.application.music.projection -> app.schemas.types",
     "app.application.music.recognition -> app.application",

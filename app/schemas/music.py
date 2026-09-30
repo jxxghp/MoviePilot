@@ -23,6 +23,10 @@ class MusicMeta(OptionalMediaIdentityMixin, BaseModel):
     apply_words: list[str] = Field(default_factory=list, description="资源解析时实际应用的自定义识别词")
     title: Optional[str] = None
     artists: list[str] = Field(default_factory=list)
+    composers: list[str] = Field(default_factory=list, description="作曲家，独立于艺人显示署名")
+    conductors: list[str] = Field(default_factory=list, description="指挥")
+    orchestras: list[str] = Field(default_factory=list, description="乐团或合唱团")
+    performers: dict[str, list[str]] = Field(default_factory=dict, description="乐器或声部对应的演奏者；未注明职责用performer")
     artist: Optional[str] = None
     album: Optional[str] = None
     album_artist: Optional[str] = None
@@ -62,6 +66,10 @@ class MusicInfo(OptionalMediaIdentityMixin, BaseModel):
     media_id: Optional[str] = None
     title: Optional[str] = None
     artists: list[str] = Field(default_factory=list)
+    composers: list[str] = Field(default_factory=list, description="作曲家，独立于艺人显示署名")
+    conductors: list[str] = Field(default_factory=list, description="指挥")
+    orchestras: list[str] = Field(default_factory=list, description="乐团或合唱团")
+    performers: dict[str, list[str]] = Field(default_factory=dict, description="乐器或声部对应的演奏者；未注明职责用performer")
     artist: Optional[str] = None
     artist_ids: list[str] = Field(default_factory=list)
     album: Optional[str] = None
@@ -215,6 +223,10 @@ class MusicAlbumInfo(OptionalMediaIdentityMixin, BaseModel):
     field_sources: dict[str, str] = Field(default_factory=dict)
     title: Optional[str] = None
     artists: list[str] = Field(default_factory=list)
+    composers: list[str] = Field(default_factory=list, description="作曲家，独立于艺人显示署名")
+    conductors: list[str] = Field(default_factory=list, description="指挥")
+    orchestras: list[str] = Field(default_factory=list, description="乐团或合唱团")
+    performers: dict[str, list[str]] = Field(default_factory=dict, description="乐器或声部对应的演奏者；未注明职责用performer")
     artist: Optional[str] = None
     artist_ids: list[str] = Field(default_factory=list)
     title_aliases: list[str] = Field(default_factory=list)

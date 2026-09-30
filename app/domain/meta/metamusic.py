@@ -499,6 +499,33 @@ def _string_list(value: Any) -> list[str]:
     return [str(value)]
 
 
+MUSIC_CREDIT_FIELDS = ("composers", "conductors", "orchestras", "performers")
+
+
+def music_credit_values(value: Any) -> dict[str, Any]:
+    """复制明确角色证据，演奏者按乐器/声部保存；不从艺人显示署名猜测角色。"""
+    def read(name: str) -> Any:
+        """兼容JSON快照与领域对象，不共享输入列表。"""
+        return value.get(name) if isinstance(value, dict) else getattr(value, name, None)
+
+    def names(raw: Any) -> list[str]:
+        """保留人名原文及顺序，只消除空白和重复值。"""
+        return list(dict.fromkeys(text for item in _string_list(raw) if (text := item.strip())))
+
+    performers = read("performers")
+    normalized: dict[str, list[str]] = {}
+    if isinstance(performers, dict):
+        for role, people in performers.items():
+            key = str(role or "performer").strip().casefold() or "performer"
+            values = names([*normalized.get(key, []), *names(people)])
+            if values:
+                normalized[key] = values
+    return {
+        **{key: names(read(key)) for key in MUSIC_CREDIT_FIELDS if key != "performers"},
+        "performers": normalized,
+    }
+
+
 def _to_halfwidth(value: str) -> str:
     """全角字符归一为半角：FF01-FF5E 按偏移换算，全角空格与括号类字符查表替换。"""
 
@@ -762,6 +789,10 @@ class MetaMusic(MetaBase):
         cue_filename: Optional[str] = None,
         cue_tracks: Optional[list[dict[str, Any]]] = None,
         organization_error: Optional[str] = None,
+        composers: Optional[list[str]] = None,
+        conductors: Optional[list[str]] = None,
+        orchestras: Optional[list[str]] = None,
+        performers: Optional[dict[str, list[str]]] = None,
     ):
         """初始化音乐标题、标签、音频规格和统一媒体身份。"""
         # 音乐无季集概念，仅复用 MetaBase 的基础字段初始化，不触发副标题季集识别
@@ -772,6 +803,12 @@ class MetaMusic(MetaBase):
         self.artists = list(artists) if artists else []
         self.album = album
         self.album_artist = album_artist
+        credits = music_credit_values(dict(composers=composers, conductors=conductors,
+                                          orchestras=orchestras, performers=performers))
+        self.composers: list[str] = credits["composers"]
+        self.conductors: list[str] = credits["conductors"]
+        self.orchestras: list[str] = credits["orchestras"]
+        self.performers: dict[str, list[str]] = credits["performers"]
         self.year = year if year is not None else release_year or original_year
         self.original_year = original_year
         self.release_year = release_year
@@ -809,6 +846,7 @@ class MetaMusic(MetaBase):
     def __setstate__(self, state: dict[str, Any]) -> None:
         """恢复旧版解析缓存时补齐发行事实和字段来源，避免丢失旧字段或共享字典。"""
         self.__dict__.update(state)
+        self.__dict__.update(music_credit_values(state))
         for key in ("musicbrainz_release_id", "musicbrainz_release_group_id", "musicbrainz_release_track_id",
                     "original_year", "release_year"):
             self.__dict__.setdefault(key, None)
@@ -892,12 +930,25 @@ class MetaMusic(MetaBase):
                 meta.title = native_title
         if not meta.version:
             meta.version = cls._resource_version(title, subtitle)
+        meta.__dict__.update(cls._resource_credits(subtitle))
         meta.field_sources.update({
             key: "torrent" for key in ("title", "artists", "album", "year", "version",
-                                      "audio_format", "audio_lossless", "bit_depth", "sample_rate", "bitrate")
-            if getattr(meta, key) not in (None, "", [])
+                                      "audio_format", "audio_lossless", "bit_depth", "sample_rate", "bitrate", *MUSIC_CREDIT_FIELDS)
+            if getattr(meta, key) not in (None, "", [], {})
         })
         return meta
+
+    @classmethod
+    def _resource_credits(cls, subtitle: str) -> dict[str, Any]:
+        """只读取明确角色标签，不从姓名顺序、括号或语言推断作曲家和演奏者。"""
+        credits: dict[str, Any] = {}
+        for key, labels in (("composers", r"作曲家?|composer"), ("conductors", r"指挥|指揮|conductor"),
+                            ("orchestras", r"乐团|樂團|合唱团|合唱團|orchestra|ensemble")):
+            value = cls._resource_label(subtitle, labels)
+            credits[key] = cls._split_artists(value) if value else []
+        performer = cls._resource_label(subtitle, r"演奏者?|独奏|獨奏|performer")
+        credits["performers"] = {"performer": cls._split_artists(performer)} if performer else {}
+        return music_credit_values(credits)
 
     @classmethod
     def _normalize_resource_release(cls, title: str) -> str:
@@ -1025,6 +1076,7 @@ class MetaMusic(MetaBase):
     def from_music_info(cls, info: Any) -> "MetaMusic":
         """把标准音乐信息转换为下载、整理和站点搜索使用的元数据。"""
         return cls(
+            **music_credit_values(info),
             title=info.title,
             artists=list(info.artists),
             album=info.album,
@@ -1954,6 +2006,7 @@ class MetaMusic(MetaBase):
             "original_year": self.original_year,
             "release_year": self.release_year,
             "field_sources": dict(self.field_sources),
+            **music_credit_values(self),
             "music_type": self.music_type,
             "album_type": self.album_type,
             "secondary_types": list(self.secondary_types),
@@ -1970,6 +2023,7 @@ class MetaMusic(MetaBase):
         if raw_type not in (None, MediaType.MUSIC, MediaType.MUSIC.value, "music"):
             raise ValueError(f"不支持的音乐媒体类型：{raw_type}")
         meta = cls(
+            **music_credit_values(data),
             org_string=data.get("org_string"),
             title=data.get("title"),
             artists=_string_list(data.get("artists") or data.get("artist")),

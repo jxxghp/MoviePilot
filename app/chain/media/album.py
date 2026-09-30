@@ -19,7 +19,7 @@ from app.domain.context import (
     MusicInfo,
 )
 from app.domain.media import music_recognition_sources
-from app.domain.meta.metamusic import MetaMusic
+from app.domain.meta.metamusic import MUSIC_CREDIT_FIELDS, MetaMusic, music_credit_values
 from app.domain.music import (
     MusicDirectoryMatch,
     align_music_tracks,
@@ -140,7 +140,7 @@ def _album_directory_cache_key(
     """将发行偏好及资源证据纳入缓存键，同目录更换种子线索时重新识别。"""
     evidence = {
         key: getattr(contextual_meta, key, None)
-        for key in ("album", "artists", "album_artist", "year", "version", "musicbrainz_release_id",
+        for key in (*MUSIC_CREDIT_FIELDS, "album", "artists", "album_artist", "year", "version", "musicbrainz_release_id",
                     "musicbrainz_release_group_id", "original_year", "release_year")
     } if contextual_meta else None
     if evidence and evidence["album_artist"]:
@@ -151,6 +151,15 @@ def _album_directory_cache_key(
         evidence["weak_album"] = not contextual_meta.album or music_album_title_is_weak(contextual_meta)
     sources = [source.value for source in music_sources or _directory_sources(contextual_meta)]
     return json.dumps([os.path.abspath(directory), regions, scripts, evidence, file_scope, sources], ensure_ascii=False, sort_keys=True)
+
+
+def _apply_album_resource_credits(album_meta: MetaMusic, contextual_meta: MetaMusic) -> None:
+    """只复制明确绑定当前发行的角色，不聚合不同曲目的表演阵容或制造来源。"""
+    for key, value in music_credit_values(contextual_meta).items():
+        if value:
+            setattr(album_meta, key, value)
+            if key in contextual_meta.field_sources:
+                album_meta.field_sources[key] = contextual_meta.field_sources[key]
 
 
 def _album_context_with_resource(
@@ -188,6 +197,7 @@ def _album_context_with_resource(
                 album_meta.field_sources[key] = contextual_meta.field_sources[key]
     if not contextual_meta:
         return album_meta
+    _apply_album_resource_credits(album_meta, contextual_meta)
     if contextual_meta.album and not any(meta.album for meta in metas):
         album_meta.album = contextual_meta.album
         album_meta.title = contextual_meta.album
@@ -347,6 +357,13 @@ class MediaAlbumOwner(_MediaOwnerBase):
             if not positions or any(position not in aligned for position in positions):
                 continue
             info = album.to_music_info() if metas[index].music_layout == "image_cue" else deepcopy(album.tracks[aligned[positions[0]]])
+            if not allow_title_override:
+                for key, value in music_credit_values(metas[index]).items():
+                    if value:
+                        setattr(info, key, value)
+                        info.field_sources.pop(key, None)
+                        if key in metas[index].field_sources:
+                            info.field_sources[key] = metas[index].field_sources[key]
             for key in ("match_score", "match_coverage", "match_basis"):
                 if key in album.raw_data:
                     info.raw_data[key] = album.raw_data[key]

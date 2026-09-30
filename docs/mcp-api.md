@@ -534,6 +534,20 @@ AniList 榜单、探索、详情、人物和推荐接口优先通过 `anilist-ch
 音乐与影视共用媒体搜索、资源查询、过滤、匹配和订阅搜索编排。资源 `meta_info` 来自
 标题、副标题的实际解析，不用目标媒体回填证据；`title_aliases`、`album_aliases`、
 `artist_aliases` 分别保留同一实体的可信别名及展示转简体前的原文。
+
+音乐元数据、单曲和专辑模型还分别保留 `composers`、`conductors`、`orchestras` 人名列表，
+以及 `performers` 乐器/声部到人名列表的映射（未指定乐器使用 `performer` 键）。
+这些字段不会混入主艺人或艺人别名；空字段在简化卡片中省略，完整模型与旧缓存兼容。
+明确的 PT 副标题角色和原生标签可提供本地证据，完整标签仍可直接整理。
+MusicBrainz 从实际 Recording/Work 关系补充角色，不凭作品名推断演奏者；
+角色摘要不足时每批最多补查三个录音详情，沿用已有 HTTP 预算和缓存。
+自动识别拒绝已知阵容冲突，仅有作曲家相同不足以确认录音；明确录音/发行 ID 可补足缺失关系，
+但不能覆盖已知冲突。整专可用实际逐曲关系核验阵容，不把专辑或某一曲的角色广播到其他曲目。
+
+角色标签使用 ID3 的 `TCOM`/`TPE3`/`TMCL`（兼容 v2.3 `IPLS`）、Vorbis/APEv2 文本字段，
+以及 MP4 的 `©wrt` 和 `CONDUCTOR` freeform。独立 `ORCHESTRA` 和 MP4 `PERFORMER` 为兼容自定义字段，
+并非所有播放器都支持；制作人不会被当作演奏者。映射参照
+[Picard 标签对照](https://picard-docs.musicbrainz.org/en/v3.0/_static/MusicBrainz_Picard_Tag_Map.html)。
 音乐资源解析同样应用全局或订阅自定义识别词，`MusicMeta.apply_words` 返回实际应用记录，
 旧结果缺少该字段时按空列表处理。副标题的明确录音版本参与匹配；单曲所属专辑字段
 不能证明资源覆盖整张专辑，无曲序的单曲也会标记为 `partial_album` 待确认项。

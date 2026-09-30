@@ -14,7 +14,7 @@ from app.application.music.observation import BLOCKING_MUSIC_RECOGNITION_STATES,
 from app.application.transfer.workflow import TransferPlanningInput, TransferTask
 from app.chain.transfer.contract import _TransferOwnerBase
 from app.domain.context import MediaInfo, MusicInfo
-from app.domain.meta.metamusic import MetaMusic
+from app.domain.meta.metamusic import MetaMusic, music_credit_values
 from app.domain.music import music_tags_are_usable, music_text_key
 from app.runtime.log import logger
 from app.schemas.file import FileItem
@@ -282,6 +282,10 @@ def restore_music_resource_meta(
         meta.album_artist = resource.artists[0]
         meta.field_sources["album_artist"] = "torrent"
     if direct_release and not collection:
+        for key, value in music_credit_values(resource).items():
+            if value and not getattr(meta, key):
+                setattr(meta, key, value)
+                meta.field_sources[key] = "torrent"
         album = resource.album
         if root != path and not resource.track_number:
             album = album or resource.title

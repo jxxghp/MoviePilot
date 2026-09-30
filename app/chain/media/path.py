@@ -23,7 +23,7 @@ from app.domain.context import (
     MusicInfo,
 )
 from app.domain.media import is_music_media_source
-from app.domain.meta.metamusic import MetaMusic
+from app.domain.meta.metamusic import MetaMusic, music_credit_values
 from app.domain.metainfo import MetaInfoPath
 from app.domain.music import MusicDirectoryMatch, music_album_title_is_weak, music_track_title_is_weak
 from app.runtime.execution import run_in_threadpool
@@ -165,6 +165,10 @@ def _merge_contextual_music_evidence(
 ) -> MetaMusic:
     """以同目录高置信共识补齐缺失的艺人和专辑证据。"""
     merged = MetaMusic.from_dict(meta.to_dict())
+    for key, value in music_credit_values(contextual_meta).items():
+        if value and not getattr(merged, key):
+            setattr(merged, key, value)
+            merged.field_sources[key] = contextual_meta.field_sources.get(key, "torrent")
     if not merged.artists and contextual_meta.artists:
         merged.artists = list(contextual_meta.artists)
     if not merged.album_artist and contextual_meta.album_artist:
@@ -181,7 +185,7 @@ def _merge_contextual_music_evidence(
 
 
 def _merge_music_audio_quality(info: MusicInfo, meta: MetaMusic) -> MusicInfo:
-    """将本地文件的实际音频参数合并到音乐识别结果。"""
+    """合并实际音频参数和明确的本地角色标签，不改变主艺人或远端身份。"""
     for key in (
         "audio_format",
         "audio_lossless",
@@ -194,6 +198,10 @@ def _merge_music_audio_quality(info: MusicInfo, meta: MetaMusic) -> MusicInfo:
             setattr(info, key, value)
             if key in meta.field_sources:
                 info.field_sources[key] = meta.field_sources[key]
+    for key, value in music_credit_values(meta).items():
+        if value and meta.field_sources.get(key) in {"tag", "cue", "torrent", "manual"}:
+            setattr(info, key, value)
+            info.field_sources[key] = meta.field_sources[key]
     return info
 
 
@@ -228,7 +236,8 @@ def _fingerprint_info_matches_evidence(
     """保留强标签冲突检查；原生高分指纹可用真实时长弥补占位名称或缺失署名。"""
     from app.domain.music import (  # pylint: disable=import-outside-toplevel
         music_album_matches,
-        music_artist_matches,
+        music_artist_evidence_matches,
+        music_credit_conflicts,
         music_text_key,
         music_usable_artists,
         music_version_matches,
@@ -256,7 +265,7 @@ def _fingerprint_info_matches_evidence(
         artist_evidence = []
     if not artist_evidence and not native_strong:
         return False
-    if artist_evidence and not music_artist_matches(info, artist_evidence):
+    if music_credit_conflicts(info, artist_meta) or (artist_evidence and not music_artist_evidence_matches(info, artist_meta, artist_evidence)):
         return False
     if (not weak_title or primary.version) and not music_version_matches(info, primary):
         return False
@@ -512,15 +521,21 @@ def _music_info_matches_text_evidence(
     info: Optional[MusicInfo],
     meta: Optional[MetaMusic],
 ) -> bool:
-    """统一校验各识别层都必须遵守的版本和发行年份证据。"""
+    """统一校验各识别层的版本、发行年份和演奏证据，插件结果也不能绕过角色冲突。"""
     from app.domain.music import (  # pylint: disable=import-outside-toplevel
+        music_artist_evidence_matches,
+        music_credit_conflicts,
+        music_isrc_matches,
         music_version_matches,
         music_year_matches,
     )
 
     if not _has_remote_music_identity(info) or not meta:
         return False
-    return bool(music_version_matches(info, meta) and music_year_matches(info, meta))
+    return bool(music_version_matches(info, meta) and music_year_matches(info, meta)
+                and not music_credit_conflicts(info, meta)
+                and (not any(music_credit_values(meta).values()) or music_isrc_matches(info, meta)
+                     or music_artist_evidence_matches(info, meta)))
 
 
 def _music_tier_plan(
@@ -716,7 +731,7 @@ class MediaPathOwner(_MediaOwnerBase):
             return outcome.info
         if outcome.info and not _music_info_matches_text_evidence(outcome.info, meta):
             logger.warning(
-                f"{tier_name}音乐候选与本地版本或发行年份冲突，已忽略："
+                f"{tier_name}音乐候选与本地版本、发行年份或演奏证据不一致，已忽略："
                 f"{outcome.info.artist} - {outcome.info.title} ({outcome.info.year or '-'})"
             )
             return None
@@ -755,7 +770,7 @@ class MediaPathOwner(_MediaOwnerBase):
             return outcome.info
         if outcome.info and not _music_info_matches_text_evidence(outcome.info, meta):
             logger.warning(
-                f"{tier_name}音乐候选与本地版本或发行年份冲突，已忽略："
+                f"{tier_name}音乐候选与本地版本、发行年份或演奏证据不一致，已忽略："
                 f"{outcome.info.artist} - {outcome.info.title} ({outcome.info.year or '-'})"
             )
             return None
@@ -834,7 +849,7 @@ class MediaPathOwner(_MediaOwnerBase):
                     info = self._music_album_dir_fallback(path)
                     if info and not music_recognition_is_blocked(info) and not _music_info_matches_text_evidence(info, meta):
                         logger.warning(
-                            "音乐目录候选与本地版本或发行年份冲突，已忽略："
+                            "音乐目录候选与本地版本、发行年份或演奏证据不一致，已忽略："
                             f"{Path(path).name} -> {info.artist} - {info.album or info.title} "
                             f"({info.year or '-'})"
                         )
@@ -887,7 +902,7 @@ class MediaPathOwner(_MediaOwnerBase):
                     info = await self._async_music_album_dir_fallback(path)
                     if info and not music_recognition_is_blocked(info) and not _music_info_matches_text_evidence(info, meta):
                         logger.warning(
-                            "音乐目录候选与本地版本或发行年份冲突，已忽略："
+                            "音乐目录候选与本地版本、发行年份或演奏证据不一致，已忽略："
                             f"{Path(path).name} -> {info.artist} - {info.album or info.title} "
                             f"({info.year or '-'})"
                         )

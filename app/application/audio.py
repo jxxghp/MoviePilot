@@ -20,14 +20,14 @@ from mutagen.apev2 import APEBinaryValue, APETextValue, APEv2
 from mutagen.dsdiff import DSDIFF
 from mutagen.dsf import DSF
 from mutagen.flac import FLAC, Picture
-from mutagen.id3 import APIC, ID3, SYLT, TXXX, UFID, USLT, Frames
+from mutagen.id3 import APIC, ID3, SYLT, TMCL, TXXX, UFID, USLT, Frames
 from mutagen.monkeysaudio import MonkeysAudio
 from mutagen.mp3 import MP3
 from mutagen.mp4 import MP4, MP4Cover, MP4Tags
 from mutagen.wave import WAVE
 
 from app.domain.context import MusicInfo, MusicLyrics
-from app.domain.meta.metamusic import MetaMusic, parse_music_release_types
+from app.domain.meta.metamusic import MUSIC_CREDIT_FIELDS, MetaMusic, music_credit_values, parse_music_release_types
 from app.domain.music import MusicCueSheet, parse_music_cue
 from app.runtime.log import logger
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
@@ -260,7 +260,7 @@ def _apply_audio_cue(path: Path, meta: MetaMusic) -> MetaMusic:
 def _read_mp4_tags(tags: MP4Tags) -> dict[str, list[str]]:
     """读取标准 MP4 atom 与明确的文本 freeform，覆盖 EasyMP4 未注册的发行 ID。"""
     atoms = {"title": "\xa9nam", "artist": "\xa9ART", "album": "\xa9alb",
-             "albumartist": "aART", "date": "\xa9day", "genre": "\xa9gen"}
+             "albumartist": "aART", "date": "\xa9day", "genre": "\xa9gen", "composer": "\xa9wrt"}
     values = {key: [str(value) for value in tags.get(atom, [])] for key, atom in atoms.items()}
     for key, atom in (("tracknumber", "trkn"), ("discnumber", "disk")):
         positions = tags.get(atom) or []
@@ -270,7 +270,7 @@ def _read_mp4_tags(tags: MP4Tags) -> dict[str, list[str]]:
     normalized = {key.casefold(): value for key, value in tags.items()}
     for name in ("MusicBrainz Track Id", "MusicBrainz Album Id", "MusicBrainz Release Group Id",
                  "MusicBrainz Release Track Id", "MusicBrainz Album Type", "ISRC", "ORIGINALDATE",
-                 "ORIGINALYEAR", "VERSION", "SUBTITLE", "RELEASETYPE"):
+                 "ORIGINALYEAR", "VERSION", "SUBTITLE", "RELEASETYPE", "CONDUCTOR", "ORCHESTRA", "ENSEMBLE", "PERFORMER"):
         raw = normalized.get(f"----:com.apple.itunes:{name.casefold()}", [])
         values[name.casefold().replace(" ", "_")] = [
             value.decode("utf-8", errors="replace") if isinstance(value, bytes) else str(value)
@@ -281,15 +281,88 @@ def _read_mp4_tags(tags: MP4Tags) -> dict[str, list[str]]:
     return values
 
 
+def _performer_pair(value: str) -> tuple[str, str]:
+    """解析PERFORMER专用的“人名 (乐器)”标签，不拆分人名内部的逗号或斜线。"""
+    match = re.fullmatch(r"(.+?)\s+\(([^()]+)\)", value.strip())
+    return (match[2].strip(), match[1].strip()) if match else ("performer", value.strip())
+
+
+def _id3_credit_field(tags: ID3, frame_id: str, role: str) -> Optional[str]:
+    """按原生人员帧职责分类，v2.4制作人员表中的未知职责不猜为乐器。"""
+    nonperformers = {"producer", "engineer", "mix", "dj-mix", "remixer", "arranger", "writer", "lyricist", "mastering"}
+    role_fields = {"composer": "composer", "conductor": "conductor", "orchestra": "orchestra", "ensemble": "orchestra"}
+    role = role.casefold()
+    if role in role_fields:
+        return role_fields[role]
+    if role in nonperformers:
+        return None
+    legacy = frame_id == "IPLS" or (frame_id == "TIPL" and tags.version < (2, 4, 0))
+    return "performer" if frame_id == "TMCL" or legacy or role == "performer" else None
+
+
+def _id3_credit_values(tags: ID3) -> dict[str, list[str]]:
+    """读取演奏人员帧，兼容v2.3 IPLS转TIPL；制作、混音等职责不伪装成演奏者。"""
+    result: dict[str, list[str]] = {}
+    for frame_id in ("TMCL", "IPLS", "TIPL"):
+        for frame in tags.getall(frame_id):
+            for role, name in frame.people:
+                role, name = str(role).strip(), str(name).strip()
+                key = _id3_credit_field(tags, frame_id, role)
+                if not name or not key:
+                    continue
+                value = f"{name} ({role})" if key == "performer" and role and role.casefold() != "performer" else name
+                result.setdefault(key, []).append(value)
+    return result
+
+
+def _remove_id3_credit_aliases(tags: ID3, key: str) -> bool:
+    """覆盖明确角色时清理其旧人员帧/自定义别名，保留制作人和其它职责。"""
+    changed = False
+    for frame_id in ("TMCL", "TIPL", "IPLS"):
+        for frame in tags.getall(frame_id):
+            people = [item for item in frame.people if _id3_credit_field(tags, frame_id, str(item[0]).strip()) != key]
+            if people != frame.people:
+                frame.people, changed = people, True
+                if not people:
+                    tags.delall(frame.HashKey)
+    for frame in tags.getall("TXXX"):
+        name = str(frame.desc).strip().casefold()
+        if name == key or (key == "orchestra" and name == "ensemble") or (key == "performer" and name.startswith("performer:")):
+            tags.delall(frame.HashKey)
+            changed = True
+    return changed
+
+
+def _credit_tag_values(credits: dict[str, Any]) -> dict[str, list[str]]:
+    """角色模型统一转换为文本标签，预检和写入使用同一乐器署名格式。"""
+    return {
+        "composer": credits["composers"], "conductor": credits["conductors"], "orchestra": credits["orchestras"],
+        "performer": [f"{name} ({role})" if role != "performer" else name
+                      for role, names in credits["performers"].items() for name in names],
+    }
+
+
+def _remove_mp4_credit_aliases(tags: MP4Tags, values: dict[str, list[str]]) -> bool:
+    """纠正MP4角色时移除其大小写变体和ENSEMBLE别名，避免读回仍混有旧阵容。"""
+    changed = False
+    for atom in list(tags.keys()):
+        name = atom.casefold().removeprefix("----:com.apple.itunes:")
+        field = {"conductor": "conductor", "orchestra": "orchestra", "ensemble": "orchestra", "performer": "performer"}.get(name)
+        if field in values:
+            del tags[atom]
+            changed = True
+    return changed
+
+
 def _mark_audio_evidence(meta: MetaMusic, audio: Any) -> MetaMusic:
     """记录实际标签和流参数的来源，名称推测不能获得标签级可信度。"""
     tag_fields = (
         "title", "artists", "album", "album_artist", "year", "original_year", "release_year",
         "disc_number", "track_number", "total_discs", "total_tracks", "version", "isrc",
         "media_source", "media_id", "musicbrainz_release_id", "musicbrainz_release_group_id",
-        "musicbrainz_release_track_id", "album_type", "secondary_types",
+        "musicbrainz_release_track_id", "album_type", "secondary_types", *MUSIC_CREDIT_FIELDS,
     )
-    meta.field_sources = {key: "tag" for key in tag_fields if getattr(meta, key) not in (None, "", [])}
+    meta.field_sources = {key: "tag" for key in tag_fields if getattr(meta, key) not in (None, "", [], {})}
     for key in ("bit_depth", "sample_rate", "bitrate", "duration"):
         if getattr(meta, key) is not None:
             meta.field_sources[key] = "stream"
@@ -395,6 +468,7 @@ class AudioMetadataHelper:
                          for value in cls._values(tags, key)]
         album_type, secondary_types = parse_music_release_types(release_types, cls._first(tags, "compilation"))
         meta = MetaMusic(
+            **cls._read_credits(tags),
             org_string=path.name,
             title=cls._first(tags, "title"),
             artists=cls._values(tags, "artist"),
@@ -456,7 +530,7 @@ class AudioMetadataHelper:
             "title": "TIT2", "artist": "TPE1", "album": "TALB",
             "albumartist": "TPE2", "date": "TDRC", "originaldate": "TDOR",
             "tracknumber": "TRCK", "discnumber": "TPOS", "isrc": "TSRC",
-            "subtitle": "TIT3", "compilation": "TCMP",
+            "subtitle": "TIT3", "compilation": "TCMP", "composer": "TCOM", "conductor": "TPE3",
         }
         values = {
             key: [str(value) for frame in tags.getall(frame_id) for value in frame.text]
@@ -466,11 +540,26 @@ class AudioMetadataHelper:
             key = str(frame.desc).casefold().replace(" ", "_")
             if not values.get(key):
                 values[key] = [str(value) for value in frame.text]
+        for key, people in _id3_credit_values(tags).items():
+            values[key] = list(dict.fromkeys([*values.get(key, []), *people]))
         for frame in tags.getall("UFID"):
             if frame.owner == "http://musicbrainz.org":
                 values["musicbrainz_trackid"] = [frame.data.decode("ascii", errors="replace")]
                 break
         return values
+
+    @classmethod
+    def _read_credits(cls, tags: Any) -> dict[str, Any]:
+        """把容器中的明确古典角色投影为独立字段，演奏乐器保留为映射键。"""
+        performers: dict[str, list[str]] = {}
+        for value in cls._values(tags, "performer"):
+            role, name = _performer_pair(value)
+            performers.setdefault(role, []).append(name)
+        for key in tags.keys():
+            if str(key).casefold().startswith("performer:"):
+                performers.setdefault(str(key).split(":", 1)[1], []).extend(cls._values(tags, key))
+        return music_credit_values(dict(composers=cls._values(tags, "composer"), conductors=cls._values(tags, "conductor"),
+                                       orchestras=[*cls._values(tags, "orchestra"), *cls._values(tags, "ensemble")], performers=performers))
 
     @classmethod
     def read_lyrics(cls, path: Path) -> Optional[MusicLyrics]:
@@ -609,6 +698,7 @@ class AudioMetadataHelper:
     def _tag_updates(cls, audio: Any, music: Union[MetaMusic, MusicInfo], overwrite: bool) -> dict[str, list[str]]:
         """预检和实际写入共用字段差异，年份模型不能抹掉标签中同年的完整日期。"""
         tags = cls._readable_tags(audio.tags)
+        credits = _credit_tag_values(cls._read_credits(tags))
         aliases = {"albumartist": ("albumartist", "album artist"), "date": ("date", "year"),
                    "originaldate": ("originaldate", "originalyear"),
                    "tracknumber": ("tracknumber", "track"), "discnumber": ("discnumber", "disc"),
@@ -622,6 +712,10 @@ class AudioMetadataHelper:
                 continue
             current = next((items for alias in aliases.get(key, (key,)) if (items := cls._values(tags, alias))), [])
             expected = value if isinstance(value, list) else [str(value)]
+            if key in credits:
+                current = credits[key]
+                if set(current) == set(expected):
+                    continue
             if current and key in {"tracknumber", "discnumber"} and cls._number_pair(current[0]) == cls._number_pair(expected[0]):
                 # MP4用(1, 0)表达未知总数，与文本标签的1具有相同位置语义。
                 continue
@@ -667,6 +761,12 @@ class AudioMetadataHelper:
         ape_fields = {"albumartist": "Album Artist", "date": "Year", "originaldate": "Originalyear",
                       "tracknumber": "Track", "discnumber": "Disc"}
         changed = False
+        if overwrite:
+            for key in list(audio.tags.keys()):
+                normalized = str(key).casefold()
+                if ("performer" in values and normalized.startswith("performer:")) or ("orchestra" in values and normalized == "ensemble"):
+                    del audio.tags[key]
+                    changed = True
         for name, value in values.items():
             key = ape_fields.get(name, name) if isinstance(audio.tags, APEv2) else name
             if cls._values(audio.tags, key) == value or (not overwrite and audio.tags.get(key)):
@@ -682,13 +782,20 @@ class AudioMetadataHelper:
     def _write_id3_tags(tags: ID3, values: dict[str, list[str]], overwrite: bool) -> bool:
         """按原生ID3帧写入WAV/DSF/MP3等容器，不把Easy字段名当作ID3帧名。"""
         fields = {"title": "TIT2", "artist": "TPE1", "album": "TALB", "albumartist": "TPE2",
-                  "date": "TDRC", "originaldate": "TDOR", "tracknumber": "TRCK", "discnumber": "TPOS", "isrc": "TSRC"}
+                  "date": "TDRC", "originaldate": "TDOR", "tracknumber": "TRCK", "discnumber": "TPOS", "isrc": "TSRC",
+                  "composer": "TCOM", "conductor": "TPE3"}
         custom = {"musicbrainz_albumid": "MusicBrainz Album Id", "musicbrainz_releasegroupid": "MusicBrainz Release Group Id",
-                  "musicbrainz_releasetrackid": "MusicBrainz Release Track Id", "musicbrainz_albumtype": "MusicBrainz Album Type"}
+                  "musicbrainz_releasetrackid": "MusicBrainz Release Track Id", "musicbrainz_albumtype": "MusicBrainz Album Type",
+                  "orchestra": "ORCHESTRA"}
         changed = False
+        if overwrite:
+            for key in values.keys() & {"composer", "conductor", "orchestra", "performer"}:
+                changed = _remove_id3_credit_aliases(tags, key) or changed
         for key, value in values.items():
             if key == "musicbrainz_trackid":
                 frame = UFID(owner="http://musicbrainz.org", data=value[0].encode("ascii"))
+            elif key == "performer":
+                frame = TMCL(encoding=3, people=[list(_performer_pair(item)) for item in value])
             elif key in fields:
                 frame = Frames[fields[key]](encoding=3, text=value)
             elif key in custom:
@@ -703,11 +810,12 @@ class AudioMetadataHelper:
     @classmethod
     def _write_mp4_tags(cls, tags: MP4Tags, values: dict[str, list[str]], overwrite: bool) -> bool:
         """写入MP4标准atom和文本freeform，保留曲序/总数及各类发行身份。"""
-        atoms = {"title": "\xa9nam", "artist": "\xa9ART", "album": "\xa9alb", "albumartist": "aART", "date": "\xa9day"}
+        atoms = {"title": "\xa9nam", "artist": "\xa9ART", "album": "\xa9alb", "albumartist": "aART", "date": "\xa9day", "composer": "\xa9wrt"}
         custom = {"musicbrainz_trackid": "MusicBrainz Track Id", "musicbrainz_albumid": "MusicBrainz Album Id",
                   "musicbrainz_releasegroupid": "MusicBrainz Release Group Id", "musicbrainz_releasetrackid": "MusicBrainz Release Track Id",
-                  "musicbrainz_albumtype": "MusicBrainz Album Type", "originaldate": "ORIGINALDATE", "isrc": "ISRC"}
-        changed = False
+                  "musicbrainz_albumtype": "MusicBrainz Album Type", "originaldate": "ORIGINALDATE", "isrc": "ISRC",
+                  "conductor": "CONDUCTOR", "orchestra": "ORCHESTRA", "performer": "PERFORMER"}
+        changed = _remove_mp4_credit_aliases(tags, values) if overwrite else False
         encoded: list[str] | list[tuple[int, int]] | list[bytes]
         for key, value in values.items():
             if key in atoms:
@@ -741,7 +849,9 @@ class AudioMetadataHelper:
         year = getattr(music, "year", None)
         # 来源只确认首发年份时写ORIGINALDATE，不能把展示year伪装成当前发行日期。
         date = release_year or (year if not original_year or str(year) != str(original_year) else None)
+        credits = music_credit_values(music)
         return {
+            **_credit_tag_values(credits),
             "title": getattr(music, "title", None),
             "artist": list(getattr(music, "artists", None) or []),
             "album": getattr(music, "album", None),

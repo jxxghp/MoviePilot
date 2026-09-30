@@ -40,6 +40,19 @@ Music recognition, exploration, album and artist navigation, and recognition-cac
 - `MusicMeta.album_type` and `secondary_types` retain declared release types,
   including EP, Single, and Compilation. These differ from the recording/album/
   artist entity type; track count alone must not override a declared release type.
+- Preserve independent `composers`, `conductors`, and `orchestras` lists and the
+  `performers` instrument/voice-to-names mapping (`performer` for an unspecified
+  role). They never become primary artists or artist aliases. Simplified cards
+  omit empty roles. Native tags and explicit torrent subtitle roles can provide
+  local evidence; complete tags still organize offline. MusicBrainz reads actual
+  recording/work relationships and supplements at most three recording details
+  per batch within the existing HTTP budget. Known performance conflicts reject
+  automatic matches; a shared composer alone does not identify a recording.
+  Explicit recording/release IDs can resolve missing relationships, never known
+  conflicts. Album matching may verify roles through its actual tracks, without
+  broadcasting one track's credits to a compilation. Native ID3, Vorbis/APEv2,
+  and MP4 role tags are preserved; standalone ORCHESTRA and MP4 PERFORMER are
+  custom compatibility fields, not universal player standards.
 - `original_year` and `release_year` distinguish the original and current
   edition; `year` remains the display-compatible value. A release group's first
   release date does not prove the current edition. Preserve `total_discs` and

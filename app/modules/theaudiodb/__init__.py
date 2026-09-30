@@ -15,10 +15,13 @@ from app.domain.context import (
 )
 from app.domain.media import is_media_source_selected
 from app.domain.meta.metabase import MetaBase
-from app.domain.meta.metamusic import MetaMusic
+from app.domain.meta.metamusic import MetaMusic, music_credit_values
 from app.domain.music import (
-    music_artist_matches,
+    music_album_artist_evidence_matches,
+    music_artist_evidence_matches,
+    music_credit_conflicts,
     music_isrc_matches,
+    music_query_artists,
     music_release_year_matches,
     music_title_matches,
     music_version_matches,
@@ -466,7 +469,7 @@ class TheAudioDbModule(_ModuleBase):
     @staticmethod
     def _track_search_params(meta: MetaMusic) -> Optional[dict[str, str]]:
         """从音乐元数据归一化单曲搜索参数。"""
-        artist = meta.artists[0] if meta.artists else meta.album_artist
+        artist = next(iter(music_query_artists(meta)), None) or meta.album_artist
         if not meta.title or not artist:
             return None
         return {"t": meta.title, "s": artist}
@@ -559,6 +562,7 @@ class TheAudioDbModule(_ModuleBase):
             candidates: list[MusicInfo],
     ) -> Optional[MusicInfo]:
         """复用统一音乐证据确认单曲，明确 ISRC 优先于名称候选。"""
+        candidates = [candidate for candidate in candidates if not music_credit_conflicts(candidate, meta)]
         identities = [candidate for candidate in candidates if music_isrc_matches(candidate, meta)]
         if identities:
             return unique_music_match(identities)
@@ -566,7 +570,7 @@ class TheAudioDbModule(_ModuleBase):
         for candidate in candidates:
             if not music_title_matches(candidate, meta.title, preserve_editions=True) or not music_version_matches(candidate, meta):
                 continue
-            if meta.artists and not music_artist_matches(candidate, meta.artists):
+            if (meta.artists or any(music_credit_values(meta).values())) and not music_artist_evidence_matches(candidate, meta):
                 continue
             if not music_release_year_matches(candidate, meta):
                 continue
@@ -587,7 +591,7 @@ class TheAudioDbModule(_ModuleBase):
             music = candidate.to_music_info()
             if not music_title_matches(music, expected_title, preserve_editions=True) or not music_version_matches(music, album_meta):
                 continue
-            if expected_artists and not music_artist_matches(music, expected_artists):
+            if (expected_artists or any(music_credit_values(meta).values())) and not music_album_artist_evidence_matches(candidate, meta):
                 continue
             if not music_release_year_matches(music, meta):
                 continue

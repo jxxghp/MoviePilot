@@ -8,7 +8,7 @@ from time import time
 from typing import Optional
 
 from app.domain.context import MusicInfo
-from app.domain.meta.metamusic import MetaMusic
+from app.domain.meta.metamusic import MetaMusic, music_credit_values
 from app.foundation.singleton import WeakSingleton
 from app.runtime.cache import FileCache, TTLCache
 from app.runtime.log import logger
@@ -131,6 +131,9 @@ class MusicBrainzCache(metaclass=WeakSingleton):
         else:
             identity = ["meta", source, meta.title, list(meta.artists or []), meta.album,
                         meta.year, meta.version, meta.isrc]
+            credits = {key: value for key, value in music_credit_values(meta).items() if value}
+            if credits:
+                identity.append(credits)
         payload = json.dumps([music_type, identity], ensure_ascii=False, separators=(",", ":"))
         return f"[音乐:v{PERSISTENCE_VERSION}]{hashlib.sha256(payload.encode('utf-8')).hexdigest()}"
 
