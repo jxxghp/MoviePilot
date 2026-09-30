@@ -31,6 +31,7 @@ dependencies = [
     "fast-bencode~=1.1.8",
     "fastapi~=0.141.1",
     "google-genai~=2.8.0",
+    "http-ece~=1.2.1",
     "httpx[http2,socks]~=0.28.1",
     "httpx2[http2,socks]~=2.12.0",
     "jinja2~=3.1.6",
@@ -57,6 +58,7 @@ dependencies = [
     "pinyin2hanzi~=0.1.1",
     "plexapi~=4.18.1",
     "psutil~=7.2.2",
+    "py-vapid~=1.9.4",
     "pycryptodome~=3.23.0",
     "pydantic>=2.13.4,<3.0.0",
     "pydantic-settings>=2.14.2,<3.0.0",
@@ -72,6 +74,7 @@ dependencies = [
     "python-multipart~=0.0.32",
     "pytz~=2026.2",
     "pyvirtualdisplay~=3.0",
+    # 宿主 Web Push 已直接使用 http-ece 与 py-vapid，此 SDK 暂时保留给插件使用。
     "pywebpush~=2.3.0",
     "pyyaml~=6.0.3",
     "qbittorrent-api==2026.6.0",

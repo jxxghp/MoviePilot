@@ -138,7 +138,6 @@
           {"source": "app.agent.llm.discovery", "target": "google.genai", "kind": "network_sdk", "fingerprint": "5b87a7bb210b521bd21971fb6e3d19ca450658548670106e3c756c0ce3a83cad"},
           {"source": "app.agent.llm.discovery", "target": "openai", "kind": "network_sdk", "fingerprint": "fff154461ff3fdfdf1daea0530dcb68589d6ad7a67f3966e3b86338b483e6dfd"},
           {"source": "app.agent.tools.impl.search_web", "target": "ddgs", "kind": "network_sdk", "fingerprint": "377e73bb3be804b825d60ad6e792344ca633de107f8c4dbb45d50a34a4dfa04b"},
-          {"source": "app.api.endpoints.message", "target": "pywebpush", "kind": "network_sdk", "fingerprint": "7d83ca0dc89dfb6af1cdd7bc90d922105de94222e4e3a44bba4f53bbd97bc31b"},
           {"source": "app.modules.discord.discord", "target": "discord", "kind": "network_sdk", "fingerprint": "e1486525fedbfe574aa47d60b483426c8c48e4e27fa35dbe34f6cd2f47d37c86"},
           {"source": "app.modules.feishu.feishu", "target": "lark_oapi", "kind": "network_sdk", "fingerprint": "99d16968a59932b5980f6d42ea2bbc8fa35ccdb1a27933beec29b4bdc093d78b"},
           {"source": "app.modules.filemanager.storages.smb", "target": "smbclient", "kind": "network_sdk", "fingerprint": "37619f050b03598fa559c6ae2df94bda6adf7cffd1cc42d9db9059f1fb41af47"},
@@ -147,8 +146,7 @@
           {"source": "app.modules.qbittorrent.qbittorrent", "target": "qbittorrentapi", "kind": "network_sdk", "fingerprint": "b2f5a27f0c54cf95ed42fe99848fd6c9c0641caca8bc4ff8006a411cb427066d"},
           {"source": "app.modules.slack.slack", "target": "slack_bolt", "kind": "network_sdk", "fingerprint": "be5dcb032ece8d8627abeb243f98143aaf60f26751ab6e5e098813d4048419e6"},
           {"source": "app.modules.slack.slack", "target": "slack_sdk", "kind": "network_sdk", "fingerprint": "7559f31e4172ad3bbbaf161e1164ea48b997c56d05c77b49b82626298c39aa14"},
-          {"source": "app.modules.transmission.transmission", "target": "transmission_rpc", "kind": "network_sdk", "fingerprint": "1652e661cb17dbadb039fdc4ab73d6d06e47eb118292ba3693313e45834959cf"},
-          {"source": "app.modules.webpush", "target": "pywebpush", "kind": "network_sdk", "fingerprint": "389c73b06150e3d5bcaf31f35a25178873d2ed38ef9a28354cb9bab691eeab76"}
+          {"source": "app.modules.transmission.transmission", "target": "transmission_rpc", "kind": "network_sdk", "fingerprint": "1652e661cb17dbadb039fdc4ab73d6d06e47eb118292ba3693313e45834959cf"}
         ]
       },
       {
