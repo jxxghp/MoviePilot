@@ -743,7 +743,7 @@ flowchart LR
   `--write-host` 不会替代人工决策。
 - 同一 baseline 的 `direct_adapter_imports` 记录现存原始直连；Application 与 Chain 均已清零，
   policy 目标为空集合。新增、替换、删除后未清理 policy 都会失败。
-- `direct_egress` 记录全宿主 53 条 raw transport、network SDK 和协议操作 identity；普通 HTTP/
+- `direct_egress` 记录全宿主 50 条 raw transport、network SDK 和协议操作 identity；普通 HTTP/
   Session bridge 与 Application DNS I/O 债务已清零，其余 canonical transport、SDK、
   stream/vendor/diagnostic/control-plane 事实是精确 containment。每条初始边的指纹由测试独立冻结，
   bindings/uses 变化、分类互换、通配导入和初始边增长都会失败；债务删除时同步删除冻结项以禁止恢复，
@@ -763,17 +763,17 @@ flowchart LR
 | 指标 | 当前值 |
 |---|---:|
 | Python 模块 | 1056 |
-| 内部导入边 | 9,022 |
+| 内部导入边 | 9,027 |
 | 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
-| Direct egress | 53（债务已清零，53 条精确 containment） |
+| Direct egress | 50（债务已清零，50 条精确 containment） |
 | Module Contract V2 spec | 215（其中 211 个进入 `run_module` 观察面） |
 | Event Contract | 53 |
 | Event producer / consumer | 86（85 静态、1 动态）/ 17（16 静态、1 动态） |
 | Model/Oper 自动事务与自建 Session | 0 |
 | 组合根外 `SystemConfigOper()` | 0 |
 
-整理失败反馈由 `app.application.transfer.feedback` 集中投影；已整理下载的站点字幕复用 `app.chain.transfer` 自动整理队列；网络连通性检测按 `app.application.nettest` 归档，并覆盖 HTTP 与 WebSocket 探测。未启用智能助手的消息音乐交互由 `app.chain.music_interaction` 包中的解析展示与订阅协调模块处理；音乐标签准入与批次共识由 `app.chain.transfer.music` 负责；宿主依赖边现为 9,022，音乐交互包未新增 SCC，插件一次性任务 owner `app.scheduler.oncejob` 带来 1 个模块和 9 条依赖边。Agent 持久回执新增 Application 端口及 DB Model/Oper/Adapter 四个冷导入模块。缓存组合根只在启动时选用 Redis 缓存才导入 Redis 适配器，依赖 langchain_core 的对话记忆模型归属 `app.agent.memory`，文件缓存且未启用智能体的实例不再加载 redis 与 langchain_core。当前 `app.startup.lifecycle` 为 576、`app.factory` 为 588、`app.main` 为 590。音乐调用观察 `app.application.music.observation` 新增一个轻量模块，记录来源结果及请求预算；AcoustID及路径识别复用此上下文传递有界指纹候选，保留旧单ID模块合同。站点图片域名快照新增 `app.application.security.image`，各启动入口增加一个模块；性能基线只同步模块数量，原有耗时预算、历史采样和生命周期资源约束保持有效。
+整理失败反馈由 `app.application.transfer.feedback` 集中投影；已整理下载的站点字幕复用 `app.chain.transfer` 自动整理队列；网络连通性检测按 `app.application.nettest` 归档，并覆盖 HTTP 与 WebSocket 探测。未启用智能助手的消息音乐交互由 `app.chain.music_interaction` 包中的解析展示与订阅协调模块处理；音乐标签准入与批次共识由 `app.chain.transfer.music` 负责；宿主依赖边现为 9,027，音乐交互包未新增 SCC，插件一次性任务 owner `app.scheduler.oncejob` 带来 1 个模块和 9 条依赖边。Agent 持久回执新增 Application 端口及 DB Model/Oper/Adapter 四个冷导入模块。缓存组合根只在启动时选用 Redis 缓存才导入 Redis 适配器，依赖 langchain_core 的对话记忆模型归属 `app.agent.memory`，文件缓存且未启用智能体的实例不再加载 redis 与 langchain_core。Telegram 渠道改用模块内 `app.modules.telegram.botapi` 精简 Bot API 客户端，经 `RequestUtils` 出站，宿主不再导入 pyTelegramBotAPI，启用 Telegram 的实例也不会因该 SDK 加载 redis；该依赖暂时保留给插件使用。当前 `app.startup.lifecycle` 为 576、`app.factory` 为 588、`app.main` 为 590。音乐调用观察 `app.application.music.observation` 新增一个轻量模块，记录来源结果及请求预算；AcoustID及路径识别复用此上下文传递有界指纹候选，保留旧单ID模块合同。站点图片域名快照新增 `app.application.security.image`，各启动入口增加一个模块；性能基线只同步模块数量，原有耗时预算、历史采样和生命周期资源约束保持有效。
 
 架构专项验证分为两个 CI 投影：`Check event semantic policy` 先运行依赖、Adapter、出口和 Event
 语义门禁，`Check host architecture snapshot` 再执行快照测试及一次

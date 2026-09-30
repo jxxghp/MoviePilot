@@ -114,8 +114,6 @@
       "app/modules/rtorrent/__init__.py:RtorrentModule.list_torrents": 20,
       "app/modules/slack/__init__.py:SlackModule.message_parser": 16,
       "app/modules/slack/slack.py:Slack.send_medias_msg": 18,
-      "app/modules/telegram/telegram.py:Telegram.__init__": 17,
-      "app/modules/telegram/telegram.py:Telegram.send_msg": 20,
       "app/modules/transmission/__init__.py:TransmissionModule.download": 19,
       "app/modules/transmission/__init__.py:TransmissionModule.list_torrents": 26,
       "app/modules/trimemedia/api.py:Api.request": 16,

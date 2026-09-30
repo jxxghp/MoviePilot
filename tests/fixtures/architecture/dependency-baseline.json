@@ -43,11 +43,11 @@
       "app.application": 0,
       "app.chain": 0
     },
-    "count": 53,
+    "count": 50,
     "counts_by_kind": {
-      "network_sdk": 26,
+      "network_sdk": 25,
       "protocol_operation": 7,
-      "raw_transport": 20
+      "raw_transport": 18
     },
     "entries": [
       {
@@ -862,77 +862,6 @@
       },
       {
         "bindings": [
-          "from:urllib3.fields as fields"
-        ],
-        "fingerprint": "18862bbdb252b59573f57ea776b5d64bfb775e7739603fecd23cc8f2c38a7e0d",
-        "kind": "raw_transport",
-        "source": "app.modules.telegram.compat",
-        "target": "urllib3",
-        "uses": []
-      },
-      {
-        "bindings": [
-          "from:telebot.TeleBot as TeleBot",
-          "from:telebot.apihelper as apihelper",
-          "from:telebot.types.BotCommand as BotCommand",
-          "from:telebot.types.ForceReply as ForceReply",
-          "from:telebot.types.InlineKeyboardButton as InlineKeyboardButton",
-          "from:telebot.types.InlineKeyboardMarkup as InlineKeyboardMarkup",
-          "from:telebot.types.InputMediaPhoto as InputMediaPhoto",
-          "from:telebot.types.InputRichMessage as TelebotInputRichMessage",
-          "from:telebot.types.ReplyParameters as ReplyParameters"
-        ],
-        "fingerprint": "78f5ab18bfd67ba4fa0f3c0fc4a1a561a7b1d9e81e335fb80de86edb480b84b8",
-        "kind": "network_sdk",
-        "source": "app.modules.telegram.telegram",
-        "target": "telebot",
-        "uses": [
-          "Telegram.__edit_message_text_or_caption|call:edit_message_caption",
-          "Telegram.__edit_message_text_or_caption|call:edit_message_text",
-          "Telegram.__edit_message|call:edit_message_media",
-          "Telegram.__edit_message|call:types.InputMediaPhoto",
-          "Telegram.__edit_rich_message|call:edit_message_text",
-          "Telegram.__init__.callback_query|call:answer_callback_query",
-          "Telegram.__init__.callback_query|call:answer_callback_query",
-          "Telegram.__init__.run_polling|call:infinity_polling",
-          "Telegram.__init__.send_welcome|call:reply_to",
-          "Telegram.__init__|call:TeleBot",
-          "Telegram.__init__|call:callback_query_handler",
-          "Telegram.__init__|call:get_me",
-          "Telegram.__init__|call:message_handler",
-          "Telegram.__init__|call:message_handler",
-          "Telegram.__send_long_message|call:send_document",
-          "Telegram.__send_long_message|call:send_message",
-          "Telegram.__send_long_message|call:send_photo",
-          "Telegram.__send_long_plain_message|call:send_message",
-          "Telegram.__send_long_plain_message|call:send_photo",
-          "Telegram.__send_rich_message|call:send_rich_message",
-          "Telegram.__send_rich_message|call:types.ReplyParameters",
-          "Telegram.__send_short_message|call:send_message",
-          "Telegram.__send_short_message|call:send_photo",
-          "Telegram._build_rich_message_chunks|call:types.InputRichMessage",
-          "Telegram._create_force_reply_markup|call:types.ForceReply",
-          "Telegram._create_force_reply_markup|call:types.ForceReply",
-          "Telegram._create_force_reply_markup|call:types.ForceReply",
-          "Telegram._create_inline_keyboard|call:types.InlineKeyboardButton",
-          "Telegram._create_inline_keyboard|call:types.InlineKeyboardButton",
-          "Telegram._create_inline_keyboard|call:types.InlineKeyboardMarkup",
-          "Telegram._start_typing_task.typing_worker|call:send_chat_action",
-          "Telegram.answer_callback_query|call:answer_callback_query",
-          "Telegram.delete_commands|call:delete_my_commands",
-          "Telegram.delete_msg|call:delete_message",
-          "Telegram.download_file|call:apihelper.FILE_URL.format",
-          "Telegram.download_file|call:get_file",
-          "Telegram.register_commands|call:delete_my_commands",
-          "Telegram.register_commands|call:set_my_commands",
-          "Telegram.register_commands|call:types.BotCommand",
-          "Telegram.send_file|call:send_document",
-          "Telegram.send_file|call:send_photo",
-          "Telegram.send_voice|call:send_voice"
-        ]
-      },
-      {
-        "bindings": [
           "import:requests as requests",
           "import:requests.exceptions as requests"
         ],
@@ -1015,16 +944,6 @@
       },
       {
         "bindings": [
-          "import:urllib3.fields as _urllib3_fields"
-        ],
-        "fingerprint": "cb6f0a314aeb1e2d3e76c240aa20460ac0c36d9f5c18c1a6ea3170f64dd3366b",
-        "kind": "raw_transport",
-        "source": "app.startup.lifecycle",
-        "target": "urllib3",
-        "uses": []
-      },
-      {
-        "bindings": [
           "import:socket as socket"
         ],
         "fingerprint": "ebf33718b54c81e1f575401da4a0bef5aa0e1ddc284e201f557897feeca71c6d",
@@ -1102,8 +1021,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9022,
-  "edge_sha256": "bd56aa30ca580c8305cf18ef0d2433449239e012b99764ac43e28becbdac712c",
+  "edge_count": 9027,
+  "edge_sha256": "3f8eaae519865c26335851f18585d73b8a1d7536e20b3d4cc3e8c64bc8ec098b",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -7861,6 +7780,11 @@
     "app.modules.synologychat.synologychat -> app.foundation.url",
     "app.modules.synologychat.synologychat -> app.runtime",
     "app.modules.synologychat.synologychat -> app.runtime.log",
+    "app.modules.telegram.botapi -> app.adapters",
+    "app.modules.telegram.botapi -> app.adapters.network",
+    "app.modules.telegram.botapi -> app.adapters.network.http",
+    "app.modules.telegram.botapi -> app.runtime",
+    "app.modules.telegram.botapi -> app.runtime.log",
     "app.modules.telegram.module -> app.application",
     "app.modules.telegram.module -> app.application.messaging",
     "app.modules.telegram.module -> app.application.messaging.channel",
@@ -7893,7 +7817,7 @@
     "app.modules.telegram.telegram -> app.foundation.size",
     "app.modules.telegram.telegram -> app.modules",
     "app.modules.telegram.telegram -> app.modules.telegram",
-    "app.modules.telegram.telegram -> app.modules.telegram.compat",
+    "app.modules.telegram.telegram -> app.modules.telegram.botapi",
     "app.modules.telegram.telegram -> app.runtime",
     "app.modules.telegram.telegram -> app.runtime.execution",
     "app.modules.telegram.telegram -> app.runtime.log",
@@ -10885,7 +10809,7 @@
     "app.modules.synologychat",
     "app.modules.synologychat.synologychat",
     "app.modules.telegram",
-    "app.modules.telegram.compat",
+    "app.modules.telegram.botapi",
     "app.modules.telegram.module",
     "app.modules.telegram.telegram",
     "app.modules.theaudiodb",

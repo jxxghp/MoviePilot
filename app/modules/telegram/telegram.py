@@ -1,57 +1,44 @@
 import asyncio
 import html as html_utils
-import json
 import re
 import threading
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Union
-from urllib.parse import urljoin
 
-from app.modules.telegram.compat import ensure_urllib3_header_param_compat
-
-# Must run before importing pyTelegramBotAPI.
-ensure_urllib3_header_param_compat()
-
-from telebot import TeleBot, apihelper  # noqa: E402
-from telebot.types import (  # noqa: E402
-    BotCommand,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton,
-    InputMediaPhoto,
-    InputRichMessage as TelebotInputRichMessage,
-    ReplyParameters,
-)
+from telegramify_markdown import richify, split_rich, standardize, telegramify
 try:
-    from telebot.types import ForceReply  # noqa: E402
-except ImportError:
-    ForceReply = None
-from telegramify_markdown import richify, split_rich, standardize, telegramify  # noqa: E402
-try:
-    from telegramify_markdown import entities_to_markdownv2  # noqa: E402
+    from telegramify_markdown import entities_to_markdownv2
 except ImportError:
     entities_to_markdownv2 = None
 try:
-    from telegramify_markdown.content import ContentTypes, File, Photo, Text  # noqa: E402
+    from telegramify_markdown.content import ContentTypes, File, Photo, Text
 except ImportError:
-    from telegramify_markdown.type import ContentTypes, File, Photo, Text  # noqa: E402
+    from telegramify_markdown.type import ContentTypes, File, Photo, Text
 
-from app.runtime.settings import get_runtime_setting  # noqa: E402
+from app.runtime.settings import get_runtime_setting
 
-from app.domain.context import MediaInfo, Context  # noqa: E402
-from app.domain.metainfo import MetaInfo  # noqa: E402
-from app.application.image import ImageHelper  # noqa: E402
-from app.application.messaging.ingress import forward_message_to_host  # noqa: E402
-from app.runtime.thread import ThreadHelper  # noqa: E402
-from app.runtime.log import logger  # noqa: E402
-from app.runtime.execution import retry  # noqa: E402
-from app.adapters.network.http import RequestUtils  # noqa: E402
-from app.foundation import size as size_tools  # noqa: E402
+from app.domain.context import MediaInfo, Context
+from app.domain.metainfo import MetaInfo
+from app.application.image import ImageHelper
+from app.application.messaging.ingress import forward_message_to_host
+from app.runtime.thread import ThreadHelper
+from app.runtime.log import logger
+from app.runtime.execution import retry
+from app.adapters.network.http import RequestUtils
+from app.modules.telegram.botapi import (
+    FORWARDED_CONTENT_TYPES,
+    JsonDict,
+    TelegramBotApi,
+)
+from app.foundation import size as size_tools
 
 
 TELEGRAM_PARSE_MODE_MARKDOWN = "MarkdownV2"
 TELEGRAM_PARSE_MODE_HTML = "HTML"
 TELEGRAM_PARSE_MODE_PLAIN = ""
+# InputRichMessage 在 Bot API 中定义的字段，转换结果中的其他键不发送。
+_RICH_MESSAGE_FIELDS = ("html", "markdown", "is_rtl", "skip_entity_detection")
 TELEGRAM_PARSE_MODE_ALIASES = {
     "markdownv2": TELEGRAM_PARSE_MODE_MARKDOWN,
     "mdv2": TELEGRAM_PARSE_MODE_MARKDOWN,
@@ -74,7 +61,7 @@ class Telegram:
     Telegram 消息客户端，负责发送、编辑、接收和转发 Telegram 消息。
     """
 
-    _bot: TeleBot = None
+    _bot: Optional[TelegramBotApi] = None
     _callback_handlers: Dict[str, Callable] = {}  # 存储回调处理器
     _bot_username: Optional[str] = None  # Bot username for mention detection
     _typing_interval_seconds = 5
@@ -84,6 +71,8 @@ class Telegram:
     _typing_callback_max_duration_seconds = 60
     _typing_join_timeout_seconds = 1
     _shutdown_timeout_seconds = 10
+    # getUpdates 长轮询等待秒数；停止时不等待进行中的请求，因此不受关闭预算约束。
+    _long_polling_timeout_seconds = 30
 
     def __init__(
             self,
@@ -116,119 +105,126 @@ class Telegram:
         if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
             logger.error("Telegram配置不完整！")
             return
-        # 初始化机器人
-        if self._telegram_token and self._telegram_chat_id:
-            # telegram bot api 地址，格式：https://api.telegram.org
-            api_url = kwargs.get("API_URL")
-            if api_url:
-                # 如果提供了自定义API地址，使用它
-                apihelper.API_URL = urljoin(api_url, "/bot{0}/{1}")
-                apihelper.FILE_URL = urljoin(api_url, "/file/bot{0}/{1}")
-                # 使用自定义地址时，不设置代理
-                apihelper.proxy = None
-            else:
-                # 使用默认Telegram API地址
-                apihelper.API_URL = "https://api.telegram.org/bot{0}/{1}"
-                apihelper.FILE_URL = "https://api.telegram.org/file/bot{0}/{1}"
-                # 设置代理
-                apihelper.proxy = get_runtime_setting('PROXY')
-            # bot
-            _bot = TeleBot(self._telegram_token, parse_mode=TELEGRAM_PARSE_MODE_MARKDOWN)
-            # 记录句柄
-            self._bot = _bot
-            # 获取并存储bot用户名用于@检测
-            try:
-                bot_info = _bot.get_me()
-                self._bot_username = bot_info.username
-                logger.info(f"Telegram bot用户名: @{self._bot_username}")
-            except Exception as e:
-                logger.error(f"获取bot信息失败: {e}")
-                self._bot_username = None
+        # telegram bot api 地址，格式：https://api.telegram.org；自定义地址不走代理。
+        self._bot = TelegramBotApi(
+            TELEGRAM_TOKEN,
+            api_url=kwargs.get("API_URL"),
+            proxy=get_runtime_setting('PROXY'),
+            parse_mode=TELEGRAM_PARSE_MODE_MARKDOWN,
+        )
+        self._config_name = kwargs.get("name")
+        # 获取并存储bot用户名用于@检测
+        try:
+            self._bot_username = self._api.get_me().get("username")
+            logger.info(f"Telegram bot用户名: @{self._bot_username}")
+        except Exception as e:
+            logger.error(f"获取bot信息失败: {e}")
+            self._bot_username = None
 
-            self._config_name = kwargs.get("name")
+        self._polling_thread = threading.Thread(
+            target=self._run_polling,
+            name="MoviePilot-TelegramPolling",
+            daemon=True,
+        )
+        self._polling_thread.start()
+        logger.info("Telegram消息接收服务启动")
 
-            @_bot.message_handler(commands=["start", "help"])
-            def send_welcome(message):
-                _bot.reply_to(
-                    message,
-                    "温馨提示：直接发送名称或`订阅`+名称，搜索或订阅电影、电视剧",
-                )
+    @property
+    def _api(self) -> TelegramBotApi:
+        """
+        已初始化的 Bot API 客户端。
 
-            @_bot.message_handler(content_types=[
-                "text", "photo", "video", "document", "animation",
-                "audio", "voice", "sticker", "video_note",
-            ], func=lambda message: True)
-            def echo_all(message):
-                # Update user-chat mapping when receiving messages
-                self._update_user_chat_mapping(message.from_user.id, message.chat.id)
+        未配置或已停止时抛错，由各发送方法的异常处理记录失败，与历史实现访问空句柄的结果一致。
+        """
+        if self._bot is None:
+            raise RuntimeError("Telegram客户端未初始化")
+        return self._bot
 
-                # Check if we should process this message
-                if self._should_process_message(message):
-                    payload = self._serialize_update_payload(message)
-                    if not payload:
-                        logger.warn("Telegram消息序列化失败，跳过转发")
-                        return
-                    if not self._forward_to_message_chain(payload):
-                        logger.warn("Telegram消息转发失败")
+    def _run_polling(self) -> None:
+        """轮询线程入口，逐条处理 getUpdates 返回的更新。"""
+        try:
+            self._api.polling(
+                self._handle_update,
+                long_polling_timeout=self._long_polling_timeout_seconds,
+            )
+        except Exception as err:
+            logger.error(f"Telegram消息接收服务异常：{str(err)}")
 
-            @_bot.callback_query_handler(func=lambda call: True)
-            def callback_query(call):
-                """
-                处理按钮点击回调
-                """
-                chat_id = None
-                try:
-                    # Update user-chat mapping for callbacks too
-                    chat_id = call.message.chat.id
-                    self._update_user_chat_mapping(
-                        call.from_user.id, chat_id
-                    )
+    def _handle_update(self, update: JsonDict) -> None:
+        """按更新类型分发：普通消息转发主程序，按钮回调先应答再转发。"""
+        if "callback_query" in update:
+            self._handle_callback_query(update["callback_query"])
+            return
+        message = update.get("message")
+        if not message or not any(key in message for key in FORWARDED_CONTENT_TYPES):
+            return
+        if self._reply_welcome_if_needed(message):
+            return
+        sender = message.get("from") or {}
+        self._update_user_chat_mapping(sender.get("id"), message["chat"]["id"])
+        if self._should_process_message(message):
+            if not self._forward_to_message_chain(message):
+                logger.warn("Telegram消息转发失败")
 
-                    # 解析回调数据
-                    callback_data = call.data
-                    user_id = str(call.from_user.id)
+    def _reply_welcome_if_needed(self, message: JsonDict) -> bool:
+        """
+        /start、/help 命令只回复使用提示，不转发主程序。
 
-                    logger.info(f"收到按钮回调：{callback_data}，用户：{user_id}")
+        与原 SDK 命令过滤一致：忽略 @bot 后缀和参数，例如 ``/start@mp_bot payload``。
+        """
+        text = message.get("text") or ""
+        if not text.startswith("/"):
+            return False
+        command = text.split(maxsplit=1)[0][1:].split("@", 1)[0]
+        if command not in ("start", "help"):
+            return False
+        self._api.send_message(
+            chat_id=message["chat"]["id"],
+            text="温馨提示：直接发送名称或`订阅`+名称，搜索或订阅电影、电视剧",
+            reply_to_message_id=message["message_id"],
+        )
+        return True
 
-                    # 发送回调数据给主程序处理
-                    callback_json = {
-                        "callback_query": {
-                            "id": call.id,
-                            "from": call.from_user.to_dict(),
-                            "message": {
-                                "message_id": call.message.message_id,
-                                "chat": {
-                                    "id": chat_id,
-                                },
-                            },
-                            "data": callback_data,
-                        }
-                    }
+    def _handle_callback_query(self, call: JsonDict) -> None:
+        """
+        处理按钮点击回调
+        """
+        try:
+            # Update user-chat mapping for callbacks too
+            chat_id = call["message"]["chat"]["id"]
+            self._update_user_chat_mapping(call["from"]["id"], chat_id)
 
-                    # 先确认回调，避免用户看到loading状态
-                    _bot.answer_callback_query(call.id)
+            # 解析回调数据
+            callback_data = call.get("data")
+            user_id = str(call["from"]["id"])
 
-                    # 发送给主程序处理
-                    if not self._forward_to_message_chain(callback_json):
-                        logger.warn("Telegram按钮回调转发失败")
+            logger.info(f"收到按钮回调：{callback_data}，用户：{user_id}")
 
-                except Exception as err:
-                    logger.error(f"处理按钮回调失败：{str(err)}")
-                    _bot.answer_callback_query(call.id, "处理失败，请重试")
+            # 发送回调数据给主程序处理
+            callback_json = {
+                "callback_query": {
+                    "id": call["id"],
+                    "from": call["from"],
+                    "message": {
+                        "message_id": call["message"]["message_id"],
+                        "chat": {
+                            "id": chat_id,
+                        },
+                    },
+                    "data": callback_data,
+                }
+            }
 
-            def run_polling():
-                """
-                定义线程函数来运行 infinity_polling
-                """
-                try:
-                    _bot.infinity_polling(long_polling_timeout=30, logger_level=None)
-                except Exception as err:
-                    logger.error(f"Telegram消息接收服务异常：{str(err)}")
+            # 先确认回调，避免用户看到loading状态
+            self._api.answer_callback_query(call["id"])
 
-            # 启动线程来运行 infinity_polling
-            self._polling_thread = threading.Thread(target=run_polling, daemon=True)
-            self._polling_thread.start()
-            logger.info("Telegram消息接收服务启动")
+            # 发送给主程序处理
+            if not self._forward_to_message_chain(callback_json):
+                logger.warn("Telegram按钮回调转发失败")
+
+        except Exception as err:
+            logger.error(f"处理按钮回调失败：{str(err)}")
+            self._api.answer_callback_query(call["id"], "处理失败，请重试")
 
     def _forward_to_message_chain(self, payload: dict) -> bool:
         """把 Telegram SDK 回调同步转交统一消息入口。"""
@@ -238,7 +234,7 @@ class Telegram:
     def bot(self):
         """
         获取Telegram Bot实例
-        :return: TeleBot实例或None
+        :return: Bot API 客户端或None
         """
         return self._bot
 
@@ -259,27 +255,27 @@ class Telegram:
         if not self._bot:
             return None
         try:
-            file_info = self._bot.get_file(file_id)
-            file_url = apihelper.FILE_URL.format(
-                self._telegram_token, file_info.file_path
-            )
+            file_path = self._api.get_file(file_id).get("file_path")
+            if not file_path:
+                logger.warn(f"Telegram文件信息缺少下载路径: file_id={file_id}")
+                return None
+            file_url = self._api.file_url(file_path)
             resp = RequestUtils(
-                proxies=apihelper.proxy, timeout=30
+                proxies=self._api.proxy, timeout=30
             ).get_res(file_url)
             if resp and resp.content:
                 logger.info(
                     "Telegram文件下载成功: file_id=%s, file_path=%s, content_bytes=%s",
                     file_id,
-                    file_info.file_path,
+                    file_path,
                     len(resp.content),
                 )
                 return resp.content
             logger.warn(
-                "Telegram文件下载失败: file_id=%s, file_path=%s, file_url=%s, proxy_enabled=%s",
+                "Telegram文件下载失败: file_id=%s, file_path=%s, proxy_enabled=%s",
                 file_id,
-                getattr(file_info, "file_path", None),
-                file_url,
-                bool(apihelper.proxy),
+                file_path,
+                bool(self._api.proxy),
             )
         except Exception as e:
             logger.error(f"下载Telegram文件失败: {e}")
@@ -392,24 +388,9 @@ class Telegram:
             remaining = remaining[split_at:].lstrip("\n")
         return chunks
 
-    @staticmethod
-    def _serialize_update_payload(message: Any) -> Optional[dict]:
-        """
-        将 Telegram Message 对象稳定序列化为 dict，避免 requests 的 json 参数再次包一层字符串。
-        """
-        try:
-            if hasattr(message, "to_dict"):
-                payload = message.to_dict()
-            else:
-                payload = getattr(message, "json", None) or message
-            if isinstance(payload, str):
-                payload = json.loads(payload)
-            return payload if isinstance(payload, dict) else None
-        except Exception as e:
-            logger.error(f"序列化Telegram消息失败: {e}")
-            return None
-
-    def _update_user_chat_mapping(self, userid: int, chat_id: int) -> None:
+    def _update_user_chat_mapping(
+            self, userid: Optional[Union[str, int]], chat_id: Optional[Union[str, int]]
+    ) -> None:
         """
         更新用户与聊天的映射关系
         :param userid: 用户ID
@@ -426,19 +407,20 @@ class Telegram:
         """
         return self._user_chat_mapping.get(str(userid)) if userid else None
 
-    def _should_process_message(self, message) -> bool:
+    def _should_process_message(self, message: JsonDict) -> bool:
         """
         判断是否应该处理这条消息
-        :param message: Telegram消息对象
+        :param message: Bot API Message 结构
         :return: 是否处理
         """
+        chat_type = message["chat"].get("type")
         # 私聊消息总是处理
-        if message.chat.type == "private":
-            logger.debug(f"处理私聊消息：用户 {message.from_user.id}")
+        if chat_type == "private":
+            logger.debug(f"处理私聊消息：用户 {(message.get('from') or {}).get('id')}")
             return True
 
         # 消息内容：文本消息用 text，媒体消息的说明文字用 caption
-        message_text = message.text or message.caption or ""
+        message_text = message.get("text") or message.get("caption") or ""
 
         # 群聊中的命令消息总是处理（以/开头）
         if message_text.startswith("/"):
@@ -446,7 +428,7 @@ class Telegram:
             return True
 
         # 群聊中检查是否@了机器人
-        if message.chat.type in ["group", "supergroup"]:
+        if chat_type in ["group", "supergroup"]:
             if not self._bot_username:
                 # 如果没有获取到bot用户名，为了安全起见处理所有消息
                 logger.debug("未获取到bot用户名，处理所有群聊消息")
@@ -458,12 +440,17 @@ class Telegram:
                 return True
 
             # 检查消息实体（文本消息用 entities，媒体消息用 caption_entities）
-            entities = (message.entities if message.text is not None else message.caption_entities) or []
+            entities = (
+                message.get("entities")
+                if message.get("text") is not None
+                else message.get("caption_entities")
+            ) or []
             for entity in entities:
-                if entity.type == "mention":
+                if entity.get("type") == "mention":
                     # Telegram offset/length 基于 UTF-16 代码单元，需用字节编码处理含 emoji 的消息
+                    offset, length = entity["offset"], entity["length"]
                     mention_text = message_text.encode('utf-16-le')[
-                        entity.offset * 2: (entity.offset + entity.length) * 2
+                        offset * 2: (offset + length) * 2
                     ].decode('utf-16-le')
                     if mention_text == f"@{self._bot_username}":
                         logger.debug(
@@ -478,7 +465,7 @@ class Telegram:
             return False
 
         # 其他类型的聊天默认处理
-        logger.debug(f"处理其他类型聊天消息：{message.chat.type}")
+        logger.debug(f"处理其他类型聊天消息：{chat_type}")
         return True
 
     def get_state(self) -> bool:
@@ -537,7 +524,7 @@ class Telegram:
                             break
                         try:
                             if self._bot:
-                                self._bot.send_chat_action(chat_id, "typing")
+                                self._api.send_chat_action(chat_id, "typing")
                         except Exception as e:
                             logger.debug(f"发送typing状态失败: {e}")
                         # Telegram 客户端约 5-6 秒后会隐藏 typing，需要周期性续发。
@@ -653,7 +640,7 @@ class Telegram:
             parse_mode: Optional[str] = None,
             rich_message: Optional[str] = None,
             private_delivery: bool = False,
-    ) -> Optional[dict]:
+    ) -> Optional[JsonDict]:
         """
         发送Telegram消息
         :param title: 消息标题
@@ -705,7 +692,7 @@ class Telegram:
             reply_markup = None
             if buttons:
                 reply_markup = self._create_inline_keyboard(buttons)
-            elif force_reply and ForceReply:
+            elif force_reply:
                 reply_markup = self._create_force_reply_markup()
 
             if rich_message:
@@ -737,15 +724,7 @@ class Telegram:
                     ),
                 )
                 self._stop_typing_if_needed(chat_id, stop_typing)
-                if sent and hasattr(sent, "message_id"):
-                    return {
-                        "success": True,
-                        "message_id": sent.message_id,
-                        "chat_id": sent.chat.id if hasattr(sent, "chat") else chat_id,
-                    }
-                if sent:
-                    return {"success": True}
-                return {"success": False}
+                return self._sent_result(sent, chat_id)
 
             # 判断是编辑消息还是发送新消息
             if original_message_id and original_chat_id:
@@ -760,15 +739,7 @@ class Telegram:
                         reply_to_message_id=original_message_id,
                     )
                     self._stop_typing_if_needed(chat_id, stop_typing)
-                    if sent and hasattr(sent, "message_id"):
-                        return {
-                            "success": True,
-                            "message_id": sent.message_id,
-                            "chat_id": sent.chat.id if hasattr(sent, "chat") else chat_id,
-                        }
-                    elif sent:
-                        return {"success": True}
-                    return {"success": False}
+                    return self._sent_result(sent, chat_id)
                 # 编辑消息
                 result = self.__edit_message(
                     original_chat_id,
@@ -796,15 +767,7 @@ class Telegram:
                     parse_mode=parse_mode,
                 )
                 self._stop_typing_if_needed(chat_id, stop_typing)
-                if sent and hasattr(sent, "message_id"):
-                    return {
-                        "success": True,
-                        "message_id": sent.message_id,
-                        "chat_id": sent.chat.id if hasattr(sent, "chat") else chat_id,
-                    }
-                elif sent:
-                    return {"success": True}
-                return {"success": False}
+                return self._sent_result(sent, chat_id)
 
         except Exception as msg_e:
             logger.error(f"发送消息失败：{msg_e}")
@@ -812,16 +775,24 @@ class Telegram:
             return {"success": False}
 
     @staticmethod
-    def _create_force_reply_markup():
-        if not ForceReply:
-            return None
-        try:
-            return ForceReply(selective=True, input_field_placeholder="请输入内容")
-        except TypeError:
-            try:
-                return ForceReply(selective=True)
-            except TypeError:
-                return ForceReply()
+    def _sent_result(sent: Any, chat_id: Union[str, int]) -> JsonDict:
+        """把 Bot API 返回的 Message 转为发送结果；非 Message 的真值只表示成功。"""
+        if isinstance(sent, dict) and "message_id" in sent:
+            return {
+                "success": True,
+                "message_id": sent["message_id"],
+                "chat_id": sent.get("chat", {}).get("id", chat_id),
+            }
+        return {"success": bool(sent)}
+
+    @staticmethod
+    def _create_force_reply_markup() -> JsonDict:
+        """生成只对被回复用户生效的 ForceReply 标记。"""
+        return {
+            "force_reply": True,
+            "selective": True,
+            "input_field_placeholder": "请输入内容",
+        }
 
     def send_voice(
             self,
@@ -831,7 +802,7 @@ class Telegram:
             original_chat_id: Optional[str] = None,
             stop_typing: bool = False,
             parse_mode: Optional[str] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[JsonDict]:
         """
         发送Telegram语音消息。
         """
@@ -848,7 +819,7 @@ class Telegram:
 
         try:
             with voice_file.open("rb") as fp:
-                sent = self._bot.send_voice(
+                sent = self._api.send_voice(
                     chat_id=chat_id,
                     voice=fp,
                     caption=self._prepare_text(caption, parse_mode),
@@ -856,13 +827,7 @@ class Telegram:
                     **self._topic_kwargs(chat_id),
                 )
             self._stop_typing_if_needed(chat_id, stop_typing)
-            if sent and hasattr(sent, "message_id"):
-                return {
-                    "success": True,
-                    "message_id": sent.message_id,
-                    "chat_id": sent.chat.id if hasattr(sent, "chat") else chat_id,
-                }
-            return {"success": bool(sent)}
+            return self._sent_result(sent, chat_id)
         except Exception as err:
             logger.error(f"发送语音消息失败：{err}")
             self._stop_typing_if_needed(chat_id, stop_typing)
@@ -883,7 +848,7 @@ class Telegram:
             original_chat_id: Optional[str] = None,
             stop_typing: bool = False,
             parse_mode: Optional[str] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[JsonDict]:
         """
         发送本地图片或文件给 Telegram 用户。
         """
@@ -913,7 +878,7 @@ class Telegram:
 
             with local_file.open("rb") as fp:
                 if is_image:
-                    sent = self._bot.send_photo(
+                    sent = self._api.send_photo(
                         chat_id=chat_id,
                         photo=fp,
                         caption=self._prepare_text(caption, parse_mode),
@@ -921,7 +886,7 @@ class Telegram:
                         **self._topic_kwargs(chat_id),
                     )
                 else:
-                    sent = self._bot.send_document(
+                    sent = self._api.send_document(
                         chat_id=chat_id,
                         document=(send_name, fp),
                         caption=self._prepare_text(caption, parse_mode),
@@ -929,13 +894,7 @@ class Telegram:
                         **self._topic_kwargs(chat_id),
                     )
             self._stop_typing_if_needed(chat_id, stop_typing)
-            if sent and hasattr(sent, "message_id"):
-                return {
-                    "success": True,
-                    "message_id": sent.message_id,
-                    "chat_id": sent.chat.id if hasattr(sent, "chat") else chat_id,
-                }
-            return {"success": bool(sent)}
+            return self._sent_result(sent, chat_id)
         except Exception as err:
             logger.error(f"发送本地附件失败: {err}")
             self._stop_typing_if_needed(chat_id, stop_typing)
@@ -1163,11 +1122,11 @@ class Telegram:
             self._stop_typing_if_needed(chat_id, stop_typing)
 
     @staticmethod
-    def _create_inline_keyboard(buttons: List[List[Dict]]) -> InlineKeyboardMarkup:
+    def _create_inline_keyboard(buttons: List[List[Dict]]) -> JsonDict:
         """
         创建内联键盘
         :param buttons: 按钮配置，格式：[[{"text": "按钮文本", "callback_data": "回调数据", "url": "链接"}]]
-        :return: InlineKeyboardMarkup对象
+        :return: Bot API InlineKeyboardMarkup 结构
         """
         keyboard = []
         for row in buttons:
@@ -1175,15 +1134,13 @@ class Telegram:
             for button in row:
                 if "url" in button:
                     # URL按钮
-                    btn = InlineKeyboardButton(text=button["text"], url=button["url"])
+                    btn = {"text": button["text"], "url": button["url"]}
                 else:
                     # 回调按钮
-                    btn = InlineKeyboardButton(
-                        text=button["text"], callback_data=button["callback_data"]
-                    )
+                    btn = {"text": button["text"], "callback_data": button["callback_data"]}
                 button_row.append(btn)
             keyboard.append(button_row)
-        return InlineKeyboardMarkup(keyboard)
+        return {"inline_keyboard": keyboard}
 
     def answer_callback_query(
             self,
@@ -1198,7 +1155,7 @@ class Telegram:
             return None
 
         try:
-            self._bot.answer_callback_query(
+            self._api.answer_callback_query(
                 callback_query_id, text=text, show_alert=show_alert
             )
             return True
@@ -1226,7 +1183,7 @@ class Telegram:
                 target_chat_id = self._telegram_chat_id
 
             # 删除消息
-            result = self._bot.delete_message(
+            result = self._api.delete_message(
                 chat_id=target_chat_id, message_id=int(message_id)
             )
             if result:
@@ -1330,7 +1287,7 @@ class Telegram:
             chat_id: str,
             message_id: int,
             text: str,
-            reply_markup: Optional[InlineKeyboardMarkup] = None,
+            reply_markup: Optional[JsonDict] = None,
             disable_web_page_preview: Optional[bool] = None,
             parse_mode: Optional[str] = None,
     ) -> bool:
@@ -1350,7 +1307,7 @@ class Telegram:
                 disable_web_page_preview
             )
         try:
-            self._bot.edit_message_text(**edit_text_kwargs)
+            self._api.edit_message_text(**edit_text_kwargs)
         except Exception as err:
             if self.__is_message_not_modified_error(err):
                 logger.debug(f"Telegram消息内容未变化，跳过编辑：{str(err)}")
@@ -1358,7 +1315,7 @@ class Telegram:
             if not self.__is_no_text_edit_error(err):
                 raise
             try:
-                self._bot.edit_message_caption(
+                self._api.edit_message_caption(
                     chat_id=chat_id,
                     message_id=message_id,
                     caption=prepared_text,
@@ -1407,12 +1364,14 @@ class Telegram:
 
             if image:
                 # 如果有图片，使用edit_message_media
-                media = InputMediaPhoto(
-                    media=image,
-                    caption=self._prepare_text(text, parse_mode),
-                    parse_mode=parse_mode,
-                )
-                self._bot.edit_message_media(
+                media = {
+                    "type": "photo",
+                    "media": image,
+                    "caption": self._prepare_text(text, parse_mode),
+                }
+                if parse_mode:
+                    media["parse_mode"] = parse_mode
+                self._api.edit_message_media(
                     chat_id=chat_id,
                     message_id=message_id,
                     media=media,
@@ -1454,16 +1413,20 @@ class Telegram:
     @staticmethod
     def _build_rich_message_chunks(
             rich_message: str,
-    ) -> List[TelebotInputRichMessage]:
+    ) -> List[JsonDict]:
         """
         将 GitHub 风格 Markdown 转换并拆分为 Telegram Rich Message。
 
         :param rich_message: 完整的 Rich Markdown 正文
-        :return: 满足 Telegram 字节数和块数量限制的消息片段
+        :return: 满足 Telegram 字节数和块数量限制的 InputRichMessage 结构
         """
         converted = richify(rich_message, mode="html")
         return [
-            TelebotInputRichMessage(**chunk.to_dict())
+            {
+                key: value
+                for key, value in chunk.to_dict().items()
+                if key in _RICH_MESSAGE_FIELDS and value is not None
+            }
             for chunk in split_rich(converted)
         ]
 
@@ -1472,7 +1435,7 @@ class Telegram:
             chat_id: Union[str, int],
             message_id: Union[str, int],
             rich_message: str,
-            reply_markup: Optional[InlineKeyboardMarkup] = None,
+            reply_markup: Optional[JsonDict] = None,
     ) -> bool:
         """
         编辑 Telegram Rich Message。
@@ -1488,7 +1451,7 @@ class Telegram:
             logger.warning("Telegram Rich Message 超出单条限制，无法编辑原消息")
             return False
         try:
-            self._bot.edit_message_text(
+            self._api.edit_message_text(
                 chat_id=chat_id,
                 message_id=int(message_id),
                 text=None,
@@ -1508,7 +1471,7 @@ class Telegram:
             self,
             chat_id: Union[str, int],
             rich_message: str,
-            reply_markup: Optional[InlineKeyboardMarkup] = None,
+            reply_markup: Optional[JsonDict] = None,
             reply_to_message_id: Optional[Union[str, int]] = None,
     ) -> Any:
         """
@@ -1522,14 +1485,14 @@ class Telegram:
         """
         chunks = self._build_rich_message_chunks(rich_message)
         reply_parameters = (
-            ReplyParameters(message_id=int(reply_to_message_id))
+            {"message_id": int(reply_to_message_id)}
             if reply_to_message_id is not None
             else None
         )
         sent = None
         try:
             for index, chunk in enumerate(chunks):
-                sent = self._bot.send_rich_message(
+                sent = self._api.send_rich_message(
                     chat_id=chat_id,
                     rich_message=chunk,
                     reply_markup=reply_markup if index == 0 else None,
@@ -1545,7 +1508,7 @@ class Telegram:
             userid: Optional[str] = None,
             image="",
             caption="",
-            reply_markup: Optional[InlineKeyboardMarkup] = None,
+            reply_markup: Optional[JsonDict] = None,
             disable_web_page_preview: Optional[bool] = None,
             parse_mode: Optional[str] = None,
             reply_to_message_id: Optional[int] = None,
@@ -1559,7 +1522,7 @@ class Telegram:
         :return: 发送成功返回消息对象，失败返回None
         """
         parse_mode = self._normalize_parse_mode(parse_mode)
-        kwargs = {
+        kwargs: Dict[str, Any] = {
             "chat_id": userid or self._telegram_chat_id,
             "parse_mode": parse_mode,
             "reply_markup": reply_markup,
@@ -1620,13 +1583,13 @@ class Telegram:
         parse_mode = kwargs.get("parse_mode")
         try:
             if image:
-                return self._bot.send_photo(
+                return self._api.send_photo(
                     photo=image,
                     caption=self._prepare_text(caption, parse_mode),
                     **kwargs,
                 )
             else:
-                return self._bot.send_message(
+                return self._api.send_message(
                     text=self._prepare_text(caption, parse_mode),
                     disable_web_page_preview=disable_web_page_preview,
                     **kwargs
@@ -1653,7 +1616,7 @@ class Telegram:
             for index, chunk in enumerate(chunks):
                 current_reply_markup = reply_markup if index == 0 else None
                 if image and index == 0:
-                    ret = self._bot.send_photo(
+                    ret = self._api.send_photo(
                         **kwargs,
                         photo=image,
                         caption=chunk,
@@ -1663,7 +1626,7 @@ class Telegram:
                 msg_kwargs = dict(**kwargs)
                 if disable_web_page_preview is not None:
                     msg_kwargs["disable_web_page_preview"] = disable_web_page_preview
-                ret = self._bot.send_message(
+                ret = self._api.send_message(
                     **msg_kwargs,
                     text=chunk,
                     reply_markup=current_reply_markup,
@@ -1702,14 +1665,14 @@ class Telegram:
                     msg_kwargs = dict(**kwargs)
                     if disable_web_page_preview is not None:
                         msg_kwargs["disable_web_page_preview"] = disable_web_page_preview
-                    ret = self._bot.send_message(
+                    ret = self._api.send_message(
                         **msg_kwargs,
                         text=self._telegramify_item_text(item),
                         reply_markup=current_reply_markup,
                     )
 
                 elif item.content_type == ContentTypes.PHOTO or (image and i == 0):
-                    ret = self._bot.send_photo(
+                    ret = self._api.send_photo(
                         **kwargs,
                         photo=(
                             getattr(item, "file_name", ""),
@@ -1720,7 +1683,7 @@ class Telegram:
                     )
 
                 elif item.content_type == ContentTypes.FILE:
-                    ret = self._bot.send_document(
+                    ret = self._api.send_document(
                         **kwargs,
                         document=(item.file_name, item.file_data),
                         caption=self._telegramify_item_caption(item),
@@ -1745,10 +1708,10 @@ class Telegram:
             return
         # 设置bot命令
         if commands:
-            self._bot.delete_my_commands()
-            self._bot.set_my_commands(
+            self._api.delete_my_commands()
+            self._api.set_my_commands(
                 commands=[
-                    BotCommand(cmd[1:], str(desc.get("description")))
+                    {"command": cmd[1:], "description": str(desc.get("description"))}
                     for cmd, desc in commands.items()
                 ]
             )
@@ -1760,27 +1723,11 @@ class Telegram:
         if not self._bot:
             return
         # 清理菜单命令
-        self._bot.delete_my_commands()
-
-    @staticmethod
-    def _stop_bot_with_deadline(bot: TeleBot, deadline: float) -> bool:
-        """停止 SDK polling，并在共享 deadline 内等待 worker 收敛。"""
-        bot.stop_polling()
-        if not bot.threaded or not bot.worker_pool:
-            return True
-
-        workers = tuple(bot.worker_pool.workers)
-        for worker in workers:
-            worker.stop()
-        for worker in workers:
-            if worker is threading.current_thread():
-                continue
-            worker.join(timeout=max(0.0, deadline - time.monotonic()))
-        return all(not worker.is_alive() for worker in workers)
+        self._api.delete_my_commands()
 
     def stop(self) -> bool:
         """
-        停止 Telegram 消息接收服务，并返回 SDK/polling/typing owner 是否收敛。
+        停止 Telegram 消息接收服务，并返回 polling/typing owner 是否收敛。
         """
         converged = True
         with self._typing_lifecycle_lock:
@@ -1792,25 +1739,18 @@ class Telegram:
 
         bot = self._bot
         polling_thread = self._polling_thread
-        deadline = time.monotonic() + self._shutdown_timeout_seconds
-        transport_converged = True
         if bot:
-            if not self._stop_bot_with_deadline(bot, deadline):
-                converged = False
-                transport_converged = False
-                logger.error("Telegram SDK worker 未在关闭预算内退出")
-        if (
-            polling_thread
-            and polling_thread.is_alive()
-            and polling_thread is not threading.current_thread()
-        ):
-            polling_thread.join(timeout=max(0.0, deadline - time.monotonic()))
-        if polling_thread and polling_thread.is_alive():
-            logger.error("Telegram polling 线程未在关闭预算内退出")
-            converged = False
-            transport_converged = False
-        if not transport_converged:
-            return False
+            # 在 handler 内触发的 stop 不等待自身：handler 返回后轮询循环即看到停止标记。
+            in_polling_thread = polling_thread is threading.current_thread()
+            dispatch_idle = bot.stop_polling(
+                0 if in_polling_thread else self._shutdown_timeout_seconds
+            )
+            if not dispatch_idle and not in_polling_thread:
+                # 保留 owner，调用方重试 stop 时继续等待同一个 handler。
+                logger.error("Telegram 消息处理未在关闭预算内结束")
+                return False
+            # 进行中的 getUpdates 不再等待；它返回后只会丢弃结果并退出线程。
+            bot.close()
         self._polling_thread = None
         self._bot = None
         logger.info("Telegram消息接收服务已停止")

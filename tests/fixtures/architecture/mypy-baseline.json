@@ -2047,10 +2047,10 @@
     "assignment": 2,
     "misc": 4,
     "no-any-return": 8,
-    "no-untyped-call": 2,
-    "no-untyped-def": 19,
+    "no-untyped-call": 1,
+    "no-untyped-def": 13,
     "return-value": 1,
-    "type-arg": 14,
+    "type-arg": 10,
     "union-attr": 1,
     "var-annotated": 1
   },
