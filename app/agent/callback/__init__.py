@@ -1,6 +1,7 @@
 import asyncio
 import re
 import threading
+import time
 from typing import Any, Optional, Tuple
 
 from app.agent.policy.sanitizer import sanitize_for_host
@@ -84,6 +85,44 @@ class StreamingHandler:
         self._live_tool_stats: dict[str, dict[str, Any]] = {}
         # 本轮已写入缓冲区的工具展示行，供 Telegram 富文本渲染时做区分样式
         self._tool_summaries: set[str] = set()
+        # 当前模型思考状态，仅用于实时展示，不写入最终助手正文。
+        self._thinking_started_at: Optional[float] = None
+        self._thinking_active = False
+        self._thinking_status_text = ""
+
+    def thinking_started(self) -> None:
+        """开始展示模型思考状态，并记录本轮思考起始时间。"""
+        with self._lock:
+            if self._thinking_active:
+                return
+            self._thinking_started_at = time.monotonic()
+            self._thinking_active = True
+            self._thinking_status_text = self._format_thinking_status(0)
+            if self._can_stream():
+                self._buffer = self._thinking_status_text
+
+    def thinking_finished(self) -> None:
+        """结束模型思考状态，移除尚未被正文替换的状态占位文本。"""
+        with self._lock:
+            if not self._thinking_active:
+                return
+            if self._buffer == self._thinking_status_text:
+                self._buffer = ""
+            self._thinking_active = False
+            self._thinking_status_text = ""
+
+    def _format_thinking_status(self, elapsed_seconds: int) -> str:
+        """生成消息渠道可直接展示的思考状态文本。"""
+        return f"🤔 思考中 · 已用时 {max(0, elapsed_seconds)} 秒"
+
+    def _refresh_thinking_status(self) -> None:
+        """更新可编辑消息中的思考计时文本，保持正文尚未生成时也有反馈。"""
+        with self._lock:
+            if not self._thinking_active or not self._can_stream() or self._buffer != self._thinking_status_text:
+                return
+            elapsed = int(max(0.0, time.monotonic() - (self._thinking_started_at or time.monotonic())))
+            self._thinking_status_text = self._format_thinking_status(elapsed)
+            self._buffer = self._thinking_status_text
 
     def set_dispatch_policy(self, allow_dispatch_without_context: bool = False) -> None:
         """
@@ -99,6 +138,11 @@ class StreamingHandler:
         """
         with self._lock:
             emitted = token or ""
+            if emitted and self._thinking_active:
+                if self._buffer == self._thinking_status_text:
+                    self._buffer = ""
+                self._thinking_active = False
+                self._thinking_status_text = ""
 
             if self._pending_tool_stats:
                 if self._live_tool_summary:
@@ -300,6 +344,9 @@ class StreamingHandler:
         self._tool_summaries = set()
         self._live_tool_summary = None
         self._live_tool_stats = {}
+        self._thinking_started_at = None
+        self._thinking_active = False
+        self._thinking_status_text = ""
 
         # 检查渠道是否支持消息编辑，不支持则仅收集 token 到 buffer，不实时推送
         if not self._can_stream():
@@ -334,6 +381,7 @@ class StreamingHandler:
             return False, ""
 
         self._streaming_enabled = False
+        self.thinking_finished()
 
         # 取消定时任务
         await self._cancel_flush_task()
@@ -366,6 +414,9 @@ class StreamingHandler:
             self._tool_summaries = set()
             self._live_tool_summary = None
             self._live_tool_stats = {}
+            self._thinking_started_at = None
+            self._thinking_active = False
+            self._thinking_status_text = ""
             if all_sent:
                 # 所有内容已通过流式发送，清空缓冲区
                 self._buffer = ""
@@ -724,6 +775,7 @@ class StreamingHandler:
             while self._streaming_enabled:
                 await asyncio.sleep(self.FLUSH_INTERVAL)
                 if self._streaming_enabled:
+                    self._refresh_thinking_status()
                     await self._flush()
         except asyncio.CancelledError:
             pass

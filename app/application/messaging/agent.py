@@ -189,6 +189,9 @@ def build_web_agent_display_message(
         "content": normalized_content,
         "createdAt": int(datetime.now().timestamp() * 1000),
         "status": status,
+        "thinking": False,
+        "thinking_started_at": None,
+        "thinking_elapsed_ms": 0,
         "tools": [],
         "segments": ([{"type": "text", "content": normalized_content}] if normalized_content else []),
         "attachments": attachments or [],
@@ -458,6 +461,14 @@ def apply_web_agent_display_event(event: dict[str, Any], assistant_message: dict
             else build_legacy_web_agent_segments(assistant_message["content"], assistant_message["tools"])
         )
         assistant_message["status"] = target_message.get("status") or "done"
+    elif event_type == "thinking":
+        is_thinking = str(event.get("status") or "") == "running"
+        assistant_message["thinking"] = is_thinking
+        if is_thinking:
+            assistant_message["thinking_started_at"] = event.get("started_at")
+            assistant_message["thinking_elapsed_ms"] = 0
+        else:
+            assistant_message["thinking_elapsed_ms"] = event.get("elapsed_ms") or assistant_message.get("thinking_elapsed_ms") or 0
     elif event_type == "error":
         assistant_message["status"] = "error"
         if not assistant_message["content"]:

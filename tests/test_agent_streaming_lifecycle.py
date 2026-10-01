@@ -8,6 +8,21 @@ from app.agent.callback import StreamingHandler
 from app.schemas.types import NotificationChannel
 
 
+def test_thinking_status_is_replaced_by_first_answer_token() -> None:
+    """思考占位消息应在首个正文 token 到达时被移除，避免污染最终回复。"""
+    handler = StreamingHandler()
+    handler._can_stream = lambda: True
+
+    handler.thinking_started()
+    assert handler._thinking_active is True
+    assert "思考中" in handler._buffer
+
+    handler.emit("最终答案")
+
+    assert handler._thinking_active is False
+    assert handler._buffer == "最终答案"
+
+
 @pytest.mark.asyncio
 async def test_repeated_streaming_start_retains_previous_flush_owner() -> None:
     """重复启动必须先等待旧 flush owner 结束，再发布新一轮上下文。"""

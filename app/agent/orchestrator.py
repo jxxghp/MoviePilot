@@ -2250,7 +2250,13 @@ class MoviePilotAgent:
         return attachments
 
     @staticmethod
-    async def _stream_agent_tokens(agent, messages: dict, config: dict, on_token: Callable[[str], None]):
+    async def _stream_agent_tokens(
+        agent,
+        messages: dict,
+        config: dict,
+        on_token: Callable[[str], None],
+        stream_handler: Any = None,
+    ):
         """
         流式运行智能体，过滤工具调用token和思考内容，将模型生成的内容通过回调输出。
         :param agent: LangGraph Agent 实例
@@ -2259,6 +2265,11 @@ class MoviePilotAgent:
         :param on_token: 收到有效 token 时的回调
         """
         stripper = _ThinkTagStripper()
+        thinking_started = stream_handler
+        if thinking_started is not None:
+            start_thinking = getattr(thinking_started, "thinking_started", None)
+            if callable(start_thinking):
+                start_thinking()
 
         async for chunk in agent.astream(
             messages,
@@ -2290,6 +2301,9 @@ class MoviePilotAgent:
                     # content 可能是字符串或内容块列表，过滤掉思考类型的块
                     content = LLMHelper.extract_text_content(token.content)
                     if content:
+                        finish_thinking = getattr(thinking_started, "thinking_finished", None)
+                        if callable(finish_thinking):
+                            finish_thinking()
                         stripper.process(content, on_token)
 
         stripper.flush(on_token)
@@ -2505,6 +2519,7 @@ class MoviePilotAgent:
                     messages={"messages": input_messages},
                     config=agent_config,
                     on_token=self._handle_stream_text,
+                    stream_handler=self.stream_handler,
                 )
 
                 # 输出流式过程中可能残留的工具调用统计信息
