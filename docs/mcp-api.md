@@ -866,6 +866,10 @@ MCP、HTTP 工具管理接口、本地 CLI 和内置 Agent 都从同一严格目
 
 `run`、pipe 和 PTY 共享 `cwd/shell/login`：默认及相对 `cwd` 使用 MoviePilot 根目录，
 POSIX 默认非登录；Windows 未指定时保留已有解释器/UTF-8 策略。回包包含实际 `shell/login`。
+项目安装目录存在 `venv` 时，三种模式都会把该环境的 `bin`（Windows 为 `Scripts`）放在
+子进程 `PATH` 最前并设置 `VIRTUAL_ENV`，所以 `python`、`python3` 和 `pip` 使用项目环境；
+执行 Python 应优先使用 `python -m ...`，安装依赖优先使用项目 `uv pip ...` 或绑定环境中的
+`python -m pip ...`，不要改用系统解释器或 `sudo pip`。
 `write(close_stdin=true)` 仅在 pipe 模式支持末段输入后 EOF，回包包含 `stdin_closed`；输出可继续读取。
 PTY 会在写入之前拒绝 half-close，空 `write` 不代表 EOF，控制字节在 pipe 中也不等于信号。
 新增 `interrupt` 只发送一次平台支持的中断并返回 `signal/signal_sent`，不会升级强杀；

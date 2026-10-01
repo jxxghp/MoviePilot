@@ -274,6 +274,39 @@ def build_agent_subprocess_env(
     return environment
 
 
+def bind_agent_project_environment(
+    environment: Mapping[str, str],
+    *,
+    project_root: Path,
+    platform_name: Optional[str] = None,
+) -> dict[str, str]:
+    """
+    将已安装项目的虚拟环境绑定到 Agent 命令子进程。
+
+    :param environment: 已完成调用方覆盖和平台编码处理的环境变量
+    :param project_root: MoviePilot 项目根目录
+    :param platform_name: 用于测试覆盖的 os.name，默认读取当前平台
+    :return: 优先使用项目虚拟环境的子进程环境变量
+    """
+    bound_environment = dict(environment)
+    windows = (platform_name or os.name) == "nt"
+    venv_path = Path(project_root).expanduser() / "venv"
+    bin_path = venv_path / ("Scripts" if windows else "bin")
+    python_names = ("python.exe", "python3.exe", "moviepilot-python.exe") if windows else (
+        "python", "python3", "moviepilot-python"
+    )
+    if not any((bin_path / name).is_file() for name in python_names):
+        return bound_environment
+
+    path_separator = ";" if windows else os.pathsep
+    existing_path = bound_environment.get("PATH", "")
+    bound_environment["PATH"] = path_separator.join(
+        part for part in (str(bin_path), existing_path) if part
+    )
+    bound_environment["VIRTUAL_ENV"] = str(venv_path)
+    return bound_environment
+
+
 def agent_text_subprocess_kwargs(
     *, platform_name: Optional[str] = None
 ) -> dict[str, Any]:

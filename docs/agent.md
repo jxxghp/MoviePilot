@@ -65,6 +65,8 @@ Agent 人格是全局运行时配置，不按用户隔离；所有用户共享�
 
 `execute_command(action="run")` 返回结构化 JSON：`exit_code`、`timed_out`、`execution_outcome` 和 `status` 表示实际执行结果，`output` 保存输出预览，`output_file` 指向超长输出的临时归档。仅正常退出且退出码为 0 时成功；非零退出或已停止的超时命令为失败，无法确认进程结束时为未知，不能凭“有输出”判断成功。超时和取消不会撤销命令已经产生的外部副作用。取消继续向外传播，同时回收输出读取任务、关闭归档文件；`run` 与 `start` 都支持 `env`，并采用同一工作目录与解释器策略。
 
+项目安装目录存在 `venv` 时，`execute_command` 的一次性命令、pipe 和 PTY 会话都会把该环境的 `bin`（Windows 为 `Scripts`）放在子进程 `PATH` 最前，并设置 `VIRTUAL_ENV`。因此 `python`、`python3` 和 `pip` 会使用项目环境；执行 Python 优先使用 `python -m ...`，安装依赖优先使用项目 `uv pip ...` 或绑定环境中的 `python -m pip ...`，不要改用系统解释器或 `sudo pip`。
+
 `run`、后台 pipe 和 PTY 共用 `cwd`、`shell`、`login` 解析。省略 `cwd` 使用 MoviePilot 根目录，相对路径也相对该目录，并支持 `~`；错误目录在进程启动前拒绝。POSIX 默认使用配置的 `SHELL`（未配置时 `/bin/sh`）且不启动登录模式，显式 `shell` 可选择已安装解释器，`login=true/false` 控制其支持的登录行为。登录启动文件可能改变目录或环境；PTY 本身不再隐式开启登录模式。Windows 未显式指定时保留 Git Bash → PowerShell 7 → cmd 的选择顺序与 UTF-8 策略；不支持的解释器/登录组合明确失败。回包的 `shell`、`login` 说明实际策略，默认解释器不可用不会阻断其它 Agent 业务能力。
 
 管道会话可用 `write(input_text="末段输入", close_stdin=true)` 在交付末段后关闭输入，或用空输入显式关闭；输出仍通过 `read/wait` 读取，`stdin_closed` 表示输入已关闭。普通空 `write` 不发送 EOF；输入关闭后不能再追加数据，重复空关闭可确认已有状态。`run` 的 stdin 始终为 EOF。PTY 的输入和输出共用端点，因此拒绝 `close_stdin=true`，也不会先写入附带输入或关闭输出；PTY 控制字节的行为取决于终端模式，pipe 中 `\u0003`、`\u0004` 只是普通字节。
