@@ -6,8 +6,7 @@ ARG MOVIEPILOT_PYTHON_VERSION="3.14.7"
 FROM ghcr.io/astral-sh/uv:latest AS uv
 
 
-# rclone v1.75.0 包含受 CVE-2026-46603 影响的 x/image v0.44.0，临时固定已修复的官方 Beta 摘要。
-FROM rclone/rclone:beta@sha256:d6f5448594ecefefcf09cfeaf85cb7a21a866328032576ce2c1813e7b59c66dc AS rclone
+FROM rclone/rclone:latest AS rclone
 
 
 FROM mwader/static-ffmpeg:8.1.1@sha256:735f84b905e00d5c618b667f0b053f83b1096f5fc404c607e6134bf2275a0e0a AS ffmpeg
@@ -89,11 +88,9 @@ RUN apt-get update \
     lsof \
     nano \
     unar \
-    openssl \
     supervisor \
     postgresql-client-18 \
     libchromaprint-tools \
-    libevent-2.1-7t64 \
     libjemalloc2 \
     && dpkg-reconfigure --frontend noninteractive tzdata \
     && ln -s /usr/lib/*-linux-gnu/libjemalloc.so.2 /usr/local/lib/libjemalloc.so \
@@ -165,8 +162,7 @@ RUN apt-get update \
         --no-default-groups \
         --group runtime-free-threaded \
         --no-install-project \
-        --python "${python_bin}" \
-    && "${python_bin}" -m pip uninstall --break-system-packages -y pip
+        --python "${python_bin}"
 
 
 FROM prepare_venv_standard AS verify_venv_standard
@@ -286,14 +282,6 @@ RUN mkdir -p \
 # final 阶段: 安装运行时依赖和配置最终镜像
 FROM prepare_package AS final
 
-# 运行时使用独立虚拟环境和 uv，不需要基础镜像自带的系统 pip；移除它及其
-# vendored 依赖，避免将已修复版本之外的 urllib3 打包进最终镜像。
-RUN python3 -m pip uninstall -y pip \
-    && rm -rf /usr/local/lib/python3.14/site-packages/pip \
-        /usr/local/lib/python3.14/site-packages/pip-*.dist-info \
-        /usr/local/lib/python3.14/site-packages/pip-*.egg-info \
-    && rm -f /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.14
-
 # jemalloc 默认按 CPU 数×4 建 arena，空闲 arena 的脏页会长期计入 RSS。脏页按 5 秒衰减归还
 # （muzzy 直接归还，避免 MADV_FREE 页继续计入 RSS）；arena 限制为 8 个，带 GIL 的 Python 大块分配竞争很小。
 # 后台回收线程由主进程启动时自行开启，不能写在这里：子进程继承 MALLOC_CONF 后 Chromium 无法启动。
@@ -313,16 +301,6 @@ COPY --from=uv /uv /usr/local/bin/uv
 
 # 浏览器运行依赖
 RUN playwright install-deps chromium \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-    gzip \
-    libde265-0 \
-    libpcre2-8-0 \
-    libsqlite3-0 \
-    nginx \
-    nginx-common \
-    xserver-common \
-    xvfb \
     && apt-get autoremove -y \
     && apt-get clean \
     && rm -rf \
