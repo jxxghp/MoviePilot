@@ -762,7 +762,7 @@ flowchart LR
 
 | 指标 | 当前值 |
 |---|---:|
-| Python 模块 | 1091 |
+| Python 模块 | 1104 |
 | 内部导入边 | 9,297 |
 | 非平凡 SCC | 1（精确 containment 的 TMDB 移植包环） |
 | Application / Chain 具体 Adapter 直连 | 0 / 0 |
