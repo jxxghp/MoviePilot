@@ -43,6 +43,20 @@ def test_thinking_status_stays_separate_from_message_channel_tool_summary() -> N
     assert handler._buffer.endswith("\n\n最终答案")
 
 
+def test_tool_message_does_not_end_message_channel_thinking_status() -> None:
+    """消息渠道的工具提示到达时，思考状态仍应继续计时展示。"""
+    handler = StreamingHandler()
+    handler._can_stream = lambda: True
+    handler._streaming_enabled = True
+
+    handler.thinking_started()
+    handler.emit_tool_message("执行检查")
+
+    assert handler._thinking_active is True
+    assert handler._buffer.startswith("🤔 思考中 · 已用时 0 秒\n\n")
+    assert "⚙️ => 执行检查" in handler._buffer
+
+
 def test_web_agent_thinking_status_is_only_a_structured_event() -> None:
     """WebAgent 的思考状态不能进入正文，只能通过 SSE 结构化事件展示。"""
     events: list[dict[str, object]] = []

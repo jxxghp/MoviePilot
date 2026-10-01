@@ -1,5 +1,6 @@
 import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import langchain.agents as langchain_agents
@@ -10,7 +11,7 @@ if not hasattr(langchain_agents, "create_agent"):
 
 from app.agent.callback import StreamingHandler
 from app.agent.middleware.subagents import is_subagent_stream_metadata
-from app.agent.orchestrator import _ThinkTagStripper
+from app.agent.orchestrator import MoviePilotAgent, _ThinkTagStripper
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.impl.api import MoviePilotApiTool
 from app.agent.tools.impl.send_voice_message import SendVoiceMessageTool
@@ -67,6 +68,49 @@ def test_think_tag_stripper_hides_split_orphan_closing_tag():
     stripper.process("think>回答后", outputs.append)
 
     assert outputs == ["回答前", "回答后"]
+
+
+def test_stream_keeps_message_channel_thinking_during_hidden_think_tags():
+    """隐藏的 think 标签内容不能提前结束消息渠道的思考状态。"""
+
+    class FakeAgent:
+        """按顺序产生思考标签和最终正文的流式 Agent。"""
+
+        async def astream(self, *_args, **_kwargs):
+            """依次产生隐藏思考片段和可见答案。"""
+            def token(content):
+                """构造一个最小的文本流 token。"""
+                return SimpleNamespace(
+                    tool_call_chunks=[],
+                    additional_kwargs={},
+                    content=content,
+                )
+
+            yield {"type": "messages", "data": (token("<think>"), {})}
+            assert handler._thinking_active is True
+            yield {"type": "messages", "data": (token("隐藏推理"), {})}
+            assert handler._thinking_active is True
+            yield {"type": "messages", "data": (token("</think>"), {})}
+            assert handler._thinking_active is True
+            yield {"type": "messages", "data": (token("最终答案"), {})}
+
+    handler = StreamingHandler()
+    handler._can_stream = lambda: True
+    handler._streaming_enabled = True
+    tokens: list[str] = []
+
+    asyncio.run(
+        MoviePilotAgent._stream_agent_tokens(
+            FakeAgent(),
+            {"messages": []},
+            {"configurable": {"thread_id": "thinking-lifecycle"}},
+            tokens.append,
+            stream_handler=handler,
+        )
+    )
+
+    assert tokens == ["最终答案"]
+    assert handler._thinking_active is False
 
 
 class DummyTool(MoviePilotTool):

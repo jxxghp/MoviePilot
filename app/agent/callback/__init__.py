@@ -147,9 +147,13 @@ class StreamingHandler:
         接收 LLM 流式 token，积累到缓冲区。
         如果存在待输出的工具统计，则会先补上一句摘要再追加 token。
         """
+        return self._append_buffer_text(token, finish_thinking=True)
+
+    def _append_buffer_text(self, token: str, *, finish_thinking: bool) -> str:
+        """追加一段缓冲文本，并按内容类型决定是否结束思考状态。"""
         with self._lock:
             emitted = token or ""
-            if emitted and self._thinking_active:
+            if emitted and finish_thinking and self._thinking_active:
                 self._remove_thinking_status_locked()
 
             if self._pending_tool_stats:
@@ -193,7 +197,10 @@ class StreamingHandler:
             self._tool_summaries.update(
                 line for line in tool_message.splitlines() if line
             )
-        return self.emit(f"\n\n{tool_message}\n\n")
+        return self._append_buffer_text(
+            f"\n\n{tool_message}\n\n",
+            finish_thinking=False,
+        )
 
     def _is_verbose_mode(self) -> bool:
         """判断当前是否启用逐条工具调用展示。"""

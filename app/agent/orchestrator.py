@@ -2266,10 +2266,23 @@ class MoviePilotAgent:
         """
         stripper = _ThinkTagStripper()
         thinking_started = stream_handler
+        thinking_finished = False
         if thinking_started is not None:
             start_thinking = getattr(thinking_started, "thinking_started", None)
             if callable(start_thinking):
                 start_thinking()
+
+        def emit_visible_token(text: str) -> None:
+            """只在真正产生可见答案时结束思考状态，再转发正文。"""
+            nonlocal thinking_finished
+            if not text:
+                return
+            if not thinking_finished:
+                finish_thinking = getattr(thinking_started, "thinking_finished", None)
+                if callable(finish_thinking):
+                    finish_thinking()
+                thinking_finished = True
+            on_token(text)
 
         async for chunk in agent.astream(
             messages,
@@ -2301,12 +2314,9 @@ class MoviePilotAgent:
                     # content 可能是字符串或内容块列表，过滤掉思考类型的块
                     content = LLMHelper.extract_text_content(token.content)
                     if content:
-                        finish_thinking = getattr(thinking_started, "thinking_finished", None)
-                        if callable(finish_thinking):
-                            finish_thinking()
-                        stripper.process(content, on_token)
+                        stripper.process(content, emit_visible_token)
 
-        stripper.flush(on_token)
+        stripper.flush(emit_visible_token)
         final_notice = MoviePilotAgent._guardrail_final_text(agent, config)
         if final_notice:
             on_token('\n\n' + final_notice)

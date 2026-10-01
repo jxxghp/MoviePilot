@@ -159,7 +159,10 @@ class _WebAgentStreamingHandlerMixin:
         normalized_message = " ".join(str(message or "").splitlines())
         if self._on_tool_event:
             return ""
-        return str(super().emit_tool_message(normalized_message))  # type: ignore[misc]
+        emitted = str(super().emit_tool_message(normalized_message))  # type: ignore[misc]
+        if emitted:
+            self._on_emit(emitted)
+        return emitted
 
     def emit(self, token: str) -> str:
         """追加 token 并同步通知 SSE 生产者。"""
