@@ -69,9 +69,19 @@ sync_repo() {
 
   echo "==> 复用已有 MoviePilot 仓库: $APP_DIR"
   if repo_dirty "$APP_DIR"; then
-    echo "检测到现有仓库包含未提交改动，已停止自动更新。" >&2
-    echo "请先清理 $APP_DIR 的本地修改，或换一个新的安装目录后重试。" >&2
-    exit 1
+    echo "检测到现有仓库包含未提交的源码改动。"
+    if [[ "$NON_INTERACTIVE" != "true" && "$HAS_TTY" == "true" ]] && \
+      prompt_yes_no "是否清空本地改动并继续更新" "n"; then
+      (
+        cd "$APP_DIR"
+        git reset --hard HEAD
+      )
+      echo "==> 已清理本地已跟踪源码改动，继续更新"
+    else
+      echo "已取消更新，未清理 $APP_DIR 的本地改动。" >&2
+      echo "请先提交或清理本地修改，或换一个新的安装目录后重试。" >&2
+      exit 1
+    fi
   fi
 
   (

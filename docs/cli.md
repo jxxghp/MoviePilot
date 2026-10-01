@@ -27,7 +27,7 @@ curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v3/scripts/bootst
 - 如果系统里已经有可用的 `Python 3.14+`，脚本会优先直接复用本地解释器
 - 如果系统里没有可用解释器，脚本会通过最新稳定版 uv 安装 Python 3.14
 - Linux 下安装系统依赖时通常需要 `sudo`
-- 复用已有仓库时，脚本现在只会因为已跟踪源码改动而阻止自动更新，不会再被 `.DS_Store` 之类未跟踪文件卡住
+- 复用已有仓库时，如果检测到已跟踪源码改动，脚本会先询问是否清空本地改动；确认后才会继续更新，拒绝或非交互模式会取消更新，不会删除被 Git 忽略的配置和运行时文件
 
 如果安装完成后当前终端仍提示找不到 `moviepilot`：
 
@@ -357,6 +357,7 @@ moviepilot update all --skip-resources
 说明：
 
 - `update backend` 会更新 Git 仓库并重新安装后端依赖，包括 `moviepilot-rust` 加速扩展
+- 后端更新前如果检测到已跟踪源码改动，CLI 会列出部分文件并询问是否清空；确认后执行清理并继续更新，拒绝或非交互模式会取消更新
 - `MOVIEPILOT_UPDATE_DEV=true` 时，`moviepilot update` 默认使用 DEV 模式；`--dev` / `--no-dev` 可临时覆盖，省略目标时更新全部组件。进程环境变量优先于配置目录中的 `app.env`
 - DEV 模式后端跟踪当前开发分支，处于 Release 的 detached HEAD 时回到 `v3`；前端下载最新 Release 的 `dist.zip`。显式 `--ref` / `--frontend-version` 优先于默认选择
 - DEV 模式每次更新前端都会重新下载并替换发布包，即使版本号相同或显式指定了 `--frontend-version`，以获取同版本重新打包的内容

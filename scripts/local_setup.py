@@ -3789,6 +3789,7 @@ def _git_output(*args: str) -> str:
 
 
 def _ensure_git_clean() -> None:
+    """检查源码工作树，并在用户确认后清除已跟踪的本地改动。"""
     status = _git_output("status", "--porcelain", "--untracked-files=no")
     if not status.strip():
         return
@@ -3806,9 +3807,18 @@ def _ensure_git_clean() -> None:
             preview += " 等"
         detail = f"：{preview}"
 
-    raise RuntimeError(
-        f"检测到当前仓库有未提交的源码改动{detail}，请先提交或清理后再执行更新。"
-    )
+    try:
+        confirmed = _prompt_yes_no(
+            f"检测到当前仓库有未提交的源码改动{detail}，是否清空本地改动并继续更新",
+            default=False,
+        )
+    except (EOFError, OSError) as exc:
+        raise RuntimeError("当前终端不支持交互确认，已取消更新。") from exc
+    if not confirmed:
+        raise RuntimeError("已取消更新，未清理本地源码改动。")
+
+    print_step("清理本地已跟踪源码改动")
+    run(["git", "reset", "--hard", "HEAD"], cwd=ROOT)
 
 
 def _update_backend_ref(ref: str, *, fetch: bool = True) -> str:
