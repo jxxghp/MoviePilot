@@ -165,7 +165,8 @@ RUN apt-get update \
         --no-default-groups \
         --group runtime-free-threaded \
         --no-install-project \
-        --python "${python_bin}"
+        --python "${python_bin}" \
+    && "${python_bin}" -m pip uninstall -y pip
 
 
 FROM prepare_venv_standard AS verify_venv_standard
