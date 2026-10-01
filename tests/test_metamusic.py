@@ -577,7 +577,7 @@ def test_parse_album_dir_with_prefix_year_does_not_invent_artist():
     )
 
     assert info["artist"] is None
-    assert info["album"] == "All Too Well - Recorded at Long Pond Studios"
+    assert info["album"] == "All Too Well (Sad Girl Autumn Version) - Recorded at Long Pond Studios"
     assert info["year"] == 2021
 
 

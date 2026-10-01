@@ -756,6 +756,26 @@ class Emby:
             logger.error(f"连接/Users/{self.user}/Items/{itemid}出错：" + str(e))
         return None
 
+    def _get_series_identity(
+        self,
+        series_id: Optional[str],
+    ) -> Tuple[Optional[MediaSource], Optional[str]]:
+        """查询 Emby Series 条目的规范身份，查询失败时返回空身份。"""
+        if not series_id or not self._host or not self._apikey or not self.user:
+            return None, None
+        url = f"{self._host}emby/Users/{self.user}/Items/{series_id}"
+        params = {
+            "api_key": self._apikey,
+            "Fields": "ProviderIds",
+        }
+        try:
+            res = RequestUtils().get_res(url, params)
+            if res and res.status_code == 200:
+                return MediaServerIdentityHelper.from_provider_ids(res.json().get("ProviderIds"))
+        except Exception as e:
+            logger.error(f"获取 Emby 剧集身份出错：{str(e)}")
+        return None, None
+
     def get_items_count(self, parent: Union[str, int], include_item_types: str = "Movie,Series") -> Optional[int]:
         """
         获取指定媒体库可同步的电影和剧集总数
@@ -1063,6 +1083,8 @@ class Emby:
             "PlaylistLength": 40
           }
         }
+
+        Episode 和 Season 的 ProviderIds 可能标识单集或季；统一媒体身份应从 SeriesId 对应的剧集条目读取。
         """
         if not form and not args:
             return None
@@ -1117,9 +1139,12 @@ class Emby:
                 eventItem.item_id = message.get('Item', {}).get('Id')
 
             eventItem.item_path = message.get('Item', {}).get('Path')
-            eventItem.media_source, eventItem.media_id = MediaServerIdentityHelper.from_provider_ids(
-                message.get('Item', {}).get('ProviderIds')
-            )
+            if message.get('Item', {}).get('Type') in {"Episode", "Season"}:
+                eventItem.media_source, eventItem.media_id = self._get_series_identity(eventItem.item_id)
+            else:
+                eventItem.media_source, eventItem.media_id = MediaServerIdentityHelper.from_provider_ids(
+                    message.get('Item', {}).get('ProviderIds')
+                )
             if message.get('Item', {}).get('Overview') and len(message.get('Item', {}).get('Overview')) > 100:
                 eventItem.overview = str(message.get('Item', {}).get('Overview'))[:100] + "..."
             else:

@@ -59,7 +59,8 @@ _STUB_MODULES = dict([
     _stub("app.api.dependencies.auth", get_current_active_superuser=_Dummy,
           get_current_active_superuser_async=_Dummy, get_current_active_user_async=_Dummy),
     _stub("app.agent.llm", LLMHelper=_Dummy, LLMTestError=_DummyError, LLMTestTimeout=_DummyError),
-    _stub("app.application.mediaserver", MediaServerHelper=_Dummy),
+    _stub("app.application.mediaserver", MediaServerHelper=_Dummy,
+          get_mediaserver_configs=lambda: []),
     _stub("app.application.messaging.message", MessageHelper=_Dummy),
     _stub("app.runtime.progress", ProgressHelper=_Dummy, AsyncProgressHelper=_Dummy),
     _stub("app.application.rules", RuleHelper=_Dummy),
@@ -262,7 +263,63 @@ class TestNettestSecurity:
         assert resp.success
         assert any(item["id"] == "pip_proxy" for item in resp.data)
         assert any(item["id"] == "github_proxy_web" for item in resp.data)
-        assert all(set(item) == {"id", "name", "icon"} for item in resp.data)
+        assert all(set(item) == {"id", "name", "address", "icon"} for item in resp.data)
+
+    def test_nettest_imdb_graphql_uses_post_probe(self):
+        """IMDb GraphQL 探测应使用模块客户端采用的 POST 请求格式。"""
+        captured = {}
+        response = SimpleNamespace(
+            status_code=200,
+            headers={},
+            text='{"data":{"__typename":"Query"}}',
+            aclose=AsyncMock(),
+        )
+
+        async def respond(method, url, **options):
+            """记录 IMDb 探测请求并返回成功响应。"""
+            captured.update(method=method, url=url, **options)
+            return response
+
+        transport = SimpleNamespace(request=AsyncMock(side_effect=respond))
+        result = asyncio.run(
+            _network_test_service(transport).execute(target_id="imdb_graphql")
+        )
+
+        assert result.success
+        assert captured["method"] == "POST"
+        assert captured["url"] == "https://caching.graphql.imdb.com/"
+        assert captured["json_body"] == {"query": "{ __typename }"}
+        assert captured["headers"] == {
+            "Accept": "application/graphql+json, application/json",
+            "Content-Type": "application/json",
+            "x-imdb-client-name": "imdb-web-next-localized",
+        }
+
+    def test_nettest_theaudiodb_uses_current_free_key_and_health_endpoint(self):
+        """TheAudioDB 探测应使用当前公开测试 Key 和模块连通性接口。"""
+        captured = {}
+        response = SimpleNamespace(
+            status_code=200,
+            headers={},
+            text='{"artists":[]}',
+            aclose=AsyncMock(),
+        )
+
+        async def respond(method, url, **options):
+            """记录 TheAudioDB 探测请求并返回成功响应。"""
+            captured.update(method=method, url=url, **options)
+            return response
+
+        transport = SimpleNamespace(request=AsyncMock(side_effect=respond))
+        result = asyncio.run(
+            _network_test_service(transport).execute(target_id="theaudiodb_api")
+        )
+
+        assert result.success
+        assert captured["method"] == "GET"
+        assert captured["url"] == (
+            "https://www.theaudiodb.com/api/v1/json/123/search.php?s=coldplay"
+        )
 
     def test_nettest_blocks_unknown_target_before_transport(self):
         """未知目标在应用服务目录匹配阶段即返回，不得触发传输端口。"""

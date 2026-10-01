@@ -91,3 +91,37 @@ async def test_delete_missing_chat_does_not_open_write_transaction() -> None:
     repository.async_stage_delete.assert_not_awaited()
     unit_of_work.commit.assert_not_awaited()
     unit_of_work.rollback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_explicit_delete_revokes_independent_history_before_main_commit() -> None:
+    """跨库删除先收回证据，主库提交失败重试也不能让私人历史继续可读。"""
+    calls: list[str] = []
+    repository = Mock()
+    repository.async_get = AsyncMock(return_value=_chat())
+    repository.async_stage_delete = AsyncMock(side_effect=lambda **_kwargs: calls.append('stage') or True)
+    unit_of_work = Mock()
+    unit_of_work.commit = AsyncMock(side_effect=RuntimeError('commit unavailable'))
+    unit_of_work.rollback = AsyncMock()
+    recall = Mock()
+    recall.delete = AsyncMock(side_effect=lambda *_args: calls.append('recall'))
+    service = AgentChatService(repository, unit_of_work, recall=recall)
+    with pytest.raises(RuntimeError, match='commit unavailable'):
+        await service.delete('session-9', _principal())
+    assert calls == ['recall', 'stage']
+    recall.delete.assert_awaited_once_with('1', 'session-9')
+    unit_of_work.rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_delete_does_not_claim_success_when_evidence_cannot_be_revoked() -> None:
+    """独立库未删除成功时保留主库入口并报告失败，允许用户重试。"""
+    repository = Mock()
+    repository.async_get = AsyncMock(return_value=_chat())
+    repository.async_stage_delete = AsyncMock()
+    recall = Mock()
+    recall.delete = AsyncMock(side_effect=OSError('history unavailable'))
+    service = AgentChatService(repository, Mock(), recall=recall)
+    with pytest.raises(OSError):
+        await service.delete('session-9', _principal())
+    repository.async_stage_delete.assert_not_awaited()

@@ -1,7 +1,10 @@
 import asyncio
 import io
+import ipaddress
+import os
 from collections.abc import Iterator, Mapping
 from hashlib import sha256
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Optional
 from unittest.mock import AsyncMock, Mock, patch
@@ -9,6 +12,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from PIL import Image
 
+from app.adapters.system.host import SystemUtils
 from app.api.endpoints import system as system_endpoint
 from app.application import image as image_service
 from app.application.image import (
@@ -17,6 +21,83 @@ from app.application.image import (
     configure_image_ports,
     reset_image_ports,
 )
+from app.application.security.image import SiteImageDomainCache
+from app.runtime.cache import AsyncFileCache, FileCache
+from app.schemas.site import Site
+
+
+@pytest.fixture(autouse=True)
+def configured_image_sites(monkeypatch: pytest.MonkeyPatch) -> AsyncMock:
+    """隔离图片白名单的站点查询，避免其他用例的数据库状态影响结果。"""
+    query = AsyncMock()
+    query.list.return_value = []
+    monkeypatch.setattr(system_endpoint, "site_image_domains", SiteImageDomainCache())
+    monkeypatch.setattr(system_endpoint, "get_configured_site_query_service", lambda: query)
+    return query
+
+
+@pytest.mark.parametrize("endpoint", ["proxy", "cache"])
+@pytest.mark.parametrize(
+    ("url", "address", "ranges", "expected"),
+    [
+        ("https://www.qingwapt.com/favicon.svg", "8.8.8.8", [], True),
+        ("https://www.qingwapt.com/favicon.svg", "198.18.0.1", ["198.18.0.0/15"], True),
+        ("https://www.qingwapt.com/favicon.svg", "198.18.0.1", [], False),
+        ("https://www.qingwapt.com/favicon.svg", "127.0.0.1", ["198.18.0.0/15"], False),
+        ("https://www.qingwapt.com.evil.example/favicon.svg", "8.8.8.8", [], False),
+        ("https://evilqingwapt.com/favicon.svg", "8.8.8.8", [], False),
+        ("https://qingwapt.com@evil.example/favicon.svg", "8.8.8.8", [], False),
+        ("https://mirror.example:8443/favicon.svg", "8.8.8.8", [], True),
+        ("https://mirror.example:9443/favicon.svg", "8.8.8.8", [], False),
+    ],
+)
+def test_site_image_endpoints_preserve_dns_safety(
+    configured_image_sites: AsyncMock,
+    endpoint: str,
+    url: str,
+    address: str,
+    ranges: list[str],
+    expected: bool,
+) -> None:
+    """站点图片自动放行，两个接口均保留私网、相似域名及端口边界。"""
+    configured_image_sites.list.return_value = [
+        Site(domain="qingwapt.com", url="https://mirror.example:8443/", is_active=False),
+    ]
+    image_helper = Mock()
+    image_helper.async_fetch_image_with_mime_type = AsyncMock(return_value=(b"image", "image/png"))
+    with patch.object(system_endpoint, "get_runtime_settings", return_value={
+        "IMAGE_PROXY_ALLOWED_PRIVATE_RANGES": ranges,
+    }), patch.object(system_endpoint, "_get_image_proxy_trusted_hosts", return_value=set()), patch.object(
+        system_endpoint.SecurityUtils, "_hostname_addresses_async",
+        new=AsyncMock(return_value=[ipaddress.ip_address(address)]),
+    ), patch.object(system_endpoint, "ImageHelper", return_value=image_helper), patch(
+        "app.application.security.url._emit_image_proxy_block_warning", new=AsyncMock(),
+    ):
+        if endpoint == "proxy":
+            response = asyncio.run(system_endpoint.proxy_img(imgurl=url))
+        else:
+            response = asyncio.run(system_endpoint.cache_img(url=url))
+    assert (response is not None) is expected
+    assert image_helper.async_fetch_image_with_mime_type.await_count == int(expected)
+
+
+def test_site_image_allowlist_tracks_configuration(configured_image_sites: AsyncMock) -> None:
+    """站点改址、删除不残留白名单，非法地址不能打断其他图片请求。"""
+    configured_image_sites.list.side_effect = [
+        [Site(domain="qingwapt.com", url="https://old.example/")],
+        [Site(domain="qingwapt.com", url="https://new.example/")],
+        [Site(url=url) for url in (None, "https://[", "file://host/path", "https://user@host/")],
+    ]
+    with patch.object(system_endpoint, "get_runtime_settings", return_value={}):
+        assert asyncio.run(system_endpoint._get_image_proxy_allowed_domains()) == {
+            "https://qingwapt.com", "https://old.example",
+        }
+        system_endpoint.site_image_domains.invalidate()
+        assert asyncio.run(system_endpoint._get_image_proxy_allowed_domains()) == {
+            "https://qingwapt.com", "https://new.example",
+        }
+        system_endpoint.site_image_domains.invalidate()
+        assert asyncio.run(system_endpoint._get_image_proxy_allowed_domains()) == set()
 
 
 class _FakeImageTransport:
@@ -80,10 +161,25 @@ def restore_image_ports() -> Iterator[None]:
     reset_image_ports(*previous)
 
 
-def _image_bytes(image_format: str, trailing: bytes = b"") -> bytes:
+def _image_bytes(
+    image_format: str,
+    trailing: bytes = b"",
+    *,
+    color: tuple[int, int, int] = (32, 96, 160),
+) -> bytes:
+    """生成离线图片载荷，用于验证内容识别和响应头。"""
     buffer = io.BytesIO()
-    Image.new("RGB", (2, 2), color=(32, 96, 160)).save(buffer, format=image_format)
+    Image.new("RGB", (2, 2), color=color).save(buffer, format=image_format)
     return buffer.getvalue() + trailing
+
+
+@pytest.fixture
+def isolated_image_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> ImageHelper:
+    """让真实同步、异步文件缓存共用临时目录，用例结束后恢复单例属性。"""
+    helper = ImageHelper()
+    monkeypatch.setattr(helper, "file_cache", FileCache(base=tmp_path, local_only=True))
+    monkeypatch.setattr(helper, "async_file_cache", AsyncFileCache(base=tmp_path, local_only=True))
+    return helper
 
 
 def test_bangumi_image_proxy_domain_is_added_to_allowlist() -> None:
@@ -97,10 +193,100 @@ def test_bangumi_image_proxy_domain_is_added_to_allowlist() -> None:
             "SECURITY_IMAGE_DOMAINS": ["lain.bgm.tv"],
         },
     ):
-        assert system_endpoint._get_image_proxy_allowed_domains() == {
+        assert asyncio.run(system_endpoint._get_image_proxy_allowed_domains()) == {
             "lain.bgm.tv",
-            "image-proxy.example",
+            "https://image-proxy.example",
         }
+
+
+@pytest.mark.parametrize("key", [
+    "TMDB_IMAGE_DOMAIN", "MUSIC_COVER_PROXY", "BANGUMI_IMAGE_DOMAIN",
+    "WALLPAPER_IMAGE_URL", "CUSTOMIZE_WALLPAPER_API_URL",
+])
+@pytest.mark.parametrize("enabled", [False, True])
+def test_custom_image_proxy_settings_are_live(
+    configured_image_sites: AsyncMock, key: str, enabled: bool,
+) -> None:
+    """图片代理配置即时更新；Bangumi 关闭时不放行其自定义代理。"""
+    settings = {key: "https://proxy.example:8443/base/?url=", "BANGUMI_PROXY_ENABLE": enabled}
+    with patch.object(system_endpoint, "get_runtime_settings", return_value=settings):
+        expected = key != "BANGUMI_IMAGE_DOMAIN" or enabled
+        assert ("https://proxy.example:8443" in asyncio.run(
+            system_endpoint._get_image_proxy_allowed_domains(),
+        )) is expected
+        settings[key] = "https://new.example/path/"
+        domains = asyncio.run(system_endpoint._get_image_proxy_allowed_domains())
+        assert "https://proxy.example:8443" not in domains
+        assert ("https://new.example" in domains) is expected
+    assert configured_image_sites.list.await_count == 1
+
+
+def test_image_proxy_trusts_enabled_mediaserver_hosts() -> None:
+    """已启用媒体服务器的 host / play_host 应被规范化为受信主机。"""
+    confs = [
+        SimpleNamespace(config={"host": "192.168.1.10:8096", "play_host": "https://Emby.Example.com"}),
+        SimpleNamespace(config={"host": "http://jellyfin.lan"}),
+        SimpleNamespace(config=None),
+    ]
+    with patch.object(system_endpoint, "get_mediaserver_configs", return_value=confs) as getter:
+        assert system_endpoint._get_image_proxy_trusted_hosts() == {
+            "192.168.1.10:8096",
+            "emby.example.com",
+            "jellyfin.lan",
+        }
+    getter.assert_called_once_with()
+
+
+def test_image_proxy_trusted_hosts_empty_when_lookup_fails() -> None:
+    """媒体服务器配置读取失败时不信任任何主机，也不抛出异常。"""
+    with patch.object(system_endpoint, "get_mediaserver_configs", side_effect=RuntimeError("db down")):
+        assert system_endpoint._get_image_proxy_trusted_hosts() == set()
+
+
+@pytest.mark.parametrize(
+    ("url", "expected"),
+    [
+        ("http://192.168.1.10:8096/Items/1/Images/Primary", True),
+        ("http://jellyfin.lan:8096/Items/1/Images/Primary", True),
+        ("http://192.168.1.10:22/poster.jpg", False),
+        ("http://192.168.1.11:8096/Items/1/Images/Primary", False),
+    ],
+)
+def test_image_proxy_allows_lan_url_only_for_trusted_mediaserver_host(url: str, expected: bool) -> None:
+    """未配置私网网段时，仅受信媒体服务器主机的内网图片可通过代理。"""
+    trusted = {"192.168.1.10:8096", "jellyfin.lan"}
+    with patch.object(
+        system_endpoint.SecurityUtils,
+        "_hostname_addresses_async",
+        new=AsyncMock(return_value=[ipaddress.ip_address("192.168.1.10")]),
+    ), patch("app.application.security.url._emit_image_proxy_block_warning", new=AsyncMock()):
+        allowed = asyncio.run(
+            system_endpoint.SecurityUtils.is_safe_image_url_async(
+                url,
+                {"image.tmdb.org"},
+                allowed_private_ranges=[],
+                trusted_hosts=trusted,
+            )
+        )
+    assert allowed is expected
+
+
+def test_fetch_image_passes_mediaserver_trusted_hosts() -> None:
+    """fetch_image 应把媒体服务器受信主机传给图片 URL 安全校验。"""
+    image_helper = Mock()
+    image_helper.async_fetch_image_with_mime_type = AsyncMock(return_value=(_image_bytes("PNG"), "image/png"))
+    is_safe = AsyncMock(return_value=True)
+    with patch.object(system_endpoint.SecurityUtils, "is_safe_image_url_async", new=is_safe), patch.object(
+        system_endpoint, "ImageHelper", return_value=image_helper
+    ), patch.object(system_endpoint, "_get_image_proxy_trusted_hosts", return_value={"192.168.1.10:8096"}):
+        response = asyncio.run(
+            system_endpoint.fetch_image(
+                url="http://192.168.1.10:8096/Items/1/Images/Primary",
+                allowed_domains={"image.tmdb.org"},
+            )
+        )
+    assert response is not None
+    assert is_safe.await_args.kwargs["trusted_hosts"] == {"192.168.1.10:8096"}
 
 
 @pytest.mark.parametrize(
@@ -237,6 +423,82 @@ def test_async_fetch_image_with_mime_type_validates_network_content_once():
     assert result == (content, "image/png")
     get_mime_type.assert_called_once_with(content)
     assert transport.async_calls[0][0] == "https://images.example/wallpaper.png"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["sync", "async"])
+@pytest.mark.parametrize(
+    ("first_url", "second_url"),
+    [
+        ("https://one.example/cover.jpg", "https://two.example/cover.jpg"),
+        ("https://images.example/cover.jpg?id=one", "https://images.example/cover.jpg?id=two"),
+        ("https://images.example:8443/cover.jpg", "https://images.example:9443/cover.jpg"),
+        ("http://images.example/cover.jpg", "https://images.example/cover.jpg"),
+    ],
+    ids=["host", "query", "port", "scheme"],
+)
+async def test_image_cache_separates_url_identity(
+    isolated_image_cache, mode, first_url, second_url,
+):
+    """不同来源的同路径图片独立缓存，重复请求仍返回各自内容且不再访问网络。"""
+    first_content = _image_bytes("PNG", color=(255, 0, 0))
+    second_content = _image_bytes("PNG", color=(0, 0, 255))
+    response = Mock(status_code=200, content=first_content)
+    transport = _FakeImageTransport(sync_response=response, async_response=response)
+    configure_image_ports(transport=transport, internal_address=_FakeInternalAddress())
+
+    async def fetch(url):
+        if mode == "sync":
+            return isolated_image_cache.fetch_image_with_mime_type(url)
+        return await isolated_image_cache.async_fetch_image_with_mime_type(url)
+
+    assert await fetch(first_url) == (first_content, "image/png")
+    response.content = second_content
+    assert await fetch(second_url) == (second_content, "image/png")
+    assert await fetch(first_url) == (first_content, "image/png")
+    assert await fetch(second_url) == (second_content, "image/png")
+    calls = transport.sync_calls + transport.async_calls
+    assert [url for url, _options in calls] == [first_url, second_url]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["sync", "async"])
+async def test_image_cache_does_not_reuse_legacy_path_entry(isolated_image_cache, mode):
+    """旧路径缓存无法确认来源，升级后应重新获取对应 URL 的图片。"""
+    stale_content = _image_bytes("PNG", color=(255, 0, 0))
+    fresh_content = _image_bytes("PNG", color=(0, 0, 255))
+    isolated_image_cache.file_cache.set("covers/cover.png", stale_content, region="images")
+    response = Mock(status_code=200, content=fresh_content)
+    transport = _FakeImageTransport(sync_response=response, async_response=response)
+    configure_image_ports(transport=transport, internal_address=_FakeInternalAddress())
+    url = "https://images.example/covers/cover.png"
+
+    if mode == "sync":
+        result = isolated_image_cache.fetch_image_with_mime_type(url)
+    else:
+        result = await isolated_image_cache.async_fetch_image_with_mime_type(url)
+
+    assert result == (fresh_content, "image/png")
+    assert len(transport.sync_calls + transport.async_calls) == 1
+    assert isolated_image_cache.file_cache.get(
+        ImageHelper._prepare_cache_path(url), region="images",
+    ) == fresh_content
+
+
+def test_image_cache_paths_remain_subject_to_age_cleanup(isolated_image_cache, tmp_path):
+    """新旧缓存均留在 images 目录，既有清理能删除过期文件并保留新文件。"""
+    old_key = ImageHelper._prepare_cache_path("https://images.example/old.png")
+    fresh_key = ImageHelper._prepare_cache_path("https://images.example/fresh.png")
+    for key in (old_key, "legacy/cover.jpg", fresh_key):
+        isolated_image_cache.file_cache.set(key, _image_bytes("PNG"), region="images")
+    for key in (old_key, "legacy/cover.jpg"):
+        os.utime(tmp_path / "images" / key, (1, 1))
+
+    SystemUtils.clear(tmp_path / "images", days=7)
+
+    assert isolated_image_cache.file_cache.get(old_key, region="images") is None
+    assert isolated_image_cache.file_cache.get("legacy/cover.jpg", region="images") is None
+    assert isolated_image_cache.file_cache.get(fresh_key, region="images") == _image_bytes("PNG")
 
 
 @pytest.mark.parametrize(

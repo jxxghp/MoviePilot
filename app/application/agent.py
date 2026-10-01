@@ -22,6 +22,7 @@ from app.application.messaging.chat import (
     AgentChatPersistenceService,
     AgentChatService,
 )
+from app.application.messaging.recall import RecallService
 from app.application.plugin.data import PluginDataQueryRepository
 from app.application.security.user import ChainUserRepository
 from app.application.site.contract import SiteRepository
@@ -56,6 +57,7 @@ class AgentDataContext:
     download_history: DownloadHistoryRepository
     plugin_data: PluginDataQueryRepository
     invocations: InvocationRepository | None = None
+    recall: RecallService | None = None
 
 
 Provider = Callable[[], Any]

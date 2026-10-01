@@ -204,6 +204,8 @@ def run_application() -> None:
     )
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
+    from app.runtime.gc import configure_allocator_background_thread
+    configure_allocator_background_thread()
 
     start_tray()
     run_api_server()

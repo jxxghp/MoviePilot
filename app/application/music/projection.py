@@ -7,6 +7,7 @@ from app.domain.context import (
     MusicArtistInfo,
     MusicInfo,
 )
+from app.domain.meta.metamusic import music_credit_values
 from app.schemas.types import media_type_to_agent
 
 MUSIC_TRACK_PREVIEW_LIMIT = 100
@@ -16,6 +17,7 @@ MUSIC_RELEASE_PREVIEW_LIMIT = 20
 def simplify_music_info(info: MusicInfo) -> dict[str, Any]:
     """精简音乐列表项，同时保留订阅和下载所需的稳定身份。"""
     payload = {
+        **{key: value for key, value in music_credit_values(info).items() if value},
         "title": info.title,
         "year": info.year,
         "type": media_type_to_agent(info.type),

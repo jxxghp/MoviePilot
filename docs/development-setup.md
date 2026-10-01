@@ -243,6 +243,23 @@ Ruff/Mypy 基线只允许收紧，不接受新增诊断或类型错误增长；�
 跳过测试或产物规避超时。Coverage 只接受 GitHub Actions 的 Ubuntu/Python 3.14、locked
 依赖和全量测试工件，本机 macOS 报告仅供诊断，不得写入并提交 canonical baseline。
 
+### 6.1 结构复杂度门禁
+
+复杂度按全宿主函数的 Ruff C901（上限 15）与 PLR1702（嵌套上限 5）检查，排除
+`app/plugins/**`。方法、类和文件行数只生成观察报告，注释、空行和格式换行不再消耗硬预算。
+原来的 `--v2` 行数检查已退役。阈值以内允许正常开发；存量超限函数不能新增或继续增长。
+
+```bash
+uv run --locked --no-sync python scripts/architecture/complexity.py --report /tmp/moviepilot-complexity-report.json
+# 仅在消除全部回退、确认真实下降后固化低水位
+uv run --locked --no-sync python scripts/architecture/complexity.py --write
+uv run --locked --no-sync python scripts/architecture/complexity.py
+```
+
+`--write` 拒绝接受已有基线上的增长；减少或删除热点后必须固化低水位。
+CI 上传 `complexity-report` 工件，门禁失败时也保留已生成的指标。指标含义、限制与后续扩围见
+[代码门禁说明](code-quality.md)。
+
 ### 7. 参考资源
 
 - [uv 官方文档](https://docs.astral.sh/uv/)
@@ -253,3 +270,18 @@ Ruff/Mypy 基线只允许收紧，不接受新增诊断或类型错误增长；�
 ## 个人 fork 同步
 
 定时合并和失败通知见 [Fork 上游同步](fork-upstream-sync.md)。
+
+### Agent 历史消息索引验证
+
+独立消息库位于 Agent 运行目录，不参与主库 Alembic。使用临时运行目录运行 `tests/test_agent_recall_persistence.py`，不得用真实用户的 `state.db` 做索引破坏或重建测试。可选 CJK tokenizer 保留 Hermes 原版源码及许可证于 `native/fts5_cjk/`；构建命令见该目录 README。测试有本地 C 编译器时在临时目录构建，无编译器时只跳过原生扩展用例，不能宣称该分词路径已验证。常规 FTS5 与 trigram、短中文回退无需该扩展，扩展缺失或失效时索引状态会明确降级。独立 schema 版本不等于产品版本；后续新增主库升级脚本从 3.1.0 命名。
+
+### Agent 学习验证
+
+`tests/test_agent_learning_skills.py`、`tests/test_agent_learning_memory.py` 和
+`tests/test_agent_learning_review.py` 用临时目录与确定性模型核对 Hermes 学习契约，
+不访问实际 LLM 或个人记忆。匹配器、威胁模式和提示词的上游来源及 MIT 许可在
+`app/agent/learning/LICENSE.hermes`；不得以这些离线测试替代固定真实模型的效果评测。
+
+`tests/test_agent_guardrail_controller.py` 保留 Hermes 原始循环规则的纯行为回归，
+`tests/test_agent_guardrails.py` 使用真实 LangGraph 验证并行顺序、逐运行隔离、正常轮询、
+未知结果、尾部行动继续提示和流式停止交付。派生代码许可在 `app/agent/guardrails/LICENSE.hermes`。

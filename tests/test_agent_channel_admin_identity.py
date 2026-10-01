@@ -9,7 +9,7 @@ from app.application.messaging.channel.admin import (
     resolve_config_principal_ids,
 )
 from app.modules.discord import DiscordModule
-from app.modules.feishu.feishu import Feishu
+from app.modules.feishu.module import Feishu  # 经 module 导入以注册飞书管理员解析器
 from app.modules.qqbot.module import QQBotModule
 from app.modules.slack import SlackModule
 from app.modules.synologychat import SynologyChatModule
@@ -618,7 +618,7 @@ def test_qq_group_uses_only_member_openid_for_admin(admins, expected):
 def test_vocechat_group_uses_only_sender_uid_for_admin(admins, expected):
     message = _parse_module_message(
         VoceChatModule(),
-        config={"VOCECHAT_ADMINS": admins, "channel_id": "2"},
+        config={"VOCECHAT_ADMINS": admins, "VOCECHAT_CHANNEL_ID": "2"},
         body=json.dumps(
             {
                 "detail": {

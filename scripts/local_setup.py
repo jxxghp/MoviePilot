@@ -419,6 +419,7 @@ def _seed_default_config_files(target_dir: Path) -> None:
 
 
 def _migrate_legacy_config_if_needed(target_dir: Path) -> None:
+    """补充目标目录缺失的旧配置，仅在实际复制后提示迁移成功。"""
     target_dir = target_dir.expanduser().resolve()
     if target_dir == LEGACY_CONFIG_DIR.resolve():
         return
@@ -427,6 +428,7 @@ def _migrate_legacy_config_if_needed(target_dir: Path) -> None:
         return
 
     target_dir.mkdir(parents=True, exist_ok=True)
+    migrated = False
     for source in sorted(LEGACY_CONFIG_DIR.iterdir()):
         target = target_dir / source.name
         if target.exists():
@@ -435,7 +437,9 @@ def _migrate_legacy_config_if_needed(target_dir: Path) -> None:
             shutil.copytree(source, target)
         else:
             shutil.copy2(source, target)
-    print_step(f"已将现有本地配置迁移到 {target_dir}")
+        migrated = True
+    if migrated:
+        print_step(f"已将现有本地配置迁移到 {target_dir}")
 
 
 def configure_config_dir(
@@ -938,7 +942,10 @@ def install_frontend(
     frontend_version: str,
     node_version: str,
     archive: Optional[Path] = None,
+    *,
+    force: bool = False,
 ) -> dict[str, str]:
+    """安装前端发布包；DEV 更新强制替换同版本重新打包的制品。"""
     if archive:
         version_tag = (frontend_version or "").strip()
         if not version_tag:
@@ -950,7 +957,7 @@ def install_frontend(
         version_tag, download_url = _resolve_frontend_release(frontend_version)
     node_bin = install_node_runtime(node_version)
 
-    if _frontend_runtime_ready(version_tag):
+    if not force and _frontend_runtime_ready(version_tag):
         _write_local_frontend_service_script(PUBLIC_DIR)
         print_step(f"前端发布包已是最新版本：{version_tag}")
         return {"version": version_tag, "node": str(node_bin)}
@@ -1379,6 +1386,10 @@ def _prompt_provider_choice(label: str, choices: dict[str, str], default: str) -
 
 
 def _load_llm_provider_module():
+    """确保本地安装脚本可按应用包路径加载 LLM provider。"""
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+
     provider_path = ROOT / "app" / "agent" / "llm" / "provider.py"
     module_name = f"moviepilot_local_llm_provider_{uuid.uuid4().hex}"
     spec = importlib.util.spec_from_file_location(module_name, provider_path)
@@ -1773,11 +1784,14 @@ def _collect_path_mapping() -> list[tuple[str, str]]:
 
 
 def _collect_directory_config() -> dict[str, Any]:
+    """收集下载器内部路径与 MoviePilot 本地媒体库路径。"""
     default_download_dir = ROOT.parent / "downloads"
     default_library_dir = ROOT.parent / "media"
 
     print_step("目录配置")
-    download_path = _prompt_path("下载目录", default=default_download_dir)
+    download_path = _prompt_text(
+        "下载器中的下载目录根路径", default=str(default_download_dir)
+    )
     library_path = _prompt_path("媒体库目录", default=default_library_dir)
     transfer_type = _prompt_choice(
         "整理方式",
@@ -2205,13 +2219,42 @@ def _collect_agent_config(
     return config
 
 
+def _empty_site_auth_sync_query(_operation: Any) -> list[Any]:
+    """向导尚未初始化数据库时，将已启用站点查询视为空集。"""
+    return []
+
+
+async def _empty_site_auth_async_query(_operation: Any) -> list[Any]:
+    """提供认证目录查询所需的空异步事务结果。"""
+    return []
+
+
 def _load_auth_site_definitions_inner() -> dict[str, Any]:
+    """读取站点认证资源定义，不要求初始化向导先创建业务数据库。"""
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
 
-    from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+    from app.db import uow
 
-    auth_sites = SitesHelper().get_authsites() or {}
+    needs_transaction_runner_cleanup = (
+        uow._sync_transaction_runner is None
+        and uow._async_transaction_runner is None
+    )
+    if needs_transaction_runner_cleanup:
+        # 认证字段来自本地资源；向导此时只需字段定义，不需要数据库中的站点记录。
+        uow.configure_transaction_runners(
+            sync=_empty_site_auth_sync_query,
+            async_=_empty_site_auth_async_query,
+        )
+
+    try:
+        from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+
+        auth_sites = SitesHelper().get_authsites() or {}
+    finally:
+        if needs_transaction_runner_cleanup:
+            uow.reset_transaction_runners()
+
     definitions: dict[str, Any] = {}
     for site_key, site_conf in auth_sites.items():
         site_name = str(site_conf.get("name") or site_key).strip()
@@ -2478,11 +2521,9 @@ def _merge_notification_switches(existing_items: list[dict]) -> list[dict]:
 
 
 def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
+    """应用向导配置并确保本地媒体库路径存在，由下载器管理下载路径。"""
     for directory in config_payload.get("directories") or []:
-        download_path = directory.get("download_path")
         library_path = directory.get("library_path")
-        if download_path:
-            Path(download_path).mkdir(parents=True, exist_ok=True)
         if library_path:
             Path(library_path).mkdir(parents=True, exist_ok=True)
 
@@ -2956,27 +2997,35 @@ def _startup_platform_name() -> str:
 def _runtime_python_candidates(
     runtime_python: Optional[Path], venv_dir: Optional[Path]
 ) -> list[Path]:
+    """按优先级列出项目专用入口、venv 解释器和外部启动解释器。"""
     candidates: list[Path] = []
     seen: set[str] = set()
 
+    resolved_venv_dir = (venv_dir or (ROOT / "venv")).expanduser().resolve()
+    venv_bin_dir = get_venv_bin_dir(resolved_venv_dir)
+    project_runtime_python = venv_bin_dir / (
+        "moviepilot-python.exe" if os.name == "nt" else "moviepilot-python"
+    )
     raw_candidates = [
+        project_runtime_python,
+        get_venv_python(resolved_venv_dir),
         runtime_python,
-        get_venv_python((venv_dir or (ROOT / "venv")).expanduser().resolve()),
         Path(sys.executable) if sys.executable else None,
     ]
     for candidate in raw_candidates:
         if not candidate:
             continue
-        resolved = Path(candidate).expanduser().resolve()
-        key = str(resolved)
+        absolute = Path(candidate).expanduser().absolute()
+        key = str(absolute)
         if key in seen:
             continue
         seen.add(key)
-        candidates.append(resolved)
+        candidates.append(absolute)
     return candidates
 
 
 def _can_run_moviepilot_cli(python_bin: Path) -> bool:
+    """通过 CLI 帮助命令确认解释器可加载项目代码及其运行依赖。"""
     if not python_bin.exists():
         return False
 
@@ -2993,6 +3042,7 @@ def _can_run_moviepilot_cli(python_bin: Path) -> bool:
 def _resolve_runtime_python_for_startup(
     runtime_python: Optional[Path], venv_dir: Optional[Path]
 ) -> Path:
+    """选择可启动 MoviePilot 的运行环境，否则给出安装依赖提示。"""
     for candidate in _runtime_python_candidates(runtime_python, venv_dir):
         if _can_run_moviepilot_cli(candidate):
             return candidate
@@ -3739,6 +3789,7 @@ def _git_output(*args: str) -> str:
 
 
 def _ensure_git_clean() -> None:
+    """检查源码工作树，并在用户确认后清除已跟踪的本地改动。"""
     status = _git_output("status", "--porcelain", "--untracked-files=no")
     if not status.strip():
         return
@@ -3756,12 +3807,22 @@ def _ensure_git_clean() -> None:
             preview += " 等"
         detail = f"：{preview}"
 
-    raise RuntimeError(
-        f"检测到当前仓库有未提交的源码改动{detail}，请先提交或清理后再执行更新。"
-    )
+    try:
+        confirmed = _prompt_yes_no(
+            f"检测到当前仓库有未提交的源码改动{detail}，是否清空本地改动并继续更新",
+            default=False,
+        )
+    except (EOFError, OSError) as exc:
+        raise RuntimeError("当前终端不支持交互确认，已取消更新。") from exc
+    if not confirmed:
+        raise RuntimeError("已取消更新，未清理本地源码改动。")
+
+    print_step("清理本地已跟踪源码改动")
+    run(["git", "reset", "--hard", "HEAD"], cwd=ROOT)
 
 
 def _update_backend_ref(ref: str, *, fetch: bool = True) -> str:
+    """同步后端 Git 引用；分支快进到远端，离线标签不访问网络。"""
     if not (ROOT / ".git").exists():
         raise RuntimeError("当前目录不是 Git 仓库，无法更新后端代码。")
 
@@ -3788,7 +3849,32 @@ def _update_backend_ref(ref: str, *, fetch: bool = True) -> str:
 
     print_step(f"切换后端代码到指定版本：{ref}")
     run(["git", "checkout", ref], cwd=ROOT)
+    if fetch and _git_output("rev-parse", "--abbrev-ref", "HEAD") == ref:
+        run(["git", "pull", "--ff-only", "origin", ref], cwd=ROOT)
     return ref
+
+
+def _dev_update_enabled(args: argparse.Namespace) -> bool:
+    """按命令选项及配置判定 DEV 模式，离线安装不继承 DEV 偏好。"""
+    value = os.environ.get("MOVIEPILOT_UPDATE_DEV")
+    if value is None:
+        value = read_env_value("MOVIEPILOT_UPDATE_DEV") or "false"
+    dev = args.dev if args.dev is not None else value.strip().lower() in {
+        "1", "true", "yes", "y", "on"
+    }
+    return dev and not args.offline_backend
+
+
+def _resolve_update_versions(args: argparse.Namespace) -> tuple[str, Optional[str]]:
+    """更新命令读取 Dev 偏好；显式版本优先，离线安装始终使用已确认制品。"""
+    dev = _dev_update_enabled(args)
+    ref = args.ref
+    if not ref:
+        ref = "latest"
+        if dev and args.target in {"backend", "all"} and _git_output("rev-parse", "--abbrev-ref", "HEAD") == "HEAD":
+            ref = RESOURCE_VERSION_FLAG
+    frontend_version = args.frontend_version or ("latest" if dev else None)
+    return ref, frontend_version
 
 
 def update_backend(
@@ -3799,6 +3885,7 @@ def update_backend(
     recreate: bool,
     fetch: bool = True,
 ) -> Path:
+    """更新指定后端版本并同步其虚拟环境依赖。"""
     ensure_services_stopped()
     resolved_ref = _update_backend_ref(ref=ref, fetch=fetch)
     venv_python = install_deps(
@@ -3883,6 +3970,7 @@ def run_agent_request(
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """定义本地安装、显式更新和初始化命令的参数。"""
     parser = argparse.ArgumentParser(description="MoviePilot 本地安装与初始化工具")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -4012,13 +4100,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     update_parser = subparsers.add_parser("update", help="更新本地后端、前端或全部组件")
     update_parser.add_argument(
-        "target", choices=["backend", "frontend", "all"], help="更新目标"
+        "target", nargs="?", default="all", choices=["backend", "frontend", "all"], help="更新目标，默认 all"
     )
     update_parser.add_argument(
-        "--ref", default="latest", help="后端 Git 版本，默认 latest"
+        "--ref", help="后端 Git 版本，默认跟踪当前分支；DEV 模式下 detached HEAD 回到 v3"
     )
     update_parser.add_argument(
-        "--frontend-version", help="前端版本，默认使用 version.py 中的 FRONTEND_VERSION"
+        "--dev", action=argparse.BooleanOptionalAction, default=None,
+        help="使用 DEV 更新模式，默认读取 MOVIEPILOT_UPDATE_DEV；--no-dev 关闭"
+    )
+    update_parser.add_argument(
+        "--frontend-version", help="前端版本，DEV 默认 latest，否则使用 version.py 中的 FRONTEND_VERSION"
     )
     update_parser.add_argument(
         "--frontend-archive",
@@ -4101,6 +4193,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    """按选定配置目录执行本地管理命令并返回退出码。"""
     parser = build_parser()
     args = parser.parse_args()
     explicit_config_dir = (
@@ -4228,10 +4321,11 @@ def main() -> int:
             return 0
 
         if args.command == "update":
+            ref, frontend_version = _resolve_update_versions(args)
             ensure_services_stopped()
             if args.target in {"backend", "all"}:
                 update_backend(
-                    ref=args.ref,
+                    ref=ref,
                     python_bin=args.python,
                     venv_dir=Path(args.venv),
                     recreate=args.recreate,
@@ -4239,9 +4333,10 @@ def main() -> int:
                 )
             if args.target in {"frontend", "all"}:
                 frontend_result = install_frontend(
-                    frontend_version=args.frontend_version,
+                    frontend_version=frontend_version,
                     node_version=args.node_version,
                     archive=Path(args.frontend_archive) if args.frontend_archive else None,
+                    force=_dev_update_enabled(args),
                 )
                 print_step(f"前端更新完成，版本：{frontend_result['version']}")
             if args.target == "all" and not args.skip_resources:

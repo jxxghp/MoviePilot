@@ -162,8 +162,8 @@ class TorrentHelper:
             return None, url, "", [], "磁力链接"
         # 构建 torrent 种子文件的缓存路径
         cache_path = Path(HashUtils.md5(url)).with_suffix(".torrent")
-        # 缓存处理器
-        cache_backend = FileCache()
+        # 种子二进制固定落 TEMP_PATH/torrents 不进 Redis，下载器与提交链须按同一路由读取
+        cache_backend = FileCache(local_only=True)
         # 读取缓存的种子文件
         torrent_content = cache_backend.get(cache_path.as_posix(), region="torrents")
         if torrent_content:
@@ -697,7 +697,7 @@ class TorrentHelper:
         if torrent_year and torrent_year in target_years:
             return True, f"资源年份 {torrent_year}"
 
-        for field in ("imdb_id", "tvdb_id", "douban_id", "bangumi_id"):
+        for field in ("tmdb_id", "imdb_id", "tvdb_id", "douban_id", "bangumi_id"):
             target_id = getattr(target_mediainfo, field, None)
             candidate_id = getattr(candidate_mediainfo, field, None)
             if target_id and candidate_id and str(target_id) == str(candidate_id):

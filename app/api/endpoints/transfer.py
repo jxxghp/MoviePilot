@@ -99,6 +99,8 @@ def _build_failure_preview_item(file_item: FileItem, message: Optional[str]) -> 
     feedback = classify_transfer_failure(message)
     return {
         "source": file_item.path if file_item else None,
+        "source_storage": file_item.storage if file_item else None,
+        "source_item": file_item.model_dump(exclude={"children", "url", "thumbnail"}) if file_item else None,
         "target": None,
         "target_dir": None,
         "success": False,
@@ -204,8 +206,8 @@ def _selected_music_fileitems(
     explicitly_selected: bool,
     media_type: Optional[MediaType],
 ) -> Optional[List[FileItem]]:
-    """返回需要共享专辑上下文的显式多选音轨。"""
-    if not explicitly_selected or media_type not in (None, MediaType.MUSIC):
+    """仅在用户明确选择音乐类型时，将显式多选音轨作为专辑批次处理。"""
+    if not explicitly_selected or media_type != MediaType.MUSIC:
         return None
     if not _is_music_file_batch(fileitems):
         return None
@@ -799,6 +801,11 @@ def _execute_manual_transfer(
     mtype = MediaType.MUSIC if selected_music_fileitems is not None else mtype
     explicit_selected_files = explicit_selected_files and selected_music_fileitems is None
 
+    release_kwargs: dict[str, Any] = (
+        {"musicbrainz_release_id": transer_item.musicbrainz_release_id}
+        if transer_item.musicbrainz_release_id is not None else {}
+    )
+
     # 前端显式传入文件列表时，按选中的文件逐个处理，避免将目录整体展开。
     if explicit_selected_files:
         preview_items: List[dict] = []
@@ -815,6 +822,7 @@ def _execute_manual_transfer(
                 music_type=_resolve_music_type(src_fileitem),
                 music_release_regions=transer_item.music_release_regions,
                 music_release_scripts=transer_item.music_release_scripts,
+                **release_kwargs,
                 mtype=mtype,
                 season=transer_item.season,
                 episode_group=transer_item.episode_group,
@@ -864,7 +872,7 @@ def _execute_manual_transfer(
             merged_preview_items: List[dict] = []
             seen_sources = set()
             for preview_item in preview_items:
-                source = preview_item.get("source")
+                source = (preview_item.get("source_storage"), preview_item.get("source"))
                 if source in seen_sources:
                     continue
                 seen_sources.add(source)
@@ -910,6 +918,7 @@ def _execute_manual_transfer(
         ),
         music_release_regions=transer_item.music_release_regions,
         music_release_scripts=transer_item.music_release_scripts,
+        **release_kwargs,
         mtype=mtype,
         season=transer_item.season,
         episode_group=transer_item.episode_group,

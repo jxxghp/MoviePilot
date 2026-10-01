@@ -128,6 +128,11 @@ class PluginHelper(metaclass=WeakSingleton):
     is_package_plugin_compatible = staticmethod(PluginMarketTransport.is_package_plugin_compatible)
     check_plugin_system_version = staticmethod(PluginMarketTransport.check_plugin_system_version)
     annotate_plugin_system_version = staticmethod(PluginMarketTransport.annotate_plugin_system_version)
+    check_plugin_runtime_compatibility = staticmethod(PluginMarketTransport.check_plugin_runtime_compatibility)
+    annotate_plugin_runtime_compatibility = staticmethod(
+        PluginMarketTransport.annotate_plugin_runtime_compatibility
+    )
+    check_plugin_install_compatibility = staticmethod(PluginMarketTransport.check_plugin_install_compatibility)
     get_local_repo_paths = staticmethod(PluginMarketTransport.get_local_repo_paths)
     get_local_plugin_candidates = staticmethod(_plugin_market_transport.get_local_plugin_candidates)
     get_local_plugin_candidate = staticmethod(_plugin_market_transport.get_local_plugin_candidate)

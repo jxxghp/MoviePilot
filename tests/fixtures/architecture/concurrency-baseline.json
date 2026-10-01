@@ -334,7 +334,7 @@
   "app/chain/media/album.py:app.runtime.execution.run_in_threadpool": {
     "owners": {
       "MediaAlbumOwner._async_match_music_album_directory": 1,
-      "MediaAlbumOwner.async_recognize_music_album_directory": 2
+      "MediaAlbumOwner.async_recognize_music_album_directory": 1
     },
     "target": "app.runtime.execution.run_in_threadpool"
   },
@@ -631,6 +631,12 @@
     "owners": {
       "SchedulerLifecycleOwner.on_config_changed": 1,
       "SchedulerLifecycleOwner.stop_async": 1
+    },
+    "target": "asyncio.to_thread"
+  },
+  "app/startup/composition/network.py:asyncio.to_thread": {
+    "owners": {
+      "_NetworkTestTransportAdapter.websocket": 1
     },
     "target": "asyncio.to_thread"
   },

@@ -58,7 +58,7 @@ def test_health_routes_are_public_but_hidden_from_business_openapi() -> None:
     client = TestClient(app)
 
     assert client.get("/health/live").status_code == 200
-    schema = client.get("/api/v1/openapi.json").json()
+    schema = app.openapi()
     assert "/health/live" not in schema["paths"]
     assert "/health/ready" not in schema["paths"]
 

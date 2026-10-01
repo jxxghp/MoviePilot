@@ -539,10 +539,10 @@ def _redact_basic_auth(
     return f"{match.group(1)}{REDACTED_VALUE}"
 
 
-def _sanitize_text(value: str, *, truncated_input: bool = False) -> str:
+def _sanitize_text(value: str, *, truncated_input: bool = False, max_chars: int | None = _MAX_TEXT_CHARS) -> str:
     """清理非结构化文本中的常见凭据和图像数据 URL。"""
-    truncated = truncated_input or len(value) > _MAX_TEXT_CHARS
-    bounded_value = value[:_MAX_TEXT_CHARS]
+    truncated = truncated_input or (max_chars is not None and len(value) > max_chars)
+    bounded_value = value[:max_chars]
     truncated_json = truncated and bounded_value.lstrip().startswith(("{", "["))
     sanitized = _IMAGE_DATA_URL_PATTERN.sub(REDACTED_VALUE, bounded_value)
     sanitized = _PRIVATE_KEY_PATTERN.sub(REDACTED_VALUE, sanitized)
@@ -560,6 +560,11 @@ def _sanitize_text(value: str, *, truncated_input: bool = False) -> str:
     )
     sanitized = _OPENAI_KEY_PATTERN.sub(REDACTED_VALUE, sanitized)
     return f"{sanitized}<truncated>" if truncated else sanitized
+
+
+def sanitize_archived_text(value: str) -> str:
+    """供独立消息库 worker 脱敏完整文本；检索返回上限不能成为原始证据丢失边界。"""
+    return _sanitize_text(value, max_chars=None)
 
 
 def stable_type_name(value: Any) -> str:

@@ -22,17 +22,41 @@ class NexusPhpSiteUserInfo(SiteParserBase):
     def _parse_site_page(self, html_text: str):
         html_text = self._prepare_html_text(html_text)
 
-        user_detail = re.search(r"userdetails.php\?id=(\d+)", html_text)
-        if user_detail and user_detail.group().strip():
+        # NexusPHP v1.10+ 使用 UUID 标识用户，详情链接参数为 uuid
+        user_detail = re.search(r"userdetails\.php\?(?:id|uuid)=([0-9A-Za-z_-]+)", html_text)
+        if user_detail and user_detail.group(1).strip():
             self._user_detail_page = user_detail.group().strip().lstrip('/')
-            self.userid = user_detail.group(1)
-            self._torrent_seeding_page = f"getusertorrentlistajax.php?userid={self.userid}&type=seeding"
+            self.userid = user_detail.group(1).strip()
+            self._torrent_seeding_page = self._build_torrent_seeding_page()
         else:
             user_detail = re.search(r"(userdetails)", html_text)
             if user_detail and user_detail.group().strip():
                 self._user_detail_page = user_detail.group().strip().lstrip('/')
                 self.userid = None
                 self._torrent_seeding_page = None
+
+    @staticmethod
+    def _is_uuid(user_id: Optional[str]) -> bool:
+        """
+        判断用户标识是否为 UUID 形式。
+
+        使用 UUID 的 NexusPHP 站点将做种列表接口参数改名为 useruuid。
+        """
+        return bool(re.fullmatch(
+            r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}",
+            str(user_id or "").strip()
+        ))
+
+    def _build_torrent_seeding_page(self) -> str:
+        """
+        构造做种列表接口地址。
+
+        :return: 做种列表地址，无有效用户标识时返回空字符串
+        """
+        if not self._has_valid_userid():
+            return ""
+        user_id_param = "useruuid" if self._is_uuid(self.userid) else "userid"
+        return f"getusertorrentlistajax.php?{user_id_param}={self.userid}&type=seeding"
 
     def _parse_message_unread(self, html_text):
         """
@@ -123,21 +147,33 @@ class NexusPhpSiteUserInfo(SiteParserBase):
             has_ucoin, self.bonus = self._parse_ucoin(html)
             if has_ucoin:
                 return
-            tmps = html.xpath('//a[contains(@href,"mybonus")]/text()') if html is not None else None
-            if tmps:
-                bonus_text = str(tmps[0]).strip()
-                bonus_match = re.search(r"([\d,.]+)", bonus_text)
+            bonus_links = html.xpath('//a[contains(@href,"mybonus")]') if html is not None else []
+            for bonus_link in bonus_links:
+                # 魔力值直接写在链接文本中
+                for bonus_text in bonus_link.xpath('text()'):
+                    bonus_match = re.search(r"([\d,.]+)", str(bonus_text).strip())
+                    if bonus_match and bonus_match.group(1).strip():
+                        self.bonus = text_tools.parse_float(bonus_match.group(1))
+                        return
+                # 数值嵌在链接内部的元素中（憨憨：<a href="mybonus.php"><div>13,853,582</div></a>）
+                bonus_text = bonus_link.xpath("string(.)").strip()
+                bonus_match = re.fullmatch(r"[\s\[(（【]*([\d][\d,.]*)[\s\])）】]*", bonus_text)
                 if bonus_match and bonus_match.group(1).strip():
                     self.bonus = text_tools.parse_float(bonus_match.group(1))
                     return
-            # PTT-NP 的 mybonus 链接文本只有“使用&说明”，数值位于同一容器的文本中。
-            bonus_links = html.xpath('//a[contains(@href,"mybonus")]') if html is not None else []
+                # PTT-NP 等站点的链接文本只有“使用&说明”，数值紧跟在链接之后
+                bonus_match = re.search(r"[：:]\s*([\d,.]+)", bonus_link.tail or "")
+                if bonus_match and bonus_match.group(1).strip():
+                    self.bonus = text_tools.parse_float(bonus_match.group(1))
+                    return
             for bonus_link in bonus_links:
-                bonus_containers = bonus_link.xpath('ancestor::*[contains(., "魔力值")][1]')
-                if not bonus_containers:
-                    bonus_containers = bonus_link.xpath('parent::*')
+                # 兜底解析链接附近容器中的魔力值，容器必须临近且文本紧凑，
+                # 避免把公告、新闻等大段文本里的无关数字当作魔力值
+                bonus_containers = bonus_link.xpath('ancestor::*[position() <= 4][contains(., "魔力值")]')
                 for bonus_container in bonus_containers:
                     bonus_text = bonus_container.xpath("string(.)")
+                    if len(bonus_text) > 200:
+                        continue
                     bonus_match = re.search(r"魔力值.*?[：:]\s*([\d,.]+)", bonus_text, flags=re.S)
                     if bonus_match and bonus_match.group(1).strip():
                         self.bonus = text_tools.parse_float(bonus_match.group(1))
@@ -184,6 +220,33 @@ class NexusPhpSiteUserInfo(SiteParserBase):
                 return True, gold * 100 * 100 + silver * 100 + copper
         return False, 0.0
 
+    def _parse_seeding_pages(self) -> None:
+        """
+        优先使用完整做种列表统计，列表为空或解析不完整时回退到用户详情页统计。
+        """
+        profile_seeding = self.seeding
+        profile_seeding_size = self.seeding_size
+        profile_seeding_info = list(self.seeding_info)
+
+        # 用户详情页可能只显示部分做种记录，先暂存，避免与完整列表相加造成重复。
+        self.seeding = 0
+        self.seeding_size = 0
+        self.seeding_info.clear()
+        try:
+            # SiteParserBase keeps this legacy hook untyped.
+            super()._parse_seeding_pages()  # type: ignore[no-untyped-call]
+        except Exception:
+            self.seeding = profile_seeding
+            self.seeding_size = profile_seeding_size
+            self.seeding_info = profile_seeding_info
+            raise
+
+        if (not self.seeding or not self.seeding_size) and (profile_seeding or profile_seeding_size):
+            self.seeding = profile_seeding
+            self.seeding_size = profile_seeding_size
+            if profile_seeding_info:
+                self.seeding_info = profile_seeding_info
+
     def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: Optional[bool] = False) -> Optional[str]:
         """
         做种相关信息
@@ -223,21 +286,41 @@ class NexusPhpSiteUserInfo(SiteParserBase):
             page_seeding = 0
             page_seeding_size = 0
             page_seeding_info = []
-            # 如果 table class="torrents"，则增加table[@class="torrents"]
-            table_class = '//table[@class="torrents"]' if html.xpath('//table[@class="torrents"]') else ''
-            seeding_sizes = html.xpath(f'{table_class}//tr[position()>1]/td[{size_col}]')
-            seeding_seeders = html.xpath(f'{table_class}//tr[position()>1]/td[{seeders_col}]/b/a/text()')
-            if not seeding_seeders:
-                seeding_seeders = html.xpath(f'{table_class}//tr[position()>1]/td[{seeders_col}]//text()')
-            if seeding_sizes and seeding_seeders:
-                page_seeding = len(seeding_sizes)
-
-                for i in range(0, len(seeding_sizes)):
-                    size = self.num_filesize(seeding_sizes[i].xpath("string(.)").strip())
-                    seeders = text_tools.parse_int(seeding_seeders[i])
-
+            site_domain = self._site_domain.lower().removeprefix("www.")
+            if site_domain in {"pterclub.net", "pterclub.com"}:
+                # 猫站完整做种列表按 td[2]/td[4]/td[5] 展示种子、体积和做种人数。
+                pterclub_rows = html.xpath(
+                    '//*[@id="outer"]/table/tbody/tr | //*[@id="outer"]/table/tr'
+                    '|//table[contains(concat(" ", normalize-space(@class), " "), " torrents ")]/tbody/tr'
+                    '|//table[contains(concat(" ", normalize-space(@class), " "), " torrents ")]/tr'
+                )
+                for row in pterclub_rows:
+                    columns = row.xpath('./td | ./th')
+                    if len(columns) < 5 or not columns[1].xpath('.//a'):
+                        continue
+                    size = self.num_filesize(columns[3].xpath("string(.)").strip())
+                    if not size:
+                        continue
+                    seeders = text_tools.parse_int(columns[4].xpath("string(.)").strip())
+                    page_seeding += 1
                     page_seeding_size += size
                     page_seeding_info.append([seeders, size])
+            else:
+                # 如果 table class="torrents"，则限制在种子表中，避免解析页面其他表格。
+                table_class = '//table[@class="torrents"]' if html.xpath('//table[@class="torrents"]') else ''
+                seeding_sizes = html.xpath(f'{table_class}//tr[position()>1]/td[{size_col}]')
+                seeding_seeders = html.xpath(f'{table_class}//tr[position()>1]/td[{seeders_col}]/b/a/text()')
+                if not seeding_seeders:
+                    seeding_seeders = html.xpath(f'{table_class}//tr[position()>1]/td[{seeders_col}]//text()')
+                if seeding_sizes and seeding_seeders:
+                    page_seeding = len(seeding_sizes)
+
+                    for i in range(0, len(seeding_sizes)):
+                        size = self.num_filesize(seeding_sizes[i].xpath("string(.)").strip())
+                        seeders = text_tools.parse_int(seeding_seeders[i])
+
+                        page_seeding_size += size
+                        page_seeding_info.append([seeders, size])
 
             self.seeding += page_seeding
             self.seeding_size += page_seeding_size
@@ -264,8 +347,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
 
         return next_page
 
-    @staticmethod
-    def _fixup_next_page_url(next_page: str, userid: Optional[str]) -> Optional[str]:
+    def _fixup_next_page_url(self, next_page: str, userid: Optional[str]) -> Optional[str]:
         """
         修正做种下一页地址，无法补齐用户 ID 时停止翻页。
 
@@ -276,12 +358,12 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         parsed_url = urlsplit(next_page)
         query_params = dict(parse_qsl(parsed_url.query, keep_blank_values=True))
 
-        if query_params.get("userid"):
+        if any(query_params.get(key) for key in ("userid", "useruuid")):
             return next_page
         if not userid:
             return None
 
-        query_params["userid"] = userid
+        query_params["useruuid" if self._is_uuid(userid) else "userid"] = userid
         query_params.setdefault("type", "seeding")
         return urlunsplit(parsed_url._replace(query=urlencode(query_params)))
 
@@ -310,19 +392,29 @@ class NexusPhpSiteUserInfo(SiteParserBase):
 
             # 做种体积 & 做种数
             # seeding 页面获取不到的话，此处再获取一次
-            seeding_sizes = html.xpath('//tr/td[text()="当前上传"]/following-sibling::td[1]//'
-                                       'table[tr[1][td[4 and text()="尺寸"]]]//tr[position()>1]/td[4]')
-            seeding_seeders = html.xpath('//tr/td[text()="当前上传"]/following-sibling::td[1]//'
-                                         'table[tr[1][td[5 and text()="做种者"]]]//tr[position()>1]/td[5]//text()')
-            tmp_seeding = len(seeding_sizes)
+            seeding_tables = html.xpath(
+                '//tr/td[normalize-space(.)="当前上传" or normalize-space(.)="当前做种"]'
+                '/following-sibling::td[1]//table'
+            )
+            tmp_seeding = 0
             tmp_seeding_size = 0
             tmp_seeding_info = []
-            for i in range(0, len(seeding_sizes)):
-                size = self.num_filesize(seeding_sizes[i].xpath("string(.)").strip())
-                seeders = text_tools.parse_int(seeding_seeders[i])
+            for seeding_table in seeding_tables:
+                # 猫站使用“当前做种”作为面板行名；该表第 4、5 列分别是体积和做种人数。
+                seeding_rows = seeding_table.xpath('./tr | ./tbody/tr')
+                for seeding_row in seeding_rows:
+                    columns = seeding_row.xpath('./td | ./th')
+                    if len(columns) < 5:
+                        continue
+                    size = self.num_filesize(columns[3].xpath("string(.)").strip())
+                    # 无表头的做种表以有效体积列识别数据行，避免把表头计入数量。
+                    if not size:
+                        continue
+                    seeders = text_tools.parse_int(columns[4].xpath("string(.)").strip())
 
-                tmp_seeding_size += size
-                tmp_seeding_info.append([seeders, size])
+                    tmp_seeding += 1
+                    tmp_seeding_size += size
+                    tmp_seeding_info.append([seeders, size])
 
             if not self.seeding_size:
                 self.seeding_size = tmp_seeding_size
@@ -365,10 +457,10 @@ class NexusPhpSiteUserInfo(SiteParserBase):
                                       'and contains(@href,"seeding")]/@href')
         csrf_text = html.xpath('//meta[@name="x-csrf"]/@content')
         if not self._torrent_seeding_page and seeding_url_text:
-            user_js = re.search(r"javascript: getusertorrentlistajax\(\s*'(\d+)", seeding_url_text[0])
+            user_js = re.search(r"javascript:\s*getusertorrentlistajax\(\s*'([^']+)'", seeding_url_text[0])
             if user_js and user_js.group(1).strip():
                 self.userid = user_js.group(1).strip()
-                self._torrent_seeding_page = f"getusertorrentlistajax.php?userid={self.userid}&type=seeding"
+                self._torrent_seeding_page = self._build_torrent_seeding_page()
         elif seeding_url_text and csrf_text:
             if csrf_text[0].strip():
                 self._torrent_seeding_page \

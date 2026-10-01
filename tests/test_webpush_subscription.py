@@ -78,13 +78,13 @@ def test_send_notification_reports_all_delivery_failures(monkeypatch):
         lambda: SimpleNamespace(vapid_private_key="private", vapid_subject="mailto:test@example.com"),
     )
 
-    from pywebpush import WebPushException
+    from app.adapters.network.webpush import WebPushDeliveryError
 
     def fail_delivery(**_):
-        """模拟 Web Push SDK 抛出发送异常。"""
-        raise WebPushException("failed")
+        """模拟推送服务拒收。"""
+        raise WebPushDeliveryError("failed")
 
-    monkeypatch.setattr("pywebpush.webpush", fail_delivery)
+    monkeypatch.setattr("app.adapters.network.webpush.send_webpush", fail_delivery)
 
     response = message_endpoint.send_notification(SubscriptionMessage(title="测试"), object())
 
@@ -102,9 +102,9 @@ def test_send_notification_reports_partial_delivery(monkeypatch):
         lambda: SimpleNamespace(vapid_private_key="private", vapid_subject="mailto:test@example.com"),
     )
 
-    from pywebpush import WebPushException
+    from app.adapters.network.webpush import WebPushDeliveryError
 
-    attempts = iter([None, WebPushException("failed")])
+    attempts = iter([None, WebPushDeliveryError("failed")])
 
     def deliver_once(**_):
         """模拟一次成功和一次失败的设备发送。"""
@@ -113,7 +113,7 @@ def test_send_notification_reports_partial_delivery(monkeypatch):
             raise attempt
         return attempt
 
-    monkeypatch.setattr("pywebpush.webpush", deliver_once)
+    monkeypatch.setattr("app.adapters.network.webpush.send_webpush", deliver_once)
 
     response = message_endpoint.send_notification(SubscriptionMessage(title="测试"), object())
 

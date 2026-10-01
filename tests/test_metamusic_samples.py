@@ -3,10 +3,11 @@
 import json
 from pathlib import Path
 
+import Pinyin2Hanzi
 import pytest
 
 from app.adapters.system import rust
-from app.domain.meta import runtime
+from app.domain.meta import metamusic, runtime
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.schemas.types import MediaType
@@ -115,3 +116,21 @@ def test_pinyin_title_prefers_verified_native_subtitle(title, subtitle, expected
 
     assert meta.title == expected
     assert meta.org_string == title
+
+
+def test_pinyin_check_loads_only_syllable_table(monkeypatch):
+    """拼音校验只读音节候选表，不创建会常驻约 50MB 概率表的 DefaultHmmParams。"""
+    def reject_hmm_params(*_args, **_kwargs):
+        """完整 HMM 参数一旦被创建就显式失败。"""
+        raise AssertionError("拼音校验不应载入 HMM 概率表")
+
+    monkeypatch.setattr(Pinyin2Hanzi, "DefaultHmmParams", reject_hmm_params)
+    # 模块级 from-import 会绕过上面的替换，一并拦截。
+    monkeypatch.setattr(metamusic, "DefaultHmmParams", reject_hmm_params, raising=False)
+    monkeypatch.setattr(runtime, "_metainfo_accelerator", None)
+    metamusic._music_pinyin_states.cache_clear()
+
+    meta = MetaInfo("Shan.Ge.Liao.Zai.2023.FLAC", "音乐专辑 | 山歌廖哉 - 歌手：刀郎", mtype=MediaType.MUSIC)
+
+    assert meta.title == "山歌廖哉"
+    assert metamusic._music_pinyin_states.cache_info().currsize == 1

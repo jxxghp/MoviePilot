@@ -17,7 +17,7 @@ from app.sdk.media import (
     set_custom_separator,
 )
 from app.sdk.network import RequestUtils, RssHelper, SitesHelper
-from app.sdk.plugin import ModuleManager, PluginChain, PluginManager, _PluginBase
+from app.sdk.plugin import ModuleManager, PluginChain, PluginManager, _PluginBase  # pylint: disable=no-name-in-module  # 惰性导出，静态分析不可见
 from app.sdk.services import NotificationHelper
 from app.sdk.utilities import StringUtils as UtilityStringUtils
 from app.sdk.utilities import convert, decrypt, encrypt
@@ -158,6 +158,16 @@ for name in (
     )
 
     assert result.returncode == 0, result.stderr
+
+
+def test_feishu_sdk_exports_host_long_connection():
+    """飞书 SDK 复用宿主传输实现，插件与宿主飞书模块是同一个类。"""
+    from app.adapters.network import feishu as feishu_adapter
+    from app.sdk import feishu as feishu_sdk
+
+    assert feishu_sdk.FeishuLongConnection is feishu_adapter.FeishuLongConnection
+    assert feishu_sdk.FatalConnectionError is feishu_adapter.FatalConnectionError
+    assert feishu_sdk.FEISHU_DOMAIN == "https://open.feishu.cn"
 
 
 def test_browser_sdk_delegates_sync_and_async_launch(monkeypatch):

@@ -82,15 +82,12 @@ def test_only_v3_compatible_entries_are_candidates() -> None:
     assert not inventory.candidates_for("Undeclared")
 
 
-def test_free_threaded_runtime_excludes_explicit_v3t_false(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """V3t 只拒绝明确声明不支持的插件，未声明仍保持兼容。"""
-    monkeypatch.setattr(
-        "app.application.plugin.inventory.is_free_threaded_runtime",
-        lambda: True,
-    )
+def test_free_threaded_runtime_keeps_explicit_v3t_false_candidates() -> None:
+    """V3t 下声明不支持的插件仍进入候选，由安装准入负责拒绝并说明原因。
 
+    市场过滤会让插件在 v3t 上凭空消失，用户既看不到插件也看不到原因；
+    条目保留后前端才能在卡片上显示不支持。
+    """
     inventory = PluginCandidateInventoryReader(
         market_loader=lambda *_args: {
             "Allowed": {"version": "1.0.0"},
@@ -99,7 +96,8 @@ def test_free_threaded_runtime_excludes_explicit_v3t_false(
     ).load([THIRD_PARTY_MARKET])
 
     assert {candidate.plugin_id for candidate in inventory.online_candidates} == {
-        "Allowed"
+        "Allowed",
+        "Rejected",
     }
 
 

@@ -65,7 +65,8 @@ class SystemUpdateManager(metaclass=SingletonClass):
         "https://github.com/jxxghp/MoviePilot/archive/refs/tags/{tag}.zip"
     )
     _VERSION_PATTERN = re.compile(r"^v3\.\d+\.\d+(?:[-.](?:alpha|beta|rc)\d*)?$", re.I)
-    _STABLE_VERSION_PATTERN = re.compile(r"^v3\.\d+\.\d+$", re.I)
+    # 稳定版允许 -N 后缀，用于不升小版本的临时修复（如 v3.0.10-1）
+    _STABLE_VERSION_PATTERN = re.compile(r"^v3\.\d+\.\d+(?:-\d+)?$", re.I)
 
     def __init__(self) -> None:
         self._lock = threading.RLock()
@@ -318,11 +319,12 @@ class SystemUpdateManager(metaclass=SingletonClass):
                     )
                     changed = True
                 elif (
-                    item.get("state") in {"installing", "ready"}
+                    item.get("state") in {"available", "ready", "installing", "failed"}
                     and self._is_install_applied(item, target)
                 ):
-                    if item.get("state") == "ready":
-                        # 容器替换或手工安装可能先让运行版本达到目标，需丢弃残留待安装包。
+                    if item.get("state") in {"ready", "failed"}:
+                        # 容器替换或手工安装可能先让运行版本达到目标，需丢弃残留待安装包；
+                        # 失败记录同样保留了供重试的下载包，外部升级后已无意义。
                         self._discard_prepared_target(target)
                     self._reset_item_after_install(item)
                     changed = True

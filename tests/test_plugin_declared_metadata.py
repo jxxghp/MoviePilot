@@ -205,3 +205,41 @@ def test_declared_metadata_fallback_is_batch_safe_and_preserves_runtime_fields()
     assert result[1].plugin_version == "loaded-version"
     assert result[1].runtime_status is PluginRuntimeStatus.READY
     assert result[2].plugin_name == "MissingPlugin"
+
+
+def test_installed_card_marks_runtime_incompatibility_from_declared_snapshot() -> None:
+    """已安装卡片的 v3t 不兼容提示必须能离线得出。
+
+    市场候选那条标注路径要联网才有结果，而切到 v3t 的用户首先看到的是"我的插件"。
+    安装时提交的声明快照是运行目录唯一可离线信任的来源，这里钉住它被消费。
+    """
+    blocked = _identity(
+        _metadata({"name": "Blocked", "v3": True, "v3t": False}),
+        plugin_id="BlockedPlugin",
+    )
+    allowed = _identity(
+        _metadata({"name": "Allowed", "v3": True}),
+        plugin_id="AllowedPlugin",
+    )
+    plugins = [
+        Plugin(id="BlockedPlugin", plugin_name="Blocked", installed=True),
+        Plugin(id="AllowedPlugin", plugin_name="Allowed", installed=True),
+    ]
+
+    on_free_threaded = apply_declared_metadata_fallback(
+        plugins,
+        {"blockedplugin": blocked, "allowedplugin": allowed},
+        free_threaded=True,
+    )
+    assert on_free_threaded[0].runtime_compatible is False
+    assert "v3t" in (on_free_threaded[0].runtime_message or "")
+    assert on_free_threaded[1].runtime_compatible is not False
+
+    # 标准 V3 上同一份声明不得产生任何提示
+    on_standard = apply_declared_metadata_fallback(
+        plugins,
+        {"blockedplugin": blocked, "allowedplugin": allowed},
+        free_threaded=False,
+    )
+    assert on_standard[0].runtime_compatible is not False
+    assert on_standard[0].runtime_message is None

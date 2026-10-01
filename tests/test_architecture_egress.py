@@ -3,8 +3,8 @@
 import json
 from pathlib import Path
 
-from scripts.architecture.baseline import collect_dependency_baseline
 from scripts.architecture.egress import collect_direct_egress
+from tests.architecture_cache import dependency_baseline
 
 PROJECT_ROOT = Path(__file__).parents[1]
 DEPENDENCY_POLICY_PATH = (
@@ -38,20 +38,18 @@ FROZEN_EGRESS_EDGES_BY_REASON = {
         ("app.agent.llm.discovery", "google.genai"),
         ("app.agent.llm.discovery", "openai"),
         ("app.agent.tools.impl.search_web", "ddgs"),
-        ("app.api.endpoints.message", "pywebpush"),
         ("app.modules.discord.discord", "discord"),
-        ("app.modules.feishu.feishu", "lark_oapi"),
         ("app.modules.filemanager.storages.smb", "smbclient"),
         ("app.modules.filemanager.storages.u115", "oss2"),
         ("app.modules.plex.plex", "plexapi"),
         ("app.modules.qbittorrent.qbittorrent", "qbittorrentapi"),
         ("app.modules.slack.slack", "slack_bolt"),
         ("app.modules.slack.slack", "slack_sdk"),
-        ("app.modules.telegram.telegram", "telebot"),
         ("app.modules.transmission.transmission", "transmission_rpc"),
-        ("app.modules.webpush", "pywebpush"),
     },
     "streaming_protocol": {
+        ("app.startup.composition.network", "websocket"),
+        ("app.adapters.network.feishu", "websocket"),
         ("app.modules.qqbot.gateway", "websocket"),
         ("app.modules.rtorrent.rtorrent", "socket.create_connection"),
         ("app.modules.rtorrent.rtorrent", "xmlrpc.client.ServerProxy"),
@@ -74,9 +72,7 @@ FROZEN_EGRESS_EDGES_BY_REASON = {
         ("app.modules.filemanager.storages.smb", "smbprotocol"),
         ("app.modules.jellyfin.jellyfin", "requests"),
         ("app.modules.rtorrent.rtorrent", "http.client"),
-        ("app.modules.telegram.compat", "urllib3"),
         ("app.modules.zspace.zspace", "requests"),
-        ("app.startup.lifecycle", "urllib3"),
     },
     "test_network_guard": {
         ("app.testing.network", "socket.getaddrinfo"),
@@ -95,8 +91,8 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.adapters.network.doh", "socket.getaddrinfo"): "4ff03419dfacc6bf582b7d4421dd5a0666a63f8ca79be2b1e625f4c8f4c96b71",
     ("app.adapters.network.doh", "urllib.request"): "6f5f5fd3da02a9e780ea5e7cc1e47bd962314a1a358f14b4ee698485f96ab52b",
     ("app.adapters.network.http", "httpx"): "c00458c868240f1adfe6278ba22bd5c4782e9bd2fcf896114c2288bf82981ee3",
-    ("app.adapters.network.http", "httpx2"): "a70799e9930ff79cd28ebed92836c8108cd2d18bc668e0081f68533d84f69d0d",
-    ("app.adapters.network.http", "requests"): "dffac27a2e24803dd7c50b238ba44b4f106b7b105e63a487edc12258f65c710d",
+    ("app.adapters.network.http", "httpx2"): "73879afc31531cc27241f21e0edf3b8e493a7d9aef973d0c2e28165d006e631d",
+    ("app.adapters.network.http", "requests"): "c95df710a8536328f5ee005c0ce065b9528f2f4ebae1f077315102d8c0f4c01f",
     ("app.adapters.network.http", "urllib3"): "66cbd8ec4e7552bd458db0baada30f1953e6d0493793822d23a2199567bca98a",
     ("app.adapters.network.ip", "socket.gethostbyname"): "a43e8969e2f26546fcf925b258728b309f1b9b966ff3c7b48a64273b8c82d048",
     ("app.adapters.network.resolver", "socket.getaddrinfo"): "1b1ce6763d730d7aa9c35d32a668560013c939467dcb3087357ffa53653ff306",
@@ -112,18 +108,17 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.agent.llm.discovery", "google.genai"): "5b87a7bb210b521bd21971fb6e3d19ca450658548670106e3c756c0ce3a83cad",
     ("app.agent.llm.discovery", "openai"): "fff154461ff3fdfdf1daea0530dcb68589d6ad7a67f3966e3b86338b483e6dfd",
     ("app.agent.tools.impl.search_web", "ddgs"): "377e73bb3be804b825d60ad6e792344ca633de107f8c4dbb45d50a34a4dfa04b",
-    ("app.api.endpoints.message", "pywebpush"): "7d83ca0dc89dfb6af1cdd7bc90d922105de94222e4e3a44bba4f53bbd97bc31b",
     ("app.cli", "urllib.request"): "71b3e5be2a7d85fdc7a207d15c0e690d7ab96b335b882a3eaec03a1cb4ec1d1b",
     ("app.doctor.checks", "socket.create_connection"): "dfb34d4710353029dcc06e0e0ce3b299bae1a7e71a5743de1d253ac26380f9b6",
     ("app.doctor.checks", "urllib.request"): "d8dd2279263ef58c3b4c59c70451533a4fc27d2ccd76960ca3aff29cd73f3354",
     ("app.modules.discord.discord", "discord"): "e1486525fedbfe574aa47d60b483426c8c48e4e27fa35dbe34f6cd2f47d37c86",
     ("app.modules.emby.emby", "requests"): "6c4c17fe170226ea1272f5859bc119c2775442cabe8ce2a9edcabaf9c37bec31",
-    ("app.modules.feishu.feishu", "lark_oapi"): "99d16968a59932b5980f6d42ea2bbc8fa35ccdb1a27933beec29b4bdc093d78b",
-    ("app.modules.filemanager.storages.smb", "smbclient"): "62e0585282ef206ac81b2bf9e93a58423fb058685edc0ef4ee592453bbf30376",
+    ("app.adapters.network.feishu", "websocket"): "95aca65eed288e0c7654ab49aad6c535d9313d5e38c44b1cb1768dcdfc772453",
+    ("app.modules.filemanager.storages.smb", "smbclient"): "37619f050b03598fa559c6ae2df94bda6adf7cffd1cc42d9db9059f1fb41af47",
     ("app.modules.filemanager.storages.smb", "smbprotocol"): "f02686afd99c59820dffa7b4c2627a0be1ad62980c98a9cd33b7564697842b22",
     ("app.modules.filemanager.storages.u115", "oss2"): "f7b89c8ae6dad2603f0a9e0caaa159769aef5b3581d7e728f62445b979366eae",
     ("app.modules.jellyfin.jellyfin", "requests"): "5c46d09ca9a4bcc0bae21ca5d554ef09baa3f901c562b27c5f5ee1439c7746b5",
-    ("app.modules.plex.plex", "plexapi"): "76c1334863dc6c6623ce6ad3415bec5ff92656f51c31e4d982285898f193e57e",
+    ("app.modules.plex.plex", "plexapi"): "55baa4290bb62468d504e954add3921c0068f3a3c77aa3db92667ae9022909ca",
     ("app.modules.qbittorrent.qbittorrent", "qbittorrentapi"): "b2f5a27f0c54cf95ed42fe99848fd6c9c0641caca8bc4ff8006a411cb427066d",
     ("app.modules.qqbot.gateway", "websocket"): "6f6b7d61f3a95e620e67c450d544f0aa077f087a188d98f32e4501d94c6b37ae",
     ("app.modules.rtorrent.rtorrent", "http.client"): "6adc93b3bc479dfe81197554c7977930a60abc51714f14ef29298eb40730aaf7",
@@ -131,14 +126,11 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.modules.rtorrent.rtorrent", "xmlrpc.client.ServerProxy"): "2ac64b5670c930bc28bb2135cc4b73891c1cae01a74a9586f74e302878c45c85",
     ("app.modules.slack.slack", "slack_bolt"): "be5dcb032ece8d8627abeb243f98143aaf60f26751ab6e5e098813d4048419e6",
     ("app.modules.slack.slack", "slack_sdk"): "7559f31e4172ad3bbbaf161e1164ea48b997c56d05c77b49b82626298c39aa14",
-    ("app.modules.telegram.compat", "urllib3"): "18862bbdb252b59573f57ea776b5d64bfb775e7739603fecd23cc8f2c38a7e0d",
-    ("app.modules.telegram.telegram", "telebot"): "78f5ab18bfd67ba4fa0f3c0fc4a1a561a7b1d9e81e335fb80de86edb480b84b8",
     ("app.modules.themoviedb.tmdbv3api.tmdb", "requests"): "d605eb176a203b3f4d205c5d183469b3002426682eb9cb4e7408bb6013652484",
     ("app.modules.transmission.transmission", "transmission_rpc"): "1652e661cb17dbadb039fdc4ab73d6d06e47eb118292ba3693313e45834959cf",
-    ("app.modules.webpush", "pywebpush"): "389c73b06150e3d5bcaf31f35a25178873d2ed38ef9a28354cb9bab691eeab76",
     ("app.modules.wechat.wechatbot", "websocket"): "1bae78270eadce0571e2caaa111a5c0a9065ba2da97ebb26b8a5b76d3ed5eef6",
+    ("app.startup.composition.network", "websocket"): "09e1909ac750fe40b145dde8fee52eedf84aaf2123f6a1bc38109252c89d6000",
     ("app.modules.zspace.zspace", "requests"): "9df3fd27b9696d45a72e7c8f67b5a9ad79a7371d1fe690bbaa17485bd1960d51",
-    ("app.startup.lifecycle", "urllib3"): "cb6f0a314aeb1e2d3e76c240aa20460ac0c36d9f5c18c1a6ea3170f64dd3366b",
     ("app.testing.network", "socket.getaddrinfo"): "ebf33718b54c81e1f575401da4a0bef5aa0e1ddc284e201f557897feeca71c6d",
 }
 
@@ -670,7 +662,7 @@ class Service:
 
 def test_current_egress_facts_are_complete_and_self_consistent() -> None:
     """当前宿主 egress identity 必须完整、可收缩、排序且统计自洽。"""
-    value = collect_dependency_baseline()["direct_egress"]
+    value = dependency_baseline()["direct_egress"]
     entries = value["entries"]
     application_entries = [
         entry
@@ -720,7 +712,7 @@ def test_current_egress_facts_are_complete_and_self_consistent() -> None:
 
 def test_current_egress_facts_match_exact_policy() -> None:
     """现存事实必须逐条分类，且 registry/scope 不得与 collector 漂移。"""
-    facts = collect_dependency_baseline()["direct_egress"]
+    facts = dependency_baseline()["direct_egress"]
     policy = json.loads(DEPENDENCY_POLICY_PATH.read_text(encoding="utf-8"))
     egress_policy = policy["direct_egress"]
     groups = egress_policy["groups"]

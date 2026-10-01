@@ -332,9 +332,12 @@ async def test_unresolved_write_does_not_block_another_host_user_or_session(invo
         arguments = {**WRITE_ARGUMENTS, "user_id": "injected-user", "session_id": "injected-session"}
         graph, _model, _middleware = _graph(repository, [
             AIMessage(content="", tool_calls=[_call("same-provider-call-id", arguments)]),
+            AIMessage(content="", tool_calls=[_call("corrected-call-id", WRITE_ARGUMENTS)]),
             AIMessage(content="待核验"),
         ], context=context)
-        await _invoke(graph)
+        messages = _tool_messages(await _invoke(graph))
+        assert messages[0].status == "error"
+        assert "session_id, user_id" in messages[0].content
     assert run.await_count == 3
     assert {(row["principal_id"], row["session_id"]) for row in records()} == {
         (context.user_id, context.session_id) for context in contexts
@@ -410,6 +413,65 @@ async def test_api_effective_parameters_prevent_unknown_retry_bypass(invocation_
     assert normalized == tool.canonical_arguments(retry)
     assert writes[0] == normalized
     assert "ignored_by_endpoint" not in (normalized.get("body") or {})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("invalid", "corrected", "hint"), [
+    (
+        {"operation_id": "media.detail", "media_id": "27205", "media_source": "tmdb", "type_name": "电影"},
+        {"operation_id": "media.detail", "path_params": {"media_id": "27205"},
+         "query": {"media_source": "tmdb", "type_name": "电影"}},
+        "path_params.media_id",
+    ),
+    (
+        {"operation_id": "subscription.execution.list", "query": {"page": 1, "count": 20}},
+        {"operation_id": "subscription.execution.list", "query": {"limit": 10}},
+        "page",
+    ),
+    (
+        {"operation_id": "site.rss", "site_id": 1},
+        {"operation_id": "site.rss", "query": {"page": 1, "count": 20}},
+        "site_id",
+    ),
+])
+async def test_api_read_errors_reach_model_and_corrected_call_executes_once(invocation_runtime, invalid, corrected, hint):
+    """真实 Agent 图把纠错回执交给下一轮模型，只有修正后的只读调用到达执行器。"""
+    repository, records = invocation_runtime
+    executor = AsyncMock()
+    executor.execute.return_value = '{"success":true}'
+    tool = MoviePilotApiTool(session_id="invocation-chat", user_id="owner", executor=executor)
+    tool.set_agent_context({"is_admin": True})
+    graph, _model, _middleware = _graph(repository, [
+        AIMessage(content="", tool_calls=[_call("invalid-read", invalid)]),
+        AIMessage(content="", tool_calls=[_call("corrected-read", corrected)]),
+        AIMessage(content="查询完成"),
+    ], tools=[tool])
+
+    messages = _tool_messages(await _invoke(graph))
+    assert messages[0].status == "error"
+    failure = json.loads(messages[0].content)
+    assert failure["error"] == "invalid_input"
+    assert hint in failure["message"]
+    assert failure["input_contract"]["operation_id"] == invalid["operation_id"]
+    assert json.loads(messages[1].content)["success"] is True
+    executor.execute.assert_awaited_once()
+    assert records() == []
+
+
+@pytest.mark.asyncio
+async def test_flattened_write_arguments_fail_before_claim(invocation_runtime, monkeypatch):
+    """即使请求体本身合法，额外顶层写入字段也必须在认领前失败并提示位置。"""
+    repository, records = invocation_runtime
+    run = AsyncMock(return_value='{"success":true}')
+    monkeypatch.setattr(MoviePilotApiTool, "run", run)
+    graph, _model, _middleware = _graph(repository, [
+        AIMessage(content="", tool_calls=[_call("invalid-write", {**WRITE_ARGUMENTS, "allow_unrecognized": True})]),
+        AIMessage(content="需要修正参数"),
+    ])
+    failure = json.loads(_tool_messages(await _invoke(graph))[0].content)
+    assert "allow_unrecognized 应移入 body.allow_unrecognized" in failure["message"]
+    assert records() == []
+    run.assert_not_awaited()
 
 
 @pytest.mark.asyncio

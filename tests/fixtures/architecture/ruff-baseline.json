@@ -204,7 +204,6 @@
     "I001": 1
   },
   "app/modules/feishu/__init__.py": {
-    "F401": 1,
     "I001": 1
   },
   "app/modules/filemanager/__init__.py": {
@@ -350,7 +349,7 @@
     "I001": 1
   },
   "app/modules/telegram/telegram.py": {
-    "I001": 3
+    "I001": 2
   },
   "app/modules/themoviedb/cache.py": {
     "I001": 1
@@ -644,15 +643,6 @@
   },
   "tests/test_feedback_issue_scripts.py": {
     "I001": 1
-  },
-  "tests/test_feishu_media_message.py": {
-    "E402": 3
-  },
-  "tests/test_feishu_post_message.py": {
-    "E402": 1
-  },
-  "tests/test_feishu_ws_lifecycle.py": {
-    "E402": 1
   },
   "tests/test_free_threaded_ab.py": {
     "I001": 1

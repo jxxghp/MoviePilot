@@ -573,7 +573,7 @@ class MetaBase(object):
             ret_string = f"{ret_string} {self.resource_effect}"
         if self.resource_pix:
             ret_string = f"{ret_string} {self.resource_pix}"
-        return ret_string
+        return ret_string.strip()
 
     @property
     def edition(self) -> str:

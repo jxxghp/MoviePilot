@@ -4,8 +4,12 @@ from xml.dom import minidom
 
 import pytest
 
-from app.domain.context import MediaInfo
+from app.application.torrent.download import TorrentHelper
+from app.chain.search import SearchChain
+from app.chain.search.plan import SearchPlanOwner
+from app.domain.context import MediaInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
+from app.domain.metainfo import MetaInfo
 from app.domain.scraper import MediaScraperHelper
 from app.modules.anilist import AniListModule
 from app.modules.anilist.anilist import AniListApi
@@ -99,6 +103,104 @@ def test_anilist_id_recognition_normalizes_media_info(anilist_info: dict) -> Non
     assert media.directors[0]["name"] == "Keiichiro Saito"
     assert media.actors[0]["character"] == "Frieren"
     module.anilist_api.detail.assert_called_once_with(154587)
+
+
+def test_anilist_sequel_entry_matches_series_numbered_torrent(
+    anilist_info: dict, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """AniList 独立续季条目应按真实季号和基础别名匹配整部剧编号的资源。"""
+    info = {
+        **anilist_info,
+        "id": 135865,
+        "title": {
+            "chinese": "幼女戦記Ⅱ",
+            "native": "幼女戦記Ⅱ",
+            "romaji": "Youjo Senki II",
+            "english": "Saga of Tanya the Evil Season 2",
+        },
+        "synonyms": ["Youjo Senki 2"],
+        "startDate": {"year": 2026},
+        "episodes": 12,
+    }
+    module = AniListModule()
+    module.anilist_api = Mock()
+    module.anilist_api.detail.return_value = info
+    media = module.recognize_media(media_source=MediaSource.AniList, media_id="135865")
+
+    assert media is not None
+    assert media.season == 2
+    assert media.seasons == {2: list(range(1, 13))}
+    assert media.season_years == {2: "2026"}
+    assert "Youjo Senki" in media.names
+    prepared = SearchPlanOwner._prepare_media_input(media)
+    season_episodes, _ = SearchPlanOwner._prepare_params(prepared)
+    assert prepared.season == 2
+    assert season_episodes == {2: []}
+
+    torrent = TorrentInfo(
+        site_name="测试站点",
+        title="Youjo Senki S02E12 2026 1080p CR WEB-DL x264 AAC-AnimeS@ADWeb",
+        category=MediaType.TV.value,
+    )
+    torrent_meta = MetaInfo(torrent.title)
+    assert TorrentHelper.match_season_episodes(torrent, torrent_meta, season_episodes)
+    assert TorrentHelper.match_torrent(prepared, torrent_meta, torrent)
+
+    wrong_season = TorrentInfo(
+        site_name="测试站点",
+        title="Youjo Senki S01E12 2026 1080p WEB-DL",
+        category=MediaType.TV.value,
+    )
+    wrong_meta = MetaInfo(wrong_season.title)
+    assert not TorrentHelper.match_season_episodes(wrong_season, wrong_meta, season_episodes)
+    assert not TorrentHelper.match_torrent(prepared, wrong_meta, wrong_season)
+    monkeypatch.setattr(TorrentHelper, "sort_torrents", staticmethod(lambda contexts: contexts))
+    contexts = object.__new__(SearchChain)._parse_result(
+        torrents=[torrent, wrong_season],
+        mediainfo=prepared,
+        season_episodes=season_episodes,
+        rule_groups=[],
+    )
+    assert len(contexts) == 1
+    assert contexts[0].torrent_info.title == torrent.title
+
+
+def test_anilist_sequel_without_torrent_year_uses_shared_tmdb_identity() -> None:
+    """无年份基础标题需要候选与 AniList 条目共享 TMDB 身份才能消歧。"""
+    target = MediaInfo(
+        media_source=MediaSource.AniList,
+        media_id="135865",
+        tmdb_id=69346,
+        title="幼女戦記Ⅱ",
+        original_title="幼女戦記Ⅱ",
+        names=["Youjo Senki", "Youjo Senki II"],
+        type=MediaType.TV,
+        year="2026",
+        season=2,
+        seasons={2: list(range(1, 13))},
+        season_years={2: "2026"},
+    )
+    torrent_meta = MetaInfo("Youjo Senki S02E12 1080p WEB-DL")
+    matching = MediaInfo(
+        media_source=MediaSource.TMDB,
+        media_id="69346",
+        tmdb_id=69346,
+        title="幼女战记",
+        type=MediaType.TV,
+        year="2017",
+    )
+    conflicting = MediaInfo(
+        media_source=MediaSource.TMDB,
+        media_id="99999",
+        tmdb_id=99999,
+        title="另一部作品",
+        type=MediaType.TV,
+        year="2017",
+    )
+
+    assert TorrentHelper.requires_identity_disambiguation(target, torrent_meta)
+    assert TorrentHelper.match_same_work_evidence(target, matching, torrent_meta)[0]
+    assert not TorrentHelper.match_same_work_evidence(target, conflicting, torrent_meta)[0]
 
 
 def test_anilist_title_recognition_respects_request_source(anilist_info: dict) -> None:

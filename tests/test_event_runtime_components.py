@@ -5,12 +5,16 @@ import threading
 import types
 from unittest.mock import Mock
 
+import pytest
+
 from app.foundation.singleton import Singleton
 from app.runtime.event.binding import (
     EventBindingResolver,
     EventHandlerBinding,
 )
+from app.runtime.event.dispatch import EventDispatcher
 from app.runtime.event.errors import EventErrorPolicy
+from app.runtime.event.registry import EventRegistry
 from app.runtime.events import Event
 from app.runtime.extensions.plugin import manager as plugin_manager_module
 from app.runtime.extensions.plugin.manager import PluginManager
@@ -85,10 +89,65 @@ def test_unloaded_module_class_handler_is_skipped() -> None:
             resolvers=lambda: {},
         )
         assert binding.resolve(residual_handler) is None
-        # 模块卸载后 identifier 回退为 unknown_module 前缀，与线上日志一致
         assert binding.unresolved_handlers() == (
-            "unknown_module._ResidualPlugin.reload",
+            f"{fake_name}._ResidualPlugin.reload",
         )
+    finally:
+        sys.modules.pop(fake_name, None)
+
+
+def test_quiesced_handler_stays_disabled_after_module_unload() -> None:
+    """事件快照中的旧 handler 在模块卸载后仍应按已禁用状态跳过。"""
+    fake_name = "tests._fake_quiesced_plugin"
+    fake_module = types.ModuleType(fake_name)
+    sys.modules[fake_name] = fake_module
+    try:
+        exec(
+            "class _QuiescedPlugin:\n"
+            "    def reload(self, event):\n"
+            "        raise AssertionError('quiesced handler must not run')\n",
+            fake_module.__dict__,
+        )
+        residual_handler = fake_module._QuiescedPlugin.reload
+        broadcast_subscribers: dict = {}
+        disabled_handlers: set[str] = set()
+        disabled_classes: set[str] = set()
+        registry = EventRegistry(
+            lock=threading.Lock(),
+            broadcast_subscribers=lambda: broadcast_subscribers,
+            chain_subscribers=lambda: {},
+            disabled_handlers=lambda: disabled_handlers,
+            disabled_classes=lambda: disabled_classes,
+        )
+        registry.add(EventType.PluginReload, residual_handler, 0)
+        registry.disable(fake_module._QuiescedPlugin)
+        del sys.modules[fake_name]
+
+        assert EventRegistry.handler_identifier(residual_handler) == (
+            f"{fake_name}._QuiescedPlugin.reload"
+        )
+        assert EventRegistry.handler_class_identifier(residual_handler) == (
+            f"{fake_name}._QuiescedPlugin"
+        )
+        assert not registry.is_handler_enabled(residual_handler)
+
+        binding = EventBindingResolver(
+            lock=threading.Lock(),
+            resolvers=lambda: {},
+        )
+        dispatcher = EventDispatcher(
+            registry=registry,
+            binding_resolver=binding,
+            event_factory=Event,
+            error_handler=lambda **_kwargs: None,
+            async_handle_sink=lambda _handle: True,
+            sync_handle_sink=lambda _callback, _args: True,
+        )
+        dispatcher.dispatch_broadcast_strict(
+            Event(EventType.PluginReload, {"plugin_id": "_QuiescedPlugin"}),
+            lambda _awaitable: None,
+        )
+        assert binding.unresolved_handlers() == ()
     finally:
         sys.modules.pop(fake_name, None)
 
@@ -121,7 +180,7 @@ def test_unloaded_module_decorator_wrapped_method_is_skipped() -> None:
         )
         assert binding.resolve(residual_handler) is None
         assert binding.unresolved_handlers() == (
-            "unknown_module._deco.<locals>.wrapper",
+            f"{fake_name}._deco.<locals>.wrapper",
         )
     finally:
         sys.modules.pop(fake_name, None)
@@ -265,10 +324,24 @@ def test_all_decorated_host_handler_classes_have_explicit_factories() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    ("backend_type", "redis_owners"),
+    [
+        ("redis", {"AsyncRedisHelper", "RedisHelper"}),
+        ("cachetools", set()),
+    ],
+)
 def test_all_unmanaged_config_reload_classes_have_explicit_providers(
     monkeypatch,
+    compose_cache_backend,
+    backend_type,
+    redis_owners,
 ) -> None:
-    """专属 resolver 未覆盖的配置 owner 必须全部声明生命周期 Provider。"""
+    """专属 resolver 未覆盖的配置 owner 必须全部声明生命周期 Provider。
+
+    Redis 连接 owner 只在启动时选用 Redis 缓存后才有 Provider。
+    """
+    compose_cache_backend(backend_type)
     manager = object.__new__(PluginManager)
     plugin_singleton_key = (PluginManager, (), frozenset())
     monkeypatch.setitem(Singleton._instances, plugin_singleton_key, manager)
@@ -280,14 +353,12 @@ def test_all_unmanaged_config_reload_classes_have_explicit_providers(
     providers = get_config_reload_handler_providers()
 
     assert {owner.__name__ for owner in providers} == {
-        "AsyncRedisHelper",
         "DohHelper",
         "Monitor",
         "PluginManager",
-        "RedisHelper",
         "SystemHelper",
         "TransferChain",
-    }
+    } | redis_owners
 
 
 def test_error_alert_dedup_preserves_distinct_events_handlers_and_errors():

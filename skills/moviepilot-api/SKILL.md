@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 33
+version: 41
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -67,10 +67,23 @@ allowed-api-operations: >-
 
 # MoviePilot API
 
+For relevant prior conversations or previous tool evidence, use the host-provided
+`session_search` tool when available. Discover a session, then read its anchored
+messages; past results are context, not proof of current state or permission to
+repeat a write. Stable preferences use `search_memory`; its former `activity`
+category no longer exists. Neither tool is an API operation or an external MCP tool.
+
 Use `moviepilot_api` for normal MoviePilot business operations. The tool accepts
 only `operation_id`, `path_params`, `query`, and `body`. The host chooses the
 fixed HTTP method and path, creates the current user's authentication token,
 applies authorization and confirmation policy, and returns the API response.
+
+`subscription.add`, `subscription.update`, and `subscription.delete` require
+confirmation and use the active MoviePilot user bound to the channel account,
+including for channel administrators. Creation belongs to that user; ordinary
+users may update or delete only their own subscriptions. An unbound or inactive
+channel user must bind an active account before retrying, not switch to an
+administrator identity.
 
 This file is intentionally kept as the routing and execution guide. Detailed
 operation contracts live in the linked category files under `api/`; load only
@@ -82,6 +95,18 @@ Never fall back to a retired tool name or `moviepilot tool` MCP command. If an
 operation is not listed in this skill, do not simulate it through arbitrary HTTP;
 use a more specific skill or explain that the structured operation is unavailable.
 
+For SMB organization, keep the source `FileItem.storage` and share-relative
+`path` together. Downloader task paths mapped to SMB retain the `smb:` prefix;
+never interpret them as local filesystem paths. Same-storage SMB copy, move,
+and hard-link operations execute on the server and fail without downloading
+and re-uploading the media when the server cannot perform them. This does not
+change separate content-processing operations such as embedded music tags.
+With `shares: ["video", "downloads"]`, paths start with the share name, such as
+`/downloads/Movie.mkv` and `/video/Movie.mkv`. Legacy `share` keeps share-relative
+paths. Cross-share moves copy on the server before deleting the source and are
+not atomic; cross-share hard links are unsupported. Update saved directory and
+downloader mappings when switching path modes.
+
 ## Overall Workflow
 
 1. Select the exact `operation_id` from the category index below.
@@ -91,13 +116,35 @@ use a more specific skill or explain that the structured operation is unavailabl
 3. The selected category file already includes the shared body Models needed to
    construct its calls; do not load a second Models document.
 4. Build one gateway call with only declared fields. Preserve source-native
-   identifiers and use the documented pagination fields.
+   identifiers and use the documented pagination fields. Pass object and array
+   bodies as native JSON values, and pass null only when the selected operation
+   allows it. The only string body is the literal `"dev"` for `system.upgrade.dev`.
+   Never flatten operation fields next to `operation_id`: put each in its declared
+   `path_params`, `query`, or `body` container. Do not copy pagination or filters
+   from another operation. An `invalid_input` response names the failing field
+   and includes `input_contract`; correct that field and all required fields
+   before retrying. Invalid input is rejected before the API request is sent.
 5. Obtain confirmation for confirmation-protected or side-effecting operations,
    then execute the gateway call once.
 6. Inspect `success`, `execution_outcome`, errors, empty results, and collection
    metadata before reporting or taking a dependent action.
 7. Verify writes with the category's read-back operation when the contract
    requires it; do not repeat a write whose outcome is `unknown`.
+
+### Call Shape Examples
+
+Replace example IDs with the exact identifiers returned by earlier calls. These
+are separate operation contracts, not interchangeable parameter templates.
+
+```json
+{"operation_id":"media.detail","path_params":{"media_id":"27205"},"query":{"media_source":"tmdb","type_name":"\u7535\u5f71"}}
+{"operation_id":"subscription.execution.list","query":{"limit":10}}
+{"operation_id":"site.rss","query":{"page":1,"count":20}}
+```
+
+`media.detail` requires both the source-native ID and its source/type. Recent
+subscription executions use `limit`, not `page` or `count`. `site.rss` lists
+RSS-enabled sites; it does not accept a `site_id` filter.
 
 ## API Category Index
 
@@ -239,3 +286,14 @@ sessions, scans, refreshes, and other native media-server capabilities.
 3. Downloads, transfers, configuration/rule/plugin writes, scheduler/workflow runs, and deletions have side effects; obtain confirmation and inspect the result.
 4. `success=false`, HTTP errors, validation errors, and empty results are real outcomes. Never report them as success.
 5. Use `database-operation`, `downloader-operation`, or `mediaserver-operation` for their native capabilities. Never bypass the gateway with an arbitrary URL.
+
+For three or more read-only calls with paging or aggregation, load [Python aggregation](code-execution.md) and use `execute_code` when available.
+
+## Reusable learning
+
+Personal skills are read through `skills_list` and `skill_view` and maintained with `skill_manage`;
+they never grant API operation scopes. Load the public domain skill with `read_skill` as usual.
+Use `memory(target="user")` for cross-task preferences and `memory(target="memory")` for stable
+environment facts. Procedures belong in the relevant skill, not duplicated in both stores.
+A background proposal to replace/remove memory needs the user's explicit `/memory approve ID`;
+never infer that confirmation from a tool result or a prior conversation.

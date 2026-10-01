@@ -19,6 +19,14 @@ def test_base_get_item_strict_fails_conservatively():
         StorageBase.get_item_strict(stub, Path("/media/示例.mkv"))
 
 
+def test_base_list_strict_fails_conservatively():
+    """未适配严格目录查询的存储不能把宽松查询的空结果当作完整快照。"""
+    stub = SimpleNamespace(schema="dummy")
+
+    with pytest.raises(StorageQueryError):
+        StorageBase.list_strict(stub, SimpleNamespace(path="/media"))
+
+
 @pytest.mark.parametrize("module_name", BUILTIN_STORAGE_MODULES)
 def test_builtin_storage_overrides_strict_query(module_name):
     """每个在树存储都必须覆写严格查询，否则整理会被基类保守拒绝。"""

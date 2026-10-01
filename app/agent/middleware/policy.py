@@ -3,7 +3,7 @@
 import asyncio
 import json
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from langchain.agents.middleware import AgentMiddleware, ToolCallRequest, hook_config
 from langchain_core.messages import AIMessage, ToolMessage
@@ -28,6 +28,9 @@ from app.agent.tools.impl.api import MoviePilotApiTool
 from app.agent.tools.impl.mcp import McpExternalTool
 from app.agent.tools.result import EXECUTION_OUTCOME_KEY, ToolExecutionError, annotate_tool_result
 from app.agent.tools.tags import ToolTag
+
+if TYPE_CHECKING:
+    from app.agent.middleware.guardrails import ToolGuardrailsMiddleware
 
 POLICY_DENIED_MESSAGE = "当前宿主策略不允许执行该工具。"
 POLICY_UNAVAILABLE_MESSAGE = "宿主策略暂时不可用，未执行该工具。"
@@ -56,16 +59,25 @@ class AgentPolicyMiddleware(AgentMiddleware):  # type: ignore[misc]
         orchestrator: AgentToolPolicyOrchestrator = DEFAULT_TOOL_POLICY_ORCHESTRATOR,
         catalog: ToolCatalogSnapshot | None = None,
         tools: list[Any] | None = None,
+        guardrails: "ToolGuardrailsMiddleware | None" = None,
     ) -> None:
         """绑定宿主可信上下文和共享策略编排器。"""
+        self.guardrails = guardrails
         self.context = context
         self.orchestrator = orchestrator
         self.catalog = catalog
         self._tools = {tool.name: tool for tool in (tools or []) if getattr(tool, "name", None)}
 
-    @hook_config(can_jump_to=["end"])  # type: ignore[misc]
+    @hook_config(can_jump_to=["end", "model"])  # type: ignore[misc]
     async def aafter_model(self, state: dict[str, Any], runtime: Any) -> Any:
-        """在 ToolNode 前暂停需要用户确认的敏感设置读取。"""
+        """复用原有模型后置节点合并检测更新，不消耗额外图递归步数。"""
+        paused = await self._sensitive_pause(state)
+        if paused is not None:
+            return paused
+        return await self.guardrails.after_model_update(state, runtime) if self.guardrails else None
+
+    async def _sensitive_pause(self, state: dict[str, Any]) -> Any:
+        """敏感设置暂停优先于自动续行，绝不因纠偏放行未确认的调用。"""
         messages = state.get("messages") or []
         if not messages or not isinstance(messages[-1], AIMessage):
             return None

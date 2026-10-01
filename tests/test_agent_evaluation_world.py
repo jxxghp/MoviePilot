@@ -30,7 +30,7 @@ def _download_body(world: EvaluationWorld) -> dict[str, Any]:
 def test_scenarios_expose_inputs_without_initial_state_or_oracle() -> None:
     """公开定义只有任务、业务身份及资源，答案和故障时序不能进入模型上下文。"""
     scenarios = list_scenarios()
-    assert len(scenarios) == 13
+    assert len(scenarios) == 14
     api_scenarios = [scenario for scenario in scenarios if scenario.kind == "api"]
     assert len(api_scenarios) == 8
     assert len({scenario.media_id for scenario in api_scenarios}) == 6
@@ -53,7 +53,7 @@ def test_scenarios_expose_inputs_without_initial_state_or_oracle() -> None:
                 assert not scenario.steering_message and len(scenario.steering_plan) == 2
             else:
                 assert scenario.steering_message == "" and not scenario.steering_plan
-        elif scenario.kind == "command":
+        elif scenario.kind in {"command", "code"}:
             assert scenario.command
             assert scenario.browser_url == ""
             assert scenario.terminal_use_pty is None
@@ -77,9 +77,10 @@ def test_scenarios_expose_inputs_without_initial_state_or_oracle() -> None:
 
 def test_world_has_no_application_network_or_persistence_imports() -> None:
     """静态约束模拟业务独立于真实宿主，避免评测和实现共享同一份业务答案。"""
-    allowed = {"base64", "binascii", "copy", "dataclasses", "re", "threading", "typing", "urllib.parse", "scripts.evaluation.scenarios"}
+    allowed = {"base64", "binascii", "collections", "copy", "dataclasses", "json", "re", "threading", "typing", "urllib.parse",
+               "scripts.evaluation.scenarios", "scripts.evaluation.programs"}
     directory = Path(__file__).parents[1] / "scripts" / "evaluation"
-    for filename in ("world.py", "scenarios.py", "__init__.py"):
+    for filename in ("world.py", "scenarios.py", "programs.py", "__init__.py"):
         tree = ast.parse((directory / filename).read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):

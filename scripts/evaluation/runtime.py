@@ -32,6 +32,7 @@ _OPERATIONS = (
     "subscription.list", "subscription.find", "subscription.get", "subscription.add", "subscription.delete",
     "download.tasks.active", "download.history.list", "download.clients", "download.paths", "download.add", "site.list",
     "library.exists",
+    "transfer.queue", "search.results",
 )
 
 
@@ -600,6 +601,31 @@ def _runtime_scope(
         yield lambda **kwargs: _Transport(world, after_operation=after_operation, **kwargs)
 
 
+def _code_tool_scope(stack: ExitStack, directory: Path, agent: Any, world: EvaluationWorld) -> Any:
+    """只准入任务给定程序并使用临时工作目录，仍保留原生工具类型和完整生产 RPC 链。"""
+    from app.agent.code.manager import CodeSessionManager
+    from app.agent.tools.impl.execute_code import ExecuteCodeTool
+
+    manager = CodeSessionManager(directory / 'agent' / 'runtime' / 'code')
+    original_run = ExecuteCodeTool.run
+
+    async def run(tool: Any, **kwargs: Any) -> str:
+        """评测拒绝程序改写，不能用拥有宿主权限的任意代码绕开假世界。"""
+        if str(kwargs.get('code') or '').strip() != world.scenario.command.strip():
+            return json.dumps({'success': False, 'error': '评测仅允许原样执行任务给定的 Python 程序。'})
+        return str(await original_run(tool, **kwargs))
+
+    stack.enter_context(patch('app.agent.code.manager.code_session_manager', manager))
+    stack.enter_context(patch.object(ExecuteCodeTool, 'run', run))
+    stack.enter_context(patch('app.agent.tools.impl.execute_code.get_runtime_setting',
+                              side_effect=lambda key: directory if key == 'CONFIG_PATH' else directory / 'command-workspace'))
+    tool = ExecuteCodeTool(session_id=agent.session_id, user_id='1')
+    tool.set_agent_context(agent._tool_context)
+    object.__setattr__(tool, '_agent_tool_source', 'builtin')
+    agent.evaluation_tools.append(tool)
+    return manager
+
+
 async def run_moviepilot(
     world: EvaluationWorld, model: "BaseChatModel", *, model_name: str, context_window: int, max_iterations: int,
     invocation_repository: Optional[Any] = None,
@@ -702,12 +728,14 @@ async def _run_isolated(
             context_window=context_window, max_iterations=max_iterations,
         )
         agent.configure_steering_inbox(steering_inbox)
+        code_manager = _code_tool_scope(stack, directory, agent, world) if world.scenario.kind == 'code' else None
         for child in (False, True):
             executor = MoviePilotApiExecutor(
                 context=ApiExecutionContext(user_id="1", username="evaluation", is_admin=True, session_id=agent.session_id),
                 request_factory=factory,
             )
             tool = MoviePilotApiTool(session_id=agent.session_id, user_id="1", executor=executor)
+            object.__setattr__(tool, '_agent_tool_source', 'builtin')
             tool.set_message_attr(agent.channel, agent.source, agent.username)
             tool.set_agent_context({"is_admin": True, "should_dispatch_reply": False, "require_secret_confirmation": True}
                                    if child else agent._tool_context)
@@ -782,3 +810,6 @@ async def _run_isolated(
                 await steering_inbox.finish_run()
             if not await agent.cleanup():
                 raise RuntimeError("评测 Agent 子任务尚未完成清理")
+            if code_manager is not None and code_manager._reaper is not None:
+                code_manager._reaper.cancel()
+                await asyncio.gather(code_manager._reaper, return_exceptions=True)

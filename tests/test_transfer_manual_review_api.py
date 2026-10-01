@@ -83,8 +83,8 @@ def test_manual_review_endpoints_require_manage_permission(endpoint) -> None:
             "必须提供 result_payload",
         ),
         (
-            {"operation_id": "op-1", "decision": "not_applied", "reason": "   "},
-            "String should have at least 1 character",
+            {"operation_id": "op-1", "decision": "not_applied", "reason": "x" * 2001},
+            "String should have at most 2000 characters",
         ),
     ],
 )
@@ -95,6 +95,18 @@ def test_manual_review_request_rejects_unsafe_decisions(
     """公开 schema 不允许 FAILED，且 APPLIED 必须携带结果证据。"""
     with pytest.raises(ValidationError, match=message):
         TransferManualReviewRequest.model_validate(payload)
+
+
+@pytest.mark.parametrize("notes", [{}, {"reason": ""}, {"reason": "   "}])
+def test_manual_review_request_allows_optional_reason(notes: dict) -> None:
+    """省略、空白或空字符串说明均可提交，空白输入统一为空字符串。"""
+    request = TransferManualReviewRequest.model_validate({
+        "operation_id": "op-1",
+        "decision": "not_applied",
+        **notes,
+    })
+
+    assert request.reason == ""
 
 
 def test_manual_review_applied_wraps_result_and_hides_internal_state(

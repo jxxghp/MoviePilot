@@ -18,8 +18,8 @@ from app.runtime.log import logger
 MIN_FAILED_RETRIES = 1
 MAX_FAILED_RETRIES = 10
 FAILED_RETRY_TTL = 24 * 3600
-# 不同存储后端对秒级修改时间的浮点和序列化误差可能达到毫秒；更大的变化仍视为新版本。
-MODIFY_TIME_TOLERANCE = 1e-3
+# 不同存储后端的修改时间精度和序列化可能产生秒级差异；超过 1 秒才视为新版本。
+MODIFY_TIME_TOLERANCE = 1.0
 
 # 缓存值会同时保存文件指纹，使同一路径的新版本获得独立重试预算。
 _failed_retry_counts = TTLCache(

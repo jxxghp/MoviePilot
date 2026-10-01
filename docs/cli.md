@@ -27,7 +27,7 @@ curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v3/scripts/bootst
 - 如果系统里已经有可用的 `Python 3.14+`，脚本会优先直接复用本地解释器
 - 如果系统里没有可用解释器，脚本会通过最新稳定版 uv 安装 Python 3.14
 - Linux 下安装系统依赖时通常需要 `sudo`
-- 复用已有仓库时，脚本现在只会因为已跟踪源码改动而阻止自动更新，不会再被 `.DS_Store` 之类未跟踪文件卡住
+- 复用已有仓库时，如果检测到已跟踪源码改动，脚本会先询问是否清空本地改动；确认后才会继续更新，拒绝或非交互模式会取消更新，不会删除被 Git 忽略的配置和运行时文件
 
 如果安装完成后当前终端仍提示找不到 `moviepilot`：
 
@@ -40,6 +40,8 @@ curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v3/scripts/bootst
 
 - macOS：`~/Library/Application Support/MoviePilot`
 - Linux：`${XDG_CONFIG_HOME:-~/.config}/moviepilot`
+
+从程序目录内的旧 `config/` 迁移配置时，仅复制目标目录中缺失的文件或目录，不覆盖已有内容。只有实际复制了内容才显示“已将现有本地配置迁移到”提示；重复执行且无需复制时不再提示。
 
 如果在交互式终端中执行一键安装脚本，或直接执行 `moviepilot setup` / `moviepilot init` 且未传入 `--config-dir`，程序会先询问配置目录，并把上面的默认路径作为默认值展示出来。
 
@@ -259,8 +261,11 @@ moviepilot setup --config-dir /path/to/moviepilot-config
   可按需启用，并配置 `LLM_PROVIDER`、`LLM_MODEL`、`LLM_API_KEY`、`LLM_BASE_URL`
   与 `LLM_WEB_SEARCH_MODE`。联网搜索支持 MoviePilot 本地搜索、模型服务端搜索、
   服务端优先自动回退与完全关闭；服务端模式仅在当前模型目录声明支持时生效。
+  向导会尝试读取当前提供商的模型目录；目录服务不可用时仍可手动输入模型 ID。
   当前可识别 OpenAI、Anthropic Claude、Google Gemini、xAI Grok 与 DeepSeek
   官方端点已公布的服务端联网搜索能力，第三方兼容端点不会被自动误判。
+- 下载目录按下载器内部路径原样保存，可用于远程下载器和路径映射；向导不会在本机解析或创建它。
+  媒体库目录是 MoviePilot 本地路径，向导会确保其存在。
 - 用户站点认证
   可按需选择认证站点，并按站点要求填写用户名、UID、Passkey 等参数
 - 开机自启
@@ -342,7 +347,9 @@ moviepilot update frontend --frontend-version v3.0.0
 整体更新：
 
 ```shell
-moviepilot update all
+moviepilot update
+moviepilot update all --dev
+moviepilot update all --no-dev
 moviepilot update all --ref latest --frontend-version latest
 moviepilot update all --skip-resources
 ```
@@ -350,8 +357,12 @@ moviepilot update all --skip-resources
 说明：
 
 - `update backend` 会更新 Git 仓库并重新安装后端依赖，包括 `moviepilot-rust` 加速扩展
-- `update frontend` 会按当前仓库 `version.py` 中的 `FRONTEND_VERSION` 下载并替换前端 release
-- `update all` 会先更新后端，再按更新后代码中的 `FRONTEND_VERSION` 更新前端，默认也会同步资源文件
+- 后端更新前如果检测到已跟踪源码改动，CLI 会列出部分文件并询问是否清空；确认后执行清理并继续更新，拒绝或非交互模式会取消更新
+- `MOVIEPILOT_UPDATE_DEV=true` 时，`moviepilot update` 默认使用 DEV 模式；`--dev` / `--no-dev` 可临时覆盖，省略目标时更新全部组件。进程环境变量优先于配置目录中的 `app.env`
+- DEV 模式后端跟踪当前开发分支，处于 Release 的 detached HEAD 时回到 `v3`；前端下载最新 Release 的 `dist.zip`。显式 `--ref` / `--frontend-version` 优先于默认选择
+- DEV 模式每次更新前端都会重新下载并替换发布包，即使版本号相同或显式指定了 `--frontend-version`，以获取同版本重新打包的内容
+- 非 DEV 模式下，`update frontend` 会按当前仓库 `version.py` 中的 `FRONTEND_VERSION` 下载并替换前端 release
+- `update all` 会先更新后端，再按所选模式更新前端，默认也会同步资源文件
 - 更新前请先执行 `moviepilot stop`
 
 ## Agent 命令
@@ -391,10 +402,11 @@ moviepilot version
 
 说明：
 
-- `start` 会先启动后端，再启动前端
+- `start` 会先启动后端，再启动前端；普通 `start` / `restart` 不检查、不下载、不安装更新，DEV 模式也不例外
+- 本地 CLI 会优先使用项目根目录 `venv/bin/moviepilot-python`；该入口不存在时回退到同一目录的 `venv/bin/python`，手工启动、更新和开机自启保持一致
 - `start --safe` 会以安全模式启动后端，本次启动跳过插件、调度器、监控、命令和工作流等后台扩展能力，不修改用户配置
-- `MOVIEPILOT_AUTO_UPDATE` 为布尔开关，默认 `false`；只有 `true` 启用后台 Release 检查和版本提醒，保存后定时服务热更新。`AUTO_UPDATE_RESOURCE` 独立控制站点资源检查和提醒；任一开关开启即启用检测服务，且只检查对应目标，两者均关闭才移除服务。`MOVIEPILOT_UPDATE_DEV` 为独立布尔开关，默认 `false`；设为 `true` 时在每次启动/重启前跟踪当前 v3 开发分支，更新失败只告警，不阻断当前启动。旧 `dev/release` 值统一转换为 `MOVIEPILOT_AUTO_UPDATE=true`；旧 `dev` 在未显式配置新开关时迁移为 `MOVIEPILOT_UPDATE_DEV=true`
-- Release 更新由后台每 6 小时检查 GitHub Release；管理员确认后先静默下载安装包并显示进度，下载完成后再次确认重启，启动阶段只安装已下载且通过 SHA-256 校验的包
+- `MOVIEPILOT_AUTO_UPDATE` 为布尔开关，默认 `false`；只有 `true` 启用后台 Release 检查和版本提醒，保存后定时服务热更新。`AUTO_UPDATE_RESOURCE` 独立控制站点资源检查和提醒；任一开关开启即启用检测服务，且只检查对应目标，两者均关闭才移除服务。`MOVIEPILOT_UPDATE_DEV` 为独立布尔开关，默认 `false`；设为 `true` 时手动 `moviepilot update` 默认使用 DEV 更新模式。旧 `dev/release` 值统一转换为 `MOVIEPILOT_AUTO_UPDATE=true`；旧 `dev` 在未显式配置新开关时迁移为 `MOVIEPILOT_UPDATE_DEV=true`
+- Release 更新由后台每 6 小时检查 GitHub Release；管理员确认后先静默下载安装包并显示进度，下载完成后再次确认重启，通过专门的内部更新入口安装已下载且通过 SHA-256 校验的包后再启动服务
 - 页面中的“稍后”会在当前浏览器暂停提醒 24 小时，“忽略此版本”只屏蔽当前版本；出现更高版本时会重新提示
 - 通过系统内置的重启入口触发重启时，本地 CLI 安装模式也会复用同一套前后端进程管理完成重启
 - 前端默认监听 `NGINX_PORT`，默认值 `3000`

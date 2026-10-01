@@ -24,6 +24,19 @@ This skill is the direct SQL boundary. It is implemented as a Python script and
 is appropriate when the agent must inspect records, run data statistics, repair
 stuck state, or perform an explicitly requested database update.
 
+Run the bundled copy from the MoviePilot program directory with its project
+runtime, for example:
+
+```bash
+cd <MOVIEPILOT_ROOT>
+venv/bin/python skills/database-operation/scripts/mp-db.py tables
+```
+
+The runtime sets `MOVIEPILOT_ROOT` for copied skills. If you run a copied
+script directly from `<CONFIG_PATH>/agent/skills/`, set that variable to the
+program directory first; otherwise the helper reports how to relocate it.
+Use the project runtime instead of a system `python3`.
+
 Prefer safer product surfaces first:
 
 | Request | Preferred skill |

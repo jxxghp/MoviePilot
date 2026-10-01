@@ -1,5 +1,6 @@
 """Agent 按钮选择交互契约与进程内待处理请求管理。"""
 
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -9,6 +10,11 @@ from typing import Any, Optional
 # Agent 选择按钮回调前缀，新旧两种格式都必须继续兼容。
 AGENT_CHOICE_PREFIX = "agent_interaction:choice:"
 LEGACY_AGENT_CHOICE_PREFIX = "agent_choice:"
+
+
+def is_agent_learning_command(text: str | None) -> bool:
+    """仅识别专用学习命令前缀；把它们交给 Agent 用户控制入口而非传统管理员命令。"""
+    return bool(re.match(r'^/(?:memory(?:\s|$)|skills\s+(?:adopt|pin|unpin|restore)(?:\s|$))', str(text or '').strip()))
 
 
 def build_agent_choice_callback(request_id: str, option_index: int) -> str:

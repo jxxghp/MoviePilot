@@ -23,7 +23,7 @@ from app.db.session import SessionFactory
 from app.runtime.config import settings
 from app.runtime.loop import main_loop_registry
 from app.runtime.tasks import TaskRegistry
-from app.schemas.types import MessageType, NotificationChannel
+from app.schemas.types import EventType, MessageType, NotificationChannel
 
 
 def _clear_messages() -> None:
@@ -417,3 +417,15 @@ def test_agent_choice_callback_is_not_recorded_to_message_history():
     record_user_message.assert_not_called()
     manager.process_message.assert_called_once()
     assert manager.process_message.call_args.kwargs["is_channel_admin"] is False
+
+
+def test_learning_commands_bypass_traditional_interactions():
+    """个人学习命令必须进入 Agent 原文入口，不能被传统管理员命令或旧交互吞掉。"""
+    chain = MessageChain()
+    with patch.object(chain, '_record_user_message'), patch.object(chain, '_handle_ai_message', return_value=True) as handle, patch.object(
+        chain.eventmanager, 'send_event'
+    ) as event:
+        chain.handle_message(channel=NotificationChannel.Wechat, source='test', userid='alice', username='Alice', text='/memory pending')
+    handle.assert_called_once()
+    assert handle.call_args.kwargs['text'] == '/memory pending'
+    assert all(call.args[0] != EventType.CommandExcute for call in event.call_args_list)

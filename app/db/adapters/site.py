@@ -10,6 +10,7 @@ from typing import Optional, TypeVar, cast
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from app.application.security.image import site_image_domains
 from app.application.site.contract import (
     SiteIconSnapshot,
     SiteMutation,
@@ -424,7 +425,9 @@ class TransactionalSiteRepository:
 
     def add(self, mutation: SiteMutation) -> SiteWriteResult:
         """在独立同步事务中新增站点。"""
-        return self._write(lambda repository: SiteWriteResult(*repository.add(**mutation.to_payload())))
+        result = self._write(lambda repository: SiteWriteResult(*repository.add(**mutation.to_payload())))
+        site_image_domains.invalidate()
+        return result
 
     def update(
         self,
@@ -432,13 +435,15 @@ class TransactionalSiteRepository:
         mutation: SiteMutation,
     ) -> Optional[SiteSnapshot]:
         """在独立同步事务中更新并返回站点快照。"""
-        return self._write(
+        result = self._write(
             lambda repository: (
                 _project_site(record)
                 if (record := repository.update(site_id, mutation.to_payload())) is not None
                 else None
             )
         )
+        site_image_domains.invalidate()
+        return result
 
     async def async_update(
         self,
@@ -455,7 +460,9 @@ class TransactionalSiteRepository:
             )
             return _project_site(record) if record is not None else None
 
-        return await self._async_write(operation)
+        result = await self._async_write(operation)
+        site_image_domains.invalidate()
+        return result
 
     def update_cookie(self, domain: str, cookies: str) -> SiteWriteResult:
         """在独立同步事务中更新站点 Cookie。"""

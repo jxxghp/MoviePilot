@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
 from app.application.messaging.interaction import _ExpiringUserInteractionStore
-from app.domain.context import MediaInfo
+from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.schemas.types import NotificationChannel
 
@@ -26,7 +26,7 @@ class PendingMediaInteraction:
     page: int = 0
     title: str = ""
     meta: Optional[MetaBase] = None
-    current_media: Optional[MediaInfo] = None
+    current_media: Optional[MediaInfo | MusicInfo] = None
     items: List[Any] = field(default_factory=list)
     download_dirs: List[Any] = field(default_factory=list)
     pending_download_mode: Optional[str] = None

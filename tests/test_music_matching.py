@@ -439,6 +439,72 @@ def test_music_simplification_preserves_original_search_names():
     assert MusicInfo.from_dict(simplified.to_dict()).title_aliases == ["永遠是朋友"]
 
 
+def test_music_simplification_prefers_chinese_artist_alias(monkeypatch):
+    """开启音乐简体转换时，整理名称应优先使用同一艺人的中文别名。"""
+    original = MusicInfo(
+        title="舞孃",
+        artists=["Jolin Tsai"],
+        artist_aliases=["Jolin Tsai", "蔡依林"],
+    )
+    monkeypatch.setattr("app.runtime.config.settings.MUSIC_METADATA_TO_SIMPLIFIED", True)
+
+    simplified = MediaChain._simplify_recognized_music_info(original)
+
+    assert simplified.artists == ["蔡依林"]
+    assert "Jolin Tsai" in simplified.artist_aliases
+    assert original.artists == ["Jolin Tsai"]
+
+
+def test_music_simplification_keeps_artist_name_when_disabled(monkeypatch):
+    """关闭音乐简体转换时，不得因中文别名改变整理使用的艺术家名称。"""
+    original = MusicInfo(
+        title="舞孃",
+        artists=["Jolin Tsai"],
+        artist_aliases=["Jolin Tsai", "蔡依林"],
+    )
+    monkeypatch.setattr("app.runtime.config.settings.MUSIC_METADATA_TO_SIMPLIFIED", False)
+
+    result = MediaChain._simplify_recognized_music_info(original)
+
+    assert result is original
+    assert result.artists == ["Jolin Tsai"]
+
+
+def test_music_simplification_keeps_multi_artist_aliases_isolated(monkeypatch):
+    """多位艺术家同时整理时，中文别名必须按艺术家身份分别匹配。"""
+    original = MusicInfo(
+        title="合作曲",
+        artists=["Jolin Tsai", "Jay Chou"],
+        artist_ids=["artist-1", "artist-2"],
+        artist_aliases=["Jolin Tsai", "蔡依林", "Jay Chou", "周杰伦"],
+        raw_data={
+            "artist-credit": [
+                {
+                    "name": "Jolin Tsai",
+                    "artist": {
+                        "id": "artist-1",
+                        "name": "Jolin Tsai",
+                        "aliases": [{"name": "蔡依林"}],
+                    },
+                },
+                {
+                    "name": "Jay Chou",
+                    "artist": {
+                        "id": "artist-2",
+                        "name": "Jay Chou",
+                        "aliases": [{"name": "周杰伦"}],
+                    },
+                },
+            ],
+        },
+    )
+    monkeypatch.setattr("app.runtime.config.settings.MUSIC_METADATA_TO_SIMPLIFIED", True)
+
+    simplified = MediaChain._simplify_recognized_music_info(original)
+
+    assert simplified.artists == ["蔡依林", "周杰伦"]
+
+
 def test_music_album_alias_is_used_for_search():
     """匹配接受的作品别名也必须进入实际站点查询阶梯。"""
     music = MusicInfo(music_type="album", title="Ye Hui Mei", title_aliases=["叶惠美"], artists=["Jay Chou"])

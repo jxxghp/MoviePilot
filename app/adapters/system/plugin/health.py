@@ -25,9 +25,11 @@ from app.adapters.system.package import (
     PackageInstallRequest,
     build_package_install_strategies,
     build_project_sync_strategies,
+    describe_free_threaded_install_failure,
     find_uv,
 )
 from app.adapters.system.plugin.manifest import load_dependency_file
+from app.foundation.environment import is_free_threaded_runtime
 from app.runtime.dependencies.profile import (
     iter_runtime_profile_requirement_strings,
     iter_runtime_requirement_strings,
@@ -51,6 +53,8 @@ class PluginRuntimeHealth:
     })
     _runtime_import_probe = "app.doctor.dependencies"
     PLUGIN_DEPENDENCY_INSTALL_TIMEOUT = 300
+    # resolve-only 预检只解析和取元数据，不下载完整依赖，超时远小于真实安装
+    PLUGIN_DEPENDENCY_PREFLIGHT_TIMEOUT = 120
 
     @classmethod
     def __get_installed_packages(cls) -> Dict[str, Version]:
@@ -617,6 +621,76 @@ class PluginRuntimeHealth:
             logger.error(f"[UV] 使用策略：{strategy.strategy_name} 恢复{repair_desc}失败：{message}")
         return False, last_error or f"恢复{repair_desc}失败"
 
+    @staticmethod
+    def __free_threaded_preflight_verdict(failures: List[str]) -> Optional[str]:
+        """
+        根据全部 resolve-only 预检策略的失败输出判断是否拦截真实安装。
+
+        只有能归类为 free-threaded 不兼容的失败才拦截；网络、镜像或其他未知失败
+        放行给真实安装，沿用现有失败处理，避免预检本身引入误拦截。
+        """
+        for failure in failures:
+            reason = describe_free_threaded_install_failure(failure)
+            if reason:
+                return reason
+        return None
+
+    @staticmethod
+    def __with_free_threaded_reason(message: str) -> str:
+        """free-threaded 运行时下为 uv 安装失败补充可读原因，原始输出保留在后面便于排查。"""
+        if not is_free_threaded_runtime():
+            return message
+        reason = describe_free_threaded_install_failure(message)
+        return f"{reason}；{message}" if reason else message
+
+    @classmethod
+    def __free_threaded_preflight(cls, request: PackageInstallRequest) -> Optional[str]:
+        """
+        free-threaded 运行时下在真实安装前做一次 resolve-only 预检，返回拦截原因或 None。
+
+        预检复用真实安装的同一组网络降级策略，任一策略解析成功即放行；
+        它不修改 site-packages，因此不持有安装锁，也不进入健康快照与回滚链路。
+        已知边界：解析成功不代表能装上，需要源码编译的依赖仍只能在真实安装阶段暴露，
+        由 __with_free_threaded_reason 给出可读原因。
+        """
+        if not is_free_threaded_runtime():
+            return None
+        failures: List[str] = []
+        for strategy in build_package_install_strategies(request, dry_run=True):
+            success, message = SystemUtils.execute_with_subprocess(
+                strategy.command,
+                env=strategy.env,
+                safe_command=strategy.safe_log_command,
+                timeout=cls.PLUGIN_DEPENDENCY_PREFLIGHT_TIMEOUT,
+            )
+            if success:
+                return None
+            logger.debug(f"[UV] 策略：{strategy.strategy_name} 依赖预检失败：{message}")
+            failures.append(message)
+        return cls.__free_threaded_preflight_verdict(failures)
+
+    @classmethod
+    async def __async_free_threaded_preflight(
+            cls,
+            request: PackageInstallRequest,
+    ) -> Optional[str]:
+        """__free_threaded_preflight 的异步版本，取消时由子进程工具回收 uv 进程组。"""
+        if not is_free_threaded_runtime():
+            return None
+        failures: List[str] = []
+        for strategy in build_package_install_strategies(request, dry_run=True):
+            success, message = await SystemUtils.execute_with_subprocess_async(
+                strategy.command,
+                env=strategy.env,
+                safe_command=strategy.safe_log_command,
+                timeout=cls.PLUGIN_DEPENDENCY_PREFLIGHT_TIMEOUT,
+            )
+            if success:
+                return None
+            logger.debug(f"[UV] 策略：{strategy.strategy_name} 依赖预检失败：{message}")
+            failures.append(message)
+        return cls.__free_threaded_preflight_verdict(failures)
+
     @classmethod
     def install_packages_with_fallback(cls,
                                        dependency_files: Path | Sequence[Path],
@@ -688,6 +762,13 @@ class PluginRuntimeHealth:
             purpose="plugin",
         )
         strategies = build_package_install_strategies(request)
+
+        preflight_error = cls.__free_threaded_preflight(request)
+        if preflight_error:
+            logger.error(f"[UV] free-threaded 运行时依赖预检未通过：{preflight_error}")
+            if constraints_file:
+                constraints_file.unlink(missing_ok=True)
+            return False, preflight_error
 
         try:
             # 安装器会修改当前解释器的 site-packages，安装与缓存刷新必须串行。
@@ -766,7 +847,7 @@ class PluginRuntimeHealth:
                     )
                     logger.error(f"[UV] 策略：{strategy.strategy_name} 安装依赖失败，错误信息：{message}")
                     if not repair_ok or repair_message:
-                        return False, (
+                        return False, cls.__with_free_threaded_reason(
                             f"策略 {strategy.strategy_name} 安装依赖失败：{message}；"
                             f"{repair_message}"
                         )
@@ -775,7 +856,7 @@ class PluginRuntimeHealth:
                 constraints_file.unlink(missing_ok=True)
 
         if last_error:
-            return False, f"[UV] 所有策略均安装依赖失败：{last_error}"
+            return False, cls.__with_free_threaded_reason(f"[UV] 所有策略均安装依赖失败：{last_error}")
         return False, "[UV] 所有策略均安装依赖失败，请检查网络连接、包源配置或插件依赖约束"
 
     @classmethod
@@ -969,6 +1050,11 @@ class PluginRuntimeHealth:
         strategies = build_package_install_strategies(request)
         acquired = False
         try:
+            # 预检不写 site-packages，放在抢锁之前，避免排队等待其他插件的真实安装
+            preflight_error = await cls.__async_free_threaded_preflight(request)
+            if preflight_error:
+                logger.error(f"[UV] free-threaded 运行时依赖预检未通过：{preflight_error}")
+                return False, preflight_error
             while not cls._package_install_lock.acquire(blocking=False):
                 await asyncio.sleep(0.01)
             acquired = True
@@ -1041,12 +1127,12 @@ class PluginRuntimeHealth:
                     f"[UV] 策略：{strategy.strategy_name} 安装依赖失败，错误信息：{message}"
                 )
                 if not repair_ok or repair_message:
-                    return False, (
+                    return False, cls.__with_free_threaded_reason(
                         f"策略 {strategy.strategy_name} 安装依赖失败：{message}；"
                         f"{repair_message}"
                     )
             return False, (
-                f"[UV] 所有策略均安装依赖失败：{last_error}"
+                cls.__with_free_threaded_reason(f"[UV] 所有策略均安装依赖失败：{last_error}")
                 if last_error
                 else "[UV] 所有策略均安装依赖失败，请检查网络连接、包源配置或插件依赖约束"
             )

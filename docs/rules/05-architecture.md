@@ -65,13 +65,14 @@ to make the directory tree look symmetrical.
 | `app/application/search/` | Search state and later search-plan use cases |
 | `app/application/download/` | Download task querying/control and selection use cases; `failures.py` owns the frozen failure-cooldown write/query DTOs and persistence Port |
 | `app/application/history/` | History use cases and persistence contracts; DownloadHistory and TransferHistory own deeply frozen DTOs plus typed query/write/staging ports |
-| `app/application/music/` | Multi-source music catalog orchestration |
+| `app/application/music/` | 多来源音乐目录编排；`observation.py` 沿用站点搜索的调用观察模式，隔离一次音乐识别的结果、候选摘要与请求/等待预算，不持有来源客户端、不改变旧模块返回合同；`recognition.py` 通过注入来源回调串行回退、汇总诊断，并按领域候选计划有界补充真实Artist身份别名，子来源共享祖先预算，`catalog.py` 声明目录查询所需的最小来源 Port |
 | `app/application/chain/` | Injectable Chain runtime capabilities: `context.py` owns the typed runtime and persistence dependency aggregate, and `events.py` owns durable event write contracts plus replayable payload conversion |
 | `app/application/agent.py` | Agent orchestration facade and typed `AgentDataContext`; startup injects one explicit data context into the manager, memory, tool and scheduler owners without a process-wide persistence locator |
 | `app/application/invocation.py` | Frozen Agent write-call identity, claim and receipt contracts; the injected repository provides atomic claim, fenced settlement and unresolved-state reads, while `db/adapters/invocation.py` owns short transactions and cold-start recovery is invoked by startup |
 | `app/application/network.py` | System network-test target catalog, immutable public/private projections, URL and redirect admission, response validation and the injected transport Port; startup owns concrete HTTP Adapter assembly |
 | `app/application/outbox.py` | Durable intent, transaction-only stager, short-transaction dispatch store, claim fencing and structured post-commit result contracts |
 | `app/application/transfer/` | Durable transfer use cases: `workflow.py` owns queue service orchestration; `models.py` owns admission/planning/task contracts; `jobs.py` owns in-process task views; `notifications.py` owns failure aggregation; `projection.py` owns domain projections; `execution.py` owns stable operation identity, step/checkpoint state, retry/manual-review commands and terminal-settlement DTOs; `recovery.py` owns failed/corrupt task cleanup and history detachment through the execution repository; `history.py` projects history write fields and file fingerprints; `feedback.py` owns failure stages, notification snapshots and message text, while Chain owns notification delivery and cleanup side effects |
+| `app/chain/transfer/music.py` | 音乐整理的纯标签准入、目录共识、发行分组与曲目上下文编排；`filter.py` 保留通用文件筛选和既有 mixin 调用契约。可信标签在本地完成分类与命名，分类的外部事实补充可由本次用例明确禁用，仍遵守用户策略与人工覆盖 |
 | `app/application/plugin/` | Plugin market catalog, installation command, installed-plugin identity contract and startup migration, runtime port, folder operations and dynamic-route use cases; filenames remain single words (`catalog.py`, `identity.py`, `migration.py`, `install.py`, `runtime.py`, `folders.py`, `routes.py`) |
 | `app/application/server/` | MoviePilot Server reporting and sharing use cases; local data readers and transport callbacks are injected by startup |
 | `app/application/site/` | Configured site catalog, authentication level and index-resource capability; the generated extension and its data bundle stay together here |
@@ -88,14 +89,19 @@ to make the directory tree look symmetrical.
 | `app/agent/tasks.py` | Background prompts, durable scheduled-task execution and heartbeat wakeups |
 | `app/agent/orchestrator.py` | One `MoviePilotAgent` execution instance: prompt/tool/middleware assembly, model invocation, streaming and per-agent state |
 | `app/agent/middleware/plan.py` | Current task objective, step status and evidence in graph state; sanitized snapshots travel through existing message persistence and never authorize tool effects |
+| `app/application/messaging/recall.py` / `app/agent/history/` | Application 持有独立消息库 DTO/Port 和后台维护服务；Agent 专属 SQLite/FTS5 schema、存储、检索、窗口与旧快照导入由 `agent/history/` 拥有，数据库位于 Agent 运行目录且不共享主库 Session。`db/adapters/recall.py` 仅负责一次性旧快照只读导出 |
+| `app/agent/learning/` / `app/agent/middleware/learning.py` | Agent 专属个人技能、稳定记忆和复盘生命周期；独立文件目录按用户隔离，模型仅能调用受控维护工具。`session.py` 管理计数及 TaskRegistry owner，`review.py` 复用最终模型请求并在派发处限制工具，`files.py` 只封装该存储的路径、进程锁与原子替换，不作为通用文件 Adapter。人工提案/技能控制命令经 messaging interaction 契约路由，只有宿主收到的用户原文可以触发，后台快照没有执行权限 |
 | `app/agent/middleware/selection.py` | First-turn tool selection and bounded, on-demand discovery within the same authorized catalog; discovered tool names remain local to the current user request |
 | `app/agent/middleware/invocation.py` | Claims write executions through the injected Application port; owns per-turn API deduplication, durable receipt projection and narrowly scoped read-only reconciliation |
 | `app/agent/middleware/output.py` | Bounded, expiring in-memory tool output and thread-scoped pagination; never persists raw tool results |
 | `app/agent/middleware/vision.py` | Request-only tool-image observations after compaction; complete tool-reply batches, per-invocation visual fallback and unchanged user authorization |
 | `app/agent/tools/result.py` | Pure interpretation of explicit tool outcomes and portable tool-image history; image observation copies never replace original user attachments |
+| `app/agent/guardrails/` / `app/agent/middleware/guardrails.py` | Agent 专属的 Hermes 循环检测与结束纠偏；纯控制器只产出决策，中间件在实际工具派发和模型边界应用，按宿主图线程隔离临时状态。不可替代授权、持久写入回执或业务成功校验；检测复用已有模型包装及策略后置节点，不能因增加图节点缩减任务预算；子任务 owner 在取消路径释放检测状态 |
 | `app/agent/api/arguments.py` | Canonical API request fingerprints from the generated operation schema and the executor's GET projection; no endpoint imports or live discovery |
 | `app/agent/shell.py` | Shared command interpreter, login mode, launch directory and subprocess text-encoding policy for run, pipe and PTY; preserves Windows default priority and UTF-8 behavior |
 | `app/agent/terminal/` | `ownership.py` owns host task identity, invocation context and lazy scope closure; `session.py` owns process state, input serialization and UTF-8 capture; `output.py` owns pure paging and bounded projections; `manager.py` owns launch, access grants and process lifecycle. Package root contains no implementation exports |
+| `app/agent/code/` / `app/agent/middleware/code.py` | Agent 专属持久 Python 会话、当前 cell 身份、只读工具交集、50次 RPC 预算与回执投影；复用真实 TerminalScope owner 和既有工具链，默认自动执行，不新增用户批准步骤。模型包装在工具筛选后、压缩前生成 helper 合同，不新增图节点；后台任务归 TaskRegistry，文件工作复用 Agent 有界线程池 |
+| `app/adapters/system/code/` | 通用本地 Python 子进程、生成客户端、私有 socket/令牌、随机输出分帧、父死亡看护与输出暂存。阻塞工作由调用方注入受控执行器；不导入 Agent、业务工具、配置或数据库，也不拥有用户及 API 权限策略 |
 | `app/agent/middleware/terminal.py` | Explicit child terminal grants and per-invocation scope binding; cached child graphs never receive mutable task identities, and sharing never bypasses tool role permissions |
 | `app/agent/policy/api.py` | Fixed `moviepilot_api` operation registry, HTTP route templates and per-operation authorization/effect policy; no arbitrary URL or method input |
 | `app/agent/policy/mcp.py` | Generated external MCP input-contract builder for the fixed API registry; owns exact English oneOf parameter projection, not runtime authorization |
@@ -249,11 +255,15 @@ the narrow `app.sdk.scheduler` facade; internal Scheduler owners must not be
 re-exported from the package root, SDK or Compat.
 
 Complexity and concurrency governance covers the complete canonical execution
-surface rather than only public methods. `scripts/architecture/complexity.py --v2`
-uses complete AST child traversal to ratchet private/dunder/nested methods,
-class/file hotspots, and the `app/scheduler/` package, including owners nested
-under `Match`, `TryStar`, and other control-flow nodes. Its generated baseline
-is an evidence ledger, not permission to add another oversized owner.
+surface rather than only public methods. `scripts/architecture/complexity.py`
+checks Ruff C901 (McCabe complexity, limit 15) and PLR1702 (nested blocks, limit 5)
+throughout `app/**/*.py`, excluding only runtime plugin copies in `app/plugins/**`.
+Complete AST traversal maps diagnostics to stable private/dunder/nested function
+owners, including definitions under `Match` and `TryStar`. Existing over-limit
+functions may only decrease; growth is rejected even by `--write`, and reductions
+must be recorded before the check passes. `--report` also records method/class/file
+line-span hotspots for review, but physical line counts never block CI. The former
+v1/v2 line-budget gates are retired; see [code quality](../code-quality.md).
 `scripts/architecture/concurrency.py` resolves canonical imports and aliases for
 native Thread, Timer, thread/process executors, Process, TaskGroup, event-loop
 task submission, asyncio task/thread helpers, and executor hand-off calls. It
@@ -395,6 +405,7 @@ API 中允许丢失或可重建的进程内任务必须登记到 `app/runtime/ta
 进入 Outbox 或持久任务表，不能把 TaskRegistry 当成 durable queue。
 Runtime 关闭后不可逆；完整应用生命周期的再次启动必须由新进程承载，不能在同一解释器中重建局部资源域。
 插件需要浏览器时使用 `app.sdk.browser`，由宿主浏览器适配器协调资源，不直接依赖资源实现。
+插件需要飞书事件长连接时使用 `app.sdk.feishu.FeishuLongConnection`，与宿主飞书模块共用同一传输实现，不再各自依赖 lark-oapi。
 旧插件若直接导入有资源前置条件的第三方包，compat 在插件 import 前递归扫描源码并保守准备资源；
 无法精确解析的文件按全部已登记资源降级，最终可导入性仍由 Python loader 判断。
 
@@ -651,6 +662,17 @@ remain. Download history, file rows and the durable Outbox intent commit in one
 transaction; notifications, background post-processing and immediate event
 publication run only after that commit succeeds.
 
+`batch.py` keeps its candidate state in a private per-invocation runner, never on
+the shared Chain. After one selection/sort pass, it executes movie/music, whole
+season, labelled episode-pack and partial-pack phases in that order. The phases
+share failure cooldown and update missing seasons/episodes only after successful
+submission, using the rules in `app.application.download.selection`. Whole-season
+file inspection retains its metadata update even when coverage is insufficient,
+so later phases can still evaluate the candidate's identified episode range.
+Partial-pack inspection updates that range only after successful submission.
+The public `batch_download` signature and the supplied missing-map identity remain
+unchanged.
+
 Search orchestration is owned by the same-named `app.chain.search` package. Its
 root lazily exposes only the stable `SearchChain`; `facade.py` preserves the
 direct `SearchChain -> ChainBase` MRO, event identity and the three exact private
@@ -698,6 +720,19 @@ exceptions and value domains used by both modules and upper layers live in
 `schemas`, and module capabilities are exposed to chains only as dispatched
 method names. The directory remains unchanged because discovery and plugin code
 depend on this established runtime root.
+
+SMB 同存储整理由 `app.modules.filemanager.storages.smb` 持有协议调用边界：
+复制调用 `smbclient.copyfile`（CopyChunk），共享内移动调用 `smbclient.rename`，硬链接调用
+`smbclient.link`；跨共享移动先用 SMB 查询确认目标未占用，服务端复制成功后才调用
+`smbclient.remove` 删除源文件。多共享挂载仍属于同一 SMB owner，路径首段选择已配置的共享。源目标同文件检查也通过 SMB 查询，不能使用本地临时下载/上传回退。
+下载器返回的远程路径保留存储 URI，整理 Chain 通过 `StorageChain` 查询源文件，
+不直接依赖 SMB SDK；断线后目标状态不明沿用持久步骤的保守恢复合同。
+
+SMB 目录快照不依赖祖先目录 mtime 推断后代变化，而在既有递归深度上限内逐层列举。
+存储通过 `snapshot_strict_query` 声明已实现 `get_item_strict` / `list_strict`；
+严格快照的任一查询失败必须返回 `None`，由远程轮询器保留旧基线并重试。
+只有确认目录清空或根路径不存在时才返回空字典。SMB 普通文件浏览继续允许容错回退，
+严格快照不能复用其部分结果；其他存储需按各自查询合同逐步接入。
 
 `app.modules.filemanager` is a lazy compatibility entrypoint. The concrete
 `FileManagerModule` implementation lives in `app.modules.filemanager.module`,
@@ -953,7 +988,9 @@ expired claimed task remains exclusively owned by fenced recovery APIs.
   application service.
 - Configured notification discovery lives in
   `app/application/notification.py`. Web Push subscription and manual-send HTTP
-  behavior stays in `app/api/endpoints/message.py`.
+  behavior stays in `app/api/endpoints/message.py`; the Web Push protocol
+  (aes128gcm encryption, VAPID signing, delivery) is the network adapter
+  `app/adapters/network/webpush.py`, shared by that endpoint and `WebPushModule`.
 - System network testing lives in `app/application/network.py`: it owns the
   server-only target catalog, exact legacy URL matching, HTTPS and credential
   checks, per-target redirect allowlists and content validation. The System API
@@ -1200,7 +1237,7 @@ driven workflow registration.
 | `app/application/security/url.py` | URL/path validation, SSRF protection and signed image policy |
 | `app/application/mediaserver.py` | Configured media-server discovery and identity matching |
 | `app/runtime/compat/manifest.py` | Exact legacy-to-canonical import manifest |
-| `app/sdk/` | Stable plugin imports, including provider-neutral browser launch functions |
+| `app/sdk/` | Stable plugin imports, including provider-neutral browser launch functions and the Feishu event long connection |
 | `app/sdk/plugin/` | Plugin contract base class (`base.py`) and runtime manager facade (`manager.py`); the package root is a lazy export map so importing the contract does not load the managers |
 
 Run `tests/test_architecture_dependencies.py` after every ownership or import

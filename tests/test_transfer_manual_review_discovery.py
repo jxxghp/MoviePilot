@@ -187,14 +187,16 @@ def test_manual_review_list_is_database_paginated(review_store) -> None:
         ("not_applied", None, "failed"),
     ],
 )
+@pytest.mark.parametrize("reason", ["确认文件状态", ""])
 def test_unknown_manual_review_is_discoverable_and_resumes_via_api(
     monkeypatch,
     review_store,
     decision: str,
     result_payload: dict[str, bool] | None,
     expected_step_state: str,
+    reason: str,
 ) -> None:
-    """UNKNOWN 任务应可发现，人工判定后进入唯一 retry_wait 恢复路径。"""
+    """复核理由选填；判定后持久化审计身份并进入唯一 retry_wait 恢复路径。"""
     repository, operation_id = _put_in_manual_review(
         review_store,
         task_id=f"task-{decision}",
@@ -243,7 +245,7 @@ def test_unknown_manual_review_is_discoverable_and_resumes_via_api(
         review=TransferManualReviewRequest(
             operation_id=operation_id,
             decision=decision,
-            reason=f"reviewed-{decision}",
+            reason=reason,
             result_payload=result_payload,
         ),
         current_user=SimpleNamespace(name="admin"),
@@ -282,3 +284,6 @@ def test_unknown_manual_review_is_discoverable_and_resumes_via_api(
         assert pending.lease_owner is None
         assert pending.lease_token is None
         assert pending.retry_generation == 1
+        assert pending.reviewed_by == "admin"
+        assert pending.review_decision == decision
+        assert pending.review_reason == reason

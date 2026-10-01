@@ -18,6 +18,7 @@ from app.agent.prompt import PromptManager
 from app.agent.shell import (
     AgentShell,
     agent_text_subprocess_kwargs,
+    bind_agent_project_environment,
     build_agent_subprocess_env,
     resolve_agent_cwd,
     resolve_agent_shell,
@@ -172,6 +173,29 @@ def test_windows_subprocess_environment_forces_utf8_after_overrides() -> None:
     assert "PYTHONLEGACYWINDOWSSTDIO" not in environment
 
 
+def test_project_python_environment_precedes_inherited_path(tmp_path: Path) -> None:
+    """项目 venv 存在时应优先于宿主 PATH，并声明虚拟环境。"""
+    bin_path = tmp_path / "venv" / ("Scripts" if os.name == "nt" else "bin")
+    bin_path.mkdir(parents=True)
+    python_path = bin_path / ("python.exe" if os.name == "nt" else "python")
+    python_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    python_path.chmod(0o755)
+
+    environment = bind_agent_project_environment(
+        {"PATH": "/system/bin", "VIRTUAL_ENV": "/old/venv"},
+        project_root=tmp_path,
+    )
+
+    assert environment["PATH"].split(os.pathsep)[0] == str(bin_path)
+    assert environment["VIRTUAL_ENV"] == str(tmp_path / "venv")
+
+
+def test_project_python_environment_keeps_environment_when_venv_missing(tmp_path: Path) -> None:
+    """项目尚未完成安装时不应伪造 PATH 或 VIRTUAL_ENV。"""
+    original = {"PATH": "/system/bin"}
+    assert bind_agent_project_environment(original, project_root=tmp_path) == original
+
+
 def test_prompt_injects_selected_windows_shell_without_executable_path() -> None:
     """模型提示词应知道实际 Windows shell，但不能暴露安装绝对路径。"""
     shell = AgentShell(
@@ -226,6 +250,33 @@ async def test_execute_command_uses_selected_windows_shell_and_utf8_environment(
     )
     assert create_exec.await_args.kwargs["env"] == {"PYTHONUTF8": "1"}
     create_shell.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_execute_command_binds_project_python_environment(tmp_path: Path, monkeypatch) -> None:
+    """一次性命令应把项目 venv 环境传给实际 shell。"""
+    bin_path = tmp_path / "venv" / ("Scripts" if os.name == "nt" else "bin")
+    bin_path.mkdir(parents=True)
+    python_path = bin_path / ("python.exe" if os.name == "nt" else "python")
+    python_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    python_path.chmod(0o755)
+    monkeypatch.setattr(
+        "app.agent.tools.impl.execute_command.get_runtime_setting",
+        lambda key: tmp_path if key == "ROOT_PATH" else None,
+    )
+    shell = AgentShell(kind="sh", executable="/bin/sh", arguments=("-c",))
+    create_exec = AsyncMock(return_value=_fake_process())
+    tool = ExecuteCommandTool(session_id="session", user_id="user")
+
+    with (
+        patch("app.agent.tools.impl.execute_command.resolve_agent_shell", return_value=shell),
+        patch("app.agent.tools.impl.execute_command.asyncio.create_subprocess_exec", create_exec),
+    ):
+        await tool.run(action="run", command="python -c 'print(1)'", timeout=1)
+
+    environment = create_exec.await_args.kwargs["env"]
+    assert environment["PATH"].split(os.pathsep)[0] == str(bin_path)
+    assert environment["VIRTUAL_ENV"] == str(tmp_path / "venv")
 
 
 @pytest.mark.anyio

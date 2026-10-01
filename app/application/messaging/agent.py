@@ -189,6 +189,9 @@ def build_web_agent_display_message(
         "content": normalized_content,
         "createdAt": int(datetime.now().timestamp() * 1000),
         "status": status,
+        "thinking": False,
+        "thinking_started_at": None,
+        "thinking_elapsed_ms": 0,
         "tools": [],
         "segments": ([{"type": "text", "content": normalized_content}] if normalized_content else []),
         "attachments": attachments or [],
@@ -393,6 +396,60 @@ def build_legacy_web_agent_segments(content: str, tools: list[dict[str, Any]]) -
     return segments
 
 
+def _apply_web_agent_tool_event(event: dict[str, Any], assistant_message: dict[str, Any]) -> None:
+    """将工具生命周期事件写入 WebAgent 展示消息及其有序片段。"""
+    tool_id = str(event.get("tool_id") or event.get("tool_call_id") or "")
+    tool_status = str(event.get("status") or "running")
+    if tool_id and tool_status in {"running", "done", "error"}:
+        matching_tool = next(
+            (tool for tool in assistant_message["tools"] if str(tool.get("id") or "") == tool_id),
+            None,
+        )
+        if tool_status == "running":
+            if matching_tool is None:
+                tool_index = len(assistant_message["tools"])
+                assistant_message["tools"].append(
+                    {
+                        "id": tool_id,
+                        "tool_name": str(event.get("tool_name") or ""),
+                        "message": str(event.get("message") or "").strip(),
+                        "status": "running",
+                    }
+                )
+                assistant_message.setdefault("segments", []).append({"type": "tool", "toolIndex": tool_index})
+            return
+        if matching_tool is not None:
+            matching_tool["status"] = tool_status
+        return
+
+    # 兼容尚未升级的事件生产者：没有调用 ID 时只能把前一批提示视为已结束。
+    for tool in assistant_message["tools"]:
+        if tool.get("status") == "running":
+            tool["status"] = "done"
+    tool_index = len(assistant_message["tools"])
+    assistant_message["tools"].append(
+        {
+            "id": f"tool-{uuid.uuid4().hex}",
+            "message": str(event.get("message") or "").strip(),
+            "status": "running",
+        }
+    )
+    assistant_message.setdefault("segments", []).append({"type": "tool", "toolIndex": tool_index})
+
+
+def _apply_web_agent_thinking_event(event: dict[str, Any], assistant_message: dict[str, Any]) -> None:
+    """将模型思考状态写入 WebAgent 展示消息，供前端显示耗时。"""
+    is_thinking = str(event.get("status") or "") == "running"
+    assistant_message["thinking"] = is_thinking
+    if is_thinking:
+        assistant_message["thinking_started_at"] = event.get("started_at")
+        assistant_message["thinking_elapsed_ms"] = 0
+    else:
+        assistant_message["thinking_elapsed_ms"] = (
+            event.get("elapsed_ms") or assistant_message.get("thinking_elapsed_ms") or 0
+        )
+
+
 def apply_web_agent_display_event(event: dict[str, Any], assistant_message: dict[str, Any]) -> None:
     """
     将 WebAgent SSE 事件同步应用到服务端展示消息快照。
@@ -401,45 +458,7 @@ def apply_web_agent_display_event(event: dict[str, Any], assistant_message: dict
     if event_type == "delta":
         append_web_agent_text_segment(assistant_message, event.get("content") or "")
     elif event_type == "tool":
-        tool_id = str(event.get("tool_id") or event.get("tool_call_id") or "")
-        tool_status = str(event.get("status") or "running")
-        if tool_id and tool_status in {"running", "done", "error"}:
-            matching_tool = next(
-                (tool for tool in assistant_message["tools"] if str(tool.get("id") or "") == tool_id),
-                None,
-            )
-            if tool_status == "running":
-                if matching_tool is None:
-                    tool_index = len(assistant_message["tools"])
-                    assistant_message["tools"].append(
-                        {
-                            "id": tool_id,
-                            "tool_name": str(event.get("tool_name") or ""),
-                            "message": str(event.get("message") or "").strip(),
-                            "status": "running",
-                        }
-                    )
-                    assistant_message.setdefault("segments", []).append(
-                        {"type": "tool", "toolIndex": tool_index}
-                    )
-                return
-            if matching_tool is not None:
-                matching_tool["status"] = tool_status
-            return
-
-        # 兼容尚未升级的事件生产者：没有调用 ID 时只能把前一批提示视为已结束。
-        for tool in assistant_message["tools"]:
-            if tool.get("status") == "running":
-                tool["status"] = "done"
-        tool_index = len(assistant_message["tools"])
-        assistant_message["tools"].append(
-            {
-                "id": f"tool-{uuid.uuid4().hex}",
-                "message": str(event.get("message") or "").strip(),
-                "status": "running",
-            }
-        )
-        assistant_message.setdefault("segments", []).append({"type": "tool", "toolIndex": tool_index})
+        _apply_web_agent_tool_event(event, assistant_message)
     elif event_type == "attachment" and event.get("attachment"):
         assistant_message["attachments"].append(event["attachment"])
     elif event_type == "choice" and event.get("choice"):
@@ -458,6 +477,8 @@ def apply_web_agent_display_event(event: dict[str, Any], assistant_message: dict
             else build_legacy_web_agent_segments(assistant_message["content"], assistant_message["tools"])
         )
         assistant_message["status"] = target_message.get("status") or "done"
+    elif event_type == "thinking":
+        _apply_web_agent_thinking_event(event, assistant_message)
     elif event_type == "error":
         assistant_message["status"] = "error"
         if not assistant_message["content"]:
@@ -1193,7 +1214,7 @@ def is_web_agent_traditional_message(text: str) -> bool:
     :return: 需要交给 MessageChain 时返回 True
     """
     normalized = str(text or "").strip()
-    return normalized.startswith("/") or normalized.startswith("CALLBACK:")
+    return not agent_interaction.is_agent_learning_command(normalized) and (normalized.startswith("/") or normalized.startswith("CALLBACK:"))
 
 
 def has_web_agent_traditional_interaction(user_id: str) -> bool:
@@ -1496,8 +1517,8 @@ async def build_web_agent_stream(
             )
         )
 
-    is_traditional_message = is_web_agent_traditional_message(prompt) or has_web_agent_traditional_interaction(
-        str(current_user.id)
+    is_traditional_message = not agent_interaction.is_agent_learning_command(prompt) and (
+        is_web_agent_traditional_message(prompt) or has_web_agent_traditional_interaction(str(current_user.id))
     )
     if is_traditional_message:
         denied_message = ensure_web_agent_command_allowed(current_user)

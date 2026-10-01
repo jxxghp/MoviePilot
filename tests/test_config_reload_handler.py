@@ -265,8 +265,9 @@ async def test_host_resolver_binds_current_scheduler_owner(monkeypatch):
     reload_config.assert_awaited_once_with()
 
 
-def test_config_reload_resolver_reads_latest_singleton_owner(monkeypatch):
+def test_config_reload_resolver_reads_latest_singleton_owner(monkeypatch, compose_cache_backend):
     """resolver 每次读取当前单例，不能保留已经换代的 Redis 实例。"""
+    compose_cache_backend("redis")
     first = object.__new__(RedisHelper)
     first_reload = Mock()
     first.on_config_changed = first_reload
@@ -297,8 +298,9 @@ def test_config_reload_resolver_reads_latest_singleton_owner(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_config_reload_resolver_invokes_current_async_redis_owner(monkeypatch):
+async def test_config_reload_resolver_invokes_current_async_redis_owner(monkeypatch, compose_cache_backend):
     """异步配置处理器必须绑定当前 Redis owner，并保留键筛选。"""
+    compose_cache_backend("redis")
     helper = object.__new__(AsyncRedisHelper)
     reload_config = AsyncMock()
     helper.on_config_changed = reload_config

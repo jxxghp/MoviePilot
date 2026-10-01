@@ -658,8 +658,18 @@ class TransferTask(OptionalMediaIdentityMixin, _ApplicationModel):
     _execution_checkpoint: Optional[TransferExecutionCheckpoint] = PrivateAttr(default=None)
     _terminal_settled: bool = PrivateAttr(default=False)
     _planning_context_restored: bool = PrivateAttr(default=False)
+    _music_preview_context: dict[str, Any] = PrivateAttr(default_factory=dict)
     _lease_owner: Optional[str] = PrivateAttr(default=None)
     _lease_token: Optional[str] = PrivateAttr(default=None)
+
+    @property
+    def music_preview_context(self) -> dict[str, Any]:
+        """返回本次扫描的展示证据副本，不作为持久重试范围或文件访问凭证。"""
+        return dict(getattr(self, "_music_preview_context", {}))
+
+    def bind_music_preview_context(self, context: dict[str, Any]) -> None:
+        """绑定临时音乐分组与可读性，保持旧插件序列化和持久规划契约。"""
+        self._music_preview_context = dict(context)
 
     @property
     def admission_task_id(self) -> Optional[str]:
@@ -792,6 +802,11 @@ class TransferAdmission:
 class TransferAdmissionRepository(Protocol):
     """整理任务 durable admission 所需的类型化持久化端口。"""
 
+    def defer_planning(self, *, task_id: str, lease_token: str, error: str,
+                       retry_after: int, max_retries: int) -> bool:
+        """仅将无计划、无步骤的接纳任务退避；预算用尽返回False，租约或状态冲突抛错。"""
+        ...
+
     def admit(
             self,
             *,
@@ -867,4 +882,3 @@ class TransferAdmissionRepository(Protocol):
     def abandon_unstarted(self, *, task_id: str, lease_token: str) -> int:
         """仅允许当前 lease owner 删除确认未开始且源已消失的登记。"""
         ...
-

@@ -1,6 +1,6 @@
 import asyncio
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
@@ -80,6 +80,7 @@ from app.application.plugin.transaction import (
 )
 from app.application.scheduling import update_plugin_job
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+from app.db.adapters.pluginidentity import TransactionalPluginIdentityStore
 from app.db.models.plugininstance import PluginInstance as PluginInstanceRecord
 from app.db.oper.plugindata import PluginDataOper
 from app.db.oper.plugininstance import PluginInstanceOper
@@ -90,6 +91,7 @@ from app.db.plugin.registry import (
 )
 from app.db.session import SessionFactory
 from app.db.uow import SqlAlchemyUnitOfWork
+from app.foundation.environment import is_free_threaded_runtime
 from app.foundation.version import compare_version
 from app.runtime.cache import async_fresh
 from app.runtime.compat.diagnostics import (
@@ -199,6 +201,21 @@ def _delete_plugin_data(plugin_id: str) -> None:
         ).execute(plugin_id)
     finally:
         session.close()
+
+
+def _read_plugin_runtime_declaration(plugin_id: str) -> Mapping[str, bool]:
+    """读取插件安装时随载荷提交的 package 运行时声明，供加载门禁判定代际与变体。
+
+    声明快照是运行目录唯一可离线信任的来源：插件目录里不存在主程序写入的 package
+    文件，市场索引又要联网才能取。存量安装可能还没有身份行或声明快照，这里一律回落
+    成空映射，保持"未声明即兼容"的历史语义。
+    """
+    identity = TransactionalPluginIdentityStore(SessionFactory).get(plugin_id)
+    declared = identity.declared_metadata if identity else None
+    if declared is None:
+        return {}
+    runtime = declared.to_json().get("runtime")
+    return runtime if isinstance(runtime, dict) else {}
 
 
 def _read_plugin_log_level(instance_id: str) -> LogLevelOverride:
@@ -419,6 +436,7 @@ def build_plugin_runtime_graph(host: PluginRuntimeHost) -> PluginRuntime:
             logger=logger,
             set_default_target=_set_plugin_default_target,
             clear_default_target=_clear_plugin_default_target,
+            runtime_declaration=_read_plugin_runtime_declaration,
         ),
         tool_build_max_attempts=PluginManager.AGENT_TOOLS_BUILD_MAX_ATTEMPTS,
     )
@@ -514,6 +532,7 @@ def configure_plugin_services() -> None:
             has_release_cache=market_transport.async_has_plugin_release_cache,
             releases=market_transport.async_get_plugin_release_versions,
             refresh_releases=refresh_plugin_releases,
+            free_threaded=is_free_threaded_runtime,
         )
     )
     configure_plugin_catalog_query(
@@ -524,6 +543,7 @@ def configure_plugin_services() -> None:
             online_candidates=plugin_manager.async_get_online_plugin_candidates,
             process_plugins=plugin_manager.process_plugins_list,
             identities=persistence.list_identities,
+            free_threaded=is_free_threaded_runtime,
         )
     )
     configure_plugin_rating_service(
@@ -588,7 +608,7 @@ def configure_plugin_services() -> None:
         inventory=load_inventory,
         identity=persistence.get_identity,
         candidate_compatibility=lambda candidate: (
-            market_transport.check_plugin_system_version(candidate.dto)
+            market_transport.check_plugin_install_compatibility(candidate.dto)
         ),
         executor=command,
         clock=lambda: datetime.now(timezone.utc),

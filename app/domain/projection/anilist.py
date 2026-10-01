@@ -13,6 +13,41 @@ from app.schemas.types import MediaSource, MediaType
 MOVIE_FORMATS = frozenset({"MOVIE"})
 CHINESE_TITLE_PATTERN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
 JAPANESE_KANA_PATTERN = re.compile(r"[\u3040-\u30ff]")
+SEASON_TITLE_PATTERN = re.compile(
+    r"^(?P<base>.+?)(?:\s+(?:Season\s*|S)(?P<season>\d{1,2})"
+    r"|\s+(?P<number>[2-9])|\s+(?P<roman>II|III|IV|V|VI|VII|VIII|IX|X)"
+    r"|(?P<unicode>[ⅡⅢⅣⅤⅥⅦⅧⅨⅩ]))$",
+    re.IGNORECASE,
+)
+ROMAN_SEASONS = {value: season for season, value in enumerate(
+    ("", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X")
+) if season > 1}
+UNICODE_SEASONS = {value: season for season, value in enumerate("ⅡⅢⅣⅤⅥⅦⅧⅨⅩ", start=2)}
+
+
+def _season_title(value: str) -> tuple[int, str] | None:
+    """从明确的续季后缀提取整部剧标题和季号，保留其他片名原样。"""
+    match = SEASON_TITLE_PATTERN.fullmatch(value.strip())
+    if not match:
+        return None
+    season = (
+        int(match.group("season") or match.group("number"))
+        if match.group("season") or match.group("number")
+        else ROMAN_SEASONS.get((match.group("roman") or "").upper())
+        or UNICODE_SEASONS.get(match.group("unicode"))
+    )
+    base = match.group("base").strip()
+    return (season, base) if season and season > 1 and base else None
+
+
+def _season_aliases(titles: list[str]) -> tuple[int | None, list[str]]:
+    """仅在各别名的续季编号一致时补充可匹配整部剧种子的基础标题。"""
+    parsed = [_season_title(title) for title in titles if title]
+    found = [item for item in parsed if item]
+    seasons = {season for season, _ in found}
+    if len(seasons) != 1:
+        return None, []
+    return seasons.pop(), list(dict.fromkeys(base for _, base in found))
 
 
 def resolve_media_type(info: Mapping[str, Any]) -> MediaType:
@@ -74,21 +109,20 @@ def project(
     builder.set("title", title)
     builder.set_missing("en_title", titles.get("english"))
     builder.set_missing("original_title", titles.get("native") or titles.get("romaji"))
-    builder.set(
-        "names",
-        list(
-            dict.fromkeys(
-                value
-                for value in [
-                    titles.get("english"),
-                    titles.get("romaji"),
-                    titles.get("native"),
-                    *(info.get("synonyms") or []),
-                ]
-                if value and value != title
-            )
-        ),
+    source_titles = [
+        value for value in (
+            titles.get("english"),
+            titles.get("romaji"),
+            titles.get("native"),
+            *(info.get("synonyms") or []),
+        ) if isinstance(value, str) and value
+    ]
+    inferred_season, base_aliases = _season_aliases(
+        [title, *source_titles] if isinstance(title, str) else source_titles
     )
+    builder.set("names", list(dict.fromkeys(
+        value for value in [*source_titles, *base_aliases] if value != title
+    )))
 
     start_date = info.get("startDate")
     end_date = info.get("endDate")
@@ -140,7 +174,8 @@ def project(
     builder.set_missing("directors", info.get("directors") or [])
 
     if builder.get("season") is None:
-        builder.set("season", MetaInfo(str(title)).begin_season if title else None)
+        parsed_season = MetaInfo(str(title)).begin_season if title else None
+        builder.set("season", parsed_season if parsed_season is not None else inferred_season)
     episode_count = info.get("episodes")
     if builder.get("type") == MediaType.TV and isinstance(episode_count, int) and episode_count > 0:
         season = builder.get("season") if builder.get("season") is not None else 1

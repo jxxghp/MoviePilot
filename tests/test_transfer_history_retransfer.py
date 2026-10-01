@@ -465,7 +465,7 @@ def test_manual_transfer_preview_multi_select_collects_failures(monkeypatch):
 
 
 def test_manual_transfer_music_files_share_one_album_batch(monkeypatch):
-    """多选音轨应一次进入整理链，避免按单曲丢失专辑分类上下文。"""
+    """明确选择音乐类型时，多选音轨应共享专辑批次上下文。"""
     selected_fileitems = [
         {
             "storage": "local",
@@ -508,7 +508,7 @@ def test_manual_transfer_music_files_share_one_album_batch(monkeypatch):
         transer_item=ManualTransferItem(
             fileitems=selected_fileitems,
             preview=True,
-            type_name="自动",
+            type_name="音乐",
         ),
         background=False,
         history_query=SimpleNamespace(get=lambda _history_id: None),
@@ -523,6 +523,66 @@ def test_manual_transfer_music_files_share_one_album_batch(monkeypatch):
     assert [item.path for item in captured[0]["selected_fileitems"]] == [
         item["path"] for item in selected_fileitems
     ]
+
+
+def test_manual_transfer_auto_audio_selection_uses_single_file_flow(monkeypatch):
+    """自动类型下多选音频仍逐文件识别，避免数量改变音乐分类结果。"""
+    selected_fileitems = [
+        FileItem(
+            storage="local",
+            path=f"/downloads/爱像太平洋/{index:02d}.flac",
+            name=f"{index:02d}.flac",
+            extension="flac",
+            type="file",
+        )
+        for index in (2, 3)
+    ]
+    captured = []
+
+    class FakeTransferChain:
+        """记录自动多选请求是否保留逐文件识别语义。"""
+
+        def manual_transfer(self, **kwargs):
+            """返回当前文件的一条成功预览。"""
+            captured.append(kwargs)
+            fileitem = kwargs["fileitem"]
+            return True, {
+                "summary": {"total": 1, "success": 1, "failed": 0},
+                "items": [{
+                    "source": fileitem.path,
+                    "target": f"/library/合辑/{fileitem.name}",
+                    "target_dir": "/library/合辑",
+                    "success": True,
+                }],
+                "message": "",
+            }
+
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
+    monkeypatch.setattr(
+        "app.api.endpoints.transfer.get_api_runtime_config_snapshot",
+        lambda: SimpleNamespace(audio_extensions=(".flac",)),
+    )
+
+    response = manual_transfer(
+        transer_item=ManualTransferItem(
+            fileitems=selected_fileitems,
+            preview=True,
+            type_name="自动",
+        ),
+        background=False,
+        history_query=SimpleNamespace(get=lambda _history_id: None),
+        _="token",
+    )
+
+    assert response.success is True
+    assert response.data["summary"] == {"total": 2, "success": 2, "failed": 0}
+    assert len(captured) == 2
+    assert [call["fileitem"].path for call in captured] == [
+        item.path for item in selected_fileitems
+    ]
+    assert all(call["mtype"] is None for call in captured)
+    assert all(call["music_type"] is None for call in captured)
+    assert all("selected_fileitems" not in call for call in captured)
 
 
 def test_manual_transfer_music_batch_ignores_non_disc_alternate_directory(monkeypatch):
@@ -563,7 +623,7 @@ def test_manual_transfer_music_batch_ignores_non_disc_alternate_directory(monkey
         transer_item=ManualTransferItem(
             fileitems=selected_fileitems,
             preview=True,
-            type_name="自动",
+            type_name="音乐",
         ),
         background=False,
         history_query=SimpleNamespace(get=lambda _history_id: None),
@@ -624,7 +684,7 @@ def test_manual_transfer_history_ids_share_one_music_album_batch(monkeypatch):
             logids=list(histories),
             preview=True,
             reorganize=True,
-            type_name="自动",
+            type_name="音乐",
         ),
         background=False,
         history_query=SimpleNamespace(get=histories.get),

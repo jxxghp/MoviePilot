@@ -2,16 +2,16 @@
   "app/adapters/cache/backends.py": {
     "import-untyped": 1,
     "no-any-return": 1,
-    "no-untyped-call": 2,
-    "no-untyped-def": 4,
+    "no-untyped-def": 2,
     "operator": 5,
-    "override": 16
+    "override": 9
   },
   "app/adapters/cache/redis.py": {
     "arg-type": 9,
     "no-any-return": 2,
-    "no-untyped-call": 12,
-    "no-untyped-def": 15,
+    "no-untyped-call": 14,
+    "no-untyped-def": 17,
+    "override": 7,
     "return-value": 2,
     "str-bytes-safe": 2,
     "union-attr": 14
@@ -116,7 +116,7 @@
     "union-attr": 1
   },
   "app/adapters/web/plugin/routes.py": {
-    "type-arg": 2
+    "type-arg": 1
   },
   "app/agent/callback/__init__.py": {
     "no-untyped-call": 5,
@@ -154,6 +154,9 @@
     "return-value": 2,
     "type-arg": 7,
     "type-var": 1
+  },
+  "app/agent/memory/__init__.py": {
+    "misc": 2
   },
   "app/agent/middleware/config.py": {
     "misc": 1
@@ -203,7 +206,7 @@
     "no-any-return": 7,
     "no-untyped-call": 3,
     "no-untyped-def": 13,
-    "type-arg": 13,
+    "type-arg": 12,
     "union-attr": 3,
     "var-annotated": 1
   },
@@ -841,12 +844,7 @@
     "no-any-return": 28
   },
   "app/chain/interaction.py": {
-    "arg-type": 4,
-    "assignment": 1,
-    "no-untyped-call": 1,
-    "return-value": 1,
-    "union-attr": 16,
-    "var-annotated": 1
+    "no-untyped-call": 1
   },
   "app/chain/mediaserver.py": {
     "arg-type": 3,
@@ -974,10 +972,9 @@
   },
   "app/chain/transfer/execution.py": {
     "arg-type": 1,
-    "assignment": 4,
     "no-any-return": 2,
     "type-arg": 2,
-    "union-attr": 17
+    "union-attr": 15
   },
   "app/chain/transfer/facade.py": {
     "attr-defined": 2,
@@ -1045,7 +1042,7 @@
   "app/chain/transfer/workflow.py": {
     "arg-type": 9,
     "assignment": 10,
-    "attr-defined": 2,
+    "attr-defined": 1,
     "operator": 1,
     "return-value": 1,
     "type-arg": 6,
@@ -1450,7 +1447,7 @@
     "no-any-return": 4,
     "no-untyped-def": 132,
     "return-value": 1,
-    "type-arg": 26,
+    "type-arg": 22,
     "var-annotated": 1
   },
   "app/modules/douban/scraper.py": {
@@ -1485,23 +1482,22 @@
     "type-arg": 9,
     "var-annotated": 1
   },
-  "app/modules/feishu/__init__.py": {
+  "app/modules/feishu/feishu.py": {
+    "arg-type": 5,
+    "assignment": 1,
+    "call-overload": 1,
+    "no-untyped-def": 1,
+    "return-value": 1,
+    "type-arg": 22,
+    "union-attr": 2
+  },
+  "app/modules/feishu/module.py": {
     "arg-type": 4,
     "assignment": 6,
     "attr-defined": 1,
     "no-untyped-def": 1,
     "return-value": 1,
     "type-arg": 5,
-    "union-attr": 8
-  },
-  "app/modules/feishu/feishu.py": {
-    "arg-type": 5,
-    "assignment": 1,
-    "call-overload": 1,
-    "method-assign": 2,
-    "no-untyped-def": 3,
-    "return-value": 1,
-    "type-arg": 25,
     "union-attr": 8
   },
   "app/modules/filemanager/module.py": {
@@ -1577,14 +1573,13 @@
     "union-attr": 5
   },
   "app/modules/filemanager/storages/smb.py": {
-    "arg-type": 9,
+    "arg-type": 8,
     "assignment": 2,
     "attr-defined": 1,
     "empty-body": 1,
-    "no-untyped-call": 15,
-    "no-untyped-def": 8,
+    "no-untyped-call": 5,
+    "no-untyped-def": 7,
     "override": 1,
-    "return-value": 2,
     "union-attr": 5
   },
   "app/modules/filemanager/storages/u115.py": {
@@ -1814,10 +1809,8 @@
     "type-arg": 5
   },
   "app/modules/indexer/spider/mtorrent.py": {
-    "arg-type": 5,
+    "arg-type": 3,
     "assignment": 4,
-    "no-untyped-def": 1,
-    "type-arg": 5,
     "var-annotated": 1
   },
   "app/modules/indexer/spider/rousi.py": {
@@ -1887,7 +1880,7 @@
     "arg-type": 1,
     "assignment": 5,
     "misc": 4,
-    "no-untyped-call": 3,
+    "no-untyped-call": 2,
     "no-untyped-def": 2,
     "type-arg": 2
   },
@@ -1917,13 +1910,13 @@
   },
   "app/modules/plex/plex.py": {
     "arg-type": 2,
-    "assignment": 3,
+    "assignment": 2,
     "misc": 1,
     "no-any-return": 1,
-    "no-untyped-def": 10,
+    "no-untyped-def": 9,
     "operator": 5,
     "return-value": 1,
-    "type-arg": 4,
+    "type-arg": 3,
     "union-attr": 4,
     "var-annotated": 3
   },
@@ -1974,7 +1967,6 @@
   },
   "app/modules/redis/__init__.py": {
     "empty-body": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 1
   },
   "app/modules/rtorrent/__init__.py": {
@@ -2052,10 +2044,10 @@
     "assignment": 2,
     "misc": 4,
     "no-any-return": 8,
-    "no-untyped-call": 2,
-    "no-untyped-def": 19,
+    "no-untyped-call": 1,
+    "no-untyped-def": 13,
     "return-value": 1,
-    "type-arg": 14,
+    "type-arg": 10,
     "union-attr": 1,
     "var-annotated": 1
   },
@@ -2410,7 +2402,6 @@
   },
   "app/monitor/snapshot.py": {
     "type-arg": 5,
-    "valid-type": 1,
     "var-annotated": 1
   },
   "app/monitor/syslimits.py": {
@@ -2593,7 +2584,7 @@
     "unused-ignore": 1
   },
   "app/schemas/agent.py": {
-    "misc": 26
+    "misc": 24
   },
   "app/schemas/cache.py": {
     "misc": 3
@@ -2723,6 +2714,9 @@
     "attr-defined": 1,
     "no-untyped-def": 2,
     "type-arg": 1
+  },
+  "app/startup/composition/cache.py": {
+    "no-untyped-call": 1
   },
   "app/startup/composition/database.py": {
     "assignment": 1

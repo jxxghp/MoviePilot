@@ -144,6 +144,7 @@ async def delete_music_recognition_cache(
     deleted_item = MusicBrainzChain().delete_cache(cache_key)
     if not deleted_item:
         return _SchemaResponse(success=False, message="音乐识别缓存不存在")
+    MediaChain.clear_music_album_cache()
     return _SchemaResponse(success=True, message="音乐识别缓存删除成功")
 
 
@@ -155,6 +156,7 @@ async def clear_music_recognition_cache(
 ) -> _SchemaResponse:
     """清空全部 MusicBrainz 识别缓存。"""
     MusicBrainzChain().clear_cache()
+    MediaChain.clear_music_album_cache()
     return _SchemaResponse(success=True, message="音乐识别缓存清理完成")
 
 
@@ -228,11 +230,17 @@ async def music_album(
         album_id: str,
         media_source: MusicSourceParam = MediaSource.MusicBrainz,
         _: _SchemaTokenPayload = Depends(verify_token),
+        musicbrainz_release_id: Annotated[
+            Optional[str], Query(pattern=r"^[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}$"),
+        ] = None,
 ) -> _SchemaMusicAlbumInfo:
-    """按专辑标准 ID 返回专辑详情、曲目列表和发行版本。"""
+    """按专辑 ID 返回详情；显式发行版必须属于该发行组，失败时不改选其它版。"""
     media_source = _validate_music_source(media_source)
+    if musicbrainz_release_id is not None and media_source != MediaSource.MusicBrainz:
+        raise HTTPException(status_code=422, detail="具体发行版仅支持 MusicBrainz 专辑")
     info = await MediaChain().async_get_music_album(
-        media_source=media_source, media_id=album_id
+        media_source=media_source, media_id=album_id,
+        **({"musicbrainz_release_id": musicbrainz_release_id} if musicbrainz_release_id is not None else {}),
     )
     if not info:
         raise HTTPException(status_code=404, detail="未识别到专辑信息")

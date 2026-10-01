@@ -1064,7 +1064,7 @@ class TransferQueueOwner(_TransferOwnerBase):
         task.bind_admission_task_id(admission.task_id)
         self._TransferChain__bind_claimed_admission(task, admission)
         task.bind_planning_input(planning_input)
-        if planning_input.mediainfo:
+        if planning_input.mediainfo or planning_input.options.get("music_recognition_scope"):
             task.mark_planning_context_restored()
         return self.put_to_queue(task)
 
@@ -1491,7 +1491,7 @@ class TransferQueueOwner(_TransferOwnerBase):
 
             # 如果没有下载器监控的目录则不处理
             if not any(
-                    dir_info.monitor_type == "downloader" and dir_info.storage == "local"
+                    dir_info.monitor_type == "downloader"
                     for dir_info in download_dirs
             ):
                 if progress_callback:
@@ -1551,26 +1551,8 @@ class TransferQueueOwner(_TransferOwnerBase):
                             },
                         )
 
-                    # 文件路径
-                    file_path = torrent.path
-                    if not file_path.exists():
-                        logger.warn(f"文件不存在：{file_path}")
-                        continue
-
-                    # 检查是否为下载器监控目录中的文件
-                    is_downloader_monitor = False
-                    for dir_info in download_dirs:
-                        if dir_info.monitor_type != "downloader":
-                            continue
-                        if not dir_info.download_path:
-                            continue
-                        if file_path.is_relative_to(Path(dir_info.download_path)):
-                            is_downloader_monitor = True
-                            break
-                    if not is_downloader_monitor:
-                        logger.debug(
-                            f"文件 {file_path} 不在下载器监控目录中，不通过下载器进行整理"
-                        )
+                    fileitem = self._build_transfer_fileitem(torrent, download_dirs)
+                    if not fileitem:
                         continue
 
                     # 查询下载记录识别情况
@@ -1609,7 +1591,7 @@ class TransferQueueOwner(_TransferOwnerBase):
 
                     # 执行异步整理，匹配源目录
                     self.do_transfer(
-                        fileitem=self._build_transfer_fileitem(torrent),
+                        fileitem=fileitem,
                         mediainfo=mediainfo,
                         mtype=mtype,
                         downloader=torrent.downloader,

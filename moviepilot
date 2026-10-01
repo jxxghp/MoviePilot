@@ -15,7 +15,7 @@ Bootstrap Commands:
   moviepilot init [--skip-resources] [--force-token] [--wizard] [--superuser NAME] [--superuser-password PASSWORD] [--config-dir PATH]
   moviepilot setup [--python PYTHON] [--venv PATH] [--recreate] [--frontend-version TAG] [--node-version 20.12.1] [--wizard] [--superuser NAME] [--superuser-password PASSWORD] [--config-dir PATH]
   moviepilot uninstall [--venv PATH] [--config-dir PATH]
-  moviepilot update {backend|frontend|all} [OPTIONS]
+  moviepilot update [backend|frontend|all] [OPTIONS]
   moviepilot startup {enable|disable|status} [--venv PATH] [--config-dir PATH]
   moviepilot agent [OPTIONS] MESSAGE...
 
@@ -160,6 +160,7 @@ Options:
 说明:
   - Rust 加速扩展通过 moviepilot-rust PyPI 依赖安装
   - 可在前端“高级设置 - 实验室”中关闭或重新开启 Rust 加速
+  - 旧配置仅补充目标目录缺失的内容，实际复制后才显示迁移提示
 EOF
 }
 
@@ -184,11 +185,13 @@ show_update_help() {
 Usage:
   moviepilot update backend [OPTIONS]
   moviepilot update frontend [OPTIONS]
-  moviepilot update all [OPTIONS]
+  moviepilot update [all] [OPTIONS]
 
 Options:
-  --ref REF                 后端 Git 版本，默认 latest
-  --frontend-version TAG    前端版本，默认使用 version.py 中的 FRONTEND_VERSION
+  --ref REF                 后端 Git 版本，默认当前分支；DEV 下 detached HEAD 回到 v3
+  --dev / --no-dev          指定 DEV 更新模式，默认读取 MOVIEPILOT_UPDATE_DEV
+                            DEV 模式下同版本前端也会重新下载并替换
+  --frontend-version TAG    前端版本，DEV 默认 latest，否则使用 FRONTEND_VERSION
   --node-version VER        本地 Node 运行时版本，默认 20.12.1
   --python PYTHON           用于安装后端依赖的 Python 解释器，默认自动选择本地 3.14+ 版本
   --venv PATH               虚拟环境目录，默认 ./venv
@@ -199,6 +202,7 @@ Options:
 
 说明:
   - 更新后端依赖时会同步更新 moviepilot-rust PyPI 依赖
+  - 后端更新前如果检测到已跟踪源码改动，CLI 会询问是否清空本地改动；确认后才会继续更新，拒绝或非交互模式会取消更新
   - 可在前端“高级设置 - 实验室”中关闭或重新开启 Rust 加速
 EOF
 }
@@ -453,11 +457,11 @@ legacy_config_exists() {
 }
 
 run_runtime_cli() {
-  if [ ! -x "$VENV_PYTHON" ]; then
+  if [ ! -x "$MOVIEPILOT_PYTHON" ]; then
     echo "未找到项目虚拟环境，请先执行 moviepilot install deps 或 moviepilot setup" >&2
     exit 1
   fi
-  exec "$VENV_PYTHON" -m app.cli "$@"
+  exec "$MOVIEPILOT_PYTHON" -m app.cli "$@"
 }
 
 show_command_help() {
@@ -538,6 +542,13 @@ done
 
 ROOT="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 VENV_PYTHON="$ROOT/venv/bin/python"
+# 优先使用项目环境提供的专用 Python 入口，保留其运行身份和系统权限。
+PROJECT_RUNTIME_PYTHON="$ROOT/venv/bin/moviepilot-python"
+if [ -x "$PROJECT_RUNTIME_PYTHON" ]; then
+  MOVIEPILOT_PYTHON="$PROJECT_RUNTIME_PYTHON"
+else
+  MOVIEPILOT_PYTHON="$VENV_PYTHON"
+fi
 SETUP_SCRIPT="$ROOT/scripts/local_setup.py"
 
 if [ -z "${CONFIG_DIR:-}" ] && [ -f "$ROOT/.moviepilot.env" ]; then
@@ -556,8 +567,8 @@ export CONFIG_DIR
 
 BOOTSTRAP_PYTHON=""
 EXTERNAL_BOOTSTRAP_PYTHON="$(find_external_python || true)"
-if [ -x "$VENV_PYTHON" ]; then
-  BOOTSTRAP_PYTHON="$VENV_PYTHON"
+if [ -x "$MOVIEPILOT_PYTHON" ]; then
+  BOOTSTRAP_PYTHON="$MOVIEPILOT_PYTHON"
 else
   BOOTSTRAP_PYTHON="$EXTERNAL_BOOTSTRAP_PYTHON"
 fi
@@ -640,9 +651,9 @@ case "${1:-}" in
     ;;
 esac
 
-if [ ! -x "$VENV_PYTHON" ]; then
+if [ ! -x "$MOVIEPILOT_PYTHON" ]; then
   echo "未找到项目虚拟环境，请先执行 moviepilot install deps 或 moviepilot setup" >&2
   exit 1
 fi
 
-exec "$VENV_PYTHON" -m app.cli "$@"
+exec "$MOVIEPILOT_PYTHON" -m app.cli "$@"

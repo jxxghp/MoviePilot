@@ -1,8 +1,9 @@
 """Chain 运行上下文注入和无参兼容 provider 测试。"""
 
+import asyncio
 import sys
 from dataclasses import replace
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from unittest.mock import Mock, call
 
 import pytest
@@ -12,6 +13,7 @@ from app.application.chain.context import ChainRuntimeContext
 from app.application.configuration import ChainRuntimeConfig
 from app.chain.base import ChainBase
 from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
+from app.schemas.types import EventType
 from app.startup.composition.runtime import RuntimeDependencies
 
 
@@ -64,6 +66,85 @@ def test_chain_accepts_explicit_runtime_context() -> None:
     assert chain.durable_event_writer is context.durable_event_writer
     assert chain.system_service is context.system_service
     context.message_queue.bind.assert_called_once_with(chain.run_module)
+
+
+def _failing_chain(error: Exception, source: str) -> ChainBase:
+    """注入会抛出指定异常的同步、异步模块，覆盖真实调度到通知的链路。"""
+    def fail(**_kwargs):
+        """模拟同步模块执行失败。"""
+        raise error
+
+    async def async_fail(**_kwargs):
+        """模拟异步模块执行失败。"""
+        raise error
+
+    context = _context()
+    context.plugin_manager.get_plugin_modules.return_value = {}
+    context.module_manager.get_running_modules.return_value = []
+    if source == "plugin":
+        context.plugin_manager.get_plugin_modules.return_value = {
+            ("TestPlugin", "测试插件"): {"fail": fail, "async_fail": async_fail},
+        }
+    else:
+        context.module_manager.get_running_modules.return_value = [
+            SimpleNamespace(
+                get_name=Mock(return_value="测试模块"),
+                get_priority=Mock(return_value=1),
+                fail=fail,
+                async_fail=async_fail,
+            ),
+        ]
+    return ChainBase(context)
+
+
+@pytest.mark.parametrize("source", ["system", "plugin"])
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize(
+    ("error", "expected_reason"),
+    [
+        (RuntimeError("无法连接媒体服务器\nConnection refused"), "无法连接媒体服务器\nConnection refused"),
+        (TimeoutError(), "TimeoutError"),
+        (ValueError("  \n "), "ValueError"),
+    ],
+)
+def test_module_error_notification_preserves_reason(source, asynchronous, error, expected_reason) -> None:
+    """系统与插件的同步、异步失败通知应携带调用位置和错误原因，空异常使用类型兜底。"""
+    chain = _failing_chain(error, source)
+    method = "async_fail" if asynchronous else "fail"
+
+    result = asyncio.run(chain.async_run_module(method)) if asynchronous else chain.run_module(method)
+
+    assert result is None
+    source_id = "TestPlugin" if source == "plugin" else "SimpleNamespace"
+    chain.messagehelper.put.assert_called_once_with(
+        title="测试插件 运行失败" if source == "plugin" else "测试模块运行失败",
+        message=f"{source_id}.{method}：{expected_reason}",
+        role=source,
+    )
+    chain.eventmanager.send_event.assert_called_once()
+    event_type, payload = chain.eventmanager.send_event.call_args.args
+    assert event_type == EventType.SystemError
+    assert payload["error"] == str(error)
+    assert "Traceback (most recent call last)" in payload["traceback"]
+    assert type(error).__name__ in payload["traceback"]
+
+
+@pytest.mark.parametrize("source", ["system", "plugin"])
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_module_explicit_error_propagation_does_not_notify(source, asynchronous) -> None:
+    """显式要求传播异常时，保持原异常对象且不重复生成通知或错误事件。"""
+    error = RuntimeError("连接被拒绝")
+    chain = _failing_chain(error, source)
+
+    with pytest.raises(RuntimeError) as caught:
+        if asynchronous:
+            asyncio.run(chain.async_run_module("async_fail", raise_exception=True))
+        else:
+            chain.run_module("fail", raise_exception=True)
+
+    assert caught.value is error
+    chain.messagehelper.put.assert_not_called()
+    chain.eventmanager.send_event.assert_not_called()
 
 
 def test_chains_bind_distinct_callbacks_without_starting_queue() -> None:

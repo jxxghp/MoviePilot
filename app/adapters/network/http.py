@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import re
+import ssl
 import sys
 import threading
 import time
@@ -15,6 +16,7 @@ import httpx2
 import requests
 import urllib3
 from requests import Response, Session
+from requests.adapters import HTTPAdapter
 from urllib3.exceptions import InsecureRequestWarning
 
 from app.runtime.correlation import with_correlation_header
@@ -26,6 +28,8 @@ HttpRequestError = requests.exceptions.RequestException
 AsyncHttpRequestError = httpx2.RequestError
 
 _default_user_agent: Optional[str] = None
+
+_VerifySetting = Union[bool, str, ssl.SSLContext]
 
 
 def configure_default_user_agent(user_agent: str) -> None:
@@ -39,6 +43,74 @@ _ASYNC_STALE_CONNECTION_ERRORS = (
     httpx2.ReadError,
     httpx2.WriteError,
 )
+
+# 代理 CONNECT 隧道在 TLS 协商阶段断开时，HTTPX 会把错误归类为这些连接层异常。
+# 超时类异常不在此列：重试同一条拥塞链路只会延长请求等待时间。
+_ASYNC_PROXY_TLS_FALLBACK_ERRORS = (
+    httpx2.ConnectError,
+    httpx2.RemoteProtocolError,
+    httpx2.ReadError,
+    httpx2.WriteError,
+)
+
+
+def _proxy_configured(proxies: Any) -> bool:
+    """判断是否存在非空代理配置。"""
+    if isinstance(proxies, str):
+        return bool(proxies.strip())
+    if isinstance(proxies, dict):
+        return any(isinstance(value, str) and value.strip() for value in proxies.values())
+    return bool(proxies)
+
+
+def _can_retry_proxy_tls12(url: str, proxies: Any, method: str) -> bool:
+    """仅为代理下的 HTTPS 幂等请求启用 TLS 1.2 回退。"""
+    return (
+        _proxy_configured(proxies)
+        and url.lower().startswith("https://")
+        and method.upper() in _REQUESTS_RETRY_IDEMPOTENT_METHODS
+    )
+
+
+def _build_tls12_context(verify: Union[bool, str]) -> ssl.SSLContext:
+    """复制证书校验策略并把单次回退请求限制为 TLS 1.2。"""
+    if isinstance(verify, str):
+        context = ssl.create_default_context(cafile=verify)
+    else:
+        context = ssl.create_default_context()
+        if not verify:
+            context.check_hostname = False
+            context.verify_mode = ssl.CERT_NONE
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    context.maximum_version = ssl.TLSVersion.TLSv1_2
+    return context
+
+
+class _TLS12HttpAdapter(HTTPAdapter):  # type: ignore[misc]
+    """为 requests 的一次性回退会话注入 TLS 1.2 SSLContext。"""
+
+    def __init__(
+        self,
+        ssl_context: ssl.SSLContext,
+        *args: Any,
+        **kwargs: Any,
+    ) -> None:
+        self._ssl_context = ssl_context
+        super().__init__(*args, **kwargs)
+
+    def init_poolmanager(
+        self,
+        connections: int,
+        maxsize: int,
+        block: bool = False,
+        **pool_kwargs: Any,
+    ) -> None:
+        pool_kwargs["ssl_context"] = self._ssl_context
+        super().init_poolmanager(connections, maxsize, block, **pool_kwargs)
+
+    def proxy_manager_for(self, proxy: str, **proxy_kwargs: Any) -> Any:
+        proxy_kwargs["ssl_context"] = self._ssl_context
+        return super().proxy_manager_for(proxy, **proxy_kwargs)
 
 
 class _NonClosingTransportProxy(httpx2.AsyncBaseTransport):
@@ -75,7 +147,7 @@ class _NonClosingTransportProxy(httpx2.AsyncBaseTransport):
 
 _SharedTransportKey = Tuple[
     Optional[str],          # proxy
-    Union[bool, str],       # verify
+    _VerifySetting,         # verify
     bool,                   # http2
     bool,                   # trust_env
     int,                    # max_keepalive_connections
@@ -158,7 +230,7 @@ def _discard_pending_eviction_task(task: asyncio.Task) -> None:
 
 def _get_shared_async_transport(
     proxy: Optional[str],
-    verify: Union[bool, str],
+    verify: _VerifySetting,
     http2: bool,
     max_keepalive_connections: int,
     max_connections: int,
@@ -362,6 +434,7 @@ class RequestUtils:
         self._proxies = proxies
         self._session = session or (requests.Session() if use_session else None)
         self._owns_session = session is None and use_session
+        self._fallback_session: Optional[Session] = None
         self._timeout = timeout or 20
         self._verify = verify
         if not content_type:
@@ -416,6 +489,41 @@ class RequestUtils:
             self._session.close()
             self._session = None
             self._owns_session = False
+        self._close_fallback_session()
+
+    def _close_fallback_session(self) -> None:
+        """关闭流式 TLS 回退会话，避免临时连接池泄漏。"""
+        if self._fallback_session is not None:
+            self._fallback_session.close()
+            self._fallback_session = None
+
+    def _request_with_tls12(self, method: str, url: str, kwargs: dict[str, Any]) -> Response:
+        """使用一次性 TLS 1.2 会话重试代理下的幂等 HTTPS 请求。"""
+        stream = bool(kwargs.get("stream"))
+        if stream:
+            self._close_fallback_session()
+            fallback_session = requests.Session()
+            self._fallback_session = fallback_session
+        else:
+            fallback_session = requests.Session()
+
+        fallback_session.mount(
+            "https://",
+            _TLS12HttpAdapter(_build_tls12_context(self._verify)),
+        )
+        try:
+            response = fallback_session.request(method, url, **kwargs)
+        except requests.exceptions.RequestException:
+            if stream:
+                self._close_fallback_session()
+            else:
+                fallback_session.close()
+            raise
+
+        if not stream:
+            # stream=False 已经把响应体读入 Response，连接池可以立即释放。
+            fallback_session.close()
+        return response
 
     @contextmanager
     def response_manager(self, method: str, url: str, **kwargs):
@@ -472,7 +580,18 @@ class RequestUtils:
             requests.exceptions.ConnectionError,
             requests.exceptions.ChunkedEncodingError,
             requests.exceptions.ReadTimeout,
-        ):
+        ) as error:
+            if (
+                self._session is None
+                and isinstance(error, requests.exceptions.ConnectionError)
+                and _can_retry_proxy_tls12(url, self._proxies, method_upper)
+            ):
+                try:
+                    return self._request_with_tls12(method, url, kwargs)
+                except requests.exceptions.RequestException:
+                    if raise_exception:
+                        raise
+                    return None
             if (
                 self._session is not None
                 and method_upper in _REQUESTS_RETRY_IDEMPOTENT_METHODS
@@ -512,6 +631,7 @@ class RequestUtils:
         finally:
             if response is not None:
                 response.close()
+            self._close_fallback_session()
 
     def post(
         self, url: str, data: Any = None, json: dict = None, **kwargs
@@ -584,6 +704,7 @@ class RequestUtils:
         finally:
             if response is not None:
                 response.close()
+            self._close_fallback_session()
 
     def post_res(
         self,
@@ -1205,7 +1326,27 @@ class AsyncRequestUtils:
         # _h2_proxy_allowed 处注释）；仅对幂等方法做"h2 失败就地降级 h1 重试"，
         # 避免非幂等请求在服务端可能已收到数据的情况下重复产生副作用
         http2 = self._http2 and _h2_proxy_allowed(self._proxies, url)
+        proxy_tls_fallback = _can_retry_proxy_tls12(url, self._proxies, method)
         if not (http2 and self._proxies and method.upper() in _REQUESTS_RETRY_IDEMPOTENT_METHODS):
+            if proxy_tls_fallback:
+                try:
+                    return await self._dispatch_request(
+                        http2,
+                        cookies_dict,
+                        method,
+                        url,
+                        True,
+                        **kwargs,
+                    )
+                except _ASYNC_PROXY_TLS_FALLBACK_ERRORS:
+                    return await self._dispatch_with_tls12(
+                        http2,
+                        cookies_dict,
+                        method,
+                        url,
+                        raise_exception,
+                        **kwargs,
+                    )
             return await self._dispatch_request(
                 http2, cookies_dict, method, url, raise_exception, **kwargs
             )
@@ -1216,9 +1357,41 @@ class AsyncRequestUtils:
             )
         except _H2_TUNNEL_BREAK_ERRORS:
             _trip_h2_proxy_breaker(self._proxies, url)
-            return await self._dispatch_request(
-                False, cookies_dict, method, url, raise_exception, **kwargs
-            )
+            try:
+                return await self._dispatch_request(
+                    False,
+                    cookies_dict,
+                    method,
+                    url,
+                    True if proxy_tls_fallback else raise_exception,
+                    **kwargs,
+                )
+            except httpx2.RequestError as error:
+                if proxy_tls_fallback and isinstance(error, _ASYNC_PROXY_TLS_FALLBACK_ERRORS):
+                    return await self._dispatch_with_tls12(
+                        False,
+                        cookies_dict,
+                        method,
+                        url,
+                        raise_exception,
+                        **kwargs,
+                    )
+                if raise_exception:
+                    raise
+                return None
+        except _ASYNC_PROXY_TLS_FALLBACK_ERRORS:
+            if proxy_tls_fallback:
+                return await self._dispatch_with_tls12(
+                    True,
+                    cookies_dict,
+                    method,
+                    url,
+                    raise_exception,
+                    **kwargs,
+                )
+            if raise_exception:
+                raise
+            return None
         except httpx2.RequestError:
             # 与 h2 隧道无关的失败（超时、连接失败等）：不熔断也不重试，
             # 恢复调用方原本的 raise_exception 语义
@@ -1228,7 +1401,7 @@ class AsyncRequestUtils:
 
     async def _dispatch_request(
         self, http2: bool, cookies_dict: Optional[dict], method: str, url: str,
-        raise_exception: bool, **kwargs
+        raise_exception: bool, verify: Optional[_VerifySetting] = None, **kwargs
     ) -> Optional[httpx2.Response]:
         """
         按给定 http2 开关构建/复用底层连接并发起请求，供 request() 的 h2/h1 熔断切换复用
@@ -1236,9 +1409,10 @@ class AsyncRequestUtils:
         # 共享底层 transport（连接池+TLS 复用），每次请求创建轻量 AsyncClient。
         # AsyncClient 持有的 cookie jar 仅存活于本次请求 lifecycle，
         # 既复用握手又彻底避免 jar 跨调用累积。
+        request_verify = self._verify if verify is None else verify
         transport = _get_shared_async_transport(
             proxy=self._proxies,
-            verify=self._verify,
+            verify=request_verify,
             http2=http2,
             trust_env=self._trust_env,
             max_keepalive_connections=self._max_keepalive_connections,
@@ -1263,7 +1437,7 @@ class AsyncRequestUtils:
             http2=http2,
             proxy=self._proxies,
             timeout=self._timeout,
-            verify=self._verify,
+            verify=request_verify,
             trust_env=self._trust_env,
             follow_redirects=self._follow_redirects,
             cookies=cookies_dict,
@@ -1271,6 +1445,31 @@ class AsyncRequestUtils:
             return await self._make_request(
                 client, method, url, raise_exception, **kwargs
             )
+
+    async def _dispatch_with_tls12(
+        self,
+        http2: bool,
+        cookies_dict: Optional[dict[str, Any]],
+        method: str,
+        url: str,
+        raise_exception: bool,
+        **kwargs: Any,
+    ) -> Optional[httpx2.Response]:
+        """在代理握手失败后以 TLS 1.2 重试一次幂等请求。"""
+        try:
+            return await self._dispatch_request(
+                http2,
+                cookies_dict,
+                method,
+                url,
+                True,
+                verify=_build_tls12_context(self._verify),
+                **kwargs,
+            )
+        except httpx2.RequestError:
+            if raise_exception:
+                raise
+            return None
 
     async def _make_request(
         self,
@@ -1451,55 +1650,98 @@ class AsyncRequestUtils:
         # 与 _make_request 保持一致：复用 keep-alive 时偶遇对端 FIN 的连接，
         # 流式 GET 是幂等的，单次重试即可
         async with AsyncExitStack() as stack:
-            # 选 client：复用与 request() 相同的三条 path 逻辑
-            if self._client is not None:
-                client = self._client
-                if cookies_dict is not None:
-                    kwargs.setdefault("cookies", cookies_dict)
-            else:
-                transport = _get_shared_async_transport(
-                    proxy=self._proxies,
-                    verify=self._verify,
-                    http2=self._http2,
-                    trust_env=self._trust_env,
-                    max_keepalive_connections=self._max_keepalive_connections,
-                    max_connections=self._max_connections,
-                    keepalive_expiry=self._keepalive_expiry,
-                )
-                if transport is not None:
-                    client = await stack.enter_async_context(
-                        httpx2.AsyncClient(
-                            transport=_NonClosingTransportProxy(transport),
-                            timeout=httpx2.Timeout(self._timeout),
-                            follow_redirects=self._follow_redirects,
-                            cookies=cookies_dict,
-                        )
-                    )
-                else:
-                    client = await stack.enter_async_context(
-                        httpx2.AsyncClient(
-                            http2=self._http2,
-                            proxy=self._proxies,
-                            timeout=self._timeout,
-                            verify=self._verify,
-                            trust_env=self._trust_env,
-                            follow_redirects=self._follow_redirects,
-                            cookies=cookies_dict,
-                        )
-                    )
+            proxy_tls_fallback = (
+                self._client is None
+                and _can_retry_proxy_tls12(url, self._proxies, "GET")
+            )
+            http2 = self._http2 and _h2_proxy_allowed(self._proxies, url)
 
-            try:
-                response = await stack.enter_async_context(
+            async def _open_stream(
+                verify: _VerifySetting,
+                use_http2: bool,
+            ) -> httpx2.Response:
+                """按给定 TLS/HTTP2 配置创建并托管一个流式响应。"""
+                if self._client is not None:
+                    client = self._client
+                    if cookies_dict is not None:
+                        kwargs.setdefault("cookies", cookies_dict)
+                else:
+                    transport = _get_shared_async_transport(
+                        proxy=self._proxies,
+                        verify=verify,
+                        http2=use_http2,
+                        trust_env=self._trust_env,
+                        max_keepalive_connections=self._max_keepalive_connections,
+                        max_connections=self._max_connections,
+                        keepalive_expiry=self._keepalive_expiry,
+                    )
+                    if transport is not None:
+                        client = await stack.enter_async_context(
+                            httpx2.AsyncClient(
+                                transport=_NonClosingTransportProxy(transport),
+                                timeout=httpx2.Timeout(self._timeout),
+                                follow_redirects=self._follow_redirects,
+                                cookies=cookies_dict,
+                            )
+                        )
+                    else:
+                        client = await stack.enter_async_context(
+                            httpx2.AsyncClient(
+                                http2=use_http2,
+                                proxy=self._proxies,
+                                timeout=self._timeout,
+                                verify=verify,
+                                trust_env=self._trust_env,
+                                follow_redirects=self._follow_redirects,
+                                cookies=cookies_dict,
+                            )
+                        )
+                return await stack.enter_async_context(
                     client.stream("GET", url, params=params, **kwargs)
                 )
+
+            try:
+                response = await _open_stream(self._verify, http2)
             except _ASYNC_STALE_CONNECTION_ERRORS:
                 try:
-                    response = await stack.enter_async_context(
-                        client.stream("GET", url, params=params, **kwargs)
-                    )
+                    response = await _open_stream(self._verify, http2)
+                except _ASYNC_PROXY_TLS_FALLBACK_ERRORS:
+                    if proxy_tls_fallback:
+                        try:
+                            response = await _open_stream(
+                                _build_tls12_context(self._verify),
+                                http2,
+                            )
+                        except httpx2.RequestError:
+                            if raise_exception:
+                                raise
+                            yield None
+                            return
+                    elif raise_exception:
+                        raise
+                    else:
+                        yield None
+                        return
                 except httpx2.RequestError:
                     if raise_exception:
                         raise
+                    yield None
+                    return
+            except _ASYNC_PROXY_TLS_FALLBACK_ERRORS:
+                if proxy_tls_fallback:
+                    try:
+                        response = await _open_stream(
+                            _build_tls12_context(self._verify),
+                            http2,
+                        )
+                    except httpx2.RequestError:
+                        if raise_exception:
+                            raise
+                        yield None
+                        return
+                elif raise_exception:
+                    raise
+                else:
                     yield None
                     return
             except httpx2.RequestError:

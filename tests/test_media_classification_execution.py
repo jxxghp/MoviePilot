@@ -513,6 +513,28 @@ def test_execution_sync_and_async_apply_the_same_enriched_facts() -> None:
     assert source.library_category == ""
 
 
+def test_offline_classification_keeps_policy_without_external_enrichment() -> None:
+    """离线结果仍遵守用户分类和手工覆盖，但同步异步都不调用外部补充。"""
+    source = MusicInfo(title="晴天", artists=["周杰伦"], album="叶惠美")
+    enrichment = _StaticEnrichment()
+    service = ClassificationExecutionService(_Runtime(_policy()), enrichment=enrichment)
+    override = ClassificationSelection(
+        category_path=["收藏"], source="manual", category_id="music.other",
+    )
+
+    sync_result = service.finalize(source, allow_enrichment=False, effective_override=override)
+    async_result = asyncio.run(service.async_finalize(
+        source, allow_enrichment=False, effective_override=override,
+    ))
+
+    assert enrichment.calls == []
+    assert sync_result.classification == async_result.classification
+    assert sync_result.classification.recommended.category_id == "music.other"
+    assert sync_result.library_category == async_result.library_category == "收藏"
+    assert source.media_id is None
+    assert source.library_category == ""
+
+
 def test_music_metadata_category_is_never_promoted_without_a_rule() -> None:
     """音乐来源描述分类只能形成事实，目录分类必须来自规则或兜底。"""
     music = MusicInfo(

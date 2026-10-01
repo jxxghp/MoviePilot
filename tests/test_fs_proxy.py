@@ -96,6 +96,17 @@ def test_listdir_missing_raises_file_not_found(tmp_path, proxy):
         proxy.listdir(tmp_path / "nodir")
 
 
+def test_has_file_suffix_checks_nested_files_case_insensitively(tmp_path, proxy):
+    """子目录内的下载临时文件必须阻止原盘目录被视为完整。"""
+    stream = tmp_path / "BDMV" / "STREAM"
+    stream.mkdir(parents=True)
+    (stream / "00001.m2ts.!qB").write_bytes(b"partial")
+
+    assert proxy.has_file_suffix(tmp_path, [".!qb", ".part"])
+    (stream / "00001.m2ts.!qB").rename(stream / "00001.m2ts")
+    assert not proxy.has_file_suffix(tmp_path, [".!qb", ".part"])
+
+
 def test_rename_within_same_storage(tmp_path, proxy):
     """
     同存储 rename 是第一版唯一放行的写操作：内核保证原子性，

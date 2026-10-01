@@ -96,6 +96,7 @@ def _catalog_query(plugin_manager: MagicMock, persistence: MagicMock) -> PluginC
         online_candidates=plugin_manager.async_get_online_plugin_candidates,
         process_plugins=plugin_manager.process_plugins_list,
         identities=persistence.list_identities,
+        free_threaded=lambda: False,
     )
 
 
@@ -352,6 +353,7 @@ def _release_service(
         has_release_cache=plugin_helper.async_has_plugin_release_cache,
         releases=plugin_helper.async_get_plugin_release_versions,
         refresh_releases=plugin_helper.async_get_plugin_release_versions,
+        free_threaded=lambda: False,
     )
 
 
@@ -533,6 +535,7 @@ def test_runtime_status_reports_pending_and_terminal_counts():
         "NativePlugin": ("native-demo",),
         "RemovedPlugin": ("native-removed",),
     }
+    plugin_manager.get_plugin_gil_fallbacks.return_value = ["NativePlugin", "RemovedPlugin"]
     config = MagicMock()
     config.get.return_value = ["NativePlugin"]
 
@@ -550,6 +553,7 @@ def test_runtime_status_reports_pending_and_terminal_counts():
     assert result.pending_count == 2
     assert result.failed_count == 1
     assert result.restart_required_plugin_ids == ["NativePlugin"]
+    assert result.gil_enabled_plugin_ids == ["NativePlugin"]
 
 
 def test_reload_endpoint_reports_load_failure(monkeypatch):

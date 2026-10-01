@@ -11,6 +11,11 @@ from pathlib import Path
 from typing import Any, Optional, ParamSpec, TypeVar, cast
 
 from app.runtime.extensions.plugin.database import PluginDatabase
+from app.runtime.extensions.plugin.gil import (
+    GilFallbackRecorder,
+    attribute_gil_fallback,
+    ignore_gil_fallback,
+)
 from app.runtime.log import bind_plugin_instance
 from app.runtime.observability import record_metric
 from app.schemas.plugin import PluginRuntimeStatus
@@ -71,11 +76,13 @@ class PluginLifecycle:
         enable_events: Callable[[Any], None],
         disable_events: Callable[[Any], None],
         runtime_status_writer: Callable[[str, PluginRuntimeStatus], None],
+        runtime_compatible: Callable[[str], bool],
         database: Callable[[], PluginDatabase],
         log: Any,
         event_sender: Callable[..., Any],
         refresh_classification: Callable[[str, Any], None] | None = None,
         remove_classification: Callable[[str], None] | None = None,
+        gil_fallback_recorder: GilFallbackRecorder = ignore_gil_fallback,
     ) -> None:
         """保存注册表、加载器、数据库和事件端口。"""
         self._classes = classes
@@ -89,6 +96,7 @@ class PluginLifecycle:
         self._enable_events = enable_events
         self._disable_events = disable_events
         self._runtime_status_writer = runtime_status_writer
+        self._runtime_compatible = runtime_compatible
         self._database = database
         self._logger = log
         self._event_sender = event_sender
@@ -98,6 +106,7 @@ class PluginLifecycle:
         self._remove_classification = remove_classification or (
             lambda _plugin_id: None
         )
+        self._gil_fallback_recorder = gil_fallback_recorder
         self._lifecycle_lock = threading.RLock()
         self._quiesced_hooks: dict[str, set[str]] = {}
 
@@ -140,7 +149,11 @@ class PluginLifecycle:
                         continue
                     self._remove_classification(current_id)
                     self._classes[current_id] = plugin
-                    with bind_plugin_instance(current_id):
+                    # 插件在 init_plugin 里才导入原生扩展时，回退发生在这里
+                    with bind_plugin_instance(current_id), attribute_gil_fallback(
+                        current_id,
+                        self._gil_fallback_recorder,
+                    ):
                         instance = plugin()
                         instance.init_plugin(self._plugin_config(current_id))
                     self._ensure_database(current_id, instance)
@@ -177,7 +190,13 @@ class PluginLifecycle:
                 for result_id in results
             ):
                 self._remove_classification(plugin_id)
-                status = PluginRuntimeStatus.LOAD_FAILED
+                # 装载结果为空有两种原因：载荷声明与当前运行时不兼容被加载器跳过，
+                # 或者真的导入失败。前者在卡片上要说明不支持，不能报成加载失败。
+                status = (
+                    PluginRuntimeStatus.LOAD_FAILED
+                    if self._runtime_compatible(plugin_id)
+                    else PluginRuntimeStatus.INCOMPATIBLE_RUNTIME
+                )
                 self._runtime_status_writer(plugin_id, status)
                 results[plugin_id] = status
             self._clear_tools()

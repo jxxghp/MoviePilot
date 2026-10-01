@@ -63,7 +63,7 @@ def test_match_music_album_selects_release_by_count_and_duration(monkeypatch):
         if path == "/release/release-1":
             detail_request_params = params
             return detail
-        return None
+        return {"recordings": []}
 
     monkeypatch.setattr(module, "_request_json", fake_request)
 
@@ -96,7 +96,7 @@ def test_match_music_album_rejects_mismatched_trackset(monkeypatch):
             return {"releases": [{"id": "release-1", "title": "七里香"}]}
         if path == "/release/release-1":
             return detail
-        return None
+        return {"recordings": []}
 
     monkeypatch.setattr(module, "_request_json", fake_request)
 
@@ -376,7 +376,7 @@ def test_async_recognize_album_directory_checks_path_in_threadpool(
         monkeypatch,
 ):
     """异步专辑识别应把目录元数据检查移出事件循环。"""
-    check_directory = AsyncMock(return_value=False)
+    check_directory = AsyncMock(return_value=([], ()))
     monkeypatch.setattr("app.chain.media.album.run_in_threadpool", check_directory)
 
     result = asyncio.run(
@@ -417,17 +417,16 @@ def test_async_album_fallback_propagates_cancellation_during_path_check(
 
 
 def test_recognize_album_directory_skips_single_file(tmp_path, media_chain, monkeypatch):
-    """单文件目录不走专辑匹配，交给单曲识别链路。"""
+    """没有专辑证据的普通单文件目录不发起整专查询，整轨 CUE 另按逻辑曲数判断。"""
     album_dir = tmp_path / "单曲"
     album_dir.mkdir()
     (album_dir / "晴天.wav").write_bytes(b"RIFF")
 
-    def fake_run_module(method, **kwargs):
-        raise AssertionError("单文件目录不应触发专辑匹配")
-
-    monkeypatch.setattr(media_chain, "_match_music_album_directory", fake_run_module)
+    source = Mock(match_music_album=Mock(side_effect=AssertionError("无专辑证据的单文件不应发起查询")))
+    monkeypatch.setattr("app.chain.media.album.MusicBrainzChain", Mock(return_value=source))
 
     assert media_chain.recognize_music_album_directory(album_dir) == {}
+    source.match_music_album.assert_not_called()
 
 
 def test_recognize_album_directory_invalidates_cache_after_same_count_rename(
@@ -444,7 +443,7 @@ def test_recognize_album_directory_invalidates_cache_after_same_count_rename(
     second.write_bytes(b"RIFF")
     calls = []
 
-    def fake_match(_dir_path, files):
+    def fake_match(_dir_path, files, *_options):
         """记录目录匹配输入，返回空映射以专注验证缓存签名。"""
         calls.append([file.name for file in files])
         return {}
@@ -474,7 +473,7 @@ def test_recognize_album_directory_invalidates_cache_after_content_change(
         file.write_bytes(b"RIFF")
     calls = 0
 
-    def fake_match(_directory, _files):
+    def fake_match(_directory, _files, *_options):
         """记录缓存未命中的目录识别次数。"""
         nonlocal calls
         calls += 1
@@ -525,7 +524,7 @@ def test_album_directory_cache_keeps_symbolic_link_directory_aliases_distinct(
     second_alias.symlink_to(physical, target_is_directory=True)
     calls = []
 
-    def fake_match(directory, files):
+    def fake_match(directory, files, *_options):
         """用目录别名生成结果，暴露错误共享物理路径缓存的行为。"""
         calls.append(directory.name)
         return {
@@ -561,7 +560,7 @@ async def test_async_album_directory_cache_keeps_symbolic_link_aliases_distinct(
     second_alias.symlink_to(physical, target_is_directory=True)
     calls = []
 
-    async def fake_match(directory, files):
+    async def fake_match(directory, files, *_options):
         """用目录别名生成异步结果，验证两个别名分别执行。"""
         calls.append(directory.name)
         return {

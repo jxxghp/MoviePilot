@@ -12,6 +12,7 @@ from uuid import uuid4
 
 from app.application.configuration import RuntimeSettingsService, SystemConfigService
 from app.domain.github import (
+    GITHUB_DEVICE_AUTH_SCOPES,
     GithubAuthPort,
     GithubAuthTransportError,
     GithubTokenExchange,
@@ -101,9 +102,12 @@ class GithubAuthService:
         self._pending_sessions: dict[str, _PendingDeviceSession] = {}
 
     async def start_device_auth(self) -> GithubDeviceAuthStartResult:
-        """申请设备码并登记一个有时效的服务端轮询会话。"""
+        """申请 Issue、PR 和 GitHub 工作流操作所需的设备码授权会话。"""
         try:
-            device = await self._transport.request_device_code(self._client_id)
+            device = await self._transport.request_device_code(
+                self._client_id,
+                scope=" ".join(GITHUB_DEVICE_AUTH_SCOPES),
+            )
         except GithubAuthTransportError as error:
             raise GithubAuthError(str(error), unauthorized=error.unauthorized) from error
         if not device.device_code or not device.user_code or not device.verification_uri:
@@ -228,6 +232,10 @@ class GithubAuthService:
                 token,
                 metadata,
             )
+            granted_scopes = set(str(metadata.get("scope") or "").replace(",", " ").split())
+            needs_reauthorization = needs_reauthorization or not set(
+                GITHUB_DEVICE_AUTH_SCOPES
+            ).issubset(granted_scopes)
         login = str(metadata.get("login") or "").strip() or None
         valid: bool | None = None
         try:

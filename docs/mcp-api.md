@@ -21,6 +21,16 @@ MCP 使用系统配置中的 `API_TOKEN` 作为认证密钥，文档中的 API K
 
 `POST /api/v1/history/transfer/{history_id}/discard-corrupt` 属于需要管理权限的整理恢复 REST 接口，不向 Agent gateway 暴露。成功响应的 `data.history_id` 为保留的整理历史 ID；任务已清理时同样返回该结构，历史不存在时返回业务失败。
 
+图片 REST 接口 `/api/v1/system/img/{proxy}` 和 `/api/v1/system/cache/image` 自动将已配置
+站点的主域名及访问地址加入图片域名白名单（含停用站点，便于展示图标），无需手动配置
+`SECURITY_IMAGE_DOMAINS`。站点域名快照在内存中复用，同一事件循环的并发加载合并为一次查询；
+站点新增、改址或删除提交后立即失效，另有 60 秒过期兜底。`TMDB_IMAGE_DOMAIN`、
+`MUSIC_COVER_PROXY`、`WALLPAPER_IMAGE_URL`、`CUSTOMIZE_WALLPAPER_API_URL` 和启用时的
+`BANGUMI_IMAGE_DOMAIN` 的 HTTP(S) 主机也自动放行，配置变更即时生效。壁纸 API 返回的其他
+域名不自动扩展授权；必要时加入 `SECURITY_IMAGE_DOMAINS`。
+域名放行后仍执行 DNS/私网校验，
+Fake-IP 等非公网解析地址需要通过 `IMAGE_PROXY_ALLOWED_PRIVATE_RANGES` 明确允许。
+
 ## 2. 标准 MCP 协议 (JSON-RPC 2.0)
 
 ### 端点
@@ -35,11 +45,13 @@ MCP 使用系统配置中的 `API_TOKEN` 作为认证密钥，文档中的 API K
 
 ### 动态插件工具
 
-内置 Agent 的 `update_plan`、`search_tools`、`read_tool_result`、`get_tool_execution` 为会话中间件工具，不通过外部 `tools/list` 发布；它们维护计划、发现工具、续读结果或查询执行回执，不能授予业务操作权限。使用与恢复语义见 [Agent 复杂任务执行与恢复](agent.md)。
+内置 Agent 的 `update_plan`、`search_memory`、`session_search`、`memory`、`skills_list`、`skill_view`、`skill_manage`、`search_tools`、`read_tool_result`、`get_tool_execution` 为会话中间件工具，不通过外部 `tools/list` 发布；它们维护计划、检索用户隔离的历史证据、发现工具、续读结果或查询执行回执，不能授予业务操作权限。`search_memory` 只保留稳定偏好和主题文件检索，旧 `activity` 分类已废弃。历史查询使用宿主绑定的 user_id，不接受模型指定身份。使用与恢复语义见 [Agent 复杂任务执行与恢复](agent.md)。
 
 `tools/list` 会同时返回 MoviePilot 内置工具和已启用插件通过 `get_agent_tools()` 声明的工具。插件启动、停止、重载或配置生效后，MCP 工具管理器会在下一次列出或调用工具时按注册表版本惰性刷新，避免继续暴露已移除的工具或遗漏新工具。
 
 MCP 当前不会主动发送工具列表变更通知（`listChanged=false`）。如果客户端缓存了工具列表，插件状态变化后需要让客户端重新请求 `tools/list`；无法手动刷新的客户端应重新连接 MCP 服务或新建会话。
+
+`execute_code` 仅在已绑定宿主会话的管理员 Agent 中提供，不发布到外部 HTTP/MCP 工具目录。内部只读 RPC 仍经过同一个 API/Skill/身份边界，默认直接执行，不要求用户逐次确认；外部客户端不能通过直接调用为自己创建 Python 会话身份。持久状态和回收语义见 [Python 只读工具编排](agent.md#python-只读工具编排)。
 
 ### 插件实例日志等级
 
@@ -130,7 +142,7 @@ MCP 当前不会主动发送工具列表变更通知（`listChanged=false`）。
 | :--- | :--- | :--- |
 | `moviepilot_api` | MoviePilot 产品业务 API：媒体、搜索、订阅、下载、整理、站点、存储、调度、工作流、插件、过滤规则和系统配置 | `skills/moviepilot-api/SKILL.md` 及其 `api/<category>.md` 独立分类合同；运行时 schema 为 `app/agent/policy/resources/api_mcp_schema.json` |
 | `downloader_operation` | qBittorrent、Transmission、rTorrent 原生任务、队列、文件、限速、标签和会话操作 | `skills/downloader-operation/SKILL.md` 与 `skills/downloader-operation/scripts/mp-downloader.py` 的 `ACTIONS` |
-| `mediaserver_operation` | Emby、Jellyfin、Plex、ZSpace、UGREEN、TrimeMedia、Navidrome、MediaVault 原生媒体库、搜索、播放、扫描和刷新操作 | `skills/mediaserver-operation/SKILL.md` 与 `skills/mediaserver-operation/scripts/mp-mediaserver.py` 的 `ACTIONS` |
+| `mediaserver_operation` | Emby、Jellyfin、Plex、ZSpace、UGREEN、TrimeMedia、Navidrome、Vyo 原生媒体库、搜索、播放、扫描和刷新操作 | `skills/mediaserver-operation/SKILL.md` 与 `skills/mediaserver-operation/scripts/mp-mediaserver.py` 的 `ACTIONS` |
 | `database_operation` | MoviePilot 配置数据库表清单、实时 schema、只读 SQL 和明确授权写入 | `skills/database-operation/SKILL.md` 与 `skills/database-operation/scripts/mp-db.py` 的 `ACTIONS` |
 
 这四个工具都要求管理员级 MCP 集成身份；`tools/list` 的可见性不等于绕过业务权限或写操作确认。下载器和媒体服务器工具会在一次调用内自动选择默认/唯一实例；实例不明确时，错误结果会列出可复用的精确实例名。数据库工具不接受任意连接串或凭据，脚本从 MoviePilot 运行时配置读取数据库连接。
@@ -177,6 +189,17 @@ operation ID、权限、副作用、确认、恢复、结果敏感性及精确�
 ```
 
 只允许传 `tools/list` 对应 operation 分支中声明的 `path_params`、`query` 和 `body` 字段。不得传 URL、认证头、API Token 或任意 HTTP 方法。
+
+内置 Agent 工具同样禁止额外顶层字段。业务参数不能平铺在 `operation_id` 旁边：
+例如 `media.detail` 的 `media_id` 属于 `path_params`，`media_source` 与 `type_name` 属于 `query`；
+`subscription.execution.list` 使用 `query.limit`，不能套用其它列表的 `page` / `count`；
+`site.rss` 支持 `query.page` / `query.count`，不接受 `site_id` 筛选。
+工具说明内联了这三个接口的完整 JSON 示例，示例 ID 必须替换为前序查询返回的真实 ID。
+参数错误在请求发出前返回纠错回执和该 operation 的 `input_contract`（网关错误码为 `invalid_input`），
+并指出具体缺失或错误字段（如 `query.media_source`）、未声明字段或顶层参数的正确位置，
+不回显参数值。模型应根据该合同修正参数后重试；写入参数错误不会创建执行认领。
+
+`body` 使用原生 JSON 值。对象和数组直接传入；仅在选定的 operation 允许时传 `null`。当前唯一的字符串请求体为 `system.upgrade.dev` 的固定值 `"dev"`。网关会按选定的 operation 合同校验请求体类型和字段。
 
 `search.torrents` 可能按媒体标题与别名分轮搜索站点：MoviePilot 内层请求最多等待 290 秒，Agent 工具总等待上限为 300 秒，预留 10 秒处理超时与返回结果；V3 MCP 包装层继续使用原有 `mcp_proxy_timeout` 配置（默认 600 秒）。其它 operation 沿用原有超时配置。`page` / `count` 只分页已完成的搜索结果，不会缩短站点搜索过程。
 
@@ -329,14 +352,23 @@ MoviePilot 也提供普通 REST API 给前端和自动化客户端使用。所�
 - 成功和失败响应都只包含 `success`、`message`、`data` 三个顶层字段；各接口只有 `data` 的模型可以变化。
 - 成功响应为 `{"success": true, "message": "", "data": <接口数据>}`。HTTP 错误保留原状态码，返回 `{"success": false, "message": <错误原因>, "data": null}`；请求参数校验错误会在 `data` 中附带结构化错误列表。
 - 查询接口未命中但请求已正常完成时仍返回 `success=true`，存在性等业务状态通过 `data` 表达。例如 `/mediaserver/exists` 未命中时返回空的 `data.item`。
-- 每个普通 JSON 端点都会在 OpenAPI 中声明具体的 `Response[DataModel]`，调用方可从 `/docs` 或 `/api/v1/openapi.json` 查询数据结构。
+- 每个普通 JSON 端点都会在 OpenAPI 中声明具体的 `Response[DataModel]`，开放 API 文档后，调用方可从 `/docs` 或 `/api/v1/openapi.json` 查询数据结构。
 - SSE、文件、图片、HTML、空响应，以及 OAuth2 登录、OpenAI、Anthropic、MCP JSON-RPC 等标准协议端点保持协议原生响应体；它们会在 OpenAPI 中显式声明对应的流、文件或协议模型。
 - 插件通过 `get_api()` 动态注册的 `/api/v1/plugin/...` 端点不属于主程序统一响应信封范围。插件自行声明响应模型、状态码和返回体，宿主只补充路径与鉴权依赖。
 
 #### GitHub Token 授权
 
 GitHub Token 是可选的管理员配置，可在设置页或首次初始化页通过 GitHub Device Flow 授权，
-也可以直接保存已有的 PAT。授权接口只返回脱敏状态，不会把访问 Token 或刷新 Token 放进响应。
+也可以直接保存已有的 PAT。Device Flow 请求 `read:user`、`repo`、`workflow`：用于读取授权
+用户身份、读写公开和私有仓库，以及推送 GitHub Actions 工作流文件。旧 OAuth Token 缺少这些
+范围时，状态接口会提示重新授权。授权接口只返回脱敏状态，不会把访问 Token 或刷新 Token
+放进响应。
+
+反馈问题和创建 PR 两个 Agent Skill 共用服务端 Token。它们先读取目标仓库的
+`REPO_GITHUB_TOKEN`，再回退到 `GITHUB_TOKEN`；两种设置页入口（Device Flow 和手动 PAT）
+都保存到 `GITHUB_TOKEN`，因此授权一次后无需在对话中重复提供凭据。OAuth 授权包含仓库读写
+权限，GitHub 会在确认页展示；手动 PAT 也必须具备目标仓库对应的 Issue、Fork、Contents、PR
+和必要时的 workflow 权限。
 
 已完成初始化的实例使用登录态超级管理员接口：
 
@@ -352,8 +384,9 @@ GitHub Token 是可选的管理员配置，可在设置页或首次初始化页�
 `/api/v1/login/github-auth/start`；这些接口只在系统尚未创建用户时开放，初始化完成后返回
 `409`，不应作为已初始化实例的未认证管理入口。
 
-`GITHUB_TOKEN` 属于敏感运行时设置，通用环境设置接口只返回脱敏值。需要访问私有仓库或执行
-写操作时，仍须提供具备对应 GitHub 仓库权限的 Token；设备授权流程本身不替调用方扩大仓库权限。
+`GITHUB_TOKEN` 属于敏感运行时设置，通用环境设置接口只返回脱敏值。Agent Skill 只读取服务端
+配置，不会要求用户在聊天中发送 Token 或密码。OAuth 与 PAT 实际能访问的仓库仍受 GitHub
+账号和仓库策略限制。
 
 客户端可发送 `X-MoviePilot-Locale: zh-CN|zh-TW|en-US` 或 `Accept-Language`。后端会按当前请求语言直接翻译顶层 `message`；未提供语言头时使用简体中文，翻译缺失时回退原文本。SSE 和业务数据中原有的 `text_i18n`、`error_i18n` 等展示字段继续保留。
 
@@ -361,7 +394,7 @@ GitHub Token 是可选的管理员配置，可在设置页或首次初始化页�
 
 FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返回顶层 `detail` / `detail_i18n`。
 
-交互式接口文档 `/docs` 读取 `/api/v1/openapi.json`，页面版本号直接使用 `version.py` 中的后端 `APP_VERSION`。
+交互式接口文档 `/docs`（Swagger UI）和 `/redoc` 读取 `/api/v1/openapi.json`，页面版本号直接使用 `version.py` 中的后端 `APP_VERSION`。这三个地址默认关闭，返回 404；在系统设置「高级设置 → 实验室」中打开「开放 API 文档」（`API_DOCS_ENABLE`）后立即可用，无需重启。文档在首次访问时生成，之后会常驻约 20–30MB 内存；关闭开关后，下一次文档请求会释放缓存的文档，其余内部缓存在重启后释放。镜像内置的 nginx 只转发 `/api` 路径，`/docs` 和 `/redoc` 需要直接访问后端端口。
 
 #### 系统更新
 
@@ -381,7 +414,7 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 
 媒体来源列表 `/api/v1/media/source` 仅预置上述九个来源，其余来源由启用插件注册后提供。哔哩哔哩、芒果 TV、咪咕视频、腾讯视频、爱奇艺不再占用内置来源标识，宿主也不再转换这些插件来源的旧别名；调用方应使用插件声明的准确来源 ID。
 
-影视自动识别在未指定来源时只使用 TMDB，未命中时不会继续查询其它影视源。音乐路径识别严格按 AcoustID 音频指纹、文件标签、文件名三级依次执行；指纹或标签直接提供 MusicBrainz Recording ID 时，会直接查询 MusicBrainz 详情，标签和文件名标题识别也只使用 MusicBrainz。其它元数据源仅在手动操作通过请求级 `media_source`，或通过完整的 `media_source` + `media_id` 精确指定时使用，不修改系统默认值，也不会跨来源兜底。`MediaInfo` 响应仍可能包含 `tmdb_id`、`douban_id`、`bangumi_id`、`anilist_id` 等跨源映射辅助字段，但这些字段不是通用请求入口。明确归属 `/tmdb`、`/douban`、`/bangumi`、`/anilist` 的接口，以及固定使用 TMDB 的剧集组和排期接口，仍可按其单数据源契约接收原生 ID。
+影视自动识别在未指定来源时只使用 TMDB，未命中时不会继续查询其它影视源。音乐路径识别严格按 AcoustID 音频指纹、文件标签、文件名三级依次执行；指纹或标签直接提供 MusicBrainz Recording ID 时，会直接查询 MusicBrainz 详情，未绑定身份的音乐标题及目录识别按 `SEARCH_SOURCE` 中内置音乐来源的配置顺序回退（MusicBrainz、TheAudioDB、豆瓣音乐），未选择音乐来源时兼容默认 MusicBrainz。显式 `media_source` / 主身份或 MusicBrainz 发行标签固定所属来源；来源之间不转换或拼接 ID。`MediaInfo` 响应仍可能包含 `tmdb_id`、`douban_id`、`bangumi_id`、`anilist_id` 等跨源映射辅助字段，但这些字段不是通用请求入口。明确归属 `/tmdb`、`/douban`、`/bangumi`、`/anilist` 的接口，以及固定使用 TMDB 的剧集组和排期接口，仍可按其单数据源契约接收原生 ID。
 
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
@@ -389,13 +422,56 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 | GET | `/api/v1/media/recognize` | 识别标题，参数：`title`、`subtitle`、`custom_words`，可选 `media_source`；当 `title` 为含目录的媒体文件路径时，会合并父目录中的名称、年份等信息 |
 | GET | `/api/v1/media/recognize_file` | 识别文件路径，参数：`path`，可选 `media_source` |
 | GET | `/api/v1/media/{media_id}` | 按原生 ID 查询影视或音乐详情；必填参数：`media_source`、`type_name`，其中 `media_source` 与路径中的 `media_id` 组成统一媒体身份，`type_name` 支持电影、电视剧和音乐 |
-| POST | `/api/v1/media/scrape/{storage}` | 刮削媒体元数据；请求体为 `FileItem`，可选查询参数 `media_source`、`media_id`、`type_name`（电影/电视剧/音乐）。音乐会按策略处理音频标签、封面和歌词 |
+| POST | `/api/v1/media/scrape/{storage}` | 刮削媒体元数据；请求体为 `FileItem`，可选查询参数 `media_source`、`media_id`、`type_name`（电影/电视剧/音乐）和 TMDB `episode_group`。剧集组用于指定电视剧的季集顺序；音乐会按策略处理音频标签、封面和歌词 |
 | POST | `/api/v1/transfer/manual/target-path` | 按源文件与目录配置匹配手动整理目标路径；请求体为 `ManualTransferItem`，该接口不执行媒体识别 |
 | POST | `/api/v1/transfer/manual/history` | 查询文件、批量文件或目录命中的成功整理历史摘要，用于进入手动整理界面时显示重新整理状态 |
-| POST | `/api/v1/transfer/manual` | 手动整理；请求体可用 `media_source` + `media_id` 指定本次识别与刮削数据源；`logids` 会先还原为同一个显式文件批次，多首音乐因而共享专辑识别上下文；音乐请求未传 `music_type` 时，目录按 `album`、文件按 `recording` 解释；可用最多三项的 `music_release_regions`（ISO 3166-1）和 `music_release_scripts`（ISO 15924）仅覆盖本次 MusicBrainz 发行版本排序，省略时继承系统设置；命中持久失败历史，且未指定媒体身份、未开启 `reorganize` 时，由调度器重试原计划（包括 `logid` 历史入口）；显式重整先校验并放弃确定失败任务，再清理旧目标和记录；旧版失败历史仍清理后重试；`reorganize=true` 时清理命中的成功历史和非移动模式旧目标后重新整理 |
+| POST | `/api/v1/transfer/manual` | 手动整理；请求体可用 `media_source` + `media_id` 指定本次识别与刮削数据源；`logids` 会先还原为同一个显式文件批次，多首音乐因而共享专辑识别上下文；音乐请求未传 `music_type` 时，目录按 `album`、文件按 `recording` 解释；使用 `music_type=album` 和 MusicBrainz 发行组 `media_id` 时，可另传 `musicbrainz_release_id`（Release UUID）明确选定发行版；后端核验该版属于该发行组，失败不改用默认版；`GET /api/v1/music/album/{album_id}` 接受同名可选查询参数用于预先核对该版曲目；预览与执行须保持相同 ID 和文件范围；可用最多三项的 `music_release_regions`（ISO 3166-1）和 `music_release_scripts`（ISO 15924）仅覆盖本次 MusicBrainz 发行版本排序，省略时继承系统设置；命中持久失败历史，且未指定媒体身份、未开启 `reorganize` 时，由调度器重试原计划（包括 `logid` 历史入口）；显式重整先校验并放弃确定失败任务，再清理旧目标和记录；旧版失败历史仍清理后重试；`reorganize=true` 时清理命中的成功历史和非移动模式旧目标后重新整理 |
 | GET | `/api/v1/transfer/tasks/manual-reviews` | 管理员分页查询 durable 人工复核任务；`state` 仅允许 `manual_review`（默认）或已经人工判定、等待调度恢复的 `retry_wait`，支持 `page` 与 `page_size`。响应只公开任务、源文件、状态、步骤意图/证据/错误和复核修订号，不返回 lease 或 attempt 身份 |
 | GET | `/api/v1/transfer/tasks/{task_id}/manual-review` | 管理员查询单个 durable 人工复核任务详情；仅可读取 `manual_review` 或已经人工判定的 `retry_wait` 任务，其余状态按不存在处理 |
-| POST | `/api/v1/transfer/tasks/{task_id}/manual-review` | 管理员判定处于 `manual_review` 的 durable 整理步骤；请求包含 `operation_id`、`decision=not_applied|applied`、`reason`，`applied` 还必须提供 `result_payload`。`failed` 不属于公开决策，失败终态只能由持租约的 durable 结算写入；响应仅返回任务、操作、决策、后续状态和复核修订号 |
+| POST | `/api/v1/transfer/tasks/{task_id}/manual-review` | 管理员判定处于 `manual_review` 的 durable 整理步骤；请求包含 `operation_id`、`decision=not_applied|applied`，`reason` 选填，省略或空白时记为空字符串，最多 2000 字符；`applied` 还必须提供 `result_payload`。`failed` 不属于公开决策，失败终态只能由持租约的 durable 结算写入；响应仅返回任务、操作、决策、后续状态和复核修订号 |
+
+#### SMB 下载器监控与服务端整理
+
+下载器原生保存路径与 MoviePilot 的存储访问路径是两个地址空间。下载器配置的
+`path_mapping` 每项按 `[存储路径, 下载器路径]` 保存，例如
+`["smb:/incoming", "/downloads"]`：任务下发使用 `/downloads`，任务返回的
+`path`、`save_path`、`content_path` 保留映射后的 `smb:` 前缀。本地路径仍不带前缀。
+调用方不能把远程 URI 直接交给本地 `Path.exists/stat`。
+
+例如下载器在 `10.10.10.11`，MoviePilot 在 `10.10.10.10`：配置 SMB 主机
+`10.10.10.11`、共享 `data`；目录配置选择资源存储 `smb`、资源目录 `/incoming`、
+监控方式 `downloader`、媒体库存储 `smb`、媒体库目录 `/media`；再配置上述下载器映射。
+`/incoming` 和 `/media` 均相对于共享根目录，不是 MoviePilot 本地目录。
+自动整理按存储和完整目录段匹配源文件，通过实际存储查询文件和目录；查询失败
+与确认不存在分别记录，未入队任务保留给下一次监控重试。
+
+SMB 配置支持两种明确的路径模式：旧字段 `share: "data"` 保持共享内路径；
+新字段 `shares: ["video", "downloads"]` 使用虚拟根目录，路径首段为共享名称。
+即使多共享模式只剩一项，也不会自动退回旧路径语义。所有共享使用同一主机、
+账号和 SMB 服务；浏览 `/` 返回 `/video/`、`/downloads/`，只允许访问已配置的共享。
+虚拟根和共享根不可删除、重命名；虚拟根不能作为媒体库目录，共享根（例如 `/video`）可以。
+存储卡片和仪表板显示配置中首个共享报告的卷容量及当前账号可用空间，不累加其他共享。
+多个共享可能共用存储池，SMB 卷序列号也不一定代表独立磁盘；若共享属于不同卷，
+显示的是首项所在卷的容量，并非整台服务器的总容量。
+
+对 `10.10.10.11` 的 `downloads` 和 `video` 共享，可选择源存储 `smb`、
+源目录 `/downloads`，目标存储 `smb`、目标目录 `/video/电影`；下载器映射使用
+`["smb:/downloads", "/downloads"]`。切换新旧模式后须更新目录设置、下载器映射及
+其他已保存路径；应先处理完旧路径的在途整理任务，不会自动重写历史任务。
+若开启按媒体类型、类别自动建目录，媒体库根目录可设为 `/video`，由整理规则追加子目录。
+同路径的远程监控目录收到缺少存储前缀的下载器路径时，日志会提示检查路径映射。
+
+同一 SMB 服务内，`copy` 对共享内和跨共享文件都使用服务端 CopyChunk；
+`move` 在同一共享内使用重命名，跨共享使用服务端复制成功后删除源文件。
+跨共享移动不是原子操作：复制失败不删源；删除失败时保留两份并报错；目标已存在
+或查询状态不明时不启动复制，冲突由上层覆盖策略处理。中断后的不确定结果仍由
+持久整理步骤核验，不能仅凭目标存在就认定复制成功。
+
+`link` 仅支持同一共享内、同一文件系统且服务端支持硬链接的情况。SMB 标准接口
+不支持跨共享硬链接；即使 `video` 与 `downloads` 位于同一磁盘，也不能绕过此限制。
+需要硬链接时，可在服务端提供包含这两个目录的共同共享。
+服务器不支持 CopyChunk 或权限不足时明确失败，所有上述操作都不回退本地下载再上传。
+此保证不涉及显式下载或音乐内嵌标签写入等内容处理流程。
 
 #### 媒体自动分类
 
@@ -416,6 +492,21 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 | POST | `/api/v1/media/classification/rollback/{revision}` | 超级管理员将指定历史策略作为新版本发布，需要当前 `expected_revision` 和写操作确认 |
 
 `transfer/manual` 在 `preview=true` 时保留预览的 `summary/items/message`，不返回执行状态。
+预览项新增可选 `source_storage/source_item/music`。`source_item` 保留本次源文件的存储标识，
+不包含下载 URL、缩略图和递归子节点；纠正时可复用实际选中文件，不能根据目录名扩大范围。
+音乐 `music.status` 区分 `local_tags`（可信标签）、`local_cue`（本地 CUE）、
+`matched`（在线已确认）、`manual`（本次或已记录的人工选择）、`metadata`（已有信息但没有在线核验证据）、
+`not_found`、`ambiguous`、`conflict`、`service_error`、`budget_exhausted`、`unsupported`。
+它与预览项 `success` 独立：已确认身份仍可能因目标目录或分类失败；仅标签含 MBID 不算在线确认。
+`online_confirmed` 仅在 `matched` 时为真。`field_sources` 表明曲名、专辑、艺人、曲序等字段的实际来源，
+`candidates` 最多五条，只保留身份及展示摘要，不把评分显示为置信概率。
+`read_status` 区分 `tags/stream_only/unreadable/name_only/companion/unknown`：
+无标签、读取失败及仅有远端名称证据不是同一种状态。
+`group_id/group_directory/group_size` 由本次实际发行分组生成（数量为音频成员数），
+CUE 和歌词通过 `file_role=companion` 与音频共享组；同目录不同发行以及不同存储不混组。
+该分组只供当前已预览文件聚合，不是访问凭证、数据库身份或展开目录的授权；
+按组纠正必须只提交该组已预览的 `source_item`，并重新预览，不能把选定专辑应用到整包其它发行。
+尚未解包或提取的音乐包返回逐文件 `unsupported`，计入失败统计，不再仅在批次总提示中出现。
 请求可传入 `skip_success=true`，在预览与执行中跳过同存储、同源路径已成功整理的文件，
 也识别成功移动后的目标现址。该选项优先于 `reorganize` 和历史入口的强制整理，
 不清理被跳过文件的历史和旧目标；失败记录及未处理文件继续原有流程，默认 `false` 保持现有行为。
@@ -473,6 +564,20 @@ AniList 榜单、探索、详情、人物和推荐接口优先通过 `anilist-ch
 音乐与影视共用媒体搜索、资源查询、过滤、匹配和订阅搜索编排。资源 `meta_info` 来自
 标题、副标题的实际解析，不用目标媒体回填证据；`title_aliases`、`album_aliases`、
 `artist_aliases` 分别保留同一实体的可信别名及展示转简体前的原文。
+
+音乐元数据、单曲和专辑模型还分别保留 `composers`、`conductors`、`orchestras` 人名列表，
+以及 `performers` 乐器/声部到人名列表的映射（未指定乐器使用 `performer` 键）。
+这些字段不会混入主艺人或艺人别名；空字段在简化卡片中省略，完整模型与旧缓存兼容。
+明确的 PT 副标题角色和原生标签可提供本地证据，完整标签仍可直接整理。
+MusicBrainz 从实际 Recording/Work 关系补充角色，不凭作品名推断演奏者；
+角色摘要不足时每批最多补查三个录音详情，沿用已有 HTTP 预算和缓存。
+自动识别拒绝已知阵容冲突，仅有作曲家相同不足以确认录音；明确录音/发行 ID 可补足缺失关系，
+但不能覆盖已知冲突。整专可用实际逐曲关系核验阵容，不把专辑或某一曲的角色广播到其他曲目。
+
+角色标签使用 ID3 的 `TCOM`/`TPE3`/`TMCL`（兼容 v2.3 `IPLS`）、Vorbis/APEv2 文本字段，
+以及 MP4 的 `©wrt` 和 `CONDUCTOR` freeform。独立 `ORCHESTRA` 和 MP4 `PERFORMER` 为兼容自定义字段，
+并非所有播放器都支持；制作人不会被当作演奏者。映射参照
+[Picard 标签对照](https://picard-docs.musicbrainz.org/en/v3.0/_static/MusicBrainz_Picard_Tag_Map.html)。
 音乐资源解析同样应用全局或订阅自定义识别词，`MusicMeta.apply_words` 返回实际应用记录，
 旧结果缺少该字段时按空列表处理。副标题的明确录音版本参与匹配；单曲所属专辑字段
 不能证明资源覆盖整张专辑，无曲序的单曲也会标记为 `partial_album` 待确认项。
@@ -488,6 +593,88 @@ SSE 的 `candidate_items` 是站点原始返回数量，`match_counts` 记录身
 只有完整过滤后还有精确结果时才会按多名称设置提前停止；音乐元数据多来源结果先各自去重再公平合并。
 
 音乐识别结果同时提供 `audio_format`、`audio_lossless`、`audio_quality`、`bit_depth`、`sample_rate`、`bitrate`、`audio_specs` 和 `audio_quality_score`。本地文件识别读取实际音频流参数，并使用 Chromaprint 的 `fpcalc` 在本地生成指纹后查询 AcoustID；音频文件本身不会上传。站点资源识别从标题和描述提取声明参数；码率、采样率的存储单位分别为 bps 和 Hz。
+
+原生 AcoustID 识别会核验最多五个 Recording 候选，以实际时长、有效曲名、艺人和版本排除冲突。
+唯一高分且时长吻合的指纹可补齐无标签或纯编号文件；`Unknown Artist` 等占位不是艺人冲突。
+真实数字歌曲标签仍可整理，`01`、`Track 01` 等抓轨占位不会仅凭完整字段认定为可信歌曲。
+近分歧义或候选被截断时保留 `raw_data.recognition.status=ambiguous`，不能由返回顺序自动选中。
+原生指纹命中的诊断含 `method=fingerprint`、`identity_type=recording`、`release_verified=false`；
+指纹不证明实际发行，补充发行 ID 只保留实际标签提供的值，`album_id` 只沿用标签发行组 ID。
+旧插件的单 ID 接口保持兼容，不人为添加 AcoustID 分数或降低其文本核验要求。
+指纹生成和候选详情共用最多 90 秒、16 次 HTTP 尝试的预算；嵌套调用服从已有更早的预算。
+指纹缓存保留全部候选，成功、无匹配、临时故障分别在 3600、300、15 秒后过期。
+
+`MusicMeta.music_type` 保留已绑定主身份的实体类型；仅从名称推测时可为空。
+`MusicMeta.album_type` 和 `secondary_types` 保留标签声明的发行主副类型，例如 EP、Single、Compilation；
+它们与 recording/album/artist 实体类型不同，不能根据曲目数量覆盖明确的标签类型。
+`media_source`、`media_id` 与 `music_type` 必须一起解释，不能把专辑 ID 当作 Recording ID。
+补充字段 `musicbrainz_release_id`、`musicbrainz_release_group_id`、`musicbrainz_release_track_id`
+分别表示具体发行、发行组和发行中的曲目，不能替代主身份。`original_year` 与 `release_year`
+分别保留原始发行年份和当前发行年份，`year` 继续用于兼容展示；发行组尚未选定具体 Release 时
+不能凭首发年份填充 `release_year`。`total_discs` 保留真实碟数。
+`field_sources` 按字段记录 `tag`、`album_tags`、`stream`、`filename`、`directory`、`torrent`、
+`remote` 或 `manual` 等来源，缺失表示来源未记录；该说明不等于远端身份已验证，也不用于绕过整理准入。
+
+有效 CUE 可补充专辑和逐轨信息，相关字段来源为 `cue`。`music_layout=image_cue` 表示
+一个音频文件包含多个逻辑音轨，`music_type=album`，不使用开头的 Recording 指纹替代整张专辑。
+整轨归档会保留音频及 `cue_filename` 的原名，只规范专辑目录，避免破坏 `FILE` 引用；不自动切轨。
+`cue_tracks` 保留逻辑曲目及每秒 75 帧的索引。`tracks_cue` 的分轨索引仅辅助元数据，
+原 CUE 不随改名自动复制。绝对/跨目录引用、冲突索引、超出音频时长等问题通过
+`organization_error` 返回，并在实际文件操作前阻止整理；原始文件内容不被修改。
+
+音乐刮削补写标签或内嵌封面时，如果本地目标是硬链接或软链接，会先写入独立副本，
+全部成功后原子替换目标；源文件字节与权限保持不变。实际发生写入后，目标成为普通文件，
+会独立占用磁盘空间。未发生标签变化且没有其它写入时保留原链接；跳过标签及封面可保持链接整理。
+写入失败或目标在处理期间改变时，丢弃临时副本，不覆盖原目标。LRC 与 Lyricsfile 旁挂也按目录项原子替换。
+WAV、DSF、AIFF、DSDIFF 和 MP3 使用原生 ID3 帧，MP4/M4A 使用标准 atom 及文本 freeform；无标签音频可直接补写，
+错误扩展名按实际容器处理。Recording、Release、Release Group、Release Track ID 分别写入专用标签；
+仅有首发年份时只写原始年份标签，不能据此生成当前发行日期；已有同年的完整日期不因模型只携带年份而截断。
+APEv2 按[标准标签映射](https://picard-docs.musicbrainz.org/en/latest/appendices/tag_mapping.html)
+使用下划线形式的 MusicBrainz 字段和 `Originalyear`，不套用 ID3 的带空格描述；读取仍兼容旧字段别名。
+WMA/ASF 使用 `Title`、`Author`、`WM/AlbumTitle`、`WM/PartOfSet`、`MusicBrainz/*` 等原生属性，
+兼容旧版小写字段；标准 `WM/TrackNumber` 从 1 开始，旧 `WM/Track` 从 0 开始。
+`WM/Lyrics` 可读取纯文本歌词，`WM/Picture` 可补写封面，沿用相同的链接隔离与覆盖策略。
+WMA Lossless 只由实际 Codec List 类型确认，不从高码率或扩展名猜测，未提供的位深保持未知。
+独立乐团/演奏者字段 `WM/Orchestra`、`WM/Performer` 为自定义兼容属性。
+等价的组合/独立曲数标签不会触发音频复制；曲数、碟数和更精确的原有日期保持有效。
+
+音乐整理按每个文件的 `storage` 决定证据来源：远端仅使用名称、目录和原始种子线索，
+不读取本机同路径的标签、时长或 CUE。仅有 `.m4a` 扩展名时不声明 AAC/ALAC 或有损/无损。
+明确按音乐整理的镜像（如 ISO）及压缩包会返回先提取/解压的失败提示，不执行自动转换。
+明确按影视整理的附加音轨不继承旧音乐历史身份。
+
+专辑曲目按身份、曲名、碟号/曲序与时长的唯一证据对位，不按文件排序补齐未匹配曲目。
+编号文件名可由位置或唯一时长补全，真实标签中的数字曲名仍作为名称证据。
+重复版本、同分候选和明显时长冲突保留未匹配；手选发行允许按唯一位置纠正旧曲名，
+但不绕过时长冲突。手选批次不能完整对位时会在文件操作前返回核对提示。
+
+目录匹配优先直查明确的 `musicbrainz_release_id`，`musicbrainz_release_group_id` 只约束发行搜索。
+普通 `Music`/`inbox` 等目录名不作为专辑名；真实标签或种子明确给出的同名作品仍可搜索。
+曲名反查使用 MusicBrainz 的 Recording 搜索及其关联发行；Release 搜索不支持 `recording` 字段。
+同等搜索相关度优先检查被多首录音共同命中的发行，避免单曲的多个版本占满候选预算。
+候选必须覆盖全部本地逻辑曲目；部分下载不要求覆盖远端专辑的全部歌曲。
+身份、当前发行年和明确艺人冲突不能靠其它分数抵消；原始年份只辅助排名。
+不同录音序列的近分候选不自动采用，同发行组且录音序列相同的地区/文字版本沿用用户偏好。
+匹配成功时 `raw_data.match_score` 是 0–100 的排序分数，不是概率；`match_coverage=1` 仅表示当前输入文件全覆盖。
+整轨 CUE 以逻辑歌曲数和相邻索引时长参与匹配，返回仍为物理文件的专辑身份；修改 CUE 会使目录缓存失效。
+
+每个来源最多 8 次 HTTP 尝试、45 秒，最多回退三个内置来源（总上限 24 次、135 秒）；已有更小的外层预算继续生效，切换来源不能恢复额度。HTTP 缓存命中不消耗请求额度。来源故障允许尝试下一来源，歧义或证据冲突立即停止。
+TheAudioDB 和豆瓣音乐的正常无匹配 HTTP 响应缓存五分钟，网络故障、非法响应和预算耗尽不缓存为空。
+MusicBrainz 和 TheAudioDB 对标题、版本及年份仍合理但艺人名称不一致的候选，按来源返回的真实 Artist ID 补充别名；每批最多查询三个去重身份，沿用当前请求预算和缓存。带声调、空格的拼音可通过来源别名确认，不从拼音猜测艺人身份。别名只追加到 `artist_aliases`，不修改 `artists`、`artist_ids` 或主身份；整专详情只继承同来源、同 Artist ID 的已核实别名，合辑中其他艺人不会继承专辑署名。不同实体同分或共享同一 ISRC 仍保留歧义。
+次级来源整专识别必须取得完整曲目表并唯一对位当前全部文件；普通专辑目录不证明具体发行，返回 `identity_type=album`、`release_verified=false`，保留本地碟号、曲序、总数、当前发行年和首发年。配置来源顺序也参与目录缓存键。
+无匹配与服务故障分开处理：目录成功结果缓存一小时，无匹配缓存五分钟，服务故障仅冷却十五秒；
+无身份的 MusicBrainz 元数据负缓存最多五分钟，连接失败或预算耗尽不写成这种负缓存。
+`MusicInfo.raw_data.recognition` 可携带 `status`、`message`、`requests`、`candidates` 诊断；多来源回退还包含 `sources` 数组，各项含 `source` 及该来源自己的诊断和请求数。
+`ambiguous`、`conflict`、`service_error`、`budget_exhausted` 均不能冒充远端匹配成功；整理规划遇到这些状态时停止文件操作，
+歧义不再回退为逐曲猜测。目录结果在 Python 调用方中保持字典兼容，并额外保留 `recognition` 属性。
+音乐缓存删除/清空同时清理来源响应及目录状态；刷新前进行中的目录查询不能回填刷新后的缓存。
+同一整理批次复用有界只读音频/CUE快照；文件指纹变化、批次退出都会失效，不缓存可写音频对象。
+
+尚未生成文件计划的 `service_error` / `budget_exhausted` 会保留持久准入，30秒后重新识别，
+重试上限沿用整理失败重试策略。恢复读取最初选中的发行范围和发行偏好，不能直接复用旧失败媒体信息。
+预算耗尽后正常记录失败；手动重试已结算的零文件操作音乐拒绝，可在事务中创建新的识别任务，
+原失败历史及结算回执保留。任何带文件操作、兼容 provider 操作或不确定证据的计划继续原有执行重放，不能自动重规划目标。
+这个等待状态表示任务仍在处理中，不能作为文件整理完成的证据。
 
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
@@ -592,6 +779,13 @@ TMDB 缓存查询响应的 `data` 包含 `count`、`recognized`、`unrecognized`
 
 取消是幂等的状态请求，不会撤销已经提交到下载器的任务；批次详情中的状态和任务结果才是最终事实。
 
+### 跨来源订阅回显
+
+`GET /api/v1/subscribe/media/{media_id}` 先按 `media_source`、`media_id` 和可选季号查询当前用户可访问的订阅。
+影视身份未命中且提供 `mtype`、`title` 时，会按类型、规范标题和可选季号跨来源查找；
+有年份时优先精确年份，其次匹配订阅年份为空的未定档媒体；没有年份时只匹配年份也为空的订阅。
+音乐订阅始终只按媒体身份查询。
+
 ### 单条订阅搜索周期
 
 `POST /api/v1/subscribe/` 和 `PUT /api/v1/subscribe/` 支持 `search_interval`：
@@ -672,6 +866,10 @@ MCP、HTTP 工具管理接口、本地 CLI 和内置 Agent 都从同一严格目
 
 `run`、pipe 和 PTY 共享 `cwd/shell/login`：默认及相对 `cwd` 使用 MoviePilot 根目录，
 POSIX 默认非登录；Windows 未指定时保留已有解释器/UTF-8 策略。回包包含实际 `shell/login`。
+项目安装目录存在 `venv` 时，三种模式都会把该环境的 `bin`（Windows 为 `Scripts`）放在
+子进程 `PATH` 最前并设置 `VIRTUAL_ENV`，所以 `python`、`python3` 和 `pip` 使用项目环境；
+执行 Python 应优先使用 `python -m ...`，安装依赖优先使用项目 `uv pip ...` 或绑定环境中的
+`python -m pip ...`，不要改用系统解释器或 `sudo pip`。
 `write(close_stdin=true)` 仅在 pipe 模式支持末段输入后 EOF，回包包含 `stdin_closed`；输出可继续读取。
 PTY 会在写入之前拒绝 half-close，空 `write` 不代表 EOF，控制字节在 pipe 中也不等于信号。
 新增 `interrupt` 只发送一次平台支持的中断并返回 `signal/signal_sent`，不会升级强杀；
@@ -714,6 +912,9 @@ SDK method。普通 MCP 客户端如需这些 provider 原生能力，应使用�
 宿主按 `operation_id` 决定固定 method 与 path，使用真实持久化管理员身份为
 API KEY 集成签发短期本机令牌，并按 operation 执行权限、确认、结果脱敏和恢复策略。
 调用方不能注入 host、URL、认证头或 API Token。
+通知渠道的 `subscription.add`、`subscription.update`、`subscription.delete` 使用渠道账号绑定的
+有效 MoviePilot 用户身份，渠道管理员也不会借用超级管理员身份。创建时订阅归属绑定用户，
+普通用户只能修改或删除自己的订阅；未绑定或绑定用户已停用时拒绝执行。三项操作仍保留确认机制。
 Web Agent 直接调用 `moviepilot_api` 时，宿主会自动加载 `moviepilot-api` Skill
 的 operation 白名单后再执行；这只是授权兜底，不会放宽固定 operation、身份、权限
 或确认策略。

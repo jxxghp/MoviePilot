@@ -331,11 +331,11 @@ def test_http_exception_handler_returns_localized_response_envelope():
 
 
 def test_application_docs_use_v1_openapi_and_backend_version():
-    """默认接口文档应展示 v1 地址并使用真实后端版本号。"""
+    """接口文档应展示 v1 地址并使用真实后端版本号；是否开放由 API_DOCS_ENABLE 决定。"""
     app = create_app()
 
-    assert app.openapi_url == "/api/v1/openapi.json"
     assert app.version == APP_VERSION
+    assert app.openapi()["info"]["version"] == APP_VERSION
     assert "/api/v1/openapi.json" in {route.path for route in app.routes}
     assert "/api/v2/openapi.json" not in {route.path for route in app.routes}
 

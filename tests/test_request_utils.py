@@ -3,6 +3,9 @@ import requests
 from app.adapters.network import http as http_module
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils, cookie_parse
 
+PROXY = "http://proxy.example:7890"
+URL = "https://raw.githubusercontent.com/demo/repo/main/package.json"
+
 
 class _FakeSession:
     """
@@ -129,6 +132,58 @@ def test_request_utils_raises_retry_error_when_retry_still_fails():
 
     assert len(session.calls) == 2
     assert session.close_count == 1
+
+
+def test_request_utils_retries_proxy_connect_error_with_tls12(monkeypatch):
+    """同步代理 HTTPS 幂等请求连接失败时应进入 TLS 1.2 回退路径。"""
+    response = _make_response()
+    calls = []
+
+    def fake_request(method, url, **kwargs):
+        calls.append((method, url, kwargs))
+        raise requests.exceptions.ConnectionError("TLS handshake failed")
+
+    fallback_calls = []
+
+    def fake_tls12(self, method, url, kwargs):
+        fallback_calls.append((method, url, kwargs))
+        return response
+
+    monkeypatch.setattr(http_module.requests, "request", fake_request)
+    monkeypatch.setattr(RequestUtils, "_request_with_tls12", fake_tls12)
+
+    result = RequestUtils(proxies={"https": PROXY}).get_res(
+        URL,
+        raise_exception=True,
+    )
+
+    assert result is response
+    assert len(calls) == 1
+    assert fallback_calls[0][0:2] == ("get", URL)
+    assert fallback_calls[0][2]["proxies"] == {"https": PROXY}
+
+
+def test_request_utils_does_not_retry_proxy_tls_for_post(monkeypatch):
+    """代理 TLS 回退不得重复非幂等请求。"""
+    fallback_calls = []
+
+    def fake_request(_method, _url, **_kwargs):
+        raise requests.exceptions.ConnectionError("TLS handshake failed")
+
+    def fake_tls12(self, method, url, kwargs):
+        fallback_calls.append((method, url, kwargs))
+        return _make_response()
+
+    monkeypatch.setattr(http_module.requests, "request", fake_request)
+    monkeypatch.setattr(RequestUtils, "_request_with_tls12", fake_tls12)
+
+    result = RequestUtils(proxies={"https": PROXY}).post_res(
+        URL,
+        data={"name": "demo"},
+    )
+
+    assert result is None
+    assert fallback_calls == []
 
 
 def test_request_utils_owns_persistent_headers_cookies_and_close(monkeypatch):

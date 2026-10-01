@@ -146,8 +146,8 @@ def test_batch_matches_registered_site_domain(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
-def test_real_recording_response_matches_tie_in_title(asynchronous, monkeypatch):
-    """实站名称和公共响应离线重放，确认修复能识别单曲而非回退到同名专辑。"""
+def test_real_recording_response_preserves_ambiguous_identity(asynchronous, monkeypatch):
+    """真实响应有两条同名同年但不同ISRC的录音，仅凭种子名称须待确认且不退到专辑。"""
     fixture = json.loads((Path(__file__).parent / "fixtures/music_lifecycle_recording.json").read_text(encoding="utf-8"))
     module = MusicBrainzModule()
 
@@ -165,6 +165,66 @@ def test_real_recording_response_matches_tie_in_title(asynchronous, monkeypatch)
                   media_source=MediaSource.MusicBrainz, mtype=MediaType.MUSIC, music_type="recording", cache=False)
     result = asyncio.run(module.async_recognize_media(**kwargs)) if asynchronous else module.recognize_media(**kwargs)
 
-    assert result.media_id == fixture["expected_id"]
+    assert result.media_id is None
     assert result.music_type == "recording"
     assert result.artists == ["李佳薇"]
+    assert result.raw_data["recognition"]["status"] == "ambiguous"
+    assert {item["media_id"] for item in result.raw_data["recognition"]["candidates"]} == {
+        fixture["expected_id"], "9f29834c-f965-4f70-a7f2-17171bba2338",
+    }
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_real_recording_response_uses_isrc_to_disambiguate(reverse):
+    """同一公共响应的两条录音可用本地明确ISRC消歧，不依赖返回顺序。"""
+    fixture = json.loads((Path(__file__).parent / "fixtures/music_lifecycle_recording.json").read_text(encoding="utf-8"))
+    recordings = next(item["payload"]["recordings"] for item in fixture["requests"] if item["payload"].get("recordings"))
+    candidates = [MusicBrainzModule._recording_to_info(item) for item in recordings]
+    meta = MetaMusic.parse_resource(fixture["title"], fixture["description"])
+    meta.isrc = "HKD012291069"
+
+    result = MusicBrainzModule._select_candidate(meta, candidates[::-1] if reverse else candidates, MediaSource.MusicBrainz)
+
+    assert result.media_id == fixture["expected_id"]
+    assert result.isrc == meta.isrc
+    assert result.music_type == "recording"
+    assert result.artists == ["李佳薇"]
+
+
+def test_batch_postgresql_is_read_only_and_closes(monkeypatch, tmp_path):
+    """显式 PostgreSQL 配置必须从只读连接取凭据，且不依赖旧 SQLite 文件。"""
+    from unittest.mock import MagicMock
+
+    import psycopg2
+
+    config = tmp_path / "app.env"
+    config.write_text("DB_TYPE=postgresql\nDB_POSTGRESQL_PASSWORD=fixture-password\n", encoding="utf-8")
+    connection = MagicMock()
+    cursor = connection.cursor.return_value.__enter__.return_value
+    cursor.fetchall.return_value = [("example.org", "fixture-cookie", "fixture-ua", 1)]
+    connect = Mock(return_value=connection)
+    monkeypatch.setattr(psycopg2, "connect", connect)
+
+    result = batch.load_site_credentials(["pt.example.org"], tmp_path)
+
+    assert result == {"pt.example.org": {"cookie": "fixture-cookie", "ua": "fixture-ua", "proxy": True}}
+    assert connect.call_args.kwargs["options"] == "-c default_transaction_read_only=on"
+    assert connect.call_args.kwargs["connect_timeout"] == 5
+    assert cursor.execute.call_args.args[1] == (["example.org"],)
+    connection.close.assert_called_once()
+
+
+def test_batch_postgresql_closes_on_read_error(monkeypatch):
+    """采样查询失败也须释放生产连接，不保持悬挂的只读事务。"""
+    from unittest.mock import MagicMock
+
+    import psycopg2
+
+    connection = MagicMock()
+    connection.cursor.return_value.__enter__.return_value.execute.side_effect = RuntimeError("read failed")
+    monkeypatch.setattr(psycopg2, "connect", Mock(return_value=connection))
+
+    with pytest.raises(RuntimeError, match="read failed"):
+        batch.load_postgresql_credentials(["example.org"], {})
+
+    connection.close.assert_called_once()

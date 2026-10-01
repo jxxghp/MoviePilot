@@ -17,6 +17,8 @@ from app.foundation import url as url_tools
 
 _TORRENT_TAG_CLEANUP_RETRY_TIMES = 10
 _TORRENT_TAG_CLEANUP_RETRY_INTERVAL = 1
+_DOWNLOADER_CONNECT_TIMEOUT_SECONDS = 3
+_DOWNLOADER_READ_TIMEOUT_SECONDS = 60
 
 
 class Qbittorrent:
@@ -192,7 +194,7 @@ class Qbittorrent:
 
     def __login_qbittorrent(self) -> Optional[Client]:
         """
-        连接qbittorrent
+        连接 qbittorrent；缩短建连等待，关闭 HTTP 重试，并采用地址中显式指定的协议。
         :return: qbittorrent对象
         """
         if not self._host or not self._port:
@@ -207,7 +209,14 @@ class Qbittorrent:
                                         EXTRA_HEADERS={"Authorization": f"Bearer {self._apikey}"}
                                         if self.__use_api_key_auth() else None,
                                         VERIFY_WEBUI_CERTIFICATE=False,
-                                        REQUESTS_ARGS={'timeout': (15, 60)})
+                                        REQUESTS_ARGS={
+                                            "timeout": (
+                                                _DOWNLOADER_CONNECT_TIMEOUT_SECONDS,
+                                                _DOWNLOADER_READ_TIMEOUT_SECONDS,
+                                            )
+                                        },
+                                        HTTPADAPTER_ARGS={"max_retries": 0},
+                                        FORCE_SCHEME_FROM_HOST=True)
             try:
                 if self.__use_api_key_auth():
                     qbt.app_version()

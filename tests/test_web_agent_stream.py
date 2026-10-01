@@ -2417,3 +2417,14 @@ def test_resolve_web_agent_choice_payload_returns_next_message():
     assert result["choice_selection"]["prompt"] == "请选择"
     assert result["choice_selection"]["selected_description"] == "选择电视剧并继续清理日志"
     assert result["choice_selection"]["button_rows"][1][0]["description"] == "选择电视剧并继续清理日志"
+
+
+def test_personal_learning_commands_are_not_admin_traditional_commands():
+    """Web 普通用户也能管理自己的学习数据；其它斜杠命令仍走旧权限链。"""
+    from app.application.messaging.agent import is_web_agent_traditional_message
+    assert not is_web_agent_traditional_message('/memory pending')
+    assert not is_web_agent_traditional_message('/skills pin media-workflow')
+    assert is_web_agent_traditional_message('/restart')
+    assert is_web_agent_traditional_message('/memory-other')
+    assert is_web_agent_traditional_message('/skills')
+    assert is_web_agent_traditional_message('/skills install example')

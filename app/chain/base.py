@@ -170,14 +170,14 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
 
     def __handle_plugin_error(self, err: Exception, plugin_id: str, plugin_name: str, method: str, **kwargs):
         """
-        处理插件模块执行错误
+        处理插件模块执行错误，通知保留调用位置和异常原因，完整堆栈写入日志与事件。
         """
         if kwargs.get("raise_exception"):
             raise err
         logger.error(f"运行插件 {plugin_id} 模块 {method} 出错：{str(err)}\n{traceback.format_exc()}")
         self.messagehelper.put(
             title=f"{plugin_name} 运行失败",
-            message="插件运行失败，请稍后重试",
+            message=f"{plugin_id}.{method}：{str(err).strip() or type(err).__name__}",
             role="plugin",
         )
         self.eventmanager.send_event(
@@ -194,14 +194,14 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
 
     def __handle_system_error(self, err: Exception, module_id: str, module_name: str, method: str, **kwargs):
         """
-        处理系统模块执行错误
+        处理系统模块执行错误，通知保留调用位置和异常原因，完整堆栈写入日志与事件。
         """
         if kwargs.get("raise_exception"):
             raise err
         logger.error(f"运行模块 {module_id}.{method} 出错：{str(err)}\n{traceback.format_exc()}")
         self.messagehelper.put(
             title=f"{module_name}运行失败",
-            message="系统模块运行失败，请稍后重试",
+            message=f"{module_id}.{method}：{str(err).strip() or type(err).__name__}",
             role="system",
         )
         self.eventmanager.send_event(

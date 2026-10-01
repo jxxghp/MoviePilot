@@ -114,7 +114,7 @@ These decisions are architectural constraints, not naming suggestions:
 * External media detail projection stays in `app/domain/projection/`: `mapping.py` owns the immutable builder and `tmdb.py`/`douban.py`/`bangumi.py`/`anilist.py` own source rules. `app/domain/context.py` keeps canonical `MediaInfo` construction and the four historical setter ABI as thin delegates. Host callers import source owners directly; do not add SDK/Compat aliases for these internal owners.
 * Kodi-style NFO reading and metadata document generation are one domain capability and stay together in `app/domain/scraper.py`; a separate `domain/nfo.py` must not be recreated.
 * `app/application/mediaserver.py` is the single media-server service capability module. It owns configured service discovery together with Provider ID normalization and music-library matching, while reusing generic identity rules from `app/domain/media.py`.
-* Configured notification-service discovery belongs in `app/application/notification.py`. Web Push subscription and manual-send HTTP behavior stays in `app/api/endpoints/message.py`; it is not a reusable messaging capability module.
+* Configured notification-service discovery belongs in `app/application/notification.py`. Web Push subscription and manual-send HTTP behavior stays in `app/api/endpoints/message.py`; it is not a reusable messaging capability module. The Web Push protocol itself (aes128gcm encryption, VAPID signing, delivery through `RequestUtils`) is the network adapter `app/adapters/network/webpush.py`, shared by that endpoint and `WebPushModule`.
 * `app/adapters/system/resource.py` detects/downloads/installs resources and returns whether installation occurred. Only `app/startup/initializers/modules.py` may decide to restart the process afterward.
 * Process memory/GC policy belongs in `app/runtime/gc.py`; external IP-location APIs belong in `app/adapters/external/location.py`.
 * Security implementation filenames use package-context nouns: `app/application/security/url.py` and `app/application/security/twofactor.py`. Historical `app.utils.security` and `app.helper.twofa` remain compatibility mappings only.
@@ -155,14 +155,12 @@ uv run --locked --no-sync pytest \
   tests/test_architecture_egress.py \
   tests/test_architecture_event_facts.py \
   tests/test_architecture_event_policy.py -q
-uv run --locked --no-sync python scripts/architecture/event_policy.py
 uv run --locked --no-sync pytest \
   tests/test_architecture_contract_baseline.py \
   tests/test_architecture_baseline_cli.py -q
 uv run --locked --no-sync python scripts/architecture/baseline.py --check-host
 uv run --locked --no-sync mypy --config-file mypy.ini
 uv run --locked --no-sync python scripts/architecture/complexity.py
-uv run --locked --no-sync python scripts/architecture/complexity.py --v2
 uv run --locked --no-sync python scripts/architecture/concurrency.py
 uv run --locked --no-sync python scripts/architecture/async_blocking.py
 uv run --locked --no-sync python scripts/architecture/task_ownership.py
@@ -175,7 +173,7 @@ uv run --locked --no-sync python scripts/startup/performance.py --check --repeat
 Apply the following acceptance rules:
 
 * **No baseline laundering:** A failed baseline or ratchet is evidence to inspect, not permission to regenerate fixtures. Never use `--write-host`, `--write-plugins`, or any ratchet `--write` merely to make a gate pass. Fix added dependencies, cycles, layer violations, direct egress, service locators, blocking calls, unmanaged tasks, type/lint growth, complexity growth, or concurrency growth in the implementation.
-* **Reviewed baseline updates only:** Update a fixture only when the task intentionally changes the governed contract or the tool reports a genuine lower debt watermark. First prove the change complies with architecture policy, inspect the semantic diff, update coupled documentation/tests, run the non-writing check again, and include the fixture diff in the same commit. Complexity, concurrency, async-blocking, and host snapshot writers can overwrite regressions mechanically, so their ability to write is not approval to do so.
+* **Reviewed baseline updates only:** Update a fixture only when the task intentionally changes the governed contract or the tool reports a genuine lower debt watermark. First prove the change complies with architecture policy, inspect the semantic diff, update coupled documentation/tests, run the non-writing check again, and include the fixture diff in the same commit. Complexity uses per-function C901/PLR1702 metrics across host Python sources; physical line counts are advisory only. Its writer rejects growth and its check requires reduced debt to be recorded. Concurrency, async-blocking, and host snapshot writers can overwrite regressions mechanically, so their ability to write is not approval to do so.
 * **Diagnose snapshot failures:** When `baseline.py --check-host` fails unexpectedly, rerun it with `--diagnostics` and inspect the affected JSON under `tests/fixtures/architecture/`. Do not infer that a changed snapshot is acceptable from test success alone.
 * **Test the behavior:** Run focused pytest coverage for every changed behavior. Run `uv run --locked --no-sync python tests/run.py` before commit for dependency/lock changes, shared test infrastructure, database or startup paths, cross-module lifecycle, compatibility layers, or broad behavior changes. Do not weaken, skip, or delete tests to satisfy a gate without proving equivalent coverage.
 * **Check changed Python files:** For PR preparation, take the deduplicated union of `git diff --name-only --diff-filter=ACMRT <pr-base>...HEAD -- '*.py'`, `git diff --cached --name-only --diff-filter=ACMRT -- '*.py'`, and `git diff --name-only --diff-filter=ACMRT -- '*.py'`, plus intended new files from `git ls-files --others --exclude-standard -- '*.py'`. Resolve `<pr-base>` to the actual target base ref (normally `upstream/v3`). Keep staged and unstaged comparisons separate: they can cancel against HEAD while the index still contains a broken change. Exclude unrelated local files from the planned commit.

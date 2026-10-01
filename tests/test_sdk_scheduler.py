@@ -8,10 +8,12 @@ def test_scheduler_sdk_exposes_only_narrow_service_contracts() -> None:
     assert set(scheduler_sdk.__all__) == {
         "ScheduleInfo",
         "ScheduleProgress",
+        "add_plugin_once_job",
         "get_agent_task_next_run",
         "list_scheduler_jobs",
         "remove_agent_task_job",
         "remove_plugin_job",
+        "remove_plugin_once_job",
         "start_agent_task",
         "start_scheduler_job",
         "update_agent_task_job",

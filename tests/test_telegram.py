@@ -20,21 +20,21 @@ from app.schemas.types import MediaType
 
 @pytest.fixture
 def telegram():
-    """构造 TeleBot 与 ImageHelper 均已打桩的 Telegram 实例。
+    """构造 Bot API 客户端与 ImageHelper 均已打桩的 Telegram 实例。
 
     空 token 会让 Telegram.__init__ 提前返回、致 send_* 抛错，故用假 bot 让初始化完整、
     消息发送走内存桩；ImageHelper 打桩避免 send_medias/send_msg 按 poster_path 真实下载海报
     （否则对 raw.githubusercontent.com 等外链发起真实 HTTP，外部 IO 不可接受且拖慢用例）。
     with 上下文在 fixture 结束时自动停桩，即使实例化失败也不泄漏 patch。
     """
-    with patch("app.modules.telegram.telegram.TeleBot") as mock_telebot_cls, \
+    with patch("app.modules.telegram.telegram.TelegramBotApi") as mock_telebot_cls, \
             patch("app.modules.telegram.telegram.ImageHelper") as mock_image_cls:
         bot_instance = MagicMock()
         # get_me 用于初始化 bot 用户名，需返回带 username 的对象
-        bot_instance.get_me.return_value = MagicMock(username="test_bot")
+        bot_instance.get_me.return_value = {"username": "test_bot"}
         # polling/stop 使用普通函数，避免后台线程执行 MagicMock 时在退出阶段产生锁竞争。
-        bot_instance.infinity_polling = lambda *args, **kwargs: None
-        bot_instance.stop_polling = lambda *args, **kwargs: None
+        bot_instance.polling = lambda *args, **kwargs: None
+        bot_instance.stop_polling = lambda *args, **kwargs: True
         mock_telebot_cls.return_value = bot_instance
         mock_image_cls.return_value.fetch_image.return_value = b"fake-image-bytes"
         telegram = Telegram(TELEGRAM_TOKEN="fake_token", TELEGRAM_CHAT_ID="fake_chat_id")
@@ -54,9 +54,52 @@ def test_send_msg_success(telegram):
     assert result and result.get("success")
 
 
+def test_topic_id_is_scoped_to_channel_and_default_chat(tmp_path):
+    """同一 bot 和群组的不同渠道应各发各的话题，私聊与空配置不带话题参数。"""
+    bots = [MagicMock(), MagicMock(), MagicMock()]
+    for bot in bots:
+        bot.get_me.return_value = {"username": "test_bot"}
+        bot.polling = lambda *args, **kwargs: None
+        bot.stop_polling = lambda *args, **kwargs: True
+    with patch("app.modules.telegram.telegram.TelegramBotApi", side_effect=bots), patch(
+        "app.modules.telegram.telegram.ImageHelper"
+    ):
+        clients = [
+            Telegram(TELEGRAM_TOKEN="same-token", TELEGRAM_CHAT_ID="-1001", TELEGRAM_TOPIC_ID=topic)
+            for topic in ("101", "202", "")
+        ]
+        try:
+            for client, bot, topic in zip(clients, bots, (101, 202, None)):
+                assert client.send_msg(title="", text="通知")["success"]
+                assert bot.send_message.call_args.kwargs.get("message_thread_id") == topic
+                assert client.send_msg(title="", text="私聊", userid="123")["success"]
+                assert "message_thread_id" not in bot.send_message.call_args.kwargs
+
+            assert clients[0].send_msg(title="", rich_message="# 通知")["success"]
+            assert bots[0].send_rich_message.call_args.kwargs["message_thread_id"] == 101
+
+            attachment = tmp_path / "notice.txt"
+            attachment.write_text("通知")
+            assert clients[0].send_file(file_path=str(attachment))["success"]
+            assert bots[0].send_document.call_args.kwargs["message_thread_id"] == 101
+
+            photo = tmp_path / "notice.jpg"
+            photo.write_bytes(b"photo")
+            assert clients[0].send_file(file_path=str(photo))["success"]
+            assert bots[0].send_photo.call_args.kwargs["message_thread_id"] == 101
+
+            voice = tmp_path / "notice.ogg"
+            voice.write_bytes(b"voice")
+            assert clients[0].send_voice(voice_path=str(voice))["success"]
+            assert bots[0].send_voice.call_args.kwargs["message_thread_id"] == 101
+        finally:
+            for client in clients:
+                client.stop()
+
+
 def test_edit_msg_with_rich_message(telegram):
     """Telegram 流式编辑应继续使用 Rich Message 协议。"""
-    telegram._bot.edit_message_text.return_value = SimpleNamespace(message_id=101)
+    telegram._bot.edit_message_text.return_value = {"message_id": 101}
 
     result = telegram.edit_msg(
         chat_id="10001",
@@ -68,7 +111,7 @@ def test_edit_msg_with_rich_message(telegram):
     assert result is True
     kwargs = telegram._bot.edit_message_text.call_args.kwargs
     assert kwargs["text"] is None
-    assert kwargs["rich_message"].html == (
+    assert kwargs["rich_message"].get("html") == (
         '<h1>流式结果</h1><ul><li><b>完成</b></li></ul>'
     )
 
@@ -357,10 +400,10 @@ def test_send_msg_with_html_parse_mode_keeps_html(telegram):
 
 def test_send_msg_uses_rich_message_api(telegram):
     """Rich Markdown 应转换后通过 Telegram sendRichMessage 发送。"""
-    telegram.bot.send_rich_message.return_value = SimpleNamespace(
-        message_id=101,
-        chat=SimpleNamespace(id=10001),
-    )
+    telegram.bot.send_rich_message.return_value = {
+        "message_id": 101,
+        "chat": {"id": 10001},
+    }
 
     result = telegram.send_msg(
         title="",
@@ -377,9 +420,9 @@ def test_send_msg_uses_rich_message_api(telegram):
     telegram.bot.send_message.assert_not_called()
     send_kwargs = telegram.bot.send_rich_message.call_args.kwargs
     assert send_kwargs["chat_id"] == "fake_chat_id"
-    assert send_kwargs["rich_message"].markdown is None
-    assert "<h1>处理完成</h1>" in send_kwargs["rich_message"].html
-    assert "<table>" in send_kwargs["rich_message"].html
+    assert send_kwargs["rich_message"].get("markdown") is None
+    assert "<h1>处理完成</h1>" in send_kwargs["rich_message"].get("html")
+    assert "<table>" in send_kwargs["rich_message"].get("html")
     assert send_kwargs["reply_markup"] is not None
 
 
@@ -396,7 +439,7 @@ def test_send_msg_edits_rich_message(telegram):
     edit_kwargs = telegram.bot.edit_message_text.call_args.kwargs
     assert edit_kwargs["text"] is None
     assert edit_kwargs["message_id"] == 101
-    assert "<h1>更新结果</h1>" in edit_kwargs["rich_message"].html
+    assert "<h1>更新结果</h1>" in edit_kwargs["rich_message"].get("html")
 
 
 def test_telegram_module_passes_parse_mode_to_client():
@@ -743,12 +786,8 @@ def test_send_msg_with_force_reply_uses_force_reply_when_no_buttons(telegram):
     assert result and result.get("success")
     send_kwargs = telegram.bot.send_message.call_args.kwargs
     reply_markup = send_kwargs["reply_markup"]
-    assert reply_markup.__class__.__name__ == "ForceReply"
-    if hasattr(reply_markup, "to_dict"):
-        assert reply_markup.to_dict()["force_reply"] is True
-        assert reply_markup.to_dict().get("selective") is True
-    else:
-        assert getattr(reply_markup, "selective", None) is True
+    assert reply_markup["force_reply"] is True
+    assert reply_markup["selective"] is True
 
 
 def test_send_msg_with_force_reply_keeps_inline_keyboard_when_buttons_exist(telegram):
@@ -763,7 +802,9 @@ def test_send_msg_with_force_reply_keeps_inline_keyboard_when_buttons_exist(tele
     assert result and result.get("success")
     send_kwargs = telegram.bot.send_message.call_args.kwargs
     reply_markup = send_kwargs["reply_markup"]
-    assert reply_markup.__class__.__name__ == "InlineKeyboardMarkup"
+    assert reply_markup == {
+        "inline_keyboard": [[{"text": "默认", "callback_data": "default"}]]
+    }
 
 
 def test_send_msg_with_force_reply_and_original_message_sends_new_prompt(telegram):
@@ -781,7 +822,7 @@ def test_send_msg_with_force_reply_and_original_message_sends_new_prompt(telegra
     send_kwargs = telegram.bot.send_message.call_args.kwargs
     assert send_kwargs["chat_id"] == "group-1"
     assert send_kwargs["reply_to_message_id"] == 123
-    assert send_kwargs["reply_markup"].__class__.__name__ == "ForceReply"
+    assert send_kwargs["reply_markup"]["force_reply"] is True
 
 
 def test_send_msg_new_direct_context_message_prefers_original_chat(telegram):
@@ -891,3 +932,107 @@ def test_send_msg_edit_with_image_falls_back_to_text_when_image_url_unavailable(
     assert "测试标题" in edit_kwargs["text"]
     assert "测试内容" in edit_kwargs["text"]
     assert edit_kwargs["reply_markup"] is not None
+
+
+def _group_message(text, **extra):
+    """构造群聊文本消息的 Bot API 结构。"""
+    message = {
+        "message_id": 5,
+        "from": {"id": 42, "is_bot": False, "first_name": "u"},
+        "chat": {"id": -1001, "type": "supergroup"},
+        "text": text,
+    }
+    message.update(extra)
+    return message
+
+
+def test_handle_update_forwards_raw_message_dict(telegram):
+    """普通消息以 Bot API 原始 dict 转发主程序，并记录用户最近会话。"""
+    message = {
+        "message_id": 1,
+        "from": {"id": 42, "is_bot": False, "first_name": "u"},
+        "chat": {"id": 42, "type": "private"},
+        "photo": [{"file_id": "image-1"}],
+        "caption": "看看",
+    }
+    with patch.object(telegram, "_forward_to_message_chain", return_value=True) as forward:
+        telegram._handle_update({"update_id": 1, "message": message})
+
+    forward.assert_called_once_with(message)
+    assert telegram._get_user_chat_id("42") == "42"
+
+
+@pytest.mark.parametrize("text", ["/start", "/help@test_bot", "/start@other_bot payload"])
+def test_handle_update_replies_welcome_without_forwarding(telegram, text):
+    """/start、/help 只回复使用提示，与原 SDK 一样忽略 @bot 后缀和参数。"""
+    message = _group_message(text)
+    with patch.object(telegram, "_forward_to_message_chain") as forward:
+        telegram._handle_update({"update_id": 1, "message": message})
+
+    forward.assert_not_called()
+    kwargs = telegram.bot.send_message.call_args.kwargs
+    assert kwargs["chat_id"] == -1001
+    assert kwargs["reply_to_message_id"] == 5
+
+
+def test_handle_update_ignores_unsupported_content(telegram):
+    """入群通知等非转发内容类型不进入主程序。"""
+    message = _group_message(None)
+    del message["text"]
+    message["new_chat_members"] = [{"id": 7}]
+    with patch.object(telegram, "_forward_to_message_chain") as forward:
+        telegram._handle_update({"update_id": 1, "message": message})
+    forward.assert_not_called()
+
+
+def test_group_message_requires_mention_entity(telegram):
+    """群聊消息只在 @bot 时处理，实体偏移按 UTF-16 计算。"""
+    assert telegram._should_process_message(_group_message("随便聊聊")) is False
+    text = "😀 @test_bot 搜索"
+    mentioned = _group_message(
+        text, entities=[{"type": "mention", "offset": 3, "length": 9}]
+    )
+    assert telegram._should_process_message(mentioned) is True
+    caption_message = _group_message(None, caption="/search 片名")
+    assert telegram._should_process_message(caption_message) is True
+
+
+def test_handle_callback_query_answers_then_forwards(telegram):
+    """按钮回调先应答结束加载状态，再以精简结构转发主程序。"""
+    call = {
+        "id": "cb-1",
+        "from": {"id": 42, "is_bot": False, "first_name": "u"},
+        "message": {"message_id": 9, "chat": {"id": -1001, "type": "supergroup"}},
+        "data": "page:2",
+    }
+    with patch.object(telegram, "_forward_to_message_chain", return_value=True) as forward:
+        telegram._handle_update({"update_id": 2, "callback_query": call})
+
+    telegram.bot.answer_callback_query.assert_called_once_with("cb-1")
+    payload = forward.call_args.args[0]["callback_query"]
+    assert payload["from"]["id"] == 42
+    assert payload["message"] == {"message_id": 9, "chat": {"id": -1001}}
+    assert payload["data"] == "page:2"
+    assert telegram._get_user_chat_id("42") == "-1001"
+
+
+def test_send_file_returns_message_identity(telegram, tmp_path):
+    """发送结果从 Bot API Message dict 读取 message_id 和 chat id。"""
+    file_path = tmp_path / "report.txt"
+    file_path.write_text("ok", encoding="utf-8")
+    telegram.bot.send_document.return_value = {"message_id": 88, "chat": {"id": 10001}}
+
+    result = telegram.send_file(str(file_path), userid="10001")
+
+    assert result == {"success": True, "message_id": 88, "chat_id": 10001}
+    name, _ = telegram.bot.send_document.call_args.kwargs["document"]
+    assert name == "report.txt"
+
+
+def test_register_commands_uses_bot_command_dicts(telegram):
+    """菜单命令去掉前导斜杠，按 BotCommand 结构提交。"""
+    telegram.register_commands({"/search": {"description": "搜索"}})
+    telegram.bot.delete_my_commands.assert_called_once_with()
+    telegram.bot.set_my_commands.assert_called_once_with(
+        commands=[{"command": "search", "description": "搜索"}]
+    )

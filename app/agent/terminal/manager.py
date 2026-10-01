@@ -12,7 +12,13 @@ import uuid
 from types import ModuleType
 from typing import Any, Optional
 
-from app.agent.shell import AgentShell, build_agent_subprocess_env, resolve_agent_cwd, resolve_agent_shell
+from app.agent.shell import (
+    AgentShell,
+    bind_agent_project_environment,
+    build_agent_subprocess_env,
+    resolve_agent_cwd,
+    resolve_agent_shell,
+)
 from app.agent.terminal.output import (
     TERMINAL_DEFAULT_READ_BYTES,
     TerminalOutputError,
@@ -125,8 +131,12 @@ class _TerminalSessionManager:
         if since_offset is not None and (type(since_offset) is not int or since_offset != 0):
             raise TerminalOutputError("新会话的 since_offset 只能为 0 或 null")
         initial_wait = self._normalize_yield_timeout(yield_time_ms)
-        normalized_cwd = resolve_agent_cwd(cwd, root_path=get_runtime_setting('ROOT_PATH'))
-        normalized_env = build_agent_subprocess_env(env)
+        project_root = get_runtime_setting("ROOT_PATH")
+        normalized_cwd = resolve_agent_cwd(cwd, root_path=project_root)
+        normalized_env = bind_agent_project_environment(
+            build_agent_subprocess_env(env),
+            project_root=project_root,
+        )
         shell_policy = resolve_agent_shell(executable=shell, login=login, environment=normalized_env, cwd=normalized_cwd)
         should_use_pty = self._normalize_bool(use_pty, default=True) and os.name == "posix"
 

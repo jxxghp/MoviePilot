@@ -7,6 +7,7 @@ from contextlib import AbstractAsyncContextManager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+from uuid import uuid4
 
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -33,7 +34,9 @@ from app.application.transfer.execution import (
     TransferStepState,
     build_transfer_operation_id,
 )
+from app.application.transfer.recovery import music_replanning_input
 from app.application.transfer.workflow import (
+    TRANSFER_ADMISSION_ACCEPTED,
     TRANSFER_ADMISSION_PLANNED,
     TRANSFER_ADMISSION_PROVIDER_PENDING,
     TRANSFER_PLAN_CHECKPOINT_LEGACY_VERSION,
@@ -1206,6 +1209,10 @@ class TransactionalTransferExecutionRepository:
                         retry_generation=pending.retry_generation,
                         message="整理任务正在处理中或状态已变化，请刷新后重试",
                     )
+                replanned = self._replan_music_rejection(session, pending=pending, updated_at=updated_at)
+                if replanned is not None:
+                    transaction.commit()
+                    return replanned
                 updated = oper.stage_request_execution_retry(
                     task_id=task_id,
                     reason=reason,
@@ -1248,6 +1255,48 @@ class TransactionalTransferExecutionRepository:
             except Exception:
                 self._rollback(transaction)
                 raise
+
+    def _replan_music_rejection(
+            self, session: Session, *, pending: TransferPending, updated_at: str,
+    ) -> Optional[TransferRetryRequestResult]:
+        """只替换已结算且没有外部步骤的音乐拒绝；保留旧历史，不碰任何文件操作记录。"""
+        if not pending.checkpoint_payload or not pending.terminal_history_id or pending.settlement_revision < 1:
+            return None
+        checkpoint, fingerprint = self._plan_identity(pending)
+        planning = music_replanning_input(checkpoint)
+        if planning is None:
+            return None
+        step_oper = TransferExecutionStepOper(session)
+        steps = step_oper.list_by_task_id(task_id=pending.task_id)
+        if len(steps) != 1 or any(step.phase != "planning" or step.kind != "reject"
+                                 or step.state != TransferStepState.SUCCEEDED.value for step in steps):
+            return None
+        self._validate_plan_steps(task_id=pending.task_id, checkpoint=checkpoint,
+                                  checkpoint_fingerprint=fingerprint, steps=steps)
+        # 唯一步骤是无外部副作用的 reject。删除内部拒绝步骤不会清除文件操作证据。
+        step_oper.stage_delete_task(task_id=pending.task_id)
+        oper = TransferPendingOper(session)
+        removed = oper.stage_delete_terminal_failure(task_id=pending.task_id, history_id=pending.terminal_history_id,
+                                                     settlement_revision=pending.settlement_revision)
+        if removed != 1:
+            raise TransferExecutionConflictError("音乐重新识别的原任务状态已改变")
+        detached = TransferHistoryOper(session).stage_detach_failed_transfer_task(
+            history_id=pending.terminal_history_id, task_id=pending.task_id,
+            settlement_revision=pending.settlement_revision,
+        )
+        if detached != 1:
+            raise TransferExecutionConflictError("音乐重新识别的历史绑定已改变")
+        session.expunge(pending)
+        options = {**planning.options, "music_replanned_from": pending.task_id}
+        planning = type(planning).from_payload({**planning.to_payload(), "options": options})
+        created = oper.stage_admit(task_id=uuid4().hex, storage=pending.storage, src_path=pending.src_path,
+                                   state=TRANSFER_ADMISSION_ACCEPTED, now_time=updated_at,
+                                   input_version=planning.schema_version, planning_input=planning.to_payload(),
+                                   input_fingerprint=planning.fingerprint)
+        if created is None:
+            raise TransferExecutionConflictError("音乐重新识别任务未能登记")
+        return TransferRetryRequestResult(accepted=True, state=TransferExecutionState.NOT_STARTED,
+                                           retry_generation=0, message="已重新生成音乐识别任务，后台将重新识别后整理")
 
     def discard_corrupt_task(
             self,

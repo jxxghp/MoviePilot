@@ -6,7 +6,22 @@ from threading import Lock
 from typing import Any, Callable, Optional
 
 from fastapi import Depends, FastAPI
+from fastapi.dependencies import models as fastapi_dependency_models
 from fastapi.routing import APIRoute
+
+
+def _clear_fastapi_callable_caches() -> None:
+    """清空 FastAPI 按可调用对象身份缓存的分类结果。
+
+    FastAPI 在模块级 ``lru_cache`` 中以强引用保存每个端点与依赖函数（容量 4096），
+    插件路由移除后旧端点函数仍被缓存持有，进而经 ``__globals__`` 留住整个旧插件模块，
+    每次重载都多留一份。缓存只记录“是否生成器/协程”这类分类结果，清空后下次请求按需
+    重算。缓存属于 FastAPI 私有实现，按属性探测，版本不再提供时自然跳过。
+    """
+    for value in vars(fastapi_dependency_models).values():
+        cache_clear = getattr(value, "cache_clear", None)
+        if callable(cache_clear):
+            cache_clear()
 
 
 class FastAPIDynamicRouteRegistry:
@@ -22,7 +37,6 @@ class FastAPIDynamicRouteRegistry:
         verify_token: Callable[..., Any],
         verify_apikey: Callable[..., Any],
         prefix: str,
-        protected_routes: set[str],
         log: Any,
         event_loop: Callable[[], asyncio.AbstractEventLoop | None] | None = None,
     ) -> None:
@@ -33,7 +47,6 @@ class FastAPIDynamicRouteRegistry:
         self._verify_token = verify_token
         self._verify_apikey = verify_apikey
         self._prefix = prefix
-        self._protected_routes = protected_routes
         self._logger = log
         self._event_loop = event_loop
 
@@ -95,15 +108,12 @@ class FastAPIDynamicRouteRegistry:
             raise ValueError("Action must be 'add' or 'remove'")
 
         modified = False
-        existing_paths = {
-            path: route
-            for route in self._app.routes
-            if (path := self._route_path(route)) is not None
-        }
+        removed = False
         plugin_ids = [plugin_id] if plugin_id else self._plugin_ids()
         for current_id in plugin_ids:
             if self.remove(current_id):
                 modified = True
+                removed = True
             if action != "add":
                 continue
             for source_api in self._plugin_apis(current_id):
@@ -133,9 +143,11 @@ class FastAPIDynamicRouteRegistry:
                         f"Error adding plugin route {api_path}: {str(error)}"
                     )
         if modified:
-            self.clean(existing_paths)
+            # 文档路由由 app.adapters.web.docs 一次性注册，这里只让已缓存的文档按新路由表重建。
             self._app.openapi_schema = None
-            self._app.setup()
+        if removed:
+            # 旧路由已不在路由表中，此后不会再有请求把旧端点写回缓存
+            _clear_fastapi_callable_caches()
 
     def remove(self, plugin_id: str) -> bool:
         """移除指定插件前缀下的全部动态路由。"""
@@ -164,15 +176,3 @@ class FastAPIDynamicRouteRegistry:
         """返回公开路由路径，跳过 FastAPI 内部的无路径 include 包装器。"""
         path = getattr(route, "path", None)
         return path if isinstance(path, str) else None
-
-    def clean(self, existing_paths: dict) -> None:
-        """清理 FastAPI 重建时可能重复的受保护文档路由。"""
-        for protected_route in self._protected_routes:
-            try:
-                existing_route = existing_paths.get(protected_route)
-                if existing_route:
-                    self._app.routes.remove(existing_route)
-            except Exception as error:
-                self._logger.error(
-                    f"Error removing protected route {protected_route}: {str(error)}"
-                )

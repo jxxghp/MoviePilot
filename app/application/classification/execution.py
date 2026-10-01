@@ -81,8 +81,9 @@ class ClassificationExecutionPort(Protocol):
         | None = None,
         effective_override: ClassificationSelection | None = None,
         refresh: bool = False,
+        allow_enrichment: bool = True,
     ) -> ClassificationSubject:
-        """分类一个完整媒体对象，并按需强制刷新已存在的同 revision 结果。"""
+        """分类完整媒体；离线整理可禁止外部事实补充，仍执行当前用户分类策略。"""
         ...
 
     async def async_finalize(
@@ -96,6 +97,7 @@ class ClassificationExecutionPort(Protocol):
         | None = None,
         effective_override: ClassificationSelection | None = None,
         refresh: bool = False,
+        allow_enrichment: bool = True,
     ) -> ClassificationSubject:
         """异步分类完整媒体对象，并允许有界补充缺失标准事实。"""
         ...
@@ -193,17 +195,19 @@ class ClassificationExecutionService:
         | None = None,
         effective_override: ClassificationSelection | None = None,
         refresh: bool = False,
+        allow_enrichment: bool = True,
     ) -> ClassificationSubject:
-        """复制并分类完整识别结果，来源缓存中的旧结果永远不作为真值。"""
+        """复制并分类完整结果；离线调用可禁用外部补充，但仍应用当前策略。"""
         finalized, policy, facts, effective_override = self._prepare(
             media,
             extensions=extensions,
             effective_override=effective_override,
             refresh=refresh,
+            allow_local_music=not allow_enrichment,
         )
         if policy is None or facts is None:
             return finalized
-        if self._enrichment is not None:
+        if allow_enrichment and self._enrichment is not None:
             try:
                 facts = self._enrichment.enrich(policy, facts, finalized)
             except Exception:  # noqa: BLE001  分类补充不得成为识别硬依赖
@@ -226,17 +230,19 @@ class ClassificationExecutionService:
         | None = None,
         effective_override: ClassificationSelection | None = None,
         refresh: bool = False,
+        allow_enrichment: bool = True,
     ) -> ClassificationSubject:
-        """异步复制并分类完整结果，补充失败时继续使用原始事实。"""
+        """异步分类完整结果，支持只使用本地事实，补充失败时保留原始事实。"""
         finalized, policy, facts, effective_override = self._prepare(
             media,
             extensions=extensions,
             effective_override=effective_override,
             refresh=refresh,
+            allow_local_music=not allow_enrichment,
         )
         if policy is None or facts is None:
             return finalized
-        if self._enrichment is not None:
+        if allow_enrichment and self._enrichment is not None:
             try:
                 facts = await self._enrichment.async_enrich(
                     policy,
@@ -260,6 +266,7 @@ class ClassificationExecutionService:
         effective_override: ClassificationSelection | None,
         refresh: bool,
         policy_override: ClassificationPolicy | None = None,
+        allow_local_music: bool = False,
     ) -> tuple[
         ClassificationSubject,
         ClassificationPolicy | None,
@@ -287,6 +294,7 @@ class ClassificationExecutionService:
             facts = build_classification_facts(
                 finalized,
                 extensions=merged_extensions,
+                allow_local_music=allow_local_music,
             )
         except ValueError:
             finalized.set_library_category("")

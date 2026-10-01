@@ -1,11 +1,12 @@
 import json
+from unittest.mock import Mock
 
 import pytest
 
 from app.modules.emby.emby import Emby
 from app.modules.jellyfin.jellyfin import Jellyfin
 from app.modules.zspace.zspace import ZSpace
-from app.schemas import WebhookEventInfo
+from app.schemas.mediaserver import WebhookEventInfo
 from app.schemas.types import MediaSource
 
 
@@ -79,3 +80,78 @@ def test_emby_family_webhook_uses_provider_identity_pair(client_class: type) -> 
     assert event is not None
     assert event.media_source == MediaSource.Douban
     assert event.media_id == "2002"
+
+
+@pytest.mark.parametrize("item_type", ["Episode", "Season"])
+def test_emby_tv_webhook_uses_series_provider_identity(monkeypatch, item_type: str) -> None:
+    """Episode 和 Season webhook 应使用 Series 条目的媒体主身份。"""
+    client = Emby.__new__(Emby)
+    get_series_identity = Mock(return_value=(MediaSource.TMDB, "286686"))
+    monkeypatch.setattr(client, "_get_series_identity", get_series_identity, raising=False)
+    monkeypatch.setattr(client, "get_remote_image_by_id", lambda **kwargs: None)
+
+    event = client.get_webhook_message({
+        "data": json.dumps({
+            "Event": "playback.start",
+            "Item": {
+                "Type": item_type,
+                "Id": "child-item-1",
+                "Name": "第 24 集",
+                "SeriesName": "生逢其时",
+                "SeriesId": "series-item-1",
+                "ProviderIds": {"Tmdb": "7750138"},
+            },
+        })
+    }, {})
+
+    assert event is not None
+    get_series_identity.assert_called_once_with("series-item-1")
+    assert event.item_id == "series-item-1"
+    assert event.media_source == MediaSource.TMDB
+    assert event.media_id == "286686"
+
+
+def test_emby_tv_webhook_keeps_identity_empty_when_series_lookup_fails(monkeypatch) -> None:
+    """Series 身份查询失败时不得回退为 Episode 或 Season 的 ProviderIds。"""
+    client = Emby.__new__(Emby)
+    monkeypatch.setattr(client, "_get_series_identity", Mock(return_value=(None, None)), raising=False)
+    monkeypatch.setattr(client, "get_remote_image_by_id", lambda **kwargs: None)
+
+    event = client.get_webhook_message({
+        "data": json.dumps({
+            "Event": "playback.start",
+            "Item": {
+                "Type": "Episode",
+                "Id": "episode-item-1",
+                "Name": "第 24 集",
+                "SeriesId": "series-item-1",
+                "ProviderIds": {"Tmdb": "7750138"},
+            },
+        })
+    }, {})
+
+    assert event is not None
+    assert event.item_id == "series-item-1"
+    assert event.media_source is None
+    assert event.media_id is None
+
+
+def test_emby_series_identity_requests_provider_ids(monkeypatch) -> None:
+    """系列身份查询应只请求 Series 的 ProviderIds 并选择规范来源。"""
+    client = Emby.__new__(Emby)
+    client._host = "http://emby.local/"
+    client._apikey = "test-key"
+    client.user = "user-1"
+    request = Mock()
+    response = Mock(status_code=200)
+    response.json.return_value = {"ProviderIds": {"Tmdb": "286686", "Tvdb": "468626"}}
+    request.get_res.return_value = response
+    monkeypatch.setattr("app.modules.emby.emby.RequestUtils", lambda: request)
+
+    identity = client._get_series_identity("series-item-1")
+
+    assert identity == (MediaSource.TMDB, "286686")
+    request.get_res.assert_called_once_with(
+        "http://emby.local/emby/Users/user-1/Items/series-item-1",
+        {"api_key": "test-key", "Fields": "ProviderIds"},
+    )

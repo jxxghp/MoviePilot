@@ -39,12 +39,16 @@ class GithubAuthClient(GithubAuthPort):
         """保存代理、User-Agent 等部署设置提供器。"""
         self._settings = settings or _RuntimeGithubSettings()
 
-    async def request_device_code(self, client_id: str) -> GithubDeviceCode:
-        """请求 GitHub 设备码并转换为应用层结构。"""
+    async def request_device_code(
+        self,
+        client_id: str,
+        scope: str = "read:user",
+    ) -> GithubDeviceCode:
+        """按调用方 scope 请求设备码，默认保留 Copilot 登录的只读用户权限。"""
         try:
             response = await self._request().post_res(
                 self._DEVICE_CODE_URL,
-                json={"client_id": client_id, "scope": "read:user"},
+                json={"client_id": client_id, "scope": scope},
                 raise_exception=True,
             )
         except Exception as error:  # noqa: BLE001 - 网络异常统一转换为领域传输错误

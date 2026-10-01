@@ -20,7 +20,11 @@ from app.application.agent import (
 )
 from app.application.messaging import router as interaction_router
 from app.application.messaging.interaction import InteractionContext, InteractionDispatch
-from app.application.messaging.interaction.agent import agent_interaction_manager, parse_agent_choice_callback
+from app.application.messaging.interaction.agent import (
+    agent_interaction_manager,
+    is_agent_learning_command,
+    parse_agent_choice_callback,
+)
 from app.application.messaging.media import media_interaction_manager
 from app.application.messaging.plugin import PluginInputInteractionHandler
 from app.application.messaging.session import MessageSessionService
@@ -516,7 +520,7 @@ class MessageChain(ChainBase):
                 )
                 return False
 
-        if text.startswith("/") and not self._has_ai_prefix(text):
+        if text.startswith("/") and not self._has_ai_prefix(text) and not is_agent_learning_command(text):
             self.eventmanager.send_event(
                 EventType.CommandExcute,
                 {
@@ -531,7 +535,7 @@ class MessageChain(ChainBase):
             )
             return bool(processing_status)
 
-        if not no_ai_requested and self._has_ai_prefix(text):
+        if not no_ai_requested and (self._has_ai_prefix(text) or is_agent_learning_command(text)):
             return self._handle_ai_message(
                 text=text,
                 channel=channel,
@@ -630,7 +634,7 @@ class MessageChain(ChainBase):
         """
         if callback_data:
             return parse_agent_choice_callback(callback_data) is not None
-        if self._has_ai_prefix(text):
+        if self._has_ai_prefix(text) or is_agent_learning_command(text):
             return True
         if text.startswith("/"):
             return False

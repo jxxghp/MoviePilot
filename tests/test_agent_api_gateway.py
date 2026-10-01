@@ -2,7 +2,10 @@ import asyncio
 import json
 import re
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
+from langchain_core.utils.function_calling import convert_to_openai_tool
 
 # pylint: disable=no-name-in-module  # 策略包根通过 __getattr__ 惰性导出，Pylint 无法静态解析。
 from app.agent.policy import (
@@ -23,9 +26,10 @@ from app.agent.policy.api import (
 )
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.impl.agent_task import AgentTaskTool
-from app.agent.tools.impl.api import MoviePilotApiTool
+from app.agent.tools.impl.api import MoviePilotApiInput, MoviePilotApiTool
 from app.agent.tools.impl.execute_command import ExecuteCommandTool
 from app.agent.tools.manager import MoviePilotToolsManager
+from app.schemas.types import NotificationChannel
 
 
 def test_api_operation_registry_matches_migration_batches() -> None:
@@ -194,14 +198,115 @@ def test_mcp_tools_list_preserves_all_moviepilot_api_operation_branches() -> Non
     assert operation_ids == set(API_OPERATION_ROUTES)
 
 
-def test_local_agent_tool_uses_the_same_precise_operation_schema() -> None:
-    """本地 Agent 绑定的工具 schema 至少必须提示 body 是 JSON 结构值。"""
+def test_local_agent_tool_rejects_json_encoded_object_bodies() -> None:
+    """本地 Agent 工具 schema 不得把 JSON 对象字符串化作为合法请求体。"""
     tool = MoviePilotApiTool(session_id="session", user_id="api_user")
     schema = tool.tool_call_schema
     assert not isinstance(schema, dict)
-    body = schema.model_json_schema()["properties"]["body"]
+    body_schema = schema.model_json_schema()["properties"]["body"]
+    body_branches = body_schema["anyOf"]
+    body_types = {branch.get("type") for branch in body_branches}
 
-    assert body["$ref"].endswith("/JsonData")
+    assert {"object", "array", "string", "null"}.issubset(body_types)
+    assert any(branch.get("const") == "dev" for branch in body_branches)
+    assert all(
+        branch.get("type") != "string" or branch.get("const") == "dev"
+        for branch in body_branches
+    )
+
+    body = {
+        "torrent_in": {
+            "title": "示例种子",
+            "enclosure": "https://example.com/test.torrent",
+        },
+    }
+    canonical = tool.canonical_arguments({"operation_id": "download.add", "body": body})
+    assert canonical["body"]["torrent_in"]["enclosure"] == body["torrent_in"]["enclosure"]
+
+    with pytest.raises(ValueError):
+        tool.canonical_arguments(
+            {
+                "operation_id": "download.add",
+                "body": json.dumps(body, ensure_ascii=False),
+            }
+        )
+
+
+def test_operation_body_shapes_fit_local_agent_input_schema() -> None:
+    """所有 MCP operation 请求体必须可由内置 Agent 输入类型表达。"""
+    tool = MoviePilotApiTool(session_id="session", user_id="api_user")
+    api_schema = tool.get_mcp_input_schema()
+    definitions = api_schema.get("$defs", {})
+    string_bodies = set()
+
+    for operation in api_schema["oneOf"]:
+        properties = operation.get("properties", {})
+        body_schema = properties.get("body")
+        if body_schema is None:
+            continue
+        while "$ref" in body_schema:
+            body_schema = definitions[body_schema["$ref"].rsplit("/", 1)[-1]]
+        variants = body_schema.get("anyOf", body_schema.get("oneOf", [body_schema]))
+        operation_id = properties["operation_id"]["const"]
+        for variant in variants:
+            while "$ref" in variant:
+                variant = definitions[variant["$ref"].rsplit("/", 1)[-1]]
+            if variant.get("type") == "string":
+                string_bodies.add((operation_id, variant.get("const")))
+            else:
+                assert variant.get("type") in {"object", "array", "null"}
+
+    assert string_bodies == {("system.upgrade.dev", "dev")}
+
+
+def test_local_api_schema_forbids_flattened_arguments_and_examples_match_contracts() -> None:
+    """模型实际接收的 schema 禁止额外顶层字段，内联示例均通过真实 operation 合同。"""
+    tool = MoviePilotApiTool(session_id="session", user_id="1")
+    definition = convert_to_openai_tool(tool)["function"]
+    schema = definition["parameters"]
+    assert definition["description"] == tool.description
+    assert schema["additionalProperties"] is False
+    assert set(schema["properties"]) == {"operation_id", "path_params", "query", "body"}
+    with pytest.raises(ValueError):
+        MoviePilotApiInput.model_validate({"operation_id": "site.rss", "page": 1})
+
+    examples = tool.description.split("Examples (replace sample IDs with IDs from prior results): ")[1]
+    decoder = json.JSONDecoder()
+    operations = []
+    for _ in range(3):
+        example, end = decoder.raw_decode(examples)
+        operations.append(tool.canonical_arguments(example)["operation_id"])
+        examples = examples[end:].lstrip("; ")
+    assert operations == ["media.detail", "subscription.execution.list", "site.rss"]
+
+
+@pytest.mark.parametrize(("arguments", "expected"), [
+    ({"operation_id": "media.detail", "media_id": "secret-value", "media_source": "tmdb"},
+     ["media_id 应移入 path_params.media_id", "media_source 应移入 query.media_source"]),
+    ({"operation_id": "subscription.execution.list", "limit": 2}, ["limit 应移入 query.limit"]),
+    ({"operation_id": "site.rss", "query": {"site_id": "secret-value"}}, ["query", "site_id"]),
+    ({"operation_id": "media.detail"}, ["path_params.media_id"]),
+    ({"operation_id": "media.detail", "path_params": {"media_id": "27205"}}, ["query.media_source"]),
+    ({"operation_id": "subscription.execution.list", "query": {"limit": "secret-value"}}, ["query.limit"]),
+    ({"operation_id": "site.list", "query": {"status": "secret-value"}}, ["query.status"]),
+    ({"operation_id": "download.add", "torrent_in": {}}, ["torrent_in 应移入 body.torrent_in"]),
+    ({"operation_id": "config.system.update", "body": {"value": "secret-value"}}, ["body.setting_key"]),
+    ({"operation_id": "site.rss", "https://secret-value.invalid/": "secret-value"}, ["字段名已省略"]),
+])
+@pytest.mark.asyncio
+async def test_gateway_raw_tool_inputs_return_actionable_errors_without_execution(arguments, expected) -> None:
+    """覆盖 LangChain 和直接调用入口，错误字段不能静默丢弃、执行或泄露参数值。"""
+    executor = AsyncMock()
+    gateway = MoviePilotApiTool(session_id="session", user_id="1", executor=executor)
+    message = await gateway.ainvoke({"name": gateway.name, "args": arguments, "id": "invalid", "type": "tool_call"})
+    assert message.status == "error"
+    for result in (message.content, await gateway.run(**arguments)):
+        payload = json.loads(result)
+        assert payload["error"] == "invalid_input"
+        assert payload["input_contract"]["operation_id"] == arguments["operation_id"]
+        assert all(item in payload["message"] for item in expected)
+        assert "secret-value" not in result
+    executor.execute.assert_not_awaited()
 
 
 def test_mcp_collection_contract_distinguishes_exact_and_unavailable_totals() -> None:
@@ -412,7 +517,7 @@ def test_policy_classifies_api_operation_by_operation_id() -> None:
     )
 
     assert delete_policy.effect is ActionEffect.DESTRUCTIVE_WRITE
-    assert delete_policy.required_role is PrincipalRole.SYSTEM_ADMIN
+    assert delete_policy.required_role is PrincipalRole.USER
     assert delete_policy.confirmation is ConfirmationMode.REQUIRED
     assert unknown_policy.machine_allowed is False
 
@@ -542,6 +647,73 @@ def test_gateway_maps_verified_channel_admin_only_for_admin_operation() -> None:
         )
 
     assert identity == ("7", "admin", True)
+
+
+@pytest.mark.parametrize("is_channel_admin", [False, True])
+@pytest.mark.parametrize("user_id,username", [(11, "alice"), (12, "bob")])
+@pytest.mark.parametrize(
+    "operation_id,arguments",
+    [
+        ("subscription.add", {"body": {"name": "示例"}}),
+        ("subscription.update", {"body": {"id": 1}}),
+        ("subscription.delete", {"path_params": {"subscribe_id": 1}}),
+    ],
+)
+def test_subscription_writes_keep_bound_channel_identity(
+    is_channel_admin, user_id, username, operation_id, arguments,
+) -> None:
+    """不同飞书发送者的订阅写入使用各自绑定用户，不因渠道管理员资格提权。"""
+    users = SimpleNamespace(
+        find_name_by_bindings=Mock(return_value=username),
+        async_get_by_name=AsyncMock(return_value=SimpleNamespace(
+            id=user_id, name=username, is_active=True, is_superuser=False,
+        )),
+    )
+    gateway = MoviePilotApiTool(
+        session_id="session", user_id=f"ou_{username}", data=SimpleNamespace(users=users),
+    )
+    gateway.set_message_attr(channel=NotificationChannel.Feishu.value, source="main-bot", username="")
+    gateway.set_agent_context({"is_admin": is_channel_admin})
+    policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
+        tool_name="moviepilot_api", arguments={"operation_id": operation_id}, requires_admin=False,
+    )
+    assert policy.required_role is PrincipalRole.USER
+    assert policy.confirmation is ConfirmationMode.REQUIRED
+    with patch("app.agent.tools.impl.api.MoviePilotApiExecutor") as executor_type, patch(
+        "app.application.security.auth.build_superuser_token_payload",
+    ) as superuser:
+        executor_type.return_value.execute = AsyncMock(return_value='{"success": true}')
+        result = asyncio.run(gateway.run(operation_id=operation_id, **arguments))
+
+    assert json.loads(result)["success"] is True
+    context = executor_type.call_args.kwargs["context"]
+    assert (context.user_id, context.username, context.is_admin) == (str(user_id), username, False)
+    users.find_name_by_bindings.assert_called_once_with({
+        "feishu_userid": f"ou_{username}", "feishu_openid": f"ou_{username}",
+    })
+    superuser.assert_not_called()
+
+
+@pytest.mark.parametrize("is_bound", [False, True])
+def test_subscription_write_rejects_unbound_or_inactive_channel_admin(is_bound) -> None:
+    """渠道管理员未绑定有效用户时不得回退超级管理员创建订阅。"""
+    users = SimpleNamespace(
+        find_name_by_bindings=Mock(return_value="disabled" if is_bound else None),
+        async_get_by_name=AsyncMock(return_value=SimpleNamespace(is_active=False)),
+    )
+    gateway = MoviePilotApiTool(
+        session_id="session", user_id="ou_user", data=SimpleNamespace(users=users),
+    )
+    gateway.set_message_attr(channel=NotificationChannel.Feishu.value, source="main-bot", username="")
+    gateway.set_agent_context({"is_admin": True})
+    with patch("app.agent.tools.impl.api.MoviePilotApiExecutor") as executor_type, patch(
+        "app.application.security.auth.build_superuser_token_payload",
+    ) as superuser:
+        result = asyncio.run(gateway.run(operation_id="subscription.add", body={"name": "示例"}))
+
+    assert json.loads(result)["error"] == "operation_unavailable"
+    executor_type.assert_not_called()
+    superuser.assert_not_called()
 
 
 def test_factory_uses_api_catalog_by_default(monkeypatch) -> None:

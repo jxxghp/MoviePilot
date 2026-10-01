@@ -13,6 +13,7 @@ import pytest
 from app.runtime.loop import main_loop_registry
 from app.scheduler import bridge as scheduler_bridge
 from app.scheduler import execution as scheduler_execution
+from app.scheduler import lifecycle as scheduler_lifecycle
 from app.scheduler import progress as scheduler_progress
 from app.scheduler.facade import Scheduler
 from app.scheduler.registry import ExecutionRegistry
@@ -608,6 +609,86 @@ async def test_config_reload_clears_wallpaper_cache_before_reinitializing() -> N
 
 
 @pytest.mark.anyio
+async def test_scheduler_list_keeps_previous_catalog_until_reload_is_ready(monkeypatch) -> None:
+    """重载期间返回旧任务快照，新调度器启动后切回实时目录。"""
+    _patch_progress(monkeypatch)
+    scheduler = _scheduler("reload-list", lambda: None)
+    shutdown_started = threading.Event()
+    shutdown_release = threading.Event()
+
+    class BlockingScheduler:
+        """提供可控关闭的旧调度器。"""
+
+        running = True
+
+        def __init__(self) -> None:
+            """准备一项重载前可见的计划任务。"""
+            self.jobs = [SimpleNamespace(
+                id="reload-list",
+                name="生命周期测试",
+                next_run_time=None,
+            )]
+
+        def get_jobs(self) -> list:
+            """返回当前注册作业。"""
+            return list(self.jobs)
+
+        def remove_all_jobs(self) -> None:
+            """模拟热重载时清除旧调度器的作业。"""
+            self.jobs.clear()
+
+        def shutdown(self) -> None:
+            """在测试信号处暂停关闭，暴露重载期间的列表状态。"""
+            shutdown_started.set()
+            shutdown_release.wait(timeout=1)
+
+    class ReplacementScheduler:
+        """提供初始化目录完成后的最小 Scheduler 接口。"""
+
+        running = False
+
+        def get_jobs(self) -> list:
+            """返回新目录尚未启动时的作业。"""
+            return [SimpleNamespace(
+                id="reload-list",
+                name="生命周期测试",
+                next_run_time=None,
+            )]
+
+        def start(self) -> None:
+            """标记新调度器已经启动。"""
+            self.running = True
+
+    old_scheduler = BlockingScheduler()
+    scheduler._scheduler = old_scheduler
+    previous = scheduler.list()
+    assert [job.id for job in previous] == ["reload-list"]
+
+    monkeypatch.setattr(
+        scheduler_lifecycle,
+        "get_scheduler_runtime_config",
+        lambda: SimpleNamespace(dev=False),
+    )
+    replacement = ReplacementScheduler()
+    scheduler._reconcile_agent_task_interruptions = lambda: None
+    scheduler._initialize_catalog = lambda _config: setattr(scheduler, "_scheduler", replacement)
+
+    reload_task = asyncio.create_task(scheduler.on_config_changed())
+    assert await asyncio.to_thread(shutdown_started.wait, 1)
+
+    assert scheduler._lifecycle_state == "reloading"
+    assert scheduler._scheduler is None
+    assert scheduler.list() == previous
+
+    shutdown_release.set()
+    await asyncio.wait_for(reload_task, timeout=1)
+
+    assert scheduler._lifecycle_state == "running"
+    assert scheduler._reload_schedule_snapshot is None
+    assert [job.id for job in scheduler.list()] == ["reload-list"]
+
+
+@pytest.mark.anyio
 async def test_concurrent_config_reload_waits_for_old_scheduler_shutdown(
         monkeypatch,
 ) -> None:
@@ -616,14 +697,23 @@ async def test_concurrent_config_reload_waits_for_old_scheduler_shutdown(
     shutdown_release = threading.Event()
 
     class BlockingScheduler:
+        """提供可控关闭的旧调度器。"""
+
         running = True
 
         @staticmethod
+        def get_jobs() -> list:
+            """该并发用例不注册计划任务。"""
+            return []
+
+        @staticmethod
         def remove_all_jobs() -> None:
+            """并发用例不注册计划任务，无需清理。"""
             pass
 
         @staticmethod
         def shutdown() -> None:
+            """在测试信号处阻塞，以验证重复重载被合并。"""
             shutdown_started.set()
             shutdown_release.wait(timeout=1)
 

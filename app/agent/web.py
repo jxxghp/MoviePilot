@@ -1,5 +1,6 @@
 """WebAgent 运行时类型适配，不包含 HTTP 或 SSE 编码。"""
 
+import time
 import uuid
 from threading import Lock
 from typing import Any, Awaitable, Callable, Optional
@@ -17,6 +18,10 @@ class _WebAgentStreamingHandlerMixin:
 
     _lock: Lock
     _pending_tool_stats: dict[str, int]
+
+    def _should_buffer_thinking_status(self) -> bool:
+        """WebAgent 通过结构化 SSE 展示思考状态，不把它写入正文。"""
+        return False
 
     def __init__(
         self,
@@ -56,6 +61,18 @@ class _WebAgentStreamingHandlerMixin:
             self._on_tool_event(event)
         except Exception as error:
             logger.debug(f"Web工具生命周期回调失败: {error}")
+
+    def thinking_started(self) -> None:
+        """发布 Web SSE 的模型思考开始事件，由前端负责持续计时。"""
+        super().thinking_started()  # type: ignore[misc]
+        self._publish_tool_event({"type": "thinking", "status": "running", "started_at": int(time.time() * 1000)})
+
+    def thinking_finished(self) -> None:
+        """发布 Web SSE 的模型思考结束事件，并清理基础流式状态。"""
+        was_active = bool(getattr(self, "_thinking_active", False))
+        super().thinking_finished()  # type: ignore[misc]
+        if was_active:
+            self._publish_tool_event({"type": "thinking", "status": "done"})
 
     def tool_call_started(
         self,
@@ -186,6 +203,9 @@ class _WebAgentStreamingHandlerMixin:
         self._msg_start_offset = 0
         self._pending_tool_stats = {}
         self._live_tool_summary = None
+        self._thinking_started_at = None
+        self._thinking_active = False
+        self._thinking_status_text = ""
 
     async def stop_streaming(self) -> tuple[bool, str]:
         """停止 Web SSE 流式状态，保留缓冲区给 Agent 收口逻辑去重。"""

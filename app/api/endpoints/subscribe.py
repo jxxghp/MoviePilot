@@ -415,7 +415,7 @@ async def subscribe_media_identity(
     current_user: ApiPrincipal = Depends(get_current_active_user_async),
 ) -> Any:
     """
-    根据媒体身份查询订阅，视频身份未命中时按类型、标题和年份回退。
+    根据媒体身份查询订阅，影视身份未命中时按类型、标题和可用年份跨源回退。
     """
     metadata = MetaInfo(title) if title else None
     normalized_title = metadata.name if metadata else None
@@ -427,10 +427,8 @@ async def subscribe_media_identity(
     result = select_accessible_subscribe(subscribes, current_user)
     if (
         not result
-        and media_source != MediaSource.TMDB
         and mtype in (MediaType.MOVIE, MediaType.TV)
         and normalized_title
-        and year
     ):
         subscribes = await query.list_by_video_metadata(
             title=normalized_title,

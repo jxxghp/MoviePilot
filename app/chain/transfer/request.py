@@ -7,10 +7,13 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 from app.application.formatting import FormatParser
 from app.application.history import (
     DownloadHistoryQueryPort,
+    DownloadHistorySnapshot,
 )
+from app.application.transfer.projection import music_transfer_preview
 from app.application.transfer.workflow import TransferTask
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
+from app.chain.transfer.music import append_cue_companions
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.metainfo import MetaInfoPath
@@ -116,14 +119,17 @@ class _TransferCandidatePlanner:
 
     def _build_file_meta(
             self,
-            source_path: Path,
+            fileitem: FileItem,
             custom_word_list: Optional[List[str]] = None,
     ) -> Optional[MetaBase]:
         """
         构建整理任务使用的文件元数据，并应用手动季集/自定义格式覆盖。
         """
+        if not fileitem.path:
+            return None
+        source_path = Path(fileitem.path)
         built_meta = deepcopy(self._meta) if self._meta else self._build_path_meta(
-            source_path, custom_word_list=custom_word_list
+            source_path, custom_word_list=custom_word_list, storage=fileitem.storage
         )
         if not built_meta:
             return None
@@ -132,6 +138,29 @@ class _TransferCandidatePlanner:
             # 这里避免再次偏移集数，导致手动整理的集数偏移翻倍。
             return built_meta
         return self._apply_meta_overrides(built_meta, source_path)
+
+    def _build_file_context(
+            self,
+            fileitem: FileItem,
+            history: Optional[DownloadHistorySnapshot],
+            inherited: Optional[MetaBase],
+            discard_saved_identity: bool,
+    ) -> tuple[Optional[MetaBase], Optional[MusicInfo]]:
+        """按显式输入、下载证据及附加文件归属构建上下文，读取始终绑定具体存储。"""
+        if not fileitem.path:
+            return None, None
+        history_meta, history_info = self._chain._restore_music_download_context(
+            download_history=history, file_path=Path(fileitem.path),
+            discard_saved_identity=discard_saved_identity,
+            storage=fileitem.storage, batch_mtype=self._batch_mtype,
+        )
+        if self._meta:
+            return self._build_file_meta(fileitem), history_info
+        if history_meta:
+            return history_meta, history_info
+        if inherited:
+            return deepcopy(inherited), history_info
+        return self._build_file_meta(fileitem, self._chain._get_subscribe_custom_words(history)), history_info
 
     def _has_reliable_video_source(self) -> bool:
         """
@@ -148,6 +177,8 @@ class _TransferCandidatePlanner:
             source_path: Path,
             custom_word_list: Optional[List[str]] = None,
             force_video: Optional[bool] = False,
+            *,
+            storage: Optional[str] = "local",
     ) -> Optional[MetaBase]:
         """
         从文件路径识别媒体信息，用于判断附加文件是否属于当前主视频。
@@ -159,7 +190,7 @@ class _TransferCandidatePlanner:
                 and source_path.suffix.lower() in self._chain._audio_exts
                 and not self._has_reliable_video_source()
         ):
-            path_meta = MediaChain.read_path_meta(source_path)
+            path_meta = MediaChain.read_path_meta(source_path, storage=storage)
         else:
             # 影视场景附加音轨（如评论音轨）强制按视频解析，保留季集归属
             path_meta = MetaInfoPath(
@@ -225,7 +256,7 @@ class _TransferCandidatePlanner:
             download_hash=self._download_hash,
         )
         return self._build_file_meta(
-            main_path,
+            main_fileitem,
             custom_word_list=self._chain._get_subscribe_custom_words(main_download_history),
         )
 
@@ -371,7 +402,7 @@ class _TransferCandidatePlanner:
                         )
                         if main_meta:
                             inherited_map[self._chain._get_file_key(current_item)] = deepcopy(main_meta)
-                    return list(items), inherited_map
+                    return append_cue_companions(self._chain, list(items), inherited_map, self._has_reliable_video_source(), self._transfer_exclude_words)
 
         if not main_items:
             remaining = [
@@ -382,7 +413,7 @@ class _TransferCandidatePlanner:
                     and self._chain._is_music_lyrics_file(item[0])
                 )
             ]
-            return remaining, inherited_map
+            return append_cue_companions(self._chain, remaining, inherited_map, self._has_reliable_video_source(), self._transfer_exclude_words)
 
         planned_items: List[Tuple[FileItem, bool]] = []
         seen_file_keys: set[Tuple[str, str]] = set()
@@ -425,7 +456,7 @@ class _TransferCandidatePlanner:
                 main_download_history
             )
             main_meta = self._build_file_meta(
-                main_path,
+                main_item,
                 custom_word_list=subscribe_custom_words,
             )
             if not main_meta:
@@ -478,7 +509,7 @@ class _TransferCandidatePlanner:
                 continue
             self._append_item(planned_items, seen_file_keys, item, is_bluray_dir)
 
-        return planned_items, inherited_map
+        return append_cue_companions(self._chain, planned_items, inherited_map, self._has_reliable_video_source(), self._transfer_exclude_words)
 
 
 def build_transfer_preview_item(task: TransferTask, transferinfo: TransferInfo) -> dict[str, Any]:
@@ -494,6 +525,10 @@ def build_transfer_preview_item(task: TransferTask, transferinfo: TransferInfo) 
     return (
         {
             "source": task.fileitem.path,
+            "source_storage": task.fileitem.storage,
+            "source_item": task.fileitem.model_dump(exclude={"children", "url", "thumbnail"}),
+            "music": music_transfer_preview(item_meta, item_media, task.music_preview_context,
+                                            selected=bool(task.manual and task.media_source and task.media_id)),
             "target": transferinfo.target_item.path if transferinfo.target_item else None,
             "target_dir": transferinfo.target_diritem.path if transferinfo.target_diritem else None,
             "success": transferinfo.success,
@@ -516,7 +551,7 @@ def build_transfer_preview_item(task: TransferTask, transferinfo: TransferInfo) 
             "episode_end": item_meta.end_episode if item_meta else None,
             "part": item_meta.part if item_meta else None,
             "org_string": item_meta.org_string if item_meta else None,
-            "apply_words": item_meta.apply_words if item_meta else [],
+            "apply_words": (item_meta.apply_words or []) if item_meta else [],
             "resource_team": item_meta.resource_team if item_meta else None,
             "customization": item_meta.customization if item_meta else None,
         }
@@ -534,6 +569,19 @@ class _TransferSubmissionCollector:
         self._skipped_history_count = 0
         self._results: dict[int, TransferInfo] = {}
         self._pending: dict[tuple[Optional[str], Optional[str]], FileItem] = {}
+        self._preview_rejections: list[dict[str, Any]] = []
+
+    def record_music_package_preview(self, fileitem: FileItem, message: str, *, preview: bool) -> None:
+        """保留尚未生成任务的音乐包拒绝项，混合目录也能逐文件显示能力边界。"""
+        if not preview:
+            return
+        self._preview_rejections.append({
+            "source": fileitem.path, "source_storage": fileitem.storage,
+            "source_item": fileitem.model_dump(exclude={"children", "url", "thumbnail"}),
+            "success": False, "message": message, "type": MediaType.MUSIC.value,
+            "failure_stage": "recognition", "recovery_action": message,
+            "music": {"status": "unsupported", "online_confirmed": False},
+        })
 
     def expect(self, fileitems: list[tuple[FileItem, bool]]) -> None:
         """保留候选快照，取消发生后仍能说明哪些文件没有被执行。"""
@@ -609,6 +657,7 @@ class _TransferSubmissionCollector:
         if self._skipped_history_count:
             message = "；".join(filter(None, [f"已跳过 {self._skipped_history_count} 条成功整理记录", message]))
         if preview:
+            preview_items = [*self._preview_rejections, *preview_items]
             return success, {
                 "summary": {
                     "total": len(preview_items),

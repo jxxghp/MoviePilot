@@ -20,11 +20,15 @@
 | RES-003 | `DELIVERED`（R3） | Outbox after_commit 失败只有内存 pending 标记，重启不可恢复 | `9d06f91bb`：持久 intent、唯一 handler、claim/fencing、重启回放、幂等和失败观测完整闭环 |
 | RES-004 | `DELIVERED`（R4） | Startup initializer 与插件市场存在多套 Transport/Adapter/Manager 构造 | `7f5b8b469` 至 `046b0b305`：构造回收到 composition，兼容门面消费同一 owner，canonical 无重复正式实现 |
 | RES-005 | `DELIVERED`（R5） | 审计声明、机器门禁、CI 与远端交付状态需要重新校准 | 当前文档、固定 80% 覆盖率门禁与规则一致；Pylint `10.00/10`、架构/兼容、真实启动和最终 exact-head GitHub CI 闭环，远端 `0/0` |
-R2 门禁现已完整覆盖私有、dunder、任意控制流嵌套方法、类、文件与
-`app/scheduler/`；`concurrency.py` 扫描完整宿主源码，按 canonical import/alias、
-TaskGroup、可证明的 loop/executor 来源和词法 owner 聚合数量。新增 owner、数量增长以及
-复杂度与静态质量事实下降后未刷新低水位都会阻断 CI；覆盖率只要求 Application 与 Domain
-达到固定 80%，行号移动和普通同名方法不会制造噪音。
+R2 原复杂度 v1/v2 实际使用源码行跨度，只覆盖 API、Application、Chain 和 Scheduler，
+且未强制固化下降后的低水位。2026-09-30 门禁调整将其替换为全宿主函数的 C901 圈复杂度
+（15）与 PLR1702 嵌套深度（5），源码尺寸降为观察报告；增长禁止写入，下降必须固化。
+范围、初始基线与后续建议见 [代码门禁说明](../code-quality.md)。
+2026-09-30 音乐真实样本回归统一了文件名曲序入口，删除 `MetaMusic.apply_path_context`
+重复的曲序回填分支，C901 从 16 降至阈值 15 以内，已同步固化低水位。
+`concurrency.py` 扫描完整宿主源码，按 canonical import/alias、TaskGroup、可证明的
+loop/executor 来源和词法 owner 聚合数量。新增 owner、数量增长以及静态质量事实下降后
+未刷新低水位都会阻断 CI；覆盖率只要求 Application 与 Domain 达到固定 80%。
 
 ## 1. 结论摘要
 
@@ -94,16 +98,16 @@ ARCH-201 至 ARCH-204 均达到实现、验证、提交、推送和远端门禁�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 1044 / 8,867 | `dependency-baseline.json` 当前快照；系统设置合同按 `app.application.settings` 包组织，系统设置 API 端点独立按 `app.api.endpoints.settings` 归档，分类、下载资源归类、订阅搜索、整理恢复、Agent 计划、工具视觉、终端生命周期与终端作用域模块的受控依赖 |
+| 宿主 Python 模块 / 内部依赖边 | 1104 / 9,295 | `dependency-baseline.json` 当前快照；系统设置合同按 `app.application.settings` 包组织，系统设置 API 端点独立按 `app.api.endpoints.settings` 归档；消息音乐交互由 `app.chain.music_interaction` 包中的音乐解析/展示与订阅协调模块处理；已整理下载的站点字幕经 `app.chain.transfer` 自动整理队列完成命名与归档；网络连通性检测按 `app.application.nettest` 归档 |
 | 非平凡 SCC | 1 | 仅保留精确 containment 的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
-| Module Contract | 215 specs / 211 methods / 262 calls | 动态方法名为 0；分类事实富化通过显式合同进入插件调度，旧 YAML 分类方法已移除 |
+| Module Contract | 215 specs / 211 methods / 263 calls | 动态方法名为 0；分类事实富化通过显式合同进入插件调度，旧 YAML 分类方法已移除 |
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
 | Python 源码量 | 305,884 行 | 排除 `app/plugins/**`；61 个文件超过 1,000 行，11 个超过 2,000 行 |
 | 长方法 | 290 个超过 80 行 | AST 统计排除 `app/plugins/**`；65 个超过 150 行，21 个超过 250 行 |
-| 全量 mypy 历史债务 | 9,296 / 506 文件 | 删除独立活动日志中间件后的现状基线；canonical Facade 与 endpoint 类型边界已补齐，低水位只允许继续下降 |
-| Ruff 历史诊断 | 516 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
+| 全量 mypy 历史债务 | 9,217 / 508 文件 | 删除独立活动日志中间件后的现状基线；消息媒体交互类型债务已清零，canonical Facade 与 endpoint 类型边界已补齐，低水位只允许继续下降 |
+| Ruff 历史诊断 | 509 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率固定基线 | Application 80.00%，Domain 80.00% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
 ### 3.3 热点文件
@@ -541,7 +545,7 @@ S4/ARCH-110/111 的取消不撤销现有防回退门禁。后续按路线图的 
   具体 cache adapter；Memory/Redis 均实现严格 `AtomicCacheBackend.store/consume`。
 - S0-L2.4b 已为 LLM streaming、第三方 SDK、移植库和本地控制面建立完整 egress identity 与
   zero-growth policy；11 条普通 HTTP/Session bridge 和 1 条 Application DNS I/O 债务已清零。
-  当前 53 条出口事实均为精确 containment，每条指纹由独立上界冻结，不能靠同时刷新
+  当前 48 条出口事实均为精确 containment，每条指纹由独立上界冻结，不能靠同时刷新
   baseline/policy 掩盖调用面增长，已删除债务也不得恢复。
 
 **目标与步骤**

@@ -3,6 +3,7 @@ from typing import Any, Iterable, Optional
 from app.chain.base import ChainBase
 from app.domain.context import MusicAlbumInfo, MusicArtistInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
+from app.domain.music import music_album_has_consistent_tracks
 from app.schemas.types import MediaSource, MediaType, MusicEntityType
 
 
@@ -86,12 +87,18 @@ class MusicMetadataSourceChain(ChainBase):
         media_id: str,
         music_release_regions: Optional[list[str]] = None,
         music_release_scripts: Optional[list[str]] = None,
+        musicbrainz_release_id: Optional[str] = None,
     ) -> Optional[MusicAlbumInfo]:
         """按当前来源原生 ID 获取专辑详情。"""
         normalized_id = self._normalize_media_id(media_id)
         if not normalized_id:
             return None
-        preference_kwargs = {}
+        if musicbrainz_release_id is not None and self.source != MediaSource.MusicBrainz:
+            return None
+        preference_kwargs: dict[str, Any] = {}
+        if musicbrainz_release_id is not None:
+            musicbrainz_release_id = musicbrainz_release_id.lower()
+            preference_kwargs["musicbrainz_release_id"] = musicbrainz_release_id
         if self.source == MediaSource.MusicBrainz:
             if music_release_regions is not None:
                 preference_kwargs["music_release_regions"] = music_release_regions
@@ -103,19 +110,25 @@ class MusicMetadataSourceChain(ChainBase):
             media_id=normalized_id,
             **preference_kwargs,
         )
-        return self._music_album(result, media_id=normalized_id)
+        return self._music_album(result, media_id=normalized_id, musicbrainz_release_id=musicbrainz_release_id)
 
     async def async_get_music_album(
         self,
         media_id: str,
         music_release_regions: Optional[list[str]] = None,
         music_release_scripts: Optional[list[str]] = None,
+        musicbrainz_release_id: Optional[str] = None,
     ) -> Optional[MusicAlbumInfo]:
         """异步按当前来源原生 ID 获取专辑详情。"""
         normalized_id = self._normalize_media_id(media_id)
         if not normalized_id:
             return None
-        preference_kwargs = {}
+        if musicbrainz_release_id is not None and self.source != MediaSource.MusicBrainz:
+            return None
+        preference_kwargs: dict[str, Any] = {}
+        if musicbrainz_release_id is not None:
+            musicbrainz_release_id = musicbrainz_release_id.lower()
+            preference_kwargs["musicbrainz_release_id"] = musicbrainz_release_id
         if self.source == MediaSource.MusicBrainz:
             if music_release_regions is not None:
                 preference_kwargs["music_release_regions"] = music_release_regions
@@ -127,7 +140,7 @@ class MusicMetadataSourceChain(ChainBase):
             media_id=normalized_id,
             **preference_kwargs,
         )
-        return self._music_album(result, media_id=normalized_id)
+        return self._music_album(result, media_id=normalized_id, musicbrainz_release_id=musicbrainz_release_id)
 
     async def async_get_music_album_related(
             self,
@@ -239,8 +252,9 @@ class MusicMetadataSourceChain(ChainBase):
             self,
             result: Any,
             media_id: Optional[str] = None,
+            musicbrainz_release_id: Optional[str] = None,
     ) -> Optional[MusicAlbumInfo]:
-        """将模块或插件结果统一转换为专辑详情。"""
+        """转换专辑详情并拒绝曲目混源或明确发行身份冲突，手选版另要求身份完整。"""
         if isinstance(result, MusicAlbumInfo):
             album = result
         elif isinstance(result, dict):
@@ -249,8 +263,18 @@ class MusicMetadataSourceChain(ChainBase):
             return None
         if album.media_source != self.source:
             return None
+        if not music_album_has_consistent_tracks(album):
+            return None
         if media_id and album.media_id != media_id:
             return None
+        if musicbrainz_release_id is not None:
+            if album.musicbrainz_release_id != musicbrainz_release_id or album.musicbrainz_release_group_id != media_id:
+                return None
+            if not album.tracks or any(
+                    track.media_source != self.source or track.album_id != media_id
+                    or track.musicbrainz_release_id != musicbrainz_release_id
+                    or track.musicbrainz_release_group_id != media_id for track in album.tracks):
+                return None
         return album
 
     def _music_artist(

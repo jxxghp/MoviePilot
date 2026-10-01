@@ -8,10 +8,13 @@ from threading import RLock
 from typing import Any, Optional
 from urllib.parse import parse_qs, urlsplit
 
+from scripts.evaluation.programs import seed_code_state
 from scripts.evaluation.scenarios import get_scenario
 
 _PAGINATION = frozenset({"page", "count"})
 _QUERY_FIELDS = {
+    "transfer.queue": _PAGINATION,
+    "search.results": frozenset(),
     "subscription.list": _PAGINATION,
     "subscription.find": frozenset(
         {"media_source", "season", "title", "music_type", "mtype", "year"}
@@ -255,6 +258,8 @@ class EvaluationWorld:
                 target,
                 *filler_rows[104:],
             ]
+        if self.scenario.kind == "code":
+            seed_code_state(self._state)
         self._initial = deepcopy(self._state)
         self._ledger = []
         self._unknown_returned = False
@@ -360,6 +365,12 @@ class EvaluationWorld:
     ) -> dict[str, Any]:
         """只有实际返回的记录才能成为读取证据，分页外或过滤掉的记录不算已观察。"""
         query = request["query"]
+        if operation_id == 'transfer.queue':
+            return self._collection(self._state.get('transfers', []), query, 'transfer', event)
+        if operation_id == 'search.results':
+            resources = self._state.get('resources', [])
+            event['observations'].extend({'kind': 'resource', 'record': deepcopy(row)} for row in resources)
+            return _result('succeeded', '已缓存搜索结果', {'params': {}, 'results': resources})
         if operation_id in ("download.tasks.active", "download.history.list"):
             if self.scenario.scenario_id == "honest_unknown" and self._unknown_returned:
                 return _result("failed", "下载查询暂时不可用，请稍后重试")

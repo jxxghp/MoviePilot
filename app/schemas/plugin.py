@@ -22,6 +22,8 @@ class PluginRuntimeStatus(str, _Enum):
     ACTIVE = "active"
     BLOCKED_BY_POLICY = "blocked_by_policy"
     LOAD_FAILED = "load_failed"
+    # 插件自身声明与当前解释器运行时不兼容（当前只有 free-threaded 一个维度）
+    INCOMPATIBLE_RUNTIME = "incompatible_runtime"
 
 
 class PluginSourceBindingStatus(str, _Enum):
@@ -204,6 +206,10 @@ class Plugin(BaseModel):
     system_version_message: Optional[str] = None
     # 主系统版本限定范围
     system_version: Optional[str] = None
+    # 插件声明与当前解释器运行时是否兼容；free-threaded（v3t）下显式声明不支持时为 False
+    runtime_compatible: Optional[bool] = True
+    # 运行时不兼容的用户可读原因
+    runtime_message: Optional[str] = None
     # 是否声明支持通过 GitHub Release 资产安装
     release: Optional[bool] = False
     # 是否本地
@@ -252,6 +258,10 @@ class PluginRuntimeSummary(BaseModel):
     restart_required_plugin_ids: List[str] = Field(
         default_factory=list,
         description="重启后才能完整激活新原生依赖的物理插件 ID",
+    )
+    gil_enabled_plugin_ids: List[str] = Field(
+        default_factory=list,
+        description="当前进程内加载时导致 free-threaded 运行时回退到 GIL 的插件 ID",
     )
 
 

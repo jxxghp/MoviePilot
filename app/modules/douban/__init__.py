@@ -5,6 +5,7 @@ from typing import Any, Iterable, List, Optional, Tuple, Union, cast
 import cn2an
 
 from app.adapters.network.http import RequestUtils
+from app.application.music.recognition import unique_music_match
 from app.domain.context import (
     MediaInfo,
     MusicAlbumInfo,
@@ -14,7 +15,7 @@ from app.domain.media import is_media_source_enabled, is_media_source_selected
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
-from app.domain.music import music_artist_matches, music_title_matches, music_version_matches
+from app.domain.music import align_music_tracks, music_artist_matches, music_title_matches, music_version_matches
 from app.foundation.text import convert as zhconv_convert
 from app.modules import _ModuleBase
 from app.modules._base.media import MediaAuxiliaryProviderMixin
@@ -294,17 +295,17 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         candidates = self._matching_music_candidates(
             meta, self._build_music_search_results(result)
         )
-        for candidate in candidates:
-            direct_result = self._direct_music_candidate(plan, candidate)
-            if direct_result is not None:
-                return direct_result
-            if plan.music_type != MUSIC_ENTITY_ALBUM and meta.album and meta.title:
+        direct = [item for candidate in candidates if (item := self._direct_music_candidate(plan, candidate)) is not None]
+        if direct:
+            return unique_music_match(direct)
+        tracks = []
+        if plan.music_type != MUSIC_ENTITY_ALBUM and meta.album and meta.title:
+            for candidate in candidates:
                 info = self.doubanapi.music_detail(subject_id=str(candidate.media_id))
                 album = self._douban_music_to_album(info) if info else None
-                matched_track = self._select_douban_music_track(meta, album)
-                if matched_track:
-                    return matched_track
-        return None
+                if album:
+                    tracks.extend(album.tracks)
+        return self._select_douban_music_track(meta, MusicAlbumInfo(tracks=tracks))
 
     async def _async_recognize_music_media(
             self,
@@ -331,19 +332,19 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         candidates = self._matching_music_candidates(
             meta, self._build_music_search_results(result)
         )
-        for candidate in candidates:
-            direct_result = self._direct_music_candidate(plan, candidate)
-            if direct_result is not None:
-                return direct_result
-            if plan.music_type != MUSIC_ENTITY_ALBUM and meta.album and meta.title:
+        direct = [item for candidate in candidates if (item := self._direct_music_candidate(plan, candidate)) is not None]
+        if direct:
+            return unique_music_match(direct)
+        tracks = []
+        if plan.music_type != MUSIC_ENTITY_ALBUM and meta.album and meta.title:
+            for candidate in candidates:
                 info = await self.doubanapi.async_music_detail(
                     subject_id=str(candidate.media_id)
                 )
                 album = self._douban_music_to_album(info) if info else None
-                matched_track = self._select_douban_music_track(meta, album)
-                if matched_track:
-                    return matched_track
-        return None
+                if album:
+                    tracks.extend(album.tracks)
+        return self._select_douban_music_track(meta, MusicAlbumInfo(tracks=tracks))
 
     @classmethod
     def _music_recognition_plan(
@@ -446,28 +447,14 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             meta: MetaMusic,
             album: Optional[MusicAlbumInfo],
     ) -> Optional[MusicInfo]:
-        """从豆瓣专辑曲目中选择与本地曲名、艺术家及曲序最一致的音轨。"""
-        if not album:
-            return None
-        candidates = [
-            track for track in album.tracks
-            if music_title_matches(track, meta.title, preserve_editions=True) and music_version_matches(track, meta)
-        ]
-        if meta.artists:
-            candidates = [
-                track for track in candidates
-                if music_artist_matches(track, meta.artists)
-            ]
-        if not candidates:
-            return None
-        candidates.sort(
-            key=lambda track: (
-                bool(meta.track_number and track.track_number == meta.track_number),
-                -abs((meta.duration or track.duration or 0) - (track.duration or meta.duration or 0)),
-            ),
-            reverse=True,
-        )
-        return candidates[0]
+        """跨候选专辑采用唯一曲名、署名、曲序和时长对位，不按返回顺序消除歧义。"""
+        candidates = list({(track.media_source, track.media_id or id(track)): track
+                           for track in (album.tracks if album else [])
+                           if music_version_matches(track, meta) and align_music_tracks([meta], [track])}.values())
+        aligned = align_music_tracks([meta], candidates)
+        if 0 in aligned:
+            return candidates[aligned[0]]
+        return unique_music_match(candidates)
 
     @classmethod
     def _build_music_search_results(

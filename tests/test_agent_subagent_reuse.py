@@ -79,10 +79,14 @@ async def test_turn_cleanup_never_reopens_sealed_controller():
 @pytest.mark.anyio
 async def test_subagent_compacts_large_input_before_model_call(monkeypatch):
     """独立子图也执行最终请求压缩，大量工具输出不会绕过预算边界。"""
+    sequence = 0
+
     @tool
     def diagnostic() -> str:
-        """读取诊断日志，不访问外部服务。"""
-        return "诊断日志中的连接信息。" * 450
+        """每次读取不同日志；重复内容现在会变为引用，不能用于触发压缩预算。"""
+        nonlocal sequence
+        sequence += 1
+        return f"日志批次 {sequence}：" + "诊断日志中的连接信息。" * 450
 
     diagnostic.tags = ["read", "system"]
     model = _TaskModel(

@@ -1084,7 +1084,10 @@ class TestPluginHelper:
         self,
         monkeypatch,
     ) -> None:
-        """V3t 只把 package 中明确的 v3t:false 视为运行时不兼容。"""
+        """V3t 只把 package 中明确的 v3t:false 视为运行时不兼容。
+
+        代际判断保持通过，条目照常进入市场目录；不兼容只体现在运行时判据和标注上。
+        """
         from app.adapters.external.market import PluginHelper
 
         monkeypatch.setattr(plugin_client_module, "is_free_threaded_runtime", lambda: True)
@@ -1096,9 +1099,50 @@ class TestPluginHelper:
 
         assert PluginHelper.is_package_plugin_compatible({}, "v3")
         assert PluginHelper.is_package_plugin_compatible({"v3t": True}, "v3")
-        assert not PluginHelper.is_package_plugin_compatible(
-            {"v3t": False}, "v3"
+        assert PluginHelper.is_package_plugin_compatible({"v3t": False}, "v3")
+
+        assert PluginHelper.check_plugin_runtime_compatibility({"v3t": True})[0]
+        compatible, message = PluginHelper.check_plugin_runtime_compatibility(
+            {"v3t": False}
         )
+        assert not compatible
+        assert "v3t" in message
+
+        annotated = PluginHelper.annotate_plugin_runtime_compatibility(
+            {"v3t": False}
+        )
+        assert annotated["runtime_compatible"] is False
+        assert annotated["runtime_message"]
+
+    def test_install_compatibility_reports_runtime_before_system_version(
+        self,
+        monkeypatch,
+    ) -> None:
+        """安装准入在 v3t 上先报运行时不兼容，不把它说成版本问题。"""
+        from app.adapters.external.market import PluginHelper
+
+        monkeypatch.setattr(plugin_client_module, "is_free_threaded_runtime", lambda: True)
+
+        compatible, message = PluginHelper.check_plugin_install_compatibility(
+            {"v3t": False, "system_version": ">=99.0.0"}
+        )
+
+        assert not compatible
+        assert "free-threaded" in message
+
+    def test_install_compatibility_falls_back_to_system_version(
+        self,
+        monkeypatch,
+    ) -> None:
+        """标准运行时下安装准入仍然只看主程序版本范围。"""
+        from app.adapters.external.market import PluginHelper
+
+        monkeypatch.setattr(plugin_client_module, "is_free_threaded_runtime", lambda: False)
+
+        assert PluginHelper.check_plugin_install_compatibility({"v3t": False})[0]
+        assert not PluginHelper.check_plugin_install_compatibility(
+            {"system_version": ">=99.0.0"}
+        )[0]
 
     def test_get_online_plugins_force_keeps_release_cache_scoped(self, monkeypatch):
         """

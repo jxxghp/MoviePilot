@@ -50,7 +50,7 @@ class _ProjectionEventManagerPort(Protocol):
 
 
 if TYPE_CHECKING:
-    from app.application.music.catalog import MusicCatalogService
+    from app.application.music.catalog import MusicCatalogService, MusicSourcePort
 
     class _MediaOwnerBase:
         """声明各媒体 owner 组合后可依赖的精确静态合同。"""
@@ -62,6 +62,11 @@ if TYPE_CHECKING:
         _music_simplified_text_fields: ClassVar[tuple[str, ...]]
         _music_simplified_list_fields: ClassVar[tuple[str, ...]]
         eventmanager: _ProjectionEventManagerPort
+
+        @staticmethod
+        def _music_source_chain(media_source: MediaSource) -> Optional[MusicSourcePort]:
+            """解析固定音乐来源链，目录匹配与目录搜索使用同一来源端口。"""
+            ...
 
         def run_module(
             self,
@@ -87,6 +92,7 @@ if TYPE_CHECKING:
             *,
             effective_override: ClassificationSelection | None = None,
             refresh: bool = False,
+            allow_enrichment: bool = True,
         ) -> Optional[_ClassificationSubjectT]:
             """通过注入的应用服务分类一个完整识别结果。"""
             ...
@@ -97,6 +103,7 @@ if TYPE_CHECKING:
             *,
             effective_override: ClassificationSelection | None = None,
             refresh: bool = False,
+            allow_enrichment: bool = True,
         ) -> Optional[_ClassificationSubjectT]:
             """通过注入的应用服务异步补充并分类完整识别结果。"""
             ...
@@ -169,6 +176,8 @@ if TYPE_CHECKING:
             path: Union[str, Path],
             music_release_regions: Optional[list[str]] = None,
             music_release_scripts: Optional[list[str]] = None,
+            contextual_meta: Optional[MetaMusic] = None,
+            file_paths: Optional[list[Path]] = None,
         ) -> dict[str, MusicInfo]:
             """同步识别音乐专辑目录。"""
             ...
@@ -188,6 +197,8 @@ if TYPE_CHECKING:
             path: Union[str, Path],
             music_release_regions: Optional[list[str]] = None,
             music_release_scripts: Optional[list[str]] = None,
+            contextual_meta: Optional[MetaMusic] = None,
+            file_paths: Optional[list[Path]] = None,
         ) -> dict[str, MusicInfo]:
             """异步识别音乐专辑目录。"""
             ...

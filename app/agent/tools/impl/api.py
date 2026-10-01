@@ -4,9 +4,10 @@ import json
 from copy import deepcopy
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Dict, Optional, Type
+from typing import Any, Dict, Literal, Optional, Type, Union, cast
 
-from pydantic import BaseModel, Field, PrivateAttr
+from langchain_core.tools import ToolException
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 
 from app.agent.api.arguments import api_input_contract, canonical_api_arguments
 from app.agent.api.executor import ApiExecutionContext, ApiExecutionError, MoviePilotApiExecutor
@@ -22,6 +23,9 @@ from app.schemas.types import NotificationChannel
 _TOOL_MESSAGE_OPERATION_MAX_CHARS = 96
 _TOOL_MESSAGE_PARAMETER_MAX_CHARS = 320
 _SEARCH_TORRENTS_TOOL_TIMEOUT_SECONDS = 300.0
+
+# API 网关顶层请求体只开放对象、数组和 system.upgrade.dev 的固定字符串。
+MoviePilotApiBody = Union[Dict[str, JsonData], list[JsonData], Literal["dev"], None]
 
 
 @lru_cache(maxsize=1)
@@ -42,6 +46,8 @@ def _load_api_mcp_input_schema() -> dict[str, Any]:
 class MoviePilotApiInput(BaseModel):  # type: ignore[misc]
     """MoviePilot API 网关的结构化输入参数。"""
 
+    model_config = ConfigDict(extra="forbid")
+
     operation_id: str = Field(
         ...,
         description=(
@@ -51,19 +57,22 @@ class MoviePilotApiInput(BaseModel):  # type: ignore[misc]
     )
     path_params: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Route placeholder values declared by the selected operation.",
+        description="Route placeholders only, e.g. media.detail uses {\"media_id\": \"27205\"}.",
     )
     query: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Query-string fields declared by the selected operation.",
+        description=(
+            "Query fields declared by this operation, never flattened at the top level. "
+            "Pagination is operation-specific: subscription.execution.list uses limit, not page/count."
+        ),
     )
-    body: JsonData = Field(
+    body: MoviePilotApiBody = Field(
         default=None,
         description=(
-            "JSON request value declared by the selected operation and its loaded Skill contract. "
-            "Most operations use an object; a oneOf branch may require an exact scalar. "
-            "Keep objects and arrays, including nested file items, as native JSON values; "
-            "never JSON-encode them into strings."
+            "Request body declared by the selected operation and its loaded Skill contract. "
+            "Pass objects and arrays, including nested file items, as native JSON values; "
+            "pass null only when the selected operation allows it. "
+            "The only string body is the exact value 'dev' for system.upgrade.dev."
         ),
     )
 
@@ -88,10 +97,18 @@ class MoviePilotApiTool(MoviePilotTool):
     description: str = (
         "Call allowlisted MoviePilot business APIs through operation-specific input contracts. "
         "Load the relevant domain Skill before calling and use operation error feedback to correct inputs. "
+        "The ONLY top-level keys are operation_id, path_params, query, body. "
+        "Examples (replace sample IDs with IDs from prior results): "
+        '{"operation_id":"media.detail","path_params":{"media_id":"27205"},'
+        '"query":{"media_source":"tmdb","type_name":"电影"}}; '
+        '{"operation_id":"subscription.execution.list","query":{"limit":10}}; '
+        '{"operation_id":"site.rss","query":{"page":1,"count":20}}. '
+        "Never invent filters or copy pagination fields from another operation. "
         "Arbitrary URLs, commands, authentication endpoints, headers, and tokens are forbidden."
     )
     require_admin: bool = False
     args_schema: Type[BaseModel] = MoviePilotApiInput
+    handle_tool_error: bool = True
 
     _executor: Optional[MoviePilotApiExecutor] = PrivateAttr(default=None)
 
@@ -138,10 +155,26 @@ class MoviePilotApiTool(MoviePilotTool):
         """返回包含全部白名单 operation 精确参数的 MCP JSON Schema。"""
         return deepcopy(_load_api_mcp_input_schema())
 
+    @property
+    def tool_call_schema(self) -> Type[BaseModel]:
+        """本工具没有注入参数，直接保留原模型，防止子集投影丢失 extra=forbid。"""
+        return MoviePilotApiInput
+
+    def _parse_input(
+        self, tool_input: Union[str, dict[str, Any]], tool_call_id: Optional[str],
+    ) -> Union[str, dict[str, Any]]:
+        """在 LangChain 解析前校验原始参数，让只读调用也能收到安全纠错回执。"""
+        if isinstance(tool_input, dict):
+            operation_id = str(tool_input.get("operation_id") or "")
+            try:
+                self.canonical_arguments(tool_input)
+            except (TypeError, ValueError) as error:
+                raise ToolException(self._invalid_input_result(operation_id, error)) from error
+        return cast(Union[str, dict[str, Any]], super()._parse_input(tool_input, tool_call_id))
+
     def canonical_arguments(self, arguments: dict[str, Any]) -> dict[str, Any]:
         """用缓存的 operation 合同生成实际执行与持久指纹共用的参数。"""
-        validated = MoviePilotApiInput.model_validate(arguments).model_dump(mode="json")
-        return canonical_api_arguments(validated, _load_api_mcp_input_schema())
+        return canonical_api_arguments(arguments, _load_api_mcp_input_schema())
 
     def get_operation_input_contract(self, operation_id: str) -> dict[str, Any]:
         """返回单个 operation 的有界参数合同，供失败回执指导模型重试。"""
@@ -282,7 +315,6 @@ class MoviePilotApiTool(MoviePilotTool):
         :param body: JSON 请求体
         :return: 结构化业务结果或安全错误消息
         """
-        del kwargs
         spec = resolve_api_operation(operation_id)
         if spec is None:
             return json.dumps(
@@ -294,7 +326,7 @@ class MoviePilotApiTool(MoviePilotTool):
                 ensure_ascii=False,
             )
         try:
-            arguments: dict[str, Any] = {"operation_id": operation_id}
+            arguments: dict[str, Any] = {"operation_id": operation_id, **kwargs}
             if path_params is not None:
                 arguments["path_params"] = path_params
             if query is not None:

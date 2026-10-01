@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
+from app.domain import metainfo as metainfo_module
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo, MetaInfoPath, find_metainfo
 from app.domain.meta.metabase import MetaBase, MetaInfoSnapshot
@@ -273,6 +274,34 @@ def test_python_metainfo_fallback_preserves_xxx_movie_title():
     assert meta.resource_pix == "1080p"
     assert meta.edition == "WEB-DL"
     assert meta.audio_encode == "DDP 5.1"
+
+
+@pytest.mark.parametrize("use_path", [False, True])
+def test_python_metainfo_fallback_keeps_title_token_matching_subtitle_extension(
+    use_path, monkeypatch
+):
+    """Python 回退解析在标题和路径入口都应保留与字幕扩展名同名的词元。"""
+    title = (
+        "Kick-Ass.2010.PROPER.2160p.BluRay.REMUX.HEVC.DTS-HD.MA."
+        "TrueHD.7.1.Atmos-FGT.mkv"
+    )
+    monkeypatch.setattr(
+        metainfo_module,
+        "get_media_extensions",
+        lambda: (".mkv", ".ass"),
+    )
+    with (
+        patch("app.adapters.system.rust.parse_metainfo", return_value=None),
+        patch("app.adapters.system.rust.parse_metainfo_path", return_value=None),
+    ):
+        meta = (
+            MetaInfoPath(Path("/movies") / title)
+            if use_path
+            else MetaInfo(title)
+        )
+
+    assert meta.en_name == "Kick Ass"
+    assert meta.year == "2010"
 
 
 def test_python_metainfo_fallback_recognizes_eac3_audio_codec():

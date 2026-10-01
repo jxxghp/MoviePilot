@@ -885,6 +885,18 @@
       }
     },
     "symbol_aliases": {
+      "app.adapters.cache.backends": {
+        "AsyncRedisBackend": {
+          "replacement": "app.adapters.cache.redis.AsyncRedisBackend",
+          "target_module": "app.adapters.cache.redis",
+          "target_name": "AsyncRedisBackend"
+        },
+        "RedisBackend": {
+          "replacement": "app.adapters.cache.redis.RedisBackend",
+          "target_module": "app.adapters.cache.redis",
+          "target_name": "RedisBackend"
+        }
+      },
       "app.agent": {
         "AgentChain": {
           "replacement": "app.chain.agent.AgentChain",
@@ -1106,6 +1118,11 @@
         }
       },
       "app.schemas": {
+        "BaseMessage": {
+          "replacement": "langchain_core.messages.BaseMessage",
+          "target_module": "langchain_core.messages",
+          "target_name": "BaseMessage"
+        },
         "ChannelCapabilities": {
           "replacement": "app.schemas.notification.ChannelCapabilities",
           "target_module": "app.schemas.notification",
@@ -1125,6 +1142,11 @@
           "replacement": "app.schemas.message.IncomingMessage",
           "target_module": "app.schemas.message",
           "target_name": "IncomingMessage"
+        },
+        "ConversationMemory": {
+          "replacement": "app.agent.memory.ConversationMemory",
+          "target_module": "app.agent.memory",
+          "target_name": "ConversationMemory"
         },
         "MessageChannel": {
           "replacement": "app.schemas.types.NotificationChannel",
@@ -1173,6 +1195,11 @@
         }
       },
       "app.schemas.agent": {
+        "ConversationMemory": {
+          "replacement": "app.agent.memory.ConversationMemory",
+          "target_module": "app.agent.memory",
+          "target_name": "ConversationMemory"
+        },
         "ReplyMode": {
           "replacement": "app.schemas.types.ReplyMode",
           "target_module": "app.schemas.types",
@@ -1278,6 +1305,18 @@
           "replacement": "app.schemas.types.MessageType",
           "target_module": "app.schemas.types",
           "target_name": "MessageType"
+        }
+      },
+      "app.sdk.cache": {
+        "AsyncRedisBackend": {
+          "replacement": "app.adapters.cache.redis.AsyncRedisBackend",
+          "target_module": "app.adapters.cache.redis",
+          "target_name": "AsyncRedisBackend"
+        },
+        "RedisBackend": {
+          "replacement": "app.adapters.cache.redis.RedisBackend",
+          "target_module": "app.adapters.cache.redis",
+          "target_name": "RedisBackend"
         }
       },
       "app.sdk.logging": {
@@ -7981,7 +8020,7 @@
     }
   },
   "run_module": {
-    "call_count": 262,
+    "call_count": 263,
     "dynamic_call_count": 0,
     "dynamic_calls": [],
     "method_count": 211,
@@ -9137,6 +9176,11 @@
           "caller": "app.chain.musicbrainz",
           "count": 1,
           "mode": "sync"
+        },
+        {
+          "caller": "app.chain.transfer.retry",
+          "count": 1,
+          "mode": "sync"
         }
       ],
       "music_cache_delete": [
@@ -9677,11 +9721,6 @@
       },
       {
         "kind": "import",
-        "name": "AsyncRedisBackend",
-        "target": "app.adapters.cache.backends.AsyncRedisBackend"
-      },
-      {
-        "kind": "import",
         "name": "AtomicCacheBackend",
         "target": "app.runtime.cache.AtomicCacheBackend"
       },
@@ -9714,11 +9753,6 @@
         "kind": "import",
         "name": "MemoryBackend",
         "target": "app.runtime.cache.MemoryBackend"
-      },
-      {
-        "kind": "import",
-        "name": "RedisBackend",
-        "target": "app.adapters.cache.backends.RedisBackend"
       },
       {
         "kind": "import",
@@ -9949,6 +9983,23 @@
         "kind": "import",
         "name": "snapshot_event_data",
         "target": "app.runtime.event.snapshot.snapshot_event_data"
+      }
+    ],
+    "app.sdk.feishu": [
+      {
+        "kind": "import",
+        "name": "FEISHU_DOMAIN",
+        "target": "app.adapters.network.feishu.FEISHU_DOMAIN"
+      },
+      {
+        "kind": "import",
+        "name": "FatalConnectionError",
+        "target": "app.adapters.network.feishu.FatalConnectionError"
+      },
+      {
+        "kind": "import",
+        "name": "FeishuLongConnection",
+        "target": "app.adapters.network.feishu.FeishuLongConnection"
       }
     ],
     "app.sdk.logging": [
@@ -10362,6 +10413,11 @@
       },
       {
         "kind": "import",
+        "name": "add_plugin_once_job",
+        "target": "app.application.scheduling.add_plugin_once_job"
+      },
+      {
+        "kind": "import",
         "name": "get_agent_task_next_run",
         "target": "app.application.scheduling.get_agent_task_next_run"
       },
@@ -10379,6 +10435,11 @@
         "kind": "import",
         "name": "remove_plugin_job",
         "target": "app.application.scheduling.remove_plugin_job"
+      },
+      {
+        "kind": "import",
+        "name": "remove_plugin_once_job",
+        "target": "app.application.scheduling.remove_plugin_once_job"
       },
       {
         "kind": "import",

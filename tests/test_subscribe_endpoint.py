@@ -669,8 +669,8 @@ class TestSubscribeEndpoint:
             season=None,
         )
 
-    def test_subscribe_media_identity_keeps_tmdb_lookup_strict(self):
-        """TMDB 身份可用时不得退化为同名年份查询。"""
+    def test_subscribe_media_identity_falls_back_from_tmdb(self):
+        """TMDB 身份未命中时也应找到其它来源的同名同年订阅。"""
         from app.api.endpoints.subscribe import subscribe_media_identity
 
         repository = _SubscriptionRepositoryFake(
@@ -697,8 +697,112 @@ class TestSubscribeEndpoint:
             )
         )
 
+        assert result.id == 33
+        repository.async_list_by_title.assert_awaited_once_with(title="同名电影", season=None)
+
+    @pytest.mark.parametrize(
+        ("card_source", "subscription_source", "card_year"),
+        [
+            (MediaSource("iqiyidiscover"), MediaSource.TMDB, "2026"),
+            (MediaSource.TMDB, MediaSource("iqiyidiscover"), None),
+            (MediaSource.TMDB, MediaSource("iqiyidiscover"), ""),
+        ],
+    )
+    def test_subscribe_media_identity_matches_unknown_subscription_year(
+        self, card_source, subscription_source, card_year,
+    ):
+        """跨源卡片的年份可有可无，但订阅无年份时仍能回显。"""
+        from app.api.endpoints.subscribe import subscribe_media_identity
+
+        repository = _SubscriptionRepositoryFake(
+            _EndpointSubscribe(
+                id=34,
+                username="alice",
+                name="未定档剧",
+                year=None,
+                type=MediaType.TV.value,
+                media_source=subscription_source,
+                media_id="existing-id",
+                season=1,
+            )
+        )
+
+        result = asyncio.run(
+            subscribe_media_identity(
+                media_id="card-id",
+                media_source=card_source,
+                title="未定档剧 第一季",
+                year=card_year,
+                mtype=MediaType.TV,
+                query=_subscription_query(repository),
+                current_user=_EndpointUser(name="alice", is_superuser=False),
+            )
+        )
+
+        assert result.id == 34
+        repository.async_list_by_title.assert_awaited_once_with(title="未定档剧", season=1)
+
+    @pytest.mark.parametrize("card_year", [None, "", "2025"])
+    def test_subscribe_media_identity_rejects_conflicting_known_year(
+        self, card_year,
+    ):
+        """无年份卡片不能串到已定档剧，已知年份也不能匹配冲突年份。"""
+        from app.api.endpoints.subscribe import subscribe_media_identity
+
+        repository = _SubscriptionRepositoryFake(
+            _EndpointSubscribe(
+                id=35,
+                username="alice",
+                name="同名剧",
+                year="2024",
+                type=MediaType.TV.value,
+                media_source=MediaSource.Douban,
+                media_id="existing-id",
+            )
+        )
+        result = asyncio.run(
+            subscribe_media_identity(
+                media_id="card-id",
+                media_source=MediaSource.TMDB,
+                title="同名剧",
+                year=card_year,
+                mtype=MediaType.TV,
+                query=_subscription_query(repository),
+                current_user=_EndpointUser(name="alice", is_superuser=False),
+            )
+        )
+
         assert result.id is None
-        repository.async_list_by_title.assert_not_awaited()
+
+    def test_subscribe_media_identity_prefers_matching_year_over_unknown_year(self):
+        """同名订阅同时含已知和未知年份时，优先返回确切年份。"""
+        from app.api.endpoints.subscribe import subscribe_media_identity
+
+        repository = _SubscriptionRepositoryFake(
+            _EndpointSubscribe(
+                id=36, username="alice", name="同名剧", year=None,
+                type=MediaType.TV.value, media_source=MediaSource.Douban,
+                media_id="undated",
+            ),
+            _EndpointSubscribe(
+                id=37, username="alice", name="同名剧", year="2026",
+                type=MediaType.TV.value, media_source=MediaSource.Douban,
+                media_id="dated",
+            ),
+        )
+        result = asyncio.run(
+            subscribe_media_identity(
+                media_id="card-id",
+                media_source=MediaSource.TMDB,
+                title="同名剧",
+                year="2026",
+                mtype=MediaType.TV,
+                query=_subscription_query(repository),
+                current_user=_EndpointUser(name="alice", is_superuser=False),
+            )
+        )
+
+        assert result.id == 37
 
     def test_delete_subscribe_by_media_identity_deletes_owner_candidate(self):
         """

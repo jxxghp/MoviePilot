@@ -329,10 +329,10 @@ class ConfigModel(BaseModel):
     CACHE_BACKEND_URL: Optional[str] = "redis://localhost:6379"
     # Redis 缓存最大内存限制，未配置时，如开启大内存模式时为 "1024mb"，未开启时为 "256mb"
     CACHE_REDIS_MAXMEMORY: Optional[str] = None
-    # Redis 连接池最大连接数
-    CACHE_REDIS_MAX_CONNECTIONS: int = 256
+    # Redis 单个连接池最大连接数；异步连接池按事件循环分别应用该上限
+    CACHE_REDIS_MAX_CONNECTIONS: int = 512
     # Redis 连接池耗尽时等待可用连接的时间（秒）
-    CACHE_REDIS_POOL_TIMEOUT: int = 3
+    CACHE_REDIS_POOL_TIMEOUT: int = 10
     # 全局图片缓存，将媒体图片缓存到本地
     GLOBAL_IMAGE_CACHE: bool = False
     # 全局图片缓存保留天数
@@ -453,7 +453,7 @@ class ConfigModel(BaseModel):
             serialize=_serialize_bool,
         ),
     ] = False
-    # 独立控制启动时跟踪 v3 开发分支。
+    # Docker 启动时跟踪开发分支；本地 CLI 仅在手动 update 时默认使用 DEV 模式。
     MOVIEPILOT_UPDATE_DEV: Annotated[
         bool, SettingPolicy(serialize=_serialize_bool)
     ] = False
@@ -712,7 +712,7 @@ class ConfigModel(BaseModel):
     )
 
     # ==================== Github & PIP ====================
-    # Github token，提高请求api限流阈值；原文只应保留在服务端运行配置中
+    # GitHub Token 供 Agent 提交 Issue/PR 和访问 API；原文只保留在服务端运行配置中
     GITHUB_TOKEN: Annotated[
         Optional[str],
         SettingPolicy(sensitive=True),
@@ -790,6 +790,8 @@ class ConfigModel(BaseModel):
     )
     # PassKey 是否强制用户验证（生物识别等）
     PASSKEY_REQUIRE_UV: bool = True
+    # 是否开放 API 文档；开放 /docs、/redoc 与 /api/v1/openapi.json，文档首次生成后常驻约 20–30MB 内存，修改后立即生效
+    API_DOCS_ENABLE: bool = False
 
     # ==================== 工作流配置 ====================
     # 工作流数据共享
@@ -1421,19 +1423,19 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             try:
                 parts = token_pair.split(":")
                 if len(parts) != 2:
-                    print(f"无效的令牌格式: {token_pair}")
+                    print("无效的仓库 GitHub Token 配置格式")
                     continue
                 repo_info = parts[0].strip()
                 token = parts[1].strip()
                 if not repo_info or not token:
-                    print(f"无效的令牌或仓库信息: {token_pair}")
+                    print("仓库 GitHub Token 配置缺少仓库名或 Token")
                     continue
                 headers[repo_info] = {
                     "Authorization": f"Bearer {token}",
                     "User-Agent": self.NORMAL_USER_AGENT,
                 }
-            except Exception as e:
-                print(f"处理令牌对 '{token_pair}' 时出错: {e}")
+            except Exception:
+                print("解析仓库 GitHub Token 配置失败")
         # 如果传入了指定的仓库名称，则返回该仓库的请求头信息，否则返回默认请求头
         return headers.get(repo, self.GITHUB_HEADERS)
 

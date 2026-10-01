@@ -259,12 +259,12 @@ def test_generic_torrent_search_uses_identical_request_projection(monkeypatch):
     def spider_search(**kwargs):
         calls.append(("sync", kwargs))
         events.append(("io", kwargs))
-        return False, [{"title": "generic"}]
+        return False, [{"title": "generic"}], None
 
     async def async_spider_search(**kwargs):
         calls.append(("async", kwargs))
         events.append(("io", kwargs))
-        return False, [{"title": "generic"}]
+        return False, [{"title": "generic"}], None
 
     monkeypatch.setattr(
         IndexerModule,
@@ -338,12 +338,12 @@ def test_subtitle_search_uses_one_request_and_preserves_order(monkeypatch):
     def spider_search(**kwargs):
         calls.append(("sync", kwargs))
         events.append(("io", kwargs))
-        return True, []
+        return True, [], None
 
     async def async_spider_search(**kwargs):
         calls.append(("async", kwargs))
         events.append(("io", kwargs))
-        return True, []
+        return True, [], None
 
     monkeypatch.setattr(
         IndexerModule,
@@ -384,6 +384,54 @@ def test_subtitle_search_uses_one_request_and_preserves_order(monkeypatch):
         "parse",
     ]
     assert events[-2][0:3] == ("statistic", "Subtitle", True)
+
+
+def test_mtorrent_subtitle_search_uses_specialized_parser(monkeypatch):
+    """mTorrent 字幕搜索应走专用 API 解析器，而不是旧网页解析器。"""
+    events = []
+    calls = []
+    _install_search_observers(monkeypatch, events)
+
+    class FakeSpider:
+        """记录字幕专用解析器收到的参数。"""
+
+        error_detail = None
+
+        def __init__(self, site):
+            """保存站点配置。"""
+            self.site = site
+
+        def search(self, **kwargs):
+            """记录同步字幕搜索调用。"""
+            calls.append(("sync", kwargs))
+            events.append(("io", kwargs))
+            return False, [{"title": "subtitle"}]
+
+        async def async_search(self, **kwargs):
+            """记录异步字幕搜索调用。"""
+            calls.append(("async", kwargs))
+            events.append(("io", kwargs))
+            return False, [{"title": "subtitle"}]
+
+    monkeypatch.setitem(indexer_module.SPIDER_PARSER_CLASSES, "mTorrent", FakeSpider)
+    site = {
+        "id": 1,
+        "name": "M-Team",
+        "parser": "mTorrent",
+        "subtitles": {"search": {}},
+    }
+    module = object.__new__(IndexerModule)
+
+    sync_result = module.search_subtitles(site=site, keyword="Raw.Keyword", page=4)
+    async_result = asyncio.run(module.async_search_subtitles(site=site, keyword="Raw.Keyword", page=4))
+
+    expected_arguments = {
+        "keyword": "clean keyword",
+        "page": 4,
+        "search_type": "subtitles",
+    }
+    assert sync_result == async_result == [{"title": "subtitle"}]
+    assert calls == [("sync", expected_arguments), ("async", expected_arguments)]
 
 
 def test_disabled_subtitle_search_skips_all_follow_up_work(monkeypatch):

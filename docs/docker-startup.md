@@ -478,7 +478,7 @@ Docker restart policy。
 | `PIP_PROXY` | 空 | Python 包索引镜像。 |
 | `GITHUB_PROXY` | 空 | GitHub 下载 URL 前缀。 |
 | `PROXY_HOST` | 空 | GitHub/包命令使用的 HTTP(S) 代理。 |
-| `GITHUB_TOKEN` | 空 | GitHub API、Dev 更新及其他自动化访问令牌；也可在设置页或首次初始化页配置。 |
+| `GITHUB_TOKEN` | 空 | GitHub API 与 Agent Issue/PR Skill 共用的服务端 Token；可在设置页或首次初始化页通过 Device Flow 或手动 PAT 配置。 |
 | `CLOAKBROWSER_CACHE_DIR` | 自动选择 | 浏览器内核缓存位置。 |
 | `ENABLE_SSL` | `false` | 是否渲染并启用 HTTPS server。 |
 | `AUTO_ISSUE_CERT` | `false` | 是否自动签发证书。 |

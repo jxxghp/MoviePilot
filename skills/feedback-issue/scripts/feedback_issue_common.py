@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import sys
 import time
@@ -16,12 +17,19 @@ from urllib.parse import quote, urlparse
 def _find_repo_root() -> Path:
     """从当前工作目录和脚本路径向上查找 MoviePilot 仓库根目录。"""
     script_path = Path(__file__).resolve()
-    candidates = [Path.cwd().resolve(), *Path.cwd().resolve().parents]
+    candidates = []
+    configured_root = os.environ.get("MOVIEPILOT_ROOT", "").strip()
+    if configured_root:
+        candidates.append(Path(configured_root).expanduser())
+    candidates.extend([Path.cwd().resolve(), *Path.cwd().resolve().parents])
     candidates.extend([script_path.parent, *script_path.parents])
     for candidate in candidates:
-        if (candidate / "app" / "core" / "config.py").is_file():
+        if (candidate / "app" / "runtime" / "config.py").is_file():
             return candidate
-    return script_path.parents[3]
+    raise RuntimeError(
+        "无法定位 MoviePilot 程序目录；请在程序目录执行，或设置 MOVIEPILOT_ROOT="
+        "<程序目录> 后重试。"
+    )
 
 
 REPO_ROOT = _find_repo_root()
@@ -29,6 +37,27 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from app.runtime.config import settings  # noqa: E402
+
+
+def github_headers_for_repo(repo: str) -> dict[str, str]:
+    """按仓库专属配置、全局设置和运行环境顺序解析 Issue 提交 Token。"""
+    try:
+        headers = dict(settings.REPO_GITHUB_HEADERS(repo=repo))
+    except Exception:
+        headers = {}
+    has_authorization = any(
+        key.lower() == "authorization" and value for key, value in headers.items()
+    )
+    if not has_authorization:
+        token = (
+            os.environ.get("MOVIEPILOT_GITHUB_TOKEN")
+            or os.environ.get("GITHUB_TOKEN")
+            or os.environ.get("GH_TOKEN")
+            or ""
+        ).strip()
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+    return headers
 
 
 FEEDBACK_REPO_OWNER = "jxxghp"

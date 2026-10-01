@@ -19,6 +19,7 @@ if TYPE_CHECKING:
         _jobs: dict[str, dict[str, Any]]
         _lifecycle_state: str
         _lock: Any
+        _reload_schedule_snapshot: list[Any] | None
         _registry: ExecutionRegistry
         _scheduler: Any
         _services: SchedulerServices | None
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
         _build_mediaserver_sync_schedules: Callable[..., Any]
         _build_progress_callback: Callable[..., Any]
         _cancel_handle: Callable[[SchedulerHandle], None]
+        _detach_live_plugin_once_jobs: Callable[[str], dict[str, dict[str, Any]]]
         _finish_job: Callable[..., Any]
         _finish_unsubmitted_job: Callable[..., None]
         _format_time: Callable[..., str]

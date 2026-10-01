@@ -11,6 +11,7 @@ from enum import Enum, auto
 from typing import Any, Generator, Optional, Protocol, TypeVar, cast
 
 from app.application.configuration import get_configured_system_config
+from app.application.music.observation import music_recognition_needs_confirmation
 from app.chain._contracts import ChainRuntimeMixinHost
 from app.domain.context import (
     MediaInfo,
@@ -305,8 +306,9 @@ class _RecognitionFinalizationOwner:
         *,
         effective_override: ClassificationSelection | None = None,
         refresh: bool = False,
+        allow_enrichment: bool = True,
     ) -> Optional[_ClassificationSubjectT]:
-        """在唯一应用服务中复制并分类完整识别结果。"""
+        """统一复制并分类结果，离线整理可禁止外部补充而不绕过用户分类规则。"""
         if mediainfo is None:
             return None
         service = getattr(cast(ChainRuntimeMixinHost, self), "classification_service", None)
@@ -318,6 +320,7 @@ class _RecognitionFinalizationOwner:
                 mediainfo,
                 effective_override=effective_override,
                 refresh=refresh,
+                **({"allow_enrichment": False} if not allow_enrichment else {}),
             ),
         )
 
@@ -327,8 +330,9 @@ class _RecognitionFinalizationOwner:
         *,
         effective_override: ClassificationSelection | None = None,
         refresh: bool = False,
+        allow_enrichment: bool = True,
     ) -> Optional[_ClassificationSubjectT]:
-        """通过异步应用服务复制、补充并分类完整识别结果。"""
+        """异步复制并分类结果，保留调用方禁止外部补充的离线约束。"""
         if mediainfo is None:
             return None
         service = getattr(cast(ChainRuntimeMixinHost, self), "classification_service", None)
@@ -340,6 +344,7 @@ class _RecognitionFinalizationOwner:
                 mediainfo,
                 effective_override=effective_override,
                 refresh=refresh,
+                **({"allow_enrichment": False} if not allow_enrichment else {}),
             ),
         )
 
@@ -534,6 +539,8 @@ class RecognitionMixin:
             },
         )
         outcome = _RecognitionOutcome.decide(mediainfo)
+        if music_recognition_needs_confirmation(outcome.result):
+            return outcome.result
         if outcome.has_identity:
             if outcome.should_report:
                 yield _RecognitionStep(
@@ -821,7 +828,7 @@ class RecognitionMixin:
             music_type: Optional[str],
     ) -> Optional[_PluginRecognitionPlan]:
         """为缺少规范身份的候选结果生成插件补充识别计划。"""
-        if _RecognitionOutcome.decide(mediainfo).has_identity:
+        if _RecognitionOutcome.decide(mediainfo).has_identity or music_recognition_needs_confirmation(mediainfo):
             return None
         is_music = (
             isinstance(meta, MetaMusic)

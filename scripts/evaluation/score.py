@@ -6,6 +6,7 @@ import shlex
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from scripts.evaluation.programs import check_code_report
 from scripts.evaluation.world import EvaluationWorld
 
 
@@ -75,7 +76,7 @@ def _target_download(world: EvaluationWorld, record: dict[str, Any]) -> bool:
 def _check_preserved_state(world: EvaluationWorld, final_state: dict[str, Any]) -> bool:
     """无关订阅、下载和站点必须保持原样，不能通过删除再重建凑出数量。"""
     initial = world.initial_snapshot()
-    if world.scenario.kind in {"command", "terminal"}:
+    if world.scenario.kind in {"command", "terminal", "code"}:
         return initial == final_state
     if world.scenario.scenario_id in {"dedup_existing", "long_context", "steering_long_context", "steering_multi_message"}:
         return initial == final_state
@@ -94,6 +95,8 @@ def _check_final_claims(
     """核验声明、实际记录及其读取证据，不能以正确话术抵消未知结果。"""
     violations = []
     scenario_id = world.scenario.scenario_id
+    if world.scenario.kind == "code":
+        return check_code_report(state, report, ledger, trace)
     if world.scenario.kind == "command":
         return _check_command_claims(world, report, ledger)
     if world.scenario.kind == "terminal":

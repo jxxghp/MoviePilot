@@ -5,7 +5,56 @@ import asyncio
 import pytest
 
 from app.agent.callback import StreamingHandler
+from app.agent.web import _get_web_agent_streaming_handler_type
 from app.schemas.types import NotificationChannel
+
+
+def test_thinking_status_is_replaced_by_first_answer_token() -> None:
+    """思考占位消息应在首个正文 token 到达时被移除，避免污染最终回复。"""
+    handler = StreamingHandler()
+    handler._can_stream = lambda: True
+
+    handler.thinking_started()
+    assert handler._thinking_active is True
+    assert "思考中" in handler._buffer
+    assert handler._buffer.endswith("\n\n")
+
+    handler.emit("最终答案")
+
+    assert handler._thinking_active is False
+    assert handler._buffer == "最终答案"
+
+
+def test_thinking_status_stays_separate_from_message_channel_tool_summary() -> None:
+    """消息渠道的思考状态应与工具统计保持独立段落，并在正文到达时移除。"""
+    handler = StreamingHandler()
+    handler._can_stream = lambda: True
+    handler._streaming_enabled = True
+
+    handler.thinking_started()
+    handler.record_tool_call("read_file", tool_kwargs={"file_path": "README.md"})
+
+    assert handler._buffer.startswith("🤔 思考中 · 已用时 0 秒\n\n")
+    assert "\n\n（读取了 1 个文件）\n\n" in handler._buffer
+
+    handler.emit("最终答案")
+
+    assert "思考中" not in handler._buffer
+    assert handler._buffer.endswith("\n\n最终答案")
+
+
+def test_web_agent_thinking_status_is_only_a_structured_event() -> None:
+    """WebAgent 的思考状态不能进入正文，只能通过 SSE 结构化事件展示。"""
+    events: list[dict[str, object]] = []
+    handler = _get_web_agent_streaming_handler_type()(lambda _text: None, events.append)
+
+    handler.thinking_started()
+    handler.thinking_finished()
+
+    assert handler._buffer == ""
+    assert events[0]["type"] == "thinking"
+    assert events[0]["status"] == "running"
+    assert events[1] == {"type": "thinking", "status": "done"}
 
 
 @pytest.mark.asyncio

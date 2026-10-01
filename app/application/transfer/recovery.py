@@ -1,12 +1,48 @@
 """失败与损坏整理任务的证据清理和历史解绑用例。"""
 
-from typing import Optional
+from __future__ import annotations
+
+from dataclasses import replace
+from pathlib import Path
+from typing import TYPE_CHECKING, Optional
 
 from app.application.transfer.execution import (
     TransferExecutionConflictError,
     TransferExecutionRepository,
     TransferFailureDiscardResult,
 )
+from app.domain.meta.metamusic import MetaMusic
+from app.schemas.types import MediaType
+
+if TYPE_CHECKING:
+    from app.application.transfer.models import TransferPlanCheckpoint, TransferPlanningInput
+
+
+def music_replanning_input(checkpoint: TransferPlanCheckpoint) -> Optional[TransferPlanningInput]:
+    """为零文件副作用的音乐拒绝重建输入，显式身份保留，仅刷新派生识别或分类。"""
+    planning = checkpoint.planning_input
+    if (not checkpoint.rejection_error or checkpoint.items or checkpoint.provider_invocation
+            or checkpoint.legacy_transfer_providers or checkpoint.resolved_meta_kind != "MetaMusic"):
+        return None
+    options = dict(planning.options)
+    if not options.get("music_recognition_scope"):
+        if planning.media_id and planning.mediainfo:
+            options["music_replan_classification"] = True
+        else:
+            source = planning.source_fileitem
+            path = Path(str(source.get("path") or ""))
+            if not path.is_absolute() or path.suffix.lower() in {".cue", ".lrc", ".txt", ".yaml"}:
+                return None
+            storage = source.get("storage") or "local"
+            if storage == "local":
+                root = path.parent.parent if MetaMusic.parse_disc_dir(path.parent.name) else path.parent
+                options["music_recognition_scope"] = {
+                    "storage": storage, "directory": str(root), "main": str(path.relative_to(root)),
+                    "files": [str(path.relative_to(root))], "regions": None, "scripts": None,
+                }
+            else:
+                options["music_recognition_scope"] = {"storage": storage, "name_only": True}
+    return replace(planning, media_type=MediaType.MUSIC.value, options=options)
 
 
 class TransferRecoveryCommand:

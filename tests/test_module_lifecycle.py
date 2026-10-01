@@ -5,13 +5,12 @@ import time
 from unittest.mock import Mock, patch
 
 import pytest
-from telebot import TeleBot
 
 from app.modules import _MessageBase
 from app.modules.discord import DiscordModule
 from app.modules.discord.discord import Discord
-from app.modules.feishu import FeishuModule
 from app.modules.feishu.feishu import Feishu
+from app.modules.feishu.module import FeishuModule
 from app.modules.filter import FilterModule
 from app.modules.plex import PlexModule
 from app.modules.qqbot import gateway as qq_gateway
@@ -19,6 +18,7 @@ from app.modules.qqbot.module import QQBotModule
 from app.modules.qqbot.qqbot import QQBot
 from app.modules.slack import SlackModule
 from app.modules.slack.slack import Slack
+from app.modules.telegram.botapi import TelegramBotApi
 from app.modules.telegram.module import TelegramModule
 from app.modules.telegram.telegram import Telegram
 from app.modules.themoviedb import TheMovieDbModule
@@ -182,104 +182,116 @@ def test_module_stop_isolates_each_service_instance(
     getattr(healthy_client, stop_method).assert_called_once_with()
 
 
-def test_telegram_stop_closes_sdk_and_waits_for_polling_thread():
-    """客户端停止完成后不得保留 SDK worker 或 polling 线程句柄。"""
+def _polling_telegram_client(bot, handler=None):
+    """构造只含停止路径所需状态的 Telegram 客户端，并启动真实轮询线程。"""
     client = Telegram.__new__(Telegram)
-    bot = Mock()
-    bot.threaded = False
-    bot.worker_pool = None
     client._bot = bot
-    polling_thread = Mock()
-    polling_thread.is_alive.side_effect = [True, False]
-    client._polling_thread = polling_thread
     client._typing_tasks = {}
     client._typing_stop_flags = {}
     client._typing_lock = threading.RLock()
     client._typing_lifecycle_lock = threading.RLock()
     client._typing_accepting = True
-
-    assert client.stop() is True
-    assert client.stop() is True
-
-    bot.stop_polling.assert_called_once_with()
-    polling_thread.join.assert_called_once_with(
-        timeout=pytest.approx(client._shutdown_timeout_seconds, abs=0.1)
-    )
-    assert client._bot is None
-    assert client._polling_thread is None
-
-
-def test_telegram_stop_keeps_polling_owner_when_thread_misses_deadline():
-    """polling 超过关闭预算时必须返回未收敛并保留原 owner。"""
-    client = Telegram.__new__(Telegram)
-    bot = Mock()
-    bot.threaded = False
-    bot.worker_pool = None
-    polling_thread = Mock()
-    polling_thread.is_alive.return_value = True
-    client._bot = bot
-    client._polling_thread = polling_thread
-    client._shutdown_timeout_seconds = 0.01
-    client._typing_tasks = {}
-    client._typing_stop_flags = {}
-    client._typing_lock = threading.RLock()
-    client._typing_lifecycle_lock = threading.RLock()
-    client._typing_accepting = True
-
-    assert client.stop() is False
-
-    polling_thread.join.assert_called_once()
-    remaining_timeout = polling_thread.join.call_args.kwargs["timeout"]
-    assert 0 <= remaining_timeout <= client._shutdown_timeout_seconds
-    assert client._bot is bot
-    assert client._polling_thread is polling_thread
+    client._long_polling_timeout_seconds = 1
+    if handler is not None:
+        client._handle_update = handler
+    client._polling_thread = threading.Thread(target=client._run_polling, daemon=True)
+    client._polling_thread.start()
+    return client
 
 
 @pytest.mark.asyncio
-async def test_telegram_stop_bounds_real_sdk_worker_and_retries_after_release():
-    """真实 SDK worker 阻塞时应保留 owner，释放后重试可以完整收敛。"""
-    bot = TeleBot("123:test", threaded=True, num_threads=1)
+async def test_telegram_stop_does_not_wait_for_in_flight_long_poll():
+    """长轮询请求进行中时 stop 应立即收敛，请求返回的更新不得再分发。"""
+    bot = TelegramBotApi("123:test")
     entered = threading.Event()
     release = threading.Event()
+    handled = []
 
-    def blocking_callback() -> None:
+    def blocking_get_updates(offset, timeout):
         entered.set()
-        release.wait(timeout=1.0)
+        release.wait(timeout=2.0)
+        return [{"update_id": 1, "message": {"text": "late"}}]
 
-    bot.worker_pool.put(blocking_callback)
-    assert await asyncio.to_thread(entered.wait, 0.2)
+    with patch.object(bot, "get_updates", side_effect=blocking_get_updates), \
+            patch.object(bot, "close", wraps=bot.close) as close:
+        client = _polling_telegram_client(bot, handler=handled.append)
+        polling_thread = client._polling_thread
+        assert await asyncio.to_thread(entered.wait, 0.5)
 
-    client = Telegram.__new__(Telegram)
-    client._bot = bot
-    client._polling_thread = None
-    client._shutdown_timeout_seconds = 0.02
-    client._typing_tasks = {}
-    client._typing_stop_flags = {}
-    client._typing_lock = threading.RLock()
-    client._typing_lifecycle_lock = threading.RLock()
-    client._typing_accepting = True
-
-    heartbeat = asyncio.create_task(asyncio.sleep(0.005))
-    started_at = time.monotonic()
-    try:
-        assert await run_in_threadpool_to_completion(client.stop) is False
-        assert time.monotonic() - started_at < 0.2
-        assert heartbeat.done()
-        assert client._bot is bot
-        assert any(worker.is_alive() for worker in bot.worker_pool.workers)
-
-        release.set()
-        for worker in bot.worker_pool.workers:
-            await asyncio.to_thread(worker.join, 0.2)
-
+        started_at = time.monotonic()
         assert await run_in_threadpool_to_completion(client.stop) is True
+        assert time.monotonic() - started_at < 0.5
         assert client._bot is None
         assert client._polling_thread is None
-    finally:
+        close.assert_called_once_with()
+
         release.set()
-        for worker in bot.worker_pool.workers:
-            worker.stop()
-            await asyncio.to_thread(worker.join, 0.2)
+        await asyncio.to_thread(polling_thread.join, 1.0)
+    assert not polling_thread.is_alive()
+    assert handled == []
+
+
+@pytest.mark.asyncio
+async def test_telegram_stop_keeps_owner_until_running_handler_finishes():
+    """handler 超过关闭预算时返回未收敛并保留 owner，handler 结束后重试可收敛。"""
+    bot = TelegramBotApi("123:test")
+    entered = threading.Event()
+    release = threading.Event()
+    batches = [[{"update_id": 1}]]
+
+    def get_updates(offset, timeout):
+        if batches:
+            return batches.pop(0)
+        release.wait(timeout=2.0)
+        return []
+
+    def blocking_handler(update):
+        entered.set()
+        release.wait(timeout=2.0)
+
+    with patch.object(bot, "get_updates", side_effect=get_updates):
+        client = _polling_telegram_client(bot, handler=blocking_handler)
+        client._shutdown_timeout_seconds = 0.02
+        polling_thread = client._polling_thread
+        assert await asyncio.to_thread(entered.wait, 0.5)
+
+        heartbeat = asyncio.create_task(asyncio.sleep(0.005))
+        try:
+            assert await run_in_threadpool_to_completion(client.stop) is False
+            assert heartbeat.done()
+            assert client._bot is bot
+            assert client._polling_thread is polling_thread
+
+            release.set()
+            await asyncio.to_thread(polling_thread.join, 1.0)
+            assert await run_in_threadpool_to_completion(client.stop) is True
+            assert client._bot is None
+        finally:
+            release.set()
+            bot.stop_polling(0)
+            await asyncio.to_thread(polling_thread.join, 1.0)
+
+
+def test_telegram_stop_from_handler_does_not_wait_for_itself():
+    """handler 内触发的 stop（例如配置重载）不能等待自身持有的分发锁。"""
+    bot = TelegramBotApi("123:test")
+    results = []
+    holder = {}
+    ready = threading.Event()
+    done = threading.Event()
+
+    def handler(update):
+        ready.wait(1.0)
+        results.append(holder["client"].stop())
+        done.set()
+
+    with patch.object(bot, "get_updates", side_effect=[[{"update_id": 1}], []]):
+        holder["client"] = _polling_telegram_client(bot, handler=handler)
+        holder["client"]._shutdown_timeout_seconds = 5
+        ready.set()
+        assert done.wait(1.0)
+    assert results == [True]
+    assert holder["client"]._bot is None
 
 
 @pytest.mark.parametrize(
@@ -701,12 +713,11 @@ def test_wechat_clawbot_stop_keeps_poll_owner_until_retry() -> None:
 
 
 def test_feishu_stop_reports_live_ws_thread_until_retry() -> None:
-    """飞书 SDK 清理后线程仍存活时不得报告关闭完成。"""
+    """飞书长连接停止后线程仍存活时不得报告关闭完成。"""
     client = Feishu.__new__(Feishu)
-    client._stop_event = threading.Event()
     client._ready = threading.Event()
-    client._ws_client = None
-    client._ws_loop = None
+    client._ws_client = Mock()
+    client._api_client = Mock()
     ws_thread = Mock()
     ws_thread.is_alive.return_value = True
     client._ws_thread = ws_thread
@@ -714,9 +725,12 @@ def test_feishu_stop_reports_live_ws_thread_until_retry() -> None:
 
     assert client.stop() is False
     assert client._ws_thread is ws_thread
+    client._ws_client.stop.assert_called_once_with()
+    client._api_client.close.assert_not_called()
 
     ws_thread.is_alive.return_value = False
     assert client.stop() is True
+    client._api_client.close.assert_called_once_with()
 
 
 def test_discord_stop_reports_live_event_loop_thread_until_retry() -> None:
