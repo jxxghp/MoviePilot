@@ -206,7 +206,7 @@
     "no-any-return": 7,
     "no-untyped-call": 3,
     "no-untyped-def": 13,
-    "type-arg": 13,
+    "type-arg": 12,
     "union-attr": 3,
     "var-annotated": 1
   },

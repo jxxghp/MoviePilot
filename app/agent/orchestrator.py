@@ -2252,8 +2252,8 @@ class MoviePilotAgent:
     @staticmethod
     async def _stream_agent_tokens(
         agent,
-        messages: dict,
-        config: dict,
+        messages: dict[str, Any],
+        config: dict[str, Any],
         on_token: Callable[[str], None],
         stream_handler: Any = None,
     ):
