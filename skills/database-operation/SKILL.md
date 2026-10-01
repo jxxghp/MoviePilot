@@ -35,9 +35,9 @@ PYTHON="${MOVIEPILOT_PYTHON:-venv/bin/moviepilot-python}"
 "$PYTHON" skills/database-operation/scripts/mp-db.py tables
 ```
 
-优先使用项目专用的 `moviepilot-python`；该入口不存在时才回退到项目或 Docker
-`VENV_PATH` 中的 `python`/`python3`。在 Agent 的 `execute_command` 环境中会自动提供
-`$MOVIEPILOT_PYTHON`。
+Prefer the project-specific `moviepilot-python` entry; fall back to `python` or `python3`
+from the project or Docker `VENV_PATH` only when it is unavailable. Agent
+`execute_command` automatically provides `$MOVIEPILOT_PYTHON`.
 
 The runtime sets `MOVIEPILOT_ROOT` for copied skills. If you run a copied
 script directly from `<CONFIG_PATH>/agent/skills/`, set that variable to the
