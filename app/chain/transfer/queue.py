@@ -42,7 +42,7 @@ from app.runtime.progress import ProgressHelper
 from app.runtime.stop import runtime_stop_state
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.tmdb import TmdbEpisode
-from app.schemas.transfer import TransferInfo, TransferJob
+from app.schemas.transfer import TransferInfo, TransferJob, TransferQueueItemData
 from app.schemas.types import (
     MediaSource,
     MediaType,
@@ -391,6 +391,7 @@ class TransferQueueOwner(_TransferOwnerBase):
             remove_task=self.jobview.remove_task,
             list_tasks=self.jobview.list_jobs,
             expire_tasks=self._TransferChain__expire_stale_transfer_tasks,
+            list_tasks_page=self.jobview.list_jobs_page,
         )
 
     def replay_pending(self) -> None:
@@ -1472,6 +1473,10 @@ class TransferQueueOwner(_TransferOwnerBase):
         获取整理任务列表
         """
         return self._transfer_queue_service().list()
+
+    def get_queue_tasks_page(self, page: int, count: int) -> Tuple[List[TransferQueueItemData], int]:
+        """获取供前端展示的受限整理队列快照。"""
+        return self._transfer_queue_service().list_page(page, count)
 
     def process(self, progress_callback: Optional[Callable[..., None]] = None) -> bool:
         """

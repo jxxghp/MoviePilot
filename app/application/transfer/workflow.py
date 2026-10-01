@@ -14,8 +14,11 @@ TransferJob / TransferJobTask，那两个用 app.schemas 的同名 DTO——一�
 视图，分开表达之后两边都不必再迁就对方。
 """
 from typing import (
+    Any,
     Callable,
     List,
+    Optional,
+    Tuple,
 )
 
 from app.application.transfer.feedback import TransferFailureNotification
@@ -102,6 +105,9 @@ class TransferQueueService:
             remove_task: Callable[[FileItem], None],
             list_tasks: Callable[[], List[TransferJob]],
             expire_tasks: Callable[[], None],
+            list_tasks_page: Optional[
+                Callable[[int, int], Tuple[List[Any], int]]
+            ] = None,
     ) -> None:
         """保存队列用例依赖，避免 Application 服务绑定具体线程队列实现。"""
         self._register_task = register_task
@@ -112,6 +118,7 @@ class TransferQueueService:
         self._remove_task = remove_task
         self._list_tasks = list_tasks
         self._expire_tasks = expire_tasks
+        self._list_tasks_page = list_tasks_page
 
     def put(self, task: TransferTask, callback: TransferCallback) -> bool:
         """先持久化准入事实再入队；任何前置失败都撤销内存作业视图。"""
@@ -143,3 +150,16 @@ class TransferQueueService:
         """先处理失活任务，再返回当前整理作业视图。"""
         self._expire_tasks()
         return self._list_tasks()
+
+    def list_page(self, page: int, count: int) -> Tuple[List[Any], int]:
+        """返回受限队列快照，避免前端请求触发全量 DTO 序列化。"""
+        if page < 1 or count < 1:
+            raise ValueError("队列分页参数必须为正数")
+
+        self._expire_tasks()
+        if self._list_tasks_page is not None:
+            return self._list_tasks_page(page, count)
+
+        tasks = self._list_tasks()
+        start = (page - 1) * count
+        return tasks[start:start + count], len(tasks)
