@@ -51,6 +51,10 @@ _SPECIALIZED_SEARCH_ARGUMENTS = {
     "RousiPro": ("keyword", "mtype", "cat", "page"),
 }
 
+_SPECIALIZED_SUBTITLE_SEARCH_ARGUMENTS = {
+    "mTorrent": ("keyword", "page", "search_type"),
+}
+
 _UNKNOWN_SEARCH_FAILURE_MESSAGE = "站点请求或页面解析失败"
 
 # NexusPHP、Gazelle 和 Unit3d 覆盖大多数站点，其余模型多为专站适配，
@@ -332,7 +336,23 @@ class IndexerModule(_ModuleBase):
             return None
 
         search_word = IndexerModule.__clear_search_text(keyword)
+        parser_name = str(site.get("parser") or "")
+        parser_class = SPIDER_PARSER_CLASSES.get(parser_name)
         if search_type == "subtitles":
+            argument_names = _SPECIALIZED_SUBTITLE_SEARCH_ARGUMENTS.get(parser_name)
+            if parser_class and argument_names:
+                available_arguments = {
+                    "keyword": search_word,
+                    "page": page,
+                    "search_type": search_type,
+                }
+                return _IndexerSearchRequest(
+                    parser_class=parser_class,
+                    arguments=MappingProxyType({
+                        name: available_arguments[name]
+                        for name in argument_names
+                    }),
+                )
             return _IndexerSearchRequest(
                 parser_class=None,
                 arguments=MappingProxyType({
@@ -343,8 +363,6 @@ class IndexerModule(_ModuleBase):
                 }),
             )
 
-        parser_name = str(site.get("parser") or "")
-        parser_class = SPIDER_PARSER_CLASSES.get(parser_name)
         argument_names = _SPECIALIZED_SEARCH_ARGUMENTS.get(parser_name)
         if parser_class and argument_names:
             available_arguments = {
@@ -379,11 +397,12 @@ class IndexerModule(_ModuleBase):
     ) -> Tuple[bool, List[dict[str, Any]], Optional[str]]:
         """通过同步解析器执行已冻结的搜索请求，返回错误标志、结果与失败原因"""
         if request.parser_class:
+            spider = request.parser_class(site)
             error_flag, result = cast(
                 Tuple[bool, List[dict[str, Any]]],
-                request.parser_class(site).search(**request.arguments),
+                spider.search(**request.arguments),
             )
-            return error_flag, result, None
+            return error_flag, result, getattr(spider, "error_detail", None)
         return IndexerModule.__spider_search(**request.arguments)
 
     @staticmethod
@@ -393,11 +412,12 @@ class IndexerModule(_ModuleBase):
     ) -> Tuple[bool, List[dict[str, Any]], Optional[str]]:
         """通过异步解析器执行已冻结的搜索请求，返回错误标志、结果与失败原因"""
         if request.parser_class:
+            spider = request.parser_class(site)
             error_flag, result = cast(
                 Tuple[bool, List[dict[str, Any]]],
-                await request.parser_class(site).async_search(**request.arguments),
+                await spider.async_search(**request.arguments),
             )
-            return error_flag, result, None
+            return error_flag, result, getattr(spider, "error_detail", None)
         return await IndexerModule.__async_spider_search(**request.arguments)
 
     @staticmethod
@@ -504,6 +524,8 @@ class IndexerModule(_ModuleBase):
         result = []
         start_time = datetime.now()
         error_flag = False
+        error: Optional[Exception] = None
+        failure_detail: Optional[str] = None
 
         request = self.__create_search_request(
             site=site,
@@ -515,15 +537,31 @@ class IndexerModule(_ModuleBase):
             return []
 
         try:
-            error_flag, result, _ = self.__execute_search(site, request)
+            error_flag, result, failure_detail = self.__execute_search(site, request)
         except Exception as err:
+            error = err
             self.__log_search_error(site, "subtitles", err)
 
-        outcome = self.__create_search_outcome(start_time, error_flag, result)
+        outcome = self.__create_search_outcome(
+            start_time,
+            error_flag,
+            result,
+            error=error,
+            failure_detail=failure_detail,
+        )
         self.__indexer_statistic(
             site=site,
             error_flag=outcome.error_flag,
             seconds=outcome.seconds,
+        )
+        report_site_search_outcome(
+            attempted=True,
+            outcome=(
+                _classify_search_failure(outcome.error)
+                if outcome.error_flag or outcome.error is not None
+                else "success"
+            ),
+            error=_search_failure_message(outcome),
         )
         return self.__parse_subtitle_result(
             site=site,
@@ -612,6 +650,8 @@ class IndexerModule(_ModuleBase):
         result = []
         start_time = datetime.now()
         error_flag = False
+        error: Optional[Exception] = None
+        failure_detail: Optional[str] = None
 
         request = self.__create_search_request(
             site=site,
@@ -623,15 +663,31 @@ class IndexerModule(_ModuleBase):
             return []
 
         try:
-            error_flag, result, _ = await self.__async_execute_search(site, request)
+            error_flag, result, failure_detail = await self.__async_execute_search(site, request)
         except Exception as err:
+            error = err
             self.__log_search_error(site, "subtitles", err)
 
-        outcome = self.__create_search_outcome(start_time, error_flag, result)
+        outcome = self.__create_search_outcome(
+            start_time,
+            error_flag,
+            result,
+            error=error,
+            failure_detail=failure_detail,
+        )
         await self.__async_indexer_statistic(
             site=site,
             error_flag=outcome.error_flag,
             seconds=outcome.seconds,
+        )
+        report_site_search_outcome(
+            attempted=True,
+            outcome=(
+                _classify_search_failure(outcome.error)
+                if outcome.error_flag or outcome.error is not None
+                else "success"
+            ),
+            error=_search_failure_message(outcome),
         )
         return self.__parse_subtitle_result(
             site=site,

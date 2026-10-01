@@ -11,12 +11,13 @@ from app.runtime.log import logger
 from app.schemas.types import MediaType
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.domain import site as site_rules
+from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
 
 
 class MTorrentSpider:
     """
-    mTorrent API
+    mTorrent API 搜索与字幕下载适配器。
     """
     _indexerid = None
     _domain = None
@@ -26,11 +27,13 @@ class MTorrentSpider:
     _cookie = None
     _ua = None
     _size = 100
-    _searchurl = "https://api.%s/api/torrent/search"
-    _downloadurl = "https://api.%s/api/torrent/genDlToken"
-    _subtitle_list_url = "https://api.%s/api/subtitle/list"
-    _subtitle_genlink_url = "https://api.%s/api/subtitle/genlink"
-    _subtitle_download_url ="https://api.%s/api/subtitle/dlV2?credential=%s"
+    _subtitle_size = 20
+    _api_domain = None
+    _searchurl = "https://%s/api/torrent/search"
+    _downloadurl = "https://%s/api/torrent/genDlToken"
+    _subtitle_list_url = "https://%s/api/subtitle/list"
+    _subtitle_genlink_url = "https://%s/api/subtitle/genlink"
+    _subtitle_download_url ="https://%s/api/subtitle/dlV2?credential=%s"
     _pageurl = "%sdetail/%s"
     _timeout = 15
 
@@ -45,6 +48,8 @@ class MTorrentSpider:
     _apikey = None
     # JWT Token
     _token = None
+    # 最近一次字幕搜索失败原因
+    error_detail: Optional[str] = None
 
     # 标签
     _labels = {
@@ -72,7 +77,8 @@ class MTorrentSpider:
             self._indexerid = indexer.get('id')
             self._url = indexer.get('domain')
             self._domain = site_rules.extract_domain(self._url)
-            self._searchurl = self._searchurl % self._domain
+            self._api_domain = self.__resolve_api_domain(indexer)
+            self._searchurl = self._searchurl % self._api_domain
             self._name = indexer.get('name')
             if indexer.get('proxy'):
                 self._proxy = get_runtime_setting('PROXY')
@@ -81,6 +87,31 @@ class MTorrentSpider:
             self._apikey = indexer.get('apikey')
             self._token = indexer.get('token')
             self._timeout = indexer.get('timeout') or 15
+            self.error_detail = None
+
+    @staticmethod
+    def __resolve_api_domain(indexer: dict) -> str:
+        """
+        从站点资源配置解析 M-Team API 主机。
+
+        资源可以直接提供 ``api_domain`` 或 ``api_host``；未提供时沿用
+        M-Team 的 ``api.<注册域名>`` 约定，避免把旧网页接口写死在代码中。
+        """
+        configured = indexer.get("api_domain") or indexer.get("api_host")
+        if configured:
+            value = str(configured).strip()
+            parsed = urlparse(value if "://" in value else f"//{value}")
+            host = parsed.netloc or parsed.path.split("/", 1)[0]
+            if host:
+                return host
+
+        domain_url = str(indexer.get("domain") or "").strip()
+        parsed = urlparse(domain_url if "://" in domain_url else f"//{domain_url}")
+        host = parsed.netloc or parsed.path.split("/", 1)[0]
+        if host.startswith("api."):
+            return host
+        registered_domain = site_rules.extract_domain(domain_url)
+        return f"api.{registered_domain}" if registered_domain else host
 
     def __get_params(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> dict:
         """
@@ -179,10 +210,13 @@ class MTorrentSpider:
         logger.warn(f"{self._name} 搜索失败，无法连接 {self._domain}")
         return True, []
 
-    def search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+    def search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0,
+               search_type: Optional[str] = None) -> Tuple[bool, List[dict]]:
         """
-        搜索
+        搜索种子或字幕。
         """
+        if search_type == "subtitles":
+            return self.search_subtitles(keyword=keyword, page=page)
         # 检查ApiKey
         if not self._apikey:
             return True, []
@@ -203,10 +237,13 @@ class MTorrentSpider:
         ).post_res(url=self._searchurl, json=params)
         return self.__process_response(res)
 
-    async def async_search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+    async def async_search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0,
+                           search_type: Optional[str] = None) -> Tuple[bool, List[dict]]:
         """
-        搜索
+        异步搜索种子或字幕。
         """
+        if search_type == "subtitles":
+            return await self.async_search_subtitles(keyword=keyword, page=page)
         # 检查ApiKey
         if not self._apikey:
             return True, []
@@ -226,6 +263,200 @@ class MTorrentSpider:
             timeout=self._timeout
         ).post_res(url=self._searchurl, json=params)
         return self.__process_response(res)
+
+    def __get_subtitle_params(self, keyword: str, page: Optional[int] = 0) -> dict:
+        """构造 M-Team 字幕搜索请求体。"""
+        return {
+            "keyword": keyword,
+            "pageNumber": int(page) + 1,
+            "pageSize": self._subtitle_size,
+        }
+
+    @staticmethod
+    def __get_subtitle_rows(payload: Any) -> List[dict]:
+        """兼容 M-Team 字幕接口分页数据的不同包装层级。"""
+        if not isinstance(payload, dict):
+            return []
+        data = payload.get("data")
+        if isinstance(data, list):
+            return [item for item in data if isinstance(item, dict)]
+        if isinstance(data, dict):
+            for key in ("data", "items", "records", "list"):
+                rows = data.get(key)
+                if isinstance(rows, list):
+                    return [item for item in rows if isinstance(item, dict)]
+        return []
+
+    @staticmethod
+    def __get_int(value: Any, default: int = 0) -> int:
+        """把接口中的数字字段安全转换为整数。"""
+        try:
+            return default if value is None else int(value)
+        except (TypeError, ValueError):
+            return default
+
+    def __parse_subtitle_rows(self, results: List[dict]) -> List[dict]:
+        """
+        解析 M-Team 字幕结果并为每条记录生成可直接下载的签名地址。
+        """
+        subtitles = []
+        for result in results:
+            subtitle_id = result.get("id")
+            if subtitle_id is None:
+                continue
+            torrent = result.get("torrent")
+            torrent_id = torrent.get("id") if isinstance(torrent, dict) else torrent
+            link = self.__subtitle_genlink(str(subtitle_id))
+            if not link:
+                continue
+            title = result.get("name") or result.get("filename") or str(subtitle_id)
+            file_name = result.get("filename") or result.get("fileName")
+            created = result.get("createdDate") or result.get("lastModifiedDate")
+            if isinstance(created, (int, float)) or str(created or "").isdigit():
+                pubdate = time_tools.format_timestamp(created)
+            else:
+                pubdate = time_tools.normalize_datetime(str(created)) if created else None
+            subtitles.append({
+                "title": title,
+                "description": title,
+                "enclosure": link,
+                "page_url": self._pageurl % (self._url, torrent_id) if torrent_id else None,
+                "language": result.get("lang") or result.get("language") or "",
+                "size": size_tools.parse_size(result.get("size") or 0),
+                "pubdate": pubdate,
+                "grabs": self.__get_int(result.get("hits")),
+                "uploader": result.get("author"),
+                "torrent_id": str(torrent_id) if torrent_id is not None else None,
+                "subtitle_id": str(subtitle_id),
+                "file_name": file_name,
+            })
+        return subtitles
+
+    def __process_subtitle_response(self, res: Any) -> Tuple[bool, List[dict[str, Any]]]:
+        """判定字幕搜索响应并转换为 MoviePilot 字幕字段。"""
+        self.error_detail = None
+        if res is None:
+            self.error_detail = f"无法连接 {self._api_domain or self._domain}"
+            logger.warn(f"{self._name} 字幕搜索失败，{self.error_detail}")
+            return True, []
+        if res.status_code != 200:
+            self.error_detail = f"HTTP {res.status_code}"
+            logger.warn(f"{self._name} 字幕搜索失败，错误码：{res.status_code}")
+            return True, []
+        try:
+            payload = res.json()
+        except (TypeError, ValueError):
+            self.error_detail = "响应不是有效 JSON"
+            logger.warn(f"{self._name} 字幕搜索失败，{self.error_detail}")
+            return True, []
+        if not isinstance(payload, dict) or self.__get_int(payload.get("code"), -1) != 0:
+            self.error_detail = str(payload.get("message") or "接口返回失败") if isinstance(payload, dict) else "接口返回失败"
+            logger.warn(f"{self._name} 字幕搜索失败，返回：{self.error_detail}")
+            return True, []
+        return False, self.__parse_subtitle_rows(self.__get_subtitle_rows(payload))
+
+    def search_subtitles(self, keyword: str, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+        """通过 M-Team 字幕 API 搜索字幕。"""
+        if not self._apikey:
+            self.error_detail = "未配置 API Key"
+            return True, []
+        params = self.__get_subtitle_params(keyword, page)
+        res = RequestUtils(
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": f"{self._ua}",
+                "x-api-key": self._apikey,
+            },
+            proxies=self._proxy,
+            timeout=self._timeout,
+        ).post_res(url=f"https://{self._api_domain}/api/subtitle/search", json=params)
+        return self.__process_subtitle_response(res)
+
+    async def __async_subtitle_genlink(self, subtitle_id: str) -> Optional[str]:
+        """异步获取字幕下载链接。"""
+        url = self._subtitle_genlink_url % self._api_domain
+        res = await AsyncRequestUtils(
+            headers={
+                "Accept": "application/json, text/plain, */*",
+                "User-Agent": f"{self._ua}",
+                "x-api-key": self._apikey,
+            },
+            proxies=self._proxy,
+            timeout=self._timeout,
+        ).post_res(url, data={"id": subtitle_id})
+        if res and res.status_code == 200:
+            result = res.json()
+            if self.__get_int(result.get("code"), -1) == 0 and isinstance(result.get("data"), str):
+                return self._subtitle_download_url % (self._api_domain, result["data"])
+            return None
+        return None
+
+    async def __async_parse_subtitle_rows(self, results: List[dict]) -> List[dict]:
+        """异步解析 M-Team 字幕结果并生成下载地址。"""
+        subtitles = []
+        for result in results:
+            subtitle_id = result.get("id")
+            if subtitle_id is None:
+                continue
+            torrent = result.get("torrent")
+            torrent_id = torrent.get("id") if isinstance(torrent, dict) else torrent
+            link = await self.__async_subtitle_genlink(str(subtitle_id))
+            if not link:
+                continue
+            title = result.get("name") or result.get("filename") or str(subtitle_id)
+            file_name = result.get("filename") or result.get("fileName")
+            created = result.get("createdDate") or result.get("lastModifiedDate")
+            if isinstance(created, (int, float)) or str(created or "").isdigit():
+                pubdate = time_tools.format_timestamp(created)
+            else:
+                pubdate = time_tools.normalize_datetime(str(created)) if created else None
+            subtitles.append({
+                "title": title,
+                "description": title,
+                "enclosure": link,
+                "page_url": self._pageurl % (self._url, torrent_id) if torrent_id else None,
+                "language": result.get("lang") or result.get("language") or "",
+                "size": size_tools.parse_size(result.get("size") or 0),
+                "pubdate": pubdate,
+                "grabs": self.__get_int(result.get("hits")),
+                "uploader": result.get("author"),
+                "torrent_id": str(torrent_id) if torrent_id is not None else None,
+                "subtitle_id": str(subtitle_id),
+                "file_name": file_name,
+            })
+        return subtitles
+
+    async def async_search_subtitles(self, keyword: str, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+        """异步通过 M-Team 字幕 API 搜索字幕。"""
+        if not self._apikey:
+            self.error_detail = "未配置 API Key"
+            return True, []
+        params = self.__get_subtitle_params(keyword, page)
+        res = await AsyncRequestUtils(
+            headers={
+                "Content-Type": "application/json",
+                "User-Agent": f"{self._ua}",
+                "x-api-key": self._apikey,
+            },
+            proxies=self._proxy,
+            timeout=self._timeout,
+        ).post_res(url=f"https://{self._api_domain}/api/subtitle/search", json=params)
+        self.error_detail = None
+        if res is None:
+            self.error_detail = f"无法连接 {self._api_domain or self._domain}"
+            return True, []
+        if res.status_code != 200:
+            self.error_detail = f"HTTP {res.status_code}"
+            return True, []
+        try:
+            payload = res.json()
+        except (TypeError, ValueError):
+            self.error_detail = "响应不是有效 JSON"
+            return True, []
+        if not isinstance(payload, dict) or self.__get_int(payload.get("code"), -1) != 0:
+            self.error_detail = str(payload.get("message") or "接口返回失败") if isinstance(payload, dict) else "接口返回失败"
+            return True, []
+        return False, await self.__async_parse_subtitle_rows(self.__get_subtitle_rows(payload))
 
     @staticmethod
     def __find_imdbid(imdb: str) -> str:
@@ -272,7 +503,7 @@ class MTorrentSpider:
         """
         获取下载链接，返回base64编码的json字符串及URL
         """
-        url = self._downloadurl % self._domain
+        url = self._downloadurl % self._api_domain
         params = {
             'method': 'post',
             'cookie': False,
@@ -335,7 +566,7 @@ class MTorrentSpider:
         :return: 字幕ID
         :rtype: List[str] | None
         """
-        url = self._subtitle_list_url % self._domain
+        url = self._subtitle_list_url % self._api_domain
         # 发送请求
         res = RequestUtils(
             headers={
@@ -371,7 +602,7 @@ class MTorrentSpider:
         :return: 下载链接
         :rtype: str | None
         """
-        url = self._subtitle_genlink_url % self._domain
+        url = self._subtitle_genlink_url % self._api_domain
         # 发送请求
         res = RequestUtils(
             headers={
@@ -385,7 +616,7 @@ class MTorrentSpider:
         if res and res.status_code == 200:
             result = res.json()
             if int(result.get("code", -1)) == 0 and isinstance(result.get("data"), str):
-                return self._subtitle_download_url % (self._domain, result["data"])
+                return self._subtitle_download_url % (self._api_domain, result["data"])
             else:
                 logger.warn(
                     f'{self._name} 获取字幕下载链接失败，返回：{result.get("message", "未知")}'
