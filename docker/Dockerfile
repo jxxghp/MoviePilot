@@ -288,6 +288,9 @@ FROM prepare_package AS final
 # 运行时使用独立虚拟环境和 uv，不需要基础镜像自带的系统 pip；移除它及其
 # vendored 依赖，避免将已修复版本之外的 urllib3 打包进最终镜像。
 RUN python3 -m pip uninstall -y pip \
+    && rm -rf /usr/local/lib/python3.14/site-packages/pip \
+        /usr/local/lib/python3.14/site-packages/pip-*.dist-info \
+        /usr/local/lib/python3.14/site-packages/pip-*.egg-info \
     && rm -f /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.14
 
 # jemalloc 默认按 CPU 数×4 建 arena，空闲 arena 的脏页会长期计入 RSS。脏页按 5 秒衰减归还
