@@ -27,6 +27,16 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 
+# 按镜像目标架构编译中文索引扩展，编译器不进入最终镜像。
+FROM base AS prepare_cjk
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential \
+    && rm -rf /var/lib/apt/lists/*
+COPY native/fts5_cjk/ /build/fts5_cjk/
+RUN python3 /build/fts5_cjk/install.py --output /native/libfts5_cjk.so
+
+
 # 准备软件包
 FROM base AS prepare_package
 
@@ -179,6 +189,11 @@ RUN "${VENV_PATH}/bin/python" /tmp/moviepilot-runtime-dependencies.py --full
 
 ARG MOVIEPILOT_PYTHON_VARIANT
 FROM verify_venv_${MOVIEPILOT_PYTHON_VARIANT} AS prepare_venv
+
+COPY --from=prepare_cjk /native/ ${VENV_PATH}/lib/moviepilot/
+COPY --from=prepare_cjk /build/fts5_cjk/install.py /tmp/verify-cjk.py
+RUN "${VENV_PATH}/bin/python" /tmp/verify-cjk.py --check \
+    && rm /tmp/verify-cjk.py
 
 # 准备后端源码
 FROM base AS prepare_backend

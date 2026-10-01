@@ -1,8 +1,10 @@
 """独立 state.db 模式与 FTS5 投影，采用 external-content 布局。"""
 
 import sqlite3
+import sys
 from pathlib import Path
 
+BUNDLED_CJK_EXTENSION = Path(sys.prefix) / "lib/moviepilot/libfts5_cjk.so"
 SCHEMA_VERSION = 1
 TOOL_PREFIX_CHARS = 8192
 SCHEMA_SQL = """
@@ -39,17 +41,21 @@ INDEXES = {"messages_fts": "unicode61", "messages_fts_trigram": "trigram", "mess
 
 
 def load_cjk(connection: sqlite3.Connection, extension: Path) -> bool:
-    """只加载宿主固定目录的 CJK tokenizer，加载结束立即关闭扩展权限。"""
-    if not extension.is_file() or not hasattr(connection, "enable_load_extension"):
+    """优先使用运行环境自带扩展，兼容旧配置目录；每次加载后立即关闭权限。"""
+    if not hasattr(connection, "enable_load_extension"):
         return False
-    try:
-        connection.enable_load_extension(True)
-        connection.load_extension(str(extension))
-        return True
-    except (sqlite3.Error, OSError):
-        return False
-    finally:
-        connection.enable_load_extension(False)
+    for candidate in (BUNDLED_CJK_EXTENSION, extension):
+        if not candidate.is_file():
+            continue
+        try:
+            connection.enable_load_extension(True)
+            connection.load_extension(str(candidate))
+            return True
+        except (sqlite3.Error, OSError):
+            continue
+        finally:
+            connection.enable_load_extension(False)
+    return False
 
 
 def index_sql(table: str) -> str:
