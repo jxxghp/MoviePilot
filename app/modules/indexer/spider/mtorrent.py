@@ -11,7 +11,6 @@ from app.runtime.log import logger
 from app.schemas.types import MediaType
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.domain import site as site_rules
-from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
 
 
@@ -28,7 +27,7 @@ class MTorrentSpider:
     _ua = None
     _size = 100
     _subtitle_size = 20
-    _api_domain = None
+    _api_domain: Optional[str] = None
     _searchurl = "https://%s/api/torrent/search"
     _downloadurl = "https://%s/api/torrent/genDlToken"
     _subtitle_list_url = "https://%s/api/subtitle/list"
@@ -70,13 +69,13 @@ class MTorrentSpider:
         """
         return cls._size
 
-    def __init__(self, indexer: dict):
+    def __init__(self, indexer: dict[str, Any]):
         """使用站点配置初始化 M-Team API 请求上下文。"""
         self.systemconfig = get_configured_system_config()
         if indexer:
             self._indexerid = indexer.get('id')
             self._url = indexer.get('domain')
-            self._domain = site_rules.extract_domain(self._url)
+            self._domain = site_rules.extract_domain(str(self._url or ""))
             self._api_domain = self.__resolve_api_domain(indexer)
             self._searchurl = self._searchurl % self._api_domain
             self._name = indexer.get('name')
@@ -90,7 +89,7 @@ class MTorrentSpider:
             self.error_detail = None
 
     @staticmethod
-    def __resolve_api_domain(indexer: dict) -> str:
+    def __resolve_api_domain(indexer: dict[str, Any]) -> str:
         """
         从站点资源配置解析 M-Team API 主机。
 
@@ -113,7 +112,7 @@ class MTorrentSpider:
         registered_domain = site_rules.extract_domain(domain_url)
         return f"api.{registered_domain}" if registered_domain else host
 
-    def __get_params(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> dict:
+    def __get_params(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0) -> dict[str, Any]:
         """
         获取请求参数
         """
@@ -131,12 +130,12 @@ class MTorrentSpider:
         return {
             "keyword": keyword,
             "categories": categories,
-            "pageNumber": int(page) + 1,
+            "pageNumber": int(page or 0) + 1,
             "pageSize": self._size,
             "visible": 1
         }
 
-    def __parse_result(self, results: List[dict]):
+    def __parse_result(self, results: List[dict[str, Any]]) -> List[dict[str, Any]]:
         """
         解析搜索结果
         """
@@ -211,7 +210,7 @@ class MTorrentSpider:
         return True, []
 
     def search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0,
-               search_type: Optional[str] = None) -> Tuple[bool, List[dict]]:
+               search_type: Optional[str] = None) -> Tuple[bool, List[dict[str, Any]]]:
         """
         搜索种子或字幕。
         """
@@ -238,7 +237,7 @@ class MTorrentSpider:
         return self.__process_response(res)
 
     async def async_search(self, keyword: str, mtype: MediaType = None, page: Optional[int] = 0,
-                           search_type: Optional[str] = None) -> Tuple[bool, List[dict]]:
+                           search_type: Optional[str] = None) -> Tuple[bool, List[dict[str, Any]]]:
         """
         异步搜索种子或字幕。
         """
@@ -264,16 +263,16 @@ class MTorrentSpider:
         ).post_res(url=self._searchurl, json=params)
         return self.__process_response(res)
 
-    def __get_subtitle_params(self, keyword: str, page: Optional[int] = 0) -> dict:
+    def __get_subtitle_params(self, keyword: str, page: Optional[int] = 0) -> dict[str, Any]:
         """构造 M-Team 字幕搜索请求体。"""
         return {
             "keyword": keyword,
-            "pageNumber": int(page) + 1,
+            "pageNumber": int(page or 0) + 1,
             "pageSize": self._subtitle_size,
         }
 
     @staticmethod
-    def __get_subtitle_rows(payload: Any) -> List[dict]:
+    def __get_subtitle_rows(payload: Any) -> List[dict[str, Any]]:
         """兼容 M-Team 字幕接口分页数据的不同包装层级。"""
         if not isinstance(payload, dict):
             return []
@@ -295,7 +294,34 @@ class MTorrentSpider:
         except (TypeError, ValueError):
             return default
 
-    def __parse_subtitle_rows(self, results: List[dict]) -> List[dict]:
+    @staticmethod
+    def __parse_size(value: Any) -> int:
+        """把字幕接口返回的字节数或带单位容量转换为字节数。"""
+        if value is None or value == "":
+            return 0
+        normalized = str(value).replace(",", "").replace(" ", "").upper()
+        if normalized.isdigit():
+            return int(normalized)
+        match = re.fullmatch(r"([0-9]+(?:\.[0-9]+)?)([KMGTPI]?I?B?)", normalized)
+        if not match:
+            return 0
+        size = float(match.group(1))
+        unit = match.group(2)
+        units = {
+            "KB": 1024,
+            "KIB": 1024,
+            "MB": 1024 ** 2,
+            "MIB": 1024 ** 2,
+            "GB": 1024 ** 3,
+            "GIB": 1024 ** 3,
+            "TB": 1024 ** 4,
+            "TIB": 1024 ** 4,
+            "PB": 1024 ** 5,
+            "PIB": 1024 ** 5,
+        }
+        return round(size * units.get(unit, 1))
+
+    def __parse_subtitle_rows(self, results: List[dict[str, Any]]) -> List[dict[str, Any]]:
         """
         解析 M-Team 字幕结果并为每条记录生成可直接下载的签名地址。
         """
@@ -312,8 +338,9 @@ class MTorrentSpider:
             title = result.get("name") or result.get("filename") or str(subtitle_id)
             file_name = result.get("filename") or result.get("fileName")
             created = result.get("createdDate") or result.get("lastModifiedDate")
+            pubdate: Optional[str] = None
             if isinstance(created, (int, float)) or str(created or "").isdigit():
-                pubdate = time_tools.format_timestamp(created)
+                pubdate = time_tools.format_timestamp(str(created))
             else:
                 pubdate = time_tools.normalize_datetime(str(created)) if created else None
             subtitles.append({
@@ -322,7 +349,7 @@ class MTorrentSpider:
                 "enclosure": link,
                 "page_url": self._pageurl % (self._url, torrent_id) if torrent_id else None,
                 "language": result.get("lang") or result.get("language") or "",
-                "size": size_tools.parse_size(result.get("size") or 0),
+                "size": self.__parse_size(result.get("size")),
                 "pubdate": pubdate,
                 "grabs": self.__get_int(result.get("hits")),
                 "uploader": result.get("author"),
@@ -355,7 +382,7 @@ class MTorrentSpider:
             return True, []
         return False, self.__parse_subtitle_rows(self.__get_subtitle_rows(payload))
 
-    def search_subtitles(self, keyword: str, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+    def search_subtitles(self, keyword: str, page: Optional[int] = 0) -> Tuple[bool, List[dict[str, Any]]]:
         """通过 M-Team 字幕 API 搜索字幕。"""
         if not self._apikey:
             self.error_detail = "未配置 API Key"
@@ -391,7 +418,7 @@ class MTorrentSpider:
             return None
         return None
 
-    async def __async_parse_subtitle_rows(self, results: List[dict]) -> List[dict]:
+    async def __async_parse_subtitle_rows(self, results: List[dict[str, Any]]) -> List[dict[str, Any]]:
         """异步解析 M-Team 字幕结果并生成下载地址。"""
         subtitles = []
         for result in results:
@@ -406,8 +433,9 @@ class MTorrentSpider:
             title = result.get("name") or result.get("filename") or str(subtitle_id)
             file_name = result.get("filename") or result.get("fileName")
             created = result.get("createdDate") or result.get("lastModifiedDate")
+            pubdate: Optional[str] = None
             if isinstance(created, (int, float)) or str(created or "").isdigit():
-                pubdate = time_tools.format_timestamp(created)
+                pubdate = time_tools.format_timestamp(str(created))
             else:
                 pubdate = time_tools.normalize_datetime(str(created)) if created else None
             subtitles.append({
@@ -416,7 +444,7 @@ class MTorrentSpider:
                 "enclosure": link,
                 "page_url": self._pageurl % (self._url, torrent_id) if torrent_id else None,
                 "language": result.get("lang") or result.get("language") or "",
-                "size": size_tools.parse_size(result.get("size") or 0),
+                "size": self.__parse_size(result.get("size")),
                 "pubdate": pubdate,
                 "grabs": self.__get_int(result.get("hits")),
                 "uploader": result.get("author"),
@@ -426,7 +454,7 @@ class MTorrentSpider:
             })
         return subtitles
 
-    async def async_search_subtitles(self, keyword: str, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
+    async def async_search_subtitles(self, keyword: str, page: Optional[int] = 0) -> Tuple[bool, List[dict[str, Any]]]:
         """异步通过 M-Team 字幕 API 搜索字幕。"""
         if not self._apikey:
             self.error_detail = "未配置 API Key"

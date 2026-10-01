@@ -339,9 +339,9 @@ class IndexerModule(_ModuleBase):
         parser_name = str(site.get("parser") or "")
         parser_class = SPIDER_PARSER_CLASSES.get(parser_name)
         if search_type == "subtitles":
-            argument_names = _SPECIALIZED_SUBTITLE_SEARCH_ARGUMENTS.get(parser_name)
-            if parser_class and argument_names:
-                available_arguments = {
+            subtitle_argument_names = _SPECIALIZED_SUBTITLE_SEARCH_ARGUMENTS.get(parser_name)
+            if parser_class and subtitle_argument_names:
+                subtitle_available_arguments: dict[str, Any] = {
                     "keyword": search_word,
                     "page": page,
                     "search_type": search_type,
@@ -349,8 +349,8 @@ class IndexerModule(_ModuleBase):
                 return _IndexerSearchRequest(
                     parser_class=parser_class,
                     arguments=MappingProxyType({
-                        name: available_arguments[name]
-                        for name in argument_names
+                        name: subtitle_available_arguments[name]
+                        for name in subtitle_argument_names
                     }),
                 )
             return _IndexerSearchRequest(
@@ -363,9 +363,9 @@ class IndexerModule(_ModuleBase):
                 }),
             )
 
-        argument_names = _SPECIALIZED_SEARCH_ARGUMENTS.get(parser_name)
-        if parser_class and argument_names:
-            available_arguments = {
+        torrent_argument_names = _SPECIALIZED_SEARCH_ARGUMENTS.get(parser_name)
+        if parser_class and torrent_argument_names:
+            torrent_available_arguments: dict[str, Any] = {
                 "keyword": search_word,
                 "mtype": mtype,
                 "cat": cat,
@@ -374,8 +374,8 @@ class IndexerModule(_ModuleBase):
             return _IndexerSearchRequest(
                 parser_class=parser_class,
                 arguments=MappingProxyType({
-                    name: available_arguments[name]
-                    for name in argument_names
+                    name: torrent_available_arguments[name]
+                    for name in torrent_argument_names
                 }),
             )
 

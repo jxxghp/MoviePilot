@@ -1809,10 +1809,8 @@
     "type-arg": 5
   },
   "app/modules/indexer/spider/mtorrent.py": {
-    "arg-type": 5,
+    "arg-type": 3,
     "assignment": 4,
-    "no-untyped-def": 1,
-    "type-arg": 5,
     "var-annotated": 1
   },
   "app/modules/indexer/spider/rousi.py": {
