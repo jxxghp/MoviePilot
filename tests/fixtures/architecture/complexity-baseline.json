@@ -28,7 +28,6 @@
       "app/application/classification/projection.py:_project_condition": 16,
       "app/application/download/organization.py:organize_existing_source": 22,
       "app/application/formatting.py:EpisodeFormatRuleHelper._auto_recommend": 25,
-      "app/application/messaging/agent.py:apply_web_agent_display_event": 20,
       "app/application/messaging/skill.py:SkillInteractionHandler._handle_callback_interaction": 23,
       "app/application/messaging/skill.py:SkillInteractionHandler._handle_text_interaction": 27,
       "app/application/messaging/webagent/stream.py:_build_web_agent_event_generator": 16,
