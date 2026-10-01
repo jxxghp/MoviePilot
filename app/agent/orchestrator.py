@@ -339,6 +339,46 @@ class _ThinkTagStripper:
             self.buffer = ""
 
 
+def _is_thinking_content_block(block: Any) -> bool:
+    """判断内容块是否属于供应商返回的隐藏思考协议。"""
+    return bool(
+        hasattr(block, "get")
+        and (
+            block.get("thought")
+            or str(block.get("type") or "").lower()
+            in {"thinking", "reasoning", "reasoning_content", "redacted_thinking", "thought"}
+        )
+    )
+
+
+def _start_thinking_if_protocol_signal(
+    stream_handler: Any,
+    content: Any,
+    stripper: _ThinkTagStripper,
+    *,
+    protocol_signal: bool = False,
+) -> None:
+    """检测供应商思考协议后开启流式 thinking 生命周期。"""
+    start_thinking = getattr(stream_handler, "thinking_started", None)
+    if not callable(start_thinking):
+        return
+    if protocol_signal:
+        start_thinking()
+        return
+    if isinstance(content, str):
+        if "<think>" not in f"{stripper.buffer}{content}":
+            return
+    elif isinstance(content, list):
+        if not any(_is_thinking_content_block(block) for block in content):
+            return
+    elif hasattr(content, "get"):
+        if not _is_thinking_content_block(content):
+            return
+    else:
+        return
+    start_thinking()
+
+
 HEARTBEAT_SESSION_PREFIX = "__agent_heartbeat_"
 UNSUPPORTED_IMAGE_INPUT_MESSAGE = (
     "当前模型不支持图片输入，请更换支持图片输入的模型，或在系统设置中关闭图片输入支持后重试。"
@@ -2265,21 +2305,12 @@ class MoviePilotAgent:
         :param on_token: 收到有效 token 时的回调
         """
         stripper = _ThinkTagStripper()
-        thinking_started = stream_handler
-        thinking_finished = False
-        if thinking_started is not None:
-            start_thinking = getattr(thinking_started, "thinking_started", None)
-            if callable(start_thinking):
-                start_thinking()
 
         def emit_visible_token(text: str) -> None:
             """只在真正产生可见答案时结束思考状态，再转发正文。"""
-            nonlocal thinking_finished
-            if not thinking_finished:
-                finish_thinking = getattr(thinking_started, "thinking_finished", None)
-                if callable(finish_thinking):
-                    finish_thinking()
-                thinking_finished = True
+            finish_thinking = getattr(stream_handler, "thinking_finished", None)
+            if callable(finish_thinking):
+                finish_thinking()
             on_token(text)
 
         async for chunk in agent.astream(
@@ -2296,6 +2327,19 @@ class MoviePilotAgent:
                 if not token or not hasattr(token, "tool_call_chunks"):
                     continue
 
+                # reasoning_content 可能与工具调用分片位于同一个模型 token，先记录思考
+                # 协议，再丢弃不可见的工具调用分片。
+                additional = getattr(token, "additional_kwargs", None)
+                reasoning_content = additional.get("reasoning_content") if additional else None
+                has_reasoning_content = bool(reasoning_content)
+                if has_reasoning_content:
+                    _start_thinking_if_protocol_signal(
+                        stream_handler,
+                        reasoning_content,
+                        stripper,
+                        protocol_signal=True,
+                    )
+
                 if token.tool_call_chunks:
                     # 清除 stripper 内部缓冲中可能残留的 <think> 标签中间状态
                     stripper.reset()
@@ -2304,12 +2348,12 @@ class MoviePilotAgent:
                 # 以下处理纯文本token（tool_call_chunks为空）
 
                 # 跳过模型思考/推理内容（如 DeepSeek R1 的 reasoning_content）
-                additional = getattr(token, "additional_kwargs", None)
-                if additional and additional.get("reasoning_content"):
+                if has_reasoning_content:
                     continue
 
                 if token.content:
                     # content 可能是字符串或内容块列表，过滤掉思考类型的块
+                    _start_thinking_if_protocol_signal(stream_handler, token.content, stripper)
                     content = LLMHelper.extract_text_content(token.content)
                     if content:
                         stripper.process(content, emit_visible_token)

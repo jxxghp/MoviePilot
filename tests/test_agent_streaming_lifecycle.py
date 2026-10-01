@@ -1,6 +1,7 @@
 """Agent 渠道流式输出的 start/stop owner 生命周期测试。"""
 
 import asyncio
+from unittest.mock import patch
 
 import pytest
 
@@ -16,8 +17,7 @@ def test_thinking_status_is_replaced_by_first_answer_token() -> None:
 
     handler.thinking_started()
     assert handler._thinking_active is True
-    assert "思考中" in handler._buffer
-    assert handler._buffer.endswith("\n\n")
+    assert handler._buffer == "🤔 思考中 · 已用时 0 秒"
 
     handler.emit("最终答案")
 
@@ -34,8 +34,8 @@ def test_thinking_status_stays_separate_from_message_channel_tool_summary() -> N
     handler.thinking_started()
     handler.record_tool_call("read_file", tool_kwargs={"file_path": "README.md"})
 
-    assert handler._buffer.startswith("🤔 思考中 · 已用时 0 秒\n\n")
-    assert "\n\n（读取了 1 个文件）\n\n" in handler._buffer
+    assert handler._buffer.endswith("🤔 思考中 · 已用时 0 秒")
+    assert "（读取了 1 个文件）\n\n" in handler._buffer
 
     handler.emit("最终答案")
 
@@ -53,8 +53,49 @@ def test_tool_message_does_not_end_message_channel_thinking_status() -> None:
     handler.emit_tool_message("执行检查")
 
     assert handler._thinking_active is True
-    assert handler._buffer.startswith("🤔 思考中 · 已用时 0 秒\n\n")
+    assert handler._buffer.endswith("🤔 思考中 · 已用时 0 秒")
     assert "⚙️ => 执行检查" in handler._buffer
+
+
+def test_thinking_status_is_absent_for_a_non_thinking_model() -> None:
+    """未返回 reasoning 协议的模型不应被误报为思考中。"""
+    handler = StreamingHandler()
+    handler._can_stream = lambda: True
+    handler._streaming_enabled = True
+
+    handler.emit("普通回答")
+
+    assert handler._thinking_active is False
+    assert handler._thinking_started_at is None
+    assert handler._buffer == "普通回答"
+
+
+def test_thinking_waits_for_a_new_reasoning_signal_after_tools() -> None:
+    """工具结束后只有模型再次发出 reasoning，思考状态才回到消息末尾。"""
+    handler = StreamingHandler()
+    handler._can_stream = lambda: True
+    handler._streaming_enabled = True
+
+    handler.thinking_started()
+    handler.tool_call_started("first", "第一条")
+    handler.tool_call_started("second", "第二条")
+    handler.emit_tool_message("第一条")
+    handler.emit_tool_message("第二条")
+
+    assert handler._thinking_active is False
+    handler.tool_call_finished("first")
+    assert handler._thinking_active is False
+    handler.tool_call_finished("second")
+
+    assert handler._thinking_active is False
+    handler.thinking_started()
+    assert handler._thinking_active is True
+    assert handler._buffer.endswith("🤔 思考中 · 已用时 0 秒")
+    assert handler._buffer.index("⚙️ => 第一条") < handler._buffer.index("思考中")
+
+    handler.emit("最终答案")
+    assert handler._thinking_active is False
+    assert "思考中" not in handler._buffer
 
 
 def test_web_agent_thinking_status_is_only_a_structured_event() -> None:
@@ -69,6 +110,64 @@ def test_web_agent_thinking_status_is_only_a_structured_event() -> None:
     assert events[0]["type"] == "thinking"
     assert events[0]["status"] == "running"
     assert events[1] == {"type": "thinking", "status": "done"}
+
+
+def test_web_agent_thinking_event_follows_tool_completion() -> None:
+    """WebAgent 应在工具完成事件之后重新发布 thinking，保持时间线末尾一致。"""
+    events: list[dict[str, object]] = []
+    handler = _get_web_agent_streaming_handler_type()(lambda _text: None, events.append)
+    handler._streaming_enabled = True
+    handler._is_verbose_mode = lambda: True
+
+    with patch("app.agent.callback.get_runtime_setting", return_value=True):
+        handler.thinking_started()
+        tool_id = handler.tool_call_started("search", "查询媒体")
+        handler.tool_call_finished(tool_id)
+        handler.thinking_started()
+
+    assert [event["type"] for event in events] == [
+        "thinking",
+        "thinking",
+        "tool",
+        "tool",
+        "thinking",
+    ]
+    assert [event.get("status") for event in events] == [
+        "running",
+        "done",
+        "running",
+        "done",
+        "running",
+    ]
+
+
+def test_web_agent_does_not_duplicate_thinking_running_event() -> None:
+    """重复收到 thinking 开始信号时，Web 时间线只保留一个运行事件。"""
+    events: list[dict[str, object]] = []
+    handler = _get_web_agent_streaming_handler_type()(lambda _text: None, events.append)
+    handler._streaming_enabled = True
+
+    with patch("app.agent.callback.get_runtime_setting", return_value=True):
+        handler.thinking_started()
+        handler.thinking_started()
+
+    assert events and len(events) == 1
+    assert events[0]["type"] == "thinking"
+    assert events[0]["status"] == "running"
+
+
+@pytest.mark.asyncio
+async def test_web_agent_stop_finishes_active_thinking() -> None:
+    """Web 流结束时必须收口尚未产生正文的 thinking 生命周期。"""
+    events: list[dict[str, object]] = []
+    handler = _get_web_agent_streaming_handler_type()(lambda _text: None, events.append)
+    handler._streaming_enabled = True
+
+    with patch("app.agent.callback.get_runtime_setting", return_value=True):
+        handler.thinking_started()
+        await handler.stop_streaming()
+
+    assert [event["status"] for event in events] == ["running", "done"]
 
 
 @pytest.mark.asyncio

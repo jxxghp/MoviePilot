@@ -34,6 +34,9 @@ from app.application.messaging.agent import (
     build_web_agent_command_items as _build_web_agent_command_items,
 )
 from app.application.messaging.agent import (
+    build_web_agent_display_message as _build_web_agent_display_message,
+)
+from app.application.messaging.agent import (
     build_web_agent_display_message_from_events as _build_web_agent_display_message_from_events,
 )
 from app.application.messaging.agent import (
@@ -408,6 +411,22 @@ def test_apply_web_agent_display_event_updates_snapshot():
         {"type": "text", "content": "，查询完成"},
     ]
     assert message["attachments"] == [{"kind": "file", "url": "message/agent/file/a"}]
+
+
+def test_apply_web_agent_display_event_done_clears_thinking_snapshot():
+    """WebAgent 终态事件应清理没有正文收口的 thinking 标记。"""
+    message = _build_web_agent_display_message(role="assistant", status="streaming")
+
+    _apply_web_agent_display_event(
+        {"type": "thinking", "status": "running", "started_at": 123},
+        message,
+    )
+    assert message["thinking"] is True
+
+    _apply_web_agent_display_event({"type": "done"}, message)
+
+    assert message["thinking"] is False
+    assert message["status"] == "done"
 
 
 def test_apply_web_agent_display_event_tracks_parallel_tool_lifecycle_by_id():
