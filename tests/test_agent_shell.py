@@ -174,12 +174,15 @@ def test_windows_subprocess_environment_forces_utf8_after_overrides() -> None:
 
 
 def test_project_python_environment_precedes_inherited_path(tmp_path: Path) -> None:
-    """项目 venv 存在时应优先于宿主 PATH，并声明虚拟环境。"""
+    """项目 venv 存在时应优先于宿主 PATH，并声明专用 Python 入口。"""
     bin_path = tmp_path / "venv" / ("Scripts" if os.name == "nt" else "bin")
     bin_path.mkdir(parents=True)
     python_path = bin_path / ("python.exe" if os.name == "nt" else "python")
+    runtime_path = bin_path / ("moviepilot-python.exe" if os.name == "nt" else "moviepilot-python")
     python_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    runtime_path.write_text("#!/bin/sh\n", encoding="utf-8")
     python_path.chmod(0o755)
+    runtime_path.chmod(0o755)
 
     environment = bind_agent_project_environment(
         {"PATH": "/system/bin", "VIRTUAL_ENV": "/old/venv"},
@@ -188,6 +191,37 @@ def test_project_python_environment_precedes_inherited_path(tmp_path: Path) -> N
 
     assert environment["PATH"].split(os.pathsep)[0] == str(bin_path)
     assert environment["VIRTUAL_ENV"] == str(tmp_path / "venv")
+    assert environment["MOVIEPILOT_PYTHON"] == str(runtime_path)
+
+
+def test_project_python_environment_falls_back_without_runtime_launcher(tmp_path: Path) -> None:
+    """项目专用入口缺失时应回退到标准 venv Python。"""
+    bin_path = tmp_path / "venv" / ("Scripts" if os.name == "nt" else "bin")
+    bin_path.mkdir(parents=True)
+    python_path = bin_path / ("python.exe" if os.name == "nt" else "python")
+    python_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    python_path.chmod(0o755)
+
+    environment = bind_agent_project_environment({"PATH": "/system/bin"}, project_root=tmp_path)
+
+    assert environment["MOVIEPILOT_PYTHON"] == str(python_path)
+
+
+def test_configured_python_environment_supports_docker_venv(tmp_path: Path) -> None:
+    """Docker 的 VENV_PATH 存在时应使用其中的标准 Python 入口。"""
+    bin_path = tmp_path / "bin"
+    bin_path.mkdir(parents=True)
+    python_path = bin_path / "python3"
+    python_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    python_path.chmod(0o755)
+
+    environment = bind_agent_project_environment(
+        {"PATH": "/usr/bin", "VENV_PATH": str(tmp_path)},
+        project_root=tmp_path / "app",
+    )
+
+    assert environment["VIRTUAL_ENV"] == str(tmp_path)
+    assert environment["MOVIEPILOT_PYTHON"] == str(python_path)
 
 
 def test_project_python_environment_keeps_environment_when_venv_missing(tmp_path: Path) -> None:
@@ -208,6 +242,15 @@ def test_prompt_injects_selected_windows_shell_without_executable_path() -> None
 
     assert "PowerShell 7" in moviepilot_info
     assert "C:/secret/location/pwsh.exe" not in moviepilot_info
+
+
+def test_prompt_prioritizes_project_runtime_python() -> None:
+    """运行提示应指示专用入口优先并覆盖需要系统权限的操作。"""
+    moviepilot_info = PromptManager()._get_moviepilot_info()
+
+    assert "MOVIEPILOT_PYTHON" in moviepilot_info
+    assert "moviepilot-python" in moviepilot_info
+    assert "下载器、SMB、媒体服务器" in moviepilot_info
 
 
 @pytest.mark.anyio
@@ -258,8 +301,11 @@ async def test_execute_command_binds_project_python_environment(tmp_path: Path, 
     bin_path = tmp_path / "venv" / ("Scripts" if os.name == "nt" else "bin")
     bin_path.mkdir(parents=True)
     python_path = bin_path / ("python.exe" if os.name == "nt" else "python")
+    runtime_path = bin_path / ("moviepilot-python.exe" if os.name == "nt" else "moviepilot-python")
     python_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    runtime_path.write_text("#!/bin/sh\n", encoding="utf-8")
     python_path.chmod(0o755)
+    runtime_path.chmod(0o755)
     monkeypatch.setattr(
         "app.agent.tools.impl.execute_command.get_runtime_setting",
         lambda key: tmp_path if key == "ROOT_PATH" else None,
@@ -277,6 +323,7 @@ async def test_execute_command_binds_project_python_environment(tmp_path: Path, 
     environment = create_exec.await_args.kwargs["env"]
     assert environment["PATH"].split(os.pathsep)[0] == str(bin_path)
     assert environment["VIRTUAL_ENV"] == str(tmp_path / "venv")
+    assert environment["MOVIEPILOT_PYTHON"] == str(runtime_path)
 
 
 @pytest.mark.anyio
