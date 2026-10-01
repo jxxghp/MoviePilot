@@ -330,6 +330,37 @@ class StorageBase(metaclass=ABCMeta):
             if PurePosixPath(file_path).is_relative_to(root_path)
         }
 
+        # 每次目录列举只需要核对该目录的直接子项。旧实现会在每层目录
+        # 上重新扫描整份 files_info，云盘监控目录较多时会退化为
+        # O(目录数 * 文件数)。预先按“目录 -> 直接子项”建立索引，删除
+        # 目录时沿索引移除其完整子树，但不再重复遍历全量快照。
+        previous_children: Dict[PurePosixPath, set[PurePosixPath]] = {}
+        previous_files: Dict[PurePosixPath, str] = {}
+        if files_info:
+            for file_path in files_info:
+                file_posix_path = PurePosixPath(file_path)
+                previous_files[file_posix_path] = file_path
+                try:
+                    relative_parts = file_posix_path.relative_to(root_path).parts
+                except ValueError:
+                    # files_info 已经按 root_path 过滤；保留防御性判断，避免
+                    # 非标准路径对象让增量索引中断整轮监控。
+                    continue
+                for depth in range(len(relative_parts)):
+                    directory_path = root_path.joinpath(*relative_parts[:depth])
+                    child_path = directory_path / relative_parts[depth]
+                    previous_children.setdefault(directory_path, set()).add(child_path)
+
+        def __remove_previous_subtree(path: PurePosixPath) -> None:
+            """沿旧快照索引移除一个已经消失的直接子树。"""
+            pending = [path]
+            while pending:
+                current_path = pending.pop()
+                old_file_path = previous_files.pop(current_path, None)
+                if old_file_path is not None:
+                    files_info.pop(old_file_path, None)
+                pending.extend(previous_children.pop(current_path, ()))
+
         def __remove_deleted_children(_fileitm: _SchemaFileItem,
                                       sub_files: List[_SchemaFileItem]) -> None:
             """
@@ -338,16 +369,9 @@ class StorageBase(metaclass=ABCMeta):
             """
             directory_path = PurePosixPath(_fileitm.path)
             child_paths = {PurePosixPath(sub_file.path) for sub_file in sub_files}
-            for old_file_path in list(files_info):
-                try:
-                    relative_path = PurePosixPath(old_file_path).relative_to(directory_path)
-                except ValueError:
-                    continue
-                if not relative_path.parts:
-                    continue
-                direct_child_path = directory_path / relative_path.parts[0]
+            for direct_child_path in previous_children.pop(directory_path, ()):
                 if direct_child_path not in child_paths:
-                    files_info.pop(old_file_path, None)
+                    __remove_previous_subtree(direct_child_path)
 
         def __snapshot_file(_fileitm: _SchemaFileItem, current_depth: int = 0):
             """
