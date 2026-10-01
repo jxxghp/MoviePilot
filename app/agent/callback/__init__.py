@@ -521,10 +521,9 @@ class StreamingHandler:
         live_summary = self._live_tool_summary
         visible_buffer = self._buffer
         live_start = len(self._buffer)
-        old_summary = None
 
         if live_summary and self._buffer[live_summary[0] :] == live_summary[1]:
-            live_start, _old_block, old_summary = live_summary
+            live_start, _old_block, _old_summary = live_summary
             visible_buffer = self._buffer[:live_start]
 
         if self._pending_tool_stats:
@@ -535,8 +534,8 @@ class StreamingHandler:
             return ""
 
         summary, summary_block = pending_summary
-        if old_summary:
-            self._tool_summaries.discard(old_summary)
+        # 保留历史摘要的样式登记。相同文案可能在不同工具批次重复出现，
+        # 删除旧字符串会让前一批已写入消息在后续编辑时失去富文本样式。
         self._tool_summaries.add(summary)
         self._buffer = visible_buffer + summary_block
         self._live_tool_summary = (len(visible_buffer), summary_block, summary)

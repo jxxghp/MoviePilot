@@ -2275,8 +2275,6 @@ class MoviePilotAgent:
         def emit_visible_token(text: str) -> None:
             """只在真正产生可见答案时结束思考状态，再转发正文。"""
             nonlocal thinking_finished
-            if not text:
-                return
             if not thinking_finished:
                 finish_thinking = getattr(thinking_started, "thinking_finished", None)
                 if callable(finish_thinking):

@@ -768,6 +768,32 @@ class TestAgentToolStreaming:
 
         assert rich_message == "正文内容\n\n> （执行了 1 条命令）\n\n后续结论"
 
+    def test_rich_message_keeps_previous_tool_summaries_styled_after_edits(self):
+        """Telegram 后续编辑时，重复文案的历史工具摘要仍应保持引用样式。"""
+        handler = StreamingHandler()
+        handler._channel = NotificationChannel.Telegram.value
+        handler._streaming_enabled = True
+        handler._can_stream = lambda: True
+
+        for _ in range(3):
+            handler.record_tool_call(
+                tool_name="execute_command",
+                tool_message="执行命令",
+                tool_kwargs={},
+            )
+        handler.emit("第一批完成")
+        for _ in range(4):
+            handler.record_tool_call(
+                tool_name="execute_command",
+                tool_message="执行命令",
+                tool_kwargs={},
+            )
+
+        rich_message = handler._get_rich_message(handler._buffer)
+
+        assert "> （执行了 3 条命令）" in rich_message
+        assert "> （执行了 4 条命令）" in rich_message
+
     def test_rich_message_returns_none_for_non_telegram_channels(self):
         """校验非 Telegram 渠道不启用富文本，摘要保持原有纯文本格式。"""
         handler = StreamingHandler()
