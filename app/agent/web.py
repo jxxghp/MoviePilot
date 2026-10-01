@@ -19,6 +19,10 @@ class _WebAgentStreamingHandlerMixin:
     _lock: Lock
     _pending_tool_stats: dict[str, int]
 
+    def _should_buffer_thinking_status(self) -> bool:
+        """WebAgent 通过结构化 SSE 展示思考状态，不把它写入正文。"""
+        return False
+
     def __init__(
         self,
         on_emit: Callable[[str], None],
