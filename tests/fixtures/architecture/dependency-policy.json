@@ -141,7 +141,7 @@
           {"source": "app.modules.discord.discord", "target": "discord", "kind": "network_sdk", "fingerprint": "e1486525fedbfe574aa47d60b483426c8c48e4e27fa35dbe34f6cd2f47d37c86"},
           {"source": "app.modules.filemanager.storages.smb", "target": "smbclient", "kind": "network_sdk", "fingerprint": "37619f050b03598fa559c6ae2df94bda6adf7cffd1cc42d9db9059f1fb41af47"},
           {"source": "app.modules.filemanager.storages.u115", "target": "oss2", "kind": "network_sdk", "fingerprint": "f7b89c8ae6dad2603f0a9e0caaa159769aef5b3581d7e728f62445b979366eae"},
-          {"source": "app.modules.plex.plex", "target": "plexapi", "kind": "network_sdk", "fingerprint": "55baa4290bb62468d504e954add3921c0068f3a3c77aa3db92667ae9022909ca"},
+          {"source": "app.modules.plex.plex", "target": "plexapi", "kind": "network_sdk", "fingerprint": "878d3f54d6cd10d582e9670bec1b2a499f1f4c5a359a3cead7eaee79361b8a97"},
           {"source": "app.modules.qbittorrent.qbittorrent", "target": "qbittorrentapi", "kind": "network_sdk", "fingerprint": "b2f5a27f0c54cf95ed42fe99848fd6c9c0641caca8bc4ff8006a411cb427066d"},
           {"source": "app.modules.slack.slack", "target": "slack_bolt", "kind": "network_sdk", "fingerprint": "be5dcb032ece8d8627abeb243f98143aaf60f26751ab6e5e098813d4048419e6"},
           {"source": "app.modules.slack.slack", "target": "slack_sdk", "kind": "network_sdk", "fingerprint": "7559f31e4172ad3bbbaf161e1164ea48b997c56d05c77b49b82626298c39aa14"},
@@ -201,6 +201,7 @@
           {"source": "app.modules.emby.emby", "target": "requests", "kind": "raw_transport", "fingerprint": "6c4c17fe170226ea1272f5859bc119c2775442cabe8ce2a9edcabaf9c37bec31"},
           {"source": "app.modules.filemanager.storages.smb", "target": "smbprotocol", "kind": "network_sdk", "fingerprint": "f02686afd99c59820dffa7b4c2627a0be1ad62980c98a9cd33b7564697842b22"},
           {"source": "app.modules.jellyfin.jellyfin", "target": "requests", "kind": "raw_transport", "fingerprint": "5c46d09ca9a4bcc0bae21ca5d554ef09baa3f901c562b27c5f5ee1439c7746b5"},
+          {"source": "app.modules.plex.plex", "target": "requests", "kind": "raw_transport", "fingerprint": "e49c0856fd6c99a3409850898aac7e6e3fa611d4e91546634c178fbfd244e8da"},
           {"source": "app.modules.rtorrent.rtorrent", "target": "http.client", "kind": "raw_transport", "fingerprint": "6adc93b3bc479dfe81197554c7977930a60abc51714f14ef29298eb40730aaf7"},
           {"source": "app.modules.zspace.zspace", "target": "requests", "kind": "raw_transport", "fingerprint": "9df3fd27b9696d45a72e7c8f67b5a9ad79a7371d1fe690bbaa17485bd1960d51"}
         ]
