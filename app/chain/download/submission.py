@@ -443,6 +443,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
                     f"{media.type.value} {media.title_year} 未找到下载目录！",
                     title="下载失败",
                     role="system",
+                    level="error",
                 )
             return None, error_msg or "未找到下载目录"
         download_uri = FileURI(storage=storage, path=download_dir.as_posix()).uri

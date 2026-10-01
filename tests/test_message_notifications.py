@@ -132,6 +132,24 @@ def test_system_helper_message_only_enters_sse_queue() -> None:
     assert realtime_message["text"] == "调度任务执行失败"
 
 
+def test_system_helper_message_carries_business_type_and_level() -> None:
+    """
+    实时消息应携带业务类型和严重级别，未标记级别的系统消息不应被当作错误。
+    """
+    helper = MessageHelper()
+    _reset_message_helper(helper)
+
+    helper.put("测试剧集 搜索完成！", role="system", title="订阅搜索", mtype=MessageType.Subscribe)
+    helper.put("用户认证失败", role="system", title="用户认证", level="warning")
+
+    subscribe_message = json.loads(helper.get())
+    assert subscribe_message["mtype"] == "订阅"
+    assert subscribe_message["level"] is None
+    warning_message = json.loads(helper.get())
+    assert warning_message["mtype"] is None
+    assert warning_message["level"] == "warning"
+
+
 def test_plugin_helper_message_deduplicates_recent_sse_messages() -> None:
     """
     短时间内相同插件实时消息只应推送一次，不写入通知历史。
