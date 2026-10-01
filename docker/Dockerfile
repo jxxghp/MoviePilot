@@ -285,6 +285,11 @@ RUN mkdir -p \
 # final 阶段: 安装运行时依赖和配置最终镜像
 FROM prepare_package AS final
 
+# 运行时使用独立虚拟环境和 uv，不需要基础镜像自带的系统 pip；移除它及其
+# vendored 依赖，避免将已修复版本之外的 urllib3 打包进最终镜像。
+RUN python3 -m pip uninstall -y pip \
+    && rm -f /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.14
+
 # jemalloc 默认按 CPU 数×4 建 arena，空闲 arena 的脏页会长期计入 RSS。脏页按 5 秒衰减归还
 # （muzzy 直接归还，避免 MADV_FREE 页继续计入 RSS）；arena 限制为 8 个，带 GIL 的 Python 大块分配竞争很小。
 # 后台回收线程由主进程启动时自行开启，不能写在这里：子进程继承 MALLOC_CONF 后 Chromium 无法启动。
