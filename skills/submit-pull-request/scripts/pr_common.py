@@ -21,12 +21,19 @@ from typing import Any, Iterator, Optional
 def _find_repo_root() -> Path:
     """从当前工作目录或 Skill 路径定位 MoviePilot 源码根目录。"""
     script_path = Path(__file__).resolve()
-    candidates = [Path.cwd().resolve(), *Path.cwd().resolve().parents]
+    candidates = []
+    configured_root = os.environ.get("MOVIEPILOT_ROOT", "").strip()
+    if configured_root:
+        candidates.append(Path(configured_root).expanduser())
+    candidates.extend([Path.cwd().resolve(), *Path.cwd().resolve().parents])
     candidates.extend([script_path.parent, *script_path.parents])
     for candidate in candidates:
         if (candidate / "app" / "runtime" / "config.py").is_file():
             return candidate
-    return script_path.parents[3]
+    raise RuntimeError(
+        "无法定位 MoviePilot 程序目录；请在程序目录执行，或设置 MOVIEPILOT_ROOT="
+        "<程序目录> 后重试。"
+    )
 
 
 SCRIPT_ROOT = _find_repo_root()

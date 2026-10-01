@@ -17,12 +17,19 @@ from urllib.parse import quote, urlparse
 def _find_repo_root() -> Path:
     """从当前工作目录和脚本路径向上查找 MoviePilot 仓库根目录。"""
     script_path = Path(__file__).resolve()
-    candidates = [Path.cwd().resolve(), *Path.cwd().resolve().parents]
+    candidates = []
+    configured_root = os.environ.get("MOVIEPILOT_ROOT", "").strip()
+    if configured_root:
+        candidates.append(Path(configured_root).expanduser())
+    candidates.extend([Path.cwd().resolve(), *Path.cwd().resolve().parents])
     candidates.extend([script_path.parent, *script_path.parents])
     for candidate in candidates:
-        if (candidate / "app" / "core" / "config.py").is_file():
+        if (candidate / "app" / "runtime" / "config.py").is_file():
             return candidate
-    return script_path.parents[3]
+    raise RuntimeError(
+        "无法定位 MoviePilot 程序目录；请在程序目录执行，或设置 MOVIEPILOT_ROOT="
+        "<程序目录> 后重试。"
+    )
 
 
 REPO_ROOT = _find_repo_root()

@@ -23,6 +23,24 @@ DEFAULT_TIMEOUT = 60
 GITHUB_API_BASE = "https://api.github.com"
 USER_AGENT = "MoviePilot-Plugin-Publisher"
 COMMANDS_REQUIRE_LOCAL_PLUGIN = {"preview", "push", "pull"}
+
+
+def _find_project_root() -> Path:
+    """从运行环境或目录标记定位 MoviePilot 程序目录。"""
+    candidates = []
+    configured_root = os.environ.get("MOVIEPILOT_ROOT", "").strip()
+    if configured_root:
+        candidates.append(Path(configured_root).expanduser())
+    script_path = Path(__file__).resolve()
+    candidates.extend([Path.cwd().resolve(), *Path.cwd().resolve().parents])
+    candidates.extend([script_path.parent, *script_path.parents])
+    for candidate in candidates:
+        if (candidate / "app" / "runtime" / "config.py").is_file():
+            return candidate
+    raise RuntimeError(
+        "无法定位 MoviePilot 程序目录；请在程序目录执行，或设置 MOVIEPILOT_ROOT="
+        "<程序目录> 后重试。"
+    )
 PACKAGE_BY_VERSION = {
     "legacy": ("package.json", "plugins"),
     "v1": ("package.json", "plugins"),
@@ -433,7 +451,7 @@ def load_request_utils_class() -> type:
     :return: RequestUtils 类
     """
     try:
-        root = Path(__file__).resolve().parents[3]
+        root = _find_project_root()
         if str(root) not in sys.path:
             sys.path.insert(0, str(root))
         from app.adapters.network.http import RequestUtils  # pylint: disable=import-outside-toplevel
@@ -581,7 +599,7 @@ def load_moviepilot_settings() -> Any:
     :return: settings 对象或 None
     """
     try:
-        root = Path(__file__).resolve().parents[3]
+        root = _find_project_root()
         if str(root) not in sys.path:
             sys.path.insert(0, str(root))
         from app.runtime.config import settings  # pylint: disable=import-outside-toplevel
