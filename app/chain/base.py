@@ -179,6 +179,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
             title=f"{plugin_name} 运行失败",
             message=f"{plugin_id}.{method}：{str(err).strip() or type(err).__name__}",
             role="plugin",
+            level="error",
         )
         self.eventmanager.send_event(
             EventType.SystemError,
@@ -203,6 +204,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
             title=f"{module_name}运行失败",
             message=f"{module_id}.{method}：{str(err).strip() or type(err).__name__}",
             role="system",
+            level="error",
         )
         self.eventmanager.send_event(
             EventType.SystemError,

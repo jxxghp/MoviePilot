@@ -28,7 +28,7 @@ from app.runtime.stop import runtime_stop_state
 from app.schemas.message import Message
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.transfer import TransferInfo
-from app.schemas.types import MUSIC_ENTITY_ALBUM, SystemConfigKey
+from app.schemas.types import MUSIC_ENTITY_ALBUM, MessageType, SystemConfigKey
 
 # 专辑名尾部的括号年份标记；重命名模板会独立追加 `({{year}})`，
 # 标签或目录名中自带的尾部年份若不剥离，会生成重复年份的目录名（issue #6355）
@@ -1189,6 +1189,10 @@ class MessageQueueManager(metaclass=SingletonClass):
         return True
 
 
+# 实时通知严重级别：前端据此决定图标与颜色，error/warning 优先于业务类型展示
+NotificationLevel = Literal["info", "success", "warning", "error"]
+
+
 class MessageHelper(metaclass=Singleton):
     """
     消息队列管理器，负责系统和插件实时消息的 SSE 推送
@@ -1234,13 +1238,24 @@ class MessageHelper(metaclass=Singleton):
         self._recent_notification_keys.set(key, True)
         return False
 
-    def put(self, message: Any, role: str = "plugin", title: str = None, note: Union[list, dict] = None):
+    def put(
+            self,
+            message: Any,
+            role: str = "plugin",
+            title: str = None,
+            note: Union[list, dict] = None,
+            mtype: Optional[MessageType] = None,
+            level: Optional[NotificationLevel] = None,
+    ):
         """
         存消息
         :param message: 消息
-        :param role: 消息通道 system：系统消息，plugin：插件消息
+        :param role: 消息通道 system：系统消息，plugin：插件消息；只表示来源，不表示严重程度
         :param title: 标题
         :param note: 附件json
+        :param mtype: 业务类型，前端据此选择业务图标，例如订阅消息显示订阅图标
+        :param level: 严重级别 info/success/warning/error；未设置时前端按普通通知展示，
+                      失败或需要用户处理的消息必须显式标记，才会显示为警示样式
         """
         if role not in ["system", "plugin"]:
             return
@@ -1254,7 +1269,9 @@ class MessageHelper(metaclass=Singleton):
             "title": title,
             "text": message,
             "date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-            "note": note
+            "note": note,
+            "mtype": mtype.value if mtype else None,
+            "level": level,
         }))
 
     def get(self, role: str = "system") -> Optional[str]:

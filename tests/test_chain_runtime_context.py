@@ -120,6 +120,7 @@ def test_module_error_notification_preserves_reason(source, asynchronous, error,
         title="测试插件 运行失败" if source == "plugin" else "测试模块运行失败",
         message=f"{source_id}.{method}：{expected_reason}",
         role=source,
+        level="error",
     )
     chain.eventmanager.send_event.assert_called_once()
     event_type, payload = chain.eventmanager.send_event.call_args.args

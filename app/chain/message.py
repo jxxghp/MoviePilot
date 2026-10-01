@@ -1476,7 +1476,7 @@ class MessageChain(ChainBase):
 
         except Exception as e:
             logger.error(f"处理AI智能体消息失败: {e}", exc_info=True)
-            self.messagehelper.put("智能助手执行失败，请稍后重试", role="system", title="MoviePilot助手")
+            self.messagehelper.put("智能助手执行失败，请稍后重试", role="system", title="MoviePilot助手", level="error")
             return False
 
     def _transcribe_audio_refs(
