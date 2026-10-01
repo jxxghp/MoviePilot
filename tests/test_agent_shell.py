@@ -6,6 +6,7 @@ import ntpath
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -154,6 +155,28 @@ def test_posix_shell_policy_preserves_native_shell_and_environment(monkeypatch) 
     assert agent_text_subprocess_kwargs(platform_name="posix") == {}
 
 
+def test_posix_shell_routes_bare_python_to_project_runtime() -> None:
+    """Agent 的裸 python 命令应在本次 shell 中使用项目专用运行时。"""
+    shell = resolve_agent_shell(
+        platform_name="posix",
+        environment={"SHELL": "/bin/sh", "MOVIEPILOT_PYTHON": sys.executable},
+    )
+
+    command = shell.build_argv("python -c 'print(1)'")[-1]
+    assert "python()" in command
+    assert "python3()" in command
+    assert command.endswith("python -c 'print(1)'")
+
+    result = subprocess.run(
+        shell.build_argv("python -c 'print(1)'"),
+        env={"PATH": os.environ["PATH"]},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stdout == "1\n"
+
+
 def test_windows_subprocess_environment_forces_utf8_after_overrides() -> None:
     """Windows 调用方不能通过自定义环境重新引入本地默认编码。"""
     environment = build_agent_subprocess_env(
@@ -245,10 +268,10 @@ def test_prompt_injects_selected_windows_shell_without_executable_path() -> None
 
 
 def test_prompt_prioritizes_project_runtime_python() -> None:
-    """运行提示应指示专用入口优先并覆盖需要系统权限的操作。"""
+    """运行提示应指示裸 Python 自动使用专用入口。"""
     moviepilot_info = PromptManager()._get_moviepilot_info()
 
-    assert "MOVIEPILOT_PYTHON" in moviepilot_info
+    assert "裸 `python`/`python3`" in moviepilot_info
     assert "moviepilot-python" in moviepilot_info
     assert "下载器、SMB、媒体服务器" in moviepilot_info
 

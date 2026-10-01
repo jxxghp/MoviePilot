@@ -65,7 +65,7 @@ Agent 人格是全局运行时配置，不按用户隔离；所有用户共享�
 
 `execute_command(action="run")` 返回结构化 JSON：`exit_code`、`timed_out`、`execution_outcome` 和 `status` 表示实际执行结果，`output` 保存输出预览，`output_file` 指向超长输出的临时归档。仅正常退出且退出码为 0 时成功；非零退出或已停止的超时命令为失败，无法确认进程结束时为未知，不能凭“有输出”判断成功。超时和取消不会撤销命令已经产生的外部副作用。取消继续向外传播，同时回收输出读取任务、关闭归档文件；`run` 与 `start` 都支持 `env`，并采用同一工作目录与解释器策略。
 
-项目安装目录存在 `venv`，或 Docker 的 `VENV_PATH` 环境存在时，`execute_command` 的一次性命令、pipe 和 PTY 会把该环境的 `bin`（Windows 为 `Scripts`）放在子进程 `PATH` 最前，设置 `VIRTUAL_ENV`，并设置 `MOVIEPILOT_PYTHON`。该变量优先指向 `moviepilot-python`，不存在时回退到同目录的 `python`/`python3`（Windows 对应 `Scripts`）；执行 Python 优先使用该变量的 `-m ...`，尤其是下载器、SMB、媒体服务器等需要系统权限的操作。安装依赖优先使用项目 `uv pip ...` 或该变量指向的 `-m pip ...`，不要改用系统解释器或 `sudo pip`。
+项目安装目录存在 `venv`，或 Docker 的 `VENV_PATH` 环境存在时，`execute_command` 的一次性命令、pipe 和 PTY 会把该环境的 `bin`（Windows 为 `Scripts`）放在子进程 `PATH` 最前，设置 `VIRTUAL_ENV`，并让裸 `python`/`python3` 使用项目专用入口 `moviepilot-python`；入口不存在时回退到环境中的标准 Python。执行 Python 直接使用 `python -m ...`，尤其是下载器、SMB、媒体服务器等需要系统权限的操作。安装依赖优先使用项目 `uv pip ...` 或绑定环境中的 `python -m pip ...`，不要改用系统解释器或 `sudo pip`。
 
 `run`、后台 pipe 和 PTY 共用 `cwd`、`shell`、`login` 解析。省略 `cwd` 使用 MoviePilot 根目录，相对路径也相对该目录，并支持 `~`；错误目录在进程启动前拒绝。POSIX 默认使用配置的 `SHELL`（未配置时 `/bin/sh`）且不启动登录模式，显式 `shell` 可选择已安装解释器，`login=true/false` 控制其支持的登录行为。登录启动文件可能改变目录或环境；PTY 本身不再隐式开启登录模式。Windows 未显式指定时保留 Git Bash → PowerShell 7 → cmd 的选择顺序与 UTF-8 策略；不支持的解释器/登录组合明确失败。回包的 `shell`、`login` 说明实际策略，默认解释器不可用不会阻断其它 Agent 业务能力。
 

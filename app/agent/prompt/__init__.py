@@ -265,7 +265,7 @@ class PromptManager:
             f"- 当前日期: {strftime('%Y-%m-%d')}",
             f"- 运行环境: {SystemUtils.platform} {'docker' if SystemUtils.is_docker() else ''}",
             "- 详细运行状态和数据库通过 `query_doctor_report` 或 `execute_command` 查询；配置值先加载对应 Skill，再通过 `moviepilot_api` 的配置 operation 查询。",
-            "- Python 命令: Agent 设置 `MOVIEPILOT_PYTHON` 为项目 `venv` 或 `VENV_PATH` 环境中的专用入口 `moviepilot-python`（不存在时回退到 `python`/`python3`，Windows 对应 `Scripts`），并设置 `VIRTUAL_ENV`；请优先使用该变量执行 `-m ...`，尤其是下载器、SMB、媒体服务器等需要系统权限的操作。安装依赖优先使用项目 `uv pip ...` 或该变量指向的 `-m pip ...`，不要切换到系统 Python 或使用 `sudo pip`。",
+            "- Python 命令: 项目 `venv` 或 Docker 的 `VENV_PATH` 存在时，Agent 会把它放在命令 PATH 最前，并让裸 `python`/`python3` 自动使用专用入口 `moviepilot-python`；入口不存在时回退到环境中的标准 Python（Windows 对应 `Scripts`）。请直接使用 `python -m ...`，尤其是下载器、SMB、媒体服务器等需要系统权限的操作。安装依赖优先使用项目 `uv pip ...` 或绑定环境中的 `python -m pip ...`，不要切换到系统 Python 或使用 `sudo pip`。",
         ]
         try:
             shell = resolve_agent_shell(cwd=str(get_runtime_setting("ROOT_PATH")))

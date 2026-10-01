@@ -29,15 +29,11 @@ runtime, for example:
 
 ```bash
 cd <MOVIEPILOT_ROOT>
-PYTHON="${MOVIEPILOT_PYTHON:-venv/bin/moviepilot-python}"
-[ -x "$PYTHON" ] || PYTHON="${VENV_PATH:-venv}/bin/python"
-[ -x "$PYTHON" ] || PYTHON="${VENV_PATH:-venv}/bin/python3"
-"$PYTHON" skills/database-operation/scripts/mp-db.py tables
+python skills/database-operation/scripts/mp-db.py tables
 ```
 
-Prefer the project-specific `moviepilot-python` entry; fall back to `python` or `python3`
-from the project or Docker `VENV_PATH` only when it is unavailable. Agent
-`execute_command` automatically provides `$MOVIEPILOT_PYTHON`.
+The Agent command environment routes `python` to the project-specific `moviepilot-python`
+entry when available and falls back to the project or Docker `VENV_PATH` Python otherwise.
 
 The runtime sets `MOVIEPILOT_ROOT` for copied skills. If you run a copied
 script directly from `<CONFIG_PATH>/agent/skills/`, set that variable to the
