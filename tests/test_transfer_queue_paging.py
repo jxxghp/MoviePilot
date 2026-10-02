@@ -1,7 +1,11 @@
+import asyncio
+import inspect
 from unittest.mock import Mock
 
 import pytest
 
+from app.adapters.web.security.access import verify_token
+from app.api.endpoints import transfer as transfer_endpoint
 from app.application.transfer.jobs import JobManager
 from app.application.transfer.workflow import TransferQueueService
 from app.schemas.file import FileItem
@@ -96,6 +100,39 @@ def test_transfer_queue_service_uses_bounded_projection_after_expiring_tasks():
     assert total == 101
     expire_tasks.assert_called_once_with()
     list_tasks_page.assert_called_once_with(3, 50)
+
+
+def test_queue_page_endpoint_exposes_bounded_projection_with_existing_transfer_auth(monkeypatch):
+    """轻量队列端点必须复用整理模块的鉴权并转发分页窗口。"""
+    calls = []
+
+    class StubTransferChain:
+        """提供端点测试所需的受限队列查询替身。"""
+
+        def get_queue_tasks_page(self, page: int, count: int):
+            """记录分页参数并返回最小合法快照。"""
+            calls.append((page, count))
+            return ([], 7)
+
+    monkeypatch.setattr(transfer_endpoint, "TransferChain", StubTransferChain)
+
+    result = asyncio.run(
+        transfer_endpoint.query_queue_page(
+            _=object(),
+            page=2,
+            count=3,
+        )
+    )
+
+    dependency = inspect.signature(transfer_endpoint.query_queue_page).parameters["_"].default.dependency
+    assert dependency is verify_token
+    assert calls == [(2, 3)]
+    assert result.model_dump() == {
+        "items": [],
+        "total": 7,
+        "page": 2,
+        "count": 3,
+    }
 
 
 def test_job_manager_duplicate_index_is_released_when_a_cloud_task_is_removed():
