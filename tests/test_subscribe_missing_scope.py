@@ -6,12 +6,12 @@ from unittest.mock import Mock
 
 import pytest
 
+import app.chain.download.batch as download_batch
+import app.chain.download.selection as download_selection
+import app.chain.subscribe.policy as subscribe_policy
+import app.chain.subscribe.refresh as subscribe_refresh
 from app.application.subscription.contract import SubscriptionSnapshot, build_subscribe_meta
 from app.chain.download import DownloadChain
-from app.chain.download import batch as download_batch
-from app.chain.download import selection as download_selection
-from app.chain.subscribe import policy as subscribe_policy
-from app.chain.subscribe import refresh as subscribe_refresh
 from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
