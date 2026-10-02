@@ -113,6 +113,53 @@ class TransferJob(BaseModel):
     tasks: Optional[List[TransferJobTask]] = Field(default_factory=list)
 
 
+class TransferQueueFileItemData(BaseModel):  # type: ignore[misc]
+    """整理队列快照只需要的源文件字段，不携带云盘目录树和 provider 扩展字段。"""
+
+    path: Optional[str] = None
+    storage: Optional[str] = "local"
+    type: Optional[str] = None
+    name: Optional[str] = None
+    size: Optional[int] = None
+
+
+class TransferQueueMediaData(BaseModel):  # type: ignore[misc]
+    """整理队列 UI 所需的媒体身份与海报摘要。"""
+
+    media_source: Optional[str] = None
+    media_id: Optional[str] = None
+    title: Optional[str] = None
+    title_year: Optional[str] = None
+    year: Optional[str] = None
+    poster_path: Optional[str] = None
+    episode_run_time: Optional[List[int]] = Field(default_factory=list)
+    origin_country: Optional[List[str]] = Field(default_factory=list)
+
+
+class TransferQueueTaskData(BaseModel):  # type: ignore[misc]
+    """整理队列 UI 所需的任务状态与源文件摘要。"""
+
+    fileitem: TransferQueueFileItemData
+    state: Optional[str] = None
+
+
+class TransferQueueItemData(BaseModel):  # type: ignore[misc]
+    """单个媒体分组的轻量整理队列投影。"""
+
+    media: Optional[TransferQueueMediaData] = None
+    season: Optional[int] = None
+    tasks: List[TransferQueueTaskData] = Field(default_factory=list)
+
+
+class TransferQueuePageData(BaseModel):  # type: ignore[misc]
+    """前端整理队列的受限快照。"""
+
+    items: List[TransferQueueItemData] = Field(default_factory=list)
+    total: int = 0
+    page: int = 1
+    count: int = 100
+
+
 class TransferInfo(BaseModel):
     """
     文件整理结果

@@ -104,6 +104,7 @@ UI_PRESENTATION_PATHS = frozenset(
         "/api/v1/rule/groups/reorder",
         "/api/v1/storage/catalog",
         "/api/v1/storage/options",
+        "/api/v1/transfer/queue/page",
     }
 )
 EXPLICIT_TRANSPORT_PATHS = frozenset(
