@@ -237,6 +237,22 @@ def test_local_agent_tool_restores_json_encoded_object_bodies() -> None:
     assert isinstance(restored["body"], dict)
     assert restored["body"]["torrent_in"]["enclosure"] == body["torrent_in"]["enclosure"]
 
+    # LangChain 入模同样必须还原，否则 canonical_arguments 通过后仍会在 Pydantic 阶段失败。
+    restored_model = MoviePilotApiInput.model_validate(
+        {
+            "operation_id": "download.add",
+            "body": json.dumps(body, ensure_ascii=False),
+        }
+    )
+    assert isinstance(restored_model.body, dict)
+    assert restored_model.body["torrent_in"]["enclosure"] == body["torrent_in"]["enclosure"]
+
+    # 固定的 system.upgrade.dev 字面量继续作为唯一合法字符串请求体。
+    dev_model = MoviePilotApiInput.model_validate(
+        {"operation_id": "system.upgrade.dev", "body": "dev"}
+    )
+    assert dev_model.body == "dev"
+
     # 无法还原为对象/数组的非法字符串仍按合同报错。
     with pytest.raises(ValueError):
         tool.canonical_arguments(

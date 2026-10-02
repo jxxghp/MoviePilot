@@ -80,7 +80,7 @@ class MoviePilotApiInput(BaseModel):  # type: ignore[misc]
         ),
     )
 
-    @field_validator("body", mode="before")
+    @field_validator("body", mode="before")  # type: ignore[misc]
     @classmethod
     def _restore_json_string_body(cls, value: Any) -> Any:
         """模型在联合类型 schema 下可能把 body 编码为 JSON 字符串，入模前还原。"""
