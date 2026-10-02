@@ -6,13 +6,51 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
-from app.domain.classification.vocabulary import LANGUAGE_NAMES
 from app.domain.metainfo import MetaInfo
 from app.domain.projection.mapping import ProjectionBuilder
 from app.schemas.types import MediaSource, MediaType
 
 _DOUBAN_LANGUAGE_CODES: dict[str, str] = {
-    **{name.casefold(): code for code, name in LANGUAGE_NAMES.items()},
+    "阿拉伯语": "ar",
+    "孟加拉语": "bn",
+    "保加利亚语": "bg",
+    "藏语": "bo",
+    "加泰罗尼亚语": "ca",
+    "中文": "zh",
+    "克罗地亚语": "hr",
+    "捷克语": "cs",
+    "丹麦语": "da",
+    "荷兰语": "nl",
+    "英语": "en",
+    "芬兰语": "fi",
+    "法语": "fr",
+    "德语": "de",
+    "希腊语": "el",
+    "希伯来语": "he",
+    "印地语": "hi",
+    "匈牙利语": "hu",
+    "冰岛语": "is",
+    "印度尼西亚语": "id",
+    "意大利语": "it",
+    "日语": "ja",
+    "韩语": "ko",
+    "立陶宛语": "lt",
+    "马来语": "ms",
+    "蒙古语": "mn",
+    "缅甸语": "my",
+    "挪威语": "no",
+    "波兰语": "pl",
+    "葡萄牙语": "pt",
+    "罗马尼亚语": "ro",
+    "俄语": "ru",
+    "斯洛伐克语": "sk",
+    "西班牙语": "es",
+    "瑞典语": "sv",
+    "泰语": "th",
+    "土耳其语": "tr",
+    "乌克兰语": "uk",
+    "越南语": "vi",
+    "壮语": "za",
     "汉语": "zh",
     "汉语普通话": "zh",
     "普通话": "zh",
