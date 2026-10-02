@@ -116,13 +116,13 @@ def test_modified_builtin_skills_have_incremented_versions() -> None:
         "browser-use": "3",
         "command-dispatch": "2",
         "database-operation": "9",
-        "feedback-issue": "10",
-        "moviepilot-api": "41",
+        "feedback-issue": "11",
+        "moviepilot-api": "42",
         "moviepilot-update": "5",
         "organize-files": "5",
         "transfer-failed-retry": "5",
         "generate-identifiers": "4",
-        "create-moviepilot-plugin": "5",
+        "create-moviepilot-plugin": "6",
         "create-moviepilot-skill": "3",
         "publish-moviepilot-plugin": "3",
         "downloader-operation": "3",
@@ -285,12 +285,21 @@ def test_refactored_agent_skills_use_english_guidance() -> None:
 
 
 def test_agent_core_prompt_does_not_block_plugin_source_edits() -> None:
-    """核心提示词不应禁止插件开发技能写入源码。"""
+    """核心和插件技能共同支持代码修改，并按宿主代际选择目录与运行边界。"""
     core_prompt = CORE_PROMPT_PATH.read_text(encoding="utf-8")
     plugin_skill = _read_skill("create-moviepilot-plugin")
     allowed_tools = _frontmatter_value(plugin_skill, "allowed-tools")
 
     assert "file editing tools, or generated patches to change code" not in core_prompt
+    assert "Plugin development, source changes, and bug fixes are supported tasks" in core_prompt
+    assert "<coding_and_runtime_workflow>" in core_prompt
+    assert "preserve unrelated user changes" in core_prompt
+    assert "code edit request alone does not authorize installation" in core_prompt
+    assert "Default to V2 layout" not in plugin_skill
+    assert "package.v3.json" in plugin_skill
+    assert "docs/Plugin_Development.md" in plugin_skill
+    assert "app.sdk.*" in plugin_skill
+    assert "authorized installation/runtime scope" in plugin_skill
     assert "write_file" in allowed_tools
     assert "edit_file" in allowed_tools
     assert "apply_patch" in allowed_tools

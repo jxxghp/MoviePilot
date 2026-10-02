@@ -68,7 +68,7 @@ FEEDBACK_REQUEST_TIMEOUT = 15
 
 _GITHUB_REPO_PATTERN = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
-ALLOWED_ENVIRONMENTS = ("Docker", "Windows")
+ALLOWED_ENVIRONMENTS = ("Docker", "Windows", "CLI")
 FEATURE_ISSUE_TYPE = "功能请求"
 ALLOWED_ISSUE_TYPES = ("主程序运行问题", "插件问题", FEATURE_ISSUE_TYPE, "其他问题")
 

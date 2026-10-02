@@ -94,7 +94,7 @@ def build_preview_text(draft: dict[str, Any], logs: str, diagnostics: dict[str, 
         f"{draft['description'].strip()}\n\n"
         "日志预览（已脱敏）：\n"
         f"```bash\n{preview_logs}\n```\n\n"
-        "如内容无误，请回复「确认」；如需调整，请回复「修改：...」。"
+        "请核对目标仓库、问题描述与脱敏日志，再选择确认提交、修改内容或取消。"
     )
 
 
@@ -164,12 +164,19 @@ def prepare_issue(draft_file: str | Path) -> dict[str, Any]:
         "target_repo": draft["target_repo"],
         "payload_file": str(payload_file),
         "preview_file": str(preview_file),
+        "confirmation_options": [
+            {"label": "确认提交", "value": "确认提交当前预览的 Issue"},
+            {"label": "修改内容", "value": "修改当前 Issue 草稿"},
+            {"label": "取消", "value": "取消本次 Issue 反馈"},
+        ],
         "body_chars": len(body_preview),
         "log_bytes": len(logs.encode("utf-8", errors="replace")),
         "log_lines": len(logs.splitlines()) if logs else 0,
         "message": (
-            "已生成 Issue 预览和提交 payload。请把 preview_file 内容完整展示给用户，"
-            "等待明确「确认」后再调用 submit_feedback_issue.py。"
+            "已生成 Issue 预览和提交 payload。支持按钮时，用 ask_user_choice 将 preview_file 全文"
+            "作为 message、confirmation_options 作为 options 展示并结束本轮；否则使用文字确认。"
+            "用户点击确认提交或文字确认当前预览后，才能调用 submit_feedback_issue.py；"
+            "修改后须重新预览并确认，取消则不提交。"
         ),
     }
 

@@ -83,6 +83,7 @@ class PromptManager:
     """
 
     def __init__(self, prompts_dir: str = None):
+        """初始化提示词来源与运行信息缓存。"""
         if prompts_dir is None:
             self.prompts_dir = Path(__file__).parent
         else:
@@ -120,7 +121,7 @@ class PromptManager:
         :param channel: 消息渠道（Telegram、微信、Slack等）
         :return: 提示词内容
         """
-        # 基础提示词只保留 MoviePilot 运行时和渠道能力相关约束。
+        # 基础提示词包含领域任务、代码工作流、授权边界和渠道能力约束。
         # 根层运行时配置由 RuntimeConfigMiddleware 在每次模型调用前动态注入，
         # 这样人格切换可以在同一轮 Agent 执行里立即生效。
         base_prompt = self.load_prompt("System Core Prompt.txt")
@@ -324,18 +325,19 @@ class PromptManager:
         """
         instructions = []
         if ChannelCapability.MARKDOWN not in caps.capabilities:
-            instructions.append("- Formatting: Use **Plain Text ONLY**. The channel does NOT support Markdown.")
+            instructions.append("- Formatting: Use plain text only. The channel does NOT support Markdown.")
             instructions.append(
-                "- No Markdown Symbols: NEVER use `**`, `*`, `__`, or `[` blocks. Use natural text to emphasize (e.g., using ALL CAPS or separators)."
+                "- Emphasis: Use clear wording; do not use Markdown headings, emphasis markers, code fences, or link syntax."
             )
             instructions.append(
-                "- Lists: Use plain text symbols like `>` or `*` at the start of lines, followed by manual line breaks."
+                "- Lists: Prefer short paragraphs; when a list helps, use plain numbered lines such as 1、 and 2、."
             )
             instructions.append("- Links: Paste URLs directly as text.")
         return "\n".join(instructions)
 
     @staticmethod
     def _generate_voice_reply_instructions() -> str:
+        """根据语音能力约束回复方式，避免语音和文本重复交付。"""
         if not AgentCapabilityManager.supports_audio_output():
             return "Audio output is disabled; do not call `send_voice_message`."
         return (
@@ -369,6 +371,7 @@ class PromptManager:
     def _generate_button_choice_instructions(
         channel: NotificationChannel = None,
     ) -> str:
+        """按渠道能力选择按钮交互或文字提问，明确终结本轮的交付约束。"""
         if (
             channel
             and ChannelCapabilityManager.supports_buttons(channel)
