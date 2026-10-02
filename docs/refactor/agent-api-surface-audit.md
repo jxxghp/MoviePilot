@@ -5,7 +5,7 @@
 
 ## Result
 
-- OpenAPI HTTP operations: **421**
+- OpenAPI HTTP operations: **422**
 - Stable `moviepilot_api` operations: **231**
 - Exact HTTP routes used by the gateway: **229**
 - OpenAPI routes matched directly by the gateway: **228**
@@ -23,7 +23,7 @@
 | `provider-skill` | 12 | Low-level downloader or media-server capability owned by a provider Skill. |
 | `stream_or_binary` | 10 | Streaming or binary response owned by a direct client transport. |
 | `transport_or_identity` | 76 | Authentication, protocol, callback, account, or conversation transport boundary. |
-| `ui_presentation` | 13 | Frontend or plugin-rendered presentation contract. |
+| `ui_presentation` | 14 | Frontend or plugin-rendered presentation contract. |
 
 ## Bounded Dynamic Routes
 
@@ -423,6 +423,7 @@
 | `GET` | `/api/v1/transfer/now` | transfer | `consolidated` | scheduler.run | 立即执行下载器文件整理 |
 | `DELETE` | `/api/v1/transfer/queue` | transfer | `gateway` | transfer.queue.delete | 从整理队列中删除任务 |
 | `GET` | `/api/v1/transfer/queue` | transfer | `gateway` | transfer.queue | 查询整理队列 |
+| `GET` | `/api/v1/transfer/queue/page` | transfer | `ui_presentation` | host-ui | 查询受限整理队列快照 |
 | `GET` | `/api/v1/transfer/tasks/manual-reviews` | transfer | `gateway` | transfer.manual_reviews | 分页查询 durable 整理人工复核任务 |
 | `GET` | `/api/v1/transfer/tasks/{task_id}/manual-review` | transfer | `gateway` | transfer.manual_review | 查询 durable 整理人工复核详情 |
 | `POST` | `/api/v1/transfer/tasks/{task_id}/manual-review` | transfer | `gateway` | transfer.manual_review.resolve | 人工判定整理步骤的外部执行结果 |
