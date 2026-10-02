@@ -608,7 +608,7 @@ class SystemChain(_SystemUpdateChain):
             )
             if response:
                 try:
-                    releases = [release['tag_name'] for release in response.json()]
+                    releases: list[str] = [release['tag_name'] for release in response.json()]
                     v3_releases = [tag for tag in releases if re.match(r"^v3\.", tag)]
                     if not v3_releases:
                         logger.warning("获取v3后端最新版本出错！")
@@ -640,7 +640,7 @@ class SystemChain(_SystemUpdateChain):
             )
             if response:
                 try:
-                    releases = [release['tag_name'] for release in response.json()]
+                    releases: list[str] = [release['tag_name'] for release in response.json()]
                     v3_releases = [tag for tag in releases if re.match(r"^v3\.", tag)]
                     if not v3_releases:
                         logger.warning("获取v3前端最新版本出错！")
