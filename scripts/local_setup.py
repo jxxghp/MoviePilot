@@ -3802,6 +3802,7 @@ def uninstall_local(
 
 
 def _git_output(*args: str) -> str:
+    """读取当前源码仓库的 Git 命令输出。"""
     return capture(["git", *args], cwd=ROOT)
 
 
@@ -3839,14 +3840,16 @@ def _ensure_git_clean() -> None:
 
 
 def _update_backend_ref(ref: str, *, fetch: bool = True) -> str:
-    """同步后端 Git 引用；分支快进到远端，离线标签不访问网络。"""
+    """同步后端 Git 引用；在线强制同步标签、分支仅快进，离线不访问网络。"""
     if not (ROOT / ".git").exists():
         raise RuntimeError("当前目录不是 Git 仓库，无法更新后端代码。")
 
     _ensure_git_clean()
     if fetch:
         print_step("获取远端更新")
-        run(["git", "fetch", "--tags", "origin"], cwd=ROOT)
+        run(["git", "fetch", "--no-tags", "origin"], cwd=ROOT)
+        # Release 重建可能移动同名标签；强制覆盖仅用于标签引用。
+        run(["git", "fetch", "--no-tags", "origin", "+refs/tags/*:refs/tags/*"], cwd=ROOT)
     else:
         # Release 下载阶段已获取并验证标签，重启安装不得再次依赖网络。
         run(

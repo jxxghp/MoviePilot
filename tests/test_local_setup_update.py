@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import uuid
 from pathlib import Path
 
@@ -88,3 +89,70 @@ def test_dirty_update_stops_without_an_interactive_input(monkeypatch):
         module._ensure_git_clean()
 
     assert commands == []
+
+
+@pytest.fixture
+def moved_tag_repository(tmp_path):
+    """用临时本地仓库模拟远端重建同名标签，不访问外部网络。"""
+    remote = tmp_path / "remote"
+    checkout = tmp_path / "checkout"
+    remote.mkdir()
+
+    def git(path, *args):
+        """隔离 Git 身份和签名配置，执行测试仓库操作。"""
+        return subprocess.check_output(
+            ["git", "-c", "user.name=CLI Test", "-c", "user.email=cli@example.test",
+             "-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", "-C", str(path), *args],
+            text=True,
+        ).strip()
+
+    git(remote, "init", "-b", "v3")
+    git(remote, "commit", "--allow-empty", "-m", "initial")
+    git(remote, "tag", "v3.1.0")
+    old_sha = git(remote, "rev-parse", "HEAD")
+    git(tmp_path, "clone", str(remote), str(checkout))
+    git(checkout, "tag", "local-only")
+    git(remote, "commit", "--allow-empty", "-m", "rebuild")
+    git(remote, "tag", "--force", "v3.1.0")
+    return checkout, git, old_sha, git(remote, "rev-parse", "HEAD")
+
+
+@pytest.mark.parametrize("ref", ["latest", "v3", "v3.1.0"])
+def test_update_overwrites_moved_remote_tag(monkeypatch, moved_tag_repository, ref):
+    """同名标签随远端更新，同时保留远端没有的本地标签。"""
+    checkout, git, old_sha, new_sha = moved_tag_repository
+    module = load_local_setup_module()
+    monkeypatch.setattr(module, "ROOT", checkout)
+
+    assert module._update_backend_ref(ref) == ("v3" if ref == "latest" else ref)
+
+    assert git(checkout, "rev-parse", "v3.1.0") == new_sha
+    assert git(checkout, "rev-parse", "HEAD") == new_sha
+    assert git(checkout, "rev-parse", "local-only") == old_sha
+
+
+def test_update_moved_tag_does_not_reset_diverged_branch(monkeypatch, moved_tag_repository):
+    """强制同步标签不得覆盖分叉分支上的本地提交。"""
+    checkout, git, _, new_sha = moved_tag_repository
+    git(checkout, "commit", "--allow-empty", "-m", "local work")
+    local_sha = git(checkout, "rev-parse", "HEAD")
+    module = load_local_setup_module()
+    monkeypatch.setattr(module, "ROOT", checkout)
+
+    with pytest.raises(subprocess.CalledProcessError):
+        module._update_backend_ref("latest")
+
+    assert git(checkout, "rev-parse", "HEAD") == local_sha
+    assert git(checkout, "rev-parse", "v3.1.0") == new_sha
+
+
+def test_offline_update_preserves_local_tag(monkeypatch, moved_tag_repository):
+    """离线更新只使用已验证的本地标签，即使远端已更换标签。"""
+    checkout, git, old_sha, _ = moved_tag_repository
+    git(checkout, "remote", "remove", "origin")
+    module = load_local_setup_module()
+    monkeypatch.setattr(module, "ROOT", checkout)
+
+    assert module._update_backend_ref("v3.1.0", fetch=False) == "v3.1.0"
+
+    assert git(checkout, "rev-parse", "HEAD") == old_sha

@@ -376,6 +376,7 @@ moviepilot update all --skip-resources
 说明：
 
 - `update backend` 会更新 Git 仓库并重新安装后端依赖，包括 `moviepilot-rust` 加速扩展
+- 在线更新后端时会强制同步 `origin` 的全部标签，覆盖同名本地标签，以支持 Release 重建；仅存在于本地的标签会保留。分支仍仅允许快进更新，离线更新不同步标签
 - 后端更新前如果检测到已跟踪源码改动，CLI 会列出部分文件并询问是否清空；确认后执行清理并继续更新，拒绝或非交互模式会取消更新
 - `MOVIEPILOT_UPDATE_DEV=true` 时，`moviepilot update` 默认使用 DEV 模式；`--dev` / `--no-dev` 可临时覆盖，省略目标时更新全部组件。进程环境变量优先于配置目录中的 `app.env`
 - DEV 模式后端跟踪当前开发分支，处于 Release 的 detached HEAD 时回到 `v3`；前端下载最新 Release 的 `dist.zip`。显式 `--ref` / `--frontend-version` 优先于默认选择
