@@ -107,15 +107,17 @@ def test_bound_clients_keep_distinct_chain_callbacks_without_thread(monkeypatch)
 
 
 def test_stop_message_closes_and_releases_explicit_message_helper(monkeypatch) -> None:
-    """消息通知缓存收敛后必须释放单例，避免下一轮复用已关闭缓存。"""
+    """消息通知缓存收敛后必须释放单例，避免下一轮复用已关闭缓存；未推送的实时消息一并清空。"""
     monkeypatch.setattr(Singleton, "_instances", {})
     helper = MessageHelper()
     close = MagicMock()
     monkeypatch.setattr(helper._recent_notification_keys, "close", close)
+    helper.sys_queue.put_nowait("未推送的实时消息")
 
     assert stop_message(message_helper=helper) is True
 
     close.assert_called_once_with()
+    assert helper.sys_queue.empty()
     assert MessageHelper.get_existing_instance() is None
     assert MessageHelper() is not helper
 

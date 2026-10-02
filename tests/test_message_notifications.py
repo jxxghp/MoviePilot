@@ -3,6 +3,7 @@ import json
 from unittest.mock import Mock
 
 from app.api.endpoints.message import clear_notification_message, get_notification_message
+from app.api.endpoints.system import get_message
 from app.chain.base import ChainBase
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
@@ -10,7 +11,7 @@ from app.db.session import AsyncSessionFactory, SessionFactory
 from app.db.oper.message import MessageOper
 from app.db.models.message import Message as MessageModel
 from app.db.oper.systemconfig import SystemConfigOper
-from app.application.messaging.message import MessageHelper, MessageQueryService
+from app.application.messaging.message import _SSE_QUEUE_MAXSIZE, MessageHelper, MessageQueryService
 from app.schemas.message import Message, MessageClearScope
 from app.schemas.types import MediaType, MessageType, SystemConfigKey
 
@@ -163,6 +164,51 @@ def test_plugin_helper_message_deduplicates_recent_sse_messages() -> None:
 
     assert MessageOper().list_by_page(page=1, count=10) == []
     assert json.loads(helper.get())["title"] == "站点刷流"
+    assert helper.get() is None
+
+
+def test_helper_message_queue_drops_oldest_when_full() -> None:
+    """
+    没有 SSE 消费者时实时消息队列有上限，超出后丢弃最旧消息，保留最新消息。
+    """
+    helper = MessageHelper()
+    _reset_message_helper(helper)
+
+    for index in range(_SSE_QUEUE_MAXSIZE + 5):
+        helper.put(f"积压消息 {index}", role="system", title="队列上限")
+
+    assert helper.sys_queue.qsize() == _SSE_QUEUE_MAXSIZE
+    texts = [json.loads(detail)["text"] for detail in helper.drain()]
+    assert texts == [f"积压消息 {index}" for index in range(5, _SSE_QUEUE_MAXSIZE + 5)]
+    assert helper.get() is None
+
+
+def test_sse_endpoint_flushes_backlog_in_one_tick() -> None:
+    """
+    SSE 重新连接后应一次推送全部积压消息，而不是每 3 秒推送一条。
+    """
+    helper = MessageHelper()
+    _reset_message_helper(helper)
+    for index in range(3):
+        helper.put(f"重连积压 {index}", role="plugin", title="积压推送")
+
+    class _ConnectedRequest:
+        async def is_disconnected(self) -> bool:
+            return False
+
+    async def _read_backlog() -> list[str]:
+        response = await get_message(request=_ConnectedRequest(), role="notification", _=None)
+        stream = response.body_iterator
+        try:
+            # 3 秒间隔只发生在一轮推送之后，整轮积压应在超时前全部到达
+            return [await asyncio.wait_for(anext(stream), timeout=1) for _ in range(3)]
+        finally:
+            await stream.aclose()
+
+    frames = asyncio.run(_read_backlog())
+
+    texts = [json.loads(frame.removeprefix("data: ").strip())["text"] for frame in frames]
+    assert texts == [f"重连积压 {index}" for index in range(3)]
     assert helper.get() is None
 
 
