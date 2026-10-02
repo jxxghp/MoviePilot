@@ -2,6 +2,7 @@ import asyncio
 import re
 import threading
 import time
+from collections import deque
 from typing import Any, Optional, Tuple
 
 from app.agent.policy.sanitizer import sanitize_for_host
@@ -15,7 +16,7 @@ from app.schemas.types import MessageType, NotificationChannel
 
 
 class _StreamChain(ChainBase):
-    pass
+    """通过宿主消息模块发送、编辑和收口 Agent 流式回复。"""
 
 
 _PATCH_FILE_HEADER_PATTERN = re.compile(r"\*\*\* (?:Add|Update|Delete) File:\s*(\S+)")
@@ -53,6 +54,7 @@ class StreamingHandler:
     FLUSH_INTERVAL = 0.3
 
     def __init__(self):
+        """初始化文本缓冲、渠道消息身份及唯一刷新任务的生命周期状态。"""
         self._lock = threading.Lock()
         self._buffer = ""
         # 流式输出相关状态
@@ -65,6 +67,7 @@ class StreamingHandler:
         self._sent_text = ""
         # 当前消息的起始偏移量（buffer 中属于当前消息的起始位置）
         self._msg_start_offset = 0
+        self._message_boundaries: deque[tuple[int, Optional[str]]] = deque()
         # 当前渠道的单条消息最大长度（0 表示不限制）
         self._max_message_length = 0
         # 消息发送所需的上下文信息
@@ -290,9 +293,11 @@ class StreamingHandler:
                 self._live_tool_summary = None
                 self._live_tool_stats = {}
                 return ""
-            message = self._buffer
+            message = self._buffer[self._msg_start_offset :]
             logger.info(f"Agent消息: {message}")
             self._buffer = ""
+            self._msg_start_offset = 0
+            self._message_boundaries.clear()
             self._live_tool_summary = None
             self._live_tool_stats = {}
             return message
@@ -306,6 +311,7 @@ class StreamingHandler:
             self._sent_text = ""
             self._message_response = None
             self._msg_start_offset = 0
+            self._message_boundaries.clear()
             self._pending_tool_stats = {}
             self._tool_summaries = set()
             self._live_tool_summary = None
@@ -326,6 +332,7 @@ class StreamingHandler:
             self._buffer = ""
             self._sent_text = ""
             self._msg_start_offset = 0
+            self._message_boundaries.clear()
             self._pending_tool_stats = {}
             self._tool_summaries = set()
             self._live_tool_summary = None
@@ -333,6 +340,18 @@ class StreamingHandler:
             self._thinking_started_at = None
             self._thinking_active = False
             self._thinking_status_text = ""
+
+    def start_new_message(self, original_message_id: Optional[str] = None) -> None:
+        """记录补充输入的展示边界，由原刷新任务收口旧消息，避免在途发送覆盖新消息身份。"""
+        if not self._streaming_enabled or not self._can_stream():
+            return
+        self.thinking_finished()
+        self.flush_pending_tool_summary()
+        with self._lock:
+            self._message_boundaries.append((len(self._buffer), original_message_id))
+            # 新回合的统计不能再原地改写边界之前的摘要，否则会移动已冻结的偏移。
+            self._live_tool_summary = None
+            self._live_tool_stats = {}
 
     async def start_streaming(
         self,
@@ -394,6 +413,7 @@ class StreamingHandler:
         self._sent_text = ""
         self._message_response = None
         self._msg_start_offset = 0
+        self._message_boundaries.clear()
         self._pending_tool_stats = {}
         self._tool_summaries = set()
         self._live_tool_summary = None
@@ -444,26 +464,27 @@ class StreamingHandler:
         self.flush_pending_tool_summary()
 
         # 执行最后一次刷新
-        await self._flush()
+        await self._flush_messages()
 
-        message_response = self._message_response
-        if message_response:
-            await run_in_threadpool(
-                _StreamChain().finalize_message,
-                message_response,
-            )
+        await self._finalize_current_message()
 
         # 检查是否所有缓冲内容都已发送
         with self._lock:
             # 当前消息的文本 = buffer 中从 _msg_start_offset 开始的部分
             current_msg_text = self._buffer[self._msg_start_offset :]
-            all_sent = self._message_response is not None and self._sent_text and current_msg_text == self._sent_text
+            all_sent = not self._message_boundaries and bool(
+                (self._message_response is not None and self._sent_text and current_msg_text == self._sent_text)
+                or (self._msg_start_offset > 0 and not current_msg_text)
+            )
             # 保留最终文本用于返回（返回完整 buffer 内容，包含所有分段消息）
             final_text = self._buffer if all_sent else ""
+            # 跨消息边界已经交付的前段不再进入常规发送回退，避免重复旧回复。
+            self._buffer = self._buffer[self._msg_start_offset :]
             # 重置状态
             self._sent_text = ""
             self._message_response = None
             self._msg_start_offset = 0
+            self._message_boundaries.clear()
             self._pending_tool_stats = {}
             self._tool_summaries = set()
             self._live_tool_summary = None
@@ -844,7 +865,7 @@ class StreamingHandler:
                 await asyncio.sleep(self.FLUSH_INTERVAL)
                 if self._streaming_enabled:
                     self._refresh_thinking_status()
-                    await self._flush()
+                    await self._flush_messages()
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -866,7 +887,30 @@ class StreamingHandler:
                 pass
         self._flush_task = None
 
-    async def _flush(self):
+    async def _flush_messages(self) -> None:
+        """按补充输入边界依次收口旧消息，再把后续内容发送到新的渠道消息。"""
+        while self._message_boundaries:
+            boundary, original_message_id = self._message_boundaries[0]
+            await self._flush(end_offset=boundary)
+            with self._lock:
+                current_text = self._buffer[self._msg_start_offset : boundary]
+                if current_text and current_text != self._sent_text:
+                    return
+            await self._finalize_current_message()
+            with self._lock:
+                self._message_boundaries.popleft()
+                self._msg_start_offset = boundary
+                self._message_response = None
+                self._sent_text = ""
+                self._original_message_id = original_message_id
+        await self._flush()
+
+    async def _finalize_current_message(self) -> None:
+        """由现有刷新 owner 在线程池中收口当前渠道消息，供分段和最终停止共用。"""
+        if self._message_response is not None:
+            await run_in_threadpool(_StreamChain().finalize_message, self._message_response)
+
+    async def _flush(self, end_offset: Optional[int] = None) -> None:
         """
         将当前缓冲区内容刷新到用户消息
         - 如果还没有发送过消息，先发送一条新消息并记录message_id
@@ -875,7 +919,7 @@ class StreamingHandler:
         """
         with self._lock:
             # 当前消息的文本 = buffer 中从 _msg_start_offset 开始的部分
-            current_text = self._buffer[self._msg_start_offset :]
+            current_text = self._buffer[self._msg_start_offset : end_offset]
             if not current_text or current_text == self._sent_text:
                 # 没有新内容需要刷新
                 return
@@ -920,7 +964,7 @@ class StreamingHandler:
                     logger.debug(f"流式消息长度 {len(current_text)} 超过限制 {self._max_message_length}，启用新消息")
                     with self._lock:
                         self._msg_start_offset += len(self._sent_text)
-                        current_text = self._buffer[self._msg_start_offset :]
+                        current_text = self._buffer[self._msg_start_offset : end_offset]
                     self._message_response = None
                     self._sent_text = ""
 

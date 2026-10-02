@@ -488,6 +488,12 @@ class MoviePilotAgent:
             raise ValueError("steering inbox 与 Agent 会话身份不匹配")
         self._steering_inbox = inbox
 
+    def start_steering_reply(self, original_message_id: Optional[str] = None) -> None:
+        """为已加入上下文的渠道输入开启新回复，前一段工具主动回复不抑制后续答案。"""
+        self.original_message_id = original_message_id
+        self._tool_context["user_reply_sent"] = False
+        self.stream_handler.start_new_message(original_message_id)
+
     @classmethod
     def build_display_message(
         cls,

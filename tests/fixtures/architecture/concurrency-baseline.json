@@ -89,8 +89,8 @@
   },
   "app/agent/callback/__init__.py:app.runtime.execution.run_in_threadpool": {
     "owners": {
-      "StreamingHandler._flush": 3,
-      "StreamingHandler._stop_streaming": 1
+      "StreamingHandler._finalize_current_message": 1,
+      "StreamingHandler._flush": 3
     },
     "target": "app.runtime.execution.run_in_threadpool"
   },

@@ -119,9 +119,8 @@
     "type-arg": 1
   },
   "app/agent/callback/__init__.py": {
-    "no-untyped-call": 5,
-    "no-untyped-def": 9,
-    "return-value": 1,
+    "no-untyped-call": 3,
+    "no-untyped-def": 8,
     "type-arg": 1
   },
   "app/agent/contracts.py": {
