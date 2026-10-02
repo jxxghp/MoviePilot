@@ -53,6 +53,7 @@ from app.runtime.stop import runtime_stop_state
 from app.runtime.tasks import get_task_registry
 from app.schemas.types import (
     MediaType,
+    MessageType,
     SystemConfigKey,
 )
 
@@ -897,21 +898,25 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
         if not manual:
             return
         if not subscribes:
-            self.messagehelper.put("没有找到订阅！", title="订阅搜索", role="system")
+            self.messagehelper.put(
+                "没有找到订阅！", title="订阅搜索", role="system", mtype=MessageType.Subscribe, level="warning"
+            )
         elif sid:
             message = (
                 f"{subscribes[0].name} 搜索完成！"
                 if processed
                 else f"{subscribes[0].name} 已安排搜索，系统会自动继续处理。"
             )
-            self.messagehelper.put(message, title="订阅搜索", role="system")
+            self.messagehelper.put(message, title="订阅搜索", role="system", mtype=MessageType.Subscribe)
         elif sids is not None:
             for subscribe in processed:
-                self.messagehelper.put(f"{subscribe.name} 搜索完成！", title="订阅搜索", role="system")
+                self.messagehelper.put(
+                    f"{subscribe.name} 搜索完成！", title="订阅搜索", role="system", mtype=MessageType.Subscribe
+                )
         else:
             message = (
                 "所有订阅搜索完成！"
                 if len(processed) == len(subscribes)
                 else "订阅搜索已安排，暂未完成的项目会自动继续处理。"
             )
-            self.messagehelper.put(message, title="订阅搜索", role="system")
+            self.messagehelper.put(message, title="订阅搜索", role="system", mtype=MessageType.Subscribe)

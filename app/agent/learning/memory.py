@@ -19,7 +19,8 @@ def parse_entries(raw: str) -> list[str]:
     return [part.strip() for part in raw.split(ENTRY_DELIMITER) if part.strip()]
 
 
-def locate(entries: list[str], old_text: str, pinned: str | None = None) -> int:
+def locate(entries: list[str], old_text: str, pinned: str | None = None,
+           empty_message: str | None = None) -> int:
     """整条精确匹配优先；不同内容的多处子串命中拒绝猜测，审批匹配原始整条。"""
     if pinned is not None:
         if pinned not in entries:
@@ -29,13 +30,16 @@ def locate(entries: list[str], old_text: str, pinned: str | None = None) -> int:
         raise ValueError('replace/remove 需要 old_text，且 replace 会替换整条记忆')
     indexes = [i for i, entry in enumerate(entries) if entry == old_text]
     indexes = indexes or [i for i, entry in enumerate(entries) if old_text in entry]
+    if not entries and empty_message:
+        raise ValueError(empty_message)
     if not indexes or len({entries[i] for i in indexes}) > 1:
         raise ValueError('old_text 未唯一匹配，请重新读取记忆并使用准确片段')
     return indexes[0]
 
 
 def apply_operations(entries: list[str], operations: list[MemoryOperation],
-                     pinned: list[str | None] | None = None) -> tuple[list[str], list[str | None]]:
+                     pinned: list[str | None] | None = None,
+                     empty_message: str | None = None) -> tuple[list[str], list[str | None]]:
     """在副本上顺序验证所有操作，返回新列表与每次删除或替换的完整旧条目。"""
     working = list(entries)
     previous: list[str | None] = []
@@ -51,7 +55,8 @@ def apply_operations(entries: list[str], operations: list[MemoryOperation],
                 working.append(content)
             previous.append(None)
         else:
-            index = locate(working, (operation.old_text or '').strip(), pinned[i] if pinned else None)
+            index = locate(working, (operation.old_text or '').strip(), pinned[i] if pinned else None,
+                           empty_message)
             previous.append(working[index])
             working[index:index + 1] = [content] if operation.action == 'replace' else []
     return working, previous
@@ -113,7 +118,12 @@ class MemoryStore:
                 backup = self._path(target).with_suffix(f'.md.bak.{uuid4().hex}')
                 write_text(backup, raw)
                 raise ValueError(f'磁盘内容无法按记忆条目无损往返；原文备份到 {backup.name}，请先人工整理')
-        working, previous = apply_operations(entries, operations, pinned)
+        file_name = 'USER.md' if target == 'user' else 'MEMORY.md'
+        empty_message = (
+            f"目标记忆为空或文件不存在：target='{target}' 对应当前用户目录的 {file_name}；"
+            "跨任务偏好请使用 target='user'，环境事实请使用 target='memory'。"
+        )
+        working, previous = apply_operations(entries, operations, pinned, empty_message)
         if batch and entries and not working:
             raise ValueError('批次不能清空全部记忆；需要明确清除时使用单次 remove')
         if len(ENTRY_DELIMITER.join(working)) > LIMITS[target]:

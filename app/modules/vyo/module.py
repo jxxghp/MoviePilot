@@ -22,8 +22,9 @@ class VyoModule(_MediaServerModuleBase[Vyo]):
         """
         初始化模块
         """
+        # 展示名更改为 Vyo，持久化配置类型仍为 mediavault，不能从类名推导。
         super().init_service(
-            service_name=Vyo.__name__.lower(),
+            service_name=self._server_type_value,
             service_type=lambda conf: Vyo(
                 **conf.config, sync_libraries=conf.sync_libraries
             ),

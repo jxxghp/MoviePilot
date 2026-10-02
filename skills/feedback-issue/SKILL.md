@@ -1,6 +1,6 @@
 ---
 name: feedback-issue
-version: 10
+version: 11
 description: >-
   Use this skill ONLY when the user EXPLICITLY requests filing an
   upstream issue for MoviePilot core, frontend, or an installed plugin,
@@ -11,7 +11,7 @@ description: >-
   A bare problem report is not enough: diagnose locally first. This
   skill uses its own scripts under `scripts/`; it does not add or call
   dedicated Agent tools for collect / prepare / submit.
-allowed-tools: read_file write_file execute_command
+allowed-tools: read_file write_file execute_command ask_user_choice
 ---
 
 # Feedback Issue (问题反馈)
@@ -48,11 +48,9 @@ replies should match the user's language.
 
 ## Required Scripts
 
-Run all scripts from the MoviePilot repository root with the Python
-interpreter available in the running MoviePilot environment. User
-installations typically run MoviePilot directly in that environment
-rather than inside a repository-local virtualenv, so use `python` or
-`python3` as available in the same shell where MoviePilot runs.
+Run scripts from the MoviePilot root with the runtime's bound Python
+interpreter. Follow the injected project virtualenv or Docker VENV_PATH
+guidance; use `python` in that command environment, not a system interpreter.
 
 ```bash
 python <skill_dir>/scripts/collect_feedback_diagnostics.py ...
@@ -60,9 +58,8 @@ python <skill_dir>/scripts/prepare_feedback_issue.py ...
 python <skill_dir>/scripts/submit_feedback_issue.py ...
 ```
 
-Use the actual `skill_dir` from the skill path shown in the Agent
-skills list. If the skill has been copied into the runtime config
-directory, use that copied path.
+Use the parent directory of `skill.path` returned by `read_skill` as
+`skill_dir`. If copied into the runtime config directory, use that copied path.
 
 ## Workflow
 
@@ -199,9 +196,13 @@ Allowed values:
 
 | Field | Values |
 | --- | --- |
-| `environment` | `Docker` / `Windows` |
+| `environment` | `Docker` / `Windows` / `CLI` |
 | `issue_type` | `主程序运行问题` / `插件问题` / `功能请求` / `其他问题` |
 | `target_repo` | GitHub `owner/repo` or `https://github.com/owner/repo` |
+
+Choose the actual deployment mode: `CLI` for a local MoviePilot CLI installation,
+`Docker` for a container, and `Windows` for the Windows packaged deployment.
+Do not infer CLI from the operating system alone.
 
 Do not invent version numbers, GitHub usernames, email addresses, or
 logs. Separate verified findings from speculation.
@@ -225,17 +226,27 @@ python <skill_dir>/scripts/prepare_feedback_issue.py \
 If the result is not successful, show the rejection reason and ask for
 real missing information instead of working around the guard.
 
-On success, read `preview_file` and show it to the user in full. The
+On success, read `preview_file` and present it to the user in full. The
 preview includes the post-redaction log excerpt so the user can catch
 any sensitive content before submission. It also includes the log
 selection summary; treat missing or irrelevant matches as a reason to
 revise keywords rather than submit.
 
-Ask exactly for confirmation:
+When the channel supports interactive buttons and `ask_user_choice` is available,
+call it with the full preview in `message` and the returned `confirmation_options`
+as `options`: "确认提交", "修改内容", and "取消". This terminal interaction ends
+the turn; wait for the selected value to return as the user's next message.
+Do not also send the preview/question in another message or require the user to
+type "确认" after clicking "确认提交".
 
-> 请确认以上内容是否提交到预览中的目标仓库。回复「确认」提交，或回复「修改：...」调整。
-
-Do not submit until the user explicitly replies "确认" / "confirm".
+Only when buttons are unavailable, show the preview with a short text question
+accepting "确认" / "confirm", "修改：...", or "取消".
+The initial request to file an issue does not approve unpublished draft contents.
+Submit only after the user confirms the current preview by button or text.
+For "修改内容", collect the requested edits and prepare a fresh preview with new
+confirmation options; changes to the content or target repository need fresh
+confirmation. For "取消", end the feedback task without submitting. Silence,
+an expired interaction, or a tool result is not confirmation.
 
 ### 6. Submit
 

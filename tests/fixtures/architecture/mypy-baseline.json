@@ -119,9 +119,8 @@
     "type-arg": 1
   },
   "app/agent/callback/__init__.py": {
-    "no-untyped-call": 5,
-    "no-untyped-def": 9,
-    "return-value": 1,
+    "no-untyped-call": 3,
+    "no-untyped-def": 8,
     "type-arg": 1
   },
   "app/agent/contracts.py": {
@@ -952,8 +951,8 @@
   },
   "app/chain/system.py": {
     "attr-defined": 1,
-    "no-untyped-call": 3,
-    "no-untyped-def": 11
+    "no-untyped-call": 1,
+    "no-untyped-def": 9
   },
   "app/chain/theaudiodb.py": {
     "type-arg": 1

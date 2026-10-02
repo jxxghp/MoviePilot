@@ -490,6 +490,7 @@ def apply_web_agent_display_event(event: dict[str, Any], assistant_message: dict
             if tool.get("status") == "running":
                 tool["status"] = "done"
     elif event_type == "done":
+        assistant_message["thinking"] = False
         if assistant_message.get("status") != "error":
             assistant_message["status"] = "done"
         for tool in assistant_message["tools"]:

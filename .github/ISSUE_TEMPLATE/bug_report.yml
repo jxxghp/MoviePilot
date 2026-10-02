@@ -41,6 +41,7 @@ body:
       options:
         - Docker
         - Windows
+        - CLI
     validations:
       required: true
   - type: dropdown

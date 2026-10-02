@@ -457,6 +457,24 @@ ensure_python() {
   fi
 }
 
+# 一键安装准备本机编译器；扩展失败只降级检索，不阻断主程序安装。
+ensure_cjk_compiler() {
+  if command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1 || command -v clang >/dev/null 2>&1; then
+    return 0
+  fi
+  case "$PACKAGE_MANAGER" in
+    apt-get) install_system_packages build-essential ;;
+    dnf|yum|zypper) install_system_packages gcc glibc-devel ;;
+    pacman) install_system_packages base-devel ;;
+    apk) install_system_packages build-base ;;
+    brew)
+      echo "中文索引扩展需要 Xcode Command Line Tools，请执行 xcode-select --install 后重试 moviepilot install cjk。" >&2
+      return 1
+      ;;
+    *) return 1 ;;
+  esac
+}
+
 ensure_prereqs() {
   if [[ "$OS_NAME" == "Windows" ]]; then
     echo "检测到当前环境为 Windows shell，建议改用 WSL、Linux 或 macOS 终端运行。" >&2
@@ -466,6 +484,9 @@ ensure_prereqs() {
   if ! ensure_base_tools || ! ensure_python || ! ensure_uv; then
     python_install_hint
     exit 1
+  fi
+  if ! ensure_cjk_compiler; then
+    echo "C 编译器尚未就绪，Agent 中文检索将暂用回退路径；安装后可用 moviepilot install cjk 补装。" >&2
   fi
 }
 

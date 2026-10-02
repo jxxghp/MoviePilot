@@ -71,9 +71,6 @@
   "app/db/models/agentchat.py": {
     "I001": 1
   },
-  "app/db/models/mediaserver.py": {
-    "I001": 1
-  },
   "app/db/models/message.py": {
     "I001": 1
   },

@@ -119,6 +119,7 @@ class MediaServerOper(DbOper):
                     media_source=kwargs.get("media_source"),
                     media_id=kwargs.get("media_id"),
                     mtype=kwargs.get("mtype"),
+                    server=kwargs.get("server"),
                 )
             )
             if not item and kwargs.get("title"):
@@ -129,6 +130,7 @@ class MediaServerOper(DbOper):
                         title=cast(str, kwargs.get("title")),
                         mtype=cast(str, kwargs.get("mtype")),
                         year=cast(str, kwargs.get("year")),
+                        server=kwargs.get("server"),
                     )
                 )
         elif kwargs.get("title"):
@@ -139,6 +141,7 @@ class MediaServerOper(DbOper):
                     title=kwargs.get("title"),
                     mtype=kwargs.get("mtype"),
                     year=kwargs.get("year"),
+                    server=kwargs.get("server"),
                 )
             )
         else:
@@ -163,6 +166,7 @@ class MediaServerOper(DbOper):
                     media_source=kwargs.get("media_source"),
                     media_id=kwargs.get("media_id"),
                     mtype=kwargs.get("mtype"),
+                    server=kwargs.get("server"),
                 )
             )
             if not item and kwargs.get("title"):
@@ -173,6 +177,7 @@ class MediaServerOper(DbOper):
                         title=cast(str, kwargs.get("title")),
                         mtype=cast(str, kwargs.get("mtype")),
                         year=cast(str, kwargs.get("year")),
+                        server=kwargs.get("server"),
                     )
                 )
         elif kwargs.get("title"):
@@ -183,6 +188,7 @@ class MediaServerOper(DbOper):
                     title=kwargs.get("title"),
                     mtype=kwargs.get("mtype"),
                     year=kwargs.get("year"),
+                    server=kwargs.get("server"),
                 )
             )
         else:

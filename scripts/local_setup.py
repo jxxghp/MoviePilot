@@ -2969,10 +2969,27 @@ def install_deps(*, python_bin: str, venv_dir: Path, recreate: bool) -> Path:
         else:
             expose_uv_to_venv(uv_bin, venv_dir)
         install_browser_runtime(venv_python)
+        install_cjk(venv_python, required=False)
         return venv_python
     finally:
         if temporary_uv_dir is not None:
             temporary_uv_dir.cleanup()
+
+
+def install_cjk(venv_python: Path, *, required: bool = True, check: bool = False) -> None:
+    """由目标解释器安装和验收扩展；自动安装失败明确告警，单独补装失败返回错误。"""
+    command = [str(venv_python), str(ROOT / "native/fts5_cjk/install.py")]
+    if check:
+        command.append("--check")
+    try:
+        result = subprocess.run(command, check=True, capture_output=True, text=True, timeout=180, cwd=ROOT)
+        print_step(result.stdout.strip())
+    except (OSError, subprocess.SubprocessError) as error:
+        detail = error.stderr.strip() if isinstance(error, subprocess.CalledProcessError) and error.stderr else str(error)
+        message = f"CJK 扩展安装/检查失败：{detail}"
+        if required:
+            raise RuntimeError(message) from error
+        print_step(f"{message}；历史检索暂用 trigram/LIKE 回退，可运行 moviepilot install cjk 重试")
 
 
 def install_browser_runtime(venv_python: Path) -> None:
@@ -3785,6 +3802,7 @@ def uninstall_local(
 
 
 def _git_output(*args: str) -> str:
+    """读取当前源码仓库的 Git 命令输出。"""
     return capture(["git", *args], cwd=ROOT)
 
 
@@ -3822,14 +3840,16 @@ def _ensure_git_clean() -> None:
 
 
 def _update_backend_ref(ref: str, *, fetch: bool = True) -> str:
-    """同步后端 Git 引用；分支快进到远端，离线标签不访问网络。"""
+    """同步后端 Git 引用；在线强制同步标签、分支仅快进，离线不访问网络。"""
     if not (ROOT / ".git").exists():
         raise RuntimeError("当前目录不是 Git 仓库，无法更新后端代码。")
 
     _ensure_git_clean()
     if fetch:
         print_step("获取远端更新")
-        run(["git", "fetch", "--tags", "origin"], cwd=ROOT)
+        run(["git", "fetch", "--no-tags", "origin"], cwd=ROOT)
+        # Release 重建可能移动同名标签；强制覆盖仅用于标签引用。
+        run(["git", "fetch", "--no-tags", "origin", "+refs/tags/*:refs/tags/*"], cwd=ROOT)
     else:
         # Release 下载阶段已获取并验证标签，重启安装不得再次依赖网络。
         run(
@@ -3991,6 +4011,10 @@ def build_parser() -> argparse.ArgumentParser:
     install_parser.add_argument(
         "--config-dir", help="配置目录，默认使用程序目录外的系统配置目录"
     )
+
+    cjk_parser = subparsers.add_parser("install-cjk", help="补装并验证 Agent 中文全文索引扩展")
+    cjk_parser.add_argument("--venv", default=str(ROOT / "venv"), help="目标虚拟环境目录")
+    cjk_parser.add_argument("--check", action="store_true", help="只验证已安装扩展，不编译或修改文件")
 
     frontend_parser = subparsers.add_parser(
         "install-frontend", help="下载前端 release 并安装本地运行时"
@@ -4218,6 +4242,10 @@ def main() -> int:
     )
 
     try:
+        if args.command == "install-cjk":
+            install_cjk(get_venv_python(Path(args.venv).expanduser().absolute()), check=args.check)
+            return 0
+
         if args.command == "install-deps":
             venv_python = install_deps(
                 python_bin=args.python,

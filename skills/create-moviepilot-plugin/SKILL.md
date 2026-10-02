@@ -1,16 +1,16 @@
 ---
 name: create-moviepilot-plugin
-version: 5
+version: 6
 description: >-
   Use this skill when the user asks to create, modify, debug, validate, or
-  scaffold a MoviePilot local plugin. Covers MoviePilot V2 plugin development,
-  _PluginBase implementations, package.v2.json/package.json market metadata,
-  plugins.v2/plugins source layout, PLUGIN_LOCAL_REPO_PATHS local plugin
+  scaffold a MoviePilot local plugin. Covers version-aware V3/V2 plugin development,
+  _PluginBase implementations, package.v3.json/package.v2.json/package.json metadata,
+  plugins.v3/plugins.v2/plugins source layout, PLUGIN_LOCAL_REPO_PATHS local plugin
   sources, plugin APIs, Vuetify JSON forms/pages/dashboards, Vue module
   federation remote components, get_render_mode, get_sidebar_nav, plugin
   sidebar pages, commands, services, workflow actions, agent tools, and local
   install/reload flows. Also use for Chinese requests mentioning 编写插件、本地插件源,
-  插件开发, V2插件, 插件市场, 本地安装插件, 插件热加载, 前端联邦, 侧栏入口, Vue插件页面.
+  插件开发, V3插件, V2插件, 插件市场, 本地安装插件, 插件热加载, 前端联邦, 侧栏入口, Vue插件页面.
 allowed-tools: read_file write_file edit_file apply_patch execute_command search_web browse_webpage moviepilot_api
 allowed-api-operations: config.system.get config.system.update plugin.market plugin.installed plugin.install plugin.reload
 ---
@@ -28,12 +28,27 @@ a local plugin source and installed into the running MoviePilot instance.
 - Host plugin endpoints, API auth, static files, remotes, and sidebar nav:
   `app/api/endpoints/plugin.py`.
 - Local development note: `docs/development-setup.md`.
-- Plugin repository conventions: `MoviePilot-Plugins` uses `plugins.v2/` with
-  `package.v2.json` for V2 plugins; legacy or cross-generation entries may use
-  `plugins/` with `package.json`.
+- First identify the actual host generation from its source/version and the
+  target plugin repository. MoviePilot V3 uses `plugins.v3/` with
+  `package.v3.json`; V2 uses `plugins.v2/` with `package.v2.json`; legacy V1
+  uses `plugins/` with `package.json`. Do not generate V2 paths for a V3 host.
 - When working in or from `MoviePilot-Plugins`, read its `README.md`,
-  `docs/Repository_Guide.md`, and `docs/V2_Plugin_Development.md`. For
-  scenario-specific extensions, read the matching `docs/faq/*.md`.
+  `docs/Repository_Guide.md`, and the guide for the target generation:
+  `docs/Plugin_Development.md` for V3, `docs/V2_Plugin_Development.md` for V2.
+  For scenario-specific extensions, read the matching `docs/faq/*.md`.
+- For V3, prefer the public `app.sdk.*` entry points documented by the current
+  host and guide; do not copy old internal imports from a V2 example. Verify
+  extension signatures against the installed host before using a template.
+
+## Task Scope
+
+A request to create or fix a plugin authorizes relevant local source edits and
+validation. Reuse that authorization; it does not by itself authorize changing
+host configuration, installing/reloading the plugin, restarting, or publishing.
+Perform those steps when the user requested them or already approved their
+scope, honoring host confirmation requirements. Inspect auto-reload settings
+before editing a live watched plugin source; such edits can affect the runtime
+immediately and require that runtime effect to be within the authorized scope.
 
 ## Code Tool Workflow
 
@@ -108,21 +123,19 @@ a local plugin source and installed into the running MoviePilot instance.
    - Installed plugin candidates: use `operation_id=plugin.installed`; its summaries
      include `repo_url` when the source can be matched from a local plugin
      repository or plugin market metadata.
-   - For Vue federation examples, prefer current compliant plugins such as
-     `MoviePilot-Plugins/plugins.v2/agenttokens/` and the frontend example
-     `MoviePilot-Frontend/examples/plugin-component/`.
+   - For Vue federation examples, use a current plugin from the matching
+     generation and `MoviePilot-Frontend/examples/plugin-component/`.
 4. Determine the target source path:
    - Query `PLUGIN_LOCAL_REPO_PATHS` with `operation_id=config.system.get` when possible.
    - If exactly one local plugin repository is configured, prefer that path.
    - If several are configured, choose the one the user named; otherwise ask
      which repository to use.
-   - If none is configured, set it before writing plugin code:
-     call `operation_id=config.system.update` with a body containing
-     `setting_key="PLUGIN_LOCAL_REPO_PATHS"`, `value="local-plugins"`, and
-     `operation="replace"`.
-     `local-plugins` is resolved relative to the MoviePilot root by the local
-     plugin source loader. Create that source directory and write the plugin
-     under it; do not write new plugin source directly into `app/plugins/`
+   - If none is configured, prepare the source in an appropriate local directory.
+     When local installation/configuration is authorized, register it with
+     `operation_id=config.system.update` with `setting_key="PLUGIN_LOCAL_REPO_PATHS"`,
+     the chosen source path as `value`, and `operation="replace"`. A relative
+     path such as `local-plugins` resolves against the MoviePilot root.
+     Write the plugin under the chosen source; do not write directly into `app/plugins/`
      unless the user explicitly asks for a runtime-only experiment.
 5. Choose the plugin ID:
    - Class name is the plugin ID, for example `MyNotifier`.
@@ -162,15 +175,16 @@ Selection rules:
 
 ## Local Source Layout
 
-Default to V2 layout for new local plugins:
+For a verified V3 host, use this layout for new local plugins. For V2, use
+`package.v2.json` and `plugins.v2/` instead and follow its dependency contract.
 
 ```text
 <local-plugin-repo>/
-├── package.v2.json
-└── plugins.v2/
+├── package.v3.json
+└── plugins.v3/
     └── <plugin_id_lower>/
         ├── __init__.py
-        ├── requirements.txt        # only when extra runtime dependencies are necessary
+        ├── pyproject.toml          # only when extra runtime dependencies are necessary
         └── ...                     # helper modules, schemas, static assets
 ```
 
@@ -178,7 +192,7 @@ For a Vue federation plugin, the runtime requirement is the built remote assets
 under the plugin directory:
 
 ```text
-plugins.v2/<plugin_id_lower>/
+plugins.v3/<plugin_id_lower>/
 ├── __init__.py
 ├── dist/
 │   └── assets/
@@ -204,7 +218,7 @@ Only use the legacy layout when the user explicitly needs it:
 ```
 
 For legacy `package.json` entries that should work on V2, include `"v2": true`.
-For V2-first work, prefer `package.v2.json` and `plugins.v2/`.
+For current V3 work, use `package.v3.json` and `plugins.v3/`.
 
 ## Package Metadata
 
@@ -221,7 +235,7 @@ the class `plugin_version` synchronized.
     "icon": "mynotifier.png",
     "author": "local",
     "level": 1,
-    "system_version": ">=2.12.0",
+    "system_version": ">=3.0.0",
     "history": {
       "v1.0.0": "初始版本"
     }
@@ -244,9 +258,11 @@ Rules:
   GitHub Release archive.
 - New plugin entries should usually be appended to the package index so they
   appear as newer marketplace items.
-- Do not add dependencies unless they are actually required. If
-  `requirements.txt` changes, the user must reinstall the plugin; hot reload is
-  not enough to install dependencies.
+- Set `system_version` to the actual minimum version providing the APIs used;
+  the example is not proof that every host capability exists in 3.0.0.
+- Do not add dependencies unless required. Use the host generation's manifest
+  contract (`pyproject.toml` for current V3). Dependency changes require the
+  host installation flow; hot reload alone does not install them.
 - Plugin dependencies are installed into the shared MoviePilot Python
   environment. Do not pin or downgrade packages already provided by MoviePilot
   unless the user has explicitly accepted the compatibility risk.
@@ -378,14 +394,14 @@ Use only the extension points the requested plugin actually needs:
   `ActionContent` first and return `(success, action_content)`.
 - Agent tools: use `get_agent_tools()`; each tool class must inherit
   `app.agent.tools.base.MoviePilotTool`.
-- Custom Vue UI: implement `get_render_mode()` only when Vuetify schema cannot
-  satisfy the request. Return `("vue", "<compiled-assets-path>")` and include
+- Custom Vue UI: implement `get_render_mode()` when Vue is the selected UI
+  mode. Return `("vue", "<compiled-assets-path>")` and include
   built frontend assets in the plugin directory.
 
 ## Vue Federation UI
 
-Use Vue federation only after the Pre-Flight UI decision says JSON schema is not
-enough. A Vue plugin must align backend methods, built files, and federation
+Use Vue federation when selected in the Pre-Flight UI decision.
+A Vue plugin must align backend methods, built files, and federation
 exposes.
 
 Backend requirements:
@@ -496,6 +512,8 @@ Vue API calls:
 
 ## Local Install And Reload
 
+Run this phase only within the authorized installation/runtime scope.
+
 1. After writing files in a configured local plugin repository, call
    `moviepilot_api` with `operation_id=plugin.market` and query fields
    `query="<PluginID>"`, `force_refresh=true` to confirm the
@@ -507,7 +525,7 @@ Vue API calls:
    in an installed local plugin can auto-sync and reload. If it is not enabled,
    call `operation_id=plugin.reload` with path parameter `plugin_id` after
    editing runtime files.
-4. When `requirements.txt` changes, reinstall with `force=True`; reloading alone
+4. When the dependency manifest changes, reinstall with `force=True`; reloading alone
    does not install new dependencies.
 
 ## Validation
@@ -529,9 +547,9 @@ Vue API calls:
   them through the provided `api` prop.
 - Keep external HTTP calls behind MoviePilot utilities and avoid real network
   calls in tests.
-- If the plugin has non-trivial logic, add or update pytest-native tests. Plugin
-  repositories can use `app.testing.bootstrap.prepare_v2_backend()` to prepare a
-  temporary MoviePilot backend and inject `<repo>/plugins.v2` into `sys.path`.
+- If the plugin has non-trivial logic, add or update pytest-native tests using
+  the repository's bootstrap for the target generation. Inspect its current
+  test configuration instead of copying a V2 backend or namespace into V3.
 - Run the narrowest allowed validation for the touched area. In this repository,
   follow `docs/rules/03-commands.md`; for plugin-only repositories, follow their
   own documented validation commands.
@@ -562,7 +580,8 @@ Vue API calls:
 Report:
 
 - Plugin ID, source path, and runtime path if installed.
-- Package file changed (`package.v2.json` or `package.json`).
+- Host/plugin generation and package file changed (`package.v3.json`,
+  `package.v2.json`, or legacy `package.json`).
 - UI mode used (`vuetify` JSON or `vue` federation), and for Vue plugins the
   exposed components and built asset path.
 - Whether the plugin was installed or reloaded.

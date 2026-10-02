@@ -57,8 +57,10 @@ class ClassificationExecutionPort(Protocol):
     async def async_build_facts(
         self,
         media: ClassificationSubject,
+        *,
+        policy: ClassificationPolicy | None = None,
     ) -> ClassificationFacts | None:
-        """异步构造与实际分类一致的完整事实快照，不写入媒体或策略。"""
+        """按指定或活动策略异步准备事实，供预览和新旧策略比较复用。"""
         ...
 
     def build_facts(
@@ -143,13 +145,16 @@ class ClassificationExecutionService:
     async def async_build_facts(
         self,
         media: ClassificationSubject,
+        *,
+        policy: ClassificationPolicy | None = None,
     ) -> ClassificationFacts | None:
-        """构造影响分析使用的完整事实，并复用插件扩展与跨来源补充规则。"""
+        """按指定或活动策略补充事实，隔离候选策略与原媒体对象。"""
         finalized, policy, facts, _ = self._prepare(
             media,
             extensions=None,
             effective_override=None,
             refresh=False,
+            policy_override=policy,
         )
         if policy is None or facts is None:
             return None

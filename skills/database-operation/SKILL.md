@@ -29,8 +29,11 @@ runtime, for example:
 
 ```bash
 cd <MOVIEPILOT_ROOT>
-venv/bin/python skills/database-operation/scripts/mp-db.py tables
+python skills/database-operation/scripts/mp-db.py tables
 ```
+
+The Agent command environment routes `python` to the project-specific `moviepilot-python`
+entry when available and falls back to the project or Docker `VENV_PATH` Python otherwise.
 
 The runtime sets `MOVIEPILOT_ROOT` for copied skills. If you run a copied
 script directly from `<CONFIG_PATH>/agent/skills/`, set that variable to the

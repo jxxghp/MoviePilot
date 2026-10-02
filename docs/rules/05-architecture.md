@@ -377,6 +377,9 @@ ModuleManager 与 startup 组合根继续关闭其余资源但必须向上返回
 等领域关闭入口必须直接传播 Runtime 的整体结果，不得以单个能力快照或无返回包装器覆盖失败。
 消息渠道模块必须通过 `_MessageChannelModuleBase._stop_service_instances()` 聚合多实例关闭结果；
 长连接、轮询或 Socket 服务只有在真实终止后才能返回成功，超时 owner 不得清空句柄。
+Agent 渠道流式回复的分段与停止共用 `StreamingHandler` 的唯一刷新任务；运行中补充输入只登记
+文本边界，不能另建发送任务或覆盖在途消息身份。旧回复的同步收口统一由
+`_finalize_current_message()` 等待宿主线程池完成，再发布新回复；停止同样等待在途刷新收敛。
 应用消息队列的监控线程遵守同一收敛语义：停止必须有限等待，回调阻塞导致线程仍存活时保留 owner
 并向 startup 返回 `False`，不得用无界 `join()` 阻塞生命周期或把日志当作成功。
 共享 `ThreadHelper` 必须追踪通过宿主 `submit()` 和旧兼容 `.pool.submit()` 接受的全部 Future；关闭时

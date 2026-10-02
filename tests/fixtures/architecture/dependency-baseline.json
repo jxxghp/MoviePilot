@@ -43,11 +43,11 @@
       "app.application": 0,
       "app.chain": 0
     },
-    "count": 48,
+    "count": 49,
     "counts_by_kind": {
       "network_sdk": 22,
       "protocol_operation": 7,
-      "raw_transport": 19
+      "raw_transport": 20
     },
     "entries": [
       {
@@ -636,11 +636,12 @@
           "from:plexapi.myplex.MyPlexAccount as MyPlexAccount",
           "from:plexapi.server.PlexServer as PlexServer"
         ],
-        "fingerprint": "55baa4290bb62468d504e954add3921c0068f3a3c77aa3db92667ae9022909ca",
+        "fingerprint": "878d3f54d6cd10d582e9670bec1b2a499f1f4c5a359a3cead7eaee79361b8a97",
         "kind": "network_sdk",
         "source": "app.modules.plex.plex",
         "target": "plexapi",
         "uses": [
+          "Plex.__fetch_item|call:exceptions.NotFound",
           "Plex.__fetch_item|call:fetchItem",
           "Plex.__get_library_images|call:fetchItems",
           "Plex.__init__|call:library.sections",
@@ -667,6 +668,16 @@
           "Plex.refresh_library_by_items|call:query",
           "Plex.refresh_root_library|call:library.update"
         ]
+      },
+      {
+        "bindings": [
+          "from:requests.RequestException as RequestException"
+        ],
+        "fingerprint": "e49c0856fd6c99a3409850898aac7e6e3fa611d4e91546634c178fbfd244e8da",
+        "kind": "raw_transport",
+        "source": "app.modules.plex.plex",
+        "target": "requests",
+        "uses": []
       },
       {
         "bindings": [
@@ -930,8 +941,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9308,
-  "edge_sha256": "6c903fe5cd5db19ceb11f5ddde8418d89c663afee19349d4aaf25b7d8ef8ffaa",
+  "edge_count": 9297,
+  "edge_sha256": "1dcc315022161e9e9cd4a7e83546755c776ea932c5c85b3c8df25052173c8957",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -3218,18 +3229,6 @@
     "app.api.endpoints.transferhistory -> app.schemas",
     "app.api.endpoints.transferhistory -> app.schemas.file",
     "app.api.endpoints.transferhistory -> app.schemas.transfer",
-    "app.api.endpoints.transferqueue -> app.adapters",
-    "app.api.endpoints.transferqueue -> app.adapters.web",
-    "app.api.endpoints.transferqueue -> app.adapters.web.security",
-    "app.api.endpoints.transferqueue -> app.adapters.web.security.access",
-    "app.api.endpoints.transferqueue -> app.api",
-    "app.api.endpoints.transferqueue -> app.api.response",
-    "app.api.endpoints.transferqueue -> app.chain",
-    "app.api.endpoints.transferqueue -> app.chain.transfer",
-    "app.api.endpoints.transferqueue -> app.chain.transfer.facade",
-    "app.api.endpoints.transferqueue -> app.schemas",
-    "app.api.endpoints.transferqueue -> app.schemas.token",
-    "app.api.endpoints.transferqueue -> app.schemas.transfer",
     "app.api.endpoints.user -> app.api",
     "app.api.endpoints.user -> app.api.dependencies",
     "app.api.endpoints.user -> app.api.dependencies.auth",
@@ -3318,7 +3317,6 @@
     "app.api.routers -> app.api.endpoints.tmdb",
     "app.api.routers -> app.api.endpoints.torrent",
     "app.api.routers -> app.api.endpoints.transfer",
-    "app.api.routers -> app.api.endpoints.transferqueue",
     "app.api.routers -> app.api.endpoints.user",
     "app.api.routers -> app.api.endpoints.webhook",
     "app.api.routers -> app.api.endpoints.workflow",
@@ -4494,6 +4492,8 @@
     "app.chain.download.batch -> app.schemas.types",
     "app.chain.download.contract -> app.chain",
     "app.chain.download.contract -> app.chain.base",
+    "app.chain.download.existence -> app.application",
+    "app.chain.download.existence -> app.application.mediaserver",
     "app.chain.download.existence -> app.chain",
     "app.chain.download.existence -> app.chain.download",
     "app.chain.download.existence -> app.chain.download.contract",
@@ -10242,7 +10242,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 1105,
+  "module_count": 1104,
   "modules": [
     "app",
     "app.adapters",
@@ -10493,7 +10493,6 @@
     "app.api.endpoints.torrent",
     "app.api.endpoints.transfer",
     "app.api.endpoints.transferhistory",
-    "app.api.endpoints.transferqueue",
     "app.api.endpoints.user",
     "app.api.endpoints.webhook",
     "app.api.endpoints.workflow",

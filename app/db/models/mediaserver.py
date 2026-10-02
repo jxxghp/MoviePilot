@@ -1,8 +1,7 @@
 from datetime import datetime
 from typing import Any, List, Optional
 
-from sqlalchemy import String, JSON, Index, delete, or_
-from sqlalchemy import select
+from sqlalchemy import JSON, Index, String, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
@@ -96,21 +95,30 @@ class MediaServerItem(Base):
     @classmethod
     def exist_by_media_identity(
             cls, db: Session, media_source: MediaSource, media_id: str, mtype: str,
+            server: Optional[str] = None,
     ):
         """按规范媒体身份和类型查询媒体服务器条目。"""
-        return db.execute(select(cls).where(
+        statement = select(cls).where(
             cls.media_source == str(media_source),
             cls.media_id == str(media_id),
             cls.item_type == mtype,
-        )).scalars().first()
+        )
+        if server:
+            statement = statement.where(cls.server == server)
+        return db.execute(statement).scalars().first()
 
     @classmethod
-    def exists_by_title(cls, db: Session, title: str, mtype: str, year: str):
+    def exists_by_title(
+            cls, db: Session, title: str, mtype: str, year: str,
+            server: Optional[str] = None,
+    ):
         statement = select(cls).where(cls.title == title)
         if mtype:
             statement = statement.where(cls.item_type == mtype)
         if year:
             statement = statement.where(cls.year == str(year))
+        if server:
+            statement = statement.where(cls.server == server)
         return db.execute(statement).scalars().first()
 
     @classmethod
@@ -121,27 +129,37 @@ class MediaServerItem(Base):
     @classmethod
     async def async_exist_by_media_identity(
             cls, db: AsyncSession, media_source: MediaSource, media_id: str, mtype: str,
+            server: Optional[str] = None,
     ):
         """异步按规范媒体身份和类型查询媒体服务器条目。"""
-        result = await db.execute(select(cls).filter(
+        statement = select(cls).filter(
             cls.media_source == str(media_source),
             cls.media_id == str(media_id),
             cls.item_type == mtype,
-        ))
+        )
+        if server:
+            statement = statement.filter(cls.server == server)
+        result = await db.execute(statement)
         return result.scalars().first()
 
     @classmethod
-    async def async_exists_by_title(cls, db: AsyncSession, title: str, mtype: str, year: str):
+    async def async_exists_by_title(
+            cls, db: AsyncSession, title: str, mtype: str, year: str,
+            server: Optional[str] = None,
+    ):
         if not mtype and not year:
-            result = await db.execute(select(cls).filter(cls.title == title))
+            statement = select(cls).filter(cls.title == title)
         elif not year:
-            result = await db.execute(select(cls).filter(cls.title == title,
-                                                         cls.item_type == mtype))
+            statement = select(cls).filter(cls.title == title, cls.item_type == mtype)
         elif not mtype:
-            result = await db.execute(select(cls).filter(cls.title == title,
-                                                         cls.year == str(year)))
+            statement = select(cls).filter(cls.title == title, cls.year == str(year))
         else:
-            result = await db.execute(select(cls).filter(cls.title == title,
-                                                         cls.item_type == mtype,
-                                                         cls.year == str(year)))
+            statement = select(cls).filter(
+                cls.title == title,
+                cls.item_type == mtype,
+                cls.year == str(year),
+            )
+        if server:
+            statement = statement.filter(cls.server == server)
+        result = await db.execute(statement)
         return result.scalars().first()

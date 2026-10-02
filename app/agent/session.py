@@ -309,8 +309,8 @@ class AgentSessionOwner:
             scheduled_run_id: Optional[str] = None,
     ) -> str:
         """
-        处理用户消息：将消息放入会话队列，按顺序依次处理。
-        同一会话的消息排队等待，不同会话之间互不影响。
+        处理用户消息：同渠道的运行中补充输入进入当前上下文，其余消息按会话排队。
+        等待完整结果的调用保留独立任务，不同会话之间互不影响。
         """
         completion_future: Optional[asyncio.Future[str]] = (
             asyncio.get_running_loop().create_future() if wait_for_completion else None
@@ -356,6 +356,8 @@ class AgentSessionOwner:
                         f"Agent 会话 {session_id} 仍在停止，暂时不能接收新任务"
                     )
             self._record_session_activity(session_id, user_id)
+            if await self._try_steer_channel_message(task):
+                return ""
 
             # 获取或创建会话队列
             if session_id not in self._session_queues:
@@ -410,6 +412,52 @@ class AgentSessionOwner:
                 await self._close_scheduled_task_scope(task)
                 raise
         return ""
+
+    async def _try_steer_channel_message(self, task: _MessageTask) -> bool:
+        """在生命周期锁内将同一渠道会话的追加输入交给活动运行，保留其他调用的排队语义。"""
+        if (
+            not task.channel
+            or task.channel in {NotificationChannel.Web.value, NotificationChannel.WebAgent.value}
+            or task.reply_mode != ReplyMode.DISPATCH
+            or task.completion_future is not None
+            or task.scheduled_run_id is not None
+        ):
+            return False
+        active = self._session_active_tasks.get(task.session_id)
+        inbox = self._session_steering_inboxes.get(task.session_id)
+        if active is None or inbox is None or active.scheduled_run_id is not None:
+            return False
+        identity_fields = (
+            "user_id", "channel", "source", "original_chat_id", "is_channel_admin",
+            "reply_mode", "allow_message_tools",
+        )
+        if any(getattr(active, name) != getattr(task, name) for name in identity_fields):
+            return False
+        message = await inbox.enqueue(
+            user_id=task.user_id,
+            text=task.message,
+            images=task.images,
+            files=task.files,
+            original_message_id=task.original_message_id,
+        )
+        return message is not None
+
+    @staticmethod
+    def _build_steering_status_callback(task: _MessageTask) -> SteeringStatusCallback:
+        """在真实注入边界切分渠道回复，同时保留 WebAgent 等调用方的状态回调。"""
+        def callback(message: SteeringMessage, status: str) -> None:
+            """先冻结旧回复的展示范围，再交付调用方的应用事件。"""
+            if (
+                status == "applied"
+                and task.agent is not None
+                and task.channel
+                and task.channel not in {NotificationChannel.Web.value, NotificationChannel.WebAgent.value}
+            ):
+                task.agent.start_steering_reply(message.original_message_id)
+            if task.steering_status_callback is not None:
+                task.steering_status_callback(message, status)
+
+        return callback
 
     async def submit_steering_message(
         self,
@@ -701,7 +749,8 @@ class AgentSessionOwner:
             process_kwargs["has_audio_input"] = True
         if task.terminal_scope is not None:
             process_kwargs["terminal_scope"] = task.terminal_scope
-        await inbox.begin_run(task.steering_status_callback)
+        steering_status_callback = self._build_steering_status_callback(task)
+        await inbox.begin_run(steering_status_callback)
         try:
             result = await agent.process(task.message, **process_kwargs)
             # 模型最终回合返回后仍可能有一条已入 inbox 的消息；在同一 worker
@@ -725,7 +774,7 @@ class AgentSessionOwner:
             # 也在当前 worker 内执行，且先发布 applied 以完成前端展示收口。
             pending = await inbox.finish_run()
             if pending:
-                callback = task.steering_status_callback
+                callback = steering_status_callback
                 for message in pending:
                     if callback is not None:
                         try:
