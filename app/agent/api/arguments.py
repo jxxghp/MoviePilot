@@ -1,5 +1,6 @@
 """按已生成的 API 输入合同规范实际请求，使相同写入使用稳定参数身份。"""
 
+import json
 import re
 from copy import deepcopy
 from typing import Any
@@ -16,6 +17,24 @@ _SCALAR_ADAPTERS = {
 }
 _MISSING = object()
 _CONTRACT_DESCRIPTION_MAX_CHARS = 180
+
+
+def coerce_string_body(value: Any) -> Any:
+    """把模型联合类型 schema 下常见的 JSON 字符串请求体还原为原生值。
+
+    部分模型在 body 声明为 anyOf（对象/数组/字面量）时会把整个请求体
+    编码成 JSON 字符串；此处仅在解析成功且结果为对象或数组时替换，
+    其余输入保持原值，交由 operation 合同继续校验并给出纠错回执。
+    """
+    if not isinstance(value, str):
+        return value
+    try:
+        parsed = json.loads(value)
+    except (TypeError, ValueError):
+        return value
+    if isinstance(parsed, (dict, list, type(None))):
+        return parsed
+    return value
 
 
 class ApiArgumentError(ValueError):
@@ -270,6 +289,9 @@ def canonical_api_arguments(arguments: dict[str, Any], schema: dict[str, Any]) -
         raise ValueError("API 操作没有规范参数合同")
     _validate_argument_locations(arguments, schema)
     values = deepcopy(arguments)
+    # 模型可能把联合类型的 body 编码为 JSON 字符串；先还原再按合同规范。
+    if "body" in values:
+        values["body"] = coerce_string_body(values["body"])
     if route.method == "GET" and isinstance(values.get("body"), dict):
         values["query"] = {**(values.get("query") or {}), **values.pop("body")}
     properties = branch.get("properties", {})
