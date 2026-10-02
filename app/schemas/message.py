@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Optional, Union, List, Dict, Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, PrivateAttr as _PrivateAttr, field_validator
 
 from app.schemas.common import JsonData
 from app.schemas.types import ContentType, MessageType, NotificationChannel
@@ -275,6 +275,18 @@ class Message(BaseModel):
     rich_message: Optional[str] = None
     # 是否写入消息历史
     save_history: bool = True
+
+    # 通知隔离路由范围，仅在运行时传递给通知模块，不写入消息数据
+    _notification_route_scope: Optional[str] = _PrivateAttr(default=None)
+
+    def set_notification_route_scope(self, scope: Optional[str]) -> None:
+        """设置运行时通知路由范围，支持管理员默认目标和用户个人目标的区分。"""
+        self._notification_route_scope = scope
+
+    @property
+    def notification_route_scope(self) -> Optional[str]:
+        """返回运行时通知路由范围，不影响消息序列化和历史记录。"""
+        return self._notification_route_scope
 
     def to_dict(self):
         """

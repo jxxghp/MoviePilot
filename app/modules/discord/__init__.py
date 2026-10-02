@@ -34,6 +34,8 @@ register_channel_admin_resolver(
 class DiscordModule(_MessageChannelModuleBase[Discord]):
     # 管理员配置键，与渠道 resolver 保持一致
     _admin_config_key = "DISCORD_ADMINS"
+    _notification_user_target_keys = ("discord_userid",)
+    _notification_admin_default_config_keys = ("DISCORD_CHANNEL_ID",)
     _IMAGE_SUFFIXES = (
         ".png",
         ".jpg",
@@ -349,7 +351,7 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
                 )
                 continue
             logger.debug(f"[Discord] check_message 通过，准备发送到: {conf.name}")
-            targets = message.targets
+            targets = self.get_notification_targets(message)
             userid = message.userid
             if not userid and targets is not None:
                 userid = targets.get("discord_userid")
@@ -408,7 +410,7 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
                 client.send_medias_msg(
                     title=message.title,
                     medias=medias,
-                    userid=message.userid,
+                    userid=self.get_notification_userid(message, "discord_userid"),
                     buttons=message.buttons,
                     original_message_id=message.original_message_id,
                     original_chat_id=message.original_chat_id,
@@ -431,7 +433,7 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
                 client.send_torrents_msg(
                     title=message.title,
                     torrents=torrents,
-                    userid=message.userid,
+                    userid=self.get_notification_userid(message, "discord_userid"),
                     buttons=message.buttons,
                     original_message_id=message.original_message_id,
                     original_chat_id=message.original_chat_id,
@@ -579,7 +581,7 @@ class DiscordModule(_MessageChannelModuleBase[Discord]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            targets = message.targets
+            targets = self.get_notification_targets(message)
             userid = message.userid
             if not userid and targets is not None:
                 userid = targets.get("discord_userid")

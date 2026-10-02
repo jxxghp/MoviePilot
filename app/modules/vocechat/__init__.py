@@ -28,6 +28,8 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
 
     # 管理员配置键，与渠道 resolver 保持一致
     _admin_config_key = "VOCECHAT_ADMINS"
+    _notification_user_target_keys = ("vocechat_userid",)
+    _notification_admin_default_config_keys = ("VOCECHAT_CHANNEL_ID",)
     _IMAGE_SUFFIXES = (
         ".png",
         ".jpg",
@@ -335,10 +337,7 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            targets = message.targets
-            userid = message.userid
-            if not message.userid and targets:
-                userid = targets.get('vocechat_userid')
+            userid = self.get_notification_userid(message, "vocechat_userid")
             client: VoceChat = self.get_instance(conf.name)
             if client:
                 client.send_msg(title=message.title, text=message.text,
@@ -356,9 +355,10 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
                 continue
             client: VoceChat = self.get_instance(conf.name)
             if client:
-                client.send_msg(title=message.title, userid=message.userid)
+                userid = self.get_notification_userid(message, "vocechat_userid")
+                client.send_msg(title=message.title, userid=userid)
                 client.send_medias_msg(title=message.title, medias=medias,
-                                       userid=message.userid, link=message.link)
+                                       userid=userid, link=message.link)
 
     def post_torrents_message(self, message: Message, torrents: List[Context]) -> None:
         """
@@ -370,13 +370,7 @@ class VoceChatModule(_MessageChannelModuleBase[VoceChat]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            targets = message.targets
-            userid = message.userid
-            if not userid and targets is not None:
-                userid = targets.get('vocechat_userid')
-                if not userid:
-                    logger.warn(f"用户没有指定 VoceChat用户ID，消息无法发送")
-                    return
+            userid = self.get_notification_userid(message, "vocechat_userid")
             client: VoceChat = self.get_instance(conf.name)
             if client:
                 client.send_torrents_msg(title=message.title, torrents=torrents,

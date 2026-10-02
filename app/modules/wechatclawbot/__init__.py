@@ -25,6 +25,9 @@ register_channel_admin_resolver(
 
 
 class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
+    _notification_user_target_keys = ("wechatclawbot_userid",)
+    _notification_admin_default_config_keys = ("WECHATCLAWBOT_DEFAULT_TARGET",)
+
     def __init__(self):
         """初始化模块级去重缓存，拦截 iLink 偶发的重复回放消息。"""
         super().__init__()
@@ -344,13 +347,9 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            targets = message.targets
-            userid = message.userid
-            if not userid and targets is not None:
-                userid = targets.get("wechatclawbot_userid")
-                if not userid:
-                    logger.warning("用户没有指定 微信 ClawBot 用户ID，消息无法发送")
-                    return
+            userid = self.get_notification_userid(
+                message, "wechatclawbot_userid"
+            )
             client: WechatClawBot = self.get_instance(conf.name)
             if not client:
                 continue
@@ -413,7 +412,12 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
                 continue
             client: WechatClawBot = self.get_instance(conf.name)
             if client:
-                client.send_medias_msg(medias=medias, userid=message.userid)
+                client.send_medias_msg(
+                    medias=medias,
+                    userid=self.get_notification_userid(
+                        message, "wechatclawbot_userid"
+                    ),
+                )
 
     def post_torrents_message(self, message: Message, torrents: List[Context]) -> None:
         """发送种子选择列表。"""
@@ -424,7 +428,9 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
             if client:
                 client.send_torrents_msg(
                     torrents=torrents,
-                    userid=message.userid,
+                    userid=self.get_notification_userid(
+                        message, "wechatclawbot_userid"
+                    ),
                     title=message.title,
                     link=message.link,
                 )
