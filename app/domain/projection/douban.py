@@ -6,9 +6,24 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
+from app.domain.classification.vocabulary import LANGUAGE_NAMES
 from app.domain.metainfo import MetaInfo
 from app.domain.projection.mapping import ProjectionBuilder
 from app.schemas.types import MediaSource, MediaType
+
+_DOUBAN_LANGUAGE_CODES: dict[str, str] = {
+    **{name.casefold(): code for code, name in LANGUAGE_NAMES.items()},
+    "汉语": "zh",
+    "汉语普通话": "zh",
+    "普通话": "zh",
+    "国语": "zh",
+    "简体中文": "zh",
+    "繁体中文": "zh",
+    "粤语": "cn",
+    "广东话": "cn",
+    "藏文": "bo",
+    "壮文": "za",
+}
 
 
 def _media_type(info: Mapping[str, Any]) -> MediaType | None:
@@ -67,6 +82,28 @@ def _aliases(info: Mapping[str, Any]) -> list[str]:
     return [re.sub(r"\([港台豆友译名]+\)", "", str(alias)) for alias in info.get("aka") or []]
 
 
+def _original_language(info: Mapping[str, Any]) -> str | None:
+    """将豆瓣返回的首个语言名称转换为分类规则使用的代码。"""
+    languages = info.get("languages")
+    if isinstance(languages, str):
+        language_values: list[Any] = [languages]
+    elif isinstance(languages, (list, tuple)):
+        language_values = list(languages)
+    else:
+        return None
+    for language in language_values:
+        if not isinstance(language, str):
+            continue
+        value = language.strip()
+        if not value:
+            continue
+        normalized = value.casefold()
+        if re.fullmatch(r"[a-z]{2}(?:[-_]\w+)?", normalized):
+            return normalized.split("-", 1)[0].split("_", 1)[0]
+        return _DOUBAN_LANGUAGE_CODES.get(normalized, value)
+    return None
+
+
 def project(
     current: Mapping[str, Any],
     info: Mapping[str, Any],
@@ -87,6 +124,7 @@ def project(
     builder.set_missing("title", info.get("title"))
     builder.set_missing("en_title", info.get("original_title"))
     builder.set_missing("original_title", info.get("original_title"))
+    builder.set_missing("original_language", _original_language(info))
 
     if not builder.get("year"):
         year = str(info.get("year"))[:4] if info.get("year") else None
