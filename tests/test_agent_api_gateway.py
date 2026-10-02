@@ -198,8 +198,12 @@ def test_mcp_tools_list_preserves_all_moviepilot_api_operation_branches() -> Non
     assert operation_ids == set(API_OPERATION_ROUTES)
 
 
-def test_local_agent_tool_rejects_json_encoded_object_bodies() -> None:
-    """本地 Agent 工具 schema 不得把 JSON 对象字符串化作为合法请求体。"""
+def test_local_agent_tool_restores_json_encoded_object_bodies() -> None:
+    """本地 Agent 工具 schema 不得把 JSON 对象字符串化作为合法请求体。
+
+    部分模型在 body 声明为 anyOf 联合类型时会把整个请求体编码成 JSON 字符串；
+    规范化阶段将其还原为原生对象，非 JSON 的非法字符串仍按合同报错。
+    """
     tool = MoviePilotApiTool(session_id="session", user_id="api_user")
     schema = tool.tool_call_schema
     assert not isinstance(schema, dict)
@@ -223,11 +227,22 @@ def test_local_agent_tool_rejects_json_encoded_object_bodies() -> None:
     canonical = tool.canonical_arguments({"operation_id": "download.add", "body": body})
     assert canonical["body"]["torrent_in"]["enclosure"] == body["torrent_in"]["enclosure"]
 
+    # 模型把 body 编码为 JSON 字符串时，规范化阶段还原为原生对象。
+    restored = tool.canonical_arguments(
+        {
+            "operation_id": "download.add",
+            "body": json.dumps(body, ensure_ascii=False),
+        }
+    )
+    assert isinstance(restored["body"], dict)
+    assert restored["body"]["torrent_in"]["enclosure"] == body["torrent_in"]["enclosure"]
+
+    # 无法还原为对象/数组的非法字符串仍按合同报错。
     with pytest.raises(ValueError):
         tool.canonical_arguments(
             {
                 "operation_id": "download.add",
-                "body": json.dumps(body, ensure_ascii=False),
+                "body": "not-a-json-object",
             }
         )
 

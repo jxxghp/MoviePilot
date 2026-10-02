@@ -7,9 +7,13 @@ from pathlib import Path
 from typing import Any, Dict, Literal, Optional, Type, Union, cast
 
 from langchain_core.tools import ToolException
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
 
-from app.agent.api.arguments import api_input_contract, canonical_api_arguments
+from app.agent.api.arguments import (
+    api_input_contract,
+    canonical_api_arguments,
+    coerce_string_body,
+)
 from app.agent.api.executor import ApiExecutionContext, ApiExecutionError, MoviePilotApiExecutor
 from app.agent.policy.api import resolve_api_operation
 from app.agent.policy.contracts import ExecutionOutcome, PrincipalRole
@@ -75,6 +79,12 @@ class MoviePilotApiInput(BaseModel):  # type: ignore[misc]
             "The only string body is the exact value 'dev' for system.upgrade.dev."
         ),
     )
+
+    @field_validator("body", mode="before")
+    @classmethod
+    def _restore_json_string_body(cls, value: Any) -> Any:
+        """模型在联合类型 schema 下可能把 body 编码为 JSON 字符串，入模前还原。"""
+        return coerce_string_body(value)
 
 
 class MoviePilotApiTool(MoviePilotTool):
