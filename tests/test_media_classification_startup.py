@@ -412,8 +412,10 @@ async def test_fresh_environment_initializes_builtin_default_policy(
         "movie.animation",
         "movie.chinese",
         "movie.foreign",
+        "movie.uncategorized",
         "tv.dongman.cn",
         "tv.dongman.jp",
+        "tv.animation.other",
         "tv.documentary",
         "tv.kids",
         "tv.variety",
@@ -430,8 +432,10 @@ async def test_fresh_environment_initializes_builtin_default_policy(
     assert [rule.id for rule in policy.rules] == [
         "movie.animation.default",
         "movie.chinese.default",
+        "movie.foreign.default",
         "tv.dongman.cn.default",
         "tv.dongman.jp.default",
+        "tv.animation.other.default",
         "tv.documentary.default",
         "tv.kids.default",
         "tv.variety.default",
@@ -444,7 +448,7 @@ async def test_fresh_environment_initializes_builtin_default_policy(
         "music.album.default",
     ]
     assert policy.fallbacks == {
-        "电影": "movie.foreign",
+        "电影": "movie.uncategorized",
         "电视剧": "tv.uncategorized",
         "音乐": "music.uncategorized",
     }

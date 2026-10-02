@@ -475,6 +475,8 @@ SMB 配置支持两种明确的路径模式：旧字段 `share: "data"` 保持�
 
 #### 媒体自动分类
 
+媒体预览应先通过媒体详情接口取得完整信息，避免将搜索摘要中缺失的字段误判为不匹配。媒体输入会按所选策略异步补充缺失信息；显式标准化事实按原值计算。近期历史影响分析只读取一次媒体详情，再分别按活动策略与候选策略补充信息和比较，无法读取详情的记录不视为未变化。
+
 媒体自动分类使用完整、可版本化的策略作为唯一写入合同。先读取当前策略的
 `revision`，再用字段目录中的稳定字段 ID 和操作符构造规则；发布和回滚均使用
 `expected_revision` 做并发校验，成功后产生新的 revision。旧 `/media/category` 与
@@ -485,7 +487,7 @@ SMB 配置支持两种明确的路径模式：旧字段 `share: "data"` 保持�
 | GET | `/api/v1/media/classification/fields` | 登录用户读取标准字段、操作符、通用选项、来源候选与策略限制 |
 | GET | `/api/v1/media/classification/policy` | 登录用户读取当前活动策略和 revision |
 | POST | `/api/v1/media/classification/validate` | 超级管理员校验完整草稿，不保存 |
-| POST | `/api/v1/media/classification/preview` | 登录用户对媒体搜索结果或标准化事实执行单次只读预览，可选草稿策略 |
+| POST | `/api/v1/media/classification/preview` | 登录用户对完整媒体详情或标准化事实执行单次只读预览，可选草稿策略 |
 | POST | `/api/v1/media/classification/impact` | 超级管理员比较活动策略与草稿对近期历史或显式样本的有界影响 |
 | GET | `/api/v1/media/classification/history` | 超级管理员读取可回滚的有限历史版本 |
 | PUT | `/api/v1/media/classification/policy` | 超级管理员在 `expected_revision` 匹配时校验并发布完整策略，需要写操作确认 |

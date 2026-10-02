@@ -17,7 +17,11 @@ other clients.
    rules, fallbacks, and aliases that should remain unchanged.
 3. Use `media.classification.policy.validate` for draft-only structural and
    semantic validation. Use `media.classification.policy.preview` with either a
-   selected media result or normalized facts to inspect one classification result.
+   complete media details or normalized facts to inspect one classification result.
+   Fetch media details before previewing; search summaries may omit classification fields.
+   Media inputs use the selected policy for asynchronous metadata enrichment.
+   Explicit facts are evaluated as supplied. Recent-history impact analysis prepares
+   facts separately under the active and candidate policies before comparing them.
    For bounded recent-history or explicit-fact comparisons, use
    `media.classification.policy.impact`.
 4. Publish with `media.classification.policy.update`, sending the complete policy

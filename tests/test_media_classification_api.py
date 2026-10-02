@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from datetime import datetime, timezone
+from functools import partial
 from typing import TypeVar, cast
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import FastAPI
@@ -29,8 +31,10 @@ from app.application.classification.configuration import (
     build_default_classification_policy,
 )
 from app.application.classification.contract import ClassificationPolicyConflictError
+from app.application.classification.execution import ClassificationExecutionService
 from app.application.classification.runtime import ClassificationRuntime
 from app.application.history import DownloadHistorySnapshot, TransferHistorySnapshot
+from app.domain.context import MediaInfo
 from app.schemas.category import (
     ClassificationCategory,
     ClassificationCondition,
@@ -45,7 +49,7 @@ from app.schemas.category import (
     ClassificationRule,
     ClassificationTarget,
 )
-from app.schemas.types import MediaSource
+from app.schemas.types import MediaSource, MediaType
 
 T = TypeVar("T")
 NOW = datetime(2026, 9, 2, 12, 0, tzinfo=timezone.utc)
@@ -194,6 +198,83 @@ def _candidate_policy() -> ClassificationPolicy:
 def _response_payload(response: JSONResponse) -> dict[str, object]:
     """解析端点返回的结构化 JSON 错误响应。"""
     return cast(dict[str, object], json.loads(response.body))
+
+
+class _CountryEnrichment:
+    """模拟按当前规则需要补充国别的来源，禁止预览退回同步网络路径。"""
+
+    def enrich(self, *_args: object) -> ClassificationFacts:
+        """同步调用表示异步预览错误地阻塞了请求处理。"""
+        raise AssertionError("预览必须调用异步事实补充")
+
+    async def async_enrich(
+        self, policy: ClassificationPolicy, facts: ClassificationFacts, _media: object,
+    ) -> ClassificationFacts:
+        """仅在候选策略确实需要国别且启用补充时返回缺失字段。"""
+        result = facts.model_copy(deep=True)
+        if policy.enrichment_mode == "enrich_missing" and any(
+            isinstance(rule.when, ClassificationCondition) and rule.when.field == "media.countries"
+            and "电影" in rule.media_types for rule in policy.rules
+        ):
+            result.media.countries = ["CN"]
+        return result
+
+
+@pytest.mark.asyncio  # type: ignore[misc]
+@pytest.mark.parametrize("change", ["mode", "condition"])  # type: ignore[misc]
+async def test_impact_and_preview_prepare_candidate_facts_independently(
+    monkeypatch: pytest.MonkeyPatch, change: str,
+) -> None:
+    """补充模式或所需字段变化都必须纳入影响分析，并与异步预览保持一致。"""
+    policy = build_default_classification_policy()
+    policy.categories.append(ClassificationCategory(
+        id="movie.cn", name="中国出品", media_type="电影", path=["中国出品"],
+    ))
+    country_rule = ClassificationRule(
+        id="movie.cn.rule", name="中国出品电影", kind="category", media_types=["电影"],
+        when=ClassificationCondition(field="media.countries", operator="contains_any", value=["CN"]),
+        target=ClassificationTarget(category_id="movie.cn"),
+    )
+    if change == "mode":
+        policy.rules.insert(0, country_rule)
+    else:
+        policy.enrichment_mode = "enrich_missing"
+    service = ClassificationPolicyConfigurationService(_MemoryPolicyStore())
+    active = service.initialize(policy)
+    candidate = active.model_copy(deep=True)
+    candidate.enrichment_mode = "enrich_missing"
+    if change == "condition":
+        candidate.rules.insert(0, country_rule)
+    execution = ClassificationExecutionService(ClassificationRuntime(service), enrichment=_CountryEnrichment())
+    payload = {
+        "media_source": "themoviedb", "media_id": "535167", "type": "电影",
+        "title": "测试电影", "original_language": "en", "genre_ids": [18],
+    }
+    source = MediaInfo(**payload)
+    recognize = AsyncMock(return_value=source)
+    monkeypatch.setattr(classification_endpoint.MediaChain, "async_recognize_media", recognize)
+    provider = RecentHistoryClassificationSampleProvider(
+        download_history=cast(object, _DownloadHistory([
+            DownloadHistorySnapshot(id=1, title="测试电影", path="/downloads/test", type="电影",
+                                    media_source=MediaSource.TMDB, media_id="535167"),
+        ])),
+        transfer_history=cast(object, _TransferHistory([])),
+        facts_resolver=partial(classification_endpoint._resolve_history_facts, execution),
+    )
+    analysis = ClassificationAnalysisService(service, sample_provider=provider, execution=execution)
+    impact = await analysis.impact(candidate, expected_revision=active.revision, sample_limit=10, example_limit=10)
+    preview = await analysis.async_preview(ClassificationPreviewRequest(
+        policy=candidate, input={"kind": "media", "media": payload},
+    ))
+    assert impact.sample_count == impact.changed_count == 1
+    assert impact.changes[0].previous.recommended.category_id == "movie.foreign"
+    assert impact.changes[0].candidate.recommended.category_id == "movie.cn"
+    assert preview.result.recommended.category_id == "movie.cn"
+    recognize.assert_awaited_once_with(
+        media_source=MediaSource.TMDB, media_id="535167", mtype=MediaType.MOVIE, music_type=None,
+    )
+    assert source.origin_country == []
+    assert service.active() == active
 
 
 def test_field_catalog_exposes_typed_options_and_server_limits() -> None:
@@ -430,7 +511,8 @@ async def test_recent_history_samples_are_bounded_deduplicated_and_honest() -> N
         ),
     )
 
-    batch = await provider.load(10)
+    policy = build_default_classification_policy()
+    batch = await provider.load(10, active=policy, candidate=policy)
 
     assert batch.scanned_count == 4
     assert batch.skipped_count == 2
@@ -526,11 +608,14 @@ async def test_impact_analysis_resolves_complete_history_details_and_reports_gap
     complete_facts["11"].media.genre_keys = ["drama"]
     resolved_ids: list[str] = []
 
-    async def resolve_history(history: object) -> ClassificationFacts | None:
+    async def resolve_history(
+        history: object, _active: ClassificationPolicy, _candidate: ClassificationPolicy,
+    ) -> tuple[ClassificationFacts, ClassificationFacts] | None:
         """返回测试中的完整媒体事实，模拟详情接口缺失一条记录。"""
         media_id = str(getattr(history, "media_id", ""))
         resolved_ids.append(media_id)
-        return complete_facts.get(media_id)
+        facts = complete_facts.get(media_id)
+        return (facts, facts) if facts is not None else None
 
     provider = RecentHistoryClassificationSampleProvider(
         download_history=cast(object, _DownloadHistory(records)),
