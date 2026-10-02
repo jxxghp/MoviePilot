@@ -11,7 +11,11 @@ from app.api.endpoints.transferhistory import (
     restore_manual_transfer_history_batch,
     restore_manual_transfer_history_metadata,
 )
-from app.api.response import CompatibleCountParam, CompatiblePageParam, ResponseAPIRouter
+from app.api.response import (
+    CompatibleCountParam,
+    CompatiblePageParam,
+    ResponseAPIRouter,
+)
 from app.application.configuration import get_api_runtime_config_snapshot
 from app.application.directory import DirectoryHelper
 from app.application.history import TransferHistoryLookupService

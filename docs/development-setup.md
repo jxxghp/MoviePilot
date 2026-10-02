@@ -255,10 +255,6 @@ CI 上传 `complexity-report` 工件，门禁失败时也保留已生成的指�
 - [MoviePilot-Resources](https://github.com/jxxghp/MoviePilot-Resources)
 - [MoviePilot-Plugins](https://github.com/jxxghp/MoviePilot-Plugins)
 
-## 个人 fork 同步
-
-定时合并和失败通知见 [Fork 上游同步](fork-upstream-sync.md)。
-
 ### Agent 历史消息索引验证
 
 独立消息库位于 Agent 运行目录，不参与主库 Alembic。使用临时运行目录运行 `tests/test_agent_recall_persistence.py`，不得用真实用户的 `state.db` 做索引破坏或重建测试。CJK tokenizer 保留 Hermes 原版源码及许可证于 `native/fts5_cjk/`；Docker 构建与 CLI 依赖安装使用该目录的 `install.py`，按本机架构编译并用目标解释器实际验证两字中文查询，安装到 `<sys.prefix>/lib/moviepilot/libfts5_cjk.so`。旧配置目录内的手工扩展作为加载回退；编译器要求和补装/检查命令见该目录 README。测试有本地 C 编译器时在临时目录构建，无编译器时只跳过原生扩展用例，不能宣称该分词路径已验证。常规 FTS5 与 trigram、短中文回退无需该扩展，扩展缺失或失效时索引状态会明确降级。独立 schema 版本不等于产品版本；后续新增主库升级脚本从 3.1.0 命名。
