@@ -1119,14 +1119,16 @@ class SiteSpider:
 
     def parse(self, html_text: str) -> List[dict]:
         """
-        解析整个页面
+        解析页面或 RSS 索引，统一使用 HTML 选择器语义。
         """
         if not html_text:
             self.is_error = True
             return []
 
+        # 响应已经解码，XML 编码声明会让 lxml 拒绝 Unicode；标签大小写与 Rust HTML 解析保持一致。
+        html_text = re.sub(r"^[\s\ufeff]*<\?xml\b[^>]*\?>", "", html_text, count=1)
         try:
-            status_doc = PyQuery(html_text)
+            status_doc = PyQuery(html_text, parser="html")
             if self.__is_login_or_permission_page(status_doc):
                 self.is_error = True
                 self.error_detail = "返回登录或权限提示页"
@@ -1169,7 +1171,7 @@ class SiteSpider:
         html_doc = None
         try:
             # 解析站点文本对象
-            html_doc = PyQuery(html_text)
+            html_doc = PyQuery(html_text, parser="html")
             # 种子筛选器
             torrents_selector = self.list.get('selector', '')
             rows = html_doc(torrents_selector)
