@@ -18,7 +18,7 @@ from app.domain.context import Context, MediaInfo, MusicArtistInfo, MusicInfo, S
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
 from app.schemas.context import MediaPerson
-from app.schemas.exception import RateLimitExceededException
+from app.schemas.exception import BusinessRejectedError, RateLimitExceededException
 from app.schemas.mediaserver import ExistMediaInfo, WebhookEventInfo
 from app.schemas.message import IncomingMessage
 from app.schemas.system import TransferDirectoryConf
@@ -199,6 +199,9 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         """
         if kwargs.get("raise_exception"):
             raise err
+        if isinstance(err, BusinessRejectedError):
+            logger.info(f"模块 {module_id}.{method} 拒绝处理：{str(err)}")
+            return
         logger.error(f"运行模块 {module_id}.{method} 出错：{str(err)}\n{traceback.format_exc()}")
         self.messagehelper.put(
             title=f"{module_name}运行失败",
