@@ -13,6 +13,7 @@ from app.scheduler.catalog import SchedulerCatalogOwner
 from app.scheduler.execution import SchedulerExecutionOwner
 from app.scheduler.lifecycle import SchedulerLifecycleOwner
 from app.scheduler.maintenance import SchedulerMaintenanceOwner
+from app.scheduler.oncejob import SchedulerPluginOnceJobOwner
 from app.scheduler.progress import SchedulerProgressOwner
 from app.scheduler.reconcile import SchedulerReconcileOwner
 from app.scheduler.registry import ExecutionRegistry
@@ -32,6 +33,7 @@ def _public_handler(handler: _Handler) -> _Handler:
 class Scheduler(
     SchedulerLifecycleOwner,
     SchedulerReconcileOwner,
+    SchedulerPluginOnceJobOwner,
     SchedulerBridgeOwner,
     SchedulerProgressOwner,
     SchedulerExecutionOwner,

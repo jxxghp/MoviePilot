@@ -17,6 +17,25 @@ Use `scripts/mp-mediaserver.py`. The helper reads MoviePilot's local server
 configuration and credentials itself. Never request, print, or pass a host,
 username, password, API key, token, Cookie, or arbitrary URL.
 
+Run the bundled copy from the MoviePilot program directory with its project
+runtime, for example:
+
+```bash
+cd <MOVIEPILOT_ROOT>
+python skills/mediaserver-operation/scripts/mp-mediaserver.py instances
+```
+
+The Agent command environment routes `python` to the project-specific `moviepilot-python`
+entry when available and falls back to the project or Docker `VENV_PATH` Python otherwise.
+Media-server connections may depend on macOS local-network permissions, so use the provided
+`python` command for every operation.
+
+The runtime sets `MOVIEPILOT_ROOT` for copied skills. If you run a copied
+script directly from `<CONFIG_PATH>/agent/skills/`, set that variable to the
+program directory first; otherwise the helper returns a clear relocation
+error. Do not use a system `python3` when it does not meet MoviePilot's
+required Python version.
+
 ## Boundary
 
 - Keep `library.exists` in `moviepilot-api` for canonical duplicate checks. It

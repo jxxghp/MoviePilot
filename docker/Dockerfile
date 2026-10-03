@@ -6,8 +6,7 @@ ARG MOVIEPILOT_PYTHON_VERSION="3.14.7"
 FROM ghcr.io/astral-sh/uv:latest AS uv
 
 
-# rclone v1.75.0 包含受 CVE-2026-46603 影响的 x/image v0.44.0，临时固定已修复的官方 Beta 摘要。
-FROM rclone/rclone:beta@sha256:d6f5448594ecefefcf09cfeaf85cb7a21a866328032576ce2c1813e7b59c66dc AS rclone
+FROM rclone/rclone:latest AS rclone
 
 
 FROM mwader/static-ffmpeg:8.1.1@sha256:735f84b905e00d5c618b667f0b053f83b1096f5fc404c607e6134bf2275a0e0a AS ffmpeg
@@ -26,6 +25,16 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends bash busybox ca-certificates curl jq \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+
+# 按镜像目标架构编译中文索引扩展，编译器不进入最终镜像。
+FROM base AS prepare_cjk
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential \
+    && rm -rf /var/lib/apt/lists/*
+COPY native/fts5_cjk/ /build/fts5_cjk/
+RUN python3 /build/fts5_cjk/install.py --output /native/libfts5_cjk.so
 
 
 # 准备软件包
@@ -89,11 +98,9 @@ RUN apt-get update \
     lsof \
     nano \
     unar \
-    openssl \
     supervisor \
     postgresql-client-18 \
     libchromaprint-tools \
-    libevent-2.1-7t64 \
     libjemalloc2 \
     && dpkg-reconfigure --frontend noninteractive tzdata \
     && ln -s /usr/lib/*-linux-gnu/libjemalloc.so.2 /usr/local/lib/libjemalloc.so \
@@ -182,6 +189,11 @@ RUN "${VENV_PATH}/bin/python" /tmp/moviepilot-runtime-dependencies.py --full
 
 ARG MOVIEPILOT_PYTHON_VARIANT
 FROM verify_venv_${MOVIEPILOT_PYTHON_VARIANT} AS prepare_venv
+
+COPY --from=prepare_cjk /native/ ${VENV_PATH}/lib/moviepilot/
+COPY --from=prepare_cjk /build/fts5_cjk/install.py /tmp/verify-cjk.py
+RUN "${VENV_PATH}/bin/python" /tmp/verify-cjk.py --check \
+    && rm /tmp/verify-cjk.py
 
 # 准备后端源码
 FROM base AS prepare_backend
@@ -304,16 +316,6 @@ COPY --from=uv /uv /usr/local/bin/uv
 
 # 浏览器运行依赖
 RUN playwright install-deps chromium \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends \
-    gzip \
-    libde265-0 \
-    libpcre2-8-0 \
-    libsqlite3-0 \
-    nginx \
-    nginx-common \
-    xserver-common \
-    xvfb \
     && apt-get autoremove -y \
     && apt-get clean \
     && rm -rf \

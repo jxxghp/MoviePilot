@@ -197,3 +197,44 @@ def test_image_legacy_helpers_keep_canonical_class_identity():
 
     assert legacy_image.ImageHelper is ImageHelper
     assert legacy_wallpaper.WallpaperHelper is WallpaperHelper
+
+
+def test_wallpaper_caches_stay_in_process_under_redis_backend() -> None:
+    """Redis 缓存模式下壁纸缓存仍留在进程内，生命周期清空不触及 Redis。"""
+    import json
+    import os
+    import subprocess
+    import sys
+
+    script = """
+import json
+from app.testing.bootstrap import ensure_sites_stub, isolate_config_dir
+isolate_config_dir()
+ensure_sites_stub()
+from app.startup.initializers.cache import configure_cache_dependencies
+configure_cache_dependencies()
+from app.application.image import WallpaperHelper
+
+backends = {}
+for name in ("get_tmdb_wallpaper", "get_bing_wallpapers", "get_customize_wallpapers"):
+    wrapper = getattr(WallpaperHelper, name)
+    cells = [cell.cell_contents for cell in wrapper.__closure__ or ()]
+    backend = next(value for value in cells if hasattr(value, "is_redis"))
+    backends[name] = backend.is_redis()
+print(json.dumps(backends))
+"""
+    environment = {**os.environ, "CACHE_BACKEND_TYPE": "redis"}
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+
+    result = json.loads(completed.stdout.strip().splitlines()[-1])
+    assert result == {
+        "get_tmdb_wallpaper": False,
+        "get_bing_wallpapers": False,
+        "get_customize_wallpapers": False,
+    }

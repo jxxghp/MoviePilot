@@ -1,7 +1,8 @@
 """媒体存在性计算与缺失集投影 owner。"""
 
-from typing import Dict, Optional, Tuple, cast
+from typing import Any, Dict, Optional, Tuple, cast
 
+from app.application.mediaserver import get_mediaserver_configs
 from app.chain.download.contract import _DownloadOwnerBase
 from app.chain.media import MediaChain
 from app.domain.context import (
@@ -45,16 +46,16 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
         if not totals:
             totals = {}
 
-        mediaserver = self.media_server_repository
         if mediainfo.type == MediaType.MOVIE:
             # 电影
-            itemid = mediaserver.get_item_id(mtype=mediainfo.type.value,
-                                             title=mediainfo.title,
-                                             media_source=media_source,
-                                             media_id=media_id)
-            exists_movies: Optional[ExistMediaInfo] = self.media_exists(
+            exists_movies = self._media_exists_with_server_cache(
                 mediainfo=cast(MediaInfo, mediainfo),
-                itemid=itemid,
+                query={
+                    "mtype": mediainfo.type.value,
+                    "title": mediainfo.title,
+                    "media_source": media_source,
+                    "media_id": media_id,
+                },
             )
             if exists_movies:
                 logger.info(f"媒体库中已存在电影：{mediainfo.title_year}")
@@ -62,14 +63,13 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
             return False, {}
         if mediainfo.type == MediaType.MUSIC:
             # 专辑在媒体库中按一个集合条目判断；单曲则由具体音乐服务器继续按曲名检索。
-            itemid = mediaserver.get_item_id(
-                mtype=mediainfo.type.value,
-                title=mediainfo.title,
-                year=mediainfo.year,
-            )
-            exists_music: Optional[ExistMediaInfo] = self.media_exists(
+            exists_music = self._media_exists_with_server_cache(
                 mediainfo=cast(MediaInfo, mediainfo),
-                itemid=itemid,
+                query={
+                    "mtype": mediainfo.type.value,
+                    "title": mediainfo.title,
+                    "year": mediainfo.year,
+                },
             )
             if exists_music:
                 logger.info(f"媒体库中已存在音乐：{mediainfo.title_year}")
@@ -94,13 +94,17 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
                     logger.error(f"媒体信息中没有季集信息：{mediainfo.title_year}")
                     return False, {}
             # 电视剧
-            itemid = mediaserver.get_item_id(mtype=mediainfo.type.value,
-                                             title=mediainfo.title,
-                                             media_source=media_source,
-                                             media_id=media_id,
-                                             season=mediainfo.season)
             # 媒体库已存在的剧集
-            exists_tvs: Optional[ExistMediaInfo] = self.media_exists(mediainfo=mediainfo, itemid=itemid)
+            exists_tvs = self._media_exists_with_server_cache(
+                mediainfo=mediainfo,
+                query={
+                    "mtype": mediainfo.type.value,
+                    "title": mediainfo.title,
+                    "media_source": media_source,
+                    "media_id": media_id,
+                    "season": mediainfo.season,
+                },
+            )
             if not exists_tvs:
                 # 所有季集均缺失
                 for season, episodes in mediainfo.seasons.items():
@@ -159,6 +163,34 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
                 return False, no_exists
             # 全部存在
             return True, no_exists
+
+    def _media_exists_with_server_cache(
+            self,
+            mediainfo: MediaInfo,
+            query: dict[str, Any],
+    ) -> Optional[ExistMediaInfo]:
+        """按媒体服务器隔离缓存条目，再执行存在性检查。"""
+        server_names = [
+            str(config.name)
+            for config in get_mediaserver_configs()
+            if config.name
+        ]
+        if not server_names:
+            itemid = self.media_server_repository.get_item_id(**query)
+            return self.media_exists(mediainfo=mediainfo, itemid=itemid)
+        for server in server_names:
+            itemid = self.media_server_repository.get_item_id(
+                server=server,
+                **query,
+            )
+            exists = self.media_exists(
+                mediainfo=mediainfo,
+                itemid=itemid,
+                server=server,
+            )
+            if exists:
+                return exists
+        return None
 
     @staticmethod
     def _append_no_exists(

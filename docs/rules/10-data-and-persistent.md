@@ -91,6 +91,14 @@ Application owns use-case commands and persistence Protocols, but does not impor
 UnitOfWork and Oper objects. `app/startup/composition/` creates and injects the
 adapters; it does not retain reusable repository implementations.
 
+音乐识别的临时失败可在 `TransferPending.state=accepted` 且不存在计划、步骤、执行结果和历史回执时，
+以当前有效租约 CAS 写入 `execution_state=retry_wait`、到期时间及重试计数，并释放租约。
+这些重试字段也受原有总重试预算约束；它们不是文件操作已发生的证据。接纳恢复必须重新读取
+冻结的音乐范围，已规划任务则继续消费原检查点。人工重试零文件操作的音乐拒绝时，只能在同一事务内
+验证唯一成功步骤确为原检查点的 `planning/reject`，删除该内部拒绝步骤和旧 pending，再创建新准入；
+旧失败历史只解除旧任务映射，记录与独立结算回执不删除，避免留下无法维护的悬空任务关联。
+任何外部操作步骤或版本/租约冲突都禁止走这条重规划路径。
+
 ### Transaction ownership ratchet
 
 - `tests/fixtures/architecture/transaction-debt-baseline.json` records formal
@@ -205,6 +213,11 @@ shared `DATA_CLEANUP_ENABLE` policy when it has a safe time boundary:
   `transferhistory`, `downloadfailure`, and `subscribehistory` use their own
   user-configurable retention periods.
 - `agentchat` removes only expired sessions not referenced by an `agenttask`;
+  Agent 原始会话存于独立 `config/agent/runtime/history/users/<user-key>/state.db`，
+  不新增主库模型或 Alembic 表。独立库沿用 `DATA_CLEANUP_ENABLE` 和 Agent 会话保留期，
+  活跃用户后台维护按 last_active 分批删除；显式删除同步收回原文和 FTS，墓碑阻止在途复活。
+  恢复快照与原始证据分开，压缩不删除原文。旧快照只读分批导出并标记 legacy_snapshot，
+  导入完成后查询不依赖主库。SQLite schema 由 Agent 独立版本管理。
   `agenttaskrun` removes only expired terminal runs that are neither running nor
   the task's current `last_run_id`.
 - `agentinvocation` stores only write-call identity, argument digests and fixed

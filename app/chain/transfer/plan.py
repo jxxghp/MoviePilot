@@ -48,10 +48,13 @@ from app.schemas.workflow import FileItem
 
 from .checkpoint import build_planning_rejection_checkpoint, restore_planned_task
 from .execution import _DurableTransferStepRunner, _TransferRetryExhausted
+from .music import music_planning_input
 
 
 class TransferPlanningOwner(_TransferOwnerBase):
     """唯一持有整理准入后的冻结计划与 provider 选择。"""
+
+    _build_music_planning_input = music_planning_input
 
     def _TransferChain__build_planning_input(
             self,

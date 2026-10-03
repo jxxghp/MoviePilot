@@ -370,13 +370,18 @@ class MediaCatalogOwner(_MediaOwnerBase):
         media_id: str,
         music_release_regions: Optional[list[str]] = None,
         music_release_scripts: Optional[list[str]] = None,
+        musicbrainz_release_id: Optional[str] = None,
     ) -> Optional[MusicAlbumInfo]:
         """按音乐来源和原生 ID 同步获取专辑详情。"""
         source, normalized_id = resolve_media_identity(media_source=media_source, media_id=media_id)
         if not source or not normalized_id:
             return None
+        if musicbrainz_release_id is not None and source != MediaSource.MusicBrainz:
+            return None
         chain = self._music_source_chain(source)
-        preference_kwargs = {}
+        preference_kwargs: dict[str, Any] = {}
+        if musicbrainz_release_id is not None:
+            preference_kwargs["musicbrainz_release_id"] = musicbrainz_release_id
         if music_release_regions is not None:
             preference_kwargs["music_release_regions"] = music_release_regions
         if music_release_scripts is not None:
@@ -393,13 +398,18 @@ class MediaCatalogOwner(_MediaOwnerBase):
         media_id: str,
         music_release_regions: Optional[list[str]] = None,
         music_release_scripts: Optional[list[str]] = None,
+        musicbrainz_release_id: Optional[str] = None,
     ) -> Optional[MusicAlbumInfo]:
         """按音乐来源和原生 ID 异步获取专辑详情。"""
         source, normalized_id = resolve_media_identity(media_source=media_source, media_id=media_id)
         if not source or not normalized_id:
             return None
+        if musicbrainz_release_id is not None and source != MediaSource.MusicBrainz:
+            return None
         chain = self._music_source_chain(source)
-        preference_kwargs = {}
+        preference_kwargs: dict[str, Any] = {}
+        if musicbrainz_release_id is not None:
+            preference_kwargs["musicbrainz_release_id"] = musicbrainz_release_id
         if music_release_regions is not None:
             preference_kwargs["music_release_regions"] = music_release_regions
         if music_release_scripts is not None:

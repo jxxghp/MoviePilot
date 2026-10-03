@@ -34,6 +34,8 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
 
     # 管理员配置键，与渠道 resolver 保持一致
     _admin_config_key = "TELEGRAM_ADMINS"
+    _notification_user_target_keys = ("telegram_userid",)
+    _notification_admin_default_config_keys = ("TELEGRAM_CHAT_ID",)
 
     def init_module(self) -> None:
         """
@@ -465,7 +467,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            targets = message.targets
+            targets = self.get_notification_targets(message)
             userid = message.userid
             if not userid and targets is not None:
                 userid = targets.get("telegram_userid")
@@ -531,7 +533,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                 client.send_medias_msg(
                     title=message.title,
                     medias=medias,
-                    userid=message.userid,
+                    userid=self.get_notification_userid(message, "telegram_userid"),
                     link=message.link,
                     buttons=message.buttons,
                     original_message_id=message.original_message_id,
@@ -556,7 +558,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                 client.send_torrents_msg(
                     title=message.title,
                     torrents=torrents,
-                    userid=message.userid,
+                    userid=self.get_notification_userid(message, "telegram_userid"),
                     link=message.link,
                     buttons=message.buttons,
                     original_message_id=message.original_message_id,
@@ -704,7 +706,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            targets = message.targets
+            targets = self.get_notification_targets(message)
             userid = message.userid
             if not userid and targets is not None:
                 userid = targets.get("telegram_userid")

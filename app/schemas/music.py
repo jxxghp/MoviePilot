@@ -12,10 +12,21 @@ class MusicMeta(OptionalMediaIdentityMixin, BaseModel):
     """音乐名称及音频文件解析结果。"""
 
     type: Literal["音乐"] = "音乐"
+    music_type: Optional[MusicEntityType] = Field(default=None, description="已知主身份的实体类型，未知时不推断")
+    album_type: Optional[str] = Field(default=None, description="标签声明的发行主类型，例如 Album、EP、Single")
+    secondary_types: list[str] = Field(default_factory=list, description="标签声明的 Compilation、Soundtrack 等副类型")
+    music_layout: Optional[str] = Field(default=None, description="音频资源形态，例如整轨 image_cue 或分轨 tracks_cue")
+    cue_filename: Optional[str] = Field(default=None, description="同目录关联的 CUE 文件名")
+    cue_tracks: list[dict[str, JsonData]] = Field(default_factory=list, description="CUE 逻辑曲目，INDEX 起点单位为 75 帧每秒")
+    organization_error: Optional[str] = Field(default=None, description="阻止自动整理的资源结构错误")
     org_string: Optional[str] = None
     apply_words: list[str] = Field(default_factory=list, description="资源解析时实际应用的自定义识别词")
     title: Optional[str] = None
     artists: list[str] = Field(default_factory=list)
+    composers: list[str] = Field(default_factory=list, description="作曲家，独立于艺人显示署名")
+    conductors: list[str] = Field(default_factory=list, description="指挥")
+    orchestras: list[str] = Field(default_factory=list, description="乐团或合唱团")
+    performers: dict[str, list[str]] = Field(default_factory=dict, description="乐器或声部对应的演奏者；未注明职责用performer")
     artist: Optional[str] = None
     album: Optional[str] = None
     album_artist: Optional[str] = None
@@ -37,6 +48,12 @@ class MusicMeta(OptionalMediaIdentityMixin, BaseModel):
     isrc: Optional[str] = None
     media_source: Optional[MediaSource] = None
     media_id: Optional[str] = None
+    musicbrainz_release_id: Optional[str] = Field(default=None, description="具体发行版 MBID")
+    musicbrainz_release_group_id: Optional[str] = Field(default=None, description="发行组 MBID")
+    musicbrainz_release_track_id: Optional[str] = Field(default=None, description="发行版内曲目 MBID，不是 Recording ID")
+    original_year: Optional[int] = Field(default=None, description="原始发行年份")
+    release_year: Optional[int] = Field(default=None, description="当前发行版年份")
+    field_sources: dict[str, str] = Field(default_factory=dict, description="字段的 tag/album_tags/stream/filename/directory/torrent/remote/manual 证据来源")
 
 
 class MusicInfo(OptionalMediaIdentityMixin, BaseModel):
@@ -49,18 +66,28 @@ class MusicInfo(OptionalMediaIdentityMixin, BaseModel):
     media_id: Optional[str] = None
     title: Optional[str] = None
     artists: list[str] = Field(default_factory=list)
+    composers: list[str] = Field(default_factory=list, description="作曲家，独立于艺人显示署名")
+    conductors: list[str] = Field(default_factory=list, description="指挥")
+    orchestras: list[str] = Field(default_factory=list, description="乐团或合唱团")
+    performers: dict[str, list[str]] = Field(default_factory=dict, description="乐器或声部对应的演奏者；未注明职责用performer")
     artist: Optional[str] = None
     artist_ids: list[str] = Field(default_factory=list)
     album: Optional[str] = None
     album_artist: Optional[str] = None
     album_id: Optional[str] = None
+    musicbrainz_release_id: Optional[str] = None
+    musicbrainz_release_group_id: Optional[str] = None
+    musicbrainz_release_track_id: Optional[str] = None
     album_type: Optional[str] = None
     secondary_types: list[str] = Field(default_factory=list)
     year: Optional[int] = None
+    original_year: Optional[int] = None
+    release_year: Optional[int] = None
     release_date: Optional[str] = None
     disc_number: Optional[int] = None
     track_number: Optional[int] = None
     total_tracks: Optional[int] = None
+    total_discs: Optional[int] = None
     duration: Optional[int] = None
     isrc: Optional[str] = None
     cover_url: Optional[str] = None
@@ -90,6 +117,9 @@ class MusicInfo(OptionalMediaIdentityMixin, BaseModel):
     detail_link: Optional[str] = None
     listen_count: Optional[int] = None
     raw_data: dict[str, JsonData] = Field(default_factory=dict)
+    field_sources: dict[str, str] = Field(default_factory=dict)
+    music_layout: Optional[str] = None
+    organization_error: Optional[str] = None
     title_year: Optional[str] = None
     poster_path: Optional[str] = None
     backdrop_path: Optional[str] = None
@@ -186,8 +216,17 @@ class MusicAlbumInfo(OptionalMediaIdentityMixin, BaseModel):
     music_type: Literal["album"] = "album"
     media_source: Optional[MediaSource] = None
     media_id: Optional[str] = None
+    musicbrainz_release_id: Optional[str] = None
+    musicbrainz_release_group_id: Optional[str] = None
+    original_year: Optional[int] = None
+    total_discs: Optional[int] = None
+    field_sources: dict[str, str] = Field(default_factory=dict)
     title: Optional[str] = None
     artists: list[str] = Field(default_factory=list)
+    composers: list[str] = Field(default_factory=list, description="作曲家，独立于艺人显示署名")
+    conductors: list[str] = Field(default_factory=list, description="指挥")
+    orchestras: list[str] = Field(default_factory=list, description="乐团或合唱团")
+    performers: dict[str, list[str]] = Field(default_factory=dict, description="乐器或声部对应的演奏者；未注明职责用performer")
     artist: Optional[str] = None
     artist_ids: list[str] = Field(default_factory=list)
     title_aliases: list[str] = Field(default_factory=list)

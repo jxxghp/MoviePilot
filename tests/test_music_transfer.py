@@ -940,7 +940,7 @@ def test_automatic_multi_track_recording_context_rematches_album(tmp_path, monke
     monkeypatch.setattr(
         MediaChain,
         "read_path_meta",
-        Mock(side_effect=lambda path: file_metas[Path(path)]),
+        Mock(side_effect=lambda path, **_kwargs: file_metas[Path(path)]),
     )
     album_match = Mock(return_value=matched_tracks)
     monkeypatch.setattr(MediaChain, "recognize_music_album_directory", album_match)
@@ -1072,7 +1072,7 @@ def test_manual_history_batch_rematches_album_and_groups_preview(tmp_path, monke
     monkeypatch.setattr(
         MediaChain,
         "read_path_meta",
-        Mock(side_effect=lambda path: file_metas[Path(path)]),
+        Mock(side_effect=lambda path, **_kwargs: file_metas[Path(path)]),
     )
     album_match = Mock(return_value=matched_tracks)
     monkeypatch.setattr(MediaChain, "recognize_music_album_directory", album_match)
@@ -1254,6 +1254,13 @@ def test_downloader_process_forwards_music_history_type(tmp_path, monkeypatch):
     monkeypatch.setattr("app.chain.transfer.filter.MediaChain", lambda: media_chain)
     monkeypatch.setattr(chain, "do_transfer", Mock(return_value=(True, "")))
     monkeypatch.setattr(chain, "run_module", run_module)
+    monkeypatch.setattr(
+        "app.chain.transfer.workflow.StorageChain.get_file_item_strict",
+        Mock(return_value=FileItem(
+            storage="local", path=audio_path.as_posix(), name=audio_path.name,
+            type="file", size=audio_path.stat().st_size, extension=audio_path.suffix.lstrip("."),
+        )),
+    )
 
     state = chain.process()
 

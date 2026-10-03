@@ -16,6 +16,25 @@ Use `scripts/mp-downloader.py`. The helper reads MoviePilot's local downloader
 configuration and credentials itself. Never request, print, or pass a host,
 username, password, API key, Cookie, or arbitrary URL.
 
+Run the bundled copy from the MoviePilot program directory with its project
+runtime, for example:
+
+```bash
+cd <MOVIEPILOT_ROOT>
+python skills/downloader-operation/scripts/mp-downloader.py instances
+```
+
+The Agent command environment routes `python` to the project-specific `moviepilot-python`
+entry when available and falls back to the project or Docker `VENV_PATH` Python otherwise.
+Downloader connections may depend on macOS local-network permissions, so use the provided
+`python` command for every operation.
+
+The runtime sets `MOVIEPILOT_ROOT` for copied skills. If you run a copied
+script directly from `<CONFIG_PATH>/agent/skills/`, set that variable to the
+program directory first; otherwise the helper returns a clear relocation
+error. Do not use a system `python3` when it does not meet MoviePilot's
+required Python version.
+
 ## Boundary
 
 - Prefer `moviepilot-api` for ordinary MoviePilot acquisition workflows,

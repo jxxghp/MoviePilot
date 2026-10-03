@@ -1696,16 +1696,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         temp_path: Optional[Path] = None
         try:
             if fileitem.storage == "local":
-                with NamedTemporaryFile(
-                        mode="w",
-                        encoding="utf-8",
-                        dir=target_path.parent,
-                        prefix=f".{target_name}.",
-                        delete=False,
-                ) as temp_file:
-                    temp_file.write(f"{content.rstrip()}\n")
-                    temp_path = Path(temp_file.name)
-                temp_path.replace(target_path)
+                self._write_music_text_sidecar(target_path, content)
             else:
                 parent = self.storagechain.get_parent_item(fileitem)
                 if not parent:
@@ -1737,6 +1728,20 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             if temp_path and temp_path.exists() and temp_path != target_path:
                 self._cleanup_temp_file(temp_path)
 
+    @staticmethod
+    def _write_music_text_sidecar(target: Path, content: str) -> None:
+        """同目录原子替换歌词目录项，避免覆盖已有硬/软链接时改写PT源旁挂文件。"""
+        temporary: Optional[Path] = None
+        try:
+            with NamedTemporaryFile(mode="w", encoding="utf-8", dir=target.parent,
+                                    prefix=f".{target.name[:40]}.", delete=False) as stream:
+                temporary = Path(stream.name)
+                stream.write(f"{content.rstrip()}\n")
+            temporary.replace(target)
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+
     def _write_music_lyricsfile_sidecar(
             self,
             fileitem: _SchemaFileItem,
@@ -1747,7 +1752,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         target_path = self._music_lyrics_path(Path(fileitem.path), ".lyricsfile.yaml")
         try:
             if fileitem.storage == "local":
-                target_path.write_text(f"{content.rstrip()}\n", encoding="utf-8")
+                self._write_music_text_sidecar(target_path, content)
                 return True
             parent = self.storagechain.get_parent_item(fileitem)
             if not parent:

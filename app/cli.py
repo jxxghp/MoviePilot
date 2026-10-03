@@ -242,11 +242,11 @@ def _git_current_branch() -> Optional[str]:
     return branch or None
 
 
-def _auto_update_mode() -> str:
-    """启动时仅由独立 Dev 开关或一次性更新请求选择开发分支。"""
+def _requested_update_mode() -> str:
+    """仅消费用户明确发起的一次性 Dev 更新请求。"""
     if SystemHelper.consume_one_shot_dev_update():
         return "dev"
-    return "dev" if get_runtime_setting("MOVIEPILOT_UPDATE_DEV") is True else "false"
+    return "false"
 
 
 def _file_sha256(path: Path) -> str:
@@ -478,7 +478,8 @@ def _apply_prepared_release_update() -> bool:
     return True
 
 
-def _resolve_auto_update_targets(mode: str) -> Optional[str]:
+def _resolve_dev_update_target(mode: str) -> Optional[str]:
+    """跟踪当前开发分支，并为 Release 检出的 detached HEAD 选择主版本分支。"""
     if mode != "dev":
         return None
     backend_prefix = _release_prefix(get_app_version())
@@ -490,18 +491,18 @@ def _resolve_auto_update_targets(mode: str) -> Optional[str]:
     return backend_ref
 
 
-def _best_effort_auto_update() -> None:
-    """优先应用已确认的安装包，再按 Dev 跟踪偏好更新；失败不阻断启动。"""
+def _apply_requested_update() -> None:
+    """应用用户已确认的安装包或一次性 Dev 更新，失败后恢复当前服务。"""
     if _apply_prepared_release_update():
         return
 
-    mode = _auto_update_mode()
+    mode = _requested_update_mode()
     # Release 更新先在后台下载并经用户确认；这里只保留开发版分支跟踪。
     if mode != "dev":
         return
 
     try:
-        backend_ref = _resolve_auto_update_targets(mode)
+        backend_ref = _resolve_dev_update_target(mode)
     except RuntimeError as exc:
         _warn(f"自动更新准备失败，继续使用当前版本启动：{exc}")
         return
@@ -515,6 +516,7 @@ def _best_effort_auto_update() -> None:
         str(_repo_root() / "scripts" / "local_setup.py"),
         "update",
         "all",
+        "--dev",
         "--ref",
         backend_ref,
         "--venv",
@@ -523,7 +525,7 @@ def _best_effort_auto_update() -> None:
         str(get_runtime_setting("CONFIG_PATH")),
     ]
 
-    click.echo("检测到 Dev 跟踪开关或一次性更新请求，启动前执行本地开发版更新")
+    click.echo("执行已确认的本地开发版更新")
     result = subprocess.run(
         update_command,
         cwd=str(_repo_root()),
@@ -1136,11 +1138,6 @@ def database_restore(name: str, confirm: bool) -> None:
 def start(timeout: int, safe: bool) -> None:
     """后台启动本地 MoviePilot 前后端服务"""
     _ensure_frontend_not_running_alone(timeout=min(timeout, 15))
-    backend_state, _, _, _ = _managed_backend_status()
-    frontend_state, _, _, _ = _managed_frontend_status()
-    if backend_state == "stopped" and frontend_state == "stopped":
-        _best_effort_auto_update()
-
     backend_result = _start_backend_service(timeout=timeout, safe=safe)
     backend_runtime = backend_result["runtime"]
     try:
@@ -1201,11 +1198,13 @@ def stop(timeout: int, force: bool) -> None:
 @click.option("--start-timeout", default=60, show_default=True, help="重启后等待服务就绪的秒数")
 @click.option("--stop-timeout", default=30, show_default=True, help="停止服务时等待退出的秒数")
 @click.option("--force", is_flag=True, help="停止超时后强制结束进程")
-def restart(start_timeout: int, stop_timeout: int, force: bool) -> None:
+@click.option("--apply-update", is_flag=True, hidden=True)  # type: ignore[misc]
+def restart(start_timeout: int, stop_timeout: int, force: bool, apply_update: bool = False) -> None:
     """重启本地 MoviePilot 前后端服务"""
     _stop_frontend_service(timeout=stop_timeout, force=force)
     _stop_backend_service(timeout=stop_timeout, force=force)
-    _best_effort_auto_update()
+    if apply_update:
+        _apply_requested_update()
     backend_result = _start_backend_service(timeout=start_timeout)
     frontend_result = _start_frontend_service(
         timeout=start_timeout, backend_port=int(backend_result["runtime"]["port"])

@@ -13,7 +13,7 @@ import threading
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.domain.meta.metamusic import MetaMusic
-from app.application.messaging.message import TemplateContextBuilder
+from app.application.messaging.message import TemplateContextBuilder, TemplateHelper
 from app.modules.filemanager.transhandler import TransHandler
 from app.schemas.types import MediaSource, MediaType
 from app.schemas.tmdb import TmdbEpisode
@@ -97,6 +97,23 @@ def test_build_returns_independent_dicts() -> None:
     assert first.get("fileExt") == ".a"
     assert second.get("fileExt") == ".b"
     assert first.get("marker") == 1
+
+
+def test_notification_template_exposes_container_hostname(monkeypatch) -> None:
+    """通知模板的实例名应取运行中的主机名，且不能被业务字段覆盖。"""
+    monkeypatch.setattr(
+        "app.application.messaging.message.socket.gethostname",
+        lambda: "nas-moviepilot",
+    )
+
+    context = TemplateContextBuilder().build(instance_name="other", title="测试")
+    rendered = TemplateHelper().render(
+        template_content="{'title': '[{{ instance_name }}] {{ title }}'}",
+        title="测试",
+    )
+
+    assert context["instance_name"] == "nas-moviepilot"
+    assert rendered == {"title": "[nas-moviepilot] 测试"}
 
 
 def test_build_exposes_video_bit_from_meta() -> None:

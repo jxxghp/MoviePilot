@@ -106,6 +106,7 @@ def _resolve_site_subtitle_target_dir(
     if not file_uri.path:
         logger.error("下载目录路径为空，无法保存字幕")
         return None, None
+    download_dir = Path(file_uri.path)
     content_storage, content_dir = _resolve_torrent_content_dir(
         list_torrents,
         download_hash=download_hash,

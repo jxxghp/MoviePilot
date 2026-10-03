@@ -10,6 +10,59 @@ from app.domain.metainfo import MetaInfo
 from app.domain.projection.mapping import ProjectionBuilder
 from app.schemas.types import MediaSource, MediaType
 
+_DOUBAN_LANGUAGE_CODES: dict[str, str] = {
+    "阿拉伯语": "ar",
+    "孟加拉语": "bn",
+    "保加利亚语": "bg",
+    "藏语": "bo",
+    "加泰罗尼亚语": "ca",
+    "中文": "zh",
+    "克罗地亚语": "hr",
+    "捷克语": "cs",
+    "丹麦语": "da",
+    "荷兰语": "nl",
+    "英语": "en",
+    "芬兰语": "fi",
+    "法语": "fr",
+    "德语": "de",
+    "希腊语": "el",
+    "希伯来语": "he",
+    "印地语": "hi",
+    "匈牙利语": "hu",
+    "冰岛语": "is",
+    "印度尼西亚语": "id",
+    "意大利语": "it",
+    "日语": "ja",
+    "韩语": "ko",
+    "立陶宛语": "lt",
+    "马来语": "ms",
+    "蒙古语": "mn",
+    "缅甸语": "my",
+    "挪威语": "no",
+    "波兰语": "pl",
+    "葡萄牙语": "pt",
+    "罗马尼亚语": "ro",
+    "俄语": "ru",
+    "斯洛伐克语": "sk",
+    "西班牙语": "es",
+    "瑞典语": "sv",
+    "泰语": "th",
+    "土耳其语": "tr",
+    "乌克兰语": "uk",
+    "越南语": "vi",
+    "壮语": "za",
+    "汉语": "zh",
+    "汉语普通话": "zh",
+    "普通话": "zh",
+    "国语": "zh",
+    "简体中文": "zh",
+    "繁体中文": "zh",
+    "粤语": "cn",
+    "广东话": "cn",
+    "藏文": "bo",
+    "壮文": "za",
+}
+
 
 def _media_type(info: Mapping[str, Any]) -> MediaType | None:
     """从豆瓣多种详情形态解析标准媒体类型。"""
@@ -67,6 +120,28 @@ def _aliases(info: Mapping[str, Any]) -> list[str]:
     return [re.sub(r"\([港台豆友译名]+\)", "", str(alias)) for alias in info.get("aka") or []]
 
 
+def _original_language(info: Mapping[str, Any]) -> str | None:
+    """将豆瓣返回的首个语言名称转换为分类规则使用的代码。"""
+    languages = info.get("languages")
+    if isinstance(languages, str):
+        language_values: list[Any] = [languages]
+    elif isinstance(languages, (list, tuple)):
+        language_values = list(languages)
+    else:
+        return None
+    for language in language_values:
+        if not isinstance(language, str):
+            continue
+        value = language.strip()
+        if not value:
+            continue
+        normalized = value.casefold()
+        if re.fullmatch(r"[a-z]{2}(?:[-_]\w+)?", normalized):
+            return normalized.split("-", 1)[0].split("_", 1)[0]
+        return _DOUBAN_LANGUAGE_CODES.get(normalized, value)
+    return None
+
+
 def project(
     current: Mapping[str, Any],
     info: Mapping[str, Any],
@@ -87,6 +162,7 @@ def project(
     builder.set_missing("title", info.get("title"))
     builder.set_missing("en_title", info.get("original_title"))
     builder.set_missing("original_title", info.get("original_title"))
+    builder.set_missing("original_language", _original_language(info))
 
     if not builder.get("year"):
         year = str(info.get("year"))[:4] if info.get("year") else None

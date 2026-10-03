@@ -386,8 +386,9 @@ async def test_query_task_returns_owner_scoped_ten_recent_runs(monkeypatch) -> N
 
 
 @pytest.mark.anyio
-async def test_agent_manager_records_manual_trigger_source(monkeypatch) -> None:
-    """真实执行入口应把手动触发来源写入对应 run。"""
+@pytest.mark.parametrize('reply, success', [('完成', True), ('本轮未完成：工具循环已停止', False)])
+async def test_agent_manager_records_manual_trigger_source(monkeypatch, reply, success) -> None:
+    """真实入口记录手动触发来源，受控停止不能把定时任务标为成功。"""
     from app.agent import orchestrator
     from app.runtime.config import settings
 
@@ -402,16 +403,17 @@ async def test_agent_manager_records_manual_trigger_source(monkeypatch) -> None:
     captured = {}
 
     async def process_message(**kwargs):
+        """返回正常结果或循环停止结果，验证任务运行持久状态。"""
         captured.update(kwargs)
-        return "完成"
+        return reply
 
     manager.process_message = process_message
     assert await manager.execute_scheduled_task(task.id, trigger_source="manual") == (
-        True,
-        "完成",
+        success,
+        reply,
     )
     runs = AgentTaskOper().list_runs(task.id)
     assert len(runs) == 1
     assert runs[0].trigger_source == "manual"
-    assert runs[0].status == "success"
+    assert runs[0].status == ('success' if success else 'failed')
     assert "定时任务已手动触发" in captured["message"]

@@ -3,7 +3,7 @@
 import re
 from dataclasses import fields
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple, TypeVar, Union, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union, cast
 
 from app.application.classification.reference import (
     apply_persisted_classification_snapshot,
@@ -261,21 +261,7 @@ class HistoryMatchMixin(_TransferOwnerBase):
         note = history_record.note
         snapshot = note.get("meta_info") if isinstance(note, dict) else None
         if isinstance(snapshot, dict):
-            for meta_field in fields(MetaBase):
-                field_name = meta_field.name
-                if field_name not in snapshot:
-                    continue
-                value = snapshot.get(field_name)
-                try:
-                    if field_name == "type" and value:
-                        value = MediaType(value)
-                    elif field_name == "media_source" and value:
-                        value = MediaSource(value)
-                    elif field_name == "apply_words":
-                        value = list(value or [])
-                except (TypeError, ValueError):
-                    continue
-                setattr(download_meta, field_name, value)
+            cls._restore_download_meta_snapshot(download_meta, snapshot)
 
         try:
             download_meta.type = MediaType(history_record.type)
@@ -319,6 +305,25 @@ class HistoryMatchMixin(_TransferOwnerBase):
             download_meta.end_episode = None
             download_meta.total_episode = 0
         return download_meta
+
+    @staticmethod
+    def _restore_download_meta_snapshot(download_meta: MetaBase, snapshot: dict[str, Any]) -> None:
+        """恢复有效的快照字段，并将冻结识别词转为可独立修改的普通列表。"""
+        for meta_field in fields(MetaBase):
+            field_name = meta_field.name
+            if field_name not in snapshot:
+                continue
+            value = snapshot.get(field_name)
+            try:
+                if field_name == "type" and value:
+                    value = MediaType(value)
+                elif field_name == "media_source" and value:
+                    value = MediaSource(value)
+                elif field_name == "apply_words":
+                    value = list(value or [])
+            except (TypeError, ValueError):
+                continue
+            setattr(download_meta, field_name, value)
 
     @classmethod
     def _merge_download_meta(

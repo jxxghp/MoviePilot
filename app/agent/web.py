@@ -1,5 +1,6 @@
 """WebAgent 运行时类型适配，不包含 HTTP 或 SSE 编码。"""
 
+import time
 import uuid
 from threading import Lock
 from typing import Any, Awaitable, Callable, Optional
@@ -17,6 +18,10 @@ class _WebAgentStreamingHandlerMixin:
 
     _lock: Lock
     _pending_tool_stats: dict[str, int]
+
+    def _should_buffer_thinking_status(self) -> bool:
+        """WebAgent 通过结构化 SSE 展示思考状态，不把它写入正文。"""
+        return False
 
     def __init__(
         self,
@@ -57,12 +62,27 @@ class _WebAgentStreamingHandlerMixin:
         except Exception as error:
             logger.debug(f"Web工具生命周期回调失败: {error}")
 
+    def thinking_started(self) -> None:
+        """发布 Web SSE 的模型思考开始事件，由前端负责持续计时。"""
+        was_active = bool(getattr(self, "_thinking_active", False))
+        super().thinking_started()  # type: ignore[misc]
+        if not was_active and self._thinking_active:
+            self._publish_tool_event({"type": "thinking", "status": "running", "started_at": int(time.time() * 1000)})
+
+    def thinking_finished(self) -> None:
+        """发布 Web SSE 的模型思考结束事件，并清理基础流式状态。"""
+        was_active = bool(getattr(self, "_thinking_active", False))
+        super().thinking_finished()  # type: ignore[misc]
+        if was_active:
+            self._publish_tool_event({"type": "thinking", "status": "done"})
+
     def tool_call_started(
         self,
         tool_name: str,
         tool_message: Optional[str] = None,
     ) -> str:
         """发布真实工具开始事件，调用方随后用同一 ID 收口结果。"""
+        super().tool_call_started(tool_name, tool_message)  # type: ignore[misc]
         if not self._uses_structured_tool_events():
             return ""
         tool_id = f"tool-{uuid.uuid4().hex}"
@@ -79,16 +99,16 @@ class _WebAgentStreamingHandlerMixin:
 
     def tool_call_finished(self, tool_id: str, status: str = "done") -> None:
         """发布真实工具完成或失败事件，保持与开始事件的 ID 对应。"""
-        if not tool_id or not self._on_tool_event:
-            return
         normalized_status = status if status in {"done", "error"} else "done"
-        self._publish_tool_event(
-            {
-                "type": "tool",
-                "status": normalized_status,
-                "tool_id": tool_id,
-            }
-        )
+        if tool_id and self._uses_structured_tool_events():
+            self._publish_tool_event(
+                {
+                    "type": "tool",
+                    "status": normalized_status,
+                    "tool_id": tool_id,
+                }
+            )
+        super().tool_call_finished(tool_id, status)  # type: ignore[misc]
 
     def report_tool_call(
         self,
@@ -142,7 +162,10 @@ class _WebAgentStreamingHandlerMixin:
         normalized_message = " ".join(str(message or "").splitlines())
         if self._on_tool_event:
             return ""
-        return str(super().emit_tool_message(normalized_message))  # type: ignore[misc]
+        emitted = str(super().emit_tool_message(normalized_message))  # type: ignore[misc]
+        if emitted:
+            self._on_emit(emitted)
+        return emitted
 
     def emit(self, token: str) -> str:
         """追加 token 并同步通知 SSE 生产者。"""
@@ -186,11 +209,15 @@ class _WebAgentStreamingHandlerMixin:
         self._msg_start_offset = 0
         self._pending_tool_stats = {}
         self._live_tool_summary = None
+        self._thinking_started_at = None
+        self._thinking_active = False
+        self._thinking_status_text = ""
 
     async def stop_streaming(self) -> tuple[bool, str]:
         """停止 Web SSE 流式状态，保留缓冲区给 Agent 收口逻辑去重。"""
         if not self._streaming_enabled:
             return False, ""
+        self.thinking_finished()
         self._streaming_enabled = False
         self.flush_pending_tool_summary()
         with self._lock:

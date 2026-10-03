@@ -15,6 +15,8 @@ from app.domain.classification.vocabulary import (
     TMDB_GENRE_KEYS as _TMDB_GENRE_KEYS,
 )
 from app.domain.context import MediaInfo, MusicAlbumInfo, MusicArtistInfo, MusicInfo
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.music import music_tags_are_usable
 from app.schemas.category import (
     ClassificationFacts,
     ClassificationFactValue,
@@ -32,11 +34,17 @@ def build_classification_facts(
     media: ClassificationMedia,
     *,
     extensions: Mapping[str, Mapping[str, ClassificationFactValue]] | None = None,
+    allow_local_music: bool = False,
 ) -> ClassificationFacts:
-    """构造规则求值器唯一接收的标准事实，并保留主媒体身份。"""
+    """构造标准事实；离线音乐可显式使用完整本地名称，身份保持空值而不伪造 ID。"""
     media_source = _enum_text(getattr(media, "media_source", None))
     media_id = _optional_text(getattr(media, "media_id", None))
-    if not media_source or not media_id:
+    local_music = (
+        allow_local_music and not media_source and not media_id
+        and isinstance(media, MusicInfo)
+        and music_tags_are_usable(MetaMusic.from_music_info(media))
+    )
+    if (not media_source or not media_id) and not local_music:
         raise ValueError("分类事实要求完整的 media_source 与 media_id")
 
     media_type = _classification_media_type(getattr(media, "type", None))
@@ -58,7 +66,7 @@ def build_classification_facts(
     return ClassificationFacts(
         identity=ClassificationIdentityFacts(
             media_source=media_source,
-            media_id=media_id,
+            media_id=media_id or "",
         ),
         media=media_facts,
         music=_music_facts(media) if is_music else None,

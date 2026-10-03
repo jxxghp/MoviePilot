@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import os
 import re
 import sys
 from dataclasses import dataclass
@@ -14,7 +15,23 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
 SCRIPT_PATH = Path(__file__).resolve()
-PROJECT_ROOT = SCRIPT_PATH.parents[3]
+
+
+def _find_project_root() -> Optional[Path]:
+    """从运行环境或目录标记定位 MoviePilot 程序目录。"""
+    candidates = []
+    configured_root = os.environ.get("MOVIEPILOT_ROOT", "").strip()
+    if configured_root:
+        candidates.append(Path(configured_root).expanduser())
+    for base in (Path.cwd().resolve(), SCRIPT_PATH.parent):
+        candidates.extend((base, *base.parents))
+    for candidate in candidates:
+        if (candidate / "app" / "runtime" / "config.py").is_file():
+            return candidate
+    return None
+
+
+PROJECT_ROOT = _find_project_root()
 WRITE_STATEMENT_RE = re.compile(
     r"^\s*(insert|update|delete|drop|alter|truncate|create|replace)\b",
     re.IGNORECASE,
@@ -137,6 +154,11 @@ ACTIONS: dict[str, ActionSpec] = {
 
 def _ensure_project_import() -> None:
     """确保脚本可以从任意工作目录导入 MoviePilot 项目模块。"""
+    if PROJECT_ROOT is None:
+        raise RuntimeError(
+            "无法定位 MoviePilot 程序目录；请在程序目录执行，或设置 MOVIEPILOT_ROOT="
+            "<程序目录> 后重试。"
+        )
     project_path = str(PROJECT_ROOT)
     if project_path not in sys.path:
         sys.path.insert(0, project_path)

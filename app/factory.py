@@ -9,6 +9,7 @@ from starlette.exceptions import HTTPException
 
 from app.adapters.observability.otel import build_observation_port
 from app.adapters.web.correlation import CorrelationIdMiddleware
+from app.adapters.web.docs import install_api_docs_routes
 from app.adapters.web.health import install_health_routes
 from app.adapters.web.metrics import HttpMetricsMiddleware
 from app.adapters.web.plugin.routes import FastAPIDynamicRouteRegistry
@@ -333,10 +334,14 @@ def create_app() -> FastAPI:
     """
     configure_correlation_id_provider(get_correlation_id)
     configure_observation(build_observation_port())
+    openapi_path = f"{get_runtime_setting('API_V1_STR')}/openapi.json"
+    # 自带文档路由只能在创建时开关；改由 install_api_docs_routes 按 API_DOCS_ENABLE 逐请求判断
     _app = FastAPI(
         title=get_runtime_setting('PROJECT_NAME'),
         version=get_app_version(),
-        openapi_url=f"{get_runtime_setting('API_V1_STR')}/openapi.json",
+        openapi_url=None,
+        docs_url=None,
+        redoc_url=None,
         lifespan=lifespan
     )
 
@@ -354,6 +359,11 @@ def create_app() -> FastAPI:
     _app.router.route_class = ResponseAPIRoute
     # 编排器探针使用原生 APIRoute 和最小响应，不进入业务响应包络或版本前缀。
     install_health_routes(_app)
+    install_api_docs_routes(
+        _app,
+        openapi_path=openapi_path,
+        enabled=lambda: bool(get_runtime_setting("API_DOCS_ENABLE")),
+    )
 
     # 配置 CORS 中间件
     _app.add_middleware(
@@ -394,12 +404,6 @@ def create_app() -> FastAPI:
         verify_token=verify_token,
         verify_apikey=verify_apikey,
         prefix=f"{get_runtime_setting('API_V1_STR')}/plugin",
-        protected_routes={
-            f"{get_runtime_setting('API_V1_STR')}/openapi.json",
-            "/docs",
-            "/docs/oauth2-redirect",
-            "/redoc",
-        },
         log=logger,
         event_loop=lambda: main_loop_registry.current,
     ))

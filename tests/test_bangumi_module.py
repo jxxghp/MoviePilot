@@ -99,3 +99,14 @@ def test_bangumi_test_uses_generation_snapshot_until_reload(monkeypatch):
         assert request_utils.return_value.get_res.call_args.args[0] == (
             "https://new-bangumi.example/api/"
         )
+
+
+def test_bangumi_stop_closes_client_without_clearing_cache() -> None:
+    """模块停止只关闭客户端；缓存键已含 API 地址，不在重载或关闭时清空缓存。"""
+    module = BangumiModule.__new__(BangumiModule)
+    module.bangumiapi = MagicMock()
+
+    module.stop()
+
+    module.bangumiapi.close.assert_called_once_with()
+    module.bangumiapi.clear_cache.assert_not_called()

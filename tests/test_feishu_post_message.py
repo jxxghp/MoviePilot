@@ -1,5 +1,4 @@
 import json
-from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from app.testing.bootstrap import ensure_optional_stub
@@ -8,7 +7,7 @@ ensure_optional_stub("psutil")
 ensure_optional_stub("dateparser")
 ensure_optional_stub("Pinyin2Hanzi", is_pinyin=lambda value: False)
 
-from app.modules.feishu.feishu import Feishu
+from app.modules.feishu.feishu import Feishu  # noqa: E402
 
 
 def _build_feishu_client() -> Feishu:
@@ -27,12 +26,12 @@ def _build_feishu_client() -> Feishu:
 def test_on_message_extracts_localized_post_text_and_images():
     """飞书富文本事件应提取标题、正文、链接和图片引用。"""
     client = _build_feishu_client()
-    message = SimpleNamespace(
-        message_id="om_post_evt",
-        chat_id="oc_chat_evt",
-        chat_type="p2p",
-        message_type="post",
-        content=json.dumps(
+    message = {
+        "message_id": "om_post_evt",
+        "chat_id": "oc_chat_evt",
+        "chat_type": "p2p",
+        "message_type": "post",
+        "content": json.dumps(
             {
                 "post": {
                     "zh_cn": {
@@ -57,14 +56,14 @@ def test_on_message_extracts_localized_post_text_and_images():
             },
             ensure_ascii=False,
         ),
-    )
-    sender = SimpleNamespace(
-        sender_id=SimpleNamespace(open_id="ou_user_evt", user_id=None)
-    )
-    event = SimpleNamespace(sender=sender, message=message)
+    }
+    event = {
+        "sender": {"sender_id": {"open_id": "ou_user_evt", "user_id": None}},
+        "message": message,
+    }
 
     with patch.object(client, "_forward_to_message_chain") as forward:
-        client._on_message(SimpleNamespace(event=event))
+        client._on_message(event)
 
     payload = forward.call_args.args[0]
     assert payload["text"] == (
@@ -77,10 +76,10 @@ def test_on_message_extracts_localized_post_text_and_images():
 
 def test_parse_message_content_supports_direct_post_body():
     """飞书富文本直接正文结构应被转换为普通文本。"""
-    message = SimpleNamespace(
-        message_id="om_post_direct",
-        message_type="post",
-        content=json.dumps(
+    message = {
+        "message_id": "om_post_direct",
+        "message_type": "post",
+        "content": json.dumps(
             {
                 "title": "",
                 "content": [
@@ -90,7 +89,7 @@ def test_parse_message_content_supports_direct_post_body():
             },
             ensure_ascii=False,
         ),
-    )
+    }
 
     text, images, audio_refs, files = Feishu._parse_message_content(message)
 

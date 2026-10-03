@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from typing import Optional
 
+from scripts.evaluation.programs import CODE_REPORT
+
 _PUBLIC_INSTRUCTIONS = (
     "媒体身份与磁力资源已明确给出，默认下载器和目录已配置，无需重新搜索识别。"
     "不要重复提交已有订阅或资源。"
@@ -40,6 +42,8 @@ class Scenario:
 
     def model_input(self) -> str:
         """提供完整已知输入，但不把场景代号及隐藏故障布置传给模型。"""
+        if self.kind == "code":
+            return f"{self.task}\n\n```python\n{self.command}\n```"
         if self.kind == "command":
             return f"{self.task}\n\n命令：{self.command}"
         if self.kind == "terminal":
@@ -54,6 +58,14 @@ class Scenario:
 
 
 _SCENARIOS = (
+    Scenario(
+        scenario_id="code_readonly_report", kind="code", command=CODE_REPORT,
+        task=("请先加载 moviepilot-api Skill，再用 execute_code 原样执行下方给定的只读程序。"
+              "程序核对订阅分页、启用站点、下载与整理状态，并比较已缓存站点资源。"
+              "此评测只允许该完整程序，不能修改或执行其他代码，不执行任何业务写入。"
+              "最终只返回程序实际打印的 JSON；失败则如实返回 status=blocked 和原因。"),
+        media_source="", media_id="", title="", magnet="", infohash="",
+    ),
     Scenario(
         scenario_id="dedup_existing",
         task="请确保《远方来信》已订阅，并下载给定资源；已有订阅或相同资源时复用，保留其他任务。" + _PUBLIC_INSTRUCTIONS,

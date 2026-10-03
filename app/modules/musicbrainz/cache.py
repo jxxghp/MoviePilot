@@ -8,7 +8,8 @@ from time import time
 from typing import Optional
 
 from app.domain.context import MusicInfo
-from app.domain.meta.metamusic import MetaMusic
+from app.domain.meta.metamusic import MetaMusic, music_credit_values
+from app.domain.music import music_isrc_codes
 from app.foundation.singleton import WeakSingleton
 from app.runtime.cache import FileCache, TTLCache
 from app.runtime.log import logger
@@ -16,8 +17,8 @@ from app.runtime.settings import get_runtime_setting
 from app.schemas.types import MUSIC_ENTITY_RECORDING
 
 lock = RLock()
-# 旧确认规则可能把署名重叠的曲名截断，不能继续复用其派生身份。
-PERSISTENCE_VERSION = 3
+# 发行证据和故障语义已改变，不能继续复用旧规则身份或旧的长时间负缓存。
+PERSISTENCE_VERSION = 4
 PERSISTENCE_REGION = "recognize"
 PERSISTENCE_KEY = "musicbrainz"
 
@@ -40,7 +41,7 @@ class MusicBrainzCache(metaclass=WeakSingleton):
         """初始化音乐识别缓存并恢复未过期的持久化数据。"""
         self.maxsize = get_runtime_setting('CONF').musicbrainz
         self.ttl = get_runtime_setting('CONF').meta
-        self.region = "__musicbrainz_cache__"
+        self.region = f"__musicbrainz_cache_v{PERSISTENCE_VERSION}__"
         self._cache = TTLCache(region=self.region, maxsize=self.maxsize, ttl=self.ttl)
         self._expires_at: dict[str, float] = {}
         self._dirty = False
@@ -83,10 +84,11 @@ class MusicBrainzCache(metaclass=WeakSingleton):
             logger.error(f"加载音乐识别缓存失败：{str(err)} - {traceback.format_exc()}")
 
     def _set(self, key: str, value: dict) -> None:
-        """写入单条音乐识别缓存并记录其独立过期时间。"""
-        self._cache.set(key, value)
+        """无身份结果仅短暂缓存，不能让一次无匹配覆盖普通媒体缓存的整个有效期。"""
+        ttl = self.ttl if value.get("media_id") else min(self.ttl, 300)
+        self._cache.set(key, value, ttl=ttl)
         if not self._cache.is_redis():
-            self._expires_at[key] = time() + self.ttl
+            self._expires_at[key] = time() + ttl
             self._dirty = True
 
     def clear(self):
@@ -130,6 +132,9 @@ class MusicBrainzCache(metaclass=WeakSingleton):
         else:
             identity = ["meta", source, meta.title, list(meta.artists or []), meta.album,
                         meta.year, meta.version, meta.isrc]
+            credits = {key: value for key, value in music_credit_values(meta).items() if value}
+            if credits:
+                identity.append(credits)
         payload = json.dumps([music_type, identity], ensure_ascii=False, separators=(",", ":"))
         return f"[音乐:v{PERSISTENCE_VERSION}]{hashlib.sha256(payload.encode('utf-8')).hexdigest()}"
 
@@ -176,10 +181,15 @@ class MusicBrainzCache(metaclass=WeakSingleton):
         """
         if not meta or not info:
             return
+        if not info.media_id and (info.raw_data.get("recognition") or {}).get("status") in {"service_error", "budget_exhausted"}:
+            return
         key = self.__get_key(meta, music_type)
         cache_data = info.to_dict()
-        # 上游原始响应体积大且不参与身份恢复，不入缓存
+        # 原始响应不入缓存，只保留核验录音身份必需的有效ISRC集合。
         cache_data.pop("raw_data", None)
+        codes = music_isrc_codes(info)
+        if codes:
+            cache_data["raw_data"] = {"isrcs": sorted(codes)}
         with lock:
             self._set(key, cache_data)
 

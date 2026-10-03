@@ -91,11 +91,10 @@ class BangumiModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         关闭Bangumi客户端
         """
+        # 请求缓存键已包含 API 地址，切换代理或域名后自然使用新键；这里不清缓存，
+        # 以免 Redis 缓存在每次重载和关闭时都被清空。
         if self.bangumiapi:
-            try:
-                self.bangumiapi.clear_cache()
-            finally:
-                self.bangumiapi.close()
+            self.bangumiapi.close()
 
     def test(self) -> Tuple[bool, str]:
         """

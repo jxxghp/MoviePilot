@@ -24,6 +24,7 @@ from app.application.transfer.workflow import (
 )
 from app.db.models.transferpending import TransferPending
 from app.db.oper.transferexecutionstep import TransferExecutionStepOper
+from app.db.oper.transferhistory import TransferHistoryOper
 from app.db.oper.transferpending import TransferPendingOper
 from app.db.uow import SqlAlchemyUnitOfWork
 
@@ -418,6 +419,44 @@ class TransactionalTransferAdmissionRepository:
                 admission = self._project(pending)
                 transaction.commit()
                 return admission
+            except Exception:
+                transaction.rollback()
+                raise
+
+    def defer_planning(self, *, task_id: str, lease_token: str, error: str,
+                       retry_after: int, max_retries: int) -> bool:
+        """退避未规划的任务，拒绝在任何既有文件计划或步骤上重新识别。"""
+        if not task_id or not lease_token or not error or retry_after < 1 or max_retries < 0:
+            raise ValueError("规划退避参数无效")
+        now = self._lease_now()
+        now_time = self._format_lease_time(now)
+        with self._session_factory() as session:
+            transaction = SqlAlchemyUnitOfWork(session)
+            try:
+                oper = TransferPendingOper(session)
+                pending = oper.get_by_task_id(task_id=task_id)
+                if (pending is None or pending.lease_token != lease_token
+                        or not pending.lease_expires_at or pending.lease_expires_at <= now_time):
+                    raise TransferLeaseLostError("规划退避的整理租约已失效")
+                if (pending.state != TRANSFER_ADMISSION_ACCEPTED or pending.checkpoint_payload is not None
+                        or pending.checkpoint_version is not None or pending.planned_at is not None
+                        or pending.execution_payload is not None or pending.terminal_history_id is not None
+                        or pending.execution_version is not None or pending.execution_fingerprint is not None
+                        or pending.settlement_revision != 0 or pending.execution_state not in {"not_started", "retry_wait"}
+                        or TransferHistoryOper(session).get_by_transfer_task_id(task_id=task_id) is not None
+                        or TransferExecutionStepOper(session).list_by_task_id(task_id=task_id)):
+                    raise TransferPlanningStateError("已有计划或操作记录的任务不能退回识别阶段")
+                if pending.retry_count >= max_retries:
+                    return False
+                updated = oper.stage_defer_planning(
+                    task_id=task_id, lease_token=lease_token, error=error, max_retries=max_retries,
+                    retry_due_at=self._format_lease_time(now + timedelta(seconds=retry_after)),
+                    now_time=now_time, updated_at=self._now(),
+                )
+                if updated != 1:
+                    raise TransferPlanningStateError("规划退避的任务状态已改变")
+                transaction.commit()
+                return True
             except Exception:
                 transaction.rollback()
                 raise

@@ -107,6 +107,18 @@ def test_rule_query_and_mutation_endpoints_keep_separate_permissions():
         assert _dependency_of(endpoint, "_") is get_current_active_superuser_async
 
 
+def test_rule_group_mutation_routes_accept_slashes_in_group_names():
+    """规则组名称允许包含斜杠时，更新和删除路由必须接收完整名称。"""
+    routes = {
+        (route.endpoint, frozenset(route.methods)): route.path
+        for route in rule_endpoint.router.routes
+        if hasattr(route, "endpoint")
+    }
+
+    assert routes[(rule_endpoint.update_rule_group, frozenset({"PUT"}))] == "/groups/{name:path}"
+    assert routes[(rule_endpoint.delete_rule_group, frozenset({"DELETE"}))] == "/groups/{name:path}"
+
+
 def test_dashboard_endpoints_require_superuser():
     """仪表板页面相关接口必须只允许管理员访问。"""
     assert _dependency_of(dashboard_endpoint.statistic, "_") is get_current_active_superuser

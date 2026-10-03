@@ -1,5 +1,6 @@
 import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import langchain.agents as langchain_agents
@@ -10,7 +11,7 @@ if not hasattr(langchain_agents, "create_agent"):
 
 from app.agent.callback import StreamingHandler
 from app.agent.middleware.subagents import is_subagent_stream_metadata
-from app.agent.orchestrator import _ThinkTagStripper
+from app.agent.orchestrator import MoviePilotAgent, _ThinkTagStripper
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.impl.api import MoviePilotApiTool
 from app.agent.tools.impl.send_voice_message import SendVoiceMessageTool
@@ -67,6 +68,220 @@ def test_think_tag_stripper_hides_split_orphan_closing_tag():
     stripper.process("think>回答后", outputs.append)
 
     assert outputs == ["回答前", "回答后"]
+
+
+def test_stream_keeps_message_channel_thinking_during_hidden_think_tags():
+    """隐藏的 think 标签内容不能提前结束消息渠道的思考状态。"""
+
+    class FakeAgent:
+        """按顺序产生思考标签和最终正文的流式 Agent。"""
+
+        async def astream(self, *_args, **_kwargs):
+            """依次产生隐藏思考片段和可见答案。"""
+            def token(content):
+                """构造一个最小的文本流 token。"""
+                return SimpleNamespace(
+                    tool_call_chunks=[],
+                    additional_kwargs={},
+                    content=content,
+                )
+
+            yield {"type": "messages", "data": (token("<think>"), {})}
+            assert handler._thinking_active is True
+            yield {"type": "messages", "data": (token("隐藏推理"), {})}
+            assert handler._thinking_active is True
+            yield {"type": "messages", "data": (token("</think>"), {})}
+            assert handler._thinking_active is True
+            yield {"type": "messages", "data": (token("最终答案"), {})}
+
+    handler = StreamingHandler()
+    handler._can_stream = lambda: True
+    handler._streaming_enabled = True
+    tokens: list[str] = []
+
+    asyncio.run(
+        MoviePilotAgent._stream_agent_tokens(
+            FakeAgent(),
+            {"messages": []},
+            {"configurable": {"thread_id": "thinking-lifecycle"}},
+            tokens.append,
+            stream_handler=handler,
+        )
+    )
+
+    assert tokens == ["最终答案"]
+    assert handler._thinking_active is False
+
+
+def test_stream_does_not_mark_plain_model_output_as_thinking():
+    """模型没有输出 reasoning 协议时，流式处理不应创建 thinking 状态。"""
+
+    class FakeAgent:
+        """只输出普通文本的流式 Agent。"""
+
+        async def astream(self, *_args, **_kwargs):
+            """返回不带思考标记的普通答案。"""
+            token = SimpleNamespace(
+                tool_call_chunks=[],
+                additional_kwargs={},
+                content="普通答案",
+            )
+            yield {"type": "messages", "data": (token, {})}
+
+    handler = StreamingHandler()
+    handler._can_stream = lambda: True
+    handler._streaming_enabled = True
+    tokens: list[str] = []
+
+    asyncio.run(
+        MoviePilotAgent._stream_agent_tokens(
+            FakeAgent(),
+            {"messages": []},
+            {"configurable": {"thread_id": "plain-output"}},
+            tokens.append,
+            stream_handler=handler,
+        )
+    )
+
+    assert tokens == ["普通答案"]
+    assert handler._thinking_active is False
+    assert handler._thinking_started_at is None
+
+
+def test_stream_marks_reasoning_content_as_thinking():
+    """模型通过 reasoning_content 输出推理时，应进入 thinking 生命周期。"""
+
+    class FakeAgent:
+        """输出 reasoning_content 后再输出普通答案的流式 Agent。"""
+
+        async def astream(self, *_args, **_kwargs):
+            """返回推理 token 和最终答案 token。"""
+            yield {
+                "type": "messages",
+                "data": (
+                    SimpleNamespace(
+                        tool_call_chunks=[],
+                        additional_kwargs={"reasoning_content": "正在分析"},
+                        content="",
+                    ),
+                    {},
+                ),
+            }
+            yield {
+                "type": "messages",
+                "data": (
+                    SimpleNamespace(
+                        tool_call_chunks=[],
+                        additional_kwargs={},
+                        content="最终答案",
+                    ),
+                    {},
+                ),
+            }
+
+    handler = StreamingHandler()
+    handler._can_stream = lambda: True
+    handler._streaming_enabled = True
+    tokens: list[str] = []
+
+    asyncio.run(
+        MoviePilotAgent._stream_agent_tokens(
+            FakeAgent(),
+            {"messages": []},
+            {"configurable": {"thread_id": "reasoning-output"}},
+            tokens.append,
+            stream_handler=handler,
+        )
+    )
+
+    assert tokens == ["最终答案"]
+    assert handler._thinking_active is False
+    assert handler._thinking_started_at is not None
+
+
+def test_stream_marks_reasoning_content_when_tool_chunks_share_the_token():
+    """工具调用分片携带 reasoning_content 时，思考状态不能被工具过滤提前吞掉。"""
+
+    class FakeAgent:
+        """输出带工具调用分片和 reasoning_content 的流式 Agent。"""
+
+        async def astream(self, *_args, **_kwargs):
+            """返回同一 token 中的推理协议和工具调用分片。"""
+            yield {
+                "type": "messages",
+                "data": (
+                    SimpleNamespace(
+                        tool_call_chunks=[{"name": "search"}],
+                        additional_kwargs={"reasoning_content": "准备调用工具"},
+                        content="",
+                    ),
+                    {},
+                ),
+            }
+
+    handler = StreamingHandler()
+    handler._can_stream = lambda: True
+    handler._streaming_enabled = True
+    tokens: list[str] = []
+
+    asyncio.run(
+        MoviePilotAgent._stream_agent_tokens(
+            FakeAgent(),
+            {"messages": []},
+            {"configurable": {"thread_id": "reasoning-tool-token"}},
+            tokens.append,
+            stream_handler=handler,
+        )
+    )
+
+    assert tokens == []
+    assert handler._thinking_started_at is not None
+    assert handler._thinking_active is True
+
+
+@pytest.mark.parametrize(
+    "thinking_content",
+    [[{"type": "thinking", "thinking": "分析"}], {"type": "thought", "thought": "分析"}],
+)
+def test_stream_marks_thinking_content_blocks(thinking_content):
+    """内容块协议也必须开启 thinking，且不能把隐藏内容转成正文。"""
+
+    class FakeAgent:
+        """输出隐藏思考内容块和普通答案的流式 Agent。"""
+
+        async def astream(self, *_args, **_kwargs):
+            """返回思考内容块和最终答案。"""
+            for content in (thinking_content, "最终答案"):
+                yield {
+                    "type": "messages",
+                    "data": (
+                        SimpleNamespace(
+                            tool_call_chunks=[],
+                            additional_kwargs={},
+                            content=content,
+                        ),
+                        {},
+                    ),
+                }
+
+    handler = StreamingHandler()
+    handler._can_stream = lambda: True
+    handler._streaming_enabled = True
+    tokens: list[str] = []
+
+    asyncio.run(
+        MoviePilotAgent._stream_agent_tokens(
+            FakeAgent(),
+            {"messages": []},
+            {"configurable": {"thread_id": "thinking-block"}},
+            tokens.append,
+            stream_handler=handler,
+        )
+    )
+
+    assert tokens == ["最终答案"]
+    assert handler._thinking_started_at is not None
+    assert handler._thinking_active is False
 
 
 class DummyTool(MoviePilotTool):
@@ -723,6 +938,32 @@ class TestAgentToolStreaming:
         rich_message = handler._get_rich_message(handler._buffer)
 
         assert rich_message == "正文内容\n\n> （执行了 1 条命令）\n\n后续结论"
+
+    def test_rich_message_keeps_previous_tool_summaries_styled_after_edits(self):
+        """Telegram 后续编辑时，重复文案的历史工具摘要仍应保持引用样式。"""
+        handler = StreamingHandler()
+        handler._channel = NotificationChannel.Telegram.value
+        handler._streaming_enabled = True
+        handler._can_stream = lambda: True
+
+        for _ in range(3):
+            handler.record_tool_call(
+                tool_name="execute_command",
+                tool_message="执行命令",
+                tool_kwargs={},
+            )
+        handler.emit("第一批完成")
+        for _ in range(4):
+            handler.record_tool_call(
+                tool_name="execute_command",
+                tool_message="执行命令",
+                tool_kwargs={},
+            )
+
+        rich_message = handler._get_rich_message(handler._buffer)
+
+        assert "> （执行了 3 条命令）" in rich_message
+        assert "> （执行了 4 条命令）" in rich_message
 
     def test_rich_message_returns_none_for_non_telegram_channels(self):
         """校验非 Telegram 渠道不启用富文本，摘要保持原有纯文本格式。"""

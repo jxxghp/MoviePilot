@@ -247,12 +247,12 @@ def test_official_category_yaml_has_no_unknown_genre_ids() -> None:
         ("电视剧", {"origin_country": ["AU"]}, "未分类"),
     ],
 )
-def test_builtin_policy_matches_official_legacy_category_semantics(
+def test_builtin_and_migration_keep_explicit_region_naming(
     media_type: ClassificationMediaType,
     tmdb_info: Mapping[str, object],
     expected: str,
 ) -> None:
-    """内置标准规则应逐个复现官方 category.yaml 的分类结果。"""
+    """旧配置迁移保持原结果；新版模板将覆盖多个亚洲国家的分类如实命名。"""
     config = yaml.safe_load(
         (Path(__file__).resolve().parents[1] / "config" / "category.yaml").read_text(),
     )
@@ -262,7 +262,7 @@ def test_builtin_policy_matches_official_legacy_category_semantics(
 
     assert _legacy_tmdb_category(config["movie" if media_type == "电影" else "tv"], tmdb_info) == expected
     assert _category_name(migrated, facts) == expected
-    assert _policy_category_name(builtin, facts) == expected
+    assert _policy_category_name(builtin, facts) == ("亚洲剧" if expected == "日韩剧" else expected)
 
 
 def test_deleted_legacy_rules_keep_alias_only_fields_registered() -> None:

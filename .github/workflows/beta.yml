@@ -10,9 +10,6 @@ jobs:
   Docker-build:
     runs-on: ubuntu-latest
     name: Build Docker Image
-    env:
-      TRIVY_SKIP_DIRS: /usr/share/java
-      TRIVY_SKIP_JAVA_DB_UPDATE: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -135,134 +132,6 @@ jobs:
       - name: Set Up Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build standard amd64 candidate
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: docker/Dockerfile
-          platforms: linux/amd64
-          load: true
-          push: false
-          pull: true
-          tags: moviepilot-v3-candidate:linux-amd64
-          build-args: |
-            MOVIEPILOT_FRONTEND_VERSION=${{ steps.release_version.outputs.frontend_version }}
-            MOVIEPILOT_FRONTEND_SHA256=${{ steps.payloads.outputs.frontend_sha256 }}
-            MOVIEPILOT_PLUGINS_REF=${{ steps.payloads.outputs.plugins_revision }}
-            MOVIEPILOT_RESOURCES_REF=${{ steps.payloads.outputs.resources_revision }}
-            MOVIEPILOT_PYTHON_VARIANT=standard
-          cache-from: type=gha,scope=moviepilot-v3-standard-docker-amd64,version=2
-          cache-to: type=gha,scope=moviepilot-v3-standard-docker-amd64,mode=max,version=2
-
-      - name: Scan standard amd64 candidate vulnerabilities
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: moviepilot-v3-candidate:linux-amd64
-          version: latest
-          cache-dir: ${{ runner.temp }}/trivy
-          scanners: vuln
-          vuln-type: os,library
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          trivyignores: .trivyignore.yaml
-          exit-code: 1
-
-      - name: Build standard arm64 candidate
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: docker/Dockerfile
-          platforms: linux/arm64/v8
-          load: true
-          push: false
-          pull: true
-          tags: moviepilot-v3-candidate:linux-arm64
-          build-args: |
-            MOVIEPILOT_FRONTEND_VERSION=${{ steps.release_version.outputs.frontend_version }}
-            MOVIEPILOT_FRONTEND_SHA256=${{ steps.payloads.outputs.frontend_sha256 }}
-            MOVIEPILOT_PLUGINS_REF=${{ steps.payloads.outputs.plugins_revision }}
-            MOVIEPILOT_RESOURCES_REF=${{ steps.payloads.outputs.resources_revision }}
-            MOVIEPILOT_PYTHON_VARIANT=standard
-          cache-from: type=gha,scope=moviepilot-v3-standard-docker-arm64,version=2
-          cache-to: type=gha,scope=moviepilot-v3-standard-docker-arm64,mode=max,version=2
-
-      - name: Scan standard arm64 candidate vulnerabilities
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: moviepilot-v3-candidate:linux-arm64
-          version: latest
-          cache-dir: ${{ runner.temp }}/trivy
-          scanners: vuln
-          vuln-type: os,library
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          trivyignores: .trivyignore.yaml
-          exit-code: 1
-
-      - name: Build free-threaded amd64 candidate
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: docker/Dockerfile
-          platforms: linux/amd64
-          load: true
-          push: false
-          pull: true
-          tags: moviepilot-v3t-candidate:linux-amd64
-          build-args: |
-            MOVIEPILOT_FRONTEND_VERSION=${{ steps.release_version.outputs.frontend_version }}
-            MOVIEPILOT_FRONTEND_SHA256=${{ steps.payloads.outputs.frontend_sha256 }}
-            MOVIEPILOT_PLUGINS_REF=${{ steps.payloads.outputs.plugins_revision }}
-            MOVIEPILOT_RESOURCES_REF=${{ steps.payloads.outputs.resources_revision }}
-            MOVIEPILOT_PYTHON_VARIANT=free-threaded
-          cache-from: type=gha,scope=moviepilot-v3t-docker-amd64,version=2
-          cache-to: type=gha,scope=moviepilot-v3t-docker-amd64,mode=max,version=2
-
-      - name: Scan free-threaded amd64 candidate vulnerabilities
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: moviepilot-v3t-candidate:linux-amd64
-          version: latest
-          cache-dir: ${{ runner.temp }}/trivy
-          scanners: vuln
-          vuln-type: os,library
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          trivyignores: .trivyignore.yaml
-          exit-code: 1
-
-      - name: Build free-threaded arm64 candidate
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: docker/Dockerfile
-          platforms: linux/arm64/v8
-          load: true
-          push: false
-          pull: true
-          tags: moviepilot-v3t-candidate:linux-arm64
-          build-args: |
-            MOVIEPILOT_FRONTEND_VERSION=${{ steps.release_version.outputs.frontend_version }}
-            MOVIEPILOT_FRONTEND_SHA256=${{ steps.payloads.outputs.frontend_sha256 }}
-            MOVIEPILOT_PLUGINS_REF=${{ steps.payloads.outputs.plugins_revision }}
-            MOVIEPILOT_RESOURCES_REF=${{ steps.payloads.outputs.resources_revision }}
-            MOVIEPILOT_PYTHON_VARIANT=free-threaded
-          cache-from: type=gha,scope=moviepilot-v3t-docker-arm64,version=2
-          cache-to: type=gha,scope=moviepilot-v3t-docker-arm64,mode=max,version=2
-
-      - name: Scan free-threaded arm64 candidate vulnerabilities
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          image-ref: moviepilot-v3t-candidate:linux-arm64
-          version: latest
-          cache-dir: ${{ runner.temp }}/trivy
-          scanners: vuln
-          vuln-type: os,library
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          trivyignores: .trivyignore.yaml
-          exit-code: 1
-
       - name: Login DockerHub
         uses: docker/login-action@v4
         with:
@@ -285,6 +154,7 @@ jobs:
             linux/amd64
             linux/arm64/v8
           push: true
+          pull: true
           tags: ${{ steps.meta.outputs.tags }}
           build-args: |
             MOVIEPILOT_FRONTEND_VERSION=${{ steps.release_version.outputs.frontend_version }}
@@ -303,8 +173,10 @@ jobs:
             org.moviepilot.plugin-market-wiki-revision=${{ steps.plugin_market.outputs.wiki_commit }}
             org.moviepilot.models-catalog-digest=${{ steps.models_catalog.outputs.digest }}
           cache-from: |
+            type=gha,scope=moviepilot-v3-standard-docker,version=2
             type=gha,scope=moviepilot-v3-standard-docker-amd64,version=2
             type=gha,scope=moviepilot-v3-standard-docker-arm64,version=2
+          cache-to: type=gha,scope=moviepilot-v3-standard-docker,mode=max,version=2
 
       - name: Publish free-threaded multi-architecture image
         uses: docker/build-push-action@v7
@@ -315,7 +187,7 @@ jobs:
             linux/amd64
             linux/arm64/v8
           push: true
-          pull: false
+          pull: true
           tags: ${{ steps.meta_ft.outputs.tags }}
           build-args: |
             MOVIEPILOT_FRONTEND_VERSION=${{ steps.release_version.outputs.frontend_version }}
@@ -334,5 +206,7 @@ jobs:
             org.moviepilot.plugin-market-wiki-revision=${{ steps.plugin_market.outputs.wiki_commit }}
             org.moviepilot.models-catalog-digest=${{ steps.models_catalog.outputs.digest }}
           cache-from: |
+            type=gha,scope=moviepilot-v3t-docker,version=2
             type=gha,scope=moviepilot-v3t-docker-amd64,version=2
             type=gha,scope=moviepilot-v3t-docker-arm64,version=2
+          cache-to: type=gha,scope=moviepilot-v3t-docker,mode=max,version=2

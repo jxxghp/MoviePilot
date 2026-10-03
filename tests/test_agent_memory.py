@@ -2,19 +2,17 @@ import asyncio
 import json
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import SystemMessage
 
 from app.agent.middleware.memory import (
     SEARCH_MEMORY_TOOL_NAME,
     MemoryMiddleware,
-    _summarize_with_llm,
     query_memory_files,
 )
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.tags import ToolTag
-from app.runtime.tasks import TaskRegistry
 
 
 def _write_activity_log(activity_dir, date_str: str, lines: list[str]) -> None:
@@ -25,13 +23,6 @@ def _write_activity_log(activity_dir, date_str: str, lines: list[str]) -> None:
         f"# {date_str} 活动记忆\n\n{body}\n",
         encoding="utf-8",
     )
-
-
-async def _wait_memory_tasks(middleware: MemoryMiddleware) -> None:
-    """等待活动记忆后台任务完成，避免测试与后台写入竞态。"""
-    tasks = list(middleware._background_tasks)
-    if tasks:
-        await asyncio.gather(*tasks)
 
 
 def test_memory_loads_only_primary_file(tmp_path):
@@ -46,7 +37,6 @@ def test_memory_loads_only_primary_file(tmp_path):
     )
     middleware = MemoryMiddleware(
         memory_dir=str(tmp_path),
-        activity_dir=str(tmp_path / "activity"),
     )
 
     state_update = asyncio.run(middleware.abefore_agent({}, runtime=None, config=None))
@@ -66,7 +56,7 @@ def test_memory_loads_only_primary_file(tmp_path):
     assert "主题记忆：优先 Remux" not in system_text
     assert "活动正文不应自动进入上下文" not in system_text
     assert "search_memory" in system_text
-    assert "first tool call" in system_text
+    assert "session_search" in system_text
 
 
 def test_memory_loads_global_and_current_user_primary_files_only(tmp_path):
@@ -100,8 +90,8 @@ def test_memory_loads_global_and_current_user_primary_files_only(tmp_path):
     assert str(user_memory) in prompt
 
 
-def test_memory_onboarding_still_requires_search_before_task(tmp_path):
-    """主记忆为空时也必须要求 Agent 在执行任务前检索其它记忆。"""
+def test_memory_onboarding_exposes_relevant_retrieval(tmp_path):
+    """主记忆为空时仍提供按需主题与历史证据检索。"""
     (tmp_path / "MEDIA_RULES.md").write_text("主题记忆：偏好 HEVC。", encoding="utf-8")
     middleware = MemoryMiddleware(memory_dir=str(tmp_path))
     state_update = asyncio.run(middleware.abefore_agent({}, runtime=None, config=None))
@@ -110,51 +100,22 @@ def test_memory_onboarding_still_requires_search_before_task(tmp_path):
         memory_empty=state_update["memory_empty"],
     )
 
-    assert "primary memory file is empty" in prompt
-    assert "first tool call" in prompt
+    assert "No primary durable memory is saved" in prompt
+    assert "session_search" in prompt
     assert "search_memory" in prompt
     assert "偏好 HEVC" not in prompt
 
 
-def test_query_memory_files_searches_topic_and_activity_categories(tmp_path):
-    """统一检索工具应能按分类、关键词和日期读取主题与活动记忆。"""
-    (tmp_path / "MEDIA_RULES.md").write_text(
-        "# 媒体规则\n优先 Remux，字幕使用简体中文。\n",
-        encoding="utf-8",
-    )
-    activity_dir = tmp_path / "activity"
-    _write_activity_log(
-        activity_dir,
-        "2026-06-18",
-        [
-            "- **10:00** 帮用户整理了电影 A",
-            "- **10:30** 查询了站点状态",
-        ],
-    )
-
-    topic_payload = query_memory_files(
-        str(tmp_path),
-        activity_dir=str(activity_dir),
-        query="Remux",
-        category="topic",
-        limit=10,
-    )
-    activity_payload = query_memory_files(
-        str(tmp_path),
-        activity_dir=str(activity_dir),
-        query="整理",
-        category="activity",
-        date="2026-06-18",
-        limit=10,
-    )
-
-    assert topic_payload["success"] is True
-    assert topic_payload["entries"][0]["category"] == "topic"
-    assert topic_payload["entries"][0]["text"] == "优先 Remux，字幕使用简体中文。"
-    assert activity_payload["success"] is True
-    assert activity_payload["entries"][0]["category"] == "activity"
-    assert activity_payload["entries"][0]["summary"] == "帮用户整理了电影 A"
-    assert activity_payload["entries"][0]["date"] == "2026-06-18"
+def test_query_memory_files_excludes_obsolete_activity_but_preserves_files(tmp_path):
+    """旧活动文件原地保留，但所有分类与显式路径都不能把摘要当历史证据。"""
+    (tmp_path / "MEDIA_RULES.md").write_text("优先 Remux", encoding="utf-8")
+    _write_activity_log(tmp_path / "activity", "2026-06-18", ["- **10:00** 旧摘要"])
+    payload = query_memory_files(str(tmp_path))
+    assert [entry["text"] for entry in payload["entries"]] == ["优先 Remux"]
+    assert query_memory_files(str(tmp_path), category="activity")["success"] is False
+    old_file = tmp_path / "activity" / "2026-06-18.md"
+    assert query_memory_files(str(tmp_path), file_path=str(old_file))["success"] is False
+    assert old_file.exists()
 
 
 def test_query_memory_files_scopes_global_and_current_user_memory(tmp_path):
@@ -257,7 +218,7 @@ def test_memory_search_tool_reports_streaming_execution(tmp_path):
         )
         request = SimpleNamespace(
             tool=SimpleNamespace(name=SEARCH_MEMORY_TOOL_NAME),
-            tool_call={"args": {"query": "整理", "category": "activity"}},
+            tool_call={"args": {"query": "整理", "category": "topic"}},
         )
 
         async def _fake_handler(_request):
@@ -273,8 +234,8 @@ def test_memory_search_tool_reports_streaming_execution(tmp_path):
     assert calls == [
         {
             "tool_name": SEARCH_MEMORY_TOOL_NAME,
-            "tool_message": '检索记忆，主要参数：{"query": "整理", "category": "activity"}',
-            "tool_kwargs": {"query": "整理", "category": "activity"},
+            "tool_message": '检索记忆，主要参数：{"query": "整理", "category": "topic"}',
+            "tool_kwargs": {"query": "整理", "category": "topic"},
         }
     ]
     finished.assert_called_once_with("tool-1", "done")
@@ -337,177 +298,13 @@ def test_memory_provider_error_does_not_echo_secret(tmp_path):
     assert "***" in str(mock_logger.method_calls)
 
 
-def test_activity_memory_records_under_unified_memory_directory(tmp_path):
-    """活动摘要应写入 memory/activity，而不是旧的 agent/activity 目录。"""
-    summary = "用户要求整理电影文件，助手调用 transfer_file 完成处理，结果成功。"
-    activity_dir = tmp_path / "activity"
-
-    async def _run_test():
-        middleware = MemoryMiddleware(
-            memory_dir=str(tmp_path),
-            activity_dir=str(activity_dir),
-        )
-        with patch(
-            "app.agent.middleware.memory._summarize_with_llm",
-            new=AsyncMock(return_value=summary),
-        ):
-            await middleware.aafter_agent(
-                {
-                    "messages": [
-                        HumanMessage(content="帮我整理电影"),
-                        AIMessage(
-                            content="",
-                            tool_calls=[
-                                {"name": "transfer_file", "args": {}, "id": "call_1"}
-                            ],
-                        ),
-                        ToolMessage(content='{"success": true}', tool_call_id="call_1"),
-                    ]
-                },
-                runtime=None,
-            )
-            await _wait_memory_tasks(middleware)
-
-    asyncio.run(_run_test())
-
-    log_files = list(activity_dir.glob("*.md"))
-    assert len(log_files) == 1
-    assert summary in log_files[0].read_text(encoding="utf-8")
-
-
-def test_activity_memory_records_under_current_user_directory(tmp_path):
-    """带用户上下文的活动摘要只能写入当前用户的活动目录。"""
-    summary = "当前用户请求整理电影，助手完成了文件处理。"
-    user_memory_dir = tmp_path / "users" / "user-a"
-    user_activity_dir = user_memory_dir / "activity"
-
-    async def _run_test():
-        middleware = MemoryMiddleware(
-            memory_dir=str(tmp_path),
-            user_memory_dir=str(user_memory_dir),
-        )
-        with patch(
-            "app.agent.middleware.memory._summarize_with_llm",
-            new=AsyncMock(return_value=summary),
-        ):
-            await middleware.aafter_agent(
-                {
-                    "messages": [
-                        HumanMessage(content="帮我整理电影"),
-                        AIMessage(
-                            content="",
-                            tool_calls=[
-                                {"name": "transfer_file", "args": {}, "id": "call_1"}
-                            ],
-                        ),
-                        ToolMessage(content='{"success": true}', tool_call_id="call_1"),
-                    ]
-                },
-                runtime=None,
-            )
-            await _wait_memory_tasks(middleware)
-
-    asyncio.run(_run_test())
-
-    log_files = list(user_activity_dir.glob("*.md"))
-    assert len(log_files) == 1
-    assert summary in log_files[0].read_text(encoding="utf-8")
-    assert not list((tmp_path / "activity").glob("*.md"))
-
-
-def test_activity_memory_skips_trivial_greeting_without_llm(tmp_path):
-    """无实际任务的寒暄不应调用 LLM，也不应写入活动记忆。"""
-
-    async def _run_test():
-        middleware = MemoryMiddleware(
-            memory_dir=str(tmp_path),
-            activity_dir=str(tmp_path / "activity"),
-        )
-        summarize_mock = AsyncMock(return_value="不应写入")
-        with patch("app.agent.middleware.memory._summarize_with_llm", new=summarize_mock):
-            await middleware.aafter_agent(
-                {
-                    "messages": [
-                        HumanMessage(content="你好"),
-                        AIMessage(content="你好，有什么可以帮你？"),
-                    ]
-                },
-                runtime=None,
-            )
-            await _wait_memory_tasks(middleware)
-        return summarize_mock
-
-    summarize_mock = asyncio.run(_run_test())
-
-    summarize_mock.assert_not_awaited()
-    assert not list((tmp_path / "activity").glob("*.md"))
-
-
-def test_activity_summary_background_task_follows_host_shutdown(tmp_path):
-    """活动摘要任务必须登记统一 owner，并随宿主关停取消和收敛。"""
-
-    async def _run_test():
-        registry = TaskRegistry()
-        started = asyncio.Event()
-        cancelled = asyncio.Event()
-
-        async def _blocked_record(_messages: list) -> None:
-            """保持记录任务运行，直到宿主关停发出取消。"""
-            started.set()
-            try:
-                await asyncio.Event().wait()
-            except asyncio.CancelledError:
-                cancelled.set()
-                raise
-
-        middleware = MemoryMiddleware(
-            memory_dir=str(tmp_path),
-            activity_dir=str(tmp_path / "activity"),
-            task_registry=registry,
-        )
-        with patch.object(middleware, "_record_activity", side_effect=_blocked_record):
-            middleware._schedule_activity_recording([])
-            await started.wait()
-            owners = tuple(record.owner for record in registry.records)
-            converged = await registry.shutdown(timeout_seconds=1.0)
-            await asyncio.sleep(0)
-            return owners, converged, cancelled.is_set(), middleware._background_tasks
-
-    owners, converged, cancelled, background_tasks = asyncio.run(_run_test())
-
-    assert owners == ("agent.memory.activity_record",)
-    assert converged is True
-    assert cancelled is True
-    assert background_tasks == set()
-
-
-def test_summarize_with_llm_ignores_skip_marker():
-    """LLM 返回 SKIP 时应视为无需记录活动记忆。"""
-    llm = SimpleNamespace(ainvoke=AsyncMock(return_value=SimpleNamespace(content="SKIP")))
-
-    with patch(
-        "app.agent.llm.LLMHelper.get_llm",
-        new=AsyncMock(return_value=llm),
-    ):
-        summary = asyncio.run(_summarize_with_llm("用户: 你好"))
-
-    assert summary is None
-    llm.ainvoke.assert_awaited_once()
-
-
-def test_activity_summary_hides_image_payload():
-    """活动摘要输入只能保留图片占位符，不能把 Base64 写入活动记忆。"""
-    from app.agent.middleware.memory import _format_conversation_for_summary
-
-    content = [
-        {"type": "text", "text": "请看看图片"},
-        {"type": "image_url", "image_url": {"url": "data:image/png;base64,secret"}},
-    ]
-
-    formatted = _format_conversation_for_summary([HumanMessage(content=content)])
-
-    assert "[图片]" in formatted
-    assert "secret" not in formatted
+def test_memory_has_no_activity_summary_hooks(tmp_path):
+    """稳定记忆中间件不再生成或清理逐轮活动摘要。"""
+    middleware = MemoryMiddleware(memory_dir=str(tmp_path))
+    assert "aafter_agent" not in MemoryMiddleware.__dict__
+    assert not hasattr(middleware, "_record_activity")
+    assert not hasattr(middleware, "_background_tasks")
+    assert "activity" not in middleware.tools[0].args_schema.model_json_schema()["properties"]["category"]["enum"]
 
 
 def test_factory_does_not_register_memory_tool():

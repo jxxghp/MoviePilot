@@ -11,6 +11,7 @@ from app.application.history import (
 from app.application.transfer.execution import (
     TransferExecutionCommand,
     TransferExecutionRepository,
+    TransferExecutionState,
 )
 from app.chain._contracts import TransferMixinHost
 from app.chain.media import MediaChain
@@ -54,6 +55,9 @@ def _request_durable_transfer_retry(
             error,
         )
         return False, "整理任务暂时无法重试，请稍后重试"
+    if result.accepted and result.state is TransferExecutionState.NOT_STARTED:
+        MediaChain.clear_music_album_cache()
+        MediaChain().run_module("music_cache_clear")
     return result.accepted, result.message
 
 

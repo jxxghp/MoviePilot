@@ -69,9 +69,19 @@ sync_repo() {
 
   echo "==> 复用已有 MoviePilot 仓库: $APP_DIR"
   if repo_dirty "$APP_DIR"; then
-    echo "检测到现有仓库包含未提交改动，已停止自动更新。" >&2
-    echo "请先清理 $APP_DIR 的本地修改，或换一个新的安装目录后重试。" >&2
-    exit 1
+    echo "检测到现有仓库包含未提交的源码改动。"
+    if [[ "$NON_INTERACTIVE" != "true" && "$HAS_TTY" == "true" ]] && \
+      prompt_yes_no "是否清空本地改动并继续更新" "n"; then
+      (
+        cd "$APP_DIR"
+        git reset --hard HEAD
+      )
+      echo "==> 已清理本地已跟踪源码改动，继续更新"
+    else
+      echo "已取消更新，未清理 $APP_DIR 的本地改动。" >&2
+      echo "请先提交或清理本地修改，或换一个新的安装目录后重试。" >&2
+      exit 1
+    fi
   fi
 
   (
@@ -447,6 +457,24 @@ ensure_python() {
   fi
 }
 
+# 一键安装准备本机编译器；扩展失败只降级检索，不阻断主程序安装。
+ensure_cjk_compiler() {
+  if command -v cc >/dev/null 2>&1 || command -v gcc >/dev/null 2>&1 || command -v clang >/dev/null 2>&1; then
+    return 0
+  fi
+  case "$PACKAGE_MANAGER" in
+    apt-get) install_system_packages build-essential ;;
+    dnf|yum|zypper) install_system_packages gcc glibc-devel ;;
+    pacman) install_system_packages base-devel ;;
+    apk) install_system_packages build-base ;;
+    brew)
+      echo "中文索引扩展需要 Xcode Command Line Tools，请执行 xcode-select --install 后重试 moviepilot install cjk。" >&2
+      return 1
+      ;;
+    *) return 1 ;;
+  esac
+}
+
 ensure_prereqs() {
   if [[ "$OS_NAME" == "Windows" ]]; then
     echo "检测到当前环境为 Windows shell，建议改用 WSL、Linux 或 macOS 终端运行。" >&2
@@ -456,6 +484,9 @@ ensure_prereqs() {
   if ! ensure_base_tools || ! ensure_python || ! ensure_uv; then
     python_install_hint
     exit 1
+  fi
+  if ! ensure_cjk_compiler; then
+    echo "C 编译器尚未就绪，Agent 中文检索将暂用回退路径；安装后可用 moviepilot install cjk 补装。" >&2
   fi
 }
 

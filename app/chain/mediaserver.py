@@ -37,7 +37,7 @@ class MediaServerChain(ChainBase):
             MediaType.MUSIC.value.casefold(),
             "music",
             "musicalbum",
-            "album",
+            "artist", "album", "track",
             "audio",
             "song",
         }:

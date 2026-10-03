@@ -257,11 +257,16 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
         完成前复用主程序"还要不要搜索/下载"的判断口径。它不得完成订阅、写入
         lack_episode、发送事件或修改数据库。
 
+        电视剧的类型和目标季以订阅快照为准，避免候选元数据误识别或包含多季时
+        跳过开始集数裁剪，或把其他季的缺集带入下载。
+
         best_version_accept_downloaded 仅用于分集洗版的外部完成守卫：为 True 时，
         priority>0 的目标集视为已满足；默认 False 保持主程序洗版完成需 priority==100
         的搜索/完成口径。
         """
         mediakey = mediakey or subscribe_media_key(subscribe)
+        if subscribe.type == MediaType.TV.value:
+            meta = build_subscribe_meta(subscribe)
         effective_total_episode = self._SubscribeChain__resolve_effective_total_episode(subscribe, mediainfo)
 
         if not subscribe.best_version:

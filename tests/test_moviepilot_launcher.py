@@ -165,3 +165,40 @@ def test_recreate_excludes_custom_venv_from_external_bootstrap(
     )
 
     assert record.read_text(encoding="utf-8").startswith(f"{external_python} ")
+
+
+def test_runtime_commands_prefer_project_runtime_launcher(tmp_path):
+    """运行命令优先使用项目 venv 下保留专用身份的 Python 入口。"""
+    root = tmp_path / "moviepilot"
+    root.mkdir()
+    launcher = root / "moviepilot"
+    launcher.write_text(LAUNCHER.read_text(encoding="utf-8"), encoding="utf-8")
+    launcher.chmod(launcher.stat().st_mode | stat.S_IXUSR)
+
+    runtime_bin = root / "venv" / "bin"
+    runtime_bin.mkdir(parents=True)
+    record = tmp_path / "record"
+    venv_python = runtime_bin / "python"
+    project_runtime_python = runtime_bin / "moviepilot-python"
+    for python_path in (venv_python, project_runtime_python):
+        python_path.write_text(
+            "#!/bin/sh\n"
+            "printf '%s\\n' \"$0 $*\" > \"$MOVIEPILOT_TEST_RECORD\"\n",
+            encoding="utf-8",
+        )
+        python_path.chmod(python_path.stat().st_mode | stat.S_IXUSR)
+
+    env = os.environ.copy()
+    env["PATH"] = "/usr/bin:/bin"
+    env["MOVIEPILOT_TEST_RECORD"] = str(record)
+    subprocess.run(
+        [str(launcher), "doctor"],
+        cwd=root,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    invocation = record.read_text(encoding="utf-8")
+    assert invocation.startswith(f"{project_runtime_python} ")

@@ -509,7 +509,7 @@ def test_swallowed_indexer_failure_marks_task_and_batch_failed_but_continues(tmp
         attempts += 1
         if attempts == 1:
             raise RuntimeError("HTTP 429")
-        return False, []
+        return False, [], None
 
     monkeypatch.setattr(
         IndexerModule,

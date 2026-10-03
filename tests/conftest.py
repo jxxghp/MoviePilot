@@ -70,6 +70,29 @@ class _TestRuntimeSettingsProxy:
         raise AttributeError(key)
 
 
+@pytest.fixture
+def compose_cache_backend():
+    """按启动流程以指定缓存类型重新装配平台缓存，用例结束后恢复原设置与装配。
+
+    缓存类型属于重启生效的设置，只在启动时由缓存组合根选定；测试直接改设置不会切换路由。
+    恢复不依赖 monkeypatch 的撤销顺序，避免在设置仍被替换时重新装配。
+    """
+    from app.runtime.config import settings
+    from app.startup.composition.cache import configure_cache_composition
+
+    original = settings.CACHE_BACKEND_TYPE
+
+    def compose(backend_type: str) -> None:
+        settings.CACHE_BACKEND_TYPE = backend_type
+        configure_cache_composition()
+
+    try:
+        yield compose
+    finally:
+        settings.CACHE_BACKEND_TYPE = original
+        configure_cache_composition()
+
+
 @pytest.fixture(autouse=True)
 def install_runtime_settings_test_proxies(monkeypatch):
     """给历史测试 patch 点注入测试专用对象，生产代码不保留 settings 属性。"""

@@ -23,9 +23,10 @@ from app.startup.composition.context import AgentChatRuntime, HostRuntime
 def get_agent_chat_service(
     chat_repository: AsyncAgentChatRepository = Depends(get_agent_chat_repository),
     unit_of_work: AsyncUnitOfWork = Depends(get_agent_chat_transaction),
+    runtime: HostRuntime = Depends(get_host_runtime),
 ) -> AgentChatService:
     """组装类型化 Agent 会话历史查询和删除服务。"""
-    return AgentChatService(chat_repository, unit_of_work)
+    return AgentChatService(chat_repository, unit_of_work, recall=runtime.agent.recall)
 
 
 def get_agent_chat_persistence(

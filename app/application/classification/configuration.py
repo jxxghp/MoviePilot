@@ -47,14 +47,16 @@ _DEFAULT_MEDIA_CATEGORIES = (
     ("movie.animation", "电影", "动画电影", ("动画电影",)),
     ("movie.chinese", "电影", "华语电影", ("华语电影",)),
     ("movie.foreign", "电影", "外语电影", ("外语电影",)),
+    ("movie.uncategorized", "电影", "未分类", ("未分类",)),
     ("tv.dongman.cn", "电视剧", "国漫", ("国漫",)),
     ("tv.dongman.jp", "电视剧", "日番", ("日番",)),
+    ("tv.animation.other", "电视剧", "其他动画", ("其他动画",)),
     ("tv.documentary", "电视剧", "纪录片", ("纪录片",)),
     ("tv.kids", "电视剧", "儿童", ("儿童",)),
     ("tv.variety", "电视剧", "综艺", ("综艺",)),
     ("tv.chinese", "电视剧", "国产剧", ("国产剧",)),
     ("tv.western", "电视剧", "欧美剧", ("欧美剧",)),
-    ("tv.asian", "电视剧", "日韩剧", ("日韩剧",)),
+    ("tv.asian", "电视剧", "亚洲剧", ("亚洲剧",)),
     ("tv.uncategorized", "电视剧", "未分类", ("未分类",)),
     ("music.uncategorized", "音乐", "未分类", ("未分类",)),
 )
@@ -102,6 +104,19 @@ def _build_builtin_movie_rules() -> list[ClassificationRule]:
                 value=["zh", "cn", "bo", "za"],
             ),
             target=ClassificationTarget(category_id="movie.chinese"),
+        ),
+        ClassificationRule(
+            id="movie.foreign.default",
+            name="外语电影",
+            kind="category",
+            priority=2,
+            media_types=["电影"],
+            when=ClassificationCondition(
+                field="media.language",
+                operator="not_in",
+                value=["zh", "cn", "bo", "za"],
+            ),
+            target=ClassificationTarget(category_id="movie.foreign"),
         ),
     ]
 
@@ -152,6 +167,19 @@ def _build_builtin_tv_rules() -> list[ClassificationRule]:
                 ]
             ),
             target=ClassificationTarget(category_id="tv.dongman.jp"),
+        ),
+        ClassificationRule(
+            id="tv.animation.other.default",
+            name="其他动画",
+            kind="category",
+            priority=4,
+            media_types=["电视剧"],
+            when=ClassificationCondition(
+                field="media.genre_keys",
+                operator="contains_any",
+                value=["animation"],
+            ),
+            target=ClassificationTarget(category_id="tv.animation.other"),
         ),
         ClassificationRule(
             id="tv.documentary.default",
@@ -214,13 +242,17 @@ def _build_builtin_tv_rules() -> list[ClassificationRule]:
             when=ClassificationCondition(
                 field="media.countries",
                 operator="contains_any",
-                value=["US", "FR", "GB", "DE", "ES", "IT", "NL", "PT", "RU", "UK"],
+                value=[
+                    "US", "CA", "FR", "GB", "DE", "ES", "IT", "NL", "PT", "RU",
+                    "IE", "BE", "CH", "AT", "SE", "NO", "DK", "FI", "IS", "PL",
+                    "CZ", "HU", "GR", "RO", "UA",
+                ],
             ),
             target=ClassificationTarget(category_id="tv.western"),
         ),
         ClassificationRule(
             id="tv.asian.default",
-            name="日韩剧",
+            name="亚洲剧",
             kind="category",
             priority=9,
             media_types=["电视剧"],
@@ -235,13 +267,16 @@ def _build_builtin_tv_rules() -> list[ClassificationRule]:
 
 
 def build_builtin_classification_policy() -> ClassificationPolicy:
-    """构造与仓库内 legacy category.yaml 默认值等效的标准分类策略。"""
+    """构造显式区分外语与未知信息的默认模板，不改写已保存的旧策略。"""
+    rules = [*_build_builtin_movie_rules(), *_build_builtin_tv_rules()]
+    for priority, rule in enumerate(rules):
+        rule.priority = priority
     return with_default_music_classification(
         ClassificationPolicy(
             categories=_build_builtin_media_categories(),
-            rules=[*_build_builtin_movie_rules(), *_build_builtin_tv_rules()],
+            rules=rules,
             fallbacks={
-                "电影": "movie.foreign",
+                "电影": "movie.uncategorized",
                 "电视剧": "tv.uncategorized",
                 "音乐": "music.uncategorized",
             },
@@ -327,6 +362,7 @@ def with_default_music_classification(policy: ClassificationPolicy) -> Classific
         value: Union[str, list[str]],
         category_id: str,
     ) -> None:
+        """按既有规则之后的顺序追加单个音乐规则。"""
         nonlocal priority
         rules.append(
             ClassificationRule(

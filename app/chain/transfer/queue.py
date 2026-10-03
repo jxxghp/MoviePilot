@@ -42,7 +42,7 @@ from app.runtime.progress import ProgressHelper
 from app.runtime.stop import runtime_stop_state
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.tmdb import TmdbEpisode
-from app.schemas.transfer import TransferInfo, TransferJob
+from app.schemas.transfer import TransferInfo, TransferJob, TransferQueueItemData
 from app.schemas.types import (
     MediaSource,
     MediaType,
@@ -391,6 +391,7 @@ class TransferQueueOwner(_TransferOwnerBase):
             remove_task=self.jobview.remove_task,
             list_tasks=self.jobview.list_jobs,
             expire_tasks=self._TransferChain__expire_stale_transfer_tasks,
+            list_tasks_page=self.jobview.list_jobs_page,
         )
 
     def replay_pending(self) -> None:
@@ -1063,7 +1064,7 @@ class TransferQueueOwner(_TransferOwnerBase):
         task.bind_admission_task_id(admission.task_id)
         self._TransferChain__bind_claimed_admission(task, admission)
         task.bind_planning_input(planning_input)
-        if planning_input.mediainfo:
+        if planning_input.mediainfo or planning_input.options.get("music_recognition_scope"):
             task.mark_planning_context_restored()
         return self.put_to_queue(task)
 
@@ -1473,6 +1474,10 @@ class TransferQueueOwner(_TransferOwnerBase):
         """
         return self._transfer_queue_service().list()
 
+    def get_queue_tasks_page(self, page: int, count: int) -> Tuple[List[TransferQueueItemData], int]:
+        """获取供前端展示的受限整理队列快照。"""
+        return self._transfer_queue_service().list_page(page, count)
+
     def process(self, progress_callback: Optional[Callable[..., None]] = None) -> bool:
         """
         获取下载器中的种子列表，并执行整理
@@ -1486,7 +1491,7 @@ class TransferQueueOwner(_TransferOwnerBase):
 
             # 如果没有下载器监控的目录则不处理
             if not any(
-                    dir_info.monitor_type == "downloader" and dir_info.storage == "local"
+                    dir_info.monitor_type == "downloader"
                     for dir_info in download_dirs
             ):
                 if progress_callback:
@@ -1546,26 +1551,8 @@ class TransferQueueOwner(_TransferOwnerBase):
                             },
                         )
 
-                    # 文件路径
-                    file_path = torrent.path
-                    if not file_path.exists():
-                        logger.warn(f"文件不存在：{file_path}")
-                        continue
-
-                    # 检查是否为下载器监控目录中的文件
-                    is_downloader_monitor = False
-                    for dir_info in download_dirs:
-                        if dir_info.monitor_type != "downloader":
-                            continue
-                        if not dir_info.download_path:
-                            continue
-                        if file_path.is_relative_to(Path(dir_info.download_path)):
-                            is_downloader_monitor = True
-                            break
-                    if not is_downloader_monitor:
-                        logger.debug(
-                            f"文件 {file_path} 不在下载器监控目录中，不通过下载器进行整理"
-                        )
+                    fileitem = self._build_transfer_fileitem(torrent, download_dirs)
+                    if not fileitem:
                         continue
 
                     # 查询下载记录识别情况
@@ -1604,7 +1591,7 @@ class TransferQueueOwner(_TransferOwnerBase):
 
                     # 执行异步整理，匹配源目录
                     self.do_transfer(
-                        fileitem=self._build_transfer_fileitem(torrent),
+                        fileitem=fileitem,
                         mediainfo=mediainfo,
                         mtype=mtype,
                         downloader=torrent.downloader,

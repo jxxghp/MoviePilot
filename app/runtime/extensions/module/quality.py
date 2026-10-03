@@ -68,7 +68,7 @@ BASELINE_ASSESSED_MODULES = frozenset(
         "jellyfin",
         "listenbrainz",
         "lrclib",
-        "mediavault",
+        "vyo",
         "musicbrainz",
         "navidrome",
         "plex",

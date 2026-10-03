@@ -22,6 +22,7 @@ from app.application.subscription.sitebudget import (
 )
 from app.chain.search.contract import _SearchOwnerBase
 from app.domain.context import MediaInfo, SubtitleInfo, TorrentInfo
+from app.foundation import text as text_tools
 from app.runtime.log import logger
 from app.runtime.progress import AsyncProgressHelper, ProgressHelper
 from app.runtime.stop import runtime_stop_state
@@ -33,6 +34,14 @@ SyncPending = dict[Future[Any], tuple[SiteIndexer, int, int]]
 
 _site_request_schedule_lock = threading.Lock()
 _site_next_request_at: Dict[str, float] = {}
+
+
+def _site_keyword(site: SiteIndexer, keyword: str, mediainfo: Optional[MediaInfo]) -> str:
+    """英文站点在本轮直接使用可搜索的媒体名称，避免中文站点命中后提前停止导致漏搜。"""
+    if site.get("language") != "en" or not text_tools.contains_chinese(keyword) or not isinstance(mediainfo, MediaInfo):
+        return keyword
+    names = [mediainfo.en_title, mediainfo.original_title, *(mediainfo.names or [])]
+    return next((name for name in names if name and not text_tools.contains_chinese(name)), keyword)
 
 
 def _site_duration_key(site: SiteIndexer) -> str:
@@ -223,6 +232,7 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
         page_index: int,
         search_keyword: str,
         media_type: Optional[MediaType],
+        mediainfo: Optional[MediaInfo] = None,
     ) -> None:
         """向进程共享线程 owner 提交一页，并登记该站点的续页位置。"""
         page_number = search_pages[page_index]
@@ -230,7 +240,7 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
             _timed_sync_site_page,
             self,
             site=site,
-            keyword=search_keyword,
+            keyword=_site_keyword(site, search_keyword, mediainfo),
             mtype=media_type,
             page=page_number,
         )
@@ -318,6 +328,7 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
         search_pages: List[int],
         search_keyword: str,
         media_type: Optional[MediaType],
+        mediainfo: Optional[MediaInfo] = None,
     ) -> bool:
         """提交下一个尚未开始的站点，返回是否成功提交。"""
         try:
@@ -332,6 +343,7 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
             page_index=0,
             search_keyword=search_keyword,
             media_type=media_type,
+            mediainfo=mediainfo,
         )
         return True
 
@@ -345,6 +357,7 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
         media_type: Optional[MediaType],
         results: List[TorrentInfo],
         progress: ProgressHelper,
+        mediainfo: Optional[MediaInfo] = None,
     ) -> Dict[str, tuple[str, float]]:
         """在共享线程池中按站点串行翻页，并把结果合并到调用方集合。"""
         total_num = len(indexer_sites) * len(search_pages)
@@ -365,6 +378,7 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
                 search_pages=search_pages,
                 search_keyword=search_keyword,
                 media_type=media_type,
+                mediainfo=mediainfo,
             )
 
         try:
@@ -389,7 +403,7 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
                     continued = self._should_continue_search_pages(
                         site=site,
                         page_results=page_results,
-                        keyword=search_keyword,
+                        keyword=_site_keyword(site, search_keyword, mediainfo),
                     ) and page_index + 1 < len(search_pages)
                     if continued:
                         SearchProviderOwner._submit_sync_site_page(
@@ -400,6 +414,7 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
                             page_index=page_index + 1,
                             search_keyword=search_keyword,
                             media_type=media_type,
+                            mediainfo=mediainfo,
                         )
                     else:
                         logger.debug(f"{site.get('name')} 第 {page_number} 页返回 {len(page_results)} 条，停止继续翻页")
@@ -410,6 +425,7 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
                             search_pages=search_pages,
                             search_keyword=search_keyword,
                             media_type=media_type,
+                            mediainfo=mediainfo,
                         )
                     logger.debug(f"站点搜索进度：{finish_count} / {total_num}")
                     progress.update(
@@ -468,6 +484,7 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
                 media_type=media_type,
                 results=results,
                 progress=progress,
+                mediainfo=mediainfo,
             )
 
             elapsed = (datetime.now() - start_time).seconds
@@ -759,7 +776,7 @@ class SearchProviderOwner(_SearchProviderSyncOwner):
             await _async_wait_for_site_request(site)
             return await self.async_search_site_torrents(
                 site=site,
-                keyword=search_keyword,
+                keyword=_site_keyword(site, search_keyword, mediainfo),
                 mtype=media_type,
                 page=page_number,
             )
@@ -770,7 +787,7 @@ class SearchProviderOwner(_SearchProviderSyncOwner):
                 self._should_continue_search_pages(
                     site=site,
                     page_results=page_results,
-                    keyword=search_keyword,
+                    keyword=_site_keyword(site, search_keyword, mediainfo),
                 )
             )
 

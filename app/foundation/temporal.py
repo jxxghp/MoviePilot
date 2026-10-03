@@ -7,6 +7,11 @@ from typing import Any, Optional, Union
 import dateparser
 import dateutil.parser
 
+# dateparser 自由文本解析的候选语言，覆盖站点与存储返回的简繁中文、日文和英文日期。
+# 不传 languages 时，无法识别的文本会让 dateparser 逐个尝试并常驻全部 205 种语言数据，
+# 进程多占约 35MB；限定后约 4MB。其他语言的日期文本不再被识别，按无法解析处理。
+_DATE_TEXT_LANGUAGES = ["zh", "zh-Hant", "ja", "en"]
+
 
 def format_approx_duration(seconds: Union[str, int, float]) -> str:
     """把秒数格式化为单一最大单位的近似时长。"""
@@ -52,7 +57,7 @@ def normalize_datetime(value: str) -> str:
     if not value:
         return value
     try:
-        parsed = dateparser.parse(value)
+        parsed = dateparser.parse(value, languages=_DATE_TEXT_LANGUAGES)
         return parsed.strftime("%Y-%m-%d %H:%M:%S") if parsed else value
     except (TypeError, ValueError, OverflowError):
         return value
@@ -73,7 +78,7 @@ def parse_timestamp(value: str) -> float:
     if not value:
         return 0
     try:
-        parsed = dateparser.parse(value)
+        parsed = dateparser.parse(value, languages=_DATE_TEXT_LANGUAGES)
         return parsed.timestamp() if parsed else 0
     except (TypeError, ValueError, OverflowError):
         return 0

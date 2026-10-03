@@ -594,9 +594,9 @@ class SystemChain(_SystemUpdateChain):
             self.remove_cache(self._update_restart_file)
 
     @staticmethod
-    def __get_server_release_version():
+    def __get_server_release_version() -> Optional[str]:
         """
-        获取后端V2最新版本
+        获取后端V3最新版本
         """
         try:
             # 获取所有发布的版本列表
@@ -608,15 +608,15 @@ class SystemChain(_SystemUpdateChain):
             )
             if response:
                 try:
-                    releases = [release['tag_name'] for release in response.json()]
-                    v2_releases = [tag for tag in releases if re.match(r"^v2\.", tag)]
-                    if not v2_releases:
-                        logger.warn("获取v2后端最新版本版本出错！")
+                    releases: list[str] = [release['tag_name'] for release in response.json()]
+                    v3_releases = [tag for tag in releases if re.match(r"^v3\.", tag)]
+                    if not v3_releases:
+                        logger.warning("获取v3后端最新版本出错！")
                     else:
-                        # 找到最新的v2版本
-                        latest_v2 = sorted(v2_releases, key=lambda s: list(map(int, re.findall(r'\d+', s))))[-1]
-                        logger.info(f"获取到后端最新版本：{latest_v2}")
-                        return latest_v2
+                        # 找到最新的v3版本
+                        latest_v3 = sorted(v3_releases, key=lambda s: list(map(int, re.findall(r'\d+', s))))[-1]
+                        logger.info(f"获取到后端最新版本：{latest_v3}")
+                        return latest_v3
                 finally:
                     _close_system_response(response)
             else:
@@ -626,9 +626,9 @@ class SystemChain(_SystemUpdateChain):
         return None
 
     @staticmethod
-    def __get_front_release_version():
+    def __get_front_release_version() -> Optional[str]:
         """
-        获取前端V2最新版本
+        获取前端V3最新版本
         """
         try:
             # 获取所有发布的版本列表
@@ -640,15 +640,15 @@ class SystemChain(_SystemUpdateChain):
             )
             if response:
                 try:
-                    releases = [release['tag_name'] for release in response.json()]
-                    v2_releases = [tag for tag in releases if re.match(r"^v2\.", tag)]
-                    if not v2_releases:
-                        logger.warn("获取v2前端最新版本版本出错！")
+                    releases: list[str] = [release['tag_name'] for release in response.json()]
+                    v3_releases = [tag for tag in releases if re.match(r"^v3\.", tag)]
+                    if not v3_releases:
+                        logger.warning("获取v3前端最新版本出错！")
                     else:
-                        # 找到最新的v2版本
-                        latest_v2 = sorted(v2_releases, key=lambda s: list(map(int, re.findall(r'\d+', s))))[-1]
-                        logger.info(f"获取到前端最新版本：{latest_v2}")
-                        return latest_v2
+                        # 找到最新的v3版本
+                        latest_v3 = sorted(v3_releases, key=lambda s: list(map(int, re.findall(r'\d+', s))))[-1]
+                        logger.info(f"获取到前端最新版本：{latest_v3}")
+                        return latest_v3
                 finally:
                     _close_system_response(response)
             else:

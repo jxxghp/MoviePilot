@@ -26,7 +26,14 @@ from app.schemas.file import FileItem
 from app.schemas.media import resolve_media_identity
 from app.schemas.music import MusicInfo as _SchemaMusicInfo
 from app.schemas.music import MusicMeta as _SchemaMusicMeta
-from app.schemas.transfer import TransferJob, TransferJobTask
+from app.schemas.transfer import (
+    TransferJob,
+    TransferJobTask,
+    TransferQueueFileItemData,
+    TransferQueueItemData,
+    TransferQueueMediaData,
+    TransferQueueTaskData,
+)
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaType
 
 if TYPE_CHECKING:
@@ -68,6 +75,44 @@ def _job_task_fileitem(task: TransferJobTask) -> FileItem:
     return cast(FileItem, task.fileitem)
 
 
+def _queue_media_snapshot(media: Optional[Union[MediaInfo, MusicInfo]]) -> Optional[TransferQueueMediaData]:
+    """只复制整理队列页面会展示的媒体字段，避免重复输出完整刮削结果。"""
+    if not media:
+        return TransferQueueMediaData()
+    media_id = getattr(media, "media_id", None)
+    year = getattr(media, "year", None)
+    media_source = getattr(media, "media_source", None)
+    return TransferQueueMediaData(
+        media_source=getattr(media_source, "value", media_source),
+        media_id=str(media_id) if media_id is not None else None,
+        title=getattr(media, "title", None),
+        title_year=getattr(media, "title_year", None),
+        year=str(year) if year is not None else None,
+        poster_path=getattr(media, "poster_path", None),
+        episode_run_time=getattr(media, "episode_run_time", None) or [],
+        origin_country=getattr(media, "origin_country", None) or [],
+    )
+
+
+def _queue_fileitem_snapshot(fileitem: FileItem) -> TransferQueueFileItemData:
+    """保留 path/storage 以支持取消任务，其余只保留官方队列 UI 所需字段。"""
+    return TransferQueueFileItemData(
+        path=fileitem.path,
+        storage=fileitem.storage,
+        type=fileitem.type,
+        name=fileitem.name,
+        size=fileitem.size,
+    )
+
+
+def _queue_task_snapshot(task: TransferJobTask) -> TransferQueueTaskData:
+    """构造不含识别元数据和云盘目录树的轻量任务投影。"""
+    return TransferQueueTaskData(
+        fileitem=_queue_fileitem_snapshot(_job_task_fileitem(task)),
+        state=task.state,
+    )
+
+
 def _job_task_size(task: TransferJobTask) -> int:
     """按既有本地目录回退规则返回已完成任务的文件大小。"""
     fileitem = _job_task_fileitem(task)
@@ -78,6 +123,49 @@ def _job_task_size(task: TransferJobTask) -> int:
             raise RuntimeError("本地目录大小能力尚未由启动组合根配置")
         return _directory_size.get_directory_size(Path(cast(str, fileitem.path)))
     return 0
+
+
+def _list_jobs_page(
+    jobs: Dict[JobId, TransferJob],
+    page: int,
+    count: int,
+    total_hint: Optional[int] = None,
+) -> Tuple[List[TransferQueueItemData], int]:
+    """按扁平任务窗口构造轻量队列视图。"""
+    if page < 1 or count < 1:
+        raise ValueError("队列分页参数必须为正数")
+
+    start = (page - 1) * count
+    end = start + count
+    selected: List[TransferQueueItemData] = []
+    total = 0
+
+    for job in jobs.values():
+        tasks = _job_tasks(job)
+        job_start = total
+        total += len(tasks)
+        if job_start >= end:
+            if total_hint is not None:
+                break
+            continue
+        if total <= start:
+            continue
+
+        task_start = max(0, start - job_start)
+        task_end = min(len(tasks), end - job_start)
+        if task_start < task_end:
+            selected.append(
+                TransferQueueItemData(
+                    media=_queue_media_snapshot(job.media),
+                    season=job.season,
+                    tasks=[
+                        _queue_task_snapshot(task)
+                        for task in tasks[task_start:task_end]
+                    ],
+                )
+            )
+
+    return selected, total_hint if total_hint is not None else total
 
 
 job_lock = threading.Lock()
@@ -99,7 +187,6 @@ class JobManager:
     _task_state_changed_at: Dict[FileKey, float] = {}
     # 记录仍由主程序整理线程直接执行的任务，避免把阻塞中的本地任务误判为失活
     _active_executions: set[FileKey] = set()
-
     def __init__(self) -> None:
         """初始化当前进程内的整理作业状态。"""
         self._job_view = {}
@@ -247,11 +334,7 @@ class JobManager:
         with job_lock:
             __mediaid__ = self.__get_id(task)
             # 同一个源文件可能在识别前后落入不同作业，必须跨作业去重。
-            if any(
-                    self.__get_file_key(_job_task_fileitem(t)) == file_key
-                    for job in self._job_view.values()
-                    for t in _job_tasks(job)
-            ):
+            if file_key in self._task_state_changed_at:
                 logger.debug(f"任务 {task.fileitem.name} 已存在，跳过重复添加")
                 return False
             if __mediaid__ not in self._job_view:
@@ -827,6 +910,11 @@ class JobManager:
         """
         with job_lock:
             return list(self._job_view.values())
+
+    def list_jobs_page(self, page: int, count: int) -> Tuple[List[TransferQueueItemData], int]:
+        """返回轻量队列窗口，避免复制云盘目录树和识别元数据。"""
+        with job_lock:
+            return _list_jobs_page(self._job_view, page, count, len(self._task_state_changed_at) or None)
 
     def season_episodes(
             self, media: Union[MediaInfo, MusicInfo], season: Optional[int] = None

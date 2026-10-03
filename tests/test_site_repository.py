@@ -2,6 +2,7 @@
 
 import pytest
 
+from app.application.security.image import SiteImageDomainCache
 from app.application.site.contract import (
     SiteMutation,
     SitePriorityMutation,
@@ -10,6 +11,7 @@ from app.application.site.contract import (
     SiteUserDataSnapshot,
 )
 from app.application.site.query import SiteQueryService
+from app.db.adapters import site as site_adapter
 from app.db.adapters.site import SessionSiteRepository, TransactionalSiteRepository
 from app.db.models.site import Site
 from app.db.models.siteicon import SiteIcon
@@ -25,6 +27,31 @@ def _transactional_repository() -> TransactionalSiteRepository:
         sync_session=SessionFactory,
         async_session=async_session_scope,
     )
+
+
+@pytest.mark.asyncio
+async def test_site_writes_refresh_image_domains(db, monkeypatch) -> None:
+    """同步新增、同步改址和异步改址提交后均撤销旧图片域名快照。"""
+    db.watermark(Site)
+    cache = SiteImageDomainCache()
+    monkeypatch.setattr(site_adapter, "site_image_domains", cache)
+    repository = _transactional_repository()
+    source = SiteQueryService(repository=repository)
+    original = await cache.get(source)
+    assert repository.add(SiteMutation({
+        "name": "图片缓存", "domain": "image-cache.example", "url": "https://old-image.example/",
+    })).success
+    snapshot = repository.get_by_domain("image-cache.example")
+    assert snapshot is not None
+    assert "https://old-image.example" in await cache.get(source) - original
+    repository.update(snapshot.id, SiteMutation({"url": "https://new-image.example/"}))
+    domains = await cache.get(source)
+    assert "https://old-image.example" not in domains
+    assert "https://new-image.example" in domains
+    await repository.async_update(snapshot.id, SiteMutation({"url": "https://async-image.example/"}))
+    domains = await cache.get(source)
+    assert "https://new-image.example" not in domains
+    assert "https://async-image.example" in domains
 
 
 def test_transactional_repository_projects_frozen_site_snapshot(db) -> None:

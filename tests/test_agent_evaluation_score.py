@@ -435,3 +435,26 @@ def test_cli_reports_failure_without_executing_any_model(tmp_path):
     assert payload["passed"] is False
     assert payload["intelligence_evaluated"] is False
     assert json.loads(report.read_text()) == payload
+
+
+def test_python_report_requires_full_pages_and_real_kernel_receipt():
+    """正确答案不能替代逐页证据和真实 Python 回执，脚本中任一工具失败也不能过关。"""
+    from scripts.evaluation.programs import expected_code_report
+    world = EvaluationWorld('code_readonly_report')
+    report = expected_code_report(world.initial_snapshot())
+    assert not evaluate(world, report).passed
+    for operation in ['subscription.list', 'site.list', 'download.tasks.active', 'transfer.queue']:
+        page = 1
+        while True:
+            result = world.execute(operation, query={'page': page, 'count': 20})
+            if page * 20 >= result['collection']['total_count']:
+                break
+            page += 1
+    world.execute('search.results')
+    assert evaluate(world, report).violations == ('python_execution_not_verified',)
+    receipt = {'success': True, 'tool_calls_made': len(world.ledger), 'output': json.dumps(report)}
+    trace = [{'type': 'tool', 'data': {'name': 'execute_code', 'content': json.dumps(receipt)}}]
+    assert evaluate(world, report, trace).passed
+    receipt['tool_errors'] = [{'tool': 'moviepilot_api', 'error': 'failed'}]
+    trace[0]['data']['content'] = json.dumps(receipt)
+    assert not evaluate(world, report, trace).passed

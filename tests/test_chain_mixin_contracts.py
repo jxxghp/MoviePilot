@@ -14,7 +14,7 @@ from app.chain._messaging import MessageProcessingMixin, NotificationMixin
 from app.chain._music import MusicSubscribeMixin
 from app.chain._recognition import RecognitionMixin
 from app.chain.subscribe.facade import SubscribeChain
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 from app.chain.transfer.filter import FileFilterMixin
 from app.chain.transfer.format import EpisodeFormatMixin
 from app.chain.transfer.records import FileKeyMixin, HistoryMatchMixin, ManualHistoryMixin
@@ -69,6 +69,7 @@ def test_domain_mixins_keep_concrete_imports_explicit_until_next_migration() -> 
     for relative in (
         "app/chain/_music.py",
         "app/chain/transfer/filter.py",
+        "app/chain/transfer/music.py",
         "app/chain/transfer/format.py",
         "app/chain/transfer/records.py",
         "app/chain/transfer/retry.py",
@@ -80,6 +81,7 @@ def test_domain_mixins_keep_concrete_imports_explicit_until_next_migration() -> 
                 if node.module.startswith("app.chain.") and node.module not in {
                     "app.chain._contracts",
                     "app.chain.transfer.contract",
+                    "app.chain.transfer.music",
                 }:
                     violations.append(f"{relative}:{node.module}")
 

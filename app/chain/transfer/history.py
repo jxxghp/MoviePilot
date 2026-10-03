@@ -32,6 +32,7 @@ def _recognize_manual_media(
     episode_group: Optional[str],
     music_release_regions: Optional[list[str]],
     music_release_scripts: Optional[list[str]],
+    musicbrainz_release_id: Optional[str] = None,
 ) -> Optional[Union[MediaInfo, MusicInfo, MusicAlbumInfo]]:
     """识别手动指定的媒体，并为音乐专辑保留完整曲目表。"""
     if mtype == MediaType.MUSIC and music_type == MUSIC_ENTITY_ALBUM:
@@ -40,6 +41,7 @@ def _recognize_manual_media(
             media_id=media_id,
             music_release_regions=music_release_regions,
             music_release_scripts=music_release_scripts,
+            **({"musicbrainz_release_id": musicbrainz_release_id} if musicbrainz_release_id is not None else {}),
         )
         return album
     return MediaChain().recognize_media(
@@ -197,6 +199,7 @@ class TransferHistoryOwner(_TransferOwnerBase):
             selected_fileitems: Optional[list[FileItem]] = None,
             report_results: bool = False,
             skip_success: bool = False,
+            musicbrainz_release_id: Optional[str] = None,
     ) -> Tuple[bool, Union[str, dict[str, Any]]]:
         """
         手动整理，支持复杂条件，带进度显示
@@ -228,11 +231,19 @@ class TransferHistoryOwner(_TransferOwnerBase):
         :param selected_fileitems: 前端显式选中的批量文件
         :param report_results: 返回实际阶段回执，后台接收不表示入库完成
         :param skip_success: 预览和执行均跳过成功记录，优先于强制整理和重整
+        :param musicbrainz_release_id: 指定属于 media_id 发行组的具体 MusicBrainz 发行版
         """
         logger.info(f"手动整理：{fileitem.path} ...")
         explicit_identity = media_source is not None or media_id is not None
         if explicit_identity and (not media_source or not media_id):
             return False, "手动整理需要同时提供 media_source 和 media_id"
+        if musicbrainz_release_id is not None:
+            if (media_source != MediaSource.MusicBrainz or not media_id or music_type != MUSIC_ENTITY_ALBUM
+                    or mtype not in (None, MediaType.MUSIC)):
+                return False, "指定音乐发行版需要 MusicBrainz 专辑身份"
+            if any(item.storage != "local" for item in selected_fileitems or [fileitem]):
+                return False, "指定发行版需要读取本地音频并对齐曲目，请先将所选音乐下载到本地"
+            mtype = MediaType.MUSIC
         transfer_kwargs: dict[str, Any] = dict(
             fileitem=fileitem,
             target_storage=target_storage,
@@ -268,11 +279,13 @@ class TransferHistoryOwner(_TransferOwnerBase):
                 episode_group=episode_group,
                 music_release_regions=music_release_regions,
                 music_release_scripts=music_release_scripts,
+                musicbrainz_release_id=musicbrainz_release_id,
             )
             if not mediainfo:
                 return (
                     False,
-                    "未识别到媒体信息，请检查媒体来源和媒体 ID 后重试",
+                    "未能读取所选发行版的曲目，或该版不属于所选专辑，请核对发行 ID 后重试"
+                    if musicbrainz_release_id is not None else "未识别到媒体信息，请检查媒体来源和媒体 ID 后重试",
                 )
             if media_source and not isinstance(mediainfo, (MusicInfo, MusicAlbumInfo)):
                 mediainfo.scrape_source = media_source

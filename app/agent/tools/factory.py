@@ -8,6 +8,7 @@ from app.agent.tools.impl.apply_patch import ApplyPatchTool
 from app.agent.tools.impl.ask_user_choice import AskUserChoiceTool
 from app.agent.tools.impl.browse_webpage import BrowseWebpageTool
 from app.agent.tools.impl.edit_file import EditFileTool
+from app.agent.tools.impl.execute_code import ExecuteCodeTool
 from app.agent.tools.impl.execute_command import ExecuteCommandTool
 from app.agent.tools.impl.persona import PersonaTool
 from app.agent.tools.impl.query_doctor_report import QueryDoctorReportTool
@@ -58,6 +59,7 @@ class MoviePilotToolFactory:
         AgentTaskTool,
         PersonaTool,
         ExecuteCommandTool,
+        ExecuteCodeTool,
         EditFileTool,
         ApplyPatchTool,
         WriteFileTool,
@@ -84,9 +86,11 @@ class MoviePilotToolFactory:
         "edit_file",
         "apply_patch",
         "execute_command",
+        "execute_code",
         "ask_user_choice",
         "agent_task",
         "search_memory",
+        "session_search",
     )
 
     CATALOG_BUILD_MAX_ATTEMPTS = 3
@@ -102,6 +106,7 @@ class MoviePilotToolFactory:
 
     @staticmethod
     def _should_enable_choice_tool(channel: Optional[str] = None) -> bool:
+        """只在同时支持按钮与回调的渠道暴露交互选择能力。"""
         if not channel:
             return False
         try:
@@ -175,6 +180,8 @@ class MoviePilotToolFactory:
             tool_definitions.extend(cls.EXTERNAL_SERVICE_TOOL_CLASSES)
         # 创建内置工具
         for ToolClass in tool_definitions:
+            if ToolClass is ExecuteCodeTool and (include_external_service_tools or not (agent_context or {}).get('is_admin')):
+                continue
             tool = ToolClass(session_id=session_id, user_id=user_id, data=data)
             if not allow_message_tools and getattr(tool, "sends_message", False):
                 continue

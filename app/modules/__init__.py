@@ -229,6 +229,10 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
     消息基类
     """
     CONFIG_WATCH = {SystemConfigKey.Notifications.value}
+    # 当前用户个人信息中允许用于定向投递的渠道绑定键。
+    _notification_user_target_keys: tuple[str, ...] = ()
+    # 管理员未绑定个人 ID 时可作为管理员默认目标的渠道配置键。
+    _notification_admin_default_config_keys: tuple[str, ...] = ()
 
     def __init__(self):
         """
@@ -262,8 +266,17 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
         # 检查消息来源
         if message.source and message.source != source:
             return False
+        route_scope = message.notification_route_scope
+        if route_scope == "user":
+            if not self._has_notification_target(message):
+                return False
+        elif route_scope == "admin":
+            if not self._has_notification_target(message):
+                config = self.get_config(source)
+                if not self._has_admin_default(config):
+                    return False
         # 没有类型且没有显式目标时不得进入渠道的默认广播路径。
-        if not message.userid and not message.mtype:
+        if route_scope is None and not message.userid and not message.mtype:
             return bool(message.targets)
         # 不是定向发送时，检查消息类型开关
         if not message.userid and message.mtype:
@@ -273,6 +286,50 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
                 if message.mtype.value not in switchs:
                     return False
         return True
+
+    def _has_notification_target(self, message: Message) -> bool:
+        """判断消息是否包含当前渠道允许使用的明确用户目标。"""
+        if message.userid:
+            return True
+        targets = message.targets or {}
+        return any(
+            str(targets.get(key) or "").strip()
+            for key in self._notification_user_target_keys
+        )
+
+    def get_notification_targets(self, message: Message) -> Optional[dict[str, Any]]:
+        """返回渠道可用的通知目标，管理员范围缺少个人目标时启用渠道默认目标。"""
+        if (
+            message.notification_route_scope == "admin"
+            and not self._has_notification_target(message)
+        ):
+            return None
+        return message.targets
+
+    def get_notification_userid(
+        self,
+        message: Message,
+        *target_keys: str,
+    ) -> Optional[str]:
+        """按消息路由范围解析当前渠道的用户 ID，缺少时返回 None 以使用渠道默认目标。"""
+        if message.userid:
+            return str(message.userid)
+        targets = self.get_notification_targets(message) or {}
+        for key in target_keys:
+            value = str(targets.get(key) or "").strip()
+            if value:
+                return value
+        return None
+
+    def _has_admin_default(self, config: Optional[NotificationConf]) -> bool:
+        """判断渠道配置是否维护了可供管理员范围使用的默认目标。"""
+        if not config:
+            return False
+        values = config.config or {}
+        return any(
+            str(values.get(key) or "").strip()
+            for key in self._notification_admin_default_config_keys
+        )
 
 
 class _DownloaderBase(ServiceBase[TService, DownloaderConf]):
@@ -389,11 +446,11 @@ class _DownloaderBase(ServiceBase[TService, DownloaderConf]):
 
     def normalize_return_path(self, path: Path, downloader: Optional[str]) -> str:
         """
-        将下载器返回的路径反向映射为 MoviePilot 可访问的存储路径。
+        将下载器路径反向映射为存储 URI，远程前缀用于选择实际文件访问接口。
 
         :param path: 下载器返回的路径
         :param downloader: 下载器名称
-        :return: MoviePilot 可访问的路径
+        :return: 本地路径或带存储前缀的远程 URI；不能对远程 URI 调用本地文件接口
         """
         normalized_path = path.as_posix()
         conf = self.get_config(downloader)
@@ -403,7 +460,8 @@ class _DownloaderBase(ServiceBase[TService, DownloaderConf]):
                 if mapped_path:
                     normalized_path = mapped_path
                     break
-        return self.__strip_storage_prefix(normalized_path)
+        # 下发下载器时才移除远程前缀；返回时必须保留，否则整理会误查本地同名路径。
+        return normalized_path.removeprefix("local:")
 
 
 class _MediaServerBase(ServiceBase[TService, MediaServerConf]):

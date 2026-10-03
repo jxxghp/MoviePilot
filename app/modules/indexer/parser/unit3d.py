@@ -12,9 +12,12 @@ from app.foundation.dom import DomUtils
 
 
 class Unit3dSiteUserInfo(SiteParserBase):
+    """Unit3D 架构站点的用户信息解析器。"""
+
     schema = SiteSchema.Unit3d
 
     def _parse_user_base_info(self, html_text: str):
+        """解析用户名并将 Unit3D 的用户名作为用户标识供后续请求使用。"""
         html_text = self._prepare_html_text(html_text)
         html = etree.HTML(html_text)
         try:
@@ -23,6 +26,7 @@ class Unit3dSiteUserInfo(SiteParserBase):
                 user_name_match = re.search(r"/users/(.+)/settings", tmps[0])
                 if user_name_match and user_name_match.group().strip():
                     self.username = user_name_match.group(1)
+                    self.userid = self.username
                     self._torrent_seeding_page = f"/users/{self.username}/active?perPage=100&client=&seeding=include"
                     self._user_detail_page = f"/users/{self.username}"
 
@@ -37,6 +41,7 @@ class Unit3dSiteUserInfo(SiteParserBase):
                 del html
 
     def _parse_site_page(self, html_text: str):
+        """Unit3D 不需要从站点首页解析额外的站点级数据。"""
         pass
 
     def _parse_user_detail_info(self, html_text: str):
@@ -120,6 +125,7 @@ class Unit3dSiteUserInfo(SiteParserBase):
         return next_page
 
     def _parse_user_traffic_info(self, html_text: str):
+        """解析用户上传量、下载量和分享率。"""
         html_text = self._prepare_html_text(html_text)
         upload_match = re.search(r"[^总]上[传傳]量?[:：_<>/a-zA-Z-=\"'\s#;]+([\d,.\s]+[KMGTPI]*B)", html_text,
                                  re.IGNORECASE)
@@ -132,7 +138,9 @@ class Unit3dSiteUserInfo(SiteParserBase):
             ratio_match and ratio_match.group(1).strip()) else 0.0
 
     def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:
+        """Unit3D 没有兼容的未读消息列表解析。"""
         return None
 
     def _parse_message_content(self, html_text):
+        """Unit3D 没有兼容的未读消息正文解析。"""
         return None, None, None

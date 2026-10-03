@@ -252,7 +252,8 @@ async def test_async_subprocess_cancellation_reaps_process(tmp_path):
         "-c",
         (
             "from pathlib import Path; import os, time; "
-            f"Path({str(marker)!r}).write_text(str(os.getpid())); time.sleep(60)"
+            f"target = Path({str(marker)!r}); ready = target.with_suffix('.ready'); "
+            "ready.write_text(str(os.getpid())); ready.replace(target); time.sleep(60)"
         ),
     ]
     task = asyncio.create_task(
@@ -847,11 +848,12 @@ def test_space_usage_keeps_windows_drive_behavior_without_fsid_lookup():
 
 
 def test_local_storage_usage_forwards_btrfs_fsid_setting():
+    """存储层从运行配置门面取得去重开关，不能依赖已移除的具体配置对象。"""
     from app.modules.filemanager.storages import local as local_storage_module
 
     download_dir = MagicMock(download_path="/downloads")
     library_dir = MagicMock(library_path="/library")
-    with patch.object(local_storage_module.settings, "BTRFS_FSID_DEDUP", True), \
+    with patch.object(local_storage_module, "get_runtime_setting", return_value=True) as setting_mock, \
             patch.object(local_storage_module.DirectoryHelper, "get_local_download_dirs",
                          return_value=[download_dir]), \
             patch.object(local_storage_module.DirectoryHelper, "get_local_library_dirs",
@@ -861,6 +863,7 @@ def test_local_storage_usage_forwards_btrfs_fsid_setting():
 
     assert usage.total == 4.0
     assert usage.available == 2.0
+    setting_mock.assert_called_once_with("BTRFS_FSID_DEDUP")
     usage_mock.assert_called_once_with(
         [Path("/downloads"), Path("/library")],
         btrfs_fsid_dedup=True,

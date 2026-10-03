@@ -133,6 +133,13 @@ class _OpenAIStreamingHandlerMixin:
         if emitted and self._event_queue is not None:
             self._event_queue.put_nowait(emitted)
 
+    def emit_tool_message(self, message: str) -> str:
+        """将工具提示转发到 OpenAI SSE 队列，同时保留流式缓冲内容。"""
+        emitted = str(super().emit_tool_message(message))  # type: ignore[misc]
+        if emitted and self._event_queue is not None:
+            self._event_queue.put_nowait(emitted)
+        return emitted
+
     def flush_pending_tool_summary(self) -> str:
         emitted = super().flush_pending_tool_summary()
         if emitted and self._event_queue is not None:

@@ -2,6 +2,12 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Optional, Tuple, Union
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+from app.application.music.observation import music_request_timeout, report_music_recognition
+from app.application.music.recognition import (
+    async_enrich_music_artist_aliases,
+    enrich_music_artist_aliases,
+    unique_music_match,
+)
 from app.domain.context import (
     MusicAlbumInfo,
     MusicArtistInfo,
@@ -9,8 +15,17 @@ from app.domain.context import (
 )
 from app.domain.media import is_media_source_selected
 from app.domain.meta.metabase import MetaBase
-from app.domain.meta.metamusic import MetaMusic
-from app.domain.music import music_artist_matches, music_isrc_matches, music_title_matches, music_version_matches
+from app.domain.meta.metamusic import MetaMusic, music_credit_values
+from app.domain.music import (
+    music_album_artist_evidence_matches,
+    music_artist_evidence_matches,
+    music_credit_conflicts,
+    music_isrc_matches,
+    music_query_artists,
+    music_release_year_matches,
+    music_title_matches,
+    music_version_matches,
+)
 from app.modules import _ModuleBase
 from app.runtime.cache import cached
 from app.runtime.log import logger
@@ -121,13 +136,13 @@ class TheAudioDbModule(_ModuleBase):
             music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> Optional[list[MusicInfo]]:
         """按请求来源搜索 TheAudioDB 单曲、专辑和艺术家，并兼容实体过滤参数。"""
-        del music_types
         if not is_media_source_selected(media_source, self._source):
             return None
         normalized_limit = max(1, min(limit, 100))
-        tracks = self._search_tracks(meta)
-        albums = self._search_albums(meta)
-        artists = self._search_artists(meta)
+        selected: set[str] = set(music_types) if music_types else ({meta.music_type} if meta.music_type else {"recording", "album", "artist"})
+        tracks = self._search_tracks(meta) if "recording" in selected else []
+        albums = self._search_albums(meta) if "album" in selected else []
+        artists = self._search_artists(meta) if "artist" in selected else []
         return self._interleave_results(
             tracks,
             albums,
@@ -437,7 +452,9 @@ class TheAudioDbModule(_ModuleBase):
         if not params:
             return []
         payload = self._request_json("searchtrack.php", params)
-        return self._project_track_search(payload)
+        candidates = self._project_track_search(payload)
+        enrich_music_artist_aliases(((meta, candidate) for candidate in candidates), self._source, self._artist_aliases)
+        return candidates
 
     async def _async_search_tracks(self, meta: MetaMusic) -> list[MusicInfo]:
         """异步使用曲名和艺术家搜索 TheAudioDB 单曲。"""
@@ -445,12 +462,14 @@ class TheAudioDbModule(_ModuleBase):
         if not params:
             return []
         payload = await self._async_request_json("searchtrack.php", params)
-        return self._project_track_search(payload)
+        candidates = self._project_track_search(payload)
+        await async_enrich_music_artist_aliases(((meta, candidate) for candidate in candidates), self._source, self._async_artist_aliases)
+        return candidates
 
     @staticmethod
     def _track_search_params(meta: MetaMusic) -> Optional[dict[str, str]]:
         """从音乐元数据归一化单曲搜索参数。"""
-        artist = meta.artists[0] if meta.artists else meta.album_artist
+        artist = next(iter(music_query_artists(meta)), None) or meta.album_artist
         if not meta.title or not artist:
             return None
         return {"t": meta.title, "s": artist}
@@ -472,7 +491,9 @@ class TheAudioDbModule(_ModuleBase):
         if not params:
             return []
         payload = self._request_json("searchalbum.php", params)
-        return self._project_album_search(payload)
+        candidates = self._project_album_search(payload)
+        enrich_music_artist_aliases(((meta, candidate) for candidate in candidates), self._source, self._artist_aliases)
+        return candidates
 
     async def _async_search_albums(
             self,
@@ -483,7 +504,9 @@ class TheAudioDbModule(_ModuleBase):
         if not params:
             return []
         payload = await self._async_request_json("searchalbum.php", params)
-        return self._project_album_search(payload)
+        candidates = self._project_album_search(payload)
+        await async_enrich_music_artist_aliases(((meta, candidate) for candidate in candidates), self._source, self._async_artist_aliases)
+        return candidates
 
     @staticmethod
     def _album_search_params(meta: MetaMusic) -> Optional[dict[str, str]]:
@@ -515,22 +538,44 @@ class TheAudioDbModule(_ModuleBase):
             for item in self._entities(payload, "artists", "artist")
         ]
 
+    @classmethod
+    def _artist_alias_values(cls, payload: Optional[dict[str, Any]], artist_id: str) -> list[str]:
+        """只消费精确Artist ID响应中的真实名字与别名，拒绝同名但不同身份的结果。"""
+        names = []
+        for item in cls._entities(payload, "artists", "artist"):
+            artist = cls._artist_to_info(item)
+            if artist.media_id == artist_id:
+                names.extend([artist.name, *artist.aliases])
+        return cls._unique_texts(names)
+
+    def _artist_aliases(self, artist_id: str) -> list[str]:
+        """通过已有缓存及HTTP预算查询一个确定的艺人身份。"""
+        return self._artist_alias_values(self._request_json("artist.php", {"i": artist_id}), artist_id)
+
+    async def _async_artist_aliases(self, artist_id: str) -> list[str]:
+        """异步按同一身份补证，沿用与同步来源共享的缓存。"""
+        return self._artist_alias_values(await self._async_request_json("artist.php", {"i": artist_id}), artist_id)
+
     @staticmethod
     def _select_track(
             meta: MetaMusic,
             candidates: list[MusicInfo],
     ) -> Optional[MusicInfo]:
         """复用统一音乐证据确认单曲，明确 ISRC 优先于名称候选。"""
-        identity = next((candidate for candidate in candidates if music_isrc_matches(candidate, meta)), None)
-        if identity is not None:
-            return identity
+        candidates = [candidate for candidate in candidates if not music_credit_conflicts(candidate, meta)]
+        identities = [candidate for candidate in candidates if music_isrc_matches(candidate, meta)]
+        if identities:
+            return unique_music_match(identities)
+        matches = []
         for candidate in candidates:
             if not music_title_matches(candidate, meta.title, preserve_editions=True) or not music_version_matches(candidate, meta):
                 continue
-            if meta.artists and not music_artist_matches(candidate, meta.artists):
+            if (meta.artists or any(music_credit_values(meta).values())) and not music_artist_evidence_matches(candidate, meta):
                 continue
-            return candidate
-        return None
+            if not music_release_year_matches(candidate, meta):
+                continue
+            matches.append(candidate)
+        return unique_music_match(matches)
 
     @staticmethod
     def _select_album(
@@ -541,14 +586,17 @@ class TheAudioDbModule(_ModuleBase):
         expected_title = meta.album or meta.title
         expected_artists = [meta.album_artist] if meta.album_artist else meta.artists
         album_meta = MetaMusic(title=expected_title, version=meta.version)
+        matches = []
         for candidate in candidates:
             music = candidate.to_music_info()
             if not music_title_matches(music, expected_title, preserve_editions=True) or not music_version_matches(music, album_meta):
                 continue
-            if expected_artists and not music_artist_matches(music, expected_artists):
+            if (expected_artists or any(music_credit_values(meta).values())) and not music_album_artist_evidence_matches(candidate, meta):
                 continue
-            return candidate
-        return None
+            if not music_release_year_matches(music, meta):
+                continue
+            matches.append(candidate)
+        return unique_music_match(matches)
 
     @classmethod
     def _track_to_info(
@@ -692,10 +740,12 @@ class TheAudioDbModule(_ModuleBase):
     ) -> Optional[dict[str, Any]]:
         """统一校验并解析 TheAudioDB 响应，避免同步异步错误语义漂移。"""
         if response.status_code != 200:
+            report_music_recognition("service_error", "TheAudioDB 服务暂时不可用")
             return None
         diagnostic = cls._response_diagnostic(response, endpoint)
         if getattr(response, "content", None) in (b"", ""):
             logger.warning(f"TheAudioDB 返回空响应：{diagnostic}")
+            report_music_recognition("service_error", "TheAudioDB 返回空响应")
             return None
         try:
             payload = response.json()
@@ -703,8 +753,12 @@ class TheAudioDbModule(_ModuleBase):
             logger.warning(
                 f"TheAudioDB 响应解析失败：{diagnostic}，错误：{str(err)}"
             )
+            report_music_recognition("service_error", "TheAudioDB 返回了无效响应")
             return None
-        return payload if isinstance(payload, dict) else None
+        if not isinstance(payload, dict) or payload.get("error") or payload.get("success") is False:
+            report_music_recognition("service_error", "TheAudioDB 返回了无效响应")
+            return None
+        return payload
 
     @classmethod
     def _request_plan(
@@ -723,7 +777,8 @@ class TheAudioDbModule(_ModuleBase):
         )
 
     @classmethod
-    @cached(maxsize=get_runtime_setting('CONF').theaudiodb, ttl=get_runtime_setting('CONF').meta, skip_none=True)
+    @cached(maxsize=get_runtime_setting('CONF').theaudiodb, ttl=get_runtime_setting('CONF').meta, skip_none=True,
+            shared_key="music_http_v2", empty_ttl=300, empty_if=lambda payload: isinstance(payload, dict) and not any(payload.values()))
     def _request_json(
             cls,
             endpoint: str,
@@ -736,6 +791,9 @@ class TheAudioDbModule(_ModuleBase):
         if not plan:
             logger.warning("TheAudioDB API Key 未配置，跳过请求")
             return None
+        timeout = music_request_timeout(maximum=30)
+        if timeout is None:
+            return None
         response = RequestUtils(
             ua=get_runtime_setting('USER_AGENT'),
             proxies=get_runtime_setting('PROXY'),
@@ -743,8 +801,10 @@ class TheAudioDbModule(_ModuleBase):
         ).get_res(
             url=plan.url,
             params=plan.params,
+            timeout=timeout,
         )
         if response is None:
+            report_music_recognition("service_error", "TheAudioDB 连接失败")
             return None
         try:
             return cls._response_payload(response, endpoint)
@@ -756,7 +816,9 @@ class TheAudioDbModule(_ModuleBase):
         maxsize=get_runtime_setting('CONF').theaudiodb,
         ttl=get_runtime_setting('CONF').meta,
         skip_none=True,
-        shared_key="_request_json",
+        shared_key="music_http_v2",
+        empty_ttl=300,
+        empty_if=lambda payload: isinstance(payload, dict) and not any(payload.values()),
     )
     async def _async_request_json(
             cls,
@@ -770,6 +832,9 @@ class TheAudioDbModule(_ModuleBase):
         if not plan:
             logger.warning("TheAudioDB API Key 未配置，跳过请求")
             return None
+        timeout = music_request_timeout(maximum=30)
+        if timeout is None:
+            return None
         response = await AsyncRequestUtils(
             ua=get_runtime_setting('USER_AGENT'),
             proxies=get_runtime_setting('PROXY'),
@@ -777,8 +842,10 @@ class TheAudioDbModule(_ModuleBase):
         ).get_res(
             url=plan.url,
             params=plan.params,
+            timeout=timeout,
         )
         if response is None:
+            report_music_recognition("service_error", "TheAudioDB 连接失败")
             return None
         try:
             return cls._response_payload(response, endpoint)

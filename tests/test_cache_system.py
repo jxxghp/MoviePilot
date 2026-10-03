@@ -3,17 +3,18 @@ import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from app.adapters.cache.backends import (
-    AsyncFileBackend,
+from app.adapters.cache.backends import AsyncFileBackend, FileBackend
+from app.adapters.cache.redis import (
     AsyncRedisBackend,
-    FileBackend,
+    AsyncRedisHelper,
     RedisBackend,
+    RedisHelper,
+    serialize,
 )
-from app.adapters.cache.redis import AsyncRedisHelper, RedisHelper, serialize
 from app.foundation.singleton import Singleton
 from app.runtime.cache import (
     AsyncFileCache,
@@ -580,6 +581,20 @@ def test_memory_backend_uses_zero_default_ttl():
     assert cache.get("key", region="zero_default_ttl") is None
 
 
+def test_redis_backend_close_keeps_shared_pool(monkeypatch):
+    """关闭单个 Redis 缓存不得关闭全部缓存共享的连接池，连接池由关闭流程统一收口。"""
+    helper = MagicMock()
+    async_helper = MagicMock()
+    async_helper.close = AsyncMock()
+    monkeypatch.setattr("app.adapters.cache.redis.RedisHelper", lambda: helper)
+    monkeypatch.setattr("app.adapters.cache.redis.AsyncRedisHelper", lambda: async_helper)
+
+    RedisBackend().close()
+    asyncio.run(AsyncRedisBackend().close())
+
+    helper.close.assert_not_called()
+    async_helper.close.assert_not_awaited()
+
 def test_redis_backend_treats_zero_ttl_as_expired():
     """
     Redis backend 应删除 ttl=0 的同名 key，避免向 Redis 发送无效 EX 0。
@@ -631,29 +646,29 @@ def test_async_redis_backend_treats_zero_ttl_as_expired():
     assert not helper.set_called
 
 
-def test_file_cache_preserves_zero_ttl_in_redis_mode(monkeypatch):
+@pytest.fixture
+def redis_composed(compose_cache_backend):
+    """以 Redis 缓存装配平台缓存。"""
+    compose_cache_backend("redis")
+
+def test_file_cache_preserves_zero_ttl_in_redis_mode(redis_composed):
     """
     FileCache 在 Redis 模式下不应把显式 ttl=0 替换为临时文件默认 TTL。
     """
-    monkeypatch.setattr(settings, "CACHE_BACKEND_TYPE", "redis")
-
     assert FileCache(ttl=0).ttl == 0
 
 
-def test_async_file_cache_preserves_zero_ttl_in_redis_mode(monkeypatch):
+def test_async_file_cache_preserves_zero_ttl_in_redis_mode(redis_composed):
     """
     AsyncFileCache 在 Redis 模式下应与同步工厂保持相同 TTL 语义。
     """
-    monkeypatch.setattr(settings, "CACHE_BACKEND_TYPE", "redis")
-
     assert AsyncFileCache(ttl=0).ttl == 0
 
 
-def test_file_cache_uses_default_ttl_when_omitted(monkeypatch):
+def test_file_cache_uses_default_ttl_when_omitted(monkeypatch, redis_composed):
     """
     未传 TTL 时仍使用 TEMP_FILE_DAYS 配置的默认值。
     """
-    monkeypatch.setattr(settings, "CACHE_BACKEND_TYPE", "redis")
     monkeypatch.setattr(settings, "TEMP_FILE_DAYS", 7)
 
     assert FileCache().ttl == 7 * 24 * 3600

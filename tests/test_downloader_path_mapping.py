@@ -31,6 +31,7 @@ def _load_downloader_base():
     class StorageSchema(Enum):
         Local = "local"
         Rclone = "rclone"
+        SMB = "smb"
 
     class _ConfigReloadMixin:
         pass
@@ -375,6 +376,7 @@ TransmissionModule, TransmissionTorrentStatus, transmission_module = _load_trans
 
 
 def _build_base(path_mapping):
+    """构造只依赖显式路径映射的下载器基类。"""
     downloader = DownloaderBase.__new__(DownloaderBase)
     downloader.get_config = MagicMock(
         return_value=SimpleNamespace(path_mapping=path_mapping)
@@ -441,6 +443,25 @@ def test_normalize_path_strips_storage_prefix_after_mapping():
     result = downloader.normalize_path(Path("local:/media/movie"), "qb")
 
     assert result == "/downloads/movie"
+
+
+def test_smb_mapping_round_trip_preserves_storage_identity():
+    """SMB 共享路径下发为下载器原生路径，返回时必须恢复存储身份。"""
+    downloader = _build_base([("smb:/incoming", "/downloads")])
+
+    outbound = downloader.normalize_path(Path("smb:/incoming/Movie/movie.mkv"), "qb")
+    inbound = downloader.normalize_return_path(Path(outbound), "qb")
+
+    assert outbound == "/downloads/Movie/movie.mkv"
+    assert inbound == "smb:/incoming/Movie/movie.mkv"
+    assert downloader.normalize_return_path(Path("/downloads2/movie.mkv"), "qb") == "/downloads2/movie.mkv"
+
+
+def test_return_path_keeps_local_mapping_compatible():
+    """旧 local 前缀映射仍返回普通本地路径。"""
+    downloader = _build_base([("local:/media", "/downloads")])
+
+    assert downloader.normalize_return_path(Path("/downloads/movie.mkv"), "qb") == "/media/movie.mkv"
 
 
 def test_completed_torrents_return_moviepilot_accessible_path():

@@ -193,3 +193,33 @@ def test_read_file_returns_line_range_hint_when_truncated(tmp_path):
     assert "tool_result_truncated" not in truncated_result
     assert metadata["truncated"] is True
     assert "行号范围" in metadata["truncation_message"]
+
+
+def test_non_admin_history_and_learning_read_stays_in_own_runtime(tmp_path, monkeypatch):
+    """通用 read_file 不能绕过专用检索工具，读取另一用户消息或技能。"""
+    config = tmp_path / 'config'
+    monkeypatch.setattr('app.agent.tools.base.get_runtime_setting', lambda name: config if name == 'CONFIG_PATH' else None)
+    reader = ReadFileTool(session_id='session', user_id='alice')
+    reader.set_agent_context({'is_admin': False})
+    for library in ('history', 'learning'):
+        root = config / 'agent/runtime' / library / 'users'
+        own = root / build_user_memory_key('alice') / 'evidence.txt'
+        other = root / build_user_memory_key('bob') / 'evidence.txt'
+        own.parent.mkdir(parents=True)
+        other.parent.mkdir(parents=True)
+        own.write_text('当前用户内容')
+        other.write_text('另一用户内容')
+        assert '当前用户内容' in asyncio.run(reader.run(str(own)))
+        assert '不能读取或修改其他用户' in asyncio.run(reader.run(str(other)))
+
+
+def test_non_admin_cannot_bypass_personal_skill_tool_to_write_public_library(tmp_path, monkeypatch):
+    """通用文件写入不能绕过个人技能管理边界而修改所有用户共用的技能。"""
+    config = tmp_path / 'config'
+    monkeypatch.setattr('app.agent.tools.base.get_runtime_setting', lambda name: config if name == 'CONFIG_PATH' else None)
+    writer = WriteFileTool(session_id='session', user_id='alice')
+    writer.set_agent_context({'is_admin': False})
+    target = config / 'agent/skills/public/SKILL.md'
+    result = asyncio.run(writer.run(str(target), '不能写入'))
+    assert '公共技能只有系统管理员' in result
+    assert not target.exists()

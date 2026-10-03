@@ -5,7 +5,9 @@ from datetime import datetime
 from typing import Dict, List, Optional
 
 from langchain_core.messages import BaseMessage, messages_from_dict, messages_to_dict
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
+from app.agent.history.message import legacy_identity
 from app.agent.tools.result import messages_for_persistence
 from app.application.messaging.chat import (
     AgentChatPersistenceService,
@@ -16,7 +18,24 @@ from app.application.messaging.chat import (
 )
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
-from app.schemas.agent import ConversationMemory
+
+
+class ConversationMemory(BaseModel):
+    """对话记忆模型
+
+    消息字段依赖 langchain_core，因此模型归属智能体记忆模块；普通 schema 导入不加载 LangChain。
+    """
+
+    session_id: str = Field(description="会话ID")
+    user_id: Optional[str] = Field(default=None, description="用户ID")
+    messages: List[BaseMessage] = Field(default_factory=list, description="消息列表")
+    updated_at: datetime = Field(default_factory=datetime.now, description="更新时间")
+
+    model_config = ConfigDict()
+
+    @field_serializer("updated_at", when_used="json")
+    def serialize_datetime(self, value: datetime) -> str:
+        return value.isoformat()
 
 
 class MemoryManager:
@@ -121,6 +140,9 @@ class MemoryManager:
             return []
         try:
             messages = messages_for_persistence(messages_from_dict(chat.agent_messages))
+            for position, message in enumerate(messages):
+                if not message.id:
+                    message.id = legacy_identity(session_id, position, message)
         except Exception as e:
             logger.debug(f"恢复持久化Agent消息失败: {e}")
             return []

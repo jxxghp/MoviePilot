@@ -587,6 +587,7 @@ FIELD_DESCRIPTIONS.update(
         "moduleid": "Exact loaded module ID returned by system.module.list.",
         "movie": "Automatic movie-category rules evaluated in order.",
         "music": "Music-specific normalized facts used by classification rules.",
+        "musicbrainz_release_id": "Optional exact MusicBrainz Release UUID belonging to the selected album Release Group; never use it as media_id.",
         "music_release_regions": "Optional ISO 3166-1 release-region priority for music organization.",
         "music_release_scripts": "Optional ISO 15924 script priority for music organization.",
         "networks": "Television networks or streaming platforms associated with the media.",

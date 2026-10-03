@@ -6,7 +6,6 @@
 下载模块并存档（避免下载模块反查订阅的同级循环依赖），整理时优先复用该快照。
 """
 from copy import deepcopy
-from pathlib import Path
 from types import SimpleNamespace
 
 from app.application.history import DownloadHistorySnapshot
@@ -15,6 +14,7 @@ from app.chain.transfer import records as mixins_module
 from app.chain.transfer.request import _TransferCandidatePlanner
 from app.domain.metainfo import MetaInfo
 from app.schemas.types import MediaSource, MediaType
+from app.schemas.workflow import FileItem
 
 
 def _fake_history(custom_words=None, note=None):
@@ -242,10 +242,46 @@ def test_manual_transfer_keeps_explicit_file_metadata():
     planner._build_path_meta = lambda *_args, **_kwargs: file_meta
 
     result = planner._build_file_meta(
-        Path("/downloads/Manual.Title.S01E09.2160p.mkv"),
+        FileItem(storage="local", path="/downloads/Manual.Title.S01E09.2160p.mkv"),
         history_record=_fake_download_history(),
     )
 
     assert result is file_meta
     assert result.begin_season == 1
     assert result.begin_episode == 9
+
+
+def test_transfer_file_context_restores_download_metadata():
+    """候选上下文重构后，自动影视整理仍应传递下载快照并复用确认过的季集。"""
+    chain = SimpleNamespace(
+        _restore_music_download_context=lambda **_kwargs: (None, None),
+        _get_subscribe_custom_words=lambda _history: None,
+        _merge_download_meta=TransferChain._merge_download_meta,
+    )
+    fileitem = FileItem(storage="local", path="/downloads/Wrong.Title.S01E09.mkv")
+    planner = _TransferCandidatePlanner(
+        chain,
+        meta=None,
+        season=None,
+        formater=None,
+        batch_mtype=MediaType.TV,
+        mediainfo=None,
+        continue_callback=None,
+        has_episode_format_template=False,
+        transfer_exclude_words=None,
+        download_hash=None,
+        sync_extra_files=False,
+        fileitem=fileitem,
+        manual=False,
+    )
+    planner._build_path_meta = lambda *_args, **_kwargs: MetaInfo("Wrong.Title.S01E09.mkv")
+
+    result, music_info = planner._build_file_context(
+        fileitem, _fake_download_history(), None, False,
+    )
+
+    assert result.name == "Canonical Title"
+    assert result.begin_season == 3
+    assert result.begin_episode == 5
+    assert result.media_id == "123"
+    assert music_info is None

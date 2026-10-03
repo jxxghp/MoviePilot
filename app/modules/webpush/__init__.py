@@ -1,8 +1,7 @@
 import json
-from typing import Union, Tuple
+from typing import Any, Dict, Tuple, Union
 
-from pywebpush import webpush, WebPushException
-
+from app.adapters.network.webpush import WebPushDeliveryError, send_webpush
 from app.runtime.settings import get_runtime_setting
 from app.runtime.webpush import webpush_registry
 
@@ -89,26 +88,24 @@ class WebPushModule(_ModuleBase, _MessageBase):
                     logger.debug(f"给 {sub} 发送WebPush：{caption} {content}")
                     try:
                         endpoint = sub.get("endpoint")
-                        webpush_options = {}
+                        webpush_options: Dict[str, Any] = {}
                         if endpoint and "notify.windows.com" in endpoint:
                             webpush_options = {
                                 "ttl": 86400,
                                 "headers": {"X-WNS-Cache-Policy": "cache"},
                             }
-                        webpush(
-                            subscription_info=sub,
+                        send_webpush(
+                            subscription=sub,
                             data=json.dumps({
                                 "title": caption,
                                 "body": content,
                                 "url": message.link or "/?shotcut=message"
                             }),
                             vapid_private_key=get_runtime_setting('VAPID').get("privateKey"),
-                            vapid_claims={
-                                "sub": get_runtime_setting('VAPID').get("subject")
-                            },
+                            vapid_subject=get_runtime_setting('VAPID').get("subject"),
                             **webpush_options,
                         )
-                    except WebPushException as err:
+                    except WebPushDeliveryError as err:
                         logger.error(f"WebPush发送失败: {str(err)}")
                         response = getattr(err, "response", None)
                         status_code = getattr(response, "status_code", None) or getattr(

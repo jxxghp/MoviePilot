@@ -12,6 +12,7 @@ from unittest.mock import patch
 from urllib.parse import quote
 
 from app.agent.tools.factory import MoviePilotToolFactory
+from app.agent.tools.impl.ask_user_choice import AskUserChoiceInput
 from app.runtime.config import settings
 
 
@@ -303,7 +304,7 @@ class TestPrepareAndSubmitScripts(FeedbackIssueScriptTestCase):
     """预览与提交脚本测试。"""
 
     def test_prepare_generates_payload_and_preview_files(self):
-        """prepare 脚本应生成 payload_file 和包含脱敏日志的 preview_file。"""
+        """预览保留脱敏证据，并提供可直接传给按钮工具的确认、修改、取消选项。"""
         diagnostics_file = self._create_diagnostics_file("ERROR demo Cookie: secret")
         draft_file = common.runtime_file("draft", ".json")
         common.write_json_file(draft_file, self._valid_draft(str(diagnostics_file)))
@@ -319,6 +320,12 @@ class TestPrepareAndSubmitScripts(FeedbackIssueScriptTestCase):
         self.assertIn("后端端口被占用", preview)
         self.assertIn("Cookie: <REDACTED>", preview)
         self.assertNotIn("secret", preview)
+        self.assertNotIn("回复「确认」", preview)
+        choice = AskUserChoiceInput(message=preview, options=result["confirmation_options"])
+        self.assertEqual([option.label for option in choice.options], ["确认提交", "修改内容", "取消"])
+        self.assertEqual(len({option.value for option in choice.options}), 3)
+        self.assertIn("ask_user_choice", result["message"])
+        self.assertIn("否则使用文字确认", result["message"])
 
     def test_prepare_rejects_invalid_draft(self):
         """prepare 脚本应拒绝缺少结构信息的草稿。"""

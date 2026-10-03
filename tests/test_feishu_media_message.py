@@ -6,9 +6,9 @@ ensure_optional_stub("psutil")
 ensure_optional_stub("dateparser")
 ensure_optional_stub("Pinyin2Hanzi", is_pinyin=lambda value: False)
 
-from app.domain.context import MediaInfo
-from app.modules.feishu.feishu import Feishu
-from app.schemas import Message
+from app.domain.context import MediaInfo  # noqa: E402
+from app.modules.feishu.feishu import Feishu  # noqa: E402
+from app.schemas.message import Message  # noqa: E402
 
 
 def _build_feishu_client() -> Feishu:

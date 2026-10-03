@@ -2,12 +2,34 @@
 
 import asyncio
 from itertools import zip_longest
-from typing import Any, Callable, Iterable, Optional
+from typing import Any, Callable, Iterable, Optional, Protocol
 
-from app.domain.context import MusicInfo
+from app.domain.context import MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.schemas.media import normalize_media_source
 from app.schemas.types import MediaSource, MediaSourceSelection, MusicEntityType
+
+
+class MusicSourcePort(Protocol):
+    """目录服务只依赖音乐搜索与专辑详情，不依赖具体Chain或来源模块。"""
+
+    def search_music(self, meta: MetaMusic, limit: int = 20,
+                     music_types: Optional[Iterable[MusicEntityType]] = None) -> list[MusicInfo]:
+        """同步搜索一个固定来源。"""
+        ...
+
+    async def async_search_music(self, meta: MetaMusic, limit: int = 20,
+                                 music_types: Optional[Iterable[MusicEntityType]] = None) -> list[MusicInfo]:
+        """异步搜索一个固定来源。"""
+        ...
+
+    def get_music_album(self, media_id: str) -> Optional[MusicAlbumInfo]:
+        """读取同来源专辑及其曲目表。"""
+        ...
+
+    async def async_get_music_album(self, media_id: str) -> Optional[MusicAlbumInfo]:
+        """异步读取同来源专辑及其曲目表。"""
+        ...
 
 
 class MusicCatalogService:
@@ -15,7 +37,7 @@ class MusicCatalogService:
 
     def __init__(
         self,
-        source_resolver: Callable[[MediaSource], Any],
+        source_resolver: Callable[[MediaSource], Optional[MusicSourcePort]],
         warning: Callable[[str], None],
         primary_source: MediaSource = MediaSource.MusicBrainz,
     ) -> None:

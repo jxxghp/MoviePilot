@@ -6,6 +6,18 @@
 
 本文基于 `v3` 分支 2026-09-07 的实现整理。实际行为以当前源码为准。
 
+Agent 中文全文索引扩展在镜像的 `prepare_cjk` 阶段按目标架构编译，最终随 Python venv 放在
+`/opt/venv/lib/moviepilot/libfts5_cjk.so`。构建时由所选 standard/free-threaded Python 完成真实
+加载及两字中文查询验收；运行容器不需要编译器，挂载 `/config` 不影响扩展可见性。
+旧镜像需要重新构建或更换镜像，源码热更新不会自动安装该原生文件。
+
+```shell
+docker exec <container> /opt/venv/bin/python /app/native/fts5_cjk/install.py --check
+```
+
+该命令只验证环境能力，不访问用户库。旧历史的 CJK 索引随后分批回填，检索结果通过
+`index_status.messages_fts_cjk` 和 `search_path` 报告是否已经就绪及实际使用的路径。
+
 ## 1. 文件职责
 
 | 文件 | 运行位置与职责 |

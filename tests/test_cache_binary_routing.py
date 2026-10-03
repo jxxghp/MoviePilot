@@ -12,15 +12,11 @@ from typing import Any, Dict, Optional, Tuple
 
 import pytest
 
-import app.adapters.cache.backends as backends_module
+import app.adapters.cache.redis as redis_adapter_module
 import app.application.image as image_module
 import app.monitor.snapshot as snapshot_module
-from app.adapters.cache.backends import (
-    AsyncFileBackend,
-    AsyncRedisBackend,
-    FileBackend,
-    RedisBackend,
-)
+from app.adapters.cache.backends import AsyncFileBackend, FileBackend
+from app.adapters.cache.redis import AsyncRedisBackend, RedisBackend
 from app.foundation.singleton import Singleton
 from app.monitor.snapshot import SnapshotStore
 from app.runtime.cache import (
@@ -72,12 +68,13 @@ class _FakeAsyncRedisHelper:
 
 
 @pytest.fixture
-def redis_mode(monkeypatch):
+def redis_mode(monkeypatch, compose_cache_backend):
     """切换到 Redis 缓存后端，并用内存替身替换 Redis 客户端。"""
     _FakeRedisHelper.store = {}
-    monkeypatch.setattr(settings, "CACHE_BACKEND_TYPE", "redis")
-    monkeypatch.setattr(backends_module, "RedisHelper", _FakeRedisHelper)
-    monkeypatch.setattr(backends_module, "AsyncRedisHelper", _FakeAsyncRedisHelper)
+    monkeypatch.setattr(redis_adapter_module, "RedisHelper", _FakeRedisHelper)
+    monkeypatch.setattr(redis_adapter_module, "AsyncRedisHelper", _FakeAsyncRedisHelper)
+    # 缓存类型在启动时选定，按启动流程重新装配后 Redis 路由才生效。
+    compose_cache_backend("redis")
     return _FakeRedisHelper.store
 
 

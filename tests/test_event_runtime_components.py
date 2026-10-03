@@ -5,6 +5,8 @@ import threading
 import types
 from unittest.mock import Mock
 
+import pytest
+
 from app.foundation.singleton import Singleton
 from app.runtime.event.binding import (
     EventBindingResolver,
@@ -322,10 +324,24 @@ def test_all_decorated_host_handler_classes_have_explicit_factories() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    ("backend_type", "redis_owners"),
+    [
+        ("redis", {"AsyncRedisHelper", "RedisHelper"}),
+        ("cachetools", set()),
+    ],
+)
 def test_all_unmanaged_config_reload_classes_have_explicit_providers(
     monkeypatch,
+    compose_cache_backend,
+    backend_type,
+    redis_owners,
 ) -> None:
-    """专属 resolver 未覆盖的配置 owner 必须全部声明生命周期 Provider。"""
+    """专属 resolver 未覆盖的配置 owner 必须全部声明生命周期 Provider。
+
+    Redis 连接 owner 只在启动时选用 Redis 缓存后才有 Provider。
+    """
+    compose_cache_backend(backend_type)
     manager = object.__new__(PluginManager)
     plugin_singleton_key = (PluginManager, (), frozenset())
     monkeypatch.setitem(Singleton._instances, plugin_singleton_key, manager)
@@ -337,14 +353,12 @@ def test_all_unmanaged_config_reload_classes_have_explicit_providers(
     providers = get_config_reload_handler_providers()
 
     assert {owner.__name__ for owner in providers} == {
-        "AsyncRedisHelper",
         "DohHelper",
         "Monitor",
         "PluginManager",
-        "RedisHelper",
         "SystemHelper",
         "TransferChain",
-    }
+    } | redis_owners
 
 
 def test_error_alert_dedup_preserves_distinct_events_handlers_and_errors():

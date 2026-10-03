@@ -83,7 +83,7 @@ def test_album_context_preserves_classification_and_remote_music_facts(
     monkeypatch.setattr(
         MediaChain,
         "recognize_music_album_directory",
-        lambda _self, _directory: {str(file_path.resolve()): matched_info},
+        lambda _self, _directory, **_kwargs: {str(file_path.resolve()): matched_info},
     )
 
     merged_meta, merged_info = FileFilterMixin._match_music_album_context(
@@ -160,7 +160,7 @@ def test_album_context_rejects_candidate_conflicting_with_file_tags(
     monkeypatch.setattr(
         MediaChain,
         "recognize_music_album_directory",
-        lambda _self, _directory: {str(file_path.resolve()): wrong_release},
+        lambda _self, _directory, **_kwargs: {str(file_path.resolve()): wrong_release},
     )
 
     returned_meta, returned_info = FileFilterMixin._match_music_album_context(
@@ -212,7 +212,7 @@ def test_album_context_preserves_local_release_track_position(
     monkeypatch.setattr(
         MediaChain,
         "recognize_music_album_directory",
-        lambda _self, _directory: {str(file_path.resolve()): matched_info},
+        lambda _self, _directory, **_kwargs: {str(file_path.resolve()): matched_info},
     )
 
     merged_meta, merged_info = FileFilterMixin._match_music_album_context(

@@ -34,6 +34,9 @@ from app.application.messaging.agent import (
     build_web_agent_command_items as _build_web_agent_command_items,
 )
 from app.application.messaging.agent import (
+    build_web_agent_display_message as _build_web_agent_display_message,
+)
+from app.application.messaging.agent import (
     build_web_agent_display_message_from_events as _build_web_agent_display_message_from_events,
 )
 from app.application.messaging.agent import (
@@ -408,6 +411,22 @@ def test_apply_web_agent_display_event_updates_snapshot():
         {"type": "text", "content": "，查询完成"},
     ]
     assert message["attachments"] == [{"kind": "file", "url": "message/agent/file/a"}]
+
+
+def test_apply_web_agent_display_event_done_clears_thinking_snapshot():
+    """WebAgent 终态事件应清理没有正文收口的 thinking 标记。"""
+    message = _build_web_agent_display_message(role="assistant", status="streaming")
+
+    _apply_web_agent_display_event(
+        {"type": "thinking", "status": "running", "started_at": 123},
+        message,
+    )
+    assert message["thinking"] is True
+
+    _apply_web_agent_display_event({"type": "done"}, message)
+
+    assert message["thinking"] is False
+    assert message["status"] == "done"
 
 
 def test_apply_web_agent_display_event_tracks_parallel_tool_lifecycle_by_id():
@@ -2417,3 +2436,14 @@ def test_resolve_web_agent_choice_payload_returns_next_message():
     assert result["choice_selection"]["prompt"] == "请选择"
     assert result["choice_selection"]["selected_description"] == "选择电视剧并继续清理日志"
     assert result["choice_selection"]["button_rows"][1][0]["description"] == "选择电视剧并继续清理日志"
+
+
+def test_personal_learning_commands_are_not_admin_traditional_commands():
+    """Web 普通用户也能管理自己的学习数据；其它斜杠命令仍走旧权限链。"""
+    from app.application.messaging.agent import is_web_agent_traditional_message
+    assert not is_web_agent_traditional_message('/memory pending')
+    assert not is_web_agent_traditional_message('/skills pin media-workflow')
+    assert is_web_agent_traditional_message('/restart')
+    assert is_web_agent_traditional_message('/memory-other')
+    assert is_web_agent_traditional_message('/skills')
+    assert is_web_agent_traditional_message('/skills install example')

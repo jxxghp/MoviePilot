@@ -831,7 +831,7 @@ def test_request_json_caches_repeated_calls(monkeypatch):
     )
     network_calls = {"count": 0}
 
-    def fake_get_res(_self, url, params=None):
+    def fake_get_res(_self, url, params=None, **_kwargs):
         """记录网络调用次数并返回固定的录音详情。"""
         network_calls["count"] += 1
         return _FakeMusicBrainzResponse({"id": "recording-cache", "title": "晴天"})
@@ -856,7 +856,7 @@ def test_request_json_caches_not_found(monkeypatch):
     )
     network_calls = {"count": 0}
 
-    def fake_get_res(_self, url, params=None):
+    def fake_get_res(_self, url, params=None, **_kwargs):
         """始终返回 404，用于验证稳定不存在结果会被缓存。"""
         network_calls["count"] += 1
         return _FakeMusicBrainzResponse(None, status_code=404)
@@ -886,7 +886,7 @@ def test_request_json_retries_on_server_busy(monkeypatch):
         _FakeMusicBrainzResponse({"id": "recording-busy", "title": "晴天"}),
     ]
 
-    def fake_get_res(_self, url, params=None):
+    def fake_get_res(_self, url, params=None, **_kwargs):
         """依次返回繁忙与成功响应，验证重试后拿到结果。"""
         return responses.pop(0)
 

@@ -15,7 +15,12 @@ from typing import Any, Literal, Optional, TextIO, Type
 
 from pydantic import BaseModel, Field
 
-from app.agent.shell import build_agent_subprocess_env, resolve_agent_cwd, resolve_agent_shell
+from app.agent.shell import (
+    bind_agent_project_environment,
+    build_agent_subprocess_env,
+    resolve_agent_cwd,
+    resolve_agent_shell,
+)
 from app.agent.terminal.manager import (
     TERMINAL_WAIT_DEFAULT_MS,
     TERMINAL_YIELD_DEFAULT_MS,
@@ -594,8 +599,12 @@ class ExecuteCommandTool(MoviePilotTool):
     ) -> str:
         """在已登记作用域下运行一次命令，并对封口和进程收尾保持可观察。"""
         normalized_timeout, timeout_note = self._normalize_timeout(timeout)
-        normalized_cwd = resolve_agent_cwd(cwd, root_path=get_runtime_setting("ROOT_PATH"))
-        normalized_env = build_agent_subprocess_env(env)
+        project_root = get_runtime_setting("ROOT_PATH")
+        normalized_cwd = resolve_agent_cwd(cwd, root_path=project_root)
+        normalized_env = bind_agent_project_environment(
+            build_agent_subprocess_env(env),
+            project_root=project_root,
+        )
         shell_policy = resolve_agent_shell(executable=shell, login=login, environment=normalized_env, cwd=normalized_cwd)
 
         await self._acquire_command_slot(scope)

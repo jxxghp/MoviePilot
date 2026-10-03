@@ -3,9 +3,10 @@ from unittest.mock import Mock, call, patch
 from xml.etree.ElementTree import fromstring
 
 import pytest
-from plexapi.library import MovieSection
 
-# 注册真实 Plex 电影类型，供列表 XML 解析测试使用。
+# 注册真实 Plex 音乐和电影类型，供列表 XML 解析测试使用。
+from plexapi.audio import Album, Artist, Track  # noqa: F401  # pylint: disable=unused-import
+from plexapi.library import MovieSection, MusicSection
 from plexapi.video import Movie  # noqa: F401  # pylint: disable=unused-import
 
 from app.modules.plex import plex as plex_module
@@ -210,6 +211,41 @@ def test_plex_sync_uses_list_metadata_without_reloading_each_movie():
     assert str(result[0].media_id) == "123"
     server.query.assert_called_once_with(
         "/library/sections/1/all?includeGuids=1&type=1",
+        headers={"X-Plex-Container-Start": "0", "X-Plex-Container-Size": "50"},
+        params={"excludeElements": plex_module.PLEX_SYNC_EXCLUDE_ELEMENTS, "skipRefresh": 1},
+    )
+
+
+def test_plex_sync_converts_music_objects_without_detail_reload():
+    """音乐库中的艺人、专辑和曲目应按各自可用字段转换，不触发详情重载。"""
+    server = Mock()
+    server.query.return_value = fromstring(
+        '<MediaContainer size="3" totalSize="3" librarySectionID="8">'
+        '<Directory type="artist" key="/library/metadata/1" ratingKey="1" title="Artist">'
+        '<Location path="/music/Artist"/></Directory>'
+        '<Directory type="album" key="/library/metadata/2" ratingKey="2" '
+        'title="Album" year="2024"/>'
+        '<Track type="track" key="/library/metadata/3" ratingKey="3" '
+        'title="Song" originalTitle="Artist" year="2024">'
+        '<Media><Part file="/music/Artist/Album/Song.flac"/></Media>'
+        '</Track></MediaContainer>'
+    )
+    section = MusicSection(
+        server, fromstring('<Directory key="8" type="artist" title="Music"/>'),
+        "/library/sections",
+    )
+    client = _make_client(section)
+    del client._Plex__build_media_server_item
+
+    result = list(client.get_items("8"))
+
+    assert [(item.item_type, item.original_title, item.year, item.path) for item in result] == [
+        ("artist", None, None, "/music/Artist"),
+        ("album", None, 2024, None),
+        ("track", "Artist", 2024, "/music/Artist/Album/Song.flac"),
+    ]
+    server.query.assert_called_once_with(
+        "/library/sections/8/all?includeGuids=1&type=8",
         headers={"X-Plex-Container-Start": "0", "X-Plex-Container-Size": "50"},
         params={"excludeElements": plex_module.PLEX_SYNC_EXCLUDE_ELEMENTS, "skipRefresh": 1},
     )

@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -155,6 +156,57 @@ def test_service_operation_script_loads_configs_without_lifespan(
     payload = json.loads(result.stdout[result.stdout.index("{") :])
     assert payload["success"] is True
     assert payload[instances_key] == []
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "skills/downloader-operation/scripts/mp-downloader.py",
+        "skills/mediaserver-operation/scripts/mp-mediaserver.py",
+    ],
+)
+def test_copied_service_skill_uses_runtime_root(
+    relative_path: str, tmp_path: Path
+) -> None:
+    """配置目录中的技能副本应通过运行时根目录导入 MoviePilot。"""
+    copied_script = tmp_path / Path(relative_path).name
+    copied_script.write_bytes((PROJECT_ROOT / relative_path).read_bytes())
+    result = subprocess.run(
+        [sys.executable, str(copied_script), "instances"],
+        cwd=tmp_path,
+        env={**os.environ, "MOVIEPILOT_ROOT": str(PROJECT_ROOT)},
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stdout or result.stderr
+    payload = json.loads(result.stdout[result.stdout.index("{") :])
+    assert payload["success"] is True
+
+
+def test_copied_downloader_reports_missing_runtime_root(tmp_path: Path) -> None:
+    """缺少程序根目录时应返回可执行的定位提示和真实错误类型。"""
+    copied_script = tmp_path / "mp-downloader.py"
+    copied_script.write_bytes(
+        (PROJECT_ROOT / "skills/downloader-operation/scripts/mp-downloader.py").read_bytes()
+    )
+    env = {key: value for key, value in os.environ.items() if key != "MOVIEPILOT_ROOT"}
+    result = subprocess.run(
+        [sys.executable, str(copied_script), "instances"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert payload["error_type"] == "RuntimeError"
+    assert "MOVIEPILOT_ROOT" in payload["message"]
 
 
 def test_downloader_instances_and_capabilities_do_not_expose_credentials(

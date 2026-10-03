@@ -422,6 +422,9 @@ class TransHandler:
             )
             if not target_directory_path:
                 raise ValueError("重命名格式无效")
+            if getattr(planning_meta, "music_layout", None) == "image_cue":
+                # 整轨与索引只调整专辑目录，保留原名才能让 CUE FILE 引用继续有效。
+                final_target = final_target.parent / Path(str(fileitem.path)).name
         else:
             final_target = target_path / fileitem.name
 

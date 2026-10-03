@@ -16,6 +16,7 @@ from app.application.configuration import (
 from app.runtime.config import settings as runtime_settings
 from app.runtime.tasks import configure_task_registry, get_task_registry
 from app.startup import lifecycle
+from app.startup.composition.cache import CacheComposition
 from app.startup.composition.system import compose_system_service
 from app.startup.initializers import modules as modules_initializer
 
@@ -1317,6 +1318,27 @@ def test_stop_modules_drains_web_agent_tasks_before_persistence(monkeypatch):
     ]
 
 
+def test_stop_modules_closes_shared_redis_pool_last(monkeypatch):
+    """Redis 连接池必须在 Provider 撤销等仍会读写缓存的步骤之后关闭，避免关闭后被重连。"""
+    order = []
+    dependencies = _patch_module_shutdown_dependencies(monkeypatch)
+    monkeypatch.setattr(
+        modules_initializer,
+        "get_configured_agent_chat_persistence",
+        MagicMock(return_value=None),
+    )
+    monkeypatch.setattr(modules_initializer, "database_runtime_active", lambda: False)
+    dependencies["reset_module_providers"].side_effect = lambda: order.append(
+        "providers"
+    ) or True
+    dependencies["close_database"].side_effect = lambda: order.append("connection")
+    dependencies["redis"].side_effect = lambda: order.append("redis")
+    dependencies["async_redis"].side_effect = lambda: order.append("async-redis")
+
+    asyncio.run(modules_initializer.stop_modules())
+
+    assert order == ["providers", "connection", "redis", "async-redis"]
+
 def test_stop_modules_retains_providers_when_database_worker_remains_active(
     monkeypatch,
 ) -> None:
@@ -1542,7 +1564,6 @@ def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
         ("ModuleManager", "shutdown"),
         ("EventManager", "stop_async"),
         ("ThreadHelper", "shutdown"),
-        ("RedisHelper", "close"),
     ):
         instance = MagicMock()
         setattr(instance, method_name, MagicMock())
@@ -1551,6 +1572,13 @@ def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
         monkeypatch.setattr(modules_initializer, name, instance_type)
         key = name.removesuffix("Helper").removesuffix("Manager").lower()
         dependencies[key] = getattr(instance, method_name)
+
+    # Redis 连接 owner 由缓存组合根按启动配置提供，这里模拟已选用 Redis 缓存。
+    redis = MagicMock()
+    redis.close = MagicMock()
+    redis_type = MagicMock(return_value=redis)
+    redis_type.get_existing_instance.return_value = redis
+    dependencies["redis"] = redis.close
 
     stop_doh_composition = MagicMock()
     monkeypatch.setattr(
@@ -1591,7 +1619,12 @@ def _patch_module_shutdown_dependencies(monkeypatch) -> dict:
     async_redis.close = AsyncMock()
     async_redis_type = MagicMock(return_value=async_redis)
     async_redis_type.get_existing_instance.return_value = async_redis
-    monkeypatch.setattr(modules_initializer, "AsyncRedisHelper", async_redis_type)
+    composition = CacheComposition(
+        redis_enabled=True,
+        sync_redis_owner=redis_type,
+        async_redis_owner=async_redis_type,
+    )
+    monkeypatch.setattr(modules_initializer, "get_cache_composition", lambda: composition)
     dependencies["async_redis"] = async_redis.close
     close_database = AsyncMock()
     monkeypatch.setattr(modules_initializer, "close_database", close_database)

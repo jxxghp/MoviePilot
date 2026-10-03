@@ -24,6 +24,7 @@ from langchain_core.tools import BaseTool, StructuredTool
 from pydantic import BaseModel, Field
 
 from app.agent.llm.helper import LLMHelper
+from app.agent.middleware.guardrails import ToolGuardrailsMiddleware
 from app.agent.middleware.policy import AgentPolicyMiddleware
 from app.agent.middleware.summarization import (
     ContextPreservingSummarizationMiddleware,
@@ -79,7 +80,7 @@ Rules:
 - Delegate when a task benefits from focused investigation, such as media identity checks, site/resource search, subscription analysis, download/transfer diagnosis, MoviePilot code/config exploration, or read-only system inspection.
 - Subagent output is private context for your decision-making. Do not expose a subagent's process or final report verbatim to the user.
 - Subagents must not send messages to the user, ask for interaction, or reveal their internal tool activity.
-- Give the user only your synthesized final answer and the minimum necessary next step.
+- Synthesize child evidence into your own progress updates and final answer, following the main agent's communication rules. Distinguish verified findings from child hypotheses; delegation does not justify silent work or premature completion.
 - If a task requires configuration changes, deletion, adding downloads, adding subscriptions, or any high-impact action, the main agent must handle it directly under the confirmation policy.
 - Child tools enforce read-only operations. Perform command launches, browser navigation/interactions, and external MCP calls in the main agent; pass the resulting evidence to a child for analysis when useful.
 - To let a child inspect a parent terminal, declare `terminal_sessions=[{session_id, actions:["read","wait"]}]` on that task. Mentioning a handle in its description does not grant access. Share separately for each batch or pipeline task; process control remains with the parent.
@@ -444,6 +445,7 @@ class _SubAgentAgentProvider:
         self._policy_context = policy_context or _default_subagent_policy_context(tools)
         self._catalog = catalog
         self._agents = {}
+        self._guardrails: dict[str, ToolGuardrailsMiddleware] = {}
         self._default_agent_name = "general-purpose"
 
     def _resolve_profile(self, _agent_name: Optional[str] = None) -> _SubAgentProfile:
@@ -464,6 +466,7 @@ class _SubAgentAgentProvider:
         logger.info(
             f"创建子代理图: subagent_type={profile.name}, tools={len(subagent_tools)}"
         )
+        guardrails = ToolGuardrailsMiddleware(self._policy_context)
         agent = create_agent(
             model=self._model,
             tools=[*subagent_tools, *self._server_tools],
@@ -473,7 +476,9 @@ class _SubAgentAgentProvider:
                 AgentPolicyMiddleware(
                     context=self._policy_context,
                     catalog=subagent_catalog,
+                    guardrails=guardrails,
                 ),
+                guardrails,
                 FinalRequestCompactionMiddleware(
                     summarizer=ContextPreservingSummarizationMiddleware(
                         model=self._model,
@@ -484,6 +489,7 @@ class _SubAgentAgentProvider:
             ],
         )
         self._agents[profile.name] = agent
+        self._guardrails[profile.name] = guardrails
         return profile.name, agent
 
     async def run_task(
@@ -527,6 +533,10 @@ class _SubAgentAgentProvider:
                 f"task_id={log_task_id}, error={summarize_error(err)}"
             )
             raise
+        finally:
+            guardrails = self._guardrails.get(agent_name)
+            if guardrails:
+                guardrails.release(f"subagent-{agent_name}-{thread_suffix}")
         final_text = _extract_final_text(result)
         logger.info(
             f"子代理调用完成: subagent_type={agent_name}, "

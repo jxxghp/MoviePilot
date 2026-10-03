@@ -18,6 +18,35 @@ from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.types import MediaType
 
+# 失败原因中页面摘要的最大字符数，以及查找页面标题时扫描的正文前缀长度
+_FAILURE_SUMMARY_MAX_CHARS = 80
+_FAILURE_TITLE_SCAN_CHARS = 4096
+_HTML_TITLE_PATTERN = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
+_HTML_TAG_PATTERN = re.compile(r"<[^>]+>")
+
+
+def _describe_unusable_response(response: Any) -> str:
+    """
+    概括未得到可解析页面的搜索响应，供搜索失败原因展示。
+
+    :param response: 同步或异步 HTTP 响应，请求失败时为 None
+    :return: 状态码与页面标题（无标题时为正文开头的纯文本）组成的说明
+    """
+    if response is None:
+        return "站点无响应（网络错误或超时）"
+    status_code = getattr(response, "status_code", None)
+    try:
+        body = str(response.text or "")
+    except Exception:  # noqa: BLE001 - 正文解码失败时只保留状态码
+        body = ""
+    title = _HTML_TITLE_PATTERN.search(body[:_FAILURE_TITLE_SCAN_CHARS])
+    source = title.group(1) if title else body[:_FAILURE_TITLE_SCAN_CHARS]
+    summary = " ".join(_HTML_TAG_PATTERN.sub(" ", source).split())[:_FAILURE_SUMMARY_MAX_CHARS]
+    if not summary:
+        return f"HTTP {status_code}，响应内容为空"
+    label = "页面标题" if title else "响应内容"
+    return f"HTTP {status_code}，{label}：{summary}"
+
 
 def select_media_categories(category: Optional[dict], mtype: Optional[MediaType]) -> list[dict]:
     """根据媒体类型选择站点索引配置中的分类列表。"""
@@ -143,6 +172,8 @@ class SiteSpider:
         self.referer = referer
         # 初始化属性
         self.is_error = False
+        # is_error 为真时的失败原因，供搜索失败提示展示
+        self.error_detail: Optional[str] = None
         self.torrents_info = {}
         self.torrents_info_array = []
 
@@ -371,8 +402,11 @@ class SiteSpider:
             referer=self.referer,
             proxies=self.proxies
         ).get_res(searchurl, allow_redirects=True)
+        html_text = self.__decode_response(ret)
+        if not html_text:
+            self.error_detail = _describe_unusable_response(ret)
         # 解析返回
-        return self.parse(self.__decode_response(ret))
+        return self.parse(html_text)
 
     async def async_get_torrents(self) -> List[dict]:
         """
@@ -394,11 +428,11 @@ class SiteSpider:
             referer=self.referer,
             proxies=self.proxies
         ).get_res(searchurl, allow_redirects=True)
+        html_text = self.__decode_response(ret)
+        if not html_text:
+            self.error_detail = _describe_unusable_response(ret)
         # 解析返回
-        return await run_in_threadpool(
-            self.parse,
-            self.__decode_response(ret)
-        )
+        return await run_in_threadpool(self.parse, html_text)
 
     def __get_title(self, torrent: Any):
         """按站点字段配置提取并清洗种子标题。"""
@@ -1095,10 +1129,12 @@ class SiteSpider:
             status_doc = PyQuery(html_text)
             if self.__is_login_or_permission_page(status_doc):
                 self.is_error = True
+                self.error_detail = "返回登录或权限提示页"
                 logger.warn(f"错误：{self.indexername} 返回登录或权限提示页")
                 return []
         except Exception as err:
             self.is_error = True
+            self.error_detail = f"页面解析失败：{err}"
             logger.warn(f"错误：{self.indexername} {str(err)}")
             return []
         finally:
@@ -1160,6 +1196,7 @@ class SiteSpider:
             return self.__apply_result_media_type(self.torrents_info_array.copy())
         except Exception as err:
             self.is_error = True
+            self.error_detail = f"页面解析失败：{err}"
             logger.warn(f"错误：{self.indexername} {str(err)}")
             return []
         finally:

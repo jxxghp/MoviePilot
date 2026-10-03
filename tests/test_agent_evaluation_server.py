@@ -126,28 +126,30 @@ async def test_skill_pagination_reconstructs_unmodified_repository_skill() -> No
             assert "library.exists" in skill["skill"]["allowed_api_operations"]
             skill_root = PROJECT_ROOT / "skills" / "moviepilot-api"
             expected_supporting_files = sorted(
-                path.relative_to(skill_root).as_posix()
-                for path in (skill_root / "api").glob("*.md")
+                [path.relative_to(skill_root).as_posix() for path in (skill_root / "api").glob("*.md")]
+                + ["code-execution.md"]
             )
             assert skill["supporting_files"] == expected_supporting_files
             assert server.stats["world_calls"] == 0
 
 
 @pytest.mark.asyncio
-async def test_skill_supporting_document_uses_read_skill_without_file_tool() -> None:
+@pytest.mark.parametrize("filename, heading", [("api/config.md", "# Configuration APIs"),
+                                               ("code-execution.md", "# Read-only Python aggregation")])
+async def test_skill_supporting_document_uses_read_skill_without_file_tool(filename: str, heading: str) -> None:
     """评测服务应通过 read_skill 加载已列出的分类合同，而不是开放任意文件读取。"""
     async with EvaluationMcpServer(EvaluationWorld("dedup_existing")) as server:
         async with _client(server) as client:
             result, payload = await _tool(
                 client,
                 "read_skill",
-                {"name": "moviepilot-api", "file": "api/config.md"},
+                {"name": "moviepilot-api", "file": filename},
             )
             assert result["isError"] is False
             if payload.get("tool_result_truncated"):
-                assert "# Configuration APIs" in payload["content_preview"]
+                assert heading in payload["content_preview"]
             else:
-                assert "# Configuration APIs" in payload["content"]
+                assert heading in payload["content"]
 
             invalid_result, invalid = await _tool(
                 client,

@@ -905,6 +905,31 @@ class TransferPending(Base):
         )
 
     @classmethod
+    def defer_planning(
+            cls, db: Session, *, task_id: str, lease_token: str, error: str,
+            retry_due_at: str, now_time: str, updated_at: str, max_retries: int,
+    ) -> int:
+        """只对尚无文件计划和操作证据的接纳任务记录可恢复失败，并原子释放租约。"""
+        return execute_dml(
+            db, update(cls).where(
+                cls.task_id == task_id, cls.state == "accepted",
+                cls.lease_token == lease_token, cls.lease_expires_at > now_time,
+                cls.checkpoint_version.is_(None), cls.checkpoint_payload.is_(None), cls.planned_at.is_(None),
+                cls.execution_state.in_(("not_started", "retry_wait")),
+                cls.execution_version.is_(None), cls.execution_payload.is_(None), cls.execution_fingerprint.is_(None),
+                cls.terminal_history_id.is_(None), cls.settlement_revision == 0,
+                cls.retry_count < max_retries,
+                ~exists(select(_TRANSFER_EXECUTION_STEP.c.task_id).where(_TRANSFER_EXECUTION_STEP.c.task_id == cls.task_id)),
+                ~exists(select(_TRANSFER_HISTORY.c.transfer_task_id).where(_TRANSFER_HISTORY.c.transfer_task_id == cls.task_id)),
+            ).values(
+                execution_state="retry_wait", retry_count=cls.retry_count + 1,
+                retry_generation=cls.retry_generation + 1, retry_due_at=retry_due_at,
+                lease_owner=None, lease_token=None, lease_expires_at=None, heartbeat_at=None,
+                last_error=error, updated_at=updated_at,
+            ), execution_options={"synchronize_session": False},
+        )
+
+    @classmethod
     def release_claim(
             cls,
             db: Session,
@@ -982,13 +1007,15 @@ class TransferPending(Base):
                 cls.checkpoint_version.is_(None),
                 cls.checkpoint_payload.is_(None),
                 cls.planned_at.is_(None),
-                cls.execution_state == "not_started",
+                or_(
+                    and_(cls.execution_state == "not_started", cls.retry_generation == 0,
+                         cls.retry_count == 0, cls.retry_due_at.is_(None)),
+                    and_(cls.execution_state == "retry_wait", cls.retry_generation > 0,
+                         cls.retry_count > 0, cls.retry_due_at.is_not(None)),
+                ),
                 cls.execution_version.is_(None),
                 cls.execution_payload.is_(None),
                 cls.execution_fingerprint.is_(None),
-                cls.retry_generation == 0,
-                cls.retry_count == 0,
-                cls.retry_due_at.is_(None),
                 cls.settlement_revision == 0,
                 cls.terminal_history_id.is_(None),
                 ~exists(

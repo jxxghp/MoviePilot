@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from pathlib import Path, PurePosixPath
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from tqdm import tqdm
 
@@ -12,6 +12,8 @@ from app.schemas.exception import StorageQueryError
 from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.system import StorageConf as _SchemaStorageConf
 from app.schemas.workflow import FileItem as _SchemaFileItem
+
+_SnapshotInfo = Dict[str, Dict[str, Any]]
 
 
 def transfer_process(path: str) -> Callable[[int | float], None]:
@@ -50,6 +52,11 @@ class StorageBase(metaclass=ABCMeta):
     def snapshot_check_folder_modtime(self) -> bool:
         """返回存储快照目录时间检查的默认开关。"""
         return True
+
+    @property
+    def snapshot_strict_query(self) -> bool:
+        """声明快照是否使用严格查询；未适配的存储沿用原查询合同。"""
+        return False
 
     def __init__(self):
         self.storagehelper = StorageHelper()
@@ -163,6 +170,10 @@ class StorageBase(metaclass=ABCMeta):
         浏览文件
         """
         pass
+
+    def list_strict(self, fileitem: _SchemaFileItem) -> List[_SchemaFileItem]:
+        """完整列举目录；空列表表示确认无子项，无法确认时抛出 StorageQueryError。"""
+        raise StorageQueryError(f"存储 {self.schema} 未实现严格目录查询: {fileitem.path}")
 
     @abstractmethod
     def create_folder(self, fileitem: _SchemaFileItem, name: str) -> Optional[_SchemaFileItem]:
@@ -286,83 +297,198 @@ class StorageBase(metaclass=ABCMeta):
         """
         pass
 
+    def _snapshot_list(self, fileitem: _SchemaFileItem) -> Optional[List[_SchemaFileItem]]:
+        """按存储能力读取目录，严格快照不能把无结果当作可以跳过的子树。"""
+        if not self.snapshot_strict_query:
+            return self.list(fileitem)
+        items = self.list_strict(fileitem)
+        if items is None:
+            raise StorageQueryError(f"目录查询没有返回完整结果: {fileitem.path}")
+        return items
+
+    def _snapshot_read_error(self, fileitem: _SchemaFileItem, error: Exception) -> None:
+        """严格快照传播读取故障；未适配的存储保留原来的子树容错行为。"""
+        if self.snapshot_strict_query:
+            if isinstance(error, StorageQueryError):
+                raise error
+            raise StorageQueryError(f"读取快照路径失败: {fileitem.path} - {error}") from error
+        logger.debug(f"Snapshot error for {fileitem.path}: {error}")
+
+    @staticmethod
+    def _snapshot_previous_state(
+        root_path: PurePosixPath,
+        previous_snapshot: Optional[_SnapshotInfo],
+    ) -> Tuple[
+        _SnapshotInfo,
+        Dict[PurePosixPath, set[PurePosixPath]],
+        Dict[PurePosixPath, str],
+    ]:
+        """
+        为增量快照建立旧文件和目录直接子项索引。
+
+        :param root_path: 本轮快照的根路径
+        :param previous_snapshot: 上一轮完整快照
+        :return: 当前文件信息、目录直接子项索引和路径反向索引
+        """
+        files_info = {
+            file_path: file_info
+            for file_path, file_info in (previous_snapshot or {}).items()
+            if PurePosixPath(file_path).is_relative_to(root_path)
+        }
+        previous_children: Dict[PurePosixPath, set[PurePosixPath]] = {}
+        previous_files: Dict[PurePosixPath, str] = {}
+        for file_path in files_info:
+            file_posix_path = PurePosixPath(file_path)
+            previous_files[file_posix_path] = file_path
+            try:
+                relative_parts = file_posix_path.relative_to(root_path).parts
+            except ValueError:
+                # files_info 已经按 root_path 过滤；保留防御性判断，避免
+                # 非标准路径对象让增量索引中断整轮监控。
+                continue
+            for depth in range(len(relative_parts)):
+                directory_path = root_path.joinpath(*relative_parts[:depth])
+                child_path = directory_path / relative_parts[depth]
+                previous_children.setdefault(directory_path, set()).add(child_path)
+        return files_info, previous_children, previous_files
+
+    @staticmethod
+    def _snapshot_remove_previous_subtree(
+        path: PurePosixPath,
+        files_info: _SnapshotInfo,
+        previous_children: Dict[PurePosixPath, set[PurePosixPath]],
+        previous_files: Dict[PurePosixPath, str],
+    ) -> None:
+        """沿旧快照索引移除一个已经消失的直接子树。"""
+        pending = [path]
+        while pending:
+            current_path = pending.pop()
+            old_file_path = previous_files.pop(current_path, None)
+            if old_file_path is not None:
+                files_info.pop(old_file_path, None)
+            pending.extend(previous_children.pop(current_path, ()))
+
+    def _snapshot_remove_deleted_children(
+        self,
+        fileitem: _SchemaFileItem,
+        sub_files: List[_SchemaFileItem],
+        files_info: _SnapshotInfo,
+        previous_children: Dict[PurePosixPath, set[PurePosixPath]],
+        previous_files: Dict[PurePosixPath, str],
+    ) -> None:
+        """
+        清理已确认遍历目录中不再存在的直接子项。
+
+        :param fileitem: 当前已列举的目录
+        :param sub_files: 当前目录返回的直接子项
+        :param files_info: 当前正在构建的快照
+        :param previous_children: 旧快照目录直接子项索引
+        :param previous_files: 旧快照路径反向索引
+        """
+        directory_path = PurePosixPath(fileitem.path)
+        child_paths = {PurePosixPath(sub_file.path) for sub_file in sub_files}
+        for direct_child_path in previous_children.pop(directory_path, ()):
+            if direct_child_path not in child_paths:
+                StorageBase._snapshot_remove_previous_subtree(
+                    direct_child_path, files_info, previous_children, previous_files
+                )
+
+    def _snapshot_file(
+        self,
+        fileitem: _SchemaFileItem,
+        files_info: _SnapshotInfo,
+        previous_children: Dict[PurePosixPath, set[PurePosixPath]],
+        previous_files: Dict[PurePosixPath, str],
+        last_snapshot_time: float,
+        max_depth: int,
+        current_depth: int = 0,
+    ) -> None:
+        """
+        递归读取目录并更新快照文件信息。
+
+        :param fileitem: 当前文件或目录
+        :param files_info: 当前正在构建的快照
+        :param previous_children: 旧快照目录直接子项索引
+        :param previous_files: 旧快照路径反向索引
+        :param last_snapshot_time: 上次快照时间
+        :param max_depth: 最大递归深度
+        :param current_depth: 当前递归深度
+        """
+        try:
+            if fileitem.type == "dir":
+                if current_depth >= max_depth:
+                    return
+
+                # 根目录每轮至少列举一次；子目录按修改时间跳过未变化分支。
+                if (current_depth > 0 and
+                        self.snapshot_check_folder_modtime and
+                        last_snapshot_time and
+                        fileitem.modify_time and
+                        fileitem.modify_time <= last_snapshot_time):
+                    return
+
+                # 只有目录列表成功返回后才清理旧基线，查询异常时保留待下轮重试。
+                sub_files = self._snapshot_list(fileitem)
+                if sub_files is None:
+                    return
+                sub_files = list(sub_files)
+                StorageBase._snapshot_remove_deleted_children(
+                    self,
+                    fileitem, sub_files, files_info, previous_children, previous_files
+                )
+                for sub_file in sub_files:
+                    StorageBase._snapshot_file(
+                        self,
+                        sub_file,
+                        files_info,
+                        previous_children,
+                        previous_files,
+                        last_snapshot_time,
+                        max_depth,
+                        current_depth + 1,
+                    )
+            else:
+                # 始终记录文件完整信息，由 compare_snapshots 负责检测变化。
+                files_info[fileitem.path] = {
+                    'size': fileitem.size or 0,
+                    'modify_time': getattr(fileitem, 'modify_time', 0),
+                    'fileid': getattr(fileitem, 'fileid', None),
+                    'type': fileitem.type
+                }
+        except Exception as error:
+            self._snapshot_read_error(fileitem, error)
+
     def snapshot(self, path: Path, last_snapshot_time: float = None, max_depth: int = 5,
-                 previous_snapshot: Optional[Dict[str, Dict]] = None) -> Dict[str, Dict]:
+                 previous_snapshot: Optional[Dict[str, Dict]] = None) -> Optional[Dict[str, Dict]]:
         """
         快照文件系统，输出所有层级文件信息（不含目录）
         :param path: 路径
         :param last_snapshot_time: 上次快照时间，用于增量快照
         :param max_depth: 最大递归深度，避免过深遍历
         :param previous_snapshot: 上次完整快照，用于保留未变化目录并清理已删除文件
+        :return: 有效快照（允许为空）；严格查询失败返回 None，调用方必须保留旧基线
         """
+        strict_query = self.snapshot_strict_query
         root_path = PurePosixPath(path.as_posix())
-        files_info = {
-            file_path: file_info
-            for file_path, file_info in (previous_snapshot or {}).items()
-            if PurePosixPath(file_path).is_relative_to(root_path)
-        }
+        files_info, previous_children, previous_files = StorageBase._snapshot_previous_state(
+            root_path, previous_snapshot
+        )
 
-        def __remove_deleted_children(_fileitm: _SchemaFileItem,
-                                      sub_files: List[_SchemaFileItem]) -> None:
-            """
-            清理已确认遍历目录中不再存在的直接子项。
-            未变化的子目录仍保留旧基线，避免增量遍历将其误删。
-            """
-            directory_path = PurePosixPath(_fileitm.path)
-            child_paths = {PurePosixPath(sub_file.path) for sub_file in sub_files}
-            for old_file_path in list(files_info):
-                try:
-                    relative_path = PurePosixPath(old_file_path).relative_to(directory_path)
-                except ValueError:
-                    continue
-                if not relative_path.parts:
-                    continue
-                direct_child_path = directory_path / relative_path.parts[0]
-                if direct_child_path not in child_paths:
-                    files_info.pop(old_file_path, None)
-
-        def __snapshot_file(_fileitm: _SchemaFileItem, current_depth: int = 0):
-            """
-            递归获取文件信息
-            """
-            try:
-                if _fileitm.type == "dir":
-                    # 检查递归深度限制
-                    if current_depth >= max_depth:
-                        return
-
-                    # 根目录每轮至少列举一次，用于清理已移走的直接子项；子目录仍按修改时间增量遍历
-                    if (current_depth > 0 and
-                            self.snapshot_check_folder_modtime and
-                            last_snapshot_time and
-                            _fileitm.modify_time and
-                            _fileitm.modify_time <= last_snapshot_time):
-                        return
-
-                    # 只有目录列表成功返回后才清理旧基线，查询异常时继续保留待下轮重试
-                    sub_files = self.list(_fileitm)
-                    if sub_files is None:
-                        return
-                    sub_files = list(sub_files)
-                    __remove_deleted_children(_fileitm, sub_files)
-                    for sub_file in sub_files:
-                        __snapshot_file(sub_file, current_depth + 1)
-                else:
-                    # 记录文件的完整信息用于比对（始终包含所有文件，由 compare_snapshots 负责检测变化）
-                    files_info[_fileitm.path] = {
-                        'size': _fileitm.size or 0,
-                        'modify_time': getattr(_fileitm, 'modify_time', 0),
-                        'fileid': getattr(_fileitm, 'fileid', None),
-                        'type': _fileitm.type
-                    }
-
-            except Exception as e:
-                logger.debug(f"Snapshot error for {_fileitm.path}: {e}")
-
-        fileitem = self.get_item(path)
-        if not fileitem:
-            return {}
-
-        __snapshot_file(fileitem)
+        try:
+            fileitem = self.get_item_strict(path) if strict_query else self.get_item(path)
+            if not fileitem:
+                return {}
+            StorageBase._snapshot_file(
+                self,
+                fileitem,
+                files_info,
+                previous_children,
+                previous_files,
+                last_snapshot_time,
+                max_depth,
+            )
+        except StorageQueryError as err:
+            logger.warning(f"存储快照失败，保留上次基线: {self.schema}:{path} - {err}")
+            return None
 
         return files_info

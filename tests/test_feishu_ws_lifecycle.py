@@ -1,7 +1,8 @@
-import asyncio
 import threading
-from types import SimpleNamespace
+import time
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from app.testing.bootstrap import ensure_optional_stub
 
@@ -10,175 +11,159 @@ ensure_optional_stub("psutil")
 ensure_optional_stub("dateparser")
 ensure_optional_stub("Pinyin2Hanzi", is_pinyin=lambda value: False)
 
-from app.modules.feishu.feishu import Feishu, lark_ws_client_module
+from app.adapters.network.feishu import FeishuLongConnection  # noqa: E402
+from app.modules.feishu.feishu import Feishu  # noqa: E402
+from app.modules.feishu.openapi import FeishuOpenApi  # noqa: E402
+
+# 停止单个配置实例的耗时上限；远小于 Feishu._ws_join_timeout_seconds，证明停止不是靠等待超时。
+_STOP_BUDGET_SECONDS = 1.0
 
 
-def _build_feishu_client() -> Feishu:
-    """构造不会启动真实飞书长连接的测试客户端。"""
+class _OfflineRuns:
+    """记录离线长连接的运行情况：每个 FeishuLongConnection 在哪个线程运行、是否被请求停止。"""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._released = {}
+        self.threads = {}
+        self.stopped = set()
+
+    def released(self, connection) -> threading.Event:
+        """返回该长连接的释放信号。"""
+        with self._lock:
+            return self._released.setdefault(id(connection), threading.Event())
+
+    def running(self, connection, timeout: float = 2) -> bool:
+        """等待该长连接进入 run()。"""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            with self._lock:
+                if id(connection) in self.threads:
+                    return True
+            time.sleep(0.01)
+        return False
+
+    def release_all(self) -> None:
+        """释放所有仍阻塞的 run()，避免用例失败时遗留线程。"""
+        with self._lock:
+            events = list(self._released.values())
+        for event in events:
+            event.set()
+
+
+@pytest.fixture
+def offline_runs():
+    """
+    让真实 FeishuLongConnection 以离线方式运行：run() 阻塞到本实例的 stop() 被调用，
+    不换取连接地址也不建立 WebSocket，保证零真实出站；stop() 仍执行真实实现。
+    """
+    runs = _OfflineRuns()
+    real_stop = FeishuLongConnection.stop
+
+    def _offline_run(connection) -> None:
+        with runs._lock:
+            runs.threads[id(connection)] = threading.current_thread()
+        runs.released(connection).wait(timeout=10)
+
+    def _tracked_stop(connection) -> None:
+        real_stop(connection)
+        with runs._lock:
+            runs.stopped.add(id(connection))
+        runs.released(connection).set()
+
     with (
-        patch.object(Feishu, "_build_api_client", return_value=MagicMock()),
-        patch.object(Feishu, "_start_ws_client"),
+        patch.object(FeishuLongConnection, "run", _offline_run),
+        patch.object(FeishuLongConnection, "stop", _tracked_stop),
     ):
+        yield runs
+    runs.release_all()
+
+
+def _start_client(name: str) -> Feishu:
+    """按配置名启动一个飞书实例；OpenAPI 为桩，长连接线程真实启动。"""
+    with patch.object(Feishu, "_build_api_client", return_value=MagicMock(spec=FeishuOpenApi)):
         return Feishu(
-            FEISHU_APP_ID="cli_test_app_id",
-            FEISHU_APP_SECRET="cli_test_app_secret",
-            name="feishu-test",
+            FEISHU_APP_ID=f"cli_{name}",
+            FEISHU_APP_SECRET=f"secret_{name}",
+            name=name,
         )
 
 
-async def _wait_forever() -> None:
-    """模拟飞书 SDK 创建的长生命周期后台任务。"""
-    await asyncio.Future()
-
-
-def test_parallel_ws_clients_keep_independent_sdk_event_loops() -> None:
-    """多个飞书配置并发启动时不得覆盖彼此的 SDK 事件循环。"""
-    clients = [_build_feishu_client(), _build_feishu_client()]
-    barrier = threading.Barrier(2)
-    constructed = threading.Event()
-    construction_lock = threading.Lock()
-    fake_clients = []
-
-    class _ConcurrentWsClient:
-        """模拟真实 SDK 通过模块级 loop 与 _select 驱动长连接。"""
-
-        def __init__(self, *_args, **_kwargs):
-            """登记实例并准备关停路径需要的 SDK 私有状态。"""
-            self._auto_reconnect = True
-            self._conn = None
-            self._conn_url = ""
-            self._conn_id = ""
-            self._service_id = ""
-            self._lock = asyncio.Lock()
-            self.started = threading.Event()
-            self.observed_loop = None
-            with construction_lock:
-                fake_clients.append(self)
-                if len(fake_clients) == 2:
-                    constructed.set()
-
-        def start(self) -> None:
-            """强制两个线程同时解析 SDK 全局，再等待各自停止信号。"""
-            barrier.wait(timeout=2)
-
-            async def run_until_stopped() -> None:
-                """记录真实运行循环，并调用 SDK 的模块级阻塞选择。"""
-                self.observed_loop = asyncio.get_running_loop()
-                self.started.set()
-                await lark_ws_client_module._select()
-
-            lark_ws_client_module.loop.run_until_complete(run_until_stopped())
-
-    with patch(
-        "app.modules.feishu.feishu.lark.ws.Client",
-        _ConcurrentWsClient,
-    ):
-        try:
-            for client in clients:
-                client._start_ws_client()
-            assert constructed.wait(timeout=2)
-            assert all(fake.started.wait(timeout=2) for fake in fake_clients)
-            observed_loops = [fake.observed_loop for fake in fake_clients]
-            assert len(set(observed_loops)) == 2
-            assert all(loop is not None for loop in observed_loops)
-        finally:
-            for client in clients:
-                client.stop()
-
-    assert all(
-        client._ws_thread is None or not client._ws_thread.is_alive()
-        for client in clients
-    )
-
-
-def test_shutdown_ws_client_cancels_sdk_tasks_before_quiet_disconnect():
-    """飞书关机清理应先消费后台任务，再静默关闭 WebSocket 连接。"""
-    client = _build_feishu_client()
-    loop = asyncio.new_event_loop()
-    closed = False
-
-    async def _close_conn() -> None:
-        """记录测试连接已被关闭。"""
-        nonlocal closed
-        closed = True
-
+def test_config_instances_run_independent_long_connections(offline_runs):
+    """多个飞书配置各自持有独立长连接并在各自线程运行。"""
+    first, second = _start_client("feishu-a"), _start_client("feishu-b")
     try:
-        asyncio.set_event_loop(loop)
-        task = loop.create_task(_wait_forever())
-        task.add_done_callback(client._consume_ws_task_result)
-        client._ws_tasks.add(task)
-        ws_client = SimpleNamespace(
-            _auto_reconnect=True,
-            _conn=SimpleNamespace(close=_close_conn),
-            _conn_url="wss://msg-frontier.feishu.cn/ws/v2?access_key=secret&ticket=secret",
-            _conn_id="conn_test",
-            _service_id="service_test",
-            _lock=asyncio.Lock(),
-        )
-        client._ws_client = ws_client
+        assert offline_runs.running(first._ws_client)
+        assert offline_runs.running(second._ws_client)
 
-        loop.run_until_complete(client._shutdown_ws_client())
+        assert first._ws_client is not second._ws_client
+        assert offline_runs.threads[id(first._ws_client)] is first._ws_thread
+        assert offline_runs.threads[id(second._ws_client)] is second._ws_thread
+        assert first._ws_thread is not second._ws_thread
+        assert first.get_state() and second.get_state()
     finally:
-        loop.close()
-        asyncio.set_event_loop(None)
-
-    assert task.cancelled()
-    assert closed
-    assert not ws_client._auto_reconnect
-    assert ws_client._conn is None
-    assert ws_client._conn_url == ""
-    assert ws_client._conn_id == ""
-    assert ws_client._service_id == ""
-    assert client._ws_tasks == set()
+        first.stop()
+        second.stop()
 
 
-def test_shutdown_ws_client_skips_disconnect_when_sdk_lock_is_busy_and_connection_gone():
-    """SDK 已无连接对象时，关机清理不应等待可能长期占用的内部锁。"""
-    client = _build_feishu_client()
-
-    async def _run_shutdown() -> SimpleNamespace:
-        lock = asyncio.Lock()
-        await lock.acquire()
-        ws_client = SimpleNamespace(
-            _auto_reconnect=True,
-            _conn=None,
-            _conn_url="wss://msg-frontier.feishu.cn/ws/v2?access_key=secret&ticket=secret",
-            _conn_id="conn_test",
-            _service_id="service_test",
-            _lock=lock,
-        )
-        client._ws_client = ws_client
-
-        await asyncio.wait_for(client._shutdown_ws_client(), timeout=0.2)
-        return ws_client
-
-    ws_client = asyncio.run(_run_shutdown())
-
-    assert not ws_client._auto_reconnect
-    assert ws_client._conn is None
-    assert ws_client._conn_url == ""
-    assert ws_client._conn_id == ""
-    assert ws_client._service_id == ""
-
-
-def test_consume_ws_task_result_suppresses_stop_exception():
-    """停止过程中飞书 SDK 后台任务的异常应被取回并降为调试日志。"""
-    client = _build_feishu_client()
-    loop = asyncio.new_event_loop()
+def test_stopping_one_instance_keeps_other_connected(offline_runs):
+    """停止一个配置实例只结束它自己的长连接，另一实例继续运行。"""
+    first, second = _start_client("feishu-a"), _start_client("feishu-b")
     try:
-        future = loop.create_future()
-        future.set_exception(RuntimeError("normal shutdown"))
-        client._ws_tasks.add(future)
-        client._stop_event.set()
+        assert offline_runs.running(first._ws_client)
+        assert offline_runs.running(second._ws_client)
 
-        with (
-            patch("app.modules.feishu.feishu.logger.debug") as debug_logger,
-            patch("app.modules.feishu.feishu.logger.error") as error_logger,
-        ):
-            client._consume_ws_task_result(future)
+        started = time.monotonic()
+        assert first.stop() is True
+        elapsed = time.monotonic() - started
+
+        assert elapsed < _STOP_BUDGET_SECONDS
+        assert not first._ws_thread.is_alive()
+        assert not first.get_state()
+        assert id(second._ws_client) not in offline_runs.stopped
+        assert second._ws_thread.is_alive()
+        assert second.get_state()
     finally:
-        loop.close()
+        second.stop()
 
-    debug_logger.assert_called_once()
-    error_logger.assert_not_called()
-    assert future not in client._ws_tasks
+    assert not second._ws_thread.is_alive()
+
+
+def test_concurrent_stop_of_all_instances_returns_quickly(offline_runs):
+    """关机时多个实例并发停止，均应在预算内确认线程退出。"""
+    clients = [_start_client(f"feishu-{index}") for index in range(3)]
+    for client in clients:
+        assert offline_runs.running(client._ws_client)
+    results = {}
+
+    def _stop(client: Feishu) -> None:
+        results[client._name] = client.stop()
+
+    started = time.monotonic()
+    stoppers = [threading.Thread(target=_stop, args=(client,)) for client in clients]
+    for stopper in stoppers:
+        stopper.start()
+    for stopper in stoppers:
+        stopper.join(timeout=5)
+    elapsed = time.monotonic() - started
+
+    assert results == {client._name: True for client in clients}
+    assert elapsed < _STOP_BUDGET_SECONDS
+    assert all(not client._ws_thread.is_alive() for client in clients)
+
+
+def test_restart_after_stop_uses_fresh_long_connection(offline_runs):
+    """停止后重新启动必须新建长连接：已停止的连接会立即退出，不能复用。"""
+    client = _start_client("feishu-a")
+    try:
+        stopped_connection = client._ws_client
+        assert offline_runs.running(stopped_connection)
+        assert client.stop() is True
+
+        client._start_ws_client()
+
+        assert client._ws_client is not stopped_connection
+        assert offline_runs.running(client._ws_client)
+        assert client._ws_thread.is_alive()
+    finally:
+        assert client.stop() is True

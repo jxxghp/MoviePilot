@@ -44,7 +44,6 @@ def test_official_plugin_baseline_records_external_source():
         "app.agent.llm.LLMHelper.get_llm",
         "app.agent.llm.helper.LLMHelper.test_current_settings",
         "app.helper.llm.LLMHelper.get_llm",
-        "app.agent.tools.manager.moviepilot_tool_manager._load_tools",
     } <= set(baseline["attribute_calls"])
 
 

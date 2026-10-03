@@ -518,6 +518,8 @@ def test_symbol_alias_manifest_covers_all_moved_public_symbols():
     assert set(SYMBOL_ALIASES["app.schemas"]) == {
         "TransferTask",
         "TransferQueue",
+        "BaseMessage",
+        "ConversationMemory",
     } | set(_MESSAGE_NOTIFICATION_SYMBOL_ALIASES)
     assert set(SYMBOL_ALIASES["app.schemas.transfer"]) == {
         "TransferTask",
@@ -527,7 +529,9 @@ def test_symbol_alias_manifest_covers_all_moved_public_symbols():
         "TmdbEpisode",
         "MediaType",
     }
-    assert set(SYMBOL_ALIASES["app.schemas.agent"]) == {"ReplyMode"}
+    assert set(SYMBOL_ALIASES["app.schemas.agent"]) == {"ConversationMemory", "ReplyMode"}
+    assert set(SYMBOL_ALIASES["app.sdk.cache"]) == {"AsyncRedisBackend", "RedisBackend"}
+    assert set(SYMBOL_ALIASES["app.adapters.cache.backends"]) == {"AsyncRedisBackend", "RedisBackend"}
     assert set(SYMBOL_ALIASES["app.sdk.logging"]) == {
         "CustomFormatter",
         "LogConfigModel",

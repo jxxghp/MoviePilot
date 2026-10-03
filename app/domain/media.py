@@ -27,6 +27,16 @@ MUSIC_MEDIA_SOURCES = frozenset(MUSIC_MEDIA_SOURCE_ORDER)
 _search_source_provider: Callable[[], object] = lambda: None
 
 
+def music_recognition_sources(configured: str, primary: MediaSource = MediaSource.MusicBrainz) -> tuple[MediaSource, ...]:
+    """只从混合搜索配置中选择内置音乐来源，保留用户顺序；无音乐配置兼容原主来源。"""
+    sources: list[MediaSource] = []
+    for value in str(configured or "").split(","):
+        source = normalize_media_source(value)
+        if source is not None and source in MUSIC_MEDIA_SOURCES and source not in sources:
+            sources.append(source)
+    return tuple(sources) or (primary,)
+
+
 def configure_search_source_provider(provider: Callable[[], object]) -> None:
     """注入默认媒体来源配置，领域选择逻辑不直接依赖平台 settings。"""
     global _search_source_provider

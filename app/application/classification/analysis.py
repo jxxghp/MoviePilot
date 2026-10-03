@@ -67,10 +67,10 @@ _UNCLASSIFIED_CATEGORY_ID = "__unclassified__"
 _DEFAULT_RESOLVE_CONCURRENCY = 3
 
 ClassificationImpactFactsResolver: TypeAlias = Callable[
-    [DownloadHistorySnapshot | TransferHistorySnapshot],
-    Awaitable[ClassificationFacts | None],
+    [DownloadHistorySnapshot | TransferHistorySnapshot, ClassificationPolicy, ClassificationPolicy],
+    Awaitable[tuple[ClassificationFacts, ClassificationFacts] | None],
 ]
-"""按历史记录重新读取完整媒体信息的异步端口。"""
+"""一次读取历史媒体详情，再分别按活动和候选策略准备事实的异步端口。"""
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,13 +84,16 @@ class ClassificationImpactSampleBatch:
     unresolved_count: int = 0
     truncated: bool = False
     warnings: tuple[str, ...] = ()
+    candidate_facts: tuple[ClassificationFacts, ...] | None = None
 
 
 class ClassificationImpactSampleProvider(Protocol):
     """为影响分析异步提供近期标准分类事实样本。"""
 
-    async def load(self, limit: int) -> ClassificationImpactSampleBatch:
-        """读取最多 ``limit`` 个按媒体身份去重的近期事实。"""
+    async def load(
+        self, limit: int, *, active: ClassificationPolicy, candidate: ClassificationPolicy,
+    ) -> ClassificationImpactSampleBatch:
+        """读取最多 ``limit`` 个媒体，分别准备两套策略所需事实。"""
         ...
 
 
@@ -113,8 +116,10 @@ class RecentHistoryClassificationSampleProvider:
         self._facts_resolver = facts_resolver
         self._resolve_concurrency = resolve_concurrency
 
-    async def load(self, limit: int) -> ClassificationImpactSampleBatch:
-        """合并两类近期历史，按时间和 ID 排序后去重并投影事实。"""
+    async def load(
+        self, limit: int, *, active: ClassificationPolicy, candidate: ClassificationPolicy,
+    ) -> ClassificationImpactSampleBatch:
+        """合并去重近期历史，保持活动与候选策略样本按身份成对。"""
         downloads, transfers = await asyncio.gather(
             self._download_history.async_list_by_page(page=1, count=limit),
             self._transfer_history.async_list_by_page(
@@ -169,15 +174,17 @@ class RecentHistoryClassificationSampleProvider:
 
         records_to_resolve = unique_records[:limit]
         skipped_count += max(0, len(unique_records) - len(records_to_resolve))
-        resolved = await self._resolve_records(records_to_resolve)
+        resolved = await self._resolve_records(records_to_resolve, active, candidate)
         facts = []
+        candidate_facts = []
         unresolved_count = 0
         for item in resolved:
             if item is None:
                 unresolved_count += 1
                 skipped_count += 1
                 continue
-            facts.append(item)
+            facts.append(item[0])
+            candidate_facts.append(item[1])
 
         warnings = [
             "系统会按近期下载和整理记录中的来源与编号重新读取完整媒体信息；无法读取的记录不会参与比较",
@@ -196,28 +203,35 @@ class RecentHistoryClassificationSampleProvider:
             unresolved_count=unresolved_count,
             truncated=len(unique_records) > limit,
             warnings=tuple(warnings),
+            candidate_facts=tuple(candidate_facts),
         )
 
     async def _resolve_records(
         self,
         records: Sequence[tuple[_HistorySampleRecord, ClassificationFacts]],
-    ) -> list[ClassificationFacts | None]:
+        active: ClassificationPolicy,
+        candidate: ClassificationPolicy,
+    ) -> list[tuple[ClassificationFacts, ClassificationFacts] | None]:
         """以固定并发上限重新读取详情，并拒绝身份不一致的返回值。"""
         facts_resolver = self._facts_resolver
         if facts_resolver is None:
-            return [projected for _, projected in records]
+            return [(projected, projected) for _, projected in records]
         semaphore = asyncio.Semaphore(self._resolve_concurrency)
 
         async def resolve(
             record: _HistorySampleRecord,
             projected: ClassificationFacts,
-        ) -> ClassificationFacts | None:
+        ) -> tuple[ClassificationFacts, ClassificationFacts] | None:
+            """在同一并发窗口内准备两份事实，任一身份不符则排除整个样本。"""
             async with semaphore:
                 try:
-                    facts = await facts_resolver(record.payload)
+                    facts = await facts_resolver(record.payload, active, candidate)
                 except Exception:  # noqa: BLE001  单条详情失败不应阻断整批分析
                     return None
-            if facts is None or _classification_identity_key(facts) != _classification_identity_key(projected):
+            if facts is None or any(
+                _classification_identity_key(item) != _classification_identity_key(projected)
+                for item in facts
+            ):
                 return None
             return facts
 
@@ -278,7 +292,7 @@ class ClassificationAnalysisService:
         return self._configuration.validate(policy)
 
     def preview(self, request: ClassificationPreviewRequest) -> ClassificationEvaluation:
-        """对搜索结果或兼容事实执行活动策略或合法草稿，并返回完整命中轨迹。"""
+        """对完整媒体详情或兼容事实执行活动策略或合法草稿，并返回完整命中轨迹。"""
         policy = request.policy or self._configuration.active()
         if request.policy is not None:
             self._require_valid(policy)
@@ -289,6 +303,19 @@ class ClassificationAnalysisService:
         )
         return evaluate_classification_facts(policy, facts, trace=True)
 
+    async def async_preview(self, request: ClassificationPreviewRequest) -> ClassificationEvaluation:
+        """异步补充预览事实，避免网络补充占用 API 事件循环。"""
+        policy = request.policy or self._configuration.active()
+        if request.policy is not None:
+            self._require_valid(policy)
+        if request.input.kind == "media" and self._execution is not None:
+            media = _preview_media(request.input.media)
+            facts = await self._execution.async_build_facts(cast(Any, media), policy=policy)
+            if facts is not None:
+                return evaluate_classification_facts(policy, facts, trace=True)
+        facts = self._preview_facts(request.input, policy=policy, use_execution=False)
+        return evaluate_classification_facts(policy, facts, trace=True)
+
     def _preview_facts(
         self,
         input_data: ClassificationPreviewInput,
@@ -296,7 +323,7 @@ class ClassificationAnalysisService:
         policy: ClassificationPolicy,
         use_execution: bool,
     ) -> ClassificationFacts:
-        """构造预览事实；活动策略优先复用真实执行端口的补充链路。"""
+        """构造预览事实；媒体输入按所选策略复用真实执行端口的补充链路。"""
         if input_data.kind == "facts":
             return input_data.facts
         media = _preview_media(input_data.media)
@@ -333,7 +360,7 @@ class ClassificationAnalysisService:
             ),
         )
         self._require_valid(candidate)
-        batch = await self._sample_batch(samples, sample_limit)
+        batch = await self._sample_batch(samples, sample_limit, active, candidate)
         return _build_impact_analysis(
             active, candidate, batch, sample_limit, example_limit
         )
@@ -348,6 +375,8 @@ class ClassificationAnalysisService:
         self,
         samples: Sequence[ClassificationFacts],
         sample_limit: int,
+        active: ClassificationPolicy,
+        candidate: ClassificationPolicy,
     ) -> ClassificationImpactSampleBatch:
         """优先使用请求事实，否则委托近期历史提供器生成样本。"""
         if samples:
@@ -402,7 +431,7 @@ class ClassificationAnalysisService:
                 truncated=False,
                 warnings=("近期历史样本提供器未配置，本次影响分析没有可比较样本",),
             )
-        return await self._sample_provider.load(sample_limit)
+        return await self._sample_provider.load(sample_limit, active=active, candidate=candidate)
 
 
 def _history_facts(
@@ -573,9 +602,10 @@ def _build_impact_analysis(
     path_only_changed_count = 0
     rule_changed_only_count = 0
     became_fallback_count = 0
-    for facts in batch.facts:
+    candidate_facts = batch.candidate_facts if batch.candidate_facts is not None else batch.facts
+    for facts, proposed_facts in zip(batch.facts, candidate_facts, strict=True):
         previous = evaluate_classification_facts(active, facts).result
-        proposed = evaluate_classification_facts(candidate, facts).result
+        proposed = evaluate_classification_facts(candidate, proposed_facts).result
         previous_categories[_category_id(previous)] += 1
         candidate_categories[_category_id(proposed)] += 1
         if "partial" in {previous.state, proposed.state}:

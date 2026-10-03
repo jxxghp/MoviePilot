@@ -7,6 +7,7 @@ from typing import Optional, TypeAlias
 
 from app.application.configuration import SystemConfigStagingPort
 from app.application.outbox import SyncUnitOfWork
+from app.application.security.image import site_image_domains
 from app.application.site.contract import (
     SiteMutation,
     SitePriorityMutation,
@@ -252,3 +253,4 @@ class SiteMutationCommand:
         except Exception:
             await self._unit_of_work.rollback()
             raise
+        site_image_domains.invalidate()

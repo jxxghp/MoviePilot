@@ -202,21 +202,9 @@ uvx --from pip-audit pip-audit \
 
 导出文件由 `uv.lock` 生成且保留哈希，不作为项目依赖清单提交。
 
-Docker 镜像发布前还会使用 Trivy 扫描 OS 与语言包；根目录 `.trivyignore.yaml` 只允许记录按路径或 PURL
-限定、写明原因并设置到期时间的临时例外，修复或重新评估后应移除。
-
-`CVE-2026-84445` 临时例外的核查记录（2026-09-09，2026-10-09 到期）：
-
-- [上游公告](https://github.com/grpc/grpc-go/security/advisories/GHSA-2v4p-qf9q-27wj) 将触发条件限定为
-  `xds.NewGRPCServer()` 安装的 xDS 路由拦截器；普通 gRPC 依赖的存在不代表包含该路径。
-- 当前固定的 `rclone/rclone:beta@sha256:d6f5448594ecefefcf09cfeaf85cb7a21a866328032576ce2c1813e7b59c66dc`
-  对应 `v1.76.0-beta.10267.220fe7619`。从该摘要提取两个架构的 `/usr/local/bin/rclone`，
-  使用 `go version -m` 确认内嵌 gRPC 为 `v1.84.0-dev.0.20260723093437-b6eac429d7b6`。
-- 使用 Go 标准库 `debug/elf` 和 `debug/gosym` 解析二进制 `.gopclntab`：amd64 共 91,641 个函数，
-  arm64 共 91,150 个函数；各有 1,643 个 gRPC 函数，均无 `google.golang.org/grpc/xds`
-  或 `google.golang.org/grpc/internal/xds` 函数，未链接受影响的服务端拦截器。
-- 核查时官方稳定版 `v1.75.1` 和主分支仍引用同一 gRPC 版本。例外只匹配镜像内 `usr/bin/rclone`
-  和上述精确依赖 PURL；更新 rclone 摘要时必须重新核查两个架构，包含修复后应移除例外。
+Docker 镜像直接基于官方基础镜像构建，只安装应用运行所需的系统依赖；不运行镜像漏洞扫描，
+也不为扫描结果刷新系统包、删除基础镜像自带工具或维护漏洞忽略清单。正式版和 Beta 均直接构建
+并发布标准版与 free-threaded 版的双架构镜像。应用锁定依赖仍按上述流程审计。
 
 ### 6. Contributor 提交准备
 
@@ -243,9 +231,41 @@ Ruff/Mypy 基线只允许收紧，不接受新增诊断或类型错误增长；�
 跳过测试或产物规避超时。Coverage 只接受 GitHub Actions 的 Ubuntu/Python 3.14、locked
 依赖和全量测试工件，本机 macOS 报告仅供诊断，不得写入并提交 canonical baseline。
 
+### 6.1 结构复杂度门禁
+
+复杂度按全宿主函数的 Ruff C901（上限 15）与 PLR1702（嵌套上限 5）检查，排除
+`app/plugins/**`。方法、类和文件行数只生成观察报告，注释、空行和格式换行不再消耗硬预算。
+原来的 `--v2` 行数检查已退役。阈值以内允许正常开发；存量超限函数不能新增或继续增长。
+
+```bash
+uv run --locked --no-sync python scripts/architecture/complexity.py --report /tmp/moviepilot-complexity-report.json
+# 仅在消除全部回退、确认真实下降后固化低水位
+uv run --locked --no-sync python scripts/architecture/complexity.py --write
+uv run --locked --no-sync python scripts/architecture/complexity.py
+```
+
+`--write` 拒绝接受已有基线上的增长；减少或删除热点后必须固化低水位。
+CI 上传 `complexity-report` 工件，门禁失败时也保留已生成的指标。指标含义、限制与后续扩围见
+[代码门禁说明](code-quality.md)。
+
 ### 7. 参考资源
 
 - [uv 官方文档](https://docs.astral.sh/uv/)
 - [pip-audit](https://github.com/pypa/pip-audit)
 - [MoviePilot-Resources](https://github.com/jxxghp/MoviePilot-Resources)
 - [MoviePilot-Plugins](https://github.com/jxxghp/MoviePilot-Plugins)
+
+### Agent 历史消息索引验证
+
+独立消息库位于 Agent 运行目录，不参与主库 Alembic。使用临时运行目录运行 `tests/test_agent_recall_persistence.py`，不得用真实用户的 `state.db` 做索引破坏或重建测试。CJK tokenizer 保留 Hermes 原版源码及许可证于 `native/fts5_cjk/`；Docker 构建与 CLI 依赖安装使用该目录的 `install.py`，按本机架构编译并用目标解释器实际验证两字中文查询，安装到 `<sys.prefix>/lib/moviepilot/libfts5_cjk.so`。旧配置目录内的手工扩展作为加载回退；编译器要求和补装/检查命令见该目录 README。测试有本地 C 编译器时在临时目录构建，无编译器时只跳过原生扩展用例，不能宣称该分词路径已验证。常规 FTS5 与 trigram、短中文回退无需该扩展，扩展缺失或失效时索引状态会明确降级。独立 schema 版本不等于产品版本；后续新增主库升级脚本从 3.1.0 命名。
+
+### Agent 学习验证
+
+`tests/test_agent_learning_skills.py`、`tests/test_agent_learning_memory.py` 和
+`tests/test_agent_learning_review.py` 用临时目录与确定性模型核对 Hermes 学习契约，
+不访问实际 LLM 或个人记忆。匹配器、威胁模式和提示词的上游来源及 MIT 许可在
+`app/agent/learning/LICENSE.hermes`；不得以这些离线测试替代固定真实模型的效果评测。
+
+`tests/test_agent_guardrail_controller.py` 保留 Hermes 原始循环规则的纯行为回归，
+`tests/test_agent_guardrails.py` 使用真实 LangGraph 验证并行顺序、逐运行隔离、正常轮询、
+未知结果、尾部行动继续提示和流式停止交付。派生代码许可在 `app/agent/guardrails/LICENSE.hermes`。

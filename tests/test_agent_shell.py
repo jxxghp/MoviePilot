@@ -6,6 +6,7 @@ import ntpath
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -18,6 +19,7 @@ from app.agent.prompt import PromptManager
 from app.agent.shell import (
     AgentShell,
     agent_text_subprocess_kwargs,
+    bind_agent_project_environment,
     build_agent_subprocess_env,
     resolve_agent_cwd,
     resolve_agent_shell,
@@ -153,6 +155,28 @@ def test_posix_shell_policy_preserves_native_shell_and_environment(monkeypatch) 
     assert agent_text_subprocess_kwargs(platform_name="posix") == {}
 
 
+def test_posix_shell_routes_bare_python_to_project_runtime() -> None:
+    """Agent 的裸 python 命令应在本次 shell 中使用项目专用运行时。"""
+    shell = resolve_agent_shell(
+        platform_name="posix",
+        environment={"SHELL": "/bin/sh", "MOVIEPILOT_PYTHON": sys.executable},
+    )
+
+    command = shell.build_argv("python -c 'print(1)'")[-1]
+    assert "python()" in command
+    assert "python3()" in command
+    assert command.endswith("python -c 'print(1)'")
+
+    result = subprocess.run(
+        shell.build_argv("python -c 'print(1)'"),
+        env={"PATH": os.environ["PATH"]},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stdout == "1\n"
+
+
 def test_windows_subprocess_environment_forces_utf8_after_overrides() -> None:
     """Windows 调用方不能通过自定义环境重新引入本地默认编码。"""
     environment = build_agent_subprocess_env(
@@ -172,6 +196,63 @@ def test_windows_subprocess_environment_forces_utf8_after_overrides() -> None:
     assert "PYTHONLEGACYWINDOWSSTDIO" not in environment
 
 
+def test_project_python_environment_precedes_inherited_path(tmp_path: Path) -> None:
+    """项目 venv 存在时应优先于宿主 PATH，并声明专用 Python 入口。"""
+    bin_path = tmp_path / "venv" / ("Scripts" if os.name == "nt" else "bin")
+    bin_path.mkdir(parents=True)
+    python_path = bin_path / ("python.exe" if os.name == "nt" else "python")
+    runtime_path = bin_path / ("moviepilot-python.exe" if os.name == "nt" else "moviepilot-python")
+    python_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    runtime_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    python_path.chmod(0o755)
+    runtime_path.chmod(0o755)
+
+    environment = bind_agent_project_environment(
+        {"PATH": "/system/bin", "VIRTUAL_ENV": "/old/venv"},
+        project_root=tmp_path,
+    )
+
+    assert environment["PATH"].split(os.pathsep)[0] == str(bin_path)
+    assert environment["VIRTUAL_ENV"] == str(tmp_path / "venv")
+    assert environment["MOVIEPILOT_PYTHON"] == str(runtime_path)
+
+
+def test_project_python_environment_falls_back_without_runtime_launcher(tmp_path: Path) -> None:
+    """项目专用入口缺失时应回退到标准 venv Python。"""
+    bin_path = tmp_path / "venv" / ("Scripts" if os.name == "nt" else "bin")
+    bin_path.mkdir(parents=True)
+    python_path = bin_path / ("python.exe" if os.name == "nt" else "python")
+    python_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    python_path.chmod(0o755)
+
+    environment = bind_agent_project_environment({"PATH": "/system/bin"}, project_root=tmp_path)
+
+    assert environment["MOVIEPILOT_PYTHON"] == str(python_path)
+
+
+def test_configured_python_environment_supports_docker_venv(tmp_path: Path) -> None:
+    """Docker 的 VENV_PATH 存在时应使用其中的标准 Python 入口。"""
+    bin_path = tmp_path / "bin"
+    bin_path.mkdir(parents=True)
+    python_path = bin_path / "python3"
+    python_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    python_path.chmod(0o755)
+
+    environment = bind_agent_project_environment(
+        {"PATH": "/usr/bin", "VENV_PATH": str(tmp_path)},
+        project_root=tmp_path / "app",
+    )
+
+    assert environment["VIRTUAL_ENV"] == str(tmp_path)
+    assert environment["MOVIEPILOT_PYTHON"] == str(python_path)
+
+
+def test_project_python_environment_keeps_environment_when_venv_missing(tmp_path: Path) -> None:
+    """项目尚未完成安装时不应伪造 PATH 或 VIRTUAL_ENV。"""
+    original = {"PATH": "/system/bin"}
+    assert bind_agent_project_environment(original, project_root=tmp_path) == original
+
+
 def test_prompt_injects_selected_windows_shell_without_executable_path() -> None:
     """模型提示词应知道实际 Windows shell，但不能暴露安装绝对路径。"""
     shell = AgentShell(
@@ -184,6 +265,15 @@ def test_prompt_injects_selected_windows_shell_without_executable_path() -> None
 
     assert "PowerShell 7" in moviepilot_info
     assert "C:/secret/location/pwsh.exe" not in moviepilot_info
+
+
+def test_prompt_prioritizes_project_runtime_python() -> None:
+    """运行提示应指示裸 Python 自动使用专用入口。"""
+    moviepilot_info = PromptManager()._get_moviepilot_info()
+
+    assert "裸 `python`/`python3`" in moviepilot_info
+    assert "moviepilot-python" in moviepilot_info
+    assert "下载器、SMB、媒体服务器" in moviepilot_info
 
 
 @pytest.mark.anyio
@@ -226,6 +316,37 @@ async def test_execute_command_uses_selected_windows_shell_and_utf8_environment(
     )
     assert create_exec.await_args.kwargs["env"] == {"PYTHONUTF8": "1"}
     create_shell.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_execute_command_binds_project_python_environment(tmp_path: Path, monkeypatch) -> None:
+    """一次性命令应把项目 venv 环境传给实际 shell。"""
+    bin_path = tmp_path / "venv" / ("Scripts" if os.name == "nt" else "bin")
+    bin_path.mkdir(parents=True)
+    python_path = bin_path / ("python.exe" if os.name == "nt" else "python")
+    runtime_path = bin_path / ("moviepilot-python.exe" if os.name == "nt" else "moviepilot-python")
+    python_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    runtime_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    python_path.chmod(0o755)
+    runtime_path.chmod(0o755)
+    monkeypatch.setattr(
+        "app.agent.tools.impl.execute_command.get_runtime_setting",
+        lambda key: tmp_path if key == "ROOT_PATH" else None,
+    )
+    shell = AgentShell(kind="sh", executable="/bin/sh", arguments=("-c",))
+    create_exec = AsyncMock(return_value=_fake_process())
+    tool = ExecuteCommandTool(session_id="session", user_id="user")
+
+    with (
+        patch("app.agent.tools.impl.execute_command.resolve_agent_shell", return_value=shell),
+        patch("app.agent.tools.impl.execute_command.asyncio.create_subprocess_exec", create_exec),
+    ):
+        await tool.run(action="run", command="python -c 'print(1)'", timeout=1)
+
+    environment = create_exec.await_args.kwargs["env"]
+    assert environment["PATH"].split(os.pathsep)[0] == str(bin_path)
+    assert environment["VIRTUAL_ENV"] == str(tmp_path / "venv")
+    assert environment["MOVIEPILOT_PYTHON"] == str(runtime_path)
 
 
 @pytest.mark.anyio

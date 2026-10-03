@@ -43,6 +43,7 @@ class TransactionalMediaServerRepository:
     def get_item_id(
         self,
         *,
+        server: Optional[str] = None,
         title: Optional[str] = None,
         year: Optional[Union[str, int]] = None,
         mtype: Optional[str] = None,
@@ -53,6 +54,7 @@ class TransactionalMediaServerRepository:
         """在短会话中返回匹配条目的服务器 item_id。"""
         item_id: Optional[str] = self._read(
             lambda repository: repository.get_item_id(
+                server=server,
                 title=title,
                 year=year,
                 mtype=mtype,

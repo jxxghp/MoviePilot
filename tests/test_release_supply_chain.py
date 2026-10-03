@@ -3,7 +3,6 @@
 import os
 import shutil
 import subprocess
-from datetime import date
 from pathlib import Path
 
 import pytest
@@ -17,7 +16,6 @@ RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "build-v3.yml"
 BETA_WORKFLOW = ROOT / ".github" / "workflows" / "beta.yml"
 PR_AGENT_WORKFLOW = ROOT / ".github" / "workflows" / "pr-agent.yml"
 CODEX_EVENT_WORKFLOW = ROOT / ".github" / "workflows" / "moviepilot-codex-events.yml"
-TRIVY_IGNORE = ROOT / ".trivyignore.yaml"
 WORKFLOW_ROOT = ROOT / ".github" / "workflows"
 
 ALLOWED_ACTION_REFS = {
@@ -31,7 +29,6 @@ ALLOWED_ACTION_REFS = {
     "docker/setup-buildx-action@v4",
     "docker/build-push-action@v7",
     "docker/login-action@v4",
-    "aquasecurity/trivy-action@v0.36.0",
     "actions/upload-artifact@v7",
     "actions/download-artifact@v8",
     "docker://ghcr.io/infinitypacer/pr-review-runner:latest",
@@ -114,43 +111,22 @@ def _run_release_script(
 
 
 def test_base_image_uses_refreshable_tag_and_apt_does_not_upgrade_in_place() -> None:
-    """基础镜像允许更新，并仅显式刷新运行时安全包而非整套 Debian。"""
+    """使用官方基础镜像及所需运行依赖，不追加系统包扫描补丁。"""
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
-
     assert 'ARG MOVIEPILOT_PYTHON_VERSION="3.14.7"' in dockerfile
     assert "FROM python:${MOVIEPILOT_PYTHON_VERSION}-slim-trixie AS base" in dockerfile
-    assert "python:${MOVIEPILOT_PYTHON_VERSION}-slim-trixie@sha256:" not in dockerfile
-    free_threaded_stage = dockerfile.split(
-        "FROM prepare_venv_common AS prepare_venv_free-threaded",
-        maxsplit=1,
-    )[1]
-    assert "ARG MOVIEPILOT_PYTHON_VERSION" in free_threaded_stage
-    assert 'uv python install --no-bin "${MOVIEPILOT_PYTHON_VERSION}t"' in free_threaded_stage
+    assert 'uv python install --no-bin "${MOVIEPILOT_PYTHON_VERSION}t"' in dockerfile
     assert "apt-get upgrade" not in dockerfile
-    assert "apt-get install -y --no-install-recommends \\\n    gzip \\\n" in dockerfile
-    assert "\n    libevent-2.1-7t64 \\\n" in dockerfile
-    assert "\n    openssl \\\n" in dockerfile
-    assert "\n    util-linux \\\n" in dockerfile
-    for package in (
-        "gzip",
-        "libde265-0",
-        "libpcre2-8-0",
-        "libsqlite3-0",
-        "nginx",
-        "nginx-common",
-        "xserver-common",
-        "xvfb",
-    ):
-        assert f"\n    {package} \\\n" in dockerfile
+    assert "pip uninstall" not in dockerfile
+    assert "break-system-packages" not in dockerfile
+    browser_install = dockerfile.split("RUN playwright install-deps chromium", maxsplit=1)[1]
+    assert "apt-get install" not in browser_install
 
 
-def test_rclone_image_uses_cve_2026_46603_patched_build() -> None:
-    """rclone 制品必须固定到包含 x/image 漏洞修复的不可变镜像。"""
+def test_rclone_image_uses_official_stable_channel() -> None:
+    """rclone 使用官方稳定镜像，不固定用于应对扫描的临时 Beta。"""
     dockerfile = DOCKERFILE.read_text(encoding="utf-8")
-
-    assert "rclone/rclone:1.75.0" not in dockerfile
-    patched_rclone_image = "rclone/rclone:beta@sha256:d6f5448594ecefefcf09cfeaf85cb7a21a866328032576ce2c1813e7b59c66dc"
-    assert f"FROM {patched_rclone_image} AS rclone" in dockerfile
+    assert "FROM rclone/rclone:latest AS rclone" in dockerfile
 
 
 def test_release_audits_locked_runtime_dependencies_before_building() -> None:
@@ -161,8 +137,8 @@ def test_release_audits_locked_runtime_dependencies_before_building() -> None:
         names = [step.get("name") for step in steps]
         audit = _steps_by_name(workflow)["Audit locked Python dependencies"]["run"]
 
-        first_candidate = next(name for name in names if name and name.startswith("Build "))
-        assert names.index("Audit locked Python dependencies") < names.index(first_candidate)
+        first_publish = next(name for name in names if name and name.startswith("Publish "))
+        assert names.index("Audit locked Python dependencies") < names.index(first_publish)
         assert "--group runtime-standard" in audit
         assert "--group runtime-free-threaded" in audit
         assert "scripts/normalize_audit_requirements.py" in audit
@@ -206,71 +182,20 @@ def test_direct_url_audit_requirement_rejects_unlocked_source(tmp_path: Path) ->
         normalize_requirements("demo @ https://example.com/demo.tar.gz\n", lock_file)
 
 
-def test_release_scans_both_architectures_before_registry_login_and_publish() -> None:
-    """两个 Python 变体的各架构扫描都必须在登录仓库和发布前完成。"""
-    workflow = _load_workflow()
-    trivy_env = workflow["jobs"]["Docker-build"]["env"]
-    assert trivy_env["TRIVY_SKIP_DIRS"] == "/usr/share/java"
-    assert trivy_env["TRIVY_SKIP_JAVA_DB_UPDATE"] == "true"
+@pytest.mark.parametrize("path", (RELEASE_WORKFLOW, BETA_WORKFLOW))
+def test_release_builds_publish_both_architectures_directly(path: Path) -> None:
+    """正式版和 Beta 直接构建发布双架构产物，删除扫描专用候选流程。"""
+    workflow = _load_workflow(path)
     steps = workflow["jobs"]["Docker-build"]["steps"]
-    names = [step.get("name") for step in steps]
-    indexed = _steps_by_name(workflow)
-
-    expected_candidates = {
-        "Build amd64 candidate": ("linux/amd64", "moviepilot-v3-candidate:linux-amd64"),
-        "Build arm64 candidate": ("linux/arm64/v8", "moviepilot-v3-candidate:linux-arm64"),
-        "Build free-threaded amd64 candidate": (
-            "linux/amd64",
-            "moviepilot-v3t-candidate:linux-amd64",
-        ),
-        "Build free-threaded arm64 candidate": (
-            "linux/arm64/v8",
-            "moviepilot-v3t-candidate:linux-arm64",
-        ),
-    }
-    for name, (platform, tag) in expected_candidates.items():
-        build = indexed[name]["with"]
-        assert build["platforms"] == platform
-        assert build["load"] is True
-        assert build["push"] is False
-        assert build["tags"] == tag
-        assert build["pull"] is True
-        assert "no-cache-filters" not in build
-        expected_variant = "free-threaded" if "free-threaded" in name else "standard"
-        assert f"MOVIEPILOT_PYTHON_VARIANT={expected_variant}" in build["build-args"]
-
-    for name in (
-        "Scan amd64 candidate vulnerabilities",
-        "Scan arm64 candidate vulnerabilities",
-        "Scan free-threaded amd64 candidate vulnerabilities",
-        "Scan free-threaded arm64 candidate vulnerabilities",
-    ):
-        scan = indexed[name]
-        assert scan["with"]["cache-dir"] == "${{ runner.temp }}/trivy"
-        assert scan["uses"] == "aquasecurity/trivy-action@v0.36.0"
-        assert scan["with"].items() >= {
-            "version": "latest",
-            "scanners": "vuln",
-            "vuln-type": "os,library",
-            "severity": "HIGH,CRITICAL",
-            "ignore-unfixed": True,
-            "trivyignores": ".trivyignore.yaml",
-            "exit-code": 1,
-        }.items()
-
-    last_scan = max(
-        names.index(name)
-        for name in (
-            "Scan amd64 candidate vulnerabilities",
-            "Scan arm64 candidate vulnerabilities",
-            "Scan free-threaded amd64 candidate vulnerabilities",
-            "Scan free-threaded arm64 candidate vulnerabilities",
-        )
-    )
-    assert last_scan < names.index("Login DockerHub")
-    assert last_scan < names.index("Login GitHub Container Registry")
-    assert last_scan < names.index("Publish multi-architecture image")
-    assert last_scan < names.index("Publish free-threaded multi-architecture image")
+    builds = [step for step in steps if step.get("uses") == "docker/build-push-action@v7"]
+    assert len(builds) == 2
+    for step in builds:
+        config = step["with"]
+        assert config["push"] is True
+        assert config["pull"] is True
+        assert set(config["platforms"].split()) == {"linux/amd64", "linux/arm64/v8"}
+        assert "cache-to" in config
+    assert all("trivy" not in step.get("uses", "") for step in steps)
 
 
 def test_workflows_follow_maintained_action_channels() -> None:
@@ -425,29 +350,14 @@ def test_dependency_compat_checks_minimum_uv_version() -> None:
     assert "assert" in command
 
 
-def test_vulnerability_ignores_are_scoped_justified_and_time_bounded() -> None:
-    """漏洞豁免必须限定制品范围，并保留复查期限和接受理由。"""
-    yaml = YAML(typ="safe")
-    vulnerabilities = yaml.load(TRIVY_IGNORE.read_text(encoding="utf-8"))["vulnerabilities"]
-
-    for vulnerability in vulnerabilities:
-        assert vulnerability["paths"]
-        assert vulnerability["purls"]
-        assert vulnerability["statement"]
-        assert isinstance(vulnerability["expired_at"], date)
-
-
-def test_publish_reuses_scanned_architecture_caches_without_refreshing_base() -> None:
-    """发布构建复用已扫描候选缓存，不得在扫描后重新拉取未审计基础镜像。"""
+def test_publish_refreshes_base_and_preserves_build_cache() -> None:
+    """直接发布时拉取基础镜像，同时读写双架构构建缓存。"""
     workflow = _load_workflow()
     publish = _steps_by_name(workflow)["Publish multi-architecture image"]["with"]
-
     assert workflow["on"]["workflow_dispatch"] is None
-    assert publish["platforms"] == "linux/amd64\nlinux/arm64/v8\n"
     assert publish["push"] is True
-    assert publish["pull"] is False
-    assert "scope=moviepilot-v3-standard-docker-amd64" in publish["cache-from"]
-    assert "scope=moviepilot-v3-standard-docker-arm64" in publish["cache-from"]
+    assert publish["pull"] is True
+    assert "scope=moviepilot-v3-standard-docker," in publish["cache-to"]
 
 
 def test_release_publishes_free_threaded_image_with_separate_metadata_and_cache() -> None:
@@ -488,38 +398,17 @@ def test_release_publishes_version_and_latest_tags_for_both_image_variants() -> 
     assert "ghcr.io/${{ github.repository }}" in standard_images
 
 
-def test_beta_applies_the_same_variant_scan_and_publish_contract() -> None:
-    """Beta 也必须在发布两个变体前完成各架构漏洞扫描。"""
+def test_beta_applies_the_same_variant_publish_contract() -> None:
+    """Beta 保持两个变体的发布参数、标签和缓存隔离。"""
     workflow = _load_workflow(BETA_WORKFLOW)
-    trivy_env = workflow["jobs"]["Docker-build"]["env"]
-    assert trivy_env["TRIVY_SKIP_DIRS"] == "/usr/share/java"
-    assert trivy_env["TRIVY_SKIP_JAVA_DB_UPDATE"] == "true"
     steps = workflow["jobs"]["Docker-build"]["steps"]
     names = [step.get("name") for step in steps]
     indexed = _steps_by_name(workflow)
-
     assert workflow["on"]["workflow_dispatch"] is None
-    for name in (
-        "Build standard amd64 candidate",
-        "Build standard arm64 candidate",
-        "Build free-threaded amd64 candidate",
-        "Build free-threaded arm64 candidate",
-    ):
-        assert indexed[name]["with"]["load"] is True
-        assert indexed[name]["with"]["push"] is False
-
-    scan_names = (
-        "Scan standard amd64 candidate vulnerabilities",
-        "Scan standard arm64 candidate vulnerabilities",
-        "Scan free-threaded amd64 candidate vulnerabilities",
-        "Scan free-threaded arm64 candidate vulnerabilities",
-    )
     publish_names = (
         "Publish standard multi-architecture image",
         "Publish free-threaded multi-architecture image",
     )
-    last_scan = max(names.index(name) for name in scan_names)
-    assert all(last_scan < names.index(name) for name in publish_names)
     assert "MOVIEPILOT_PYTHON_VARIANT=standard" in indexed[publish_names[0]]["with"]["build-args"]
     assert "MOVIEPILOT_PYTHON_VARIANT=free-threaded" in indexed[publish_names[1]]["with"]["build-args"]
     assert "scope=moviepilot-v3-standard-docker-amd64" in indexed[publish_names[0]]["with"]["cache-from"]

@@ -78,6 +78,7 @@ class MediaServerRepository(Protocol):
     def get_item_id(
         self,
         *,
+        server: Optional[str] = None,
         title: Optional[str] = None,
         year: Optional[Union[str, int]] = None,
         mtype: Optional[str] = None,
@@ -107,6 +108,7 @@ class AsyncMediaServerQueryRepository(Protocol):
     async def async_get_item_id(
         self,
         *,
+        server: Optional[str] = None,
         title: Optional[str] = None,
         year: Optional[Union[str, int]] = None,
         mtype: Optional[str] = None,
@@ -128,6 +130,7 @@ class MediaServerQueryService:
     async def find_item_id(
             self,
             *,
+            server: Optional[str] = None,
             title: Optional[str] = None,
             year: Optional[Union[str, int]] = None,
             mtype: Optional[str] = None,
@@ -136,7 +139,17 @@ class MediaServerQueryService:
             season: Optional[int] = None,
     ) -> Optional[str]:
         """返回匹配条目的服务器 item_id，未命中时返回 None。"""
+        if server is None:
+            return await self._repository.async_get_item_id(
+                title=title,
+                year=year,
+                mtype=mtype,
+                media_source=media_source,
+                media_id=media_id,
+                season=season,
+            )
         return await self._repository.async_get_item_id(
+            server=server,
             title=title,
             year=year,
             mtype=mtype,

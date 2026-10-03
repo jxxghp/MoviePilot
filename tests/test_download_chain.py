@@ -317,6 +317,21 @@ def test_download_site_subtitles_uses_downloader_content_path_without_creating_s
     )
 
 
+@pytest.mark.parametrize("download_hash", [None, "not-yet-visible"])
+@pytest.mark.parametrize("storage, prefix", [("smb", "smb:"), ("local", "")])
+def test_subtitle_fallback_separates_storage_identity_from_path(download_hash, storage, prefix):
+    """下载器尚未返回内容目录时，字幕存储查询也只能接收去掉协议前缀的路径。"""
+    list_torrents = MagicMock(return_value=[])
+
+    result = download_subtitle._resolve_site_subtitle_target_dir(
+        download_dir=Path(f"{prefix}/downloads/TV"),
+        folder_name="Demo.Show", download_hash=download_hash,
+        downloader="qb", list_torrents=list_torrents,
+    )
+
+    assert result == (storage, Path("/downloads/TV/Demo.Show"))
+
+
 def test_download_site_subtitles_does_not_create_missing_save_folder(monkeypatch):
     """找不到实际内容目录时应放弃字幕写入，不能制造迁移冲突目录。"""
     class _FakeTorrentHelper:

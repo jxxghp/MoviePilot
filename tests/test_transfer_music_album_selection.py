@@ -114,15 +114,21 @@ def _shared_recording() -> MusicInfo:
 
 
 def _patch_local_music_reads(monkeypatch, local_metas: dict[Path, MetaMusic]) -> None:
-    """把批次规划中的本地标签读取固定为测试证据。"""
+    """为在线匹配用例提供缺曲名的部分标签，完整曲名由路径解析测试桩补齐。"""
+    def partial_tags(path):
+        """保留专辑分组证据，让本组用例仍实际执行远端候选对齐分支。"""
+        meta = deepcopy(local_metas[Path(path)])
+        meta.title = None
+        return meta
+
     monkeypatch.setattr(
-        "app.chain.transfer.filter.AudioMetadataHelper.read_tags",
-        lambda path: deepcopy(local_metas[Path(path)]),
+        "app.chain.transfer.music.AudioMetadataHelper.read_tags",
+        partial_tags,
     )
     monkeypatch.setattr(
         MediaChain,
         "read_path_meta",
-        staticmethod(lambda path: deepcopy(local_metas[Path(path)])),
+        staticmethod(lambda path, **_kwargs: deepcopy(local_metas[Path(path)])),
     )
 
 
@@ -146,7 +152,7 @@ def test_selected_album_tracks_override_source_tag_names(tmp_path, monkeypatch):
     monkeypatch.setattr(
         MediaChain,
         "read_path_meta",
-        staticmethod(lambda path: deepcopy(local_metas[path])),
+        staticmethod(lambda path, **_kwargs: deepcopy(local_metas[path])),
     )
     planned = []
     monkeypatch.setattr(
@@ -201,7 +207,7 @@ def test_selected_music_fileitems_keep_album_batch_context(tmp_path, monkeypatch
     monkeypatch.setattr(
         MediaChain,
         "read_path_meta",
-        staticmethod(lambda path: deepcopy(local_metas[path])),
+        staticmethod(lambda path, **_kwargs: deepcopy(local_metas[path])),
     )
     planned = []
     monkeypatch.setattr(
@@ -256,7 +262,7 @@ def test_automatic_music_fileitems_receive_album_identity_and_category(tmp_path,
     monkeypatch.setattr(
         MediaChain,
         "read_path_meta",
-        staticmethod(lambda path: deepcopy(local_metas[path])),
+        staticmethod(lambda path, **_kwargs: deepcopy(local_metas[path])),
     )
     monkeypatch.setattr(
         MediaChain,
@@ -313,7 +319,7 @@ def test_manual_single_track_directory_uses_local_single_and_directory_year(
     monkeypatch.setattr(
         MediaChain,
         "read_path_meta",
-        staticmethod(lambda _path: deepcopy(local_meta)),
+        staticmethod(lambda _path, **_kwargs: deepcopy(local_meta)),
     )
     monkeypatch.setattr(
         MediaChain,
@@ -696,5 +702,5 @@ def test_selected_album_rejects_duplicate_local_editions(tmp_path, monkeypatch):
     )
 
     assert state is False
-    assert "只能对齐 2 / 4" in message
+    assert "只能对齐 0 / 4" in message
     assert "重复版本" in message

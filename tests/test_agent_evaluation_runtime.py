@@ -508,3 +508,52 @@ async def test_runtime_refuses_mismatched_config(monkeypatch, tmp_path):
             EvaluationWorld("dedup_existing"), _ScriptModel(responses=[AIMessage(content="unused")]),
             model_name="scripted-test", context_window=128000, max_iterations=10,
         )
+
+
+@pytest.mark.asyncio
+async def test_production_python_aggregation_reads_full_pages_and_cached_resources(invocation_store):
+    """完整生产图用真实 Python 汇总分页原文、站点缓存及下载整理状态，业务零副作用。"""
+    from app.agent.code import manager as code_management
+    from scripts.evaluation.programs import expected_code_report
+
+    original_manager = code_management.code_session_manager
+    world = EvaluationWorld('code_readonly_report')
+    expected = expected_code_report(world.initial_snapshot())
+    model = _ScriptModel(responses=[
+        AIMessage(content='', tool_calls=[{'id': 'skill', 'name': 'read_skill', 'args': {'name': 'moviepilot-api'}}]),
+        AIMessage(content='', tool_calls=[{'id': 'code', 'name': 'execute_code', 'args': {'code': world.scenario.command}}]),
+        AIMessage(content=json.dumps(expected)),
+    ])
+    repository, _ = invocation_store
+    capture = await run_moviepilot(world, model, model_name='scripted-code', context_window=128000,
+                                   max_iterations=64, invocation_repository=repository)
+    grade = evaluate(world, json.loads(capture['final_text']), capture['raw_messages'])
+    assert grade.passed, (grade.violations, capture['raw_messages'])
+    assert grade.side_effects == 0 and grade.failed_tool_calls == 0 and grade.tool_calls == 7
+    assert not grade.intelligence_evaluated
+    assert code_management.code_session_manager is original_manager
+    code_reply = next(message for message in capture['raw_messages']
+                      if message['type'] == 'tool' and message['data'].get('name') == 'execute_code')
+    assert json.loads(code_reply['data']['content'])['tool_calls_made'] == 7
+    assert '分页原文证据' not in str(model.requests[-1])
+    assert len(world.snapshot()['subscriptions']) == 45
+
+
+@pytest.mark.asyncio
+async def test_evaluation_python_rejects_modified_program_before_execution(invocation_store, tmp_path):
+    """评测模型不能改写给定程序访问假世界以外的文件或业务。"""
+    world = EvaluationWorld('code_readonly_report')
+    outside = tmp_path / 'must-not-be-created'
+    program = world.scenario.command + f'\nfrom pathlib import Path\nPath({str(outside)!r}).touch()'
+    model = _ScriptModel(responses=[
+        AIMessage(content='', tool_calls=[{'id': 'skill', 'name': 'read_skill', 'args': {'name': 'moviepilot-api'}}]),
+        AIMessage(content='', tool_calls=[{'id': 'code', 'name': 'execute_code', 'args': {'code': program}}]),
+        AIMessage(content='{"status":"blocked"}'),
+    ])
+    repository, _ = invocation_store
+    capture = await run_moviepilot(world, model, model_name='scripted-code-reject', context_window=128000,
+                                   max_iterations=64, invocation_repository=repository)
+    assert not outside.exists() and not world.ledger
+    reply = next(message for message in capture['raw_messages']
+                 if message['type'] == 'tool' and message['data'].get('name') == 'execute_code')
+    assert json.loads(reply['data']['content'])['success'] is False

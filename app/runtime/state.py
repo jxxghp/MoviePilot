@@ -148,10 +148,15 @@ class SystemHelper(ConfigReloadMixin):
     @staticmethod
     def _spawn_local_restart_helper() -> None:
         """启动脱离当前进程的本地 CLI 重启助手。"""
+        apply_update = (
+            SystemHelper.__prepared_update_manifest.is_file()
+            or SystemHelper.__one_shot_dev_update_flag_file.is_file()
+        )
         helper_code = (
             "import os, subprocess, sys, time;"
             "time.sleep(1.0);"
             "cmd=[sys.executable, '-m', 'app.cli', 'restart', '--force', '--stop-timeout', '30', '--start-timeout', '60'];"
+            f"cmd.extend({['--apply-update'] if apply_update else []!r});"
             "subprocess.run(cmd, cwd=os.environ.get('MOVIEPILOT_ROOT'), env=os.environ.copy(), check=False)"
         )
         env = os.environ.copy()

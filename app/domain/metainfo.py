@@ -411,10 +411,12 @@ def _rust_custom_parse_options(custom_words: Tuple[str, ...]) -> dict:
 def _rust_parse_options(custom_words: List[str] = None) -> dict:
     """
     收集 Rust Meta 解析所需的运行时配置，避免 Rust 层直接访问数据库和 settings。
+
+    与 Python 识别词匹配器保持一致：None 或空列表沿用全局规则，非空列表覆盖全局规则。
     """
-    if custom_words is None:
+    if not custom_words:
         return _rust_default_parse_options()
-    return _rust_custom_parse_options(tuple(custom_words or []))
+    return _rust_custom_parse_options(tuple(custom_words))
 
 
 def clear_rust_parse_options_cache() -> None:

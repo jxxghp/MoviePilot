@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import importlib
 import json
+import os
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -13,7 +14,23 @@ from pathlib import Path
 from typing import Any, Optional
 
 SCRIPT_PATH = Path(__file__).resolve()
-PROJECT_ROOT = SCRIPT_PATH.parents[3]
+
+
+def _find_project_root() -> Optional[Path]:
+    """从运行环境或目录标记定位 MoviePilot 程序目录。"""
+    candidates = []
+    configured_root = os.environ.get("MOVIEPILOT_ROOT", "").strip()
+    if configured_root:
+        candidates.append(Path(configured_root).expanduser())
+    for base in (Path.cwd().resolve(), SCRIPT_PATH.parent):
+        candidates.extend((base, *base.parents))
+    for candidate in candidates:
+        if (candidate / "app" / "runtime" / "config.py").is_file():
+            return candidate
+    return None
+
+
+PROJECT_ROOT = _find_project_root()
 DEFAULT_LIMIT = 50
 MAX_LIMIT = 200
 ALL_PROVIDERS = ("qbittorrent", "transmission", "rtorrent")
@@ -303,6 +320,11 @@ ACTIONS: dict[str, ActionSpec] = {
 
 def _ensure_project_import() -> None:
     """确保脚本从任意工作目录都可导入 MoviePilot。"""
+    if PROJECT_ROOT is None:
+        raise RuntimeError(
+            "无法定位 MoviePilot 程序目录；请在程序目录执行，或设置 MOVIEPILOT_ROOT="
+            "<程序目录> 后重试。"
+        )
     project_path = str(PROJECT_ROOT)
     if project_path not in sys.path:
         sys.path.insert(0, project_path)
@@ -857,7 +879,11 @@ def main() -> int:
         payload = {
             "success": False,
             "error_type": type(error).__name__,
-            "message": str(error) if isinstance(error, (ValueError, OperationError)) else "下载器调用失败",
+            "message": (
+                str(error)
+                if isinstance(error, (ValueError, OperationError, ImportError, SyntaxError, RuntimeError))
+                else "下载器调用失败"
+            ),
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 1

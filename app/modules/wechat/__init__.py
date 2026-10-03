@@ -37,6 +37,8 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
 
     # 管理员配置键，与渠道 resolver 保持一致
     _admin_config_key = "WECHAT_ADMINS"
+    _notification_user_target_keys = ("wechat_userid",)
+    _notification_admin_default_config_keys = ("WECHAT_BOT_CHAT_ID",)
     # 命令注册事件源标识固定为 WeChat（get_name 为“企业微信”）
     _command_origin = "WeChat"
 
@@ -325,13 +327,7 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            targets = message.targets
-            userid = message.userid
-            if not userid and targets is not None:
-                userid = targets.get('wechat_userid')
-                if not userid:
-                    logger.warn(f"用户没有指定 微信用户ID，消息无法发送")
-                    return
+            userid = self.get_notification_userid(message, "wechat_userid")
             client: WeChat = self.get_instance(conf.name)
             if client:
                 if message.voice_path and hasattr(client, "send_voice"):
@@ -397,10 +393,11 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
                 continue
             client: WeChat = self.get_instance(conf.name)
             if client:
+                userid = self.get_notification_userid(message, "wechat_userid")
                 # 先发送标题
-                client.send_msg(title=message.title, userid=message.userid, link=message.link)
+                client.send_msg(title=message.title, userid=userid, link=message.link)
                 # 再发送内容
-                client.send_medias_msg(medias=medias, userid=message.userid)
+                client.send_medias_msg(medias=medias, userid=userid)
 
     def post_torrents_message(self, message: Message, torrents: List[Context]) -> None:
         """
@@ -414,8 +411,9 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
                 continue
             client: WeChat = self.get_instance(conf.name)
             if client:
+                userid = self.get_notification_userid(message, "wechat_userid")
                 client.send_torrents_msg(title=message.title, torrents=torrents,
-                                         userid=message.userid, link=message.link)
+                                         userid=userid, link=message.link)
 
     def _commands_enabled(self, config: Optional[dict]) -> bool:
         """

@@ -29,6 +29,8 @@ register_channel_admin_resolver(
 class SlackModule(_MessageChannelModuleBase[Slack]):
     # 管理员配置键，与渠道 resolver 保持一致
     _admin_config_key = "SLACK_ADMINS"
+    _notification_user_target_keys = ("slack_userid",)
+    _notification_admin_default_config_keys = ("SLACK_CHANNEL",)
     PROCESSING_REACTION = "eyes"
     _AUDIO_SUFFIXES = (
         ".mp3",
@@ -496,7 +498,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            targets = message.targets
+            targets = self.get_notification_targets(message)
             userid = message.userid
             if not userid and targets is not None:
                 userid = targets.get("slack_userid")
@@ -542,7 +544,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                 client.send_medias_msg(
                     title=message.title,
                     medias=medias,
-                    userid=message.userid,
+                    userid=self.get_notification_userid(message, "slack_userid"),
                     buttons=message.buttons,
                     original_message_id=message.original_message_id,
                     original_chat_id=message.original_chat_id,
@@ -565,7 +567,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                 client.send_torrents_msg(
                     title=message.title,
                     torrents=torrents,
-                    userid=message.userid,
+                    userid=self.get_notification_userid(message, "slack_userid"),
                     buttons=message.buttons,
                     original_message_id=message.original_message_id,
                     original_chat_id=message.original_chat_id,
@@ -720,7 +722,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            targets = message.targets
+            targets = self.get_notification_targets(message)
             userid = message.userid
             if not userid and targets is not None:
                 userid = targets.get("slack_userid")

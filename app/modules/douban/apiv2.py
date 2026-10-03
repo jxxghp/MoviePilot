@@ -5,15 +5,35 @@ import hmac
 import re
 from datetime import datetime
 from random import choice
-from typing import Any, Optional
+from typing import Any, Callable, Optional, ParamSpec, TypeVar, cast
 from urllib import parse
 
 from bs4 import BeautifulSoup
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
+from app.application.music.observation import music_request_timeout, report_music_recognition
 from app.foundation.singleton import WeakSingleton
 from app.runtime.cache import cached
 from app.runtime.settings import get_runtime_setting
+
+
+def _empty_music_response(payload: Any) -> bool:
+    """音乐空搜索只短期缓存，不能沿用电影详情的长缓存周期。"""
+    return not payload or (isinstance(payload, dict) and any(
+        key in payload and not payload[key] for key in ("items", "subjects")
+    ))
+
+
+_MusicParams = ParamSpec("_MusicParams")
+_MusicReturn = TypeVar("_MusicReturn")
+
+
+def _cached_music_request(function: Callable[_MusicParams, _MusicReturn]) -> Callable[_MusicParams, _MusicReturn]:
+    """在保持原函数签名的缓存边界上应用音乐专用命名空间与短负缓存。"""
+    return cast(Callable[_MusicParams, _MusicReturn], cached(
+        maxsize=get_runtime_setting('CONF').douban, ttl=get_runtime_setting('CONF').meta, skip_none=True,
+        shared_key="music_get_v2", empty_ttl=300, empty_if=_empty_music_response,
+    )(function))
 
 
 class DoubanApi(metaclass=WeakSingleton):
@@ -198,6 +218,53 @@ class DoubanApi(metaclass=WeakSingleton):
         """
         return await self.__async_invoke(url, **kwargs)
 
+    @staticmethod
+    def _music_response_payload(response: Any) -> Optional[dict[str, Any]]:
+        """将音乐服务故障与正常无条目分开，错误响应不能写成长时间负缓存。"""
+        if response is not None and response.status_code == 404:
+            return {}
+        if response is None or response.status_code != 200:
+            report_music_recognition("service_error", "豆瓣音乐服务暂时不可用")
+            return None
+        try:
+            payload = response.json()
+        except (TypeError, ValueError):
+            report_music_recognition("service_error", "豆瓣音乐返回了无效响应")
+            return None
+        if not isinstance(payload, dict) or payload.get("code") not in (None, 0, "0") or payload.get("error"):
+            report_music_recognition("service_error", "豆瓣音乐返回了错误响应")
+            return None
+        return payload
+
+    @_cached_music_request
+    def _music_get(self, url: str, **kwargs: Any) -> Optional[dict[str, Any]]:
+        """仅音乐查询消费当前识别预算；影视继续使用原有请求和缓存合同。"""
+        timeout = music_request_timeout(maximum=20)
+        if timeout is None:
+            return None
+        req_url, params = self._prepare_get_request(url, **kwargs)
+        response = self._request.get_res(url=req_url, params=params,
+                                         headers={"User-Agent": choice(self._user_agents)}, timeout=timeout)
+        try:
+            return self._music_response_payload(response)
+        finally:
+            if response is not None:
+                response.close()
+
+    @_cached_music_request
+    async def _async_music_get(self, url: str, **kwargs: Any) -> Optional[dict[str, Any]]:
+        """音乐异步请求使用相同预算及缓存命名空间，响应始终释放。"""
+        timeout = music_request_timeout(maximum=20)
+        if timeout is None:
+            return None
+        req_url, params = self._prepare_get_request(url, **kwargs)
+        response = await AsyncRequestUtils(ua=choice(self._user_agents), timeout=20).get_res(url=req_url, params=params, timeout=timeout)
+        try:
+            return self._music_response_payload(response)
+        finally:
+            if response is not None:
+                await response.aclose()
+
     def _prepare_get_request(self, url: str, **kwargs) -> tuple[str, dict]:
         """
         准备GET请求的URL和参数
@@ -378,9 +445,9 @@ class DoubanApi(metaclass=WeakSingleton):
                                                 start=start, count=count, _ts=ts)
 
     def music_search(self, keyword: str, start: Optional[int] = 0, count: Optional[int] = 20,
-                     ts=datetime.strftime(datetime.now(), '%Y%m%d')) -> dict:
+                     ts=datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """搜索豆瓣音乐条目。"""
-        return self.__invoke_search(
+        return self._music_get(
             self._urls["search_subject"],
             type="music",
             q=keyword,
@@ -391,9 +458,9 @@ class DoubanApi(metaclass=WeakSingleton):
 
     async def async_music_search(self, keyword: str, start: Optional[int] = 0,
                                  count: Optional[int] = 20,
-                                 ts=datetime.strftime(datetime.now(), '%Y%m%d')) -> dict:
+                                 ts=datetime.strftime(datetime.now(), '%Y%m%d')) -> Optional[dict[str, Any]]:
         """异步搜索豆瓣音乐条目。"""
-        return await self.__async_invoke_search(
+        return await self._async_music_get(
             self._urls["search_subject"],
             type="music",
             q=keyword,
@@ -622,13 +689,13 @@ class DoubanApi(metaclass=WeakSingleton):
         """
         return await self.__async_invoke_search(self._urls["book_detail"] + subject_id)
 
-    def music_detail(self, subject_id: str) -> dict:
+    def music_detail(self, subject_id: str) -> Optional[dict[str, Any]]:
         """获取豆瓣音乐详情。"""
-        return self.__invoke_search(self._urls["music_detail"] + subject_id)
+        return self._music_get(self._urls["music_detail"] + subject_id)
 
-    async def async_music_detail(self, subject_id: str) -> dict:
+    async def async_music_detail(self, subject_id: str) -> Optional[dict[str, Any]]:
         """异步获取豆瓣音乐详情。"""
-        return await self.__async_invoke_search(self._urls["music_detail"] + subject_id)
+        return await self._async_music_get(self._urls["music_detail"] + subject_id)
 
     def music_single(self, start: int = 0, count: int = 20) -> dict:
         """分页获取豆瓣音乐推荐合集。"""
@@ -1066,6 +1133,7 @@ class DoubanApi(metaclass=WeakSingleton):
         清空LRU缓存
         """
         self.__invoke.cache_clear()
+        getattr(self._music_get, "cache_clear")()
         self.__post.cache_clear()
 
     def close(self):

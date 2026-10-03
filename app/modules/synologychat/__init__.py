@@ -29,6 +29,7 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
 
     # 管理员配置键，与渠道 resolver 保持一致
     _admin_config_key = "SYNOLOGYCHAT_ADMINS"
+    _notification_user_target_keys = ("synologychat_userid",)
     _IMAGE_SUFFIXES = (
         ".png",
         ".jpg",
@@ -352,17 +353,14 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            targets = message.targets
-            userid = message.userid
-            if not userid and targets is not None:
-                userid = targets.get('synologychat_userid')
-                if not userid:
-                    logger.warn(f"用户没有指定 SynologyChat用户ID，消息无法发送")
-                    return
             client: SynologyChat = self.get_instance(conf.name)
             if client:
                 client.send_msg(title=message.title, text=message.text,
-                                image=message.image, userid=userid, link=message.link)
+                                image=message.image,
+                                userid=self.get_notification_userid(
+                                    message, "synologychat_userid"
+                                ),
+                                link=message.link)
 
     def post_medias_message(self, message: Message, medias: List[MediaInfo]) -> None:
         """
@@ -376,8 +374,13 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
                 continue
             client: SynologyChat = self.get_instance(conf.name)
             if client:
-                client.send_medias_msg(title=message.title, medias=medias,
-                                       userid=message.userid)
+                client.send_medias_msg(
+                    title=message.title,
+                    medias=medias,
+                    userid=self.get_notification_userid(
+                        message, "synologychat_userid"
+                    ),
+                )
 
     def post_torrents_message(self, message: Message, torrents: List[Context]) -> None:
         """
@@ -391,5 +394,11 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
                 continue
             client: SynologyChat = self.get_instance(conf.name)
             if client:
-                client.send_torrents_msg(title=message.title, torrents=torrents,
-                                         userid=message.userid, link=message.link)
+                client.send_torrents_msg(
+                    title=message.title,
+                    torrents=torrents,
+                    userid=self.get_notification_userid(
+                        message, "synologychat_userid"
+                    ),
+                    link=message.link,
+                )

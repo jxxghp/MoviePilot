@@ -284,6 +284,14 @@ class TransferPendingOper(DbOper):
             )
         )
 
+    def stage_defer_planning(self, *, task_id: str, lease_token: str, error: str,
+                            retry_due_at: str, now_time: str, updated_at: str, max_retries: int) -> int:
+        """在调用方事务内按租约和空操作证据约束暂存规划退避。"""
+        return self._execute_sync_write(lambda session: TransferPending.defer_planning(
+            session, task_id=task_id, lease_token=lease_token, error=error,
+            retry_due_at=retry_due_at, now_time=now_time, updated_at=updated_at, max_retries=max_retries,
+        ))
+
     def stage_release_claim(
             self,
             *,

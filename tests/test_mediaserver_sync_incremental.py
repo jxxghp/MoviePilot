@@ -73,6 +73,9 @@ def test_media_count_reuses_existing_server_statistics():
         ("音乐", "音乐"),
         ("MusicAlbum", "音乐"),
         ("Audio", "音乐"),
+        ("artist", "音乐"),
+        ("album", "音乐"),
+        ("track", "音乐"),
         ("Movie", "电影"),
     ],
 )

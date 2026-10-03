@@ -54,7 +54,6 @@ def test_removed_plugin_route_releases_endpoint_from_fastapi_caches() -> None:
         verify_token=lambda: None,
         verify_apikey=lambda: None,
         prefix="/api/v1/plugin",
-        protected_routes=set(),
         log=_SILENT_LOG,
     )
     registry.update("RouteCacheDemo", "add")

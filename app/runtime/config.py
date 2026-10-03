@@ -453,7 +453,7 @@ class ConfigModel(BaseModel):
             serialize=_serialize_bool,
         ),
     ] = False
-    # 独立控制启动时跟踪 v3 开发分支。
+    # Docker 启动时跟踪开发分支；本地 CLI 仅在手动 update 时默认使用 DEV 模式。
     MOVIEPILOT_UPDATE_DEV: Annotated[
         bool, SettingPolicy(serialize=_serialize_bool)
     ] = False
@@ -790,6 +790,8 @@ class ConfigModel(BaseModel):
     )
     # PassKey 是否强制用户验证（生物识别等）
     PASSKEY_REQUIRE_UV: bool = True
+    # 是否开放 API 文档；开放 /docs、/redoc 与 /api/v1/openapi.json，文档首次生成后常驻约 20–30MB 内存，修改后立即生效
+    API_DOCS_ENABLE: bool = False
 
     # ==================== 工作流配置 ====================
     # 工作流数据共享

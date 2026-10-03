@@ -43,7 +43,9 @@ from app.application.messaging.message import MessageHelper
 from app.application.network import get_configured_network_test_service
 from app.application.rules import RuleHelper
 from app.application.scheduling import get_scheduler
+from app.application.security.image import normalize_image_domain, site_image_domains
 from app.application.security.url import SecurityUtils
+from app.application.site.query import get_configured_site_query_service
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.system import LogFileData, LogNotFoundError
 from app.chain.media import MediaChain
@@ -107,20 +109,21 @@ _PUBLIC_SYSTEM_CONFIG_KEYS = {
 _PUBLIC_SETTINGS_KEYS = {"PLUGIN_MARKET"}
 
 
-def _get_image_proxy_allowed_domains() -> set[str]:
-    """返回图片代理允许的域名，并纳入已启用的 Bangumi 图片代理主机。"""
+async def _get_image_proxy_allowed_domains() -> set[str]:
+    """合并站点快照与当前图片代理配置，仍逐请求执行 DNS 安全校验。"""
     runtime_settings = get_runtime_settings()
     allowed_domains = set(runtime_settings.get("SECURITY_IMAGE_DOMAINS", []))
-    if not runtime_settings.get("BANGUMI_PROXY_ENABLE"):
-        return allowed_domains
-
-    image_proxy = str(runtime_settings.get("BANGUMI_IMAGE_DOMAIN") or "").strip()
-    if not image_proxy:
-        return allowed_domains
-    candidate = image_proxy if "://" in image_proxy else f"https://{image_proxy}"
-    parsed = urlsplit(candidate)
-    if parsed.scheme in {"http", "https"} and parsed.netloc:
-        allowed_domains.add(parsed.netloc)
+    allowed_domains.update(await site_image_domains.get(get_configured_site_query_service()))
+    image_keys = [
+        "TMDB_IMAGE_DOMAIN", "MUSIC_COVER_PROXY",
+        "WALLPAPER_IMAGE_URL", "CUSTOMIZE_WALLPAPER_API_URL",
+    ]
+    if runtime_settings.get("BANGUMI_PROXY_ENABLE"):
+        image_keys.append("BANGUMI_IMAGE_DOMAIN")
+    for key in image_keys:
+        domain = normalize_image_domain(runtime_settings.get(key))
+        if domain:
+            allowed_domains.add(domain)
     return allowed_domains
 
 
@@ -211,7 +214,7 @@ async def fetch_image(
         return None
 
     if allowed_domains is None:
-        allowed_domains = _get_image_proxy_allowed_domains()
+        allowed_domains = await _get_image_proxy_allowed_domains()
 
     fetch_url = SecurityUtils.strip_url_signature(url)
     # 验证URL安全性
@@ -283,7 +286,7 @@ async def proxy_img(
     """
     图片代理，可选是否使用代理服务器，支持 HTTP 缓存
     """
-    allowed_domains = _get_image_proxy_allowed_domains()
+    allowed_domains = await _get_image_proxy_allowed_domains()
     cookies = MediaServerChain().get_image_cookies(server=None, image_url=imgurl) if use_cookies else None
     return await fetch_image(
         url=imgurl,
@@ -676,8 +679,14 @@ async def get_message(
             while not runtime_stop_state.is_system_stopped:
                 if await request.is_disconnected():
                     break
-                detail = message.get(role)
-                yield f"data: {detail or ''}\n\n"
+                # 一次推送全部积压消息，避免页面重新打开后按 3 秒一条逐条补弹
+                details = message.drain(role)
+                if details:
+                    for detail in details:
+                        yield f"data: {detail}\n\n"
+                else:
+                    # 空消息作为心跳，维持连接并定期检测客户端是否断开
+                    yield "data: \n\n"
                 await asyncio.sleep(3)
         except asyncio.CancelledError:
             return

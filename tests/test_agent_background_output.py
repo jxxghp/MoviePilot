@@ -31,41 +31,55 @@ pytestmark = pytest.mark.anyio
 
 
 class _FakeGraphState:
+    """保存测试所需的消息快照，避免访问真实持久化。"""
     def __init__(self, messages):
+        """保存该测试图的预设消息或故障。"""
         self.values = {"messages": messages}
 
 
 class _FakeAgent:
+    """提供可控的非流式图结果，不调用真实模型。"""
     def __init__(self, messages):
+        """保存该测试图的预设消息或故障。"""
         self._messages = messages
 
     async def ainvoke(self, _payload, config=None):
+        """返回预设结果或抛出故障，不执行外部调用。"""
         return None
 
     def get_state(self, _config):
+        """提供宿主结束处理所需的可恢复快照。"""
         return _FakeGraphState(self._messages)
 
 
 class _FakeFailingAgent:
+    """在调用边界注入故障，验证宿主错误回执。"""
     def __init__(self, error):
+        """保存该测试图的预设消息或故障。"""
         self._error = error
 
     async def ainvoke(self, _payload, config=None):
+        """返回预设结果或抛出故障，不执行外部调用。"""
         raise self._error
 
     def get_state(self, _config):
+        """提供宿主结束处理所需的可恢复快照。"""
         return _FakeGraphState([])
 
 
 class _FakeStreamingFailingAgent(_FakeFailingAgent):
+    """在流式迭代边界注入同一故障。"""
     async def astream(self, _messages, **_kwargs):
+        """维持异步流接口，按测试预设结束或失败。"""
         if _kwargs.get("__keep_async_generator__"):
             yield None
         raise self._error
 
 
 class _FakeStreamingAgent(_FakeAgent):
+    """不产生额外 token，供测试读取最终图状态。"""
     async def astream(self, _messages, **_kwargs):
+        """维持异步流接口，按测试预设结束或失败。"""
         if _kwargs.get("__keep_async_generator__"):
             yield None
 
@@ -106,7 +120,8 @@ def _assert_internal_tool_registration(created, captured):
     selector = captured["selector"]
     policy = middlewares[0]
     assert policy.name == "AgentPolicyMiddleware"
-    assert middlewares[1] is output
+    assert middlewares[1].name == "CodeExecutionMiddleware"
+    assert middlewares[2] is output
     assert not any(isinstance(item, InvocationMiddleware) for item in middlewares)
     assert policy.catalog.resolve_unique(GET_TOOL_EXECUTION_NAME) is None
     assert captured["enable_discovery"] is True
@@ -115,7 +130,8 @@ def _assert_internal_tool_registration(created, captured):
         assert policy.catalog.resolve_unique(tool.name).tool is tool
         assert tool in selector.selection_tools
     assert middlewares.index(plan) < middlewares.index(selector)
-    assert middlewares.index(selector) == len(middlewares) - 4
+    assert middlewares.index(selector) == len(middlewares) - 5
+    assert middlewares[-4].name == "CodeCaptureMiddleware"
     assert middlewares[-3].name == "FinalRequestCompactionMiddleware"
     assert middlewares[-2].name == "VisionMiddleware"
     assert middlewares[-1] == "usage"
@@ -125,6 +141,7 @@ class TestAgentBackgroundOutput:
     """验证后台任务的回复策略、流式结束行为和工具装配。"""
 
     async def test_non_streaming_image_unsupported_error_sends_friendly_notice(self):
+        """非流式图片能力错误只向用户交付友好说明。"""
         agent = MoviePilotAgent(session_id="image-test", user_id="user-1")
         agent.channel = "Telegram"
         agent.source = "telegram-test"
@@ -159,6 +176,7 @@ class TestAgentBackgroundOutput:
         assert agent._streamed_output == UNSUPPORTED_IMAGE_INPUT_MESSAGE
 
     async def test_streaming_image_unsupported_error_sends_friendly_notice(self):
+        """流式图片能力错误沿用同一用户可见说明。"""
         agent = MoviePilotAgent(session_id="image-test", user_id="user-1")
         agent.channel = "Telegram"
         agent.source = "telegram-test"
@@ -291,6 +309,7 @@ class TestAgentBackgroundOutput:
         captured = {}
 
         async def _execute_agent(messages):
+            """记录模拟图实际收到的当前用户输入。"""
             captured["messages"] = messages
             return "消息已发送", {}
 
@@ -313,6 +332,7 @@ class TestAgentBackgroundOutput:
         assert len(captured["messages"]) == 2
 
     async def test_background_non_streaming_sends_when_reply_mode_dispatch(self):
+        """显式派发模式允许后台任务发送最终回复。"""
         agent = MoviePilotAgent(session_id="bg-test", user_id="system")
         agent.channel = None
         agent.source = None
@@ -366,6 +386,7 @@ class TestAgentBackgroundOutput:
         assert agent._streamed_output == "后台结果"
 
     async def test_heartbeat_check_jobs_captures_final_reply_and_keeps_message_tools(self):
+        """心跳捕获最终回复但保留任务实际需要的消息工具。"""
         manager = AgentManager()
 
         with (
@@ -389,6 +410,7 @@ class TestAgentBackgroundOutput:
         assert kwargs["allow_message_tools"] is True
 
     async def test_heartbeat_check_jobs_skips_when_no_active_jobs(self):
+        """没有启用任务时不调用模型执行心跳。"""
         manager = AgentManager()
 
         with (
@@ -456,13 +478,16 @@ class TestAgentBackgroundOutput:
 
         assert [getattr(item, "name", item) for item in created["middleware"]] == [
             "AgentPolicyMiddleware",
+            "CodeExecutionMiddleware",
             "ToolOutputMiddleware",
             "skills",
             "jobs",
             "runtime",
             "PlanMiddleware",
             "memory",
+            "ToolGuardrailsMiddleware",
             "patch",
+            "CodeCaptureMiddleware",
             "FinalRequestCompactionMiddleware",
             "VisionMiddleware",
             "usage",
@@ -564,13 +589,16 @@ class TestAgentBackgroundOutput:
 
         assert [getattr(item, "name", item) for item in created["middleware"]] == [
             "AgentPolicyMiddleware",
+            "CodeExecutionMiddleware",
             "ToolOutputMiddleware",
             "skills",
             "jobs",
             "runtime",
             "PlanMiddleware",
             "memory",
+            "ToolGuardrailsMiddleware",
             "patch",
+            "CodeCaptureMiddleware",
             "FinalRequestCompactionMiddleware",
             "VisionMiddleware",
             "usage",
@@ -759,23 +787,28 @@ class TestAgentBackgroundOutput:
 
         assert [getattr(item, "name", item) for item in created["middleware"]] == [
             "AgentPolicyMiddleware",
+            "CodeExecutionMiddleware",
             "ToolOutputMiddleware",
             "skills",
             "jobs",
             "runtime",
             "PlanMiddleware",
             "memory",
+            "ToolGuardrailsMiddleware",
             "patch",
+            "CodeCaptureMiddleware",
             "FinalRequestCompactionMiddleware",
             "VisionMiddleware",
             "usage",
         ]
 
     async def test_run_background_prompt_forces_disable_message_tools_when_capture_only(self):
+        """仅捕获的后台入口强制移除主动消息发送能力。"""
         captured = {}
         manager = AgentManager()
 
         async def fake_process(task):
+            """捕获后台参数而不触发真实 Agent 推理。"""
             captured["message"] = task.message
             captured["reply_mode"] = task.reply_mode
             captured["allow_message_tools"] = task.allow_message_tools
