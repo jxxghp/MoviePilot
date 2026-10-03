@@ -90,6 +90,11 @@ operation contracts live in the linked category files under `api/`; load only
 the one category file needed for the selected operation. Do not load every
 category file by default.
 
+When updating `LLM_TEMPERATURE` through `config.system.update`, use `null` to
+clear it and use the provider default (the model-specific SDK default for the
+native Google runtime). An explicit `0` is a
+real temperature value, not a request to clear the setting.
+
 Never provide a URL, method, authentication header, API key, or access token.
 Never fall back to a retired tool name or `moviepilot tool` MCP command. If an
 operation is not listed in this skill, do not simulate it through arbitrary HTTP;

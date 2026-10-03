@@ -293,6 +293,11 @@ moviepilot setup --config-dir /path/to/moviepilot-config
 - 媒体服务器
 - 消息通知渠道
 
+`LLM_TEMPERATURE` 为可选配置，默认留空。设置页留空或清空配置后，LLM 请求不发送
+`temperature`，使用模型服务默认值；Google 原生运行时使用 SDK 的模型默认温度。
+显式填写 `0`、`1` 等数值仍按填写值发送。
+清空后保存、重新进入设置页及重启均保留这一语义。
+
 如果希望在自动化安装时直接预设超级管理员，也可以在一键安装脚本中透传：
 
 ```shell

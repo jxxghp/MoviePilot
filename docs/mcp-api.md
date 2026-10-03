@@ -31,6 +31,14 @@ MCP 使用系统配置中的 `API_TOKEN` 作为认证密钥，文档中的 API K
 域名放行后仍执行 DNS/私网校验，
 Fake-IP 等非公网解析地址需要通过 `IMAGE_PROXY_ALLOWED_PRIVATE_RANGES` 明确允许。
 
+### LLM 温度配置
+
+`LLM_TEMPERATURE` 接受数值或 `null`，默认未设置。通过系统配置接口清空该值后，
+OpenAI 兼容请求不发送 `temperature`，Google 原生运行时使用 SDK 的模型默认温度；
+显式数值 `0` 仍表示温度为零。
+`POST /api/v1/llm/manage` 的 `test` 动作中，省略 `params.temperature`
+沿用已保存配置，显式 `null` 则仅对本次测试省略温度，允许测试尚未保存的空值。
+
 ## 2. 标准 MCP 协议 (JSON-RPC 2.0)
 
 ### 端点

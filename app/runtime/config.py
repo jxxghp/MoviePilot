@@ -843,8 +843,8 @@ class ConfigModel(BaseModel):
     LLM_MAX_CONTEXT_TOKENS: int = 256
     # LLM OpenAI兼容接口请求User-Agent
     LLM_USER_AGENT: Optional[str] = None
-    # LLM温度参数
-    LLM_TEMPERATURE: float = 0.3
+    # LLM温度参数，留空时不覆盖提供商默认值
+    LLM_TEMPERATURE: Optional[float] = None
     # LLM最大迭代次数
     LLM_MAX_ITERATIONS: int = 512
     # LLM工具调用超时时间（秒）
@@ -1002,7 +1002,7 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
                 if isinstance(value, str):
                     converted = int(value)
                     return converted, str(converted) != str(original_value)
-            elif expected_type is float:
+            elif expected_type in (float, Optional[float]):
                 if isinstance(value, (int, float)) and not isinstance(value, bool):
                     converted = float(value)
                     return converted, str(converted) != str(original_value)

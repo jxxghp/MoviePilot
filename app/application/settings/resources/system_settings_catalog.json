@@ -878,7 +878,7 @@
       "source_line": 829
     },
     "LLM_TEMPERATURE": {
-      "description": "LLM温度参数",
+      "description": "LLM温度参数，留空时不覆盖提供商默认值",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
       "source_line": 847

@@ -275,7 +275,7 @@ class LLMProviderManager(
             "web_search_mode": params.get("web_search_mode"),
             "provider_runtime": self,
         }
-        if params.get("temperature") is not None:
+        if "temperature" in params:
             test_kwargs["temperature"] = params.get("temperature")
 
         try:

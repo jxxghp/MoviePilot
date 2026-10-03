@@ -1,5 +1,7 @@
 from typing import Any
 
+import pytest
+
 from app.runtime.config import Settings, settings
 
 
@@ -38,6 +40,31 @@ def test_update_float_setting_accepts_json_integer(monkeypatch) -> None:
         "original_value": 1,
         "converted_value": 1.0,
     }
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [(None, None), ("", None), ("   ", None), (0, 0.0), (1, 1.0), ("0.3", 0.3)],
+)
+def test_llm_temperature_survives_save_and_reload(tmp_path, monkeypatch, value, expected) -> None:
+    """清空温度后重启仍不发送，显式零和整数则保持数值语义。"""
+    env_path = tmp_path / "app.env"
+    env_path.write_text("LLM_TEMPERATURE='0.7'\n", encoding="utf-8")
+    monkeypatch.delenv("LLM_TEMPERATURE", raising=False)
+    monkeypatch.setattr("app.runtime.config.get_env_path", lambda: env_path)
+    config = Settings(_env_file=env_path, CONFIG_DIR=str(tmp_path), API_TOKEN="0123456789abcdef")
+
+    success, _message = config.update_setting("LLM_TEMPERATURE", value)
+
+    assert success is True
+    assert config.LLM_TEMPERATURE == expected
+    reloaded = Settings(_env_file=env_path, CONFIG_DIR=str(tmp_path), API_TOKEN="0123456789abcdef")
+    assert reloaded.LLM_TEMPERATURE == expected
+    if expected is None:
+        assert "LLM_TEMPERATURE=" not in env_path.read_text(encoding="utf-8")
+    else:
+        assert isinstance(config.LLM_TEMPERATURE, float)
+        assert isinstance(reloaded.LLM_TEMPERATURE, float)
 
 
 def test_short_api_token_update_does_not_log_token(monkeypatch) -> None:
