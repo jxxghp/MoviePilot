@@ -884,7 +884,7 @@
       "source_line": 847
     },
     "LLM_THINKING_LEVEL": {
-      "description": "思考模式/深度配置：off/auto/minimal/low/medium/high/max/xhigh",
+      "description": "思考模式/深度配置：off/auto/minimal/low/medium/high/max/xhigh；OpenAI兼容接口保留max/xhigh，仅按已知模型能力降级",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
       "source_line": 823
