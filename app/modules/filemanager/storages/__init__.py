@@ -13,7 +13,6 @@ from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.system import StorageConf as _SchemaStorageConf
 from app.schemas.workflow import FileItem as _SchemaFileItem
 
-
 _SnapshotInfo = Dict[str, Dict[str, Any]]
 
 
