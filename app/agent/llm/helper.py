@@ -5,7 +5,7 @@ import inspect
 import json
 import time
 from functools import wraps
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional, cast
 from urllib.parse import urlsplit
 from uuid import uuid4
 
@@ -17,6 +17,9 @@ from app.runtime.settings import get_runtime_setting
 
 if TYPE_CHECKING:
     from app.agent.llm.tools import ServerToolResolution
+
+
+_TEMPERATURE_UNSET = object()
 
 
 class LLMTestError(RuntimeError):
@@ -1467,7 +1470,7 @@ class LLMHelper:
             base_url: str | None = None,
             base_url_preset: str | None = None,
             user_agent: str | None = None,
-            temperature: Optional[float] = None,
+            temperature: Optional[float] = cast(Optional[float], _TEMPERATURE_UNSET),
             use_proxy: bool | None = None,
             api_protocol: str | None = None,
             web_search_mode: str | None = None,
@@ -1487,7 +1490,7 @@ class LLMHelper:
         :param base_url: API Base URL。未显式传入时使用当前配置项 LLM_BASE_URL。
         :param base_url_preset: Base URL 预设。未显式传入时使用当前配置项 LLM_BASE_URL_PRESET。
         :param user_agent: OpenAI兼容接口请求 User-Agent。未显式传入时使用配置项 LLM_USER_AGENT。
-        :param temperature: LLM 温度参数。未显式传入时使用配置项 LLM_TEMPERATURE。
+        :param temperature: LLM 温度参数。未传入时使用配置项 LLM_TEMPERATURE；显式 None 不覆盖提供商默认值。
         :param use_proxy: 是否为本次 LLM 调用使用系统代理。未显式传入时使用配置项 LLM_USE_PROXY。
         :param api_protocol: OpenAI 兼容接口 API 协议
             （auto/chat_completions/responses）。未显式传入时使用配置项 LLM_API_PROTOCOL。
@@ -1508,7 +1511,11 @@ class LLMHelper:
             base_url_preset if base_url_preset is not None else get_runtime_setting('LLM_BASE_URL_PRESET')
         )
         user_agent_value = user_agent if user_agent is not None else get_runtime_setting('LLM_USER_AGENT')
-        temperature_value = temperature if temperature is not None else get_runtime_setting('LLM_TEMPERATURE')
+        temperature_value = (
+            get_runtime_setting('LLM_TEMPERATURE')
+            if temperature is _TEMPERATURE_UNSET
+            else temperature
+        )
         normalized_thinking_level = cls._resolve_thinking_level(
             thinking_level=thinking_level,
         )
@@ -1592,11 +1599,12 @@ class LLMHelper:
             # 会导致工具调用时报错 400
             from langchain_google_genai import ChatGoogleGenerativeAI
 
+            # Google SDK 不接受 None；留空时保留 SDK 对各模型默认温度的选择。
             model = ChatGoogleGenerativeAI(
                 model=model_name,
                 api_key=runtime["api_key"],
                 retries=3,
-                temperature=temperature_value,
+                **({"temperature": temperature_value} if temperature_value is not None else {}),
                 streaming=streaming,
                 client_args=_build_google_client_args(llm_proxy),
                 **thinking_kwargs,
@@ -1791,7 +1799,7 @@ class LLMHelper:
             base_url: str | None = None,
             base_url_preset: str | None = None,
             user_agent: str | None = None,
-            temperature: Optional[float] = None,
+            temperature: Optional[float] = cast(Optional[float], _TEMPERATURE_UNSET),
             use_proxy: bool | None = None,
             api_protocol: str | None = None,
             web_search_mode: str | None = None,
@@ -1800,7 +1808,7 @@ class LLMHelper:
         """
         使用当前配置或显式传入的临时配置执行一次最小 LLM 调用。
 
-        :param temperature: LLM 温度参数。未显式传入时沿用已保存配置。
+        :param temperature: LLM 温度参数。未传入时沿用已保存配置；显式 None 不覆盖提供商默认值。
         :param api_protocol: OpenAI 兼容接口 API 协议，未显式传入时沿用已保存配置。
         :param web_search_mode: 联网搜索模式，未显式传入时沿用已保存配置。
         :param provider_runtime: 已解析的 Provider 运行时，用于阻断管理入口回绕 Gateway。
@@ -1823,7 +1831,7 @@ class LLMHelper:
         }
         if provider_runtime is not None:
             llm_kwargs["provider_runtime"] = provider_runtime
-        if temperature is not None:
+        if temperature is not _TEMPERATURE_UNSET:
             llm_kwargs["temperature"] = temperature
 
         llm = await LLMHelper.get_llm(**llm_kwargs)
