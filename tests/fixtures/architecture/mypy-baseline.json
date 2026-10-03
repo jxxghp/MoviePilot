@@ -1517,7 +1517,7 @@
     "attr-defined": 4,
     "index": 1,
     "no-untyped-call": 2,
-    "no-untyped-def": 8,
+    "no-untyped-def": 7,
     "return-value": 1,
     "type-arg": 6,
     "var-annotated": 1

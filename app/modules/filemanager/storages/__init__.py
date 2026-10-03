@@ -1,6 +1,6 @@
 from abc import ABCMeta, abstractmethod
 from pathlib import Path, PurePosixPath
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from tqdm import tqdm
 
@@ -12,6 +12,9 @@ from app.schemas.exception import StorageQueryError
 from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.system import StorageConf as _SchemaStorageConf
 from app.schemas.workflow import FileItem as _SchemaFileItem
+
+
+_SnapshotInfo = Dict[str, Dict[str, Any]]
 
 
 def transfer_process(path: str) -> Callable[[int | float], None]:
@@ -315,9 +318,9 @@ class StorageBase(metaclass=ABCMeta):
     @staticmethod
     def _snapshot_previous_state(
         root_path: PurePosixPath,
-        previous_snapshot: Optional[Dict[str, Dict]],
+        previous_snapshot: Optional[_SnapshotInfo],
     ) -> Tuple[
-        Dict[str, Dict],
+        _SnapshotInfo,
         Dict[PurePosixPath, set[PurePosixPath]],
         Dict[PurePosixPath, str],
     ]:
@@ -353,7 +356,7 @@ class StorageBase(metaclass=ABCMeta):
     @staticmethod
     def _snapshot_remove_previous_subtree(
         path: PurePosixPath,
-        files_info: Dict[str, Dict],
+        files_info: _SnapshotInfo,
         previous_children: Dict[PurePosixPath, set[PurePosixPath]],
         previous_files: Dict[PurePosixPath, str],
     ) -> None:
@@ -370,7 +373,7 @@ class StorageBase(metaclass=ABCMeta):
         self,
         fileitem: _SchemaFileItem,
         sub_files: List[_SchemaFileItem],
-        files_info: Dict[str, Dict],
+        files_info: _SnapshotInfo,
         previous_children: Dict[PurePosixPath, set[PurePosixPath]],
         previous_files: Dict[PurePosixPath, str],
     ) -> None:
@@ -394,7 +397,7 @@ class StorageBase(metaclass=ABCMeta):
     def _snapshot_file(
         self,
         fileitem: _SchemaFileItem,
-        files_info: Dict[str, Dict],
+        files_info: _SnapshotInfo,
         previous_children: Dict[PurePosixPath, set[PurePosixPath]],
         previous_files: Dict[PurePosixPath, str],
         last_snapshot_time: float,
