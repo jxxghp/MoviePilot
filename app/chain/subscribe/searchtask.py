@@ -198,10 +198,7 @@ class SubscriptionSearchTaskRunner:
             if current is None:
                 self._finish_missing_subscription(task_id, lease_token)
                 return None
-            if current.state == "S":
-                skip_search_task(self.queue, self.task, "订阅已暂停，这次没有搜索")
-                self.summary.record("skipped", "paused")
-                return None
+            # 暂停只影响后续自动调度；持久任务已接纳的一次搜索继续执行，停止须显式取消任务。
             self.searchchain.configure_subscription_site_budget(
                 SubscriptionSiteBudget(
                     repository=self.queue,

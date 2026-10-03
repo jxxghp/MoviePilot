@@ -491,7 +491,10 @@ class MusicSubscribeMixin:
         if current_subscribe is None:
             logger.info(f"音乐订阅 {subscribe.id} 已删除，放弃本轮下载提交")
             return
-        if current_subscribe.state == "S":
+        # 与影视订阅一致，暂停不撤销已接纳的搜索，自动匹配仍不能为暂停订阅提交下载。
+        if current_subscribe.state == "S" and not (
+            execution_context and execution_context.lease.operation == "search"
+        ):
             logger.info(f"音乐订阅 {current_subscribe.name} 已暂停，放弃本轮下载提交")
             return
         if self._SubscribeChain__candidate_contract_changed(subscribe, current_subscribe):

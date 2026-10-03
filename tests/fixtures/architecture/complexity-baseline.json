@@ -59,7 +59,7 @@
       "app/chain/subscribe/query.py:SubscribeQueryOwner.follow": 19,
       "app/chain/subscribe/query.py:SubscribeQueryOwner.subscribe_files_info": 24,
       "app/chain/subscribe/refresh.py:SubscribeRefreshOwner.backfill_existing_episodes": 16,
-      "app/chain/subscribe/search.py:_SubscribeSearchQueueCoordinator._execute_inline_search": 17,
+      "app/chain/subscribe/search.py:_SubscribeSearchQueueCoordinator._execute_inline_search": 16,
       "app/chain/transfer/execution.py:TransferExecutionOwner._TransferChain__perform_transfer": 31,
       "app/chain/transfer/filter.py:FileFilterMixin._restore_music_download_context": 24,
       "app/chain/transfer/music.py:_release_groups": 16,
