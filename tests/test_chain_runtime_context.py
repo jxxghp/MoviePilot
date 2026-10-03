@@ -11,6 +11,7 @@ import pytest
 from app.application.chain import context as chain_context
 from app.application.chain.context import ChainRuntimeContext
 from app.application.configuration import ChainRuntimeConfig
+from app.application.transfer.execution import TransferPlanningRejectedError
 from app.chain.base import ChainBase
 from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
 from app.schemas.types import EventType
@@ -142,6 +143,21 @@ def test_module_explicit_error_propagation_does_not_notify(source, asynchronous)
             asyncio.run(chain.async_run_module("async_fail", raise_exception=True))
         else:
             chain.run_module("fail", raise_exception=True)
+
+    assert caught.value is error
+    chain.messagehelper.put.assert_not_called()
+    chain.eventmanager.send_event.assert_not_called()
+
+
+def test_module_business_rejection_is_not_reported_as_system_error() -> None:
+    """模块按业务规则拒绝属于预期结果，不生成错误通知和事件，严格调用仍把原异常交给调用方结算。"""
+    error = TransferPlanningRejectedError("未找到有效的媒体库目录")
+    chain = _failing_chain(error, "system")
+
+    assert chain.run_module("fail") is None
+    assert asyncio.run(chain.async_run_module("async_fail")) is None
+    with pytest.raises(TransferPlanningRejectedError) as caught:
+        chain.run_module_strict("fail")
 
     assert caught.value is error
     chain.messagehelper.put.assert_not_called()

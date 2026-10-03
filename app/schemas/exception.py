@@ -43,6 +43,15 @@ class RateLimitExceededException(LimitException):
     pass
 
 
+class BusinessRejectedError(Exception):
+    """
+    表示模块按业务规则拒绝处理当前输入，属于预期结果而不是系统故障。
+    Chain 的系统错误处理只记录 info 日志，不写入错误堆栈、系统错误通知和 SystemError 事件；
+    严格调用仍按调用方约定传播该异常。
+    """
+    pass
+
+
 class OperationInterrupted(KeyboardInterrupt):
     """
     用于表示操作被中断

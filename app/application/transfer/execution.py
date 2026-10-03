@@ -10,6 +10,8 @@ from enum import StrEnum
 from typing import Any, Callable, Mapping, Optional, Protocol
 from uuid import uuid4
 
+from app.schemas.exception import BusinessRejectedError
+
 TRANSFER_EXECUTION_VERSION = 1
 TRANSFER_STEP_INTENT_VERSION = 1
 TRANSFER_STEP_RESULT_VERSION = 1
@@ -80,7 +82,7 @@ class TransferExecutionLeaseLostError(TransferExecutionError):
     """表示持久化写入时任务租约已失效或已被其他 worker 接管。"""
 
 
-class TransferPlanningRejectedError(ValueError):
+class TransferPlanningRejectedError(ValueError, BusinessRejectedError):
     """规划输入缺少业务必需信息且继续自动重试不会改变结果。"""
 
 
