@@ -679,8 +679,14 @@ async def get_message(
             while not runtime_stop_state.is_system_stopped:
                 if await request.is_disconnected():
                     break
-                detail = message.get(role)
-                yield f"data: {detail or ''}\n\n"
+                # 一次推送全部积压消息，避免页面重新打开后按 3 秒一条逐条补弹
+                details = message.drain(role)
+                if details:
+                    for detail in details:
+                        yield f"data: {detail}\n\n"
+                else:
+                    # 空消息作为心跳，维持连接并定期检测客户端是否断开
+                    yield "data: \n\n"
                 await asyncio.sleep(3)
         except asyncio.CancelledError:
             return

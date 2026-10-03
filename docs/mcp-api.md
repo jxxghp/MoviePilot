@@ -475,6 +475,8 @@ SMB 配置支持两种明确的路径模式：旧字段 `share: "data"` 保持�
 
 #### 媒体自动分类
 
+媒体预览应先通过媒体详情接口取得完整信息，避免将搜索摘要中缺失的字段误判为不匹配。媒体输入会按所选策略异步补充缺失信息；显式标准化事实按原值计算。近期历史影响分析只读取一次媒体详情，再分别按活动策略与候选策略补充信息和比较，无法读取详情的记录不视为未变化。
+
 媒体自动分类使用完整、可版本化的策略作为唯一写入合同。先读取当前策略的
 `revision`，再用字段目录中的稳定字段 ID 和操作符构造规则；发布和回滚均使用
 `expected_revision` 做并发校验，成功后产生新的 revision。旧 `/media/category` 与
@@ -485,7 +487,7 @@ SMB 配置支持两种明确的路径模式：旧字段 `share: "data"` 保持�
 | GET | `/api/v1/media/classification/fields` | 登录用户读取标准字段、操作符、通用选项、来源候选与策略限制 |
 | GET | `/api/v1/media/classification/policy` | 登录用户读取当前活动策略和 revision |
 | POST | `/api/v1/media/classification/validate` | 超级管理员校验完整草稿，不保存 |
-| POST | `/api/v1/media/classification/preview` | 登录用户对媒体搜索结果或标准化事实执行单次只读预览，可选草稿策略 |
+| POST | `/api/v1/media/classification/preview` | 登录用户对完整媒体详情或标准化事实执行单次只读预览，可选草稿策略 |
 | POST | `/api/v1/media/classification/impact` | 超级管理员比较活动策略与草稿对近期历史或显式样本的有界影响 |
 | GET | `/api/v1/media/classification/history` | 超级管理员读取可回滚的有限历史版本 |
 | PUT | `/api/v1/media/classification/policy` | 超级管理员在 `expected_revision` 匹配时校验并发布完整策略，需要写操作确认 |
@@ -866,10 +868,12 @@ MCP、HTTP 工具管理接口、本地 CLI 和内置 Agent 都从同一严格目
 
 `run`、pipe 和 PTY 共享 `cwd/shell/login`：默认及相对 `cwd` 使用 MoviePilot 根目录，
 POSIX 默认非登录；Windows 未指定时保留已有解释器/UTF-8 策略。回包包含实际 `shell/login`。
-项目安装目录存在 `venv` 时，三种模式都会把该环境的 `bin`（Windows 为 `Scripts`）放在
-子进程 `PATH` 最前并设置 `VIRTUAL_ENV`，所以 `python`、`python3` 和 `pip` 使用项目环境；
-执行 Python 应优先使用 `python -m ...`，安装依赖优先使用项目 `uv pip ...` 或绑定环境中的
-`python -m pip ...`，不要改用系统解释器或 `sudo pip`。
+项目安装目录存在 `venv`，或 Docker 的 `VENV_PATH` 环境存在时，三种模式都会把该环境的
+`bin`（Windows 为 `Scripts`）放在子进程 `PATH` 最前、设置 `VIRTUAL_ENV`，并让裸
+`python`/`python3` 使用项目专用入口 `moviepilot-python`；入口不存在时回退到环境中的标准
+Python。执行 Python 应直接使用 `python -m ...`，尤其是下载器、SMB、媒体服务器等需要系统
+权限的操作。安装依赖优先使用项目 `uv pip ...` 或绑定环境中的 `python -m pip ...`，不要改用
+系统解释器或 `sudo pip`。
 `write(close_stdin=true)` 仅在 pipe 模式支持末段输入后 EOF，回包包含 `stdin_closed`；输出可继续读取。
 PTY 会在写入之前拒绝 half-close，空 `write` 不代表 EOF，控制字节在 pipe 中也不等于信号。
 新增 `interrupt` 只发送一次平台支持的中断并返回 `signal/signal_sent`，不会升级强杀；

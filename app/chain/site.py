@@ -586,7 +586,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
             if progress_callback:
                 progress_callback(value=100, text=f"CookieCloud同步失败：{msg}")
             if manual:
-                self.messagehelper.put(msg, title="CookieCloud同步失败", role="system")
+                self.messagehelper.put(msg, title="CookieCloud同步失败", role="system", level="error")
             return False, msg
         siteshelper = SitesHelper()
         repository = self.site_repository
@@ -641,7 +641,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
         if fail_count > 0:
             ret_msg += f"，{fail_count}个站点添加失败，下次同步时将重试，也可以手动添加"
         if manual:
-            self.messagehelper.put(ret_msg, title="CookieCloud同步成功", role="system")
+            self.messagehelper.put(ret_msg, title="CookieCloud同步成功", role="system", level="success")
         logger.info(f"CookieCloud同步成功：{ret_msg}")
         if progress_callback:
             progress_callback(value=100, text=f"CookieCloud同步成功：{ret_msg}")

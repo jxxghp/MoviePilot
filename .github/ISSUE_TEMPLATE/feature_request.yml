@@ -24,6 +24,7 @@ body:
       options:
         - Docker
         - Windows
+        - CLI
         - macOS
         - Linux
         - 仅提供站点采集文件

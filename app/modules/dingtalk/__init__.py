@@ -12,6 +12,8 @@ from app.schemas.types import ModuleType, NotificationChannel
 class DingTalkModule(_MessageChannelModuleBase[DingTalk]):
     """把 MoviePilot 通知转换为钉钉自定义机器人群消息。"""
 
+    _notification_admin_default_config_keys = ("DINGTALK_WEBHOOK",)
+
     def init_module(self) -> None:
         """从已启用的 dingtalk 通知配置创建客户端实例。"""
         super().init_service(service_name=DingTalk.__name__.lower(), service_type=DingTalk)

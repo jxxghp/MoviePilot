@@ -37,6 +37,13 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
 
     # 管理员配置键，与渠道 resolver 保持一致
     _admin_config_key = "QQBOT_ADMINS"
+    _notification_user_target_keys = (
+        "qq_userid",
+        "qq_openid",
+        "qq_group_openid",
+        "qq_group",
+    )
+    _notification_admin_default_config_keys = ("QQ_OPENID", "QQ_GROUP_OPENID")
 
     _IMAGE_SUFFIXES = (
         ".png",
@@ -351,7 +358,7 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            targets = message.targets
+            targets = self.get_notification_targets(message)
             userid = message.userid
             if not userid and targets:
                 userid = targets.get("qq_userid") or targets.get("qq_openid")
@@ -375,7 +382,7 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            targets = message.targets
+            targets = self.get_notification_targets(message)
             userid = message.userid
             if not userid and targets:
                 userid = targets.get("qq_userid") or targets.get("qq_openid")
@@ -399,7 +406,7 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            targets = message.targets
+            targets = self.get_notification_targets(message)
             userid = message.userid
             if not userid and targets:
                 userid = targets.get("qq_userid") or targets.get("qq_openid")

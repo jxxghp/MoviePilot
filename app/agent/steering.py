@@ -24,6 +24,7 @@ class SteeringMessage:
     images: tuple[str, ...] = ()
     files: tuple[dict[str, Any], ...] = ()
     created_at: str = ""
+    original_message_id: Optional[str] = None
 
     @classmethod
     def create(
@@ -34,6 +35,7 @@ class SteeringMessage:
         text: str,
         images: Optional[list[str]] = None,
         files: Optional[list[dict[str, Any]]] = None,
+        original_message_id: Optional[str] = None,
     ) -> "SteeringMessage":
         """生成宿主侧消息 ID，并复制输入附件以隔离调用方可变对象。"""
         return cls(
@@ -44,6 +46,7 @@ class SteeringMessage:
             images=tuple(str(image) for image in (images or [])),
             files=tuple(dict(file) for file in (files or [])),
             created_at=datetime.now(timezone.utc).isoformat(),
+            original_message_id=original_message_id,
         )
 
 
@@ -92,6 +95,7 @@ class SteeringInbox:
         text: str,
         images: Optional[list[str]] = None,
         files: Optional[list[dict[str, Any]]] = None,
+        original_message_id: Optional[str] = None,
     ) -> Optional[SteeringMessage]:
         """在运行窗口内排队消息；窗口结束的瞬间会原子地回退到普通轮次。"""
         async with self._lock:
@@ -105,6 +109,7 @@ class SteeringInbox:
                 text=text,
                 images=images,
                 files=files,
+                original_message_id=original_message_id,
             )
             self._pending.append(message)
             return message

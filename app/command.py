@@ -436,7 +436,7 @@ class Command(metaclass=Singleton):
                     f"执行命令 {cmd} 出错：{str(err)} - {traceback.format_exc()}"
                 )
                 self.messagehelper.put(
-                    title=f"执行命令 {cmd} 出错", message=str(err), role="system"
+                    title=f"执行命令 {cmd} 出错", message=str(err), role="system", level="error"
                 )
 
     @staticmethod

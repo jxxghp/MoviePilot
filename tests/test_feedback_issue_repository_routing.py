@@ -200,3 +200,27 @@ def test_feature_request_uses_feature_label(diagnostics_file):
 
     assert result["success"] is True
     assert post.call_args.kwargs["json"]["labels"] == ["feature request"]
+
+
+@pytest.mark.parametrize("issue_type", ["主程序运行问题", "功能请求"])
+def test_cli_environment_survives_preview_and_submission(diagnostics_file, issue_type):
+    """CLI 草稿通过预览、提交校验及模拟 GitHub API，不在中途被环境枚举拒绝。"""
+    settings.GITHUB_TOKEN = "ghp_test_token"
+    draft = _valid_feature_draft(diagnostics_file)
+    if issue_type == "主程序运行问题":
+        draft = _valid_plugin_draft(diagnostics_file, target_repo=common.FEEDBACK_REPO)
+    draft.update(environment="CLI", issue_type=issue_type)
+    draft_file = common.runtime_file("draft", ".json")
+    common.write_json_file(draft_file, draft)
+    prepared = prepare_script.prepare_issue(draft_file)
+
+    assert prepared["success"] is True
+    assert "环境：CLI" in Path(prepared["preview_file"]).read_text(encoding="utf-8")
+    with patch(
+        "submit_feedback_issue.RequestUtils.post",
+        return_value=_FakeResponse(201, {"number": 14, "html_url": "https://github.com/jxxghp/MoviePilot/issues/14"}),
+    ) as post:
+        result = submit_script.submit_issue(prepared["payload_file"], username="admin")
+
+    assert result["success"] is True
+    assert "### 运行环境\n\nCLI" in post.call_args.kwargs["json"]["body"]

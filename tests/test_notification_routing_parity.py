@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from app.chain._messaging import MessageProcessingMixin, NotificationMixin
+from app.modules.telegram.module import TelegramModule
 from app.modules.wechat import WechatModule
 from app.schemas.message import Message
 from app.schemas.system import NotificationConf
@@ -227,6 +228,108 @@ def test_user_route_without_username_falls_back_to_admin(monkeypatch) -> None:
         {"telegram_userid": "admin-1"}
     ]
     assert [item[1] for item in deliveries] == [False]
+
+
+def test_user_route_without_channel_binding_does_not_send(monkeypatch) -> None:
+    """已识别操作用户但没有渠道绑定时，仅操作用户范围不得产生投递。"""
+    monkeypatch.setattr(
+        "app.chain._messaging.get_notification_switch",
+        lambda _mtype: "user",
+    )
+    repository = _NotificationSettingsRepository({"alice": {}})
+    chain = _NotificationHarness(repository)
+
+    chain.post_message(
+        Message(mtype=MessageType.Download, title="下载完成", username="alice")
+    )
+
+    assert repository.sync_calls == ["alice"]
+    chain.messagequeue.send_message.assert_not_called()
+    chain.eventmanager.send_event.assert_not_called()
+
+
+def test_admin_route_keeps_default_target_scope_when_personal_binding_is_empty(
+    monkeypatch,
+) -> None:
+    """管理员没有个人绑定时仍产出管理员范围消息，交由渠道使用默认目标。"""
+    monkeypatch.setattr(
+        "app.chain._messaging.get_notification_switch",
+        lambda _mtype: "admin",
+    )
+    repository = _NotificationSettingsRepository({"admin": {}})
+    chain = _NotificationHarness(repository)
+
+    chain.post_message(Message(mtype=MessageType.Download, title="下载完成"))
+
+    delivery = chain.messagequeue.send_message.call_args.kwargs["message"]
+    assert delivery.targets == {}
+    assert delivery.notification_route_scope == "admin"
+
+
+def test_notification_channel_default_is_only_an_admin_target() -> None:
+    """渠道默认 ID 只允许管理员范围使用，用户范围必须有个人绑定。"""
+    module = TelegramModule()
+    config = NotificationConf(
+        name="telegram-test",
+        type="telegram",
+        enabled=True,
+        switchs=[MessageType.Download.value],
+        config={"TELEGRAM_CHAT_ID": "admin-default"},
+    )
+    module._configs = {config.name: config}
+    client = Mock()
+    module.get_configs = Mock(return_value={config.name: config})
+    module.get_instance = Mock(return_value=client)
+
+    admin_message = Message(mtype=MessageType.Download, title="管理员通知")
+    admin_message.set_notification_route_scope("admin")
+    user_message = Message(mtype=MessageType.Download, title="用户通知", targets={})
+    user_message.set_notification_route_scope("user")
+    bound_user_message = Message(
+        mtype=MessageType.Download,
+        targets={"telegram_userid": "user-id"},
+    )
+    bound_user_message.set_notification_route_scope("user")
+
+    assert module.check_message(admin_message, config.name)
+    assert not module.check_message(user_message, config.name)
+    assert module.check_message(bound_user_message, config.name)
+
+    module.post_message(admin_message)
+    client.send_msg.assert_called_once()
+    assert client.send_msg.call_args.kwargs["userid"] is None
+
+    client.reset_mock()
+    module.post_message(user_message)
+    client.send_msg.assert_not_called()
+
+    module.post_medias_message(bound_user_message, [])
+    assert client.send_medias_msg.call_args.kwargs["userid"] == "user-id"
+
+
+def test_scoped_notification_still_honors_channel_switch() -> None:
+    """隔离路由只改变目标解析，不应绕过渠道消息类型开关。"""
+    module = TelegramModule()
+    config = NotificationConf(
+        name="telegram-test",
+        type="telegram",
+        enabled=True,
+        switchs=[],
+        config={"TELEGRAM_CHAT_ID": "admin-default"},
+    )
+    module._configs = {config.name: config}
+
+    admin_message = Message(mtype=MessageType.Download, title="管理员通知")
+    admin_message.set_notification_route_scope("admin")
+    user_message = Message(
+        mtype=MessageType.Download,
+        title="用户通知",
+        targets={"telegram_userid": "user-id"},
+    )
+    user_message.set_notification_route_scope("user")
+
+    assert not module.check_message(admin_message, config.name)
+    assert not module.check_message(user_message, config.name)
 
 
 def test_wechat_rejects_untyped_broadcast_without_explicit_targets(monkeypatch) -> None:

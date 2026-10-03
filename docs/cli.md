@@ -14,6 +14,7 @@ curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v3/scripts/bootst
 - 自动检查并尽量安装 `git`、`curl`、`uv 0.12.5+` 和 `Python 3.14+`
 - 克隆 `MoviePilot`
 - 安装后端依赖
+- 编译并验证 Agent 中文全文索引扩展；缺少编译器或 SQLite 扩展能力时明确告警并保留检索回退
 - 按当前仓库 `version.py` 中的 `FRONTEND_VERSION` 下载对应前端 release 的 `dist.zip`
 - 下载 `MoviePilot-Resources` 主分支资源
 - 将 `resources.v3/*` 同步到后端 `app/application/site/`
@@ -127,6 +128,7 @@ moviepilot tool run moviepilot_api operation_id=scheduler.run 'query={"job_id":"
 
 ```text
 moviepilot install deps
+moviepilot install cjk
 moviepilot install frontend
 moviepilot install resources
 moviepilot init
@@ -166,6 +168,23 @@ moviepilot commands
 ```
 
 ## 安装命令
+
+Agent 中文全文索引扩展会随 `install deps`、`setup` 和后端更新安装到所选 venv 的
+`lib/moviepilot/libfts5_cjk.so`。重复安装先校验源码、架构和实际加载能力，无变化时不重复编译。
+一键安装会尝试准备 Linux C 编译器；手动安装需要预先准备 `build-essential`（Debian/Ubuntu）、
+Xcode Command Line Tools（macOS）或 MSVC/MinGW（Windows），且 Python 的 SQLite 支持扩展加载。
+
+已有环境可以单独补装或检查，不必重新安装所有依赖：
+
+```shell
+moviepilot install cjk
+moviepilot install cjk --venv /path/to/venv
+moviepilot install cjk --venv /path/to/venv --check
+```
+
+检查会在内存库中验证“订阅”两字搜索。失败返回非零退出码并显示原因；自动依赖安装中的
+扩展失败只告警，保留 trigram/LIKE 回退。扩展就绪后历史消息在后台分批建索引，
+实际 `session_search` 的 `search_path="cjk"` 表示该次查询已使用中文索引。
 
 安装后端依赖：
 
@@ -357,6 +376,7 @@ moviepilot update all --skip-resources
 说明：
 
 - `update backend` 会更新 Git 仓库并重新安装后端依赖，包括 `moviepilot-rust` 加速扩展
+- 在线更新后端时会强制同步 `origin` 的全部标签，覆盖同名本地标签，以支持 Release 重建；仅存在于本地的标签会保留。分支仍仅允许快进更新，离线更新不同步标签
 - 后端更新前如果检测到已跟踪源码改动，CLI 会列出部分文件并询问是否清空；确认后执行清理并继续更新，拒绝或非交互模式会取消更新
 - `MOVIEPILOT_UPDATE_DEV=true` 时，`moviepilot update` 默认使用 DEV 模式；`--dev` / `--no-dev` 可临时覆盖，省略目标时更新全部组件。进程环境变量优先于配置目录中的 `app.env`
 - DEV 模式后端跟踪当前开发分支，处于 Release 的 detached HEAD 时回到 `v3`；前端下载最新 Release 的 `dist.zip`。显式 `--ref` / `--frontend-version` 优先于默认选择

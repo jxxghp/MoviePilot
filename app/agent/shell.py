@@ -5,6 +5,7 @@ from __future__ import annotations
 import ntpath
 import os
 import posixpath
+import shlex
 import shutil
 from dataclasses import dataclass
 from pathlib import Path, PureWindowsPath
@@ -100,12 +101,34 @@ def _find_executable(executable: str, finder: CommandFinder, *, windows: bool) -
     return located
 
 
-def _posix_policy(kind: str, executable: str, *, login: bool, git_available: bool = False) -> AgentShell:
+def _posix_policy(
+    kind: str,
+    executable: str,
+    *,
+    login: bool,
+    git_available: bool = False,
+    command_prefix: str = "",
+) -> AgentShell:
     """POSIX 类解释器使用统一 exec 参数；C shell 不支持登录与命令执行组合。"""
     if login and kind in {"csh", "tcsh"}:
         raise ValueError(f"{kind} 不支持 login=True 与命令执行组合")
     arguments = ("-lc",) if login else ("-c",)
-    return AgentShell(kind, executable, arguments, git_available=git_available, login=login)
+    return AgentShell(
+        kind, executable, arguments, command_prefix=command_prefix,
+        git_available=git_available, login=login,
+    )
+
+
+def _project_python_alias_prefix(environment: Mapping[str, str], *, windows: bool) -> str:
+    """让 POSIX Agent 命令中的裸 Python 使用已选定的项目运行时入口。"""
+    if windows or not environment.get("MOVIEPILOT_PYTHON"):
+        return ""
+    # shell 函数只存在于本次子进程，避免改写虚拟环境中的解释器或用户文件。
+    runtime = shlex.quote(environment["MOVIEPILOT_PYTHON"])
+    return (
+        f"python() {{ {runtime} \"$@\"; }}\n"
+        f"python3() {{ {runtime} \"$@\"; }}"
+    )
 
 
 def _windows_policy(kind: str, executable: str, *, login: Optional[bool], git_available: bool,
@@ -215,7 +238,10 @@ def resolve_agent_shell(
     if not windows:
         selected = executable if executable is not None else current_environment.get("SHELL") or os.environ.get("SHELL") or "/bin/sh"
         path = _find_executable(selected, finder, windows=False)
-        return _posix_policy(_shell_kind(path, windows=False), path, login=bool(login))
+        return _posix_policy(
+            _shell_kind(path, windows=False), path, login=bool(login),
+            command_prefix=_project_python_alias_prefix(current_environment, windows=False),
+        )
 
     git_path = finder("git") or finder("git.exe")
     if executable is not None:
@@ -290,20 +316,37 @@ def bind_agent_project_environment(
     """
     bound_environment = dict(environment)
     windows = (platform_name or os.name) == "nt"
-    venv_path = Path(project_root).expanduser() / "venv"
-    bin_path = venv_path / ("Scripts" if windows else "bin")
-    python_names = ("python.exe", "python3.exe", "moviepilot-python.exe") if windows else (
-        "python", "python3", "moviepilot-python"
+    python_names = ("python.exe", "python3.exe") if windows else ("python", "python3")
+    project_runtime_name = "moviepilot-python.exe" if windows else "moviepilot-python"
+    venv_paths = [Path(project_root).expanduser() / "venv"]
+    configured_venv = bound_environment.get("VENV_PATH")
+    if configured_venv:
+        venv_paths.append(Path(configured_venv).expanduser())
+    selected_venv = next(
+        (
+            venv_path
+            for venv_path in venv_paths
+            for name in (project_runtime_name, *python_names)
+            if (venv_path / ("Scripts" if windows else "bin") / name).is_file()
+        ),
+        None,
     )
-    if not any((bin_path / name).is_file() for name in python_names):
+    if selected_venv is None:
         return bound_environment
 
+    bin_path = selected_venv / ("Scripts" if windows else "bin")
+    python_path = next(
+        bin_path / name for name in (project_runtime_name, *python_names)
+        if (bin_path / name).is_file()
+    )
     path_separator = ";" if windows else os.pathsep
     existing_path = bound_environment.get("PATH", "")
     bound_environment["PATH"] = path_separator.join(
         part for part in (str(bin_path), existing_path) if part
     )
-    bound_environment["VIRTUAL_ENV"] = str(venv_path)
+    bound_environment["VIRTUAL_ENV"] = str(selected_venv)
+    # CLI 同样优先这个入口；macOS 上它可能保留与标准 venv Python 不同的网络权限身份。
+    bound_environment["MOVIEPILOT_PYTHON"] = str(python_path)
     return bound_environment
 
 

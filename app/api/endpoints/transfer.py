@@ -12,6 +12,7 @@ from app.api.endpoints.transferhistory import (
     restore_manual_transfer_history_metadata,
 )
 from app.api.response import (
+    COLLECTION_MAX_PAGE_SIZE,
     CompatibleCountParam,
     CompatiblePageParam,
     ResponseAPIRouter,
@@ -50,6 +51,7 @@ from app.schemas.transfer import TransferManualReviewData as _SchemaTransferManu
 from app.schemas.transfer import TransferManualReviewPageData as _SchemaTransferManualReviewPageData
 from app.schemas.transfer import TransferManualReviewRequest as _SchemaTransferManualReviewRequest
 from app.schemas.transfer import TransferManualReviewTaskData as _SchemaTransferManualReviewTaskData
+from app.schemas.transfer import TransferQueuePageData as _SchemaTransferQueuePageData
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaType
 from app.schemas.workflow import FileItem
 from app.schemas.workflow import FileItem as _SchemaFileItem
@@ -440,6 +442,26 @@ async def query_queue(_: _SchemaTokenPayload = Depends(verify_token), page: Comp
     :param _: Token校验
     """
     return TransferChain().get_queue_tasks()
+
+
+@router.get(  # type: ignore[misc]
+    "/queue/page",
+    summary="查询受限整理队列快照",
+    response_model=_SchemaTransferQueuePageData,
+)
+async def query_queue_page(
+    _: _SchemaTokenPayload = Depends(verify_token),
+    page: int = Query(1, ge=1),
+    count: int = Query(100, ge=1, le=COLLECTION_MAX_PAGE_SIZE),
+) -> _SchemaTransferQueuePageData:
+    """返回前端所需的有限整理队列窗口，避免序列化完整云盘目录树。"""
+    items, total = TransferChain().get_queue_tasks_page(page, count)
+    return _SchemaTransferQueuePageData(
+        items=items,
+        total=total,
+        page=page,
+        count=count,
+    )
 
 
 @router.delete(

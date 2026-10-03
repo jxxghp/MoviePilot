@@ -6,7 +6,7 @@
     "provider-skill": 12,
     "stream_or_binary": 10,
     "transport_or_identity": 76,
-    "ui_presentation": 13
+    "ui_presentation": 14
   },
   "dynamic_gateway_routes": [
     {
@@ -21,7 +21,7 @@
   "gateway_http_route_count": 229,
   "gateway_operation_count": 231,
   "matched_gateway_http_route_count": 228,
-  "openapi_operation_count": 421,
+  "openapi_operation_count": 422,
   "operations": [
     {
       "disposition": "consolidated",
@@ -5141,6 +5141,18 @@
       "path": "/api/v1/transfer/queue",
       "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "查询整理队列",
+      "tags": [
+        "transfer"
+      ]
+    },
+    {
+      "disposition": "ui_presentation",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/transfer/queue/page",
+      "reason": "Plugin-rendered page, dashboard, or navigation metadata owned by the frontend presentation contract rather than an Agent business action.",
+      "summary": "查询受限整理队列快照",
       "tags": [
         "transfer"
       ]

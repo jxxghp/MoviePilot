@@ -96,8 +96,10 @@ def _get_analysis_service(
 async def _resolve_history_facts(
     execution: ClassificationExecutionPort,
     history: object,
-) -> ClassificationFacts | None:
-    """按历史记录中的来源和编号重新读取完整媒体信息。"""
+    active: ClassificationPolicy,
+    candidate: ClassificationPolicy,
+) -> tuple[ClassificationFacts, ClassificationFacts] | None:
+    """只读取一次历史媒体详情，再按两套策略分别补充缺失信息。"""
     media_source = _enum_text(getattr(history, "media_source", None))
     media_id = str(getattr(history, "media_id", None) or "").strip()
     media_type = _history_media_type(getattr(history, "type", None))
@@ -113,7 +115,9 @@ async def _resolve_history_facts(
         )
         if media is None:
             return None
-        return await execution.async_build_facts(media)
+        previous = await execution.async_build_facts(media, policy=active)
+        proposed = await execution.async_build_facts(media, policy=candidate)
+        return (previous, proposed) if previous is not None and proposed is not None else None
     except (TypeError, ValueError):
         return None
 
@@ -292,10 +296,10 @@ async def preview_policy(
     if request.policy is None:
         _require_active_policy(runtime)
     try:
-        return ClassificationAnalysisService(
+        return await ClassificationAnalysisService(
             runtime.service,
             execution=host_runtime.classification_execution,
-        ).preview(request)
+        ).async_preview(request)
     except ClassificationPolicyValidationError as error:
         return _validation_response(error)
 

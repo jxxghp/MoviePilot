@@ -34,7 +34,7 @@ class LearningTools:
             ('skill_manage', self.skill_manage, ManageSkillsInput, ToolTag.Write,
              'Maintain current-user skills with up to 20 atomic operations. create content=full SKILL.md; patch old_string/new_string or content; write_file file_path/file_content; remove_file; delete alone. Public skills are protected.'),
             ('memory', self.manage_memory, MemoryInput, ToolTag.Write,
-             'Curated memory: target=user for cross-task preferences, memory for environment facts. add/replace/remove or atomic operations. old_text locates an entry; replace content replaces the WHOLE entry. Limits: memory 2200, user 1375 chars. action=pending reads proposals. Background destructive writes require explicit /memory approve ID.'),
+             "Curated memory: target='user' writes the current user's USER.md for cross-task preferences; target='memory' writes MEMORY.md for environment facts. add/replace/remove or atomic operations. old_text locates an entry; replace content replaces the WHOLE entry. If the target is empty or missing, use add or verify the target mapping. Limits: memory 2200, user 1375 chars. action=pending reads proposals. Background destructive writes require explicit /memory approve ID."),
         )
         self.tools = []
         for name, function, schema, tag, description in definitions:

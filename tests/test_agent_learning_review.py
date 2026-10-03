@@ -5,6 +5,7 @@ import json
 from copy import deepcopy
 from typing import Any
 
+import pytest
 from langchain.agents import create_agent
 from langchain.agents.middleware.types import ModelRequest, ModelResponse
 from langchain_core.language_models.chat_models import BaseChatModel
@@ -17,6 +18,8 @@ from app.agent.learning.review import ReviewLoop, ReviewSnapshot
 from app.agent.learning.session import LearningSession
 from app.agent.middleware.learning import LearningCaptureMiddleware, LearningMiddleware
 from app.agent.middleware.memory import MemoryMiddleware
+from app.agent.middleware.skills import SKILLS_SYSTEM_PROMPT
+from app.agent.prompt import PromptManager
 from app.runtime.tasks import TaskRegistry
 
 
@@ -74,7 +77,8 @@ def test_review_keeps_prefix_schema_and_denies_business_tools(tmp_path):
         tool = StructuredTool.from_function(coroutine=forbidden, name='danger', description='business write')
         model = ReviewModel(responses=[response('danger', {}), response('memory', dict(action='add', content='验证过的环境事实'), 'save'), AIMessage(content='done')])
         original = [HumanMessage(content='任务'), AIMessage(content='任务已完成')]
-        request = ModelRequest(model=model, messages=original[:-1], system_message=SystemMessage(content='固定前缀'), tools=[*owner.tools.tools, tool])
+        system = PromptManager().get_agent_prompt('webagent') + SKILLS_SYSTEM_PROMPT.format(skills_list='(No skills available yet.)')
+        request = ModelRequest(model=model, messages=original[:-1], system_message=SystemMessage(content=system), tools=[*owner.tools.tools, tool])
         snapshot = ReviewSnapshot.capture(request, ModelResponse(result=original[-1:]))
         loop = ReviewLoop(snapshot, owner.tools, review_memory=True, review_skills=False, cancelled=lambda: False, on_usage=usage.append)
         result = await loop.run()
@@ -83,10 +87,43 @@ def test_review_keeps_prefix_schema_and_denies_business_tools(tmp_path):
         assert len(result) == 1 and result[0]['tool'] == 'memory'
         assert len(usage) == 3 and loop.consumed == 300
         sent, arguments = model.requests[0]
-        assert sent[:3] == [SystemMessage(content='固定前缀'), *original]
+        assert sent[:3] == [SystemMessage(content=system), *original]
+        assert 'host-started background learning review' in sent[0].content
+        assert 'This review permits memory maintenance only' in sent[-1].content
+        assert 'Do not create or rewrite skills unless' not in sent[0].content
         assert arguments['tools'] == snapshot.schemas
         assert (tmp_path / 'memory/MEMORY.md').read_text() == '验证过的环境事实'
         assert '不能执行' in model.requests[1][0][-1].content
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('review_memory,review_skills,scope', [
+    (True, False, 'memory maintenance only'),
+    (False, True, 'personal skill maintenance only'),
+    (True, True, 'memory and personal skill maintenance'),
+])
+def test_review_without_new_evidence_is_a_noop(tmp_path, review_memory, review_skills, scope):
+    """三种复盘均允许无成果结束，传入的提示词明确维护范围且不要求凑学习记录。"""
+    async def scenario():
+        """检查实际发送的复盘指令及无工具写入的终态。"""
+        owner = session(tmp_path)
+        model = ReviewModel(responses=[AIMessage(content='Nothing to save.')])
+        snapshot = ReviewSnapshot.capture(
+            ModelRequest(model=model, messages=[], tools=owner.tools.tools),
+            ModelResponse(result=[AIMessage(content='常规查询已完成')]),
+        )
+        loop = ReviewLoop(snapshot, owner.tools, review_memory=review_memory,
+                          review_skills=review_skills, cancelled=lambda: False, on_usage=lambda _: None)
+
+        assert await loop.run() == []
+        assert len(model.requests) == 1
+        prompt = model.requests[0][0][-1].content
+        assert scope in prompt
+        assert 'There is no update quota' in prompt
+        assert 'A no-op is a successful review' in prompt
+        assert 'most sessions produce at least one skill update' not in prompt
+        assert not list(tmp_path.rglob('*.md'))
 
     asyncio.run(scenario())
 

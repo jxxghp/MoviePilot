@@ -8,6 +8,7 @@ from plexapi.base import PlexPartialObject
 from plexapi.exceptions import NotFound
 from plexapi.myplex import MyPlexAccount
 from plexapi.server import PlexServer
+from requests import RequestException
 
 from app.adapters.network.http import RequestUtils
 from app.application.mediaserver import MediaServerIdentityHelper
@@ -351,7 +352,7 @@ class Plex:
         if item_id:
             try:
                 videos = self.__fetch_item(item_id)
-            except NotFound:
+            except (NotFound, RequestException):
                 # Plex删除并重新入库后metadata id会变化，缓存的旧item_id失效时回退到搜索路径。
                 logger.warning(f"Plex缓存的电视剧媒体ID {item_id} 已失效，尝试按标题重新搜索：{title}")
                 videos = self.__search_show(title=title,
@@ -649,8 +650,12 @@ class Plex:
         根据给定的item_id获取媒体项
         :param item_id: 媒体项的ID，可以是整数或字符串，如果是字符串且表示为数字，将会被转换为整数
         """
-        if isinstance(item_id, str) and item_id.isdigit():
-            item_id = int(item_id)
+        if isinstance(item_id, str):
+            if item_id.isdigit():
+                item_id = int(item_id)
+            elif not item_id.startswith("/library/metadata/"):
+                # 其他媒体服务器的 UUID 不能作为 Plex metadata key，直接按失效缓存回退。
+                raise NotFound(f"invalid Plex metadata id: {item_id}")
         return self._plex.fetchItem(item_id)
 
     def __build_media_server_item(self, item) -> Optional[_SchemaMediaServerItem]:

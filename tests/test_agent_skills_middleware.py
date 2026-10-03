@@ -284,8 +284,8 @@ async def test_skill_operation_scope_allows_declared_api_operation(tmp_path):
 
 
 def test_modify_request_instructs_model_to_use_read_skill_without_paths(tmp_path):
-    """系统提示应要求用 read_skill 加载主体，而不是 read_file 或裸路径。"""
-    _write_skill(tmp_path, "moviepilot-api")
+    """发现目录按需加载文档且不展开 API 清单，同时保留宿主使用的操作范围。"""
+    _write_skill(tmp_path, "moviepilot-api", allowed_api_operations="media.search media.detail")
     middleware = SkillsMiddleware(sources=[str(tmp_path)])
     skills_metadata = middleware._load_skills_metadata()
     request = ModelRequest(
@@ -305,6 +305,11 @@ def test_modify_request_instructs_model_to_use_read_skill_without_paths(tmp_path
     assert "relative `file` path" in system_content
     assert "up to 512 KiB" in system_content
     assert "moviepilot-api" in system_content
+    assert "media.search" not in system_content
+    assert "media.detail" not in system_content
+    assert skills_metadata[0]["allowed_api_operations"] == ["media.search", "media.detail"]
+    assert "host-started background learning review" in system_content
+    assert "public, pinned, and user-owned skills remain protected" in system_content
     assert "Read `" not in system_content
     assert str(tmp_path) not in system_content
 

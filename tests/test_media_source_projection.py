@@ -117,6 +117,7 @@ def test_douban_projection_is_complete_and_does_not_mutate_source() -> None:
         "genres": ["剧情"],
         "durations": ["45分钟"],
         "countries": ["中国大陆"],
+        "languages": ["汉语普通话"],
     }
     original = deepcopy(source)
 
@@ -139,6 +140,25 @@ def test_douban_projection_is_complete_and_does_not_mutate_source() -> None:
     assert media.genres == [{"id": "剧情", "name": "剧情"}]
     assert media.runtime == 45
     assert media.production_countries == [{"id": "中国大陆", "name": "中国大陆"}]
+    assert media.original_language == "zh"
+
+
+@pytest.mark.parametrize(
+    ("language", "expected"),
+    [("汉语普通话", "zh"), ("粤语", "cn"), ("英语", "en"), ("ja", "ja")],
+)
+def test_douban_projection_maps_language_names_to_codes(language: str, expected: str) -> None:
+    """豆瓣常见语言名称应转换为稳定的分类语言代码。"""
+    media = MediaInfo(
+        douban_info={
+            "id": "1292052",
+            "title": "示例电影",
+            "type": "movie",
+            "languages": [language],
+        }
+    )
+
+    assert media.original_language == expected
 
 
 def test_bangumi_projection_is_complete_and_does_not_mutate_source() -> None:

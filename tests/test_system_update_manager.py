@@ -16,6 +16,8 @@ from app.adapters.system import update as update_module
 
 def _manager(monkeypatch, tmp_path: Path):
     """创建使用临时状态目录的更新管理器。"""
+    # 固定升级起点，避免产品版本发布后与测试中的目标版本重合。
+    monkeypatch.setattr(update_module, "get_app_version", lambda: "v3.0.0")
     monkeypatch.setattr(
         update_module,
         "get_runtime_setting",
@@ -55,6 +57,7 @@ def _docker_manager(monkeypatch, tmp_path: Path):
 
 
 def _response(payload, status_code=200):
+    """构造不访问外网的更新接口响应。"""
     return SimpleNamespace(status_code=status_code, json=lambda: payload)
 
 

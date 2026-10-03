@@ -20,6 +20,13 @@ register_channel_admin_resolver(
 
 
 class FeishuModule(_MessageChannelModuleBase[Feishu]):
+    _notification_user_target_keys = (
+        "feishu_openid",
+        "feishu_userid",
+        "feishu_chat_id",
+    )
+    _notification_admin_default_config_keys = ("FEISHU_OPEN_ID", "FEISHU_CHAT_ID")
+
     def init_module(self) -> None:
         super().init_service(service_name=Feishu.__name__.lower(), service_type=Feishu)
         self._channel = NotificationChannel.Feishu

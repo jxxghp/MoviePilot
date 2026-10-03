@@ -119,9 +119,8 @@
     "type-arg": 1
   },
   "app/agent/callback/__init__.py": {
-    "no-untyped-call": 5,
-    "no-untyped-def": 9,
-    "return-value": 1,
+    "no-untyped-call": 3,
+    "no-untyped-def": 8,
     "type-arg": 1
   },
   "app/agent/contracts.py": {
@@ -952,8 +951,8 @@
   },
   "app/chain/system.py": {
     "attr-defined": 1,
-    "no-untyped-call": 3,
-    "no-untyped-def": 11
+    "no-untyped-call": 1,
+    "no-untyped-def": 9
   },
   "app/chain/theaudiodb.py": {
     "type-arg": 1
@@ -1410,7 +1409,7 @@
     "no-untyped-def": 1
   },
   "app/modules/discord/__init__.py": {
-    "arg-type": 11,
+    "arg-type": 9,
     "assignment": 10,
     "attr-defined": 1,
     "empty-body": 1,
@@ -1990,7 +1989,7 @@
     "union-attr": 48
   },
   "app/modules/slack/__init__.py": {
-    "arg-type": 14,
+    "arg-type": 12,
     "assignment": 9,
     "attr-defined": 1,
     "empty-body": 1,
@@ -2015,7 +2014,7 @@
     "var-annotated": 1
   },
   "app/modules/synologychat/__init__.py": {
-    "arg-type": 8,
+    "arg-type": 5,
     "assignment": 4,
     "attr-defined": 1,
     "empty-body": 1,
@@ -2031,7 +2030,7 @@
     "no-untyped-def": 3
   },
   "app/modules/telegram/module.py": {
-    "arg-type": 17,
+    "arg-type": 15,
     "assignment": 9,
     "attr-defined": 1,
     "empty-body": 1,
@@ -2294,7 +2293,7 @@
     "var-annotated": 2
   },
   "app/modules/vocechat/__init__.py": {
-    "arg-type": 10,
+    "arg-type": 6,
     "assignment": 6,
     "attr-defined": 1,
     "empty-body": 1,
@@ -2317,7 +2316,7 @@
     "union-attr": 1
   },
   "app/modules/wechat/__init__.py": {
-    "arg-type": 14,
+    "arg-type": 8,
     "assignment": 5,
     "attr-defined": 1,
     "empty-body": 1,
@@ -2344,7 +2343,7 @@
     "var-annotated": 1
   },
   "app/modules/wechatclawbot/__init__.py": {
-    "arg-type": 9,
+    "arg-type": 4,
     "assignment": 3,
     "empty-body": 1,
     "no-any-return": 1,

@@ -45,6 +45,31 @@ def test_batch_final_budget_atomicity_empty_guard_and_failure_cap(tmp_path):
     assert (tmp_path / 'MEMORY.md').read_text() == ''
 
 
+def test_empty_target_explains_file_mapping_and_correction(tmp_path):
+    """空目标应说明文件映射和应使用的 target，避免反复修改 old_text。"""
+    store = MemoryStore(tmp_path)
+
+    result = apply(store, target='user', action='replace', old_text='任意片段', content='新偏好')
+
+    assert not result['success']
+    assert '目标记忆为空或文件不存在' in result['error']
+    assert "target='user'" in result['error']
+    assert 'USER.md' in result['error']
+    assert "target='memory'" in result['error']
+    assert result['current_entries'] == []
+
+
+def test_non_empty_target_keeps_unique_match_error(tmp_path):
+    """目标已有条目但 old_text 不匹配时，仍保留原有纠错提示。"""
+    store = MemoryStore(tmp_path)
+    apply(store, action='add', content='已有环境事实')
+
+    result = apply(store, action='replace', old_text='不存在的片段', content='新事实')
+
+    assert not result['success']
+    assert result['error'] == 'old_text 未唯一匹配，请重新读取记忆并使用准确片段'
+
+
 def test_background_proposal_pins_entry_and_requires_host_resolution(tmp_path):
     """后台整批存提案，不产生一半新增一半删除；过期审批绝不匹配新内容。"""
     foreground = MemoryStore(tmp_path)

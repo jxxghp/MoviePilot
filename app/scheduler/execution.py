@@ -113,6 +113,7 @@ class SchedulerExecutionOwner(_SchedulerOwnerBase):
             title=f"{job.get('name')} 执行失败",
             message=str(error),
             role="system",
+            level="error",
         )
         eventmanager.send_event(
             EventType.SystemError,

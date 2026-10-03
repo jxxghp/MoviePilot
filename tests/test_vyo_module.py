@@ -6,9 +6,48 @@ from typing import Optional
 import pytest
 
 from app.modules.vyo.api import Api, Result
+from app.modules.vyo.module import VyoModule
 from app.modules.vyo.vyo import Vyo
+from app.runtime.extensions.service import ServiceConfigHelper
 from app.schemas.mediaserver import RefreshMediaItem
+from app.schemas.system import MediaServerConf
 from app.schemas.types import MediaSource, MediaType
+
+
+@pytest.mark.parametrize("connected", [True, False])
+def test_saved_config_loads_for_connection_test_and_statistics(monkeypatch, connected):
+    """更名后的模块仍加载已保存的类型，并实际执行连通性和统计查询。"""
+    config = MediaServerConf(
+        name="客厅 Vyo", type="mediavault", enabled=True,
+        config={"host": "http://vyo.test", "apikey": "test-only"},
+        sync_libraries=["movies"],
+    )
+    configs = [
+        config,
+        config.model_copy(update={"name": "已停用", "enabled": False}),
+        config.model_copy(update={"name": "其他服务器", "type": "emby"}),
+    ]
+    monkeypatch.setattr(ServiceConfigHelper, "get_mediaserver_configs", lambda: configs)
+    api = _FakeApi({
+        "/libraries": Result(connected, {"items": []}),
+        "/statistics": Result(True, {"movie_count": 12, "series_count": 3, "episode_count": 24}),
+        "/users": Result(True, []),
+    })
+    monkeypatch.setattr(Api, "request", lambda _self, *args, **kwargs: api.request(*args, **kwargs))
+    module = VyoModule()
+    try:
+        module.init_module()
+        assert list(module.get_instances()) == [config.name]
+        assert api.calls[0]["api"] == "/libraries"
+        assert module.test() == ((True, "") if connected else (False, f"无法连接Vyo：{config.name}"))
+        if connected:
+            statistics = module.media_statistic(server=config.name)
+            assert len(statistics) == 1
+            assert statistics[0].movie_count == 12
+            assert statistics[0].tv_count == 3
+            assert statistics[0].episode_count == 24
+    finally:
+        module.stop()
 
 
 class _FakeApi:

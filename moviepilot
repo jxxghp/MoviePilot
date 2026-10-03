@@ -10,6 +10,7 @@ Usage: moviepilot [BOOTSTRAP COMMAND] | [RUNTIME COMMAND]
 
 Bootstrap Commands:
   moviepilot install deps [--python PYTHON] [--venv PATH] [--recreate] [--config-dir PATH]
+  moviepilot install cjk [--venv PATH] [--check]
   moviepilot install frontend [--version TAG] [--node-version 20.12.1] [--config-dir PATH]
   moviepilot install resources [--resources-repo PATH] [--resource-dir PATH] [--config-dir PATH]
   moviepilot init [--skip-resources] [--force-token] [--wizard] [--superuser NAME] [--superuser-password PASSWORD] [--config-dir PATH]
@@ -56,6 +57,7 @@ show_commands() {
   cat <<'EOF'
 Bootstrap Commands
   install deps
+  install cjk
   install frontend
   install resources
   init
@@ -99,6 +101,7 @@ show_install_help() {
   cat <<'EOF'
 Usage:
   moviepilot install deps [OPTIONS]
+  moviepilot install cjk [OPTIONS]
   moviepilot install frontend [OPTIONS]
   moviepilot install resources [OPTIONS]
 
@@ -109,6 +112,11 @@ Options:
     --recreate        删除并重建虚拟环境
     --config-dir PATH 指定配置目录
     说明            Rust 加速扩展通过 moviepilot-rust PyPI 依赖安装
+                    同时尝试编译并验证 Agent 中文全文索引扩展
+
+  cjk:
+    --venv PATH      目标虚拟环境目录，默认 ./venv
+    --check          只验证已安装扩展，不编译或修改文件
 
   frontend:
     --version TAG         前端版本，默认使用 version.py 中的 FRONTEND_VERSION
@@ -202,6 +210,7 @@ Options:
 
 说明:
   - 更新后端依赖时会同步更新 moviepilot-rust PyPI 依赖
+  - 在线更新后端时会以 origin 强制覆盖同名本地标签；分支仍仅允许快进更新
   - 后端更新前如果检测到已跟踪源码改动，CLI 会询问是否清空本地改动；确认后才会继续更新，拒绝或非交互模式会取消更新
   - 可在前端“高级设置 - 实验室”中关闭或重新开启 Rust 加速
 EOF
@@ -473,7 +482,7 @@ show_command_help() {
     install)
       shift
       case "${1:-}" in
-        ""|deps|-h|--help)
+        ""|deps|cjk|-h|--help)
           show_install_help
           exit 0
           ;;
@@ -486,7 +495,7 @@ show_command_help() {
           exit 0
           ;;
         *)
-          echo "仅支持：moviepilot help install、moviepilot help install deps、moviepilot help install frontend、moviepilot help install resources" >&2
+          echo "仅支持：moviepilot help install、moviepilot help install deps、moviepilot help install cjk、moviepilot help install frontend、moviepilot help install resources" >&2
           exit 1
           ;;
       esac
@@ -602,13 +611,18 @@ case "${1:-}" in
         require_bootstrap_python
         exec "$BOOTSTRAP_PYTHON" "$SETUP_SCRIPT" install-frontend "$@"
         ;;
+      cjk)
+        shift
+        require_bootstrap_python
+        exec "$BOOTSTRAP_PYTHON" "$SETUP_SCRIPT" install-cjk "$@"
+        ;;
       resources)
         shift
         require_bootstrap_python
         exec "$BOOTSTRAP_PYTHON" "$SETUP_SCRIPT" install-resources "$@"
         ;;
       *)
-        echo "支持的命令：moviepilot install deps|frontend|resources" >&2
+        echo "支持的命令：moviepilot install deps|cjk|frontend|resources" >&2
         exit 1
         ;;
     esac

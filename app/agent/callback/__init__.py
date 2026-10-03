@@ -2,6 +2,7 @@ import asyncio
 import re
 import threading
 import time
+from collections import deque
 from typing import Any, Optional, Tuple
 
 from app.agent.policy.sanitizer import sanitize_for_host
@@ -15,7 +16,7 @@ from app.schemas.types import MessageType, NotificationChannel
 
 
 class _StreamChain(ChainBase):
-    pass
+    """通过宿主消息模块发送、编辑和收口 Agent 流式回复。"""
 
 
 _PATCH_FILE_HEADER_PATTERN = re.compile(r"\*\*\* (?:Add|Update|Delete) File:\s*(\S+)")
@@ -53,6 +54,7 @@ class StreamingHandler:
     FLUSH_INTERVAL = 0.3
 
     def __init__(self):
+        """初始化文本缓冲、渠道消息身份及唯一刷新任务的生命周期状态。"""
         self._lock = threading.Lock()
         self._buffer = ""
         # 流式输出相关状态
@@ -65,6 +67,7 @@ class StreamingHandler:
         self._sent_text = ""
         # 当前消息的起始偏移量（buffer 中属于当前消息的起始位置）
         self._msg_start_offset = 0
+        self._message_boundaries: deque[tuple[int, Optional[str]]] = deque()
         # 当前渠道的单条消息最大长度（0 表示不限制）
         self._max_message_length = 0
         # 消息发送所需的上下文信息
@@ -90,6 +93,27 @@ class StreamingHandler:
         self._thinking_active = False
         self._thinking_status_text = ""
 
+    def _append_thinking_status_locked(self) -> None:
+        """把思考状态追加到消息末尾，确保它始终是最新一行。"""
+        if not self._should_buffer_thinking_status():
+            return
+        status_text = self._thinking_status_text
+        if not status_text or self._buffer.endswith(status_text):
+            return
+        if self._buffer:
+            self._buffer = self._buffer.rstrip("\n") + "\n\n"
+        self._buffer += status_text
+
+    def _remove_thinking_status_text_locked(self) -> None:
+        """移除消息中的思考文本，不改变思考生命周期状态。"""
+        status_text = self._thinking_status_text
+        if not status_text or status_text not in self._buffer:
+            return
+        if self._buffer.endswith(status_text):
+            self._buffer = self._buffer[: -len(status_text)]
+            return
+        self._buffer = self._buffer.replace(status_text, "", 1)
+
     def thinking_started(self) -> None:
         """开始展示模型思考状态，并记录本轮思考起始时间。"""
         with self._lock:
@@ -98,15 +122,16 @@ class StreamingHandler:
             self._thinking_started_at = time.monotonic()
             self._thinking_active = True
             self._thinking_status_text = self._format_thinking_status(0)
-            if self._should_buffer_thinking_status():
-                self._buffer = f"{self._thinking_status_text}\n\n"
+            self._append_thinking_status_locked()
 
     def thinking_finished(self) -> None:
         """结束模型思考状态，移除尚未被正文替换的状态占位文本。"""
         with self._lock:
             if not self._thinking_active:
                 return
-            self._remove_thinking_status_locked()
+            self._remove_thinking_status_text_locked()
+            self._thinking_active = False
+            self._thinking_status_text = ""
 
     def _should_buffer_thinking_status(self) -> bool:
         """判断是否把思考状态写入消息渠道的可编辑正文。"""
@@ -114,9 +139,7 @@ class StreamingHandler:
 
     def _remove_thinking_status_locked(self) -> None:
         """从正文缓冲区移除思考状态块，同时结束本轮计时。"""
-        status_text = self._thinking_status_text
-        if status_text and self._buffer.startswith(status_text):
-            self._buffer = self._buffer[len(status_text) :].lstrip("\n")
+        self._remove_thinking_status_text_locked()
         self._thinking_active = False
         self._thinking_status_text = ""
 
@@ -131,8 +154,8 @@ class StreamingHandler:
                 return
             elapsed = int(max(0.0, time.monotonic() - (self._thinking_started_at or time.monotonic())))
             next_status_text = self._format_thinking_status(elapsed)
-            if self._buffer.startswith(self._thinking_status_text):
-                self._buffer = next_status_text + self._buffer[len(self._thinking_status_text) :]
+            if self._buffer.endswith(self._thinking_status_text):
+                self._buffer = self._buffer[: -len(self._thinking_status_text)] + next_status_text
                 self._thinking_status_text = next_status_text
 
     def set_dispatch_policy(self, allow_dispatch_without_context: bool = False) -> None:
@@ -147,10 +170,20 @@ class StreamingHandler:
         接收 LLM 流式 token，积累到缓冲区。
         如果存在待输出的工具统计，则会先补上一句摘要再追加 token。
         """
+        return self._append_buffer_text(token, finish_thinking=True)
+
+    def _append_buffer_text(self, token: str, *, finish_thinking: bool) -> str:
+        """追加一段缓冲文本，并按内容类型决定是否结束思考状态。"""
         with self._lock:
             emitted = token or ""
-            if emitted and self._thinking_active:
+            status_detached = False
+            if emitted and finish_thinking and self._thinking_active:
                 self._remove_thinking_status_locked()
+            elif self._thinking_active and not finish_thinking:
+                # 工具提示仍可能从兼容入口直接到达；先移除再追加，避免把思考行
+                # 留在工具提示之前，最后恢复到缓冲区末尾。
+                self._remove_thinking_status_text_locked()
+                status_detached = True
 
             if self._pending_tool_stats:
                 if self._live_tool_summary:
@@ -169,12 +202,16 @@ class StreamingHandler:
                         emitted = summary
 
             # 如果存量消息结束是两个换行，则去掉新消息前面的换行，避免过多空行
-            if self._buffer.endswith("\n\n") and emitted.startswith("\n"):
+            if status_detached and not self._buffer and emitted.startswith("\n"):
+                emitted = emitted.lstrip("\n")
+            elif self._buffer.endswith("\n\n") and emitted.startswith("\n"):
                 emitted = emitted.lstrip("\n")
             self._buffer += emitted
             if emitted:
                 self._live_tool_summary = None
                 self._live_tool_stats = {}
+            if self._thinking_active and not finish_thinking:
+                self._append_thinking_status_locked()
             return emitted
 
     def emit_tool_message(self, message: str) -> str:
@@ -193,7 +230,10 @@ class StreamingHandler:
             self._tool_summaries.update(
                 line for line in tool_message.splitlines() if line
             )
-        return self.emit(f"\n\n{tool_message}\n\n")
+        return self._append_buffer_text(
+            f"\n\n{tool_message}\n\n",
+            finish_thinking=False,
+        )
 
     def _is_verbose_mode(self) -> bool:
         """判断当前是否启用逐条工具调用展示。"""
@@ -211,9 +251,11 @@ class StreamingHandler:
         中间件私有工具不经过 ``MoviePilotTool._arun``，必须通过本入口复用
         相同的详细模式语义，避免无条件调用 ``record_tool_call`` 后只显示汇总。
         """
+        self.thinking_finished()
         safe_message = sanitize_for_host(tool_message) if tool_message else tool_message
         if self._is_verbose_mode() and safe_message:
-            return self.emit_tool_message(str(safe_message))
+            self.emit_tool_message(str(safe_message))
+            return ""
         self.record_tool_call(
             tool_name=tool_name,
             tool_message=str(safe_message) if safe_message else None,
@@ -226,12 +268,13 @@ class StreamingHandler:
         tool_name: str,
         tool_message: Optional[str] = None,
     ) -> str:
-        """为支持结构化生命周期的宿主预留工具调用 ID。"""
+        """结束当前模型思考并预留工具调用生命周期入口。"""
         del tool_name, tool_message
+        self.thinking_finished()
         return ""
 
     def tool_call_finished(self, tool_id: str, status: str = "done") -> None:
-        """收口真实工具执行；普通通知渠道无需额外输出生命周期事件。"""
+        """收口工具执行；下一轮 thinking 由模型 reasoning 协议显式开启。"""
         del tool_id, status
 
     async def take(self) -> str:
@@ -250,9 +293,11 @@ class StreamingHandler:
                 self._live_tool_summary = None
                 self._live_tool_stats = {}
                 return ""
-            message = self._buffer
+            message = self._buffer[self._msg_start_offset :]
             logger.info(f"Agent消息: {message}")
             self._buffer = ""
+            self._msg_start_offset = 0
+            self._message_boundaries.clear()
             self._live_tool_summary = None
             self._live_tool_stats = {}
             return message
@@ -266,10 +311,14 @@ class StreamingHandler:
             self._sent_text = ""
             self._message_response = None
             self._msg_start_offset = 0
+            self._message_boundaries.clear()
             self._pending_tool_stats = {}
             self._tool_summaries = set()
             self._live_tool_summary = None
             self._live_tool_stats = {}
+            self._thinking_started_at = None
+            self._thinking_active = False
+            self._thinking_status_text = ""
 
     def reset(self):
         """
@@ -283,8 +332,24 @@ class StreamingHandler:
             self._buffer = ""
             self._sent_text = ""
             self._msg_start_offset = 0
+            self._message_boundaries.clear()
             self._pending_tool_stats = {}
             self._tool_summaries = set()
+            self._live_tool_summary = None
+            self._live_tool_stats = {}
+            self._thinking_started_at = None
+            self._thinking_active = False
+            self._thinking_status_text = ""
+
+    def start_new_message(self, original_message_id: Optional[str] = None) -> None:
+        """记录补充输入的展示边界，由原刷新任务收口旧消息，避免在途发送覆盖新消息身份。"""
+        if not self._streaming_enabled or not self._can_stream():
+            return
+        self.thinking_finished()
+        self.flush_pending_tool_summary()
+        with self._lock:
+            self._message_boundaries.append((len(self._buffer), original_message_id))
+            # 新回合的统计不能再原地改写边界之前的摘要，否则会移动已冻结的偏移。
             self._live_tool_summary = None
             self._live_tool_stats = {}
 
@@ -348,6 +413,7 @@ class StreamingHandler:
         self._sent_text = ""
         self._message_response = None
         self._msg_start_offset = 0
+        self._message_boundaries.clear()
         self._pending_tool_stats = {}
         self._tool_summaries = set()
         self._live_tool_summary = None
@@ -398,26 +464,27 @@ class StreamingHandler:
         self.flush_pending_tool_summary()
 
         # 执行最后一次刷新
-        await self._flush()
+        await self._flush_messages()
 
-        message_response = self._message_response
-        if message_response:
-            await run_in_threadpool(
-                _StreamChain().finalize_message,
-                message_response,
-            )
+        await self._finalize_current_message()
 
         # 检查是否所有缓冲内容都已发送
         with self._lock:
             # 当前消息的文本 = buffer 中从 _msg_start_offset 开始的部分
             current_msg_text = self._buffer[self._msg_start_offset :]
-            all_sent = self._message_response is not None and self._sent_text and current_msg_text == self._sent_text
+            all_sent = not self._message_boundaries and bool(
+                (self._message_response is not None and self._sent_text and current_msg_text == self._sent_text)
+                or (self._msg_start_offset > 0 and not current_msg_text)
+            )
             # 保留最终文本用于返回（返回完整 buffer 内容，包含所有分段消息）
             final_text = self._buffer if all_sent else ""
+            # 跨消息边界已经交付的前段不再进入常规发送回退，避免重复旧回复。
+            self._buffer = self._buffer[self._msg_start_offset :]
             # 重置状态
             self._sent_text = ""
             self._message_response = None
             self._msg_start_offset = 0
+            self._message_boundaries.clear()
             self._pending_tool_stats = {}
             self._tool_summaries = set()
             self._live_tool_summary = None
@@ -500,24 +567,34 @@ class StreamingHandler:
         将待输出的工具统计摘要补入缓冲区，并返回本次新增的摘要文本。
         """
         with self._lock:
+            thinking_was_active = self._thinking_active
+            if thinking_was_active:
+                self._remove_thinking_status_text_locked()
             if self._live_tool_summary and self._pending_tool_stats:
-                return self._flush_live_tool_summary_locked()
+                summary = self._flush_live_tool_summary_locked()
+                if thinking_was_active:
+                    self._append_thinking_status_locked()
+                return summary
             summary = self._consume_pending_tool_summary_locked()
             if summary:
                 self._buffer += summary
                 self._live_tool_summary = None
                 self._live_tool_stats = {}
+            if thinking_was_active:
+                self._append_thinking_status_locked()
             return summary
 
     def _flush_live_tool_summary_locked(self) -> str:
         """在缓冲区末尾追加或原地替换当前工具批次摘要。"""
+        thinking_was_active = self._thinking_active
+        if thinking_was_active:
+            self._remove_thinking_status_text_locked()
         live_summary = self._live_tool_summary
         visible_buffer = self._buffer
         live_start = len(self._buffer)
-        old_summary = None
 
         if live_summary and self._buffer[live_summary[0] :] == live_summary[1]:
-            live_start, _old_block, old_summary = live_summary
+            live_start, _old_block, _old_summary = live_summary
             visible_buffer = self._buffer[:live_start]
 
         if self._pending_tool_stats:
@@ -525,14 +602,18 @@ class StreamingHandler:
             self._pending_tool_stats = {}
         pending_summary = self._build_tool_summary_locked(self._live_tool_stats, visible_buffer)
         if not pending_summary:
+            if thinking_was_active:
+                self._append_thinking_status_locked()
             return ""
 
         summary, summary_block = pending_summary
-        if old_summary:
-            self._tool_summaries.discard(old_summary)
+        # 保留历史摘要的样式登记。相同文案可能在不同工具批次重复出现，
+        # 删除旧字符串会让前一批已写入消息在后续编辑时失去富文本样式。
         self._tool_summaries.add(summary)
         self._buffer = visible_buffer + summary_block
         self._live_tool_summary = (len(visible_buffer), summary_block, summary)
+        if thinking_was_active:
+            self._append_thinking_status_locked()
         return summary_block
 
     @staticmethod
@@ -784,7 +865,7 @@ class StreamingHandler:
                 await asyncio.sleep(self.FLUSH_INTERVAL)
                 if self._streaming_enabled:
                     self._refresh_thinking_status()
-                    await self._flush()
+                    await self._flush_messages()
         except asyncio.CancelledError:
             pass
         except Exception as e:
@@ -806,7 +887,30 @@ class StreamingHandler:
                 pass
         self._flush_task = None
 
-    async def _flush(self):
+    async def _flush_messages(self) -> None:
+        """按补充输入边界依次收口旧消息，再把后续内容发送到新的渠道消息。"""
+        while self._message_boundaries:
+            boundary, original_message_id = self._message_boundaries[0]
+            await self._flush(end_offset=boundary)
+            with self._lock:
+                current_text = self._buffer[self._msg_start_offset : boundary]
+                if current_text and current_text != self._sent_text:
+                    return
+            await self._finalize_current_message()
+            with self._lock:
+                self._message_boundaries.popleft()
+                self._msg_start_offset = boundary
+                self._message_response = None
+                self._sent_text = ""
+                self._original_message_id = original_message_id
+        await self._flush()
+
+    async def _finalize_current_message(self) -> None:
+        """由现有刷新 owner 在线程池中收口当前渠道消息，供分段和最终停止共用。"""
+        if self._message_response is not None:
+            await run_in_threadpool(_StreamChain().finalize_message, self._message_response)
+
+    async def _flush(self, end_offset: Optional[int] = None) -> None:
         """
         将当前缓冲区内容刷新到用户消息
         - 如果还没有发送过消息，先发送一条新消息并记录message_id
@@ -815,7 +919,7 @@ class StreamingHandler:
         """
         with self._lock:
             # 当前消息的文本 = buffer 中从 _msg_start_offset 开始的部分
-            current_text = self._buffer[self._msg_start_offset :]
+            current_text = self._buffer[self._msg_start_offset : end_offset]
             if not current_text or current_text == self._sent_text:
                 # 没有新内容需要刷新
                 return
@@ -860,7 +964,7 @@ class StreamingHandler:
                     logger.debug(f"流式消息长度 {len(current_text)} 超过限制 {self._max_message_length}，启用新消息")
                     with self._lock:
                         self._msg_start_offset += len(self._sent_text)
-                        current_text = self._buffer[self._msg_start_offset :]
+                        current_text = self._buffer[self._msg_start_offset : end_offset]
                     self._message_response = None
                     self._sent_text = ""
 
