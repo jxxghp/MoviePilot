@@ -165,6 +165,7 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
         执行订阅搜索。
 
         scheduled_interval 仅供定时调度传入系统间隔；手动和指定目标搜索不受周期限制。
+        指定目标可对暂停订阅搜索一次，已接纳的搜索不因暂停中断，也不会仅因搜索而恢复订阅。
         """
         return self._execute_search(
             sid=sid,
@@ -281,9 +282,8 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
                 reason: Optional[str] = "not_eligible"
                 try:
                     current = self.subscription_repository.get(subscribe.id)
-                    if current is None or current.state == "S":
-                        if current and current.state == "S":
-                            logger.debug(f"订阅《{current.name}》已暂停，本次没有搜索")
+                    # 与持久队列保持一致，暂停不取消本轮已选取的搜索。
+                    if current is None:
                         continue
                     processed_result = self._process_search_subscription(
                         current,
@@ -613,7 +613,7 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
         state: Optional[str],
         scheduled_interval: Optional[int] = None,
     ) -> list[SubscriptionSnapshot]:
-        """按单条、指定批次或状态读取本轮搜索订阅。"""
+        """指定目标允许暂停订阅补搜；常规调度只从请求的活动状态选取新任务。"""
         repository = self.subscription_repository
         if sid:
             subscribe = repository.get(sid)

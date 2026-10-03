@@ -151,12 +151,12 @@ def _configure_subscription_write(chain, repository) -> None:
     chain.sync_subscription_mutation_scope = mutation_scope
 
 
-def _execution_context(*, cancelled=None) -> SubscriptionExecutionContext:
+def _execution_context(*, cancelled=None, operation="search") -> SubscriptionExecutionContext:
     """构造音乐订阅使用的独立执行上下文。"""
     admission = SubscriptionExecutionAdmission()
     lease = admission.try_acquire(
         subscription_id=7,
-        operation="search",
+        operation=operation,
         ttl_seconds=60,
     )
     assert lease is not None
@@ -330,7 +330,7 @@ def test_music_download_marks_shared_execution_context_before_side_effect():
 
 
 def test_music_download_rechecks_paused_state_before_submission():
-    """候选准备后暂停的音乐订阅不得进入下载器。"""
+    """没有搜索执行上下文时，暂停的音乐订阅不得提交下载。"""
     subscribe = _subscribe()
     paused = _subscribe(state="S")
     repository = Mock()
@@ -343,10 +343,99 @@ def test_music_download_rechecks_paused_state_before_submission():
             subscribe,
             _music_info(),
             [Context()],
-            execution_context=_execution_context(),
         )
 
     download_chain.assert_not_called()
+
+
+@pytest.mark.parametrize("prepared_state", ["R", "S"])
+def test_music_accepted_search_downloads_paused_subscription(prepared_state):
+    """已接纳搜索和指定暂停订阅补搜能提交候选，不主动恢复订阅状态。"""
+    prepared = _subscribe(state=prepared_state)
+    current = _subscribe(state="S")
+    target = _music_info()
+    candidate = Context(
+        torrent_info=TorrentInfo(title="周杰伦 - 晴天 FLAC", category=MediaType.MUSIC.value),
+        meta_info=MetaMusic.from_music_info(target),
+        media_info=target,
+    )
+    execution = _execution_context()
+    repository = Mock()
+    repository.get.return_value = current
+    chain = SubscribeChain()
+    chain.subscription_repository = repository
+    chain.finish_subscribe_or_not = Mock()
+    download_chain = Mock()
+
+    def submit(**kwargs):
+        """模拟外部提交，并验证策略传入真实搜索取消和副作用信号。"""
+        assert kwargs["contexts"] == [candidate]
+        assert kwargs["governance"].cancelled() is False
+        kwargs["governance"].mark_started()
+        return [candidate], None
+
+    download_chain.batch_download.side_effect = submit
+
+    with patch("app.chain._music.DownloadChain", return_value=download_chain):
+        chain._download_music_subscribe(prepared, target, [candidate], execution_context=execution)
+
+    download_chain.batch_download.assert_called_once()
+    assert execution.download_started is True
+    chain.finish_subscribe_or_not.assert_called_once()
+    assert chain.finish_subscribe_or_not.call_args.kwargs["subscribe"] is current
+    assert chain.finish_subscribe_or_not.call_args.kwargs["downloads"] == [candidate]
+    repository.update.assert_not_called()
+    assert current.state == "S"
+    assert execution.admission.release(execution.lease) is True
+
+
+def test_music_paused_match_cannot_submit_download():
+    """匹配执行上下文不能使用搜索任务的暂停放行规则。"""
+    repository = Mock()
+    repository.get.return_value = _subscribe(state="S")
+    chain = SubscribeChain()
+    chain.subscription_repository = repository
+    chain.finish_subscribe_or_not = Mock()
+    execution = _execution_context(operation="match")
+
+    with patch("app.chain._music.DownloadChain") as download_chain:
+        chain._download_music_subscribe(
+            _subscribe(), _music_info(), [Context()], execution_context=execution,
+        )
+
+    download_chain.assert_not_called()
+    chain.finish_subscribe_or_not.assert_not_called()
+    assert execution.download_started is False
+    assert execution.admission.release(execution.lease) is True
+
+
+@pytest.mark.parametrize("cancel_at", ["entry", "preparing"])
+def test_music_paused_search_still_cancels_before_submission(cancel_at):
+    """暂停搜索的放行不能绕过入口或资源准备阶段的取消。"""
+    cancelled = [cancel_at == "entry"]
+    execution = _execution_context(cancelled=lambda: cancelled[0])
+
+    def on_phase(phase, _site_id):
+        if phase == cancel_at:
+            cancelled[0] = True
+
+    execution.phase_changed = on_phase
+    repository = Mock()
+    repository.get.return_value = _subscribe(state="S")
+    chain = SubscribeChain()
+    chain.subscription_repository = repository
+    chain.finish_subscribe_or_not = Mock()
+
+    with patch("app.chain._music.DownloadChain") as download_chain:
+        with pytest.raises(SubscriptionSearchCancelled):
+            chain._download_music_subscribe(
+                _subscribe(), _music_info(), [Context()], execution_context=execution,
+            )
+
+    download_chain.assert_not_called()
+    chain.finish_subscribe_or_not.assert_not_called()
+    assert execution.download_started is False
+    assert execution.admission.release(execution.lease) is True
 
 
 def test_music_subscribe_filters_declared_bitrate_and_format():
