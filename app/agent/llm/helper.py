@@ -843,6 +843,8 @@ class LLMHelper:
         """
         将统一思考级别映射为 OpenAI reasoning_effort。
 
+        max 与 xhigh 是独立级别；保留原值，仅在已知模型不支持时按目录能力降级。
+
         :param thinking_level: MoviePilot 统一思考级别
         :param supported_efforts: 模型目录声明的可用 effort，未知时不限制
         :return: 可发送的 reasoning_effort；不支持时返回 None
@@ -851,8 +853,6 @@ class LLMHelper:
             return None
         if thinking_level == "off":
             normalized_effort = "none"
-        elif thinking_level == "max":
-            normalized_effort = "xhigh"
         else:
             normalized_effort = thinking_level
 

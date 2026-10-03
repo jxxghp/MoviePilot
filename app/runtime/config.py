@@ -819,7 +819,7 @@ class ConfigModel(BaseModel):
     LLM_PROVIDER: str = "deepseek"
     # LLM模型名称
     LLM_MODEL: str = "deepseek-chat"
-    # 思考模式/深度配置：off/auto/minimal/low/medium/high/max/xhigh
+    # 思考模式/深度配置：off/auto/minimal/low/medium/high/max/xhigh；OpenAI兼容接口保留max/xhigh，仅按已知模型能力降级
     LLM_THINKING_LEVEL: Optional[str] = "off"
     # OpenAI兼容接口API协议：auto（自动）/ chat_completions / responses
     LLM_API_PROTOCOL: str = "auto"
