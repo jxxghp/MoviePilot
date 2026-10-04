@@ -1,5 +1,6 @@
 """种子身份与下载链接的纯领域判断规则。"""
 
+import re
 from typing import TYPE_CHECKING, Optional, Union
 from urllib.parse import parse_qs, urlsplit
 
@@ -39,6 +40,10 @@ def resource_identity(torrent: "TorrentInfo") -> Optional[tuple[str, str]]:
             if values and len(values) == 1:
                 prefix = "hash" if name == "hash" else "id"
                 return site or parsed.netloc, f"{prefix}={values[0]}"
+        # 馒头详情页把稳定种子 ID 放在路径中，换票请求参数不参与资源身份。
+        match = re.fullmatch(r"/detail/(\d+)/?", parsed.path)
+        if match:
+            return site or parsed.netloc, f"id={match[1]}"
     return None
 
 

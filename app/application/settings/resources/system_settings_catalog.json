@@ -1100,7 +1100,7 @@
       "source_line": 191
     },
     "NO_CACHE_SITE_KEY": {
-      "description": "不能缓存站点资源的站点域名，多个使用,分隔",
+      "description": "不缓存站点资源的域名关键字，多个使用,分隔；留空时所有站点使用缓存",
       "group": "sites",
       "source_file": "app/runtime/config.py",
       "source_line": 557

@@ -506,7 +506,8 @@ class TorrentsChain(ChainBase):
 
     def _is_no_cache_site(self, domain: str) -> bool:
         """判断站点是否配置为不缓存资源。"""
-        return any(key in domain for key in self.runtime_config.no_cache_site_key.split(","))
+        keys = (key.strip() for key in self.runtime_config.no_cache_site_key.split(","))
+        return any(key and key in domain for key in keys)
 
     def _build_refresh_context(self, torrent: TorrentInfo, stype: str) -> Context:
         """识别单个种子并构造缓存上下文。"""

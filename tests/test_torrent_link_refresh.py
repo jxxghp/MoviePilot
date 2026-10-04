@@ -1,5 +1,7 @@
 """临时下载凭证更新与有界恢复的离线回归。"""
 
+import base64
+import json
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,6 +17,7 @@ from app.chain.torrents import TorrentsChain
 from app.domain import torrent as torrent_rules
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
+from app.runtime.config import ConfigModel, settings
 from app.schemas.types import MediaType
 
 SITE = {"id": 1, "name": "测试站", "domain": "https://tracker.example/"}
@@ -345,6 +348,68 @@ def test_mteam_indirect_request_metadata_can_refresh_in_cache():
     assert TorrentsChain._refresh_cached_torrents([fresh], cached) == []
     assert cached[0].torrent_info is fresh
     assert cached[0].media_info.title == "识别结果"
+
+
+def test_mteam_default_refresh_keeps_existing_cache_and_recognition(refresh_chain, monkeypatch):
+    """馒头默认增量合并缓存，首页之外的旧资源和已有识别结果不会丢失。"""
+    monkeypatch.setattr(settings, "NO_CACHE_SITE_KEY", ConfigModel.model_fields["NO_CACHE_SITE_KEY"].default)
+    site = {**SITE, "domain": "https://kp.m-team.cc/"}
+    torrents_module.SitesHelper().get_indexers.return_value = [site]
+    old = _torrent(page_url="https://kp.m-team.cc/detail/39",
+                   enclosure="[old]https://api.m-team.cc/api/torrent/genDlToken")
+    cached = Context(torrent_info=old, media_info=MediaInfo(title="已识别"))
+    older = Context(torrent_info=replace(old, page_url="https://kp.m-team.cc/detail/40"))
+    cache = {"m-team.cc": [older, cached]}
+    refresh_chain.load_cache.side_effect = lambda filename: cache if filename == refresh_chain.cache_file else {}
+    fresh = replace(old, enclosure="[new]https://api.m-team.cc/api/torrent/genDlToken")
+    refresh_chain.rss.return_value = [fresh]
+
+    result = refresh_chain.refresh(stype="spider", sites=[1])
+
+    assert result["m-team.cc"] == [older, cached]
+    assert cached.torrent_info is fresh
+    assert cached.media_info.title == "已识别"
+    refresh_chain._build_refresh_context.assert_not_called()
+    assert torrent_rules.resource_identity(old) != torrent_rules.resource_identity(older.torrent_info)
+
+
+@pytest.mark.parametrize("keys,domain,expected", [
+    ("", "m-team.cc", False),
+    (" , , ", "tracker.example", False),
+    (" m-team, ", "m-team.cc", True),
+    (" m-team, ", "tracker.example", False),
+])
+def test_no_cache_rule_only_matches_explicit_nonempty_keywords(monkeypatch, keys, domain, expected):
+    """空项不再匹配所有站点，显式例外规则继续生效。"""
+    monkeypatch.setattr(settings, "NO_CACHE_SITE_KEY", keys)
+    chain = object.__new__(TorrentsChain)
+    assert chain._is_no_cache_site(domain) is expected
+
+
+def test_cached_mteam_request_obtains_new_token_for_each_download(download_chain, monkeypatch):
+    """同一缓存换票请求连续下载时，每次均从接口获取新的临时链接。"""
+    chain, helper = download_chain
+    request = {"method": "post", "params": {"id": "39"}, "result": "data"}
+    encoded = base64.b64encode(json.dumps(request).encode()).decode()
+    torrent = _torrent(enclosure=f"[{encoded}]https://api.m-team.cc/api/torrent/genDlToken")
+    responses = [Mock(), Mock()]
+    responses[0].json.return_value = {"data": "https://api.m-team.cc/download/first"}
+    responses[1].json.return_value = {"data": "https://api.m-team.cc/download/second"}
+    http = Mock()
+    http.post.side_effect = responses
+    monkeypatch.setattr(submission, "_download_ports_snapshot", Mock(return_value=(http, Mock())))
+    helper.download_torrent.return_value = DOWNLOADED
+
+    assert chain.download_torrent(torrent) == DOWNLOADED[1:4]
+    assert chain.download_torrent(torrent) == DOWNLOADED[1:4]
+
+    assert http.post.call_count == 2
+    assert [call.kwargs["url"] for call in helper.download_torrent.call_args_list] == [
+        "https://api.m-team.cc/download/first", "https://api.m-team.cc/download/second",
+    ]
+    for response in responses:
+        response.close.assert_called_once()
+    chain.search_site_torrents.assert_not_called()
 
 
 @pytest.mark.parametrize("field,prefix", [("torrent_id", "id"), ("info_hash", "hash")])

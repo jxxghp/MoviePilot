@@ -658,6 +658,8 @@ Download orchestration is owned by the same-named `app.chain.download` package.
 保留已有识别结果，缺少稳定 ID 的历史资源沿用标题去重。下载链对带 `t` / `sign` 的普通
 HTTP 地址发生 401/403/404/410 时，通过现有站点索引器搜索一次，只接受同站同种子的新地址，
 最多重试一次，再沿用原失败通知与冷却流程；不推断签名 TTL，也不清除既有资源失败记录。
+`NO_CACHE_SITE_KEY` 默认留空，馒头同样采用增量缓存，下载时仍按已有协议逐次换票。
+显式配置的站点关键字继续作为不缓存的例外，空白项不匹配任何站点。
 Its root lazily exposes only the stable `DownloadChain`; `facade.py` composes the
 owner classes and keeps the `DownloadFileDeleted` event wrapper on that stable
 class identity. Selection, submission, batch execution, existence checks, failure

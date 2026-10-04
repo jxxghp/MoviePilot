@@ -553,8 +553,8 @@ class ConfigModel(BaseModel):
     SITEDATA_REFRESH_INTERVAL: int = 6
     # 读取和发送站点消息
     SITE_MESSAGE: bool = True
-    # 不能缓存站点资源的站点域名，多个使用,分隔
-    NO_CACHE_SITE_KEY: str = "m-team"
+    # 不缓存站点资源的域名关键字，多个使用,分隔；留空时所有站点使用缓存
+    NO_CACHE_SITE_KEY: str = ""
     # OCR服务器地址，用于识别站点验证码
     OCR_HOST: str = "https://movie-pilot.org"
     # 仿真类型：cloakbrowser 或 flaresolverr，其他值按 cloakbrowser 处理
