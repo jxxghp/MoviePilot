@@ -3,6 +3,8 @@ import base64
 import json
 from unittest.mock import call, patch
 
+import pytest
+
 from app.adapters.external.ocr import OcrHelper
 from app.agent.tools.catalog import ToolCatalogSnapshot
 from app.agent.tools.factory import MoviePilotToolFactory
@@ -255,4 +257,24 @@ def test_recognize_captcha_tool_blocks_private_network_by_default():
     assert payload["success"] is False
     assert payload["captcha_text"] == ""
     assert "默认不允许访问本机或私网地址" in payload["message"]
+    assert "recovery" not in payload
     recognize_mock.assert_not_called()
+
+
+@pytest.mark.parametrize("error", [None, RuntimeError("offline OCR"), ValueError("invalid OCR JSON")])
+@pytest.mark.asyncio
+async def test_ocr_failure_directs_agent_to_current_browser_image(error):
+    """OCR 无结果或服务异常应引导同会话看图，同时保持识别失败事实且不自行重试。"""
+    tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
+    with patch.object(OcrHelper, "get_captcha_text", return_value="", side_effect=error) as recognize:
+        result = await tool._arun(image_url="https://example.com/captcha.png")
+
+    payload = json.loads(result)
+    assert payload["success"] is False
+    assert payload["captcha_text"] == ""
+    assert "browse_webpage(action='screenshot'" in payload["recovery"]
+    assert "同一 session_key 和标签页" in payload["recovery"]
+    assert "不要先刷新页面或重新请求验证码图片地址" in payload["recovery"]
+    assert "真实图像观察" in payload["recovery"]
+    assert "offline OCR" not in result and "invalid OCR JSON" not in result
+    recognize.assert_called_once()

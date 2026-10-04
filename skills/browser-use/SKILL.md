@@ -1,6 +1,6 @@
 ---
 name: browser-use
-version: 3
+version: 4
 description: >-
   Use this skill when the user asks the agent to open, browse, inspect, extract
   content from, click through, fill forms on, screenshot, or verify a web page
@@ -8,7 +8,7 @@ description: >-
   interaction, such as checking a site page, confirming a JavaScript-rendered
   result, testing login state, capturing visible errors, or updating and
   validating tracker site cookies.
-allowed-tools: browse_webpage recognize_captcha search_web moviepilot_api
+allowed-tools: browse_webpage recognize_captcha view_image search_web moviepilot_api
 allowed-api-operations: site.list site.cookie.update site.cookie.set site.test site.update
 ---
 
@@ -43,6 +43,9 @@ dedicated tool can complete the task more directly and safely.
   `select`, `select_ref`, `evaluate`, `wait`, `list_tabs`, `open_tab`,
   `focus_tab`, `close_tab`, `close_session`.
   In the Agent, `screenshot` supplies a real image observation with page metadata.
+  Add `selector` to capture one visible element in the current session, for example
+  a captcha image. The selector must match exactly one element; a missing or
+  ambiguous match fails rather than silently capturing another target.
   `get_cookies` returns the active page domain's Cookie header and User-Agent to
   administrator-only callers for the requested site-cookie workflow.
   Inspect the delivered image before making visual claims. If the model reports
@@ -53,7 +56,11 @@ dedicated tool can complete the task more directly and safely.
   permissions or change the user's request.
 - `recognize_captcha` - Recognize graphic captcha text from an image URL,
   `data:image/...;base64,...` value, or raw image data extracted from the page.
+  This calls the configured OCR service; it does not ask the multimodal model.
   Pass Cookie and User-Agent when the image requires the current browser session.
+- `view_image` - Give the multimodal model an existing image URL or image content.
+  URL downloads do not inherit browser cookies. Use browser screenshots for
+  session-bound captchas, including blob URLs and canvas-rendered challenges.
 - `search_web` - Find current pages or official references before opening a
   target URL. It supports DDGS-backed `search_engine` (`auto`, `duckduckgo`,
   `google`, `brave`, etc.) and `site_url` for limiting results to a specified
@@ -197,25 +204,57 @@ operation. Do not expose secrets in the final answer.
 When a user explicitly asks to complete a login flow that contains a normal
 graphic captcha:
 
-1. Open the login page and inspect the form with `snapshot`.
-2. Extract the captcha image URL with `evaluate`, for example:
+1. Open the login page and inspect the form with `snapshot`. Keep the same
+   browser session and active tab throughout recognition and submission.
+2. Locate the displayed captcha using observed page evidence. When it depends
+   on browser cookies, a blob URL, a canvas, or a URL that may generate a new
+   challenge on each request, capture the displayed element first:
+
+```text
+browse_webpage action="screenshot" selector="<observed captcha selector>"
+```
+
+   If a unique selector is unavailable, omit `selector` to inspect the current
+   viewport. Read the characters from the delivered image when the model can
+   see it. This preserves the displayed challenge without downloading it again,
+   exposing cookies, or refreshing the page. Never claim visual recognition
+   when the tool or model reports that the image was unavailable.
+3. For an independently retrievable captcha image, or when visual input is
+   unavailable, use `recognize_captcha`. Extract the URL with `evaluate` if
+   needed, for example:
 
 ```text
 browse_webpage action="evaluate" script="() => document.querySelector('img[src*=\"captcha\"], img[alt*=\"验证码\"], img[title*=\"验证码\"]')?.src || ''"
 ```
 
-3. If the captcha image needs session cookies, call
+   If the captcha image needs session cookies and a URL download is appropriate, call
    `browse_webpage action="get_cookies"` and reuse its `cookie` /
    `user_agent` fields. Use `evaluate` only when a site-specific value is
-   missing from the browser result.
-4. Call `recognize_captcha image_url="<img.src>"` and pass `cookie` /
+   missing from the browser result. Do not fetch a URL known to replace the
+   displayed challenge; use existing image bytes or ask for manual input if
+   visual input is unavailable.
+   Call `recognize_captcha image_url="<img.src>"` and pass `cookie` /
    `user_agent` when needed. If the caller already has image bytes, pass
    `image_data` instead so the OCR service receives the raw image.
-5. Fill the returned `captcha_text`, submit the form, and verify the login
-   result.
+4. If OCR fails, returns no characters, or the website rejects its answer,
+   attempt visual recognition before refreshing or asking for manual input.
+   Capture the current captcha with `browse_webpage action="screenshot"`
+   and its observed `selector`. Reuse the original `session_key` and tab;
+   do not open the image URL in a new tab or use `view_image(url=...)` for a
+   session-bound image. If only standalone image content is available, use
+   `view_image image_data="<existing Base64 or data URL>"`; a public image
+   independent of the browser may use `view_image url="<image URL>"`.
+5. Fill only characters actually returned by OCR or read from a delivered
+   image, submit the form, and verify the website's login result. An OCR result
+   or a successful screenshot is not proof that the captcha or login succeeded.
+   After a rejection, inspect the current page again because the website may
+   have replaced the captcha. Never reuse an answer from an older image.
 
-If recognition fails, refresh the captcha and retry up to the bounded attempt
-limit. If it still fails, tell the user manual input is needed.
+Use at most three submission attempts across OCR and visual recognition combined.
+If an unchanged image is unreadable by both available methods, refresh once to
+obtain a new challenge before the next attempt. If image input is unavailable,
+do not repeat screenshots expecting different capabilities. Request manual input
+when no available method can read the captcha or the attempt limit is reached.
 
 ### Inspect A Tracker Page
 

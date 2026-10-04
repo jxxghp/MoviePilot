@@ -5,6 +5,7 @@ import json
 import random
 from copy import deepcopy
 from io import BytesIO
+from types import SimpleNamespace
 from typing import Any, Union
 from unittest.mock import AsyncMock
 
@@ -13,10 +14,13 @@ from langchain.agents import create_agent
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from PIL import Image
+from pydantic import Field
 
+from app.adapters.external.ocr import OcrHelper
 from app.adapters.network.browser import BrowserSessionHelper
 from app.agent.middleware.output import ToolOutputMiddleware
 from app.agent.middleware.policy import AgentPolicyMiddleware
+from app.agent.middleware.vision import VISION_UNAVAILABLE, VisionMiddleware
 from app.agent.policy.contracts import AuthSource, ExecutionOutcome, PrincipalType, ToolOrigin, ToolPolicyContext
 from app.agent.tools import base as base_module
 from app.agent.tools.base import MoviePilotTool
@@ -27,6 +31,7 @@ from app.agent.tools.impl.browse_webpage import (
     BrowserAction,
     BrowseWebpageTool,
 )
+from app.agent.tools.impl.recognize_captcha import RecognizeCaptchaTool
 from app.agent.tools.manager import MoviePilotToolsManager
 from app.agent.tools.result import ToolExecutionError, inspect_tool_result
 
@@ -72,6 +77,21 @@ class _ScreenshotPage:
         return "截图测试页面"
 
 
+class _ElementScreenshotPage(_ScreenshotPage):
+    """提供已渲染验证码元素，任何误用整页截图都会因无预设整页图像而失败。"""
+
+    def __init__(self, images: list[bytes]) -> None:
+        """分开记录元素和整页截图，验证代码没有忽略 selector。"""
+        super().__init__([])
+        self.element = _ScreenshotPage(images)
+        self.selectors: list[str] = []
+
+    def locator(self, selector: str) -> _ScreenshotPage:
+        """记录元素定位，不访问验证码图片 URL。"""
+        self.selectors.append(selector)
+        return self.element
+
+
 def _payload(image: bytes) -> dict[str, Any]:
     """复用真实截图生产者构造外部 JSON 合同，而不是手写假成功形状。"""
     return json.loads(BrowseWebpageTool._action_screenshot(_ScreenshotPage([image])))
@@ -88,9 +108,87 @@ def _context() -> ToolPolicyContext:
 class _ImageModel(FakeMessagesListChatModel):
     """固定工具调用驱动真实图，只测试图像协议，不调用真实模型。"""
 
+    requests: list[list[Any]] = Field(default_factory=list)
+
     def bind_tools(self, _tools: Any, **_kwargs: Any) -> "_ImageModel":
         """接受工具绑定，图片内容最终从 ToolMessage 核验。"""
         return self
+
+    async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
+        """记录经过视觉中间件处理的真实模型请求，保留原有预设回复。"""
+        self.requests.append([message.model_copy(deep=True) for message in messages])
+        return await super()._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
+
+
+@pytest.mark.parametrize("reduce_quality", [False, True])
+def test_element_screenshot_preserves_displayed_captcha_and_size_limits(reduce_quality: bool) -> None:
+    """元素截图与整页截图共用字节校验，降质仍采集同一元素且不重新下载验证码。"""
+    image = _image_bytes()
+    images = [b"x" * (SCREENSHOT_MAX_BYTES + 1), image] if reduce_quality else [image]
+    page = _ElementScreenshotPage(images)
+    result = json.loads(BrowseWebpageTool._action_screenshot(page, selector="#captcha", timeout=7))
+
+    assert result["success"] is True
+    assert base64.b64decode(result["screenshot_base64"]) == image
+    assert page.selectors == ["#captcha"]
+    assert not page.calls
+    assert [item["quality"] for item in page.element.calls] == ([60, 30] if reduce_quality else [60])
+    assert all(item["timeout"] == 7000 and "full_page" not in item for item in page.element.calls)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("supports_images", [True, False])
+async def test_ocr_failure_then_browser_capture_reaches_model_in_same_session(
+    monkeypatch: pytest.MonkeyPatch, supports_images: bool,
+) -> None:
+    """真实工具图保留 OCR 失败，后续把同会话验证码像素交给模型或明确报告不支持图片。"""
+    image = _image_bytes()
+    page = _ElementScreenshotPage([image])
+    sessions: list[str] = []
+
+    def use_session(_self, *, session_key, callback, **_kwargs):
+        """模拟已有登录页面，不创建新页面或发起图片下载。"""
+        sessions.append(session_key)
+        return callback(SimpleNamespace(active_page=page))
+
+    async def run_inline(_self, _lane, operation, *args, **kwargs):
+        """只将测试边界放到当前线程，不修改实际工具执行与结果投影。"""
+        return operation(*args, **kwargs)
+
+    monkeypatch.setattr(BrowserSessionHelper, "with_session", use_session)
+    monkeypatch.setattr(MoviePilotTool, "run_blocking", run_inline)
+    monkeypatch.setattr(OcrHelper, "get_captcha_text", lambda *_args, **_kwargs: "")
+    browser = BrowseWebpageTool(session_id="browser-image-test", user_id="browser-image-owner")
+    ocr = RecognizeCaptchaTool(session_id="browser-image-test", user_id="browser-image-owner")
+    model = _ImageModel(responses=[
+        AIMessage(content="", tool_calls=[{
+            "id": "captcha-ocr", "name": ocr.name, "args": {"image_url": "https://example.com/captcha.png"},
+        }]),
+        AIMessage(content="", tool_calls=[{
+            "id": "captcha-vision", "name": browser.name,
+            "args": {"action": "screenshot", "selector": "#captcha", "session_key": "login-tab"},
+        }]),
+        AIMessage(content="收到验证码观察。"),
+    ])
+    graph = create_agent(model=model, tools=[ocr, browser], middleware=[
+        AgentPolicyMiddleware(context=_context()), ToolOutputMiddleware(_context()),
+        VisionMiddleware(supports_images=lambda _model: supports_images),
+    ])
+    result = await graph.ainvoke({"messages": [HumanMessage(content="完成当前页面的登录")]})
+
+    ocr_message = next(item for item in result["messages"] if isinstance(item, ToolMessage) and item.name == ocr.name)
+    assert inspect_tool_result(ocr_message) is ExecutionOutcome.FAILED
+    assert "recovery" in json.loads(ocr_message.content)
+    assert sessions == ["login-tab"]
+    assert page.selectors == ["#captcha"] and not page.calls
+    images = [block for message in model.requests[-1] if isinstance(message.content, list)
+              for block in message.content if isinstance(block, dict) and block.get("type") == "image_url"]
+    if supports_images:
+        assert len(images) == 1
+        assert base64.b64decode(images[0]["image_url"]["url"].split(",", 1)[1]) == image
+    else:
+        assert not images
+        assert any(VISION_UNAVAILABLE in str(message.content) for message in model.requests[-1])
 
 
 @pytest.mark.asyncio

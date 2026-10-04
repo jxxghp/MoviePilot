@@ -861,6 +861,11 @@ MCP、HTTP 工具管理接口、本地 CLI 和内置 Agent 都从同一严格目
 `url/title/screenshot_base64/format/note` 并用 `success/execution_outcome` 明确状态。
 内置 Agent 在专用格式化路径把成功截图转换为图像输入，外部 HTTP/MCP 客户端仍按
 原 JSON 合同消费；本次不宣称外部 MCP 已提供原生 image content block。
+`screenshot` 可选传入 `selector`，在原浏览器会话中截取唯一匹配的可见元素；省略时仍截取
+当前视口。两种截图遵守相同的格式、字节和像素上限，元素不存在或匹配多个时返回失败。
+`recognize_captcha` 的成功字段保持不变；OCR 无结果或服务异常时仍返回 `success=false`、
+空 `captcha_text`，并增加 `recovery`，提示内置 Agent 先截取当前验证码供多模态识别。
+URL 安全校验拒绝不提供绕过式恢复指引，截图或 OCR 成功也不代表网站已接受验证码。
 
 `view_image` 只供内置 Agent 使用：它会在 Agent 专用格式化路径把 URL、本地图片或图片内容转换为
 原生图像输入，HTTP/MCP 直调不提供该工具，避免把只能由视觉中间件消费的图像块误当作普通 JSON。

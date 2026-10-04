@@ -12,6 +12,10 @@ from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
 
 
+class CaptchaUrlError(ValueError):
+    """图片地址被安全校验拒绝，不能建议改用其他工具绕过该边界。"""
+
+
 class RecognizeCaptchaInput(BaseModel):
     """识别图形验证码工具的输入参数模型。"""
 
@@ -70,6 +74,9 @@ class RecognizeCaptchaTool(MoviePilotTool):
         "It also accepts raw image_data bytes and sends them directly to OCR without Base64 conversion. "
         "Pass cookie and user_agent when the image URL requires the current browser session. "
         "Supports http/https image URLs and data:image/...;base64,... URLs. "
+        "This tool uses the configured OCR service, not the multimodal model. If OCR fails, "
+        "inspect the current browser captcha with browse_webpage(action='screenshot', selector=...) "
+        "before refreshing it or asking the user to read it. "
         "For safety, localhost and private network URLs are blocked by default unless "
         "allow_private_network is true."
     )
@@ -128,11 +135,36 @@ class RecognizeCaptchaTool(MoviePilotTool):
         if not clean_url:
             return ""
         if not clean_url.lower().startswith("data:image/"):
-            BrowserSessionHelper.validate_url(
-                clean_url,
-                allow_private_network=allow_private_network,
-            )
+            try:
+                BrowserSessionHelper.validate_url(
+                    clean_url,
+                    allow_private_network=allow_private_network,
+                )
+            except ValueError as error:
+                raise CaptchaUrlError(str(error)) from error
         return OcrHelper().get_captcha_text(image_url=clean_url, cookie=cookie, ua=user_agent)
+
+    @staticmethod
+    def _recognition_failure(message: str) -> str:
+        """OCR 失败仍保留失败状态，并引导模型先观察同一浏览器验证码而非立即刷新。"""
+        return json.dumps(
+            {
+                "success": False,
+                "captcha_text": "",
+                "message": message,
+                "recovery": (
+                    "若验证码来自当前浏览器页面，先保持同一 session_key 和标签页，"
+                    "调用 browse_webpage(action='screenshot', selector='已观察到的验证码元素选择器')；"
+                    "无法确定选择器时可省略 selector 截取当前视口。"
+                    "不要先刷新页面或重新请求验证码图片地址，以免改变当前验证码。"
+                    "若已持有图片内容，可用 view_image(image_data=...)；"
+                    "仅对不依赖浏览器会话的独立公开图片使用 view_image(url=...)。"
+                    "只有收到真实图像观察后才读取验证码，填写后验证网站是否接受。"
+                    "若模型未接收到图片或无法看清，不要猜测；按 browser-use 技能有限重试或请求手工输入。"
+                ),
+            },
+            ensure_ascii=False,
+        )
 
     async def run(
         self,
@@ -178,15 +210,8 @@ class RecognizeCaptchaTool(MoviePilotTool):
                     },
                     ensure_ascii=False,
                 )
-            return json.dumps(
-                {
-                    "success": False,
-                    "captcha_text": "",
-                    "message": "验证码识别失败或未返回内容",
-                },
-                ensure_ascii=False,
-            )
-        except ValueError as err:
+            return self._recognition_failure("验证码识别失败或未返回内容")
+        except CaptchaUrlError as err:
             logger.warning(f"验证码图片地址校验失败: {str(err)}")
             return json.dumps(
                 {
@@ -198,11 +223,4 @@ class RecognizeCaptchaTool(MoviePilotTool):
             )
         except Exception as err:
             logger.error(f"识别图形验证码失败: {str(err)}", exc_info=True)
-            return json.dumps(
-                {
-                    "success": False,
-                    "captcha_text": "",
-                    "message": f"识别图形验证码时发生错误: {str(err)}",
-                },
-                ensure_ascii=False,
-            )
+            return self._recognition_failure("OCR 服务调用失败，尚未识别验证码")

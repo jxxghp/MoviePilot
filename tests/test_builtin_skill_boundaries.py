@@ -113,7 +113,7 @@ def _frontmatter_value(content: str, key: str) -> str:
 def test_modified_builtin_skills_have_incremented_versions() -> None:
     """本次修改过的内置技能必须递增版本，确保用户端同步更新。"""
     expected_versions = {
-        "browser-use": "3",
+        "browser-use": "4",
         "command-dispatch": "2",
         "database-operation": "9",
         "feedback-issue": "11",

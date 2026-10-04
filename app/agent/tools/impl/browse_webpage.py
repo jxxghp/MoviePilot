@@ -70,7 +70,7 @@ class BrowseWebpageInput(BaseModel):
             "- 'goto': Navigate to a URL, returns page title and text summary\n"
             "- 'snapshot': Get current page snapshot with interactive element refs\n"
             "- 'get_content': Get current page content (text or HTML)\n"
-            "- 'screenshot': Take a screenshot of the current page, returns base64 image\n"
+            "- 'screenshot': Capture the current page or one element specified by selector, returns base64 image\n"
             "- 'get_cookies': Get the current page domain's cookies and User-Agent (admin only)\n"
             "- 'click': Click on an element specified by selector\n"
             "- 'click_ref': Click an element by ref from the latest snapshot\n"
@@ -93,6 +93,8 @@ class BrowseWebpageInput(BaseModel):
     selector: Optional[str] = Field(
         None,
         description="CSS selector or text selector for the target element (for 'click', 'fill', 'select', 'wait' actions). "
+        "For 'screenshot', optionally target one visible element, such as the current captcha image, "
+        "without downloading its URL again or losing the browser session. "
         "Supports CSS selectors like '#id', '.class', 'tag', and Playwright text selectors like 'text=Click me'",
     )
     ref: Optional[str] = Field(
@@ -155,6 +157,8 @@ class BrowseWebpageTool(MoviePilotTool):
         "fill in forms, click buttons, or extract content from JavaScript-rendered pages. "
         "The browser session persists across multiple calls within the same conversation - "
         "first call 'goto' to open a page, inspect 'interactive_elements', then use *_ref actions when possible. "
+        "For a session-bound captcha or failed OCR, use 'screenshot' with the observed image selector "
+        "to inspect the currently rendered captcha before refreshing it. "
         "For safety, localhost and private network URLs are blocked by default unless allow_private_network is true."
     )
     args_schema: Type[BaseModel] = BrowseWebpageInput
@@ -490,7 +494,7 @@ class BrowseWebpageTool(MoviePilotTool):
             return result
 
         elif browser_action == BrowserAction.SCREENSHOT:
-            return self._action_screenshot(page)
+            return self._action_screenshot(page, selector=selector, timeout=timeout)
 
         elif browser_action == BrowserAction.GET_COOKIES:
             return self._action_get_cookies(session, page)
@@ -659,20 +663,16 @@ class BrowseWebpageTool(MoviePilotTool):
         return BrowseWebpageTool._json_response(result)
 
     @staticmethod
-    def _action_screenshot(page) -> str:
-        """截取有限大小的 JPEG，二次降质后仍必须满足硬上限。"""
-        screenshot_bytes = page.screenshot(
-            full_page=False,
-            type="jpeg",
-            quality=60,
-        )
+    def _action_screenshot(page, selector: Optional[str] = None, timeout: int = DEFAULT_TIMEOUT) -> str:
+        """截取当前视口或唯一元素，保留验证码会话并对两种截图应用相同大小上限。"""
+        target = page.locator(selector) if selector else page
+        options = {"type": "jpeg", "timeout": timeout * 1000}
+        if not selector:
+            options["full_page"] = False
+        screenshot_bytes = target.screenshot(quality=60, **options)
         if len(screenshot_bytes) > SCREENSHOT_MAX_BYTES:
             # 降低质量重新截图
-            screenshot_bytes = page.screenshot(
-                full_page=False,
-                type="jpeg",
-                quality=30,
-            )
+            screenshot_bytes = target.screenshot(quality=30, **options)
         if len(screenshot_bytes) > SCREENSHOT_MAX_BYTES:
             return BrowseWebpageTool._screenshot_failure("screenshot_too_large", "降低图片质量后截图仍超过大小上限")
         try:
