@@ -368,6 +368,80 @@ def test_fetch_image_with_mime_type_validates_network_content_once():
     assert transport.sync_calls[0][0] == "https://images.example/wallpaper.png"
 
 
+def test_fetch_image_retries_transient_upstream_failure():
+    """图片上游短暂返回 500 时应重试并缓存成功响应。"""
+    content = _image_bytes("PNG")
+    image_helper = ImageHelper()
+    transport = _FakeImageTransport()
+    transport.get = Mock(
+        side_effect=[
+            Mock(status_code=500, content=b""),
+            Mock(status_code=200, content=content),
+        ],
+    )
+    configure_image_ports(
+        transport=transport,
+        internal_address=_FakeInternalAddress(),
+    )
+
+    with patch.object(
+        image_helper.file_cache,
+        "get",
+        return_value=None,
+    ), patch.object(
+        image_helper.file_cache,
+        "set",
+    ), patch.object(
+        image_helper,
+        "get_image_mime_type",
+        return_value="image/png",
+    ):
+        result = image_helper.fetch_image_with_mime_type(
+            "https://coverartarchive.org/release/example/front-500"
+        )
+
+    assert result == (content, "image/png")
+    assert transport.get.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_async_fetch_image_retries_transient_upstream_failure():
+    """异步图片上游短暂返回 500 时应重试并缓存成功响应。"""
+    content = _image_bytes("PNG")
+    image_helper = ImageHelper()
+    transport = _FakeImageTransport()
+    transport.async_get = AsyncMock(
+        side_effect=[
+            Mock(status_code=500, content=b""),
+            Mock(status_code=200, content=content),
+        ],
+    )
+    configure_image_ports(
+        transport=transport,
+        internal_address=_FakeInternalAddress(),
+    )
+
+    with patch.object(
+        image_helper.async_file_cache,
+        "get",
+        new=AsyncMock(return_value=None),
+    ), patch.object(
+        image_helper.async_file_cache,
+        "set",
+        new=AsyncMock(),
+    ), patch.object(
+        image_helper,
+        "get_image_mime_type",
+        return_value="image/png",
+    ):
+        result = await image_helper.async_fetch_image_with_mime_type(
+            "https://coverartarchive.org/release/example/front-500"
+        )
+
+    assert result == (content, "image/png")
+    assert transport.async_get.await_count == 2
+
+
 def test_async_fetch_image_with_mime_type_only_reads_cached_format_header():
     content = _image_bytes("PNG")
     image_helper = ImageHelper()

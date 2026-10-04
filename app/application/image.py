@@ -18,6 +18,10 @@ WallpaperProvider = Callable[[], Optional[str]]
 WallpaperListProvider = Callable[[int], List[str]]
 _IMAGE_CACHE_PATH_PREFIX = "proxy_"
 _IMAGE_CACHE_HASH_LENGTH = 16
+# Cover Art Archive 重定向后可能落到暂时异常的归档节点，短暂失败时重新请求原始地址
+# 可选择其他节点。
+_IMAGE_FETCH_ATTEMPTS = 2
+_IMAGE_RETRY_STATUS_CODES = frozenset({408, 500, 502, 503, 504})
 
 
 @dataclass(frozen=True, slots=True)
@@ -482,6 +486,39 @@ class ImageHelper(metaclass=Singleton):
         mime_type = self.get_image_mime_type(response.content)
         return (response.content, mime_type) if mime_type else None
 
+    @staticmethod
+    def _is_retryable_image_response(response: Optional[ImageResponsePort]) -> bool:
+        """判断图片响应是否属于可立即重试的瞬态失败。"""
+        return response is None or response.status_code in _IMAGE_RETRY_STATUS_CODES
+
+    @staticmethod
+    def _fetch_image_response(
+        transport: ImageTransport,
+        request: _ImageFetchRequest,
+        options: Mapping[str, Any],
+    ) -> Optional[ImageResponsePort]:
+        """读取图片响应，瞬态失败时重新请求原始地址。"""
+        response: Optional[ImageResponsePort] = None
+        for _ in range(_IMAGE_FETCH_ATTEMPTS):
+            response = transport.get(request.url, options=options)
+            if not ImageHelper._is_retryable_image_response(response):
+                break
+        return response
+
+    @staticmethod
+    async def _async_fetch_image_response(
+        transport: ImageTransport,
+        request: _ImageFetchRequest,
+        options: Mapping[str, Any],
+    ) -> Optional[ImageResponsePort]:
+        """异步读取图片响应，瞬态失败时重新请求原始地址。"""
+        response: Optional[ImageResponsePort] = None
+        for _ in range(_IMAGE_FETCH_ATTEMPTS):
+            response = await transport.async_get(request.url, options=options)
+            if not ImageHelper._is_retryable_image_response(response):
+                break
+        return response
+
     def fetch_image(
             self,
             url: str,
@@ -523,11 +560,10 @@ class ImageHelper(metaclass=Singleton):
         transport, _ = _image_ports_snapshot()
         result = self._fetched_image(
             request,
-            transport.get(
-                request.url,
-                options=ImageHelper._get_request_params(
-                    request.url, proxy, cookies
-                ),
+            self._fetch_image_response(
+                transport,
+                request,
+                ImageHelper._get_request_params(request.url, proxy, cookies),
             ),
         )
         if result is None:
@@ -576,11 +612,10 @@ class ImageHelper(metaclass=Singleton):
         transport, _ = _image_ports_snapshot()
         result = self._fetched_image(
             request,
-            await transport.async_get(
-                request.url,
-                options=ImageHelper._get_request_params(
-                    request.url, proxy, cookies
-                ),
+            await self._async_fetch_image_response(
+                transport,
+                request,
+                ImageHelper._get_request_params(request.url, proxy, cookies),
             ),
         )
         if result is None:
