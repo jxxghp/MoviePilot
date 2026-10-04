@@ -337,7 +337,7 @@ def incoming_verify(
     微信/VoceChat等验证响应
     """
     logger.info(
-        f"收到验证请求: token={token}, echostr={echostr}, "
+        f"收到验证请求: echostr={echostr}, "
         f"msg_signature={msg_signature}, timestamp={timestamp}, nonce={nonce}"
     )
     if echostr and msg_signature and timestamp and nonce:
