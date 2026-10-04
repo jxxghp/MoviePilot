@@ -7,6 +7,7 @@ from app.api.endpoints import site as site_endpoint
 from app.api.endpoints import storage as storage_endpoint
 from app.api.endpoints import workflow as workflow_endpoint
 from app.schemas.file import FileItem
+from app.schemas.token import TokenPayload
 
 
 class _SiteQuery:
@@ -17,6 +18,7 @@ class _SiteQuery:
         *,
         is_active=None,
         name=None,
+        site_ids=None,
         page=None,
         count=None,
     ):
@@ -49,10 +51,17 @@ class _SiteQuery:
             sites = [site for site in sites if site.is_active is is_active]
         if name:
             sites = [site for site in sites if name.lower() in site.name.lower()]
+        if site_ids is not None:
+            sites = [site for site in sites if site.id in site_ids]
         if page is not None and count is not None:
             offset = (page - 1) * count
             sites = sites[offset:offset + count]
         return sites
+
+    async def get_by_domain(self, domain):
+        """按域名返回第一个固定站点。"""
+        sites = await self.list_ordered()
+        return next((site for site in sites if site.domain == domain), None)
 
 
 class _WorkflowQuery:
@@ -148,6 +157,68 @@ def test_site_agent_projection_returns_auth_fields_only_to_superusers() -> None:
     assert result[0]["name"] == "Inactive Site"
     assert result[0]["cookie"] == "secret-cookie"
     assert result[0]["apikey"] == "secret-key"
+
+
+def _token(*, super_user: bool) -> TokenPayload:
+    return TokenPayload(sub=1, username="tester", super_user=super_user, purpose="authentication")
+
+
+def test_site_rss_list_hides_secrets_for_normal_users(monkeypatch) -> None:
+    """订阅站点列表对普通用户只返回选择站点所需的字段，不返回认证凭据。"""
+    monkeypatch.setattr(
+        site_endpoint,
+        "get_configured_system_config",
+        lambda: SimpleNamespace(get=lambda _key: []),
+    )
+
+    result = asyncio.run(
+        site_endpoint.read_rss_sites(query=_SiteQuery(), token_payload=_token(super_user=False))
+    )
+
+    assert [item["name"] for item in result] == ["Active Site", "Inactive Site"]
+    assert all(
+        key not in item
+        for item in result
+        for key in ("rss", "cookie", "apikey", "token")
+    )
+
+
+def test_site_rss_list_keeps_secrets_for_superusers(monkeypatch) -> None:
+    """超级管理员读取订阅站点列表时保持原有完整字段。"""
+    monkeypatch.setattr(
+        site_endpoint,
+        "get_configured_system_config",
+        lambda: SimpleNamespace(get=lambda _key: ["1"]),
+    )
+
+    result = asyncio.run(
+        site_endpoint.read_rss_sites(query=_SiteQuery(), token_payload=_token(super_user=True))
+    )
+
+    assert [site.name for site in result] == ["Active Site"]
+    assert result[0].cookie == "secret-cookie"
+
+
+def test_site_by_domain_hides_secrets_for_normal_users() -> None:
+    """按域名查询站点时，普通用户拿不到认证凭据，超级管理员保持完整字段。"""
+    normal = asyncio.run(
+        site_endpoint.read_site_by_domain(
+            site_url="https://example.invalid/",
+            query=_SiteQuery(),
+            token_payload=_token(super_user=False),
+        )
+    )
+    admin = asyncio.run(
+        site_endpoint.read_site_by_domain(
+            site_url="https://example.invalid/",
+            query=_SiteQuery(),
+            token_payload=_token(super_user=True),
+        )
+    )
+
+    assert normal["domain"] == "example.invalid"
+    assert all(key not in normal for key in ("rss", "cookie", "apikey", "token"))
+    assert admin.apikey == "secret-key"
 
 
 def test_workflow_agent_projection_filters_without_returning_action_context() -> None:

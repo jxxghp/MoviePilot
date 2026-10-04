@@ -517,8 +517,8 @@
     "attr-defined": 2,
     "misc": 26,
     "no-untyped-def": 2,
-    "return-value": 2,
-    "type-arg": 6
+    "return-value": 1,
+    "type-arg": 5
   },
   "app/api/endpoints/storage.py": {
     "assignment": 1,
