@@ -12,6 +12,7 @@ from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
 from app.runtime.execution import retry
 from app.adapters.network.http import RequestUtils
+from app.application.messaging.image import build_wechat_image_url
 from app.foundation import size as size_tools
 from app.foundation.url import UrlUtils
 
@@ -238,7 +239,7 @@ class WeChat:
                     {
                         "title": title,
                         "description": text,
-                        "picurl": image_url,
+                        "picurl": build_wechat_image_url(image_url),
                         "url": link
                     }
                 ]
@@ -516,7 +517,9 @@ class WeChat:
                 articles.append({
                     "title": title,
                     "description": "",
-                    "picurl": media.get_message_image() if index == 1 else media.get_poster_image(),
+                    "picurl": build_wechat_image_url(
+                        media.get_message_image() if index == 1 else media.get_poster_image()
+                    ),
                     "url": media.detail_link
                 })
                 index += 1
@@ -570,7 +573,9 @@ class WeChat:
                 articles.append({
                     "title": torrent_title,
                     "description": torrent.description if index == 1 else "",
-                    "picurl": mediainfo.get_message_image() if index == 1 else "",
+                    "picurl": build_wechat_image_url(
+                        mediainfo.get_message_image() if index == 1 else ""
+                    ),
                     "url": torrent.page_url
                 })
                 index += 1

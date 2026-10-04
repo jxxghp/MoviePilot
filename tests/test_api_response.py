@@ -677,6 +677,7 @@ def test_v1_model_free_routes_match_audited_native_allowlist():
         ),
         ("/system/img/{proxy}", "proxy_img"),
         ("/system/cache/image", "cache_img"),
+        ("/system/notification-image", "notification_image"),
         ("/system/progress/{process_type}", "get_progress"),
         ("/system/message", "get_message"),
         ("/system/logging", "get_logging"),

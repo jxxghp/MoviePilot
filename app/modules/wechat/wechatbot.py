@@ -13,6 +13,7 @@ from Crypto.Cipher import AES
 
 from app.adapters.network.http import RequestUtils
 from app.application.messaging.channel.admin import matches_channel_admin
+from app.application.messaging.image import build_wechat_image_url
 from app.application.messaging.ingress import submit_message_to_host
 from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo
@@ -556,13 +557,14 @@ class WeChatBot:
                         text: Optional[str] = None,
                         image: Optional[str] = None,
                         link: Optional[str] = None) -> str:
+        """构造企业微信智能机器人使用的 Markdown 消息正文。"""
         parts = []
         if title:
             parts.append(f"**{title}**")
         if text:
             parts.append(text.replace("\n\n", "\n"))
         if image:
-            parts.append(f"![]({image})")
+            parts.append(f"![]({build_wechat_image_url(image)})")
         if link:
             parts.append(f"[点击查看]({link})")
         return "\n\n".join(part for part in parts if part).strip()

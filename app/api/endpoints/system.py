@@ -39,6 +39,7 @@ from app.application.configuration import (
 from app.application.database import get_database_governance
 from app.application.image import ImageHelper
 from app.application.mediaserver import get_mediaserver_configs
+from app.application.messaging.image import verify_wechat_image_url
 from app.application.messaging.message import MessageHelper
 from app.application.network import get_configured_network_test_service
 from app.application.rules import RuleHelper
@@ -329,6 +330,47 @@ async def cache_img(
         use_cache=bool(get_runtime_settings().get("GLOBAL_IMAGE_CACHE")),
         if_none_match=if_none_match,
     )
+
+
+@router.get(  # type: ignore[misc]
+    "/notification-image",
+    summary="通知图片代理",
+    response_model=None,
+    response_class=Response,
+    responses={
+        200: {
+            "description": "通知图片内容",
+            "content": {
+                "image/jpeg": {"schema": {"type": "string", "format": "binary"}},
+                "image/png": {"schema": {"type": "string", "format": "binary"}},
+                "image/webp": {"schema": {"type": "string", "format": "binary"}},
+            },
+        },
+        304: {"description": "图片缓存未修改"},
+    },
+)
+async def notification_image(
+    url: str,
+    if_none_match: Annotated[str | None, Header()] = None,
+) -> Response:
+    """
+    返回带企业微信通知签名的外部图片。
+
+    企业微信取图请求不携带用户 Cookie，因此只接受绑定原图和用途的签名地址，
+    再复用统一图片代理的域名、DNS 和图片内容校验。
+    """
+    source_url = verify_wechat_image_url(url)
+    if not source_url:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    response = await fetch_image(
+        url=source_url,
+        use_cache=bool(get_runtime_settings().get("GLOBAL_IMAGE_CACHE")),
+        if_none_match=if_none_match,
+    )
+    if response is None:
+        raise HTTPException(status_code=502, detail="Failed to fetch the image")
+    return response
 
 
 @router.get(
