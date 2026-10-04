@@ -1657,6 +1657,7 @@ class MoviePilotAgent:
             self.has_message_context,
             self.is_background,
             get_runtime_setting("AI_AGENT_VERBOSE"),
+            get_runtime_setting("AI_AGENT_OUTPUT_LANGUAGE"),
             get_runtime_setting("LLM_TEMPERATURE"),
             get_runtime_setting("LLM_MAX_CONTEXT_TOKENS"),
             get_runtime_setting("LLM_MAX_TOOLS"),

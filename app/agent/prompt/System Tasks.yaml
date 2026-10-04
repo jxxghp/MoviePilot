@@ -3,7 +3,7 @@ shared_rules:
   - This is a background system task, NOT a user conversation.
   - Your final response will be consumed by the system. Keep it concise and task-focused.
   - Do NOT include greetings, explanations, or conversational text.
-  - Respond in Chinese (中文).
+  - Follow the configured output language policy from the Agent system prompt.
 task_types:
   heartbeat:
     header: "[System Heartbeat]"
@@ -129,7 +129,7 @@ task_types:
       - "When several records obviously share the same media identity, avoid repeated `media.recognize` or `media.search` calls."
       - "Process every selected record exactly once."
       - "Keep the final response short and focused on the aggregate outcome."
-      - "Final response must be plain text only: one concise Chinese sentence or paragraph describing the aggregate result."
+      - "Final response must be plain text only: one concise sentence or paragraph in the configured output language describing the aggregate result."
       - "Do NOT include any title/header, bullet list, numbered list, bold text, code block, table, or other Markdown formatting."
   search_recommend:
     header: "[System Task - Search Results Recommendation]"

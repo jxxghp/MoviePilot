@@ -48,6 +48,25 @@ COMMON_SHELL_COMMANDS = (
     "yt-dlp",
 )
 
+_AGENT_OUTPUT_LANGUAGE_NAMES = {
+    "zh-CN": "Simplified Chinese",
+    "zh-TW": "Traditional Chinese",
+    "en-US": "English",
+    "ja-JP": "Japanese",
+    "ko-KR": "Korean",
+}
+_AGENT_OUTPUT_LANGUAGE_ALIASES = {
+    "zh": "zh-CN",
+    "zh-cn": "zh-CN",
+    "zh-tw": "zh-TW",
+    "en": "en-US",
+    "en-us": "en-US",
+    "ja": "ja-JP",
+    "ja-jp": "ja-JP",
+    "ko": "ko-KR",
+    "ko-kr": "ko-KR",
+}
+
 
 class PromptConfigError(ValueError):
     """程序内置提示词定义加载异常。"""
@@ -152,7 +171,23 @@ class PromptManager:
             rich_message_spec=rich_message_spec,
         )
 
+        base_prompt = f"{base_prompt}\n\n{self._get_output_language_instruction()}"
+
         return base_prompt
+
+    @staticmethod
+    def _get_output_language_instruction() -> str:
+        """根据系统设置生成内置智能助手的回复语言约束。"""
+        configured = str(get_runtime_setting("AI_AGENT_OUTPUT_LANGUAGE") or "zh-CN").strip()
+        normalized = configured.casefold()
+        language_code = _AGENT_OUTPUT_LANGUAGE_ALIASES.get(normalized, configured)
+        language_name = _AGENT_OUTPUT_LANGUAGE_NAMES.get(language_code, "Simplified Chinese")
+        return (
+            "Output language policy:\n"
+            f"- Always reply to the user in {language_name}.\n"
+            "- Keep this language for explanations, conclusions, and user-facing messages unless the user explicitly asks for another language. "
+            "Preserve code, file paths, media titles, proper nouns, and tool arguments when they need to remain in their original form."
+        )
 
     def load_system_tasks_definition(self) -> SystemTasksDefinition:
         """加载程序内置的后台系统任务定义。"""

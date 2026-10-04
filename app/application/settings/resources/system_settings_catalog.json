@@ -35,37 +35,43 @@
       "description": "AI智能体定时任务检查间隔（小时），0为不启用，默认24小时",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 866
+      "source_line": 868
+    },
+    "AI_AGENT_OUTPUT_LANGUAGE": {
+      "description": "内置智能助手输出语言，默认使用简体中文",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 819
     },
     "AI_AGENT_RETRY_TRANSFER": {
       "description": "AI智能体自动重试整理失败记录开关",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 870
+      "source_line": 872
     },
     "AI_AGENT_VERBOSE": {
       "description": "AI智能体啰嗦模式，开启后会回复工具调用过程",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 868
+      "source_line": 870
     },
     "AI_RECOMMEND_ENABLED": {
       "description": "是否启用AI推荐",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 857
+      "source_line": 859
     },
     "AI_RECOMMEND_MAX_ITEMS": {
       "description": "AI推荐条目数量限制",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 862
+      "source_line": 864
     },
     "AI_RECOMMEND_USER_PREFERENCE": {
       "description": "AI推荐用户偏好",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 859
+      "source_line": 861
     },
     "ALIPAN_APP_ID": {
       "description": "Alipan AppId",
@@ -143,67 +149,67 @@
       "description": "音频输入 API 密钥",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 877
+      "source_line": 879
     },
     "AUDIO_INPUT_BASE_URL": {
       "description": "音频输入基础URL",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 879
+      "source_line": 881
     },
     "AUDIO_INPUT_LANGUAGE": {
       "description": "音频输入识别语言",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 883
+      "source_line": 885
     },
     "AUDIO_INPUT_MODEL": {
       "description": "音频输入模型",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 881
+      "source_line": 883
     },
     "AUDIO_INPUT_PROVIDER": {
       "description": "音频输入提供商：openai/openai_chat_audio/mimo/minimax",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 875
+      "source_line": 877
     },
     "AUDIO_OUTPUT_API_KEY": {
       "description": "音频输出 API 密钥",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 887
+      "source_line": 889
     },
     "AUDIO_OUTPUT_BASE_URL": {
       "description": "音频输出基础URL",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 889
+      "source_line": 891
     },
     "AUDIO_OUTPUT_INCLUDE_TEXT": {
       "description": "回复语音时是否同时附带文字说明",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 895
+      "source_line": 897
     },
     "AUDIO_OUTPUT_MODEL": {
       "description": "音频输出模型",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 891
+      "source_line": 893
     },
     "AUDIO_OUTPUT_PROVIDER": {
       "description": "音频输出提供商：openai/openai_chat_audio/mimo/minimax",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 885
+      "source_line": 887
     },
     "AUDIO_OUTPUT_VOICE": {
       "description": "音频输出音色/发音人",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 893
+      "source_line": 895
     },
     "AUTH_SITE": {
       "description": "用户认证站点",
@@ -803,121 +809,121 @@
       "description": "LLM API密钥",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 835
+      "source_line": 837
     },
     "LLM_API_PROTOCOL": {
       "description": "OpenAI兼容接口API协议：auto（自动）/ chat_completions / responses",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 825
+      "source_line": 827
     },
     "LLM_BASE_URL": {
       "description": "LLM基础URL（用于自定义API端点）",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 837
+      "source_line": 839
     },
     "LLM_BASE_URL_PRESET": {
       "description": "LLM Base URL 预设标识，用于区分同一 Base URL 下的不同模型目录",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 841
+      "source_line": 843
     },
     "LLM_MAX_CONTEXT_TOKENS": {
       "description": "LLM最大上下文Token数量（K），用于目录缺失回退和未匹配兼容端点的用户上限",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 843
+      "source_line": 845
     },
     "LLM_MAX_ITERATIONS": {
       "description": "LLM最大迭代次数",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 849
+      "source_line": 851
     },
     "LLM_MAX_TOOLS": {
       "description": "LLM工具选择中间件最大工具数量，0为不启用工具选择中间件",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 864
+      "source_line": 866
     },
     "LLM_MEMORY_RETENTION_DAYS": {
       "description": "内存记忆保留天数",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 855
+      "source_line": 857
     },
     "LLM_MODEL": {
       "description": "LLM模型名称",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 821
+      "source_line": 823
     },
     "LLM_PROVIDER": {
       "description": "LLM提供商（支持内置 provider，以及从 models.dev 动态补充的平台）",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 819
+      "source_line": 821
     },
     "LLM_SUPPORT_AUDIO_INPUT": {
       "description": "是否启用音频输入，开启后用户语音会先转写为文本再进入 Agent",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 831
+      "source_line": 833
     },
     "LLM_SUPPORT_AUDIO_OUTPUT": {
       "description": "是否启用音频输出，开启后 Agent 可在支持渠道发送语音回复",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 833
+      "source_line": 835
     },
     "LLM_SUPPORT_IMAGE_INPUT": {
       "description": "LLM是否支持图片输入，开启后消息图片会按多模态输入发送给模型",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 829
+      "source_line": 831
     },
     "LLM_TEMPERATURE": {
       "description": "LLM温度参数，留空时不覆盖提供商默认值",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 847
+      "source_line": 849
     },
     "LLM_THINKING_LEVEL": {
       "description": "思考模式/深度配置：off/auto/minimal/low/medium/high/max/xhigh；OpenAI兼容接口保留max/xhigh，仅按已知模型能力降级",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 823
+      "source_line": 825
     },
     "LLM_TOOL_TIMEOUT": {
       "description": "LLM工具调用超时时间（秒）",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 851
+      "source_line": 853
     },
     "LLM_USER_AGENT": {
       "description": "LLM OpenAI兼容接口请求User-Agent",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 845
+      "source_line": 847
     },
     "LLM_USE_PROXY": {
       "description": "LLM调用是否使用系统代理",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 839
+      "source_line": 841
     },
     "LLM_VERBOSE": {
       "description": "是否启用详细日志",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 853
+      "source_line": 855
     },
     "LLM_WEB_SEARCH_MODE": {
       "description": "联网搜索模式：local（本地）/ builtin（模型服务端）/ auto（自动）/ disabled（关闭）",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 827
+      "source_line": 829
     },
     "LOCAL_EXISTS_SEARCH": {
       "description": "检查本地媒体库是否存在资源开关",
@@ -1415,7 +1421,7 @@
       "description": "是否按媒体聚合整理失败通知，关闭时保持逐条发送",
       "group": "ai_agent",
       "source_file": "app/runtime/config.py",
-      "source_line": 872
+      "source_line": 874
     },
     "TRANSFER_MAX_FAILED_RETRIES": {
       "description": "自动整理（目录监控、下载器轮询）遇到失败整理记录时，同一源路径允许自动重试的最大次数。 一次瞬时故障（网络抖动、TMDB 瞬断、移动失败）不该让文件永久漏整理，因此必须重试； 但永远识别不出的文件重试再多也不会成功，只会重复推送失败通知，批量导入时更会刷屏， 因此必须有界。取值区间 1-10，越界或非法值会被钳制到边界并记录 warn： 既不支持关闭重试，也不支持无限重试。整理成功或删除整理记录时计数清零。 与本项无关的是同路径新版本：已成功整理的文件源大小变化时一律放行， 由整理链的 overwrite_mode 决断是否覆盖",

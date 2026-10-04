@@ -36,6 +36,7 @@ def test_batch_manual_redo_prompt_requires_plain_text_result():
     assert "Final response must be plain text only" in prompt
     assert "Do NOT include any title/header, bullet list" in prompt
     assert "Markdown formatting" in prompt
+    assert "configured output language" in prompt
 
 
 def test_batch_manual_redo_job_definition_contains_plain_text_rules():
