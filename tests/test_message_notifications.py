@@ -2,6 +2,7 @@ import asyncio
 import json
 from unittest.mock import Mock
 
+from app.api.endpoints import message as message_endpoint
 from app.api.endpoints.message import clear_notification_message, get_notification_message
 from app.api.endpoints.system import get_message
 from app.chain.base import ChainBase
@@ -210,6 +211,20 @@ def test_sse_endpoint_flushes_backlog_in_one_tick() -> None:
     texts = [json.loads(frame.removeprefix("data: ").strip())["text"] for frame in frames]
     assert texts == [f"重连积压 {index}" for index in range(3)]
     assert helper.get() is None
+
+
+def test_incoming_verify_log_omits_token(monkeypatch) -> None:
+    """
+    回调验证日志只记录排查所需的参数，不输出 token。
+    """
+    logged: list[str] = []
+    monkeypatch.setattr(message_endpoint.logger, "info", lambda msg, *args, **kwargs: logged.append(str(msg)))
+
+    result = message_endpoint.incoming_verify(token="callback-token-value", source="vocechat")
+
+    assert result == {"status": "OK"}
+    assert logged
+    assert all("callback-token-value" not in line for line in logged)
 
 
 def test_agent_helper_message_does_not_enter_sse_queue() -> None:
