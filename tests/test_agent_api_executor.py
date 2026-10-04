@@ -4,10 +4,70 @@ from types import SimpleNamespace
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 from app.agent.api.executor import ApiExecutionContext, MoviePilotApiExecutor
 from app.agent.tools.base import format_tool_result_for_agent
 from app.agent.tools.manager import MoviePilotToolsManager
 from app.schemas.types import NotificationChannel
+
+
+@pytest.mark.parametrize("app_domain", ["", "https://custom.domain.example:5443/moviepilot/"])
+@pytest.mark.parametrize(
+    ("host", "port", "base_url"),
+    [
+        (None, 3001, "http://127.0.0.1:3001"),
+        ("", 3001, "http://127.0.0.1:3001"),
+        ("0.0.0.0", 13001, "http://127.0.0.1:13001"),
+        ("127.0.0.1", 3001, "http://127.0.0.1:3001"),
+        ("192.0.2.10", 13001, "http://192.0.2.10:13001"),
+        ("localhost", 13001, "http://localhost:13001"),
+        ("::", 13001, "http://[::1]:13001"),
+        ("[::]", 13001, "http://[::1]:13001"),
+        ("::1", 3001, "http://[::1]:3001"),
+        ("[::1]", 3001, "http://[::1]:3001"),
+        ("2001:db8::10", 13001, "http://[2001:db8::10]:13001"),
+        ("[2001:db8::10]", 13001, "http://[2001:db8::10]:13001"),
+    ],
+)
+def test_executor_requests_local_listener_independently_of_public_domain(
+    app_domain: str,
+    host: Optional[str],
+    port: int,
+    base_url: str,
+) -> None:
+    """配置对外反代域名后，API 仍须按本机监听地址和端口发送且绕过环境代理。"""
+    runtime_settings = {"APP_DOMAIN": app_domain, "HOST": host, "PORT": port}
+    response = SimpleNamespace(
+        status_code=200,
+        headers={},
+        json=lambda: {"success": True, "data": []},
+        aclose=AsyncMock(),
+    )
+    request = AsyncMock(return_value=response)
+    request_factory = MagicMock(return_value=SimpleNamespace(request=request))
+    executor = MoviePilotApiExecutor(
+        context=ApiExecutionContext(user_id="1", username="admin", is_admin=True),
+        request_factory=request_factory,
+    )
+
+    with (
+        patch("app.agent.api.executor.get_runtime_setting", side_effect=runtime_settings.get),
+        patch("app.agent.api.executor.create_access_token", return_value="token"),
+    ):
+        result = asyncio.run(executor.execute("subscription.list", query={"page": 1}))
+
+    assert json.loads(result) == {"success": True, "data": []}
+    request.assert_awaited_once_with(
+        method="GET",
+        url=f"{base_url}/api/v1/subscribe/",
+        params={"page": 1},
+        json=None,
+        raise_exception=True,
+    )
+    assert request_factory.call_args.kwargs["headers"]["Authorization"] == "Bearer token"
+    assert request_factory.call_args.kwargs["trust_env"] is False
+    response.aclose.assert_awaited_once()
 
 
 def _execute_with_headers(headers: dict[str, str]) -> tuple[dict, AsyncMock]:

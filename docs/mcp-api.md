@@ -922,6 +922,9 @@ SDK method。普通 MCP 客户端如需这些 provider 原生能力，应使用�
 宿主按 `operation_id` 决定固定 method 与 path，使用真实持久化管理员身份为
 API KEY 集成签发短期本机令牌，并按 operation 执行权限、确认、结果脱敏和恢复策略。
 调用方不能注入 host、URL、认证头或 API Token。
+网关按后端监听配置 `HOST` / `PORT` 通过 HTTP 直连本机 API，并绕过环境代理。
+`0.0.0.0` / `::` 通配监听分别使用 `127.0.0.1` / `::1` 回环地址，显式 IPv6 地址按 URL 规范加方括号。
+`APP_DOMAIN` 用于 Passkey 等对外地址，不作为网关基址；反代域名在容器内不可达时无需清空该配置。
 通知渠道的 `subscription.add`、`subscription.update`、`subscription.delete` 使用渠道账号绑定的
 有效 MoviePilot 用户身份，渠道管理员也不会借用超级管理员身份。创建时订阅归属绑定用户，
 普通用户只能修改或删除自己的订阅；未绑定或绑定用户已停用时拒绝执行。三项操作仍保留确认机制。

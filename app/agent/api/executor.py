@@ -64,13 +64,12 @@ class MoviePilotApiExecutor:
 
     @staticmethod
     def _resolve_base_url() -> str:
-        """解析本机 API 基址，避免把任意用户输入当成请求目标。"""
-        configured_domain = str(get_runtime_setting("APP_DOMAIN", "") or "").strip()
-        if configured_domain.startswith(("http://", "https://")):
-            return configured_domain.rstrip("/")
-        host = str(get_runtime_setting("HOST", "127.0.0.1") or "127.0.0.1")
-        if host in {"0.0.0.0", "::", "[::]"}:
-            host = "127.0.0.1"
+        """按后端监听地址直连本机 API，不依赖对外域名和反向代理。"""
+        host = str(get_runtime_setting("HOST", "127.0.0.1") or "127.0.0.1").strip("[]")
+        # 通配监听地址按相同地址族回环，兼容只监听 IPv6 的部署。
+        host = {"0.0.0.0": "127.0.0.1", "::": "::1"}.get(host, host)
+        if ":" in host:
+            host = f"[{host}]"
         port = int(get_runtime_setting("PORT", 3001))
         return f"http://{host}:{port}"
 

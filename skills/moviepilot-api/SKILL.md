@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 42
+version: 43
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -77,6 +77,11 @@ Use `moviepilot_api` for normal MoviePilot business operations. The tool accepts
 only `operation_id`, `path_params`, `query`, and `body`. The host chooses the
 fixed HTTP method and path, creates the current user's authentication token,
 applies authorization and confirmation policy, and returns the API response.
+
+The gateway connects directly to the local backend listener using `HOST` and
+`PORT`, bypassing environment proxies. `APP_DOMAIN` is for public URLs such as
+Passkey origins and is not the gateway base URL. Keep it configured even when
+the public reverse proxy is unreachable from inside the container.
 
 `subscription.add`, `subscription.update`, and `subscription.delete` require
 authorization for the action and scope and use the active MoviePilot user bound to the channel account,
