@@ -234,8 +234,17 @@ async def test_chat_completions_provider_uses_google_compatible_request_options(
     assert "reasoning" not in parameters
 
 
-def test_official_google_provider_uses_native_tool_transport():
+def test_official_google_provider_uses_native_tool_transport(monkeypatch):
     """官方 Gemini 主机必须走原生 SDK，避免 OpenAI 兼容层丢失 thought_signature。"""
+    import langchain_google_genai.chat_models as google_models
+
+    # 生产补丁会修改 SDK 模块级解析函数；测试结束时恢复，避免污染后续模型参数测试。
+    for name in ("_is_gemini_3_or_later", "_parse_chat_history"):
+        monkeypatch.setattr(google_models, name, getattr(google_models, name))
+    monkeypatch.setattr(
+        google_models, "_thought_signature_patched",
+        getattr(google_models, "_thought_signature_patched", False), raising=False,
+    )
     settings = ModelSettings(
         model="gemini-3.1-pro-preview",
         base_url="https://generativelanguage.googleapis.com/v1beta",
