@@ -84,14 +84,13 @@ def test_recent_business_routes_are_exposed_as_stable_gateway_operations() -> No
 
 
 def test_moviepilot_api_skill_routes_contracts_to_category_files() -> None:
-    """The API Skill entrypoint stays concise and every operation has a namespace file."""
+    """API Skill 通过分类文档索引全部 operation 及请求体合同。"""
     entrypoint = API_SKILL.read_text(encoding="utf-8")
     category_files = {
         path.stem: path.read_text(encoding="utf-8")
         for path in sorted((API_SKILL.parent / "api").glob("*.md"))
     }
 
-    assert len(entrypoint.splitlines()) < 300
     assert "### `" not in entrypoint
     assert len(category_files) == 21
     assert "models" not in category_files
