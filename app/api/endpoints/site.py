@@ -92,6 +92,15 @@ def _project_agent_site(site: Any, *, include_secrets: bool) -> dict[str, JsonDa
     return projected
 
 
+def _project_readable_site(
+    site: _SchemaSite, token_payload: _SchemaTokenPayload
+) -> _SchemaSite | dict[str, JsonData]:
+    """普通登录用户可读的站点信息不返回认证凭据，超级管理员保持完整字段。"""
+    if token_payload.super_user:
+        return site
+    return _project_agent_site(site, include_secrets=False)
+
+
 def _indexer_supports_media_type(indexer: dict, media_type: MediaType) -> bool:
     """
     判断站点索引器是否支持指定媒体类型。
@@ -686,7 +695,7 @@ async def site_resource(
 async def read_site_by_domain(
     site_url: str,
     query: SiteQueryService = Depends(get_site_query_service),
-    _: _SchemaTokenPayload = Depends(verify_token),
+    token_payload: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     通过域名获取站点信息
@@ -698,7 +707,7 @@ async def read_site_by_domain(
             status_code=404,
             detail=f"站点 {domain} 不存在",
         )
-    return site
+    return _project_readable_site(site, token_payload)
 
 
 @router.get(
@@ -751,10 +760,10 @@ async def read_statistics(
 async def read_rss_sites(
     response: Response = None,
     query: SiteQueryService = Depends(get_site_query_service),
-    _: _SchemaTokenPayload = Depends(verify_token),
+    token_payload: _SchemaTokenPayload = Depends(verify_token),
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
-) -> List[dict]:
+) -> List[_SchemaSite | dict[str, JsonData]]:
     """
     获取站点列表
     """
@@ -767,11 +776,12 @@ async def read_rss_sites(
         response.headers[COLLECTION_TOTAL_HEADER] = str(
             await query.count_ordered(site_ids=site_ids)
         )
-    return await query.list_ordered(
+    sites = await query.list_ordered(
         site_ids=site_ids,
         page=page,
         count=count,
     )
+    return [_project_readable_site(site, token_payload) for site in sites]
 
 
 @router.get("/auth", summary="查询认证站点", response_model=_SchemaJsonObject)
