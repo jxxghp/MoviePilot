@@ -321,6 +321,32 @@ def test_cache_without_stable_id_keeps_legacy_deduplication():
     assert cached[0].torrent_info is fresh
 
 
+def test_grouped_tracker_keeps_individual_torrents():
+    """GPW、DIC Music 等分组页面必须按 torrentid 区分组内不同资源。"""
+    first = _torrent(page_url="https://tracker.example/torrents.php?id=12&torrentid=39")
+    cached = [Context(torrent_info=first)]
+    updated = replace(first, enclosure=NEW_URL)
+    another = replace(first, page_url="https://tracker.example/torrents.php?id=12&torrentid=40",
+                      enclosure="https://tracker.example/torrents.php?action=download&id=40")
+
+    assert torrent_rules.resource_identity(first) == ("1", "id=39")
+    assert torrent_rules.resource_identity(another) == ("1", "id=40")
+    assert TorrentsChain._refresh_cached_torrents([updated, another], cached) == [another]
+    assert cached[0].torrent_info is updated
+
+
+def test_mteam_indirect_request_metadata_can_refresh_in_cache():
+    """馒头采用普通缓存时也会更新换票请求，同时保留媒体识别结果。"""
+    old = _torrent(page_url="https://kp.m-team.cc/detail/39",
+                   enclosure="[old-params]https://api.m-team.cc/api/torrent/genDlToken")
+    cached = [Context(torrent_info=old, media_info=MediaInfo(title="识别结果"))]
+    fresh = replace(old, enclosure="[new-params]https://api.m-team.cc/api/torrent/genDlToken")
+
+    assert TorrentsChain._refresh_cached_torrents([fresh], cached) == []
+    assert cached[0].torrent_info is fresh
+    assert cached[0].media_info.title == "识别结果"
+
+
 @pytest.mark.parametrize("field,prefix", [("torrent_id", "id"), ("info_hash", "hash")])
 def test_explicit_torrent_identity_is_stable(field, prefix):
     """索引器提供的显式种子 ID 或 info hash 优先于 URL。"""

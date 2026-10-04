@@ -33,7 +33,8 @@ def resource_identity(torrent: "TorrentInfo") -> Optional[tuple[str, str]]:
         except ValueError:
             continue
         params = parse_qs(parsed.query)
-        for name in ("id", "torrentid", "torrent_id", "tid", "hash"):
+        # Gazelle 详情页的 id 是分组 ID，torrentid 才对应可下载的具体资源。
+        for name in ("torrentid", "torrent_id", "tid", "id", "hash"):
             values = params.get(name)
             if values and len(values) == 1:
                 prefix = "hash" if name == "hash" else "id"
