@@ -120,6 +120,9 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
         if not torrent_from_file and not is_magnet:
             return None, None, None, f"添加种子任务失败：无法读取种子文件"
 
+        # 失败提示使用种子名称（磁力链接保留原文），不拼接种子文件的二进制内容
+        torrent_desc = torrent_from_file.name if torrent_from_file else content
+
         # 获取下载器
         server: Qbittorrent = self.get_instance(downloader)
         if not server:
@@ -176,7 +179,7 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
                     finally:
                         torrents.clear()
                         del torrents
-                return None, None, None, f"添加种子任务失败：{content}"
+                return None, None, None, f"添加种子任务失败：{torrent_desc}"
             else:
                 # 获取种子Hash
                 torrent_hash = next(iter(added_torrent_ids), None)
@@ -185,7 +188,7 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
                 if torrent_hash:
                     temporary_tag_cleaned = server.delete_torrents_tag(torrent_hash, tag)
                 if not torrent_hash:
-                    return None, None, None, f"下载任务添加成功，但获取Qbittorrent任务信息失败：{content}"
+                    return None, None, None, f"下载任务添加成功，但获取Qbittorrent任务信息失败：{torrent_desc}"
                 else:
                     # 获取种子内容布局: `Original: 原始, Subfolder: 创建子文件夹, NoSubfolder: 不创建子文件夹`
                     torrent_layout = server.get_content_layout()

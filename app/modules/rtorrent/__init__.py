@@ -102,6 +102,9 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         if not torrent_from_file and not is_magnet:
             return None, None, None, f"添加种子任务失败：无法读取种子文件"
 
+        # 失败提示使用种子名称（磁力链接保留原文），不拼接种子文件的二进制内容
+        torrent_desc = torrent_from_file.name if torrent_from_file else content
+
         # 获取下载器
         server: Rtorrent = self.get_instance(downloader)
         if not server:
@@ -176,7 +179,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
                 finally:
                     torrents.clear()
                     del torrents
-            return None, None, None, f"添加种子任务失败：{content}"
+            return None, None, None, f"添加种子任务失败：{torrent_desc}"
         else:
             # 获取种子Hash
             torrent_hash = server.get_torrent_id_by_tag(tags=tag)
@@ -185,7 +188,7 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
                     None,
                     None,
                     None,
-                    f"下载任务添加成功，但获取rTorrent任务信息失败：{content}",
+                    f"下载任务添加成功，但获取rTorrent任务信息失败：{torrent_desc}",
                 )
             else:
                 if is_paused:
