@@ -2,6 +2,7 @@ import asyncio
 import copy
 import hashlib
 import mimetypes
+import re
 import shutil
 import time
 import uuid
@@ -566,7 +567,9 @@ async def get_web_agent_upload_dir(
         session_id,
         service,
     )
-    safe_session_id = server_session_id.replace(":", "_")
+    # 会话 ID 可能沿用前端传入的值，只保留字母、数字、下划线和连字符，
+    # 保证附件目录始终是 agent_uploads 下的一级子目录。
+    safe_session_id = re.sub(r"[^0-9A-Za-z_-]", "_", server_session_id)
     upload_dir = Path(get_api_runtime_config_snapshot().temp_path) / "agent_uploads" / safe_session_id
     await run_in_threadpool(upload_dir.mkdir, parents=True, exist_ok=True)
     return upload_dir

@@ -374,6 +374,28 @@ def test_build_web_agent_session_id_async_uses_native_async_persistence():
     service.get.assert_awaited_once_with("telegram-session")
 
 
+def test_web_agent_upload_dir_is_single_level_under_upload_root(tmp_path):
+    """前端沿用的会话 ID 含路径字符时，附件目录仍是 agent_uploads 下的一级子目录。"""
+    user = SimpleNamespace(id=1, name="admin")
+    upload_root = tmp_path / "agent_uploads"
+
+    with patch(
+        "app.application.messaging.agent.get_api_runtime_config_snapshot",
+        return_value=SimpleNamespace(temp_path=tmp_path),
+    ):
+        normal_dir = asyncio.run(
+            agent_application.get_web_agent_upload_dir(user, "web-agent:0123abcd")
+        )
+        crafted_dir = asyncio.run(
+            agent_application.get_web_agent_upload_dir(user, "web-agent:/../../outside")
+        )
+
+    assert normal_dir == upload_root / "web-agent_0123abcd"
+    assert crafted_dir.parent == upload_root
+    assert crafted_dir.resolve().parent == upload_root.resolve()
+    assert not (tmp_path / "outside").exists()
+
+
 def test_apply_web_agent_display_event_updates_snapshot():
     """WebAgent SSE 事件应按到达顺序聚合为服务端展示快照。"""
     message = {
