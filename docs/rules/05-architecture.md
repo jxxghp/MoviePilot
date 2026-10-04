@@ -430,7 +430,7 @@ mentions media, site or torrent:
 | Classification | `classification/fields.py` owns the standard field and operator catalog; `classification/sources.py` owns fixture-verified built-in source capability levels; `classification/facts.py` owns canonical fact construction and cross-source country/genre normalization; `classification/evaluator.py` owns deterministic condition and policy evaluation; `classification/validation.py` owns publish-time structural and semantic validation. The package consumes only normalized classification schemas and facts, never concrete media-source modules or persisted configuration |
 | Recognition | `metainfo.py`, `meta/` and `tokens.py` parse names, paths, release groups, streaming platforms, anime, video and music metadata |
 | Site | `site.py` owns site-domain exceptions and interprets HTML into business states such as logged-in and checked-in; configured catalog/auth/index resources stay in `app/application/site/`, generic URL/DOM parsing stays in foundation and network access stays in adapters |
-| Torrent | `domain/torrent.py` owns magnet-link semantics; configured download/file behavior stays in `application/torrent/download.py`, while cache recognition stays in `application/torrent/cache.py` |
+| Torrent | `domain/torrent.py` owns magnet-link semantics, site-scoped resource identity and timestamp/signature URL recognition; configured download/file behavior stays in `application/torrent/download.py`, while cache recognition stays in `application/torrent/cache.py` |
 
 `app/domain` may depend only on schemas and foundation. It must not read global
 settings, access DB/network/filesystem adapters, import Rust, discover services
@@ -654,6 +654,10 @@ implements only `_interaction_handler`; it must not re-export application-layer
 interaction managers.
 
 Download orchestration is owned by the same-named `app.chain.download` package.
+种子缓存刷新按 `domain/torrent.py` 的站点和稳定种子身份更新访问参数；标题、副标题未变时
+保留已有识别结果，缺少稳定 ID 的历史资源沿用标题去重。下载链对带 `t` / `sign` 的普通
+HTTP 地址发生 401/403/404/410 时，通过现有站点索引器搜索一次，只接受同站同种子的新地址，
+最多重试一次，再沿用原失败通知与冷却流程；不推断签名 TTL，也不清除既有资源失败记录。
 Its root lazily exposes only the stable `DownloadChain`; `facade.py` composes the
 owner classes and keeps the `DownloadFileDeleted` event wrapper on that stable
 class identity. Selection, submission, batch execution, existence checks, failure

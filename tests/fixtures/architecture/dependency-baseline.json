@@ -941,8 +941,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9300,
-  "edge_sha256": "8f47b7d4f63b473306a741bd791077c4d88986061a3f182ded3ab7389c709d2d",
+  "edge_count": 9303,
+  "edge_sha256": "73ee857b8715ddf49ce9316f23c3f0252342c07d80de6e5baeb04eb7fa56c95b",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -4604,6 +4604,7 @@
     "app.chain.download.submission -> app.application.directory",
     "app.chain.download.submission -> app.application.download",
     "app.chain.download.submission -> app.application.download.admission",
+    "app.chain.download.submission -> app.application.site",
     "app.chain.download.submission -> app.application.torrent",
     "app.chain.download.submission -> app.application.torrent.download",
     "app.chain.download.submission -> app.chain",
@@ -4616,6 +4617,7 @@
     "app.chain.download.submission -> app.domain.episode",
     "app.chain.download.submission -> app.domain.meta",
     "app.chain.download.submission -> app.domain.meta.metabase",
+    "app.chain.download.submission -> app.domain.torrent",
     "app.chain.download.submission -> app.runtime",
     "app.chain.download.submission -> app.runtime.cache",
     "app.chain.download.submission -> app.runtime.events",
@@ -5563,6 +5565,7 @@
     "app.chain.torrents -> app.domain.meta.metamusic",
     "app.chain.torrents -> app.domain.metainfo",
     "app.chain.torrents -> app.domain.site",
+    "app.chain.torrents -> app.domain.torrent",
     "app.chain.torrents -> app.foundation",
     "app.chain.torrents -> app.foundation.url",
     "app.chain.torrents -> app.runtime",

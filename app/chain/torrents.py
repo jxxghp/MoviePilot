@@ -10,6 +10,7 @@ from app.application.torrent.download import TorrentHelper
 from app.chain.base import ChainBase
 from app.chain.media import MediaChain
 from app.domain import site as site_rules
+from app.domain import torrent as torrent_rules
 from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
@@ -454,22 +455,8 @@ class TorrentsChain(ChainBase):
             torrents_cache[domain] = []
             music_cache[domain] = []
         else:
-            cached_signatures = {
-                f'{item.torrent_info.title}{item.torrent_info.description}'
-                for item in torrents_cache.get(domain) or []
-            }
-            torrents = [
-                item for item in torrents
-                if f'{item.title}{item.description}' not in cached_signatures
-            ]
-            music_signatures = {
-                f'{item.torrent_info.title}{item.torrent_info.description}'
-                for item in music_cache.get(domain) or []
-            }
-            music_torrents = [
-                item for item in music_torrents
-                if f'{item.title}{item.description}' not in music_signatures
-            ]
+            torrents = self._refresh_cached_torrents(torrents, torrents_cache.setdefault(domain, []))
+            music_torrents = self._refresh_cached_torrents(music_torrents, music_cache.setdefault(domain, []))
         if not torrents and not music_torrents:
             logger.info(f'{indexer.get("name")} 没有新种子')
             return domain
@@ -486,6 +473,36 @@ class TorrentsChain(ChainBase):
             if len(target_cache[domain]) > self.runtime_config.torrent_cache_size:
                 target_cache[domain] = target_cache[domain][-self.runtime_config.torrent_cache_size:]
         return domain
+
+    @staticmethod
+    def _torrent_cache_key(torrent: TorrentInfo) -> tuple[object, ...]:
+        """优先使用站点和种子 ID；缺少稳定身份的旧资源沿用标题、副标题去重。"""
+        identity = torrent_rules.resource_identity(torrent)
+        if identity:
+            return ("resource", *identity)
+        return "title", torrent.site, torrent.title, torrent.description
+
+    @classmethod
+    def _refresh_cached_torrents(cls, torrents: List[TorrentInfo], cached: List[Context]) -> List[TorrentInfo]:
+        """刷新已有资源信息，保留未变标题的识别结果；标题变化时替换旧候选。"""
+        contexts = {cls._torrent_cache_key(item.torrent_info): item for item in cached}
+        new_torrents: dict[tuple[object, ...], TorrentInfo] = {}
+        for torrent in torrents:
+            if not torrent.enclosure:
+                continue
+            key = cls._torrent_cache_key(torrent)
+            context = contexts.get(key)
+            if context is None:
+                new_torrents[key] = torrent
+                continue
+            previous = context.torrent_info
+            if (previous.title, previous.description) == (torrent.title, torrent.description):
+                context.torrent_info = torrent
+            else:
+                cached.remove(context)
+                contexts.pop(key)
+                new_torrents[key] = torrent
+        return list(new_torrents.values())
 
     def _is_no_cache_site(self, domain: str) -> bool:
         """判断站点是否配置为不缓存资源。"""

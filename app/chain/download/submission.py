@@ -11,6 +11,7 @@ from urllib.parse import urlencode, urljoin, urlparse
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.directory import validate_download_save_path
 from app.application.download.admission import SubscriptionDownloadGovernance
+from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.torrent.download import TorrentHelper
 from app.chain.download.contract import _DownloadOwnerBase
 from app.chain.download.ports import (
@@ -19,6 +20,7 @@ from app.chain.download.ports import (
 )
 from app.chain.media import MediaChain
 from app.domain import episode as episode_rules
+from app.domain import torrent as torrent_rules
 from app.domain.context import (
     Context,
     MediaInfo,
@@ -202,14 +204,9 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
             logger.error(f"{torrent.title} 无法获取下载地址！")
             return None, "", []
         # 下载种子文件
-        _, content, download_folder, files, error_msg = cast(
-            Any, TorrentHelper
-        )().download_torrent(
-            url=torrent_url,
-            cookie=site_cookie,
-            ua=torrent.site_ua or self.runtime_config.user_agent,
-            proxy=torrent.site_proxy,
-            cache_invalid=not indirect_download)
+        _, content, download_folder, files, error_msg = self._download_torrent_content(
+            torrent, torrent_url, site_cookie, indirect_download
+        )
 
         if isinstance(content, str):
             # 磁力链
@@ -228,6 +225,57 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
 
         # 返回 种子文件路径，种子目录名，种子文件清单
         return content, download_folder or "", files or []
+
+    def _download_torrent_content(
+            self,
+            torrent: TorrentInfo,
+            url: str,
+            cookie: Optional[str],
+            indirect_download: bool,
+    ) -> Tuple[Optional[Path], Optional[Union[str, bytes]], Optional[str], Optional[list[str]], Optional[str]]:
+        """短时签名失效时刷新同一资源并重试一次，最终失败再交由调用方冷却。"""
+        helper: TorrentHelper = cast(Any, TorrentHelper)()
+        for attempt in range(2):
+            expiring = torrent_rules.is_expiring_download_url(url)
+            result = helper.download_torrent(
+                url=url,
+                cookie=cookie,
+                ua=torrent.site_ua or self.runtime_config.user_agent,
+                proxy=torrent.site_proxy,
+                cache_invalid=not (indirect_download or expiring),
+            )
+            if result[1] or attempt or indirect_download or not expiring:
+                return result
+            if not re.fullmatch(r"下载种子出错，状态码：(401|403|404|410)", result[4] or ""):
+                return result
+            if not self._refresh_signed_torrent(torrent):
+                return result
+            url, cookie = torrent.enclosure, torrent.site_cookie
+        return result
+
+    def _refresh_signed_torrent(self, torrent: TorrentInfo) -> bool:
+        """复用站点索引器查找同站同 ID 的新地址，不允许用同标题的其他资源替换。"""
+        identity = torrent_rules.resource_identity(torrent)
+        if not torrent.site or not torrent.title or identity is None:
+            return False
+        try:
+            site = next((item for item in SitesHelper().get_indexers() if item.get("id") == torrent.site), None)
+            if not site:
+                return False
+            for candidate in self.search_site_torrents(site=site, keyword=torrent.title):
+                if (torrent_rules.resource_identity(candidate) != identity
+                        or not candidate.enclosure
+                        or candidate.enclosure == torrent.enclosure
+                        or not candidate.enclosure.startswith(("http://", "https://"))):
+                    continue
+                for name in ("enclosure", "page_url", "site_cookie", "site_ua", "site_proxy"):
+                    setattr(torrent, name, getattr(candidate, name))
+                logger.info(f"{torrent.title} 已刷新临时下载链接，重试下载")
+                return True
+        except Exception as err:
+            # 索引器异常可能携带签名 URL，不把异常正文写入日志或通知。
+            logger.warning(f"{torrent.title} 刷新临时下载链接失败：{type(err).__name__}")
+        return False
 
     @staticmethod
     def _apply_resource_download_event(
