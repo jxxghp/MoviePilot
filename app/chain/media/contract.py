@@ -18,6 +18,7 @@ from app.schemas.types import (
 
 _RecognitionCallback = Callable[[], Optional[MediaInfo]]
 _AsyncRecognitionCallback = Callable[[], Awaitable[Optional[MediaInfo]]]
+_MusicMetadataT = TypeVar("_MusicMetadataT", MusicInfo, MusicAlbumInfo)
 _ClassificationSubjectT = TypeVar(
     "_ClassificationSubjectT",
     MediaInfo,
@@ -159,8 +160,8 @@ if TYPE_CHECKING:
             ...
 
         @classmethod
-        def _simplify_recognized_music_info(cls, info: MusicInfo) -> MusicInfo:
-            """按配置返回简体化音乐信息。"""
+        def _simplify_recognized_music_info(cls, info: _MusicMetadataT) -> _MusicMetadataT:
+            """按配置返回简体化音乐信息，专辑详情包含逐曲转换。"""
             ...
 
         @classmethod

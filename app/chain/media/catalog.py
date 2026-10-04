@@ -1,12 +1,12 @@
 """音乐来源、目录搜索与详情路由 owner。"""
 
 from copy import deepcopy
-from typing import Any, Iterable, Optional, cast
+from typing import Any, Iterable, Optional, Union, cast
 
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.music.catalog import MusicCatalogService
 from app.chain.douban import DoubanChain
-from app.chain.media.contract import _MediaOwnerBase
+from app.chain.media.contract import _MediaOwnerBase, _MusicMetadataT
 from app.chain.musicbrainz import MusicBrainzChain, MusicMetadataSourceChain
 from app.chain.theaudiodb import TheAudioDbChain
 from app.domain.context import (
@@ -38,7 +38,7 @@ class MediaCatalogOwner(_MediaOwnerBase):
     @classmethod
     def _music_artist_aliases(
         cls,
-        info: MusicInfo,
+        info: Union[MusicInfo, MusicAlbumInfo],
         artist_index: int,
     ) -> list[str]:
         """按艺术家身份提取别名，避免多位艺术家的别名相互串用。"""
@@ -96,7 +96,7 @@ class MediaCatalogOwner(_MediaOwnerBase):
         return str(zhconv_convert(name, "zh-hans"))
 
     @classmethod
-    def _simplify_music_artist_names(cls, info: MusicInfo) -> list[str]:
+    def _simplify_music_artist_names(cls, info: Union[MusicInfo, MusicAlbumInfo]) -> list[str]:
         """逐位转换艺术家名称，保留多艺术家结果的身份边界。"""
         return [
             cls._simplify_music_artist_name(
@@ -238,8 +238,8 @@ class MediaCatalogOwner(_MediaOwnerBase):
         return cls._simplify_recognized_music_info(result)
 
     @classmethod
-    def _simplify_recognized_music_info(cls, info: MusicInfo) -> MusicInfo:
-        """按开关转换标准音乐文本字段，并优先使用可信中文艺术家别名。"""
+    def _simplify_recognized_music_info(cls, info: _MusicMetadataT) -> _MusicMetadataT:
+        """按开关转换音乐及专辑曲目文本，保留来源缓存、原文别名和身份。"""
         if not get_chain_runtime_config_snapshot().music_metadata_to_simplified:
             return info
         updates: dict[str, Any] = {}
@@ -264,9 +264,14 @@ class MediaCatalogOwner(_MediaOwnerBase):
                 )
                 if converted_items != value:
                     updates[field_name] = converted_items
+        if isinstance(info, MusicAlbumInfo):
+            tracks = [cls._simplify_recognized_music_info(track) for track in info.tracks]
+            if any(converted is not original for converted, original in zip(tracks, info.tracks)):
+                updates["tracks"] = tracks
         if not updates:
             return info
-        simplified = deepcopy(info)
+        simplified: _MusicMetadataT = deepcopy(info)
+        alias_field: str
         for field_name, alias_field in (
             ("title", "title_aliases"),
             ("album", "album_aliases"),
@@ -279,7 +284,7 @@ class MediaCatalogOwner(_MediaOwnerBase):
             if field_name in ("album_artist", "names") and info.music_type != MUSIC_ENTITY_ALBUM:
                 continue
             original = getattr(info, field_name)
-            originals = original if isinstance(original, list) else [original]
+            originals: list[Any] = original if isinstance(original, list) else [original]
             setattr(simplified, alias_field, list(dict.fromkeys([
                 *(getattr(simplified, alias_field, None) or []), *originals,
             ])))
@@ -372,7 +377,7 @@ class MediaCatalogOwner(_MediaOwnerBase):
         music_release_scripts: Optional[list[str]] = None,
         musicbrainz_release_id: Optional[str] = None,
     ) -> Optional[MusicAlbumInfo]:
-        """按音乐来源和原生 ID 同步获取专辑详情。"""
+        """按音乐来源和原生 ID 同步获取专辑详情，按开关转换专辑及曲目文本。"""
         source, normalized_id = resolve_media_identity(media_source=media_source, media_id=media_id)
         if not source or not normalized_id:
             return None
@@ -387,6 +392,8 @@ class MediaCatalogOwner(_MediaOwnerBase):
         if music_release_scripts is not None:
             preference_kwargs["music_release_scripts"] = music_release_scripts
         result = chain.get_music_album(normalized_id, **preference_kwargs) if chain else None
+        if result:
+            result = self._simplify_recognized_music_info(result)
         return cast(
             Optional[MusicAlbumInfo],
             self._finalize_recognition_result(result),
@@ -400,7 +407,7 @@ class MediaCatalogOwner(_MediaOwnerBase):
         music_release_scripts: Optional[list[str]] = None,
         musicbrainz_release_id: Optional[str] = None,
     ) -> Optional[MusicAlbumInfo]:
-        """按音乐来源和原生 ID 异步获取专辑详情。"""
+        """按音乐来源和原生 ID 异步获取专辑详情，按开关转换专辑及曲目文本。"""
         source, normalized_id = resolve_media_identity(media_source=media_source, media_id=media_id)
         if not source or not normalized_id:
             return None
@@ -415,6 +422,8 @@ class MediaCatalogOwner(_MediaOwnerBase):
         if music_release_scripts is not None:
             preference_kwargs["music_release_scripts"] = music_release_scripts
         result = await chain.async_get_music_album(normalized_id, **preference_kwargs) if chain else None
+        if result:
+            result = self._simplify_recognized_music_info(result)
         return cast(
             Optional[MusicAlbumInfo],
             await self._async_finalize_recognition_result(result),

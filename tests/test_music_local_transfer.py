@@ -15,7 +15,7 @@ from app.chain.media import MediaChain
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.music import music_tags_are_usable
 from app.modules.filemanager.transhandler import TransHandler
-from app.runtime.config import ConfigModel
+from app.runtime.config import ConfigModel, settings
 from app.schemas.category import CategoryConfig, ClassificationPolicy
 from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
@@ -33,8 +33,8 @@ def _tagged_files(directory: Path) -> list[Path]:
         shutil.copyfile(Path(__file__).parent / "fixtures/audio/silence.flac", path)
         audio = FLAC(path)
         audio.update({
-            "title": [title], "artist": ["周杰伦"], "album": ["叶惠美"],
-            "albumartist": ["周杰伦"], "date": ["2003"],
+            "title": [title], "artist": ["周杰倫"], "album": ["葉惠美"],
+            "albumartist": ["周杰倫"], "date": ["2003"],
             "tracknumber": ["1"], "tracktotal": ["1"],
             "discnumber": [str(disc)], "disctotal": ["2"],
         })
@@ -57,8 +57,10 @@ def _classification_service():
 
 
 @pytest.mark.parametrize("mtype", [None, MediaType.MUSIC])
-def test_complete_tags_preview_offline_and_preserve_custom_category(tmp_path, monkeypatch, mtype):
-    """自动与显式音乐批次均以真实标签完成目标命名，双碟不碰撞且源内容不变。"""
+@pytest.mark.parametrize("simplified", [False, True])
+def test_complete_tags_preview_offline_and_preserve_custom_category(tmp_path, monkeypatch, mtype, simplified):
+    """真实标签离线整理遵守简体开关和自定义分类，双碟不碰撞且源内容不变。"""
+    monkeypatch.setattr(settings, "MUSIC_METADATA_TO_SIMPLIFIED", simplified)
     source = tmp_path / "2022-wrong-name"
     paths = _tagged_files(source)
     hashes = [hashlib.sha256(path.read_bytes()).digest() for path in paths]
@@ -114,9 +116,10 @@ def test_complete_tags_preview_offline_and_preserve_custom_category(tmp_path, mo
     assert all(not item.music.online_confirmed and item.source_storage == "local" for item in projected.items)
     assert [item.music.disc_number for item in projected.items] == [1, 2]
     assert [item.source_item.path for item in projected.items] == [str(path) for path in paths]
+    artist, album = ("周杰伦", "叶惠美") if simplified else ("周杰倫", "葉惠美")
     assert destinations == [
-        "收藏/周杰伦/叶惠美 (2003)/Disc 1/01 - 晴天.flac",
-        "收藏/周杰伦/叶惠美 (2003)/Disc 2/01 - 以父之名.flac",
+        f"收藏/{artist}/{album} (2003)/Disc 1/01 - 晴天.flac",
+        f"收藏/{artist}/{album} (2003)/Disc 2/01 - 以父之名.flac",
     ]
     assert [hashlib.sha256(path.read_bytes()).digest() for path in paths] == hashes
     for operation in online:

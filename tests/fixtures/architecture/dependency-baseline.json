@@ -941,8 +941,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9299,
-  "edge_sha256": "c87fbb377412559c30d21b4c44c2906085143fa58a9e645855348d72f0b056a6",
+  "edge_count": 9300,
+  "edge_sha256": "8f47b7d4f63b473306a741bd791077c4d88986061a3f182ded3ab7389c709d2d",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -3717,6 +3717,7 @@
     "app.application.messaging.message -> app.foundation.crypto",
     "app.application.messaging.message -> app.foundation.singleton",
     "app.application.messaging.message -> app.foundation.size",
+    "app.application.messaging.message -> app.foundation.text",
     "app.application.messaging.message -> app.runtime",
     "app.application.messaging.message -> app.runtime.cache",
     "app.application.messaging.message -> app.runtime.log",

@@ -107,6 +107,10 @@ paths. Cross-share moves copy on the server before deleting the source and are
 not atomic; cross-share hard links are unsupported. Update saved directory and
 downloader mappings when switching path modes.
 
+For music metadata and transfer naming, follow the simplification and album-edition
+precedence contract in [api/music.md](api/music.md); text conversion does not change
+source identities or reduce multi-artist credits to a single artist.
+
 ## Overall Workflow
 
 1. Select the exact `operation_id` from the category index below.

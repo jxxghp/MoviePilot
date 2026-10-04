@@ -15,13 +15,14 @@ from typing import Any, Callable, Dict, List, Literal, Optional, Protocol, Union
 
 from jinja2 import Template
 
-from app.application.configuration import get_configured_system_config
+from app.application.configuration import get_chain_runtime_config_snapshot, get_configured_system_config
 from app.domain.context import MediaInfo, MusicInfo, TorrentInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.foundation import size as size_tools
 from app.foundation.crypto import HashUtils
 from app.foundation.singleton import Singleton, SingletonClass
+from app.foundation.text import convert as zhconv_convert
 from app.runtime.cache import TTLCache
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
@@ -129,6 +130,7 @@ class TemplateContextBuilder:
 
         每次调用都新建本地 ``context`` 字典，依次填充各业务来源和当前实例的
         主机名后返回过滤掉 None 值的副本，调用之间互不影响。
+        音乐在字段取值完成后统一按开关转简体，避免原始标签覆盖在线转换结果。
 
         :param meta: 媒体元数据
         :param mediainfo: 识别的媒体信息
@@ -148,6 +150,8 @@ class TemplateContextBuilder:
         self._add_transfer_info(context, transferinfo)
         self._add_torrent_info(context, torrentinfo)
         self._add_file_info(context, file_extension)
+        if isinstance(meta, MetaMusic) or isinstance(mediainfo, MusicInfo):
+            self._simplify_music_context(context)
         context.update(kwargs, instance_name=socket.gethostname())
 
         if include_raw_objects:
@@ -155,6 +159,18 @@ class TemplateContextBuilder:
 
         # 移除空值
         return {k: v for k, v in context.items() if v is not None}
+
+    @staticmethod
+    def _simplify_music_context(context: Dict[str, Any]) -> None:
+        """只转换最终音乐展示字段，保留原始文件名、标签、媒体身份和取值优先级。"""
+        if not get_chain_runtime_config_snapshot().music_metadata_to_simplified:
+            return
+        for field_name in ("title", "name", "artist", "album", "album_artist", "title_year", "version"):
+            value = context.get(field_name)
+            if isinstance(value, str):
+                context[field_name] = zhconv_convert(value, "zh-hans")
+        if "artists" in context:
+            context["artists"] = [zhconv_convert(artist, "zh-hans") for artist in context["artists"]]
 
     @classmethod
     def _add_media_info(

@@ -188,6 +188,7 @@ online confirmation; album corrections must preserve the returned source-file sc
 ### `music.album.get`
 `GET /api/v1/music/album/{album_id}`; policy effect: `safe_read`.
 Purpose: Read one album's details, tracks, releases, and aligned artist names and IDs.
+- Album and track text follows `MUSIC_METADATA_TO_SIMPLIFIED`, matching recognition and final transfer naming. Original aliases, source data, lyrics, and IDs remain unchanged. Recording selection does not override local album-edition evidence, and multi-artist credits remain complete.
 - `path_params`: `album_id*` (string): Source-native album ID returned by music search, exploration, or artist-album browsing.
 - `query`: `media_source` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `musicbrainz_release_id` (string|null): Optional exact MusicBrainz Release UUID belonging to the selected album Release Group; never use it as media_id.
 - `body`: none
