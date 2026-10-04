@@ -941,8 +941,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9303,
-  "edge_sha256": "73ee857b8715ddf49ce9316f23c3f0252342c07d80de6e5baeb04eb7fa56c95b",
+  "edge_count": 9304,
+  "edge_sha256": "c5124c9dfe6371833ac0b442f91fb11cc55e5d88c4b8f08a7aae1deef50c0546",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -7028,6 +7028,7 @@
     "app.modules.feishu.feishu -> app.adapters.network",
     "app.modules.feishu.feishu -> app.adapters.network.feishu",
     "app.modules.feishu.feishu -> app.adapters.network.http",
+    "app.modules.feishu.feishu -> app.adapters.network.ip",
     "app.modules.feishu.feishu -> app.application",
     "app.modules.feishu.feishu -> app.application.messaging",
     "app.modules.feishu.feishu -> app.application.messaging.channel",

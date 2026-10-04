@@ -4,11 +4,12 @@ import tempfile
 import threading
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 from urllib.parse import urlparse
 
 from app.adapters.network.feishu import FeishuLongConnection
 from app.adapters.network.http import RequestUtils
+from app.adapters.network.ip import IpUtils
 from app.application.messaging.channel.admin import matches_channel_admin
 from app.application.messaging.ingress import submit_message_to_host
 from app.application.security.user import get_configured_user_channel_lookup
@@ -794,6 +795,7 @@ class Feishu:
             text_size: str = "normal",
             margin: Optional[str] = None,
     ) -> Optional[dict]:
+        """构造非空卡片文字区块，按需设置图片布局所需的外边距。"""
         content = cls._escape_card_text(text).strip()
         if not content:
             return None
@@ -841,7 +843,7 @@ class Feishu:
         return ".jpg"
 
     def _upload_remote_image(self, image_url: Optional[str]) -> Optional[str]:
-        """下载远程图片并上传到飞书，返回可用于卡片的 image_key。"""
+        """按图片来源配置防盗链与代理，上传后返回飞书卡片所需的 image_key。"""
         image_url = (image_url or "").strip()
         if not image_url:
             return None
@@ -852,7 +854,19 @@ class Feishu:
         response = None
         temp_path = None
         try:
-            response = RequestUtils(timeout=30, ua=get_runtime_setting('USER_AGENT')).get_res(image_url)
+            # 与统一取图策略一致：豆瓣需要 Referer，豆瓣和内网图片均保持直连。
+            referer = "https://movie.douban.com/" if "doubanio.com" in image_url else None
+            proxies = get_runtime_setting('PROXY')
+            is_internal = cast(Callable[[str], bool], IpUtils.is_internal)
+            if referer or (proxies and is_internal(image_url)):
+                proxies = None
+            request_options: Dict[str, Any] = {
+                "timeout": 30,
+                "ua": get_runtime_setting('USER_AGENT'),
+                "referer": referer,
+                "proxies": proxies,
+            }
+            response = RequestUtils(**request_options).get_res(image_url)
             if not response or not getattr(response, "content", None):
                 logger.warning(f"飞书图片下载失败：{image_url}")
                 return None
@@ -1059,6 +1073,7 @@ class Feishu:
         }
 
     def _create_streaming_card(self, title: Optional[str], text: Optional[str]) -> Optional[str]:
+        """创建支持后续增量编辑的飞书卡片并返回卡片标识。"""
         if not self._api_client:
             return None
         response = self._api_client.create_card(
@@ -1083,6 +1098,7 @@ class Feishu:
             receive_id_type: Optional[str] = None,
             original_message_id: Optional[str] = None,
     ) -> Optional[dict]:
+        """发送或回复流式卡片，并记录后续更新需要的卡片标识与序号。"""
         card_id = self._create_streaming_card(title=title, text=text)
         if not card_id:
             return None
@@ -1159,6 +1175,7 @@ class Feishu:
             content: str,
             sequence: int,
     ) -> bool:
+        """按调用方维护的递增序号更新卡片文字，空内容使用飞书允许的占位。"""
         if not self._api_client:
             return False
         response = self._api_client.update_card_element_content(
@@ -1183,6 +1200,7 @@ class Feishu:
         return False
 
     def close_streaming_card(self, card_id: str, sequence: int) -> bool:
+        """关闭卡片的流式展示状态，保留已发送的最终内容。"""
         if not self._api_client or not card_id:
             return False
         response = self._api_client.update_card_settings(
@@ -1280,6 +1298,7 @@ class Feishu:
 
     @staticmethod
     def _guess_file_type(file_path: Path) -> str:
+        """映射飞书支持的文件类型，其余扩展名按通用文件上传。"""
         suffix = file_path.suffix.lower().lstrip(".")
         if suffix == "opus":
             return "opus"
@@ -1290,6 +1309,7 @@ class Feishu:
         return "stream"
 
     def _upload_image(self, file_path: Path) -> Optional[str]:
+        """上传本地图片，返回消息与卡片可引用的图片标识。"""
         if not self._api_client:
             return None
         response = self._api_client.upload_image(file_path)
@@ -1305,6 +1325,7 @@ class Feishu:
 
     def _upload_file(self, file_path: Path, file_name: Optional[str] = None, duration: Optional[int] = None) -> \
             Optional[str]:
+        """上传文件及其展示元数据，返回可用于发送消息的文件标识。"""
         if not self._api_client:
             return None
         response = self._api_client.upload_file(
@@ -1324,17 +1345,20 @@ class Feishu:
         return response.data.get("file_key")
 
     def download_image_bytes(self, image_key: str) -> Optional[Tuple[bytes, Optional[str], Optional[str]]]:
+        """按飞书图片标识下载内容及响应中的文件名、媒体类型。"""
         if not self._api_client or not image_key:
             return None
         return self._api_client.download_image(image_key)
 
     def download_file_bytes(self, file_key: str) -> Optional[Tuple[bytes, Optional[str], Optional[str]]]:
+        """按飞书文件标识下载内容及响应中的文件名、媒体类型。"""
         if not self._api_client or not file_key:
             return None
         return self._api_client.download_file(file_key)
 
     def download_message_resource_bytes(self, message_id: str, file_key: str, resource_type: str) -> Optional[
             Tuple[bytes, Optional[str], Optional[str]]]:
+        """下载指定消息关联的图片或文件，返回内容、文件名和媒体类型。"""
         if not self._api_client or not message_id or not file_key:
             return None
         return self._api_client.download_message_resource(message_id, file_key, resource_type)
