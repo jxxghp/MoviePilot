@@ -89,6 +89,7 @@ STREAM_OR_BINARY_PATHS = frozenset(
         "/api/v1/system/logging",
         "/api/v1/system/logging/download/{name}",
         "/api/v1/system/message",
+        "/api/v1/system/notification-image",
         "/api/v1/system/progress/{process_type}",
     }
 )

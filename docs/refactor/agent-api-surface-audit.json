@@ -4,7 +4,7 @@
     "consolidated": 71,
     "gateway": 228,
     "provider-skill": 12,
-    "stream_or_binary": 10,
+    "stream_or_binary": 11,
     "transport_or_identity": 76,
     "ui_presentation": 14
   },
@@ -21,7 +21,7 @@
   "gateway_http_route_count": 229,
   "gateway_operation_count": 231,
   "matched_gateway_http_route_count": 228,
-  "openapi_operation_count": 422,
+  "openapi_operation_count": 423,
   "operations": [
     {
       "disposition": "consolidated",
@@ -4531,6 +4531,18 @@
       "path": "/api/v1/system/nettest/targets",
       "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "获取网络测试目标",
+      "tags": [
+        "system"
+      ]
+    },
+    {
+      "disposition": "stream_or_binary",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-transport",
+      "path": "/api/v1/system/notification-image",
+      "reason": "Streaming, image, archive, or file response consumed by a direct client; the structured JSON Agent gateway does not proxy binary or unbounded streams.",
+      "summary": "通知图片代理",
       "tags": [
         "system"
       ]
