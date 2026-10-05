@@ -67,6 +67,7 @@ async def update_custom_identifiers(
             value=identifiers or None,
             expected_value=payload.expected_identifiers,
             enforce_expected_value=payload.expected_identifiers is not None,
+            allow_managed_write=True,
         )
     except SystemSettingConflictError as error:
         raise HTTPException(

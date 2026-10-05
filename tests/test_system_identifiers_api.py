@@ -7,7 +7,7 @@ import pytest
 from fastapi import HTTPException
 
 import app.api.endpoints.identifier as system_endpoint
-from app.application.settings import SystemSettingConflictError
+from app.application.settings.service import SystemSettingConflictError
 from app.schemas.system import CustomIdentifiersUpdateRequest
 from app.schemas.types import SystemConfigKey
 
@@ -73,6 +73,33 @@ async def test_update_identifiers_forwards_expected_snapshot(monkeypatch) -> Non
             "value": ["A", "B"],
             "expected_value": ["A"],
             "enforce_expected_value": True,
+            "allow_managed_write": True,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_update_identifiers_without_expected_snapshot_allows_managed_write(monkeypatch) -> None:
+    """未提供前端基线时，专用接口仍应获得托管设置写入权限。"""
+    monkeypatch.setattr(system_endpoint, "SystemSettingsService", _RecordingSettingsService)
+    monkeypatch.setattr(system_endpoint, "get_runtime_settings", MagicMock())
+    monkeypatch.setattr(system_endpoint, "get_configured_system_config", MagicMock())
+    runtime = SimpleNamespace(system=SimpleNamespace(publish_config_changed=AsyncMock()))
+
+    response = await system_endpoint.update_custom_identifiers(
+        payload=CustomIdentifiersUpdateRequest(identifiers=["A", "B"]),
+        _=object(),
+        runtime=runtime,
+    )
+
+    assert response.success is True
+    assert _RecordingSettingsService.calls == [
+        {
+            "setting_key": SystemConfigKey.CustomIdentifiers.value,
+            "value": ["A", "B"],
+            "expected_value": None,
+            "enforce_expected_value": False,
+            "allow_managed_write": True,
         }
     ]
 
