@@ -119,3 +119,32 @@ def test_network_proxy_probe_uses_configured_github_identity(github_headers) -> 
     assert captured["headers"] == github_headers
     assert public_target.address == "http://proxy.example:7890"
     assert "github-token" not in public_target.address
+
+
+def test_tmdb_web_probe_identifies_as_moviepilot() -> None:
+    """TMDB 网站探针应使用程序自身 UA，浏览器 UA 会被站点人机校验页拦成 403。"""
+    captured = {}
+
+    async def respond(method, url, **options):
+        """按请求头里的 UA 模拟 TMDB 网站对非真实浏览器的响应。"""
+        captured.update(method=method, url=url, **options)
+        identifies_as_app = (options["headers"] or {}).get("User-Agent") == "MoviePilot/3.1.1 (Linux; x86_64)"
+        return SimpleNamespace(
+            status_code=200 if identifies_as_app else 403,
+            headers={},
+            text="",
+            aclose=AsyncMock(),
+        )
+
+    transport = SimpleNamespace(request=AsyncMock(side_effect=respond))
+    service = _network_test_service(
+        transport,
+        USER_AGENT="MoviePilot/3.1.1 (Linux; x86_64)",
+    )
+
+    result = asyncio.run(service.execute(target_id="tmdb_web"))
+
+    assert result.success
+    assert captured["method"] == "GET"
+    assert captured["url"] == "https://www.themoviedb.org"
+    assert captured["headers"] == {"User-Agent": "MoviePilot/3.1.1 (Linux; x86_64)"}
