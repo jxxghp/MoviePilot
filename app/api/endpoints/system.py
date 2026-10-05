@@ -110,6 +110,17 @@ _PUBLIC_SYSTEM_CONFIG_KEYS = {
 _PUBLIC_SETTINGS_KEYS = {"PLUGIN_MARKET"}
 
 
+def _project_public_storages(value: Any) -> list[dict[str, Any]]:
+    """存储配置只公开名称和类型，与 /storage/options 一致，config 中的连接配置不返回。"""
+    if not isinstance(value, list):
+        return []
+    return [
+        {"name": item.get("name") or item["type"], "type": item["type"]}
+        for item in value
+        if isinstance(item, dict) and item.get("type")
+    ]
+
+
 async def _get_image_proxy_allowed_domains() -> set[str]:
     """合并站点快照与当前图片代理配置，仍逐请求执行 DNS 安全校验。"""
     runtime_settings = get_runtime_settings()
@@ -660,7 +671,7 @@ async def get_progress(
 )
 async def get_public_setting(key: str, _: ApiPrincipal = Depends(get_current_active_user_async)) -> _SchemaResponse:
     """
-    查询普通用户可读取的非敏感系统设置
+    查询普通用户可读取的非敏感系统设置，存储配置只返回名称和类型
     """
     if key in _PUBLIC_SETTINGS_KEYS:
         return _SchemaResponse(
@@ -669,7 +680,10 @@ async def get_public_setting(key: str, _: ApiPrincipal = Depends(get_current_act
         )
     if key not in _PUBLIC_SYSTEM_CONFIG_KEYS:
         raise HTTPException(status_code=404, detail="配置项不存在")
-    value = get_configured_system_config().get(_PUBLIC_SYSTEM_CONFIG_KEYS[key])
+    config_key = _PUBLIC_SYSTEM_CONFIG_KEYS[key]
+    value = get_configured_system_config().get(config_key)
+    if config_key is SystemConfigKey.Storages:
+        value = _project_public_storages(value)
     return _SchemaResponse(success=True, data={"value": value})
 
 

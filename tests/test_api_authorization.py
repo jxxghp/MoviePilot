@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from starlette.requests import Request
 from starlette.responses import Response
 
+from app.adapters.web.security.access import verify_token
 from app.api.deps import (
     get_current_active_manage_user,
     get_current_active_manage_user_async,
@@ -21,6 +22,7 @@ from app.api.endpoints import github as github_endpoint
 from app.api.endpoints import history as history_endpoint
 from app.api.endpoints import login as login_endpoint
 from app.api.endpoints import media as media_endpoint
+from app.api.endpoints import message as message_endpoint
 from app.api.endpoints import plugin as plugin_endpoint
 from app.api.endpoints import rule as rule_endpoint
 from app.api.endpoints import site as site_endpoint
@@ -156,6 +158,12 @@ def test_transfer_history_clear_requires_superuser():
     assert _dependency_of(history_endpoint.empty_transfer_history, "_") is get_current_active_superuser
 
 
+def test_webpush_send_requires_superuser_and_subscribe_accepts_login_user():
+    """主动推送到全部浏览器订阅只允许管理员，订阅本身保持登录用户可用。"""
+    assert _dependency_of(message_endpoint.send_notification, "_") is get_current_active_superuser
+    assert _dependency_of(message_endpoint.subscribe, "_") is verify_token
+
+
 def test_manage_page_endpoints_accept_manage_permission():
     """管理页面接口允许具备 manage 权限的普通用户访问。"""
     sync_endpoints = [
@@ -232,6 +240,65 @@ def test_system_public_setting_allows_only_non_sensitive_keys(monkeypatch):
 
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "配置项不存在"
+
+
+def test_system_public_setting_storages_returns_name_and_type_only(monkeypatch):
+    """公开设置读取存储时只返回名称和类型，与 /storage/options 一致，不含连接配置。"""
+    storages = [
+        {"type": "local", "name": "本地存储", "config": {}},
+        {
+            "type": "smb",
+            "name": "NAS",
+            "config": {"host": "192.168.1.2", "username": "smb-user", "password": "smb-password"},
+        },
+        {"type": "u115", "config": {"refresh_token": "u115-refresh", "access_token": "u115-access"}},
+        {"name": "缺少类型", "config": {"token": "untyped-token"}},
+    ]
+    fake_config = SimpleNamespace(get=lambda key: storages if key == SystemConfigKey.Storages else None)
+    monkeypatch.setattr(system_endpoint, "get_configured_system_config", lambda: fake_config)
+    monkeypatch.setattr("app.application.storage.get_configured_system_config", lambda: fake_config)
+
+    response = asyncio.run(system_endpoint.get_public_setting(SystemConfigKey.Storages.value))
+
+    assert response.success is True
+    assert response.data == {
+        "value": [
+            {"name": "本地存储", "type": "local"},
+            {"name": "NAS", "type": "smb"},
+            {"name": "u115", "type": "u115"},
+        ]
+    }
+    assert response.data["value"] == [option.model_dump() for option in storage_endpoint.storage_options()]
+    serialized = response.model_dump_json()
+    for value in ("smb-user", "smb-password", "192.168.1.2", "u115-refresh", "u115-access", "untyped-token"):
+        assert value not in serialized
+
+
+@pytest.mark.parametrize(
+    "config_key",
+    [
+        SystemConfigKey.Directories,
+        SystemConfigKey.IndexerSites,
+        SystemConfigKey.EpisodeFormatRuleTable,
+        SystemConfigKey.DefaultMovieSubscribeConfig,
+        SystemConfigKey.DefaultTvSubscribeConfig,
+        SystemConfigKey.DefaultMusicSubscribeConfig,
+        SystemConfigKey.FollowSubscribers,
+    ],
+)
+def test_system_public_setting_returns_other_keys_as_stored(monkeypatch, config_key):
+    """存储以外的公开配置仍按原值返回。"""
+    stored = [{"name": "配置项", "config": {"nested": True}}]
+    monkeypatch.setattr(
+        system_endpoint,
+        "get_configured_system_config",
+        lambda: SimpleNamespace(get=lambda key: stored if key == config_key else None),
+    )
+
+    response = asyncio.run(system_endpoint.get_public_setting(config_key.value))
+
+    assert response.success is True
+    assert response.data == {"value": stored}
 
 
 def test_system_ping_returns_success():
