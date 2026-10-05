@@ -9,16 +9,21 @@ from app.foundation import temporal as time_tools
 
 
 class TNodeSiteUserInfo(SiteParserBase):
+    """通过当前会话 API 获取 TNode 站点用户资料与做种信息。"""
+
     schema = SiteSchema.TNode
 
     def _parse_site_page(self, html_text: str):
+        """提取 CSRF 令牌，并配置用于取得用户 ID 的当前会话接口。"""
         html_text = self._prepare_html_text(html_text)
 
         # <meta name="x-csrf-token" content="fd169876a7b4846f3a7a16fcd5cccf8d">
         csrf_token = re.search(r'<meta name="x-csrf-token" content="(.+?)">', html_text)
         if csrf_token:
             self._addition_headers = {'X-CSRF-TOKEN': csrf_token.group(1)}
+            # 当前用户接口依赖 Cookie 会话，不需要预先知道用户 ID。
             self._user_detail_page = "api/user/getMainInfo"
+            self._user_detail_requires_userid = False
             self._torrent_seeding_page = "api/user/listTorrentActivity?id=&type=seeding&page=1&size=20000"
 
     def _parse_logged_in(self, html_text):
@@ -31,12 +36,15 @@ class TNodeSiteUserInfo(SiteParserBase):
         return True
 
     def _parse_user_base_info(self, html_text: str):
+        """首页不提供用户 ID，身份信息需在详情接口返回后补齐。"""
         self.username = self.userid
 
     def _parse_user_traffic_info(self, html_text: str):
+        """流量信息已由当前用户接口返回，无需单独解析。"""
         pass
 
     def _parse_user_detail_info(self, html_text: str):
+        """从当前用户接口一次解析身份、资料、流量及未读消息数量。"""
         try:
             detail = json.loads(html_text)
         except json.JSONDecodeError:
@@ -98,6 +106,7 @@ class TNodeSiteUserInfo(SiteParserBase):
         return next_page
 
     def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:
+        """当前仅支持 API 返回的未读数量，不解析消息链接。"""
         return None
 
     def _parse_message_content(self, html_text):

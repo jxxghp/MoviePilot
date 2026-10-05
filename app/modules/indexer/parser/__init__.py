@@ -47,6 +47,8 @@ class SiteParserBase(metaclass=ABCMeta):
     schema = None
     # 请求模式 cookie/apikey
     request_mode = "cookie"
+    # 详情页默认依赖用户 ID；当前会话接口可在配置页面时关闭此前置校验。
+    _user_detail_requires_userid = True
 
     def __init__(self, site_name: str,
                  url: str,
@@ -227,7 +229,7 @@ class SiteParserBase(metaclass=ABCMeta):
                 self._parse_user_base_info(self._index_html)
             # 解析用户详细信息
             if self._user_detail_page:
-                if not self._has_valid_userid():
+                if self._user_detail_requires_userid and not self._has_valid_userid():
                     logger.warn(f"{self._site_name} 未解析到有效用户 ID，跳过用户详情页请求")
                 else:
                     self._parse_user_detail_info(
