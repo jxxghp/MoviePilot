@@ -174,6 +174,28 @@ def _cue_mentions_audio(text: str, path: Path) -> bool:
     return False
 
 
+def _cue_file_references(text: str) -> list[str]:
+    """从原始 CUE 文本提取 FILE 引用名，供解析失败时判断引用是否仍然存在。"""
+    references = []
+    for line in text.splitlines():
+        match = re.match(r'\s*FILE\s+(?:"([^"\r\n]+)"|(\S+))', line, re.IGNORECASE)
+        if match:
+            references.append(match.group(1) or match.group(2))
+    return references
+
+
+def _cue_references_existing_audio(path: Path, names: Any) -> bool:
+    """CUE 至少引用一个目录中真实存在的音频才可采信；跨目录引用保守视为存在。"""
+    for name in names:
+        try:
+            reference = _cue_reference_name(name)
+        except ValueError:
+            return True
+        if (path.parent / reference).is_file():
+            return True
+    return False
+
+
 def _cue_candidates(path: Path) -> list[Path]:
     """只扫描音频同目录的有限 CUE，不遍历全集或其它目录。"""
     candidates = []
@@ -206,10 +228,14 @@ def _find_audio_cue(path: Path) -> Optional[tuple[Path, MusicCueSheet]]:
         try:
             sheet = parse_music_cue(text)
         except ValueError as error:
-            if candidate.stem.casefold() == path.stem.casefold() or _cue_mentions_audio(text, path):
+            mentions = candidate.stem.casefold() == path.stem.casefold() or _cue_mentions_audio(text, path)
+            if mentions and _cue_references_existing_audio(path, _cue_file_references(text)):
                 raise ValueError(f"关联 CUE 无法解析：{candidate.name} - {error}") from error
             continue
         references = {track.file_name for track in sheet.tracks}
+        if not _cue_references_existing_audio(path, references):
+            logger.info(f"CUE 引用的音频文件均已不存在，按陈旧索引忽略：{candidate}")
+            continue
         related = [name for name in references if PurePosixPath(name.replace("\\", "/")).stem.casefold() == path.stem.casefold()]
         if not related:
             continue

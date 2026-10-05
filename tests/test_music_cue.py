@@ -122,9 +122,9 @@ def test_image_cue_never_runs_recording_fingerprint(tmp_path, monkeypatch, async
     async_fingerprint.assert_not_called()
 
 
-@pytest.mark.parametrize("bad_reference", ["../image.flac", "image.wav", "IMAGE.flac", "C:\\music\\image.flac"])
+@pytest.mark.parametrize("bad_reference", ["../image.flac", "C:\\music\\image.flac"])
 def test_cue_reference_errors_block_even_without_category_folders(tmp_path, bad_reference):
-    """跨目录、错误后缀和大小写等引用不能靠关闭分类目录绕过检查。"""
+    """跨目录引用不能靠关闭分类目录绕过检查；同目录引用交给存在性判定。"""
     audio, _ = _image_pair(tmp_path, text=CUE.replace('"image.flac"', f'"{bad_reference}"'))
     meta = AudioMetadataHelper.read(audio)
     task = TransferTask(fileitem=make_fileitem(str(audio)), meta=meta, mediainfo=MusicInfo.from_meta(meta),
@@ -133,6 +133,58 @@ def test_cue_reference_errors_block_even_without_category_folders(tmp_path, bad_
     assert meta.music_layout == "cue_invalid"
     assert TransferChain._transfer_validation_error(task) == meta.organization_error
     assert meta.organization_error
+
+
+@pytest.mark.parametrize("stale_reference", ["image.wav"])
+def test_cue_reference_missing_from_directory_falls_back_to_tags(tmp_path, stale_reference):
+    """引用文件已不存在的陈旧索引（转制未更新扩展名等）不得阻断整理，回退标签。"""
+    audio, _ = _image_pair(tmp_path, text=CUE.replace('"image.flac"', f'"{stale_reference}"'))
+    tags = FLAC(audio)
+    tags.update(title=["独立单曲"], artist=["测试歌手"], album=["专辑示例"], tracknumber=["2"])
+    tags.save()
+
+    meta = AudioMetadataHelper.read(audio)
+
+    assert not meta.organization_error
+    assert meta.music_layout != "cue_invalid"
+    assert meta.title == "独立单曲"
+    assert meta.track_number == 2
+
+
+def test_stale_wav_cue_does_not_block_flac_split_album(tmp_path):
+    """WAV 时代留档 CUE 全部引用不存在的 .wav 时，FLAC 分轨按自带标签正常整理。"""
+    source = tmp_path / "source"
+    source.mkdir()
+    for name in ("01 - 以父之名.flac", "02 - 懦夫.flac"):
+        shutil.copyfile(Path(__file__).parent / "fixtures/audio/silence.flac", source / name)
+    (source / "album.cue").write_text('''PERFORMER "周杰倫"
+TITLE "葉惠美"
+FILE "01 - 以父之名.wav" WAVE
+  TRACK 01 AUDIO
+    TITLE "以父之名"
+    INDEX 01 00:00:00
+FILE "02 - 懦夫.wav" WAVE
+  TRACK 02 AUDIO
+    TITLE "懦夫"
+    INDEX 01 00:00:00
+''')
+
+    meta = AudioMetadataHelper.read(source / "01 - 以父之名.flac")
+
+    assert not meta.organization_error
+    assert meta.music_layout != "cue_invalid"
+    assert not meta.cue_tracks
+
+
+def test_broken_index_without_existing_references_is_ignored(tmp_path):
+    """结构损坏且引用文件全部不存在的 CUE 同样按陈旧索引忽略，不再阻断。"""
+    audio, _ = _image_pair(tmp_path, text=CUE.replace('"image.flac"', '"image.wav"')
+                           .replace("    INDEX 01 00:01:00\n", ""))
+
+    meta = AudioMetadataHelper.read(audio)
+
+    assert not meta.organization_error
+    assert meta.music_layout != "cue_invalid"
 
 
 def test_single_audio_collects_nonmatching_stem_cue_companion(tmp_path, monkeypatch):
