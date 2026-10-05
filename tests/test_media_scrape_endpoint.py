@@ -1,7 +1,11 @@
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
+from app.api.dependencies.auth import get_current_active_user
 from app.api.endpoints import media as media_endpoint
 from app.api.endpoints.media import recognize_file, scrape
 from app.domain.context import Context, MediaInfo
@@ -121,6 +125,59 @@ def test_scrape_rejects_zero_media_id_before_recognition() -> None:
     assert result.message == "媒体ID格式无效"
     media_chain.assert_not_called()
     scraping_chain.assert_not_called()
+
+
+def _post_scrape_as(monkeypatch, current_user):
+    """以指定登录用户经真实路由提交刮削请求，返回响应和被替换的媒体链、刮削链。"""
+    media_chain = Mock()
+    # mkv 非音频文件，需显式关闭 Mock 的 is_audio_path 避免误入音乐分支
+    media_chain.is_audio_path.return_value = False
+    media_chain.return_value.recognize_by_path.return_value = Context(
+        meta_info=MetaBase("Test Show S01E01"),
+        media_info=MediaInfo(title="测试剧集", type=MediaType.TV),
+    )
+    scraping_chain = Mock()
+    monkeypatch.setattr(media_endpoint, "MediaChain", media_chain)
+    monkeypatch.setattr(media_endpoint, "ScrapingChain", scraping_chain)
+
+    app = FastAPI()
+    app.include_router(media_endpoint.router, prefix="/api/v1/media")
+    # 只替换登录用户解析，管理权限判断仍走真实依赖
+    app.dependency_overrides[get_current_active_user] = lambda: current_user
+    fileitem = FileItem(storage="alist", path="/tv/Test Show S01E01.mkv", type="file")
+    response = TestClient(app).post(
+        "/api/v1/media/scrape/alist",
+        json=fileitem.model_dump(mode="json"),
+    )
+    return response, media_chain, scraping_chain
+
+
+def test_scrape_http_rejects_user_without_manage_permission(monkeypatch) -> None:
+    """手动刮削会覆盖目录内的图片和 NFO，没有管理权限的用户不得进入识别和刮削链。"""
+    user = SimpleNamespace(is_active=True, is_superuser=False, permissions={})
+
+    response, media_chain, scraping_chain = _post_scrape_as(monkeypatch, user)
+
+    assert response.status_code == 403
+    media_chain.assert_not_called()
+    scraping_chain.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "user",
+    [
+        SimpleNamespace(is_active=True, is_superuser=False, permissions={"manage": True}),
+        SimpleNamespace(is_active=True, is_superuser=True, permissions={}),
+    ],
+    ids=["manage", "superuser"],
+)
+def test_scrape_http_accepts_manage_user_and_superuser(monkeypatch, user) -> None:
+    """具备管理权限的用户和超级管理员可与文件管理、手动整理一样执行手动刮削。"""
+    response, _, scraping_chain = _post_scrape_as(monkeypatch, user)
+
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+    scraping_chain.return_value.scrape_metadata.assert_called_once()
 
 
 @pytest.mark.parametrize("media_source", list(MediaSource))
