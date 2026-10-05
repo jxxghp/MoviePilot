@@ -7,7 +7,7 @@ from pydantic import BeforeValidator
 
 from app.adapters.web.security.access import verify_apitoken, verify_token
 from app.api.context import get_classification_runtime
-from app.api.dependencies.auth import get_current_active_user
+from app.api.dependencies.auth import get_current_active_manage_user, get_current_active_user
 from app.api.response import (
     CompatibleCountParam,
     CompatiblePageParam,
@@ -420,7 +420,6 @@ def _scrape_impl(
     type_name: Optional[MediaType] = None,
     music_type: Optional[str] = None,
     episode_group: Optional[str] = None,
-    _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
     刮削媒体信息，可按请求指定媒体数据源及其原生ID
@@ -432,7 +431,6 @@ def _scrape_impl(
     :param type_name: 媒体类型
     :param music_type: 音乐实体类型，支持 recording 和 album
     :param episode_group: TMDB 电视剧剧集组
-    :param _: Token校验
     """
     if not fileitem or not fileitem.path:
         return _SchemaResponse(success=False, message="刮削路径无效")
@@ -531,9 +529,9 @@ def scrape(
         Optional[str],
         Query(description="TMDB 剧集组编号，用于按指定季集顺序识别电视剧"),
     ] = None,
-    _: _SchemaTokenPayload = Depends(verify_token),
+    _: object = Depends(get_current_active_manage_user),
 ) -> Any:
-    """按请求级媒体身份、剧集组和音乐实体设置刮削单项媒体。"""
+    """按请求级媒体身份、剧集组和音乐实体设置刮削单项媒体；会覆盖目标目录的图片和 NFO，与文件管理一样要求管理权限。"""
     return _scrape_impl(
         fileitem,
         storage,
@@ -542,7 +540,6 @@ def scrape(
         type_name,
         music_type,
         episode_group,
-        _,
     )
 
 

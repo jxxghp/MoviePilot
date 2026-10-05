@@ -20,6 +20,7 @@ from app.api.endpoints import dashboard as dashboard_endpoint
 from app.api.endpoints import github as github_endpoint
 from app.api.endpoints import history as history_endpoint
 from app.api.endpoints import login as login_endpoint
+from app.api.endpoints import media as media_endpoint
 from app.api.endpoints import plugin as plugin_endpoint
 from app.api.endpoints import rule as rule_endpoint
 from app.api.endpoints import site as site_endpoint
@@ -174,6 +175,7 @@ def test_manage_page_endpoints_accept_manage_permission():
         transfer_endpoint.match_manual_transfer_target_path,
         transfer_endpoint.manual_transfer,
         transfer_endpoint.recommend_episode_format,
+        media_endpoint.scrape,
     ]
     async_endpoints = [
         site_endpoint.read_sites,
