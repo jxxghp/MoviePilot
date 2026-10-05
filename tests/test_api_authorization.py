@@ -232,6 +232,65 @@ def test_system_public_setting_allows_only_non_sensitive_keys(monkeypatch):
     assert exc_info.value.detail == "配置项不存在"
 
 
+def test_system_public_setting_storages_returns_name_and_type_only(monkeypatch):
+    """公开设置读取存储时只返回名称和类型，与 /storage/options 一致，不含连接配置。"""
+    storages = [
+        {"type": "local", "name": "本地存储", "config": {}},
+        {
+            "type": "smb",
+            "name": "NAS",
+            "config": {"host": "192.168.1.2", "username": "smb-user", "password": "smb-password"},
+        },
+        {"type": "u115", "config": {"refresh_token": "u115-refresh", "access_token": "u115-access"}},
+        {"name": "缺少类型", "config": {"token": "untyped-token"}},
+    ]
+    fake_config = SimpleNamespace(get=lambda key: storages if key == SystemConfigKey.Storages else None)
+    monkeypatch.setattr(system_endpoint, "get_configured_system_config", lambda: fake_config)
+    monkeypatch.setattr("app.application.storage.get_configured_system_config", lambda: fake_config)
+
+    response = asyncio.run(system_endpoint.get_public_setting(SystemConfigKey.Storages.value))
+
+    assert response.success is True
+    assert response.data == {
+        "value": [
+            {"name": "本地存储", "type": "local"},
+            {"name": "NAS", "type": "smb"},
+            {"name": "u115", "type": "u115"},
+        ]
+    }
+    assert response.data["value"] == [option.model_dump() for option in storage_endpoint.storage_options()]
+    serialized = response.model_dump_json()
+    for value in ("smb-user", "smb-password", "192.168.1.2", "u115-refresh", "u115-access", "untyped-token"):
+        assert value not in serialized
+
+
+@pytest.mark.parametrize(
+    "config_key",
+    [
+        SystemConfigKey.Directories,
+        SystemConfigKey.IndexerSites,
+        SystemConfigKey.EpisodeFormatRuleTable,
+        SystemConfigKey.DefaultMovieSubscribeConfig,
+        SystemConfigKey.DefaultTvSubscribeConfig,
+        SystemConfigKey.DefaultMusicSubscribeConfig,
+        SystemConfigKey.FollowSubscribers,
+    ],
+)
+def test_system_public_setting_returns_other_keys_as_stored(monkeypatch, config_key):
+    """存储以外的公开配置仍按原值返回。"""
+    stored = [{"name": "配置项", "config": {"nested": True}}]
+    monkeypatch.setattr(
+        system_endpoint,
+        "get_configured_system_config",
+        lambda: SimpleNamespace(get=lambda key: stored if key == config_key else None),
+    )
+
+    response = asyncio.run(system_endpoint.get_public_setting(config_key.value))
+
+    assert response.success is True
+    assert response.data == {"value": stored}
+
+
 def test_system_ping_returns_success():
     """服务存活检测接口返回标准成功响应。"""
     response = asyncio.run(system_endpoint.ping())
