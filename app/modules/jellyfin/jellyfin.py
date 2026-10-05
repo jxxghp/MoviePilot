@@ -21,6 +21,8 @@ from app.schemas.mediaserver import MediaServerItem
 
 
 class Jellyfin:
+    """适配 Jellyfin 的媒体库查询、同步和播放接口。"""
+
     _host: Optional[str] = None
     _apikey: Optional[str] = None
     _playhost: Optional[str] = None
@@ -29,6 +31,7 @@ class Jellyfin:
 
     def __init__(self, host: Optional[str] = None, apikey: Optional[str] = None, play_host: Optional[str] = None,
                  sync_libraries: list = None, **kwargs):
+        """初始化服务器连接，解析查询用户并保存媒体库同步范围。"""
         if not host or not apikey:
             logger.error("Jellyfin服务器配置不完整！！")
             return
@@ -457,7 +460,7 @@ class Jellyfin:
         :param year: 年份，为空则不过滤
         :param media_source: 媒体来源
         :param media_id: 媒体来源原生ID
-        :return: 含title、year属性的字典列表
+        :return: 匹配的电影条目列表，包含合集内的电影
         """
         if not self._host or not self._apikey or not self.user:
             return None
@@ -467,6 +470,8 @@ class Jellyfin:
             "Fields": "ProviderIds,OriginalTitle,ProductionYear,Path,UserDataPlayCount,UserDataLastPlayedDate,ParentId",
             "StartIndex": 0,
             "Recursive": "true",
+            # 合集折叠会隐藏成员电影，影响已入库判断。
+            "CollapseBoxSetItems": "false",
             "searchTerm": title,
             "Limit": 10,
             "api_key": self._apikey
@@ -919,7 +924,7 @@ class Jellyfin:
     def get_items_count(self, parent: Union[str, int],
                         include_item_types: str = "Movie,Series") -> Optional[int]:
         """
-        获取指定媒体库可同步的媒体条目总数
+        获取指定媒体库可同步的媒体条目总数，合集内条目按媒体本身计数
 
         :param parent: 媒体库ID
         :param include_item_types: 统计的条目类型，默认电影和剧集
@@ -931,6 +936,7 @@ class Jellyfin:
         params = {
             "ParentId": parent,
             "Recursive": "true",
+            "CollapseBoxSetItems": "false",
             "IncludeItemTypes": include_item_types,
             "Limit": 0,
             "api_key": self._apikey,
@@ -949,6 +955,8 @@ class Jellyfin:
             -> Generator[MediaServerItem | None | Any, Any, None]:
         """
         获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
+
+        Folder 和 BoxSet 均递归读取成员，合集容器本身不作为媒体返回。
 
         :param parent: 媒体库ID，用于标识要获取的媒体库
         :param start_index: 起始索引，用于分页获取数据。默认为 0，即从第一个项目开始获取
@@ -979,7 +987,7 @@ class Jellyfin:
             for item in items:
                 if not item:
                     continue
-                if "Folder" in item.get("Type"):
+                if "Folder" in item.get("Type") or item.get("Type") == "BoxSet":
                     for items in self.get_items(item.get("Id")):
                         yield items
                 elif item.get("Type") in ["Movie", "Series", "MusicAlbum"]:
