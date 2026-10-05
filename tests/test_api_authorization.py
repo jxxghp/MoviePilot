@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from starlette.requests import Request
 from starlette.responses import Response
 
+from app.adapters.web.security.access import verify_token
 from app.api.deps import (
     get_current_active_manage_user,
     get_current_active_manage_user_async,
@@ -20,6 +21,7 @@ from app.api.endpoints import dashboard as dashboard_endpoint
 from app.api.endpoints import github as github_endpoint
 from app.api.endpoints import history as history_endpoint
 from app.api.endpoints import login as login_endpoint
+from app.api.endpoints import message as message_endpoint
 from app.api.endpoints import plugin as plugin_endpoint
 from app.api.endpoints import rule as rule_endpoint
 from app.api.endpoints import site as site_endpoint
@@ -153,6 +155,12 @@ def test_transfer_history_clear_requires_superuser():
     """清空全部旧整理历史必须保持超级管理员边界。"""
     assert _dependency_of(history_endpoint.clear_transfer_history, "_") is get_current_active_superuser
     assert _dependency_of(history_endpoint.empty_transfer_history, "_") is get_current_active_superuser
+
+
+def test_webpush_send_requires_superuser_and_subscribe_accepts_login_user():
+    """主动推送到全部浏览器订阅只允许管理员，订阅本身保持登录用户可用。"""
+    assert _dependency_of(message_endpoint.send_notification, "_") is get_current_active_superuser
+    assert _dependency_of(message_endpoint.subscribe, "_") is verify_token
 
 
 def test_manage_page_endpoints_accept_manage_permission():
