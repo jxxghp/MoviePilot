@@ -1,7 +1,7 @@
 import asyncio
 import base64
 import json
-from unittest.mock import call, patch
+from unittest.mock import AsyncMock, call, patch
 
 import pytest
 
@@ -259,6 +259,49 @@ def test_recognize_captcha_tool_blocks_private_network_by_default():
     assert "默认不允许访问本机或私网地址" in payload["message"]
     assert "recovery" not in payload
     recognize_mock.assert_not_called()
+
+
+def test_recognize_captcha_tool_private_network_is_admin_only(monkeypatch):
+    """普通调用方设置 allow_private_network 时收到明确原因，且不会下载图片。"""
+    tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
+    monkeypatch.setattr(RecognizeCaptchaTool, "is_admin_user", AsyncMock(return_value=False))
+
+    with patch(
+        "app.agent.tools.impl.recognize_captcha.OcrHelper.get_captcha_text",
+        return_value="x7p9",
+    ) as recognize_mock:
+        result = asyncio.run(
+            tool.run(image_url="http://qbittorrent:8080/captcha.png", allow_private_network=True)
+        )
+
+    payload = json.loads(result)
+
+    assert payload["success"] is False
+    assert payload["captcha_text"] == ""
+    assert payload["error"] == "admin_required"
+    assert "allow_private_network" in payload["message"]
+    recognize_mock.assert_not_called()
+
+
+def test_recognize_captcha_tool_admin_can_allow_private_network(monkeypatch):
+    """管理员仍可显式识别本机或私网地址上的验证码图片。"""
+    tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
+    monkeypatch.setattr(RecognizeCaptchaTool, "is_admin_user", AsyncMock(return_value=True))
+
+    with patch(
+        "app.agent.tools.impl.recognize_captcha.OcrHelper.get_captcha_text",
+        return_value="x7p9",
+    ) as recognize_mock:
+        result = asyncio.run(
+            tool.run(image_url="http://qbittorrent:8080/captcha.png", allow_private_network=True)
+        )
+
+    assert json.loads(result)["captcha_text"] == "x7p9"
+    recognize_mock.assert_called_once_with(
+        image_url="http://qbittorrent:8080/captcha.png",
+        cookie=None,
+        ua=None,
+    )
 
 
 @pytest.mark.parametrize("error", [None, RuntimeError("offline OCR"), ValueError("invalid OCR JSON")])

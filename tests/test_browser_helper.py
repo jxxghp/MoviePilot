@@ -638,3 +638,34 @@ async def test_browse_webpage_get_cookies_is_admin_only(monkeypatch: pytest.Monk
     result = await tool.run(action="get_cookies")
 
     assert "仅允许管理员" in result
+
+
+@pytest.mark.asyncio
+async def test_browse_webpage_private_network_is_admin_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """普通调用方设置 allow_private_network 时收到明确原因，且不会执行浏览器动作。"""
+    tool = BrowseWebpageTool(session_id="session-1", user_id="10001")
+    monkeypatch.setattr(BrowseWebpageTool, "is_admin_user", AsyncMock(return_value=False))
+    run_blocking = AsyncMock(return_value="{}")
+    monkeypatch.setattr(BrowseWebpageTool, "run_blocking", run_blocking)
+
+    payload = json.loads(
+        await tool.run(action="goto", url="http://qbittorrent:8080/", allow_private_network=True)
+    )
+
+    assert payload["success"] is False
+    assert payload["error"] == "admin_required"
+    assert "allow_private_network" in payload["message"]
+    run_blocking.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_browse_webpage_admin_can_allow_private_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    """管理员仍可显式允许访问本机或私网地址。"""
+    tool = BrowseWebpageTool(session_id="session-1", user_id="10001")
+    monkeypatch.setattr(BrowseWebpageTool, "is_admin_user", AsyncMock(return_value=True))
+    run_blocking = AsyncMock(return_value=json.dumps({"success": True}))
+    monkeypatch.setattr(BrowseWebpageTool, "run_blocking", run_blocking)
+
+    await tool.run(action="goto", url="http://qbittorrent:8080/", allow_private_network=True)
+
+    assert run_blocking.await_args.kwargs["allow_private_network"] is True

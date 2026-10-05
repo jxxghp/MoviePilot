@@ -135,7 +135,10 @@ class BrowseWebpageInput(BaseModel):
     )
     allow_private_network: bool = Field(
         False,
-        description="Allow browser navigation to localhost, loopback, private, or link-local addresses.",
+        description=(
+            "Allow browser navigation to localhost, loopback, private, or link-local addresses "
+            "(administrator only; other callers receive an admin_required error)."
+        ),
     )
 
 
@@ -159,7 +162,8 @@ class BrowseWebpageTool(MoviePilotTool):
         "first call 'goto' to open a page, inspect 'interactive_elements', then use *_ref actions when possible. "
         "For a session-bound captcha or failed OCR, use 'screenshot' with the observed image selector "
         "to inspect the currently rendered captcha before refreshing it. "
-        "For safety, localhost and private network URLs are blocked by default unless allow_private_network is true."
+        "Localhost and private network URLs are blocked by default. "
+        "Only administrators may set allow_private_network to true."
     )
     args_schema: Type[BaseModel] = BrowseWebpageInput
 
@@ -313,16 +317,9 @@ class BrowseWebpageTool(MoviePilotTool):
                 return self._error_response("missing_value", "'fill_ref' 操作需要提供 value 参数", "补充 value 后重试。")
             if browser_action == BrowserAction.EVALUATE and not script:
                 return self._error_response("missing_script", "'evaluate' 操作需要提供 script 参数", "补充 script 后重试。")
-            if (
-                browser_action == BrowserAction.EVALUATE
-                and not await self.is_admin_user()
-            ):
-                return self._error_response("admin_required", "'evaluate' 操作仅允许管理员使用", "改用只读浏览器 action 或请求管理员授权。")
-            if (
-                browser_action == BrowserAction.GET_COOKIES
-                and not await self.is_admin_user()
-            ):
-                return self._error_response("admin_required", "'get_cookies' 操作仅允许管理员使用", "改用非敏感浏览器 action 或请求管理员授权。")
+            admin_error = await self._admin_required_error(browser_action, allow_private_network)
+            if admin_error:
+                return admin_error
             if (
                 browser_action in (BrowserAction.FOCUS_TAB, BrowserAction.CLOSE_TAB)
                 and tab_index is None
@@ -356,6 +353,25 @@ class BrowseWebpageTool(MoviePilotTool):
             if action == BrowserAction.SCREENSHOT:
                 return self._screenshot_failure("screenshot_failed", "浏览器截图执行失败")
             return self._error_response("browser_operation_failed", f"浏览器操作失败: {error_summary}", "检查当前会话和页面状态后再重试。")
+
+    async def _admin_required_error(
+        self, browser_action: BrowserAction, allow_private_network: bool
+    ) -> Optional[str]:
+        """执行脚本、读取 Cookie 和访问本机或私网地址仅限管理员，其他调用方返回明确原因。"""
+        if browser_action == BrowserAction.EVALUATE:
+            message, recovery = "'evaluate' 操作仅允许管理员使用", "改用只读浏览器 action 或请求管理员授权。"
+        elif browser_action == BrowserAction.GET_COOKIES:
+            message, recovery = "'get_cookies' 操作仅允许管理员使用", "改用非敏感浏览器 action 或请求管理员授权。"
+        elif allow_private_network:
+            message, recovery = (
+                "allow_private_network 仅允许管理员使用",
+                "去掉 allow_private_network 后只访问公网地址，或请求管理员授权。",
+            )
+        else:
+            return None
+        if await self.is_admin_user():
+            return None
+        return self._error_response("admin_required", message, recovery)
 
     def _execute_browser_action(
         self,

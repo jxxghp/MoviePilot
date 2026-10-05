@@ -46,7 +46,10 @@ class RecognizeCaptchaInput(BaseModel):
     )
     allow_private_network: bool = Field(
         False,
-        description="Allow captcha image URLs on localhost, loopback, private, or link-local addresses.",
+        description=(
+            "Allow captcha image URLs on localhost, loopback, private, or link-local addresses "
+            "(administrator only; other callers receive an admin_required error)."
+        ),
     )
 
     @model_validator(mode="after")  # type: ignore[misc]
@@ -77,8 +80,8 @@ class RecognizeCaptchaTool(MoviePilotTool):
         "This tool uses the configured OCR service, not the multimodal model. If OCR fails, "
         "inspect the current browser captcha with browse_webpage(action='screenshot', selector=...) "
         "before refreshing it or asking the user to read it. "
-        "For safety, localhost and private network URLs are blocked by default unless "
-        "allow_private_network is true."
+        "Localhost and private network URLs are blocked by default. "
+        "Only administrators may set allow_private_network to true."
     )
     args_schema: Type[BaseModel] = RecognizeCaptchaInput
 
@@ -190,6 +193,18 @@ class RecognizeCaptchaTool(MoviePilotTool):
             f"参数: image_url={self._format_image_url_for_log(image_url or '')}, "
             f"image_data={'%s bytes' % len(image_data) if image_data else 'none'}"
         )
+
+        if allow_private_network and not await self.is_admin_user():
+            return json.dumps(
+                {
+                    "success": False,
+                    "captcha_text": "",
+                    "error": "admin_required",
+                    "message": "allow_private_network 仅允许管理员使用",
+                    "recovery": "去掉 allow_private_network 后只识别公网地址或 data:image 图片，或请求管理员授权。",
+                },
+                ensure_ascii=False,
+            )
 
         try:
             captcha_text = await self.run_blocking(
