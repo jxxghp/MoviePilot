@@ -941,8 +941,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9316,
-  "edge_sha256": "67e1155ee7b6151823fb42cabbe48a5dc7ec611d88165668c7b0379a449931e3",
+  "edge_count": 9318,
+  "edge_sha256": "b4db68c1bb06095ba35d2c6e96fd42f7255d40109e39f5a7077fa1de9b48a2d2",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -7659,6 +7659,8 @@
     "app.modules.lrclib -> app.domain.context",
     "app.modules.lrclib -> app.domain.meta",
     "app.modules.lrclib -> app.domain.meta.metamusic",
+    "app.modules.lrclib -> app.foundation",
+    "app.modules.lrclib -> app.foundation.text",
     "app.modules.lrclib -> app.modules",
     "app.modules.lrclib -> app.runtime",
     "app.modules.lrclib -> app.runtime.cache",

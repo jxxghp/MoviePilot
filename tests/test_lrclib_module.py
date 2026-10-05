@@ -113,6 +113,72 @@ def test_music_lyrics_search_fallback_rejects_wrong_duration(monkeypatch) -> Non
     assert lyrics.extension == ".txt"
 
 
+def test_music_lyrics_queries_simplified_metadata(monkeypatch) -> None:
+    """繁体音乐信息应使用简体标题、艺术家和专辑查询 LRCLIB。"""
+    module = LrclibModule()
+    requested = []
+
+    def fake_request(path, params=None):
+        """记录归一后的精确查询参数并返回歌词。"""
+        requested.append((path, params))
+        return {
+            "id": 3,
+            "plainLyrics": "安静的歌词",
+        }
+
+    monkeypatch.setattr(module, "_request_json", fake_request)
+    lyrics = module.music_lyrics(
+        MusicInfo(
+            title="安靜",
+            artists=["周杰倫"],
+            album="范特西",
+            duration=334,
+        )
+    )
+
+    assert lyrics is not None
+    assert lyrics.provider_id == "3"
+    assert requested == [
+        (
+            "/api/get",
+            {
+                "track_name": "安静",
+                "artist_name": "周杰伦",
+                "album_name": "范特西",
+                "duration": 334,
+            },
+        )
+    ]
+
+
+def test_music_lyrics_search_matches_traditional_candidate(monkeypatch) -> None:
+    """搜索结果使用繁体艺术家或标题时仍应匹配简体查询身份。"""
+    module = LrclibModule()
+
+    def fake_request(path, params=None):
+        """模拟精确接口未命中和繁体搜索结果。"""
+        if path == "/api/get":
+            return {}
+        return [
+            {
+                "id": 4,
+                "trackName": "安靜",
+                "artistName": "周杰倫",
+                "albumName": "范特西",
+                "duration": 334,
+                "plainLyrics": "安静的歌词",
+            }
+        ]
+
+    monkeypatch.setattr(module, "_request_json", fake_request)
+    lyrics = module.music_lyrics(
+        MusicInfo(title="安靜", artists=["周杰倫"], album="范特西", duration=334)
+    )
+
+    assert lyrics is not None
+    assert lyrics.provider_id == "4"
+
+
 def test_request_json_honors_retry_after_once(monkeypatch) -> None:
     """LRCLIB 返回带 Retry-After 的过载响应时应等待并串行重试一次。"""
     responses = iter(

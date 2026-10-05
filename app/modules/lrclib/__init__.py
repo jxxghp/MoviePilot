@@ -6,6 +6,7 @@ from typing import Any, Optional, Tuple, Union
 from app.adapters.network.http import RequestUtils
 from app.domain.context import MusicInfo, MusicLyrics
 from app.domain.meta.metamusic import MetaMusic
+from app.foundation.text import convert as zhconv_convert
 from app.modules import _ModuleBase
 from app.runtime.cache import cached
 from app.runtime.log import logger
@@ -70,12 +71,15 @@ class LrclibModule(_ModuleBase):
         if not title or not artist:
             return None
 
+        query_title = self._query_text(title)
+        query_artist = self._query_text(artist)
+        query_album = self._query_text(album)
         exact_params: dict[str, Any] = {
-            "track_name": title,
-            "artist_name": artist,
+            "track_name": query_title,
+            "artist_name": query_artist,
         }
-        if album:
-            exact_params["album_name"] = album
+        if query_album:
+            exact_params["album_name"] = query_album
         if duration:
             exact_params["duration"] = duration
         payload = self._request_json("/api/get", params=exact_params)
@@ -84,16 +88,16 @@ class LrclibModule(_ModuleBase):
             results = self._request_json(
                 "/api/search",
                 params={
-                    "track_name": title,
-                    "artist_name": artist,
-                    **({"album_name": album} if album else {}),
+                    "track_name": query_title,
+                    "artist_name": query_artist,
+                    **({"album_name": query_album} if query_album else {}),
                 },
             )
             payload = self._select_result(
                 results if isinstance(results, list) else [],
-                title=title,
-                artist=artist,
-                album=album,
+                title=query_title,
+                artist=query_artist,
+                album=query_album,
                 duration=duration,
             )
             match_score = 90
@@ -146,7 +150,13 @@ class LrclibModule(_ModuleBase):
     @classmethod
     def _normalize_text(cls, value: Any) -> str:
         """移除大小写、标点和空白差异，生成歌词匹配文本。"""
-        return cls._match_pattern.sub("", str(value or "").casefold())
+        simplified = zhconv_convert(str(value or "").casefold(), "zh-hans")
+        return cls._match_pattern.sub("", str(simplified))
+
+    @staticmethod
+    def _query_text(value: str) -> str:
+        """将歌词查询字段统一为简体，适配 LRCLIB 的主流索引写法。"""
+        return str(zhconv_convert(value, "zh-hans")).strip()
 
     @staticmethod
     def _compatible_text(expected: str, candidate: str) -> bool:
