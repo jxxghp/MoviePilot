@@ -4,6 +4,7 @@ import asyncio
 import os
 import signal
 import subprocess
+import sys
 from typing import Any
 
 _SECRET_PARTS = ('KEY', 'TOKEN', 'SECRET', 'PASSWORD', 'CREDENTIAL', 'PASSWD', 'AUTH', 'DSN',
@@ -88,8 +89,20 @@ async def kill_tree(process: asyncio.subprocess.Process) -> None:
                                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         await asyncio.wait_for(killer.wait(), 5)
     else:
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
+        for attempt in range(2):
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                break
+            except PermissionError as error:
+                if sys.platform != 'darwin' or attempt:
+                    raise
+                # macOS 对只剩未回收僵尸的组返回 EPERM。先让 asyncio 回收根进程，
+                # 再发一次组信号，不能因根已退出就漏掉仍存活的后代或吞掉真实权限错误。
+                try:
+                    await asyncio.wait_for(process.wait(), 5)
+                except TimeoutError:
+                    raise error from None
+            else:
+                break
     await asyncio.wait_for(process.wait(), 5)
