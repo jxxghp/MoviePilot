@@ -225,6 +225,7 @@ class ChainRuntimeConfig:
     download_subtitle: bool = True
     lyrics_batch_timeout: int = 120
     music_metadata_to_simplified: bool = True
+    music_cue_enable: bool = True
     music_release_region_priority: tuple[str, ...] = ()
     music_release_script_priority: tuple[str, ...] = ()
     recognize_plugin_first: bool = False

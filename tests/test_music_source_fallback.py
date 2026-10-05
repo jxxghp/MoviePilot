@@ -283,7 +283,7 @@ def _directory_setup(tmp_path, monkeypatch, sources, *, known_album=True):
         shutil.copyfile(Path(__file__).parent / "fixtures/audio/silence.flac", directory / name)
     config = {"sources": sources}
     monkeypatch.setattr("app.chain.media.album.get_chain_runtime_config_snapshot", lambda: SimpleNamespace(
-        search_source=config["sources"], audio_extensions=(".flac",),
+        search_source=config["sources"], audio_extensions=(".flac",), music_cue_enable=True,
         music_release_region_priority=("CN",), music_release_script_priority=("Hans",)))
     chain = object.__new__(MediaChain)
     chain._album_dir_cache = AlbumDirectoryCache(8)

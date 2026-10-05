@@ -32,6 +32,7 @@ from app.domain.context import MusicInfo, MusicLyrics
 from app.domain.meta.metamusic import MUSIC_CREDIT_FIELDS, MetaMusic, music_credit_values, parse_music_release_types
 from app.domain.music import MusicCueSheet, parse_music_cue
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource
 
 _AudioSignature = tuple[str, int, int, int, int]
@@ -222,8 +223,8 @@ def _find_audio_cue(path: Path) -> Optional[tuple[Path, MusicCueSheet]]:
 
 
 def _apply_audio_cue(path: Path, meta: MetaMusic) -> MetaMusic:
-    """读取实际关联 CUE 补全曲目或整轨专辑，保留音频本体与索引文件的原始内容。"""
-    if path.suffix.casefold() == ".cue" or not path.is_file():
+    """按开关读取关联 CUE；关闭时保留分轨标签，不扫描、校验或归档索引。"""
+    if not get_runtime_setting("MUSIC_CUE_ENABLE") or path.suffix.casefold() == ".cue" or not path.is_file():
         return meta
     try:
         found = _find_audio_cue(path)

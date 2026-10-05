@@ -234,7 +234,8 @@ def test_real_album_directory_retains_verified_source_aliases(tmp_path, monkeypa
     chain = object.__new__(MediaChain)
     chain._album_dir_cache = AlbumDirectoryCache(8)
     monkeypatch.setattr("app.chain.media.album.get_chain_runtime_config_snapshot", lambda: SimpleNamespace(
-        search_source="theaudiodb", audio_extensions=(".flac",), music_release_region_priority=(), music_release_script_priority=()))
+        search_source="theaudiodb", audio_extensions=(".flac",), music_cue_enable=True,
+        music_release_region_priority=(), music_release_script_priority=()))
     monkeypatch.setattr(chain, "_finalize_recognition_result", lambda info, **_kwargs: info)
 
     def search(meta, **kwargs):

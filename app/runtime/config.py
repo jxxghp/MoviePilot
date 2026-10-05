@@ -406,6 +406,8 @@ class ConfigModel(BaseModel):
     ACOUSTID_API_KEY: str = "b1auxfOzAg"
     # 是否将识别到的音乐标题、艺术家、专辑等标准元数据转换为简体中文
     MUSIC_METADATA_TO_SIMPLIFIED: bool = True
+    # 是否读取关联 CUE；已分轨音频可关闭以忽略错误索引，整轨专辑应保持开启
+    MUSIC_CUE_ENABLE: bool = True
     # MusicBrainz 发行地区优先级，按 ISO 3166-1 两位代码从高到低排列
     MUSIC_RELEASE_REGION_PRIORITY: str = "CN,TW,HK"
     # MusicBrainz 发行文字字形优先级，按 ISO 15924 四位代码从高到低排列

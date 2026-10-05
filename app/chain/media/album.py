@@ -138,7 +138,7 @@ def _album_directory_cache_key(
     file_scope: Optional[list[str]] = None,
     music_sources: Optional[tuple[MediaSource, ...]] = None,
 ) -> str:
-    """将发行偏好及资源证据纳入缓存键，同目录更换种子线索时重新识别。"""
+    """隔离发行偏好、CUE 开关和资源证据，避免复用不同识别策略的曲目映射。"""
     evidence = {
         key: getattr(contextual_meta, key, None)
         for key in (*MUSIC_CREDIT_FIELDS, "album", "artists", "album_artist", "year", "version", "musicbrainz_release_id",
@@ -151,7 +151,8 @@ def _album_directory_cache_key(
     if evidence and contextual_meta:
         evidence["weak_album"] = not contextual_meta.album or music_album_title_is_weak(contextual_meta)
     sources = [source.value for source in music_sources or _directory_sources(contextual_meta)]
-    return json.dumps([os.path.abspath(directory), regions, scripts, evidence, file_scope, sources], ensure_ascii=False, sort_keys=True)
+    cue_enabled = get_chain_runtime_config_snapshot().music_cue_enable
+    return json.dumps([os.path.abspath(directory), regions, scripts, evidence, file_scope, sources, cue_enabled], ensure_ascii=False, sort_keys=True)
 
 
 def _apply_album_resource_credits(album_meta: MetaMusic, contextual_meta: MetaMusic) -> None:

@@ -65,7 +65,14 @@ online confirmation; album corrections must preserve the returned source-file sc
   `field_sources` in round trips. Sources such as `tag`, `album_tags`, `stream`,
   `filename`, `directory`, `torrent`, `remote`, and `manual` explain field origins;
   they do not independently prove that an online identity was verified.
-- CUE-derived fields use the `cue` evidence source. `music_layout=image_cue`
+- `MUSIC_CUE_ENABLE` defaults to true. For audio already split into tracks with
+  invalid companion CUE files, users can disable Music CUE recognition under
+  Settings > System > Advanced > Media and preview or submit organization again.
+  Disabled mode uses audio tags and filenames without reading, validating, or
+  automatically archiving CUE files. It applies to automatic and manual flows;
+  album caches separate the modes, but existing transfer plans remain unchanged.
+  Keep it enabled for whole-album audio images.
+- When enabled, CUE-derived fields use the `cue` evidence source. `music_layout=image_cue`
   represents a whole album in one physical audio file; do not identify it as the
   first Recording or assume it has been split. Organization keeps the audio and
   companion `cue_filename` unchanged within the organized album directory.

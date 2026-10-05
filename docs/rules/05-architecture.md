@@ -66,6 +66,7 @@ to make the directory tree look symmetrical.
 | `app/application/download/` | Download task querying/control and selection use cases; `failures.py` owns the frozen failure-cooldown write/query DTOs and persistence Port |
 | `app/application/history/` | History use cases and persistence contracts; DownloadHistory and TransferHistory own deeply frozen DTOs plus typed query/write/staging ports |
 | `app/application/music/` | 多来源音乐目录编排；`observation.py` 沿用站点搜索的调用观察模式，隔离一次音乐识别的结果、候选摘要与请求/等待预算，不持有来源客户端、不改变旧模块返回合同；`recognition.py` 通过注入来源回调串行回退、汇总诊断，并按领域候选计划有界补充真实Artist身份别名，子来源共享祖先预算，`catalog.py` 声明目录查询所需的最小来源 Port |
+| `app/application/audio.py` | 本地音频标签与 CUE 证据读取；通过 `runtime.settings` 读取 `MUSIC_CUE_ENABLE`，保持宿主启动前的独立读取能力。Chain 专辑缓存通过配置快照隔离 CUE 模式；Domain CUE 解析器保持无配置依赖 |
 | `app/application/messaging/message.py` | 模板上下文按既有来源优先级选定音乐字段后，使用配置快照和 `app.foundation.text.convert` 应用简体开关；不调用识别 Chain、不改写标签或来源缓存，也不替换录音所属发行和多艺人署名 |
 | `app/application/chain/` | Injectable Chain runtime capabilities: `context.py` owns the typed runtime and persistence dependency aggregate, and `events.py` owns durable event write contracts plus replayable payload conversion |
 | `app/application/agent.py` | Agent orchestration facade and typed `AgentDataContext`; startup injects one explicit data context into the manager, memory, tool and scheduler owners without a process-wide persistence locator |

@@ -167,7 +167,7 @@ Use the category contracts and frontmatter allowlist as the operation source of 
 | Filter | [api/filter.md](api/filter.md) | `filter.*` | built-in/custom rules, groups, and testing |
 | Library | [api/library.md](api/library.md) | `library.*` | existence and latest-media checks |
 | Media | [api/media.md](api/media.md) | `media.*` | media search/detail, recognition, scraping, schedules, sources, people, seasons, and classification |
-| Music | [api/music.md](api/music.md) | `music.*` | recognition, exploration, albums, artists, text normalization, edition precedence, and cache administration |
+| Music | [api/music.md](api/music.md) | `music.*` | recognition, CUE handling, exploration, albums, artists, text normalization, edition precedence, and cache administration |
 | Plugin | [api/plugin.md](api/plugin.md) | `plugin.*` | plugin market, install/runtime, configuration, source, folders, ratings, releases, and statistics |
 | Recommendation | [api/recommendation.md](api/recommendation.md) | `recommendation.*` | recommendation listings |
 | Scheduler | [api/scheduler.md](api/scheduler.md) | `scheduler.*` | scheduler listing, progress, and execution |

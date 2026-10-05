@@ -941,8 +941,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9318,
-  "edge_sha256": "b4db68c1bb06095ba35d2c6e96fd42f7255d40109e39f5a7077fa1de9b48a2d2",
+  "edge_count": 9319,
+  "edge_sha256": "76ee62c757684d3cba142d50f4f9514b384ba77d2baca294c9e174318172e389",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -3388,6 +3388,7 @@
     "app.application.audio -> app.domain.music",
     "app.application.audio -> app.runtime",
     "app.application.audio -> app.runtime.log",
+    "app.application.audio -> app.runtime.settings",
     "app.application.audio -> app.schemas",
     "app.application.audio -> app.schemas.types",
     "app.application.backup -> app.runtime",
