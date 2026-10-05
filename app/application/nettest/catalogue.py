@@ -131,6 +131,9 @@ def _build_metadata_module_rules(settings: SettingsReader) -> list[NetworkTestRu
             proxy=True,
             allowed_redirect_prefixes=("https://www.themoviedb.org/",),
             module_ids=("TheMovieDbModule",),
+            # 站点对自称浏览器、但 TLS 握手特征不符的请求返回 403 人机校验页，
+            # 使用程序自身 UA 才能反映真实连通性
+            headers=_freeze_headers({"User-Agent": settings("USER_AGENT", None)}),
         ),
         NetworkTestRule(
             id="tvdb_api",
