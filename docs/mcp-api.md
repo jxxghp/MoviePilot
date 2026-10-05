@@ -799,6 +799,16 @@ TMDB 缓存查询响应的 `data` 包含 `count`、`recognized`、`unrecognized`
 有年份时优先精确年份，其次匹配订阅年份为空的未定档媒体；没有年份时只匹配年份也为空的订阅。
 音乐订阅始终只按媒体身份查询。
 
+### 订阅可选设置清空
+
+`PUT /api/v1/subscribe/`（`subscription.update`）只更新显式提交的字段，省略字段保留原值。
+`custom_words`、`keyword`、`save_path`、`episode_group`、`downloader`、
+`min_bitrate`、`min_bit_depth`、`min_sample_rate` 与筛选字段
+`filter`、`include`、`exclude`、`quality`、`resolution`、`effect`、`audio_quality`、`audio_format`
+均可通过 `null` 清空，也兼容表单提交的空字符串 `""`；清空会实际覆盖数据库旧值。
+非空字符串不自动裁剪，数值 `0` 保留。此规则不扩展到名称、类型、季号、总集数等字段，
+媒体身份仍要求 `media_source` 与 `media_id` 成对提交。
+
 ### 单条订阅搜索周期
 
 `POST /api/v1/subscribe/` 和 `PUT /api/v1/subscribe/` 支持 `search_interval`：

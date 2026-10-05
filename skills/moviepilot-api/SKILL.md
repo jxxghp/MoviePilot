@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 43
+version: 44
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -89,6 +89,10 @@ including for channel administrators. Creation belongs to that user; ordinary
 users may update or delete only their own subscriptions. An unbound or inactive
 channel user must bind an active account before retrying, not switch to an
 administrator identity.
+
+For `subscription.update`, omit settings that should stay unchanged. Send JSON
+`null` to clear a supported optional setting; see [Subscription APIs](api/subscription.md)
+for the exact fields and the form empty-string compatibility rule.
 
 This file is intentionally kept as the routing and execution guide. Detailed
 operation contracts live in the linked category files under `api/`; load only

@@ -130,10 +130,12 @@ class SubscriptionSearchSubmission(BaseModel):  # type: ignore[misc]
 class Subscribe(OptionalMediaIdentityMixin, BaseModel):
     """订阅输入与响应模型，媒体身份必须为空对或完整有效对。"""
 
-    # 表单用空字符串表达“全部”时必须保留显式清空语义，更新接口才能覆盖存量规则。
-    CLEARABLE_FILTER_FIELDS: ClassVar[frozenset[str]] = frozenset({
+    # 表单清空可选设置时保留字段，更新接口才能用 None 覆盖旧值；媒体身份和集数仍单独处理。
+    CLEARABLE_OPTIONAL_FIELDS: ClassVar[frozenset[str]] = frozenset({
         "filter", "include", "exclude", "quality", "resolution", "effect",
         "audio_quality", "audio_format",
+        "custom_words", "keyword", "save_path", "episode_group", "downloader",
+        "min_bitrate", "min_bit_depth", "min_sample_rate",
     })
 
     # 公共创建和更新接口不得接收系统字段和运行事实；其余字段默认作为订阅输入透传。
@@ -293,13 +295,13 @@ class Subscribe(OptionalMediaIdentityMixin, BaseModel):
         在表单中常以空字符串提交，而 Pydantic 不会把空字符串自动转为 None，会直接抛出
         校验异常导致接口返回 422。这里把空字符串键移除，等价于该字段未提供，从而复用字段
         默认值（如 ``total_episode`` 回退为 0、``sites`` 回退为空列表）。媒体身份键以及可清空
-        的筛选字段保留为 None，以便更新接口区分“未提交”与“显式清空”。
+        的可选设置、搜索周期保留为 None，以便更新接口区分“未提交”与“显式清空”。
         """
         if isinstance(data, dict):
             data = dict(data)
             for key, value in list(data.items()):
                 if isinstance(value, str) and value == "":
-                    if key in {"media_source", "media_id", "search_interval"} or key in cls.CLEARABLE_FILTER_FIELDS:
+                    if key in {"media_source", "media_id", "search_interval"} or key in cls.CLEARABLE_OPTIONAL_FIELDS:
                         data[key] = None
                     else:
                         data.pop(key)
