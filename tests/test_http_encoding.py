@@ -1,6 +1,27 @@
 from types import SimpleNamespace
 
+import pytest
+from requests import Response
+
 from app.adapters.network.http import RequestUtils
+
+
+@pytest.mark.parametrize("performance_mode", [False, True])
+def test_html_decoding_handles_incorrect_latin1_declaration(performance_mode):
+    """实际 UTF-8 内容不应被错误的 HTML 编码声明解成乱码。"""
+    html = (
+        '<html><head><meta charset="iso-8859-1"></head>'
+        '<body>电影中文标题与高清字幕更新。</body></html>'
+    )
+    response = Response()
+    response.status_code = 200
+    response._content = html.encode("utf-8")
+
+    decoded = RequestUtils.get_decoded_html_content(
+        response, performance_mode=performance_mode
+    )
+
+    assert decoded == html
 
 
 def test_xml_decoding_prefers_xml_declaration_over_http_default():
