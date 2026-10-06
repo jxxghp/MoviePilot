@@ -716,15 +716,15 @@ AMLL 使用无需鉴权的原生搜索与获取接口，先尝试 ISRC，再核�
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
 | GET | `/api/v1/download/` | 查询正在下载的任务，参数：`name`；关联下载历史时返回媒体类型、来源站点 `site_name`，以及 `media.poster` 海报和 `media.backdrop` 背景图；兼容字段 `media.image` 与 `media.poster` 相同 |
-| POST | `/api/v1/download/` | 添加含媒体信息的下载任务，请求体包含媒体信息和种子信息 |
-| POST | `/api/v1/download/add` | 添加不含媒体信息的下载任务，请求体包含 `torrent_in`，可选且必须成对提供 `media_source` + `media_id`，并支持 `music_type`、`downloader`、`save_path`；影视或音乐识别失败时统一响应 `data.requires_confirmation=true`，用户确认后可用 `allow_unrecognized=true` 重试本次下载 |
-| POST | `/api/v1/download/subtitle` | 下载字幕到识别出的媒体下载目录，请求体包含 `subtitle_in`，并必须提供 `media_source` + `media_id`；可选 `save_path` |
+| POST | `/api/v1/download/` | 添加含媒体信息的下载任务，请求体包含媒体信息和种子信息；可选 `downloader`、`save_path`，`save_path` 可为路径，或与已配置下载目录名称完全一致的别名 |
+| POST | `/api/v1/download/add` | 添加不含媒体信息的下载任务，请求体包含 `torrent_in`，可选且必须成对提供 `media_source` + `media_id`，并支持 `music_type`、`downloader`、`save_path`（路径，或与已配置下载目录名称完全一致的别名）；影视或音乐识别失败时统一响应 `data.requires_confirmation=true`，用户确认后可用 `allow_unrecognized=true` 重试本次下载 |
+| POST | `/api/v1/download/subtitle` | 下载字幕到识别出的媒体下载目录，请求体包含 `subtitle_in`，并必须提供 `media_source` + `media_id`；可选 `save_path`（路径，或与已配置下载目录名称完全一致的别名） |
 | GET | `/api/v1/download/start/{hashString}` | 恢复下载任务，参数：`name` |
 | GET | `/api/v1/download/stop/{hashString}` | 暂停下载任务，参数：`name` |
 | PATCH | `/api/v1/download/{hashString}` | 高级更新下载任务，可修改限速、标签、Tracker、保存目录和下载器分类 |
 | POST | `/api/v1/download/{hashString}/classify-source` | `recognize` 模式重新识别媒体并按当前生效分类计算保存位置，`manual` 模式使用明确目标目录；`execute=false` 只预览，`execute=true` 由下载器移动任务数据；可传当前策略中已启用的 `media_category` 路径覆盖自动分类 |
 | GET | `/api/v1/download/clients` | 查询可用下载器 |
-| GET | `/api/v1/download/paths` | 查询可用于下载接口 `save_path` 参数的下载路径 |
+| GET | `/api/v1/download/paths` | 查询可用于下载接口 `save_path` 参数的下载路径，返回项的非空 `name` 也可直接作为 `save_path` 提交 |
 | DELETE | `/api/v1/download/{hashString}` | 删除下载任务，参数：`name` |
 
 资源目录重新分类只接受仍存在于下载器且具有可恢复媒体类型的下载历史任务；识别模式可复用历史中的媒体来源和同来源媒体 ID，也可在请求中指定来源、媒体 ID 或当前策略中已启用且媒体类型匹配的 `media_category`。
@@ -808,6 +808,8 @@ TMDB 缓存查询响应的 `data` 包含 `count`、`recognized`、`unrecognized`
 均可通过 `null` 清空，也兼容表单提交的空字符串 `""`；清空会实际覆盖数据库旧值。
 非空字符串不自动裁剪，数值 `0` 保留。此规则不扩展到名称、类型、季号、总集数等字段，
 媒体身份仍要求 `media_source` 与 `media_id` 成对提交。
+
+订阅的 `save_path` 同样接受与已配置下载目录名称完全一致的别名；该值按原样保存，到触发下载时才解析为目录根路径，目录被重命名后会以「未找到名为…的下载目录」失败。
 
 ### 单条订阅搜索周期
 

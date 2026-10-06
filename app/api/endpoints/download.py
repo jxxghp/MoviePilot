@@ -325,7 +325,7 @@ def add(
     music_type: Annotated[MusicTargetEntityType | None, Body()] = None,
     allow_unrecognized: Annotated[bool, Body()] = False,
     downloader: Annotated[str | None, Body()] = None,
-    # 保存路径, 支持<storage>:<path>, 如rclone:/MP, smb:/server/share/Movies等
+    # 保存路径, 支持<storage>:<path>（如rclone:/MP, smb:/server/share/Movies）或已配置下载目录的名称（别名）
     save_path: Annotated[str | None, Body()] = None,
     current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> Any:
@@ -500,7 +500,7 @@ async def clients(_: _SchemaTokenPayload = Depends(verify_token), page: Compatib
 @router.get("/paths", summary="查询可用下载路径", response_model=List[_SchemaDownloadDirectory])
 def paths(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
-    查询可直接用于下载接口 save_path 参数的下载路径
+    查询可直接用于下载接口 save_path 参数的下载路径；返回项的非空 name 也可直接作为 save_path 提交
     """
     return [
         _SchemaDownloadDirectory(
