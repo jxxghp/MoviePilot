@@ -766,20 +766,54 @@ def _normalize_download_root(dir_info: _SchemaTransferDirectoryConf) -> Optional
         return None
 
 
-def validate_download_save_path(save_path: str) -> str:
+def _has_storage_prefix(value: str) -> bool:
     """
-    校验用户传入的下载保存目录，/download/paths 暴露的下载目录配置是允许写入的公共合同。
+    判断输入是否带 <storage>: 前缀。
+    """
+    return any(value.startswith(f"{item.value}:") for item in StorageSchema)
 
-    :param save_path: 下载保存目录，支持本地 /path、远端 <storage>:/path 和旧版订阅中的无前缀远程路径
-    :return: 可直接传给下载接口的规范化保存目录
+
+def _looks_like_download_path(value: str) -> bool:
     """
-    value = str(save_path or "").strip()
-    has_storage_prefix = any(value.startswith(f"{item.value}:") for item in StorageSchema)
+    判断输入是否带路径特征；只有不带特征的字符串才按「目录别名不存在」报错。
+    """
+    if "/" in value or WINDOWS_DRIVE_PREFIX_PATTERN.match(value):
+        return True
+    return _has_storage_prefix(value)
+
+
+def _resolve_download_dir_alias(
+    value: str,
+    download_dirs: List[_SchemaTransferDirectoryConf],
+) -> Optional[str]:
+    """
+    按目录名称（别名）精确匹配下载目录，返回该目录根的 save_path。
+
+    调用方保证 value 已去空白且非空；重名目录沿用 get_download_dirs 的 priority 顺序取首个。
+    """
+    for dir_info in download_dirs:
+        if (dir_info.name or "").strip() != value:
+            continue
+        root = _normalize_download_root(dir_info)
+        if root:
+            storage, _, root_path = root
+            return _download_path_uri(storage, root_path)
+    return None
+
+
+def _validate_download_save_path_value(
+    value: str,
+    download_dirs: List[_SchemaTransferDirectoryConf],
+) -> str:
+    """
+    按路径规则校验已去空白的保存目录，不涉及别名。
+    """
+    has_storage_prefix = _has_storage_prefix(value)
     storage, raw_path = _split_file_uri(value)
     target_style, target_path = _normalize_download_path(raw_path, storage)
 
     download_roots = []
-    for dir_info in DirectoryHelper().get_download_dirs():
+    for dir_info in download_dirs:
         root = _normalize_download_root(dir_info)
         if root:
             download_roots.append(root)
@@ -803,3 +837,29 @@ def validate_download_save_path(save_path: str) -> str:
                 return _download_path_uri(root_storage, target_path)
 
     raise ValueError("保存路径不在允许的下载目录范围内")
+
+
+def validate_download_save_path(save_path: str) -> str:
+    """
+    校验用户传入的下载保存目录，/download/paths 暴露的下载目录配置是允许写入的公共合同。
+
+    路径优先：先按路径规则校验；失败后再用目录名称（别名）精确匹配，命中返回该目录根路径，
+    结果与直接传入该目录根路径的校验结果一致。空值不参与别名匹配。
+
+    :param save_path: 下载保存目录，支持本地 /path、远端 <storage>:/path、旧版订阅中的无前缀远程路径，
+        以及已配置下载目录的名称（别名）
+    :return: 可直接传给下载接口的规范化保存目录
+    """
+    value = str(save_path or "").strip()
+    download_dirs = DirectoryHelper().get_download_dirs()
+    try:
+        return _validate_download_save_path_value(value, download_dirs)
+    except ValueError as path_error:
+        if not value:
+            raise
+        alias_uri = _resolve_download_dir_alias(value, download_dirs)
+        if alias_uri:
+            return alias_uri
+        if _looks_like_download_path(value):
+            raise
+        raise ValueError(f"未找到名为「{value}」的下载目录") from path_error
