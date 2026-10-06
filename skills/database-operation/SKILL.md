@@ -405,3 +405,10 @@ SELECT plugin_id, key FROM plugindata ORDER BY plugin_id, key LIMIT 100
 - Missing dependency: run inside the MoviePilot project environment so SQLAlchemy and database drivers are available.
 - Connection failure: verify MoviePilot config with `moviepilot doctor`.
 - Table not found: run `python scripts/mp-db.py tables`, then inspect the table with `schema`.
+
+### `searchsession`
+
+- Purpose: Atomic page candidates/cursors and recognition reuse for one unfinished subscription search task; the row is deleted when the round ends normally.
+- Useful queries: Inspect `task_id`, `version`, `updated_at` and `payload` to diagnose a paused search; never infer exhaustion from filtered counts.
+- Write boundary: The SearchSession Application port and transactional adapter own CAS writes guarded by the queue task lease. Do not edit a cursor independently; it can skip a page or resubmit candidates.
+- Columns: `id`, `task_id`, `version`, `payload`, `updated_at`. Payloads exclude site credentials and temporary capabilities.

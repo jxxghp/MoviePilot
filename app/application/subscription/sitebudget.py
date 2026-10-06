@@ -31,9 +31,11 @@ class SubscriptionSearchDeferred(RuntimeError):
         self, *, retry_at: str, site_ids: tuple[int, ...], wait_reason: Optional[str] = None,
     ) -> None:
         """保存队列恢复所需的时间和站点，避免把临时等待写成错误。"""
-        super().__init__("站点冷却中" if wait_reason == "cooldown" else "等待站点")
+        messages = {"slice": "分页进度已保存，等待下一时间片", "cooldown": "站点冷却中"}
+        super().__init__(messages.get(wait_reason or "", "等待站点"))
         self.retry_at = retry_at
         self.site_ids = site_ids
+        self.wait_reason = wait_reason
 
 
 class SubscriptionSiteBudgetUnavailable(RuntimeError):
@@ -143,6 +145,7 @@ class SubscriptionSiteBudgetRepository(Protocol):
         site_id: int,
         owner: str,
         lease_seconds: int,
+        minimum_interval: float = 0,
     ) -> SiteBudgetClaim:
         """认领站点唯一在途租约，未就绪时返回重试时间。"""
         ...
@@ -193,16 +196,23 @@ class SubscriptionSiteBudget:
         self._metrics = metrics
         self._outcome_lock = threading.Lock()
         self._successful_site_ids: set[int] = set()
+        # 带最小请求间隔认领的租约；释放时下次允许时间不早于认领时预留的开始间隔。
+        self._paced_leases: set[str] = set()
 
-    def acquire(self, site_id: int) -> SiteBudgetClaim:
-        """只认领一次指定站点，未就绪时留待下一次正常调度。"""
+    def acquire(self, site_id: int, *, minimum_interval: float = 0) -> SiteBudgetClaim:
+        """只认领一次指定站点，未就绪时留待下一次正常调度；分页搜索传入请求开始间隔。"""
         self._raise_if_cancelled()
-        claim = self._repository.claim_site(
-            site_id=site_id,
-            owner=self._owner,
-            lease_seconds=self._lease_seconds,
-        )
+        if minimum_interval:
+            claim = self._repository.claim_site(site_id=site_id, owner=self._owner,
+                                                lease_seconds=self._lease_seconds,
+                                                minimum_interval=minimum_interval)
+        else:
+            claim = self._repository.claim_site(site_id=site_id, owner=self._owner,
+                                                lease_seconds=self._lease_seconds)
         if claim.acquired:
+            if minimum_interval and claim.lease_token:
+                with self._outcome_lock:
+                    self._paced_leases.add(claim.lease_token)
             self._report_phase("searching", site_id)
             return claim
         if self._metrics:
@@ -248,6 +258,11 @@ class SubscriptionSiteBudget:
         outcome = observation.outcome if observation.attempted else "skipped"
         delay = self._next_delay(outcome, claim.consecutive_failures)
         next_allowed_at = (self._clock() + timedelta(seconds=delay)).isoformat(timespec="seconds")
+        with self._outcome_lock:
+            paced = claim.lease_token in self._paced_leases
+            self._paced_leases.discard(claim.lease_token)
+        if paced and claim.retry_at:
+            next_allowed_at = max(next_allowed_at, claim.retry_at)
         released = self._repository.finish_site(
             site_id=claim.site_id,
             lease_token=claim.lease_token,

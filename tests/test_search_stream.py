@@ -1,7 +1,11 @@
 import asyncio
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
 
 import app.api.endpoints.search as search_endpoint
+from app.schemas.types import MediaSource
 
 
 def test_large_replace_event_is_split_into_ordered_batches(monkeypatch):
@@ -140,3 +144,34 @@ def test_search_stream_response_disables_proxy_buffering(monkeypatch):
 
     assert response.headers["cache-control"] == "no-cache"
     assert response.headers["x-accel-buffering"] == "no"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("media_search", [False, True])
+async def test_manual_routes_forward_source_and_page_without_client_signature(monkeypatch, media_search):
+    captured = []
+
+    class FakeSearchChain:
+        async def search_page_events(self, *, params):
+            captured.append(params)
+            yield {"type": "done", "sources": []}
+
+    monkeypatch.setattr(search_endpoint, "SearchChain", FakeSearchChain)
+    monkeypatch.setattr(search_endpoint, "_resolve_media_search_params", AsyncMock(return_value=({"tmdbid": 1}, None)))
+    request = SimpleNamespace(
+        url=SimpleNamespace(path="/api/v1/search/manual/stream"), headers={}, query_params={},
+        is_disconnected=AsyncMock(return_value=False),
+    )
+    params = {"request": request, "manual_paging": True, "page": 1,
+              "source": "opaque-source", "_": None}
+    if media_search:
+        response = await search_endpoint.search_by_id_stream(**params, media_id="1", media_source=MediaSource.TMDB)
+    else:
+        response = await search_endpoint.search_by_title_stream(**params, keyword="Show")
+    payloads = [payload async for payload in response.body_iterator]
+    assert payloads
+    assert len(captured) == 1
+    assert "prev_signature" not in captured[0]
+    assert {key: captured[0][key] for key in ("page", "source")} == {
+        "page": 1, "source": "opaque-source",
+    }

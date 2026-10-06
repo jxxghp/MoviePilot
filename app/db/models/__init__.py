@@ -6,6 +6,7 @@ from typing import Any
 from . import _identity  # noqa: F401  注册全局媒体身份写入不变量
 
 _MODEL_EXPORTS = {
+    "SearchSession": ("app.db.models.searchsession", "SearchSession"),
     "AgentChat": ("app.db.models.agentchat", "AgentChat"),
     "AgentInvocation": ("app.db.models.agentinvocation", "AgentInvocation"),
     "AgentTask": ("app.db.models.agenttask", "AgentTask"),

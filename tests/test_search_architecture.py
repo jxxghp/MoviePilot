@@ -22,6 +22,8 @@ EXPECTED_SEARCH_MODULES = {
     "execution.py",
     "facade.py",
     "media.py",
+    "manual.py",
+    "scan.py",
     "music.py",
     "pagination.py",
     "plan.py",

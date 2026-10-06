@@ -1270,3 +1270,18 @@ modules only through `run_module` dispatch), and downloader SDK
 *Last Updated: 2026-08-29*
 
 分类词表由 `app/domain/classification/vocabulary.py` 拥有，供 `facts.py`、`fields.py` 和旧配置迁移复用；只含离线词表及纯选项投影，不读取运行时配置、数据库或具体来源模块。
+
+### 逐页搜索检查点
+
+`domain/search.py` 拥有纯收集屏障、页面连续性与中断后重拉第一页规则；`application/search/session.py` 拥有检查点 Port 与不含凭据的候选快照。
+检查点按订阅搜索任务一行保存，所有权由队列任务租约决定，版本 CAS 排除迟到 worker；`db/oper/searchsession.py` 只暂存行，
+`db/adapters/searchsession.py` 拥有短 UoW，复用订阅队列组合根注入的 `sessions`。
+
+`chain/search/scan.py` 中 `SearchSources` 负责站点/实际关键词来源与单页请求，自动订阅的 `SearchScan` 与手动单页 `manual.py` 共用；
+手动分页不写数据库，页号由客户端持有；`manual.py` 通过 Runtime 缓存门面按本轮来源与页号保存原始页摘要，36 小时过期或丢失后先补上一页再请求目标页，沿用 `SearchSources` 的站点间隔与超时。重启后经 `run_module("restore_search_torrent")` 从 Indexer 恢复当前票据，Chain 不直接导入 Indexer 实现或数据库。
+
+手动单页直接复用原标题/媒体搜索结果处理及媒体季范围构造；自动逐页扫描保留过滤前的出现事实，使用原媒体匹配、季集过滤和排序规则。
+分页层只决定候选交付时机；订阅层传入扣除本轮已提交集后的缺集；仅部分缺集就绪时传递本批允许集数，由原下载链在资源选择事件后统一约束最终候选，保留完整缺集返回值和原完成判断。扫描结束复用只读缺集计算，不用旧媒体快照刷新总集数。
+检查点 JSON 记录媒体身份；恢复时仅同一来源、作品 ID、类型、季和剧集组可保留已提交进度，不兼容旧格式检查点。
+
+`restore_search_torrent` 显式注册为宿主内部站点 V2 方法契约，仅恢复当前候选与凭据，不作为插件公开 API。

@@ -1166,3 +1166,11 @@ description、aliases、instructions，或通过 `append_instructions` 追加规
 `options` 提供来源无关的 `{value, label}`，`source_options` 按数据源 ID 提供开放候选。国家与语言显示中文名称，规则保存标准代码；风格保存与分类事实归一化共用的稳定键。来源风格和音乐枚举保留原始大小写。
 
 客户端合并通用选项和所选来源的候选；未限制来源时展示全部候选并标注来源。`allow_custom_values` 为真时允许输入其他值，切换来源不得清空已有条件。`source_options` 缺失等价于空目录；候选是录入辅助，不改变来源支持等级或规则校验范围。公司、平台和用户标签等开放字段应使用媒体预览中的原值。
+
+## Web 手动分页
+
+资源页面复用 `/api/v1/search/title/stream` 与 `/api/v1/search/media/{media_id}/stream`，传 `manual_paging=true` 时每个来源只返回
+`page` 指定的一页（零基站点页号）。`replace`/`done` 事件附带 `sources`，每个来源包含不透明标识 `source`、`site_name`、`page`、`can_continue`、`error`。前端在整页结果收齐并应用后按来源推进页号，失败保留原页号；续页只回传 `source` 和指定 `page`，不传 `prev_signature`，响应也不返回 `signature`。后端通过现有缓存按本轮来源和页号保存原始页摘要，有效期 36 小时；上一页摘要过期或丢失时，先请求 `page-1` 重建比较依据，再请求 `page`，仅返回目标页结果。两次请求都沿用站点间隔与超时；任一步失败按现有来源失败返回，目标页号不变，不自动重试。
+后端比较相邻原始页，整页重复或空页、明确末页、不支持分页的首页成功、达到 100 页上限时停止；真实站点失败允许重试本页，包括不支持分页的站点。`can_continue` 表示允许继续尝试，不保证下一页有结果，不预取后页，过滤后的显示数量不参与判断；手动响应不再提供 `next_page`、`has_more`。
+默认参数及同步 HTTP、Agent `search.*` operation 保持原行为。
+自动影视订阅通过 `SubscribeSearchStrategy` 选择 `smart`（默认）、`full` 或 `single_page` 补全策略；洗版固定全量。它与日常追更的订阅模式分开，采用持久时间片和共享站点流控，详见 [补全搜索策略](smart-search.md)。

@@ -3,7 +3,7 @@
 import copy
 from collections import Counter
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 from app.application.configuration import get_configured_system_config
 from app.application.torrent.download import TorrentHelper
@@ -14,11 +14,12 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.domain.music import MusicMatch, match_music_resource
+from app.domain.search import SearchResourceEvidence, search_resource_id
 from app.runtime.log import logger
 from app.runtime.progress import ProgressHelper
 from app.runtime.stop import runtime_stop_state
 from app.schemas.media import resolve_media_identity
-from app.schemas.types import MediaSource, ProgressKey, SystemConfigKey
+from app.schemas.types import MediaSource, MediaType, ProgressKey, SystemConfigKey
 
 SiteKey = Tuple[Optional[int], Optional[str]]
 DisambiguationCache = Dict[Tuple[str, str, str], Optional[MediaInfo]]
@@ -264,8 +265,86 @@ def _build_contexts(matches: List[MatchedTorrent], mediainfo: MediaInfo | MusicI
     ]
 
 
+def _resource_targets(meta: MetaBase, targets: set[str], media_type: object) -> set[str]:
+    """资源集范围只与本轮缺集相交，整季资源覆盖该季的已知必要目标。"""
+    if media_type == MediaType.MOVIE:
+        return targets & {"movie"}
+    matched = set()
+    seasons = set(meta.season_list)
+    episodes = set(meta.episode_list)
+    for target in targets:
+        season, episode = target.split(":", 1)
+        if int(season) in seasons and (episode == "season" or not episodes or int(episode) in episodes):
+            matched.add(target)
+    return matched
+
+
+def stored_meta(record: dict[str, Any]) -> MetaBase:
+    """从识别缓存恢复元数据而不重跑识别词解析；JSON 中的类型须还原为枚举。"""
+    meta = object.__new__(MetaBase)
+    meta.__dict__.update(record["meta"])
+    if isinstance(meta.type, str):
+        meta.type = MediaType(meta.type)
+    return meta
+
+
 class SearchResultOwner(_SearchOwnerBase):
     """负责搜索资源的过滤、匹配、上下文投影与去重。"""
+
+    @staticmethod
+    def _resource_identity(torrent: TorrentInfo) -> str:
+        """与原搜索结果去重一致的资源键。"""
+        return search_resource_id(torrent)
+
+    @staticmethod
+    def _identify_page(
+        *, torrents: List[TorrentInfo], mediainfo: MediaInfo, targets: set[str],
+        custom_words: List[str], cache: dict[str, Any], disambiguation: DisambiguationCache,
+    ) -> tuple[list[SearchResourceEvidence], dict[str, Context]]:
+        """过滤前识别新增资源；识别未知不会成为缺席证据或永久负缓存。"""
+        evidence = []
+        contexts = {}
+        for torrent in torrents:
+            # 去重键含标题和描述，内容变化即为新资源；识别规则变化由检查点合同触发重搜。
+            key = SearchResultOwner._resource_identity(torrent)
+            record = cache.get(key)
+            if record is None or record["targets"] is None:
+                meta = _torrent_meta(torrent=torrent, custom_words=custom_words, mediainfo=mediainfo)
+                source = _match_source(torrent, meta, mediainfo, disambiguation) if torrent.title else None
+                unknown = not torrent.title or (_disambiguation_key(meta) in disambiguation
+                                               and disambiguation[_disambiguation_key(meta)] is None)
+                matched_targets = _resource_targets(meta, targets, mediainfo.type) if source else set()
+                record = {"targets": None if unknown else sorted(matched_targets),
+                          "source": source, "meta": vars(meta).copy()}
+                cache[key] = record
+            matches = None if record["targets"] is None else frozenset(record["targets"])
+            evidence.append(SearchResourceEvidence(key, matches))
+            if record["source"]:
+                meta = stored_meta(record)
+                meta.type = mediainfo.type
+                contexts[key] = _build_contexts([MatchedTorrent(torrent, meta, record["source"])], mediainfo)[0]
+        # 临时识别失败下一页允许重试；成功消歧在本轮复用。
+        for ambiguity_key in [entry for entry, value in disambiguation.items() if value is None]:
+            del disambiguation[ambiguity_key]
+        return evidence, contexts
+
+    def _filter_identified_contexts(
+        self, contexts: List[Context], mediainfo: MediaInfo, rule_groups: List[str],
+        filter_params: Dict[str, str], candidate_filter: Optional[Callable[[List[Context]], List[Context]]],
+        season_episodes: Optional[Dict[int, List[int]]] = None,
+    ) -> List[Context]:
+        """就绪目标才应用下载规则，复用已识别上下文而不再次识别整个候选池。"""
+        if season_episodes:
+            contexts = [context for context in contexts if context.meta_info is not None and TorrentHelper.match_season_episodes(
+                torrent=context.torrent_info, meta=context.meta_info, season_episodes=season_episodes)]
+        filtered = _filter_torrents(owner=self, torrents=[context.torrent_info for context in contexts],
+                                    mediainfo=mediainfo, rule_groups=rule_groups, filter_params=filter_params,
+                                    progress=ProgressHelper(ProgressKey.Search), diagnostics=Counter())
+        accepted = {id(torrent) for torrent in filtered}
+        result = [context for context in contexts if id(context.torrent_info) in accepted]
+        if candidate_filter:
+            result = candidate_filter(result)
+        return TorrentHelper.sort_torrents(result)
 
     def _parse_result(
         self,

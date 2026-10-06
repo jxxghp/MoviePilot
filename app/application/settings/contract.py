@@ -316,6 +316,10 @@ SYSTEMCONFIG_CONTRACTS: dict[SystemConfigKey, _SystemConfigContract] = {
         operations=_LIST_SCALAR_OPERATIONS,
         dependencies=(SystemConfigKey.UserFilterRuleGroups.value,),
     ),
+    SystemConfigKey.SubscribeSearchStrategy: _contract(
+        "subscribe_defaults", Optional[Literal["smart", "full", "single_page"]],
+        examples=("smart", "full", "single_page"),
+    ),
     SystemConfigKey.SubscribeDefaultParams: _contract(
         "subscribe_defaults",
         Optional[SubscribeDefaultParams],

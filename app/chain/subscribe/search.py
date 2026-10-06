@@ -3,6 +3,7 @@
 import asyncio
 import random
 import time
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from functools import partial
 from typing import Any, Callable, Optional, cast
@@ -35,14 +36,21 @@ from app.application.subscription.sitebudget import (
     SubscriptionSearchDeferred,
 )
 from app.chain.media import MediaChain
+from app.chain.search.execution import MediaSearchPlan
 from app.chain.search.facade import SearchChain
+from app.chain.search.scan import SearchScan, search_targets
 from app.chain.subscribe.contract import _SubscribeOwnerBase
-from app.chain.subscribe.metadata import apply_subscription_classification, prepare_search_target
+from app.chain.subscribe.metadata import (
+    SubscriptionSearchTarget,
+    apply_subscription_classification,
+    prepare_search_target,
+)
 from app.chain.subscribe.searchtask import (
     SubscriptionSearchTaskRunner,
     retry_at_after,
 )
 from app.domain.context import (
+    Context,
     MediaInfo,
     MusicInfo,
 )
@@ -58,6 +66,83 @@ from app.schemas.types import (
 )
 
 _NEW_SUBSCRIPTION_EDIT_SECONDS = 60
+
+
+def _finish_paged_subscription(owner: _SubscribeOwnerBase, subscribe: SubscriptionSnapshot,
+                               target: SubscriptionSearchTarget) -> None:
+    """按当前订阅只读对账缺集，不用搜索开始时的媒体快照回写总集数。"""
+    current = owner.subscription_repository.get(subscribe.id)
+    if (current is None or current.state == "S"
+            or owner._SubscribeChain__candidate_contract_changed(subscribe, current)):
+        return
+    exists, missing = owner.resolve_subscribe_missing(
+        subscribe=current, meta=target.meta, mediainfo=target.media, mediakey=target.media_key)
+    owner.finish_subscribe_or_not(subscribe=current, meta=target.meta, mediainfo=target.media,
+                                  downloads=[], lefts=missing, force=exists)
+
+
+def _subscription_search_strategy(best_version: bool) -> str:
+    """洗版固定全量；普通订阅按补全搜索策略，未设置时为智能。"""
+    if best_version:
+        return "full"
+    strategy = get_configured_system_config().get(SystemConfigKey.SubscribeSearchStrategy)
+    return cast(str, strategy) if strategy in ("smart", "full", "single_page") else "smart"
+
+
+def _process_paged_subscription(owner: _SubscribeOwnerBase, subscribe: SubscriptionSnapshot,
+                                searchchain: SearchChain, target: SubscriptionSearchTarget,
+                                rule_key: SystemConfigKey,
+                                execution_context: Optional[SubscriptionExecutionContext]) -> Optional[SubscriptionSnapshot]:
+    """影视订阅在每页处理后分批提交，保留当前任务的持久恢复身份。"""
+    if not isinstance(target.media, MediaInfo):
+        raise ValueError("增量搜索仅适用于影视订阅")
+    plan = MediaSearchPlan(
+        mediainfo=target.media, keyword=subscribe.keyword, no_exists=target.missing,
+        sites=owner.get_sub_sites(subscribe),
+        rule_groups=subscribe.filter_groups or get_configured_system_config().get(rule_key) or [],
+        area="imdbid" if subscribe.search_imdbid and target.media.imdb_id else "title",
+        custom_words=subscribe.custom_words.split("\n") if subscribe.custom_words else None,
+        filter_params=owner.get_params(subscribe), candidate_filter=partial(cast(Any, owner)._filter_search_contexts, subscribe),
+    )
+    repository = getattr(getattr(owner, "subscription_search_repository", None), "sessions", None) if execution_context else None
+    snapshot = repository.get(task_id=execution_context.task_id) if repository and execution_context and execution_context.task_id else None
+    strategy = _subscription_search_strategy(bool(subscribe.best_version))
+    scan = SearchScan(owner=searchchain, plan=plan, full=strategy == "full",
+                      page_limit=1 if strategy == "single_page" else None,
+                      execution=execution_context, repository=repository, snapshot=snapshot,
+                      target_scope=(subscribe.start_episode or 1, subscribe.total_episode or 0))
+    if execution_context:
+        execution_context.incremental_search = True
+
+    def submit(contexts: list[Context], ready: set[str]) -> set[str]:
+        _ensure_execution_active(execution_context)
+        if execution_context:
+            execution_context.report_phase("preparing")
+        downloads, lefts = owner._SubscribeChain__download_best_version_with_full_pack_first(
+            contexts=contexts, no_exists=deepcopy(target.missing),
+            subscribe=subscribe, mediakey=target.media_key, username=subscribe.username,
+            save_path=subscribe.save_path, downloader=subscribe.downloader,
+            source=owner.get_subscribe_source_keyword(subscribe), execution_context=execution_context,
+            eligible_targets=ready,
+        )
+        if target.media.type == MediaType.MOVIE:
+            settled = ready if downloads else set()
+        else:
+            leftover = search_targets(MediaSearchPlan(mediainfo=target.media, no_exists=lefts)) if lefts else set()
+            settled = ready - leftover
+        current = owner.subscription_repository.get(subscribe.id)
+        if current and downloads:
+            owner.finish_subscribe_or_not(subscribe=current, meta=target.meta, mediainfo=target.media,
+                                          downloads=downloads, lefts=lefts)
+        return settled
+
+    scan.run(submit)
+    if not runtime_stop_state.is_system_stopped and not (execution_context and execution_context.should_stop()):
+        _finish_paged_subscription(owner, subscribe, target)
+    if execution_context:
+        execution_context.scan_finished = not execution_context.should_stop() and not runtime_stop_state.is_system_stopped
+        execution_context.report_phase("finished")
+    return cast(Optional[SubscriptionSnapshot], owner.subscription_repository.get(subscribe.id))
 
 
 def _ensure_execution_active(
@@ -749,6 +834,8 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
         )
         if execution_context:
             execution_context.report_phase("searching")
+        if not isinstance(mediainfo, MusicInfo):
+            return _process_paged_subscription(self, subscribe, searchchain, target, rule_key, execution_context)
         contexts = searchchain.process(
             mediainfo=mediainfo,
             keyword=subscribe.keyword,

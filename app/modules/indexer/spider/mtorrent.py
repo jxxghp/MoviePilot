@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from app.runtime.settings import get_runtime_setting
 
 from app.application.configuration import get_configured_system_config
+from app.application.site.observation import report_site_search_page
 from app.runtime.log import logger
 from app.schemas.types import MediaType
 from app.adapters.network.http import RequestUtils, AsyncRequestUtils
@@ -201,7 +202,12 @@ class MTorrentSpider:
     def __process_response(self, res: Any) -> Tuple[bool, List[dict[str, Any]]]:
         """统一判定搜索响应状态并投影 M-Team 种子结果。"""
         if res and res.status_code == 200:
-            results = res.json().get('data', {}).get("data") or []
+            data = res.json().get('data', {})
+            results = data.get("data") or []
+            # 分页事实只供逐页搜索判断末页，空结果仍按末页处理。
+            page_number, total_pages = data.get("pageNumber"), data.get("totalPages")
+            has_more = page_number < total_pages if isinstance(page_number, int) and isinstance(total_pages, int) else None
+            report_site_search_page(raw_count=len(results), has_more=has_more)
             return False, self.__parse_result(results)
         if res is not None:
             logger.warn(f"{self._name} 搜索失败，错误码：{res.status_code}")
@@ -549,6 +555,10 @@ class MTorrentSpider:
         # base64编码
         base64_str = base64.b64encode(json.dumps(params).encode('utf-8')).decode('utf-8')
         return f"[{base64_str}]{url}"
+
+    def get_download_url(self, torrent_id: str) -> str:
+        """根据站内 ID 与当前凭据重建下载配方，不需要重搜或持久化 API Key。"""
+        return self.__get_download_url(torrent_id)
 
     def get_subtitle_links(self, page_url: str) -> List[str]:
         """

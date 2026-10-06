@@ -188,6 +188,7 @@ class SubscriptionSearchTaskRunner:
             lease=execution_lease,
             admission=self.execution_admission,
             task_id=task_id,
+            task_lease=lease_token,
             cancel_requested=lambda: cancelled() or self.stop_state.is_system_stopped,
             phase_changed=phase_changed,
             resuming_sites=self.task.pending_site_ids is not None,

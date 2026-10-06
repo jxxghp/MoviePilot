@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Callable, Mapping, Optional, Protocol
 from uuid import uuid4
 
+from app.application.search.session import SearchSessionRepository
 from app.application.subscription.sitebudget import (
     SiteBudgetClaim,
     SubscriptionSearchDeferred,
@@ -83,6 +84,9 @@ class SubscriptionExecutionContext:
     phase_changed: Optional[Callable[[str, Optional[int]], None]] = None
     download_started: bool = False
     resuming_sites: bool = False
+    incremental_search: bool = False
+    scan_finished: bool = False
+    task_lease: Optional[str] = None
 
     def is_cancel_requested(self) -> bool:
         """判断调用入口是否请求在下一个安全边界退出。"""
@@ -118,7 +122,7 @@ def raise_subscription_site_budget_deferral(
     execution_context: Optional[SubscriptionExecutionContext],
 ) -> None:
     """在没有下载副作用时，将临时站点冲突转换为持久队列延后。"""
-    if not deferrals or (execution_context and execution_context.download_started):
+    if not deferrals or (execution_context and execution_context.download_started and not execution_context.incremental_search):
         return
     retry_at = min(deferrals, key=lambda item: item.retry_at).retry_at
     site_ids = tuple(dict.fromkeys(item.site_id for item in deferrals))
@@ -204,6 +208,8 @@ class SearchEnqueueResult:
 
 class SubscriptionSearchRepository(Protocol):
     """订阅搜索批次与任务的持久队列端口。"""
+
+    sessions: SearchSessionRepository
 
     def enqueue(
         self,
@@ -296,6 +302,7 @@ class SubscriptionSearchRepository(Protocol):
         site_id: int,
         owner: str,
         lease_seconds: int,
+        minimum_interval: float = 0,
     ) -> SiteBudgetClaim:
         """认领一个站点的唯一在途搜索预算。"""
         ...

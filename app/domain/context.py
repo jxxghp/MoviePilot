@@ -1342,6 +1342,8 @@ class TorrentInfo:
     """
 
     # 站点ID
+    # 自动订阅内部候选标识，用于提交结果与候选对应。
+    search_resource_id: Optional[str] = None
     site: int = None
     # 站点名称
     site_name: str = None
