@@ -23,7 +23,7 @@ class DownloadDirectory(BaseModel):
     下载目录
     """
 
-    name: Optional[str] = Field(default=None, description="目录名称")
+    name: Optional[str] = Field(default=None, description="目录名称（别名），可直接作为 save_path 提交")
     storage: Optional[str] = Field(default="local", description="存储类型")
     download_path: Optional[str] = Field(default=None, description="配置的下载目录")
     save_path: Optional[str] = Field(default=None, description="可直接传给下载接口 save_path 的路径")

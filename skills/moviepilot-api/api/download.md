@@ -9,14 +9,14 @@ Download submission, configured clients, paths, active tasks, and download histo
 Purpose: Submit one torrent to MoviePilot's normal download workflow.
 - `path_params`: none
 - `query`: none
-- `body`: `allow_unrecognized` (boolean; default `False`): Allow a download when MoviePilot cannot resolve a canonical media identity.; `downloader` (string|null): Configured downloader instance name.; `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `music_type` (string(recording,album)|null): Music identity level: recording, album, or artist where supported.; `save_path` (string|null): Configured downloader-side save path for the download or subscription.; `torrent_in*` (TorrentInfo): Complete torrent candidate returned by search.results or search.torrents.
+- `body`: `allow_unrecognized` (boolean; default `False`): Allow a download when MoviePilot cannot resolve a canonical media identity.; `downloader` (string|null): Configured downloader instance name.; `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `music_type` (string(recording,album)|null): Music identity level: recording, album, or artist where supported.; `save_path` (string|null): Configured downloader-side save path, or the exact name (alias) of a configured download directory, for the download or subscription.; `torrent_in*` (TorrentInfo): Complete torrent candidate returned by search.results or search.torrents.
 
 ### `download.artist_collection`
 `POST /api/v1/download/artist-collection`; policy effect: `external_side_effect`.
 Purpose: Submit one artist-wide music torrent to MoviePilot's collection download workflow.
 - `path_params`: none
 - `query`: none
-- `body`: `artist_id*` (string; minimum length `1`): Source-native artist ID returned by music search or an album detail response.; `artist_name*` (string; minimum length `1`): Artist name preserved as the identity label for an artist-wide music collection.; `downloader` (string|null): Configured downloader instance name.; `media_source*` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `save_path` (string|null): Configured downloader-side save path for the download or subscription.; `torrent_in*` (TorrentInfo): Complete torrent candidate returned by search.results or search.torrents.
+- `body`: `artist_id*` (string; minimum length `1`): Source-native artist ID returned by music search or an album detail response.; `artist_name*` (string; minimum length `1`): Artist name preserved as the identity label for an artist-wide music collection.; `downloader` (string|null): Configured downloader instance name.; `media_source*` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `save_path` (string|null): Configured downloader-side save path, or the exact name (alias) of a configured download directory, for the download or subscription.; `torrent_in*` (TorrentInfo): Complete torrent candidate returned by search.results or search.torrents.
 
 ### `download.clients`
 `GET /api/v1/download/clients`; policy effect: `safe_read`.
@@ -43,7 +43,7 @@ Purpose: Page MoviePilot download-history records in reverse chronological order
 
 ### `download.paths`
 `GET /api/v1/download/paths`; policy effect: `safe_read`.
-Purpose: List configured downloader save-path URIs that may be passed to download.add.
+Purpose: List configured downloader save-path URIs that may be passed to download.add. Each item's non-empty name is also accepted as save_path.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `path_params`: none
 - `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.

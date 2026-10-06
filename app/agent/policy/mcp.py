@@ -18,7 +18,10 @@ OPERATION_DESCRIPTIONS = {
     "download.clients": "List enabled downloader instance names and provider types without credentials.",
     "download.history.list": "Page MoviePilot download-history records in reverse chronological order.",
     "download.history.delete": "Delete one MoviePilot download-history record.",
-    "download.paths": "List configured downloader save-path URIs that may be passed to download.add.",
+    "download.paths": (
+        "List configured downloader save-path URIs that may be passed to download.add. "
+        "Each item's non-empty name is also accepted as save_path."
+    ),
     "download.tasks.active": "List currently downloading MoviePilot tasks with their canonical media context.",
     "filter.builtin": "List built-in torrent filter rules.",
     "filter.custom": "List user-defined torrent filter rules.",
@@ -434,7 +437,10 @@ FIELD_DESCRIPTIONS = {
     "rule_id": "Stable custom filter-rule ID.",
     "rule_string": "Ordered filter-rule expression stored in the group.",
     "sample_rate": "Recorded audio sample rate in hertz.",
-    "save_path": "Configured downloader-side save path for the download or subscription.",
+    "save_path": (
+        "Configured downloader-side save path, or the exact name (alias) of a configured download "
+        "directory, for the download or subscription."
+    ),
     "scrape": "Generate metadata and images after manual transfer.",
     "search_interval": "Scheduled search interval in whole hours (1-8760); null uses the system interval.",
     "last_search": "Read-only UTC timestamp of the most recent subscription search attempt.",
