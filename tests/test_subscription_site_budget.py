@@ -162,6 +162,23 @@ def test_site_budget_ignores_legacy_success_interval(tmp_path):
         assert record.next_allowed_at < future
 
 
+def test_automatic_pagination_shares_success_interval_across_subscriptions(tmp_path):
+    repository, engine = _repository(tmp_path)
+    before = datetime.now(timezone.utc)
+    first = repository.claim_site(site_id=9, owner="subscription-a", lease_seconds=900, minimum_interval=10)
+    assert first.acquired
+    assert datetime.fromisoformat(first.retry_at) >= before + timedelta(seconds=10)
+    assert repository.finish_site(site_id=9, lease_token=first.lease_token, outcome="success", next_allowed_at=first.retry_at)
+    waiting = repository.claim_site(site_id=9, owner="subscription-b", lease_seconds=900, minimum_interval=10)
+    assert not waiting.acquired
+    assert waiting.wait_reason == "cooldown"
+    assert waiting.retry_at == first.retry_at
+    other = repository.claim_site(site_id=10, owner="subscription-b", lease_seconds=900, minimum_interval=20)
+    assert other.acquired
+    assert datetime.fromisoformat(other.retry_at) >= before + timedelta(seconds=20)
+    engine.dispose()
+
+
 @pytest.mark.parametrize(
     ("error", "outcome"),
     [

@@ -113,7 +113,9 @@ def finish_returned_search_task(
     cancel_requested: bool,
 ) -> tuple[Optional[int], SearchTaskOutcome, Optional[str]]:
     """按 TTL、停机和取消边界收口正常返回的搜索任务。"""
-    download_started = execution_context.download_started
+    download_started = execution_context.download_started and (
+        not execution_context.incremental_search or execution_context.scan_finished
+    )
     if execution_context.is_expired() and not (system_stopped or cancel_requested):
         if download_started:
             queue.finish_task(

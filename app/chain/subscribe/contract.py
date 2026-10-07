@@ -39,6 +39,7 @@ if TYPE_CHECKING:
         _SubscribeChain__async_queue_new_subscription_search: Callable[..., Awaitable[Any]]
         _SubscribeChain__build_completion_notification: Callable[..., Any]
         _SubscribeChain__build_subscribe_notification: Callable[..., Any]
+        _SubscribeChain__candidate_contract_changed: Callable[..., bool]
         _SubscribeChain__download_best_version_with_full_pack_first: Callable[..., Any]
         _SubscribeChain__get_best_version_target_episodes: Callable[..., Any]
         _SubscribeChain__get_default_subscribe_config: Callable[..., Any]

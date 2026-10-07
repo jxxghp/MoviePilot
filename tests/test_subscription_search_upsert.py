@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.adapters.subscriptionsearch import TransactionalSubscriptionSearchRepository
+from app.db.models.searchsession import SearchSession
 from app.db.models.subscriptionsearch import SubscriptionSearchBatch, SubscriptionSearchTask
 
 
@@ -18,7 +19,8 @@ from app.db.models.subscriptionsearch import SubscriptionSearchBatch, Subscripti
 def queue(tmp_path):
     """默认使用隔离 SQLite；显式测试 URL 只允许指向可清空的专用数据库。"""
     engine = create_engine(os.environ.get("MOVIEPILOT_TEST_UPSERT_URL", f"sqlite:///{tmp_path / 'queue.db'}"))
-    tables = [SubscriptionSearchBatch.__table__, SubscriptionSearchTask.__table__]
+    # 任务终态在同一事务中删除分页检查点，队列表与检查点表一起建立。
+    tables = [SubscriptionSearchBatch.__table__, SubscriptionSearchTask.__table__, SearchSession.__table__]
     for table in tables:
         table.create(engine, checkfirst=True)
     errors = []

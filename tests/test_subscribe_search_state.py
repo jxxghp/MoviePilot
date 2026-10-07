@@ -13,7 +13,17 @@ from app.application.subscription.mutation import SubscriptionMutation
 from app.application.subscription.query import subscription_search_due
 from app.chain.subscribe import search as subscribe_search
 from app.chain.subscribe.facade import SubscribeChain
-from app.schemas.types import MediaType
+from app.schemas.types import MediaType, SystemConfigKey
+
+
+@pytest.mark.parametrize("strategy,best_version,expected", [
+    (None, False, "smart"), ("unknown", False, "smart"), ("smart", False, "smart"), ("full", False, "full"),
+    ("single_page", False, "single_page"), ("smart", True, "full"), ("single_page", True, "full"),
+])
+def test_subscription_search_strategy_and_upgrade_override(monkeypatch, strategy, best_version, expected):
+    values = {SystemConfigKey.SubscribeSearchStrategy: strategy}
+    monkeypatch.setattr(subscribe_search, "get_configured_system_config", lambda: SimpleNamespace(get=values.get))
+    assert subscribe_search._subscription_search_strategy(best_version) == expected
 
 
 class _SubscribeOper:

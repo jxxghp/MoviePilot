@@ -43,6 +43,7 @@ class DownloadBatchOwner(_DownloadOwnerBase):
             username: Optional[str] = None,
             downloader: Optional[str] = None,
             custom_words: Optional[str] = None, governance: Optional[SubscriptionDownloadGovernance] = None,
+            allowed_episodes: Optional[Set[int]] = None,
     ) -> Tuple[
         List[Context],
         Optional[Dict[str, Dict[int, NotExistMediaInfo]]],
@@ -52,6 +53,8 @@ class DownloadBatchOwner(_DownloadOwnerBase):
 
         该签名被订阅链、消息入口和插件调用；内部策略拆分不改变候选排序、失败冷却、
         完整覆盖判断或剩余缺集的返回结构。
+        allowed_episodes 限制本次调用的电视剧集数，在插件替换候选后仍生效；None 沿用
+        既有行为，空集合拒绝所有剧集，候选自身的限制只会进一步收窄范围。
         """
         return self._execute_batch_download(
             contexts=contexts,
@@ -62,7 +65,7 @@ class DownloadBatchOwner(_DownloadOwnerBase):
             userid=userid,
             username=username,
             downloader=downloader,
-            custom_words=custom_words, governance=governance,
+            custom_words=custom_words, governance=governance, allowed_episodes=allowed_episodes,
         )
 
     def _execute_batch_download(self,
@@ -76,6 +79,7 @@ class DownloadBatchOwner(_DownloadOwnerBase):
                                 downloader: Optional[str] = None,
                                 custom_words: Optional[str] = None,
                                 governance: Optional[SubscriptionDownloadGovernance] = None,
+                                allowed_episodes: Optional[Set[int]] = None,
                                 ) -> Tuple[
         List[Context],
         Optional[Dict[str, Dict[int, NotExistMediaInfo]]],
@@ -92,6 +96,7 @@ class DownloadBatchOwner(_DownloadOwnerBase):
         :param downloader: 下载器
         :param custom_words: 下载来源自定义词
         :param governance: 订阅取消与下载器副作用边界
+        :param allowed_episodes: 本批电视剧允许集数，在资源选择事件之后与候选限制取交集
         :return: 已下载资源列表及剩余缺集，键格式为 no_exists[source:id]
         """
         missing = no_exists if no_exists is not None else {}
@@ -100,7 +105,7 @@ class DownloadBatchOwner(_DownloadOwnerBase):
             username=username, downloader=downloader, custom_words=custom_words,
             governance=governance,
         )
-        batch = _BatchDownloadRun(self, contexts, missing, options)
+        batch = _BatchDownloadRun(self, contexts, missing, options, allowed_episodes)
         batch.run()
         return batch.downloaded, None if no_exists is None else missing
 
@@ -124,11 +129,13 @@ class _BatchDownloadRun:
     def __init__(
             self, owner: _DownloadOwnerBase, contexts: List[Context],
             no_exists: Dict[str, Dict[int, NotExistMediaInfo]], options: _BatchDownloadOptions,
+            allowed_episodes: Optional[Set[int]],
     ) -> None:
         self.owner = owner
         self.contexts = contexts
         self.no_exists = no_exists
         self.options = options
+        self.allowed_episodes = set(allowed_episodes) if allowed_episodes is not None else None
         self.downloaded: List[Context] = []
         self.failures: Dict[str, Optional[DownloadFailureSnapshot]] = {}
         words = options["custom_words"]
@@ -140,6 +147,11 @@ class _BatchDownloadRun:
             contexts=self.contexts,
             downloader=self.options["downloader"], source=self.options["source"],
         )
+        # 插件可替换整个候选列表，批次范围必须独立保留并作用于最终候选。
+        if self.allowed_episodes is not None:
+            for context in self.contexts:
+                if context.media_info and context.media_info.type == MediaType.TV:
+                    context.allowed_episodes = _selection.apply_allowed_episodes(self.allowed_episodes, context)
         self.owner._download_movie_music_candidates(
             contexts=self.contexts, downloaded_list=self.downloaded,
             active_failure_records=self.failures, **self.options,

@@ -1166,3 +1166,7 @@ description、aliases、instructions，或通过 `append_instructions` 追加规
 `options` 提供来源无关的 `{value, label}`，`source_options` 按数据源 ID 提供开放候选。国家与语言显示中文名称，规则保存标准代码；风格保存与分类事实归一化共用的稳定键。来源风格和音乐枚举保留原始大小写。
 
 客户端合并通用选项和所选来源的候选；未限制来源时展示全部候选并标注来源。`allow_custom_values` 为真时允许输入其他值，切换来源不得清空已有条件。`source_options` 缺失等价于空目录；候选是录入辅助，不改变来源支持等级或规则校验范围。公司、平台和用户标签等开放字段应使用媒体预览中的原值。
+
+## Web 手动分页
+
+`/api/v1/search/title/stream` 与 `/api/v1/search/media/{media_id}/stream` 新增可选参数 `manual_paging`、`page`、`source`。`manual_paging=true` 时每个来源只返回指定的一页，`replace`/`done` 事件附带各来源的 `source`、`site_name`、`page`、`can_continue`、`error`。不传该参数时行为不变，Agent `search.*` operation 不受影响。完整规则及订阅补全搜索策略 `SubscribeSearchStrategy` 见 [订阅补全搜索与手动分页](smart-search.md)。

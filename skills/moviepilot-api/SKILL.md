@@ -274,6 +274,8 @@ The `download.add` body must contain `torrent_in` (at least `title` and `enclosu
 
 ## Collection Counts And Pagination
 
+- Search SSE `manual_paging=true` is a Web-only page-by-page mode and adds no Agent
+  operations; keep using the documented `search.*` operations.
 - For list inspection, explicitly send the operation's documented pagination
   fields instead of requesting an unbounded legacy result. For optional legacy
   pagination, start with `query={"page":1,"count":20}`.

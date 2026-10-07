@@ -1392,6 +1392,8 @@ class TorrentInfo:
     pri_order: int = 0
     # 种子分类 电影/电视剧/音乐
     category: str = None
+    # 自动订阅分页搜索的内部候选标识，只用于提交结果与候选对应，不进入对外字典
+    search_resource_id: Optional[str] = None
 
     def __post_init__(self) -> None:
         """将种子声明的媒体身份规范化为统一成对字段。"""
@@ -1489,6 +1491,7 @@ class TorrentInfo:
         dicts["media_id"] = str(self.media_id) if self.media_id is not None else None
         dicts["volume_factor"] = self.volume_factor
         dicts["freedate_diff"] = self.freedate_diff
+        dicts.pop("search_resource_id", None)
         return dicts
 
 

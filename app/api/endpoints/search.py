@@ -406,6 +406,9 @@ async def search_by_id_stream(
     sites: Optional[str] = None,
     music_type: Optional[str] = None,
     include_candidates: bool = False,
+    manual_paging: bool = False,
+    page: int = 0,
+    source: Optional[str] = None,
     _: _SchemaTokenPayload = Depends(verify_resource_token),
 ) -> Any:
     """
@@ -429,6 +432,14 @@ async def search_by_id_stream(
             return
         if include_candidates:
             search_params["include_candidates"] = True
+        if manual_paging and media_type != MediaType.MUSIC:
+            async for event in SearchChain().search_page_events(params={
+                "media_source": media_source, "media_id": media_id, "mtype": media_type,
+                "area": area, "season": media_season, "sites": site_list,
+                "page": page, "source": source,
+            }):
+                yield event
+            return
         torrents = SearchChain().async_search_by_id_stream(
             **search_params,
             mtype=media_type,
@@ -513,19 +524,27 @@ async def search_by_title_stream(
     mtype: Optional[str] = None,
     page: Optional[int] = 0,
     sites: Optional[str] = None,
+    manual_paging: bool = False,
+    source: Optional[str] = None,
     _: _SchemaTokenPayload = Depends(verify_resource_token),
 ) -> Any:
     """
     根据名称渐进式模糊搜索站点资源，返回格式为SSE
     """
 
-    event_source = SearchChain().async_search_by_title_stream(
-        title=keyword or "",
-        page=page,
-        sites=_parse_site_list(sites),
-        cache_local=True,
-        mtype=_parse_media_type(mtype),
-    )
+    if manual_paging and keyword and _parse_media_type(mtype) != MediaType.MUSIC:
+        event_source = SearchChain().search_page_events(params={
+            "keyword": keyword, "mtype": _parse_media_type(mtype), "sites": _parse_site_list(sites),
+            "page": page, "source": source,
+        })
+    else:
+        event_source = SearchChain().async_search_by_title_stream(
+            title=keyword or "",
+            page=page,
+            sites=_parse_site_list(sites),
+            cache_local=True,
+            mtype=_parse_media_type(mtype),
+        )
     return StreamingResponse(
         _stream_search_events(request, event_source),
         media_type="text/event-stream",

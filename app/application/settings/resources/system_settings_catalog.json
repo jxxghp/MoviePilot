@@ -1525,19 +1525,19 @@
       "description": "AI智能体配置",
       "enum_name": "AIAgentConfig",
       "source_file": "app/schemas/types.py",
-      "source_line": 408
+      "source_line": 410
     },
     "AIAgentMcpServers": {
       "description": "AI智能体外部MCP服务器配置",
       "enum_name": "AIAgentMcpServers",
       "source_file": "app/schemas/types.py",
-      "source_line": 412
+      "source_line": 414
     },
     "BestVersionFilterRuleGroups": {
       "description": "洗版默认过滤规则组",
       "enum_name": "BestVersionFilterRuleGroups",
       "source_file": "app/schemas/types.py",
-      "source_line": 381
+      "source_line": 383
     },
     "CustomFilterRules": {
       "description": "用户自定义规则",
@@ -1567,19 +1567,19 @@
       "description": "默认电影订阅规则",
       "enum_name": "DefaultMovieSubscribeConfig",
       "source_file": "app/schemas/types.py",
-      "source_line": 396
+      "source_line": 398
     },
     "DefaultMusicSubscribeConfig": {
       "description": "默认音乐订阅规则",
       "enum_name": "DefaultMusicSubscribeConfig",
       "source_file": "app/schemas/types.py",
-      "source_line": 400
+      "source_line": 402
     },
     "DefaultTvSubscribeConfig": {
       "description": "默认电视剧订阅规则",
       "enum_name": "DefaultTvSubscribeConfig",
       "source_file": "app/schemas/types.py",
-      "source_line": 398
+      "source_line": 400
     },
     "Directories": {
       "description": "目录配置",
@@ -1603,13 +1603,13 @@
       "description": "Follow订阅分享者",
       "enum_name": "FollowSubscribers",
       "source_file": "app/schemas/types.py",
-      "source_line": 404
+      "source_line": 406
     },
     "GithubAuth": {
       "description": "GitHub OAuth 设备授权元数据",
       "enum_name": "GithubAuth",
       "source_file": "app/schemas/types.py",
-      "source_line": 410
+      "source_line": 412
     },
     "IndexerSites": {
       "description": "搜索站点范围",
@@ -1621,13 +1621,13 @@
       "description": "多媒体自动分类策略及其有界历史",
       "enum_name": "MediaClassificationPolicy",
       "source_file": "app/schemas/types.py",
-      "source_line": 426
+      "source_line": 428
     },
     "MediaRecognizeShareCount": {
       "description": "共享媒体识别成功次数",
       "enum_name": "MediaRecognizeShareCount",
       "source_file": "app/schemas/types.py",
-      "source_line": 424
+      "source_line": 426
     },
     "MediaServers": {
       "description": "媒体服务器配置",
@@ -1645,13 +1645,13 @@
       "description": "通知中心清理时间",
       "enum_name": "NotificationClearBefore",
       "source_file": "app/schemas/types.py",
-      "source_line": 416
+      "source_line": 418
     },
     "NotificationSendTime": {
       "description": "通知发送时间",
       "enum_name": "NotificationSendTime",
       "source_file": "app/schemas/types.py",
-      "source_line": 406
+      "source_line": 408
     },
     "NotificationSwitchs": {
       "description": "通知场景开关设置",
@@ -1663,7 +1663,7 @@
       "description": "通知消息格式模板",
       "enum_name": "NotificationTemplates",
       "source_file": "app/schemas/types.py",
-      "source_line": 414
+      "source_line": 416
     },
     "Notifications": {
       "description": "消息通知配置",
@@ -1675,25 +1675,25 @@
       "description": "插件文件夹分组配置",
       "enum_name": "PluginFolders",
       "source_file": "app/schemas/types.py",
-      "source_line": 394
+      "source_line": 396
     },
     "PluginInstallReport": {
       "description": "插件安装统计",
       "enum_name": "PluginInstallReport",
       "source_file": "app/schemas/types.py",
-      "source_line": 420
+      "source_line": 422
     },
     "PluginInstances": {
       "description": "共享源码插件的虚拟运行实例（已迁移到独立表，本键保留作回滚依据）",
       "enum_name": "PluginInstances",
       "source_file": "app/schemas/types.py",
-      "source_line": 389
+      "source_line": 391
     },
     "PluginInstancesImported": {
       "description": "上面那个旧键各条目导入独立表时的内容指纹 {实例ID: 摘要}，据此识别回滚到旧版本 后新增或改写过的条目，同时避免把用户删掉的分身重新导回",
       "enum_name": "PluginInstancesImported",
       "source_file": "app/schemas/types.py",
-      "source_line": 392
+      "source_line": 394
     },
     "RssSites": {
       "description": "订阅站点范围",
@@ -1705,7 +1705,7 @@
       "description": "刮削开关设置",
       "enum_name": "ScrapingSwitchs",
       "source_file": "app/schemas/types.py",
-      "source_line": 418
+      "source_line": 420
     },
     "SearchFilterRuleGroups": {
       "description": "搜索默认过滤规则组",
@@ -1723,7 +1723,7 @@
       "description": "订阅默认参数",
       "enum_name": "SubscribeDefaultParams",
       "source_file": "app/schemas/types.py",
-      "source_line": 379
+      "source_line": 381
     },
     "SubscribeFilterRuleGroups": {
       "description": "订阅默认过滤规则组",
@@ -1735,7 +1735,13 @@
       "description": "订阅统计",
       "enum_name": "SubscribeReport",
       "source_file": "app/schemas/types.py",
-      "source_line": 383
+      "source_line": 385
+    },
+    "SubscribeSearchStrategy": {
+      "description": "补全搜索策略：smart 默认、full 全量、single_page 仅第一页；洗版始终全量",
+      "enum_name": "SubscribeSearchStrategy",
+      "source_file": "app/schemas/types.py",
+      "source_line": 379
     },
     "TorrentsPriority": {
       "description": "种子优先级规则",
@@ -1753,13 +1759,13 @@
       "description": "绿联影视登录会话缓存",
       "enum_name": "UgreenSessionCache",
       "source_file": "app/schemas/types.py",
-      "source_line": 422
+      "source_line": 424
     },
     "UserCustomCSS": {
       "description": "用户自定义CSS",
       "enum_name": "UserCustomCSS",
       "source_file": "app/schemas/types.py",
-      "source_line": 385
+      "source_line": 387
     },
     "UserFilterRuleGroups": {
       "description": "用户规则组",
@@ -1771,13 +1777,13 @@
       "description": "用户已安装的插件",
       "enum_name": "UserInstalledPlugins",
       "source_file": "app/schemas/types.py",
-      "source_line": 387
+      "source_line": 389
     },
     "UserSiteAuthParams": {
       "description": "用户站点认证参数",
       "enum_name": "UserSiteAuthParams",
       "source_file": "app/schemas/types.py",
-      "source_line": 402
+      "source_line": 404
     }
   }
 }

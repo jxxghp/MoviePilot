@@ -167,3 +167,17 @@ def test_subtitle_search_reports_http_errors(mteam_spider, status_code):
     assert error is True
     assert subtitles == []
     assert mteam_spider.error_detail == f"HTTP {status_code}"
+
+
+def test_restored_candidate_rebuilds_download_link_from_detail_page_id(mteam_spider):
+    """重启后按详情页链接里的站内 ID 用当前凭据重建下载链接，检查点不保存 API Key。"""
+    import base64
+    import json
+
+    from app.modules.indexer import IndexerModule
+
+    site = {**_build_indexer(), "parser": "mTorrent", "cookie": "", "downloader": "qbit"}
+    record = {"site": 1, "title": "Show S01E01", "page_url": "https://xp.m-team.io/detail/12345"}
+    torrent = IndexerModule.restore_search_torrent(site=site, record=record)
+    encoded = torrent.enclosure[1:torrent.enclosure.index("]")]
+    assert json.loads(base64.b64decode(encoded))["params"] == {"id": "12345"}

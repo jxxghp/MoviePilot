@@ -375,6 +375,8 @@ class SystemConfigKey(Enum):
     SearchFilterRuleGroups = "SearchFilterRuleGroups"
     # 订阅默认过滤规则组
     SubscribeFilterRuleGroups = "SubscribeFilterRuleGroups"
+    # 补全搜索策略：smart 默认、full 全量、single_page 仅第一页；洗版始终全量
+    SubscribeSearchStrategy = "SubscribeSearchStrategy"
     # 订阅默认参数
     SubscribeDefaultParams = "SubscribeDefaultParams"
     # 洗版默认过滤规则组

@@ -1,16 +1,18 @@
 """订阅搜索批次与任务的持久队列读写。"""
 
+import math
 from datetime import datetime, timedelta, timezone
 from typing import Mapping, Optional
 from uuid import uuid4
 
-from sqlalchemy import and_, case, func, or_, select, update
+from sqlalchemy import and_, case, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper, execute_dml
+from app.db.models.searchsession import SearchSession
 from app.db.models.subscriptionsearch import (
     SubscriptionSearchBatch,
     SubscriptionSearchTask,
@@ -348,6 +350,12 @@ class SubscriptionSearchOper(DbOper):
         )
         if not updated:
             return False
+        # 终态任务不会再被续用（同一订阅之后的搜索是新任务），分页检查点随之释放。
+        execute_dml(
+            self._db,
+            delete(SearchSession).where(SearchSession.task_id == task_id),
+            execution_options={"synchronize_session": False},
+        )
         self._refresh_batch(task.batch_id, now=now, error=error)
         return True
 
@@ -515,6 +523,16 @@ class SubscriptionSearchOper(DbOper):
             .values(cancel_requested=1, phase="cancelling", updated_at=now),
             execution_options={"synchronize_session": False},
         )
+        execute_dml(
+            self._db,
+            delete(SearchSession).where(SearchSession.task_id.in_(
+                select(SubscriptionSearchTask.task_id).where(
+                    SubscriptionSearchTask.batch_id == batch_id,
+                    SubscriptionSearchTask.state == "cancelled",
+                )
+            )),
+            execution_options={"synchronize_session": False},
+        )
         self._refresh_batch(batch_id, now=now, error=None)
         return True
 
@@ -533,6 +551,7 @@ class SubscriptionSearchOper(DbOper):
         site_id: int,
         owner: str,
         lease_seconds: int,
+        minimum_interval: float = 0,
     ) -> tuple[SubscriptionSiteBudget, bool]:
         """以 CAS 认领单站点租约，返回当前或已认领预算记录。"""
         if not isinstance(self._db, Session):
@@ -545,12 +564,17 @@ class SubscriptionSearchOper(DbOper):
             and record.lease_expires_at > now
         )
         cooldown_active = bool(
-            record.last_outcome not in {None, "success", "skipped"}
+            (minimum_interval > 0 or record.last_outcome not in {None, "success", "skipped"})
             and record.next_allowed_at > now
         )
         if lease_busy or cooldown_active:
             return record, False
         lease_token = uuid4().hex
+        request_allowed = now
+        if minimum_interval:
+            # 预留下次请求开始时间；向上取整到秒，与其它秒精度时间比较时不会提前放行。
+            request_allowed = (datetime.now(timezone.utc).replace(microsecond=0)
+                               + timedelta(seconds=math.ceil(minimum_interval) + 1)).isoformat(timespec="seconds")
         lease_expires_at = (
             datetime.now(timezone.utc) + timedelta(seconds=max(1, lease_seconds))
         ).isoformat(timespec="seconds")
@@ -566,15 +590,15 @@ class SubscriptionSearchOper(DbOper):
                 ),
                 or_(
                     SubscriptionSiteBudget.next_allowed_at <= now,
-                    SubscriptionSiteBudget.last_outcome.is_(None),
-                    SubscriptionSiteBudget.last_outcome.in_(("success", "skipped")),
+                    SubscriptionSiteBudget.last_outcome.is_(None) if not minimum_interval else False,
+                    SubscriptionSiteBudget.last_outcome.in_(("success", "skipped")) if not minimum_interval else False,
                 ),
             )
             .values(
                 lease_owner=owner,
                 lease_token=lease_token,
                 lease_expires_at=lease_expires_at,
-                next_allowed_at=now,
+                next_allowed_at=request_allowed,
                 updated_at=now,
             ),
             execution_options={"synchronize_session": False},

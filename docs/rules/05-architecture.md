@@ -1270,3 +1270,13 @@ modules only through `run_module` dispatch), and downloader SDK
 *Last Updated: 2026-08-29*
 
 分类词表由 `app/domain/classification/vocabulary.py` 拥有，供 `facts.py`、`fields.py` 和旧配置迁移复用；只含离线词表及纯选项投影，不读取运行时配置、数据库或具体来源模块。
+
+### 逐页搜索检查点
+
+- `domain/search.py`：纯收集规则（缺集关闭、站点已收录边界、页面连续性）。
+- `application/search/session.py`：检查点 Port 与不含凭据的候选快照。
+- `db/oper/searchsession.py` / `db/adapters/searchsession.py`：检查点读写与短 UoW；创建、保存、删除都在写入语句内校验队列任务租约和版本。`db/oper/subscriptionsearch.py` 在任务进入终态的同一事务中删除检查点。
+- `chain/search/scan.py`：`SearchSources` 提供来源与单页请求，自动订阅的 `SearchScan` 与手动分页 `chain/search/manual.py` 共用；手动分页不写数据库，页摘要走 Runtime 缓存门面。
+- 恢复候选的下载凭据经 `run_module("restore_search_torrent")` 由 Indexer 重建，Chain 不直接导入 Indexer 或数据库；该方法是宿主内部契约，不对插件公开。
+
+业务规则见 `docs/smart-search.md`。

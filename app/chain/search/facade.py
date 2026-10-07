@@ -10,6 +10,8 @@ from app.application.subscription.sitebudget import (
 )
 from app.chain.base import ChainBase
 from app.chain.search.cache import SearchCacheOwner
+from app.chain.search.contract import _SearchOwnerBase
+from app.chain.search.manual import SearchManualOwner
 from app.chain.search.media import SearchMediaOwner
 from app.chain.search.music import SearchMusicOwner
 from app.chain.search.pagination import SearchPaginationOwner
@@ -44,6 +46,11 @@ class SearchChain(ChainBase):
     _SUBTITLE_RESULT_CACHE_KEY = "__subtitle_search_result__"
     _SEARCH_PARAMS_CACHE_KEY = "__search_params__"
     _AI_INDICES_CACHE_KEY = "__ai_recommend_indices__"
+
+    async def search_page_events(self, *, params: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
+        """执行客户端指定的单页请求，不持有客户端分页进度。"""
+        async for event in SearchManualOwner.events(cast(_SearchOwnerBase, self), params=params):
+            yield event
 
     def configure_subscription_site_budget(
         self,

@@ -15,6 +15,8 @@ class SiteSearchObservation:
     attempted: bool = False
     outcome: str = "skipped"
     error: Optional[str] = None
+    raw_count: Optional[int] = None
+    has_more: Optional[bool] = None
 
 
 _current_observation: ContextVar[Optional[SiteSearchObservation]] = ContextVar(
@@ -44,7 +46,17 @@ def report_site_search_outcome(
     observation = _current_observation.get()
     if observation is None:
         return
+    if outcome == "skipped" and observation.outcome == "deferred":
+        return
     observation.attempted = attempted
     observation.outcome = outcome
     observation.error = error
 
+
+def report_site_search_page(*, raw_count: int, has_more: Optional[bool] = None) -> None:
+    """发布过滤前的页事实；短页不自动等价于末页，旧 List 返回 ABI 保持不变。"""
+    observation = _current_observation.get()
+    if observation is not None:
+        observation.raw_count = max(raw_count, observation.raw_count or 0)
+        if has_more is not None:
+            observation.has_more = has_more

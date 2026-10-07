@@ -407,6 +407,14 @@ _METHOD_CONTRACTS = {
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("site", "keyword"),
     ),
+    "restore_search_torrent": ModuleMethodContract(
+        family="site",
+        input_contract="SearchTorrentRestoreRequest",
+        result_contract="TorrentInfo | None",
+        aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
+        required_parameters=("site", "record"),
+        public_to_plugins=False,
+    ),
     "refresh_userdata": ModuleMethodContract(
         family="site",
         input_contract="SiteUserDataRequest",

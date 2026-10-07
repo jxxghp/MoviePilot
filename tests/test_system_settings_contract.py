@@ -14,9 +14,23 @@ from app.application.settings.contract import (
     SETTING_GROUPS,
     SYSTEMCONFIG_SETTING_SPECS,
     build_value_schema,
+    validate_setting_value,
 )
 from app.runtime.config import Settings
 from app.schemas.types import SystemConfigKey
+
+
+def test_subscription_search_strategy_contract_declares_three_choices() -> None:
+    from pydantic import ValidationError
+
+    spec = ALL_SETTING_SPECS[SystemConfigKey.SubscribeSearchStrategy.value]
+    schema = build_value_schema(spec)
+    assert schema["anyOf"][0]["enum"] == ["smart", "full", "single_page"]
+    for value in (None, "smart", "full", "single_page"):
+        validate_setting_value(spec, value)
+    for value in (True, "unknown", {"mode": "full"}):
+        with pytest.raises(ValidationError):
+            validate_setting_value(spec, value)
 
 
 def test_settings_contract_covers_every_declared_source() -> None:

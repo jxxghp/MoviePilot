@@ -8,12 +8,14 @@ from typing import Optional, TypeVar
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from app.application.search.session import SearchSessionRepository
 from app.application.subscription.execution import (
     SearchBatchSnapshot,
     SearchEnqueueResult,
     SearchTaskSnapshot,
 )
 from app.application.subscription.sitebudget import SiteBudgetClaim
+from app.db.adapters.searchsession import TransactionalSearchSessionRepository
 from app.db.models.subscriptionsearch import (
     SubscriptionSearchBatch,
     SubscriptionSearchTask,
@@ -108,6 +110,7 @@ class TransactionalSubscriptionSearchRepository:
     ) -> None:
         """保存由组合根注入的同步和异步 Session 工厂。"""
         self._session_factory = session_factory
+        self.sessions: SearchSessionRepository = TransactionalSearchSessionRepository(session_factory)
         self._async_session_factory = async_session_factory
 
     def _read(self, operation: Callable[[SubscriptionSearchOper], T]) -> T:
@@ -291,6 +294,7 @@ class TransactionalSubscriptionSearchRepository:
         site_id: int,
         owner: str,
         lease_seconds: int,
+        minimum_interval: float = 0,
     ) -> SiteBudgetClaim:
         """认领单站点预算并投影等待或租约事实。"""
         def operation(repository: SubscriptionSearchOper) -> SiteBudgetClaim:
@@ -299,12 +303,13 @@ class TransactionalSubscriptionSearchRepository:
                 site_id=site_id,
                 owner=owner,
                 lease_seconds=lease_seconds,
+                minimum_interval=minimum_interval,
             )
             retry_at = record.next_allowed_at
             wait_reason = None
             now = datetime.now(timezone.utc)
             cooldown_active = bool(
-                record.last_outcome not in {None, "success", "skipped"}
+                (minimum_interval > 0 or record.last_outcome not in {None, "success", "skipped"})
                 and record.next_allowed_at > now.isoformat(timespec="seconds")
             )
             lease_busy = bool(
