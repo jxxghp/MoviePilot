@@ -300,17 +300,20 @@ class TransactionalUserRepository(ChainUserRepository):
     def find_name_by_bindings(
         self,
         bindings: Mapping[str, object],
+        *,
+        match_any: bool = False,
     ) -> Optional[str]:
-        """仅在全部绑定唯一匹配同一启用用户时返回用户名。"""
+        """默认匹配全部绑定；候选字段可匹配任一项，但跨字段命中多位用户仍拒绝。"""
         if not bindings:
             return None
         expected = {key: str(value) for key, value in bindings.items()}
+        matches_bindings = any if match_any else all
         with self._sync_session() as session:
             matches = {
                 model.name
                 for model in UserOper(db=session).list()
                 if model.is_active
                 and model.settings
-                and all(model.settings.get(key) == value for key, value in expected.items())
+                and matches_bindings(model.settings.get(key) == value for key, value in expected.items())
             }
         return next(iter(matches)) if len(matches) == 1 else None

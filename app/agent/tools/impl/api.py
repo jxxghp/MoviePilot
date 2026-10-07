@@ -271,10 +271,12 @@ class MoviePilotApiTool(MoviePilotTool):
                 else None
             )
             if binding_keys:
+                # 渠道只提供一个标识，userid/openid 是候选字段；仓储统一拒绝跨用户歧义。
                 username = await self.run_blocking(
                     "db",
                     self._data.users.find_name_by_bindings,
                     {key: raw_user_id for key in binding_keys},
+                    match_any=True,
                 )
                 user = await self._data.users.async_get_by_name(username) if username else None
         if user is None and is_direct_user_channel and raw_user_id.isdigit():

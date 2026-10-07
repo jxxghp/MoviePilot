@@ -171,8 +171,10 @@ class ChainUserRepository(Protocol):
     def find_name_by_bindings(
         self,
         bindings: Mapping[str, object],
+        *,
+        match_any: bool = False,
     ) -> Optional[str]:
-        """解析唯一启用用户的渠道绑定，歧义时拒绝归属。"""
+        """默认匹配全部绑定；渠道候选字段可显式匹配任一项，仍须唯一启用用户。"""
 
 
 class UserRepository(Protocol):

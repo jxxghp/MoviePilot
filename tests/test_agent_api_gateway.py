@@ -29,6 +29,9 @@ from app.agent.tools.impl.agent_task import AgentTaskTool
 from app.agent.tools.impl.api import MoviePilotApiInput, MoviePilotApiTool
 from app.agent.tools.impl.execute_command import ExecuteCommandTool
 from app.agent.tools.manager import MoviePilotToolsManager
+from app.db.adapters.user import TransactionalUserRepository
+from app.db.models.user import User
+from app.db.session import SessionFactory, async_session_scope
 from app.schemas.types import NotificationChannel
 
 
@@ -680,6 +683,27 @@ def test_gateway_maps_verified_channel_admin_only_for_admin_operation() -> None:
     assert identity == ("7", "admin", True)
 
 
+@pytest.mark.parametrize("channel", [NotificationChannel.QQ, NotificationChannel.Feishu])
+@pytest.mark.parametrize("bound_suffix,other_suffix", [("openid", "userid"), ("userid", "openid")])
+@pytest.mark.parametrize("other_value", [None, "", "different-id", "channel-id"])
+def test_gateway_resolves_either_channel_binding(db, channel, bound_suffix, other_suffix, other_value) -> None:
+    """任一候选字段匹配即可绑定真实用户，另一字段缺失、为空或不同时仍可使用。"""
+    prefix = channel.name.lower()
+    bindings = {f"{prefix}_{bound_suffix}": "channel-id"}
+    if other_value is not None:
+        bindings[f"{prefix}_{other_suffix}"] = other_value
+    user = db.add(User(name="channel-owner", is_active=True, is_superuser=False, settings=bindings))
+    users = TransactionalUserRepository(sync_session=SessionFactory, async_session=async_session_scope)
+    gateway = MoviePilotApiTool(
+        session_id="session", user_id="channel-id", data=SimpleNamespace(users=users),
+    )
+    gateway.set_message_attr(channel=channel.value, source="main-bot", username="channel-nickname")
+
+    identity = asyncio.run(gateway._resolve_api_identity())
+
+    assert identity == (str(user.id), "channel-owner", False)
+
+
 @pytest.mark.parametrize("is_channel_admin", [False, True])
 @pytest.mark.parametrize("user_id,username", [(11, "alice"), (12, "bob")])
 @pytest.mark.parametrize(
@@ -721,7 +745,7 @@ def test_subscription_writes_keep_bound_channel_identity(
     assert (context.user_id, context.username, context.is_admin) == (str(user_id), username, False)
     users.find_name_by_bindings.assert_called_once_with({
         "feishu_userid": f"ou_{username}", "feishu_openid": f"ou_{username}",
-    })
+    }, match_any=True)
     superuser.assert_not_called()
 
 

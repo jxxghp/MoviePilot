@@ -265,6 +265,36 @@ def test_channel_binding_requires_all_supplied_identifiers(user_repository) -> N
     )
 
 
+@pytest.mark.parametrize("prefix", ["qq", "feishu"])
+@pytest.mark.parametrize("conflict_suffix", ["userid", "openid"])
+def test_channel_alias_binding_requires_unique_active_owner(user_repository, prefix, conflict_suffix) -> None:
+    """候选字段的任一匹配仍须归属唯一启用用户，同字段及跨字段冲突均拒绝。"""
+    repository, sync_factory = user_repository
+    expected = {f"{prefix}_userid": "channel-id", f"{prefix}_openid": "channel-id"}
+    _insert_user(
+        sync_factory,
+        name="disabled",
+        is_active=False,
+        settings={f"{prefix}_openid": "channel-id"},
+    )
+    assert repository.find_name_by_bindings(expected, match_any=True) is None
+
+    _insert_user(sync_factory, name="active", settings={f"{prefix}_openid": "channel-id"})
+    assert repository.find_name_by_bindings(expected, match_any=True) == "active"
+
+    _insert_user(sync_factory, name="conflict", settings={f"{prefix}_{conflict_suffix}": "channel-id"})
+    assert repository.find_name_by_bindings(expected, match_any=True) is None
+
+
+@pytest.mark.parametrize("match_any", [False, True])
+def test_channel_binding_rejects_empty_candidates(user_repository, match_any) -> None:
+    """空查询在全部匹配和任一匹配模式下都不得归属现有用户。"""
+    repository, sync_factory = user_repository
+    _insert_user(sync_factory)
+
+    assert repository.find_name_by_bindings({}, match_any=match_any) is None
+
+
 @pytest.mark.asyncio
 async def test_user_rename_migrates_configuration_atomically(tmp_path) -> None:
     """改名必须通过数据库级联迁移旧偏好。"""
