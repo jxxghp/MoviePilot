@@ -1,11 +1,12 @@
 """搜索检查点 Port 的同步短事务实现。"""
 
 from collections.abc import Callable
+from datetime import datetime, timedelta, timezone
 from typing import Optional, TypeVar
 
 from sqlalchemy.orm import Session
 
-from app.application.search.session import SearchSessionSnapshot
+from app.application.search.session import CHECKPOINT_RETENTION_SECONDS, SearchSessionSnapshot
 from app.db.models.searchsession import SearchSession
 from app.db.oper.searchsession import SearchSessionOper
 from app.db.uow import SqlAlchemyUnitOfWork
@@ -43,8 +44,15 @@ class TransactionalSearchSessionRepository:
             return _snapshot(SearchSessionOper(session).get(task_id))
 
     def create(self, *, task_id: str, payload: str, task_lease: Optional[str]) -> Optional[SearchSessionSnapshot]:
-        """创建任务检查点，失去任务租约时返回空。"""
-        return self._write(lambda oper: _snapshot(oper.create(task_id, payload, task_lease)))
+        """创建任务检查点，失去任务租约时返回空；顺带回收超过保留期的遗留检查点。"""
+        before = (datetime.now(timezone.utc) - timedelta(seconds=CHECKPOINT_RETENTION_SECONDS)).isoformat(
+            timespec="seconds")
+
+        def operation(oper: SearchSessionOper) -> Optional[SearchSessionSnapshot]:
+            oper.purge_stale(before)
+            return _snapshot(oper.create(task_id, payload, task_lease))
+
+        return self._write(operation)
 
     def save(self, *, snapshot: SearchSessionSnapshot, payload: str,
              task_lease: Optional[str]) -> Optional[SearchSessionSnapshot]:

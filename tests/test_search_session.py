@@ -113,3 +113,113 @@ def test_stale_worker_cannot_delete_progress_saved_after_lease_handover(reposito
     # 即使旧执行者碰巧持有新租约，旧版本也删不掉新版本。
     repo.delete(snapshot=stale, task_lease="new")
     assert repo.get(task_id="task").version == 1
+
+
+def _queue(tmp_path):
+    from app.db.adapters.subscriptionsearch import TransactionalSubscriptionSearchRepository
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'lifecycle.db'}")
+    Base.metadata.create_all(engine)
+    return TransactionalSubscriptionSearchRepository(sessionmaker(bind=engine)), engine
+
+
+@pytest.mark.parametrize("state", ["completed", "failed", "cancelled", "skipped"])
+def test_terminal_task_releases_its_checkpoint(tmp_path, state):
+    # 同一订阅之后的搜索是新任务，终态任务的检查点不会再被续用。
+    queue, engine = _queue(tmp_path)
+    queue.enqueue(subscription_ids=(1,), source="timer", priority=10)
+    task = queue.claim_next(owner="worker")
+    assert queue.sessions.create(task_id=task.task_id, payload="{}", task_lease=task.lease_token)
+    assert queue.finish_task(task_id=task.task_id, lease_token=task.lease_token, state=state, error=None)
+    assert queue.sessions.get(task_id=task.task_id) is None
+    engine.dispose()
+
+
+def test_deferred_task_keeps_checkpoint_until_batch_is_cancelled(tmp_path):
+    queue, engine = _queue(tmp_path)
+    enqueued = queue.enqueue(subscription_ids=(1,), source="timer", priority=10)
+    task = queue.claim_next(owner="worker")
+    queue.sessions.create(task_id=task.task_id, payload="{}", task_lease=task.lease_token)
+    assert queue.defer_task(task_id=task.task_id, lease_token=task.lease_token,
+                            available_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                            phase="waiting_site", message=None)
+    assert queue.sessions.get(task_id=task.task_id) is not None
+    # 排队中的任务被整批取消时直接进入终态，检查点同步删除。
+    assert queue.request_cancel(enqueued.batch.batch_id)
+    assert queue.sessions.get(task_id=task.task_id) is None
+    engine.dispose()
+
+
+def test_checkpoints_not_updated_for_fourteen_days_are_purged(repository):
+    from app.db.models.searchsession import SearchSession
+
+    repo, engine = repository
+    now = datetime.now(timezone.utc)
+    with sessionmaker(bind=engine)() as session:
+        for task_id, days in (("orphan", 15), ("recent", 13)):
+            session.add(SearchSession(task_id=task_id, version=0, payload="{}",
+                                      updated_at=(now - timedelta(days=days)).isoformat(timespec="seconds")))
+        session.commit()
+    assert repo.create(task_id="task", payload="{}", task_lease="old")
+    assert repo.get(task_id="orphan") is None
+    assert repo.get(task_id="recent") is not None
+
+
+@pytest.mark.parametrize("enclosure", [
+    "https://site.example/download/0123456789abcdef0123456789abcdef?id=1",
+    "https://site.example/dl/AbCdEfGh12345678IjKlMnOp9.torrent?id=1",
+])
+def test_passkey_in_download_path_is_not_persisted(enclosure):
+    assert torrent_snapshot(TorrentInfo(enclosure=enclosure))["enclosure"] is None
+
+
+def test_readable_page_paths_are_still_persisted():
+    torrent = TorrentInfo(page_url="https://site.example/torrents/1234567890123456789",
+                          enclosure="https://site.example/download.php?id=1&https=1")
+    snapshot = torrent_snapshot(torrent)
+    assert snapshot["page_url"] == torrent.page_url
+    assert snapshot["enclosure"] == torrent.enclosure
+
+
+def test_internal_candidate_id_is_not_exported():
+    torrent = TorrentInfo(site=1, title="Show")
+    torrent.search_resource_id = "internal"
+    assert "search_resource_id" not in torrent.to_dict()
+    assert TorrentInfo(1).site == 1
+
+
+def test_late_first_create_after_lease_handover_cannot_fail_the_new_owner(repository):
+    # 审查复现的交错：旧执行者在租约交接后才插入首个检查点，新执行者此前读到的是空。
+    from app.db.models.searchsession import SearchSession
+
+    repo, engine = repository
+    _set_lease(engine, "new")
+    # 租约条件在插入语句内校验：旧执行者交接后的首次创建不落库。
+    assert repo.create(task_id="task", payload='{"by":"old"}', task_lease="old") is None
+    assert repo.get(task_id="task") is None
+    # 即便旧行已经写入（如交接前已通过校验的迟到事务），新执行者也以版本递增接管，不因唯一键失败。
+    with sessionmaker(bind=engine)() as session:
+        session.add(SearchSession(task_id="task", version=0, payload='{"by":"old"}',
+                                  updated_at=datetime.now(timezone.utc).isoformat(timespec="seconds")))
+        session.commit()
+    stale = repo.get(task_id="task")
+    owned = repo.create(task_id="task", payload='{"by":"new"}', task_lease="new")
+    assert (owned.version, owned.payload) == (1, '{"by":"new"}')
+    # 旧执行者既不能再创建覆盖，也不能用旧版本推进或删除。
+    assert repo.create(task_id="task", payload='{"by":"old"}', task_lease="old") is None
+    assert repo.save(snapshot=stale, payload='{"by":"old"}', task_lease="old") is None
+    repo.delete(snapshot=stale, task_lease="old")
+    assert repo.get(task_id="task").payload == '{"by":"new"}'
+
+
+def test_first_create_statement_compiles_for_postgresql():
+    from sqlalchemy import literal, select
+    from sqlalchemy.dialects import postgresql
+    from sqlalchemy.dialects.postgresql import insert
+
+    from app.db.models.searchsession import SearchSession
+
+    statement = insert(SearchSession).from_select(
+        ["task_id", "version", "payload", "updated_at"], select(literal("t"), literal(0), literal("{}"), literal("now")),
+    ).on_conflict_do_nothing(index_elements=[SearchSession.task_id])
+    assert "ON CONFLICT (task_id) DO NOTHING" in str(statement.compile(dialect=postgresql.dialect()))

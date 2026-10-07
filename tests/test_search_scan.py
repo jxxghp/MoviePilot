@@ -223,7 +223,8 @@ def test_twelve_hundred_episodes_with_multiple_versions(owner, monkeypatch):
 
 
 def test_one_hundred_page_cap_ends_the_round_and_does_not_repeat(owner, monkeypatch):
-    calls = pages(owner, monkeypatch, {page: [torrent(1, page + 1)] for page in range(125)})
+    # 页面出现更新的集，缺失的 1200 属于已发布范围，需要一直翻到上限。
+    calls = pages(owner, monkeypatch, {page: [torrent(1300, page + 1)] for page in range(125)})
     scan = SearchScan(owner=owner, plan=plan([1200]))
     scan.run(lambda _items, ready: ready)
     assert calls == list(range(100))
@@ -411,15 +412,27 @@ def test_one_unidentifiable_resource_does_not_block_the_page(owner, monkeypatch)
 def test_restored_scope_recomputes_targets_for_resources_without_season(owner, monkeypatch):
     from app.application.search.session import SearchSessionSnapshot, encode_search_state
 
-    pages(owner, monkeypatch, {0: [TorrentInfo(site=1, description="e2", title="Show E02 2026 1080p",
+    pages(owner, monkeypatch, {0: [TorrentInfo(site=1, description="e1-2", title="Show E01-E02 2026 1080p",
                                                 enclosure="https://site.example/download?id=2")]})
     scan = SearchScan(owner=owner, plan=plan([1]))
     scan.step(next(key for key in scan.queries if not key.startswith("plugin:")))
     key = next(iter(scan.candidates))
-    assert scan.identity[key]["targets"] == []
+    assert scan.identity[key]["targets"] == ["1:1"]
     snapshot = SearchSessionSnapshot("scope", 1, encode_search_state(scan.state()))
     restored = SearchScan(owner=owner, plan=plan([1, 2]), snapshot=snapshot)
-    assert restored.identity[key]["targets"] == ["1:2"]
+    assert restored.identity[key]["targets"] == ["1:1", "1:2"]
+
+
+def test_checkpoint_keeps_only_candidates_covering_remaining_episodes(owner, monkeypatch):
+    # 连载动画大量旧集资源与本轮缺集无关，只留在本进程识别缓存，不写入检查点。
+    pages(owner, monkeypatch, {0: [torrent(ep) for ep in range(1, 31)]})
+    scan = SearchScan(owner=owner, plan=plan([20]))
+    scan.step(next(key for key in scan.queries if not key.startswith("plugin:")))
+    assert len(scan.identity) == 30
+    state = scan.state()
+    assert len(state["candidates"]) == 1
+    assert set(state["identity"]) == set(state["candidates"])
+    assert state["identity"][next(iter(state["candidates"]))]["targets"] == ["1:20"]
 
 
 def test_progress_log_summary_reports_page_and_remaining_episodes(owner, monkeypatch):
@@ -611,3 +624,108 @@ def test_finished_round_deletes_checkpoint(owner, monkeypatch, tmp_path):
     assert scan.ended
     assert repo.get(task_id="task") is None
     engine.dispose()
+
+
+def test_ongoing_series_releases_round_after_available_episodes_are_submitted(owner, monkeypatch):
+    # 连载到 1005 集：补完可下载的 1003 后，1006/1007 尚未发布，不深翻历史页，本轮结束交给订阅模式追更。
+    calls = pages(owner, monkeypatch, {0: [torrent(ep) for ep in range(1005, 995, -1)],
+                                     1: [torrent(ep) for ep in range(995, 985, -1)],
+                                     2: [torrent(ep) for ep in range(985, 975, -1)]})
+    submitted = []
+    scan = SearchScan(owner=owner, plan=plan([1003, 1006, 1007]))
+    scan.run(lambda _items, ready: submitted.append(set(ready)) or ready)
+    assert calls == [0, 1]
+    assert submitted == [{"1:1003"}]
+    assert scan.ended
+    assert scan.collection.remaining == {"1:1006", "1:1007"}
+    assert "E1006-E1007 尚未发布" in scan.progress_text()
+
+
+def test_only_unreleased_episodes_check_first_page_and_do_not_try_aliases(owner, monkeypatch):
+    monkeypatch.setattr(owner, "_prepare_params", lambda **_params: (None, ["First", "Alias"]))
+    calls = []
+    def request(**params):
+        calls.append((params["keyword"], params["page"]))
+        report_site_search_outcome(attempted=True, outcome="success")
+        report_site_search_page(raw_count=1, has_more=True)
+        return [torrent(1005 - params["page"])]
+    monkeypatch.setattr(owner, "search_site_torrents", request)
+    scan = SearchScan(owner=owner, plan=plan([1006]))
+    scan.run(lambda _items, ready: ready)
+    assert calls == [("First", 0)]
+    assert scan.ended
+
+
+def test_site_without_paging_is_checked_once_without_reporting_failure(owner, monkeypatch):
+    monkeypatch.setattr(owner, "get_search_page_size", lambda **_params: None)
+    calls = pages(owner, monkeypatch, {0: [torrent(2)], 1: [torrent(1)]})
+    scan = SearchScan(owner=owner, plan=plan([1]))
+    scan.run(lambda _items, ready: ready)
+    assert calls == [0]
+    assert not any(source.failed for source in scan.collection.sources.values())
+    assert "部分来源失败" not in scan.progress_text()
+
+
+def test_unchanged_checkpoint_is_not_written_again(owner, monkeypatch):
+    from types import SimpleNamespace
+
+    from app.application.search.session import SearchSessionSnapshot
+
+    class Repository:
+        def __init__(self):
+            self.writes = 0
+
+        def create(self, **_params):
+            self.writes += 1
+            return SearchSessionSnapshot("task", 0, "{}")
+
+        def save(self, *, snapshot, **_params):
+            self.writes += 1
+            return SearchSessionSnapshot("task", snapshot.version + 1, "{}")
+
+    pages(owner, monkeypatch, {0: [torrent(1)]})
+    repository = Repository()
+    execution = SimpleNamespace(task_id="task", task_lease="lease", is_cancel_requested=lambda: False)
+    scan = SearchScan(owner=owner, plan=plan([1, 2]), execution=execution, repository=repository)
+    scan.checkpoint()
+    scan.checkpoint()
+    assert repository.writes == 1
+    scan.step(next(key for key in scan.queries if not key.startswith("plugin:")))
+    assert repository.writes == 2
+
+
+def test_candidate_whose_page_keeps_failing_is_dropped_after_limited_retries(owner, monkeypatch):
+    # 最优候选的临时票据所在页一直重取失败：有限次重试后放弃，次优候选继续提交，不卡住整个订阅。
+    from app.application.search.session import SearchSessionSnapshot, encode_search_state
+    from app.application.site.observation import SiteSearchObservation
+    from app.application.subscription.sitebudget import SubscriptionSearchDeferred
+    from app.chain.search.scan import RECOVERY_ATTEMPTS, ScanPage
+
+    monkeypatch.setattr(TorrentHelper, "sort_torrents", staticmethod(lambda items: sorted(items, key=lambda item: item.torrent_info.description)))
+    best, other = torrent(1, 1), torrent(1, 2)
+    best.enclosure = "https://site.example/download?ticket=do-not-store"
+    pages(owner, monkeypatch, {0: [best], 1: [other]})
+    initial = SearchScan(owner=owner, plan=plan([1]), full=True)
+    source = next(key for key in initial.queries if not key.startswith("plugin:"))
+    for _page in range(3):
+        initial.step(source)
+    initial.step("plugin:Show")
+    monkeypatch.setattr(owner, "run_module", lambda _method, **params: TorrentInfo(**params["record"]))
+    requests = []
+    def fetch(_sources, _key, page, **_params):
+        requests.append(page)
+        return ScanPage([], SiteSearchObservation(True, "error", error="站点超时"))
+    monkeypatch.setattr(SearchSources, "fetch", fetch)
+    scan = SearchScan(owner=owner, plan=plan([1]), full=True,
+                      snapshot=SearchSessionSnapshot("round", 0, encode_search_state(initial.state())))
+    submitted = []
+    for _attempt in range(RECOVERY_ATTEMPTS - 1):
+        with pytest.raises(SubscriptionSearchDeferred):
+            scan.run(lambda items, goals: submitted.extend(i.torrent_info.description for i in items) or goals)
+    # 失败次数随检查点保存，重启后不会重新计数。
+    scan = SearchScan(owner=owner, plan=plan([1]), full=True,
+                      snapshot=SearchSessionSnapshot("round", 1, encode_search_state(scan.state())))
+    scan.run(lambda items, goals: submitted.extend(i.torrent_info.description for i in items) or goals)
+    assert requests == [0] * RECOVERY_ATTEMPTS
+    assert submitted == ["1-2"]
+    assert not scan.collection.remaining

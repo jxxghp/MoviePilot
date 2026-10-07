@@ -40,6 +40,10 @@ SEARCH_SLICE_SECONDS = 60
 AUTOMATIC_REQUEST_INTERVAL = 10
 # 检查点超过该时长未更新就丢弃旧进度重新搜索，已提交的目标保留。
 RESTART_AFTER_SECONDS = 36 * 3600
+# 检查点结构版本；不一致时不解析旧内容，直接从第一页重新搜索。
+_CHECKPOINT_FORMAT = 2
+# 重取临时下载票据所在原页连续失败达到该次数后放弃该候选，避免一个候选卡住整个订阅。
+RECOVERY_ATTEMPTS = 3
 
 
 def search_targets(plan: MediaSearchPlan) -> set[str]:
@@ -181,6 +185,8 @@ class SearchScan:
         self.disambiguation: DisambiguationCache = {}
         self.retry: dict[str, str] = {}
         self.retry_reasons: dict[str, str] = {}
+        # 候选原页重取的连续失败次数；站点等待不计入，只统计真实请求未成功。
+        self.recovery_failures: dict[str, int] = {}
         # 本轮已提交下载的目标，仅用于进度展示。
         self.submitted: set[str] = set()
         self.sources = SearchSources(owner, plan)
@@ -189,8 +195,14 @@ class SearchScan:
             "season": self.media.season, "episode_group": self.media.episode_group,
         })
         self._contract = self._contract_signature()
+        # 最近一次写入的检查点内容（不含保存时间），内容未变时跳过重复写入。
+        self._saved_body: Optional[str] = None
         if snapshot:
-            self._restore(json.loads(snapshot.payload))
+            data = json.loads(snapshot.payload)
+            if data.get("format") == _CHECKPOINT_FORMAT:
+                self._restore(data)
+            else:
+                self.restart = True
         else:
             self._add_sources(all_names=bool(self.owner.runtime_config.search_multiple_name))
 
@@ -232,6 +244,7 @@ class SearchScan:
         self.sources.keyword_index = data["keyword_index"]
         self.retry = data.get("retry", {})
         self.retry_reasons = data.get("retry_reasons", {})
+        self.recovery_failures = data.get("recovery_failures", {})
         self.submitted = set(data.get("submitted", []))
         same_media = data["media_identity"] == self._media_identity
         if not same_media:
@@ -257,12 +270,21 @@ class SearchScan:
                 source.last_request_at = 0
 
     def state(self) -> dict[str, Any]:
-        """页候选、关闭状态及下一页作为同一检查点保存。"""
-        return {"contract": self._contract, "media_identity": self._media_identity,
+        """页候选、关闭状态及下一页作为同一检查点保存。
+
+        只持久化仍覆盖剩余缺集的候选及其识别结果；不相关资源的识别缓存只留在本进程，
+        恢复后再次遇到时重新识别，避免检查点随翻页无限增长。
+        """
+        remaining = self.collection.remaining
+        candidates = {key: value for key, value in self.candidates.items()
+                      if set(self.identity[key]["targets"] or []) & remaining}
+        return {"format": _CHECKPOINT_FORMAT, "contract": self._contract, "media_identity": self._media_identity,
                 "collection": collection_snapshot(self.collection),
-                "identity": self.identity, "candidates": self.candidates, "queries": self.queries,
+                "identity": {key: self.identity[key] for key in candidates}, "candidates": candidates,
+                "queries": self.queries,
                 "keywords": self.sources.keywords, "keyword_index": self.sources.keyword_index,
                 "retry": self.retry, "retry_reasons": self.retry_reasons,
+                "recovery_failures": {key: count for key, count in self.recovery_failures.items() if key in candidates},
                 "submitted": sorted(self.submitted), "saved_at": time.time()}
 
     def progress_text(self) -> str:
@@ -274,10 +296,12 @@ class SearchScan:
         submitted = format_ranges([int(target.split(":")[1]) for target in self.submitted
                                    if ":" in target and not target.endswith(":season")]) or "无"
         page = max((source.next_page for source in self.collection.sources.values()), default=0)
+        unreleased = format_ranges([int(target.split(":")[1]) for target in self.collection.unreleased()])
+        waiting = f"（其中 {unreleased} 尚未发布，交给订阅模式追更）" if unreleased else ""
         if self.ended:
             failed = any(source.failed for source in self.collection.sources.values())
-            return f"本轮搜索结束，已提交：{submitted}，仍缺：{remaining}" + ("；部分来源失败" if failed else "")
-        return f"已搜索到第 {page} 页，已提交：{submitted}，仍缺：{remaining}"
+            return f"本轮搜索结束，已提交：{submitted}，仍缺：{remaining}{waiting}" + ("；部分来源失败" if failed else "")
+        return f"已搜索到第 {page} 页，已提交：{submitted}，仍缺：{remaining}{waiting}"
 
     def _lost_ownership(self) -> None:
         if self.execution and self.execution.is_cancel_requested():
@@ -288,7 +312,12 @@ class SearchScan:
         """任务租约失效后停止运行，不能继续副作用或跳过尚未持久化的页面。"""
         if not self.repository or not self.execution:
             return
-        payload = encode_search_state(self.state())
+        state = self.state()
+        saved_at = state.pop("saved_at")
+        body = encode_search_state(state)
+        if self.snapshot is not None and body == self._saved_body:
+            return
+        payload = encode_search_state({**state, "saved_at": saved_at})
         lease = self.execution.task_lease
         if self.snapshot is None:
             saved = self.repository.create(task_id=self.execution.task_id or "", payload=payload, task_lease=lease)
@@ -297,6 +326,7 @@ class SearchScan:
         if saved is None:
             self._lost_ownership()
         self.snapshot = saved
+        self._saved_body = body
 
     def _budget(self) -> Optional[SubscriptionSiteBudget]:
         budget = getattr(self.owner, "_subscription_site_budget", None)
@@ -330,6 +360,7 @@ class SearchScan:
             torrents=result.torrents, mediainfo=self.media, targets=self.collection.targets,
             custom_words=self.plan.custom_words or [], cache=self.identity, disambiguation=self.disambiguation,
         )
+        self.collection.observe(evidence)
         exhausted = key.startswith("plugin:") or observation.has_more is False or observation.raw_count == 0
         # 个别资源识别未知时本页仍然推进，只是不把本页当作任何目标的缺席证据。
         accepted = source.accept_page(page=page, evidence=evidence, targets=self.collection.remaining,
@@ -343,8 +374,8 @@ class SearchScan:
                 self.candidates[candidate_id] = {"torrent": torrent_snapshot(context.torrent_info),
                                                   "source": key, "page": page}
             if not key.startswith("plugin:") and not self.sources.pageable(key):
-                source.failed = True
-                source.error = "此站点搜索入口不支持分页，已保留第一页结果"
+                # 不支持分页的入口只检查第一页，按检查范围结束，不算来源失败。
+                source.page_limit = 1
         self.checkpoint()
         return bool(accepted)
 
@@ -396,7 +427,18 @@ class SearchScan:
             self.retry_reasons[source] = result.wait_reason or "busy"
             self._defer()
         if result.observation.outcome != "success":
-            self._defer()
+            failures = self.recovery_failures.get(key, 0) + 1
+            if failures < RECOVERY_ATTEMPTS:
+                self.recovery_failures[key] = failures
+                self._defer()
+            # 多次重取仍失败时放弃该候选，让排在后面的候选和兜底继续推进，下一轮搜索再重新发现。
+            self.recovery_failures.pop(key, None)
+            del self.candidates[key]
+            logger.warning(f"{self.media.title_year} 候选资源所在页面连续 {failures} 次重取失败，本轮放弃该候选："
+                           f"{result.observation.error or '请求未成功'}")
+            self.checkpoint()
+            return None
+        self.recovery_failures.pop(key, None)
         self.retry.pop(source, None)
         self.retry_reasons.pop(source, None)
         _, contexts = SearchResultOwner._identify_page(
@@ -464,6 +506,7 @@ class SearchScan:
         """重搜仅保留经恢复时媒体身份校验的已提交目标。"""
         self.collection = SearchCollection(search_targets(self.plan), settled=self.collection.settled)
         self.identity, self.candidates, self.live, self.retry, self.retry_reasons = {}, {}, {}, {}, {}
+        self.recovery_failures = {}
         self.sources.queries = {}
         self.sources.keyword_index = 0
         self.attempted.clear()
@@ -511,7 +554,7 @@ class SearchScan:
             self.repository.delete(snapshot=self.snapshot, task_lease=self.execution.task_lease)
             self.snapshot = None
         sites = [source for key, source in self.collection.sources.items() if not key.startswith("plugin:")]
-        plugin_result = any(source.resources for key, source in self.collection.sources.items() if key.startswith("plugin:"))
+        plugin_result = any(source.found for key, source in self.collection.sources.items() if key.startswith("plugin:"))
         requested_failure = any(source.failure_outcome not in {None, "skipped"} for source in sites)
         if self.collection.remaining and requested_failure and sites and all(source.failed and not source.next_page for source in sites) and not plugin_result:
             raise SubscriptionSiteSearchFailed("；".join(dict.fromkeys(source.error or "站点搜索失败" for source in sites)))
@@ -529,7 +572,8 @@ class SearchScan:
                 self.choose(self.collection.ready(full=self.full), submit)
                 if self._has_cached_ready() or self.collection.active_sources(full=self.full):
                     continue
-                if not self.collection.remaining or not self._add_sources():
+                # 只剩未发布目标时不再尝试别名：已见集数证明主关键词有效，后续集交给订阅模式追更。
+                if not self.collection.pending or not self._add_sources():
                     self._finish_round()
                     return
                 self.checkpoint()

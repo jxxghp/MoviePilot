@@ -108,6 +108,12 @@ DATABASE_TABLE_GUIDES: dict[str, tuple[str, str, str]] = {
         "with, or finding which instance currently overrides the global log level and until when.",
         "Owned by the plugin instance, plugin configuration, and plugin log-level APIs; never edit rows directly.",
     ),
+    "searchsession": (
+        "Stores the page cursor and pending candidates of one unfinished subscription search task, without site "
+        "credentials; removed when the task ends and purged after 14 days without updates.",
+        "Diagnosing a paused or resumed paged search through task_id, version, and updated_at.",
+        "Written only under the queue task lease with version CAS; never edit payloads, they can skip pages or resubmit candidates.",
+    ),
     "site": (
         "Stores private-tracker URLs, RSS, credentials, rate limits, proxy state, and downloader binding.",
         "Inspecting enablement, domain, rate limits, or downloader binding with minimal credential exposure.",

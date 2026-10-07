@@ -1,6 +1,11 @@
 """用户场景驱动的智能收集、中断后重拉第一页与页数上限回归。"""
 
-from app.domain.search import SearchCollection, SearchResourceEvidence, SearchSourceCursor
+from app.domain.search import (
+    SearchCollection,
+    SearchResourceEvidence,
+    SearchSourceCursor,
+    search_page_signature,
+)
 
 
 def evidence(key, *targets):
@@ -20,7 +25,7 @@ def test_closed_source_keeps_shared_cursor_for_opportunistic_candidates():
     assert source.closed == {"E1"}
     assert collection.ready() == set()
     accept(source, 2, [evidence("late", "E1"), evidence("four2", "E4")])
-    assert "late" in source.resources
+    assert source.found
     assert "E1" in source.closed
     assert source.next_page == 3
     collection.deepen({"E1"})
@@ -53,7 +58,6 @@ def test_resume_after_interruption_loads_next_page_then_refreshes_first_page():
     closed, seen = set(source.closed), set(source.seen)
     # 置顶与旧资源按去重键只算一份，新资源补入；第一页不作为缺席证据，原页码不变。
     accept(source, 0, [evidence("pin", "E1"), evidence("new", "E4"), evidence("old")], now=903)
-    assert source.resources == {"pin", "old", "tail", "next", "new"}
     assert (source.closed, source.seen) == (closed, seen)
     assert source.page_to_request(904) == 3
 
@@ -92,12 +96,49 @@ def test_page_identical_to_previous_page_is_treated_as_empty_last_page():
     assert source.next_page == 3
 
 
-def test_partial_overlap_keeps_paging_and_checkpoint_resource_ids():
+def test_partial_overlap_keeps_paging_and_checkpoint_page_signature():
     source = SearchSourceCursor()
     accept(source, 0, [evidence("pin"), evidence("one", "E1")])
     accept(source, 1, [evidence("pin"), evidence("two", "E4")])
     assert not source.exhausted
-    assert source.last_page_ids == ("pin", "two")
+    assert source.last_page_signature == search_page_signature(["pin", "two"])
     assert accept(source, 2, [evidence("pin"), evidence("two", "E4")])
     assert source.exhausted
-    assert source.last_page_ids == ()
+    assert source.last_page_signature is None
+
+
+def released(key, latest, *targets):
+    return SearchResourceEvidence(key, frozenset(targets), (("1", latest),))
+
+
+def test_episodes_newer_than_any_seen_resource_only_need_first_pages():
+    collection = SearchCollection({"1:1003", "1:1006"}, {"A": SearchSourceCursor(), "B": SearchSourceCursor()})
+    page = [released("1005", 1005), released("1003", 1003, "1:1003")]
+    collection.observe(page)
+    collection.sources["A"].accept_page(page=0, evidence=page, targets=collection.remaining, exhausted=False, now=1)
+    assert collection.unreleased() == {"1:1006"}
+    # B 尚未请求第一页，仍为未发布目标查第一页；A 只为已发布的 1003 继续翻页。
+    assert collection.active_sources() == ["A", "B"]
+    collection.sources["B"].accept_page(page=0, evidence=[], targets=collection.remaining, exhausted=False, now=1)
+    collection.settle({"1:1003"})
+    assert collection.active_sources() == []
+    assert collection.ready() == {"1:1006"}
+    assert collection.pending == set()
+    collection.deepen({"1:1006"})
+    assert collection.fallback == set()
+
+
+def test_deeper_page_with_newer_episode_restores_normal_collection():
+    collection = SearchCollection({"1:12"}, {"A": SearchSourceCursor(next_page=1)})
+    collection.observe([released("ep10", 10)])
+    assert collection.unreleased() == {"1:12"}
+    collection.observe([released("ep13", 13)])
+    assert collection.unreleased() == set()
+    assert collection.active_sources() == ["A"]
+
+
+def test_without_any_resource_of_the_season_targets_keep_normal_collection():
+    collection = SearchCollection({"1:5"}, {"A": SearchSourceCursor(next_page=1)})
+    collection.observe([SearchResourceEvidence("other", frozenset())])
+    assert collection.unreleased() == set()
+    assert collection.active_sources() == ["A"]

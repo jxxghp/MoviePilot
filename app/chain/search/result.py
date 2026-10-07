@@ -279,6 +279,13 @@ def _resource_targets(meta: MetaBase, targets: set[str], media_type: object) -> 
     return matched
 
 
+def _resource_latest(meta: MetaBase, media_type: object) -> list[list[Any]]:
+    """资源覆盖的各季最大集号；整季包没有集号，不参与已发布范围判断。"""
+    if media_type == MediaType.MOVIE or not meta.episode_list:
+        return []
+    return [[str(season), max(meta.episode_list)] for season in meta.season_list]
+
+
 def stored_meta(record: dict[str, Any]) -> MetaBase:
     """从识别缓存恢复元数据而不重跑识别词解析；JSON 中的类型须还原为枚举。"""
     meta = object.__new__(MetaBase)
@@ -315,10 +322,12 @@ class SearchResultOwner(_SearchOwnerBase):
                                                and disambiguation[_disambiguation_key(meta)] is None)
                 matched_targets = _resource_targets(meta, targets, mediainfo.type) if source else set()
                 record = {"targets": None if unknown else sorted(matched_targets),
-                          "source": source, "meta": vars(meta).copy()}
+                          "source": source, "meta": vars(meta).copy(),
+                          "latest": _resource_latest(meta, mediainfo.type) if source and not unknown else []}
                 cache[key] = record
             matches = None if record["targets"] is None else frozenset(record["targets"])
-            evidence.append(SearchResourceEvidence(key, matches))
+            latest = tuple((str(season), int(episode)) for season, episode in record.get("latest") or [])
+            evidence.append(SearchResourceEvidence(key, matches, latest))
             if record["source"]:
                 meta = stored_meta(record)
                 meta.type = mediainfo.type

@@ -274,11 +274,8 @@ The `download.add` body must contain `torrent_in` (at least `title` and `enclosu
 
 ## Collection Counts And Pagination
 
-- Web-only manual search SSE uses client-owned page numbers and `can_continue` to
-  permit another attempt. Clients echo `source` and `page`; the server caches page
-  digests for 36 hours. If the previous digest expires or is missing, it fetches
-  the previous page before the requested page and returns only the requested page.
-  See [the search contract](api/search.md). This does not add Agent operations.
+- Search SSE `manual_paging=true` is a Web-only page-by-page mode and adds no Agent
+  operations; keep using the documented `search.*` operations.
 - For list inspection, explicitly send the operation's documented pagination
   fields instead of requesting an unbounded legacy result. For optional legacy
   pagination, start with `query={"page":1,"count":20}`.

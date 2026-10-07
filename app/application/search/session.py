@@ -1,6 +1,7 @@
 """搜索会话的持久检查点端口；页面候选和游标必须一次保存。"""
 
 import json
+import re
 from dataclasses import asdict, dataclass
 from enum import Enum
 from typing import Any, Optional, Protocol
@@ -14,6 +15,10 @@ _TORRENT_FIELDS = (
     "downloadvolumefactor", "hit_and_run", "labels", "pri_order", "category", "site_order",
 )
 _PUBLIC_QUERY_FIELDS = {"id", "tid", "torrentid", "torrent_id", "https", "type"}
+# 路径中含字母的长十六进制串或字母数字混合长串可能是 passkey/RSS key；纯数字 ID 和带连字符的 slug 不受影响。
+_SECRET_PATH_SEGMENT = re.compile(r"^(?:(?=[0-9]*[A-Fa-f])[0-9A-Fa-f]{16,}|(?=.*[0-9])(?=.*[A-Za-z])[A-Za-z0-9]{24,})$")
+# 检查点超过该时长未更新时由保底清理删除；正常情况下任务进入终态即删除。
+CHECKPOINT_RETENTION_SECONDS = 14 * 24 * 3600
 
 
 def public_resource_url(value: Optional[str]) -> Optional[str]:
@@ -24,6 +29,8 @@ def public_resource_url(value: Optional[str]) -> Optional[str]:
     if parts.scheme not in {"http", "https"} or parts.username or parts.password:
         return None
     if any(key.lower() not in _PUBLIC_QUERY_FIELDS for key, _ in parse_qsl(parts.query)):
+        return None
+    if any(_SECRET_PATH_SEGMENT.match(segment.split(".", 1)[0]) for segment in parts.path.split("/")):
         return None
     return parts._replace(fragment="").geturl()
 
@@ -59,14 +66,13 @@ def collection_snapshot(collection: SearchCollection) -> dict[str, Any]:
 def restore_collection(values: dict[str, Any]) -> SearchCollection:
     """恢复每来源的分页进度及关闭证据。"""
     sources = {}
-    set_fields = {"seen", "closed", "resources"}
     for key, data in values["sources"].items():
         params = dict(data)
-        for name in set_fields:
+        for name in ("seen", "closed"):
             params[name] = set(params.get(name, []))
-        params["last_page_ids"] = tuple(params["last_page_ids"])
         sources[key] = SearchSourceCursor(**params)
-    return SearchCollection(set(values["targets"]), sources, set(values["settled"]), set(values["fallback"]))
+    return SearchCollection(set(values["targets"]), sources, set(values["settled"]), set(values["fallback"]),
+                            dict(values.get("released") or {}))
 
 
 @dataclass(frozen=True, slots=True)

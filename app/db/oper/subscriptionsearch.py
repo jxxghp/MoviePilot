@@ -5,13 +5,14 @@ from datetime import datetime, timedelta, timezone
 from typing import Mapping, Optional
 from uuid import uuid4
 
-from sqlalchemy import and_, case, func, or_, select, update
+from sqlalchemy import and_, case, delete, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper, execute_dml
+from app.db.models.searchsession import SearchSession
 from app.db.models.subscriptionsearch import (
     SubscriptionSearchBatch,
     SubscriptionSearchTask,
@@ -349,6 +350,12 @@ class SubscriptionSearchOper(DbOper):
         )
         if not updated:
             return False
+        # 终态任务不会再被续用（同一订阅之后的搜索是新任务），分页检查点随之释放。
+        execute_dml(
+            self._db,
+            delete(SearchSession).where(SearchSession.task_id == task_id),
+            execution_options={"synchronize_session": False},
+        )
         self._refresh_batch(task.batch_id, now=now, error=error)
         return True
 
@@ -514,6 +521,16 @@ class SubscriptionSearchOper(DbOper):
                 SubscriptionSearchTask.state == "running",
             )
             .values(cancel_requested=1, phase="cancelling", updated_at=now),
+            execution_options={"synchronize_session": False},
+        )
+        execute_dml(
+            self._db,
+            delete(SearchSession).where(SearchSession.task_id.in_(
+                select(SubscriptionSearchTask.task_id).where(
+                    SubscriptionSearchTask.batch_id == batch_id,
+                    SubscriptionSearchTask.state == "cancelled",
+                )
+            )),
             execution_options={"synchronize_session": False},
         )
         self._refresh_batch(batch_id, now=now, error=None)
