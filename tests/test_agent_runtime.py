@@ -1,7 +1,10 @@
 """Agent 运行时配置与已废弃活动目录的 pytest 回归。"""
 
+import os
 import shutil
+import sqlite3
 import textwrap
+from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -18,6 +21,108 @@ def context(tmp_path):
     defaults_root = Path(__file__).resolve().parents[1] / "app" / "agent" / "defaults"
     return SimpleNamespace(temp_root=tmp_path, agent_root=agent_root, defaults_root=defaults_root,
                            _manager=lambda: AgentRuntimeManager(agent_root_dir=agent_root, bundled_defaults_dir=defaults_root))
+
+
+@pytest.fixture
+def signature_manager(context):
+    """签名测试使用临时配置与默认模板，避免改动仓库内置文件。"""
+    defaults_root = context.temp_root / 'defaults'
+    shutil.copytree(context.defaults_root, defaults_root)
+    manager = AgentRuntimeManager(agent_root_dir=context.agent_root, bundled_defaults_dir=defaults_root)
+    manager.ensure_layout()
+    return manager
+
+
+def test_signature_ignores_history_wal_lifecycle(signature_manager, monkeypatch):
+    """历史库及 WAL 边车的创建、写入和删除不应改变配置签名。"""
+    manager = signature_manager
+    monkeypatch.setattr(manager, '_signature_check_interval', 0)
+    config = manager.load_runtime_config()
+    signature = manager.current_signature()
+    database = manager.runtime_dir / 'history' / 'users' / 'test-user' / 'state.db'
+    database.parent.mkdir(parents=True)
+
+    for value in ('first message', 'second message'):
+        with closing(sqlite3.connect(database)) as connection:
+            connection.execute('PRAGMA journal_mode=WAL')
+            connection.execute('CREATE TABLE IF NOT EXISTS messages (text TEXT)')
+            connection.execute('INSERT INTO messages VALUES (?)', (value,))
+            connection.commit()
+            assert database.with_name('state.db-wal').exists()
+            assert database.with_name('state.db-shm').exists()
+            assert manager.current_signature() == signature
+            assert manager.load_runtime_config() is config
+
+        assert not database.with_name('state.db-wal').exists()
+        assert not database.with_name('state.db-shm').exists()
+        assert manager.current_signature() == signature
+
+    with closing(sqlite3.connect(database)) as connection:
+        assert connection.execute('SELECT COUNT(*) FROM messages').fetchone()[0] == 2
+
+
+def test_signature_does_not_traverse_history_directory(signature_manager, monkeypatch):
+    """历史目录应在递归前排除，避免扫描持续增长且并发变化的用户数据。"""
+    manager = signature_manager
+    signature = manager._build_signature()
+    history_root = manager.runtime_dir / 'history'
+    (history_root / 'users' / 'test-user').mkdir(parents=True)
+    original_scandir = os.scandir
+
+    def guarded_scandir(path):
+        """以文件系统边界断言扫描器没有进入历史目录。"""
+        assert not Path(path).is_relative_to(history_root)
+        return original_scandir(path)
+
+    monkeypatch.setattr(os, 'scandir', guarded_scandir)
+    assert manager._build_signature() == signature
+
+
+@pytest.mark.parametrize('root_name', ['runtime_dir', 'bundled_defaults_dir'])
+def test_signature_tolerates_file_removed_after_type_check(signature_manager, monkeypatch, root_name):
+    """确定性复现文件类型检查成功、读取元数据前文件被并发删除的竞态。"""
+    manager = signature_manager
+    signature = manager._build_signature()
+    transient = getattr(manager, root_name) / 'transient.md'
+    transient.write_text('temporary context', encoding='utf-8')
+    original_is_file = Path.is_file
+    removed = []
+
+    def remove_after_type_check(path):
+        """在扫描器确认文件类型后删除文件，复现 Issue 中的消失时序。"""
+        result = original_is_file(path)
+        if path == transient and result:
+            path.unlink()
+            removed.append(path)
+        return result
+
+    monkeypatch.setattr(Path, 'is_file', remove_after_type_check)
+    assert manager._build_signature() == signature
+    assert removed == [transient]
+
+
+@pytest.mark.parametrize('root_name', ['runtime_dir', 'bundled_defaults_dir'])
+@pytest.mark.parametrize('relative_path', [
+    'CURRENT_PERSONA.md',
+    'personas/default/PERSONA.md',
+    'subagents/general-purpose/SUBAGENT.md',
+    'extra/history/context.md',
+])
+def test_signature_tracks_configuration_changes(signature_manager, root_name, relative_path):
+    """排除历史数据库后，人格、子代理和任意额外上下文仍参与增改删检测。"""
+    manager = signature_manager
+    path = getattr(manager, root_name) / relative_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.unlink(missing_ok=True)
+    absent = manager._build_signature()
+    path.write_text('context', encoding='utf-8')
+    created = manager._build_signature()
+    assert created != absent
+    path.write_text('updated context', encoding='utf-8')
+    updated = manager._build_signature()
+    assert updated != created
+    path.unlink()
+    assert manager._build_signature() == absent
 
 
 def test_default_root_uses_runtime_settings_service(context):
