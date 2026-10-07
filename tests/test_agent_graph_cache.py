@@ -3,7 +3,7 @@
 from contextlib import ExitStack
 from datetime import datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
@@ -188,6 +188,8 @@ async def test_expired_unchanged_catalog_renews_freshness() -> None:
         _llm_type="openai-chat",
         model="fake",
         profile={"max_input_tokens": 64000},
+        http_client=SimpleNamespace(close=Mock()),
+        http_async_client=SimpleNamespace(aclose=AsyncMock()),
     )
     temporary_middleware = SimpleNamespace(close=AsyncMock())
 
@@ -259,6 +261,8 @@ async def test_expired_unchanged_catalog_renews_freshness() -> None:
     assert graph is cached_graph
     assert agent._compiled_agent_bundle.catalog_checked_at > expired_at
     temporary_middleware.close.assert_awaited_once()
+    fake_llm.http_client.close.assert_called_once()
+    fake_llm.http_async_client.aclose.assert_awaited_once()
 
 
 @pytest.mark.anyio
@@ -269,12 +273,15 @@ async def test_create_agent_cancellation_closes_temporary_subagent_middleware() 
         _llm_type="openai-chat",
         model="fake",
         profile={"max_input_tokens": 64000},
+        http_client=SimpleNamespace(close=Mock()),
+        http_async_client=SimpleNamespace(aclose=AsyncMock()),
     )
     temporary_middleware = SimpleNamespace(close=AsyncMock())
     signature_started = __import__("asyncio").Event()
     agent = MoviePilotAgent(session_id="cancel-create", user_id="user-1")
 
     async def _wait_for_signature(*_args, **_kwargs):
+        """在模型和临时中间件创建后暂停，验证构图取消的清理顺序。"""
         signature_started.set()
         await __import__("asyncio").Future()
 
@@ -353,6 +360,8 @@ async def test_create_agent_cancellation_closes_temporary_subagent_middleware() 
             await create_task
 
     temporary_middleware.close.assert_awaited_once()
+    fake_llm.http_client.close.assert_called_once()
+    fake_llm.http_async_client.aclose.assert_awaited_once()
 
 
 @pytest.mark.anyio

@@ -1200,7 +1200,7 @@ def test_summary_failure_preserves_database_history():
         user_id=user_id,
         memory=isolated_memory,
     )
-    agent._compiled_agent_bundle = object()
+    agent._compiled_agent_bundle = SimpleNamespace(models=())
     agent._should_stream = lambda: False
     agent._create_agent = AsyncMock(return_value=_FailingGraph())
     agent.stream_handler = SimpleNamespace(stop_streaming=AsyncMock(return_value=(False, "")))

@@ -96,7 +96,7 @@ async def test_failure_preserves_completed_receipts_and_marks_unknown_outcomes(r
     original = _completed_tool_messages()
     graph = _InterruptedGraph(original)
     agent._create_agent = AsyncMock(return_value=graph)
-    agent._compiled_agent_bundle = object()
+    agent._compiled_agent_bundle = SimpleNamespace(models=())
 
     result, _ = await agent._execute_agent(original[:1])
 
@@ -131,7 +131,7 @@ async def test_cancellation_preserves_snapshot_and_still_propagates(recovery_age
     agent._should_stream = lambda: streaming
     graph = _InterruptedGraph(_completed_tool_messages(), blocked=True)
     agent._create_agent = AsyncMock(return_value=graph)
-    agent._compiled_agent_bundle = object()
+    agent._compiled_agent_bundle = SimpleNamespace(models=())
     execution = asyncio.create_task(agent._execute_agent(graph.messages[:1]))
     await graph.started.wait()
     execution.cancel()
@@ -186,7 +186,7 @@ async def test_snapshot_failure_does_not_replace_original_error(recovery_agent, 
         agent._get_recursion_limit = lambda: int("invalid configuration")
     if failure == "persistence":
         agent._memory.async_save_agent_messages = AsyncMock(side_effect=RuntimeError("save failed"))
-    agent._compiled_agent_bundle = object()
+    agent._compiled_agent_bundle = SimpleNamespace(models=())
 
     result, _ = await agent._execute_agent(graph.messages[:1])
 
@@ -237,7 +237,7 @@ async def test_second_cancellation_during_snapshot_still_invalidates_graph(recov
     agent, persistence = recovery_agent
     graph = _InterruptedGraph(_completed_tool_messages(), blocked=True)
     agent._create_agent = AsyncMock(return_value=graph)
-    agent._compiled_agent_bundle = object()
+    agent._compiled_agent_bundle = SimpleNamespace(models=())
     saving = asyncio.Event()
 
     async def block_save(**_kwargs):

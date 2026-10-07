@@ -243,6 +243,7 @@ class _CompiledAgentBundle:
     plugin_revision: int = -1
     mcp_config_signature: str = ""
     catalog_checked_at: Optional[datetime] = None
+    models: tuple[Any, ...] = ()
 
 
 class _ThinkTagStripper:
@@ -470,6 +471,7 @@ class MoviePilotAgent:
         self._llm_provider_selection: Dict[str, Any] = {}
         self._agent_started_at: Optional[datetime] = None
         self._compiled_agent_bundle: Optional[_CompiledAgentBundle] = None
+        self._retired_llm_models: list[Any] = []
         self._subagent_middlewares: tuple[Any, ...] = ()
         self._shutdown_started = False
         self._last_agent_cache_hit = False
@@ -605,12 +607,15 @@ class MoviePilotAgent:
         if not str(message or "").strip():
             return ""
         model = await self._initialize_llm(streaming=False)
-        response = await model.ainvoke(
-            [
-                SystemMessage(content=AGENT_CHAT_TITLE_PROMPT),
-                HumanMessage(content=self._build_chat_title_message(message)),
-            ]
-        )
+        try:
+            response = await model.ainvoke(
+                [
+                    SystemMessage(content=AGENT_CHAT_TITLE_PROMPT),
+                    HumanMessage(content=self._build_chat_title_message(message)),
+                ]
+            )
+        finally:
+            await self._release_llm_models((model,))
         content = LLMHelper.extract_text_content(getattr(response, "content", response))
         title = self._parse_chat_title_response(content)
         if not self._is_valid_chat_title(title):
@@ -1756,6 +1761,7 @@ class MoviePilotAgent:
         subagent_catalog: ToolCatalogSnapshot,
         mcp_config_signature: str,
         subagent_middlewares: tuple[Any, ...] = (),
+        models: tuple[Any, ...] = (),
     ) -> Any:
         """保存当前会话可复用的 Agent 图。"""
         previous_middlewares = tuple(
@@ -1765,6 +1771,8 @@ class MoviePilotAgent:
         )
         if self._shutdown_started:
             self._seal_subagent_middleware_instances(subagent_middlewares)
+        if self._compiled_agent_bundle:
+            self._retired_llm_models.extend(self._compiled_agent_bundle.models)
         pending_middlewares = await self._close_subagent_middleware_instances(previous_middlewares)
         self._compiled_agent_bundle = _CompiledAgentBundle(
             signature=signature,
@@ -1776,20 +1784,43 @@ class MoviePilotAgent:
             plugin_revision=tool_catalog.plugin_revision,
             mcp_config_signature=mcp_config_signature,
             catalog_checked_at=datetime.now(),
+            models=models,
         )
         self._subagent_middlewares = self._merge_subagent_middleware_owners(
             pending_middlewares,
             subagent_middlewares,
         )
+        await self._release_retired_llm_models(consumers_closed=not pending_middlewares)
         return agent
 
+    async def _release_llm_models(self, models: tuple[Any, ...]) -> bool:
+        """释放已无消费者的模型；关闭失败或清理被取消时保留模型供下一次清理。"""
+        for model in models:
+            if not any(model is existing for existing in self._retired_llm_models):
+                self._retired_llm_models.append(model)
+        for model in models:
+            if await LLMHelper.close_llm(model):
+                self._retired_llm_models = [item for item in self._retired_llm_models if item is not model]
+        return not self._retired_llm_models
+
+    async def _release_retired_llm_models(self, *, consumers_closed: bool) -> bool:
+        """等子代理及共享模型的后台复盘退出后，再释放旧图连接。"""
+        learning_run = self._learning.run if self._learning else None
+        learning_active = bool(learning_run and learning_run.task and not learning_run.task.done())
+        if not consumers_closed or learning_active:
+            return not self._retired_llm_models
+        return await self._release_llm_models(tuple(self._retired_llm_models))
+
     async def _invalidate_cached_agent(self) -> bool:
-        """使当前图失效，未收敛的子代理控制器继续由 Agent 持有。"""
+        """使当前图失效，未收敛的消费者及其模型连接继续由 Agent 持有。"""
         subagent_middlewares = self._subagent_middlewares
+        if self._compiled_agent_bundle:
+            self._retired_llm_models.extend(self._compiled_agent_bundle.models)
         self._compiled_agent_bundle = None
         pending_middlewares = await self._close_subagent_middleware_instances(subagent_middlewares)
         self._subagent_middlewares = pending_middlewares
-        return not pending_middlewares
+        models_closed = await self._release_retired_llm_models(consumers_closed=not pending_middlewares)
+        return not pending_middlewares and models_closed
 
     @staticmethod
     def _latest_turn_messages(messages: List[BaseMessage]) -> List[BaseMessage]:
@@ -1881,6 +1912,8 @@ class MoviePilotAgent:
         :param streaming: 是否启用流式输出
         """
         temporary_subagent_middlewares: tuple[Any, ...] = ()
+        temporary_models: list[Any] = []
+        pending_middlewares: tuple[Any, ...] = ()
         try:
             runtime_config = await self._resolve_llm_runtime_config()
             plugin_revision = _get_plugin_tools_revision()
@@ -1939,12 +1972,15 @@ class MoviePilotAgent:
 
             # LLM 模型（用于 agent 执行）
             agent_model = await self._initialize_llm(streaming=streaming)
+            temporary_models.append(agent_model)
             self._sync_model_profile(agent_model)
             # 供应商原生工具不进入本地 ToolNode，宿主策略只覆盖 client-side tools。
             server_tools = LLMHelper.get_server_tools(agent_model)
 
             # 为内部模型调用准备非流式 LLM，避免与用户流式回复复用同一实例。
             non_streaming_model = agent_model if not streaming else await self._initialize_llm(streaming=False)
+            if non_streaming_model is not agent_model:
+                temporary_models.append(non_streaming_model)
             skills_middleware = SkillsMiddleware(
                 sources=[str(agent_runtime_manager.skills_dir)],
                 bundled_skills_dir=str(get_runtime_setting("ROOT_PATH") / "skills"),
@@ -2104,8 +2140,10 @@ class MoviePilotAgent:
                 subagent_catalog=subagent_catalog,
                 mcp_config_signature=mcp_config_signature,
                 subagent_middlewares=tuple(subagent_middlewares),
+                models=tuple(temporary_models),
             )
             temporary_subagent_middlewares = ()
+            temporary_models = []
             return cached_agent
         except asyncio.CancelledError:
             pending_middlewares = await self._close_subagent_middleware_instances(temporary_subagent_middlewares)
@@ -2122,6 +2160,11 @@ class MoviePilotAgent:
             )
             logger.error(f"创建 Agent 失败: {e}")
             raise
+        finally:
+            if pending_middlewares:
+                self._retired_llm_models.extend(temporary_models)
+            else:
+                await self._release_llm_models(tuple(temporary_models))
 
     async def process(
         self,
@@ -2714,7 +2757,7 @@ class MoviePilotAgent:
             if not await self.release_terminal_scope(scope):
                 terminals_closed = False
         if not children_closed or not terminals_closed or not learning_closed:
-            logger.error(f"MoviePilot智能体仍有子代理或终端未收敛: session_id={self.session_id}")
+            logger.error(f"MoviePilot智能体仍有子代理、模型连接或终端未收敛: session_id={self.session_id}")
             return False
         self._pending_secret_confirmation = None
         self.protected_output_callback = None

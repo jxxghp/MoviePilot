@@ -802,6 +802,13 @@ consumes the registered runtime and must not recreate provider discovery or lega
 runtime fallbacks; management tests pass the facade directly to avoid a
 `provider_manage -> helper -> gateway -> provider_manage` call loop.
 
+`LLMHelper.get_llm()` 返回的 OpenAI/DeepSeek 模型独占其 `http_client` 和
+`http_async_client`；使用者通过 `LLMHelper.close_llm()` 在原事件循环释放连接。
+同步客户端关闭复用 `ThreadHelper.submit()` 的宿主线程池，不在事件循环阻塞等待。
+模型测试与标题生成在请求的 `finally` 中关闭；Agent 缓存图持有执行、摘要和子代理
+模型，图复核中丢弃的临时模型立即关闭，旧图则等待子代理与后台复盘退出后释放。
+关闭失败时 Agent 保留模型 owner 并重试，不遍历或关闭供应商 SDK 内部的共享客户端。
+
 `app.agent` and `app.agent.llm` package roots contain no implementation,
 dynamic forwarding or host export list. Canonical callers import the owning
 module directly, such as `app.agent.orchestrator`, `app.agent.llm.helper`,

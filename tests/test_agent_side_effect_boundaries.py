@@ -324,7 +324,7 @@ async def test_agent_execution_failure_closes_cached_subagent_middleware() -> No
     agent = MoviePilotAgent(session_id="session-1", user_id="user-1")
     middleware = SimpleNamespace(close=AsyncMock())
     graph = SimpleNamespace(ainvoke=AsyncMock(side_effect=RuntimeError("failed")))
-    agent._compiled_agent_bundle = SimpleNamespace(agent=graph)
+    agent._compiled_agent_bundle = SimpleNamespace(agent=graph, models=())
     agent._subagent_middlewares = (middleware,)
     agent._should_stream = lambda: False
     agent._create_agent = AsyncMock(return_value=graph)

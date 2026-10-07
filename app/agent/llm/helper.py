@@ -14,6 +14,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk
 from app.agent.llm.gateway import LLMProviderRuntimePort, resolve_llm_provider_runtime
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
+from app.runtime.thread import ThreadHelper
 
 if TYPE_CHECKING:
     from app.agent.llm.tools import ServerToolResolution
@@ -1492,7 +1493,7 @@ class LLMHelper:
             provider_runtime: LLMProviderRuntimePort | None = None,
     ):
         """
-        获取LLM实例
+        获取 LLM 实例；调用方负责在请求或缓存图不再使用模型时调用 close_llm。
         :param streaming: 是否启用流式输出
         :param provider: LLM提供商，默认为配置项LLM_PROVIDER
         :param model: 模型名称，默认为配置项LLM_MODEL
@@ -1759,6 +1760,28 @@ class LLMHelper:
         return model
 
     @staticmethod
+    async def close_llm(model: Any) -> bool:
+        """释放 OpenAI/DeepSeek 模型独占的 HTTP 客户端，失败时保留 owner 供调用方重试。
+
+        只关闭显式挂在模型上的 transport，不遍历 SDK 私有字段，避免误关其他
+        提供商内部缓存并共享的客户端。异步连接必须在原事件循环中关闭。
+        """
+        closed = True
+        for name, method in (("http_async_client", "aclose"), ("http_client", "close")):
+            client = getattr(model, name, None)
+            if client is None or getattr(client, "is_closed", False) is True:
+                continue
+            try:
+                if method == "aclose":
+                    await client.aclose()
+                else:
+                    await asyncio.wrap_future(ThreadHelper().submit(client.close))
+            except Exception as error:
+                logger.warning(f"关闭 LLM HTTP 客户端失败: {name}, {type(error).__name__}")
+                closed = False
+        return closed
+
+    @staticmethod
     def extract_text_content(content: Any, fallback_to_string: bool = False) -> str:
         """
         从响应内容中提取纯文本，仅保留真实文本块。
@@ -1857,6 +1880,8 @@ class LLMHelper:
         except Exception as err:
             duration_ms = round((time.perf_counter() - start) * 1000)
             raise LLMTestError(str(err), duration_ms=duration_ms) from err
+        finally:
+            await LLMHelper.close_llm(llm)
 
         reply_text = LLMHelper.extract_text_content(
             getattr(response, "content", response)
