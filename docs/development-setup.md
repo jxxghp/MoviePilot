@@ -115,6 +115,9 @@ chmod +x scripts/start-local.sh
 
 修改后更新并校验锁文件：
 
+如果只需要修复某个传递依赖（例如安全审计发现的问题），可先用
+`uv lock --upgrade-package <package>` 定向更新，避免无关依赖随之升级。
+
 ```bash
 uv lock
 uv lock --check
