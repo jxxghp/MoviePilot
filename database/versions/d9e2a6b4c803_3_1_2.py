@@ -1,4 +1,4 @@
-"""3.1.1 订阅搜索任务保存逐页进度与不含凭据的候选。"""
+"""3.1.2 订阅搜索任务保存逐页进度与不含凭据的候选。"""
 
 import sqlalchemy as sa
 from alembic import op

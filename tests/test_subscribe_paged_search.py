@@ -251,15 +251,26 @@ def test_scan_end_reconciles_current_missing_after_target_was_submitted(subscrip
     assert progress.call_args.kwargs["no_exists"]["tmdb:1"][1].episodes == [2]
 
 
-@pytest.mark.parametrize("changes", [{"state": "S"}, {"media_id": "2"}])
-def test_scan_end_cannot_finalize_paused_or_replaced_subscription(subscription, changes):
+def test_scan_end_cannot_finalize_replaced_subscription(subscription):
     scope = subscription
     target = SubscriptionSearchTarget(scope.initial, build_subscribe_meta(scope.initial), scope.media,
                                       _missing(scope, scope.initial), "tmdb:1")
-    scope.current["value"] = replace(scope.initial, **changes)
+    scope.current["value"] = replace(scope.initial, media_id="2")
     _finish_paged_subscription(scope.chain, scope.initial, target)
     scope.finished.assert_not_called()
     scope.chain._SubscribeChain__refresh_subscribe_progress_with_no_exists.assert_not_called()
+
+
+def test_scan_end_still_reconciles_a_subscription_paused_during_the_accepted_search(subscription):
+    """与原流程一致：暂停只影响后续自动调度，已接纳的搜索照常结算缺集。"""
+    scope = subscription
+    target = SubscriptionSearchTarget(scope.initial, build_subscribe_meta(scope.initial), scope.media,
+                                      _missing(scope, scope.initial), "tmdb:1")
+    scope.current["value"] = replace(scope.initial, state="S", total_episode=2, note=[1])
+    _finish_paged_subscription(scope.chain, scope.initial, target)
+    progress = scope.chain._SubscribeChain__refresh_subscribe_progress_with_no_exists
+    progress.assert_called_once()
+    assert progress.call_args.kwargs["no_exists"]["tmdb:1"][1].episodes == [2]
 
 
 @pytest.mark.parametrize("media_type", [MediaType.TV, MediaType.MOVIE])

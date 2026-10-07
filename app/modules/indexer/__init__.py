@@ -2,13 +2,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
 from typing import Any, Callable, List, Mapping, Optional, Tuple, Union, cast
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 from app.application.site.health import get_configured_site_health_service
 from app.application.site.observation import report_site_search_outcome, report_site_search_page
 from app.application.site.query import get_configured_site_query_service
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.domain import site as site_rules
+from app.domain import torrent as torrent_rules
 from app.domain.context import Context, SubtitleInfo, TorrentInfo
 from app.foundation import text as text_tools
 from app.foundation.reflection import ModuleHelper
@@ -325,15 +326,14 @@ class IndexerModule(_ModuleBase):
     @staticmethod
     def restore_search_torrent(site: dict[str, Any], record: dict[str, Any], allow_missing: bool = False) -> Optional[TorrentInfo]:
         """用当前站点凭据恢复候选；无法安全重建的临时下载票据由调用方重取原页。"""
-        values = dict(record)
-        # M-Team 下载链接含 API Key 不入检查点，按详情页链接中的站内 ID 用当前凭据重建。
-        torrent_id = urlparse(values.get("page_url") or "").path.rsplit("/", 1)[-1].strip()
-        if site.get("parser") == "mTorrent" and torrent_id:
-            values["enclosure"] = MTorrentSpider(site).get_download_url(torrent_id)
-        if not values.get("enclosure") and not allow_missing:
-            return None
         torrent = TorrentInfo()
-        torrent.from_dict(values)
+        torrent.from_dict(record)
+        # M-Team 下载链接含 API Key 不入检查点，按详情页链接中的站内 ID 用当前凭据重建。
+        identity = torrent_rules.resource_identity(torrent)
+        if site.get("parser") == "mTorrent" and identity and identity[1].startswith("id="):
+            torrent.enclosure = MTorrentSpider(site).get_download_url(identity[1][3:])
+        if not torrent.enclosure and not allow_missing:
+            return None
         torrent.site_cookie = site.get("cookie") or ""
         torrent.site_ua = site.get("ua") or ""
         torrent.site_proxy = bool(site.get("proxy"))

@@ -70,10 +70,9 @@ _NEW_SUBSCRIPTION_EDIT_SECONDS = 60
 
 def _finish_paged_subscription(owner: _SubscribeOwnerBase, subscribe: SubscriptionSnapshot,
                                target: SubscriptionSearchTarget) -> None:
-    """按当前订阅只读对账缺集，不用搜索开始时的媒体快照回写总集数。"""
+    """按当前订阅只读对账缺集，不用搜索开始时的媒体快照回写总集数；暂停与原流程一致，已接纳的搜索照常结算。"""
     current = owner.subscription_repository.get(subscribe.id)
-    if (current is None or current.state == "S"
-            or owner._SubscribeChain__candidate_contract_changed(subscribe, current)):
+    if current is None or owner._SubscribeChain__candidate_contract_changed(subscribe, current):
         return
     exists, missing = owner.resolve_subscribe_missing(
         subscribe=current, meta=target.meta, mediainfo=target.media, mediakey=target.media_key)

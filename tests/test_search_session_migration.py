@@ -10,7 +10,7 @@ from alembic.operations import Operations
 def test_search_session_migration_is_idempotent_and_reversible(monkeypatch):
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
-        migration = importlib.import_module("database.versions.d9e2a6b4c803_3_1_1")
+        migration = importlib.import_module("database.versions.d9e2a6b4c803_3_1_2")
         monkeypatch.setattr(migration, "op", Operations(MigrationContext.configure(connection)))
         migration.upgrade()
         migration.upgrade()
