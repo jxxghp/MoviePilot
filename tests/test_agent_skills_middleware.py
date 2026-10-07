@@ -76,8 +76,9 @@ def test_skills_middleware_exposes_read_skill_tool(tmp_path):
 
 
 @pytest.mark.anyio
-async def test_read_skill_loads_body_and_supporting_files_by_id_and_name(tmp_path):
-    """read_skill 应按 id 或 name 返回主体，并在同一权限边界内读取辅助文档。"""
+@pytest.mark.parametrize("body_arguments", [{}, {"file": None}], ids=["omitted", "null"])
+async def test_read_skill_loads_body_and_supporting_files_by_id_and_name(tmp_path, body_arguments):
+    """省略 file 或传 null 均按 id/name 加载主体，列出的路径则读取辅助文档。"""
     _write_skill(tmp_path, "moviepilot-api", name="MoviePilot API")
     skill_dir = tmp_path / "moviepilot-api"
     (skill_dir / "references").mkdir()
@@ -87,8 +88,8 @@ async def test_read_skill_loads_body_and_supporting_files_by_id_and_name(tmp_pat
     middleware = SkillsMiddleware(sources=[str(tmp_path)])
     skill_tool = middleware.tools[0]
 
-    by_id = json.loads(await skill_tool.ainvoke({"name": "moviepilot-api"}))
-    by_name = json.loads(await skill_tool.ainvoke({"name": "MoviePilot API"}))
+    by_id = json.loads(await skill_tool.ainvoke({"name": "moviepilot-api", **body_arguments}))
+    by_name = json.loads(await skill_tool.ainvoke({"name": "MoviePilot API", **body_arguments}))
 
     assert by_id["success"] is True
     assert by_id["skill"]["id"] == "moviepilot-api"
@@ -99,8 +100,10 @@ async def test_read_skill_loads_body_and_supporting_files_by_id_and_name(tmp_pat
         "scripts/run.py",
     ]
     assert by_id["truncated"] is False
+    assert by_id["loaded_file"] is None
     assert by_name["success"] is True
     assert by_name["skill"]["name"] == "MoviePilot API"
+    assert by_name["loaded_file"] is None
 
     supporting = json.loads(
         await skill_tool.ainvoke(
@@ -112,12 +115,21 @@ async def test_read_skill_loads_body_and_supporting_files_by_id_and_name(tmp_pat
     assert supporting["loaded_file"] == "references/usage.md"
     assert supporting["skill"]["id"] == "moviepilot-api"
 
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("file", ["", "SKILL.md", "../SKILL.md", "/SKILL.md", "references/missing.md"])
+async def test_read_skill_rejects_unlisted_supporting_files(tmp_path, file: str):
+    """空串、主体文件及未列出的路径仍须拒绝，不作为 null 的替代值。"""
+    _write_skill(tmp_path, "moviepilot-api")
+    middleware = SkillsMiddleware(sources=[str(tmp_path)])
+
     invalid = json.loads(
-        await skill_tool.ainvoke(
-            {"name": "moviepilot-api", "file": "../SKILL.md"}
+        await middleware.tools[0].ainvoke(
+            {"name": "moviepilot-api", "file": file}
         )
     )
     assert invalid["success"] is False
+    assert "Skill supporting file is not listed" in invalid["message"]
 
 
 @pytest.mark.anyio
@@ -401,6 +413,7 @@ async def test_skill_middleware_sanitizes_its_own_logs(tmp_path):
     mock_logger = MagicMock()
 
     async def _failing_handler(_request):
+        """模拟含凭据的执行异常以验证中间件日志脱敏。"""
         raise RuntimeError(f"Authorization: Bearer {secret_marker}")
 
     with (

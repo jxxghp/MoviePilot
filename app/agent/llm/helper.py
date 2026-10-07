@@ -26,6 +26,7 @@ class LLMTestError(RuntimeError):
     """LLM 测试调用异常，附带请求耗时。"""
 
     def __init__(self, message: str, duration_ms: int | None = None):
+        """保存测试错误与本次请求耗时。"""
         super().__init__(message)
         self.duration_ms = duration_ms
 
@@ -34,6 +35,7 @@ class LLMTestTimeout(TimeoutError):
     """LLM 测试调用超时，附带请求耗时。"""
 
     def __init__(self, message: str, duration_ms: int | None = None):
+        """保存超时错误与本次请求耗时。"""
         super().__init__(message)
         self.duration_ms = duration_ms
 
@@ -86,6 +88,7 @@ def _patch_gemini_thought_signature():
         # 补丁 1：扩展 _is_gemini_3_or_later，使 Gemini 2.5 模型也能触发
         # _parse_chat_history 中的 thought_signature 强制注入逻辑
         def _patched_is_gemini_3_or_later(model_name: str) -> bool:
+            """让 Gemini 2.5 与 3 系列共享工具调用签名兼容逻辑。"""
             if not model_name:
                 return False
             name = model_name.lower().replace("models/", "")
@@ -99,6 +102,7 @@ def _patch_gemini_thought_signature():
         _original_parse_chat_history = _cm._parse_chat_history  # noqa
 
         def _patched_parse_chat_history(*args, **kwargs):
+            """为同一消息中的每个 Gemini 工具调用补齐缺失签名。"""
             result = _original_parse_chat_history(*args, **kwargs)
             system_instruction, formatted_messages = result
 
@@ -313,6 +317,7 @@ def _patch_interleaved_reasoning_request_support(
 
     @wraps(original_get_request_payload)
     def _patched_get_request_payload(self, input_, *, stop=None, **kwargs):
+        """按模型思考协议把历史消息中的思考内容补回出站请求。"""
         payload = original_get_request_payload(self, input_, stop=stop, **kwargs)
         if "messages" not in payload:
             return payload
@@ -398,6 +403,7 @@ def _patch_openai_interleaved_reasoning_content_support():
         if callable(original_convert_dict):
             @wraps(original_convert_dict)
             def _patched_convert_dict_to_message(message_dict):
+                """保留普通响应中的 reasoning_content 以供后续工具轮次复用。"""
                 message = original_convert_dict(message_dict)
                 if (
                         isinstance(message, AIMessage)
@@ -413,6 +419,7 @@ def _patch_openai_interleaved_reasoning_content_support():
         if callable(original_convert_delta):
             @wraps(original_convert_delta)
             def _patched_convert_delta_to_message_chunk(delta, default_class):
+                """保留流式思考增量，避免聚合后丢失工具轮次所需的思考内容。"""
                 chunk = original_convert_delta(delta, default_class)
                 if (
                         isinstance(chunk, AIMessageChunk)
@@ -462,6 +469,7 @@ def _patch_openai_responses_instructions_support():
 
     @wraps(original_get_request_payload)
     def _patched_get_request_payload(self, input_, *, stop=None, **kwargs):
+        """适配 Copilot 与 Codex 端点的参数限制及 Responses 系统指令。"""
         payload = original_get_request_payload(self, input_, stop=stop, **kwargs)
 
         base_url = str(getattr(self, "openai_api_base", "") or "").lower()
@@ -617,8 +625,8 @@ def _normalize_tool_schema(schema: Any, *, gemini_compatible: bool) -> Any:
     """
     返回规整后的工具参数 JSON Schema 副本，不修改入参。
 
-    所有模型：anyOf/oneOf 的非 null 分支只有一种类型时折叠为该类型，保留字段级
-    描述与默认值；参数仍由工具的 Pydantic 模型校验，省略可选字段与传 null 等价。
+    非 Gemini 模型保留联合类型及 null 分支；上游可能自动把可选字段转为必填，
+    仅保留 default=None 无法表达可空语义。
     Gemini 模型：其函数声明要求每个节点都带 type 且不支持 additionalProperties，
     多类型联合取首个非 null 分支、丢弃 schema 形式的 additionalProperties、无法
     推断类型的节点按 string 处理，与 langchain-google-genai 的原生转换保持一致。
@@ -631,6 +639,7 @@ def _normalize_tool_schema(schema: Any, *, gemini_compatible: bool) -> Any:
         return schema
 
     def _normalize(child: Any) -> Any:
+        """按同一模型兼容策略递归处理子节点。"""
         return _normalize_tool_schema(child, gemini_compatible=gemini_compatible)
 
     normalized: dict[str, Any] = {}
@@ -645,8 +654,10 @@ def _normalize_tool_schema(schema: Any, *, gemini_compatible: bool) -> Any:
             normalized[key] = _normalize(value)
         else:
             normalized[key] = value
-    normalized = _collapse_schema_union(normalized, gemini_compatible=gemini_compatible)
-    return _infer_gemini_schema_type(normalized) if gemini_compatible else normalized
+    if gemini_compatible:
+        normalized = _collapse_schema_union(normalized, gemini_compatible=True)
+        return _infer_gemini_schema_type(normalized)
+    return normalized
 
 
 def _normalize_function_tool(tool: Any, *, gemini_compatible: bool) -> Any:
@@ -672,7 +683,7 @@ def _patch_tool_schema_request_support(model_cls: Any, *, patch_marker: str) -> 
     Pydantic 为 Optional[T] 字段生成不带顶层 type 的 anyOf；把 OpenAI tools 转成
     Gemini functionDeclaration 的网关不处理 anyOf，整次请求会因字段缺少 type 被
     400 拒绝。在请求构造出口统一规整，可覆盖主 Agent、子代理与内部模型调用的
-    全部工具，且不修改已绑定的工具定义。
+    全部工具，仅对 Gemini 模型折叠联合类型，且不修改已绑定的工具定义。
 
     :param model_cls: 需要修补的 ChatOpenAI 兼容模型类
     :param patch_marker: 记录已修补状态的类属性名
@@ -686,6 +697,7 @@ def _patch_tool_schema_request_support(model_cls: Any, *, patch_marker: str) -> 
 
     @wraps(original_get_request_payload)
     def _patched_get_request_payload(self: Any, input_: Any, *, stop: Any = None, **kwargs: Any) -> Any:
+        """按模型规整出站工具副本，保留非 Gemini 的原始参数语义。"""
         payload = original_get_request_payload(self, input_, stop=stop, **kwargs)
         tools = payload.get("tools") if isinstance(payload, dict) else None
         if not isinstance(tools, list):
@@ -1374,6 +1386,7 @@ class LLMHelper:
         }
 
         def _set_metadata_attr(name: str, value: Any) -> None:
+            """兼容模型属性限制，写入仅供内部使用的运行时元数据。"""
             try:
                 setattr(model, name, value)
             except Exception:
@@ -1435,6 +1448,7 @@ class LLMHelper:
         """
 
         def _normalize(value: str | None) -> str | None:
+            """统一旧思考级别别名并拒绝未支持的配置值。"""
             normalized = str(value or "").strip().lower()
             if not normalized:
                 return None

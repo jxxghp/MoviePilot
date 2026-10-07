@@ -54,6 +54,7 @@ def _build_tools() -> list[StructuredTool]:
     """用真实 Agent 工具入参模型构造 LangChain 工具。"""
 
     async def _noop(**_kwargs: Any) -> str:
+        """提供构造工具所需的离线执行入口。"""
         return ""
 
     return [
@@ -98,9 +99,33 @@ def _iter_schema_nodes(schema: dict, path: str = ""):
             yield from _iter_schema_nodes(child, f"{path}[{keyword}]")
 
 
-def test_optional_fields_collapse_to_single_type_for_any_model() -> None:
-    """Optional[T] 字段折叠为 T，保留字段描述、默认值与分支约束。"""
-    _, tools = _request_tools(_build_model("gpt-4o"))
+@pytest.mark.parametrize("use_responses_api", [False, True], ids=["chat", "responses"])
+@pytest.mark.parametrize(
+    "bind_kwargs",
+    [{}, {"strict": False}, {"strict": True}],
+    ids=["strict-omitted", "strict-false", "strict-true"],
+)
+def test_non_gemini_requests_preserve_nullable_tool_parameters(
+    use_responses_api: bool,
+    bind_kwargs: dict[str, Any],
+) -> None:
+    """两种协议的非 Gemini 工具保留可空语义，不依赖上游是否自动启用 strict。"""
+    model = _build_model("gpt-4o", use_responses_api=use_responses_api)
+    bound_tools, tools = _request_tools(model, **bind_kwargs)
+
+    expected_tools = (
+        [{"type": "function", **tool["function"]} for tool in bound_tools]
+        if use_responses_api else bound_tools
+    )
+    assert tools == expected_tools
+    skill = _parameters(tools, "read_skill")
+    assert skill["properties"]["file"]["anyOf"] == [{"type": "string"}, {"type": "null"}]
+    assert skill["required"] == (["name", "file"] if bind_kwargs.get("strict") else ["name"])
+
+
+def test_optional_fields_collapse_to_single_type_for_gemini_models() -> None:
+    """Gemini 的 Optional[T] 字段折叠为 T，保留字段描述、默认值与分支约束。"""
+    _, tools = _request_tools(_build_model("gemini-2.5-flash"))
 
     skill = _parameters(tools, "read_skill")
     assert skill["properties"]["file"] == {
@@ -122,7 +147,7 @@ def test_optional_fields_collapse_to_single_type_for_any_model() -> None:
 
 
 def test_true_unions_keep_their_semantics_for_non_gemini_models() -> None:
-    """非 Gemini 模型只做无损折叠，多类型联合保持原样。"""
+    """非 Gemini 模型的多类型联合及 null 分支保持原样。"""
     bound_tools, tools = _request_tools(_build_model("gpt-4o"))
 
     body = _parameters(tools, "moviepilot_api")["properties"]["body"]
@@ -136,9 +161,13 @@ def test_true_unions_keep_their_semantics_for_non_gemini_models() -> None:
 
 
 @pytest.mark.parametrize("model_name", ["gemini-2.5-flash", "google/Gemini-2.5-Pro"])
-def test_every_schema_node_is_typed_for_gemini_models(model_name: str) -> None:
+@pytest.mark.parametrize("use_responses_api", [False, True], ids=["chat", "responses"])
+def test_every_schema_node_is_typed_for_gemini_models(
+    model_name: str,
+    use_responses_api: bool,
+) -> None:
     """Gemini 模型的每个参数节点都必须带 type，且不再依赖 anyOf/oneOf。"""
-    _, tools = _request_tools(_build_model(model_name))
+    _, tools = _request_tools(_build_model(model_name, use_responses_api=use_responses_api))
 
     for name in _TOOL_INPUTS:
         for path, node in _iter_schema_nodes(_parameters(tools, name)):
@@ -163,11 +192,15 @@ def test_responses_api_function_tools_are_normalized() -> None:
     assert _parameters(tools, "moviepilot_api")["properties"]["body"]["type"] == "object"
 
 
-def test_strict_tools_are_left_unchanged() -> None:
+@pytest.mark.parametrize("use_responses_api", [False, True], ids=["chat", "responses"])
+def test_strict_tools_are_left_unchanged(use_responses_api: bool) -> None:
     """strict 工具依赖 anyOf 表达可空必填字段，规整不得改变其语义。"""
-    bound_tools, tools = _request_tools(_build_model("gemini-2.5-flash"), strict=True)
+    model = _build_model("gemini-2.5-flash", use_responses_api=use_responses_api)
+    bound_tools, tools = _request_tools(model, strict=True)
 
-    assert tools == bound_tools
+    for name in _TOOL_INPUTS:
+        assert _parameters(tools, name) == _parameters(bound_tools, name)
+    assert all(tool.get("function", tool)["strict"] is True for tool in tools)
 
 
 def test_normalization_is_idempotent_when_patched_twice() -> None:
@@ -187,11 +220,15 @@ def test_openai_runtime_applies_tool_schema_patch(monkeypatch) -> None:
     """OpenAI 兼容运行时构造的模型类必须挂上工具 schema 规整。"""
 
     class _FakeChatOpenAI:
+        """隔离模型初始化，只保留请求补丁需要的最小接口。"""
+
         def __init__(self, **kwargs: Any) -> None:
+            """记录模型身份与工具调用能力。"""
             self.model_name = kwargs["model"]
             self.profile = {"tool_calling": True}
 
         def _get_request_payload(self, input_, *, stop=None, **kwargs):
+            """返回工具定义，让真实补丁处理出站参数。"""
             return {"tools": kwargs.get("tools", [])}
 
     monkeypatch.setitem(sys.modules, "langchain_openai", SimpleNamespace(ChatOpenAI=_FakeChatOpenAI))
