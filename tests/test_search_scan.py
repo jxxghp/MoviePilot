@@ -474,7 +474,7 @@ def test_resume_after_fifteen_minutes_loads_next_page_then_refreshes_first_page(
     assert {item["torrent"]["description"] for item in resumed.candidates.values()} >= {"2-1", "1-1"}
 
 
-def test_failed_first_page_refresh_is_dropped(owner, monkeypatch):
+def test_failed_first_page_refresh_keeps_history_searchable(owner, monkeypatch):
     pages(owner, monkeypatch, {0: [torrent(5)], 1: [torrent(6)], 2: [torrent(1)]})
     snapshot, source = _snapshot_after_first_pages(owner, [1, 2], last_request_at=0)
     resumed = SearchScan(owner=owner, plan=plan([1, 2]), snapshot=snapshot)
@@ -486,6 +486,13 @@ def test_failed_first_page_refresh_is_dropped(owner, monkeypatch):
     resumed.step(source)
     cursor = resumed.collection.sources[source]
     assert not (cursor.head_refresh or cursor.refresh_pending)
+    # 补拉失败不关闭来源，下一次回到原历史页继续。
+    assert not cursor.failed
+    assert source in resumed.collection.active_sources()
+    calls = pages(owner, monkeypatch, {3: [torrent(2)]})
+    resumed.step(source)
+    assert calls == [3]
+    assert cursor.next_page == 4
 
 
 def test_checkpoint_older_than_thirty_six_hours_restarts_from_first_page(owner, monkeypatch):

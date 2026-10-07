@@ -92,10 +92,24 @@ def test_partial_submission_does_not_finish_an_interrupted_search_round(system_s
     queue.release_task.assert_called_once()
 
 
-def test_finished_round_removes_its_checkpoint_only_with_the_current_lease(repository):
-    repo, engine = repository
-    repo.create(task_id="task", payload="{}", task_lease="old")
-    repo.delete(task_id="task", task_lease="stale")
+def test_finished_round_removes_its_checkpoint_only_with_the_current_lease_and_version(repository):
+    repo, _ = repository
+    first = repo.create(task_id="task", payload="{}", task_lease="old")
+    repo.delete(snapshot=first, task_lease="stale")
     assert repo.get(task_id="task") is not None
-    repo.delete(task_id="task", task_lease="old")
+    repo.delete(snapshot=first, task_lease="old")
     assert repo.get(task_id="task") is None
+
+
+def test_stale_worker_cannot_delete_progress_saved_after_lease_handover(repository):
+    # 旧执行者持有 version=0 快照；租约交接后新执行者保存 version=1，旧执行者随后删除不得生效。
+    repo, engine = repository
+    stale = repo.create(task_id="task", payload='{"page":0}', task_lease="old")
+    _set_lease(engine, "new")
+    fresh = repo.save(snapshot=stale, payload='{"page":1}', task_lease="new")
+    assert fresh.version == 1
+    repo.delete(snapshot=stale, task_lease="old")
+    assert repo.get(task_id="task").version == 1
+    # 即使旧执行者碰巧持有新租约，旧版本也删不掉新版本。
+    repo.delete(snapshot=stale, task_lease="new")
+    assert repo.get(task_id="task").version == 1

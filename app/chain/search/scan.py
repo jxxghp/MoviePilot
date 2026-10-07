@@ -316,6 +316,11 @@ class SearchScan:
             return False
         if not observation.attempted or observation.outcome != "success":
             source.error = observation.error or "本页没有成功请求，保留页号"
+            if source.head_refresh:
+                # 补拉第一页可以放弃：不关闭来源，下次回到原历史页；站点冷却由预算记录的失败退避负责。
+                source.cancel_head_refresh()
+                self.checkpoint()
+                return False
             source.failure_outcome = observation.outcome
             source.failed = True
             source.cancel_head_refresh()
@@ -503,7 +508,7 @@ class SearchScan:
         self.ended = True
         logger.info(f"{self.media.title_year} {self.progress_text()}")
         if self.repository and self.execution and self.snapshot:
-            self.repository.delete(task_id=self.execution.task_id or "", task_lease=self.execution.task_lease)
+            self.repository.delete(snapshot=self.snapshot, task_lease=self.execution.task_lease)
             self.snapshot = None
         sites = [source for key, source in self.collection.sources.items() if not key.startswith("plugin:")]
         plugin_result = any(source.resources for key, source in self.collection.sources.items() if key.startswith("plugin:"))

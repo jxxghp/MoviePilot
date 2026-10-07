@@ -94,6 +94,6 @@ class SearchSessionRepository(Protocol):
         """一次提交本页候选、收集状态和下一页；失去租约或版本冲突时返回空。"""
         ...
 
-    def delete(self, *, task_id: str, task_lease: Optional[str]) -> None:
-        """本轮搜索结束后删除检查点；仅仍持有任务租约时生效。"""
+    def delete(self, *, snapshot: SearchSessionSnapshot, task_lease: Optional[str]) -> None:
+        """本轮搜索结束后删除检查点；仅仍持有任务租约且版本未变时生效。"""
         ...

@@ -51,6 +51,6 @@ class TransactionalSearchSessionRepository:
         """原子推进页快照并返回新版本，失去所有权时返回空。"""
         return self._write(lambda oper: _snapshot(oper.save(snapshot.task_id, snapshot.version, payload, task_lease)))
 
-    def delete(self, *, task_id: str, task_lease: Optional[str]) -> None:
-        """删除已结束任务的检查点。"""
-        self._write(lambda oper: oper.delete(task_id, task_lease))
+    def delete(self, *, snapshot: SearchSessionSnapshot, task_lease: Optional[str]) -> None:
+        """删除已结束任务的检查点，仅当仍是自己保存的版本。"""
+        self._write(lambda oper: oper.delete(snapshot.task_id, snapshot.version, task_lease))
