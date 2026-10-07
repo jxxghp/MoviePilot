@@ -1,5 +1,7 @@
 """完整页驱动验证实际补集、过滤兜底和逐页识别成本。"""
 
+from dataclasses import replace
+
 import pytest
 
 from app.application.site.observation import report_site_search_outcome, report_site_search_page
@@ -223,7 +225,7 @@ def test_twelve_hundred_episodes_with_multiple_versions(owner, monkeypatch):
 
 
 def test_one_hundred_page_cap_ends_the_round_and_does_not_repeat(owner, monkeypatch):
-    # 页面出现更新的集，缺失的 1200 属于已发布范围，需要一直翻到上限。
+    # 页面出现更新的集，缺失的 1200 属于站点已收录范围，需要一直翻到上限。
     calls = pages(owner, monkeypatch, {page: [torrent(1300, page + 1)] for page in range(125)})
     scan = SearchScan(owner=owner, plan=plan([1200]))
     scan.run(lambda _items, ready: ready)
@@ -627,7 +629,7 @@ def test_finished_round_deletes_checkpoint(owner, monkeypatch, tmp_path):
 
 
 def test_ongoing_series_releases_round_after_available_episodes_are_submitted(owner, monkeypatch):
-    # 连载到 1005 集：补完可下载的 1003 后，1006/1007 尚未发布，不深翻历史页，本轮结束交给订阅模式追更。
+    # 连载到 1005 集：补完可下载的 1003 后，1006/1007 站点尚未收录，不深翻历史页，本轮结束交给订阅模式追更。
     calls = pages(owner, monkeypatch, {0: [torrent(ep) for ep in range(1005, 995, -1)],
                                      1: [torrent(ep) for ep in range(995, 985, -1)],
                                      2: [torrent(ep) for ep in range(985, 975, -1)]})
@@ -638,7 +640,7 @@ def test_ongoing_series_releases_round_after_available_episodes_are_submitted(ow
     assert submitted == [{"1:1003"}]
     assert scan.ended
     assert scan.collection.remaining == {"1:1006", "1:1007"}
-    assert "E1006-E1007 尚未发布" in scan.progress_text()
+    assert "E1006-E1007 站点尚未收录" in scan.progress_text()
 
 
 def test_only_unreleased_episodes_check_first_page_and_do_not_try_aliases(owner, monkeypatch):
@@ -729,3 +731,55 @@ def test_candidate_whose_page_keeps_failing_is_dropped_after_limited_retries(own
     assert requests == [0] * RECOVERY_ATTEMPTS
     assert submitted == ["1-2"]
     assert not scan.collection.remaining
+
+
+def _restored_ticket_scan(owner, monkeypatch, first_page, refetched):
+    """第 0 页的候选带临时票据（不入检查点），恢复后由 refetched 模拟重取原页的结果。"""
+    from app.application.search.session import SearchSessionSnapshot, encode_search_state
+    from app.application.site.observation import SiteSearchObservation
+    from app.chain.search.scan import ScanPage
+
+    for item in first_page:
+        item.enclosure = "https://site.example/download?ticket=do-not-store"
+    pages(owner, monkeypatch, {0: first_page})
+    initial = SearchScan(owner=owner, plan=plan([1, 2]), full=True)
+    source = next(key for key in initial.queries if not key.startswith("plugin:"))
+    initial.step(source)
+    initial.step(source)
+    initial.step("plugin:Show")
+    monkeypatch.setattr(owner, "run_module", lambda _method, **params: TorrentInfo(**params["record"]))
+    fetched = []
+    def fetch(_sources, _key, page, **_params):
+        fetched.append(page)
+        return ScanPage(refetched, SiteSearchObservation(True, "success", raw_count=len(refetched)))
+    monkeypatch.setattr(SearchSources, "fetch", fetch)
+    snapshot = SearchSessionSnapshot("round", 0, encode_search_state(initial.state()))
+    return SearchScan(owner=owner, plan=plan([1, 2]), full=True, snapshot=snapshot), fetched
+
+
+@pytest.mark.parametrize("still_listed", [False, True])
+def test_several_candidates_vanishing_from_one_refetched_page_do_not_abort_the_round(owner, monkeypatch, still_listed):
+    # A、B 同在原页且都需重取票据；重取后两者都不在原页（原页为空或被其他资源挤占），不能抛 KeyError。
+    other = [TorrentInfo(site=1, description="other", title="Other Show S01E09 2026 1080p",
+                         enclosure="https://site.example/download?id=99")] if still_listed else []
+    scan, fetched = _restored_ticket_scan(owner, monkeypatch, [torrent(1), torrent(2)], other)
+    submitted = []
+    scan.choose({"1:1", "1:2"}, lambda items, ready: submitted.extend(items) or set())
+    assert fetched == [0]
+    assert submitted == []
+    assert not scan.candidates
+
+
+def test_recovered_candidate_is_filtered_again_before_submission(owner, monkeypatch):
+    # 检查点保存时免费，恢复票据时免费已结束：恢复后的资源必须重新过滤，不能提交。
+    free = torrent(1)
+    free.downloadvolumefactor = 0
+    ended = torrent(1)
+    ended.downloadvolumefactor = 1
+    ended.enclosure = "https://site.example/download?ticket=fresh"
+    scan, _ = _restored_ticket_scan(owner, monkeypatch, [free], [ended])
+    scan.plan = replace(scan.plan, candidate_filter=lambda items: [
+        item for item in items if item.torrent_info.downloadvolumefactor == 0])
+    submitted = []
+    scan.choose({"1:1"}, lambda items, ready: submitted.extend(items) or set())
+    assert submitted == []

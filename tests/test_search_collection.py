@@ -117,7 +117,7 @@ def test_episodes_newer_than_any_seen_resource_only_need_first_pages():
     collection.observe(page)
     collection.sources["A"].accept_page(page=0, evidence=page, targets=collection.remaining, exhausted=False, now=1)
     assert collection.unreleased() == {"1:1006"}
-    # B 尚未请求第一页，仍为未发布目标查第一页；A 只为已发布的 1003 继续翻页。
+    # B 尚未请求第一页，仍为站点未收录目标查第一页；A 只为站点已收录的 1003 继续翻页。
     assert collection.active_sources() == ["A", "B"]
     collection.sources["B"].accept_page(page=0, evidence=[], targets=collection.remaining, exhausted=False, now=1)
     collection.settle({"1:1003"})

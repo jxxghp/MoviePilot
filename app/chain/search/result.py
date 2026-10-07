@@ -280,7 +280,7 @@ def _resource_targets(meta: MetaBase, targets: set[str], media_type: object) -> 
 
 
 def _resource_latest(meta: MetaBase, media_type: object) -> list[list[Any]]:
-    """资源覆盖的各季最大集号；整季包没有集号，不参与已发布范围判断。"""
+    """资源覆盖的各季最大集号；整季包没有集号，不参与站点已收录范围判断。"""
     if media_type == MediaType.MOVIE or not meta.episode_list:
         return []
     return [[str(season), max(meta.episode_list)] for season in meta.season_list]

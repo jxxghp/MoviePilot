@@ -297,7 +297,7 @@ class SearchScan:
                                    if ":" in target and not target.endswith(":season")]) or "无"
         page = max((source.next_page for source in self.collection.sources.values()), default=0)
         unreleased = format_ranges([int(target.split(":")[1]) for target in self.collection.unreleased()])
-        waiting = f"（其中 {unreleased} 尚未发布，交给订阅模式追更）" if unreleased else ""
+        waiting = f"（其中 {unreleased} 站点尚未收录，交给订阅模式追更）" if unreleased else ""
         if self.ended:
             failed = any(source.failed for source in self.collection.sources.values())
             return f"本轮搜索结束，已提交：{submitted}，仍缺：{remaining}{waiting}" + ("；部分来源失败" if failed else "")
@@ -456,18 +456,30 @@ class SearchScan:
         self.checkpoint()
         return self.live.get(key) if key in self.candidates else None
 
+    def _filter(self, contexts: list[Context]) -> list[Context]:
+        """按订阅规则、参数和候选校验过滤并排序。"""
+        return SearchResultOwner._filter_identified_contexts(
+            cast(Any, self.owner), contexts, self.media, self.plan.rule_groups or [], self.plan.filter_params or {},
+            self.plan.candidate_filter, season_episodes=self.sources.season_episodes,
+        )
+
     def _prepared_batch(self, contexts: list[Context], ready: set[str]) -> tuple[list[Context], set[str]]:
         """保留排序优先级，先提交可用前缀，再刷新下一个临时票据所在原页。"""
         batch: list[Context] = []
         goals: set[str] = set()
         for context in contexts:
             key = cast(str, context.torrent_info.search_resource_id)
+            # 前面的恢复重取原页时，可能已移除同页其他已失效的候选。
+            if key not in self.candidates:
+                continue
             context = self.live.get(key, context)
             if not context.torrent_info.enclosure:
                 if batch:
                     break
                 restored = self._recover_candidate(key)
-                if restored is None:
+                if restored is None or not self._filter([restored]):
+                    # 恢复后的促销、标签等信息可能已变化，须重新通过过滤，不能沿用旧对象的筛选结论。
+                    self.attempted.add(key)
                     continue
                 context = restored
             coverage = self._coverage(key)
@@ -480,10 +492,7 @@ class SearchScan:
     def choose(self, ready: set[str], submit: Callable[[list[Context], set[str]], set[str]]) -> None:
         """合集覆盖目标全就绪才提交；剩余缓存先于共享游标兜底。"""
         contexts, keys = self._contexts(ready)
-        contexts = SearchResultOwner._filter_identified_contexts(
-            cast(Any, self.owner), contexts, self.media, self.plan.rule_groups or [], self.plan.filter_params or {},
-            self.plan.candidate_filter, season_episodes=self.sources.season_episodes,
-        )
+        contexts = self._filter(contexts)
         accepted = {cast(str, context.torrent_info.search_resource_id) for context in contexts}
         self.attempted.update(keys - accepted)
         batch, goals = self._prepared_batch(contexts, ready)
@@ -572,7 +581,7 @@ class SearchScan:
                 self.choose(self.collection.ready(full=self.full), submit)
                 if self._has_cached_ready() or self.collection.active_sources(full=self.full):
                     continue
-                # 只剩未发布目标时不再尝试别名：已见集数证明主关键词有效，后续集交给订阅模式追更。
+                # 只剩站点未收录目标时不再尝试别名：已见集数证明主关键词有效，后续集交给订阅模式追更。
                 if not self.collection.pending or not self._add_sources():
                     self._finish_round()
                     return

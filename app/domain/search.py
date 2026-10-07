@@ -31,7 +31,7 @@ class SearchResourceEvidence:
 
     resource_id: str
     targets: Optional[frozenset[str]]
-    # 资源覆盖的各季最大集号（季号字符串, 集号），不限于本轮缺集，用于判断已发布范围。
+    # 资源覆盖的各季最大集号（季号字符串, 集号），不限于本轮缺集，用于判断站点已收录范围。
     latest: tuple[tuple[str, int], ...] = ()
 
 
@@ -133,16 +133,18 @@ class SearchCollection:
         return self.targets - self.settled
 
     def observe(self, evidence: Iterable[SearchResourceEvidence]) -> None:
-        """记录已发布范围；只增不减，较深页面出现更新集数时相应目标恢复正常收集。"""
+        """记录站点已收录范围；只增不减，较深页面出现更新集数时相应目标恢复正常收集。"""
         for item in evidence:
             for season, episode in item.latest:
                 if episode > self.released.get(season, 0):
                     self.released[season] = episode
 
     def unreleased(self) -> set[str]:
-        """超过本轮已见最新集的缺集视为尚未发布：各来源只查第一页，之后交给订阅模式追更。
+        """超过本轮各来源已见最大集号的缺集视为站点尚未收录：各来源只查第一页，之后交给订阅模式追更。
 
-        结果按时间倒序时，比所有来源最新资源还新的集不会出现在更深的历史页；
+        判断依据是站点资源而不是播出时间：已播出但站点还没有的集同样等订阅模式抓取。
+        站点结果一般按上传时间倒序，最新的集出现在前面；若较新的集只出现在更深页（如第一页被重新上传的
+        旧集占满），本轮可能把它当作未收录，留待下次搜索或订阅模式，这是为避免连载剧翻遍全站接受的取舍。
         同季没有任何资源出现时无法判断，仍按正常规则收集。
         """
         result = set()
@@ -154,7 +156,7 @@ class SearchCollection:
         return result
 
     def ready(self, *, full: bool = False) -> set[str]:
-        """正常来源均结束收集才就绪，完整模式及兜底必须等真实搜尽；未发布目标查过第一页即就绪。"""
+        """正常来源均结束收集才就绪，完整模式及兜底必须等真实搜尽；站点未收录目标查过第一页即就绪。"""
         if not self.sources:
             return set()
         unreleased = self.unreleased()
@@ -169,7 +171,7 @@ class SearchCollection:
         }
 
     def active_sources(self, *, full: bool = False) -> list[str]:
-        """只让未满足目标驱动共用游标，完整模式不使用智能关闭；未发布目标只驱动第一页。"""
+        """只让未满足目标驱动共用游标，完整模式不使用智能关闭；站点未收录目标只驱动第一页。"""
         driving = self.remaining - self.unreleased()
         fallback = driving if full else self.fallback
         return [key for key, source in self.sources.items()
@@ -177,7 +179,7 @@ class SearchCollection:
 
     @property
     def pending(self) -> set[str]:
-        """仍值得在本轮继续寻找的目标；只剩未发布目标时本轮结束并释放检查点。"""
+        """仍值得在本轮继续寻找的目标；只剩站点未收录目标时本轮结束并释放检查点。"""
         return self.remaining - self.unreleased()
 
     def settle(self, targets: set[str]) -> None:
@@ -186,5 +188,5 @@ class SearchCollection:
         self.fallback.difference_update(targets)
 
     def deepen(self, targets: set[str]) -> None:
-        """无合格候选或明确失败后，从来源当前进度继续完整兜底；未发布目标不兜底翻页。"""
+        """无合格候选或明确失败后，从来源当前进度继续完整兜底；站点未收录目标不兜底翻页。"""
         self.fallback.update(targets & self.pending)
