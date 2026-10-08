@@ -1,6 +1,10 @@
 """Web 手动分页：后端缓存页摘要并恢复过期比较依据，页号与重试由客户端持有。"""
 
+import asyncio
+import threading
+from dataclasses import replace
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -8,17 +12,19 @@ from app.application.site.observation import report_site_search_outcome, report_
 from app.chain.search import manual as manual_module
 from app.chain.search.facade import SearchChain
 from app.chain.search.manual import SearchManualOwner, decode_source, encode_source
-from app.domain.context import TorrentInfo
-from app.schemas.types import MediaType
+from app.domain.context import MediaInfo, TorrentInfo
+from app.schemas.types import MediaSource, MediaType
 
 
 @pytest.fixture
 def page_clock(monkeypatch):
+    """使用可控时钟隔离页摘要缓存，验证失效后的上一页补取。"""
     from app.runtime import cache as cache_module
 
     clock = [0.0]
     original = cache_module.MemoryTLRUCache.__init__
     def initialize(cache, *args, **kwargs):
+        """让测试缓存的过期判断统一使用可控时钟。"""
         original(cache, *args, **kwargs, timer=lambda: clock[0])
     monkeypatch.setattr(cache_module.MemoryTLRUCache, "__init__", initialize)
     monkeypatch.setattr(cache_module.MemoryBackend, "_region_caches", {})
@@ -28,6 +34,7 @@ def page_clock(monkeypatch):
 
 @pytest.fixture
 def manual_owner(monkeypatch, page_clock):
+    """构造离线搜索来源和保存边界，记录页请求并模拟失败。"""
     owner = SearchChain()
     sites = [{"id": 1, "name": "A"}, {"id": 2, "name": "B"}]
     monkeypatch.setattr(owner, "_sync_indexers", lambda ids: [site for site in sites if not ids or site["id"] in ids])
@@ -36,11 +43,13 @@ def manual_owner(monkeypatch, page_clock):
     saved = []
     monkeypatch.setattr(owner, "save_last_search_params", lambda **params: saved.append(params))
     async def save_results(contexts):
+        """记录首次搜索的保存行为，避免写入真实缓存。"""
         saved.append(len(contexts))
     monkeypatch.setattr(owner, "_async_save_results", save_results)
     calls = []
     failures = set()
     def request(**params):
+        """按来源和页号构造结果，同时报告真实搜索观察字段。"""
         site, page = params["site"]["id"], params["page"]
         calls.append((site, params["keyword"], page))
         failed = (site, page) in failures
@@ -53,11 +62,118 @@ def manual_owner(monkeypatch, page_clock):
 
 
 async def events(iterator):
+    """消费完整事件流，供最终页结果和来源状态断言使用。"""
     return [item async for item in iterator]
 
 
 def site_facts(result):
+    """从最终状态中提取支持独立翻页的站点来源。"""
     return [item for item in result[-1]["sources"] if decode_source(item["source"])[0] != "plugin"]
+
+
+@pytest.fixture
+def blocked_site(manual_owner, monkeypatch):
+    """阻塞首个站点，其他站点即时完成，用同步信号验证并发和取消收口。"""
+    from app.runtime import tasks as tasks_module
+
+    owner, _, _ = manual_owner
+    monkeypatch.setattr(owner, "_runtime_config", replace(owner.runtime_config, search_threadpool_size=2))
+    monkeypatch.setattr(owner, "_runtime_config_provider", None)
+    registry = tasks_module.TaskRegistry()
+    monkeypatch.setattr(tasks_module, "_runtime_registry", registry)
+    started, release, finished = threading.Event(), threading.Event(), threading.Event()
+    original = owner.search_site_torrents
+
+    def request(**params):
+        """让排序靠前的站点等待释放，证明快站点不受它阻塞。"""
+        if params["site"]["id"] != 1:
+            return original(**params)
+        started.set()
+        try:
+            assert release.wait(5), "测试未释放慢站点"
+            return original(**params)
+        finally:
+            finished.set()
+
+    monkeypatch.setattr(owner, "search_site_torrents", request)
+    yield started, release, finished, registry
+    release.set()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("media_search", [False, True])
+@pytest.mark.parametrize("transport", [False, True])
+async def test_fast_site_preview_arrives_before_slow_site_and_final_page(
+    manual_owner, blocked_site, monkeypatch, media_search, transport,
+):
+    """标题和精确搜索均先展示快站点，最终过滤前不提交来源页号。"""
+    from app.chain.media import MediaChain
+
+    owner, calls, (_, saved) = manual_owner
+    started, release, finished, registry = blocked_site
+    params = {"keyword": "Show"}
+    if media_search:
+        media = MediaInfo(media_source=MediaSource.TMDB, media_id="1", tmdb_id=1, type=MediaType.TV,
+                          title="Show", original_title="Show", names=["Show"])
+        monkeypatch.setattr(MediaChain, "async_recognize_media", AsyncMock(return_value=media))
+        monkeypatch.setattr(MediaChain, "async_supplement_media_info", AsyncMock(return_value=media))
+        params = {"media_source": MediaSource.TMDB, "media_id": "1", "mtype": MediaType.TV}
+    stream = SearchManualOwner.events(owner, params=params)
+    if transport:
+        from app.api.endpoints import search as search_endpoint
+
+        monkeypatch.setattr(search_endpoint, "_SSE_APPEND_FLUSH_INTERVAL", 0.01)
+        stream = search_endpoint._iter_batched_search_events(stream)
+    received = []
+    try:
+        async with asyncio.timeout(3):
+            while True:
+                event = await anext(stream)
+                received.append(event)
+                if event.get("items"):
+                    break
+        assert started.is_set() and not finished.is_set()
+        assert event["type"] == "append" and event["stage"] == "searching"
+        assert [item["torrent_info"]["site"] for item in event["items"]] == [2]
+        assert "sources" not in event
+        assert not any(item["type"] in {"replace", "done"} for item in received)
+        assert saved == []
+        if media_search:
+            assert event["items"][0]["match_status"] == "candidate"
+            assert event["items"][0]["media_info_is_target"] is False
+        release.set()
+        received.extend(await events(stream))
+    finally:
+        release.set()
+        await stream.aclose()
+    assert sorted(calls) == [(1, "Show", 0), (2, "Show", 0)]
+    assert [item["type"] for item in received[-2:]] == ["replace", "done"]
+    assert len(received[-2]["items"]) == 2
+    assert [item["site_name"] for item in site_facts(received)] == ["A", "B"]
+    assert saved and not registry.records
+
+
+@pytest.mark.asyncio
+async def test_closing_preview_waits_for_inflight_workers_without_committing_page(manual_owner, blocked_site):
+    """离开搜索流时等待在途同步请求收尾，不写最终结果和翻页状态。"""
+    owner, _, (_, saved) = manual_owner
+    started, release, finished, registry = blocked_site
+    stream = SearchManualOwner.events(owner, params={"keyword": "Show"})
+    try:
+        async with asyncio.timeout(3):
+            while not (await anext(stream)).get("items"):
+                pass
+        assert started.is_set() and not finished.is_set()
+        closing = asyncio.create_task(stream.aclose())
+        await asyncio.sleep(0)
+        assert not closing.done()
+        release.set()
+        await asyncio.wait_for(closing, timeout=3)
+        assert finished.is_set() and not registry.records
+        assert saved == []
+    finally:
+        release.set()
+        await stream.aclose()
 
 
 @pytest.mark.asyncio
@@ -75,10 +191,14 @@ async def test_title_search_keeps_unrestricted_mteam_categories_and_explicit_typ
     plugin_types = []
 
     class FakeRequest:
+        """回放 M-Team 的分类与分页响应，不访问真实站点。"""
+
         def __init__(self, **_params):
+            """接受原传输层参数以保持索引器调用协议。"""
             pass
 
         def post_res(self, _url=None, json=None, **_params):
+            """用分类和页号生成可重复的离线搜索响应。"""
             requests.append(json)
             count = 1 if json["categories"] == MTorrentSpider._movie_category else 3
             offset = (json["pageNumber"] - 1) * count
@@ -120,9 +240,10 @@ async def test_title_search_keeps_unrestricted_mteam_categories_and_explicit_typ
 
 @pytest.mark.asyncio
 async def test_first_request_loads_page_zero_of_every_source_and_saves_last_search(manual_owner):
+    """首页并发请求各来源，但完成页事实仍保持来源顺序。"""
     owner, calls, (_, saved) = manual_owner
     result = await events(SearchManualOwner.events(owner, params={"keyword": "Show"}))
-    assert calls == [(1, "Show", 0), (2, "Show", 0)]
+    assert sorted(calls) == [(1, "Show", 0), (2, "Show", 0)]
     sources = site_facts(result)
     assert [(item["site_name"], item["page"], item["can_continue"], item["error"]) for item in sources] == [
         ("A", 0, True, None), ("B", 0, True, None)]
@@ -149,6 +270,7 @@ async def test_continuation_restores_previous_page_and_keeps_last_search(manual_
 @pytest.mark.asyncio
 @pytest.mark.parametrize("pageable", [True, False])
 async def test_failed_source_keeps_its_page_for_retry_without_hiding_other_sources(manual_owner, monkeypatch, pageable):
+    """来源失败不影响其他来源，重试只请求原失败页。"""
     owner, calls, (failures, _) = manual_owner
     monkeypatch.setattr(owner, "get_search_page_size", lambda **_params: 100 if pageable else None)
     failures.add((1, 0))
@@ -156,11 +278,11 @@ async def test_failed_source_keeps_its_page_for_retry_without_hiding_other_sourc
     first, second = site_facts(result)
     assert (first["error"], first["page"], first["can_continue"]) == ("timeout", 0, True)
     assert (second["error"], second["page"], second["can_continue"]) == (None, 0, pageable)
-    assert calls == [(1, "Show", 0), (2, "Show", 0)]
+    assert sorted(calls) == [(1, "Show", 0), (2, "Show", 0)]
     failures.clear()
     retried = await events(SearchManualOwner.events(owner, params={
         "keyword": "Show", "page": first["page"], "source": first["source"]}))
-    assert calls == [(1, "Show", 0), (2, "Show", 0), (1, "Show", 0)]
+    assert sorted(calls) == [(1, "Show", 0), (1, "Show", 0), (2, "Show", 0)]
     assert (site_facts(retried)[0]["error"], site_facts(retried)[0]["can_continue"]) == (None, pageable)
 
 
@@ -179,13 +301,15 @@ async def test_alias_fallback_only_on_first_page_and_source_keeps_actual_keyword
 
 @pytest.mark.asyncio
 async def test_zero_display_rows_still_have_more(manual_owner, monkeypatch):
+    """标题预览和最终结果都为空时，原始页事实仍允许继续加载。"""
     from app.chain.search.manual import _ManualPage
 
     owner, _, _ = manual_owner
     # 过滤规则把本页结果全部过滤掉：显示为空，但站点仍有后续页。
-    monkeypatch.setattr(_ManualPage, "results", lambda _self: [])
+    monkeypatch.setattr(_ManualPage, "results", lambda _self, _torrents=None: [])
     result = await events(SearchManualOwner.events(owner, params={"keyword": "Show", "sites": [1]}))
     assert result[-2]["items"] == []
+    assert all(not item["items"] for item in result if item["type"] == "append")
     assert all(item["can_continue"] for item in site_facts(result))
 
 
@@ -231,6 +355,7 @@ async def test_site_without_pagination_has_only_the_first_page(manual_owner, mon
 @pytest.mark.asyncio
 @pytest.mark.parametrize("filter_all", [False, True])
 async def test_raw_page_signature_stops_only_the_identical_adjacent_page(manual_owner, monkeypatch, filter_all):
+    """原始页摘要独立于展示过滤，仅相邻页完全重复时结束来源。"""
     from app.chain.search.manual import _ManualPage
 
     owner, calls, _ = manual_owner
@@ -245,7 +370,7 @@ async def test_raw_page_signature_stops_only_the_identical_adjacent_page(manual_
                 for number in numbers]
     monkeypatch.setattr(owner, "search_site_torrents", request)
     if filter_all:
-        monkeypatch.setattr(_ManualPage, "results", lambda _self: [])
+        monkeypatch.setattr(_ManualPage, "results", lambda _self, _torrents=None: [])
     first = await events(SearchManualOwner.events(owner, params={"keyword": "Show", "sites": [1]}))
     first_source = site_facts(first)[0]
     assert calls == [0]

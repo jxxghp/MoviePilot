@@ -1174,4 +1174,4 @@ description、aliases、instructions，或通过 `append_instructions` 追加规
 
 ## Web 手动分页
 
-`/api/v1/search/title/stream` 与 `/api/v1/search/media/{media_id}/stream` 新增可选参数 `manual_paging`、`page`、`source`。`manual_paging=true` 时每个来源只返回指定的一页，`replace`/`done` 事件附带各来源的 `source`、`site_name`、`page`、`can_continue`、`error`。不传该参数时行为不变，Agent `search.*` operation 不受影响。完整规则及订阅补全搜索策略 `SubscribeSearchStrategy` 见 [订阅补全搜索与手动分页](smart-search.md)。
+`/api/v1/search/title/stream` 与 `/api/v1/search/media/{media_id}/stream` 新增可选参数 `manual_paging`、`page`、`source`。`manual_paging=true` 时每个来源只返回指定的一页，不同站点按既有并发数请求，并在来源完成后发送 `append` 预览；最终统一过滤后的 `replace`/`done` 事件附带各来源的 `source`、`site_name`、`page`、`can_continue`、`error`，预览不推进页号。不传该参数时行为不变，Agent `search.*` operation 不受影响。完整规则及订阅补全搜索策略 `SubscribeSearchStrategy` 见 [订阅补全搜索与手动分页](smart-search.md)。
