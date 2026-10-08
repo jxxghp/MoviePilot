@@ -240,21 +240,22 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         下载记录与整理会按季标题生成独立剧集目录，媒体库里就会出现多部同名剧。
         """
         identity = self._SubscribeChain__tmdb_conversion_identity(context)
-        if not identity:
+        mediainfo = context.mediainfo
+        if not identity or mediainfo is None:
             return
         source, media_id = identity
         tmdbinfo = MediaChain().convert_media_identity(
             target_source=MediaSource.TMDB,
             media_source=source,
             media_id=media_id,
-            mtype=context.mediainfo.type,
+            mtype=mediainfo.type,
             season=context.season,
         )
         converted = None
         if tmdbinfo and tmdbinfo.get("id"):
             converted = MediaChain().recognize_media(
                 meta=context.metainfo,
-                mtype=context.mediainfo.type,
+                mtype=mediainfo.type,
                 media_source=MediaSource.TMDB,
                 media_id=str(tmdbinfo.get("id")),
                 episode_group=context.episode_group,
@@ -268,21 +269,22 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
     ) -> None:
         """异步版本的 TMDB 身份转换，与同步入口共享判定和替换规则。"""
         identity = self._SubscribeChain__tmdb_conversion_identity(context)
-        if not identity:
+        mediainfo = context.mediainfo
+        if not identity or mediainfo is None:
             return
         source, media_id = identity
         tmdbinfo = await MediaChain().async_convert_media_identity(
             target_source=MediaSource.TMDB,
             media_source=source,
             media_id=media_id,
-            mtype=context.mediainfo.type,
+            mtype=mediainfo.type,
             season=context.season,
         )
         converted = None
         if tmdbinfo and tmdbinfo.get("id"):
             converted = await MediaChain().async_recognize_media(
                 meta=context.metainfo,
-                mtype=context.mediainfo.type,
+                mtype=mediainfo.type,
                 media_source=MediaSource.TMDB,
                 media_id=str(tmdbinfo.get("id")),
                 episode_group=context.episode_group,
