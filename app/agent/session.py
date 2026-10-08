@@ -685,6 +685,7 @@ class AgentSessionOwner:
                     memory=self._memory,
                 )
             else:
+                # Web 与兼容协议工厂同样属于当前宿主，必须继承其数据和记忆依赖。
                 agent_kwargs: dict[str, Any] = {
                     "session_id": session_id,
                     "user_id": task.user_id,
@@ -698,6 +699,8 @@ class AgentSessionOwner:
                     "allow_message_tools": task.allow_message_tools,
                     "output_callback": task.output_callback,
                     "protected_output_callback": task.protected_output_callback,
+                    "data": self._data,
+                    "memory": self._memory,
                 }
                 if task.tool_event_callback is not None:
                     agent_kwargs["tool_event_callback"] = task.tool_event_callback

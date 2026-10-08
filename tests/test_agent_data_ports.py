@@ -1,5 +1,6 @@
 """Agent 数据上下文与类型化任务适配器测试。"""
 
+import json
 from contextlib import asynccontextmanager
 from dataclasses import FrozenInstanceError, replace
 from types import SimpleNamespace
@@ -11,6 +12,8 @@ import pytest
 import app.agent.tools.factory as tool_factory_module
 import app.application.agent as agent_services
 from app.agent.memory import MemoryManager
+from app.agent.orchestrator import MoviePilotAgent
+from app.agent.session import AgentSessionOwner, _MessageTask
 from app.agent.tools.factory import MoviePilotToolFactory
 from app.agent.tools.impl.agent_task import AgentTaskTool
 from app.agent.tools.manager import MoviePilotToolsManager
@@ -24,7 +27,7 @@ from app.db.session import SessionFactory
 from app.scheduler import Scheduler
 from app.schemas.rule import CustomRule
 from app.schemas.system import FilterRuleGroup
-from app.schemas.types import SystemConfigKey
+from app.schemas.types import NotificationChannel, SystemConfigKey
 from app.startup.initializers import agent as agent_initializer
 
 
@@ -312,6 +315,91 @@ def test_tool_factory_injects_context_only_into_builtin_tools(monkeypatch) -> No
 
     assert len(tools) == 1
     assert tools[0].data is context
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("entrypoint", ["channel", "web", "openai"])
+async def test_session_entrypoints_inject_data_and_memory_into_agent_tasks(
+    monkeypatch, entrypoint: str,
+) -> None:
+    """渠道和协议工厂必须复用宿主上下文，支持同一会话创建及查询任务。"""
+    from app.agent.web import _get_web_agent_type
+    from app.api.endpoints.openai import _get_collecting_agent_type
+
+    repository = TransactionalAgentTaskRepository(SessionFactory)
+    chat = MagicMock()
+    chat.get_sync.return_value = None
+    context = replace(_context(repository), chat=chat)
+    memory = MemoryManager()
+    owner = AgentSessionOwner(data=context, memory=memory)
+    factory = {
+        "channel": None,
+        "web": _get_web_agent_type,
+        "openai": _get_collecting_agent_type,
+    }[entrypoint]
+    agent_factory = factory() if factory is not None else None
+    channel = NotificationChannel.WebAgent.value if entrypoint == "web" else None
+    monkeypatch.setattr(
+        MoviePilotToolFactory,
+        "_get_builtin_tool_classes",
+        classmethod(lambda _cls, _channel=None: [AgentTaskTool]),
+    )
+    monkeypatch.setattr(tool_factory_module, "_get_plugin_agent_tools", lambda: [])
+    monkeypatch.setattr(
+        "app.agent.tools.impl.agent_task.get_runtime_setting",
+        lambda key: {"AI_AGENT_ENABLE": True, "TZ": "UTC"}[key],
+    )
+    register_job = MagicMock(return_value=None)
+    monkeypatch.setattr("app.application.scheduling.update_agent_task_job", register_job)
+    monkeypatch.setattr("app.application.scheduling.get_agent_task_next_run", lambda _id: None)
+
+    async def run_blocking(_tool, _kind, function, *args, **kwargs):
+        """在测试临时库中执行同步仓储，避免创建全局阻塞执行器。"""
+        return function(*args, **kwargs)
+
+    async def process(agent, action: str, **_kwargs) -> str:
+        """保留真实 Agent 与工具构造，只替换外部模型推理。"""
+        tool = agent._initialize_tools()[0]
+        if action == "create":
+            return await tool.run(
+                action="create", name="入口依赖回归", content="检查数据注入",
+                trigger_type="cron", trigger="0 8 * * *",
+            )
+        return await tool.run(action="list")
+
+    monkeypatch.setattr(AgentTaskTool, "run_blocking", run_blocking)
+    monkeypatch.setattr(MoviePilotAgent, "process", process)
+    task_kwargs = {
+        "session_id": f"data-context-{entrypoint}",
+        "user_id": f"data-context-user-{entrypoint}",
+        "source": entrypoint,
+        "channel": channel,
+        "agent_factory": agent_factory,
+    }
+    try:
+        created = json.loads(await owner._process_message_internal(
+            _MessageTask(message="create", **task_kwargs),
+        ))
+        agent = owner.active_agents[task_kwargs["session_id"]]
+        listed = json.loads(await owner._process_message_internal(
+            _MessageTask(message="list", **task_kwargs),
+        ))
+
+        assert owner.active_agents[task_kwargs["session_id"]] is agent
+        assert agent._data is context
+        assert agent._memory is memory
+        assert agent._initialize_subagent_tools()[0].data is context
+        assert listed["total"] == 1
+        assert listed["tasks"][0]["id"] == created["id"]
+        saved = repository.get(created["id"], user_id=task_kwargs["user_id"])
+        assert saved is not None
+        assert saved.user_id == task_kwargs["user_id"]
+        assert saved.session_id == task_kwargs["session_id"]
+        assert saved.channel == channel
+        register_job.assert_called_once_with(created["id"])
+    finally:
+        for task in repository.list(user_id=task_kwargs["user_id"]):
+            repository.delete(task.id, user_id=task_kwargs["user_id"])
 
 
 def test_tool_manager_reassembly_invalidates_factory_catalog() -> None:
