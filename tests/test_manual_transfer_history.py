@@ -225,6 +225,43 @@ def test_manual_transfer_endpoint_passes_reorganize_confirmation(monkeypatch):
     assert captured["reorganize"] is True
 
 
+@pytest.mark.parametrize("cue_enabled", [None, False, True])
+@pytest.mark.parametrize("batch", [False, True])
+@pytest.mark.parametrize("preview", [False, True])
+def test_manual_transfer_endpoint_passes_cue_policy(monkeypatch, cue_enabled, batch, preview):
+    """目录、所选文件、预览及执行均透传本次 CUE 策略，空值保持继承语义。"""
+    source = make_fileitem("/downloads/album/track.flac")
+    captured = []
+
+    class _FakeTransferChain:
+        """在整理 API 与链调用边界记录请求策略。"""
+
+        def manual_transfer(self, **kwargs):
+            """保留本次策略并返回空预览或执行回执。"""
+            captured.append(kwargs)
+            return True, {"summary": {"total": 0, "success": 0, "failed": 0}, "items": []} if preview else ""
+
+    monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", _FakeTransferChain)
+    item = ManualTransferItem(
+        fileitems=[source] if batch else None,
+        **({} if batch else {"fileitem": source.model_copy(update={"path": "/downloads/album", "type": "dir"})}),
+        music_cue_enable=cue_enabled, preview=preview,
+    )
+    response = manual_transfer_endpoint(
+        transer_item=item, background=False, history_query=SimpleNamespace(get=lambda _id: None), _="token",
+    )
+    assert response.success is True
+    assert captured
+    assert all(call["music_cue_enable"] is cue_enabled for call in captured)
+
+
+@pytest.mark.parametrize("value", ["false", "true", 0, 1, [], {}])
+def test_manual_cue_policy_rejects_non_boolean_inputs(value):
+    """请求级开关只接受布尔值或空值，避免字符串假值被当作开启。"""
+    with pytest.raises(ValueError):
+        ManualTransferItem(music_cue_enable=value)
+
+
 def test_history_endpoint_reorganize_uses_chain_cleanup(monkeypatch):
     """历史 ID 重整应交由整理链清理历史，不能再传入旧目标重复删除。"""
     src_fileitem = make_fileitem("/downloads/Test.Show.S01E01.mkv")

@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Tuple, Union, cast
 
+from app.application.audio import use_music_cue
 from app.application.directory import DirectoryHelper
 from app.application.history.retry import (
     max_failed_retries,
@@ -426,9 +427,11 @@ class TransferExecutionOwner(_TransferOwnerBase):
     def _TransferChain__handle_transfer(
             self, task: TransferTask, callback: Optional[Callable] = None
     ) -> Optional[Tuple[bool, str]]:
-        """执行整理并统一记录 checkpoint 前的返回失败或异常。"""
+        """恢复准入时的 CUE 策略并执行，统一记录 checkpoint 前的失败或异常。"""
         try:
-            result = self._TransferChain__perform_transfer(task, callback)
+            cue_enabled = cast(Optional[bool], task.planning_input.options.get("music_cue_enable")) if task.planning_input else None
+            with use_music_cue(cue_enabled):
+                result = self._TransferChain__perform_transfer(task, callback)
         except Exception as error:
             if not getattr(error, "_transfer_planning_failure_recorded", False):
                 self._TransferChain__record_uncheckpointed_failure(task, error)

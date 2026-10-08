@@ -6,7 +6,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Optional, Union, cast
 
-from app.application.audio import AudioMetadataHelper
+from app.application.audio import AudioMetadataHelper, music_cue_enabled
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.music.catalog import MusicSourcePort
 from app.application.music.observation import capture_music_recognition, report_music_recognition
@@ -151,7 +151,7 @@ def _album_directory_cache_key(
     if evidence and contextual_meta:
         evidence["weak_album"] = not contextual_meta.album or music_album_title_is_weak(contextual_meta)
     sources = [source.value for source in music_sources or _directory_sources(contextual_meta)]
-    cue_enabled = get_chain_runtime_config_snapshot().music_cue_enable
+    cue_enabled = music_cue_enabled()
     return json.dumps([os.path.abspath(directory), regions, scripts, evidence, file_scope, sources, cue_enabled], ensure_ascii=False, sort_keys=True)
 
 

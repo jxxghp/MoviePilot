@@ -69,8 +69,13 @@ online confirmation; album corrections must preserve the returned source-file sc
   invalid companion CUE files, users can disable Music CUE recognition under
   Settings > System > Advanced > Media and preview or submit organization again.
   Disabled mode uses audio tags and filenames without reading, validating, or
-  automatically archiving CUE files. It applies to automatic and manual flows;
-  album caches separate the modes, but existing transfer plans remain unchanged.
+  automatically archiving CUE files. The manual organization dialog also provides
+  a per-task CUE switch initialized from the system setting. For
+  `POST /api/v1/transfer/manual`, `music_cue_enable: false/true` overrides this
+  task only; omission or null inherits the system default. Use the same value
+  for preview and execution. Album caches separate effective modes, and admitted
+  tasks retain their mode across queue execution and restart recovery. Existing
+  transfer plans remain unchanged.
   Keep it enabled for whole-album audio images.
 - When enabled, CUE-derived fields use the `cue` evidence source. `music_layout=image_cue`
   represents a whole album in one physical audio file; do not identify it as the

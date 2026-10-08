@@ -66,6 +66,23 @@ class _AudioScan:
 
 
 _audio_scan: ContextVar[Optional[_AudioScan]] = ContextVar("audio_metadata_scan", default=None)
+_music_cue_policy: ContextVar[Optional[bool]] = ContextVar("music_cue_policy", default=None)
+
+
+def music_cue_enabled() -> bool:
+    """优先读取本次整理的 CUE 策略，未绑定时继承系统设置。"""
+    enabled = _music_cue_policy.get()
+    return bool(get_runtime_setting("MUSIC_CUE_ENABLE")) if enabled is None else enabled
+
+
+@contextmanager
+def use_music_cue(enabled: Optional[bool] = None) -> Iterator[None]:
+    """隔离本次识别策略，允许线程上下文继承且退出或异常时恢复原策略。"""
+    token = _music_cue_policy.set(music_cue_enabled() if enabled is None else enabled)
+    try:
+        yield
+    finally:
+        _music_cue_policy.reset(token)
 
 
 @contextmanager
@@ -250,7 +267,7 @@ def _find_audio_cue(path: Path) -> Optional[tuple[Path, MusicCueSheet]]:
 
 def _apply_audio_cue(path: Path, meta: MetaMusic) -> MetaMusic:
     """按开关读取关联 CUE；关闭时保留分轨标签，不扫描、校验或归档索引。"""
-    if not get_runtime_setting("MUSIC_CUE_ENABLE") or path.suffix.casefold() == ".cue" or not path.is_file():
+    if not music_cue_enabled() or path.suffix.casefold() == ".cue" or not path.is_file():
         return meta
     try:
         found = _find_audio_cue(path)

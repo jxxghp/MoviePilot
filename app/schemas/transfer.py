@@ -337,6 +337,8 @@ class ManualTransferItem(OptionalMediaIdentityMixin, BaseModel):
     music_release_regions: Optional[List[str]] = Field(default=None, max_length=3)
     # 本次手动整理的 MusicBrainz 文字字形优先级；空值继承系统设置
     music_release_scripts: Optional[List[str]] = Field(default=None, max_length=3)
+    # 本次手动整理是否识别 CUE；空值继承系统设置
+    music_cue_enable: Optional[bool] = Field(default=None, strict=True)
     # 类型
     type_name: Optional[str] = None
     # 季号

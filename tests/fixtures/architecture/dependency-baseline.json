@@ -941,8 +941,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9397,
-  "edge_sha256": "4bbe0e014868fa0329b9824d33462983538b11c1454ffceaed3c101c713a53d5",
+  "edge_count": 9401,
+  "edge_sha256": "82e88feed7d0c88ac1617017a301ed2979be7da87e995463b5e22b61c77e9620",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -5653,6 +5653,7 @@
     "app.chain.transfer.checkpoint -> app.schemas.system",
     "app.chain.transfer.checkpoint -> app.schemas.tmdb",
     "app.chain.transfer.execution -> app.application",
+    "app.chain.transfer.execution -> app.application.audio",
     "app.chain.transfer.execution -> app.application.directory",
     "app.chain.transfer.execution -> app.application.history",
     "app.chain.transfer.execution -> app.application.history.retry",
@@ -5751,6 +5752,8 @@
     "app.chain.transfer.format -> app.schemas.tmdb",
     "app.chain.transfer.format -> app.schemas.transfer",
     "app.chain.transfer.format -> app.schemas.types",
+    "app.chain.transfer.history -> app.application",
+    "app.chain.transfer.history -> app.application.audio",
     "app.chain.transfer.history -> app.chain",
     "app.chain.transfer.history -> app.chain.media",
     "app.chain.transfer.history -> app.chain.transfer",
@@ -5790,6 +5793,7 @@
     "app.chain.transfer.music -> app.schemas.file",
     "app.chain.transfer.music -> app.schemas.types",
     "app.chain.transfer.plan -> app.application",
+    "app.chain.transfer.plan -> app.application.audio",
     "app.chain.transfer.plan -> app.application.classification",
     "app.chain.transfer.plan -> app.application.classification.reference",
     "app.chain.transfer.plan -> app.application.transfer",

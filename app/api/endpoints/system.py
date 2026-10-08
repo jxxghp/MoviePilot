@@ -446,6 +446,7 @@ async def get_user_global_setting(
             "LLM_SUPPORT_AUDIO_OUTPUT",
             "RECOGNIZE_SOURCE",
             "SEARCH_SOURCE",
+            "MUSIC_CUE_ENABLE",
             "AI_RECOMMEND_ENABLED",
         }
     )

@@ -4,6 +4,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable, List, Optional, Tuple, Union, cast
 
+from app.application.audio import music_cue_enabled
 from app.application.classification.reference import (
     EffectiveClassificationSnapshot,
     apply_persisted_classification_snapshot,
@@ -85,6 +86,8 @@ class TransferPlanningOwner(_TransferOwnerBase):
                 type(task.mediainfo).__name__ if task.mediainfo else None
             ),
         }
+        if isinstance(task.meta, MetaMusic):
+            options["music_cue_enable"] = music_cue_enabled()
         return TransferPlanningInput(
             source_fileitem=self._TransferChain__json_snapshot(task.fileitem),
             meta=self._TransferChain__json_snapshot(task.meta),

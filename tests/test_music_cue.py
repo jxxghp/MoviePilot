@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from mutagen.flac import FLAC
 
-from app.application.audio import AudioMetadataHelper
+from app.application.audio import AudioMetadataHelper, music_cue_enabled, use_music_cue
 from app.application.transfer.workflow import TransferPlanningInput, TransferTask
 from app.chain.acoustid import AcoustIdChain
 from app.chain.media import MediaChain
@@ -305,7 +305,8 @@ def test_disabled_cue_preserves_track_tags_across_readers(tmp_path, monkeypatch,
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
-def test_album_cache_separates_cue_recognition_modes(tmp_path, monkeypatch, asynchronous):
+@pytest.mark.parametrize("per_task", [False, True])
+def test_album_cache_separates_cue_recognition_modes(tmp_path, monkeypatch, asynchronous, per_task):
     """同目录切换 CUE 开关后同步、异步识别均重新计算，原模式仍可复用自己的缓存。"""
     audio, _ = _image_pair(tmp_path)
     chain = MediaChain()
@@ -315,11 +316,13 @@ def test_album_cache_separates_cue_recognition_modes(tmp_path, monkeypatch, asyn
     monkeypatch.setattr(chain, method, match)
 
     for enabled in (True, True, False, False, True):
-        monkeypatch.setattr(settings, "MUSIC_CUE_ENABLE", enabled)
-        if asynchronous:
-            asyncio.run(chain.async_recognize_music_album_directory(audio.parent))
-        else:
-            chain.recognize_music_album_directory(audio.parent)
+        if not per_task:
+            monkeypatch.setattr(settings, "MUSIC_CUE_ENABLE", enabled)
+        with use_music_cue(enabled if per_task else None):
+            if asynchronous:
+                asyncio.run(chain.async_recognize_music_album_directory(audio.parent))
+            else:
+                chain.recognize_music_album_directory(audio.parent)
 
     assert match.call_count == 2
 
@@ -376,8 +379,9 @@ def test_broken_index_with_different_stem_is_not_ignored(tmp_path, text):
 @pytest.mark.parametrize("mtype", [None, MediaType.MUSIC])
 @pytest.mark.parametrize("invalid", [False, True])
 @pytest.mark.parametrize("cue_enabled", [False, True])
-def test_transfer_entrypoint_respects_cue_setting(tmp_path, monkeypatch, mtype, invalid, cue_enabled):
-    """完整入口默认保护整轨及索引，关闭 CUE 后改用分轨标签且不归档索引。"""
+@pytest.mark.parametrize("override", [None, False, True])
+def test_transfer_entrypoint_respects_cue_setting(tmp_path, monkeypatch, mtype, invalid, cue_enabled, override):
+    """自动遵循全局，手动可覆盖 CUE 策略；真实规划与执行均保持本次策略。"""
     audio, cue = _image_pair(tmp_path, text=CUE.replace("00:01:00", "00:10:00") if invalid else CUE)
     tags = FLAC(audio)
     tags.update(title=["独立单曲"], artist=["测试歌手"], album=["专辑示例"], tracknumber=["2"])
@@ -412,16 +416,23 @@ def test_transfer_entrypoint_respects_cue_setting(tmp_path, monkeypatch, mtype, 
                                              source_oper=storage, target_oper=storage)
 
     monkeypatch.setattr(owner, "_plan_checkpoint_and_execute", preview)
-    state, result = owner.do_transfer(
-        fileitem=item, mtype=mtype, force=True, preview=True,
-        target_directory=TransferDirectoryConf(library_path=str(tmp_path / "library"), library_storage="local", renaming=True),
-    )
+    if override is None:
+        state, result = owner.do_transfer(
+            fileitem=item, mtype=mtype, force=True, preview=True,
+            target_directory=TransferDirectoryConf(library_path=str(tmp_path / "library"), library_storage="local", renaming=True),
+        )
+    else:
+        state, result = owner.manual_transfer(
+            fileitem=item, mtype=mtype, force=True, preview=True,
+            target_storage="local", target_path=tmp_path / "library", music_cue_enable=override,
+        )
+    effective = cue_enabled if override is None else override
 
-    if invalid and cue_enabled:
+    if invalid and effective:
         assert state is False
         assert plans == []
         assert "CUE" in str(result)
-    elif cue_enabled:
+    elif effective:
         assert state is True
         assert [task.fileitem.path for task in plans] == [str(audio), str(cue)]
         assert all(task.mediainfo.music_type == "album" for task in plans)
@@ -431,4 +442,66 @@ def test_transfer_entrypoint_respects_cue_setting(tmp_path, monkeypatch, mtype, 
         assert plans[0].mediainfo.music_type == "recording"
         assert plans[0].meta.title == "独立单曲"
         assert not plans[0].meta.organization_error
+    assert all(task.planning_input.options["music_cue_enable"] == effective for task in plans)
+    assert settings.MUSIC_CUE_ENABLE == cue_enabled
+    assert music_cue_enabled() == cue_enabled
     assert not (tmp_path / "library").exists()
+
+
+def test_cue_override_isolated_between_concurrent_tasks_and_restored_on_error(monkeypatch):
+    """并发手动识别及嵌套异常不能串用策略或修改其它任务的系统默认。"""
+    monkeypatch.setattr(settings, "MUSIC_CUE_ENABLE", True)
+
+    async def recognize(enabled: bool) -> bool:
+        """跨异步切换读取当前任务的独立 CUE 策略。"""
+        with use_music_cue(enabled):
+            await asyncio.sleep(0)
+            assert music_cue_enabled() == enabled
+            with pytest.raises(ValueError):
+                with use_music_cue(not enabled):
+                    raise ValueError("退出内部策略")
+            return music_cue_enabled()
+
+    async def concurrent() -> list[bool]:
+        """让两个相反策略的整理任务在同一事件循环内交错运行。"""
+        return await asyncio.gather(recognize(False), recognize(True))
+
+    assert asyncio.run(concurrent()) == [False, True]
+    assert settings.MUSIC_CUE_ENABLE is True
+    assert music_cue_enabled() is True
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_queued_music_task_restores_cue_policy_after_serialization(tmp_path, monkeypatch, enabled):
+    """持久队列回读规划快照后仍用提交策略，执行与后续任务不受全局切换影响。"""
+    audio, _ = _image_pair(tmp_path)
+    chain = make_transfer_chain()
+    item = LocalStorage().get_item(audio)
+    task = TransferTask(fileitem=item, meta=AudioMetadataHelper.read_tags(audio))
+    with use_music_cue(enabled):
+        planning = chain._TransferChain__build_planning_input(task)
+    restored = TransferPlanningInput.from_payload(planning.to_payload())
+    task.bind_planning_input(restored)
+    monkeypatch.setattr(settings, "MUSIC_CUE_ENABLE", not enabled)
+
+    def perform(_task, _callback):
+        """在真实执行入口读取音频，验证已冻结的 CUE 策略。"""
+        assert music_cue_enabled() == enabled
+        assert (AudioMetadataHelper.read(audio).music_layout == "image_cue") == enabled
+        return True, ""
+
+    monkeypatch.setattr(chain, "_TransferChain__perform_transfer", perform)
+    assert chain._TransferChain__handle_transfer(task) == (True, "")
+    assert music_cue_enabled() == (not enabled)
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_manual_dialog_receives_global_cue_default(monkeypatch, enabled):
+    """登录后的全局设置接口向手动弹窗提供真实默认值，兼容全局关闭的用户。"""
+    from app.api.endpoints.system import get_user_global_setting
+
+    monkeypatch.setattr(settings, "MUSIC_CUE_ENABLE", enabled)
+    runtime = SimpleNamespace(system=SimpleNamespace(user_global=AsyncMock(return_value={})))
+    response = asyncio.run(get_user_global_setting(_=None, runtime=runtime))
+    assert response.success is True
+    assert response.data["MUSIC_CUE_ENABLE"] is enabled
