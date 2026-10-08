@@ -203,6 +203,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
             "hddolby.com": self.__hddolby_test,
             "rousi.pro": self.__rousi_test,
             "sunnypt.top": self.__sunnypt_test,
+            "milkie.cc": self.__milkie_test,
         }
 
     def refresh_userdata(self, site: dict = None) -> Optional[SiteUserData]:
@@ -401,6 +402,33 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 if user_info.get("data"):
                     return True, "连接成功"
                 return False, user_info.get("message", "鉴权已过期或无效")
+            return False, f"错误：{res.status_code} {res.reason}"
+
+    def __milkie_test(self, site: SiteSnapshot) -> Tuple[bool, str]:
+        """
+        通过种子搜索接口测试 Milkie API Key
+
+        :param site: Milkie 站点配置
+        :return: 是否可用及状态信息
+        """
+        domain = site.domain or site_rules.extract_domain(site.url)
+        with _open_site_response(
+            method="GET",
+            url=f"https://{domain}/api/v1/torrents?ps=1",
+            headers={
+                "Accept": "application/json",
+                "User-Agent": site.ua or self.runtime_config.user_agent,
+                "x-milkie-auth": site.apikey,
+            },
+            proxies=(self.runtime_config.proxy or {}) if site.proxy else {},
+            timeout=site.timeout or 15,
+        ) as res:
+            if res is None:
+                return False, "无法打开网站！"
+            if res.status_code == 200:
+                return True, "连接成功"
+            if res.status_code in (401, 403):
+                return False, "API Key 无效或已过期"
             return False, f"错误：{res.status_code} {res.reason}"
 
     def __sunnypt_test(self, site: SiteSnapshot) -> Tuple[bool, str]:

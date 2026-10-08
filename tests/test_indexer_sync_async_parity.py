@@ -90,6 +90,10 @@ def _install_search_observers(monkeypatch, events: list[tuple]) -> None:
             {"keyword": "clean keyword", "mtype": MediaType.MOVIE, "page": 3},
         ),
         (
+            "Milkie",
+            {"keyword": "clean keyword", "mtype": MediaType.MOVIE, "page": 3},
+        ),
+        (
             "Haidan",
             {"keyword": "clean keyword", "mtype": MediaType.MOVIE},
         ),
