@@ -239,6 +239,7 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
         data_cleanup_outbox_dead_days=settings.DATA_CLEANUP_OUTBOX_DEAD_DAYS,
         download_subtitle=settings.DOWNLOAD_SUBTITLE,
         music_metadata_to_simplified=settings.MUSIC_METADATA_TO_SIMPLIFIED,
+        music_lyrics_to_simplified=settings.MUSIC_LYRICS_TO_SIMPLIFIED,
         music_cue_enable=settings.MUSIC_CUE_ENABLE,
         music_release_region_priority=tuple(
             item.strip().upper() for item in settings.MUSIC_RELEASE_REGION_PRIORITY.split(",") if item.strip()

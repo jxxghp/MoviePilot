@@ -29,6 +29,7 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo, MetaInfoPath
 from app.foundation.singleton import Singleton
+from app.foundation.text import convert
 from app.runtime.cache import cached
 from app.runtime.events import Event, eventmanager
 from app.runtime.log import logger
@@ -302,6 +303,7 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         self.scraping_policies = ScrapingConfig.from_system_config()
 
     def on_config_changed(self):
+        """重新读取刮削策略，供后续任务采用最新配置。"""
         self.scraping_policies = ScrapingConfig.from_system_config()
 
     @staticmethod
@@ -1686,11 +1688,13 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             lyrics: MusicLyrics,
             overwrite: bool,
     ) -> bool:
-        """原子写入本地歌词或上传远端歌词，并在覆盖时清理旧格式旁挂文件。"""
+        """按独立字形设置写入本地或远端歌词，保留来源内容并遵守覆盖策略。"""
         extension = lyrics.extension
         content = lyrics.content
         if not extension or not content:
             return False
+        if self.runtime_config.music_lyrics_to_simplified:
+            content = self._simplify_music_lyrics_content(content)
         target_path = Path(fileitem.path).with_suffix(extension)
         target_name = target_path.name
         temp_path: Optional[Path] = None
@@ -1727,6 +1731,15 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         finally:
             if temp_path and temp_path.exists() and temp_path != target_path:
                 self._cleanup_temp_file(temp_path)
+
+    @staticmethod
+    def _simplify_music_lyrics_content(content: str) -> str:
+        """只转换歌词正文，原样保留 LRC 方括号标签和逐字时间轴。"""
+        parts = re.split(r"(\[(?:\d+:|[A-Za-z][\w-]*:)[^\]\r\n]*\]|<\d+:\d{2}(?:[.:]\d+)?>)", content)
+        return "".join(
+            part if index % 2 else convert(part, "zh-hans")
+            for index, part in enumerate(parts)
+        )
 
     @staticmethod
     def _write_music_text_sidecar(target: Path, content: str) -> None:

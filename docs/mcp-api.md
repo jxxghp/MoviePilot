@@ -719,6 +719,8 @@ AMLL 使用无需鉴权的原生搜索与获取接口，先尝试 ISRC，再核�
 
 插件可通过 `get_module()` 注册 `music_lyrics_candidates(music)`，负责匹配并下载歌词内容，返回 `list[MusicLyrics]` 参与宿主择优；`MetaMusic`、`MusicInfo` 和 `MusicLyrics` 均可从 `app.sdk.media` 导入。该接口不需要注册 HTTP 路由，歌词文件仍由刮削链统一写入。完整契约和示例见[歌词插件开发说明](https://github.com/jxxghp/MoviePilot-Plugins/blob/main/docs/faq/21-register-lyrics-provider.md)。
 
+`MUSIC_LYRICS_TO_SIMPLIFIED` 默认关闭，独立于音乐元数据转简体设置。开启后，统一写入流程将本地或远端 `.lrc` / `.txt` 的正文转换为简体，保留时间轴、LRC 标签、候选对象和来源 Lyricsfile；AMLL TTML 派生的 LRC 同样适用。已有歌词继续遵循质量升级和覆盖策略，需转换时选择“总是刮削”重新刮削。
+
 音乐订阅可使用 `audio_quality=hires|lossless|lossy`（支持正则组合）、`audio_format`、`min_bitrate`、`min_bit_depth`、`min_sample_rate` 过滤资源。`best_version=1` 开启音质洗版，系统按格式、无损属性、位深、采样率和码率换算 0-100 优先级，只下载高于 `current_priority` 的候选；DSD 或 24-bit/192 kHz 无损资源达到终态 100。内置规则 `HIRES`、`LOSSLESS`、`FLAC`、`ALAC`、`APE`、`WAV`、`DSD`、`MP3`、`AAC`、`OPUS`、`BITRATE320`、`BITRATE256`、`BITRATE192` 可用于自定义过滤规则组。
 
 #### 下载

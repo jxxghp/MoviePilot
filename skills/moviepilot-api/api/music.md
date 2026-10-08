@@ -92,6 +92,11 @@ online confirmation; album corrections must preserve the returned source-file sc
   without other writes retain the link. Skip tags and covers to keep linked
   audio. Failed writes or a concurrently changed target discard the temporary
   copy. LRC and Lyricsfile sidecars also replace directory entries atomically.
+  `MUSIC_LYRICS_TO_SIMPLIFIED` defaults to false and independently converts
+  generated LRC/TXT lyric text to Simplified Chinese for local and remote writes.
+  Timestamps, LRC tags, candidates, and source Lyricsfile remain unchanged.
+  Existing lyrics still follow quality and overwrite policies; use Always Scrape
+  to regenerate them with this setting.
   Untagged files can be written, and incorrect extensions use the actual
   container. Native ID3 and MP4/freeform writers keep recording/release/group/
   release-track identities separate. An original year alone writes

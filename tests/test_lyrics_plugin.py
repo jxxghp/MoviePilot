@@ -204,7 +204,7 @@ def test_registered_lyrics_plugin_writes_through_music_scraping(
         get_parent_item=Mock(return_value=parent),
         upload_file=Mock(side_effect=upload),
     )
-    scraping.runtime_config = SimpleNamespace(lyrics_batch_timeout=30)
+    scraping.runtime_config = SimpleNamespace(lyrics_batch_timeout=30, music_lyrics_to_simplified=False)
     scraping.scraping_policies = SimpleNamespace(
         option=lambda _target, metadata: SimpleNamespace(
             is_skip=metadata != "lyrics", is_overwrite=False, is_upgrade=True,
