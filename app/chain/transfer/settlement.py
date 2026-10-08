@@ -345,7 +345,7 @@ class TransferSettlementOwner(_TransferOwnerBase):
             self, task: TransferTask, transferinfo: TransferInfo, /
     ) -> Tuple[bool, str]:
         """
-        整理完成后处理
+        原子结算整理结果；成功但无目标项的静默跳过不发布完成事件。
         """
         # 状态
         ret_status = True
@@ -504,7 +504,12 @@ class TransferSettlementOwner(_TransferOwnerBase):
             # 转移成功
             logger.info(f"{task.fileitem.name} 入库成功：{target_dir_path or ''}")
 
-            durable_event = self._durable_transfer_event(task, success=True)
+            # 静默跳过沿用成功终态，但没有目标文件可供完成事件的消费者处理。
+            durable_event = (
+                self._durable_transfer_event(task, success=True)
+                if transferinfo.target_item is not None
+                else None
+            )
             topic = durable_event[0] if durable_event else None
             event_type = durable_event[1] if durable_event else None
             event_payload = self._transfer_result_payload(task, transferinfo)

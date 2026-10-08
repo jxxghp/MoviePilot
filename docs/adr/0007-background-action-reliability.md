@@ -58,6 +58,10 @@ Event Contract Registry 是 53 个事件的逐项机器清单。下表按相同�
   `AudioTransferComplete`、`AudioTransferFailed`：整理步骤本身属于 E3，
   但历史行提交后向事件消费者发布结果属于 E2，使用同一 JSON 快照与恢复 handler。
 
+宿主仅在整理成功且 `transferinfo.target_item` 非空时登记媒体、字幕或音频的完成事件。
+静默跳过即使返回 `success=True`，也不产生完成事件的 outbox intent 或广播；任务终态与历史
+仍按原成功路径结算。失败结果继续登记对应失败事件，无需目标项。
+
 ## 非 Event 后台机制映射
 
 ### FastAPI BackgroundTasks
