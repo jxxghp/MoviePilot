@@ -8,6 +8,7 @@ Telegram Bot API 精简客户端。
 
 import json
 import threading
+import time
 from typing import Any, Callable, Dict, List, Optional, Union, cast
 from urllib.parse import urljoin
 
@@ -19,6 +20,8 @@ DEFAULT_API_URL = "https://api.telegram.org"
 # 普通请求的连接/读取超时，与原 SDK 默认值保持一致。
 _CONNECT_TIMEOUT_SECONDS = 15
 _READ_TIMEOUT_SECONDS = 30
+# 持续失败仍须在默认日志级别可见，同时避免网络抖动时每次重试都刷屏。
+_POLLING_WARNING_INTERVAL_SECONDS = 60
 # 轮询只接收宿主处理的两类更新，其余更新类型不进入 getUpdates 结果。
 _ALLOWED_UPDATES = ["message", "callback_query"]
 # 群聊/私聊中宿主会转发的消息内容类型，与原 SDK message_handler 注册的类型一致。
@@ -41,6 +44,7 @@ class TelegramApiError(Exception):
     """
 
     def __init__(self, method: str, description: str, error_code: Optional[int] = None):
+        """保留 API 错误码和描述，供调用方区分业务拒绝与网络失败。"""
         self.method = method
         self.description = description
         self.error_code = error_code
@@ -58,6 +62,7 @@ class TelegramNetworkError(Exception):
     """
 
     def __init__(self, method: str, description: str):
+        """封装请求层已经脱敏的网络错误描述。"""
         self.method = method
         self.description = description
         super().__init__(f"Telegram API {method} 请求失败：{description}")
@@ -404,8 +409,8 @@ class TelegramBotApi:
         在当前线程循环拉取更新并逐条交给 handler，直到 ``stop_polling`` 被调用。
 
         更新按 update_id 顺序串行处理；handler 抛错只记录日志，仍确认该更新，
-        避免同一条坏消息被反复投递。网络或 API 失败按指数退避重试，失败期间只在
-        首次失败和恢复时各记录一条日志。
+        避免同一条坏消息被反复投递。网络或 API 失败按指数退避重试，首次失败立即
+        警告，持续失败每分钟再警告一次；恢复时记录失败次数和持续时间。
 
         停止后仍在进行的 getUpdates 返回时，结果直接丢弃且不确认 offset，Telegram
         会把这些更新重新投递给下一个轮询者；新轮询者的 getUpdates 也会让 Telegram
@@ -413,6 +418,8 @@ class TelegramBotApi:
         """
         offset: Optional[int] = None
         failures = 0
+        failure_started_at = 0.0
+        next_warning_at = 0.0
         while not self._polling_stop.is_set():
             try:
                 updates = self.get_updates(offset, long_polling_timeout)
@@ -420,14 +427,27 @@ class TelegramBotApi:
                 if self._polling_stop.is_set():
                     return
                 failures += 1
+                now = time.monotonic()
+                retry_seconds = min(3 * 2 ** (failures - 1), retry_max_seconds)
                 if failures == 1:
-                    logger.warning(f"Telegram消息拉取失败，将自动重试：{err}")
+                    failure_started_at = now
+                    next_warning_at = now
+                if now >= next_warning_at:
+                    logger.warning(
+                        f"Telegram消息拉取失败，将自动重试（连续{failures}次，"
+                        f"已持续{int(now - failure_started_at)}秒，"
+                        f"{retry_seconds}秒后重试）：{err}"
+                    )
+                    next_warning_at = now + _POLLING_WARNING_INTERVAL_SECONDS
                 else:
                     logger.debug(f"Telegram消息拉取第{failures}次失败：{err}")
-                self._polling_stop.wait(min(3 * 2 ** (failures - 1), retry_max_seconds))
+                self._polling_stop.wait(retry_seconds)
                 continue
             if failures:
-                logger.info("Telegram消息拉取已恢复")
+                logger.info(
+                    f"Telegram消息拉取已恢复（此前连续{failures}次失败，"
+                    f"持续{int(time.monotonic() - failure_started_at)}秒）"
+                )
                 failures = 0
             for update in updates or []:
                 with self._dispatch_lock:

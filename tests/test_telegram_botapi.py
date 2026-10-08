@@ -15,6 +15,7 @@ from app.modules.telegram.botapi import TelegramApiError, TelegramBotApi, Telegr
 def _response(payload=None, status_code=200, text=None):
     """构造 requests.Response 替身；payload 为 None 时 json() 抛 ValueError。"""
     def _json():
+        """返回预设 JSON，模拟非 JSON 响应时保留解析错误。"""
         if payload is None:
             raise ValueError(text)
         return payload
@@ -143,6 +144,7 @@ def test_polling_dispatches_in_order_and_survives_handler_errors():
     handled = []
 
     def fake_get_updates(offset, timeout):
+        """依次交付两批更新，最后停止轮询。"""
         offsets.append(offset)
         if batches:
             return batches.pop(0)
@@ -150,6 +152,7 @@ def test_polling_dispatches_in_order_and_survives_handler_errors():
         return []
 
     def handler(update):
+        """记录分发顺序并模拟首条消息处理失败。"""
         handled.append(update["n"])
         if update["n"] == 1:
             raise RuntimeError("boom")
@@ -167,6 +170,7 @@ def test_polling_backs_off_on_failure_and_stops_promptly():
     calls = threading.Event()
 
     def failing_get_updates(offset, timeout):
+        """通知测试线程已开始拉取，再模拟网络失败。"""
         calls.set()
         raise ConnectionError("network down")
 
@@ -179,6 +183,101 @@ def test_polling_backs_off_on_failure_and_stops_promptly():
         client.stop_polling(0)
         thread.join(1)
     assert not thread.is_alive()
+
+
+def test_polling_reports_persistent_failures_and_resets_after_recovery():
+    """失败每分钟警告，恢复后再次中断立即警告，offset 和退避计数均保持正确。"""
+    client = TelegramBotApi("1:abc")
+    failure_times = [0, 1, 59, 60, 119, 120]
+    replies = [
+        [{"update_id": 4}],
+        *[TelegramNetworkError("getUpdates", f"failure-{index}") for index in range(6)],
+        [{"update_id": 5}],
+        TelegramApiError("getUpdates", "Conflict", 409),
+        [],
+    ]
+
+    def fake_get_updates(offset, timeout):
+        """交付更新后持续失败，再模拟恢复和一次新的 API 错误。"""
+        if replies:
+            reply = replies.pop(0)
+            if isinstance(reply, Exception):
+                raise reply
+            return reply
+        client.stop_polling(0)
+        return []
+
+    with patch.object(client, "get_updates", side_effect=fake_get_updates) as get_updates, \
+            patch.object(client._polling_stop, "wait") as wait, \
+            patch("app.modules.telegram.botapi.time.monotonic",
+                  side_effect=[*failure_times, 121, 122, 123]), \
+            patch("app.modules.telegram.botapi.logger") as log:
+        client.polling(lambda update: None, long_polling_timeout=30)
+
+    warnings = [call.args[0] for call in log.warning.call_args_list]
+    assert len(warnings) == 4
+    assert "连续1次，已持续0秒，3秒后重试" in warnings[0]
+    assert "连续4次，已持续60秒，24秒后重试" in warnings[1]
+    assert "failure-3" in warnings[1]
+    assert "连续6次，已持续120秒，60秒后重试" in warnings[2]
+    assert "连续1次，已持续0秒，3秒后重试" in warnings[3]
+    assert "Conflict" in warnings[3]
+    assert log.debug.call_count == 3
+    assert [call.args[0] for call in log.info.call_args_list] == [
+        "Telegram消息拉取已恢复（此前连续6次失败，持续121秒）",
+        "Telegram消息拉取已恢复（此前连续1次失败，持续1秒）",
+    ]
+    assert [call.args[0] for call in wait.call_args_list] == [3, 6, 12, 24, 48, 60, 3]
+    assert [call.args[0] for call in get_updates.call_args_list] == [
+        None, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6,
+    ]
+
+
+def test_polling_persistent_warning_hides_token_and_keeps_retry_limit(post_res):
+    """实际请求边界的超时日志保持脱敏，持续警告不改变调用方指定的退避上限。"""
+    token = "123456:SECRET-token"
+    client = TelegramBotApi(token)
+    post_res.side_effect = requests.ReadTimeout(f"/bot{token}/getUpdates timed out")
+    waits = []
+
+    def wait_or_stop(timeout):
+        """记录等待预算，第二次失败后结束循环。"""
+        waits.append(timeout)
+        if len(waits) == 2:
+            client.stop_polling(0)
+
+    with patch.object(client._polling_stop, "wait", side_effect=wait_or_stop), \
+            patch("app.modules.telegram.botapi.time.monotonic", side_effect=[0, 60]), \
+            patch("app.modules.telegram.botapi.logger") as log:
+        client.polling(lambda update: None, long_polling_timeout=30, retry_max_seconds=4)
+
+    assert post_res.call_count == 2
+    assert waits == [3, 4]
+    assert log.warning.call_count == 2
+    for call in log.warning.call_args_list:
+        assert token not in call.args[0]
+        assert "<token>" in call.args[0]
+        assert "ReadTimeout" in call.args[0]
+
+
+def test_polling_stop_during_failed_request_does_not_warn_or_wait():
+    """停止期间返回的请求错误直接退出，不报持续失败也不再退避重试。"""
+    client = TelegramBotApi("1:abc")
+
+    def stop_then_fail(offset, timeout):
+        """模拟请求完成前模块已经停止。"""
+        client.stop_polling(0)
+        raise TelegramNetworkError("getUpdates", "stopped")
+
+    with patch.object(client, "get_updates", side_effect=stop_then_fail) as get_updates, \
+            patch.object(client._polling_stop, "wait") as wait, \
+            patch("app.modules.telegram.botapi.logger") as log:
+        client.polling(lambda update: None, long_polling_timeout=30)
+
+    get_updates.assert_called_once()
+    wait.assert_not_called()
+    log.warning.assert_not_called()
+    log.info.assert_not_called()
 
 
 def test_get_updates_requests_only_handled_update_types(post_res):
