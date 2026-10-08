@@ -18,6 +18,7 @@ from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.modules.indexer.spider import SiteSpider
 from app.modules.indexer.spider.haidan import HaiDanSpider
 from app.modules.indexer.spider.hddolby import HddolbySpider
+from app.modules.indexer.spider.milkie import MilkieSpider
 from app.modules.indexer.spider.mtorrent import MTorrentSpider
 from app.modules.indexer.spider.rousi import RousiSpider
 from app.modules.indexer.spider.sunnypt import SunnyPTSpider
@@ -39,6 +40,7 @@ SPIDER_PARSER_CLASSES = {
     "HDDolby": HddolbySpider,
     "RousiPro": RousiSpider,
     "SunnyPT": SunnyPTSpider,
+    "Milkie": MilkieSpider,
 }
 
 _SPECIALIZED_SEARCH_ARGUMENTS = {
@@ -50,6 +52,7 @@ _SPECIALIZED_SEARCH_ARGUMENTS = {
     "Haidan": ("keyword", "mtype"),
     "HDDolby": ("keyword", "mtype", "page"),
     "RousiPro": ("keyword", "mtype", "cat", "page"),
+    "Milkie": ("keyword", "mtype", "page"),
 }
 
 _SPECIALIZED_SUBTITLE_SEARCH_ARGUMENTS = {
