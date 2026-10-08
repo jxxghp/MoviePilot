@@ -163,6 +163,7 @@ class SiteSpider:
         self.result_num = int(result_num or self.default_result_num())
         self._timeout = int(indexer.get('timeout') or 15)
         self.page = page
+        self._result_offset = 0
         if self.domain and not str(self.domain).endswith("/"):
             self.domain = self.domain + "/"
         self.ua = indexer.get('ua') or get_runtime_setting('USER_AGENT')
@@ -201,6 +202,7 @@ class SiteSpider:
         """
         获取搜索URL
         """
+        self._result_offset = 0
         # 种子搜索相对路径
         paths = self.search.get('paths', [])
         torrentspath = ""
@@ -320,6 +322,8 @@ class SiteSpider:
                 }
                 # 无额外参数
                 searchurl = self.domain + str(torrentspath).format(**inputs_dict)
+                # 没有页码入口的搜索一次返回完整列表，需在解析前按原始行分页。
+                self._result_offset = 0 if "{page}" in str(torrentspath) else int(self.page or 0) * self.result_num
 
         # 列表浏览
         else:
@@ -1117,6 +1121,15 @@ class SiteSpider:
             )
         )
 
+    def __slice_search_results(self, html_doc: Any, html_text: str) -> str:
+        """无服务端页码时先保留当前页原始行，确保 Python 与 Rust 使用相同窗口。"""
+        if not self._result_offset:
+            return html_text
+        rows = html_doc(self.list.get('selector', ''))
+        PyQuery(rows[:self._result_offset]).remove()
+        PyQuery(rows[self._result_offset + self.result_num:]).remove()
+        return str(html_doc)
+
     def parse(self, html_text: str) -> List[dict]:
         """
         解析页面或 RSS 索引，统一使用 HTML 选择器语义。
@@ -1134,6 +1147,7 @@ class SiteSpider:
                 self.error_detail = "返回登录或权限提示页"
                 logger.warn(f"错误：{self.indexername} 返回登录或权限提示页")
                 return []
+            html_text = self.__slice_search_results(status_doc, html_text)
         except Exception as err:
             self.is_error = True
             self.error_detail = f"页面解析失败：{err}"
