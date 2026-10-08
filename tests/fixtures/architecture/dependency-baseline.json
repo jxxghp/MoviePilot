@@ -941,8 +941,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9413,
-  "edge_sha256": "17537238149bf3be2a7807e8ed6cf498227cf5e7265f7862b5cec3e327c6a748",
+  "edge_count": 9415,
+  "edge_sha256": "cf827acc39adbf6e1080ce8c09922c286c03423990dd331d90df30d9b59097e4",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -5339,11 +5339,13 @@
     "app.chain.subscribe.create -> app.chain.subscribe.contract",
     "app.chain.subscribe.create -> app.chain.subscribe.identity",
     "app.chain.subscribe.create -> app.domain",
+    "app.chain.subscribe.create -> app.domain.context",
     "app.chain.subscribe.create -> app.domain.meta",
     "app.chain.subscribe.create -> app.domain.meta.metamusic",
     "app.chain.subscribe.create -> app.domain.metainfo",
     "app.chain.subscribe.create -> app.runtime",
     "app.chain.subscribe.create -> app.runtime.log",
+    "app.chain.subscribe.create -> app.runtime.settings",
     "app.chain.subscribe.create -> app.schemas",
     "app.chain.subscribe.create -> app.schemas.common",
     "app.chain.subscribe.create -> app.schemas.media",

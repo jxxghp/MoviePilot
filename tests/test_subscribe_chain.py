@@ -576,6 +576,8 @@ def _load_subscribe_chain_class():
                         search_owner,
                     ),
                     "add_subscribe": (create_owner,),
+                    "async_add_subscribe": (create_owner,),
+                    "get_runtime_setting": (create_owner,),
                 },
             )
 
@@ -2920,7 +2922,10 @@ class TestSubscribeProgressEntrypoint:
 
 
 class TestSubscribeProgressConsolidation:
+    """验证订阅创建、季集刷新及下载进度汇总的字段一致性。"""
+
     def _mediainfo(self, total_episode=5):
+        """构造具有统一影视身份和季集信息的识别结果。"""
         return SimpleNamespace(
             type=MediaType.TV,
             seasons={1: [object() for _ in range(total_episode)]},
@@ -2941,9 +2946,11 @@ class TestSubscribeProgressConsolidation:
 
     @staticmethod
     def _event_manager(total_episode=None, *, updated=True):
+        """记录订阅事件，并模拟外部集数刷新结果。"""
         captured = []
 
         def _apply(event_type, event_data):
+            """仅在集数刷新事件中填充扩展结果。"""
             captured.append((event_type, event_data))
             if hasattr(event_data, "current_total_episode"):
                 event_data.updated = updated
@@ -2953,10 +2960,14 @@ class TestSubscribeProgressConsolidation:
             return SimpleNamespace(event_data=event_data)
 
         class _EventManager:
+            """提供同步和异步一致的隔离事件入口。"""
+
             def send_event(self, event_type, event_data):
+                """记录同步事件并返回刷新结果。"""
                 return _apply(event_type, event_data)
 
             async def async_send_event(self, event_type, event_data):
+                """记录异步事件并返回刷新结果。"""
                 return _apply(event_type, event_data)
 
         return _EventManager(), captured
@@ -3716,6 +3727,236 @@ class TestSubscribeProgressConsolidation:
         assert captured[0][1].current_total_episode == 10
         assert added[-1]["total_episode"] == 10
         assert added[-1]["lack_episode"] == 10
+
+    def _identity_mediainfo(self, media_source, media_id, title, year, seasons=(1,), total_episode=9):
+        """按来源构造识别结果，季集结构与 TMDB 整剧或豆瓣季条目保持一致。"""
+        mediainfo = self._mediainfo(total_episode=total_episode)
+        mediainfo.media_source = media_source
+        mediainfo.media_id = media_id
+        mediainfo.title = title
+        mediainfo.year = year
+        mediainfo.title_year = f"{title} ({year})"
+        mediainfo.seasons = {number: [object() for _ in range(total_episode)] for number in seasons}
+        return mediainfo
+
+    def _conversion_media_chain(self, module, tmdbinfo, *, allow_convert=True, tmdb_available=True):
+        """按请求来源分发识别结果，并记录身份转换调用，供订阅创建的转换用例复用。"""
+        douban = self._identity_mediainfo("douban", "35932853", "绝望写手 第三季", "2024", seasons=(1,))
+        tmdb = self._identity_mediainfo("themoviedb", "124101", "绝望写手", "2021", seasons=(1, 2, 3, 4, 5))
+        calls = {"convert": [], "recognize": []}
+
+        def _recognize(**kwargs):
+            """根据目标来源返回原身份或 TMDB 二次识别结果。"""
+            calls["recognize"].append(kwargs)
+            if kwargs.get("media_source") == MediaSource.TMDB:
+                return tmdb if tmdb_available else None
+            return douban
+
+        def _convert(**kwargs):
+            """记录身份投影参数，禁止无需转换的目标触发调用。"""
+            assert allow_convert, "recognize source is not TMDB, identity must not be converted"
+            calls["convert"].append(kwargs)
+            return tmdbinfo
+
+        async def _async_recognize(**kwargs):
+            """以相同规则模拟异步识别。"""
+            return _recognize(**kwargs)
+
+        async def _async_convert(**kwargs):
+            """以相同规则模拟异步身份投影。"""
+            return _convert(**kwargs)
+
+        media_chain = SimpleNamespace(
+            recognize_media=_recognize,
+            async_recognize_media=_async_recognize,
+            convert_media_identity=_convert,
+            async_convert_media_identity=_async_convert,
+            supplement_media_info=lambda mediainfo: mediainfo,
+        )
+        return patch.object(module, "MediaChain", return_value=media_chain), calls
+
+    def _add_douban_season(
+        self, module, SubscribeChain, tmdbinfo, recognize_source="themoviedb", allow_convert=True,
+        *, tmdb_available=True, season=None, async_mode=False,
+    ):
+        """以豆瓣季条目创建电视剧订阅，返回落库字段和媒体链调用记录。"""
+        added = []
+        eventmanager, _ = self._event_manager(9)
+        chain = SubscribeChain()
+        chain.obtain_images = lambda **_kwargs: None
+        chain.async_obtain_images = AsyncMock(return_value=None)
+
+        def _add_subscribe(**kwargs):
+            """记录最终订阅写入字段。"""
+            added.append(kwargs)
+            return 51, None
+
+        async_add_subscribe = AsyncMock(side_effect=_add_subscribe)
+        media_patch, calls = self._conversion_media_chain(
+            module, tmdbinfo, allow_convert=allow_convert, tmdb_available=tmdb_available,
+        )
+        with (
+            patch.object(module, "add_subscribe", _add_subscribe),
+            patch.object(module, "async_add_subscribe", async_add_subscribe),
+            patch.object(module, "eventmanager", eventmanager),
+            patch.object(module, "get_runtime_setting", lambda _key, _default=None: recognize_source),
+            media_patch,
+        ):
+            kwargs = dict(
+                title="绝望写手 第三季",
+                year="2024",
+                mtype=MediaType.TV,
+                media_source="douban",
+                media_id="35932853",
+                season=season,
+                message=False,
+            )
+            sid, err_msg = asyncio.run(chain.async_add(**kwargs)) if async_mode else chain.add(**kwargs)
+        assert sid == 51
+        assert err_msg is None
+        return added[-1], calls
+
+    def test_add_converts_douban_season_identity_to_tmdb_series(self):
+        """识别源为 TMDB 时，豆瓣季条目订阅必须落为 TMDB 整剧身份并保留季号。"""
+        module, SubscribeChain = _load_subscribe_chain_class()
+
+        added, calls = self._add_douban_season(module, SubscribeChain, {"id": 124101, "media_type": "tv", "season": 3})
+
+        assert added["media_source"] == "themoviedb"
+        assert added["media_id"] == "124101"
+        assert added["season"] == 3
+        assert added["mediainfo"].title == "绝望写手"
+        assert added["total_episode"] == 9
+        assert calls["convert"][0]["media_source"] == MediaSource.Douban
+        assert calls["convert"][0]["media_id"] == "35932853"
+        assert calls["convert"][0]["season"] == 3
+        assert calls["recognize"][-1]["media_source"] == MediaSource.TMDB
+        assert calls["recognize"][-1]["media_id"] == "124101"
+
+    def test_add_keeps_douban_identity_when_tmdb_conversion_fails(self):
+        """转换失败时沿用原身份，保持历史行为而不是拒绝订阅。"""
+        module, SubscribeChain = _load_subscribe_chain_class()
+
+        added, calls = self._add_douban_season(module, SubscribeChain, None)
+
+        assert added["media_source"] == "douban"
+        assert added["media_id"] == "35932853"
+        assert added["season"] == 3
+        assert added["mediainfo"].title == "绝望写手"
+        assert len(calls["convert"]) == 1
+        assert all(call.get("media_source") != MediaSource.TMDB for call in calls["recognize"])
+
+    def test_add_skips_tmdb_conversion_when_recognize_source_is_not_tmdb(self):
+        """识别源不是 TMDB 时沿用用户选定的来源身份，不触发转换。"""
+        module, SubscribeChain = _load_subscribe_chain_class()
+
+        added, calls = self._add_douban_season(
+            module,
+            SubscribeChain,
+            {"id": 124101},
+            recognize_source="douban",
+            allow_convert=False,
+        )
+
+        assert added["media_source"] == "douban"
+        assert added["media_id"] == "35932853"
+        assert calls["convert"] == []
+
+    @pytest.mark.parametrize("async_mode", [False, True])
+    def test_add_keeps_original_identity_when_converted_tmdb_cannot_be_recognized(self, async_mode):
+        """TMDB 投影命中但二次识别失败时，同步和异步创建都保留原身份及季号。"""
+        module, SubscribeChain = _load_subscribe_chain_class()
+
+        added, calls = self._add_douban_season(
+            module, SubscribeChain, {"id": 124101, "season": 3},
+            tmdb_available=False, async_mode=async_mode,
+        )
+
+        assert added["media_source"] == "douban"
+        assert added["media_id"] == "35932853"
+        assert added["season"] == 3
+        assert len(calls["convert"]) == 1
+        assert calls["recognize"][-1]["media_source"] == MediaSource.TMDB
+
+    @pytest.mark.parametrize("async_mode", [False, True])
+    def test_add_preserves_explicit_season_during_tmdb_conversion(self, async_mode):
+        """显式季号优先于标题和投影季号，配置的 TMDB 别名也应触发转换。"""
+        module, SubscribeChain = _load_subscribe_chain_class()
+
+        added, calls = self._add_douban_season(
+            module, SubscribeChain, {"id": 124101, "season": 3},
+            recognize_source="tmdb", season=4, async_mode=async_mode,
+        )
+
+        assert added["media_source"] == "themoviedb"
+        assert added["media_id"] == "124101"
+        assert added["season"] == 4
+        assert calls["convert"][0]["season"] == 4
+        assert calls["recognize"][-1]["mtype"] == MediaType.TV
+        assert calls["recognize"][-1]["cache"] is False
+
+    @pytest.mark.parametrize("async_mode", [False, True])
+    @pytest.mark.parametrize("target", ["missing", "tmdb", "music"])
+    def test_tmdb_conversion_skips_missing_tmdb_and_music_targets(self, target, async_mode):
+        """无识别结果、已有 TMDB 身份及音乐目标均不得调用影视身份转换。"""
+        module, SubscribeChain = _load_subscribe_chain_class()
+        chain = SubscribeChain()
+        mediainfo = None
+        if target != "missing":
+            mediainfo = self._identity_mediainfo(
+                "themoviedb" if target == "tmdb" else "musicbrainz", "124101", "标题", "2024",
+            )
+            if target == "music":
+                mediainfo.type = MediaType.MUSIC
+        context = SimpleNamespace(mediainfo=mediainfo)
+        media_patch, calls = self._conversion_media_chain(module, {"id": 124101}, allow_convert=False)
+
+        with (
+            patch.object(module, "get_runtime_setting", lambda _key, _default=None: "themoviedb"),
+            media_patch,
+        ):
+            if async_mode:
+                asyncio.run(chain._SubscribeChain__async_convert_subscribe_media_to_tmdb(context))
+            else:
+                chain._SubscribeChain__convert_subscribe_media_to_tmdb(context)
+
+        assert context.mediainfo is mediainfo
+        assert calls == {"convert": [], "recognize": []}
+
+    def test_async_convert_subscribe_media_to_tmdb_replaces_identity_and_fills_season(self):
+        """异步入口同样换成 TMDB 身份；季号缺失时采用投影结果给出的季。"""
+        module, SubscribeChain = _load_subscribe_chain_class()
+        chain = SubscribeChain()
+        context, error = chain._SubscribeChain__build_subscribe_create_context(
+            "绝望写手",
+            "2024",
+            MediaType.TV,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            False,
+            False,
+            "douban",
+            "35932853",
+            {},
+        )
+        assert error is None
+        context.mediainfo = self._identity_mediainfo("douban", "35932853", "绝望写手", "2024")
+        media_patch, calls = self._conversion_media_chain(module, {"id": 124101, "season": 3})
+
+        with (
+            patch.object(module, "get_runtime_setting", lambda _key, _default=None: "themoviedb"),
+            media_patch,
+        ):
+            asyncio.run(chain._SubscribeChain__async_convert_subscribe_media_to_tmdb(context))
+
+        assert context.mediainfo.media_source == "themoviedb"
+        assert context.mediainfo.media_id == "124101"
+        assert context.season == 3
+        assert calls["convert"][0]["season"] is None
 
     def test_completed_episode_uses_schema_function_directly_for_best_version(self):
         module, SubscribeChain = _load_subscribe_chain_class()

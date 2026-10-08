@@ -14,11 +14,13 @@ from app.chain.media import MediaChain
 from app.chain.subscribe.context import _SubscribeCreateContext, _SubscribePostCommitContext
 from app.chain.subscribe.contract import _SubscribeOwnerBase
 from app.chain.subscribe.identity import media_recognize_kwargs
+from app.domain.context import MediaInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.schemas.common import JsonData
-from app.schemas.media import resolve_media_identity
+from app.schemas.media import normalize_media_source, resolve_media_identity
 from app.schemas.types import (
     MediaSource,
     MediaType,
@@ -193,6 +195,103 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
         if context.season is None:
             context.season = meta.begin_season
 
+    @staticmethod
+    def _SubscribeChain__tmdb_conversion_identity(
+        context: _SubscribeCreateContext,
+    ) -> Optional[Tuple[MediaSource, str]]:
+        """识别源为 TMDB 时，返回需要换成 TMDB 整剧身份的影视来源身份；其余情况返回空。"""
+        mediainfo = context.mediainfo
+        if not mediainfo or mediainfo.type not in (MediaType.MOVIE, MediaType.TV):
+            return None
+        source, media_id = resolve_media_identity(media=mediainfo)
+        if not source or not media_id or source == MediaSource.TMDB:
+            return None
+        if normalize_media_source(get_runtime_setting("RECOGNIZE_SOURCE", None)) != MediaSource.TMDB:
+            return None
+        return source, media_id
+
+    @staticmethod
+    def _SubscribeChain__apply_converted_subscribe_media(
+        context: _SubscribeCreateContext,
+        source: MediaSource,
+        media_id: str,
+        tmdbinfo: Optional[Dict[str, Any]],
+        converted: Optional[MediaInfo],
+    ) -> None:
+        """转换成功才替换订阅目标；豆瓣季条目的季号来自标题或投影结果，整剧身份本身不带季。"""
+        tmdb_id = tmdbinfo.get("id") if tmdbinfo else None
+        if not tmdb_id or not converted:
+            logger.warning(
+                f"未能将 {source}:{media_id} 转换为 TMDB 身份，订阅沿用原身份："
+                f"{context.mediainfo.title_year if context.mediainfo else context.title}"
+            )
+            return
+        if context.season is None and converted.type == MediaType.TV:
+            projected_season = tmdbinfo.get("season") if tmdbinfo else None
+            if isinstance(projected_season, int) and projected_season > 0:
+                context.season = projected_season
+        logger.info(f"订阅身份已由 {source}:{media_id} 转换为 TMDB {tmdb_id}：{converted.title_year}")
+        context.mediainfo = converted
+
+    def _SubscribeChain__convert_subscribe_media_to_tmdb(self, context: _SubscribeCreateContext) -> None:
+        """同步把豆瓣、Bangumi 等影视身份换成 TMDB，和豆瓣想看、豆瓣榜单的订阅口径一致。
+
+        非 TMDB 来源把每一季当成独立条目，标题和年份都是季级的；若直接作为订阅主身份，
+        下载记录与整理会按季标题生成独立剧集目录，媒体库里就会出现多部同名剧。
+        """
+        identity = self._SubscribeChain__tmdb_conversion_identity(context)
+        mediainfo = context.mediainfo
+        if not identity or mediainfo is None:
+            return
+        source, media_id = identity
+        tmdbinfo = MediaChain().convert_media_identity(
+            target_source=MediaSource.TMDB,
+            media_source=source,
+            media_id=media_id,
+            mtype=mediainfo.type,
+            season=context.season,
+        )
+        converted = None
+        if tmdbinfo and tmdbinfo.get("id"):
+            converted = MediaChain().recognize_media(
+                meta=context.metainfo,
+                mtype=mediainfo.type,
+                media_source=MediaSource.TMDB,
+                media_id=str(tmdbinfo.get("id")),
+                episode_group=context.episode_group,
+                cache=False,
+            )
+        self._SubscribeChain__apply_converted_subscribe_media(context, source, media_id, tmdbinfo, converted)
+
+    async def _SubscribeChain__async_convert_subscribe_media_to_tmdb(
+        self,
+        context: _SubscribeCreateContext,
+    ) -> None:
+        """异步版本的 TMDB 身份转换，与同步入口共享判定和替换规则。"""
+        identity = self._SubscribeChain__tmdb_conversion_identity(context)
+        mediainfo = context.mediainfo
+        if not identity or mediainfo is None:
+            return
+        source, media_id = identity
+        tmdbinfo = await MediaChain().async_convert_media_identity(
+            target_source=MediaSource.TMDB,
+            media_source=source,
+            media_id=media_id,
+            mtype=mediainfo.type,
+            season=context.season,
+        )
+        converted = None
+        if tmdbinfo and tmdbinfo.get("id"):
+            converted = await MediaChain().async_recognize_media(
+                meta=context.metainfo,
+                mtype=mediainfo.type,
+                media_source=MediaSource.TMDB,
+                media_id=str(tmdbinfo.get("id")),
+                episode_group=context.episode_group,
+                cache=False,
+            )
+        self._SubscribeChain__apply_converted_subscribe_media(context, source, media_id, tmdbinfo, converted)
+
     def _SubscribeChain__recognize_subscribe_media(self, context: _SubscribeCreateContext) -> Optional[str]:
         """同步识别订阅目标；显式身份失败时禁止按标题换成另一个媒体。"""
         if context.media_source and context.media_id:
@@ -216,6 +315,7 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
             )
             if context.mtype == MediaType.MUSIC and context.mediainfo and not context.mediainfo.media_source:
                 context.mediainfo = None
+        self._SubscribeChain__convert_subscribe_media_to_tmdb(context)
         return self._SubscribeChain__validate_recognized_subscribe_media(context)
 
     async def _SubscribeChain__async_recognize_subscribe_media(
@@ -244,6 +344,7 @@ class SubscribeCreateOwner(_SubscribeOwnerBase):
             )
             if context.mtype == MediaType.MUSIC and context.mediainfo and not context.mediainfo.media_source:
                 context.mediainfo = None
+        await self._SubscribeChain__async_convert_subscribe_media_to_tmdb(context)
         return self._SubscribeChain__validate_recognized_subscribe_media(context)
 
     def _SubscribeChain__validate_recognized_subscribe_media(
