@@ -1,6 +1,7 @@
 """完整页驱动验证实际补集、过滤兜底和逐页识别成本。"""
 
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -8,7 +9,7 @@ from app.application.site.observation import report_site_search_outcome, report_
 from app.chain.search.execution import MediaSearchPlan
 from app.chain.search.facade import SearchChain
 from app.chain.search.result import TorrentHelper
-from app.chain.search.scan import SearchScan, SearchSources
+from app.chain.search.scan import AUTOMATIC_REQUEST_INTERVAL, SearchScan, SearchSources
 from app.domain.context import MediaInfo, TorrentInfo
 from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.types import MediaSource, MediaType
@@ -329,6 +330,52 @@ def test_site_window_wait_keeps_cursor(owner, monkeypatch):
     assert not scan.collection.sources[key].failed
     assert not scan.collection.sources[key].exhausted
     assert scan.collection.sources[key].error == "站点窗口限流"
+
+
+def test_defer_ignores_expired_retries_and_terminal_sources(owner, monkeypatch):
+    """失败或耗尽来源的检查点残留不能覆盖仍活跃来源的冷却时间。"""
+    from app.application.subscription.sitebudget import SubscriptionSearchDeferred
+
+    monkeypatch.setattr(owner, "_sync_indexers", lambda _sites: [
+        {"id": site_id, "name": f"test-{site_id}", "parser": "mTorrent"} for site_id in (1, 2, 3)
+    ])
+    scan = SearchScan(owner=owner, plan=plan([1]))
+    failed_key, exhausted_key, active_key = (f"{site_id}:Show" for site_id in (1, 2, 3))
+    scan.collection.sources[failed_key].failed = True
+    scan.collection.sources[exhausted_key].exhausted = True
+    now = datetime.now(timezone.utc)
+    expired = (now - timedelta(minutes=1)).isoformat(timespec="seconds")
+    active_retry = (now + timedelta(minutes=5)).isoformat(timespec="seconds")
+    scan.retry = {failed_key: expired, exhausted_key: expired, active_key: active_retry}
+    scan.retry_reasons = {failed_key: "cooldown", exhausted_key: "cooldown", active_key: "busy"}
+
+    with pytest.raises(SubscriptionSearchDeferred) as error:
+        scan._defer()
+
+    assert error.value.retry_at == active_retry
+    assert error.value.wait_reason == "busy"
+    assert scan.retry == {active_key: active_retry}
+    assert scan.retry_reasons == {active_key: "busy"}
+
+
+def test_defer_uses_request_interval_when_all_retries_expired(owner):
+    """所有冷却都已过期时至少等待一个请求间隔再交还订阅队列。"""
+    from app.application.subscription.sitebudget import SubscriptionSearchDeferred
+
+    scan = SearchScan(owner=owner, plan=plan([1]))
+    key = next(key for key in scan.collection.active_sources() if not key.startswith("plugin:"))
+    scan.retry[key] = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(timespec="seconds")
+    scan.retry_reasons[key] = "cooldown"
+    before = datetime.now(timezone.utc)
+
+    with pytest.raises(SubscriptionSearchDeferred) as error:
+        scan._defer()
+
+    retry_at = datetime.fromisoformat(error.value.retry_at)
+    assert retry_at >= before + timedelta(seconds=AUTOMATIC_REQUEST_INTERVAL)
+    assert error.value.wait_reason == "slice"
+    assert not scan.retry
+    assert not scan.retry_reasons
 
 
 def test_all_sources_failing_is_not_reported_as_exhausted(owner, monkeypatch):

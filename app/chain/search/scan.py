@@ -344,6 +344,8 @@ class SearchScan:
             source.error = observation.error
             self.checkpoint()
             return False
+        self.retry.pop(key, None)
+        self.retry_reasons.pop(key, None)
         if not observation.attempted or observation.outcome != "success":
             source.error = observation.error or "本页没有成功请求，保留页号"
             if source.head_refresh:
@@ -524,10 +526,20 @@ class SearchScan:
         self.checkpoint()
 
     def _defer(self) -> None:
+        """按仍可搜索来源的有效冷却时间交还队列，避免过期检查点让任务立即重领。"""
+        now = datetime.now(timezone.utc)
+        now_at = now.isoformat(timespec="seconds")
+        active_sources = self.collection.active_sources(full=self.full)
+        active = set(active_sources)
+        self.retry = {key: retry_at for key, retry_at in self.retry.items()
+                      if key in active and retry_at > now_at}
+        self.retry_reasons = {key: reason for key, reason in self.retry_reasons.items() if key in self.retry}
         self.checkpoint()
-        future = (datetime.now(timezone.utc) + timedelta(seconds=AUTOMATIC_REQUEST_INTERVAL)).isoformat(timespec="seconds")
+        # 检查点只保存到秒，向上留一秒可确保实际等待不短于请求间隔。
+        future = (now + timedelta(seconds=AUTOMATIC_REQUEST_INTERVAL + 1))
+        future = future.replace(microsecond=0).isoformat(timespec="seconds")
         retry_at = min(self.retry.values(), default=future)
-        site_ids = tuple(int(self.queries[key]["site"]) for key in self.collection.active_sources(full=self.full)
+        site_ids = tuple(int(self.queries[key]["site"]) for key in active_sources
                          if self.queries[key]["site"] != "plugin")
         reason = "cooldown" if self.retry and all(
             self.retry_reasons.get(key) == "cooldown" for key in self.retry) else "busy" if self.retry else "slice"
