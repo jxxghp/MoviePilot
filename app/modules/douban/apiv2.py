@@ -336,16 +336,7 @@ class DoubanApi(metaclass=WeakSingleton):
     def __post(self, url: str, **kwargs) -> dict:
         """
         POST请求
-        esponse = requests.post(
-            url="https://api.douban.com/v2/movie/imdb/tt29139455",
-            headers={
-                "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
-                "Cookie": "bid=J9zb1zA5sJc",
-            },
-            data={
-                "apikey": "0ab215a8b1977939201640fa14c66bab",
-            }
-        )
+        使用 `_api_key2` 以表单字段 `apikey` 提交，参数由 `_prepare_post_request` 组装
         """
         req_url, params = self._prepare_post_request(url, **kwargs)
         resp = self._request.post_res(
