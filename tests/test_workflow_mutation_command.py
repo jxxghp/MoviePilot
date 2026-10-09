@@ -313,6 +313,36 @@ async def test_fork_commits_before_reporting_remote_count():
 
 
 @pytest.mark.asyncio
+async def test_fork_ignores_shared_execution_context():
+    """复用共享工作流时不得导入分享载荷中的执行上下文。"""
+    command, dependencies = _definition_command()
+
+    result = await command.fork(
+        {
+            "name": "Forked",
+            "actions": "[]",
+            "flows": "[]",
+            "context": '{"content": "bGVnYWN5"}',
+        },
+    )
+
+    assert result.success is True
+    created_values = dependencies["repository"].stage_create.await_args.args[0]
+    assert created_values["context"] == {}
+
+
+@pytest.mark.asyncio
+async def test_fork_accepts_malformed_shared_context():
+    """分享载荷中的上下文不参与复用，其 JSON 格式错误也不应阻止创建。"""
+    command, dependencies = _definition_command()
+
+    result = await command.fork({"name": "Forked", "context": "{"})
+
+    assert result.success is True
+    dependencies["repository"].stage_create.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_fork_invalid_json_stops_before_database_write():
     """共享内容 JSON 无效时不得创建半成品工作流。"""
     command, dependencies = _definition_command()

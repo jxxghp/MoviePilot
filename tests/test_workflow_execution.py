@@ -33,11 +33,19 @@ def _build_workflow(current_action=None, context=None, actions=None, flows=None,
     )
 
 
-def _encoded_context(context: ActionContext) -> dict:
-    """编码工作流恢复上下文。"""
-    return {
-        "content": base64.b64encode(pickle.dumps(context)).decode("utf-8"),
-    }
+_LEGACY_PAYLOAD_CALLS = []
+
+
+def _record_legacy_payload_call():
+    """记录旧版 pickle 载荷被反序列化时触发的调用。"""
+    _LEGACY_PAYLOAD_CALLS.append("loaded")
+
+
+class _LegacyPayload:
+    """反序列化时会执行回调的旧版上下文载荷。"""
+
+    def __reduce__(self):
+        return _record_legacy_payload_call, ()
 
 
 class _FakeWorkflowManager:
@@ -188,7 +196,7 @@ def test_workflow_executor_resumes_downstream_nodes(monkeypatch):
     fake_manager = _FakeWorkflowManager(calls)
     workflow = _build_workflow(
         current_action="A",
-        context=_encoded_context(ActionContext()),
+        context={"progress": 50},
     )
 
     monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
@@ -201,6 +209,27 @@ def test_workflow_executor_resumes_downstream_nodes(monkeypatch):
     assert calls == ["B"]
     assert executor.success is True
     assert executor.context.progress == 100
+
+
+def test_workflow_executor_ignores_legacy_pickle_context(monkeypatch):
+    """旧版 Base64 Pickle 上下文不得被反序列化，应按空上下文继续执行。"""
+    _LEGACY_PAYLOAD_CALLS.clear()
+    calls = []
+    fake_manager = _FakeWorkflowManager(calls)
+    workflow = _build_workflow(
+        current_action="A",
+        context={"content": base64.b64encode(pickle.dumps(_LegacyPayload())).decode("utf-8")},
+    )
+
+    monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: fake_manager)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "resume_workflow", lambda workflow_id: None)
+    monkeypatch.setattr(workflow_module.runtime_stop_state, "is_workflow_stopped", lambda workflow_id: False)
+
+    executor = workflow_module.WorkflowExecutor(workflow)
+
+    assert _LEGACY_PAYLOAD_CALLS == []
+    assert executor.context.workflow_context == {}
+    assert executor.context.node_outputs == {}
 
 
 def test_workflow_executor_restores_structured_context(monkeypatch):

@@ -659,7 +659,12 @@ class WorkflowDefinitionCommand:
         payload: Mapping[str, Any],
         share_id: Optional[int] = None,
     ) -> WorkflowMutationResult:
-        """解析共享工作流内容并在提交后更新远程复用次数。"""
+        """
+        解析共享工作流内容并在提交后更新远程复用次数。
+
+        只复用动作、流程和触发配置；执行上下文属于分享者本机的运行状态，对新工作流没有意义，
+        且来自外部不可信，因此忽略载荷中的 ``context``，新工作流固定从空上下文开始。
+        """
         values = dict(payload)
         if not values.get("name"):
             return WorkflowMutationResult(False, "工作流名称不能为空")
@@ -667,7 +672,6 @@ class WorkflowDefinitionCommand:
         for field, default, error_message in (
             ("actions", "[]", "actions字段JSON格式错误"),
             ("flows", "[]", "flows字段JSON格式错误"),
-            ("context", "{}", "context字段JSON格式错误"),
             ("event_conditions", "{}", "event_conditions字段JSON格式错误"),
         ):
             raw = values.get(field)
@@ -684,7 +688,7 @@ class WorkflowDefinitionCommand:
             "event_conditions": parsed["event_conditions"],
             "actions": parsed["actions"],
             "flows": parsed["flows"],
-            "context": parsed["context"],
+            "context": {},
             "state": "P",
         }
         if await self._repository.async_get_by_name(workflow_values["name"]):
