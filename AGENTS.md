@@ -86,7 +86,7 @@ The legacy roots have no physical directories in the source tree. Current images
 | `app/sdk/` | Deliberately curated stable imports for new plugins | Canonical implementation logic or host-internal dependencies | `browser.py`, `cache.py`, `logging.py`, `media.py`, `network.py`, `services.py` |
 | `app/runtime/compat/` | 仅依赖标准库的精确旧导入路由、资源前置扫描和 DEBUG 诊断 | 业务实现、通配猜测、目标模块的提前导入 | `manifest.py`, `imports.py`, `resources.py`, `diagnostics.py` |
 
-容易误分的三个边界必须按实际职责判断：`application/rss.py` 同时承担 Feed/种子语义、站点规则和浏览器回退，不是单纯 HTTP 传输；规范目标是由它拥有所需 Port、startup 注入 network/system Adapter。当前直接导入是 `S2-L6` 临时债务，不是允许的新模式。`application/site/sites.*` 及 `user.sites.v3.bin` 共同构成站点目录、认证和索引应用能力，只有下载安装机制留在 `adapters/system/resource.py`；`foundation/crypto.py` 只提供无状态 RSA/摘要/AES 算法，认证、签名、令牌和二次验证策略仍属于 `application/security/`。
+容易误分的三个边界必须按实际职责判断：`application/rss.py` 同时承担 Feed/种子语义、站点规则和浏览器回退，不是单纯 HTTP 传输；它拥有所需 Port、由 startup 注入 network/system Adapter；历史上的直接 Adapter 导入已在 `S2-L6` 清零（见 `docs/refactor/refactor-roadmap.md`），Application 不得再直接导入具体 Adapter。`application/site/sites.*` 及 `user.sites.v3.bin` 共同构成站点目录、认证和索引应用能力，只有下载安装机制留在 `adapters/system/resource.py`；`foundation/crypto.py` 只提供无状态 RSA/摘要/AES 算法，认证、签名、令牌和二次验证策略仍属于 `application/security/`。
 
 ### Placement Decision Order
 
@@ -223,4 +223,4 @@ For the full documentation map and cross-references, refer to:
 
 **[Documentation Hub Index](./docs/rules/README.md)**
 
-*Last Updated: 2026-09-06*
+*Last Updated: 2026-10-09*
