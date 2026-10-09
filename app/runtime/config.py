@@ -204,7 +204,7 @@ class ConfigModel(BaseModel):
     SECRET_KEY: str = secrets.token_urlsafe(32)
     # RESOURCE密钥
     RESOURCE_SECRET_KEY: str = secrets.token_urlsafe(32)
-    # 允许的域名
+    # 允许的跨域来源；为 "*" 时浏览器跨域请求不携带凭据，需要跨域带 Cookie 请列出显式来源
     ALLOWED_HOSTS: list = Field(default_factory=lambda: ["*"])
     # TOKEN过期时间
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8

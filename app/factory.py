@@ -328,6 +328,20 @@ async def localized_unhandled_exception_handler(
     )
 
 
+def resolve_cors_policy(allowed_hosts: Any) -> tuple[list[str], bool]:
+    """
+    把 ALLOWED_HOSTS 解析为 CORS 的允许来源与凭据开关。
+
+    通配来源不得与 allow_credentials 并用：Starlette 在两者同时成立时会把任意
+    请求 Origin 原样回显并声明允许携带凭据，等于对所有站点开放带 Cookie 的跨域
+    访问。只有显式列出来源时才允许携带凭据。
+    """
+    origins = [str(item).strip() for item in (allowed_hosts or ["*"]) if str(item).strip()]
+    if not origins or "*" in origins:
+        return ["*"], False
+    return origins, True
+
+
 def create_app() -> FastAPI:
     """
     创建并配置 FastAPI 应用实例。
@@ -365,11 +379,12 @@ def create_app() -> FastAPI:
         enabled=lambda: bool(get_runtime_setting("API_DOCS_ENABLE")),
     )
 
-    # 配置 CORS 中间件
+    # 配置 CORS 中间件；通配来源时不允许携带凭据
+    allow_origins, allow_credentials = resolve_cors_policy(get_runtime_setting('ALLOWED_HOSTS'))
     _app.add_middleware(
         CORSMiddleware,  # noqa
-        allow_origins=get_runtime_setting('ALLOWED_HOSTS'),
-        allow_credentials=True,
+        allow_origins=allow_origins,
+        allow_credentials=allow_credentials,
         allow_methods=["*"],
         allow_headers=["*"],
     )
