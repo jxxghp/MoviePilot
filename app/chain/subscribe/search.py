@@ -48,6 +48,7 @@ from app.chain.subscribe.metadata import (
 from app.chain.subscribe.searchtask import (
     SubscriptionSearchTaskRunner,
     retry_at_after,
+    subscription_search_cancelled,
 )
 from app.domain.context import (
     Context,
@@ -70,7 +71,7 @@ _NEW_SUBSCRIPTION_EDIT_SECONDS = 60
 
 def _finish_paged_subscription(owner: _SubscribeOwnerBase, subscribe: SubscriptionSnapshot,
                                target: SubscriptionSearchTarget) -> None:
-    """按当前订阅只读对账缺集，不用搜索开始时的媒体快照回写总集数；暂停与原流程一致，已接纳的搜索照常结算。"""
+    """按当前订阅对账缺集，不回写搜索开始时的总集数；显式补搜暂停后仍正常结算。"""
     current = owner.subscription_repository.get(subscribe.id)
     if current is None or owner._SubscribeChain__candidate_contract_changed(subscribe, current):
         return
@@ -249,7 +250,7 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
         执行订阅搜索。
 
         scheduled_interval 仅供定时调度传入系统间隔；手动和指定目标搜索不受周期限制。
-        指定目标可对暂停订阅搜索一次，已接纳的搜索不因暂停中断，也不会仅因搜索而恢复订阅。
+        暂停会阻止自动搜索及下载；手动或指定目标补搜可以执行一次，也不会仅因搜索而恢复订阅。
         """
         return self._execute_search(
             sid=sid,
@@ -300,6 +301,16 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
             scheduled_interval=scheduled_interval,
         )
         return None
+
+    def _reset_new_subscription(self, subscribe: SubscriptionSnapshot) -> SubscriptionSnapshot:
+        """搜索收尾前重读状态，避免旧的新建快照撤销用户暂停。"""
+        current = self.subscription_repository.get(subscribe.id)
+        if current and current.state == "N":
+            return cast(
+                SubscriptionSnapshot,
+                self._SubscribeChain__apply_subscribe_update(current, {"state": "R"}, scene="search_reset"),
+            )
+        return current or subscribe
 
     def _execute_inline_search(
         self,
@@ -356,18 +367,25 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
                     logger.debug(f"订阅《{subscribe.name}》正在处理，本次搜索先不重复执行")
                     summary.record("skipped", "admission_conflict")
                     continue
+                allow_paused_search = source in {"manual", "targeted"}
                 execution_context = SubscriptionExecutionContext(
                     lease=lease,
                     admission=self._subscription_execution_admission,
-                    cancel_requested=lambda: runtime_stop_state.is_system_stopped,
+                    cancel_requested=partial(
+                        subscription_search_cancelled,
+                        self.subscription_repository,
+                        subscribe.id,
+                        allow_paused_search,
+                        lambda: runtime_stop_state.is_system_stopped,
+                    ),
+                    allow_paused_search=allow_paused_search,
                 )
                 current = None
                 outcome: SearchTaskOutcome = "skipped"
                 reason: Optional[str] = "not_eligible"
                 try:
                     current = self.subscription_repository.get(subscribe.id)
-                    # 与持久队列保持一致，暂停不取消本轮已选取的搜索。
-                    if current is None:
+                    if current is None or (current.state == "S" and not allow_paused_search):
                         continue
                     processed_result = self._process_search_subscription(
                         current,
@@ -398,11 +416,7 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
                 finally:
                     try:
                         if current and current.state == "N":
-                            self._SubscribeChain__apply_subscribe_update(
-                                current,
-                                {"state": "R"},
-                                scene="search_reset",
-                            )
+                            self._reset_new_subscription(current)
                     except Exception as err:
                         logger.error(
                             f"订阅《{subscribe.name}》搜索结束后没有恢复到正常状态，"
@@ -592,11 +606,7 @@ class _SubscribeSearchQueueOwner(_SubscribeSearchQueueCoordinator):
             execution_ttl=self._SUBSCRIPTION_EXECUTION_TTL,
             recent_retry_at=self._recent_subscription_retry_at,
             process_subscription=self._process_search_subscription,
-            reset_subscription=partial(
-                self._SubscribeChain__apply_subscribe_update,
-                update_data={"state": "R"},
-                scene="search_reset",
-            ),
+            reset_subscription=self._reset_new_subscription,
             report_progress=self._report_search_progress,
             stop_state=stop_state,
         )

@@ -151,7 +151,7 @@ def _configure_subscription_write(chain, repository) -> None:
     chain.sync_subscription_mutation_scope = mutation_scope
 
 
-def _execution_context(*, cancelled=None, operation="search") -> SubscriptionExecutionContext:
+def _execution_context(*, cancelled=None, operation="search", allow_paused_search=True) -> SubscriptionExecutionContext:
     """构造音乐订阅使用的独立执行上下文。"""
     admission = SubscriptionExecutionAdmission()
     lease = admission.try_acquire(
@@ -165,6 +165,7 @@ def _execution_context(*, cancelled=None, operation="search") -> SubscriptionExe
         admission=admission,
         task_id="music-task-7",
         cancel_requested=cancelled,
+        allow_paused_search=allow_paused_search,
     )
 
 
@@ -350,7 +351,7 @@ def test_music_download_rechecks_paused_state_before_submission():
 
 @pytest.mark.parametrize("prepared_state", ["R", "S"])
 def test_music_accepted_search_downloads_paused_subscription(prepared_state):
-    """已接纳搜索和指定暂停订阅补搜能提交候选，不主动恢复订阅状态。"""
+    """显式搜索和指定暂停订阅补搜能提交候选，不主动恢复订阅状态。"""
     prepared = _subscribe(state=prepared_state)
     current = _subscribe(state="S")
     target = _music_info()
@@ -389,6 +390,26 @@ def test_music_accepted_search_downloads_paused_subscription(prepared_state):
     assert execution.admission.release(execution.lease) is True
 
 
+def test_music_automatic_search_cannot_download_after_pause():
+    """音乐自动搜索也必须在下载提交前遵守最新暂停状态。"""
+    execution = _execution_context(allow_paused_search=False)
+    repository = Mock()
+    repository.get.return_value = _subscribe(state="S")
+    chain = SubscribeChain()
+    chain.subscription_repository = repository
+    chain.finish_subscribe_or_not = Mock()
+
+    with patch("app.chain._music.DownloadChain") as download_chain:
+        chain._download_music_subscribe(
+            _subscribe(), _music_info(), [Context()], execution_context=execution,
+        )
+
+    download_chain.assert_not_called()
+    chain.finish_subscribe_or_not.assert_not_called()
+    assert execution.download_started is False
+    assert execution.admission.release(execution.lease) is True
+
+
 def test_music_paused_match_cannot_submit_download():
     """匹配执行上下文不能使用搜索任务的暂停放行规则。"""
     repository = Mock()
@@ -416,6 +437,7 @@ def test_music_paused_search_still_cancels_before_submission(cancel_at):
     execution = _execution_context(cancelled=lambda: cancelled[0])
 
     def on_phase(phase, _site_id):
+        """在指定阶段模拟用户取消，保持搜索暂停放行与取消信号独立。"""
         if phase == cancel_at:
             cancelled[0] = True
 

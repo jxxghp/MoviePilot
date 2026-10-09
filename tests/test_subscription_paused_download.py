@@ -15,6 +15,7 @@ from app.application.subscription.execution import (
 )
 from app.chain.subscribe import policy as subscribe_policy
 from app.chain.subscribe.facade import SubscribeChain
+from app.chain.subscribe.searchtask import subscription_search_cancelled
 from app.schemas.mediaserver import NotExistMediaInfo
 from app.schemas.types import MediaSource, MediaType
 from tests.test_subscription_download_governance import (
@@ -66,7 +67,7 @@ def download_scope(monkeypatch):
     )
 
 
-def _execution(operation="search", cancelled=lambda: False):
+def _execution(operation="search", cancelled=lambda: False, allow_paused_search=True):
     """固定执行时钟，保留真实租约、取消与副作用阶段信号。"""
     admission = SubscriptionExecutionAdmission(clock=lambda: 0)
     lease = admission.try_acquire(subscription_id=7, operation=operation, ttl_seconds=60)
@@ -76,10 +77,12 @@ def _execution(operation="search", cancelled=lambda: False):
         admission=admission,
         task_id="search-task-7",
         cancel_requested=cancelled,
+        allow_paused_search=allow_paused_search,
     )
 
 
 def _submit(scope, prepared, execution_context):
+    """沿真实订阅下载策略提交候选，检查最终下载器副作用。"""
     return scope.chain._SubscribeChain__download_best_version_with_full_pack_first(
         contexts=[scope.context],
         no_exists={"tmdb:77": {1: NotExistMediaInfo(season=1, episodes=[1], total_episode=1)}},
@@ -91,7 +94,7 @@ def _submit(scope, prepared, execution_context):
 
 @pytest.mark.parametrize("prepared_state", ["R", "S"])
 def test_accepted_search_downloads_while_subscription_is_paused(download_scope, prepared_state):
-    """搜索中途暂停和指定暂停订阅补搜均能提交，不主动恢复订阅状态。"""
+    """显式搜索中途暂停和指定暂停订阅补搜均能提交，不主动恢复订阅状态。"""
     scope = download_scope
     execution = _execution()
 
@@ -105,6 +108,50 @@ def test_accepted_search_downloads_while_subscription_is_paused(download_scope, 
     scope.download._settle_download_success.assert_called_once()
     assert execution.download_started is True
     assert scope.current.state == "S"
+    assert execution.admission.release(execution.lease) is True
+
+
+def test_automatic_search_cannot_download_after_subscription_is_paused(download_scope):
+    """自动搜索拿到候选后暂停，不能借已有执行上下文提交下载。"""
+    scope = download_scope
+    execution = _execution(allow_paused_search=False)
+
+    downloads, remaining = _submit(scope, replace(scope.current, state="N"), execution)
+
+    assert downloads == []
+    assert remaining["tmdb:77"][1].episodes == [1]
+    scope.chain.check_and_handle_existing_media.assert_not_called()
+    scope.download.download.assert_not_called()
+    assert execution.download_started is False
+    assert execution.admission.release(execution.lease) is True
+
+
+def test_automatic_search_rechecks_pause_after_torrent_preparation(download_scope):
+    """暂停发生在种子准备期间时，真实下载器提交前的取消检查仍会拦住下载。"""
+    scope = download_scope
+    active = replace(scope.current, state="N")
+    scope.chain.subscription_repository.get.return_value = active
+    execution = _execution(allow_paused_search=False)
+
+    execution.cancel_requested = lambda: subscription_search_cancelled(
+        scope.chain.subscription_repository, active.id, False, lambda: False,
+    )
+
+    def prepare_torrent(_torrent, **_kwargs):
+        """在资源准备与下载器调用之间模拟用户暂停。"""
+        scope.chain.subscription_repository.get.return_value = scope.current
+        return b"torrent", None, [1]
+
+    scope.download.download_torrent.side_effect = prepare_torrent
+
+    downloads, remaining = _submit(scope, active, execution)
+
+    scope.download.download_torrent.assert_called_once()
+    assert downloads == []
+    assert remaining["tmdb:77"][1].episodes == [1]
+    scope.download.download.assert_not_called()
+    scope.download._settle_download_success.assert_not_called()
+    assert execution.download_started is False
     assert execution.admission.release(execution.lease) is True
 
 
@@ -133,6 +180,7 @@ def test_paused_search_still_honors_cancellation_at_downloader_boundary(download
     execution = _execution(cancelled=lambda: cancelled[0])
 
     def prepare_torrent(_torrent, **_kwargs):
+        """在准备种子后请求取消，验证最终提交边界。"""
         cancelled[0] = True
         return b"torrent", None, [1]
 

@@ -703,25 +703,97 @@ def test_manual_search_bypasses_new_subscription_edit_wait(tmp_path, monkeypatch
     assert chain.get_search_batch(batch_id).state == "completed"
 
 
-def test_accepted_search_continues_after_subscription_is_paused(tmp_path, monkeypatch):
-    """暂停不等于取消，已接纳的定时搜索继续使用最新订阅快照。"""
-    subscribe = _subscribe(9)
+@pytest.mark.parametrize("queued", [False, True])
+@pytest.mark.parametrize("state", ["N", "R"])
+def test_automatic_search_stops_when_paused_after_admission(tmp_path, monkeypatch, queued, state):
+    """自动任务已选取或取得执行权后暂停，也不能开始搜索或恢复订阅。"""
+    subscribe = replace(_subscribe(9), state=state)
     paused = replace(subscribe, state="S")
     chain = _chain(tmp_path, [subscribe])
+    if not queued:
+        del chain.subscription_search_repository
     _make_tasks_ready(monkeypatch)
-    chain.subscription_repository.get = Mock(side_effect=(subscribe, paused))
-    process = Mock(return_value=paused)
+    snapshots = iter((subscribe, paused) if queued else (paused,))
+    chain.subscription_repository.get = Mock(side_effect=lambda _id: next(snapshots, paused))
+    process = Mock(side_effect=AssertionError("自动搜索不能绕过暂停"))
+    reset = Mock(side_effect=AssertionError("暂停后不能恢复订阅"))
     monkeypatch.setattr(chain, "_process_search_subscription", process)
+    monkeypatch.setattr(chain, "_SubscribeChain__apply_subscribe_update", reset)
+    monkeypatch.setattr(chain, "_wait_before_scheduled_search", Mock())
 
     with patch("app.chain.subscribe.search.SearchChain", return_value=Mock()):
-        batch_id = chain.search(state="R")
+        batch_id = chain.search(state=state)
 
-    batch = chain.get_search_batch(batch_id)
-    process.assert_called_once()
-    assert process.call_args.args[0] == paused
-    assert batch.state == "completed"
-    assert batch.finished_count == 1
-    assert batch.skipped_count == 0
+    process.assert_not_called()
+    reset.assert_not_called()
+    assert chain.subscription_repository.get(subscribe.id).state == "S"
+    if queued:
+        batch = chain.get_search_batch(batch_id)
+        assert batch.state == "skipped"
+        assert batch.finished_count == 0
+        assert batch.skipped_count == 1
+    lease = chain._subscription_execution_admission.try_acquire(
+        subscription_id=subscribe.id, operation="search", ttl_seconds=60,
+    )
+    assert lease is not None
+    assert chain._subscription_execution_admission.release(lease) is True
+
+
+def test_new_subscription_paused_during_edit_window_does_not_search_after_reopen(tmp_path, monkeypatch):
+    """新订阅保存后暂停，即使保护期结束并恢复队列，也不能搜索下载。"""
+    subscribe = replace(_subscribe(64), state="N", date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    chain = _chain(tmp_path, [subscribe])
+    batch_id = chain._SubscribeChain__queue_new_subscription_search(subscribe.id)
+    assert chain.get_search_batch(batch_id).state == "queued"
+    with chain.subscription_search_repository._session_factory() as session:
+        task = session.query(SubscriptionSearchTask).filter_by(subscription_id=subscribe.id).one()
+        assert task.available_at > datetime.now(timezone.utc).isoformat(timespec="seconds")
+        task.available_at = "1970-01-01T00:00:00+00:00"
+        session.commit()
+
+    paused = replace(subscribe, state="S", date=_subscribe(64).date)
+    resumed = _chain(tmp_path, [paused])
+    process = Mock(side_effect=AssertionError("编辑保护期后的自动任务也必须遵守暂停"))
+    monkeypatch.setattr(resumed, "_process_search_subscription", process)
+    with patch("app.chain.subscribe.search.SearchChain", return_value=Mock()):
+        resumed.resume_search_queue()
+
+    process.assert_not_called()
+    batch = resumed.get_search_batch(batch_id)
+    assert batch.state == "skipped"
+    assert batch.skipped_count == 1
+    assert resumed.subscription_repository.get(subscribe.id).state == "S"
+
+
+@pytest.mark.parametrize("queued", [False, True])
+@pytest.mark.parametrize("state", ["N", "R"])
+def test_running_automatic_search_observes_pause_and_preserves_state(tmp_path, monkeypatch, queued, state):
+    """搜索途中暂停会触发安全退出，旧的新建快照不能在清理时恢复订阅。"""
+    subscribe = replace(_subscribe(9), state=state)
+    chain = _chain(tmp_path, [subscribe])
+    if not queued:
+        del chain.subscription_search_repository
+    _make_tasks_ready(monkeypatch)
+    reset = Mock(side_effect=AssertionError("搜索清理不能撤销用户暂停"))
+    monkeypatch.setattr(chain, "_SubscribeChain__apply_subscribe_update", reset)
+    monkeypatch.setattr(chain, "_wait_before_scheduled_search", Mock())
+
+    def process(item, _searchchain, *, execution_context):
+        """在搜索已开始后暂停，验证执行上下文能重读状态。"""
+        assert execution_context.allow_paused_search is False
+        assert execution_context.should_stop() is False
+        chain.subscription_repository._subscribes[item.id] = replace(item, state="S")
+        assert execution_context.should_stop() is True
+        raise SubscriptionSearchCancelled()
+
+    monkeypatch.setattr(chain, "_process_search_subscription", process)
+    with patch("app.chain.subscribe.search.SearchChain", return_value=Mock()):
+        batch_id = chain.search(state=state)
+
+    reset.assert_not_called()
+    assert chain.subscription_repository.get(subscribe.id).state == "S"
+    if queued:
+        assert chain.get_search_batch(batch_id).state == "cancelled"
 
 
 @pytest.mark.parametrize("queued", [False, True])
@@ -743,6 +815,7 @@ def test_targeted_paused_search_preserves_subscription_state(tmp_path, monkeypat
 
     process.assert_called_once()
     assert process.call_args.kwargs["execution_context"].lease.operation == "search"
+    assert process.call_args.kwargs["execution_context"].allow_paused_search is True
     assert chain.subscription_repository.get(subscribe.id).state == "S"
     reset.assert_not_called()
     if queued:

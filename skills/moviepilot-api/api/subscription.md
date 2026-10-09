@@ -152,6 +152,9 @@ Purpose: Reset one accessible subscription so it can be processed again.
 ### `subscription.search`
 `POST /api/v1/subscribe/search/{subscribe_id}`; policy effect: `external_side_effect`.
 Purpose: Run an immediate search for one existing subscription.
+An explicit search can search and download once for a paused subscription without enabling it.
+State `S` stops automatic searches, including tasks already queued or waiting for site recovery;
+cancel the execution batch to stop an explicit search. Already submitted downloads remain active.
 - `path_params`: `subscribe_id*` (integer): Persistent subscription ID returned by subscription.list.
 - `query`: `type` (MediaType|null): MoviePilot media or storage item type required by the selected operation.
 - `body`: none

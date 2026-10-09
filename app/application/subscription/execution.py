@@ -87,6 +87,8 @@ class SubscriptionExecutionContext:
     incremental_search: bool = False
     scan_finished: bool = False
     task_lease: Optional[str] = None
+    # 仅手动或显式指定订阅的补搜允许在暂停状态下提交下载。
+    allow_paused_search: bool = False
 
     def is_cancel_requested(self) -> bool:
         """判断调用入口是否请求在下一个安全边界退出。"""

@@ -803,6 +803,8 @@ TMDB 缓存查询响应的 `data` 包含 `count`、`recognized`、`unrecognized`
 | `subscription.execution.cancel` | PUT | `/api/v1/subscribe/execution/batches/{batch_id}/cancel` | 在下载副作用边界前请求取消一个批次 |
 
 取消是幂等的状态请求，不会撤销已经提交到下载器的任务；批次详情中的状态和任务结果才是最终事实。
+将订阅状态设为 `S` 会阻止已入队的新订阅、定时及站点恢复自动搜索，并在自动下载提交前生效。
+手动或指定订阅补搜仍可对暂停订阅执行一次，需要停止该补搜时使用批次取消接口。
 
 ### 跨来源订阅回显
 

@@ -327,9 +327,10 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
             if current is None:
                 logger.info(f"订阅 {subscribe.id} 已删除，放弃本轮下载提交")
                 return [], no_exists
-            # 已接纳的 Search 可完成本次下载；无搜索上下文的 Match 等路径仍遵守暂停状态。
+            # 只有显式补搜可为暂停订阅提交下载，自动搜索不能借入队时的状态绕过暂停。
             if current.state == "S" and not (
                 execution_context and execution_context.lease.operation == "search"
+                and execution_context.allow_paused_search
             ):
                 logger.info(f"订阅 {current.name} 已暂停，放弃本轮下载提交")
                 return [], no_exists

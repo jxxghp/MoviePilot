@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 46
+version: 47
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -227,6 +227,11 @@ is reserved for direct authenticated management clients and is not a callable
 Agent operation. It clears corrupt task state while retaining the history record.
 
 ## Calling Contract
+
+Setting a subscription to state `S` stops queued and running automatic searches at safe
+boundaries, including new-subscription and site-retry tasks. An explicit subscription search
+can still search and download once while paused; cancel its execution batch to stop that run.
+Pausing or cancelling does not remove tasks already submitted to the downloader.
 
 Call the gateway with this shape:
 
