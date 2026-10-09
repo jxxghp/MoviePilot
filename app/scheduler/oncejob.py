@@ -70,6 +70,8 @@ class SchedulerPluginOnceJobOwner(_SchedulerOwnerBase):
                 # 插件未运行时读不到名称，用插件 ID 兜底，避免仪表盘和日志显示 None
                 provider_name=plugin_manager.get_plugin_attr(pid, "plugin_name") or pid,
                 once=True,
+                # APScheduler 先移除到期 DateTrigger，再调用 start；准入前仍属于待执行任务。
+                _once_pending=True,
                 # func 是插件传入的任意可调用对象，只有绑定方法才带 __self__；
                 # 记录注册实例，供服务重建时丢弃已被替换实例的遗留任务。
                 _plugin_instance=getattr(func, "__self__", None),
@@ -106,9 +108,10 @@ class SchedulerPluginOnceJobOwner(_SchedulerOwnerBase):
             pass
 
     def _is_plugin_once_job_pending(self, runtime_id: str, job: dict[str, Any]) -> bool:
-        """判断一次性任务是否仍待执行或正在执行；已执行完的状态可以回收。"""
+        """判断一次性任务是否待派发、待执行或正在执行；已完成的状态可以回收。"""
         return (
-            self._scheduler.get_job(runtime_id) is not None
+            bool(job.get("_once_pending"))
+            or self._scheduler.get_job(runtime_id) is not None
             or self._is_job_active(runtime_id)
             or bool(job.get("running"))
         )

@@ -12,16 +12,19 @@ from types import SimpleNamespace
 import pytest
 from apscheduler.schedulers.background import BackgroundScheduler
 
+import app.scheduler.execution as execution_module
 import app.scheduler.oncejob as oncejob_module
 import app.scheduler.reconcile as reconcile_module
 from app.runtime.log import current_plugin_instance_id
+from app.scheduler.execution import SchedulerExecutionOwner
 from app.scheduler.oncejob import SchedulerPluginOnceJobOwner
 from app.scheduler.reconcile import SchedulerReconcileOwner
+from app.scheduler.registry import ExecutionRegistry
 
 PID = "DemoOncePlugin"
 
 
-class _Owner(SchedulerReconcileOwner, SchedulerPluginOnceJobOwner):
+class _Owner(SchedulerExecutionOwner, SchedulerReconcileOwner, SchedulerPluginOnceJobOwner):
     """按 Scheduler Facade 的组合方式拼装对账与一次性任务两个 owner。"""
 
 
@@ -68,10 +71,16 @@ def owner(monkeypatch):
     owner._assign_job_generation = lambda _job_id, job: job.setdefault("_generation", 0)
     owner._accepting_submissions = lambda: True
     owner._is_job_active = lambda _job_id: False
+    owner._registry = ExecutionRegistry(owner._lock)
+    owner._lifecycle_state = "running"
+    owner._format_time = lambda: "now"
+    owner._get_progress_key = lambda job_id: job_id
 
     def _start(job_id: str) -> bool:
         # 真实 start 的准入、进度与收尾由既有调度测试覆盖，这里只执行已登记的函数。
         job = owner._jobs[job_id]
+        if job.get("once"):
+            job["_once_pending"] = False
         job["func"](**job["kwargs"])
         return True
 
@@ -135,6 +144,58 @@ def test_update_plugin_job_keeps_once_jobs_registered_by_current_instance(owner)
     assert owner._scheduler.get_job(_once_id("onlyonce")) is not None
     assert _once_id("onlyonce") in owner._jobs
     assert owner._scheduler.get_job(f"{PID}_periodic") is not None
+
+
+def test_update_plugin_job_keeps_once_job_after_scheduler_dispatch(owner) -> None:
+    """APScheduler 已消费触发器但尚未进入执行准入时，服务重建仍保留一次性任务。"""
+    job_id = _once_id("dispatching")
+    assert owner.add_plugin_once_job(
+        PID,
+        "dispatching",
+        owner.plugin.run_once,
+        "正在派发的一次性任务",
+        delay_seconds=60,
+    )
+
+    # DateTrigger 到期后 APScheduler 会先从 job store 移除任务，再调用 start。
+    owner._scheduler.remove_job(job_id)
+    owner.update_plugin_job(PID)
+
+    assert job_id in owner._jobs
+    assert owner.start(job_id)
+    assert owner.plugin.done.wait(5)
+    assert len(owner.plugin.calls) == 1
+
+
+def test_prepare_job_clears_once_pending_state_after_admission(owner, monkeypatch) -> None:
+    """一次性任务进入执行准入后不再以待派发状态阻止后续回收。"""
+
+    class _ProgressStub:
+        """隔离一次性任务准入测试的进度缓存。"""
+
+        def __init__(self, _key: str) -> None:
+            """接收进度键但不访问缓存后端。"""
+
+        def start(self) -> None:
+            """记录进度开始。"""
+
+        def update(self, **_kwargs) -> None:
+            """忽略本用例不关心的进度快照。"""
+
+    monkeypatch.setattr(execution_module, "ProgressHelper", _ProgressStub)
+    job_id = _once_id("admitted")
+    assert owner.add_plugin_once_job(
+        PID,
+        "admitted",
+        owner.plugin.run_once,
+        "已准入的一次性任务",
+        delay_seconds=60,
+    )
+
+    job = owner._prepare_job(job_id)
+
+    assert job is owner._jobs[job_id]
+    assert job["_once_pending"] is False
 
 
 def test_update_plugin_job_drops_once_jobs_of_replaced_instance(owner) -> None:
