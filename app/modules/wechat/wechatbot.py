@@ -1,7 +1,6 @@
 import base64
 import hashlib
 import json
-import pickle
 import re
 import threading
 import time
@@ -165,7 +164,7 @@ class WeChatBot:
             content = self._filecache.get(self._cache_key)
             if not content:
                 return
-            data = pickle.loads(content)
+            data = json.loads(content)
             if isinstance(data, (list, set, tuple)):
                 self._known_targets = {str(item).strip() for item in data if str(item).strip()}
         except Exception as err:
@@ -173,7 +172,7 @@ class WeChatBot:
 
     def _save_known_targets(self) -> None:
         try:
-            self._filecache.set(self._cache_key, pickle.dumps(sorted(self._known_targets)))
+            self._filecache.set(self._cache_key, json.dumps(sorted(self._known_targets)).encode("utf-8"))
         except Exception as err:
             logger.debug(f"保存企业微信智能机器人已互动用户失败：{err}")
 

@@ -5,7 +5,7 @@ QQ Bot 通知客户端
 
 import hashlib
 import io
-import pickle
+import json
 import threading
 from typing import List, Optional, Tuple
 
@@ -91,7 +91,7 @@ class QQBot:
         try:
             content = self._filecache.get(self._cache_key)
             if content:
-                data = pickle.loads(content)
+                data = json.loads(content)
                 if isinstance(data, (list, set)):
                     self._known_targets = set(tuple(x) for x in data)
         except Exception as e:
@@ -100,7 +100,7 @@ class QQBot:
     def _save_known_targets(self) -> None:
         """持久化曾互动的用户/群到缓存"""
         try:
-            self._filecache.set(self._cache_key, pickle.dumps(list(self._known_targets)))
+            self._filecache.set(self._cache_key, json.dumps(sorted(self._known_targets)).encode("utf-8"))
         except Exception as e:
             logger.debug(f"QQ Bot 保存 known_targets 失败: {e}")
 

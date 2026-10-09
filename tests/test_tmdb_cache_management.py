@@ -1,11 +1,11 @@
 import asyncio
 import inspect
-import pickle
+import json
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from app.api.endpoints import tmdb as tmdb_endpoint
 from app.api.deps import get_current_active_superuser_async
+from app.api.endpoints import tmdb as tmdb_endpoint
 from app.modules.themoviedb import cache as tmdb_cache_module
 from app.modules.themoviedb.cache import TmdbCache
 from app.schemas.types import MediaType, SystemConfigKey
@@ -174,7 +174,7 @@ def test_tmdb_cache_restores_only_unexpired_persisted_items(monkeypatch):
             },
         },
     }
-    file_cache = _FileCacheStub(pickle.dumps(payload))
+    file_cache = _FileCacheStub(json.dumps(payload).encode("utf-8"))
     runtime_cache = _TTLCacheStub()
 
     cache = _build_initialized_tmdb_cache(
@@ -210,7 +210,7 @@ def test_tmdb_cache_persists_individual_expiration_with_file_cache(monkeypatch):
 
     cache.save()
 
-    payload = pickle.loads(file_cache.content)
+    payload = json.loads(file_cache.content)
     assert file_cache.set_calls == [(
         tmdb_cache_module.PERSISTENCE_KEY,
         tmdb_cache_module.PERSISTENCE_REGION,
@@ -226,12 +226,10 @@ def test_tmdb_cache_persists_individual_expiration_with_file_cache(monkeypatch):
     }
 
 
-def test_tmdb_cache_migrates_legacy_file_to_global_file_cache(monkeypatch):
-    """旧 TMDB 缓存应迁移到全局文件缓存并删除旧文件。"""
+def test_tmdb_cache_discards_legacy_pickle_file_without_loading(monkeypatch):
+    """旧 temp 目录下的 pickle 缓存不再反序列化，只在保存时删除。"""
     primary_cache = _FileCacheStub()
-    legacy_cache = _FileCacheStub(pickle.dumps({
-        "legacy": {"id": 1, "title": "旧缓存"},
-    }))
+    legacy_cache = _FileCacheStub(b"\x80\x05legacy-pickle-bytes")
     file_caches = iter([primary_cache, legacy_cache])
     file_cache_calls = []
 
@@ -257,11 +255,8 @@ def test_tmdb_cache_migrates_legacy_file_to_global_file_cache(monkeypatch):
         {"base": tmdb_cache_module.settings.CACHE_PATH, "ttl": cache.ttl},
         {"base": tmdb_cache_module.settings.TEMP_PATH.parent, "ttl": cache.ttl},
     ]
-    assert runtime_cache.data == {"legacy": {"id": 1, "title": "旧缓存"}}
-    assert primary_cache.set_calls == [(
-        tmdb_cache_module.PERSISTENCE_KEY,
-        tmdb_cache_module.PERSISTENCE_REGION,
-    )]
+    assert runtime_cache.data == {}
+    assert primary_cache.set_calls == []
     assert legacy_cache.delete_calls == [(
         cache.region,
         tmdb_cache_module.settings.TEMP_PATH.name,

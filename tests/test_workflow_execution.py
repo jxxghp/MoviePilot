@@ -1,5 +1,3 @@
-import base64
-import pickle
 import threading
 import time
 from types import SimpleNamespace
@@ -34,10 +32,8 @@ def _build_workflow(current_action=None, context=None, actions=None, flows=None,
 
 
 def _encoded_context(context: ActionContext) -> dict:
-    """编码工作流恢复上下文。"""
-    return {
-        "content": base64.b64encode(pickle.dumps(context)).decode("utf-8"),
-    }
+    """按数据库 JSON 列的形式编码工作流恢复上下文。"""
+    return context.model_dump(mode="json")
 
 
 class _FakeWorkflowManager:
@@ -1112,3 +1108,18 @@ def test_workflow_manager_retries_action_until_success(monkeypatch):
     assert result.attempts == 2
     assert result.outputs == {"ok": True}
     assert RetryAction.call_count == 2
+
+
+def test_workflow_executor_discards_legacy_pickle_context(monkeypatch):
+    """旧版 Base64 Pickle 上下文不再反序列化，恢复时从空上下文重新开始。"""
+    workflow = _build_workflow(
+        current_action="A",
+        context={"content": "gASVBAAAAAAAAAB9lC4="},
+    )
+    monkeypatch.setattr(workflow_module, "get_workflow_manager", lambda: _FakeWorkflowManager([]))
+
+    executor = workflow_module.WorkflowExecutor(workflow)
+    context = executor.restore_context()
+
+    assert isinstance(context, ActionContext)
+    assert context == ActionContext()

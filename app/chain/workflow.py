@@ -1,8 +1,6 @@
 import ast
-import base64
 import copy
 import inspect
-import pickle
 import threading
 from collections import defaultdict, deque
 from contextvars import Context, copy_context
@@ -353,17 +351,14 @@ class WorkflowExecutor:
 
     def restore_context(self) -> ActionContext:
         """
-        恢复工作流上下文，兼容旧版 Base64 Pickle 存储格式。
+        恢复工作流上下文；只接受 JSON 形式，旧版 Base64 Pickle 载荷视为空上下文重新开始。
         """
         context = ActionContext()
         if self.workflow.context:
             if self.workflow.current_action:
                 logger.info(f"工作流已执行动作：{self.workflow.current_action}")
             try:
-                if isinstance(self.workflow.context, dict) and self.workflow.context.get("content"):
-                    decoded_data = base64.b64decode(self.workflow.context["content"])
-                    context = pickle.loads(decoded_data)
-                elif isinstance(self.workflow.context, dict):
+                if isinstance(self.workflow.context, dict) and not self.workflow.context.get("content"):
                     context = ActionContext.model_validate(self.workflow.context)
             except Exception:
                 context = ActionContext()

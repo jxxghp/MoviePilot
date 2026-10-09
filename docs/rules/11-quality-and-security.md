@@ -115,6 +115,13 @@ Password login (`/api/v1/login/access-token`) is protected by `app/application/s
 
 ---
 
+## Deserialization
+
+- Never `pickle.loads` bytes that come from a cache, database, file or network: a shared Redis instance, a mounted config volume or an imported backup can all be written by someone else, and unpickling attacker-controlled bytes executes code.
+- Store JSON wherever the value is plain data. If an object cannot be JSON-encoded yet, wrap it with `SignedPickleCodec` (`app/runtime/cache.py`), which only unpickles after an HMAC-SHA256 check with a key derived from the persisted `API_TOKEN`; treat a failed check as a cache miss, not an error.
+
+---
+
 ## SQL Injection Prevention
 
 - All database access goes through SQLAlchemy ORM via the Oper classes in `app/db/oper/`. No raw SQL string construction.

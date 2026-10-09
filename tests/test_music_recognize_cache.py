@@ -5,17 +5,17 @@
 """
 import asyncio
 import inspect
-import pickle
+import json
 from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from app.api.deps import get_current_active_superuser_async
 from app.api.endpoints import music as music_endpoint
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic
-from app.api.deps import get_current_active_superuser_async
-from app.modules.musicbrainz import cache as music_cache_module
 from app.modules.musicbrainz import MusicBrainzModule
+from app.modules.musicbrainz import cache as music_cache_module
 from app.modules.musicbrainz.cache import MusicBrainzCache
 
 
@@ -88,6 +88,11 @@ class _FileCacheStub:
         """记录统一文件缓存删除。"""
         self.content = None
         self.delete_calls.append((key, region))
+
+
+def _dump(payload) -> bytes:
+    """按持久化格式编码缓存载荷。"""
+    return json.dumps(payload).encode("utf-8")
 
 
 def _build_music_cache(data: dict) -> MusicBrainzCache:
@@ -163,7 +168,7 @@ def test_music_cache_key_prefers_media_id():
 @pytest.mark.parametrize("version", [1, 2])
 def test_music_cache_rebuilds_legacy_identity_keys(monkeypatch, version):
     """旧缓存可能串用实体或保存了截断名称的错误身份，升级后不再恢复。"""
-    file_cache = _FileCacheStub(pickle.dumps({
+    file_cache = _FileCacheStub(_dump({
         "version": version, "items": {"[音乐]legacy": {"expires_at": 2000, "value": _music_info().to_dict()}},
     }))
     runtime_cache = _TTLCacheStub()
@@ -283,7 +288,7 @@ def test_music_cache_restores_only_unexpired_persisted_items(monkeypatch):
             },
         },
     }
-    file_cache = _FileCacheStub(pickle.dumps(payload))
+    file_cache = _FileCacheStub(_dump(payload))
     runtime_cache = _TTLCacheStub()
 
     cache = _build_initialized_music_cache(
@@ -318,7 +323,7 @@ def test_music_cache_persists_only_items_with_media_id(monkeypatch):
 
     cache.save()
 
-    payload = pickle.loads(file_cache.content)
+    payload = json.loads(file_cache.content)
     assert file_cache.set_calls == [(
         music_cache_module.PERSISTENCE_KEY,
         music_cache_module.PERSISTENCE_REGION,
@@ -336,7 +341,7 @@ def test_music_cache_persists_only_items_with_media_id(monkeypatch):
 
 def test_music_cache_save_removes_file_when_empty(monkeypatch):
     """全部条目失效后保存应删除持久化文件。"""
-    file_cache = _FileCacheStub(pickle.dumps({"version": 1, "items": {}}))
+    file_cache = _FileCacheStub(_dump({"version": 1, "items": {}}))
     runtime_cache = _TTLCacheStub()
     cache = _build_initialized_music_cache(
         monkeypatch=monkeypatch,

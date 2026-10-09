@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pickle
 import traceback
 from abc import ABCMeta
 from collections.abc import Callable
@@ -54,6 +53,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         self.pluginmanager = context.plugin_manager
         self.filecache = context.file_cache
         self.async_filecache = context.async_file_cache
+        self._cache_codec = context.cache_codec
         self.site_repository = context.site_repository
         self.subscription_repository = context.subscription_repository
         self.subscription_search_repository = context.subscription_search_repository
@@ -110,38 +110,47 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         self._runtime_config_provider = None
         self._runtime_config = configuration
 
+    def _decode_cache(self, filename: str, content: Any) -> Any:
+        """
+        用已装配的编解码器解码缓存载荷；未装配或签名不符时按未命中处理。
+
+        旧版未签名 pickle 载荷在升级后会在这里被拒绝并自然重建，不视为错误。
+        """
+        if not content:
+            return None
+        if self._cache_codec is None:
+            logger.debug(f"缓存 {filename} 未装配编解码器，按未命中处理")
+            return None
+        try:
+            return self._cache_codec.loads(content)
+        except ValueError as err:
+            logger.debug(f"缓存 {filename} 载荷未通过校验，按未命中处理：{str(err)}")
+            return None
+        except Exception as err:
+            logger.error(f"加载缓存 {filename} 出错：{str(err)}")
+            return None
+
     def load_cache(self, filename: str) -> Any:
         """
         加载缓存
         """
-        content = self.filecache.get(filename)
-        if not content:
-            return None
-        try:
-            return pickle.loads(content)
-        except Exception as err:
-            logger.error(f"加载缓存 {filename} 出错：{str(err)}")
-            return None
+        return self._decode_cache(filename, self.filecache.get(filename))
 
     async def async_load_cache(self, filename: str) -> Any:
         """
         异步加载缓存
         """
-        content = await self.async_filecache.get(filename)
-        if not content:
-            return None
-        try:
-            return pickle.loads(content)
-        except Exception as err:
-            logger.error(f"异步加载缓存 {filename} 出错：{str(err)}")
-            return None
+        return self._decode_cache(filename, await self.async_filecache.get(filename))
 
     async def async_save_cache(self, cache: Any, filename: str) -> None:
         """
         异步保存缓存
         """
+        if self._cache_codec is None:
+            logger.debug(f"缓存 {filename} 未装配编解码器，跳过保存")
+            return
         try:
-            await self.async_filecache.set(filename, pickle.dumps(cache))
+            await self.async_filecache.set(filename, self._cache_codec.dumps(cache))
         except Exception as err:
             logger.error(f"异步保存缓存 {filename} 出错：{str(err)}")
             return
@@ -150,8 +159,11 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         """
         保存缓存
         """
+        if self._cache_codec is None:
+            logger.debug(f"缓存 {filename} 未装配编解码器，跳过保存")
+            return
         try:
-            self.filecache.set(filename, pickle.dumps(cache))
+            self.filecache.set(filename, self._cache_codec.dumps(cache))
         except Exception as err:
             logger.error(f"保存缓存 {filename} 出错：{str(err)}")
             return

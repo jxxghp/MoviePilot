@@ -1,6 +1,9 @@
 import contextvars
+import hashlib
+import hmac
 import inspect
 import logging
+import pickle
 import threading
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager, contextmanager
@@ -1478,3 +1481,50 @@ class LRUCache(CacheProxy):
         :param region: 缓存的区，为 None 时使用默认区
         """
         super().__init__(Cache(cache_type='lru', maxsize=maxsize), region)
+
+
+# 带签名的 pickle 载荷前缀；无前缀或签名不符的载荷一律拒绝反序列化
+SIGNED_PICKLE_MARKER = b"PICKLE1"
+_SIGNED_PICKLE_SEPARATOR = b"\x00"
+
+
+class SignedPickleCodec:
+    """
+    只在 HMAC-SHA256 签名校验通过后才执行 pickle 反序列化的缓存载荷编解码器。
+
+    pickle 反序列化任意字节等于执行任意代码，而 Redis 与文件缓存都可能被进程外写入。
+    产出格式为 ``PICKLE1\\x00<hex签名>\\x00<pickle>``。签名密钥由调用方提供的密钥材料经
+    SHA-256 派生，宿主使用已持久化的 API_TOKEN，因此缓存可跨重启保留，轮换令牌后旧载荷
+    全部视为缓存未命中。JSON 可表达的值应优先用 JSON 存储，本编解码器只用于暂时无法
+    JSON 化的对象。
+    """
+
+    _KEY_CONTEXT = b"moviepilot-cache-signing:"
+
+    def __init__(self, key_provider: Callable[[], Optional[str]]) -> None:
+        self._key_provider = key_provider
+
+    def _sign(self, payload: bytes) -> bytes:
+        """用派生密钥对 pickle 字节计算十六进制 HMAC-SHA256 签名。"""
+        material = str(self._key_provider() or "").encode("utf-8")
+        key = hashlib.sha256(self._KEY_CONTEXT + material).digest()
+        return hmac.new(key, payload, hashlib.sha256).hexdigest().encode("ascii")
+
+    @staticmethod
+    def is_signed(data: bytes) -> bool:
+        """判断字节是否为本编解码器产出的带签名载荷。"""
+        return data.startswith(SIGNED_PICKLE_MARKER + _SIGNED_PICKLE_SEPARATOR)
+
+    def dumps(self, value: Any) -> bytes:
+        """序列化并签名。"""
+        payload = pickle.dumps(value, pickle.HIGHEST_PROTOCOL)
+        return SIGNED_PICKLE_MARKER + _SIGNED_PICKLE_SEPARATOR + self._sign(payload) + _SIGNED_PICKLE_SEPARATOR + payload
+
+    def loads(self, data: bytes) -> Any:
+        """校验签名后反序列化；未签名、格式错误或签名不符时抛出 ValueError。"""
+        if not isinstance(data, (bytes, bytearray)) or not self.is_signed(bytes(data)):
+            raise ValueError("缓存载荷未签名，拒绝反序列化")
+        _marker, signature, payload = bytes(data).split(_SIGNED_PICKLE_SEPARATOR, 2)
+        if not hmac.compare_digest(signature, self._sign(payload)):
+            raise ValueError("缓存签名无效，拒绝反序列化")
+        return pickle.loads(payload)

@@ -87,6 +87,8 @@ class ChainRuntimeContext:
     configuration_provider: Optional[Callable[[], ChainRuntimeConfig]] = None
     stop_state: StopState = field(default_factory=lambda: runtime_stop_state)
     system_service: Optional[SystemService] = None
+    # 文件缓存二进制载荷编解码器（dumps/loads），未装配时 Chain 缓存读写按未命中处理
+    cache_codec: Any = None
 
 
 def _unconfigured_chain_runtime_context() -> ChainRuntimeContext:

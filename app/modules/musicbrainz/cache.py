@@ -1,6 +1,5 @@
 import hashlib
 import json
-import pickle
 import traceback
 from math import ceil
 from threading import RLock
@@ -56,7 +55,7 @@ class MusicBrainzCache(metaclass=WeakSingleton):
             content = self._file_cache.get(PERSISTENCE_KEY, region=PERSISTENCE_REGION)
             if not content:
                 return
-            payload = pickle.loads(content)
+            payload = json.loads(content)
             now = time()
             if (
                     not isinstance(payload, dict)
@@ -237,7 +236,7 @@ class MusicBrainzCache(metaclass=WeakSingleton):
                     }
                     self._file_cache.set(
                         PERSISTENCE_KEY,
-                        pickle.dumps(payload, pickle.HIGHEST_PROTOCOL),
+                        json.dumps(payload, ensure_ascii=False).encode("utf-8"),
                         region=PERSISTENCE_REGION,
                     )
                 else:

@@ -452,6 +452,17 @@ def get_movie_detail(tmdb_id: int) -> dict:
     return self._tmdb_client.get_movie(tmdb_id)
 ```
 
+### Binary Cache Payloads
+
+`FileCache` stores raw bytes, and the Redis backend serializes arbitrary values. Prefer JSON for
+every payload that can be expressed as plain data (dicts, lists, strings, numbers; convert enums to
+their values before writing). When an object cannot be JSON-encoded yet, encode it with
+`SignedPickleCodec` from `app/runtime/cache.py`: it prefixes the pickle bytes with an HMAC-SHA256
+signature whose key is derived from the persisted `API_TOKEN` (so caches survive restarts), and
+`loads()` refuses unsigned, tampered or foreign payloads with `ValueError`. Never call `pickle.loads` directly on cache or database content. The
+Redis adapter treats legacy unsigned `PICKLE` payloads as cache misses, and Chain receives its
+codec through `ChainRuntimeContext.cache_codec` from the startup composition root.
+
 ### Redis (Optional)
 
 When `REDIS_HOST` is configured, `app/modules/redis/` provides a distributed cache backend. Prefer `FileCache` for single-node deployments.

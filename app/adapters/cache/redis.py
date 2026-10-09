@@ -1,6 +1,5 @@
 import asyncio
 import json
-import pickle
 import threading
 import weakref
 from typing import Any, AsyncGenerator, Generator, Optional, Tuple, Union
@@ -11,7 +10,7 @@ from redis.asyncio import BlockingConnectionPool as AsyncBlockingConnectionPool
 from redis.asyncio import Redis
 
 from app.foundation.singleton import Singleton
-from app.runtime.cache import DEFAULT_CACHE_REGION, AsyncCacheBackend, AtomicCacheBackend
+from app.runtime.cache import DEFAULT_CACHE_REGION, AsyncCacheBackend, AtomicCacheBackend, SignedPickleCodec
 from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
 from app.runtime.settings import get_runtime_setting
@@ -19,6 +18,11 @@ from app.runtime.settings import get_runtime_setting
 # 类型缓存集合，针对非容器简单类型
 _complex_serializable_types = set()
 _simple_serializable_types = set()
+
+# 无法 JSON 化的值走带签名的 pickle；密钥材料用已持久化的 API_TOKEN，缓存可跨重启保留
+_signed_pickle = SignedPickleCodec(lambda: get_runtime_setting("API_TOKEN"))
+_BYTES_MARKER = b"BYTES"
+_JSON_MARKER = b"JSON"
 
 # 默认连接参数
 _socket_timeout = 30
@@ -38,43 +42,63 @@ def serialize(value: Any) -> bytes:
         return t in (list, dict, tuple, set)
 
     vt = type(value)
+    # 调用方已自行编码的二进制载荷原样透传，避免再套一层 pickle
+    if isinstance(value, (bytes, bytearray)):
+        return _BYTES_MARKER + b"\x00" + bytes(value)
     # 针对非容器类型使用缓存策略
     if not _is_container_type(vt):
         # 如果已知需要复杂序列化
         if vt in _complex_serializable_types:
-            return b"PICKLE" + b"\x00" + pickle.dumps(value)
+            return _signed_pickle.dumps(value)
         # 如果已知可以简单序列化
         if vt in _simple_serializable_types:
             json_data = json.dumps(value).encode("utf-8")
-            return b"JSON" + b"\x00" + json_data
+            return _JSON_MARKER + b"\x00" + json_data
         # 对于未知的非容器类型，尝试简单序列化，如抛出异常，再使用复杂序列化
         try:
             json_data = json.dumps(value).encode("utf-8")
             _simple_serializable_types.add(vt)
-            return b"JSON" + b"\x00" + json_data
+            return _JSON_MARKER + b"\x00" + json_data
         except TypeError:
             _complex_serializable_types.add(vt)
-            return b"PICKLE" + b"\x00" + pickle.dumps(value)
+            return _signed_pickle.dumps(value)
     else:
         # 针对容器类型，每次尝试简单序列化，不使用缓存
         try:
             json_data = json.dumps(value).encode("utf-8")
-            return b"JSON" + b"\x00" + json_data
+            return _JSON_MARKER + b"\x00" + json_data
         except TypeError:
-            return b"PICKLE" + b"\x00" + pickle.dumps(value)
+            return _signed_pickle.dumps(value)
 
 
 def deserialize(value: bytes) -> Any:
     """
-    将二进制数据反序列化为原始值，根据格式标识区分序列化方式
+    将二进制数据反序列化为原始值，根据格式标识区分序列化方式。
+
+    只接受 JSON、原样字节和带签名的 pickle；历史未签名 ``PICKLE`` 载荷与未知格式一律
+    抛出 ValueError，由调用方按缓存未命中处理。
     """
+    if SignedPickleCodec.is_signed(value):
+        return _signed_pickle.loads(value)
     format_marker, data = value.split(b"\x00", 1)
-    if format_marker == b"JSON":
+    if format_marker == _JSON_MARKER:
         return json.loads(data.decode("utf-8"))
-    elif format_marker == b"PICKLE":
-        return pickle.loads(data)
-    else:
-        raise ValueError("Unknown serialization format")
+    if format_marker == _BYTES_MARKER:
+        return data
+    raise ValueError("缓存载荷未签名或格式未知，拒绝反序列化")
+
+
+def _decode_cached_item(key: str, value: bytes) -> Optional[Tuple[str, Any]]:
+    """
+    反序列化遍历中的单个缓存项。
+
+    单个坏载荷（未签名、被篡改或非本程序写入）只跳过自身，不中断整轮遍历。
+    """
+    try:
+        return key, deserialize(value)
+    except ValueError as err:
+        logger.debug(f"Skip undeserializable Redis key: {key!r}, error: {err}")
+        return None
 
 
 class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
@@ -325,12 +349,16 @@ class RedisHelper(ConfigReloadMixin, metaclass=Singleton):
                 for key in self.client.scan_iter(redis_key):
                     value = self.client.get(key)
                     if value is not None:
-                        yield self.__get_original_key(key), deserialize(value)
+                        item = _decode_cached_item(self.__get_original_key(key), value)
+                        if item is not None:
+                            yield item
             else:
                 for key in self.client.scan_iter("*"):
                     value = self.client.get(key)
                     if value is not None:
-                        yield self.__get_original_key(key), deserialize(value)
+                        item = _decode_cached_item(self.__get_original_key(key), value)
+                        if item is not None:
+                            yield item
         except Exception as e:
             logger.error(f"Failed to get items from Redis, region: {region}, error: {e}")
 
@@ -671,12 +699,16 @@ class AsyncRedisHelper(ConfigReloadMixin, metaclass=Singleton):
                 async for key in client.scan_iter(redis_key):
                     value = await client.get(key)
                     if value is not None:
-                        yield self.__get_original_key(key), deserialize(value)
+                        item = _decode_cached_item(self.__get_original_key(key), value)
+                        if item is not None:
+                            yield item
             else:
                 async for key in client.scan_iter("*"):
                     value = await client.get(key)
                     if value is not None:
-                        yield self.__get_original_key(key), deserialize(value)
+                        item = _decode_cached_item(self.__get_original_key(key), value)
+                        if item is not None:
+                            yield item
         except Exception as e:
             logger.error(f"Failed to get items from Redis, region: {region}, error: {e}")
 

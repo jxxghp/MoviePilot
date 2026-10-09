@@ -1,17 +1,16 @@
-import pickle
+import json
 import traceback
 from math import ceil
 from threading import RLock
 from time import time
 from typing import Any, Optional
 
-from app.runtime.cache import FileCache, TTLCache
-from app.runtime.settings import get_runtime_setting
-
 from app.domain.meta.metabase import MetaBase
-from app.runtime.log import logger
-from app.schemas.types import MediaSource, MediaType
 from app.foundation.singleton import WeakSingleton
+from app.runtime.cache import FileCache, TTLCache
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.schemas.types import MediaSource, MediaType
 
 lock = RLock()
 PERSISTENCE_VERSION = 1
@@ -51,16 +50,16 @@ class TmdbCache(metaclass=WeakSingleton):
         try:
             content = self._file_cache.get(PERSISTENCE_KEY, region=PERSISTENCE_REGION)
             if not content:
-                content = self._legacy_file_cache.get(
+                # 旧版 temp 目录下的缓存是 pickle 载荷，不再解析，只标记以便保存时清理
+                legacy_content = self._legacy_file_cache.get(
                     self.region,
                     region=get_runtime_setting('TEMP_PATH').name,
                 )
-                if content:
+                if legacy_content:
                     self._legacy_cache_found = True
                     self._dirty = True
-            if not content:
                 return
-            payload = pickle.loads(content)
+            payload = json.loads(content)
             now = time()
             if (
                     isinstance(payload, dict)
@@ -290,8 +289,12 @@ class TmdbCache(metaclass=WeakSingleton):
                     self._dirty = True
                 if expires_at <= now or not value.get("id"):
                     continue
+                # 持久化用 JSON，媒体类型枚举写成值；读取端已兼容字符串形式
+                persisted_value = dict(value)
+                if isinstance(persisted_value.get("type"), MediaType):
+                    persisted_value["type"] = persisted_value["type"].value
                 persisted_items[key] = {
-                    "value": value,
+                    "value": persisted_value,
                     "expires_at": expires_at,
                 }
 
@@ -306,7 +309,7 @@ class TmdbCache(metaclass=WeakSingleton):
                     }
                     self._file_cache.set(
                         PERSISTENCE_KEY,
-                        pickle.dumps(payload, pickle.HIGHEST_PROTOCOL),
+                        json.dumps(payload, ensure_ascii=False).encode("utf-8"),
                         region=PERSISTENCE_REGION,
                     )
                 else:

@@ -347,9 +347,6 @@
   "app/modules/telegram/telegram.py": {
     "I001": 2
   },
-  "app/modules/themoviedb/cache.py": {
-    "I001": 1
-  },
   "app/modules/themoviedb/scraper.py": {
     "I001": 1
   },
@@ -751,9 +748,6 @@
   "tests/test_music_mediaserver.py": {
     "I001": 1
   },
-  "tests/test_music_recognize_cache.py": {
-    "I001": 1
-  },
   "tests/test_music_scrape.py": {
     "I001": 1
   },
@@ -855,9 +849,6 @@
     "I001": 1
   },
   "tests/test_testing_bootstrap_plugin_namespace.py": {
-    "I001": 1
-  },
-  "tests/test_tmdb_cache_management.py": {
     "I001": 1
   },
   "tests/test_tmdb_cache_type_guard.py": {
