@@ -349,6 +349,14 @@ class _ProviderCatalog:
                 description="OpenRouter 聚合模型平台。",
                 sort_order=50,
             ),
+            openai_provider(
+                provider_id="atlascloud",
+                name="Atlas Cloud",
+                default_base_url="https://api.atlascloud.ai/v1",
+                sort_order=55,
+                api_key_hint="填写 Atlas Cloud API Key。",
+                description="Atlas Cloud 聚合模型平台，一个 Key 覆盖 DeepSeek、智谱、月之暗面、通义千问与 MiniMax 等开源权重模型。",
+            ),
             ProviderSpec(
                 id="github-copilot",
                 name="GitHub Copilot",
