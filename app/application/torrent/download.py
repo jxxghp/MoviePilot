@@ -1,5 +1,6 @@
 import datetime
 import re
+import time
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, Union
@@ -22,6 +23,11 @@ from app.schemas.media import resolve_media_identity
 from app.schemas.types import MediaType, SystemConfigKey
 
 _SIZE_UNIT = 1024 * 1024
+
+
+def _is_transient_torrent_status(status: int) -> bool:
+    """403 和服务端错误可能来自站点前置代理，不能据此认定种子已失效。"""
+    return status == 403 or 500 <= status <= 599
 
 
 class TorrentResponsePort(Protocol):
@@ -141,6 +147,30 @@ class TorrentHelper:
         """初始化种子失败地址缓存"""
         self._invalid_torrents = TTLCache(region="invalid_torrents", maxsize=128, ttl=3600 * 24)
 
+    def _request_torrent_get(self, http_port: TorrentHttpPort, retry: bool,
+                             **request_options: Any) -> Optional[TorrentResponsePort]:
+        """普通种子 GET 瞬时失败时退避 1、2 秒；签名换票和确认 POST 不在此重试。"""
+        for attempt in range(3 if retry else 1):
+            response = http_port.request(method="GET", **request_options)
+            if not retry or attempt == 2 or not self._should_retry_torrent_response(response):
+                return response
+            logger.warning(f"种子下载遇到瞬时失败，将进行第 {attempt + 1} 次重试")
+            time.sleep(attempt + 1)
+        return None
+
+    def _should_retry_torrent_response(self, response: Optional[TorrentResponsePort]) -> bool:
+        """保留重定向、磁力和首次下载确认页，仅重试网络失败及无效的种子响应。"""
+        if response is None:
+            return True
+        if response.status_code != 200:
+            return _is_transient_torrent_status(response.status_code)
+        content = response.content
+        if content.startswith(b"magnet:"):
+            return False
+        if self.get_fileinfo_from_torrent_content(content)[1]:
+            return False
+        return "下载种子文件".encode("utf-8") not in content
+
     def download_torrent(self, url: str,
                          cookie: Optional[str] = None,
                          ua: Optional[str] = None,
@@ -155,7 +185,7 @@ class TorrentHelper:
         :param ua: 请求 User-Agent
         :param referer: 请求来源地址
         :param proxy: 是否使用系统代理
-        :param cache_invalid: 是否缓存失败地址；短时凭证地址必须关闭
+        :param cache_invalid: 是否缓存失败地址并启用普通 GET 重试；短时凭证及换票地址必须关闭
         :return: 种子缓存相对路径【用于索引缓存】, 种子内容、种子主目录、种子文件清单、错误信息
         """
         if url.startswith("magnet:"):
@@ -181,19 +211,21 @@ class TorrentHelper:
         # 下载种子文件
         config = get_chain_runtime_config_snapshot()
         http_port = _require_torrent_port()
-        req = http_port.request(
-            method="GET", url=url, cookie=cookie, ua=ua, referer=referer,
+        retry = cache_invalid and not torrent_rules.is_expiring_download_url(url)
+        req = self._request_torrent_get(
+            http_port, retry, url=url, cookie=cookie, ua=ua, referer=referer,
             proxies=config.proxy if proxy else None, allow_redirects=False,
         )
-        while req and req.status_code in [301, 302]:
+        while req is not None and req.status_code in [301, 302]:
             url = req.headers['Location']
             if url and url.startswith("magnet:"):
                 return None, url, "", [], "获取到磁力链接"
-            req = http_port.request(
-                method="GET", url=url, cookie=cookie, ua=ua, referer=referer,
+            req = self._request_torrent_get(
+                http_port, retry and not torrent_rules.is_expiring_download_url(url),
+                url=url, cookie=cookie, ua=ua, referer=referer,
                 proxies=config.proxy if proxy else None, allow_redirects=False,
             )
-        if req and req.status_code == 200:
+        if req is not None and req.status_code == 200:
             if not req.content:
                 return cache_path, None, "", [], "未下载到种子数据"
             # 解析内容格式
@@ -261,7 +293,7 @@ class TorrentHelper:
             return cache_path, None, "", [], "触发站点流控，请稍后重试"
         else:
             # 把错误的种子记下来，避免重复使用
-            if cache_invalid:
+            if cache_invalid and not _is_transient_torrent_status(req.status_code):
                 self.add_invalid(url)
             return cache_path, None, "", [], f"下载种子出错，状态码：{req.status_code}"
 

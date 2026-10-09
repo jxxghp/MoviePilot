@@ -26,7 +26,6 @@ DOWNLOAD_FAILURE_RESOURCE_TTL_SECONDS = 24 * 60 * 60
 DOWNLOAD_FAILURE_TRANSIENT_TTL_SECONDS = 60 * 60
 DOWNLOAD_FAILURE_RESOURCE_ERROR_KEYWORDS = (
     "无法读取种子文件",
-    "下载种子内容为空",
     "无法获取下载地址",
     "种子下载失败",
     "torrent not found",
@@ -130,7 +129,7 @@ class DownloadFailureOwner(_DownloadOwnerBase):
     @staticmethod
     def _download_failure_ttl(error_msg: Optional[str]) -> int:
         """
-        按失败原因确定资源冷却时间。
+        按失败原因确定资源冷却时间；泛化的空内容不能证明资源失效，使用瞬时冷却。
         """
         error_text = str(error_msg or "").lower()
         if any(keyword in error_text for keyword in DOWNLOAD_FAILURE_RESOURCE_ERROR_KEYWORDS):
