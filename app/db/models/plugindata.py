@@ -1,9 +1,10 @@
 from typing import Any, Optional
-from sqlalchemy import String, JSON, Index, delete, select
+
+from sqlalchemy import JSON, Index, String, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app.db.base import get_id_column, Base
+from app.db.base import Base, get_id_column
 
 
 class PluginData(Base):

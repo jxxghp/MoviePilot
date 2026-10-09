@@ -5,7 +5,6 @@ from __future__ import annotations
 from importlib import import_module
 from typing import Any
 
-
 _EXPORT_MODULES = {
     "ActivationPolicy": "app.runtime.capabilities.model",
     "AdapterExecutionMode": "app.runtime.capabilities.model",

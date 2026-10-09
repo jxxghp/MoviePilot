@@ -12,7 +12,7 @@ from app.application.messaging.channel.admin import (
     resolve_config_principal_ids,
 )
 from app.foundation.collections import DictUtils
-from app.modules import _MessageBase, _ModuleBase, TService
+from app.modules import TService, _MessageBase, _ModuleBase
 from app.runtime.events import eventmanager
 from app.runtime.log import logger
 from app.schemas.event import CommandRegisterEventData

@@ -1,4 +1,4 @@
-from langchain_core.messages import SystemMessage, ContentBlock
+from langchain_core.messages import ContentBlock, SystemMessage
 
 
 def append_to_system_message(

@@ -3,7 +3,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 PROJECT_ROOT = Path(__file__).parents[1]
 MAIN_PATH = PROJECT_ROOT / "app" / "main.py"
 

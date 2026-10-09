@@ -4,8 +4,8 @@ from unittest.mock import Mock, patch
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.chain.scraping import ScrapingChain, ScrapingConfig, _MusicScrapeFileResult
 from app.domain.context import MUSIC_ENTITY_ALBUM, MusicAlbumInfo, MusicInfo, MusicLyrics
-from app.runtime.events import Event
 from app.domain.meta.metamusic import MetaMusic
+from app.runtime.events import Event
 from app.schemas.file import FileItem
 from app.schemas.types import EventType, ScrapingPolicy
 

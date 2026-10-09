@@ -2,10 +2,10 @@
 
 import importlib
 
-from alembic.migration import MigrationContext
-from alembic.operations import Operations
 import pytest
 import sqlalchemy as sa
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
 
 
 def _operations(connection: sa.Connection) -> Operations:

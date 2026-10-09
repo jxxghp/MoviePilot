@@ -3,7 +3,6 @@
 from importlib import import_module
 from typing import Any
 
-
 _EXPORTS = {
     "QQBotModule": ("app.modules.qqbot.module", "QQBotModule"),
 }

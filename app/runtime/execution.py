@@ -7,10 +7,10 @@ from contextvars import Context, copy_context
 from functools import partial, wraps
 from typing import Any, Callable, TypeVar, cast
 
-from app.runtime.gc import flush_thread_allocator_cache
-from app.schemas.exception import ImmediateException
 from anyio.to_thread import run_sync
 
+from app.runtime.gc import flush_thread_allocator_cache
+from app.schemas.exception import ImmediateException
 
 TaskResult = TypeVar("TaskResult")
 ExecutorResult = TypeVar("ExecutorResult")

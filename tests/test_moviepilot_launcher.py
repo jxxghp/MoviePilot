@@ -1,10 +1,9 @@
-from pathlib import Path
 import os
 import stat
 import subprocess
+from pathlib import Path
 
 import pytest
-
 
 LAUNCHER = Path(__file__).resolve().parents[1] / "moviepilot"
 

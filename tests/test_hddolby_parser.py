@@ -2,7 +2,6 @@
 from app.modules.indexer.parser.hddolby import HDDolbySiteUserInfo
 from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
 
-
 USER_DATA_JSON = """
 {
   "status": 0,

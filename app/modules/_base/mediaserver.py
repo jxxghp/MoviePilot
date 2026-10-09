@@ -6,14 +6,14 @@
 """
 from typing import Optional, Tuple
 
+from app.application.mediaserver import MusicMediaServerHelper
+from app.domain.context import MediaInfo
+from app.modules import TService, _MediaServerBase, _ModuleBase
+from app.runtime.events import eventmanager
+from app.runtime.log import logger
 from app.schemas.event import AuthCredentials as _SchemaAuthCredentials
 from app.schemas.event import AuthInterceptCredentials as _SchemaAuthInterceptCredentials
 from app.schemas.mediaserver import ExistMediaInfo as _SchemaExistMediaInfo
-from app.application.mediaserver import MusicMediaServerHelper
-from app.domain.context import MediaInfo
-from app.modules import _MediaServerBase, _ModuleBase, TService
-from app.runtime.events import eventmanager
-from app.runtime.log import logger
 from app.schemas.types import ChainEventType, MediaType
 
 

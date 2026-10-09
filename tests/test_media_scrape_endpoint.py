@@ -8,10 +8,9 @@ from fastapi.testclient import TestClient
 from app.api.dependencies.auth import get_current_active_user
 from app.api.endpoints import media as media_endpoint
 from app.api.endpoints.media import recognize_file, scrape
-from app.domain.context import Context, MediaInfo
+from app.domain.context import Context, MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
-from app.domain.context import MusicInfo
 from app.schemas.file import FileItem
 from app.schemas.types import MediaSource, MediaType
 

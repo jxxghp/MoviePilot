@@ -11,7 +11,6 @@ from app.application.security.token import (
     verify_password,
 )
 
-
 PASSLIB_BCRYPT_HASH = "$2b$12$6QiVIML7x3T.F/p6cuFjLuMvFumE1V4OZpvhGVgCwaSoBE7lHlMle"
 
 

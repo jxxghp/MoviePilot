@@ -5,8 +5,9 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from app.runtime.observability import record_metric
 from starlette.routing import Match
+
+from app.runtime.observability import record_metric
 
 
 class HttpMetricsMiddleware:

@@ -4,9 +4,9 @@ from threading import Lock
 from typing import Callable, Dict, List, Optional
 
 from app.chain.storage import StorageChain
-from app.runtime.log import logger
 from app.monitor.dispatcher import TransferDispatcher
 from app.monitor.snapshot import SnapshotStore
+from app.runtime.log import logger
 
 
 class RemotePoller:

@@ -1,6 +1,5 @@
 from typing import List, Optional, Tuple
 
-
 class SitesHelper:
     """声明 Cython 站点认证与索引扩展的宿主接口。"""
 

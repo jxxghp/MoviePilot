@@ -11,7 +11,6 @@ from typing import Any, Optional
 from app.runtime.log import logger
 from app.schemas.types import EventType
 
-
 EventErrorNotifier = Callable[[str, str], object]
 _MAX_REPORTED_ERRORS = 4096
 

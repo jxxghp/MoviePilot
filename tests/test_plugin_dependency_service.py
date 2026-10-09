@@ -1,6 +1,5 @@
-from unittest.mock import AsyncMock
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 

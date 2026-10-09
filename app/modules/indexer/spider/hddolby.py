@@ -1,12 +1,11 @@
-from typing import Any, Tuple, List, Optional
+from typing import Any, List, Optional, Tuple
 
-from app.runtime.settings import get_runtime_setting
-
+from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.application.configuration import get_configured_system_config
-from app.runtime.log import logger
-from app.schemas.types import MediaType
-from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.domain import site as site_rules
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.schemas.types import MediaType
 
 
 class HddolbySpider:

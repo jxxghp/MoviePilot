@@ -7,7 +7,6 @@ import re
 import tomllib
 from pathlib import Path
 
-
 DIRECT_REFERENCE = re.compile(
     r"^(?P<indent>\s*)(?P<name>[A-Za-z0-9_.-]+)\s+@\s+"
     r"(?P<url>\S+)(?P<suffix>.*)$"

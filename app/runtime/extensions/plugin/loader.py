@@ -22,7 +22,6 @@ from app.runtime.extensions.plugin.gil import (
 from app.runtime.settings import get_runtime_setting
 from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
 
-
 PluginImportPreparer = Callable[..., None]
 PluginImportScanner = Callable[..., None]
 PluginValidator = Callable[[Any], bool]

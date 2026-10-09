@@ -2,7 +2,7 @@ import socket
 import traceback
 import xmlrpc.client
 from pathlib import Path
-from typing import Optional, Union, Tuple, List, Dict
+from typing import Dict, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
 from app.runtime.log import logger
@@ -54,8 +54,8 @@ class SCGITransport(xmlrpc.client.Transport):
         """
         构造类文件对象用于parse_response
         """
-        import io
         import http.client
+        import io
 
         class _FakeSocket(io.BytesIO):
             def makefile(self, *args, **kwargs):

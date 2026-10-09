@@ -5,11 +5,11 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from lxml import etree
 
-from app.runtime.log import logger
-from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.foundation import temporal as time_tools
 from app.foundation import text as text_tools
 from app.foundation.dom import DomUtils
+from app.modules.indexer.parser import SiteParserBase, SiteSchema
+from app.runtime.log import logger
 
 
 class NexusPhpSiteUserInfo(SiteParserBase):
@@ -464,7 +464,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         elif seeding_url_text and csrf_text:
             if csrf_text[0].strip():
                 self._torrent_seeding_page \
-                    = f"ajax_getusertorrentlist.php"
+                    = "ajax_getusertorrentlist.php"
                 self._torrent_seeding_params = {'userid': self.userid, 'type': 'seeding', 'csrf': csrf_text[0].strip()}
 
         # 分类做种模式

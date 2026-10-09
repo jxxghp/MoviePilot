@@ -3,7 +3,7 @@ import sys
 import types
 from enum import Enum
 from pathlib import Path
-from unittest.mock import call, MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 
 def _load_qbittorrent_modules():

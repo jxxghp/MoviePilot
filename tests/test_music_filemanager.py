@@ -2,13 +2,13 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from app.runtime.config import settings
-from app.domain.context import MusicInfo
-from app.domain.meta.metamusic import MetaMusic
 from app.application.audio import AudioMetadataHelper
 from app.application.directory import DirectoryHelper
+from app.domain.context import MusicInfo
+from app.domain.meta.metamusic import MetaMusic
 from app.modules.filemanager.module import FileManagerModule
 from app.modules.filemanager.transhandler import TransHandler
+from app.runtime.config import settings
 from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.types import MediaType

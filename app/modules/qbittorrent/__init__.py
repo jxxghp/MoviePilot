@@ -1,24 +1,23 @@
 from pathlib import Path
-from typing import Set, Tuple, Optional, Union, List, Dict
+from typing import Dict, List, Optional, Set, Tuple, Union
 
-from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
 from app.domain.metainfo import MetaInfo
-from app.runtime.log import logger
-from app.runtime.settings import get_runtime_setting
+from app.foundation import size as size_tools
+from app.foundation import temporal as time_tools
+from app.foundation import text as text_tools
 from app.modules._base.downloader import _DownloaderModuleBase
 from app.modules.qbittorrent.qbittorrent import Qbittorrent
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
 from app.schemas.transfer import DownloaderFile, DownloaderTorrent
 from app.schemas.types import (
-    DownloadTaskState,
     DownloaderType,
+    DownloadTaskState,
     ModuleType,
     TorrentQueryStatus,
     TorrentStatus,
 )
-from app.foundation import size as size_tools
-from app.foundation import temporal as time_tools
-from app.foundation import text as text_tools
-
 
 _QBITTORRENT_DOWNLOADING_STATES = {
     "allocating",
@@ -118,7 +117,7 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
                                                                                              bytes) and content.startswith(
             b"magnet:")
         if not torrent_from_file and not is_magnet:
-            return None, None, None, f"添加种子任务失败：无法读取种子文件"
+            return None, None, None, "添加种子任务失败：无法读取种子文件"
 
         # 失败提示使用种子名称（磁力链接保留原文），不拼接种子文件的二进制内容
         torrent_desc = torrent_from_file.name if torrent_from_file else content
@@ -175,7 +174,7 @@ class QbittorrentModule(_DownloaderModuleBase[Qbittorrent]):
                                     server.set_torrents_tag(ids=torrent_hash, tags=[get_runtime_setting('TORRENT_TAG')])
                                 # 获取种子内容布局: `Original: 原始, Subfolder: 创建子文件夹, NoSubfolder: 不创建子文件夹`
                                 torrent_layout = server.get_content_layout()
-                                return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, f"下载任务已存在"
+                                return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "下载任务已存在"
                     finally:
                         torrents.clear()
                         del torrents

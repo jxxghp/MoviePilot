@@ -5,7 +5,6 @@ import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 
-
 LEGACY_COLUMNS = {
     "tmdbid", "imdbid", "tvdbid", "doubanid", "bangumiid",
     "anilistid", "mediaid",

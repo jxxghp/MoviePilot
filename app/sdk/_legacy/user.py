@@ -12,7 +12,6 @@ from app.api.deps import (
 )
 from app.db.oper.user import UserOper
 
-
 __all__ = [
     "UserOper",
     "get_current_active_manage_user",

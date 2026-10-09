@@ -12,7 +12,6 @@ from typing import Any, Callable, ContextManager, Dict, Optional, Protocol
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.runtime.log import logger
 
-
 CleanupProgress = Callable[..., None]
 
 

@@ -2,8 +2,8 @@ import asyncio
 import functools
 import inspect
 from abc import ABC, abstractmethod
-from threading import Timer, Lock
-from typing import Callable, Any, Optional
+from threading import Lock, Timer
+from typing import Any, Callable, Optional
 
 from app.runtime.log import logger
 

@@ -1,7 +1,7 @@
 import time
 import traceback
 from http.cookies import SimpleCookie
-from typing import Any, Optional, Union, Tuple, List
+from typing import Any, List, Optional, Tuple, Union
 from urllib.parse import urlparse
 
 import qbittorrentapi
@@ -10,10 +10,9 @@ from qbittorrentapi import TorrentDictionary, TorrentFilesList
 from qbittorrentapi.client import Client
 from qbittorrentapi.transfer import TransferInfoDictionary
 
-from app.runtime.log import logger
 from app.domain import torrent as torrent_rules
 from app.foundation import url as url_tools
-
+from app.runtime.log import logger
 
 _TORRENT_TAG_CLEANUP_RETRY_TIMES = 10
 _TORRENT_TAG_CLEANUP_RETRY_INTERVAL = 1

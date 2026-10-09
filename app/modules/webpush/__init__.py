@@ -2,11 +2,10 @@ import json
 from typing import Any, Dict, Tuple, Union
 
 from app.adapters.network.webpush import WebPushDeliveryError, send_webpush
+from app.modules import _MessageBase, _ModuleBase
+from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.runtime.webpush import webpush_registry
-
-from app.runtime.log import logger
-from app.modules import _ModuleBase, _MessageBase
 from app.schemas.message import Message
 from app.schemas.types import ModuleType, NotificationChannel
 

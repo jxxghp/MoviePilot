@@ -5,7 +5,6 @@ from typing import Any, Dict, Optional, Union
 from pydantic import BaseModel, Field, RootModel
 from typing_extensions import TypeAliasType
 
-
 JsonData = TypeAliasType(
     "JsonData",
     Union[

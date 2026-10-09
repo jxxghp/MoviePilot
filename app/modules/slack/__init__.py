@@ -3,22 +3,19 @@ import re
 from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import quote, unquote
 
-from app.domain.context import MediaInfo, Context
 from app.application.messaging.channel.admin import (
     matches_channel_admin,
     register_channel_admin_resolver,
     resolve_config_principal_ids,
 )
-from app.runtime.log import logger
+from app.domain.context import Context, MediaInfo
 from app.modules._base.notification import _MessageChannelModuleBase
 from app.modules.slack.slack import Slack
+from app.runtime.log import logger
 from app.schemas.event import CommandRegisterEventData
-from app.schemas.message import IncomingMessage
+from app.schemas.message import IncomingMessage, Message, MessageResponse
 from app.schemas.notification import NotificationChannel
-from app.schemas.message import MessageResponse
-from app.schemas.message import Message
 from app.schemas.types import ModuleType
-
 
 register_channel_admin_resolver(
     NotificationChannel.Slack,
@@ -503,7 +500,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
             if not userid and targets is not None:
                 userid = targets.get("slack_userid")
                 if not userid:
-                    logger.warn(f"用户没有指定 Slack用户ID，消息无法发送")
+                    logger.warn("用户没有指定 Slack用户ID，消息无法发送")
                     return
             client: Slack = self.get_instance(conf.name)
             if client:

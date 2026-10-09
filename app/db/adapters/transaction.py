@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
 
-
 T = TypeVar("T")
 
 

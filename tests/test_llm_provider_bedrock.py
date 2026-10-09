@@ -12,7 +12,6 @@ from app.agent.llm.provider import (
 )
 from app.foundation.singleton import Singleton
 
-
 _MANAGER_SINGLETON_KEY = (LLMProviderManager, (), frozenset())
 
 

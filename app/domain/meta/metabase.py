@@ -1,15 +1,14 @@
 import logging
 import traceback
 from dataclasses import asdict, dataclass
-from typing import Any, Union, Optional, List, Self
+from typing import Any, List, Optional, Self, Union
 
 import cn2an
 import regex as re
 
-from app.schemas.types import MediaSource, MediaType
-from app.schemas.media import resolve_media_identity
 from app.foundation import text as text_tools
-
+from app.schemas.media import resolve_media_identity
+from app.schemas.types import MediaSource, MediaType
 
 logger = logging.getLogger(__name__)
 

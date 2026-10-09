@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import importlib.util
 import tempfile
-import pytest
 import uuid
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
 
 MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "local_setup.py"
 

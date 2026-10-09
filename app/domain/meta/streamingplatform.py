@@ -1,4 +1,4 @@
-from typing import Optional, List, Tuple
+from typing import List, Optional, Tuple
 
 from app.foundation.singleton import Singleton
 

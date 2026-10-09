@@ -5,7 +5,6 @@
 目录；查错一条就是整理到错误的剧里。下载文件记录则决定「删种时该删哪些文件」，
 条件写宽会误删别的任务的文件。
 """
-import asyncio
 import time as _time
 
 import pytest

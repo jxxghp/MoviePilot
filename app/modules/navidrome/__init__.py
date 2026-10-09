@@ -2,20 +2,19 @@
 
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
+from app.application.mediaserver import MusicMediaServerHelper
+from app.domain.context import MediaInfo
+from app.modules import _MediaServerBase, _ModuleBase
+from app.modules.navidrome.navidrome import Navidrome
+from app.runtime.events import eventmanager
+from app.runtime.log import logger
 from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.event import AuthCredentials, AuthInterceptCredentials
 from app.schemas.mediaserver import ExistMediaInfo as _SchemaExistMediaInfo
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
 from app.schemas.mediaserver import MediaServerSeasonInfo as _SchemaMediaServerSeasonInfo
-from app.domain.context import MediaInfo
-from app.runtime.events import eventmanager
-from app.application.mediaserver import MusicMediaServerHelper
-from app.runtime.log import logger
-from app.modules import _MediaServerBase, _ModuleBase
-from app.modules.navidrome.navidrome import Navidrome
-from app.schemas.event import AuthCredentials
-from app.schemas.event import AuthInterceptCredentials
 from app.schemas.types import ChainEventType, MediaServerType, MediaType, ModuleType
 
 

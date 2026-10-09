@@ -5,12 +5,12 @@ from urllib.parse import urljoin
 
 from lxml import etree
 
-from app.runtime.log import logger
-from app.modules.indexer.parser import SiteSchema
-from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
 from app.foundation import size as size_tools
 from app.foundation import text as text_tools
 from app.foundation.dom import DomUtils
+from app.modules.indexer.parser import SiteSchema
+from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
+from app.runtime.log import logger
 
 
 class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):

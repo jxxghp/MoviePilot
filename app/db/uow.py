@@ -6,7 +6,6 @@ from typing import Protocol, TypeVar
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-
 T = TypeVar("T")
 
 

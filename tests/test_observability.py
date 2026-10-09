@@ -1,7 +1,7 @@
 """低基数指标合同、no-op 与 HTTP adapter 测试。"""
 
-from dataclasses import dataclass, field
 import inspect
+from dataclasses import dataclass, field
 from typing import Mapping
 
 import httpx
@@ -11,14 +11,13 @@ from starlette.applications import Starlette
 from starlette.responses import PlainTextResponse
 from starlette.routing import Route
 
-from app.adapters.observability import otel
 from app.adapters.external.market import PluginHelper
 from app.adapters.external.server import MoviePilotServerHelper
+from app.adapters.observability import otel
 from app.adapters.web.metrics import HttpMetricsMiddleware
 from app.db.engine import _register_database_pool_metrics
 from app.runtime.extensions.plugin.lifecycle import observe_plugin_lifecycle
 from app.runtime.extensions.plugin.manager import PluginManager
-from app.schemas.plugin import PluginRuntimeStatus
 from app.runtime.observability import (
     METRIC_SPECS,
     MetricSpec,
@@ -27,6 +26,7 @@ from app.runtime.observability import (
     observe_duration,
     record_metric,
 )
+from app.schemas.plugin import PluginRuntimeStatus
 
 
 @dataclass

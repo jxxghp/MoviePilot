@@ -10,14 +10,13 @@ TemplateContextBuilder 的并发安全单元测试。
 """
 import threading
 
-from app.domain.context import MediaInfo
-from app.domain.metainfo import MetaInfo
-from app.domain.meta.metamusic import MetaMusic
 from app.application.messaging.message import TemplateContextBuilder, TemplateHelper
+from app.domain.context import MediaInfo
+from app.domain.meta.metamusic import MetaMusic
+from app.domain.metainfo import MetaInfo
 from app.modules.filemanager.transhandler import TransHandler
-from app.schemas.types import MediaSource, MediaType
 from app.schemas.tmdb import TmdbEpisode
-
+from app.schemas.types import MediaSource, MediaType
 
 THREAD_COUNT = 8
 ITERATIONS_PER_THREAD = 200

@@ -11,7 +11,6 @@ from scripts.generate_plugin_market_default import (
     _generate_plugin_market_default,
 )
 
-
 ROOT_DIR = Path(__file__).resolve().parents[1]
 
 

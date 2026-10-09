@@ -5,6 +5,7 @@ from unittest.mock import Mock
 from mutagen.apev2 import APEBinaryValue
 from mutagen.monkeysaudio import MonkeysAudio
 
+from app.application.audio import AudioMetadataHelper
 from app.chain.media import MediaChain
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import (
@@ -13,9 +14,7 @@ from app.domain.meta.metamusic import (
     format_audio_quality,
     parse_audio_quality,
 )
-from app.application.audio import AudioMetadataHelper
 from app.schemas.types import MUSIC_ENTITY_ALBUM
-
 
 RECORDING_ID = "38035858-f990-4fbb-b3b2-f2f8b958eeba"
 

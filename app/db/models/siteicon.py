@@ -1,4 +1,5 @@
 from typing import Optional
+
 from sqlalchemy import String, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column

@@ -3,7 +3,6 @@
 from importlib import import_module
 from typing import Any
 
-
 _EXPORT_MODULES = {
     "DirectoryChangeEvent": "app.monitor.watcher",
     "LocalDirectoryWatcher": "app.monitor.watcher",

@@ -6,12 +6,13 @@
 # -*- coding: utf-8 -*-
 import re
 from typing import Optional, Tuple
-from urllib.parse import urljoin, urlencode
+from urllib.parse import urlencode, urljoin
 
 from bs4 import BeautifulSoup
-from app.modules.indexer.parser import SiteParserBase, SiteSchema
+
 from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
+from app.modules.indexer.parser import SiteParserBase, SiteSchema
 
 
 class BitptSiteUserInfo(SiteParserBase):

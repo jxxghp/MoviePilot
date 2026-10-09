@@ -2,8 +2,8 @@ import platform
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.runtime.log import logger
 from app.adapters.system.host import SystemUtils
+from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 
 

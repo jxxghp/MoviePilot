@@ -13,9 +13,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.orm import scoped_session, sessionmaker
 
-from app.runtime.config import global_vars, settings
 from app.db import engine as engine_module
 from app.db import session as session_module
+from app.runtime.config import global_vars, settings
 
 
 @pytest.fixture(autouse=True)

@@ -11,7 +11,6 @@ import pytest
 
 from scripts import site_adapter_collector as collector
 
-
 SEARCH_HTML = """
 <!doctype html>
 <html>

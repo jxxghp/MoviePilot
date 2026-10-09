@@ -1,11 +1,11 @@
 from typing import Any, List, Optional, Tuple, Union, cast
 
 import transmission_rpc
-from transmission_rpc import Client, Torrent, File
-from transmission_rpc.session import SessionStats, Session
+from transmission_rpc import Client, File, Torrent
+from transmission_rpc.session import Session, SessionStats
 
-from app.runtime.log import logger
 from app.foundation.url import UrlUtils
+from app.runtime.log import logger
 
 
 class Transmission:

@@ -3,10 +3,10 @@
 import argparse
 import os
 import shutil
-from importlib import import_module
 import sys
 import sysconfig
 import warnings
+from importlib import import_module
 
 if os.name == "nt":
     psql_exe = shutil.which("psql")

@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from fnmatch import fnmatch
 from typing import Any, Optional
 
-
 WEB_SEARCH_MODES = frozenset({"local", "builtin", "auto", "disabled"})
 
 

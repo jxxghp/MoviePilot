@@ -5,13 +5,13 @@ from unittest.mock import MagicMock
 
 from watchfiles import Change
 
-from app.runtime.config import settings
+from app.adapters.system.host import SystemUtils
 from app.monitor.dispatcher import TransferDispatcher
 from app.monitor.monitor import Monitor
 from app.monitor.recovery import RecoveryExecutor
 from app.monitor.syslimits import decide_monitor_mode
 from app.monitor.watcher import LocalDirectoryWatcher
-from app.adapters.system.host import SystemUtils
+from app.runtime.config import settings
 
 
 def _build_monitor(handle_file: MagicMock = None):

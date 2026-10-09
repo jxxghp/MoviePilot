@@ -7,7 +7,6 @@
 from importlib import import_module
 from typing import Any
 
-
 _EXPORTS = {
     "FileManagerModule": ("app.modules.filemanager.module", "FileManagerModule"),
 }

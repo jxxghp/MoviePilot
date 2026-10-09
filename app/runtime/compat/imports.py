@@ -20,7 +20,6 @@ from app.runtime.compat.manifest import (
     SymbolAlias,
 )
 
-
 _resolution_state = threading.local()
 
 

@@ -8,9 +8,9 @@ from typing import Dict, Iterable, List, Match, Optional, Tuple, Union, cast
 import anitopy
 
 from app.application.configuration import get_chain_runtime_config_snapshot
+from app.domain.meta.metabase import MetaBase
 from app.domain.meta.words import calculate_episode_offset
 from app.domain.metainfo import MetaInfoPath
-from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
 from app.schemas.transfer import EpisodeFormatRule
 from app.schemas.workflow import FileItem

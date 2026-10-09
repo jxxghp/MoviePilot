@@ -9,7 +9,6 @@ from app.runtime.extensions.module.quality import (
     get_module_quality_profile,
 )
 
-
 MODULE_ROOT = Path(__file__).parents[1] / "app" / "modules"
 
 

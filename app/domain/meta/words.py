@@ -9,7 +9,6 @@ import regex as re
 
 from app.foundation.singleton import Singleton
 
-
 _custom_words_provider: Callable[[], object] = lambda: ()
 logger = logging.getLogger(__name__)
 

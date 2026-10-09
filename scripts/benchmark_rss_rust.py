@@ -9,10 +9,10 @@ from types import SimpleNamespace
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from app.adapters.network.http import RequestUtils
+from app.adapters.system import rust as rust_accel
 from app.application import rss as rss_module
 from app.application.rss import RssHelper
-from app.adapters.system import rust as rust_accel
-from app.adapters.network.http import RequestUtils
 
 
 class FakeRequestUtils:

@@ -5,18 +5,17 @@ from tempfile import TemporaryDirectory
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-from app.runtime.config import settings
-from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
-from app.schemas.types import NotificationChannel
-
 from app.agent.llm import capability as capability_module
 from app.agent.llm.capability import (
     AgentCapabilityManager,
     MiMoAudioProvider,
     MiniMaxAudioProvider,
-    OpenAIChatAudioProvider,
     OpenAIAudioProvider,
+    OpenAIChatAudioProvider,
 )
+from app.runtime.config import settings
+from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
+from app.schemas.types import NotificationChannel
 
 
 class AgentCapabilityManagerTest(unittest.TestCase):

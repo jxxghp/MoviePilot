@@ -1,7 +1,8 @@
 """FastAPI 动态插件路由适配器。"""
 
 import asyncio
-from concurrent.futures import Future, TimeoutError as FutureTimeoutError
+from concurrent.futures import Future
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from threading import Lock
 from typing import Any, Callable, Optional
 

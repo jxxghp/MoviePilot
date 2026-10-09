@@ -16,7 +16,6 @@ from app.runtime.coalesce import (
     EventCoalescer,
 )
 
-
 # 窗口尽量短，但要大于事件循环单次 tick 的开销，避免 flush 在 record 仍持锁时触发
 _TEST_WINDOW = 0.05
 # 等待窗口到期 + flush 任务完成所需的额外余量

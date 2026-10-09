@@ -1,11 +1,11 @@
 import importlib
 
+from app.adapters.network.webpush import WebPushDeliveryError
 from app.api.endpoints.message import (
     is_webpush_subscription_gone,
     is_wns_endpoint,
     webpush_options_for_endpoint,
 )
-from app.adapters.network.webpush import WebPushDeliveryError
 
 
 class _FakeResponse:

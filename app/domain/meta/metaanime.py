@@ -3,14 +3,14 @@ import re
 import traceback
 
 import anitopy
+
+from app.domain import title as title_rules
 from app.domain.meta.customization import CustomizationMatcher
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.releasegroup import ReleaseGroupsMatcher
-from app.domain import title as title_rules
 from app.foundation import text as text_tools
 from app.foundation.text import convert as zhconv_convert
 from app.schemas.types import MediaType
-
 
 logger = logging.getLogger(__name__)
 

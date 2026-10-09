@@ -10,7 +10,6 @@ from unittest.mock import Mock
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "perf" / "free_threaded_ab.py"
 

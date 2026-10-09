@@ -3,12 +3,11 @@ import json
 import time
 from typing import List, Optional, Tuple
 
-from app.runtime.settings import get_runtime_setting
-
-from app.runtime.log import logger
-from app.schemas.types import MediaType
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.foundation import temporal as time_tools
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.schemas.types import MediaType
 
 
 class SunnyPTSpider:

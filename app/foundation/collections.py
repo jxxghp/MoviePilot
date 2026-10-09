@@ -1,4 +1,4 @@
-from typing import Dict, List, Set, TypeVar, Any, Union
+from typing import Any, Dict, List, Set, TypeVar, Union
 
 K = TypeVar("K")
 V = TypeVar("V")

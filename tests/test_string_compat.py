@@ -5,7 +5,6 @@ from lxml import etree
 
 from app.sdk.string import StringUtils
 
-
 EXPECTED_METHODS = {
     "clear",
     "clear_file_name",

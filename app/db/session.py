@@ -20,14 +20,18 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 
 import app.db.engine as engine_module
-from app.db.engine import (_async_pool_enabled, _get_database_engine,
-                           _database_backend_label, get_engine,
-                           get_global_async_engine)
+from app.db.engine import (
+    _async_pool_enabled,
+    _database_backend_label,
+    _get_database_engine,
+    get_engine,
+    get_global_async_engine,
+)
 from app.db.plugin.registry import release_all_databases
-from app.runtime.loop import main_loop_registry
-from app.runtime.settings import get_runtime_setting
 from app.runtime.log import logger
+from app.runtime.loop import main_loop_registry
 from app.runtime.observability import record_metric
+from app.runtime.settings import get_runtime_setting
 
 # 会话工厂同样惰性：sessionmaker 在构造时就要绑定引擎，模块级构造等于把引擎的
 # 创建时机重新拉回 import 期，惰性化就白做了。

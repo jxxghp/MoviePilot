@@ -66,7 +66,6 @@ elif SystemUtils.is_frozen():
 from app.factory import app
 from app.runtime.settings import get_runtime_setting
 from app.runtime.stop import runtime_stop_state
-
 from app.runtime.topology import (
     UnsupportedProcessTopologyError,
     validate_process_topology,

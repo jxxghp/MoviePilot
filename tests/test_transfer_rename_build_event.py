@@ -16,8 +16,8 @@ MoviePilot 的"插件实例反查"机制（``__get_class_instance`` 要求 handl
 import unittest
 from unittest.mock import patch
 
-from app.runtime.events import Event
 from app.modules.filemanager.transhandler import TransHandler
+from app.runtime.events import Event
 from app.schemas.event import TransferRenameBuildEventData
 from app.schemas.types import ChainEventType
 

@@ -1,13 +1,14 @@
 import base64
 import hashlib
 from hashlib import md5
-from typing import Union, Optional, Tuple
+from typing import Optional, Tuple, Union
 
 from Crypto import Random
 from Crypto.Cipher import AES
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding as asym_padding, rsa
+from cryptography.hazmat.primitives.asymmetric import padding as asym_padding
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 
 class RSAUtils:

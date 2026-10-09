@@ -1,7 +1,6 @@
 """音乐目录应用服务测试。"""
 
 import asyncio
-from types import SimpleNamespace
 
 from app.application.music.catalog import MusicCatalogService
 from app.domain.context import MusicInfo

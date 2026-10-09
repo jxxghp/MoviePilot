@@ -137,6 +137,11 @@ exclude = ["app/plugins"]
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I"]
 
+[tool.ruff.lint.per-file-ignores]
+# 启动入口必须先完成缓存装配 / 导入路径与标准流重定向，再导入业务模块，晚导入是启动契约
+"app/startup/lifecycle/__init__.py" = ["E402"]
+"app/main.py" = ["E402"]
+
 [tool.uv]
 package = false
 required-version = ">=0.12.5"

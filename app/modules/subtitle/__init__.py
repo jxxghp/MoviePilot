@@ -4,15 +4,14 @@ from urllib.parse import urljoin, urlparse
 
 from lxml import etree
 
-from app.runtime.settings import get_runtime_setting
-
-from app.domain.context import Context
+from app.adapters.network.http import RequestUtils
 from app.application.site.query import get_configured_site_query_service
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
-from app.runtime.log import logger
+from app.domain.context import Context
 from app.modules import _ModuleBase
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.schemas.types import ModuleType, OtherModulesType
-from app.adapters.network.http import RequestUtils
 
 
 class SubtitleModule(_ModuleBase):

@@ -12,7 +12,6 @@ from app.runtime.capabilities.model import (
 )
 from app.runtime.capabilities.registry import CapabilityRegistry
 
-
 _BASE_MANIFEST = """
 schema_version = 1
 id = "sample.capability"

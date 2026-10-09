@@ -1,11 +1,11 @@
 from typing import Any, Optional, Tuple, Union
 
-from app.runtime.cache import cached
-from app.runtime.settings import get_runtime_setting
-
+from app.adapters.network.http import RequestUtils
 from app.domain.context import MusicInfo
-from app.runtime.log import logger
 from app.modules import _ModuleBase
+from app.runtime.cache import cached
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.schemas.types import (
     LISTENBRAINZ_CHART_RANGES,
     LISTENBRAINZ_FRESH_MAX_DAYS,
@@ -16,7 +16,6 @@ from app.schemas.types import (
     ModuleType,
     OtherModulesType,
 )
-from app.adapters.network.http import RequestUtils
 
 
 class ListenBrainzModule(_ModuleBase):
