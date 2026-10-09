@@ -197,6 +197,11 @@ class PluginLifecycle:
                     if self._runtime_compatible(plugin_id)
                     else PluginRuntimeStatus.INCOMPATIBLE_RUNTIME
                 )
+                if status is PluginRuntimeStatus.LOAD_FAILED:
+                    self._logger.error(
+                        f"插件 {plugin_id} 加载失败：加载器未返回匹配的插件类，"
+                        "请检查插件目录内容及模块导入日志"
+                    )
                 self._runtime_status_writer(plugin_id, status)
                 results[plugin_id] = status
             self._clear_tools()

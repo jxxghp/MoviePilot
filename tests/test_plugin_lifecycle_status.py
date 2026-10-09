@@ -117,14 +117,17 @@ def test_lifecycle_records_load_failure_for_init_exception():
 
 
 def test_lifecycle_records_load_failure_when_loader_returns_no_class():
-    """目标源码无法产生合法插件类时进入 load_failed。"""
-    lifecycle, _classes, running, statuses = _lifecycle(plugins=[])
+    """目标源码没有可加载类时进入 load_failed 并记录插件及诊断阶段。"""
+    log = MagicMock()
+    lifecycle, _classes, running, statuses = _lifecycle(plugins=[], log=log)
 
     result = lifecycle.start("DemoPlugin")
 
     assert result == {"DemoPlugin": PluginRuntimeStatus.LOAD_FAILED}
     assert running == {}
     assert statuses["DemoPlugin"] is PluginRuntimeStatus.LOAD_FAILED
+    assert "DemoPlugin" in log.error.call_args.args[0]
+    assert "加载器未返回匹配的插件类" in log.error.call_args.args[0]
 
 
 def test_lifecycle_reports_incompatible_runtime_instead_of_load_failure():

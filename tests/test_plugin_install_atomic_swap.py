@@ -2,6 +2,8 @@
 
 import errno
 import shutil
+import threading
+from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -12,6 +14,7 @@ from app.adapters.system.plugin.package import (
     PluginContentSwapError,
     PluginPackageManager,
 )
+from app.runtime.extensions.plugin.loader import PluginLoader
 
 PLUGIN_ID = "DemoPlugin"
 REPO_URL = "https://github.com/demo/MoviePilot-Plugins"
@@ -89,6 +92,7 @@ def _assert_no_staging_residue(tmp_path: Path) -> None:
 def _assert_no_swap_residue(plugin_dir: Path) -> None:
     """换入结束后不得在插件根目录残留换入用的回滚材料。"""
     assert not list(plugin_dir.parent.glob(f".{plugin_dir.name}.previous-*"))
+    assert not list(plugin_dir.parent.glob(f".{plugin_dir.name}.staging-*"))
 
 
 @pytest.mark.parametrize("force_install", [True, False])
@@ -302,12 +306,55 @@ def test_swap_publishes_new_content_and_drops_old_content(tmp_path: Path) -> Non
 def test_swap_falls_back_to_copy_when_staging_crosses_filesystems(
     monkeypatch, tmp_path: Path
 ) -> None:
-    """暂存目录与插件根目录跨文件系统时退化为复制，结果与改名一致。"""
+    """暂存目录跨文件系统时先完整复制到同级再原子发布。"""
     staging_dir, final_dir = _staged_pair(tmp_path)
     _break_replace(monkeypatch, source=staging_dir, code=errno.EXDEV)
 
     _swap(staging_dir, final_dir)
 
+    assert (final_dir / "__init__.py").read_text(encoding="utf-8") == "upgraded"
+    assert not (final_dir / "stale.py").exists()
+    _assert_no_swap_residue(final_dir)
+
+
+def test_swap_prepares_cross_device_content_before_touching_runtime_directory(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """跨文件系统载荷须先在运行目录旁完整就位，避免加载器读到半份内容。"""
+    staging_dir, final_dir = _staged_pair(tmp_path)
+    original_stat = Path.stat
+    original_copytree = shutil.copytree
+    copied_destinations: list[Path] = []
+
+    def cross_device_stat(path: Path, *, follow_symlinks: bool = True):
+        """只把外置安装暂存目录报告为另一个文件系统。"""
+        result = original_stat(path, follow_symlinks=follow_symlinks)
+        if path == staging_dir:
+            return SimpleNamespace(st_dev=result.st_dev + 1, st_mode=result.st_mode)
+        return result
+
+    def observe_copy(src, dst, *args, **kwargs):
+        """确认新载荷复制时旧运行目录仍保持完整。"""
+        if Path(src) == staging_dir:
+            destination = Path(dst)
+            copied_destinations.append(destination)
+            assert destination.parent == final_dir.parent
+            assert destination != final_dir
+            assert (final_dir / "__init__.py").read_text(encoding="utf-8") == (
+                INSTALLED_MARK
+            )
+            assert (final_dir / "stale.py").exists()
+        return original_copytree(src, dst, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", cross_device_stat)
+    monkeypatch.setattr(
+        "app.adapters.system.plugin.package.shutil.copytree", observe_copy
+    )
+
+    _swap(staging_dir, final_dir)
+
+    assert len(copied_destinations) == 1
+    assert copied_destinations[0].name.startswith(f".{final_dir.name}.staging-")
     assert (final_dir / "__init__.py").read_text(encoding="utf-8") == "upgraded"
     assert not (final_dir / "stale.py").exists()
     _assert_no_swap_residue(final_dir)
@@ -325,6 +372,117 @@ def test_swap_falls_back_to_copy_when_old_directory_cannot_be_renamed(
     assert (final_dir / "__init__.py").read_text(encoding="utf-8") == "upgraded"
     assert not (final_dir / "stale.py").exists()
     _assert_no_swap_residue(final_dir)
+
+
+@pytest.mark.parametrize("restore", [False, True], ids=["install", "rollback"])
+def test_plugin_loader_waits_for_overlayfs_package_replacement(
+    monkeypatch, tmp_path: Path, restore: bool
+) -> None:
+    """安装换入和事务回滚都须在包锁内完成逐文件删除与目录替换。"""
+    import app.adapters.system.plugin.package as package_module
+    import app.runtime.extensions.plugin.loader as loader_module
+
+    plugin_root = tmp_path / "plugins"
+    plugin_dir = plugin_root / "demo"
+    plugin_dir.mkdir(parents=True)
+    (plugin_dir / "__init__.py").write_text("old", encoding="utf-8")
+    (plugin_dir / "version.py").write_text("old", encoding="utf-8")
+    staging_dir = tmp_path / "staging" / "demo"
+    staging_dir.mkdir(parents=True)
+    (staging_dir / "__init__.py").write_text("new", encoding="utf-8")
+    (staging_dir / "version.py").write_text("new", encoding="utf-8")
+
+    original_replace = Path.replace
+    real_rmtree = shutil.rmtree
+    removal_started = threading.Event()
+    allow_removal = threading.Event()
+    loader_waiting = threading.Event()
+    loader_lock_acquired = threading.Event()
+    import_completed = threading.Event()
+    imported_versions: list[str] = []
+
+    def cross_device_old_directory(source: Path, destination: Path) -> Path:
+        """模拟 overlayfs 拒绝将旧 lower-layer 目录改名到 previous。"""
+        if source == plugin_dir and ".previous-" in destination.name:
+            raise OSError(errno.EXDEV, "cross-device link")
+        return original_replace(source, destination)
+
+    def block_old_directory_removal(path: Path, *args, **kwargs) -> None:
+        """在旧文件删除窗口暂停，模拟评论中观察到的逐文件替换时间线。"""
+        if path == plugin_dir:
+            (plugin_dir / "version.py").unlink(missing_ok=True)
+            removal_started.set()
+            if not allow_removal.wait(timeout=3):
+                raise TimeoutError("test did not release simulated package removal")
+        real_rmtree(path, *args, **kwargs)
+
+    @contextmanager
+    def observe_loader_lock(plugin_id: str):
+        """记录加载器已到达包锁，再委托真实锁完成并发协调。"""
+        loader_waiting.set()
+        with package_module.plugin_package_lock(plugin_id):
+            loader_lock_acquired.set()
+            yield
+
+    def import_plugin(_module_name: str) -> SimpleNamespace:
+        """读取模块导入依赖的文件并记录实际可见版本。"""
+        imported_versions.append(
+            (plugin_dir / "version.py").read_text(encoding="utf-8")
+        )
+        import_completed.set()
+        return SimpleNamespace(__dict__={})
+
+    monkeypatch.setattr(Path, "replace", cross_device_old_directory)
+    monkeypatch.setattr(package_module.shutil, "rmtree", block_old_directory_removal)
+    monkeypatch.setattr(loader_module, "plugin_package_lock", observe_loader_lock)
+    monkeypatch.setattr(loader_module, "get_runtime_setting", lambda _key: None)
+    monkeypatch.setattr(
+        loader_module,
+        "importlib",
+        SimpleNamespace(import_module=import_plugin),
+    )
+    loader = PluginLoader(
+        plugins_root=plugin_root,
+        import_preparer=Mock(),
+        import_scanner=Mock(),
+        log=Mock(),
+        runtime_declaration=lambda _plugin_id: {},
+    )
+
+    def replace_package() -> None:
+        """执行安装换入或事务恢复。"""
+        if restore:
+            PluginPackageManager._PluginPackageManager__restore_tree(  # type: ignore[attr-defined]
+                target=plugin_dir,
+                snapshot=staging_dir,
+                existed=True,
+                label="插件 demo",
+            )
+        else:
+            _swap(staging_dir, plugin_dir)
+
+    swap_thread = threading.Thread(target=replace_package, daemon=True)
+    swap_thread.start()
+    try:
+        assert removal_started.wait(timeout=3)
+        loader_thread = threading.Thread(
+            target=loader.load,
+            args=("demo", ["demo"], lambda _candidate: True),
+            daemon=True,
+        )
+        loader_thread.start()
+        assert loader_waiting.wait(timeout=3)
+        assert not loader_lock_acquired.wait(timeout=0.1)
+        assert not import_completed.is_set()
+    finally:
+        allow_removal.set()
+        swap_thread.join(timeout=3)
+        if "loader_thread" in locals():
+            loader_thread.join(timeout=3)
+
+    assert not swap_thread.is_alive()
+    assert "loader_thread" in locals() and not loader_thread.is_alive()
+    assert imported_versions == ["new"]
 
 
 def test_swap_keeps_old_content_when_staging_is_missing(tmp_path: Path) -> None:
