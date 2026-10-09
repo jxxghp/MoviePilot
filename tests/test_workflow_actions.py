@@ -252,8 +252,10 @@ def test_workflow_manager_list_actions_exposes_contract():
 
 
 def test_add_download_only_lack_handles_schema_metainfo(monkeypatch):
-    """添加下载动作开启仅下载缺失资源时应支持 Schema MetaInfo 的 season_list 属性并正确过滤已存在剧集。"""
+    """仅下载缺失资源时应兼容工作流 MetaInfo 并向下载链传递领域上下文。"""
     import app.workflow.actions.add_download as add_download_module
+    from app.domain.context import MediaInfo as DomainMediaInfo
+    from app.domain.meta.metabase import MetaBase
     from app.schemas.context import (
         Context as SchemaContext,
     )
@@ -272,11 +274,21 @@ def test_add_download_only_lack_handles_schema_metainfo(monkeypatch):
     downloaded = []
 
     class FakeDownloadChain:
+        """模拟媒体库检查和下载提交，并验证工作流对象已转换为领域类型。"""
+
         def media_exists(self, mediainfo):
+            """返回已存在剧集，并检查传入媒体使用领域类型。"""
+            assert isinstance(mediainfo, DomainMediaInfo)
+            assert mediainfo.type is MediaType.TV
             # 模拟媒体库已存在第 1 季的第 1、2 集
             return SimpleNamespace(seasons={1: [1, 2]})
 
         def download_single(self, context=None, **kwargs):
+            """记录提交的种子名称，并验证下载链拿到领域上下文。"""
+            assert isinstance(context, Context)
+            assert isinstance(context.media_info, DomainMediaInfo)
+            assert isinstance(context.meta_info, MetaBase)
+            assert isinstance(context.torrent_info, TorrentInfo)
             downloaded.append(context.torrent_info.title)
             return f"hash-{context.torrent_info.title}"
 
@@ -325,3 +337,29 @@ def test_add_download_only_lack_handles_schema_metainfo(monkeypatch):
     assert downloaded == ["Show S01E03", "Show Ep04"]
     assert len(result.downloads) == 2
     assert [d.download_id for d in result.downloads] == ["hash-Show S01E03", "hash-Show Ep04"]
+
+
+def test_add_download_converts_workflow_music_context_to_domain_types():
+    """添加下载动作应将音乐工作流模型恢复为下载链使用的领域对象。"""
+    from app.domain.context import MusicInfo as DomainMusicInfo
+    from app.domain.meta.metamusic import MetaMusic
+    from app.schemas.context import Context as SchemaContext
+    from app.schemas.context import TorrentInfo as SchemaTorrentInfo
+    from app.schemas.music import MusicInfo as SchemaMusicInfo
+    from app.schemas.music import MusicMeta
+    from app.schemas.types import MediaType
+    from app.workflow.actions.add_download import AddDownloadAction
+
+    context = SchemaContext(
+        meta_info=MusicMeta(title="Track", artists=["Artist"]),
+        media_info=SchemaMusicInfo(title="Track", artists=["Artist"]),
+        torrent_info=SchemaTorrentInfo(title="Track", site=1),
+    )
+
+    result = AddDownloadAction._to_domain_context(context)
+
+    assert isinstance(result, Context)
+    assert isinstance(result.meta_info, MetaMusic)
+    assert isinstance(result.media_info, DomainMusicInfo)
+    assert result.media_info.type is MediaType.MUSIC
+    assert isinstance(result.torrent_info, TorrentInfo)
