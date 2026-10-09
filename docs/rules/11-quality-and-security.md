@@ -84,6 +84,10 @@ All REST and MCP API endpoints require authentication. The project supports two 
 
 The `API_TOKEN` value in `settings` is the source of truth. It is set at initialization and never exposed in logs or API responses.
 
+### Login Throttling
+
+Password login (`/api/v1/login/access-token`) is protected by `app/application/security/throttle.py`: consecutive failures keyed by `(client address, normalized username)` trigger exponential lockouts (5 failures → 30s, doubling up to 15 minutes), and the endpoint answers `429` with a `Retry-After` header while locked. A correct password that still needs MFA does not count as a failure; a successful login clears the record. The state lives in process memory only, and `X-Forwarded-For` is deliberately not trusted because there is no trusted-proxy setting.
+
 ### Endpoint Authorization
 
 - API-token authenticated integration endpoints are administrator-level surfaces unless a specific endpoint documents a narrower contract.

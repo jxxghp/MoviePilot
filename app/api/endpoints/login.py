@@ -17,6 +17,7 @@ from app.api.response import (
 )
 from app.application.configuration import ApiRuntimeConfig, get_runtime_settings
 from app.application.image import WallpaperHelper
+from app.application.security.throttle import build_login_throttle_key, get_login_throttle
 from app.application.security.token import PasswordTooLongError, create_access_token, get_password_hash
 from app.application.security.user import UserNameConflictError, UserService
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
@@ -148,7 +149,11 @@ async def initialize_instance(
         401: {
             "model": _SchemaResponse[_SchemaMfaChallenge],
             "description": "需要二次验证或认证失败",
-        }
+        },
+        429: {
+            "model": _SchemaResponse[None],
+            "description": "连续登录失败过多，响应头 Retry-After 给出需等待的秒数",
+        },
     },
     openapi_extra={RAW_RESPONSE_OPENAPI_KEY: True},
 )
@@ -163,12 +168,24 @@ def login_access_token(
     获取认证Token
     """
     runtime_config = resolve_api_runtime_config(runtime_config)
+    # 连续失败后按指数退避拒绝尝试，先于任何凭据校验，避免锁定期内继续消耗密码哈希
+    throttle = get_login_throttle()
+    throttle_key = build_login_throttle_key(
+        request.client.host if request.client else None, form_data.username
+    )
+    retry_after = throttle.retry_after(throttle_key)
+    if retry_after:
+        raise HTTPException(
+            status_code=429,
+            detail="登录尝试过于频繁，请稍后重试",
+            headers={"Retry-After": str(retry_after)},
+        )
     success, user_or_message = UserChain().user_authenticate(
         username=form_data.username, password=form_data.password, mfa_code=otp_password
     )
 
     if not success:
-        # 只有密码已经验证通过时才返回 MFA 方法，避免泄露账号安全配置。
+        # 只有密码已经验证通过时才返回 MFA 方法，避免泄露账号安全配置；密码正确不计失败。
         if isinstance(user_or_message, MfaRequired):
             challenge = _SchemaResponse[_SchemaMfaChallenge](
                 success=False,
@@ -182,8 +199,10 @@ def login_access_token(
                 content=challenge.model_dump(mode="json"),
                 headers={"X-MFA-Required": "true"},
             )
+        throttle.record_failure(throttle_key)
         raise HTTPException(status_code=401, detail="用户名或密码错误")
 
+    throttle.record_success(throttle_key)
     # 用户等级
     level = SitesHelper().auth_level
     access_token = create_access_token(

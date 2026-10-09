@@ -465,6 +465,7 @@
     "用户权限不足": "Insufficient user permissions",
     "用户名或密码错误": "Incorrect username or password",
     "需要二次验证": "Two-step verification is required",
+    "登录尝试过于频繁，请稍后重试": "Too many login attempts, please try again later",
     "图片读取出错": "Failed to read image",
     "授权失败": "Authorization failed",
     "报文内容为空": "Request payload is empty",
