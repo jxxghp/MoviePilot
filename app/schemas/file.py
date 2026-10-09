@@ -1,8 +1,9 @@
 import re
+from pathlib import Path
 from typing import Optional
 
-from pathlib import Path
 from pydantic import BaseModel, Field
+
 from app.schemas.types import StorageSchema
 
 # Windows 盘符绝对路径，如 Z:/Downloads 或 Z:\Downloads

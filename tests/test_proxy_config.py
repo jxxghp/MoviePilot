@@ -1,6 +1,5 @@
 from app.runtime.config import Settings
 
-
 PROXY_ENV_NAMES = (
     "PROXY_HOST",
     "HTTP_PROXY",

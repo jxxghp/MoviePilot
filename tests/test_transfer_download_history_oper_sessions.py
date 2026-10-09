@@ -3,10 +3,10 @@
 import asyncio
 
 from app.db import base as db_base
+from app.db.models.downloadhistory import DownloadHistory
 from app.db.models.transferhistory import TransferHistory
 from app.db.oper.downloadhistory import DownloadHistoryOper
 from app.db.oper.transferhistory import TransferHistoryOper
-from app.db.models.downloadhistory import DownloadHistory
 from app.db.session import async_session_scope
 
 

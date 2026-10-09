@@ -11,7 +11,6 @@ from pathlib import Path
 from types import CodeType, FunctionType
 from typing import Any, Callable, List, Optional, get_type_hints
 
-
 FilterFuncType = Callable[[str, Any], bool]
 
 

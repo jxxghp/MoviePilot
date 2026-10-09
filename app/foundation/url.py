@@ -1,7 +1,7 @@
 import mimetypes
 import re
 from pathlib import Path
-from typing import Iterable, Optional, Union, Tuple
+from typing import Iterable, Optional, Tuple, Union
 from urllib import parse
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 

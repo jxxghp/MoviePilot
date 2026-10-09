@@ -1,15 +1,15 @@
+import base64
 import re
 import threading
-import base64
-from typing import Optional, List, Tuple
+from typing import List, Optional, Tuple
 from urllib.parse import quote
 
-from app.domain.context import MediaInfo, Context
-from app.domain.metainfo import MetaInfo
-from app.runtime.log import logger
-from app.runtime.execution import retry
 from app.adapters.network.http import RequestUtils
+from app.domain.context import Context, MediaInfo
+from app.domain.metainfo import MetaInfo
 from app.foundation import size as size_tools
+from app.runtime.execution import retry
+from app.runtime.log import logger
 
 lock = threading.Lock()
 

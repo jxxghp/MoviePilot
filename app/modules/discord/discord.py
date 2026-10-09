@@ -2,20 +2,19 @@ import asyncio
 import re
 import threading
 from pathlib import Path
-from typing import Optional, List, Dict, Any, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import discord
 from discord import app_commands
 
-from app.runtime.execution import run_in_threadpool
-from app.runtime.settings import get_runtime_setting
-
 from app.application.messaging.ingress import async_forward_message_to_host
-from app.domain.context import MediaInfo, Context
+from app.domain.context import Context, MediaInfo
 from app.domain.metainfo import MetaInfo
-from app.runtime.log import logger
-from app.schemas.types import MessageType
 from app.foundation import size as size_tools
+from app.runtime.execution import run_in_threadpool
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.schemas.types import MessageType
 
 # Discord embed 字段解析白名单
 # 只有这些消息类型会使用复杂的字段解析逻辑
@@ -477,7 +476,7 @@ class Discord:
             return False
 
         try:
-            logger.debug(f"[Discord] 准备异步发送消息...")
+            logger.debug("[Discord] 准备异步发送消息...")
             future = asyncio.run_coroutine_threadsafe(
                 self._send_message(
                     title=title,
@@ -1319,7 +1318,7 @@ class Discord:
                 return channel
 
         # Priority 4: Find any available text channel in guild (fallback)
-        logger.debug(f"[Discord] 尝试在 Guild 中寻找可用频道")
+        logger.debug("[Discord] 尝试在 Guild 中寻找可用频道")
         target_guilds = []
         if self._guild_id:
             guild = self._client.get_guild(self._guild_id)

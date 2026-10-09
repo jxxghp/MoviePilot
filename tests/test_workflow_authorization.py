@@ -6,7 +6,6 @@ import pytest
 from fastapi import HTTPException
 from fastapi.routing import APIRoute
 
-from app.api.endpoints import workflow as workflow_endpoint
 from app.adapters.web.security.access import verify_token
 from app.api.deps import (
     get_current_active_manage_user,
@@ -14,6 +13,7 @@ from app.api.deps import (
     get_current_active_user,
     get_current_active_user_async,
 )
+from app.api.endpoints import workflow as workflow_endpoint
 
 
 def _declared_dependencies(func):

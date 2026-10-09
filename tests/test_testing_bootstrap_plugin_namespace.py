@@ -1,8 +1,8 @@
 """验证插件仓测试引导复现生产运行时的插件导入命名空间。"""
 
+import sys
 from importlib import import_module
 from pathlib import Path
-import sys
 
 import pytest
 

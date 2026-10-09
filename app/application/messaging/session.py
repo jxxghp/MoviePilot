@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Callable, MutableMapping, Optional, Union
 
-
 UserId = Union[str, int]
 SessionEntry = tuple[str, datetime]
 ExpiredSessionHandler = Callable[[str, UserId], None]

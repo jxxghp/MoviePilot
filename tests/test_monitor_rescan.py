@@ -15,8 +15,8 @@ from unittest.mock import MagicMock
 
 from watchfiles import Change
 
-from app.runtime.config import settings
 from app.monitor.watcher import LocalDirectoryWatcher
+from app.runtime.config import settings
 
 
 def _build_watcher(tmp_path, force_polling=True):

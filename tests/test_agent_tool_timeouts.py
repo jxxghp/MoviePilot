@@ -251,8 +251,9 @@ async def test_close_blocking_executors_retains_owner_until_retry() -> None:
 
 def test_create_agent_config_uses_llm_max_iterations():
     """Agent 执行配置应把 LLM_MAX_ITERATIONS 传给 LangGraph recursion_limit。"""
-    from app.agent.orchestrator import MoviePilotAgent
     from langchain_core.messages import AIMessage
+
+    from app.agent.orchestrator import MoviePilotAgent
 
     class _FakeGraphState:
         """提供最小 LangGraph 状态替身。"""

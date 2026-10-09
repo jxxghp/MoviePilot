@@ -1,8 +1,8 @@
-import regex as re
 from typing import Callable
 
-from app.foundation.singleton import Singleton
+import regex as re
 
+from app.foundation.singleton import Singleton
 
 _customization_provider: Callable[[], object] = lambda: ()
 

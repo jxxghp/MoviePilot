@@ -6,7 +6,6 @@ import pytest
 
 from tests import run as test_runner
 
-
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "test.yml"
 

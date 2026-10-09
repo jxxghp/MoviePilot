@@ -4,8 +4,8 @@ import hashlib
 import os
 import platform
 import re
-import signal
 import shutil
+import signal
 import socket
 import struct
 import subprocess
@@ -23,10 +23,6 @@ except ImportError:
 
 import psutil
 
-from app.schemas.dashboard import DashboardMemoryInfo as _SchemaDashboardMemoryInfo
-from app.schemas.dashboard import DashboardSystemInfo as _SchemaDashboardSystemInfo
-from app.schemas.dashboard import ProcessInfo as _SchemaProcessInfo
-from app.runtime.version import get_app_version
 from app.foundation.environment import (
     is_aarch,
     is_aarch64,
@@ -37,7 +33,10 @@ from app.foundation.environment import (
     is_x86_32,
     is_x86_64,
 )
-
+from app.runtime.version import get_app_version
+from app.schemas.dashboard import DashboardMemoryInfo as _SchemaDashboardMemoryInfo
+from app.schemas.dashboard import DashboardSystemInfo as _SchemaDashboardSystemInfo
+from app.schemas.dashboard import ProcessInfo as _SchemaProcessInfo
 
 # Linux amd64/arm64 UAPI: _IOR(BTRFS_IOCTL_MAGIC, 31, struct btrfs_ioctl_fs_info_args)
 _BTRFS_IOC_FS_INFO = 0x8400941F

@@ -4,7 +4,6 @@ import json
 
 from app.doctor.models import DoctorFinding, DoctorReport
 
-
 STATUS_LABELS = {
     "healthy": "healthy",
     "degraded": "degraded",

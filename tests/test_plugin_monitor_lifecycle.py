@@ -8,19 +8,19 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from app.foundation.singleton import Singleton
-from app.runtime.loop import main_loop_registry
+from app.runtime.extensions.plugin import manager as plugin_manager_module
+from app.runtime.extensions.plugin.admission import PluginMutationAdmission
 from app.runtime.extensions.plugin.dependency import (
     PluginDependencyClassification,
     PluginDependencyInstallResult,
 )
+from app.runtime.extensions.plugin.manager import PluginManager
 from app.runtime.extensions.plugin.monitor import (
     PluginChangeMonitor,
     PluginMonitorController,
 )
-from app.runtime.extensions.plugin.admission import PluginMutationAdmission
 from app.runtime.extensions.plugin.system import reset_plugin_system
-from app.runtime.extensions.plugin import manager as plugin_manager_module
-from app.runtime.extensions.plugin.manager import PluginManager
+from app.runtime.loop import main_loop_registry
 from app.schemas.plugin import PluginRuntimeStatus
 from app.startup.initializers import plugins as plugins_initializer
 

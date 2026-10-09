@@ -1,17 +1,23 @@
 import threading
-from abc import abstractmethod, ABCMeta
-from typing import Any, Generic, Tuple, Union, TypeVar, Type, Dict, Optional, Callable
+from abc import ABCMeta, abstractmethod
 from pathlib import Path
+from typing import Any, Callable, Dict, Generic, Optional, Tuple, Type, TypeVar, Union
 
 from app.runtime.extensions.service import ServiceConfigHelper
 from app.runtime.log import logger
-from app.schemas.message import Message
-from app.schemas.system import NotificationConf
-from app.schemas.system import MediaServerConf
-from app.schemas.system import DownloaderConf
-from app.schemas.types import ModuleType, DownloaderType, MediaServerType, NotificationChannel, StorageSchema, \
-    OtherModulesType, SystemConfigKey, MediaRecognizeType
 from app.runtime.reload import ConfigReloadMixin
+from app.schemas.message import Message
+from app.schemas.system import DownloaderConf, MediaServerConf, NotificationConf
+from app.schemas.types import (
+    DownloaderType,
+    MediaRecognizeType,
+    MediaServerType,
+    ModuleType,
+    NotificationChannel,
+    OtherModulesType,
+    StorageSchema,
+    SystemConfigKey,
+)
 
 
 class _ModuleBase(ConfigReloadMixin, metaclass=ABCMeta):

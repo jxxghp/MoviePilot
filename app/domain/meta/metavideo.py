@@ -8,12 +8,11 @@ from Pinyin2Hanzi import is_pinyin
 from app.domain.meta.customization import CustomizationMatcher
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.releasegroup import ReleaseGroupsMatcher
-from app.schemas.types import MediaType
-from app.foundation import text as text_tools
-from app.domain.tokens import Tokens
-from app.domain.meta.streamingplatform import StreamingPlatforms
 from app.domain.meta.runtime import get_media_extensions
-
+from app.domain.meta.streamingplatform import StreamingPlatforms
+from app.domain.tokens import Tokens
+from app.foundation import text as text_tools
+from app.schemas.types import MediaType
 
 SEASON_FULL_RE = re.compile(r"^(?:Season\s+|S)(\d{1,3})$", re.IGNORECASE)
 FIRST_BRACKET_RE = re.compile(r'^[\[【](.+?)[\]】]')

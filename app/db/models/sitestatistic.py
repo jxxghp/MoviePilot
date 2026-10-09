@@ -1,11 +1,11 @@
-from typing import Any, Optional
 from datetime import datetime
+from typing import Any, Optional
 
-from sqlalchemy import Integer, String, JSON, delete, select
+from sqlalchemy import JSON, Integer, String, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from app.db.base import get_id_column, Base
+from app.db.base import Base, get_id_column
 
 
 class SiteStatistic(Base):

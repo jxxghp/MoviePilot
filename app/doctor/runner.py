@@ -6,8 +6,7 @@ import sys
 from datetime import datetime
 from typing import Any, Optional
 
-from app.runtime.settings import get_runtime_setting
-
+from app.adapters.system.host import SystemUtils
 from app.doctor.checks import default_checks
 from app.doctor.models import (
     DoctorFinding,
@@ -15,7 +14,7 @@ from app.doctor.models import (
     DoctorReport,
     DoctorSeverity,
 )
-from app.adapters.system.host import SystemUtils
+from app.runtime.settings import get_runtime_setting
 from app.runtime.version import get_app_version
 
 

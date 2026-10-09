@@ -1,9 +1,8 @@
 from typing import Optional
 
 from app.application.service import ServiceBaseHelper
-from app.schemas.system import DownloaderConf
-from app.schemas.system import ServiceInfo
-from app.schemas.types import SystemConfigKey, ModuleType
+from app.schemas.system import DownloaderConf, ServiceInfo
+from app.schemas.types import ModuleType, SystemConfigKey
 
 
 class DownloaderHelper(ServiceBaseHelper[DownloaderConf]):

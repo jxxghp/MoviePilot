@@ -1,8 +1,8 @@
 import textwrap
 from pathlib import Path
 
-from app.agent.runtime import AgentRuntimeManager
 import app.agent.middleware.subagents as subagent_module
+from app.agent.runtime import AgentRuntimeManager
 
 
 def _write_current_persona(defaults_root: Path) -> None:

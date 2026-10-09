@@ -1,16 +1,17 @@
 # -*- coding: utf-8 -*-
-import re
 import json
+import re
 from typing import Optional
-from lxml import etree
 from urllib.parse import urljoin
-from app.runtime.log import logger
-from app.modules.indexer.parser import SiteSchema
-from app.modules.indexer.parser import SiteParserBase
+
+from lxml import etree
+
 from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
 from app.foundation import text as text_tools
 from app.foundation.dom import DomUtils
+from app.modules.indexer.parser import SiteParserBase, SiteSchema
+from app.runtime.log import logger
 
 
 class NexusRabbitSiteUserInfo(SiteParserBase):

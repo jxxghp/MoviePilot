@@ -1,7 +1,7 @@
-from typing import Any, Optional
 from datetime import datetime
+from typing import Any, Optional
 
-from sqlalchemy import Boolean, Integer, String, JSON, select, delete
+from sqlalchemy import JSON, Boolean, Integer, String, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 

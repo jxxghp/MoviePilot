@@ -3,9 +3,9 @@ import json
 from typing import Optional, Tuple
 from urllib.parse import urljoin
 
-from app.runtime.log import logger
-from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.domain import site as site_rules
+from app.modules.indexer.parser import SiteParserBase, SiteSchema
+from app.runtime.log import logger
 
 
 class MTorrentSiteUserInfo(SiteParserBase):
@@ -184,7 +184,7 @@ class MTorrentSiteUserInfo(SiteParserBase):
                 self.message_unread_contents.append((head, date, content))
                 # 设置已读
                 self._get_page_content(
-                    url=urljoin(self._base_url, f"api/msg/markRead"),
+                    url=urljoin(self._base_url, "api/msg/markRead"),
                     params={"msgId": message.get("id")}
                 )
         # 是否存在下页数据

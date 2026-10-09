@@ -3,8 +3,8 @@ from typing import Optional
 from xml.dom import minidom
 
 from app.domain.context import MediaInfo
-from app.schemas.types import MediaType
 from app.foundation.dom import DomUtils
+from app.schemas.types import MediaType
 
 
 class DoubanScraper:

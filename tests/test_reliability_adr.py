@@ -4,7 +4,6 @@ from pathlib import Path
 
 from app.schemas.types import ChainEventType, EventType
 
-
 ADR_PATH = Path(__file__).parents[1] / "docs" / "adr" / "0007-background-action-reliability.md"
 
 

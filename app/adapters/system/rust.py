@@ -3,7 +3,7 @@ from functools import lru_cache
 from typing import List, Optional, Tuple
 
 from app.foundation.environment import is_free_threaded_runtime
-from app.runtime.log import logger, log_settings
+from app.runtime.log import log_settings, logger
 from app.runtime.settings import get_runtime_setting
 
 try:

@@ -8,7 +8,6 @@ import cn2an
 from app.foundation.text import count_words
 from app.schemas.types import MediaType
 
-
 _MAX_TITLE_WORDS = 10
 _MIN_TITLE_LENGTH = 2
 _NON_TITLE_PATTERN = re.compile(r"^#|^请[问帮你]|[?？]$|^继续$")

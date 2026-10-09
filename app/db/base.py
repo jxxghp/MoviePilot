@@ -7,14 +7,12 @@ DbOper 是各业务 Oper 的基类，持有一个可注入的会话。
 from collections.abc import Awaitable, Callable
 from typing import Any, List, Optional, Self, TypeVar, Union, cast
 
-from sqlalchemy import (CursorResult, Executable, Identity, Integer, Sequence,
-                        and_, delete, inspect, select)
+from sqlalchemy import CursorResult, Executable, Identity, Integer, Sequence, and_, delete, inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, declared_attr, mapped_column
 
 from app.db.uow import run_async_transaction, run_sync_transaction
 from app.runtime.settings import get_runtime_setting
-
 
 T = TypeVar("T")
 

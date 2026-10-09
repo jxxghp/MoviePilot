@@ -1,25 +1,24 @@
 import json
 import re
 import xml.dom.minidom
-from typing import Optional, Union, List, Tuple, Any, Dict
+from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import quote
 
-from app.domain.context import Context, MediaInfo
+from app.adapters.external.wechat import WXBizMsgCrypt
 from app.application.messaging.channel.admin import (
     matches_channel_admin,
     register_channel_admin_resolver,
     resolve_config_principal_ids,
 )
-from app.runtime.log import logger
+from app.domain.context import Context, MediaInfo
+from app.foundation.dom import DomUtils
 from app.modules._base.notification import _MessageChannelModuleBase
-from app.adapters.external.wechat import WXBizMsgCrypt
 from app.modules.wechat.wechat import WeChat
 from app.modules.wechat.wechatbot import WeChatBot
+from app.runtime.log import logger
+from app.schemas.message import IncomingMessage, Message
 from app.schemas.notification import NotificationChannel
-from app.schemas.message import IncomingMessage
-from app.schemas.message import Message
 from app.schemas.types import ModuleType
-from app.foundation.dom import DomUtils
 
 
 def _resolve_wechat_admin_ids(config: Optional[dict]) -> set[str]:
@@ -126,7 +125,7 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
                                   sReceiveId=client_config.config.get('WECHAT_CORPID'))
             # 报文数据
             if not body:
-                logger.debug(f"微信请求数据为空")
+                logger.debug("微信请求数据为空")
                 return None
             logger.debug(f"收到微信请求：{body}")
             ret, sMsg = wxcpt.DecryptMsg(sPostData=body,
@@ -168,7 +167,7 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
             user_id = DomUtils.tag_value(root_node, "FromUserName")
             # 没的消息类型和用户ID的消息不要
             if not msg_type or not user_id:
-                logger.warn(f"解析不到消息类型和用户ID")
+                logger.warn("解析不到消息类型和用户ID")
                 return None
             # 解析消息内容
             content = None

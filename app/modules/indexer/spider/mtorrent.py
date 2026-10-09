@@ -1,18 +1,17 @@
 import base64
 import json
 import re
-from typing import Any, Tuple, List, Optional
+from typing import Any, List, Optional, Tuple
 from urllib.parse import urlparse
 
-from app.runtime.settings import get_runtime_setting
-
+from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.application.configuration import get_configured_system_config
 from app.application.site.observation import report_site_search_page
-from app.runtime.log import logger
-from app.schemas.types import MediaType
-from app.adapters.network.http import RequestUtils, AsyncRequestUtils
 from app.domain import site as site_rules
 from app.foundation import temporal as time_tools
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
+from app.schemas.types import MediaType
 
 
 class MTorrentSpider:

@@ -13,14 +13,13 @@ from typing import List, Optional
 from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
 
-from app.runtime.coalesce import EventCoalescer
 from app.application.security import url as security_module
 from app.application.security.url import (
     SecurityUtils,
     UrlSafetyDiagnosis,
     UrlSafetyReason,
 )
-
+from app.runtime.coalesce import EventCoalescer
 
 _TEST_WINDOW = 0.05
 _TEST_WAIT = _TEST_WINDOW * 4

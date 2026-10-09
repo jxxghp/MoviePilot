@@ -3,13 +3,14 @@
 提供装饰器用于在函数执行后立即回收内存
 """
 import ctypes
-import gc
 import functools
+import gc
 import logging
-import psutil
 import os
 import sys
-from typing import Callable, Any, Optional, cast
+from typing import Any, Callable, Optional, cast
+
+import psutil
 
 logger = logging.getLogger(__name__)
 

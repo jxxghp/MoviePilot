@@ -2,5 +2,4 @@
 
 from app.runtime.log import logger
 
-
 __all__ = ["logger"]

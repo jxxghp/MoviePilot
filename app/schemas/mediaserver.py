@@ -1,7 +1,7 @@
 from pathlib import Path
-from typing import Optional, Dict, Union, List, Any
+from typing import Any, Dict, List, Optional, Union
 
-from pydantic import BaseModel, Field, ConfigDict, RootModel, model_validator
+from pydantic import BaseModel, ConfigDict, Field, RootModel, model_validator
 
 from app.schemas.common import JsonData
 from app.schemas.media import OptionalMediaIdentityMixin

@@ -9,8 +9,8 @@ from app.api.endpoints import search as search_endpoint
 from app.chain.subscribe import create as subscribe_create
 from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import MediaInfo
-from app.schemas.types import MediaSource, MediaType
 from app.schemas.media import normalize_media_source
+from app.schemas.types import MediaSource, MediaType
 from app.schemas.workflow import MediaInfo as SchemaMediaInfo
 
 

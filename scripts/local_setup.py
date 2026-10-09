@@ -26,7 +26,6 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Optional
 
-
 ROOT = Path(__file__).resolve().parents[1]
 LEGACY_CONFIG_DIR = ROOT / "config"
 SITE_RESOURCE_DIR = ROOT / "app" / "application" / "site"
@@ -2536,13 +2535,13 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
         )
         from app.application.configuration import SystemConfigService
         from app.application.directory import normalize_directory_system_config_value
-        from app.schemas.category import ClassificationPolicyState
-        from app.startup.initializers.database import prepare_database
+        from app.db.adapters.transaction import TransactionalWriteRunner
         from app.db.oper.systemconfig import SystemConfigOper
-        from app.schemas.types import SystemConfigKey
         from app.db.session import SessionFactory, async_session_scope
         from app.db.uow import configure_transaction_runners
-        from app.db.adapters.transaction import TransactionalWriteRunner
+        from app.schemas.category import ClassificationPolicyState
+        from app.schemas.types import SystemConfigKey
+        from app.startup.initializers.database import prepare_database
     except ModuleNotFoundError as exc:
         raise RuntimeError(
             "当前环境尚未安装 MoviePilot 运行依赖，请先执行 moviepilot install deps 或 moviepilot setup"
@@ -2725,8 +2724,8 @@ def _ensure_superuser_account_inner() -> None:
 
 
 def _prepare_superuser_password_for_bootstrap() -> Optional[str]:
-    from app.runtime.config import settings
     from app.db.oper.user import UserOper
+    from app.runtime.config import settings
 
     username = str(settings.SUPERUSER or "").strip()
     username_error = _validate_superuser_name(username)
@@ -3960,9 +3959,9 @@ def run_agent_request(
         sys.path.insert(0, str(ROOT))
 
     try:
-        from app.startup.initializers.database import prepare_database
         from app.agent.orchestrator import MoviePilotAgent
         from app.runtime.config import settings
+        from app.startup.initializers.database import prepare_database
     except ModuleNotFoundError as exc:
         raise RuntimeError(
             "当前环境尚未安装 MoviePilot 运行依赖，请先执行 moviepilot install deps 或 moviepilot setup"

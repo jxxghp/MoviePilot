@@ -26,7 +26,6 @@ import requests
 import websocket
 from bs4 import BeautifulSoup, Comment, NavigableString, Tag
 
-
 COLLECTOR_VERSION = "1.0.1"
 FORMAT_VERSION = 1
 MAX_RESPONSE_BYTES = 5 * 1024 * 1024

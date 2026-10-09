@@ -1,19 +1,16 @@
 import re
 from copy import deepcopy
 from functools import lru_cache
-from typing import List, Tuple, Union, Dict, Optional
+from typing import Dict, List, Optional, Tuple, Union
 
-from app.domain.context import TorrentInfo, MediaInfo
-from app.domain.metainfo import MetaInfo, clear_rust_parse_options_cache, _rust_parse_options
-from app.application.rules import RuleHelper
-from app.runtime.log import logger
-from app.modules import _ModuleBase
-from app.application.rules import RuleParser
-from app.application.rules import BUILTIN_RULE_SET
-from app.schemas.types import ModuleType, OtherModulesType, SystemConfigKey
 from app.adapters.system import rust as rust_accel
+from app.application.rules import BUILTIN_RULE_SET, RuleHelper, RuleParser
+from app.domain.context import MediaInfo, TorrentInfo
+from app.domain.metainfo import MetaInfo, _rust_parse_options, clear_rust_parse_options_cache
 from app.foundation import size as size_tools
-
+from app.modules import _ModuleBase
+from app.runtime.log import logger
+from app.schemas.types import ModuleType, OtherModulesType, SystemConfigKey
 
 _SIZE_UNIT = 1024 * 1024
 

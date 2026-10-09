@@ -6,7 +6,6 @@ import os.path
 import re
 import shlex
 
-
 _SHELL_PUNCTUATION = ";&|<>"
 
 

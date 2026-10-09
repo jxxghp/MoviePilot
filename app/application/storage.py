@@ -1,7 +1,7 @@
 from typing import List, Optional
 
-from app.schemas.system import StorageConf as _SchemaStorageConf
 from app.application.configuration import get_configured_system_config
+from app.schemas.system import StorageConf as _SchemaStorageConf
 from app.schemas.types import SystemConfigKey
 
 

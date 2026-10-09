@@ -9,9 +9,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.foundation.singleton import SingletonClass
 from app.monitor.monitor import Monitor
 from app.monitor.recovery import RecoveryExecutor, RecoveryState
-from app.foundation.singleton import SingletonClass
 from app.startup.initializers.monitor import init_monitor, stop_monitor
 
 

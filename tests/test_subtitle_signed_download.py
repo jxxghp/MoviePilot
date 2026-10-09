@@ -5,9 +5,8 @@ from types import SimpleNamespace
 import app.api.endpoints.download as download_endpoint
 import app.api.endpoints.search as search_endpoint
 from app import schemas
-from app.domain.context import SubtitleInfo
 from app.application.security.url import SecurityUtils
-
+from app.domain.context import SubtitleInfo
 
 SUBTITLE_SITE_ID = 1001
 SUBTITLE_PURPOSE = f"subtitle-download:{SUBTITLE_SITE_ID}"

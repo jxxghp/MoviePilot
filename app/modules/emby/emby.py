@@ -2,24 +2,23 @@ import json
 import re
 import traceback
 from pathlib import Path
-from typing import List, Optional, Union, Dict, Generator, Tuple, Any
+from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 from requests import Response
 
+from app.adapters.network.http import RequestUtils
+from app.application.mediaserver import MediaServerIdentityHelper, format_emby_family_item
+from app.foundation.url import UrlUtils
+from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.schemas.dashboard import Statistic as _SchemaStatistic
+from app.schemas.mediaserver import MediaServerItem
 from app.schemas.mediaserver import MediaServerItem as _SchemaMediaServerItem
 from app.schemas.mediaserver import MediaServerLibrary as _SchemaMediaServerLibrary
 from app.schemas.mediaserver import MediaServerPlayItem as _SchemaMediaServerPlayItem
 from app.schemas.mediaserver import RefreshMediaItem as _SchemaRefreshMediaItem
 from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
-from app.runtime.settings import get_runtime_setting
-
-from app.application.mediaserver import MediaServerIdentityHelper, format_emby_family_item
-from app.runtime.log import logger
-from app.schemas.mediaserver import MediaServerItem
 from app.schemas.types import MediaSource, MediaType
-from app.adapters.network.http import RequestUtils
-from app.foundation.url import UrlUtils
 
 
 class Emby:
@@ -78,10 +77,10 @@ class Emby:
             if res:
                 return res.json()
             else:
-                logger.error(f"Library/SelectableMediaFolders 未获取到返回数据")
+                logger.error("Library/SelectableMediaFolders 未获取到返回数据")
                 return []
         except Exception as e:
-            logger.error(f"连接Library/SelectableMediaFolders 出错：" + str(e))
+            logger.error("连接Library/SelectableMediaFolders 出错：" + str(e))
             return []
 
     def get_emby_virtual_folders(self) -> List[dict]:
@@ -118,10 +117,10 @@ class Emby:
                         })
                 return librarys
             else:
-                logger.error(f"Library/VirtualFolders/Query 未获取到返回数据")
+                logger.error("Library/VirtualFolders/Query 未获取到返回数据")
                 return []
         except Exception as e:
-            logger.error(f"连接Library/VirtualFolders/Query 出错：" + str(e))
+            logger.error("连接Library/VirtualFolders/Query 出错：" + str(e))
             return []
 
     def __get_emby_librarys(self, username: Optional[str] = None) -> Optional[List[dict]]:
@@ -144,10 +143,10 @@ class Emby:
                 items = res.json().get("Items")
                 return items if isinstance(items, list) else None
             else:
-                logger.error(f"User/Views 未获取到返回数据")
+                logger.error("User/Views 未获取到返回数据")
                 return None
         except Exception as e:
-            logger.error(f"连接User/Views 出错：" + str(e))
+            logger.error("连接User/Views 出错：" + str(e))
             return None
 
     def get_librarys(
@@ -232,9 +231,9 @@ class Emby:
                     if emby_user.get("Policy", {}).get("IsAdministrator"):
                         return emby_user.get("Id")
             else:
-                logger.error(f"Users 未获取到返回数据")
+                logger.error("Users 未获取到返回数据")
         except Exception as e:
-            logger.error(f"连接Users出错：" + str(e))
+            logger.error("连接Users出错：" + str(e))
         return None
 
     def authenticate(self, username: str, password: str) -> Optional[str]:
@@ -269,9 +268,9 @@ class Emby:
                     logger.info(f"用户 {username} Emby认证成功")
                     return auth_token
             else:
-                logger.error(f"Users/AuthenticateByName 未获取到返回数据")
+                logger.error("Users/AuthenticateByName 未获取到返回数据")
         except Exception as e:
-            logger.error(f"连接Users/AuthenticateByName出错：" + str(e))
+            logger.error("连接Users/AuthenticateByName出错：" + str(e))
         return None
 
     def get_server_id(self) -> Optional[str]:
@@ -313,10 +312,10 @@ class Emby:
             if res:
                 return res.json().get("TotalRecordCount")
             else:
-                logger.error(f"Users/Query 未获取到返回数据")
+                logger.error("Users/Query 未获取到返回数据")
                 return 0
         except Exception as e:
-            logger.error(f"连接Users/Query出错：" + str(e))
+            logger.error("连接Users/Query出错：" + str(e))
             return 0
 
     def get_medias_count(self) -> _SchemaStatistic:
@@ -342,10 +341,10 @@ class Emby:
                     or result.get("SongCount") or 0,
                 )
             else:
-                logger.error(f"Items/Counts 未获取到返回数据")
+                logger.error("Items/Counts 未获取到返回数据")
                 return _SchemaStatistic()
         except Exception as e:
-            logger.error(f"连接Items/Counts出错：" + str(e))
+            logger.error("连接Items/Counts出错：" + str(e))
             return _SchemaStatistic()
 
     def __get_emby_series_id_by_name(self, name: str, year: str) -> Optional[str]:
@@ -378,7 +377,7 @@ class Emby:
                                 not year or str(res_item.get('ProductionYear')) == str(year)):
                             return res_item.get('Id')
         except Exception as e:
-            logger.error(f"连接Items出错：" + str(e))
+            logger.error("连接Items出错：" + str(e))
             return None
         return ""
 
@@ -427,7 +426,7 @@ class Emby:
                                 ret_movies.append(mediaserver_item)
                     return ret_movies
         except Exception as e:
-            logger.error(f"连接Items出错：" + str(e))
+            logger.error("连接Items出错：" + str(e))
             return None
         return None
 
@@ -532,7 +531,7 @@ class Emby:
                 # 返回
                 return item_id, season_episodes
         except Exception as e:
-            logger.error(f"连接Shows/Id/Episodes出错：" + str(e))
+            logger.error("连接Shows/Id/Episodes出错：" + str(e))
             return None, None
         return None, {}
 
@@ -589,10 +588,10 @@ class Emby:
                         if image.get("ProviderName") == "TheMovieDb" and image.get("Type") == image_type:
                             return image.get("Url")
             # 数据为空
-            logger.info(f"Items/RemoteImages 未获取到返回数据，采用本地图片")
+            logger.info("Items/RemoteImages 未获取到返回数据，采用本地图片")
             return self.generate_external_image_link(item_id, image_type)
         except Exception as e:
-            logger.error(f"连接Items/Id/RemoteImages出错：" + str(e))
+            logger.error("连接Items/Id/RemoteImages出错：" + str(e))
         return None
 
     def generate_external_image_link(self, item_id: str, image_type: str) -> Optional[str]:
@@ -616,7 +615,7 @@ class Emby:
                 logger.info("Items/Id/Images 未获取到返回数据或无该影片{}图片".format(image_type))
                 return None
         except Exception as e:
-            logger.error(f"连接Items/Id/Images出错：" + str(e))
+            logger.error("连接Items/Id/Images出错：" + str(e))
             return None
 
     def __refresh_emby_library_by_id(self, item_id: str) -> bool:
@@ -637,7 +636,7 @@ class Emby:
             else:
                 logger.info(f"刷新媒体库对象 {item_id} 失败，无法连接Emby！")
         except Exception as e:
-            logger.error(f"连接Items/Id/Refresh出错：" + str(e))
+            logger.error("连接Items/Id/Refresh出错：" + str(e))
             return False
         return False
 
@@ -656,9 +655,9 @@ class Emby:
             if res:
                 return True
             else:
-                logger.info(f"刷新媒体库失败，无法连接Emby！")
+                logger.info("刷新媒体库失败，无法连接Emby！")
         except Exception as e:
-            logger.error(f"连接Library/Refresh出错：" + str(e))
+            logger.error("连接Library/Refresh出错：" + str(e))
             return False
         return False
 
@@ -670,7 +669,7 @@ class Emby:
         if not items:
             return False
         # 收集要刷新的媒体库信息
-        logger.info(f"开始刷新Emby媒体库...")
+        logger.info("开始刷新Emby媒体库...")
         library_ids = []
         for item in items:
             library_id = self.__get_emby_library_id_by_item(item)
@@ -684,7 +683,7 @@ class Emby:
             if library_id != "/":
                 refreshed = self.__refresh_emby_library_by_id(library_id)
                 success = bool(refreshed) and success
-        logger.info(f"Emby媒体库刷新完成")
+        logger.info("Emby媒体库刷新完成")
         return success
 
     def __get_emby_library_id_by_item(self, item: _SchemaRefreshMediaItem) -> Optional[str]:
@@ -843,7 +842,7 @@ class Emby:
                 elif item.get("Type") in ["Movie", "Series", "MusicAlbum"]:
                     yield self.__format_item_info(item)
         except Exception as e:
-            logger.error(f"连接Users/Items出错：" + str(e))
+            logger.error("连接Users/Items出错：" + str(e))
         return None
 
     def get_webhook_message(self, form: Any, args: dict) -> Optional[_SchemaWebhookEventInfo]:
@@ -1095,7 +1094,7 @@ class Emby:
                 result = json.dumps(dict(args))
             message = json.loads(result)
         except Exception as e:
-            logger.debug(f"解析emby webhook报文出错：" + str(e))
+            logger.debug("解析emby webhook报文出错：" + str(e))
             return None
         eventType = message.get('Event')
         if not eventType:
@@ -1194,7 +1193,7 @@ class Emby:
         try:
             return RequestUtils(content_type="application/json").get_res(url=url)
         except Exception as e:
-            logger.error(f"连接Emby出错：" + str(e))
+            logger.error("连接Emby出错：" + str(e))
             return None
 
     def post_data(self, url: str, data: Optional[str] = None, headers: dict = None) -> Optional[Response]:
@@ -1214,7 +1213,7 @@ class Emby:
                 headers=headers,
             ).post_res(url=url, data=data)
         except Exception as e:
-            logger.error(f"连接Emby出错：" + str(e))
+            logger.error("连接Emby出错：" + str(e))
             return None
 
     def get_play_url(self, item_id: str, server_id: Optional[str] = None) -> str:
@@ -1327,9 +1326,9 @@ class Emby:
                     ))
                 return ret_resume
             else:
-                logger.error(f"Users/Items/Resume 未获取到返回数据")
+                logger.error("Users/Items/Resume 未获取到返回数据")
         except Exception as e:
-            logger.error(f"连接Users/Items/Resume出错：" + str(e))
+            logger.error("连接Users/Items/Resume出错：" + str(e))
         return None
 
     def get_latest(self, num: Optional[int] = 20, username: Optional[str] = None) -> Optional[
@@ -1386,9 +1385,9 @@ class Emby:
                     ))
                 return ret_latest
             else:
-                logger.error(f"Users/Items/Latest 未获取到返回数据")
+                logger.error("Users/Items/Latest 未获取到返回数据")
         except Exception as e:
-            logger.error(f"连接Users/Items/Latest出错：" + str(e))
+            logger.error("连接Users/Items/Latest出错：" + str(e))
         return None
 
     def get_user_library_folders(self):

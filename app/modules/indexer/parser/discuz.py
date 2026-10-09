@@ -4,11 +4,11 @@ from typing import Optional
 
 from lxml import etree
 
-from app.modules.indexer.parser import SiteParserBase, SiteSchema
 from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
 from app.foundation import text as text_tools
 from app.foundation.dom import DomUtils
+from app.modules.indexer.parser import SiteParserBase, SiteSchema
 
 
 class DiscuzUserInfo(SiteParserBase):
@@ -23,7 +23,7 @@ class DiscuzUserInfo(SiteParserBase):
                 user_id_match = re.search(r"&uid=(\d+)", user_info[0].attrib['href'])
                 if user_id_match and user_id_match.group().strip():
                     self.userid = user_id_match.group(1)
-                    self._torrent_seeding_page = f"forum.php?&mod=torrents&cat_5up=on"
+                    self._torrent_seeding_page = "forum.php?&mod=torrents&cat_5up=on"
                     self._user_detail_page = user_info[0].attrib['href']
                     self.username = user_info[0].text.strip()
         finally:

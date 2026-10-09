@@ -14,7 +14,6 @@ from app.modules.themoviedb.tmdbv3api.tmdb import (
 )
 from app.runtime.cache import MemoryBackend
 from app.runtime.config import settings
-
 from tests.test_tmdb_response_cache import _FakeResponse
 
 EMPTY_PAYLOAD = {"page": 1, "results": [], "total_results": 0, "total_pages": 0}

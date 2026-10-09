@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
 import sqlite3
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
-from app.runtime.config import settings
 from app.doctor import checks
 from app.doctor.formatters import format_json_report, format_text_report
 from app.doctor.models import DoctorFinding, DoctorFindingStatus, DoctorSeverity
 from app.doctor.runner import DoctorRunner, run_doctor
+from app.runtime.config import settings
 
 
 def _current_log_timestamp() -> str:

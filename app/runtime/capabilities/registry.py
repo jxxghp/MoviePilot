@@ -17,7 +17,6 @@ from app.runtime.capabilities.model import (
     SelectorSpec,
 )
 
-
 _SCHEMA_VERSION = 1
 _MANIFEST_NAME = "capability.toml"
 _TOP_LEVEL_FIELDS = frozenset({

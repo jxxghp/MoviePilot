@@ -10,12 +10,12 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from app.api.deps import get_current_active_superuser_async
 from app.api.endpoints import music as music_endpoint
 from app.domain.context import MusicInfo
 from app.domain.meta.metamusic import MetaMusic
-from app.api.deps import get_current_active_superuser_async
-from app.modules.musicbrainz import cache as music_cache_module
 from app.modules.musicbrainz import MusicBrainzModule
+from app.modules.musicbrainz import cache as music_cache_module
 from app.modules.musicbrainz.cache import MusicBrainzCache
 
 

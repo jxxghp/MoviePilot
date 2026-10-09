@@ -1,7 +1,7 @@
 import inspect
 from typing import Any
 
-from app.runtime.events import eventmanager, Event
+from app.runtime.events import Event, eventmanager
 from app.runtime.log import logger
 from app.schemas.types import EventType
 

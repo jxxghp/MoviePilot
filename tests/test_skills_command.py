@@ -13,16 +13,15 @@ ensure_optional_stub("psutil")
 ensure_optional_stub("aioshutil")
 ensure_optional_stub("pyquery", PyQuery=object)
 
-from app.chain.message import MessageChain
-from app.application.configuration import get_runtime_settings  # noqa: E402 - optional stubs must be installed first
-from app.application.messaging.interaction import InteractionContext
-from app.application.messaging.skill import SkillInteractionHandler
-from app.application.messaging.skill import skill_interaction_manager
 from app.agent.skills.registry import (
     SkillHelper,
     SkillInfo,
     SkillMarketSource,
 )
+from app.application.configuration import get_runtime_settings  # noqa: E402 - optional stubs must be installed first
+from app.application.messaging.interaction import InteractionContext
+from app.application.messaging.skill import SkillInteractionHandler, skill_interaction_manager
+from app.chain.message import MessageChain
 from app.schemas.types import NotificationChannel
 
 

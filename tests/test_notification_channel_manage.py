@@ -12,7 +12,7 @@ import pytest
 
 from app.chain.notification import NotificationChain
 from app.modules.wechatclawbot import WechatClawBotModule
-from app.schemas.types import NotificationChannel, NotificationAction
+from app.schemas.types import NotificationAction, NotificationChannel
 
 
 @pytest.fixture

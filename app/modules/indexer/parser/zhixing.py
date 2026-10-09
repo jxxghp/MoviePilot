@@ -6,11 +6,12 @@
 # -*- coding: utf-8 -*-
 import re
 from typing import Optional, Tuple
-
-from app.modules.indexer.parser import SiteParserBase, SiteSchema
-from app.foundation import temporal as time_tools
-from bs4 import BeautifulSoup
 from urllib.parse import urljoin
+
+from bs4 import BeautifulSoup
+
+from app.foundation import temporal as time_tools
+from app.modules.indexer.parser import SiteParserBase, SiteSchema
 
 
 class ZhixingSiteUserInfo(SiteParserBase):

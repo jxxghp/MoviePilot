@@ -4,18 +4,17 @@
 连接测试、定时重连、种子信息读取与查询状态归一。差异化逻辑
 （任务添加、原始状态映射、任务列表构建）仍留在各模块。
 """
-from pathlib import Path
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, List, Optional, Tuple, TypeVar, Union
 
 from torrentool.torrent import Torrent
 
 from app.domain import torrent as torrent_rules
-from app.modules import _DownloaderBase, _ModuleBase, TService
+from app.modules import TService, _DownloaderBase, _ModuleBase
 from app.runtime.cache import FileCache
 from app.runtime.log import logger
 from app.schemas.types import TorrentQueryStatus, TorrentStatus
-
 
 TFile = TypeVar("TFile")
 

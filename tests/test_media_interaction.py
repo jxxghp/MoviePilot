@@ -1,21 +1,21 @@
-from datetime import datetime, timedelta
 from dataclasses import replace
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 import pytest
 
-from app.chain.message import MessageChain
-from app.chain.interaction import MediaInteractionChain
-from app.runtime.events import EventManager
-from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
-from app.domain.meta.metabase import MetaBase
-from app.domain.meta.metamusic import MetaMusic
 from app.application.messaging.interaction import InteractionContext
 from app.application.messaging.media import media_interaction_manager
 from app.application.messaging.plugin import (
     PluginInputInteractionHandler,
     plugin_input_interaction_manager,
 )
+from app.chain.interaction import MediaInteractionChain
+from app.chain.message import MessageChain
+from app.domain.context import Context, MediaInfo, MusicInfo, TorrentInfo
+from app.domain.meta.metabase import MetaBase
+from app.domain.meta.metamusic import MetaMusic
+from app.runtime.events import EventManager
 from app.schemas import IncomingMessage, TransferDirectoryConf  # pylint: disable=no-name-in-module
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,

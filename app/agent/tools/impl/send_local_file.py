@@ -8,9 +8,8 @@ from pydantic import BaseModel, Field, model_validator
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.tags import ToolTag
 from app.runtime.log import logger
-from app.schemas.message import Message
-from app.schemas.message import MessageType
-from app.schemas.notification import ChannelCapabilityManager, ChannelCapability
+from app.schemas.message import Message, MessageType
+from app.schemas.notification import ChannelCapability, ChannelCapabilityManager
 from app.schemas.types import NotificationChannel
 
 

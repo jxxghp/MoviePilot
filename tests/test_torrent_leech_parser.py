@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
+from app.foundation.size import parse_size
 from app.modules.indexer import parser as parser_module
 from app.modules.indexer.parser.torrent_leech import TorrentLeechSiteUserInfo
-from app.foundation.size import parse_size
-
 
 PROFILE_VIEW_HTML = """
 <table class="table table-bordered profileViewTable">

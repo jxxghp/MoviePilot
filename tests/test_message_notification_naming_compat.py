@@ -23,7 +23,6 @@ from app.schemas.notification import (
 )
 from app.schemas.types import MessageType, NotificationChannel
 
-
 # 旧名 -> canonical 对象的期望映射，覆盖全部登记的兼容入口
 _EXPECTED_RESOLUTIONS = {
     ("app.schemas.types", "MessageChannel"): NotificationChannel,

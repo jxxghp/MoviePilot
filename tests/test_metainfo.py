@@ -5,19 +5,19 @@ from unittest.mock import patch
 
 import pytest
 
+from app.application.torrent.download import TorrentHelper
 from app.domain import metainfo as metainfo_module
 from app.domain.context import MediaInfo
-from app.domain.metainfo import MetaInfo, MetaInfoPath, find_metainfo
+from app.domain.meta.metaanime import MetaAnime
 from app.domain.meta.metabase import MetaBase, MetaInfoSnapshot
 from app.domain.meta.metamusic import MetaMusic
-from app.domain.meta.metaanime import MetaAnime
 from app.domain.meta.runtime import (
     configure_recognition_runtime,
     get_audio_extensions,
     get_media_extensions,
     get_metainfo_accelerator,
 )
-from app.application.torrent.download import TorrentHelper
+from app.domain.metainfo import MetaInfo, MetaInfoPath, find_metainfo
 from app.schemas.types import MediaSource, MediaType
 from tests.cases.meta import meta_cases
 

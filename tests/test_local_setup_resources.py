@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-
 MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "local_setup.py"
 
 

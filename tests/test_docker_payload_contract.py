@@ -4,7 +4,6 @@ import shlex
 import subprocess
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 DOCKERFILE = ROOT / "docker" / "Dockerfile"
 UPDATER = ROOT / "docker" / "update.sh"

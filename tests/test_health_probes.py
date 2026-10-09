@@ -7,7 +7,6 @@ from fastapi.testclient import TestClient
 from app.factory import create_app
 from app.runtime.health import ReadinessPhase, get_application_health
 
-
 PROJECT_ROOT = Path(__file__).parents[1]
 
 

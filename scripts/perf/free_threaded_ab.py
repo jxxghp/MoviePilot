@@ -10,7 +10,6 @@ import random
 import re
 import statistics
 import subprocess
-import sys
 import tempfile
 import time
 from datetime import datetime, timezone

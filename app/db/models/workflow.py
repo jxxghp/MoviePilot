@@ -1,10 +1,10 @@
-from datetime import datetime
 from builtins import list as builtin_list
+from datetime import datetime
 from typing import Any, Optional
 
-from sqlalchemy import Integer, JSON, String, Index, and_, or_, select, update
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import JSON, Index, Integer, String, and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, get_id_column
 

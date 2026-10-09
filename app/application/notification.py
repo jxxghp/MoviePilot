@@ -1,8 +1,7 @@
 from typing import Optional
 
 from app.application.service import ServiceBaseHelper, get_service_configs
-from app.schemas.system import NotificationConf, NotificationSwitchConf
-from app.schemas.system import ServiceInfo
+from app.schemas.system import NotificationConf, NotificationSwitchConf, ServiceInfo
 from app.schemas.types import MessageType, ModuleType, SystemConfigKey
 
 

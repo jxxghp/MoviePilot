@@ -2,13 +2,12 @@ from pathlib import Path
 from typing import Optional, Tuple
 from xml.dom import minidom
 
-from app.runtime.settings import get_runtime_setting
-
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
-from app.schemas.types import MediaType
 from app.foundation.dom import DomUtils
 from app.modules.themoviedb.tmdbapi import TmdbApi
+from app.runtime.settings import get_runtime_setting
+from app.schemas.types import MediaType
 
 
 class TmdbScraper:

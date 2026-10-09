@@ -8,9 +8,8 @@ TMDB 对 404 等业务失败返回合法 JSON(success=false),原实现会随快�
 import unittest
 from unittest.mock import patch
 
-from app.runtime.cache import cached
 from app.modules.themoviedb.tmdbv3api.tmdb import TMDb
-
+from app.runtime.cache import cached
 from tests.test_tmdb_response_cache import _FakeResponse
 
 _NOT_FOUND_PAYLOAD = {

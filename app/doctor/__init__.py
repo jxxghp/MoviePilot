@@ -3,7 +3,6 @@
 from importlib import import_module
 from typing import Any
 
-
 _EXPORT_MODULES = {
     "DoctorFinding": "app.doctor.models",
     "DoctorReport": "app.doctor.models",

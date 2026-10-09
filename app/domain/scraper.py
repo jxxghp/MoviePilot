@@ -5,8 +5,8 @@ from urllib.parse import urlparse
 from xml.dom import minidom
 
 from app.domain.context import MediaInfo
-from app.schemas.types import MediaSource, MediaType
 from app.foundation.dom import DomUtils
+from app.schemas.types import MediaSource, MediaType
 
 
 class NfoReader:

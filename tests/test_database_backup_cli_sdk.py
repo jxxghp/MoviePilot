@@ -10,7 +10,6 @@ from app.application.backup import BackupArtifact, BackupVerification
 from app.cli import cli
 from app.sdk import database as database_sdk
 
-
 NAME = "moviepilot_v3.0.0_sqlite_20260819_030000.db"
 
 

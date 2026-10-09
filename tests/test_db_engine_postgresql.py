@@ -13,9 +13,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.runtime.config import settings
 from app.db import engine as engine_module
 from app.db.engine import connection_budget
+from app.runtime.config import settings
 
 
 def _fake_pg_connection(max_connections: int, reserved: int) -> MagicMock:

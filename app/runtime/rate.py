@@ -3,11 +3,10 @@ import inspect
 import threading
 import time
 from collections import deque
-from typing import Any, Tuple, List, Callable, Optional
+from typing import Any, Callable, List, Optional, Tuple
 
 from app.runtime.log import logger
-from app.schemas.exception import RateLimitExceededException
-from app.schemas.exception import LimitException
+from app.schemas.exception import LimitException, RateLimitExceededException
 
 
 # 抽象基类

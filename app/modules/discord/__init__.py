@@ -2,21 +2,19 @@ import json
 from typing import Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import quote, unquote
 
-from app.domain.context import MediaInfo, Context
+from app.adapters.network.http import RequestUtils
 from app.application.messaging.channel.admin import (
     matches_channel_admin,
     register_channel_admin_resolver,
     resolve_config_principal_ids,
 )
-from app.runtime.log import logger
+from app.domain.context import Context, MediaInfo
 from app.modules._base.notification import _MessageChannelModuleBase
+from app.runtime.log import logger
 from app.schemas.event import CommandRegisterEventData
-from app.schemas.message import IncomingMessage
+from app.schemas.message import IncomingMessage, Message, MessageResponse
 from app.schemas.notification import NotificationChannel
-from app.schemas.message import MessageResponse
-from app.schemas.message import Message
 from app.schemas.types import ModuleType
-from app.adapters.network.http import RequestUtils
 
 try:
     from app.modules.discord.discord import Discord

@@ -1,15 +1,15 @@
 import json
 import re
 from threading import Lock
-from typing import Optional, List
+from typing import List, Optional
 from urllib.parse import quote
 
-from app.domain.context import MediaInfo, Context
-from app.domain.metainfo import MetaInfo
-from app.runtime.log import logger
 from app.adapters.network.http import RequestUtils
+from app.domain.context import Context, MediaInfo
+from app.domain.metainfo import MetaInfo
 from app.foundation import size as size_tools
 from app.foundation import url as url_tools
+from app.runtime.log import logger
 
 lock = Lock()
 
@@ -63,7 +63,7 @@ class SynologyChat:
                 if not text:
                     text = "\n".join(titles[1:])
                 else:
-                    text = f"%s\n%s" % ("\n".join(titles[1:]), text)
+                    text = "%s\n%s" % ("\n".join(titles[1:]), text)
 
             if text:
                 caption = "*%s*\n%s" % (title, text.replace("\n\n", "\n"))
@@ -221,5 +221,5 @@ class SynologyChat:
             logger.error(f"SynologyChat请求失败，错误码：{ret.status_code}，错误原因：{ret.reason}")
             return False
         else:
-            logger.error(f"SynologyChat请求失败，未获取到返回信息")
+            logger.error("SynologyChat请求失败，未获取到返回信息")
             return False

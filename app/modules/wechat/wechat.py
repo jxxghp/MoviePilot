@@ -1,20 +1,20 @@
+import base64
 import json
 import re
-import threading
-import base64
 import subprocess
+import threading
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict
+from typing import Dict, List, Optional
 
-from app.domain.context import MediaInfo, Context
-from app.domain.metainfo import MetaInfo
-from app.runtime.log import logger
-from app.runtime.execution import retry
 from app.adapters.network.http import RequestUtils
 from app.application.messaging.image import build_wechat_image_url
+from app.domain.context import Context, MediaInfo
+from app.domain.metainfo import MetaInfo
 from app.foundation import size as size_tools
 from app.foundation.url import UrlUtils
+from app.runtime.execution import retry
+from app.runtime.log import logger
 
 lock = threading.Lock()
 
@@ -109,7 +109,7 @@ class WeChat:
             elif res is not None:
                 logger.error(f"获取微信access_token失败，错误码：{res.status_code}，错误原因：{res.reason}")
             else:
-                logger.error(f"获取微信access_token失败，未获取到返回信息")
+                logger.error("获取微信access_token失败，未获取到返回信息")
                 raise RetryException("获取微信access_token失败，重试中...")
         return self._access_token
 

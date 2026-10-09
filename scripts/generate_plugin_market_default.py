@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Optional
 from urllib.parse import urlparse
 
-
 OFFICIAL_PLUGIN_MARKET = "https://github.com/jxxghp/MoviePilot-Plugins"
 PLUGIN_MARKET_WIKI_START = "<!-- plugin-market-repos:start -->"
 PLUGIN_MARKET_WIKI_END = "<!-- plugin-market-repos:end -->"

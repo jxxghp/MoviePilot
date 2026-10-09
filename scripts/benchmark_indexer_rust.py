@@ -4,8 +4,8 @@ Benchmark SiteSpider indexer parsing with real MoviePilot-Build site configs.
 """
 
 import argparse
-import copy
 import contextlib
+import copy
 import io
 import statistics
 import sys

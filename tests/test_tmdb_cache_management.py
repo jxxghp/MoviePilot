@@ -4,8 +4,8 @@ import pickle
 from types import SimpleNamespace
 from unittest.mock import Mock
 
-from app.api.endpoints import tmdb as tmdb_endpoint
 from app.api.deps import get_current_active_superuser_async
+from app.api.endpoints import tmdb as tmdb_endpoint
 from app.modules.themoviedb import cache as tmdb_cache_module
 from app.modules.themoviedb.cache import TmdbCache
 from app.schemas.types import MediaType, SystemConfigKey

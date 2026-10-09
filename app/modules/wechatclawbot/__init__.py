@@ -1,20 +1,18 @@
 import json
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-from app.runtime.cache import TTLCache
-from app.domain.context import Context, MediaInfo
 from app.application.messaging.channel.admin import (
     matches_channel_admin,
     register_channel_admin_resolver,
     resolve_config_principal_ids,
 )
-from app.runtime.log import logger
+from app.domain.context import Context, MediaInfo
 from app.modules._base.notification import _MessageChannelModuleBase
 from app.modules.wechatclawbot.wechatclawbot import WechatClawBot
-from app.schemas.message import IncomingMessage
-from app.schemas.message import Message
-from app.schemas.types import NotificationChannel, ModuleType, NotificationAction
-
+from app.runtime.cache import TTLCache
+from app.runtime.log import logger
+from app.schemas.message import IncomingMessage, Message
+from app.schemas.types import ModuleType, NotificationAction, NotificationChannel
 
 register_channel_admin_resolver(
     NotificationChannel.WechatClawBot,

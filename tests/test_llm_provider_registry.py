@@ -3,14 +3,12 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from app.agent.llm import provider as provider_module
 from app.agent.llm.provider import (
     LLMProviderError,
     LLMProviderManager,
     PendingAuthSession,
 )
 from app.foundation.singleton import Singleton
-
 
 _MANAGER_SINGLETON_KEY = (LLMProviderManager, (), frozenset())
 

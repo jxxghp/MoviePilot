@@ -19,7 +19,6 @@ from sqlalchemy.orm import DeclarativeBase
 from app.db.base import Base
 from app.db.models import load_all_models
 
-
 load_all_models()
 from app.db.base import get_id_column
 

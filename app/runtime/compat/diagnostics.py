@@ -13,7 +13,6 @@ from app.runtime.compat.manifest import (
     SymbolAlias,
 )
 
-
 WarningEmitter = Callable[[str], object]
 
 

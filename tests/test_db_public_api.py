@@ -13,7 +13,6 @@
 """
 import app.db as db_package
 
-
 # 降级为内部实现细节的三个会话工厂
 INTERNAL_FACTORY_NAMES = ("SessionFactory", "AsyncSessionFactory", "ScopedSession")
 

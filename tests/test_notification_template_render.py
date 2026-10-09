@@ -11,19 +11,18 @@ V3 起通知模板不再硬编码在程序中，默认模板由数据库升级�
    避免 JSON 序列化转义引号导致音乐下载/入库通知内容为空的历史问题；
 3. 模板完全由数据库配置驱动，配置缺失时不渲染、消息保持原样。
 """
-from pathlib import Path
-
 import importlib.util
+from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
 
+from app.application.messaging.message import MessageTemplateHelper, TemplateContextBuilder, TemplateHelper
+from app.db.oper.systemconfig import SystemConfigOper
 from app.domain.context import MUSIC_ENTITY_ALBUM, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
-from app.db.oper.systemconfig import SystemConfigOper
-from app.application.messaging.message import MessageTemplateHelper, TemplateContextBuilder, TemplateHelper
 from app.schemas.message import Message
 from app.schemas.types import ContentType, SystemConfigKey
 

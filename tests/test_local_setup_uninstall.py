@@ -8,7 +8,6 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
-
 MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "local_setup.py"
 
 

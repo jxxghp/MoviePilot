@@ -8,13 +8,12 @@ from pathlib import Path
 from threading import Event
 from types import SimpleNamespace
 
-import pytest
 import httpx
-from fastapi import FastAPI
-from fastapi import HTTPException
+import pytest
+from fastapi import FastAPI, HTTPException
 
-from app.api.endpoints import system as system_endpoint
 from app.api.dependencies.auth import get_current_active_superuser_async
+from app.api.endpoints import system as system_endpoint
 from app.application.backup import (
     BackupVerification,
     DatabaseBackupInProgressError,

@@ -1,9 +1,9 @@
 import importlib
 import os
-from pathlib import Path
 import subprocess
 import sys
 import uuid
+from pathlib import Path
 
 import pytest
 import sqlalchemy as sa

@@ -7,7 +7,8 @@
 from typing import Any, Optional
 
 from sqlalchemy import event
-from sqlalchemy.engine import Engine as SQLAlchemyEngine, ExceptionContext
+from sqlalchemy.engine import Engine as SQLAlchemyEngine
+from sqlalchemy.engine import ExceptionContext
 
 from app.runtime.log import logger
 
