@@ -536,9 +536,9 @@ class SearchScan:
         self.retry_reasons = {key: reason for key, reason in self.retry_reasons.items() if key in self.retry}
         self.checkpoint()
         # 检查点只保存到秒，向上留一秒可确保实际等待不短于请求间隔。
-        future = (now + timedelta(seconds=AUTOMATIC_REQUEST_INTERVAL + 1))
-        future = future.replace(microsecond=0).isoformat(timespec="seconds")
-        retry_at = min(self.retry.values(), default=future)
+        future_at = now + timedelta(seconds=AUTOMATIC_REQUEST_INTERVAL + 1)
+        default_retry_at = future_at.replace(microsecond=0).isoformat(timespec="seconds")
+        retry_at = min(self.retry.values(), default=default_retry_at)
         site_ids = tuple(int(self.queries[key]["site"]) for key in active_sources
                          if self.queries[key]["site"] != "plugin")
         reason = "cooldown" if self.retry and all(
