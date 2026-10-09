@@ -265,8 +265,8 @@ def test_market_sync_defers_source_selection_to_gateway() -> None:
     install.assert_called_once_with(local.id, local.repo_url, False, None)
 
 
-def test_market_sync_reports_local_install_failure() -> None:
-    """本地载荷安装失败必须阻止启动编排继续激活旧代码。"""
+def test_market_sync_isolates_local_install_failure() -> None:
+    """本地载荷恢复失败保留该插件状态，但不阻止其余启动编排。"""
     local = SimpleNamespace(
         id="DemoPlugin",
         repo_url="local://DemoPlugin?path=/private/plugins&version=v3",
@@ -275,6 +275,7 @@ def test_market_sync_reports_local_install_failure() -> None:
         system_version_compatible=True,
         runtime_compatible=True,
     )
+    statuses: list[tuple[str, PluginRuntimeStatus]] = []
     service = PluginSyncService(
         frozen=lambda: False,
         installed_plugins=lambda: [local.id],
@@ -283,11 +284,60 @@ def test_market_sync_reports_local_install_failure() -> None:
         merge_plugins=lambda items, *_args: items,
         plugin_exists=lambda *_args: False,
         install=Mock(return_value=(False, "copy failed")),
+        runtime_status_writer=lambda plugin_id, status: statuses.append(
+            (plugin_id, status)
+        ),
         log=Mock(),
     )
 
-    with pytest.raises(RuntimeError, match="插件同步未完成：DemoPlugin"):
-        service.sync()
+    assert service.sync() == []
+    assert statuses == [("DemoPlugin", PluginRuntimeStatus.SYNC_FAILED)]
+
+
+def test_market_sync_continues_after_one_plugin_install_failure() -> None:
+    """一个恢复目标失败时仍完成其它插件的安装并返回其成功清单。"""
+    failed = SimpleNamespace(
+        id="FailedPlugin",
+        repo_url="local://FailedPlugin?version=v3",
+        plugin_name="Failed",
+        plugin_version="1.0.0",
+        system_version_compatible=True,
+        runtime_compatible=True,
+    )
+    succeeded = SimpleNamespace(
+        id="GoodPlugin",
+        repo_url="local://GoodPlugin?version=v3",
+        plugin_name="Good",
+        plugin_version="1.0.0",
+        system_version_compatible=True,
+        runtime_compatible=True,
+    )
+    install = Mock(
+        side_effect=lambda plugin_id, *_args: (
+            (False, "copy failed") if plugin_id == failed.id else (True, "")
+        )
+    )
+    statuses: list[tuple[str, PluginRuntimeStatus]] = []
+    service = PluginSyncService(
+        frozen=lambda: False,
+        installed_plugins=lambda: [failed.id, succeeded.id],
+        online_plugins=lambda: [],
+        local_plugins=lambda: [failed, succeeded],
+        merge_plugins=lambda items, *_args: items,
+        plugin_exists=lambda *_args: False,
+        install=install,
+        runtime_status_writer=lambda plugin_id, status: statuses.append(
+            (plugin_id, status)
+        ),
+        log=Mock(),
+    )
+
+    assert set(service.sync()) == {succeeded.id}
+    assert {call.args[0] for call in install.call_args_list} == {
+        failed.id,
+        succeeded.id,
+    }
+    assert statuses == [(failed.id, PluginRuntimeStatus.SYNC_FAILED)]
 
 
 def test_market_sync_stops_without_online_fallback_when_local_scan_fails() -> None:
@@ -599,12 +649,12 @@ async def test_market_sync_blocks_activation_when_gateway_selected_local_fails(
     )
 
     async with plugin_lifecycle.hold_startup() as startup_token:
-        with pytest.raises(RuntimeError, match="插件同步未完成：DemoPlugin"):
-            await asyncio.wait_for(
-                asyncio.to_thread(service.sync, startup_token),
-                timeout=2,
-            )
+        result = await asyncio.wait_for(
+            asyncio.to_thread(service.sync, startup_token),
+            timeout=2,
+        )
 
+    assert result == []
     executor.execute.assert_awaited_once()
     assert executor.execute.await_args.kwargs["local_sync"] is True
     admission = executor.execute.await_args.kwargs["admission"]

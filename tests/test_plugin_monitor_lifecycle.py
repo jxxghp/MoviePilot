@@ -408,6 +408,66 @@ async def test_sync_plugins_reloads_only_updated_running_plugins(monkeypatch) ->
 
 
 @pytest.mark.asyncio
+async def test_sync_plugins_reloads_running_plugin_after_sync_failure(
+    monkeypatch,
+) -> None:
+    """回滚后仍运行的插件需重新确认运行态，并继续激活其他就绪插件。"""
+    manager = MagicMock()
+    manager.sync.return_value = []
+    manager.async_install_plugin_missing_dependencies_with_status.return_value = (
+        PluginDependencyInstallResult(missing=[], success=True)
+    )
+    manager.classify_plugins.return_value = PluginDependencyClassification(
+        ready=("RecoveredPlugin", "OtherPlugin"),
+        missing_dependencies=(),
+        missing_source=(),
+    )
+    manager.running_plugins = {"RecoveredPlugin": object()}
+    register = _patch_sync_plugins(monkeypatch, manager)
+    manager.get_plugin_runtime_statuses.return_value = {
+        "RecoveredPlugin": PluginRuntimeStatus.SYNC_FAILED,
+    }
+
+    assert await plugins_initializer.sync_plugins() is True
+
+    manager.reload_plugin.assert_called_once_with("RecoveredPlugin")
+    manager.start.assert_called_once_with("OtherPlugin")
+    assert [call.args[0] for call in register.call_args_list] == [
+        "RecoveredPlugin",
+        "OtherPlugin",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_sync_plugins_continues_startup_when_failed_plugin_is_not_ready(
+    monkeypatch,
+) -> None:
+    """不可恢复的单插件失败仍让启动继续完成依赖与服务初始化。"""
+    manager = MagicMock()
+    manager.sync.return_value = []
+    manager.async_install_plugin_missing_dependencies_with_status.return_value = (
+        PluginDependencyInstallResult(missing=[], success=True)
+    )
+    manager.classify_plugins.return_value = PluginDependencyClassification(
+        ready=(),
+        missing_dependencies=(),
+        missing_source=("FailedPlugin",),
+    )
+    manager.running_plugins = {}
+    register = _patch_sync_plugins(monkeypatch, manager)
+    manager.get_plugin_runtime_statuses.return_value = {
+        "FailedPlugin": PluginRuntimeStatus.SYNC_FAILED,
+    }
+
+    assert await plugins_initializer.sync_plugins() is True
+
+    manager.async_install_plugin_missing_dependencies_with_status.assert_awaited_once()
+    manager.start.assert_not_called()
+    manager.reload_plugin.assert_not_called()
+    register.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_sync_plugins_reloads_running_plugin_after_dependency_recovery(
     monkeypatch,
 ) -> None:

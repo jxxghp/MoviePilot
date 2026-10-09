@@ -14,6 +14,7 @@ from typing import Any, Optional
 
 from app.domain.plugin import check_plugin_runtime_compatibility
 from app.foundation.environment import is_free_threaded_runtime
+from app.runtime.execution import plugin_package_lock
 from app.runtime.extensions.plugin.gil import (
     GilFallbackRecorder,
     attribute_gil_fallback,
@@ -165,8 +166,8 @@ class PluginLoader:
             self._logger.debug("没有需要加载的插件")
             return []
 
-        plugins = []
-        loaded_classes = set()
+        plugins: list[Any] = []
+        loaded_classes: set[str] = set()
         for plugin_dir in self._plugins_root.iterdir():
             if not plugin_dir.is_dir() or plugin_dir.name.startswith("_"):
                 continue
@@ -175,53 +176,73 @@ class PluginLoader:
                     f"跳过插件目录：{plugin_dir.name}（不在加载列表中）"
                 )
                 continue
-            if not (plugin_dir / "__init__.py").exists():
-                self._logger.debug(
-                    f"跳过插件目录：{plugin_dir.name}（缺少__init__.py）"
-                )
-                continue
-            if not self._is_runtime_compatible(plugin_dir.name):
-                self._logger.warning(
-                    f"跳过插件 {plugin_dir.name}：声明与当前运行时不兼容"
-                )
-                self._mark_incompatible_runtime(
-                    installed_ids.get(plugin_dir.name, plugin_dir.name)
-                )
-                continue
-
-            try:
-                module_name = f"app.plugins.{plugin_dir.name}"
-                self._logger.debug(f"正在导入插件模块：{module_name}")
-                self._import_preparer(
-                    plugin_id=plugin_dir.name,
+            with plugin_package_lock(plugin_dir.name):
+                self._load_plugin_directory(
                     plugin_dir=plugin_dir,
-                )
-                self._import_scanner(
-                    plugin_id=plugin_dir.name,
-                    plugin_dir=plugin_dir,
-                )
-                # 插件模块顶层导入原生扩展最常见，GIL 回退多发生在这一步；
-                # 全量启动时逐个模块观察，才能把回退归因到具体插件
-                with attribute_gil_fallback(
-                    installed_ids.get(plugin_dir.name, plugin_dir.name),
-                    self._gil_fallback_recorder,
-                ):
-                    module = importlib.import_module(module_name)
-                for name, candidate in module.__dict__.items():
-                    if name.startswith("_") or not isinstance(candidate, type):
-                        continue
-                    if name in loaded_classes or not validator(candidate):
-                        continue
-                    loaded_classes.add(name)
-                    plugins.append(candidate)
-                    self._logger.debug(f"找到符合条件的插件类：{name}")
-                    break
-            except Exception as err:
-                self._logger.error(
-                    f"加载插件 {plugin_dir.name} 失败：{str(err)} - "
-                    f"{traceback.format_exc()}"
+                    plugin_id=installed_ids.get(
+                        plugin_dir.name,
+                        plugin_dir.name,
+                    ),
+                    validator=validator,
+                    loaded_classes=loaded_classes,
+                    plugins=plugins,
                 )
         return plugins
+
+    def _load_plugin_directory(
+        self,
+        *,
+        plugin_dir: Path,
+        plugin_id: str,
+        validator: PluginValidator,
+        loaded_classes: set[str],
+        plugins: list[Any],
+    ) -> None:
+        """在持有包锁期间验证并导入一个完整的插件目录。"""
+        if not (plugin_dir / "__init__.py").exists():
+            self._logger.debug(
+                f"跳过插件目录：{plugin_dir.name}（缺少__init__.py）"
+            )
+            return
+        if not self._is_runtime_compatible(plugin_dir.name):
+            self._logger.warning(
+                f"跳过插件 {plugin_dir.name}：声明与当前运行时不兼容"
+            )
+            self._mark_incompatible_runtime(plugin_id)
+            return
+
+        try:
+            module_name = f"app.plugins.{plugin_dir.name}"
+            self._logger.debug(f"正在导入插件模块：{module_name}")
+            self._import_preparer(
+                plugin_id=plugin_dir.name,
+                plugin_dir=plugin_dir,
+            )
+            self._import_scanner(
+                plugin_id=plugin_dir.name,
+                plugin_dir=plugin_dir,
+            )
+            # 插件模块顶层导入原生扩展最常见，GIL 回退多发生在这一步；
+            # 全量启动时逐个模块观察，才能把回退归因到具体插件
+            with attribute_gil_fallback(
+                plugin_id,
+                self._gil_fallback_recorder,
+            ):
+                module = importlib.import_module(module_name)
+            for name, candidate in module.__dict__.items():
+                if name.startswith("_") or not isinstance(candidate, type):
+                    continue
+                if name in loaded_classes or not validator(candidate):
+                    continue
+                loaded_classes.add(name)
+                plugins.append(candidate)
+                self._logger.debug(f"找到符合条件的插件类：{name}")
+                break
+        except Exception as error:
+            self._logger.error(
+                f"加载插件 {plugin_dir.name} 失败：{str(error)} - "
+                f"{traceback.format_exc()}"
+            )
 
     def load_instance(
         self,
@@ -229,6 +250,15 @@ class PluginLoader:
         validator: PluginValidator,
     ) -> list[Any]:
         """在实例专属模块命名空间中重新执行源插件代码并返回适配类。"""
+        with plugin_package_lock(instance.source_plugin_id):
+            return self._load_instance_locked(instance, validator)
+
+    def _load_instance_locked(
+        self,
+        instance: PluginInstance,
+        validator: PluginValidator,
+    ) -> list[Any]:
+        """在持有源插件包锁时从磁盘加载虚拟插件实例模块。"""
         source_dir = self._plugins_root / instance.source_plugin_id.lower()
         source_file = source_dir / "__init__.py"
         if not source_file.exists():

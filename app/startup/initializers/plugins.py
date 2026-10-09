@@ -921,6 +921,12 @@ async def _sync_plugins_admitted(
         return False
 
     if not changed_ids:
+        if any(
+            status is PluginRuntimeStatus.SYNC_FAILED
+            for status in previous_statuses.values()
+        ):
+            logger.warning("插件同步存在失败项，已继续初始化其余服务")
+            return True
         logger.debug("没有新的插件进入可运行状态")
         return False
 
@@ -954,7 +960,12 @@ def _activate_ready_plugins(
             previous_statuses.get(plugin_id)
             is PluginRuntimeStatus.DEPENDENCY_PENDING
         )
-        if plugin_id in running_ids and (source_id in synced or dependency_recovered):
+        sync_failed = (
+            previous_statuses.get(plugin_id) is PluginRuntimeStatus.SYNC_FAILED
+        )
+        if plugin_id in running_ids and (
+            source_id in synced or dependency_recovered or sync_failed
+        ):
             plugin_manager.reload_plugin(plugin_id)
             changed_ids.append(plugin_id)
             continue

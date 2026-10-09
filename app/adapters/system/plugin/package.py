@@ -37,6 +37,9 @@ from app.runtime.dependencies.native import (
     detect_changed_native_dependencies,
 )
 from app.runtime.execution import (
+    plugin_package_lock,
+)
+from app.runtime.execution import (
     run_in_threadpool_to_completion as _await_thread_operation,
 )
 from app.runtime.log import logger
@@ -472,6 +475,23 @@ class PluginPackageManager:
         label: str,
     ) -> None:
         """用同级 staging 替换目录，并兼容 overlayfs 的跨设备替换。"""
+        with plugin_package_lock(target.name):
+            PluginPackageManager.__restore_tree_locked(
+                target=target,
+                snapshot=snapshot,
+                existed=existed,
+                label=label,
+            )
+
+    @staticmethod
+    def __restore_tree_locked(
+        *,
+        target: Path,
+        snapshot: Path,
+        existed: bool,
+        label: str,
+    ) -> None:
+        """在持有插件包锁时用同级 staging 替换目录。"""
         if existed and not snapshot.is_dir():
             raise FileNotFoundError(f"{label}补偿快照不存在：{snapshot}")
 
@@ -1488,11 +1508,11 @@ class PluginPackageManager:
         要么是新内容，唯一的中间态是"运行目录短暂缺失、旧内容完整躺在 previous
         目录里"，仍可人工恢复，不会出现任何一份内容被删到无处可取的时点。
 
-        两个改名都可能因跨文件系统失败：overlayfs 会拒绝把镜像层的插件目录直接改
-        名到可写层，暂存目录又常落在独立的临时分区。两处都退化为复制，代价是复制
-        期间可能中途失败留下半份目录，因此复制失败一律先删掉半成品再把旧目录换
-        回；换回本身也失败时只记录旧目录的保留位置，原始失败原样挂在异常链上不被
-        吞掉，避免出现"看起来只是安装失败"实则运行目录已空的假象。
+        暂存目录常落在独立的临时分区，不能直接改名到运行目录。此时先把新内容完整
+        复制到运行目录同级的隐藏暂存目录，再用一次原子改名发布；插件加载器不会看见
+        逐文件复制中的半成品。改名旧目录也可能被 overlayfs 拒绝，退化为复制旧内容
+        留档后再清理运行目录。复制失败时先删掉半成品再把旧目录换回；换回本身也失败
+        时只记录旧目录的保留位置，原始失败原样挂在异常链上不被吞掉。
 
         旧目录退化为复制后还得逐个删掉原目录，这一步同样可能删到一半才失败。删除
         一旦开始运行目录就不再完整，因此把"可回滚"状态提前到删除之前置位：只要运
@@ -1503,12 +1523,32 @@ class PluginPackageManager:
         :param final_dir: 插件运行目录，可能已存在旧内容
         :raise PluginContentSwapError: 换入失败，异常携带运行目录的实际恢复结论
         """
+        with plugin_package_lock(final_dir.name):
+            PluginPackageManager.__swap_staged_plugin_content_locked(
+                staging_dir=staging_dir,
+                final_dir=final_dir,
+            )
+
+    @staticmethod
+    def __swap_staged_plugin_content_locked(
+        *,
+        staging_dir: Path,
+        final_dir: Path,
+    ) -> None:
+        """在持有插件包锁时发布暂存内容并保留失败回滚能力。"""
         final_dir.parent.mkdir(parents=True, exist_ok=True)
         previous = final_dir.parent / f".{final_dir.name}.previous-{uuid.uuid4().hex}"
+        publish_staging: Optional[Path] = None
         previous_available = False
         runtime_dirty = False
         published = False
         try:
+            publish_source, publish_staging = (
+                PluginPackageManager.__prepare_publish_source(
+                    staging_dir=staging_dir,
+                    final_dir=final_dir,
+                )
+            )
             if final_dir.exists():
                 try:
                     final_dir.replace(previous)
@@ -1525,14 +1565,22 @@ class PluginPackageManager:
             # 旧内容已挪开或本来就不存在，此后才允许重建运行目录
             runtime_dirty = True
             try:
-                staging_dir.replace(final_dir)
+                publish_source.replace(final_dir)
             except OSError as error:
                 if error.errno != errno.EXDEV:
                     raise
+                if publish_source != staging_dir:
+                    raise
                 logger.debug(
-                    f"插件安装内容跨文件系统无法改名换入，退化为复制：{staging_dir}"
+                    f"插件安装内容跨文件系统无法改名换入，先复制到运行目录同级暂存："
+                    f"{staging_dir}"
                 )
-                shutil.copytree(staging_dir, final_dir, symlinks=True)
+                publish_staging = (
+                    final_dir.parent
+                    / f".{final_dir.name}.staging-{uuid.uuid4().hex}"
+                )
+                shutil.copytree(staging_dir, publish_staging, symlinks=True)
+                publish_staging.replace(final_dir)
             published = True
         except Exception as error:
             # 运行目录从未被触碰时无需回滚，它本身就还是换入前那一份
@@ -1553,8 +1601,29 @@ class PluginPackageManager:
                 error, runtime_intact=runtime_intact
             ) from error
         finally:
+            if publish_staging and publish_staging.exists():
+                shutil.rmtree(publish_staging, ignore_errors=True)
             if previous.exists() and (published or not previous_available):
                 shutil.rmtree(previous, ignore_errors=True)
+
+    @staticmethod
+    def __prepare_publish_source(
+        *,
+        staging_dir: Path,
+        final_dir: Path,
+    ) -> tuple[Path, Optional[Path]]:
+        """将跨文件系统的安装载荷复制到运行目录同级，供后续原子改名发布。"""
+        if (
+            not staging_dir.exists()
+            or staging_dir.stat().st_dev == final_dir.parent.stat().st_dev
+        ):
+            return staging_dir, None
+
+        publish_staging = (
+            final_dir.parent / f".{final_dir.name}.staging-{uuid.uuid4().hex}"
+        )
+        shutil.copytree(staging_dir, publish_staging, symlinks=True)
+        return publish_staging, publish_staging
 
     async def __async_swap_staged_plugin_content(
         self, staging_dir: Path, final_dir: Path

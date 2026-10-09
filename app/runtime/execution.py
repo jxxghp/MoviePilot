@@ -2,7 +2,9 @@ import asyncio
 import inspect
 import threading
 import time
+from collections.abc import Iterator
 from concurrent.futures import Executor, Future, ThreadPoolExecutor, wait
+from contextlib import contextmanager
 from contextvars import Context, copy_context
 from functools import partial, wraps
 from typing import Any, Callable, TypeVar, cast
@@ -14,6 +16,23 @@ from app.schemas.exception import ImmediateException
 
 TaskResult = TypeVar("TaskResult")
 ExecutorResult = TypeVar("ExecutorResult")
+
+# 包目录替换在线程池中执行，导入在同步生命周期线程中执行；两者须共享进程锁。
+_plugin_package_locks: dict[str, Any] = {}
+_plugin_package_locks_guard = threading.Lock()
+
+
+@contextmanager
+def plugin_package_lock(plugin_id: str) -> Iterator[None]:
+    """串行化单个插件的代码导入、包替换和目录恢复。"""
+    normalized_id = plugin_id.casefold()
+    with _plugin_package_locks_guard:
+        lock = _plugin_package_locks.setdefault(
+            normalized_id,
+            threading.RLock(),
+        )
+    with lock:
+        yield
 
 
 def submit_with_context(

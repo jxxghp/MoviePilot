@@ -43,7 +43,7 @@ class PluginSyncService:
         *,
         online_restore_plugins: set[str] | None = None,
     ) -> list[str]:
-        """并发安装本地缺失、需要更新或应恢复在线载荷的插件。"""
+        """并发安装缺失或需恢复的插件，单个失败只记状态并继续启动编排。"""
         if self._frozen():
             return []
 
@@ -177,6 +177,7 @@ class PluginSyncService:
                 except Exception as error:  # noqa: BLE001
                     if plugin.id.lower() in recovery_ids:
                         failed_recovery.append(plugin.id)
+                    failed.append(plugin.id)
                     if self._runtime_status_writer:
                         self._runtime_status_writer(
                             plugin.id,
@@ -190,8 +191,8 @@ class PluginSyncService:
             f"第三方插件安装完成，成功：{len(synced)} 个，失败：{len(failed)} 个"
         )
         if failed_recovery:
-            raise RuntimeError(
-                "插件同步未完成："
+            self._logger.warning(
+                "以下插件恢复同步失败，继续处理其它可用插件："
                 f"{', '.join(sorted(set(failed_recovery)))}"
             )
         return synced
