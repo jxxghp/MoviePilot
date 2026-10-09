@@ -51,7 +51,10 @@ class SchedulerExecutionOwner(_SchedulerOwnerBase):
 
     def _prepare_job(self, job_id: str) -> Optional[dict[str, Any]]:
         """
-        准备定时任务
+        在锁内检查任务准入并原子取得本次执行所有权。
+
+        APScheduler 到期后会先从 job store 删除 DateTrigger，再进入本方法；插件一次性任务
+        在这里通过准入后即可退出“已派发、待开始”状态，避免配置保存时的服务重建误删它。
         """
         started_at = self._format_time()
         with self._lock:
@@ -83,6 +86,8 @@ class SchedulerExecutionOwner(_SchedulerOwnerBase):
             if not self._registry.claim_generation(job_id, generation):
                 JobExecutionState.finish(job, started_at, None)
                 return None
+            if job.get("once"):
+                job["_once_pending"] = False
             job["_metric_started_at"] = time.perf_counter()
         progress = ProgressHelper(self._get_progress_key(job_id))
         progress.start()
