@@ -941,8 +941,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9416,
-  "edge_sha256": "b1ea9dffbfa52f3cf110294c10113b24f592aca38a97d4025e3fa99f9bee7005",
+  "edge_count": 9421,
+  "edge_sha256": "605aad14dd551c25ca9d9bb87680f4ca05c68d00b613ce552abb19f0449c8669",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -10205,11 +10205,16 @@
     "app.workflow.actions.add_download -> app.chain.download",
     "app.workflow.actions.add_download -> app.chain.media",
     "app.workflow.actions.add_download -> app.domain",
+    "app.workflow.actions.add_download -> app.domain.context",
+    "app.workflow.actions.add_download -> app.domain.meta",
+    "app.workflow.actions.add_download -> app.domain.meta.metabase",
+    "app.workflow.actions.add_download -> app.domain.meta.metamusic",
     "app.workflow.actions.add_download -> app.domain.metainfo",
     "app.workflow.actions.add_download -> app.runtime",
     "app.workflow.actions.add_download -> app.runtime.log",
     "app.workflow.actions.add_download -> app.runtime.stop",
     "app.workflow.actions.add_download -> app.schemas",
+    "app.workflow.actions.add_download -> app.schemas.context",
     "app.workflow.actions.add_download -> app.schemas.types",
     "app.workflow.actions.add_download -> app.schemas.workflow",
     "app.workflow.actions.add_download -> app.workflow",

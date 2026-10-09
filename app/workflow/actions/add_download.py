@@ -1,5 +1,5 @@
 from dataclasses import fields
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import Field
 
@@ -82,10 +82,11 @@ class AddDownloadAction(BaseAction):
                 logger.warning(f"{t.torrent_info.title} 未识别到媒体信息，无法下载")
                 continue
             download_context = self._to_domain_context(t)
-            if params.only_lack:
-                exists_info = DownloadChain().media_exists(download_context.media_info)
+            download_media_info = download_context.media_info
+            if params.only_lack and isinstance(download_media_info, DownloadMediaInfo):
+                exists_info = DownloadChain().media_exists(download_media_info)
                 if exists_info:
-                    if download_context.media_info.type == MediaType.MOVIE:
+                    if download_media_info.type == MediaType.MOVIE:
                         # 电影
                         logger.warning(f"{t.torrent_info.title} 媒体库中已存在，跳过")
                         continue
@@ -136,49 +137,49 @@ class AddDownloadAction(BaseAction):
         if context.media_info is None or context.torrent_info is None:
             raise ValueError("工作流下载上下文缺少媒体或种子信息")
 
-        media_info = context.media_info
-        if isinstance(media_info, (DownloadMediaInfo, DownloadMusicInfo)):
-            domain_media_info = media_info
+        context_data: dict[str, Any] = context.model_dump()
+        media_data = context_data.get("media_info")
+        if not isinstance(media_data, dict):
+            raise ValueError("工作流下载上下文缺少有效媒体信息")
+        domain_media_info: DownloadMediaInfo | DownloadMusicInfo
+        if media_data.get("type") == MediaType.MUSIC.value:
+            domain_media_info = DownloadMusicInfo.from_dict(media_data)
         else:
-            media_data = media_info.model_dump()
-            if media_data.get("type") == MediaType.MUSIC.value:
-                domain_media_info = DownloadMusicInfo.from_dict(media_data)
-            else:
-                domain_media_info = DownloadMediaInfo()
-                domain_media_info.from_dict(media_data)
+            domain_media_info = DownloadMediaInfo()
+            domain_media_info.from_dict(media_data)
 
-        torrent_info = context.torrent_info
-        if isinstance(torrent_info, DownloadTorrentInfo):
-            domain_torrent_info = torrent_info
-        else:
-            domain_torrent_info = DownloadTorrentInfo()
-            domain_torrent_info.from_dict(torrent_info.model_dump())
+        torrent_data = context_data.get("torrent_info")
+        if not isinstance(torrent_data, dict):
+            raise ValueError("工作流下载上下文缺少有效种子信息")
+        domain_torrent_info = DownloadTorrentInfo()
+        domain_torrent_info.from_dict(torrent_data)
 
-        meta_info = context.meta_info
-        if isinstance(meta_info, MetaBase):
-            domain_meta_info = meta_info
-        elif meta_info is None:
-            domain_meta_info = None
-        else:
-            meta_data = meta_info.model_dump()
+        domain_meta_info: MetaBase | None = None
+        meta_data = context_data.get("meta_info")
+        if isinstance(meta_data, dict):
             meta_type = meta_data.get("type")
             if meta_type == MediaType.MUSIC.value:
                 domain_meta_info = MetaMusic.from_dict(meta_data)
             else:
-                domain_meta_info = MetaInfo(
-                    title=meta_data.get("org_string") or meta_data.get("title") or torrent_info.title or "",
+                title = meta_data.get("org_string") or meta_data.get("title") or torrent_data.get("title")
+                video_meta_info = MetaInfo(
+                    title=title if isinstance(title, str) else "",
                     subtitle=meta_data.get("subtitle"),
                     mtype=MediaType(meta_type) if meta_type else None,
                 )
-                for item in fields(domain_meta_info):
+                for item in fields(video_meta_info):
                     if item.name not in meta_data:
                         continue
                     value = meta_data[item.name]
                     if item.name == "type" and value:
                         value = MediaType(value)
-                    setattr(domain_meta_info, item.name, value)
-                if meta_data.get("name"):
-                    domain_meta_info.name = meta_data["name"]
+                    if item.name == "title" and value is None:
+                        continue
+                    setattr(video_meta_info, item.name, value)
+                name = meta_data.get("name")
+                if isinstance(name, str) and name:
+                    video_meta_info.name = name
+                domain_meta_info = video_meta_info
 
         return DownloadContext(
             meta_info=domain_meta_info,
