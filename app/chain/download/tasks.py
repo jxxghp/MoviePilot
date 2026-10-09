@@ -100,7 +100,9 @@ class DownloadTaskOwner(_DownloadOwnerBase):
 
     def _download_file_deleted(self, event: Event) -> None:
         """
-        下载文件删除时，同步删除下载任务
+        下载文件删除时，按查询到的下载器实例同步删除任务并通知下游。
+
+        旧 provider 未返回实例名时保留默认实例调用，兼容既有插件实现。
         """
         if not event:
             return
@@ -111,7 +113,18 @@ class DownloadTaskOwner(_DownloadOwnerBase):
         # 先查询种子
         torrents: List[_SchemaDownloaderTorrent] = self.list_torrents(hashs=[hash_str]) or []
         if torrents:
-            self.remove_torrents(hashs=[hash_str], delete_file=False)
+            downloaders = list(dict.fromkeys(
+                torrent.downloader for torrent in torrents if torrent.downloader
+            ))
+            if downloaders:
+                for downloader in downloaders:
+                    self.remove_torrents(
+                        hashs=[hash_str],
+                        delete_file=False,
+                        downloader=downloader,
+                    )
+            else:
+                self.remove_torrents(hashs=[hash_str], delete_file=False)
             # 发出下载任务删除事件，如需处理辅种，可监听该事件
             self.eventmanager.send_event(EventType.DownloadDeleted, {
                 "hash": hash_str,

@@ -4,7 +4,7 @@ import importlib
 import inspect
 import pickle
 from typing import Optional
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 import pytest
 
@@ -103,7 +103,7 @@ def test_download_file_deleted_removes_task_without_deleting_files() -> None:
     """源文件删除后按 hash 清理任务并发布删除前快照。"""
     hash_string = "download-hash"
     torrent = DownloaderTorrent(
-        downloader="qbittorrent",
+        downloader="tr",
         hash=hash_string,
         title="Demo.Release",
     )
@@ -120,10 +120,37 @@ def test_download_file_deleted_removes_task_without_deleting_files() -> None:
     chain.remove_torrents.assert_called_once_with(
         hashs=[hash_string],
         delete_file=False,
+        downloader="tr",
     )
     chain.eventmanager.send_event.assert_called_once_with(
         EventType.DownloadDeleted,
         {"hash": hash_string, "torrents": [torrent.model_dump()]},
+    )
+
+
+def test_download_file_deleted_removes_task_from_each_matching_downloader() -> None:
+    """同一 hash 命中多个下载器实例时，应逐个指定实例清理。"""
+    hash_string = "download-hash"
+    torrents = [
+        DownloaderTorrent(downloader="qb", hash=hash_string),
+        DownloaderTorrent(downloader="tr", hash=hash_string),
+    ]
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.list_torrents = MagicMock(return_value=torrents)
+    chain.remove_torrents = MagicMock()
+    chain.eventmanager = MagicMock()
+
+    chain.download_file_deleted(
+        Event(EventType.DownloadFileDeleted, {"hash": hash_string})
+    )
+
+    assert chain.remove_torrents.call_args_list == [
+        call(hashs=[hash_string], delete_file=False, downloader="qb"),
+        call(hashs=[hash_string], delete_file=False, downloader="tr"),
+    ]
+    chain.eventmanager.send_event.assert_called_once_with(
+        EventType.DownloadDeleted,
+        {"hash": hash_string, "torrents": [torrent.model_dump() for torrent in torrents]},
     )
 
 
