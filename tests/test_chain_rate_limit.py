@@ -2,16 +2,15 @@
 
 # ruff: noqa: E402 - 可选下载器模块必须在导入 Chain 前完成隔离。
 
-import asyncio
-import sys
-import unittest
-from types import ModuleType
 from unittest.mock import Mock
 
-sys.modules.setdefault("qbittorrentapi", ModuleType("qbittorrentapi"))
-setattr(sys.modules["qbittorrentapi"], "TorrentFilesList", list)
-sys.modules.setdefault("transmission_rpc", ModuleType("transmission_rpc"))
-setattr(sys.modules["transmission_rpc"], "File", object)
+import pytest
+
+from app.testing.bootstrap import ensure_optional_stub
+
+# 仅在可选依赖缺失时补占位；已安装时保留真实模块，避免污染同一进程里导入真实类型的用例。
+ensure_optional_stub("qbittorrentapi", TorrentFilesList=list)
+ensure_optional_stub("transmission_rpc", File=object)
 
 from app.application.chain.context import ChainRuntimeContext
 from app.chain.base import ChainBase
@@ -47,85 +46,70 @@ class _LimitedModule:
         raise RateLimitExceededException("[async_limited_method] 限流期间，跳过调用")
 
 
-class ChainRateLimitTest(unittest.TestCase):
-    """验证模块限流异常的兼容传播和告警语义。"""
-
-    def _build_chain(self):
-        """
-        构造隔离的 ChainBase，避免依赖真实模块和插件运行状态。
-        """
-        limited_module = _LimitedModule()
-        plugin_manager = Mock()
-        plugin_manager.get_plugin_modules.return_value = {}
-        module_manager = Mock()
-        module_manager.get_running_modules.return_value = [limited_module]
-        message_helper = Mock()
-        event_manager = Mock()
-        message_queue = Mock()
-        message_queue.bind.return_value = Mock()
-        chain = ChainBase(
-            ChainRuntimeContext(
-                module_manager=module_manager,
-                plugin_manager=plugin_manager,
-                event_manager=event_manager,
-                message_oper=Mock(),
-                message_helper=message_helper,
-                file_cache=Mock(),
-                async_file_cache=Mock(),
-                message_queue=message_queue,
-                module_dispatcher_factory=ModuleInvocationDispatcher,
-                site_repository=Mock(),
-                subscription_repository=Mock(),
-                subscription_mutation_scope=Mock(),
-                sync_subscription_mutation_scope=Mock(),
-                subscription_delete_scope=Mock(),
-                sync_subscription_delete_scope=Mock(),
-                subscription_completion_scope=Mock(),
-                rule_group_mutation_scope=Mock(),
-                site_reference_mutation_scope=Mock(),
-                download_history_repository=Mock(),
-                transfer_history_repository=Mock(),
-                transfer_admission_repository=Mock(),
-                transfer_execution_repository=Mock(),
-                media_server_repository=Mock(),
-                download_failure_repository=Mock(),
-                user_repository=Mock(),
-            )
+@pytest.fixture
+def chain() -> ChainBase:
+    """构造隔离的 ChainBase，避免依赖真实模块和插件运行状态。"""
+    limited_module = _LimitedModule()
+    plugin_manager = Mock()
+    plugin_manager.get_plugin_modules.return_value = {}
+    module_manager = Mock()
+    module_manager.get_running_modules.return_value = [limited_module]
+    message_queue = Mock()
+    message_queue.bind.return_value = Mock()
+    return ChainBase(
+        ChainRuntimeContext(
+            module_manager=module_manager,
+            plugin_manager=plugin_manager,
+            event_manager=Mock(),
+            message_oper=Mock(),
+            message_helper=Mock(),
+            file_cache=Mock(),
+            async_file_cache=Mock(),
+            message_queue=message_queue,
+            module_dispatcher_factory=ModuleInvocationDispatcher,
+            site_repository=Mock(),
+            subscription_repository=Mock(),
+            subscription_mutation_scope=Mock(),
+            sync_subscription_mutation_scope=Mock(),
+            subscription_delete_scope=Mock(),
+            sync_subscription_delete_scope=Mock(),
+            subscription_completion_scope=Mock(),
+            rule_group_mutation_scope=Mock(),
+            site_reference_mutation_scope=Mock(),
+            download_history_repository=Mock(),
+            transfer_history_repository=Mock(),
+            transfer_admission_repository=Mock(),
+            transfer_execution_repository=Mock(),
+            media_server_repository=Mock(),
+            download_failure_repository=Mock(),
+            user_repository=Mock(),
         )
-        return chain
+    )
 
-    def test_rate_limit_is_not_reported_as_system_error(self):
-        """
-        本地限流跳过不应写入系统错误通知或事件。
-        """
-        chain = self._build_chain()
 
-        result = chain.run_module("limited_method")
+def test_rate_limit_is_not_reported_as_system_error(chain: ChainBase) -> None:
+    """本地限流跳过不应写入系统错误通知或事件。"""
+    result = chain.run_module("limited_method")
 
-        self.assertIsNone(result)
-        chain.messagehelper.put.assert_not_called()
-        chain.eventmanager.send_event.assert_not_called()
+    assert result is None
+    chain.messagehelper.put.assert_not_called()
+    chain.eventmanager.send_event.assert_not_called()
 
-    def test_rate_limit_can_still_be_raised_explicitly(self):
-        """
-        调用方显式要求抛出异常时，限流异常应继续向上抛出。
-        """
-        chain = self._build_chain()
 
-        with self.assertRaises(RateLimitExceededException):
-            chain.run_module("limited_method", raise_exception=True)
+def test_rate_limit_can_still_be_raised_explicitly(chain: ChainBase) -> None:
+    """调用方显式要求抛出异常时，限流异常应继续向上抛出。"""
+    with pytest.raises(RateLimitExceededException):
+        chain.run_module("limited_method", raise_exception=True)
 
-        chain.messagehelper.put.assert_not_called()
-        chain.eventmanager.send_event.assert_not_called()
+    chain.messagehelper.put.assert_not_called()
+    chain.eventmanager.send_event.assert_not_called()
 
-    def test_async_rate_limit_is_not_reported_as_system_error(self):
-        """
-        异步模块的本地限流跳过也不应触发系统错误路径。
-        """
-        chain = self._build_chain()
 
-        result = asyncio.run(chain.async_run_module("async_limited_method"))
+@pytest.mark.asyncio
+async def test_async_rate_limit_is_not_reported_as_system_error(chain: ChainBase) -> None:
+    """异步模块的本地限流跳过也不应触发系统错误路径。"""
+    result = await chain.async_run_module("async_limited_method")
 
-        self.assertIsNone(result)
-        chain.messagehelper.put.assert_not_called()
-        chain.eventmanager.send_event.assert_not_called()
+    assert result is None
+    chain.messagehelper.put.assert_not_called()
+    chain.eventmanager.send_event.assert_not_called()

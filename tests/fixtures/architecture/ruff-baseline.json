@@ -842,10 +842,6 @@
   "tests/test_system_database_backup_api.py": {
     "I001": 1
   },
-  "tests/test_system_notification_dispatch.py": {
-    "E402": 5,
-    "I001": 2
-  },
   "tests/test_systemconfig_oper.py": {
     "I001": 1
   },
