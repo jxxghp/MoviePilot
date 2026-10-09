@@ -523,9 +523,9 @@ class SecurityUtils:
         """
         使用 RESOURCE_SECRET_KEY 对 URL 签名载荷生成 HMAC。
 
-        相同 `(url, purpose, RESOURCE_SECRET_KEY)` 组合在进程生命周期内输出
-        完全一致；签名的失效边界绑定在 `RESOURCE_SECRET_KEY` 上，进程重启
-        或显式轮换密钥时所有旧签名一起作废。
+        相同 `(url, purpose, RESOURCE_SECRET_KEY)` 组合输出完全一致；签名的失效
+        边界绑定在 `RESOURCE_SECRET_KEY` 上，密钥在首次启动时生成并持久化到
+        app.env，显式轮换密钥（或 app.env 丢失）时所有旧签名一起作废。
         """
         return hmac.new(
             _resource_secret_key().encode("utf-8"),
@@ -566,8 +566,8 @@ class SecurityUtils:
 
         签名为 `(url, purpose, RESOURCE_SECRET_KEY)` 的确定性 HMAC，**不带
         过期时间**：相同 URL 多次调用结果完全一致，让浏览器与 Service Worker
-        的缓存能稳定命中；失效边界由 `RESOURCE_SECRET_KEY` 控制——进程重启
-        自动重生成、或者运维显式轮换后所有历史签名一起作废。
+        的缓存能稳定命中；失效边界由 `RESOURCE_SECRET_KEY` 控制——运维显式
+        轮换密钥（或 app.env 丢失导致重新生成）后所有历史签名一起作废。
         """
         if not url:
             return url
@@ -592,8 +592,8 @@ class SecurityUtils:
         """
         验证 URL fragment 中的资源签名，成功时返回去签名后的真实 URL。
 
-        签名只校验 `(url, purpose, RESOURCE_SECRET_KEY)`，密钥轮换/进程重启
-        后旧签名自动失效。
+        签名只校验 `(url, purpose, RESOURCE_SECRET_KEY)`，密钥轮换后旧签名
+        自动失效。
         """
         if not url:
             return None

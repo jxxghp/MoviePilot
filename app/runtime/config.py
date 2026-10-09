@@ -200,10 +200,10 @@ class ConfigModel(BaseModel):
     # 是否开发模式
     DEV: bool = False
     # ==================== 安全认证配置 ====================
-    # 密钥
-    SECRET_KEY: str = secrets.token_urlsafe(32)
-    # RESOURCE密钥
-    RESOURCE_SECRET_KEY: str = secrets.token_urlsafe(32)
+    # 密钥；未配置时首次启动随机生成并写回 app.env
+    SECRET_KEY: Annotated[str, SettingPolicy(sensitive=True)] = secrets.token_urlsafe(32)
+    # RESOURCE密钥；未配置时首次启动随机生成并写回 app.env
+    RESOURCE_SECRET_KEY: Annotated[str, SettingPolicy(sensitive=True)] = secrets.token_urlsafe(32)
     # 允许的域名
     ALLOWED_HOSTS: list = Field(default_factory=lambda: ["*"])
     # TOKEN过期时间
@@ -924,6 +924,30 @@ class Settings(BaseSettings, ConfigModel, LogConfigModel):
             app_env_path = self.CONFIG_PATH / "app.env"
             if not app_env_path.exists():
                 shutil.copy2(self.INNER_CONFIG_PATH / "app.env", app_env_path)
+        self._persist_generated_secrets()
+
+    def _persist_generated_secrets(self) -> None:
+        """
+        首次启动时把随机生成的密钥写入 app.env。
+
+        SECRET_KEY 签发登录 Token，RESOURCE_SECRET_KEY 签发资源 Cookie 与签名 URL；
+        不落盘则每次重启都会让所有用户登出、历史签名全部作废。只处理未由环境变量
+        或 app.env 提供的字段，写入失败只告警并沿用本次运行的临时密钥。
+        """
+        for field_name in ("SECRET_KEY", "RESOURCE_SECRET_KEY"):
+            if field_name in self.model_fields_set or field_name in os.environ:
+                continue
+            try:
+                success, _message = Settings.update_env_config(
+                    field_name, None, getattr(self, field_name)
+                )
+            except OSError as err:
+                logger.warning(
+                    f"配置项 '{field_name}' 无法写入 'app.env'，本次运行使用临时密钥：{err}"
+                )
+                continue
+            if success:
+                logger.info(f"配置项 '{field_name}' 已自动生成并写入 'app.env'")
 
     @staticmethod
     def validate_api_token(value: Any, original_value: Any) -> Tuple[Any, bool]:
