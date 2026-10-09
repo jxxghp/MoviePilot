@@ -204,13 +204,44 @@ class BangumiApi:
 
     @staticmethod
     def _calendar_items(result: Any) -> list[dict[str, Any]]:
-        """按星期顺序展开每日放送条目。"""
-        return [
+        """按星期顺序展开每日放送条目，并规范化其封面地址。"""
+        items = [
             item
             for weekday in result or []
             if isinstance(weekday, dict)
             for item in weekday.get("items") or []
         ]
+        normalized_items = []
+        for item in items:
+            if not isinstance(item, dict):
+                normalized_items.append(item)
+                continue
+            normalized_item = dict(item)
+            images = item.get("images")
+            if isinstance(images, dict):
+                normalized_item["images"] = {
+                    size: BangumiApi._normalize_calendar_image_url(url)
+                    for size, url in images.items()
+                }
+            if "image" in item:
+                normalized_item["image"] = BangumiApi._normalize_calendar_image_url(
+                    item["image"]
+                )
+            normalized_items.append(normalized_item)
+        return normalized_items
+
+    @staticmethod
+    def _normalize_calendar_image_url(url: Any) -> Any:
+        """将 Bangumi 日历图片域名返回的 HTTP 地址升级为 HTTPS。"""
+        if not isinstance(url, str):
+            return url
+        try:
+            parsed = urlsplit(url)
+        except ValueError:
+            return url
+        if parsed.scheme != "http" or parsed.hostname != "lain.bgm.tv":
+            return url
+        return parsed._replace(scheme="https").geturl()
 
     @staticmethod
     def _credit_people(result: Any) -> list[dict[str, Any]]:
