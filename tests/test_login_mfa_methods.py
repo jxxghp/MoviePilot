@@ -170,3 +170,140 @@ def test_passkey_registration_start_returns_object_options(monkeypatch):
     assert response.success is True
     assert payload.options.root["challenge"] == "register-challenge"
     assert payload.transaction_token == "registration-transaction"
+
+
+class _FakeThrottle:
+    """记录调用并按预设返回等待秒数的登录限流器替身。"""
+
+    def __init__(self, retry_after: int = 0) -> None:
+        self._retry_after = retry_after
+        self.failures: list[tuple[str, str]] = []
+        self.successes: list[tuple[str, str]] = []
+
+    def retry_after(self, key):
+        """返回预设等待秒数。"""
+        return self._retry_after
+
+    def record_failure(self, key):
+        """记录失败键。"""
+        self.failures.append(key)
+        return 0
+
+    def record_success(self, key):
+        """记录成功键。"""
+        self.successes.append(key)
+
+
+def test_login_rejects_with_429_while_throttled(monkeypatch):
+    """锁定期内直接返回 429 与 Retry-After，不触发凭据校验。"""
+    throttle = _FakeThrottle(retry_after=42)
+    monkeypatch.setattr(login_endpoint, "get_login_throttle", lambda: throttle)
+    calls = []
+
+    class FakeUserChain:
+        """记录是否被调用。"""
+
+        def user_authenticate(self, **kwargs):
+            """不应被调用。"""
+            calls.append(kwargs)
+            return False, "unexpected"
+
+    monkeypatch.setattr(login_endpoint, "UserChain", FakeUserChain)
+
+    with pytest.raises(HTTPException) as exc_info:
+        login_endpoint.login_access_token(
+            request=_request(),
+            response=Response(),
+            form_data=_form(),
+        )
+
+    assert exc_info.value.status_code == 429
+    assert exc_info.value.headers == {"Retry-After": "42"}
+    assert calls == []
+    assert throttle.failures == []
+
+
+def test_login_failure_records_throttle_key(monkeypatch):
+    """密码错误按 (客户端地址, 小写用户名) 记一次失败。"""
+    throttle = _FakeThrottle()
+    monkeypatch.setattr(login_endpoint, "get_login_throttle", lambda: throttle)
+
+    class FakeUserChain:
+        """返回普通认证失败。"""
+
+        def user_authenticate(self, username, password, mfa_code=None):
+            """模拟错误密码。"""
+            return False, "用户名、密码或验证码错误"
+
+    monkeypatch.setattr(login_endpoint, "UserChain", FakeUserChain)
+
+    with pytest.raises(HTTPException) as exc_info:
+        login_endpoint.login_access_token(
+            request=_request(),
+            response=Response(),
+            form_data=SimpleNamespace(username=" User ", password="password"),
+        )
+
+    assert exc_info.value.status_code == 401
+    assert throttle.failures == [("testclient", "user")]
+    assert throttle.successes == []
+
+
+def test_login_mfa_challenge_does_not_count_as_failure(monkeypatch):
+    """密码正确但需二次验证时不计入失败。"""
+    throttle = _FakeThrottle()
+    monkeypatch.setattr(login_endpoint, "get_login_throttle", lambda: throttle)
+
+    class FakeUserChain:
+        """返回已通过密码校验的 MFA 要求。"""
+
+        def user_authenticate(self, username, password, mfa_code=None):
+            """模拟账号启用了 OTP。"""
+            return False, MfaRequired(methods=("otp",))
+
+    monkeypatch.setattr(login_endpoint, "UserChain", FakeUserChain)
+
+    response = login_endpoint.login_access_token(
+        request=_request(),
+        response=Response(),
+        form_data=_form(),
+    )
+
+    assert response.status_code == 401
+    assert throttle.failures == []
+    assert throttle.successes == []
+
+
+def test_login_success_clears_throttle(monkeypatch):
+    """登录成功后清除该键的失败记录。"""
+    throttle = _FakeThrottle()
+    monkeypatch.setattr(login_endpoint, "get_login_throttle", lambda: throttle)
+    user = SimpleNamespace(
+        id=1, name="user", is_superuser=True, avatar=None, permissions={}
+    )
+
+    class FakeUserChain:
+        """返回认证成功的用户。"""
+
+        def user_authenticate(self, username, password, mfa_code=None):
+            """模拟认证成功。"""
+            return True, user
+
+    monkeypatch.setattr(login_endpoint, "UserChain", FakeUserChain)
+    monkeypatch.setattr(
+        login_endpoint, "SitesHelper", lambda: SimpleNamespace(auth_level=2)
+    )
+    monkeypatch.setattr(login_endpoint, "create_access_token", lambda **_: "token")
+    monkeypatch.setattr(
+        login_endpoint, "set_or_refresh_resource_token_cookie", lambda *_args, **_kwargs: None
+    )
+
+    token = login_endpoint.login_access_token(
+        request=_request(),
+        response=Response(),
+        form_data=_form(),
+    )
+
+    assert token.access_token == "token"
+    assert throttle.successes == [("testclient", "user")]
+    assert throttle.failures == []

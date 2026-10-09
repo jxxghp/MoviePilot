@@ -941,8 +941,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9415,
-  "edge_sha256": "cf827acc39adbf6e1080ce8c09922c286c03423990dd331d90df30d9b59097e4",
+  "edge_count": 9416,
+  "edge_sha256": "b1ea9dffbfa52f3cf110294c10113b24f592aca38a97d4025e3fa99f9bee7005",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -2555,6 +2555,7 @@
     "app.api.endpoints.login -> app.application.configuration",
     "app.api.endpoints.login -> app.application.image",
     "app.api.endpoints.login -> app.application.security",
+    "app.api.endpoints.login -> app.application.security.throttle",
     "app.api.endpoints.login -> app.application.security.token",
     "app.api.endpoints.login -> app.application.security.user",
     "app.api.endpoints.login -> app.application.site",
@@ -10360,7 +10361,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 1113,
+  "module_count": 1114,
   "modules": [
     "app",
     "app.adapters",
@@ -10738,6 +10739,7 @@
     "app.application.security.otp",
     "app.application.security.passkey",
     "app.application.security.secrets",
+    "app.application.security.throttle",
     "app.application.security.token",
     "app.application.security.twofactor",
     "app.application.security.url",
