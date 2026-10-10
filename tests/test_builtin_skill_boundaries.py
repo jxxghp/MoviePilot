@@ -122,7 +122,7 @@ def test_modified_builtin_skills_have_incremented_versions() -> None:
         "organize-files": "5",
         "transfer-failed-retry": "5",
         "generate-identifiers": "4",
-        "create-moviepilot-plugin": "6",
+        "create-moviepilot-plugin": "7",
         "create-moviepilot-skill": "3",
         "publish-moviepilot-plugin": "3",
         "downloader-operation": "3",
