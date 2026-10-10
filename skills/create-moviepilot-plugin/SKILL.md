@@ -520,8 +520,8 @@ def get_agent_pets(self) -> List[Dict[str, Any]]:
             "name": "看板娘",
             "mode": "stage",
             "component": "AgentPet",
-            "preview": "assets/girl-preview.png",
-            "avatar": "assets/girl-avatar.png",
+            "preview": "girl-preview.png",
+            "avatar": "girl-avatar.png",
         }
     ]
 ```
@@ -533,8 +533,12 @@ def get_agent_pets(self) -> List[Dict[str, Any]]:
   `stage`), `component` (federation expose name, default `AgentPet`),
   `api_version` (default `1`), `preview`, `avatar`, `bubbles` (stage only,
   `host` or `self`), and `random_actions` (renderer only).
-- `preview` and `avatar` are paths relative to the federation build directory,
-  or `http(s)://` / `data:` URLs. Relative paths must not contain `..`, `\`, or
+- `preview` and `avatar` are paths relative to the directory that holds
+  `remoteEntry.js` (the directory returned by `get_render_mode()`), or
+  `http(s)://` / `data:` URLs. With `("vue", "dist/assets")`, put
+  `girl-preview.png` next to `dist/assets/remoteEntry.js` and declare
+  `"girl-preview.png"`; `"assets/girl-preview.png"` would resolve to
+  `dist/assets/assets/girl-preview.png`. Relative paths must not contain `..`, `\`, or
   `:`.
 - An item with any invalid field is dropped with a warning; a duplicate `key`
   keeps the first item. One plugin may declare several avatars, each with its
