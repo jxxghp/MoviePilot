@@ -101,16 +101,15 @@ def blocked_site(manual_owner, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_media_search_mock_survives_module_class_rebinding(manual_owner, monkeypatch):
-    """媒体类导出被其它测试重绑定时，调用方 mock 仍隔离真实网络请求。"""
-    from app.chain import media as media_module
-
-    monkeypatch.setattr(media_module, "MediaChain", object())
+async def test_media_search_mock_overrides_cached_instance_method(manual_owner, monkeypatch):
+    """单例缓存了实例级原方法时，mock 仍覆盖该方法并隔离真实网络请求。"""
+    recognizer = manual_module.MediaChain()
+    monkeypatch.setattr(recognizer, "async_recognize_media", recognizer.async_recognize_media)
     media = MediaInfo(media_source=MediaSource.TMDB, media_id="1", tmdb_id=1, type=MediaType.TV,
                       title="Show", original_title="Show", names=["Show"])
     recognize = AsyncMock(return_value=media)
-    monkeypatch.setattr(manual_module.MediaChain, "async_recognize_media", recognize)
-    monkeypatch.setattr(manual_module.MediaChain, "async_supplement_media_info", AsyncMock(return_value=media))
+    monkeypatch.setattr(recognizer, "async_recognize_media", recognize)
+    monkeypatch.setattr(recognizer, "async_supplement_media_info", AsyncMock(return_value=media))
     owner, _, _ = manual_owner
     result = await events(SearchManualOwner.events(
         owner, params={"media_source": MediaSource.TMDB, "media_id": "1", "mtype": MediaType.TV},
@@ -133,9 +132,10 @@ async def test_fast_site_preview_arrives_before_slow_site_and_final_page(
     if media_search:
         media = MediaInfo(media_source=MediaSource.TMDB, media_id="1", tmdb_id=1, type=MediaType.TV,
                           title="Show", original_title="Show", names=["Show"])
-        # 在实际调用方绑定上隔离，避免其他测试重载模块后 mock 指向不同类对象。
-        monkeypatch.setattr(manual_module.MediaChain, "async_recognize_media", AsyncMock(return_value=media))
-        monkeypatch.setattr(manual_module.MediaChain, "async_supplement_media_info", AsyncMock(return_value=media))
+        # 单例可能保留实例级方法，必须在实际实例上 mock，不能只覆盖类方法。
+        recognizer = manual_module.MediaChain()
+        monkeypatch.setattr(recognizer, "async_recognize_media", AsyncMock(return_value=media))
+        monkeypatch.setattr(recognizer, "async_supplement_media_info", AsyncMock(return_value=media))
         params = {"media_source": MediaSource.TMDB, "media_id": "1", "mtype": MediaType.TV}
     stream = SearchManualOwner.events(owner, params=params)
     if transport:
@@ -439,9 +439,10 @@ async def test_media_page_keeps_original_season_filter(manual_owner, monkeypatch
     owner, _, _ = manual_owner
     media = MediaInfo(media_source=MediaSource.TMDB, media_id="1", tmdb_id=1, type=MediaType.TV,
                       title="Example Show", original_title="Example Show", names=["Example Show"])
-    # 与预览测试使用同一调用方边界，确保精确搜索不会访问真实 TMDB。
-    monkeypatch.setattr(manual_module.MediaChain, "async_recognize_media", AsyncMock(return_value=media))
-    monkeypatch.setattr(manual_module.MediaChain, "async_supplement_media_info", AsyncMock(return_value=media))
+    # 与预览测试使用同一实例边界，确保精确搜索不会访问真实 TMDB。
+    recognizer = manual_module.MediaChain()
+    monkeypatch.setattr(recognizer, "async_recognize_media", AsyncMock(return_value=media))
+    monkeypatch.setattr(recognizer, "async_supplement_media_info", AsyncMock(return_value=media))
     def request(**_params):
         report_site_search_outcome(attempted=True, outcome="success")
         report_site_search_page(raw_count=3, has_more=True)
