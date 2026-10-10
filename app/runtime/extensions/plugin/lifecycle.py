@@ -83,6 +83,7 @@ class PluginLifecycle:
         refresh_classification: Callable[[str, Any], None] | None = None,
         remove_classification: Callable[[str], None] | None = None,
         gil_fallback_recorder: GilFallbackRecorder = ignore_gil_fallback,
+        enabled_state_recorder: Callable[[str], None] | None = None,
     ) -> None:
         """保存注册表、加载器、数据库和事件端口。"""
         self._classes = classes
@@ -107,6 +108,10 @@ class PluginLifecycle:
             lambda _plugin_id: None
         )
         self._gil_fallback_recorder = gil_fallback_recorder
+        # 启用状态变化会改变侧栏、仪表盘和助手形象等前端投影，需要推进前端刷新代次
+        self._enabled_state_recorder = enabled_state_recorder or (
+            lambda _plugin_id: None
+        )
         self._lifecycle_lock = threading.RLock()
         self._quiesced_hooks: dict[str, set[str]] = {}
 
@@ -239,6 +244,7 @@ class PluginLifecycle:
         plugin = self._running.get(plugin_id)
         if not plugin:
             return
+        was_enabled = bool(plugin.get_state())
         self._remove_classification(plugin_id)
         try:
             with bind_plugin_instance(plugin_id):
@@ -254,6 +260,8 @@ class PluginLifecycle:
             self._remove_classification(plugin_id)
             raise
         self._clear_tools()
+        if enabled != was_enabled:
+            self._enabled_state_recorder(plugin_id)
 
     def _refresh_classification_safely(
         self,

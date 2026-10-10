@@ -244,6 +244,7 @@ def build_plugin_runtime(
         refresh_classification=refresh_classification,
         remove_classification=classification.remove,
         gil_fallback_recorder=registry.mark_gil_fallback,
+        enabled_state_recorder=registry.mark_enabled_state_changed,
     )
     metadata = PluginMetadataMapper(
         plugin_instance=registry.instance,

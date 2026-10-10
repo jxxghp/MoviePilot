@@ -30,7 +30,7 @@ from app.scheduler.reconcile import SchedulerReconcileOwner
 # ---------------------------------------------------------------------------
 
 
-def _lifecycle(*, plugins, running=None):
+def _lifecycle(*, plugins, running=None, enabled_state_recorder=None):
     """构造隔离外部事件和模块清理的生命周期实例。"""
     classes: dict = {}
     running = running if running is not None else {}
@@ -50,6 +50,7 @@ def _lifecycle(*, plugins, running=None):
         database=lambda: PluginDatabase(),
         log=MagicMock(),
         event_sender=MagicMock(),
+        enabled_state_recorder=enabled_state_recorder,
     )
     return lifecycle, classes, running
 
@@ -334,3 +335,31 @@ def test_projection_api_endpoint_binds_owning_instance_without_any_caller_contex
 
     assert plugin.seen == ["DemoPluginWork"]
     assert current_plugin_instance_id() is None
+
+
+def test_lifecycle_initialize_records_enabled_state_change():
+    """配置切换启用状态时通知注册表推进前端刷新代次，状态不变时不打扰读取方。"""
+    recorded: list[str] = []
+
+    class _Plugin:
+        enabled = True
+
+        def init_plugin(self, config: dict) -> None:
+            self.enabled = bool(config.get("enabled"))
+
+        def get_state(self) -> bool:
+            return self.enabled
+
+    plugin = _Plugin()
+    lifecycle, _classes, _running = _lifecycle(
+        plugins=[],
+        running={"DemoPluginWork": plugin},
+        enabled_state_recorder=recorded.append,
+    )
+
+    lifecycle.initialize("DemoPluginWork", {"enabled": True})
+    assert recorded == []
+
+    lifecycle.initialize("DemoPluginWork", {"enabled": False})
+    lifecycle.initialize("DemoPluginWork", {"enabled": True})
+    assert recorded == ["DemoPluginWork", "DemoPluginWork"]

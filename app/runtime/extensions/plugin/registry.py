@@ -101,6 +101,15 @@ class PluginRegistry:
         self._gil_fallback_plugins[plugin_id] = True
         self._generation += 1
 
+    def mark_enabled_state_changed(self, plugin_id: str) -> None:
+        """记录插件配置切换了启用状态，推进前端刷新代次。
+
+        启停只改实例自身的启用位，不经过运行状态表，但侧栏、仪表盘和助手形象等
+        前端投影都按启用位过滤，读取方需要据此重新拉取。
+        """
+        del plugin_id
+        self._generation += 1
+
     def gil_fallback_snapshot(self) -> list[str]:
         """返回当前进程内导致 GIL 回退的插件 ID，保持记录顺序。"""
         return list(self._gil_fallback_plugins)
