@@ -69,11 +69,17 @@ def _projection(plugins, log=None):
 
 
 def test_agent_pets_projects_defaults_and_preview_url_next_to_remote_entry():
-    """合法声明补齐默认值，相对预览图解析到与 remoteEntry 相同的静态目录并带版本。"""
+    """合法声明补齐默认值，相对预览图与头像解析到与 remoteEntry 相同的静态目录并带版本，缺省为空。"""
     plugin = _Plugin(
         plugin_version="1.0.0",
         get_agent_pets=lambda: [
-            {"key": "chibi", "name": "看板娘", "mode": "stage", "preview": "./img/preview.png"},
+            {
+                "key": "chibi",
+                "name": "看板娘",
+                "mode": "stage",
+                "preview": "./img/preview.png",
+                "avatar": "img/avatar.png",
+            },
             {
                 "key": "sprite_1",
                 "name": " 精灵 ",
@@ -81,6 +87,7 @@ def test_agent_pets_projects_defaults_and_preview_url_next_to_remote_entry():
                 "component": "./SpritePet",
                 "api_version": 2,
                 "preview": "https://example.com/p.png",
+                "avatar": "data:image/png;base64,AAAA",
                 "random_actions": ["wave", "jump", "wave"],
             },
             {"key": "plain", "name": "无预览"},
@@ -104,6 +111,7 @@ def test_agent_pets_projects_defaults_and_preview_url_next_to_remote_entry():
             "component": "AgentPet",
             "api_version": 1,
             "preview_url": "/plugin/file/petdemo/dist/assets/img/preview.png?v=1.0.0",
+            "avatar_url": "/plugin/file/petdemo/dist/assets/img/avatar.png?v=1.0.0",
             "bubbles": "host",
             "random_actions": None,
         },
@@ -118,6 +126,7 @@ def test_agent_pets_projects_defaults_and_preview_url_next_to_remote_entry():
             "component": "SpritePet",
             "api_version": 2,
             "preview_url": "https://example.com/p.png",
+            "avatar_url": "data:image/png;base64,AAAA",
             "bubbles": None,
             "random_actions": ["wave", "jump"],
         },
@@ -132,6 +141,7 @@ def test_agent_pets_projects_defaults_and_preview_url_next_to_remote_entry():
             "component": "AgentPet",
             "api_version": 1,
             "preview_url": None,
+            "avatar_url": None,
             "bubbles": None,
             "random_actions": None,
         },
@@ -168,6 +178,10 @@ def test_agent_pets_skips_disabled_non_vue_and_unimplemented_plugins():
         {"key": "trav", "name": "越界", "preview": "../secret.png"},
         {"key": "abs", "name": "根路径", "preview": "/etc/passwd"},
         {"key": "js", "name": "脚本", "preview": "javascript:alert(1)"},
+        {"key": "avatar_trav", "name": "头像越界", "avatar": "img/../../secret.png"},
+        {"key": "avatar_abs", "name": "头像根路径", "avatar": "/etc/passwd"},
+        {"key": "avatar_ftp", "name": "头像协议", "avatar": "ftp://example.com/a.png"},
+        {"key": "avatar_type", "name": "头像类型", "avatar": 1},
         {"key": "acts", "name": "动作", "random_actions": "wave"},
         "not-a-dict",
     ],
@@ -208,7 +222,9 @@ def test_agent_pets_instance_keeps_instance_id_and_source_identity():
     """插件分身沿用实例 ID 作为 plugin_id 与预览 URL 路径，source_plugin_id 指向源插件。"""
     plugin = _Plugin(
         plugin_source_id="PetDemo",
-        get_agent_pets=lambda: [{"key": "pet", "name": "形象", "preview": "preview.png"}],
+        get_agent_pets=lambda: [
+            {"key": "pet", "name": "形象", "preview": "preview.png", "avatar": "avatar.png"}
+        ],
     )
 
     pet = _projection({"PetDemoWork": plugin}).agent_pets()[0]
@@ -216,6 +232,7 @@ def test_agent_pets_instance_keeps_instance_id_and_source_identity():
     assert pet["plugin_id"] == "PetDemoWork"
     assert pet["source_plugin_id"] == "PetDemo"
     assert pet["preview_url"] == "/plugin/file/petdemowork/dist/assets/preview.png"
+    assert pet["avatar_url"] == "/plugin/file/petdemowork/dist/assets/avatar.png"
 
 
 def test_agent_pets_isolates_hook_failure_and_non_list_result():

@@ -214,6 +214,7 @@ class _PluginBase(metaclass=ABCMeta):
         - component：联邦暴露名，默认 ``AgentPet``（即 ``./AgentPet``）
         - api_version：形象契约版本，默认 1；前端忽略不认识的版本
         - preview：预览图，相对插件联邦产物目录的路径，或 ``http(s)://``、``data:`` URL
+        - avatar：方形头像，用于 Agent 面板头部与消息头像，路径规则同 preview
         - bubbles：仅 stage 模式，``host``（插件上报锚点、宿主画气泡，默认）或 ``self``
         - random_actions：仅 renderer 模式，宿主随机动作的候选名单
 
@@ -224,7 +225,8 @@ class _PluginBase(metaclass=ABCMeta):
             "key": "chibi",
             "name": "Q 版看板娘",
             "mode": "stage",
-            "preview": "preview.png"
+            "preview": "preview.png",
+            "avatar": "avatar.png"
         }]
         """
         pass
