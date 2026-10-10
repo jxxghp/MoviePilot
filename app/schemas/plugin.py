@@ -567,6 +567,10 @@ class PluginAgentPet(BaseModel):  # type: ignore[misc]
         default=None,
         description="预览图 URL：相对路径已解析为与 remoteEntry 同源的插件静态文件地址，或原样的 http(s)/data URL",
     )
+    avatar_url: Optional[str] = Field(
+        default=None,
+        description="方形头像 URL，用于 Agent 面板头部与消息头像；解析规则同 preview_url，未声明为空",
+    )
     bubbles: Optional[Literal["host", "self"]] = Field(
         default=None,
         description="气泡归属，仅 stage 模式：host（宿主按锚点绘制）/ self（插件自绘）；renderer 模式为空",

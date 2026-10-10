@@ -19,7 +19,7 @@ from app.schemas.plugin import PluginDashboard
 _AGENT_PET_KEY_PATTERN = re.compile(r"^[a-z0-9_-]{1,32}$")
 _AGENT_PET_MODES = frozenset({"stage", "renderer"})
 _AGENT_PET_BUBBLES = frozenset({"host", "self"})
-# 预览图允许原样透传的绝对地址前缀，其余一律视为相对联邦产物目录的路径
+# 预览图与头像允许原样透传的绝对地址前缀，其余一律视为相对联邦产物目录的路径
 _AGENT_PET_ABSOLUTE_PREVIEW_PREFIXES = ("http://", "https://", "data:")
 
 
@@ -383,11 +383,12 @@ class PluginProjection:
                 )
                 continue
             seen.add(item["key"])
-            preview = item.pop("preview")
-            item["preview_url"] = (
-                self._agent_pet_preview_url(plugin_id, plugin, dist_path, preview)
-                if preview else None
-            )
+            for field in ("preview", "avatar"):
+                image = item.pop(field)
+                item[f"{field}_url"] = (
+                    self._agent_pet_image_url(plugin_id, plugin, dist_path, image)
+                    if image else None
+                )
             items.append({**base, **item})
         return items
 
@@ -414,7 +415,8 @@ class PluginProjection:
         api_version = raw.get("api_version", 1)
         if isinstance(api_version, bool) or not isinstance(api_version, int) or api_version < 1:
             raise _InvalidAgentPet(f"{key} 的 api_version 必须是正整数：{api_version!r}")
-        preview = PluginProjection._agent_pet_preview(key, raw.get("preview"))
+        preview = PluginProjection._agent_pet_image(key, "preview", raw.get("preview"))
+        avatar = PluginProjection._agent_pet_image(key, "avatar", raw.get("avatar"))
         bubbles = None
         random_actions = None
         if mode == "stage":
@@ -433,6 +435,7 @@ class PluginProjection:
             "component": component.strip().removeprefix("./"),
             "api_version": api_version,
             "preview": preview,
+            "avatar": avatar,
             "bubbles": bubbles,
             "random_actions": random_actions,
         }
@@ -449,12 +452,12 @@ class PluginProjection:
         return list(dict.fromkeys(value))
 
     @staticmethod
-    def _agent_pet_preview(key: str, value: Any) -> Optional[str]:
-        """校验预览图声明：绝对地址仅允许 http(s) 与 data，相对路径不得越出联邦产物目录。"""
+    def _agent_pet_image(key: str, field: str, value: Any) -> Optional[str]:
+        """校验预览图或头像声明：绝对地址仅允许 http(s) 与 data，相对路径不得越出联邦产物目录。"""
         if value is None or value == "":
             return None
         if not isinstance(value, str):
-            raise _InvalidAgentPet(f"{key} 的 preview 必须是字符串")
+            raise _InvalidAgentPet(f"{key} 的 {field} 必须是字符串")
         preview = value.strip()
         if preview.lower().startswith(_AGENT_PET_ABSOLUTE_PREVIEW_PREFIXES):
             return preview
@@ -464,17 +467,17 @@ class PluginProjection:
                 or "\\" in relative
                 or any(segment in ("", ".", "..") for segment in relative.split("/"))
         ):
-            raise _InvalidAgentPet(f"{key} 的 preview 路径无效：{value!r}")
+            raise _InvalidAgentPet(f"{key} 的 {field} 路径无效：{value!r}")
         return relative
 
-    def _agent_pet_preview_url(
+    def _agent_pet_image_url(
         self,
         plugin_id: str,
         plugin: Any,
         dist_path: str,
         preview: str,
     ) -> str:
-        """把已校验的预览图解析为可访问 URL。
+        """把已校验的预览图或头像解析为可访问 URL。
 
         绝对地址原样透传；相对路径解析到 remoteEntry 所在目录，与 remoteEntry 共用
         插件静态文件接口、实例 ID 与版本缓存键，分身由静态文件接口映射回源插件目录。
