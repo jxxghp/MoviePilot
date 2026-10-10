@@ -240,106 +240,9 @@ jobs:
             type=gha,scope=moviepilot-v3t-docker-arm64,version=2
           cache-to: type=gha,scope=moviepilot-v3t-docker,mode=max,version=2
 
-      - name: Generate Changelog
-        id: changelog
-        run: |
-          # 获取上一个 tag（优先 v3.*，回退到任意 v* 版本 tag）
-          PREVIOUS_TAG=$(git tag -l 'v3.*' --sort=-v:refname | grep -v "^v${{ env.app_version }}$" | head -n 1)
-          if [ -z "$PREVIOUS_TAG" ]; then
-            PREVIOUS_TAG=$(git tag -l 'v[0-9]*' --sort=-v:refname | grep -v "^v${{ env.app_version }}$" | head -n 1)
-          fi
-          echo "Previous tag: $PREVIOUS_TAG"
-
-          # 使用 || 作为分隔符，同时获取 commit 消息和作者 GitHub 用户名
-          if [ -z "$PREVIOUS_TAG" ]; then
-            # 首次发布且无任何历史版本 tag，限制条数避免打印整库历史撑爆环境变量
-            COMMITS=$(git log --pretty=format:"%s||%an" -n 300 "${SOURCE_COMMIT}")
-          else
-            COMMITS=$(git log --pretty=format:"%s||%an" "${PREVIOUS_TAG}..${SOURCE_COMMIT}")
-          fi
-
-          # 分类收集 commit 消息（使用关联数组去重）
-          declare -A SEEN
-          FEATURES=""
-          FIXES=""
-          OTHERS=""
-
-          while IFS= read -r line; do
-            # 跳过空行
-            if [ -z "$line" ]; then
-              continue
-            fi
-
-            # 分离 commit 消息和作者
-            msg=$(echo "$line" | sed 's/||[^|]*$//')
-            author=$(echo "$line" | sed 's/.*||//')
-
-            # 跳过 Merge commit 和版本更新 commit
-            if echo "$msg" | grep -qE "^Merge pull request|^Merge branch|^更新 version"; then
-              continue
-            fi
-
-            # 按 Conventional Commits 前缀分类
-            if echo "$msg" | grep -qiE "^feat(\(.+\))?:"; then
-              desc=$(echo "$msg" | sed -E 's/^feat(\([^)]*\))?:\s*//')
-              category="FEATURES"
-            elif echo "$msg" | grep -qiE "^fix(\(.+\))?:"; then
-              desc=$(echo "$msg" | sed -E 's/^fix(\([^)]*\))?:\s*//')
-              category="FIXES"
-            elif echo "$msg" | grep -qiE "^(docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?:"; then
-              desc=$(echo "$msg" | sed -E 's/^(docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]*\))?:\s*//')
-              category="OTHERS"
-            else
-              desc="$msg"
-              category="OTHERS"
-            fi
-
-            # 使用 "分类+描述" 作为去重的 key，跳过重复内容
-            dedup_key="${category}::${desc}"
-            if [ -n "${SEEN[$dedup_key]+x}" ]; then
-              continue
-            fi
-            SEEN[$dedup_key]=1
-
-            # 添加 by @author 引用
-            entry="- ${desc} by @${author}"
-
-            case "$category" in
-              FEATURES) FEATURES="${FEATURES}${entry}\n" ;;
-              FIXES)    FIXES="${FIXES}${entry}\n" ;;
-              OTHERS)   OTHERS="${OTHERS}${entry}\n" ;;
-            esac
-          done <<< "$COMMITS"
-
-          # 组装 changelog
-          CHANGELOG=""
-
-          if [ -n "$FEATURES" ]; then
-            CHANGELOG="${CHANGELOG}### ✨ 新功能\n\n${FEATURES}\n"
-          fi
-
-          if [ -n "$FIXES" ]; then
-            CHANGELOG="${CHANGELOG}### 🐛 修复\n\n${FIXES}\n"
-          fi
-
-          if [ -n "$OTHERS" ]; then
-            CHANGELOG="${CHANGELOG}### 🔧 其他\n\n${OTHERS}\n"
-          fi
-
-          # 添加版本对比链接
-          if [ -n "$PREVIOUS_TAG" ]; then
-            CHANGELOG="${CHANGELOG}**完整更新记录**: https://github.com/${{ github.repository }}/compare/${PREVIOUS_TAG}...v${{ env.app_version }}"
-          fi
-
-          # 写入环境变量
-          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
-          echo -e "$CHANGELOG" >> $GITHUB_ENV
-          echo "EOF" >> $GITHUB_ENV
-
       - name: Get existing release body
         id: get_release_body
         env:
-          CHANGELOG: ${{ env.CHANGELOG }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag_name="v${{ env.app_version }}"
@@ -364,20 +267,25 @@ jobs:
           fi
           echo "exists=$release_exists" >> "$GITHUB_OUTPUT"
 
-          # 如果已有手动编写的 release body，则保留；否则使用自动生成的 changelog
-          if [ -n "$release_body" ] && [ "$release_body" != "null" ] && [ "$release_body" != "" ]; then
-            {
-              echo "RELEASE_BODY<<EOF"
-              echo "$release_body"
-              echo "EOF"
-            } >> "$GITHUB_ENV"
-          else
-            {
-              echo "RELEASE_BODY<<EOF"
-              echo "$CHANGELOG"
-              echo "EOF"
-            } >> "$GITHUB_ENV"
+          # 随机分隔符避免手工正文中的 EOF 等独立行截断工作流环境变量。
+          delimiter="RELEASE_NOTES_$(python3 -c 'import uuid; print(uuid.uuid4().hex)')"
+          if [ "$release_body" = "null" ]; then
+            release_body=""
           fi
+          {
+            printf 'RELEASE_BODY<<%s\n' "$delimiter"
+            printf '%s\n' "$release_body"
+            printf '%s\n' "$delimiter"
+          } >> "$GITHUB_ENV"
+
+      - name: Generate Release Notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 scripts/release_notes.py \
+            --repository "$GITHUB_REPOSITORY" \
+            --tag "v${{ env.app_version }}" \
+            --source "$SOURCE_COMMIT"
 
       - name: Publish Release Tag
         env:

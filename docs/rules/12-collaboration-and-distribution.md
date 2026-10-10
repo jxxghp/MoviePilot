@@ -2,7 +2,7 @@
 
 ## Commit Conventions
 
-This project uses **Conventional Commits**. The release workflow parses commit messages to categorize changelog entries. This is not stylistic — it is functional.
+This project uses **Conventional Commits**. Release notes preserve commit subjects without categorization or rewriting.
 
 ### Format
 
@@ -71,6 +71,20 @@ ci: improve docker build cache
 - The primary Docker image bundles the backend (Python app), frontend static files (from `public/`), and resource data.
 - Docker build and release are managed by CI. Do not manually trigger or alter the Docker release flow unless the task explicitly requires it.
 - If a Dockerfile change is needed, update `Dockerfile` and verify the build locally before submitting.
+
+---
+
+## Release Notes
+
+正式后端 Release 固定包含三个章节：`## 本次更新内容`、`## 完整变更记录`、`## 版本对比`。
+首个章节留空，由维护者在 GitHub Release 中手工填写；同版本重建保留该章节内容，仅刷新后两个自动章节。
+旧版手工正文迁入首个章节，旧版自动分类记录由新格式替换。
+
+工作流通过 `scripts/release_notes.py` 收集上一同大版本正式标签到固定来源 SHA 的所有分页提交，
+保留原始标题、提交链接与真实 GitHub `@作者`，不分类、翻译或按标题合并。
+仅过滤 Merge 和构建生成的插件市场发布快照提交。未关联 GitHub 账号时展示 Git 作者名，不伪造账号。
+兼容历史 `v3.x.y-N` 数字修订标签；本版本、较高版本和命名预发布标签不会成为比较起点；首次发布无起点时版本对比章节留空。
+前端 Release 仅生成相同规则的 changelog 列表，不包含摘要、其它章节或 Compare 链接。
 
 ---
 
