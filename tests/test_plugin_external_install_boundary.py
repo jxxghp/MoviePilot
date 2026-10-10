@@ -15,6 +15,7 @@ from app.api.endpoints import plugin as plugin_endpoint
 from app.application.plugin import management as plugin_management
 from app.runtime.config import global_vars
 from app.schemas.plugin import (
+    PluginInstance,
     PluginSourceChangeRequest,
     PluginSourceIdentity,
     PluginSourceInstallRequest,
@@ -714,6 +715,13 @@ def test_startup_composition_configures_external_helper_gateway(monkeypatch) -> 
     package_manager = Mock()
     health = Mock()
     dependency = Mock()
+    market_composition = Mock(return_value=SimpleNamespace(
+        transport=transport,
+        client=market_client,
+        package=package_manager,
+        health=health,
+        dependency=dependency,
+    ))
     gateway_calls = []
     application_calls = []
     gateway = Mock()
@@ -723,13 +731,7 @@ def test_startup_composition_configures_external_helper_gateway(monkeypatch) -> 
     monkeypatch.setattr(
         plugins_initializer,
         "compose_plugin_market",
-        lambda **_kwargs: SimpleNamespace(
-            transport=transport,
-            client=market_client,
-            package=package_manager,
-            health=health,
-            dependency=dependency,
-        ),
+        market_composition,
     )
     monkeypatch.setattr(
         plugins_initializer,
@@ -809,6 +811,18 @@ def test_startup_composition_configures_external_helper_gateway(monkeypatch) -> 
     )
 
     plugins_initializer.configure_plugin_services()
+
+    monkeypatch.setattr(
+        plugins_initializer,
+        "get_plugin_instance_directory",
+        lambda: SimpleNamespace(list_enabled=lambda: [
+            PluginInstance(instance_id="Enabled", source_plugin_id="Enabled"),
+            PluginInstance(instance_id="Clone", source_plugin_id="DisabledHost"),
+        ]),
+    )
+    assert market_composition.call_args.kwargs["enabled_plugins_provider"]() == {
+        "Enabled", "DisabledHost"
+    }
 
     assert application_calls == [gateway]
     assert len(gateway_calls) == 1

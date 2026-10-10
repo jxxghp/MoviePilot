@@ -102,11 +102,15 @@ class PluginDependencyService:
         物理插件那一层按安装清单划分，而安装清单只回答「包在不在磁盘上」；分类结果
         随后会被逐个 ``start()``，因此这里必须先按启用位过滤掉停用的本体，否则停用
         的插件会在开机与配置热重载时被重新拉起来，启用位形同虚设。三个桶一起过滤：
-        停用的插件既不该被装载，也不该为它安装缺失依赖。
+        停用的本体不应装载；启用分身仍按过滤前的共享源码结论分类。依赖安装只覆盖
+        存在启用本体或分身的源码插件，由启动层向安装器注入该集合。
         """
         ready, missing_dependencies, missing_source = (
             self._system().dependency.classify_plugins()
         )
+        # 分身只共享源码和依赖，本体的停用位不能让启用分身丢失源码结论。
+        source_ready = set(ready)
+        source_pending = set(missing_dependencies)
         loadable = self._loadable_hosts() if self._loadable_hosts is not None else None
         if loadable is not None:
             ready = [plugin_id for plugin_id in ready if plugin_id in loadable]
@@ -119,8 +123,6 @@ class PluginDependencyService:
         ready = list(ready)
         missing_dependencies = list(missing_dependencies)
         missing_source = list(missing_source)
-        source_ready = set(ready)
-        source_pending = set(missing_dependencies)
         for instance in self._instances().values():
             if instance.source_plugin_id in source_ready:
                 ready.append(instance.instance_id)

@@ -19,8 +19,10 @@ from packaging.version import InvalidVersion, Version
 from app.adapters.system.plugin.health import PluginRuntimeHealth
 from app.adapters.system.plugin.manifest import (
     PluginDependencyManifestError,
+    load_dependency_file,
     load_dependency_manifest,
 )
+from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 
@@ -69,13 +71,15 @@ class PluginDependencyInstaller:
         packages: Optional[PluginDependencyPackagePort] = None,
         *,
         installed_plugins_provider: Optional[Callable[[], list[str]]] = None,
+        enabled_plugins_provider: Optional[Callable[[], set[str]]] = None,
         plugin_dir: Optional[Path] = None,
     ) -> None:
-        """保存包安装端口和启动层提供的已安装插件读取器。"""
+        """保存安装清单和启用源码读取器；旧调用方未提供启用位时保留安装集合。"""
         if packages is None:
             packages = PluginRuntimeHealth()
         self._packages = packages
         self._installed_plugins_provider = installed_plugins_provider or (lambda: [])
+        self._enabled_plugins_provider = enabled_plugins_provider
         self._plugin_dir = plugin_dir or (
             Path(get_runtime_setting('ROOT_PATH')) / "app" / "plugins"
         )
@@ -273,13 +277,22 @@ class PluginDependencyInstaller:
             merged.append(Requirement(target))
         return merged
 
-    def _plugin_manifests(self) -> list[Any]:
-        """返回已安装插件当前生效的依赖清单。"""
-        manifests = []
-        installed_plugins = {
+    def _dependency_plugin_ids(self) -> set[str]:
+        """只为已安装且至少有一个启用实例的物理插件恢复依赖。"""
+        installed = {
             plugin_id.lower()
             for plugin_id in self._installed_plugins_provider() or []
         }
+        if self._enabled_plugins_provider is None:
+            return installed
+        return installed & {
+            plugin_id.lower() for plugin_id in self._enabled_plugins_provider()
+        }
+
+    def _plugin_manifests(self) -> list[Any]:
+        """返回需要装载的已安装插件的原始依赖清单。"""
+        manifests = []
+        installed_plugins = self._dependency_plugin_ids()
         try:
             plugin_dirs = list(self._plugin_dir.iterdir())
         except (FileNotFoundError, OSError):
@@ -297,7 +310,7 @@ class PluginDependencyInstaller:
         return manifests
 
     def _plugin_dependencies(self) -> list[Requirement]:
-        """扫描已安装插件的生效依赖清单并合并版本约束。"""
+        """扫描启用插件的生效依赖清单并合并版本约束。"""
         dependencies: list[Requirement] = []
         for manifest in self._plugin_manifests():
             for requirement in manifest.dependencies:
@@ -356,13 +369,9 @@ class PluginDependencyInstaller:
         return ready, missing_dependencies, missing_source
 
     def _wheels_dirs(self) -> list[Path]:
-        """收集已安装插件附带的本地 wheels 目录。"""
+        """收集启用插件附带的本地 wheels 目录。"""
         result = []
-        installed_plugins = {
-            plugin_id.lower()
-            for plugin_id in self._installed_plugins_provider() or []
-        }
-        for plugin_id in installed_plugins:
+        for plugin_id in sorted(self._dependency_plugin_ids()):
             wheels_dir = self._plugin_dir / plugin_id / "wheels"
             if wheels_dir.is_dir():
                 result.append(wheels_dir)
@@ -395,17 +404,77 @@ class PluginDependencyInstaller:
         logger.error(message)
         return False, message
 
+    def _fallback_plan(
+        self, request: _DependencyInstallRequest
+    ) -> tuple[list[Path], list[Path]]:
+        """批量失败后保留已满足清单的约束，逐个恢复其余插件。
+
+        成功恢复的清单也会加入后续请求；互斥版本因而不能通过轮流覆盖环境假装成功。
+        始终传递原始清单，保留 uv sources、索引、direct URL 和 extras 的语义。
+        """
+        installed = self._installed_packages()
+        accepted: list[Path] = []
+        pending: list[Path] = []
+        for path in request.manifest_paths:
+            manifest = load_dependency_file(path)
+            satisfied = all(
+                self._requirement_satisfied(requirement, installed)
+                for requirement in manifest.dependencies
+                if not requirement.marker or requirement.marker.evaluate()
+            )
+            (accepted if satisfied else pending).append(path)
+        return accepted, pending
+
+    @staticmethod
+    def _record_group_result(
+        path: Path,
+        result: tuple[bool, str],
+        accepted: list[Path],
+        failures: list[str],
+    ) -> None:
+        """让成功清单保护后续安装，并记录失败插件而不中断其它组。"""
+        success, message = result
+        if success:
+            accepted.append(path)
+            return
+        failure = f"插件 {path.parent.name} 依赖恢复失败：{message}"
+        logger.warning(failure)
+        failures.append(failure)
+
+    @staticmethod
+    def _fallback_result(failures: list[str]) -> tuple[bool, str]:
+        """部分恢复仍返回失败，使启动继续按实际环境分类和激活就绪插件。"""
+        if failures:
+            return False, "\n".join(failures)
+        return True, "插件依赖已分组恢复"
+
     def install(self, dependencies: list[str]) -> tuple[bool, str]:
-        """把已安装插件的原始清单交给一次统一包安装。"""
+        """先统一安装；失败后逐组恢复，并保护已就绪插件的约束。"""
         request, error_result = self._prepare_install_request(dependencies)
         if error_result is not None:
             return error_result
         assert request is not None
         try:
-            return self._packages.install_packages_with_fallback(
+            result = self._packages.install_packages_with_fallback(
                 request.manifest_paths,
                 request.wheels_dirs,
             )
+            if result[0] or len(request.manifest_paths) < 2:
+                return result
+            logger.warning("插件依赖批量安装失败，开始逐组恢复并保留已就绪插件约束")
+            accepted, pending = self._fallback_plan(request)
+            if not pending:
+                return result
+            failures: list[str] = []
+            for path in pending:
+                try:
+                    group_result = self._packages.install_packages_with_fallback(
+                        [*accepted, path], request.wheels_dirs
+                    )
+                except Exception as error:  # noqa: BLE001 - 单组失败不得中断其余组
+                    group_result = self._dependency_install_failure(error)
+                self._record_group_result(path, group_result, accepted, failures)
+            return self._fallback_result(failures)
         except Exception as error:  # noqa: BLE001 - 统一映射为公开安装结果
             return self._dependency_install_failure(error)
 
@@ -414,15 +483,39 @@ class PluginDependencyInstaller:
         return await asyncio.to_thread(self.find_missing)
 
     async def async_install(self, dependencies: list[str]) -> tuple[bool, str]:
-        """异步安装依赖，使用可取消的包安装子进程。"""
-        request, error_result = self._prepare_install_request(dependencies)
+        """使用可取消子进程执行统一安装和受约束的逐组恢复。"""
+        prepared: tuple[
+            Optional[_DependencyInstallRequest], Optional[tuple[bool, str]]
+        ] = await run_in_threadpool_to_completion(
+            self._prepare_install_request, dependencies
+        )
+        request, error_result = prepared
         if error_result is not None:
             return error_result
         assert request is not None
         try:
-            return await self._packages.async_install_packages_with_fallback(
+            result = await self._packages.async_install_packages_with_fallback(
                 request.manifest_paths,
                 request.wheels_dirs,
             )
+            if result[0] or len(request.manifest_paths) < 2:
+                return result
+            logger.warning("插件依赖批量安装失败，开始逐组恢复并保留已就绪插件约束")
+            plan: tuple[list[Path], list[Path]] = await run_in_threadpool_to_completion(
+                self._fallback_plan, request
+            )
+            accepted, pending = plan
+            if not pending:
+                return result
+            failures: list[str] = []
+            for path in pending:
+                try:
+                    group_result = await self._packages.async_install_packages_with_fallback(
+                        [*accepted, path], request.wheels_dirs
+                    )
+                except Exception as error:  # noqa: BLE001 - CancelledError 必须向上传播
+                    group_result = self._dependency_install_failure(error)
+                self._record_group_result(path, group_result, accepted, failures)
+            return self._fallback_result(failures)
         except Exception as error:  # noqa: BLE001 - 统一映射为公开安装结果
             return self._dependency_install_failure(error)

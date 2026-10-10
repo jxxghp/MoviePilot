@@ -1234,7 +1234,7 @@ driven workflow registration.
 | `app/domain/plugin.py` | Pure local-source, generation-compatibility and Release-install-plan rules |
 | `app/adapters/external/plugin/client.py` | `PluginMarketTransport`, the unique market transport, index/Release and local-candidate owner |
 | `app/adapters/system/plugin/package.py` | `PluginPackageManager`, the unique install, checkpoint, backup, restore and physical-delete owner |
-| `app/adapters/system/plugin/dependency.py` | `PluginDependencyInstaller`, the dependency manifest, missing-package inspection and installation owner |
+| `app/adapters/system/plugin/dependency.py` | `PluginDependencyInstaller`, enabled-source dependency inspection and constrained per-plugin recovery owner; `async_install` has two completion-owned worker boundaries for request preparation and fallback planning, while package subprocess cancellation remains with `PluginRuntimeHealth` |
 | `app/adapters/system/plugin/health.py` | `PluginRuntimeHealth`, the runtime-environment guard, pre/post-install check and recovery owner |
 | `app/startup/composition/plugin.py` | Constructs one market transport/client, package manager, runtime-health owner and dependency installer per lifespan; `PluginHelper` compatibility calls consume those same published owners |
 | `app/runtime/extensions/resource.py` | Data-only managed-resource registry and sync/async lifecycle adapters |

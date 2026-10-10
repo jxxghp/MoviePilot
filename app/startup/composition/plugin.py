@@ -34,6 +34,7 @@ _market_client: Optional[PluginMarketClient] = None
 def compose_plugin_market(
     *,
     installed_plugins_provider: Callable[[], list[str]],
+    enabled_plugins_provider: Optional[Callable[[], set[str]]] = None,
 ) -> PluginMarketComposition:
     """一次性构造插件市场技术依赖，供同一 lifespan 内所有用例复用。"""
     global _market_client
@@ -52,6 +53,7 @@ def compose_plugin_market(
         dependency=PluginDependencyInstaller(
             health,
             installed_plugins_provider=installed_plugins_provider,
+            enabled_plugins_provider=enabled_plugins_provider,
             plugin_dir=plugin_root,
         ),
         health=health,
