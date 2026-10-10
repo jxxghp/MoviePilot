@@ -364,10 +364,15 @@ class PluginProjection:
                 f"插件[{plugin_id}]get_agent_pets() 必须返回列表，已忽略"
             )
             return []
+        # 带出联邦入口与插件版本：前端据此直接注册远程入口、省去一次 remotes 往返，
+        # 并按版本判断插件是否升级，以决定是否重试本会话加载失败的形象。
+        plugin_version = getattr(plugin, "plugin_version", None)
         base = {
             "plugin_id": plugin_id,
             "source_plugin_id": getattr(plugin, "plugin_source_id", None) or plugin_id,
             "plugin_name": plugin.plugin_name,
+            "plugin_version": str(plugin_version) if plugin_version else None,
+            "remote_url": self._remote_descriptor(plugin_id, plugin, dist_path)["url"],
         }
         seen: set[str] = set()
         items: List[Dict[str, Any]] = []

@@ -397,7 +397,7 @@ Use only the extension points the requested plugin actually needs:
 - Custom Vue UI: implement `get_render_mode()` when Vue is the selected UI
   mode. Return `("vue", "<compiled-assets-path>")` and include
   built frontend assets in the plugin directory.
-- Agent assistant avatar: implement `get_agent_pets()` on a Vue plugin to
+- Agent assistant avatar. Implement `get_agent_pets()` on a Vue plugin to
   replace the web assistant's on-screen character. See
   "Agent Assistant Avatar" below.
 
@@ -537,16 +537,16 @@ def get_agent_pets(self) -> List[Dict[str, Any]]:
   `remoteEntry.js` (the directory returned by `get_render_mode()`), or
   `http(s)://` / `data:` URLs. With `("vue", "dist/assets")`, put
   `girl-preview.png` next to `dist/assets/remoteEntry.js` and declare
-  `"girl-preview.png"`; `"assets/girl-preview.png"` would resolve to
+  `"girl-preview.png"`. Writing `"assets/girl-preview.png"` would resolve to
   `dist/assets/assets/girl-preview.png`. Relative paths must not contain `..`, `\`, or
   `:`.
-- An item with any invalid field is dropped with a warning; a duplicate `key`
-  keeps the first item. One plugin may declare several avatars, each with its
-  own `mode` and `component`; expose every referenced component.
+- An item with any invalid field is dropped with a warning, and a duplicate
+  `key` keeps the first item. One plugin may declare several avatars, each with
+  its own `mode` and `component`, and must expose every referenced component.
 - The avatar only renders the character. It must not take over the Agent panel
-  or send messages; `agent.open({ draft })` only fills the input box.
+  or send messages, and `agent.open({ draft })` only fills the input box.
 - The user picks an avatar from the "更换形象" button in the Agent panel
-  header; the admin default is `AI_AGENT_PET` (`<plugin_id>:<key>`). Load
+  header, and the admin default is `AI_AGENT_PET` (`<plugin_id>:<key>`). Load
   failures, timeouts over 8 seconds, and runtime errors fall back to the
   built-in robot.
 - Read the "Agent 助手形象（AgentPet）" section (5.11) of

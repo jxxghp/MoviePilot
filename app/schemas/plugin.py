@@ -563,6 +563,13 @@ class PluginAgentPet(BaseModel):  # type: ignore[misc]
     )
     component: str = Field(default="AgentPet", description="联邦暴露名，不含 ./ 前缀")
     api_version: int = Field(default=1, description="形象契约版本，前端忽略不认识的版本")
+    plugin_version: Optional[str] = Field(
+        default=None,
+        description="提供形象的插件版本；前端据此判断插件是否升级，以决定是否重试加载失败的形象",
+    )
+    remote_url: str = Field(
+        description="插件联邦入口 remoteEntry.js 地址，规则同 GET /plugin/remotes 的 url；前端据此直接注册远程入口",
+    )
     preview_url: Optional[str] = Field(
         default=None,
         description="预览图 URL：相对路径已解析为与 remoteEntry 同源的插件静态文件地址，或原样的 http(s)/data URL",
