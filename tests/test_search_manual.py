@@ -101,22 +101,41 @@ def blocked_site(manual_owner, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_media_search_mock_survives_module_class_rebinding(manual_owner, monkeypatch):
+    """媒体类导出被其它测试重绑定时，调用方 mock 仍隔离真实网络请求。"""
+    from app.chain import media as media_module
+
+    monkeypatch.setattr(media_module, "MediaChain", object())
+    media = MediaInfo(media_source=MediaSource.TMDB, media_id="1", tmdb_id=1, type=MediaType.TV,
+                      title="Show", original_title="Show", names=["Show"])
+    recognize = AsyncMock(return_value=media)
+    monkeypatch.setattr(manual_module.MediaChain, "async_recognize_media", recognize)
+    monkeypatch.setattr(manual_module.MediaChain, "async_supplement_media_info", AsyncMock(return_value=media))
+    owner, _, _ = manual_owner
+    result = await events(SearchManualOwner.events(
+        owner, params={"media_source": MediaSource.TMDB, "media_id": "1", "mtype": MediaType.TV},
+    ))
+    recognize.assert_awaited_once()
+    assert result[-1]["type"] == "done"
+    assert result[-2]["items"]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("media_search", [False, True])
 @pytest.mark.parametrize("transport", [False, True])
 async def test_fast_site_preview_arrives_before_slow_site_and_final_page(
     manual_owner, blocked_site, monkeypatch, media_search, transport,
 ):
     """标题和精确搜索均先展示快站点，最终过滤前不提交来源页号。"""
-    from app.chain.media import MediaChain
-
     owner, calls, (_, saved) = manual_owner
     started, release, finished, registry = blocked_site
     params = {"keyword": "Show"}
     if media_search:
         media = MediaInfo(media_source=MediaSource.TMDB, media_id="1", tmdb_id=1, type=MediaType.TV,
                           title="Show", original_title="Show", names=["Show"])
-        monkeypatch.setattr(MediaChain, "async_recognize_media", AsyncMock(return_value=media))
-        monkeypatch.setattr(MediaChain, "async_supplement_media_info", AsyncMock(return_value=media))
+        # 在实际调用方绑定上隔离，避免其他测试重载模块后 mock 指向不同类对象。
+        monkeypatch.setattr(manual_module.MediaChain, "async_recognize_media", AsyncMock(return_value=media))
+        monkeypatch.setattr(manual_module.MediaChain, "async_supplement_media_info", AsyncMock(return_value=media))
         params = {"media_source": MediaSource.TMDB, "media_id": "1", "mtype": MediaType.TV}
     stream = SearchManualOwner.events(owner, params=params)
     if transport:
@@ -414,15 +433,15 @@ async def test_media_page_keeps_original_season_filter(manual_owner, monkeypatch
     """手动精确搜索复用原季范围；过滤后的条数不改变原始页事实。"""
     from unittest.mock import AsyncMock
 
-    from app.chain.media import MediaChain
     from app.domain.context import MediaInfo
     from app.schemas.types import MediaSource
 
     owner, _, _ = manual_owner
     media = MediaInfo(media_source=MediaSource.TMDB, media_id="1", tmdb_id=1, type=MediaType.TV,
                       title="Example Show", original_title="Example Show", names=["Example Show"])
-    monkeypatch.setattr(MediaChain, "async_recognize_media", AsyncMock(return_value=media))
-    monkeypatch.setattr(MediaChain, "async_supplement_media_info", AsyncMock(return_value=media))
+    # 与预览测试使用同一调用方边界，确保精确搜索不会访问真实 TMDB。
+    monkeypatch.setattr(manual_module.MediaChain, "async_recognize_media", AsyncMock(return_value=media))
+    monkeypatch.setattr(manual_module.MediaChain, "async_supplement_media_info", AsyncMock(return_value=media))
     def request(**_params):
         report_site_search_outcome(attempted=True, outcome="success")
         report_site_search_page(raw_count=3, has_more=True)
