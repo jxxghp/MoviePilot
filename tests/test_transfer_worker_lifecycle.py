@@ -925,6 +925,45 @@ def test_worker_manual_review_logs_queue_guidance_without_traceback(monkeypatch)
     assert chain._queue.unfinished_tasks == 0
 
 
+def test_worker_isolates_exception_from_plugin_replacement_finally(monkeypatch) -> None:
+    """插件替换整个执行方法并在 finally 抛异常时，worker 外层仍必须隔离持久任务。"""
+    chain = _build_chain()
+    task = make_task(1)
+    task.bind_admission_task_id("plugin-task")
+    task.bind_execution_lease(owner_id="worker-owner", lease_token="plugin-lease")
+    chain._owned_leases = {"plugin-task": ("plugin-lease", time.monotonic() + 120)}
+    chain.jobview = MagicMock()
+    chain.jobview.pending_total.return_value = 1
+    chain._progress = MagicMock()
+    chain._active_tasks = chain._processed_num = chain._fail_num = chain._total_num = 0
+    chain._transfer_executions = MagicMock()
+    chain._transfer_executions.isolate_unhandled_failure.return_value = True
+    chain.transfer_execution_repository = chain._transfer_executions
+    chain._TransferChain__fail_transfer_task = MagicMock()
+    stop_event = threading.Event()
+
+    def plugin_replacement(*, task, callback):
+        """重现第三方补丁在 finally 调用已不存在的私有方法。"""
+        del callback
+        try:
+            return True, ""
+        finally:
+            stop_event.set()
+            chain._TransferChain__finish_scrape_batch_task(task)
+
+    chain._TransferChain__handle_transfer = plugin_replacement
+    chain._queue.put(TransferQueue(task=task))
+    monkeypatch.setattr(global_vars, "STOP_EVENT", threading.Event())
+    chain._TransferChain__start_transfer(stop_event)
+
+    isolation = chain._transfer_executions.isolate_unhandled_failure
+    isolation.assert_called_once()
+    assert isolation.call_args.kwargs["task_id"] == "plugin-task"
+    assert "_TransferChain__finish_scrape_batch_task" in isolation.call_args.kwargs["error"]
+    assert chain._queue.unfinished_tasks == 0
+    assert chain._owned_leases == {}
+
+
 def test_heartbeat_refreshes_current_token_and_forgets_lost_lease() -> None:
     """heartbeat 成功应刷新本地期限，CAS 拒绝后必须立即停止本地推进资格。"""
     chain = _build_chain()

@@ -1128,6 +1128,37 @@ class TransferPending(Base):
         )
 
     @classmethod
+    def isolate_unhandled_failure(
+            cls, db: Session, *, task_id: str, lease_token: str,
+            error: str, now_utc: str, updated_at: str,
+    ) -> int:
+        """以当前租约收口未记账异常；已释放租约的重试和复核不得重复计数。"""
+        return execute_dml(
+            db,
+            update(cls).where(
+                cls.task_id == task_id,
+                cls.state.in_(("accepted", "planned", "provider_pending")),
+                cls.execution_state.in_(("not_started", "running", "retry_wait")),
+                cls.execution_payload.is_(None),
+                cls.terminal_history_id.is_(None),
+                cls.lease_token == lease_token,
+                cls.lease_expires_at.is_not(None),
+                cls.lease_expires_at > now_utc,
+            ).values(
+                execution_state="manual_review",
+                retry_count=cls.retry_count + 1,
+                retry_due_at=None,
+                lease_owner=None,
+                lease_token=None,
+                lease_expires_at=None,
+                heartbeat_at=None,
+                last_error=error,
+                updated_at=updated_at,
+            ),
+            execution_options={"synchronize_session": False},
+        )
+
+    @classmethod
     def record_planning_failure(cls, db: Session, *, task_id: str,
                                 lease_token: str, error: str,
                                 now_time: str, updated_at: str) -> int:

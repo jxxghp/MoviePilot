@@ -14,6 +14,7 @@ from app.application.transfer.execution import (
     TransferExecutionConflictError,
     TransferExecutionState,
     TransferManualReviewDecision,
+    TransferManualReviewQuery,
     TransferOperationObservation,
     TransferOperationObservationState,
     TransferStepIntent,
@@ -218,6 +219,139 @@ def _intent(*, task_id: str = "task-1", ordinal: int = 0) -> TransferStepIntent:
             "transfer_type": "copy",
         },
     )
+
+
+@pytest.mark.parametrize("state", ["accepted", "planned"])
+@pytest.mark.parametrize("retry_count", [0, 318])
+@pytest.mark.parametrize("execution_state", ["not_started", "retry_wait"])
+def test_unhandled_failure_is_counted_once_and_stops_recovery(
+        execution_store, state, retry_count, execution_state,
+):
+    """补丁在步骤外抛异常时立即隔离，即使旧任务已反复领取也不再自动回放。"""
+    _seed_pending(execution_store, state=state, with_checkpoint=state == "planned")
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        pending.retry_count = retry_count
+        pending.attempt_count = 319
+        pending.execution_state = execution_state
+        session.commit()
+    repository, _ = _repository(execution_store)
+    error = "TransferChain has no attribute _TransferChain__finish_scrape_batch_task"
+    assert repository.isolate_unhandled_failure(task_id="task-1", lease_token="lease-1", error=error)
+    assert not repository.isolate_unhandled_failure(task_id="task-1", lease_token="lease-1", error=error)
+    snapshot = repository.get_snapshot(task_id="task-1")
+    assert snapshot.state is TransferExecutionState.MANUAL_REVIEW
+    assert snapshot.retry_count == retry_count + 1
+    assert snapshot.last_error == error
+    assert snapshot.steps == ()
+    view = TransferManualReviewQuery(repository).get(task_id="task-1")
+    assert view.step.kind == "unhandled_execution_review"
+    assert view.step.error == error
+    assert TransferManualReviewQuery(repository).list().total == 1
+    admissions = TransactionalTransferAdmissionRepository(execution_store)
+    assert admissions.claim_recoverable(owner_id="recovery", limit=10, lease_seconds=120) == []
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        assert pending.attempt_count == 319
+        assert pending.lease_owner is None
+        assert pending.lease_token is None
+        assert pending.lease_expires_at is None
+        assert pending.heartbeat_at is None
+        assert pending.retry_due_at is None
+
+
+@pytest.mark.parametrize("state,token,expires", [
+    ("retry_wait", None, "2099-01-01 00:00:00.000000"),
+    ("manual_review", "lease-1", "2099-01-01 00:00:00.000000"),
+    ("failed", "lease-1", "2099-01-01 00:00:00.000000"),
+    ("settling", "lease-1", "2099-01-01 00:00:00.000000"),
+    ("running", "new-owner-token", "2099-01-01 00:00:00.000000"),
+    ("running", "lease-1", "2000-01-01 00:00:00.000000"),
+])
+def test_unhandled_failure_cannot_overwrite_existing_disposition_or_lease(
+        execution_store, state, token, expires,
+):
+    """步骤已决定重试或终态、结算中及租约失效时，不重复计数或覆盖新 owner。"""
+    _seed_pending(execution_store)
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        pending.execution_state = state
+        pending.lease_token = token
+        pending.lease_expires_at = expires
+        pending.last_error = "previous evidence"
+        session.commit()
+    repository, _ = _repository(execution_store)
+    assert not repository.isolate_unhandled_failure(task_id="task-1", lease_token="lease-1", error="outer")
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        assert pending.execution_state == state
+        assert pending.retry_count == 0
+        assert pending.last_error == "previous evidence"
+        assert pending.lease_token == token
+        assert session.scalar(select(TransferExecutionStep)) is None
+
+
+def test_unhandled_failure_isolation_rolls_back_with_review_evidence(execution_store, monkeypatch):
+    """复核凭据写入失败时必须同时回滚状态、失败次数和租约释放。"""
+    _seed_pending(execution_store)
+    repository, _ = _repository(execution_store)
+
+    def fail_review(*_args, **_kwargs):
+        """模拟复核凭据无法写入。"""
+        raise RuntimeError("review write failed")
+
+    monkeypatch.setattr(repository, "_stage_unhandled_review", fail_review)
+    with pytest.raises(RuntimeError, match="review write failed"):
+        repository.isolate_unhandled_failure(task_id="task-1", lease_token="lease-1", error="outer")
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        assert pending.execution_state == "not_started"
+        assert pending.retry_count == 0
+        assert pending.lease_token == "lease-1"
+
+
+def test_unhandled_review_preserves_started_step_and_resumes_after_manual_confirmation(execution_store):
+    """复核未记账异常后，真实 STARTED 仍需严格探测，诊断步骤不参与执行或结算。"""
+    _seed_pending(execution_store)
+    repository, command = _repository(execution_store)
+    prepared = command.prepare(task_id="task-1", lease_token="lease-1", intent=_intent())
+    started = command.begin(task_id="task-1", lease_token="lease-1", operation_id=prepared.operation_id)
+    assert repository.isolate_unhandled_failure(task_id="task-1", lease_token="lease-1", error="outer")
+    snapshot = repository.get_snapshot(task_id="task-1")
+    assert snapshot.steps == (started,)
+    review = repository.get_manual_review(task_id="task-1")
+    with pytest.raises(TransferExecutionConflictError, match="人工回滚"):
+        command.resolve_manual_review(
+            task_id="task-1", operation_id=review.step.operation_id,
+            decision=TransferManualReviewDecision.APPLIED, actor="admin", reason="checked",
+            result=TransferStepResult(payload={"success": True}),
+        )
+    resolved = command.resolve_manual_review(
+        task_id="task-1", operation_id=review.step.operation_id,
+        decision=TransferManualReviewDecision.NOT_APPLIED, actor="admin", reason="plugin rolled back",
+    )
+    assert resolved.state is TransferExecutionState.RETRY_WAIT
+    assert repository.get_manual_review(task_id="task-1").review_revision == 1
+    admission = TransactionalTransferAdmissionRepository(execution_store).claim_task(
+        task_id="task-1", owner_id="recovery", lease_seconds=120,
+    )
+    command.prepare(task_id="task-1", lease_token=admission.lease_token, intent=_intent())
+    resumed = command.restart_after_not_applied(
+        task_id="task-1", lease_token=admission.lease_token, step=started,
+        evidence=TransferStepResult(payload={"observation": "not_applied"}),
+    )
+    completed = command.complete(
+        task_id="task-1", lease_token=admission.lease_token, step=resumed,
+        result=TransferStepResult(payload={"success": True}),
+    )
+    assert completed.state is TransferStepState.SUCCEEDED
+    assert repository.isolate_unhandled_failure(task_id="task-1", lease_token=admission.lease_token, error="again")
+    with execution_store() as session:
+        assert len(session.scalars(select(TransferExecutionStep)).all()) == 2
+    snapshot = repository.get_snapshot(task_id="task-1")
+    assert len(snapshot.steps) == 1
+    assert snapshot.steps[0].state is TransferStepState.SUCCEEDED
+    assert snapshot.retry_count == 2
 
 
 def test_stable_operation_and_checkpoint_identities_are_canonical():

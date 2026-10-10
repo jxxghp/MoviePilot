@@ -55,6 +55,10 @@ from app.db.oper.transferpending import TransferPendingOper
 from app.db.uow import SqlAlchemyUnitOfWork
 
 _LEGACY_REVIEW_STEP_KIND = "legacy_execution_review"
+_UNHANDLED_REVIEW_STEP_KIND = "unhandled_execution_review"
+_REVIEW_STEP_KINDS = {_LEGACY_REVIEW_STEP_KIND, _UNHANDLED_REVIEW_STEP_KIND}
+# 与迁移保留的最大序号相邻，复核凭据不占用从零连续递增的真实执行序号。
+_UNHANDLED_REVIEW_STEP_ORDINAL = 2_147_483_646
 
 
 def _local_now() -> datetime:
@@ -100,8 +104,61 @@ class TransactionalTransferExecutionRepository:
     def _execution_steps(
             steps: list[TransferExecutionStepModel],
     ) -> list[TransferExecutionStepModel]:
-        """排除只用于迁移人工审计、不得参与真实执行的 synthetic 步骤。"""
-        return [step for step in steps if step.kind != _LEGACY_REVIEW_STEP_KIND]
+        """排除只用于人工审计、不得参与真实执行的 synthetic 步骤。"""
+        return [step for step in steps if step.kind not in _REVIEW_STEP_KINDS]
+
+    def isolate_unhandled_failure(
+            self, *, task_id: str, lease_token: str, error: str,
+    ) -> bool:
+        """原子隔离未记账异常并保存可发现的复核凭据，保留所有真实步骤证据。"""
+        now_utc, updated_at = self._times()
+        with self._session_factory() as session:
+            transaction = SqlAlchemyUnitOfWork(session)
+            try:
+                pending_oper = TransferPendingOper(session)
+                updated = pending_oper.stage_isolate_unhandled_failure(
+                    task_id=task_id, lease_token=lease_token, error=error,
+                    now_utc=now_utc, updated_at=updated_at,
+                )
+                if updated != 1:
+                    transaction.commit()
+                    return False
+                session.expire_all()
+                pending = pending_oper.get_by_task_id(task_id=task_id)
+                if pending is None:
+                    raise TransferExecutionConflictError("异常隔离后未找到整理任务")
+                self._stage_unhandled_review(session, pending=pending, error=error, updated_at=updated_at)
+                transaction.commit()
+                return True
+            except Exception:
+                self._rollback(transaction)
+                raise
+
+    @staticmethod
+    def _stage_unhandled_review(
+            session: Session, *, pending: TransferPending, error: str, updated_at: str,
+    ) -> None:
+        """创建或更新独立复核凭据；同一任务再次异常时复用凭据并保留复核审计。"""
+        oper = TransferExecutionStepOper(session)
+        step = next((item for item in oper.list_by_task_id(task_id=pending.task_id)
+                     if item.kind == _UNHANDLED_REVIEW_STEP_KIND), None)
+        if step is None:
+            intent = TransferStepIntent.create(
+                task_id=pending.task_id,
+                checkpoint_fingerprint=pending.input_fingerprint,
+                ordinal=_UNHANDLED_REVIEW_STEP_ORDINAL,
+                phase="review", kind=_UNHANDLED_REVIEW_STEP_KIND,
+                payload={"source": {"storage": pending.storage, "path": pending.src_path}},
+            )
+            step = oper.stage_prepare(
+                task_id=pending.task_id, operation_id=intent.operation_id,
+                checkpoint_fingerprint=intent.checkpoint_fingerprint,
+                ordinal=intent.ordinal, phase=intent.phase, kind=intent.kind,
+                intent_version=intent.version, intent_payload=dict(intent.payload), now_time=updated_at,
+            )
+        step.state = TransferStepState.MANUAL_REVIEW.value
+        step.last_error = error
+        step.updated_at = updated_at
 
     @staticmethod
     def _project_step(step: TransferExecutionStepModel) -> TransferExecutionStep:
@@ -1533,7 +1590,7 @@ class TransactionalTransferExecutionRepository:
                         decision is TransferManualReviewDecision.APPLIED
                         and step is not None
                         and step.task_id == task_id
-                        and step.kind == _LEGACY_REVIEW_STEP_KIND
+                        and step.kind in _REVIEW_STEP_KINDS
                 ):
                     raise TransferExecutionConflictError(
                         "这条整理步骤无法确认是否已经执行，请人工确认文件状态后再继续；"

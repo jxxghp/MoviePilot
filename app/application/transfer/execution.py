@@ -508,6 +508,11 @@ class TransferExecutionRepository(Protocol):
     def get_snapshot(self, *, task_id: str) -> Optional[TransferExecutionSnapshot]:
         """读取任务执行快照。"""
 
+    def isolate_unhandled_failure(
+            self, *, task_id: str, lease_token: str, error: str,
+    ) -> bool:
+        """将步骤账本之外的异常计入失败次数并隔离复核，不推测外部操作结果。"""
+
     async def async_get_snapshot(
             self,
             *,

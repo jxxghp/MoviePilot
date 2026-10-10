@@ -435,6 +435,11 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 | GET | `/api/v1/transfer/tasks/{task_id}/manual-review` | 管理员查询单个 durable 人工复核任务详情；仅可读取 `manual_review` 或已经人工判定的 `retry_wait` 任务，其余状态按不存在处理 |
 | POST | `/api/v1/transfer/tasks/{task_id}/manual-review` | 管理员判定处于 `manual_review` 的 durable 整理步骤；请求包含 `operation_id`、`decision=not_applied|applied`，`reason` 选填，省略或空白时记为空字符串，最多 2000 字符；`applied` 还必须提供 `result_payload`。`failed` 不属于公开决策，失败终态只能由持租约的 durable 结算写入；响应仅返回任务、操作、决策、后续状态和复核修订号 |
 
+步骤账本之外的未处理异常（例如插件替换整理入口后在 `finally` 抛错）会记一次失败，
+并立即进入 `manual_review` 停止自动回放。详情中的 `unhandled_execution_review` 是诊断凭据，
+不代表某个文件操作已执行；应先修复或关闭异常插件并确认文件状态，必要时人工回滚，
+再以 `not_applied` 交回调度器。该凭据不接受 `applied`，既有真实步骤仍按原证据恢复。
+
 #### SMB 下载器监控与服务端整理
 
 下载器原生保存路径与 MoviePilot 的存储访问路径是两个地址空间。下载器配置的
