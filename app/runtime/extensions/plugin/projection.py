@@ -1,6 +1,8 @@
 """插件公开能力投影。"""
 
 import inspect
+import posixpath
+import re
 from typing import Any, Callable, Dict, List, Mapping, Optional
 from urllib.parse import urlencode
 
@@ -12,6 +14,17 @@ from app.runtime.extensions.plugin.contracts import (
 from app.runtime.log import logger as default_logger
 from app.runtime.log import wrap_for_plugin_instance
 from app.schemas.plugin import PluginDashboard
+
+# Agent 助手形象 key 规则：插件内唯一，前端以 "<plugin_id>:<key>" 组合成全局选择值
+_AGENT_PET_KEY_PATTERN = re.compile(r"^[a-z0-9_-]{1,32}$")
+_AGENT_PET_MODES = frozenset({"stage", "renderer"})
+_AGENT_PET_BUBBLES = frozenset({"host", "self"})
+# 预览图允许原样透传的绝对地址前缀，其余一律视为相对联邦产物目录的路径
+_AGENT_PET_ABSOLUTE_PREVIEW_PREFIXES = ("http://", "https://", "data:")
+
+
+class _InvalidAgentPet(ValueError):
+    """Agent 助手形象声明字段不符合宿主契约。"""
 
 
 class PluginProjection:
@@ -183,11 +196,9 @@ class PluginProjection:
         """
         if not self._remote_entry_factory:
             raise RuntimeError("插件联邦入口生成器尚未配置")
-        remote_url = self._remote_entry_factory(plugin_id, dist_path)
-        plugin_version = getattr(plugin, "plugin_version", None)
-        if plugin_version:
-            separator = "&" if "?" in remote_url else "?"
-            remote_url = f"{remote_url}{separator}{urlencode({'v': str(plugin_version)})}"
+        remote_url = self._versioned_url(
+            self._remote_entry_factory(plugin_id, dist_path), plugin
+        )
         remote: Dict[str, Any] = {
             "id": plugin_id,
             "url": remote_url,
@@ -197,6 +208,15 @@ class PluginProjection:
         if source_plugin_id:
             remote["source_plugin_id"] = source_plugin_id
         return remote
+
+    @staticmethod
+    def _versioned_url(url: str, plugin: Any) -> str:
+        """为插件静态资源 URL 附加插件版本，插件更新后得到新的缓存键。"""
+        plugin_version = getattr(plugin, "plugin_version", None)
+        if not plugin_version:
+            return url
+        separator = "&" if "?" in url else "?"
+        return f"{url}{separator}{urlencode({'v': str(plugin_version)})}"
 
     def auth_providers(self) -> List[Dict[str, Any]]:
         """投影启用插件声明的登录认证提供方。"""
@@ -300,6 +320,171 @@ class PluginProjection:
             )
         )
         return items
+
+    def agent_pets(self) -> List[Dict[str, Any]]:
+        """投影启用 Vue 插件声明的 Agent 助手形象。
+
+        只收已启用、渲染模式为 vue 且实现 ``get_agent_pets`` 的插件；任一字段非法的
+        声明整项丢弃并记录警告，同一插件内重复 key 只保留首项。分身沿用实例
+        ``plugin_id``，``source_plugin_id`` 指向共享前端产物的源插件。
+        """
+        items: List[Dict[str, Any]] = []
+        for plugin_id, plugin in sorted(self._items(None), key=lambda pair: pair[0]):
+            if not plugin.get_state() or not supports_plugin_hook(
+                    plugin, "get_agent_pets"
+            ):
+                continue
+            if not supports_plugin_hook(plugin, "get_render_mode"):
+                continue
+            render_mode, dist_path = plugin.get_render_mode()
+            if render_mode != "vue":
+                continue
+            try:
+                declared = plugin.get_agent_pets() or []
+            except Exception as error:
+                self._logger.error(
+                    f"获取插件[{plugin_id}]助手形象出错：{str(error)}"
+                )
+                continue
+            items.extend(
+                self._agent_pet_items(plugin_id, plugin, dist_path or "", declared)
+            )
+        return items
+
+    def _agent_pet_items(
+        self,
+        plugin_id: str,
+        plugin: Any,
+        dist_path: str,
+        declared: Any,
+    ) -> List[Dict[str, Any]]:
+        """规整单个插件的助手形象声明，丢弃非法项与重复 key。"""
+        if not isinstance(declared, list):
+            self._logger.warning(
+                f"插件[{plugin_id}]get_agent_pets() 必须返回列表，已忽略"
+            )
+            return []
+        base = {
+            "plugin_id": plugin_id,
+            "source_plugin_id": getattr(plugin, "plugin_source_id", None) or plugin_id,
+            "plugin_name": plugin.plugin_name,
+        }
+        seen: set[str] = set()
+        items: List[Dict[str, Any]] = []
+        for raw in declared:
+            try:
+                item = self._agent_pet_fields(raw)
+            except _InvalidAgentPet as error:
+                self._logger.warning(f"插件[{plugin_id}]助手形象声明无效，已跳过：{error}")
+                continue
+            if item["key"] in seen:
+                self._logger.warning(
+                    f"插件[{plugin_id}]助手形象 key 重复，已跳过：{item['key']!r}"
+                )
+                continue
+            seen.add(item["key"])
+            preview = item.pop("preview")
+            item["preview_url"] = (
+                self._agent_pet_preview_url(plugin_id, plugin, dist_path, preview)
+                if preview else None
+            )
+            items.append({**base, **item})
+        return items
+
+    @staticmethod
+    def _agent_pet_fields(raw: Any) -> Dict[str, Any]:
+        """校验并补齐单项助手形象声明的默认值，非法时抛出 ``_InvalidAgentPet``。"""
+        if not isinstance(raw, Mapping):
+            raise _InvalidAgentPet(f"声明必须是字典：{raw!r}")
+        key = raw.get("key")
+        if not isinstance(key, str) or not _AGENT_PET_KEY_PATTERN.match(key):
+            raise _InvalidAgentPet(f"key 不符合 [a-z0-9_-]{{1,32}}：{key!r}")
+        name = raw.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise _InvalidAgentPet(f"{key} 缺少 name")
+        description = raw.get("description")
+        if description is not None and not isinstance(description, str):
+            raise _InvalidAgentPet(f"{key} 的 description 必须是字符串")
+        mode = raw.get("mode") or "renderer"
+        if not isinstance(mode, str) or mode not in _AGENT_PET_MODES:
+            raise _InvalidAgentPet(f"{key} 的 mode 未知：{mode!r}")
+        component = raw.get("component") or "AgentPet"
+        if not isinstance(component, str) or not component.strip().removeprefix("./"):
+            raise _InvalidAgentPet(f"{key} 的 component 无效：{component!r}")
+        api_version = raw.get("api_version", 1)
+        if isinstance(api_version, bool) or not isinstance(api_version, int) or api_version < 1:
+            raise _InvalidAgentPet(f"{key} 的 api_version 必须是正整数：{api_version!r}")
+        preview = PluginProjection._agent_pet_preview(key, raw.get("preview"))
+        bubbles = None
+        random_actions = None
+        if mode == "stage":
+            bubbles = raw.get("bubbles") or "host"
+            if not isinstance(bubbles, str) or bubbles not in _AGENT_PET_BUBBLES:
+                raise _InvalidAgentPet(f"{key} 的 bubbles 未知：{bubbles!r}")
+        else:
+            random_actions = PluginProjection._agent_pet_random_actions(
+                key, raw.get("random_actions")
+            )
+        return {
+            "key": key,
+            "name": name.strip(),
+            "description": description.strip() if description else None,
+            "mode": mode,
+            "component": component.strip().removeprefix("./"),
+            "api_version": api_version,
+            "preview": preview,
+            "bubbles": bubbles,
+            "random_actions": random_actions,
+        }
+
+    @staticmethod
+    def _agent_pet_random_actions(key: str, value: Any) -> Optional[List[str]]:
+        """校验 renderer 模式的随机动作候选，保持声明顺序去重；缺省表示宿主全集。"""
+        if value is None:
+            return None
+        if not isinstance(value, list) or not all(
+                isinstance(action, str) and action for action in value
+        ):
+            raise _InvalidAgentPet(f"{key} 的 random_actions 必须是非空字符串列表")
+        return list(dict.fromkeys(value))
+
+    @staticmethod
+    def _agent_pet_preview(key: str, value: Any) -> Optional[str]:
+        """校验预览图声明：绝对地址仅允许 http(s) 与 data，相对路径不得越出联邦产物目录。"""
+        if value is None or value == "":
+            return None
+        if not isinstance(value, str):
+            raise _InvalidAgentPet(f"{key} 的 preview 必须是字符串")
+        preview = value.strip()
+        if preview.lower().startswith(_AGENT_PET_ABSOLUTE_PREVIEW_PREFIXES):
+            return preview
+        relative = preview.removeprefix("./")
+        if (
+                ":" in relative
+                or "\\" in relative
+                or any(segment in ("", ".", "..") for segment in relative.split("/"))
+        ):
+            raise _InvalidAgentPet(f"{key} 的 preview 路径无效：{value!r}")
+        return relative
+
+    def _agent_pet_preview_url(
+        self,
+        plugin_id: str,
+        plugin: Any,
+        dist_path: str,
+        preview: str,
+    ) -> str:
+        """把已校验的预览图解析为可访问 URL。
+
+        绝对地址原样透传；相对路径解析到 remoteEntry 所在目录，与 remoteEntry 共用
+        插件静态文件接口、实例 ID 与版本缓存键，分身由静态文件接口映射回源插件目录。
+        """
+        if preview.lower().startswith(_AGENT_PET_ABSOLUTE_PREVIEW_PREFIXES):
+            return preview
+        if not self._remote_entry_factory:
+            raise RuntimeError("插件联邦入口生成器尚未配置")
+        entry_dir = posixpath.dirname(self._remote_entry_factory(plugin_id, dist_path))
+        return self._versioned_url(f"{entry_dir}/{preview}", plugin)
 
     def dashboard_metadata(self) -> List[Dict[str, str]]:
         """投影启用插件的单仪表板或多仪表板元信息。"""

@@ -341,6 +341,7 @@ SCHEMA_EXPORTS = {
     'PerformanceSnapshot': ('app.schemas.monitoring', 'PerformanceSnapshot'),
     'Plugin': ('app.schemas.plugin', 'Plugin'),
     'PluginActionEventData': ('app.schemas.event', 'PluginActionEventData'),
+    'PluginAgentPet': ('app.schemas.plugin', 'PluginAgentPet'),
     'PluginCloneOutcome': ('app.schemas.plugin', 'PluginCloneOutcome'),
     'PluginCloneRequest': ('app.schemas.plugin', 'PluginCloneRequest'),
     'PluginDashboard': ('app.schemas.plugin', 'PluginDashboard'),

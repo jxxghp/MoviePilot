@@ -39,6 +39,7 @@ PLUGIN_HOOK_CONTRACTS = {
         PluginHookContract("get_agent_tools", requires_enabled=True),
         PluginHookContract("get_auth_providers", requires_enabled=True),
         PluginHookContract("get_sidebar_nav", requires_enabled=True),
+        PluginHookContract("get_agent_pets", requires_enabled=True),
         PluginHookContract("get_dashboard", requires_enabled=True),
         PluginHookContract("get_dashboard_meta", requires_enabled=True),
         PluginHookContract("get_form"),

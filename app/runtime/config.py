@@ -819,6 +819,8 @@ class ConfigModel(BaseModel):
     AI_AGENT_GLOBAL: bool = False
     # 是否隐藏前端全局智能体入口
     AI_AGENT_HIDE_ENTRY: bool = False
+    # 默认助手形象，格式为 插件ID:形象key，留空使用内置机器人；用户个人选择优先
+    AI_AGENT_PET: str = ""
     # 内置智能助手输出语言，默认使用简体中文
     AI_AGENT_OUTPUT_LANGUAGE: str = "zh-CN"
     # LLM提供商（支持内置 provider，以及从 models.dev 动态补充的平台）

@@ -547,6 +547,36 @@ class PluginSidebarNavItem(BaseModel):
     order: int = Field(default=0, description="同组内排序，越小越靠前")
 
 
+class PluginAgentPet(BaseModel):  # type: ignore[misc]
+    """
+    插件声明的 Agent 助手形象（前端按 plugin_id + key 选择并挂载联邦组件）
+    """
+
+    plugin_id: str = Field(description="插件实例 ID，分身为分身自身 ID")
+    source_plugin_id: str = Field(description="提供前端产物的源插件 ID，非分身时等于 plugin_id")
+    plugin_name: str = Field(description="插件展示名")
+    key: str = Field(description="形象 key，插件内唯一，匹配 [a-z0-9_-]{1,32}")
+    name: str = Field(description="形象展示名")
+    description: Optional[str] = Field(default=None, description="形象一句话说明")
+    mode: Literal["stage", "renderer"] = Field(
+        description="渲染模式：stage（插件拥有角色与视口图层）/ renderer（宿主负责入口行为，插件只绘制）",
+    )
+    component: str = Field(default="AgentPet", description="联邦暴露名，不含 ./ 前缀")
+    api_version: int = Field(default=1, description="形象契约版本，前端忽略不认识的版本")
+    preview_url: Optional[str] = Field(
+        default=None,
+        description="预览图 URL：相对路径已解析为与 remoteEntry 同源的插件静态文件地址，或原样的 http(s)/data URL",
+    )
+    bubbles: Optional[Literal["host", "self"]] = Field(
+        default=None,
+        description="气泡归属，仅 stage 模式：host（宿主按锚点绘制）/ self（插件自绘）；renderer 模式为空",
+    )
+    random_actions: Optional[List[str]] = Field(
+        default=None,
+        description="宿主随机动作候选，仅 renderer 模式；为空表示使用宿主动作全集",
+    )
+
+
 class PluginRatingRequest(BaseModel):
     """插件评分请求"""
 

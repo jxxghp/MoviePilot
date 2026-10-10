@@ -622,6 +622,8 @@ class MediaRecognizeType(Enum):
 class UserConfigKey(Enum):
     # 监控面板
     Dashboard = "Dashboard"
+    # Agent 助手形象选择：{"plugin_id", "key"}、"builtin"（内置机器人）或 null（跟随 AI_AGENT_PET 默认）
+    AgentPet = "AgentPet"
 
 
 # 支持的存储类型

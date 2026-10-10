@@ -1068,6 +1068,12 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         """
         return self._plugin_projection().sidebar()
 
+    def get_plugin_agent_pets(self) -> List[Dict[str, Any]]:
+        """
+        聚合所有已启用 Vue 插件声明的 Agent 助手形象（get_agent_pets）。
+        """
+        return self._plugin_projection().agent_pets()
+
     def get_plugin_dashboard_meta(self) -> List[Dict[str, str]]:
         """
         获取所有插件仪表盘元信息

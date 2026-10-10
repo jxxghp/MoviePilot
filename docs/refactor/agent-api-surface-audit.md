@@ -5,7 +5,7 @@
 
 ## Result
 
-- OpenAPI HTTP operations: **423**
+- OpenAPI HTTP operations: **424**
 - Stable `moviepilot_api` operations: **231**
 - Exact HTTP routes used by the gateway: **229**
 - OpenAPI routes matched directly by the gateway: **228**
@@ -23,7 +23,7 @@
 | `provider-skill` | 12 | Low-level downloader or media-server capability owned by a provider Skill. |
 | `stream_or_binary` | 11 | Streaming or binary response owned by a direct client transport. |
 | `transport_or_identity` | 76 | Authentication, protocol, callback, account, or conversation transport boundary. |
-| `ui_presentation` | 14 | Frontend or plugin-rendered presentation contract. |
+| `ui_presentation` | 15 | Frontend or plugin-rendered presentation contract. |
 
 ## Bounded Dynamic Routes
 
@@ -202,6 +202,7 @@
 | `GET` | `/api/v1/openai/v1/models` | openai | `transport_or_identity` | host-runtime | OpenAI compatible models |
 | `POST` | `/api/v1/openai/v1/responses` | openai | `transport_or_identity` | host-runtime | OpenAI compatible responses |
 | `GET` | `/api/v1/plugin/` | plugin | `gateway` | plugin.installed, plugin.market | 所有插件 |
+| `GET` | `/api/v1/plugin/agent_pets` | plugin | `ui_presentation` | host-ui | 获取插件 Agent 助手形象 |
 | `POST` | `/api/v1/plugin/clone/{plugin_id}` | plugin | `gateway` | plugin.clone | 创建插件分身 |
 | `GET` | `/api/v1/plugin/clone/{plugin_id}/restorable` | plugin | `gateway` | plugin.clone.restorable | 列出可恢复的已停用分身 |
 | `GET` | `/api/v1/plugin/dashboard/meta` | plugin | `ui_presentation` | host-ui | 获取所有插件仪表板元信息 |

@@ -58,6 +58,7 @@ from app.runtime.tasks import TaskRegistry
 from app.schemas.common import JsonObject as _SchemaJsonObject
 from app.schemas.exception import PluginMutationRejectedError
 from app.schemas.plugin import Plugin as _SchemaPlugin
+from app.schemas.plugin import PluginAgentPet as _SchemaPluginAgentPet
 from app.schemas.plugin import PluginDashboard as _SchemaPluginDashboard
 from app.schemas.plugin import PluginDashboardMetaItem as _SchemaPluginDashboardMetaItem
 from app.schemas.plugin import PluginDataSummary as _SchemaPluginDataSummary
@@ -574,6 +575,18 @@ def plugin_sidebar_nav(
     聚合已启用 Vue 插件声明的侧栏入口（get_sidebar_nav），供前端主界面侧栏展示。
     """
     return get_plugin_manager().get_plugin_sidebar_nav()
+
+
+@router.get(  # type: ignore[misc]
+    "/agent_pets", summary="获取插件 Agent 助手形象", response_model=List[_SchemaPluginAgentPet]
+)
+def plugin_agent_pets(
+    _: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None
+) -> Any:
+    """
+    聚合已启用 Vue 插件声明的 Agent 助手形象（get_agent_pets），供前端助手入口选择与挂载。
+    """
+    return get_plugin_manager().get_plugin_agent_pets()
 
 
 @router.get(
