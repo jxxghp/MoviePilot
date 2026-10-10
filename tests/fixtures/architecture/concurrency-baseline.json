@@ -36,6 +36,12 @@
     },
     "target": "asyncio.create_task"
   },
+  "app/adapters/system/plugin/dependency.py:app.runtime.execution.run_in_threadpool_to_completion": {
+    "owners": {
+      "PluginDependencyInstaller.async_install": 2
+    },
+    "target": "app.runtime.execution.run_in_threadpool_to_completion"
+  },
   "app/adapters/system/plugin/dependency.py:asyncio.to_thread": {
     "owners": {
       "PluginDependencyInstaller.async_find_missing": 1

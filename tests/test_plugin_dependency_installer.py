@@ -1,6 +1,8 @@
+import asyncio
+import threading
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from packaging.requirements import Requirement
@@ -485,3 +487,265 @@ demo = { index = "private" }
     ]
     assert "[tool.uv.sources]" in manifest_paths[0].read_text(encoding="utf-8")
     assert "--extra-index-url" in manifest_paths[1].read_text(encoding="utf-8")
+
+
+def test_disabled_plugins_do_not_contribute_dependencies_or_wheels(
+    tmp_path, monkeypatch
+):
+    """停用插件的版本钉子、无效清单和 wheels 都不得进入恢复输入。"""
+    _write_requirements(tmp_path, "Enabled", "demo==2\n")
+    _write_requirements(tmp_path, "Disabled", "demo==1\n")
+    _write_pyproject(tmp_path, "Invalid", "[project\n")
+    enabled_wheels = tmp_path / "enabled" / "wheels"
+    enabled_wheels.mkdir()
+    (tmp_path / "disabled" / "wheels").mkdir()
+    enabled = {"Enabled"}
+    packages = Mock()
+    packages.install_packages_with_fallback.return_value = (True, "installed")
+    installer = PluginDependencyInstaller(
+        packages,
+        installed_plugins_provider=lambda: ["Enabled", "Disabled", "Invalid"],
+        enabled_plugins_provider=lambda: enabled,
+        plugin_dir=tmp_path,
+    )
+    monkeypatch.setattr(installer, "_installed_packages", lambda: {})
+
+    assert installer.find_missing() == ["demo==2"]
+    assert installer.install(installer.find_missing()) == (True, "installed")
+    packages.install_packages_with_fallback.assert_called_once_with(
+        [tmp_path / "enabled" / "requirements.txt"], [enabled_wheels]
+    )
+
+    enabled.clear()
+    assert installer.find_missing() == []
+    assert installer._wheels_dirs() == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_async", [False, True])
+@pytest.mark.parametrize("already_ready", [False, True])
+async def test_conflicting_plugin_does_not_block_others_or_replace_ready_pin(
+    tmp_path, monkeypatch, use_async, already_ready
+):
+    """冲突降级时保护已就绪和刚恢复的插件，并继续恢复无关插件。"""
+    _write_requirements(tmp_path, "Alpha", "demo==1\n")
+    _write_requirements(tmp_path, "Beta", "demo==2\n")
+    _write_requirements(tmp_path, "Other", "unrelated>=1\n")
+    installed = {"demo": Version("2")} if already_ready else {}
+    calls = []
+
+    def install(paths, _wheels):
+        """模拟解析器拒绝互斥约束，不访问真实 Python 环境或网络。"""
+        calls.append([path.parent.name for path in paths])
+        requirements = [
+            requirement
+            for path in paths
+            for requirement in load_dependency_file(path).dependencies
+        ]
+        pins = {str(item.specifier) for item in requirements if item.name == "demo"}
+        if len(pins) > 1:
+            return False, "No solution found when resolving dependencies"
+        for item in requirements:
+            installed[item.name] = Version("2" if str(item.specifier) == "==2" else "1")
+        return True, "installed"
+
+    packages = SimpleNamespace(
+        install_packages_with_fallback=Mock(side_effect=install),
+        async_install_packages_with_fallback=AsyncMock(side_effect=install),
+    )
+    installer = PluginDependencyInstaller(
+        packages,
+        installed_plugins_provider=lambda: ["Alpha", "Beta", "Other"],
+        plugin_dir=tmp_path,
+    )
+    monkeypatch.setattr(installer, "_installed_packages", lambda: dict(installed))
+    monkeypatch.setattr(installer, "_installed_distribution", lambda _name: None)
+    missing = installer.find_missing()
+
+    result = (
+        await installer.async_install(missing)
+        if use_async else installer.install(missing)
+    )
+
+    assert result[0] is False
+    assert ("alpha" if already_ready else "beta") in result[1]
+    assert installed["demo"] == Version("2" if already_ready else "1")
+    assert installed["unrelated"] == Version("1")
+    assert calls == (
+        [["alpha", "beta", "other"], ["beta", "alpha"], ["beta", "other"]]
+        if already_ready else
+        [
+            ["alpha", "beta", "other"], ["alpha"],
+            ["alpha", "beta"], ["alpha", "other"],
+        ]
+    )
+    ready, pending, _source_missing = installer.classify_plugins()
+    assert ready == (["Beta", "Other"] if already_ready else ["Alpha", "Other"])
+    assert pending == (["Alpha"] if already_ready else ["Beta"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_group_failure_or_exception_keeps_other_manifests_recoverable(
+    tmp_path, monkeypatch, use_async
+):
+    """单组异常也不阻断后续组，原始 modern/legacy 来源声明保持完整。"""
+    _write_requirements(tmp_path, "Broken", "broken>=1\n")
+    _write_requirements(
+        tmp_path, "Legacy", "--extra-index-url https://example.com\nlegacy\n"
+    )
+    modern = _write_pyproject(
+        tmp_path, "Modern",
+        '[project]\nname="modern"\nversion="1"\ndependencies=["modern"]\n'
+        '[tool.uv.sources]\nmodern={url="https://example.com/modern.whl"}\n',
+    )
+    calls = []
+
+    def install(paths, _wheels):
+        """拒绝包含坏插件的请求，记录后续原始清单输入。"""
+        calls.append(paths)
+        if len(calls) == 1:
+            return False, "batch failed"
+        if paths[0].parent.name == "broken":
+            raise OSError("group failed")
+        return True, "installed"
+
+    packages = SimpleNamespace(
+        install_packages_with_fallback=Mock(side_effect=install),
+        async_install_packages_with_fallback=AsyncMock(side_effect=install),
+    )
+    installer = PluginDependencyInstaller(
+        packages,
+        installed_plugins_provider=lambda: ["Broken", "Legacy", "Modern"],
+        plugin_dir=tmp_path,
+    )
+    monkeypatch.setattr(installer, "_installed_packages", lambda: {})
+
+    dependencies = ["broken", "legacy", "modern"]
+    result = (
+        await installer.async_install(dependencies)
+        if use_async else installer.install(dependencies)
+    )
+
+    assert result[0] is False
+    assert "broken" in result[1]
+    assert "group failed" in result[1]
+    assert calls[-1] == [
+        tmp_path / "legacy" / "requirements.txt", modern / "pyproject.toml"
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_async", [False, True])
+async def test_fallback_reports_success_when_every_group_recovers(
+    tmp_path, monkeypatch, use_async
+):
+    """批量失败但所有分组均恢复后，同步和异步结果都报告成功。"""
+    for plugin_id in ("Alpha", "Beta"):
+        _write_requirements(tmp_path, plugin_id, f"{plugin_id.lower()}>=1\n")
+    results = [(False, "batch failed"), (True, "alpha"), (True, "beta")]
+    packages = SimpleNamespace(
+        install_packages_with_fallback=Mock(side_effect=results),
+        async_install_packages_with_fallback=AsyncMock(side_effect=results),
+    )
+    installer = PluginDependencyInstaller(
+        packages,
+        installed_plugins_provider=lambda: ["Alpha", "Beta"],
+        plugin_dir=tmp_path,
+    )
+    monkeypatch.setattr(installer, "_installed_packages", lambda: {})
+    result = (
+        await installer.async_install(["alpha", "beta"])
+        if use_async else installer.install(["alpha", "beta"])
+    )
+    assert result == (True, "插件依赖已分组恢复")
+
+
+@pytest.mark.asyncio
+async def test_async_fallback_cancellation_stops_remaining_groups(tmp_path, monkeypatch):
+    """取消分组安装必须传播到启动调用方，后续插件不得继续写环境。"""
+    for plugin_id in ("Alpha", "Beta"):
+        _write_requirements(tmp_path, plugin_id, f"{plugin_id.lower()}>=1\n")
+    packages = SimpleNamespace(
+        async_install_packages_with_fallback=AsyncMock(
+            side_effect=[(False, "batch failed"), asyncio.CancelledError()]
+        ),
+    )
+    installer = PluginDependencyInstaller(
+        packages,
+        installed_plugins_provider=lambda: ["Alpha", "Beta"],
+        plugin_dir=tmp_path,
+    )
+    monkeypatch.setattr(installer, "_installed_packages", lambda: {})
+
+    with pytest.raises(asyncio.CancelledError):
+        await installer.async_install(["alpha", "beta"])
+
+    assert packages.async_install_packages_with_fallback.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_async_install_inspection_runs_outside_event_loop(tmp_path, monkeypatch):
+    """请求准备和失败分组扫描都由托管 worker 执行，不阻塞宿主事件循环。"""
+    for plugin_id in ("Alpha", "Beta"):
+        _write_requirements(tmp_path, plugin_id, f"{plugin_id.lower()}>=1\n")
+    packages = SimpleNamespace(async_install_packages_with_fallback=AsyncMock(
+        side_effect=[(False, "batch failed"), (True, "alpha"), (True, "beta")]
+    ))
+    installer = PluginDependencyInstaller(
+        packages,
+        installed_plugins_provider=lambda: ["Alpha", "Beta"],
+        plugin_dir=tmp_path,
+    )
+    monkeypatch.setattr(installer, "_installed_packages", lambda: {})
+    inspections = []
+
+    def record(operation):
+        """保留真实扫描行为并记录执行线程。"""
+        def inspect(*args):
+            """记录当前检查操作的线程身份。"""
+            inspections.append((operation.__name__, threading.get_ident()))
+            return operation(*args)
+        return inspect
+
+    monkeypatch.setattr(installer, "_prepare_install_request", record(
+        installer._prepare_install_request
+    ))
+    monkeypatch.setattr(installer, "_fallback_plan", record(installer._fallback_plan))
+    assert (await installer.async_install(["alpha", "beta"]))[0] is True
+    assert [name for name, _thread in inspections] == [
+        "_prepare_install_request", "_fallback_plan"
+    ]
+    assert all(thread != threading.get_ident() for _name, thread in inspections)
+
+
+@pytest.mark.asyncio
+async def test_async_install_waits_for_inspection_before_propagating_cancel(
+    tmp_path, monkeypatch
+):
+    """取消请求等待在途扫描收敛，再向上抛出，且不启动任何包写入。"""
+    started = asyncio.Event()
+    release = threading.Event()
+    loop = asyncio.get_running_loop()
+    packages = SimpleNamespace(async_install_packages_with_fallback=AsyncMock())
+    installer = PluginDependencyInstaller(packages, plugin_dir=tmp_path)
+
+    def prepare(_dependencies):
+        """用受控只读扫描模拟取消发生时仍在途的 worker。"""
+        loop.call_soon_threadsafe(started.set)
+        assert release.wait(timeout=5)
+        return None, (False, "no manifest")
+
+    monkeypatch.setattr(installer, "_prepare_install_request", prepare)
+    task = asyncio.create_task(installer.async_install(["demo"]))
+    try:
+        await asyncio.wait_for(started.wait(), timeout=5)
+        task.cancel()
+        await asyncio.sleep(0)
+        assert not task.done()
+        packages.async_install_packages_with_fallback.assert_not_awaited()
+    finally:
+        release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    packages.async_install_packages_with_fallback.assert_not_awaited()

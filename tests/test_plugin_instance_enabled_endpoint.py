@@ -135,3 +135,26 @@ def test_classification_without_a_loadable_port_keeps_every_plugin():
     assert classification.ready == ("PluginA",)
     assert classification.missing_dependencies == ("PluginC",)
     assert classification.missing_source == ("PluginD",)
+
+
+def test_enabled_clone_keeps_source_classification_when_host_is_disabled():
+    """停用本体只阻止本体启动，启用分身仍按共享源码和实际依赖分类。"""
+    service = PluginDependencyService(
+        system=lambda: SimpleNamespace(dependency=SimpleNamespace(
+            classify_plugins=lambda: (["Ready"], ["Pending"], ["Missing"])
+        )),
+        instances=lambda: {
+            source + "Clone": PluginInstance(
+                instance_id=source + "Clone", source_plugin_id=source
+            )
+            for source in ("Ready", "Pending", "Missing")
+        },
+        loadable_hosts=set,
+        log=SimpleNamespace(),
+    )
+
+    classification = service.classify_plugins()
+
+    assert classification.ready == ("ReadyClone",)
+    assert classification.missing_dependencies == ("PendingClone",)
+    assert classification.missing_source == ("MissingClone",)

@@ -492,7 +492,11 @@ def configure_plugin_services() -> None:
         installed_plugins_provider=lambda: get_configured_system_config().get(
             SystemConfigKey.UserInstalledPlugins
         )
-        or []
+        or [],
+        enabled_plugins_provider=lambda: {
+            instance.source_plugin_id
+            for instance in get_plugin_instance_directory().list_enabled()
+        },
     )
     market_transport = market_composition.transport
     market_client = market_composition.client
