@@ -1,0 +1,117 @@
+"""覆盖 RSS 领域上下文通过工作流动作桥接后提交下载的契约。"""
+
+from unittest.mock import Mock
+
+import pytest
+
+from app.domain.context import Context, MediaInfo, TorrentInfo
+from app.domain.meta.metabase import MetaBase
+from app.domain.metainfo import MetaInfo
+from app.schemas.types import MediaType
+from app.schemas.workflow import ActionContext
+from app.workflow.actions import add_download, fetch_rss, filter_torrents
+from app.workflow.actions.add_download import AddDownloadAction
+from app.workflow.actions.fetch_rss import FetchRssAction
+from app.workflow.actions.filter_torrents import FilterTorrentsAction
+
+
+@pytest.mark.parametrize("match_media", [False, True])
+@pytest.mark.parametrize("only_lack", [False, True])
+def test_rss_filter_add_download_accepts_domain_context(monkeypatch, match_media, only_lack):
+    """RSS 无论是否预先识别，都应经资源过滤及动作输入桥接正常提交下载。"""
+    media = MediaInfo(title="Show", type=MediaType.TV, tmdb_id=123)
+    rss_helper = Mock()
+    rss_helper.parse.return_value = [{
+        "title": "Show S01E03",
+        "enclosure": "https://example.com/show.torrent",
+        "link": "https://example.com/details/1",
+        "size": 1024,
+    }]
+    media_chain = Mock()
+    media_chain.recognize_by_meta.return_value = media
+    download_chain = Mock()
+    download_chain.media_exists.return_value = None
+    download_chain.download_single.return_value = "hash-show"
+    torrent_helper = Mock()
+    torrent_helper.filter_torrent.return_value = True
+    filter_chain = Mock()
+    filter_chain.filter_torrents.return_value = True
+    monkeypatch.setattr(fetch_rss, "RssHelper", lambda: rss_helper)
+    monkeypatch.setattr(fetch_rss, "MediaChain", lambda: media_chain)
+    monkeypatch.setattr(add_download, "MediaChain", lambda: media_chain)
+    monkeypatch.setattr(add_download, "DownloadChain", lambda: download_chain)
+    monkeypatch.setattr(filter_torrents, "TorrentHelper", lambda: torrent_helper)
+    monkeypatch.setattr(filter_torrents, "ActionChain", lambda: filter_chain)
+    monkeypatch.setattr(fetch_rss.runtime_stop_state, "is_workflow_stopped", lambda _wid: False)
+
+    rss_result = FetchRssAction("rss").execute_with_inputs(
+        workflow_id=1,
+        params={"url": "https://example.com/rss.xml", "match_media": match_media},
+        inputs={},
+        runtime={},
+        context=ActionContext(),
+    )
+    source = rss_result.outputs["torrents"][0]
+    assert isinstance(source, Context)
+    assert source.media_info is (media if match_media else None)
+
+    filter_result = FilterTorrentsAction("filter").execute_with_inputs(
+        workflow_id=1,
+        params={},
+        inputs=rss_result.outputs,
+        runtime={},
+        context=ActionContext(),
+    )
+    action = AddDownloadAction("download")
+    saved_cache = []
+    action.check_cache = lambda _wid, _key: False
+    action.save_cache = lambda _wid, key: saved_cache.append(key)
+    result = action.execute_with_inputs(
+        workflow_id=1,
+        params={"only_lack": only_lack, "downloader": "qb", "save_path": "/downloads", "labels": "rss"},
+        inputs=filter_result.outputs,
+        runtime={},
+        context=ActionContext(),
+    )
+
+    assert result.success is True
+    assert action.done is True
+    download_chain.download_single.assert_called_once_with(
+        context=source, downloader="qb", save_path="/downloads", label="rss",
+    )
+    assert source.media_info is media
+    assert isinstance(source.meta_info, MetaBase)
+    assert isinstance(source.torrent_info, TorrentInfo)
+    assert media_chain.recognize_by_meta.call_count == 1
+    assert download_chain.media_exists.call_count == int(only_lack)
+    assert saved_cache == ["None-Show S01E03"]
+    assert result.outputs["downloads"][0].download_id == "hash-show"
+    assert result.context.downloads[0].downloader == "qb"
+
+
+def test_add_download_reuses_complete_domain_context():
+    """领域对象应原样交给下载链，保留剧集限制、识别状态及原始媒体信息。"""
+    context = Context(
+        meta_info=MetaInfo("Show S01E03"),
+        media_info=MediaInfo(title="Show", type=MediaType.TV, tmdb_id=123),
+        torrent_info=TorrentInfo(title="Show S01E03"),
+        media_recognize_fail_count=2,
+        allowed_episodes={3},
+        selected_episodes=[3],
+        resource_source="rss",
+    )
+
+    assert AddDownloadAction._to_domain_context(context) is context
+
+
+@pytest.mark.parametrize("missing", ["media_info", "torrent_info"])
+def test_add_download_rejects_incomplete_domain_context(missing):
+    """原生领域输入仍须满足下载动作的媒体及种子信息完整性要求。"""
+    context = Context(
+        media_info=MediaInfo(title="Show", type=MediaType.TV),
+        torrent_info=TorrentInfo(title="Show S01E03"),
+    )
+    setattr(context, missing, None)
+
+    with pytest.raises(ValueError, match="缺少媒体或种子信息"):
+        AddDownloadAction._to_domain_context(context)

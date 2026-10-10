@@ -132,10 +132,13 @@ class AddDownloadAction(BaseAction):
         return context
 
     @staticmethod
-    def _to_domain_context(context: WorkflowTorrentContext) -> DownloadContext:
-        """把工作流传输模型转换为下载链使用的领域上下文和媒体类型。"""
+    def _to_domain_context(context: WorkflowTorrentContext | DownloadContext) -> DownloadContext:
+        """复用 RSS 的领域上下文，或把工作流传输模型还原为下载链领域对象。"""
         if context.media_info is None or context.torrent_info is None:
             raise ValueError("工作流下载上下文缺少媒体或种子信息")
+
+        if isinstance(context, DownloadContext):
+            return context
 
         context_data: dict[str, Any] = context.model_dump()
         media_data = context_data.get("media_info")
