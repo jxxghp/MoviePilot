@@ -104,6 +104,8 @@ def test_agent_pets_projects_defaults_and_preview_url_next_to_remote_entry():
             "plugin_id": "PetDemo",
             "source_plugin_id": "PetDemo",
             "plugin_name": "形象插件",
+            "plugin_version": "1.0.0",
+            "remote_url": "/plugin/file/petdemo/dist/assets/remoteEntry.js?v=1.0.0",
             "key": "chibi",
             "name": "看板娘",
             "description": None,
@@ -119,6 +121,8 @@ def test_agent_pets_projects_defaults_and_preview_url_next_to_remote_entry():
             "plugin_id": "PetDemo",
             "source_plugin_id": "PetDemo",
             "plugin_name": "形象插件",
+            "plugin_version": "1.0.0",
+            "remote_url": "/plugin/file/petdemo/dist/assets/remoteEntry.js?v=1.0.0",
             "key": "sprite_1",
             "name": "精灵",
             "description": "传统吉祥物",
@@ -134,6 +138,8 @@ def test_agent_pets_projects_defaults_and_preview_url_next_to_remote_entry():
             "plugin_id": "PetDemo",
             "source_plugin_id": "PetDemo",
             "plugin_name": "形象插件",
+            "plugin_version": "1.0.0",
+            "remote_url": "/plugin/file/petdemo/dist/assets/remoteEntry.js?v=1.0.0",
             "key": "plain",
             "name": "无预览",
             "description": None,
@@ -233,6 +239,9 @@ def test_agent_pets_instance_keeps_instance_id_and_source_identity():
     assert pet["source_plugin_id"] == "PetDemo"
     assert pet["preview_url"] == "/plugin/file/petdemowork/dist/assets/preview.png"
     assert pet["avatar_url"] == "/plugin/file/petdemowork/dist/assets/avatar.png"
+    # 分身的联邦入口也按实例 ID 访问，由静态文件接口映射回源插件目录
+    assert pet["remote_url"] == "/plugin/file/petdemowork/dist/assets/remoteEntry.js"
+    assert pet["plugin_version"] is None
 
 
 def test_agent_pets_isolates_hook_failure_and_non_list_result():
