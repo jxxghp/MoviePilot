@@ -366,3 +366,15 @@ def test_user_config_endpoint_reports_oversized_agent_pet_state(monkeypatch):
     assert "16384" in rejected.message
     assert accepted.success is True
     assert repository.writes == [("alice", "AgentPet", "builtin")]
+
+
+def test_registry_advances_generation_on_enabled_state_change():
+    """启停切换推进前端刷新代次，前端据此重新读取形象声明。"""
+    from app.runtime.extensions.plugin.registry import PluginRegistry
+
+    registry = PluginRegistry()
+    before = registry.generation
+
+    registry.mark_enabled_state_changed("PetDemo")
+
+    assert registry.generation == before + 1
