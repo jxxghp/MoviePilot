@@ -38,6 +38,7 @@ class FilterTorrentsAction(BaseAction):
     }
 
     def __init__(self, action_id: str):
+        """初始化过滤后资源集合。"""
         super().__init__(action_id)
         self._torrents = []
 
@@ -47,6 +48,7 @@ class FilterTorrentsAction(BaseAction):
 
     @property
     def success(self) -> bool:
+        """返回资源过滤是否已完成。"""
         return self.done
 
     def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
@@ -57,6 +59,9 @@ class FilterTorrentsAction(BaseAction):
         for torrent in context.torrents:
             if runtime_stop_state.is_workflow_stopped(workflow_id):
                 break
+            if isinstance(torrent, dict):
+                # 持久化节点输出以字典恢复，先建立传输模型，再由过滤边界还原枚举等领域接口。
+                torrent = WorkflowTorrentContext.model_validate(torrent)
             torrent_info, media_info = self._to_filter_inputs(torrent)
             if TorrentHelper().filter_torrent(
                     torrent_info=torrent_info,

@@ -129,7 +129,6 @@
       "app/scheduler/execution.py:SchedulerExecutionOwner.start": 21,
       "app/startup/composition/outbox.py:build_outbox_handlers": 16,
       "app/workflow/__init__.py:WorkflowManager._check_complex_condition": 16,
-      "app/workflow/actions/add_download.py:AddDownloadAction.execute": 16,
       "app/workflow/actions/fetch_torrents.py:FetchTorrentsAction.execute": 16,
       "app/workflow/actions/transfer_file.py:TransferFileAction.execute": 20
     },

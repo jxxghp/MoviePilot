@@ -2796,7 +2796,7 @@
     "arg-type": 1,
     "attr-defined": 1,
     "type-arg": 1,
-    "union-attr": 9,
+    "union-attr": 8,
     "var-annotated": 1
   },
   "app/workflow/actions/add_subscribe.py": {

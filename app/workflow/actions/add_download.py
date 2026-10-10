@@ -1,5 +1,5 @@
 from dataclasses import fields
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 from pydantic import Field
 
@@ -60,9 +60,7 @@ class AddDownloadAction(BaseAction):
         """
         params = AddDownloadParams(**params)
         _started = False
-        for t in context.torrents:
-            if runtime_stop_state.is_workflow_stopped(workflow_id):
-                break
+        for t in self._iter_resources(workflow_id, context):
             # 检查缓存
             cache_key = f"{t.torrent_info.site}-{t.torrent_info.title}"
             if self.check_cache(workflow_id, cache_key):
@@ -129,9 +127,29 @@ class AddDownloadAction(BaseAction):
         self.job_done(f"已添加 {len(self._added_downloads)} 个下载任务")
         return context
 
+    def _iter_resources(
+            self, workflow_id: int, context: ActionContext,
+    ) -> Iterator[WorkflowTorrentContext | DownloadContext]:
+        """恢复节点输出字典并保留实时领域对象；历史文本提示重跑并保留动作失败状态。"""
+        for resource in context.torrents or []:
+            if runtime_stop_state.is_workflow_stopped(workflow_id):
+                break
+            if isinstance(resource, str):
+                # 旧版文本无法可靠还原，避免把丢失资源报告为成功。
+                self._has_error = True
+                logger.warning("工作流历史资源已保存为文本，无法恢复，跳过该资源；请重新运行工作流获取资源")
+                continue
+            if isinstance(resource, dict):
+                resource = WorkflowTorrentContext.model_validate(resource)
+            yield resource
+
     @staticmethod
-    def _to_domain_context(context: WorkflowTorrentContext | DownloadContext) -> DownloadContext:
-        """复用 RSS 的领域上下文，或把工作流传输模型还原为下载链领域对象。"""
+    def _to_domain_context(
+            context: WorkflowTorrentContext | DownloadContext | dict[str, Any],
+    ) -> DownloadContext:
+        """复用 RSS 领域上下文，或把恢复的节点输出字典及传输模型还原为下载链领域对象。"""
+        if isinstance(context, dict):
+            return AddDownloadAction._to_domain_context(WorkflowTorrentContext.model_validate(context))
         if context.media_info is None or context.torrent_info is None:
             raise ValueError("工作流下载上下文缺少媒体或种子信息")
 
