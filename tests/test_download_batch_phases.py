@@ -317,3 +317,62 @@ def test_failed_complete_coverage_submission_does_not_confirm_or_settle(batch):
     assert remaining["tmdb:1"][1].episodes == []
     assert candidate.confirmed_full_coverage is False
     batch.chain.download_single.assert_called_once()
+
+
+def test_higher_priority_labelled_full_pack_wins_whole_season_phase(batch):
+    """标注完整集数的高优先级包与无集数整季包同轮竞争，不被后者抢先清空缺季。"""
+    labelled = _context("labelled", episodes=(1, 2, 3, 4))
+    whole = _context("whole")
+    missing = {"tmdb:1": {1: _missing(complete=True)}}
+
+    result, remaining = batch.chain.batch_download([labelled, whole], missing)
+
+    assert result == [labelled]
+    assert remaining == {}
+    batch.chain.download_torrent.assert_called_once()
+    assert batch.chain.download_single.call_args.kwargs["torrent_content"] == b"torrent"
+    assert labelled.confirmed_full_coverage is True
+
+
+@pytest.mark.parametrize(
+    ("episodes", "total"),
+    [((1, 2), 4), ((1, 2, 3, 4), 0)],
+    ids=["partial-range", "unknown-total"],
+)
+def test_labelled_pack_without_full_coverage_stays_out_of_whole_season_phase(batch, episodes, total):
+    labelled = _context("labelled", episodes=episodes)
+    whole = _context("whole")
+    missing = {"tmdb:1": {1: _missing(total=total)}}
+
+    result, _remaining = batch.chain.batch_download([labelled, whole], missing)
+
+    assert result == [whole]
+    batch.chain.download_torrent.assert_called_once()
+    assert batch.chain.download_single.call_args.kwargs["context"] is whole
+
+
+def test_labelled_full_pack_respects_candidate_allowed_episodes(batch):
+    labelled = _context("labelled", episodes=(1, 2, 3, 4))
+    labelled.allowed_episodes = {1, 2}
+    missing = {"tmdb:1": {1: _missing()}}
+
+    result, remaining = batch.chain.batch_download([labelled], missing)
+
+    assert result == []
+    assert remaining["tmdb:1"][1].episodes == []
+    batch.chain.download_torrent.assert_not_called()
+    batch.chain.download_single.assert_not_called()
+
+
+def test_labelled_full_pack_magnet_falls_back_to_episode_pack_phase(batch):
+    labelled = _context("labelled", episodes=(1, 2, 3, 4))
+    missing = {"tmdb:1": {1: _missing(complete=True)}}
+    batch.chain.download_torrent.return_value = ("magnet:?xt=test", None, [])
+
+    result, remaining = batch.chain.batch_download([labelled], missing)
+
+    assert result == [labelled]
+    assert remaining == {}
+    batch.chain.download_torrent.assert_called_once()
+    assert "torrent_content" not in batch.chain.download_single.call_args.kwargs
+    batch.chain._record_download_failure.assert_not_called()

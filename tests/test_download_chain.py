@@ -1509,9 +1509,9 @@ def test_batch_download_rejects_complete_coverage_when_files_have_same_count_but
 
 def test_batch_download_accepts_complete_coverage_when_title_episodes_cover_target(monkeypatch):
     """
-    显式标出完整范围的候选也可满足完整覆盖任务。
+    显式标出完整范围的候选也可满足完整覆盖任务，并在整季阶段核对种子文件后复用内容提交。
     """
-    _FakeBatchTorrentHelper.episodes = []
+    _FakeBatchTorrentHelper.episodes = list(range(1, 144))
     monkeypatch.setattr(download_batch, "TorrentHelper", _FakeBatchTorrentHelper)
     monkeypatch.setattr(download_selection, "TorrentHelper", _FakeBatchTorrentHelper)
     monkeypatch.setattr(eventmanager, "send_event", lambda *args, **kwargs: None)
@@ -1519,7 +1519,7 @@ def test_batch_download_accepts_complete_coverage_when_title_episodes_cover_targ
     chain = DownloadChain.__new__(DownloadChain)
     chain.eventmanager = MagicMock()
     chain.eventmanager.send_event.return_value = None
-    chain.download_torrent = MagicMock()
+    chain.download_torrent = MagicMock(return_value=(b"torrent", None, ["files"]))
     chain.download_single = MagicMock(return_value="hash")
 
     context = _build_tv_context(episode_list=list(range(1, 144)))
@@ -1539,8 +1539,9 @@ def test_batch_download_accepts_complete_coverage_when_title_episodes_cover_targ
     assert downloads == [context]
     assert lefts == {}
     assert context.confirmed_full_coverage is True
-    chain.download_torrent.assert_not_called()
+    chain.download_torrent.assert_called_once()
     chain.download_single.assert_called_once()
+    assert chain.download_single.call_args.kwargs["torrent_content"] == b"torrent"
 
 
 def test_batch_download_rejects_complete_coverage_when_title_episodes_are_partial(monkeypatch):

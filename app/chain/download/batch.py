@@ -237,13 +237,20 @@ class _BatchDownloadRun:
         if media is None or meta is None or media.type != MediaType.TV:
             return []
         seasons = meta.season_list or [1]
-        if meta.episode_list or not self.owner._matches_media_identity(media, media_key):
+        if not self.owner._matches_media_identity(media, media_key):
             return []
         if context in self.downloaded or self._in_failure_cooldown(context):
             return []
         if not set(seasons).issubset(set(needed)):
             return []
         required = _selection.get_required_episodes(self.no_exists, media_key, seasons[0])
+        # 标注集数的单季包只在完整覆盖目标范围时与无集数整季包同轮按优先级竞争，
+        # 否则低优先级整季包会先清空缺季，使高优先级完整包失去下载机会。
+        # 准入后同样解析种子文件核对真实集数；未知总集数或部分范围仍交给后续阶段。
+        if meta.episode_list and (
+                len(seasons) != 1 or not required or not required.issubset(set(meta.episode_list))
+        ):
+            return []
         if not _selection.allows_full_season(seasons, required, context):
             return []
         return seasons
