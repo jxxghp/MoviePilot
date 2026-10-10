@@ -139,6 +139,21 @@ def test_deeper_page_with_newer_episode_restores_normal_collection():
     assert collection.active_sources() == ["A"]
 
 
+def test_full_search_keeps_unseen_episodes_behind_the_page_barrier():
+    """完整搜索不能由前页最大集号推断后页没有资源，并提前释放目标。"""
+    collection = SearchCollection({"1:3"}, {"A": SearchSourceCursor(), "B": SearchSourceCursor()})
+    page = [released("ep1", 1)]
+    collection.observe(page)
+    for source in collection.sources.values():
+        source.accept_page(page=0, evidence=page, targets=collection.remaining, exhausted=False, now=1)
+    assert collection.unreleased() == {"1:3"}
+    assert collection.ready(full=True) == set()
+    assert collection.active_sources(full=True) == ["A", "B"]
+    for source in collection.sources.values():
+        source.exhausted = True
+    assert collection.ready(full=True) == {"1:3"}
+
+
 def test_without_any_resource_of_the_season_targets_keep_normal_collection():
     collection = SearchCollection({"1:5"}, {"A": SearchSourceCursor(next_page=1)})
     collection.observe([SearchResourceEvidence("other", frozenset())])

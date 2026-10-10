@@ -179,13 +179,122 @@ def test_movie_smart_boundary_and_complete_upgrade_search(owner, monkeypatch, fu
 
 
 def test_whole_season_uses_trusted_range_or_complete_scan(owner):
+    """整季展开为真实集号后仍保留完整搜索，未知集数沿用整季目标。"""
     from app.chain.search.scan import search_targets
     season_plan = plan([])
     season_plan.no_exists["tmdb:1"][1].total_episode = 1200
     assert len(search_targets(season_plan)) == 1200
+    assert SearchScan(owner=owner, plan=season_plan).full
     season_plan.no_exists["tmdb:1"][1].total_episode = 9999
     assert search_targets(season_plan) == {"1:season"}
     assert SearchScan(owner=owner, plan=season_plan).full
+
+
+def test_whole_season_waits_for_late_pack_across_sites_and_checkpoint(owner, monkeypatch):
+    """散集关闭、站点冷却和检查点恢复都不能先于后页整季包提交。"""
+    from app.application.search.session import SearchSessionSnapshot, encode_search_state
+    from app.application.site.observation import SiteSearchObservation
+    from app.chain.search.scan import ScanPage
+
+    monkeypatch.setattr(owner, "_sync_indexers", lambda _sites: [
+        {"id": 1, "name": "A"}, {"id": 2, "name": "B"}])
+    season_plan = plan([])
+    season_plan.no_exists["tmdb:1"][1].total_episode = 3
+    pack = TorrentInfo(site=2, description="complete", title="Show 2026 S01 Complete 1080p",
+                       enclosure="https://site.example/download?id=complete")
+    data = {"1:Show": {0: [torrent(1)], 1: [torrent(2)]},
+            "2:Show": {0: [torrent(1)], 1: [torrent(2)], 2: [pack]}}
+    calls = []
+    cooling = {"active": True}
+
+    def fetch(_sources, key, page, **_params):
+        """第二站点下一页暂时冷却，其他来源可继续推进到末页。"""
+        if key == "2:Show" and page == 1 and cooling["active"]:
+            retry = (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat(timespec="seconds")
+            return ScanPage([], SiteSearchObservation(), retry, "cooldown")
+        calls.append((key, page))
+        items = data.get(key, {}).get(page, [])
+        return ScanPage(items, SiteSearchObservation(True, "success", raw_count=len(items)))
+
+    monkeypatch.setattr(SearchSources, "fetch", fetch)
+    initial = SearchScan(owner=owner, plan=season_plan)
+    submitted = []
+
+    def submit(items, ready):
+        """所有来源搜完才统一交给既有下载择优入口。"""
+        assert all(source.exhausted for source in scan.collection.sources.values())
+        submitted.append(({item.torrent_info.description for item in items}, ready))
+        return ready
+
+    scan = initial
+    scan.run(submit)
+    assert submitted == []
+    assert scan.collection.sources["1:Show"].exhausted
+    assert scan.collection.sources["2:Show"].next_page == 1
+    snapshot = SearchSessionSnapshot("round", 0, encode_search_state(scan.state()))
+    scan = SearchScan(owner=owner, plan=season_plan, snapshot=snapshot)
+    assert not scan.restart
+    cooling["active"] = False
+    scan.retry.clear()
+    scan.run(submit)
+    assert len(submitted) == 1
+    assert submitted[0][0] == {"1-1", "2-1", "complete"}
+    assert submitted[0][1] == {"1:1", "1:2", "1:3"}
+    assert calls.count(("2:Show", 0)) == 1
+    assert not scan.collection.remaining
+
+
+def test_whole_season_without_complete_pack_still_submits_parts_at_the_end(owner, monkeypatch):
+    """搜完没有整季包时照常下载散集，保留逐集结算而不丢弃候选。"""
+    season_plan = plan([])
+    season_plan.no_exists["tmdb:1"][1].total_episode = 2
+    calls = pages(owner, monkeypatch, {0: [torrent(1)], 1: [torrent(2)]})
+    submitted = []
+    scan = SearchScan(owner=owner, plan=season_plan)
+    scan.run(lambda items, ready: submitted.append((calls[-1], len(items), ready)) or ready)
+    assert submitted == [(2, 2, {"1:1", "1:2"})]
+    assert not scan.collection.remaining
+
+
+def test_full_mode_checks_aliases_when_first_name_only_has_older_episodes(owner, monkeypatch):
+    """前一名称只找到旧集时，完整模式仍须翻完并尝试后续名称。"""
+    monkeypatch.setattr(owner, "_prepare_params", lambda **_params: (None, ["First", "Alias"]))
+    calls = []
+
+    def request(**params):
+        """第一个名称没有目标集，第二个名称才找到它。"""
+        calls.append((params["keyword"], params["page"]))
+        items = [] if params["page"] else [torrent(1 if params["keyword"] == "First" else 3)]
+        report_site_search_outcome(attempted=True, outcome="success")
+        report_site_search_page(raw_count=len(items))
+        return items
+
+    monkeypatch.setattr(owner, "search_site_torrents", request)
+    scan = SearchScan(owner=owner, plan=plan([3]), full=True)
+    scan.run(lambda _items, ready: ready)
+    assert calls == [("First", 0), ("First", 1), ("Alias", 0), ("Alias", 1)]
+    assert not scan.collection.remaining
+
+
+def test_whole_season_restarts_old_smart_checkpoint_and_keeps_submitted_targets(owner, monkeypatch):
+    """旧智能模式检查点需重搜以补齐整季候选，已经提交的集数仍保留。"""
+    from app.application.search.session import SearchSessionSnapshot, encode_search_state
+
+    old = SearchScan(owner=owner, plan=plan([1, 2]))
+    old.collection.settle({"1:1"})
+    old.submitted.add("1:1")
+    season_plan = plan([])
+    season_plan.no_exists["tmdb:1"][1].total_episode = 2
+    scan = SearchScan(owner=owner, plan=season_plan,
+                      snapshot=SearchSessionSnapshot("round", 0, encode_search_state(old.state())))
+    assert scan.restart and scan.full
+    assert scan.collection.settled == {"1:1"}
+    calls = pages(owner, monkeypatch, {0: [torrent(1), torrent(2)]})
+    batches = []
+    scan.run(lambda _items, ready: batches.append(ready) or ready)
+    assert calls == [0, 1]
+    assert batches == [{"1:2"}]
+    assert scan.submitted == {"1:1", "1:2"}
 
 
 def test_no_candidate_filter_drives_full_fallback_from_current_cursor(owner, monkeypatch):

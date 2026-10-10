@@ -174,10 +174,10 @@ class SearchCollection:
         return result
 
     def ready(self, *, full: bool = False) -> set[str]:
-        """正常来源均结束收集才就绪，完整模式及兜底必须等真实搜尽；站点未收录目标查过第一页即就绪。"""
+        """完整模式等待所有来源结束；智能模式可按关闭证据或站点未收录判断提前就绪。"""
         if not self.sources:
             return set()
-        unreleased = self.unreleased()
+        unreleased = set() if full else self.unreleased()
         return {
             target for target in self.remaining
             if all(
@@ -189,8 +189,8 @@ class SearchCollection:
         }
 
     def active_sources(self, *, full: bool = False) -> list[str]:
-        """只让未满足目标驱动共用游标，完整模式不使用智能关闭；站点未收录目标只驱动第一页。"""
-        driving = self.remaining - self.unreleased()
+        """完整模式由所有未满足目标驱动分页，智能模式才按站点已见集号裁剪目标。"""
+        driving = self.remaining if full else self.remaining - self.unreleased()
         fallback = driving if full else self.fallback
         return [key for key, source in self.sources.items()
                 if source.drives_search(driving if source.next_page else self.remaining, fallback)]

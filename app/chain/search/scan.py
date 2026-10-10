@@ -172,12 +172,17 @@ class SearchScan:
         self.media = plan.mediainfo
         self.owner, self.plan, self.execution = cast(_SearchOwnerBase, owner), plan, execution
         self.repository, self.snapshot = repository, snapshot
-        self.full = full or any(target.endswith(":season") for target in search_targets(plan))
+        targets = search_targets(plan)
+        # 整季缺失即使展开为逐集结算目标，也必须保留整季收集屏障。
+        self.full = (full or any(target.endswith(":season") for target in targets)
+                     or (self.media.type == MediaType.TV and any(
+                         not missing.episodes for seasons in (plan.no_exists or {}).values()
+                         for missing in seasons.values())))
         self.target_scope = target_scope
         self.page_limit = page_limit
         self.ended = False
         self.restart = False
-        self.collection = SearchCollection(search_targets(plan))
+        self.collection = SearchCollection(targets)
         self.identity: dict[str, Any] = {}
         self.candidates: dict[str, Any] = {}
         self.live: dict[str, Context] = {}
@@ -312,7 +317,7 @@ class SearchScan:
         submitted = format_ranges([int(target.split(":")[1]) for target in self.submitted
                                    if ":" in target and not target.endswith(":season")]) or "无"
         page = max((source.next_page for source in self.collection.sources.values()), default=0)
-        unreleased = format_ranges([int(target.split(":")[1]) for target in self.collection.unreleased()])
+        unreleased = "" if self.full else format_ranges([int(target.split(":")[1]) for target in self.collection.unreleased()])
         waiting = f"（其中 {unreleased} 站点尚未收录，交给订阅模式追更）" if unreleased else ""
         if self.ended:
             failed = any(source.failed for source in self.collection.sources.values())
@@ -623,8 +628,8 @@ class SearchScan:
                 self.choose(self.collection.ready(full=self.full), submit)
                 if self._has_cached_ready() or self.collection.active_sources(full=self.full):
                     continue
-                # 只剩站点未收录目标时不再尝试别名：已见集数证明主关键词有效，后续集交给订阅模式追更。
-                if not self.collection.pending or not self._add_sources():
+                # 智能模式只剩站点未收录目标时不再尝试别名；完整模式仍保留别名的深页收集机会。
+                if not (self.full or self.collection.pending) or not self._add_sources():
                     self._finish_round()
                     return
                 self.checkpoint()
