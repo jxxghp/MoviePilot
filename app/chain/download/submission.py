@@ -3,6 +3,7 @@
 import base64
 import json
 import re
+from copy import copy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Set, Tuple, Union, cast
@@ -62,6 +63,47 @@ class _PreparedDownload:
 
 class _DownloadResourceOwner(_DownloadOwnerBase):
     """种子获取、间接地址解析与资源下载事件 owner。"""
+
+    @staticmethod
+    def _credential_origin(url: Optional[str]) -> Optional[tuple[str, str, int]]:
+        """仅返回无内嵌账号的 HTTP 来源，避免按宽泛域名向其他地址补发凭据。"""
+        try:
+            parts = urlparse(url or "")
+            if (parts.scheme not in ("http", "https") or not parts.hostname
+                    or parts.username is not None or parts.password is not None):
+                return None
+            port = parts.port if parts.port is not None else (443 if parts.scheme == "https" else 80)
+            return parts.scheme, parts.hostname, port
+        except ValueError:
+            return None
+
+    def _with_site_credentials(self, torrent: TorrentInfo) -> TorrentInfo:
+        """为同来源的直接下载补齐 Cookie 和缺失 UA，不改写调用方对象或换票协议。"""
+        if torrent.site_cookie:
+            return torrent
+        origin = self._credential_origin(torrent.enclosure)
+        if origin is None:
+            return torrent
+        try:
+            if torrent.site is not None:
+                site = self.site_repository.get(torrent.site)
+            else:
+                matches = [
+                    item for item in self.site_repository.list()
+                    if self._credential_origin(item.url) == origin
+                ]
+                site = matches[0] if len(matches) == 1 else None
+        except Exception as err:
+            # 查询异常可能包含数据库连接信息，只记录类型并保留既有下载行为。
+            logger.warning(f"读取种子下载站点凭据失败：{type(err).__name__}")
+            return torrent
+        if not site or not site.cookie or self._credential_origin(site.url) != origin:
+            return torrent
+        enriched = copy(torrent)
+        enriched.site_cookie = site.cookie
+        if not torrent.site_ua and site.ua:
+            enriched.site_ua = site.ua
+        return enriched
 
     @staticmethod
     def _normalize_indirect_download_url(url: str, base_url: Optional[str] = None) -> str:
@@ -191,6 +233,7 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
             return None, "", []
         if torrent.enclosure.startswith("magnet:"):
             return torrent.enclosure, "", []
+        torrent = self._with_site_credentials(torrent)
         # Cookie
         site_cookie: Optional[str] = torrent.site_cookie
         indirect_download = torrent.enclosure.startswith("[")

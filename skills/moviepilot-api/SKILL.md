@@ -267,6 +267,13 @@ Select the operation for the task first, then send only fields declared by that 
 
 The `download.add` body must contain `torrent_in` (at least `title` and `enclosure`) plus sibling `media_source` and `media_id`; do not put a magnet URI in `url`, or move media identity and filters into `query`. When a write returns `unknown`, never retry it; verify the actual state with a supported read operation first.
 
+Preserve the candidate's `site` ID and download URL. For direct HTTP(S) torrents,
+`site_cookie` may be omitted: the backend fills a missing Cookie and User-Agent
+from the configured site only when the download URL matches its scheme, host,
+and port. Without a site ID, this requires exactly one matching configured site.
+Explicit credentials and proxy selection are preserved. Magnet and two-step
+token exchange downloads retain their existing credential rules.
+
 - Put route placeholders such as `subscribe_id`, `hashString`, `plugin_id`,
   `workflow_id`, `media_id`, `storage`, `rule_id`, and `name` in `path_params`.
 - Put GET filters and control values in `query`. The gateway also accepts GET
