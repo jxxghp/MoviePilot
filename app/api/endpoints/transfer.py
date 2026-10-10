@@ -791,14 +791,12 @@ def _execute_manual_transfer(
     type_name = str(transer_item.type_name).strip() if transer_item.type_name else ""
     if type_name and type_name.lower() not in {"自动", "auto", "none"}:
         # 先按 Agent 使用的 movie/tv/music 取值解析，再回退到原生中文枚举值。
-        mtype = MediaType.from_agent(type_name)
-        if mtype is None:
-            try:
-                mtype = MediaType(type_name)
-            except ValueError:
-                return _SchemaResponse(
-                    success=False, message=f"不支持的媒体类型：{type_name}"
-                )
+        try:
+            mtype = MediaType.from_agent(type_name) or MediaType(type_name)
+        except ValueError:
+            return _SchemaResponse(
+                success=False, message=f"不支持的媒体类型：{type_name}"
+            )
 
     def _resolve_music_type(file_item: FileItem) -> Optional[str]:
         """为未显式指定实体的旧客户端按源项类型补全音乐命名空间。"""

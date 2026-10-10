@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 47
+version: 49
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -66,6 +66,12 @@ allowed-api-operations: >-
 ---
 
 # MoviePilot API
+
+Unhandled exceptions outside the durable transfer step ledger stop automatic
+replay and create an `unhandled_execution_review` diagnostic. Repair or disable
+the failing plugin and inspect the files before resolving it as `not_applied`;
+roll back untracked effects first when needed. This diagnostic rejects `applied`
+and does not replace the evidence for any recorded file operations.
 
 For relevant prior conversations or previous tool evidence, use the host-provided
 `session_search` tool when available. Discover a session, then read its anchored
@@ -162,6 +168,10 @@ are separate operation contracts, not interchangeable parameter templates.
 `media.detail` requires both the source-native ID and its source/type. Recent
 subscription executions use `limit`, not `page` or `count`. `site.rss` lists
 RSS-enabled sites; it does not accept a `site_id` filter.
+
+`media.detail` and `transfer.file` accept `movie`, `tv`, or `music` in
+`type_name`; `subscription.add` accepts the same values in `type`. The
+corresponding Chinese labels remain supported.
 
 ## API Category Index
 

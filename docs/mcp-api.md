@@ -419,6 +419,8 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 
 媒体来源列表 `/api/v1/media/source` 仅预置上述九个来源，其余来源由启用插件注册后提供。哔哩哔哩、芒果 TV、咪咕视频、腾讯视频、爱奇艺不再占用内置来源标识，宿主也不再转换这些插件来源的旧别名；调用方应使用插件声明的准确来源 ID。
 
+媒体详情的 `type_name`、新增订阅和媒体库缺失查询的 `type`、手动整理的 `type_name` 均兼容 `movie`、`tv`、`music` 及对应中文值 `电影`、`电视剧`、`音乐`。TMDB 的相似、推荐和演员接口，以及豆瓣的推荐和演员接口同样兼容英文类型，但仍只提供电影和电视剧结果；传入音乐类型返回空列表。
+
 影视自动识别在未指定来源时只使用 TMDB，未命中时不会继续查询其它影视源。音乐路径识别严格按 AcoustID 音频指纹、文件标签、文件名三级依次执行；指纹或标签直接提供 MusicBrainz Recording ID 时，会直接查询 MusicBrainz 详情，未绑定身份的音乐标题及目录识别按 `SEARCH_SOURCE` 中内置音乐来源的配置顺序回退（MusicBrainz、TheAudioDB、豆瓣音乐），未选择音乐来源时兼容默认 MusicBrainz。显式 `media_source` / 主身份或 MusicBrainz 发行标签固定所属来源；来源之间不转换或拼接 ID。`MediaInfo` 响应仍可能包含 `tmdb_id`、`douban_id`、`bangumi_id`、`anilist_id` 等跨源映射辅助字段，但这些字段不是通用请求入口。明确归属 `/tmdb`、`/douban`、`/bangumi`、`/anilist` 的接口，以及固定使用 TMDB 的剧集组和排期接口，仍可按其单数据源契约接收原生 ID。
 
 | 方法 | 路径 | 说明 |
@@ -434,6 +436,11 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 | GET | `/api/v1/transfer/tasks/manual-reviews` | 管理员分页查询 durable 人工复核任务；`state` 仅允许 `manual_review`（默认）或已经人工判定、等待调度恢复的 `retry_wait`，支持 `page` 与 `page_size`。响应只公开任务、源文件、状态、步骤意图/证据/错误和复核修订号，不返回 lease 或 attempt 身份 |
 | GET | `/api/v1/transfer/tasks/{task_id}/manual-review` | 管理员查询单个 durable 人工复核任务详情；仅可读取 `manual_review` 或已经人工判定的 `retry_wait` 任务，其余状态按不存在处理 |
 | POST | `/api/v1/transfer/tasks/{task_id}/manual-review` | 管理员判定处于 `manual_review` 的 durable 整理步骤；请求包含 `operation_id`、`decision=not_applied|applied`，`reason` 选填，省略或空白时记为空字符串，最多 2000 字符；`applied` 还必须提供 `result_payload`。`failed` 不属于公开决策，失败终态只能由持租约的 durable 结算写入；响应仅返回任务、操作、决策、后续状态和复核修订号 |
+
+步骤账本之外的未处理异常（例如插件替换整理入口后在 `finally` 抛错）会记一次失败，
+并立即进入 `manual_review` 停止自动回放。详情中的 `unhandled_execution_review` 是诊断凭据，
+不代表某个文件操作已执行；应先修复或关闭异常插件并确认文件状态，必要时人工回滚，
+再以 `not_applied` 交回调度器。该凭据不接受 `applied`，既有真实步骤仍按原证据恢复。
 
 #### SMB 下载器监控与服务端整理
 

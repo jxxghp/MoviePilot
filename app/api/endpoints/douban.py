@@ -68,7 +68,7 @@ async def douban_credits(
     count: CompatibleCountParam = None,
 ) -> Any:
     """
-    根据豆瓣ID查询演员阵容，type_name: 电影/电视剧
+    根据豆瓣ID查询演员阵容，type_name: 电影/movie、电视剧/tv
     """
     mediatype = MediaType.from_agent(type_name) or MediaType(type_name)
     if mediatype == MediaType.MOVIE:
@@ -91,7 +91,7 @@ async def douban_recommend(
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    根据豆瓣ID查询推荐电影/电视剧，type_name: 电影/电视剧
+    根据豆瓣ID查询推荐电影/电视剧，type_name: 电影/movie、电视剧/tv
     """
     mediatype = MediaType.from_agent(type_name) or MediaType(type_name)
     if mediatype == MediaType.MOVIE:

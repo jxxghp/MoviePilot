@@ -12,6 +12,18 @@ class TransferPendingOper(DbOper):
     整理链的文件重新送回去，避免挂载故障重启后永久漏件。
     """
 
+    def stage_isolate_unhandled_failure(
+            self, *, task_id: str, lease_token: str, error: str,
+            now_utc: str, updated_at: str,
+    ) -> int:
+        """在调用方事务中暂存异常隔离，失败计数与租约释放使用同一 CAS。"""
+        return self._execute_sync_write(
+            lambda session: TransferPending.isolate_unhandled_failure(
+                session, task_id=task_id, lease_token=lease_token,
+                error=error, now_utc=now_utc, updated_at=updated_at,
+            )
+        )
+
     def stage_admit(self, *, task_id: str, storage: str, src_path: str,
                     state: str, now_time: str, input_version: int,
                     planning_input: dict[str, Any],

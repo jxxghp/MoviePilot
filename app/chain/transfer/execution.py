@@ -14,6 +14,8 @@ from app.application.history.retry import (
 from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
     TransferExecutionCommand,
+    TransferExecutionConflictError,
+    TransferExecutionLeaseLostError,
     TransferExecutionRepository,
     TransferExecutionSnapshot,
     TransferOperationObservation,
@@ -313,7 +315,20 @@ class TransferExecutionOwner(_TransferOwnerBase):
             *,
             preview: bool,
     ) -> Tuple[bool, str]:
-        """收口整理执行异常；人工复核只告警并保留 durable 状态。"""
+        """在插件可替换执行入口之外收口异常，防止未记账失败无限回放。"""
+        if (not preview and not task.terminal_settled and task.admission_task_id and task.lease_token
+                and not isinstance(error, (TransferAdmissionConflictError, TransferLeaseLostError,
+                                           TransferExecutionConflictError, TransferExecutionLeaseLostError,
+                                           _TransferRetryDeferred, _TransferRetryExhausted,
+                                           _TransferManualReviewRequired))):
+            try:
+                isolated = self.transfer_execution_repository.isolate_unhandled_failure(
+                    task_id=task.admission_task_id, lease_token=task.lease_token, error=str(error),
+                )
+                if isolated:
+                    error = _TransferManualReviewRequired(str(error))
+            except Exception as record_error:
+                logger.error(f"记录整理执行异常失败：{record_error}")
         if isinstance(error, _TransferManualReviewRequired):
             logger.warning(
                 f"{task.fileitem.name} 已转入人工复核，未自动重放；"
