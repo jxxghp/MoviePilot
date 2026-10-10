@@ -839,6 +839,21 @@ def _validate_download_save_path_value(
     raise ValueError("保存路径不在允许的下载目录范围内")
 
 
+def specified_download_save_path(save_path: Optional[str]) -> Optional[str]:
+    """
+    返回调用方真正指定的下载保存目录，空白值视为未指定。
+
+    旧版订阅编辑界面会把清空的保存目录持久化为空字符串，它表示使用默认下载目录，
+    不能当作非法路径交给 validate_download_save_path 拒绝。
+
+    :param save_path: 订阅、事件或接口传入的保存目录
+    :return: 原样保留的非空保存目录；空值或纯空白返回 None
+    """
+    if save_path is None or not str(save_path).strip():
+        return None
+    return save_path
+
+
 def validate_download_save_path(save_path: str) -> str:
     """
     校验用户传入的下载保存目录，/download/paths 暴露的下载目录配置是允许写入的公共合同。

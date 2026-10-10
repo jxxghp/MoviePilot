@@ -9,7 +9,10 @@ from typing import Any, Callable, Dict, Optional, Set, Tuple, Union, cast
 from urllib.parse import urlencode, urljoin, urlparse
 
 from app.application.configuration import get_chain_runtime_config_snapshot
-from app.application.directory import validate_download_save_path
+from app.application.directory import (
+    specified_download_save_path,
+    validate_download_save_path,
+)
 from app.application.download.admission import SubscriptionDownloadGovernance
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.torrent.download import TorrentHelper
@@ -293,6 +296,8 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
             username: Optional[str],
     ) -> tuple[Optional[str], Optional[str]]:
         """应用资源下载事件覆盖，并校验事件返回的下载目录。"""
+        # 空白保存目录表示使用默认下载目录，事件订阅方也只会看到 None。
+        save_path = specified_download_save_path(save_path)
         meta = context.meta_info
         media = context.media_info
         event_data = ResourceDownloadEventData(
@@ -319,7 +324,9 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
                 )
                 return save_path, "下载被事件取消"
             if event_data.options and "save_path" in event_data.options:
-                save_path = cast(Optional[str], event_data.options.get("save_path"))
+                save_path = specified_download_save_path(
+                    cast(Optional[str], event_data.options.get("save_path"))
+                )
         if save_path is None:
             return None, None
         try:
