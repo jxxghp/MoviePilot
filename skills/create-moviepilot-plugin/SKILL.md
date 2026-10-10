@@ -1,6 +1,6 @@
 ---
 name: create-moviepilot-plugin
-version: 6
+version: 7
 description: >-
   Use this skill when the user asks to create, modify, debug, validate, or
   scaffold a MoviePilot local plugin. Covers version-aware V3/V2 plugin development,
@@ -8,9 +8,9 @@ description: >-
   plugins.v3/plugins.v2/plugins source layout, PLUGIN_LOCAL_REPO_PATHS local plugin
   sources, plugin APIs, Vuetify JSON forms/pages/dashboards, Vue module
   federation remote components, get_render_mode, get_sidebar_nav, plugin
-  sidebar pages, commands, services, workflow actions, agent tools, and local
+  sidebar pages, get_agent_pets assistant avatars, commands, services, workflow actions, agent tools, and local
   install/reload flows. Also use for Chinese requests mentioning 编写插件、本地插件源,
-  插件开发, V3插件, V2插件, 插件市场, 本地安装插件, 插件热加载, 前端联邦, 侧栏入口, Vue插件页面.
+  插件开发, V3插件, V2插件, 插件市场, 本地安装插件, 插件热加载, 前端联邦, 侧栏入口, Vue插件页面, 助手形象.
 allowed-tools: read_file write_file edit_file apply_patch execute_command search_web browse_webpage moviepilot_api
 allowed-api-operations: config.system.get config.system.update plugin.market plugin.installed plugin.install plugin.reload
 ---
@@ -397,6 +397,9 @@ Use only the extension points the requested plugin actually needs:
 - Custom Vue UI: implement `get_render_mode()` when Vue is the selected UI
   mode. Return `("vue", "<compiled-assets-path>")` and include
   built frontend assets in the plugin directory.
+- Agent assistant avatar: implement `get_agent_pets()` on a Vue plugin to
+  replace the web assistant's on-screen character. See
+  "Agent Assistant Avatar" below.
 
 ## Vue Federation UI
 
@@ -456,6 +459,9 @@ Sidebar rules:
 - `nav_key` defaults to `main` and must not contain `/`, `?`, `#`, or spaces.
 - Multiple sidebar entries are allowed; each entry needs a stable `nav_key`.
 
+When the plugin provides an Agent assistant avatar (助手形象), also implement
+`get_agent_pets()`. See "Agent Assistant Avatar" below.
+
 Frontend federation requirements:
 
 ```js
@@ -502,6 +508,47 @@ Component contracts:
   `my_tool -> AppPageMyTool`.
 - A single `AppPage` may branch on `navKey`, or separate
   `AppPage{PascalCase}` files may be exposed for specific entries.
+
+Agent Assistant Avatar:
+
+```python
+def get_agent_pets(self) -> List[Dict[str, Any]]:
+    """声明插件提供的 Agent 助手形象。"""
+    return [
+        {
+            "key": "girl",
+            "name": "看板娘",
+            "mode": "stage",
+            "component": "AgentPet",
+            "preview": "assets/girl-preview.png",
+            "avatar": "assets/girl-avatar.png",
+        }
+    ]
+```
+
+- Declarations are aggregated by `GET /api/v1/plugin/agent_pets` only for
+  enabled plugins whose `get_render_mode()` returns `"vue"`.
+- Required fields are `key` (`[a-z0-9_-]{1,32}`, unique within the plugin) and
+  `name`. Optional fields are `description`, `mode` (`renderer` by default, or
+  `stage`), `component` (federation expose name, default `AgentPet`),
+  `api_version` (default `1`), `preview`, `avatar`, `bubbles` (stage only,
+  `host` or `self`), and `random_actions` (renderer only).
+- `preview` and `avatar` are paths relative to the federation build directory,
+  or `http(s)://` / `data:` URLs. Relative paths must not contain `..`, `\`, or
+  `:`.
+- An item with any invalid field is dropped with a warning; a duplicate `key`
+  keeps the first item. One plugin may declare several avatars, each with its
+  own `mode` and `component`; expose every referenced component.
+- The avatar only renders the character. It must not take over the Agent panel
+  or send messages; `agent.open({ draft })` only fills the input box.
+- The user picks an avatar from the "更换形象" button in the Agent panel
+  header; the admin default is `AI_AGENT_PET` (`<plugin_id>:<key>`). Load
+  failures, timeouts over 8 seconds, and runtime errors fall back to the
+  built-in robot.
+- Read the "Agent 助手形象（AgentPet）" section (5.11) of
+  `MoviePilot-Frontend/docs/module-federation-guide.md` for component props,
+  the `moviepilot:agent` host API, `agent.*` events, the renderer
+  action/intent mapping, the 16KB `pet.storage` limit, and a stage example.
 
 Vue API calls:
 
