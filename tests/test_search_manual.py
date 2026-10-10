@@ -409,14 +409,16 @@ async def test_raw_page_signature_stops_only_the_identical_adjacent_page(manual_
 
 @pytest.mark.asyncio
 async def test_pages_beyond_the_cap_are_not_requested(manual_owner):
+    """手动分页只能请求第 0–19 页，到第 20 页不发请求，第 19 页后不可继续。"""
     owner, calls, _ = manual_owner
     result = await events(SearchManualOwner.events(owner, params={
-        "keyword": "Show", "page": 100, "source": encode_source("1", "Show")}))
+        "keyword": "Show", "page": 20, "source": encode_source("1", "Show")}))
     assert calls == []
     assert not result[-1]["sources"][0]["can_continue"]
-    await events(SearchManualOwner.events(owner, params={
-        "keyword": "Show", "page": 99, "source": encode_source("1", "Show")}))
-    assert calls == [(1, "Show", 98), (1, "Show", 99)]
+    last = await events(SearchManualOwner.events(owner, params={
+        "keyword": "Show", "page": 19, "source": encode_source("1", "Show")}))
+    assert calls == [(1, "Show", 18), (1, "Show", 19)]
+    assert not last[-1]["sources"][0]["can_continue"]
 
 
 @pytest.mark.asyncio

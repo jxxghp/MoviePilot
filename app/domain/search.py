@@ -9,7 +9,9 @@ from typing import Any, Optional
 # 某来源距上次请求超过该时长（中断后恢复）时，先接着拉原来的下一页，再重拉一次第一页补入新资源。
 HEAD_REFRESH_SECONDS = 900
 # 每个来源最多请求的页数，防止异常站点或缺陷导致无限翻页。
-MAX_SEARCH_PAGES = 100
+MAX_SEARCH_PAGES = 20
+# 精确查询连续该数量的页面均明确不匹配时，停止异常来源；不把它当成站点真实末页。
+UNMATCHED_PAGE_LIMIT = 3
 
 
 def search_resource_id(torrent: Any) -> str:
@@ -55,11 +57,26 @@ class SearchSourceCursor:
     error: Optional[str] = None
     failure_outcome: Optional[str] = None
     page_limit: Optional[int] = None
+    # 作品匹配不局限于当前缺集；见过同作品的其他季集也不能按异常查询提前停止。
+    matched_work: bool = False
+    unmatched_pages: int = 0
 
     @property
     def limit_reached(self) -> bool:
-        """配置范围或最大页数已检查不代表站点搜尽，下载失败也不能突破该范围。"""
-        return self.next_page >= min(self.page_limit or MAX_SEARCH_PAGES, MAX_SEARCH_PAGES)
+        """页数范围或异常查询早停不代表站点搜尽，下载失败也不能突破本轮限制。"""
+        return (self.next_page >= min(self.page_limit or MAX_SEARCH_PAGES, MAX_SEARCH_PAGES)
+                or self.unmatched_pages >= UNMATCHED_PAGE_LIMIT)
+
+    def _observe_query_matches(
+        self, evidence: list[SearchResourceEvidence], *, matched_work: bool, stop_unmatched: bool,
+    ) -> None:
+        """只累计从未命中作品的明确不匹配连续页；未知页打断计数，补拉首页不增加计数。"""
+        self.matched_work = (self.matched_work or matched_work or bool(self.seen)
+                             or any(item.targets or item.latest for item in evidence))
+        if self.matched_work or not stop_unmatched or any(item.targets is None for item in evidence):
+            self.unmatched_pages = 0
+        elif not self.head_refresh:
+            self.unmatched_pages = self.unmatched_pages + 1 if evidence else 0
 
     def page_to_request(self, now: float) -> int:
         """中断超过门槛后，先拉原来的下一页，下一次请求再重拉第一页；连续翻页不会触发。"""
@@ -75,11 +92,12 @@ class SearchSourceCursor:
 
     def accept_page(
         self, *, page: int, evidence: list[SearchResourceEvidence], targets: set[str],
-        exhausted: bool, now: float,
+        exhausted: bool, now: float, matched_work: bool = False, stop_unmatched: bool = False,
     ) -> bool:
         """收集一页；含识别未知资源的页面照常推进，但不作为任何目标的缺席证据。"""
         self.last_request_at = now
         self.error = None
+        self._observe_query_matches(evidence, matched_work=matched_work, stop_unmatched=stop_unmatched)
         if self.head_refresh:
             # 重拉的第一页只补入新资源：已见过的资源（包括第一页置顶）按去重键只算一份，
             # 也不和历史进度拼成“下一页没有该集”的缺席证据。

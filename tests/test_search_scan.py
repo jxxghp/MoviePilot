@@ -215,25 +215,27 @@ def test_unchanged_resource_recognized_once_even_when_repeated(owner, monkeypatc
 
 
 def test_twelve_hundred_episodes_with_multiple_versions(owner, monkeypatch):
-    data = {page: [torrent(episode, version) for episode in range(page * 40 + 1, (page + 1) * 40 + 1)
-                   for version in (1, 2)] for page in range(30)}
+    """20 页范围内仍能收集 1200 集的多版本候选，不在最后一页遗漏提交。"""
+    data = {page: [torrent(episode, version) for episode in range(page * 60 + 1, (page + 1) * 60 + 1)
+                   for version in (1, 2)] for page in range(20)}
     calls = pages(owner, monkeypatch, data)
     scan = SearchScan(owner=owner, plan=plan(list(range(1, 1201))))
     scan.run(lambda _items, ready: ready)
-    assert len(calls) == 31
+    assert calls == list(range(20))
     assert not scan.collection.remaining
     assert len(scan.identity) == 2400
 
 
-def test_one_hundred_page_cap_ends_the_round_and_does_not_repeat(owner, monkeypatch):
+def test_twenty_page_cap_ends_the_round_and_does_not_repeat(owner, monkeypatch):
+    """达到 20 页后结束本轮，仍缺集也不会重新扫描已达上限的来源。"""
     # 页面出现更新的集，缺失的 1200 属于站点已收录范围，需要一直翻到上限。
     calls = pages(owner, monkeypatch, {page: [torrent(1300, page + 1)] for page in range(125)})
     scan = SearchScan(owner=owner, plan=plan([1200]))
     scan.run(lambda _items, ready: ready)
-    assert calls == list(range(100))
+    assert calls == list(range(20))
     assert scan.collection.remaining == {"1:1200"}
     scan.run(lambda _items, ready: ready)
-    assert len(calls) == 100
+    assert len(calls) == 20
 
 
 def test_full_mode_collects_late_candidates_after_a_gap(owner, monkeypatch):

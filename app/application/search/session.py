@@ -50,6 +50,7 @@ def torrent_snapshot(torrent: Any) -> dict[str, Any]:
 def encode_search_state(value: dict[str, Any]) -> str:
     """以确定性 JSON 编码页面事务，枚举和集合只保存值。"""
     def normalize(item: Any) -> Any:
+        """保留确定性枚举和集合值，不对未知对象做隐式字符串化。"""
         if isinstance(item, Enum):
             return item.value
         if isinstance(item, (set, frozenset)):
@@ -68,6 +69,8 @@ def restore_collection(values: dict[str, Any]) -> SearchCollection:
     sources = {}
     for key, data in values["sources"].items():
         params = dict(data)
+        # 旧检查点未记录作品匹配前史；已有进度时不能断言此前从未命中，只应用页数上限。
+        params.setdefault("matched_work", bool(params.get("next_page")))
         for name in ("seen", "closed"):
             params[name] = set(params.get(name, []))
         sources[key] = SearchSourceCursor(**params)

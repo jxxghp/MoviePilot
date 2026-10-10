@@ -75,15 +75,17 @@ def test_every_gap_longer_than_threshold_still_advances_between_refreshes():
     assert requested == [1, 0, 2, 0, 3, 0]
 
 
-def test_one_hundred_pages_are_scanned_then_the_cap_stops_the_source():
+def test_twenty_pages_are_scanned_then_the_cap_stops_the_source():
+    """第 20 页后释放收集屏障，但不把预算结束当成真实末页。"""
     collection = SearchCollection({"E1"}, {"A": SearchSourceCursor()})
     source = collection.sources["A"]
-    for page in range(100):
+    for page in range(20):
         assert collection.active_sources() == ["A"]
         accept(source, page, [evidence(str(page))])
     assert not collection.active_sources()
     assert not source.exhausted
     assert collection.remaining == {"E1"}
+    assert collection.ready() == {"E1"}
 
 
 def test_page_identical_to_previous_page_is_treated_as_empty_last_page():
