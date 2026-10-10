@@ -162,11 +162,11 @@ def not_exists(
     count: CompatibleCountParam = None,
 ) -> Any:
     """
-    根据媒体信息查询缺失电影/剧集
+    根据媒体信息查询缺失电影/剧集，媒体类型兼容英文与中文值
     """
     # 媒体信息
     meta = MetaInfo(title=media_in.title)
-    mtype = MediaType(media_in.type) if media_in.type else None
+    mtype = MediaType.from_agent(media_in.type) or MediaType(media_in.type) if media_in.type else None
     if mtype:
         meta.type = mtype
     if media_in.season is not None:
@@ -176,7 +176,8 @@ def not_exists(
         meta.year = media_in.year
     # 转化为媒体信息对象
     mediainfo = MediaInfo()
-    mediainfo.from_dict(media_in.model_dump())
+    # 复用已解析的类型，避免领域对象再次将 Agent 英文值按中文枚举解析。
+    mediainfo.from_dict({**media_in.model_dump(), "type": mtype})
     exist_flag, no_exists = DownloadChain().get_no_exists_info(
         meta=meta, mediainfo=mediainfo
     )

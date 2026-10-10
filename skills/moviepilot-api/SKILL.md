@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 48
+version: 49
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -168,6 +168,10 @@ are separate operation contracts, not interchangeable parameter templates.
 `media.detail` requires both the source-native ID and its source/type. Recent
 subscription executions use `limit`, not `page` or `count`. `site.rss` lists
 RSS-enabled sites; it does not accept a `site_id` filter.
+
+`media.detail` and `transfer.file` accept `movie`, `tv`, or `music` in
+`type_name`; `subscription.add` accepts the same values in `type`. The
+corresponding Chinese labels remain supported.
 
 ## API Category Index
 

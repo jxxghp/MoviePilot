@@ -790,8 +790,9 @@ def _execute_manual_transfer(
     mtype = None
     type_name = str(transer_item.type_name).strip() if transer_item.type_name else ""
     if type_name and type_name.lower() not in {"自动", "auto", "none"}:
+        # 先按 Agent 使用的 movie/tv/music 取值解析，再回退到原生中文枚举值。
         try:
-            mtype = MediaType(type_name)
+            mtype = MediaType.from_agent(type_name) or MediaType(type_name)
         except ValueError:
             return _SchemaResponse(
                 success=False, message=f"不支持的媒体类型：{type_name}"

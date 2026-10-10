@@ -114,9 +114,9 @@ async def tmdb_similar(
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    根据TMDBID查询类似电影/电视剧，type_name: 电影/电视剧
+    根据TMDBID查询类似电影/电视剧，type_name: 电影/movie、电视剧/tv
     """
-    mediatype = MediaType(type_name)
+    mediatype = MediaType.from_agent(type_name) or MediaType(type_name)
     if mediatype == MediaType.MOVIE:
         medias = await TmdbChain().async_movie_similar(tmdbid=tmdbid)
     elif mediatype == MediaType.TV:
@@ -141,9 +141,9 @@ async def tmdb_recommend(
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    根据TMDBID查询推荐电影/电视剧，type_name: 电影/电视剧
+    根据TMDBID查询推荐电影/电视剧，type_name: 电影/movie、电视剧/tv
     """
-    mediatype = MediaType(type_name)
+    mediatype = MediaType.from_agent(type_name) or MediaType(type_name)
     if mediatype == MediaType.MOVIE:
         medias = await TmdbChain().async_movie_recommend(tmdbid=tmdbid)
     elif mediatype == MediaType.TV:
@@ -187,9 +187,9 @@ async def tmdb_credits(
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
     """
-    根据TMDBID查询演员阵容，type_name: 电影/电视剧
+    根据TMDBID查询演员阵容，type_name: 电影/movie、电视剧/tv
     """
-    mediatype = MediaType(type_name)
+    mediatype = MediaType.from_agent(type_name) or MediaType(type_name)
     if mediatype == MediaType.MOVIE:
         persons = await TmdbChain().async_movie_credits(tmdbid=tmdbid, page=page)
     elif mediatype == MediaType.TV:

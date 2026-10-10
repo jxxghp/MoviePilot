@@ -419,6 +419,8 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 
 媒体来源列表 `/api/v1/media/source` 仅预置上述九个来源，其余来源由启用插件注册后提供。哔哩哔哩、芒果 TV、咪咕视频、腾讯视频、爱奇艺不再占用内置来源标识，宿主也不再转换这些插件来源的旧别名；调用方应使用插件声明的准确来源 ID。
 
+媒体详情的 `type_name`、新增订阅和媒体库缺失查询的 `type`、手动整理的 `type_name` 均兼容 `movie`、`tv`、`music` 及对应中文值 `电影`、`电视剧`、`音乐`。TMDB 的相似、推荐和演员接口，以及豆瓣的推荐和演员接口同样兼容英文类型，但仍只提供电影和电视剧结果；传入音乐类型返回空列表。
+
 影视自动识别在未指定来源时只使用 TMDB，未命中时不会继续查询其它影视源。音乐路径识别严格按 AcoustID 音频指纹、文件标签、文件名三级依次执行；指纹或标签直接提供 MusicBrainz Recording ID 时，会直接查询 MusicBrainz 详情，未绑定身份的音乐标题及目录识别按 `SEARCH_SOURCE` 中内置音乐来源的配置顺序回退（MusicBrainz、TheAudioDB、豆瓣音乐），未选择音乐来源时兼容默认 MusicBrainz。显式 `media_source` / 主身份或 MusicBrainz 发行标签固定所属来源；来源之间不转换或拼接 ID。`MediaInfo` 响应仍可能包含 `tmdb_id`、`douban_id`、`bangumi_id`、`anilist_id` 等跨源映射辅助字段，但这些字段不是通用请求入口。明确归属 `/tmdb`、`/douban`、`/bangumi`、`/anilist` 的接口，以及固定使用 TMDB 的剧集组和排期接口，仍可按其单数据源契约接收原生 ID。
 
 | 方法 | 路径 | 说明 |
