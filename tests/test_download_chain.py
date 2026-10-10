@@ -577,6 +577,69 @@ def test_download_single_supplements_category_before_download_event(monkeypatch)
     assert context.media_info.tmdb_id == 12345
 
 
+@pytest.mark.parametrize("save_path", ["", "   "])
+def test_resource_download_event_treats_blank_save_path_as_default(monkeypatch, save_path):
+    """旧订阅持久化的空白保存目录表示使用默认目录，不能被路径校验拒绝。"""
+    captured = {}
+
+    def keep_event(_event_type, event_data):
+        """记录事件订阅方看到的保存目录。"""
+        captured["save_path"] = event_data.options["save_path"]
+        return SimpleNamespace(event_data=event_data)
+
+    monkeypatch.setattr(eventmanager, "send_event", keep_event)
+    context = Context(
+        meta_info=MetaInfo("测试剧集 S01E01"),
+        media_info=MediaInfo(type=MediaType.TV, title="测试剧集"),
+        torrent_info=TorrentInfo(title="测试剧集 S01E01"),
+    )
+
+    result = DownloadChain._apply_resource_download_event(
+        context, None, None, "Subscribe|{}", None, save_path, None, None,
+    )
+
+    assert result == (None, None)
+    assert captured["save_path"] is None
+
+
+def test_resource_download_event_treats_blank_override_as_default(monkeypatch):
+    """事件把保存目录改成空白时同样回到默认目录。"""
+
+    def blank_override(_event_type, event_data):
+        """模拟插件清空保存目录。"""
+        event_data.options["save_path"] = " "
+        return SimpleNamespace(event_data=event_data)
+
+    monkeypatch.setattr(eventmanager, "send_event", blank_override)
+    context = Context(
+        meta_info=MetaInfo("测试剧集 S01E01"),
+        media_info=MediaInfo(type=MediaType.TV, title="测试剧集"),
+        torrent_info=TorrentInfo(title="测试剧集 S01E01"),
+    )
+
+    result = DownloadChain._apply_resource_download_event(
+        context, None, None, None, None, "/downloads/tv", None, None,
+    )
+
+    assert result == (None, None)
+
+
+def test_resource_download_event_still_rejects_invalid_save_path(monkeypatch):
+    """非空白的非法保存目录仍按白名单拒绝。"""
+    monkeypatch.setattr(eventmanager, "send_event", lambda *_args: None)
+    context = Context(
+        meta_info=MetaInfo("测试剧集 S01E01"),
+        media_info=MediaInfo(type=MediaType.TV, title="测试剧集"),
+        torrent_info=TorrentInfo(title="测试剧集 S01E01"),
+    )
+
+    result = DownloadChain._apply_resource_download_event(
+        context, None, None, None, None, "relative/path", None, None,
+    )
+
+    assert result == ("relative/path", "保存路径必须是绝对路径")
+
+
 def test_download_single_persists_custom_words_snapshot(monkeypatch):
     """下载成功登记历史时，应把传入的订阅识别词原样存入快照，供整理时原样复现识别。"""
     captured = {}

@@ -12,6 +12,7 @@ from app.application.configuration import get_chain_runtime_config_snapshot
 from app.application.directory import (
     DirectoryHelper,
     build_media_download_path,
+    specified_download_save_path,
     validate_download_save_path,
 )
 from app.application.torrent.download import TorrentHelper
@@ -321,6 +322,7 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
         根据媒体信息解析下载目录。
         """
         storage = 'local'
+        save_path = specified_download_save_path(save_path)
         if save_path is not None:
             try:
                 validated_save_path = validate_download_save_path(save_path)

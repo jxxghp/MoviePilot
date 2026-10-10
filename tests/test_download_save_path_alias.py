@@ -4,7 +4,11 @@ from unittest.mock import patch
 
 import pytest
 
-from app.application.directory import DirectoryHelper, validate_download_save_path
+from app.application.directory import (
+    DirectoryHelper,
+    specified_download_save_path,
+    validate_download_save_path,
+)
 from app.chain.download.subtitle import DownloadSubtitleOwner
 from app.domain.context import MediaInfo
 from app.schemas.system import TransferDirectoryConf
@@ -139,3 +143,18 @@ def test_resolve_media_download_dir_surfaces_unknown_alias_error():
     with patch.object(DirectoryHelper, "get_download_dirs", return_value=dirs):
         result = DownloadSubtitleOwner._resolve_media_download_dir(media, save_path="不存在的库")
     assert result == (None, None, "未找到名为「不存在的库」的下载目录")
+
+
+@pytest.mark.parametrize(("value", "expected"), [(None, None), ("", None), ("  ", None), ("剧集库", "剧集库")])
+def test_specified_download_save_path_treats_blank_as_unspecified(value, expected):
+    """空白保存目录视为未指定，非空值原样交给后续校验。"""
+    assert specified_download_save_path(value) == expected
+
+
+def test_resolve_media_download_dir_uses_default_dir_for_blank_save_path():
+    """空字符串保存目录走媒体默认下载目录，而不是报“保存路径不能为空”。"""
+    default_dir = TransferDirectoryConf(name="剧集库", priority=1, storage="local", download_path="/downloads/tv")
+    media = MediaInfo(type=MediaType.TV, title="测试剧集")
+    with patch.object(DirectoryHelper, "get_dir", return_value=default_dir):
+        result = DownloadSubtitleOwner._resolve_media_download_dir(media, save_path="")
+    assert result == ("local", Path("/downloads/tv"), "")
