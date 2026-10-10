@@ -4,6 +4,7 @@ import inspect
 import threading
 from collections import defaultdict, deque
 from contextvars import Context, copy_context
+from dataclasses import is_dataclass
 from datetime import date, datetime
 from functools import partial
 from time import monotonic, sleep
@@ -57,6 +58,16 @@ def _serialize_workflow_value(value: Any, stack: Optional[set[int]] = None) -> A
                 field_name: _serialize_workflow_value(getattr(value, field_name, None), stack)
                 for field_name in value.__class__.model_fields
             }
+        finally:
+            stack.remove(object_id)
+
+    to_dict = getattr(value, "to_dict", None) if is_dataclass(value) and not isinstance(value, type) else None
+    if callable(to_dict):
+        # RSS 等动作按设计把领域 dataclass（如 app.domain.context.Context）放进上下文，其 to_dict
+        # 与工作流 Schema 字段对齐，恢复时可经 ActionContext 校验还原；落到 str() 会存成无法恢复的文本。
+        stack.add(object_id)
+        try:
+            return _serialize_workflow_value(to_dict(), stack)
         finally:
             stack.remove(object_id)
 

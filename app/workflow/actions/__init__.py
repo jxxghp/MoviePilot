@@ -3,11 +3,31 @@ from typing import Any, ClassVar, Union
 
 from app.application.configuration import get_configured_system_config
 from app.chain.base import ChainBase
+from app.domain.context import MediaInfo as DomainMediaInfo
+from app.domain.context import MusicInfo as DomainMusicInfo
+from app.domain.context import TorrentInfo as DomainTorrentInfo
+from app.schemas.types import MediaType
 from app.schemas.workflow import ActionContext, ActionParams, ActionResult
 
 
 class ActionChain(ChainBase):
     pass
+
+
+def domain_media_info_from_dict(data: dict[str, Any]) -> DomainMediaInfo | DomainMusicInfo:
+    """把工作流 Schema 媒体字典按媒体类型还原为下载、过滤等业务链使用的领域对象。"""
+    if data.get("type") == MediaType.MUSIC.value:
+        return DomainMusicInfo.from_dict(data)
+    media_info = DomainMediaInfo()
+    media_info.from_dict(data)
+    return media_info
+
+
+def domain_torrent_info_from_dict(data: dict[str, Any]) -> DomainTorrentInfo:
+    """把工作流 Schema 种子字典还原为提供发布时间等运行时接口的领域对象。"""
+    torrent_info = DomainTorrentInfo()
+    torrent_info.from_dict(data)
+    return torrent_info
 
 
 class BaseAction(ABC):
