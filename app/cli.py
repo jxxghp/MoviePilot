@@ -670,6 +670,7 @@ def _print_json(value: Any) -> None:
 
 
 def _parse_tool_result(result: Any) -> Any:
+    """解析工具返回的 JSON 文本，普通文本保持原样。"""
     if not isinstance(result, str):
         return result
     try:
@@ -679,13 +680,26 @@ def _parse_tool_result(result: Any) -> Any:
 
 
 def _tool_request_headers(runtime: Optional[Dict[str, Any]] = None) -> Dict[str, str]:
+    """使用本地 API_TOKEN 认证工具请求，缺少配置时明确报错。"""
     api_token = _runtime_api_token(runtime)
     if not api_token:
         raise click.ClickException("本地配置中未找到 API_TOKEN，请先配置后再使用 tool/scheduler 命令")
     return {"X-API-KEY": api_token}
 
 
+def _tool_response_data(response: Dict[str, Any], error_message: str) -> Any:
+    """校验工具 REST 响应并解包；错误只显示原因，避免倾倒大体积响应。"""
+    payload = response.get("json")
+    if not isinstance(payload, dict):
+        raise click.ClickException(f"{error_message}（HTTP {response['status']}，响应格式错误）")
+    if response["status"] not in {200, 201} or "success" not in payload:
+        message = payload.get("message") or payload.get("error") or payload.get("detail")
+        raise click.ClickException(message or f"{error_message}（HTTP {response['status']}）")
+    return _unwrap_api_data(payload)
+
+
 def _call_tool(tool_name: str, arguments: Dict[str, Any], runtime: Optional[Dict[str, Any]] = None) -> Any:
+    """解包 REST 的 data.result，再解析工具自身的文本或业务响应。"""
     response = _http_request(
         "POST",
         "/api/v1/mcp/tools/call",
@@ -694,16 +708,14 @@ def _call_tool(tool_name: str, arguments: Dict[str, Any], runtime: Optional[Dict
         timeout=30.0,
         runtime=runtime,
     )
-    payload = response.get("json") or {}
-    if response["status"] not in {200, 201}:
-        message = payload.get("error") or payload.get("detail") or response["text"] or "调用工具失败"
-        raise click.ClickException(message)
-    if not payload.get("success"):
-        raise click.ClickException(payload.get("error") or "调用工具失败")
-    return _parse_tool_result(payload.get("result"))
+    data = _tool_response_data(response, "调用工具失败")
+    if not isinstance(data, dict) or not isinstance(data.get("result"), str):
+        raise click.ClickException("调用工具失败：响应缺少有效的 data.result")
+    return _parse_tool_result(data["result"])
 
 
 def _load_tool(tool_name: str, runtime: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """读取统一 REST 信封中的工具详情，并保留工具不存在的错误提示。"""
     response = _http_request(
         "GET",
         f"/api/v1/mcp/tools/{tool_name}",
@@ -713,12 +725,14 @@ def _load_tool(tool_name: str, runtime: Optional[Dict[str, Any]] = None) -> Dict
     )
     if response["status"] == 404:
         raise click.ClickException(f"工具不存在：{tool_name}")
-    if response["status"] != 200 or not isinstance(response.get("json"), dict):
-        raise click.ClickException(response["text"] or f"获取工具失败（HTTP {response['status']}）")
-    return response["json"]
+    data = _tool_response_data(response, "获取工具失败")
+    if not isinstance(data, dict):
+        raise click.ClickException("获取工具失败：响应 data 不是工具对象")
+    return data
 
 
 def _load_tools(runtime: Optional[Dict[str, Any]] = None) -> list[Dict[str, Any]]:
+    """读取统一 REST 信封中的工具列表，空列表保持合法。"""
     response = _http_request(
         "GET",
         "/api/v1/mcp/tools",
@@ -726,9 +740,10 @@ def _load_tools(runtime: Optional[Dict[str, Any]] = None) -> list[Dict[str, Any]
         timeout=10.0,
         runtime=runtime,
     )
-    if response["status"] != 200 or not isinstance(response.get("json"), list):
-        raise click.ClickException(response["text"] or f"获取工具列表失败（HTTP {response['status']}）")
-    return response["json"]
+    data = _tool_response_data(response, "获取工具列表失败")
+    if not isinstance(data, list):
+        raise click.ClickException("获取工具列表失败：响应 data 不是工具列表")
+    return data
 
 
 def _normalize_type(schema: Optional[Dict[str, Any]]) -> str:
@@ -742,6 +757,7 @@ def _normalize_type(schema: Optional[Dict[str, Any]]) -> str:
 
 
 def _format_tool_detail(tool: Dict[str, Any]) -> None:
+    """展示工具定义及参数的必填标记，供 CLI 用户构造调用。"""
     click.echo(f"Command: {tool.get('name')}")
     click.echo(f"Description: {tool.get('description') or '(none)'}")
     click.echo("")
@@ -1464,7 +1480,9 @@ def tool_run(tool_name: str, args: tuple[str, ...]) -> None:
     """运行指定工具"""
     arguments = _parse_key_value_pairs(args)
     result = _call_tool(tool_name, arguments, runtime=_backend_runtime())
-    if isinstance(result, (dict, list)):
+    if result is None or result == "":
+        click.echo("工具执行成功（无返回内容）")
+    elif isinstance(result, (dict, list)):
         _print_json(result)
     else:
         click.echo(result)
@@ -1506,7 +1524,9 @@ def scheduler_run(job_id: str) -> None:
             runtime=_backend_runtime(),
         )
     )
-    if isinstance(result, (dict, list)):
+    if result is None or result == "":
+        click.echo("调度任务调用成功（无返回内容）")
+    elif isinstance(result, (dict, list)):
         _print_json(result)
     else:
         click.echo(result)

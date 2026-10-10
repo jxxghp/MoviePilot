@@ -602,6 +602,9 @@ moviepilot tool run moviepilot_api operation_id=media.search 'query={"title":"�
 - `tool list` 用于动态发现当前服务可调用的工具
 - `tool show` 会输出参数名、类型和描述
 - `tool run` 参数格式固定为 `key=value`；对象、数组、布尔值和 `null` 使用合法 JSON
+- 工具命令自动解析本地 REST API 的 `success/message/data` 响应信封；`tool run` 输出
+  `data.result` 中的 JSON 或普通文本，返回内容为空时显示成功提示。
+- REST 请求失败时显示服务端错误原因并返回非零退出码，不输出整个工具目录响应。
 - MoviePilot 业务能力统一通过 `moviepilot_api` 的固定 `operation_id` 调用；不接受任意 URL、method、认证头或 Token，也不兼容旧业务工具名
 - 涉及精确媒体身份的 operation 统一使用 `media_source` + `media_id`，两个字段必须成对传递并复用搜索结果
 - `read_skill`、`read_file`、`write_file`、`edit_file` 和 `execute_command`
@@ -626,3 +629,7 @@ moviepilot scheduler list
 ```shell
 moviepilot scheduler run subscribe_refresh
 ```
+
+`scheduler list/run` 通过工具网关解析 REST 信封和内部业务响应。列表显示任务 ID、状态、
+下次运行时间和名称；执行命令显示业务返回值，无返回内容时显示调用成功提示，业务失败时
+显示原因并返回非零退出码。

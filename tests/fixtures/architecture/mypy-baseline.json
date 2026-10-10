@@ -1063,7 +1063,7 @@
   "app/cli.py": {
     "attr-defined": 2,
     "misc": 57,
-    "no-any-return": 6,
+    "no-any-return": 4,
     "type-arg": 3,
     "union-attr": 2
   },
