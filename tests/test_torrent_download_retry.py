@@ -1,12 +1,20 @@
 """种子 GET 的有界重试、缓存与冷却策略离线回归。"""
 
+import json
+from datetime import datetime
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
 from requests import Response
 
 import app.application.torrent.download as download
+import app.chain.download.submission as submission
+from app.chain.download import DownloadChain
 from app.chain.download.failure import DownloadFailureOwner
+from app.domain.context import Context, MediaInfo, TorrentInfo
+from app.domain.metainfo import MetaInfo
+from app.schemas.types import MediaType
 
 URL = "https://tracker.example/download.php?id=39"
 CONTENT = b"d4:infod4:name10:Series.mkv6:lengthi1eee"
@@ -174,3 +182,103 @@ def test_valid_cache_bypasses_network(boundary):
 def test_generic_empty_download_is_transient(error, ttl):
     """空内容不证明资源失效；明确文件损坏或删除继续按一天冷却。"""
     assert DownloadFailureOwner._download_failure_ttl(error) == ttl
+
+
+@pytest.mark.parametrize("message,ttl", [
+    ("相同種子當天最多下載10次", 86400),
+    ("相同种子当天最多下载10次", 86400),
+    ("当前请求太多，请10秒后重试", 3600),
+    ("請求過於頻繁，請2小時後重試", 7200),
+    ("Too many requests, retry after 90 minutes", 5400),
+])
+@pytest.mark.parametrize("status", [200, 403, 429])
+@pytest.mark.parametrize("field", ["message", "msg"])
+def test_rate_limit_json_preserves_reason_without_retry(boundary, message, ttl, status, field):
+    """站点明确限流优先于 HTTP 状态，不解析为种子、不重试或污染无效地址缓存。"""
+    helper, port, cache, sleep = boundary
+    port.request.return_value = _response(status, json.dumps({"code": "1", field: message}, ensure_ascii=False).encode())
+    parser = Mock(wraps=helper.get_fileinfo_from_torrent_content)
+    helper.get_fileinfo_from_torrent_content = parser
+
+    result = helper.download_torrent(URL)
+
+    assert result[1] is None
+    assert result[4] == f"站点限流：{message}"
+    assert DownloadFailureOwner._download_failure_ttl(result[4]) == ttl
+    port.request.assert_called_once()
+    sleep.assert_not_called()
+    parser.assert_not_called()
+    cache.set.assert_not_called()
+    helper.add_invalid.assert_not_called()
+
+
+@pytest.mark.parametrize("content", [
+    b'{"message":"torrent not found"}', b'{"message":"SUCCESS"}',
+    b'{"message":10}', b'{"message":{"error":"too many requests"}}',
+    b'{"message":"too many requests"', b'["too many requests"]',
+])
+def test_other_json_does_not_become_rate_limit(boundary, content):
+    """无关错误、非文本字段和截断 JSON 保留原有恢复预算。"""
+    helper, port, _, sleep = boundary
+    port.request.side_effect = [_response(content=content), _response()]
+    assert helper.download_torrent(URL)[1] == CONTENT
+    assert port.request.call_count == 2
+    sleep.assert_called_once_with(1)
+
+
+def test_rate_limit_at_redirect_destination_is_not_retried(boundary):
+    """重定向落地返回配额错误时停止请求，不能继续消耗下载次数。"""
+    helper, port, _, sleep = boundary
+    redirect = _response(302)
+    redirect.headers["Location"] = "https://tracker.example/file.torrent"
+    message = "相同種子當天最多下載10次"
+    port.request.side_effect = [redirect, _response(content=json.dumps({"message": message}).encode())]
+    assert helper.download_torrent(URL)[4] == f"站点限流：{message}"
+    assert port.request.call_count == 2
+    sleep.assert_not_called()
+
+
+@pytest.mark.parametrize("link_type", ["ordinary", "signed", "indirect"])
+def test_daily_quota_reaches_notification_and_persisted_cooldown(boundary, monkeypatch, link_type):
+    """真实准备流程保留限流原因到通知和冷却记录，签名与换票也不得刷新重试。"""
+    _, port, cache, sleep = boundary
+    message = "相同種子當天最多下載10次"
+    port.request.return_value = _response(content=json.dumps({"code": "1", "message": message}).encode())
+    chain = object.__new__(DownloadChain)
+    chain.post_message = Mock()
+    chain.search_site_torrents = Mock()
+    chain.download_failure_repository = Mock()
+    chain._apply_resource_download_event = Mock(return_value=(None, None))
+    chain._record_music_album_track_keys = Mock()
+    chain._resolve_media_download_dir = Mock(return_value=("local", Path("/downloads"), None))
+    chain._resolve_indirect_download_url = Mock(return_value=URL)
+    enclosure = {"ordinary": URL, "signed": URL + "&t=1&sign=old",
+                 "indirect": "[encoded]https://api.m-team.cc/api/torrent/genDlToken"}[link_type]
+    context = Context(
+        torrent_info=TorrentInfo(site=1, site_name="馒头", title="Series S01E39",
+                                 enclosure=enclosure),
+        media_info=MediaInfo(title="Series", type=MediaType.TV), meta_info=MetaInfo("Series S01E39"),
+    )
+    media = Mock()
+    media.supplement_tmdb_info.return_value = context.media_info
+    monkeypatch.setattr(submission, "MediaChain", Mock(return_value=media))
+
+    prepared, error = chain._prepare_download_single(
+        context=context, torrent_file=None, torrent_content=None, episodes=None,
+        channel=None, source="Subscribe|1", downloader=None, save_path=None,
+        userid=None, username=None,
+    )
+
+    assert prepared is None
+    assert error == f"站点限流：{message}"
+    chain.download_failure_repository.record_failure.assert_called_once()
+    failure = chain.download_failure_repository.record_failure.call_args.args[0]
+    assert failure.error_message == error
+    assert (datetime.fromisoformat(failure.next_retry_at)
+            - datetime.fromisoformat(failure.failed_at)).total_seconds() == 86400
+    chain.post_message.assert_called_once()
+    assert error in chain.post_message.call_args.args[0].text
+    chain.search_site_torrents.assert_not_called()
+    port.request.assert_called_once()
+    sleep.assert_not_called()
+    cache.set.assert_not_called()

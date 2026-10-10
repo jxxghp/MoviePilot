@@ -1,4 +1,5 @@
 import datetime
+import json
 import re
 import time
 from functools import lru_cache
@@ -38,6 +39,24 @@ class TorrentResponsePort(Protocol):
     content: bytes
     text: str
     reason: str
+
+
+def _torrent_rate_limit_error(response: Optional[TorrentResponsePort]) -> Optional[str]:
+    """在种子解析前提取明确的 JSON 限流提示；HTTP 429 保留既有流控错误。"""
+    if response is None:
+        return None
+    content = response.content
+    if content.lstrip().startswith(b"{"):
+        try:
+            payload = json.loads(content)
+        except (ValueError, UnicodeError):
+            payload = {}
+        message = payload.get("message") or payload.get("msg")
+        if isinstance(message, str) and torrent_rules.rate_limit_cooldown(message) is not None:
+            return f"站点限流：{message}"
+    if response.status_code == 429:
+        return "触发站点流控，请稍后重试"
+    return None
 
 
 class TorrentHttpPort(Protocol):
@@ -159,9 +178,11 @@ class TorrentHelper:
         return None
 
     def _should_retry_torrent_response(self, response: Optional[TorrentResponsePort]) -> bool:
-        """保留重定向、磁力和首次下载确认页，仅重试网络失败及无效的种子响应。"""
+        """保留重定向、磁力和首次确认页，明确限流不得消耗瞬时重试预算。"""
         if response is None:
             return True
+        if _torrent_rate_limit_error(response):
+            return False
         if response.status_code != 200:
             return _is_transient_torrent_status(response.status_code)
         content = response.content
@@ -225,6 +246,8 @@ class TorrentHelper:
                 url=url, cookie=cookie, ua=ua, referer=referer,
                 proxies=config.proxy if proxy else None, allow_redirects=False,
             )
+        if rate_limit_error := _torrent_rate_limit_error(req):
+            return cache_path, None, "", [], rate_limit_error
         if req is not None and req.status_code == 200:
             if not req.content:
                 return cache_path, None, "", [], "未下载到种子数据"
@@ -289,8 +312,6 @@ class TorrentHelper:
             return cache_path, None, "", [], "种子数据有误，请确认链接是否正确"
         elif req is None:
             return cache_path, None, "", [], "无法打开链接"
-        elif req.status_code == 429:
-            return cache_path, None, "", [], "触发站点流控，请稍后重试"
         else:
             # 把错误的种子记下来，避免重复使用
             if cache_invalid and not _is_transient_torrent_status(req.status_code):

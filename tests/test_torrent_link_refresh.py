@@ -279,7 +279,7 @@ def test_real_torrent_parse_and_cooldown_follow_final_attempt(monkeypatch, final
     content = b"d4:infod4:name10:Series.mkv6:lengthi1eee"
     port = Mock()
     port.request.side_effect = [
-        SimpleNamespace(status_code=404),
+        SimpleNamespace(status_code=404, content=b""),
         SimpleNamespace(status_code=final_status, content=content),
     ]
     monkeypatch.setattr(torrent_download, "_require_torrent_port", Mock(return_value=port))

@@ -14,6 +14,7 @@ from app.application.download.failures import (
 )
 from app.chain.download.contract import _DownloadOwnerBase
 from app.domain import episode as episode_rules
+from app.domain import torrent as torrent_rules
 from app.domain.context import (
     Context,
     TorrentInfo,
@@ -129,8 +130,11 @@ class DownloadFailureOwner(_DownloadOwnerBase):
     @staticmethod
     def _download_failure_ttl(error_msg: Optional[str]) -> int:
         """
-        按失败原因确定资源冷却时间；泛化的空内容不能证明资源失效，使用瞬时冷却。
+        限流按站点窗口冷却；泛化的空内容不能证明资源失效，使用瞬时冷却。
         """
+        rate_limit_ttl = torrent_rules.rate_limit_cooldown(error_msg)
+        if rate_limit_ttl is not None:
+            return rate_limit_ttl
         error_text = str(error_msg or "").lower()
         if any(keyword in error_text for keyword in DOWNLOAD_FAILURE_RESOURCE_ERROR_KEYWORDS):
             return DOWNLOAD_FAILURE_RESOURCE_TTL_SECONDS

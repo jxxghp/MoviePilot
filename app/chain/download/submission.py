@@ -5,7 +5,7 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Optional, Set, Tuple, Union, cast
+from typing import Any, Callable, Dict, Optional, Set, Tuple, Union, cast
 from urllib.parse import urlencode, urljoin, urlparse
 
 from app.application.configuration import get_chain_runtime_config_snapshot
@@ -175,10 +175,12 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
     def download_torrent(self, torrent: TorrentInfo,
                          channel: Optional[NotificationChannel] = None,
                          source: Optional[str] = None,
-                         userid: Union[str, int, None] = None
+                         userid: Union[str, int, None] = None,
+                         on_failure: Optional[Callable[[str], None]] = None,
                          ) -> Tuple[Optional[Union[str, bytes]], str, list[str]]:
         """
         下载种子文件，如果是磁力链，会返回磁力链接本身
+        :param on_failure: 将本次具体失败原因交还准备流程，保持返回元组与并发调用隔离
         :return: 种子内容，种子目录名，种子文件清单
         """
         # 获取下载链接
@@ -213,6 +215,8 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
             return content, "", []
 
         if not content:
+            if on_failure:
+                on_failure(error_msg or "下载种子内容为空")
             logger.error(f"下载种子文件失败：{torrent.title}")
             self.post_message(Message(
                 channel=channel,
@@ -455,9 +459,18 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             context.selected_episodes = sorted(set(meta.episode_list))
         else:
             context.selected_episodes = []
+        download_error = "下载种子内容为空"
+
+        def remember_rate_limit(error_msg: str) -> None:
+            """仅保留本次限流原因，避免准备流程用空内容覆盖站点冷却窗口。"""
+            nonlocal download_error
+            if torrent_rules.rate_limit_cooldown(error_msg) is not None:
+                download_error = error_msg
+
         if not torrent_file and not torrent_content:
             torrent_content, _, _ = self.download_torrent(
-                torrent, channel=channel, source=source, userid=userid
+                torrent, channel=channel, source=source, userid=userid,
+                on_failure=remember_rate_limit,
             )
         elif torrent_file:
             torrent_content = (
@@ -471,12 +484,12 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
         if not torrent_content:
             self._record_download_failure(
                 context=context,
-                error_msg="下载种子内容为空",
+                error_msg=download_error,
                 downloader=downloader or site_downloader,
                 source=source,
                 episodes=episodes,
             )
-            return None, "下载种子内容为空"
+            return None, download_error
         folder_name, file_list = cast(Any, TorrentHelper)().get_fileinfo_from_torrent_content(
             torrent_content
         )
