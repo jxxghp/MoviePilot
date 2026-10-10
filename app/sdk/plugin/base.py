@@ -201,6 +201,34 @@ class _PluginBase(metaclass=ABCMeta):
         """
         pass
 
+    def get_agent_pets(self) -> Optional[List[Dict[str, Any]]]:
+        """
+        声明插件提供的 Agent 助手形象，仅对已启用的 Vue 联邦插件生效。
+
+        每项字段：
+        - key：插件内唯一，匹配 ``[a-z0-9_-]{1,32}``（必填）
+        - name：展示名（必填）
+        - description：一句话说明
+        - mode：``stage``（插件拥有角色和整个视口图层）或 ``renderer``
+          （宿主负责入口行为，插件只负责绘制），默认 ``renderer``
+        - component：联邦暴露名，默认 ``AgentPet``（即 ``./AgentPet``）
+        - api_version：形象契约版本，默认 1；前端忽略不认识的版本
+        - preview：预览图，相对插件联邦产物目录的路径，或 ``http(s)://``、``data:`` URL
+        - bubbles：仅 stage 模式，``host``（插件上报锚点、宿主画气泡，默认）或 ``self``
+        - random_actions：仅 renderer 模式，宿主随机动作的候选名单
+
+        任一字段非法的项会被宿主丢弃并记录警告，同一插件内重复的 key 只保留第一项。
+
+        返回示例：
+        [{
+            "key": "chibi",
+            "name": "Q 版看板娘",
+            "mode": "stage",
+            "preview": "preview.png"
+        }]
+        """
+        pass
+
     def get_module(self) -> Optional[Dict[str, Any]]:
         """
         获取插件模块声明，用于胁持系统模块实现（方法名：方法实现）

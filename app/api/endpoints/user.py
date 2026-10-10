@@ -23,7 +23,10 @@ from app.application.security.user import (
     UserNameConflictError,
     UserService,
 )
-from app.application.security.userconfig import get_configured_user_configuration
+from app.application.security.userconfig import (
+    UserConfigurationValueTooLargeError,
+    get_configured_user_configuration,
+)
 from app.schemas.common import FileNameData as _SchemaFileNameData
 from app.schemas.common import ValueData as _SchemaValueData
 from app.schemas.response import Response as _SchemaResponse
@@ -212,13 +215,16 @@ async def set_config(
     current_user: Any = Depends(get_current_active_user_async),
 ):
     """
-    更新用户配置
+    更新用户配置；助手形象私有数据（AgentPetState.*）超出大小上限时拒绝写入
     """
-    await get_configured_user_configuration().async_set(
-        username=current_user.name,
-        key=key,
-        value=value,
-    )
+    try:
+        await get_configured_user_configuration().async_set(
+            username=current_user.name,
+            key=key,
+            value=value,
+        )
+    except UserConfigurationValueTooLargeError as error:
+        return _SchemaResponse(success=False, message=str(error))
     return _SchemaResponse(success=True)
 
 

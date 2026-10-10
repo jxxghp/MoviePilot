@@ -440,6 +440,7 @@ async def get_user_global_setting(
         include={
             "AI_AGENT_ENABLE",
             "AI_AGENT_HIDE_ENTRY",
+            "AI_AGENT_PET",
             "BANGUMI_PROXY_ENABLE",
             "BANGUMI_IMAGE_DOMAIN",
             "LLM_SUPPORT_AUDIO_INPUT",

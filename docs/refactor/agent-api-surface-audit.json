@@ -6,7 +6,7 @@
     "provider-skill": 12,
     "stream_or_binary": 11,
     "transport_or_identity": 76,
-    "ui_presentation": 14
+    "ui_presentation": 15
   },
   "dynamic_gateway_routes": [
     {
@@ -21,7 +21,7 @@
   "gateway_http_route_count": 229,
   "gateway_operation_count": 231,
   "matched_gateway_http_route_count": 228,
-  "openapi_operation_count": 423,
+  "openapi_operation_count": 424,
   "operations": [
     {
       "disposition": "consolidated",
@@ -2141,6 +2141,18 @@
       "path": "/api/v1/plugin/",
       "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "所有插件",
+      "tags": [
+        "plugin"
+      ]
+    },
+    {
+      "disposition": "ui_presentation",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/plugin/agent_pets",
+      "reason": "Plugin-rendered page, dashboard, or navigation metadata owned by the frontend presentation contract rather than an Agent business action.",
+      "summary": "获取插件 Agent 助手形象",
       "tags": [
         "plugin"
       ]

@@ -2,12 +2,34 @@
 
 from __future__ import annotations
 
+import json
 from functools import partial
 from typing import Optional, Protocol, Union
 
 from app.application.database import AsyncDatabaseExecutor
 from app.schemas.common import JsonData
 from app.schemas.types import UserConfigKey
+
+# Agent 助手形象私有数据的用户配置 key 前缀，完整 key 为 AgentPetState.<plugin_id>.<pet_key>
+AGENT_PET_STATE_KEY_PREFIX = "AgentPetState."
+# 助手形象私有数据按紧凑 JSON 的 UTF-8 字节计算的上限，只承载位置、偏好等小块状态
+AGENT_PET_STATE_MAX_BYTES = 16 * 1024
+
+
+class UserConfigurationValueTooLargeError(ValueError):
+    """用户配置值超出该 key 允许的序列化大小。"""
+
+
+def validate_user_configuration_value(key: Union[str, UserConfigKey], value: JsonData) -> None:
+    """校验写入值是否满足 key 的约束，目前仅限制助手形象私有数据的大小。"""
+    key_name = key.value if isinstance(key, UserConfigKey) else key
+    if not key_name.startswith(AGENT_PET_STATE_KEY_PREFIX):
+        return
+    size = len(json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+    if size > AGENT_PET_STATE_MAX_BYTES:
+        raise UserConfigurationValueTooLargeError(
+            f"助手形象数据序列化后为 {size} 字节，超过 {AGENT_PET_STATE_MAX_BYTES} 字节上限"
+        )
 
 
 class UserConfigurationRepository(Protocol):
@@ -62,7 +84,8 @@ class UserConfigurationService:
         key: Union[str, UserConfigKey],
         value: JsonData,
     ) -> None:
-        """写入用户配置。"""
+        """写入用户配置，值超出 key 约束时抛出 ``UserConfigurationValueTooLargeError``。"""
+        validate_user_configuration_value(key, value)
         self._repository.set(username=username, key=key, value=value)
 
     async def async_set(
@@ -71,9 +94,10 @@ class UserConfigurationService:
         key: Union[str, UserConfigKey],
         value: JsonData,
     ) -> None:
-        """异步写入用户配置，并等待数据库提交或回滚完成。"""
+        """异步写入用户配置，并等待数据库提交或回滚完成；值超出 key 约束时不落库并抛错。"""
         if self._async_executor is None:
             raise RuntimeError("用户配置异步数据库执行端口尚未配置")
+        validate_user_configuration_value(key, value)
         await self._async_executor.run(partial(self._repository.set, username=username, key=key, value=value))
 
     async def rename(self, previous_name: str, current_name: str) -> None:

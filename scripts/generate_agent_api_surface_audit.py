@@ -95,6 +95,7 @@ STREAM_OR_BINARY_PATHS = frozenset(
 )
 UI_PRESENTATION_PATHS = frozenset(
     {
+        "/api/v1/plugin/agent_pets",
         "/api/v1/plugin/dashboard/meta",
         "/api/v1/plugin/dashboard/{plugin_id}",
         "/api/v1/plugin/dashboard/{plugin_id}/{key}",
