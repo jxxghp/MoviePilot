@@ -1,4 +1,4 @@
-"""Python 内核的环境白名单、父进程死亡通知和整组进程终止。"""
+"""Python 内核的部署环境继承、父进程死亡通知和整组进程终止。"""
 
 import asyncio
 import os
@@ -7,21 +7,12 @@ import subprocess
 import sys
 from typing import Any
 
-_SECRET_PARTS = ('KEY', 'TOKEN', 'SECRET', 'PASSWORD', 'CREDENTIAL', 'PASSWD', 'AUTH', 'DSN',
-                 'WEBHOOK', 'CREDS', 'BEARER', 'APIKEY')
-_SAFE_PREFIXES = ('PATH', 'HOME', 'USER', 'LANG', 'LC_', 'TERM', 'TMPDIR', 'TMP', 'TEMP', 'SHELL',
-                  'LOGNAME', 'XDG_', 'VIRTUAL_ENV', 'CONDA')
-_WINDOWS_NAMES = frozenset({'SYSTEMROOT', 'SYSTEMDRIVE', 'WINDIR', 'COMSPEC', 'PATHEXT', 'OS',
-                          'APPDATA', 'LOCALAPPDATA', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH'})
-
 
 def child_environment(values: dict[str, str]) -> dict[str, str]:
-    """先拒绝敏感变量名，再允许必要的运行环境变量，不继承宿主 PYTHONPATH。"""
-    environment = {
-        key: value for key, value in values.items()
-        if not any(part in key.upper() for part in _SECRET_PARTS)
-        and (key.startswith(_SAFE_PREFIXES) or (os.name == 'nt' and key.upper() in _WINDOWS_NAMES))
-    }
+    """管理员内核继承宿主部署配置和连接凭据，保留独立导入路径与 UTF-8 输出。"""
+    # 内核与管理员 shell 同属宿主权限；过滤配置或密码会使脚本静默连接默认数据库。
+    environment = values.copy()
+    environment.pop('PYTHONPATH', None)
     environment.update(PYTHONDONTWRITEBYTECODE='1', PYTHONIOENCODING='utf-8', PYTHONUTF8='1')
     return environment
 

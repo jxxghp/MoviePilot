@@ -194,7 +194,9 @@ print(pages)
 
 stdout 内联50KB、stderr 10KB；超长 stdout 先脱敏，再把最多5MB正文存入当前用户的 `agent/runtime/code/users/<user-key>/output/`，可用 `read_file(file_path=..., start_line=..., end_line=...)` 续读。直接文件描述符输出和超出捕获上限的部分会明确标记不完整；spill 不保证包含未捕获正文。输出文件独立于内核目录，因此内核退出后仍可读取，七天后清理。空闲内核采用默认4个的 LRU 和1800秒过期；正在运行或排队的 cell 不被容量淘汰，因此高并发时可暂时超过4个。后台回收不依赖下一次调用，宿主 TaskRegistry 管理任务，文件操作使用现有 Agent 有界线程池。
 
-任意 Python 与管理员 `execute_command` 一样具备宿主进程权限，环境变量过滤和只读 RPC **不是操作系统沙箱**。因此普通用户、只读子代理和没有宿主 cell 上下文的外部 HTTP/MCP 直接调用不能使用这项能力；它不通过外部 `tools/list` 发布。POSIX 使用私有 Unix socket、随机令牌和父死亡管道，Windows 使用回环 TCP、随机令牌和父进程对象句柄。每个 cell 重新绑定当前上下文，结束时撤销并取消遗留 RPC，不把持久 socket 当作永久身份。当前只实现本地主机内核，没有远程终端后端。
+内核启动时继承宿主部署环境，包括 `CONFIG_DIR`、`MOVIEPILOT_ROOT`、`DB_TYPE` 和数据库连接凭据，使配置读取和内核中启动的脚本与 shell 通道一致；不继承宿主 `PYTHONPATH`，并固定 UTF-8 输出。环境变量不会自动输出给模型。环境或 `app.env` 变更后，应重置内核以重新加载配置。
+
+任意 Python 与管理员 `execute_command` 一样具备宿主进程权限，只读 RPC **不是操作系统沙箱**。因此普通用户、只读子代理和没有宿主 cell 上下文的外部 HTTP/MCP 直接调用不能使用这项能力；它不通过外部 `tools/list` 发布。POSIX 使用私有 Unix socket、随机令牌和父死亡管道，Windows 使用回环 TCP、随机令牌和父进程对象句柄。每个 cell 重新绑定当前上下文，结束时撤销并取消遗留 RPC，不把持久 socket 当作永久身份。当前只实现本地主机内核，没有远程终端后端。
 
 ## 验证范围
 

@@ -160,13 +160,73 @@ async def test_private_files_and_parent_death_signal(kernel):
     assert kernel.process.returncode == -signal.SIGKILL
 
 
-def test_environment_drops_secrets_before_safe_prefixes():
-    """敏感名称优先于安全前缀；内核不能继承宿主导入路径或认证令牌。"""
-    environment = child_environment({'PATH': '/bin', 'HOME': '/home/example', 'HOME_TOKEN': 'secret',
-                                     'LANG': 'en_US.UTF-8', 'OPENAI_API_KEY': 'secret', 'PYTHONPATH': '/host'})
-    assert environment['PATH'] == '/bin' and environment['HOME'] == '/home/example'
-    assert not {'HOME_TOKEN', 'OPENAI_API_KEY', 'PYTHONPATH'} & environment.keys()
+def test_environment_preserves_deployment_configuration_without_mutating_parent():
+    """管理员内核继承完整部署配置，但不继承宿主导入路径或改写父环境。"""
+    parent = {'PATH': '/bin', 'HOME': '/home/example', 'HOME_TOKEN': 'example-token',
+              'LANG': 'en_US.UTF-8', 'OPENAI_API_KEY': 'example-key', 'PYTHONPATH': '/host',
+              'CONFIG_DIR': '/config', 'DB_TYPE': 'postgresql',
+              'DB_POSTGRESQL_PASSWORD': 'example-password', 'CUSTOM_SERVICE_URL': 'http://localhost',
+              'PYTHONUTF8': '0', 'SystemRoot': 'C:\\Windows'}
+    original = parent.copy()
+    environment = child_environment(parent)
+    assert environment == {**{key: value for key, value in parent.items() if key != 'PYTHONPATH'},
+                           'PYTHONDONTWRITEBYTECODE': '1', 'PYTHONIOENCODING': 'utf-8', 'PYTHONUTF8': '1'}
+    assert parent == original
     assert environment['PYTHONUTF8'] == '1'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('database_type', ['postgresql', 'sqlite'])
+async def test_kernel_and_nested_script_use_host_database_configuration(tmp_path, monkeypatch, database_type):
+    """遗留 SQLite 存在时，内核和后续脚本仍按宿主配置选择数据库且不输出凭据。"""
+    config_path = tmp_path / 'config'
+    config_path.mkdir()
+    (config_path / 'user.db').touch()
+    project_path = Path(__file__).resolve().parents[1]
+    deployment = {'CONFIG_DIR': str(config_path), 'MOVIEPILOT_ROOT': str(project_path),
+                  'DB_TYPE': database_type, 'DB_POSTGRESQL_HOST': 'database.invalid',
+                  'DB_POSTGRESQL_PORT': '15432', 'DB_POSTGRESQL_DATABASE': 'kernel_test',
+                  'DB_POSTGRESQL_USERNAME': 'kernel_user', 'DB_POSTGRESQL_PASSWORD': 'test-pg-password'}
+    for key, value in deployment.items():
+        monkeypatch.setenv(key, value)
+    instance = PythonKernel(tmp_path / 'deployment-kernel', (), blocking=asyncio.to_thread, cwd=project_path)
+    script = (
+        'import os, runpy\n'
+        'from pathlib import Path\n'
+        'from sqlalchemy.engine import make_url\n'
+        'script = runpy.run_path(str(Path(os.environ["MOVIEPILOT_ROOT"]) / '
+        '"skills/database-operation/scripts/mp-db.py"))\n'
+        'settings = script["_load_settings"]()\n'
+        'assert settings.DB_TYPE == os.environ["DB_TYPE"]\n'
+        'assert settings.CONFIG_PATH == Path(os.environ["CONFIG_DIR"])\n'
+        'assert settings.DB_POSTGRESQL_PASSWORD == os.environ["DB_POSTGRESQL_PASSWORD"]\n'
+        'script["_build_engine"].__globals__["create_engine"] = lambda url, **kwargs: make_url(url)\n'
+        'url = script["_build_engine"]()\n'
+        'assert url.get_backend_name() == os.environ["DB_TYPE"]\n'
+        'if settings.DB_TYPE == "postgresql":\n'
+        '    assert url.host == "database.invalid" and url.port == 15432\n'
+        '    assert url.database == "kernel_test" and url.username == "kernel_user"\n'
+        '    assert url.password == os.environ["DB_POSTGRESQL_PASSWORD"]\n'
+        'else:\n'
+        '    assert Path(url.database) == settings.CONFIG_PATH / "user.db"\n'
+        'print("database configuration matched")\n'
+    )
+    try:
+        await instance.start()
+        result = await instance.execute(script, dispatch=_dispatch, timeout=15)
+        assert result['status'] == 'ok', result.get('traceback')
+        assert result['stdout'] == 'database configuration matched\n'
+        nested = await instance.execute(
+            'import subprocess, sys\n'
+            f'child = subprocess.run([sys.executable, "-c", {script!r}], '
+            'capture_output=True, text=True, timeout=15)\n'
+            'assert child.returncode == 0, child.stderr\nprint(child.stdout, end="")',
+            dispatch=_dispatch, timeout=20,
+        )
+        assert nested['status'] == 'ok', nested.get('traceback')
+        assert nested['stdout'] == 'database configuration matched\n'
+    finally:
+        await instance.close()
 
 
 def test_bounded_output_preserves_readable_spill(tmp_path):
