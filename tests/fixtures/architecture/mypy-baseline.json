@@ -2833,8 +2833,7 @@
     "var-annotated": 1
   },
   "app/workflow/actions/filter_torrents.py": {
-    "arg-type": 2,
-    "list-item": 1,
+    "arg-type": 1,
     "no-untyped-call": 1,
     "type-arg": 1,
     "union-attr": 1,
