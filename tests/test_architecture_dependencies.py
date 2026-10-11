@@ -2321,6 +2321,8 @@ def test_global_settings_imports_stay_within_compatibility_baseline():
     allowed = {
         "app/sdk/config.py",
         "app/startup/initializers/modules.py",
+        # 共用测试引导是插件仓单测的组合根，与 tests/conftest.py 一样按测试 settings 登记运行时配置快照。
+        "app/testing/bootstrap.py",
     }
     imports: set[str] = set()
     for path in APP_ROOT.rglob("*.py"):
