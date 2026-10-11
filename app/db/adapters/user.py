@@ -260,6 +260,11 @@ class TransactionalUserRepository(ChainUserRepository):
         async with self._async_session() as session:
             return await SqlAlchemyUserRepository(session).async_get_by_name(name)
 
+    async def async_get_by_id(self, user_id: int) -> Optional[UserSnapshot]:
+        """在独占异步会话中按持久化 ID 读取用户公开快照。"""
+        async with self._async_session() as session:
+            return await SqlAlchemyUserRepository(session).async_get_by_id(user_id)
+
     def create_auxiliary(self, command: AuxiliaryUserCreate) -> UserAuthSnapshot:
         """在独占事务中创建辅助认证用户，提交失败时完整回滚。"""
         with self._sync_session() as session:

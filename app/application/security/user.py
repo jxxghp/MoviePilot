@@ -153,6 +153,9 @@ class ChainUserRepository(Protocol):
     async def async_get_by_name(self, name: str) -> Optional[UserSnapshot]:
         """异步按用户名读取公开用户快照。"""
 
+    async def async_get_by_id(self, user_id: int) -> Optional[UserSnapshot]:
+        """按已认证持久化 ID 读取公开用户快照，避免依赖旧会话展示名。"""
+
     def create_auxiliary(self, command: AuxiliaryUserCreate) -> UserAuthSnapshot:
         """原子创建辅助认证用户并返回已提交快照。"""
 

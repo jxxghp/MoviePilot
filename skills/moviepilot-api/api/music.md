@@ -205,6 +205,7 @@ online confirmation; album corrections must preserve the returned source-file sc
 ### `music.album.get`
 `GET /api/v1/music/album/{album_id}`; policy effect: `safe_read`.
 Purpose: Read one album's details, tracks, releases, and aligned artist names and IDs.
+Identity scope: `public`; required role: `user`.
 - Album and track text follows `MUSIC_METADATA_TO_SIMPLIFIED`, matching recognition and final transfer naming. Original aliases, source data, lyrics, and IDs remain unchanged. Recording selection does not override local album-edition evidence, and multi-artist credits remain complete.
 - `path_params`: `album_id*` (string): Source-native album ID returned by music search, exploration, or artist-album browsing.
 - `query`: `media_source` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `musicbrainz_release_id` (string|null): Optional exact MusicBrainz Release UUID belonging to the selected album Release Group; never use it as media_id.
@@ -213,6 +214,7 @@ Purpose: Read one album's details, tracks, releases, and aligned artist names an
 ### `music.album.related`
 `GET /api/v1/music/album/{album_id}/related`; policy effect: `safe_read`.
 Purpose: Browse albums related to one source-native album identity.
+Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: `album_id*` (string): Source-native album ID returned by music search, exploration, or artist-album browsing.
 - `query`: `count` (integer; default `24`; minimum `1`; maximum `100`): Maximum number of records to return on the requested page.; `media_source` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.
@@ -221,6 +223,7 @@ Purpose: Browse albums related to one source-native album identity.
 ### `music.artist.albums`
 `GET /api/v1/music/artist/{artist_id}/albums`; policy effect: `safe_read`.
 Purpose: Browse one artist's albums, singles, EPs, or another exact release-group type.
+Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: `artist_id*` (string): Source-native artist ID returned by music search or an album detail response.
 - `query`: `album_type` (string|null): Music album or release-group type used by classification rules.; `count` (integer; default `30`; minimum `1`; maximum `100`): Maximum number of records to return on the requested page.; `media_source` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `page` (integer; default `1`; minimum `1`): One-based result page number.
@@ -229,6 +232,7 @@ Purpose: Browse one artist's albums, singles, EPs, or another exact release-grou
 ### `music.artist.get`
 `GET /api/v1/music/artist/{artist_id}`; policy effect: `safe_read`.
 Purpose: Read one artist's canonical details from the selected music metadata source.
+Identity scope: `public`; required role: `user`.
 - `path_params`: `artist_id*` (string): Source-native artist ID returned by music search or an album detail response.
 - `query`: `media_source` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.
 - `body`: none
@@ -236,6 +240,7 @@ Purpose: Read one artist's canonical details from the selected music metadata so
 ### `music.artist.related`
 `GET /api/v1/music/artist/{artist_id}/related`; policy effect: `safe_read`.
 Purpose: Browse artists related to one source-native artist identity.
+Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: `artist_id*` (string): Source-native artist ID returned by music search or an album detail response.
 - `query`: `count` (integer; default `24`; minimum `1`; maximum `100`): Maximum number of records to return on the requested page.; `media_source` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.
@@ -244,6 +249,7 @@ Purpose: Browse artists related to one source-native artist identity.
 ### `music.cache.clear`
 `DELETE /api/v1/music/cache`; policy effect: `destructive_write`.
 Purpose: Clear the complete administrator-only MusicBrainz recognition cache.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
 - `body`: none
@@ -251,6 +257,7 @@ Purpose: Clear the complete administrator-only MusicBrainz recognition cache.
 ### `music.cache.delete`
 `DELETE /api/v1/music/cache/{cache_key}`; policy effect: `destructive_write`.
 Purpose: Delete one administrator-only MusicBrainz recognition-cache entry by exact key.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `cache_key*` (string): Exact recognition-cache key returned by the corresponding recognition-cache get operation.
 - `query`: none
 - `body`: none
@@ -258,6 +265,7 @@ Purpose: Delete one administrator-only MusicBrainz recognition-cache entry by ex
 ### `music.cache.get`
 `GET /api/v1/music/cache`; policy effect: `safe_read`.
 Purpose: Inspect the administrator-only MusicBrainz recognition cache and summary counts.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
 - `body`: none
@@ -265,6 +273,7 @@ Purpose: Inspect the administrator-only MusicBrainz recognition cache and summar
 ### `music.explore`
 `GET /api/v1/music/explore`; policy effect: `safe_read`.
 Purpose: Browse MusicBrainz charts or fresh releases, or Douban Music tag categories.
+Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: none
 - `query`: `count` (integer; default `30`; minimum `1`; maximum `100`): Maximum number of records to return on the requested page.; `days` (integer; default `14`; minimum `1`; maximum `90`): Fresh-release lookback/lookahead window, from 1 through the endpoint maximum.; `douban_sort` (string; default `U`): Douban Music order: U comprehensive, S rating, R newest, or O hottest.; `entity` (string; default `recording`): Chart entity: recording for tracks or album for release groups. Fresh results are albums.; `future` (boolean; default `True`): Include releases after today in fresh mode.; `media_source` (MediaSource): Music exploration source. Use musicbrainz for chart/fresh modes or doubanmusic for tag browsing.; `min_listen_count` (integer; default `0`; minimum `0`): Minimum ListenBrainz listen count in chart mode.; `mode` (string; default `chart`): MusicBrainz mode: chart reads listening charts; fresh reads new album releases.; `page` (integer; default `1`; minimum `1`): One-based result page number.; `past` (boolean; default `True`): Include releases before today in fresh mode.; `range_name` (string; default `this_month`): ListenBrainz chart range: this_week, this_month, this_year, week, month, or year.; `sort` (string; default `release_date`): Fresh-release order accepted by the current ListenBrainz implementation.; `sort_by` (string; default `listen_count.desc`): ListenBrainz chart order: listen_count.desc or listen_count.asc.; `tags` (string; default ``): Comma-separated Douban Music tags used only when media_source is doubanmusic.; `with_cover` (boolean; default `False`): Keep only results with cover artwork when true.
@@ -273,6 +282,7 @@ Purpose: Browse MusicBrainz charts or fresh releases, or Douban Music tag catego
 ### `music.recognize`
 `POST /api/v1/music/recognize`; policy effect: `safe_read`.
 Purpose: Resolve one recording or album from an exact music source and source-native ID.
+Identity scope: `public`; required role: `user`.
 - `path_params`: none
 - `query`: none
 - `body`: `media_id*` (string): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source*` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `music_type` (string(recording,album)|null): Music identity level: recording, album, or artist where supported.

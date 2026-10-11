@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 50
+version: 53
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -208,6 +208,10 @@ operation is added or moved, update its category file, this index, the
 frontmatter allowlist, and the matching gateway contract together.
 
 ## API Surface Scope
+
+Operations declare an identity scope: `public` reads external public metadata without requiring a channel account binding; `bound_user` uses the active MoviePilot user bound to the stable channel sender ID (Web uses its authenticated user ID); `admin` requires administrator authority. Read-only does not mean public. Channel nicknames never establish identity. Personal records and subscription writes retain their existing ownership and permission checks.
+
+When identity resolution fails, relay the gateway's actual remediation message and sender ID. Channel users bind their own MoviePilot account via avatar > Personal Information > Account Binding, fill the named channel field, and save. Do not invent a Settings > Users binding page, substitute nicknames/group/bot IDs, diagnose an ambiguous binding failure as a network issue, or ask Web users to bind a notification channel. Public operations do not require binding.
 
 This Skill is the complete callable MoviePilot business API surface for the
 Agent. Every operation in `allowed-api-operations` has one exact parameter

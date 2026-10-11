@@ -37,6 +37,7 @@ other clients.
 ### `media.cache.clear`
 `DELETE /api/v1/tmdb/cache`; policy effect: `destructive_write`.
 Purpose: Clear the complete administrator-only TMDB recognition cache.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
 - `body`: none
@@ -44,6 +45,7 @@ Purpose: Clear the complete administrator-only TMDB recognition cache.
 ### `media.cache.delete`
 `DELETE /api/v1/tmdb/cache/{cache_key}`; policy effect: `destructive_write`.
 Purpose: Delete one administrator-only TMDB recognition-cache entry by exact key.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `cache_key*` (string): Exact recognition-cache key returned by the corresponding recognition-cache get operation.
 - `query`: none
 - `body`: none
@@ -51,6 +53,7 @@ Purpose: Delete one administrator-only TMDB recognition-cache entry by exact key
 ### `media.cache.get`
 `GET /api/v1/tmdb/cache`; policy effect: `safe_read`.
 Purpose: Inspect the administrator-only TMDB recognition cache and summary counts.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
 - `body`: none
@@ -58,6 +61,7 @@ Purpose: Inspect the administrator-only TMDB recognition cache and summary count
 ### `media.classification.fields`
 `GET /api/v1/media/classification/fields`; policy effect: `safe_read`.
 Purpose: Read the media-classification field catalog and source capabilities.
+Identity scope: `bound_user`; required role: `user`.
 - `path_params`: none
 - `query`: none
 - `body`: none
@@ -65,6 +69,7 @@ Purpose: Read the media-classification field catalog and source capabilities.
 ### `media.classification.policy.get`
 `GET /api/v1/media/classification/policy`; policy effect: `safe_read`.
 Purpose: Read the active automatic media-classification policy.
+Identity scope: `bound_user`; required role: `user`.
 - `path_params`: none
 - `query`: `template` (string|null): Pass default to read the built-in media-classification policy template; omit it to read the active policy.
 - `body`: none
@@ -72,6 +77,7 @@ Purpose: Read the active automatic media-classification policy.
 ### `media.classification.policy.history`
 `GET /api/v1/media/classification/history`; policy effect: `safe_read`.
 Purpose: Read the bounded history of published media-classification policies.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
 - `body`: none
@@ -79,6 +85,7 @@ Purpose: Read the bounded history of published media-classification policies.
 ### `media.classification.policy.impact`
 `POST /api/v1/media/classification/impact`; policy effect: `safe_read`.
 Purpose: Estimate how an unpublished media-classification policy changes bounded recent samples.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
 - `body`: `example_limit` (integer; default `20`; minimum `0.0`; maximum `50.0`): Maximum number of representative impact examples to return.; `expected_revision*` (integer; minimum `1.0`): Current revision from a preceding read, used to reject concurrent state changes.; `policy*` (ClassificationPolicy-Input): Complete or draft automatic media-classification policy.; `sample_limit` (integer; default `100`; minimum `1.0`; maximum `200.0`): Maximum number of recent records or samples to inspect for impact analysis.; `samples` (array<ClassificationFacts>): Explicit normalized fact samples used for classification impact analysis.
@@ -86,6 +93,7 @@ Purpose: Estimate how an unpublished media-classification policy changes bounded
 ### `media.classification.policy.preview`
 `POST /api/v1/media/classification/preview`; policy effect: `safe_read`.
 Purpose: Preview automatic media classification for selected media or normalized facts.
+Identity scope: `bound_user`; required role: `user`.
 - `path_params`: none
 - `query`: none
 - `body`: `input*` (ClassificationFactsPreviewInput|ClassificationMediaPreviewInput): Media or normalized-facts input used for a classification preview.; `policy` (ClassificationPolicy-Input|null): Complete or draft automatic media-classification policy.
@@ -93,6 +101,7 @@ Purpose: Preview automatic media classification for selected media or normalized
 ### `media.classification.policy.rollback`
 `POST /api/v1/media/classification/rollback/{revision}`; policy effect: `reversible_write`.
 Purpose: Publish a selected historical media-classification policy as a new revision.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `revision*` (integer): Published classification policy revision or expected revision number.
 - `query`: none
 - `body`: `expected_revision*` (integer; minimum `1.0`): Current revision from a preceding read, used to reject concurrent state changes.
@@ -100,6 +109,7 @@ Purpose: Publish a selected historical media-classification policy as a new revi
 ### `media.classification.policy.update`
 `PUT /api/v1/media/classification/policy`; policy effect: `reversible_write`.
 Purpose: Validate and publish a complete automatic media-classification policy.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
 - `body`: `expected_revision*` (integer; minimum `0.0`): Current revision from a preceding read, used to reject concurrent state changes.; `policy*` (ClassificationPolicy-Input): Complete or draft automatic media-classification policy.
@@ -107,6 +117,7 @@ Purpose: Validate and publish a complete automatic media-classification policy.
 ### `media.classification.policy.validate`
 `POST /api/v1/media/classification/validate`; policy effect: `safe_read`.
 Purpose: Validate an unpublished automatic media-classification policy without saving it.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
 - `body`: `policy*` (ClassificationPolicy-Input): Complete or draft automatic media-classification policy.
@@ -114,6 +125,7 @@ Purpose: Validate an unpublished automatic media-classification policy without s
 ### `media.detail`
 `GET /api/v1/media/{media_id}`; policy effect: `safe_read`.
 Purpose: Read canonical media details from one selected metadata source.
+Identity scope: `public`; required role: `user`.
 - `path_params`: `media_id*` (string): Source-native media ID. Always pair it with the exact media_source returned by search.
 - `query`: `media_source*` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `type_name*` (string): Explicit media type name used when source IDs alone are ambiguous.
 - `body`: none
@@ -121,6 +133,7 @@ Purpose: Read canonical media details from one selected metadata source.
 ### `media.episode_group.seasons`
 `GET /api/v1/media/group/seasons/{episode_group}`; policy effect: `safe_read`.
 Purpose: List seasons defined by one exact TMDB episode-group identity.
+Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `path_params`: `episode_group*` (string): TMDB episode-group identifier used for alternate episode ordering.
 - `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
@@ -129,6 +142,7 @@ Purpose: List seasons defined by one exact TMDB episode-group identity.
 ### `media.episode_groups`
 `GET /api/v1/media/groups/{tmdbid}`; policy effect: `safe_read`.
 Purpose: List alternate TMDB episode groups available for one TV media identity.
+Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `path_params`: `tmdbid*` (integer): TMDB media ID returned by media search or detail.
 - `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
@@ -137,6 +151,7 @@ Purpose: List alternate TMDB episode groups available for one TV media identity.
 ### `media.episode_schedule`
 `GET /api/v1/tmdb/{tmdbid}/{season}`; policy effect: `safe_read`.
 Purpose: Read TMDB episode release information for one season.
+Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `path_params`: `season*` (integer): Season number used by the media, search, subscription, or transfer operation.; `tmdbid*` (integer): TMDB media ID returned by media search or detail.
 - `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `episode_group` (string|null): TMDB episode-group identifier used for alternate episode ordering.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
@@ -145,6 +160,7 @@ Purpose: Read TMDB episode release information for one season.
 ### `media.person.credits`
 `GET /api/v1/{source}/person/credits/{person_id}`; policy effect: `safe_read`.
 Purpose: Read one person's credits from the selected metadata source.
+Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: `person_id*` (integer): Source-native person ID.; `source*` (string(douban,tmdb,bangumi,anilist)): Metadata source that owns the person ID.
 - `query`: `count` (integer; default `20`; minimum `1`; maximum `50`): Page size used by Bangumi and AniList; other sources ignore it.; `page` (integer; default `1`; minimum `1`): One-based result page number.
@@ -153,6 +169,7 @@ Purpose: Read one person's credits from the selected metadata source.
 ### `media.person.search`
 `GET /api/v1/media/search`; policy effect: `safe_read`.
 Purpose: Search people and music artists across selected metadata sources.
+Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: none
 - `query`: `count` (integer; default `8`): Maximum number of records to return on the requested page.; `media_source` (array<MediaSource>; default `[]`): Metadata source identifier. Preserve the exact value returned with media_id.; `music_type` (string(recording,album,artist)|null): Music identity level: recording, album, or artist where supported.; `page` (integer; default `1`): One-based result page number.; `title*` (string): Media, torrent, subscription, or history title used by the operation.; `type*` (string=person): Literal person, selecting person search instead of media search.
@@ -161,6 +178,7 @@ Purpose: Search people and music artists across selected metadata sources.
 ### `media.recognize`
 `GET /api/v1/media/recognize`; policy effect: `safe_read`.
 Purpose: Recognize media identity from a title, subtitle, or custom rule context.
+Identity scope: `bound_user`; required role: `user`.
 - `path_params`: none
 - `query`: `custom_words` (string|null): Custom recognition or rename words applied to this media workflow.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `subtitle` (string|null): Optional subtitle text used together with title during media recognition.; `title*` (string): Media, torrent, subscription, or history title used by the operation.
 - `body`: none
@@ -168,6 +186,7 @@ Purpose: Recognize media identity from a title, subtitle, or custom rule context
 ### `media.recognize_file`
 `GET /api/v1/media/recognize_file`; policy effect: `safe_read`.
 Purpose: Recognize canonical media identity from one exact filename and optional path context.
+Identity scope: `bound_user`; required role: `user`.
 - `path_params`: none
 - `query`: `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `path*` (string): Storage or history path represented by this record.
 - `body`: none
@@ -175,6 +194,7 @@ Purpose: Recognize canonical media identity from one exact filename and optional
 ### `media.scrape`
 `POST /api/v1/media/scrape/{storage}`; policy effect: `external_side_effect`.
 Purpose: Generate or refresh metadata for one storage item.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `storage*` (string|null): Configured storage name or storage type used by the operation.
 - `query`: `episode_group` (string|null): TMDB episode-group identifier used for alternate episode ordering.; `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `music_type` (string|null): Music identity level: recording, album, or artist where supported.; `type_name` (MediaType|null): Explicit media type name used when source IDs alone are ambiguous.
 - `body`: `basename` (string|null): Base filename without its parent path.; `children` (array<FileItem-Input>|null): Child storage items nested below this item.; `drive_id` (string|null): Provider-native storage drive identifier.; `extension` (string|null): Filename extension, including or excluding the leading dot as returned by storage.; `fileid` (string|null): Provider-native storage item identifier.; `modify_time` (number|null): Storage item modification timestamp.; `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.; `parent_fileid` (string|null): Provider-native identifier of the parent storage directory.; `path` (string|null; default `/`): Storage or history path represented by this record.; `pickcode` (string|null): 115 storage pickcode associated with the item.; `size` (integer|null): File or torrent size in bytes.; `storage` (string|null; default `local`): Configured storage name or storage type used by the operation.; `thumbnail` (string|null): Thumbnail URL returned by the storage provider.; `type` (string|null): MoviePilot media or storage item type required by the selected operation.; `url` (string|null): Site, storage, or torrent URL represented by this field.
@@ -182,6 +202,7 @@ Purpose: Generate or refresh metadata for one storage item.
 ### `media.search`
 `GET /api/v1/media/search`; policy effect: `safe_read`.
 Purpose: Search canonical media across selected metadata sources.
+Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: none
 - `query`: `count` (integer; default `8`): Maximum number of records to return on the requested page.; `media_source` (array<MediaSource>; default `[]`): Metadata source identifier. Preserve the exact value returned with media_id.; `music_type` (string(recording,album,artist)|null): Music identity level: recording, album, or artist where supported.; `page` (integer; default `1`): One-based result page number.; `title*` (string): Media, torrent, subscription, or history title used by the operation.; `type` (string|null; default `media`): MoviePilot media or storage item type required by the selected operation.
@@ -190,6 +211,7 @@ Purpose: Search canonical media across selected metadata sources.
 ### `media.seasons`
 `GET /api/v1/media/seasons`; policy effect: `safe_read`.
 Purpose: List seasons for one exact media identity or a title-and-year fallback.
+Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `path_params`: none
 - `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.; `season` (integer): Season number used by the media, search, subscription, or transfer operation.; `title` (string|null): Media, torrent, subscription, or history title used by the operation.; `year` (string): Release or premiere year used to disambiguate the media title.
@@ -198,6 +220,7 @@ Purpose: List seasons for one exact media identity or a title-and-year fallback.
 ### `media.sources`
 `GET /api/v1/media/source`; policy effect: `safe_read`.
 Purpose: List metadata sources currently registered for MoviePilot media operations.
+Identity scope: `bound_user`; required role: `user`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `path_params`: none
 - `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.

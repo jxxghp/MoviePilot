@@ -66,7 +66,7 @@ OPERATION_DESCRIPTIONS = {
     "plugin.source.install": "Install an unbound plugin from one explicitly selected online source.",
     "plugin.source.options": "Inspect source candidates and the current immutable source identity before installation or source change.",
     "plugin.uninstall": "Uninstall one plugin and remove it from the installed set.",
-    "recommendation.list": "Read personalized media or music recommendations.",
+    "recommendation.list": "Read public media or music charts and recommendations.",
     "scheduler.list": "List registered scheduler jobs and their current state.",
     "scheduler.run": "Run one registered scheduler job immediately.",
     "search.results": "Read the most recent torrent-search context and result set.",
@@ -390,6 +390,7 @@ FIELD_DESCRIPTIONS = {
     "mode": "Operation mode; music.explore accepts chart or fresh, while transfer history records move, copy, link, or softlink.",
     "modify_time": "Storage item modification timestamp.",
     "mtype": "MoviePilot media type or subscription-history category required by the operation.",
+    "music_cue_enable": "Optional per-subscription CUE organization setting; omit to inherit the system default.",
     "music_type": "Music identity level: recording, album, or artist where supported.",
     "include_candidates": "Include unconfirmed music resources and related albums for manual review. Defaults to false; candidates have no target media identity and must not be used for automatic download.",
     "name": "Human-readable name of the site, storage item, subscription, or rule group.",
@@ -1266,7 +1267,8 @@ def build_api_mcp_input_schema(
             "title": operation_id,
             "description": (
                 f"{summary} Method: {route.method}. Path: {route.path}. "
-                f"Effect: {spec.effect.value}.{collection_guidance}"
+                f"Effect: {spec.effect.value}. Identity scope: {spec.identity_scope.value}. "
+                f"Required role: {spec.required_role.value}.{collection_guidance}"
             ),
             "properties": properties,
             "required": required,

@@ -15,7 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.agent.policy.api import API_OPERATION_ROUTES  # noqa: E402
+from app.agent.policy.api import API_OPERATION_ROUTES, API_OPERATION_SPECS  # noqa: E402
 from app.api.apiv1 import api_router  # noqa: E402
 
 JSON_OUTPUT = PROJECT_ROOT / "docs/refactor/agent-api-surface-audit.json"
@@ -302,6 +302,19 @@ def generate_audit() -> dict[str, Any]:
         "dynamic_gateway_routes": dynamic_gateway_routes,
         "disposition_counts": dict(sorted(counts.items())),
         "operations": entries,
+        "gateway_identity_contracts": [
+            {
+                "operation_id": spec.operation_id,
+                "method": API_OPERATION_ROUTES[spec.operation_id].method,
+                "path": API_OPERATION_ROUTES[spec.operation_id].path,
+                "identity_scope": spec.identity_scope.value,
+                "required_role": spec.required_role.value,
+                "effect": spec.effect.value,
+                "result_sensitivity": spec.result_sensitivity.value,
+                "confirmation": spec.confirmation.value,
+            }
+            for spec in sorted(API_OPERATION_SPECS, key=lambda item: item.operation_id)
+        ],
     }
 
 
@@ -339,6 +352,26 @@ def render_markdown(audit: dict[str, Any]) -> str:
     }
     for disposition, count in audit["disposition_counts"].items():
         lines.append(f"| `{disposition}` | {count} | {meanings[disposition]} |")
+    lines.extend([
+        "",
+        "## Gateway Identity Audit",
+        "",
+        "All gateway operations are audited below. New operations default to bound_user; safe_read alone never grants public access.",
+        "public: audited external public metadata only; the host-authenticated executor cannot call other operations.",
+        "bound_user: an active account bound to the stable channel sender ID, or the authenticated Web user ID; endpoint ownership and management permissions still apply.",
+        "admin: administrator authority, preserving existing verified channel/API integration semantics; this never substitutes for ownership on bound_user operations.",
+        "Title recognition retains bound_user because its Context exposes locally configured applied identification rules. File recognition, source availability, rules, search results, media libraries, storage and public UI settings remain instance data.",
+        "Plugin ratings include this installation's own rating and require the same administrator role as their REST dependencies. Community share/popularity/statistics and global plugin installation statistics are public reads; follow lists and rating submissions are not.",
+        "",
+        "| operation | method | path | identity scope | role | effect | result sensitivity | confirmation |",
+        "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
+    ])
+    for item in audit["gateway_identity_contracts"]:
+        lines.append(
+            f"| `{item['operation_id']}` | `{item['method']}` | `{item['path']}` | "
+            f"`{item['identity_scope']}` | `{item['required_role']}` | `{item['effect']}` | "
+            f"`{item['result_sensitivity']}` | `{item['confirmation']}` |"
+        )
     if audit["dynamic_gateway_routes"]:
         lines.extend(
             [

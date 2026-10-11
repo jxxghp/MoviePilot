@@ -1,6 +1,7 @@
 """Agent 结构化 MoviePilot API 操作与固定路由注册表。"""
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Optional
 
 from app.agent.policy.contracts import (
@@ -10,6 +11,14 @@ from app.agent.policy.contracts import (
     RecoveryMode,
     ResultSensitivity,
 )
+
+
+class ApiIdentityScope(str, Enum):
+    """区分公共资料、绑定用户数据和受保护的实例管理身份。"""
+
+    PUBLIC = "public"
+    BOUND_USER = "bound_user"
+    ADMIN = "admin"
 
 
 @dataclass(frozen=True)
@@ -22,6 +31,17 @@ class ApiOperationSpec:
     confirmation: ConfirmationMode
     recovery: RecoveryMode
     result_sensitivity: ResultSensitivity
+    identity_scope: ApiIdentityScope = ApiIdentityScope.BOUND_USER
+
+    def __post_init__(self) -> None:
+        """公共身份只接受无需确认、无私密结果的普通用户级安全查询。"""
+        if self.identity_scope is ApiIdentityScope.PUBLIC and (
+            self.effect is not ActionEffect.SAFE_READ
+            or self.required_role is not PrincipalRole.USER
+            or self.confirmation is not ConfirmationMode.NONE
+            or self.result_sensitivity is not ResultSensitivity.NORMAL
+        ):
+            raise ValueError("公共 API 身份不能用于敏感读取、管理员操作或写操作")
 
 
 @dataclass(frozen=True)
@@ -46,6 +66,7 @@ def _spec(
     confirmation: ConfirmationMode = ConfirmationMode.NONE,
     recovery: RecoveryMode = RecoveryMode.NONE,
     result_sensitivity: ResultSensitivity = ResultSensitivity.NORMAL,
+    identity_scope: Optional[ApiIdentityScope] = None,
 ) -> ApiOperationSpec:
     """构造不可变 API 操作描述。"""
     return ApiOperationSpec(
@@ -55,7 +76,15 @@ def _spec(
         confirmation=confirmation,
         recovery=recovery,
         result_sensitivity=result_sensitivity,
+        identity_scope=identity_scope or (
+            ApiIdentityScope.ADMIN if required_role is _ADMIN else ApiIdentityScope.BOUND_USER
+        ),
     )
+
+
+def _public_read(operation_id: str) -> ApiOperationSpec:
+    """仅为已审计、不读取本地用户数据的公共资料声明无绑定查询。"""
+    return _spec(operation_id, identity_scope=ApiIdentityScope.PUBLIC)
 
 
 def _write(
@@ -103,20 +132,20 @@ def _user_write(
 
 
 API_FIRST_BATCH_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
-    _spec("media.search"),
-    _spec("media.person.search"),
-    _spec("media.person.credits"),
+    _public_read("media.search"),
+    _public_read("media.person.search"),
+    _public_read("media.person.credits"),
     _spec("media.recognize"),
     _spec("media.scrape", effect=ActionEffect.EXTERNAL_SIDE_EFFECT, required_role=_ADMIN, confirmation=_CONFIRM),
-    _spec("media.episode_schedule"),
-    _spec("media.detail"),
+    _public_read("media.episode_schedule"),
+    _public_read("media.detail"),
     # 订阅归属由 API 当前用户决定，渠道管理员也必须使用绑定用户身份。
     _user_write("subscription.add"),
     _user_write("subscription.update"),
     _user_write("subscription.search", effect=ActionEffect.EXTERNAL_SIDE_EFFECT),
     _spec("subscription.list"),
-    _spec("subscription.shares"),
-    _spec("subscription.popular"),
+    _public_read("subscription.shares"),
+    _public_read("subscription.popular"),
     _spec("subscription.history"),
     _user_write("subscription.delete", effect=ActionEffect.DESTRUCTIVE_WRITE, recovery=_DELETE_RECOVERABLE),
     _spec("download.add", effect=ActionEffect.EXTERNAL_SIDE_EFFECT, confirmation=_CONFIRM, recovery=_IDEMPOTENT),
@@ -137,7 +166,7 @@ API_FIRST_BATCH_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
     _admin_read("site.userdata", sensitivity=ResultSensitivity.PRIVATE),
     _spec("site.test"),
     _write("site.cookie.update", sensitivity=ResultSensitivity.PRIVATE),
-    _spec("recommendation.list"),
+    _public_read("recommendation.list"),
     _spec("library.exists"),
     _spec("library.latest"),
     _admin_read("storage.settings"),
@@ -234,13 +263,13 @@ API_PARITY_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
 )
 
 API_MUSIC_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
-    _spec("music.recognize"),
-    _spec("music.explore"),
-    _spec("music.album.get"),
-    _spec("music.album.related"),
-    _spec("music.artist.get"),
-    _spec("music.artist.albums"),
-    _spec("music.artist.related"),
+    _public_read("music.recognize"),
+    _public_read("music.explore"),
+    _public_read("music.album.get"),
+    _public_read("music.album.related"),
+    _public_read("music.artist.get"),
+    _public_read("music.artist.albums"),
+    _public_read("music.artist.related"),
     _admin_read("music.cache.get", sensitivity=ResultSensitivity.PRIVATE),
     _write(
         "music.cache.delete",
@@ -318,9 +347,9 @@ API_EXTENDED_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
     _admin_read("media.classification.policy.history", sensitivity=ResultSensitivity.PRIVATE),
     _write("media.classification.policy.update", recovery=RecoveryMode.TRANSACTION),
     _write("media.classification.policy.rollback", recovery=RecoveryMode.TRANSACTION),
-    _spec("media.episode_groups"),
-    _spec("media.episode_group.seasons"),
-    _spec("media.seasons"),
+    _public_read("media.episode_groups"),
+    _public_read("media.episode_group.seasons"),
+    _public_read("media.seasons"),
     _spec("search.title", effect=ActionEffect.EXTERNAL_SIDE_EFFECT, recovery=_IDEMPOTENT),
     _spec("search.recommend", effect=ActionEffect.EXTERNAL_SIDE_EFFECT, recovery=_IDEMPOTENT),
     _spec("subtitle.search.title", effect=ActionEffect.EXTERNAL_SIDE_EFFECT, recovery=_IDEMPOTENT),
@@ -426,7 +455,7 @@ API_EXTENDED_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
     _spec("subscription.follow.list"),
     _user_write("subscription.follow.add"),
     _user_write("subscription.follow.delete"),
-    _spec("subscription.share.statistics"),
+    _public_read("subscription.share.statistics"),
     _spec(
         "storage.manage",
         effect=ActionEffect.EXTERNAL_SIDE_EFFECT,
@@ -549,10 +578,10 @@ API_EXTENDED_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
     _admin_read("plugin.runtime.status", sensitivity=ResultSensitivity.PRIVATE),
     _admin_read("plugin.history"),
     _admin_read("plugin.releases"),
-    _spec("plugin.ratings"),
-    _spec("plugin.rating"),
-    _user_write("plugin.rating.submit", effect=ActionEffect.EXTERNAL_SIDE_EFFECT, recovery=_IDEMPOTENT),
-    _spec("plugin.statistics"),
+    _admin_read("plugin.ratings", sensitivity=ResultSensitivity.PRIVATE),
+    _admin_read("plugin.rating", sensitivity=ResultSensitivity.PRIVATE),
+    _write("plugin.rating.submit", effect=ActionEffect.EXTERNAL_SIDE_EFFECT, recovery=_IDEMPOTENT, sensitivity=ResultSensitivity.PRIVATE),
+    _public_read("plugin.statistics"),
     _write(
         "plugin.reset",
         effect=ActionEffect.DESTRUCTIVE_WRITE,
@@ -594,6 +623,10 @@ API_OPERATION_SPECS: tuple[ApiOperationSpec, ...] = (
     *API_EXTENDED_OPERATION_SPECS,
 )
 API_OPERATION_BY_ID = {spec.operation_id: spec for spec in API_OPERATION_SPECS}
+# 身份范围是唯一事实源；不能按 safe_read 批量放行实例、文件或用户数据。
+API_UNBOUND_READ_OPERATIONS = frozenset(
+    spec.operation_id for spec in API_OPERATION_SPECS if spec.identity_scope is ApiIdentityScope.PUBLIC
+)
 
 
 # 所有路径均由宿主注册，调用方只能传路径参数、查询参数和 JSON body。
@@ -876,6 +909,7 @@ def list_api_operation_ids() -> tuple[str, ...]:
 
 
 __all__ = [
+    "API_UNBOUND_READ_OPERATIONS",
     "API_FIRST_BATCH_OPERATION_SPECS",
     "API_EXTENDED_OPERATION_SPECS",
     "API_MUSIC_OPERATION_SPECS",
@@ -884,6 +918,7 @@ __all__ = [
     "API_OPERATION_SPECS",
     "API_PARITY_OPERATION_SPECS",
     "API_SYSTEM_OPERATION_SPECS",
+    "ApiIdentityScope",
     "ApiOperationRoute",
     "ApiOperationSpec",
     "list_api_operation_ids",

@@ -15,7 +15,7 @@ from app.agent.api.arguments import (
     coerce_string_body,
 )
 from app.agent.api.executor import ApiExecutionContext, ApiExecutionError, MoviePilotApiExecutor
-from app.agent.policy.api import resolve_api_operation
+from app.agent.policy.api import API_UNBOUND_READ_OPERATIONS, resolve_api_operation
 from app.agent.policy.contracts import ExecutionOutcome, PrincipalRole
 from app.agent.policy.sanitizer import summarize_input
 from app.agent.tools.base import MoviePilotTool
@@ -228,7 +228,11 @@ class MoviePilotApiTool(MoviePilotTool):
     ) -> tuple[str, Optional[str], bool]:
         """把 Web、渠道或集成身份解析为真实 MoviePilot API 用户身份。"""
         raw_user_id = str(self._user_id or "")
-        if self._source == "api" and bool(self._agent_context.get("is_admin")):
+        is_authenticated_integration = self._source == "api" or (
+            self._channel == NotificationChannel.Web.value
+            and self._source in {"openai", "openai.responses", "anthropic"}
+        )
+        if is_authenticated_integration and bool(self._agent_context.get("is_admin")):
             return await self._resolve_superuser_integration_identity()
         direct_user_channels = {
             NotificationChannel.Web.value,
@@ -248,54 +252,90 @@ class MoviePilotApiTool(MoviePilotTool):
                 return raw_user_id, self._username, bool(self._agent_context.get("is_admin"))
             raise ApiExecutionError("Agent 数据上下文未装配，无法解析 API 用户身份")
 
-        username = self._username
-        user = await self._data.users.async_get_by_name(username) if username else None
-        if user is None and not is_direct_user_channel and self._channel and raw_user_id:
-            try:
-                channel = NotificationChannel(self._channel)
-            except ValueError:
-                channel = None
-            binding_keys = (
-                {
-                    NotificationChannel.Telegram: ("telegram_userid",),
-                    NotificationChannel.Discord: ("discord_userid",),
-                    NotificationChannel.Wechat: ("wechat_userid",),
-                    NotificationChannel.Feishu: ("feishu_userid", "feishu_openid"),
-                    NotificationChannel.WechatClawBot: ("wechatclawbot_userid",),
-                    NotificationChannel.Slack: ("slack_userid",),
-                    NotificationChannel.VoceChat: ("vocechat_userid",),
-                    NotificationChannel.SynologyChat: ("synologychat_userid",),
-                    NotificationChannel.QQ: ("qq_userid", "qq_openid"),
-                }.get(channel)
-                if channel is not None
-                else None
-            )
-            if binding_keys:
-                # 渠道只提供一个标识，userid/openid 是候选字段；仓储统一拒绝跨用户歧义。
-                username = await self.run_blocking(
-                    "db",
-                    self._data.users.find_name_by_bindings,
-                    {key: raw_user_id for key in binding_keys},
-                    match_any=True,
-                )
-                user = await self._data.users.async_get_by_name(username) if username else None
-        if user is None and is_direct_user_channel and raw_user_id.isdigit():
-            return raw_user_id, self._username, bool(self._agent_context.get("is_admin"))
-        if user is None or not user.is_active:
-            raise ApiExecutionError("当前 Agent 身份未绑定有效的 MoviePilot 用户")
+        if is_direct_user_channel:
+            # Web 入口的持久化用户 ID 是事实源，旧会话用户名不能切换到同名新账号。
+            user = await self._data.users.async_get_by_id(int(raw_user_id)) if raw_user_id.isdigit() else None
+        elif not self._channel and not self._source:
+            # 无渠道的后台任务使用宿主持久化的用户名，保留定时任务的执行身份。
+            user = await self._data.users.async_get_by_name(self._username) if self._username else None
+        else:
+            user = await self._resolve_channel_api_user(raw_user_id)
+        if user is None:
+            raise ApiExecutionError(self._identity_unavailable_message())
+        if not user.is_active:
+            raise ApiExecutionError("当前 MoviePilot 用户已停用，请联系管理员启用该用户后重试。重新绑定不能解除停用。")
         return str(user.id), user.name, bool(user.is_superuser)
+
+    def _identity_unavailable_message(self) -> str:
+        """按真实前端入口提示绑定步骤；查询仅能确定没有唯一启用绑定，不臆断具体原因。"""
+        labels = {
+            NotificationChannel.Telegram.value: "Telegram用户",
+            NotificationChannel.Discord.value: "Discord用户",
+            NotificationChannel.Wechat.value: "企业微信用户",
+            NotificationChannel.Feishu.value: "飞书用户",
+            NotificationChannel.WechatClawBot.value: "微信 ClawBot 用户",
+            NotificationChannel.Slack.value: "Slack用户",
+            NotificationChannel.VoceChat.value: "VoceChat用户",
+            NotificationChannel.SynologyChat.value: "SynologyChat用户",
+            NotificationChannel.QQ.value: "QQ 用户 ID 或 QQ 用户 OpenID（填写与当前发送者 ID 对应的一项）",
+        }
+        label = labels.get(self._channel or "")
+        if label is None:
+            if self._channel in {NotificationChannel.Web.value, NotificationChannel.WebAgent.value}:
+                return "当前登录身份未对应有效的 MoviePilot 用户，请重新登录；若账号已删除，请联系管理员。此入口无需绑定通知渠道。"
+            return "当前任务身份未对应有效的 MoviePilot 用户，请联系管理员检查任务所属账号及身份配置。"
+        sender_id = json.dumps(str(self._user_id or ""), ensure_ascii=False)
+        return (
+            "当前渠道账号未绑定唯一且已启用的 MoviePilot 用户，可能尚未绑定、绑定用户已停用或存在重复绑定。"
+            f"请登录要使用的 MoviePilot 账号，打开右上角头像 → 个人信息 → 账号绑定，在「{label}」中填写"
+            f"当前渠道发送者 ID {sender_id}，然后保存并重试。请填写完整 ID，不要填写昵称、群 ID 或机器人 ID。"
+            "若已经填写，请管理员确认该用户已启用，且同一渠道 ID 没有绑定到多个启用用户。"
+        )
+
+    async def _resolve_channel_api_user(self, raw_user_id: str) -> Any:
+        """只按渠道稳定 ID 查找绑定用户，昵称和展示用户名不构成认证依据。"""
+        data = self._data
+        if data is None:
+            return None
+        try:
+            channel = NotificationChannel(self._channel)
+        except (TypeError, ValueError):
+            return None
+        binding_keys = {
+            NotificationChannel.Telegram: ("telegram_userid",),
+            NotificationChannel.Discord: ("discord_userid",),
+            NotificationChannel.Wechat: ("wechat_userid",),
+            NotificationChannel.Feishu: ("feishu_userid", "feishu_openid"),
+            NotificationChannel.WechatClawBot: ("wechatclawbot_userid",),
+            NotificationChannel.Slack: ("slack_userid",),
+            NotificationChannel.VoceChat: ("vocechat_userid",),
+            NotificationChannel.SynologyChat: ("synologychat_userid",),
+            NotificationChannel.QQ: ("qq_userid", "qq_openid"),
+        }.get(channel)
+        if not binding_keys or not raw_user_id:
+            return None
+        # userid/openid 是候选字段，仓储必须拒绝匹配到多个用户的歧义绑定。
+        username = await self.run_blocking(
+            "db", data.users.find_name_by_bindings,
+            {key: raw_user_id for key in binding_keys}, match_any=True,
+        )
+        return await data.users.async_get_by_name(username) if username else None
 
     async def _get_executor(
         self,
         *,
         require_system_admin: bool = False,
+        public_read_only: bool = False,
     ) -> tuple[MoviePilotApiExecutor, bool]:
-        """返回当前 operation 的执行器及其管理员身份事实。"""
+        """解析执行身份；公共资料使用只能执行白名单读取的宿主认证通道。"""
         if self._executor is not None:
             return self._executor, await self.is_admin_user()
-        user_id, username, is_admin = await self._resolve_api_identity(
-            require_system_admin=require_system_admin,
-        )
+        if public_read_only:
+            user_id, username, is_admin = await self._resolve_superuser_integration_identity()
+        else:
+            user_id, username, is_admin = await self._resolve_api_identity(
+                require_system_admin=require_system_admin,
+            )
         return (
             MoviePilotApiExecutor(
                 context=ApiExecutionContext(
@@ -305,6 +345,7 @@ class MoviePilotApiTool(MoviePilotTool):
                     session_id=self._session_id,
                     channel=self._channel,
                     source=self._source,
+                    public_read_only=public_read_only,
                 )
             ),
             is_admin,
@@ -352,6 +393,7 @@ class MoviePilotApiTool(MoviePilotTool):
             requires_system_admin = spec.required_role is PrincipalRole.SYSTEM_ADMIN
             executor, is_admin = await self._get_executor(
                 require_system_admin=requires_system_admin,
+                public_read_only=operation_id in API_UNBOUND_READ_OPERATIONS,
             )
             if requires_system_admin and not is_admin:
                 return json.dumps(

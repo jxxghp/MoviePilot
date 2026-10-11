@@ -7,6 +7,7 @@ Installed and marketplace plugins, configuration, lifecycle, sources, folders, r
 ### `plugin.capabilities`
 `GET /api/v1/plugin/runtime/capabilities`; policy effect: `safe_read`.
 Purpose: Inspect the runtime capabilities exposed by installed plugins.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: `plugin_id` (string|null): Exact installed or marketplace plugin ID.
 - `body`: none
@@ -14,6 +15,7 @@ Purpose: Inspect the runtime capabilities exposed by installed plugins.
 ### `plugin.clone`
 `POST /api/v1/plugin/clone/{plugin_id}`; policy effect: `external_side_effect`.
 Purpose: Create a configurable clone of one installed plugin; leave suffix empty to let the server allocate the next free instance ID, and reusing the suffix of a disabled clone re-enables that clone together with its stored configuration.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
 - `body`: `description` (string; default ``): Human-readable media, torrent, or subscription description.; `icon` (string|null): Icon name or URL used by a workflow, network target, plugin, or category.; `name` (string; default ``): Human-readable name of the site, storage item, subscription, or rule group.; `restore_previous` (boolean; default `True`): When creating a plugin clone, reuse the stored configuration of a disabled clone that already holds the same suffix; false rebuilds that clone's configuration from the source plugin template.; `suffix` (string|null): File suffix or extension matched by an automatic category rule.; `version` (string|null): Plugin release or schema version selected by the operation.
@@ -21,6 +23,7 @@ Purpose: Create a configurable clone of one installed plugin; leave suffix empty
 ### `plugin.clone.restorable`
 `GET /api/v1/plugin/clone/{plugin_id}/restorable`; policy effect: `safe_read`.
 Purpose: List one plugin's disabled clones whose configuration is still stored and can be brought back by creating a clone with the same suffix.
+Identity scope: `admin`; required role: `system_admin`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
@@ -29,6 +32,7 @@ Purpose: List one plugin's disabled clones whose configuration is still stored a
 ### `plugin.config.get`
 `GET /api/v1/plugin/form/{plugin_id}`; policy effect: `safe_read`.
 Purpose: Read one loaded plugin's configuration form and its defaults merged with saved values.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
 - `body`: none
@@ -36,6 +40,7 @@ Purpose: Read one loaded plugin's configuration form and its defaults merged wit
 ### `plugin.config.update`
 `PUT /api/v1/plugin/{plugin_id}`; policy effect: `reversible_write`.
 Purpose: Replace one installed plugin's complete configuration and apply it immediately.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
 - `body*` (object): Complete plugin configuration object. First call plugin.config.get, copy its returned model, change only the intended keys, and submit the full resulting object. Omit a key only when it must be removed. A successful update reinitializes the plugin and refreshes commands, jobs, and routes.
@@ -43,6 +48,7 @@ Purpose: Replace one installed plugin's complete configuration and apply it imme
 ### `plugin.data`
 `GET /api/v1/plugin/runtime/{plugin_id}/data`; policy effect: `safe_read`.
 Purpose: Read a bounded preview of one plugin's persisted data.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: `key` (string|null): Optional exact plugin data key used to narrow the returned preview.; `max_chars` (integer|null): Maximum number of serialized plugin-data characters to return.
 - `body`: none
@@ -50,6 +56,7 @@ Purpose: Read a bounded preview of one plugin's persisted data.
 ### `plugin.default_target.clear`
 `DELETE /api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target`; policy effect: `reversible_write`.
 Purpose: Clear one plugin instance's default-call-target flag, only if it is the plugin's current default.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.loglevel.get.; `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
 - `body`: none
@@ -57,6 +64,7 @@ Purpose: Clear one plugin instance's default-call-target flag, only if it is the
 ### `plugin.default_target.set`
 `PUT /api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target`; policy effect: `reversible_write`.
 Purpose: Set one plugin instance as the plugin's default call target, automatically clearing any previous default.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.loglevel.get.; `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
 - `body`: none
@@ -64,6 +72,7 @@ Purpose: Set one plugin instance as the plugin's default call target, automatica
 ### `plugin.folder.create`
 `POST /api/v1/plugin/folders/{folder_name}`; policy effect: `reversible_write`.
 Purpose: Create one named plugin folder.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `folder_name*` (string): Exact plugin folder name returned by plugin.folders.get.
 - `query`: none
 - `body`: none
@@ -71,6 +80,7 @@ Purpose: Create one named plugin folder.
 ### `plugin.folder.delete`
 `DELETE /api/v1/plugin/folders/{folder_name}`; policy effect: `destructive_write`.
 Purpose: Delete one named plugin folder without uninstalling its plugins.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `folder_name*` (string): Exact plugin folder name returned by plugin.folders.get.
 - `query`: none
 - `body`: none
@@ -78,6 +88,7 @@ Purpose: Delete one named plugin folder without uninstalling its plugins.
 ### `plugin.folder.plugin.assign`
 `PUT /api/v1/plugin/folders/{folder_name}/plugins/{plugin_id}`; policy effect: `reversible_write`.
 Purpose: Move one installed plugin into one named folder and remove its other folder assignments.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `folder_name*` (string): Exact plugin folder name returned by plugin.folders.get.; `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
 - `body`: none
@@ -85,6 +96,7 @@ Purpose: Move one installed plugin into one named folder and remove its other fo
 ### `plugin.folder.plugin.remove`
 `DELETE /api/v1/plugin/folders/{folder_name}/plugins/{plugin_id}`; policy effect: `reversible_write`.
 Purpose: Remove one installed plugin from one named folder without uninstalling it.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `folder_name*` (string): Exact plugin folder name returned by plugin.folders.get.; `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
 - `body`: none
@@ -92,6 +104,7 @@ Purpose: Remove one installed plugin from one named folder without uninstalling 
 ### `plugin.folder.plugins.update`
 `PUT /api/v1/plugin/folders/{folder_name}/plugins`; policy effect: `reversible_write`.
 Purpose: Replace the ordered plugin IDs assigned to one named plugin folder.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `folder_name*` (string): Exact plugin folder name returned by plugin.folders.get.
 - `query`: none
 - `body*` (array<string>|PluginFolderPluginsUpdateRequest): Request value for plugin.folder.plugins.update. Replace the ordered plugin IDs assigned to one named plugin folder. Use the exact type and fields below.
@@ -99,6 +112,7 @@ Purpose: Replace the ordered plugin IDs assigned to one named plugin folder.
 ### `plugin.folder.update`
 `PATCH /api/v1/plugin/folders/{folder_name}`; policy effect: `reversible_write`.
 Purpose: Incrementally rename one plugin folder or update its presentation settings.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `folder_name*` (string): Exact plugin folder name returned by plugin.folders.get.
 - `query`: none
 - `body`: `background` (string|null): Optional folder background color or style.; `color` (string|null): Optional folder foreground color.; `gradient` (string|null): Optional folder gradient definition.; `icon` (string|null): Optional folder icon name.; `new_name` (string|null): Optional replacement folder name.; `showIcon` (boolean|null): Whether the frontend should display the folder icon.
@@ -106,6 +120,7 @@ Purpose: Incrementally rename one plugin folder or update its presentation setti
 ### `plugin.folders.get`
 `GET /api/v1/plugin/folders`; policy effect: `safe_read`.
 Purpose: Read the complete administrator plugin-folder grouping configuration.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
 - `body`: none
@@ -113,6 +128,7 @@ Purpose: Read the complete administrator plugin-folder grouping configuration.
 ### `plugin.folders.update`
 `POST /api/v1/plugin/folders`; policy effect: `reversible_write`.
 Purpose: Replace the complete administrator plugin-folder grouping configuration.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
 - `body`: `PluginFoldersData` with no direct fields
@@ -120,6 +136,7 @@ Purpose: Replace the complete administrator plugin-folder grouping configuration
 ### `plugin.history`
 `GET /api/v1/plugin/history/{plugin_id}`; policy effect: `safe_read`.
 Purpose: Read marketplace update notes and history for one plugin.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: `force` (boolean; default `True`): Force a marketplace refresh or plugin installation when true.
 - `body`: none
@@ -127,6 +144,7 @@ Purpose: Read marketplace update notes and history for one plugin.
 ### `plugin.install`
 `GET /api/v1/plugin/install/{plugin_id}`; policy effect: `external_side_effect`.
 Purpose: Install or update one plugin from an approved source.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: `force` (boolean|null; default `False`): Force a marketplace refresh or plugin installation when true.; `release_version` (string|null): Exact plugin release version to install when one is required.; `repo_url` (string|null; default ``): Approved plugin repository URL used to resolve the installation source.
 - `body`: none
@@ -134,6 +152,7 @@ Purpose: Install or update one plugin from an approved source.
 ### `plugin.installed`
 `GET /api/v1/plugin/`; policy effect: `safe_read`.
 Purpose: List installed plugins and their runtime status.
+Identity scope: `admin`; required role: `system_admin`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `path_params`: none
 - `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `force` (boolean; default `False`): Force a marketplace refresh or plugin installation when true.; `max_results` (integer|null): Optional upper bound on plugin catalog results, from 1 to 200; omit it for the complete catalog.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.; `query` (string|null): Optional case-insensitive keyword matched against plugin ID, name, description, and author.; `state*` (string=installed): Literal installed, selecting only installed plugin catalog entries.
@@ -142,6 +161,7 @@ Purpose: List installed plugins and their runtime status.
 ### `plugin.instance.purge`
 `POST /api/v1/plugin/instance/{instance_id}/purge`; policy effect: `destructive_write`.
 Purpose: Permanently delete one plugin instance's selected data: saved configuration, plugin data rows, its own database and its data directory; a clone also loses its instance record. Nothing is deleted unless explicitly selected.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.loglevel.get.
 - `query`: none
 - `body`: `config` (boolean; default `False`): Purge scope flag: delete this plugin instance's saved configuration values.; `data_directory` (boolean; default `False`): Purge scope flag: delete this plugin instance's entire data directory; its own database is always destroyed first.; `own_database` (boolean; default `False`): Purge scope flag: destroy this plugin instance's own database.; `plugin_data` (boolean; default `False`): Purge scope flag: delete this plugin instance's rows in the shared plugin data table.
@@ -149,6 +169,7 @@ Purpose: Permanently delete one plugin instance's selected data: saved configura
 ### `plugin.instance.set_enabled`
 `POST /api/v1/plugin/instance/{instance_id}/enabled`; policy effect: `reversible_write`.
 Purpose: Enable or disable one plugin instance, host or clone; disabling only stops it running and keeps its configuration for a later re-enable.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.loglevel.get.
 - `query`: none
 - `body`: `enabled*` (boolean): Whether this category or classification rule participates in evaluation.
@@ -156,6 +177,7 @@ Purpose: Enable or disable one plugin instance, host or clone; disabling only st
 ### `plugin.loglevel.clear`
 `DELETE /api/v1/plugin/loglevel/{plugin_id}/{instance_id}`; policy effect: `reversible_write`.
 Purpose: Clear one plugin instance's log-level override so it immediately follows the global log level again.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.loglevel.get.; `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
 - `body`: none
@@ -163,6 +185,7 @@ Purpose: Clear one plugin instance's log-level override so it immediately follow
 ### `plugin.loglevel.get`
 `GET /api/v1/plugin/loglevel/{plugin_id}`; policy effect: `safe_read`.
 Purpose: List one plugin's instances, including the plugin itself, with each instance's configured and effective log level.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
 - `body`: none
@@ -170,6 +193,7 @@ Purpose: List one plugin's instances, including the plugin itself, with each ins
 ### `plugin.loglevel.set`
 `PUT /api/v1/plugin/loglevel/{plugin_id}/{instance_id}`; policy effect: `reversible_write`.
 Purpose: Set one plugin instance's log-level override, taking effect immediately without following the global log level.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.loglevel.get.; `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
 - `body`: `expires_at` (string|null): Expiry timestamp for a plugin instance's log-level override; null means it never expires. A timestamp without a timezone is read as UTC.; `level*` (string): Target log level, one of DEBUG, INFO, WARNING, ERROR, or CRITICAL.
@@ -177,6 +201,7 @@ Purpose: Set one plugin instance's log-level override, taking effect immediately
 ### `plugin.market`
 `GET /api/v1/plugin/`; policy effect: `safe_read`.
 Purpose: List plugins available from configured marketplaces.
+Identity scope: `admin`; required role: `system_admin`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `path_params`: none
 - `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `force` (boolean; default `False`): Force a marketplace refresh or plugin installation when true.; `max_results` (integer|null): Optional upper bound on plugin catalog results, from 1 to 200; omit it for the complete catalog.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.; `query` (string|null): Optional case-insensitive keyword matched against plugin ID, name, description, and author.; `state*` (string=market): Literal market, selecting only market plugin catalog entries.
@@ -185,6 +210,7 @@ Purpose: List plugins available from configured marketplaces.
 ### `plugin.market.sync_wiki`
 `POST /api/v1/system/setting/PLUGIN_MARKET/sync-wiki`; policy effect: `external_side_effect`.
 Purpose: Refresh the configured plugin marketplace repositories from the MoviePilot Wiki.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
 - `body` (PluginMarketSyncRequest|null): Request value for plugin.market.sync_wiki. Refresh the configured plugin marketplace repositories from the MoviePilot Wiki. Use the exact type and fields below.
@@ -192,6 +218,7 @@ Purpose: Refresh the configured plugin marketplace repositories from the MoviePi
 ### `plugin.rating`
 `GET /api/v1/plugin/rating/{plugin_id}`; policy effect: `safe_read`.
 Purpose: Read the current aggregate rating for one plugin.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
 - `body`: none
@@ -199,6 +226,7 @@ Purpose: Read the current aggregate rating for one plugin.
 ### `plugin.rating.submit`
 `POST /api/v1/plugin/rating/{plugin_id}`; policy effect: `external_side_effect`.
 Purpose: Submit or replace the current user's rating for one plugin.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
 - `body`: `rating*` (number; minimum `0.1`; maximum `5.0`): Numeric plugin rating accepted by the endpoint's declared bounds.
@@ -206,6 +234,7 @@ Purpose: Submit or replace the current user's rating for one plugin.
 ### `plugin.ratings`
 `GET /api/v1/plugin/rating`; policy effect: `safe_read`.
 Purpose: Read aggregate ratings for a requested plugin set.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: `plugin_ids` (string|null): Exact plugin IDs whose aggregate ratings should be returned.
 - `body`: none
@@ -213,6 +242,7 @@ Purpose: Read aggregate ratings for a requested plugin set.
 ### `plugin.releases`
 `GET /api/v1/plugin/releases/{plugin_id}`; policy effect: `safe_read`.
 Purpose: List available release versions for one plugin source.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: `force` (boolean; default `False`): Force a marketplace refresh or plugin installation when true.; `repo_url` (string|null; default ``): Approved plugin repository URL used to resolve the installation source.
 - `body`: none
@@ -220,6 +250,7 @@ Purpose: List available release versions for one plugin source.
 ### `plugin.reload`
 `POST /api/v1/plugin/reload/{plugin_id}`; policy effect: `external_side_effect`.
 Purpose: Reload one installed plugin into the running process.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
 - `body`: none
@@ -227,6 +258,7 @@ Purpose: Reload one installed plugin into the running process.
 ### `plugin.reset`
 `GET /api/v1/plugin/reset/{plugin_id}`; policy effect: `destructive_write`.
 Purpose: Delete one plugin's saved configuration and data, then restore its default runtime state.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
 - `body`: none
@@ -234,6 +266,7 @@ Purpose: Delete one plugin's saved configuration and data, then restore its defa
 ### `plugin.runtime.status`
 `GET /api/v1/plugin/runtime`; policy effect: `safe_read`.
 Purpose: Read plugin runtime convergence, loading, and failure state.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
 - `body`: none
@@ -241,6 +274,7 @@ Purpose: Read plugin runtime convergence, loading, and failure state.
 ### `plugin.source.change`
 `POST /api/v1/plugin/source/{plugin_id}`; policy effect: `external_side_effect`.
 Purpose: Switch an installed plugin to one explicitly selected online source revision.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
 - `body`: `expected_revision*` (integer; minimum `1.0`): Current revision from a preceding read, used to reject concurrent state changes.; `release_version` (string|null): Exact plugin release version to install when one is required.; `repo_url*` (string; minimum length `1`): Approved plugin repository URL used to resolve the installation source.
@@ -248,6 +282,7 @@ Purpose: Switch an installed plugin to one explicitly selected online source rev
 ### `plugin.source.install`
 `POST /api/v1/plugin/source/{plugin_id}/install`; policy effect: `external_side_effect`.
 Purpose: Install an unbound plugin from one explicitly selected online source.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
 - `body`: `force` (boolean; default `False`): Force a marketplace refresh or plugin installation when true.; `release_version` (string|null): Exact plugin release version to install when one is required.; `repo_url*` (string; minimum length `1`): Approved plugin repository URL used to resolve the installation source.
@@ -255,6 +290,7 @@ Purpose: Install an unbound plugin from one explicitly selected online source.
 ### `plugin.source.options`
 `GET /api/v1/plugin/source/{plugin_id}`; policy effect: `safe_read`.
 Purpose: Inspect source candidates and the current immutable source identity before installation or source change.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
 - `body`: none
@@ -262,6 +298,7 @@ Purpose: Inspect source candidates and the current immutable source identity bef
 ### `plugin.statistics`
 `GET /api/v1/plugin/statistic`; policy effect: `safe_read`.
 Purpose: Read public installation statistics for plugins.
+Identity scope: `public`; required role: `user`.
 - `path_params`: none
 - `query`: none
 - `body`: none
@@ -269,6 +306,7 @@ Purpose: Read public installation statistics for plugins.
 ### `plugin.uninstall`
 `DELETE /api/v1/plugin/{plugin_id}`; policy effect: `destructive_write`.
 Purpose: Uninstall one plugin and remove it from the installed set.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `plugin_id*` (string): Exact installed or marketplace plugin ID.
 - `query`: none
 - `body`: none

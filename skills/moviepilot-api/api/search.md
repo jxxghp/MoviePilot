@@ -7,6 +7,7 @@ Title and torrent search result discovery and recommendation search.
 ### `search.recommend`
 `POST /api/v1/search/recommend`; policy effect: `external_side_effect`.
 Purpose: Use the configured recommendation model to rank or recommend torrent search results.
+Identity scope: `bound_user`; required role: `user`.
 - `path_params`: none
 - `query`: none
 - `body`: `check_only` (boolean; default `False`): Validate or preview the recommendation without applying search-result filtering.; `filtered_indices` (array<integer>|null): Zero-based search-result indices selected by the recommendation model.; `force` (boolean; default `False`): Force a marketplace refresh or plugin installation when true.
@@ -14,6 +15,7 @@ Purpose: Use the configured recommendation model to rank or recommend torrent se
 ### `search.results`
 `GET /api/v1/search/last/context`; policy effect: `safe_read`.
 Purpose: Read the most recent torrent-search context and result set.
+Identity scope: `bound_user`; required role: `user`.
 - `path_params`: none
 - `query`: none
 - `body`: none
@@ -21,6 +23,7 @@ Purpose: Read the most recent torrent-search context and result set.
 ### `search.title`
 `GET /api/v1/search/title`; policy effect: `external_side_effect`.
 Purpose: Search torrent sites directly from a free-form title and optional media filters.
+Identity scope: `bound_user`; required role: `user`.
 - `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: none
 - `query`: `keyword` (string|null): Case-insensitive substring used to discover settings or filter storage entries.; `mtype` (string|null): MoviePilot media type or subscription-history category required by the operation.; `page` (integer|null; default `0`): One-based result page number.; `sites` (string|null): Exact site IDs included in the search or subscription scope.
@@ -29,6 +32,7 @@ Purpose: Search torrent sites directly from a free-form title and optional media
 ### `search.torrents`
 `GET /api/v1/search/media/{media_id}`; policy effect: `safe_read`.
 Purpose: Search torrent sites for one canonical media identity.
+Identity scope: `bound_user`; required role: `user`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `execution`: Searches may run multiple title/alias rounds across configured sites. The inner Agent API request may wait up to 290 seconds and the Agent tool call is capped at 300 seconds, leaving 10 seconds for timeout handling and returning the result; the V3 MCP wrapper uses its existing configured timeout (600 seconds by default). `page` / `count` paginate the completed result and do not shorten site-search execution; do not issue a duplicate call while one is pending.
 - `path_params`: `media_id*` (string): Source-native media ID. Always pair it with the exact media_source returned by search.

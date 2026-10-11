@@ -7,6 +7,7 @@ Configuration discovery, identifiers, user settings, and system setting updates.
 ### `config.identifiers.get`
 `GET /api/v1/system/identifiers`; policy effect: `safe_read`.
 Purpose: Read the complete custom media-recognition identifier list.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
 - `body`: none
@@ -14,6 +15,7 @@ Purpose: Read the complete custom media-recognition identifier list.
 ### `config.identifiers.update`
 `POST /api/v1/system/identifiers`; policy effect: `reversible_write`.
 Purpose: Replace the complete custom media-recognition identifier list.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
 - `body`: `expected_identifiers` (array<string>|null): Previously read complete ordered list. When supplied, reject the replacement if the stored list has changed.; `identifiers` (array<string>): Complete ordered list of custom recognition identifier rules.
@@ -21,6 +23,7 @@ Purpose: Replace the complete custom media-recognition identifier list.
 ### `config.public.get`
 `GET /api/v1/system/setting/public/{key}`; policy effect: `safe_read`.
 Purpose: Read one explicitly public system setting by exact key.
+Identity scope: `bound_user`; required role: `user`.
 - `path_params`: `key*` (string): Optional exact plugin data key used to narrow the returned preview.
 - `query`: none
 - `body`: none
@@ -28,6 +31,7 @@ Purpose: Read one explicitly public system setting by exact key.
 ### `config.system.describe`
 `GET /api/v1/system/settings/describe/{setting_key}`; policy effect: `safe_read`.
 Purpose: Read one exact system setting contract, current value, and revision.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `setting_key*` (string): Exact registered setting key returned by config.system.get discovery.
 - `query`: `include_value` (boolean; default `True`): Return the current value in addition to the complete contract.; `show_secrets` (boolean; default `False`): Return unredacted secret values only when explicitly authorized.
 - `body`: none
@@ -35,6 +39,7 @@ Purpose: Read one exact system setting contract, current value, and revision.
 ### `config.system.get`
 `GET /api/v1/system/settings`; policy effect: `safe_read`.
 Purpose: Discover registered system settings or read one exact setting.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: `group` (string|null; default `all`): Discovery group used when setting_key is omitted. Use config.system.list for a complete, machine-readable group index; this compatibility endpoint accepts all registered catalog groups, including settings and systemconfig.; `include_values` (boolean|null): Return full values. Defaults to true for one exact key and false for discovery results.; `keyword` (string|null): Case-insensitive substring used to discover matching keys, groups, or labels.; `setting_key` (string|null): Exact setting key. Accepts Settings field names such as APP_DOMAIN or LLM_MODEL, SystemConfigKey values or enum names such as Downloaders or MediaServers, and aliases that resolve to one unique setting. Omit it to use list-style discovery.; `show_secrets` (boolean; default `False`): Return unredacted secret values. Defaults to false and remains confirmation-protected.
 - `body`: none
@@ -42,6 +47,7 @@ Purpose: Discover registered system settings or read one exact setting.
 ### `config.system.list`
 `GET /api/v1/system/settings/catalog`; policy effect: `safe_read`.
 Purpose: List compact machine-readable contracts for registered system settings.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: `group` (string|null; default `all`): Setting contract group. Use all to list every registered setting.; `keyword` (string|null): Case-insensitive substring matched against key, group, label, or description.; `limit` (integer; default `100`; minimum `1`; maximum `500`): Maximum contracts to return.; `offset` (integer; default `0`; minimum `0`): Zero-based result offset.; `source` (string|null): Optional source filter: settings or systemconfig.
 - `body`: none
@@ -49,6 +55,7 @@ Purpose: List compact machine-readable contracts for registered system settings.
 ### `config.system.update`
 `POST /api/v1/system/settings`; policy effect: `reversible_write`.
 Purpose: Update one exact registered system setting.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
 - `body`: `expected_revision` (string|null): Optional revision returned by config.system.describe or config.system.get for this exact setting. When supplied, the update is rejected if another writer changed the setting after that read. New Agent clients should always provide it.; `match_field` (string|null): Object field used to match a list item. Downloaders, MediaServers, Notifications, Directories, and Storages default to name; NotificationSwitchs defaults to type. Supply it for other object lists.; `match_value` (value): Value compared against match_field. If omitted, use value[match_field]; scalar lists use value directly.; `operation` (string(replace,merge_dict,upsert_list_item,remove_list_item); default `replace`): replace overwrites the complete value; merge_dict shallow-merges an object; upsert_list_item inserts or replaces one matched list item; remove_list_item removes one matched list item.; `remove_keys` (array<string>): Object keys to remove after merge_dict applies the supplied value.; `setting_key*` (string): Exact setting key. Accepts a Settings field name, a SystemConfigKey value or enum name, or an alias that resolves to one unique setting. Call config.system.get with group or keyword first when the key is unknown.; `value` (value): New value or list item. For replace, send the complete value. For merge_dict, send the object fragment to merge. For upsert_list_item or remove_list_item, send one object or scalar item.
@@ -56,6 +63,7 @@ Purpose: Update one exact registered system setting.
 ### `config.user.get`
 `GET /api/v1/system/global/user`; policy effect: `safe_read`.
 Purpose: Read current-user feature flags, runtime capabilities, and effective permissions.
+Identity scope: `bound_user`; required role: `user`.
 - `path_params`: none
 - `query`: none
 - `body`: none

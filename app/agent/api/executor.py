@@ -8,7 +8,12 @@ from typing import Any, Mapping
 from urllib.parse import quote
 
 from app.adapters.network.http import AsyncHttpRequestError, AsyncRequestUtils
-from app.agent.policy.api import ApiOperationRoute, resolve_api_operation, resolve_api_route
+from app.agent.policy.api import (
+    API_UNBOUND_READ_OPERATIONS,
+    ApiOperationRoute,
+    resolve_api_operation,
+    resolve_api_route,
+)
 from app.agent.policy.contracts import ActionEffect
 from app.agent.policy.sanitizer import stable_type_name
 from app.application.security.token import create_access_token
@@ -38,6 +43,8 @@ class ApiExecutionContext:
     session_id: str | None = None
     channel: str | None = None
     source: str | None = None
+    # 使用宿主身份的公共查询不能复用于其他 operation。
+    public_read_only: bool = False
 
 
 class MoviePilotApiExecutor:
@@ -166,6 +173,8 @@ class MoviePilotApiExecutor:
         body: Any = None,
     ) -> str:
         """执行白名单 operation，并把响应转换为稳定 JSON 文本。"""
+        if self._context.public_read_only and operation_id not in API_UNBOUND_READ_OPERATIONS:
+            raise ApiExecutionError("公共查询执行器不允许访问个人数据或执行其他操作")
         route = resolve_api_route(operation_id)
         if route is None:
             raise ApiExecutionError(f"未注册 API 路由: {operation_id}")

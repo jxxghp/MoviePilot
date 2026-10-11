@@ -332,6 +332,7 @@ def _render_api_docs() -> str:
                 f"### `{operation_id}`",
                 f"`{route.method} {route.path}`; policy effect: `{effect}`.",
                 f"Purpose: {description.split(' Method:', 1)[0].strip()}",
+                f"Identity scope: `{specs[operation_id].identity_scope.value}`; required role: `{specs[operation_id].required_role.value}`.",
             ]
         )
         collection_contract = branch.get("x-moviepilot-collection")

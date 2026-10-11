@@ -2650,6 +2650,18 @@
           "description": "Minimum source file size accepted by manual transfer, in bytes.",
           "title": "Min Filesize"
         },
+        "music_cue_enable": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional per-subscription CUE organization setting; omit to inherit the system default.",
+          "title": "Music Cue Enable"
+        },
         "music_release_regions": {
           "anyOf": [
             {
@@ -6571,7 +6583,7 @@
   "oneOf": [
     {
       "additionalProperties": false,
-      "description": "Read the complete custom media-recognition identifier list. Method: GET. Path: /api/v1/system/identifiers. Effect: safe_read.",
+      "description": "Read the complete custom media-recognition identifier list. Method: GET. Path: /api/v1/system/identifiers. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "config.identifiers.get",
@@ -6587,7 +6599,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Replace the complete custom media-recognition identifier list. Method: POST. Path: /api/v1/system/identifiers. Effect: reversible_write.",
+      "description": "Replace the complete custom media-recognition identifier list. Method: POST. Path: /api/v1/system/identifiers. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/CustomIdentifiersUpdateRequest",
@@ -6608,7 +6620,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read one explicitly public system setting by exact key. Method: GET. Path: /api/v1/system/setting/public/{key}. Effect: safe_read.",
+      "description": "Read one explicitly public system setting by exact key. Method: GET. Path: /api/v1/system/setting/public/{key}. Effect: safe_read. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "config.public.get",
@@ -6640,7 +6652,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read one exact system setting contract, current value, and revision. Method: GET. Path: /api/v1/system/settings/describe/{setting_key}. Effect: safe_read.",
+      "description": "Read one exact system setting contract, current value, and revision. Method: GET. Path: /api/v1/system/settings/describe/{setting_key}. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "config.system.describe",
@@ -6691,7 +6703,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Discover registered system settings or read one exact setting. Method: GET. Path: /api/v1/system/settings. Effect: safe_read.",
+      "description": "Discover registered system settings or read one exact setting. Method: GET. Path: /api/v1/system/settings. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "config.system.get",
@@ -6769,7 +6781,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List compact machine-readable contracts for registered system settings. Method: GET. Path: /api/v1/system/settings/catalog. Effect: safe_read.",
+      "description": "List compact machine-readable contracts for registered system settings. Method: GET. Path: /api/v1/system/settings/catalog. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "config.system.list",
@@ -6844,7 +6856,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Update one exact registered system setting. Method: POST. Path: /api/v1/system/settings. Effect: reversible_write.",
+      "description": "Update one exact registered system setting. Method: POST. Path: /api/v1/system/settings. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/SystemSettingsUpdateRequest",
@@ -6865,7 +6877,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read current-user feature flags, runtime capabilities, and effective permissions. Method: GET. Path: /api/v1/system/global/user. Effect: safe_read.",
+      "description": "Read current-user feature flags, runtime capabilities, and effective permissions. Method: GET. Path: /api/v1/system/global/user. Effect: safe_read. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "config.user.get",
@@ -6881,7 +6893,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read the current host CPU utilization percentage. Method: GET. Path: /api/v1/dashboard/cpu. Effect: safe_read.",
+      "description": "Read the current host CPU utilization percentage. Method: GET. Path: /api/v1/dashboard/cpu. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "dashboard.cpu",
@@ -6897,7 +6909,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read aggregate downloader task counts, speeds, and free-space information. Method: GET. Path: /api/v1/dashboard/downloader. Effect: safe_read.",
+      "description": "Read aggregate downloader task counts, speeds, and free-space information. Method: GET. Path: /api/v1/dashboard/downloader. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "dashboard.downloader",
@@ -6932,7 +6944,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read aggregate movie, TV, episode, and music library counts. Method: GET. Path: /api/v1/dashboard/statistic. Effect: safe_read.",
+      "description": "Read aggregate movie, TV, episode, and music library counts. Method: GET. Path: /api/v1/dashboard/statistic. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "dashboard.media.statistics",
@@ -6967,7 +6979,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read current MoviePilot process and host memory utilization. Method: GET. Path: /api/v1/dashboard/memory. Effect: safe_read.",
+      "description": "Read current MoviePilot process and host memory utilization. Method: GET. Path: /api/v1/dashboard/memory. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "dashboard.memory",
@@ -6983,7 +6995,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read the current host network receive and transmit counters. Method: GET. Path: /api/v1/dashboard/network. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "Read the current host network receive and transmit counters. Method: GET. Path: /api/v1/dashboard/network. Effect: safe_read. Identity scope: admin. Required role: system_admin. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "dashboard.network",
@@ -7039,7 +7051,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List host processes visible to the MoviePilot runtime. Method: GET. Path: /api/v1/dashboard/processes. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List host processes visible to the MoviePilot runtime. Method: GET. Path: /api/v1/dashboard/processes. Effect: safe_read. Identity scope: admin. Required role: system_admin. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "dashboard.processes",
@@ -7095,7 +7107,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read local filesystem capacity and free-space information. Method: GET. Path: /api/v1/dashboard/storage. Effect: safe_read.",
+      "description": "Read local filesystem capacity and free-space information. Method: GET. Path: /api/v1/dashboard/storage. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "dashboard.storage",
@@ -7111,7 +7123,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read MoviePilot host, runtime, platform, and uptime summary information. Method: GET. Path: /api/v1/dashboard/system. Effect: safe_read.",
+      "description": "Read MoviePilot host, runtime, platform, and uptime summary information. Method: GET. Path: /api/v1/dashboard/system. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "dashboard.system",
@@ -7127,7 +7139,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read aggregate file-transfer counts grouped by time period. Method: GET. Path: /api/v1/dashboard/transfer. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "Read aggregate file-transfer counts grouped by time period. Method: GET. Path: /api/v1/dashboard/transfer. Effect: safe_read. Identity scope: admin. Required role: system_admin. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "dashboard.transfer.statistics",
@@ -7196,7 +7208,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Create, verify, and atomically publish a managed database backup. Method: POST. Path: /api/v1/system/database/backups. Effect: external_side_effect.",
+      "description": "Create, verify, and atomically publish a managed database backup. Method: POST. Path: /api/v1/system/database/backups. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "database.backups.create",
@@ -7212,7 +7224,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete one exact managed database backup artifact. Method: DELETE. Path: /api/v1/system/database/backups/{name}. Effect: destructive_write.",
+      "description": "Delete one exact managed database backup artifact. Method: DELETE. Path: /api/v1/system/database/backups/{name}. Effect: destructive_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "database.backups.delete",
@@ -7244,7 +7256,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List managed database backup artifacts without exposing host paths. Method: GET. Path: /api/v1/system/database/backups. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List managed database backup artifacts without exposing host paths. Method: GET. Path: /api/v1/system/database/backups. Effect: safe_read. Identity scope: admin. Required role: system_admin. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "database.backups.list",
@@ -7300,7 +7312,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Verify the integrity of one exact managed database backup artifact. Method: POST. Path: /api/v1/system/database/backups/{name}/verify. Effect: safe_read.",
+      "description": "Verify the integrity of one exact managed database backup artifact. Method: POST. Path: /api/v1/system/database/backups/{name}/verify. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "database.backups.verify",
@@ -7332,7 +7344,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Submit one torrent to MoviePilot's normal download workflow. Method: POST. Path: /api/v1/download/add. Effect: external_side_effect.",
+      "description": "Submit one torrent to MoviePilot's normal download workflow. Method: POST. Path: /api/v1/download/add. Effect: external_side_effect. Identity scope: bound_user. Required role: user.",
       "properties": {
         "body": {
           "$ref": "#/$defs/Body_add_api_v1_download_add_post",
@@ -7353,7 +7365,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Submit one artist-wide music torrent to MoviePilot's collection download workflow. Method: POST. Path: /api/v1/download/artist-collection. Effect: external_side_effect.",
+      "description": "Submit one artist-wide music torrent to MoviePilot's collection download workflow. Method: POST. Path: /api/v1/download/artist-collection. Effect: external_side_effect. Identity scope: bound_user. Required role: user.",
       "properties": {
         "body": {
           "$ref": "#/$defs/Body_download_artist_collection_api_v1_download_artist_collection_post",
@@ -7374,7 +7386,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List enabled downloader instance names and provider types without credentials. Method: GET. Path: /api/v1/download/clients. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List enabled downloader instance names and provider types without credentials. Method: GET. Path: /api/v1/download/clients. Effect: safe_read. Identity scope: bound_user. Required role: user. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "download.clients",
@@ -7430,7 +7442,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete one MoviePilot download-history record. Method: DELETE. Path: /api/v1/history/download. Effect: destructive_write.",
+      "description": "Delete one MoviePilot download-history record. Method: DELETE. Path: /api/v1/history/download. Effect: destructive_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/DownloadHistory-Input",
@@ -7451,7 +7463,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Page MoviePilot download-history records in reverse chronological order. Method: GET. Path: /api/v1/history/download. Effect: safe_read. Collection response: data remains a list and the endpoint's documented pagination or limit defaults remain in effect. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count-only request, use the smallest valid page and read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "Page MoviePilot download-history records in reverse chronological order. Method: GET. Path: /api/v1/history/download. Effect: safe_read. Identity scope: bound_user. Required role: user. Collection response: data remains a list and the endpoint's documented pagination or limit defaults remain in effect. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count-only request, use the smallest valid page and read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "download.history.list",
@@ -7506,7 +7518,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List configured downloader save-path URIs that may be passed to download.add. Each item's non-empty name is also accepted as save_path. Method: GET. Path: /api/v1/download/paths. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List configured downloader save-path URIs that may be passed to download.add. Each item's non-empty name is also accepted as save_path. Method: GET. Path: /api/v1/download/paths. Effect: safe_read. Identity scope: bound_user. Required role: user. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "download.paths",
@@ -7562,7 +7574,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List currently downloading MoviePilot tasks with their canonical media context. Method: GET. Path: /api/v1/download/. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List currently downloading MoviePilot tasks with their canonical media context. Method: GET. Path: /api/v1/download/. Effect: safe_read. Identity scope: bound_user. Required role: user. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "download.tasks.active",
@@ -7630,7 +7642,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List built-in torrent filter rules. Method: GET. Path: /api/v1/rule/builtin. Effect: safe_read.",
+      "description": "List built-in torrent filter rules. Method: GET. Path: /api/v1/rule/builtin. Effect: safe_read. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "filter.builtin",
@@ -7668,7 +7680,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List user-defined torrent filter rules. Method: GET. Path: /api/v1/rule/custom. Effect: safe_read.",
+      "description": "List user-defined torrent filter rules. Method: GET. Path: /api/v1/rule/custom. Effect: safe_read. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "filter.custom",
@@ -7712,7 +7724,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Create one user-defined torrent filter rule. Method: POST. Path: /api/v1/rule/custom. Effect: reversible_write.",
+      "description": "Create one user-defined torrent filter rule. Method: POST. Path: /api/v1/rule/custom. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/CustomFilterRuleCreateRequest",
@@ -7733,7 +7745,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete one user-defined torrent filter rule. Method: DELETE. Path: /api/v1/rule/custom/{rule_id}. Effect: destructive_write.",
+      "description": "Delete one user-defined torrent filter rule. Method: DELETE. Path: /api/v1/rule/custom/{rule_id}. Effect: destructive_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "filter.custom.delete",
@@ -7765,7 +7777,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Update one user-defined torrent filter rule. Method: PUT. Path: /api/v1/rule/custom/{rule_id}. Effect: reversible_write.",
+      "description": "Update one user-defined torrent filter rule. Method: PUT. Path: /api/v1/rule/custom/{rule_id}. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/CustomFilterRuleUpdateRequest",
@@ -7802,7 +7814,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Create one named filter-rule group. Method: POST. Path: /api/v1/rule/groups. Effect: reversible_write.",
+      "description": "Create one named filter-rule group. Method: POST. Path: /api/v1/rule/groups. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/FilterRuleGroupCreateRequest",
@@ -7823,7 +7835,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete one named filter-rule group. Method: DELETE. Path: /api/v1/rule/groups/{name}. Effect: destructive_write.",
+      "description": "Delete one named filter-rule group. Method: DELETE. Path: /api/v1/rule/groups/{name}. Effect: destructive_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "filter.group.delete",
@@ -7855,7 +7867,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Update or rename one named filter-rule group. Method: PUT. Path: /api/v1/rule/groups/{name}. Effect: reversible_write.",
+      "description": "Update or rename one named filter-rule group. Method: PUT. Path: /api/v1/rule/groups/{name}. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/FilterRuleGroupUpdateRequest",
@@ -7892,7 +7904,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List named filter-rule groups. Method: GET. Path: /api/v1/rule/groups. Effect: safe_read.",
+      "description": "List named filter-rule groups. Method: GET. Path: /api/v1/rule/groups. Effect: safe_read. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "filter.groups",
@@ -7936,7 +7948,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Test one title and optional subtitle against an exact named filter-rule group. Method: GET. Path: /api/v1/system/ruletest. Effect: external_side_effect.",
+      "description": "Test one title and optional subtitle against an exact named filter-rule group. Method: GET. Path: /api/v1/system/ruletest. Effect: external_side_effect. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "filter.test",
@@ -7986,7 +7998,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Check configured media servers for one canonical media identity. Method: GET. Path: /api/v1/mediaserver/exists. Effect: safe_read.",
+      "description": "Check configured media servers for one canonical media identity. Method: GET. Path: /api/v1/mediaserver/exists. Effect: safe_read. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "library.exists",
@@ -8081,7 +8093,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List recently added items from one configured media-server instance for the current user. Method: GET. Path: /api/v1/mediaserver/latest. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
+      "description": "List recently added items from one configured media-server instance for the current user. Method: GET. Path: /api/v1/mediaserver/latest. Effect: safe_read. Identity scope: bound_user. Required role: user. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "library.latest",
@@ -8132,7 +8144,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Clear the complete administrator-only TMDB recognition cache. Method: DELETE. Path: /api/v1/tmdb/cache. Effect: destructive_write.",
+      "description": "Clear the complete administrator-only TMDB recognition cache. Method: DELETE. Path: /api/v1/tmdb/cache. Effect: destructive_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "media.cache.clear",
@@ -8148,7 +8160,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete one administrator-only TMDB recognition-cache entry by exact key. Method: DELETE. Path: /api/v1/tmdb/cache/{cache_key}. Effect: destructive_write.",
+      "description": "Delete one administrator-only TMDB recognition-cache entry by exact key. Method: DELETE. Path: /api/v1/tmdb/cache/{cache_key}. Effect: destructive_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "media.cache.delete",
@@ -8180,7 +8192,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Inspect the administrator-only TMDB recognition cache and summary counts. Method: GET. Path: /api/v1/tmdb/cache. Effect: safe_read.",
+      "description": "Inspect the administrator-only TMDB recognition cache and summary counts. Method: GET. Path: /api/v1/tmdb/cache. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "media.cache.get",
@@ -8196,7 +8208,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read the media-classification field catalog and source capabilities. Method: GET. Path: /api/v1/media/classification/fields. Effect: safe_read.",
+      "description": "Read the media-classification field catalog and source capabilities. Method: GET. Path: /api/v1/media/classification/fields. Effect: safe_read. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "media.classification.fields",
@@ -8212,7 +8224,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read the active automatic media-classification policy. Method: GET. Path: /api/v1/media/classification/policy. Effect: safe_read.",
+      "description": "Read the active automatic media-classification policy. Method: GET. Path: /api/v1/media/classification/policy. Effect: safe_read. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "media.classification.policy.get",
@@ -8247,7 +8259,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read the bounded history of published media-classification policies. Method: GET. Path: /api/v1/media/classification/history. Effect: safe_read.",
+      "description": "Read the bounded history of published media-classification policies. Method: GET. Path: /api/v1/media/classification/history. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "media.classification.policy.history",
@@ -8263,7 +8275,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Estimate how an unpublished media-classification policy changes bounded recent samples. Method: POST. Path: /api/v1/media/classification/impact. Effect: safe_read.",
+      "description": "Estimate how an unpublished media-classification policy changes bounded recent samples. Method: POST. Path: /api/v1/media/classification/impact. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/ClassificationImpactRequest",
@@ -8284,7 +8296,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Preview automatic media classification for selected media or normalized facts. Method: POST. Path: /api/v1/media/classification/preview. Effect: safe_read.",
+      "description": "Preview automatic media classification for selected media or normalized facts. Method: POST. Path: /api/v1/media/classification/preview. Effect: safe_read. Identity scope: bound_user. Required role: user.",
       "properties": {
         "body": {
           "$ref": "#/$defs/ClassificationPreviewRequest",
@@ -8305,7 +8317,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Publish a selected historical media-classification policy as a new revision. Method: POST. Path: /api/v1/media/classification/rollback/{revision}. Effect: reversible_write.",
+      "description": "Publish a selected historical media-classification policy as a new revision. Method: POST. Path: /api/v1/media/classification/rollback/{revision}. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/ClassificationPolicyRollbackRequest",
@@ -8342,7 +8354,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Validate and publish a complete automatic media-classification policy. Method: PUT. Path: /api/v1/media/classification/policy. Effect: reversible_write.",
+      "description": "Validate and publish a complete automatic media-classification policy. Method: PUT. Path: /api/v1/media/classification/policy. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/ClassificationPolicyPublishRequest",
@@ -8363,7 +8375,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Validate an unpublished automatic media-classification policy without saving it. Method: POST. Path: /api/v1/media/classification/validate. Effect: safe_read.",
+      "description": "Validate an unpublished automatic media-classification policy without saving it. Method: POST. Path: /api/v1/media/classification/validate. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/ClassificationPolicyValidateRequest",
@@ -8384,7 +8396,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read canonical media details from one selected metadata source. Method: GET. Path: /api/v1/media/{media_id}. Effect: safe_read.",
+      "description": "Read canonical media details from one selected metadata source. Method: GET. Path: /api/v1/media/{media_id}. Effect: safe_read. Identity scope: public. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "media.detail",
@@ -8437,7 +8449,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List seasons defined by one exact TMDB episode-group identity. Method: GET. Path: /api/v1/media/group/seasons/{episode_group}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List seasons defined by one exact TMDB episode-group identity. Method: GET. Path: /api/v1/media/group/seasons/{episode_group}. Effect: safe_read. Identity scope: public. Required role: user. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "media.episode_group.seasons",
@@ -8509,7 +8521,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List alternate TMDB episode groups available for one TV media identity. Method: GET. Path: /api/v1/media/groups/{tmdbid}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List alternate TMDB episode groups available for one TV media identity. Method: GET. Path: /api/v1/media/groups/{tmdbid}. Effect: safe_read. Identity scope: public. Required role: user. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "media.episode_groups",
@@ -8581,7 +8593,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read TMDB episode release information for one season. Method: GET. Path: /api/v1/tmdb/{tmdbid}/{season}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "Read TMDB episode release information for one season. Method: GET. Path: /api/v1/tmdb/{tmdbid}/{season}. Effect: safe_read. Identity scope: public. Required role: user. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "media.episode_schedule",
@@ -8671,7 +8683,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read one person's credits from the selected metadata source. Method: GET. Path: /api/v1/{source}/person/credits/{person_id}. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
+      "description": "Read one person's credits from the selected metadata source. Method: GET. Path: /api/v1/{source}/person/credits/{person_id}. Effect: safe_read. Identity scope: public. Required role: user. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "media.person.credits",
@@ -8739,7 +8751,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Search people and music artists across selected metadata sources. Method: GET. Path: /api/v1/media/search. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
+      "description": "Search people and music artists across selected metadata sources. Method: GET. Path: /api/v1/media/search. Effect: safe_read. Identity scope: public. Required role: user. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "media.person.search",
@@ -8821,7 +8833,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Recognize media identity from a title, subtitle, or custom rule context. Method: GET. Path: /api/v1/media/recognize. Effect: safe_read.",
+      "description": "Recognize media identity from a title, subtitle, or custom rule context. Method: GET. Path: /api/v1/media/recognize. Effect: safe_read. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "media.recognize",
@@ -8889,7 +8901,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Recognize canonical media identity from one exact filename and optional path context. Method: GET. Path: /api/v1/media/recognize_file. Effect: safe_read.",
+      "description": "Recognize canonical media identity from one exact filename and optional path context. Method: GET. Path: /api/v1/media/recognize_file. Effect: safe_read. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "media.recognize_file",
@@ -8933,7 +8945,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Generate or refresh metadata for one storage item. Method: POST. Path: /api/v1/media/scrape/{storage}. Effect: external_side_effect.",
+      "description": "Generate or refresh metadata for one storage item. Method: POST. Path: /api/v1/media/scrape/{storage}. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/FileItem-Input",
@@ -9044,7 +9056,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Search canonical media across selected metadata sources. Method: GET. Path: /api/v1/media/search. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
+      "description": "Search canonical media across selected metadata sources. Method: GET. Path: /api/v1/media/search. Effect: safe_read. Identity scope: public. Required role: user. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "media.search",
@@ -9133,7 +9145,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List seasons for one exact media identity or a title-and-year fallback. Method: GET. Path: /api/v1/media/seasons. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List seasons for one exact media identity or a title-and-year fallback. Method: GET. Path: /api/v1/media/seasons. Effect: safe_read. Identity scope: public. Required role: user. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "media.seasons",
@@ -9235,7 +9247,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List metadata sources currently registered for MoviePilot media operations. Method: GET. Path: /api/v1/media/source. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List metadata sources currently registered for MoviePilot media operations. Method: GET. Path: /api/v1/media/source. Effect: safe_read. Identity scope: bound_user. Required role: user. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "media.sources",
@@ -9291,7 +9303,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read one album's details, tracks, releases, and aligned artist names and IDs. Method: GET. Path: /api/v1/music/album/{album_id}. Effect: safe_read.",
+      "description": "Read one album's details, tracks, releases, and aligned artist names and IDs. Method: GET. Path: /api/v1/music/album/{album_id}. Effect: safe_read. Identity scope: public. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "music.album.get",
@@ -9347,7 +9359,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Browse albums related to one source-native album identity. Method: GET. Path: /api/v1/music/album/{album_id}/related. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
+      "description": "Browse albums related to one source-native album identity. Method: GET. Path: /api/v1/music/album/{album_id}/related. Effect: safe_read. Identity scope: public. Required role: user. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "music.album.related",
@@ -9404,7 +9416,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Browse one artist's albums, singles, EPs, or another exact release-group type. Method: GET. Path: /api/v1/music/artist/{artist_id}/albums. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
+      "description": "Browse one artist's albums, singles, EPs, or another exact release-group type. Method: GET. Path: /api/v1/music/artist/{artist_id}/albums. Effect: safe_read. Identity scope: public. Required role: user. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "music.artist.albums",
@@ -9481,7 +9493,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read one artist's canonical details from the selected music metadata source. Method: GET. Path: /api/v1/music/artist/{artist_id}. Effect: safe_read.",
+      "description": "Read one artist's canonical details from the selected music metadata source. Method: GET. Path: /api/v1/music/artist/{artist_id}. Effect: safe_read. Identity scope: public. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "music.artist.get",
@@ -9524,7 +9536,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Browse artists related to one source-native artist identity. Method: GET. Path: /api/v1/music/artist/{artist_id}/related. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
+      "description": "Browse artists related to one source-native artist identity. Method: GET. Path: /api/v1/music/artist/{artist_id}/related. Effect: safe_read. Identity scope: public. Required role: user. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "music.artist.related",
@@ -9581,7 +9593,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Clear the complete administrator-only MusicBrainz recognition cache. Method: DELETE. Path: /api/v1/music/cache. Effect: destructive_write.",
+      "description": "Clear the complete administrator-only MusicBrainz recognition cache. Method: DELETE. Path: /api/v1/music/cache. Effect: destructive_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "music.cache.clear",
@@ -9597,7 +9609,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete one administrator-only MusicBrainz recognition-cache entry by exact key. Method: DELETE. Path: /api/v1/music/cache/{cache_key}. Effect: destructive_write.",
+      "description": "Delete one administrator-only MusicBrainz recognition-cache entry by exact key. Method: DELETE. Path: /api/v1/music/cache/{cache_key}. Effect: destructive_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "music.cache.delete",
@@ -9629,7 +9641,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Inspect the administrator-only MusicBrainz recognition cache and summary counts. Method: GET. Path: /api/v1/music/cache. Effect: safe_read.",
+      "description": "Inspect the administrator-only MusicBrainz recognition cache and summary counts. Method: GET. Path: /api/v1/music/cache. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "music.cache.get",
@@ -9645,7 +9657,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Browse MusicBrainz charts or fresh releases, or Douban Music tag categories. Method: GET. Path: /api/v1/music/explore. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
+      "description": "Browse MusicBrainz charts or fresh releases, or Douban Music tag categories. Method: GET. Path: /api/v1/music/explore. Effect: safe_read. Identity scope: public. Required role: user. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "music.explore",
@@ -9774,7 +9786,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Resolve one recording or album from an exact music source and source-native ID. Method: POST. Path: /api/v1/music/recognize. Effect: safe_read.",
+      "description": "Resolve one recording or album from an exact music source and source-native ID. Method: POST. Path: /api/v1/music/recognize. Effect: safe_read. Identity scope: public. Required role: user.",
       "properties": {
         "body": {
           "$ref": "#/$defs/MusicRecognizeRequest",
@@ -9795,7 +9807,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Inspect the runtime capabilities exposed by installed plugins. Method: GET. Path: /api/v1/plugin/runtime/capabilities. Effect: safe_read.",
+      "description": "Inspect the runtime capabilities exposed by installed plugins. Method: GET. Path: /api/v1/plugin/runtime/capabilities. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "plugin.capabilities",
@@ -9830,7 +9842,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Create a configurable clone of one installed plugin; leave suffix empty to let the server allocate the next free instance ID, and reusing the suffix of a disabled clone re-enables that clone together with its stored configuration. Method: POST. Path: /api/v1/plugin/clone/{plugin_id}. Effect: external_side_effect.",
+      "description": "Create a configurable clone of one installed plugin; leave suffix empty to let the server allocate the next free instance ID, and reusing the suffix of a disabled clone re-enables that clone together with its stored configuration. Method: POST. Path: /api/v1/plugin/clone/{plugin_id}. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/PluginCloneRequest",
@@ -9867,7 +9879,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List one plugin's disabled clones whose configuration is still stored and can be brought back by creating a clone with the same suffix. Method: GET. Path: /api/v1/plugin/clone/{plugin_id}/restorable. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List one plugin's disabled clones whose configuration is still stored and can be brought back by creating a clone with the same suffix. Method: GET. Path: /api/v1/plugin/clone/{plugin_id}/restorable. Effect: safe_read. Identity scope: admin. Required role: system_admin. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "plugin.clone.restorable",
@@ -9939,7 +9951,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read one loaded plugin's configuration form and its defaults merged with saved values. Method: GET. Path: /api/v1/plugin/form/{plugin_id}. Effect: safe_read.",
+      "description": "Read one loaded plugin's configuration form and its defaults merged with saved values. Method: GET. Path: /api/v1/plugin/form/{plugin_id}. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "plugin.config.get",
@@ -9971,7 +9983,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Replace one installed plugin's complete configuration and apply it immediately. Method: PUT. Path: /api/v1/plugin/{plugin_id}. Effect: reversible_write.",
+      "description": "Replace one installed plugin's complete configuration and apply it immediately. Method: PUT. Path: /api/v1/plugin/{plugin_id}. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "additionalProperties": true,
@@ -10011,7 +10023,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read a bounded preview of one plugin's persisted data. Method: GET. Path: /api/v1/plugin/runtime/{plugin_id}/data. Effect: safe_read.",
+      "description": "Read a bounded preview of one plugin's persisted data. Method: GET. Path: /api/v1/plugin/runtime/{plugin_id}/data. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "plugin.data",
@@ -10074,7 +10086,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Clear one plugin instance's default-call-target flag, only if it is the plugin's current default. Method: DELETE. Path: /api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target. Effect: reversible_write.",
+      "description": "Clear one plugin instance's default-call-target flag, only if it is the plugin's current default. Method: DELETE. Path: /api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "plugin.default_target.clear",
@@ -10112,7 +10124,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Set one plugin instance as the plugin's default call target, automatically clearing any previous default. Method: PUT. Path: /api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target. Effect: reversible_write.",
+      "description": "Set one plugin instance as the plugin's default call target, automatically clearing any previous default. Method: PUT. Path: /api/v1/plugin/instances/{plugin_id}/{instance_id}/default_target. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "plugin.default_target.set",
@@ -10150,7 +10162,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Create one named plugin folder. Method: POST. Path: /api/v1/plugin/folders/{folder_name}. Effect: reversible_write.",
+      "description": "Create one named plugin folder. Method: POST. Path: /api/v1/plugin/folders/{folder_name}. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "plugin.folder.create",
@@ -10182,7 +10194,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete one named plugin folder without uninstalling its plugins. Method: DELETE. Path: /api/v1/plugin/folders/{folder_name}. Effect: destructive_write.",
+      "description": "Delete one named plugin folder without uninstalling its plugins. Method: DELETE. Path: /api/v1/plugin/folders/{folder_name}. Effect: destructive_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "plugin.folder.delete",
@@ -10214,7 +10226,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Move one installed plugin into one named folder and remove its other folder assignments. Method: PUT. Path: /api/v1/plugin/folders/{folder_name}/plugins/{plugin_id}. Effect: reversible_write.",
+      "description": "Move one installed plugin into one named folder and remove its other folder assignments. Method: PUT. Path: /api/v1/plugin/folders/{folder_name}/plugins/{plugin_id}. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "plugin.folder.plugin.assign",
@@ -10252,7 +10264,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Remove one installed plugin from one named folder without uninstalling it. Method: DELETE. Path: /api/v1/plugin/folders/{folder_name}/plugins/{plugin_id}. Effect: reversible_write.",
+      "description": "Remove one installed plugin from one named folder without uninstalling it. Method: DELETE. Path: /api/v1/plugin/folders/{folder_name}/plugins/{plugin_id}. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "plugin.folder.plugin.remove",
@@ -10290,7 +10302,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Replace the ordered plugin IDs assigned to one named plugin folder. Method: PUT. Path: /api/v1/plugin/folders/{folder_name}/plugins. Effect: reversible_write.",
+      "description": "Replace the ordered plugin IDs assigned to one named plugin folder. Method: PUT. Path: /api/v1/plugin/folders/{folder_name}/plugins. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "anyOf": [
@@ -10338,7 +10350,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Incrementally rename one plugin folder or update its presentation settings. Method: PATCH. Path: /api/v1/plugin/folders/{folder_name}. Effect: reversible_write.",
+      "description": "Incrementally rename one plugin folder or update its presentation settings. Method: PATCH. Path: /api/v1/plugin/folders/{folder_name}. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/PluginFolderUpdateRequest",
@@ -10375,7 +10387,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read the complete administrator plugin-folder grouping configuration. Method: GET. Path: /api/v1/plugin/folders. Effect: safe_read.",
+      "description": "Read the complete administrator plugin-folder grouping configuration. Method: GET. Path: /api/v1/plugin/folders. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "plugin.folders.get",
@@ -10391,7 +10403,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Replace the complete administrator plugin-folder grouping configuration. Method: POST. Path: /api/v1/plugin/folders. Effect: reversible_write.",
+      "description": "Replace the complete administrator plugin-folder grouping configuration. Method: POST. Path: /api/v1/plugin/folders. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/PluginFoldersData",
@@ -10412,7 +10424,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read marketplace update notes and history for one plugin. Method: GET. Path: /api/v1/plugin/history/{plugin_id}. Effect: safe_read.",
+      "description": "Read marketplace update notes and history for one plugin. Method: GET. Path: /api/v1/plugin/history/{plugin_id}. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "plugin.history",
@@ -10457,7 +10469,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Install or update one plugin from an approved source. Method: GET. Path: /api/v1/plugin/install/{plugin_id}. Effect: external_side_effect.",
+      "description": "Install or update one plugin from an approved source. Method: GET. Path: /api/v1/plugin/install/{plugin_id}. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "plugin.install",
@@ -10534,7 +10546,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List installed plugins and their runtime status. Method: GET. Path: /api/v1/plugin/. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List installed plugins and their runtime status. Method: GET. Path: /api/v1/plugin/. Effect: safe_read. Identity scope: admin. Required role: system_admin. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "plugin.installed",
@@ -10631,7 +10643,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Permanently delete one plugin instance's selected data: saved configuration, plugin data rows, its own database and its data directory; a clone also loses its instance record. Nothing is deleted unless explicitly selected. Method: POST. Path: /api/v1/plugin/instance/{instance_id}/purge. Effect: destructive_write.",
+      "description": "Permanently delete one plugin instance's selected data: saved configuration, plugin data rows, its own database and its data directory; a clone also loses its instance record. Nothing is deleted unless explicitly selected. Method: POST. Path: /api/v1/plugin/instance/{instance_id}/purge. Effect: destructive_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/PluginInstancePurgeRequest",
@@ -10668,7 +10680,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Enable or disable one plugin instance, host or clone; disabling only stops it running and keeps its configuration for a later re-enable. Method: POST. Path: /api/v1/plugin/instance/{instance_id}/enabled. Effect: reversible_write.",
+      "description": "Enable or disable one plugin instance, host or clone; disabling only stops it running and keeps its configuration for a later re-enable. Method: POST. Path: /api/v1/plugin/instance/{instance_id}/enabled. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/PluginInstanceEnabledRequest",
@@ -10705,7 +10717,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Clear one plugin instance's log-level override so it immediately follows the global log level again. Method: DELETE. Path: /api/v1/plugin/loglevel/{plugin_id}/{instance_id}. Effect: reversible_write.",
+      "description": "Clear one plugin instance's log-level override so it immediately follows the global log level again. Method: DELETE. Path: /api/v1/plugin/loglevel/{plugin_id}/{instance_id}. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "plugin.loglevel.clear",
@@ -10743,7 +10755,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List one plugin's instances, including the plugin itself, with each instance's configured and effective log level. Method: GET. Path: /api/v1/plugin/loglevel/{plugin_id}. Effect: safe_read.",
+      "description": "List one plugin's instances, including the plugin itself, with each instance's configured and effective log level. Method: GET. Path: /api/v1/plugin/loglevel/{plugin_id}. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "plugin.loglevel.get",
@@ -10775,7 +10787,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Set one plugin instance's log-level override, taking effect immediately without following the global log level. Method: PUT. Path: /api/v1/plugin/loglevel/{plugin_id}/{instance_id}. Effect: reversible_write.",
+      "description": "Set one plugin instance's log-level override, taking effect immediately without following the global log level. Method: PUT. Path: /api/v1/plugin/loglevel/{plugin_id}/{instance_id}. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/PluginInstanceLogLevelUpdateRequest",
@@ -10818,7 +10830,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List plugins available from configured marketplaces. Method: GET. Path: /api/v1/plugin/. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List plugins available from configured marketplaces. Method: GET. Path: /api/v1/plugin/. Effect: safe_read. Identity scope: admin. Required role: system_admin. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "plugin.market",
@@ -10915,7 +10927,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Refresh the configured plugin marketplace repositories from the MoviePilot Wiki. Method: POST. Path: /api/v1/system/setting/PLUGIN_MARKET/sync-wiki. Effect: external_side_effect.",
+      "description": "Refresh the configured plugin marketplace repositories from the MoviePilot Wiki. Method: POST. Path: /api/v1/system/setting/PLUGIN_MARKET/sync-wiki. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "anyOf": [
@@ -10943,7 +10955,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read the current aggregate rating for one plugin. Method: GET. Path: /api/v1/plugin/rating/{plugin_id}. Effect: safe_read.",
+      "description": "Read the current aggregate rating for one plugin. Method: GET. Path: /api/v1/plugin/rating/{plugin_id}. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "plugin.rating",
@@ -10975,7 +10987,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Submit or replace the current user's rating for one plugin. Method: POST. Path: /api/v1/plugin/rating/{plugin_id}. Effect: external_side_effect.",
+      "description": "Submit or replace the current user's rating for one plugin. Method: POST. Path: /api/v1/plugin/rating/{plugin_id}. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/PluginRatingRequest",
@@ -11012,7 +11024,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read aggregate ratings for a requested plugin set. Method: GET. Path: /api/v1/plugin/rating. Effect: safe_read.",
+      "description": "Read aggregate ratings for a requested plugin set. Method: GET. Path: /api/v1/plugin/rating. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "plugin.ratings",
@@ -11047,7 +11059,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List available release versions for one plugin source. Method: GET. Path: /api/v1/plugin/releases/{plugin_id}. Effect: safe_read.",
+      "description": "List available release versions for one plugin source. Method: GET. Path: /api/v1/plugin/releases/{plugin_id}. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "plugin.releases",
@@ -11105,7 +11117,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Reload one installed plugin into the running process. Method: POST. Path: /api/v1/plugin/reload/{plugin_id}. Effect: external_side_effect.",
+      "description": "Reload one installed plugin into the running process. Method: POST. Path: /api/v1/plugin/reload/{plugin_id}. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "plugin.reload",
@@ -11137,7 +11149,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete one plugin's saved configuration and data, then restore its default runtime state. Method: GET. Path: /api/v1/plugin/reset/{plugin_id}. Effect: destructive_write.",
+      "description": "Delete one plugin's saved configuration and data, then restore its default runtime state. Method: GET. Path: /api/v1/plugin/reset/{plugin_id}. Effect: destructive_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "plugin.reset",
@@ -11169,7 +11181,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read plugin runtime convergence, loading, and failure state. Method: GET. Path: /api/v1/plugin/runtime. Effect: safe_read.",
+      "description": "Read plugin runtime convergence, loading, and failure state. Method: GET. Path: /api/v1/plugin/runtime. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "plugin.runtime.status",
@@ -11185,7 +11197,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Switch an installed plugin to one explicitly selected online source revision. Method: POST. Path: /api/v1/plugin/source/{plugin_id}. Effect: external_side_effect.",
+      "description": "Switch an installed plugin to one explicitly selected online source revision. Method: POST. Path: /api/v1/plugin/source/{plugin_id}. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/PluginSourceChangeRequest",
@@ -11222,7 +11234,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Install an unbound plugin from one explicitly selected online source. Method: POST. Path: /api/v1/plugin/source/{plugin_id}/install. Effect: external_side_effect.",
+      "description": "Install an unbound plugin from one explicitly selected online source. Method: POST. Path: /api/v1/plugin/source/{plugin_id}/install. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/PluginSourceInstallRequest",
@@ -11259,7 +11271,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Inspect source candidates and the current immutable source identity before installation or source change. Method: GET. Path: /api/v1/plugin/source/{plugin_id}. Effect: safe_read.",
+      "description": "Inspect source candidates and the current immutable source identity before installation or source change. Method: GET. Path: /api/v1/plugin/source/{plugin_id}. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "plugin.source.options",
@@ -11291,7 +11303,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read public installation statistics for plugins. Method: GET. Path: /api/v1/plugin/statistic. Effect: safe_read.",
+      "description": "Read public installation statistics for plugins. Method: GET. Path: /api/v1/plugin/statistic. Effect: safe_read. Identity scope: public. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "plugin.statistics",
@@ -11307,7 +11319,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Uninstall one plugin and remove it from the installed set. Method: DELETE. Path: /api/v1/plugin/{plugin_id}. Effect: destructive_write.",
+      "description": "Uninstall one plugin and remove it from the installed set. Method: DELETE. Path: /api/v1/plugin/{plugin_id}. Effect: destructive_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "plugin.uninstall",
@@ -11339,7 +11351,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read personalized media or music recommendations. Method: GET. Path: /api/v1/recommend/agent. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
+      "description": "Read public media or music charts and recommendations. Method: GET. Path: /api/v1/recommend/agent. Effect: safe_read. Identity scope: public. Required role: user. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "recommendation.list",
@@ -11348,7 +11360,7 @@
         },
         "query": {
           "additionalProperties": false,
-          "description": "Filters and control values for recommendation.list. Read personalized media or music recommendations. Use only the named fields below.",
+          "description": "Filters and control values for recommendation.list. Read public media or music charts and recommendations. Use only the named fields below.",
           "properties": {
             "days": {
               "default": 14,
@@ -11446,7 +11458,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List registered scheduler jobs and their current state. Method: GET. Path: /api/v1/dashboard/schedule. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List registered scheduler jobs and their current state. Method: GET. Path: /api/v1/dashboard/schedule. Effect: safe_read. Identity scope: admin. Required role: system_admin. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "scheduler.list",
@@ -11502,7 +11514,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read current progress for one exact scheduler job. Method: GET. Path: /api/v1/dashboard/schedule/{job_id}/progress. Effect: safe_read.",
+      "description": "Read current progress for one exact scheduler job. Method: GET. Path: /api/v1/dashboard/schedule/{job_id}/progress. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "scheduler.progress",
@@ -11534,7 +11546,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Run one registered scheduler job immediately. Method: GET. Path: /api/v1/system/runscheduler. Effect: external_side_effect.",
+      "description": "Run one registered scheduler job immediately. Method: GET. Path: /api/v1/system/runscheduler. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "scheduler.run",
@@ -11566,7 +11578,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Use the configured recommendation model to rank or recommend torrent search results. Method: POST. Path: /api/v1/search/recommend. Effect: external_side_effect.",
+      "description": "Use the configured recommendation model to rank or recommend torrent search results. Method: POST. Path: /api/v1/search/recommend. Effect: external_side_effect. Identity scope: bound_user. Required role: user.",
       "properties": {
         "body": {
           "$ref": "#/$defs/Body_recommend_search_results_api_v1_search_recommend_post",
@@ -11586,7 +11598,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read the most recent torrent-search context and result set. Method: GET. Path: /api/v1/search/last/context. Effect: safe_read.",
+      "description": "Read the most recent torrent-search context and result set. Method: GET. Path: /api/v1/search/last/context. Effect: safe_read. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "search.results",
@@ -11602,7 +11614,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Search torrent sites directly from a free-form title and optional media filters. Method: GET. Path: /api/v1/search/title. Effect: external_side_effect. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
+      "description": "Search torrent sites directly from a free-form title and optional media filters. Method: GET. Path: /api/v1/search/title. Effect: external_side_effect. Identity scope: bound_user. Required role: user. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "search.title",
@@ -11680,7 +11692,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Search torrent sites for one canonical media identity. Method: GET. Path: /api/v1/search/media/{media_id}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "Search torrent sites for one canonical media identity. Method: GET. Path: /api/v1/search/media/{media_id}. Effect: safe_read. Identity scope: bound_user. Required role: user. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "search.torrents",
@@ -11827,7 +11839,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Create one configured site with its complete authentication and search settings. Method: POST. Path: /api/v1/site/. Effect: reversible_write.",
+      "description": "Create one configured site with its complete authentication and search settings. Method: POST. Path: /api/v1/site/. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/Site-Input",
@@ -11848,7 +11860,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List site-account authentication providers and their required input definitions. Method: GET. Path: /api/v1/site/auth. Effect: safe_read.",
+      "description": "List site-account authentication providers and their required input definitions. Method: GET. Path: /api/v1/site/auth. Effect: safe_read. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "site.auth.options",
@@ -11864,7 +11876,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Authenticate a supported site account and persist the resulting site authorization state. Method: POST. Path: /api/v1/site/auth. Effect: external_side_effect.",
+      "description": "Authenticate a supported site account and persist the resulting site authorization state. Method: POST. Path: /api/v1/site/auth. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/SiteAuth",
@@ -11885,7 +11897,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List torrent categories supported by one configured site. Method: GET. Path: /api/v1/site/category/{site_id}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List torrent categories supported by one configured site. Method: GET. Path: /api/v1/site/category/{site_id}. Effect: safe_read. Identity scope: bound_user. Required role: user. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "site.category",
@@ -11957,7 +11969,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Persist a browser-obtained authentication cookie and optional User-Agent for one site without replacing other settings. Method: POST. Path: /api/v1/site/cookie/{site_id}/set. Effect: reversible_write.",
+      "description": "Persist a browser-obtained authentication cookie and optional User-Agent for one site without replacing other settings. Method: POST. Path: /api/v1/site/cookie/{site_id}/set. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/SiteCookieSet",
@@ -11994,7 +12006,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Log in to one site and refresh its stored authentication cookie. Method: POST. Path: /api/v1/site/cookie/{site_id}. Effect: reversible_write.",
+      "description": "Log in to one site and refresh its stored authentication cookie. Method: POST. Path: /api/v1/site/cookie/{site_id}. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/SiteCookieUpdate",
@@ -12031,7 +12043,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Start a CookieCloud synchronization of configured sites. Method: POST. Path: /api/v1/site/cookiecloud. Effect: external_side_effect.",
+      "description": "Start a CookieCloud synchronization of configured sites. Method: POST. Path: /api/v1/site/cookiecloud. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "site.cookiecloud.sync",
@@ -12047,7 +12059,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete one configured site by persistent site ID. Method: DELETE. Path: /api/v1/site/{site_id}. Effect: destructive_write.",
+      "description": "Delete one configured site by persistent site ID. Method: DELETE. Path: /api/v1/site/{site_id}. Effect: destructive_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "site.delete",
@@ -12079,7 +12091,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List configured sites with status/name filters; authentication fields are returned only to a superuser. Method: GET. Path: /api/v1/site/agent. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List configured sites with status/name filters; authentication fields are returned only to a superuser. Method: GET. Path: /api/v1/site/agent. Effect: safe_read. Identity scope: bound_user. Required role: user. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "site.list",
@@ -12158,7 +12170,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read the configured site-domain to site-name mapping. Method: GET. Path: /api/v1/site/mapping. Effect: safe_read.",
+      "description": "Read the configured site-domain to site-name mapping. Method: GET. Path: /api/v1/site/mapping. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "site.mapping",
@@ -12174,7 +12186,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Replace priorities for the supplied configured site IDs. Method: POST. Path: /api/v1/site/priorities. Effect: reversible_write.",
+      "description": "Replace priorities for the supplied configured site IDs. Method: POST. Path: /api/v1/site/priorities. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "description": "Request value for site.priorities.update. Replace priorities for the supplied configured site IDs. Use the exact type and fields below.",
@@ -12199,7 +12211,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete all configured sites and start a fresh CookieCloud synchronization. Method: POST. Path: /api/v1/site/reset. Effect: destructive_write.",
+      "description": "Delete all configured sites and start a fresh CookieCloud synchronization. Method: POST. Path: /api/v1/site/reset. Effect: destructive_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "site.reset",
@@ -12215,7 +12227,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Browse torrent resources from one configured site with category and keyword filters. Method: GET. Path: /api/v1/site/resource/{site_id}. Effect: external_side_effect. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
+      "description": "Browse torrent resources from one configured site with category and keyword filters. Method: GET. Path: /api/v1/site/resource/{site_id}. Effect: external_side_effect. Identity scope: admin. Required role: system_admin. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "site.resource",
@@ -12309,7 +12321,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List configured sites selected for RSS subscription processing. Method: GET. Path: /api/v1/site/rss. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List configured sites selected for RSS subscription processing. Method: GET. Path: /api/v1/site/rss. Effect: safe_read. Identity scope: admin. Required role: system_admin. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "site.rss",
@@ -12365,7 +12377,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List active configured sites supporting one exact media type. Method: GET. Path: /api/v1/site/media/{media_type}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List active configured sites supporting one exact media type. Method: GET. Path: /api/v1/site/media/{media_type}. Effect: safe_read. Identity scope: admin. Required role: system_admin. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "site.searchable",
@@ -12437,7 +12449,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read account and traffic statistics for one exact configured site domain. Method: GET. Path: /api/v1/site/statistic/{site_url}. Effect: safe_read.",
+      "description": "Read account and traffic statistics for one exact configured site domain. Method: GET. Path: /api/v1/site/statistic/{site_url}. Effect: safe_read. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "site.statistic",
@@ -12469,7 +12481,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read the latest account and traffic statistics for all configured sites. Method: GET. Path: /api/v1/site/statistic. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "Read the latest account and traffic statistics for all configured sites. Method: GET. Path: /api/v1/site/statistic. Effect: safe_read. Identity scope: bound_user. Required role: user. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "site.statistics",
@@ -12525,7 +12537,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List indexer definitions supported by the installed MoviePilot resources. Method: GET. Path: /api/v1/site/supporting. Effect: safe_read.",
+      "description": "List indexer definitions supported by the installed MoviePilot resources. Method: GET. Path: /api/v1/site/supporting. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "site.supporting",
@@ -12541,7 +12553,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Test connectivity and authentication for one configured site. Method: GET. Path: /api/v1/site/test/{site_id}. Effect: safe_read.",
+      "description": "Test connectivity and authentication for one configured site. Method: GET. Path: /api/v1/site/test/{site_id}. Effect: safe_read. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "site.test",
@@ -12573,7 +12585,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Update one configured site's complete settings. Method: PUT. Path: /api/v1/site/. Effect: reversible_write.",
+      "description": "Update one configured site's complete settings. Method: PUT. Path: /api/v1/site/. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/Site-Input",
@@ -12594,7 +12606,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read the latest account statistics collected from one site. Method: GET. Path: /api/v1/site/userdata/{site_id}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "Read the latest account statistics collected from one site. Method: GET. Path: /api/v1/site/userdata/{site_id}. Effect: safe_read. Identity scope: admin. Required role: system_admin. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "site.userdata",
@@ -12678,7 +12690,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read the latest collected account statistics for every configured site. Method: GET. Path: /api/v1/site/userdata/latest. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "Read the latest collected account statistics for every configured site. Method: GET. Path: /api/v1/site/userdata/latest. Effect: safe_read. Identity scope: admin. Required role: system_admin. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "site.userdata.latest",
@@ -12734,7 +12746,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Refresh and return account statistics for one configured site. Method: POST. Path: /api/v1/site/userdata/{site_id}. Effect: external_side_effect.",
+      "description": "Refresh and return account statistics for one configured site. Method: POST. Path: /api/v1/site/userdata/{site_id}. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "site.userdata.refresh",
@@ -12766,7 +12778,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List slash commands that the Agent may dispatch. Method: GET. Path: /api/v1/message/agent/commands. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List slash commands that the Agent may dispatch. Method: GET. Path: /api/v1/message/agent/commands. Effect: safe_read. Identity scope: admin. Required role: system_admin. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "slash.list",
@@ -12822,7 +12834,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Execute one complete slash command through MoviePilot messaging. Method: POST. Path: /api/v1/message/agent/commands/run. Effect: external_side_effect.",
+      "description": "Execute one complete slash command through MoviePilot messaging. Method: POST. Path: /api/v1/message/agent/commands/run. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/AgentCommandRunRequest",
@@ -12843,7 +12855,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete one exact file or directory from a configured storage provider. Method: POST. Path: /api/v1/storage/delete. Effect: destructive_write.",
+      "description": "Delete one exact file or directory from a configured storage provider. Method: POST. Path: /api/v1/storage/delete. Effect: destructive_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/FileItem-Input",
@@ -12864,7 +12876,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List files or directories from one configured storage location. Method: POST. Path: /api/v1/storage/agent/list. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List files or directories from one configured storage location. Method: POST. Path: /api/v1/storage/agent/list. Effect: safe_read. Identity scope: bound_user. Required role: user. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "body": {
           "$ref": "#/$defs/FileItem-Input",
@@ -12950,7 +12962,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Run one provider-defined management action against an exact configured storage target. Method: POST. Path: /api/v1/storage/manage. Effect: external_side_effect.",
+      "description": "Run one provider-defined management action against an exact configured storage target. Method: POST. Path: /api/v1/storage/manage. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/ManageRequest",
@@ -12971,7 +12983,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Create a named child directory below one exact storage directory item. Method: POST. Path: /api/v1/storage/mkdir. Effect: reversible_write.",
+      "description": "Create a named child directory below one exact storage directory item. Method: POST. Path: /api/v1/storage/mkdir. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/FileItem-Input",
@@ -13008,7 +13020,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Rename one exact storage item, optionally applying media-aware recursive renaming. Method: POST. Path: /api/v1/storage/rename. Effect: reversible_write.",
+      "description": "Rename one exact storage item, optionally applying media-aware recursive renaming. Method: POST. Path: /api/v1/storage/rename. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/FileItem-Input",
@@ -13058,7 +13070,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read configured directory or storage settings. Method: GET. Path: /api/v1/storage/directories. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "Read configured directory or storage settings. Method: GET. Path: /api/v1/storage/directories. Effect: safe_read. Identity scope: admin. Required role: system_admin. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "storage.settings",
@@ -13138,7 +13150,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Create one movie, TV, or music subscription. Method: POST. Path: /api/v1/subscribe/. Effect: reversible_write.",
+      "description": "Create one movie, TV, or music subscription. Method: POST. Path: /api/v1/subscribe/. Effect: reversible_write. Identity scope: bound_user. Required role: user.",
       "properties": {
         "body": {
           "$ref": "#/$defs/Subscribe",
@@ -13159,7 +13171,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete one active subscription. Method: DELETE. Path: /api/v1/subscribe/{subscribe_id}. Effect: destructive_write.",
+      "description": "Delete one active subscription. Method: DELETE. Path: /api/v1/subscribe/{subscribe_id}. Effect: destructive_write. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "subscription.delete",
@@ -13191,7 +13203,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete accessible subscriptions matching one canonical media identity. Method: DELETE. Path: /api/v1/subscribe/media/{media_id}. Effect: destructive_write.",
+      "description": "Delete accessible subscriptions matching one canonical media identity. Method: DELETE. Path: /api/v1/subscribe/media/{media_id}. Effect: destructive_write. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "subscription.delete_by_media",
@@ -13262,7 +13274,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Request cancellation of one durable subscription-search batch before its download side-effect boundary. Method: PUT. Path: /api/v1/subscribe/execution/batches/{batch_id}/cancel. Effect: external_side_effect.",
+      "description": "Request cancellation of one durable subscription-search batch before its download side-effect boundary. Method: PUT. Path: /api/v1/subscribe/execution/batches/{batch_id}/cancel. Effect: external_side_effect. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "subscription.execution.cancel",
@@ -13294,7 +13306,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read one durable subscription-search batch visible to the current user. Method: GET. Path: /api/v1/subscribe/execution/batches/{batch_id}. Effect: safe_read.",
+      "description": "Read one durable subscription-search batch visible to the current user. Method: GET. Path: /api/v1/subscribe/execution/batches/{batch_id}. Effect: safe_read. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "subscription.execution.get",
@@ -13326,7 +13338,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List recent durable subscription-search batches visible to the current user. Method: GET. Path: /api/v1/subscribe/execution/batches. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
+      "description": "List recent durable subscription-search batches visible to the current user. Method: GET. Path: /api/v1/subscribe/execution/batches. Effect: safe_read. Identity scope: bound_user. Required role: user. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "subscription.execution.list",
@@ -13361,7 +13373,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read local library and transfer-file coverage for one accessible subscription. Method: GET. Path: /api/v1/subscribe/files/{subscribe_id}. Effect: safe_read.",
+      "description": "Read local library and transfer-file coverage for one accessible subscription. Method: GET. Path: /api/v1/subscribe/files/{subscribe_id}. Effect: safe_read. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "subscription.files",
@@ -13393,7 +13405,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Find one accessible subscription by canonical media identity and optional season. Method: GET. Path: /api/v1/subscribe/media/{media_id}. Effect: safe_read.",
+      "description": "Find one accessible subscription by canonical media identity and optional season. Method: GET. Path: /api/v1/subscribe/media/{media_id}. Effect: safe_read. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "subscription.find",
@@ -13500,7 +13512,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Follow one subscription-sharing user by exact share user ID. Method: POST. Path: /api/v1/subscribe/follow. Effect: reversible_write.",
+      "description": "Follow one subscription-sharing user by exact share user ID. Method: POST. Path: /api/v1/subscribe/follow. Effect: reversible_write. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "subscription.follow.add",
@@ -13535,7 +13547,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Stop following one subscription-sharing user by exact share user ID. Method: DELETE. Path: /api/v1/subscribe/follow. Effect: reversible_write.",
+      "description": "Stop following one subscription-sharing user by exact share user ID. Method: DELETE. Path: /api/v1/subscribe/follow. Effect: reversible_write. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "subscription.follow.delete",
@@ -13570,7 +13582,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List subscription-sharing user IDs followed by the current user. Method: GET. Path: /api/v1/subscribe/follow. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List subscription-sharing user IDs followed by the current user. Method: GET. Path: /api/v1/subscribe/follow. Effect: safe_read. Identity scope: bound_user. Required role: user. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "subscription.follow.list",
@@ -13626,7 +13638,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Create a local subscription from one shared subscription definition. Method: POST. Path: /api/v1/subscribe/fork. Effect: external_side_effect.",
+      "description": "Create a local subscription from one shared subscription definition. Method: POST. Path: /api/v1/subscribe/fork. Effect: external_side_effect. Identity scope: bound_user. Required role: user.",
       "properties": {
         "body": {
           "$ref": "#/$defs/SubscribeShare",
@@ -13647,7 +13659,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read one accessible subscription by persistent subscription ID. Method: GET. Path: /api/v1/subscribe/{subscribe_id}. Effect: safe_read.",
+      "description": "Read one accessible subscription by persistent subscription ID. Method: GET. Path: /api/v1/subscribe/{subscribe_id}. Effect: safe_read. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "subscription.get",
@@ -13679,7 +13691,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List completed or archived subscription records. Method: GET. Path: /api/v1/subscribe/history/{mtype}. Effect: safe_read. Collection response: data remains a list and the endpoint's documented pagination or limit defaults remain in effect. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count-only request, use the smallest valid page and read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List completed or archived subscription records. Method: GET. Path: /api/v1/subscribe/history/{mtype}. Effect: safe_read. Identity scope: bound_user. Required role: user. Collection response: data remains a list and the endpoint's documented pagination or limit defaults remain in effect. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count-only request, use the smallest valid page and read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "subscription.history",
@@ -13750,7 +13762,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete one accessible subscription-history record. Method: DELETE. Path: /api/v1/subscribe/history/{history_id}. Effect: destructive_write.",
+      "description": "Delete one accessible subscription-history record. Method: DELETE. Path: /api/v1/subscribe/history/{history_id}. Effect: destructive_write. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "subscription.history.delete",
@@ -13782,7 +13794,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List active subscriptions. Method: GET. Path: /api/v1/subscribe/. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List active subscriptions. Method: GET. Path: /api/v1/subscribe/. Effect: safe_read. Identity scope: bound_user. Required role: user. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "subscription.list",
@@ -13838,7 +13850,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Start a system-wide refresh of subscription TMDB metadata. Method: POST. Path: /api/v1/subscribe/check. Effect: external_side_effect.",
+      "description": "Start a system-wide refresh of subscription TMDB metadata. Method: POST. Path: /api/v1/subscribe/check. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "subscription.metadata.refresh",
@@ -13873,7 +13885,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List globally popular subscriptions with filters and pagination. Method: GET. Path: /api/v1/subscribe/popular. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
+      "description": "List globally popular subscriptions with filters and pagination. Method: GET. Path: /api/v1/subscribe/popular. Effect: safe_read. Identity scope: public. Required role: user. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "subscription.popular",
@@ -13997,7 +14009,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Start the configured system-wide subscription refresh job. Method: POST. Path: /api/v1/subscribe/refresh. Effect: external_side_effect.",
+      "description": "Start the configured system-wide subscription refresh job. Method: POST. Path: /api/v1/subscribe/refresh. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "subscription.refresh",
@@ -14032,7 +14044,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Reset one accessible subscription so it can be processed again. Method: POST. Path: /api/v1/subscribe/reset/{subid}. Effect: reversible_write.",
+      "description": "Reset one accessible subscription so it can be processed again. Method: POST. Path: /api/v1/subscribe/reset/{subid}. Effect: reversible_write. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "subscription.reset",
@@ -14064,7 +14076,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Run an immediate search for one existing subscription. Method: POST. Path: /api/v1/subscribe/search/{subscribe_id}. Effect: external_side_effect.",
+      "description": "Run an immediate search for one existing subscription. Method: POST. Path: /api/v1/subscribe/search/{subscribe_id}. Effect: external_side_effect. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "subscription.search",
@@ -14115,7 +14127,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Start immediate searches for all subscriptions accessible to the current user. Method: POST. Path: /api/v1/subscribe/search. Effect: external_side_effect.",
+      "description": "Start immediate searches for all subscriptions accessible to the current user. Method: POST. Path: /api/v1/subscribe/search. Effect: external_side_effect. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "subscription.search_all",
@@ -14150,7 +14162,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Publish one accessible subscription to the MoviePilot sharing service. Method: POST. Path: /api/v1/subscribe/share. Effect: external_side_effect.",
+      "description": "Publish one accessible subscription to the MoviePilot sharing service. Method: POST. Path: /api/v1/subscribe/share. Effect: external_side_effect. Identity scope: bound_user. Required role: user.",
       "properties": {
         "body": {
           "$ref": "#/$defs/SubscribeShare",
@@ -14171,7 +14183,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete one shared-subscription publication by share ID. Method: DELETE. Path: /api/v1/subscribe/share/{share_id}. Effect: external_side_effect.",
+      "description": "Delete one shared-subscription publication by share ID. Method: DELETE. Path: /api/v1/subscribe/share/{share_id}. Effect: external_side_effect. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "subscription.share.delete",
@@ -14203,7 +14215,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read aggregate contribution and reuse counts for subscription sharers. Method: GET. Path: /api/v1/subscribe/share/statistics. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "Read aggregate contribution and reuse counts for subscription sharers. Method: GET. Path: /api/v1/subscribe/share/statistics. Effect: safe_read. Identity scope: public. Required role: user. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "subscription.share.statistics",
@@ -14259,7 +14271,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List shared subscriptions with filters and pagination. Method: GET. Path: /api/v1/subscribe/shares. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
+      "description": "List shared subscriptions with filters and pagination. Method: GET. Path: /api/v1/subscribe/shares. Effect: safe_read. Identity scope: public. Required role: user. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "subscription.shares",
@@ -14374,7 +14386,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Set one accessible subscription to running, paused, or stopped state. Method: PUT. Path: /api/v1/subscribe/status/{subid}. Effect: reversible_write.",
+      "description": "Set one accessible subscription to running, paused, or stopped state. Method: PUT. Path: /api/v1/subscribe/status/{subid}. Effect: reversible_write. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "subscription.status.update",
@@ -14422,7 +14434,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Update one existing movie, TV, or music subscription. Method: PUT. Path: /api/v1/subscribe/. Effect: reversible_write.",
+      "description": "Update one existing movie, TV, or music subscription. Method: PUT. Path: /api/v1/subscribe/. Effect: reversible_write. Identity scope: bound_user. Required role: user.",
       "properties": {
         "body": {
           "$ref": "#/$defs/Subscribe",
@@ -14443,7 +14455,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List public subscriptions owned by one accessible MoviePilot username. Method: GET. Path: /api/v1/subscribe/user/{username}. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List public subscriptions owned by one accessible MoviePilot username. Method: GET. Path: /api/v1/subscribe/user/{username}. Effect: safe_read. Identity scope: bound_user. Required role: user. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "subscription.user.list",
@@ -14515,7 +14527,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Search subtitle providers for one canonical media identity and optional season or episode. Method: GET. Path: /api/v1/search/subtitle/media/{media_id}. Effect: external_side_effect. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "Search subtitle providers for one canonical media identity and optional season or episode. Method: GET. Path: /api/v1/search/subtitle/media/{media_id}. Effect: external_side_effect. Identity scope: bound_user. Required role: user. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "subtitle.search.media",
@@ -14643,7 +14655,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Search subtitle providers from a free-form title and optional media filters. Method: GET. Path: /api/v1/search/subtitle/title. Effect: external_side_effect. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
+      "description": "Search subtitle providers from a free-form title and optional media filters. Method: GET. Path: /api/v1/search/subtitle/title. Effect: external_side_effect. Identity scope: bound_user. Required role: user. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "subtitle.search.title",
@@ -14709,7 +14721,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List MoviePilot host modules and service-type options for UI selectors. Method: GET. Path: /api/v1/system/module-catalog. Effect: safe_read.",
+      "description": "List MoviePilot host modules and service-type options for UI selectors. Method: GET. Path: /api/v1/system/module-catalog. Effect: safe_read. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "system.module.catalog",
@@ -14725,7 +14737,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List enabled MoviePilot module IDs and localized names. Method: GET. Path: /api/v1/system/modulelist. Effect: safe_read.",
+      "description": "List enabled MoviePilot module IDs and localized names. Method: GET. Path: /api/v1/system/modulelist. Effect: safe_read. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "system.module.list",
@@ -14741,7 +14753,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List built-in MoviePilot modules that can be enabled or disabled by an administrator. Method: GET. Path: /api/v1/system/module-settings. Effect: safe_read.",
+      "description": "List built-in MoviePilot modules that can be enabled or disabled by an administrator. Method: GET. Path: /api/v1/system/module-settings. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "system.module.settings",
@@ -14757,7 +14769,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Run the built-in availability test for one enabled MoviePilot module. Method: GET. Path: /api/v1/system/moduletest/{moduleid}. Effect: external_side_effect.",
+      "description": "Run the built-in availability test for one enabled MoviePilot module. Method: GET. Path: /api/v1/system/moduletest/{moduleid}. Effect: external_side_effect. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "system.module.test",
@@ -14789,7 +14801,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List approved network-test targets with sanitized destination addresses, without exposing request paths, query parameters, or credentials. Method: GET. Path: /api/v1/system/nettest/targets. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List approved network-test targets with sanitized destination addresses, without exposing request paths, query parameters, or credentials. Method: GET. Path: /api/v1/system/nettest/targets. Effect: safe_read. Identity scope: bound_user. Required role: user. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "system.network.targets",
@@ -14845,7 +14857,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Test connectivity to one approved target or the legacy constrained URL input. Method: GET. Path: /api/v1/system/nettest. Effect: external_side_effect.",
+      "description": "Test connectivity to one approved target or the legacy constrained URL input. Method: GET. Path: /api/v1/system/nettest. Effect: external_side_effect. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "system.network.test",
@@ -14904,7 +14916,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Restart the running MoviePilot process. Method: GET. Path: /api/v1/system/restart. Effect: external_side_effect.",
+      "description": "Restart the running MoviePilot process. Method: GET. Path: /api/v1/system/restart. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "system.restart",
@@ -14920,7 +14932,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Check for the latest stable MoviePilot v3 application release and current-platform site resources. Method: POST. Path: /api/v1/system/update/check. Effect: external_side_effect.",
+      "description": "Check for the latest stable MoviePilot v3 application release and current-platform site resources. Method: POST. Path: /api/v1/system/update/check. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "system.update.check",
@@ -14936,7 +14948,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Start downloading and verifying one selected application or site-resource update in the background. Method: POST. Path: /api/v1/system/update/download. Effect: external_side_effect.",
+      "description": "Start downloading and verifying one selected application or site-resource update in the background. Method: POST. Path: /api/v1/system/update/download. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "anyOf": [
@@ -14964,7 +14976,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Install one selected already downloaded and verified application or site-resource update, then restart MoviePilot. Method: POST. Path: /api/v1/system/update/install. Effect: external_side_effect.",
+      "description": "Install one selected already downloaded and verified application or site-resource update, then restart MoviePilot. Method: POST. Path: /api/v1/system/update/install. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "anyOf": [
@@ -14992,7 +15004,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read application and site-resource update checks, downloads, verification, or install state. Method: GET. Path: /api/v1/system/update/status. Effect: safe_read.",
+      "description": "Read application and site-resource update checks, downloads, verification, or install state. Method: GET. Path: /api/v1/system/update/status. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "system.update.status",
@@ -15008,7 +15020,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Update to the current v3 development branch and restart MoviePilot. Method: POST. Path: /api/v1/system/upgrade. Effect: external_side_effect.",
+      "description": "Update to the current v3 development branch and restart MoviePilot. Method: POST. Path: /api/v1/system/upgrade. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "const": "dev",
@@ -15030,7 +15042,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read the installation version and runtime usage report available to the current user. Method: GET. Path: /api/v1/system/usage/statistic. Effect: safe_read.",
+      "description": "Read the installation version and runtime usage report available to the current user. Method: GET. Path: /api/v1/system/usage/statistic. Effect: safe_read. Identity scope: bound_user. Required role: user.",
       "properties": {
         "operation_id": {
           "const": "system.usage.statistics",
@@ -15046,7 +15058,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List available MoviePilot GitHub releases. Method: GET. Path: /api/v1/system/versions. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List available MoviePilot GitHub releases. Method: GET. Path: /api/v1/system/versions. Effect: safe_read. Identity scope: admin. Required role: system_admin. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "system.versions",
@@ -15102,7 +15114,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete every cached torrent context. Method: DELETE. Path: /api/v1/torrent/cache. Effect: destructive_write.",
+      "description": "Delete every cached torrent context. Method: DELETE. Path: /api/v1/torrent/cache. Effect: destructive_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "torrent.cache.clear",
@@ -15118,7 +15130,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete one cached torrent context by site domain and cache hash. Method: DELETE. Path: /api/v1/torrent/cache/{domain}/{torrent_hash}. Effect: destructive_write.",
+      "description": "Delete one cached torrent context by site domain and cache hash. Method: DELETE. Path: /api/v1/torrent/cache/{domain}/{torrent_hash}. Effect: destructive_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "torrent.cache.delete",
@@ -15156,7 +15168,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Inspect cached torrent contexts and their recognized media identities. Method: GET. Path: /api/v1/torrent/cache. Effect: safe_read.",
+      "description": "Inspect cached torrent contexts and their recognized media identities. Method: GET. Path: /api/v1/torrent/cache. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "torrent.cache.get",
@@ -15172,7 +15184,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Refresh torrent caches from configured RSS or spider sources. Method: POST. Path: /api/v1/torrent/cache/refresh. Effect: external_side_effect.",
+      "description": "Refresh torrent caches from configured RSS or spider sources. Method: POST. Path: /api/v1/torrent/cache/refresh. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "torrent.cache.refresh",
@@ -15188,7 +15200,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Replace or recompute the media identity for one cached torrent context. Method: POST. Path: /api/v1/torrent/cache/reidentify/{domain}/{torrent_hash}. Effect: reversible_write.",
+      "description": "Replace or recompute the media identity for one cached torrent context. Method: POST. Path: /api/v1/torrent/cache/reidentify/{domain}/{torrent_hash}. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "torrent.cache.reidentify",
@@ -15273,7 +15285,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Recommend an episode-number extraction template from supplied file samples. Method: POST. Path: /api/v1/transfer/episode-format/recommend. Effect: safe_read.",
+      "description": "Recommend an episode-number extraction template from supplied file samples. Method: POST. Path: /api/v1/transfer/episode-format/recommend. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/EpisodeFormatRecommendItem",
@@ -15294,7 +15306,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Run MoviePilot's manual file-transfer and organization workflow. Method: POST. Path: /api/v1/transfer/manual. Effect: external_side_effect.",
+      "description": "Run MoviePilot's manual file-transfer and organization workflow. Method: POST. Path: /api/v1/transfer/manual. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/ManualTransferItem",
@@ -15335,7 +15347,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List file-transfer history with filters and pagination. Method: GET. Path: /api/v1/history/transfer. Effect: safe_read. Collection response: items stay in data.list and the exact total stays in data.total. For a count-only request, use the smallest documented page and read that total; do not query the database merely because item data is truncated.",
+      "description": "List file-transfer history with filters and pagination. Method: GET. Path: /api/v1/history/transfer. Effect: safe_read. Identity scope: bound_user. Required role: user. Collection response: items stay in data.list and the exact total stays in data.total. For a count-only request, use the smallest documented page and read that total; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "transfer.history",
@@ -15414,7 +15426,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete legacy transfer-history records while leaving files and durable failed-task records untouched. Method: DELETE. Path: /api/v1/history/transfer/all. Effect: destructive_write.",
+      "description": "Delete legacy transfer-history records while leaving files and durable failed-task records untouched. Method: DELETE. Path: /api/v1/history/transfer/all. Effect: destructive_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "transfer.history.clear",
@@ -15430,7 +15442,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete one transfer-history record and optionally remove files. Method: DELETE. Path: /api/v1/history/transfer. Effect: destructive_write.",
+      "description": "Delete one transfer-history record and optionally remove files. Method: DELETE. Path: /api/v1/history/transfer. Effect: destructive_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/TransferHistory-Input",
@@ -15484,7 +15496,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Start AI-assisted reorganization for one transfer-history record. Method: POST. Path: /api/v1/history/transfer/{history_id}/ai-redo. Effect: external_side_effect.",
+      "description": "Start AI-assisted reorganization for one transfer-history record. Method: POST. Path: /api/v1/history/transfer/{history_id}/ai-redo. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "transfer.history.redo",
@@ -15516,7 +15528,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Start AI-assisted reorganization for an explicit list of transfer-history records. Method: POST. Path: /api/v1/history/transfer/ai-redo. Effect: external_side_effect.",
+      "description": "Start AI-assisted reorganization for an explicit list of transfer-history records. Method: POST. Path: /api/v1/history/transfer/ai-redo. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/BatchTransferHistoryRedoRequest",
@@ -15537,7 +15549,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Check whether supplied storage items already have successful transfer history. Method: POST. Path: /api/v1/transfer/manual/history. Effect: safe_read.",
+      "description": "Check whether supplied storage items already have successful transfer history. Method: POST. Path: /api/v1/transfer/manual/history. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/ManualTransferItem",
@@ -15558,7 +15570,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read one durable transfer task awaiting manual review. Method: GET. Path: /api/v1/transfer/tasks/{task_id}/manual-review. Effect: safe_read.",
+      "description": "Read one durable transfer task awaiting manual review. Method: GET. Path: /api/v1/transfer/tasks/{task_id}/manual-review. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "transfer.manual_review",
@@ -15590,7 +15602,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Record the authorized decision for one durable transfer manual-review operation. Method: POST. Path: /api/v1/transfer/tasks/{task_id}/manual-review. Effect: reversible_write.",
+      "description": "Record the authorized decision for one durable transfer manual-review operation. Method: POST. Path: /api/v1/transfer/tasks/{task_id}/manual-review. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/TransferManualReviewRequest",
@@ -15627,7 +15639,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Page durable transfer tasks awaiting manual review or retry recovery. Method: GET. Path: /api/v1/transfer/tasks/manual-reviews. Effect: safe_read. Collection response: items stay in data.items and the exact total stays in data.total. For a count-only request, use the smallest documented page and read that total; do not query the database merely because item data is truncated.",
+      "description": "Page durable transfer tasks awaiting manual review or retry recovery. Method: GET. Path: /api/v1/transfer/tasks/manual-reviews. Effect: safe_read. Identity scope: admin. Required role: system_admin. Collection response: items stay in data.items and the exact total stays in data.total. For a count-only request, use the smallest documented page and read that total; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "transfer.manual_reviews",
@@ -15681,7 +15693,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Preview the organized destination name for one source path and media identity. Method: GET. Path: /api/v1/transfer/name. Effect: safe_read.",
+      "description": "Preview the organized destination name for one source path and media identity. Method: GET. Path: /api/v1/transfer/name. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "transfer.name",
@@ -15719,7 +15731,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List items waiting in the file-transfer queue. Method: GET. Path: /api/v1/transfer/queue. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List items waiting in the file-transfer queue. Method: GET. Path: /api/v1/transfer/queue. Effect: safe_read. Identity scope: bound_user. Required role: user. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "transfer.queue",
@@ -15775,7 +15787,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Remove one exact storage item from the file-transfer queue and stop its transfer. Method: DELETE. Path: /api/v1/transfer/queue. Effect: destructive_write.",
+      "description": "Remove one exact storage item from the file-transfer queue and stop its transfer. Method: DELETE. Path: /api/v1/transfer/queue. Effect: destructive_write. Identity scope: bound_user. Required role: user.",
       "properties": {
         "body": {
           "$ref": "#/$defs/FileItem-Input",
@@ -15796,7 +15808,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Resolve the configured transfer destination for supplied source storage items. Method: POST. Path: /api/v1/transfer/manual/target-path. Effect: safe_read.",
+      "description": "Resolve the configured transfer destination for supplied source storage items. Method: POST. Path: /api/v1/transfer/manual/target-path. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/ManualTransferItem",
@@ -15817,7 +15829,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List built-in workflow action definitions and their parameter contracts. Method: GET. Path: /api/v1/workflow/actions. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List built-in workflow action definitions and their parameter contracts. Method: GET. Path: /api/v1/workflow/actions. Effect: safe_read. Identity scope: admin. Required role: system_admin. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "workflow.actions",
@@ -15873,7 +15885,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Create one workflow from a complete workflow definition. Method: POST. Path: /api/v1/workflow/. Effect: reversible_write.",
+      "description": "Create one workflow from a complete workflow definition. Method: POST. Path: /api/v1/workflow/. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/Workflow-Input",
@@ -15894,7 +15906,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete one configured workflow by persistent workflow ID. Method: DELETE. Path: /api/v1/workflow/{workflow_id}. Effect: destructive_write.",
+      "description": "Delete one configured workflow by persistent workflow ID. Method: DELETE. Path: /api/v1/workflow/{workflow_id}. Effect: destructive_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "workflow.delete",
@@ -15926,7 +15938,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List event types that can trigger workflows. Method: GET. Path: /api/v1/workflow/event_types. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List event types that can trigger workflows. Method: GET. Path: /api/v1/workflow/event_types. Effect: safe_read. Identity scope: admin. Required role: system_admin. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "workflow.event_types",
@@ -15982,7 +15994,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Create a local workflow from one shared workflow definition. Method: POST. Path: /api/v1/workflow/fork. Effect: external_side_effect.",
+      "description": "Create a local workflow from one shared workflow definition. Method: POST. Path: /api/v1/workflow/fork. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/WorkflowShare",
@@ -16003,7 +16015,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Read one complete configured workflow definition. Method: GET. Path: /api/v1/workflow/{workflow_id}. Effect: safe_read.",
+      "description": "Read one complete configured workflow definition. Method: GET. Path: /api/v1/workflow/{workflow_id}. Effect: safe_read. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "workflow.get",
@@ -16035,7 +16047,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List configured workflows and their execution state. Method: GET. Path: /api/v1/workflow/agent. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List configured workflows and their execution state. Method: GET. Path: /api/v1/workflow/agent. Effect: safe_read. Identity scope: bound_user. Required role: user. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "workflow.list",
@@ -16129,7 +16141,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Disable automatic execution of one configured workflow. Method: POST. Path: /api/v1/workflow/{workflow_id}/pause. Effect: reversible_write.",
+      "description": "Disable automatic execution of one configured workflow. Method: POST. Path: /api/v1/workflow/{workflow_id}/pause. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "workflow.pause",
@@ -16161,7 +16173,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List workflow actions contributed by installed plugins, optionally filtered by plugin ID. Method: GET. Path: /api/v1/workflow/plugin/actions. Effect: safe_read. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
+      "description": "List workflow actions contributed by installed plugins, optionally filtered by plugin ID. Method: GET. Path: /api/v1/workflow/plugin/actions. Effect: safe_read. Identity scope: admin. Required role: system_admin. Collection response: data remains a list; omit both page and count to preserve the legacy complete result. Successful gateway output adds collection.result_count and the exact collection.total_count. For a count or summary, send page=1 and count=1, then read collection.total_count; do not query the database merely because item data is truncated.",
       "properties": {
         "operation_id": {
           "const": "workflow.plugin.actions",
@@ -16222,7 +16234,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Reset one configured workflow definition and execution state. Method: POST. Path: /api/v1/workflow/{workflow_id}/reset. Effect: reversible_write.",
+      "description": "Reset one configured workflow definition and execution state. Method: POST. Path: /api/v1/workflow/{workflow_id}/reset. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "workflow.reset",
@@ -16254,7 +16266,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Run one configured workflow from the beginning or resume point. Method: POST. Path: /api/v1/workflow/{workflow_id}/run. Effect: external_side_effect.",
+      "description": "Run one configured workflow from the beginning or resume point. Method: POST. Path: /api/v1/workflow/{workflow_id}/run. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "workflow.run",
@@ -16306,7 +16318,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Publish one configured workflow to the MoviePilot sharing service. Method: POST. Path: /api/v1/workflow/share. Effect: external_side_effect.",
+      "description": "Publish one configured workflow to the MoviePilot sharing service. Method: POST. Path: /api/v1/workflow/share. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/WorkflowShare",
@@ -16327,7 +16339,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Delete one shared-workflow publication by share ID. Method: DELETE. Path: /api/v1/workflow/share/{share_id}. Effect: external_side_effect.",
+      "description": "Delete one shared-workflow publication by share ID. Method: DELETE. Path: /api/v1/workflow/share/{share_id}. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "workflow.share.delete",
@@ -16359,7 +16371,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "List shared workflows with name and pagination filters. Method: GET. Path: /api/v1/workflow/shares. Effect: safe_read. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
+      "description": "List shared workflows with name and pagination filters. Method: GET. Path: /api/v1/workflow/shares. Effect: safe_read. Identity scope: admin. Required role: system_admin. Collection response: data remains a list and successful gateway output adds collection.result_count. collection.total_count is omitted when the endpoint or its upstream source does not expose a total.",
       "properties": {
         "operation_id": {
           "const": "workflow.shares",
@@ -16426,7 +16438,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Enable automatic execution of one configured workflow. Method: POST. Path: /api/v1/workflow/{workflow_id}/start. Effect: reversible_write.",
+      "description": "Enable automatic execution of one configured workflow. Method: POST. Path: /api/v1/workflow/{workflow_id}/start. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "workflow.start",
@@ -16458,7 +16470,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Replace one configured workflow definition. Method: PUT. Path: /api/v1/workflow/{workflow_id}. Effect: reversible_write.",
+      "description": "Replace one configured workflow definition. Method: PUT. Path: /api/v1/workflow/{workflow_id}. Effect: reversible_write. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "$ref": "#/$defs/Workflow-Input",

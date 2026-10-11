@@ -7,6 +7,7 @@ Dashboard statistics and runtime overview projections.
 ### `dashboard.cpu`
 `GET /api/v1/dashboard/cpu`; policy effect: `safe_read`.
 Purpose: Read the current host CPU utilization percentage.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
 - `body`: none
@@ -14,6 +15,7 @@ Purpose: Read the current host CPU utilization percentage.
 ### `dashboard.downloader`
 `GET /api/v1/dashboard/downloader`; policy effect: `safe_read`.
 Purpose: Read aggregate downloader task counts, speeds, and free-space information.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.
 - `body`: none
@@ -21,6 +23,7 @@ Purpose: Read aggregate downloader task counts, speeds, and free-space informati
 ### `dashboard.media.statistics`
 `GET /api/v1/dashboard/statistic`; policy effect: `safe_read`.
 Purpose: Read aggregate movie, TV, episode, and music library counts.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.
 - `body`: none
@@ -28,6 +31,7 @@ Purpose: Read aggregate movie, TV, episode, and music library counts.
 ### `dashboard.memory`
 `GET /api/v1/dashboard/memory`; policy effect: `safe_read`.
 Purpose: Read current MoviePilot process and host memory utilization.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
 - `body`: none
@@ -35,6 +39,7 @@ Purpose: Read current MoviePilot process and host memory utilization.
 ### `dashboard.network`
 `GET /api/v1/dashboard/network`; policy effect: `safe_read`.
 Purpose: Read the current host network receive and transmit counters.
+Identity scope: `admin`; required role: `system_admin`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `path_params`: none
 - `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
@@ -43,6 +48,7 @@ Purpose: Read the current host network receive and transmit counters.
 ### `dashboard.processes`
 `GET /api/v1/dashboard/processes`; policy effect: `safe_read`.
 Purpose: List host processes visible to the MoviePilot runtime.
+Identity scope: `admin`; required role: `system_admin`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `path_params`: none
 - `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
@@ -51,6 +57,7 @@ Purpose: List host processes visible to the MoviePilot runtime.
 ### `dashboard.storage`
 `GET /api/v1/dashboard/storage`; policy effect: `safe_read`.
 Purpose: Read local filesystem capacity and free-space information.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
 - `body`: none
@@ -58,6 +65,7 @@ Purpose: Read local filesystem capacity and free-space information.
 ### `dashboard.system`
 `GET /api/v1/dashboard/system`; policy effect: `safe_read`.
 Purpose: Read MoviePilot host, runtime, platform, and uptime summary information.
+Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
 - `body`: none
@@ -65,6 +73,7 @@ Purpose: Read MoviePilot host, runtime, platform, and uptime summary information
 ### `dashboard.transfer.statistics`
 `GET /api/v1/dashboard/transfer`; policy effect: `safe_read`.
 Purpose: Read aggregate file-transfer counts grouped by time period.
+Identity scope: `admin`; required role: `system_admin`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
 - `path_params`: none
 - `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `days` (integer|null; default `7`): Recommendation time window in days.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
