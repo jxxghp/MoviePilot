@@ -206,6 +206,22 @@ def prepare_backend() -> None:
     # 测试与生产使用同一组合入口，确保领域解析器获得隔离库和测试 settings。
     from app.startup.initializers.domain import configure_domain_dependencies
     configure_domain_dependencies()
+    # 搜索、调度与 API 链路读取组合根登记的类型化配置快照；插件仓集成测试会驱动这些真实链路，
+    # 故按生产 publish_configuration 的同一组构建函数登记，快照随测试 settings 实时生成。
+    from app.application.configuration import RuntimeConfiguration, configure_runtime_configuration
+    from app.runtime.config import settings
+    from app.startup.composition.configuration import (
+        build_api_runtime_config,
+        build_chain_runtime_config,
+        build_scheduler_runtime_config,
+    )
+    configure_runtime_configuration(
+        RuntimeConfiguration(
+            api=lambda: build_api_runtime_config(settings),
+            scheduler=lambda: build_scheduler_runtime_config(settings),
+            chain=lambda: build_chain_runtime_config(settings),
+        )
+    )
 
 
 def prepare_v2_backend(plugins_repo: Path) -> None:

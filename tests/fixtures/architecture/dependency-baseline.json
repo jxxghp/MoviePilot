@@ -941,8 +941,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9432,
-  "edge_sha256": "e4629849e18bc7fcdc153cd39ad4f735b3736d59579f5e0cf8201d08c862ea82",
+  "edge_count": 9437,
+  "edge_sha256": "5ec570cd4243faee56bbc810f7fa74b2d14cc35b29b56a6424f491f6a73191a5",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -10174,6 +10174,7 @@
     "app.startup.lifecycle -> app.startup.lifecycle.components",
     "app.testing -> app.testing.stub",
     "app.testing.bootstrap -> app.application",
+    "app.testing.bootstrap -> app.application.configuration",
     "app.testing.bootstrap -> app.application.service",
     "app.testing.bootstrap -> app.db",
     "app.testing.bootstrap -> app.db.adapters",
@@ -10183,7 +10184,11 @@
     "app.testing.bootstrap -> app.db.oper.systemconfig",
     "app.testing.bootstrap -> app.db.session",
     "app.testing.bootstrap -> app.db.uow",
+    "app.testing.bootstrap -> app.runtime",
+    "app.testing.bootstrap -> app.runtime.config",
     "app.testing.bootstrap -> app.startup",
+    "app.testing.bootstrap -> app.startup.composition",
+    "app.testing.bootstrap -> app.startup.composition.configuration",
     "app.testing.bootstrap -> app.startup.initializers",
     "app.testing.bootstrap -> app.startup.initializers.cache",
     "app.testing.bootstrap -> app.startup.initializers.database",
