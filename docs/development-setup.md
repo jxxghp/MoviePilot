@@ -234,7 +234,7 @@ Docker 镜像直接基于官方基础镜像构建，只安装应用运行所需�
 报告，不自动更新基线。普通主仓改动不要求额外检出插件仓或运行观察任务。宿主架构门禁和 changed-file
 Pylint 由 `v3` PR/push 的 GitHub Actions 执行，`app/` 全量 Pylint 是建议性报告。
 
-站点采集器使用独立的 `site-adapter-collector-v1.0.x` Release，仅在采集器发布输入变化时递增版本并构建，不跟随后端 Release。下载入口为 [采集器独立 Release](https://github.com/jxxghp/MoviePilot/releases?q=site-adapter-collector-v&expanded=true)，自动版本和手动测试构建规则见 [采集器发布说明](site-adapter-collector-release.md#维护者发布流程)。
+站点采集器使用独立的 `site-adapter-collector-v1.0.x` Release，仅在采集器发布输入变化时递增版本并构建，不跟随后端 Release。下载入口为 [采集器独立 Release](https://github.com/jxxghp/MoviePilot/releases?q=tag%3Asite-adapter-collector-v1&expanded=true)，自动版本和手动测试构建规则见 [采集器发布说明](site-adapter-collector-release.md#维护者发布流程)。
 
 Ruff/Mypy 基线只允许收紧，不接受新增诊断或类型错误增长；受治零错误文件由 `mypy.ini` 的
 `files=` 维护。Mypy 完整 ratchet 固定按 Linux/Python 3.14 分析。Coverage job 在 `v3` PR/push

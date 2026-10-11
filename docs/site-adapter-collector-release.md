@@ -1,10 +1,10 @@
 # 站点适配采集器下载说明
 
-普通用户优先使用 [站点采集器独立 Release](https://github.com/jxxghp/MoviePilot/releases?q=site-adapter-collector-v&expanded=true) 提供的单文件采集器，选择列表中最新版本。采集器使用 `site-adapter-collector-v1.0.x` 独立标签，与 MoviePilot 后端版本分开发布。单文件已经包含 Python 和采集器依赖，不需要安装 Python、pip、Git、MoviePilot 后端，也不需要下载源码。电脑只需已安装 Chrome、Edge 或 Chromium 浏览器。
+普通用户优先使用 [站点采集器独立 Release](https://github.com/jxxghp/MoviePilot/releases?q=tag%3Asite-adapter-collector-v1&expanded=true) 提供的单文件采集器，选择列表中最新版本。采集器使用 `site-adapter-collector-v1.0.x` 独立标签，与 MoviePilot 后端版本分开发布。单文件已经包含 Python 和采集器依赖，不需要安装 Python、pip、Git、MoviePilot 后端，也不需要下载源码。电脑只需已安装 Chrome、Edge 或 Chromium 浏览器。
 
 ## 选择下载文件
 
-请只从官方 [站点采集器独立 Release](https://github.com/jxxghp/MoviePilot/releases?q=site-adapter-collector-v&expanded=true) 下载与系统匹配的文件；MoviePilot 主程序 Release 不再提供采集器附件：
+请只从官方 [站点采集器独立 Release](https://github.com/jxxghp/MoviePilot/releases?q=tag%3Asite-adapter-collector-v1&expanded=true) 下载与系统匹配的文件；MoviePilot 主程序 Release 不再提供采集器附件：
 
 | 系统 | 下载文件 | 用户侧运行环境 |
 |---|---|---|
@@ -27,7 +27,7 @@ chmod +x moviepilot-site-collector-linux
 
 ## 系统安全提示
 
-当前自动构建产物尚未接入 Windows 或 Apple 代码签名。Windows SmartScreen 或 macOS Gatekeeper 可能因此显示安全提示。仅在文件来自官方 [站点采集器独立 Release](https://github.com/jxxghp/MoviePilot/releases?q=site-adapter-collector-v&expanded=true)，且校验摘要一致时运行；不要从聊天、网盘或第三方站点接收采集器。
+当前自动构建产物尚未接入 Windows 或 Apple 代码签名。Windows SmartScreen 或 macOS Gatekeeper 可能因此显示安全提示。仅在文件来自官方 [站点采集器独立 Release](https://github.com/jxxghp/MoviePilot/releases?q=tag%3Asite-adapter-collector-v1&expanded=true)，且校验摘要一致时运行；不要从聊天、网盘或第三方站点接收采集器。
 
 如果系统阻止运行，可改用随 MoviePilot 源码提供的本地采集脚本；该方式需要 Python 3.14+ 及完整后端依赖，不适合作为普通用户的首选路径。
 

@@ -86,7 +86,7 @@ main() {
   fi
 
   if ! project_runtime_ready; then
-    echo "本地 Python 环境缺少采集器依赖，请下载采集器独立 Release：https://github.com/jxxghp/MoviePilot/releases?q=site-adapter-collector-v&expanded=true" >&2
+    echo "本地 Python 环境缺少采集器依赖，请下载采集器独立 Release：https://github.com/jxxghp/MoviePilot/releases?q=tag%3Asite-adapter-collector-v1&expanded=true" >&2
     exit 1
   fi
   COLLECTOR_PATH="$PROJECT_ROOT/scripts/site_adapter_collector.py"
