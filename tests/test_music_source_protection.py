@@ -164,6 +164,51 @@ def test_read_only_seed_permissions_are_preserved(tmp_path):
     assert FLAC(target)["title"] == ["New"]
 
 
+@pytest.mark.parametrize("visible_mode", [0o000, 0o200, 0o040, 0o444, 0o640, 0o777])
+@pytest.mark.parametrize("link_type", ["hardlink", "symlink"])
+@pytest.mark.parametrize("container", ["flac", "m4a"])
+@pytest.mark.parametrize("write_tags", [False, True])
+def test_mapped_seed_permissions_leave_detached_audio_readable(
+        tmp_path, monkeypatch, visible_mode, link_type, container, write_tags):
+    """模拟挂载层映射的权限，标签或封面写入后的副本至少可读写且不改源权限。"""
+    source = _audio_file(tmp_path, container)
+    source.chmod(0o640)
+    target = tmp_path / f"library.{container}"
+    os.link(source, target) if link_type == "hardlink" else target.symlink_to(source)
+    before = source.read_bytes()
+    original_stat = Path.stat
+    source_stat = source.stat()
+
+    def mapped_stat(path, *args, **kwargs):
+        """只映射源 inode 的可见 mode，实际读取仍由宿主权限模拟 NAS ACL 放行。"""
+        result = original_stat(path, *args, **kwargs)
+        if (result.st_dev, result.st_ino) == (source_stat.st_dev, source_stat.st_ino):
+            values = {name: getattr(result, name) for name in dir(result) if name.startswith("st_")}
+            values["st_mode"] = (result.st_mode & ~0o777) | visible_mode
+            return SimpleNamespace(**values)
+        return result
+
+    monkeypatch.setattr(Path, "stat", mapped_stat)
+
+    assert AudioMetadataHelper.write(
+        target, MusicInfo(title="New"), write_tags=write_tags,
+        cover_data=None if write_tags else _COVER, cover_mime="image/png")
+
+    assert source.read_bytes() == before
+    assert original_stat(source).st_mode & 0o777 == 0o640
+    assert target.stat().st_mode & 0o777 == visible_mode | 0o600
+    assert not target.is_symlink() and not source.samefile(target)
+    with target.open("rb") as stream:
+        audio = MutagenFile(fileobj=stream, filename="audio")
+    if write_tags:
+        assert AudioMetadataHelper.read_tags(target).title == "New"
+    elif isinstance(audio, FLAC):
+        assert audio.pictures[0].data == _COVER
+    else:
+        assert bytes(audio.tags["covr"][0]) == _COVER
+    assert not list(tmp_path.glob(".*.mp-audio-partial"))
+
+
 def test_concurrent_destination_change_cancels_replacement(tmp_path, monkeypatch):
     """目标被另一整理过程替换时不提交过时副本，也不覆盖另一过程的新内容。"""
     source = _audio_file(tmp_path, "flac")

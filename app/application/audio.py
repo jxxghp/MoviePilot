@@ -7,7 +7,7 @@ from contextvars import ContextVar
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from stat import S_IWUSR
+from stat import S_IRUSR, S_IWUSR
 from tempfile import NamedTemporaryFile
 from threading import RLock
 from typing import Any, Iterator, Optional, Union
@@ -119,6 +119,7 @@ def _audio_write_target(path: Path) -> Iterator[Path]:
 
     不解析并改写符号链接指向的源文件。临时文件与目标同目录，以便原子替换；
     任一写入失败或期间目标发生变化时保留原链接，并清理未提交副本。
+    独立副本至少保留所有者读写权限，避免 NAS ACL 挂载映射的 mode 产生不可读文件。
     """
     stat = path.stat()
     link_inode = path.lstat().st_ino
@@ -130,8 +131,8 @@ def _audio_write_target(path: Path) -> Iterator[Path]:
         temporary = Path(stream.name)
     try:
         shutil.copy2(path, temporary)
-        # 做种源可以只读；只给独立副本增加写权限，源权限保持不变。
-        temporary.chmod(stat.st_mode | S_IWUSR)
+        # NAS ACL 挂载可将可读源文件映射为 000；只给独立副本补齐读写权限，源权限保持不变。
+        temporary.chmod(stat.st_mode | S_IRUSR | S_IWUSR)
         initial_copy = _audio_signature(temporary)
         yield temporary
         if _audio_signature(temporary) == initial_copy:
