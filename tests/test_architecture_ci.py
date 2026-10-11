@@ -241,7 +241,7 @@ def test_pylint_workflow_runs_for_v3_pull_requests_and_pushes():
 
 
 def test_upload_artifact_actions_share_node24_major():
-    """所有工件上传入口必须共用 Node 24 的 v7 主版本，避免 CI 告警与版本分叉。"""
+    """主仓工件上传统一为 v7；采集器工作流已迁出，不得重新混入主仓发布。"""
     actions_by_workflow: dict[str, list[str]] = {}
     for workflow_path in WORKFLOW_ROOT.glob("*.yml"):
         workflow = _load_workflow(workflow_path.name)
@@ -258,7 +258,6 @@ def test_upload_artifact_actions_share_node24_major():
         "architecture-observe.yml": ["actions/upload-artifact@v7"],
         "native-dependency-update.yml": ["actions/upload-artifact@v7"],
         "pylint.yml": ["actions/upload-artifact@v7"],
-        "site-adapter-collector.yml": ["actions/upload-artifact@v7"],
         "test.yml": [
             "actions/upload-artifact@v7",
             "actions/upload-artifact@v7",

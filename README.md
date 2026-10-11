@@ -61,8 +61,8 @@ curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v3/scripts/bootst
 - 文档规则入口：[docs/rules/README.md](docs/rules/README.md)
 - 开发环境与本地源码运行：[docs/development-setup.md](docs/development-setup.md)
 - 测试说明：[docs/testing.md](docs/testing.md)
-- 新站点适配采集与 Feature Request 提交：[docs/site-adapter-capture.md](docs/site-adapter-capture.md)
-- 站点采集器下载：[独立 Release](https://github.com/jxxghp/MoviePilot/releases?q=tag%3Asite-adapter-collector-v1&expanded=true)，仅在采集器变化时递增版本并发布。
+- 新站点适配采集与 Feature Request 提交：[MoviePilot-Site-Collector](https://github.com/jxxghp/MoviePilot-Site-Collector/blob/main/docs/site-adapter-capture.md)
+- 站点采集器下载：[独立 Release](https://github.com/jxxghp/MoviePilot-Site-Collector/releases/latest)，仅在采集器变化时递增版本并发布。
 - REST API 文档：https://api.movie-pilot.org
 - 插件开发说明：https://wiki.movie-pilot.org/zh/plugindev
 
