@@ -12,6 +12,7 @@ from app.application.subscription.contract import (
     subscribe_media_keys,
 )
 from app.application.subscription.facts import FreshFactLease
+from app.application.subscription.observability import subscription_log_scope
 from app.chain.download import DownloadChain
 from app.chain.media import MediaChain
 from app.chain.subscribe.identity import subscribe_recognize_kwargs
@@ -128,32 +129,34 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
         for index, subscribe in enumerate(subscribes, start=1):
             if runtime_stop_state.is_system_stopped:
                 break
-            logger.info(f"开始更新订阅元数据：{subscribe.name} ...")
-            if progress_callback:
-                progress_callback(
-                    value=(index - 1) / total_num * 100 if total_num else 100,
-                    text=f"正在更新订阅元数据（{index}/{total_num}）{subscribe.name} ...",
-                    data={
-                        "total": total_num,
-                        "finished": index - 1,
-                        "current": subscribe.id,
-                    },
+            with subscription_log_scope(subscribe.id, "refresh"):
+                logger.info(f"开始更新订阅元数据：{subscribe.name} ...")
+                if progress_callback:
+                    progress_callback(
+                        value=(index - 1) / total_num * 100 if total_num else 100,
+                        text=f"正在更新订阅元数据（{index}/{total_num}）{subscribe.name} ...",
+                        data={
+                            "total": total_num,
+                            "finished": index - 1,
+                            "current": subscribe.id,
+                        },
+                    )
+                updated_subscribe = self._check_subscription(
+                    subscribe,
+                    fresh_fact_lease,
+                    reconcile_completion=reconcile_completion,
+                    media_chain_factory=MediaChain,
                 )
-            updated_subscribe = self._check_subscription(
-                subscribe,
-                fresh_fact_lease,
-                reconcile_completion=reconcile_completion,
-                media_chain_factory=MediaChain,
-            )
-            if updated_subscribe is None:
-                continue
-            logger.info(f"{updated_subscribe.name} 订阅元数据更新完成")
-            if progress_callback:
-                progress_callback(
-                    value=index / total_num * 100 if total_num else 100,
-                    text=f"订阅元数据（{index}/{total_num}）更新完成",
-                    data={"total": total_num, "finished": index},
-                )
+                if updated_subscribe is None:
+                    continue
+                logger.info(f"{updated_subscribe.name} 订阅元数据更新完成")
+                if progress_callback:
+                    progress_callback(
+                        value=index / total_num * 100 if total_num else 100,
+                        text=f"订阅元数据（{index}/{total_num}）更新完成",
+                        data={"total": total_num, "finished": index},
+                    )
+
         if progress_callback:
             progress_callback(value=100, text="订阅元数据更新完成")
 

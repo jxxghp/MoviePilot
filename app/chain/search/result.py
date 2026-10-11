@@ -56,7 +56,10 @@ def _filter_site_torrents(
     if filter_params:
         helper = cast(Callable[[], TorrentHelper], TorrentHelper)()
         filtered = [torrent for torrent in filtered if helper.filter_torrent(torrent, filter_params)]
-        diagnostics["filter_params"] += len(torrents) - len(filtered)
+        rejected = len(torrents) - len(filtered)
+        diagnostics["filter_params"] += rejected
+        if rejected:
+            logger.scoped_info(f"附加参数过滤排除 {rejected} 个资源（质量、分辨率等订阅要求）")
     if rule_groups and filtered:
         count = len(filtered)
         filtered = (
@@ -67,7 +70,10 @@ def _filter_site_torrents(
             )
             or []
         )
-        diagnostics["filter_rules"] += count - len(filtered)
+        rejected = count - len(filtered)
+        diagnostics["filter_rules"] += rejected
+        if rejected:
+            logger.scoped_info(f"优先级过滤规则排除 {rejected} 个资源")
     return filtered
 
 

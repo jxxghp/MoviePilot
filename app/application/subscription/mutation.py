@@ -29,6 +29,8 @@ from app.application.subscription.contract import (
     SubscriptionSnapshot,
 )
 from app.application.subscription.delete import AsyncUnitOfWork
+from app.application.subscription.observability import subscription_log_scope
+from app.runtime.log import logger
 from app.schemas.common import JsonData
 from app.schemas.event import SubscribeModifiedEventData
 from app.schemas.types import MUSIC_ENTITY_ALBUM
@@ -213,13 +215,16 @@ class SyncSubscriptionMutationService:
         subscribe = self.get_accessible(subscribe_id, actor)
         if not subscribe:
             return None
-        return self.update(
-            subscribe_id,
-            _reset_payload(subscribe),
-            actor,
-            existing=subscribe,
-            scene="reset",
-        )
+        with subscription_log_scope(subscribe_id, "reset"):
+            result = self.update(
+                subscribe_id,
+                _reset_payload(subscribe),
+                actor,
+                existing=subscribe,
+                scene="reset",
+            )
+            logger.scoped_info("订阅进度已重置，下次搜索将重新检查缺失内容" if result is not None else "本次重置未完成，订阅记录可能已变更")
+            return result
 
 
 class SubscriptionMutationService:
@@ -334,13 +339,16 @@ class SubscriptionMutationService:
         subscribe = await self.get_accessible(subscribe_id, actor)
         if not subscribe:
             return None
-        return await self.update(
-            subscribe_id,
-            _reset_payload(subscribe),
-            actor,
-            existing=subscribe,
-            scene="reset",
-        )
+        with subscription_log_scope(subscribe_id, "reset"):
+            result = await self.update(
+                subscribe_id,
+                _reset_payload(subscribe),
+                actor,
+                existing=subscribe,
+                scene="reset",
+            )
+            logger.scoped_info("订阅进度已重置，下次搜索将重新检查缺失内容" if result is not None else "本次重置未完成，订阅记录可能已变更")
+            return result
 
     async def delete_history(
         self,

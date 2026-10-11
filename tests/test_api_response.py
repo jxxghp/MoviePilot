@@ -680,6 +680,8 @@ def test_v1_model_free_routes_match_audited_native_allowlist():
         ("/system/notification-image", "notification_image"),
         ("/system/progress/{process_type}", "get_progress"),
         ("/system/message", "get_message"),
+        ("/subscribe/{subscription_id}/logs", "get_subscription_logs"),
+        ("/subscribe/{subscription_id}/logs/download", "download_subscription_logs"),
         ("/system/logging", "get_logging"),
         ("/system/logging/download/{name}", "download_logging"),
         (

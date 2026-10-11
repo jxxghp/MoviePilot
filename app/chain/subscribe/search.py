@@ -29,6 +29,7 @@ from app.application.subscription.observability import (
     batch_finished_count,
     batch_progress_text,
     inline_search_result,
+    subscription_log_scope,
 )
 from app.application.subscription.query import SubscriptionQueryService, subscription_search_due
 from app.application.subscription.sitebudget import (
@@ -115,9 +116,11 @@ def _process_paged_subscription(owner: _SubscribeOwnerBase, subscribe: Subscript
         execution_context.incremental_search = True
 
     def submit(contexts: list[Context], ready: set[str]) -> set[str]:
+        """仅下载已就绪目标，并记录本页候选和实际提交结果。"""
         _ensure_execution_active(execution_context)
         if execution_context:
             execution_context.report_phase("preparing")
+        logger.scoped_info(f"本页可选资源 {len(contexts)} 个，开始检查下载条件")
         downloads, lefts = owner._SubscribeChain__download_best_version_with_full_pack_first(
             contexts=contexts, no_exists=deepcopy(target.missing),
             subscribe=subscribe, mediakey=target.media_key, username=subscribe.username,
@@ -125,6 +128,7 @@ def _process_paged_subscription(owner: _SubscribeOwnerBase, subscribe: Subscript
             source=owner.get_subscribe_source_keyword(subscribe), execution_context=execution_context,
             eligible_targets=ready,
         )
+        logger.scoped_info(f"本页新增下载 {len(downloads or [])} 个")
         if target.media.type == MediaType.MOVIE:
             settled = ready if downloads else set()
         else:
@@ -818,6 +822,22 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
         execution_context: Optional[SubscriptionExecutionContext] = None,
     ) -> Optional[SubscriptionSnapshot]:
         """处理单个订阅，并返回下载后重新读取的状态快照。"""
+        with subscription_log_scope(subscribe.id, "inline"):
+            logger.scoped_info(f"开始搜索订阅：{subscribe.name}")
+            result = self._search_subscription(subscribe, searchchain, execution_context)
+            if result is not None:
+                logger.scoped_info("本轮搜索结束，订阅继续等待")
+            else:
+                logger.scoped_info("本轮搜索结束，订阅状态已更新；请以完成记录为准")
+            return result
+
+    def _search_subscription(
+        self,
+        subscribe: SubscriptionSnapshot,
+        searchchain: Optional[SearchChain],
+        execution_context: Optional[SubscriptionExecutionContext] = None,
+    ) -> Optional[SubscriptionSnapshot]:
+        """在订阅日志作用域内执行既有搜索、下载和完成判定。"""
         _ensure_execution_active(execution_context)
         # 站点补查属于同一轮搜索，不能反复推迟下一轮健康站点的完整检查。
         if execution_context is None or not execution_context.resuming_sites:

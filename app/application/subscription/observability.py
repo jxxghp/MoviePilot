@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Collection, Literal, Mapping, Optional
 from uuid import uuid4
@@ -13,6 +15,7 @@ from app.application.subscription.execution import (
     SubscriptionSearchRepository,
 )
 from app.application.subscription.sitebudget import SubscriptionSiteBudgetMetrics
+from app.runtime.log import bind_log_scope, logger
 
 SearchTaskOutcome = Literal["completed", "skipped", "failed", "cancelled", "requeued"]
 
@@ -344,3 +347,20 @@ class SearchExecutionSummary:
         if unfinished_cleanup:
             message += f"另有 {unfinished_cleanup} 个搜索状态没有正常恢复，系统稍后会继续处理。"
         return message
+
+
+@contextmanager
+def subscription_log_scope(
+    subscription_id: int,
+    source: str,
+    operation_id: Optional[str] = None,
+) -> Iterator[None]:
+    """隔离单订阅执行日志，并在所有退出路径汇总被限流的诊断详情。"""
+    identity = operation_id or uuid4().hex
+    with bind_log_scope("subscriptions", subscription_id, identity, source) as scope:
+        before = scope.suppressed
+        try:
+            yield
+        finally:
+            if scope.operation_id == identity and scope.suppressed > before:
+                logger.scoped_info(f"本轮合并或省略重复诊断详情 {scope.suppressed - before} 条")

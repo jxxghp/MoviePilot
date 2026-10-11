@@ -11,6 +11,7 @@ from app.application.subscription.contract import (
     subscribe_media_keys,
 )
 from app.application.subscription.mutation import SubscriptionActor
+from app.application.subscription.observability import subscription_log_scope
 from app.chain.subscribe.contract import _SubscribeOwnerBase
 from app.chain.subscribe.policy import SubscribePolicyOwner
 from app.domain.context import (
@@ -111,13 +112,26 @@ class SubscribeCompletionOwner(_SubscribeOwnerBase):
         subscribe: SubscriptionSnapshot,
         meta: MetaBase,
         mediainfo: MediaInfo,
-        downloads: List[Context] = None,
-        lefts: Dict[Union[int | str], Dict[int, _SchemaNotExistMediaInfo]] = None,
+        downloads: Optional[List[Context]] = None,
+        lefts: Optional[Dict[Union[int | str], Dict[int, _SchemaNotExistMediaInfo]]] = None,
         force: Optional[bool] = False,
     ) -> None:
         """
         判断是否应完成订阅
         """
+        with subscription_log_scope(subscribe.id, "completion"):
+            return self._evaluate_subscription_completion(subscribe, meta, mediainfo, downloads, lefts, force)
+
+    def _evaluate_subscription_completion(
+        self,
+        subscribe: SubscriptionSnapshot,
+        meta: MetaBase,
+        mediainfo: MediaInfo,
+        downloads: Optional[List[Context]] = None,
+        lefts: Optional[Dict[Union[int | str], Dict[int, _SchemaNotExistMediaInfo]]] = None,
+        force: Optional[bool] = False,
+    ) -> None:
+        """在所属订阅日志上下文内检查剩余内容并执行原有完成策略。"""
         media_keys = subscribe_media_keys(subscribe)
         # 是否有剩余集
         no_lefts = not lefts or not any(lefts.get(media_key) for media_key in media_keys)

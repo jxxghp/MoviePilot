@@ -8,13 +8,14 @@ import inspect
 import logging
 import os
 import queue
+import re
 import sys
 import threading
 import time
 from collections import deque
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -66,6 +67,77 @@ class LogConfigModel(BaseModel):  # type: ignore[misc]
 
 class LogSettings(LogConfigModel):
     """保存当前进程已经生效的日志策略。"""
+
+
+_SCOPED_LOG_MAX_BYTES = 1024 * 1024
+_SCOPED_LOG_BACKUPS = 2
+_SCOPED_LOG_MAX_HANDLERS = 32
+_SCOPED_LOG_IDLE_SECONDS = 60.0
+_SCOPED_LOG_TOTAL_BYTES = 64 * 1024 * 1024
+_SCOPED_LOG_DETAIL_LIMIT = 300
+_LOG_URL_PATTERN = re.compile(r"(?:https?://|magnet:\?)[^\s<>]+", re.IGNORECASE)
+_LOG_SECRET_PATTERN = re.compile(
+    r"(?i)(?:[\"']?(?:cookie|authorization|password|passwd|passkey|api[_-]?key|"
+    r"api[_-]?token|access[_-]?token|secret|token)[\"']?\s*[:=]\s*).+"
+)
+
+
+def redact_scoped_log(message: str) -> str:
+    """订阅日志在落盘与读取时隐藏链接和凭据，避免普通用户取得站点密钥。"""
+    message = _LOG_URL_PATTERN.sub("[链接已隐藏]", message)
+    return "\n".join(_LOG_SECRET_PATTERN.sub("[凭据已隐藏]", line) for line in message.splitlines())
+
+
+@dataclass(slots=True)
+class LogScope:
+    """携带一个业务资源的日志路由和本轮有界详情计数。"""
+
+    category: str
+    resource_id: int
+    operation_id: str
+    source: str
+    details: int = 0
+    suppressed: int = 0
+    repetitions: dict[str, int] = field(default_factory=dict)
+    lock: Any = field(default_factory=threading.Lock, repr=False)
+
+    def accept(self, level: int, message: str) -> bool:
+        """限制 DEBUG 详情及重复内容，保留运行结果和错误。"""
+        if level > logging.DEBUG:
+            return True
+        with self.lock:
+            count = self.repetitions.get(message, 0)
+            if self.details >= _SCOPED_LOG_DETAIL_LIMIT or count >= 3:
+                self.suppressed += 1
+                return False
+            self.repetitions[message] = count + 1
+            self.details += 1
+            return True
+
+
+_current_log_scope: ContextVar[Optional[LogScope]] = ContextVar("current_log_scope", default=None)
+
+
+@contextmanager
+def bind_log_scope(
+    category: str,
+    resource_id: int,
+    operation_id: str,
+    source: str,
+) -> Iterator[LogScope]:
+    """绑定资源日志；同资源嵌套复用本轮身份，退出时恢复原上下文。"""
+    if not re.fullmatch(r"[a-z]+", category) or resource_id <= 0:
+        raise ValueError("日志资源标识无效")
+    current = _current_log_scope.get()
+    if current and (current.category, current.resource_id) == (category, resource_id):
+        yield current
+        return
+    scope = LogScope(category, resource_id, operation_id, source)
+    token = _current_log_scope.set(scope)
+    try:
+        yield scope
+    finally:
+        _current_log_scope.reset(token)
 
 
 class LogEntry:
@@ -407,8 +479,10 @@ class NonBlockingFileHandler:
             return
         self._initialized = True
         self._state_lock = threading.RLock()
-        self._handlers_lock = threading.Lock()
+        self._handlers_lock = threading.RLock()
         self._rotating_handlers: dict[Path, RotatingFileHandler] = {}
+        self._scoped_handler_times: dict[Path, float] = {}
+        self._scoped_cleanup_at = 0.0
         self._write_queue: queue.Queue[Optional[LogEntry]] = queue.Queue(
             maxsize=log_settings.ASYNC_FILE_QUEUE_SIZE,
         )
@@ -433,8 +507,8 @@ class NonBlockingFileHandler:
             file_path.parent.mkdir(parents=True, exist_ok=True)
             handler = RotatingFileHandler(
                 filename=str(file_path),
-                maxBytes=log_settings.LOG_MAX_FILE_SIZE_BYTES,
-                backupCount=log_settings.LOG_BACKUP_COUNT,
+                maxBytes=_SCOPED_LOG_MAX_BYTES if file_path.parent.name == "subscriptions" else log_settings.LOG_MAX_FILE_SIZE_BYTES,
+                backupCount=_SCOPED_LOG_BACKUPS if file_path.parent.name == "subscriptions" else log_settings.LOG_BACKUP_COUNT,
                 encoding="utf-8",
             )
             handler.setFormatter(logging.Formatter(log_settings.LOG_FILE_FORMAT))
@@ -472,13 +546,55 @@ class NonBlockingFileHandler:
             return True
 
     def _write_sync(self, entry: LogEntry) -> None:
-        """立即将单条日志写入滚动文件。"""
+        """串行完成写入和处理器回收，避免回收与 emit 并发导致重新打开已淘汰文件。"""
         try:
-            handler = self._get_rotating_handler(entry.file_path)
-            handler.handle(self._to_record(entry))
+            with self._handlers_lock:
+                if entry.file_path.parent.name == "subscriptions":
+                    self._maintain_scoped_logs(entry.file_path)
+                handler = self._get_rotating_handler(entry.file_path)
+                handler.handle(self._to_record(entry))
         except Exception as err:
             print(f"日志写入失败 {entry.file_path}: {err}")
             print(f"【{entry.level.upper()}】{entry.timestamp} - {entry.message}")
+
+    def _close_scoped_handler(self, path: Path) -> None:
+        """在写入锁内释放一个订阅文件句柄并移除其空闲计时。"""
+        handler = self._rotating_handlers.pop(path, None)
+        if handler:
+            handler.close()
+        self._scoped_handler_times.pop(path, None)
+
+    def _maintain_scoped_logs(self, active_path: Path) -> None:
+        """按空闲时间和数量回收句柄，周期清理最旧归档以限制目录总容量。"""
+        now = time.monotonic()
+        for path, last_used in tuple(self._scoped_handler_times.items()):
+            if now - last_used >= _SCOPED_LOG_IDLE_SECONDS:
+                self._close_scoped_handler(path)
+        self._scoped_handler_times[active_path] = now
+        while len(self._scoped_handler_times) > _SCOPED_LOG_MAX_HANDLERS:
+            self._close_scoped_handler(min(self._scoped_handler_times, key=self._scoped_handler_times.__getitem__))
+        if now < self._scoped_cleanup_at:
+            return
+        self._scoped_cleanup_at = now + 30.0
+        self._trim_scoped_directory(active_path)
+
+    def _trim_scoped_directory(self, active_path: Path) -> None:
+        """只清理数字订阅 ID 的日志及滚动备份，不跟随符号链接或删除当前写入文件。"""
+        directory = active_path.parent
+        if not directory.is_dir():
+            return
+        files = [(path, path.stat()) for path in directory.iterdir()
+                 if re.fullmatch(r"[1-9][0-9]*\.log(?:\.[12])?", path.name)
+                 and not path.is_symlink() and path.is_file()]
+        total = sum(stat.st_size for _, stat in files)
+        for path, stat in sorted(files, key=lambda item: item[1].st_mtime):
+            if total <= _SCOPED_LOG_TOTAL_BYTES:
+                break
+            if path == active_path:
+                continue
+            self._close_scoped_handler(directory / f"{path.name.split('.log')[0]}.log")
+            path.unlink(missing_ok=True)
+            total -= stat.st_size
 
     @staticmethod
     def _to_record(entry: LogEntry) -> logging.LogRecord:
@@ -811,7 +927,8 @@ class LoggerManager:
     def logger(self, method: str, msg: str, *args: Any, **kwargs: Any) -> None:
         """按调用来源路由并输出一条日志。
 
-        等级过滤只看 `current_plugin_instance_id()`：命中受控调用点绑定的插件
+        主日志等级过滤看 `current_plugin_instance_id()`；资源日志独立接收 DEBUG，
+        在落盘前脱敏并限制本轮详情数量。命中受控调用点绑定的插件
         实例时按该实例的覆盖等级过滤（未设置覆盖时等同全局等级），未绑定任何
         实例时直接按全局等级过滤。这一步必须排在全局等级判定之前——先按全局
         等级短路就会把实例调低的等级挡在门外，再往下的栈帧内省也就永远看不到
@@ -823,7 +940,10 @@ class LoggerManager:
         由 `_ContextLevelFilter` 用同一个判据再判一次，两处结论因而一致。
         """
         method_level = getattr(logging, method.upper(), logging.INFO)
-        if method_level < _effective_context_log_level():
+        scope = _current_log_scope.get()
+        scope_only = kwargs.pop("scope_only", False)
+        ordinary_enabled = not scope_only and method_level >= _effective_context_log_level()
+        if not ordinary_enabled and scope is None:
             return
 
         caller_name, plugin_name = self._get_caller()
@@ -833,6 +953,15 @@ class LoggerManager:
                 formatted_msg = formatted_msg % args
             except (TypeError, ValueError):
                 formatted_msg = f"{formatted_msg} {' '.join(str(arg) for arg in args)}"
+
+        if scope:
+            scoped_message = redact_scoped_log(formatted_msg)[:8192]
+            if scope.accept(method_level, scoped_message):
+                prefix = f"[来源={scope.source} 轮次={scope.operation_id}]"
+                self._write_file_log(method.upper(), f"{prefix} {scoped_message}",
+                                     Path(scope.category) / f"{scope.resource_id}.log")
+        if not ordinary_enabled:
+            return
 
         logfile = (
             Path("plugins") / f"{plugin_name}.log"
@@ -844,6 +973,10 @@ class LoggerManager:
         configured_logger = self._get_console_logger(logfile)
         log_method = getattr(configured_logger, method, configured_logger.info)
         log_method(formatted_msg, **kwargs)
+
+    def scoped_info(self, msg: str) -> None:
+        """仅向已绑定资源输出 INFO 摘要，保持主日志的批次摘要密度。"""
+        self.logger("info", msg, scope_only=True)
 
     def info(self, msg: str, *args: Any, **kwargs: Any) -> None:
         """输出 INFO 日志。"""

@@ -17,7 +17,7 @@ from app.application.subscription.execution import (
     SubscriptionExecutionLease,
 )
 from app.application.subscription.facts import FreshFactLease
-from app.application.subscription.observability import MatchExecutionSummary
+from app.application.subscription.observability import MatchExecutionSummary, subscription_log_scope
 from app.application.subscription.sitebudget import SubscriptionSearchCancelled
 from app.application.torrent.download import TorrentHelper
 from app.chain.media import MediaChain
@@ -411,65 +411,9 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                             text=(f"正在检查订阅（{index}/{total_num}）{listed_subscribe.name} ..."),
                             current=listed_subscribe.id,
                         )
-                    outcome: Optional[str] = "skipped"
-                    reason: Optional[str] = "not_eligible"
-                    lease = self._subscription_execution_admission.try_acquire(
-                        subscription_id=listed_subscribe.id,
-                        operation="match",
-                        ttl_seconds=self._SUBSCRIPTION_EXECUTION_TTL,
-                    )
-                    if lease is None:
-                        reason = "admission_conflict"
-                        logger.debug(f"订阅 {listed_subscribe.name} 正在处理中，本次不再重复检查资源")
-                    else:
-                        current_subscribe = None
-                        execution_context = SubscriptionExecutionContext(
-                            lease=lease,
-                            admission=self._subscription_execution_admission,
-                            cancel_requested=lambda: runtime_stop_state.is_system_stopped,
-                        )
-                        try:
-                            current_subscribe = self.subscription_repository.get(listed_subscribe.id)
-                            if current_subscribe is None:
-                                logger.debug(f"订阅 {listed_subscribe.id} 已删除，本次不再检查资源")
-                            elif current_subscribe.state not in {"R", "P"}:
-                                logger.debug(f"订阅 {current_subscribe.name} 当前不需要检查资源，本次跳过")
-                            elif execution_context.should_stop():
-                                reason = _match_stop_reason(execution_context)
-                                logger.debug(f"订阅 {current_subscribe.name} 的资源检查已停止")
-                            else:
-                                outcome = self._match_subscription(
-                                    subscribe=current_subscribe,
-                                    processed_torrents=processed_torrents,
-                                    candidate_index=candidate_index,
-                                    fresh_fact_lease=fresh_fact_lease,
-                                    execution_context=execution_context,
-                                )
-                                reason = _match_result_reason(outcome, execution_context)
-                        except SubscriptionSearchCancelled as err:
-                            outcome = "skipped"
-                            reason = _match_stop_reason(execution_context) or "cancelled"
-                            logger.debug(f"订阅 {listed_subscribe.name} 的资源检查已停止：{str(err)}")
-                        except Exception as err:
-                            outcome = "failed"
-                            reason = "error"
-                            subscribe_name = (
-                                current_subscribe.name if current_subscribe is not None else listed_subscribe.name
-                            )
-                            logger.error(f"订阅 {subscribe_name} 检查资源时出错：{str(err)}", exc_info=True)
-                        finally:
-                            _release_match_admission(
-                                self._subscription_execution_admission,
-                                lease,
-                                listed_subscribe.id,
-                                summary,
-                            )
-                    summary.record(outcome, reason)
-                    _report_match_progress(
-                        progress_callback,
-                        summary,
-                        value=20 + (summary.finished / total_num * 80 if total_num else 80),
-                        text=(f"已检查订阅（{index}/{total_num}）"),
+                    self._check_match_subscription(
+                        listed_subscribe, processed_torrents, candidate_index,
+                        fresh_fact_lease, summary, progress_callback, total_num,
                     )
             finally:
                 processed_torrents.clear()
@@ -483,6 +427,81 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
             if lock_acquired:
                 self._match_lock.release()
                 logger.debug(f"订阅资源检查已结束：{datetime.now()}")
+
+    def _check_match_subscription(
+        self,
+        listed_subscribe: SubscriptionSnapshot,
+        processed_torrents: Dict[str, List[Context]],
+        candidate_index: CandidateIndex,
+        fresh_fact_lease: FreshFactLease,
+        summary: MatchExecutionSummary,
+        progress_callback: Optional[Callable[..., None]],
+        total_num: int,
+    ) -> None:
+        """在独立日志作用域内检查一个订阅并收口准入、异常和进度。"""
+        with subscription_log_scope(listed_subscribe.id, "rss", summary.run_id):
+            logger.scoped_info(f"开始 RSS 资源检查：{listed_subscribe.name}，本轮共享候选 {summary.candidate_count} 个")
+            outcome: Optional[str] = "skipped"
+            reason: Optional[str] = "not_eligible"
+            lease = self._subscription_execution_admission.try_acquire(
+                subscription_id=listed_subscribe.id,
+                operation="match",
+                ttl_seconds=self._SUBSCRIPTION_EXECUTION_TTL,
+            )
+            if lease is None:
+                reason = "admission_conflict"
+                logger.debug(f"订阅 {listed_subscribe.name} 正在处理中，本次不再重复检查资源")
+            else:
+                current_subscribe = None
+                execution_context = SubscriptionExecutionContext(
+                    lease=lease,
+                    admission=self._subscription_execution_admission,
+                    cancel_requested=lambda: runtime_stop_state.is_system_stopped,
+                )
+                try:
+                    current_subscribe = self.subscription_repository.get(listed_subscribe.id)
+                    if current_subscribe is None:
+                        logger.debug(f"订阅 {listed_subscribe.id} 已删除，本次不再检查资源")
+                    elif current_subscribe.state not in {"R", "P"}:
+                        logger.debug(f"订阅 {current_subscribe.name} 当前不需要检查资源，本次跳过")
+                    elif execution_context.should_stop():
+                        reason = _match_stop_reason(execution_context)
+                        logger.debug(f"订阅 {current_subscribe.name} 的资源检查已停止")
+                    else:
+                        outcome = self._match_subscription(
+                            subscribe=current_subscribe,
+                            processed_torrents=processed_torrents,
+                            candidate_index=candidate_index,
+                            fresh_fact_lease=fresh_fact_lease,
+                            execution_context=execution_context,
+                        )
+                        reason = _match_result_reason(outcome, execution_context)
+                except SubscriptionSearchCancelled as err:
+                    outcome = "skipped"
+                    reason = _match_stop_reason(execution_context) or "cancelled"
+                    logger.debug(f"订阅 {listed_subscribe.name} 的资源检查已停止：{str(err)}")
+                except Exception as err:
+                    outcome = "failed"
+                    reason = "error"
+                    subscribe_name = (
+                        current_subscribe.name if current_subscribe is not None else listed_subscribe.name
+                    )
+                    logger.error(f"订阅 {subscribe_name} 检查资源时出错：{str(err)}", exc_info=True)
+                finally:
+                    _release_match_admission(
+                        self._subscription_execution_admission,
+                        lease,
+                        listed_subscribe.id,
+                        summary,
+                    )
+            summary.record(outcome, reason)
+            logger.scoped_info(f"本轮 RSS 检查结束：{outcome}，原因：{reason or '正常结束'}；检查完成不代表订阅完成")
+            _report_match_progress(
+                progress_callback,
+                summary,
+                value=20 + (summary.finished / total_num * 80 if total_num else 80),
+                text=(f"已检查订阅（{summary.finished}/{total_num}）"),
+            )
 
     def _match_subscription(
         self,
@@ -815,6 +834,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
             execution_context=execution_context,
         )
 
+        logger.scoped_info(f"本轮新增下载 {len(downloads or [])} 个")
         # 同步外部修改，更新订阅信息
         updated_subscribe = self.subscription_repository.get(subscribe.id)
 

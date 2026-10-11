@@ -86,6 +86,8 @@ STREAM_OR_BINARY_PATHS = frozenset(
         "/api/v1/storage/image",
         "/api/v1/system/cache/image",
         "/api/v1/system/img/{proxy}",
+        "/api/v1/subscribe/{subscription_id}/logs",
+        "/api/v1/subscribe/{subscription_id}/logs/download",
         "/api/v1/system/logging",
         "/api/v1/system/logging/download/{name}",
         "/api/v1/system/message",

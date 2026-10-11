@@ -791,6 +791,10 @@ def _run_match_execution_case(case: ScaleCase) -> dict[str, Any]:
             """忽略受控样本的逐项诊断日志。"""
 
         @staticmethod
+        def scoped_info(*_args: Any, **_kwargs: Any) -> None:
+            """独立订阅日志不计入主日志的批次 INFO 预算。"""
+
+        @staticmethod
         def warning(*_args: Any, **_kwargs: Any) -> None:
             """忽略受控样本中预期不会出现的警告。"""
 

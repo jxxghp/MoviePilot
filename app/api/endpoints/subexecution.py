@@ -1,20 +1,31 @@
 """订阅执行批次状态与取消端点。"""
 
+import time
+from collections.abc import AsyncIterator
 from typing import Any, List, Optional
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Path, Query, Request
+from starlette.responses import Response, StreamingResponse
 
+from app.adapters.web.security.access import verify_resource_token
+from app.api.context import get_host_runtime
 from app.api.dependencies.auth import get_current_active_user_async
 from app.api.dependencies.subscription import (
     get_subscription_execution_status_service,
     get_subscription_query_service,
+    subscription_log_query_scope,
 )
+from app.api.endpoints.system import _build_log_zip_response
 from app.api.principal import ApiPrincipal
 from app.api.response import ResponseAPIRouter
 from app.application.subscription.query import SubscriptionQueryService
 from app.application.subscription.status import SubscriptionExecutionStatusService
+from app.application.system import LogNotFoundError
+from app.runtime.log import redact_scoped_log
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.subscribe import SubscriptionBatchStatus as _SchemaSubscriptionBatchStatus
+from app.schemas.token import TokenPayload as _SchemaTokenPayload
+from app.startup.composition.context import HostRuntime
 
 router = ResponseAPIRouter()
 
@@ -95,4 +106,91 @@ async def cancel_subscription_execution_batch(
     return _SchemaResponse(
         success=bool(cancelled),
         message="" if cancelled else "这次搜索已经结束，暂时无法停止",
+    )
+
+
+async def _require_subscription_log_access(
+    subscription_id: int,
+    query: SubscriptionQueryService,
+    user: _SchemaTokenPayload,
+) -> None:
+    """日志仅对当前订阅 owner 或管理员开放，未知和越权 ID 均返回 404。"""
+    subscribe = await query.get_public(subscription_id)
+    if subscribe is None or (not user.super_user and subscribe.username != user.username):
+        raise HTTPException(status_code=404, detail="订阅不存在或无权查看")
+
+
+async def _authorize_subscription_logs(subscription_id: int, user: _SchemaTokenPayload, runtime: HostRuntime) -> None:
+    """在独立短会话中确认归属，返回后不持有数据库事务。"""
+    async with subscription_log_query_scope(runtime) as query:
+        await _require_subscription_log_access(subscription_id, query, user)
+
+
+@router.get(  # type: ignore[misc]
+    "/{subscription_id}/logs",
+    summary="查看单个订阅的执行日志",
+    response_model=None,
+    response_class=StreamingResponse,
+    responses={200: {"content": {"text/event-stream": {}, "text/plain": {}}}},
+)
+async def get_subscription_logs(
+    request: Request,
+    subscription_id: int = Path(gt=0),
+    length: int = Query(default=100, ge=-1, le=600),
+    user: _SchemaTokenPayload = Depends(verify_resource_token),
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> Response:
+    """按订阅权限输出脱敏文本或实时流；首次执行前保持空流等待日志生成。"""
+    await _authorize_subscription_logs(subscription_id, user, runtime)
+    logfile = f"subscriptions/{subscription_id}.log"
+    if length == -1:
+        try:
+            content = await runtime.system.read_log(logfile)
+        except LogNotFoundError:
+            content = ""
+        return Response(redact_scoped_log(content), media_type="text/plain", headers={"Cache-Control": "no-store"})
+    last_check = time.monotonic()
+
+    async def disconnected() -> bool:
+        """断开或归属变更时停止流；周期重读归属并验证资源令牌的有效性。"""
+        nonlocal last_check
+        if await request.is_disconnected():
+            return True
+        if time.monotonic() - last_check >= 5:
+            try:
+                verify_resource_token(request.cookies.get(runtime.system.settings.get("PROJECT_NAME")))
+                await _authorize_subscription_logs(subscription_id, user, runtime)
+            except HTTPException:
+                return True
+            last_check = time.monotonic()
+        return False
+
+    source = await runtime.system.follow_log(logfile, max(1, length), disconnected)
+
+    async def events() -> AsyncIterator[str]:
+        """逐行编码 SSE，心跳不进入前端日志列表。"""
+        async for line in source:
+            content = redact_scoped_log(line)
+            yield "".join(f"data: {part}\n" for part in content.splitlines()) + "\n" if content else ": keepalive\n\n"
+
+    return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
+
+
+@router.get(  # type: ignore[misc]
+    "/{subscription_id}/logs/download",
+    summary="下载单个订阅的执行日志",
+    response_model=None,
+    response_class=Response,
+    responses={200: {"content": {"application/zip": {}}}},
+)
+async def download_subscription_logs(
+    subscription_id: int = Path(gt=0),
+    user: _SchemaTokenPayload = Depends(verify_resource_token),
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> Response:
+    """在归属检查后下载当前订阅的日志及滚动备份，客户端不能指定路径。"""
+    await _authorize_subscription_logs(subscription_id, user, runtime)
+    return await _build_log_zip_response(
+        f"subscriptions/{subscription_id}", runtime,
+        transform=redact_scoped_log, allow_empty=True,
     )

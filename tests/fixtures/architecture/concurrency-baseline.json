@@ -654,7 +654,7 @@
   },
   "app/startup/composition/system.py:asyncio.to_thread": {
     "owners": {
-      "_FileLogAdapter._follow_path": 3,
+      "_FileLogAdapter._follow_path": 1,
       "_FileLogAdapter._resolve_logfile": 1,
       "_FileLogAdapter.collect": 1
     },

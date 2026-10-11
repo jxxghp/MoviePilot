@@ -1,6 +1,7 @@
 """订阅领域的请求级 command/query 依赖。"""
 
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
+from contextlib import asynccontextmanager
 from typing import cast
 
 from fastapi import Depends
@@ -27,6 +28,7 @@ from app.application.servarr import ServarrSubscriptionService
 from app.application.subscription.contract import (
     SessionSubscriptionPort,
     SubscriptionHistoryStagingPort,
+    SubscriptionQueryPort,
     SubscriptionStagingPort,
 )
 from app.application.subscription.delete import (
@@ -272,3 +274,15 @@ def get_servarr_subscription_service(
         sync_repository=runtime.subscription.repository(db),
         unit_of_work=cast(DeleteUnitOfWork, unit_of_work),
     )
+
+
+@asynccontextmanager
+async def subscription_log_query_scope(runtime: HostRuntime) -> AsyncIterator[SubscriptionQueryService]:
+    """日志权限轮询使用短会话，每次检查后释放连接，避免 SSE 占用数据库连接池。"""
+    sessions = runtime.subscription.async_session()
+    try:
+        session = await anext(sessions)
+        repository = cast(SubscriptionQueryPort, runtime.subscription.repository(session))
+        yield SubscriptionQueryService(repository, async_repository=repository)
+    finally:
+        await sessions.aclose()

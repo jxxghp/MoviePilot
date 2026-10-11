@@ -81,6 +81,13 @@ to make the directory tree look symmetrical.
 | `app/application/messaging/` | Message rendering/routing, interactions and the Agent-to-message bridge: `ingress.py` owns the single channel-to-host loopback boundary; `interaction/` owns generic interaction state plus Agent choice contracts; `channel/admin.py` owns channel administrator resolution; `router.py` unified interaction priority and callback dispatch; `site.py`/`subscribe.py`/`skill.py` per-command sessions, input parsing and views; `media.py` media interaction state while the business workflow stays in `MediaInteractionChain`; `plugin.py` plugin input capture and plugin button callbacks; `webagent/` owns WebAgent notification events and stream transport; `agent.py` owns WebAgent application orchestration, display projection, session identity/persistence coordination, temporary attachment registry and audio preparation/transcription; `message.py` notification rendering, templates and queue. Not a public SDK recommended for direct plugin use |
 | `app/application/security/` | Authentication, authorization, frozen user/auth projections, atomic user aggregate commands, per-user configuration publication, cookies, passkeys, OTP/two-factor, path/URL safety, SSRF and signing policy |
 
+订阅日志仍由 `runtime/log.py` 的通用资源作用域负责路由、等级、脱敏和有界滚动写入；
+`application/subscription/observability.py` 只绑定订阅身份并汇总诊断省略数量。
+搜索、RSS 匹配、元数据刷新、重置和完成判定在单订阅边界绑定上下文。
+`api/endpoints/subexecution.py` 用资源 Cookie 校验归属并返回文本/SSE/ZIP，
+权限检查通过 `api/dependencies/subscription.py` 的短会话作用域完成，流读取不能占用请求级数据库事务。
+文件读取、滚动追踪和归档复用现有 SystemLogPort 及启动装配，ZIP 压缩复用已有受控工作线程。
+
 ### Agent runtime boundaries
 
 | Path | Ownership |

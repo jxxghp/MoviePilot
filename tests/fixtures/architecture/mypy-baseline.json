@@ -901,7 +901,7 @@
   },
   "app/chain/subscribe/completion.py": {
     "arg-type": 2,
-    "assignment": 3,
+    "assignment": 1,
     "no-untyped-call": 1,
     "operator": 3,
     "type-var": 1,

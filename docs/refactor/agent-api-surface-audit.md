@@ -5,7 +5,7 @@
 
 ## Result
 
-- OpenAPI HTTP operations: **424**
+- OpenAPI HTTP operations: **426**
 - Stable `moviepilot_api` operations: **231**
 - Exact HTTP routes used by the gateway: **229**
 - OpenAPI routes matched directly by the gateway: **228**
@@ -21,7 +21,7 @@
 | `consolidated` | 71 | Source/UI route represented by a stable aggregate Agent operation. |
 | `gateway` | 228 | Approved structured MoviePilot Agent operation. |
 | `provider-skill` | 12 | Low-level downloader or media-server capability owned by a provider Skill. |
-| `stream_or_binary` | 11 | Streaming or binary response owned by a direct client transport. |
+| `stream_or_binary` | 13 | Streaming or binary response owned by a direct client transport. |
 | `transport_or_identity` | 76 | Authentication, protocol, callback, account, or conversation transport boundary. |
 | `ui_presentation` | 15 | Frontend or plugin-rendered presentation contract. |
 
@@ -358,6 +358,8 @@
 | `GET` | `/api/v1/subscribe/user/{username}` | subscribe | `gateway` | subscription.user.list | 用户订阅 |
 | `DELETE` | `/api/v1/subscribe/{subscribe_id}` | subscribe | `gateway` | subscription.delete | 删除订阅 |
 | `GET` | `/api/v1/subscribe/{subscribe_id}` | subscribe | `gateway` | subscription.get | 订阅详情 |
+| `GET` | `/api/v1/subscribe/{subscription_id}/logs` | subscribe | `stream_or_binary` | host-transport | 查看单个订阅的执行日志 |
+| `GET` | `/api/v1/subscribe/{subscription_id}/logs/download` | subscribe | `stream_or_binary` | host-transport | 下载单个订阅的执行日志 |
 | `GET` | `/api/v1/system/cache/image` | system | `stream_or_binary` | host-transport | 图片缓存 |
 | `GET` | `/api/v1/system/database/backups` | system | `gateway` | database.backups.list | 查询受管数据库备份 |
 | `POST` | `/api/v1/system/database/backups` | system | `gateway` | database.backups.create | 立即创建数据库备份 |

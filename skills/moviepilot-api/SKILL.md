@@ -265,6 +265,14 @@ Select the operation for the task first, then send only fields declared by that 
 | `download.tasks.active` | none | optional `page`, `count`, `name` |
 | `site.list` | none | optional `page`, `count`, `name`, `status=all\|active\|inactive` |
 
+Subscription execution logs are browser resource endpoints:
+`GET /api/v1/subscribe/{subscription_id}/logs` (SSE, or text with `length=-1`)
+and `/logs/download` (ZIP). They require the existing resource Cookie and enforce
+subscription ownership; they are not JSON gateway or MCP tools. Do not pass a
+logfile path or try to call them through `call_api`. Read subscription status
+through the supported subscription operations; completion of a search task does
+not prove completion of the subscription.
+
 The `download.add` body must contain `torrent_in` (at least `title` and `enclosure`) plus sibling `media_source` and `media_id`; do not put a magnet URI in `url`, or move media identity and filters into `query`. When a write returns `unknown`, never retry it; verify the actual state with a supported read operation first.
 
 Preserve the candidate's `site` ID and download URL. For direct HTTP(S) torrents,

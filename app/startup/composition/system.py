@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import re
-from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
 from typing import Any, cast
@@ -77,6 +77,9 @@ class _FileLogAdapter(SystemLogPort):
         disconnected: Callable[[], Awaitable[bool]],
     ) -> AsyncIterator[str]:
         """先返回历史尾部，再轮询并返回新增日志行。"""
+        if re.fullmatch(r"subscriptions/[1-9][0-9]*\.log", logfile):
+            path = Path(self._settings.get("LOG_PATH")) / logfile
+            return self._follow_path(path, length, disconnected)
         path = await self._resolve_logfile(logfile)
         return self._follow_path(path, length, disconnected)
 
@@ -93,7 +96,8 @@ class _FileLogAdapter(SystemLogPort):
             user_path=AsyncPath(path),
             allowed_suffixes={".log"},
         )
-        if not safe or not await asyncio.to_thread(path.is_file):
+        subscription = str(logfile).startswith("subscriptions/")
+        if (subscription and (await AsyncPath(path).is_symlink() or await AsyncPath(path.parent).is_symlink())) or not safe or not await asyncio.to_thread(path.is_file):
             raise LogNotFoundError(logfile)
         return path
 
@@ -103,59 +107,56 @@ class _FileLogAdapter(SystemLogPort):
         length: int,
         disconnected: Callable[[], Awaitable[bool]],
     ) -> AsyncIterator[str]:
-        """对一个已准入文件执行有界历史读取和新增内容轮询。"""
-        lines_queue: deque[str] = deque(maxlen=max(length, 50))
-        file_size = (await asyncio.to_thread(path.stat)).st_size
-        async with aiofiles.open(path, mode="r", encoding="utf-8", errors="replace") as file:
-            if file_size > 100 * 1024:
-                position = file_size - min(file_size, 100 * 1024)
-                await file.seek(position)
-                content = await file.read()
-                first_newline = content.find("\n")
-                if first_newline != -1:
-                    content = content[first_newline + 1 :]
-            else:
-                content = await file.read()
-            for line in (item.strip() for item in content.splitlines() if item.strip()):
-                lines_queue.append(line)
-        for line in lines_queue:
-            yield line
-        async with aiofiles.open(path, mode="r", encoding="utf-8", errors="replace") as file:
-            await file.seek(0, 2)
-            previous_size = (await asyncio.to_thread(path.stat)).st_size
-            pending = ""
-            while not runtime_stop_state.is_system_stopped:
-                if await disconnected():
-                    break
-                current_size = (await asyncio.to_thread(path.stat)).st_size
-                if current_size < previous_size:
-                    await file.seek(0)
-                    previous_size = 0
-                    pending = ""
-                if current_size > previous_size:
-                    pending += await file.read()
-                    previous_size = current_size
-                    fragments = pending.splitlines(keepends=True)
-                    if fragments and not fragments[-1].endswith(("\n", "\r")):
-                        pending = fragments.pop()
-                    else:
-                        pending = ""
-                    for fragment in fragments:
-                        line = fragment.strip()
-                        if line:
-                            yield line
-                else:
-                    await asyncio.sleep(0.5)
+        """有界读取尾部及完整新增行；重开文件以追踪滚动，并等待订阅首次产生日志。"""
+        cursor: tuple[int, int] | None = None
+        initial = True
+        while not runtime_stop_state.is_system_stopped and not await disconnected():
+            lines, cursor = await asyncio.to_thread(self._log_chunk, path, cursor, length if initial else 0)
+            if cursor is not None:
+                initial = False
+            for line in lines:
+                yield line
+            if path.parent.name == "subscriptions":
+                yield ""
+            await asyncio.sleep(0.5)
+
+    def _log_chunk(
+        self,
+        path: Path,
+        cursor: tuple[int, int] | None,
+        length: int,
+    ) -> tuple[list[str], tuple[int, int] | None]:
+        """在一个工作线程内校验路径并读取完整行，保留末尾未写完的行供下次读取。"""
+        root = Path(self._settings.get("LOG_PATH"))
+        subscription = path.parent.name == "subscriptions"
+        if (subscription and (path.is_symlink() or path.parent.is_symlink())) or not SecurityUtils.is_safe_path(root, path, {".log"}):
+            raise LogNotFoundError(path.name)
+        try:
+            with path.open("rb") as file:
+                stat = os.fstat(file.fileno())
+                position = cursor[1] if cursor and cursor[0] == stat.st_ino and cursor[1] <= stat.st_size else 0
+                tail_start = max(0, stat.st_size - 100 * 1024) if length else position
+                file.seek(tail_start)
+                content = file.read(1024 * 1024)
+                end = content.rfind(b"\n") + 1
+                complete = content[:end]
+                if length and tail_start:
+                    complete = complete.partition(b"\n")[2]
+                lines = complete.decode("utf-8", errors="replace").splitlines()
+                return (lines[-length:] if length else lines), (stat.st_ino, tail_start + end)
+        except FileNotFoundError:
+            return [], None
 
     def _collect_sync(self, name: str) -> list[LogFileData]:
         """同步发现并读取最多十个主程序或指定插件日志。"""
         normalized = str(name or "").strip().lower()
-        if not normalized or not _LOG_DOWNLOAD_NAME_PATTERN.fullmatch(normalized):
+        subscription = re.fullmatch(r"subscriptions/([1-9][0-9]*)", normalized)
+        if not normalized or not (subscription or _LOG_DOWNLOAD_NAME_PATTERN.fullmatch(normalized)):
             raise LogNotFoundError(name)
         root = Path(self._settings.get("LOG_PATH"))
-        directory = root if normalized == "moviepilot" else root / "plugins"
-        prefix = "moviepilot.log" if normalized == "moviepilot" else f"{normalized}.log"
-        if not directory.is_dir():
+        directory = root / "subscriptions" if subscription else root if normalized == "moviepilot" else root / "plugins"
+        prefix = f"{subscription[1]}.log" if subscription else "moviepilot.log" if normalized == "moviepilot" else f"{normalized}.log"
+        if not directory.is_dir() or (subscription and directory.is_symlink()):
             raise LogNotFoundError(name)
         current = directory / prefix
         backups = [
@@ -167,7 +168,7 @@ class _FileLogAdapter(SystemLogPort):
         paths = ([current] if current.is_file() else []) + backups
         entries: list[LogFileData] = []
         for path in paths[:_LOG_DOWNLOAD_LIMIT]:
-            if not SecurityUtils.is_safe_path(base_path=root, user_path=path):
+            if (subscription and path.is_symlink()) or not SecurityUtils.is_safe_path(base_path=root, user_path=path):
                 raise LogNotFoundError(name)
             entries.append(LogFileData(name=path.name, content=path.read_bytes()))
         if not entries:

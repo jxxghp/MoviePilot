@@ -4,7 +4,7 @@
     "consolidated": 71,
     "gateway": 228,
     "provider-skill": 12,
-    "stream_or_binary": 11,
+    "stream_or_binary": 13,
     "transport_or_identity": 76,
     "ui_presentation": 15
   },
@@ -21,7 +21,7 @@
   "gateway_http_route_count": 229,
   "gateway_operation_count": 231,
   "matched_gateway_http_route_count": 228,
-  "openapi_operation_count": 424,
+  "openapi_operation_count": 426,
   "operations": [
     {
       "disposition": "consolidated",
@@ -4259,6 +4259,30 @@
       "path": "/api/v1/subscribe/{subscribe_id}",
       "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "订阅详情",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "stream_or_binary",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-transport",
+      "path": "/api/v1/subscribe/{subscription_id}/logs",
+      "reason": "Streaming, image, archive, or file response consumed by a direct client; the structured JSON Agent gateway does not proxy binary or unbounded streams.",
+      "summary": "查看单个订阅的执行日志",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "stream_or_binary",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-transport",
+      "path": "/api/v1/subscribe/{subscription_id}/logs/download",
+      "reason": "Streaming, image, archive, or file response consumed by a direct client; the structured JSON Agent gateway does not proxy binary or unbounded streams.",
+      "summary": "下载单个订阅的执行日志",
       "tags": [
         "subscribe"
       ]
