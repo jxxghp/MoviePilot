@@ -310,6 +310,7 @@ def test_log_routes_require_resource_cookie_and_positive_subscription_id():
 def test_unsuccessful_reset_does_not_report_success(captured, monkeypatch, asynchronous):
     """更新阶段未取得快照时，日志不能把未提交的重置描述为成功。"""
     from unittest.mock import AsyncMock
+
     from app.application.subscription.contract import SubscriptionSnapshot
     from app.application.subscription.mutation import SubscriptionMutationService, SyncSubscriptionMutationService
     snapshot = SubscriptionSnapshot(id=7, name="测试", type="电影", username="alice")
