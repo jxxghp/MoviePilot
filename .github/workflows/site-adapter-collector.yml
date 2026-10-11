@@ -233,10 +233,14 @@ jobs:
           SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
         run: |
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
-              --json isDraft --jq '.isDraft' > collector-is-draft.txt; then
-            [[ "$(cat collector-is-draft.txt)" == "true" ]]
-            git fetch --no-tags origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
-            [[ "$(git rev-parse "$RELEASE_TAG^{commit}")" == "$SOURCE_SHA" ]]
+              --json isDraft,targetCommitish --jq '[.isDraft, .targetCommitish] | @tsv' \
+              > collector-draft-state.txt; then
+            # 草稿尚未发布时标签可能不存在，应核对创建草稿时绑定的源码提交。
+            IFS=$'\t' read -r is_draft draft_source < collector-draft-state.txt
+            if [[ "$is_draft" != "true" || "$draft_source" != "$SOURCE_SHA" ]]; then
+              echo "Refusing to overwrite a published release or a draft from another source commit" >&2
+              exit 1
+            fi
             gh release upload "$RELEASE_TAG" release-assets/* \
               --clobber --repo "$GITHUB_REPOSITORY"
             gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \

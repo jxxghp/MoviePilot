@@ -1,5 +1,6 @@
 """验证采集器独立版本及发布边界，所有 Git 操作仅使用临时仓库。"""
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -134,4 +135,59 @@ def test_workflow_separates_releases_and_pins_all_build_sources():
     publish = jobs["publish"]["steps"][-1]["run"]
     assert "--target \"$SOURCE_SHA\" --draft" in publish
     assert "--draft=false --latest=false" in publish
-    assert '"$RELEASE_TAG^{commit}"' in publish
+    assert "--json isDraft,targetCommitish" in publish
+    assert '"$draft_source" != "$SOURCE_SHA"' in publish
+    assert '"$RELEASE_TAG^{commit}"' not in publish
+
+
+@pytest.mark.parametrize(
+    ("draft_flag", "draft_source", "accepted"),
+    [("true", "source-sha", True), ("true", "other-sha", False), ("false", "source-sha", False)],
+)
+def test_draft_retry_checks_source_without_requiring_git_tag(
+    tmp_path: Path, draft_flag: str, draft_source: str, accepted: bool,
+):
+    """实际运行发布 Shell，确认无标签草稿可重试且拒绝错误源码或正式版本。"""
+    workflow = YAML(typ="safe").load(
+        (PROJECT_ROOT / ".github/workflows/site-adapter-collector.yml").read_text(encoding="utf-8"),
+    )
+    commands = workflow["jobs"]["publish"]["steps"][-1]["run"]
+    binaries = tmp_path / "bin"
+    binaries.mkdir()
+    gh_stub = binaries / "gh"
+    gh_stub.write_text(
+        '#!/bin/bash\n'
+        'if [[ "$1 $2" == "release view" ]]; then\n'
+        '  printf "%s\\t%s\\n" "$DRAFT_FLAG" "$DRAFT_SOURCE"\n'
+        'else\n'
+        '  printf "%s\\n" "$*" >> "$GH_LOG"\n'
+        'fi\n', encoding="utf-8",
+    )
+    git_stub = binaries / "git"
+    git_stub.write_text("#!/bin/bash\nexit 79\n", encoding="utf-8")
+    for path in (gh_stub, git_stub):
+        path.chmod(0o755)
+    log = tmp_path / "gh.log"
+    environment = {
+        **os.environ,
+        "PATH": f"{binaries}{os.pathsep}{os.environ['PATH']}",
+        "DRAFT_FLAG": draft_flag,
+        "DRAFT_SOURCE": draft_source,
+        "GH_LOG": str(log),
+        "SOURCE_SHA": "source-sha",
+        "RELEASE_TAG": "site-adapter-collector-v1.0.2",
+        "COLLECTOR_VERSION": "1.0.2",
+        "GITHUB_REPOSITORY": "test/collector",
+    }
+    result = subprocess.run(
+        ["bash", "-e", "-o", "pipefail", "-c", commands],
+        cwd=tmp_path, env=environment, capture_output=True, text=True, check=False,
+    )
+    if accepted:
+        assert result.returncode == 0, result.stderr
+        calls = log.read_text(encoding="utf-8")
+        assert "release upload site-adapter-collector-v1.0.2" in calls
+        assert "--draft=false --latest=false" in calls
+    else:
+        assert result.returncode != 0
+        assert not log.exists()
