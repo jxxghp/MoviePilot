@@ -9,6 +9,7 @@ from pydantic import BeforeValidator as _BeforeValidator
 from pydantic import PrivateAttr as _PrivateAttr
 from pydantic import computed_field as _computed_field
 
+from app.domain.plugin import is_physical_plugin_id as _is_physical_plugin_id
 from app.schemas.common import JsonData
 
 
@@ -49,14 +50,16 @@ def validate_plugin_id(value: str) -> str:
 
     公开可调用：凡是把实例 ID 拼进文件系统路径、模块名或路由段的入口都应当先过这道
     校验，而不是各自另写一套字符白名单——多套规则之间迟早出现缝隙。
+    实例与源插件复用安装侧的 ASCII 身份规则，兼容既有下划线 ID；不改写大小写，
+    以免改变配置、数据和路由命名空间。
     :param value: 待校验的插件实例 ID
     :return: 原样返回的合法 ID
-    :raise ValueError: ID 为空、不以字母开头、含字母数字以外的字符或超长
+    :raise ValueError: ID 为空、不以字母开头、含 ASCII 字母数字及下划线以外的字符或超长
     """
-    if not value or not value[0].isalpha() or not value.isalnum():
-        raise ValueError("插件 ID 必须以字母开头且只能包含字母和数字")
     if len(value) > 128:
         raise ValueError("插件 ID 长度不能超过 128 个字符")
+    if not _is_physical_plugin_id(value):
+        raise ValueError("插件 ID 必须以字母开头且只能包含 ASCII 字母、数字或下划线")
     return value
 
 

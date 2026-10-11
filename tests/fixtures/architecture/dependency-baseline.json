@@ -941,8 +941,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9430,
-  "edge_sha256": "e2e7ef5284db0d923080a54cb3ff25d5cca80e571324786576a432e4b6b6bcd4",
+  "edge_count": 9432,
+  "edge_sha256": "e4629849e18bc7fcdc153cd39ad4f735b3736d59579f5e0cf8201d08c862ea82",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -9196,6 +9196,8 @@
     "app.schemas.notification -> app.schemas.types",
     "app.schemas.openai -> app.schemas",
     "app.schemas.openai -> app.schemas.common",
+    "app.schemas.plugin -> app.domain",
+    "app.schemas.plugin -> app.domain.plugin",
     "app.schemas.plugin -> app.schemas",
     "app.schemas.plugin -> app.schemas.common",
     "app.schemas.query -> app.schemas",

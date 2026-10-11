@@ -196,19 +196,25 @@ def test_purge_refuses_every_malformed_instance_id(
     assert _sentinels_intact(config_root)
 
 
+@pytest.mark.parametrize("instance_id", ["DemoPlugin", "nullbr_search"])
 def test_purge_deletes_the_directory_for_a_well_formed_instance_id(
     config_root: Path,
+    instance_id: str,
 ) -> None:
-    """合法标识照常清理，且只动它自己那一层。"""
+    """普通和含下划线的合法标识照常清理，且只动它自己那一层。"""
     calls: list[tuple] = []
+    target = config_root / "plugins" / instance_id
+    target.mkdir(exist_ok=True)
+    (target / "cache.bin").write_text("x", encoding="utf-8")
 
     result = _purge_command(calls).purge(
-        "DemoPlugin", PluginPurgeScope(data_directory=True)
+        instance_id, PluginPurgeScope(data_directory=True)
     )
 
     assert result.success is True
     assert result.purged == ("data_directory",)
-    assert not (config_root / "plugins" / "DemoPlugin").exists()
+    assert not target.exists()
+    assert calls == [("stop", instance_id), ("own_db", instance_id)]
     assert (config_root / "protected" / "keep.txt").is_file()
     assert (config_root / "user.db").is_file()
 
