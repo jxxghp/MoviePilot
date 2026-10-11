@@ -1,22 +1,73 @@
 name: Site Adapter Collector
 
 on:
+  push:
+    branches:
+      - v3
+    paths:
+      - scripts/site_adapter_collector.py
+      - scripts/site_adapter_collector.spec
+      - scripts/site_adapter_collector_requirements.txt
+      - scripts/start-site-adapter-collector.command
+      - scripts/collect-site-adapter.sh
+      - scripts/collector/**
+      - .github/workflows/site-adapter-collector.yml
   workflow_dispatch:
     inputs:
-      release_tag:
-        description: Existing release tag to receive collector assets; leave empty for artifacts only
-        required: false
-        type: string
-  release:
-    types:
-      - published
+      publish:
+        description: Publish an independent release only when collector inputs changed
+        required: true
+        default: true
+        type: boolean
+
+# 串行选择版本和发布，避免多个采集器提交争抢同一个版本。
+concurrency:
+  group: site-adapter-collector-release
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
+  prepare:
+    name: Check collector changes and select independent version
+    if: github.ref == 'refs/heads/v3'
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.version.outputs.changed }}
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+      previous_tag: ${{ steps.version.outputs.previous_tag }}
+      source_sha: ${{ steps.version.outputs.source_sha }}
+    steps:
+      - name: Checkout current collector source
+        uses: actions/checkout@v7
+        with:
+          # 排队期间可能已有新提交；统一构建当前 v3，避免旧任务回退采集器。
+          ref: v3
+          fetch-depth: 0
+          fetch-tags: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+
+      - name: Select collector release version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/releases?per_page=100" --paginate \
+            --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' \
+            > collector-release-tags.txt
+          python scripts/collector/release.py plan \
+            --tags-file collector-release-tags.txt --output "$GITHUB_OUTPUT"
+
   build:
     name: Build ${{ matrix.platform_name }} collector
+    needs: prepare
+    if: needs.prepare.outputs.changed == 'true' || (github.event_name == 'workflow_dispatch' && !inputs.publish)
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     strategy:
@@ -45,6 +96,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -61,14 +114,20 @@ jobs:
         run: uv pip install --system --requirement scripts/site_adapter_collector_requirements.txt
 
       - name: Build single-file collector
+        shell: bash
+        env:
+          COLLECTOR_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
+          python scripts/collector/release.py stamp --version "$COLLECTOR_VERSION"
           pyinstaller --clean --noconfirm scripts/site_adapter_collector.spec
 
       - name: Smoke-test collector
         env:
           SOURCE_NAME: ${{ matrix.source_name }}
+          COLLECTOR_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           python -c "import os, subprocess; from pathlib import Path; subprocess.run([str((Path('dist') / os.environ['SOURCE_NAME']).resolve()), '--help'], check=True)"
+          python -c "import os, subprocess; from pathlib import Path; result = subprocess.run([str((Path('dist') / os.environ['SOURCE_NAME']).resolve()), '--version'], check=True, capture_output=True, text=True); assert result.stdout.strip() == os.environ['COLLECTOR_VERSION'], result.stdout"
 
       - name: Package macOS double-click archive
         if: matrix.platform_id == 'macos'
@@ -98,7 +157,7 @@ jobs:
         env:
           ASSET_NAME: ${{ matrix.asset_name }}
         run: |
-          python -c "import hashlib, os; from pathlib import Path; path = Path('dist') / os.environ['ASSET_NAME']; path.with_name(path.name + '.sha256').write_text(f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n', encoding='utf-8')"
+          python -c "import hashlib, os; from pathlib import Path; path = Path('dist') / os.environ['ASSET_NAME']; path.with_name(path.name + '.sha256').write_text(f'{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n', encoding='utf-8', newline='\n')"
 
       - name: Upload collector artifact
         uses: actions/upload-artifact@v7
@@ -111,15 +170,23 @@ jobs:
           retention-days: 3
 
   publish:
-    name: Upload collectors to release
-    if: github.event_name == 'release' || inputs.release_tag != ''
+    name: Publish independent collector release
+    if: needs.prepare.outputs.changed == 'true' && (github.event_name == 'push' || inputs.publish)
     needs:
+      - prepare
       - build
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
+      - name: Checkout release source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+          fetch-depth: 0
+          fetch-tags: false
+
       - name: Download collector artifacts
         uses: actions/download-artifact@v8
         with:
@@ -127,10 +194,60 @@ jobs:
           path: release-assets
           merge-multiple: true
 
-      - name: Upload assets to published release
+      - name: Generate collector release notes
+        env:
+          COLLECTOR_VERSION: ${{ needs.prepare.outputs.version }}
+          PREVIOUS_TAG: ${{ needs.prepare.outputs.previous_tag }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: |
+          if [[ -n "$PREVIOUS_TAG" ]]; then
+            git fetch --no-tags origin "refs/tags/$PREVIOUS_TAG:refs/tags/$PREVIOUS_TAG"
+          fi
+          python - <<'PY'
+          import os
+          import subprocess
+          from pathlib import Path
+          from scripts.collector.release import RELEASE_PATHS
+
+          version = os.environ['COLLECTOR_VERSION']
+          previous = os.environ['PREVIOUS_TAG']
+          revision = f"{previous}..HEAD" if previous else "HEAD"
+          records = subprocess.check_output(
+              ['git', 'log', revision, '--no-merges', '--format=- %s (%h) — %an', '--', *RELEASE_PATHS],
+              text=True,
+          ).strip()
+          notes = (
+              f"MoviePilot 站点适配采集器 {version}，独立于后端版本发布。\n\n"
+              "下载与系统对应的程序及同名 `.sha256` 校验文件。\n\n"
+              "[使用说明](https://github.com/jxxghp/MoviePilot/blob/v3/docs/site-adapter-collector-release.md)\n\n"
+              f"源码提交：`{os.environ['SOURCE_SHA']}`\n\n## 变更记录\n\n{records}\n"
+          )
+          Path('collector-release-notes.md').write_text(notes, encoding='utf-8')
+          PY
+
+      - name: Create and publish independent collector release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          COLLECTOR_VERSION: ${{ needs.prepare.outputs.version }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
         run: |
-          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
-          gh release upload "$RELEASE_TAG" release-assets/* --clobber --repo "$GITHUB_REPOSITORY"
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --json isDraft --jq '.isDraft' > collector-is-draft.txt; then
+            [[ "$(cat collector-is-draft.txt)" == "true" ]]
+            git fetch --no-tags origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+            [[ "$(git rev-parse "$RELEASE_TAG^{commit}")" == "$SOURCE_SHA" ]]
+            gh release upload "$RELEASE_TAG" release-assets/* \
+              --clobber --repo "$GITHUB_REPOSITORY"
+            gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "Site Adapter Collector v$COLLECTOR_VERSION" \
+              --notes-file collector-release-notes.md
+          else
+            gh release create "$RELEASE_TAG" release-assets/* \
+              --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" --draft \
+              --title "Site Adapter Collector v$COLLECTOR_VERSION" \
+              --notes-file collector-release-notes.md --latest=false
+          fi
+          # 全部附件上传完成才转正式发布，上传失败不会消耗正式版本。
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --draft=false --latest=false

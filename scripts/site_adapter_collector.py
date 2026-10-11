@@ -1394,6 +1394,7 @@ def collect_site_capture_with_browser(start_url: str, output_dir: Path) -> Path:
 def _parse_args() -> argparse.Namespace:
     """解析普通浏览器模式和高级手动 Cookie 模式的命令行参数。"""
     parser = argparse.ArgumentParser(description="采集并脱敏 MoviePilot 站点适配所需的搜索页结构")
+    parser.add_argument("--version", action="version", version=COLLECTOR_VERSION)
     parser.add_argument(
         "--output-dir",
         type=Path,
@@ -1424,7 +1425,7 @@ def main() -> int:
     """交互式读取采集参数并生成站点适配 ZIP。"""
     _configure_standard_streams()
     args = _parse_args()
-    print("MoviePilot 站点适配采集器")
+    print(f"MoviePilot 站点适配采集器 {COLLECTOR_VERSION}")
     print("原始页面不会落盘；临时浏览器关闭后会清理登录状态，输出前会裁剪并脱敏。")
     try:
         if args.manual_cookie:

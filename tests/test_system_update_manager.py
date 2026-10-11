@@ -142,9 +142,11 @@ def test_scheduled_check_respects_independent_switches(
 
 
 def test_check_exposes_new_stable_release(monkeypatch, tmp_path):
+    """主程序更新应跳过最新采集器独立 Release 和后端预发布版本。"""
     manager = _manager(monkeypatch, tmp_path)
     logs = []
     releases = [
+        {"tag_name": "site-adapter-collector-v1.0.1", "prerelease": False, "draft": False},
         {"tag_name": "v3.2.0-beta", "prerelease": True, "draft": False},
         {
             "tag_name": "v3.1.0",

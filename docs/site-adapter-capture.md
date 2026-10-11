@@ -6,7 +6,7 @@
 
 普通用户只需准备两样东西：目标站点账号，以及已安装的 Chrome、Edge 或 Chromium。无需安装 Python、Git、MoviePilot、Docker，也不需要查看 HTML、复制 Cookie 或填写 User-Agent。
 
-1. 从 MoviePilot 官方 Release 下载与 Windows、macOS 或 Linux 对应的 `moviepilot-site-collector-*` 单文件采集器。
+1. 从官方 [站点采集器独立 Release](https://github.com/jxxghp/MoviePilot/releases?q=site-adapter-collector-v&expanded=true) 选择最新采集器版本，下载与 Windows、macOS 或 Linux 对应的程序；各系统文件名见下方下载说明。
 2. 运行采集器，只输入站点首页地址，例如 `https://tracker.example.com`。
 3. 程序会打开一个临时浏览器窗口。在这个窗口里正常登录站点，搜索一个能返回至少 3 条结果的常见关键词，并保持搜索结果页打开。
 4. 回到采集器按回车。程序会自动识别搜索地址、关键词、Cookie 和 User-Agent，完成本地裁剪与脱敏后生成 ZIP。

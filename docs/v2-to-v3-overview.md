@@ -399,7 +399,7 @@ MoviePilot/app/application/site
 - 后端用户数据解析器可以自动探测 Gazelle、NexusPHP 等站点变种。
 - 解析模板支持更完整的标题、文件名、标签和可选字段回退。
 - 构建产物覆盖 Linux、Windows、macOS、x86_64、Arm64，以及 V3t 所需的 Python 3.14t ABI。
-- 站点采集器可以生成脱敏样本，维护者可通过自动化流程匹配模板并创建待审核的适配 PR。
+- [站点采集器独立 Release](https://github.com/jxxghp/MoviePilot/releases?q=site-adapter-collector-v&expanded=true) 提供生成脱敏样本的程序，维护者可通过自动化流程匹配模板并创建待审核的适配 PR。
 
 ### 7.4 用户遇到站点问题时应如何判断
 
