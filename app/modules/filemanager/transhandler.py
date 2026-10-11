@@ -514,7 +514,10 @@ class TransHandler:
         overwrite_mode: Optional[str],
         need_notify: bool,
     ) -> tuple[bool, bool, Optional[TransferInfo]]:
-        """在执行期完成覆盖事件与策略判断，不改变冻结目标。"""
+        """在执行期完成覆盖事件与策略判断，不改变冻结目标。
+
+        策略拒绝须标记覆盖跳过，使结算保留已有成功历史。
+        """
         if self.__is_extra_file(fileitem, mediainfo):
             return True, False, None
         try:
@@ -639,6 +642,7 @@ class TransHandler:
                 fail_list=[fileitem.path],
                 transfer_type=transfer_type,
                 need_notify=need_notify,
+                overwrite_skipped=True,
             )
         return False, False, None
 
