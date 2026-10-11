@@ -75,17 +75,6 @@ _SCOPED_LOG_MAX_HANDLERS = 32
 _SCOPED_LOG_IDLE_SECONDS = 60.0
 _SCOPED_LOG_TOTAL_BYTES = 64 * 1024 * 1024
 _SCOPED_LOG_DETAIL_LIMIT = 300
-_LOG_URL_PATTERN = re.compile(r"(?:https?://|magnet:\?)[^\s<>]+", re.IGNORECASE)
-_LOG_SECRET_PATTERN = re.compile(
-    r"(?i)(?:[\"']?(?:cookie|authorization|password|passwd|passkey|api[_-]?key|"
-    r"api[_-]?token|access[_-]?token|secret|token)[\"']?\s*[:=]\s*).+"
-)
-
-
-def redact_scoped_log(message: str) -> str:
-    """订阅日志在落盘与读取时隐藏链接和凭据，避免普通用户取得站点密钥。"""
-    message = _LOG_URL_PATTERN.sub("[链接已隐藏]", message)
-    return "\n".join(_LOG_SECRET_PATTERN.sub("[凭据已隐藏]", line) for line in message.splitlines())
 
 
 @dataclass(slots=True)
@@ -955,7 +944,7 @@ class LoggerManager:
                 formatted_msg = f"{formatted_msg} {' '.join(str(arg) for arg in args)}"
 
         if scope:
-            scoped_message = redact_scoped_log(formatted_msg)[:8192]
+            scoped_message = formatted_msg[:8192]
             if scope.accept(method_level, scoped_message):
                 prefix = f"[来源={scope.source} 轮次={scope.operation_id}]"
                 self._write_file_log(method.upper(), f"{prefix} {scoped_message}",

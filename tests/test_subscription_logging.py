@@ -1,4 +1,4 @@
-"""订阅日志的上下文隔离、权限、脱敏及文件生命周期回归。"""
+"""订阅日志的上下文隔离、权限、原文输出及文件生命周期回归。"""
 
 import asyncio
 import io
@@ -82,11 +82,11 @@ def test_parallel_tasks_and_context_aware_threads_do_not_mix_logs(captured):
     '{"api_token": "SECRET"}',
     "magnet:?xt=urn:btih:SECRET",
 ])
-def test_credentials_are_redacted_before_subscription_write(captured, message):
-    """原始消息中的常见凭据和下载链接不能进入订阅文件。"""
+def test_subscription_write_preserves_original_message(captured, message):
+    """订阅文件保留原始消息，包括凭据和下载链接。"""
     with bind_log_scope("subscriptions", 1, "run", "manual"):
         logger.debug(message)
-    assert "SECRET" not in captured[0][1]
+    assert captured[0][1].endswith(message)
 
 
 def test_detail_limits_preserve_error_and_summary(captured):
@@ -205,8 +205,8 @@ def test_subscription_log_access_matches_owner_scope(owner, username, admin, all
         assert error.value.status_code == 404
 
 
-def test_download_only_collects_requested_id_and_redacts_archive(monkeypatch):
-    """下载路径由服务端 ID 构造，ZIP 内容再次脱敏且不混入其他订阅。"""
+def test_download_preserves_requested_subscription_log(monkeypatch):
+    """下载路径由服务端 ID 构造，ZIP 保留原文且不混入其他订阅。"""
     collected = []
     async def get_public(_id):
         """返回已授权 owner。"""
@@ -228,7 +228,7 @@ def test_download_only_collects_requested_id_and_redacts_archive(monkeypatch):
         return b"".join([chunk async for chunk in response.body_iterator])
     archive = zipfile.ZipFile(io.BytesIO(asyncio.run(body())))
     assert collected == ["subscriptions/1"]
-    assert all("SECRET" not in archive.read(name).decode() for name in archive.namelist())
+    assert archive.read(archive.namelist()[0]) == b"Cookie: SECRET\nreason\n"
     assert len(archive.namelist()) == 1
 
 
@@ -282,7 +282,7 @@ def test_sse_waits_for_first_log_and_stops_after_owner_changes(monkeypatch):
     monkeypatch.setattr(subexecution, "verify_resource_token", lambda _token: SimpleNamespace())
     monkeypatch.setattr(subexecution.time, "monotonic", lambda: clock[0])
     async def run():
-        """消费路由输出，确认 SSE framing 和二次脱敏。"""
+        """消费路由输出，确认 SSE framing 和原文输出。"""
         response = await subexecution.get_subscription_logs(
             SimpleNamespace(is_disconnected=is_disconnected, cookies={"MoviePilot": "resource-token"}),
             1, 100, SimpleNamespace(username="alice", super_user=False),
@@ -291,7 +291,7 @@ def test_sse_waits_for_first_log_and_stops_after_owner_changes(monkeypatch):
         return [chunk async for chunk in response.body_iterator]
     content = asyncio.run(run())
     assert content[0] == ": keepalive\n\n"
-    assert "SECRET" not in content[1]
+    assert content[1] == "data: 下载 https://example.com/?token=SECRET\n\n"
     assert len(checks) == 2
 
 
@@ -322,3 +322,20 @@ def test_unsuccessful_reset_does_not_report_success(captured, monkeypatch, async
     assert result is None
     assert any("本次重置未完成" in message for _, message, _ in captured)
     assert all("订阅进度已重置" not in message for _, message, _ in captured)
+
+
+def test_plain_text_log_view_preserves_original_content(monkeypatch):
+    """新窗口文本查看与实时流、下载一样返回原始日志。"""
+    content = "Cookie: SECRET\n下载 https://example.com/?passkey=SECRET\n"
+    async def authorize(*_args):
+        """本用例只隔离已由其他测试覆盖的权限装配。"""
+    async def read(logfile):
+        """按服务器构造的订阅路径返回原始文本。"""
+        assert logfile == "subscriptions/1.log"
+        return content
+    monkeypatch.setattr(subexecution, "_authorize_subscription_logs", authorize)
+    response = asyncio.run(subexecution.get_subscription_logs(
+        SimpleNamespace(), 1, -1, SimpleNamespace(),
+        SimpleNamespace(system=SimpleNamespace(read_log=read)),
+    ))
+    assert response.body == content.encode()

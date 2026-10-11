@@ -21,7 +21,6 @@ from app.api.response import ResponseAPIRouter
 from app.application.subscription.query import SubscriptionQueryService
 from app.application.subscription.status import SubscriptionExecutionStatusService
 from app.application.system import LogNotFoundError
-from app.runtime.log import redact_scoped_log
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.subscribe import SubscriptionBatchStatus as _SchemaSubscriptionBatchStatus
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
@@ -140,7 +139,7 @@ async def get_subscription_logs(
     user: _SchemaTokenPayload = Depends(verify_resource_token),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> Response:
-    """按订阅权限输出脱敏文本或实时流；首次执行前保持空流等待日志生成。"""
+    """按订阅权限输出原始文本或实时流；首次执行前保持空流等待日志生成。"""
     await _authorize_subscription_logs(subscription_id, user, runtime)
     logfile = f"subscriptions/{subscription_id}.log"
     if length == -1:
@@ -148,7 +147,7 @@ async def get_subscription_logs(
             content = await runtime.system.read_log(logfile)
         except LogNotFoundError:
             content = ""
-        return Response(redact_scoped_log(content), media_type="text/plain", headers={"Cache-Control": "no-store"})
+        return Response(content, media_type="text/plain", headers={"Cache-Control": "no-store"})
     last_check = time.monotonic()
 
     async def disconnected() -> bool:
@@ -170,7 +169,7 @@ async def get_subscription_logs(
     async def events() -> AsyncIterator[str]:
         """逐行编码 SSE，心跳不进入前端日志列表。"""
         async for line in source:
-            content = redact_scoped_log(line)
+            content = line
             yield "".join(f"data: {part}\n" for part in content.splitlines()) + "\n" if content else ": keepalive\n\n"
 
     return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
@@ -192,5 +191,5 @@ async def download_subscription_logs(
     await _authorize_subscription_logs(subscription_id, user, runtime)
     return await _build_log_zip_response(
         f"subscriptions/{subscription_id}", runtime,
-        transform=redact_scoped_log, allow_empty=True,
+        allow_empty=True,
     )
