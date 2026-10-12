@@ -6,14 +6,19 @@ from unittest.mock import AsyncMock, Mock
 
 import httpx
 import pytest
+from langchain_google_genai import chat_models as _google_models
 
 from app.agent.llm import helper
 from app.agent.llm.helper import LLMHelper
 from app.agent.llm.provider import LLMProviderManager
 
+# 在收集测试时保存原生判断；签名兼容测试会在执行阶段改写 SDK 全局函数。
+_NATIVE_GEMINI_GENERATION = _google_models._is_gemini_3_or_later
+
 
 @pytest.fixture
 def offline_runtime(monkeypatch):
+    """隔离提供商解析和 HTTP 客户端，所有温度验证禁止真实网络请求。"""
     runtime = SimpleNamespace(resolve_runtime=AsyncMock(return_value={
         "provider_id": "openai",
         "runtime": "openai_compatible",
@@ -27,9 +32,11 @@ def offline_runtime(monkeypatch):
     clients = []
 
     def reject_request(_request):
+        """拒绝任何意外的提供商网络调用。"""
         raise AssertionError("温度序列化测试不得发起外部请求")
 
     def make_client(_proxy, *, async_client=False):
+        """创建只经过离线传输器的同步或异步客户端。"""
         client_type = httpx.AsyncClient if async_client else httpx.Client
         client = client_type(transport=httpx.MockTransport(reject_request))
         clients.append(client)
@@ -79,10 +86,16 @@ def test_llm_payload_omits_empty_temperature(
         assert payload["temperature"] == expected
 
 
+@pytest.fixture
+def _native_google_defaults(monkeypatch):
+    """原生默认值测试恢复 SDK 世代判断，隔离其它签名兼容测试留下的全局补丁。"""
+    monkeypatch.setattr(_google_models, "_is_gemini_3_or_later", _NATIVE_GEMINI_GENERATION)
+
+
 @pytest.mark.parametrize("model_name", ["gemini-2.5-flash", "gemini-3.6-flash-preview"])
 @pytest.mark.parametrize("temperature", [None, 0, 1])
 def test_google_empty_temperature_uses_sdk_default(
-    monkeypatch, offline_runtime, model_name, temperature,
+    monkeypatch, offline_runtime, model_name, temperature, _native_google_defaults,
 ) -> None:
     """原生 Google SDK 不接受 None，留空须保留其模型默认值且显式零仍有效。"""
     from langchain_google_genai import chat_models

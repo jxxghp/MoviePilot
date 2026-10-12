@@ -90,7 +90,7 @@ _SUBSCRIPTION_HISTORY_FIELDS = (_SUBSCRIPTION_FIELDS - {
     "last_search",
     "downloader",
     "manual_total_episode",
-}) | _CLASSIFICATION_HISTORY_FIELDS
+}) | _CLASSIFICATION_HISTORY_FIELDS | {"activity_key"}
 
 
 class _FrozenJsonDict(dict[str, JsonData]):
@@ -208,6 +208,7 @@ class SubscriptionSnapshot:
     media_category: Optional[str] = None
     filter_groups: Optional[builtins.list[str]] = None
     episode_group: Optional[str] = None
+    activity_key: Optional[str] = None
 
     def __post_init__(self) -> None:
         """冻结订阅中的全部 JSON 列。"""
@@ -272,6 +273,7 @@ class SubscriptionHistorySnapshot:
     classification_source: Optional[str] = None
     filter_groups: Optional[builtins.list[str]] = None
     episode_group: Optional[str] = None
+    activity_key: Optional[str] = None
 
     def __post_init__(self) -> None:
         """冻结历史中的全部 JSON 列。"""

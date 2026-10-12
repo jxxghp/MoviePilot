@@ -197,6 +197,9 @@ class _BatchDownloadRun:
                 downloader=self.options["downloader"], source=self.options["source"],
             )
             self._remember_failure(context)
+            governance = self.options["governance"]
+            if governance:
+                governance.report(context, "failed", "种子内容获取失败，未提交下载")
             return None
         if isinstance(content, str):
             reason = "无法解析" if partial else "无法确定"

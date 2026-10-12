@@ -225,6 +225,7 @@ class SubscriptionSearchTaskRunner:
             lease=execution_lease,
             admission=self.execution_admission,
             task_id=task_id,
+            source=self.task.source,
             task_lease=lease_token,
             cancel_requested=partial(
                 subscription_search_cancelled,

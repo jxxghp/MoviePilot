@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 from app.application.download.admission import SubscriptionDownloadGovernance
 from app.application.subscription import priority as _priority
+from app.application.subscription.activity import current_activity_run
 from app.application.subscription.contract import (
     SubscriptionSnapshot,
 )
@@ -312,6 +313,7 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
         """
         TV 分集洗版先尝试覆盖目标范围的全集资源，失败后回退到按集下载。
         """
+        activity = current_activity_run()
         governance: Optional[SubscriptionDownloadGovernance] = None
         repository = getattr(self, "subscription_repository", None)
         get_current = getattr(repository, "get", None)
@@ -360,6 +362,7 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
             governance = SubscriptionDownloadGovernance(
                 cancelled=execution_context.should_stop if execution_context else None,
                 mark_started=execution_context.mark_download_started if execution_context else None,
+                decision_observer=activity.resource if activity else None,
             )
         if eligible_targets is not None:
             no_exists = _prepare_batch_missing(no_exists, mediakey, eligible_targets)

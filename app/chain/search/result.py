@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 
 from app.application.configuration import get_configured_system_config
+from app.application.subscription.activity import current_activity_run
 from app.application.torrent.download import TorrentHelper
 from app.chain.media import MediaChain
 from app.chain.search.contract import _SearchOwnerBase
@@ -52,16 +53,27 @@ def _filter_site_torrents(
     diagnostics: Counter[str],
 ) -> List[TorrentInfo]:
     """按一个站点执行附加参数和优先级规则过滤。"""
+    activity = current_activity_run()
+    if activity:
+        for torrent in torrents:
+            activity.resource(torrent, "related")
     filtered = torrents
     if filter_params:
         helper = cast(Callable[[], TorrentHelper], TorrentHelper)()
         filtered = [torrent for torrent in filtered if helper.filter_torrent(torrent, filter_params)]
+        if activity:
+            accepted = {id(torrent) for torrent in filtered}
+            for torrent in torrents:
+                if id(torrent) not in accepted:
+                    activity.resource(torrent, "rejected", helper.filter_torrent_reason(torrent, filter_params)
+                                      if hasattr(helper, "filter_torrent_reason") else "不符合订阅筛选条件")
         rejected = len(torrents) - len(filtered)
         diagnostics["filter_params"] += rejected
         if rejected:
             logger.scoped_info(f"附加参数过滤排除 {rejected} 个资源（质量、分辨率等订阅要求）")
     if rule_groups and filtered:
         count = len(filtered)
+        before_rules = list(filtered)
         filtered = (
             owner.filter_torrents(
                 rule_groups=rule_groups,
@@ -70,6 +82,11 @@ def _filter_site_torrents(
             )
             or []
         )
+        if activity:
+            accepted = {id(torrent) for torrent in filtered}
+            for torrent in before_rules:
+                if id(torrent) not in accepted:
+                    activity.resource(torrent, "rejected", "不符合优先级过滤规则")
         rejected = count - len(filtered)
         diagnostics["filter_rules"] += rejected
         if rejected:

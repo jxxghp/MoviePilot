@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
 from app.application.subscription import priority as _priority
+from app.application.subscription.activity import activity_time, subscription_activity_scope
 from app.application.subscription.contract import (
     SubscriptionSnapshot,
     build_subscribe_meta,
@@ -43,12 +44,14 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
         progress_callback: Optional[Callable[..., None]] = None,
         *,
         mtype: Optional[str] = None,
+        source: str = "automatic",
     ) -> None:
         """
         刷新指定媒体类型的订阅
 
         :param progress_callback: 定时服务进度更新回调
         :param mtype: 可选媒体类型，省略时刷新所有类型
+        :param source: 手工入口传 manual，定时和兼容调用默认 automatic
         """
         # 触发刷新站点资源，从缓存中匹配订阅
         sites = self.get_subscribed_sites(mtype)
@@ -83,20 +86,46 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
                     data=data,
                 )
 
+        site_facts: list[dict[str, object]] = []
         torrents_chain = TorrentsChain()
-        candidates = torrents_chain.refresh(
-            sites=sites,
-            progress_callback=_update_refresh_progress if progress_callback else None,
-            # 存在音乐订阅时额外抓取站点音乐专用入口，音乐不一定在默认种子首页
-            include_music=self.has_music_subscribe(mtype),
-        )
+        started_at = activity_time()
+        try:
+            candidates = torrents_chain.refresh(
+                sites=sites,
+                progress_callback=_update_refresh_progress if progress_callback else None,
+                # 存在音乐订阅时额外抓取站点音乐专用入口，音乐不一定在默认种子首页
+                include_music=self.has_music_subscribe(mtype),
+                site_observer=site_facts.append,
+            )
+        except Exception:
+            try:
+                self._record_refresh_failure(site_facts, started_at, mtype, source)
+            except Exception:
+                logger.error("候选刷新失败活动保存失败", exc_info=True)
+            raise
         self.match(
             candidates,
             progress_callback=_update_match_progress if progress_callback else None,
             mtype=mtype,
+            site_facts=tuple(site_facts),
+            source=source,
         )
         if progress_callback:
             progress_callback(value=100, text="订阅刷新完成")
+
+    def _record_refresh_failure(self, site_facts: list[dict[str, object]], started_at: str,
+                                mtype: Optional[str], source: str) -> None:
+        """上游候选刷新失败时记录未进入匹配的事实，不伪造资源判断或下载结果。"""
+        for subscribe in self.subscription_repository.list():
+            if subscribe.state not in {"R", "P"} or (mtype and subscribe.type != mtype):
+                continue
+            with subscription_activity_scope(getattr(self, "subscription_activity", None), subscribe, "refresh", source) as activity:
+                activity.started_at = started_at
+                activity.status = "failed"
+                activity.details["phase"] = "refresh_failed"
+                activity.details["reason"] = "本轮站点候选刷新失败，尚未进入订阅匹配；请查看运行日志了解原因"
+                activity.details["sites"] = list(site_facts)
+                activity.counts["sites"] = len(site_facts)
 
     def check(
         self,

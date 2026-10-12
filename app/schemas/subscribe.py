@@ -3,9 +3,31 @@ from typing import Any, ClassVar, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.schemas.common import JsonData
 from app.schemas.media import OptionalMediaIdentityMixin
 from app.schemas.types import MUSIC_ENTITY_ALBUM as _MUSIC_ENTITY_ALBUM
 from app.schemas.types import MediaSource, MediaType
+
+
+class SubscriptionActivityEvent(BaseModel):  # type: ignore[misc]
+    """面向用户的结构化业务活动，明细只包含安全资源摘要。"""
+
+    event_id: str
+    kind: str
+    source: str
+    status: str
+    started_at: str
+    finished_at: Optional[str] = None
+    counts: Dict[str, int] = Field(default_factory=dict)
+    details: Dict[str, JsonData] = Field(default_factory=dict)
+    details_loaded: bool = True
+
+
+class SubscriptionActivityPage(BaseModel):  # type: ignore[misc]
+    """业务活动游标分页；升级前的记录不会由运行日志补造。"""
+
+    items: List[SubscriptionActivityEvent] = Field(default_factory=list)
+    next_cursor: Optional[str] = None
 
 
 def compute_subscribe_completed_episode(subscribe: "Subscribe") -> Optional[int]:

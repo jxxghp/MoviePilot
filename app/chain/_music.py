@@ -7,6 +7,7 @@ from app.application.classification.reference import (
 )
 from app.application.configuration import get_configured_system_config
 from app.application.download.admission import SubscriptionDownloadGovernance
+from app.application.subscription.activity import current_activity_run
 from app.application.subscription.contract import (
     SubscriptionRepository,
     SubscriptionSnapshot,
@@ -436,7 +437,14 @@ class MusicSubscribeMixin:
             )
             if match.status != "exact":
                 continue
-            if not torrent_helper.filter_torrent(torrent, self.get_params(subscribe)):
+            activity = current_activity_run()
+            if activity:
+                activity.resource(torrent, "rejected", "不符合音乐订阅条件或升级优先级")
+            filter_params = self.get_params(subscribe)
+            if not torrent_helper.filter_torrent(torrent, filter_params):
+                explain = getattr(torrent_helper, "filter_torrent_reason", None)
+                if activity and explain:
+                    activity.resource(torrent, "rejected", explain(torrent, filter_params))
                 continue
             filtered = self.filter_torrents(
                 rule_groups=rule_groups,
@@ -473,6 +481,8 @@ class MusicSubscribeMixin:
                 subscribe,
             )
             matched.append(context)
+            if activity:
+                activity.resource(context, "qualified")
         return matched
 
     def _download_music_subscribe(
@@ -502,12 +512,13 @@ class MusicSubscribeMixin:
             logger.info(f"音乐订阅 {current_subscribe.name} 的筛选或媒体身份已变化，放弃旧候选并等待下一轮")
             return
         subscribe = current_subscribe
-        governance = None
+        activity = current_activity_run()
+        governance = SubscriptionDownloadGovernance(
+            cancelled=execution_context.should_stop if execution_context else None,
+            mark_started=execution_context.mark_download_started if execution_context else None,
+            decision_observer=activity.resource if activity else None,
+        )
         if execution_context:
-            governance = SubscriptionDownloadGovernance(
-                cancelled=execution_context.should_stop,
-                mark_started=execution_context.mark_download_started,
-            )
             execution_context.report_phase("preparing")
         self._ensure_music_execution_active(execution_context)
         downloads, _ = DownloadChain().batch_download(
@@ -523,6 +534,10 @@ class MusicSubscribeMixin:
             context for context in downloads or []
             if context and context.meta_info and context.torrent_info
         ]
+        activity = current_activity_run()
+        if activity:
+            for context in successful:
+                activity.resource(context, "submitted")
         quality_downloads = successful
         if getattr(subscribe, "music_type", None) == MUSIC_ENTITY_ALBUM:
             quality_downloads = successful if self._music_downloads_complete_after_merge(

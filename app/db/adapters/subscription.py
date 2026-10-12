@@ -5,6 +5,7 @@ from __future__ import annotations
 import builtins
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
+from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from typing import Optional, TypeVar, cast
 from uuid import uuid4
@@ -20,6 +21,7 @@ from app.application.outbox import (
     OutboxDispatchStore,
     OutboxLeaseLostError,
 )
+from app.application.subscription.activity import lifecycle_activity
 from app.application.subscription.contract import (
     AfterCommitEffect as TypedAfterCommitEffect,
 )
@@ -56,6 +58,7 @@ from app.db.adapters.outbox import (
 from app.db.models.subscribe import Subscribe
 from app.db.models.subscribehistory import SubscribeHistory
 from app.db.oper.subscribe import SubscribeOper
+from app.db.oper.subscribeactivity import SubscribeActivityOper
 from app.db.oper.subscribehistory import SubscribeHistoryOper
 from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
 from app.schemas.common import JsonData
@@ -74,6 +77,7 @@ def _project_subscription(record: Subscribe) -> SubscriptionSnapshot:
     return SubscriptionSnapshot(
         id=record.id,
         name=record.name,
+        activity_key=record.activity_key,
         year=record.year,
         type=record.type,
         keyword=record.keyword,
@@ -134,6 +138,7 @@ def _project_history(record: SubscribeHistory) -> SubscriptionHistorySnapshot:
     return SubscriptionHistorySnapshot(
         id=record.id,
         name=record.name,
+        activity_key=record.activity_key,
         year=record.year,
         type=record.type,
         keyword=record.keyword,
@@ -779,6 +784,9 @@ class SessionSubscriptionRepository:
     ) -> SubscriptionWriteResult:
         """同步暂存新增订阅。"""
         result = self._sync_repository().stage_add(identity.to_payload(), payload.to_payload(), username)
+        if result.created and result.subscribe_id:
+            record = cast(Session, self._session).get(Subscribe, result.subscribe_id)
+            self._stage_activity(_project_subscription(record) if record is not None else None, "created")
         return SubscriptionWriteResult(result.subscribe_id, result.message, result.created)
 
     async def async_stage_add(
@@ -789,6 +797,9 @@ class SessionSubscriptionRepository:
     ) -> SubscriptionWriteResult:
         """异步暂存新增订阅。"""
         result = await self._async_repository().async_stage_add(identity.to_payload(), payload.to_payload(), username)
+        if result.created and result.subscribe_id:
+            record = await cast(AsyncSession, self._session).get(Subscribe, result.subscribe_id)
+            self._stage_activity(_project_subscription(record) if record is not None else None, "created")
         return SubscriptionWriteResult(result.subscribe_id, result.message, result.created)
 
     def stage_update(
@@ -797,8 +808,11 @@ class SessionSubscriptionRepository:
         patch: SubscriptionPatch,
     ) -> Optional[SubscriptionSnapshot]:
         """同步暂存更新并返回事务内订阅快照。"""
+        previous = self.get(subscribe_id)
         record = self._sync_repository().update(subscribe_id, patch.to_payload())
-        return _project_subscription(record) if record is not None else None
+        updated = _project_subscription(record) if record is not None else None
+        self._stage_activity(updated, "updated", previous.to_dict() if previous else None)
+        return updated
 
     async def async_stage_update(
         self,
@@ -806,8 +820,11 @@ class SessionSubscriptionRepository:
         patch: SubscriptionPatch,
     ) -> Optional[SubscriptionSnapshot]:
         """异步暂存更新并返回事务内订阅快照。"""
+        previous = await self.async_get(subscribe_id)
         record = await self._async_repository().async_stage_update(subscribe_id, patch.to_payload())
-        return _project_subscription(record) if record is not None else None
+        updated = _project_subscription(record) if record is not None else None
+        self._stage_activity(updated, "updated", previous.to_dict() if previous else None)
+        return updated
 
     async def get_candidate(
         self,
@@ -883,6 +900,20 @@ class SessionSubscriptionRepository:
         if not isinstance(self._session, Session):
             raise RuntimeError("订阅历史暂存需要同步 Session")
         SubscribeHistoryOper(self._session).stage_add(payload.to_payload())
+        values = payload.to_payload()
+        history_record = SubscribeHistory(**values)
+        history_record.id = 0
+        history_snapshot = _project_history(history_record)
+
+        self._stage_activity(history_snapshot, "completed")
+
+    def _stage_activity(self, snapshot: Optional[SubscriptionSnapshot | SubscriptionHistorySnapshot], kind: str,
+                        old: Optional[Mapping[str, JsonData]] = None) -> None:
+        """在订阅拥有的同一事务中暂存由应用层定义的生命周期事实。"""
+        if snapshot is not None:
+            event = lifecycle_activity(snapshot, kind, old=old)
+            if event is not None:
+                SubscribeActivityOper(self._session).stage(asdict(event))
 
 
 class SessionSubscriptionHistoryRepository:

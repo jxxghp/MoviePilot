@@ -792,7 +792,6 @@
     "attr-defined": 1,
     "no-untyped-call": 1,
     "no-untyped-def": 3,
-    "operator": 2,
     "return-value": 1,
     "type-arg": 4,
     "union-attr": 4,

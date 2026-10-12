@@ -100,7 +100,7 @@ ARCH-201 至 ARCH-204 均达到实现、验证、提交、推送和远端门禁�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 1114 / 9,456 | `dependency-baseline.json` 当前快照；插件实例校验复用 `app.domain.plugin` 的物理身份规则，兼容下划线 ID，新增 2 条合法依赖边（含父包展开）；种子失败冷却复用 `app.domain.torrent` 的限流语义，新增 1 条合法导入边；系统设置合同按 `app.application.settings` 包组织，系统设置 API 端点独立按 `app.api.endpoints.settings` 归档；消息音乐交互由 `app.chain.music_interaction` 包中的音乐解析/展示与订阅协调模块处理；已整理下载的站点字幕经 `app.chain.transfer` 自动整理队列完成命名与归档；网络连通性检测按 `app.application.nettest` 归档；工作流添加下载动作由 `app.workflow.actions.add_download` 转换工作流 Schema 为下载链领域上下文，新增 5 条合法模块导入边，资源过滤动作复用同一还原再新增 6 条；LLM 独占连接关闭复用宿主线程池；歌词字形转换复用 `app.foundation.text`；订阅创建使用 `app.domain.context.MediaInfo` 和运行时配置端口，将非 TMDB 影视身份投影为 TMDB 身份 |
+| 宿主 Python 模块 / 内部依赖边 | 1118 / 9,506 | `dependency-baseline.json` 当前快照；订阅业务活动新增 4 个模块和 50 条合法内部依赖边（含父包展开），Application 仅定义事实与持久化 Port，DB Adapter/Oper 实现存取，组合根注入，未增加 Application/Chain 到具体 Adapter 或数据库的直连；插件实例校验复用 `app.domain.plugin` 的物理身份规则，兼容下划线 ID，新增 2 条合法依赖边（含父包展开）；种子失败冷却复用 `app.domain.torrent` 的限流语义，新增 1 条合法导入边；系统设置合同按 `app.application.settings` 包组织，系统设置 API 端点独立按 `app.api.endpoints.settings` 归档；消息音乐交互由 `app.chain.music_interaction` 包中的音乐解析/展示与订阅协调模块处理；已整理下载的站点字幕经 `app.chain.transfer` 自动整理队列完成命名与归档；网络连通性检测按 `app.application.nettest` 归档；工作流添加下载动作由 `app.workflow.actions.add_download` 转换工作流 Schema 为下载链领域上下文，新增 5 条合法模块导入边，资源过滤动作复用同一还原再新增 6 条；LLM 独占连接关闭复用宿主线程池；歌词字形转换复用 `app.foundation.text`；订阅创建使用 `app.domain.context.MediaInfo` 和运行时配置端口，将非 TMDB 影视身份投影为 TMDB 身份 |
 | 非平凡 SCC | 1 | 仅保留精确 containment 的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
@@ -108,7 +108,7 @@ ARCH-201 至 ARCH-204 均达到实现、验证、提交、推送和远端门禁�
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
 | Python 源码量 | 305,884 行 | 排除 `app/plugins/**`；61 个文件超过 1,000 行，11 个超过 2,000 行 |
 | 长方法 | 290 个超过 80 行 | AST 统计排除 `app/plugins/**`；65 个超过 150 行，21 个超过 250 行 |
-| 全量 mypy 历史债务 | 9,167 / 508 文件 | 工作流资源过滤改用领域对象调用过滤链，恢复的节点输出在消费前归一化，并收紧可空资源列表的类型低水位；消息媒体交互类型债务已清零，canonical Facade 与 endpoint 类型边界已补齐，低水位只允许继续下降 |
+| 全量 mypy 历史债务 | 9,165 / 508 文件 | 工作流资源过滤改用领域对象调用过滤链，恢复的节点输出在消费前归一化，并收紧可空资源列表的类型低水位；消息媒体交互类型债务已清零，canonical Facade 与 endpoint 类型边界已补齐，低水位只允许继续下降 |
 | Ruff 历史诊断 | 100 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率固定基线 | Application 80.00%，Domain 80.00% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 

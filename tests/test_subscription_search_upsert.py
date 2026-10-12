@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.db.adapters.subscriptionsearch import TransactionalSubscriptionSearchRepository
 from app.db.models.searchsession import SearchSession
+from app.db.models.subscribe import Subscribe
+from app.db.models.subscribeactivity import SubscribeActivity
 from app.db.models.subscriptionsearch import SubscriptionSearchBatch, SubscriptionSearchTask
 
 
@@ -19,8 +21,9 @@ from app.db.models.subscriptionsearch import SubscriptionSearchBatch, Subscripti
 def queue(tmp_path):
     """默认使用隔离 SQLite；显式测试 URL 只允许指向可清空的专用数据库。"""
     engine = create_engine(os.environ.get("MOVIEPILOT_TEST_UPSERT_URL", f"sqlite:///{tmp_path / 'queue.db'}"))
-    # 任务终态在同一事务中删除分页检查点，队列表与检查点表一起建立。
-    tables = [SubscriptionSearchBatch.__table__, SubscriptionSearchTask.__table__, SearchSession.__table__]
+    # 队列入队记录订阅活动，任务终态结算活动并删除检查点，依赖表一起建立。
+    tables = [Subscribe.__table__, SubscribeActivity.__table__, SubscriptionSearchBatch.__table__,
+              SubscriptionSearchTask.__table__, SearchSession.__table__]
     for table in tables:
         table.create(engine, checkfirst=True)
     errors = []
@@ -39,6 +42,7 @@ def test_concurrent_enqueue_keeps_one_task_without_driver_errors(queue):
     barrier = Barrier(4)
 
     def enqueue():
+        """让独立线程在同一时刻开始入队，验证真实驱动层的原子合并。"""
         barrier.wait(timeout=10)
         return repository.enqueue(subscription_ids=(1,), source="fallback", priority=10)
 
