@@ -26,6 +26,7 @@ def runtime_loader(monkeypatch):
 
     monkeypatch.setattr(module, "_agent_runtime", None)
     for implementation_module in (
+        "app.agent.manager",
         "app.agent.orchestrator",
         "app.agent.tools.factory",
     ):
@@ -118,12 +119,14 @@ async def test_shutdown_propagates_runtime_wide_convergence(
 
 
 def _fake_agent_modules(manager: object | None = None) -> dict[str, types.ModuleType]:
+    manager_module = types.ModuleType("app.agent.manager")
+    manager_module.agent_manager = manager if manager is not None else object()
     orchestrator = types.ModuleType("app.agent.orchestrator")
-    orchestrator.agent_manager = manager if manager is not None else object()
     orchestrator.MoviePilotAgent = type("MoviePilotAgent", (), {})
     tools = types.ModuleType("app.agent.tools.factory")
     tools.MoviePilotToolFactory = type("MoviePilotToolFactory", (), {})
     return {
+        manager_module.__name__: manager_module,
         orchestrator.__name__: orchestrator,
         tools.__name__: tools,
     }
@@ -149,6 +152,17 @@ def test_registry_discovery_does_not_import_agent_implementation(
         "agent.tool_factory",
     }
     assert imported == []
+
+
+def test_agent_capability_entrypoints_resolve_canonical_symbols(runtime_loader) -> None:
+    """entrypoint 必须命中 canonical 模块的物理符号，Compat 惰性映射不满足强校验。"""
+    runtime = runtime_loader._ensure_runtime()
+    for spec in runtime.list_specs():
+        module_name, symbol_name = spec.entrypoint.split(":", maxsplit=1)
+        module = importlib.import_module(module_name)
+        assert symbol_name in vars(module), spec.entrypoint
+        implementation = vars(module)[symbol_name]
+        assert runtime._canonical_implementation(spec, implementation) is implementation
 
 
 def test_concurrent_manager_first_use_is_single_flight(
@@ -179,7 +193,7 @@ def test_concurrent_manager_first_use_is_single_flight(
         results = [future.result(timeout=5) for future in futures]
 
     assert all(
-        result is modules["app.agent.orchestrator"].agent_manager for result in results
+        result is modules["app.agent.manager"].agent_manager for result in results
     )
     assert (
         runtime_loader.get_moviepilot_agent_type()
@@ -189,7 +203,7 @@ def test_concurrent_manager_first_use_is_single_flight(
     assert manager_snapshot.materialization is CapabilityMaterializationState.RESOLVED
     assert manager_snapshot.lifecycle is CapabilityLifecycleState.DISCOVERED
     assert manager_snapshot.visible is False
-    assert import_calls == ["app.agent.orchestrator"]
+    assert import_calls == ["app.agent.manager", "app.agent.orchestrator"]
 
 
 def test_tool_factory_has_independent_first_use_entrypoint(
@@ -383,7 +397,7 @@ async def test_concurrent_service_and_entrypoint_first_use_share_identity(
     assert entrypoint is manager
     assert runtime_loader.get_running_agent_manager() is manager
     assert manager.initialize_calls == 1
-    assert import_calls == ["app.agent.orchestrator"] * 2
+    assert import_calls == ["app.agent.manager"] * 2
 
     await runtime_loader.begin_agent_shutdown()
 
@@ -664,21 +678,22 @@ async def test_real_agent_manager_can_restart_across_config_generations(
     monkeypatch,
 ) -> None:
     """真实 AgentManager 在配置热切换后必须重新建立运行代际。"""
-    orchestrator = importlib.import_module("app.agent.orchestrator")
+    manager_module = importlib.import_module("app.agent.manager")
+    memory_module = importlib.import_module("app.agent.memory")
 
-    manager = orchestrator.AgentManager()
+    manager = manager_module.AgentManager()
     memory_events = []
 
     async def close_memory() -> None:
         memory_events.append("close")
 
     monkeypatch.setattr(
-        orchestrator.memory_manager,
+        memory_module.memory_manager,
         "initialize",
         lambda: memory_events.append("initialize"),
     )
-    monkeypatch.setattr(orchestrator.memory_manager, "close", close_memory)
-    monkeypatch.setattr(orchestrator, "agent_manager", manager)
+    monkeypatch.setattr(memory_module.memory_manager, "close", close_memory)
+    monkeypatch.setattr(manager_module, "agent_manager", manager)
     monkeypatch.setattr(
         "app.agent.capabilities.adapter.settings.AI_AGENT_ENABLE",
         False,
