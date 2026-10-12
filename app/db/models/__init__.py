@@ -35,6 +35,7 @@ _MODEL_EXPORTS = {
     "SiteIcon": ("app.db.models.siteicon", "SiteIcon"),
     "SiteStatistic": ("app.db.models.sitestatistic", "SiteStatistic"),
     "SiteUserData": ("app.db.models.siteuserdata", "SiteUserData"),
+    "SubscribeActivity": ("app.db.models.subscribeactivity", "SubscribeActivity"),
     "Subscribe": ("app.db.models.subscribe", "Subscribe"),
     "SubscribeHistory": (
         "app.db.models.subscribehistory",

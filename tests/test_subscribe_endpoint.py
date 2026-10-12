@@ -1091,7 +1091,10 @@ class TestSubscribeEndpoint:
                 response = endpoint(current_user=superuser)
 
             assert response.success
-            scheduler.return_value.start.assert_called_once_with(job_id)
+            if endpoint is refresh_subscribes:
+                scheduler.return_value.start.assert_called_once_with(job_id, source="manual")
+            else:
+                scheduler.return_value.start.assert_called_once_with(job_id)
 
     def test_create_subscribe_excludes_system_fields_from_write_payload(self):
         """

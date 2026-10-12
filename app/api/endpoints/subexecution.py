@@ -2,7 +2,9 @@
 
 import time
 from collections.abc import AsyncIterator
-from typing import Any, List, Optional
+from dataclasses import asdict
+from datetime import datetime, timedelta, timezone
+from typing import Any, List, Optional, cast
 
 from fastapi import Depends, HTTPException, Path, Query, Request
 from starlette.responses import Response, StreamingResponse
@@ -22,11 +24,77 @@ from app.application.subscription.query import SubscriptionQueryService
 from app.application.subscription.status import SubscriptionExecutionStatusService
 from app.application.system import LogNotFoundError
 from app.schemas.response import Response as _SchemaResponse
+from app.schemas.subscribe import SubscriptionActivityEvent as _SchemaSubscriptionActivityEvent
+from app.schemas.subscribe import SubscriptionActivityPage as _SchemaSubscriptionActivityPage
 from app.schemas.subscribe import SubscriptionBatchStatus as _SchemaSubscriptionBatchStatus
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.startup.composition.context import HostRuntime
 
 router = ResponseAPIRouter()
+
+
+@router.get(  # type: ignore[misc]
+    "/{subscription_id}/activity",
+    summary="查看订阅业务活动",
+    response_model=_SchemaSubscriptionActivityPage,
+)
+async def list_subscription_activity(
+    subscription_id: int = Path(..., ge=1),
+    history: bool = False,
+    kind: Optional[str] = Query(None, pattern="^(created|updated|status|completed|refresh|search)$"),
+    days: Optional[int] = Query(None, ge=1, le=365),
+    before: Optional[str] = Query(None, pattern="^[a-zA-Z0-9_-]{1,64}$"),
+    limit: int = Query(30, ge=1, le=100),
+    current_user: ApiPrincipal = Depends(get_current_active_user_async),
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> _SchemaSubscriptionActivityPage:
+    """按当前 owner 校验活动或完成历史，分页仅返回轻量概要。"""
+    repository = runtime.subscription.activity_repository
+    if repository is None:
+        raise HTTPException(status_code=503, detail="订阅活动暂时不可用")
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="milliseconds") if days else None
+    result = await repository.list_accessible(
+        subscription_id, current_user.name, current_user.is_superuser,
+        history=history, kind=kind, since=since, before=before, limit=limit,
+    )
+    if result is None:
+        raise HTTPException(status_code=404, detail="订阅不存在或无权查看")
+    events, next_cursor = result
+    return cast(_SchemaSubscriptionActivityPage, _SchemaSubscriptionActivityPage.model_validate({
+        "items": [
+            {**{key: value for key, value in asdict(event).items() if key not in {"activity_key", "tracking", "details"}},
+             "details_loaded": False,
+             "details": {key: value for key, value in event.details.items() if key in {"reason", "retry_at", "phase", "changes"}}}
+            for event in events
+        ],
+        "next_cursor": next_cursor,
+    }))
+
+
+@router.get(  # type: ignore[misc]
+    "/{subscription_id}/activity/{event_id}",
+    summary="查看订阅活动详情",
+    response_model=_SchemaSubscriptionActivityEvent,
+)
+async def get_subscription_activity(
+    subscription_id: int = Path(..., ge=1),
+    event_id: str = Path(..., pattern="^[a-zA-Z0-9_-]{1,64}$"),
+    history: bool = False,
+    current_user: ApiPrincipal = Depends(get_current_active_user_async),
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> _SchemaSubscriptionActivityEvent:
+    """按需读取冻结条件、资源判断和恢复记录，并再次检查订阅归属。"""
+    repository = runtime.subscription.activity_repository
+    if repository is None:
+        raise HTTPException(status_code=503, detail="订阅活动暂时不可用")
+    event = await repository.get_accessible(
+        subscription_id, event_id, current_user.name, current_user.is_superuser, history=history,
+    )
+    if event is None:
+        raise HTTPException(status_code=404, detail="活动不存在或无权查看")
+    return cast(_SchemaSubscriptionActivityEvent, _SchemaSubscriptionActivityEvent.model_validate({
+        key: value for key, value in asdict(event).items() if key not in {"activity_key", "tracking"}
+    }))
 
 
 async def _accessible_subscription_ids(

@@ -1,7 +1,10 @@
 """TMDB 模块同步与异步公开能力的业务决策一致性测试。"""
 
 import asyncio
+from typing import Optional
 from unittest.mock import AsyncMock, Mock, call
+
+import pytest
 
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
@@ -261,9 +264,20 @@ def test_media_search_sync_async_share_combination_and_sorting() -> None:
     module.tmdb.async_search_tvs.assert_awaited_once_with("同名作品", "2024")
 
 
-def test_obtain_images_sync_async_share_query_and_mapping() -> None:
+@pytest.mark.parametrize("media_source,recognize_source", [
+    ("themoviedb", "themoviedb"),
+    ("themoviedb", "douban"),
+    ("douban", "themoviedb"),
+])
+@pytest.mark.parametrize("media_type", [MediaType.MOVIE, MediaType.TV])
+def test_obtain_images_sync_async_share_query_and_mapping(
+    monkeypatch: pytest.MonkeyPatch, media_source: str, recognize_source: str, media_type: MediaType,
+) -> None:
     """图片补全双入口应选择同一接口、语言参数和最佳图片映射。"""
     module = _module_with_clients()
+    monkeypatch.setattr("app.modules.themoviedb.get_runtime_setting", lambda key: (
+        recognize_source if key == "RECOGNIZE_SOURCE" else lambda path: f"https://images.test{path}"
+    ))
     images = {
         "posters": [{"file_path": "/poster.jpg", "vote_average": 8}],
         "backdrops": [{"file_path": "/backdrop.jpg", "vote_average": 7}],
@@ -271,10 +285,15 @@ def test_obtain_images_sync_async_share_query_and_mapping() -> None:
     }
     module.tmdb.get_movie_images.return_value = images
     module.tmdb.async_get_movie_images = AsyncMock(return_value=images)
+    module.tmdb.get_tv_images.return_value = images
+    module.tmdb.async_get_tv_images = AsyncMock(return_value=images)
     sync_media = MediaInfo(tmdb_info=_movie_info(40))
     async_media = MediaInfo(tmdb_info=_movie_info(40))
     sync_media.original_language = "ja"
     async_media.original_language = "ja"
+    for media in (sync_media, async_media):
+        media.media_source = media_source
+        media.type = media_type
 
     sync_result = module.obtain_images(sync_media)
     async_result = asyncio.run(module.async_obtain_images(async_media))
@@ -284,7 +303,41 @@ def test_obtain_images_sync_async_share_query_and_mapping() -> None:
     assert sync_media.poster_path == async_media.poster_path
     assert sync_media.backdrop_path == async_media.backdrop_path
     assert sync_media.logo_path == async_media.logo_path
-    module.tmdb.get_movie_images.assert_called_once_with(40, original_language="ja")
-    module.tmdb.async_get_movie_images.assert_awaited_once_with(
-        40, original_language="ja"
-    )
+    assert sync_media.poster_path == "https://images.test/poster.jpg"
+    assert sync_media.backdrop_path == "https://images.test/backdrop.jpg"
+    assert sync_media.logo_path == "https://images.test/logo.png"
+    method = "get_movie_images" if media_type == MediaType.MOVIE else "get_tv_images"
+    getattr(module.tmdb, method).assert_called_once_with(40, original_language="ja")
+    getattr(module.tmdb, f"async_{method}").assert_awaited_once_with(40, original_language="ja")
+
+
+@pytest.mark.parametrize("media_source,recognize_source,tmdb_id,complete_images", [
+    ("douban", "douban", None, False),
+    ("douban", "douban", 40, False),
+    ("douban", "douban", None, True),
+    ("douban", "themoviedb", None, False),
+    ("themoviedb", "douban", None, False),
+    ("themoviedb", "themoviedb", None, False),
+    ("themoviedb", "themoviedb", 40, True),
+])
+def test_obtain_images_sync_async_skip_ineligible_media(
+    monkeypatch: pytest.MonkeyPatch, media_source: str, recognize_source: str,
+    tmdb_id: Optional[int], complete_images: bool,
+) -> None:
+    """不适用来源、缺少 TMDB ID 或图片齐全时，双入口原样返回且不查询图片。"""
+    monkeypatch.setattr("app.modules.themoviedb.get_runtime_setting", lambda _key: recognize_source)
+    module = _module_with_clients()
+    media = MediaInfo()
+    media.media_source = media_source
+    media.tmdb_id = tmdb_id
+    media.type = MediaType.TV
+    media.poster_path = "/existing-poster.jpg"
+    if complete_images:
+        media.logo_path = "/existing-logo.png"
+        media.backdrop_path = "/existing-backdrop.jpg"
+    original = media.to_dict()
+
+    assert module.obtain_images(media) is media
+    assert asyncio.run(module.async_obtain_images(media)) is media
+    assert media.to_dict() == original
+    assert module.tmdb.mock_calls == []

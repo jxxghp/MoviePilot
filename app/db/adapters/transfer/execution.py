@@ -214,7 +214,7 @@ class TransactionalTransferExecutionRepository:
             and pending.execution_fingerprint is not None
         )
         if has_checkpoint_column != has_checkpoint_identity:
-            raise TransferExecutionConflictError("整理任务记录不完整，请重新识别文件后再整理")
+            raise TransferExecutionConflictError("整理任务执行检查点字段不一致，请重新识别文件后再整理")
         checkpoint = None
         if pending.execution_payload is not None:
             checkpoint = TransferExecutionCheckpoint.from_payload(
@@ -322,7 +322,7 @@ class TransactionalTransferExecutionRepository:
                 or pending.checkpoint_payload is None
                 or pending.planned_at is None
         ):
-            raise TransferExecutionConflictError("整理任务记录不完整，请重新识别文件后再整理")
+            raise TransferExecutionConflictError("整理任务计划检查点字段不完整，请重新识别文件后再整理")
         try:
             checkpoint = TransferPlanCheckpoint.from_payload(
                 pending.checkpoint_payload

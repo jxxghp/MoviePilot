@@ -2,13 +2,16 @@
 
 from collections.abc import Callable, Mapping
 from contextlib import AbstractAsyncContextManager
+from dataclasses import asdict, replace
 from datetime import datetime, timedelta, timezone
-from typing import Optional, TypeVar
+from functools import partial
+from typing import Optional, TypeVar, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.application.search.session import SearchSessionRepository
+from app.application.subscription.activity import queued_activity, settled_activity
 from app.application.subscription.execution import (
     SearchBatchSnapshot,
     SearchEnqueueResult,
@@ -16,12 +19,16 @@ from app.application.subscription.execution import (
 )
 from app.application.subscription.sitebudget import SiteBudgetClaim
 from app.db.adapters.searchsession import TransactionalSearchSessionRepository
+from app.db.adapters.subscription import SessionSubscriptionRepository
+from app.db.adapters.subscriptionactivity import project_activity
 from app.db.models.subscriptionsearch import (
     SubscriptionSearchBatch,
     SubscriptionSearchTask,
 )
+from app.db.oper.subscribeactivity import SubscribeActivityOper
 from app.db.oper.subscriptionsearch import SubscriptionSearchOper
 from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
+from app.runtime.log import logger
 
 T = TypeVar("T")
 _BUSY_SITE_RETRY_SECONDS = 10
@@ -98,6 +105,52 @@ def _enqueue_result(
     )
 
 
+def _stage_enqueued_activity(session: Session, result: SearchEnqueueResult) -> None:
+    """入队时记录请求；合并只更新原等待计划，保留原事件和请求时间。"""
+    try:
+        with session.begin_nested():
+            subscriptions = SessionSubscriptionRepository(session)
+            activity = SubscribeActivityOper(session)
+            for task in SubscriptionSearchOper(session).list_tasks(batch_ids=result.active_batch_ids):
+                subscribe = subscriptions.get(task.subscription_id)
+                if subscribe is None or task.state != "queued":
+                    continue
+                previous = activity.get_event(task.task_id)
+                if previous is None:
+                    event = queued_activity(subscribe, task.task_id, task.source, task.available_at)
+                elif previous.activity_key == subscribe.activity_key and previous.details.get("phase") == "queued":
+                    details = dict(previous.details)
+                    details.pop("retry_at", None)
+                    if task.available_at:
+                        details["retry_at"] = task.available_at
+                    event = replace(project_activity(previous), source=task.source, details=details)
+                else:
+                    continue
+                if event is not None:
+                    activity.save(asdict(event))
+    except Exception:
+        logger.error("订阅搜索入队活动保存失败", exc_info=True)
+
+
+
+def _settle_task_activity(session: Session, changed: bool, *, batch_id: Optional[str] = None,
+                          task_id: Optional[str] = None) -> None:
+    """结算已停止的排队活动；保存点失败不撤销已确认的下载或任务终态。"""
+    if not changed:
+        return
+    try:
+        with session.begin_nested():
+            activity = SubscribeActivityOper(session)
+            for task in SubscriptionSearchOper(session).list_tasks(batch_id=batch_id, task_id=task_id):
+                row = activity.get_event(task.task_id)
+                if row is not None:
+                    event = settled_activity(project_activity(row), task.state, task.finished_at)
+                    if event is not None:
+                        activity.save(asdict(event))
+    except Exception:
+        logger.error("订阅搜索终态活动保存失败", exc_info=True)
+
+
 class TransactionalSubscriptionSearchRepository:
     """使用同步或异步短事务实现订阅搜索队列端口。"""
 
@@ -118,28 +171,37 @@ class TransactionalSubscriptionSearchRepository:
         with self._session_factory() as session:
             return operation(SubscriptionSearchOper(session))
 
-    def _write(self, operation: Callable[[SubscriptionSearchOper], T]) -> T:
+    def _write(self, operation: Callable[[SubscriptionSearchOper], T],
+               after_stage: Optional[Callable[[Session, T], None]] = None) -> T:
         """在短事务中执行一次队列状态变更。"""
         with self._session_factory() as session:
             unit_of_work = SqlAlchemyUnitOfWork(session)
             try:
                 result = operation(SubscriptionSearchOper(session))
+                if after_stage:
+                    after_stage(session, result)
                 unit_of_work.commit()
                 return result
             except Exception:
                 unit_of_work.rollback()
                 raise
 
-    async def _async_write(self, operation: Callable[[SubscriptionSearchOper], T]) -> T:
+    async def _async_write(self, operation: Callable[[SubscriptionSearchOper], T],
+                           after_stage: Optional[Callable[[Session, T], None]] = None) -> T:
         """在短异步事务中执行一次队列状态变更。"""
         if self._async_session_factory is None:
             raise RuntimeError("订阅搜索异步写入尚未配置")
         async with self._async_session_factory() as session:
             unit_of_work = SqlAlchemyAsyncUnitOfWork(session)
             try:
-                result: T = await session.run_sync(
-                    lambda sync_session: operation(SubscriptionSearchOper(sync_session))
-                )
+                def stage(sync_session: Session) -> T:
+                    """复用异步事务的同步视图，原子暂存任务和业务活动。"""
+                    result = operation(SubscriptionSearchOper(sync_session))
+                    if after_stage:
+                        after_stage(sync_session, result)
+                    return result
+
+                result: T = await session.run_sync(stage)
                 await unit_of_work.commit()
                 return result
             except Exception:
@@ -164,7 +226,8 @@ class TransactionalSubscriptionSearchRepository:
                 priority=priority,
                 available_at_by_subscription=available_at_by_subscription,
                 refresh_pending=refresh_pending,
-            )
+            ),
+            after_stage=_stage_enqueued_activity,
         )
 
     async def async_enqueue(
@@ -185,7 +248,8 @@ class TransactionalSubscriptionSearchRepository:
                 priority=priority,
                 available_at_by_subscription=available_at_by_subscription,
                 refresh_pending=refresh_pending,
-            )
+            ),
+            after_stage=_stage_enqueued_activity,
         )
 
     def claim_next(self, *, owner: str, lease_seconds: int = 900) -> Optional[SearchTaskSnapshot]:
@@ -213,7 +277,8 @@ class TransactionalSubscriptionSearchRepository:
                 lease_token=lease_token,
                 state=state,
                 error=error,
-            )
+            ),
+            after_stage=cast(Callable[[Session, bool], None], partial(_settle_task_activity, task_id=task_id)),
         )
 
     def update_task_phase(
@@ -247,7 +312,8 @@ class TransactionalSubscriptionSearchRepository:
                 task_id=task_id,
                 lease_token=lease_token,
                 cancelled=cancelled,
-            )
+            ),
+            after_stage=cast(Callable[[Session, bool], None], partial(_settle_task_activity, task_id=task_id)),
         )
 
     def defer_task(
@@ -278,7 +344,8 @@ class TransactionalSubscriptionSearchRepository:
 
     def request_cancel(self, batch_id: str) -> bool:
         """请求取消批次。"""
-        return self._write(lambda repository: repository.request_cancel(batch_id))
+        return self._write(lambda repository: repository.request_cancel(batch_id),
+                           after_stage=cast(Callable[[Session, bool], None], partial(_settle_task_activity, batch_id=batch_id)))
 
     def get_batch(self, batch_id: str) -> Optional[SearchBatchSnapshot]:
         """查询批次聚合快照。"""

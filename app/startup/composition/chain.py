@@ -23,6 +23,7 @@ from app.application.image import (
     configure_wallpaper_providers,
     reset_wallpaper_providers,
 )
+from app.application.subscription.activity import SubscriptionActivityService
 from app.application.system import SystemService
 from app.chain._recognition import (
     RecognitionSharePort,
@@ -44,10 +45,11 @@ from app.chain.transfer.filter import (
 from app.db.adapters.chain import TransactionalChainDurableEventWriter
 from app.db.adapters.download import TransactionalDownloadFailureRepository
 from app.db.adapters.mediaserver import TransactionalMediaServerRepository
+from app.db.adapters.subscriptionactivity import TransactionalSubscriptionActivityRepository
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.oper.message import MessageOper
 from app.db.oper.systemconfig import SystemConfigOper
-from app.db.session import SessionFactory
+from app.db.session import SessionFactory, async_session_scope
 from app.domain.context import MediaInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.runtime.cache import AsyncFileCache, FileCache
@@ -100,6 +102,7 @@ def build_chain_runtime_context(
         message_queue=dependencies.message_queue,
         module_dispatcher_factory=ModuleInvocationDispatcher,
         site_repository=dependencies.site,
+        subscription_activity=SubscriptionActivityService(TransactionalSubscriptionActivityRepository(SessionFactory, async_session_scope)),
         subscription_repository=dependencies.subscription,
         subscription_search_repository=dependencies.subscription_search,
         subscription_mutation_scope=subscription_mutation_scope,

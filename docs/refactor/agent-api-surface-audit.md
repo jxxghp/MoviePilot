@@ -5,7 +5,7 @@
 
 ## Result
 
-- OpenAPI HTTP operations: **426**
+- OpenAPI HTTP operations: **428**
 - Stable `moviepilot_api` operations: **231**
 - Exact HTTP routes used by the gateway: **229**
 - OpenAPI routes matched directly by the gateway: **228**
@@ -23,7 +23,7 @@
 | `provider-skill` | 12 | Low-level downloader or media-server capability owned by a provider Skill. |
 | `stream_or_binary` | 13 | Streaming or binary response owned by a direct client transport. |
 | `transport_or_identity` | 76 | Authentication, protocol, callback, account, or conversation transport boundary. |
-| `ui_presentation` | 15 | Frontend or plugin-rendered presentation contract. |
+| `ui_presentation` | 17 | Frontend or plugin-rendered presentation contract. |
 
 ## Gateway Identity Audit
 
@@ -601,6 +601,8 @@ Plugin ratings include this installation's own rating and require the same admin
 | `GET` | `/api/v1/subscribe/user/{username}` | subscribe | `gateway` | subscription.user.list | 用户订阅 |
 | `DELETE` | `/api/v1/subscribe/{subscribe_id}` | subscribe | `gateway` | subscription.delete | 删除订阅 |
 | `GET` | `/api/v1/subscribe/{subscribe_id}` | subscribe | `gateway` | subscription.get | 订阅详情 |
+| `GET` | `/api/v1/subscribe/{subscription_id}/activity` | subscribe | `ui_presentation` | host-ui | 查看订阅业务活动 |
+| `GET` | `/api/v1/subscribe/{subscription_id}/activity/{event_id}` | subscribe | `ui_presentation` | host-ui | 查看订阅活动详情 |
 | `GET` | `/api/v1/subscribe/{subscription_id}/logs` | subscribe | `stream_or_binary` | host-transport | 查看单个订阅的执行日志 |
 | `GET` | `/api/v1/subscribe/{subscription_id}/logs/download` | subscribe | `stream_or_binary` | host-transport | 下载单个订阅的执行日志 |
 | `GET` | `/api/v1/system/cache/image` | system | `stream_or_binary` | host-transport | 图片缓存 |

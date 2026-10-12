@@ -44,8 +44,9 @@ class TransferPending(Base):
     蒸发。而已经稳定落地的文件不会再产生任何监控事件，也不会有新的补偿扫描起点
     ——结果就是永久漏件，只能靠人工比对补整理。
 
-    准入时保存版本化规划输入和指纹；纯规划完成后以同一行原子保存完整有序计划并
-    推进到 planned。重启恢复可直接消费已规划路径，避免再次触发 rename 等插件事件。
+    准入时保存版本化规划输入和指纹；provider 调用快照与宿主文件计划分别原子推进到
+    provider_pending、planned，并记录本阶段的计划冻结时间。重启恢复直接消费检查点，
+    避免再次触发 rename 等插件事件。
     所有执行期 mutation 都以稳定任务身份和租约 token 进行 CAS fencing。
     """
 
@@ -1080,7 +1081,10 @@ class TransferPending(Base):
                         lease_token: str, now_time: str,
                         updated_at: str) -> int:
         """
-        以输入指纹为 CAS 条件原子保存计划并推进到已规划。
+        以输入指纹为 CAS 条件原子保存检查点并推进到本阶段可执行状态。
+
+        provider 调用快照也属于冻结计划，必须同事务写入 planned_at 才能准备执行；
+        后续回退到宿主计划时，以新的检查点提交时间刷新该字段。
         :param db: 数据库会话
         :param task_id: 稳定任务标识
         :param input_fingerprint: 规划输入规范 JSON 指纹
@@ -1110,7 +1114,7 @@ class TransferPending(Base):
             "last_error": None,
             "updated_at": updated_at,
         }
-        if target_state == "planned":
+        if target_state in ("planned", "provider_pending"):
             values["planned_at"] = updated_at
         return execute_dml(
             db,

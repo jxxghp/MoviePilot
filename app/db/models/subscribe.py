@@ -1,5 +1,6 @@
 import time
 from typing import Any, Optional
+from uuid import uuid4
 
 from sqlalchemy import JSON, Float, Index, Integer, String, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,6 +17,8 @@ class Subscribe(Base):
     """
 
     id = get_id_column()
+    # 不随整数主键复用的业务活动标识，完成时原样带入订阅历史。
+    activity_key: Mapped[Optional[str]] = mapped_column(String(32), default=lambda: uuid4().hex)
     # 标题
     name: Mapped[str] = mapped_column(String, nullable=False, index=True)
     # 年份

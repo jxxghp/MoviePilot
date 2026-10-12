@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from app.application.security.user import ChainUserRepository
     from app.application.site.contract import SiteRepository
     from app.application.site.mutation import SyncSiteReferenceMutationService
+    from app.application.subscription.activity import SubscriptionActivityService
     from app.application.subscription.complete import CompletionScope
     from app.application.subscription.contract import SubscriptionRepository
     from app.application.subscription.delete import (
@@ -77,6 +78,7 @@ class ChainRuntimeContext:
     media_server_repository: MediaServerRepository
     download_failure_repository: DownloadFailureRepository
     user_repository: ChainUserRepository
+    subscription_activity: Optional[SubscriptionActivityService] = None
     classification_service: Optional[ClassificationExecutionPort] = None
     subscription_search_repository: Optional[SubscriptionSearchRepository] = None
     legacy_transfer_command: Optional[LegacyTransferCommand] = None

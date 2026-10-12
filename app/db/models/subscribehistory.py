@@ -14,6 +14,8 @@ class SubscribeHistory(Base):
     订阅历史表
     """
     id = get_id_column()
+    # 与原订阅共享活动标识；升级前历史不补造事件。
+    activity_key: Mapped[Optional[str]] = mapped_column(String(32))
     # 标题
     name: Mapped[str] = mapped_column(String, nullable=False, index=True)
     # 年份

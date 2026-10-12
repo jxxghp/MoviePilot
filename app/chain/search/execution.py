@@ -7,6 +7,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, AsyncIterator, Callable, Dict, Generator, Iterator, List, Literal, Optional, cast
 
+from app.application.subscription.activity import current_activity_run
 from app.application.subscription.sitebudget import SubscriptionSiteBudget
 from app.chain.media import MediaChain
 from app.chain.search.contract import _SearchOwnerBase
@@ -104,6 +105,8 @@ def _search_resolution(owner: _SearchOwnerBase, plan: MediaSearchPlan) -> Genera
     if plan.include_candidates:
         prepare_params["include_candidates"] = True
     season_episodes, keywords = owner._prepare_params(**prepare_params)
+    activity = current_activity_run()
+    previous_discovered = activity.counts["discovered"] if activity else 0
     torrents: List[TorrentInfo] = []
     contexts: List[Context] = []
     counts: Counter[str] = Counter()
@@ -115,6 +118,8 @@ def _search_resolution(owner: _SearchOwnerBase, plan: MediaSearchPlan) -> Genera
         if not batch:
             continue
         torrents.extend(batch)
+        if activity:
+            activity.counts["discovered"] = previous_discovered + len(torrents)
         contexts = yield _SearchStep("parse", _result_params(plan, mediainfo, torrents, season_episodes, counts))
         parsed = True
         confirmed = any(getattr(context, "match_status", None) in (None, "exact") for context in contexts)

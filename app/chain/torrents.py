@@ -556,6 +556,7 @@ class TorrentsChain(ChainBase):
             sites: List[int] = None,
             progress_callback: Optional[Callable[..., None]] = None,
             include_music: bool = False,
+            site_observer: Optional[Callable[[dict[str, object]], None]] = None,
     ) -> Dict[str, List[Context]]:
         """
         刷新站点最新资源并返回本轮可匹配的完整候选缓存。
@@ -564,6 +565,7 @@ class TorrentsChain(ChainBase):
         :param sites: 强制指定站点ID列表，为空则读取设置的订阅站点
         :param progress_callback: 资源刷新进度更新回调
         :param include_music: 是否额外抓取站点的音乐专用浏览入口，服务音乐订阅
+        :param site_observer: 输出已检查站点和安全候选计数，不以空列表推断请求成功
         """
         # 刷新类型
         if not stype:
@@ -616,13 +618,15 @@ class TorrentsChain(ChainBase):
                         "current": indexer.get("id"),
                     },
                 )
-            domains.append(self._refresh_indexer(
-                indexer=indexer,
-                stype=stype,
-                include_music=include_music,
-                torrents_cache=torrents_cache,
-                music_cache=music_cache,
-            ))
+            domain = self._refresh_indexer(
+                indexer=indexer, stype=stype, include_music=include_music,
+                torrents_cache=torrents_cache, music_cache=music_cache,
+            )
+            domains.append(domain)
+            if site_observer:
+                site_observer({"id": indexer.get("id"), "name": indexer.get("name"),
+                               "candidates": len(torrents_cache.get(domain, [])) + len(music_cache.get(domain, [])),
+                               "status": "checked"})
 
         # 保存缓存到本地，影视与音乐分别存储
         if stype == "spider":

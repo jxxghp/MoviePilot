@@ -39,7 +39,6 @@
       "app/application/security/cookie.py:CookieHelper._get_site_cookie_ua_impl": 45,
       "app/application/security/cookie.py:CookieHelper._get_site_cookie_ua_impl.__page_handler": 43,
       "app/application/torrent/download.py:TorrentHelper.download_torrent": 25,
-      "app/application/torrent/download.py:TorrentHelper.filter_torrent": 24,
       "app/application/torrent/download.py:TorrentHelper.match_torrent": 16,
       "app/application/transfer/models.py:TransferPlanCheckpoint.__post_init__": 18,
       "app/chain/download/existence.py:DownloadExistenceOwner.get_no_exists_info": 23,

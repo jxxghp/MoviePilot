@@ -46,7 +46,10 @@ def test_maintenance_endpoint_forwards_media_type(endpoint, job_id):
         )
 
     assert response.success
-    scheduler.return_value.start.assert_called_once_with(job_id, mtype=MediaType.TV.value)
+    expected = {"mtype": MediaType.TV.value}
+    if endpoint is refresh_subscribes:
+        expected["source"] = "manual"
+    scheduler.return_value.start.assert_called_once_with(job_id, **expected)
 
 
 def test_search_endpoint_forwards_media_type_to_command():

@@ -452,3 +452,76 @@ def test_new_search_cycle_refreshes_only_waiting_site_scope(tmp_path, running, s
         if not running:
             assert task.available_at == ready_at
     engine.dispose()
+
+
+def test_queue_activity_records_one_request_and_closes_queued_cancel(tmp_path):
+    """合并请求只有一条活动，未执行的取消同事务收口等待状态。"""
+    from app.db.models.subscribe import Subscribe
+    from app.db.models.subscribeactivity import SubscribeActivity
+
+    repository, engine = _repository(tmp_path)
+    with Session(engine) as session:
+        subscribe = Subscribe(name="Activity", username="owner")
+        session.add(subscribe)
+        session.commit()
+        subscription_id = subscribe.id
+    first = repository.enqueue(subscription_ids=(subscription_id,), source="manual", priority=100)
+    repository.enqueue(subscription_ids=(subscription_id,), source="manual", priority=100)
+    with Session(engine) as session:
+        events = session.scalars(select(SubscribeActivity)).all()
+        assert len(events) == 1
+        assert events[0].details["phase"] == "queued" and events[0].status == "waiting"
+    assert repository.request_cancel(first.batch.batch_id)
+    with Session(engine) as session:
+        event = session.scalars(select(SubscribeActivity)).one()
+        assert event.status == "cancelled" and event.finished_at
+
+
+def test_activity_failure_does_not_undo_terminal_queue_state(tmp_path, monkeypatch):
+    """活动结算失败不能回滚已确认的任务终态或使下载重复执行。"""
+    from app.db.models.subscribe import Subscribe
+    from app.db.oper.subscribeactivity import SubscribeActivityOper
+
+    repository, engine = _repository(tmp_path)
+    with Session(engine) as session:
+        subscribe = Subscribe(name="Activity", username="owner")
+        session.add(subscribe)
+        session.commit()
+        subscription_id = subscribe.id
+    repository.enqueue(subscription_ids=(subscription_id,), source="manual", priority=100)
+    task = repository.claim_next(owner="worker")
+
+    def failed_save(*_args):
+        """模拟活动表写入故障。"""
+        raise RuntimeError("activity storage unavailable")
+
+    monkeypatch.setattr(SubscribeActivityOper, "save", failed_save)
+    assert repository.finish_task(task_id=task.task_id, lease_token=task.lease_token, state="completed")
+    with Session(engine) as session:
+        assert session.scalar(select(SubscriptionSearchTask.state)) == "completed"
+
+
+def test_coalesced_activity_updates_schedule_without_replacing_request_time(tmp_path):
+    """手工提前排队会同步新的计划时刻，保留同一活动和最初请求时刻。"""
+    from app.db.models.subscribe import Subscribe
+    from app.db.models.subscribeactivity import SubscribeActivity
+
+    repository, engine = _repository(tmp_path)
+    with Session(engine) as session:
+        subscribe = Subscribe(name="Activity", username="owner")
+        session.add(subscribe)
+        session.commit()
+        subscription_id = subscribe.id
+    later = (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat(timespec="seconds")
+    sooner = (datetime.now(timezone.utc) + timedelta(minutes=1)).isoformat(timespec="seconds")
+    repository.enqueue(subscription_ids=(subscription_id,), source="new", priority=50,
+                       available_at_by_subscription={subscription_id: later})
+    with Session(engine) as session:
+        event = session.scalars(select(SubscribeActivity)).one()
+        original = event.event_id, event.started_at
+    repository.enqueue(subscription_ids=(subscription_id,), source="manual", priority=100,
+                       available_at_by_subscription={subscription_id: sooner})
+    with Session(engine) as session:
+        event = session.scalars(select(SubscribeActivity)).one()
+        assert (event.event_id, event.started_at) == original
+        assert event.details["retry_at"] == sooner and event.source == "manual"

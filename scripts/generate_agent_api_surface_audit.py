@@ -194,11 +194,14 @@ def _classify(
             "Discarding corrupt transfer state is owned by the authenticated management recovery workflow; it is not a stable Agent gateway operation.",
             [],
         )
-    if path.startswith(SUBSCRIPTION_EXECUTION_UI_PREFIX):
+    if path.startswith(SUBSCRIPTION_EXECUTION_UI_PREFIX) or path in {
+        "/api/v1/subscribe/{subscription_id}/activity",
+        "/api/v1/subscribe/{subscription_id}/activity/{event_id}",
+    }:
         return (
             "ui_presentation",
             "host-ui",
-            "Background subscription execution status and cancellation are owned by the authenticated frontend workflow; they are not yet a stable Agent gateway contract.",
+            "Subscription activity details, background execution status and cancellation are owned by the authenticated frontend workflow; they are not yet a stable Agent gateway contract.",
             [],
         )
     if method == "POST" and path == MUSIC_LIBRARY_STATUS_UI_PATH:

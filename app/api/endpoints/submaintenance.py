@@ -96,7 +96,7 @@ def refresh_subscribes(
     """刷新订阅，可选按媒体类型限定处理范围。"""
     if not current_user.is_superuser:
         return Response(success=False, message="订阅不存在")
-    get_scheduler().start("subscribe_refresh", **_subscription_job_kwargs(subscription_type))
+    get_scheduler().start("subscribe_refresh", source="manual", **_subscription_job_kwargs(subscription_type))
     return Response(success=True)
 
 

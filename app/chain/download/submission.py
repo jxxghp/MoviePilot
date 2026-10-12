@@ -491,6 +491,8 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             username=username,
         )
         if prepared is None:
+            if governance:
+                governance.report(context, "rejected", "资源准备失败或未满足下载提交条件")
             return (None, error_msg) if return_detail else None
         download_hash, error_msg = self._submit_prepared_download(
             prepared=prepared,
@@ -505,6 +507,9 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             custom_words=custom_words,
             governance=governance,
         )
+        if governance:
+            governance.report(context, "submitted" if download_hash else "failed",
+                              None if download_hash else "下载器未接受该资源，未提交成功")
         return (download_hash, error_msg) if return_detail else download_hash
 
     def _prepare_download_single(

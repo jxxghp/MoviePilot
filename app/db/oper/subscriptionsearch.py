@@ -765,3 +765,19 @@ class SubscriptionSearchOper(DbOper):
             ),
             execution_options={"synchronize_session": False},
         )
+
+    def list_tasks(self, *, batch_id: Optional[str] = None, task_id: Optional[str] = None,
+                   batch_ids: Optional[tuple[str, ...]] = None) -> list[SubscriptionSearchTask]:
+        """在当前事务中读取指定批次或单任务，供事件关联和终态收口使用。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("读取搜索任务需要同步 Session")
+        statement = select(SubscriptionSearchTask)
+        if task_id:
+            statement = statement.where(SubscriptionSearchTask.task_id == task_id)
+        elif batch_id:
+            statement = statement.where(SubscriptionSearchTask.batch_id == batch_id)
+        elif batch_ids is not None:
+            statement = statement.where(SubscriptionSearchTask.batch_id.in_(batch_ids))
+        else:
+            return []
+        return list(self._db.execute(statement).scalars().all())

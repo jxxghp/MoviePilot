@@ -39,6 +39,7 @@ def run_gateway(
     :param ws_holder: 调用方持有的单元素列表，存放当前 WebSocketApp，供 stop() 时 close 以打断 run_forever
     """
     last_seq: Optional[int] = None
+    attempt = 0
     heartbeat_thread: Optional[threading.Thread] = None
     heartbeat_stop_event: Optional[threading.Event] = None
     heartbeat_epoch = 0
@@ -148,7 +149,7 @@ def run_gateway(
 
     def on_ws_message(ws, message):
         """处理当前 WebSocket 连接收到的 QQ Gateway 消息。"""
-        nonlocal last_seq
+        nonlocal last_seq, attempt
         try:
             payload = json.loads(message)
         except json.JSONDecodeError as err:
@@ -186,9 +187,11 @@ def run_gateway(
 
         elif op == 0:  # Dispatch
             if t == "READY":
+                attempt = 0
                 session_id = d.get("session_id", "")
                 logger.info(f"[QQ Gateway:{config_name}] 连接成功 Ready, session_id={session_id}")
             elif t == "RESUMED":
+                attempt = 0
                 logger.info(f"[QQ Gateway:{config_name}] 连接成功 Session resumed")
             elif t == "C2C_MESSAGE_CREATE":
                 author = d.get("author", {})
@@ -228,7 +231,8 @@ def run_gateway(
 
         elif op == 7:  # Reconnect
             logger.info(f"[QQ Gateway:{config_name}] Reconnect requested")
-            # 当前实现不自动重连，由外层循环处理
+            # run_forever 只有退出后外层才会重连，不能仅记录服务端指令。
+            ws.close()
 
         elif op == 9:  # Invalid Session
             logger.warning(f"[QQ Gateway:{config_name}] Invalid session")
@@ -250,7 +254,6 @@ def run_gateway(
             stop_heartbeat(wait=False)
 
     reconnect_delays = [1, 2, 5, 10, 30, 60]
-    attempt = 0
 
     try:
         while not stop_event.is_set():
@@ -266,6 +269,8 @@ def run_gateway(
                     on_close=on_ws_close,
                 )
                 with heartbeat_state_lock:
+                    # 当前每次都重新 Identify，不能携带上一会话的心跳序号。
+                    last_seq = None
                     ws_holder.clear()
                     ws_holder.append(ws)
 

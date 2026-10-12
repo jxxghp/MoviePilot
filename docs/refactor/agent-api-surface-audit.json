@@ -6,7 +6,7 @@
     "provider-skill": 12,
     "stream_or_binary": 13,
     "transport_or_identity": 76,
-    "ui_presentation": 15
+    "ui_presentation": 17
   },
   "dynamic_gateway_routes": [
     {
@@ -2333,7 +2333,7 @@
   ],
   "gateway_operation_count": 231,
   "matched_gateway_http_route_count": 228,
-  "openapi_operation_count": 426,
+  "openapi_operation_count": 428,
   "operations": [
     {
       "disposition": "consolidated",
@@ -6571,6 +6571,30 @@
       "path": "/api/v1/subscribe/{subscribe_id}",
       "reason": "Executable through moviepilot_api; exact inputs are generated into MCP tools/list and SKILL.md.",
       "summary": "订阅详情",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "ui_presentation",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/subscribe/{subscription_id}/activity",
+      "reason": "Subscription activity details, background execution status and cancellation are owned by the authenticated frontend workflow; they are not yet a stable Agent gateway contract.",
+      "summary": "查看订阅业务活动",
+      "tags": [
+        "subscribe"
+      ]
+    },
+    {
+      "disposition": "ui_presentation",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/subscribe/{subscription_id}/activity/{event_id}",
+      "reason": "Subscription activity details, background execution status and cancellation are owned by the authenticated frontend workflow; they are not yet a stable Agent gateway contract.",
+      "summary": "查看订阅活动详情",
       "tags": [
         "subscribe"
       ]

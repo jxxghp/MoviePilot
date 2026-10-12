@@ -15,6 +15,7 @@ from app.application.site.observation import (
     report_site_search_outcome,
 )
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
+from app.application.subscription.activity import current_activity_run
 from app.application.subscription.sitebudget import (
     SubscriptionSiteBudget,
     SubscriptionSiteBudgetDeferral,
@@ -255,19 +256,23 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
         page: int,
     ) -> List[TorrentInfo]:
         """在订阅专属站点预算内执行一页同步搜索。"""
+        activity = current_activity_run()
         budget = getattr(self, "_subscription_site_budget", None)
         site_id = site.get("id")
         if not isinstance(budget, SubscriptionSiteBudget) or not isinstance(site_id, int):
-            return _search_site_page(
-                self,
-                site=site,
-                keyword=keyword,
-                media_type=mtype,
-                page=page,
-            )
+            if activity is None:
+                return _search_site_page(self, site=site, keyword=keyword, media_type=mtype, page=page)
+            with capture_site_search_observation() as observation:
+                result = _search_site_page(self, site=site, keyword=keyword, media_type=mtype, page=page)
+                if activity and isinstance(site_id, int):
+                    activity.site(site_id, name=str(site.get("name") or ""), candidates=len(result or []),
+                                  status=observation.outcome if observation.attempted else "received", attempted=observation.attempted)
+                return result
         try:
             claim = budget.acquire(site_id)
         except SubscriptionSiteBudgetUnavailable as error:
+            if activity:
+                activity.site(error.site_id, name=str(site.get("name") or ""), status="waiting")
             self.record_subscription_site_budget_deferred(
                 SubscriptionSiteBudgetDeferral(
                     site_id=error.site_id,
@@ -287,6 +292,8 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
                     page=page,
                 )
             except Exception as error:
+                if activity:
+                    activity.site(site_id, name=str(site.get("name") or ""), status="failed")
                 budget.record_request(site_id, 0)
                 report_site_search_outcome(
                     attempted=True,
@@ -295,6 +302,9 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
                 )
                 raise
             else:
+                if activity:
+                    activity.site(site_id, name=str(site.get("name") or ""), candidates=len(result or []),
+                                  status=observation.outcome if observation.attempted else "received", attempted=observation.attempted)
                 budget.record_request(site_id, len(result or []))
                 if observation.attempted:
                     if observation.outcome == "success":
@@ -360,6 +370,9 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
         mediainfo: Optional[MediaInfo] = None,
     ) -> Dict[str, tuple[str, float]]:
         """在共享线程池中按站点串行翻页，并把结果合并到调用方集合。"""
+        activity = current_activity_run()
+        if activity:
+            activity.plan_sites(int(site["id"]) for site in indexer_sites)
         total_num = len(indexer_sites) * len(search_pages)
         pending: SyncPending = {}
         queued_sites = iter(indexer_sites)

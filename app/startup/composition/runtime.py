@@ -163,13 +163,14 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
         SessionSubscriptionHistoryRepository,
         SessionSubscriptionRepository,
     )
+    from app.db.adapters.subscriptionactivity import TransactionalSubscriptionActivityRepository
     from app.db.adapters.subscriptionstatus import (
         SessionSubscriptionExecutionStatusRepository,
     )
     from app.db.oper.mediaserver import MediaServerOper
     from app.db.oper.message import MessageOper
     from app.db.oper.workflow import WorkflowOper
-    from app.db.session import async_session_scope, get_async_db, get_db
+    from app.db.session import SessionFactory, async_session_scope, get_async_db, get_db
     from app.db.uow import SqlAlchemyAsyncUnitOfWork, SqlAlchemyUnitOfWork
     from app.startup.composition.subscription import (
         async_rule_group_mutation_scope,
@@ -229,6 +230,7 @@ def compose_runtime(inputs: RuntimeInputs) -> RuntimeComposition:
             history_repository=SessionSubscriptionHistoryRepository,
             execution_status_repository=SessionSubscriptionExecutionStatusRepository,
             search_repository=dependencies.subscription_search,
+            activity_repository=TransactionalSubscriptionActivityRepository(SessionFactory, async_session_scope),
             transaction=SqlAlchemyAsyncUnitOfWork,
             outbox=SqlAlchemyAsyncOutboxStager,
             dispatch_store=SqlAlchemyAsyncOutboxDispatchStore(async_session_scope),

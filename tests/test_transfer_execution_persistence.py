@@ -418,6 +418,35 @@ def test_prepare_rejects_task_without_executable_plan(
         assert session.scalar(select(TransferExecutionStep)) is None
 
 
+@pytest.mark.parametrize("field", ["checkpoint_version", "checkpoint_payload", "planned_at"])
+def test_prepare_rejects_incomplete_plan_fields(execution_store, field):
+    """缺少计划冻结字段仍须拒绝执行，并准确指出计划检查点缺失。"""
+    _seed_pending(execution_store)
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        setattr(pending, field, None)
+        session.commit()
+    _, command = _repository(execution_store)
+    with pytest.raises(TransferExecutionConflictError, match="计划检查点字段不完整"):
+        command.prepare(task_id="task-1", lease_token="lease-1", intent=_intent())
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        assert pending.execution_state == "not_started"
+        assert session.scalar(select(TransferExecutionStep)) is None
+
+
+def test_snapshot_reports_inconsistent_execution_checkpoint_fields(execution_store):
+    """执行检查点列不一致的提示应与计划冻结字段缺失区分。"""
+    _seed_pending(execution_store)
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        pending.execution_payload = {"outcome": "succeeded"}
+        session.commit()
+    repository, _ = _repository(execution_store)
+    with pytest.raises(TransferExecutionConflictError, match="执行检查点字段不一致"):
+        repository.get_snapshot(task_id="task-1")
+
+
 def test_prepare_rejects_noncanonical_plan_fingerprint(execution_store):
     """步骤 intent 必须精确绑定当前持久计划的 canonical 指纹。"""
     _seed_pending(execution_store)
@@ -607,11 +636,24 @@ def test_success_path_persists_steps_and_execution_checkpoint(execution_store):
 
 
 def test_provider_predecessor_remains_owned_after_host_plan_promotion(
-        execution_store,
+        execution_store, monkeypatch,
 ):
-    """provider 回退升级宿主计划后，序号零证据仍应被严格重建并纳入 checkpoint。"""
-    task_id = "task-1"
-    planning_input = _planning_input(task_id)
+    """真实准入冻结 provider 后可执行，回退升级宿主计划仍保留序号零证据。"""
+    admission_repository = TransactionalTransferAdmissionRepository(execution_store)
+    planning_input = _planning_input("task-1")
+    admitted = admission_repository.admit(
+        storage="local",
+        src_path="/task-1.mkv",
+        planning_input=planning_input,
+    )
+    task_id = admitted.task_id
+    claimed = admission_repository.claim_task(
+        task_id=task_id,
+        owner_id="provider-worker",
+        lease_seconds=3600,
+    )
+    assert claimed is not None
+    lease_token = claimed.lease_token
     provider = TransferProviderReference(
         plugin_id="provider-a",
         plugin_name="Provider A",
@@ -637,13 +679,18 @@ def test_provider_predecessor_remains_owned_after_host_plan_promotion(
         legacy_transfer_providers=(provider,),
         provider_invocation=invocation,
     )
-    _seed_pending(execution_store)
+    monkeypatch.setattr(admission_repository, "_now", lambda: "2026-08-27 09:00:00")
+    admission_repository.checkpoint_plan(
+        task_id=task_id,
+        lease_token=lease_token,
+        input_fingerprint=planning_input.fingerprint,
+        checkpoint=provider_checkpoint,
+    )
     with execution_store() as session:
         pending = session.scalar(select(TransferPending))
         assert pending is not None
-        pending.state = "provider_pending"
-        pending.checkpoint_payload = provider_checkpoint.to_payload()
-        session.commit()
+        assert pending.state == "provider_pending"
+        assert pending.planned_at == "2026-08-27 09:00:00"
     _, command = _repository(execution_store)
     provider_intent = TransferStepIntent.create(
         task_id=task_id,
@@ -660,30 +707,42 @@ def test_provider_predecessor_remains_owned_after_host_plan_promotion(
     )
     prepared = command.prepare(
         task_id=task_id,
-        lease_token="lease-1",
+        lease_token=lease_token,
         intent=provider_intent,
-    )
-    started = command.begin(
-        task_id=task_id,
-        lease_token="lease-1",
-        operation_id=prepared.operation_id,
-    )
-    provider_succeeded = command.complete(
-        task_id=task_id,
-        lease_token="lease-1",
-        step=started,
-        result=TransferStepResult(payload={"handled": False}),
-    )
-    promoted_checkpoint = replace(
-        _plan_checkpoint(task_id),
-        pre_execution_cleanup_completed=True,
     )
     with execution_store() as session:
         pending = session.scalar(select(TransferPending))
         assert pending is not None
-        pending.state = "planned"
-        pending.checkpoint_payload = promoted_checkpoint.to_payload()
-        session.commit()
+        assert pending.execution_state == "running"
+        assert pending.state == "provider_pending"
+        assert session.scalar(select(TransferExecutionStep)).state == "prepared"
+    started = command.begin(
+        task_id=task_id,
+        lease_token=lease_token,
+        operation_id=prepared.operation_id,
+    )
+    provider_succeeded = command.complete(
+        task_id=task_id,
+        lease_token=lease_token,
+        step=started,
+        result=TransferStepResult(payload={"handled": False}),
+    )
+    promoted_checkpoint = replace(
+        _plan_checkpoint("task-1"),
+        pre_execution_cleanup_completed=True,
+    )
+    monkeypatch.setattr(admission_repository, "_now", lambda: "2026-08-27 09:01:00")
+    admission_repository.checkpoint_plan(
+        task_id=task_id,
+        lease_token=lease_token,
+        input_fingerprint=planning_input.fingerprint,
+        checkpoint=promoted_checkpoint,
+    )
+    with execution_store() as session:
+        pending = session.scalar(select(TransferPending))
+        assert pending is not None
+        assert pending.state == "planned"
+        assert pending.planned_at == "2026-08-27 09:01:00"
     promoted_fingerprint = build_transfer_checkpoint_fingerprint(
         promoted_checkpoint.to_payload()
     )
@@ -697,17 +756,17 @@ def test_provider_predecessor_remains_owned_after_host_plan_promotion(
     )
     host_prepared = command.prepare(
         task_id=task_id,
-        lease_token="lease-1",
+        lease_token=lease_token,
         intent=host_intent,
     )
     host_started = command.begin(
         task_id=task_id,
-        lease_token="lease-1",
+        lease_token=lease_token,
         operation_id=host_prepared.operation_id,
     )
     host_succeeded = command.complete(
         task_id=task_id,
-        lease_token="lease-1",
+        lease_token=lease_token,
         step=host_started,
         result=TransferStepResult(payload={"dest_exists": True}),
     )
@@ -720,7 +779,7 @@ def test_provider_predecessor_remains_owned_after_host_plan_promotion(
     )
     snapshot = command.checkpoint(
         task_id=task_id,
-        lease_token="lease-1",
+        lease_token=lease_token,
         checkpoint=execution_checkpoint,
     )
     assert snapshot.state is TransferExecutionState.SETTLING

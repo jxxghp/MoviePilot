@@ -157,6 +157,65 @@ def _cache_valid_torrent_content(
     return folder_name, file_list
 
 
+def _text_filter_failure(torrent: TorrentInfo, params: Dict[str, Any], content: str) -> Optional[Tuple[str, str]]:
+    """按原有顺序检查包含、排除、质量等正则，并返回业务原因和运行诊断。"""
+    for key, label, subject, expected in (
+        ("include", "包含", content, True), ("exclude", "排除", content, False),
+        ("quality", "质量", torrent.title, True), ("resolution", "分辨率", torrent.title, True),
+        ("effect", "特效", torrent.title, True),
+    ):
+        pattern = params.get(key)
+        if pattern and _filter_pattern_search(pattern, subject) != expected:
+            diagnostic = f"{subject} {'不匹配' if expected else '匹配'}{label}规则 {pattern}"
+            return f"不符合{label}条件：{pattern}", diagnostic
+    return None
+
+
+def _audio_minimum_failure(specs: Dict[str, Any], params: Dict[str, Any]) -> Optional[Tuple[str, Any]]:
+    """检查音乐最低技术参数，不把缺失的参数当作达到要求。"""
+    for key, spec_key, label in (
+        ("min_bitrate", "bitrate", "码率"), ("min_bit_depth", "bit_depth", "位深"),
+        ("min_sample_rate", "sample_rate", "采样率"),
+    ):
+        minimum, actual = params.get(key), specs.get(spec_key)
+        if minimum is not None and (actual is None or int(actual) < int(minimum)):
+            return label, minimum
+    return None
+
+
+def _audio_filter_failure(torrent: TorrentInfo, params: Dict[str, Any], content: str) -> Optional[Tuple[str, str]]:
+    """从标题、副标题和标签统一解析音质，再解释第一个未满足的音乐条件。"""
+    filters = {key: params.get(key) for key in ("audio_quality", "audio_format", "min_bitrate", "min_bit_depth", "min_sample_rate")
+               if params.get(key) not in (None, "")}
+    if not filters:
+        return None
+    specs = parse_audio_quality(content)
+    tier = audio_quality_tier(**specs)
+    quality = filters.get("audio_quality")
+    pattern = "hires|lossless" if str(quality).casefold() == "lossless" else quality
+    if quality and (not tier or not _filter_pattern_search(pattern, tier)):
+        return f"不符合音乐音质条件：{quality}", f"{torrent.title} 不匹配音乐音质规则 {quality}"
+    audio_format = filters.get("audio_format")
+    normalized = normalize_audio_format(specs.get("audio_format"))
+    if audio_format and (not normalized or not _filter_pattern_search(audio_format, normalized)):
+        return f"不符合音频格式条件：{audio_format}", f"{torrent.title} 不匹配音频格式规则 {audio_format}"
+    minimum = _audio_minimum_failure(specs, filters)
+    if minimum:
+        label, value = minimum
+        return f"{label}不足，要求至少 {value}", f"{torrent.title} 不满足最低{label} {value}"
+    return None
+
+
+def _size_filter_failure(torrent: TorrentInfo, size_range: Optional[str]) -> Optional[str]:
+    """解释大小范围判断，继续沿用原有 MB 单位和未知规则放行语义。"""
+    if not size_range:
+        return None
+    rule, minimum, maximum = _parse_filter_size_range(size_range)
+    outside = (rule == "between" and maximum is not None and (torrent.size < minimum or torrent.size > maximum)) \
+        or (rule == "gte" and torrent.size < minimum) or (rule == "lte" and maximum is not None and torrent.size > maximum)
+    return f"资源大小不符合条件：{size_range}" if outside else None
+
+
 class TorrentHelper:
     """
     种子帮助类
@@ -792,101 +851,29 @@ class TorrentHelper:
     @staticmethod
     def filter_torrent(torrent_info: TorrentInfo,
                        filter_params: Dict[str, Any]) -> bool:
+        """检查种子是否匹配订阅条件，保留既有布尔 API 和运行日志行为。"""
+        return TorrentHelper.filter_torrent_reason(torrent_info, filter_params, log_failure=True) is None
+
+    @staticmethod
+    def filter_torrent_reason(torrent_info: TorrentInfo,
+                              filter_params: Dict[str, Any], *, log_failure: bool = False) -> Optional[str]:
         """
-        检查种子是否匹配订阅过滤规则
+        返回首个未满足的订阅条件；布尔筛选复用同一判断，活动不重复写运行日志。
         """
 
         if not filter_params:
-            return True
-
-        # 匹配内容
-        content = (f"{torrent_info.title} "
-                   f"{torrent_info.description} "
-                   f"{' '.join(torrent_info.labels or [])} "
-                   f"{torrent_info.volume_factor}")
-
-        # 包含
-        include = filter_params.get("include")
-        if include:
-            if not _filter_pattern_search(include, content):
-                logger.info(f"{content} 不匹配包含规则 {include}")
-                return False
-        # 排除
-        exclude = filter_params.get("exclude")
-        if exclude:
-            if _filter_pattern_search(exclude, content):
-                logger.info(f"{content} 匹配排除规则 {exclude}")
-                return False
-        # 质量
-        quality = filter_params.get("quality")
-        if quality:
-            if not _filter_pattern_search(quality, torrent_info.title):
-                logger.info(f"{torrent_info.title} 不匹配质量规则 {quality}")
-                return False
-        # 分辨率
-        resolution = filter_params.get("resolution")
-        if resolution:
-            if not _filter_pattern_search(resolution, torrent_info.title):
-                logger.info(f"{torrent_info.title} 不匹配分辨率规则 {resolution}")
-                return False
-        # 特效
-        effect = filter_params.get("effect")
-        if effect:
-            if not _filter_pattern_search(effect, torrent_info.title):
-                logger.info(f"{torrent_info.title} 不匹配特效规则 {effect}")
-                return False
-
-        # 音乐音质。技术参数从标题、副标题和标签统一解析，避免只靠用户正则筛选。
-        audio_filters = {
-            key: filter_params.get(key)
-            for key in ("audio_quality", "audio_format", "min_bitrate", "min_bit_depth", "min_sample_rate")
-            if filter_params.get(key) not in (None, "")
-        }
-        if audio_filters:
-            specs = parse_audio_quality(content)
-            tier = audio_quality_tier(**specs)
-            audio_quality = audio_filters.get("audio_quality")
-            quality_pattern = "hires|lossless" \
-                if str(audio_quality).casefold() == "lossless" else audio_quality
-            if audio_quality and (not tier or not _filter_pattern_search(quality_pattern, tier)):
-                logger.info(f"{torrent_info.title} 不匹配音乐音质规则 {audio_quality}")
-                return False
-            audio_format = audio_filters.get("audio_format")
-            normalized_format = normalize_audio_format(specs.get("audio_format"))
-            if audio_format and (
-                    not normalized_format or not _filter_pattern_search(audio_format, normalized_format)
-            ):
-                logger.info(f"{torrent_info.title} 不匹配音频格式规则 {audio_format}")
-                return False
-            for key, spec_key, label in (
-                ("min_bitrate", "bitrate", "码率"),
-                ("min_bit_depth", "bit_depth", "位深"),
-                ("min_sample_rate", "sample_rate", "采样率"),
-            ):
-                minimum = audio_filters.get(key)
-                actual = specs.get(spec_key)
-                if minimum is not None and (actual is None or int(actual) < int(minimum)):
-                    logger.info(f"{torrent_info.title} 不满足最低{label} {minimum}")
-                    return False
-
-        # 大小
-        size_range = filter_params.get("size")
-        if size_range:
-            size_rule, size_min, size_max = _parse_filter_size_range(size_range)
-            if size_rule == "between":
-                # 区间
-                if torrent_info.size < size_min or torrent_info.size > size_max:
-                    return False
-            elif size_rule == "gte":
-                # 大于
-                if torrent_info.size < size_min:
-                    return False
-            elif size_rule == "lte":
-                # 小于
-                if torrent_info.size > size_max:
-                    return False
-
-        return True
+            return None
+        content = (f"{torrent_info.title} {torrent_info.description} "
+                   f"{' '.join(torrent_info.labels or [])} {torrent_info.volume_factor}")
+        failure = _text_filter_failure(torrent_info, filter_params, content)
+        if failure is None:
+            failure = _audio_filter_failure(torrent_info, filter_params, content)
+        if failure is not None:
+            reason, diagnostic = failure
+            if log_failure:
+                logger.info(diagnostic)
+            return reason
+        return _size_filter_failure(torrent_info, filter_params.get("size"))
 
     @staticmethod
     def match_season_episodes(torrent: TorrentInfo, meta: MetaBase, season_episodes: Dict[int, list]) -> bool:

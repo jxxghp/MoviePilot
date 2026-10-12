@@ -17,6 +17,7 @@ from app.application.search.session import (
     torrent_snapshot,
 )
 from app.application.site.observation import SiteSearchObservation, capture_site_search_observation
+from app.application.subscription.activity import current_activity_run
 from app.application.subscription.execution import SubscriptionExecutionContext, SubscriptionSiteSearchFailed
 from app.application.subscription.sitebudget import (
     SubscriptionSearchCancelled,
@@ -78,9 +79,12 @@ class SearchSources:
 
     def __init__(self, owner: ChainBase, plan: MediaSearchPlan) -> None:
         """固定本轮站点与关键词，避免恢复分页时重新展开出重复查询。"""
+        self.activity = current_activity_run()
         self.owner = cast(_SearchOwnerBase, owner)
         self.media = cast(MediaInfo, plan.mediainfo)
         self.sites = {str(site["id"]): site for site in self.owner._sync_indexers(plan.sites)}
+        if self.activity:
+            self.activity.plan_sites(int(site_id) for site_id in self.sites)
         self.season_episodes, self.keywords = self.owner._prepare_params(
             mediainfo=plan.mediainfo, keyword=plan.keyword, no_exists=plan.no_exists)
         if plan.area == "imdbid" and plan.mediainfo.imdb_id:
@@ -122,6 +126,8 @@ class SearchSources:
         media_type = None if self.media.type == MediaType.UNKNOWN else self.media.type
         if query["site"] == "plugin":
             items = self.owner.search_plugin_torrents(keyword=query["keyword"], mtype=media_type) or []
+            if self.activity:
+                self.activity.discover(len(items))
             return ScanPage(items, SiteSearchObservation(True, "success", raw_count=len(items), has_more=False))
         site = self.sites[query["site"]]
         claim = None
@@ -130,6 +136,8 @@ class SearchSources:
                 claim = budget.acquire(int(query["site"]),
                                        minimum_interval=max(AUTOMATIC_REQUEST_INTERVAL, _site_request_interval(site)))
             except SubscriptionSiteBudgetUnavailable as error:
+                if self.activity:
+                    self.activity.site(error.site_id, name=str(site.get("name") or ""), status="waiting")
                 return ScanPage([], SiteSearchObservation(error=str(error)), error.retry_at, error.wait_reason)
         else:
             _wait_for_site_request(site)
@@ -137,6 +145,8 @@ class SearchSources:
             try:
                 items = self.owner.search_site_torrents(site=site, keyword=query["keyword"],
                                                        mtype=media_type, page=page) or []
+                if self.activity:
+                    self.activity.site(int(query["site"]), name=str(site.get("name") or ""), candidates=len(items), status=observation.outcome, attempted=observation.attempted)
                 if observation.outcome == "deferred":
                     retry_at = (datetime.now(timezone.utc) + timedelta(seconds=AUTOMATIC_REQUEST_INTERVAL)).isoformat(timespec="seconds")
                     return ScanPage(items, observation, retry_at, "cooldown")
@@ -149,6 +159,8 @@ class SearchSources:
                 observation.attempted = True
                 observation.outcome = "error"
                 observation.error = str(error)
+                if self.activity:
+                    self.activity.site(int(query["site"]), name=str(site.get("name") or ""), status="failed")
                 return ScanPage([], observation)
             finally:
                 if claim and budget:

@@ -24,6 +24,7 @@ from app.application.outbox import AsyncOutboxDispatchStore, AsyncOutboxStager
 from app.application.rules import AsyncRuleGroupMutationService, SyncRuleGroupMutationService
 from app.application.site.contract import SiteRepository
 from app.application.site.mutation import SyncSiteReferenceMutationService
+from app.application.subscription.activity import SubscriptionActivityRepository
 from app.application.subscription.contract import (
     SubscriptionHistoryStagingPort,
     SubscriptionStagingPort,
@@ -242,6 +243,7 @@ class SubscriptionRuntime:
     site_reference_mutation_scope: Callable[[], AbstractContextManager[SyncSiteReferenceMutationService]]
     execution_status_repository: SubscriptionExecutionStatusRepositoryFactory | None = None
     search_repository: object | None = None
+    activity_repository: SubscriptionActivityRepository | None = None
 
 
 @dataclass(frozen=True, slots=True)
