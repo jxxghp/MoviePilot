@@ -726,12 +726,12 @@ def test_planning_writes_require_current_unexpired_lease(
     assert planned.attempt_count == 2
 
 
-def test_provider_checkpoint_sets_planned_time_only_after_host_plan(
+def test_provider_checkpoint_sets_planned_time_and_host_plan_refreshes_it(
         repository_factory,
         lease_clock,
         business_clock,
 ) -> None:
-    """provider 快照不是规划完成，planned_at 只记录首次宿主完整计划。"""
+    """provider 阶段提交冻结时间，宿主计划刷新该时间，幂等重试不改动。"""
     repository = repository_factory()
     path = "/downloads/provider-plan.mkv"
     planning_input = _planning_input(path)
@@ -756,7 +756,7 @@ def test_provider_checkpoint_sets_planned_time_only_after_host_plan(
         checkpoint=_provider_checkpoint(planning_input),
     )
     provider_snapshot = _pending_snapshot(repository, admitted.task_id)
-    assert provider_snapshot["planned_at"] is None
+    assert provider_snapshot["planned_at"] == "2026-08-27 18:02:00"
     assert provider_snapshot["updated_at"] == "2026-08-27 18:02:00"
 
     business_clock["now"] = "2026-08-27 18:03:00"

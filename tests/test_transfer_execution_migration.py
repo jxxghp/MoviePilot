@@ -840,7 +840,7 @@ def test_migrated_legacy_reviews_are_discoverable_resolvable_and_retryable(
             assert pending.state in {"accepted", "planned"}
         with pytest.raises(
                 TransferExecutionConflictError,
-                match="整理任务记录不完整，请重新识别文件后再整理|整理任务尚未准备完成，请稍后再试",
+                match="整理任务计划检查点字段不完整，请重新识别文件后再整理|整理任务尚未准备完成，请稍后再试",
         ):
             command.prepare(
                 task_id=task_id,
