@@ -1343,10 +1343,10 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         验证 obtain_images 参数
         :param mediainfo: 媒体信息
-        :return: None 表示不处理，MediaInfo 表示继续处理
+        :return: None 表示继续查询图片，MediaInfo 表示跳过并原样返回
         """
         if mediainfo.media_source != "themoviedb" and get_runtime_setting("RECOGNIZE_SOURCE") != "themoviedb":
-            return None
+            return mediainfo
         if not mediainfo.tmdb_id:
             return mediainfo
         if mediainfo.logo_path and mediainfo.poster_path and mediainfo.backdrop_path:
