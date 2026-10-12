@@ -1,5 +1,6 @@
 """手动下载后，订阅检查应把部分入库事实同步到卡片进度。"""
 
+from contextlib import contextmanager
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -8,8 +9,15 @@ import pytest
 
 import app.chain.subscribe.refresh as subscribe_refresh
 from app.application.subscription.contract import SubscriptionSnapshot, build_subscribe_meta
+from app.application.subscription.mutation import SyncSubscriptionMutationService
 from app.chain.download import DownloadChain
 from app.chain.subscribe.facade import SubscribeChain
+from app.db.adapters.outbox import SqlAlchemyOutboxDispatchStore, SqlAlchemyOutboxStager
+from app.db.adapters.subscription import SessionSubscriptionRepository
+from app.db.models.outbox import OutboxMessage
+from app.db.models.subscribe import Subscribe
+from app.db.session import SessionFactory
+from app.db.uow import SqlAlchemyUnitOfWork
 from app.domain.context import MediaInfo
 from app.schemas.mediaserver import ExistMediaInfo
 from app.schemas.types import MediaSource, MediaType
@@ -125,3 +133,51 @@ def test_complete_library_keeps_completion_path(progress_scope):
     progress_scope.chain.finish_subscribe_or_not.assert_called_once()
     assert progress_scope.chain.finish_subscribe_or_not.call_args.kwargs["force"]
     progress_scope.chain._SubscribeChain__apply_subscribe_update.assert_not_called()
+
+
+def test_partial_progress_persists_without_overwriting_extra_fields(progress_scope, db):
+    """真实订阅写入只更新缺失集数，保留数据库中较新的附加字段。"""
+    db.watermark(Subscribe, OutboxMessage)
+    row = db.add(Subscribe(
+        name="Doctor X", type=MediaType.TV.value,
+        media_source=MediaSource.TMDB.value, media_id="6966", season=1,
+        total_episode=12, lack_episode=11, note=[1, 99],
+        episode_priority={"1": 80, "99": 90}, current_priority=80,
+        sites=[1, 2], filter_groups=["WEB-DL"], state="R", best_version=0,
+        last_update="2026-10-01 12:00:00", manual_total_episode=1,
+    ))
+    progress_scope.subscribe = replace(progress_scope.subscribe, id=row.id, manual_total_episode=1)
+    published = []
+
+    @contextmanager
+    def mutation_scope():
+        """用真实短事务和 outbox 保存进度并捕获修改事件。"""
+        with SessionFactory() as session:
+            yield SyncSubscriptionMutationService(
+                repository=SessionSubscriptionRepository(session),
+                unit_of_work=SqlAlchemyUnitOfWork(session),
+                outbox=SqlAlchemyOutboxStager(session),
+                dispatch_store=SqlAlchemyOutboxDispatchStore(SessionFactory),
+                publish_modified=published.append,
+            )
+
+    progress_scope.chain.sync_subscription_mutation_scope = mutation_scope
+    progress_scope.chain._SubscribeChain__apply_subscribe_update = (
+        SubscribeChain._SubscribeChain__apply_subscribe_update.__get__(progress_scope.chain)
+    )
+
+    completed, _missing = _check(progress_scope)
+
+    assert not completed
+    db.session.expire_all()
+    stored = db.session.get(Subscribe, row.id)
+    assert stored.lack_episode == 10
+    assert stored.note == [1, 99]
+    assert stored.episode_priority == {"1": 80, "99": 90}
+    assert stored.current_priority == 80
+    assert stored.sites == [1, 2]
+    assert stored.filter_groups == ["WEB-DL"]
+    assert stored.last_update == "2026-10-01 12:00:00"
+    assert len(published) == 1
+    assert published[0]["subscribe_info"]["lack_episode"] == 10
+    assert published[0]["subscribe_info"]["note"] == [1, 99]
