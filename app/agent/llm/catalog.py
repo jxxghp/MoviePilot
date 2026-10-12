@@ -357,6 +357,14 @@ class _ProviderCatalog:
                 api_key_hint="填写 Atlas Cloud API Key。",
                 description="Atlas Cloud 聚合模型平台，一个 Key 覆盖 DeepSeek、智谱、月之暗面、通义千问与 MiniMax 等开源权重模型。",
             ),
+            openai_provider(
+                provider_id="api-route",
+                name="API Route",
+                default_base_url="https://global.api-route.com/v1",
+                sort_order=56,
+                api_key_hint="填写 API Route API Key，可在 https://api-route.com 获取。",
+                description="API Route OpenAI-compatible 聚合模型平台，支持刷新账户可用模型目录。",
+            ),
             ProviderSpec(
                 id="github-copilot",
                 name="GitHub Copilot",
