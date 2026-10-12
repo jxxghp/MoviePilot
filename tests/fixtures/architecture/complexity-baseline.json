@@ -97,7 +97,6 @@
       "app/modules/filemanager/transhandler.py:TransHandler.execute_transfer_plan": 21,
       "app/modules/filter/__init__.py:FilterModule.__match_rule": 24,
       "app/modules/imdb/__init__.py:ImdbModule._to_media_info": 17,
-      "app/modules/indexer/parser/nexus_php.py:NexusPhpSiteUserInfo._parse_user_torrent_seeding_info": 16,
       "app/modules/indexer/spider/__init__.py:SiteSpider.__get_search_url": 24,
       "app/modules/jellyfin/jellyfin.py:Jellyfin.get_tv_episodes": 18,
       "app/modules/qbittorrent/__init__.py:QbittorrentModule.download": 24,

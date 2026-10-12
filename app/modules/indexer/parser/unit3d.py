@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import re
 from typing import Optional
+from urllib.parse import urlsplit
 
 from lxml import etree
 
@@ -31,6 +32,10 @@ class Unit3dSiteUserInfo(SiteParserBase):
                     self._user_detail_page = f"/users/{self.username}"
 
             tmps = html.xpath('//a[contains(@href, "bonus/earnings")]')
+            if not tmps and self.username:
+                tmps = html.xpath('//a[contains(@href, "/users/") and contains(@href, "/bonus/")]')
+                tmps = [link for link in tmps
+                        if urlsplit(link.get("href")).path.startswith(f"/users/{self.username}/bonus/")]
             if tmps:
                 bonus_text = tmps[0].xpath("string(.)")
                 bonus_match = re.search(r"([\d,.]+)", bonus_text)

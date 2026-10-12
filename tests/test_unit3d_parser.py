@@ -34,3 +34,20 @@ def test_unit3d_user_name_is_used_as_valid_userid() -> None:
     assert parser._user_detail_page == "/users/monica"
     assert parser._torrent_seeding_page.startswith("/users/monica/active?")
     assert parser.bonus == 1234.5
+
+
+def test_unit3d_user_bonus_transaction_link():
+    """魔力值交易入口仅解析当前用户，忽略其他用户链接。"""
+    parser = _build_parser()
+    parser._parse_user_base_info('''<a href="/users/monica/settings">设置</a>
+        <a href="/users/other/bonus/transactions/create">999</a>
+        <a href="https://monikadesign.uk/users/monica/bonus/transactions/create">33,035,774</a>''')
+    assert parser.bonus == 33035774
+
+
+def test_unit3d_earnings_link_has_priority():
+    """保留标准 earnings 入口的解析优先级。"""
+    parser = _build_parser()
+    parser._parse_user_base_info(USER_BASE_HTML +
+                                '<a href="/users/monica/bonus/transactions/create">999</a>')
+    assert parser.bonus == 1234.5

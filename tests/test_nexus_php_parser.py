@@ -305,3 +305,137 @@ def test_nexus_php_seeding_list_replaces_profile_fallback_without_double_countin
     assert parser.seeding == 1
     assert parser.seeding_size == 500 * 1024**3
     assert parser.seeding_info == [[7, 500 * 1024**3]]
+
+
+def test_custom_seeding_endpoints_and_pterclub_navigation_headers():
+    """已确认的定制站点直接使用真实入口，猫站请求头不影响其他站点。"""
+    endpoints = {
+        "pterclub.net": "getusertorrentlist.php?userid=123&type=seeding",
+        "pterclub.com": "getusertorrentlist.php?userid=123&type=seeding",
+        "keepfrds.com": "torrents.php?option-torrents=3&userid=123",
+        "pt.sjtu.edu.cn": "viewtorrentsdetail.php?id=123",
+    }
+    for domain, endpoint in endpoints.items():
+        parser = _build_parser()
+        parser._site_domain = domain
+        parser._parse_site_page('<a href="userdetails.php?id=123">user</a>')
+        assert parser._torrent_seeding_page == endpoint
+        if domain.startswith("pterclub"):
+            assert parser._torrent_seeding_headers["Accept-Language"]
+            assert parser._torrent_seeding_headers["Accept"].startswith("text/html")
+            assert parser._torrent_seeding_headers["Sec-Fetch-Dest"] == "document"
+            assert parser._torrent_seeding_headers["Sec-Fetch-Mode"] == "navigate"
+            assert parser._torrent_seeding_headers["Sec-Fetch-Site"] == "same-origin"
+            assert parser._user_detail_headers == parser._torrent_seeding_headers
+        else:
+            assert parser._torrent_seeding_headers is None
+
+
+def test_keepfrds_unmarked_columns_preserve_profile_count(monkeypatch):
+    """朋友列表含做种时长，汇总数量与可见明细不一致时保留汇总和真实明细体积。"""
+    parser = _build_parser()
+    parser._site_domain = "keepfrds.com"
+    parser._parse_site_page('<a href="userdetails.php?id=123">user</a>')
+    parser._parse_user_detail_info('<table><tr><td>当前做种</td><td><a>7</a></td></tr></table>')
+    page = '''<table class="torrents"><tr><td>类型</td><td>标题</td><td>魔力</td>
+        <td>时长</td><td>体积</td><td>人数</td></tr>
+        <tr><td>电影</td><td><a>test</a></td><td>123</td><td>1月7天</td>
+        <td>7.29GiB</td><td>4</td></tr></table>'''
+    monkeypatch.setattr(parser, "_get_page_content", lambda **_kwargs: page)
+    parser._parse_seeding_pages()
+    assert parser.seeding == 7
+    assert parser.seeding_size == parser.num_filesize("7.29GiB")
+    assert parser.seeding_info == [[4, parser.num_filesize("7.29GiB")]]
+
+
+def test_pterclub_profile_size_overrides_partial_paginated_list(monkeypatch):
+    """猫站汇总体积优先于分页明细累加，翻页继续沿用导航头且不重复汇总。"""
+    parser = _build_parser()
+    parser._site_domain = "pterclub.net"
+    parser._parse_site_page('<a href="userdetails.php?id=123">user</a>')
+    parser._parse_user_detail_info('<table><tr><td>做种大小</td><td>5.522 TB</td></tr></table>')
+    page = '''<h1>正在做种的种子 (共 470 个)</h1><table class="torrents">
+        <tr><td>类型</td><td>标题</td><td>时间</td><td>大小</td><td>人数</td></tr>
+        <tr><td>电影</td><td><a>test</a></td><td>昨天</td><td>1GB</td><td>4</td></tr></table>'''
+    calls = []
+
+    def get_page(**kwargs):
+        """回放分页内容并记录请求参数。"""
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return page + '<a href="getusertorrentlist.php?page=1">下一页</a>'
+        return page
+
+    monkeypatch.setattr(parser, "_get_page_content", get_page)
+    parser._parse_seeding_pages()
+    assert parser.seeding == 470
+    assert parser.seeding_size == parser.num_filesize("5.522 TB")
+    assert len(parser.seeding_info) == 2
+    assert len(calls) == 2
+    assert calls[1]["headers"]["Sec-Fetch-Mode"] == "navigate"
+    assert "userid=123" in calls[1]["url"]
+
+
+def test_putao_summary_only_does_not_follow_global_torrent_list(monkeypatch):
+    """葡萄只取明确做种计数，不推算体积或扫描全站列表。"""
+    parser = _build_parser()
+    parser._site_domain = "pt.sjtu.edu.cn"
+    parser._parse_site_page('<a href="userdetails.php?id=123">user</a>')
+    calls = []
+
+    def get_page(**kwargs):
+        """回放葡萄异步汇总响应。"""
+        calls.append(kwargs)
+        return '<div>当前做种 21 完成种子数 2 未完成种子数 138</div>'
+
+    monkeypatch.setattr(parser, "_get_page_content", get_page)
+    parser._parse_seeding_pages()
+    assert len(calls) == 1
+    assert calls[0]["url"].endswith("viewtorrentsdetail.php?id=123")
+    assert parser.seeding == 21
+    assert parser.seeding_size == 0
+    assert parser.seeding_info == []
+
+
+def test_nexus_empty_seeding_response_logs_warning(monkeypatch):
+    """接口失败为空时应提示可诊断警告，并保留详情页汇总。"""
+    parser = _build_parser()
+    parser.userid = "123"
+    parser.seeding = 7
+    parser.seeding_size = 1024
+    warnings = []
+    monkeypatch.setattr("app.modules.indexer.parser.nexus_php.logger.warning", warnings.append)
+    monkeypatch.setattr(parser, "_get_page_content", lambda **_kwargs: "")
+    parser._parse_seeding_pages()
+    assert parser.seeding == 7
+    assert parser.seeding_size == 1024
+    assert any("未返回内容" in warning for warning in warnings)
+
+
+def test_pterclub_headers_reach_http_transport_and_failures_are_visible(monkeypatch):
+    """导航头实际传递给统一 HTTP 客户端，404/403 警告不暴露 Cookie 或用户标识。"""
+    from types import SimpleNamespace
+
+    parser = _build_parser()
+    parser._site_domain = "pterclub.net"
+    parser._parse_site_page('<a href="userdetails.php?id=123">user</a>')
+    calls, warnings = [], []
+
+    def get_response(**kwargs):
+        """回放 HTTP 失败响应，验证传输层参数。"""
+        calls.append(kwargs)
+        return SimpleNamespace(status_code=404, text="File not found.")
+
+    monkeypatch.setattr(parser._request_utils, "get_res", get_response)
+    monkeypatch.setattr("app.modules.indexer.parser.logger.warning", warnings.append)
+    assert parser._get_page_content(url="https://pterclub.net/getusertorrentlist.php?userid=123",
+                                    headers=parser._torrent_seeding_headers) == ""
+    assert calls[0]["headers"]["Sec-Fetch-Site"] == "same-origin"
+    assert any("HTTP 404" in warning for warning in warnings)
+    assert all("userid" not in warning for warning in warnings)
+    monkeypatch.setattr(parser._request_utils, "get_res",
+                        lambda **_kwargs: SimpleNamespace(status_code=403, text="Forbidden"))
+    monkeypatch.setattr("app.modules.indexer.parser.RequestUtils.get_decoded_html_content",
+                        lambda *_args: "Forbidden")
+    parser._get_page_content(url="https://pterclub.net/", headers=parser._torrent_seeding_headers)
+    assert any("HTTP 403" in warning for warning in warnings)

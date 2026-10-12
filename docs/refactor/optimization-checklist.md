@@ -26,6 +26,8 @@ R2 原复杂度 v1/v2 实际使用源码行跨度，只覆盖 API、Application�
 范围、初始基线与后续建议见 [代码门禁说明](../code-quality.md)。
 2026-09-30 音乐真实样本回归统一了文件名曲序入口，删除 `MetaMusic.apply_path_context`
 重复的曲序回填分支，C901 从 16 降至阈值 15 以内，已同步固化低水位。
+2026-10-12 站点用户数据兼容修复将 NexusPHP 做种列探测与翻页解析拆为独立方法，
+`_parse_user_torrent_seeding_info` 的 C901 从 16 降至阈值 15 以内，基线仅移除此超限项。
 `concurrency.py` 扫描完整宿主源码，按 canonical import/alias、TaskGroup、可证明的
 loop/executor 来源和词法 owner 聚合数量。新增 owner、数量增长以及静态质量事实下降后
 未刷新低水位都会阻断 CI；覆盖率只要求 Application 与 Domain 达到固定 80%。

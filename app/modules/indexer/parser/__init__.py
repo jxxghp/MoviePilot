@@ -417,6 +417,11 @@ class SiteParserBase(metaclass=ABCMeta):
                 proxies=proxies,
                 headers=req_headers,
             )
+        if res is None:
+            logger.warning(f"{self._site_name} 用户数据请求未收到响应")
+        elif res.status_code != 200:
+            # 不输出带用户标识或令牌的 URL，保留状态码用于诊断入口失效和访问限制。
+            logger.warning(f"{self._site_name} 用户数据请求返回 HTTP {res.status_code}")
         if res is not None and res.status_code in (200, 500, 403):
             if req_headers and "application/json" in str(req_headers.get("Accept")):
                 try:

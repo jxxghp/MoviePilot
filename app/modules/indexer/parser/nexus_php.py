@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import re
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from lxml import etree
@@ -18,8 +18,11 @@ class NexusPhpSiteUserInfo(SiteParserBase):
     """
 
     schema = SiteSchema.NexusPhp
+    _summary_seeding: Optional[int] = None
+    _summary_seeding_size: Optional[int] = None
 
     def _parse_site_page(self, html_text: str):
+        """识别用户详情入口，并为定制站点选择已知的做种接口。"""
         html_text = self._prepare_html_text(html_text)
 
         # NexusPHP v1.10+ 使用 UUID 标识用户，详情链接参数为 uuid
@@ -55,6 +58,24 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         """
         if not self._has_valid_userid():
             return ""
+        site_domain = self._site_domain.lower().removeprefix("www.")
+        if site_domain in {"pterclub.net", "pterclub.com"}:
+            # 猫站的列表入口要求完整的浏览器导航请求头，仅作用于该站用户数据。
+            headers = {
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+                "Sec-Fetch-Dest": "document",
+                "Sec-Fetch-Mode": "navigate",
+                "Sec-Fetch-Site": "same-origin",
+            }
+            # 基类的历史字段仅推断为 None，保持现有字典请求头运行时契约。
+            self._torrent_seeding_headers = headers  # type: ignore[assignment]
+            self._user_detail_headers = dict(headers)  # type: ignore[assignment]
+            return f"getusertorrentlist.php?userid={self.userid}&type=seeding"
+        if site_domain == "keepfrds.com":
+            return f"torrents.php?option-torrents=3&userid={self.userid}"
+        if site_domain == "pt.sjtu.edu.cn":
+            return f"viewtorrentsdetail.php?id={self.userid}"
         user_id_param = "useruuid" if self._is_uuid(self.userid) else "userid"
         return f"getusertorrentlistajax.php?{user_id_param}={self.userid}&type=seeding"
 
@@ -247,6 +268,30 @@ class NexusPhpSiteUserInfo(SiteParserBase):
             if profile_seeding_info:
                 self.seeding_info = profile_seeding_info
 
+        # 定制站点明细可能只返回部分记录，明确的汇总值优先，明细仍用于做种人数分布。
+        if self._summary_seeding is not None:
+            self.seeding = self._summary_seeding
+        if self._summary_seeding_size is not None:
+            self.seeding_size = self._summary_seeding_size
+
+    def _parse_seeding_summary(self, html: Any) -> None:
+        """读取已知定制站点的明确汇总，不把缺失体积推算为真实值。"""
+        if self._site_domain.lower().removeprefix("www.") not in {
+            "pterclub.net", "pterclub.com", "keepfrds.com", "pt.sjtu.edu.cn"
+        }:
+            return
+        page_text = " ".join(html.xpath('//text()[not(ancestor::script) and not(ancestor::style)]'))
+        count_match = re.search(r"当前做种\s*[:：]?\s*([\d,]+)", page_text)
+        if not count_match and self._site_domain.lower().removeprefix("www.") in {"pterclub.net", "pterclub.com"}:
+            count_match = re.search(r"正在做种的种子\s*[（(]\s*共\s*([\d,]+)\s*个", page_text)
+        size_match = re.search(r"做种大小\s*[:：]?\s*([\d,.]+\s*[KMGTPI]i?B)", page_text, re.I)
+        if count_match:
+            self._summary_seeding = text_tools.parse_int(count_match.group(1).replace(",", ""))
+            self.seeding = self._summary_seeding
+        if size_match:
+            self._summary_seeding_size = self.num_filesize(size_match.group(1))
+            self.seeding_size = self._summary_seeding_size
+
     def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: Optional[bool] = False) -> Optional[str]:
         """
         做种相关信息
@@ -254,9 +299,18 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         :param multi_page: 是否多页数据
         :return: 下页地址
         """
+        if not html_text:
+            logger.warning(f"{self._site_name} 做种接口未返回内容，请检查站点接口和访问权限")
+            return None
         html = etree.HTML(str(html_text).replace(r'\/', '/'))
         try:
             if not DomUtils.has_child_elements(html):
+                return None
+
+            self._parse_seeding_summary(html)
+            if self._site_domain.lower().removeprefix("www.") == "pt.sjtu.edu.cn":
+                if self._summary_seeding is None:
+                    logger.warning(f"{self._site_name} 做种汇总为空或无法解析，请检查站点接口和访问权限")
                 return None
 
             # 首页存在扩展链接，使用扩展链接
@@ -266,22 +320,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
                 self._torrent_seeding_page = seeding_url_text[0].strip()
                 return self._torrent_seeding_page
 
-            size_col = 3
-            seeders_col = 4
-            # 搜索size列
-            size_col_xpath = '//tr[position()=1]/' \
-                             'td[(img[@class="size"] and img[@alt="size"])' \
-                             ' or (text() = "大小")' \
-                             ' or (a/img[@class="size" and @alt="size"])]'
-            if html.xpath(size_col_xpath):
-                size_col = len(html.xpath(f'{size_col_xpath}/preceding-sibling::td')) + 1
-            # 搜索seeders列
-            seeders_col_xpath = '//tr[position()=1]/' \
-                                'td[(img[@class="seeders"] and img[@alt="seeders"])' \
-                                ' or (text() = "在做种")' \
-                                ' or (a/img[@class="seeders" and @alt="seeders"])]'
-            if html.xpath(seeders_col_xpath):
-                seeders_col = len(html.xpath(f'{seeders_col_xpath}/preceding-sibling::td')) + 1
+            size_col, seeders_col = self._seeding_columns(html)
 
             page_seeding = 0
             page_seeding_size = 0
@@ -322,29 +361,61 @@ class NexusPhpSiteUserInfo(SiteParserBase):
                         page_seeding_size += size
                         page_seeding_info.append([seeders, size])
 
+            if not page_seeding and not multi_page and self._summary_seeding is None:
+                logger.warning(f"{self._site_name} 做种列表为空或无法解析，请检查站点接口和访问权限")
             self.seeding += page_seeding
             self.seeding_size += page_seeding_size
             self.seeding_info.extend(page_seeding_info)
 
-            # 是否存在下页数据
-            next_page = None
-            next_page_text = html.xpath(
-                '//a[contains(.//text(), "下一页") or contains(.//text(), "下一頁") or contains(.//text(), ">")]/@href')
-
-            # 防止识别到详情页
-            while next_page_text:
-                next_page = next_page_text.pop().strip()
-                if not next_page.startswith('details.php'):
-                    break
-                next_page = None
-
-            # fix up page url
-            if next_page:
-                next_page = self._fixup_next_page_url(next_page, self.userid)
+            next_page = self._seeding_next_page(html)
         finally:
             if html is not None:
                 del html
 
+        return next_page
+
+    def _seeding_columns(self, html: Any) -> tuple[int, int]:
+        """优先使用表头标记，朋友的无标记模板使用已确认的固定列位。"""
+        size_col = 3
+        seeders_col = 4
+        # 搜索size列
+        size_col_xpath = '//tr[position()=1]/' \
+                         'td[(img[@class="size"] and img[@alt="size"])' \
+                         ' or (text() = "大小")' \
+                         ' or (a/img[@class="size" and @alt="size"])]'
+        if html.xpath(size_col_xpath):
+            size_col = len(html.xpath(f'{size_col_xpath}/preceding-sibling::td')) + 1
+        # 搜索seeders列
+        seeders_col_xpath = '//tr[position()=1]/' \
+                            'td[(img[@class="seeders"] and img[@alt="seeders"])' \
+                            ' or (text() = "在做种")' \
+                            ' or (a/img[@class="seeders" and @alt="seeders"])]'
+        if html.xpath(seeders_col_xpath):
+            seeders_col = len(html.xpath(f'{seeders_col_xpath}/preceding-sibling::td')) + 1
+
+        if self._site_domain.lower().removeprefix("www.") == "keepfrds.com":
+            # 朋友没有列标记，第四列为做种时长，第五、六列才是体积和做种人数。
+            size_col, seeders_col = 5, 6
+
+        return size_col, seeders_col
+
+    def _seeding_next_page(self, html: Any) -> Optional[str]:
+        """筛除详情链接并补齐下一页的用户标识。"""
+        # 是否存在下页数据
+        next_page = None
+        next_page_text = html.xpath(
+            '//a[contains(.//text(), "下一页") or contains(.//text(), "下一頁") or contains(.//text(), ">")]/@href')
+
+        # 防止识别到详情页
+        while next_page_text:
+            next_page = next_page_text.pop().strip()
+            if not next_page.startswith('details.php'):
+                break
+            next_page = None
+
+        # fix up page url
+        if next_page:
+            next_page = self._fixup_next_page_url(next_page, self.userid)
         return next_page
 
     def _fixup_next_page_url(self, next_page: str, userid: Optional[str]) -> Optional[str]:
@@ -378,6 +449,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
             if not DomUtils.has_child_elements(html):
                 return
 
+            self._parse_seeding_summary(html)
             self._get_user_level(html)
 
             self._fixup_traffic_info(html)
@@ -526,6 +598,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
             self.user_level = user_level  # type: ignore[assignment]
 
     def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:
+        """解析未读消息链接及下一页入口。"""
         html = etree.HTML(html_text)
         try:
             if not DomUtils.has_child_elements(html):
@@ -545,6 +618,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         return next_page
 
     def _parse_message_content(self, html_text):
+        """解析消息标题、时间和正文。"""
         html = etree.HTML(html_text)
         try:
             if not DomUtils.has_child_elements(html):
@@ -576,6 +650,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         return message_head_text, message_date_text, message_content_text
 
     def _fixup_traffic_info(self, html):
+        """从详情页补充首页缺失的魔力值。"""
         # fixup bonus
         if not self.bonus:
             bonus_text = html.xpath('//tr/td[text()="魔力值" or text()="猫粮"]/following-sibling::td[1]/text()')
