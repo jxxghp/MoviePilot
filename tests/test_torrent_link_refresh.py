@@ -128,6 +128,9 @@ def download_chain(monkeypatch):
     helper = Mock()
     helper.download_torrent.return_value = FAILED
     monkeypatch.setattr(submission, "TorrentHelper", Mock(return_value=helper))
+    cache = Mock()
+    cache.get.return_value = None
+    monkeypatch.setattr(submission, "FileCache", Mock(return_value=cache))
     sites = Mock()
     sites.get_indexers.return_value = [SITE]
     monkeypatch.setattr(submission, "SitesHelper", Mock(return_value=sites), raising=False)
@@ -386,8 +389,8 @@ def test_no_cache_rule_only_matches_explicit_nonempty_keywords(monkeypatch, keys
     assert chain._is_no_cache_site(domain) is expected
 
 
-def test_cached_mteam_request_obtains_new_token_for_each_download(download_chain, monkeypatch):
-    """同一缓存换票请求连续下载时，每次均从接口获取新的临时链接。"""
+def test_uncached_mteam_content_obtains_new_token_for_each_download(download_chain, monkeypatch):
+    """种子内容缓存未命中时，同一换票请求每次获取新链接，不复用旧签名。"""
     chain, helper = download_chain
     request = {"method": "post", "params": {"id": "39"}, "result": "data"}
     encoded = base64.b64encode(json.dumps(request).encode()).decode()

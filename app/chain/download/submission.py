@@ -1,6 +1,7 @@
 """种子获取与单任务提交 owner。"""
 
 import base64
+import hashlib
 import json
 import re
 from copy import copy
@@ -225,6 +226,7 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
                          ) -> Tuple[Optional[Union[str, bytes]], str, list[str]]:
         """
         下载种子文件，如果是磁力链，会返回磁力链接本身
+        换票种子按站点资源和原始换票凭据复用本地内容，命中后不再请求临时链接。
         :param on_failure: 将本次具体失败原因交还准备流程，保持返回元组与并发调用隔离
         :return: 种子内容，种子目录名，种子文件清单
         """
@@ -234,27 +236,10 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
         if torrent.enclosure.startswith("magnet:"):
             return torrent.enclosure, "", []
         torrent = self._with_site_credentials(torrent)
-        # Cookie
-        site_cookie: Optional[str] = torrent.site_cookie
-        indirect_download = torrent.enclosure.startswith("[")
-        if indirect_download:
-            # 需要解码获取下载地址
-            torrent_url = self._resolve_indirect_download_url(
-                url=torrent.enclosure,
-                ua=torrent.site_ua,
-                cookie=site_cookie,
-            )
-            # 涉及解析地址的不使用Cookie下载种子，否则MT会出错
-            site_cookie = None
-        else:
-            torrent_url = torrent.enclosure
-        if not torrent_url:
-            logger.error(f"{torrent.title} 无法获取下载地址！")
+        result = self._get_torrent_content(torrent)
+        if result is None:
             return None, "", []
-        # 下载种子文件
-        _, content, download_folder, files, error_msg = self._download_torrent_content(
-            torrent, torrent_url, site_cookie, indirect_download
-        )
+        content, download_folder, files, error_msg = result
 
         if isinstance(content, str):
             # 磁力链
@@ -275,6 +260,55 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
 
         # 返回 种子文件路径，种子目录名，种子文件清单
         return content, download_folder or "", files or []
+
+    @staticmethod
+    def _indirect_torrent_cache_key(torrent: TorrentInfo) -> Optional[str]:
+        """以资源身份和换票凭据隔离缓存，临时链接不参与键，凭据不写入文件名。"""
+        identity = torrent_rules.resource_identity(torrent)
+        if not torrent.enclosure.startswith("[") or identity is None:
+            return None
+        scope = json.dumps((identity, torrent.enclosure, torrent.site_cookie))
+        return f"resource-{hashlib.sha256(scope.encode('utf-8')).hexdigest()}.torrent"
+
+    def _get_torrent_content(self, torrent: TorrentInfo) -> Optional[Tuple[
+        Optional[Union[str, bytes]], Optional[str], Optional[list[str]], Optional[str],
+    ]]:
+        """先读取已验证的换票种子内容；缓存损坏时重新换票，失败与磁力链不缓存。"""
+        cache_key = self._indirect_torrent_cache_key(torrent)
+        cache = FileCache(local_only=True) if cache_key else None
+        if cache is not None and cache_key is not None:
+            cached = cache.get(cache_key, region="torrents")
+            if isinstance(cached, bytes) and cached:
+                helper: TorrentHelper = cast(Any, TorrentHelper)()
+                cached_folder, cached_files = helper.get_fileinfo_from_torrent_content(cached)
+                if cached_files:
+                    return cached, cached_folder, cached_files, ""
+                cache.delete(cache_key, region="torrents")
+        # Cookie
+        site_cookie: Optional[str] = torrent.site_cookie
+        indirect_download = torrent.enclosure.startswith("[")
+        if indirect_download:
+            # 需要解码获取下载地址
+            torrent_url = self._resolve_indirect_download_url(
+                url=torrent.enclosure,
+                ua=torrent.site_ua,
+                cookie=site_cookie,
+            )
+            # 涉及解析地址的不使用Cookie下载种子，否则MT会出错
+            site_cookie = None
+        else:
+            torrent_url = torrent.enclosure
+        if not torrent_url:
+            logger.error(f"{torrent.title} 无法获取下载地址！")
+            return None
+        # 下载种子文件
+        _, content, download_folder, files, error_msg = self._download_torrent_content(
+            torrent, torrent_url, site_cookie, indirect_download
+        )
+
+        if cache is not None and cache_key is not None and isinstance(content, bytes) and files:
+            cache.set(cache_key, content, region="torrents")
+        return content, download_folder, files, error_msg
 
     def _download_torrent_content(
             self,
