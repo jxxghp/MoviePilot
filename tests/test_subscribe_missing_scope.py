@@ -50,6 +50,9 @@ def scope(monkeypatch):
     chain = object.__new__(SubscribeChain)
     chain.subscription_repository = SimpleNamespace(get=Mock(return_value=subscribe))
     chain.finish_subscribe_or_not = Mock()
+    chain._SubscribeChain__apply_subscribe_update = Mock(
+        side_effect=lambda current, fields, **_kwargs: replace(current, **fields)
+    )
     monkeypatch.setattr(subscribe_refresh, "DownloadChain", lambda: download)
     monkeypatch.setattr(subscribe_policy, "DownloadChain", lambda: download)
     return SimpleNamespace(subscribe=subscribe, media=media, download=download, chain=chain)

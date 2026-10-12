@@ -66,6 +66,7 @@ def _missing(scope, item):
 
 
 def test_paged_search_keeps_new_missing_episodes_in_completion(subscription, monkeypatch):
+    """搜索中扩展总集数后，下载结算保留新缺集，检查阶段可先同步旧范围。"""
     scope = subscription
     target = SubscriptionSearchTarget(scope.initial, build_subscribe_meta(scope.initial), scope.media,
                                       _missing(scope, scope.initial), "tmdb:1")
@@ -76,6 +77,7 @@ def test_paged_search_keeps_new_missing_episodes_in_completion(subscription, mon
     monkeypatch.setattr(scope.chain, "get_sub_sites", lambda _subscribe: [1])
     calls = []
     def request(**params):
+        """搜索首轮后模拟用户扩展订阅范围。"""
         calls.append(params["page"])
         # 开始搜索后用户将总集数从 1 增加到 2。
         scope.current["value"] = replace(scope.current["value"], total_episode=2)
@@ -90,7 +92,12 @@ def test_paged_search_keeps_new_missing_episodes_in_completion(subscription, mon
     scope.download.download_single.assert_called_once()
     scope.finished.assert_not_called()
     assert _missing(scope, scope.current["value"])["tmdb:1"][1].episodes == [2]
-    for call in scope.chain._SubscribeChain__refresh_subscribe_progress_with_no_exists.call_args_list:
+    completion_calls = [
+        call for call in scope.chain._SubscribeChain__refresh_subscribe_progress_with_no_exists.call_args_list
+        if call.kwargs.get("scene") == "download"
+    ]
+    assert completion_calls
+    for call in completion_calls:
         assert call.kwargs["no_exists"]["tmdb:1"][1].episodes == [2]
 
 

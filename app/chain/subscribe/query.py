@@ -544,5 +544,13 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
             self.finish_subscribe_or_not(subscribe=subscribe, meta=meta, mediainfo=mediainfo, force=True)
             return True, no_exists
 
+        # 手动下载不会写入订阅 note，检查到部分入库时也需同步卡片进度。
+        if subscribe.type == MediaType.TV.value and not subscribe.best_version and no_exists:
+            self._SubscribeChain__refresh_subscribe_progress_with_no_exists(
+                subscribe=subscribe,
+                no_exists=no_exists,
+                scene="existing_media",
+            )
+
         # 返回结果，表示媒体未完全下载或存在
         return False, no_exists

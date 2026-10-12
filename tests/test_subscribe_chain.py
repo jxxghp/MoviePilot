@@ -1535,10 +1535,12 @@ class TestSubscribeChain:
         calls = []
 
         def fake_refresh(_self, subscribe, mediainfo, meta=None, mediakey=None):
+            """隔离总集数写入并记录执行顺序。"""
             calls.append(("refresh", subscribe.total_episode))
             return replace(subscribe, total_episode=20)
 
         def fake_resolve(_self, subscribe, meta, mediainfo, mediakey=None):
+            """返回尚未完成的缺集结果。"""
             calls.append(("resolve", subscribe.total_episode))
             return False, {"media-key": {1: SimpleNamespace(episodes=[11], total_episode=20, start_episode=1)}}
 
@@ -1554,6 +1556,10 @@ class TestSubscribeChain:
                 "resolve_subscribe_missing",
                 fake_resolve,
             ),
+            patch.object(
+                chain,
+                "_SubscribeChain__refresh_subscribe_progress_with_no_exists",
+            ) as refresh_progress,
         ):
             exist_flag, no_exists = chain.check_and_handle_existing_media(
                 subscribe=subscribe,
@@ -1565,6 +1571,11 @@ class TestSubscribeChain:
         assert not (exist_flag)
         assert calls == [("refresh", 10), ("resolve", 20)]
         assert no_exists["media-key"][1].episodes == [11]
+        refresh_progress.assert_called_once_with(
+            subscribe=replace(subscribe, total_episode=20),
+            no_exists=no_exists,
+            scene="existing_media",
+        )
 
     def test_best_version_full_pack_first_keeps_whole_missing_for_custom_start_episode(self):
         """分集洗版优先全集时，空集列表仍表示下载链按整季资源处理。"""
