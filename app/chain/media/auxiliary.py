@@ -42,6 +42,15 @@ class MediaAuxiliaryOwner(_MediaOwnerBase):
         mediainfo.tmdb_info = tmdb_media.tmdb_info or mediainfo.tmdb_info
         if not mediainfo.genre_ids:
             mediainfo.genre_ids = list(tmdb_media.genre_ids or [])
+        # Bangumi/AniList 等主来源没有语言与国家标准字段，引用这些字段的
+        # 分类规则会整体失效并落入未分类；已关联 TMDB 详情时补齐标准事实，
+        # 仅填充主来源缺失的字段，不覆盖主来源自身的投影。
+        if not mediainfo.original_language:
+            mediainfo.original_language = tmdb_media.original_language
+        if not mediainfo.origin_country:
+            mediainfo.origin_country = list(tmdb_media.origin_country or [])
+        if not mediainfo.production_countries:
+            mediainfo.production_countries = list(tmdb_media.production_countries or [])
         for field in ("imdb_id", "tvdb_id", "tvdb_slug", "collection_id"):
             if not getattr(mediainfo, field, None):
                 setattr(mediainfo, field, getattr(tmdb_media, field, None))

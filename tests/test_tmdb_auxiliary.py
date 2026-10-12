@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from app.chain.media import MediaChain
+from app.domain.classification.facts import build_classification_facts
 from app.domain.context import MediaInfo
 from app.domain.metainfo import MetaInfo
 from app.runtime.extensions.module.dispatcher import ModuleInvocationDispatcher
@@ -133,6 +134,78 @@ def test_supplement_tmdb_does_not_override_custom_category() -> None:
     assert result.media_id == "35593344"
     assert result.category == "纪录片"
     assert result.tmdb_id == 9876
+
+
+def test_supplement_tmdb_merges_classification_metadata_for_bangumi_primary() -> None:
+    """Bangumi 主识别缺少语言与国家时，必须从关联 TMDB 详情补齐分类标准字段。"""
+    primary = MediaInfo(
+        bangumi_info={
+            "id": 378862,
+            "name": "お兄ちゃんはおしまい！",
+            "name_cn": "别当欧尼酱了！",
+            "platform": "TV",
+            "date": "2023-01-05",
+        }
+    )
+    tmdb_media = MediaInfo(
+        tmdb_info={
+            "id": 198152,
+            "media_type": MediaType.TV,
+            "name": "别当欧尼酱了！",
+            "first_air_date": "2023-01-05",
+            "genre_ids": [16],
+            "original_language": "ja",
+            "origin_country": ["JP"],
+        }
+    )
+
+    result = _make_chain(tmdb_media).supplement_tmdb_info(primary)
+
+    assert result is primary
+    assert result.media_source == MediaSource.Bangumi
+    assert result.media_id == "378862"
+    assert result.tmdb_id == 198152
+    assert result.genre_ids == [16]
+    assert result.original_language == "ja"
+    assert result.origin_country == ["JP"]
+    # 分类事实必须能读到补充后的语言与国家，规则才能命中而不是落入未分类。
+    facts = build_classification_facts(result)
+    assert facts.media.language == "ja"
+    assert facts.media.countries == ["JP"]
+    assert facts.media.genre_keys == ["animation"]
+
+
+def test_supplement_tmdb_keeps_primary_language_and_country_fields() -> None:
+    """主来源已有的语言与国家标准字段不被 TMDB 辅助结果覆盖。"""
+    primary = MediaInfo(
+        media_source=MediaSource.Douban,
+        media_id="35593344",
+        type=MediaType.MOVIE,
+        title="测试电影",
+        original_language="zh",
+        origin_country=["CN"],
+        production_countries=[{"iso_3166_1": "CN", "name": "中国大陆"}],
+    )
+    tmdb_media = MediaInfo(
+        tmdb_info={
+            "id": 9876,
+            "media_type": MediaType.MOVIE,
+            "title": "Test Movie",
+            "genre_ids": [28],
+            "original_language": "en",
+            "origin_country": ["US"],
+            "production_countries": [{"iso_3166_1": "US", "name": "United States"}],
+        }
+    )
+
+    result = _make_chain(tmdb_media).supplement_tmdb_info(primary)
+
+    assert result is primary
+    assert result.original_language == "zh"
+    assert result.origin_country == ["CN"]
+    assert result.production_countries == [{"iso_3166_1": "CN", "name": "中国大陆"}]
+    # 主来源缺失的流派仍按原语义补齐。
+    assert result.genre_ids == [28]
 
 
 def test_tmdb_supplement_uses_current_season_year_and_keeps_season_zero() -> None:
