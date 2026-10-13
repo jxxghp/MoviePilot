@@ -421,12 +421,12 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
 | GET | `/api/v1/system/update/status` | 查询聚合状态、实时提醒开关 `auto_update` / `auto_update_resource` 及 `updates` 中两类升级明细的 `idle`、`available`、`downloading`、`ready`、`installing` 或 `failed` 状态，以及版本、字节数和进度 |
-| POST | `/api/v1/system/update/check` | 立即检查最新稳定版 v3 Release 和当前平台站点资源包 |
-| POST | `/api/v1/system/update/download` | 请求体可传 `{"target":"application"}` 或 `{"target":"resources"}`；后台下载并校验对应制品 |
-| POST | `/api/v1/system/update/install` | 请求体可传 `{"target":"application"}` 或 `{"target":"resources"}`；再次校验对应制品，写入安装意图并重启 |
+| POST | `/api/v1/system/update/check` | 分页检查版本号最高的稳定 V3 Release 和当前平台站点资源；存在更高版本时刷新旧待安装目标，失败或无更高版本时保留已下载包 |
+| POST | `/api/v1/system/update/download` | `target` 可为 `application`、`resources` 或 `all`（默认 `application`）；`all` 检查并顺序准备全部最新更新，复用仍有效的已下载包 |
+| POST | `/api/v1/system/update/install` | `target` 可为 `application`、`resources` 或 `all`；`all` 要求全部已发现更新完成下载及校验，原子写入合并安装意图，一次重启应用全部更新 |
 | POST | `/api/v1/system/upgrade` | 保留 Dev 更新并重启，请求体只能为 `"dev"` |
 
-定时与手动检查均保留正在下载、已下载待安装及安装中的状态；检查请求返回时会再次核对，避免覆盖请求期间发生的状态转换。若旧检查已把资源包状态覆盖为 `available`，状态查询会校验同一目标包版本的完整暂存文件与摘要，恢复 `ready`、完整进度及安装入口，无需重复下载。下载完成后仍需确认「重启应用完成更新」。
+定时检查保留正在下载、已下载待安装及安装中的状态；手动检查只在发现更高版本时替换请求开始时的旧待安装目标，并保留另一类制品。检查请求返回时会再次核对，避免覆盖请求期间发生的状态转换。若旧检查已把资源包状态覆盖为 `available`，状态查询会校验同一目标包版本的完整暂存文件与摘要，恢复 `ready`、完整进度及安装入口，无需重复下载。下载完成后仍需确认重启安装。
 
 #### 媒体识别 / 整理
 

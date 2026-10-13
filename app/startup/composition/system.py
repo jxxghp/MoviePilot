@@ -42,7 +42,7 @@ from app.runtime.events import eventmanager
 from app.runtime.state import SystemHelper
 from app.runtime.stop import runtime_stop_state
 from app.schemas.event import ConfigChangeEventData
-from app.schemas.system import SystemUpdateStatus, SystemUpdateType
+from app.schemas.system import SystemUpdateStatus, SystemUpdateTarget
 from app.schemas.types import EventType, SystemConfigKey
 
 _LOG_DOWNLOAD_LIMIT = 10
@@ -289,14 +289,14 @@ class _SystemUpdateAdapter(SystemUpdatePort):
         return system_update_manager.get_status()
 
     def check(self) -> SystemUpdateStatus:
-        """立即检查更新。"""
-        return system_update_manager.check()
+        """管理员主动检查可用更高版本替换旧待安装目标，失败时保留原包。"""
+        return system_update_manager.check(refresh_ready=True)
 
-    def download(self, target: SystemUpdateType = "application") -> SystemUpdateStatus:
+    def download(self, target: SystemUpdateTarget = "application") -> SystemUpdateStatus:
         """启动指定升级类型的后台下载。"""
         return system_update_manager.start_download(target)
 
-    def prepare_install(self, target: SystemUpdateType = "application") -> tuple[bool, str]:
+    def prepare_install(self, target: SystemUpdateTarget = "application") -> tuple[bool, str]:
         """确认指定升级类型的安装准备。"""
         return system_update_manager.request_install(target)
 

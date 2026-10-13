@@ -14,7 +14,7 @@ from app.application.configuration import RuntimeSettingsService, SystemConfigSe
 from app.runtime.scheduling import TimerUtils
 from app.schemas.common import JsonData
 from app.schemas.exception import PluginMutationRejectedError
-from app.schemas.system import SystemUpdateStatus, SystemUpdateType
+from app.schemas.system import SystemUpdateStatus, SystemUpdateTarget
 from app.schemas.types import SystemConfigKey
 
 if TYPE_CHECKING:
@@ -153,11 +153,11 @@ class SystemUpdatePort(Protocol):
         """立即检查正式版本更新。"""
         ...
 
-    def download(self, target: SystemUpdateType = "application") -> SystemUpdateStatus:
+    def download(self, target: SystemUpdateTarget = "application") -> SystemUpdateStatus:
         """启动指定升级类型的后台下载并返回当前状态。"""
         ...
 
-    def prepare_install(self, target: SystemUpdateType = "application") -> tuple[bool, str]:
+    def prepare_install(self, target: SystemUpdateTarget = "application") -> tuple[bool, str]:
         """确认消费指定升级类型的已校验制品。"""
         ...
 
@@ -389,14 +389,17 @@ class SystemService:
         """立即检查正式版本更新。"""
         return self._updates.check()
 
-    def download_update(self, target: SystemUpdateType = "application") -> SystemOperationResult:
+    def download_update(self, target: SystemUpdateTarget = "application") -> SystemOperationResult:
         """校验环境并启动指定升级类型的后台下载。"""
         if not self._control.can_restart():
             return SystemOperationResult(False, "当前运行环境不支持升级操作！")
         status = self._updates.download(target)
+        if status.updates:
+            errors = [item.error for item in status.updates if (target == "all" or item.type == target) and item.error]
+            return SystemOperationResult(not errors, "；".join(errors) if errors else None, status)
         return SystemOperationResult(status.state != "failed", status.error, status)
 
-    def install_update(self, target: SystemUpdateType = "application") -> SystemOperationResult:
+    def install_update(self, target: SystemUpdateTarget = "application") -> SystemOperationResult:
         """确认指定制品并安排 Docker worker 在受管重启前完成替换。"""
         if not self._control.can_restart():
             return SystemOperationResult(False, "当前运行环境不支持升级操作！")

@@ -63,7 +63,7 @@ Identity scope: `admin`; required role: `system_admin`.
 
 ### `system.update.check`
 `POST /api/v1/system/update/check`; policy effect: `external_side_effect`.
-Purpose: Check for the latest stable MoviePilot v3 application release and current-platform site resources.
+Purpose: Check for the highest stable MoviePilot v3 version and site resources, refreshing older prepared targets when a newer version exists.
 Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
@@ -71,19 +71,19 @@ Identity scope: `admin`; required role: `system_admin`.
 
 ### `system.update.download`
 `POST /api/v1/system/update/download`; policy effect: `external_side_effect`.
-Purpose: Start downloading and verifying one selected application or site-resource update in the background.
+Purpose: Download and verify an application or site-resource update in the background. Set target=all to prepare all latest updates together.
 Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
-- `body` (SystemUpdateRequest|null): Request value for system.update.download. Start downloading and verifying one selected application or site-resource update in the background. Use the exact type and fields below.
+- `body` (SystemUpdateRequest|null): Request value for system.update.download. Download and verify an application or site-resource update in the background. Set target=all to prepare all latest updates together. Use the exact type and fields below.
 
 ### `system.update.install`
 `POST /api/v1/system/update/install`; policy effect: `external_side_effect`.
-Purpose: Install one selected already downloaded and verified application or site-resource update, then restart MoviePilot.
+Purpose: Install downloaded and verified updates, then restart MoviePilot. Set target=all to require all updates ready and install them with one restart.
 Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
-- `body` (SystemUpdateRequest|null): Request value for system.update.install. Install one selected already downloaded and verified application or site-resource update, then restart MoviePilot. Use the exact type and fields below.
+- `body` (SystemUpdateRequest|null): Request value for system.update.install. Install downloaded and verified updates, then restart MoviePilot. Set target=all to require all updates ready and install them with one restart. Use the exact type and fields below.
 
 ### `system.update.status`
 `GET /api/v1/system/update/status`; policy effect: `safe_read`.

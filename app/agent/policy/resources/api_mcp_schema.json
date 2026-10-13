@@ -5083,14 +5083,15 @@
       "type": "object"
     },
     "SystemUpdateRequest": {
-      "description": "Selected MoviePilot application or site-resource update target.",
+      "description": "Selected update target: application, resources, or all for combined preparation and installation with one restart.",
       "properties": {
         "target": {
           "default": "application",
-          "description": "Classification rule output containing a category ID and optional labels.",
+          "description": "Update target: application for the backend and matching frontend, resources for site resources, or all for combined updates.",
           "enum": [
             "application",
-            "resources"
+            "resources",
+            "all"
           ],
           "title": "Target",
           "type": "string"
@@ -14932,7 +14933,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Check for the latest stable MoviePilot v3 application release and current-platform site resources. Method: POST. Path: /api/v1/system/update/check. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
+      "description": "Check for the highest stable MoviePilot v3 version and site resources, refreshing older prepared targets when a newer version exists. Method: POST. Path: /api/v1/system/update/check. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "operation_id": {
           "const": "system.update.check",
@@ -14948,7 +14949,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Start downloading and verifying one selected application or site-resource update in the background. Method: POST. Path: /api/v1/system/update/download. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
+      "description": "Download and verify an application or site-resource update in the background. Set target=all to prepare all latest updates together. Method: POST. Path: /api/v1/system/update/download. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "anyOf": [
@@ -14959,7 +14960,7 @@
               "type": "null"
             }
           ],
-          "description": "Request value for system.update.download. Start downloading and verifying one selected application or site-resource update in the background. Use the exact type and fields below.",
+          "description": "Request value for system.update.download. Download and verify an application or site-resource update in the background. Set target=all to prepare all latest updates together. Use the exact type and fields below.",
           "title": "Request"
         },
         "operation_id": {
@@ -14976,7 +14977,7 @@
     },
     {
       "additionalProperties": false,
-      "description": "Install one selected already downloaded and verified application or site-resource update, then restart MoviePilot. Method: POST. Path: /api/v1/system/update/install. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
+      "description": "Install downloaded and verified updates, then restart MoviePilot. Set target=all to require all updates ready and install them with one restart. Method: POST. Path: /api/v1/system/update/install. Effect: external_side_effect. Identity scope: admin. Required role: system_admin.",
       "properties": {
         "body": {
           "anyOf": [
@@ -14987,7 +14988,7 @@
               "type": "null"
             }
           ],
-          "description": "Request value for system.update.install. Install one selected already downloaded and verified application or site-resource update, then restart MoviePilot. Use the exact type and fields below.",
+          "description": "Request value for system.update.install. Install downloaded and verified updates, then restart MoviePilot. Set target=all to require all updates ready and install them with one restart. Use the exact type and fields below.",
           "title": "Request"
         },
         "operation_id": {

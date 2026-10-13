@@ -1049,7 +1049,7 @@ def check_system_update(
     _: ApiPrincipal = Depends(get_current_active_superuser),
     runtime: HostRuntime = Depends(get_host_runtime),
 ):
-    """立即查询 GitHub Release（仅管理员）。"""
+    """查询最高正式 V3 版本和站点资源，可刷新旧待安装目标（仅管理员）。"""
     return _SchemaResponse(success=True, data=runtime.system.check_update())
 
 
@@ -1063,7 +1063,7 @@ def download_system_update(
     runtime: HostRuntime = Depends(get_host_runtime),
     request: Annotated[_SchemaSystemUpdateRequest | None, Body()] = None,
 ):
-    """启动指定类型的后台下载并立即返回当前状态（仅管理员）。"""
+    """单类或合并下载更新并立即返回状态；all 准备全部最新制品（仅管理员）。"""
     result = runtime.system.download_update(request.target if request else "application")
     return _SchemaResponse(success=result.success, data=result.data, message=result.message)
 
@@ -1078,7 +1078,7 @@ def install_system_update(
     runtime: HostRuntime = Depends(get_host_runtime),
     request: Annotated[_SchemaSystemUpdateRequest | None, Body()] = None,
 ):
-    """确认消费指定类型的已校验制品，并重启进入安装阶段（仅管理员）。"""
+    """校验所选制品后重启安装；all 要求全部更新就绪并只重启一次（仅管理员）。"""
     result = runtime.system.install_update(request.target if request else "application")
     return _SchemaResponse(success=result.success, message=result.message)
 

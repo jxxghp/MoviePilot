@@ -218,6 +218,7 @@ class CustomIdentifiersUpdateRequest(BaseModel):  # type: ignore[misc]
 
 
 SystemUpdateType = Literal["application", "resources"]
+SystemUpdateTarget = Literal["application", "resources", "all"]
 
 
 class SystemUpdateItemStatus(BaseModel):  # type: ignore[misc]
@@ -252,17 +253,18 @@ class SystemUpdateItemStatus(BaseModel):  # type: ignore[misc]
 
 
 class SystemUpdateRequest(BaseModel):  # type: ignore[misc]
-    """主程序或站点资源升级动作的请求体。"""
+    """单类或合并升级动作的请求体，all 在一次重启中安装全部已准备更新。"""
 
-    target: SystemUpdateType = Field(
+    target: SystemUpdateTarget = Field(
         default="application",
-        description="升级目标：application 表示主程序，resources 表示认证和索引资源。",
+        description="Update target: application for the backend and matching frontend, resources for site resources, or all for combined updates.",
     )
 
 
 class SystemUpdateStatus(BaseModel):
     """主程序与站点资源后台更新的聚合状态快照。"""
 
+    supports_batch_update: bool = Field(default=False, description="是否支持全部下载和一次重启合并安装")
     auto_update: bool = Field(default=False, description="是否启用主程序自动检查及升级提醒")
     auto_update_resource: bool = Field(default=True, description="是否启用站点资源自动检查及升级提醒")
 

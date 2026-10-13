@@ -499,6 +499,7 @@ SCHEMA_EXPORTS = {
     'SystemUpdateItemStatus': ('app.schemas.system', 'SystemUpdateItemStatus'),
     'SystemUpdateRequest': ('app.schemas.system', 'SystemUpdateRequest'),
     'SystemUpdateStatus': ('app.schemas.system', 'SystemUpdateStatus'),
+    'SystemUpdateTarget': ('app.schemas.system', 'SystemUpdateTarget'),
     'SystemUpdateType': ('app.schemas.system', 'SystemUpdateType'),
     'TMDbException': ('app.schemas.exception', 'TMDbException'),
     'Tag': ('app.schemas.context', 'Tag'),

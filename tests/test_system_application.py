@@ -13,7 +13,7 @@ from app.application.system import (
     SystemService,
 )
 from app.schemas.exception import PluginMutationRejectedError
-from app.schemas.system import SystemUpdateStatus
+from app.schemas.system import SystemUpdateItemStatus, SystemUpdateStatus
 from app.schemas.types import SystemConfigKey
 
 
@@ -342,6 +342,31 @@ def test_update_download_and_install_report_state_machine_results() -> None:
     installed = service.install_update()
     assert installed.success is True
     assert installed.message == "prepared"
+
+
+def test_combined_install_requests_only_one_restart() -> None:
+    """合并安装通过一个端口调用提交全部目标，只请求一次宿主重启。"""
+    service, dependencies = _build_service()
+    dependencies.updates.prepare_install.return_value = (True, "prepared all")
+    dependencies.control.restart.return_value = (True, "restarting")
+    assert service.install_update("all").success is True
+    dependencies.updates.prepare_install.assert_called_once_with("all")
+    dependencies.control.restart.assert_called_once()
+
+
+def test_combined_download_reports_resource_failure() -> None:
+    """聚合主程序成功时仍必须把资源检查或下载失败反馈给调用方。"""
+    service, dependencies = _build_service()
+    dependencies.updates.download.return_value = SystemUpdateStatus(
+        state="ready", current_version="v3.0.0", updates=[
+            SystemUpdateItemStatus(type="application", state="ready"),
+            SystemUpdateItemStatus(type="resources", state="failed", error="resource failed"),
+        ],
+    )
+    result = service.download_update("all")
+    assert result.success is False
+    assert result.message == "resource failed"
+    assert service.download_update("application").success is True
 
 
 def test_system_service_normalizes_repository_and_rule_group_inputs() -> None:
