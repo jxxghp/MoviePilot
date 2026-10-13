@@ -366,7 +366,10 @@ class TransferSettlementOwner(_TransferOwnerBase):
                 or task.fileitem.size
             )
             # 发送通知，实时手动整理时不发
-            if transferinfo.need_notify and (task.background or not task.manual):
+            if (
+                    transferinfo.need_notify and (task.background or not task.manual)
+                    and not self.runtime_config.transfer_success_notification_aggregation
+            ):
                 se_str = None
                 if task.mediainfo.type == MediaType.TV:
                     season_episodes = self.jobview.season_episodes(
@@ -559,6 +562,7 @@ class TransferSettlementOwner(_TransferOwnerBase):
 
             # 登记批次级刮削目标
             self._record_scrape_target(task, transferinfo)
+            self.notify_successful_transfer(task, transferinfo)
 
         # 全部整理完成且有成功的任务时，发送消息和事件
         if self.jobview.is_finished(task):

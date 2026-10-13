@@ -878,6 +878,8 @@ class ConfigModel(BaseModel):
     AI_AGENT_RETRY_TRANSFER: bool = False
     # 是否按媒体聚合整理失败通知，关闭时保持逐条发送
     TRANSFER_FAILURE_NOTIFICATION_AGGREGATION: bool = True
+    # 是否按批次聚合电影、电视剧和音乐的整理成功通知
+    TRANSFER_SUCCESS_NOTIFICATION_AGGREGATION: bool = True
 
     # 音频输入提供商：openai/openai_chat_audio/mimo/minimax
     AUDIO_INPUT_PROVIDER: str = "openai"

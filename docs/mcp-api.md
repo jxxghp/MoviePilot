@@ -438,6 +438,8 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 
 影视自动识别在未指定来源时只使用 TMDB，未命中时不会继续查询其它影视源。音乐路径识别严格按 AcoustID 音频指纹、文件标签、文件名三级依次执行；指纹或标签直接提供 MusicBrainz Recording ID 时，会直接查询 MusicBrainz 详情，未绑定身份的音乐标题及目录识别按 `SEARCH_SOURCE` 中内置音乐来源的配置顺序回退（MusicBrainz、TheAudioDB、豆瓣音乐），未选择音乐来源时兼容默认 MusicBrainz。显式 `media_source` / 主身份或 MusicBrainz 发行标签固定所属来源；来源之间不转换或拼接 ID。`MediaInfo` 响应仍可能包含 `tmdb_id`、`douban_id`、`bangumi_id`、`anilist_id` 等跨源映射辅助字段，但这些字段不是通用请求入口。明确归属 `/tmdb`、`/douban`、`/bangumi`、`/anilist` 的接口，以及固定使用 TMDB 的剧集组和排期接口，仍可按其单数据源契约接收原生 ID。
 
+整理目录的 `notify` 保持布尔类型；成功通知聚合统一由全局开关控制。开启 `TRANSFER_SUCCESS_NOTIFICATION_AGGREGATION`，明确批次完成后一次发送，外部无批次任务使用三十秒静默窗口。详见 [整理成功通知粒度](transfer-notifications.md)。
+
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
 | GET | `/api/v1/media/search` | 按标题搜索媒体、合集、影视人物或音乐；人物结果可同时包含 MusicBrainz 艺术家，参数：`title`、`type`、`page`、`count`，可重复传入可选 `media_source`；未指定 `music_type` 时音乐搜索只返回单曲和专辑，显式 `music_type` 仍可用于专用实体选择；内置模块只处理自身支持的来源，插件模块可以处理其注册的扩展来源，旧客户端的逗号格式仅在输入边界兼容 |

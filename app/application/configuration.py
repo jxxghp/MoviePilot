@@ -245,6 +245,7 @@ class ChainRuntimeConfig:
     search_threadpool_size: int = 1
     transfer_threads: int = 1
     transfer_failure_notification_aggregation: bool = True
+    transfer_success_notification_aggregation: bool = True
     transfer_task_timeout: int = 120
     scrape_follow_tmdb: bool = True
     metadata_cache_ttl: int = 3600

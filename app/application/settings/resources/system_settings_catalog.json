@@ -1447,6 +1447,12 @@
       "source_file": "app/runtime/config.py",
       "source_line": 643
     },
+    "TRANSFER_SUCCESS_NOTIFICATION_AGGREGATION": {
+      "description": "是否按批次聚合电影、电视剧和音乐的整理成功通知",
+      "group": "ai_agent",
+      "source_file": "app/runtime/config.py",
+      "source_line": 882
+    },
     "TRANSFER_TASK_TIMEOUT": {
       "description": "外部接管的运行中整理任务无状态心跳超时（分钟），0 表示禁用",
       "group": "transfer",

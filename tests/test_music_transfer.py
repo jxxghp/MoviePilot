@@ -1,4 +1,5 @@
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -650,8 +651,9 @@ def test_job_manager_separates_music_entity_namespaces_for_same_provider_id():
 
 
 def test_success_file_aggregation_is_isolated_between_music_jobs_in_same_directory(monkeypatch):
-    """同目录内交错完成的整专与单曲作业不能互相取走通知文件清单。"""
+    """全局关闭聚合时，同目录交错完成的整专与单曲作业仍保留旧文件清单。"""
     chain = object.__new__(TransferChain)
+    chain.runtime_config = replace(chain.runtime_config, transfer_success_notification_aggregation=False)
     chain.jobview = JobManager()
     chain._success_target_files = {}
     chain._scrape_batches = {}
