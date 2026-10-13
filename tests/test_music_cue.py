@@ -40,6 +40,60 @@ FILE "image.flac" WAVE
     INDEX 01 00:01:00
 '''
 
+# 每只分轨各有 FILE 块，但同一文件名重复声明 INDEX 01，触发“同一文件的时间索引重复或逆序”。
+SPLIT_BROKEN_CUE = '''REM DATE 2003
+PERFORMER "测试歌手"
+TITLE "专辑示例"
+FILE "01 - 第一首.flac" FLAC
+  TRACK 01 AUDIO
+    TITLE "第一首"
+    INDEX 01 00:00:00
+FILE "02 - 第二首.flac" FLAC
+  TRACK 02 AUDIO
+    TITLE "第二首"
+    INDEX 01 00:00:00
+FILE "02 - 第二首.flac" FLAC
+  TRACK 03 AUDIO
+    TITLE "第二首"
+    INDEX 01 00:00:00
+'''
+
+# 两碟整轨镜像：每个 FILE 块都声明多条音轨，坏索引无法退化为逐文件识别。
+DISC_BROKEN_CUE = '''REM DATE 2003
+PERFORMER "测试歌手"
+TITLE "专辑示例"
+FILE "disc1.flac" FLAC
+  TRACK 01 AUDIO
+    TITLE "第一首"
+    INDEX 01 00:00:00
+  TRACK 02 AUDIO
+    TITLE "第二首"
+    INDEX 01 00:01:00
+FILE "disc2.flac" FLAC
+  TRACK 03 AUDIO
+    TITLE "第三首"
+    INDEX 01 00:00:00
+  TRACK 04 AUDIO
+    TITLE "第四首"
+    INDEX 01 00:00:00
+'''
+
+_SPLIT_TRACKS = (("01 - 第一首.flac", "第一首", 1), ("02 - 第二首.flac", "第二首", 2))
+
+
+def _split_album(tmp_path, *, text, tracks=_SPLIT_TRACKS, cue_name="album.cue"):
+    """创建分轨专辑目录：每只 FLAC 自带曲目标签，另放一份指定内容的 CUE。"""
+    source = tmp_path / "source"
+    source.mkdir()
+    for name, title, number in tracks:
+        audio = source / name
+        shutil.copyfile(Path(__file__).parent / "fixtures/audio/silence.flac", audio)
+        tags = FLAC(audio)
+        tags.update(title=[title], artist=["测试歌手"], album=["专辑示例"], tracknumber=[str(number)])
+        tags.save()
+    (source / cue_name).write_text(text, encoding="utf-8")
+    return source
+
 
 def _image_pair(tmp_path, *, encoding="utf-8", text=CUE, cue_name="album.cue"):
     """创建三秒实际整轨 FLAC 和两个逻辑曲目的 CUE。"""
@@ -371,6 +425,42 @@ def test_broken_index_with_different_stem_is_not_ignored(tmp_path, text):
     audio, _ = _image_pair(tmp_path, text=text, cue_name="different-index.cue")
 
     meta = AudioMetadataHelper.read(audio)
+
+    assert meta.organization_error
+    assert meta.music_layout == "cue_invalid"
+
+
+def test_broken_index_in_split_album_falls_back_to_tags(tmp_path):
+    """分轨专辑的坏索引只丢逻辑切点，每只文件按自带标签整理，不能一条坏索引阻断全专。"""
+    source = _split_album(tmp_path, text=SPLIT_BROKEN_CUE)
+
+    for name, title, number in _SPLIT_TRACKS:
+        meta = AudioMetadataHelper.read(source / name)
+
+        assert not meta.organization_error
+        assert meta.music_layout != "cue_invalid"
+        assert not meta.cue_filename
+        assert meta.title == title
+        assert meta.track_number == number
+
+
+def test_broken_index_in_multi_disc_image_still_blocks(tmp_path):
+    """多碟整轨的每个 FILE 块都含多条音轨，索引是唯一曲目来源，损坏必须继续阻断。"""
+    source = _split_album(tmp_path, text=DISC_BROKEN_CUE,
+                          tracks=(("disc1.flac", "第一首", 1), ("disc2.flac", "第三首", 3)))
+
+    for name in ("disc1.flac", "disc2.flac"):
+        meta = AudioMetadataHelper.read(source / name)
+
+        assert meta.organization_error
+        assert meta.music_layout == "cue_invalid"
+
+
+def test_broken_index_with_single_existing_track_still_blocks(tmp_path):
+    """分轨专辑只剩一只已下载文件时无法与整轨镜像区分，保持可见错误而不静默退回标签。"""
+    source = _split_album(tmp_path, text=SPLIT_BROKEN_CUE, tracks=(_SPLIT_TRACKS[0],))
+
+    meta = AudioMetadataHelper.read(source / _SPLIT_TRACKS[0][0])
 
     assert meta.organization_error
     assert meta.music_layout == "cue_invalid"
