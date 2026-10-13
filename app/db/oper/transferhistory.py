@@ -373,9 +373,12 @@ class TransferHistoryOper(DbOper):
     def get_by(self, title: Optional[str] = None, year: Optional[str] = None, mtype: Optional[str] = None,
                season: Optional[str] = None, episode: Optional[str] = None,
                media_source: Optional[MediaSource] = None, media_id: Optional[str] = None,
-               dest: Optional[str] = None) -> List[TransferHistory]:
+               dest: Optional[str] = None, *, match_all_versions: bool = False) -> List[TransferHistory]:
         """
-        按类型、标题、年份、季集查询转移记录
+        按类型、标题、年份、季集查询转移记录。
+
+        电影或未指定类型且目标路径为空时默认返回空；显式传入
+        match_all_versions=True 才允许全量匹配，不能用于路径未知的删除事件。
         """
         return self._execute_sync_query(
             lambda session: TransferHistory.list_by(
@@ -388,6 +391,7 @@ class TransferHistoryOper(DbOper):
                 episode=episode,
                 media_source=media_source,
                 media_id=media_id,
+                match_all_versions=match_all_versions,
             )
         )
 

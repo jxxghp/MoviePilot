@@ -184,4 +184,14 @@ Webhook payloads arrive at `app/api/endpoints/webhook.py` and are dispatched via
 
 Do not add webhook-specific business logic directly in the endpoint. The endpoint parses the payload and fires the event; the chain handles the response.
 
+Jellyfin 的条目删除后无法通过播放接口反查路径。适配器优先使用 webhook 的 `Path`；
+非删除事件查到的路径会按服务器和条目 ID 缓存在进程内（最多 10000 条、有效期 30 天），
+删除事件消费缓存，不请求已删除条目的路径或图片。重启、过期或从未观察过的条目仍可能
+没有路径，此时告警并保留 `item_path=None`，消费方不得据此推断同片其他副本。
+
+插件兼容接口 `TransferHistoryOper.get_by` 及底层 `TransferHistory.list_by` 对电影和
+未指定类型的查询要求非空 `dest`，空路径默认返回空列表。确实需要按身份或标题年份查询
+全部版本时，调用方须显式传入 `match_all_versions=True`；路径未知的删除事件不得使用
+该参数。电视剧整剧、整季及单集路径精确匹配继续沿用原有查询语义。
+
 *Last Updated: 2026-08-14*

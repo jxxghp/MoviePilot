@@ -299,10 +299,58 @@ def test_list_by_falls_back_to_title_and_year(db):
                  seasons="S01"))
 
     assert [h.title for h in TransferHistory.list_by(
-        db.session, title="回退标题", year="2020")] == ["回退标题"]
+        db.session, title="回退标题", year="2020", match_all_versions=True)] == ["回退标题"]
     assert [h.title for h in TransferHistory.list_by(
         db.session, title="回退标题", year="2020", season="S01")] == ["回退标题"]
     assert TransferHistory.list_by(db.session, title="回退标题", year="1999") == []
+
+
+@pytest.mark.parametrize("dest", [None, ""])
+@pytest.mark.parametrize("use_identity", [True, False])
+def test_list_by_unknown_movie_path_does_not_match_other_copies(db, dest, use_identity):
+    """电影路径未知时不能按媒体身份或标题年份命中仍在使用的副本。"""
+    db.add(_hist("同一电影", mtype=MediaType.MOVIE.value, dest="/media/active.mkv"))
+    criteria = {"media_source": MediaSource.TMDB, "media_id": "6001"} if use_identity else {
+        "title": "同一电影", "year": "2026",
+    }
+
+    assert TransferHistory.list_by(
+        db.session, mtype=MediaType.MOVIE.value, dest=dest, **criteria,
+    ) == []
+
+
+def test_list_by_all_movie_versions_requires_explicit_opt_in(db):
+    """明确查询全部版本时才可省略电影目标路径，给出路径后仍须精确匹配。"""
+    db.add(_hist("4K", mtype=MediaType.MOVIE.value, dest="/media/4k.mkv"),
+           _hist("1080", mtype=MediaType.MOVIE.value, dest="/media/1080.mkv"))
+    criteria = {"mtype": MediaType.MOVIE.value, "media_source": MediaSource.TMDB,
+                "media_id": "6001", "match_all_versions": True}
+
+    assert {h.title for h in TransferHistory.list_by(db.session, **criteria)} == {"4K", "1080"}
+    assert [h.title for h in TransferHistory.list_by(
+        db.session, dest="/media/4k.mkv", **criteria,
+    )] == ["4K"]
+
+
+def test_list_by_title_without_type_or_path_is_not_full_match(db):
+    """缺少类型的标题年份回退查询同样需要显式允许全部版本。"""
+    db.add(_hist("同一电影", mtype=MediaType.MOVIE.value))
+
+    assert TransferHistory.list_by(db.session, title="同一电影", year="2026") == []
+
+
+def test_transferhistory_oper_preserves_movie_path_guard_and_opt_in(db):
+    """插件兼容 Oper 应传递路径保护和显式全版本参数。"""
+    from app.db.oper.transferhistory import TransferHistoryOper
+
+    db.add(_hist("同一电影", mtype=MediaType.MOVIE.value, dest="/media/active.mkv"))
+    oper = TransferHistoryOper(db.session)
+    criteria = {"mtype": MediaType.MOVIE.value, "media_source": MediaSource.TMDB,
+                "media_id": "6001"}
+
+    assert oper.get_by(dest="", **criteria) == []
+    assert oper.get_by(dest="/media/deleted.mkv", **criteria) == []
+    assert [h.title for h in oper.get_by(match_all_versions=True, **criteria)] == ["同一电影"]
 
 
 def test_list_by_supports_type_season_and_dest_prefix(db):

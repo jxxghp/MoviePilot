@@ -941,8 +941,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9538,
-  "edge_sha256": "b7b224c7a66e3a2d169cffdad65ef7b54dc425af11b1ccb12b6bc1ceebf9108b",
+  "edge_count": 9539,
+  "edge_sha256": "101edfcffe1b9525bc69515f84c493d499fcd5cb4349de8f6f3f8542bed40f40",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -7829,6 +7829,7 @@
     "app.modules.jellyfin.jellyfin -> app.foundation",
     "app.modules.jellyfin.jellyfin -> app.foundation.url",
     "app.modules.jellyfin.jellyfin -> app.runtime",
+    "app.modules.jellyfin.jellyfin -> app.runtime.cache",
     "app.modules.jellyfin.jellyfin -> app.runtime.log",
     "app.modules.jellyfin.jellyfin -> app.runtime.settings",
     "app.modules.jellyfin.jellyfin -> app.schemas",

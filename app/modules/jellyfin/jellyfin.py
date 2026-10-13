@@ -7,6 +7,7 @@ from requests import Response
 from app.adapters.network.http import RequestUtils
 from app.application.mediaserver import MediaServerIdentityHelper, format_emby_family_item
 from app.foundation.url import UrlUtils
+from app.runtime.cache import MemoryBackend
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.dashboard import Statistic as _SchemaStatistic
@@ -26,6 +27,9 @@ class Jellyfin:
     _playhost: Optional[str] = None
     _sync_libraries: List[str] = []
     user: Optional[Union[str, int]] = None
+    # 删除后无法反查条目；缓存按服务器隔离，并限制容量和存活时间。
+    _webhook_paths = MemoryBackend(maxsize=10000, ttl=30 * 24 * 60 * 60)
+    _webhook_path_region = "jellyfin.webhook.paths"
 
     def __init__(self, host: Optional[str] = None, apikey: Optional[str] = None, play_host: Optional[str] = None,
                  sync_libraries: list = None, **kwargs):
@@ -683,6 +687,29 @@ class Jellyfin:
             return None
         return None
 
+    def _get_webhook_item_path(self, message: dict[str, Any]) -> Optional[str]:
+        """优先读取负载路径；删除事件仅使用已知路径，不反查已删除条目。
+
+        入库及播放等非删除事件刷新缓存，删除时消费对应条目缓存。
+        缓存仅在进程内有效；重启、过期或未观察过的条目可能仍无路径。
+        """
+        item_id = message.get("ItemId")
+        path = message.get("Path")
+        path = path if isinstance(path, str) and path.strip() else None
+        if not item_id:
+            return path
+        key = f"{self._host}:{item_id}"
+        if message.get("NotificationType") == "ItemDeleted":
+            cached_path = self._webhook_paths.consume(key, region=self._webhook_path_region)
+            path = path or cached_path
+            if not path:
+                logger.warning(f"Jellyfin 删除条目 {item_id} 的路径未知，不能据此定位文件版本")
+            return path
+        path = path or self.get_item_path_by_id(item_id)
+        if path:
+            self._webhook_paths.set(key, path, region=self._webhook_path_region)
+        return path
+
     def generate_image_link(self, item_id: str, image_type: str, host_type: bool) -> Optional[str]:
         """
         根据ItemId和imageType查询本地对应图片
@@ -881,14 +908,13 @@ class Jellyfin:
             eventItem.percentage = playback_position_ticks / runtime_ticks * 100
 
         # 获取消息图片
-        if eventItem.item_id:
+        if eventItem.item_id and eventType != "ItemDeleted":
             # 根据返回的item_id去调用媒体服务器获取
             eventItem.image_url = self.get_remote_image_by_id(
                 item_id=eventItem.item_id,
                 image_type="Backdrop"
             )
-            # jellyfin 的 webhook 不含 item_path，需要单独获取
-            eventItem.item_path = self.get_item_path_by_id(eventItem.item_id)
+        eventItem.item_path = self._get_webhook_item_path(message)
 
         eventItem.json_object = message
 
