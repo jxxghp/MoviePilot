@@ -6,6 +6,7 @@ if TYPE_CHECKING:
     from collections.abc import Awaitable, Callable
     from typing import Optional, Union
 
+    from app.application.history.contracts import TransferHistoryRepository
     from app.domain.context import MediaInfo, MusicInfo, TorrentInfo
     from app.domain.meta.metabase import MetaBase
     from app.schemas.message import Message
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
         _match_lock: Any
         _search_queue_lock: Any
         _subscription_execution_admission: Any
+        transfer_history_repository: TransferHistoryRepository
         download_history_repository: Any
         eventmanager: Any
         messagehelper: Any
@@ -32,6 +34,7 @@ if TYPE_CHECKING:
         sync_subscription_mutation_scope: Callable[..., Any]
 
         _SubscribeChain__apply_episodes_refresh: Callable[..., Any]
+        _SubscribeChain__update_subscribe_note: Callable[..., Any]
         _SubscribeChain__apply_subscribe_update: Callable[..., Any]
         _SubscribeChain__async_apply_episodes_refresh: Callable[..., Awaitable[Any]]
         _SubscribeChain__async_notify_subscribe_create_failure: Callable[..., Awaitable[Any]]
@@ -65,6 +68,7 @@ if TYPE_CHECKING:
         _execute_search_task: Callable[..., Any]
         _get_pending_best_version_episodes: Callable[..., Any]
         _is_episode_range_covered: Callable[..., Any]
+        _reconcile_music_album_progress: Callable[..., Any]
         _is_music_download_complete: Callable[..., Any]
         _load_search_subscriptions: Callable[..., Any]
         _match_music_subscribe: Callable[..., Any]

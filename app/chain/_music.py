@@ -25,7 +25,7 @@ from app.domain.context import Context, MediaInfo, MusicInfo
 from app.domain.media import MUSIC_SUBSCRIBABLE_TYPES
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
-from app.domain.music import match_music_resource
+from app.domain.music import match_music_resource, music_album_download_matches
 from app.runtime.log import logger
 from app.schemas.category import ClassificationSelection
 from app.schemas.common import JsonData
@@ -366,6 +366,10 @@ class MusicSubscribeMixin:
             if isinstance(item, str) and item
         }
         for context in downloads or []:
+            if not music_album_download_matches(mediainfo, context):
+                continue
+            if context.confirmed_full_coverage and context.music_track_keys:
+                return True
             downloaded_tracks.update(
                 item
                 for item in (getattr(context, "music_track_keys", None) or [])

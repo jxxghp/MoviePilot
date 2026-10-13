@@ -38,9 +38,11 @@ from app.runtime.events import eventmanager
 from app.runtime.log import logger
 from app.schemas.event import ResourceDownloadEventData
 from app.schemas.file import FileURI
+from app.schemas.media import resolve_media_identity
 from app.schemas.message import Message
 from app.schemas.types import (
     ChainEventType,
+    MediaType,
     MessageType,
     NotificationChannel,
 )
@@ -494,6 +496,12 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             if governance:
                 governance.report(context, "rejected", "资源准备失败或未满足下载提交条件")
             return (None, error_msg) if return_detail else None
+        if self._has_completed_music_download(prepared, source):
+            reason = "音乐资源的全部音频已成功整理，跳过重复提交"
+            logger.info(f"{prepared.torrent.title} {reason}")
+            if governance:
+                governance.report(context, "rejected", reason)
+            return (None, reason) if return_detail else None
         download_hash, error_msg = self._submit_prepared_download(
             prepared=prepared,
             context=context,
@@ -511,6 +519,30 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             governance.report(context, "submitted" if download_hash else "failed",
                               None if download_hash else "下载器未接受该资源，未提交成功")
         return (download_hash, error_msg) if return_detail else download_hash
+
+    def _has_completed_music_download(self, prepared: _PreparedDownload, source: Optional[str]) -> bool:
+        """按真实 hash 核验整包音频成功整理且本地目标仍存在，失败、缺失或部分整理可重试。"""
+        if prepared.media.type != MediaType.MUSIC or not self._is_subscribe_source(source):
+            return False
+        download_hash = cast(Any, TorrentHelper)().get_torrent_hash(prepared.torrent_content)
+        if not download_hash:
+            return False
+        history = self.download_history_repository.get_by_hash(download_hash)
+        if not history or resolve_media_identity(media=history) != resolve_media_identity(media=prepared.media):
+            return False
+        files = self.download_history_repository.get_files_by_hash(download_hash)
+        extensions = get_chain_runtime_config_snapshot().audio_extensions
+        audio_files = [FileURI.from_uri(item.fullpath) for item in files
+                       if item.fullpath and Path(item.fullpath).suffix.lower() in extensions]
+        audio_paths = {(item.storage, item.path) for item in audio_files}
+        if not audio_paths:
+            return False
+        transferred = {
+            (item.src_storage or "local", item.src) for item in self.transfer_history_repository.list_by_hash(download_hash)
+            if item.status and item.dest and item.type == MediaType.MUSIC.value and item.downloader == history.downloader
+            and item.dest_storage == "local" and Path(item.dest).is_file()
+        }
+        return audio_paths.issubset(transferred)
 
     def _prepare_download_single(
         self,

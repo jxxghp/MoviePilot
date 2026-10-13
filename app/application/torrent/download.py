@@ -5,9 +5,10 @@ import time
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, Union
-from urllib.parse import unquote
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from torrentool.api import Torrent
+from torrentool.exceptions import TorrentoolException
 
 from app.application.configuration import get_chain_runtime_config_snapshot, get_configured_system_config
 from app.application.site.query import get_configured_site_query_service
@@ -446,6 +447,22 @@ class TorrentHelper:
         except Exception as err:
             logger.error(f"种子内容解析失败：{str(err)}")
             return "", []
+
+    @staticmethod
+    def get_torrent_hash(content: Union[str, bytes]) -> Optional[str]:
+        """从实际种子内容或磁力链接读取任务身份，不信任搜索卡片中的可能缺失 hash。"""
+        try:
+            if torrent_rules.is_magnet_link(content):
+                url = content.decode() if isinstance(content, bytes) else content
+                values = parse_qs(urlsplit(url).query).get("xt", [])
+                for value in values:
+                    match = re.fullmatch(r"urn:btih:([a-fA-F0-9]{40})", value)
+                    if match:
+                        return match.group(1).lower()
+                return None
+            return str(Torrent.from_string(content).info_hash).lower()
+        except (ValueError, TypeError, UnicodeError, KeyError, TorrentoolException):
+            return None
 
     @staticmethod
     def get_url_filename(req: Any, url: str) -> str:

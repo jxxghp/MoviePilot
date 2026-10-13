@@ -17,8 +17,10 @@ from app.chain.subscribe.policy import SubscribePolicyOwner
 from app.domain.context import (
     Context,
     MediaInfo,
+    MusicInfo,
 )
 from app.domain.meta.metabase import MetaBase
+from app.domain.music import music_album_download_matches
 from app.runtime.log import logger
 from app.schemas.common import JsonData
 from app.schemas.event import SubscribeCompletionCheckEventData
@@ -145,7 +147,7 @@ class SubscribeCompletionOwner(_SubscribeOwnerBase):
         elif downloads and meta.type == MediaType.MUSIC:
             apply_update = self._SubscribeChain__apply_subscribe_update
             update_note = self._SubscribeChain__update_subscribe_note
-            subscribe = _record_music_download_facts(apply_update, update_note, subscribe, downloads)
+            subscribe = _record_music_download_facts(apply_update, update_note, subscribe, downloads, mediainfo)
         elif downloads:
             subscribe = self._SubscribeChain__update_subscribe_note(
                 subscribe=subscribe,
@@ -549,25 +551,39 @@ def _record_music_download_facts(
         update_note: Callable[..., SubscriptionSnapshot],
         subscribe: SubscriptionSnapshot,
         downloads: Optional[List[Context]],
+        mediainfo: Union[MediaInfo, MusicInfo],
 ) -> SubscriptionSnapshot:
-    """合并本轮专辑音轨事实，按统一媒体身份去重后返回最新订阅快照。"""
+    """合并经专辑身份校验的曲目；仅完整入库证据可调整发行版完成上界。"""
     if not downloads:
         return subscribe
     if getattr(subscribe, "music_type", None) != MUSIC_ENTITY_ALBUM:
         return update_note(subscribe=subscribe, downloads=downloads)
 
+    if not isinstance(mediainfo, MusicInfo):
+        return subscribe
     downloaded_tracks = {
         item
         for item in (getattr(subscribe, "downloaded_tracks", None) or [])
         if isinstance(item, str) and item
     }
-    subscribe_identity = resolve_media_identity(media=subscribe)
+    total_tracks = subscribe.total_tracks
     for context in downloads:
         media = context.media_info
         if not media or media.type != MediaType.MUSIC:
             continue
-        if subscribe_identity != resolve_media_identity(media=media):
+        if not music_album_download_matches(mediainfo, context):
+            logger.warning(
+                f"订阅 {subscribe.id} 丢弃专辑曲目事实：目标={resolve_media_identity(media=mediainfo)}，"
+                f"目标发行组={mediainfo.musicbrainz_release_group_id}，发行={mediainfo.musicbrainz_release_id}，"
+                f"资源={resolve_media_identity(media=media)}，发行组={getattr(media, "musicbrainz_release_group_id", None)}，"
+                f"资源发行={getattr(media, "musicbrainz_release_id", None)}，曲目键数={len(context.music_track_keys or [])}"
+            )
             continue
+        if context.confirmed_full_coverage and context.music_track_keys:
+            # 此标志由入库标签/CUE 的逐盘完整校验产生，不能由种子标题或文件数量设置。
+            total_tracks = len(set(context.music_track_keys))
+            downloaded_tracks = set(context.music_track_keys)
+            break
         downloaded_tracks.update(
             item
             for item in (getattr(context, "music_track_keys", None) or [])
@@ -580,12 +596,13 @@ def _record_music_download_facts(
         subscribe,
         {
             "downloaded_tracks": sorted(downloaded_tracks),
+            "total_tracks": total_tracks,
             "last_update": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         },
         scene="music_download_tracks",
     )
     logger.info(
         f"订阅 {subscribe.name} 记录已下载专辑曲目："
-        f"{len(downloaded_tracks)}/{subscribe.total_tracks or 0}"
+        f"{len(downloaded_tracks)}/{total_tracks or 0}"
     )
     return updated or subscribe

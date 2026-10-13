@@ -15,6 +15,7 @@ from app.chain.subscribe.completion import SubscribeCompletionOwner
 from app.chain.subscribe.create import SubscribeCreateOwner
 from app.chain.subscribe.interaction import SubscribeInteractionOwner
 from app.chain.subscribe.match import SubscribeMatchOwner
+from app.chain.subscribe.music import SubscribeMusicProgressOwner
 from app.chain.subscribe.notify import SubscribeNotificationOwner
 from app.chain.subscribe.policy import SubscribePolicyOwner
 from app.chain.subscribe.query import SubscribeQueryOwner
@@ -33,6 +34,7 @@ class SubscribeChain(
     SubscribeMatchOwner,
     SubscribeRefreshOwner,
     SubscribeCompletionOwner,
+    SubscribeMusicProgressOwner,
     SubscribeQueryOwner,
     SubscribeInteractionOwner,
     SubscribeNotificationOwner,

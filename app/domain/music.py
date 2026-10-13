@@ -7,7 +7,7 @@ from datetime import date
 from typing import Any, Generator, Iterable, Literal, Optional
 from unicodedata import combining, normalize
 
-from app.domain.context import MusicAlbumInfo, MusicInfo
+from app.domain.context import Context, MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic, music_credit_values
 from app.foundation.text import convert as zhconv_convert
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType
@@ -162,6 +162,64 @@ def music_album_has_consistent_tracks(album: MusicAlbumInfo) -> bool:
             for key, expected in identities.items()
         ) for track in album.tracks
     )
+
+
+def music_subscription_album_matches(target: MusicInfo, candidate: MusicInfo) -> bool:
+    """核验订阅专辑身份；发行组冲突不可用同名覆盖，缺失身份须同时有专辑和艺人证据。"""
+    if target.music_type != MUSIC_ENTITY_ALBUM or candidate.music_type != MUSIC_ENTITY_ALBUM:
+        return False
+    left, right = target.musicbrainz_release_group_id, candidate.musicbrainz_release_group_id
+    if left and right and left != right:
+        return False
+    candidate_title = candidate.album or candidate.title
+    if (target.album or target.title) and candidate_title and not music_album_matches(target, candidate_title):
+        return False
+    if left and right:
+        return True
+    if (target.media_source and target.media_id
+            and (target.media_source, target.media_id) == (candidate.media_source, candidate.media_id)):
+        return True
+    return bool(music_album_matches(target, candidate.album or candidate.title)
+                and music_artist_matches(target, [candidate.album_artist] if candidate.album_artist else candidate.artists))
+
+
+def music_album_download_matches(target: MusicInfo, context: Context) -> bool:
+    """跨发行版曲序不能直接拼接；完整入库对账可提供独立发行版的覆盖证明。"""
+    candidate = context.media_info
+    if not isinstance(candidate, MusicInfo) or not music_subscription_album_matches(target, candidate):
+        return False
+    releases = (target.musicbrainz_release_id, candidate.musicbrainz_release_id)
+    return bool(not all(releases) or releases[0] == releases[1] or context.confirmed_full_coverage)
+
+
+def music_completed_album_keys(metas: list[MetaMusic], target: MusicInfo) -> list[str]:
+    """以成功入库文件的标签和有效 CUE 证明各盘完整覆盖，不从现有文件数量推断总数。"""
+    tracks, _ = expand_music_tracks(metas)
+    if not tracks:
+        return []
+    discs: dict[int, set[int]] = {}
+    totals: dict[int, set[int]] = {}
+    disc_totals = {meta.total_discs for meta in tracks if meta.total_discs}
+    releases = {meta.musicbrainz_release_id for meta in tracks if meta.musicbrainz_release_id}
+    if len(disc_totals) > 1 or len(releases) > 1:
+        return []
+    expected_discs = next(iter(disc_totals), target.total_discs or 1)
+    for meta in tracks:
+        disc = meta.disc_number or 1
+        if not meta.track_number or not meta.total_tracks or meta.organization_error:
+            return []
+        discs.setdefault(disc, set()).add(meta.track_number)
+        totals.setdefault(disc, set()).add(meta.total_tracks)
+    if set(discs) != set(range(1, expected_discs + 1)):
+        return []
+    if any(len(totals[disc]) != 1 or keys != set(range(1, next(iter(totals[disc])) + 1))
+           for disc, keys in discs.items()):
+        return []
+    keys = [f"[{disc},{track}]" for disc in sorted(discs) for track in sorted(discs[disc])]
+    known_discs = bool(disc_totals) or bool(target.total_discs and releases == {target.musicbrainz_release_id})
+    if len(keys) < (target.total_tracks or 0) and not known_discs:
+        return []
+    return keys
 
 
 def music_album_candidate_matches(album: MusicAlbumInfo, meta: MetaMusic, tracks: list[MetaMusic]) -> bool:
