@@ -445,28 +445,32 @@ def test_close_workers_lock_wait_uses_the_same_timeout_budget() -> None:
 
 
 def test_close_keeps_failure_notification_when_workers_do_not_converge() -> None:
-    """活跃整理线程超时后，失败通知 owner 必须继续供线程使用。"""
+    """活跃整理线程超时后，成功和失败通知 owner 必须继续供线程使用。"""
     chain = _build_chain()
     chain.close_workers = MagicMock(return_value=False)
     chain.failure_notification_aggregator = MagicMock()
+    chain.success_notification_aggregator = MagicMock()
 
     completed = asyncio.run(chain.close(timeout_seconds=0.01))
 
     assert completed is False
     chain.close_workers.assert_called_once_with(0.01)
     chain.failure_notification_aggregator.close.assert_not_called()
+    chain.success_notification_aggregator.close.assert_not_called()
 
 
 def test_close_releases_failure_notification_after_workers_converge() -> None:
-    """worker 和回放退出后，整理链应刷新并关闭失败通知 owner。"""
+    """worker 和回放退出后，整理链应刷新并关闭成功和失败通知 owner。"""
     chain = _build_chain()
     chain.close_workers = MagicMock(return_value=True)
     chain.failure_notification_aggregator = MagicMock()
+    chain.success_notification_aggregator = MagicMock()
 
     completed = asyncio.run(chain.close(timeout_seconds=0.01))
 
     assert completed is True
     chain.failure_notification_aggregator.close.assert_called_once_with()
+    chain.success_notification_aggregator.close.assert_called_once_with()
 
 
 def test_stop_transfer_runtime_does_not_construct_chain(monkeypatch) -> None:

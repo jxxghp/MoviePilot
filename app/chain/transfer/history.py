@@ -1,15 +1,24 @@
 """手动和远程整理历史入口及结果消息。"""
 
 import re
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, List, Optional, Tuple, Union, cast
 
 from app.application.audio import use_music_cue
+from app.application.messaging.message import TemplateContextBuilder
+from app.application.transfer.models import TransferTask
+from app.application.transfer.notifications import (
+    TransferSuccessNotification,
+    build_transfer_success_group_key,
+)
 from app.chain.media import MediaChain
 from app.chain.transfer.contract import _TransferOwnerBase
+from app.domain import episode as episode_rules
 from app.domain.context import MediaInfo, MusicAlbumInfo, MusicInfo
 from app.domain.meta.metabase import MetaBase
 from app.runtime.log import logger
+from app.runtime.loop import main_loop_registry
 from app.schemas.message import Message
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.transfer import EpisodeFormat, TransferInfo
@@ -315,6 +324,8 @@ class TransferHistoryOwner(_TransferOwnerBase):
             season_episode: Optional[str] = None,
             episodes_info: Optional[List[TmdbEpisode]] = None,
             username: Optional[str] = None,
+            buttons: Optional[list[list[dict[str, Any]]]] = None,
+            batch: bool = False,
     ):
         """
         发送入库成功的消息
@@ -324,21 +335,101 @@ class TransferHistoryOwner(_TransferOwnerBase):
         :param season_episode: 已入库季集文本
         :param episodes_info: 当前季的全部集信息
         :param username: 用户名
+        :param buttons: 批次通知使用的历史入口
+        :param batch: 多文件批次使用简洁汇总，单文件沿用用户通知模板
         """
-        self.post_message(
-            Message(
+        message = Message(
                 mtype=MessageType.Organize,
                 ctype=ContentType.OrganizeSuccess,
                 image=mediainfo.get_message_image(),
                 username=username,
                 link=self.runtime_config.history_url,
-            ),
+                buttons=buttons,
+            )
+        if batch:
+            context = TemplateContextBuilder().build(
+                meta=meta, mediainfo=cast(MediaInfo, mediainfo), transferinfo=transferinfo,
+                aggregate_music_album=True, season_episode=season_episode,
+            )
+            message.title = context.get("title_year") or mediainfo.title
+            if season_episode:
+                message.title = f"{message.title} {season_episode}"
+            message.text = f"📂 已入库 {transferinfo.file_count} 个文件"
+            total_tracks = getattr(mediainfo, "total_tracks", None)
+            if mediainfo.type == MediaType.MUSIC and total_tracks:
+                message.text += f" / 共 {total_tracks} 首曲目"
+            if transferinfo.target_diritem:
+                message.text += f"\n目录：{transferinfo.target_diritem.path}"
+        self.post_message(
+            message,
             meta=meta,
             mediainfo=mediainfo,
             transferinfo=transferinfo,
             season_episode=season_episode,
             episodes_info=episodes_info,
             username=username,
+        )
+
+    def notify_successful_transfer(self, task: TransferTask, transferinfo: TransferInfo) -> None:
+        """全局开启时聚合成功结果，目录关闭通知和前台手动整理仍保持静默。"""
+        if not transferinfo.target_item or not transferinfo.need_notify or (task.manual and not task.background):
+            return
+        assert task.meta is not None and task.mediainfo is not None
+        if self.runtime_config.transfer_success_notification_aggregation:
+            self.queue_successful_transfer_notification(task, transferinfo)
+
+    def queue_successful_transfer_notification(self, task: TransferTask, transferinfo: TransferInfo) -> None:
+        """仅缓冲成功展示快照，历史、完成事件和种子状态仍逐任务结算。"""
+        assert task.meta is not None and task.mediainfo is not None
+        notification = TransferSuccessNotification(
+            meta=deepcopy(task.meta),
+            mediainfo=deepcopy(task.mediainfo),
+            transferinfo=transferinfo.model_copy(deep=True),
+            episodes_info=deepcopy(task.episodes_info),
+            username=task.username,
+        )
+        try:
+            self.success_notification_aggregator.schedule(
+                group_key=build_transfer_success_group_key(task, transferinfo),
+                notification=notification,
+                callback=self._send_transfer_success_notifications,
+                loop=None if task.transfer_batch_id else main_loop_registry.require(),
+                defer_until=task.transfer_batch_id,
+            )
+        except Exception as err:
+            logger.error(f"加入整理成功通知聚合缓冲失败，将立即发送：{err}")
+            self._send_transfer_success_notifications([notification])
+
+    def _send_transfer_success_notifications(self, notifications: list[TransferSuccessNotification]) -> None:
+        """合并真实目标文件及大小，并以专辑、电影或季为模板主体发送批次通知。"""
+        if not notifications:
+            return
+        first = notifications[0]
+        files: dict[str, int] = {}
+        for notice in notifications:
+            result = notice.transferinfo
+            paths = result.file_list_new or ([result.target_item.path] if result.target_item else [])
+            size, remainder = divmod(result.total_size or 0, len(paths) or 1)
+            for index, path in enumerate(paths):
+                files[path] = size + (1 if index < remainder else 0)
+        merged = first.transferinfo.model_copy(update={
+            "file_list_new": list(files), "file_count": len(files), "total_size": sum(files.values()),
+        })
+        media = first.mediainfo
+        if isinstance(media, MusicInfo) and media.album:
+            media = deepcopy(media)
+            media.music_type = MUSIC_ENTITY_ALBUM
+        episodes = sorted({
+            episode for notice in notifications for episode in notice.meta.episode_list
+        })
+        season_episode = first.meta.season if media.type == MediaType.TV else None
+        if season_episode and episodes:
+            season_episode = f"{season_episode} {episode_rules.format_ranges(episodes)}"
+        self.send_transfer_message(
+            meta=first.meta, mediainfo=media, transferinfo=merged,
+            season_episode=season_episode, episodes_info=first.episodes_info, username=first.username,
+            buttons=[[{"text": "查看整理记录", "url": self.runtime_config.history_url}]] if len(files) > 1 else None,
+            batch=len(files) > 1,
         )
 
     @staticmethod

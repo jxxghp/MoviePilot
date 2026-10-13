@@ -265,6 +265,9 @@ def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
         transfer_failure_notification_aggregation=(
             settings.TRANSFER_FAILURE_NOTIFICATION_AGGREGATION
         ),
+        transfer_success_notification_aggregation=(
+            settings.TRANSFER_SUCCESS_NOTIFICATION_AGGREGATION
+        ),
         transfer_task_timeout=settings.TRANSFER_TASK_TIMEOUT,
         scrape_follow_tmdb=settings.SCRAP_FOLLOW_TMDB,
         metadata_cache_ttl=settings.CONF.meta,

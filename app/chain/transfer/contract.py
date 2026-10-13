@@ -27,6 +27,7 @@ if TYPE_CHECKING:
         download_history_repository: Any
         eventmanager: Any
         failure_notification_aggregator: Any
+        success_notification_aggregator: Any
         jobview: Any
         runtime_config: Any
         transfer_admission_repository: Any
@@ -127,6 +128,9 @@ if TYPE_CHECKING:
         remove_torrents: Callable[..., Any]
         run_module: Callable[..., Any]
         send_transfer_message: Callable[..., Any]
+        notify_successful_transfer: Callable[..., Any]
+        queue_successful_transfer_notification: Callable[..., Any]
+        _send_transfer_success_notifications: Callable[..., Any]
         torrent_files: Callable[..., Any]
         transfer_completed: Callable[..., Any]
 

@@ -192,6 +192,9 @@ class ScrapeBatchMixin(_TransferOwnerBase):
             targets = list(batch.get("targets", {}).values())
             self._scrape_batches.pop(batch_id, None)
 
+        aggregator = getattr(self, "success_notification_aggregator", None)
+        if aggregator is not None:
+            aggregator.release_batch(batch_id)
         for target in targets:
             fileitem = target.get("fileitem")
             if not fileitem:

@@ -23,6 +23,10 @@ from app.application.transfer.execution import (
     TransferExecutionSnapshot,
     TransferExecutionState,
 )
+from app.application.transfer.notifications import (
+    TransferNotificationAggregator,
+    TransferSuccessNotification,
+)
 from app.application.transfer.workflow import (
     JobManager,
     TransferAdmission,
@@ -83,6 +87,7 @@ class TransferQueueOwner(_TransferOwnerBase):
         # Agent重试管理器
         # 整理失败通知聚合器
         self.failure_notification_aggregator = TransferFailureNotificationAggregator()
+        self.success_notification_aggregator = TransferNotificationAggregator[TransferSuccessNotification]()
         # durable admission 仓储先于内存入队保存任务，进程退出后仍可恢复。
         self._transfer_admissions = self.transfer_admission_repository
         self._transfer_executions = self.transfer_execution_repository
@@ -324,6 +329,7 @@ class TransferQueueOwner(_TransferOwnerBase):
         if not workers_closed:
             return False
         self.failure_notification_aggregator.close()
+        self.success_notification_aggregator.close()
         return True
 
     def on_config_changed(self) -> None:
