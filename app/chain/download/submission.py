@@ -237,6 +237,12 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
             return None, "", []
         if torrent.enclosure.startswith("magnet:"):
             return torrent.enclosure, "", []
+        helper: TorrentHelper = cast(Any, TorrentHelper)()
+        if helper.is_invalid(torrent.enclosure):
+            if on_failure:
+                on_failure("种子已加入下载失败黑名单（24小时）")
+            logger.info(f"{torrent.title} 命中下载失败黑名单，跳过下载")
+            return None, "", []
         torrent = self._with_site_credentials(torrent)
         result = self._get_torrent_content(torrent)
         if result is None:
@@ -250,6 +256,8 @@ class _DownloadResourceOwner(_DownloadOwnerBase):
         if not content:
             if on_failure:
                 on_failure(error_msg or "下载种子内容为空")
+            if error_msg and "种子数据有误" in error_msg:
+                helper.add_invalid(torrent.enclosure)
             logger.error(f"下载种子文件失败：{torrent.title}")
             self.post_message(Message(
                 channel=channel,
@@ -582,16 +590,15 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             context.selected_episodes = []
         download_error = "下载种子内容为空"
 
-        def remember_rate_limit(error_msg: str) -> None:
-            """仅保留本次限流原因，避免准备流程用空内容覆盖站点冷却窗口。"""
+        def remember_failure(error_msg: str) -> None:
+            """保留真实失败原因，使无效种子和限流分别使用正确的资源冷却。"""
             nonlocal download_error
-            if torrent_rules.rate_limit_cooldown(error_msg) is not None:
-                download_error = error_msg
+            download_error = error_msg
 
         if not torrent_file and not torrent_content:
             torrent_content, _, _ = self.download_torrent(
                 torrent, channel=channel, source=source, userid=userid,
-                on_failure=remember_rate_limit,
+                on_failure=remember_failure,
             )
         elif torrent_file:
             torrent_content = (

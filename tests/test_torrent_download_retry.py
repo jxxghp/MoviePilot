@@ -39,8 +39,9 @@ def boundary(monkeypatch):
     monkeypatch.setattr(download, "FileCache", Mock(return_value=cache))
     sleep = Mock()
     monkeypatch.setattr(download.time, "sleep", sleep)
+    monkeypatch.setattr(download, "TTLCache", Mock(return_value={}))
     helper = download.TorrentHelper()
-    helper.add_invalid = Mock()
+    helper.add_invalid = Mock(wraps=helper.add_invalid)
     return helper, port, cache, sleep
 
 
@@ -112,10 +113,137 @@ def test_first_download_confirmation_post_is_not_retried(boundary):
     page = '下载种子文件<form action="?"><input name="confirm" value="yes"></form>'.encode()
     port.request.side_effect = [_response(content=page), _response(503)]
 
-    assert helper.download_torrent(URL)[1] is None
+    result = helper.download_torrent(URL)
+    assert result[1] is None
+    assert result[4] == "下载种子出错，状态码：503"
 
     assert [call.kwargs["method"] for call in port.request.call_args_list] == ["GET", "POST"]
     sleep.assert_not_called()
+    helper.add_invalid.assert_not_called()
+
+
+def test_first_download_confirmation_preserves_quota_error(boundary):
+    """确认 POST 遇到站点限流时保留原因，不把限流页当作失效种子。"""
+    helper, port, _, _ = boundary
+    page = '下载种子文件<form action="?"><input name="confirm" value="yes"></form>'.encode()
+    message = "相同種子當天最多下載10次"
+    port.request.side_effect = [_response(content=page), _response(content=json.dumps({"message": message}).encode())]
+
+    assert helper.download_torrent(URL)[4] == f"站点限流：{message}"
+    assert port.request.call_count == 2
+    helper.add_invalid.assert_not_called()
+
+
+def test_first_download_confirmation_empty_response_is_transient(boundary):
+    """确认请求的空响应不证明种子无效，不能污染资源黑名单。"""
+    helper, port, _, _ = boundary
+    page = '下载种子文件<form action="?"><input name="confirm" value="yes"></form>'.encode()
+    port.request.side_effect = [_response(content=page), _response(content=b"")]
+
+    assert helper.download_torrent(URL)[4] == "未下载到种子数据"
+    assert port.request.call_count == 2
+    helper.add_invalid.assert_not_called()
+
+
+@pytest.mark.parametrize("form", [
+    '<form action="?"><input value="yes" name="confirm"></form>',
+    "<form method='POST' action='?'><input value='a&amp;b' name='token'></form>",
+    '<form method="post"><input name="confirm" value="yes"></form>',
+    '<form action="download.php?id=39" method="post"><input name="confirm" value="yes"></form>',
+    '<form action="?"><input name="token" value="a&amp;b"><button name="confirm" value="yes">下载</button></form>',
+])
+def test_first_download_form_variants_are_confirmed(boundary, form):
+    """按 HTML 表单语义提交确认，兼容属性顺序、引号、实体和提交按钮。"""
+    helper, port, cache, sleep = boundary
+    page = ("下载种子文件" + form).encode()
+    port.request.side_effect = [_response(content=page), _response()]
+
+    assert helper.download_torrent(URL, cookie="session=test")[1] == CONTENT
+
+    assert [call.kwargs["method"] for call in port.request.call_args_list] == ["GET", "POST"]
+    posted = port.request.call_args.kwargs
+    assert posted["url"] == URL
+    assert posted["cookie"] == "session=test"
+    assert posted["referer"] == URL
+    assert posted["data"] == ({"token": "a&b", "confirm": "yes"} if "button" in form else
+                              {"token": "a&b"} if "token" in form else {"confirm": "yes"})
+    cache.set.assert_called_once()
+    helper.add_invalid.assert_not_called()
+    sleep.assert_not_called()
+
+
+def test_first_download_form_never_posts_credentials_to_other_origin(boundary):
+    """确认表单不能把站点 Cookie 和隐藏凭据发送到其他来源。"""
+    helper, port, _, _ = boundary
+    page = '下载种子文件<form action="https://other.example/download.php"><input name="token" value="secret"></form>'
+    port.request.return_value = _response(content=page.encode())
+
+    assert helper.download_torrent(URL, cookie="session=test")[1] is None
+    port.request.assert_called_once()
+    helper.add_invalid.assert_called_once_with(URL)
+
+
+def test_failed_confirmation_blacklists_original_url_after_redirect(boundary):
+    """确认后仍返回 HTML 时屏蔽原资源地址，刷新候选使用同一个黑名单键。"""
+    helper, port, _, _ = boundary
+    redirect = _response(302)
+    redirect.headers["Location"] = "https://tracker.example/download.php?id=39&confirm=1"
+    page = '下载种子文件<form action="?"><input name="confirm" value="yes"></form>'.encode()
+    port.request.side_effect = [redirect, _response(content=page), _response(content=page)]
+
+    assert helper.download_torrent(URL)[1] is None
+    helper.add_invalid.assert_called_once_with(URL)
+    assert helper.is_invalid(URL)
+
+
+def test_chain_blacklist_suppresses_repeated_requests_and_notifications(boundary):
+    """多轮下载同一失败资源只提醒首次，并阻止后续请求和错误通知。"""
+    _, port, _, _ = boundary
+    port.request.return_value = _response(content=b"<html>invalid torrent</html>")
+    chain = object.__new__(DownloadChain)
+    chain.post_message = Mock()
+    torrent = TorrentInfo(site=1, site_name="test", title="Series S01E39", enclosure=URL)
+
+    for _ in range(5):
+        assert chain.download_torrent(torrent)[0] is None
+
+    assert port.request.call_count == 3
+    chain.post_message.assert_called_once()
+
+
+@pytest.mark.parametrize("error", ["种子数据有误，请确认链接是否正确",
+                                   "种子数据有误，请确认链接是否正确，如为PT站点则需手工在站点下载一次种子"])
+def test_invalid_torrent_data_has_resource_cooldown(error):
+    """无效种子及确认失败使用资源级冷却，重启也不会退回每小时通知。"""
+    assert DownloadFailureOwner._download_failure_ttl(error) == 86400
+
+
+def test_invalid_content_preparation_preserves_persisted_resource_cooldown(boundary, monkeypatch):
+    """单任务准备保留无效种子原因，持久化冷却不能再被统一空内容错误覆盖。"""
+    _, port, _, _ = boundary
+    port.request.return_value = _response(content=b"<html>invalid torrent</html>")
+    chain = object.__new__(DownloadChain)
+    chain.post_message = Mock()
+    chain.download_failure_repository = Mock()
+    chain._apply_resource_download_event = Mock(return_value=(None, None))
+    context = Context(
+        torrent_info=TorrentInfo(site=1, site_name="test", title="Series S01E39", enclosure=URL),
+        media_info=MediaInfo(title="Series", type=MediaType.TV), meta_info=MetaInfo("Series S01E39"),
+    )
+    media = Mock()
+    media.supplement_tmdb_info.return_value = context.media_info
+    monkeypatch.setattr(submission, "MediaChain", Mock(return_value=media))
+
+    prepared, error = chain._prepare_download_single(
+        context=context, torrent_file=None, torrent_content=None, episodes=None,
+        channel=None, source="Subscribe|1", downloader=None, save_path=None, userid=None, username=None,
+    )
+
+    assert prepared is None
+    failure = chain.download_failure_repository.record_failure.call_args.args[0]
+    assert failure.error_message == error == "种子数据有误，请确认链接是否正确"
+    assert (datetime.fromisoformat(failure.next_retry_at)
+            - datetime.fromisoformat(failure.failed_at)).total_seconds() == 86400
 
 
 def test_redirected_get_retries_at_destination(boundary):
@@ -144,13 +272,13 @@ def test_second_retry_can_recover(boundary):
 
 @pytest.mark.parametrize("content", [b"", b"d4:info", b"<html>CF</html>"])
 def test_invalid_content_exhaustion_never_caches_response(boundary, content):
-    """空或无法解析的响应耗尽预算后仍不能进入种子及无效链接缓存。"""
+    """无效内容耗尽重试后进入黑名单，空响应仍按瞬时失败处理。"""
     helper, port, cache, _ = boundary
     port.request.return_value = _response(content=content)
     assert helper.download_torrent(URL)[1] is None
     assert port.request.call_count == 3
     cache.set.assert_not_called()
-    helper.add_invalid.assert_not_called()
+    assert helper.add_invalid.call_count == (1 if content else 0)
 
 
 @pytest.mark.parametrize("content", [CONTENT, b"magnet:?xt=urn:btih:abc"])

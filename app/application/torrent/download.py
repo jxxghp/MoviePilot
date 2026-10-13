@@ -5,8 +5,9 @@ import time
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Protocol, Tuple, Union
-from urllib.parse import parse_qs, unquote, urlsplit
+from urllib.parse import parse_qs, unquote, urljoin, urlsplit
 
+from lxml import html
 from torrentool.api import Torrent
 from torrentool.exceptions import TorrentoolException
 
@@ -158,6 +159,32 @@ def _cache_valid_torrent_content(
     return folder_name, file_list
 
 
+def _first_download_form(text: str, url: str) -> Optional[Tuple[str, dict[str, Any]]]:
+    """解析下载确认表单，仅向当前下载端点提交有效控件，避免泄露站点凭据。"""
+    try:
+        forms = html.fromstring(text).forms
+    except (ValueError, html.etree.ParserError):
+        return None
+    for form in forms:
+        action = form.get("action", "").strip()
+        target = url if action in ("", "?") else urljoin(url, action)
+        origin, destination = urlsplit(url), urlsplit(target)
+        if (destination[:2] != origin[:2] or destination.path != origin.path
+                or form.get("method", "post").lower() != "post"):
+            continue
+        data = dict(form.form_values())
+        # form_values 不包含用户点击的提交控件，首次下载确认可能依赖该字段。
+        submits = form.xpath(
+            './/input[@name and not(@disabled) and translate(@type, "SUBMIT", "submit")="submit"]'
+            ' | .//button[@name and not(@disabled) and (not(@type) or @type="submit")]'
+        )
+        if submits:
+            data[submits[0].get("name")] = submits[0].get("value", "")
+        if data:
+            return target, data
+    return None
+
+
 def _text_filter_failure(torrent: TorrentInfo, params: Dict[str, Any], content: str) -> Optional[Tuple[str, str]]:
     """按原有顺序检查包含、排除、质量等正则，并返回业务原因和运行诊断。"""
     for key, label, subject, expected in (
@@ -273,6 +300,7 @@ class TorrentHelper:
             return None, url, "", [], "磁力链接"
         # 构建 torrent 种子文件的缓存路径
         cache_path = Path(HashUtils.md5(url)).with_suffix(".torrent")
+        original_url = url
         # 种子二进制固定落 TEMP_PATH/torrents 不进 Redis，下载器与提交链须按同一路由读取
         cache_backend = FileCache(local_only=True)
         # 读取缓存的种子文件
@@ -324,41 +352,26 @@ class TorrentHelper:
                 return cache_path, req.content, folder_name, file_list, ""
             if "下载种子文件".encode("utf-8") in req.content:
                 # 首次下载提示页面
-                skip_flag = False
-                try:
-                    forms = re.findall(r'<form.*?action="(.*?)".*?>(.*?)</form>', req.text, re.S)
-                    for form in forms:
-                        action = form[0]
-                        if action != "?":
-                            continue
-                        action = url
-                        inputs = re.findall(r'<input.*?name="(.*?)".*?value="(.*?)".*?>', form[1], re.S)
-                        if inputs:
-                            data = {}
-                            for item in inputs:
-                                data[item[0]] = item[1]
-                            # 改写req
-                            req = http_port.request(
-                                method="POST", url=action, cookie=cookie, ua=ua,
-                                referer=referer, proxies=config.proxy if proxy else None,
-                                data=data,
-                            )
-                            if req and req.status_code == 200:
-                                # 检查是不是种子文件，如果不是抛出异常
-                                Torrent.from_string(req.content)
-                                # 跳过成功
-                                logger.info("触发了站点首次种子下载，已自动跳过")
-                                skip_flag = True
-                            elif req is not None:
-                                logger.warn(f"触发了站点首次种子下载，且无法自动跳过，"
-                                            f"返回码：{req.status_code}，错误原因：{req.reason}")
-                            else:
-                                logger.warn("触发了站点首次种子下载，且无法自动跳过")
-                        break
-                except Exception as err:
-                    logger.warn(f"触发了站点首次种子下载，尝试自动跳过时出现错误：{str(err)}")
-                if not skip_flag:
+                confirmation = _first_download_form(req.text, url)
+                if confirmation is None:
+                    logger.warning("触发首次种子下载，但未找到可安全提交的确认表单")
+                    if cache_invalid:
+                        self.add_invalid(original_url)
                     return cache_path, None, "", [], "种子数据有误，请确认链接是否正确，如为PT站点则需手工在站点下载一次种子"
+                action, data = confirmation
+                req = http_port.request(
+                    method="POST", url=action, cookie=cookie, ua=ua,
+                    referer=url, proxies=config.proxy if proxy else None, data=data,
+                )
+                if rate_limit_error := _torrent_rate_limit_error(req):
+                    return cache_path, None, "", [], rate_limit_error
+                if req is None:
+                    return cache_path, None, "", [], "无法打开链接"
+                if req.status_code != 200:
+                    return cache_path, None, "", [], f"下载种子出错，状态码：{req.status_code}"
+                if not req.content:
+                    return cache_path, None, "", [], "未下载到种子数据"
+                logger.info("已提交站点首次种子下载确认，正在校验种子内容")
             # 首次下载提示页面完成后，重新按原始二进制解析 POST 响应。
             assert req is not None
             if req.content:
@@ -369,13 +382,15 @@ class TorrentHelper:
                     # 成功拿到种子数据
                     return cache_path, req.content, folder_name, file_list, ""
             # 解析失败时终止，避免把 HTML 继续下沉到下载器或缓存。
+            if cache_invalid:
+                self.add_invalid(original_url)
             return cache_path, None, "", [], "种子数据有误，请确认链接是否正确"
         elif req is None:
             return cache_path, None, "", [], "无法打开链接"
         else:
             # 把错误的种子记下来，避免重复使用
             if cache_invalid and not _is_transient_torrent_status(req.status_code):
-                self.add_invalid(url)
+                self.add_invalid(original_url)
             return cache_path, None, "", [], f"下载种子出错，状态码：{req.status_code}"
 
     def get_torrent_info(self, torrent_path: Path) -> Tuple[str, List[str]]:

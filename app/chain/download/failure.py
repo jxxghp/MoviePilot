@@ -29,6 +29,8 @@ DOWNLOAD_FAILURE_RESOURCE_ERROR_KEYWORDS = (
     "无法读取种子文件",
     "无法获取下载地址",
     "种子下载失败",
+    "种子数据有误",
+    "下载失败黑名单",
     "torrent not found",
     "not found",
     "404",
