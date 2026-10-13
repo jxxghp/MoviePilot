@@ -426,6 +426,8 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 | POST | `/api/v1/system/update/install` | 请求体可传 `{"target":"application"}` 或 `{"target":"resources"}`；再次校验对应制品，写入安装意图并重启 |
 | POST | `/api/v1/system/upgrade` | 保留 Dev 更新并重启，请求体只能为 `"dev"` |
 
+定时与手动检查均保留正在下载、已下载待安装及安装中的状态；检查请求返回时会再次核对，避免覆盖请求期间发生的状态转换。若旧检查已把资源包状态覆盖为 `available`，状态查询会校验同一目标包版本的完整暂存文件与摘要，恢复 `ready`、完整进度及安装入口，无需重复下载。下载完成后仍需确认「重启应用完成更新」。
+
 #### 媒体识别 / 整理
 
 媒体识别、搜索和手动整理统一使用 `media_source` + `media_id` 表示媒体主身份。内置来源通过 `MediaSource` 提供 `themoviedb`、`douban`、`bangumi`、`anilist`、`imdb`、`tvdb`、`musicbrainz`、`theaudiodb`、`doubanmusic` 九个具有宿主模块实现的常量；该列表不是插件来源白名单，插件可以注册符合 OpenAPI 格式约束的稳定扩展标识。`media_id` 是该来源的原生 ID，不添加 `tmdb:` 等前缀。需要精确身份时两个字段必须同时提供，不能只传其中一个。

@@ -32,6 +32,8 @@ from app.schemas.system import SystemUpdateStatus, SystemUpdateType
 _APPLICATION: SystemUpdateType = "application"
 _RESOURCES: SystemUpdateType = "resources"
 _TARGETS: tuple[SystemUpdateType, ...] = (_APPLICATION, _RESOURCES)
+# 下载中或等待用户确认安装的状态：检查不得覆盖，也无须重复发起检查
+_PENDING_STATES = frozenset({"downloading", "ready", "installing"})
 _ITEM_FIELDS = {
     "state",
     "current_version",
@@ -69,6 +71,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
     _STABLE_VERSION_PATTERN = re.compile(r"^v3\.\d+\.\d+(?:-\d+)?$", re.I)
 
     def __init__(self) -> None:
+        """初始化状态写入锁与当前进程的下载任务标记。"""
         self._lock = threading.RLock()
         self._download_active = False
         self._active_target: SystemUpdateType | None = None
@@ -220,6 +223,14 @@ class SystemUpdateManager(metaclass=SingletonClass):
             self._get_item(state, target).update(changes)
             return self._persist_state(self._sync_aggregate(state))
 
+    def _write_check_result(self, target: SystemUpdateType, **changes: Any) -> None:
+        """检查请求返回后重新核对状态，避免覆盖请求期间开始或完成的下载、安装。"""
+        with self._lock:
+            item = self._get_item(self.get_status().model_dump(), target)
+            if item["state"] in _PENDING_STATES:
+                return
+            self._write_item(target, **changes)
+
     def _persist_state(self, state: dict[str, Any]) -> dict[str, Any]:
         """校验并原子替换状态 JSON。"""
         validated = cast(dict[str, Any], SystemUpdateStatus.model_validate(state).model_dump())
@@ -322,12 +333,14 @@ class SystemUpdateManager(metaclass=SingletonClass):
                     item.get("state") in {"available", "ready", "installing", "failed"}
                     and self._is_install_applied(item, target)
                 ):
-                    if item.get("state") in {"ready", "failed"}:
+                    if item.get("state") in {"available", "ready", "failed"}:
                         # 容器替换或手工安装可能先让运行版本达到目标，需丢弃残留待安装包；
-                        # 失败记录同样保留了供重试的下载包，外部升级后已无意义。
+                        # 失败或旧检查覆盖后的可用记录也可能保留下载包，外部升级后已无意义。
                         self._discard_prepared_target(target)
                     self._reset_item_after_install(item)
                     changed = True
+            if resources.get("state") == "available":
+                changed = self._restore_prepared_resources(resources) or changed
             resources_changed = (
                 previous_auth_version != auth_version
                 or previous_indexer_version != indexer_version
@@ -339,6 +352,26 @@ class SystemUpdateManager(metaclass=SingletonClass):
             state["auto_update"] = get_runtime_setting("MOVIEPILOT_AUTO_UPDATE") is True
             state["auto_update_resource"] = get_runtime_setting("AUTO_UPDATE_RESOURCE") is True
             return cast(SystemUpdateStatus, SystemUpdateStatus.model_validate(state))
+
+    def _restore_prepared_resources(self, item: dict[str, Any]) -> bool:
+        """旧检查覆盖状态后，仅恢复目标包版本一致且文件完整、摘要正确的待安装资源。"""
+        prepared = self._read_prepared_manifest_optional()
+        if not item.get("version") or prepared.get("resource_package_version") != item["version"]:
+            return False
+        try:
+            self._validate_resource_manifest(prepared)
+            size = sum(Path(file["path"]).stat().st_size for file in prepared["resource_files"])
+        except (OSError, RuntimeError):
+            return False
+        item.update(
+            state="ready",
+            downloaded_bytes=size,
+            total_bytes=size,
+            error=None,
+            can_update=False,
+            can_install=True,
+        )
+        return True
 
     def _is_install_applied(self, item: dict[str, Any], target: SystemUpdateType) -> bool:
         """判断启动器应用后的当前版本是否已经达到安装目标。"""
@@ -397,7 +430,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
         for update_target in targets:
             current = self.get_status()
             item = self._get_item(current.model_dump(), update_target)
-            if item["state"] in {"downloading", "ready", "installing"}:
+            if item["state"] in _PENDING_STATES:
                 continue
             try:
                 if update_target == _APPLICATION:
@@ -406,7 +439,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
                     self._check_resources()
             except Exception as error:  # noqa: BLE001  定时检查不得打扰当前任务
                 logger.warning(f"检查 {update_target} 更新失败：{error}")
-                self._write_item(
+                self._write_check_result(
                     update_target,
                     state="idle",
                     checked_at=self._now(),
@@ -438,7 +471,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
         version = str(release["tag_name"])
         current_version = get_app_version()
         has_update = compare_version(version, "gt", current_version) is True
-        self._write_item(
+        self._write_check_result(
             _APPLICATION,
             state="available" if has_update else "idle",
             version=version if has_update else None,
@@ -466,7 +499,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
             indexer_version=current_indexer,
         )
         if info is None:
-            self._write_item(
+            self._write_check_result(
                 _RESOURCES,
                 state="idle",
                 version=None,
@@ -482,7 +515,7 @@ class SystemUpdateManager(metaclass=SingletonClass):
                 can_install=False,
             )
             return
-        self._write_item(
+        self._write_check_result(
             _RESOURCES,
             state="available",
             version=info.get("package_version") or None,

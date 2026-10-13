@@ -118,7 +118,7 @@ def test_modified_builtin_skills_have_incremented_versions() -> None:
         "database-operation": "10",
         "feedback-issue": "11",
         "moviepilot-api": "53",
-        "moviepilot-update": "5",
+        "moviepilot-update": "6",
         "organize-files": "5",
         "transfer-failed-retry": "5",
         "generate-identifiers": "4",

@@ -1,6 +1,6 @@
 ---
 name: moviepilot-update
-version: 5
+version: 6
 description: Use this skill to check MoviePilot versions, inspect Release update state, download a Release update in the background, confirm installation, restart MoviePilot, or retain the existing Dev branch update flow. Prefer the built-in system APIs instead of container commands or manual file replacement.
 allowed-tools: moviepilot_api
 allowed-api-operations: >-
@@ -67,4 +67,5 @@ The body must be the exact JSON string `"dev"`. Stable Release updates must use 
 
 - All operations require a MoviePilot administrator or a verified notification-channel administrator. The host performs authorization; the model must never invent an administrator flag.
 - Only restart, Release installation, and Dev upgrade interrupt the current agent session. Checking and downloading remain online.
+- Checks preserve downloads and pending installations. A previously overwritten resource state can recover to `ready` after validating the matching staged package; use `updates` to inspect each target and request installation confirmation instead of downloading it again.
 - Prefer the API flow above. Only fall back to manual container commands when the API is unavailable.
