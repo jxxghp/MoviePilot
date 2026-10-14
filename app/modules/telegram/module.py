@@ -1,3 +1,4 @@
+import html
 import json
 import re
 from typing import Any, List, Optional, Tuple, Union
@@ -455,6 +456,17 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
 
         return cleaned
 
+    @staticmethod
+    def _notification_rich_message(message: Message) -> Optional[str]:
+        """渠道正文附上宿主详情入口；原有 Rich Message 调用仍保持完整正文语义。"""
+        rich_text = message.channel_text(NotificationChannel.Telegram)
+        if not rich_text:
+            return message.rich_message
+        if message.link:
+            link = html.escape(message.link, quote=True)
+            rich_text = f'{rich_text}\n\n<a href="{link}">查看详情</a>'
+        return rich_text
+
     def post_message(self, message: Message, **kwargs) -> None:
         """
         发送消息
@@ -510,7 +522,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                         original_chat_id=message.original_chat_id,
                         disable_web_page_preview=message.disable_web_page_preview,
                         parse_mode=message.parse_mode,
-                        rich_message=message.rich_message,
+                        rich_message=self._notification_rich_message(message),
                     )
 
     def post_medias_message(
@@ -736,7 +748,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                         original_chat_id=original_chat_id,
                         disable_web_page_preview=message.disable_web_page_preview,
                         parse_mode=message.parse_mode,
-                        rich_message=message.rich_message,
+                        rich_message=self._notification_rich_message(message),
                         private_delivery=message.private_delivery,
                     )
                 if result and result.get("success"):

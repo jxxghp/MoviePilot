@@ -1998,8 +1998,8 @@
   },
   "app/modules/slack/slack.py": {
     "assignment": 1,
-    "dict-item": 2,
-    "list-item": 2,
+    "dict-item": 1,
+    "list-item": 1,
     "no-untyped-call": 5,
     "no-untyped-def": 9,
     "type-arg": 7,

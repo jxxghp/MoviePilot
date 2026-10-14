@@ -28,6 +28,8 @@ class Slack:
     _oauth_token = ""
     _MAX_SLASH_COMMANDS = 50
     _SLASH_COMMAND_USAGE_HINT = "MoviePilot 可选参数"
+    _SECTION_TEXT_LIMIT = 3000
+    _FORMATTED_BLOCK_LIMIT = 48
 
     def __init__(self, SLACK_OAUTH_TOKEN: Optional[str] = None, SLACK_APP_TOKEN: Optional[str] = None,
                  SLACK_CHANNEL: Optional[str] = None,
@@ -74,25 +76,30 @@ class Slack:
         # 注册消息响应
         @slack_app.event("message")
         def slack_message(message):
+            """将普通 Slack 消息转交消息链。"""
             self._forward_to_message_chain(message, timeout=10)
 
         @slack_app.action(re.compile(r"actionId-.*"))
         def slack_action(ack, body):
+            """确认交互按钮事件，并转交消息链处理。"""
             ack()
             self._forward_to_message_chain(body, timeout=60)
 
         @slack_app.event("app_mention")
         def slack_mention(say, body):
+            """回应应用提及事件，并转交消息链处理。"""
             say(f"收到，请稍等... <@{body.get('event', {}).get('user')}>")
             self._forward_to_message_chain(body, timeout=10)
 
         @slack_app.shortcut(re.compile(r"/*"))
         def slack_shortcut(ack, body):
+            """确认快捷操作事件，并转交消息链处理。"""
             ack()
             self._forward_to_message_chain(body, timeout=10)
 
         @slack_app.command(re.compile(r"/*"))
         def slack_command(ack, body):
+            """确认斜杠命令事件，并转交消息链处理。"""
             ack()
             self._forward_to_message_chain(body, timeout=10)
 
@@ -279,7 +286,8 @@ class Slack:
                  image: Optional[str] = None, link: Optional[str] = None,
                  userid: Optional[str] = None, buttons: Optional[List[List[dict]]] = None,
                  original_message_id: Optional[str] = None,
-                 original_chat_id: Optional[str] = None):
+                 original_chat_id: Optional[str] = None,
+                 formatted_text: Optional[str] = None):
         """
         发送Slack消息
         :param title: 消息标题
@@ -290,6 +298,7 @@ class Slack:
         :param buttons: 消息按钮列表，格式为 [[{"text": "按钮文本", "callback_data": "回调数据", "url": "链接"}]]
         :param original_message_id: 原消息的时间戳，如果提供则编辑原消息
         :param original_chat_id: 原消息的频道ID，编辑消息时需要
+        :param formatted_text: 可选渠道专用 mrkdwn 正文；text 保留为通知摘要和兼容回退
         """
         if not self._client:
             return False, "消息客户端未就绪"
@@ -303,26 +312,7 @@ class Slack:
                 channel = self.__find_public_channel()
             # 消息文本
             message_text = f"{title}\n{text or ''}"
-            # 结构体
-            blocks = []
-            if image:
-                # 消息图片
-                blocks.append({"type": "section", "text": {
-                    "type": "mrkdwn",
-                    "text": f"*{title}*\n{text or ''}"
-                }, 'accessory': {
-                    "type": "image",
-                    "image_url": f"{image}",
-                    "alt_text": f"{title}"
-                }})
-            elif buttons or link:
-                blocks.append({
-                    "type": "section",
-                    "text": {
-                        "type": "mrkdwn",
-                        "text": f"*{title}*\n{text or ''}",
-                    },
-                })
+            blocks = self._message_blocks(title, text, image, link, buttons, formatted_text)
             # 自定义按钮
             if buttons:
                 for button_row in buttons:
@@ -376,27 +366,75 @@ class Slack:
                     ]
                 })
 
-            # 判断是编辑消息还是发送新消息
-            if original_message_id and original_chat_id:
-                # 编辑消息
-                result = self._client.chat_update(
-                    channel=original_chat_id,
-                    ts=original_message_id,
-                    text=message_text[:1000],
-                    blocks=blocks or []
-                )
-            else:
-                # 发送新消息
-                result = self._client.chat_postMessage(
-                    channel=channel,
-                    text=message_text[:1000],
-                    blocks=blocks,
-                    mrkdwn=True
-                )
+            result = None
+            target_channel = original_chat_id if original_message_id and original_chat_id else channel
+            for index, batch in enumerate(self._block_batches(blocks)):
+                if index == 0 and original_message_id and original_chat_id:
+                    result = self._client.chat_update(
+                        channel=original_chat_id, ts=original_message_id,
+                        text=message_text[:1000], blocks=batch or [],
+                    )
+                else:
+                    result = self._client.chat_postMessage(
+                        channel=target_channel, text=message_text[:1000], blocks=batch, mrkdwn=True,
+                    )
             return True, result
         except Exception as msg_e:
             logger.error(f"Slack消息发送失败: {msg_e}")
             return False, str(msg_e)
+
+    @classmethod
+    def _message_blocks(cls, title: str, text: Optional[str], image: Optional[str],
+                        link: Optional[str], buttons: Optional[List[List[Dict[str, Any]]]],
+                        formatted_text: Optional[str]) -> List[Dict[str, Any]]:
+        """选择渠道正文或原有图文结构，按钮仍由发送入口统一添加。"""
+        blocks = cls._formatted_blocks(formatted_text) if formatted_text else []
+        if blocks:
+            blocks.insert(0, {"type": "header", "text": {
+                "type": "plain_text", "text": (title or "MoviePilot")[:150]
+            }})
+        elif image:
+            # 消息图片
+            blocks.append({"type": "section", "text": {
+                "type": "mrkdwn",
+                "text": f"*{title}*\n{text or ''}"
+            }, 'accessory': {
+                "type": "image",
+                "image_url": f"{image}",
+                "alt_text": f"{title}"
+            }})
+        elif buttons or link:
+            blocks.append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"*{title}*\n{text or ''}",
+                },
+            })
+        return blocks
+
+    @classmethod
+    def _formatted_blocks(cls, text: str) -> List[Dict[str, Any]]:
+        """按段落生成 Block Kit，站点数量不限；过长单段仍回退原通知。"""
+        paragraphs = [part for part in text.split("\n\n") if part]
+        if any(len(part) > cls._SECTION_TEXT_LIMIT for part in paragraphs):
+            return []
+        return [{"type": "section", "text": {
+            "type": "mrkdwn", "text": part, "verbatim": True
+        }} for part in paragraphs]
+
+    @classmethod
+    def _block_batches(cls, blocks: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
+        """拆分长报告的 Block Kit，每条保留标题和操作入口。"""
+        headers = [block for block in blocks if block["type"] == "header"]
+        actions = [block for block in blocks if block["type"] == "actions"]
+        content = [block for block in blocks if block["type"] not in {"header", "actions"}]
+        capacity = max(1, cls._FORMATTED_BLOCK_LIMIT - len(actions))
+        batches = [blocks]
+        if len(blocks) > 50 and headers:
+            batches = [headers + content[index:index + capacity] + actions
+                       for index in range(0, len(content), capacity)]
+        return batches
 
     def send_file(
         self,

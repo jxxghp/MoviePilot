@@ -1,5 +1,5 @@
 import json
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, List, Optional, Sequence, Tuple, Union
 from urllib.parse import quote, unquote
 
 from app.adapters.network.http import RequestUtils
@@ -353,12 +353,14 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
                 continue
             client: SynologyChat = self.get_instance(conf.name)
             if client:
-                client.send_msg(title=message.title, text=message.text,
-                                image=message.image,
-                                userid=self.get_notification_userid(
-                                    message, "synologychat_userid"
-                                ),
-                                link=message.link)
+                texts: Sequence[Optional[str]] = message.channel_text_chunks(NotificationChannel.SynologyChat) or [message.text]
+                for text in texts:
+                    client.send_msg(title=message.title, text=text,
+                                    image=message.image,
+                                    userid=self.get_notification_userid(
+                                        message, "synologychat_userid"
+                                    ),
+                                    link=message.link)
 
     def post_medias_message(self, message: Message, medias: List[MediaInfo]) -> None:
         """

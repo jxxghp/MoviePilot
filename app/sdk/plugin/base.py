@@ -46,6 +46,7 @@ class _PluginBase(metaclass=ABCMeta):
     is_clone: bool = False
 
     def __init__(self) -> None:
+        """创建插件链入口并初始化插件数据访问对象。"""
         # 插件数据
         self.plugindata = PluginDataOper()
         # 处理链
@@ -424,7 +425,9 @@ class _PluginBase(metaclass=ABCMeta):
                      userid: Optional[str] = None, username: Optional[str] = None,
                      **kwargs: Any) -> None:
         """
-        发送消息
+        发送消息，沿用宿主通知开关和收件人路由。
+
+        :param kwargs: 可传 rich_content 通用结构化通知；宿主按渠道能力排版，text 保留为纯文本回退。
         """
         if not link:
             link = settings.MP_DOMAIN(f"#/plugins?tab=installed&id={self.__class__.__name__}")
@@ -434,4 +437,5 @@ class _PluginBase(metaclass=ABCMeta):
         ))
 
     def close(self) -> None:
+        """保留插件资源释放钩子，具体插件可覆盖实现。"""
         pass

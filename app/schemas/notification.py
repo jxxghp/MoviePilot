@@ -64,6 +64,15 @@ class ChannelCapability(Enum):
     PROCESSING_STATUS = "processing_status"
 
 
+class NotificationTextFormat(Enum):
+    """通知投递链路实际支持的正文语法，独立于平台其他交互能力。"""
+
+    MARKDOWN = "markdown"
+    RICH_MARKDOWN = "rich_markdown"
+    CARD_MARKDOWN = "card_markdown"
+    MRKDWN = "mrkdwn"
+
+
 @dataclass
 class ChannelCapabilities:
     """
@@ -78,6 +87,13 @@ class ChannelCapabilities:
     # 单条消息最大长度（0 表示不限制），用于流式输出时自动分段
     max_message_length: int = 0
     fallback_enabled: bool = True
+    # None 表示普通通知不支持专用富文本，即使其他交互场景允许 Markdown。
+    notification_text_format: Optional[NotificationTextFormat] = None
+    # 通知正文的 UTF-8 字节预算；0 表示由渠道自己的原生分段实现控制。
+    notification_text_bytes: int = 0
+    # 有些渠道只在特定配置模式下支持富文本；未指定 config 时返回声明的潜在能力。
+    notification_mode_key: Optional[str] = None
+    notification_mode_value: Optional[str] = None
 
 
 class ChannelCapabilityManager:
@@ -88,6 +104,7 @@ class ChannelCapabilityManager:
     _capabilities: Dict[NotificationChannel, ChannelCapabilities] = {
         NotificationChannel.Telegram: ChannelCapabilities(
             channel=NotificationChannel.Telegram,
+            notification_text_format=NotificationTextFormat.RICH_MARKDOWN,
             capabilities={
                 ChannelCapability.INLINE_BUTTONS,
                 ChannelCapability.MENU_COMMANDS,
@@ -110,6 +127,10 @@ class ChannelCapabilityManager:
         ),
         NotificationChannel.Wechat: ChannelCapabilities(
             channel=NotificationChannel.Wechat,
+            notification_text_format=NotificationTextFormat.MARKDOWN,
+            notification_text_bytes=3000,
+            notification_mode_key="WECHAT_MODE",
+            notification_mode_value="bot",
             capabilities={
                 ChannelCapability.IMAGES,
                 ChannelCapability.LINKS,
@@ -120,6 +141,7 @@ class ChannelCapabilityManager:
         ),
         NotificationChannel.Feishu: ChannelCapabilities(
             channel=NotificationChannel.Feishu,
+            notification_text_format=NotificationTextFormat.CARD_MARKDOWN,
             capabilities={
                 ChannelCapability.INLINE_BUTTONS,
                 ChannelCapability.MESSAGE_EDITING,
@@ -151,6 +173,7 @@ class ChannelCapabilityManager:
         ),
         NotificationChannel.Slack: ChannelCapabilities(
             channel=NotificationChannel.Slack,
+            notification_text_format=NotificationTextFormat.MRKDWN,
             capabilities={
                 ChannelCapability.INLINE_BUTTONS,
                 ChannelCapability.MESSAGE_EDITING,
@@ -173,6 +196,8 @@ class ChannelCapabilityManager:
         ),
         NotificationChannel.Discord: ChannelCapabilities(
             channel=NotificationChannel.Discord,
+            notification_text_format=NotificationTextFormat.MARKDOWN,
+            notification_text_bytes=3000,
             capabilities={
                 ChannelCapability.INLINE_BUTTONS,
                 ChannelCapability.MESSAGE_EDITING,
@@ -194,6 +219,8 @@ class ChannelCapabilityManager:
         ),
         NotificationChannel.DingTalk: ChannelCapabilities(
             channel=NotificationChannel.DingTalk,
+            notification_text_format=NotificationTextFormat.MARKDOWN,
+            notification_text_bytes=12000,
             capabilities={
                 ChannelCapability.MARKDOWN,
                 ChannelCapability.RICH_TEXT,
@@ -206,6 +233,8 @@ class ChannelCapabilityManager:
         ),
         NotificationChannel.SynologyChat: ChannelCapabilities(
             channel=NotificationChannel.SynologyChat,
+            notification_text_format=NotificationTextFormat.MRKDWN,
+            notification_text_bytes=3000,
             capabilities={
                 ChannelCapability.MARKDOWN,
                 ChannelCapability.RICH_TEXT,
@@ -216,6 +245,8 @@ class ChannelCapabilityManager:
         ),
         NotificationChannel.VoceChat: ChannelCapabilities(
             channel=NotificationChannel.VoceChat,
+            notification_text_format=NotificationTextFormat.MARKDOWN,
+            notification_text_bytes=6000,
             capabilities={
                 ChannelCapability.MARKDOWN,
                 ChannelCapability.RICH_TEXT,
@@ -256,6 +287,8 @@ class ChannelCapabilityManager:
         ),
         NotificationChannel.QQ: ChannelCapabilities(
             channel=NotificationChannel.QQ,
+            notification_text_format=NotificationTextFormat.MARKDOWN,
+            notification_text_bytes=1500,
             capabilities={
                 ChannelCapability.RICH_TEXT,
                 ChannelCapability.IMAGES,
@@ -276,6 +309,19 @@ class ChannelCapabilityManager:
         获取渠道能力
         """
         return cls._capabilities.get(channel)
+
+    @classmethod
+    def get_notification_text_format(
+        cls, channel: NotificationChannel, config: Optional[dict[str, object]] = None,
+    ) -> Optional[NotificationTextFormat]:
+        """读取通知正文能力；提供实例配置时校验模式，实际服务端权限由发送渠道确认。"""
+        capability = cls.get_capabilities(channel)
+        if not capability:
+            return None
+        if (config is not None and capability.notification_mode_key
+                and config.get(capability.notification_mode_key) != capability.notification_mode_value):
+            return None
+        return capability.notification_text_format
 
     @classmethod
     def supports_capability(

@@ -7,7 +7,7 @@ import hashlib
 import io
 import pickle
 import threading
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from PIL import Image
 
@@ -273,6 +273,7 @@ class QQBot:
             text: Optional[str] = None,
             image: Optional[str] = None,
             link: Optional[str] = None,
+            formatted_text: Optional[str] = None,
     ) -> tuple:
         """
         将消息格式化为 QQ Markdown，类似 Telegram 处理方式
@@ -284,7 +285,9 @@ class QQBot:
             safe_title = (title or "").replace("\n", " ").strip()
             if safe_title:
                 parts.append(f"**{QQBot._escape_markdown(safe_title)}**")
-        if text:
+        if formatted_text:
+            parts.append(formatted_text)
+        elif text:
             parts.append(QQBot._escape_markdown((text or "").strip()))
         if image:
             # QQ Markdown 图片需带尺寸才能正确渲染，格式: ![alt #宽px #高px](url)，否则会显示为 [图片] 文本。
@@ -323,6 +326,7 @@ class QQBot:
         :param link: 链接
         :param userid: 目标 openid 或 group:xxx
         :param targets: 目标字典
+        :param kwargs: formatted_texts 是有界渠道正文列表，权限不足仍使用原 text 回退。
         """
         if not self._ready:
             return False
@@ -351,68 +355,68 @@ class QQBot:
             return False
 
         # 处理按钮
-        buttons = kwargs.get("buttons")
-        keyboard = None
-        if buttons:
-            rows = []
-            btn_id = 1
-            for row in buttons:
-                btns = []
-                for btn in row:
-                    action_type = 0 if btn.get("url") else 2
-                    btns.append({
-                        "id": str(btn_id),
-                        "render_data": {
-                            "label": btn.get("text", "按钮")[:30],
-                            "visited_label": btn.get("text", "按钮")[:30],
-                            "style": 1
-                        },
-                        "action": {
-                            "type": action_type,
-                            "data": btn.get("url") if action_type == 0 else btn.get("callback_data", ""),
-                            "permission": {"type": 2}
-                        }
-                    })
-                    btn_id += 1
-                if btns:
-                    rows.append({"buttons": btns})
-            if rows:
-                keyboard = {"rows": rows}
-                use_markdown = True
+        keyboard = self._build_keyboard(kwargs.get("buttons"))
+        use_markdown = bool(keyboard) or use_markdown
+        contents = [self._format_message_markdown(title=title, formatted_text=part, image=image, link=link)[0]
+                    for part in kwargs.get("formatted_texts", [])] or [content]
 
         success_count = 0
         try:
             token = get_access_token(self._app_id, self._app_secret)
             for tgt, tgt_is_group in targets_to_send:
                 send_fn = send_proactive_group_message if tgt_is_group else send_proactive_c2c_message
-                try:
-                    send_fn(token, tgt, content, use_markdown=use_markdown, keyboard=keyboard)
-                    success_count += 1
-                    logger.debug(f"QQ Bot: 消息已发送到 {'群' if tgt_is_group else '用户'} {tgt}")
-                except Exception as e:
-                    err_msg = str(e)
-                    if use_markdown and ("markdown" in err_msg.lower() or "11244" in err_msg or "权限" in err_msg):
-                        # Markdown 未开通时回退为纯文本
-                        plain_parts = []
-                        if title:
-                            plain_parts.append(f"【{title}】")
-                        if text:
-                            plain_parts.append(text)
-                        if image:
-                            plain_parts.append(image)
-                        if link:
-                            plain_parts.append(link)
-                        plain_content = "\n".join(plain_parts).strip()
-                        if plain_content:
+                for body in contents:
+                    try:
+                        send_fn(token, tgt, body, use_markdown=use_markdown, keyboard=keyboard)
+                        success_count += 1
+                        logger.debug(f"QQ Bot: 消息已发送到 {'群' if tgt_is_group else '用户'} {tgt}")
+                    except Exception as e:
+                        err_msg = str(e)
+                        if use_markdown and ("markdown" in err_msg.lower() or "11244" in err_msg or "权限" in err_msg):
+                            plain_content = self._plain_content(title, text, image, link)
                             send_fn(token, tgt, plain_content, use_markdown=False, keyboard=None)
                             success_count += 1
                             logger.debug(f"QQ Bot: Markdown 不可用，已回退纯文本发送至 {tgt}")
-                    else:
-                        logger.error(f"QQ Bot 发送失败 ({tgt}): {e}")
+                        else:
+                            logger.error(f"QQ Bot 发送失败 ({tgt}): {e}")
+                        break
             return success_count > 0
         except Exception as e:
             logger.error(f"QQ Bot 发送失败: {e}")
             return False
+
+    @staticmethod
+    def _build_keyboard(buttons: Optional[List[List[Dict[str, Any]]]]) -> Optional[Dict[str, Any]]:
+        """保留原有 QQ 按钮协议，使富文本分段和纯文本回退共享同一键盘。"""
+        rows = []
+        btn_id = 1
+        for row in buttons or []:
+            btns = []
+            for btn in row:
+                btns.append({
+                    "id": str(btn_id),
+                    "render_data": {
+                        "label": btn.get("text", "按钮")[:30],
+                        "visited_label": btn.get("text", "按钮")[:30],
+                        "style": 1,
+                    },
+                    "action": {
+                        "type": 0 if btn.get("url") else 2,
+                        "data": btn.get("url") if btn.get("url") else btn.get("callback_data", ""),
+                        "permission": {"type": 2},
+                    },
+                })
+                btn_id += 1
+            if btns:
+                rows.append({"buttons": btns})
+        return {"rows": rows} if rows else None
+
+    @staticmethod
+    def _plain_content(title: str, text: Optional[str], image: Optional[str], link: Optional[str]) -> str:
+        """权限不足时恢复原通知的完整纯文本，避免每个富文本分段重复回退。"""
+        parts = [f"【{title}】"] if title else []
+        parts.extend(part for part in (text, image, link) if part)
+        return "\n".join(parts).strip()
 
     def send_medias_msg(
             self,
