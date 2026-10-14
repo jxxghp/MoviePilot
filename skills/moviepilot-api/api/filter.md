@@ -50,7 +50,7 @@ Purpose: Create one named filter-rule group.
 Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
-- `body`: `category` (string|null): MoviePilot media category or filter-group category, depending on the operation.; `media_type` (string|null): MoviePilot media type used to filter recommendations or rule groups.; `name*` (string): Human-readable name of the site, storage item, subscription, or rule group.; `rule_string*` (string): Ordered filter-rule expression stored in the group.
+- `body`: `category` (string|null): MoviePilot media category or filter-group category, depending on the operation.; `media_type` (string(movie,tv,music)|null): MoviePilot media type used to filter recommendations or rule groups. Agent-facing values: movie,tv,music. Use this exact field name in its documented bucket.; `name*` (string): Human-readable name of the site, storage item, subscription, or rule group.; `rule_string*` (string): Ordered filter-rule expression stored in the group.
 
 ### `filter.group.delete`
 `DELETE /api/v1/rule/groups/{name}`; policy effect: `destructive_write`.
@@ -66,7 +66,7 @@ Purpose: Update or rename one named filter-rule group.
 Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `name*` (string): Human-readable name of the site, storage item, subscription, or rule group.
 - `query`: none
-- `body`: `category` (string|null): MoviePilot media category or filter-group category, depending on the operation.; `media_type` (string|null): MoviePilot media type used to filter recommendations or rule groups.; `new_name` (string|null): Replacement name for the existing filter-rule group.; `rule_string` (string|null): Ordered filter-rule expression stored in the group.
+- `body`: `category` (string|null): MoviePilot media category or filter-group category, depending on the operation.; `media_type` (string(movie,tv,music)|null): MoviePilot media type used to filter recommendations or rule groups. Agent-facing values: movie,tv,music. Use this exact field name in its documented bucket.; `new_name` (string|null): Replacement name for the existing filter-rule group.; `rule_string` (string|null): Ordered filter-rule expression stored in the group.
 
 ### `filter.groups`
 `GET /api/v1/rule/groups`; policy effect: `safe_read`.

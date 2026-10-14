@@ -182,6 +182,7 @@ Identity scope: `bound_user`; required role: `user`.
 - `path_params`: none
 - `query`: `custom_words` (string|null): Custom recognition or rename words applied to this media workflow.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `subtitle` (string|null): Optional subtitle text used together with title during media recognition.; `title*` (string): Media, torrent, subscription, or history title used by the operation.
 - `body`: none
+- **Agent note:** Recognition returns a context containing `media_info`, not a candidate list. Check its title and media type against the user's request. If recognition is missing or ambiguous, use `media.search` and compare candidates by title, type, and year. Preserve the selected result's exact `media_source` + `media_id` for `search.torrents`.
 
 ### `media.recognize_file`
 `GET /api/v1/media/recognize_file`; policy effect: `safe_read`.

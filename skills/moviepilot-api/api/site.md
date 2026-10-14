@@ -108,7 +108,7 @@ Purpose: Browse torrent resources from one configured site with category and key
 Identity scope: `admin`; required role: `system_admin`.
 - `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: `site_id*` (integer): Persistent site ID returned by site.list.
-- `query`: `cat` (string|null): Exact site category identifier returned by site.category.; `keyword` (string|null): Case-insensitive substring used to discover settings or filter storage entries.; `mtype` (string|null): MoviePilot media type or subscription-history category required by the operation.; `page` (integer|null; default `0`): One-based result page number.
+- `query`: `cat` (string|null): Exact site category identifier returned by site.category.; `keyword` (string|null): Case-insensitive substring used to discover settings or filter storage entries.; `mtype` (string(movie,tv,music)|null): MoviePilot media type or subscription-history category required by the operation. Agent-facing values: movie,tv,music. Use this exact field name in its documented bucket.; `page` (integer|null; default `0`): One-based result page number.
 - `body`: none
 
 ### `site.rss`
@@ -125,9 +125,10 @@ Identity scope: `admin`; required role: `system_admin`.
 Purpose: List active configured sites supporting one exact media type.
 Identity scope: `admin`; required role: `system_admin`.
 - `response`: `data` remains a list; omitting both `page` and `count` keeps the complete legacy result. `collection.result_count` reports the returned items and `collection.total_count` reports the exact pre-pagination total. For counts or summaries, send `page=1,count=1`, read `collection.total_count`, and do not fall back to a database query because the item preview was truncated.
-- `path_params`: `media_type*` (string): MoviePilot media type used to filter recommendations or rule groups.
+- `path_params`: `media_type*` (string(movie,tv,music)): MoviePilot media type used to filter recommendations or rule groups. Agent-facing values: movie,tv,music. Use this exact field name in its documented bucket.
 - `query`: `count` (integer|null): Optional page size for a legacy full-list endpoint. Supplying page or count activates pagination; an omitted count then uses 50.; `page` (integer|null): Optional one-based page for a legacy full-list endpoint. Omit both page and count to keep the original unpaginated full result.
 - `body`: none
+- **Agent note:** `media_type` is a **path** parameter and MUST be nested under `path_params`. Never flatten it to the top level or place it inside `query`, otherwise the gateway rejects with `invalid_input`.
 
 ### `site.statistic`
 `GET /api/v1/site/statistic/{site_url}`; policy effect: `safe_read`.
