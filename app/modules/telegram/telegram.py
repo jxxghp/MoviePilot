@@ -1613,13 +1613,17 @@ class Telegram:
         :param reply_markup: 内联键盘
         :return: 降级发送的结果，失败返回 None
         """
+        # ``_topic_kwargs`` 只可能产出 message_thread_id，显式传参而不是 ** 展开：
+        # ** 展开到 send_message 会被 mypy 匹配到第 5 个形参（disable_web_page_preview，
+        # Optional[bool]），把 dict[str, int] 判为类型不兼容。
+        topic_kwargs = self._topic_kwargs(chat_id)
         try:
             return self._api.send_message(
                 chat_id=chat_id,
                 text=rich_message,
                 parse_mode=TELEGRAM_PARSE_MODE_PLAIN,
                 reply_markup=reply_markup,
-                **self._topic_kwargs(chat_id),
+                message_thread_id=topic_kwargs.get("message_thread_id"),
             )
         except Exception as err:
             logger.error(f"Telegram Rich Message 降级为纯文本发送仍失败：{err}")
