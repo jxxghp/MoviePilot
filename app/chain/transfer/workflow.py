@@ -3,7 +3,7 @@
 import re
 import uuid
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Union
 
 from app.application.audio import capture_audio_metadata
 from app.application.classification.reference import (
@@ -355,7 +355,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     return False
                 matched_template = True
             if batch_mtype == MediaType.MUSIC:
-                if self._is_music_lyrics_file(item):
+                if self._is_music_lyrics_file(item) or self._is_music_cover_file(item):
                     return not self._is_blocked_by_exclude_words(item.path, exclude_words)
                 if not self._is_media_file(item, batch_mtype) and not (
                     item.type == "file" and music_package_error(item.path or "")
@@ -363,7 +363,8 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                     return False
                 if not self._is_allow_filesize(item, min_filesize):
                     return False
-            elif not is_bluray_dir and not self._is_subtitle_file(item) and not self._is_audio_file(item):
+            elif (not is_bluray_dir and not self._is_subtitle_file(item) and not self._is_audio_file(item)
+                  and not (batch_mtype is None and self._is_music_cover_file(item))):
                 if not self._is_media_file(item, batch_mtype):
                     return False
                 if not self._is_allow_filesize(item, min_filesize):
@@ -745,7 +746,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         )
         music_batch_context = self._prepare_music_batch_context(file_items, batch_mtype)
         try:
-            for file_item, bluray_dir in file_items:
+            for file_item, bluray_dir in self._music_transfer_items(file_items, music_batch_context):
                 if runtime_stop_state.is_system_stopped:
                     raise OperationInterrupted()
                 if continue_callback and not continue_callback():
@@ -971,6 +972,18 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             skipped_history_count,
             skipped_torrents,
         )
+
+    def _music_transfer_items(
+            self, items: List[Tuple[FileItem, bool]], context: Any,
+    ) -> Generator[Tuple[FileItem, bool], None, None]:
+        """随主音轨逐项解析再放行封面，无法证明唯一音乐归属时不生成图片任务。"""
+        for item, bluray in items:
+            if self._is_music_cover_file(item):
+                related = context.related_main_keys.get(self._get_file_key(item))
+                if related not in context.resolved_contexts:
+                    logger.info(f"{item.name} 没有唯一且已识别的同目录音乐归属，跳过封面整理")
+                    continue
+            yield item, bluray
 
     def _cancel_unexecuted_tasks(self, tasks: list[TransferTask]) -> None:
         """撤销本次同步请求尚未执行的内存占位，让用户之后可以重新提交这些文件。"""

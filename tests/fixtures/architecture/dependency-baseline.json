@@ -941,8 +941,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9544,
-  "edge_sha256": "1c82415586c1a3888fdcf366a9cf808a36e4d427cefbcdc257132ca46f2b3196",
+  "edge_count": 9547,
+  "edge_sha256": "ab4a52cd8bc869c37073daadc119478b70cb738af1495273b9a5ee295380749e",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -5049,6 +5049,7 @@
     "app.chain.scraping -> app.domain.meta.metabase",
     "app.chain.scraping -> app.domain.meta.metamusic",
     "app.chain.scraping -> app.domain.metainfo",
+    "app.chain.scraping -> app.domain.music",
     "app.chain.scraping -> app.foundation",
     "app.chain.scraping -> app.foundation.singleton",
     "app.chain.scraping -> app.foundation.text",
@@ -5057,6 +5058,7 @@
     "app.chain.scraping -> app.runtime.events",
     "app.chain.scraping -> app.runtime.log",
     "app.chain.scraping -> app.runtime.reload",
+    "app.chain.scraping -> app.runtime.settings",
     "app.chain.scraping -> app.schemas",
     "app.chain.scraping -> app.schemas.file",
     "app.chain.scraping -> app.schemas.media",
@@ -5792,6 +5794,7 @@
     "app.chain.transfer.filter -> app.domain.music",
     "app.chain.transfer.filter -> app.runtime",
     "app.chain.transfer.filter -> app.runtime.log",
+    "app.chain.transfer.filter -> app.runtime.settings",
     "app.chain.transfer.filter -> app.schemas",
     "app.chain.transfer.filter -> app.schemas.transfer",
     "app.chain.transfer.filter -> app.schemas.types",

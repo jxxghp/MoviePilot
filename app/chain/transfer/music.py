@@ -600,7 +600,7 @@ def prepare_music_batch_context(
         file_items: list[tuple[FileItem, bool]],
         batch_mtype: Optional[MediaType],
 ) -> MusicBatchContext:
-    """建立同目录音轨、歌词和单音轨目录的批次索引。"""
+    """建立同目录音轨、歌词、封面和单音轨目录的批次索引；歧义发行不共享封面。"""
     context = MusicBatchContext()
     if batch_mtype not in (None, MediaType.MUSIC):
         return context
@@ -635,6 +635,7 @@ def prepare_music_batch_context(
                 if evidence and len(group.files) > 1 and evidence.album and (evidence.album_artist or evidence.artists):
                     context.album_main_keys.add(item_key)
     for current_item, _current_bluray_dir in file_items:
+        _bind_music_cover_context(owner, context, current_item, main_items_by_dir)
         if str(current_item.extension or "").casefold() == "cue":
             for main_key, cue_meta in context.cue_by_main_key.items():
                 if (cue_meta.music_layout == "image_cue" and current_item.storage == main_key[0]
@@ -649,6 +650,19 @@ def prepare_music_batch_context(
         if related_key:
             context.related_main_keys[owner._get_file_key(current_item)] = related_key
     return context
+
+
+def _bind_music_cover_context(
+        owner: _TransferOwnerBase, context: MusicBatchContext, item: FileItem,
+        main_items_by_dir: dict[Tuple[str, str], list[FileItem]],
+) -> None:
+    """只把封面绑定到同目录的唯一物理发行，避免多专辑目录共享错图。"""
+    if not owner._is_music_cover_file(item):
+        return
+    main_items = main_items_by_dir.get(owner._get_file_parent_key(item), [])
+    groups = {context.release_by_main_key[owner._get_file_key(main)].preview_id for main in main_items}
+    if len(groups) == 1:
+        context.related_main_keys[owner._get_file_key(item)] = owner._get_file_key(main_items[0])
 
 
 def _finalize_music_group_context(

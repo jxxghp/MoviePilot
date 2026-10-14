@@ -402,6 +402,8 @@ class ConfigModel(BaseModel):
     # ==================== 音乐配置 ====================
     # 音乐封面代理地址（用于解决 coverartarchive.org 无法访问导致的封面不显示问题，留空则使用官方地址）
     MUSIC_COVER_PROXY: str = ""
+    # 同目录音乐封面匹配规则，按顺序选择，逗号分隔、大小写不敏感；留空禁用本地封面
+    MUSIC_COVER_FILE_PATTERNS: str = "cover.jpg,cover.jpeg,cover.png,folder.jpg,folder.jpeg,folder.png,front.jpg,front.jpeg,front.png,*.png"
     # AcoustID 应用 API Key，用于查询本地音频的 Chromaprint 指纹
     ACOUSTID_API_KEY: str = "b1auxfOzAg"
     # 是否将识别到的音乐标题、艺术家、专辑等标准元数据转换为简体中文

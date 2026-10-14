@@ -160,6 +160,8 @@ class TransHandler:
         """比较新旧音乐的实际音质，无法形成可靠结论时交回原覆盖策略。"""
         if getattr(mediainfo, "type", None) != MediaType.MUSIC or not target_item:
             return None
+        if Path(str(target_item.path or "")).suffix.casefold() in {".jpg", ".jpeg", ".png", ".webp"}:
+            return None
 
         source_score = getattr(meta, "audio_quality_score", 0) or getattr(
             mediainfo, "audio_quality_score", 0
@@ -422,6 +424,10 @@ class TransHandler:
             )
             if not target_directory_path:
                 raise ValueError("重命名格式无效")
+            if (mediainfo.type == MediaType.MUSIC
+                    and Path(str(fileitem.path)).suffix.casefold() in {".jpg", ".jpeg", ".png", ".webp"}):
+                # 封面保持原名并放到专辑根，不套用曲序/曲名模板或进入 Disc 子目录。
+                final_target = target_directory_path / Path(str(fileitem.path)).name
             if getattr(planning_meta, "music_layout", None) == "image_cue":
                 # 整轨与索引只调整专辑目录，保留原名才能让 CUE FILE 引用继续有效。
                 final_target = final_target.parent / Path(str(fileitem.path)).name
@@ -537,7 +543,9 @@ class TransHandler:
                 need_notify=need_notify,
             )
         if not target_item:
-            return False, overwrite_mode == "latest", None
+            return False, overwrite_mode == "latest" and target_file.suffix.casefold() not in {
+                ".jpg", ".jpeg", ".png", ".webp"
+            }, None
 
         checked_target = target_file
         over_flag = False

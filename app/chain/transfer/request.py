@@ -299,6 +299,7 @@ class _TransferCandidatePlanner:
                     self._chain._is_subtitle_file(item)
                     or self._chain._is_audio_file(item)
                     or self._chain._is_music_lyrics_file(item)
+                    or self._is_music_cover_candidate(item)
             ):
                 extra_items_by_dir.setdefault(dir_key, []).append((item, is_bluray_dir))
         return main_items_by_dir, extra_items_by_dir
@@ -330,12 +331,38 @@ class _TransferCandidatePlanner:
                     self._chain._is_subtitle_file(item)
                     or self._chain._is_audio_file(item)
                     or self._chain._is_music_lyrics_file(item)
+                    or self._is_music_cover_candidate(item)
             ):
                 continue
             if not self._is_allowed_transfer_item(item, False):
                 continue
             extra_items.append((item, False))
         return main_fileitems, extra_items
+
+    def _is_music_cover_candidate(self, item: FileItem) -> bool:
+        """封面只随音乐主文件同步，影视批次及关闭附加文件同步时不接纳图片。"""
+        return (self._sync_extra_files and not self._has_reliable_video_source()
+                and self._chain._is_music_cover_file(item))
+
+    def _infer_music_batch_type(self, items: List[Tuple[FileItem, bool]]) -> None:
+        """未指定类型的纯音频请求仍建立音乐主文件索引，混合影视目录保持原类型。"""
+        if (self._batch_mtype is None and not self._has_reliable_video_source()
+                and any(self._chain._is_audio_file(item) for item, _ in items)
+                and not any(bluray or self._chain._is_media_file(item, None) for item, bluray in items)):
+            self._batch_mtype = MediaType.MUSIC
+
+    def _append_remaining_items(
+            self, items: List[Tuple[FileItem, bool]], planned: List[Tuple[FileItem, bool]],
+            seen: set[Tuple[str, str]], inherited: Dict[Tuple[str, str], MetaBase],
+    ) -> None:
+        """保留未匹配的普通附件，音乐歌词和封面必须已获得主文件归属。"""
+        for item, is_bluray_dir in items:
+            if self._chain._is_music_cover_file(item) and self._chain._get_file_key(item) not in inherited:
+                continue
+            if (self._batch_mtype == MediaType.MUSIC and self._chain._is_music_lyrics_file(item)
+                    and self._chain._get_file_key(item) not in inherited):
+                continue
+            self._append_item(planned, seen, item, is_bluray_dir)
 
     def _plan_file_items(
             self,
@@ -346,6 +373,8 @@ class _TransferCandidatePlanner:
         """
         if not items:
             return [], {}
+
+        self._infer_music_batch_type(items)
 
         download_history_repository = self._chain.download_history_repository
         inherited_map: Dict[Tuple[str, str], MetaBase] = {}
@@ -408,7 +437,7 @@ class _TransferCandidatePlanner:
             remaining = [
                 item
                 for item in items
-                if not (
+                if not self._chain._is_music_cover_file(item[0]) and not (
                     self._batch_mtype == MediaType.MUSIC
                     and self._chain._is_music_lyrics_file(item[0])
                 )
@@ -468,6 +497,12 @@ class _TransferCandidatePlanner:
             for extra_item, extra_bluray_dir in extra_items_by_dir.get(dir_key, []):
                 if self._chain._get_file_key(extra_item) in seen_file_keys:
                     continue
+                if self._is_music_cover_candidate(extra_item):
+                    # 图片没有曲名，先继承主音轨标签；批次分组再确认唯一发行归属。
+                    if self._chain._is_audio_file(main_item) and self._append_item(
+                            planned_items, seen_file_keys, extra_item, extra_bluray_dir):
+                        inherited_map[self._chain._get_file_key(extra_item)] = deepcopy(main_meta)
+                    continue
                 related_main_file_key = self._chain._get_related_main_file_key(
                     extra_fileitem=extra_item,
                     main_fileitems=main_fileitems,
@@ -500,14 +535,7 @@ class _TransferCandidatePlanner:
                 ):
                     inherited_map[self._chain._get_file_key(extra_item)] = deepcopy(extra_meta)
 
-        for item, is_bluray_dir in items:
-            if (
-                    self._batch_mtype == MediaType.MUSIC
-                    and self._chain._is_music_lyrics_file(item)
-                    and self._chain._get_file_key(item) not in inherited_map
-            ):
-                continue
-            self._append_item(planned_items, seen_file_keys, item, is_bluray_dir)
+        self._append_remaining_items(items, planned_items, seen_file_keys, inherited_map)
 
         return append_cue_companions(self._chain, planned_items, inherited_map, self._has_reliable_video_source(), self._transfer_exclude_words)
 

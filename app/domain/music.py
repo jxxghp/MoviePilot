@@ -4,6 +4,8 @@ import re
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date
+from fnmatch import fnmatchcase
+from pathlib import Path
 from typing import Any, Generator, Iterable, Literal, Optional
 from unicodedata import combining, normalize
 
@@ -11,6 +13,15 @@ from app.domain.context import Context, MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic, music_credit_values
 from app.foundation.text import convert as zhconv_convert
 from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaSource, MediaType
+
+
+def music_cover_priority(path: str, patterns: str) -> Optional[int]:
+    """按配置顺序匹配同目录封面，忽略大小写且只允许可内嵌的常见图片格式。"""
+    name = Path(path).name.casefold()
+    if name.startswith(".") or Path(name).suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
+        return None
+    return next((index for index, pattern in enumerate(patterns.split(","))
+                 if pattern.strip() and fnmatchcase(name, pattern.strip().casefold())), None)
 
 _EDITION = re.compile(
     r"\s*[\[(（【](?:[^\])）】]*\b(?:deluxe|expanded|special|limited|anniversary|remaster(?:ed)?)\b"

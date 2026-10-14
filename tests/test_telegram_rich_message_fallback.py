@@ -27,17 +27,21 @@ class TestNonRetryableApiError:
     """400 属于确定性拒绝，重试无意义。"""
 
     def test_400_is_non_retryable(self):
+        """明确的 400 拒绝无需退避重试。"""
         err = TelegramApiError("sendRichMessage", "Bad Request: ...", 400)
         assert _is_non_retryable_api_error(err) is True
 
     def test_500_is_retryable(self):
+        """服务端临时失败保留重试能力。"""
         err = TelegramApiError("sendRichMessage", "Internal Server Error", 500)
         assert _is_non_retryable_api_error(err) is False
 
     def test_network_error_is_retryable(self):
+        """网络临时异常保留重试能力。"""
         assert _is_non_retryable_api_error(TelegramNetworkError("m", "timeout")) is False
 
     def test_unrelated_error_is_retryable(self):
+        """非 API 异常不被误判为确定性拒绝。"""
         assert _is_non_retryable_api_error(ValueError("boom")) is False
 
 

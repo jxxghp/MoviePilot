@@ -1075,6 +1075,12 @@
       "source_file": "app/runtime/config.py",
       "source_line": 679
     },
+    "MUSIC_COVER_FILE_PATTERNS": {
+      "description": "同目录音乐封面匹配规则，按顺序选择，逗号分隔、大小写不敏感；留空禁用本地封面",
+      "group": "music",
+      "source_file": "app/runtime/config.py",
+      "source_line": 406
+    },
     "MUSIC_COVER_PROXY": {
       "description": "音乐封面代理地址（用于解决 coverartarchive.org 无法访问导致的封面不显示问题，留空则使用官方地址）",
       "group": "music",
