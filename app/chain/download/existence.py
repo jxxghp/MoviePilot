@@ -53,6 +53,7 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
                 query={
                     "mtype": mediainfo.type.value,
                     "title": mediainfo.title,
+                    "year": mediainfo.year,
                     "media_source": media_source,
                     "media_id": media_id,
                 },
@@ -100,6 +101,7 @@ class DownloadExistenceOwner(_DownloadOwnerBase):
                 query={
                     "mtype": mediainfo.type.value,
                     "title": mediainfo.title,
+                    "year": mediainfo.year,
                     "media_source": media_source,
                     "media_id": media_id,
                     "season": mediainfo.season,

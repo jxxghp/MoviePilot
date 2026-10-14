@@ -35,6 +35,33 @@ class MediaServerOper(DbOper):
         seasoninfo = item.seasoninfo or {}
         return season in seasoninfo or str(season) in seasoninfo
 
+    @classmethod
+    def _select_cross_source_item(
+        cls,
+        items: list[MediaServerItem],
+        season: Optional[int] = None,
+    ) -> Optional[MediaServerItem]:
+        """
+        从跨来源标题候选中选出唯一作品。
+
+        跨来源无法比对 ID，标题和年份只有在候选指向同一身份时才可信；
+        同名同年的不同作品无法区分，宁可判为未入库也不能借用他人的季集。
+        """
+        identities = {
+            (item.media_source, item.media_id)
+            for item in items
+            if item.media_source and item.media_id
+        }
+        if len(identities) > 1:
+            return None
+        if season is not None:
+            # 同一作品分布在多个媒体库时，优先选择包含目标季的条目。
+            return next(
+                (item for item in items if cls._contains_season(item, season)),
+                None,
+            )
+        return items[0] if items else None
+
     def add(self, **kwargs) -> bool:
         """
         新增媒体服务器数据
@@ -122,16 +149,20 @@ class MediaServerOper(DbOper):
                     server=kwargs.get("server"),
                 )
             )
-            if not item and kwargs.get("title"):
-                # 媒体库只保存一个主来源，非主来源卡片需要标题信息兜底。
-                item = self._execute_sync_query(
-                    lambda session: MediaServerItem.exists_by_title(
-                        session,
-                        title=cast(str, kwargs.get("title")),
-                        mtype=cast(str, kwargs.get("mtype")),
-                        year=cast(str, kwargs.get("year")),
-                        server=kwargs.get("server"),
-                    )
+            if not item and kwargs.get("title") and kwargs.get("year"):
+                # 媒体库只保存一个主来源，非主来源卡片需要标题和年份兜底。
+                item = self._select_cross_source_item(
+                    self._execute_sync_query(
+                        lambda session: MediaServerItem.list_cross_source_by_title(
+                            session,
+                            title=cast(str, kwargs.get("title")),
+                            mtype=kwargs.get("mtype"),
+                            year=cast(str, kwargs.get("year")),
+                            media_source=kwargs["media_source"],
+                            server=kwargs.get("server"),
+                        )
+                    ),
+                    kwargs.get("season"),
                 )
         elif kwargs.get("title"):
             # 按标题、类型、年份查
@@ -169,16 +200,20 @@ class MediaServerOper(DbOper):
                     server=kwargs.get("server"),
                 )
             )
-            if not item and kwargs.get("title"):
-                # 与同步入口保持一致：跨来源卡片按标题信息回退匹配媒体库条目。
-                item = await self._execute_async_query(
-                    lambda session: MediaServerItem.async_exists_by_title(
-                        session,
-                        title=cast(str, kwargs.get("title")),
-                        mtype=cast(str, kwargs.get("mtype")),
-                        year=cast(str, kwargs.get("year")),
-                        server=kwargs.get("server"),
-                    )
+            if not item and kwargs.get("title") and kwargs.get("year"):
+                # 与同步入口保持一致：跨来源卡片按标题和年份回退匹配媒体库条目。
+                item = self._select_cross_source_item(
+                    await self._execute_async_query(
+                        lambda session: MediaServerItem.async_list_cross_source_by_title(
+                            session,
+                            title=cast(str, kwargs.get("title")),
+                            mtype=kwargs.get("mtype"),
+                            year=cast(str, kwargs.get("year")),
+                            media_source=kwargs["media_source"],
+                            server=kwargs.get("server"),
+                        )
+                    ),
+                    kwargs.get("season"),
                 )
         elif kwargs.get("title"):
             # 按标题、类型、年份查
