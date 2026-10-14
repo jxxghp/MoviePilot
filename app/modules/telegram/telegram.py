@@ -26,12 +26,14 @@ from app.foundation import size as size_tools
 from app.modules.telegram.botapi import (
     FORWARDED_CONTENT_TYPES,
     JsonDict,
+    TelegramApiError,
     TelegramBotApi,
 )
 from app.runtime.execution import retry
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.runtime.thread import ThreadHelper
+from app.schemas.exception import ImmediateException
 
 TELEGRAM_PARSE_MODE_MARKDOWN = "MarkdownV2"
 TELEGRAM_PARSE_MODE_HTML = "HTML"
@@ -53,6 +55,26 @@ class RetryException(Exception):
     """
 
     pass
+
+
+class NonRetryableTelegramError(ImmediateException):
+    """
+    Telegram 明确拒绝的请求，重试不会改变结果。
+
+    内容非法、格式无法解析、方法不存在等 4xx 错误属于这一类：立即抛出以跳过
+    ``retry`` 的退避等待，避免同一条坏消息连续阻塞 3 秒、6 秒后才报错。
+    """
+
+    pass
+
+
+def _is_non_retryable_api_error(err: Exception) -> bool:
+    """
+    判断 Bot API 错误是否为重试无意义的 4xx。
+
+    5xx 与网络异常仍按原逻辑重试；429 由 Telegram 侧限流，同样不适合立即失败。
+    """
+    return isinstance(err, TelegramApiError) and err.error_code == 400
 
 
 class Telegram:
@@ -714,14 +736,25 @@ class Telegram:
                     if force_reply and original_chat_id
                     else chat_id
                 )
-                sent = self.__send_rich_message(
-                    chat_id=target_chat_id,
-                    rich_message=rich_message,
-                    reply_markup=reply_markup,
-                    reply_to_message_id=(
-                        original_message_id if force_reply else None
-                    ),
-                )
+                try:
+                    sent = self.__send_rich_message(
+                        chat_id=target_chat_id,
+                        rich_message=rich_message,
+                        reply_markup=reply_markup,
+                        reply_to_message_id=(
+                            original_message_id if force_reply else None
+                        ),
+                    )
+                except Exception as rich_err:
+                    # Rich Message 失败不再等同于通知丢失，降级为纯文本重发一次。
+                    logger.warning(
+                        f"Telegram Rich Message 发送失败，降级为纯文本：{rich_err}"
+                    )
+                    sent = self.__send_plain_fallback(
+                        chat_id=target_chat_id,
+                        rich_message=rich_message,
+                        reply_markup=reply_markup,
+                    )
                 self._stop_typing_if_needed(chat_id, stop_typing)
                 return self._sent_result(sent, chat_id)
 
@@ -1231,9 +1264,21 @@ class Telegram:
                 reply_markup = (
                     self._create_inline_keyboard(buttons) if buttons else None
                 )
-                return self.__edit_rich_message(
+                result = self.__edit_rich_message(
                     chat_id=chat_id,
                     message_id=message_id,
+                    rich_message=rich_message,
+                    reply_markup=reply_markup,
+                )
+                if result:
+                    return True
+                # Rich Message 编辑失败时降级为纯文本覆盖，避免回复停留在旧内容。
+                logger.warning(
+                    f"Telegram Rich Message 编辑失败，降级为纯文本：chat_id={chat_id}"
+                )
+                return self.__edit_plain_fallback(
+                    chat_id=str(chat_id),
+                    message_id=int(message_id),
                     rich_message=rich_message,
                     reply_markup=reply_markup,
                 )
@@ -1465,6 +1510,41 @@ class Telegram:
             logger.error(f"编辑 Telegram Rich Message 失败：{str(err)}")
             return False
 
+    def __edit_plain_fallback(
+            self,
+            chat_id: str,
+            message_id: int,
+            rich_message: str,
+            reply_markup: Optional[JsonDict] = None,
+    ) -> bool:
+        """
+        Rich Message 编辑失败后的降级出口，用纯文本覆盖原消息。
+
+        ``parse_mode`` 显式传空字符串，避免 ``edit_message_text`` 回落到客户端默认的
+        MarkdownV2——Rich Message 已经在那条解析路径上失败过一次。
+
+        :param chat_id: 聊天 ID
+        :param message_id: 原消息 ID
+        :param rich_message: 原始 Rich Markdown 正文
+        :param reply_markup: 内联键盘
+        :return: 降级编辑是否成功
+        """
+        try:
+            self._api.edit_message_text(
+                chat_id=chat_id,
+                message_id=int(message_id),
+                text=rich_message,
+                parse_mode=TELEGRAM_PARSE_MODE_PLAIN,
+                reply_markup=reply_markup,
+            )
+            return True
+        except Exception as err:
+            if self.__is_message_not_modified_error(err):
+                logger.debug(f"Telegram消息内容未变化，跳过编辑：{str(err)}")
+                return True
+            logger.error(f"Telegram Rich Message 降级为纯文本编辑仍失败：{str(err)}")
+            return False
+
     @retry(RetryException, logger=logger)
     def __send_rich_message(
             self,
@@ -1481,6 +1561,8 @@ class Telegram:
         :param reply_markup: 首条消息携带的键盘
         :param reply_to_message_id: 首条消息回复的原消息 ID
         :return: 最后一条已发送的 Telegram 消息
+        :raises NonRetryableTelegramError: Telegram 以 400 拒绝该内容，不做退避重试
+        :raises RetryException: 网络异常或 5xx，可重试
         """
         chunks = self._build_rich_message_chunks(rich_message)
         reply_parameters = (
@@ -1500,7 +1582,52 @@ class Telegram:
                 )
             return sent
         except Exception as err:
-            raise RetryException("发送 Telegram Rich Message 失败") from err
+            # 保留 Telegram 返回的原始描述（错误码、description），否则日志只剩
+            # “发送失败”四个字，无法定位是内容非法还是接口不匹配。
+            if _is_non_retryable_api_error(err):
+                raise NonRetryableTelegramError(
+                    f"发送 Telegram Rich Message 失败：{err}"
+                ) from err
+            raise RetryException(
+                f"发送 Telegram Rich Message 失败：{err}"
+            ) from err
+
+    def __send_plain_fallback(
+            self,
+            chat_id: Union[str, int],
+            rich_message: str,
+            reply_markup: Optional[JsonDict] = None,
+    ) -> Any:
+        """
+        Rich Message 发送失败后的降级出口，用纯文本重发同一条内容。
+
+        Rich Message 依赖 Bot API 10.1 的 ``sendRichMessage``，内容里出现无法解析的
+        片段或自建 Bot API 未升级该方法时都会整体失败。通知内容本身仍有价值，因此
+        降级为纯文本，保证消息不丢失。
+
+        ``parse_mode`` 必须显式传空字符串：``TelegramBotApi`` 在参数为 ``None`` 时会
+        回落到客户端默认的 MarkdownV2，那正是 Rich Message 已经失败过的解析路径。
+
+        :param chat_id: 目标聊天 ID
+        :param rich_message: 原始 Rich Markdown 正文
+        :param reply_markup: 内联键盘
+        :return: 降级发送的结果，失败返回 None
+        """
+        # ``_topic_kwargs`` 只可能产出 message_thread_id，显式传参而不是 ** 展开：
+        # ** 展开到 send_message 会被 mypy 匹配到第 5 个形参（disable_web_page_preview，
+        # Optional[bool]），把 dict[str, int] 判为类型不兼容。
+        topic_kwargs = self._topic_kwargs(chat_id)
+        try:
+            return self._api.send_message(
+                chat_id=chat_id,
+                text=rich_message,
+                parse_mode=TELEGRAM_PARSE_MODE_PLAIN,
+                reply_markup=reply_markup,
+                message_thread_id=topic_kwargs.get("message_thread_id"),
+            )
+        except Exception as err:
+            logger.error(f"Telegram Rich Message 降级为纯文本发送仍失败：{err}")
+            return None
 
     def __send_request(
             self,
