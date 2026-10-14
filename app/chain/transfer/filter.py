@@ -160,8 +160,8 @@ class _MusicFileFilterBase(_TransferOwnerBase):
 
     @staticmethod
     def _is_music_cover_file(fileitem: FileItem) -> bool:
-        """仅接纳配置命中的音乐封面候选，实际归属由音轨批次确认。"""
-        return fileitem.type == "file" and music_cover_priority(
+        """全局开关开启时接纳匹配的音乐封面，实际归属由音轨批次确认。"""
+        return get_runtime_setting("MUSIC_LOCAL_COVER_ENABLE") and fileitem.type == "file" and music_cover_priority(
             str(fileitem.path or fileitem.name or ""), get_runtime_setting("MUSIC_COVER_FILE_PATTERNS")
         ) is not None
 

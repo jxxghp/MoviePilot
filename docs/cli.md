@@ -507,6 +507,7 @@ moviepilot config set LYRICS_BATCH_TIMEOUT 120
 moviepilot config set LYRICS_PROVIDER_RETRY_MAX_WAIT 5
 moviepilot config set MUSIC_METADATA_TO_SIMPLIFIED true
 moviepilot config set MUSIC_LYRICS_TO_SIMPLIFIED true
+moviepilot config set MUSIC_LOCAL_COVER_ENABLE true
 moviepilot config set MUSIC_COVER_FILE_PATTERNS 'cover.jpg,folder.jpg,front.jpg,*.png'
 moviepilot config set MUSIC_RELEASE_REGION_PRIORITY CN,TW,HK
 moviepilot config set MUSIC_RELEASE_SCRIPT_PRIORITY Hans,Hant,Latn

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any, List, Optional
 
-from sqlalchemy import JSON, Index, String, delete, or_, select
+from sqlalchemy import JSON, Index, Select, String, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
@@ -122,6 +122,34 @@ class MediaServerItem(Base):
         return db.execute(statement).scalars().first()
 
     @classmethod
+    def _cross_source_title_statement(
+            cls, title: str, mtype: Optional[str], year: str,
+            media_source: MediaSource, server: Optional[str] = None,
+    ) -> Select[tuple["MediaServerItem"]]:
+        """构造跨来源标题回退查询；同来源条目在精确身份未命中时必然是另一部作品。"""
+        statement = select(cls).where(
+            cls.title == title,
+            cls.year == str(year),
+            or_(cls.media_source.is_(None), cls.media_source != str(media_source)),
+        )
+        if mtype:
+            statement = statement.where(cls.item_type == mtype)
+        if server:
+            statement = statement.where(cls.server == server)
+        return statement.order_by(cls.id)
+
+    @classmethod
+    def list_cross_source_by_title(
+            cls, db: Session, title: str, mtype: Optional[str], year: str,
+            media_source: MediaSource, server: Optional[str] = None,
+    ) -> List["MediaServerItem"]:
+        """返回可作为跨来源候选的同标题同年份条目。"""
+        statement = cls._cross_source_title_statement(
+            title, mtype, year, media_source, server
+        )
+        return list(db.execute(statement).scalars().all())
+
+    @classmethod
     async def async_get_by_itemid(cls, db: AsyncSession, item_id: str):
         result = await db.execute(select(cls).filter(cls.item_id == item_id))
         return result.scalars().first()
@@ -141,6 +169,18 @@ class MediaServerItem(Base):
             statement = statement.filter(cls.server == server)
         result = await db.execute(statement)
         return result.scalars().first()
+
+    @classmethod
+    async def async_list_cross_source_by_title(
+            cls, db: AsyncSession, title: str, mtype: Optional[str], year: str,
+            media_source: MediaSource, server: Optional[str] = None,
+    ) -> List["MediaServerItem"]:
+        """异步返回可作为跨来源候选的同标题同年份条目。"""
+        statement = cls._cross_source_title_statement(
+            title, mtype, year, media_source, server
+        )
+        result = await db.execute(statement)
+        return list(result.scalars().all())
 
     @classmethod
     async def async_exists_by_title(

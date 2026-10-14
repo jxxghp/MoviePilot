@@ -1079,7 +1079,7 @@
       "description": "同目录音乐封面匹配规则，按顺序选择，逗号分隔、大小写不敏感；留空禁用本地封面",
       "group": "music",
       "source_file": "app/runtime/config.py",
-      "source_line": 406
+      "source_line": 408
     },
     "MUSIC_COVER_PROXY": {
       "description": "音乐封面代理地址（用于解决 coverartarchive.org 无法访问导致的封面不显示问题，留空则使用官方地址）",
@@ -1098,6 +1098,12 @@
       "group": "music",
       "source_file": "app/runtime/config.py",
       "source_line": 410
+    },
+    "MUSIC_LOCAL_COVER_ENABLE": {
+      "description": "是否同步整理同目录音乐封面，并在在线封面不可用时用于内嵌回退",
+      "group": "music",
+      "source_file": "app/runtime/config.py",
+      "source_line": 406
     },
     "MUSIC_METADATA_TO_SIMPLIFIED": {
       "description": "是否将识别到的音乐标题、艺术家、专辑等标准元数据转换为简体中文",
