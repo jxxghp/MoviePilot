@@ -1606,7 +1606,10 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
         )
 
     def _load_local_music_cover(self, fileitem: _SchemaFileItem) -> tuple[Optional[bytes], str]:
-        """在线封面不可用时读取同目录图片；下载经存储端口，坏图不阻断后续候选。"""
+        """全局开关开启且在线封面不可用时经存储端口读取本地图片，跳过坏图。"""
+        if not get_runtime_setting("MUSIC_LOCAL_COVER_ENABLE"):
+            return None, "image/jpeg"
+
         from PIL import Image
 
         parent = self.storagechain.get_parent_item(fileitem)

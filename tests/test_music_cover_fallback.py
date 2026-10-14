@@ -10,6 +10,7 @@ import pytest
 from mutagen.flac import FLAC, Picture
 from PIL import Image
 
+from app.application.settings.contract import ALL_SETTING_SPECS, build_value_schema
 from app.application.transfer.workflow import TransferPlanningInput
 from app.chain.media import MediaChain
 from app.chain.scraping import ScrapingChain
@@ -19,7 +20,7 @@ from app.domain.meta.metamusic import MetaMusic
 from app.domain.music import music_cover_priority
 from app.modules.filemanager.storages.local import LocalStorage
 from app.modules.filemanager.transhandler import TransHandler
-from app.runtime.config import settings
+from app.runtime.config import ConfigModel, Settings, settings
 from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.transfer import TransferInfo
@@ -87,8 +88,10 @@ def test_music_cover_does_not_borrow_identity_from_different_albums_or_video(tmp
 
 @pytest.mark.parametrize("single", [False, True])
 @pytest.mark.parametrize("mtype", [None, MediaType.MUSIC])
-def test_music_cover_reaches_public_transfer_entrypoint(tmp_path, monkeypatch, single, mtype):
-    """从真实目录遍历到公开整理入口，封面只复用主音轨身份而不单独在线识别。"""
+@pytest.mark.parametrize("enabled", [False, True])
+def test_music_cover_reaches_public_transfer_entrypoint(tmp_path, monkeypatch, single, mtype, enabled):
+    """公开整理入口遵守全局开关，开启时封面复用主音轨身份而不单独在线识别。"""
+    monkeypatch.setattr(settings, "MUSIC_LOCAL_COVER_ENABLE", enabled)
     audio = _tagged_audio(tmp_path / "source")
     cover = audio.parent / "cover.jpg"
     Image.new("RGB", (2, 2)).save(cover)
@@ -125,9 +128,9 @@ def test_music_cover_reaches_public_transfer_entrypoint(tmp_path, monkeypatch, s
         mtype=mtype, sync_extra_files=True, force=True, preview=True,
     )
     assert success, result
-    assert [task.fileitem.path for task in tasks] == [str(audio), str(cover)]
+    assert [task.fileitem.path for task in tasks] == ([str(audio), str(cover)] if enabled else [str(audio)])
     assert all(task.mediainfo.album == "Album" for task in tasks)
-    assert result["summary"] == {"total": 2, "success": 2, "failed": 0}
+    assert result["summary"] == {"total": 2 if enabled else 1, "success": 2 if enabled else 1, "failed": 0}
 
 
 @pytest.mark.parametrize("mode", ["copy", "link", "move"])
@@ -167,8 +170,10 @@ def test_music_cover_real_storage_transfer_preserves_filename_and_album_root(tmp
 @pytest.mark.parametrize("online", ["missing", "failed", "available"])
 @pytest.mark.parametrize("policy", ["missing", "skip", "overwrite"])
 @pytest.mark.parametrize("existing", [False, True])
-def test_music_scrape_uses_online_first_then_valid_local_cover_without_changing_seed(tmp_path, online, policy, existing):
-    """真实 FLAC 验证下载失败回退、坏图跳过、刮削策略和硬链接源保护。"""
+@pytest.mark.parametrize("enabled", [False, True])
+def test_music_scrape_uses_online_first_then_valid_local_cover_without_changing_seed(tmp_path, monkeypatch, online, policy, existing, enabled):
+    """真实 FLAC 验证开关仅控制本地回退，不改变在线刮削、既有封面策略和种子。"""
+    monkeypatch.setattr(settings, "MUSIC_LOCAL_COVER_ENABLE", enabled)
     source = _tagged_audio(tmp_path / "source")
     existing_path = tmp_path / "existing.png"
     Image.new("RGB", (2, 2), "green").save(existing_path)
@@ -210,9 +215,44 @@ def test_music_scrape_uses_online_first_then_valid_local_cover_without_changing_
     if policy == "skip":
         assert [picture.data for picture in pictures] == ([existing_bytes] if existing else [])
         chain._download_music_cover.assert_not_called()
+    elif not enabled and online != "available":
+        assert [picture.data for picture in pictures] == ([existing_bytes] if existing else [])
     else:
         expected = existing_bytes if existing and policy == "missing" else online_bytes if online == "available" else local_bytes
         assert pictures[0].data == expected
+
+
+def test_disabled_local_cover_does_not_read_storage(monkeypatch):
+    """关闭本地封面时不列目录或下载图片，避免触发远端存储访问。"""
+    monkeypatch.setattr(settings, "MUSIC_LOCAL_COVER_ENABLE", False)
+    chain = object.__new__(ScrapingChain)
+    chain.storagechain = Mock()
+    assert chain._load_local_music_cover(make_fileitem("/music/01.flac")) == (None, "image/jpeg")
+    assert not chain.storagechain.mock_calls
+
+
+def test_local_cover_setting_default_and_contract():
+    """全局开关默认开启并通过设置目录公开可写的音乐布尔配置。"""
+    assert ConfigModel.model_fields["MUSIC_LOCAL_COVER_ENABLE"].default is True
+    spec = ALL_SETTING_SPECS["MUSIC_LOCAL_COVER_ENABLE"]
+    assert spec.group == "music"
+    assert build_value_schema(spec)["type"] == "boolean"
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_local_cover_setting_persists_without_changing_patterns(tmp_path, monkeypatch, enabled):
+    """开关可保存并重新加载，切换后仍保留用户的封面文件名匹配规则。"""
+    env_path = tmp_path / "app.env"
+    env_path.touch()
+    monkeypatch.delenv("MUSIC_LOCAL_COVER_ENABLE", raising=False)
+    monkeypatch.delenv("MUSIC_COVER_FILE_PATTERNS", raising=False)
+    monkeypatch.setattr("app.runtime.config.get_env_path", lambda: env_path)
+    config = Settings(_env_file=env_path, MUSIC_LOCAL_COVER_ENABLE=not enabled)
+    assert config.update_setting("MUSIC_COVER_FILE_PATTERNS", "Artwork.webp")[0]
+    assert config.update_setting("MUSIC_LOCAL_COVER_ENABLE", enabled)[0]
+    restored = Settings(_env_file=env_path)
+    assert restored.MUSIC_LOCAL_COVER_ENABLE is enabled
+    assert restored.MUSIC_COVER_FILE_PATTERNS == "Artwork.webp"
 
 
 @pytest.mark.parametrize("remote", [False, True])
