@@ -34,7 +34,8 @@ Telegram 原有的 `rich_message` 用于完整 Rich Markdown 正文，未提供 
 站点自动签到只负责统计、结果分组和重试标记，结构化内容包括本次全部站点。
 V3 插件版本为 3.0.0，显式声明 `system_version >=3.1.6`，提供默认开启的
 “优化消息通知样式”开关；关闭后不传结构化内容，所有渠道恢复原有通知样式。
-原 V2 版本 2.9.13 保持源码及版本不变，仅在市场索引声明 `v3: false`。
+原 V2 版本 2.9.13 保持源码及版本不变，在市场索引声明 `v3: true` 和 `system_version <=3.1.5`，
+保留低于 3.1.6 的 V3 主程序选择 V2 兼容实现的安装路径。
 具体说明见插件仓 `plugins.v3/autosignin/README.md`。
 
 平台格式参考：[Telegram Rich Messages](https://core.telegram.org/bots/features#rich-messages)、
