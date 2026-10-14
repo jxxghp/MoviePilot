@@ -600,6 +600,12 @@ architecture snapshot, not through incidental module globals.
 
 ## Existing Chain, Module and DB Layers
 
+音乐封面的文件名匹配与优先级是 `app/domain/music.py` 的纯规则；
+`transfer/filter.py` 和 `ScrapingChain` 经 `runtime/settings.py` 读取同一个全局配置。
+候选规划及 `transfer/music.py` 确认同目录唯一发行归属，图片走既有 durable 整理任务；
+`TransHandler` 保留图片名并定位到专辑根。在线失败后的图片读取由 `ScrapingChain` 经
+`StorageChain` 完成，不在领域层引入配置或 I/O，也不恢复未经证明的远端发行标识。
+
 ### Chain layer
 
 运行时停止信号统一由 `app/runtime/stop.py` 的 `StopState` 持有。业务代码应注入或读取

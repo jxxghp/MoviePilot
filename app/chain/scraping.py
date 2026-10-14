@@ -28,12 +28,14 @@ from app.domain.context import (
 from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo, MetaInfoPath
+from app.domain.music import music_cover_priority
 from app.foundation.singleton import Singleton
 from app.foundation.text import convert
 from app.runtime.cache import cached
 from app.runtime.events import Event, eventmanager
 from app.runtime.log import logger
 from app.runtime.reload import ConfigReloadMixin
+from app.runtime.settings import get_runtime_setting
 from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.media import resolve_media_identity
 from app.schemas.types import (
@@ -1421,6 +1423,12 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
     ) -> _MusicScrapeFileResult:
         """在本地音轨副本上执行刮削，并将变更后的音频和歌词写回目标存储。"""
         scrape_info = self._resolve_music_scrape_info(local_path, mediainfo, media_source=media_source)
+        if with_cover:
+            if cover is None:
+                cover_url = getattr(mediainfo, "cover_url", None) or getattr(scrape_info, "cover_url", None)
+                cover = self._download_music_cover(cover_url)
+            if not cover[0]:
+                cover = self._load_local_music_cover(fileitem)
         metadata_requested = write_tags or with_cover
         metadata_success = True
         if metadata_requested:
@@ -1596,6 +1604,41 @@ class ScrapingChain(ChainBase, ConfigReloadMixin, metaclass=Singleton):
             write_tags=write_tags,
             cover_overwrite=cover_overwrite,
         )
+
+    def _load_local_music_cover(self, fileitem: _SchemaFileItem) -> tuple[Optional[bytes], str]:
+        """在线封面不可用时读取同目录图片；下载经存储端口，坏图不阻断后续候选。"""
+        from PIL import Image
+
+        parent = self.storagechain.get_parent_item(fileitem)
+        if not parent:
+            return None, "image/jpeg"
+        if MetaMusic.parse_disc_dir(Path(str(parent.path)).name) is not None:
+            # 整理把碟片目录内的封面放到专辑根，刮削仍从该发行范围内取图。
+            parent = self.storagechain.get_parent_item(parent) or parent
+        patterns = get_runtime_setting("MUSIC_COVER_FILE_PATTERNS")
+        candidates = []
+        for item in self.storagechain.list_files(parent, recursion=False) or []:
+            priority = music_cover_priority(str(item.path or item.name or ""), patterns)
+            if item.type == "file" and priority is not None:
+                candidates.append((priority, str(item.path).casefold(), item))
+        for _priority, _name, item in sorted(candidates, key=lambda value: value[:2]):
+            try:
+                with TemporaryDirectory(prefix="moviepilot-music-cover-") as directory:
+                    path = self.storagechain.download_file(item, path=Path(directory))
+                    if not path:
+                        continue
+                    with Image.open(path) as picture:
+                        mime = Image.MIME.get(picture.format)
+                        picture.verify()
+                    if mime not in {"image/jpeg", "image/png", "image/webp"}:
+                        continue
+                    data = Path(path).read_bytes()
+                logger.info(f"音乐在线封面不可用，使用同目录封面：{item.path}")
+                return data, mime
+            except (OSError, ValueError) as error:
+                logger.warning(f"读取音乐本地封面失败：{item.path} - {error}")
+        logger.info(f"音乐在线及同目录封面均不可用：{fileitem.path}")
+        return None, "image/jpeg"
 
     def _scrape_music_lyrics(
             self,

@@ -86,6 +86,7 @@ if TYPE_CHECKING:
         _is_media_file: Callable[..., Any]
         _is_movie_year_conflict: Callable[..., Any]
         _is_music_lyrics_file: Callable[..., Any]
+        _is_music_cover_file: Callable[..., Any]
         _is_music_retry_source: Callable[..., Any]
         _is_overwrite_declined: Callable[..., Any]
         _is_primary_media_file: Callable[..., Any]

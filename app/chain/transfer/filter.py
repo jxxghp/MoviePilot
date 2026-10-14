@@ -33,12 +33,14 @@ from app.domain.music import (
     MusicDirectoryMatch,
     music_album_matches,
     music_artist_matches,
+    music_cover_priority,
     music_release_year_matches,
     music_title_matches,
     music_track_title_is_weak,
     music_version_matches,
 )
 from app.runtime.log import logger
+from app.runtime.settings import get_runtime_setting
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
@@ -155,6 +157,13 @@ class _MusicFileFilterBase(_TransferOwnerBase):
         """判断文件是否为可随同名音乐音轨迁移的歌词旁挂文件。"""
         path = str(fileitem.path or fileitem.name or "").casefold()
         return path.endswith((".lrc", ".txt", ".lyricsfile.yaml"))
+
+    @staticmethod
+    def _is_music_cover_file(fileitem: FileItem) -> bool:
+        """仅接纳配置命中的音乐封面候选，实际归属由音轨批次确认。"""
+        return fileitem.type == "file" and music_cover_priority(
+            str(fileitem.path or fileitem.name or ""), get_runtime_setting("MUSIC_COVER_FILE_PATTERNS")
+        ) is not None
 
     def _is_media_file(
             self,
@@ -367,6 +376,7 @@ class FileFilterMixin(_TransferOwnerBase):
     _is_music_lyrics_file = cast(
         Any, staticmethod(_MusicFileFilterBase._is_music_lyrics_file)
     )
+    _is_music_cover_file = cast(Any, staticmethod(_MusicFileFilterBase._is_music_cover_file))
     _is_media_file = cast(Any, _MusicFileFilterBase._is_media_file)
     _is_primary_media_file = cast(Any, _MusicFileFilterBase._is_primary_media_file)
     _music_info_from_meta = cast(
