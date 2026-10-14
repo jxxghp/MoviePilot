@@ -147,6 +147,8 @@ def test_media_server_exists_falls_back_to_title_after_source_miss(db):
         year="2024",
         media_id="douban-preferred",
     )
+    # 媒体库条目自身带有目标来源身份时，应走精确身份而不是标题回退。
+    preferred.media_source = str(MediaSource.Douban)
     title_fallback = _item(
         "emby",
         "title-fallback-movie",
@@ -213,6 +215,123 @@ def test_async_media_server_exists_falls_back_to_title_after_source_miss(db):
         )
 
     assert db.run_async_session(query).item_id == item.item_id
+
+
+def test_cross_source_title_fallback_requires_matching_year(db):
+    """跨来源无法比对 ID，标题回退必须带年份，同名不同年份的作品不得互相命中。"""
+    anime = _item(
+        "emby",
+        "same-title-anime",
+        title="同名剧集",
+        item_type="电视剧",
+        year="2024",
+        media_id="tmdb-anime",
+    )
+    anime.seasoninfo = {1: list(range(1, 27))}
+    db.add(anime)
+
+    oper = MediaServerOper(db.session)
+    query = {
+        "title": "同名剧集",
+        "mtype": "电视剧",
+        "media_source": MediaSource.Douban,
+        "media_id": "douban-live-action",
+        "season": 1,
+    }
+    assert oper.exists(year="2026", **query) is None
+    assert oper.exists(**query) is None
+    assert oper.exists(year="2024", **query) is anime
+
+    async def query_without_year(session):
+        """异步入口缺少年份时同样不得按标题回退。"""
+        return await MediaServerOper(session).async_exists(**query)
+
+    async def query_other_year(session):
+        """异步入口年份不一致时不得命中同名条目。"""
+        return await MediaServerOper(session).async_exists(year="2026", **query)
+
+    assert db.run_async_session(query_without_year) is None
+    assert db.run_async_session(query_other_year) is None
+
+
+def test_cross_source_fallback_skips_same_source_conflicts(db):
+    """精确身份未命中时，同来源条目必然是另一部作品，不得作为标题回退结果。"""
+    db.add(_item("emby", "other-tmdb-work", title="同源冲突", year="2026",
+                 media_id="tmdb-other"))
+
+    assert MediaServerOper(db.session).exists(
+        title="同源冲突",
+        year="2026",
+        mtype="电影",
+        media_source=MediaSource.TMDB,
+        media_id="tmdb-target",
+    ) is None
+
+
+def test_cross_source_fallback_rejects_ambiguous_same_title_year(db):
+    """同名同年的候选指向不同作品时无法区分，宁可判为未入库。"""
+    db.add(
+        _item("emby", "ambiguous-anime", title="同名同年", item_type="电视剧",
+              year="2026", media_id="tmdb-anime"),
+        _item("emby", "ambiguous-live", title="同名同年", item_type="电视剧",
+              year="2026", media_id="tmdb-live"),
+    )
+    query = {
+        "title": "同名同年",
+        "year": "2026",
+        "mtype": "电视剧",
+        "media_source": MediaSource.Douban,
+        "media_id": "douban-target",
+    }
+
+    assert MediaServerOper(db.session).exists(**query) is None
+
+    async def query_async(session):
+        """异步入口应同样拒绝歧义候选。"""
+        return await MediaServerOper(session).async_exists(**query)
+
+    assert db.run_async_session(query_async) is None
+
+
+def test_cross_source_fallback_prefers_copy_with_target_season(db):
+    """同一作品在多个媒体库各有一份时不算歧义，应选包含目标季的条目。"""
+    season_one = _item("emby", "copy-season-one", title="多库剧集", item_type="电视剧",
+                       year="2023", media_id="tmdb-same")
+    season_one.seasoninfo = {1: [1, 2]}
+    season_two = _item("emby", "copy-season-two", title="多库剧集", item_type="电视剧",
+                       year="2023", media_id="tmdb-same")
+    season_two.seasoninfo = {2: [1, 2]}
+    db.add(season_one, season_two)
+
+    assert MediaServerOper(db.session).get_item_id(
+        title="多库剧集",
+        year="2023",
+        mtype="电视剧",
+        media_source=MediaSource.Douban,
+        media_id="douban-same",
+        season=2,
+    ) == "copy-season-two"
+
+
+def test_exact_identity_does_not_require_year(db):
+    """精确来源身份命中时不依赖年份，避免补传年份后误判已入库作品缺失。"""
+    item = _item(
+        "emby",
+        "exact-identity-tv",
+        title="精确身份剧集",
+        item_type="电视剧",
+        year="2024",
+        media_id="tmdb-exact",
+    )
+    db.add(item)
+
+    assert MediaServerOper(db.session).exists(
+        title="精确身份剧集",
+        year="2026",
+        mtype="电视剧",
+        media_source=MediaSource.TMDB,
+        media_id="tmdb-exact",
+    ) is item
 
 
 @pytest.mark.parametrize("mtype,year,expected", [
