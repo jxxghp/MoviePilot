@@ -9,8 +9,9 @@ Library existence checks and latest-media inspection.
 Purpose: Check configured media servers for one canonical media identity.
 Identity scope: `bound_user`; required role: `user`.
 - `path_params`: none
-- `query`: `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `mtype` (string|null): MoviePilot media type or subscription-history category required by the operation.; `season` (integer|null): Season number used by the media, search, subscription, or transfer operation.; `title` (string|null): Media, torrent, subscription, or history title used by the operation.; `year` (string|null): Release or premiere year used to disambiguate the media title.
+- `query`: `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `mtype` (string(movie, tv, music)|null): MoviePilot media type or subscription-history category required by the operation. Agent-facing MediaType keys: movie, tv, music (map the recognition result `type` as 电影→movie, 电视剧→tv; if documented under path_params, nest it there; never use the recognition `type` field name or invent names such as `type_name`).; `season` (integer|null): Season number used by the media, search, subscription, or transfer operation.; `title` (string|null): Media, torrent, subscription, or history title used by the operation.; `year` (string|null): Release or premiere year used to disambiguate the media title.
 - `body`: none
+- **Agent note:** The media-type field name is `mtype` (placed inside `query`). Do **not** reuse the `type` field from the recognition result — `type` is not a valid field for this operation, and the gateway will reject it with `invalid_input`.
 
 ### `library.latest`
 `GET /api/v1/mediaserver/latest`; policy effect: `safe_read`.

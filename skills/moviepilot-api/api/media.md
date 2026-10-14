@@ -182,6 +182,7 @@ Identity scope: `bound_user`; required role: `user`.
 - `path_params`: none
 - `query`: `custom_words` (string|null): Custom recognition or rename words applied to this media workflow.; `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.; `subtitle` (string|null): Optional subtitle text used together with title during media recognition.; `title*` (string): Media, torrent, subscription, or history title used by the operation.
 - `body`: none
+- 候选选择：返回多条时**以「标题与用户请求一致 + `type`（电影/电视剧）匹配」为依据选取，而非机械取第一条**。若第一条精确匹配且 type 正确可直接用；多条接近时优先排序靠前/热度更高者。后续 `search.torrents` 务必用所选候选的 `media_source` + `media_id`。
 
 ### `media.recognize_file`
 `GET /api/v1/media/recognize_file`; policy effect: `safe_read`.
