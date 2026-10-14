@@ -2,6 +2,7 @@ import json
 import re
 import tempfile
 import threading
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
@@ -14,7 +15,7 @@ from app.application.messaging.channel.admin import matches_channel_admin
 from app.application.messaging.ingress import submit_message_to_host
 from app.application.security.user import get_configured_user_channel_lookup
 from app.domain.context import Context, MediaInfo
-from app.modules.feishu.openapi import FEISHU_DOMAIN, FeishuOpenApi, JsonDict
+from app.modules.feishu.openapi import FEISHU_DOMAIN, FeishuOpenApi, FeishuResponse, JsonDict
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.runtime.thread import ThreadHelper
@@ -29,6 +30,9 @@ class Feishu:
     _ws_join_timeout_seconds = 5
     STREAM_CARD_TITLE_ELEMENT_ID = "mp_stream_title"
     STREAM_CARD_BODY_ELEMENT_ID = "mp_stream_body"
+    _STREAM_CLOSED_CODES = {200850, 300309}
+    _STREAM_RETRY_INITIAL_SECONDS = 2
+    _STREAM_RETRY_MAX_SECONDS = 60
     _NOTIFICATION_CARD_BYTES = 24000
     IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".tiff", ".heic"}
     MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[(?P<alt>[^\]\n]*)]\((?P<target>[^)\n]*)\)")
@@ -1174,31 +1178,54 @@ class Feishu:
             card_id: str,
             element_id: str,
             content: str,
-            sequence: int,
+            stream_meta: dict[str, Any],
     ) -> bool:
-        """按调用方维护的递增序号更新卡片文字，空内容使用飞书允许的占位。"""
+        """流式模式超时关闭时重开一次；失败退避，避免 Agent 定时刷新刷屏。"""
         if not self._api_client:
             return False
-        response = self._api_client.update_card_element_content(
+        if time.monotonic() < stream_meta.get("retry_at", 0):
+            return False
+        delay = stream_meta.get("retry_delay", self._STREAM_RETRY_INITIAL_SECONDS)
+        # 请求异常也须进入冷却；冷却期间返回失败，保留调用方尚未发送的文本。
+        stream_meta["retry_at"] = time.monotonic() + delay
+        stream_meta["retry_delay"] = min(delay * 2, self._STREAM_RETRY_MAX_SECONDS)
+        response = self._request_streaming_card_content(card_id, element_id, content, stream_meta)
+        if response.code in self._STREAM_CLOSED_CODES:
+            # 飞书会在开启流式十分钟后自动关闭。设置与文本更新共用递增序号。
+            stream_meta["sequence"] += 1
+            response = self._api_client.update_card_settings(
+                card_id=card_id,
+                settings=json.dumps({"config": {"streaming_mode": True}}, ensure_ascii=False),
+                sequence=stream_meta["sequence"],
+                uuid=str(uuid.uuid4()),
+            )
+            if response.success():
+                response = self._request_streaming_card_content(card_id, element_id, content, stream_meta)
+        if response.success():
+            stream_meta.pop("retry_at", None)
+            stream_meta.pop("retry_delay", None)
+            return True
+        stream_meta["retry_at"] = time.monotonic() + delay
+        logger.warning(
+            f"飞书流式卡片更新失败，{delay} 秒后重试：card_id={card_id}, "
+            f"sequence={stream_meta['sequence']}, code={response.code}, "
+            f"msg={response.msg}, log_id={response.log_id}"
+        )
+        return False
+
+    def _request_streaming_card_content(
+            self, card_id: str, element_id: str, content: str, stream_meta: dict[str, Any],
+    ) -> FeishuResponse:
+        """请求前消耗序号，确保远端已处理但本地超时后仍可继续更新和收尾。"""
+        assert self._api_client is not None
+        stream_meta["sequence"] = int(stream_meta.get("sequence") or 0) + 1
+        return self._api_client.update_card_element_content(
             card_id=card_id,
             element_id=element_id,
             content=content or " ",
-            sequence=sequence,
+            sequence=stream_meta["sequence"],
             uuid=str(uuid.uuid4()),
         )
-        if response.success():
-            logger.debug("飞书流式卡片更新成功：card_id=%s, sequence=%s, content_len=%s", card_id, sequence, len(content))
-            return True
-        logger.warn(
-            "飞书流式卡片内容更新失败：card_id=%s, element_id=%s, sequence=%s, code=%s, msg=%s, log_id=%s",
-            card_id,
-            element_id,
-            sequence,
-            response.code,
-            response.msg,
-            response.log_id,
-        )
-        return False
 
     def close_streaming_card(self, card_id: str, sequence: int) -> bool:
         """关闭卡片的流式展示状态，保留已发送的最终内容。"""
@@ -1638,11 +1665,6 @@ class Feishu:
         if isinstance(stream_meta, dict) and not buttons:
             card_id = str(stream_meta.get("card_id") or "").strip()
             element_id = str(stream_meta.get("element_id") or self.STREAM_CARD_BODY_ELEMENT_ID).strip()
-            sequence = int(stream_meta.get("sequence") or 0) + 1
-            logger.debug("准备更新飞书流式卡片：card_id=%s, sequence=%s (before incr: %s)", card_id, sequence, stream_meta.get("sequence"))
-            # 无论远端是否响应成功都自增 sequence，防止某次超时导致后续 sequence 一直因为没有递增而被拒绝
-            stream_meta["sequence"] = sequence
-
             if card_id and element_id:
                 content = self._escape_card_text(
                     self._strip_streaming_markdown_images(text)
@@ -1651,7 +1673,7 @@ class Feishu:
                         card_id=card_id,
                         element_id=element_id,
                         content=content or " ",
-                        sequence=sequence,
+                        stream_meta=stream_meta,
                 ):
                     stream_image_urls = self._extract_markdown_image_urls(text)
                     stream_meta["sent_image_urls"] = self._send_agent_streaming_images(
@@ -1660,7 +1682,6 @@ class Feishu:
                         sent_image_urls=stream_meta.get("sent_image_urls") or [],
                     )
                     return True
-                logger.error("飞书流式更新失败被拦截，直接返回 False 以防止降级为普通卡片")
                 return False
 
         card = self._build_card(title=title, text=text, link=None, buttons=buttons)

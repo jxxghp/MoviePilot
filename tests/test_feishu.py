@@ -14,6 +14,7 @@ ensure_optional_stub("psutil")
 ensure_optional_stub("dateparser")
 ensure_optional_stub("Pinyin2Hanzi", is_pinyin=lambda value: False)
 
+from app.agent.callback import StreamingHandler  # noqa: E402
 from app.modules.feishu.feishu import Feishu  # noqa: E402
 from app.modules.feishu.module import FeishuModule  # noqa: E402
 from app.modules.feishu.openapi import FeishuOpenApi, FeishuResponse  # noqa: E402
@@ -837,15 +838,18 @@ def test_edit_message_uses_cardkit_content_for_streaming_card(client, api):
     assert kwargs["uuid"]
 
 
-def test_edit_streaming_card_sequence_keeps_increasing_after_failed_update(client, api):
+def test_edit_streaming_card_sequence_keeps_increasing_after_failed_update(client, api, monkeypatch):
     """某次流式更新失败后，下一次仍须使用更大的 sequence，否则会被 CardKit 持续拒绝。"""
     api.update_card_element_content.side_effect = [
         FeishuResponse(code=-1, msg="timeout"),
         _ok(),
     ]
     metadata = _stream_metadata(sequence=4, sent_image_urls=[])
+    clock = [0.0]
+    monkeypatch.setattr("app.modules.feishu.feishu.time.monotonic", lambda: clock[0])
 
     first = client.edit_message(message_id="om_stream", text="第一次", metadata=metadata)
+    clock[0] += Feishu._STREAM_RETRY_INITIAL_SECONDS
     second = client.edit_message(message_id="om_stream", text="第二次", metadata=metadata)
 
     assert first is False
@@ -853,6 +857,162 @@ def test_edit_streaming_card_sequence_keeps_increasing_after_failed_update(clien
     sequences = [call.kwargs["sequence"] for call in api.update_card_element_content.call_args_list]
     assert sequences == [5, 6]
     # 流式更新失败不得降级为普通卡片 PATCH。
+    api.patch_message.assert_not_called()
+
+
+@pytest.mark.parametrize("code", [200850, 300309])
+def test_edit_streaming_card_reopens_and_retries_with_shared_sequence(client, api, code):
+    """超过十分钟后的关闭错误应在同一卡片重开，每次请求使用新序号和 UUID。"""
+    api.update_card_element_content.side_effect = [
+        FeishuResponse(code=code, msg="streaming mode is closed"), _ok(), _ok(),
+    ]
+    api.update_card_settings.return_value = _ok()
+    metadata = _stream_metadata(sequence=480)
+
+    assert client.edit_message("om_stream", text="完整累积内容", metadata=metadata)
+    assert client.edit_message("om_stream", text="下一帧", metadata=metadata)
+
+    requests = api.mock_calls
+    assert [request[0] for request in requests] == [
+        "update_card_element_content", "update_card_settings",
+        "update_card_element_content", "update_card_element_content",
+    ]
+    assert [request.kwargs["sequence"] for request in requests] == [481, 482, 483, 484]
+    assert len({request.kwargs["uuid"] for request in requests}) == 4
+    assert {request.kwargs["card_id"] for request in requests} == {"card_stream"}
+    assert json.loads(requests[1].kwargs["settings"]) == {"config": {"streaming_mode": True}}
+    assert requests[2].kwargs["content"] == "完整累积内容"
+    assert metadata["feishu_streaming"]["sequence"] == 484
+    assert "retry_at" not in metadata["feishu_streaming"]
+    api.patch_message.assert_not_called()
+
+
+def test_edit_streaming_card_can_recover_on_later_expiration(client, api):
+    """同一次长会话再次到期后仍可重开，收尾序号大于全部恢复请求。"""
+    closed = FeishuResponse(code=300309, msg="closed")
+    api.update_card_element_content.side_effect = [closed, _ok(), closed, _ok()]
+    api.update_card_settings.return_value = _ok()
+    metadata = _stream_metadata()
+
+    assert client.edit_message("om_stream", text="十分钟", metadata=metadata)
+    assert client.edit_message("om_stream", text="二十分钟", metadata=metadata)
+    assert client.close_streaming_card("card_stream", metadata["feishu_streaming"]["sequence"] + 1)
+
+    assert [request.kwargs["sequence"] for request in api.mock_calls] == list(range(1, 8))
+    assert json.loads(api.mock_calls[-1].kwargs["settings"]) == {"config": {"streaming_mode": False}}
+
+
+@pytest.mark.parametrize("failure", ["settings", "content", "ordinary", "exception"])
+def test_edit_streaming_card_failure_backs_off_and_recovers(client, api, monkeypatch, failure):
+    """恢复失败或普通请求失败后，高频刷新不出站；到期重试最新文本并清除退避。"""
+    clock = [100.0]
+    monkeypatch.setattr("app.modules.feishu.feishu.time.monotonic", lambda: clock[0])
+    closed = FeishuResponse(code=300309, msg="closed")
+    api.update_card_element_content.side_effect = {
+        "settings": [closed],
+        "content": [closed, closed],
+        "ordinary": [FeishuResponse(code=-1, msg="timeout")],
+        "exception": [RuntimeError("transport failure")],
+    }[failure]
+    api.update_card_settings.return_value = (
+        _ok() if failure == "content" else FeishuResponse(code=-1, msg="timeout")
+    )
+    metadata = _stream_metadata(sequence=4)
+
+    if failure == "exception":
+        with pytest.raises(RuntimeError, match="transport failure"):
+            client.edit_message("om_stream", text="未发送", metadata=metadata)
+    else:
+        assert not client.edit_message("om_stream", text="未发送", metadata=metadata)
+    count = len(api.mock_calls)
+    sequence = metadata["feishu_streaming"]["sequence"]
+    assert count == {"settings": 2, "content": 3, "ordinary": 1, "exception": 1}[failure]
+    for _ in range(100):
+        assert not client.edit_message("om_stream", text="更多内容", metadata=metadata)
+    assert len(api.mock_calls) == count
+    assert metadata["feishu_streaming"]["sequence"] == sequence
+
+    api.update_card_element_content.side_effect = None
+    api.update_card_element_content.return_value = _ok()
+    clock[0] += Feishu._STREAM_RETRY_INITIAL_SECONDS
+    assert client.edit_message("om_stream", text="最新完整内容", metadata=metadata)
+    assert api.update_card_element_content.call_args.kwargs["content"] == "最新完整内容"
+    assert metadata["feishu_streaming"]["sequence"] == sequence + 1
+    assert "retry_at" not in metadata["feishu_streaming"]
+    assert "retry_delay" not in metadata["feishu_streaming"]
+    api.patch_message.assert_not_called()
+
+
+def test_edit_streaming_card_backoff_is_capped_and_card_local(client, api, monkeypatch):
+    """持续失败的重试间隔递增到一分钟，不影响其他卡片。"""
+    clock = [0.0]
+    monkeypatch.setattr("app.modules.feishu.feishu.time.monotonic", lambda: clock[0])
+    api.update_card_element_content.return_value = FeishuResponse(code=-1, msg="timeout")
+    metadata = _stream_metadata()
+    with patch("app.modules.feishu.feishu.logger.warning") as warning:
+        for delay in [2, 4, 8, 16, 32, 60, 60]:
+            assert not client.edit_message("om_stream", text="待发送", metadata=metadata)
+            assert metadata["feishu_streaming"]["retry_at"] == clock[0] + delay
+            count = api.update_card_element_content.call_count
+            clock[0] += delay - 0.1
+            assert not client.edit_message("om_stream", text="待发送", metadata=metadata)
+            assert api.update_card_element_content.call_count == count
+            clock[0] += 0.1
+        assert warning.call_count == 7
+
+    api.update_card_element_content.return_value = _ok()
+    assert client.edit_message("om_other", text="独立卡片", metadata=_stream_metadata(card_id="other"))
+    assert api.update_card_element_content.call_args.kwargs["card_id"] == "other"
+    api.update_card_settings.assert_not_called()
+    api.patch_message.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("recover", [False, True])
+async def test_agent_flush_preserves_unsent_text_during_feishu_backoff(client, api, monkeypatch, recover):
+    """真实刷新链保留失败文本和共享序号；收尾只在全部送达后报告成功。"""
+    clock = [100.0]
+    monkeypatch.setattr("app.modules.feishu.feishu.time.monotonic", lambda: clock[0])
+    api.update_card_element_content.return_value = FeishuResponse(code=300309, msg="closed")
+    api.update_card_settings.return_value = FeishuResponse(code=-1, msg="timeout")
+    handler = StreamingHandler()
+    handler._streaming_enabled = True
+    handler._channel = NotificationChannel.Feishu.value
+    handler._source = "feishu-test"
+    handler._buffer = "完整回复"
+    handler._sent_text = "旧回复"
+    handler._message_response = MessageResponse(
+        channel=NotificationChannel.Feishu, source="feishu-test", message_id="om_stream",
+        chat_id="oc_test", success=True, metadata=_stream_metadata(),
+    )
+    response = handler._message_response
+    chain = MagicMock()
+    chain.edit_message.side_effect = lambda **kwargs: client.edit_message(
+        kwargs["message_id"], text=kwargs["text"], metadata=kwargs["metadata"],
+    )
+    chain.finalize_message.side_effect = lambda result: client.close_streaming_card(
+        result.metadata["feishu_streaming"]["card_id"],
+        result.metadata["feishu_streaming"]["sequence"] + 1,
+    )
+    with patch("app.agent.callback._StreamChain", return_value=chain):
+        await handler._flush()
+        for _ in range(10):
+            await handler._flush()
+        assert api.update_card_element_content.call_count == 1
+        assert handler._sent_text == "旧回复"
+        assert response.metadata["feishu_streaming"]["sequence"] == 2
+
+        if recover:
+            clock[0] += Feishu._STREAM_RETRY_INITIAL_SECONDS
+            api.update_card_element_content.return_value = _ok()
+        api.update_card_settings.return_value = _ok()
+        all_sent, final_text = await handler.stop_streaming()
+
+    assert all_sent is recover
+    assert final_text == ("完整回复" if recover else "")
+    if not recover:
+        assert await handler.take() == "完整回复"
+    assert api.update_card_settings.call_args.kwargs["sequence"] == (4 if recover else 3)
     api.patch_message.assert_not_called()
 
 
