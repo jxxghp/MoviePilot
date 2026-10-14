@@ -29,6 +29,7 @@ class Feishu:
     _ws_join_timeout_seconds = 5
     STREAM_CARD_TITLE_ELEMENT_ID = "mp_stream_title"
     STREAM_CARD_BODY_ELEMENT_ID = "mp_stream_body"
+    _NOTIFICATION_CARD_BYTES = 24000
     IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".tiff", ".heic"}
     MARKDOWN_IMAGE_PATTERN = re.compile(r"!\[(?P<alt>[^\]\n]*)]\((?P<target>[^)\n]*)\)")
 
@@ -1576,28 +1577,25 @@ class Feishu:
             return result
 
         image_key = self._upload_remote_image(message.image)
-        payload = self._build_card(
-            title=message.title,
-            text=message.text,
-            link=message.link,
-            buttons=message.buttons,
-            image_key=image_key,
-        )
+        payloads = self._build_notification_cards(message, image_key)
         try:
-            if original_message_id:
-                result = self._reply_message(
-                    message_id=original_message_id,
-                    msg_type="interactive",
-                    content=payload,
-                )
-            else:
-                result = self._send_with_fallback_broadcast(
-                    "interactive",
-                    payload,
-                    userid=userid,
-                    chat_id=chat_id,
-                    receive_id_type=receive_id_type,
-                )
+            for payload in payloads:
+                if original_message_id:
+                    result = self._reply_message(
+                        message_id=original_message_id,
+                        msg_type="interactive",
+                        content=payload,
+                    )
+                else:
+                    result = self._send_with_fallback_broadcast(
+                        "interactive",
+                        payload,
+                        userid=userid,
+                        chat_id=chat_id,
+                        receive_id_type=receive_id_type,
+                    )
+                if not result:
+                    return {"success": False}
         except Exception as err:
             logger.error(f"飞书通知发送失败：{err}")
             return {"success": False}
@@ -1607,6 +1605,27 @@ class Feishu:
         result["chat_id"] = result.get("chat_id") or chat_id or self._user_chat_mapping.get(
             userid or "") or self._default_chat_id
         return result
+
+    def _build_notification_cards(self, message: Message, image_key: Optional[str]) -> List[JsonDict]:
+        """按卡片 JSON 字节预算拆分渠道报告，保留全部站点、标题和详情入口。"""
+        rich_text = message.channel_text(NotificationChannel.Feishu)
+        texts: List[Optional[str]] = [message.text]
+        if rich_text:
+            texts = []
+            current: List[str] = []
+            for paragraph in rich_text.split("\n\n"):
+                candidate = "\n\n".join(current + [paragraph])
+                card = self._build_card(message.title, candidate, message.link, message.buttons, image_key)
+                if current and len(json.dumps(card, ensure_ascii=False).encode("utf-8")) > self._NOTIFICATION_CARD_BYTES:
+                    texts.append("\n\n".join(current))
+                    current = []
+                current.append(paragraph)
+            texts.append("\n\n".join(current))
+        total = len(texts)
+        return [self._build_card(
+            title=f"{message.title or 'MoviePilot'}（{index + 1}/{total}）" if total > 1 else message.title,
+            text=text, link=message.link, buttons=message.buttons, image_key=image_key,
+        ) for index, text in enumerate(texts)]
 
     def edit_message(self, message_id: str, title: Optional[str] = None, text: Optional[str] = None,
                      buttons: Optional[List[List[dict]]] = None, metadata: Optional[dict] = None,

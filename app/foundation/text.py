@@ -1,10 +1,41 @@
 """无业务状态的文本识别、清理、转换和分段能力。"""
 
+import html
 import random
 import re
-from typing import Generator, List, Optional, Union
+from typing import Dict, Generator, List, Optional, Union
 
 import moviepilot_rust
+
+
+def _escape_notification_text(value: str, text_format: str) -> str:
+    """把外部文本转为指定语法的数据，避免注入格式、链接或群体提醒。"""
+    value = value.replace("@", "@\u200b")
+    if text_format == "markdown":
+        value = value.replace("<", "＜").replace(">", "＞")
+        return re.sub(r"[\\`*_{}\[\]()#+.!|~-]", lambda match: "\\" + match[0], value)
+    value = html.escape(value, quote=False)
+    if text_format == "mrkdwn":
+        return value.translate({ord("*"): "＊", ord("_"): "＿", ord("~"): "～", ord("`"): "ˋ"})
+    return re.sub(r"[\\`*_{}\[\]()#+.!|~-]", lambda match: f"&#{ord(match[0])};", value)
+
+
+def render_notification(title: Optional[str], blocks: List[Dict[str, Optional[str]]], text_format: str) -> str:
+    """把通用文本段落转换为指定格式，不读取渠道配置或识别业务含义。"""
+    bold = "*" if text_format == "mrkdwn" else "**"
+    paragraphs = []
+    if title and text_format == "rich_markdown":
+        paragraphs.append(f"## {_escape_notification_text(title, text_format)}")
+    for block in blocks:
+        lines = []
+        block_title, block_text = block.get("title"), block.get("text")
+        if block_title:
+            lines.append(f"{bold}{_escape_notification_text(block_title, text_format)}{bold}")
+        if block_text:
+            lines.append(_escape_notification_text(block_text, text_format))
+        if lines:
+            paragraphs.append("\n".join(lines))
+    return "\n\n".join(paragraphs)
 
 
 def cut(text: str, HMM: bool = True, cut_all: bool = False) -> list[str]:

@@ -553,7 +553,7 @@ def should_prefer_full_pack_for_episode_best_version(
     priority: int,
 ) -> bool:
     """
-    判断分集洗版是否应优先下载整包。
+    判断分集洗版或首次下载的整包候选是否通过按集优先级门槛。
 
     整包优先级必须严格高于每个目标集；否则交回按集路径，只下载能提升质量的集。
     """
@@ -573,14 +573,38 @@ def should_prefer_full_pack_for_episode_best_version(
     return all(resource_priority > episode_priority.get(str(episode), 0) for episode in target_episodes)
 
 
+def should_prefer_full_pack_for_initial_download(
+    subscribe: SubscriptionSnapshot,
+    mediakey: Union[int, str],
+    no_exists: Optional[Dict[Union[int, str], Dict[int, NotExistMediaInfo]]],
+) -> bool:
+    """普通电视剧尚无下载记录且媒体库缺少全部目标集时，允许首轮优先整包。
+
+    缺集事实优先于缓存的 lack_episode；已有任意下载记录或媒体库已有目标集时保留补集行为。
+    """
+    if subscribe.best_version or subscribe.type != MediaType.TV.value or subscribe.note or subscribe.season is None:
+        return False
+    if any(priority > 0 for priority in normalize_episode_priority(subscribe.episode_priority).values()):
+        return False
+    target_episodes = get_best_version_target_episodes(subscribe)
+    missing = (no_exists or {}).get(mediakey, {}).get(subscribe.season)
+    if not target_episodes or missing is None:
+        return False
+    missing_episodes = missing.episodes or list(range(missing.start_episode or 1, (missing.total_episode or 0) + 1))
+    return set(target_episodes) == set(missing_episodes)
+
+
 def build_full_pack_first_no_exists(
     subscribe: SubscriptionSnapshot,
     mediakey: Union[int, str],
+    no_exists: Optional[Dict[Union[int, str], Dict[int, NotExistMediaInfo]]] = None,
 ) -> Optional[Dict[Union[int, str], Dict[int, NotExistMediaInfo]]]:
     """
-    构造分集洗版优先全集时使用的整季缺失范围。
+    构造分集洗版或普通电视剧首次下载优先全集时使用的完整目标范围。
     """
-    if not subscribe.best_version or is_full_best_version_enabled(subscribe) or subscribe.type != MediaType.TV.value:
+    if is_full_best_version_enabled(subscribe) or subscribe.type != MediaType.TV.value:
+        return None
+    if not subscribe.best_version and not should_prefer_full_pack_for_initial_download(subscribe, mediakey, no_exists):
         return None
 
     target_episodes = get_best_version_target_episodes(subscribe)

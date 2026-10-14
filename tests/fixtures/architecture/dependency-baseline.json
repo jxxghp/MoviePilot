@@ -941,8 +941,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9538,
-  "edge_sha256": "b7b224c7a66e3a2d169cffdad65ef7b54dc425af11b1ccb12b6bc1ceebf9108b",
+  "edge_count": 9542,
+  "edge_sha256": "74e5a7f8dd6e0529fa7ea16c3b35dcdf363574aaea5ad44551016c89357a3b90",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -7829,6 +7829,7 @@
     "app.modules.jellyfin.jellyfin -> app.foundation",
     "app.modules.jellyfin.jellyfin -> app.foundation.url",
     "app.modules.jellyfin.jellyfin -> app.runtime",
+    "app.modules.jellyfin.jellyfin -> app.runtime.cache",
     "app.modules.jellyfin.jellyfin -> app.runtime.log",
     "app.modules.jellyfin.jellyfin -> app.runtime.settings",
     "app.modules.jellyfin.jellyfin -> app.schemas",
@@ -9277,8 +9278,11 @@
     "app.schemas.mediaserver -> app.schemas.common",
     "app.schemas.mediaserver -> app.schemas.media",
     "app.schemas.mediaserver -> app.schemas.types",
+    "app.schemas.message -> app.foundation",
+    "app.schemas.message -> app.foundation.text",
     "app.schemas.message -> app.schemas",
     "app.schemas.message -> app.schemas.common",
+    "app.schemas.message -> app.schemas.notification",
     "app.schemas.message -> app.schemas.types",
     "app.schemas.mfa -> app.schemas",
     "app.schemas.mfa -> app.schemas.common",

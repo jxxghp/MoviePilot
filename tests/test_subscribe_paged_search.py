@@ -11,8 +11,13 @@ import app.chain.download.existence as download_existence
 import app.chain.download.selection as download_selection
 import app.chain.subscribe.policy as subscribe_policy
 import app.chain.subscribe.refresh as subscribe_refresh
+import app.chain.subscribe.search as subscribe_search
 from app.application.site.observation import report_site_search_outcome, report_site_search_page
 from app.application.subscription.contract import SubscriptionSnapshot, build_subscribe_meta
+from app.application.subscription.priority import (
+    build_full_pack_first_no_exists,
+    should_prefer_full_pack_for_initial_download,
+)
 from app.chain.download import DownloadChain
 from app.chain.search.facade import SearchChain
 from app.chain.subscribe.facade import SubscribeChain
@@ -20,7 +25,7 @@ from app.chain.subscribe.metadata import SubscriptionSearchTarget
 from app.chain.subscribe.search import _finish_paged_subscription, _process_paged_subscription
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
-from app.schemas.mediaserver import ExistMediaInfo
+from app.schemas.mediaserver import ExistMediaInfo, NotExistMediaInfo
 from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 
 
@@ -61,6 +66,7 @@ def subscription(monkeypatch):
 
 
 def _missing(scope, item):
+    """通过真实订阅规则计算媒体库与下载记录合并后的缺集。"""
     return scope.chain.resolve_subscribe_missing(
         subscribe=item, meta=build_subscribe_meta(item), mediainfo=scope.media, mediakey="tmdb:1")[1]
 
@@ -101,7 +107,9 @@ def test_paged_search_keeps_new_missing_episodes_in_completion(subscription, mon
         assert call.kwargs["no_exists"]["tmdb:1"][1].episodes == [2]
 
 
-def test_whole_season_downloads_late_complete_pack_before_early_parts(subscription, monkeypatch):
+@pytest.mark.parametrize("explicit_missing", [False, True])
+@pytest.mark.parametrize("strategy", ["smart", "full", "single_page"])
+def test_whole_season_downloads_late_complete_pack_before_early_parts(subscription, monkeypatch, explicit_missing, strategy):
     """整季缺失的真实分页与下载选集链路只提交后页全集包，不抢跑前页散集。"""
     scope = subscription
     current = replace(scope.initial, total_episode=2, manual_total_episode=2)
@@ -109,16 +117,19 @@ def test_whole_season_downloads_late_complete_pack_before_early_parts(subscripti
     target = SubscriptionSearchTarget(current, build_subscribe_meta(current), scope.media,
                                       _missing(scope, current), "tmdb:1")
     assert target.missing["tmdb:1"][1].episodes == []
+    if explicit_missing:
+        target.missing["tmdb:1"][1].episodes = [1, 2]
     search = SearchChain()
     monkeypatch.setattr(search, "_sync_indexers", lambda _sites: [{"id": 1, "name": "A"}])
     monkeypatch.setattr(search, "get_search_page_size", lambda **_params: 100)
     monkeypatch.setattr(search, "search_plugin_torrents", lambda **_params: [])
     monkeypatch.setattr(scope.chain, "get_sub_sites", lambda _subscribe: [1])
+    monkeypatch.setattr(subscribe_search, "_subscription_search_strategy", lambda _best_version: strategy)
     calls = []
 
     def download(*_args, **_params):
         """下载副作用必须晚于真实末页，不因散集关闭证据提前执行。"""
-        assert calls == [0, 1, 2, 3]
+        assert calls == ([0] if strategy == "single_page" else [0, 1, 2, 3])
         return "hash"
 
     scope.download.download_single.side_effect = download
@@ -137,12 +148,85 @@ def test_whole_season_downloads_late_complete_pack_before_early_parts(subscripti
 
     monkeypatch.setattr(search, "search_site_torrents", request)
     _process_paged_subscription(scope.chain, current, search, target, SystemConfigKey.SubscribeFilterRuleGroups, None)
-    assert calls == [0, 1, 2, 3]
+    assert calls == ([0] if strategy == "single_page" else [0, 1, 2, 3])
     scope.download.download_single.assert_called_once()
-    context = scope.download.download_single.call_args.kwargs["context"]
-    assert context.torrent_info.title == "Example Show S01 Complete"
+    call = scope.download.download_single.call_args
+    context = call.args[0] if call.args else call.kwargs["context"]
+    assert context.torrent_info.title == ("Example Show S01E01" if strategy == "single_page" else "Example Show S01 Complete")
     assert context.selected_episodes is None
-    assert scope.current["value"].lack_episode == 0
+    assert scope.current["value"].lack_episode == (1 if strategy == "single_page" else 0)
+
+
+@pytest.mark.parametrize("fields,episodes,expected", [
+    ({}, [1, 2], True),
+    ({"lack_episode": 1}, [1, 2], True),
+    ({"note": [1]}, [1, 2], False),
+    ({"note": [9]}, [1, 2], False),
+    ({"episode_priority": {"1": 60}}, [1, 2], False),
+    ({}, [2], False),
+    ({"best_version": 1}, [1, 2], False),
+    ({"type": MediaType.MOVIE.value}, [1, 2], False),
+    ({"total_episode": 0}, [1, 2], False),
+    ({"start_episode": 2}, [2], True),
+])
+def test_initial_pack_uses_download_records_and_current_missing(fields, episodes, expected):
+    """首次下载以当前缺集事实为准，已有下载或媒体库已有剧集时不能扩大到全集。"""
+    subscribe = SubscriptionSnapshot(id=1, name="Show", type=MediaType.TV.value, season=1, total_episode=2)
+    subscribe = replace(subscribe, **fields)
+    missing = {"tmdb:1": {1: NotExistMediaInfo(season=1, episodes=episodes, total_episode=2)}}
+    assert should_prefer_full_pack_for_initial_download(subscribe, "tmdb:1", missing) is expected
+    if not subscribe.best_version:
+        assert bool(build_full_pack_first_no_exists(subscribe, "tmdb:1", missing)) is expected
+
+
+@pytest.mark.parametrize("pack_episodes,pack_success", [(None, False), ([1, 2], True), ([1], True), ([1, 2], False)])
+def test_initial_download_prefers_complete_pack_and_falls_back(subscription, pack_episodes, pack_success):
+    """显式全缺集时整包优先于散集；种子不完整或无整包时仍下载所需散集。"""
+    scope = subscription
+    current = replace(scope.initial, total_episode=2)
+    scope.current["value"] = current
+    missing = _missing(scope, current)
+    missing["tmdb:1"][1].episodes = [1, 2]
+    scope.chain.check_and_handle_existing_media = Mock(return_value=(False, missing))
+    parts = [Context(meta_info=MetaInfo(f"Example Show S01E{episode:02d}"), media_info=scope.media,
+                     torrent_info=TorrentInfo(site=1, title=f"Example Show S01E{episode:02d}", pri_order=100))
+             for episode in (1, 2)]
+    pack = Context(meta_info=MetaInfo("Example Show S01"), media_info=scope.media,
+                   torrent_info=TorrentInfo(site=1, title="Example Show S01", pri_order=80))
+    contexts = parts + ([pack] if pack_episodes is not None else [])
+
+    def prepare(torrent, **_params):
+        """解析出的剧集与资源标题独立，避免把标题整季误当成真实完整包。"""
+        return b"torrent", None, pack_episodes if torrent is pack.torrent_info else MetaInfo(torrent.title).episode_list
+
+    def submit(context, **_params):
+        """整包下载器失败后仍允许提交散集，验证真实回退而非空候选。"""
+        return None if context is pack and not pack_success else "hash"
+
+    scope.download.download_torrent.side_effect = prepare
+    scope.download.download_single.side_effect = submit
+    downloads, lefts = scope.chain._SubscribeChain__download_best_version_with_full_pack_first(
+        contexts=contexts, no_exists=missing, subscribe=current, mediakey="tmdb:1")
+    assert downloads == ([pack] if pack_episodes == [1, 2] and pack_success else parts)
+    assert not lefts
+    assert scope.current["value"].best_version == current.best_version
+    assert scope.current["value"].episode_priority == current.episode_priority
+
+
+def test_initial_pack_rechecks_current_download_progress(subscription):
+    """搜索开始后新增下载记录时，提交前重读快照并恢复按集选择。"""
+    scope = subscription
+    prepared = replace(scope.initial, total_episode=2)
+    scope.current["value"] = replace(prepared, note=[1])
+    part = Context(meta_info=MetaInfo("Example Show S01E02"), media_info=scope.media,
+                   torrent_info=TorrentInfo(site=1, title="Example Show S01E02", pri_order=100))
+    pack = Context(meta_info=MetaInfo("Example Show S01"), media_info=scope.media,
+                   torrent_info=TorrentInfo(site=1, title="Example Show S01", pri_order=80))
+    downloads, lefts = scope.chain._SubscribeChain__download_best_version_with_full_pack_first(
+        contexts=[part, pack], no_exists=_missing(scope, prepared), subscribe=prepared, mediakey="tmdb:1")
+    assert downloads == [part]
+    assert not lefts
+    scope.download.download_torrent.assert_not_called()
 
 
 def test_ready_batch_uses_original_partial_pack_selection_and_returns_full_missing(subscription):

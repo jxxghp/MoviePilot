@@ -621,9 +621,13 @@ class TransferHistory(Base):
                 episode: Optional[str] = None,
                 media_source: Optional[MediaSource] = None,
                 media_id: Optional[str] = None,
-                dest: Optional[str] = None):
+                dest: Optional[str] = None, *, match_all_versions: bool = False):
         """
         按媒体身份、季集或标题年份查询整理记录。
+
+        电影及未指定类型的查询默认要求非空目标路径；路径未知不能代表全部版本。
+        仅明确需要按身份或标题年份全量查询时传入 match_all_versions=True。
+        电视剧整季、整剧查询保留既有语义，单集仍精确匹配目标路径。
         """
         if media_source and media_id and mtype:
             statement = select(cls).where(cls.media_source == str(media_source),
@@ -650,6 +654,8 @@ class TransferHistory(Base):
         elif dest:
             # 电影：没有季集，用目标路径区分不同版本
             statement = statement.where(cls.dest == dest)
+        elif mtype != MediaType.TV.value and not match_all_versions:
+            return []
         return list(db.execute(statement).scalars().all())
 
     @classmethod

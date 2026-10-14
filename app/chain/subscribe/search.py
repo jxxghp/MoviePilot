@@ -109,7 +109,9 @@ def _process_paged_subscription(owner: _SubscribeOwnerBase, subscribe: Subscript
     repository = getattr(getattr(owner, "subscription_search_repository", None), "sessions", None) if execution_context else None
     snapshot = repository.get(task_id=execution_context.task_id) if repository and execution_context and execution_context.task_id else None
     strategy = _subscription_search_strategy(bool(subscribe.best_version))
-    scan = SearchScan(owner=searchchain, plan=plan, full=strategy == "full",
+    prefer_initial_pack = bool(cast(Any, owner)._SubscribeChain__build_full_pack_first_no_exists(
+        subscribe, target.media_key, target.missing))
+    scan = SearchScan(owner=searchchain, plan=plan, full=strategy == "full" or prefer_initial_pack,
                       page_limit=1 if strategy == "single_page" else None,
                       execution=execution_context, repository=repository, snapshot=snapshot,
                       target_scope=(subscribe.start_episode or 1, subscribe.total_episode or 0))

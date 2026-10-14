@@ -1,3 +1,6 @@
+from dataclasses import asdict as _asdict
+from dataclasses import dataclass as _dataclass
+from dataclasses import field as _field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 
@@ -5,6 +8,8 @@ from pydantic import BaseModel, Field, field_validator
 from pydantic import PrivateAttr as _PrivateAttr
 
 from app.schemas.common import JsonData
+from app.schemas.notification import ChannelCapabilityManager as _ChannelCapabilityManager
+from app.schemas.notification import NotificationTextFormat as _NotificationTextFormat
 from app.schemas.types import ContentType, MessageType, NotificationChannel
 
 
@@ -111,6 +116,7 @@ class IncomingMessage(BaseModel):
 
         @classmethod
         def from_value(cls, value: Any) -> Optional["IncomingMessage.MessageImage"]:
+            """将字符串或字典图片数据归一化为图片模型。"""
             if value is None:
                 return None
             if isinstance(value, cls):
@@ -143,6 +149,7 @@ class IncomingMessage(BaseModel):
         def normalize_list(
                 cls, values: Optional[Any]
         ) -> Optional[List["IncomingMessage.MessageImage"]]:
+            """归一化单项或列表图片输入，忽略无有效引用的条目。"""
             if not values:
                 return None
             if not isinstance(values, list):
@@ -206,6 +213,7 @@ class IncomingMessage(BaseModel):
     def _normalize_images(
             cls, value: Any
     ) -> Optional[List["IncomingMessage.MessageImage"]]:
+        """在模型校验前归一化外来消息的图片字段。"""
         return cls.MessageImage.normalize_list(value)
 
     def to_dict(self):
@@ -217,6 +225,33 @@ class IncomingMessage(BaseModel):
             if isinstance(v, NotificationChannel):
                 items[k] = v.value
         return items
+
+
+@_dataclass
+class NotificationBlock:
+    """一段与渠道无关的通知内容，标题和正文均是未插入格式标记的普通文本。"""
+
+    title: Optional[str] = None
+    text: Optional[str] = None
+
+
+@_dataclass
+class NotificationContent:
+    """通用结构化通知，宿主根据渠道能力渲染，不承载签到等业务规则。"""
+
+    title: Optional[str] = None
+    blocks: List[NotificationBlock] = _field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """返回普通的标题和段落数据，不包含渠道配置或格式标记。"""
+        return _asdict(self)
+
+    def render(self, text_format: _NotificationTextFormat) -> str:
+        """按声明的语法生成正文，渠道标题、卡片和按钮仍由各适配器添加。"""
+        # 按需加载文本转换，保持普通消息模型导入轻量。
+        from app.foundation.text import render_notification as _render_notification
+
+        return _render_notification(self.title, [_asdict(block) for block in self.blocks], text_format.value)
 
 
 class Message(BaseModel):
@@ -274,11 +309,44 @@ class Message(BaseModel):
     parse_mode: Optional[str] = None
     # Telegram Rich Message 完整 Markdown 正文；其他渠道可使用 text 作为回退
     rich_message: Optional[str] = None
+    # 渠道无关的结构化通知，宿主按能力渲染；text 始终保留为纯文本回退。
+    rich_content: Optional[NotificationContent] = None
     # 是否写入消息历史
     save_history: bool = True
 
     # 通知隔离路由范围，仅在运行时传递给通知模块，不写入消息数据
     _notification_route_scope: Optional[str] = _PrivateAttr(default=None)
+
+    def channel_text(self, channel: NotificationChannel, config: Optional[dict[str, object]] = None) -> Optional[str]:
+        """仅返回能力声明和实例模式允许的专用正文；缺少能力时保留原始通知。"""
+        text_format = _ChannelCapabilityManager.get_notification_text_format(channel, config)
+        if text_format is None or self.rich_content is None:
+            return None
+        return self.rich_content.render(text_format)
+
+    def channel_text_chunks(self, channel: NotificationChannel, max_bytes: Optional[int] = None) -> List[str]:
+        """按段落读取有界渠道正文；缺失或单段超限时由渠道继续使用原 text。"""
+        text = self.channel_text(channel)
+        if not text:
+            return []
+        if max_bytes is None:
+            capability = _ChannelCapabilityManager.get_capabilities(channel)
+            max_bytes = capability.notification_text_bytes if capability else 0
+        if max_bytes <= 0:
+            return [text]
+        paragraphs = text.split("\n\n")
+        if any(len(part.encode("utf-8")) > max_bytes for part in paragraphs):
+            return []
+        chunks = []
+        current: List[str] = []
+        for part in paragraphs:
+            candidate = "\n\n".join(current + [part])
+            if current and len(candidate.encode("utf-8")) > max_bytes:
+                chunks.append("\n\n".join(current))
+                current = []
+            current.append(part)
+        chunks.append("\n\n".join(current))
+        return chunks
 
     def set_notification_route_scope(self, scope: Optional[str]) -> None:
         """设置运行时通知路由范围，支持管理员默认目标和用户个人目标的区分。"""

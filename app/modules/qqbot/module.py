@@ -69,23 +69,28 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
     )
 
     def init_module(self) -> None:
+        """初始化 QQ Bot 通知服务并设置渠道标识。"""
         super().init_service(service_name=QQBot.__name__.lower(), service_type=QQBot)
         self._channel = NotificationChannel.QQ
 
     @staticmethod
     def get_name() -> str:
+        """返回渠道的显示名称。"""
         return "QQ"
 
     @staticmethod
     def get_type() -> ModuleType:
+        """声明模块属于通知服务。"""
         return ModuleType.Notification
 
     @staticmethod
     def get_subtype() -> NotificationChannel:
+        """返回 QQ 通知渠道标识。"""
         return NotificationChannel.QQ
 
     @staticmethod
     def get_priority() -> int:
+        """返回通知模块的加载优先级。"""
         return 10
 
     def _commands_enabled(self, config: Optional[dict]) -> bool:
@@ -100,6 +105,7 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
         return self._stop_service_instances()
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
+        """保留设置初始化钩子，实例配置由通知服务管理。"""
         pass
 
     @staticmethod
@@ -209,6 +215,7 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
     def _extract_images(
         cls, msg_body: dict
     ) -> Optional[List[IncomingMessage.MessageImage]]:
+        """提取 QQ 图片附件与兼容图片字段，按引用去重。"""
         images: List[IncomingMessage.MessageImage] = []
         attachments = msg_body.get("attachments") or []
         if isinstance(attachments, list):
@@ -270,6 +277,7 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
 
     @classmethod
     def _extract_audio_refs(cls, msg_body: dict) -> Optional[List[str]]:
+        """提取音频附件，并生成可回读的 QQ 文件引用。"""
         audio_refs: List[str] = []
         attachments = msg_body.get("attachments") or []
         if isinstance(attachments, list):
@@ -302,6 +310,7 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
     def _extract_files(
         cls, msg_body: dict
     ) -> Optional[List[IncomingMessage.MessageAttachment]]:
+        """提取图片和音频以外的文件附件，保留文件元数据。"""
         files: List[IncomingMessage.MessageAttachment] = []
         attachments = msg_body.get("attachments") or []
         if isinstance(attachments, list):
@@ -353,6 +362,7 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
         return None
 
     def post_message(self, message: Message, **kwargs) -> None:
+        """按通知路由发送 QQ 消息，并保留原正文作为权限不足时的回退。"""
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
@@ -374,9 +384,11 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
                     link=message.link,
                     userid=userid,
                     targets=targets,
+                    formatted_texts=message.channel_text_chunks(NotificationChannel.QQ),
                 )
 
     def post_medias_message(self, message: Message, medias: List[MediaInfo]) -> None:
+        """按实例和用户路由发送 QQ 媒体候选列表。"""
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
@@ -401,6 +413,7 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
     def post_torrents_message(
         self, message: Message, torrents: List[Context]
     ) -> None:
+        """按实例和用户路由发送 QQ 种子候选列表。"""
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue

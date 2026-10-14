@@ -1,6 +1,6 @@
 """钉钉自定义机器人通知模块。"""
 
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Sequence, Tuple, Union
 
 from app.domain.context import Context, MediaInfo
 from app.modules._base.notification import _MessageChannelModuleBase
@@ -59,13 +59,15 @@ class DingTalkModule(_MessageChannelModuleBase[DingTalk]):
                 continue
             client = self.get_instance(conf.name)
             if client:
-                client.send_msg(
-                    title=message.title,
-                    text=message.text,
-                    image=message.image,
-                    userid=str(message.userid) if message.userid else None,
-                    link=message.link,
-                )
+                texts: Sequence[Optional[str]] = message.channel_text_chunks(NotificationChannel.DingTalk) or [message.text]
+                for text in texts:
+                    client.send_msg(
+                        title=message.title,
+                        text=text,
+                        image=message.image,
+                        userid=str(message.userid) if message.userid else None,
+                        link=message.link,
+                    )
 
     def post_medias_message(self, message: Message, medias: List[MediaInfo]) -> None:
         """把媒体候选列表降级为可点击的 Markdown 列表后发送。"""

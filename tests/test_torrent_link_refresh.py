@@ -126,6 +126,7 @@ def download_chain(monkeypatch):
     chain.post_message = Mock()
     chain.search_site_torrents = Mock(return_value=[])
     helper = Mock()
+    helper.is_invalid.return_value = False
     helper.download_torrent.return_value = FAILED
     monkeypatch.setattr(submission, "TorrentHelper", Mock(return_value=helper))
     cache = Mock()
@@ -309,7 +310,7 @@ def test_real_torrent_parse_and_cooldown_follow_final_attempt(monkeypatch, final
         assert cache.set.call_args.args[1] == content
     else:
         assert prepared is None
-        assert error == "下载种子内容为空"
+        assert error == f"下载种子出错，状态码：{final_status}"
         chain._record_download_failure.assert_called_once()
         chain.post_message.assert_called_once()
         cache.set.assert_not_called()

@@ -29,6 +29,7 @@ def boundary(monkeypatch):
     chain.site_repository.list.return_value = [SITE]
     chain.post_message = Mock()
     helper = Mock()
+    helper.is_invalid.return_value = False
     helper.download_torrent.return_value = CONTENT
     monkeypatch.setattr(submission, "TorrentHelper", Mock(return_value=helper))
     return chain, helper
