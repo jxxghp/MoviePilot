@@ -217,3 +217,58 @@ def test_scheduler_database_dependencies_are_explicit_module_imports() -> None:
         and str(getattr(node, "module", "")).startswith("app.application.database")
     ]
     assert function_imports == []
+
+
+def test_cookiecloud_credentials_are_hot_reloadable() -> None:
+    """补全或清空 CookieCloud 凭据后必须重建定时同步任务。"""
+    assert Scheduler.CONFIG_WATCH.issuperset({
+        "COOKIECLOUD_INTERVAL",
+        "COOKIECLOUD_HOST",
+        "COOKIECLOUD_KEY",
+        "COOKIECLOUD_PASSWORD",
+        "COOKIECLOUD_ENABLE_LOCAL",
+    })
+
+
+@pytest.mark.parametrize("configured", [False, True])
+def test_cookiecloud_schedule_requires_configuration(monkeypatch, configured) -> None:
+    """未配置 CookieCloud 时只保留手动入口，不注册定时同步。"""
+    scheduler = _scheduler()
+    scheduler._services = Mock()
+    background_scheduler = Mock()
+    monkeypatch.setattr(scheduler_catalog, "BackgroundScheduler", lambda **_kwargs: background_scheduler)
+    monkeypatch.setattr(scheduler_catalog, "get_plugin_manager", lambda: Mock())
+    monkeypatch.setattr(scheduler_catalog, "get_mediaserver_configs", lambda **_kwargs: [])
+    monkeypatch.setattr(scheduler, "init_workflow_jobs", lambda: None)
+    monkeypatch.setattr(scheduler, "init_agent_task_jobs", lambda: None)
+    monkeypatch.setattr(scheduler, "init_plugin_jobs", lambda: None)
+
+    scheduler._initialize_catalog(
+        _config(cookiecloud_interval=1440, cookiecloud_configured=configured)
+    )
+
+    assert "cookiecloud" in scheduler._jobs
+    assert any(
+        call.kwargs.get("id") == "cookiecloud"
+        for call in background_scheduler.add_job.call_args_list
+    ) is configured
+
+
+@pytest.mark.parametrize(
+    ("values", "expected"),
+    [
+        ({}, False),
+        ({"COOKIECLOUD_KEY": "uuid"}, False),
+        ({"COOKIECLOUD_KEY": " ", "COOKIECLOUD_PASSWORD": "pwd"}, False),
+        ({"COOKIECLOUD_KEY": "uuid", "COOKIECLOUD_PASSWORD": "pwd"}, True),
+        ({"COOKIECLOUD_KEY": "uuid", "COOKIECLOUD_PASSWORD": "pwd", "COOKIECLOUD_HOST": ""}, False),
+        ({"COOKIECLOUD_KEY": "uuid", "COOKIECLOUD_PASSWORD": "pwd", "COOKIECLOUD_HOST": "",
+          "COOKIECLOUD_ENABLE_LOCAL": True}, True),
+    ],
+)
+def test_scheduler_config_reports_cookiecloud_configuration(values, expected) -> None:
+    """调度快照与下载入口使用相同的必要参数判断。"""
+    from app.runtime.config import Settings
+    from app.startup.composition.configuration import build_scheduler_runtime_config
+
+    assert build_scheduler_runtime_config(Settings(**values)).cookiecloud_configured is expected

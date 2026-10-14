@@ -184,6 +184,7 @@ class SchedulerRuntimeConfig:
     auto_update: bool = False
     auto_update_resource: bool = True
     wallpaper: str = ""
+    cookiecloud_configured: bool = False
 
     @property
     def update_check_enabled(self) -> bool:

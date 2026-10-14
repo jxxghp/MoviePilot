@@ -172,6 +172,15 @@ def build_token_runtime_config(settings: Settings) -> TokenRuntimeConfig:
     )
 
 
+def _cookiecloud_configured(settings: Settings) -> bool:
+    """判断 CookieCloud 定时同步所需的来源和凭据是否完整。"""
+    return bool(
+        (settings.COOKIECLOUD_KEY or "").strip()
+        and (settings.COOKIECLOUD_PASSWORD or "").strip()
+        and (settings.COOKIECLOUD_HOST or settings.COOKIECLOUD_ENABLE_LOCAL)
+    )
+
+
 def build_scheduler_runtime_config(settings: Settings) -> SchedulerRuntimeConfig:
     """从可热更新的部署设置构建一次 Scheduler 配置快照。"""
     return SchedulerRuntimeConfig(
@@ -181,6 +190,7 @@ def build_scheduler_runtime_config(settings: Settings) -> SchedulerRuntimeConfig
         db_backup_enable=settings.DB_BACKUP_ENABLE,
         db_backup_cron=settings.DB_BACKUP_CRON,
         cookiecloud_interval=settings.COOKIECLOUD_INTERVAL,
+        cookiecloud_configured=_cookiecloud_configured(settings),
         mediaserver_sync_interval=settings.MEDIASERVER_SYNC_INTERVAL,
         subscribe_search=settings.SUBSCRIBE_SEARCH,
         subscribe_search_interval=settings.SUBSCRIBE_SEARCH_INTERVAL,

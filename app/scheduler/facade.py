@@ -56,6 +56,11 @@ class Scheduler(
         "WALLPAPER_IMAGE_URL",
         "CUSTOMIZE_WALLPAPER_API_URL",
         "COOKIECLOUD_INTERVAL",
+        # 凭据补全或清空时重建任务，避免未配置时定时刷失败日志。
+        "COOKIECLOUD_HOST",
+        "COOKIECLOUD_KEY",
+        "COOKIECLOUD_PASSWORD",
+        "COOKIECLOUD_ENABLE_LOCAL",
         "MEDIASERVER_SYNC_INTERVAL",
         SystemConfigKey.MediaServers.value,
         "SUBSCRIBE_SEARCH",

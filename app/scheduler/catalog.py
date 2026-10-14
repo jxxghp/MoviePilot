@@ -266,7 +266,11 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
             replace_existing=True,
         )
         # CookieCloud定时同步
-        if config.cookiecloud_interval and str(config.cookiecloud_interval).isdigit():
+        if (
+            config.cookiecloud_configured
+            and config.cookiecloud_interval
+            and str(config.cookiecloud_interval).isdigit()
+        ):
             self._scheduler.add_job(
                 self.start,
                 "interval",
