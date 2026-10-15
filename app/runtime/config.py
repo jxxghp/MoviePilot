@@ -731,6 +731,8 @@ class ConfigModel(BaseModel):
     PIP_PROXY: Optional[str] = ""
     # 指定的仓库Github token，多个仓库使用,分隔，格式：{user1}/{repo1}:ghp_****,{user2}/{repo2}:github_pat_****
     REPO_GITHUB_TOKEN: Optional[str] = None
+    # 社区勋章：关闭后不查询服务端开关、不拉取勋章名单；开启时仍需 MoviePilot 服务端开放该功能
+    COMMUNITY_MEDALS_ENABLE: bool = True
 
     # ==================== 飞书通知配置 ====================
     # 飞书应用 App ID

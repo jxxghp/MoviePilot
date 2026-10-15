@@ -1,5 +1,6 @@
 """MoviePilot 中心服务适配器同步异步一致性测试。"""
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -11,10 +12,12 @@ from app.adapters.external.server import MoviePilotServerHelper
 
 @pytest.fixture(autouse=True)
 def _reset_server_identity_cache():
-    """隔离中心服务用户名缓存，避免同步入口短路异步入口。"""
+    """隔离中心服务用户名与权限短时缓存，避免同步入口短路异步入口或用例间串值。"""
     previous_user = MoviePilotServerHelper._github_user
     MoviePilotServerHelper._github_user = None
+    asyncio.run(MoviePilotServerHelper._async_fetch_user_permissions.cache_clear())
     yield
+    asyncio.run(MoviePilotServerHelper._async_fetch_user_permissions.cache_clear())
     MoviePilotServerHelper._github_user = previous_user
 
 

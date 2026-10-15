@@ -49,61 +49,47 @@ class GithubUser:
     user_id: int = 0
 
 
-# 仓库与统计分支由社区维护，调用方不能把任意外部仓库注入授权请求。
-COMMUNITY_REPOSITORIES = (
-    ("MoviePilot", "backend", "v3"),
-    ("MoviePilot-Frontend", "frontend", "v3"),
-    ("MoviePilot-Plugins", "plugins", "main"),
-    ("MoviePilot-Rust", "performance", "v3"),
-    ("MoviePilot-Resources", "resources", "main"),
-    ("MoviePilot-Server", "services", "main"),
-    ("MoviePilot-OCR", "services", "main"),
-    ("MoviePilot-Web", "website", "main"),
-    ("MoviePilot-Wiki", "docs", "main"),
-)
+# Wiki 名单的协议版本；结构不兼容时由名单方提升版本，旧实例按拉取失败处理而不是误读字段。
+COMMUNITY_MEDAL_SCHEMA = 1
 
 
 @dataclass(frozen=True, slots=True)
-class GithubRepositoryContribution:
-    """保留已合并 PR 与指定分支作者提交数，避免把两者相加重复奖励。"""
+class GithubMedalSnapshot:
+    """Wiki 勋章名单中某个 GitHub 数字 ID 的记录与名单生成时间。
 
-    repository: str
-    area: str
-    commits: int
-    merged_prs: int
+    ``medals`` 保留名单原始记录（已在协议边界校验），未认识的勋章键与字段原样透传，
+    名单中没有该 ID 时为空元组，表示已核对但暂无勋章。
+    """
 
-    @property
-    def units(self) -> int:
-        """同仓取两类证据较大值，兼顾直接提交与被合并的贡献。"""
-        return max(self.commits, self.merged_prs)
+    generated_at: str
+    medals: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
 class GithubCommunityProfile:
-    """社区荣誉的脱敏快照；不可用与确证零贡献是不同状态。"""
+    """社区勋章的脱敏快照；不可用与确证暂无勋章是不同状态。
+
+    state 取值：unconfigured、ready、unavailable，以及本机或服务端开关未生效时的 disabled。
+    """
 
     state: str = "unconfigured"
     login: str | None = None
     user_id: int | None = None
-    tier: str | None = None
-    specialty: str | None = None
-    total: int = 0
-    repositories: tuple[GithubRepositoryContribution, ...] = ()
+    medals: tuple[dict[str, Any], ...] = ()
+    generated_at: str | None = None
     checked_at: int | None = None
     stale: bool = False
 
 
 class GithubCommunityPort(Protocol):
-    """查询已认证 GitHub 身份及社区贡献证据的外部端口。"""
+    """核验 GitHub 身份并读取 Wiki 社区勋章名单的外部端口。"""
 
     async def get_user(self, access_token: str) -> GithubUser:
         """使用 Token 校验身份，不接受前端声明的 GitHub 用户名。"""
         ...
 
-    async def get_repository_contribution(
-        self, access_token: str, user: GithubUser, repository: str, area: str, branch: str,
-    ) -> GithubRepositoryContribution:
-        """取得固定社区仓库的已合并 PR 数与目标分支作者提交数。"""
+    async def get_medal_snapshot(self, user_id: int) -> GithubMedalSnapshot:
+        """拉取公开勋章名单并取出指定数字 ID 的记录；名单不可用或格式不符时抛出传输错误。"""
         ...
 
 

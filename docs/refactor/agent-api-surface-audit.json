@@ -3131,8 +3131,8 @@
       "operation_ids": [],
       "owner": "host-ui",
       "path": "/api/v1/github/community",
-      "reason": "Community recognition is a presentation of the administrator-configured GitHub identity, not an Agent business operation.",
-      "summary": "核对当前 GitHub 用户的社区贡献",
+      "reason": "Community medals are a presentation of the administrator-configured GitHub identity, not an Agent business operation.",
+      "summary": "查询当前 GitHub 用户的社区勋章",
       "tags": [
         "github"
       ]

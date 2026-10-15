@@ -359,24 +359,63 @@ MoviePilot 的内置 Agent 也可以作为 MCP Client 连接外部 MCP 服务器
 
 ## 6. RESTful API
 
-### 社区贡献勋章（前端专用）
+### 社区勋章（前端专用）
 
 `GET /api/v1/github/community?refresh=false` 仅接受超级管理员登录态，沿用实例 GitHub
-Token 的权限边界；普通用户不能继承该账号的荣誉。此接口不加入 Agent/MCP 工具。
-`data` 为脱敏身份、`state`（unconfigured/ready/unavailable）、`tier`、
-`specialty`、`total`、逐仓 `commits/merged_prs`、`checked_at` 及 `stale`。
-只有 ready 且 total 大于零时显示头像菜单入口。Token 原文不进入响应。
+Token 的权限边界；普通用户不能继承该账号的勋章。此接口不加入 Agent/MCP 工具，Token
+原文不进入响应。
 
-统计九个公开社区仓库：MoviePilot、Frontend、Plugins、Rust、Resources、Server、OCR、
-Web、Wiki。私有 Build 不参与公开贡献认定。PR 按所有分支的已合并作者统计，提交按
-MoviePilot/Frontend/Rust 的 v3、其余仓库 main 的作者统计。每仓取两者较大值后汇总，
-不是 PR 数与提交数相加。1/10/50/200 分别对应 bronze/silver/gold/core；
-单领域保留该领域，多个领域为 ecosystem。core 是累计里程碑，不授予维护权限。
-仅有 Issue、评论、Star、未被 GitHub 关联的提交暂不计入。
+勋章的计算与人工颁发都在 MoviePilot-Wiki 完成，定时任务发布公开名单
+`https://raw.githubusercontent.com/jxxghp/MoviePilot-Wiki/main/community/medals.json`。
+实例不再逐仓调用 GitHub 统计接口，只用 Token 调 `GET /user` 取得 GitHub 数字 ID 并查表；
+身份不接受前端或参数声明的用户名。名单请求不携带 Token；配置 `GITHUB_PROXY` 时先经
+镜像站读取，失败再经 `PROXY`（未配置时直连）访问原地址。
 
-服务端合并并发查询、缓存六小时，refresh=true 仍受一分钟冷却保护。网络失败保留同
-Token 的上次已验证结果并标记 stale；无旧快照时为 unavailable。换 Token、删除 Token、
-明确失效或查询期间切换账号都不能重新发布旧身份荣誉。
+社区勋章的有效开关为：本机设置开启，且服务端全局开关开启或当前 GitHub 用户在服务端预览名单中。
+
+- 本机设置 `COMMUNITY_MEDALS_ENABLE`（默认 `true`）与其他系统设置一样经
+  `GET/POST /api/v1/system/env` 读写。关闭后实例不做任何勋章相关请求，既不查询服务端开关，
+  也不拉取名单。
+- 全局开关来自服务端 `GET /user/features` 的 `community_medals`，该接口不带任何身份参数，
+  对所有实例返回相同结果。
+- 预览来自服务端 `GET /user/permissions?github_user=<登录名>` 的 `community_medals_preview`，
+  只在实例已登录 GitHub 时查询；服务端预览名单为空时无人可预览。未登录 GitHub 时只看全局开关。
+- 字段缺失、非 200 或服务端不可达都视为关闭。
+
+`GET /api/v1/system/global/user` 以 `COMMUNITY_MEDALS_ENABLED` 布尔值返回有效开关。开关
+关闭时本接口照常成功返回，`state` 为 `disabled`、`medals` 为 `[]`，不核验身份也不拉取
+Wiki 名单；开关开启但未配置 Token 时为 `unconfigured`，同样不拉取名单，前端可提示配置
+GitHub Token。全局开关与按用户名区分的权限结果各自在进程内缓存 60 秒，失败或空结果缓存
+15 秒。
+
+`data` 包含以下字段。
+
+| 字段 | 说明 |
+| :--- | :--- |
+| `state` | `disabled` 本机关闭或服务端未开放社区勋章；`unconfigured` 功能已开放但未配置 Token；`ready` 已核对名单；`unavailable` Token 失效或名单从未取得 |
+| `login` / `user_id` | Token 对应的 GitHub 登录名与数字 ID，勋章只按数字 ID 查表 |
+| `medals` | 名单 `holders[<user_id>].medals` 的记录，名单中没有该 ID 时为 `[]` |
+| `generated_at` | 名单生成时间（ISO 8601 UTC） |
+| `checked_at` | 实例最近一次成功核对名单的 Unix 时间戳 |
+| `stale` | 最近一次刷新失败，当前为同一 Token 的上次结果 |
+
+`medals` 每条记录与名单一致，名单中省略的字段在响应中同样省略。阶梯勋章键为 `code`
+（编剧）与 `plugin`（布景），人工勋章键为 `maintainer`（主创）、`helper`（掌灯）、`security`（守夜）、
+`tester`（试映）、`pioneer`（启幕）；勋章键以名单为准，
+实例不维护键清单。已知字段为 `key`、`tier`（1–4）、`specialty`（编剧领域称号）、`at`
+（`YYYY-MM-DD` 或 `YYYY`，人工勋章只用单个 `at`）、`basis`、`years`（保留的整数年份列表，
+仍按类型校验）、`note`、`serial`、`facts`。名单协议的边界处理如下。
+
+- 顶层 `schema` 必须为整数 1，且 `generated_at` 为非空字符串、`holders` 为对象，否则按拉取失败处理。
+- `holders` 以 GitHub 数字 ID 字符串为键，值为 `{"login": ..., "medals": [...]}`；目标 ID 的值不是对象或 `medals` 不是数组时按拉取失败处理。持有人对象的其他字段与顶层 `unlinked` 不参与查表。
+- 单条记录须为带非空字符串 `key` 的对象；已知字段类型不符（如 `tier` 超出 1–4、`at` 不是日期或年份）时只丢弃该条。
+- 未认识的勋章键与字段原样透传，消费方应忽略不认识的内容。
+
+服务端合并并发查询、缓存六小时，`refresh=true` 仍受一分钟冷却保护。名单拉取失败时保留
+同一 Token 上次结果并标记 `stale`，没有旧结果为 `unavailable`。换 Token、删除 Token、
+Token 明确失效或查询期间切换账号都不能发布旧身份的勋章。前端在 `ready` 且 `medals`
+非空时显示头像菜单入口，`disabled` 时隐藏全部勋章入口。
+
 HTTP 工具管理端点统一位于 `/api/v1/mcp`，并与标准 MCP JSON-RPC 端点共享同一最终工具目录。
 
 ### 相关 REST 端点

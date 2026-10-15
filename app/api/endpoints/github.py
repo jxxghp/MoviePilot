@@ -5,10 +5,10 @@ from dataclasses import asdict
 from fastapi import Depends, HTTPException
 
 from app.api.dependencies.auth import get_current_active_superuser_async, get_user_service
-from app.api.dependencies.github import get_community_contribution_service, get_github_auth_service
+from app.api.dependencies.github import get_community_medal_service, get_github_auth_service
 from app.api.principal import ApiPrincipal
 from app.api.response import ResponseAPIRouter
-from app.application.community.contributions import CommunityContributionService
+from app.application.community.medals import CommunityMedalService
 from app.application.github_auth import (
     GithubAuthError,
     GithubAuthService,
@@ -31,15 +31,15 @@ initialization_router = ResponseAPIRouter()
 
 @router.get(  # type: ignore[misc]
     "/community",
-    summary="核对当前 GitHub 用户的社区贡献",
+    summary="查询当前 GitHub 用户的社区勋章",
     response_model=_SchemaResponse[GithubCommunityProfile],
 )
 async def get_community_profile(
     refresh: bool = False,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
-    community: CommunityContributionService = Depends(get_community_contribution_service),
+    community: CommunityMedalService = Depends(get_community_medal_service),
 ) -> _SchemaResponse[GithubCommunityProfile]:
-    """仅向管理此实例凭据的超级管理员展示对应荣誉，不继承给普通用户。"""
+    """仅向管理此实例凭据的超级管理员展示其 GitHub 身份的勋章，不继承给普通用户。"""
     profile = await community.profile(refresh=refresh)
     return _SchemaResponse(success=True, data=GithubCommunityProfile.model_validate(asdict(profile)))
 

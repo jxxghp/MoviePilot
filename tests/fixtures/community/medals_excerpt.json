@@ -1,0 +1,23 @@
+{
+  "generated_at": "2026-10-15T11:45:29Z",
+  "holders": {
+    "12345678": {
+      "login": "example-contributor",
+      "medals": [
+        {"at": "2026-08-11", "basis": "reached", "facts": {"repositories": [{"area": "backend", "commits": 1, "merged_prs": 1, "repository": "MoviePilot"}, {"area": "frontend", "commits": 1, "merged_prs": 1, "repository": "MoviePilot-Frontend"}], "total": 2}, "key": "code", "serial": null, "specialty": "ecosystem", "tier": 1},
+        {"at": "2026-10-15", "basis": "recognized", "facts": {"installs": 1301263, "plugins": [{"id": "ExamplePlugin", "installs": 1301263, "market": "example/MoviePilot-Plugins", "name": "示例插件"}]}, "key": "plugin", "serial": null, "tier": 4},
+        {"at": "2023", "key": "pioneer", "note": "早期测试与反馈", "serial": null}
+      ]
+    },
+    "87654321": {
+      "login": "another-contributor",
+      "medals": [
+        {"at": "2026-01-02", "key": "security", "serial": null}
+      ]
+    }
+  },
+  "schema": 1,
+  "unlinked": [
+    {"medals": [{"at": "2023", "key": "pioneer", "note": "早期文档整理", "serial": null}], "name": "无账号共建者"}
+  ]
+}

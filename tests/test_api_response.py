@@ -1018,6 +1018,8 @@ def test_openapi_success_models_have_no_implicit_empty_nested_schemas():
         "Response_Union_List_Dict_str__Any____Dict_str__Any___",
         # 通知渠道配置由各渠道模块定义，保留动态键值以承载渠道特有选项。
         "NotificationConf",
+        # 社区勋章记录原样透传 Wiki 名单，字段由名单契约定义，省略的字段保持缺省。
+        "GithubCommunityProfile",
     }
     allowed_empty_components = {"McpJsonRpcEmptyResult"}
     violations = []
