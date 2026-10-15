@@ -24,7 +24,7 @@ from app.runtime.config import ConfigModel
 from app.runtime.loop import main_loop_registry
 from app.schemas.file import FileItem
 from app.schemas.transfer import TransferInfo
-from app.schemas.types import ContentType, EventType, MediaType, MessageType
+from app.schemas.types import ContentType, EventType, MediaType, MessageType, SystemConfigKey
 
 
 class _Loop:
@@ -122,8 +122,10 @@ def test_all_74_slow_tracks_wait_for_batch_and_send_once(chain):
         chain._finish_scrape_batch_task(task)
         assert chain.post_message.call_count == (1 if number == 74 else 0)
     message = chain.post_message.call_args.args[0]
-    assert message.title == "Album (2013)"
-    assert "已入库 74 个文件 / 共 74 首曲目" in message.text
+    assert message.title is None and message.text is None
+    assert chain.post_message.call_args.kwargs["mediainfo"].album == "Album"
+    assert chain.post_message.call_args.kwargs["mediainfo"].total_tracks == 74
+    assert chain.post_message.call_args.kwargs["transferinfo"].file_count == 74
     assert message.buttons == [[{"text": "查看整理记录", "url": "https://example.test/history"}]]
     assert message.ctype == ContentType.OrganizeSuccess
     assert message.mtype == MessageType.Organize
@@ -178,7 +180,7 @@ def test_overlapping_batches_wait_for_both_and_shutdown_flushes_once(chain):
     chain.success_notification_aggregator.close()
     chain.success_notification_aggregator.release_batch("b")
     chain.post_message.assert_called_once()
-    assert "已入库 2 个文件" in chain.post_message.call_args.args[0].text
+    assert chain.post_message.call_args.kwargs["transferinfo"].file_count == 2
 
 
 @pytest.mark.parametrize("notify,manual,background", [(False, False, True), (True, True, False)])
@@ -216,8 +218,9 @@ def test_movie_batch_uses_same_success_aggregation(chain):
     chain.post_message.assert_not_called()
     chain.success_notification_aggregator.release_batch("batch")
     message = chain.post_message.call_args.args[0]
-    assert message.title == "Movie (2026)"
-    assert "已入库 2 个文件" in message.text
+    assert message.title is None and message.text is None
+    assert chain.post_message.call_args.kwargs["mediainfo"].title == "Movie"
+    assert chain.post_message.call_args.kwargs["transferinfo"].file_count == 2
     assert message.ctype == ContentType.OrganizeSuccess
     assert chain.post_message.call_count == 1
 
@@ -231,7 +234,8 @@ def test_television_batch_retains_season_episode_range(chain):
         chain.queue_successful_transfer_notification(task, _result(number))
     chain.success_notification_aggregator.release_batch("batch")
     message = chain.post_message.call_args.args[0]
-    assert message.title == "Show (2026) S01 E01-E02"
+    assert message.title is None and message.text is None
+    assert chain.post_message.call_args.kwargs["season_episode"] == "S01 E01-E02"
 
 
 def test_mixed_outcomes_preserve_each_history_event_and_only_count_success(chain, monkeypatch):
@@ -271,7 +275,7 @@ def test_mixed_outcomes_preserve_each_history_event_and_only_count_success(chain
     assert chain.queue_failed_transfer_notification.call_count == 1
     assert chain._record_scrape_target.call_count == 2
     assert chain._TransferChain__mark_torrent_completed_if_done.call_count == 3
-    assert "已入库 2 个文件" in chain.post_message.call_args.args[0].text
+    assert chain.post_message.call_args.kwargs["transferinfo"].file_count == 2
     assert chain.post_message.call_count == 1
     calls = chain.durable_event_writer.transfer_result.call_args_list
     assert [call.kwargs["topic"] for call in calls] == ["transfer.completed", "transfer.completed", "transfer.audio.failed"]
@@ -296,3 +300,54 @@ def test_old_callback_cannot_flush_recreated_group():
     loop.timers[1].callback(*loop.timers[1].args)
     assert callback.call_count == 2
     callback.assert_called_with(["new"])
+
+
+@pytest.mark.parametrize("media_type", [MediaType.MOVIE, MediaType.TV, MediaType.MUSIC])
+@pytest.mark.parametrize("file_count", [1, 3])
+def test_success_notifications_render_configured_template(chain, monkeypatch, media_type, file_count):
+    """单文件与汇总通知经真实入口和模板引擎渲染，隔离配置、历史和渠道边界。"""
+    template = """{
+        'title': '自定义 {{ title_year }}{% if track_number %} #{{ track_number }}{% endif %}'
+                 '{% if season_episode %} {{ season_episode }}{% endif %}',
+        'text': '{{ type }}|文件={{ file_count }}|大小={{ total_size }}'
+                '{% if total_tracks %}|总曲目={{ total_tracks }}{% endif %}'
+                '|目录={{ __transferinfo__.target_diritem.path }}'
+    }"""
+    config = Mock()
+    config.get.return_value = {ContentType.OrganizeSuccess.value: template}
+    monkeypatch.setattr("app.application.messaging.message.get_configured_system_config", lambda: config)
+    chain.post_message = TransferChain.post_message.__get__(chain)
+    chain.messageoper = Mock()
+    chain._dispatch_notification_steps = Mock()
+
+    for number in range(1, file_count + 1):
+        task = _task(number)
+        if media_type != MediaType.MUSIC:
+            task.meta = MetaInfo("Movie 2026" if media_type == MediaType.MOVIE else f"Show S01E{number:02d}")
+            task.mediainfo = MediaInfo(title="Movie" if media_type == MediaType.MOVIE else "Show", year="2026", type=media_type)
+        chain._register_scrape_batch_task(task)
+        chain.notify_successful_transfer(task, _result(number))
+        chain._finish_scrape_batch_task(task)
+    chain._dispatch_notification_steps.assert_not_called()
+    chain._close_scrape_batch("batch")
+
+    chain._dispatch_notification_steps.assert_called_once()
+    message = chain._dispatch_notification_steps.call_args.args[0]
+    expected_title = {
+        MediaType.MUSIC: "Album (2013)",
+        MediaType.MOVIE: "Movie (2026)",
+        MediaType.TV: "Show (2026) S01 E01" + ("-E03" if file_count > 1 else ""),
+    }[media_type]
+    assert message.title == f"自定义 {expected_title}"
+    assert message.text.startswith(f"{media_type.value}|文件={file_count}|大小={file_count * 100}.0B")
+    assert message.text.endswith("|目录=/library/Album")
+    if media_type == MediaType.MUSIC:
+        assert "|总曲目=74" in message.text
+        assert "#" not in message.title
+    assert message.buttons == ([[{"text": "查看整理记录", "url": "https://example.test/history"}]] if file_count > 1 else None)
+    assert message.ctype == ContentType.OrganizeSuccess
+    assert message.mtype == MessageType.Organize
+    assert message.link == "https://example.test/history"
+    assert message.username == "tester"
+    config.get.assert_called_with(SystemConfigKey.NotificationTemplates)
+    chain.messageoper.add.assert_called_once()
