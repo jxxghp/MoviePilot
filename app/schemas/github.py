@@ -1,33 +1,41 @@
 """GitHub Token 授权接口的数据模型。"""
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 
-class GithubCommunityRepository(BaseModel):  # type: ignore[misc]
-    """单个社区仓库的公开贡献事实；提交与 PR 不直接相加。"""
-
-    repository: str
-    area: str
-    commits: int = Field(ge=0)
-    merged_prs: int = Field(ge=0)
-
-
 class GithubCommunityProfile(BaseModel):  # type: ignore[misc]
-    """管理员 Token 对应 GitHub 用户的荣誉快照，不包含凭据。"""
+    """实例 Token 对应 GitHub 用户的社区勋章快照，不包含凭据。
 
-    state: Literal["unconfigured", "ready", "unavailable"]
-    login: str | None = None
-    user_id: int | None = None
-    tier: Literal["bronze", "silver", "gold", "core"] | None = None
-    specialty: Literal[
-        "backend", "frontend", "plugins", "performance", "resources", "services", "website", "docs", "ecosystem",
-    ] | None = None
-    total: int = Field(default=0, ge=0)
-    repositories: list[GithubCommunityRepository] = Field(default_factory=list)
-    checked_at: int | None = None
-    stale: bool = False
+    state 为 disabled 表示社区勋章对当前实例未生效：本机 COMMUNITY_MEDALS_ENABLE 关闭，或
+    MoviePilot Server 未开放（全局开关关闭且当前 GitHub 用户不在预览名单、未登录 GitHub 或服务端
+    不可达）；此时不核验
+    身份、不拉取 Wiki 名单，其余字段均为默认值，前端应隐藏全部勋章入口。功能已开放但实例未配置
+    GitHub Token 时为 unconfigured，前端可提示配置 Token。
+    """
+
+    state: Literal["disabled", "unconfigured", "ready", "unavailable"] = Field(
+        description=(
+            "disabled 本机关闭或服务端未开放社区勋章，前端应隐藏；unconfigured 功能已开放但未配置 Token；"
+            "ready 已核对名单；unavailable 身份失效或名单从未取得"
+        ),
+    )
+    login: str | None = Field(default=None, description="Token 对应的 GitHub 登录名，仅用于展示")
+    user_id: int | None = Field(default=None, description="Token 对应的 GitHub 数字 ID，勋章按此查表")
+    medals: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "该 ID 在 Wiki 名单中的勋章记录，原样透传且省略的字段不补 null，未登记时为空。"
+            "已知字段：key 勋章键；tier 阶梯等级 1-4（初光、共建、卓越、核心）；specialty 编剧（code）领域称号；"
+            "at 刻印日期 YYYY-MM-DD 或年份 YYYY；basis 阶梯时间口径 reached 或 recognized；"
+            "years 保留的整数年份列表（人工勋章当前只用 at）；note 人工勋章贡献说明；"
+            "serial 编号（当前为 null）；facts 阶梯勋章展示依据。未认识的键与字段供新版前端使用"
+        ),
+    )
+    generated_at: str | None = Field(default=None, description="Wiki 名单的生成时间（ISO 8601 UTC）")
+    checked_at: int | None = Field(default=None, description="实例最近一次成功核对名单的时间戳")
+    stale: bool = Field(default=False, description="最近一次刷新失败，当前为同一 Token 的上次结果")
 
 
 class GithubTokenStatus(BaseModel):  # type: ignore[misc]

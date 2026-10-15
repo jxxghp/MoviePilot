@@ -341,7 +341,7 @@ Plugin ratings include this installation's own rating and require the same admin
 | `POST` | `/api/v1/github/auth/start` | github | `transport_or_identity` | host-runtime | 启动 GitHub 设备授权 |
 | `GET` | `/api/v1/github/auth/status` | github | `transport_or_identity` | host-runtime | 查询 GitHub Token 状态 |
 | `DELETE` | `/api/v1/github/auth/token` | github | `transport_or_identity` | host-runtime | 清除 GitHub Token |
-| `GET` | `/api/v1/github/community` | github | `ui_presentation` | host-ui | 核对当前 GitHub 用户的社区贡献 |
+| `GET` | `/api/v1/github/community` | github | `ui_presentation` | host-ui | 查询当前 GitHub 用户的社区勋章 |
 | `DELETE` | `/api/v1/history/download` | history | `gateway` | download.history.delete | 删除下载历史记录 |
 | `GET` | `/api/v1/history/download` | history | `gateway` | download.history.list | 查询下载历史记录 |
 | `DELETE` | `/api/v1/history/transfer` | history | `gateway` | transfer.history.delete | 删除整理记录 |

@@ -18,7 +18,7 @@ from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.network.http import AsyncRequestUtils
 from app.adapters.system import rust as rust_accel
 from app.adapters.system.update import system_update_manager
-from app.application.community.contributions import CommunityContributionService
+from app.application.community.medals import CommunityMedalService
 from app.application.configuration import RuntimeSettingsService, SystemConfigService
 from app.application.github_auth import GithubAuthService
 from app.application.plugin.runtime import plugin_system_config_mutation
@@ -220,14 +220,36 @@ class _ConfigurationEventAdapter(ConfigurationEventPort):
 class _ServerInfoAdapter(ServerInfoPort):
     """适配 MoviePilot Server 的用户权限与统计接口。"""
 
+    def __init__(self, settings: RuntimeSettingsService) -> None:
+        """保存运行设置提供器，用于读取本机社区勋章开关。"""
+        self._settings = settings
+
     async def user_global(self) -> dict[str, Any]:
-        """合并用户 UUID 与两项共享管理权限。"""
+        """合并用户 UUID、两项共享管理权限与社区勋章有效开关。"""
         is_admin = await MoviePilotServerHelper.async_is_admin_user()
         return {
             "USER_UNIQUE_ID": MoviePilotServerHelper.get_user_uuid(),
             "SUBSCRIBE_SHARE_MANAGE": is_admin,
             "WORKFLOW_SHARE_MANAGE": is_admin,
+            "COMMUNITY_MEDALS_ENABLED": await self.community_medals_enabled(),
         }
+
+    async def community_medals_enabled(self) -> bool:
+        """社区勋章有效开关。
+
+        有效 = 本机 COMMUNITY_MEDALS_ENABLE 且（服务端 ``/user/features`` 的 community_medals
+        或已登录 GitHub 用户在服务端预览名单中，即权限的 community_medals_preview）。
+        本机关闭时不发任何勋章相关的服务端请求。未登录 GitHub 时只看全局开关，便于前端在
+        功能已开放时提示配置 Token。字段缺失、非 200 或服务端不可达均视为关闭。全局开关
+        单独短时缓存；预览判定与共享管理权限命中同一份按用户名缓存的权限结果。
+        """
+        if not self._settings.get("COMMUNITY_MEDALS_ENABLE"):
+            return False
+        features = await MoviePilotServerHelper.async_get_features()
+        if features.get("community_medals") is True:
+            return True
+        permissions = await MoviePilotServerHelper.async_get_user_permissions()
+        return permissions.get("community_medals_preview") is True
 
     async def usage(self) -> dict[str, Any]:
         """读取安装版本统计。"""
@@ -345,13 +367,14 @@ def compose_system_service(
         transport=github_client,
         client_id=GITHUB_DEVICE_CLIENT_ID,
     )
+    server_info = _ServerInfoAdapter(settings)
     return SystemService(
         settings=settings,
         system_config=system_config,
         logs=_FileLogAdapter(settings),
         market=_PluginMarketAdapter(settings),
         events=_ConfigurationEventAdapter(),
-        server=_ServerInfoAdapter(),
+        server=server_info,
         releases=_ReleaseCatalogAdapter(settings),
         features=_RuntimeFeatureAdapter(),
         control=_SystemControlAdapter(),
@@ -360,5 +383,8 @@ def compose_system_service(
         plugin_mutation=plugin_system_config_mutation,
         rule_group_mutation=rule_group_mutation,
         github_auth=github_auth,
-        github_community=CommunityContributionService(token_reader=github_auth.access_token, transport=github_client),
+        github_community=CommunityMedalService(
+            token_reader=github_auth.access_token, transport=github_client,
+            enabled_reader=server_info.community_medals_enabled,
+        ),
     )

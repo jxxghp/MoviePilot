@@ -1,26 +1,33 @@
-"""GitHub OAuth Device Flow 的网络适配器。"""
+"""GitHub OAuth Device Flow 与社区勋章名单的网络适配器。"""
 
 from __future__ import annotations
 
 import re
 from typing import Any
-from urllib.parse import parse_qs, urlparse
 
 from app.adapters.network.http import AsyncRequestUtils
 from app.domain.github import (
+    COMMUNITY_MEDAL_SCHEMA,
     GithubAuthPort,
     GithubAuthTransportError,
     GithubDeviceCode,
-    GithubRepositoryContribution,
+    GithubMedalSnapshot,
     GithubSettingsReader,
     GithubTokenExchange,
     GithubUser,
 )
+from app.foundation.url import UrlUtils
 from app.runtime.settings import get_runtime_setting
 
 # Device Flow 的 client_id 本身不是秘密；沿用当前内置 Copilot 登录使用的公开应用标识，
 # 后续如果注册专用 OAuth App，只需在组合根替换这一常量，不会影响授权协议和存储合同。
 GITHUB_DEVICE_CLIENT_ID = "Ov23li8tweQw6odWQebz"
+
+# 社区勋章公开名单，由 MoviePilot-Wiki 定时任务计算与人工登记后发布。
+COMMUNITY_MEDALS_URL = "https://raw.githubusercontent.com/jxxghp/MoviePilot-Wiki/main/community/medals.json"
+
+# 已知字段的类型约束；名单记录中这些字段类型不符时整条丢弃，其余字段原样透传。
+_MEDAL_DATE = re.compile(r"\d{4}(-\d{2}-\d{2})?")
 
 
 class _RuntimeGithubSettings:
@@ -133,63 +140,82 @@ class GithubAuthClient(GithubAuthPort):
             raise GithubAuthTransportError("GitHub 未返回有效的用户身份")
         return GithubUser(login=login, user_id=user_id)
 
-    async def get_repository_contribution(
-        self, access_token: str, user: GithubUser, repository: str, area: str, branch: str,
-    ) -> GithubRepositoryContribution:
-        """分别查询合并 PR 与作者提交；只解析分页数字，不请求外部 Link 地址。"""
-        if not re.fullmatch(r"[A-Za-z0-9-]{1,39}", user.login):
-            raise GithubAuthTransportError("GitHub 用户身份无效")
-        headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/vnd.github+json"}
-        search = await self._community_get(
-            "https://api.github.com/search/issues", headers,
-            {"q": f"repo:jxxghp/{repository} is:pr is:merged author:{user.login}", "per_page": 1},
-        )
-        payload = self._json_payload(search)
-        count = payload.get("total_count")
-        if payload.get("incomplete_results") is not False or type(count) is not int or count < 0:
-            raise GithubAuthTransportError("GitHub 贡献统计尚未完成")
-        commits_response = await self._community_get(
-            f"https://api.github.com/repos/jxxghp/{repository}/commits", headers,
-            {"author": user.login, "sha": branch, "per_page": 1},
-        )
-        commits = self._commit_count(commits_response)
-        return GithubRepositoryContribution(repository, area, commits, count)
+    async def get_medal_snapshot(self, user_id: int) -> GithubMedalSnapshot:
+        """拉取 Wiki 勋章名单并只返回该数字 ID 的记录。
 
-    async def _community_get(
-        self, url: str, headers: dict[str, str], params: dict[str, Any],
-    ) -> Any:
-        """将限流、失效与网络错误显式保留为查询失败，不能投影为零贡献。"""
-        try:
-            response = await self._request(headers=headers).get_res(
-                url, params=params, raise_exception=True,
-            )
-        except Exception as error:  # noqa: BLE001 - 不泄露 Token 或远端错误正文
-            raise GithubAuthTransportError("暂时无法核对社区贡献") from error
-        if response is None or response.status_code >= 400:
-            unauthorized = response is not None and response.status_code == 401
-            raise GithubAuthTransportError("暂时无法核对社区贡献", unauthorized=unauthorized)
-        return response
+        名单是公开文件，请求不携带实例 Token，避免凭据泄露给 GitHub 镜像站。
+        配置 ``GITHUB_PROXY`` 时先走镜像站，失败再经 ``PROXY``（未配置时直连）访问原地址，
+        与插件市场读取 Wiki 的出口顺序一致。
+        """
+        cause: Exception | None = None
+        for url, direct in self._medal_routes():
+            try:
+                response = await self._request(direct=direct).get_res(url, raise_exception=True)
+                if response is None or response.status_code >= 400:
+                    raise GithubAuthTransportError("社区勋章名单请求失败")
+                return self._medal_snapshot(self._json_payload(response), user_id)
+            except Exception as error:  # noqa: BLE001 - 镜像站可能以 200 返回错误页，继续尝试下一出口
+                cause = error
+        raise GithubAuthTransportError("暂时无法获取社区勋章名单") from cause
+
+    def _medal_routes(self) -> list[tuple[str, bool]]:
+        """返回勋章名单的请求地址及是否绕过部署代理；镜像站优先且不叠加代理。"""
+        routes: list[tuple[str, bool]] = []
+        mirror = str(self._settings.get("GITHUB_PROXY") or "").strip()
+        if mirror:
+            routes.append((f"{UrlUtils.standardize_base_url(mirror)}{COMMUNITY_MEDALS_URL}", True))
+        routes.append((COMMUNITY_MEDALS_URL, False))
+        return routes
+
+    @classmethod
+    def _medal_snapshot(cls, payload: dict[str, Any], user_id: int) -> GithubMedalSnapshot:
+        """校验名单顶层协议并取出目标 ID 的记录；其他持有人的记录不在此处展开校验。
+
+        名单形如 ``holders["<数字 ID>"] = {"login": ..., "medals": [...]}``；持有人对象中的
+        ``login`` 等其他字段与顶层 ``unlinked``（无 GitHub 账号的共建者）都不参与实例查表。
+        """
+        schema = payload.get("schema")
+        generated_at = payload.get("generated_at")
+        holders = payload.get("holders")
+        if type(schema) is not int or schema != COMMUNITY_MEDAL_SCHEMA:
+            raise GithubAuthTransportError("社区勋章名单版本不受支持")
+        if not isinstance(generated_at, str) or not generated_at.strip() or not isinstance(holders, dict):
+            raise GithubAuthTransportError("社区勋章名单格式无效")
+        holder = holders.get(str(user_id))
+        if holder is None:
+            records: list[Any] = []
+        elif isinstance(holder, dict) and isinstance(holder.get("medals"), list):
+            records = holder["medals"]
+        else:
+            raise GithubAuthTransportError("社区勋章名单格式无效")
+        return GithubMedalSnapshot(
+            generated_at=generated_at.strip(),
+            medals=tuple(record for record in records if cls._valid_medal(record)),
+        )
 
     @staticmethod
-    def _commit_count(response: Any) -> int:
-        """per_page=1 时末页即提交总数；无分页链接时只接受零或一条记录。"""
-        try:
-            payload = response.json()
-        except Exception as error:  # noqa: BLE001 - 外部 JSON 协议边界
-            raise GithubAuthTransportError("GitHub 提交统计无效") from error
-        if not isinstance(payload, list) or len(payload) > 1:
-            raise GithubAuthTransportError("GitHub 提交统计无效")
-        for part in response.headers.get("Link", "").split(","):
-            if 'rel="last"' in part:
-                query = parse_qs(urlparse(part.split(">")[0].strip().lstrip("<")).query)
-                page = query.get("page", [""])[0]
-                if not page.isdigit() or int(page) < 1 or not payload:
-                    raise GithubAuthTransportError("GitHub 提交分页无效")
-                return int(page)
-        return len(payload)
+    def _valid_medal(record: Any) -> bool:
+        """判断单条勋章记录可否发布。
 
-    def _request(self, *, headers: dict[str, str] | None = None) -> AsyncRequestUtils:
-        """构造 GitHub OAuth 请求客户端，不复用当前业务 Token 请求头。"""
+        记录必须是带非空字符串 ``key`` 的对象；未认识的勋章键和字段为向前兼容原样透传，
+        已知字段类型不符时整条丢弃，避免前端渲染出半残勋章，也不让一条坏记录拖垮整份名单。
+        """
+        if not isinstance(record, dict) or not isinstance(record.get("key"), str) or not record["key"]:
+            return False
+        tier = record.get("tier")
+        years = record.get("years")
+        checks = (
+            tier is None or (type(tier) is int and 1 <= tier <= 4),
+            "at" not in record or (isinstance(record["at"], str) and _MEDAL_DATE.fullmatch(record["at"]) is not None),
+            years is None or (isinstance(years, list) and all(type(year) is int for year in years)),
+            "facts" not in record or isinstance(record["facts"], dict),
+            "serial" not in record or record["serial"] is None or type(record["serial"]) in (int, str),
+            all(field not in record or isinstance(record[field], str) for field in ("specialty", "basis", "note")),
+        )
+        return all(checks)
+
+    def _request(self, *, headers: dict[str, str] | None = None, direct: bool = False) -> AsyncRequestUtils:
+        """构造 GitHub 请求客户端，不复用当前业务 Token 请求头；访问镜像站时不叠加部署代理。"""
         request_headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
@@ -198,7 +224,7 @@ class GithubAuthClient(GithubAuthPort):
         request_headers.update(headers or {})
         return AsyncRequestUtils(
             headers=request_headers,
-            proxies=self._settings.get("PROXY"),
+            proxies=None if direct else self._settings.get("PROXY"),
             timeout=20,
             verify=True,
             trust_env=False,
