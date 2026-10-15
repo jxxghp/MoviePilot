@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
+from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+import pytest
 from lxml import etree
 
 from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
@@ -17,6 +19,121 @@ def _build_parser() -> NexusPhpSiteUserInfo:
         apikey=None,
         token=None,
     )
+
+
+def test_nexus_php_depthstudio_traffic_falls_back_to_details():
+    """首页解析失败后从详情表格补齐流量，不依赖卡片类名或实际流量。"""
+    html_text = (Path(__file__).parent / "fixtures" / "depthstudio_userdetails.html").read_text(encoding="utf-8")
+    html = etree.HTML(html_text)
+    homepage = etree.tostring(html.xpath("//div")[0], encoding="unicode")
+    homepage = homepage.replace("info-stat", "other-style")
+    parser = _build_parser()
+
+    parser._parse_user_base_info(homepage)
+
+    assert parser.upload == 0
+    assert parser.download == 0
+
+    parser._parse_user_detail_info(html_text)
+
+    assert parser.upload == round(323.04 * 1024 ** 3)
+    assert parser.download == round(73.54 * 1024 ** 3)
+    assert parser.ratio == 4.393
+
+
+def test_nexus_php_detail_traffic_preserves_nonzero_values():
+    """详情兜底不能覆盖已有的非零流量和分享率。"""
+    parser = _build_parser()
+    parser._parse_user_base_info(
+        "<html><body>上传量: 1 GB 下载量: 2 GB 分享率: 0.5</body></html>"
+    )
+    original = parser.upload, parser.download, parser.ratio
+
+    parser._parse_user_detail_info(
+        '<table><tr><td><strong>上传量</strong>: 323.04 GB</td>'
+        '<td><strong>下载量</strong>: 73.54 GB</td></tr>'
+        '<tr><td><strong>分享率</strong>: 4.392</td></tr></table>'
+    )
+
+    assert (parser.upload, parser.download, parser.ratio) == original
+
+
+@pytest.mark.parametrize("homepage, expected_upload, expected_download, expected_ratio", [
+    ("上传量: 1 GB", 1024 ** 3, round(73.54 * 1024 ** 3), 4.392),
+    ("下载量: 0 B 分享率: 0", round(323.04 * 1024 ** 3), round(73.54 * 1024 ** 3), 4.392),
+    ("上传量: 0 B 下载量: 0 B 分享率: 0", round(323.04 * 1024 ** 3), round(73.54 * 1024 ** 3), 4.392),
+    ("上传量: 1 GB 下载量: 2 GB 分享率: 0", 1024 ** 3, 2 * 1024 ** 3, 4.392),
+])
+def test_nexus_php_detail_traffic_fills_zero_fields(
+    homepage, expected_upload, expected_download, expected_ratio
+):
+    """零值字段允许从详情补读，分享率优先取详情表格的显示值。"""
+    parser = _build_parser()
+    parser._parse_user_base_info(f"<html><body>{homepage}</body></html>")
+    detail = (Path(__file__).parent / "fixtures" / "depthstudio_userdetails.html").read_text(encoding="utf-8")
+
+    parser._parse_user_detail_info(detail)
+
+    assert parser.upload == expected_upload
+    assert parser.download == expected_download
+    assert parser.ratio == expected_ratio
+
+
+def test_nexus_php_zero_ratio_uses_final_traffic_without_displayed_ratio():
+    """详情未显示分享率时，按补读后的上传/下载量重新计算零分享率。"""
+    parser = _build_parser()
+    parser._parse_user_base_info("<html><body>上传量: 0 B 下载量: 0 B 分享率: 0</body></html>")
+
+    parser._parse_user_detail_info(
+        '<table><tr><td><strong>上传量</strong>: 8 GB</td>'
+        '<td><strong>下载量</strong>: 2 GB</td></tr></table>'
+    )
+
+    assert parser.upload == 8 * 1024 ** 3
+    assert parser.download == 2 * 1024 ** 3
+    assert parser.ratio == 4.0
+
+
+@pytest.mark.parametrize("table, expected_upload, expected_download, expected_ratio", [
+    ('<tr><td><strong>上传量</strong>: 1.5 <span>TB</span></td>'
+     '<td><strong>下载量</strong>: 512 <span>GB</span></td></tr>',
+     round(1.5 * 1024 ** 4), 512 * 1024 ** 3, 3.0),
+    ('<tr><td>上傳量</td><td>1,024 GB</td></tr><tr><td>下載量</td><td>512 GB</td></tr>'
+     '<tr><td>分享率</td><td>2.001</td></tr>',
+     1024 ** 4, 512 * 1024 ** 3, 2.001),
+    ('<tr><td><strong>实际上传量</strong>: 1 TB</td>'
+     '<td><strong>实际下载量</strong>: 1 TB</td></tr>', 0, 0, 0.0),
+    ('<tr><td>上传量</td><td>0 B</td></tr><tr><td>下载量</td><td>0 B</td></tr>', 0, 0, 0.0),
+    ('<tr><td>上传量</td><td>未知</td></tr><tr><td>下载量</td><td>未知</td></tr>', 0, 0, 0.0),
+])
+def test_nexus_php_detail_traffic_table(table, expected_upload, expected_download, expected_ratio):
+    """按表格字段识别流量，支持嵌套单位和分列布局，并排除实际流量。"""
+    parser = _build_parser()
+    parser._parse_user_base_info("<html><body></body></html>")
+
+    parser._parse_user_detail_info(f"<html><body><table>{table}</table></body></html>")
+
+    assert parser.upload == expected_upload
+    assert parser.download == expected_download
+    assert parser.ratio == expected_ratio
+
+
+@pytest.mark.parametrize("download, ratio_text, expected_ratio", [
+    ("512 GB", "分享率: 3.001", 3.001),
+    ("512 GB", "", 3.0),
+    ("0 B", "", 0.0),
+])
+def test_nexus_php_legacy_traffic(download, ratio_text, expected_ratio):
+    """保留传统页面解析、分享率计算及零下载量行为。"""
+    parser = _build_parser()
+
+    parser._parse_user_traffic_info(
+        f"<html><body>上传量: 1.5 TB 下载量: {download} {ratio_text}</body></html>"
+    )
+
+    assert parser.upload == round(1.5 * 1024 ** 4)
+    assert parser.download == (512 * 1024 ** 3 if download == "512 GB" else 0)
+    assert parser.ratio == expected_ratio
 
 
 def test_nexus_php_seeding_next_page_stops_when_userid_missing():

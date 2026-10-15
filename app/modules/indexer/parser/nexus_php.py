@@ -650,9 +650,42 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         return message_head_text, message_date_text, message_content_text
 
     def _fixup_traffic_info(self, html):
-        """从详情页补充首页缺失的魔力值。"""
+        """从详情表格补读为零的流量、分享率和魔力值，非零值保持不变。"""
+        if not self.upload:
+            upload_text = self._traffic_table_value(html, r"上[传傳]量?")
+            if upload_text is not None:
+                self.upload = self.num_filesize(upload_text)
+        if not self.download:
+            download_text = self._traffic_table_value(html, r"下[载載]量?")
+            if download_text is not None:
+                self.download = self.num_filesize(download_text)
+        if not self.ratio:
+            ratio_text = self._traffic_table_value(html, "分享率")
+            if ratio_text is not None:
+                ratio = text_tools.parse_float(ratio_text)
+            else:
+                ratio = round(self.upload / self.download, 3) if self.download else 0.0
+            self.ratio = ratio
+
         # fixup bonus
         if not self.bonus:
             bonus_text = html.xpath('//tr/td[text()="魔力值" or text()="猫粮"]/following-sibling::td[1]/text()')
             if bonus_text:
                 self.bonus = text_tools.parse_float(bonus_text[0].strip())
+
+    @staticmethod
+    def _traffic_table_value(html: Any, field: str) -> Optional[str]:
+        """按单元格字段名读取数值，支持同格或相邻列布局，排除“实际”流量。"""
+        for cell in html.xpath('//tr/td[not(.//td)]'):
+            cell_text = " ".join(cell.xpath("string(.)").split())
+            field_match = re.fullmatch(rf"{field}\s*[:：]?\s*(.*)", cell_text)
+            if not field_match:
+                continue
+            value = field_match.group(1).strip()
+            if not value:
+                siblings = cell.xpath('following-sibling::td[1]')
+                value = " ".join(siblings[0].xpath("string(.)").split()) if siblings else ""
+            value_match = re.fullmatch(r"([\d,.]+(?:\s*[KMGTPI]i?B)?)(?:\s*[（(].*)?", value, re.I)
+            if value_match:
+                return value_match.group(1)
+        return None
