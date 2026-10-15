@@ -39,6 +39,7 @@ from app.domain.music import (
     music_album_artist_evidence_matches,
     music_album_matches,
     music_album_title_is_weak,
+    music_album_year_matches,
     music_artist_affix_matches,
     music_artist_evidence_matches,
     music_base_title,
@@ -1266,7 +1267,7 @@ class MusicBrainzModule(_ModuleBase):
             expected = getattr(meta, field)
             if expected and expected != getattr(album, field):
                 return 0.0
-        if meta.release_year and album.year and meta.release_year != album.year:
+        if not music_album_year_matches(album.to_music_info(), meta):
             return 0.0
         known_title = not music_album_title_is_weak(meta)
         title_sim = cls._text_similarity(meta.album or meta.title, album.title) if known_title else 0.0
@@ -1728,7 +1729,7 @@ class MusicBrainzModule(_ModuleBase):
         meta_volume = cls._volume_number(clean_title)
         ranked: list[tuple[bool, int, MusicInfo]] = []
         for album in albums:
-            if music_credit_conflicts(album, meta):
+            if music_credit_conflicts(album, meta) or not music_album_year_matches(album, meta):
                 continue
             score = 0
             album_title = album.title or album.album

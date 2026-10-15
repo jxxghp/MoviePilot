@@ -18,6 +18,7 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.metamusic import MetaMusic, music_credit_values
 from app.domain.music import (
     music_album_artist_evidence_matches,
+    music_album_year_matches,
     music_artist_evidence_matches,
     music_credit_conflicts,
     music_isrc_matches,
@@ -582,7 +583,7 @@ class TheAudioDbModule(_ModuleBase):
             meta: MetaMusic,
             candidates: list[MusicAlbumInfo],
     ) -> Optional[MusicAlbumInfo]:
-        """将来源专辑投影到统一音乐模型，按专辑名、专辑署名与版本确认。"""
+        """按专辑名、署名和版本确认；普通年份可缺省，明确发行年仍须核验。"""
         expected_title = meta.album or meta.title
         expected_artists = [meta.album_artist] if meta.album_artist else meta.artists
         album_meta = MetaMusic(title=expected_title, version=meta.version)
@@ -593,7 +594,7 @@ class TheAudioDbModule(_ModuleBase):
                 continue
             if (expected_artists or any(music_credit_values(meta).values())) and not music_album_artist_evidence_matches(candidate, meta):
                 continue
-            if not music_release_year_matches(music, meta):
+            if not music_album_year_matches(music, meta):
                 continue
             matches.append(candidate)
         return unique_music_match(matches)

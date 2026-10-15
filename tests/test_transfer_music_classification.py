@@ -133,13 +133,14 @@ def test_album_context_rejects_candidate_conflicting_with_file_tags(
         tmp_path,
         monkeypatch,
 ) -> None:
-    """目录级匹配也必须核验逐文件标签，不能绕过曲目层的发行证据门禁。"""
+    """目录级匹配仍须核验逐文件明确的发行年份，不能用普通年份规则绕过冲突。"""
     file_path = tmp_path / "Speak Now" / "02 - Sparks Fly.flac"
     local_meta = MetaMusic(
         title="Sparks Fly",
         artists=["Taylor Swift"],
         album="Speak Now",
         year=2010,
+        release_year=2010,
     )
     wrong_release = MusicInfo(
         media_source="musicbrainz",
@@ -148,6 +149,7 @@ def test_album_context_rejects_candidate_conflicting_with_file_tags(
         artists=["Taylor Swift"],
         album="Speak Now",
         year=2025,
+        release_year=2025,
     )
     file_item = FileItem(
         storage="local",
