@@ -229,7 +229,7 @@ class IncomingMessage(BaseModel):
 
 @_dataclass
 class NotificationBlock:
-    """一段与渠道无关的通知内容，标题和正文均是未插入格式标记的普通文本。"""
+    """通知段落，内容均为普通文本；单独标题开启分节，节中的标题/正文对表示条目。"""
 
     title: Optional[str] = None
     text: Optional[str] = None

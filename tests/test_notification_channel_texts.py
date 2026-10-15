@@ -290,14 +290,53 @@ def test_channel_notification_format_obeys_capabilities_and_instance_mode(monkey
 
 
 def test_telegram_channel_summary_includes_detail_link_without_changing_legacy_rich_message():
-    """专用摘要能访问完整结果，原有 Rich Message 不被添加内容。"""
+    """详情链接经过真实 Markdown 转换仍是链接，原有 Rich Message 不被添加内容。"""
+    from app.modules.telegram.telegram import Telegram
+
     message = _message()
     message.link = 'https://example.com/?a=1&b="value"'
     rich = TelegramModule._notification_rich_message(message)
-    assert '<a href="https://example.com/?a=1&amp;b=&quot;value&quot;">查看详情</a>' in rich
+    converted = "".join(chunk["html"] for chunk in Telegram._build_rich_message_chunks(rich))
+    assert '<a href="https://example.com/?a=1&amp;b=%22value%22">查看详情</a>' in converted
+    assert "&lt;a href" not in converted
     message.rich_content = None
     message.rich_message = "原有完整 Rich Message"
     assert TelegramModule._notification_rich_message(message) == message.rich_message
+
+
+def test_telegram_notification_sections_have_native_list_indentation():
+    """真实转换产物应包含分节标题和缩进列表，而非全是同级普通段落。"""
+    from app.modules.telegram.telegram import Telegram
+
+    message = Message(rich_content=NotificationContent(title="签到结果", blocks=[
+        NotificationBlock(title="统计", text="本次 47"),
+        NotificationBlock(title="失败 · 9"),
+        NotificationBlock(title="Cookie已失效", text="站点一、站点二"),
+        NotificationBlock(title="网络失败", text="站点三"),
+        NotificationBlock(title="成功 · 28"),
+        NotificationBlock(title="签到成功", text="站点四、站点五"),
+    ]))
+    body = "".join(chunk["html"] for chunk in Telegram._build_rich_message_chunks(
+        TelegramModule._notification_rich_message(message)))
+    assert "<h3>失败 · 9</h3>" in body
+    assert "<h3>成功 · 28</h3>" in body
+    assert body.count("<li>") == 3
+    assert "<b>Cookie已失效</b><br/>站点一、站点二" in body
+    assert "<b>签到成功</b><br/>站点四、站点五" in body
+
+
+def test_telegram_long_section_list_splits_without_losing_items():
+    """原因很多时由真实转换器拆分长列表，各组和对应名单仍完整保留。"""
+    from app.modules.telegram.telegram import Telegram
+
+    blocks = [NotificationBlock(title="访问失败 · 150")]
+    blocks.extend(NotificationBlock(title=f"失败原因{index}：" + "网络连接失败" * 20,
+                                    text=f"完整站点{index:03d}") for index in range(150))
+    message = Message(rich_content=NotificationContent(title="签到结果", blocks=blocks))
+    chunks = Telegram._build_rich_message_chunks(TelegramModule._notification_rich_message(message))
+    assert len(chunks) > 1
+    body = "".join(chunk["html"] for chunk in chunks)
+    assert all(body.count(f"完整站点{index:03d}") == 1 for index in range(150))
 
 
 def test_host_renders_raw_data_safely_for_every_declared_format():

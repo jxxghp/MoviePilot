@@ -26,9 +26,21 @@ def render_notification(title: Optional[str], blocks: List[Dict[str, Optional[st
     paragraphs = []
     if title and text_format == "rich_markdown":
         paragraphs.append(f"## {_escape_notification_text(title, text_format)}")
+    in_section = False
     for block in blocks:
         lines = []
         block_title, block_text = block.get("title"), block.get("text")
+        if text_format == "rich_markdown" and block_title:
+            heading = _escape_notification_text(block_title, text_format)
+            if not block_text:
+                paragraphs.append(f"### {heading}")
+                in_section = True
+                continue
+            if in_section:
+                # 分节之后的标题/正文对是列表项，硬换行让续行仍缩进在当前条目内。
+                body = _escape_notification_text(block_text, text_format).replace("\n", "  \n  ")
+                paragraphs.append(f"- **{heading}**  \n  {body}")
+                continue
         if block_title:
             lines.append(f"{bold}{_escape_notification_text(block_title, text_format)}{bold}")
         if block_text:

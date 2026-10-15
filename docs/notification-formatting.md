@@ -4,6 +4,8 @@
 `text` 保留完整纯文本结果；`rich_content` 使用 `NotificationContent`，只包含标题和有序
 `NotificationBlock` 列表，每段的 `title`、`text` 都是普通文本。插件不枚举渠道、不插入
 Markdown 或 HTML 标签，也不判断渠道权限。
+独立标题表示分节；分节之后的标题和正文对表示条目。Telegram 转为原生分节标题与缩进列表，
+同一条目内的续行保留缩进。详情入口使用 Markdown 链接交给真实转换器，避免 HTML 标签被原样展示。
 
 宿主通过 `ChannelCapabilityManager.get_notification_text_format()` 查询普通通知的投递能力，
 按 `ChannelCapabilities.notification_text_format` 选择语法和转义方式。未声明该能力的渠道
@@ -31,10 +33,11 @@ WebAgent 能渲染 Markdown，但通知中心仍记录普通文本；ClawBot 当
 Telegram 原有的 `rich_message` 用于完整 Rich Markdown 正文，未提供 `rich_content` 时
 沿用原来的行为。渠道 API 错误不因一次临时网络错误自动重发另一份通知。
 
-站点自动签到只负责统计、结果分组和重试标记，结构化内容包括本次全部站点。
-V3 插件版本为 3.0.0，显式声明 `system_version >=3.1.6`，提供默认开启的
+站点自动签到只负责统计、结果分组和重试标记；同一状态内按完整原因归并，原因只展示一次，
+对应名单保留全部站点。不同原因在缩短显示之前区分，避免截断后相同的前缀被误合并。
+V3 插件显式声明 `system_version >=3.1.6`，提供默认开启的
 “优化消息通知样式”开关；关闭后不传结构化内容，所有渠道恢复原有通知样式。
-原 V2 版本 2.9.13 保持源码及版本不变，在市场索引声明 `v3: true` 和 `system_version <=3.1.5`，
+V2 兼容实现保持独立版本，在市场索引声明 `v3: true` 和 `system_version <=3.1.5`，
 保留低于 3.1.6 的 V3 主程序选择 V2 兼容实现的安装路径。
 具体说明见插件仓 `plugins.v3/autosignin/README.md`。
 

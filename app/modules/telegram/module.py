@@ -1,7 +1,7 @@
-import html
 import json
 import re
 from typing import Any, List, Optional, Tuple, Union
+from urllib.parse import quote
 
 from app.application.messaging.channel.admin import (
     matches_channel_admin,
@@ -463,8 +463,9 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         if not rich_text:
             return message.rich_message
         if message.link:
-            link = html.escape(message.link, quote=True)
-            rich_text = f'{rich_text}\n\n<a href="{link}">查看详情</a>'
+            # 输入仍是 Markdown，HTML 标签会被 richify 当作普通文本转义。
+            link = quote(message.link, safe=":/?#&=%")
+            rich_text = f'{rich_text}\n\n[查看详情](<{link}>)'
         return rich_text
 
     def post_message(self, message: Message, **kwargs) -> None:
