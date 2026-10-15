@@ -99,9 +99,9 @@ class SiteParserBase(metaclass=ABCMeta):
         self.bonus = 0.0
 
         # 流量信息
-        self.upload = 0
-        self.download = 0
-        self.ratio = 0
+        self.upload = 0.0
+        self.download = 0.0
+        self.ratio = 0.0
 
         # 做种信息
         self.seeding = 0
