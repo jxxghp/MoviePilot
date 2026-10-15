@@ -11,6 +11,7 @@ from typing import Any, AsyncGenerator, Awaitable, Callable, Dict, Iterator, Lis
 
 from app.application.configuration import get_configured_system_config
 from app.application.site.observation import (
+    SiteSearchObservation,
     capture_site_search_observation,
     report_site_search_outcome,
 )
@@ -72,6 +73,20 @@ def _site_request_interval(site: SiteIndexer) -> float:
         return max(0.0, float(site.get("limit_seconds") or 0))
     except (TypeError, ValueError):
         return 0.0
+
+
+def _site_rate_limit_backoff(site: SiteIndexer) -> float:
+    """本地流控拒绝后的退避秒数：覆盖访问间隔与计数窗口，并留 1 秒越过窗口的严格比较边界。"""
+    interval = _site_request_interval(site)
+    window = 0.0
+    if site.get("limit_interval") and site.get("limit_count"):
+        try:
+            window = max(0.0, float(site.get("limit_interval") or 0))
+        except (TypeError, ValueError):
+            window = 0.0
+    wait = max(interval, window)
+    # 计数窗口按 `current - last > interval` 清零，等于窗口时长时仍可能被拒，所以多等 1 秒。
+    return wait + 1.0 if wait > 0 else 0.0
 
 
 def _reserve_site_request(site: SiteIndexer) -> float:
@@ -247,6 +262,34 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
         )
         pending[future] = (site, page_index, page_number)
 
+    def _settle_site_search_result(
+        self,
+        *,
+        budget: SubscriptionSiteBudget,
+        site: SiteIndexer,
+        site_id: int,
+        result: List[TorrentInfo],
+        observation: SiteSearchObservation,
+    ) -> float:
+        """记录一次已返回站点页的候选与限流事实，返回本地流控需要的窗口退避秒数。"""
+        activity = current_activity_run()
+        if activity:
+            activity.site(site_id, name=str(site.get("name") or ""), candidates=len(result or []),
+                          status=observation.outcome if observation.attempted else "received", attempted=observation.attempted)
+        budget.record_request(site_id, len(result or []))
+        if observation.attempted:
+            if observation.outcome == "success":
+                budget.record_success(site_id)
+            elif observation.outcome != "skipped":
+                failure = observation.error or observation.outcome
+                message = f"站点 {site.get('name') or site_id} 搜索失败：{failure}"
+                self.record_subscription_site_budget_failure(message)
+                logger.warning(message)
+        elif observation.outcome == "deferred":
+            # 本地流控未发出请求，按站点窗口写入冷却，避免其它订阅继续触发限流。
+            return _site_rate_limit_backoff(site)
+        return 0.0
+
     def _search_site_torrents_with_budget(
         self,
         *,
@@ -283,6 +326,7 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
             logger.debug(str(error))
             return []
         with capture_site_search_observation() as observation:
+            deferral_seconds = 0.0
             try:
                 result = _search_site_page(
                     self,
@@ -302,22 +346,17 @@ class _SearchProviderSyncOwner(_SearchOwnerBase):
                 )
                 raise
             else:
-                if activity:
-                    activity.site(site_id, name=str(site.get("name") or ""), candidates=len(result or []),
-                                  status=observation.outcome if observation.attempted else "received", attempted=observation.attempted)
-                budget.record_request(site_id, len(result or []))
-                if observation.attempted:
-                    if observation.outcome == "success":
-                        budget.record_success(site_id)
-                    elif observation.outcome != "skipped":
-                        failure = observation.error or observation.outcome
-                        message = f"站点 {site.get('name') or site_id} 搜索失败：{failure}"
-                        self.record_subscription_site_budget_failure(message)
-                        logger.warning(message)
+                deferral_seconds = self._settle_site_search_result(
+                    budget=budget,
+                    site=site,
+                    site_id=site_id,
+                    result=result,
+                    observation=observation,
+                )
                 return result
             finally:
                 try:
-                    released = budget.finish(claim, observation)
+                    released = budget.finish(claim, observation, deferral_seconds=deferral_seconds)
                     if not released:
                         logger.error(
                             f"订阅站点预算释放失败: site_id={site_id} "

@@ -250,13 +250,19 @@ class SubscriptionSiteBudget:
         if self._metrics:
             self._metrics.record_release_failure()
 
-    def finish(self, claim: SiteBudgetClaim, observation: SiteSearchObservation) -> bool:
-        """正常结果立即释放站点，错误结果按类别写入冷却。"""
+    def finish(self, claim: SiteBudgetClaim, observation: SiteSearchObservation,
+               *, deferral_seconds: float = 0) -> bool:
+        """正常结果立即释放站点，错误结果按类别写入冷却，本地流控按站点窗口退避。"""
         if not claim.lease_token:
             self.record_release_failure()
             return False
-        outcome = observation.outcome if observation.attempted else "skipped"
-        delay = self._next_delay(outcome, claim.consecutive_failures)
+        if observation.outcome == "deferred":
+            # 本地限流没有发出请求，不累计失败；只按站点窗口写入冷却供其它订阅共享退避。
+            outcome = "deferred"
+            delay = max(0.0, deferral_seconds)
+        else:
+            outcome = observation.outcome if observation.attempted else "skipped"
+            delay = self._next_delay(outcome, claim.consecutive_failures)
         next_allowed_at = (self._clock() + timedelta(seconds=delay)).isoformat(timespec="seconds")
         with self._outcome_lock:
             paced = claim.lease_token in self._paced_leases
