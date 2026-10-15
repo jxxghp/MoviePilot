@@ -2,7 +2,7 @@ import asyncio
 import json
 import platform
 from collections.abc import Coroutine
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Awaitable, Callable, Dict, List, Optional, ParamSpec, Tuple, Union, cast
 from urllib.parse import parse_qs, quote, urlparse, urlsplit
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
@@ -26,6 +26,33 @@ from app.schemas.types import (
 )
 
 # 中心服务适配器只通过 runtime 读取端口消费组合根的最新配置。
+
+
+_LookupParams = ParamSpec("_LookupParams")
+
+
+def _cached_server_lookup(
+    maxsize: int,
+) -> Callable[
+    [Callable[_LookupParams, Awaitable[Dict[str, Any]]]],
+    Callable[_LookupParams, Awaitable[Dict[str, Any]]],
+]:
+    """为中心服务开关与权限查询提供保留签名的短时进程内缓存。
+
+    成功结果缓存 60 秒，使服务端开关与名单变更在一分钟内生效；不可达或非 200 得到的
+    空结果只缓存 15 秒，故障恢复后尽快重新判定。结果随本实例身份变化，不共享到 Redis。
+    """
+
+    def decorator(
+        function: Callable[_LookupParams, Awaitable[Dict[str, Any]]],
+    ) -> Callable[_LookupParams, Awaitable[Dict[str, Any]]]:
+        """包装单个查询函数，缓存层本身未标注类型，这里显式恢复原签名。"""
+        return cast(
+            Callable[_LookupParams, Awaitable[Dict[str, Any]]],
+            cached(maxsize=maxsize, ttl=60, empty_ttl=15, local_only=True)(function),
+        )
+
+    return decorator
 
 
 _server_report_service: Any = None
@@ -231,7 +258,7 @@ class MoviePilotServerHelper:
         )
 
     @classmethod
-    async def async_user_features(cls):
+    async def async_user_features(cls) -> Any:
         """
         异步查询服务端对所有实例相同的全局功能开关。
         """
@@ -242,7 +269,7 @@ class MoviePilotServerHelper:
         )
 
     @classmethod
-    @cached(maxsize=1, ttl=60, empty_ttl=15, local_only=True)
+    @_cached_server_lookup(maxsize=1)
     async def async_get_features(cls) -> Dict[str, Any]:
         """
         获取服务端全局功能开关（如 ``community_medals``），失败时返回空对象。
@@ -281,7 +308,7 @@ class MoviePilotServerHelper:
         return await cls._async_fetch_user_permissions(github_user)
 
     @classmethod
-    @cached(maxsize=4, ttl=60, empty_ttl=15, local_only=True)
+    @_cached_server_lookup(maxsize=4)
     async def _async_fetch_user_permissions(cls, github_user: str) -> Dict[str, Any]:
         """
         按 GitHub 用户名查询并短时缓存服务端权限。
