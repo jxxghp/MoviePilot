@@ -110,7 +110,7 @@
       "app/modules/trimemedia/api.py:Api.request": 16,
       "app/modules/ugreen/ugreen.py:Ugreen.get_tv_episodes": 21,
       "app/modules/wechat/__init__.py:WechatModule.message_parser": 20,
-      "app/modules/wechatclawbot/wechatclawbot.py:ILinkClient._parse_incoming": 34,
+      "app/modules/wechatclawbot/wechatclawbot.py:ILinkClient._parse_incoming": 29,
       "app/modules/zspace/zspace.py:ZSpace.get_items": 16,
       "app/modules/zspace/zspace.py:ZSpace.get_tv_episodes": 18,
       "app/modules/zspace/zspace.py:ZSpace.get_webhook_message": 17,

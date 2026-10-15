@@ -10,7 +10,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from urllib.parse import quote
 
 from Crypto.Cipher import AES
@@ -975,30 +975,36 @@ class ILinkClient:
         attachment: Dict[str, Any],
         default_name: Optional[str] = None,
     ) -> Optional[Tuple[str, Dict[str, Any]]]:
-        """从附件信息构建 wxclaw 协议引用。"""
+        """
+        从附件信息构建 wxclaw 协议引用。
+
+        下行报文可能把下载地址与密钥放在附件的 `media` 子对象中
+        （如 `image_item.media.full_url` / `media.aes_key`），也可能直接放在附件顶层，
+        这里统一按“附件顶层优先、media 子对象兜底”的顺序提取字段。
+        """
         if not isinstance(attachment, dict):
             return None
-        download_url = (
-            attachment.get("download_url")
-            or attachment.get("url")
-            or attachment.get("cdnurl")
-            or attachment.get("cdn_url")
-            or attachment.get("file_url")
+        media = attachment.get("media")
+        media = media if isinstance(media, dict) else {}
+        url_keys = ["full_url", "download_url", "url", "cdnurl", "cdn_url", "file_url"]
+        download_url = self._pick_value(attachment, url_keys) or self._pick_value(
+            media, url_keys
         )
         if not download_url:
             return None
+        aeskey_keys = ["aeskey", "aes_key", "encoding_aes_key", "encrypt_key"]
         payload = {
             "url": download_url,
-            "aeskey": attachment.get("aeskey")
-            or attachment.get("encoding_aes_key")
-            or attachment.get("encrypt_key"),
-            "encrypt_type": attachment.get("encrypt_type"),
-            "mime_type": attachment.get("mime_type")
-            or attachment.get("content_type"),
-            "name": attachment.get("name")
-            or attachment.get("filename")
+            "aeskey": self._pick_value(attachment, aeskey_keys)
+            or self._pick_value(media, aeskey_keys),
+            "encrypt_type": self._pick_value(attachment, ["encrypt_type"])
+            or self._pick_value(media, ["encrypt_type"]),
+            "mime_type": self._pick_value(attachment, ["mime_type", "content_type"])
+            or self._pick_value(media, ["mime_type", "content_type"]),
+            "name": self._pick_value(attachment, ["name", "filename", "file_name"])
             or default_name,
-            "size": attachment.get("size") or attachment.get("file_size"),
+            "size": self._pick_value(attachment, ["size", "file_size"])
+            or self._pick_value(media, ["size", "file_size"]),
         }
         ref = self._encode_ref_payload(kind=kind, payload=payload)
         return ref, payload
@@ -1011,6 +1017,58 @@ class ILinkClient:
         if isinstance(value, (dict, list, tuple, set)):
             return None
         return value
+
+    def _append_item_list_entry(
+        self,
+        one: Dict[str, Any],
+        append_text: Callable[[Any], None],
+        images: List[Dict[str, Any]],
+        audio_refs: List[str],
+        files: List[Dict[str, Any]],
+    ) -> None:
+        """
+        把 item_list 的单个子项分派为文本或媒体附件。
+
+        iLink 下行报文的 item_list 存在两套类型约定：数字 `type` 与子项键名。
+        这里按实际出现的子项键名分派，兼容公开资料的 `2 图片/3 语音/4 文件/5 视频`
+        以及历史实现里 `file_item` 使用 `type=5/6` 的报文，避免媒体消息被静默丢弃。
+        """
+        candidates = (
+            ("text_item", "text", None),
+            ("image_item", "image", None),
+            ("voice_item", "voice", "voice.amr"),
+            ("file_item", "file", None),
+            ("video_item", "file", "video.mp4"),
+        )
+        for key, kind, default_name in candidates:
+            child = one.get(key)
+            if not isinstance(child, dict):
+                continue
+            if kind == "text":
+                append_text(child.get("text"))
+                return
+            if kind == "voice":
+                append_text(child.get("content"))
+            attachment_ref = self._build_attachment_ref(
+                kind, child, default_name=default_name
+            )
+            if not attachment_ref:
+                return
+            ref, payload = attachment_ref
+            if kind == "voice":
+                audio_refs.append(ref)
+                return
+            entry = {
+                "ref": ref,
+                "name": payload.get("name"),
+                "mime_type": payload.get("mime_type"),
+                "size": payload.get("size"),
+            }
+            if kind == "image":
+                images.append(entry)
+            else:
+                files.append(entry)
+            return
 
     def _build_poll_result(
         self,
@@ -1228,41 +1286,7 @@ class ILinkClient:
         for one in item_list:
             if not isinstance(one, dict):
                 continue
-            item_type = one.get("type")
-            if item_type == 1 and isinstance(one.get("text_item"), dict):
-                append_text((one.get("text_item") or {}).get("text"))
-            elif item_type == 2 and isinstance(one.get("image_item"), dict):
-                image_ref = self._build_attachment_ref(
-                    "image", (one.get("image_item") or {}).get("media") or {}
-                )
-                if image_ref:
-                    ref, payload = image_ref
-                    images.append(
-                        {
-                            "ref": ref,
-                            "name": payload.get("name"),
-                            "mime_type": payload.get("mime_type"),
-                            "size": payload.get("size"),
-                        }
-                    )
-            elif item_type in {5, 6}:
-                file_ref = self._build_attachment_ref(
-                    "file", (one.get("file_item") or {}).get("media") or {}
-                )
-                if file_ref:
-                    ref, payload = file_ref
-                    files.append(
-                        {
-                            "ref": ref,
-                            "name": (one.get("file_item") or {}).get("name")
-                            or (one.get("file_item") or {}).get("file_name")
-                            or payload.get("name"),
-                            "mime_type": (one.get("file_item") or {}).get("mime_type")
-                            or payload.get("mime_type"),
-                            "size": (one.get("file_item") or {}).get("size")
-                            or payload.get("size"),
-                        }
-                    )
+            self._append_item_list_entry(one, append_text, images, audio_refs, files)
 
         if not text_parts:
             append_text(

@@ -2352,8 +2352,7 @@
   },
   "app/modules/wechatclawbot/wechatclawbot.py": {
     "arg-type": 2,
-    "assignment": 2,
-    "comparison-overlap": 3,
+    "assignment": 1,
     "no-any-return": 3,
     "no-untyped-def": 4,
     "type-arg": 2,

@@ -121,6 +121,25 @@ def test_network_proxy_probe_uses_configured_github_identity(github_headers) -> 
     assert "github-token" not in public_target.address
 
 
+def test_wechatclawbot_cdn_probe_accepts_parameterless_400() -> None:
+    """微信 ClawBot 媒体 CDN 对无参数裸请求返回 400，探针应视为连通正常。"""
+    captured = {}
+
+    async def respond(method, url, **options):
+        """模拟 CDN 对裸地址请求返回 400 空响应。"""
+        captured.update(method=method, url=url, **options)
+        return SimpleNamespace(status_code=400, headers={}, text="", aclose=AsyncMock())
+
+    transport = SimpleNamespace(request=AsyncMock(side_effect=respond))
+    result = asyncio.run(
+        _network_test_service(transport).execute(target_id="wechatclawbot_cdn")
+    )
+
+    assert result.success
+    assert captured["method"] == "GET"
+    assert captured["url"] == "https://novac2c.cdn.weixin.qq.com/c2c"
+
+
 def test_tmdb_web_probe_identifies_as_moviepilot() -> None:
     """TMDB 网站探针应使用程序自身 UA，浏览器 UA 会被站点人机校验页拦成 403。"""
     captured = {}
