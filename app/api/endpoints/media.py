@@ -271,9 +271,8 @@ async def recognize(
         metainfo,
         media_source=media_source,
     )
-    if mediainfo:
-        return Context(meta_info=metainfo, media_info=mediainfo).to_dict()
-    return _SchemaContext()
+    # 未匹配到媒体时也返回解析元数据，便于识别测试查看识别词应用情况和解析结果
+    return Context(meta_info=metainfo, media_info=mediainfo).to_dict()
 
 
 @router.get(

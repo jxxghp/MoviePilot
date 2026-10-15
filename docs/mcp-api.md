@@ -443,7 +443,7 @@ FastAPI 的 HTTP 异常和参数校验异常统一使用 `message`，不再返�
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |
 | GET | `/api/v1/media/search` | 按标题搜索媒体、合集、影视人物或音乐；人物结果可同时包含 MusicBrainz 艺术家，参数：`title`、`type`、`page`、`count`，可重复传入可选 `media_source`；未指定 `music_type` 时音乐搜索只返回单曲和专辑，显式 `music_type` 仍可用于专用实体选择；内置模块只处理自身支持的来源，插件模块可以处理其注册的扩展来源，旧客户端的逗号格式仅在输入边界兼容 |
-| GET | `/api/v1/media/recognize` | 识别标题，参数：`title`、`subtitle`、`custom_words`，可选 `media_source`；当 `title` 为含目录的媒体文件路径时，会合并父目录中的名称、年份等信息 |
+| GET | `/api/v1/media/recognize` | 识别标题，参数：`title`、`subtitle`、`custom_words`，可选 `media_source`；当 `title` 为含目录的媒体文件路径时，会合并父目录中的名称、年份等信息；未匹配到媒体时仍返回解析元数据 `meta_info`（含实际应用的识别词 `apply_words`），`media_info` 为空 |
 | GET | `/api/v1/media/recognize_file` | 识别文件路径，参数：`path`，可选 `media_source` |
 | GET | `/api/v1/media/{media_id}` | 按原生 ID 查询影视或音乐详情；必填参数：`media_source`、`type_name`，其中 `media_source` 与路径中的 `media_id` 组成统一媒体身份，`type_name` 支持电影、电视剧和音乐 |
 | POST | `/api/v1/media/scrape/{storage}` | 刮削媒体元数据；请求体为 `FileItem`，可选查询参数 `media_source`、`media_id`、`type_name`（电影/电视剧/音乐）和 TMDB `episode_group`。剧集组用于指定电视剧的季集顺序；音乐会按策略处理音频标签、封面和歌词。会覆盖目标位置已有的图片、NFO 和音频标签，与文件管理、手动整理一样需要管理权限 |

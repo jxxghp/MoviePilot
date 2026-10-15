@@ -299,9 +299,11 @@ _OPERATION_NOTES: dict[str, list[str]] = {
     ],
     "media.recognize": [
         "- **Agent note:** Recognition returns a context containing `media_info`, not a candidate list. "
-        "Check its title and media type against the user's request. If recognition is missing or "
-        "ambiguous, use `media.search` and compare candidates by title, type, and year. Preserve "
-        "the selected result's exact `media_source` + `media_id` for `search.torrents`.",
+        "A failed match still returns parsed `meta_info` with the applied recognition words, so treat "
+        "recognition as successful only when `media_info` is present. Check its title and media type "
+        "against the user's request. If recognition is missing or ambiguous, use `media.search` and "
+        "compare candidates by title, type, and year. Preserve the selected result's exact "
+        "`media_source` + `media_id` for `search.torrents`.",
     ],
     "search.torrents": [
         "- **Agent note:** `media_id` is a **path** parameter and MUST be nested under "

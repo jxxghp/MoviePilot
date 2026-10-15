@@ -87,3 +87,22 @@ def test_recognize_audio_file_title_uses_music_meta_without_source() -> None:
     metainfo = chain.async_recognize_by_meta.await_args.args[0]
     assert isinstance(metainfo, MetaMusic)
     assert metainfo.audio_format
+
+
+def test_recognize_returns_meta_info_when_media_lookup_fails() -> None:
+    """未匹配到媒体时也应返回解析元数据，供识别测试展示识别词应用情况和解析结果。"""
+    chain = Mock()
+    chain.async_recognize_by_meta = AsyncMock(return_value=None)
+
+    with patch("app.api.endpoints.media.MediaChain", return_value=chain):
+        result = asyncio.run(
+            recognize(
+                title="Some.Release.2024",
+                custom_words="Some => Other",
+                _=Mock(),
+            )
+        )
+
+    assert result["media_info"] is None
+    assert result["meta_info"]["org_string"] == "Other.Release.2024"
+    assert result["meta_info"]["apply_words"] == ["Some => Other"]
