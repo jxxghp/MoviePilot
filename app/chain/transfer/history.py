@@ -6,7 +6,6 @@ from pathlib import Path
 from typing import Any, List, Optional, Tuple, Union, cast
 
 from app.application.audio import use_music_cue
-from app.application.messaging.message import TemplateContextBuilder
 from app.application.transfer.models import TransferTask
 from app.application.transfer.notifications import (
     TransferSuccessNotification,
@@ -325,10 +324,9 @@ class TransferHistoryOwner(_TransferOwnerBase):
             episodes_info: Optional[List[TmdbEpisode]] = None,
             username: Optional[str] = None,
             buttons: Optional[list[list[dict[str, Any]]]] = None,
-            batch: bool = False,
     ):
         """
-        发送入库成功的消息
+        通过入库通知模板发送单文件或聚合后的成功结果，不预填标题和正文。
         :param meta: 文件元数据
         :param mediainfo: 识别的媒体信息
         :param transferinfo: 文件整理信息
@@ -336,30 +334,15 @@ class TransferHistoryOwner(_TransferOwnerBase):
         :param episodes_info: 当前季的全部集信息
         :param username: 用户名
         :param buttons: 批次通知使用的历史入口
-        :param batch: 多文件批次使用简洁汇总，单文件沿用用户通知模板
         """
         message = Message(
-                mtype=MessageType.Organize,
-                ctype=ContentType.OrganizeSuccess,
-                image=mediainfo.get_message_image(),
-                username=username,
-                link=self.runtime_config.history_url,
-                buttons=buttons,
-            )
-        if batch:
-            context = TemplateContextBuilder().build(
-                meta=meta, mediainfo=cast(MediaInfo, mediainfo), transferinfo=transferinfo,
-                aggregate_music_album=True, season_episode=season_episode,
-            )
-            message.title = context.get("title_year") or mediainfo.title
-            if season_episode:
-                message.title = f"{message.title} {season_episode}"
-            message.text = f"📂 已入库 {transferinfo.file_count} 个文件"
-            total_tracks = getattr(mediainfo, "total_tracks", None)
-            if mediainfo.type == MediaType.MUSIC and total_tracks:
-                message.text += f" / 共 {total_tracks} 首曲目"
-            if transferinfo.target_diritem:
-                message.text += f"\n目录：{transferinfo.target_diritem.path}"
+            mtype=MessageType.Organize,
+            ctype=ContentType.OrganizeSuccess,
+            image=mediainfo.get_message_image(),
+            username=username,
+            link=self.runtime_config.history_url,
+            buttons=buttons,
+        )
         self.post_message(
             message,
             meta=meta,
@@ -429,7 +412,6 @@ class TransferHistoryOwner(_TransferOwnerBase):
             meta=first.meta, mediainfo=media, transferinfo=merged,
             season_episode=season_episode, episodes_info=first.episodes_info, username=first.username,
             buttons=[[{"text": "查看整理记录", "url": self.runtime_config.history_url}]] if len(files) > 1 else None,
-            batch=len(files) > 1,
         )
 
     @staticmethod

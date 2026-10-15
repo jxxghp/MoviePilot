@@ -941,8 +941,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9555,
-  "edge_sha256": "c90fbb78ee03a1a1a4dddfb21bc9d31dc30a1add57b60016883571b7ea1404d7",
+  "edge_count": 9553,
+  "edge_sha256": "5cabdf16599788b91c81063ea71b02ceddc8b51586960497ba567ac5d78518b9",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -5832,8 +5832,6 @@
     "app.chain.transfer.format -> app.schemas.types",
     "app.chain.transfer.history -> app.application",
     "app.chain.transfer.history -> app.application.audio",
-    "app.chain.transfer.history -> app.application.messaging",
-    "app.chain.transfer.history -> app.application.messaging.message",
     "app.chain.transfer.history -> app.application.transfer",
     "app.chain.transfer.history -> app.application.transfer.models",
     "app.chain.transfer.history -> app.application.transfer.notifications",
