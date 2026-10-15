@@ -161,6 +161,8 @@ class StorageChain(ChainBase):
     def delete_media_file(self, fileitem: _SchemaFileItem, delete_self: bool = True) -> bool:
         """
         删除媒体文件，以及不含媒体文件的目录
+
+        向上清理止于同一存储中的配置根目录、类型或分类目录，保留共享目录结构。
         """
         media_exts = self.runtime_config.media_extensions
         fileitem_path = Path(fileitem.path) if fileitem.path else Path("")
@@ -188,20 +190,10 @@ class StorageChain(ChainBase):
             logger.warn(f"【{fileitem.storage}】{fileitem.path} 上级目录不存在")
             return True
 
-        # 查找操作文件项匹配的配置目录(资源目录、媒体库目录)
-        associated_dir = max(
-            (
-                Path(p)
-                for d in DirectoryHelper().get_dirs()
-                for p in (d.download_path, d.library_path)
-                if p and fileitem_path.is_relative_to(p)
-            ),
-            key=lambda path: len(path.parts),
-            default=None,
-        )
+        associated_dir = DirectoryHelper().get_media_cleanup_root(fileitem)
 
         while dir_item and len(Path(dir_item.path).parts) > 2:
-            # 目录是资源目录、媒体库目录的上级，则不处理
+            # 共享目录边界及其祖先必须保留，边界下的影片目录仍可清理。
             if associated_dir and associated_dir.is_relative_to(Path(dir_item.path)):
                 logger.debug(f"【{dir_item.storage}】{dir_item.path} 位于资源或媒体库目录结构中，不删除")
                 break

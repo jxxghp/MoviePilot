@@ -424,6 +424,64 @@ class DirectoryHelper:
         """
         return [d for d in self.get_library_dirs() if d.library_storage == "local"]
 
+    def get_media_cleanup_root(self, fileitem: _SchemaFileURI) -> Optional[Path]:
+        """返回同一存储中最深的配置或分类边界，媒体清理不得删除该目录及其祖先。"""
+        file_path = Path(fileitem.path or "")
+        roots: list[Path] = []
+        for directory in self.get_dirs():
+            for library, storage, path in (
+                (False, directory.storage, directory.download_path),
+                (True, directory.library_storage, directory.library_path),
+            ):
+                if not path or (storage or "local") != fileitem.storage:
+                    continue
+                if file_path.is_relative_to(path):
+                    roots.append(self._media_cleanup_root(file_path, Path(path), directory, library=library))
+        return max(roots, key=lambda root: len(root.parts), default=None)
+
+    def _media_cleanup_root(
+        self,
+        file_path: Path,
+        root: Path,
+        directory: _SchemaTransferDirectoryConf,
+        *,
+        library: bool,
+    ) -> Path:
+        """按目录生成规则识别类型和分类边界；旧分类无法解析时保守保留第一层。"""
+        media_type = directory.media_type
+        type_folder = (
+            directory.library_type_folder if library
+            else not media_type and directory.download_type_folder
+        )
+        relative_parts = file_path.relative_to(root).parts
+        if type_folder and relative_parts and relative_parts[0] in {item.value for item in MediaType}:
+            media_type = relative_parts[0]
+            root = root / media_type
+
+        category_folder = directory.library_category_folder if library else directory.download_category_folder
+        fixed_category = self.has_fixed_category(directory)
+        if not category_folder or (fixed_category and not library):
+            return root
+        category_paths = (
+            (self.resolve_directory_category(directory).path,) if fixed_category
+            else self.classification_category_paths(media_type)
+        )
+        roots = [root]
+        for category_path in category_paths:
+            if not category_path:
+                continue
+            category_path = category_path_below_media_type(
+                category_path, media_type, type_folder_enabled=bool(type_folder),
+            )
+            category_root = root.joinpath(*category_path)
+            if file_path.is_relative_to(category_root):
+                roots.append(category_root)
+        if len(roots) > 1:
+            return max(roots, key=lambda path: len(path.parts))
+        # 分类策略可能已改名或删除，不能因此把原分类目录当成影片目录清理。
+        relative_parts = file_path.relative_to(root).parts
+        return root / relative_parts[0] if relative_parts else root
+
     def get_dir(self, media: Optional[DirectoryMedia], include_unsorted: Optional[bool] = False,
                 storage: Optional[str] = None, src_path: Path = None,
                 target_storage: Optional[str] = None, dest_path: Path = None
