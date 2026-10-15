@@ -292,6 +292,15 @@ class WechatClawBotModule(_MessageChannelModuleBase[WechatClawBot]):
         audio_refs = self._normalize_audio_refs(message.get("audio_refs"))
         files = self._normalize_files(message.get("files"))
         if not text and not images and not audio_refs and not files:
+            # 渠道报文被解析为空消息时必须留下诊断信息，否则只能在消息入口看到
+            # “未识别到有效消息”，无法定位是哪种入站内容被丢弃。
+            logger.info(
+                "微信 ClawBot 消息未识别到有效内容：source=%s, userid=%s, message_id=%s, body=%s",
+                client_config.name,
+                user_id,
+                message_id,
+                WechatClawBot._short_text(message, max_len=500),
+            )
             return None
         if self._is_duplicate_message(client_config.name, message_id):
             logger.info(

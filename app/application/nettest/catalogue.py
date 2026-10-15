@@ -308,7 +308,9 @@ def _build_notification_module_rules() -> list[NetworkTestRule]:
             proxy=True,
             allowed_redirect_prefixes=("https://novac2c.cdn.weixin.qq.com/",),
             module_ids=("WechatClawBotModule",),
-            success_status_codes=(200, 403, 404),
+            # CDN 对不带下载参数的裸请求固定返回 400，能返回 400 即证明连通正常，
+            # 不能据此判定探测失败。
+            success_status_codes=(200, 400, 403, 404),
         ),
     ]
 
