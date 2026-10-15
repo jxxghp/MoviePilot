@@ -5,6 +5,31 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class GithubCommunityRepository(BaseModel):  # type: ignore[misc]
+    """单个社区仓库的公开贡献事实；提交与 PR 不直接相加。"""
+
+    repository: str
+    area: str
+    commits: int = Field(ge=0)
+    merged_prs: int = Field(ge=0)
+
+
+class GithubCommunityProfile(BaseModel):  # type: ignore[misc]
+    """管理员 Token 对应 GitHub 用户的荣誉快照，不包含凭据。"""
+
+    state: Literal["unconfigured", "ready", "unavailable"]
+    login: str | None = None
+    user_id: int | None = None
+    tier: Literal["bronze", "silver", "gold", "core"] | None = None
+    specialty: Literal[
+        "backend", "frontend", "plugins", "performance", "resources", "services", "website", "docs", "ecosystem",
+    ] | None = None
+    total: int = Field(default=0, ge=0)
+    repositories: list[GithubCommunityRepository] = Field(default_factory=list)
+    checked_at: int | None = None
+    stale: bool = False
+
+
 class GithubTokenStatus(BaseModel):  # type: ignore[misc]
     """描述当前 GitHub Token 的可用状态，不包含 Token 原文。"""
 

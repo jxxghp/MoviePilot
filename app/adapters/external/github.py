@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from app.adapters.network.http import AsyncRequestUtils
 from app.domain.github import (
     GithubAuthPort,
     GithubAuthTransportError,
     GithubDeviceCode,
+    GithubRepositoryContribution,
     GithubSettingsReader,
     GithubTokenExchange,
     GithubUser,
@@ -125,7 +128,65 @@ class GithubAuthClient(GithubAuthPort):
         login = str(payload.get("login") or "").strip()
         if not login:
             raise GithubAuthTransportError("GitHub 未返回用户信息")
-        return GithubUser(login=login)
+        user_id = payload.get("id")
+        if not isinstance(user_id, int) or user_id <= 0:
+            raise GithubAuthTransportError("GitHub 未返回有效的用户身份")
+        return GithubUser(login=login, user_id=user_id)
+
+    async def get_repository_contribution(
+        self, access_token: str, user: GithubUser, repository: str, area: str, branch: str,
+    ) -> GithubRepositoryContribution:
+        """分别查询合并 PR 与作者提交；只解析分页数字，不请求外部 Link 地址。"""
+        if not re.fullmatch(r"[A-Za-z0-9-]{1,39}", user.login):
+            raise GithubAuthTransportError("GitHub 用户身份无效")
+        headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/vnd.github+json"}
+        search = await self._community_get(
+            "https://api.github.com/search/issues", headers,
+            {"q": f"repo:jxxghp/{repository} is:pr is:merged author:{user.login}", "per_page": 1},
+        )
+        payload = self._json_payload(search)
+        count = payload.get("total_count")
+        if payload.get("incomplete_results") is not False or type(count) is not int or count < 0:
+            raise GithubAuthTransportError("GitHub 贡献统计尚未完成")
+        commits_response = await self._community_get(
+            f"https://api.github.com/repos/jxxghp/{repository}/commits", headers,
+            {"author": user.login, "sha": branch, "per_page": 1},
+        )
+        commits = self._commit_count(commits_response)
+        return GithubRepositoryContribution(repository, area, commits, count)
+
+    async def _community_get(
+        self, url: str, headers: dict[str, str], params: dict[str, Any],
+    ) -> Any:
+        """将限流、失效与网络错误显式保留为查询失败，不能投影为零贡献。"""
+        try:
+            response = await self._request(headers=headers).get_res(
+                url, params=params, raise_exception=True,
+            )
+        except Exception as error:  # noqa: BLE001 - 不泄露 Token 或远端错误正文
+            raise GithubAuthTransportError("暂时无法核对社区贡献") from error
+        if response is None or response.status_code >= 400:
+            unauthorized = response is not None and response.status_code == 401
+            raise GithubAuthTransportError("暂时无法核对社区贡献", unauthorized=unauthorized)
+        return response
+
+    @staticmethod
+    def _commit_count(response: Any) -> int:
+        """per_page=1 时末页即提交总数；无分页链接时只接受零或一条记录。"""
+        try:
+            payload = response.json()
+        except Exception as error:  # noqa: BLE001 - 外部 JSON 协议边界
+            raise GithubAuthTransportError("GitHub 提交统计无效") from error
+        if not isinstance(payload, list) or len(payload) > 1:
+            raise GithubAuthTransportError("GitHub 提交统计无效")
+        for part in response.headers.get("Link", "").split(","):
+            if 'rel="last"' in part:
+                query = parse_qs(urlparse(part.split(">")[0].strip().lstrip("<")).query)
+                page = query.get("page", [""])[0]
+                if not page.isdigit() or int(page) < 1 or not payload:
+                    raise GithubAuthTransportError("GitHub 提交分页无效")
+                return int(page)
+        return len(payload)
 
     def _request(self, *, headers: dict[str, str] | None = None) -> AsyncRequestUtils:
         """构造 GitHub OAuth 请求客户端，不复用当前业务 Token 请求头。"""

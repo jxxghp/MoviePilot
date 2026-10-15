@@ -5,7 +5,7 @@
 
 ## Result
 
-- OpenAPI HTTP operations: **428**
+- OpenAPI HTTP operations: **429**
 - Stable `moviepilot_api` operations: **231**
 - Exact HTTP routes used by the gateway: **229**
 - OpenAPI routes matched directly by the gateway: **228**
@@ -23,7 +23,7 @@
 | `provider-skill` | 12 | Low-level downloader or media-server capability owned by a provider Skill. |
 | `stream_or_binary` | 13 | Streaming or binary response owned by a direct client transport. |
 | `transport_or_identity` | 76 | Authentication, protocol, callback, account, or conversation transport boundary. |
-| `ui_presentation` | 17 | Frontend or plugin-rendered presentation contract. |
+| `ui_presentation` | 18 | Frontend or plugin-rendered presentation contract. |
 
 ## Gateway Identity Audit
 
@@ -341,6 +341,7 @@ Plugin ratings include this installation's own rating and require the same admin
 | `POST` | `/api/v1/github/auth/start` | github | `transport_or_identity` | host-runtime | 启动 GitHub 设备授权 |
 | `GET` | `/api/v1/github/auth/status` | github | `transport_or_identity` | host-runtime | 查询 GitHub Token 状态 |
 | `DELETE` | `/api/v1/github/auth/token` | github | `transport_or_identity` | host-runtime | 清除 GitHub Token |
+| `GET` | `/api/v1/github/community` | github | `ui_presentation` | host-ui | 核对当前 GitHub 用户的社区贡献 |
 | `DELETE` | `/api/v1/history/download` | history | `gateway` | download.history.delete | 删除下载历史记录 |
 | `GET` | `/api/v1/history/download` | history | `gateway` | download.history.list | 查询下载历史记录 |
 | `DELETE` | `/api/v1/history/transfer` | history | `gateway` | transfer.history.delete | 删除整理记录 |

@@ -358,6 +358,25 @@ MoviePilot 的内置 Agent 也可以作为 MCP Client 连接外部 MCP 服务器
 | -32603 | Internal error | 服务器内部错误 |
 
 ## 6. RESTful API
+
+### 社区贡献勋章（前端专用）
+
+`GET /api/v1/github/community?refresh=false` 仅接受超级管理员登录态，沿用实例 GitHub
+Token 的权限边界；普通用户不能继承该账号的荣誉。此接口不加入 Agent/MCP 工具。
+`data` 为脱敏身份、`state`（unconfigured/ready/unavailable）、`tier`、
+`specialty`、`total`、逐仓 `commits/merged_prs`、`checked_at` 及 `stale`。
+只有 ready 且 total 大于零时显示头像菜单入口。Token 原文不进入响应。
+
+统计九个公开社区仓库：MoviePilot、Frontend、Plugins、Rust、Resources、Server、OCR、
+Web、Wiki。私有 Build 不参与公开贡献认定。PR 按所有分支的已合并作者统计，提交按
+MoviePilot/Frontend/Rust 的 v3、其余仓库 main 的作者统计。每仓取两者较大值后汇总，
+不是 PR 数与提交数相加。1/10/50/200 分别对应 bronze/silver/gold/core；
+单领域保留该领域，多个领域为 ecosystem。core 是累计里程碑，不授予维护权限。
+仅有 Issue、评论、Star、未被 GitHub 关联的提交暂不计入。
+
+服务端合并并发查询、缓存六小时，refresh=true 仍受一分钟冷却保护。网络失败保留同
+Token 的上次已验证结果并标记 stale；无旧快照时为 unavailable。换 Token、删除 Token、
+明确失效或查询期间切换账号都不能重新发布旧身份荣誉。
 HTTP 工具管理端点统一位于 `/api/v1/mcp`，并与标准 MCP JSON-RPC 端点共享同一最终工具目录。
 
 ### 相关 REST 端点

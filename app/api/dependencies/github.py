@@ -3,6 +3,7 @@
 from fastapi import Depends, HTTPException
 
 from app.api.context import get_host_runtime
+from app.application.community.contributions import CommunityContributionService
 from app.application.github_auth import GithubAuthService
 from app.startup.composition.context import HostRuntime
 
@@ -14,3 +15,12 @@ def get_github_auth_service(
     if runtime.system.github_auth is None:
         raise HTTPException(status_code=503, detail="GitHub 授权服务尚未初始化")
     return runtime.system.github_auth
+
+
+def get_community_contribution_service(
+    runtime: HostRuntime = Depends(get_host_runtime),
+) -> CommunityContributionService:
+    """复用实例启动装配的贡献服务，不在请求中构造网络客户端或缓存。"""
+    if runtime.system.github_community is None:
+        raise HTTPException(status_code=503, detail="社区贡献服务尚未初始化")
+    return runtime.system.github_community

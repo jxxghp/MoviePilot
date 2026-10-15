@@ -18,6 +18,7 @@ from app.schemas.system import SystemUpdateStatus, SystemUpdateTarget
 from app.schemas.types import SystemConfigKey
 
 if TYPE_CHECKING:
+    from app.application.community.contributions import CommunityContributionService
     from app.application.github_auth import GithubAuthService
     from app.application.rules import AsyncRuleGroupMutationService
 
@@ -194,6 +195,7 @@ class SystemService:
         plugin_mutation: Callable[[str], AbstractContextManager[None]],
         rule_group_mutation: Callable[[], AbstractAsyncContextManager[AsyncRuleGroupMutationService]],
         github_auth: GithubAuthService | None = None,
+        github_community: CommunityContributionService | None = None,
     ) -> None:
         """保存由启动组合根注入的全部外部端口和 GitHub 授权服务。"""
         self.settings = settings
@@ -210,6 +212,7 @@ class SystemService:
         self._plugin_mutation = plugin_mutation
         self._rule_group_mutation = rule_group_mutation
         self.github_auth = github_auth
+        self.github_community = github_community
 
     async def publish_config_changed(
         self,

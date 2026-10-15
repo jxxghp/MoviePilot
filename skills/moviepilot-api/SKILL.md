@@ -220,7 +220,7 @@ no hidden fallback to an arbitrary REST route.
 
 MoviePilot's underlying OpenAPI document is larger because it also serves the
 web UI, authentication, account lifecycle, binary and streaming responses,
-callbacks, compatibility endpoints, and source-specific presentation routes.
+callbacks, compatibility endpoints, and GitHub recognition/presentation routes.
 Those routes are deliberately not copied into this Skill. A non-listed route
 must be one of the following before the Agent may use its capability:
 

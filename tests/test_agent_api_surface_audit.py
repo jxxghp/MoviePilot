@@ -60,6 +60,15 @@ def test_cleanup_confirmation_stays_in_authenticated_management_workflow() -> No
     assert (disposition, owner, operations) == ("ui_presentation", "host-ui", [])
 
 
+def test_community_recognition_stays_in_frontend_workflow() -> None:
+    """贡献徽章是管理员身份的界面投影，不可经 Agent 工具继承或读取凭据。"""
+    classify = _load_generator()["_classify"]
+    disposition, owner, _, operations = classify(
+        method="GET", path="/api/v1/github/community", tags=["github"], gateway_routes={},
+    )
+    assert (disposition, owner, operations) == ("ui_presentation", "host-ui", [])
+
+
 def test_recent_business_routes_are_exposed_as_stable_gateway_operations() -> None:
     """近期高层业务端点必须保持在 moviepilot_api，而不是落入边界归属。"""
     audit = json.loads(AUDIT_JSON.read_text(encoding="utf-8"))

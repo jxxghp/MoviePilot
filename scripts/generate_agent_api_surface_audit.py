@@ -218,6 +218,13 @@ def _classify(
             "Health, bootstrap, federation, or external webhook transport endpoint; it is not recursively callable as an Agent business action.",
             [],
         )
+    if method == "GET" and path == "/api/v1/github/community":
+        return (
+            "ui_presentation",
+            "host-ui",
+            "Community recognition is a presentation of the administrator-configured GitHub identity, not an Agent business operation.",
+            [],
+        )
     if path.startswith(GITHUB_AUTH_PATH_PREFIXES):
         return (
             "transport_or_identity",

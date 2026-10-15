@@ -261,6 +261,14 @@ class GithubAuthService:
             needs_reauthorization=needs_reauthorization,
         )
 
+    async def access_token(self) -> str:
+        """为受信任的服务端 GitHub 用例提供可刷新凭据，禁止投影到 API。"""
+        token = self._read_access_token()
+        metadata = self._read_auth_metadata()
+        if token and metadata:
+            token, _, _ = await self._refresh_if_needed(token, metadata)
+        return token
+
     async def set_manual_token(self, token: str) -> GithubAuthStatus:
         """保存手动 Token 并清理旧 OAuth 元数据，兼容原有 PAT 配置方式。"""
         normalized = token.strip()

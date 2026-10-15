@@ -18,6 +18,7 @@ from app.adapters.external.server import MoviePilotServerHelper
 from app.adapters.network.http import AsyncRequestUtils
 from app.adapters.system import rust as rust_accel
 from app.adapters.system.update import system_update_manager
+from app.application.community.contributions import CommunityContributionService
 from app.application.configuration import RuntimeSettingsService, SystemConfigService
 from app.application.github_auth import GithubAuthService
 from app.application.plugin.runtime import plugin_system_config_mutation
@@ -337,10 +338,11 @@ def compose_system_service(
     rule_group_mutation: Callable[[], Any],
 ) -> SystemService:
     """构造 System API 应用服务并注入全部具体外部能力。"""
+    github_client = GithubAuthClient(settings)
     github_auth = GithubAuthService(
         settings=settings,
         system_config=system_config,
-        transport=GithubAuthClient(settings),
+        transport=github_client,
         client_id=GITHUB_DEVICE_CLIENT_ID,
     )
     return SystemService(
@@ -358,4 +360,5 @@ def compose_system_service(
         plugin_mutation=plugin_system_config_mutation,
         rule_group_mutation=rule_group_mutation,
         github_auth=github_auth,
+        github_community=CommunityContributionService(token_reader=github_auth.access_token, transport=github_client),
     )

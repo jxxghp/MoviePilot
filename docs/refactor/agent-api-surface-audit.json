@@ -6,7 +6,7 @@
     "provider-skill": 12,
     "stream_or_binary": 13,
     "transport_or_identity": 76,
-    "ui_presentation": 17
+    "ui_presentation": 18
   },
   "dynamic_gateway_routes": [
     {
@@ -2333,7 +2333,7 @@
   ],
   "gateway_operation_count": 231,
   "matched_gateway_http_route_count": 228,
-  "openapi_operation_count": 428,
+  "openapi_operation_count": 429,
   "operations": [
     {
       "disposition": "consolidated",
@@ -3121,6 +3121,18 @@
       "path": "/api/v1/github/auth/token",
       "reason": "GitHub Token authorization and first-run credential setup are host identity/configuration flows; they are not Agent business actions.",
       "summary": "清除 GitHub Token",
+      "tags": [
+        "github"
+      ]
+    },
+    {
+      "disposition": "ui_presentation",
+      "method": "GET",
+      "operation_ids": [],
+      "owner": "host-ui",
+      "path": "/api/v1/github/community",
+      "reason": "Community recognition is a presentation of the administrator-configured GitHub identity, not an Agent business operation.",
+      "summary": "核对当前 GitHub 用户的社区贡献",
       "tags": [
         "github"
       ]

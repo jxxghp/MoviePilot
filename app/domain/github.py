@@ -46,6 +46,65 @@ class GithubUser:
     """GitHub 当前用户的最小身份摘要。"""
 
     login: str
+    user_id: int = 0
+
+
+# 仓库与统计分支由社区维护，调用方不能把任意外部仓库注入授权请求。
+COMMUNITY_REPOSITORIES = (
+    ("MoviePilot", "backend", "v3"),
+    ("MoviePilot-Frontend", "frontend", "v3"),
+    ("MoviePilot-Plugins", "plugins", "main"),
+    ("MoviePilot-Rust", "performance", "v3"),
+    ("MoviePilot-Resources", "resources", "main"),
+    ("MoviePilot-Server", "services", "main"),
+    ("MoviePilot-OCR", "services", "main"),
+    ("MoviePilot-Web", "website", "main"),
+    ("MoviePilot-Wiki", "docs", "main"),
+)
+
+
+@dataclass(frozen=True, slots=True)
+class GithubRepositoryContribution:
+    """保留已合并 PR 与指定分支作者提交数，避免把两者相加重复奖励。"""
+
+    repository: str
+    area: str
+    commits: int
+    merged_prs: int
+
+    @property
+    def units(self) -> int:
+        """同仓取两类证据较大值，兼顾直接提交与被合并的贡献。"""
+        return max(self.commits, self.merged_prs)
+
+
+@dataclass(frozen=True, slots=True)
+class GithubCommunityProfile:
+    """社区荣誉的脱敏快照；不可用与确证零贡献是不同状态。"""
+
+    state: str = "unconfigured"
+    login: str | None = None
+    user_id: int | None = None
+    tier: str | None = None
+    specialty: str | None = None
+    total: int = 0
+    repositories: tuple[GithubRepositoryContribution, ...] = ()
+    checked_at: int | None = None
+    stale: bool = False
+
+
+class GithubCommunityPort(Protocol):
+    """查询已认证 GitHub 身份及社区贡献证据的外部端口。"""
+
+    async def get_user(self, access_token: str) -> GithubUser:
+        """使用 Token 校验身份，不接受前端声明的 GitHub 用户名。"""
+        ...
+
+    async def get_repository_contribution(
+        self, access_token: str, user: GithubUser, repository: str, area: str, branch: str,
+    ) -> GithubRepositoryContribution:
+        """取得固定社区仓库的已合并 PR 数与目标分支作者提交数。"""
+        ...
 
 
 class GithubAuthPort(Protocol):

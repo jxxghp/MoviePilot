@@ -69,6 +69,7 @@ def test_system_sensitive_read_endpoints_require_superuser():
 def test_github_token_endpoints_require_superuser():
     """GitHub Token 状态和写入接口必须只允许管理员调用。"""
     endpoints = [
+        github_endpoint.get_community_profile,
         github_endpoint.get_auth_status,
         github_endpoint.start_auth,
         github_endpoint.poll_auth,
