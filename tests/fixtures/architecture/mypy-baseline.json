@@ -1652,7 +1652,7 @@
   },
   "app/modules/indexer/parser/bitpt.py": {
     "arg-type": 4,
-    "assignment": 25,
+    "assignment": 24,
     "attr-defined": 1,
     "empty-body": 1,
     "no-untyped-call": 1,
@@ -1668,25 +1668,25 @@
     "type-arg": 1
   },
   "app/modules/indexer/parser/file_list.py": {
-    "assignment": 5,
+    "assignment": 4,
     "no-untyped-call": 3,
     "no-untyped-def": 5,
     "type-arg": 1
   },
   "app/modules/indexer/parser/gazelle.py": {
-    "assignment": 6,
+    "assignment": 4,
     "no-untyped-call": 1,
     "no-untyped-def": 5,
     "type-arg": 1
   },
   "app/modules/indexer/parser/hddolby.py": {
-    "assignment": 14,
+    "assignment": 13,
     "no-untyped-call": 1,
     "no-untyped-def": 7,
     "type-arg": 1
   },
   "app/modules/indexer/parser/ipt.py": {
-    "assignment": 5,
+    "assignment": 4,
     "no-untyped-call": 1,
     "no-untyped-def": 5,
     "return": 1,
@@ -1701,7 +1701,7 @@
   },
   "app/modules/indexer/parser/nexus_audiences.py": {
     "arg-type": 6,
-    "assignment": 7,
+    "assignment": 6,
     "no-any-return": 1,
     "no-untyped-call": 8,
     "no-untyped-def": 34,
@@ -1710,23 +1710,23 @@
     "var-annotated": 1
   },
   "app/modules/indexer/parser/nexus_hhanclub.py": {
-    "assignment": 2,
+    "assignment": 1,
     "no-untyped-call": 3,
     "no-untyped-def": 3
   },
   "app/modules/indexer/parser/nexus_php.py": {
-    "assignment": 12,
+    "assignment": 11,
     "no-untyped-call": 8,
     "no-untyped-def": 10,
     "type-arg": 1
   },
   "app/modules/indexer/parser/nexus_project.py": {
-    "assignment": 4,
+    "assignment": 3,
     "no-untyped-call": 2,
     "no-untyped-def": 2
   },
   "app/modules/indexer/parser/nexus_rabbit.py": {
-    "assignment": 10,
+    "assignment": 9,
     "call-overload": 1,
     "no-untyped-call": 1,
     "no-untyped-def": 5,
@@ -1734,45 +1734,45 @@
     "type-arg": 1
   },
   "app/modules/indexer/parser/rousi.py": {
-    "assignment": 12,
+    "assignment": 11,
     "no-untyped-def": 8,
     "type-arg": 1
   },
   "app/modules/indexer/parser/small_horse.py": {
-    "assignment": 7,
+    "assignment": 5,
     "no-untyped-call": 3,
     "no-untyped-def": 5,
     "type-arg": 1
   },
   "app/modules/indexer/parser/sunnypt.py": {
     "arg-type": 2,
-    "assignment": 10,
+    "assignment": 9,
     "type-arg": 2
   },
   "app/modules/indexer/parser/tnode.py": {
-    "assignment": 4,
+    "assignment": 3,
     "no-untyped-call": 1,
     "no-untyped-def": 6,
     "type-arg": 1
   },
   "app/modules/indexer/parser/torrent_leech.py": {
-    "assignment": 7,
+    "assignment": 6,
     "no-untyped-call": 2,
     "type-arg": 1
   },
   "app/modules/indexer/parser/unit3d.py": {
-    "assignment": 4,
+    "assignment": 3,
     "no-untyped-call": 2,
     "no-untyped-def": 5,
     "type-arg": 1
   },
   "app/modules/indexer/parser/yema.py": {
-    "assignment": 13,
+    "assignment": 12,
     "type-arg": 1
   },
   "app/modules/indexer/parser/zhixing.py": {
     "arg-type": 7,
-    "assignment": 28,
+    "assignment": 27,
     "empty-body": 1,
     "no-untyped-call": 1,
     "no-untyped-def": 9,

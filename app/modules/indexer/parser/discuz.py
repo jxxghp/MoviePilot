@@ -35,7 +35,7 @@ class DiscuzUserInfo(SiteParserBase):
 
     def _parse_user_detail_info(self, html_text: str):
         """
-        解析用户额外信息，加入时间，等级
+        解析用户等级、加入时间、积分和流量信息
         :param html_text:
         :return:
         """
@@ -54,12 +54,13 @@ class DiscuzUserInfo(SiteParserBase):
             if join_at_text:
                 self.join_at = time_tools.normalize_datetime(join_at_text[0].strip())
 
-            # 分享率
-            ratio_text = html.xpath('//li[contains(.//text(), "分享率")]//text()')
-            if ratio_text:
-                ratio_match = re.search(r"\(([\d,.]+)\)", ratio_text[0])
-                if ratio_match and ratio_match.group(1).strip():
-                    self.bonus = text_tools.parse_float(ratio_match.group(1))
+            # 分享率可能与其他 PT 指标同处一行，需合并子标签文本并按标签取值。
+            ratio_items = html.xpath('//li[contains(., "分享率")]')
+            for ratio_item in ratio_items:
+                ratio_match = re.search(r"分享率\s*[:：]?\s*[（(]?\s*([\d,.]+)", ratio_item.xpath('string(.)'))
+                if ratio_match:
+                    self.ratio = text_tools.parse_float(ratio_match.group(1))
+                    break
 
             # 积分
             bouns_text = html.xpath('//li[em[text()="积分"]]/text()')
