@@ -20,9 +20,6 @@ class NexusPhpSiteUserInfo(SiteParserBase):
     schema = SiteSchema.NexusPhp
     _summary_seeding: Optional[int] = None
     _summary_seeding_size: Optional[int] = None
-    _upload_parsed: bool = False
-    _download_parsed: bool = False
-    _ratio_parsed: bool = False
 
     def _parse_site_page(self, html_text: str):
         """识别用户详情入口，并为定制站点选择已知的做种接口。"""
@@ -153,18 +150,16 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         html_text = self._prepare_html_text(html_text)
         upload_match = re.search(r"[^总]上[传傳]量?[:：_<>/a-zA-Z-=\"'\s#;]+([\d,.\s]+[KMGTPI]*B)", html_text,
                                  re.IGNORECASE)
-        self._upload_parsed = bool(upload_match)
         self.upload = self.num_filesize(upload_match.group(1).strip()) if upload_match else 0
         download_match = re.search(r"[^总子影力]下[载載]量?[:：_<>/a-zA-Z-=\"'\s#;]+([\d,.\s]+[KMGTPI]*B)", html_text,
                                    re.IGNORECASE)
-        self._download_parsed = bool(download_match)
         self.download = self.num_filesize(download_match.group(1).strip()) if download_match else 0
         ratio_match = re.search(r"分享率[:：_<>/a-zA-Z-=\"'\s#;]+([\d,.\s]+)", html_text)
         # 计算分享率
         calc_ratio = 0.0 if self.download <= 0.0 else round(self.upload / self.download, 3)
         # 优先使用页面上的分享率
-        self._ratio_parsed = bool(ratio_match and ratio_match.group(1).strip())
-        self.ratio = text_tools.parse_float(ratio_match.group(1)) if ratio_match and self._ratio_parsed else calc_ratio
+        self.ratio = text_tools.parse_float(ratio_match.group(1)) if (
+            ratio_match and ratio_match.group(1).strip()) else calc_ratio
         leeching_match = re.search(r"(Torrents leeching|下载中)[\u4E00-\u9FA5\D\s]+(\d+)[\s\S]+<", html_text)
         self.leeching = text_tools.parse_int(leeching_match.group(2)) if leeching_match and leeching_match.group(
             2).strip() else 0
@@ -655,22 +650,19 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         return message_head_text, message_date_text, message_content_text
 
     def _fixup_traffic_info(self, html):
-        """从详情表格补充首页未识别的流量和魔力值，保留已识别的零值。"""
-        if not self._upload_parsed:
+        """从详情表格补读为零的流量、分享率和魔力值，非零值保持不变。"""
+        if not self.upload:
             upload_text = self._traffic_table_value(html, r"上[传傳]量?")
             if upload_text is not None:
                 self.upload = self.num_filesize(upload_text)
-                self._upload_parsed = True
-        if not self._download_parsed:
+        if not self.download:
             download_text = self._traffic_table_value(html, r"下[载載]量?")
             if download_text is not None:
                 self.download = self.num_filesize(download_text)
-                self._download_parsed = True
-        if not self._ratio_parsed:
+        if not self.ratio:
             ratio_text = self._traffic_table_value(html, "分享率")
             if ratio_text is not None:
                 ratio = text_tools.parse_float(ratio_text)
-                self._ratio_parsed = True
             else:
                 ratio = round(self.upload / self.download, 3) if self.download else 0.0
             self.ratio = ratio

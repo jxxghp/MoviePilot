@@ -41,12 +41,11 @@ def test_nexus_php_depthstudio_traffic_falls_back_to_details():
     assert parser.ratio == 4.393
 
 
-@pytest.mark.parametrize("upload, download", [("1 GB", "2 GB"), ("0 B", "0 B")])
-def test_nexus_php_detail_traffic_preserves_parsed_values(upload, download):
-    """详情兜底不能覆盖首页已解析的数值，包括合法的零流量和零分享率。"""
+def test_nexus_php_detail_traffic_preserves_nonzero_values():
+    """详情兜底不能覆盖已有的非零流量和分享率。"""
     parser = _build_parser()
     parser._parse_user_base_info(
-        f"<html><body>上传量: {upload} 下载量: {download} 分享率: 0</body></html>"
+        "<html><body>上传量: 1 GB 下载量: 2 GB 分享率: 0.5</body></html>"
     )
     original = parser.upload, parser.download, parser.ratio
 
@@ -61,12 +60,14 @@ def test_nexus_php_detail_traffic_preserves_parsed_values(upload, download):
 
 @pytest.mark.parametrize("homepage, expected_upload, expected_download, expected_ratio", [
     ("上传量: 1 GB", 1024 ** 3, round(73.54 * 1024 ** 3), 4.392),
-    ("下载量: 0 B 分享率: 0", round(323.04 * 1024 ** 3), 0, 0.0),
+    ("下载量: 0 B 分享率: 0", round(323.04 * 1024 ** 3), round(73.54 * 1024 ** 3), 4.392),
+    ("上传量: 0 B 下载量: 0 B 分享率: 0", round(323.04 * 1024 ** 3), round(73.54 * 1024 ** 3), 4.392),
+    ("上传量: 1 GB 下载量: 2 GB 分享率: 0", 1024 ** 3, 2 * 1024 ** 3, 4.392),
 ])
-def test_nexus_php_detail_traffic_fills_only_missing_fields(
+def test_nexus_php_detail_traffic_fills_zero_fields(
     homepage, expected_upload, expected_download, expected_ratio
 ):
-    """仅补齐缺失字段，缺失分享率时优先取详情表格的显示值。"""
+    """零值字段允许从详情补读，分享率优先取详情表格的显示值。"""
     parser = _build_parser()
     parser._parse_user_base_info(f"<html><body>{homepage}</body></html>")
     detail = (Path(__file__).parent / "fixtures" / "depthstudio_userdetails.html").read_text(encoding="utf-8")
@@ -76,6 +77,21 @@ def test_nexus_php_detail_traffic_fills_only_missing_fields(
     assert parser.upload == expected_upload
     assert parser.download == expected_download
     assert parser.ratio == expected_ratio
+
+
+def test_nexus_php_zero_ratio_uses_final_traffic_without_displayed_ratio():
+    """详情未显示分享率时，按补读后的上传/下载量重新计算零分享率。"""
+    parser = _build_parser()
+    parser._parse_user_base_info("<html><body>上传量: 0 B 下载量: 0 B 分享率: 0</body></html>")
+
+    parser._parse_user_detail_info(
+        '<table><tr><td><strong>上传量</strong>: 8 GB</td>'
+        '<td><strong>下载量</strong>: 2 GB</td></tr></table>'
+    )
+
+    assert parser.upload == 8 * 1024 ** 3
+    assert parser.download == 2 * 1024 ** 3
+    assert parser.ratio == 4.0
 
 
 @pytest.mark.parametrize("table, expected_upload, expected_download, expected_ratio", [
