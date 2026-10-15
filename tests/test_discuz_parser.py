@@ -19,10 +19,13 @@ def parser() -> Iterator[DiscuzUserInfo]:
     instance.close()
 
 
-def test_discuz_traffic_defaults_are_floats(parser: DiscuzUserInfo) -> None:
-    for value in (parser.upload, parser.download, parser.ratio):
-        assert value == 0.0
-        assert isinstance(value, float)
+def test_discuz_traffic_defaults_use_integer_bytes(parser: DiscuzUserInfo) -> None:
+    """上传/下载量使用整数字节，分享率保持浮点数。"""
+    for value in (parser.upload, parser.download):
+        assert value == 0
+        assert type(value) is int
+    assert parser.ratio == 0.0
+    assert isinstance(parser.ratio, float)
 
 
 @pytest.mark.parametrize("include_menu", [True, False])

@@ -98,9 +98,9 @@ class SiteParserBase(metaclass=ABCMeta):
         self.join_at = None
         self.bonus = 0.0
 
-        # 流量信息
-        self.upload = 0.0
-        self.download = 0.0
+        # 上传/下载量按整数字节计，分享率为浮点数
+        self.upload = 0
+        self.download = 0
         self.ratio = 0.0
 
         # 做种信息
