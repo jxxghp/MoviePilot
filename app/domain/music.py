@@ -234,7 +234,7 @@ def music_completed_album_keys(metas: list[MetaMusic], target: MusicInfo) -> lis
 
 
 def music_album_candidate_matches(album: MusicAlbumInfo, meta: MetaMusic, tracks: list[MetaMusic]) -> bool:
-    """来源专辑必须满足名称、署名、版本与完整本地对位；弱专辑名需要额外曲目证据。"""
+    """核验名称、署名、版本与本地对位；普通年份可缺省，弱专辑名需要额外曲目证据。"""
     if not tracks or not album.tracks or not music_album_has_consistent_tracks(album):
         return False
     info = album.to_music_info()
@@ -245,7 +245,7 @@ def music_album_candidate_matches(album: MusicAlbumInfo, meta: MetaMusic, tracks
     if (artists or any(music_credit_values(meta).values())) and not music_album_artist_evidence_matches(album, meta):
         return False
     evidence = MetaMusic(title=meta.album or meta.title, version=meta.version)
-    if not music_version_matches(info, evidence) or not music_release_year_matches(info, meta):
+    if not music_version_matches(info, evidence) or not music_album_year_matches(info, meta):
         return False
     aligned = align_music_tracks(tracks, album.tracks)
     if len(aligned) != len(tracks):
@@ -448,10 +448,7 @@ def music_album_title_is_weak(meta: MetaMusic) -> bool:
     source = meta.field_sources.get("album" if meta.album else "title")
     if source in {"tag", "album_tags", "cue", "torrent", "manual", "remote"}:
         return False
-    return music_text_key(title) in {
-        "music", "musics", "audio", "downloads", "download", "inbox", "unknown", "untitled",
-        "various", "variousartists", "va", "音乐", "音樂", "下载", "下載", "未分类", "未分類",
-    }
+    return MetaMusic.is_generic_album_name(title)
 
 
 def expand_music_tracks(metas: list[MetaMusic]) -> tuple[list[MetaMusic], list[int]]:
@@ -749,7 +746,10 @@ def music_artist_alias_targets(
         title = (meta.album or meta.title) if info.music_type == MUSIC_ENTITY_ALBUM else meta.title
         if not music_title_matches(info, title, preserve_editions=True) or not music_version_matches(info, meta):
             continue
-        if not music_release_year_matches(info, meta):
+        year_matches = (music_album_year_matches
+                        if isinstance(candidate, MusicAlbumInfo) or info.music_type == MUSIC_ENTITY_ALBUM
+                        else music_release_year_matches)
+        if not year_matches(info, meta):
             continue
         for artist_id in candidate.artist_ids:
             if not artist_id or (artist_id not in targets and len(targets) >= 3):
@@ -819,6 +819,11 @@ def music_year_matches(music: MusicInfo, meta: MetaMusic) -> bool:
         return int(music.year) == int(meta.year)
     except (TypeError, ValueError):
         return str(music.year).strip() == str(meta.year).strip()
+
+
+def music_album_year_matches(music: MusicInfo, meta: MetaMusic) -> bool:
+    """普通年份仅作排名线索；双方明确的发行年才约束版本，来源首发年不能冒充发行年。"""
+    return not meta.release_year or not music.release_year or meta.release_year == music.release_year
 
 
 def music_release_year_matches(music: MusicInfo, meta: MetaMusic) -> bool:

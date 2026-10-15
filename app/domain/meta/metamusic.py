@@ -1879,6 +1879,14 @@ class MetaMusic(MetaBase):
         """移除大小写、空白与标点，生成比对使用的紧凑文本。"""
         return _MUSIC_COMPACT_RE.sub("", str(value or "").casefold())
 
+    @classmethod
+    def is_generic_album_name(cls, value: Optional[str]) -> bool:
+        """通用收件目录不能凭文件名中的歌手升级为专辑线索；真实标签由调用方优先保留。"""
+        return cls.compact_text(value) in {
+            "music", "musics", "audio", "downloads", "download", "inbox", "unknown", "untitled",
+            "various", "variousartists", "va", "音乐", "音樂", "下载", "下載", "未分类", "未分類",
+        }
+
     @staticmethod
     def _clean_text(value: Any) -> str:
         """压缩多余空白，返回可用于匹配和展示的文本。"""
@@ -2056,8 +2064,9 @@ class MetaMusic(MetaBase):
             album_dir = parent.parent
         dir_info = self.parse_album_dir(album_dir.name)
         if dir_info:
-            # 目录名同时带歌手或年份才视为有意的专辑命名，避免把监控根目录误当专辑
-            if dir_info.get("artist") or dir_info.get("year"):
+            # 文件已明确歌手时，纯专辑名目录也可补足检索线索；通用监控根目录仍须排除。
+            if (dir_info.get("artist") or dir_info.get("year")
+                    or (self.artists and not self.is_generic_album_name(dir_info.get("album")))):
                 if not self.album and dir_info.get("album"):
                     self.album = dir_info["album"]
                     self.field_sources["album"] = "directory"

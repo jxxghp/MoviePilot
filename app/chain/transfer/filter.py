@@ -32,9 +32,9 @@ from app.domain.meta.metamusic import MetaMusic
 from app.domain.music import (
     MusicDirectoryMatch,
     music_album_matches,
+    music_album_year_matches,
     music_artist_matches,
     music_cover_priority,
-    music_release_year_matches,
     music_title_matches,
     music_track_title_is_weak,
     music_version_matches,
@@ -244,7 +244,7 @@ class _MusicFileFilterBase(_TransferOwnerBase):
             and (weak_title or music_title_matches(info, file_meta.title))
             and (not file_meta.album or not info.album or music_album_matches(info, file_meta.album))
             and ((weak_title and not file_meta.version) or music_version_matches(info, file_meta))
-            and music_release_year_matches(info, file_meta)
+            and music_album_year_matches(info, file_meta)
         )
         if not evidence_matches:
             logger.warning(
