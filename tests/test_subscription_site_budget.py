@@ -291,6 +291,78 @@ def test_skipped_search_releases_budget_without_external_interval():
     assert captured["next_allowed_at"] == now.isoformat(timespec="seconds")
 
 
+def test_local_rate_limit_defers_site_budget_for_full_window():
+    """本地流控拒绝必须按站点窗口写入冷却，而不是立即恢复后再次触发限流。"""
+    captured = {}
+
+    class _Repository(_WaitingRepository):
+        """记录预算收口参数。"""
+
+        def finish_site(self, **kwargs) -> bool:
+            """保存收口事实供断言。"""
+            captured.update(kwargs)
+            return True
+
+    now = datetime(2026, 9, 1, tzinfo=timezone.utc)
+    budget = SubscriptionSiteBudget(
+        repository=_Repository(),
+        owner="worker-a",
+        cancelled=lambda: False,
+        stop_state=ProcessStopState(),
+        clock=lambda: now,
+    )
+    claim = SiteBudgetClaim(
+        site_id=10,
+        acquired=True,
+        retry_at=now.isoformat(timespec="seconds"),
+        consecutive_failures=2,
+        lease_token="lease-token",
+    )
+
+    assert budget.finish(
+        claim,
+        SiteSearchObservation(attempted=False, outcome="deferred", error="触发流控规则"),
+        deferral_seconds=3601,
+    ) is True
+    assert captured["outcome"] == "deferred"
+    assert captured["error"] == "触发流控规则"
+    assert captured["next_allowed_at"] == (now + timedelta(seconds=3601)).isoformat(timespec="seconds")
+
+
+def test_deferred_site_cooldown_blocks_other_subscriptions_without_failure_growth(tmp_path):
+    """窗口冷却中的站点对其它订阅同样不可认领，且本地限流不计入失败次数。"""
+    repository, engine = _repository(tmp_path)
+    claim = repository.claim_site(site_id=30, owner="worker-a", lease_seconds=900)
+    future = (datetime.now(timezone.utc) + timedelta(seconds=3601)).isoformat(timespec="seconds")
+
+    assert repository.finish_site(
+        site_id=30,
+        lease_token=claim.lease_token,
+        outcome="deferred",
+        next_allowed_at=future,
+        error="触发流控规则，3600 秒内访问次数不得超过 25 次",
+    ) is True
+
+    waiting = repository.claim_site(site_id=30, owner="worker-b", lease_seconds=900)
+    assert waiting.acquired is False
+    assert waiting.wait_reason == "cooldown"
+    assert waiting.retry_at == future
+    with Session(engine) as session:
+        record = session.execute(
+            select(SiteBudgetRecord).where(SiteBudgetRecord.site_id == 30)
+        ).scalar_one()
+        assert record.consecutive_failures == 0
+        assert record.success_streak == 0
+        assert record.last_outcome == "deferred"
+        record.next_allowed_at = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(timespec="seconds")
+        session.commit()
+
+    recovered = repository.claim_site(site_id=30, owner="worker-b", lease_seconds=900)
+    assert recovered.acquired is True
+    assert recovered.consecutive_failures == 0
+    engine.dispose()
+
+
 def test_search_provider_reports_cooled_site_without_blocking_other_results():
     """错误冷却中的站点返回空页并记录延后，而非阻塞 provider 或制造失败。"""
     repository = _WaitingRepository()
@@ -385,6 +457,60 @@ def test_search_provider_releases_successful_site_budget():
     assert snapshot.release_failure_count == 0
     chain.record_subscription_site_budget_failure("站点 Flaky 搜索失败：HTTP 429")
     assert not chain.consume_subscription_site_budget_failures()
+
+
+def test_search_provider_defers_budget_for_local_rate_limit_window():
+    """同步 provider 遇到本地流控拒绝时同样按站点窗口写入冷却，且不算站点失败。"""
+    captured = {}
+
+    class _Repository(_WaitingRepository):
+        """提供立即可用租约并记录收口参数。"""
+
+        def claim_site(self, *, site_id: int, owner: str, lease_seconds: int) -> SiteBudgetClaim:
+            """返回当前调用独占的站点租约。"""
+            del owner, lease_seconds
+            return SiteBudgetClaim(
+                site_id=site_id,
+                acquired=True,
+                retry_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                consecutive_failures=0,
+                lease_token="lease-token",
+            )
+
+        def finish_site(self, **kwargs) -> bool:
+            """记录本地流控收口事实。"""
+            captured.update(kwargs)
+            return True
+
+    budget = SubscriptionSiteBudget(
+        repository=_Repository(),
+        owner="manual-worker",
+        cancelled=lambda: False,
+        stop_state=ProcessStopState(),
+    )
+    chain = object.__new__(SearchChain)
+    chain.configure_subscription_site_budget(budget)
+
+    def search_site_torrents(**_kwargs):
+        """模拟索引器被本地流控拒绝，未发出任何请求。"""
+        report_site_search_outcome(attempted=False, outcome="deferred", error="触发流控规则")
+        return []
+
+    chain.search_site_torrents = search_site_torrents
+    before = datetime.now(timezone.utc)
+
+    result = chain._search_site_torrents_with_budget(  # pylint: disable=protected-access
+        site={"id": 16, "name": "Limited", "limit_interval": 3600, "limit_count": 25, "limit_seconds": 20},
+        keyword="movie",
+        mtype=None,
+        page=0,
+    )
+
+    assert result == []
+    assert captured["outcome"] == "deferred"
+    assert captured["error"] == "触发流控规则"
+    assert datetime.fromisoformat(captured["next_allowed_at"]) >= before + timedelta(seconds=3600)
+    assert chain.consume_subscription_site_budget_failures() == ()
 
 
 def test_other_search_results_keep_site_failures_non_terminal():

@@ -520,6 +520,7 @@ class SearchChain(ChainBase):
     _torrent_keyword = staticmethod(SearchProviderOwner._torrent_keyword)
     _torrent_type = staticmethod(SearchProviderOwner._torrent_type)
     _search_site_torrents_with_budget = SearchProviderOwner._search_site_torrents_with_budget
+    _settle_site_search_result = SearchProviderOwner._settle_site_search_result
     _iter_provider_batches = SearchProviderOwner._iter_provider_batches
     _iter_provider_events = SearchProviderOwner._iter_provider_events
     _iter_torrent_events = SearchProviderOwner._iter_torrent_events

@@ -443,6 +443,78 @@ def test_site_window_wait_keeps_cursor(owner, monkeypatch):
     assert scan.collection.sources[key].error == "站点窗口限流"
 
 
+def test_site_rate_limit_window_defers_retry_until_window_refresh(owner, monkeypatch):
+    """站点触发计数窗口限流时按窗口长度退避，不能继续用秒级冷却反复重试。"""
+    monkeypatch.setattr(owner, "_sync_indexers", lambda _sites: [
+        {"id": 1, "name": "test", "parser": "mTorrent",
+         "limit_interval": 3600, "limit_count": 25, "limit_seconds": 20}
+    ])
+    def request(**_params):
+        report_site_search_outcome(
+            attempted=False, outcome="deferred",
+            error="触发流控规则，3600 秒内访问次数不得超过 25 次",
+        )
+        return []
+    monkeypatch.setattr(owner, "search_site_torrents", request)
+    scan = SearchScan(owner=owner, plan=plan([1]))
+    key = next(key for key in scan.queries if not key.startswith("plugin:"))
+    before = datetime.now(timezone.utc)
+
+    assert not scan.step(key)
+
+    assert datetime.fromisoformat(scan.retry[key]) >= before + timedelta(seconds=3600)
+    assert scan.retry_reasons[key] == "cooldown"
+    assert not scan.collection.sources[key].failed
+    assert not scan.collection.sources[key].exhausted
+
+
+def test_scan_persists_local_rate_limit_window_on_site_budget(owner, monkeypatch):
+    """本地流控退避必须写入站点预算，让其它订阅在窗口内共享同一冷却。"""
+    from app.application.subscription.sitebudget import SiteBudgetClaim, SubscriptionSiteBudget
+    from app.runtime.stop import ProcessStopState
+
+    captured = {}
+
+    class _Repository:
+        """发放独占租约并记录收口参数。"""
+
+        def claim_site(self, *, site_id, owner, lease_seconds, minimum_interval=0):
+            del owner, lease_seconds, minimum_interval
+            return SiteBudgetClaim(
+                site_id=site_id,
+                acquired=True,
+                retry_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                consecutive_failures=0,
+                lease_token="lease-token",
+            )
+
+        def finish_site(self, **kwargs):
+            captured.update(kwargs)
+            return True
+
+    monkeypatch.setattr(owner, "_sync_indexers", lambda _sites: [
+        {"id": 1, "name": "test", "parser": "mTorrent",
+         "limit_interval": 3600, "limit_count": 25, "limit_seconds": 20}
+    ])
+    def request(**_params):
+        report_site_search_outcome(attempted=False, outcome="deferred", error="触发流控规则")
+        return []
+    monkeypatch.setattr(owner, "search_site_torrents", request)
+    owner.configure_subscription_site_budget(SubscriptionSiteBudget(
+        repository=_Repository(), owner="scan-worker", cancelled=lambda: False,
+        stop_state=ProcessStopState(),
+    ))
+    scan = SearchScan(owner=owner, plan=plan([1]))
+    key = next(key for key in scan.queries if not key.startswith("plugin:"))
+    before = datetime.now(timezone.utc)
+
+    assert not scan.step(key)
+
+    assert captured["outcome"] == "deferred"
+    assert captured["error"] == "触发流控规则"
+    assert datetime.fromisoformat(captured["next_allowed_at"]) >= before + timedelta(seconds=3600)
+
+
 def test_defer_ignores_expired_retries_and_terminal_sources(owner, monkeypatch):
     """失败或耗尽来源的检查点残留不能覆盖仍活跃来源的冷却时间。"""
     from app.application.subscription.sitebudget import SubscriptionSearchDeferred

@@ -28,7 +28,12 @@ from app.application.subscription.sitebudget import (
 from app.chain.base import ChainBase
 from app.chain.search.contract import _SearchOwnerBase
 from app.chain.search.execution import MediaSearchPlan
-from app.chain.search.provider import _site_keyword, _site_request_interval, _wait_for_site_request
+from app.chain.search.provider import (
+    _site_keyword,
+    _site_rate_limit_backoff,
+    _site_request_interval,
+    _wait_for_site_request,
+)
 from app.chain.search.result import DisambiguationCache, SearchResultOwner, _resource_targets, stored_meta
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.episode import format_ranges
@@ -142,13 +147,16 @@ class SearchSources:
         else:
             _wait_for_site_request(site)
         with capture_site_search_observation() as observation:
+            deferral_seconds = 0.0
             try:
                 items = self.owner.search_site_torrents(site=site, keyword=query["keyword"],
                                                        mtype=media_type, page=page) or []
                 if self.activity:
                     self.activity.site(int(query["site"]), name=str(site.get("name") or ""), candidates=len(items), status=observation.outcome, attempted=observation.attempted)
                 if observation.outcome == "deferred":
-                    retry_at = (datetime.now(timezone.utc) + timedelta(seconds=AUTOMATIC_REQUEST_INTERVAL)).isoformat(timespec="seconds")
+                    # 本地流控未发出请求，按站点窗口退避，避免在限流窗口内以秒级间隔反复重试。
+                    deferral_seconds = _site_rate_limit_backoff(site) or float(AUTOMATIC_REQUEST_INTERVAL)
+                    retry_at = (datetime.now(timezone.utc) + timedelta(seconds=deferral_seconds)).isoformat(timespec="seconds")
                     return ScanPage(items, observation, retry_at, "cooldown")
                 if claim and budget:
                     budget.record_request(claim.site_id, len(items))
@@ -164,7 +172,7 @@ class SearchSources:
                 return ScanPage([], observation)
             finally:
                 if claim and budget:
-                    budget.finish(claim, observation)
+                    budget.finish(claim, observation, deferral_seconds=deferral_seconds)
 
 
 class SearchScan:

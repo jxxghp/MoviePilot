@@ -644,7 +644,8 @@ class SubscriptionSearchOper(DbOper):
         if outcome == "success":
             failures = max(0, record.consecutive_failures - 1)
             success_streak = record.success_streak + 1
-        elif outcome == "skipped":
+        elif outcome in {"skipped", "deferred"}:
+            # 本地流控拒绝没有发出请求，不累计失败，但保留未来冷却时间。
             failures = record.consecutive_failures
             success_streak = record.success_streak
         else:
