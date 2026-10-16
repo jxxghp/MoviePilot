@@ -115,7 +115,7 @@ def directory_settings(
     return _SchemaResponse(success=True, data=results)
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/options", summary="查询可用存储选项", response_model=List[_SchemaStorageOption]
 )
 def storage_options(
@@ -135,7 +135,7 @@ def storage_options(
     "/catalog",
     summary="查询存储类型目录",
     response_model=List[_SchemaStorageCatalogOption],
-)  # type: ignore[misc]
+)
 def storage_catalog(
     _: ApiPrincipal = Depends(get_current_active_user),
     page: CompatiblePageParam = None,
@@ -157,7 +157,7 @@ def storage_catalog(
     ]
 
 
-@router.post("/manage", summary="网盘存储统一管理", response_model=_SchemaResponse[Dict[str, Any]])  # type: ignore[misc]
+@router.post("/manage", summary="网盘存储统一管理", response_model=_SchemaResponse[Dict[str, Any]])
 def manage(request: _SchemaManageRequest, _: ApiPrincipal = Depends(get_current_active_superuser)) -> Any:
     """
     网盘存储统一管理入口
@@ -221,7 +221,7 @@ def _list_files(
     return file_list or []
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/agent/list",
     summary="查询 Agent 可用目录和文件",
     response_model=List[_SchemaFileItem],
