@@ -8,15 +8,20 @@ import gc
 import logging
 import os
 import sys
-from typing import Any, Callable, Optional, cast
+from typing import Callable, Optional, ParamSpec, TypeVar, cast
 
 import psutil
+
+_Params = ParamSpec("_Params")
+_Return = TypeVar("_Return")
 
 logger = logging.getLogger(__name__)
 
 
-def memory_gc(force_collect: bool = True,
-              log_memory_usage: bool = False) -> Callable:
+def memory_gc(
+    force_collect: bool = True,
+    log_memory_usage: bool = False,
+) -> Callable[[Callable[_Params, _Return]], Callable[_Params, _Return]]:
     """
     内存回收装饰器
 
@@ -27,9 +32,11 @@ def memory_gc(force_collect: bool = True,
     Returns:
         装饰器函数
     """
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[_Params, _Return]) -> Callable[_Params, _Return]:
+        """保留原调用参数与返回值类型，同时附加当前配置的内存处理。"""
         @functools.wraps(func)
-        def wrapper(*args, **kwargs) -> Any:
+        def wrapper(*args: _Params.args, **kwargs: _Params.kwargs) -> _Return:
+            """函数退出时执行 finally 回收，原结果或异常继续交给调用方。"""
             # 记录函数执行前的内存使用情况
             memory_before = None
             memory_after = None
@@ -80,7 +87,8 @@ def get_memory_usage() -> float:
     try:
         process = psutil.Process(os.getpid())
         memory_info = process.memory_info()
-        return memory_info.rss / 1024 / 1024  # 转换为MB
+        rss: int = memory_info.rss
+        return rss / 1024 / 1024  # 转换为MB
     except Exception as e:
         logger.warning(f"获取内存使用情况失败: {e}")
         return 0.0
@@ -210,7 +218,9 @@ def release_allocator_memory() -> Optional[str]:
     return None
 
 
-def memory_monitor(threshold_mb: Optional[float] = None) -> Callable:
+def memory_monitor(
+    threshold_mb: Optional[float] = None,
+) -> Callable[[Callable[_Params, _Return]], Callable[_Params, _Return]]:
     """
     内存监控装饰器，当内存使用超过阈值时自动触发垃圾回收
 
@@ -220,9 +230,11 @@ def memory_monitor(threshold_mb: Optional[float] = None) -> Callable:
     Returns:
         装饰器函数
     """
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[_Params, _Return]) -> Callable[_Params, _Return]:
+        """保留原调用参数与返回值类型，同时附加当前配置的内存处理。"""
         @functools.wraps(func)
-        def wrapper(*args, **kwargs) -> Any:
+        def wrapper(*args: _Params.args, **kwargs: _Params.kwargs) -> _Return:
+            """按阈值检查执行前后占用，函数抛错时保留原来的直接传播路径。"""
             # 检查内存使用情况
             current_memory = get_memory_usage()
 

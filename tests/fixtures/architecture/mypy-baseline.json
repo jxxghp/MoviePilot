@@ -2439,11 +2439,6 @@
     "no-any-return": 6,
     "type-arg": 4
   },
-  "app/runtime/gc.py": {
-    "no-any-return": 1,
-    "no-untyped-def": 2,
-    "type-arg": 4
-  },
   "app/runtime/progress.py": {
     "no-any-return": 4,
     "type-arg": 6
