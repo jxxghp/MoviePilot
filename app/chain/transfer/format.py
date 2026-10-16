@@ -6,7 +6,7 @@ from typing import List, Optional, Tuple, Union, cast
 from app.application.configuration import (
     get_configured_system_config,
 )
-from app.application.formatting import EpisodeFormatRuleHelper
+from app.application.formatting import EpisodeFormatRecommendation, EpisodeFormatRuleHelper
 from app.application.history.retry import max_failed_retries
 from app.application.transfer.feedback import TransferFailureNotification, classify_transfer_failure
 from app.application.transfer.workflow import TransferTask
@@ -81,7 +81,7 @@ class EpisodeFormatMixin(_TransferOwnerBase):
             self,
             fileitem: Optional[FileItem],
             fileitems: Optional[List[FileItem]] = None,
-    ) -> Tuple[bool, str, Optional[dict]]:
+    ) -> Tuple[bool, str, Optional[EpisodeFormatRecommendation]]:
         """
         根据目录样本推荐集数定位模板
         """
@@ -148,6 +148,8 @@ class EpisodeFormatMixin(_TransferOwnerBase):
         """
         将文件或目录入参归一化为目录对象
         """
+        if not fileitem.path:
+            return None
         storage_chain = StorageChain()
         if fileitem.type == "dir":
             return storage_chain.get_item(fileitem)
