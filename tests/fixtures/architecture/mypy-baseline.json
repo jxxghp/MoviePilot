@@ -19,9 +19,6 @@
   "app/adapters/external/cookiecloud.py": {
     "arg-type": 1
   },
-  "app/adapters/external/location.py": {
-    "no-untyped-def": 3
-  },
   "app/adapters/external/ocr.py": {
     "arg-type": 1
   },
@@ -1016,9 +1013,6 @@
   "app/db/models/site.py": {
     "no-untyped-def": 10
   },
-  "app/db/models/siteicon.py": {
-    "no-untyped-def": 2
-  },
   "app/db/models/sitestatistic.py": {
     "no-untyped-def": 3
   },
@@ -1039,9 +1033,6 @@
   },
   "app/db/models/user.py": {
     "no-untyped-def": 10
-  },
-  "app/db/models/userconfig.py": {
-    "no-untyped-def": 2
   },
   "app/db/models/workflow.py": {
     "no-untyped-def": 27,
@@ -1071,12 +1062,9 @@
     "no-any-return": 1,
     "override": 1
   },
-  "app/db/oper/plugindata.py": {
-    "no-untyped-def": 2
-  },
   "app/db/oper/site.py": {
     "arg-type": 1,
-    "no-any-return": 4,
+    "no-any-return": 3,
     "no-untyped-def": 6,
     "type-arg": 4,
     "union-attr": 3
@@ -1242,9 +1230,6 @@
   },
   "app/modules/dingtalk/__init__.py": {
     "arg-type": 2,
-    "no-untyped-def": 1
-  },
-  "app/modules/dingtalk/dingtalk.py": {
     "no-untyped-def": 1
   },
   "app/modules/discord/__init__.py": {

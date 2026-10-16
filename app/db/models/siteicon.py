@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Self
 
 from sqlalchemy import String, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,16 +22,18 @@ class SiteIcon(Base):
     base64: Mapped[Optional[str]] = mapped_column(String)
 
     @classmethod
-    def get_by_domain(cls, db: Session, domain: str):
+    def get_by_domain(cls, db: Session, domain: str) -> Optional[Self]:
         """在调用方 Session 中查询站点图标。"""
-        return db.execute(select(cls).where(cls.domain == domain)).scalars().first()
+        icon: Optional[Self] = db.execute(select(cls).where(cls.domain == domain)).scalars().first()
+        return icon
 
     @classmethod
     async def async_get_by_domain(
         cls,
         db: AsyncSession,
         domain: str,
-    ):
+    ) -> Optional[Self]:
         """在调用方 AsyncSession 中查询站点图标。"""
         result = await db.execute(select(cls).where(cls.domain == domain))
-        return result.scalar_one_or_none()
+        icon: Optional[Self] = result.scalar_one_or_none()
+        return icon

@@ -12,7 +12,7 @@ class PluginDataOper(DbOper):
     插件数据管理
     """
 
-    def save(self, plugin_id: str, key: str, value: Any):
+    def save(self, plugin_id: str, key: str, value: Any) -> None:
         """
         保存插件数据
         :param plugin_id: 插件id
@@ -114,7 +114,7 @@ class PluginDataOper(DbOper):
         )
         self._db.flush()
 
-    def truncate(self):
+    def truncate(self) -> None:
         """
         清空插件数据
         """
