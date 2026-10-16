@@ -542,7 +542,7 @@ def _clear_transfer_history(
     return _SchemaResponse(success=result.success, message=result.message)
 
 
-@router.delete(  # type: ignore[misc]
+@router.delete(
     "/transfer/all",
     summary="清空旧整理记录",
     response_model=_SchemaResponse[None],
@@ -583,7 +583,7 @@ def delete_transfer_history(
 
 
 # FastAPI 装饰器在当前 mypy 配置下无类型；数据仍由显式响应模型和命令契约约束。
-@router.post(  # type: ignore[misc]
+@router.post(
     "/transfer/{history_id}/cleanup-resolved",
     summary="确认下载器清理已完成",
     response_model=_SchemaResponse[None],
@@ -607,7 +607,7 @@ async def _get_discard_transfer_history(
 
 
 # FastAPI 装饰器在当前 mypy 配置下视为无类型，响应仍由具体 Pydantic 模型约束。
-@router.post(  # type: ignore[misc]
+@router.post(
     "/transfer/{history_id}/discard-corrupt",
     summary="放弃损坏的整理任务",
     response_model=_SchemaResponse[_SchemaTransferHistoryDiscardResult],
