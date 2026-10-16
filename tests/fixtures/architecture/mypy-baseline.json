@@ -1036,9 +1036,6 @@
   "app/db/models/user.py": {
     "no-untyped-def": 10
   },
-  "app/db/models/userconfig.py": {
-    "no-untyped-def": 2
-  },
   "app/db/models/workflow.py": {
     "no-untyped-def": 27,
     "type-arg": 4
