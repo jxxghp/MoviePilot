@@ -989,9 +989,6 @@
   "app/db/models/downloadhistory.py": {
     "no-untyped-def": 19
   },
-  "app/db/models/message.py": {
-    "type-arg": 1
-  },
   "app/db/models/subscribe.py": {
     "arg-type": 8,
     "no-untyped-def": 18

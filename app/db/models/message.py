@@ -39,7 +39,7 @@ class Message(Base):
         Index('ix_message_reg_time_id', 'reg_time', 'id'),
     )
 
-    def create_and_to_dict(self, db: Session) -> dict:
+    def create_and_to_dict(self, db: Session) -> dict[str, object]:
         """
         创建消息记录并返回写入后的字段字典。
         """
