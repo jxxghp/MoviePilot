@@ -430,6 +430,69 @@ def test_sync_preserves_cached_rows_when_plex_read_fails(database, failure):
     assert not any("同步完成" in entry.get("text", "") for entry in progress)
 
 
+# 前端新增媒体服务器的默认名称为「服务器N」，与模块条目携带的类型名不同
+_CUSTOM_NAMED_JELLYFIN = [SimpleNamespace(name="服务器1", enabled=True, sync_libraries=["all"])]
+
+
+def _custom_named_jellyfin_chain(database, items):
+    """构造配置名称与模块类型名不同的 Jellyfin 同步链。"""
+    chain = object.__new__(MediaServerChain)
+    chain.librarys = lambda _server: [SimpleNamespace(id="movies", name="电影库")]
+    chain.media_count = lambda _server: 1
+    chain.items_count = lambda **_kwargs: pytest.fail("整服统计存在时不应逐库计数")
+    chain.items = items
+    chain.episodes = lambda *_args, **_kwargs: []
+    chain.media_server_repository = TransactionalMediaServerRepository(database)
+    return chain
+
+
+def _jellyfin_movie_items(**_kwargs):
+    """模拟 Jellyfin 模块返回的条目，server 字段为类型名而非配置名称。"""
+    yield schemas.MediaServerItem(
+        server="jellyfin",
+        library="movies",
+        item_id="movie-1",
+        item_type="Movie",
+        title="已入库电影",
+        year="2026",
+    )
+
+
+def test_sync_stores_rows_under_config_name_for_existence_lookup(database):
+    """缓存必须按配置名称写入，存在性检查按配置名称查询才能命中。"""
+    chain = _custom_named_jellyfin_chain(database, _jellyfin_movie_items)
+
+    with patch.object(MEDIA_SERVER_CHAIN_MODULE, "get_mediaserver_configs", return_value=_CUSTOM_NAMED_JELLYFIN):
+        chain.sync()
+
+    with database() as session:
+        servers = {item.server for item in session.query(MediaServerItem).all()}
+    assert servers == {"服务器1"}
+    assert chain.media_server_repository.get_item_id(
+        server="服务器1", title="已入库电影", year="2026", mtype="电影",
+    ) == "movie-1"
+
+
+def test_sync_keeps_custom_named_server_cache_when_read_fails(database):
+    """配置名称与类型名不同时，后续读取失败也不得清空上一轮缓存。"""
+    chain = _custom_named_jellyfin_chain(database, _jellyfin_movie_items)
+
+    def items_with_timeout(**_kwargs):
+        """模拟条目列表请求超时。"""
+        yield from ()
+        raise TimeoutError("read timeout")
+
+    with patch.object(MEDIA_SERVER_CHAIN_MODULE, "get_mediaserver_configs", return_value=_CUSTOM_NAMED_JELLYFIN):
+        chain.sync()
+        chain.items = items_with_timeout
+        with pytest.raises(TimeoutError, match="read timeout"):
+            chain.sync()
+
+    with database() as session:
+        rows = [(item.server, item.item_id) for item in session.query(MediaServerItem).all()]
+    assert rows == [("服务器1", "movie-1")]
+
+
 def test_sync_partial_commit_preserves_stale_rows_until_next_run(
     database,
     monkeypatch,
