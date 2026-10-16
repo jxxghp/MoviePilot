@@ -5,8 +5,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 
 def _load_downloader_base():
+    """隔离宿主服务依赖，加载真实下载器路径映射实现。"""
     repo_root = Path(__file__).resolve().parents[1]
 
     app_module = types.ModuleType("app")
@@ -29,11 +32,15 @@ def _load_downloader_base():
     mixins_module = types.ModuleType("app.runtime.reload")
 
     class StorageSchema(Enum):
+        """提供路径映射识别所需的存储类型。"""
+
         Local = "local"
         Rclone = "rclone"
         SMB = "smb"
 
     class _ConfigReloadMixin:
+        """隔离配置热重载的运行时依赖。"""
+
         pass
 
     class _Logger:
@@ -44,16 +51,21 @@ def _load_downloader_base():
             pass
 
     class _ServiceConfigHelper:
+        """使用空配置隔离下载器之外的服务初始化。"""
+
         @staticmethod
         def get_downloader_configs():
+            """不从真实配置加载下载器。"""
             return []
 
         @staticmethod
         def get_notification_configs():
+            """不从真实配置加载通知渠道。"""
             return []
 
         @staticmethod
         def get_mediaserver_configs():
+            """不从真实配置加载媒体服务器。"""
             return []
 
     schema_types_module.StorageSchema = StorageSchema
@@ -124,6 +136,7 @@ def _load_downloader_base():
 
 
 def _load_transmission_module():
+    """隔离下载器客户端与宿主依赖，加载真实 Transmission 模块。"""
     repo_root = Path(__file__).resolve().parents[1]
 
     app_module = types.ModuleType("app")
@@ -163,10 +176,15 @@ def _load_transmission_module():
     torrentool_torrent_module = types.ModuleType("torrentool.torrent")
 
     class _ModuleBase:
+        """隔离模块注册及生命周期管理。"""
+
         pass
 
     class _DownloaderBase:
+        """保留下载器模块的泛型基类入口。"""
+
         def __class_getitem__(cls, _item):
+            """让隔离基类接受生产代码的客户端类型参数。"""
             return cls
 
     class _DownloaderModuleBase(_ModuleBase, _DownloaderBase):
@@ -202,15 +220,24 @@ def _load_transmission_module():
             return TorrentQueryStatus.ALL
 
     class _TransferTorrent:
+        """保留整理任务构造时传入的字段，供断言检查。"""
+
         def __init__(self, **kwargs):
+            """保存模块实际返回的整理任务字段。"""
             self.__dict__.update(kwargs)
 
     class _DownloadingTorrent:
+        """保留下载中任务构造时传入的字段，供断言检查。"""
+
         def __init__(self, **kwargs):
+            """保存模块实际返回的下载中任务字段。"""
             self.__dict__.update(kwargs)
 
     class _DownloaderTorrent:
+        """保留统一下载任务构造时传入的字段，供断言检查。"""
+
         def __init__(self, **kwargs):
+            """保存模块实际返回的统一下载任务字段。"""
             self.__dict__.update(kwargs)
 
     class _DownloaderFile:
@@ -227,10 +254,14 @@ def _load_transmission_module():
             return instance
 
     class TorrentStatus(Enum):
+        """提供下载器历史查询入口使用的状态。"""
+
         TRANSFER = "transfer"
         DOWNLOADING = "downloading"
 
     class TorrentQueryStatus(Enum):
+        """提供统一下载器查询入口使用的状态。"""
+
         ALL = "all"
         TRANSFER = "transfer"
         DOWNLOADING = "downloading"
@@ -238,22 +269,32 @@ def _load_transmission_module():
         PAUSED = "paused"
 
     class DownloadTaskState(Enum):
+        """提供统一下载任务返回值使用的状态。"""
+
         DOWNLOADING = "downloading"
         PAUSED = "paused"
         COMPLETED = "completed"
 
     class _Logger:
+        """隔离 Transmission 测试的运行日志输出。"""
+
         def debug(self, *_args, **_kwargs):
+            """忽略测试范围外的调试日志。"""
             pass
 
         def info(self, *_args, **_kwargs):
+            """忽略测试范围外的普通日志。"""
             pass
 
         def error(self, *_args, **_kwargs):
+            """忽略测试范围外的错误日志。"""
             pass
 
     class _MetaInfo:
+        """提供下载任务展示所需的最小媒体元数据。"""
+
         def __init__(self, name):
+            """保留种子名称并将未解析的媒体字段置空。"""
             self.name = name
             self.year = None
             self.season_episode = ""
@@ -272,7 +313,10 @@ def _load_transmission_module():
         return str(value)
 
     class _FileCache:
+        """隔离真实文件缓存，避免读取运行时状态。"""
+
         def get(self, *_args, **_kwargs):
+            """固定返回缓存未命中。"""
             return None
 
     transmission_client_module.Transmission = object
@@ -385,6 +429,7 @@ def _build_base(path_mapping):
 
 
 def _build_transmission_module(server):
+    """注入离线下载器及固定路径映射，避免初始化真实服务。"""
     module = TransmissionModule.__new__(TransmissionModule)
     module.get_instances = MagicMock(return_value={"tr": server})
     module.get_instance = MagicMock(return_value=server)
@@ -484,6 +529,40 @@ def test_completed_torrents_return_moviepilot_accessible_path():
     assert torrents[0].path == Path("/media/video/downloads/TV/Show.S01E01.mkv")
     assert torrents[0].save_path == "/media/video/downloads/TV"
     assert torrents[0].content_path == "/media/video/downloads/TV/Show.S01E01.mkv"
+
+
+@pytest.mark.parametrize(
+    ("progress_fields", "expected_progress"),
+    [
+        ({"percent_done": 0}, 0),
+        ({"percent_done": 0.42}, 42),
+        ({"percent_done": 1}, 100),
+        ({"percent_done": 42}, 42),
+        ({"percent_done": 100}, 100),
+        ({"progress": 42, "percent_done": 1}, 42),
+        ({"progress": 0, "percent_done": 1}, 0),
+        ({"progress": None, "percent_done": 1}, 100),
+        ({}, 0),
+    ],
+)
+def test_transmission_progress_uses_percentage_contract(progress_fields, expected_progress):
+    """原始进度须转换为百分比，已有 progress（含零值）须优先保留。"""
+    server = MagicMock()
+    server.get_completed_torrents.return_value = [
+        SimpleNamespace(
+            name="Movie",
+            download_dir="/mnt/raid5/home_lt999lt/video/downloads/movie",
+            hashString="hash-tr",
+            labels=[],
+            status="seeding",
+            **progress_fields,
+        )
+    ]
+    module = _build_transmission_module(server)
+
+    torrents = module.list_torrents(status=TransmissionTorrentStatus.TRANSFER)
+
+    assert torrents[0].progress == expected_progress
 
 
 def test_hash_lookup_return_moviepilot_accessible_path():
