@@ -94,6 +94,23 @@ def test_workflow_oper_reuses_explicit_query_sessions(db, monkeypatch):
     asyncio.run(check())
 
 
+def test_workflow_staged_writes_require_matching_caller_sessions(db) -> None:
+    """暂存入口拒绝缺失或错配会话，不能静默丢失删除或另开事务。"""
+    with pytest.raises(RuntimeError, match="同步 Session"):
+        WorkflowOper().stage_delete(1)
+
+    async def check() -> None:
+        """分别覆盖同步删除和异步创建的会话类型边界。"""
+        async with async_session_scope() as session:
+            with pytest.raises(RuntimeError, match="同步 Session"):
+                WorkflowOper(session).stage_delete(1)
+        for oper in (WorkflowOper(), WorkflowOper(db.session)):
+            with pytest.raises(RuntimeError, match="异步 Session"):
+                await oper.stage_create({"name": "wrong-session"})
+
+    asyncio.run(check())
+
+
 def test_query_repository_returns_detached_deep_copied_snapshot(db):
     """查询仓储必须在关闭短 Session 前投影，且 JSON 不与 ORM 记录共享。"""
     workflow = _flow("wf-snapshot")

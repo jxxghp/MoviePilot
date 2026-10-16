@@ -2,6 +2,7 @@ from typing import Any, List, Mapping, Optional, Tuple
 
 from sqlalchemy import delete as sqlalchemy_delete
 from sqlalchemy import func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
@@ -47,12 +48,12 @@ class WorkflowOper(DbOper):
     工作流管理
     """
 
-    def add(self, **kwargs) -> Tuple[bool, str]:
+    def add(self, **kwargs: Any) -> Tuple[bool, str]:
         """
         新增工作流
         """
         wf = Workflow(**kwargs)
-        if not self.get_by_name(kwargs.get("name")):
+        if not self.get_by_name(wf.name):
             self._stage_create(wf)
             return True, "新增工作流成功"
         return False, "工作流已存在"
@@ -87,6 +88,8 @@ class WorkflowOper(DbOper):
 
     def stage_delete(self, workflow_id: int) -> None:
         """暂存工作流删除，由请求级 UnitOfWork 统一提交。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("工作流暂存写入需要调用方提供同步 Session")
         self._db.execute(
             sqlalchemy_delete(Workflow).where(Workflow.id == workflow_id)
         )
@@ -189,6 +192,8 @@ class WorkflowOper(DbOper):
 
     async def stage_create(self, payload: Mapping[str, Any]) -> Workflow:
         """暂存新工作流，不在操作器内提交事务。"""
+        if not isinstance(self._db, AsyncSession):
+            raise RuntimeError("工作流暂存写入需要调用方提供异步 Session")
         workflow = Workflow(**dict(payload))
         self._db.add(workflow)
         await self._db.flush()
