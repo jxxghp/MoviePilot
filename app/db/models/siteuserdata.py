@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, Self
 
 from sqlalchemy import JSON, Float, Index, Integer, String, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -60,7 +60,14 @@ class SiteUserData(Base):
     )
 
     @classmethod
-    def get_by_domain(cls, db: Session, domain: str, workdate: Optional[str] = None, worktime: Optional[str] = None):
+    def get_by_domain(
+        cls,
+        db: Session,
+        domain: str,
+        workdate: Optional[str] = None,
+        worktime: Optional[str] = None,
+    ) -> list[Self]:
+        """按域名及可选日期、时间读取站点用户快照。"""
         statement = select(cls).where(cls.domain == domain)
         if workdate and worktime:
             statement = statement.where(cls.updated_day == workdate,
@@ -70,7 +77,14 @@ class SiteUserData(Base):
         return list(db.execute(statement).scalars().all())
 
     @classmethod
-    async def async_get_by_domain(cls, db: AsyncSession, domain: str, workdate: Optional[str] = None, worktime: Optional[str] = None):
+    async def async_get_by_domain(
+        cls,
+        db: AsyncSession,
+        domain: str,
+        workdate: Optional[str] = None,
+        worktime: Optional[str] = None,
+    ) -> list[Self]:
+        """按域名及可选日期、时间读取站点用户快照。"""
         query = select(cls).filter(cls.domain == domain)
         if workdate and worktime:
             query = query.filter(cls.updated_day == workdate, cls.updated_time == worktime)
@@ -80,11 +94,12 @@ class SiteUserData(Base):
         return list(result.scalars().all())
 
     @classmethod
-    def get_by_date(cls, db: Session, date: str):
+    def get_by_date(cls, db: Session, date: str) -> list[Self]:
+        """读取指定日期的全部站点用户快照。"""
         return list(db.execute(select(cls).where(cls.updated_day == date)).scalars().all())
 
     @classmethod
-    def get_latest(cls, db: Session):
+    def get_latest(cls, db: Session) -> list[Self]:
         """
         获取各站点最新一天的数据
         """
@@ -108,7 +123,7 @@ class SiteUserData(Base):
         ).scalars().all())
 
     @classmethod
-    async def async_get_latest(cls, db: AsyncSession):
+    async def async_get_latest(cls, db: AsyncSession) -> list[Self]:
         """
         异步获取各站点最新一天的数据
         """

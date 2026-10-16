@@ -1012,9 +1012,6 @@
   "app/db/models/site.py": {
     "no-untyped-def": 10
   },
-  "app/db/models/siteuserdata.py": {
-    "no-untyped-def": 5
-  },
   "app/db/models/subscribe.py": {
     "arg-type": 8,
     "no-untyped-def": 18
