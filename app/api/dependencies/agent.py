@@ -1,5 +1,7 @@
 """Agent 与消息查询依赖。"""
 
+from typing import cast
+
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,7 +18,10 @@ from app.application.messaging.chat import (
     AsyncAgentChatRepository,
     AsyncUnitOfWork,
 )
-from app.application.messaging.message import MessageQueryService
+from app.application.messaging.message import (
+    AsyncMessageQueryRepository,
+    MessageQueryService,
+)
 from app.startup.composition.context import AgentChatRuntime, HostRuntime
 
 
@@ -41,4 +46,8 @@ def get_message_query_service(
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> MessageQueryService:
     """组装消息历史异步查询服务。"""
-    return MessageQueryService(repository=runtime.messaging.repository(db))
+    repository = cast(
+        AsyncMessageQueryRepository,
+        runtime.messaging.repository(db),
+    )
+    return MessageQueryService(repository=repository)
