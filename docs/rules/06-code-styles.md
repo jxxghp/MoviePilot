@@ -67,6 +67,7 @@ Within each group, sort alphabetically. Do not use wildcard imports (`from modul
 - In **endpoint layer**: use FastAPI's `HTTPException` or the project's standard response schemas for errors.
 - Application and adapter layers must not swallow operational failures silently. Log or re-raise them according to the owning contract. Foundation primitives do not log; they return their documented fallback value or raise, leaving operational reporting to the caller.
 - Do not use bare `except:` — always catch a specific exception type or at minimum `Exception`.
+- `logger.exception(...)` records at ERROR level and includes the current traceback in console output by default. File and resource logs receive the formatted ERROR message through the usual routing. An explicit `exc_info` value follows standard-library logging semantics.
 
 ```python
 # Correct

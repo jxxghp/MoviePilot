@@ -989,6 +989,15 @@ class LoggerManager:
         """输出 ERROR 日志。"""
         self.logger("error", msg, *args, **kwargs)
 
+    def exception(self, msg: object, *args: object, **kwargs: object) -> None:
+        """输出 ERROR 日志，控制台默认附带当前异常堆栈。
+
+        适用于异常处理分支；调用方可通过 exc_info 显式关闭堆栈或指定异常信息。
+        文件消息和资源日志仍由统一日志路由按 ERROR 等级输出。
+        """
+        kwargs.setdefault("exc_info", True)
+        self.logger("error", msg, *args, **kwargs)
+
     def critical(self, msg: object, *args: Any, **kwargs: Any) -> None:
         """输出 CRITICAL 日志。"""
         self.logger("critical", msg, *args, **kwargs)
