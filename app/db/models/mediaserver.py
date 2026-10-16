@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Self
 
 from sqlalchemy import JSON, Index, Select, String, delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,17 +51,21 @@ class MediaServerItem(Base):
     )
 
     @classmethod
-    def get_by_itemid(cls, db: Session, item_id: str):
-        return db.execute(select(cls).where(cls.item_id == item_id)).scalars().first()
+    def get_by_itemid(cls, db: Session, item_id: str) -> Optional[Self]:
+        """按媒体条目 ID 查询首条记录。"""
+        item: Optional[Self] = db.execute(select(cls).where(cls.item_id == item_id)).scalars().first()
+        return item
 
     @classmethod
-    def get_by_server_itemid(cls, db: Session, server: str, item_id: str):
-        return db.execute(
+    def get_by_server_itemid(cls, db: Session, server: str, item_id: str) -> Optional[Self]:
+        """在指定服务器中按媒体条目 ID 查询首条记录。"""
+        item: Optional[Self] = db.execute(
             select(cls).where(cls.server == server, cls.item_id == item_id)
         ).scalars().first()
+        return item
 
     @classmethod
-    def empty(cls, db: Session, server: Optional[str] = None):
+    def empty(cls, db: Session, server: Optional[str] = None) -> None:
         """在调用方事务中暂存媒体服务器条目清空操作。"""
         statement = delete(cls)
         if server is not None:
@@ -69,7 +73,7 @@ class MediaServerItem(Base):
         db.execute(statement, execution_options={"synchronize_session": False})
 
     @classmethod
-    def delete_stale(cls, db: Session, server: str, sync_time: str):
+    def delete_stale(cls, db: Session, server: str, sync_time: str) -> int:
         """在调用方事务中删除本轮同步未更新的条目。"""
         return execute_dml(
             db,
@@ -81,7 +85,7 @@ class MediaServerItem(Base):
         )
 
     @classmethod
-    def delete_excluded_servers(cls, db: Session, servers: List[str]):
+    def delete_excluded_servers(cls, db: Session, servers: List[str]) -> int:
         """在调用方事务中删除不属于启用服务器的条目。"""
         statement = delete(cls)
         if servers:
@@ -96,7 +100,7 @@ class MediaServerItem(Base):
     def exist_by_media_identity(
             cls, db: Session, media_source: MediaSource, media_id: str, mtype: str,
             server: Optional[str] = None,
-    ):
+    ) -> Optional[Self]:
         """按规范媒体身份和类型查询媒体服务器条目。"""
         statement = select(cls).where(
             cls.media_source == str(media_source),
@@ -105,13 +109,15 @@ class MediaServerItem(Base):
         )
         if server:
             statement = statement.where(cls.server == server)
-        return db.execute(statement).scalars().first()
+        item: Optional[Self] = db.execute(statement).scalars().first()
+        return item
 
     @classmethod
     def exists_by_title(
             cls, db: Session, title: str, mtype: str, year: str,
             server: Optional[str] = None,
-    ):
+    ) -> Optional[Self]:
+        """按标题及可选类型、年份和服务器查询首条记录。"""
         statement = select(cls).where(cls.title == title)
         if mtype:
             statement = statement.where(cls.item_type == mtype)
@@ -119,7 +125,8 @@ class MediaServerItem(Base):
             statement = statement.where(cls.year == str(year))
         if server:
             statement = statement.where(cls.server == server)
-        return db.execute(statement).scalars().first()
+        item: Optional[Self] = db.execute(statement).scalars().first()
+        return item
 
     @classmethod
     def _cross_source_title_statement(
@@ -150,15 +157,17 @@ class MediaServerItem(Base):
         return list(db.execute(statement).scalars().all())
 
     @classmethod
-    async def async_get_by_itemid(cls, db: AsyncSession, item_id: str):
+    async def async_get_by_itemid(cls, db: AsyncSession, item_id: str) -> Optional[Self]:
+        """异步按媒体条目 ID 查询首条记录。"""
         result = await db.execute(select(cls).filter(cls.item_id == item_id))
-        return result.scalars().first()
+        item: Optional[Self] = result.scalars().first()
+        return item
 
     @classmethod
     async def async_exist_by_media_identity(
             cls, db: AsyncSession, media_source: MediaSource, media_id: str, mtype: str,
             server: Optional[str] = None,
-    ):
+    ) -> Optional[Self]:
         """异步按规范媒体身份和类型查询媒体服务器条目。"""
         statement = select(cls).filter(
             cls.media_source == str(media_source),
@@ -168,7 +177,8 @@ class MediaServerItem(Base):
         if server:
             statement = statement.filter(cls.server == server)
         result = await db.execute(statement)
-        return result.scalars().first()
+        item: Optional[Self] = result.scalars().first()
+        return item
 
     @classmethod
     async def async_list_cross_source_by_title(
@@ -186,7 +196,8 @@ class MediaServerItem(Base):
     async def async_exists_by_title(
             cls, db: AsyncSession, title: str, mtype: str, year: str,
             server: Optional[str] = None,
-    ):
+    ) -> Optional[Self]:
+        """异步按标题及可选类型、年份和服务器查询首条记录。"""
         if not mtype and not year:
             statement = select(cls).filter(cls.title == title)
         elif not year:
@@ -202,4 +213,5 @@ class MediaServerItem(Base):
         if server:
             statement = statement.filter(cls.server == server)
         result = await db.execute(statement)
-        return result.scalars().first()
+        item: Optional[Self] = result.scalars().first()
+        return item

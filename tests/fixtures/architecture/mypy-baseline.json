@@ -995,9 +995,6 @@
   "app/db/models/downloadhistory.py": {
     "no-untyped-def": 19
   },
-  "app/db/models/mediaserver.py": {
-    "no-untyped-def": 10
-  },
   "app/db/models/message.py": {
     "type-arg": 1
   },
@@ -1034,7 +1031,6 @@
   },
   "app/db/oper/mediaserver.py": {
     "arg-type": 12,
-    "no-any-return": 4,
     "no-untyped-def": 7,
     "type-arg": 1
   },
