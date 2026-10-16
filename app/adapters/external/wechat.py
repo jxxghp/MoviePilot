@@ -15,6 +15,7 @@ import socket
 import struct
 import time
 import xml.etree.cElementTree as ET
+from typing import NoReturn, Optional, cast
 
 from Crypto.Cipher import AES
 
@@ -41,10 +42,11 @@ WXBizMsgCrypt_GenReturnXml_Error = -40011
 
 
 class FormatException(Exception):
+    """企业微信编码密钥的格式错误。"""
     pass
 
 
-def throw_exception(message, exception_class=FormatException):
+def throw_exception(message: str, exception_class: type[Exception] = FormatException) -> NoReturn:
     """my define raise exception function"""
     raise exception_class(message)
 
@@ -53,7 +55,7 @@ class SHA1:
     """计算企业微信的消息签名接口"""
 
     @staticmethod
-    def getSHA1(token, timestamp, nonce, encrypt):
+    def getSHA1(token: Optional[str], timestamp: str | int | None, nonce: Optional[str], encrypt: Optional[str]) -> tuple[int, Optional[str]]:
         """用SHA1算法生成安全签名
         @param token:  票据
         @param timestamp: 时间戳
@@ -65,7 +67,8 @@ class SHA1:
             sortlist = [token, timestamp, nonce, encrypt]
             sortlist.sort()
             sha = hashlib.sha1()
-            sha.update("".join(sortlist).encode())
+            # 其余三项只能为 str 或 None；排序成功已排除 None 和整数时间戳。
+            sha.update("".join(cast(list[str], sortlist)).encode())
             return WXBizMsgCrypt_OK, sha.hexdigest()
         except Exception as e:
             logger = logging.getLogger()
@@ -85,7 +88,7 @@ class XMLParse:
 </xml>"""
 
     @staticmethod
-    def extract(xmltext):
+    def extract(xmltext: str | bytes) -> tuple[int, Optional[str]]:
         """提取出xml数据包中的加密消息
         @param xmltext: 待提取的xml字符串
         @return: 提取出的加密消息字符串
@@ -93,13 +96,15 @@ class XMLParse:
         try:
             xml_tree = ET.fromstring(xmltext)
             encrypt = xml_tree.find("Encrypt")
+            if encrypt is None:
+                raise AttributeError("'NoneType' object has no attribute 'text'")
             return WXBizMsgCrypt_OK, encrypt.text
         except Exception as e:
             logger = logging.getLogger()
             logger.error(e)
             return WXBizMsgCrypt_ParseXml_Error, None
 
-    def generate(self, encrypt, signature, timestamp, nonce):
+    def generate(self, encrypt: str, signature: Optional[str], timestamp: str, nonce: str) -> str:
         """生成xml消息
         @param encrypt: 加密后的消息密文
         @param signature: 安全签名
@@ -122,7 +127,7 @@ class PKCS7Encoder:
 
     block_size = 32
 
-    def encode(self, text):
+    def encode(self, text: bytes) -> bytes:
         """ 对需要加密的明文进行填充补位
         @param text: 需要进行填充补位操作的明文
         @return: 补齐明文字符串
@@ -137,7 +142,7 @@ class PKCS7Encoder:
         return text + (pad * amount_to_pad).encode()
 
     @staticmethod
-    def decode(decrypted):
+    def decode(decrypted: str) -> str:
         """删除解密后明文的补位字符
         @param decrypted: 解密后的明文
         @return: 删除补位字符后的明文
@@ -151,30 +156,34 @@ class PKCS7Encoder:
 class Prpcrypt(object):
     """提供接收和推送给企业微信消息的加解密接口"""
 
-    def __init__(self, key):
+    def __init__(self, key: bytes) -> None:
+        """保存已解码的 AES 密钥与 CBC 模式。"""
 
         # self.key = base64.b64decode(key+"=")
         self.key = key
         # 设置加解密模式为AES的CBC模式
         self.mode = AES.MODE_CBC
 
-    def encrypt(self, text, receiveid):
+    def encrypt(self, text: str, receiveid: Optional[str]) -> tuple[int, Optional[bytes]]:
         """对明文进行加密
         @param text: 需要加密的明文
         @param receiveid: receiveid
         @return: 加密得到的字符串
         """
         # 16位随机字符串添加到明文开头
-        text = text.encode()
-        text = self.get_random_str() + struct.pack("I", socket.htonl(len(text))) + text + receiveid.encode()
+        plaintext = text.encode()
+        plaintext = self.get_random_str() + struct.pack("I", socket.htonl(len(plaintext))) + plaintext
+        if receiveid is None:
+            raise AttributeError("'NoneType' object has no attribute 'encode'")
+        plaintext += receiveid.encode()
 
         # 使用自定义的填充方式对明文进行补位填充
         pkcs7 = PKCS7Encoder()
-        text = pkcs7.encode(text)
+        plaintext = pkcs7.encode(plaintext)
         # 加密
         cryptor = AES.new(self.key, self.mode, self.key[:16])
         try:
-            ciphertext = cryptor.encrypt(text)
+            ciphertext = cryptor.encrypt(plaintext)
             # 使用BASE64对加密后的字符串进行编码
             return WXBizMsgCrypt_OK, base64.b64encode(ciphertext)
         except Exception as e:
@@ -182,7 +191,7 @@ class Prpcrypt(object):
             logger.error(e)
             return WXBizMsgCrypt_EncryptAES_Error, None
 
-    def decrypt(self, text, receiveid):
+    def decrypt(self, text: str | bytes, receiveid: Optional[str]) -> tuple[int, Optional[bytes]]:
         """对解密后的明文进行补位删除
         @param text: 密文
         @param receiveid: receiveid
@@ -191,7 +200,7 @@ class Prpcrypt(object):
         try:
             cryptor = AES.new(self.key, self.mode, self.key[:16])
             # 使用BASE64对密文进行解码，然后AES-CBC解密
-            plain_text = cryptor.decrypt(base64.b64decode(text))
+            plain_text: bytes = cryptor.decrypt(base64.b64decode(text))
         except Exception as e:
             logger = logging.getLogger()
             logger.error(e)
@@ -216,7 +225,7 @@ class Prpcrypt(object):
         return 0, xml_content
 
     @staticmethod
-    def get_random_str():
+    def get_random_str() -> bytes:
         """ 随机生成16位字符串
         @return: 16位字符串
         """
@@ -224,9 +233,13 @@ class Prpcrypt(object):
 
 
 class WXBizMsgCrypt(object):
+    """验证企业微信回调并封装加解密错误码。"""
     # 构造函数
-    def __init__(self, sToken, sEncodingAESKey, sReceiveId):
+    def __init__(self, sToken: Optional[str], sEncodingAESKey: Optional[str], sReceiveId: Optional[str]) -> None:
+        """解码并验证 AES 密钥，保留配置错误的格式异常。"""
         try:
+            if sEncodingAESKey is None:
+                raise TypeError("unsupported operand type(s) for +: 'NoneType' and 'str'")
             self.key = base64.b64decode(sEncodingAESKey + "=")
             assert len(self.key) == 32
         except Exception as err:
@@ -244,7 +257,8 @@ class WXBizMsgCrypt(object):
         # @param sReplyEchoStr: 解密之后的echostr，当return返回0时有效
         # @return：成功0，失败返回对应的错误码
 
-    def VerifyURL(self, sMsgSignature, sTimeStamp, sNonce, sEchoStr):
+    def VerifyURL(self, sMsgSignature: str, sTimeStamp: str | int, sNonce: str, sEchoStr: str) -> tuple[int, Optional[bytes]]:
+        """校验 URL 签名后返回解密的验证内容及原始错误码。"""
         sha1 = SHA1()
         ret, signature = sha1.getSHA1(self.m_sToken, sTimeStamp, sNonce, sEchoStr)
         if ret != 0:
@@ -255,7 +269,8 @@ class WXBizMsgCrypt(object):
         ret, sReplyEchoStr = pc.decrypt(sEchoStr, self.m_sReceiveId)
         return ret, sReplyEchoStr
 
-    def EncryptMsg(self, sReplyMsg, sNonce, timestamp=None):
+    def EncryptMsg(self, sReplyMsg: str, sNonce: str, timestamp: Optional[str] = None) -> tuple[int, Optional[str]]:
+        """加密回复并生成签名 XML，加密失败直接返回对应错误码。"""
         # 将企业回复用户的消息加密打包
         # @param sReplyMsg: 企业号待回复用户的消息，xml格式的字符串
         # @param sTimeStamp: 时间戳，可以自己生成，也可以用URL参数的timestamp,如为None则自动用当前时间
@@ -263,10 +278,11 @@ class WXBizMsgCrypt(object):
         # sEncryptMsg: 加密后的可以直接回复用户的密文，包括msg_signature, timestamp, nonce, encrypt的xml格式的字符串,
         # return：成功0，sEncryptMsg,失败返回对应的错误码None
         pc = Prpcrypt(self.key)
-        ret, encrypt = pc.encrypt(sReplyMsg, self.m_sReceiveId)
-        encrypt = encrypt.decode('utf8')
+        ret, encrypted = pc.encrypt(sReplyMsg, self.m_sReceiveId)
         if ret != 0:
             return ret, None
+        # encrypt 的成功分支只返回 base64 bytes，失败时不可对 None 解码。
+        encrypt = cast(bytes, encrypted).decode('utf8')
         if timestamp is None:
             timestamp = str(int(time.time()))
         # 生成安全签名
@@ -277,7 +293,8 @@ class WXBizMsgCrypt(object):
         xmlParse = XMLParse()
         return ret, xmlParse.generate(encrypt, signature, timestamp, sNonce)
 
-    def DecryptMsg(self, sPostData, sMsgSignature, sTimeStamp, sNonce):
+    def DecryptMsg(self, sPostData: str | bytes, sMsgSignature: str, sTimeStamp: str, sNonce: str) -> tuple[int, Optional[bytes]]:
+        """先验证 XML 与消息签名，再按协议解密并检查接收方。"""
         # 检验消息的真实性，并且获取解密后的明文
         # @param sMsgSignature: 签名串，对应URL参数的msg_signature
         # @param sTimeStamp: 时间戳，对应URL参数的timestamp
@@ -297,5 +314,6 @@ class WXBizMsgCrypt(object):
         if not signature == sMsgSignature:
             return WXBizMsgCrypt_ValidateSignature_Error, None
         pc = Prpcrypt(self.key)
-        ret, xml_content = pc.decrypt(encrypt, self.m_sReceiveId)
+        # SHA1 成功已证明密文为字符串；空字段会在签名计算阶段返回错误。
+        ret, xml_content = pc.decrypt(cast(str, encrypt), self.m_sReceiveId)
         return ret, xml_content
