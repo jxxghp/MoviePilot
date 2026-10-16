@@ -16,14 +16,14 @@
       "statements": 0
     },
     "app/adapters/cache/backends.py": {
-      "covered_lines": 112,
-      "percent": 71.79,
-      "statements": 156
+      "covered_lines": 83,
+      "percent": 86.46,
+      "statements": 96
     },
     "app/adapters/cache/redis.py": {
-      "covered_lines": 173,
-      "percent": 49.15,
-      "statements": 352
+      "covered_lines": 248,
+      "percent": 54.39,
+      "statements": 456
     },
     "app/adapters/external/__init__.py": {
       "covered_lines": 0,
@@ -36,24 +36,24 @@
       "statements": 85
     },
     "app/adapters/external/github.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 83,
+      "percent": 62.41,
+      "statements": 133
     },
     "app/adapters/external/location.py": {
-      "covered_lines": 8,
-      "percent": 34.78,
-      "statements": 23
+      "covered_lines": 9,
+      "percent": 34.62,
+      "statements": 26
     },
     "app/adapters/external/market.py": {
-      "covered_lines": 90,
-      "percent": 84.91,
-      "statements": 106
+      "covered_lines": 87,
+      "percent": 79.82,
+      "statements": 109
     },
     "app/adapters/external/ocr.py": {
-      "covered_lines": 38,
-      "percent": 79.17,
-      "statements": 48
+      "covered_lines": 45,
+      "percent": 80.36,
+      "statements": 56
     },
     "app/adapters/external/plugin/__init__.py": {
       "covered_lines": 0,
@@ -61,19 +61,19 @@
       "statements": 0
     },
     "app/adapters/external/plugin/client.py": {
-      "covered_lines": 749,
-      "percent": 78.59,
-      "statements": 953
+      "covered_lines": 852,
+      "percent": 81.38,
+      "statements": 1047
     },
     "app/adapters/external/server.py": {
-      "covered_lines": 667,
-      "percent": 71.88,
-      "statements": 928
+      "covered_lines": 690,
+      "percent": 72.71,
+      "statements": 949
     },
     "app/adapters/external/wechat.py": {
-      "covered_lines": 48,
-      "percent": 30.38,
-      "statements": 158
+      "covered_lines": 153,
+      "percent": 92.17,
+      "statements": 166
     },
     "app/adapters/network/__init__.py": {
       "covered_lines": 0,
@@ -81,34 +81,34 @@
       "statements": 0
     },
     "app/adapters/network/browser.py": {
-      "covered_lines": 326,
-      "percent": 63.18,
-      "statements": 516
+      "covered_lines": 404,
+      "percent": 68.24,
+      "statements": 592
     },
     "app/adapters/network/cloudflare.py": {
-      "covered_lines": 8,
-      "percent": 40.0,
+      "covered_lines": 18,
+      "percent": 90.0,
       "statements": 20
     },
     "app/adapters/network/doh.py": {
-      "covered_lines": 82,
-      "percent": 64.06,
+      "covered_lines": 83,
+      "percent": 64.84,
       "statements": 128
     },
     "app/adapters/network/feishu.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 295,
+      "percent": 90.49,
+      "statements": 326
     },
     "app/adapters/network/http.py": {
-      "covered_lines": 365,
-      "percent": 55.9,
-      "statements": 653
+      "covered_lines": 451,
+      "percent": 58.72,
+      "statements": 768
     },
     "app/adapters/network/ip.py": {
-      "covered_lines": 16,
-      "percent": 31.37,
-      "statements": 51
+      "covered_lines": 19,
+      "percent": 35.85,
+      "statements": 53
     },
     "app/adapters/network/resolver.py": {
       "covered_lines": 27,
@@ -116,9 +116,9 @@
       "statements": 29
     },
     "app/adapters/network/webpush.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 40,
+      "percent": 95.24,
+      "statements": 42
     },
     "app/adapters/observability/__init__.py": {
       "covered_lines": 0,
@@ -146,9 +146,9 @@
       "statements": 107
     },
     "app/adapters/system/backup/files.py": {
-      "covered_lines": 73,
-      "percent": 94.81,
-      "statements": 77
+      "covered_lines": 83,
+      "percent": 94.32,
+      "statements": 88
     },
     "app/adapters/system/code/__init__.py": {
       "covered_lines": 0,
@@ -156,24 +156,24 @@
       "statements": 0
     },
     "app/adapters/system/code/client.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 21,
+      "percent": 91.3,
+      "statements": 23
     },
     "app/adapters/system/code/kernel.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 219,
+      "percent": 93.99,
+      "statements": 233
     },
     "app/adapters/system/code/output.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 50,
+      "percent": 89.29,
+      "statements": 56
     },
     "app/adapters/system/code/process.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 48,
+      "percent": 68.57,
+      "statements": 70
     },
     "app/adapters/system/code/runner.py": {
       "covered_lines": 0,
@@ -181,9 +181,9 @@
       "statements": 0
     },
     "app/adapters/system/code/staging.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 13,
+      "percent": 76.47,
+      "statements": 17
     },
     "app/adapters/system/display/__init__.py": {
       "covered_lines": 17,
@@ -196,24 +196,24 @@
       "statements": 26
     },
     "app/adapters/system/fsproxy.py": {
-      "covered_lines": 184,
-      "percent": 78.63,
-      "statements": 234
+      "covered_lines": 193,
+      "percent": 77.82,
+      "statements": 248
     },
     "app/adapters/system/fsworker.py": {
       "covered_lines": 0,
       "percent": 0.0,
-      "statements": 79
+      "statements": 98
     },
     "app/adapters/system/host.py": {
-      "covered_lines": 370,
-      "percent": 55.31,
+      "covered_lines": 380,
+      "percent": 56.8,
       "statements": 669
     },
     "app/adapters/system/package.py": {
-      "covered_lines": 108,
-      "percent": 97.3,
-      "statements": 111
+      "covered_lines": 122,
+      "percent": 97.6,
+      "statements": 125
     },
     "app/adapters/system/plugin/__init__.py": {
       "covered_lines": 0,
@@ -221,14 +221,14 @@
       "statements": 0
     },
     "app/adapters/system/plugin/dependency.py": {
-      "covered_lines": 208,
-      "percent": 79.39,
-      "statements": 262
+      "covered_lines": 266,
+      "percent": 82.87,
+      "statements": 321
     },
     "app/adapters/system/plugin/health.py": {
-      "covered_lines": 406,
-      "percent": 69.88,
-      "statements": 581
+      "covered_lines": 465,
+      "percent": 73.81,
+      "statements": 630
     },
     "app/adapters/system/plugin/manifest.py": {
       "covered_lines": 90,
@@ -236,14 +236,14 @@
       "statements": 102
     },
     "app/adapters/system/plugin/package.py": {
-      "covered_lines": 842,
-      "percent": 75.38,
-      "statements": 1117
+      "covered_lines": 917,
+      "percent": 79.26,
+      "statements": 1157
     },
     "app/adapters/system/resource.py": {
-      "covered_lines": 66,
-      "percent": 46.81,
-      "statements": 141
+      "covered_lines": 78,
+      "percent": 46.99,
+      "statements": 166
     },
     "app/adapters/system/rust.py": {
       "covered_lines": 85,
@@ -256,9 +256,9 @@
       "statements": 49
     },
     "app/adapters/system/update.py": {
-      "covered_lines": 189,
-      "percent": 69.74,
-      "statements": 271
+      "covered_lines": 796,
+      "percent": 84.86,
+      "statements": 938
     },
     "app/adapters/web/__init__.py": {
       "covered_lines": 0,
@@ -271,9 +271,9 @@
       "statements": 24
     },
     "app/adapters/web/docs.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 31,
+      "percent": 100.0,
+      "statements": 31
     },
     "app/adapters/web/health.py": {
       "covered_lines": 12,
@@ -281,9 +281,9 @@
       "statements": 12
     },
     "app/adapters/web/metrics.py": {
-      "covered_lines": 32,
-      "percent": 94.12,
-      "statements": 34
+      "covered_lines": 34,
+      "percent": 94.44,
+      "statements": 36
     },
     "app/adapters/web/plugin/__init__.py": {
       "covered_lines": 0,
@@ -291,9 +291,9 @@
       "statements": 0
     },
     "app/adapters/web/plugin/routes.py": {
-      "covered_lines": 99,
-      "percent": 85.34,
-      "statements": 116
+      "covered_lines": 104,
+      "percent": 90.43,
+      "statements": 115
     },
     "app/adapters/web/security/__init__.py": {
       "covered_lines": 0,
@@ -301,8 +301,8 @@
       "statements": 0
     },
     "app/adapters/web/security/access.py": {
-      "covered_lines": 109,
-      "percent": 90.08,
+      "covered_lines": 113,
+      "percent": 93.39,
       "statements": 121
     },
     "app/agent/__init__.py": {
@@ -316,19 +316,19 @@
       "statements": 0
     },
     "app/agent/api/arguments.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 195,
+      "percent": 92.42,
+      "statements": 211
     },
     "app/agent/api/executor.py": {
-      "covered_lines": 92,
-      "percent": 73.6,
-      "statements": 125
+      "covered_lines": 126,
+      "percent": 89.36,
+      "statements": 141
     },
     "app/agent/callback/__init__.py": {
-      "covered_lines": 299,
-      "percent": 78.48,
-      "statements": 381
+      "covered_lines": 502,
+      "percent": 83.53,
+      "statements": 601
     },
     "app/agent/capabilities/__init__.py": {
       "covered_lines": 6,
@@ -346,19 +346,19 @@
       "statements": 0
     },
     "app/agent/code/authority.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 88,
+      "percent": 94.62,
+      "statements": 93
     },
     "app/agent/code/manager.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 143,
+      "percent": 94.08,
+      "statements": 152
     },
     "app/agent/code/result.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 30,
+      "percent": 93.75,
+      "statements": 32
     },
     "app/agent/contracts.py": {
       "covered_lines": 8,
@@ -371,19 +371,19 @@
       "statements": 0
     },
     "app/agent/guardrails/completion.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 20,
+      "percent": 74.07,
+      "statements": 27
     },
     "app/agent/guardrails/controller.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 315,
+      "percent": 94.31,
+      "statements": 334
     },
     "app/agent/guardrails/results.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 18,
+      "percent": 58.06,
+      "statements": 31
     },
     "app/agent/history/__init__.py": {
       "covered_lines": 0,
@@ -391,39 +391,39 @@
       "statements": 0
     },
     "app/agent/history/importer.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 31,
+      "percent": 100.0,
+      "statements": 31
     },
     "app/agent/history/message.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 20,
+      "percent": 95.24,
+      "statements": 21
     },
     "app/agent/history/query.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 58,
+      "percent": 92.06,
+      "statements": 63
     },
     "app/agent/history/schema.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 77,
+      "percent": 86.52,
+      "statements": 89
     },
     "app/agent/history/search.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 61,
+      "percent": 93.85,
+      "statements": 65
     },
     "app/agent/history/storage.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 158,
+      "percent": 84.95,
+      "statements": 186
     },
     "app/agent/history/view.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 73,
+      "percent": 94.81,
+      "statements": 77
     },
     "app/agent/learning/__init__.py": {
       "covered_lines": 0,
@@ -431,59 +431,59 @@
       "statements": 0
     },
     "app/agent/learning/files.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 55,
+      "percent": 90.16,
+      "statements": 61
     },
     "app/agent/learning/matching.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 169,
+      "percent": 51.68,
+      "statements": 327
     },
     "app/agent/learning/memory.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 143,
+      "percent": 92.26,
+      "statements": 155
     },
     "app/agent/learning/prompts.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 5,
+      "percent": 100.0,
+      "statements": 5
     },
     "app/agent/learning/review.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 66,
+      "percent": 90.41,
+      "statements": 73
     },
     "app/agent/learning/schema.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 42,
+      "percent": 100.0,
+      "statements": 42
     },
     "app/agent/learning/session.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 103,
+      "percent": 91.96,
+      "statements": 112
     },
     "app/agent/learning/skills.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 248,
+      "percent": 87.02,
+      "statements": 285
     },
     "app/agent/learning/threats.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 34,
+      "percent": 87.18,
+      "statements": 39
     },
     "app/agent/learning/tools.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 44,
+      "percent": 78.57,
+      "statements": 56
     },
     "app/agent/learning/usage.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 25,
+      "percent": 92.59,
+      "statements": 27
     },
     "app/agent/lifecycle.py": {
       "covered_lines": 89,
@@ -496,24 +496,24 @@
       "statements": 0
     },
     "app/agent/llm/auth.py": {
-      "covered_lines": 67,
-      "percent": 28.39,
-      "statements": 236
+      "covered_lines": 97,
+      "percent": 40.42,
+      "statements": 240
     },
     "app/agent/llm/capability.py": {
-      "covered_lines": 330,
-      "percent": 68.89,
-      "statements": 479
+      "covered_lines": 337,
+      "percent": 70.21,
+      "statements": 480
     },
     "app/agent/llm/catalog.py": {
-      "covered_lines": 361,
-      "percent": 84.54,
+      "covered_lines": 370,
+      "percent": 86.65,
       "statements": 427
     },
     "app/agent/llm/discovery.py": {
-      "covered_lines": 229,
-      "percent": 69.82,
-      "statements": 328
+      "covered_lines": 239,
+      "percent": 72.64,
+      "statements": 329
     },
     "app/agent/llm/gateway.py": {
       "covered_lines": 19,
@@ -521,13 +521,13 @@
       "statements": 27
     },
     "app/agent/llm/helper.py": {
-      "covered_lines": 481,
-      "percent": 75.51,
-      "statements": 637
+      "covered_lines": 725,
+      "percent": 85.39,
+      "statements": 849
     },
     "app/agent/llm/provider.py": {
-      "covered_lines": 120,
-      "percent": 83.92,
+      "covered_lines": 121,
+      "percent": 84.62,
       "statements": 143
     },
     "app/agent/llm/runtime.py": {
@@ -536,13 +536,13 @@
       "statements": 70
     },
     "app/agent/llm/session.py": {
-      "covered_lines": 47,
-      "percent": 59.49,
+      "covered_lines": 68,
+      "percent": 86.08,
       "statements": 79
     },
     "app/agent/llm/tools.py": {
-      "covered_lines": 53,
-      "percent": 98.15,
+      "covered_lines": 54,
+      "percent": 100.0,
       "statements": 54
     },
     "app/agent/loader.py": {
@@ -556,14 +556,14 @@
       "statements": 8
     },
     "app/agent/mcp.py": {
-      "covered_lines": 214,
-      "percent": 55.44,
-      "statements": 386
+      "covered_lines": 213,
+      "percent": 55.32,
+      "statements": 385
     },
     "app/agent/memory/__init__.py": {
-      "covered_lines": 106,
-      "percent": 79.1,
-      "statements": 134
+      "covered_lines": 132,
+      "percent": 81.99,
+      "statements": 161
     },
     "app/agent/middleware/__init__.py": {
       "covered_lines": 0,
@@ -571,98 +571,98 @@
       "statements": 0
     },
     "app/agent/middleware/code.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 73,
+      "percent": 91.25,
+      "statements": 80
     },
     "app/agent/middleware/config.py": {
-      "covered_lines": 8,
-      "percent": 61.54,
+      "covered_lines": 13,
+      "percent": 100.0,
       "statements": 13
     },
     "app/agent/middleware/guardrails.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 221,
+      "percent": 95.67,
+      "statements": 231
     },
     "app/agent/middleware/invocation.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 141,
+      "percent": 92.16,
+      "statements": 153
     },
     "app/agent/middleware/jobs.py": {
-      "covered_lines": 72,
-      "percent": 61.02,
+      "covered_lines": 92,
+      "percent": 77.97,
       "statements": 118
     },
     "app/agent/middleware/learning.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 29,
+      "percent": 87.88,
+      "statements": 33
     },
     "app/agent/middleware/memory.py": {
-      "covered_lines": 24,
-      "percent": 33.33,
-      "statements": 72
+      "covered_lines": 206,
+      "percent": 91.15,
+      "statements": 226
     },
     "app/agent/middleware/output.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 91,
+      "percent": 98.91,
+      "statements": 92
     },
     "app/agent/middleware/patching.py": {
-      "covered_lines": 40,
-      "percent": 93.02,
+      "covered_lines": 41,
+      "percent": 95.35,
       "statements": 43
     },
     "app/agent/middleware/plan.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 99,
+      "percent": 98.02,
+      "statements": 101
     },
     "app/agent/middleware/policy.py": {
-      "covered_lines": 47,
-      "percent": 63.51,
-      "statements": 74
+      "covered_lines": 117,
+      "percent": 87.97,
+      "statements": 133
     },
     "app/agent/middleware/recall.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 114,
+      "percent": 95.8,
+      "statements": 119
     },
     "app/agent/middleware/selection.py": {
-      "covered_lines": 238,
-      "percent": 90.49,
-      "statements": 263
+      "covered_lines": 351,
+      "percent": 92.61,
+      "statements": 379
     },
     "app/agent/middleware/skills.py": {
-      "covered_lines": 253,
-      "percent": 80.83,
-      "statements": 313
+      "covered_lines": 282,
+      "percent": 87.04,
+      "statements": 324
     },
     "app/agent/middleware/steering.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 38,
+      "percent": 82.61,
+      "statements": 46
     },
     "app/agent/middleware/subagents.py": {
-      "covered_lines": 442,
-      "percent": 85.49,
-      "statements": 517
+      "covered_lines": 533,
+      "percent": 90.49,
+      "statements": 589
     },
     "app/agent/middleware/summarization.py": {
-      "covered_lines": 198,
-      "percent": 83.54,
-      "statements": 237
+      "covered_lines": 228,
+      "percent": 83.52,
+      "statements": 273
     },
     "app/agent/middleware/terminal.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 35,
+      "percent": 100.0,
+      "statements": 35
     },
     "app/agent/middleware/usage.py": {
-      "covered_lines": 209,
-      "percent": 90.48,
+      "covered_lines": 211,
+      "percent": 91.34,
       "statements": 231
     },
     "app/agent/middleware/utils.py": {
@@ -671,14 +671,14 @@
       "statements": 7
     },
     "app/agent/middleware/vision.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 107,
+      "percent": 92.24,
+      "statements": 116
     },
     "app/agent/orchestrator.py": {
-      "covered_lines": 872,
-      "percent": 77.72,
-      "statements": 1122
+      "covered_lines": 1139,
+      "percent": 82.84,
+      "statements": 1375
     },
     "app/agent/policy/__init__.py": {
       "covered_lines": 12,
@@ -686,39 +686,39 @@
       "statements": 13
     },
     "app/agent/policy/api.py": {
-      "covered_lines": 33,
-      "percent": 97.06,
-      "statements": 34
+      "covered_lines": 46,
+      "percent": 100.0,
+      "statements": 46
     },
     "app/agent/policy/contracts.py": {
-      "covered_lines": 100,
-      "percent": 99.01,
-      "statements": 101
+      "covered_lines": 103,
+      "percent": 100.0,
+      "statements": 103
     },
     "app/agent/policy/mcp.py": {
       "covered_lines": 0,
       "percent": 0.0,
-      "statements": 253
+      "statements": 266
     },
     "app/agent/policy/orchestrator.py": {
-      "covered_lines": 73,
-      "percent": 96.05,
-      "statements": 76
+      "covered_lines": 77,
+      "percent": 98.72,
+      "statements": 78
     },
     "app/agent/policy/registry.py": {
-      "covered_lines": 41,
-      "percent": 87.23,
-      "statements": 47
+      "covered_lines": 47,
+      "percent": 95.92,
+      "statements": 49
     },
     "app/agent/policy/sanitizer.py": {
-      "covered_lines": 528,
-      "percent": 88.89,
-      "statements": 594
+      "covered_lines": 554,
+      "percent": 89.64,
+      "statements": 618
     },
     "app/agent/prompt/__init__.py": {
-      "covered_lines": 197,
-      "percent": 83.83,
-      "statements": 235
+      "covered_lines": 214,
+      "percent": 84.92,
+      "statements": 252
     },
     "app/agent/prompt/transfer.py": {
       "covered_lines": 25,
@@ -726,19 +726,19 @@
       "statements": 25
     },
     "app/agent/runtime.py": {
-      "covered_lines": 469,
-      "percent": 86.53,
-      "statements": 542
+      "covered_lines": 484,
+      "percent": 86.74,
+      "statements": 558
     },
     "app/agent/session.py": {
-      "covered_lines": 353,
-      "percent": 88.69,
-      "statements": 398
+      "covered_lines": 471,
+      "percent": 91.99,
+      "statements": 512
     },
     "app/agent/shell.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 178,
+      "percent": 94.68,
+      "statements": 188
     },
     "app/agent/skills/__init__.py": {
       "covered_lines": 0,
@@ -746,24 +746,24 @@
       "statements": 0
     },
     "app/agent/skills/metadata.py": {
-      "covered_lines": 42,
-      "percent": 65.62,
-      "statements": 64
+      "covered_lines": 46,
+      "percent": 75.41,
+      "statements": 61
     },
     "app/agent/skills/registry.py": {
-      "covered_lines": 363,
-      "percent": 56.19,
-      "statements": 646
+      "covered_lines": 364,
+      "percent": 56.17,
+      "statements": 648
     },
     "app/agent/steering.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 88,
+      "percent": 85.44,
+      "statements": 103
     },
     "app/agent/tasks.py": {
-      "covered_lines": 72,
-      "percent": 86.75,
-      "statements": 83
+      "covered_lines": 73,
+      "percent": 86.9,
+      "statements": 84
     },
     "app/agent/terminal/__init__.py": {
       "covered_lines": 0,
@@ -771,24 +771,24 @@
       "statements": 0
     },
     "app/agent/terminal/manager.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 448,
+      "percent": 88.02,
+      "statements": 509
     },
     "app/agent/terminal/output.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 128,
+      "percent": 95.52,
+      "statements": 134
     },
     "app/agent/terminal/ownership.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 68,
+      "percent": 95.77,
+      "statements": 71
     },
     "app/agent/terminal/session.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 106,
+      "percent": 94.64,
+      "statements": 112
     },
     "app/agent/tools/__init__.py": {
       "covered_lines": 0,
@@ -796,19 +796,19 @@
       "statements": 0
     },
     "app/agent/tools/base.py": {
-      "covered_lines": 315,
-      "percent": 84.91,
-      "statements": 371
+      "covered_lines": 388,
+      "percent": 87.39,
+      "statements": 444
     },
     "app/agent/tools/catalog.py": {
-      "covered_lines": 71,
-      "percent": 98.61,
-      "statements": 72
+      "covered_lines": 75,
+      "percent": 98.68,
+      "statements": 76
     },
     "app/agent/tools/factory.py": {
-      "covered_lines": 117,
-      "percent": 87.97,
-      "statements": 133
+      "covered_lines": 121,
+      "percent": 88.32,
+      "statements": 137
     },
     "app/agent/tools/impl/__init__.py": {
       "covered_lines": 0,
@@ -826,14 +826,14 @@
       "statements": 28
     },
     "app/agent/tools/impl/agent_task.py": {
-      "covered_lines": 179,
-      "percent": 84.83,
+      "covered_lines": 182,
+      "percent": 86.26,
       "statements": 211
     },
     "app/agent/tools/impl/api.py": {
-      "covered_lines": 66,
-      "percent": 71.74,
-      "statements": 92
+      "covered_lines": 165,
+      "percent": 91.16,
+      "statements": 181
     },
     "app/agent/tools/impl/apply_patch.py": {
       "covered_lines": 160,
@@ -841,33 +841,33 @@
       "statements": 180
     },
     "app/agent/tools/impl/ask_user_choice.py": {
-      "covered_lines": 68,
-      "percent": 76.4,
-      "statements": 89
+      "covered_lines": 71,
+      "percent": 80.68,
+      "statements": 88
     },
     "app/agent/tools/impl/browse_webpage.py": {
-      "covered_lines": 96,
-      "percent": 45.93,
-      "statements": 209
+      "covered_lines": 243,
+      "percent": 73.86,
+      "statements": 329
     },
     "app/agent/tools/impl/edit_file.py": {
-      "covered_lines": 46,
-      "percent": 74.19,
-      "statements": 62
+      "covered_lines": 47,
+      "percent": 70.15,
+      "statements": 67
     },
     "app/agent/tools/impl/execute_code.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 32,
+      "percent": 100.0,
+      "statements": 32
     },
     "app/agent/tools/impl/execute_command.py": {
-      "covered_lines": 265,
-      "percent": 84.66,
-      "statements": 313
+      "covered_lines": 348,
+      "percent": 89.0,
+      "statements": 391
     },
     "app/agent/tools/impl/mcp.py": {
-      "covered_lines": 37,
-      "percent": 62.71,
+      "covered_lines": 50,
+      "percent": 84.75,
       "statements": 59
     },
     "app/agent/tools/impl/persona.py": {
@@ -881,14 +881,14 @@
       "statements": 36
     },
     "app/agent/tools/impl/read_file.py": {
-      "covered_lines": 50,
-      "percent": 74.63,
-      "statements": 67
+      "covered_lines": 56,
+      "percent": 76.71,
+      "statements": 73
     },
     "app/agent/tools/impl/recognize_captcha.py": {
-      "covered_lines": 45,
-      "percent": 78.95,
-      "statements": 57
+      "covered_lines": 71,
+      "percent": 92.21,
+      "statements": 77
     },
     "app/agent/tools/impl/search_web.py": {
       "covered_lines": 160,
@@ -896,9 +896,9 @@
       "statements": 196
     },
     "app/agent/tools/impl/send_local_file.py": {
-      "covered_lines": 28,
-      "percent": 58.33,
-      "statements": 48
+      "covered_lines": 27,
+      "percent": 57.45,
+      "statements": 47
     },
     "app/agent/tools/impl/send_message.py": {
       "covered_lines": 34,
@@ -906,39 +906,39 @@
       "statements": 53
     },
     "app/agent/tools/impl/send_voice_message.py": {
-      "covered_lines": 40,
-      "percent": 85.11,
-      "statements": 47
+      "covered_lines": 39,
+      "percent": 84.78,
+      "statements": 46
     },
     "app/agent/tools/impl/service.py": {
-      "covered_lines": 174,
-      "percent": 75.98,
-      "statements": 229
+      "covered_lines": 189,
+      "percent": 82.17,
+      "statements": 230
     },
     "app/agent/tools/impl/view_image.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 194,
+      "percent": 72.39,
+      "statements": 268
     },
     "app/agent/tools/impl/write_file.py": {
-      "covered_lines": 41,
-      "percent": 75.93,
+      "covered_lines": 42,
+      "percent": 77.78,
       "statements": 54
     },
     "app/agent/tools/manager.py": {
-      "covered_lines": 221,
-      "percent": 80.95,
-      "statements": 273
+      "covered_lines": 232,
+      "percent": 83.15,
+      "statements": 279
     },
     "app/agent/tools/projection.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 70,
+      "percent": 93.33,
+      "statements": 75
     },
     "app/agent/tools/result.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 86,
+      "percent": 92.47,
+      "statements": 93
     },
     "app/agent/tools/tags.py": {
       "covered_lines": 33,
@@ -946,9 +946,9 @@
       "statements": 33
     },
     "app/agent/web.py": {
-      "covered_lines": 73,
-      "percent": 63.48,
-      "statements": 115
+      "covered_lines": 169,
+      "percent": 88.95,
+      "statements": 190
     },
     "app/api/__init__.py": {
       "covered_lines": 0,
@@ -961,9 +961,9 @@
       "statements": 5
     },
     "app/api/context.py": {
-      "covered_lines": 45,
+      "covered_lines": 48,
       "percent": 75.0,
-      "statements": 60
+      "statements": 64
     },
     "app/api/data.py": {
       "covered_lines": 28,
@@ -981,8 +981,8 @@
       "statements": 12
     },
     "app/api/dependencies/auth.py": {
-      "covered_lines": 38,
-      "percent": 74.51,
+      "covered_lines": 45,
+      "percent": 88.24,
       "statements": 51
     },
     "app/api/dependencies/data.py": {
@@ -991,18 +991,18 @@
       "statements": 8
     },
     "app/api/dependencies/github.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 7,
+      "percent": 53.85,
+      "statements": 13
     },
     "app/api/dependencies/history.py": {
-      "covered_lines": 20,
-      "percent": 68.97,
-      "statements": 29
+      "covered_lines": 21,
+      "percent": 70.0,
+      "statements": 30
     },
     "app/api/dependencies/plugin.py": {
-      "covered_lines": 9,
-      "percent": 52.94,
+      "covered_lines": 13,
+      "percent": 76.47,
       "statements": 17
     },
     "app/api/dependencies/site.py": {
@@ -1011,9 +1011,9 @@
       "statements": 26
     },
     "app/api/dependencies/subscription.py": {
-      "covered_lines": 41,
-      "percent": 77.36,
-      "statements": 53
+      "covered_lines": 62,
+      "percent": 75.61,
+      "statements": 82
     },
     "app/api/dependencies/workflow.py": {
       "covered_lines": 13,
@@ -1031,9 +1031,9 @@
       "statements": 0
     },
     "app/api/endpoints/agent.py": {
-      "covered_lines": 105,
-      "percent": 53.03,
-      "statements": 198
+      "covered_lines": 140,
+      "percent": 63.93,
+      "statements": 219
     },
     "app/api/endpoints/anilist.py": {
       "covered_lines": 32,
@@ -1046,8 +1046,8 @@
       "statements": 106
     },
     "app/api/endpoints/auth.py": {
-      "covered_lines": 26,
-      "percent": 86.67,
+      "covered_lines": 29,
+      "percent": 96.67,
       "statements": 30
     },
     "app/api/endpoints/bangumi.py": {
@@ -1056,9 +1056,9 @@
       "statements": 37
     },
     "app/api/endpoints/classification.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 86,
+      "percent": 71.07,
+      "statements": 121
     },
     "app/api/endpoints/dashboard.py": {
       "covered_lines": 87,
@@ -1071,29 +1071,29 @@
       "statements": 45
     },
     "app/api/endpoints/douban.py": {
-      "covered_lines": 31,
-      "percent": 62.0,
+      "covered_lines": 41,
+      "percent": 82.0,
       "statements": 50
     },
     "app/api/endpoints/download.py": {
-      "covered_lines": 127,
-      "percent": 78.4,
-      "statements": 162
+      "covered_lines": 154,
+      "percent": 82.35,
+      "statements": 187
     },
     "app/api/endpoints/github.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 40,
+      "percent": 43.01,
+      "statements": 93
     },
     "app/api/endpoints/history.py": {
-      "covered_lines": 136,
-      "percent": 76.4,
-      "statements": 178
+      "covered_lines": 198,
+      "percent": 79.84,
+      "statements": 248
     },
     "app/api/endpoints/identifier.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 27,
+      "percent": 100.0,
+      "statements": 27
     },
     "app/api/endpoints/llm.py": {
       "covered_lines": 21,
@@ -1101,29 +1101,29 @@
       "statements": 21
     },
     "app/api/endpoints/login.py": {
-      "covered_lines": 50,
-      "percent": 75.76,
-      "statements": 66
+      "covered_lines": 62,
+      "percent": 79.49,
+      "statements": 78
     },
     "app/api/endpoints/mcp.py": {
-      "covered_lines": 54,
-      "percent": 36.24,
-      "statements": 149
+      "covered_lines": 131,
+      "percent": 74.43,
+      "statements": 176
     },
     "app/api/endpoints/media.py": {
-      "covered_lines": 193,
-      "percent": 70.7,
-      "statements": 273
+      "covered_lines": 219,
+      "percent": 76.31,
+      "statements": 287
     },
     "app/api/endpoints/mediaserver.py": {
-      "covered_lines": 68,
-      "percent": 65.38,
+      "covered_lines": 87,
+      "percent": 83.65,
       "statements": 104
     },
     "app/api/endpoints/message.py": {
-      "covered_lines": 95,
-      "percent": 62.5,
-      "statements": 152
+      "covered_lines": 117,
+      "percent": 70.91,
+      "statements": 165
     },
     "app/api/endpoints/mfa.py": {
       "covered_lines": 36,
@@ -1131,14 +1131,14 @@
       "statements": 48
     },
     "app/api/endpoints/module.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 43,
+      "percent": 76.79,
+      "statements": 56
     },
     "app/api/endpoints/music.py": {
-      "covered_lines": 107,
-      "percent": 96.4,
-      "statements": 111
+      "covered_lines": 126,
+      "percent": 96.92,
+      "statements": 130
     },
     "app/api/endpoints/notification.py": {
       "covered_lines": 41,
@@ -1146,39 +1146,39 @@
       "statements": 53
     },
     "app/api/endpoints/openai.py": {
-      "covered_lines": 173,
-      "percent": 59.25,
-      "statements": 292
+      "covered_lines": 194,
+      "percent": 65.32,
+      "statements": 297
     },
     "app/api/endpoints/plugin.py": {
-      "covered_lines": 268,
-      "percent": 70.53,
-      "statements": 380
+      "covered_lines": 279,
+      "percent": 75.2,
+      "statements": 371
     },
     "app/api/endpoints/pluginclone.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 24,
+      "percent": 55.81,
+      "statements": 43
     },
     "app/api/endpoints/pluginfolder.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 39,
+      "percent": 84.78,
+      "statements": 46
     },
     "app/api/endpoints/plugininstance.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 17,
+      "percent": 100.0,
+      "statements": 17
     },
     "app/api/endpoints/pluginloglevel.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 33,
+      "percent": 100.0,
+      "statements": 33
     },
     "app/api/endpoints/plugintarget.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 39,
+      "percent": 100.0,
+      "statements": 39
     },
     "app/api/endpoints/recommend.py": {
       "covered_lines": 69,
@@ -1186,53 +1186,53 @@
       "statements": 147
     },
     "app/api/endpoints/rule.py": {
-      "covered_lines": 34,
-      "percent": 50.0,
-      "statements": 68
+      "covered_lines": 40,
+      "percent": 47.62,
+      "statements": 84
     },
     "app/api/endpoints/search.py": {
-      "covered_lines": 215,
-      "percent": 68.91,
-      "statements": 312
+      "covered_lines": 240,
+      "percent": 74.53,
+      "statements": 322
     },
     "app/api/endpoints/settings.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 27,
+      "percent": 47.37,
+      "statements": 57
     },
     "app/api/endpoints/site.py": {
-      "covered_lines": 152,
-      "percent": 61.54,
-      "statements": 247
+      "covered_lines": 204,
+      "percent": 69.39,
+      "statements": 294
     },
     "app/api/endpoints/storage.py": {
-      "covered_lines": 51,
-      "percent": 36.96,
-      "statements": 138
+      "covered_lines": 74,
+      "percent": 49.66,
+      "statements": 149
     },
     "app/api/endpoints/subexecution.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 84,
+      "percent": 77.78,
+      "statements": 108
     },
     "app/api/endpoints/submaintenance.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 57,
+      "percent": 86.36,
+      "statements": 66
     },
     "app/api/endpoints/subscribe.py": {
-      "covered_lines": 223,
-      "percent": 71.02,
-      "statements": 314
+      "covered_lines": 249,
+      "percent": 75.68,
+      "statements": 329
     },
     "app/api/endpoints/system.py": {
-      "covered_lines": 249,
-      "percent": 65.18,
-      "statements": 382
+      "covered_lines": 315,
+      "percent": 79.55,
+      "statements": 396
     },
     "app/api/endpoints/tmdb.py": {
-      "covered_lines": 62,
-      "percent": 68.13,
+      "covered_lines": 77,
+      "percent": 84.62,
       "statements": 91
     },
     "app/api/endpoints/torrent.py": {
@@ -1241,19 +1241,19 @@
       "statements": 74
     },
     "app/api/endpoints/transfer.py": {
-      "covered_lines": 232,
-      "percent": 77.33,
-      "statements": 300
+      "covered_lines": 311,
+      "percent": 85.21,
+      "statements": 365
     },
     "app/api/endpoints/transferhistory.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 37,
+      "percent": 71.15,
+      "statements": 52
     },
     "app/api/endpoints/user.py": {
-      "covered_lines": 83,
-      "percent": 80.58,
-      "statements": 103
+      "covered_lines": 86,
+      "percent": 78.9,
+      "statements": 109
     },
     "app/api/endpoints/webhook.py": {
       "covered_lines": 22,
@@ -1262,8 +1262,8 @@
     },
     "app/api/endpoints/workflow.py": {
       "covered_lines": 62,
-      "percent": 64.58,
-      "statements": 96
+      "percent": 63.27,
+      "statements": 98
     },
     "app/api/presentation/__init__.py": {
       "covered_lines": 0,
@@ -1286,9 +1286,9 @@
       "statements": 126
     },
     "app/api/response.py": {
-      "covered_lines": 193,
-      "percent": 92.79,
-      "statements": 208
+      "covered_lines": 209,
+      "percent": 94.57,
+      "statements": 221
     },
     "app/api/routers.py": {
       "covered_lines": 5,
@@ -1296,9 +1296,9 @@
       "statements": 5
     },
     "app/api/servarr.py": {
-      "covered_lines": 128,
-      "percent": 61.24,
-      "statements": 209
+      "covered_lines": 129,
+      "percent": 60.85,
+      "statements": 212
     },
     "app/api/servcookie.py": {
       "covered_lines": 68,
@@ -1311,24 +1311,24 @@
       "statements": 0
     },
     "app/application/agent.py": {
-      "covered_lines": 81,
-      "percent": 95.29,
-      "statements": 85
+      "covered_lines": 89,
+      "percent": 95.7,
+      "statements": 93
     },
     "app/application/agenttask.py": {
-      "covered_lines": 154,
-      "percent": 93.33,
-      "statements": 165
+      "covered_lines": 157,
+      "percent": 92.9,
+      "statements": 169
     },
     "app/application/audio.py": {
-      "covered_lines": 166,
-      "percent": 75.45,
-      "statements": 220
+      "covered_lines": 754,
+      "percent": 94.25,
+      "statements": 800
     },
     "app/application/backup.py": {
-      "covered_lines": 121,
-      "percent": 97.58,
-      "statements": 124
+      "covered_lines": 125,
+      "percent": 97.66,
+      "statements": 128
     },
     "app/application/chain/__init__.py": {
       "covered_lines": 0,
@@ -1336,14 +1336,14 @@
       "statements": 0
     },
     "app/application/chain/context.py": {
-      "covered_lines": 49,
+      "covered_lines": 54,
       "percent": 100.0,
-      "statements": 49
+      "statements": 54
     },
     "app/application/chain/events.py": {
-      "covered_lines": 139,
-      "percent": 87.42,
-      "statements": 159
+      "covered_lines": 148,
+      "percent": 88.1,
+      "statements": 168
     },
     "app/application/classification/__init__.py": {
       "covered_lines": 0,
@@ -1351,69 +1351,69 @@
       "statements": 0
     },
     "app/application/classification/analysis.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 271,
+      "percent": 89.44,
+      "statements": 303
     },
     "app/application/classification/catalog.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 7,
+      "percent": 100.0,
+      "statements": 7
     },
     "app/application/classification/compiler.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 66,
+      "percent": 90.41,
+      "statements": 73
     },
     "app/application/classification/configuration.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 156,
+      "percent": 95.71,
+      "statements": 163
     },
     "app/application/classification/contract.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 20,
+      "percent": 86.96,
+      "statements": 23
     },
     "app/application/classification/enrichment.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 273,
+      "percent": 83.49,
+      "statements": 327
     },
     "app/application/classification/execution.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 180,
+      "percent": 84.11,
+      "statements": 214
     },
     "app/application/classification/legacy.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 3,
+      "percent": 100.0,
+      "statements": 3
     },
     "app/application/classification/migration.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 325,
+      "percent": 89.29,
+      "statements": 364
     },
     "app/application/classification/projection.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 201,
+      "percent": 77.01,
+      "statements": 261
     },
     "app/application/classification/reference.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 278,
+      "percent": 92.36,
+      "statements": 301
     },
     "app/application/classification/runtime.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 47,
+      "percent": 87.04,
+      "statements": 54
     },
     "app/application/commands.py": {
-      "covered_lines": 33,
+      "covered_lines": 34,
       "percent": 100.0,
-      "statements": 33
+      "statements": 34
     },
     "app/application/community/__init__.py": {
       "covered_lines": 0,
@@ -1421,29 +1421,29 @@
       "statements": 0
     },
     "app/application/community/medals.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 52,
+      "percent": 98.11,
+      "statements": 53
     },
     "app/application/configuration.py": {
-      "covered_lines": 259,
-      "percent": 91.2,
-      "statements": 284
+      "covered_lines": 306,
+      "percent": 92.17,
+      "statements": 332
     },
     "app/application/dashboard.py": {
       "covered_lines": 33,
-      "percent": 86.84,
-      "statements": 38
+      "percent": 89.19,
+      "statements": 37
     },
     "app/application/database.py": {
-      "covered_lines": 35,
-      "percent": 83.33,
-      "statements": 42
+      "covered_lines": 39,
+      "percent": 84.78,
+      "statements": 46
     },
     "app/application/directory.py": {
-      "covered_lines": 121,
-      "percent": 58.17,
-      "statements": 208
+      "covered_lines": 376,
+      "percent": 83.74,
+      "statements": 449
     },
     "app/application/download/__init__.py": {
       "covered_lines": 0,
@@ -1451,14 +1451,14 @@
       "statements": 0
     },
     "app/application/download/admission.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 11,
+      "percent": 73.33,
+      "statements": 15
     },
     "app/application/download/classification.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 69,
+      "percent": 79.31,
+      "statements": 87
     },
     "app/application/download/failures.py": {
       "covered_lines": 32,
@@ -1466,84 +1466,84 @@
       "statements": 34
     },
     "app/application/download/organization.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 197,
+      "percent": 83.83,
+      "statements": 235
     },
     "app/application/download/selection.py": {
-      "covered_lines": 52,
-      "percent": 76.47,
-      "statements": 68
+      "covered_lines": 61,
+      "percent": 82.43,
+      "statements": 74
     },
     "app/application/download/tasks.py": {
-      "covered_lines": 83,
-      "percent": 95.4,
-      "statements": 87
+      "covered_lines": 80,
+      "percent": 95.24,
+      "statements": 84
     },
     "app/application/download/validation.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 6,
+      "percent": 100.0,
+      "statements": 6
     },
     "app/application/downloader.py": {
-      "covered_lines": 8,
-      "percent": 72.73,
-      "statements": 11
+      "covered_lines": 7,
+      "percent": 70.0,
+      "statements": 10
     },
     "app/application/filtering.py": {
-      "covered_lines": 305,
-      "percent": 95.61,
-      "statements": 319
+      "covered_lines": 338,
+      "percent": 94.94,
+      "statements": 356
     },
     "app/application/formatting.py": {
-      "covered_lines": 659,
-      "percent": 84.16,
+      "covered_lines": 690,
+      "percent": 88.12,
       "statements": 783
     },
     "app/application/github_auth.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 171,
+      "percent": 72.77,
+      "statements": 235
     },
     "app/application/history/__init__.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 193,
+      "percent": 89.77,
+      "statements": 215
     },
     "app/application/history/contracts.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 183,
+      "percent": 87.56,
+      "statements": 209
     },
     "app/application/history/mutation.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 128,
+      "percent": 85.33,
+      "statements": 150
     },
     "app/application/history/retry.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 162,
+      "percent": 96.43,
+      "statements": 168
     },
     "app/application/image.py": {
-      "covered_lines": 191,
-      "percent": 70.48,
-      "statements": 271
+      "covered_lines": 335,
+      "percent": 79.57,
+      "statements": 421
     },
     "app/application/invocation.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 18,
+      "percent": 75.0,
+      "statements": 24
     },
     "app/application/maintenance.py": {
-      "covered_lines": 116,
-      "percent": 85.93,
-      "statements": 135
+      "covered_lines": 119,
+      "percent": 85.61,
+      "statements": 139
     },
     "app/application/mediaserver.py": {
-      "covered_lines": 152,
-      "percent": 87.86,
-      "statements": 173
+      "covered_lines": 157,
+      "percent": 89.2,
+      "statements": 176
     },
     "app/application/messaging/__init__.py": {
       "covered_lines": 0,
@@ -1551,9 +1551,9 @@
       "statements": 0
     },
     "app/application/messaging/agent.py": {
-      "covered_lines": 789,
-      "percent": 79.46,
-      "statements": 993
+      "covered_lines": 613,
+      "percent": 82.5,
+      "statements": 743
     },
     "app/application/messaging/channel/__init__.py": {
       "covered_lines": 0,
@@ -1561,44 +1561,44 @@
       "statements": 0
     },
     "app/application/messaging/channel/admin.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 23,
+      "percent": 100.0,
+      "statements": 23
     },
     "app/application/messaging/chat.py": {
-      "covered_lines": 186,
-      "percent": 88.15,
-      "statements": 211
+      "covered_lines": 192,
+      "percent": 88.48,
+      "statements": 217
     },
     "app/application/messaging/image.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 29,
+      "percent": 87.88,
+      "statements": 33
     },
     "app/application/messaging/ingress.py": {
-      "covered_lines": 66,
-      "percent": 94.29,
-      "statements": 70
+      "covered_lines": 69,
+      "percent": 94.52,
+      "statements": 73
     },
     "app/application/messaging/interaction/__init__.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 108,
+      "percent": 90.0,
+      "statements": 120
     },
     "app/application/messaging/interaction/agent.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 63,
+      "percent": 86.3,
+      "statements": 73
     },
     "app/application/messaging/media.py": {
-      "covered_lines": 61,
-      "percent": 87.14,
-      "statements": 70
+      "covered_lines": 31,
+      "percent": 100.0,
+      "statements": 31
     },
     "app/application/messaging/message.py": {
-      "covered_lines": 385,
-      "percent": 73.47,
-      "statements": 524
+      "covered_lines": 425,
+      "percent": 75.49,
+      "statements": 563
     },
     "app/application/messaging/plugin.py": {
       "covered_lines": 169,
@@ -1606,14 +1606,14 @@
       "statements": 188
     },
     "app/application/messaging/recall.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 82,
+      "percent": 89.13,
+      "statements": 92
     },
     "app/application/messaging/router.py": {
-      "covered_lines": 43,
+      "covered_lines": 52,
       "percent": 100.0,
-      "statements": 43
+      "statements": 52
     },
     "app/application/messaging/session.py": {
       "covered_lines": 51,
@@ -1626,19 +1626,19 @@
       "statements": 203
     },
     "app/application/messaging/skill.py": {
-      "covered_lines": 303,
-      "percent": 62.6,
-      "statements": 484
+      "covered_lines": 268,
+      "percent": 60.36,
+      "statements": 444
     },
     "app/application/messaging/subscribe.py": {
-      "covered_lines": 108,
-      "percent": 43.03,
-      "statements": 251
+      "covered_lines": 114,
+      "percent": 44.36,
+      "statements": 257
     },
     "app/application/messaging/update.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 249,
+      "percent": 69.36,
+      "statements": 359
     },
     "app/application/messaging/webagent/__init__.py": {
       "covered_lines": 0,
@@ -1646,14 +1646,14 @@
       "statements": 0
     },
     "app/application/messaging/webagent/events.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 92,
+      "percent": 70.77,
+      "statements": 130
     },
     "app/application/messaging/webagent/stream.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 146,
+      "percent": 90.68,
+      "statements": 161
     },
     "app/application/module.py": {
       "covered_lines": 20,
@@ -1666,24 +1666,24 @@
       "statements": 0
     },
     "app/application/music/catalog.py": {
-      "covered_lines": 62,
-      "percent": 96.88,
-      "statements": 64
+      "covered_lines": 81,
+      "percent": 93.1,
+      "statements": 87
     },
     "app/application/music/observation.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 116,
+      "percent": 95.08,
+      "statements": 122
     },
     "app/application/music/projection.py": {
-      "covered_lines": 24,
+      "covered_lines": 25,
       "percent": 100.0,
-      "statements": 24
+      "statements": 25
     },
     "app/application/music/recognition.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 73,
+      "percent": 94.81,
+      "statements": 77
     },
     "app/application/nettest/__init__.py": {
       "covered_lines": 0,
@@ -1691,28 +1691,28 @@
       "statements": 0
     },
     "app/application/nettest/catalogue.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 112,
+      "percent": 91.06,
+      "statements": 123
     },
     "app/application/nettest/domain.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 50,
+      "percent": 94.34,
+      "statements": 53
     },
     "app/application/network.py": {
-      "covered_lines": 144,
-      "percent": 84.71,
-      "statements": 170
+      "covered_lines": 124,
+      "percent": 74.25,
+      "statements": 167
     },
     "app/application/notification.py": {
-      "covered_lines": 16,
-      "percent": 88.89,
-      "statements": 18
+      "covered_lines": 15,
+      "percent": 88.24,
+      "statements": 17
     },
     "app/application/outbox.py": {
-      "covered_lines": 188,
-      "percent": 96.41,
+      "covered_lines": 189,
+      "percent": 96.92,
       "statements": 195
     },
     "app/application/plugin/__init__.py": {
@@ -1721,24 +1721,24 @@
       "statements": 0
     },
     "app/application/plugin/admission.py": {
-      "covered_lines": 81,
-      "percent": 88.04,
-      "statements": 92
+      "covered_lines": 82,
+      "percent": 88.17,
+      "statements": 93
     },
     "app/application/plugin/catalog.py": {
-      "covered_lines": 237,
-      "percent": 89.77,
-      "statements": 264
+      "covered_lines": 256,
+      "percent": 91.1,
+      "statements": 281
     },
     "app/application/plugin/config.py": {
-      "covered_lines": 42,
+      "covered_lines": 103,
       "percent": 100.0,
-      "statements": 42
+      "statements": 103
     },
     "app/application/plugin/data.py": {
-      "covered_lines": 60,
-      "percent": 92.31,
-      "statements": 65
+      "covered_lines": 94,
+      "percent": 87.04,
+      "statements": 108
     },
     "app/application/plugin/declaration.py": {
       "covered_lines": 96,
@@ -1746,14 +1746,14 @@
       "statements": 105
     },
     "app/application/plugin/folders.py": {
-      "covered_lines": 119,
-      "percent": 100.0,
-      "statements": 119
+      "covered_lines": 173,
+      "percent": 92.02,
+      "statements": 188
     },
     "app/application/plugin/gateway.py": {
-      "covered_lines": 59,
-      "percent": 88.06,
-      "statements": 67
+      "covered_lines": 63,
+      "percent": 88.73,
+      "statements": 71
     },
     "app/application/plugin/identity.py": {
       "covered_lines": 238,
@@ -1761,14 +1761,14 @@
       "statements": 274
     },
     "app/application/plugin/install.py": {
-      "covered_lines": 340,
-      "percent": 85.43,
-      "statements": 398
+      "covered_lines": 343,
+      "percent": 85.54,
+      "statements": 401
     },
     "app/application/plugin/inventory.py": {
-      "covered_lines": 143,
-      "percent": 83.14,
-      "statements": 172
+      "covered_lines": 142,
+      "percent": 83.04,
+      "statements": 171
     },
     "app/application/plugin/lifecycle.py": {
       "covered_lines": 61,
@@ -1776,9 +1776,9 @@
       "statements": 65
     },
     "app/application/plugin/management.py": {
-      "covered_lines": 90,
-      "percent": 52.94,
-      "statements": 170
+      "covered_lines": 127,
+      "percent": 73.41,
+      "statements": 173
     },
     "app/application/plugin/migration.py": {
       "covered_lines": 77,
@@ -1791,14 +1791,14 @@
       "statements": 34
     },
     "app/application/plugin/recovery.py": {
-      "covered_lines": 64,
-      "percent": 84.21,
-      "statements": 76
+      "covered_lines": 70,
+      "percent": 85.37,
+      "statements": 82
     },
     "app/application/plugin/release.py": {
-      "covered_lines": 83,
-      "percent": 92.22,
-      "statements": 90
+      "covered_lines": 89,
+      "percent": 93.68,
+      "statements": 95
     },
     "app/application/plugin/routes.py": {
       "covered_lines": 15,
@@ -1806,14 +1806,14 @@
       "statements": 17
     },
     "app/application/plugin/runtime.py": {
-      "covered_lines": 17,
-      "percent": 60.71,
-      "statements": 28
+      "covered_lines": 23,
+      "percent": 65.71,
+      "statements": 35
     },
     "app/application/plugin/source.py": {
-      "covered_lines": 383,
-      "percent": 87.84,
-      "statements": 436
+      "covered_lines": 391,
+      "percent": 88.06,
+      "statements": 444
     },
     "app/application/plugin/transaction.py": {
       "covered_lines": 98,
@@ -1826,24 +1826,24 @@
       "statements": 120
     },
     "app/application/recognition.py": {
-      "covered_lines": 14,
+      "covered_lines": 16,
       "percent": 100.0,
-      "statements": 14
+      "statements": 16
     },
     "app/application/rss.py": {
-      "covered_lines": 161,
-      "percent": 73.18,
-      "statements": 220
+      "covered_lines": 164,
+      "percent": 73.87,
+      "statements": 222
     },
     "app/application/rules.py": {
-      "covered_lines": 197,
-      "percent": 85.65,
-      "statements": 230
+      "covered_lines": 196,
+      "percent": 85.59,
+      "statements": 229
     },
     "app/application/scheduling.py": {
-      "covered_lines": 66,
-      "percent": 91.67,
-      "statements": 72
+      "covered_lines": 68,
+      "percent": 89.47,
+      "statements": 76
     },
     "app/application/search/__init__.py": {
       "covered_lines": 0,
@@ -1851,14 +1851,14 @@
       "statements": 0
     },
     "app/application/search/session.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 51,
+      "percent": 91.07,
+      "statements": 56
     },
     "app/application/search/state.py": {
-      "covered_lines": 51,
-      "percent": 94.44,
-      "statements": 54
+      "covered_lines": 52,
+      "percent": 92.86,
+      "statements": 56
     },
     "app/application/security/__init__.py": {
       "covered_lines": 0,
@@ -1866,29 +1866,29 @@
       "statements": 0
     },
     "app/application/security/auth.py": {
-      "covered_lines": 104,
-      "percent": 88.89,
-      "statements": 117
+      "covered_lines": 107,
+      "percent": 89.17,
+      "statements": 120
     },
     "app/application/security/cookie.py": {
-      "covered_lines": 65,
-      "percent": 75.58,
-      "statements": 86
+      "covered_lines": 147,
+      "percent": 75.38,
+      "statements": 195
     },
     "app/application/security/image.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 60,
+      "percent": 100.0,
+      "statements": 60
     },
     "app/application/security/otp.py": {
       "covered_lines": 7,
-      "percent": 36.84,
-      "statements": 19
+      "percent": 35.0,
+      "statements": 20
     },
     "app/application/security/passkey.py": {
       "covered_lines": 102,
-      "percent": 56.98,
-      "statements": 179
+      "percent": 53.68,
+      "statements": 190
     },
     "app/application/security/secrets.py": {
       "covered_lines": 21,
@@ -1896,39 +1896,39 @@
       "statements": 23
     },
     "app/application/security/throttle.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 67,
+      "percent": 100.0,
+      "statements": 67
     },
     "app/application/security/token.py": {
-      "covered_lines": 55,
-      "percent": 57.29,
-      "statements": 96
+      "covered_lines": 72,
+      "percent": 73.47,
+      "statements": 98
     },
     "app/application/security/twofactor.py": {
-      "covered_lines": 18,
-      "percent": 58.06,
+      "covered_lines": 31,
+      "percent": 100.0,
       "statements": 31
     },
     "app/application/security/url.py": {
-      "covered_lines": 375,
-      "percent": 87.41,
-      "statements": 429
+      "covered_lines": 387,
+      "percent": 88.36,
+      "statements": 438
     },
     "app/application/security/user.py": {
-      "covered_lines": 120,
-      "percent": 90.91,
-      "statements": 132
+      "covered_lines": 124,
+      "percent": 89.21,
+      "statements": 139
     },
     "app/application/security/userconfig.py": {
-      "covered_lines": 36,
-      "percent": 90.0,
-      "statements": 40
+      "covered_lines": 49,
+      "percent": 92.45,
+      "statements": 53
     },
     "app/application/servarr.py": {
-      "covered_lines": 32,
-      "percent": 59.26,
-      "statements": 54
+      "covered_lines": 46,
+      "percent": 74.19,
+      "statements": 62
     },
     "app/application/server/__init__.py": {
       "covered_lines": 0,
@@ -1936,39 +1936,39 @@
       "statements": 0
     },
     "app/application/server/payload.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 14,
+      "percent": 100.0,
+      "statements": 14
     },
     "app/application/server/report.py": {
-      "covered_lines": 81,
-      "percent": 84.38,
-      "statements": 96
+      "covered_lines": 75,
+      "percent": 84.27,
+      "statements": 89
     },
     "app/application/server/share.py": {
-      "covered_lines": 93,
-      "percent": 88.57,
-      "statements": 105
+      "covered_lines": 88,
+      "percent": 89.8,
+      "statements": 98
     },
     "app/application/service.py": {
-      "covered_lines": 34,
-      "percent": 61.82,
-      "statements": 55
+      "covered_lines": 42,
+      "percent": 63.64,
+      "statements": 66
     },
     "app/application/settings/__init__.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 13,
+      "percent": 92.86,
+      "statements": 14
     },
     "app/application/settings/contract.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 180,
+      "percent": 95.74,
+      "statements": 188
     },
     "app/application/settings/service.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 262,
+      "percent": 90.34,
+      "statements": 290
     },
     "app/application/site/__init__.py": {
       "covered_lines": 0,
@@ -1976,14 +1976,14 @@
       "statements": 0
     },
     "app/application/site/auth.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 32,
+      "percent": 84.21,
+      "statements": 38
     },
     "app/application/site/contract.py": {
-      "covered_lines": 179,
-      "percent": 81.74,
-      "statements": 219
+      "covered_lines": 183,
+      "percent": 80.62,
+      "statements": 227
     },
     "app/application/site/health.py": {
       "covered_lines": 19,
@@ -1991,24 +1991,24 @@
       "statements": 23
     },
     "app/application/site/mutation.py": {
-      "covered_lines": 98,
-      "percent": 81.67,
-      "statements": 120
+      "covered_lines": 113,
+      "percent": 84.33,
+      "statements": 134
     },
     "app/application/site/observation.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 35,
+      "percent": 100.0,
+      "statements": 35
     },
     "app/application/site/query.py": {
-      "covered_lines": 29,
-      "percent": 63.04,
-      "statements": 46
+      "covered_lines": 34,
+      "percent": 51.52,
+      "statements": 66
     },
     "app/application/storage.py": {
-      "covered_lines": 11,
-      "percent": 28.21,
-      "statements": 39
+      "covered_lines": 15,
+      "percent": 37.5,
+      "statements": 40
     },
     "app/application/subscription/__init__.py": {
       "covered_lines": 0,
@@ -2016,24 +2016,24 @@
       "statements": 0
     },
     "app/application/subscription/activity.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 233,
+      "percent": 91.37,
+      "statements": 255
     },
     "app/application/subscription/candidates.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 149,
+      "percent": 94.3,
+      "statements": 158
     },
     "app/application/subscription/complete.py": {
-      "covered_lines": 61,
-      "percent": 91.04,
-      "statements": 67
+      "covered_lines": 69,
+      "percent": 92.0,
+      "statements": 75
     },
     "app/application/subscription/contract.py": {
-      "covered_lines": 262,
-      "percent": 88.51,
-      "statements": 296
+      "covered_lines": 287,
+      "percent": 89.69,
+      "statements": 320
     },
     "app/application/subscription/delete.py": {
       "covered_lines": 113,
@@ -2041,14 +2041,14 @@
       "statements": 121
     },
     "app/application/subscription/execution.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 136,
+      "percent": 91.89,
+      "statements": 148
     },
     "app/application/subscription/facts.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 34,
+      "percent": 97.14,
+      "statements": 35
     },
     "app/application/subscription/identity.py": {
       "covered_lines": 41,
@@ -2056,49 +2056,49 @@
       "statements": 50
     },
     "app/application/subscription/mutation.py": {
-      "covered_lines": 117,
-      "percent": 87.31,
-      "statements": 134
+      "covered_lines": 135,
+      "percent": 91.84,
+      "statements": 147
     },
     "app/application/subscription/observability.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 178,
+      "percent": 90.36,
+      "statements": 197
     },
     "app/application/subscription/priority.py": {
-      "covered_lines": 223,
-      "percent": 77.97,
-      "statements": 286
+      "covered_lines": 240,
+      "percent": 80.27,
+      "statements": 299
     },
     "app/application/subscription/query.py": {
-      "covered_lines": 86,
-      "percent": 88.66,
-      "statements": 97
+      "covered_lines": 120,
+      "percent": 86.96,
+      "statements": 138
     },
     "app/application/subscription/search.py": {
-      "covered_lines": 29,
-      "percent": 93.55,
-      "statements": 31
+      "covered_lines": 34,
+      "percent": 94.44,
+      "statements": 36
     },
     "app/application/subscription/sitebudget.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 146,
+      "percent": 94.81,
+      "statements": 154
     },
     "app/application/subscription/status.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 78,
+      "percent": 82.11,
+      "statements": 95
     },
     "app/application/subscription/write.py": {
-      "covered_lines": 149,
-      "percent": 94.3,
-      "statements": 158
+      "covered_lines": 145,
+      "percent": 92.95,
+      "statements": 156
     },
     "app/application/system.py": {
-      "covered_lines": 228,
-      "percent": 91.2,
-      "statements": 250
+      "covered_lines": 239,
+      "percent": 91.22,
+      "statements": 262
     },
     "app/application/torrent/__init__.py": {
       "covered_lines": 0,
@@ -2111,9 +2111,9 @@
       "statements": 43
     },
     "app/application/torrent/download.py": {
-      "covered_lines": 282,
-      "percent": 61.84,
-      "statements": 456
+      "covered_lines": 441,
+      "percent": 84.32,
+      "statements": 523
     },
     "app/application/transfer/__init__.py": {
       "covered_lines": 0,
@@ -2121,59 +2121,59 @@
       "statements": 0
     },
     "app/application/transfer/checkpoint.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 60,
+      "percent": 83.33,
+      "statements": 72
     },
     "app/application/transfer/execution.py": {
-      "covered_lines": 309,
-      "percent": 89.05,
-      "statements": 347
+      "covered_lines": 318,
+      "percent": 89.58,
+      "statements": 355
     },
     "app/application/transfer/feedback.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 86,
+      "percent": 93.48,
+      "statements": 92
     },
     "app/application/transfer/history.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 40,
+      "percent": 97.56,
+      "statements": 41
     },
     "app/application/transfer/jobs.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 363,
+      "percent": 81.57,
+      "statements": 445
     },
     "app/application/transfer/models.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 354,
+      "percent": 88.72,
+      "statements": 399
     },
     "app/application/transfer/notifications.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 138,
+      "percent": 90.79,
+      "statements": 152
     },
     "app/application/transfer/projection.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 45,
+      "percent": 100.0,
+      "statements": 45
     },
     "app/application/transfer/recovery.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 38,
+      "percent": 80.85,
+      "statements": 47
     },
     "app/application/transfer/workflow.py": {
-      "covered_lines": 760,
-      "percent": 84.07,
-      "statements": 904
+      "covered_lines": 48,
+      "percent": 92.31,
+      "statements": 52
     },
     "app/application/workflow.py": {
-      "covered_lines": 239,
-      "percent": 76.6,
-      "statements": 312
+      "covered_lines": 312,
+      "percent": 79.39,
+      "statements": 393
     },
     "app/chain/__init__.py": {
       "covered_lines": 0,
@@ -2181,9 +2181,9 @@
       "statements": 0
     },
     "app/chain/_contracts.py": {
-      "covered_lines": 39,
-      "percent": 76.47,
-      "statements": 51
+      "covered_lines": 41,
+      "percent": 75.93,
+      "statements": 54
     },
     "app/chain/_interaction.py": {
       "covered_lines": 15,
@@ -2191,19 +2191,19 @@
       "statements": 17
     },
     "app/chain/_messaging.py": {
-      "covered_lines": 161,
-      "percent": 81.73,
-      "statements": 197
+      "covered_lines": 182,
+      "percent": 81.25,
+      "statements": 224
     },
     "app/chain/_music.py": {
-      "covered_lines": 195,
-      "percent": 84.78,
-      "statements": 230
+      "covered_lines": 253,
+      "percent": 87.24,
+      "statements": 290
     },
     "app/chain/_recognition.py": {
-      "covered_lines": 264,
-      "percent": 91.99,
-      "statements": 287
+      "covered_lines": 307,
+      "percent": 92.47,
+      "statements": 332
     },
     "app/chain/acoustid.py": {
       "covered_lines": 10,
@@ -2226,9 +2226,9 @@
       "statements": 33
     },
     "app/chain/base.py": {
-      "covered_lines": 155,
-      "percent": 63.52,
-      "statements": 244
+      "covered_lines": 175,
+      "percent": 70.28,
+      "statements": 249
     },
     "app/chain/dashboard.py": {
       "covered_lines": 7,
@@ -2237,8 +2237,8 @@
     },
     "app/chain/douban.py": {
       "covered_lines": 59,
-      "percent": 43.38,
-      "statements": 136
+      "percent": 42.14,
+      "statements": 140
     },
     "app/chain/download/__init__.py": {
       "covered_lines": 13,
@@ -2246,9 +2246,9 @@
       "statements": 15
     },
     "app/chain/download/batch.py": {
-      "covered_lines": 203,
-      "percent": 80.56,
-      "statements": 252
+      "covered_lines": 258,
+      "percent": 96.63,
+      "statements": 267
     },
     "app/chain/download/contract.py": {
       "covered_lines": 3,
@@ -2256,9 +2256,9 @@
       "statements": 3
     },
     "app/chain/download/existence.py": {
-      "covered_lines": 27,
-      "percent": 33.33,
-      "statements": 81
+      "covered_lines": 76,
+      "percent": 85.39,
+      "statements": 89
     },
     "app/chain/download/facade.py": {
       "covered_lines": 24,
@@ -2266,14 +2266,14 @@
       "statements": 24
     },
     "app/chain/download/failure.py": {
-      "covered_lines": 108,
-      "percent": 90.76,
-      "statements": 119
+      "covered_lines": 117,
+      "percent": 95.12,
+      "statements": 123
     },
     "app/chain/download/history.py": {
-      "covered_lines": 41,
-      "percent": 77.36,
-      "statements": 53
+      "covered_lines": 54,
+      "percent": 96.43,
+      "statements": 56
     },
     "app/chain/download/ports.py": {
       "covered_lines": 37,
@@ -2286,29 +2286,29 @@
       "statements": 25
     },
     "app/chain/download/selection.py": {
-      "covered_lines": 85,
-      "percent": 85.0,
-      "statements": 100
+      "covered_lines": 99,
+      "percent": 95.19,
+      "statements": 104
     },
     "app/chain/download/submission.py": {
-      "covered_lines": 141,
-      "percent": 76.22,
-      "statements": 185
+      "covered_lines": 320,
+      "percent": 91.69,
+      "statements": 349
     },
     "app/chain/download/subtitle.py": {
-      "covered_lines": 117,
-      "percent": 37.14,
-      "statements": 315
+      "covered_lines": 229,
+      "percent": 57.25,
+      "statements": 400
     },
     "app/chain/download/tasks.py": {
-      "covered_lines": 32,
-      "percent": 71.11,
-      "statements": 45
+      "covered_lines": 35,
+      "percent": 71.43,
+      "statements": 49
     },
     "app/chain/interaction.py": {
-      "covered_lines": 297,
-      "percent": 57.34,
-      "statements": 518
+      "covered_lines": 339,
+      "percent": 66.6,
+      "statements": 509
     },
     "app/chain/listenbrainz.py": {
       "covered_lines": 19,
@@ -2326,39 +2326,39 @@
       "statements": 14
     },
     "app/chain/media/album.py": {
-      "covered_lines": 110,
-      "percent": 88.71,
-      "statements": 124
+      "covered_lines": 299,
+      "percent": 91.72,
+      "statements": 326
     },
     "app/chain/media/auxiliary.py": {
-      "covered_lines": 77,
-      "percent": 81.91,
-      "statements": 94
+      "covered_lines": 84,
+      "percent": 84.0,
+      "statements": 100
     },
     "app/chain/media/cache.py": {
-      "covered_lines": 72,
-      "percent": 85.71,
-      "statements": 84
+      "covered_lines": 89,
+      "percent": 89.0,
+      "statements": 100
     },
     "app/chain/media/catalog.py": {
-      "covered_lines": 102,
-      "percent": 68.0,
-      "statements": 150
+      "covered_lines": 184,
+      "percent": 76.99,
+      "statements": 239
     },
     "app/chain/media/contract.py": {
-      "covered_lines": 16,
-      "percent": 88.89,
-      "statements": 18
+      "covered_lines": 19,
+      "percent": 90.48,
+      "statements": 21
     },
     "app/chain/media/facade.py": {
-      "covered_lines": 118,
+      "covered_lines": 127,
       "percent": 100.0,
-      "statements": 118
+      "statements": 127
     },
     "app/chain/media/path.py": {
-      "covered_lines": 230,
-      "percent": 94.26,
-      "statements": 244
+      "covered_lines": 458,
+      "percent": 92.15,
+      "statements": 497
     },
     "app/chain/media/plugin.py": {
       "covered_lines": 149,
@@ -2371,14 +2371,14 @@
       "statements": 196
     },
     "app/chain/media/recognition.py": {
-      "covered_lines": 101,
-      "percent": 87.83,
-      "statements": 115
+      "covered_lines": 123,
+      "percent": 89.78,
+      "statements": 137
     },
     "app/chain/media/search.py": {
-      "covered_lines": 42,
-      "percent": 97.67,
-      "statements": 43
+      "covered_lines": 46,
+      "percent": 97.87,
+      "statements": 47
     },
     "app/chain/mediaserver.py": {
       "covered_lines": 164,
@@ -2386,9 +2386,9 @@
       "statements": 194
     },
     "app/chain/message.py": {
-      "covered_lines": 503,
-      "percent": 71.75,
-      "statements": 701
+      "covered_lines": 499,
+      "percent": 71.8,
+      "statements": 695
     },
     "app/chain/music_interaction/__init__.py": {
       "covered_lines": 0,
@@ -2396,19 +2396,19 @@
       "statements": 0
     },
     "app/chain/music_interaction/music.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 74,
+      "percent": 75.51,
+      "statements": 98
     },
     "app/chain/music_interaction/subscribe.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 18,
+      "percent": 81.82,
+      "statements": 22
     },
     "app/chain/musicbrainz.py": {
-      "covered_lines": 68,
-      "percent": 57.14,
-      "statements": 119
+      "covered_lines": 107,
+      "percent": 67.3,
+      "statements": 159
     },
     "app/chain/notification.py": {
       "covered_lines": 6,
@@ -2416,14 +2416,14 @@
       "statements": 6
     },
     "app/chain/recommend.py": {
-      "covered_lines": 220,
-      "percent": 82.09,
-      "statements": 268
+      "covered_lines": 229,
+      "percent": 82.08,
+      "statements": 279
     },
     "app/chain/scraping.py": {
-      "covered_lines": 611,
-      "percent": 74.42,
-      "statements": 821
+      "covered_lines": 708,
+      "percent": 80.91,
+      "statements": 875
     },
     "app/chain/search/__init__.py": {
       "covered_lines": 13,
@@ -2441,44 +2441,44 @@
       "statements": 3
     },
     "app/chain/search/execution.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 149,
+      "percent": 94.9,
+      "statements": 157
     },
     "app/chain/search/facade.py": {
-      "covered_lines": 132,
-      "percent": 90.41,
-      "statements": 146
+      "covered_lines": 171,
+      "percent": 90.48,
+      "statements": 189
     },
     "app/chain/search/manual.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 154,
+      "percent": 98.72,
+      "statements": 156
     },
     "app/chain/search/media.py": {
-      "covered_lines": 265,
-      "percent": 89.23,
-      "statements": 297
+      "covered_lines": 110,
+      "percent": 89.43,
+      "statements": 123
     },
     "app/chain/search/music.py": {
-      "covered_lines": 105,
-      "percent": 88.24,
-      "statements": 119
+      "covered_lines": 56,
+      "percent": 87.5,
+      "statements": 64
     },
     "app/chain/search/pagination.py": {
-      "covered_lines": 72,
-      "percent": 91.14,
-      "statements": 79
+      "covered_lines": 74,
+      "percent": 91.36,
+      "statements": 81
     },
     "app/chain/search/plan.py": {
-      "covered_lines": 32,
-      "percent": 84.21,
-      "statements": 38
+      "covered_lines": 50,
+      "percent": 94.34,
+      "statements": 53
     },
     "app/chain/search/provider.py": {
-      "covered_lines": 210,
-      "percent": 97.22,
-      "statements": 216
+      "covered_lines": 335,
+      "percent": 93.31,
+      "statements": 359
     },
     "app/chain/search/recommend.py": {
       "covered_lines": 202,
@@ -2486,14 +2486,14 @@
       "statements": 240
     },
     "app/chain/search/result.py": {
-      "covered_lines": 121,
-      "percent": 90.3,
-      "statements": 134
+      "covered_lines": 221,
+      "percent": 92.47,
+      "statements": 239
     },
     "app/chain/search/scan.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 441,
+      "percent": 93.04,
+      "statements": 474
     },
     "app/chain/search/site.py": {
       "covered_lines": 6,
@@ -2506,18 +2506,18 @@
       "statements": 195
     },
     "app/chain/search/title.py": {
-      "covered_lines": 137,
-      "percent": 91.95,
-      "statements": 149
+      "covered_lines": 135,
+      "percent": 93.75,
+      "statements": 144
     },
     "app/chain/site.py": {
-      "covered_lines": 177,
-      "percent": 32.72,
-      "statements": 541
+      "covered_lines": 181,
+      "percent": 32.79,
+      "statements": 552
     },
     "app/chain/storage.py": {
-      "covered_lines": 40,
-      "percent": 45.45,
+      "covered_lines": 69,
+      "percent": 78.41,
       "statements": 88
     },
     "app/chain/subscribe/__init__.py": {
@@ -2526,14 +2526,14 @@
       "statements": 14
     },
     "app/chain/subscribe/completion.py": {
-      "covered_lines": 177,
-      "percent": 75.97,
-      "statements": 233
+      "covered_lines": 212,
+      "percent": 77.09,
+      "statements": 275
     },
     "app/chain/subscribe/context.py": {
-      "covered_lines": 11,
+      "covered_lines": 13,
       "percent": 100.0,
-      "statements": 11
+      "statements": 13
     },
     "app/chain/subscribe/contract.py": {
       "covered_lines": 2,
@@ -2541,14 +2541,14 @@
       "statements": 2
     },
     "app/chain/subscribe/create.py": {
-      "covered_lines": 150,
-      "percent": 67.87,
-      "statements": 221
+      "covered_lines": 232,
+      "percent": 81.69,
+      "statements": 284
     },
     "app/chain/subscribe/facade.py": {
-      "covered_lines": 39,
-      "percent": 75.0,
-      "statements": 52
+      "covered_lines": 43,
+      "percent": 76.79,
+      "statements": 56
     },
     "app/chain/subscribe/identity.py": {
       "covered_lines": 8,
@@ -2561,34 +2561,34 @@
       "statements": 26
     },
     "app/chain/subscribe/match.py": {
-      "covered_lines": 178,
-      "percent": 63.12,
-      "statements": 282
+      "covered_lines": 326,
+      "percent": 76.17,
+      "statements": 428
     },
     "app/chain/subscribe/metadata.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 63,
+      "percent": 73.26,
+      "statements": 86
     },
     "app/chain/subscribe/music.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 43,
+      "percent": 91.49,
+      "statements": 47
     },
     "app/chain/subscribe/notify.py": {
       "covered_lines": 52,
-      "percent": 46.85,
-      "statements": 111
+      "percent": 42.28,
+      "statements": 123
     },
     "app/chain/subscribe/policy.py": {
-      "covered_lines": 147,
-      "percent": 91.88,
-      "statements": 160
+      "covered_lines": 221,
+      "percent": 90.95,
+      "statements": 243
     },
     "app/chain/subscribe/query.py": {
-      "covered_lines": 159,
-      "percent": 66.25,
-      "statements": 240
+      "covered_lines": 183,
+      "percent": 70.11,
+      "statements": 261
     },
     "app/chain/subscribe/reconcile.py": {
       "covered_lines": 23,
@@ -2596,29 +2596,29 @@
       "statements": 30
     },
     "app/chain/subscribe/refresh.py": {
-      "covered_lines": 258,
-      "percent": 76.11,
-      "statements": 339
+      "covered_lines": 270,
+      "percent": 80.12,
+      "statements": 337
     },
     "app/chain/subscribe/search.py": {
-      "covered_lines": 106,
-      "percent": 59.22,
-      "statements": 179
+      "covered_lines": 398,
+      "percent": 83.79,
+      "statements": 475
     },
     "app/chain/subscribe/searchtask.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 127,
+      "percent": 90.07,
+      "statements": 141
     },
     "app/chain/system.py": {
-      "covered_lines": 209,
-      "percent": 71.33,
-      "statements": 293
+      "covered_lines": 263,
+      "percent": 80.18,
+      "statements": 328
     },
     "app/chain/theaudiodb.py": {
-      "covered_lines": 5,
-      "percent": 71.43,
-      "statements": 7
+      "covered_lines": 6,
+      "percent": 75.0,
+      "statements": 8
     },
     "app/chain/tmdb.py": {
       "covered_lines": 44,
@@ -2626,9 +2626,9 @@
       "statements": 99
     },
     "app/chain/torrents.py": {
-      "covered_lines": 286,
-      "percent": 70.27,
-      "statements": 407
+      "covered_lines": 264,
+      "percent": 72.13,
+      "statements": 366
     },
     "app/chain/transfer/__init__.py": {
       "covered_lines": 13,
@@ -2636,9 +2636,9 @@
       "statements": 14
     },
     "app/chain/transfer/checkpoint.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 51,
+      "percent": 91.07,
+      "statements": 56
     },
     "app/chain/transfer/contract.py": {
       "covered_lines": 2,
@@ -2646,74 +2646,74 @@
       "statements": 2
     },
     "app/chain/transfer/execution.py": {
-      "covered_lines": 164,
-      "percent": 77.36,
-      "statements": 212
+      "covered_lines": 243,
+      "percent": 85.56,
+      "statements": 284
     },
     "app/chain/transfer/facade.py": {
-      "covered_lines": 33,
-      "percent": 84.62,
+      "covered_lines": 35,
+      "percent": 89.74,
       "statements": 39
     },
     "app/chain/transfer/filter.py": {
-      "covered_lines": 166,
-      "percent": 75.45,
-      "statements": 220
+      "covered_lines": 342,
+      "percent": 92.93,
+      "statements": 368
     },
     "app/chain/transfer/format.py": {
-      "covered_lines": 73,
-      "percent": 61.86,
-      "statements": 118
+      "covered_lines": 83,
+      "percent": 64.84,
+      "statements": 128
     },
     "app/chain/transfer/history.py": {
-      "covered_lines": 39,
-      "percent": 38.24,
-      "statements": 102
+      "covered_lines": 103,
+      "percent": 63.98,
+      "statements": 161
     },
     "app/chain/transfer/music.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 533,
+      "percent": 92.86,
+      "statements": 574
     },
     "app/chain/transfer/plan.py": {
-      "covered_lines": 295,
-      "percent": 83.33,
-      "statements": 354
+      "covered_lines": 275,
+      "percent": 83.59,
+      "statements": 329
     },
     "app/chain/transfer/queue.py": {
-      "covered_lines": 642,
-      "percent": 80.96,
-      "statements": 793
+      "covered_lines": 686,
+      "percent": 85.86,
+      "statements": 799
     },
     "app/chain/transfer/records.py": {
-      "covered_lines": 184,
-      "percent": 88.89,
-      "statements": 207
+      "covered_lines": 205,
+      "percent": 91.11,
+      "statements": 225
     },
     "app/chain/transfer/request.py": {
-      "covered_lines": 165,
-      "percent": 91.67,
-      "statements": 180
+      "covered_lines": 282,
+      "percent": 94.63,
+      "statements": 298
     },
     "app/chain/transfer/retry.py": {
-      "covered_lines": 86,
-      "percent": 60.14,
-      "statements": 143
+      "covered_lines": 111,
+      "percent": 71.15,
+      "statements": 156
     },
     "app/chain/transfer/scrape.py": {
-      "covered_lines": 75,
-      "percent": 88.24,
-      "statements": 85
+      "covered_lines": 80,
+      "percent": 88.89,
+      "statements": 90
     },
     "app/chain/transfer/settlement.py": {
-      "covered_lines": 212,
-      "percent": 79.7,
-      "statements": 266
+      "covered_lines": 251,
+      "percent": 83.39,
+      "statements": 301
     },
     "app/chain/transfer/workflow.py": {
-      "covered_lines": 325,
-      "percent": 82.7,
-      "statements": 393
+      "covered_lines": 436,
+      "percent": 93.36,
+      "statements": 467
     },
     "app/chain/tvdb.py": {
       "covered_lines": 4,
@@ -2731,18 +2731,18 @@
       "statements": 9
     },
     "app/chain/workflow.py": {
-      "covered_lines": 688,
-      "percent": 77.48,
-      "statements": 888
+      "covered_lines": 732,
+      "percent": 78.96,
+      "statements": 927
     },
     "app/cli.py": {
-      "covered_lines": 301,
-      "percent": 35.0,
-      "statements": 860
+      "covered_lines": 511,
+      "percent": 53.73,
+      "statements": 951
     },
     "app/command.py": {
-      "covered_lines": 58,
-      "percent": 34.94,
+      "covered_lines": 61,
+      "percent": 36.75,
       "statements": 166
     },
     "app/db/__init__.py": {
@@ -2766,9 +2766,9 @@
       "statements": 188
     },
     "app/db/adapters/classification.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 134,
+      "percent": 92.41,
+      "statements": 145
     },
     "app/db/adapters/configuration.py": {
       "covered_lines": 79,
@@ -2786,19 +2786,19 @@
       "statements": 0
     },
     "app/db/adapters/history/download.py": {
-      "covered_lines": 90,
-      "percent": 87.38,
-      "statements": 103
+      "covered_lines": 97,
+      "percent": 90.65,
+      "statements": 107
     },
     "app/db/adapters/history/transfer.py": {
-      "covered_lines": 114,
-      "percent": 95.8,
-      "statements": 119
+      "covered_lines": 147,
+      "percent": 93.63,
+      "statements": 157
     },
     "app/db/adapters/invocation.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 63,
+      "percent": 90.0,
+      "statements": 70
     },
     "app/db/adapters/mediaserver.py": {
       "covered_lines": 39,
@@ -2816,9 +2816,9 @@
       "statements": 81
     },
     "app/db/adapters/plugininstallation.py": {
-      "covered_lines": 165,
-      "percent": 85.94,
-      "statements": 192
+      "covered_lines": 175,
+      "percent": 89.74,
+      "statements": 195
     },
     "app/db/adapters/query.py": {
       "covered_lines": 54,
@@ -2826,39 +2826,39 @@
       "statements": 54
     },
     "app/db/adapters/recall.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 12,
+      "percent": 57.14,
+      "statements": 21
     },
     "app/db/adapters/searchsession.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 36,
+      "percent": 92.31,
+      "statements": 39
     },
     "app/db/adapters/site.py": {
-      "covered_lines": 112,
-      "percent": 56.0,
-      "statements": 200
+      "covered_lines": 141,
+      "percent": 63.23,
+      "statements": 223
     },
     "app/db/adapters/subscription.py": {
-      "covered_lines": 213,
-      "percent": 68.27,
-      "statements": 312
+      "covered_lines": 273,
+      "percent": 72.41,
+      "statements": 377
     },
     "app/db/adapters/subscriptionactivity.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 41,
+      "percent": 85.42,
+      "statements": 48
     },
     "app/db/adapters/subscriptionsearch.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 133,
+      "percent": 94.33,
+      "statements": 141
     },
     "app/db/adapters/subscriptionstatus.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 13,
+      "percent": 46.43,
+      "statements": 28
     },
     "app/db/adapters/transaction.py": {
       "covered_lines": 31,
@@ -2871,24 +2871,24 @@
       "statements": 0
     },
     "app/db/adapters/transfer/admission.py": {
-      "covered_lines": 231,
-      "percent": 87.17,
-      "statements": 265
+      "covered_lines": 268,
+      "percent": 87.01,
+      "statements": 308
     },
     "app/db/adapters/transfer/execution.py": {
-      "covered_lines": 429,
-      "percent": 77.72,
-      "statements": 552
+      "covered_lines": 582,
+      "percent": 80.83,
+      "statements": 720
     },
     "app/db/adapters/user.py": {
-      "covered_lines": 111,
-      "percent": 82.84,
-      "statements": 134
+      "covered_lines": 138,
+      "percent": 87.9,
+      "statements": 157
     },
     "app/db/adapters/workflow.py": {
-      "covered_lines": 62,
-      "percent": 79.49,
-      "statements": 78
+      "covered_lines": 65,
+      "percent": 80.25,
+      "statements": 81
     },
     "app/db/base.py": {
       "covered_lines": 122,
@@ -2896,19 +2896,19 @@
       "statements": 129
     },
     "app/db/decorators.py": {
-      "covered_lines": 122,
-      "percent": 88.41,
+      "covered_lines": 126,
+      "percent": 91.3,
       "statements": 138
     },
     "app/db/diagnostics.py": {
-      "covered_lines": 29,
-      "percent": 96.67,
-      "statements": 30
+      "covered_lines": 30,
+      "percent": 96.77,
+      "statements": 31
     },
     "app/db/engine.py": {
-      "covered_lines": 142,
-      "percent": 99.3,
-      "statements": 143
+      "covered_lines": 150,
+      "percent": 99.34,
+      "statements": 151
     },
     "app/db/health.py": {
       "covered_lines": 3,
@@ -2916,9 +2916,9 @@
       "statements": 10
     },
     "app/db/maintenance.py": {
-      "covered_lines": 69,
+      "covered_lines": 79,
       "percent": 100.0,
-      "statements": 69
+      "statements": 79
     },
     "app/db/models/__init__.py": {
       "covered_lines": 9,
@@ -2936,24 +2936,24 @@
       "statements": 23
     },
     "app/db/models/agentchat.py": {
-      "covered_lines": 53,
-      "percent": 94.64,
-      "statements": 56
+      "covered_lines": 56,
+      "percent": 96.55,
+      "statements": 58
     },
     "app/db/models/agentinvocation.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 16,
+      "percent": 100.0,
+      "statements": 16
     },
     "app/db/models/agenttask.py": {
-      "covered_lines": 56,
+      "covered_lines": 58,
       "percent": 100.0,
-      "statements": 56
+      "statements": 58
     },
     "app/db/models/agenttaskrun.py": {
-      "covered_lines": 80,
-      "percent": 98.77,
-      "statements": 81
+      "covered_lines": 81,
+      "percent": 98.78,
+      "statements": 82
     },
     "app/db/models/downloadfailure.py": {
       "covered_lines": 52,
@@ -2961,14 +2961,14 @@
       "statements": 52
     },
     "app/db/models/downloadhistory.py": {
-      "covered_lines": 154,
+      "covered_lines": 163,
       "percent": 100.0,
-      "statements": 154
+      "statements": 163
     },
     "app/db/models/mediaserver.py": {
-      "covered_lines": 75,
-      "percent": 100.0,
-      "statements": 75
+      "covered_lines": 107,
+      "percent": 98.17,
+      "statements": 109
     },
     "app/db/models/message.py": {
       "covered_lines": 50,
@@ -2981,14 +2981,14 @@
       "statements": 18
     },
     "app/db/models/passkey.py": {
-      "covered_lines": 39,
-      "percent": 95.12,
-      "statements": 41
+      "covered_lines": 37,
+      "percent": 94.87,
+      "statements": 39
     },
     "app/db/models/plugindata.py": {
-      "covered_lines": 38,
+      "covered_lines": 40,
       "percent": 100.0,
-      "statements": 38
+      "statements": 40
     },
     "app/db/models/pluginidentity.py": {
       "covered_lines": 23,
@@ -3001,29 +3001,29 @@
       "statements": 19
     },
     "app/db/models/plugininstance.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 37,
+      "percent": 100.0,
+      "statements": 37
     },
     "app/db/models/searchsession.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 10,
+      "percent": 100.0,
+      "statements": 10
     },
     "app/db/models/site.py": {
-      "covered_lines": 64,
-      "percent": 98.46,
-      "statements": 65
+      "covered_lines": 67,
+      "percent": 98.53,
+      "statements": 68
     },
     "app/db/models/siteicon.py": {
-      "covered_lines": 18,
+      "covered_lines": 20,
       "percent": 100.0,
-      "statements": 18
+      "statements": 20
     },
     "app/db/models/sitestatistic.py": {
-      "covered_lines": 25,
+      "covered_lines": 27,
       "percent": 100.0,
-      "statements": 25
+      "statements": 27
     },
     "app/db/models/siteuserdata.py": {
       "covered_lines": 64,
@@ -3031,29 +3031,29 @@
       "statements": 64
     },
     "app/db/models/subscribe.py": {
-      "covered_lines": 171,
-      "percent": 85.07,
-      "statements": 201
+      "covered_lines": 183,
+      "percent": 85.12,
+      "statements": 215
     },
     "app/db/models/subscribeactivity.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 17,
+      "percent": 100.0,
+      "statements": 17
     },
     "app/db/models/subscribehistory.py": {
-      "covered_lines": 102,
-      "percent": 95.33,
-      "statements": 107
+      "covered_lines": 110,
+      "percent": 95.65,
+      "statements": 115
     },
     "app/db/models/subscriptionsearch.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 60,
+      "percent": 100.0,
+      "statements": 60
     },
     "app/db/models/systemconfig.py": {
-      "covered_lines": 21,
+      "covered_lines": 22,
       "percent": 100.0,
-      "statements": 21
+      "statements": 22
     },
     "app/db/models/transferexecutionstep.py": {
       "covered_lines": 74,
@@ -3061,14 +3061,14 @@
       "statements": 78
     },
     "app/db/models/transferhistory.py": {
-      "covered_lines": 283,
-      "percent": 94.97,
-      "statements": 298
+      "covered_lines": 312,
+      "percent": 94.83,
+      "statements": 329
     },
     "app/db/models/transferpending.py": {
-      "covered_lines": 154,
-      "percent": 89.53,
-      "statements": 172
+      "covered_lines": 167,
+      "percent": 89.78,
+      "statements": 186
     },
     "app/db/models/transfersettlementreceipt.py": {
       "covered_lines": 42,
@@ -3076,19 +3076,19 @@
       "statements": 49
     },
     "app/db/models/user.py": {
-      "covered_lines": 67,
+      "covered_lines": 71,
       "percent": 100.0,
-      "statements": 67
+      "statements": 71
     },
     "app/db/models/userconfig.py": {
-      "covered_lines": 18,
+      "covered_lines": 19,
       "percent": 100.0,
-      "statements": 18
+      "statements": 19
     },
     "app/db/models/workflow.py": {
-      "covered_lines": 110,
-      "percent": 90.91,
-      "statements": 121
+      "covered_lines": 112,
+      "percent": 91.06,
+      "statements": 123
     },
     "app/db/oper/__init__.py": {
       "covered_lines": 5,
@@ -3096,14 +3096,14 @@
       "statements": 11
     },
     "app/db/oper/agentchat.py": {
-      "covered_lines": 105,
-      "percent": 80.77,
-      "statements": 130
+      "covered_lines": 120,
+      "percent": 86.33,
+      "statements": 139
     },
     "app/db/oper/agentinvocation.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 32,
+      "percent": 94.12,
+      "statements": 34
     },
     "app/db/oper/agenttask.py": {
       "covered_lines": 84,
@@ -3116,24 +3116,24 @@
       "statements": 11
     },
     "app/db/oper/downloadhistory.py": {
-      "covered_lines": 108,
-      "percent": 91.53,
-      "statements": 118
+      "covered_lines": 110,
+      "percent": 89.43,
+      "statements": 123
     },
     "app/db/oper/mediaserver.py": {
-      "covered_lines": 73,
-      "percent": 92.41,
-      "statements": 79
+      "covered_lines": 86,
+      "percent": 94.51,
+      "statements": 91
     },
     "app/db/oper/message.py": {
-      "covered_lines": 43,
-      "percent": 93.48,
-      "statements": 46
+      "covered_lines": 47,
+      "percent": 94.0,
+      "statements": 50
     },
     "app/db/oper/passkey.py": {
-      "covered_lines": 17,
+      "covered_lines": 21,
       "percent": 100.0,
-      "statements": 17
+      "statements": 21
     },
     "app/db/oper/plugindata.py": {
       "covered_lines": 44,
@@ -3146,9 +3146,9 @@
       "statements": 21
     },
     "app/db/oper/plugininstance.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 127,
+      "percent": 98.45,
+      "statements": 129
     },
     "app/db/oper/query.py": {
       "covered_lines": 43,
@@ -3156,24 +3156,24 @@
       "statements": 49
     },
     "app/db/oper/searchsession.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 41,
+      "percent": 97.62,
+      "statements": 42
     },
     "app/db/oper/site.py": {
-      "covered_lines": 187,
-      "percent": 90.78,
-      "statements": 206
+      "covered_lines": 227,
+      "percent": 85.66,
+      "statements": 265
     },
     "app/db/oper/subscribe.py": {
-      "covered_lines": 218,
-      "percent": 83.52,
-      "statements": 261
+      "covered_lines": 253,
+      "percent": 85.76,
+      "statements": 295
     },
     "app/db/oper/subscribeactivity.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 35,
+      "percent": 79.55,
+      "statements": 44
     },
     "app/db/oper/subscribehistory.py": {
       "covered_lines": 75,
@@ -3181,14 +3181,14 @@
       "statements": 84
     },
     "app/db/oper/subscriptionsearch.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 214,
+      "percent": 85.94,
+      "statements": 249
     },
     "app/db/oper/systemconfig.py": {
-      "covered_lines": 96,
-      "percent": 94.12,
-      "statements": 102
+      "covered_lines": 118,
+      "percent": 96.72,
+      "statements": 122
     },
     "app/db/oper/transferexecutionstep.py": {
       "covered_lines": 31,
@@ -3196,14 +3196,14 @@
       "statements": 32
     },
     "app/db/oper/transferhistory.py": {
-      "covered_lines": 138,
-      "percent": 93.24,
-      "statements": 148
+      "covered_lines": 145,
+      "percent": 91.19,
+      "statements": 159
     },
     "app/db/oper/transferpending.py": {
-      "covered_lines": 47,
-      "percent": 97.92,
-      "statements": 48
+      "covered_lines": 55,
+      "percent": 98.21,
+      "statements": 56
     },
     "app/db/oper/transfersettlementreceipt.py": {
       "covered_lines": 10,
@@ -3211,9 +3211,9 @@
       "statements": 10
     },
     "app/db/oper/user.py": {
-      "covered_lines": 50,
-      "percent": 68.49,
-      "statements": 73
+      "covered_lines": 55,
+      "percent": 67.9,
+      "statements": 81
     },
     "app/db/oper/userconfig.py": {
       "covered_lines": 87,
@@ -3221,9 +3221,9 @@
       "statements": 97
     },
     "app/db/oper/workflow.py": {
-      "covered_lines": 50,
-      "percent": 60.24,
-      "statements": 83
+      "covered_lines": 79,
+      "percent": 69.91,
+      "statements": 113
     },
     "app/db/plugin/__init__.py": {
       "covered_lines": 0,
@@ -3231,34 +3231,34 @@
       "statements": 0
     },
     "app/db/plugin/base.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 6,
+      "percent": 100.0,
+      "statements": 6
     },
     "app/db/plugin/container.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 22,
+      "percent": 100.0,
+      "statements": 22
     },
     "app/db/plugin/locator.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 21,
+      "percent": 100.0,
+      "statements": 21
     },
     "app/db/plugin/migration.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 31,
+      "percent": 100.0,
+      "statements": 31
     },
     "app/db/plugin/registry.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 113,
+      "percent": 94.96,
+      "statements": 119
     },
     "app/db/session.py": {
-      "covered_lines": 124,
+      "covered_lines": 126,
       "percent": 100.0,
-      "statements": 124
+      "statements": 126
     },
     "app/db/uow.py": {
       "covered_lines": 39,
@@ -3266,9 +3266,9 @@
       "statements": 41
     },
     "app/db/worker.py": {
-      "covered_lines": 145,
-      "percent": 88.41,
-      "statements": 164
+      "covered_lines": 158,
+      "percent": 89.77,
+      "statements": 176
     },
     "app/doctor/__init__.py": {
       "covered_lines": 9,
@@ -3276,14 +3276,14 @@
       "statements": 13
     },
     "app/doctor/checks.py": {
-      "covered_lines": 333,
-      "percent": 69.67,
+      "covered_lines": 336,
+      "percent": 70.29,
       "statements": 478
     },
     "app/doctor/dependencies.py": {
-      "covered_lines": 30,
-      "percent": 85.71,
-      "statements": 35
+      "covered_lines": 33,
+      "percent": 80.49,
+      "statements": 41
     },
     "app/doctor/formatters.py": {
       "covered_lines": 25,
@@ -3311,59 +3311,59 @@
       "statements": 0
     },
     "app/domain/classification/conditions.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 13,
+      "percent": 86.67,
+      "statements": 15
     },
     "app/domain/classification/evaluator.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 219,
+      "percent": 92.02,
+      "statements": 238
     },
     "app/domain/classification/facts.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 124,
+      "percent": 96.88,
+      "statements": 128
     },
     "app/domain/classification/fields.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 57,
+      "percent": 93.44,
+      "statements": 61
     },
     "app/domain/classification/sources.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 19,
+      "percent": 100.0,
+      "statements": 19
     },
     "app/domain/classification/validation.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 311,
+      "percent": 85.21,
+      "statements": 365
     },
     "app/domain/classification/vocabulary.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 19,
+      "percent": 100.0,
+      "statements": 19
     },
     "app/domain/context.py": {
-      "covered_lines": 760,
-      "percent": 86.96,
-      "statements": 874
+      "covered_lines": 979,
+      "percent": 90.48,
+      "statements": 1082
     },
     "app/domain/episode.py": {
-      "covered_lines": 18,
-      "percent": 58.06,
+      "covered_lines": 19,
+      "percent": 61.29,
       "statements": 31
     },
     "app/domain/github.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 51,
+      "percent": 87.93,
+      "statements": 58
     },
     "app/domain/media.py": {
-      "covered_lines": 35,
-      "percent": 79.55,
-      "statements": 44
+      "covered_lines": 42,
+      "percent": 82.35,
+      "statements": 51
     },
     "app/domain/meta/__init__.py": {
       "covered_lines": 0,
@@ -3371,13 +3371,13 @@
       "statements": 0
     },
     "app/domain/meta/customization.py": {
-      "covered_lines": 46,
-      "percent": 90.2,
-      "statements": 51
+      "covered_lines": 47,
+      "percent": 88.68,
+      "statements": 53
     },
     "app/domain/meta/infopath.py": {
-      "covered_lines": 13,
-      "percent": 50.0,
+      "covered_lines": 16,
+      "percent": 61.54,
       "statements": 26
     },
     "app/domain/meta/metaanime.py": {
@@ -3386,24 +3386,24 @@
       "statements": 217
     },
     "app/domain/meta/metabase.py": {
-      "covered_lines": 272,
-      "percent": 60.85,
+      "covered_lines": 284,
+      "percent": 63.53,
       "statements": 447
     },
     "app/domain/meta/metamusic.py": {
-      "covered_lines": 726,
-      "percent": 79.26,
-      "statements": 916
+      "covered_lines": 1222,
+      "percent": 96.22,
+      "statements": 1270
     },
     "app/domain/meta/metavideo.py": {
-      "covered_lines": 475,
-      "percent": 79.03,
-      "statements": 601
+      "covered_lines": 476,
+      "percent": 79.07,
+      "statements": 602
     },
     "app/domain/meta/releasegroup.py": {
-      "covered_lines": 44,
-      "percent": 100.0,
-      "statements": 44
+      "covered_lines": 45,
+      "percent": 97.83,
+      "statements": 46
     },
     "app/domain/meta/runtime.py": {
       "covered_lines": 20,
@@ -3416,24 +3416,24 @@
       "statements": 27
     },
     "app/domain/meta/words.py": {
-      "covered_lines": 105,
-      "percent": 77.21,
-      "statements": 136
+      "covered_lines": 161,
+      "percent": 80.9,
+      "statements": 199
     },
     "app/domain/metainfo.py": {
-      "covered_lines": 265,
-      "percent": 91.38,
-      "statements": 290
+      "covered_lines": 281,
+      "percent": 93.05,
+      "statements": 302
     },
     "app/domain/music.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 636,
+      "percent": 95.21,
+      "statements": 668
     },
     "app/domain/plugin.py": {
-      "covered_lines": 121,
-      "percent": 100.0,
-      "statements": 121
+      "covered_lines": 147,
+      "percent": 96.08,
+      "statements": 153
     },
     "app/domain/projection/__init__.py": {
       "covered_lines": 0,
@@ -3441,9 +3441,9 @@
       "statements": 0
     },
     "app/domain/projection/anilist.py": {
-      "covered_lines": 102,
-      "percent": 98.08,
-      "statements": 104
+      "covered_lines": 122,
+      "percent": 98.39,
+      "statements": 124
     },
     "app/domain/projection/bangumi.py": {
       "covered_lines": 85,
@@ -3451,9 +3451,9 @@
       "statements": 90
     },
     "app/domain/projection/douban.py": {
-      "covered_lines": 107,
-      "percent": 87.7,
-      "statements": 122
+      "covered_lines": 123,
+      "percent": 86.62,
+      "statements": 142
     },
     "app/domain/projection/mapping.py": {
       "covered_lines": 35,
@@ -3461,9 +3461,9 @@
       "statements": 38
     },
     "app/domain/projection/tmdb.py": {
-      "covered_lines": 106,
-      "percent": 93.81,
-      "statements": 113
+      "covered_lines": 108,
+      "percent": 94.74,
+      "statements": 114
     },
     "app/domain/scraper.py": {
       "covered_lines": 78,
@@ -3471,14 +3471,14 @@
       "statements": 98
     },
     "app/domain/search.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 120,
+      "percent": 98.36,
+      "statements": 122
     },
     "app/domain/site.py": {
-      "covered_lines": 48,
-      "percent": 92.31,
-      "statements": 52
+      "covered_lines": 58,
+      "percent": 90.62,
+      "statements": 64
     },
     "app/domain/title.py": {
       "covered_lines": 43,
@@ -3486,19 +3486,19 @@
       "statements": 52
     },
     "app/domain/tokens.py": {
-      "covered_lines": 32,
+      "covered_lines": 33,
       "percent": 100.0,
-      "statements": 32
+      "statements": 33
     },
     "app/domain/torrent.py": {
-      "covered_lines": 5,
-      "percent": 55.56,
-      "statements": 9
+      "covered_lines": 128,
+      "percent": 96.24,
+      "statements": 133
     },
     "app/factory.py": {
-      "covered_lines": 114,
-      "percent": 91.94,
-      "statements": 124
+      "covered_lines": 126,
+      "percent": 92.65,
+      "statements": 136
     },
     "app/foundation/__init__.py": {
       "covered_lines": 0,
@@ -3511,54 +3511,54 @@
       "statements": 30
     },
     "app/foundation/crypto.py": {
-      "covered_lines": 35,
-      "percent": 58.33,
-      "statements": 60
+      "covered_lines": 52,
+      "percent": 80.0,
+      "statements": 65
     },
     "app/foundation/dom.py": {
-      "covered_lines": 22,
-      "percent": 88.0,
-      "statements": 25
+      "covered_lines": 34,
+      "percent": 94.44,
+      "statements": 36
     },
     "app/foundation/environment.py": {
       "covered_lines": 35,
-      "percent": 72.92,
-      "statements": 48
+      "percent": 62.5,
+      "statements": 56
     },
     "app/foundation/identity.py": {
-      "covered_lines": 8,
-      "percent": 100.0,
-      "statements": 8
+      "covered_lines": 15,
+      "percent": 93.75,
+      "statements": 16
     },
     "app/foundation/reflection.py": {
-      "covered_lines": 87,
-      "percent": 57.24,
-      "statements": 152
+      "covered_lines": 108,
+      "percent": 63.16,
+      "statements": 171
     },
     "app/foundation/singleton.py": {
-      "covered_lines": 69,
-      "percent": 97.18,
-      "statements": 71
+      "covered_lines": 80,
+      "percent": 100.0,
+      "statements": 80
     },
     "app/foundation/size.py": {
-      "covered_lines": 42,
-      "percent": 73.68,
+      "covered_lines": 43,
+      "percent": 75.44,
       "statements": 57
     },
     "app/foundation/temporal.py": {
-      "covered_lines": 23,
-      "percent": 28.4,
-      "statements": 81
+      "covered_lines": 30,
+      "percent": 36.59,
+      "statements": 82
     },
     "app/foundation/text.py": {
-      "covered_lines": 71,
-      "percent": 47.02,
-      "statements": 151
+      "covered_lines": 133,
+      "percent": 65.2,
+      "statements": 204
     },
     "app/foundation/url.py": {
-      "covered_lines": 67,
-      "percent": 54.03,
-      "statements": 124
+      "covered_lines": 98,
+      "percent": 64.9,
+      "statements": 151
     },
     "app/foundation/version.py": {
       "covered_lines": 31,
@@ -3566,14 +3566,14 @@
       "statements": 36
     },
     "app/main.py": {
-      "covered_lines": 56,
-      "percent": 69.14,
-      "statements": 81
+      "covered_lines": 60,
+      "percent": 68.18,
+      "statements": 88
     },
     "app/modules/__init__.py": {
-      "covered_lines": 137,
-      "percent": 73.66,
-      "statements": 186
+      "covered_lines": 198,
+      "percent": 84.62,
+      "statements": 234
     },
     "app/modules/_base/__init__.py": {
       "covered_lines": 0,
@@ -3581,9 +3581,9 @@
       "statements": 0
     },
     "app/modules/_base/downloader.py": {
-      "covered_lines": 22,
-      "percent": 35.48,
-      "statements": 62
+      "covered_lines": 36,
+      "percent": 51.43,
+      "statements": 70
     },
     "app/modules/_base/media.py": {
       "covered_lines": 35,
@@ -3591,39 +3591,39 @@
       "statements": 37
     },
     "app/modules/_base/mediaserver.py": {
-      "covered_lines": 27,
-      "percent": 33.33,
+      "covered_lines": 33,
+      "percent": 40.74,
       "statements": 81
     },
     "app/modules/_base/notification.py": {
-      "covered_lines": 60,
-      "percent": 77.92,
+      "covered_lines": 61,
+      "percent": 79.22,
       "statements": 77
     },
     "app/modules/acoustid/__init__.py": {
-      "covered_lines": 194,
-      "percent": 75.19,
-      "statements": 258
+      "covered_lines": 252,
+      "percent": 75.68,
+      "statements": 333
     },
     "app/modules/amll/__init__.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 13,
+      "percent": 100.0,
+      "statements": 13
     },
     "app/modules/amll/lyrics.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 160,
+      "percent": 98.16,
+      "statements": 163
     },
     "app/modules/amll/matching.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 43,
+      "percent": 95.56,
+      "statements": 45
     },
     "app/modules/amll/module.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 154,
+      "percent": 93.9,
+      "statements": 164
     },
     "app/modules/anilist/__init__.py": {
       "covered_lines": 189,
@@ -3631,24 +3631,24 @@
       "statements": 234
     },
     "app/modules/anilist/anilist.py": {
-      "covered_lines": 207,
-      "percent": 85.19,
-      "statements": 243
+      "covered_lines": 222,
+      "percent": 85.06,
+      "statements": 261
     },
     "app/modules/bangumi/__init__.py": {
-      "covered_lines": 181,
-      "percent": 80.44,
-      "statements": 225
+      "covered_lines": 184,
+      "percent": 80.7,
+      "statements": 228
     },
     "app/modules/bangumi/bangumi.py": {
-      "covered_lines": 72,
-      "percent": 63.72,
-      "statements": 113
+      "covered_lines": 123,
+      "percent": 77.36,
+      "statements": 159
     },
     "app/modules/dingtalk/__init__.py": {
-      "covered_lines": 27,
-      "percent": 45.0,
-      "statements": 60
+      "covered_lines": 32,
+      "percent": 49.23,
+      "statements": 65
     },
     "app/modules/dingtalk/dingtalk.py": {
       "covered_lines": 65,
@@ -3656,9 +3656,9 @@
       "statements": 78
     },
     "app/modules/discord/__init__.py": {
-      "covered_lines": 175,
-      "percent": 64.58,
-      "statements": 271
+      "covered_lines": 179,
+      "percent": 65.57,
+      "statements": 273
     },
     "app/modules/discord/discord.py": {
       "covered_lines": 226,
@@ -3666,14 +3666,14 @@
       "statements": 777
     },
     "app/modules/douban/__init__.py": {
-      "covered_lines": 558,
-      "percent": 63.34,
-      "statements": 881
+      "covered_lines": 563,
+      "percent": 64.34,
+      "statements": 875
     },
     "app/modules/douban/apiv2.py": {
-      "covered_lines": 126,
-      "percent": 40.91,
-      "statements": 308
+      "covered_lines": 167,
+      "percent": 47.18,
+      "statements": 354
     },
     "app/modules/douban/scraper.py": {
       "covered_lines": 18,
@@ -3681,39 +3681,39 @@
       "statements": 77
     },
     "app/modules/emby/__init__.py": {
-      "covered_lines": 36,
-      "percent": 30.0,
-      "statements": 120
+      "covered_lines": 48,
+      "percent": 39.34,
+      "statements": 122
     },
     "app/modules/emby/emby.py": {
-      "covered_lines": 228,
-      "percent": 33.83,
-      "statements": 674
+      "covered_lines": 265,
+      "percent": 38.41,
+      "statements": 690
     },
     "app/modules/fanart/__init__.py": {
-      "covered_lines": 62,
-      "percent": 32.29,
-      "statements": 192
+      "covered_lines": 87,
+      "percent": 44.62,
+      "statements": 195
     },
     "app/modules/feishu/__init__.py": {
-      "covered_lines": 161,
-      "percent": 70.0,
-      "statements": 230
+      "covered_lines": 9,
+      "percent": 56.25,
+      "statements": 16
     },
     "app/modules/feishu/feishu.py": {
-      "covered_lines": 771,
-      "percent": 77.8,
-      "statements": 991
+      "covered_lines": 746,
+      "percent": 83.63,
+      "statements": 892
     },
     "app/modules/feishu/module.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 160,
+      "percent": 69.87,
+      "statements": 229
     },
     "app/modules/feishu/openapi.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 138,
+      "percent": 97.18,
+      "statements": 142
     },
     "app/modules/filemanager/__init__.py": {
       "covered_lines": 15,
@@ -3721,24 +3721,24 @@
       "statements": 16
     },
     "app/modules/filemanager/module.py": {
-      "covered_lines": 268,
-      "percent": 59.29,
-      "statements": 452
+      "covered_lines": 295,
+      "percent": 62.24,
+      "statements": 474
     },
     "app/modules/filemanager/storages/__init__.py": {
-      "covered_lines": 123,
-      "percent": 84.25,
-      "statements": 146
+      "covered_lines": 172,
+      "percent": 90.05,
+      "statements": 191
     },
     "app/modules/filemanager/storages/alipan.py": {
-      "covered_lines": 115,
-      "percent": 22.59,
-      "statements": 509
+      "covered_lines": 117,
+      "percent": 22.9,
+      "statements": 511
     },
     "app/modules/filemanager/storages/alist.py": {
-      "covered_lines": 145,
-      "percent": 55.34,
-      "statements": 262
+      "covered_lines": 147,
+      "percent": 55.68,
+      "statements": 264
     },
     "app/modules/filemanager/storages/alistgo.py": {
       "covered_lines": 4,
@@ -3746,19 +3746,19 @@
       "statements": 4
     },
     "app/modules/filemanager/storages/local.py": {
-      "covered_lines": 148,
-      "percent": 59.92,
+      "covered_lines": 173,
+      "percent": 70.04,
       "statements": 247
     },
     "app/modules/filemanager/storages/rclone.py": {
-      "covered_lines": 116,
-      "percent": 34.22,
-      "statements": 339
+      "covered_lines": 118,
+      "percent": 34.6,
+      "statements": 341
     },
     "app/modules/filemanager/storages/smb.py": {
-      "covered_lines": 49,
-      "percent": 12.1,
-      "statements": 405
+      "covered_lines": 318,
+      "percent": 62.85,
+      "statements": 506
     },
     "app/modules/filemanager/storages/u115.py": {
       "covered_lines": 225,
@@ -3766,44 +3766,44 @@
       "statements": 609
     },
     "app/modules/filemanager/transhandler.py": {
-      "covered_lines": 409,
-      "percent": 60.41,
-      "statements": 677
+      "covered_lines": 651,
+      "percent": 79.88,
+      "statements": 815
     },
     "app/modules/filter/__init__.py": {
-      "covered_lines": 162,
-      "percent": 62.55,
-      "statements": 259
+      "covered_lines": 160,
+      "percent": 62.26,
+      "statements": 257
     },
     "app/modules/imdb/__init__.py": {
-      "covered_lines": 324,
-      "percent": 83.29,
-      "statements": 389
+      "covered_lines": 309,
+      "percent": 85.36,
+      "statements": 362
     },
     "app/modules/imdb/api.py": {
-      "covered_lines": 208,
-      "percent": 80.93,
+      "covered_lines": 211,
+      "percent": 82.1,
       "statements": 257
     },
     "app/modules/indexer/__init__.py": {
-      "covered_lines": 184,
-      "percent": 67.15,
-      "statements": 274
+      "covered_lines": 288,
+      "percent": 80.9,
+      "statements": 356
     },
     "app/modules/indexer/parser/__init__.py": {
-      "covered_lines": 172,
-      "percent": 81.13,
-      "statements": 212
+      "covered_lines": 220,
+      "percent": 92.83,
+      "statements": 237
     },
     "app/modules/indexer/parser/bitpt.py": {
       "covered_lines": 19,
-      "percent": 14.96,
-      "statements": 127
+      "percent": 14.73,
+      "statements": 129
     },
     "app/modules/indexer/parser/discuz.py": {
-      "covered_lines": 17,
-      "percent": 18.89,
-      "statements": 90
+      "covered_lines": 41,
+      "percent": 45.05,
+      "statements": 91
     },
     "app/modules/indexer/parser/file_list.py": {
       "covered_lines": 17,
@@ -3816,9 +3816,9 @@
       "statements": 145
     },
     "app/modules/indexer/parser/hddolby.py": {
-      "covered_lines": 45,
-      "percent": 54.88,
-      "statements": 82
+      "covered_lines": 46,
+      "percent": 54.76,
+      "statements": 84
     },
     "app/modules/indexer/parser/ipt.py": {
       "covered_lines": 17,
@@ -3826,14 +3826,14 @@
       "statements": 76
     },
     "app/modules/indexer/parser/mtorrent.py": {
-      "covered_lines": 51,
-      "percent": 49.04,
-      "statements": 104
+      "covered_lines": 56,
+      "percent": 50.91,
+      "statements": 110
     },
     "app/modules/indexer/parser/nexus_audiences.py": {
-      "covered_lines": 261,
-      "percent": 85.29,
-      "statements": 306
+      "covered_lines": 269,
+      "percent": 86.5,
+      "statements": 311
     },
     "app/modules/indexer/parser/nexus_hhanclub.py": {
       "covered_lines": 13,
@@ -3841,9 +3841,9 @@
       "statements": 40
     },
     "app/modules/indexer/parser/nexus_php.py": {
-      "covered_lines": 110,
-      "percent": 38.46,
-      "statements": 286
+      "covered_lines": 337,
+      "percent": 76.07,
+      "statements": 443
     },
     "app/modules/indexer/parser/nexus_project.py": {
       "covered_lines": 8,
@@ -3851,14 +3851,14 @@
       "statements": 37
     },
     "app/modules/indexer/parser/nexus_rabbit.py": {
-      "covered_lines": 21,
-      "percent": 21.0,
-      "statements": 100
+      "covered_lines": 19,
+      "percent": 19.39,
+      "statements": 98
     },
     "app/modules/indexer/parser/rousi.py": {
-      "covered_lines": 63,
-      "percent": 64.29,
-      "statements": 98
+      "covered_lines": 64,
+      "percent": 64.0,
+      "statements": 100
     },
     "app/modules/indexer/parser/small_horse.py": {
       "covered_lines": 17,
@@ -3866,14 +3866,14 @@
       "statements": 81
     },
     "app/modules/indexer/parser/sunnypt.py": {
-      "covered_lines": 68,
-      "percent": 79.07,
-      "statements": 86
+      "covered_lines": 69,
+      "percent": 78.41,
+      "statements": 88
     },
     "app/modules/indexer/parser/tnode.py": {
-      "covered_lines": 16,
-      "percent": 24.24,
-      "statements": 66
+      "covered_lines": 59,
+      "percent": 88.06,
+      "statements": 67
     },
     "app/modules/indexer/parser/torrent_leech.py": {
       "covered_lines": 85,
@@ -3881,14 +3881,14 @@
       "statements": 101
     },
     "app/modules/indexer/parser/unit3d.py": {
-      "covered_lines": 17,
-      "percent": 18.89,
-      "statements": 90
+      "covered_lines": 40,
+      "percent": 42.11,
+      "statements": 95
     },
     "app/modules/indexer/parser/yema.py": {
-      "covered_lines": 38,
-      "percent": 71.7,
-      "statements": 53
+      "covered_lines": 39,
+      "percent": 70.91,
+      "statements": 55
     },
     "app/modules/indexer/parser/zhixing.py": {
       "covered_lines": 18,
@@ -3896,9 +3896,9 @@
       "statements": 128
     },
     "app/modules/indexer/spider/__init__.py": {
-      "covered_lines": 600,
-      "percent": 79.37,
-      "statements": 756
+      "covered_lines": 651,
+      "percent": 81.27,
+      "statements": 801
     },
     "app/modules/indexer/spider/haidan.py": {
       "covered_lines": 100,
@@ -3911,14 +3911,14 @@
       "statements": 107
     },
     "app/modules/indexer/spider/milkie.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 81,
+      "percent": 93.1,
+      "statements": 87
     },
     "app/modules/indexer/spider/mtorrent.py": {
-      "covered_lines": 127,
-      "percent": 67.55,
-      "statements": 188
+      "covered_lines": 234,
+      "percent": 66.1,
+      "statements": 354
     },
     "app/modules/indexer/spider/rousi.py": {
       "covered_lines": 138,
@@ -3946,14 +3946,14 @@
       "statements": 140
     },
     "app/modules/jellyfin/__init__.py": {
-      "covered_lines": 36,
-      "percent": 30.0,
-      "statements": 120
+      "covered_lines": 48,
+      "percent": 39.34,
+      "statements": 122
     },
     "app/modules/jellyfin/jellyfin.py": {
-      "covered_lines": 222,
-      "percent": 33.33,
-      "statements": 666
+      "covered_lines": 299,
+      "percent": 43.21,
+      "statements": 692
     },
     "app/modules/listenbrainz/__init__.py": {
       "covered_lines": 111,
@@ -3961,24 +3961,24 @@
       "statements": 132
     },
     "app/modules/lrclib/__init__.py": {
-      "covered_lines": 124,
-      "percent": 76.07,
-      "statements": 163
+      "covered_lines": 136,
+      "percent": 79.53,
+      "statements": 171
     },
     "app/modules/musicbrainz/__init__.py": {
-      "covered_lines": 857,
-      "percent": 82.4,
-      "statements": 1040
+      "covered_lines": 1277,
+      "percent": 89.49,
+      "statements": 1427
     },
     "app/modules/musicbrainz/cache.py": {
-      "covered_lines": 123,
-      "percent": 83.67,
-      "statements": 147
+      "covered_lines": 140,
+      "percent": 85.89,
+      "statements": 163
     },
     "app/modules/navidrome/__init__.py": {
-      "covered_lines": 58,
-      "percent": 51.79,
-      "statements": 112
+      "covered_lines": 60,
+      "percent": 54.05,
+      "statements": 111
     },
     "app/modules/navidrome/navidrome.py": {
       "covered_lines": 70,
@@ -3986,14 +3986,14 @@
       "statements": 137
     },
     "app/modules/plex/__init__.py": {
-      "covered_lines": 60,
-      "percent": 32.09,
-      "statements": 187
+      "covered_lines": 70,
+      "percent": 37.23,
+      "statements": 188
     },
     "app/modules/plex/plex.py": {
-      "covered_lines": 171,
-      "percent": 33.2,
-      "statements": 515
+      "covered_lines": 270,
+      "percent": 47.2,
+      "statements": 572
     },
     "app/modules/postgresql/__init__.py": {
       "covered_lines": 18,
@@ -4001,14 +4001,14 @@
       "statements": 28
     },
     "app/modules/qbittorrent/__init__.py": {
-      "covered_lines": 144,
-      "percent": 56.47,
-      "statements": 255
+      "covered_lines": 172,
+      "percent": 60.99,
+      "statements": 282
     },
     "app/modules/qbittorrent/qbittorrent.py": {
-      "covered_lines": 193,
-      "percent": 45.63,
-      "statements": 423
+      "covered_lines": 235,
+      "percent": 52.81,
+      "statements": 445
     },
     "app/modules/qqbot/__init__.py": {
       "covered_lines": 15,
@@ -4021,44 +4021,44 @@
       "statements": 92
     },
     "app/modules/qqbot/gateway.py": {
-      "covered_lines": 113,
-      "percent": 71.52,
-      "statements": 158
+      "covered_lines": 139,
+      "percent": 85.8,
+      "statements": 162
     },
     "app/modules/qqbot/module.py": {
-      "covered_lines": 129,
-      "percent": 61.14,
-      "statements": 211
+      "covered_lines": 138,
+      "percent": 65.09,
+      "statements": 212
     },
     "app/modules/qqbot/qqbot.py": {
-      "covered_lines": 85,
-      "percent": 32.08,
-      "statements": 265
+      "covered_lines": 135,
+      "percent": 51.33,
+      "statements": 263
     },
     "app/modules/redis/__init__.py": {
-      "covered_lines": 18,
-      "percent": 66.67,
-      "statements": 27
+      "covered_lines": 22,
+      "percent": 73.33,
+      "statements": 30
     },
     "app/modules/rtorrent/__init__.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 230
+      "covered_lines": 59,
+      "percent": 25.54,
+      "statements": 231
     },
     "app/modules/rtorrent/rtorrent.py": {
-      "covered_lines": 47,
-      "percent": 15.41,
-      "statements": 305
+      "covered_lines": 97,
+      "percent": 31.6,
+      "statements": 307
     },
     "app/modules/slack/__init__.py": {
-      "covered_lines": 160,
-      "percent": 50.96,
+      "covered_lines": 180,
+      "percent": 57.32,
       "statements": 314
     },
     "app/modules/slack/slack.py": {
-      "covered_lines": 97,
-      "percent": 26.8,
-      "statements": 362
+      "covered_lines": 156,
+      "percent": 40.1,
+      "statements": 389
     },
     "app/modules/subtitle/__init__.py": {
       "covered_lines": 63,
@@ -4066,14 +4066,14 @@
       "statements": 94
     },
     "app/modules/synologychat/__init__.py": {
-      "covered_lines": 149,
-      "percent": 70.62,
-      "statements": 211
+      "covered_lines": 168,
+      "percent": 78.14,
+      "statements": 215
     },
     "app/modules/synologychat/synologychat.py": {
-      "covered_lines": 21,
-      "percent": 14.58,
-      "statements": 144
+      "covered_lines": 81,
+      "percent": 55.1,
+      "statements": 147
     },
     "app/modules/telegram/__init__.py": {
       "covered_lines": 15,
@@ -4081,29 +4081,29 @@
       "statements": 16
     },
     "app/modules/telegram/botapi.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 183,
+      "percent": 92.42,
+      "statements": 198
     },
     "app/modules/telegram/module.py": {
-      "covered_lines": 192,
-      "percent": 60.76,
-      "statements": 316
+      "covered_lines": 208,
+      "percent": 63.8,
+      "statements": 326
     },
     "app/modules/telegram/telegram.py": {
-      "covered_lines": 518,
-      "percent": 62.94,
-      "statements": 823
+      "covered_lines": 607,
+      "percent": 74.39,
+      "statements": 816
     },
     "app/modules/theaudiodb/__init__.py": {
-      "covered_lines": 316,
-      "percent": 74.7,
-      "statements": 423
+      "covered_lines": 395,
+      "percent": 83.86,
+      "statements": 471
     },
     "app/modules/themoviedb/__init__.py": {
-      "covered_lines": 560,
-      "percent": 67.23,
-      "statements": 833
+      "covered_lines": 580,
+      "percent": 68.48,
+      "statements": 847
     },
     "app/modules/themoviedb/cache.py": {
       "covered_lines": 164,
@@ -4111,14 +4111,14 @@
       "statements": 192
     },
     "app/modules/themoviedb/category.py": {
-      "covered_lines": 78,
-      "percent": 57.78,
-      "statements": 135
+      "covered_lines": 44,
+      "percent": 95.65,
+      "statements": 46
     },
     "app/modules/themoviedb/scraper.py": {
-      "covered_lines": 59,
-      "percent": 26.22,
-      "statements": 225
+      "covered_lines": 89,
+      "percent": 38.03,
+      "statements": 234
     },
     "app/modules/themoviedb/tmdbapi.py": {
       "covered_lines": 647,
@@ -4146,14 +4146,14 @@
       "statements": 0
     },
     "app/modules/themoviedb/tmdbv3api/objs/account.py": {
-      "covered_lines": 35,
-      "percent": 43.75,
-      "statements": 80
+      "covered_lines": 51,
+      "percent": 61.45,
+      "statements": 83
     },
     "app/modules/themoviedb/tmdbv3api/objs/auth.py": {
-      "covered_lines": 7,
-      "percent": 46.67,
-      "statements": 15
+      "covered_lines": 22,
+      "percent": 100.0,
+      "statements": 22
     },
     "app/modules/themoviedb/tmdbv3api/objs/certification.py": {
       "covered_lines": 7,
@@ -4196,9 +4196,9 @@
       "statements": 59
     },
     "app/modules/themoviedb/tmdbv3api/objs/find.py": {
-      "covered_lines": 21,
-      "percent": 53.85,
-      "statements": 39
+      "covered_lines": 33,
+      "percent": 76.74,
+      "statements": 43
     },
     "app/modules/themoviedb/tmdbv3api/objs/genre.py": {
       "covered_lines": 7,
@@ -4216,9 +4216,9 @@
       "statements": 11
     },
     "app/modules/themoviedb/tmdbv3api/objs/list.py": {
-      "covered_lines": 17,
-      "percent": 51.52,
-      "statements": 33
+      "covered_lines": 31,
+      "percent": 75.61,
+      "statements": 41
     },
     "app/modules/themoviedb/tmdbv3api/objs/movie.py": {
       "covered_lines": 50,
@@ -4246,9 +4246,9 @@
       "statements": 7
     },
     "app/modules/themoviedb/tmdbv3api/objs/search.py": {
-      "covered_lines": 25,
-      "percent": 30.12,
-      "statements": 83
+      "covered_lines": 62,
+      "percent": 77.5,
+      "statements": 80
     },
     "app/modules/themoviedb/tmdbv3api/objs/season.py": {
       "covered_lines": 21,
@@ -4266,29 +4266,29 @@
       "statements": 123
     },
     "app/modules/themoviedb/tmdbv3api/tmdb.py": {
-      "covered_lines": 247,
-      "percent": 83.45,
-      "statements": 296
+      "covered_lines": 290,
+      "percent": 90.62,
+      "statements": 320
     },
     "app/modules/thetvdb/__init__.py": {
-      "covered_lines": 103,
-      "percent": 53.09,
-      "statements": 194
+      "covered_lines": 105,
+      "percent": 53.57,
+      "statements": 196
     },
     "app/modules/thetvdb/client.py": {
-      "covered_lines": 89,
-      "percent": 30.69,
-      "statements": 290
+      "covered_lines": 281,
+      "percent": 93.98,
+      "statements": 299
     },
     "app/modules/transmission/__init__.py": {
-      "covered_lines": 107,
-      "percent": 40.84,
-      "statements": 262
+      "covered_lines": 201,
+      "percent": 67.68,
+      "statements": 297
     },
     "app/modules/transmission/transmission.py": {
-      "covered_lines": 82,
-      "percent": 28.67,
-      "statements": 286
+      "covered_lines": 129,
+      "percent": 43.73,
+      "statements": 295
     },
     "app/modules/trimemedia/__init__.py": {
       "covered_lines": 15,
@@ -4306,9 +4306,9 @@
       "statements": 137
     },
     "app/modules/trimemedia/trimemedia.py": {
-      "covered_lines": 85,
-      "percent": 24.5,
-      "statements": 347
+      "covered_lines": 102,
+      "percent": 29.31,
+      "statements": 348
     },
     "app/modules/ugreen/__init__.py": {
       "covered_lines": 15,
@@ -4316,9 +4316,9 @@
       "statements": 16
     },
     "app/modules/ugreen/api.py": {
-      "covered_lines": 123,
-      "percent": 47.13,
-      "statements": 261
+      "covered_lines": 186,
+      "percent": 48.69,
+      "statements": 382
     },
     "app/modules/ugreen/crypto.py": {
       "covered_lines": 127,
@@ -4331,39 +4331,39 @@
       "statements": 138
     },
     "app/modules/ugreen/ugreen.py": {
-      "covered_lines": 191,
-      "percent": 29.75,
-      "statements": 642
+      "covered_lines": 437,
+      "percent": 43.92,
+      "statements": 995
     },
     "app/modules/vocechat/__init__.py": {
       "covered_lines": 126,
-      "percent": 68.11,
-      "statements": 185
+      "percent": 70.0,
+      "statements": 180
     },
     "app/modules/vocechat/vocechat.py": {
-      "covered_lines": 30,
-      "percent": 19.11,
-      "statements": 157
+      "covered_lines": 69,
+      "percent": 40.83,
+      "statements": 169
     },
     "app/modules/vyo/__init__.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 9,
+      "percent": 56.25,
+      "statements": 16
     },
     "app/modules/vyo/api.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 31,
+      "percent": 40.26,
+      "statements": 77
     },
     "app/modules/vyo/module.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 55,
+      "percent": 50.93,
+      "statements": 108
     },
     "app/modules/vyo/vyo.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 341,
+      "percent": 88.57,
+      "statements": 385
     },
     "app/modules/webpush/__init__.py": {
       "covered_lines": 0,
@@ -4371,34 +4371,34 @@
       "statements": 62
     },
     "app/modules/wechat/__init__.py": {
-      "covered_lines": 133,
-      "percent": 54.73,
-      "statements": 243
+      "covered_lines": 143,
+      "percent": 59.34,
+      "statements": 241
     },
     "app/modules/wechat/wechat.py": {
-      "covered_lines": 54,
-      "percent": 14.63,
-      "statements": 369
+      "covered_lines": 62,
+      "percent": 16.76,
+      "statements": 370
     },
     "app/modules/wechat/wechatbot.py": {
-      "covered_lines": 128,
-      "percent": 28.57,
-      "statements": 448
+      "covered_lines": 129,
+      "percent": 28.73,
+      "statements": 449
     },
     "app/modules/wechatclawbot/__init__.py": {
-      "covered_lines": 147,
-      "percent": 61.25,
-      "statements": 240
+      "covered_lines": 150,
+      "percent": 63.56,
+      "statements": 236
     },
     "app/modules/wechatclawbot/wechatclawbot.py": {
-      "covered_lines": 416,
-      "percent": 34.49,
-      "statements": 1206
+      "covered_lines": 467,
+      "percent": 38.25,
+      "statements": 1221
     },
     "app/modules/zspace/__init__.py": {
-      "covered_lines": 38,
-      "percent": 30.89,
-      "statements": 123
+      "covered_lines": 49,
+      "percent": 39.52,
+      "statements": 124
     },
     "app/modules/zspace/zspace.py": {
       "covered_lines": 270,
@@ -4411,14 +4411,14 @@
       "statements": 13
     },
     "app/monitor/dispatcher.py": {
-      "covered_lines": 160,
-      "percent": 88.4,
-      "statements": 181
+      "covered_lines": 204,
+      "percent": 90.27,
+      "statements": 226
     },
     "app/monitor/monitor.py": {
-      "covered_lines": 398,
-      "percent": 58.53,
-      "statements": 680
+      "covered_lines": 402,
+      "percent": 58.52,
+      "statements": 687
     },
     "app/monitor/poller.py": {
       "covered_lines": 125,
@@ -4431,19 +4431,19 @@
       "statements": 112
     },
     "app/monitor/snapshot.py": {
-      "covered_lines": 44,
-      "percent": 55.0,
-      "statements": 80
+      "covered_lines": 86,
+      "percent": 79.63,
+      "statements": 108
     },
     "app/monitor/syslimits.py": {
-      "covered_lines": 30,
-      "percent": 51.72,
-      "statements": 58
+      "covered_lines": 37,
+      "percent": 62.71,
+      "statements": 59
     },
     "app/monitor/watcher.py": {
-      "covered_lines": 236,
-      "percent": 86.76,
-      "statements": 272
+      "covered_lines": 288,
+      "percent": 82.05,
+      "statements": 351
     },
     "app/runtime/__init__.py": {
       "covered_lines": 0,
@@ -4451,9 +4451,9 @@
       "statements": 0
     },
     "app/runtime/cache.py": {
-      "covered_lines": 421,
-      "percent": 77.96,
-      "statements": 540
+      "covered_lines": 431,
+      "percent": 78.94,
+      "statements": 546
     },
     "app/runtime/capabilities/__init__.py": {
       "covered_lines": 7,
@@ -4476,8 +4476,8 @@
       "statements": 160
     },
     "app/runtime/capabilities/runtime.py": {
-      "covered_lines": 662,
-      "percent": 91.69,
+      "covered_lines": 658,
+      "percent": 91.14,
       "statements": 722
     },
     "app/runtime/coalesce.py": {
@@ -4496,14 +4496,14 @@
       "statements": 143
     },
     "app/runtime/compat/imports.py": {
-      "covered_lines": 142,
-      "percent": 86.06,
-      "statements": 165
+      "covered_lines": 178,
+      "percent": 86.83,
+      "statements": 205
     },
     "app/runtime/compat/manifest.py": {
-      "covered_lines": 12,
+      "covered_lines": 13,
       "percent": 100.0,
-      "statements": 12
+      "statements": 13
     },
     "app/runtime/compat/resources.py": {
       "covered_lines": 94,
@@ -4511,9 +4511,9 @@
       "statements": 100
     },
     "app/runtime/config.py": {
-      "covered_lines": 554,
-      "percent": 83.43,
-      "statements": 664
+      "covered_lines": 628,
+      "percent": 87.59,
+      "statements": 717
     },
     "app/runtime/correlation.py": {
       "covered_lines": 40,
@@ -4521,9 +4521,9 @@
       "statements": 40
     },
     "app/runtime/debounce.py": {
-      "covered_lines": 81,
-      "percent": 54.0,
-      "statements": 150
+      "covered_lines": 156,
+      "percent": 94.55,
+      "statements": 165
     },
     "app/runtime/dependencies/__init__.py": {
       "covered_lines": 0,
@@ -4536,8 +4536,8 @@
       "statements": 155
     },
     "app/runtime/dependencies/profile.py": {
-      "covered_lines": 48,
-      "percent": 88.89,
+      "covered_lines": 49,
+      "percent": 90.74,
       "statements": 54
     },
     "app/runtime/deprecation/__init__.py": {
@@ -4551,14 +4551,14 @@
       "statements": 24
     },
     "app/runtime/deprecation/policy.py": {
-      "covered_lines": 79,
-      "percent": 98.75,
-      "statements": 80
+      "covered_lines": 81,
+      "percent": 98.78,
+      "statements": 82
     },
     "app/runtime/errors.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 7,
+      "percent": 87.5,
+      "statements": 8
     },
     "app/runtime/event/__init__.py": {
       "covered_lines": 0,
@@ -4566,29 +4566,29 @@
       "statements": 0
     },
     "app/runtime/event/binding.py": {
-      "covered_lines": 94,
-      "percent": 91.26,
+      "covered_lines": 97,
+      "percent": 94.17,
       "statements": 103
     },
     "app/runtime/event/contracts.py": {
-      "covered_lines": 91,
-      "percent": 97.85,
-      "statements": 93
+      "covered_lines": 94,
+      "percent": 96.91,
+      "statements": 97
     },
     "app/runtime/event/dispatch.py": {
-      "covered_lines": 132,
-      "percent": 82.5,
-      "statements": 160
+      "covered_lines": 165,
+      "percent": 86.84,
+      "statements": 190
     },
     "app/runtime/event/errors.py": {
-      "covered_lines": 22,
-      "percent": 91.67,
-      "statements": 24
+      "covered_lines": 43,
+      "percent": 95.56,
+      "statements": 45
     },
     "app/runtime/event/registry.py": {
-      "covered_lines": 85,
-      "percent": 83.33,
-      "statements": 102
+      "covered_lines": 96,
+      "percent": 86.49,
+      "statements": 111
     },
     "app/runtime/event/snapshot.py": {
       "covered_lines": 46,
@@ -4596,14 +4596,14 @@
       "statements": 48
     },
     "app/runtime/events.py": {
-      "covered_lines": 340,
-      "percent": 83.13,
-      "statements": 409
+      "covered_lines": 348,
+      "percent": 83.65,
+      "statements": 416
     },
     "app/runtime/execution.py": {
-      "covered_lines": 126,
-      "percent": 81.29,
-      "statements": 155
+      "covered_lines": 158,
+      "percent": 89.27,
+      "statements": 177
     },
     "app/runtime/extensions/__init__.py": {
       "covered_lines": 0,
@@ -4616,24 +4616,24 @@
       "statements": 0
     },
     "app/runtime/extensions/module/adapter.py": {
-      "covered_lines": 105,
-      "percent": 83.33,
-      "statements": 126
+      "covered_lines": 114,
+      "percent": 79.17,
+      "statements": 144
     },
     "app/runtime/extensions/module/contracts.py": {
-      "covered_lines": 82,
-      "percent": 73.21,
-      "statements": 112
+      "covered_lines": 92,
+      "percent": 74.19,
+      "statements": 124
     },
     "app/runtime/extensions/module/dispatcher.py": {
-      "covered_lines": 261,
-      "percent": 92.55,
+      "covered_lines": 267,
+      "percent": 94.68,
       "statements": 282
     },
     "app/runtime/extensions/module/manager.py": {
-      "covered_lines": 156,
-      "percent": 82.98,
-      "statements": 188
+      "covered_lines": 162,
+      "percent": 83.08,
+      "statements": 195
     },
     "app/runtime/extensions/module/quality.py": {
       "covered_lines": 20,
@@ -4646,29 +4646,29 @@
       "statements": 0
     },
     "app/runtime/extensions/plugin/access.py": {
-      "covered_lines": 18,
-      "percent": 60.0,
-      "statements": 30
+      "covered_lines": 19,
+      "percent": 61.29,
+      "statements": 31
     },
     "app/runtime/extensions/plugin/admission.py": {
-      "covered_lines": 70,
-      "percent": 98.59,
-      "statements": 71
+      "covered_lines": 71,
+      "percent": 98.61,
+      "statements": 72
     },
     "app/runtime/extensions/plugin/catalog.py": {
-      "covered_lines": 91,
-      "percent": 63.64,
-      "statements": 143
+      "covered_lines": 106,
+      "percent": 66.25,
+      "statements": 160
     },
     "app/runtime/extensions/plugin/classification.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 137,
+      "percent": 89.54,
+      "statements": 153
     },
     "app/runtime/extensions/plugin/clone.py": {
-      "covered_lines": 45,
-      "percent": 88.24,
-      "statements": 51
+      "covered_lines": 123,
+      "percent": 96.09,
+      "statements": 128
     },
     "app/runtime/extensions/plugin/contracts.py": {
       "covered_lines": 14,
@@ -4676,49 +4676,49 @@
       "statements": 14
     },
     "app/runtime/extensions/plugin/database.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 25,
+      "percent": 100.0,
+      "statements": 25
     },
     "app/runtime/extensions/plugin/datadir.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 35,
+      "percent": 94.59,
+      "statements": 37
     },
     "app/runtime/extensions/plugin/dependency.py": {
-      "covered_lines": 57,
-      "percent": 77.03,
-      "statements": 74
+      "covered_lines": 76,
+      "percent": 95.0,
+      "statements": 80
     },
     "app/runtime/extensions/plugin/gil.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 13,
+      "percent": 100.0,
+      "statements": 13
     },
     "app/runtime/extensions/plugin/lifecycle.py": {
-      "covered_lines": 197,
-      "percent": 87.95,
-      "statements": 224
+      "covered_lines": 263,
+      "percent": 92.28,
+      "statements": 285
     },
     "app/runtime/extensions/plugin/loader.py": {
-      "covered_lines": 147,
-      "percent": 80.77,
-      "statements": 182
+      "covered_lines": 224,
+      "percent": 88.54,
+      "statements": 253
     },
     "app/runtime/extensions/plugin/loglevel.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 50,
+      "percent": 98.04,
+      "statements": 51
     },
     "app/runtime/extensions/plugin/manager.py": {
-      "covered_lines": 432,
-      "percent": 78.26,
-      "statements": 552
+      "covered_lines": 484,
+      "percent": 78.19,
+      "statements": 619
     },
     "app/runtime/extensions/plugin/metadata.py": {
-      "covered_lines": 56,
-      "percent": 80.0,
-      "statements": 70
+      "covered_lines": 58,
+      "percent": 78.38,
+      "statements": 74
     },
     "app/runtime/extensions/plugin/monitor.py": {
       "covered_lines": 152,
@@ -4731,39 +4731,39 @@
       "statements": 90
     },
     "app/runtime/extensions/plugin/projection.py": {
-      "covered_lines": 182,
-      "percent": 78.45,
-      "statements": 232
+      "covered_lines": 303,
+      "percent": 84.64,
+      "statements": 358
     },
     "app/runtime/extensions/plugin/registry.py": {
-      "covered_lines": 72,
-      "percent": 98.63,
-      "statements": 73
+      "covered_lines": 87,
+      "percent": 98.86,
+      "statements": 88
     },
     "app/runtime/extensions/plugin/runtime.py": {
-      "covered_lines": 89,
-      "percent": 83.96,
-      "statements": 106
+      "covered_lines": 138,
+      "percent": 90.2,
+      "statements": 153
     },
     "app/runtime/extensions/plugin/storage.py": {
-      "covered_lines": 85,
-      "percent": 77.27,
-      "statements": 110
+      "covered_lines": 273,
+      "percent": 94.14,
+      "statements": 290
     },
     "app/runtime/extensions/plugin/sync.py": {
-      "covered_lines": 75,
-      "percent": 83.33,
-      "statements": 90
+      "covered_lines": 91,
+      "percent": 84.26,
+      "statements": 108
     },
     "app/runtime/extensions/plugin/system.py": {
-      "covered_lines": 39,
-      "percent": 81.25,
-      "statements": 48
+      "covered_lines": 45,
+      "percent": 78.95,
+      "statements": 57
     },
     "app/runtime/extensions/plugin/target.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 81,
+      "percent": 96.43,
+      "statements": 84
     },
     "app/runtime/extensions/plugin/tools.py": {
       "covered_lines": 44,
@@ -4776,14 +4776,14 @@
       "statements": 96
     },
     "app/runtime/extensions/service.py": {
-      "covered_lines": 45,
-      "percent": 90.0,
-      "statements": 50
+      "covered_lines": 46,
+      "percent": 90.2,
+      "statements": 51
     },
     "app/runtime/gc.py": {
-      "covered_lines": 15,
-      "percent": 22.73,
-      "statements": 66
+      "covered_lines": 84,
+      "percent": 60.0,
+      "statements": 140
     },
     "app/runtime/health.py": {
       "covered_lines": 33,
@@ -4791,14 +4791,14 @@
       "statements": 34
     },
     "app/runtime/localization.py": {
-      "covered_lines": 150,
-      "percent": 89.29,
-      "statements": 168
+      "covered_lines": 151,
+      "percent": 89.35,
+      "statements": 169
     },
     "app/runtime/log.py": {
-      "covered_lines": 362,
-      "percent": 85.18,
-      "statements": 425
+      "covered_lines": 546,
+      "percent": 88.93,
+      "statements": 614
     },
     "app/runtime/loop.py": {
       "covered_lines": 32,
@@ -4811,19 +4811,19 @@
       "statements": 78
     },
     "app/runtime/progress.py": {
-      "covered_lines": 112,
-      "percent": 89.6,
-      "statements": 125
+      "covered_lines": 117,
+      "percent": 92.13,
+      "statements": 127
     },
     "app/runtime/rate.py": {
-      "covered_lines": 100,
-      "percent": 49.26,
-      "statements": 203
+      "covered_lines": 99,
+      "percent": 49.01,
+      "statements": 202
     },
     "app/runtime/reload.py": {
-      "covered_lines": 40,
-      "percent": 93.02,
-      "statements": 43
+      "covered_lines": 43,
+      "percent": 93.48,
+      "statements": 46
     },
     "app/runtime/resources.py": {
       "covered_lines": 67,
@@ -4831,19 +4831,19 @@
       "statements": 101
     },
     "app/runtime/scheduling.py": {
-      "covered_lines": 64,
-      "percent": 62.14,
+      "covered_lines": 65,
+      "percent": 63.11,
       "statements": 103
     },
     "app/runtime/settings.py": {
-      "covered_lines": 32,
-      "percent": 80.0,
-      "statements": 40
+      "covered_lines": 33,
+      "percent": 80.49,
+      "statements": 41
     },
     "app/runtime/state.py": {
-      "covered_lines": 91,
-      "percent": 38.08,
-      "statements": 239
+      "covered_lines": 121,
+      "percent": 63.68,
+      "statements": 190
     },
     "app/runtime/stop.py": {
       "covered_lines": 53,
@@ -4851,8 +4851,8 @@
       "statements": 64
     },
     "app/runtime/tasks.py": {
-      "covered_lines": 131,
-      "percent": 82.91,
+      "covered_lines": 132,
+      "percent": 83.54,
       "statements": 158
     },
     "app/runtime/thread.py": {
@@ -4886,9 +4886,9 @@
       "statements": 150
     },
     "app/scheduler/catalog.py": {
-      "covered_lines": 87,
-      "percent": 81.31,
-      "statements": 107
+      "covered_lines": 108,
+      "percent": 85.71,
+      "statements": 126
     },
     "app/scheduler/chain.py": {
       "covered_lines": 8,
@@ -4901,29 +4901,29 @@
       "statements": 2
     },
     "app/scheduler/execution.py": {
-      "covered_lines": 170,
-      "percent": 82.93,
-      "statements": 205
+      "covered_lines": 174,
+      "percent": 83.65,
+      "statements": 208
     },
     "app/scheduler/facade.py": {
-      "covered_lines": 58,
-      "percent": 93.55,
-      "statements": 62
+      "covered_lines": 61,
+      "percent": 95.31,
+      "statements": 64
     },
     "app/scheduler/lifecycle.py": {
-      "covered_lines": 69,
-      "percent": 76.67,
-      "statements": 90
+      "covered_lines": 86,
+      "percent": 78.9,
+      "statements": 109
     },
     "app/scheduler/maintenance.py": {
-      "covered_lines": 15,
-      "percent": 55.56,
-      "statements": 27
+      "covered_lines": 21,
+      "percent": 75.0,
+      "statements": 28
     },
     "app/scheduler/oncejob.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 57,
+      "percent": 93.44,
+      "statements": 61
     },
     "app/scheduler/progress.py": {
       "covered_lines": 106,
@@ -4931,9 +4931,9 @@
       "statements": 114
     },
     "app/scheduler/reconcile.py": {
-      "covered_lines": 197,
-      "percent": 71.64,
-      "statements": 275
+      "covered_lines": 208,
+      "percent": 73.24,
+      "statements": 284
     },
     "app/scheduler/registry.py": {
       "covered_lines": 96,
@@ -4941,9 +4941,9 @@
       "statements": 96
     },
     "app/scheduler/services.py": {
-      "covered_lines": 7,
+      "covered_lines": 8,
       "percent": 100.0,
-      "statements": 7
+      "statements": 8
     },
     "app/schemas/__init__.py": {
       "covered_lines": 13,
@@ -4951,9 +4951,9 @@
       "statements": 14
     },
     "app/schemas/agent.py": {
-      "covered_lines": 185,
-      "percent": 98.93,
-      "statements": 187
+      "covered_lines": 178,
+      "percent": 99.44,
+      "statements": 179
     },
     "app/schemas/cache.py": {
       "covered_lines": 32,
@@ -4961,9 +4961,9 @@
       "statements": 32
     },
     "app/schemas/category.py": {
-      "covered_lines": 13,
-      "percent": 100.0,
-      "statements": 13
+      "covered_lines": 301,
+      "percent": 97.1,
+      "statements": 310
     },
     "app/schemas/common.py": {
       "covered_lines": 28,
@@ -4971,9 +4971,9 @@
       "statements": 28
     },
     "app/schemas/context.py": {
-      "covered_lines": 294,
-      "percent": 99.32,
-      "statements": 296
+      "covered_lines": 357,
+      "percent": 98.08,
+      "statements": 364
     },
     "app/schemas/dashboard.py": {
       "covered_lines": 96,
@@ -4981,19 +4981,19 @@
       "statements": 96
     },
     "app/schemas/download.py": {
-      "covered_lines": 39,
-      "percent": 100.0,
-      "statements": 39
+      "covered_lines": 79,
+      "percent": 97.53,
+      "statements": 81
     },
     "app/schemas/event.py": {
-      "covered_lines": 479,
-      "percent": 97.16,
+      "covered_lines": 481,
+      "percent": 97.57,
       "statements": 493
     },
     "app/schemas/exception.py": {
-      "covered_lines": 16,
+      "covered_lines": 17,
       "percent": 100.0,
-      "statements": 16
+      "statements": 17
     },
     "app/schemas/exports.py": {
       "covered_lines": 2,
@@ -5006,19 +5006,19 @@
       "statements": 44
     },
     "app/schemas/github.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 32,
+      "percent": 100.0,
+      "statements": 32
     },
     "app/schemas/history.py": {
-      "covered_lines": 74,
-      "percent": 100.0,
-      "statements": 74
+      "covered_lines": 98,
+      "percent": 98.99,
+      "statements": 99
     },
     "app/schemas/initialization.py": {
-      "covered_lines": 10,
+      "covered_lines": 11,
       "percent": 100.0,
-      "statements": 10
+      "statements": 11
     },
     "app/schemas/llm.py": {
       "covered_lines": 0,
@@ -5041,9 +5041,9 @@
       "statements": 150
     },
     "app/schemas/message.py": {
-      "covered_lines": 163,
-      "percent": 91.06,
-      "statements": 179
+      "covered_lines": 213,
+      "percent": 91.81,
+      "statements": 232
     },
     "app/schemas/mfa.py": {
       "covered_lines": 15,
@@ -5056,14 +5056,14 @@
       "statements": 15
     },
     "app/schemas/music.py": {
-      "covered_lines": 167,
-      "percent": 98.24,
-      "statements": 170
+      "covered_lines": 271,
+      "percent": 99.27,
+      "statements": 273
     },
     "app/schemas/notification.py": {
-      "covered_lines": 80,
-      "percent": 95.24,
-      "statements": 84
+      "covered_lines": 96,
+      "percent": 95.05,
+      "statements": 101
     },
     "app/schemas/openai.py": {
       "covered_lines": 87,
@@ -5071,14 +5071,14 @@
       "statements": 87
     },
     "app/schemas/plugin.py": {
-      "covered_lines": 193,
-      "percent": 97.97,
-      "statements": 197
+      "covered_lines": 311,
+      "percent": 99.36,
+      "statements": 313
     },
     "app/schemas/query.py": {
-      "covered_lines": 256,
+      "covered_lines": 269,
       "percent": 100.0,
-      "statements": 256
+      "statements": 269
     },
     "app/schemas/recommend.py": {
       "covered_lines": 36,
@@ -5086,19 +5086,19 @@
       "statements": 36
     },
     "app/schemas/response.py": {
-      "covered_lines": 18,
-      "percent": 100.0,
-      "statements": 18
+      "covered_lines": 21,
+      "percent": 95.45,
+      "statements": 22
     },
     "app/schemas/rule.py": {
-      "covered_lines": 37,
+      "covered_lines": 41,
       "percent": 100.0,
-      "statements": 37
+      "statements": 41
     },
     "app/schemas/search.py": {
-      "covered_lines": 9,
+      "covered_lines": 14,
       "percent": 100.0,
-      "statements": 9
+      "statements": 14
     },
     "app/schemas/servarr.py": {
       "covered_lines": 100,
@@ -5111,24 +5111,24 @@
       "statements": 11
     },
     "app/schemas/site.py": {
-      "covered_lines": 74,
+      "covered_lines": 77,
       "percent": 100.0,
-      "statements": 74
+      "statements": 77
     },
     "app/schemas/storage.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 11
+      "covered_lines": 20,
+      "percent": 100.0,
+      "statements": 20
     },
     "app/schemas/subscribe.py": {
-      "covered_lines": 169,
-      "percent": 99.41,
-      "statements": 170
+      "covered_lines": 229,
+      "percent": 97.45,
+      "statements": 235
     },
     "app/schemas/system.py": {
-      "covered_lines": 120,
+      "covered_lines": 163,
       "percent": 100.0,
-      "statements": 120
+      "statements": 163
     },
     "app/schemas/tmdb.py": {
       "covered_lines": 52,
@@ -5141,19 +5141,19 @@
       "statements": 15
     },
     "app/schemas/transfer.py": {
-      "covered_lines": 193,
-      "percent": 97.97,
-      "statements": 197
+      "covered_lines": 306,
+      "percent": 98.71,
+      "statements": 310
     },
     "app/schemas/types.py": {
-      "covered_lines": 335,
-      "percent": 99.11,
-      "statements": 338
+      "covered_lines": 337,
+      "percent": 99.12,
+      "statements": 340
     },
     "app/schemas/user.py": {
-      "covered_lines": 41,
+      "covered_lines": 42,
       "percent": 100.0,
-      "statements": 41
+      "statements": 42
     },
     "app/schemas/workflow.py": {
       "covered_lines": 141,
@@ -5176,9 +5176,9 @@
       "statements": 28
     },
     "app/sdk/_legacy/site.py": {
-      "covered_lines": 3,
+      "covered_lines": 13,
       "percent": 100.0,
-      "statements": 3
+      "statements": 13
     },
     "app/sdk/_legacy/subscribe.py": {
       "covered_lines": 24,
@@ -5221,9 +5221,9 @@
       "statements": 2
     },
     "app/sdk/classification.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 17,
+      "percent": 94.44,
+      "statements": 18
     },
     "app/sdk/config.py": {
       "covered_lines": 2,
@@ -5231,9 +5231,9 @@
       "statements": 2
     },
     "app/sdk/database.py": {
-      "covered_lines": 9,
+      "covered_lines": 11,
       "percent": 100.0,
-      "statements": 9
+      "statements": 11
     },
     "app/sdk/events.py": {
       "covered_lines": 4,
@@ -5241,9 +5241,9 @@
       "statements": 4
     },
     "app/sdk/feishu.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 2,
+      "percent": 100.0,
+      "statements": 2
     },
     "app/sdk/logging.py": {
       "covered_lines": 2,
@@ -5261,19 +5261,19 @@
       "statements": 9
     },
     "app/sdk/plugin/__init__.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 13,
+      "percent": 92.86,
+      "statements": 14
     },
     "app/sdk/plugin/base.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 70,
+      "percent": 68.63,
+      "statements": 102
     },
     "app/sdk/plugin/manager.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 3,
+      "percent": 100.0,
+      "statements": 3
     },
     "app/sdk/queries.py": {
       "covered_lines": 56,
@@ -5316,39 +5316,39 @@
       "statements": 0
     },
     "app/startup/composition/agent.py": {
-      "covered_lines": 42,
-      "percent": 100.0,
-      "statements": 42
+      "covered_lines": 52,
+      "percent": 96.3,
+      "statements": 54
     },
     "app/startup/composition/cache.py": {
-      "covered_lines": 3,
+      "covered_lines": 28,
       "percent": 100.0,
-      "statements": 3
+      "statements": 28
     },
     "app/startup/composition/chain.py": {
-      "covered_lines": 84,
-      "percent": 98.82,
-      "statements": 85
+      "covered_lines": 94,
+      "percent": 98.95,
+      "statements": 95
     },
     "app/startup/composition/classification.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 89,
+      "percent": 80.18,
+      "statements": 111
     },
     "app/startup/composition/configuration.py": {
-      "covered_lines": 45,
-      "percent": 93.75,
-      "statements": 48
+      "covered_lines": 52,
+      "percent": 94.55,
+      "statements": 55
     },
     "app/startup/composition/context.py": {
-      "covered_lines": 109,
-      "percent": 90.08,
-      "statements": 121
+      "covered_lines": 124,
+      "percent": 88.57,
+      "statements": 140
     },
     "app/startup/composition/database.py": {
-      "covered_lines": 87,
-      "percent": 96.67,
-      "statements": 90
+      "covered_lines": 95,
+      "percent": 88.79,
+      "statements": 107
     },
     "app/startup/composition/domain.py": {
       "covered_lines": 29,
@@ -5356,14 +5356,14 @@
       "statements": 29
     },
     "app/startup/composition/enrichment.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 69,
+      "percent": 79.31,
+      "statements": 87
     },
     "app/startup/composition/network.py": {
-      "covered_lines": 106,
-      "percent": 79.1,
-      "statements": 134
+      "covered_lines": 150,
+      "percent": 73.17,
+      "statements": 205
     },
     "app/startup/composition/outbox.py": {
       "covered_lines": 43,
@@ -5377,18 +5377,18 @@
     },
     "app/startup/composition/resource.py": {
       "covered_lines": 28,
-      "percent": 82.35,
-      "statements": 34
+      "percent": 77.78,
+      "statements": 36
     },
     "app/startup/composition/runtime.py": {
-      "covered_lines": 76,
+      "covered_lines": 82,
       "percent": 100.0,
-      "statements": 76
+      "statements": 82
     },
     "app/startup/composition/security.py": {
-      "covered_lines": 24,
-      "percent": 100.0,
-      "statements": 24
+      "covered_lines": 37,
+      "percent": 94.87,
+      "statements": 39
     },
     "app/startup/composition/server.py": {
       "covered_lines": 11,
@@ -5401,14 +5401,14 @@
       "statements": 76
     },
     "app/startup/composition/subscription.py": {
-      "covered_lines": 53,
-      "percent": 60.92,
+      "covered_lines": 57,
+      "percent": 65.52,
       "statements": 87
     },
     "app/startup/composition/system.py": {
-      "covered_lines": 109,
-      "percent": 69.43,
-      "statements": 157
+      "covered_lines": 168,
+      "percent": 90.32,
+      "statements": 186
     },
     "app/startup/initializers/__init__.py": {
       "covered_lines": 0,
@@ -5416,9 +5416,9 @@
       "statements": 0
     },
     "app/startup/initializers/agent.py": {
-      "covered_lines": 150,
-      "percent": 71.43,
-      "statements": 210
+      "covered_lines": 153,
+      "percent": 72.51,
+      "statements": 211
     },
     "app/startup/initializers/cache.py": {
       "covered_lines": 3,
@@ -5446,9 +5446,9 @@
       "statements": 3
     },
     "app/startup/initializers/modules.py": {
-      "covered_lines": 234,
-      "percent": 77.48,
-      "statements": 302
+      "covered_lines": 293,
+      "percent": 80.94,
+      "statements": 362
     },
     "app/startup/initializers/monitor.py": {
       "covered_lines": 12,
@@ -5461,9 +5461,9 @@
       "statements": 5
     },
     "app/startup/initializers/plugins.py": {
-      "covered_lines": 261,
-      "percent": 86.42,
-      "statements": 302
+      "covered_lines": 352,
+      "percent": 84.82,
+      "statements": 415
     },
     "app/startup/initializers/resources.py": {
       "covered_lines": 7,
@@ -5476,9 +5476,9 @@
       "statements": 9
     },
     "app/startup/initializers/scheduler.py": {
-      "covered_lines": 54,
-      "percent": 90.0,
-      "statements": 60
+      "covered_lines": 55,
+      "percent": 90.16,
+      "statements": 61
     },
     "app/startup/initializers/site.py": {
       "covered_lines": 5,
@@ -5496,9 +5496,9 @@
       "statements": 18
     },
     "app/startup/lifecycle/__init__.py": {
-      "covered_lines": 219,
-      "percent": 87.95,
-      "statements": 249
+      "covered_lines": 216,
+      "percent": 88.52,
+      "statements": 244
     },
     "app/startup/lifecycle/components.py": {
       "covered_lines": 28,
@@ -5506,49 +5506,49 @@
       "statements": 28
     },
     "app/testing/__init__.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 2,
+      "percent": 100.0,
+      "statements": 2
     },
     "app/testing/bootstrap.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 102,
+      "percent": 85.71,
+      "statements": 119
     },
     "app/testing/network.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 34,
+      "percent": 94.44,
+      "statements": 36
     },
     "app/testing/stub.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 25,
+      "percent": 83.33,
+      "statements": 30
     },
     "app/workflow/__init__.py": {
-      "covered_lines": 162,
-      "percent": 53.82,
-      "statements": 301
+      "covered_lines": 192,
+      "percent": 60.57,
+      "statements": 317
     },
     "app/workflow/actions/__init__.py": {
-      "covered_lines": 91,
-      "percent": 94.79,
-      "statements": 96
+      "covered_lines": 110,
+      "percent": 95.65,
+      "statements": 115
     },
     "app/workflow/actions/add_download.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 72
+      "covered_lines": 132,
+      "percent": 91.03,
+      "statements": 145
     },
     "app/workflow/actions/add_subscribe.py": {
-      "covered_lines": 44,
-      "percent": 83.02,
-      "statements": 53
+      "covered_lines": 49,
+      "percent": 87.5,
+      "statements": 56
     },
     "app/workflow/actions/fetch_downloads.py": {
-      "covered_lines": 31,
-      "percent": 79.49,
-      "statements": 39
+      "covered_lines": 36,
+      "percent": 87.8,
+      "statements": 41
     },
     "app/workflow/actions/fetch_medias.py": {
       "covered_lines": 57,
@@ -5556,8 +5556,8 @@
       "statements": 79
     },
     "app/workflow/actions/fetch_rss.py": {
-      "covered_lines": 53,
-      "percent": 76.81,
+      "covered_lines": 56,
+      "percent": 81.16,
       "statements": 69
     },
     "app/workflow/actions/fetch_torrents.py": {
@@ -5566,19 +5566,19 @@
       "statements": 77
     },
     "app/workflow/actions/filter_medias.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 37
-    },
-    "app/workflow/actions/filter_torrents.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
+      "covered_lines": 35,
+      "percent": 92.11,
       "statements": 38
     },
+    "app/workflow/actions/filter_torrents.py": {
+      "covered_lines": 55,
+      "percent": 96.49,
+      "statements": 57
+    },
     "app/workflow/actions/invoke_plugin.py": {
-      "covered_lines": 32,
-      "percent": 78.05,
-      "statements": 41
+      "covered_lines": 38,
+      "percent": 88.37,
+      "statements": 43
     },
     "app/workflow/actions/note.py": {
       "covered_lines": 0,
@@ -5586,9 +5586,9 @@
       "statements": 12
     },
     "app/workflow/actions/scan_file.py": {
-      "covered_lines": 41,
-      "percent": 87.23,
-      "statements": 47
+      "covered_lines": 49,
+      "percent": 90.74,
+      "statements": 54
     },
     "app/workflow/actions/scrape_file.py": {
       "covered_lines": 42,
@@ -5606,106 +5606,106 @@
       "statements": 35
     },
     "app/workflow/actions/transfer_file.py": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 93
+      "covered_lines": 80,
+      "percent": 77.67,
+      "statements": 103
     }
   },
   "packages": {
     "__root__": {
-      "covered_lines": 550,
-      "percent": 43.89,
-      "statements": 1253
+      "covered_lines": 779,
+      "percent": 57.15,
+      "statements": 1363
     },
     "adapters": {
-      "covered_lines": 5835,
-      "percent": 68.45,
-      "statements": 8524
+      "covered_lines": 7960,
+      "percent": 74.2,
+      "statements": 10728
     },
     "agent": {
-      "covered_lines": 9928,
-      "percent": 75.89,
-      "statements": 13082
+      "covered_lines": 16681,
+      "percent": 82.87,
+      "statements": 20128
     },
     "api": {
-      "covered_lines": 4018,
-      "percent": 68.32,
-      "statements": 5881
+      "covered_lines": 5270,
+      "percent": 74.38,
+      "statements": 7085
     },
     "application": {
-      "covered_lines": 12821,
-      "percent": 81.37,
-      "statements": 15757
+      "covered_lines": 20812,
+      "percent": 85.23,
+      "statements": 24419
     },
     "chain": {
-      "covered_lines": 11656,
-      "percent": 73.79,
-      "statements": 15797
+      "covered_lines": 16165,
+      "percent": 80.62,
+      "statements": 20052
     },
     "db": {
-      "covered_lines": 6442,
-      "percent": 88.32,
-      "statements": 7294
+      "covered_lines": 8361,
+      "percent": 89.33,
+      "statements": 9360
     },
     "doctor": {
-      "covered_lines": 497,
-      "percent": 75.76,
-      "statements": 656
+      "covered_lines": 503,
+      "percent": 75.98,
+      "statements": 662
     },
     "domain": {
-      "covered_lines": 3690,
-      "percent": 81.01,
-      "statements": 4555
+      "covered_lines": 6270,
+      "percent": 88.22,
+      "statements": 7107
     },
     "foundation": {
-      "covered_lines": 511,
-      "percent": 60.62,
-      "statements": 843
+      "covered_lines": 680,
+      "percent": 69.11,
+      "statements": 984
     },
     "modules": {
-      "covered_lines": 17580,
-      "percent": 52.06,
-      "statements": 33769
+      "covered_lines": 22551,
+      "percent": 60.46,
+      "statements": 37298
     },
     "monitor": {
-      "covered_lines": 1098,
-      "percent": 71.48,
-      "statements": 1536
+      "covered_lines": 1247,
+      "percent": 73.53,
+      "statements": 1696
     },
     "runtime": {
-      "covered_lines": 7750,
-      "percent": 81.38,
-      "statements": 9523
+      "covered_lines": 9436,
+      "percent": 85.3,
+      "statements": 11062
     },
     "scheduler": {
-      "covered_lines": 947,
-      "percent": 81.85,
-      "statements": 1157
+      "covered_lines": 1067,
+      "percent": 83.88,
+      "statements": 1272
     },
     "schemas": {
-      "covered_lines": 3916,
-      "percent": 96.17,
-      "statements": 4072
+      "covered_lines": 4915,
+      "percent": 96.73,
+      "statements": 5081
     },
     "sdk": {
-      "covered_lines": 355,
-      "percent": 93.18,
-      "statements": 381
+      "covered_lines": 472,
+      "percent": 88.72,
+      "statements": 532
     },
     "startup": {
-      "covered_lines": 2027,
-      "percent": 83.07,
-      "statements": 2440
+      "covered_lines": 2537,
+      "percent": 83.98,
+      "statements": 3021
     },
     "testing": {
-      "covered_lines": 0,
-      "percent": 0.0,
-      "statements": 0
+      "covered_lines": 163,
+      "percent": 87.17,
+      "statements": 187
     },
     "workflow": {
-      "covered_lines": 639,
-      "percent": 55.18,
-      "statements": 1158
+      "covered_lines": 1017,
+      "percent": 77.63,
+      "statements": 1310
     }
   },
   "schema_version": 2,
@@ -5716,8 +5716,8 @@
     "root": "app"
   },
   "total": {
-    "covered_lines": 90260,
-    "percent": 70.69,
-    "statements": 127678
+    "covered_lines": 126886,
+    "percent": 77.68,
+    "statements": 163347
   }
 }
