@@ -198,7 +198,7 @@ def get_async_engine() -> SaAsyncEngine:
     return _resolve_async_engine()[0]
 
 
-async def _acquire_fallback_slot():
+async def _acquire_fallback_slot() -> None:
     """
     为回退路径申请一个全局连接配额。
 
@@ -251,7 +251,7 @@ async def async_session_scope() -> AsyncGenerator[AsyncSession, None]:
             _fallback_slots.release()
 
 
-def get_db() -> Generator:
+def get_db() -> Generator[Session, None, None]:
     """
     获取数据库会话，用于WEB请求
     :return: Session
@@ -291,7 +291,7 @@ async def _dispose_engine(engine: Any, label: str) -> None:
         print(f"Error while disposing {label}: {err}")
 
 
-async def close_database():
+async def close_database() -> None:
     """
     关闭所有数据库连接并清理资源。
 

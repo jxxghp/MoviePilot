@@ -1034,11 +1034,6 @@
     "no-untyped-def": 1,
     "union-attr": 3
   },
-  "app/db/session.py": {
-    "no-untyped-call": 1,
-    "no-untyped-def": 2,
-    "type-arg": 1
-  },
   "app/doctor/checks.py": {
     "no-any-return": 7
   },
