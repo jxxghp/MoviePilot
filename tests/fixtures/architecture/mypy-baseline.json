@@ -974,13 +974,6 @@
     "no-untyped-def": 7,
     "type-arg": 1
   },
-  "app/db/oper/site.py": {
-    "arg-type": 1,
-    "no-any-return": 3,
-    "no-untyped-def": 6,
-    "type-arg": 4,
-    "union-attr": 3
-  },
   "app/db/oper/workflow.py": {
     "arg-type": 1,
     "no-untyped-def": 1,
