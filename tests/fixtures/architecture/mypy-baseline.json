@@ -1289,9 +1289,6 @@
     "return-value": 1,
     "type-arg": 1
   },
-  "app/domain/title.py": {
-    "assignment": 1
-  },
   "app/domain/tokens.py": {
     "no-untyped-call": 2,
     "no-untyped-def": 6,

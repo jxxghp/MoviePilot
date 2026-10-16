@@ -75,7 +75,7 @@ def parse_search_keyword(
 
     year_match = re.search(r"[\s(]+(\d{4})[\s)]*", content)
     year = year_match.group(1) if year_match else None
-    keyword = re.sub(
+    keyword: Optional[str] = re.sub(
         r"第\s*[0-9一二三四五六七八九十]+\s*季|"
         r"第\s*[0-9一二三四五六七八九十百零]+\s*集|"
         r"[\s(]+(\d{4})[\s)]*",

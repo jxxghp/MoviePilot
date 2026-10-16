@@ -74,6 +74,13 @@ uv run --locked --no-sync python scripts/architecture/complexity.py
 传递依赖全部严格。Agent session/lifecycle 与 Scheduler lifecycle 的扩围需要一起处理父类、
 回调和返回值类型；全仓错误计数为零并不保证单独纳入 strict frontier 后也为零。
 
+2026-10-16 开始逐文件清理类型债务，`app/domain/title.py` 通过局部可空类型声明保留
+既有搜索解析行为，并纳入严格清单；当前清单共 46 个文件（45 个生产文件和 1 个脚本）。
+每个治理提交只修改一个生产文件及其必要测试、门禁配置、真实下降基线和指标文档。
+验收同时检查完整严格清单与全宿主 Linux 分析，避免 `follow_imports = skip` 隐藏依赖
+签名冲突；不通过忽略诊断或放宽类型合同接受回退。最新文件清单以 `mypy.ini` 为准，
+债务总数以 `tests/fixtures/architecture/mypy-baseline.json` 为准。
+
 ## 后续补充顺序
 
 | 优先级 | 现有缺口 | 建议落点与验收 |
