@@ -184,7 +184,7 @@ async def upload_avatar(
         raise HTTPException(status_code=403, detail="用户权限不足")
 
     # 将文件转换为Base64
-    file_base64 = base64.b64encode(file.file.read()).decode("ascii")
+    file_base64 = str(base64.b64encode(file.file.read()))
     # 更新到用户表
     user = await service.get_by_id(user_id)
     if not user:
