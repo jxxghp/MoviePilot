@@ -30,6 +30,7 @@ class DatabaseHealthService:
     """提供不暴露会话实现的数据库探测能力。"""
 
     def __init__(self, probe: DatabaseProbe) -> None:
+        """保存数据库探测端口，构造时不访问活动数据库。"""
         self._probe = probe
 
     def test(self) -> Optional[str]:
@@ -48,6 +49,7 @@ class DatabaseGovernance:
         backup: DatabaseBackupService,
         plugin_backup: Callable[[], None] | None = None,
     ) -> None:
+        """组合已装配的探测、清理和备份用例，保留可选插件备份回调。"""
         self._health = health
         self._cleanup = cleanup
         self._backup = backup
