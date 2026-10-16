@@ -3,7 +3,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, Iterable, List, Match, Optional, Tuple, Union, cast
+from typing import Dict, Iterable, List, Match, Optional, Pattern, Tuple, Union, cast
 
 import anitopy
 
@@ -12,8 +12,11 @@ from app.domain.meta.metabase import MetaBase
 from app.domain.meta.words import calculate_episode_offset
 from app.domain.metainfo import MetaInfoPath
 from app.runtime.log import logger
+from app.schemas.file import FileItem
 from app.schemas.transfer import EpisodeFormatRule
-from app.schemas.workflow import FileItem
+
+# 推荐结果保留既有字典输出，字段值只包含文本、计数、开关、原因列表或空值。
+EpisodeFormatRecommendation = Dict[str, Union[str, int, bool, List[str], None]]
 
 
 @dataclass(frozen=True)
@@ -28,7 +31,8 @@ class _TemplateParseResult:
 def _compile_template_pattern(
     template: str,
     ep_group_name: Optional[str] = None,
-):
+) -> Pattern[str]:
+    """编译定位模板，并缓存转义花括号与命名分组的解析结果。"""
     parts: List[str] = ["^"]
     cursor = 0
     while cursor < len(template):
@@ -68,6 +72,7 @@ def _match_template(
     text: str,
     ep_group_name: Optional[str] = None,
 ) -> Optional[_TemplateParseResult]:
+    """匹配模板并保留命名分组在原文件名中的位置。"""
     pattern = _compile_template_pattern(template, ep_group_name)
     result = pattern.match(text)
     if not result:
@@ -85,11 +90,11 @@ def _match_template(
 class FormatParser(object):
     """解析剧集定位模板并从文件名提取集数区间。"""
 
-    _key = ""
+    _key: Optional[str] = ""
     _split_chars = r"\.|\s+|\(|\)|\[|]|-|\+|【|】|/|～|;|&|\||#|_|「|」|~"
 
     def __init__(self, eformat: str, details: Optional[str] = None, part: Optional[str] = None,
-                 offset: Optional[str] = None, key: Optional[str] = "ep"):
+                 offset: Optional[str] = None, key: Optional[str] = "ep") -> None:
         """
         :params eformat: 格式化字符串
         :params details: 格式化详情
@@ -98,8 +103,8 @@ class FormatParser(object):
         :prams key: EP关键字
         """
         self._format = eformat
-        self._start_ep = None
-        self._end_ep = None
+        self._start_ep: Optional[Union[int, str]] = None
+        self._end_ep: Optional[Union[int, str]] = None
         if not offset:
             self.__offset = "EP"
         elif "EP" in offset:
@@ -110,7 +115,7 @@ class FormatParser(object):
             else:
                 self.__offset = f"EP+{offset}"
         self._key = key
-        self._part = None
+        self._part: Optional[str] = None
         self._compiled_pattern = (
             _compile_template_pattern(self._format, self._key)
             if self._format
@@ -131,27 +136,27 @@ class FormatParser(object):
                     self._start_ep = self._end_ep = int(tmp[0])
 
     @property
-    def format(self):
+    def format(self) -> str:
         """返回原始定位模板。"""
         return self._format
 
     @property
-    def start_ep(self):
+    def start_ep(self) -> Optional[Union[int, str]]:
         """返回规则限定的起始集数。"""
         return self._start_ep
 
     @property
-    def end_ep(self):
+    def end_ep(self) -> Optional[Union[int, str]]:
         """返回规则限定的结束集数。"""
         return self._end_ep
 
     @property
-    def part(self):
+    def part(self) -> Optional[str]:
         """返回规则指定的分段信息。"""
         return self._part
 
     @property
-    def offset(self):
+    def offset(self) -> str:
         """返回集数偏移表达式。"""
         return self.__offset
 
@@ -164,9 +169,11 @@ class FormatParser(object):
             return False
         if self._start_ep is None:
             return True
-        if self._start_ep <= s <= self._end_ep:
-            return True
-        return False
+        if isinstance(self._start_ep, str):
+            # 连字符形式保存的是原始区间文本，比较时使用数字边界，偏移仍由拆集负责。
+            start_ep, end_ep = (int(value) for value in self._start_ep.split("-"))
+            return start_ep <= s <= end_ep
+        return isinstance(self._end_ep, int) and self._start_ep <= s <= self._end_ep
 
     def split_episode(self, file_name: str, file_meta: MetaBase) -> Tuple[Optional[int], Optional[int], Optional[str]]:
         """
@@ -209,7 +216,7 @@ class FormatParser(object):
         if not self._format:
             return None, None
         ret = self._compiled_pattern.match(file) if self._compiled_pattern else None
-        if not ret or self._key not in ret.groupdict():
+        if not ret or self._key is None or self._key not in ret.groupdict():
             return None, None
         episodes = ret.group(self._key)
         if not re.compile(
@@ -288,7 +295,7 @@ class EpisodeFormatRuleHelper:
         self,
         rules: List[EpisodeFormatRule],
         sample_files: List[FileItem],
-    ) -> Tuple[bool, str, Optional[dict]]:
+    ) -> Tuple[bool, str, Optional[EpisodeFormatRecommendation]]:
         """
         推荐集数定位模板
         """
@@ -304,7 +311,7 @@ class EpisodeFormatRuleHelper:
                 continue
 
             sample_file, match_result = matched_samples[0]
-            episode_format = self._build_template(sample_file.name, match_result)
+            episode_format = self._build_template(sample_file.name or "", match_result)
             if not episode_format:
                 continue
             if not self._validate_template(episode_format, matched_samples):
@@ -338,7 +345,7 @@ class EpisodeFormatRuleHelper:
     def _auto_recommend(
         self,
         sample_files: List[FileItem],
-    ) -> Tuple[bool, str, Optional[dict]]:
+    ) -> Tuple[bool, str, Optional[EpisodeFormatRecommendation]]:
         """
         自动生成集数定位模板：anitopy 反向定位 + 多文件对比
         """
@@ -655,7 +662,7 @@ class EpisodeFormatRuleHelper:
                 _AutoRecommendSample(
                     file_name=file_name,
                     ep_span=ep_span,
-                    expected_episode=normalized_episode,
+                    expected_episode=normalized_episode or "",
                     source_kind=self._get_file_kind(item),
                     native_episode=native_episode,
                     native_verified=native_verified,
@@ -668,7 +675,7 @@ class EpisodeFormatRuleHelper:
     def _locate_episode(
         cls,
         file_name: str,
-        episode_value: str,
+        episode_value: Optional[str],
     ) -> Optional[Tuple[int, int]]:
         """
         三级策略反向定位 episode_number 在文件名中的位置
@@ -702,7 +709,7 @@ class EpisodeFormatRuleHelper:
         return None
 
     @staticmethod
-    def _normalize_episode_value(episode_value) -> str:
+    def _normalize_episode_value(episode_value: object) -> str:
         """将单集或范围集数归一为不含 EP 前缀的文本。"""
         if isinstance(episode_value, list):
             parts = [str(part) for part in episode_value]
