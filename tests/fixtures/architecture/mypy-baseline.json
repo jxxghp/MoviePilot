@@ -89,11 +89,6 @@
   "app/adapters/system/stdio.py": {
     "override": 1
   },
-  "app/adapters/web/metrics.py": {
-    "no-any-return": 1,
-    "type-arg": 3,
-    "union-attr": 1
-  },
   "app/adapters/web/plugin/routes.py": {
     "type-arg": 1
   },
