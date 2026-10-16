@@ -3,14 +3,16 @@ import re
 
 from lxml import etree
 
-from app.modules.indexer.parser import SiteSchema
+from app.modules.indexer.parser import SitePage, SiteSchema
 from app.modules.indexer.parser.nexus_php import NexusPhpSiteUserInfo
 
 
 class NexusProjectSiteUserInfo(NexusPhpSiteUserInfo):
+    """解析 NexusProject 站点的用户资料、流量与消息。"""
     schema = SiteSchema.NexusProject
 
-    def _parse_site_page(self, html_text: str):
+    def _parse_site_page(self, html_text: SitePage) -> None:
+        """识别并配置站点数据页面与请求参数。"""
         html_text = self._prepare_html_text(html_text)
 
         user_detail = re.search(r"userdetails\.php\?id=(\d+)", html_text)
@@ -31,10 +33,11 @@ class NexusProjectSiteUserInfo(NexusPhpSiteUserInfo):
 
         self._torrent_seeding_page = f"viewusertorrents.php?id={self.userid}&show=seeding"
 
-    def _parse_user_traffic_info(self, html_text):
+    def _parse_user_traffic_info(self, html_text: str) -> None:
         # 兼容部分 NexusProject 变种站点(如 star-space.net)以
         # span#user_info / span#user_info_no_hover 文本展示流量:
         # "上传：445.11 G" / "下载：29.61 G"(单位无 B 后缀)
+        """解析站点的上传、下载及分享率信息。"""
         try:
             html = etree.HTML(html_text)
             if html is not None:
