@@ -354,12 +354,12 @@ class MusicBrainzChain(MusicMetadataSourceChain):
         )
         return self._music_album(result)
 
-    def cache_items(self) -> list[dict]:
+    def cache_items(self) -> list[dict[str, Any]]:
         """查询音乐识别缓存条目列表。"""
         result = self.run_module("music_cache_items")
         return result or []
 
-    def delete_cache(self, cache_key: str) -> dict:
+    def delete_cache(self, cache_key: str) -> dict[str, Any]:
         """按缓存键删除单条音乐识别缓存。"""
         result = self.run_module("music_cache_delete", cache_key=cache_key)
         return result or {}
