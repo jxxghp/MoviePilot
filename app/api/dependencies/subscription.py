@@ -68,7 +68,8 @@ async def _publish_subscribe_deleted(
     payload: Mapping[str, JsonData],
 ) -> None:
     """通过宿主事件总线发布已提交的订阅删除事件。"""
-    await eventmanager.async_send_event(EventType.SubscribeDeleted, payload)
+    event_payload = payload if isinstance(payload, dict) else dict(payload)
+    await eventmanager.async_send_event(EventType.SubscribeDeleted, event_payload)
 
 
 async def _publish_subscribe_modified(payload: Mapping[str, JsonData]) -> None:
