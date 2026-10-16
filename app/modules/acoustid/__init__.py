@@ -242,9 +242,12 @@ class AcoustIdModule(_ModuleBase):
         timeout = music_request_timeout(claim=False, maximum=self._fingerprint_timeout)
         if timeout is None:
             return None
+        fpcalc_path = self._fpcalc_path
+        if not fpcalc_path:
+            return None
         try:
             result = subprocess.run(
-                [self._fpcalc_path, "-json", str(path)],
+                [fpcalc_path, "-json", str(path)],
                 capture_output=True,
                 text=True,
                 check=False,
@@ -270,10 +273,13 @@ class AcoustIdModule(_ModuleBase):
         timeout = music_request_timeout(claim=False, maximum=self._fingerprint_timeout)
         if timeout is None:
             return None
+        fpcalc_path = self._fpcalc_path
+        if not fpcalc_path:
+            return None
         process = None
         try:
             process = await asyncio.create_subprocess_exec(
-                self._fpcalc_path,
+                fpcalc_path,
                 "-json",
                 str(path),
                 stdout=asyncio.subprocess.PIPE,
