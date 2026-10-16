@@ -69,6 +69,7 @@ class PluginConfigCommand:
         delete_data_directory: Callable[[str], bool],
         purge_instance: Callable[[str], bool],
         is_clone: Callable[[str], bool],
+        purge_invalid_empty_host: Callable[[str], bool] | None = None,
     ) -> None:
         """保存插件管理 Facade 和运行时注册刷新端口。"""
         self._save_config = save_config
@@ -85,6 +86,7 @@ class PluginConfigCommand:
         self._delete_data_directory = delete_data_directory
         self._purge_instance = purge_instance
         self._is_clone = is_clone
+        self._purge_invalid_empty_host = purge_invalid_empty_host
 
     def update(self, plugin_id: str, config: dict[str, object]) -> PluginConfigResult:
         """保存配置并按既有顺序重新初始化实例及运行时注册。"""
@@ -107,7 +109,9 @@ class PluginConfigCommand:
 
         实例 ID 先过格式校验再动任何存储：它会被拼进插件数据目录路径，放行一个带
         ``..`` 的 ID 会让后续的整目录删除落到插件数据根之外。校验在最前面，是为了让
-        非法 ID 在停止实例、删配置行之前就被拒绝，而不是删掉一半才发现。
+        非法 ID 在停止实例、删配置行之前就被拒绝，而不是删掉一半才发现。唯一例外是
+        只选 config 时，可通过数据库专用端口原子回收非法 ID 的空本体行；该路径不
+        停止实例、不清配置、不触碰文件或自有数据库，带任何设置的行均保留。
 
         分身在清理后连同实例行一并消失——分身的存在本身就由那一行表达；本体的行则
         保留，它还承载着这个插件的启用状态与展示覆盖，删掉等于把装着的插件静默停用，
@@ -131,7 +135,7 @@ class PluginConfigCommand:
         try:
             validate_plugin_id(instance_id)
         except ValueError as error:
-            return PluginPurgeResult(False, f"实例 ID 非法：{error}")
+            return self._purge_invalid_host(instance_id, scope, str(error))
         try:
             with self._mutation(f"彻底清理插件实例 {instance_id}"):
                 self._stop(instance_id)
@@ -160,6 +164,20 @@ class PluginConfigCommand:
             return PluginPurgeResult(False, str(error))
         except ValueError as error:
             return PluginPurgeResult(False, f"清理插件实例 {instance_id} 失败：{error}")
+
+    def _purge_invalid_host(
+        self, instance_id: str, scope: PluginPurgeScope, validation_error: str,
+    ) -> PluginPurgeResult:
+        """仅在用户只选配置且数据库确认是纯残留时回收非法实例行。"""
+        if scope != PluginPurgeScope(config=True) or self._purge_invalid_empty_host is None:
+            return PluginPurgeResult(False, f"实例 ID 非法：{validation_error}")
+        try:
+            with self._mutation(f"清理历史无效插件实例 {instance_id}"):
+                if not self._purge_invalid_empty_host(instance_id):
+                    return PluginPurgeResult(False, "历史无效实例不存在或不是可清理的空本体行")
+                return PluginPurgeResult(True, purged=("config",), instance_removed=True)
+        except PluginMutationRejectedError as error:
+            return PluginPurgeResult(False, str(error))
 
     def reset(self, plugin_id: str) -> PluginConfigResult:
         """通知插件补偿后停止实例、删除配置数据并重建运行态。"""

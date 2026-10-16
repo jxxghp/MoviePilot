@@ -331,6 +331,7 @@ class PluginInstanceDirectory:
             delete: InstanceDeleter = _ignore_instance_delete,
             list_enabled: InstanceLister = _empty_instance_list,
             set_enabled: InstanceEnabler = _ignore_instance_enable,
+            purge_invalid_empty_host: InstanceDeleter = _ignore_instance_delete,
     ) -> None:
         """保存由启动组合根提供的实例表读写函数。"""
         self._get = get
@@ -340,6 +341,7 @@ class PluginInstanceDirectory:
         self._delete = delete
         self._list_enabled = list_enabled
         self._set_enabled = set_enabled
+        self._purge_invalid_empty_host = purge_invalid_empty_host
 
     def get(self, instance_id: str) -> PluginInstance | None:
         """按实例 ID 读取单条描述，不区分分身与本体。"""
@@ -368,6 +370,10 @@ class PluginInstanceDirectory:
     def set_enabled(self, instance_id: str, is_enabled: bool) -> bool:
         """写入启用位，返回该行是否存在。"""
         return self._set_enabled(instance_id, is_enabled)
+
+    def purge_invalid_empty_host(self, instance_id: str) -> bool:
+        """仅删除无法投影且不承载任何设置的历史本体行。"""
+        return self._purge_invalid_empty_host(instance_id)
 
 
 class _LegacyInstanceEntry(NamedTuple):
@@ -416,6 +422,10 @@ class PluginInstanceStore:
         # 引导只应发生一次，但完成标记要等合并真正成功才提交，两者之间存在窗口；
         # 用可重入锁把窗口关上，多线程同时首次访问时只有一个真的去合并
         self._bootstrap_lock = threading.RLock()
+
+    def purge_invalid_empty_host(self, instance_id: str) -> bool:
+        """让持久化端口直接核对历史空行，不经严格描述符投影或旧键导入。"""
+        return self._directory().purge_invalid_empty_host(instance_id)
 
     def _ensure_bootstrapped(self) -> None:
         """把旧 systemconfig 单键的实例描述变更合并进独立表，每进程成功一次。

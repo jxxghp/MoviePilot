@@ -46,4 +46,5 @@ def get_plugin_config_command() -> PluginConfigCommand:
         delete_data_directory=manager.delete_plugin_data_directory,
         purge_instance=manager.purge_plugin_instance,
         is_clone=manager.is_plugin_clone,
+        purge_invalid_empty_host=manager.purge_invalid_empty_plugin_instance,
     )

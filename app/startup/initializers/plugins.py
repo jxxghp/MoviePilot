@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import uuid
 from collections.abc import Callable, Mapping
 from datetime import datetime, timezone
@@ -280,6 +281,10 @@ def _prime_plugin_instance_log_levels() -> None:
         session.close()
 
 
+_invalid_instance_warnings: set[tuple[str, str]] = set()
+_invalid_instance_warning_lock = threading.Lock()
+
+
 def _plugin_instance_from_record(record: PluginInstanceRecord) -> PluginInstance | None:
     """把插件实例表的 ORM 行投影为运行时端口使用的 Pydantic 描述。
 
@@ -288,7 +293,8 @@ def _plugin_instance_from_record(record: PluginInstanceRecord) -> PluginInstance
 
     历史版本写入的脏实例行不能阻断整个插件目录的读取；严格模型校验仍保留，只把
     当前行视为不可装载并交给上层跳过。数据库异常不在这里捕获，避免把真正的存储故障
-    伪装成单个插件问题。
+    伪装成单个插件问题。同一对身份在进程内只告警一次，避免插件页的多次目录读取刷屏；
+    去重只影响日志，每次仍重新校验，修复后的记录可立即恢复可见。
     """
     try:
         return PluginInstance(
@@ -301,6 +307,11 @@ def _plugin_instance_from_record(record: PluginInstanceRecord) -> PluginInstance
             is_enabled=record.is_enabled,
         )
     except ValidationError as error:
+        warning_key = (record.instance_id, record.source_plugin_id)
+        with _invalid_instance_warning_lock:
+            if warning_key in _invalid_instance_warnings:
+                return None
+            _invalid_instance_warnings.add(warning_key)
         logger.warning(
             "跳过无效插件实例记录：instance_id=%r, source_plugin_id=%r, error=%s",
             record.instance_id,
@@ -391,6 +402,7 @@ def _build_plugin_instance_directory() -> PluginInstanceDirectory:
         list_by_source=_list_by_source,
         save=_save_plugin_instance_record,
         delete=oper.delete,
+        purge_invalid_empty_host=PluginInstanceOper().purge_invalid_empty_host,
         list_enabled=_list_enabled,
         set_enabled=lambda instance_id, is_enabled: oper.set_enabled(
             instance_id=instance_id,

@@ -846,6 +846,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         clear_instance_log_level_override(instance_id)
         return deleted
 
+    def purge_invalid_empty_plugin_instance(self, instance_id: str) -> bool:
+        """在调用方 mutation lease 内仅回收非法 ID 的空本体行。"""
+        return self._plugin_instance_store.purge_invalid_empty_host(instance_id)
+
     def is_plugin_clone(self, instance_id: str) -> bool:
         """判断该实例 ID 是否为分身而非源插件本体。"""
         return self._plugin_instance_store.get(instance_id) is not None
