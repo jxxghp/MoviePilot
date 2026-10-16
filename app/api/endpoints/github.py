@@ -29,7 +29,7 @@ router = ResponseAPIRouter()
 initialization_router = ResponseAPIRouter()
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/community",
     summary="查询当前 GitHub 用户的社区勋章",
     response_model=_SchemaResponse[GithubCommunityProfile],
@@ -68,7 +68,7 @@ async def _ensure_initialization_open(service: UserService) -> None:
         raise HTTPException(status_code=409, detail="系统已经完成初始化")
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/auth/status",
     summary="查询 GitHub Token 状态",
     response_model=_SchemaResponse[GithubTokenStatus],
@@ -81,7 +81,7 @@ async def get_auth_status(
     return _SchemaResponse(success=True, data=_status_model(await github_auth.status()))
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/auth/start",
     summary="启动 GitHub 设备授权",
     response_model=_SchemaResponse[GithubDeviceAuthStart],
@@ -107,7 +107,7 @@ async def start_auth(
     )
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/auth/poll",
     summary="轮询 GitHub 设备授权",
     response_model=_SchemaResponse[GithubDeviceAuthPoll],
@@ -134,7 +134,7 @@ async def poll_auth(
     )
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/auth/manual",
     summary="保存手动 GitHub Token",
     response_model=_SchemaResponse[GithubTokenStatus],
@@ -152,7 +152,7 @@ async def save_manual_token(
     return _SchemaResponse(success=True, data=_status_model(status))
 
 
-@router.delete(  # type: ignore[misc]
+@router.delete(
     "/auth/token",
     summary="清除 GitHub Token",
     response_model=_SchemaResponse[None],
@@ -169,7 +169,7 @@ async def clear_token(
     return _SchemaResponse(success=True)
 
 
-@initialization_router.get(  # type: ignore[misc]
+@initialization_router.get(
     "/status",
     summary="查询初始化阶段 GitHub Token 状态",
     response_model=_SchemaResponse[GithubTokenStatus],
@@ -183,7 +183,7 @@ async def get_initialization_auth_status(
     return _SchemaResponse(success=True, data=_status_model(await github_auth.status()))
 
 
-@initialization_router.post(  # type: ignore[misc]
+@initialization_router.post(
     "/start",
     summary="从初始化页启动 GitHub 设备授权",
     response_model=_SchemaResponse[GithubDeviceAuthStart],
@@ -210,7 +210,7 @@ async def start_initialization_auth(
     )
 
 
-@initialization_router.post(  # type: ignore[misc]
+@initialization_router.post(
     "/poll",
     summary="从初始化页轮询 GitHub 设备授权",
     response_model=_SchemaResponse[GithubDeviceAuthPoll],
@@ -238,7 +238,7 @@ async def poll_initialization_auth(
     )
 
 
-@initialization_router.post(  # type: ignore[misc]
+@initialization_router.post(
     "/manual",
     summary="从初始化页保存手动 GitHub Token",
     response_model=_SchemaResponse[GithubTokenStatus],
@@ -257,7 +257,7 @@ async def save_initialization_manual_token(
     return _SchemaResponse(success=True, data=_status_model(status))
 
 
-@initialization_router.delete(  # type: ignore[misc]
+@initialization_router.delete(
     "/token",
     summary="从初始化页清除 GitHub Token",
     response_model=_SchemaResponse[None],
