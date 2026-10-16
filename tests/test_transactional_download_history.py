@@ -14,10 +14,16 @@ from app.db.adapters.history.download import (
     SessionDownloadHistoryRepository,
     TransactionalDownloadHistoryRepository,
 )
-from app.db.models.downloadhistory import DownloadHistory
+from app.db.models.downloadhistory import DownloadFiles, DownloadHistory
 from app.db.session import SessionFactory, async_session_scope
 from app.db.uow import SqlAlchemyUnitOfWork
 from app.schemas.types import MediaSource, MediaType
+
+
+@pytest.fixture(autouse=True)
+def _track(db) -> None:
+    """回收仓储通过独立事务写入的历史与文件，避免污染后续用例。"""
+    db.watermark(DownloadHistory, DownloadFiles)
 
 
 def _repository() -> TransactionalDownloadHistoryRepository:
