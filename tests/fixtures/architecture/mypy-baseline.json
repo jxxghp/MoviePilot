@@ -589,9 +589,6 @@
     "return-value": 2,
     "type-arg": 1
   },
-  "app/application/downloader.py": {
-    "no-untyped-def": 1
-  },
   "app/application/formatting.py": {
     "arg-type": 4,
     "assignment": 4,

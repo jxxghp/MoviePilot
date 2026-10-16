@@ -10,7 +10,7 @@ class DownloaderHelper(ServiceBaseHelper[DownloaderConf]):
     下载器帮助类
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """绑定下载器配置和下载器模块类型。"""
         super().__init__(
             config_key=SystemConfigKey.Downloaders,
