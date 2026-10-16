@@ -1,11 +1,15 @@
+"""按服务配置 Schema 构造并校验运行时配置。"""
+
 from collections.abc import Callable
-from typing import Any, List, Type
+from typing import Any, List, Type, TypeVar
 
 from pydantic import ValidationError
 
 from app.runtime.log import logger
 from app.schemas.system import DownloaderConf, MediaServerConf, NotificationConf, NotificationSwitchConf
 from app.schemas.types import MessageType, SystemConfigKey
+
+_Config = TypeVar("_Config")
 
 ServiceConfigReader = Callable[[SystemConfigKey], Any]
 
@@ -36,7 +40,7 @@ class ServiceConfigHelper:
     """读取并校验通知、下载器和媒体服务器的宿主配置。"""
 
     @staticmethod
-    def get_configs(config_key: SystemConfigKey, conf_type: Type) -> List:
+    def get_configs(config_key: SystemConfigKey, conf_type: Type[_Config]) -> List[_Config]:
         """按指定 Schema 过滤单条非法配置，避免影响同组其它服务。"""
         config_data = _service_config_reader(config_key)
         if not config_data:

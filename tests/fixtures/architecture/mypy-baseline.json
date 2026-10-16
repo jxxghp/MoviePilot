@@ -2448,9 +2448,6 @@
     "no-any-return": 6,
     "type-arg": 4
   },
-  "app/runtime/extensions/service.py": {
-    "type-arg": 2
-  },
   "app/runtime/gc.py": {
     "no-any-return": 1,
     "no-untyped-def": 2,
