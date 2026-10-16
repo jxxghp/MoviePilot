@@ -1622,17 +1622,13 @@
     "var-annotated": 2
   },
   "app/modules/vocechat/__init__.py": {
-    "arg-type": 6,
+    "arg-type": 3,
     "assignment": 6,
     "attr-defined": 1,
     "empty-body": 1,
     "no-untyped-def": 3,
     "type-arg": 4,
     "union-attr": 1
-  },
-  "app/modules/vocechat/vocechat.py": {
-    "no-untyped-call": 1,
-    "no-untyped-def": 3
   },
   "app/modules/webpush/__init__.py": {
     "arg-type": 1,
@@ -1756,15 +1752,6 @@
     "no-untyped-call": 1,
     "no-untyped-def": 24,
     "type-arg": 14
-  },
-  "app/runtime/debounce.py": {
-    "assignment": 1,
-    "attr-defined": 2,
-    "no-untyped-call": 8,
-    "no-untyped-def": 21,
-    "override": 2,
-    "type-arg": 4,
-    "unused-coroutine": 1
   },
   "app/runtime/events.py": {
     "list-item": 1,

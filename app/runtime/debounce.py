@@ -8,6 +8,7 @@ from typing import Awaitable, Callable, Concatenate, Generic, Optional, ParamSpe
 from app.runtime.log import logger
 
 _P = ParamSpec("_P")
+_BoundP = ParamSpec("_BoundP")
 _R = TypeVar("_R")
 _T = TypeVar("_T")
 
@@ -28,8 +29,8 @@ class _Debounced(Protocol[_P]):
         ...
 
     @overload
-    def __get__(self: "_Debounced[Concatenate[_T, _P]]", instance: _T,
-                owner: type[_T] | None = None) -> "_Debounced[_P]":
+    def __get__(self: "_Debounced[Concatenate[_T, _BoundP]]", instance: _T,
+                owner: type[_T] | None = None) -> "_Debounced[_BoundP]":
         """从实例访问时由函数描述符绑定首个参数。"""
         ...
 
