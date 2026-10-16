@@ -70,10 +70,6 @@
     "type-arg": 1,
     "union-attr": 11
   },
-  "app/adapters/system/fsworker.py": {
-    "no-untyped-call": 3,
-    "no-untyped-def": 10
-  },
   "app/adapters/system/host.py": {
     "assignment": 4,
     "misc": 1,

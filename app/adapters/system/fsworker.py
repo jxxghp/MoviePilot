@@ -23,10 +23,64 @@ import shutil
 import sys
 import time
 from pathlib import Path
-from typing import Any, Callable, Dict
+from typing import Callable, Required, TypedDict
 
 
-def _stat(payload, _emit):
+class _Request(TypedDict, total=False):
+    """父进程发送的操作名称与各操作参数，不改变坏请求的异常处理。"""
+
+    op: Required[str]
+    path: str
+    src: str
+    dst: str
+    chunk_size: int
+    progress_interval: float
+    max_check: int
+    extensions: list[str]
+
+
+class _StatResult(TypedDict):
+    """路径属性及删除前核对的文件身份。"""
+
+    size: int
+    mtime: float
+    dev: int
+    ino: int
+    is_dir: bool
+    is_file: bool
+
+
+class _CopyProgress(TypedDict):
+    """复制心跳和最终结果共享的字节进度。"""
+
+    copied: int
+    total: int
+
+
+class _EntryCounts(TypedDict):
+    """递归扫描已经观察到的文件与目录数量。"""
+
+    file_count: int
+    dir_count: int
+
+
+_Result = bool | str | list[str] | _StatResult | _CopyProgress | _EntryCounts
+
+
+class _Response(TypedDict, total=False):
+    """逐行输出的心跳、成功结果或失败信息。"""
+
+    ok: Required[bool]
+    progress: _CopyProgress
+    result: _Result
+    errno: int
+    error: str
+
+
+_Emit = Callable[[_Response], None]
+
+
+def _stat(payload: _Request, _emit: _Emit) -> _StatResult:
     """
     读取路径属性及设备、inode 身份，供删除前确认仍是同一个文件。
     """
@@ -42,7 +96,7 @@ def _stat(payload, _emit):
     }
 
 
-def _exists(payload, _emit):
+def _exists(payload: _Request, _emit: _Emit) -> bool:
     """
     判断路径是否存在。
 
@@ -53,19 +107,19 @@ def _exists(payload, _emit):
     return True
 
 
-def _realpath(payload: Dict[str, Any], _emit: Callable[[Dict[str, Any]], None]) -> str:
+def _realpath(payload: _Request, _emit: _Emit) -> str:
     """解析已有父目录的符号链接，目标末段可尚不存在；异常交由代理保守处理。"""
     return str(Path(payload["path"]).resolve())
 
 
-def _listdir(payload, _emit):
+def _listdir(payload: _Request, _emit: _Emit) -> list[str]:
     """
     列出目录下的条目名。
     """
     return sorted(os.listdir(payload["path"]))
 
 
-def _copy(payload, emit):
+def _copy(payload: _Request, emit: _Emit) -> _CopyProgress:
     """
     分块复制文件内容并周期上报进度。
 
@@ -103,7 +157,7 @@ def _copy(payload, emit):
     return {"copied": copied, "total": total}
 
 
-def _count_entries(payload, _emit):
+def _count_entries(payload: _Request, _emit: _Emit) -> _EntryCounts:
     """
     统计目录下的文件与子目录数量，超过上限即提前结束。
 
@@ -123,7 +177,7 @@ def _count_entries(payload, _emit):
     return {"file_count": file_count, "dir_count": dir_count}
 
 
-def _has_file_suffix(payload: Dict[str, Any], _emit: Callable[..., None]) -> bool:
+def _has_file_suffix(payload: _Request, _emit: _Emit) -> bool:
     """遍历目录树；读取失败必须抛出，避免将未完成的扫描视为安全。"""
     suffixes = {ext.casefold() for ext in payload["extensions"]}
 
@@ -137,7 +191,7 @@ def _has_file_suffix(payload: Dict[str, Any], _emit: Callable[..., None]) -> boo
     return False
 
 
-def _rename(payload, _emit):
+def _rename(payload: _Request, _emit: _Emit) -> bool:
     """
     同一存储内重命名/移动。
 
@@ -152,7 +206,7 @@ def _rename(payload, _emit):
     return True
 
 
-def _unlink(payload, _emit):
+def _unlink(payload: _Request, _emit: _Emit) -> bool:
     """
     删除单个文件。unlink 是原子操作，强杀后要么删掉了要么没删，没有中间状态。
     """
@@ -160,7 +214,7 @@ def _unlink(payload, _emit):
     return True
 
 
-def _rmtree(payload, _emit):
+def _rmtree(payload: _Request, _emit: _Emit) -> bool:
     """
     递归删除目录。
 
@@ -172,7 +226,7 @@ def _rmtree(payload, _emit):
     return True
 
 
-_HANDLERS = {
+_HANDLERS: dict[str, Callable[[_Request, _Emit], _Result]] = {
     "stat": _stat,
     "realpath": _realpath,
     "exists": _exists,
@@ -187,7 +241,7 @@ _HANDLERS = {
 }
 
 
-def _write(message):
+def _write(message: _Response) -> None:
     """
     输出一行响应。
     """
@@ -195,20 +249,21 @@ def _write(message):
     sys.stdout.flush()
 
 
-def main():
+def main() -> None:
     """
     请求循环：每读一行处理一个请求，直到 stdin 关闭。
 
     一个请求可能对应多行响应：长耗时操作先流式发若干 progress 行，最后发一行
     终态（result 或 error）。父进程据此区分「还在推进」和「已经挂死」。
     """
+    response: _Response
     for line in sys.stdin:
         line = line.strip()
         if not line:
             continue
         try:
-            payload = json.loads(line)
-            handler = _HANDLERS.get(payload.get("op"))
+            payload: _Request = json.loads(line)
+            handler = _HANDLERS.get(payload.get("op", ""))
             if handler is None:
                 response = {"ok": False, "errno": 0,
                             "error": f"unknown op: {payload.get('op')}"}

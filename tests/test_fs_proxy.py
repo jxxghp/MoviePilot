@@ -287,3 +287,27 @@ def test_worker_runs_standalone_without_app_on_path(tmp_path):
     response = json.loads(result.stdout.strip())
     assert response["ok"] is True
     assert response["result"]["size"] == 3
+
+
+def test_worker_reports_unknown_operations_and_keeps_reading(tmp_path):
+    """操作名缺失、为空或未知时保留错误回执，随后仍能处理有效请求。"""
+    worker_path = Path("app/adapters/system/fsworker.py").resolve()
+    payloads = [{}, {"op": None}, {"op": ""}, {"op": "unknown"}, {"op": "ping"}]
+    result = subprocess.run(
+        [sys.executable, str(worker_path)],
+        input="".join(json.dumps(payload) + "\n" for payload in payloads),
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
+        cwd=tmp_path,
+    )
+    responses = [json.loads(line) for line in result.stdout.splitlines()]
+
+    assert responses == [
+        {"ok": False, "errno": 0, "error": "unknown op: None"},
+        {"ok": False, "errno": 0, "error": "unknown op: None"},
+        {"ok": False, "errno": 0, "error": "unknown op: "},
+        {"ok": False, "errno": 0, "error": "unknown op: unknown"},
+        {"ok": True, "result": True},
+    ]
