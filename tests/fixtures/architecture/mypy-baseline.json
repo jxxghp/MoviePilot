@@ -1779,9 +1779,9 @@
   },
   "app/modules/themoviedb/tmdbapi.py": {
     "arg-type": 1,
-    "attr-defined": 11,
+    "attr-defined": 10,
     "no-any-return": 5,
-    "no-untyped-call": 70,
+    "no-untyped-call": 58,
     "no-untyped-def": 7,
     "operator": 24,
     "type-arg": 47
@@ -1792,110 +1792,52 @@
     "no-untyped-def": 23
   },
   "app/modules/themoviedb/tmdbv3api/objs/account.py": {
-    "attr-defined": 1,
-    "no-untyped-call": 29,
+    "no-untyped-call": 19,
     "no-untyped-def": 29
   },
-  "app/modules/themoviedb/tmdbv3api/objs/auth.py": {
-    "no-untyped-call": 8,
-    "no-untyped-def": 5
-  },
-  "app/modules/themoviedb/tmdbv3api/objs/certification.py": {
-    "no-untyped-call": 4,
-    "no-untyped-def": 4
-  },
   "app/modules/themoviedb/tmdbv3api/objs/change.py": {
-    "no-untyped-call": 8,
+    "no-untyped-call": 6,
     "no-untyped-def": 8
   },
   "app/modules/themoviedb/tmdbv3api/objs/collection.py": {
-    "no-untyped-call": 6,
     "no-untyped-def": 6
-  },
-  "app/modules/themoviedb/tmdbv3api/objs/company.py": {
-    "no-untyped-call": 8,
-    "no-untyped-def": 8
-  },
-  "app/modules/themoviedb/tmdbv3api/objs/configuration.py": {
-    "no-untyped-call": 13,
-    "no-untyped-def": 13
-  },
-  "app/modules/themoviedb/tmdbv3api/objs/credit.py": {
-    "no-untyped-call": 2,
-    "no-untyped-def": 2
   },
   "app/modules/themoviedb/tmdbv3api/objs/discover.py": {
     "attr-defined": 1,
-    "no-untyped-call": 4,
     "no-untyped-def": 4
   },
   "app/modules/themoviedb/tmdbv3api/objs/episode.py": {
-    "no-untyped-call": 20,
     "no-untyped-def": 20
   },
   "app/modules/themoviedb/tmdbv3api/objs/find.py": {
-    "no-untyped-call": 18,
+    "no-untyped-call": 16,
     "no-untyped-def": 18
   },
-  "app/modules/themoviedb/tmdbv3api/objs/genre.py": {
-    "no-untyped-call": 4,
-    "no-untyped-def": 4
-  },
-  "app/modules/themoviedb/tmdbv3api/objs/group.py": {
-    "no-untyped-call": 2,
-    "no-untyped-def": 2
-  },
   "app/modules/themoviedb/tmdbv3api/objs/keyword.py": {
-    "no-untyped-call": 4,
     "no-untyped-def": 4
-  },
-  "app/modules/themoviedb/tmdbv3api/objs/list.py": {
-    "no-untyped-call": 14,
-    "no-untyped-def": 14
   },
   "app/modules/themoviedb/tmdbv3api/objs/movie.py": {
-    "no-untyped-call": 46,
     "no-untyped-def": 46
   },
-  "app/modules/themoviedb/tmdbv3api/objs/network.py": {
-    "no-untyped-call": 6,
-    "no-untyped-def": 6
-  },
   "app/modules/themoviedb/tmdbv3api/objs/person.py": {
-    "no-untyped-call": 22,
     "no-untyped-def": 22
   },
-  "app/modules/themoviedb/tmdbv3api/objs/provider.py": {
-    "no-untyped-call": 6,
-    "no-untyped-def": 6
-  },
   "app/modules/themoviedb/tmdbv3api/objs/review.py": {
-    "no-untyped-call": 2,
     "no-untyped-def": 2
   },
   "app/modules/themoviedb/tmdbv3api/objs/search.py": {
     "attr-defined": 1,
-    "no-untyped-call": 14,
     "no-untyped-def": 14
   },
   "app/modules/themoviedb/tmdbv3api/objs/season.py": {
-    "no-untyped-call": 18,
     "no-untyped-def": 18
   },
   "app/modules/themoviedb/tmdbv3api/objs/trending.py": {
-    "no-untyped-call": 18,
+    "no-untyped-call": 16,
     "no-untyped-def": 18
   },
   "app/modules/themoviedb/tmdbv3api/objs/tv.py": {
-    "no-untyped-call": 52,
     "no-untyped-def": 52
-  },
-  "app/modules/themoviedb/tmdbv3api/tmdb.py": {
-    "assignment": 1,
-    "attr-defined": 3,
-    "no-redef": 2,
-    "no-untyped-call": 34,
-    "no-untyped-def": 44
   },
   "app/modules/thetvdb/__init__.py": {
     "empty-body": 1,

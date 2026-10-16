@@ -168,7 +168,7 @@
         "owner": "$source",
         "reason": "TMDB 移植客户端在 containment 内创建 Session，并把实际请求交给 RequestUtils。",
         "facts": [
-          {"source": "app.modules.themoviedb.tmdbv3api.tmdb", "target": "requests", "kind": "raw_transport", "fingerprint": "d605eb176a203b3f4d205c5d183469b3002426682eb9cb4e7408bb6013652484"}
+          {"source": "app.modules.themoviedb.tmdbv3api.tmdb", "target": "requests", "kind": "raw_transport", "fingerprint": "6c4ea48dd83616375a48785f9de9f477268f9236029e57b17ca1d2bde538fd4c"}
         ]
       },
       {

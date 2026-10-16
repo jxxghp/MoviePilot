@@ -798,12 +798,14 @@
           "import:requests as requests",
           "import:requests.exceptions as requests"
         ],
-        "fingerprint": "d605eb176a203b3f4d205c5d183469b3002426682eb9cb4e7408bb6013652484",
+        "fingerprint": "6c4ea48dd83616375a48785f9de9f477268f9236029e57b17ca1d2bde538fd4c",
         "kind": "raw_transport",
         "source": "app.modules.themoviedb.tmdbv3api.tmdb",
         "target": "requests",
         "uses": [
-          "TMDb._init_session|call:Session"
+          "TMDb._init_session|call:Session",
+          "TMDb._reset_owned_session|call:close",
+          "TMDb.close|call:close"
         ]
       },
       {
@@ -941,8 +943,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9563,
-  "edge_sha256": "64ab9871d95e006af19070aa9b1690a6fd0b54d16cf4e8ad0ef2dc4870483940",
+  "edge_count": 9565,
+  "edge_sha256": "470543337cae761f4c44f9a111389b89d28553fbfb92ce6d3bc2eb7c6ea8b3c3",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -8336,6 +8338,7 @@
     "app.modules.themoviedb.tmdbv3api.objs.auth -> app.modules",
     "app.modules.themoviedb.tmdbv3api.objs.auth -> app.modules.themoviedb",
     "app.modules.themoviedb.tmdbv3api.objs.auth -> app.modules.themoviedb.tmdbv3api",
+    "app.modules.themoviedb.tmdbv3api.objs.auth -> app.modules.themoviedb.tmdbv3api.exceptions",
     "app.modules.themoviedb.tmdbv3api.objs.auth -> app.modules.themoviedb.tmdbv3api.tmdb",
     "app.modules.themoviedb.tmdbv3api.objs.certification -> app.modules",
     "app.modules.themoviedb.tmdbv3api.objs.certification -> app.modules.themoviedb",
@@ -8391,6 +8394,7 @@
     "app.modules.themoviedb.tmdbv3api.objs.list -> app.modules",
     "app.modules.themoviedb.tmdbv3api.objs.list -> app.modules.themoviedb",
     "app.modules.themoviedb.tmdbv3api.objs.list -> app.modules.themoviedb.tmdbv3api",
+    "app.modules.themoviedb.tmdbv3api.objs.list -> app.modules.themoviedb.tmdbv3api.exceptions",
     "app.modules.themoviedb.tmdbv3api.objs.list -> app.modules.themoviedb.tmdbv3api.tmdb",
     "app.modules.themoviedb.tmdbv3api.objs.movie -> app.modules",
     "app.modules.themoviedb.tmdbv3api.objs.movie -> app.modules.themoviedb",

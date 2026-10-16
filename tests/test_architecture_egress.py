@@ -128,7 +128,8 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.modules.rtorrent.rtorrent", "xmlrpc.client.ServerProxy"): "2ac64b5670c930bc28bb2135cc4b73891c1cae01a74a9586f74e302878c45c85",
     ("app.modules.slack.slack", "slack_bolt"): "be5dcb032ece8d8627abeb243f98143aaf60f26751ab6e5e098813d4048419e6",
     ("app.modules.slack.slack", "slack_sdk"): "7559f31e4172ad3bbbaf161e1164ea48b997c56d05c77b49b82626298c39aa14",
-    ("app.modules.themoviedb.tmdbv3api.tmdb", "requests"): "d605eb176a203b3f4d205c5d183469b3002426682eb9cb4e7408bb6013652484",
+    # Session 类型使扫描器识别原有的两处 close；未新增发送或会话关闭路径。
+    ("app.modules.themoviedb.tmdbv3api.tmdb", "requests"): "6c4ea48dd83616375a48785f9de9f477268f9236029e57b17ca1d2bde538fd4c",
     ("app.modules.transmission.transmission", "transmission_rpc"): "1652e661cb17dbadb039fdc4ab73d6d06e47eb118292ba3693313e45834959cf",
     ("app.modules.wechat.wechatbot", "websocket"): "1bae78270eadce0571e2caaa111a5c0a9065ba2da97ebb26b8a5b76d3ed5eef6",
     ("app.startup.composition.network", "websocket"): "09e1909ac750fe40b145dde8fee52eedf84aaf2123f6a1bc38109252c89d6000",
