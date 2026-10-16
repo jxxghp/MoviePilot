@@ -78,9 +78,6 @@
   "app/adapters/system/stdio.py": {
     "override": 1
   },
-  "app/adapters/web/plugin/routes.py": {
-    "type-arg": 1
-  },
   "app/agent/llm/capability.py": {
     "no-any-return": 4,
     "no-untyped-def": 6,

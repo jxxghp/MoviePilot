@@ -34,7 +34,7 @@ class FastAPIDynamicRouteRegistry:
         self,
         app: FastAPI,
         plugin_ids: Callable[[], list[str]],
-        plugin_apis: Callable[[str], list[dict]],
+        plugin_apis: Callable[[str], list[dict[str, Any]]],
         verify_token: Callable[..., Any],
         verify_apikey: Callable[..., Any],
         prefix: str,
