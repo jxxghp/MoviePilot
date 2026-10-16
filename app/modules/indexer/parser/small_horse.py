@@ -8,13 +8,15 @@ from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
 from app.foundation import text as text_tools
 from app.foundation.dom import DomUtils
-from app.modules.indexer.parser import SiteParserBase, SiteSchema
+from app.modules.indexer.parser import SitePage, SiteParserBase, SiteSchema
 
 
 class SmallHorseSiteUserInfo(SiteParserBase):
+    """解析 SmallHorse 站点的用户资料、流量与消息。"""
     schema = SiteSchema.SmallHorse
 
-    def _parse_site_page(self, html_text: str):
+    def _parse_site_page(self, html_text: SitePage) -> None:
+        """识别并配置站点数据页面与请求参数。"""
         html_text = self._prepare_html_text(html_text)
 
         user_detail = re.search(r"user.php\?id=(\d+)", html_text)
@@ -24,7 +26,8 @@ class SmallHorseSiteUserInfo(SiteParserBase):
             self._torrent_seeding_page = f"torrents.php?type=seeding&userid={self.userid}"
         self._user_traffic_page = f"user.php?id={self.userid}"
 
-    def _parse_user_base_info(self, html_text: str):
+    def _parse_user_base_info(self, html_text: SitePage) -> None:
+        """解析站点用户身份和页面提供的基础统计。"""
         html_text = self._prepare_html_text(html_text)
         html = etree.HTML(html_text)
         try:
@@ -35,7 +38,7 @@ class SmallHorseSiteUserInfo(SiteParserBase):
             if html is not None:
                 del html
 
-    def _parse_user_traffic_info(self, html_text: str):
+    def _parse_user_traffic_info(self, html_text: str) -> None:
         """
         上传/下载/分享率 [做种数/魔力值]
         :param html_text:
@@ -63,7 +66,8 @@ class SmallHorseSiteUserInfo(SiteParserBase):
             if html is not None:
                 del html
 
-    def _parse_user_detail_info(self, html_text: str):
+    def _parse_user_detail_info(self, html_text: str) -> None:
+        """该站点在其他解析入口处理此数据，本入口不追加操作。"""
         pass
 
     def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: Optional[bool] = False) -> Optional[str]:
@@ -112,8 +116,10 @@ class SmallHorseSiteUserInfo(SiteParserBase):
                 del html
         return next_page
 
-    def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:
+    def _parse_message_unread_links(self, html_text: str, msg_links: list[str]) -> Optional[str]:
+        """收集未读消息链接，返回仍需读取的下一页。"""
         return None
 
-    def _parse_message_content(self, html_text):
+    def _parse_message_content(self, html_text: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
+        """解析消息标题、日期和正文；无独立消息页时返回空结果。"""
         return None, None, None
