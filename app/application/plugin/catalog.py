@@ -23,12 +23,12 @@ from app.schemas.plugin import (
     PluginUpdateCandidate,
 )
 
-MarketLoader = Callable[[str, Optional[str], bool], Optional[dict[str, dict]]]
+MarketLoader = Callable[[str, Optional[str], bool], Optional[dict[str, dict[str, Any]]]]
 AsyncMarketLoader = Callable[
     [str, Optional[str], bool],
-    Awaitable[Optional[dict[str, dict]]],
+    Awaitable[Optional[dict[str, dict[str, Any]]]],
 ]
-PluginMapper = Callable[[str, dict, str, list[str], int, Optional[str]], Any]
+PluginMapper = Callable[[str, dict[str, Any], str, list[str], int, Optional[str]], Any]
 ProgressCallback = Callable[..., Any]
 DEFAULT_MARKET_FETCH_CONCURRENCY = 5
 
@@ -216,7 +216,7 @@ class PluginCatalogService:
             max_workers=self._max_concurrency
         ) as executor:
             futures_meta: dict[
-                concurrent.futures.Future,
+                concurrent.futures.Future[Any],
                 tuple[int, bool, int],
             ] = {}
             for market_index, market in enumerate(markets):
@@ -246,8 +246,8 @@ class PluginCatalogService:
                 ))
 
         collected.sort(key=lambda item: (item[0], 0 if item[1] else 1, item[2]))
-        higher_plugins = []
-        base_plugins = []
+        higher_plugins: list[Any] = []
+        base_plugins: list[Any] = []
         for _market_index, is_higher, _flag_priority, plugins in collected:
             (higher_plugins if is_higher else base_plugins).extend(plugins)
         return self.merge(higher_plugins, base_plugins, markets)
@@ -292,12 +292,12 @@ class PluginCatalogService:
                 ))
 
         try:
-            higher_plugins = []
-            base_plugins = []
+            higher_plugins: list[Any] = []
+            base_plugins: list[Any] = []
             if tasks:
                 total_tasks = len(tasks)
                 finished_tasks = 0
-                task_results = {}
+                task_results: dict[int, tuple[str, list[Any]]] = {}
                 if progress_callback:
                     progress_callback(
                         value=0,
@@ -369,7 +369,7 @@ class PluginCatalogService:
                 return markets.index(plugin.repo_url)
             return len(markets)
 
-        deduplicated = {}
+        deduplicated: dict[tuple[Optional[str], Optional[str]], Any] = {}
         for plugin in sorted(all_plugins, key=repo_order):
             key = (
                 normalize_physical_plugin_id(plugin.id),
@@ -382,7 +382,7 @@ class PluginCatalogService:
             ):
                 deduplicated[key] = plugin
 
-        result_by_id = {}
+        result_by_id: dict[str, Any] = {}
         for plugin in sorted(deduplicated.values(), key=repo_order):
             normalized_id = normalize_physical_plugin_id(plugin.id)
             exists = result_by_id.get(normalized_id)
@@ -450,13 +450,13 @@ class PluginCatalogService:
 
     def _map_plugins(
             self,
-            online_plugins: dict[str, dict],
+            online_plugins: dict[str, dict[str, Any]],
             market: str,
             package_version: Optional[str],
     ) -> list[Any]:
         """把一个市场索引映射为宿主插件 DTO。"""
         installed_plugins = self._installed_plugins_provider()
-        result = []
+        result: list[Any] = []
         add_time = len(online_plugins)
         for plugin_id, plugin_info in online_plugins.items():
             plugin = self._plugin_mapper(
