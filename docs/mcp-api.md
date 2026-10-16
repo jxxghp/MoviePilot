@@ -654,7 +654,7 @@ CUE 和歌词通过 `file_role=companion` 与音频共享组；同目录不同�
 
 #### AniList 榜单 / 探索
 
-AniList 榜单、探索、详情、人物和推荐接口优先通过 `anilist-chinese` 代理查询。代理不可用时自动回退 AniList 官方 GraphQL，并合并 `anilist-chinese` 每日数据集；媒体标题优先使用项目提供的中文标题，未提供中文标题时回退 AniList 原语言标题。
+AniList 榜单、探索、详情、人物和推荐接口优先通过 `anilist-chinese` 代理查询。代理不可用时自动回退 AniList 官方 GraphQL，并合并 `anilist-chinese` 每日数据集；媒体标题优先使用项目提供的中文标题，未提供中文标题时回退 AniList 原语言标题。代理返回非对象 JSON、非对象 `data` 或 GraphQL 错误时，也按代理不可用处理；合法空 `data` 对象仍保留原有空结果语义。
 
 | 方法 | 路径 | 说明 |
 | :--- | :--- | :--- |

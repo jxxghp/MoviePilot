@@ -1,11 +1,51 @@
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, Optional, cast
+from typing import Any, Callable, Optional, Protocol, TypeVar, cast
 
 from app.adapters.network.http import AsyncRequestUtils, RequestUtils
 from app.runtime.cache import cached
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
+
+
+_Result = TypeVar("_Result")
+_RequestFunction = TypeVar("_RequestFunction", bound=Callable[..., object])
+
+
+class _GraphQLResponse(Protocol):
+    """客户端响应在 GraphQL 解码阶段使用的最小接口。"""
+
+    @property
+    def status_code(self) -> int:
+        """读取 HTTP 状态码。"""
+        ...
+
+    def json(self) -> object:
+        """返回尚未验证结构的 JSON 内容。"""
+        ...
+
+
+class _ClearableRequest(Protocol):
+    """缓存装饰器附加的同步清理入口。"""
+
+    def cache_clear(self) -> None:
+        """清空当前请求的缓存。"""
+        ...
+
+
+def _cached_request(shared_key: str) -> Callable[[_RequestFunction], _RequestFunction]:
+    """保留查询签名，并沿用同一同步异步缓存命名空间和过期策略。"""
+
+    def decorate(function: _RequestFunction) -> _RequestFunction:
+        """缓存查询结果而不转换返回载荷。"""
+        return cast(_RequestFunction, cached(
+            maxsize=get_runtime_setting('CONF').anilist,
+            ttl=get_runtime_setting('CONF').meta,
+            skip_empty=True,
+            shared_key=shared_key,
+        )(function))
+
+    return decorate
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,10 +212,10 @@ class AniListApi:
             headers=headers,
         )
         self._proxy_available = True
-        self._translations: Optional[dict[int, dict]] = None
+        self._translations: Optional[dict[object, dict[str, Any]]] = None
 
     @staticmethod
-    def _extract_response(response) -> Optional[dict]:
+    def _extract_response(response: Optional[_GraphQLResponse]) -> Optional[dict[str, Any]]:
         """
         提取 GraphQL 响应数据并统一处理上游错误。
 
@@ -189,10 +229,13 @@ class AniListApi:
         except Exception as err:
             logger.error(f"解析 AniList 响应失败：{str(err)}")
             return None
+        if not isinstance(result, dict):
+            return None
         if result.get("errors"):
             logger.warning(f"AniList 接口返回错误：{result.get('errors')}")
             return None
-        return result.get("data")
+        data = result.get("data")
+        return data if isinstance(data, dict) else None
 
     @staticmethod
     def _request_plan(
@@ -205,12 +248,12 @@ class AniListApi:
     def _project_translated(
             cls,
             result: Optional[dict[str, Any]],
-            translations: dict[int, dict[str, Any]],
+            translations: dict[object, dict[str, Any]],
     ) -> Optional[dict[str, Any]]:
         """把成功响应与中文数据集按同一规则合并。"""
         return cls._inject_chinese(result, translations) if result else result
 
-    def _invoke(self, query: str, variables: dict) -> Optional[dict]:
+    def _invoke(self, query: str, variables: dict[str, Any]) -> Optional[dict[str, Any]]:
         """
         执行同步 GraphQL 请求。
 
@@ -230,7 +273,7 @@ class AniListApi:
         result = self._extract_response(response)
         return self._project_translated(result, self._translation_map())
 
-    async def _async_invoke(self, query: str, variables: dict) -> Optional[dict]:
+    async def _async_invoke(self, query: str, variables: dict[str, Any]) -> Optional[dict[str, Any]]:
         """
         执行异步 GraphQL 请求。
 
@@ -254,7 +297,7 @@ class AniListApi:
         translations = await self._async_translation_map()
         return self._project_translated(result, translations)
 
-    def _disable_proxy(self, response) -> None:
+    def _disable_proxy(self, response: object) -> None:
         """
         标记中文代理不可用，避免当前进程持续请求已失效的上游。
 
@@ -268,7 +311,7 @@ class AniListApi:
         )
 
     @staticmethod
-    def _build_translation_map(items) -> dict[int, dict]:
+    def _build_translation_map(items: object) -> dict[object, dict[str, Any]]:
         """
         将 anilist-chinese 数据集转换为按 AniList ID 索引的字典。
 
@@ -283,7 +326,7 @@ class AniListApi:
             if isinstance(item, dict) and item.get("id")
         }
 
-    def _translation_map(self) -> dict[int, dict]:
+    def _translation_map(self) -> dict[object, dict[str, Any]]:
         """
         同步加载并复用 anilist-chinese 中文标题数据。
 
@@ -296,7 +339,7 @@ class AniListApi:
                 logger.warning("加载 anilist-chinese 中文数据集失败")
         return self._translations
 
-    async def _async_translation_map(self) -> dict[int, dict]:
+    async def _async_translation_map(self) -> dict[object, dict[str, Any]]:
         """
         异步加载并复用 anilist-chinese 中文标题数据。
 
@@ -310,7 +353,7 @@ class AniListApi:
         return self._translations
 
     @classmethod
-    def _inject_chinese(cls, value, translations: dict[int, dict]):
+    def _inject_chinese(cls, value: _Result, translations: dict[object, dict[str, Any]]) -> _Result:
         """
         递归合并 anilist-chinese 标题，覆盖代理不会处理的嵌套媒体。
 
@@ -350,7 +393,7 @@ class AniListApi:
         status: Optional[str] = None,
         country: Optional[str] = None,
         sort: Optional[str] = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """
         构造 AniList 分页媒体查询变量。
 
@@ -371,7 +414,7 @@ class AniListApi:
         return {key: value for key, value in variables.items() if value is not None}
 
     @staticmethod
-    def _page_medias(result: Optional[dict]) -> list[dict]:
+    def _page_medias(result: Optional[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         从分页响应中提取媒体列表。
 
@@ -381,7 +424,7 @@ class AniListApi:
         return result.get("Page", {}).get("media") or [] if result else []
 
     @staticmethod
-    def _ordered_medias(media_ids: list[int], medias: list[dict]) -> list[dict]:
+    def _ordered_medias(media_ids: list[int], medias: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         按上游关系顺序重排批量查询返回的媒体。
 
@@ -466,7 +509,7 @@ class AniListApi:
             "sort": "POPULARITY_DESC",
         }
 
-    def _medias_by_ids(self, media_ids: list[int]) -> list[dict]:
+    def _medias_by_ids(self, media_ids: list[int]) -> list[dict[str, Any]]:
         """
         通过根级 Page.media 批量查询媒体，使中文代理能够注入标题。
 
@@ -482,7 +525,7 @@ class AniListApi:
         )
         return self._ordered_medias(media_ids, self._page_medias(result))
 
-    async def _async_medias_by_ids(self, media_ids: list[int]) -> list[dict]:
+    async def _async_medias_by_ids(self, media_ids: list[int]) -> list[dict[str, Any]]:
         """
         异步通过根级 Page.media 批量查询媒体，使中文代理能够注入标题。
 
@@ -510,13 +553,8 @@ class AniListApi:
         seasons = ("WINTER", "SPRING", "SUMMER", "FALL")
         return seasons[(current.month - 1) // 3], current.year
 
-    @cached(
-        maxsize=get_runtime_setting('CONF').anilist,
-        ttl=get_runtime_setting('CONF').meta,
-        skip_empty=True,
-        shared_key="detail",
-    )
-    def detail(self, anilist_id: int) -> Optional[dict]:
+    @_cached_request("detail")
+    def detail(self, anilist_id: int) -> Optional[dict[str, Any]]:
         """
         根据 AniList ID 获取动画详情。
 
@@ -526,13 +564,8 @@ class AniListApi:
         query = f"query ($id: Int!) {{ Media(id: $id, type: ANIME) {{ {self._media_fields} }} }}"
         return self._field(self._invoke(query, {"id": anilist_id}), "Media")
 
-    @cached(
-        maxsize=get_runtime_setting('CONF').anilist,
-        ttl=get_runtime_setting('CONF').meta,
-        skip_empty=True,
-        shared_key="detail",
-    )
-    async def async_detail(self, anilist_id: int) -> Optional[dict]:
+    @_cached_request("detail")
+    async def async_detail(self, anilist_id: int) -> Optional[dict[str, Any]]:
         """
         异步根据 AniList ID 获取动画详情。
 
@@ -543,13 +576,8 @@ class AniListApi:
         result = await self._async_invoke(query, {"id": anilist_id})
         return self._field(result, "Media")
 
-    @cached(
-        maxsize=get_runtime_setting('CONF').anilist,
-        ttl=get_runtime_setting('CONF').meta,
-        skip_empty=True,
-        shared_key="search",
-    )
-    def search(self, name: str, count: int = 20) -> list[dict]:
+    @_cached_request("search")
+    def search(self, name: str, count: int = 20) -> list[dict[str, Any]]:
         """
         按标题搜索 AniList 动画。
 
@@ -562,13 +590,8 @@ class AniListApi:
         )
         return self._page_medias(result)
 
-    @cached(
-        maxsize=get_runtime_setting('CONF').anilist,
-        ttl=get_runtime_setting('CONF').meta,
-        skip_empty=True,
-        shared_key="search",
-    )
-    async def async_search(self, name: str, count: int = 20) -> list[dict]:
+    @_cached_request("search")
+    async def async_search(self, name: str, count: int = 20) -> list[dict[str, Any]]:
         """
         异步按标题搜索 AniList 动画。
 
@@ -581,12 +604,7 @@ class AniListApi:
         )
         return self._page_medias(result)
 
-    @cached(
-        maxsize=get_runtime_setting('CONF').anilist,
-        ttl=get_runtime_setting('CONF').meta,
-        skip_empty=True,
-        shared_key="discover",
-    )
+    @_cached_request("discover")
     def discover(
         self,
         page: int = 1,
@@ -599,7 +617,7 @@ class AniListApi:
         status: Optional[str] = None,
         country: Optional[str] = None,
         sort: Optional[str] = None,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """
         按组合条件探索 AniList 动画。
 
@@ -619,12 +637,7 @@ class AniListApi:
         )
         return self._page_medias(self._invoke(self._page_query, variables))
 
-    @cached(
-        maxsize=get_runtime_setting('CONF').anilist,
-        ttl=get_runtime_setting('CONF').meta,
-        skip_empty=True,
-        shared_key="discover",
-    )
+    @_cached_request("discover")
     async def async_discover(
         self,
         page: int = 1,
@@ -637,7 +650,7 @@ class AniListApi:
         status: Optional[str] = None,
         country: Optional[str] = None,
         sort: Optional[str] = None,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """
         异步按组合条件探索 AniList 动画。
 
@@ -658,7 +671,7 @@ class AniListApi:
         result = await self._async_invoke(self._page_query, variables)
         return self._page_medias(result)
 
-    def trending(self, page: int = 1, count: int = 20) -> list[dict]:
+    def trending(self, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
         """
         获取 AniList 当前趋势榜。
 
@@ -666,12 +679,9 @@ class AniListApi:
         :param count: 每页条数
         :return: AniList 媒体列表
         """
-        return cast(
-            list[dict[str, Any]],
-            self.discover(**self._trend_filters(page, count)),
-        )
+        return self.discover(**self._trend_filters(page, count))
 
-    async def async_trending(self, page: int = 1, count: int = 20) -> list[dict]:
+    async def async_trending(self, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
         """
         异步获取 AniList 当前趋势榜。
 
@@ -679,12 +689,9 @@ class AniListApi:
         :param count: 每页条数
         :return: AniList 媒体列表
         """
-        return cast(
-            list[dict[str, Any]],
-            await self.async_discover(**self._trend_filters(page, count)),
-        )
+        return await self.async_discover(**self._trend_filters(page, count))
 
-    def popular_this_season(self, page: int = 1, count: int = 20) -> list[dict]:
+    def popular_this_season(self, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
         """
         获取 AniList 本季热门榜。
 
@@ -692,12 +699,9 @@ class AniListApi:
         :param count: 每页条数
         :return: AniList 媒体列表
         """
-        return cast(
-            list[dict[str, Any]],
-            self.discover(**self._season_filters(page, count)),
-        )
+        return self.discover(**self._season_filters(page, count))
 
-    async def async_popular_this_season(self, page: int = 1, count: int = 20) -> list[dict]:
+    async def async_popular_this_season(self, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
         """
         异步获取 AniList 本季热门榜。
 
@@ -705,18 +709,10 @@ class AniListApi:
         :param count: 每页条数
         :return: AniList 媒体列表
         """
-        return cast(
-            list[dict[str, Any]],
-            await self.async_discover(**self._season_filters(page, count)),
-        )
+        return await self.async_discover(**self._season_filters(page, count))
 
-    @cached(
-        maxsize=get_runtime_setting('CONF').anilist,
-        ttl=get_runtime_setting('CONF').meta,
-        skip_empty=True,
-        shared_key="credits",
-    )
-    def credits(self, anilist_id: int, page: int = 1, count: int = 20) -> list[dict]:
+    @_cached_request("credits")
+    def credits(self, anilist_id: int, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
         """
         获取 AniList 动画的日语配音演员。
 
@@ -728,13 +724,8 @@ class AniListApi:
         )
         return self._credits_edges(result)
 
-    @cached(
-        maxsize=get_runtime_setting('CONF').anilist,
-        ttl=get_runtime_setting('CONF').meta,
-        skip_empty=True,
-        shared_key="credits",
-    )
-    async def async_credits(self, anilist_id: int, page: int = 1, count: int = 20) -> list[dict]:
+    @_cached_request("credits")
+    async def async_credits(self, anilist_id: int, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
         """
         异步获取 AniList 动画的日语配音演员。
 
@@ -746,13 +737,8 @@ class AniListApi:
         )
         return self._credits_edges(result)
 
-    @cached(
-        maxsize=get_runtime_setting('CONF').anilist,
-        ttl=get_runtime_setting('CONF').meta,
-        skip_empty=True,
-        shared_key="recommendations",
-    )
-    def recommendations(self, anilist_id: int, page: int = 1, count: int = 20) -> list[dict]:
+    @_cached_request("recommendations")
+    def recommendations(self, anilist_id: int, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
         """
         获取 AniList 动画相关推荐。
 
@@ -764,13 +750,8 @@ class AniListApi:
         )
         return self._medias_by_ids(self._recommendation_ids(result))
 
-    @cached(
-        maxsize=get_runtime_setting('CONF').anilist,
-        ttl=get_runtime_setting('CONF').meta,
-        skip_empty=True,
-        shared_key="recommendations",
-    )
-    async def async_recommendations(self, anilist_id: int, page: int = 1, count: int = 20) -> list[dict]:
+    @_cached_request("recommendations")
+    async def async_recommendations(self, anilist_id: int, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
         """
         异步获取 AniList 动画相关推荐。
 
@@ -782,13 +763,8 @@ class AniListApi:
         )
         return await self._async_medias_by_ids(self._recommendation_ids(result))
 
-    @cached(
-        maxsize=get_runtime_setting('CONF').anilist,
-        ttl=get_runtime_setting('CONF').meta,
-        skip_empty=True,
-        shared_key="person_detail",
-    )
-    def person_detail(self, person_id: int) -> Optional[dict]:
+    @_cached_request("person_detail")
+    def person_detail(self, person_id: int) -> Optional[dict[str, Any]]:
         """
         获取 AniList 演员详情。
 
@@ -800,13 +776,8 @@ class AniListApi:
             "Staff",
         )
 
-    @cached(
-        maxsize=get_runtime_setting('CONF').anilist,
-        ttl=get_runtime_setting('CONF').meta,
-        skip_empty=True,
-        shared_key="person_detail",
-    )
-    async def async_person_detail(self, person_id: int) -> Optional[dict]:
+    @_cached_request("person_detail")
+    async def async_person_detail(self, person_id: int) -> Optional[dict[str, Any]]:
         """
         异步获取 AniList 演员详情。
 
@@ -818,13 +789,8 @@ class AniListApi:
         )
         return self._field(result, "Staff")
 
-    @cached(
-        maxsize=get_runtime_setting('CONF').anilist,
-        ttl=get_runtime_setting('CONF').meta,
-        skip_empty=True,
-        shared_key="person_credits",
-    )
-    def person_credits(self, person_id: int, page: int = 1, count: int = 20) -> list[dict]:
+    @_cached_request("person_credits")
+    def person_credits(self, person_id: int, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
         """
         获取 AniList 演员参与的动画作品。
 
@@ -836,13 +802,8 @@ class AniListApi:
         )
         return self._medias_by_ids(self._person_media_ids(result))
 
-    @cached(
-        maxsize=get_runtime_setting('CONF').anilist,
-        ttl=get_runtime_setting('CONF').meta,
-        skip_empty=True,
-        shared_key="person_credits",
-    )
-    async def async_person_credits(self, person_id: int, page: int = 1, count: int = 20) -> list[dict]:
+    @_cached_request("person_credits")
+    async def async_person_credits(self, person_id: int, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
         """
         异步获取 AniList 演员参与的动画作品。
 
@@ -865,4 +826,4 @@ class AniListApi:
             self.person_detail,
             self.person_credits,
         ):
-            method.cache_clear()
+            cast(_ClearableRequest, method).cache_clear()
