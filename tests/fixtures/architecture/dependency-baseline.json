@@ -943,8 +943,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9574,
-  "edge_sha256": "69e66cf720acdfca4c2ee6fdd03b1eaec458568cfca54b5d4c6df7fa845ed6c1",
+  "edge_count": 9576,
+  "edge_sha256": "8b17623f680bdc983193697fdd0539baac2e58f32fa316fb439d6a61dfda6a28",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -6607,6 +6607,8 @@
     "app.db.oper.plugininstance -> app.db.base",
     "app.db.oper.plugininstance -> app.db.models",
     "app.db.oper.plugininstance -> app.db.models.plugininstance",
+    "app.db.oper.plugininstance -> app.schemas",
+    "app.db.oper.plugininstance -> app.schemas.plugin",
     "app.db.oper.query -> app.db",
     "app.db.oper.query -> app.db.base",
     "app.db.oper.query -> app.schemas",
