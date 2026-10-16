@@ -122,6 +122,7 @@ async def test_threadpool_capacity_is_held_until_cancelled_call_finishes() -> No
     second_started = threading.Event()
 
     def blocking_call(started: threading.Event) -> None:
+        """占住线程容量直到测试放行，模拟取消后仍在运行的同步任务。"""
         started.set()
         release.wait()
 
@@ -171,6 +172,7 @@ async def test_cancelled_threadpool_call_preserves_worker_failure_as_cause() -> 
     started = threading.Event()
 
     def failing_call() -> None:
+        """在线程收到放行后抛错，用于核对取消异常保留真实失败原因。"""
         started.set()
         release.wait()
         raise ValueError("worker failed")

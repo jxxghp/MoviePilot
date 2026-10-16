@@ -837,7 +837,7 @@
     "type-arg": 2
   },
   "app/chain/recommend.py": {
-    "misc": 60,
+    "misc": 30,
     "no-untyped-call": 1,
     "no-untyped-def": 1,
     "type-arg": 31
@@ -1367,7 +1367,6 @@
     "arg-type": 1,
     "assignment": 27,
     "empty-body": 1,
-    "misc": 2,
     "no-any-return": 1,
     "no-untyped-call": 3,
     "no-untyped-def": 7,
@@ -1974,7 +1973,6 @@
   "app/modules/telegram/telegram.py": {
     "arg-type": 1,
     "assignment": 2,
-    "misc": 4,
     "no-any-return": 8,
     "no-untyped-call": 1,
     "no-untyped-def": 13,
@@ -2235,8 +2233,6 @@
     "union-attr": 1
   },
   "app/modules/vocechat/vocechat.py": {
-    "misc": 1,
-    "no-any-return": 3,
     "no-untyped-call": 1,
     "no-untyped-def": 3
   },
@@ -2262,8 +2258,7 @@
   "app/modules/wechat/wechat.py": {
     "arg-type": 1,
     "assignment": 9,
-    "misc": 1,
-    "no-any-return": 6,
+    "no-any-return": 2,
     "no-untyped-def": 5,
     "type-arg": 2,
     "union-attr": 1,
@@ -2386,10 +2381,6 @@
     "no-untyped-call": 2,
     "no-untyped-def": 16,
     "type-arg": 22
-  },
-  "app/runtime/execution.py": {
-    "no-untyped-def": 8,
-    "type-arg": 1
   },
   "app/runtime/extensions/module/adapter.py": {
     "arg-type": 1,

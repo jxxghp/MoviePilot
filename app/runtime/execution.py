@@ -7,7 +7,7 @@ from concurrent.futures import Executor, Future, ThreadPoolExecutor, wait
 from contextlib import contextmanager
 from contextvars import Context, copy_context
 from functools import partial, wraps
-from typing import Any, Callable, TypeVar, cast
+from typing import Any, Awaitable, Callable, ParamSpec, TypeVar, cast
 
 from anyio.to_thread import run_sync
 
@@ -16,6 +16,8 @@ from app.schemas.exception import ImmediateException
 
 TaskResult = TypeVar("TaskResult")
 ExecutorResult = TypeVar("ExecutorResult")
+_Params = ParamSpec("_Params")
+_Result = TypeVar("_Result")
 
 # 包目录替换在线程池中执行，导入在同步生命周期线程中执行；两者须共享进程锁。
 _plugin_package_locks: dict[str, Any] = {}
@@ -46,6 +48,7 @@ def submit_with_context(
     context = copy_context()
 
     def submit() -> Future[ExecutorResult]:
+        """在无继承上下文中提交，再由 worker 执行已捕获的调用方快照。"""
         return executor.submit(context.run, func, *args, **kwargs)
 
     return Context().run(submit)
@@ -224,8 +227,13 @@ async def run_in_threadpool_to_completion(
     return result
 
 
-def retry(ExceptionToCheck: Any,
-          tries: int = 3, delay: int = 3, backoff: int = 2, logger: Any = None):
+def retry(
+    ExceptionToCheck: type[BaseException] | tuple[type[BaseException], ...],
+    tries: int = 3,
+    delay: int = 3,
+    backoff: int = 2,
+    logger: Any = None,
+) -> Callable[[Callable[_Params, _Result]], Callable[_Params, _Result]]:
     """
     :param ExceptionToCheck: 需要捕获的异常
     :param tries: 重试次数
@@ -234,8 +242,10 @@ def retry(ExceptionToCheck: Any,
     :param logger: 日志对象
     """
 
-    def deco_retry(f):
-        def f_retry(*args, **kwargs):
+    def deco_retry(f: Callable[_Params, _Result]) -> Callable[_Params, _Result]:
+        """保留调用参数与返回类型，按原有检测方式选择同步或异步重试。"""
+        def f_retry(*args: _Params.args, **kwargs: _Params.kwargs) -> _Result:
+            """按既有退避间隔重试可捕获异常，立即终止异常直接交给调用方。"""
             mtries, mdelay = tries, delay
             while mtries > 1:
                 try:
@@ -253,11 +263,12 @@ def retry(ExceptionToCheck: Any,
                     mdelay *= backoff
             return f(*args, **kwargs)
 
-        async def async_f_retry(*args, **kwargs):
+        async def async_f_retry(*args: _Params.args, **kwargs: _Params.kwargs) -> object:
+            """仅在原函数被识别为协程时调用，异步等待与同步分支相同的重试策略。"""
             mtries, mdelay = tries, delay
             while mtries > 1:
                 try:
-                    return await f(*args, **kwargs)
+                    return await cast(Awaitable[object], f(*args, **kwargs))
                 except ImmediateException:
                     raise
                 except ExceptionToCheck as e:
@@ -269,26 +280,31 @@ def retry(ExceptionToCheck: Any,
                     await asyncio.sleep(mdelay)
                     mtries -= 1
                     mdelay *= backoff
-            return await f(*args, **kwargs)
+            return await cast(Awaitable[object], f(*args, **kwargs))
 
         # 根据函数类型返回相应的包装器
         if inspect.iscoroutinefunction(f):
-            return async_f_retry
+            # 仅协程分支可调用异步包装器，原 await 结果与参数原样透传。
+            return cast(Callable[_Params, _Result], async_f_retry)
         else:
             return f_retry
 
     return deco_retry
 
 
-def log_execution_time(logger: Any = None):
+def log_execution_time(
+    logger: Any = None,
+) -> Callable[[Callable[_Params, _Result]], Callable[_Params, _Result]]:
     """
     记录函数执行时间的装饰器
     :param logger: 日志记录器对象，用于记录异常信息
     """
 
-    def decorator(func: Callable):
+    def decorator(func: Callable[_Params, _Result]) -> Callable[_Params, _Result]:
+        """保留原函数元数据及调用合同，按原分派方式记录执行耗时。"""
         @wraps(func)
-        def wrapper(*args, **kwargs):
+        def wrapper(*args: _Params.args, **kwargs: _Params.kwargs) -> _Result:
+            """同步函数成功后记录耗时，结果和异常沿用原传播路径。"""
             start_time = time.time()
             result = func(*args, **kwargs)
             end_time = time.time()
@@ -300,9 +316,10 @@ def log_execution_time(logger: Any = None):
             return result
 
         @wraps(func)
-        async def async_wrapper(*args, **kwargs):
+        async def async_wrapper(*args: _Params.args, **kwargs: _Params.kwargs) -> object:
+            """协程成功结束后记录耗时，异常不产生成功耗时日志。"""
             start_time = time.time()
-            result = await func(*args, **kwargs)
+            result = await cast(Awaitable[object], func(*args, **kwargs))
             end_time = time.time()
             msg = f"{func.__name__} execution time: {end_time - start_time:.2f} seconds"
             if logger:
@@ -313,7 +330,8 @@ def log_execution_time(logger: Any = None):
 
         # 根据函数类型返回相应的包装器
         if inspect.iscoroutinefunction(func):
-            return async_wrapper
+            # 已确认原函数返回协程，异步包装器保留同一 await 结果。
+            return cast(Callable[_Params, _Result], async_wrapper)
         else:
             return wrapper
 
