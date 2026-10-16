@@ -294,10 +294,6 @@
   "app/api/dependencies/agent.py": {
     "arg-type": 1
   },
-  "app/api/dependencies/auth.py": {
-    "arg-type": 2,
-    "redundant-cast": 1
-  },
   "app/api/dependencies/history.py": {
     "arg-type": 7,
     "attr-defined": 1
@@ -353,9 +349,6 @@
     "no-untyped-call": 2,
     "no-untyped-def": 2
   },
-  "app/api/endpoints/llm.py": {
-    "no-untyped-def": 2
-  },
   "app/api/endpoints/media.py": {
     "arg-type": 2,
     "assignment": 7,
@@ -388,9 +381,6 @@
     "arg-type": 6,
     "attr-defined": 1,
     "type-arg": 3
-  },
-  "app/api/endpoints/notification.py": {
-    "no-untyped-def": 2
   },
   "app/api/endpoints/openai.py": {
     "attr-defined": 1,
@@ -469,9 +459,6 @@
     "no-untyped-def": 2,
     "str-bytes-safe": 1,
     "type-arg": 3
-  },
-  "app/api/endpoints/webhook.py": {
-    "no-untyped-def": 1
   },
   "app/api/endpoints/workflow.py": {
     "assignment": 1
@@ -574,10 +561,6 @@
   },
   "app/application/rules.py": {
     "attr-defined": 1
-  },
-  "app/application/security/auth.py": {
-    "no-untyped-call": 2,
-    "no-untyped-def": 1
   },
   "app/application/security/cookie.py": {
     "assignment": 2,
@@ -880,12 +863,6 @@
     "type-arg": 17,
     "union-attr": 4,
     "var-annotated": 6
-  },
-  "app/cli.py": {
-    "attr-defined": 2,
-    "no-any-return": 4,
-    "type-arg": 3,
-    "union-attr": 2
   },
   "app/command.py": {
     "arg-type": 2,
@@ -1874,12 +1851,6 @@
     "type-arg": 1,
     "valid-type": 2
   },
-  "app/runtime/state.py": {
-    "attr-defined": 2,
-    "no-any-return": 2,
-    "no-untyped-def": 3,
-    "type-arg": 1
-  },
   "app/schemas/agent.py": {
     "misc": 24
   },
@@ -2044,7 +2015,7 @@
   },
   "app/startup/lifecycle/__init__.py": {
     "arg-type": 2,
-    "no-untyped-call": 6,
+    "no-untyped-call": 4,
     "no-untyped-def": 2,
     "type-arg": 1
   },
