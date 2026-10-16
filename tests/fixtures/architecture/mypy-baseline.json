@@ -1015,9 +1015,6 @@
   "app/db/models/site.py": {
     "no-untyped-def": 10
   },
-  "app/db/models/sitestatistic.py": {
-    "no-untyped-def": 3
-  },
   "app/db/models/siteuserdata.py": {
     "no-untyped-def": 5
   },
