@@ -269,7 +269,7 @@ def source(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageP
     return []
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/agent",
     summary="统一获取 Agent 推荐结果",
     response_model=_SchemaResponse[list[_SchemaAgentRecommendationItem]],
