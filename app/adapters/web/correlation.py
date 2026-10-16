@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.runtime.correlation import (
     CORRELATION_ID_HEADER,
@@ -14,11 +14,11 @@ from app.runtime.correlation import (
 class CorrelationIdMiddleware:
     """验证入口 ID、绑定请求上下文并把同一 ID 写回响应。"""
 
-    def __init__(self, app: Any) -> None:
+    def __init__(self, app: ASGIApp) -> None:
         """保存下游 ASGI 应用。"""
         self._app = app
 
-    async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """只治理 HTTP scope，并让绑定覆盖完整流式响应生命周期。"""
         if scope.get("type") != "http":
             await self._app(scope, receive, send)
@@ -30,7 +30,7 @@ class CorrelationIdMiddleware:
         )
         scope.setdefault("state", {})["request_id"] = correlation_id
 
-        async def send_with_correlation(message: dict) -> None:
+        async def send_with_correlation(message: Message) -> None:
             """在响应开始帧中覆盖为当前请求的安全关联 ID。"""
             if message.get("type") == "http.response.start":
                 headers = list(message.get("headers") or [])

@@ -104,9 +104,6 @@
   "app/adapters/system/stdio.py": {
     "override": 1
   },
-  "app/adapters/web/correlation.py": {
-    "type-arg": 2
-  },
   "app/adapters/web/metrics.py": {
     "no-any-return": 1,
     "type-arg": 3,
