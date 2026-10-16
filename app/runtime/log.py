@@ -913,7 +913,7 @@ class LoggerManager:
                 return
         writer.write_log(level, message, log_path / logfile)
 
-    def logger(self, method: str, msg: str, *args: Any, **kwargs: Any) -> None:
+    def logger(self, method: str, msg: object, *args: Any, **kwargs: Any) -> None:
         """按调用来源路由并输出一条日志。
 
         主日志等级过滤看 `current_plugin_instance_id()`；资源日志独立接收 DEBUG，
@@ -924,6 +924,8 @@ class LoggerManager:
         这条日志。栈回溯识别出的调用来源只用于文件路由，不参与等级判定：插件
         经宿主公共方法转发调用时，栈顶是宿主而不是发起调用的插件，按它判等级
         会认错来源。
+
+        消息可为文本、异常或其它可格式化对象；格式化留在日志分流内部，调用方无需预先转成字符串。
 
         这里只是一道提前短路，省掉被丢弃日志的栈帧内省与格式化；控制台输出端
         由 `_ContextLevelFilter` 用同一个判据再判一次，两处结论因而一致。
@@ -963,31 +965,31 @@ class LoggerManager:
         log_method = getattr(configured_logger, method, configured_logger.info)
         log_method(formatted_msg, **kwargs)
 
-    def scoped_info(self, msg: str) -> None:
+    def scoped_info(self, msg: object) -> None:
         """仅向已绑定资源输出 INFO 摘要，保持主日志的批次摘要密度。"""
         self.logger("info", msg, scope_only=True)
 
-    def info(self, msg: str, *args: Any, **kwargs: Any) -> None:
+    def info(self, msg: object, *args: Any, **kwargs: Any) -> None:
         """输出 INFO 日志。"""
         self.logger("info", msg, *args, **kwargs)
 
-    def debug(self, msg: str, *args: Any, **kwargs: Any) -> None:
+    def debug(self, msg: object, *args: Any, **kwargs: Any) -> None:
         """输出 DEBUG 日志。"""
         self.logger("debug", msg, *args, **kwargs)
 
-    def warning(self, msg: str, *args: Any, **kwargs: Any) -> None:
+    def warning(self, msg: object, *args: Any, **kwargs: Any) -> None:
         """输出 WARNING 日志。"""
         self.logger("warning", msg, *args, **kwargs)
 
-    def warn(self, msg: str, *args: Any, **kwargs: Any) -> None:
+    def warn(self, msg: object, *args: Any, **kwargs: Any) -> None:
         """兼容历史调用并输出 WARNING 日志。"""
         self.warning(msg, *args, **kwargs)
 
-    def error(self, msg: str, *args: Any, **kwargs: Any) -> None:
+    def error(self, msg: object, *args: Any, **kwargs: Any) -> None:
         """输出 ERROR 日志。"""
         self.logger("error", msg, *args, **kwargs)
 
-    def critical(self, msg: str, *args: Any, **kwargs: Any) -> None:
+    def critical(self, msg: object, *args: Any, **kwargs: Any) -> None:
         """输出 CRITICAL 日志。"""
         self.logger("critical", msg, *args, **kwargs)
 

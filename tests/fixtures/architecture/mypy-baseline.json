@@ -118,7 +118,6 @@
     "union-attr": 2
   },
   "app/agent/llm/provider.py": {
-    "arg-type": 1,
     "no-untyped-def": 1
   },
   "app/agent/mcp.py": {
@@ -608,7 +607,6 @@
     "type-arg": 5
   },
   "app/application/mediaserver.py": {
-    "arg-type": 1,
     "operator": 1
   },
   "app/application/messaging/agent.py": {
@@ -790,7 +788,7 @@
     "type-arg": 1
   },
   "app/chain/message.py": {
-    "arg-type": 18,
+    "arg-type": 17,
     "assignment": 2,
     "no-any-return": 11,
     "no-untyped-def": 4,
