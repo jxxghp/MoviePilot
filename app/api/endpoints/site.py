@@ -172,7 +172,7 @@ async def read_sites(
     return await query.list_ordered(page=page, count=count)
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/agent",
     summary="查询 Agent 可用站点",
     response_model=List[_SchemaJsonObject],
@@ -311,7 +311,7 @@ async def update_site(
     include_in_schema=False,
     deprecated=True,
 )
-@router.post(  # type: ignore[misc]
+@router.post(
     "/cookiecloud",
     summary="CookieCloud同步",
     response_model=_SchemaResponse[None],
@@ -336,7 +336,7 @@ async def cookie_cloud_sync(
     include_in_schema=False,
     deprecated=True,
 )
-@router.post(  # type: ignore[misc]
+@router.post(
     "/reset",
     summary="重置站点",
     response_model=_SchemaResponse[None],
@@ -431,7 +431,7 @@ def update_cookie_by_body(
     )
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/cookie/{site_id}/set",
     summary="直接保存站点Cookie&UA",
     response_model=_SchemaResponse[None],
