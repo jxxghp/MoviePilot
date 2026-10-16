@@ -408,9 +408,7 @@
   "app/api/endpoints/mcp.py": {
     "assignment": 3,
     "index": 1,
-    "misc": 6,
-    "no-untyped-call": 4,
-    "no-untyped-def": 1
+    "misc": 6
   },
   "app/api/endpoints/media.py": {
     "arg-type": 2,
