@@ -2450,9 +2450,6 @@
     "type-arg": 1,
     "valid-type": 2
   },
-  "app/runtime/settings.py": {
-    "no-any-return": 1
-  },
   "app/runtime/state.py": {
     "attr-defined": 2,
     "no-any-return": 2,

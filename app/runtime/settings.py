@@ -56,7 +56,9 @@ def update_runtime_setting(key: str, value: Any) -> tuple[Any, str]:
     """更新单项运行配置；启动早期沿用旧 Settings 的兼容写入。"""
     if _updater is not None:
         return _updater(key, value)
-    return _legacy_settings().update_setting(key, value)
+    # 动态导入的 Settings.update_setting 返回成功、失败或无需更新及说明。
+    result: tuple[bool | None, str] = _legacy_settings().update_setting(key, value)
+    return result
 
 
 def has_runtime_setting(key: str) -> bool:
