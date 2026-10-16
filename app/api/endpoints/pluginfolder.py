@@ -18,7 +18,7 @@ from app.schemas.response import Response
 router = ResponseAPIRouter()
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/folders",
     summary="获取插件文件夹配置",
     response_model=PluginFoldersData,
@@ -30,7 +30,7 @@ async def get_plugin_folders(
     return get_plugin_folder_service().get_or_empty()
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/folders", summary="保存插件文件夹配置", response_model=Response[None]
 )
 async def save_plugin_folders(
@@ -42,7 +42,7 @@ async def save_plugin_folders(
     return Response(success=result.success, message=result.message)
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/folders/{folder_name}",
     summary="创建插件文件夹",
     response_model=Response[None],
@@ -56,7 +56,7 @@ async def create_plugin_folder(
     return Response(success=result.success, message=result.message)
 
 
-@router.delete(  # type: ignore[misc]
+@router.delete(
     "/folders/{folder_name}",
     summary="删除插件文件夹",
     response_model=Response[None],
@@ -70,7 +70,7 @@ async def delete_plugin_folder(
     return Response(success=result.success, message=result.message)
 
 
-@router.patch(  # type: ignore[misc]
+@router.patch(
     "/folders/{folder_name}",
     summary="更新插件文件夹",
     response_model=Response[None],
@@ -94,7 +94,7 @@ async def update_plugin_folder(
     return Response(success=result.success, message=result.message)
 
 
-@router.put(  # type: ignore[misc]
+@router.put(
     "/folders/{folder_name}/plugins",
     summary="更新文件夹中的插件",
     response_model=Response[None],
@@ -119,7 +119,7 @@ async def update_folder_plugins(
     return Response(success=result.success, message=result.message)
 
 
-@router.put(  # type: ignore[misc]
+@router.put(
     "/folders/{folder_name}/plugins/{plugin_id}",
     summary="移动插件到文件夹",
     response_model=Response[None],
@@ -134,7 +134,7 @@ async def assign_plugin_to_folder(
     return Response(success=result.success, message=result.message)
 
 
-@router.delete(  # type: ignore[misc]
+@router.delete(
     "/folders/{folder_name}/plugins/{plugin_id}",
     summary="从文件夹移除插件",
     response_model=Response[None],
