@@ -2,16 +2,18 @@
 
 import asyncio
 import json
+from copy import deepcopy
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Optional
 
+import pytest
 from starlette.requests import Request
 
 from app.agent.policy.api import API_OPERATION_ROUTES
 from app.agent.tools.base import MoviePilotTool
 from app.agent.tools.impl.api import MoviePilotApiTool
 from app.agent.tools.manager import MoviePilotToolsManager
-from app.agent.tools.schema_budget import (
+from app.agent.tools.projection import (
     PROJECTION_MARKER,
     project_schema_for_budget,
     project_tool_schema,
@@ -55,12 +57,13 @@ def _receive_with_body(body: bytes) -> Callable[[], Awaitable[dict[str, Any]]]:
     """构造只投递一次请求体的 receive 通道。"""
 
     async def receive() -> dict[str, Any]:
+        """向测试请求提供预设的完整请求体。"""
         return {"type": "http.request", "body": body, "more_body": False}
 
     return receive
 
 
-def _request(headers: list[tuple[bytes, bytes]] | None = None, body: bytes = b"") -> Request:
+def _request(headers: Optional[list[tuple[bytes, bytes]]] = None, body: bytes = b"") -> Request:
     """构造测试用 HTTP 请求。"""
     return Request(
         {
@@ -171,6 +174,61 @@ def test_projection_adds_missing_root_object_type() -> None:
 
     declared_array = {"type": "array", "items": {"type": "string"}}
     assert project_schema_for_budget(declared_array)["type"] == "array"
+
+
+@pytest.mark.parametrize("keyword", ["patternProperties", "dependentSchemas", "dependencies"])
+def test_projection_cleans_nested_schema_maps_without_changing_field_names(keyword: str) -> None:
+    """schema 映射中的分支要清理，但同名业务字段与默认值必须原样保留。"""
+    schema = {
+        "type": "object",
+        keyword: {"oneOf": {"anyOf": [{"type": "string"}, {"type": "null"}]}},
+        "properties": {"oneOf": {"type": "string"}},
+        "default": {"oneOf": ["business value"]},
+        "enum": [{"$defs": {"payload": 1}}],
+    }
+    original = deepcopy(schema)
+
+    projected = project_schema_for_budget(schema)
+
+    assert projected[keyword] == {"oneOf": {}}
+    assert projected["properties"] == schema["properties"]
+    assert projected["default"] == schema["default"]
+    assert projected["enum"] == schema["enum"]
+    assert schema == original
+
+
+def test_projection_removes_nested_and_escaped_definition_refs() -> None:
+    """清理嵌套定义的前向引用，并正确区分 JSON Pointer 转义与合法同名属性。"""
+    schema = {
+        "type": "object",
+        "properties": {
+            "reference": {"$ref": "#/properties/a~1b~0c/$defs/Text", "description": "业务参数"},
+            "encoded": {"$dynamicRef": "#/properties/a~1b~0c/%24defs/Text"},
+            "kept": {"$ref": "#/properties/a~1b~0c/properties/oneOf"},
+            "a/b~c": {
+                "$defs": {"Text": {"type": "string"}},
+                "properties": {"oneOf": {"type": "string"}},
+            },
+        },
+    }
+
+    projected = project_schema_for_budget(schema)
+
+    assert projected["properties"]["reference"] == {"description": "业务参数"}
+    assert projected["properties"]["encoded"] == {}
+    assert projected["properties"]["kept"] == schema["properties"]["kept"]
+    assert "$defs" not in projected["properties"]["a/b~c"]
+
+
+@pytest.mark.parametrize("keyword", ["prefixItems", "items", "additionalItems", "additionalProperties"])
+def test_projection_cleans_compositions_in_subschemas(keyword: str) -> None:
+    """数组元素及附加属性子 schema 中的组合关键字也不能残留。"""
+    child = {"allOf": [{"type": "string"}]}
+    schema = {"type": "object", keyword: [child] if keyword == "prefixItems" else child}
+
+    projected = project_schema_for_budget(schema)
+
+    assert projected[keyword] == ([{}] if keyword == "prefixItems" else {})
 
 
 def test_handle_tools_list_keeps_full_moviepilot_api_one_of_by_default(monkeypatch) -> None:

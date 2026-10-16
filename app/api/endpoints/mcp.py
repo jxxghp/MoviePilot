@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse, Response
 
 from app.adapters.web.security.access import verify_apikey
 from app.agent.tools.manager import ToolDefinition, moviepilot_tool_manager
-from app.agent.tools.schema_budget import project_tool_schema
+from app.agent.tools.projection import project_tool_schema
 from app.api.response import (
     RAW_RESPONSE_OPENAPI_KEY,
     CompatibleCountParam,
@@ -41,7 +41,7 @@ MCP_HIDDEN_TOOLS = {
 }
 
 # 客户端 schema 模式：默认 full 保持完整 oneOf 合同；compact 为显式 opt-in，
-# 把序列化后超出客户端压缩阈值的工具 schema 投影为顶层对象合同（见 schema_budget 模块）。
+# 把序列化后超出客户端压缩阈值的工具 schema 投影为顶层对象合同（见 projection 模块）。
 MCP_SCHEMA_MODE_FULL = "full"
 MCP_SCHEMA_MODE_COMPACT = "compact"
 MCP_SCHEMA_MODES = (MCP_SCHEMA_MODE_FULL, MCP_SCHEMA_MODE_COMPACT)
@@ -91,7 +91,7 @@ def list_client_tools(schema_mode: str = MCP_SCHEMA_MODE_FULL) -> List[ToolDefin
             ToolDefinition(name=tool.name, description=tool.description, input_schema=schema)
         )
     if projected_names:
-        logger.debug("MCP schema compact 投影：%s", ", ".join(projected_names))
+        logger.debug(f"MCP schema compact 投影：{', '.join(projected_names)}")
     return client_tools
 
 

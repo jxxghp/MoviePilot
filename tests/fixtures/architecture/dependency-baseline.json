@@ -941,8 +941,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9562,
-  "edge_sha256": "57526fd9350a21ce62f9c2e156597fe2fdd28337e122e544ed19dc389d7fa77c",
+  "edge_count": 9564,
+  "edge_sha256": "20aa028ee1ffe44f9dc04a763770593f1f79ca776e1e65ab632fbbbfee9ab989",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -983,6 +983,8 @@
     "app.adapters.external.location -> app.adapters",
     "app.adapters.external.location -> app.adapters.network",
     "app.adapters.external.location -> app.adapters.network.http",
+    "app.adapters.external.location -> app.schemas",
+    "app.adapters.external.location -> app.schemas.common",
     "app.adapters.external.market -> app.adapters",
     "app.adapters.external.market -> app.adapters.external",
     "app.adapters.external.market -> app.adapters.external.plugin",
@@ -2580,7 +2582,7 @@
     "app.api.endpoints.mcp -> app.agent",
     "app.api.endpoints.mcp -> app.agent.tools",
     "app.api.endpoints.mcp -> app.agent.tools.manager",
-    "app.api.endpoints.mcp -> app.agent.tools.schema_budget",
+    "app.api.endpoints.mcp -> app.agent.tools.projection",
     "app.api.endpoints.mcp -> app.api",
     "app.api.endpoints.mcp -> app.api.response",
     "app.api.endpoints.mcp -> app.runtime",
@@ -10695,8 +10697,8 @@
     "app.agent.tools.impl.view_image",
     "app.agent.tools.impl.write_file",
     "app.agent.tools.manager",
+    "app.agent.tools.projection",
     "app.agent.tools.result",
-    "app.agent.tools.schema_budget",
     "app.agent.tools.tags",
     "app.agent.web",
     "app.api",

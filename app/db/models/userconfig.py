@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Optional, Self
 
 from sqlalchemy import JSON, ForeignKey, String, UniqueConstraint, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
@@ -38,11 +38,12 @@ class UserConfig(Base):
     )
 
     @classmethod
-    def get_by_key(cls, db: Session, username: str, key: str):
+    def get_by_key(cls, db: Session, username: str, key: str) -> Optional[Self]:
         """在调用方 Session 中查询用户配置。"""
-        return db.execute(select(cls).where(cls.username == username, cls.key == key)).scalars().first()
+        config: Optional[Self] = db.execute(select(cls).where(cls.username == username, cls.key == key)).scalars().first()
+        return config
 
-    def delete_by_key(self, db: Session, username: str, key: str):
+    def delete_by_key(self, db: Session, username: str, key: str) -> bool:
         """在调用方持有的事务中暂存指定用户配置删除。"""
         userconfig = self.get_by_key(db=db, username=username, key=key)
         if userconfig:

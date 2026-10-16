@@ -23,7 +23,8 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
-from typing import Any, Dict, Mapping, Tuple
+from typing import Any, Mapping, Optional
+from urllib.parse import unquote
 
 # Codex 等客户端对工具 schema 触发逐级压缩的字节阈值；超过时 compact 模式才会投影。
 MCP_CLIENT_SCHEMA_COMPACTION_BYTES = 5000
@@ -39,6 +40,12 @@ PROJECTED_KEYWORDS = (*COMPOSITION_KEYWORDS, *DEFINITION_KEYWORDS)
 
 # 本地引用关键字；与 PROJECTED_KEYWORDS 组合判断指针是否已经失效。
 REFERENCE_KEYWORDS = ("$ref", "$dynamicRef")
+
+# 只遍历 schema 位置，避免把属性名、默认值或枚举中的同名业务字段当作关键字。
+SCHEMA_MAPPING_KEYWORDS = {"properties", "patternProperties", "dependentSchemas", "dependencies"}
+SCHEMA_VALUE_KEYWORDS = {
+    "items", "prefixItems", "additionalItems", "additionalProperties",
+}
 
 # 投影标记：客户端与测试据此识别本次返回的是紧凑投影而非完整合同。
 PROJECTION_MARKER = "x-moviepilot-schema-projection"
@@ -86,7 +93,7 @@ def schema_within_client_budget(schema: Any) -> bool:
     return serialized_schema_bytes(schema) <= MCP_CLIENT_SCHEMA_COMPACTION_BYTES
 
 
-def _rewrite_description(description: str) -> str | None:
+def _rewrite_description(description: str) -> Optional[str]:
     """改写引用已删除组合分支的说明；无法改写的引用直接移除。"""
     rewrite = DESCRIPTION_REWRITES.get(description)
     if rewrite is not None:
@@ -96,51 +103,64 @@ def _rewrite_description(description: str) -> str | None:
     return description
 
 
-def _targets_projected_keyword(pointer: Any) -> bool:
-    """判断本地引用是否指向投影会删除的关键字（定义表或组合分支）。
-
-    只按指针首段判断：本仓库生成的 schema 只用根级 ``#/$defs/...`` 引用。
-    不按任意段匹配，避免误删由属性名构成的合法指针（如 ``#/properties/oneOf``）。
-    """
+def _targets_projected_keyword(pointer: Any, removed_paths: set[tuple[str, ...]]) -> bool:
+    """按实际删除位置识别失效 JSON Pointer，同时保留名称恰好为关键字的属性引用。"""
     if not isinstance(pointer, str) or not pointer.startswith("#/"):
         return False
-    return pointer[2:].split("/", 1)[0] in PROJECTED_KEYWORDS
+    parts = tuple(part.replace("~1", "/").replace("~0", "~") for part in unquote(pointer[2:]).split("/"))
+    return any(parts[:length] in removed_paths for length in range(1, len(parts) + 1))
 
 
-def _project_schema_node(node: Any) -> Any:
-    """递归删除组合关键字与定义表，保留其余合同信息。"""
+def _project_schema_node(
+    node: Any,
+    path: tuple[str, ...],
+    removed_paths: set[tuple[str, ...]],
+    references: list[tuple[dict[str, Any], str, Any]],
+) -> Any:
+    """只递归 schema 位置，并记录删除位置及引用，供整棵投影完成后清理前向引用。"""
     if isinstance(node, list):
-        return [_project_schema_node(item) for item in node]
+        return [
+            _project_schema_node(item, (*path, str(index)), removed_paths, references)
+            for index, item in enumerate(node)
+        ]
     if not isinstance(node, Mapping):
         return deepcopy(node)
-    projected: Dict[str, Any] = {}
+    projected: dict[str, Any] = {}
     for key, value in node.items():
-        if not isinstance(key, str) or key in COMPOSITION_KEYWORDS or key in DEFINITION_KEYWORDS:
+        if not isinstance(key, str):
             continue
-        if key in REFERENCE_KEYWORDS and _targets_projected_keyword(value):
-            # 目标已被删除：去掉指针本身，兄弟键（如说明）继续保留可用信息。
+        child_path = (*path, key)
+        if key in PROJECTED_KEYWORDS:
+            removed_paths.add(child_path)
             continue
         if key == "description" and isinstance(value, str):
             rewritten = _rewrite_description(value)
             if rewritten is not None:
                 projected[key] = rewritten
             continue
-        if key == "properties" and isinstance(value, Mapping):
+        if key in REFERENCE_KEYWORDS:
+            references.append((projected, key, value))
+        if key in SCHEMA_MAPPING_KEYWORDS and isinstance(value, Mapping):
             projected[key] = {
-                name: _project_schema_node(prop)
+                name: _project_schema_node(prop, (*child_path, name), removed_paths, references)
                 for name, prop in value.items()
                 if isinstance(name, str)
             }
-        elif key in {"items", "additionalProperties", "patternProperties"}:
-            projected[key] = _project_schema_node(value)
+        elif key in SCHEMA_VALUE_KEYWORDS:
+            projected[key] = _project_schema_node(value, child_path, removed_paths, references)
         else:
             projected[key] = deepcopy(value)
     return projected
 
 
-def project_schema_for_budget(schema: Mapping[str, Any]) -> Dict[str, Any]:
+def project_schema_for_budget(schema: Mapping[str, Any]) -> dict[str, Any]:
     """把超出客户端阈值的 schema 投影为顶层对象合同。"""
-    projected = _project_schema_node(schema)
+    removed_paths: set[tuple[str, ...]] = {(key,) for key in PROJECTED_KEYWORDS}
+    references: list[tuple[dict[str, Any], str, Any]] = []
+    projected = _project_schema_node(schema, (), removed_paths, references)
+    for node, key, pointer in references:
+        if _targets_projected_keyword(pointer, removed_paths):
+            del node[key]
     if not isinstance(projected, dict):  # pragma: no cover - 调用方已保证是对象
         projected = {}
     projected.setdefault("type", "object")
@@ -152,7 +172,7 @@ def project_schema_for_budget(schema: Mapping[str, Any]) -> Dict[str, Any]:
     return projected
 
 
-def project_tool_schema(schema: Any) -> Tuple[Any, bool]:
+def project_tool_schema(schema: Any) -> tuple[Any, bool]:
     """按客户端压缩阈值返回 ``(schema, 是否投影)``；阈值内 schema 原样返回。"""
     if not isinstance(schema, Mapping) or schema_within_client_budget(schema):
         return schema, False

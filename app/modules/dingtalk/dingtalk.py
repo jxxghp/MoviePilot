@@ -20,7 +20,7 @@ class DingTalk:
         self,
         DINGTALK_WEBHOOK: Optional[str] = None,
         DINGTALK_SECRET: Optional[str] = None,
-        **kwargs,
+        **kwargs: object,
     ) -> None:
         """保存 Webhook 与可选加签密钥，网络请求延迟到实际发送时执行。"""
         self._webhook = (DINGTALK_WEBHOOK or "").strip()
