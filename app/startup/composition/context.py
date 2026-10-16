@@ -26,7 +26,9 @@ from app.application.site.contract import SiteRepository
 from app.application.site.mutation import SyncSiteReferenceMutationService
 from app.application.subscription.activity import SubscriptionActivityRepository
 from app.application.subscription.contract import (
+    SessionSubscriptionPort,
     SubscriptionHistoryStagingPort,
+    SubscriptionSnapshot,
     SubscriptionStagingPort,
 )
 from app.application.subscription.write import (
@@ -40,6 +42,7 @@ from app.application.system import SystemService
 from app.application.transfer.execution import TransferExecutionRepository
 from app.application.workflow import WorkflowCachePort, WorkflowQueryService
 from app.runtime.tasks import TaskRegistry
+from app.schemas.types import MediaSource
 
 if TYPE_CHECKING:
     from app.application.messaging.message import MessageHelper, MessageQueueManager
@@ -69,13 +72,41 @@ class AsyncOutboxFactory(Protocol):
         ...
 
 
+class RequestSubscriptionRepository(SessionSubscriptionPort, Protocol):
+    """请求会话仓储提供的订阅读写和 Servarr 兼容查询能力。"""
+
+    def list_by_media_identity(
+        self,
+        media_source: MediaSource,
+        media_id: str,
+        music_type: str | None = None,
+    ) -> list[SubscriptionSnapshot]:
+        """按规范媒体身份同步读取订阅快照。"""
+        ...
+
+    async def async_exists(
+        self,
+        media_source: MediaSource,
+        media_id: str,
+        season: int | None = None,
+        episode_group: str | None = None,
+        music_type: str | None = None,
+    ) -> SubscriptionSnapshot | None:
+        """按媒体身份、季和剧集组异步读取命中的订阅快照。"""
+        ...
+
+    async def async_delete(self, subscribe_id: int) -> None:
+        """在当前请求事务中暂存删除，不自行提交。"""
+        ...
+
+
 class SubscriptionRepositoryFactory(Protocol):
-    """由请求会话构造订阅写仓储的工厂。"""
+    """由请求会话构造订阅读写仓储的工厂。"""
 
     def __call__(
         self,
         session: object,
-    ) -> SubscriptionStagingPort:
+    ) -> RequestSubscriptionRepository:
         """绑定请求会话并返回订阅领域仓储。"""
         ...
 
