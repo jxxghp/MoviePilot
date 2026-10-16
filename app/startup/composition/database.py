@@ -9,7 +9,11 @@ from app.adapters.system.backup.database import (
     SQLiteBackupBackend,
 )
 from app.adapters.system.backup.files import BackupFiles
-from app.application.backup import BackupPolicy, DatabaseBackupService
+from app.application.backup import (
+    BackupPolicy,
+    DatabaseBackupBackend,
+    DatabaseBackupService,
+)
 from app.application.database import (
     DatabaseGovernance,
     DatabaseHealthService,
@@ -195,6 +199,7 @@ def build_database_governance() -> DatabaseGovernance:
     """以缓存同步引擎为事实源构造一个完整数据库治理门面。"""
     engine = get_engine()
     dialect = engine.dialect.name
+    backup_backend: DatabaseBackupBackend
     if dialect == "sqlite":
         backup_backend = SQLiteBackupBackend(engine)
     elif dialect == "postgresql":
