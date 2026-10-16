@@ -7,6 +7,7 @@ from app.application.configuration import get_chain_runtime_config_snapshot
 from app.chain.storage import StorageChain
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
+from app.schemas.file import FileItem
 from app.schemas.workflow import ActionContext, ActionParams
 from app.workflow.actions import BaseAction
 
@@ -29,9 +30,10 @@ class ScanFileAction(BaseAction):
         "outputs": [{"name": "fileitems", "label": "文件", "kind": "list"}],
     }
 
-    def __init__(self, action_id: str):
+    def __init__(self, action_id: str) -> None:
+        """初始化当前动作的结果集合与失败状态。"""
         super().__init__(action_id)
-        self._fileitems = []
+        self._fileitems: list[FileItem] = []
         self._has_error = False
 
     name = "扫描目录"
@@ -40,22 +42,27 @@ class ScanFileAction(BaseAction):
 
     @property
     def success(self) -> bool:
+        """返回动作是否未遇到终止性的处理失败。"""
         return not self._has_error
 
-    def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict[str, object], context: ActionContext) -> ActionContext:
         """
         扫描目录中的所有文件，记录到fileitems
         """
-        params = ScanFileParams(**params)
-        if not params.storage or not params.directory:
+        action_params = ScanFileParams(**params)
+        if not action_params.storage or not action_params.directory:
             return context
         storagechain = StorageChain()
-        fileitem = storagechain.get_file_item(params.storage, Path(params.directory))
+        fileitem = storagechain.get_file_item(action_params.storage, Path(action_params.directory))
         if not fileitem:
-            logger.error(f"目录不存在: 【{params.storage}】{params.directory}")
+            logger.error(f"目录不存在: 【{action_params.storage}】{action_params.directory}")
             self._has_error = True
             return context
         files = storagechain.list_files(fileitem, recursion=True)
+        if files is None:
+            self._has_error = True
+            self.job_done("目录读取失败")
+            return context
         runtime_config = get_chain_runtime_config_snapshot()
         media_exts = (
             runtime_config.media_extensions
@@ -71,6 +78,8 @@ class ScanFileAction(BaseAction):
             self._fileitems.append(file)
 
         if self._fileitems:
+            if context.fileitems is None:
+                context.fileitems = []
             context.fileitems.extend(self._fileitems)
 
         self.job_done(f"扫描到 {len(self._fileitems)} 个文件")
