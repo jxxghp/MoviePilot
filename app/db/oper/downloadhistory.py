@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional, cast
 
 from sqlalchemy import delete as sqlalchemy_delete
 from sqlalchemy import func, select
@@ -169,13 +169,13 @@ class DownloadHistoryOper(DbOper):
             )
         )
 
-    def add(self, **kwargs):
+    def add(self, **kwargs: Any) -> None:
         """
         新增下载历史
         """
         self._stage_create(DownloadHistory(**kwargs))
 
-    def stage_add(self, payload: dict) -> DownloadHistory:
+    def stage_add(self, payload: dict[str, Any]) -> DownloadHistory:
         """在调用方同步 Session 中暂存下载历史并返回已分配 ID 的记录。"""
         if not isinstance(self._db, Session):
             raise RuntimeError("下载历史事务写入需要调用方提供同步 Session")
@@ -184,7 +184,7 @@ class DownloadHistoryOper(DbOper):
         self._db.flush()
         return history
 
-    def add_files(self, file_items: List[dict]):
+    def add_files(self, file_items: List[dict[str, Any]]) -> None:
         """
         新增下载历史文件
         """
@@ -192,14 +192,14 @@ class DownloadHistoryOper(DbOper):
             downloadfile = DownloadFiles(**file_item)
             self._stage_create(downloadfile)
 
-    def stage_add_files(self, file_items: List[dict]) -> None:
+    def stage_add_files(self, file_items: List[dict[str, Any]]) -> None:
         """在调用方事务内批量暂存下载文件，不逐条提交。"""
         if not isinstance(self._db, Session):
             raise RuntimeError("下载文件事务写入需要调用方提供同步 Session")
         self._db.add_all(DownloadFiles(**item) for item in file_items)
         self._db.flush()
 
-    def truncate_files(self):
+    def truncate_files(self) -> None:
         """
         清空下载历史文件记录
         """
@@ -254,7 +254,7 @@ class DownloadHistoryOper(DbOper):
             lambda session: DownloadFiles.get_by_savepath(session, fullpath)
         )
 
-    def delete_file_by_fullpath(self, fullpath: str):
+    def delete_file_by_fullpath(self, fullpath: str) -> None:
         """
         按fullpath删除下载文件记录
         :param fullpath: 数据key
@@ -265,6 +265,8 @@ class DownloadHistoryOper(DbOper):
 
     def stage_delete_file_by_fullpath(self, fullpath: str) -> None:
         """暂存指定完整路径的下载文件记录删除。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("下载文件事务删除需要调用方提供同步 Session")
         self._db.execute(
             sqlalchemy_update(DownloadFiles)
             .where(
@@ -288,7 +290,8 @@ class DownloadHistoryOper(DbOper):
             )
         )
         if fileinfo:
-            return fileinfo.download_hash
+            download_hash: Optional[str] = fileinfo.download_hash
+            return download_hash
         return ""
 
     def list_by_page(self, page: int = 1, count: int = 30) -> List[DownloadHistory]:
@@ -316,19 +319,19 @@ class DownloadHistoryOper(DbOper):
         count = await self._execute_async_query(DownloadHistory.async_count)
         return int(count or 0)
 
-    async def async_delete_history(self, historyid: int):
+    async def async_delete_history(self, historyid: int) -> None:
         """
         异步删除下载记录。
         """
         await self._stage_async_delete(DownloadHistory, historyid)
 
-    def truncate(self):
+    def truncate(self) -> None:
         """
         清空下载记录
         """
         self._stage_truncate(DownloadHistory)
 
-    def get_last_by(self, mtype=None, title: Optional[str] = None, year: Optional[str] = None,
+    def get_last_by(self, mtype: Optional[str] = None, title: Optional[str] = None, year: Optional[str] = None,
                     season: Optional[str] = None, episode: Optional[str] = None,
                     media_source: Optional[MediaSource] = None,
                     media_id: Optional[str] = None) -> List[DownloadHistory]:
@@ -391,7 +394,7 @@ class DownloadHistoryOper(DbOper):
             )
         )
 
-    def delete_history(self, historyid):
+    def delete_history(self, historyid: int) -> None:
         """
         删除下载记录
         """
@@ -399,13 +402,15 @@ class DownloadHistoryOper(DbOper):
 
     def stage_delete_history(self, historyid: int) -> None:
         """暂存下载记录删除，事务由调用方统一提交。"""
+        if not isinstance(self._db, Session):
+            raise RuntimeError("下载历史事务删除需要调用方提供同步 Session")
         self._db.execute(
             sqlalchemy_delete(DownloadHistory).where(
                 DownloadHistory.id == historyid
             )
         )
 
-    def delete_downloadfile(self, downloadfileid):
+    def delete_downloadfile(self, downloadfileid: int) -> None:
         """
         删除下载文件记录
         """

@@ -969,12 +969,6 @@
     "valid-type": 1,
     "var-annotated": 1
   },
-  "app/db/oper/downloadhistory.py": {
-    "no-any-return": 1,
-    "no-untyped-def": 9,
-    "type-arg": 3,
-    "union-attr": 2
-  },
   "app/db/oper/mediaserver.py": {
     "arg-type": 12,
     "no-untyped-def": 7,
