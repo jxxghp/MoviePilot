@@ -908,23 +908,13 @@
     "no-untyped-call": 1,
     "no-untyped-def": 5
   },
-  "app/modules/__init__.py": {
-    "assignment": 1,
-    "attr-defined": 4,
-    "empty-body": 4,
-    "misc": 3,
-    "no-any-return": 1,
-    "no-untyped-call": 4,
-    "no-untyped-def": 7,
-    "union-attr": 4
-  },
   "app/modules/_base/downloader.py": {
     "assignment": 1,
     "attr-defined": 5
   },
   "app/modules/_base/mediaserver.py": {
     "arg-type": 2,
-    "assignment": 3,
+    "assignment": 1,
     "attr-defined": 5,
     "no-any-return": 1,
     "no-untyped-def": 2,
@@ -954,11 +944,10 @@
     "type-arg": 7
   },
   "app/modules/dingtalk/__init__.py": {
-    "arg-type": 2,
     "no-untyped-def": 1
   },
   "app/modules/discord/__init__.py": {
-    "arg-type": 9,
+    "arg-type": 5,
     "assignment": 10,
     "attr-defined": 1,
     "empty-body": 1,
@@ -1032,7 +1021,6 @@
     "union-attr": 2
   },
   "app/modules/feishu/module.py": {
-    "arg-type": 4,
     "assignment": 6,
     "attr-defined": 1,
     "no-untyped-def": 1,
@@ -1369,7 +1357,7 @@
     "type-arg": 2
   },
   "app/modules/qqbot/module.py": {
-    "arg-type": 7,
+    "arg-type": 4,
     "assignment": 4,
     "attr-defined": 1,
     "empty-body": 1,
@@ -1409,7 +1397,7 @@
     "union-attr": 48
   },
   "app/modules/slack/__init__.py": {
-    "arg-type": 12,
+    "arg-type": 8,
     "assignment": 9,
     "attr-defined": 1,
     "empty-body": 1,
@@ -1434,7 +1422,7 @@
     "var-annotated": 1
   },
   "app/modules/synologychat/__init__.py": {
-    "arg-type": 5,
+    "arg-type": 2,
     "assignment": 4,
     "attr-defined": 1,
     "empty-body": 1,
@@ -1450,7 +1438,7 @@
     "no-untyped-def": 3
   },
   "app/modules/telegram/module.py": {
-    "arg-type": 15,
+    "arg-type": 11,
     "assignment": 9,
     "attr-defined": 1,
     "empty-body": 1,
@@ -1622,7 +1610,6 @@
     "var-annotated": 2
   },
   "app/modules/vocechat/__init__.py": {
-    "arg-type": 3,
     "assignment": 6,
     "attr-defined": 1,
     "empty-body": 1,
@@ -1631,7 +1618,6 @@
     "union-attr": 1
   },
   "app/modules/webpush/__init__.py": {
-    "arg-type": 1,
     "assignment": 1,
     "empty-body": 1,
     "no-untyped-def": 2,
@@ -1639,7 +1625,7 @@
     "union-attr": 1
   },
   "app/modules/wechat/__init__.py": {
-    "arg-type": 8,
+    "arg-type": 5,
     "assignment": 5,
     "attr-defined": 1,
     "empty-body": 1,
@@ -1664,7 +1650,7 @@
     "var-annotated": 1
   },
   "app/modules/wechatclawbot/__init__.py": {
-    "arg-type": 4,
+    "arg-type": 1,
     "assignment": 3,
     "empty-body": 1,
     "no-any-return": 1,
