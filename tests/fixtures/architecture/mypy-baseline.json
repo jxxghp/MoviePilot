@@ -48,9 +48,6 @@
     "union-attr": 5,
     "var-annotated": 2
   },
-  "app/adapters/network/cloudflare.py": {
-    "no-untyped-def": 1
-  },
   "app/adapters/network/doh.py": {
     "assignment": 1,
     "no-any-return": 1,

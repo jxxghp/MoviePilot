@@ -23,7 +23,7 @@ SHORT_TIMEOUT = 6
 CF_TIMEOUT = int(os.getenv("NASTOOL_CF_TIMEOUT", "60"))
 
 
-def under_challenge(html_text: str):
+def under_challenge(html_text: str) -> bool:
     """
     Check if the page is under challenge
     :param html_text:
