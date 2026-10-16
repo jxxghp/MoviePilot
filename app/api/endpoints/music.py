@@ -293,7 +293,7 @@ async def music_artist_albums(
     return [_serialize_music(info) for info in results]
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/library/status",
     summary="批量查询音乐专辑入库状态",
     response_model=list[_SchemaMusicLibraryStatus],
