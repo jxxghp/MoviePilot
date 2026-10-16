@@ -8,7 +8,7 @@ from app.schemas.types import MessageType, ModuleType, SystemConfigKey
 class NotificationHelper(ServiceBaseHelper[NotificationConf]):
     """提供按持久化配置发现通知服务的能力。"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """绑定通知配置和通知模块类型。"""
         super().__init__(
             config_key=SystemConfigKey.Notifications,

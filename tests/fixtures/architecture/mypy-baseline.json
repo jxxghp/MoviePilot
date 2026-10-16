@@ -660,10 +660,6 @@
     "assignment": 1,
     "no-any-return": 1
   },
-  "app/application/notification.py": {
-    "no-untyped-call": 1,
-    "no-untyped-def": 1
-  },
   "app/application/plugin/catalog.py": {
     "type-arg": 5,
     "var-annotated": 6
