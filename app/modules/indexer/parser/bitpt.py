@@ -48,7 +48,7 @@ class BitptSiteUserInfo(SiteParserBase):
             return
 
         rows = table.find_all('tr')
-        info_dict = {}
+        info_dict: dict[str, str] = {}
         for row in rows:
             cells = row.find_all('td')
             if len(cells) == 2:
@@ -57,15 +57,16 @@ class BitptSiteUserInfo(SiteParserBase):
                 info_dict[key] = value
 
         self.userid = info_dict.get('UID')
-        self.username = info_dict.get('用户名').split('\xa0')[0] if '用户名' in info_dict else None
-        self.user_level = info_dict.get('用户级别') if '用户级别' in info_dict else None
-        self.join_at = time_tools.normalize_datetime(info_dict.get('注册时间')) if '注册时间' in info_dict else None
+        self.username = info_dict['用户名'].split('\xa0')[0] if '用户名' in info_dict else None
+        self.user_level = info_dict['用户级别'] if '用户级别' in info_dict else None
+        self.join_at = time_tools.normalize_datetime(info_dict['注册时间']) if '注册时间' in info_dict else None
 
-        self.upload = size_tools.parse_size(info_dict.get('上传流量')) if '上传流量' in info_dict else 0
-        self.download = size_tools.parse_size(info_dict.get('下载流量')) if '下载流量' in info_dict else 0
-        self.ratio = float(info_dict.get('共享率')) if '共享率' in info_dict else 0
+        self.upload = size_tools.parse_size(info_dict['上传流量']) if '上传流量' in info_dict else 0
+        self.download = size_tools.parse_size(info_dict['下载流量']) if '下载流量' in info_dict else 0
+        self.ratio = float(info_dict['共享率']) if '共享率' in info_dict else 0
         bonus_str = info_dict.get('星辰', '')
-        self.bonus = float(re.search(r'累计([\d\.]+)', bonus_str).group(1)) if re.search(r'累计([\d\.]+)', bonus_str) else 0
+        bonus_match = re.search(r'累计([\d\.]+)', bonus_str)
+        self.bonus = float(bonus_match.group(1)) if bonus_match else 0
         self.message_unread = 0
 
         if hasattr(self, '_torrent_seeding_base') and self._torrent_seeding_base:
@@ -123,7 +124,7 @@ class BitptSiteUserInfo(SiteParserBase):
         """该站点在其他解析入口处理此数据，本入口不追加操作。"""
         pass
 
-    def _parse_user_torrent_seeding_info(self, html_text: str, **kwargs) -> None:
+    def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: bool = False) -> Optional[str]:
         """该站点在其他解析入口处理此数据，本入口不追加操作。"""
         pass
 
@@ -161,17 +162,8 @@ class BitptSiteUserInfo(SiteParserBase):
                     break
                 page_num += 1
 
-        # 🔑 最终对外统一转字符串
+        # 文本字段归一为空字符串；流量、数量和比例保留基类约定的数值类型。
         self.userid = str(self.userid or "")
         self.username = str(self.username or "")
         self.user_level = str(self.user_level or "")
         self.join_at = str(self.join_at or "")
-
-        self.upload = str(self.upload or 0)
-        self.download = str(self.download or 0)
-        self.ratio = str(self.ratio or 0)
-        self.bonus = str(self.bonus or 0.0)
-        self.message_unread = str(self.message_unread or 0)
-
-        self.seeding = str(self.seeding or 0)
-        self.seeding_size = str(self.seeding_size or 0)
