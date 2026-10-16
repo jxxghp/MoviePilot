@@ -45,7 +45,7 @@ def _module_description(module_id: str, name: str, module_type: str) -> str:
     "/modulelist",
     summary="查询已启用的模块ID列表",
     response_model=_SchemaResponse[_SchemaSystemModuleListData],
-)  # type: ignore[misc]
+)
 def modulelist(
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> _SchemaResponse[_SchemaSystemModuleListData]:
@@ -72,7 +72,7 @@ def modulelist(
     "/module-catalog",
     summary="查询宿主模块目录",
     response_model=_SchemaResponse[_SchemaSystemModuleCatalogListData],
-)  # type: ignore[misc]
+)
 def module_catalog(
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> _SchemaResponse[_SchemaSystemModuleCatalogListData]:
@@ -116,7 +116,7 @@ def module_catalog(
     "/module-settings",
     summary="查询可手动开关的内置模块",
     response_model=_SchemaResponse[_SchemaSystemModuleSettingListData],
-)  # type: ignore[misc]
+)
 async def module_settings(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse[_SchemaSystemModuleSettingListData]:
@@ -150,7 +150,7 @@ async def module_settings(
     return _SchemaResponse(success=True, data={"modules": modules})
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/moduletest/{moduleid}",
     summary="模块可用性测试",
     response_model=_SchemaResponse[None],
