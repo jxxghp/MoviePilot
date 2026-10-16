@@ -141,6 +141,23 @@ def test_mark_tags_when_torrent_completed():
     assert completed == [{"hashs": "hash1", "downloader": "qbittorrent"}]
 
 
+def test_mark_queries_torrent_by_hash_regardless_of_builtin_tag():
+    """按 Hash 回写时不得受 TORRENT_TAG 过滤，否则工作流自定义标签的任务永远无法打上已整理标签。"""
+    chain = _make_chain()
+    completed = []
+    queries = []
+    chain.transfer_completed = lambda **kwargs: completed.append(kwargs)
+    chain.list_torrents = lambda **kwargs: queries.append(kwargs) or (
+        [SimpleNamespace(progress=100)] if kwargs.get("include_all_tags") else []
+    )
+    _finish_task(chain, _make_task(1, "hash1", "qbittorrent"))
+
+    _mark(chain, "hash1", "qbittorrent")
+
+    assert queries == [{"hashs": "hash1", "downloader": "qbittorrent", "include_all_tags": True}]
+    assert completed == [{"hashs": "hash1", "downloader": "qbittorrent"}]
+
+
 def test_mark_short_circuits_downloader_query_when_jobview_not_done():
     """作业视图还有未结束任务时，不应产生任何下载器查询。"""
     chain = _make_chain()
