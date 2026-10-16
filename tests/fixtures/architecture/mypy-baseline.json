@@ -61,10 +61,6 @@
     "no-untyped-def": 33,
     "type-arg": 26
   },
-  "app/adapters/network/ip.py": {
-    "no-untyped-call": 4,
-    "no-untyped-def": 6
-  },
   "app/adapters/system/backup/database.py": {
     "assignment": 2
   },
