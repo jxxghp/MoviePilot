@@ -1,4 +1,4 @@
-from typing import Tuple, Union
+from typing import Optional, Tuple
 
 from app.application.database import get_database_governance
 from app.modules import _ModuleBase
@@ -41,7 +41,7 @@ class PostgreSQLModule(_ModuleBase):
         """
         return 0
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> None:
         """数据库类型由部署配置决定，不声明独立模块开关。"""
         pass
 
@@ -49,7 +49,7 @@ class PostgreSQLModule(_ModuleBase):
         """连接池由数据库生命周期释放，本模块无独立资源。"""
         pass
 
-    def test(self):
+    def test(self) -> Optional[Tuple[bool, str]]:
         """
         测试模块连接性
         """
