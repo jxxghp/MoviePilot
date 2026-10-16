@@ -65,15 +65,23 @@ class RSAUtils:
             private_key_bytes = base64.b64decode(private_key)
 
             # 加载公钥
-            public_key = serialization.load_der_public_key(public_key_bytes, backend=default_backend())
+            loaded_public_key = serialization.load_der_public_key(
+                public_key_bytes, backend=default_backend(),
+            )
 
             # 加载私钥
-            private_key = serialization.load_der_private_key(private_key_bytes, password=None,
-                                                             backend=default_backend())
+            loaded_private_key = serialization.load_der_private_key(
+                private_key_bytes, password=None, backend=default_backend(),
+            )
+
+            if not isinstance(loaded_public_key, rsa.RSAPublicKey):
+                return False
+            if not isinstance(loaded_private_key, rsa.RSAPrivateKey):
+                return False
 
             # 测试加解密
             message = b'test'
-            encrypted_message = public_key.encrypt(
+            encrypted_message = loaded_public_key.encrypt(
                 message,
                 asym_padding.OAEP(
                     mgf=asym_padding.MGF1(algorithm=hashes.SHA256()),
@@ -82,7 +90,7 @@ class RSAUtils:
                 )
             )
 
-            decrypted_message = private_key.decrypt(
+            decrypted_message: bytes = loaded_private_key.decrypt(
                 encrypted_message,
                 asym_padding.OAEP(
                     mgf=asym_padding.MGF1(algorithm=hashes.SHA256()),
@@ -143,7 +151,7 @@ class CryptoJsUtils:
     """兼容 CryptoJS OpenSSL 格式的 AES 加解密工具。"""
 
     @staticmethod
-    def bytes_to_key(data: bytes, salt: bytes, output=48) -> bytes:
+    def bytes_to_key(data: bytes, salt: bytes, output: int = 48) -> bytes:
         """
         生成加密/解密所需的密钥和初始化向量 (IV)
         """

@@ -1265,11 +1265,6 @@
   "app/factory.py": {
     "misc": 1
   },
-  "app/foundation/crypto.py": {
-    "no-any-return": 1,
-    "no-untyped-def": 1,
-    "union-attr": 2
-  },
   "app/foundation/dom.py": {
     "assignment": 2,
     "no-untyped-def": 5
