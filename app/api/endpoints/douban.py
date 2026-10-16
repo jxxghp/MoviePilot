@@ -1,4 +1,4 @@
-from typing import Any, List, Optional, Sequence, cast
+from typing import Any, List, Optional, Sequence
 
 from fastapi import Depends
 
@@ -26,6 +26,11 @@ def _paginate_medias(medias: Sequence[Any], page: int, count: int) -> list[Any]:
     normalized_count = max(count, 1)
     start = (normalized_page - 1) * normalized_count
     return list(medias[start : start + normalized_count])
+
+
+def _resolve_media_type(type_name: str) -> Optional[MediaType]:
+    """把 Agent 类型名或中文类型名解析为媒体类型。"""
+    return MediaType.from_agent(type_name) or MediaType(type_name)
 
 
 @router.get(
@@ -72,7 +77,7 @@ async def douban_credits(
     """
     根据豆瓣ID查询演员阵容，type_name: 电影/movie、电视剧/tv
     """
-    mediatype = MediaType.from_agent(type_name) or MediaType(type_name)
+    mediatype = _resolve_media_type(type_name)
     if mediatype == MediaType.MOVIE:
         return await DoubanChain().async_movie_credits(doubanid=doubanid)
     elif mediatype == MediaType.TV:
@@ -95,7 +100,7 @@ async def douban_recommend(
     """
     根据豆瓣ID查询推荐电影/电视剧，type_name: 电影/movie、电视剧/tv
     """
-    mediatype = MediaType.from_agent(type_name) or MediaType(type_name)
+    mediatype = _resolve_media_type(type_name)
     if mediatype == MediaType.MOVIE:
         medias = await DoubanChain().async_movie_recommend(doubanid=doubanid)
     elif mediatype == MediaType.TV:
@@ -122,7 +127,7 @@ async def douban_interests(
     """
     根据豆瓣ID查询短评，type_name: 电影/movie、电视剧/tv
     """
-    mediatype = MediaType.from_agent(type_name) or cast(MediaType, MediaType(type_name))
+    mediatype = _resolve_media_type(type_name)
     if mediatype == MediaType.MOVIE:
         return await DoubanChain().async_movie_interests(doubanid=doubanid, start=start, count=count)
     elif mediatype == MediaType.TV:
@@ -145,7 +150,7 @@ async def douban_reviews(
     """
     根据豆瓣ID查询影评，type_name: 电影/movie、电视剧/tv
     """
-    mediatype = MediaType.from_agent(type_name) or cast(MediaType, MediaType(type_name))
+    mediatype = _resolve_media_type(type_name)
     if mediatype == MediaType.MOVIE:
         return await DoubanChain().async_movie_reviews(doubanid=doubanid, start=start, count=count)
     elif mediatype == MediaType.TV:
