@@ -1027,18 +1027,8 @@
     "no-untyped-def": 1,
     "type-arg": 10
   },
-  "app/domain/scraper.py": {
-    "arg-type": 1,
-    "no-untyped-def": 2,
-    "return-value": 1,
-    "type-arg": 1
-  },
   "app/factory.py": {
     "misc": 1
-  },
-  "app/foundation/dom.py": {
-    "assignment": 2,
-    "no-untyped-def": 5
   },
   "app/foundation/temporal.py": {
     "import-untyped": 3,
@@ -1145,13 +1135,6 @@
     "return-value": 1,
     "type-arg": 22,
     "var-annotated": 1
-  },
-  "app/modules/douban/scraper.py": {
-    "arg-type": 2,
-    "no-any-return": 2,
-    "no-untyped-def": 1,
-    "return-value": 1,
-    "type-arg": 1
   },
   "app/modules/emby/__init__.py": {
     "arg-type": 3,
@@ -1770,7 +1753,7 @@
     "union-attr": 5
   },
   "app/modules/themoviedb/scraper.py": {
-    "arg-type": 4,
+    "arg-type": 1,
     "index": 2,
     "no-any-return": 4,
     "no-untyped-def": 3,
@@ -1808,7 +1791,6 @@
     "no-untyped-def": 22
   },
   "app/modules/themoviedb/tmdbv3api/objs/search.py": {
-    "attr-defined": 1,
     "no-untyped-def": 14
   },
   "app/modules/themoviedb/tmdbv3api/objs/season.py": {
