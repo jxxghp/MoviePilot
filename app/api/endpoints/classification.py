@@ -196,7 +196,7 @@ def _validation_response(
     )
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/policy",
     summary="读取当前媒体分类策略",
     response_model=ClassificationPolicy,
@@ -220,7 +220,7 @@ async def get_policy(
     return _require_active_policy(runtime)
 
 
-@router.put(  # type: ignore[misc]
+@router.put(
     "/policy",
     summary="校验并发布媒体分类策略",
     response_model=ClassificationPolicy,
@@ -248,7 +248,7 @@ async def publish_policy(
         ) from error
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/fields",
     summary="读取媒体分类字段能力目录",
     response_model=ClassificationFieldCatalog,
@@ -261,7 +261,7 @@ async def get_fields(
     return ClassificationAnalysisService(runtime.service).fields()
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/validate",
     summary="校验媒体分类策略草稿",
     response_model=ClassificationValidationResult,
@@ -275,7 +275,7 @@ async def validate_policy(
     return ClassificationAnalysisService(runtime.service).validate(request.policy)
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/preview",
     summary="预览媒体分类策略命中过程",
     response_model=ClassificationEvaluation,
@@ -304,7 +304,7 @@ async def preview_policy(
         return _validation_response(error)
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/impact",
     summary="分析分类策略对近期样本的估算影响",
     response_model=ClassificationImpactAnalysis,
@@ -335,7 +335,7 @@ async def analyze_impact(
         ) from error
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/history",
     summary="读取媒体分类策略历史",
     response_model=ClassificationPolicyHistory,
@@ -352,7 +352,7 @@ async def get_history(
     )
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/rollback/{revision}",
     summary="把历史媒体分类策略发布为新版本",
     response_model=ClassificationPolicyRollbackResult,
