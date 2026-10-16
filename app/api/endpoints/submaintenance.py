@@ -79,14 +79,14 @@ def _search_submission_schema(
     )
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/refresh",
     summary="刷新订阅（兼容入口）",
     response_model=Response[None],
     include_in_schema=False,
     deprecated=True,
 )
-@router.post(  # type: ignore[misc]
+@router.post(
     "/refresh", summary="刷新订阅", response_model=Response[None]
 )
 def refresh_subscribes(
@@ -100,14 +100,14 @@ def refresh_subscribes(
     return Response(success=True)
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/reset/{subid}",
     summary="重置订阅（兼容入口）",
     response_model=Response[None],
     include_in_schema=False,
     deprecated=True,
 )
-@router.post(  # type: ignore[misc]
+@router.post(
     "/reset/{subid}", summary="重置订阅", response_model=Response[None]
 )
 async def reset_subscribes(
@@ -126,14 +126,14 @@ async def reset_subscribes(
     return Response(success=False, message="订阅不存在")
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/check",
     summary="刷新订阅 TMDB 信息（兼容入口）",
     response_model=Response[None],
     include_in_schema=False,
     deprecated=True,
 )
-@router.post(  # type: ignore[misc]
+@router.post(
     "/check", summary="刷新订阅 TMDB 信息", response_model=Response[None]
 )
 def check_subscribes(
@@ -147,14 +147,14 @@ def check_subscribes(
     return Response(success=True)
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/search",
     summary="搜索所有订阅（兼容入口）",
     response_model=Response[SubscriptionSearchSubmissionSchema],
     include_in_schema=False,
     deprecated=True,
 )
-@router.post(  # type: ignore[misc]
+@router.post(
     "/search",
     summary="搜索所有订阅",
     response_model=Response[SubscriptionSearchSubmissionSchema],
@@ -181,14 +181,14 @@ async def search_subscribes(
     )
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/search/{subscribe_id}",
     summary="搜索订阅（兼容入口）",
     response_model=Response[SubscriptionSearchSubmissionSchema],
     include_in_schema=False,
     deprecated=True,
 )
-@router.post(  # type: ignore[misc]
+@router.post(
     "/search/{subscribe_id}",
     summary="搜索订阅",
     response_model=Response[SubscriptionSearchSubmissionSchema],
