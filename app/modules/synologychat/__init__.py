@@ -1,5 +1,6 @@
 import json
-from typing import Any, List, Optional, Sequence, Tuple, Union
+from collections.abc import Buffer, Mapping
+from typing import Any, List, Optional, Sequence, SupportsIndex, SupportsInt, Union
 from urllib.parse import quote, unquote
 
 from app.adapters.network.http import RequestUtils
@@ -13,8 +14,7 @@ from app.modules._base.notification import _MessageChannelModuleBase
 from app.modules.synologychat.synologychat import SynologyChat
 from app.runtime.log import logger
 from app.schemas.message import IncomingMessage, Message
-from app.schemas.notification import NotificationChannel
-from app.schemas.types import ModuleType
+from app.schemas.types import ModuleType, NotificationChannel
 
 register_channel_admin_resolver(
     NotificationChannel.SynologyChat,
@@ -91,11 +91,11 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
         """客户端不提供命令菜单注册或删除 API，跳过基类的菜单注册流程。"""
         return False
 
-    def stop(self):
+    def stop(self) -> None:
         """客户端没有需要在模块停止时释放的后台资源。"""
         pass
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> None:
         """实例由通知服务配置管理，不额外声明环境开关。"""
         pass
 
@@ -127,21 +127,27 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
             client_config = self.get_config(source)
             if not client_config:
                 return None
-            client: SynologyChat = self.get_instance(client_config.name)
+            client = self.get_instance(client_config.name)
             if not client:
                 return None
             # 解析消息
-            message: dict = form
+            message: Mapping[str, object] = form
             if not message:
                 return None
             # 校验token
             token = message.get("token")
-            if not token or not client.check_token(token):
+            if not isinstance(token, str) or not token or not client.check_token(token):
                 return None
             # 文本
-            text = message.get("text")
-            # 用户ID
-            user_id = int(message.get("user_id"))
+            raw_text = message.get("text")
+            if raw_text and not isinstance(raw_text, str):
+                return None
+            text = raw_text if isinstance(raw_text, str) else None
+            # 保留 int 原有的字符串、缓冲区与数值转换协议。
+            raw_user_id = message.get("user_id")
+            if not isinstance(raw_user_id, (str, Buffer, SupportsInt, SupportsIndex)):
+                return None
+            user_id = int(raw_user_id)
             # 获取用户名
             user_name = message.get("username")
             images = self._extract_images(message)
@@ -173,7 +179,7 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
 
     @classmethod
     def _extract_images(
-        cls, message: dict
+        cls, message: Mapping[str, object]
     ) -> Optional[List[IncomingMessage.MessageImage]]:
         """从消息字段和附件中提取并去重图片引用"""
         images = []
@@ -207,14 +213,14 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
                             )
                         )
 
-        deduped = []
+        deduped: List[IncomingMessage.MessageImage] = []
         for image in images:
             if image.ref not in [item.ref for item in deduped]:
                 deduped.append(image)
         return deduped or None
 
     @classmethod
-    def _extract_audio_refs(cls, message: dict) -> Optional[List[str]]:
+    def _extract_audio_refs(cls, message: Mapping[str, object]) -> Optional[List[str]]:
         """从消息字段和附件中提取并去重音频下载引用"""
         audio_refs = []
         for key in ("audio_url", "voice_url", "file_url"):
@@ -279,7 +285,7 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
 
     @classmethod
     def _extract_files(
-        cls, message: dict
+        cls, message: Mapping[str, object]
     ) -> Optional[List[IncomingMessage.MessageAttachment]]:
         """提取普通附件下载引用，排除已归类的图片和音频"""
         files = []
@@ -339,10 +345,11 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
         file_url = unquote(file_ref.replace("synology://file/", "", 1))
         resp = RequestUtils(timeout=30).get_res(file_url)
         if resp and resp.content:
-            return resp.content
+            content: bytes = resp.content
+            return content
         return None
 
-    def post_message(self, message: Message, **kwargs) -> None:
+    def post_message(self, message: Message, **kwargs: object) -> None:
         """
         发送消息
         :param message: 消息体
@@ -351,7 +358,7 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client: SynologyChat = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
                 texts: Sequence[Optional[str]] = message.channel_text_chunks(NotificationChannel.SynologyChat) or [message.text]
                 for text in texts:
@@ -372,7 +379,7 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client: SynologyChat = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
                 client.send_medias_msg(
                     title=message.title,
@@ -392,7 +399,7 @@ class SynologyChatModule(_MessageChannelModuleBase[SynologyChat]):
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
-            client: SynologyChat = self.get_instance(conf.name)
+            client = self.get_instance(conf.name)
             if client:
                 client.send_torrents_msg(
                     title=message.title,
