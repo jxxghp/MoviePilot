@@ -32,6 +32,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
 
     @staticmethod
     def get_name() -> str:
+        """返回媒体服务器模块名称。"""
         return "Plex"
 
     @staticmethod
@@ -64,7 +65,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
             except Exception as err:
                 logger.error(f"停止Plex模块实例失败：{err}")
 
-    def _test_server(self, server, name: str) -> Optional[str]:
+    def _test_server(self, server, name: Optional[str]) -> Optional[str]:
         """Plex 用媒体库列表探测连接状态。"""
         if server.is_inactive():
             server.reconnect()
@@ -73,6 +74,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         return None
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
+        """模块不提供额外的初始化开关。"""
         pass
 
     def user_authenticate(self, credentials: AuthCredentials, service_name: Optional[str] = None) \
