@@ -38,6 +38,8 @@ def test_music_catalog_service_isolates_failed_source():
     errors = []
 
     class _Broken:
+        """模拟目录搜索失败的音乐来源。"""
+
         def search_music(self, *_args, **_kwargs):
             """模拟来源错误。"""
             raise RuntimeError("broken")
@@ -56,7 +58,10 @@ def test_music_catalog_service_forwards_stable_entity_filter_to_every_source():
     received = []
 
     class _FilteredSource:
+        """记录每次目录搜索收到的实体过滤参数。"""
+
         def search_music(self, _meta, limit=20, music_types=None):
+            """返回空候选并记录稳定的搜索参数。"""
             received.append((limit, music_types))
             return []
 

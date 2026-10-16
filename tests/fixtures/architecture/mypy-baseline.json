@@ -651,10 +651,6 @@
   "app/application/module.py": {
     "misc": 1
   },
-  "app/application/music/catalog.py": {
-    "assignment": 1,
-    "no-any-return": 1
-  },
   "app/application/plugin/catalog.py": {
     "type-arg": 5,
     "var-annotated": 6

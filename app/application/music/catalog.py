@@ -76,7 +76,7 @@ class MusicCatalogService:
         for candidate in candidates or []:
             info = candidate if isinstance(candidate, MusicInfo) else MusicInfo.from_dict(candidate)
             if info.media_source and info.media_id:
-                identity = (
+                identity: tuple[str, ...] = (
                     "id",
                     str(info.media_source).casefold(),
                     str(info.music_type).casefold(),
@@ -149,7 +149,7 @@ class MusicCatalogService:
 
     async def _async_search_source(
         self,
-        chain: Any,
+        chain: MusicSourcePort,
         source: MediaSource,
         meta: MetaMusic,
         limit: int,
