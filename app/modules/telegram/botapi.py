@@ -72,8 +72,9 @@ class TelegramBotApi:
     """
     单个 Bot token 的 Bot API 客户端，持有一个复用连接的 HTTP 会话。
 
-    会话在发送线程、typing 线程和轮询线程间共享；requests 连接池本身线程安全，
-    只有 POST 且不会自动重放，避免网络抖动时重复发送消息。
+    发送线程和 typing 线程共享一个会话，轮询线程使用独立会话。requests 连接池本身
+    线程安全；轮询请求虽然也是 POST，但只读取更新且不会自动重放，避免网络抖动时
+    重复发送消息。轮询连接断开后可以单独重建，不影响正在发送的消息。
     """
 
     def __init__(
@@ -97,13 +98,8 @@ class TelegramBotApi:
         # 自定义地址通常是内网自建服务，不走全局代理。
         self._proxy = None if api_url else proxy
         self._default_parse_mode = parse_mode
-        self._http = RequestUtils(
-            headers={"Accept": "application/json"},
-            proxies=self._proxy,
-            use_session=True,
-            # RequestUtils 默认沿用旧宿主的不校验证书行为；Bot token 随请求发送，必须校验。
-            verify=True,
-        )
+        self._http = self._create_http()
+        self._polling_http: Optional[RequestUtils] = None
         self._polling_stop = threading.Event()
         # 分发临界区：持锁期间检查停止标记并执行 handler，stop 取得该锁即证明不会再分发。
         self._dispatch_lock = threading.Lock()
@@ -117,9 +113,36 @@ class TelegramBotApi:
         """拼接 getFile 返回路径对应的下载地址（包含 token，不可写入日志）。"""
         return f"{self._file_base}{file_path}"
 
+    def _create_http(self) -> RequestUtils:
+        """创建一个 Bot API 专用 HTTP 会话。"""
+        return RequestUtils(
+            headers={"Accept": "application/json"},
+            proxies=self._proxy,
+            use_session=True,
+            # RequestUtils 默认沿用旧宿主的不校验证书行为；Bot token 随请求发送，必须校验。
+            verify=True,
+        )
+
+    def _get_polling_http(self) -> RequestUtils:
+        """按需取得轮询专用会话，避免长轮询故障影响出站消息。"""
+        if self._polling_http is None:
+            self._polling_http = self._create_http()
+        return self._polling_http
+
+    def _reset_polling_http(self) -> None:
+        """重建轮询连接池；只由轮询线程调用。"""
+        old_http = self._polling_http
+        new_http = self._create_http()
+        self._polling_http = new_http
+        if old_http is not None:
+            old_http.close()
+
     def close(self) -> None:
         """关闭 HTTP 会话。"""
         self._http.close()
+        if self._polling_http is not None:
+            self._polling_http.close()
+            self._polling_http = None
 
     # ---------------------------------------------------------------- 请求层
 
@@ -144,6 +167,7 @@ class TelegramBotApi:
             params: Optional[Dict[str, Any]] = None,
             files: Optional[Dict[str, Any]] = None,
             read_timeout: float = _READ_TIMEOUT_SECONDS,
+            _http: Optional[RequestUtils] = None,
     ) -> Any:
         """
         调用 Bot API 方法并返回 ``result``。
@@ -151,8 +175,9 @@ class TelegramBotApi:
         :raises TelegramApiError: Telegram 返回 ok=false 或非 JSON 响应
         :raises TelegramNetworkError: 网络失败，描述已去除 token
         """
+        request_http = _http or self._http
         try:
-            response = self._http.post_res(
+            response = request_http.post_res(
                 f"{self._api_base}{method}",
                 data=self._encode_params(params or {}),
                 files=files,
@@ -397,6 +422,7 @@ class TelegramBotApi:
             "getUpdates",
             {"offset": offset, "timeout": timeout, "allowed_updates": _ALLOWED_UPDATES},
             read_timeout=timeout + _CONNECT_TIMEOUT_SECONDS,
+            _http=self._get_polling_http(),
         )
 
     def polling(
@@ -426,6 +452,11 @@ class TelegramBotApi:
             except Exception as err:
                 if self._polling_stop.is_set():
                     return
+                if isinstance(err, TelegramNetworkError):
+                    try:
+                        self._reset_polling_http()
+                    except Exception as reset_err:
+                        logger.warning(f"Telegram轮询连接重建失败，将继续重试：{reset_err}")
                 failures += 1
                 now = time.monotonic()
                 retry_seconds = min(3 * 2 ** (failures - 1), retry_max_seconds)
