@@ -160,17 +160,21 @@ def test_update_candidates_report_source_and_binding_relationship():
     assert result[0].update_candidate is not None
     assert result[0].update_candidate.source_type == "official"
     assert result[0].update_candidate.is_bound is True
+    assert result[0].has_update is True
     assert result[1].update_candidate is not None
     assert result[1].update_candidate.source_type == "third_party"
     assert result[1].update_candidate.is_bound is True
+    assert result[1].has_update is True
     assert result[2].update_candidate is not None
     assert result[2].update_candidate.source_type == "official"
     assert result[2].update_candidate.is_bound is False
+    assert result[2].has_update is False
+    assert plugins[2].has_update is True
     assert result[3].update_candidate is None
 
 
 def test_bound_repository_update_precedes_a_higher_alternative():
-    """绑定仓库仍有更新时先完成可信更新，下一轮再提示其他仓库版本。"""
+    """绑定仓库存在更新时只提示可信更新，不受其他仓库更高版本影响。"""
     bound_update = schemas.Plugin(
         id="DemoPlugin",
         plugin_version="2.0.0",
@@ -200,6 +204,85 @@ def test_bound_repository_update_precedes_a_higher_alternative():
     assert result[0].update_candidate is not None
     assert result[0].update_candidate.version == "2.0.0"
     assert result[0].update_candidate.is_bound is True
+    assert result[0].has_update is True
+
+
+@pytest.mark.parametrize("state", ["market", "all"])
+@pytest.mark.parametrize("bound_version", [None, "1.0.0", "0.9.0"])
+def test_catalog_excludes_alternative_update_when_bound_source_has_no_update(
+    state, bound_version,
+):
+    """绑定源版本持平、较低或缺失时，其他仓库不能产生市场更新条目。"""
+    installed = schemas.Plugin(
+        id="DemoPlugin", plugin_version="1.0.0", installed=True,
+    )
+    alternative = schemas.Plugin(
+        id="DemoPlugin",
+        plugin_version="3.0.0",
+        repo_url="https://github.com/alternative/plugins",
+        has_update=True,
+    )
+    online = [alternative]
+    if bound_version is not None:
+        online.append(schemas.Plugin(
+            id="DemoPlugin",
+            plugin_version=bound_version,
+            repo_url=SOURCE_URL,
+            has_update=False,
+        ))
+    plugin_manager = MagicMock()
+    plugin_manager.get_installed_plugins.return_value = [installed]
+    plugin_manager.get_local_plugins.return_value = [installed]
+    plugin_manager.get_local_repo_plugins.return_value = []
+    plugin_manager.async_get_online_plugin_candidates = AsyncMock(return_value=online)
+    plugin_manager.process_plugins_list.side_effect = lambda higher, base: [
+        max(higher + base, key=lambda plugin: plugin.plugin_version)
+    ]
+    persistence = MagicMock()
+    persistence.list_identities = AsyncMock(return_value=[_plugin_identity()])
+
+    with patch(
+        "app.api.endpoints.plugin.get_plugin_catalog_query",
+        return_value=_catalog_query(plugin_manager, persistence),
+    ):
+        response = Response()
+        result = asyncio.run(plugin_endpoint.all_plugins(
+            None, state, False, response=response,
+        ))
+
+    assert [plugin.id for plugin in result] == (["DemoPlugin"] if state == "all" else [])
+    assert response.headers["X-Total-Count"] == str(len(result))
+    assert all(not plugin.has_update for plugin in result)
+    assert all(plugin.plugin_version == "1.0.0" for plugin in result)
+    assert alternative.has_update is True
+    assert alternative.update_candidate is None
+
+
+@pytest.mark.parametrize("has_identity", [False, True])
+def test_unbound_plugin_keeps_market_candidate_for_source_selection(has_identity):
+    """尚未绑定来源的插件仍能发现市场候选，供用户显式选择来源。"""
+    candidate = schemas.Plugin(
+        id="DemoPlugin", plugin_version="2.0.0", repo_url=SOURCE_URL, has_update=True,
+    )
+    identity = replace(
+        _plugin_identity(),
+        trusted_source_type=TrustedPluginSourceType.UNKNOWN,
+        trusted_source_key=None,
+        binding_basis=PluginBindingBasis.LEGACY_UNBOUND,
+        bound_at=None,
+    )
+    persistence = MagicMock()
+    persistence.list_identities = AsyncMock(return_value=[identity] if has_identity else [])
+
+    result = asyncio.run(
+        _catalog_query(MagicMock(), persistence).project_update_candidates(
+            [candidate], [candidate], ["DemoPlugin"],
+        )
+    )
+
+    assert result[0].has_update is True
+    assert result[0].update_candidate is not None
+    assert result[0].update_candidate.is_bound is False
 
 
 def test_market_endpoint_reads_source_preserving_candidates_for_bound_update():

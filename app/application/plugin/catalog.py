@@ -427,6 +427,7 @@ class PluginCatalogService:
         )
 
         def repo_order(plugin: Any) -> int:
+            """保留配置的仓库顺序，未配置来源排在末尾。"""
             if plugin.repo_url in markets:
                 return markets.index(plugin.repo_url)
             return len(markets)
@@ -543,7 +544,7 @@ class PluginCatalogQuery:
         plugins: list[Plugin],
         installed_ids: list[str],
     ) -> list[Plugin]:
-        """优先选择绑定仓库更新并投影候选来源信息。"""
+        """已绑定插件仅提示绑定仓库更新，并投影候选来源信息。"""
         identities = await self._identities(installed_ids)
         identity_by_id = {item.normalized_plugin_id: item for item in identities}
         installed_keys = {plugin_id.lower() for plugin_id in installed_ids}
@@ -580,7 +581,7 @@ class PluginCatalogQuery:
         online_plugins: list[Plugin],
         identity: PluginIdentity | None,
     ) -> Plugin:
-        """绑定仓库存在更新时优先返回其候选。"""
+        """按绑定来源收敛更新标记，不修改共享的市场候选快照。"""
         if identity is None or not identity.trusted_source_key:
             return plugin
         bound_updates = [
@@ -589,7 +590,9 @@ class PluginCatalogQuery:
             if _matches_trusted_source(candidate, plugin.id, identity.trusted_source_key)
         ]
         preferred = self._process_plugins(bound_updates, []) if bound_updates else []
-        return preferred[0] if preferred else plugin
+        return preferred[0] if preferred else cast(
+            Plugin, plugin.model_copy(update={"has_update": False})
+        )
 
 
 _catalog_query: PluginCatalogQuery | None = None

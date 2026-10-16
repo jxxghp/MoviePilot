@@ -1114,6 +1114,12 @@ Web Agent 直接调用 `moviepilot_api` 时，宿主会自动加载 `moviepilot-
 `library.latest` 已从 Agent operation 目录删除，避免与 provider Skill 重复。供前端和
 其它宿主使用的普通 REST 端点仍然保留。
 
+`plugin.market` 对已安装且已绑定来源的插件，只把绑定仓库的更高版本列为更新。
+绑定仓库版本持平、较低或未返回候选时，其他仓库的高版本不会触发 `has_update`，
+也不会作为更新条目出现在 `state=market` 或 `state=all` 的市场部分。
+查看其他可选来源使用 `plugin.source.options`；切换来源仍须显式执行来源变更。
+尚未绑定来源的已安装插件保留市场候选，供用户选择绑定来源。
+
 #### Agent 自主定时任务与人格
 
 `agent_task` 是唯一的自主任务工具，要求管理员权限：

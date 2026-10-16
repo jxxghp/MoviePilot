@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 55
+version: 56
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -208,6 +208,12 @@ operation is added or moved, update its category file, this index, the
 frontmatter allowlist, and the matching gateway contract together.
 
 ## API Surface Scope
+
+For installed plugins with a bound source, `plugin.market` only lists an update
+when that repository has a newer version. A higher version in another repository
+does not trigger `has_update`. Use `plugin.source.options` to inspect alternative
+sources; switching sources still requires an explicit source change. Installed
+plugins without a bound source retain market candidates for source selection.
 
 Operations declare an identity scope: `public` reads external public metadata without requiring a channel account binding; `bound_user` uses the active MoviePilot user bound to the stable channel sender ID (Web uses its authenticated user ID); `admin` requires administrator authority. Read-only does not mean public. Channel nicknames never establish identity. Personal records and subscription writes retain their existing ownership and permission checks.
 
