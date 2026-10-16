@@ -1253,7 +1253,7 @@
     "arg-type": 2,
     "assignment": 2,
     "attr-defined": 1,
-    "no-untyped-call": 11,
+    "no-untyped-call": 4,
     "no-untyped-def": 1,
     "type-arg": 2
   },
@@ -1287,11 +1287,6 @@
     "arg-type": 1,
     "no-untyped-def": 2,
     "return-value": 1,
-    "type-arg": 1
-  },
-  "app/domain/tokens.py": {
-    "no-untyped-call": 2,
-    "no-untyped-def": 6,
     "type-arg": 1
   },
   "app/factory.py": {
