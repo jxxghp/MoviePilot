@@ -99,9 +99,6 @@
     "type-arg": 1,
     "union-attr": 2
   },
-  "app/agent/llm/provider.py": {
-    "no-untyped-def": 1
-  },
   "app/agent/mcp.py": {
     "assignment": 2,
     "attr-defined": 3,
@@ -164,9 +161,6 @@
     "no-untyped-def": 13,
     "type-arg": 12,
     "union-attr": 3,
-    "var-annotated": 1
-  },
-  "app/agent/policy/sanitizer.py": {
     "var-annotated": 1
   },
   "app/agent/prompt/__init__.py": {
@@ -2085,18 +2079,10 @@
   "app/startup/composition/subscription.py": {
     "arg-type": 2
   },
-  "app/startup/initializers/agent.py": {
-    "no-untyped-call": 2,
-    "no-untyped-def": 1
-  },
   "app/startup/initializers/command.py": {
     "no-untyped-call": 2,
     "no-untyped-def": 1,
     "type-arg": 1
-  },
-  "app/startup/initializers/database.py": {
-    "no-untyped-call": 1,
-    "no-untyped-def": 2
   },
   "app/startup/initializers/modules.py": {
     "arg-type": 2,
@@ -2121,7 +2107,6 @@
     "type-arg": 1
   },
   "app/testing/bootstrap.py": {
-    "no-untyped-call": 1,
     "no-untyped-def": 3,
     "type-arg": 6
   },
