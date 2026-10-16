@@ -5,7 +5,7 @@ from __future__ import annotations
 import ast
 from collections.abc import Callable, Mapping
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from app.runtime.extensions.plugin.system import PluginSystemServices
 
@@ -32,14 +32,15 @@ class PluginPathResolver:
     def federated_change(
         self,
         event_path: Path,
-    ) -> Optional[tuple[str, Optional[dict], bool]]:
+    ) -> Optional[tuple[str, Optional[dict[str, Any]], bool]]:
         """识别联邦构建产物变化并确认入口文件已完整生成。"""
         try:
             event_path = event_path.resolve()
             candidate = self.local_candidate(event_path)
             if candidate:
                 plugin_id = candidate.get("id")
-                plugin_dir = Path(candidate.get("path")).resolve()
+                # 市场本地候选的 path 是扫描所得的仓库目录，保留 Path 原有校验。
+                plugin_dir = Path(cast("str | Path", candidate.get("path"))).resolve()
             else:
                 if not event_path.is_relative_to(self._runtime_root):
                     return None
@@ -115,7 +116,7 @@ class PluginPathResolver:
             self._logger.error(f"从路径解析插件 ID 时出错: {error}")
             return None
 
-    def local_candidate(self, event_path: Path) -> Optional[dict]:
+    def local_candidate(self, event_path: Path) -> Optional[dict[str, Any]]:
         """按 ``plugins``、``plugins.v2``、``plugins.v3`` 目录解析候选。"""
         try:
             event_path = event_path.resolve()
