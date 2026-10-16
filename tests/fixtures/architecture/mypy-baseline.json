@@ -434,8 +434,7 @@
   },
   "app/api/endpoints/system.py": {
     "arg-type": 1,
-    "attr-defined": 4,
-    "no-untyped-call": 6,
+    "no-untyped-call": 5,
     "no-untyped-def": 24,
     "type-arg": 6
   },
@@ -495,13 +494,6 @@
   },
   "app/application/history/__init__.py": {
     "no-any-return": 1
-  },
-  "app/application/image.py": {
-    "arg-type": 1,
-    "misc": 8,
-    "no-any-return": 10,
-    "no-untyped-def": 2,
-    "type-arg": 5
   },
   "app/application/messaging/agent.py": {
     "arg-type": 1
@@ -667,12 +659,6 @@
   },
   "app/chain/musicbrainz.py": {
     "type-arg": 2
-  },
-  "app/chain/recommend.py": {
-    "misc": 30,
-    "no-untyped-call": 1,
-    "no-untyped-def": 1,
-    "type-arg": 31
   },
   "app/chain/scraping.py": {
     "arg-type": 30,
@@ -979,13 +965,6 @@
     "no-untyped-def": 5,
     "return-value": 1,
     "type-arg": 12
-  },
-  "app/modules/anilist/anilist.py": {
-    "arg-type": 1,
-    "misc": 15,
-    "no-any-return": 1,
-    "no-untyped-def": 5,
-    "type-arg": 31
   },
   "app/modules/bangumi/__init__.py": {
     "arg-type": 2,
@@ -1503,7 +1482,6 @@
     "arg-type": 1,
     "assignment": 2,
     "no-any-return": 8,
-    "no-untyped-call": 1,
     "no-untyped-def": 13,
     "return-value": 1,
     "type-arg": 10,
