@@ -1,14 +1,16 @@
-from ..tmdb import TMDb
+from ..tmdb import TMDb, TMDbJson
 
 
 class Provider(TMDb):
+    """提供按地区筛选的流媒体服务商查询。"""
+
     _urls = {
         "regions": "/watch/providers/regions",  # TODO:
         "movie": "/watch/providers/movie",  # TODO:
         "tv": "/watch/providers/tv",  # TODO:
     }
 
-    def available_regions(self):
+    def available_regions(self) -> TMDbJson:
         """
         Returns a list of all of the countries we have watch provider (OTT/streaming) data for.
         :return:
@@ -18,7 +20,7 @@ class Provider(TMDb):
             key="results"
         )
 
-    async def async_available_regions(self):
+    async def async_available_regions(self) -> TMDbJson:
         """
         Returns a list of all of the countries we have watch provider (OTT/streaming) data for.（异步版本）
         :return:
@@ -28,7 +30,7 @@ class Provider(TMDb):
             key="results"
         )
 
-    def movie_providers(self, region=None):
+    def movie_providers(self, region: str | None=None) -> TMDbJson:
         """
         Returns a list of the watch provider (OTT/streaming) data we have available for movies.
         :return:
@@ -39,7 +41,7 @@ class Provider(TMDb):
             key="results"
         )
 
-    async def async_movie_providers(self, region=None):
+    async def async_movie_providers(self, region: str | None=None) -> TMDbJson:
         """
         Returns a list of the watch provider (OTT/streaming) data we have available for movies.（异步版本）
         :return:
@@ -50,7 +52,7 @@ class Provider(TMDb):
             key="results"
         )
 
-    def tv_providers(self, region=None):
+    def tv_providers(self, region: str | None=None) -> TMDbJson:
         """
         Returns a list of the watch provider (OTT/streaming) data we have available for TV series.
         :return:
@@ -61,7 +63,7 @@ class Provider(TMDb):
             key="results"
         )
 
-    async def async_tv_providers(self, region=None):
+    async def async_tv_providers(self, region: str | None=None) -> TMDbJson:
         """
         Returns a list of the watch provider (OTT/streaming) data we have available for TV series.（异步版本）
         :return:
