@@ -727,10 +727,6 @@
   "app/application/site/sites.pyi": {
     "type-arg": 7
   },
-  "app/application/storage.py": {
-    "no-untyped-def": 3,
-    "type-arg": 3
-  },
   "app/application/subscription/contract.py": {
     "arg-type": 1,
     "misc": 1

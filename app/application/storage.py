@@ -1,8 +1,16 @@
-from typing import List, Optional
+from typing import List, Optional, TypedDict
 
 from app.application.configuration import get_configured_system_config
 from app.schemas.system import StorageConf as _SchemaStorageConf
 from app.schemas.types import SystemConfigKey
+
+
+class _StorageConfigRecord(TypedDict, total=False):
+    """StorageConf 持久化字典的可选字段，保留模型默认值和校验。"""
+
+    type: str | None
+    name: str | None
+    config: dict[str, object] | None
 
 
 class StorageHelper:
@@ -15,7 +23,7 @@ class StorageHelper:
         """
         获取所有存储设置
         """
-        storage_confs: List[dict] = get_configured_system_config().get(SystemConfigKey.Storages)
+        storage_confs: List[_StorageConfigRecord] | None = get_configured_system_config().get(SystemConfigKey.Storages)
         if not storage_confs:
             return []
         return [_SchemaStorageConf(**s) for s in storage_confs]
@@ -30,7 +38,7 @@ class StorageHelper:
                 return s
         return None
 
-    def set_storage(self, storage: str, conf: dict):
+    def set_storage(self, storage: str, conf: dict[str, object]) -> None:
         """
         设置存储配置
         """
@@ -49,7 +57,7 @@ class StorageHelper:
                     break
         get_configured_system_config().set(SystemConfigKey.Storages, [s.model_dump() for s in storagies])
 
-    def add_storage(self, storage: str, name: str, conf: dict):
+    def add_storage(self, storage: str, name: str, conf: dict[str, object]) -> None:
         """
         添加存储配置
         """
@@ -70,7 +78,7 @@ class StorageHelper:
             ))
         get_configured_system_config().set(SystemConfigKey.Storages, [s.model_dump() for s in storagies])
 
-    def reset_storage(self, storage: str):
+    def reset_storage(self, storage: str) -> None:
         """
         重置存储配置
         """
