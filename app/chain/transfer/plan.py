@@ -37,6 +37,7 @@ from app.domain.meta.metamusic import MetaMusic
 from app.domain.meta.metavideo import MetaVideo
 from app.runtime.log import logger
 from app.schemas.event import StorageOperSelectionEventData
+from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
 from app.schemas.tmdb import TmdbEpisode
 from app.schemas.transfer import TransferInfo
@@ -45,7 +46,6 @@ from app.schemas.types import (
     MediaSource,
     MediaType,
 )
-from app.schemas.workflow import FileItem
 
 from .checkpoint import build_planning_rejection_checkpoint, restore_planned_task
 from .execution import _DurableTransferStepRunner, _TransferRetryExhausted
