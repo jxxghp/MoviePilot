@@ -1791,14 +1791,6 @@
     "no-untyped-call": 17,
     "no-untyped-def": 23
   },
-  "app/modules/themoviedb/tmdbv3api/objs/account.py": {
-    "no-untyped-call": 19,
-    "no-untyped-def": 29
-  },
-  "app/modules/themoviedb/tmdbv3api/objs/change.py": {
-    "no-untyped-call": 6,
-    "no-untyped-def": 8
-  },
   "app/modules/themoviedb/tmdbv3api/objs/collection.py": {
     "no-untyped-def": 6
   },
@@ -1809,21 +1801,11 @@
   "app/modules/themoviedb/tmdbv3api/objs/episode.py": {
     "no-untyped-def": 20
   },
-  "app/modules/themoviedb/tmdbv3api/objs/find.py": {
-    "no-untyped-call": 16,
-    "no-untyped-def": 18
-  },
-  "app/modules/themoviedb/tmdbv3api/objs/keyword.py": {
-    "no-untyped-def": 4
-  },
   "app/modules/themoviedb/tmdbv3api/objs/movie.py": {
     "no-untyped-def": 46
   },
   "app/modules/themoviedb/tmdbv3api/objs/person.py": {
     "no-untyped-def": 22
-  },
-  "app/modules/themoviedb/tmdbv3api/objs/review.py": {
-    "no-untyped-def": 2
   },
   "app/modules/themoviedb/tmdbv3api/objs/search.py": {
     "attr-defined": 1,
