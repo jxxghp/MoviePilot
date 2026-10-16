@@ -40,7 +40,8 @@ def get_command_object() -> Any:
 
 def get_commands() -> Dict[str, Any]:
     """返回全部已注册命令。"""
-    return get_command_object().get_commands()
+    commands: dict[str, object] = get_command_object().get_commands()
+    return commands
 
 
 def get_command(name: str) -> Optional[Any]:
@@ -69,7 +70,8 @@ def dispatch_command(
         normalized = f"/{normalized}"
     command_name = normalized.split()[0]
     matched = get_command(command_name)
-    if matched is None:
+    # Command.get 使用空字典表示未注册命令，不能将其报告为执行成功。
+    if not matched:
         available = [f"{name} - {info.get('description', '无描述')}" for name, info in get_commands().items()]
         raise ValueError(f"命令 {command_name} 不存在" + (f"；可用命令: {'; '.join(available)}" if available else ""))
     publish_event(
