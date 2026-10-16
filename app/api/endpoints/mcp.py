@@ -47,7 +47,7 @@ MCP_SCHEMA_MODE_COMPACT = "compact"
 MCP_SCHEMA_MODES = (MCP_SCHEMA_MODE_FULL, MCP_SCHEMA_MODE_COMPACT)
 MCP_SCHEMA_MODE_HEADER = "X-MCP-Schema-Mode"
 
-MCP_JSONRPC_ERROR_RESPONSES = {
+MCP_JSONRPC_ERROR_RESPONSES: dict[int | str, dict[str, object]] = {
     400: {"model": _SchemaMcpJsonRpcError, "description": "JSON-RPC 请求错误"},
     401: {"model": _SchemaMcpJsonRpcError, "description": "JSON-RPC 认证失败"},
     403: {"model": _SchemaMcpJsonRpcError, "description": "JSON-RPC 访问被拒绝"},
