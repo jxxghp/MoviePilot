@@ -2435,9 +2435,6 @@
     "type-arg": 8,
     "var-annotated": 1
   },
-  "app/runtime/extensions/plugin/storage.py": {
-    "type-arg": 3
-  },
   "app/runtime/extensions/plugin/sync.py": {
     "type-arg": 2
   },

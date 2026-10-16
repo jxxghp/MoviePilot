@@ -187,7 +187,7 @@ class PluginConfigStore:
         self._database = database
         self._plugin_exists = plugin_exists
 
-    def read(self, plugin_id: str) -> dict:
+    def read(self, plugin_id: str) -> dict[str, object]:
         """读取配置并过滤历史空键。"""
         if not self._plugin_exists(plugin_id):
             return {}
@@ -209,7 +209,7 @@ class PluginConfigStore:
         """
         return bool(self._storage().read_config(instance_id))
 
-    def write(self, plugin_id: str, config: dict, force: bool = False) -> bool:
+    def write(self, plugin_id: str, config: dict[str, object], force: bool = False) -> bool:
         """保存配置，默认拒绝不存在插件的配置写入。"""
         if not force and not self._plugin_exists(plugin_id):
             return False
@@ -219,7 +219,7 @@ class PluginConfigStore:
     async def async_write(
         self,
         plugin_id: str,
-        config: dict,
+        config: dict[str, object],
         force: bool = False,
     ) -> bool:
         """异步保存配置并保持同步写入的存在性规则。"""
