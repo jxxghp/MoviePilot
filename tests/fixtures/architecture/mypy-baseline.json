@@ -2403,9 +2403,6 @@
   "app/runtime/extensions/plugin/access.py": {
     "no-any-return": 1
   },
-  "app/runtime/extensions/plugin/admission.py": {
-    "union-attr": 3
-  },
   "app/runtime/extensions/plugin/catalog.py": {
     "no-any-return": 5
   },

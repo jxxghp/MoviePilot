@@ -82,6 +82,8 @@ class PluginMutationAdmission:
             yield
         finally:
             if acquired:
+                # acquired 只会在上下文已验证且 owner 计数增加后置为 True。
+                assert context is not None
                 with self._condition:
                     self._active_count -= 1
                     context.holders -= 1
