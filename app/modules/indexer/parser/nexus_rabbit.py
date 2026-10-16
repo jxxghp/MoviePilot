@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import json
 import re
-from typing import Optional
 from urllib.parse import urljoin
 
 from lxml import etree
@@ -10,14 +9,16 @@ from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
 from app.foundation import text as text_tools
 from app.foundation.dom import DomUtils
-from app.modules.indexer.parser import SiteParserBase, SiteSchema
+from app.modules.indexer.parser import SitePage, SiteParserBase, SiteSchema
 from app.runtime.log import logger
 
 
 class NexusRabbitSiteUserInfo(SiteParserBase):
+    """解析 NexusRabbit 站点的用户资料、流量与消息。"""
     schema = SiteSchema.NexusRabbit
 
-    def _parse_site_page(self, html_text: str):
+    def _parse_site_page(self, html_text: SitePage) -> None:
+        """识别并配置站点数据页面与请求参数。"""
         html_text = self._prepare_html_text(html_text)
 
         user_detail = re.search(r"user.php\?id=(\d+)", html_text)
@@ -58,7 +59,7 @@ class NexusRabbitSiteUserInfo(SiteParserBase):
 
     def _parse_user_torrent_seeding_info(
         self, html_text: str, multi_page: bool = False
-    ) -> Optional[str]:
+    ) -> None:
         """
         做种相关信息
         :param html_text:
@@ -86,8 +87,9 @@ class NexusRabbitSiteUserInfo(SiteParserBase):
         self.seeding_info = seeding_info
 
     def _parse_message_unread_links(
-        self, html_text: str, msg_links: list
+        self, html_text: str, msg_links: list[str]
     ) -> str | None:
+        """收集未读消息链接，返回仍需读取的下一页。"""
         unread_ids = []
         try:
             messages = json.loads(html_text).get("data", [])
@@ -115,7 +117,7 @@ class NexusRabbitSiteUserInfo(SiteParserBase):
             )
         return None
 
-    def _parse_user_base_info(self, html_text: str):
+    def _parse_user_base_info(self, html_text: SitePage) -> None:
         """只有奶糖余额才需要在 base 中获取，其它均可以在详情页拿到"""
         html = etree.HTML(html_text)
         try:
@@ -130,7 +132,8 @@ class NexusRabbitSiteUserInfo(SiteParserBase):
             if html is not None:
                 del html
 
-    def _parse_user_detail_info(self, html_text: str):
+    def _parse_user_detail_info(self, html_text: str) -> None:
+        """解析用户等级、注册时间及其他资料。"""
         html = etree.HTML(html_text)
         try:
             if not DomUtils.has_child_elements(html):
@@ -169,7 +172,7 @@ class NexusRabbitSiteUserInfo(SiteParserBase):
             if html is not None:
                 del html
 
-    def _parse_message_content(self, html_text):
+    def _parse_message_content(self, html_text: str) -> None:
         """
         解析短消息内容，已经在 _parse_message_unread_links 内实现，重载防止 abstractmethod 报错
         :param html_text:
@@ -177,7 +180,7 @@ class NexusRabbitSiteUserInfo(SiteParserBase):
         """
         pass
 
-    def _parse_user_traffic_info(self, html_text: str):
+    def _parse_user_traffic_info(self, html_text: str) -> None:
         """
         解析用户的上传，下载，分享率等信息，已经在 _parse_user_detail_info 内实现，重载防止 abstractmethod 报错
         :param html_text:
