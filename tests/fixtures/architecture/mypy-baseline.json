@@ -682,9 +682,6 @@
     "type-arg": 5,
     "var-annotated": 6
   },
-  "app/application/plugin/config.py": {
-    "type-arg": 3
-  },
   "app/application/plugin/management.py": {
     "arg-type": 2,
     "no-any-return": 2

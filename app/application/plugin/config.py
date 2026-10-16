@@ -55,8 +55,8 @@ class PluginConfigCommand:
     def __init__(
         self,
         *,
-        save_config: Callable[[str, dict, bool], bool],
-        initialize: Callable[[str, dict], Any],
+        save_config: Callable[[str, dict[str, object], bool], bool],
+        initialize: Callable[[str, dict[str, object]], Any],
         stop: Callable[[str], Any],
         delete_config: Callable[[str, bool], bool],
         delete_data: Callable[[str, bool], bool],
@@ -86,7 +86,7 @@ class PluginConfigCommand:
         self._purge_instance = purge_instance
         self._is_clone = is_clone
 
-    def update(self, plugin_id: str, config: dict) -> PluginConfigResult:
+    def update(self, plugin_id: str, config: dict[str, object]) -> PluginConfigResult:
         """保存配置并按既有顺序重新初始化实例及运行时注册。"""
         try:
             with self._mutation(f"更新插件 {plugin_id} 配置"):
