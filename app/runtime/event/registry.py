@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 import inspect
-from collections.abc import Callable
-from typing import Any
+from collections.abc import Callable, Mapping
+from typing import Any, Optional, Union, cast
 
 from app.runtime.log import logger
 from app.schemas.types import ChainEventType, EventType
+
+_EventHandler = Callable[..., object]
+_BroadcastSubscribers = dict[EventType, dict[str, _EventHandler]]
+_ChainSubscribers = dict[ChainEventType, dict[str, tuple[int, _EventHandler]]]
+_SubscriberView = Mapping[
+    Union[EventType, ChainEventType],
+    Mapping[str, Union[_EventHandler, tuple[int, _EventHandler]]],
+]
 
 
 class EventRegistry:
@@ -17,10 +25,10 @@ class EventRegistry:
         self,
         *,
         lock: Any,
-        broadcast_subscribers: Callable[[], dict],
-        chain_subscribers: Callable[[], dict],
-        disabled_handlers: Callable[[], set],
-        disabled_classes: Callable[[], set],
+        broadcast_subscribers: Callable[[], _BroadcastSubscribers],
+        chain_subscribers: Callable[[], _ChainSubscribers],
+        disabled_handlers: Callable[[], set[str]],
+        disabled_classes: Callable[[], set[str]],
     ) -> None:
         """绑定由兼容门面持有的存储，便于热重载和旧测试替换快照。"""
         self._lock = lock
@@ -39,13 +47,13 @@ class EventRegistry:
         return module.__name__ if module else "unknown_module"
 
     @staticmethod
-    def handler_identifier(target: Callable | type) -> str:
+    def handler_identifier(target: Union[_EventHandler, type[object]]) -> str:
         """返回包含模块和限定名的稳定处理器标识。"""
         module_name = EventRegistry._module_name(target)
         return f"{module_name}.{target.__qualname__}"
 
     @classmethod
-    def handler_class_identifier(cls, handler: Callable) -> str | None:
+    def handler_class_identifier(cls, handler: _EventHandler) -> str | None:
         """返回可调用对象所属类的稳定标识；自由函数返回空值。"""
         if inspect.ismethod(handler) and hasattr(handler, "__self__"):
             return cls.handler_identifier(handler.__self__.__class__)
@@ -57,7 +65,7 @@ class EventRegistry:
         module_name = cls._module_name(handler)
         return f"{module_name}.{'.'.join(qualname_parts[:-1])}"
 
-    def is_handler_enabled(self, handler: Callable) -> bool:
+    def is_handler_enabled(self, handler: _EventHandler) -> bool:
         """判断处理器及其所属类是否均处于启用状态。"""
         handler_id = self.handler_identifier(handler)
         class_id = self.handler_class_identifier(handler)
@@ -72,10 +80,10 @@ class EventRegistry:
     def check(self, event_type: EventType | ChainEventType) -> bool:
         """检查指定事件是否存在启用的处理器。"""
         if isinstance(event_type, ChainEventType):
-            handlers = self._chain_subscribers().get(event_type, {})
+            chain_handlers = self._chain_subscribers().get(event_type, {})
             return any(
                 self.is_handler_enabled(handler)
-                for _, handler in handlers.values()
+                for _, handler in chain_handlers.values()
             )
         handlers = self._broadcast_subscribers().get(event_type, {})
         return any(self.is_handler_enabled(handler) for handler in handlers.values())
@@ -83,17 +91,17 @@ class EventRegistry:
     def add(
         self,
         event_type: EventType | ChainEventType,
-        handler: Callable,
+        handler: _EventHandler,
         priority: int,
     ) -> None:
         """注册处理器，并为链式事件按优先级维护稳定顺序。"""
         with self._lock:
             handler_id = self.handler_identifier(handler)
             if isinstance(event_type, ChainEventType):
-                subscribers = self._chain_subscribers()
-                handlers = subscribers.setdefault(event_type, {})
-                existed = handler_id in handlers
-                handlers.pop(handler_id, None)
+                chain_subscribers = self._chain_subscribers()
+                chain_handlers = chain_subscribers.setdefault(event_type, {})
+                existed = handler_id in chain_handlers
+                chain_handlers.pop(handler_id, None)
                 if not existed:
                     logger.debug(
                         "Subscribed to chain event: %s, Priority: %s - %s",
@@ -101,9 +109,9 @@ class EventRegistry:
                         priority,
                         handler_id,
                     )
-                handlers[handler_id] = (priority, handler)
-                subscribers[event_type] = dict(
-                    sorted(handlers.items(), key=lambda item: item[1][0])
+                chain_handlers[handler_id] = (priority, handler)
+                chain_subscribers[event_type] = dict(
+                    sorted(chain_handlers.items(), key=lambda item: item[1][0])
                 )
                 return
             subscribers = self._broadcast_subscribers()
@@ -121,7 +129,7 @@ class EventRegistry:
     def remove(
         self,
         event_type: EventType | ChainEventType,
-        handler: Callable,
+        handler: _EventHandler,
     ) -> None:
         """从指定事件中移除处理器。"""
         with self._lock:
@@ -147,7 +155,7 @@ class EventRegistry:
                 handler_id,
             )
 
-    def disable(self, target: Callable | type) -> None:
+    def disable(self, target: Union[_EventHandler, type[object]]) -> None:
         """禁用单个处理器或整个处理器类。"""
         identifier = self.handler_identifier(target)
         if isinstance(target, type):
@@ -157,7 +165,7 @@ class EventRegistry:
             self._disabled_handlers().add(identifier)
             logger.debug("Disabled event handler - %s", identifier)
 
-    def enable(self, target: Callable | type) -> None:
+    def enable(self, target: Union[_EventHandler, type[object]]) -> None:
         """重新启用单个处理器或整个处理器类。"""
         identifier = self.handler_identifier(target)
         if isinstance(target, type):
@@ -167,32 +175,36 @@ class EventRegistry:
             self._disabled_handlers().discard(identifier)
             logger.debug("Enabled event handler - %s", identifier)
 
-    def chain_snapshot(self, event_type: ChainEventType) -> tuple:
+    def chain_snapshot(
+        self, event_type: ChainEventType,
+    ) -> tuple[tuple[str, tuple[int, _EventHandler]], ...]:
         """返回当前链式订阅快照，运行期变更从下一次事件生效。"""
         with self._lock:
             return tuple(self._chain_subscribers().get(event_type, {}).items())
 
-    def broadcast_snapshot(self, event_type: EventType) -> tuple:
+    def broadcast_snapshot(self, event_type: EventType) -> tuple[tuple[str, _EventHandler], ...]:
         """返回当前广播订阅快照，运行期变更从下一次事件生效。"""
         with self._lock:
             return tuple(
                 self._broadcast_subscribers().get(event_type, {}).items()
             )
 
-    def visualize(self) -> list[dict]:
+    def visualize(self) -> list[dict[str, Union[str, int]]]:
         """导出所有订阅处理器的事件、优先级和启停状态。"""
         result = []
+        # 两类注册表的键均属于事件类型联合；只读视图扩宽键域，保留 dict 合并的快照语义。
         combined = {
-            **self._broadcast_subscribers(),
-            **self._chain_subscribers(),
+            **cast(_SubscriberView, self._broadcast_subscribers()),
+            **cast(_SubscriberView, self._chain_subscribers()),
         }
         for event_type, subscribers in combined.items():
             for handler_id, handler_data in subscribers.items():
+                priority: Optional[int]
                 if isinstance(handler_data, tuple) and len(handler_data) == 2:
                     priority, handler = handler_data
                 else:
                     priority, handler = None, handler_data
-                item = {
+                item: dict[str, Union[str, int]] = {
                     "event_type": event_type.value,
                     "handler_identifier": handler_id,
                     "status": (
