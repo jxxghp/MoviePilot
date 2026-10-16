@@ -162,12 +162,13 @@ def supports_image_input(
 ) -> bool:
     """判断当前模型是否启用了图片输入能力。"""
     llm_helper = _resolve(_llm_helper_provider, "llm_helper")
-    return llm_helper.supports_image_input(
+    supported: bool = llm_helper.supports_image_input(
         provider=provider,
         model=model,
         base_url=base_url,
         base_url_preset=base_url_preset,
     )
+    return supported
 
 
 def is_audio_input_available() -> bool:
@@ -176,7 +177,8 @@ def is_audio_input_available() -> bool:
         _agent_capability_manager_provider,
         "agent_capability_manager",
     )
-    return capability_manager.is_audio_input_available()
+    available: bool = capability_manager.is_audio_input_available()
+    return available
 
 
 def transcribe_audio(content: bytes, filename: str = "input.ogg") -> Optional[str]:
@@ -185,7 +187,8 @@ def transcribe_audio(content: bytes, filename: str = "input.ogg") -> Optional[st
         _agent_capability_manager_provider,
         "agent_capability_manager",
     )
-    return capability_manager.transcribe_audio(content, filename=filename)
+    transcript: str | None = capability_manager.transcribe_audio(content, filename=filename)
+    return transcript
 
 
 def get_web_agent_type() -> type:
@@ -204,4 +207,5 @@ def build_manual_redo_prompt(history: Any) -> str:
     )
     if builder is None:
         raise RuntimeError("整理记录重新整理提示词构建器未注册")
-    return builder(history)
+    prompt: str = builder(history)
+    return prompt

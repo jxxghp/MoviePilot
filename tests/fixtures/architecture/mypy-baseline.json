@@ -573,9 +573,6 @@
     "return": 1,
     "type-arg": 1
   },
-  "app/application/agent.py": {
-    "no-any-return": 4
-  },
   "app/application/dashboard.py": {
     "operator": 5
   },
