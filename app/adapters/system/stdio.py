@@ -16,6 +16,8 @@ class RotatingLineStream(io.TextIOBase):
     同时保证启动阶段的 print/uvicorn 输出也能按配置滚动。
     """
 
+    encoding = "utf-8"
+
     def __init__(self, log_file: Path, max_bytes: int, backup_count: int):
         """创建写入指定滚动日志文件的文本流。"""
         super().__init__()
@@ -36,11 +38,6 @@ class RotatingLineStream(io.TextIOBase):
         )
         handler.setFormatter(logging.Formatter("%(message)s"))
         self._logger.addHandler(handler)
-
-    @property
-    def encoding(self) -> str:
-        """返回日志流使用的文本编码。"""
-        return "utf-8"
 
     def writable(self) -> bool:
         """声明该文本流支持写入。"""

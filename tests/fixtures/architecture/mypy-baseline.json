@@ -75,9 +75,6 @@
     "no-untyped-def": 1,
     "type-arg": 19
   },
-  "app/adapters/system/stdio.py": {
-    "override": 1
-  },
   "app/agent/llm/capability.py": {
     "no-any-return": 4,
     "no-untyped-def": 6,
