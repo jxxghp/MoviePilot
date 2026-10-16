@@ -35,7 +35,7 @@ from app.schemas.openai import AnthropicMessagesRequest as _SchemaAnthropicMessa
 from app.schemas.openai import AnthropicMessagesResponse as _SchemaAnthropicMessagesResponse
 from app.schemas.openai import AnthropicTextBlock as _SchemaAnthropicTextBlock
 
-ANTHROPIC_ERROR_RESPONSES = {
+ANTHROPIC_ERROR_RESPONSES: dict[int | str, dict[str, object]] = {
     400: {"model": _SchemaAnthropicErrorResponse, "description": "请求格式错误"},
     401: {"model": _SchemaAnthropicErrorResponse, "description": "认证失败"},
     422: {"model": _SchemaAnthropicErrorResponse, "description": "请求参数校验失败"},
@@ -53,6 +53,7 @@ def _anthropic_error_response(
     status_code: int,
     error_type: str = "invalid_request_error",
 ) -> JSONResponse:
+    """构造 Anthropic 协议格式的错误响应。"""
     return JSONResponse(
         status_code=status_code,
         content=_SchemaAnthropicErrorResponse(
@@ -112,11 +113,13 @@ async def _stream_anthropic_response(
     images: List[str],
     task_registry: TaskRegistry | None = None,
 ) -> AsyncIterator[str]:
+    """把受管 Agent 事件转换为 Anthropic 流式响应。"""
     event_queue: asyncio.Queue = asyncio.Queue()
 
     message_id = f"msg_{uuid.uuid4().hex}"
 
     async def _run_agent():
+        """运行受管 Agent 并把完成或异常结果送入响应队列。"""
         try:
             await _run_managed_agent(
                 manager=manager,
@@ -235,6 +238,7 @@ async def messages(
     anthropic_version: Optional[str] = Header(default=None, alias="anthropic-version"),
     task_registry: TaskRegistry = Depends(get_background_task_registry_compat),
 ):
+    """校验请求并处理 Anthropic Messages 兼容接口。"""
     auth_error = await _check_auth(x_api_key)
     if auth_error:
         return auth_error
