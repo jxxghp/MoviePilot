@@ -8,7 +8,7 @@ import sys
 import time
 from collections import deque
 from pathlib import Path
-from typing import Any, Dict, Iterable, Optional, get_args, get_origin
+from typing import Any, Dict, Iterable, Literal, Optional, Union, get_args, get_origin
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -57,7 +57,8 @@ PREPARED_UPDATE_STATE = PREPARED_UPDATE_ROOT / "state.json"
 
 def _repo_root() -> Path:
     """返回后端仓库根目录。"""
-    return get_runtime_setting("ROOT_PATH")
+    root: Path = get_runtime_setting("ROOT_PATH")
+    return root
 
 
 def _read_json_file(path: Path) -> Optional[Dict[str, Any]]:
@@ -65,7 +66,8 @@ def _read_json_file(path: Path) -> Optional[Dict[str, Any]]:
     if not path.exists():
         return None
     try:
-        return json.loads(path.read_text(encoding="utf-8", errors="replace"))
+        payload = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+        return payload if isinstance(payload, dict) else None
     except (OSError, json.JSONDecodeError):
         return None
 
@@ -143,7 +145,8 @@ def _frontend_base_url(runtime: Optional[Dict[str, Any]] = None) -> str:
 def _runtime_api_token(runtime: Optional[Dict[str, Any]] = None) -> str:
     """从运行记录或当前配置读取本地 API 凭据。"""
     runtime = runtime or _backend_runtime() or {}
-    return runtime.get("api_token") or get_runtime_setting("API_TOKEN")
+    api_token: str = runtime.get("api_token") or get_runtime_setting("API_TOKEN")
+    return api_token
 
 
 def _http_request(
@@ -575,8 +578,9 @@ def _ensure_frontend_not_running_alone(timeout: int) -> None:
         _stop_frontend_service(timeout=timeout, force=True)
 
 
-def _managed_backend_status() -> tuple[
-    str, Optional[Dict[str, Any]], Optional[psutil.Process], Optional[Dict[str, Any]]
+def _managed_backend_status() -> Union[
+    tuple[Literal["running", "starting"], Optional[Dict[str, Any]], psutil.Process, Optional[Dict[str, Any]]],
+    tuple[Literal["stopped", "running-unmanaged"], None, None, Optional[Dict[str, Any]]],
 ]:
     """汇总受管后端的进程身份和健康状态。"""
     runtime = _backend_runtime()
@@ -596,8 +600,9 @@ def _managed_backend_status() -> tuple[
     return "stopped", None, None, None
 
 
-def _managed_frontend_status() -> tuple[
-    str, Optional[Dict[str, Any]], Optional[psutil.Process], Optional[Dict[str, Any]]
+def _managed_frontend_status() -> Union[
+    tuple[Literal["running", "starting"], Optional[Dict[str, Any]], psutil.Process, Optional[Dict[str, Any]]],
+    tuple[Literal["stopped", "running-unmanaged"], None, None, Optional[Dict[str, Any]]],
 ]:
     """汇总受管前端的进程身份和健康状态。"""
     runtime = _frontend_runtime()
@@ -650,7 +655,8 @@ def _annotation_name(annotation: Any) -> str:
     origin = get_origin(annotation)
     if origin is None:
         if hasattr(annotation, "__name__"):
-            return annotation.__name__
+            name: str = annotation.__name__
+            return name
         return str(annotation).replace("typing.", "")
 
     args = [arg for arg in get_args(annotation) if arg is not type(None)]
@@ -867,7 +873,7 @@ def _spawn_process(
     cwd: Path,
     log_file: Optional[Path],
     env: Optional[Dict[str, str]] = None,
-) -> subprocess.Popen:
+) -> subprocess.Popen[bytes]:
     """启动受管子进程并将输出写入指定日志。"""
     kwargs: Dict[str, Any] = {
         "cwd": str(cwd),
@@ -883,14 +889,14 @@ def _spawn_process(
     else:
         kwargs["stdout"] = subprocess.DEVNULL
         kwargs["stderr"] = subprocess.DEVNULL
-    if os.name == "nt":
+    if sys.platform == "win32":
         kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
     else:
         kwargs["start_new_session"] = True
     return subprocess.Popen(command, **kwargs)
 
 
-def _spawn_backend_process(*, safe: bool = False) -> subprocess.Popen:
+def _spawn_backend_process(*, safe: bool = False) -> subprocess.Popen[bytes]:
     """构造后端启动命令并创建受管进程。"""
     backend_env = {
         **os.environ,
@@ -936,7 +942,7 @@ def _ensure_frontend_runtime() -> None:
         raise click.ClickException("前端运行依赖未安装，请重新执行 `moviepilot install frontend` 或 `moviepilot setup`")
 
 
-def _spawn_frontend_process(backend_port: int) -> subprocess.Popen:
+def _spawn_frontend_process(backend_port: int) -> subprocess.Popen[bytes]:
     """构造前端启动命令并创建受管进程。"""
     _ensure_frontend_runtime()
     node_bin = _frontend_node_binary()
@@ -1289,8 +1295,10 @@ def apply_prepared_update() -> None:
 @cli.command(context_settings=CONTEXT_SETTINGS)
 def status() -> None:
     """查看本地 MoviePilot 前后端服务状态"""
-    backend_state, backend_runtime, backend_process, backend_health = _managed_backend_status()
-    frontend_state, frontend_runtime, frontend_process, frontend_health = _managed_frontend_status()
+    backend_status = _managed_backend_status()
+    backend_state, backend_runtime, _, backend_health = backend_status
+    frontend_status = _managed_frontend_status()
+    frontend_state, frontend_runtime, _, frontend_health = frontend_status
 
     if backend_state == "stopped" and frontend_state == "stopped":
         click.echo("MoviePilot 未运行")
@@ -1300,9 +1308,9 @@ def status() -> None:
         return
 
     click.echo("Backend:")
-    if backend_state == "stopped":
+    if backend_status[0] == "stopped":
         click.echo("  stopped")
-    elif backend_state == "running-unmanaged":
+    elif backend_status[0] == "running-unmanaged":
         data = (backend_health or {}).get("data") or {}
         click.echo("  running (unmanaged)")
         click.echo(f"  URL: {_backend_base_url()}")
@@ -1310,19 +1318,19 @@ def status() -> None:
     else:
         data = (backend_health or {}).get("data") or {}
         click.echo(f"  {'running' if backend_state == 'running' else 'starting'}")
-        click.echo(f"  PID: {backend_process.pid}")
+        click.echo(f"  PID: {backend_status[2].pid}")
         click.echo(f"  URL: {_backend_base_url(backend_runtime)}")
         click.echo(f"  Version: {data.get('BACKEND_VERSION', get_app_version())}")
         click.echo(f"  App Log: {BACKEND_APP_LOG_FILE}")
         click.echo(f"  Stdout Log: {BACKEND_STDIO_LOG_FILE}")
 
     click.echo("Frontend:")
-    if frontend_state == "stopped":
+    if frontend_status[0] == "stopped":
         click.echo("  stopped")
         installed_frontend = _installed_frontend_version()
         if installed_frontend:
             click.echo(f"  Installed Version: {installed_frontend}")
-    elif frontend_state == "running-unmanaged":
+    elif frontend_status[0] == "running-unmanaged":
         frontend_version = (
             ((frontend_health or {}).get("version") if isinstance(frontend_health, dict) else None)
             or _installed_frontend_version()
@@ -1338,7 +1346,7 @@ def status() -> None:
             or "unknown"
         )
         click.echo(f"  {'running' if frontend_state == 'running' else 'starting'}")
-        click.echo(f"  PID: {frontend_process.pid}")
+        click.echo(f"  PID: {frontend_status[2].pid}")
         click.echo(f"  URL: {_frontend_base_url(frontend_runtime)}")
         click.echo(f"  Version: {frontend_version}")
         click.echo(f"  Stdout Log: {FRONTEND_STDIO_LOG_FILE}")

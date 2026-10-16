@@ -409,7 +409,7 @@ moviepilot agent --new-session 帮我总结当前系统配置有什么明显问�
 
 ## 服务管理命令
 
-`moviepilot start/stop/restart/status` 统一管理前后端。
+`moviepilot start/stop/restart/status` 统一管理前后端。本地状态文件必须是 JSON 对象；无法解析或包含数组、字符串等非对象值时，按无有效状态记录处理，再按既有流程探测服务。
 
 启动、停止、重启与状态：
 
