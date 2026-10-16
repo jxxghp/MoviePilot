@@ -1,12 +1,13 @@
 """站点领域的请求级 command/query 依赖。"""
 
-from typing import Any
+from typing import Any, cast
 
 from fastapi import Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.context import get_async_session, get_host_runtime
 from app.application.site.mutation import SiteMutationCommand
+from app.application.site.contract import SiteQueryPort, SiteStagingPort
 from app.application.site.query import SiteQueryService
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.domain import site as site_rules
@@ -39,7 +40,7 @@ def get_site_mutation_command(
         return f"{scheme}://{netloc}/"
 
     return SiteMutationCommand(
-        repository=runtime.site.repository(db),
+        repository=cast(SiteStagingPort, runtime.site.repository(db)),
         unit_of_work=runtime.persistence.async_transaction(db),
         auth_level_provider=lambda: sites_helper.auth_level,
         indexer_loader=sites_helper.async_get_indexer,
@@ -55,7 +56,9 @@ def get_site_query_service(
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> SiteQueryService:
     """组装站点异步查询服务。"""
-    return SiteQueryService(repository=runtime.site.repository(db))
+    return SiteQueryService(
+        repository=cast(SiteQueryPort, runtime.site.repository(db))
+    )
 
 
 def get_site_sync_query_service(
