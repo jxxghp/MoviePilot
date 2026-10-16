@@ -13,6 +13,7 @@ from app.schemas.types import MediaServerType, ModuleType
 
 
 class UgreenModule(_MediaServerModuleBase[Ugreen]):
+    """将绿联影视接入媒体服务器统一接口。"""
 
     # 媒体库标识（ExistMediaInfo.server_type）
     _server_type_value = "ugreen"
@@ -30,6 +31,7 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
 
     @staticmethod
     def get_name() -> str:
+        """返回媒体服务器模块名称。"""
         return "绿联影视"
 
     @staticmethod
@@ -54,6 +56,7 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         return 5
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
+        """模块不提供额外的初始化开关。"""
         pass
 
     def _is_inactive(self, server) -> bool:
@@ -69,7 +72,7 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
             except Exception as err:
                 logger.error(f"停止绿联影视模块实例失败：{err}")
 
-    def _test_server(self, server, name: str) -> Optional[str]:
+    def _test_server(self, server, name: Optional[str]) -> Optional[str]:
         """绿联影视用配置完整性与重连结果探测连接状态。"""
         if not server.is_configured():
             return f"{self.get_name()}配置不完整：{name}"
