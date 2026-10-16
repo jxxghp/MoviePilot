@@ -28,6 +28,7 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
 
     @staticmethod
     def get_name() -> str:
+        """返回媒体服务器模块名称。"""
         return "极影视"
 
     @staticmethod
@@ -52,9 +53,10 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
         return 6
 
     def stop(self):
+        """该客户端没有需要额外停止的后台资源。"""
         pass
 
-    def _test_server(self, server, name: str) -> Optional[str]:
+    def _test_server(self, server, name: Optional[str]) -> Optional[str]:
         """极影视用重连结果与用户信息探测连接状态。"""
         if server.is_inactive() and not server.reconnect():
             return f"无法连接{self.get_name()}服务器：{name}"
@@ -63,6 +65,7 @@ class ZSpaceModule(_MediaServerModuleBase[ZSpace]):
         return None
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
+        """模块不提供额外的初始化开关。"""
         pass
 
     def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[_SchemaWebhookEventInfo]:
