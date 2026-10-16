@@ -162,7 +162,8 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
                 <AgentID>1</AgentID>
             </xml>
             """
-            dom_tree = xml.dom.minidom.parseString(sMsg.decode('UTF-8'))
+            # DecryptMsg 的成功分支只返回解密后的 bytes，失败分支已在上方返回。
+            dom_tree = xml.dom.minidom.parseString(cast(bytes, sMsg).decode('UTF-8'))
             # parseString 成功即有根元素；空文档会在解析阶段抛错。
             root_node = cast(xml.dom.minidom.Element, dom_tree.documentElement)
             # 消息类型
