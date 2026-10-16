@@ -11,13 +11,14 @@ from urllib.parse import urljoin
 from bs4 import BeautifulSoup
 
 from app.foundation import temporal as time_tools
-from app.modules.indexer.parser import SiteParserBase, SiteSchema
+from app.modules.indexer.parser import SitePage, SiteParserBase, SiteSchema
 
 
 class ZhixingSiteUserInfo(SiteParserBase):
+    """解析 Zhixing 站点的用户资料、流量与消息。"""
     schema = SiteSchema.Zhixing
 
-    def _parse_site_page(self, html_text: str):
+    def _parse_site_page(self, html_text: SitePage) -> None:
         """
         获取站点页面地址
         """
@@ -33,14 +34,14 @@ class ZhixingSiteUserInfo(SiteParserBase):
         self._torrent_seeding_headers = {}
         self._addition_headers = {}
 
-    def _parse_logged_in(self, html_text):
+    def _parse_logged_in(self, html_text: str) -> bool:
         """
         判断是否登录成功, 通过判断是否存在用户信息
         """
         soup = BeautifulSoup(html_text, 'html.parser')
         return bool(soup.find(id='um'))
 
-    def _parse_user_base_info(self, html_text: str):
+    def _parse_user_base_info(self, html_text: SitePage):
         """
         解析用户基本信息，这里把_parse_user_traffic_info和_parse_user_detail_info合并到这里
         """
@@ -72,6 +73,7 @@ class ZhixingSiteUserInfo(SiteParserBase):
         self.join_at = time_tools.normalize_datetime(info_dict.get('注册时间')) if '注册时间' in info_dict else None
 
         def num_filesize_safe(s: str):
+            """为不带单位的数字补充字节单位，空值保持零容量。"""
             if s:
                 s = s.strip()
                 if re.match(r'^\d+(\.\d+)?$', s):
@@ -88,10 +90,12 @@ class ZhixingSiteUserInfo(SiteParserBase):
         self.seeding = int(info_dict.get('当前保种数量')) if '当前保种数量' in info_dict else 0
         self.seeding_size = num_filesize_safe(info_dict.get('当前保种容量')) if '当前保种容量' in info_dict else 0
 
-    def _parse_user_traffic_info(self, html_text: str):
+    def _parse_user_traffic_info(self, html_text: str) -> None:
+        """该站点在其他解析入口处理此数据，本入口不追加操作。"""
         pass
 
-    def _parse_user_detail_info(self, html_text: str):
+    def _parse_user_detail_info(self, html_text: str) -> None:
+        """该站点在其他解析入口处理此数据，本入口不追加操作。"""
         pass
 
     def _parse_user_torrent_seeding_page_info(self, html_text: str) -> Tuple[int, int]:
@@ -112,13 +116,15 @@ class ZhixingSiteUserInfo(SiteParserBase):
                 page_seeding_size += self.num_filesize(size_text)
         return page_seeding, page_seeding_size
 
-    def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:
+    def _parse_message_unread_links(self, html_text: str, msg_links: list[str]) -> Optional[str]:
+        """该站点在其他解析入口处理此数据，本入口不追加操作。"""
         pass
 
-    def _parse_message_content(self, html_text) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    def _parse_message_content(self, html_text: str) -> None:
+        """该站点在其他解析入口处理此数据，本入口不追加操作。"""
         pass
 
-    def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: bool = False):
+    def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: bool = False) -> None:
         """
         占位，避免抽象类报错
         """
@@ -161,6 +167,7 @@ class ZhixingSiteUserInfo(SiteParserBase):
                 # Fallback to basic if no seeding found from pages
                 if self.seeding == 0 and hasattr(self, '_basic_info'):
                     def num_filesize_safe(s: str):
+                        """为不带单位的数字补充字节单位，空值保持零容量。"""
                         if s:
                             s = s.strip()
                             if re.match(r'^\d+(\.\d+)?$', s):
