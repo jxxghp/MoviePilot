@@ -5,6 +5,8 @@ from app.domain.context import MediaInfo, MusicAlbumInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.schemas.comment import (
     MediaCommentPage as _SchemaMediaCommentPage,
+)
+from app.schemas.comment import (
     MediaReviewPage as _SchemaMediaReviewPage,
 )
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
