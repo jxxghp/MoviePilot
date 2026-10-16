@@ -6,13 +6,13 @@ import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
-FederatedChangeResolver = Callable[[Path], Optional[tuple[str, Optional[dict], bool]]]
+FederatedChangeResolver = Callable[[Path], Optional[tuple[str, Optional[dict[str, Any]], bool]]]
 RuntimePluginResolver = Callable[[Path], Optional[str]]
 MonitorSuppression = Callable[[str], bool]
-LocalCandidateResolver = Callable[[Path], Optional[dict]]
-LocalPluginSync = Callable[[str, Optional[dict]], bool]
+LocalCandidateResolver = Callable[[Path], Optional[dict[str, Any]]]
+LocalPluginSync = Callable[[str, Optional[dict[str, Any]]], bool]
 PluginReloader = Callable[[str], Any]
 DependencyManifestStatus = Callable[[Path], Optional[bool]]
 WatchFunction = Callable[..., Any]
@@ -225,7 +225,8 @@ class PluginChangeMonitor:
                         f"但跳过同步：{candidate.get('skip_reason')}"
                     )
                     continue
-                local_plugins_to_sync[candidate.get("id")] = (
+                # 本地市场候选的 id 来自仓库索引的插件标识。
+                local_plugins_to_sync[cast(str, candidate.get("id"))] = (
                     candidate,
                     event_path,
                     True,
