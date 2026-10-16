@@ -651,7 +651,7 @@
     "dict-item": 1,
     "misc": 1,
     "no-any-return": 4,
-    "no-untyped-call": 3,
+    "no-untyped-call": 2,
     "no-untyped-def": 12,
     "type-arg": 18,
     "union-attr": 2,
@@ -1284,13 +1284,6 @@
   "app/foundation/dom.py": {
     "assignment": 2,
     "no-untyped-def": 5
-  },
-  "app/foundation/singleton.py": {
-    "arg-type": 2,
-    "misc": 2,
-    "no-untyped-def": 4,
-    "type-arg": 3,
-    "var-annotated": 2
   },
   "app/foundation/temporal.py": {
     "import-untyped": 3,

@@ -7,7 +7,7 @@ def test_singleton_class_can_read_existing_instance_without_creating(monkeypatch
     """按类单例可以只读取已存在实例"""
 
     class Example(metaclass=SingletonClass):
-        pass
+        """只在显式构造后产生可查询实例的按类单例。"""
 
     monkeypatch.setattr(SingletonClass, "_instances", {})
 
@@ -20,7 +20,10 @@ def test_parameterized_singleton_can_read_matching_instance_without_creating(mon
     """参数化单例按相同参数读取已存在实例"""
 
     class Example(metaclass=Singleton):
+        """按名称区分实例的参数化单例。"""
+
         def __init__(self, name):
+            """保存用于区分实例的构造参数。"""
             self.name = name
 
     monkeypatch.setattr(Singleton, "_instances", {})
@@ -121,3 +124,62 @@ def test_class_singleton_can_retain_failed_lifecycle_owner(monkeypatch):
     retained = Example.get_existing_instance()
     assert retained is not None
     assert retained.owner_started is True
+
+
+@pytest.mark.parametrize("metaclass", [Singleton, SingletonClass])
+@pytest.mark.parametrize("retain_failed", [False, True])
+def test_singleton_forwards_constructor_arguments_once(monkeypatch, metaclass, retain_failed):
+    """普通与提前发布路径均应按原顺序向构造方法传递位置和关键字参数。"""
+    calls = []
+    monkeypatch.setattr(metaclass, "_instances", {})
+
+    class Example(metaclass=metaclass):
+        """记录自定义构造方法及初始化方法收到的参数。"""
+
+        _retain_failed_singleton = retain_failed
+
+        def __new__(cls, name, *, enabled):
+            """记录参数并创建当前类的实例。"""
+            calls.append(("new", name, enabled))
+            return object.__new__(cls)
+
+        def __init__(self, name, *, enabled):
+            """记录参数并检查需要保留的 owner 已提前发布。"""
+            calls.append(("init", name, enabled))
+            if retain_failed:
+                if metaclass is Singleton:
+                    assert Example.get_existing_instance(name, enabled=enabled) is self
+                else:
+                    assert Example.get_existing_instance() is self
+
+    instance = Example("owner", enabled=True)
+    assert Example("owner", enabled=True) is instance
+    assert calls == [("new", "owner", True), ("init", "owner", True)]
+
+
+@pytest.mark.parametrize("metaclass", [Singleton, SingletonClass])
+@pytest.mark.parametrize("retain_failed", [False, True])
+def test_singleton_preserves_foreign_new_result(monkeypatch, metaclass, retain_failed):
+    """自定义 __new__ 返回其它类型时跳过初始化，并保留原有缓存差异。"""
+    result = object()
+    calls = []
+    monkeypatch.setattr(metaclass, "_instances", {})
+
+    class Example(metaclass=metaclass):
+        """模拟返回异类对象的动态构造器。"""
+
+        _retain_failed_singleton = retain_failed
+
+        def __new__(cls):
+            """返回外部对象，验证元类没有强制转换或重建实例。"""
+            calls.append("new")
+            return result
+
+        def __init__(self):
+            """异类构造结果不应进入本类初始化方法。"""
+            raise AssertionError("foreign instance must not be initialized")
+
+    assert Example() is result
+    assert Example.get_existing_instance() is (None if retain_failed else result)
+    assert Example() is result
+    assert calls == ["new"] * (2 if retain_failed else 1)
