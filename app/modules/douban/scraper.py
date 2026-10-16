@@ -8,12 +8,14 @@ from app.schemas.types import MediaType
 
 
 class DoubanScraper:
+    """根据豆瓣媒体信息生成 NFO 与图片清单。"""
+
     _force_nfo = False
     _force_img = False
 
-    def get_metadata_nfo(self, mediainfo: MediaInfo, season: Optional[int] = None) -> Optional[str]:
+    def get_metadata_nfo(self, mediainfo: MediaInfo, season: Optional[int] = None) -> Optional[bytes]:
         """
-        获取NFO文件内容文本
+        获取 UTF-8 编码的 NFO XML 字节
         :param mediainfo: 媒体信息
         :param season: 季号
         """
@@ -33,7 +35,7 @@ class DoubanScraper:
         return None
 
     @staticmethod
-    def get_metadata_img(mediainfo: MediaInfo, season: Optional[int] = None, episode: Optional[int] = None) -> Optional[dict]:
+    def get_metadata_img(mediainfo: MediaInfo, season: Optional[int] = None, episode: Optional[int] = None) -> dict[str, str]:
         """
         获取图片内容
         :param mediainfo: 媒体信息
@@ -54,7 +56,8 @@ class DoubanScraper:
         return ret_dict
 
     @staticmethod
-    def __gen_common_nfo(mediainfo: MediaInfo, doc: minidom.Document, root: minidom.Node):
+    def __gen_common_nfo(mediainfo: MediaInfo, doc: minidom.Document, root: minidom.Element) -> minidom.Document:
+        """向已有文档追加豆瓣简介、演职员和评分信息。"""
         # 简介
         xplot = DomUtils.add_node(doc, root, "plot")
         xplot.appendChild(doc.createCDATASection(mediainfo.overview or ""))
