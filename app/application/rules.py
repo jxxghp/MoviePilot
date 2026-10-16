@@ -34,8 +34,7 @@ from app.application.subscription.contract import (
 )
 from app.domain.context import MediaInfo
 from app.schemas.common import JsonData
-from app.schemas.rule import CustomRule
-from app.schemas.system import FilterRuleGroup
+from app.schemas.rule import CustomRule, FilterRuleGroup
 from app.schemas.types import SystemConfigKey
 
 _RULE_GROUP_LIST_CONFIG_KEYS = (
@@ -657,6 +656,7 @@ BUILTIN_RULE_SET: Dict[str, dict[str, Any]] = {
 
 
 class RuleParser:
+    """按线程隔离解析器状态，解析用户规则表达式。"""
 
     _lock = threading.Lock()
     _thread_local = threading.local()
