@@ -1,19 +1,21 @@
 import inspect
 import json
 from functools import wraps
-from typing import Annotated, Any, Awaitable, Callable, Optional, cast, get_args, get_origin
+from typing import Annotated, Any, Callable, Coroutine, Optional, cast, get_args, get_origin
 
 from fastapi import APIRouter, Query, Request
 from fastapi.datastructures import DefaultPlaceholder
 from fastapi.responses import JSONResponse
-from fastapi.routing import APIRoute, get_typed_return_annotation
-from fastapi.utils import ModelField, create_model_field
+from fastapi._compat import ModelField
+from fastapi.dependencies.utils import get_typed_return_annotation
+from fastapi.routing import APIRoute
+from fastapi.utils import create_model_field
 from starlette.responses import Response as StarletteResponse
 
 from app.schemas.common import JsonData
 from app.schemas.response import Response, ValidationIssue
 
-ERROR_RESPONSES: dict[int, dict[str, Any]] = {
+ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     400: {"model": Response[None], "description": "请求错误"},
     401: {"model": Response[None], "description": "未认证"},
     403: {"model": Response[None], "description": "无权限"},
@@ -28,11 +30,11 @@ ERROR_RESPONSES: dict[int, dict[str, Any]] = {
 # 默认错误响应只用于生成 OpenAPI 文档。FastAPI 会为每个路由的每个带 model 的附加响应单独创建
 # ModelField，并各自编译一套 pydantic 校验器与序列化器；全部路由改为共用下面这一组字段，文档输出不变。
 # 构造路由时先传入去掉 model 的声明，使 FastAPI 不再逐路由创建字段，构造后再换回原声明并挂上共享字段。
-_ERROR_RESPONSES_WITHOUT_MODEL: dict[int, dict[str, Any]] = {
+_ERROR_RESPONSES_WITHOUT_MODEL: dict[int | str, dict[str, Any]] = {
     status: {key: value for key, value in spec.items() if key != "model"}
     for status, spec in ERROR_RESPONSES.items()
 }
-_SHARED_ERROR_RESPONSE_FIELDS: dict[int, ModelField] = {
+_SHARED_ERROR_RESPONSE_FIELDS: dict[int | str, ModelField] = {
     status: create_model_field(
         name=f"Response_{status}", type_=spec["model"], mode="serialization"
     )
@@ -185,10 +187,10 @@ class ResponseAPIRoute(APIRoute):
 
     def get_route_handler(
         self,
-    ) -> Callable[[Request], Awaitable[StarletteResponse]]:
+    ) -> Callable[[Request], Coroutine[object, object, StarletteResponse]]:
         """在标准端点序列化后附加兼容列表分页与数量元数据。"""
         original_handler = cast(
-            Callable[[Request], Awaitable[StarletteResponse]],
+            Callable[[Request], Coroutine[object, object, StarletteResponse]],
             super().get_route_handler(),
         )
         if not self._collection_response:
