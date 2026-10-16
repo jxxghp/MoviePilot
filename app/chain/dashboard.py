@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, cast
 
 from app.chain.base import ChainBase
 from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
@@ -14,10 +14,16 @@ class DashboardChain(ChainBase):
         """
         媒体数量统计
         """
-        return self.run_module("media_statistic", server=server)
+        return cast(
+            Optional[List[_SchemaStatistic]],
+            self.run_module("media_statistic", server=server),
+        )
 
     def downloader_info(self, downloader: Optional[str] = None) -> Optional[List[_SchemaDownloaderInfo]]:
         """
         下载器信息
         """
-        return self.run_module("downloader_info", downloader=downloader)
+        return cast(
+            Optional[List[_SchemaDownloaderInfo]],
+            self.run_module("downloader_info", downloader=downloader),
+        )
