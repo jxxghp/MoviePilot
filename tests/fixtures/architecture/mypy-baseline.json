@@ -2456,9 +2456,6 @@
     "no-untyped-def": 2,
     "type-arg": 4
   },
-  "app/runtime/localization.py": {
-    "no-any-return": 1
-  },
   "app/runtime/progress.py": {
     "no-any-return": 4,
     "type-arg": 6
