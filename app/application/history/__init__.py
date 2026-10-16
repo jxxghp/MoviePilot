@@ -430,7 +430,8 @@ class HistoryQueryService:
         record = await self._transfer_repository.async_get(history_id)
         if record is None:
             return None
-        return TransferHistory.model_validate(record)
+        history: TransferHistory = TransferHistory.model_validate(record)
+        return history
 
     async def get_transfers(
         self,
