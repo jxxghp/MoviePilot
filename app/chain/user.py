@@ -35,7 +35,7 @@ class UserChain(ChainBase):
             mfa_code: Optional[str] = None,
             code: Optional[str] = None,
             grant_type: Optional[str] = "password"
-    ) -> Tuple[bool, Union[str, UserAuthSnapshot, MfaRequired, None]]:
+    ) -> Union[Tuple[Literal[True], UserAuthSnapshot], Tuple[Literal[False], Union[str, MfaRequired, None]]]:
         """
         认证用户，根据不同的 grant_type 处理不同的认证流程
 
@@ -45,8 +45,8 @@ class UserChain(ChainBase):
         :param code: 授权码，适用于 "authorization_code" grant_type
         :param grant_type: 认证类型，如 "password", "authorization_code", "client_credentials"
         :return:
-            - 对于成功的认证，返回 (True, User)
-            - 对于失败的认证，返回 (False, "错误信息")
+            - 对于成功的认证，返回 (True, UserAuthSnapshot)
+            - 对于失败的认证，返回 (False, "错误信息") 或 (False, MfaRequired)
         """
         credentials = AuthCredentials(
             username=username,
@@ -92,9 +92,9 @@ class UserChain(ChainBase):
         elif credentials.grant_type == "authorization_code":
             # 处理其他认证类型的分支
             if self.runtime_config.auxiliary_auth_enable:
-                aux_success, aux_user_or_message = self.auxiliary_authenticate(credentials=credentials)
-                if aux_success:
-                    return True, aux_user_or_message
+                auth_result = self.auxiliary_authenticate(credentials=credentials)
+                if auth_result[0]:
+                    return True, auth_result[1]
                 else:
                     return False, "认证失败"
             else:
@@ -107,7 +107,7 @@ class UserChain(ChainBase):
     def password_authenticate(
         cls,
         credentials: AuthCredentials,
-    ) -> Tuple[bool, Union[UserAuthSnapshot, str]]:
+    ) -> Union[Tuple[Literal[True], UserAuthSnapshot], Tuple[Literal[False], str]]:
         """
         密码认证
 
@@ -141,7 +141,7 @@ class UserChain(ChainBase):
     def auxiliary_authenticate(
         self,
         credentials: AuthCredentials,
-    ) -> Tuple[bool, Union[UserAuthSnapshot, str]]:
+    ) -> Union[Tuple[Literal[True], UserAuthSnapshot], Tuple[Literal[False], str]]:
         """
         辅助用户认证
 
