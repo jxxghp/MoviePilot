@@ -1931,12 +1931,6 @@
     "union-attr": 2,
     "valid-type": 1
   },
-  "app/workflow/actions/__init__.py": {
-    "assignment": 1,
-    "no-untyped-def": 2,
-    "type-arg": 7,
-    "var-annotated": 1
-  },
   "app/workflow/actions/add_download.py": {
     "arg-type": 1,
     "attr-defined": 1,
@@ -1947,11 +1941,6 @@
   "app/workflow/actions/add_subscribe.py": {
     "type-arg": 1,
     "union-attr": 1,
-    "var-annotated": 1
-  },
-  "app/workflow/actions/fetch_downloads.py": {
-    "operator": 1,
-    "type-arg": 1,
     "var-annotated": 1
   },
   "app/workflow/actions/fetch_medias.py": {
@@ -1968,12 +1957,6 @@
     "union-attr": 2,
     "var-annotated": 1
   },
-  "app/workflow/actions/filter_medias.py": {
-    "operator": 1,
-    "type-arg": 1,
-    "union-attr": 1,
-    "var-annotated": 1
-  },
   "app/workflow/actions/filter_torrents.py": {
     "arg-type": 1,
     "no-untyped-call": 1,
@@ -1982,12 +1965,7 @@
     "var-annotated": 1
   },
   "app/workflow/actions/invoke_plugin.py": {
-    "type-arg": 2,
-    "var-annotated": 1
-  },
-  "app/workflow/actions/note.py": {
-    "type-arg": 1,
-    "var-annotated": 1
+    "type-arg": 2
   },
   "app/workflow/actions/scan_file.py": {
     "type-arg": 1,
@@ -2003,12 +1981,7 @@
   },
   "app/workflow/actions/send_event.py": {
     "assignment": 1,
-    "type-arg": 1,
-    "var-annotated": 1
-  },
-  "app/workflow/actions/send_message.py": {
-    "type-arg": 1,
-    "var-annotated": 1
+    "type-arg": 1
   },
   "app/workflow/actions/transfer_file.py": {
     "arg-type": 1,
