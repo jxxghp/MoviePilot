@@ -175,7 +175,7 @@ class ResponseAPIRoute(APIRoute):
             force_raw=force_raw,
         )
         if should_wrap:
-            kwargs["response_model"] = Response[response_model]
+            kwargs["response_model"] = Response.__class_getitem__(response_model)
             endpoint = self._wrap_endpoint(endpoint)
 
         kwargs["responses"] = self._merge_error_responses(
