@@ -24,7 +24,8 @@ class OtpUtils:
         校验二次验证是否正确
         """
         try:
-            return pyotp.TOTP(pyotp.parse_uri(otp_uri).secret).verify(password)
+            valid: bool = pyotp.TOTP(pyotp.parse_uri(otp_uri).secret).verify(password)
+            return valid
         except Exception as err:
             print(str(err))
             return False
@@ -36,7 +37,8 @@ class OtpUtils:
         """
         try:
             totp = pyotp.TOTP(secret)
-            return totp.verify(password)
+            valid: bool = totp.verify(password)
+            return valid
         except Exception as err:
             print(str(err))
             return False
@@ -47,7 +49,8 @@ class OtpUtils:
         获取uri中的secret
         """
         try:
-            return pyotp.parse_uri(otp_uri).secret
+            secret: str = pyotp.parse_uri(otp_uri).secret
+            return secret
         except Exception as err:
             print(str(err))
             return ""

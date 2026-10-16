@@ -678,9 +678,6 @@
     "no-any-return": 1,
     "type-arg": 3
   },
-  "app/application/security/otp.py": {
-    "no-any-return": 3
-  },
   "app/application/security/token.py": {
     "no-any-return": 3,
     "operator": 1
