@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Optional, Self
 
 from sqlalchemy import JSON, Boolean, Index, String, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,50 +42,54 @@ class User(Base):
         cls,
         db: Session,
         name: str,
-    ):
+    ) -> Optional[Self]:
         """在调用方同步会话中按用户名查询用户。"""
-        return db.execute(select(cls).where(cls.name == name)).scalars().first()
+        user: Optional[Self] = db.execute(select(cls).where(cls.name == name)).scalars().first()
+        return user
 
     @classmethod
     async def async_get_by_name(
         cls,
         db: AsyncSession,
         name: str,
-    ):
+    ) -> Optional[Self]:
         """在调用方异步会话中按用户名查询用户。"""
         result = await db.execute(select(cls).filter(cls.name == name))
-        return result.scalars().first()
+        user: Optional[Self] = result.scalars().first()
+        return user
 
     @classmethod
-    def get_by_id(cls, db: Session, user_id: int):
+    def get_by_id(cls, db: Session, user_id: int) -> Optional[Self]:
         """在调用方同步会话中按用户 ID 查询用户。"""
-        return db.execute(select(cls).where(cls.id == user_id)).scalars().first()
+        user: Optional[Self] = db.execute(select(cls).where(cls.id == user_id)).scalars().first()
+        return user
 
     @classmethod
     async def async_get_by_id(
         cls,
         db: AsyncSession,
         user_id: int,
-    ):
+    ) -> Optional[Self]:
         """在调用方异步会话中按用户 ID 查询用户。"""
         result = await db.execute(select(cls).filter(cls.id == user_id))
-        return result.scalars().first()
+        user: Optional[Self] = result.scalars().first()
+        return user
 
-    def delete_by_name(self, db: Session, name: str):
+    def delete_by_name(self, db: Session, name: str) -> bool:
         """在调用方同步会话中按用户名暂存删除。"""
         user = self.get_by_name(db, name)
         if user:
             db.delete(user)
         return True
 
-    async def async_delete_by_name(self, db: AsyncSession, name: str):
+    async def async_delete_by_name(self, db: AsyncSession, name: str) -> bool:
         """在调用方异步会话中按用户名暂存删除。"""
         user = await self.async_get_by_name(db, name)
         if user:
             await db.delete(user)
         return True
 
-    def delete_by_id(self, db: Session, user_id: int):
+    def delete_by_id(self, db: Session, user_id: int) -> bool:
         """在调用方同步会话中按用户 ID 暂存删除。"""
         user = self.get_by_id(db, user_id)
         if user:
@@ -93,14 +97,14 @@ class User(Base):
         return True
 
     @classmethod
-    async def async_delete_by_id(cls, db: AsyncSession, user_id: int):
+    async def async_delete_by_id(cls, db: AsyncSession, user_id: int) -> bool:
         """异步按用户 ID 删除用户，供 UserOper 通过类方法调用。"""
         user = await cls.async_get_by_id(db, user_id)
         if user:
             await db.delete(user)
         return True
 
-    def update_otp_by_name(self, db: Session, name: str, otp: bool, secret: str):
+    def update_otp_by_name(self, db: Session, name: str, otp: bool, secret: str) -> bool:
         """在调用方同步会话中更新指定用户的 OTP 状态。"""
         user = self.get_by_name(db, name)
         if user:
@@ -110,7 +114,7 @@ class User(Base):
         return False
 
     @classmethod
-    async def async_update_otp_by_name(cls, db: AsyncSession, name: str, otp: bool, secret: str):
+    async def async_update_otp_by_name(cls, db: AsyncSession, name: str, otp: bool, secret: str) -> bool:
         """异步按用户名更新 OTP 状态，供 UserOper 通过类方法调用。"""
         user = await cls.async_get_by_name(db, name)
         if user:

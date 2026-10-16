@@ -996,9 +996,6 @@
     "no-untyped-def": 20,
     "type-arg": 1
   },
-  "app/db/models/user.py": {
-    "no-untyped-def": 10
-  },
   "app/db/models/workflow.py": {
     "no-untyped-def": 27,
     "type-arg": 4
@@ -1043,7 +1040,7 @@
     "union-attr": 2
   },
   "app/db/oper/user.py": {
-    "no-any-return": 6,
+    "no-any-return": 4,
     "no-untyped-def": 2,
     "type-arg": 4
   },
