@@ -43,10 +43,11 @@ def check_system_limits() -> Dict[str, Any]:
     检查系统监控相关限制。
     :return: 系统限制信息
     """
+    warnings: List[str] = []
     limits = {
         'max_user_watches': 0,
         'max_user_instances': 0,
-        'warnings': []
+        'warnings': warnings
     }
 
     try:
@@ -65,7 +66,7 @@ def check_system_limits() -> Dict[str, Any]:
             except Exception as e:
                 logger.debug(f"读取 inotify 实例限制失败: {e}")
     except Exception as e:
-        limits['warnings'].append(f"检查系统限制时出错: {e}")
+        warnings.append(f"检查系统限制时出错: {e}")
 
     return limits
 
