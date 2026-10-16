@@ -726,9 +726,6 @@
   "app/application/servarr.py": {
     "valid-type": 2
   },
-  "app/application/server/report.py": {
-    "type-arg": 5
-  },
   "app/application/server/share.py": {
     "type-arg": 6
   },

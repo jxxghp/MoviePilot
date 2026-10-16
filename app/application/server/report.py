@@ -25,11 +25,11 @@ class ServerReportService:
             installed_plugins_provider: Callable[[], list[str]],
             subscribes_provider: Callable[[], list[Any]],
             async_subscribes_provider: Callable[[], Awaitable[list[Any]]] | None = None,
-            plugin_report_sender: Callable[[list[dict]], Any],
-            async_plugin_report_sender: Callable[[list[dict]], Awaitable[Any]],
-            subscribe_report_sender: Callable[[list[dict]], Any],
+            plugin_report_sender: Callable[[list[dict[str, object]]], Any],
+            async_plugin_report_sender: Callable[[list[dict[str, object]]], Awaitable[Any]],
+            subscribe_report_sender: Callable[[list[dict[str, object]]], Any],
             repo_url_sanitizer: Callable[[Optional[str]], Optional[str]],
-            async_subscribe_report_sender: Callable[[list[dict]], Awaitable[Any]] | None = None,
+            async_subscribe_report_sender: Callable[[list[dict[str, object]]], Awaitable[Any]] | None = None,
             async_config_writer: Callable[[Any, Any], Awaitable[Any]] | None = None,
     ) -> None:
         """保存本地读取端口和只负责 I/O 的中心服务发送端口。"""
@@ -76,14 +76,15 @@ class ServerReportService:
         """统一判断首次上报是否仍需执行。"""
         return enabled and not self._config_reader(state_key)
 
-    def build_subscribe_payload(self, item: Optional[dict]) -> Optional[dict]:
+    def build_subscribe_payload(self, item: Optional[dict[str, object]]) -> Optional[dict[str, object]]:
         """构造中心服务订阅统计载荷并移除本地运行字段。"""
-        return build_subscribe_payload(item, self.SUBSCRIBE_FIELDS)
+        payload: dict[str, object] | None = build_subscribe_payload(item, self.SUBSCRIBE_FIELDS)
+        return payload
 
     def build_plugin_payload(
             self,
             items: Optional[list[tuple[str, Optional[str]]]] = None,
-    ) -> list[dict[str, Any]]:
+    ) -> list[dict[str, object]]:
         """构造插件安装统计载荷并脱敏本地仓库路径。"""
         if items:
             return [
@@ -103,7 +104,7 @@ class ServerReportService:
     def _prepare_subscribe_report(
         self,
         subscribes: list[Any],
-    ) -> tuple[bool, Optional[list[dict[str, Any]]]]:
+    ) -> tuple[bool, Optional[list[dict[str, object]]]]:
         """把订阅读取结果投影为无需发送的终态或待发送载荷。"""
         if not subscribes:
             return True, None
@@ -121,7 +122,7 @@ class ServerReportService:
         *,
         enabled: bool,
         items: Optional[list[tuple[str, Optional[str]]]],
-    ) -> Optional[list[dict[str, Any]]]:
+    ) -> Optional[list[dict[str, object]]]:
         """统一执行插件上报准入并构造脱敏载荷。"""
         if not enabled:
             return None
