@@ -994,9 +994,6 @@
   "app/db/models/agenttaskrun.py": {
     "no-any-return": 1
   },
-  "app/db/models/downloadfailure.py": {
-    "no-any-return": 1
-  },
   "app/db/models/downloadhistory.py": {
     "no-untyped-def": 19
   },
