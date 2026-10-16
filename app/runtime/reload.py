@@ -90,6 +90,6 @@ class ConfigReloadMixin:
         """子类重写此方法实现具体重载逻辑"""
         pass
 
-    def get_reload_name(self) -> str:
+    def get_reload_name(self) -> str | None:
         """功能/模块名称"""
         return self.__class__.__name__
