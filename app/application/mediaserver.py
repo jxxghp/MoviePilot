@@ -46,10 +46,16 @@ class MediaServerSyncItem:
         item_type: Optional[str],
         seasoninfo: Mapping[int, Optional[list[int]]],
         sync_time: str,
+        server: Optional[str] = None,
     ) -> "MediaServerSyncItem":
-        """冻结远端媒体条目和本轮剧集快照，供短事务持久化。"""
+        """
+        冻结远端媒体条目和本轮剧集快照，供短事务持久化。
+
+        :param server: 媒体服务器配置名称；模块条目只携带 emby/jellyfin 等类型名，
+            陈旧清理、排除清理与存在性检查均按配置名称隔离缓存，同步写入必须使用同一键。
+        """
         return cls(
-            server=str(item.server or ""),
+            server=str(server or item.server or ""),
             library=str(item.library) if item.library is not None else None,
             item_id=str(item.item_id or ""),
             item_type=item_type,

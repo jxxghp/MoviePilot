@@ -375,6 +375,7 @@ class MediaServerChain(ChainBase):
                         item_type=item_type,
                         seasoninfo=seasoninfo,
                         sync_time=sync_time,
+                        server=server_name,
                     )
                 )
                 if progress_callback:
