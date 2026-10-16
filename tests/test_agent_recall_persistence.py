@@ -443,7 +443,7 @@ async def test_history_output_keeps_its_own_bounded_structure(repository):
 
 
 @pytest.mark.asyncio
-async def test_managed_maintenance_drains_and_shutdown_cancels(tmp_path):
+async def test_managed_maintenance_drains_and_shutdown_cancels(tmp_path, monkeypatch):
     """后台维护只登记一个用户任务，退出后清除 owner；取消保留可恢复进度。"""
     from app.runtime.tasks import TaskRegistry
     registry = TaskRegistry()
@@ -456,8 +456,20 @@ async def test_managed_maintenance_drains_and_shutdown_cancels(tmp_path):
     assert registry.records[0].owner == 'agent.history'
     await registry.records[0].task
     assert not registry.records and not service._maintenance
+    started = asyncio.Event()
+    blocked = asyncio.Event()
+
+    async def pending_maintenance(_user_id):
+        """固定取消场景的任务状态，避免真实 SQLite 工作先于 shutdown 完成。"""
+        started.set()
+        await blocked.wait()
+
+    monkeypatch.setattr(service, '_maintain', pending_maintenance)
     await service.search('alice', RecallQuery(query='needle'))
+    await asyncio.wait_for(started.wait(), timeout=1)
+    task = service._maintenance['alice']
     assert await registry.shutdown(timeout_seconds=1)
+    assert task.cancelled()
     assert not service._maintenance
 
 
