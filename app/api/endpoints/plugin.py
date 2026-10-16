@@ -126,6 +126,7 @@ def _schedule_plugin_release_refresh(plugin_id: str, repo_url: str, task_registr
     _plugin_release_refresh_tasks.add(task)
 
     def _discard_task(completed_task: asyncio.Task) -> None:
+        """从受管集合移除已经结束的插件更新任务。"""
         _plugin_release_refresh_tasks.discard(completed_task)
 
     task.add_done_callback(_discard_task)
@@ -577,7 +578,7 @@ def plugin_sidebar_nav(
     return get_plugin_manager().get_plugin_sidebar_nav()
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/agent_pets", summary="获取插件 Agent 助手形象", response_model=List[_SchemaPluginAgentPet]
 )
 def plugin_agent_pets(
@@ -768,6 +769,7 @@ async def plugin_static_file(
     try:
         # 异步生成器函数，用于流式读取文件
         async def file_generator():
+            """分块异步读取插件文件供下载响应使用。"""
             async with aiofiles.open(plugin_file_path, mode="rb") as file:
                 # 8KB 块大小
                 while chunk := await file.read(8192):
@@ -789,7 +791,7 @@ async def plugin_static_file(
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/runtime/capabilities",
     summary="查询插件运行能力",
     response_model=_SchemaResponse[_SchemaPluginRuntimeCapabilities],
@@ -848,7 +850,7 @@ async def plugin_capabilities(
     )
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/runtime/{plugin_id}/data",
     summary="查询插件持久化数据",
     response_model=_SchemaResponse[_SchemaJsonObject],
