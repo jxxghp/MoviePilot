@@ -2,7 +2,7 @@
 
 import uuid
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Mapping, Optional, Sequence
 
 from app.schemas.types import ReplyMode
 
@@ -10,10 +10,13 @@ from app.schemas.types import ReplyMode
 def build_display_message(
     role: str,
     content: str = "",
-    attachments: Optional[list[dict]] = None,
+    attachments: Optional[Sequence[Mapping[str, object]]] = None,
     status: str = "done",
 ) -> dict[str, Any]:
-    """构造前后端共享的 Agent 会话展示消息。"""
+    """构造前后端共享的 Agent 会话展示消息。
+
+    附件只读且不复制非空输入，字段值可以保留嵌套展示数据。
+    """
     normalized_content = content or ""
     return {
         "id": f"{role}-{uuid.uuid4().hex}",

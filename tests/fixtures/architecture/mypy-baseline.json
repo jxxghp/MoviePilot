@@ -117,9 +117,6 @@
     "no-untyped-def": 8,
     "type-arg": 1
   },
-  "app/agent/contracts.py": {
-    "type-arg": 1
-  },
   "app/agent/llm/capability.py": {
     "no-any-return": 4,
     "no-untyped-def": 6,
