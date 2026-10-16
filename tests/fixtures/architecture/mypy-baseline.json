@@ -1686,19 +1686,8 @@
   "app/modules/thetvdb/__init__.py": {
     "empty-body": 1,
     "no-any-return": 2,
-    "no-untyped-call": 1,
     "no-untyped-def": 3,
     "type-arg": 2
-  },
-  "app/modules/thetvdb/client.py": {
-    "arg-type": 4,
-    "assignment": 118,
-    "misc": 1,
-    "no-any-return": 64,
-    "no-untyped-call": 2,
-    "no-untyped-def": 16,
-    "return-value": 1,
-    "type-arg": 68
   },
   "app/modules/transmission/__init__.py": {
     "arg-type": 8,
