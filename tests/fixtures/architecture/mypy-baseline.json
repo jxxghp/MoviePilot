@@ -1070,9 +1070,6 @@
     "no-any-return": 1,
     "override": 1
   },
-  "app/db/oper/plugindata.py": {
-    "no-untyped-def": 2
-  },
   "app/db/oper/site.py": {
     "arg-type": 1,
     "no-any-return": 4,
