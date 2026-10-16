@@ -12,18 +12,18 @@ from app.schemas.types import MediaSource, MediaType
 class NfoReader:
     """读取 Kodi 风格 NFO XML 中的元素值。"""
 
-    def __init__(self, xml_file_path: Path):
+    def __init__(self, xml_file_path: Path) -> None:
         """解析指定 NFO 文件并保存根元素。"""
         self.xml_file_path = xml_file_path
         self.tree = ET.parse(xml_file_path)
         self.root = self.tree.getroot()
 
-    def get_element_value(self, element_path) -> Optional[str]:
+    def get_element_value(self, element_path: str) -> Optional[str]:
         """返回首个匹配元素的文本。"""
         element = self.root.find(element_path)
         return element.text if element is not None else None
 
-    def get_elements(self, element_path) -> List[ET.Element]:
+    def get_elements(self, element_path: str) -> List[ET.Element]:
         """返回路径匹配的全部 XML 元素。"""
         return self.root.findall(element_path)
 
@@ -61,7 +61,7 @@ class MediaScraperHelper:
         cls,
         mediainfo: MediaInfo,
         doc: minidom.Document,
-        root: minidom.Node,
+        root: minidom.Element,
     ) -> None:
         """
         向 NFO 根节点写入各媒体类型共享的标准字段。
@@ -128,14 +128,14 @@ class MediaScraperHelper:
         mediainfo: MediaInfo,
         season: Optional[int] = None,
         episode: Optional[int] = None,
-    ) -> Optional[str]:
+    ) -> Optional[bytes]:
         """
         根据统一媒体信息生成电影、剧集、季或单集 NFO。
 
         :param mediainfo: 统一媒体信息
         :param season: 季号
         :param episode: 集号
-        :return: NFO XML 文本
+        :return: UTF-8 编码的 NFO XML 字节
         """
         if not mediainfo:
             return None
@@ -173,7 +173,7 @@ class MediaScraperHelper:
         mediainfo: MediaInfo,
         season: Optional[int] = None,
         episode: Optional[int] = None,
-    ) -> dict:
+    ) -> dict[str, str]:
         """
         根据统一媒体信息生成主海报和背景图下载清单。
 
