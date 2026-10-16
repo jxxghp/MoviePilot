@@ -13,12 +13,14 @@ from langchain.agents import create_agent
 from langchain.agents.middleware.types import ExtendedModelResponse, ModelRequest, ModelResponse
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage, messages_to_dict
+from langchain_deepseek import ChatDeepSeek
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import InMemorySaver
 from PIL import Image
 from pydantic import Field
 
 from app.agent.llm.helper import LLMHelper
+from app.agent.llm.provider import LLMProviderManager
 from app.agent.middleware.subagents import create_subagent_middlewares
 from app.agent.middleware.summarization import (
     ContextPreservingSummarizationMiddleware,
@@ -203,6 +205,75 @@ def test_model_image_support_uses_actual_model_and_live_switch(monkeypatch):
     assert not LLMHelper.supports_model_image_input(text)
     monkeypatch.setattr(settings, "LLM_SUPPORT_IMAGE_INPUT", False)
     assert not LLMHelper.supports_model_image_input(vision)
+
+
+@pytest.mark.parametrize("catalog_support", [True, False, None])
+@pytest.mark.parametrize("profile_support", [True, False, None])
+def test_model_image_support_prefers_catalog_then_profile(monkeypatch, catalog_support, profile_support):
+    """目录的明确能力优先于依赖档案，目录未知时保留档案和自定义模型兜底。"""
+    monkeypatch.setattr(settings, "LLM_SUPPORT_IMAGE_INPUT", True)
+    model = SimpleNamespace(model_name="actual-model", profile={"image_inputs": profile_support})
+    LLMHelper._attach_runtime_metadata(model, {"provider_id": "actual-provider", "base_url": "https://model.invalid"})
+    calls = []
+
+    def resolve(_self, **kwargs):
+        """只接受本次模型身份，不允许用全局默认模型或端点代替。"""
+        calls.append(kwargs)
+        if catalog_support is None:
+            return {}
+        return {"modalities": {"input": ["text", "image"] if catalog_support else ["text"]}}
+
+    monkeypatch.setattr(LLMProviderManager, "resolve_cached_model_metadata", resolve)
+    expected = catalog_support if catalog_support is not None else profile_support is not False
+    assert LLMHelper.supports_model_image_input(model) is expected
+    assert calls == [{"provider_id": "actual-provider", "model_id": "actual-model",
+                      "base_url": "https://model.invalid", "base_url_preset_id": ""}]
+    monkeypatch.setattr(settings, "LLM_SUPPORT_IMAGE_INPUT", False)
+    assert not LLMHelper.supports_model_image_input(model)
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("identity", [{}, {"model_id": "custom-model"}, {"_moviepilot_llm_provider_id": "custom"}])
+@pytest.mark.parametrize("profile_support", [True, False, None])
+def test_model_image_support_without_identity_does_not_use_global_catalog(monkeypatch, identity, profile_support):
+    """缺少实际模型身份时只参考该实例档案，不能误用全局默认模型能力。"""
+    monkeypatch.setattr(settings, "LLM_SUPPORT_IMAGE_INPUT", True)
+
+    def reject(*_args, **_kwargs):
+        """身份不全时查询目录会把默认主模型能力错误套给子模型。"""
+        raise AssertionError("不得查询全局模型目录")
+
+    monkeypatch.setattr(LLMHelper, "_resolve_catalog_image_input_support", reject)
+    model = SimpleNamespace(**identity, profile={"image_inputs": profile_support})
+    assert LLMHelper.supports_model_image_input(model) is (profile_support is not False)
+
+
+def test_deepseek_sdk_receives_images_despite_stale_profile(monkeypatch, image_url):
+    """真实 DeepSeek SDK 在目录声明视觉能力时收到工具图片，旧静态档案不能剥离载荷。"""
+    monkeypatch.setattr(settings, "LLM_SUPPORT_IMAGE_INPUT", True)
+
+    def resolve(_self, provider_id, model_id, **_kwargs):
+        """离线回放报告中的模型目录能力，不访问提供商或 models.dev。"""
+        assert (provider_id, model_id) == ("deepseek", "deepseek-v4-flash")
+        return {"modalities": {"input": ["text", "image"]}}
+
+    monkeypatch.setattr(LLMProviderManager, "resolve_cached_model_metadata", resolve)
+    model = ChatDeepSeek(model="deepseek-v4-flash", api_key="test-key", api_base="https://model.invalid")
+    try:
+        assert model.profile["image_inputs"] is False
+        LLMHelper._attach_runtime_metadata(model, {"provider_id": "deepseek", "base_url": "https://model.invalid"})
+        request = _request(_messages(image_url), model=model)
+        original = messages_to_dict(request.messages)
+        projected = VisionMiddleware().project_request(request)
+        payload = model._get_request_payload(projected.messages)
+        assert payload["messages"][-1]["role"] == "user"
+        assert payload["messages"][-1]["content"][1]["image_url"] == {"url": image_url, "detail": "low"}
+        assert VISION_UNAVAILABLE not in str(payload)
+        assert messages_to_dict(request.messages) == original
+        assert model.profile["image_inputs"] is False
+    finally:
+        model.root_client.close()
+        asyncio.run(model.root_async_client.close())
 
 
 @pytest.mark.parametrize("status", [401, 403, 429, 500])

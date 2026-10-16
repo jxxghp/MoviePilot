@@ -1163,25 +1163,28 @@ class LLMHelper:
 
     @classmethod
     def supports_model_image_input(cls, model: Any) -> bool:
-        """按本次实际模型的 profile 和目录判断图像输入，每次请求重新读取用户总开关。"""
+        """
+        按实际模型优先读取缓存目录能力，未知时回退到依赖包 profile。
+
+        依赖包静态档案可能滞后于提供商能力；目录中的明确声明与用户附件
+        使用相同判定。每次请求重新读取总开关，不查询其他全局默认模型。
+        """
         if not get_runtime_setting('LLM_SUPPORT_IMAGE_INPUT'):
             return False
         profile = getattr(model, "profile", None)
         profile = profile if isinstance(profile, dict) else {}
-        supported = profile.get("image_inputs")
-        if isinstance(supported, bool):
-            return supported
         provider = getattr(model, "_moviepilot_llm_provider_id", None) or profile.get("moviepilot_provider_id")
         model_name = next((value for name in ("model_name", "model", "model_id")
                            if isinstance(value := getattr(model, name, None), str) and value), None)
-        if not provider or not model_name:
-            # 未知自定义模型沿用用户图片开关，不能套用另一个全局默认模型的能力。
-            return True
-        base_url = getattr(model, "_moviepilot_llm_base_url", None) or profile.get("moviepilot_base_url") or ""
-        supported = cls._resolve_catalog_image_input_support(
-            provider=str(provider), model=model_name, base_url=str(base_url), base_url_preset="",
-        )
-        return supported is not False
+        if provider and model_name:
+            base_url = getattr(model, "_moviepilot_llm_base_url", None) or profile.get("moviepilot_base_url") or ""
+            supported = cls._resolve_catalog_image_input_support(
+                provider=str(provider), model=model_name, base_url=str(base_url), base_url_preset="",
+            )
+            if supported is not None:
+                return supported
+        supported = profile.get("image_inputs")
+        return supported if isinstance(supported, bool) else True
 
     @staticmethod
     def is_unsupported_image_input_error(error: BaseException) -> bool:

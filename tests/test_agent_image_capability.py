@@ -22,6 +22,9 @@ def stub_llm_model_catalog(monkeypatch):
         ("zhipuai", "glm-5v-turbo"): {
             "modalities": {"input": ["text", "image"], "output": ["text"]},
         },
+        ("deepseek", "deepseek-v4-flash"): {
+            "modalities": {"input": ["text", "image"], "output": ["text"]},
+        },
     }
 
     def fake_resolve(self, provider_id, model_id, base_url=None, base_url_preset_id=None):
@@ -75,21 +78,25 @@ def test_agent_capability_manager_delegates_image_support():
     supports.assert_called_once_with()
 
 
-def test_handle_ai_message_routes_text_only_model_images_to_files(
-        monkeypatch, stub_llm_model_catalog
+@pytest.mark.parametrize("provider, model, supports_images", [
+    ("minimax", "MiniMax-M2.7", False),
+    ("deepseek", "deepseek-v4-flash", True),
+])
+def test_handle_ai_message_routes_images_by_catalog_capability(
+        monkeypatch, stub_llm_model_catalog, provider, model, supports_images
 ):
-    """纯文本模型收到图片消息时，应降级为文件附件而非 image_url 内容块。"""
+    """目录视觉模型接收图片输入，纯文本模型保留文件附件降级。"""
     chain = MessageChain()
     chain.runtime_config = replace(
         chain.runtime_config,
         ai_agent_enable=True,
-        llm_provider="minimax",
-        llm_model="MiniMax-M2.7",
+        llm_provider=provider,
+        llm_model=model,
     )
     monkeypatch.setattr(settings, "AI_AGENT_ENABLE", True)
     monkeypatch.setattr(settings, "LLM_SUPPORT_IMAGE_INPUT", True)
-    monkeypatch.setattr(settings, "LLM_PROVIDER", "minimax")
-    monkeypatch.setattr(settings, "LLM_MODEL", "MiniMax-M2.7")
+    monkeypatch.setattr(settings, "LLM_PROVIDER", provider)
+    monkeypatch.setattr(settings, "LLM_MODEL", model)
     loop = Mock(**{"is_running.return_value": True, "is_closed.return_value": False})
     monkeypatch.setattr(global_vars, "CURRENT_EVENT_LOOP", loop)
     # 测试绕过完整启动组合根，按需装配 llm_helper provider 以走真实能力判断
@@ -102,7 +109,8 @@ def test_handle_ai_message_routes_text_only_model_images_to_files(
     with patch.object(
         chain, "_get_or_create_session_id", return_value="session-1"
     ), patch.object(
-        chain, "_download_attachments_to_data_urls"
+        chain, "_download_attachments_to_data_urls",
+        return_value=["data:image/jpeg;base64,aW1hZ2U="],
     ) as download_images, patch.object(
         chain,
         "_prepare_agent_files",
@@ -130,6 +138,12 @@ def test_handle_ai_message_routes_text_only_model_images_to_files(
             username="tester",
             images=["tg://file_id/image-1"],
         )
+
+    if supports_images:
+        download_images.assert_called_once()
+        assert not prepare_files.call_args.kwargs["files"]
+        assert process_message.call_args.kwargs["images"] == ["data:image/jpeg;base64,aW1hZ2U="]
+        return
 
     download_images.assert_not_called()
     prepare_files.assert_called_once()
