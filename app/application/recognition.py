@@ -15,9 +15,10 @@ class RecognitionRuleService:
         """惰性获取配置服务，避免引导阶段早于组合根装配。"""
         return self._systemconfig or get_configured_system_config()
 
-    def get_customization(self) -> object:
-        """返回当前自定义占位符配置。"""
-        return self._config().get(SystemConfigKey.Customization)
+    def get_customization(self) -> list[str] | str | None:
+        """按配置合同返回自定义占位符列表、历史文本值或空值。"""
+        customization: list[str] | str | None = self._config().get(SystemConfigKey.Customization)
+        return customization
 
     def get_release_groups(self) -> list[str] | str | None:
         """按配置合同返回制作组列表、历史文本值或空值。"""
