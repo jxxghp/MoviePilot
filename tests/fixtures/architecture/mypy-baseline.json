@@ -577,9 +577,6 @@
   "app/application/agent.py": {
     "no-any-return": 4
   },
-  "app/application/agenttask.py": {
-    "type-arg": 1
-  },
   "app/application/commands.py": {
     "no-any-return": 1
   },

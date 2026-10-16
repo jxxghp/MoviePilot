@@ -103,10 +103,12 @@ async def test_cancelled_overloaded_claim_does_not_start_compensation() -> None:
         """在认领取得 worker admission 前稳定制造取消窗口。"""
 
         def __init__(self) -> None:
+            """初始化容量拒绝次数和首轮认领信号。"""
             self.calls = 0
             self.first_call = asyncio.Event()
 
         async def run(self, _operation):
+            """拒绝认领，并在意外启动补偿时暴露错误。"""
             self.calls += 1
             self.first_call.set()
             if self.calls > 1:
@@ -142,12 +144,15 @@ async def test_cancelled_started_claim_is_compensated_before_return() -> None:
         """在认领已写入但事务尚未提交的位置制造取消窗口。"""
 
         def __init__(self, session: object) -> None:
+            """包装真实仓储以控制认领事务的取消窗口。"""
             self._repository = AgentTaskOper(session)
 
         def __getattr__(self, name: str):
+            """把其余操作交给真实仓储执行。"""
             return getattr(self._repository, name)
 
         def begin_run(self, *args, **kwargs):
+            """在认领完成但事务未提交时等待取消信号。"""
             run = self._repository.begin_run(*args, **kwargs)
             started.set()
             release.wait()
@@ -213,12 +218,15 @@ async def test_repeated_finalize_cancellation_waits_for_single_terminal_write() 
         """在运行终态已写入但事务尚未提交的位置制造重复取消窗口。"""
 
         def __init__(self, session: object) -> None:
+            """包装真实仓储以控制终态事务的取消窗口。"""
             self._repository = AgentTaskOper(session)
 
         def __getattr__(self, name: str):
+            """把其余操作交给真实仓储执行。"""
             return getattr(self._repository, name)
 
         def finish_run_outcome(self, *args, **kwargs):
+            """在终态写入但事务未提交时等待取消信号。"""
             outcome = self._repository.finish_run_outcome(*args, **kwargs)
             started.set()
             release.wait()

@@ -14,7 +14,14 @@ from app.runtime.execution import await_task_to_terminal
 from app.schemas.exception import DatabaseWorkerOverloadedError
 
 T = TypeVar("T")
-SyncTransaction = Callable[[Callable[[object], T]], T]
+
+
+class SyncTransaction(Protocol):
+    """在同步事务内执行回调，每次调用独立保留回调的结果类型。"""
+
+    def __call__(self, operation: Callable[[object], T], /) -> T:
+        """由事务 owner 提供会话，并原样返回本次操作结果。"""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -254,6 +261,7 @@ class AgentTaskExecutionService:
         run_created = threading.Event()
 
         def transaction(session: object) -> AgentTaskClaim:
+            """在同一事务内认领任务或生成拒绝快照，避免泄漏 ORM 对象。"""
             repository = self._repository(session)
             run = repository.begin_run(
                 task_id=task_id,
@@ -277,9 +285,10 @@ class AgentTaskExecutionService:
             """容量瞬时耗尽时保留本轮调度，直到认领取得 admission。"""
             while True:
                 try:
-                    return await self._async_executor.run(
+                    claim_result: AgentTaskClaim = await self._async_executor.run(
                         lambda: self._sync_transaction(transaction)
                     )
+                    return claim_result
                 except DatabaseWorkerOverloadedError:
                     await asyncio.sleep(0.01)
 
@@ -334,6 +343,7 @@ class AgentTaskExecutionService:
         """按稳定运行 ID 收口，供正常路径和取消补偿共享。"""
 
         def transaction(session: object) -> AgentTaskFinishOutcome:
+            """在同一事务内收口运行，并复制真实更新结果供调度器处理。"""
             repository = self._repository(session)
             outcome = repository.finish_run_outcome(
                 run_id=run_id,
@@ -350,9 +360,10 @@ class AgentTaskExecutionService:
             """容量瞬时耗尽时保留 owner，直到收口取得 admission。"""
             while True:
                 try:
-                    return await self._async_executor.run(
+                    finish_result: AgentTaskFinishOutcome = await self._async_executor.run(
                         lambda: self._sync_transaction(transaction)
                     )
+                    return finish_result
                 except DatabaseWorkerOverloadedError:
                     await asyncio.sleep(0.01)
 
