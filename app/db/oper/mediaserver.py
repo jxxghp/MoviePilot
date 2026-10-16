@@ -1,11 +1,13 @@
-from typing import Any, Optional, Union, cast
+from typing import TYPE_CHECKING, Any, Optional, Union, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
 from app.db.models.mediaserver import MediaServerItem
-from app.schemas.types import MediaSource
+
+if TYPE_CHECKING:
+    from app.schemas.types import MediaSource
 
 
 class MediaServerOper(DbOper):
@@ -144,7 +146,7 @@ class MediaServerOper(DbOper):
             item = self._execute_sync_query(
                 lambda session: MediaServerItem.exist_by_media_identity(
                     session,
-                    media_source=cast(MediaSource | str, kwargs.get("media_source")),
+                    media_source=cast("MediaSource | str", kwargs.get("media_source")),
                     media_id=cast(str, kwargs.get("media_id")),
                     mtype=cast(Optional[str], kwargs.get("mtype")),
                     server=kwargs.get("server"),
@@ -159,7 +161,7 @@ class MediaServerOper(DbOper):
                             title=cast(str, kwargs.get("title")),
                             mtype=cast(Optional[str], kwargs.get("mtype")),
                             year=cast(str | int, kwargs.get("year")),
-                            media_source=cast(MediaSource | str, kwargs["media_source"]),
+                            media_source=cast("MediaSource | str", kwargs["media_source"]),
                             server=kwargs.get("server"),
                         )
                     ),
@@ -195,7 +197,7 @@ class MediaServerOper(DbOper):
             item = await self._execute_async_query(
                 lambda session: MediaServerItem.async_exist_by_media_identity(
                     session,
-                    media_source=cast(MediaSource | str, kwargs.get("media_source")),
+                    media_source=cast("MediaSource | str", kwargs.get("media_source")),
                     media_id=cast(str, kwargs.get("media_id")),
                     mtype=cast(Optional[str], kwargs.get("mtype")),
                     server=kwargs.get("server"),
@@ -210,7 +212,7 @@ class MediaServerOper(DbOper):
                             title=cast(str, kwargs.get("title")),
                             mtype=cast(Optional[str], kwargs.get("mtype")),
                             year=cast(str | int, kwargs.get("year")),
-                            media_source=cast(MediaSource | str, kwargs["media_source"]),
+                            media_source=cast("MediaSource | str", kwargs["media_source"]),
                             server=kwargs.get("server"),
                         )
                     ),
