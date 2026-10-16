@@ -20,7 +20,8 @@ def is_frozen() -> bool:
 
 def is_free_threaded_runtime() -> bool:
     """判断当前解释器是否为 CPython free-threaded 构建。"""
-    return sysconfig.get_config_var("Py_GIL_DISABLED") == 1
+    gil_disabled: object = sysconfig.get_config_var("Py_GIL_DISABLED")
+    return gil_disabled == 1
 
 
 def is_gil_enabled() -> bool:

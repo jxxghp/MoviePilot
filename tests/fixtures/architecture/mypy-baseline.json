@@ -1285,9 +1285,6 @@
     "assignment": 2,
     "no-untyped-def": 5
   },
-  "app/foundation/environment.py": {
-    "no-any-return": 1
-  },
   "app/foundation/singleton.py": {
     "arg-type": 2,
     "misc": 2,
