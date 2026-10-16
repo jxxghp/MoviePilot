@@ -8,15 +8,16 @@ import platform
 import sys
 import sysconfig
 from pathlib import Path
-from typing import Any, Callable, Optional
-
-from requests import Response
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 from app.adapters.network.http import RequestUtils
 from app.adapters.system.host import SystemUtils
 from app.foundation.version import compare_version
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
+
+if TYPE_CHECKING:
+    from requests import Response
 
 ResourceVersionProvider = Callable[[], tuple[str, str]]
 
