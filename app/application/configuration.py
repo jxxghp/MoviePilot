@@ -437,7 +437,7 @@ class SystemConfigService:
             partial(self._writer.set, key, normalized_value)
         )
         return SystemConfigWriteResult(
-            changed=cast(bool | None, result),
+            changed=result,
             normalized_value=normalized_value,
         )
 

@@ -580,9 +580,6 @@
   "app/application/commands.py": {
     "no-any-return": 1
   },
-  "app/application/configuration.py": {
-    "redundant-cast": 1
-  },
   "app/application/dashboard.py": {
     "operator": 5
   },
