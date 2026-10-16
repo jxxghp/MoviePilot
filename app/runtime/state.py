@@ -35,7 +35,7 @@ class SystemHelper(ConfigReloadMixin):
     __local_restart_log_file = (
         get_runtime_setting('LOG_PATH') / "moviepilot.restart.stdout.log"
     )
-    __one_shot_dev_update_flag_file = (
+    __one_shot_dev_update_flag_file: Path = (
         get_runtime_setting('TEMP_PATH') / "moviepilot.pending_dev_update"
     )
     __prepared_update_manifest = (
@@ -46,11 +46,11 @@ class SystemHelper(ConfigReloadMixin):
     __supervisor_socket = Path("/run/moviepilot/supervisor.sock")
     __supervisor_update_worker = "moviepilot-update-worker"
 
-    def on_config_changed(self):
+    def on_config_changed(self) -> None:
         """配置变化后重新应用日志设置。"""
         logger.update_loggers()
 
-    def get_reload_name(self):
+    def get_reload_name(self) -> str:
         """返回配置重载日志使用的组件名称。"""
         return "日志设置"
 
@@ -69,7 +69,7 @@ class SystemHelper(ConfigReloadMixin):
         )
 
     @staticmethod
-    def _load_runtime_file(path: Path) -> Optional[dict]:
+    def _load_runtime_file(path: Path) -> Optional[dict[str, object]]:
         """安全读取本地进程运行状态文件。"""
         if not path.exists():
             return None
@@ -88,12 +88,12 @@ class SystemHelper(ConfigReloadMixin):
 
         pid = runtime.get("pid")
         create_time = runtime.get("create_time")
-        if not pid:
+        if not pid or not isinstance(pid, (str, int, float)):
             return False
 
         try:
             pid = int(pid)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             return False
 
         if pid != os.getpid():
@@ -101,10 +101,13 @@ class SystemHelper(ConfigReloadMixin):
 
         if create_time is None:
             return True
+        if not isinstance(create_time, (str, int, float)):
+            return False
 
         try:
             current_process = psutil.Process(os.getpid())
-            return abs(current_process.create_time() - float(create_time)) <= 2
+            started_at: float = current_process.create_time()
+            return abs(started_at - float(create_time)) <= 2
         except (psutil.Error, TypeError, ValueError):
             return False
 
@@ -174,7 +177,7 @@ class SystemHelper(ConfigReloadMixin):
                 "close_fds": True,
                 "env": env,
             }
-            if os.name == "nt":
+            if sys.platform == "win32":
                 kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
             else:
                 kwargs["start_new_session"] = True
@@ -199,6 +202,7 @@ class SystemHelper(ConfigReloadMixin):
     ) -> None:
         """延迟调用本地 supervisor 控制命令，确保重启接口有机会完成响应。"""
         def run_command() -> None:
+            """执行已选定的 supervisor 操作并记录启动失败。"""
             command = [
                 str(SystemHelper.__supervisorctl),
                 "-c",
@@ -296,7 +300,7 @@ class SystemHelper(ConfigReloadMixin):
             return False, message
         return True, "已安排 Dev 更新并重启"
 
-    def set_system_modified(self):
+    def set_system_modified(self) -> None:
         """
         设置系统已修改标志
         """
