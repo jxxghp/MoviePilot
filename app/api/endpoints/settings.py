@@ -34,7 +34,7 @@ def _settings_service(runtime: HostRuntime) -> SystemSettingsService:
     )
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/setting/{key}",
     summary="查询系统设置",
     response_model=_SchemaResponse[_SchemaValueData],
@@ -52,7 +52,7 @@ async def get_setting(
     return _SchemaResponse(success=True, data={"value": value})
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/setting/{key}",
     summary="更新系统设置",
     response_model=_SchemaResponse[None],
@@ -68,7 +68,7 @@ async def set_setting(
     return _SchemaResponse(success=result.success, message=result.message)
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/settings/catalog",
     summary="List system setting contracts",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -105,7 +105,7 @@ async def catalog_settings(
     return _SchemaResponse(success=True, data=data)
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/settings/describe/{setting_key}",
     summary="Describe one system setting contract",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -135,7 +135,7 @@ async def describe_setting(
     return _SchemaResponse(success=True, data=data)
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/settings",
     summary="Discover or read registered system settings",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -190,7 +190,7 @@ async def query_settings(
     return _SchemaResponse(success=True, data=data)
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/settings",
     summary="Update one registered system setting",
     response_model=_SchemaResponse[_SchemaJsonObject],
