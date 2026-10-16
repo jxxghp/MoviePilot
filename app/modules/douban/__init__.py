@@ -1854,9 +1854,9 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
                                                         count=count)
         return self._project_collection(infos)
 
-    def metadata_nfo(self, mediainfo: MediaInfo, season: int = None, **kwargs) -> Optional[str]:
+    def metadata_nfo(self, mediainfo: MediaInfo, season: int = None, **kwargs) -> Optional[bytes]:
         """
-        获取NFO文件内容文本
+        获取 UTF-8 编码的 NFO XML 字节
         :param mediainfo: 媒体信息
         :param season: 季号
         """
