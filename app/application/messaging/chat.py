@@ -93,7 +93,7 @@ class SyncAgentChatRepository(Protocol):
         self,
         session_id: str,
         user_id: Optional[str] = None,
-        messages: Optional[list[dict]] = None,
+        messages: Optional[list[dict[str, object]]] = None,
         username: Optional[str] = None,
         channel: Optional[Any] = None,
         source: Optional[str] = None,
@@ -107,7 +107,7 @@ class SyncAgentChatRepository(Protocol):
         self,
         session_id: str,
         user_id: Optional[str] = None,
-        messages: Optional[list[dict]] = None,
+        messages: Optional[list[dict[str, object]]] = None,
         username: Optional[str] = None,
         channel: Optional[Any] = None,
         source: Optional[str] = None,
@@ -121,7 +121,7 @@ class SyncAgentChatRepository(Protocol):
         self,
         session_id: str,
         user_id: Optional[str],
-        messages: list[dict],
+        messages: list[dict[str, object]],
     ) -> None:
         """保存可恢复的原始 Agent 消息。"""
         ...
@@ -161,8 +161,8 @@ class AgentChatRecord:
     message_count: int
     created_at: Any
     updated_at: Any
-    messages: list[dict]
-    agent_messages: list[dict]
+    messages: list[dict[str, object]]
+    agent_messages: list[dict[str, object]]
 
 
 class AsyncUnitOfWork(Protocol):
@@ -448,7 +448,7 @@ class AgentChatPersistenceService:
         *,
         session_id: str,
         user_id: Optional[str] = None,
-        messages: Optional[list[dict]] = None,
+        messages: Optional[list[dict[str, object]]] = None,
         username: Optional[str] = None,
         channel: Optional[Any] = None,
         source: Optional[str] = None,
@@ -476,7 +476,7 @@ class AgentChatPersistenceService:
         *,
         session_id: str,
         user_id: Optional[str] = None,
-        messages: Optional[list[dict]] = None,
+        messages: Optional[list[dict[str, object]]] = None,
         username: Optional[str] = None,
         channel: Optional[Any] = None,
         source: Optional[str] = None,
@@ -504,7 +504,7 @@ class AgentChatPersistenceService:
         *,
         session_id: str,
         user_id: str,
-        messages: list[dict],
+        messages: list[dict[str, object]],
     ) -> None:
         """异步保存可恢复的原始消息。"""
         await self._run_write(
