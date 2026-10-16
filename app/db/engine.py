@@ -68,7 +68,7 @@ def _register_sqlite_foreign_keys(engine: SyncEngine) -> None:
     event.listen(engine, "connect", enable_foreign_keys)
 
 
-def _async_pool_kwargs(pooled: bool) -> dict:
+def _async_pool_kwargs(pooled: bool) -> dict[str, object]:
     """
     异步引擎的连接池参数。
 
@@ -149,7 +149,7 @@ def build_sqlite_engine(url: str) -> SyncEngine:
     return engine
 
 
-def _get_database_engine(is_async: bool = False, pooled: bool = False):
+def _get_database_engine(is_async: bool = False, pooled: bool = False) -> SyncEngine | SaAsyncEngine:
     """
     获取数据库连接参数并设置WAL模式
     :param is_async: 是否创建异步引擎，True - 异步引擎, False - 同步引擎
@@ -163,7 +163,7 @@ def _get_database_engine(is_async: bool = False, pooled: bool = False):
         return _get_sqlite_engine(is_async, pooled=pooled)
 
 
-def _get_sqlite_engine(is_async: bool = False, pooled: bool = False):
+def _get_sqlite_engine(is_async: bool = False, pooled: bool = False) -> SyncEngine | SaAsyncEngine:
     """
     获取SQLite数据库引擎
     """
@@ -214,7 +214,7 @@ def _get_sqlite_engine(is_async: bool = False, pooled: bool = False):
         return async_engine
 
 
-def _get_postgresql_engine(is_async: bool = False, pooled: bool = False):
+def _get_postgresql_engine(is_async: bool = False, pooled: bool = False) -> SyncEngine | SaAsyncEngine:
     """
     获取PostgreSQL数据库引擎
     """

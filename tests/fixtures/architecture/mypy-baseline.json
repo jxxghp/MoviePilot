@@ -977,10 +977,6 @@
     "no-any-return": 1,
     "redundant-cast": 2
   },
-  "app/db/engine.py": {
-    "no-untyped-def": 3,
-    "type-arg": 1
-  },
   "app/db/models/downloadhistory.py": {
     "no-untyped-def": 19
   },
