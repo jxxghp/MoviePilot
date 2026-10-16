@@ -4,7 +4,7 @@ from typing import Optional, Tuple
 from urllib.parse import urlencode, urljoin
 
 from app.foundation import temporal as time_tools
-from app.modules.indexer.parser import SiteParserBase, SiteSchema
+from app.modules.indexer.parser import SitePage, SiteParserBase, SiteSchema
 from app.runtime.log import logger
 
 
@@ -16,7 +16,7 @@ class SunnyPTSiteUserInfo(SiteParserBase):
     schema = SiteSchema.SunnyPT
     request_mode = "apikey"
 
-    def _parse_site_page(self, html_text: str) -> None:
+    def _parse_site_page(self, html_text: SitePage) -> None:
         """
         配置 SunnyPT 用户数据接口地址和认证请求头
 
@@ -35,7 +35,7 @@ class SunnyPTSiteUserInfo(SiteParserBase):
             "X-API-Key": self.apikey,
         }
 
-    def _load_api_payload(self, html_text: str, operation: str) -> Optional[dict]:
+    def _load_api_payload(self, html_text: SitePage, operation: str) -> Optional[dict]:
         """
         解析并校验 SunnyPT 通用 JSON 响应
 
@@ -47,6 +47,8 @@ class SunnyPTSiteUserInfo(SiteParserBase):
             self.err_msg = f"{operation}失败，未收到 API 响应"
             return None
         try:
+            if isinstance(html_text, dict):
+                raise TypeError("the JSON object must be str, bytes or bytearray, not dict")
             payload = json.loads(html_text)
         except (TypeError, json.JSONDecodeError) as err:
             self.err_msg = f"{operation}失败，API 响应不是有效 JSON"
@@ -63,7 +65,7 @@ class SunnyPTSiteUserInfo(SiteParserBase):
         data = payload.get("data")
         return data if isinstance(data, dict) else None
 
-    def _parse_user_base_info(self, html_text: str) -> None:
+    def _parse_user_base_info(self, html_text: SitePage) -> None:
         """
         解析 SunnyPT 用户资料、流量和做种统计
 
@@ -105,7 +107,7 @@ class SunnyPTSiteUserInfo(SiteParserBase):
                 return
             page += 1
 
-    def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:
+    def _parse_message_unread_links(self, html_text: str, msg_links: list[str]) -> Optional[str]:
         """
         解析 SunnyPT 未读消息列表并直接保存消息正文
 
