@@ -1332,9 +1332,6 @@
     "type-arg": 5,
     "union-attr": 1
   },
-  "app/foundation/url.py": {
-    "type-arg": 1
-  },
   "app/main.py": {
     "misc": 1,
     "no-untyped-call": 1,

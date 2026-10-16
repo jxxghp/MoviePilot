@@ -1,7 +1,7 @@
 import mimetypes
 import re
 from pathlib import Path
-from typing import Iterable, Optional, Tuple, Union
+from typing import Iterable, Mapping, Optional, Tuple, Union
 from urllib import parse
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
@@ -68,13 +68,17 @@ class UrlUtils:
         return urljoin(host, endpoint) if host else endpoint
 
     @staticmethod
-    def combine_url(host: str, path: Optional[str] = None, query: Optional[dict] = None) -> Optional[str]:
+    def combine_url(
+        host: str,
+        path: Optional[str] = None,
+        query: Optional[Mapping[str, object]] = None,
+    ) -> Optional[str]:
         """
         使用给定的主机头、路径和查询参数组合生成完整的URL
         :param host: str, 主机头，例如 https://example.com
         :param path: Optional[str], 包含路径和可能已经包含的查询参数的端点，例如 /path/to/resource?current=1
-        :param query: Optional[dict], 可选，额外的查询参数，例如 {"key": "value"}
-        :return: str, 完整的请求URL字符串
+        :param query: 可选的额外查询参数，保留单值和序列值的 URL 编码语义
+        :return: 完整的请求 URL 字符串，组合失败时返回 None
         """
         try:
             # 如果路径为空，则默认为 '/'
@@ -86,7 +90,7 @@ class UrlUtils:
             # 解析当前 URL 的组成部分
             url_parts = urlparse(url)
             # 解析已存在的查询参数，并与额外的查询参数合并
-            query_params = parse_qs(url_parts.query)
+            query_params: dict[str, object] = dict(parse_qs(url_parts.query))
             if query:
                 for key, value in query.items():
                     query_params[key] = value
