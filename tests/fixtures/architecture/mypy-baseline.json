@@ -2297,9 +2297,6 @@
     "attr-defined": 1,
     "type-arg": 4
   },
-  "app/runtime/extensions/plugin/catalog.py": {
-    "no-any-return": 5
-  },
   "app/runtime/extensions/plugin/manager.py": {
     "assignment": 4,
     "attr-defined": 1,
