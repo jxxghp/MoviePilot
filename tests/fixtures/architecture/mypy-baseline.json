@@ -981,11 +981,6 @@
     "arg-type": 8,
     "no-untyped-def": 18
   },
-  "app/db/models/transferhistory.py": {
-    "no-any-return": 3,
-    "no-untyped-def": 20,
-    "type-arg": 1
-  },
   "app/db/oper/downloadhistory.py": {
     "no-any-return": 1,
     "no-untyped-def": 9,
@@ -1014,7 +1009,6 @@
     "union-attr": 3
   },
   "app/db/oper/transferhistory.py": {
-    "no-any-return": 2,
     "no-untyped-def": 6,
     "union-attr": 2
   },
