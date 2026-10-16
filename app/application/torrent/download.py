@@ -244,6 +244,12 @@ def _size_filter_failure(torrent: TorrentInfo, size_range: Optional[str]) -> Opt
     return f"资源大小不符合条件：{size_range}" if outside else None
 
 
+def _title_fragments(value: str, separators: str) -> set[str]:
+    """先归一化再排除英文碎片，避免 Dream! 等片段绕过单词过滤。"""
+    fragments = {text_tools.normalize_upper(part) for part in re.split(separators, value)} - {""}
+    return {fragment for fragment in fragments if not text_tools.is_english_word(fragment)}
+
+
 class TorrentHelper:
     """
     种子帮助类
@@ -627,6 +633,9 @@ class TorrentHelper:
     def match_torrent(mediainfo: MediaInfo, torrent_meta: MetaBase, torrent: TorrentInfo) -> bool:
         """
         检查种子是否匹配媒体信息
+
+        完整名称可匹配英文标题或别名；拆分片段归一化后排除英文单词和空值，
+        防止标点把普通单词变成作品身份依据。
         :param mediainfo: 需要匹配的媒体信息
         :param torrent_meta: 种子识别信息
         :param torrent: 种子信息
@@ -647,7 +656,7 @@ class TorrentHelper:
             text_tools.normalize_upper(mediainfo.original_title)
         } - {""}
         # 要匹配的媒体别名、译名
-        media_names = {text_tools.normalize_upper(name) for name in mediainfo.names if name}
+        media_names = {text_tools.normalize_upper(name) for name in mediainfo.names if name} - {""}
         # 识别的种子中英文名
         meta_names = {
             text_tools.normalize_upper(torrent_meta.cn_name),
@@ -696,20 +705,15 @@ class TorrentHelper:
                 return True
         # 标题拆分
         if torrent_meta.org_string:
-            # 只拆分出标题中的非英文单词进行匹配，英文单词容易误匹配（带空格的多个单词组合除外）
-            titles = [text_tools.normalize_upper(t) for t in re.split(
-                r'[\s/【】.\[\]\-]+',
-                torrent_meta.org_string
-            ) if not text_tools.is_english_word(t)]
+            # 完整英文名称已在上方比较，拆分后的英文单词不能单独证明作品身份。
+            titles = _title_fragments(torrent_meta.org_string, r'[\s/【】.\[\]\-]+')
             # 在标题中判断是否存在标题、原语种标题
             if media_titles.intersection(titles):
                 logger.info(f'{mediainfo.title} 通过标题匹配到资源：{torrent.site_name} - {torrent.title}')
                 return True
         # 在副标题中（非英文单词）判断是否存在标题、原语种标题、别名、译名
         if torrent.description:
-            subtitles = {text_tools.normalize_upper(t) for t in re.split(
-                r'[\s/【】|]+',
-                torrent.description) if not text_tools.is_english_word(t)}
+            subtitles = _title_fragments(torrent.description, r'[\s/【】|]+')
             if media_titles.intersection(subtitles) or media_names.intersection(subtitles):
                 logger.info(f'{mediainfo.title} 通过副标题匹配到资源：{torrent.site_name} - {torrent.title}，'
                             f'副标题：{torrent.description}')
