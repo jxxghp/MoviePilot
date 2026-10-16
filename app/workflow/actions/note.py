@@ -15,7 +15,9 @@ class NoteAction(BaseAction):
 
     @property
     def success(self) -> bool:
+        """返回当前动作是否已达到完成条件。"""
         return True
 
-    def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict[str, object], context: ActionContext) -> ActionContext:
+        """备注不处理输入，原样保留工作流上下文。"""
         return context
