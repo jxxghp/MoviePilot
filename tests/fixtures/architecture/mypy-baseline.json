@@ -89,11 +89,6 @@
   "app/adapters/system/stdio.py": {
     "override": 1
   },
-  "app/adapters/web/metrics.py": {
-    "no-any-return": 1,
-    "type-arg": 3,
-    "union-attr": 1
-  },
   "app/adapters/web/plugin/routes.py": {
     "type-arg": 1
   },
@@ -2300,12 +2295,6 @@
     "attr-defined": 1,
     "type-arg": 4
   },
-  "app/runtime/extensions/plugin/access.py": {
-    "no-any-return": 1
-  },
-  "app/runtime/extensions/plugin/catalog.py": {
-    "no-any-return": 5
-  },
   "app/runtime/extensions/plugin/manager.py": {
     "assignment": 4,
     "attr-defined": 1,
@@ -2522,12 +2511,6 @@
     "no-any-return": 2,
     "no-untyped-call": 2,
     "no-untyped-def": 4
-  },
-  "app/startup/initializers/routers.py": {
-    "no-untyped-def": 1
-  },
-  "app/startup/initializers/workflow.py": {
-    "no-untyped-def": 1
   },
   "app/startup/lifecycle/__init__.py": {
     "arg-type": 2,

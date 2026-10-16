@@ -12,7 +12,7 @@ def reset_workflow_ports() -> None:
     reset_workflow_runtime()
 
 
-def init_workflow():
+def init_workflow() -> None:
     """
     初始化工作流
     """
@@ -28,7 +28,7 @@ def stop_workflow() -> bool:
     """
     停止工作流并返回全部活动执行是否收敛。
     """
-    converged = WorkflowManager().stop()
+    converged: bool = WorkflowManager().stop()
     if converged is not False:
         reset_workflow_ports()
     return converged

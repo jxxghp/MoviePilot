@@ -62,7 +62,7 @@ class PluginCatalogFacade:
         if not plugin_market:
             return []
         markets = split_plugin_market_repo_urls(plugin_market)
-        result = self._market_catalog().collect(
+        result: list[Plugin] = self._market_catalog().collect(
             markets=markets,
             compatible_flags=self._system().compatible_flags(
                 get_runtime_setting('VERSION_FLAG')
@@ -261,7 +261,8 @@ class PluginCatalogFacade:
         force: bool = False,
     ) -> list[Plugin]:
         """读取并映射指定插件市场。"""
-        return self._market_catalog().load(market, package_version, force)
+        plugins: list[Plugin] = self._market_catalog().load(market, package_version, force)
+        return plugins
 
     async def async_online(
         self,
@@ -275,7 +276,7 @@ class PluginCatalogFacade:
                 progress_callback(value=100, text="未配置插件市场，跳过刷新")
             return []
         markets = split_plugin_market_repo_urls(plugin_market)
-        result = await self._market_catalog().async_collect(
+        result: list[Plugin] = await self._market_catalog().async_collect(
             markets=markets,
             compatible_flags=self._system().compatible_flags(
                 get_runtime_setting('VERSION_FLAG')
@@ -311,17 +312,19 @@ class PluginCatalogFacade:
         force: bool = False,
     ) -> list[Plugin]:
         """异步读取并映射指定插件市场。"""
-        return await self._market_catalog().async_load(
+        plugins: list[Plugin] = await self._market_catalog().async_load(
             market,
             package_version,
             force,
         )
+        return plugins
 
     def merge(self, higher: list[Plugin], base: list[Plugin]) -> list[Plugin]:
         """合并不同代际插件目录并保留市场优先级。"""
         plugin_market = get_runtime_setting('PLUGIN_MARKET')
         markets = split_plugin_market_repo_urls(plugin_market)
-        return self._market_catalog().merge(higher, base, markets)
+        plugins: list[Plugin] = self._market_catalog().merge(higher, base, markets)
+        return plugins
 
     def _safe_state(self, plugin_id: str, plugin: Any) -> bool:
         """读取插件状态，单个插件异常不阻断整个本地目录。"""

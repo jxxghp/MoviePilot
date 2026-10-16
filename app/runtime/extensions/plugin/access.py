@@ -57,4 +57,5 @@ class PluginAccessPolicy:
                     public_key=public_key,
                     private_key=private_key,
                 )
-        return level >= plugin.auth_level
+        allowed: bool = level >= plugin.auth_level
+        return allowed

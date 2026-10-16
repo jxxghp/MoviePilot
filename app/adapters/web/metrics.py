@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import time
-from typing import Any
 
 from starlette.routing import Match
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.runtime.observability import record_metric
 
@@ -13,11 +13,11 @@ from app.runtime.observability import record_metric
 class HttpMetricsMiddleware:
     """按路由模板、方法和状态码记录低基数 HTTP 时延。"""
 
-    def __init__(self, app: Any) -> None:
+    def __init__(self, app: ASGIApp) -> None:
         """保存下游 ASGI 应用。"""
         self._app = app
 
-    async def __call__(self, scope: dict, receive: Any, send: Any) -> None:
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """只治理 HTTP scope，并在响应开始后读取路由模板。"""
         if scope.get("type") != "http":
             await self._app(scope, receive, send)
@@ -25,7 +25,7 @@ class HttpMetricsMiddleware:
         started_at = time.perf_counter()
         status = "500"
 
-        async def send_with_metrics(message: dict) -> None:
+        async def send_with_metrics(message: Message) -> None:
             """捕获响应状态并原样转发 ASGI 消息。"""
             nonlocal status
             if message.get("type") == "http.response.start":
@@ -44,16 +44,18 @@ class HttpMetricsMiddleware:
                 status=status,
             )
 
-    def _resolve_route_template(self, scope: dict) -> str:
+    def _resolve_route_template(self, scope: Scope) -> str:
         """遍历 ASGI wrapper 找到匹配路由模板，绝不回退到具体请求 path。"""
         route = scope.get("route")
-        if getattr(route, "path", None):
-            return route.path
-        candidate = self._app
+        if route is not None and getattr(route, "path", None):
+            route_path: str = route.path
+            return route_path
+        candidate: object | None = self._app
         while candidate is not None:
             for registered_route in getattr(candidate, "routes", ()):
                 match, _ = registered_route.matches(scope)
                 if match == Match.FULL:
-                    return getattr(registered_route, "path", "unmatched")
+                    matched_path: str = getattr(registered_route, "path", "unmatched")
+                    return matched_path
             candidate = getattr(candidate, "app", None)
         return "unmatched"
