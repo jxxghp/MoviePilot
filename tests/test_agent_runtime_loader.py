@@ -30,6 +30,12 @@ def runtime_loader(monkeypatch):
         "app.agent.orchestrator",
         "app.agent.tools.factory",
     ):
+        package_name, _, attribute = implementation_module.rpartition(".")
+        package = importlib.import_module(package_name)
+        # 重导入也会写入父包属性；与 sys.modules 一起恢复，避免后续补丁命中另一份模块。
+        # 先登记再移除属性，保证原本不存在的属性也能由 monkeypatch 完整撤销。
+        monkeypatch.setattr(package, attribute, vars(package).get(attribute), raising=False)
+        monkeypatch.delattr(package, attribute)
         monkeypatch.delitem(sys.modules, implementation_module, raising=False)
     return module
 
@@ -38,6 +44,7 @@ class _FakeManager:
     """记录异步 service 生命周期，并支持测试控制初始化时序。"""
 
     def __init__(self) -> None:
+        """初始化可观察的生命周期计数和并发控制状态。"""
         self.initialize_calls = 0
         self.close_calls = 0
         self.fail_initialize = False
@@ -46,6 +53,7 @@ class _FakeManager:
         self.close_converged: bool | None = None
 
     async def initialize(self) -> None:
+        """按测试设定等待屏障或抛错，模拟可控制的初始化时序。"""
         self.initialize_calls += 1
         if self.initialize_entered is not None:
             self.initialize_entered.set()
@@ -55,6 +63,7 @@ class _FakeManager:
             raise RuntimeError("service initialization failed")
 
     async def close(self) -> bool | None:
+        """记录关闭次数并返回当前测试指定的收敛结果。"""
         self.close_calls += 1
         return self.close_converged
 
@@ -119,6 +128,7 @@ async def test_shutdown_propagates_runtime_wide_convergence(
 
 
 def _fake_agent_modules(manager: object | None = None) -> dict[str, types.ModuleType]:
+    """构造包含 canonical 符号的模块替身，隔离真实 Agent 服务初始化。"""
     manager_module = types.ModuleType("app.agent.manager")
     manager_module.agent_manager = manager if manager is not None else object()
     orchestrator = types.ModuleType("app.agent.orchestrator")
@@ -176,6 +186,7 @@ def test_concurrent_manager_first_use_is_single_flight(
     import_release = threading.Event()
 
     def import_module(name: str):
+        """挂起首次导入，验证并发请求只会加载一个服务 owner。"""
         import_calls.append(name)
         import_entered.set()
         assert import_release.wait(timeout=5)
@@ -215,6 +226,7 @@ def test_tool_factory_has_independent_first_use_entrypoint(
     import_calls = []
 
     def import_module(name: str):
+        """登记当前能力的模块替身，避免触发真实服务的导入和初始化。"""
         import_calls.append(name)
         monkeypatch.setitem(sys.modules, name, modules[name])
         return modules[name]
@@ -264,6 +276,7 @@ async def test_service_first_and_entrypoint_first_share_canonical_identity(
     )
 
     def import_module(name: str):
+        """登记当前能力的模块替身，避免触发真实服务的导入和初始化。"""
         monkeypatch.setitem(sys.modules, name, modules[name])
         return modules[name]
 
@@ -311,6 +324,7 @@ async def test_entrypoint_first_then_service_initializes_same_manager_once(
     )
 
     def import_module(name: str):
+        """登记当前能力的模块替身，避免触发真实服务的导入和初始化。"""
         monkeypatch.setitem(sys.modules, name, modules[name])
         return modules[name]
 
@@ -377,6 +391,7 @@ async def test_concurrent_service_and_entrypoint_first_use_share_identity(
     )
 
     def import_module(name: str):
+        """在共享屏障处等待，验证不同能力的导入不会互相串行阻塞。"""
         import_calls.append(name)
         import_barrier.wait(timeout=5)
         monkeypatch.setitem(sys.modules, name, modules[name])
@@ -685,6 +700,7 @@ async def test_real_agent_manager_can_restart_across_config_generations(
     memory_events = []
 
     async def close_memory() -> None:
+        """记录记忆存储关闭顺序，核对生命周期退出的先后关系。"""
         memory_events.append("close")
 
     monkeypatch.setattr(
