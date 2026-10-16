@@ -1,4 +1,4 @@
-from typing import Any, List, Optional, Sequence
+from typing import Any, List, Optional, Sequence, cast
 
 from fastapi import Depends
 
@@ -122,7 +122,7 @@ async def douban_interests(
     """
     根据豆瓣ID查询短评，type_name: 电影/movie、电视剧/tv
     """
-    mediatype = MediaType.from_agent(type_name) or MediaType(type_name)
+    mediatype = MediaType.from_agent(type_name) or cast(MediaType, MediaType(type_name))
     if mediatype == MediaType.MOVIE:
         return await DoubanChain().async_movie_interests(doubanid=doubanid, start=start, count=count)
     elif mediatype == MediaType.TV:
@@ -145,7 +145,7 @@ async def douban_reviews(
     """
     根据豆瓣ID查询影评，type_name: 电影/movie、电视剧/tv
     """
-    mediatype = MediaType.from_agent(type_name) or MediaType(type_name)
+    mediatype = MediaType.from_agent(type_name) or cast(MediaType, MediaType(type_name))
     if mediatype == MediaType.MOVIE:
         return await DoubanChain().async_movie_reviews(doubanid=doubanid, start=start, count=count)
     elif mediatype == MediaType.TV:

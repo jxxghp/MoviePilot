@@ -2009,7 +2009,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         return []
 
     @staticmethod
-    def _process_comment_author(doubaninfo: Optional[dict]) -> Optional[_SchemaMediaCommentAuthor]:
+    def _process_comment_author(doubaninfo: Optional[dict[str, Any]]) -> Optional[_SchemaMediaCommentAuthor]:
         """
         把豆瓣用户信息投影为评论作者
         :param doubaninfo: 豆瓣用户信息
@@ -2025,7 +2025,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         )
 
     @staticmethod
-    def _process_comment_rating(doubaninfo: Optional[dict]) -> Optional[float]:
+    def _process_comment_rating(doubaninfo: Optional[dict[str, Any]]) -> Optional[float]:
         """
         提取豆瓣五分制评分
         :param doubaninfo: 豆瓣评分信息
@@ -2036,7 +2036,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         value = doubaninfo.get("value")
         return float(value) if value else None
 
-    def _process_interests(self, result: Optional[dict]) -> _SchemaMediaCommentPage:
+    def _process_interests(self, result: Optional[dict[str, Any]]) -> _SchemaMediaCommentPage:
         """
         把豆瓣短评响应投影为分页结果
         :param result: 豆瓣短评响应
@@ -2063,7 +2063,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             items=items,
         )
 
-    def _process_reviews(self, result: Optional[dict]) -> _SchemaMediaReviewPage:
+    def _process_reviews(self, result: Optional[dict[str, Any]]) -> _SchemaMediaReviewPage:
         """
         把豆瓣影评响应投影为分页结果
         :param result: 豆瓣影评响应

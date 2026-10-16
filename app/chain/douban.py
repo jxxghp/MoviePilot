@@ -1,4 +1,4 @@
-from typing import Any, Iterable, List, Optional
+from typing import Any, Iterable, List, Optional, cast
 
 from app.chain.base import ChainBase
 from app.domain.context import MediaInfo, MusicAlbumInfo, MusicInfo
@@ -454,7 +454,7 @@ class DoubanChain(ChainBase):
         :param start:  起始偏移
         :param count:  数量
         """
-        return self.run_module("douban_movie_interests", doubanid=doubanid, start=start, count=count)
+        return cast(_SchemaMediaCommentPage, self.run_module("douban_movie_interests", doubanid=doubanid, start=start, count=count))
 
     def tv_interests(self, doubanid: str, start: int = 0, count: int = 20) -> _SchemaMediaCommentPage:
         """
@@ -463,7 +463,7 @@ class DoubanChain(ChainBase):
         :param start:  起始偏移
         :param count:  数量
         """
-        return self.run_module("douban_tv_interests", doubanid=doubanid, start=start, count=count)
+        return cast(_SchemaMediaCommentPage, self.run_module("douban_tv_interests", doubanid=doubanid, start=start, count=count))
 
     def movie_reviews(self, doubanid: str, start: int = 0, count: int = 20) -> _SchemaMediaReviewPage:
         """
@@ -472,7 +472,7 @@ class DoubanChain(ChainBase):
         :param start:  起始偏移
         :param count:  数量
         """
-        return self.run_module("douban_movie_reviews", doubanid=doubanid, start=start, count=count)
+        return cast(_SchemaMediaReviewPage, self.run_module("douban_movie_reviews", doubanid=doubanid, start=start, count=count))
 
     def tv_reviews(self, doubanid: str, start: int = 0, count: int = 20) -> _SchemaMediaReviewPage:
         """
@@ -481,7 +481,7 @@ class DoubanChain(ChainBase):
         :param start:  起始偏移
         :param count:  数量
         """
-        return self.run_module("douban_tv_reviews", doubanid=doubanid, start=start, count=count)
+        return cast(_SchemaMediaReviewPage, self.run_module("douban_tv_reviews", doubanid=doubanid, start=start, count=count))
 
     async def async_movie_interests(self, doubanid: str, start: int = 0,
                                     count: int = 20) -> _SchemaMediaCommentPage:
@@ -491,8 +491,8 @@ class DoubanChain(ChainBase):
         :param start:  起始偏移
         :param count:  数量
         """
-        return await self.async_run_module("async_douban_movie_interests", doubanid=doubanid,
-                                           start=start, count=count)
+        return cast(_SchemaMediaCommentPage, await self.async_run_module("async_douban_movie_interests", doubanid=doubanid,
+                                                      start=start, count=count))
 
     async def async_tv_interests(self, doubanid: str, start: int = 0,
                                  count: int = 20) -> _SchemaMediaCommentPage:
@@ -502,8 +502,8 @@ class DoubanChain(ChainBase):
         :param start:  起始偏移
         :param count:  数量
         """
-        return await self.async_run_module("async_douban_tv_interests", doubanid=doubanid,
-                                           start=start, count=count)
+        return cast(_SchemaMediaCommentPage, await self.async_run_module("async_douban_tv_interests", doubanid=doubanid,
+                                                      start=start, count=count))
 
     async def async_movie_reviews(self, doubanid: str, start: int = 0,
                                   count: int = 20) -> _SchemaMediaReviewPage:
@@ -513,8 +513,8 @@ class DoubanChain(ChainBase):
         :param start:  起始偏移
         :param count:  数量
         """
-        return await self.async_run_module("async_douban_movie_reviews", doubanid=doubanid,
-                                           start=start, count=count)
+        return cast(_SchemaMediaReviewPage, await self.async_run_module("async_douban_movie_reviews", doubanid=doubanid,
+                                                      start=start, count=count))
 
     async def async_tv_reviews(self, doubanid: str, start: int = 0,
                                count: int = 20) -> _SchemaMediaReviewPage:
@@ -524,5 +524,5 @@ class DoubanChain(ChainBase):
         :param start:  起始偏移
         :param count:  数量
         """
-        return await self.async_run_module("async_douban_tv_reviews", doubanid=doubanid,
-                                           start=start, count=count)
+        return cast(_SchemaMediaReviewPage, await self.async_run_module("async_douban_tv_reviews", doubanid=doubanid,
+                                                      start=start, count=count))
