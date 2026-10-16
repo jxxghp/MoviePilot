@@ -1,10 +1,12 @@
 import os
 
 from ..exceptions import TMDbException
-from ..tmdb import TMDb
+from ..tmdb import TMDb, TMDbJson
 
 
 class Account(TMDb):
+    """提供 TMDb 账号详情、收藏、评分和待看列表接口。"""
+
     _urls = {
         "details": "/account",
         "created_lists": "/account/%s/lists",
@@ -20,12 +22,16 @@ class Account(TMDb):
     }
 
     @property
-    def account_id(self):
+    def account_id(self) -> str | None:
+        """读取缓存的账号 ID；未配置时沿用账号详情查询及环境变量缓存。"""
         if not os.environ.get("TMDB_ACCOUNT_ID"):
-            os.environ["TMDB_ACCOUNT_ID"] = str(self.details()["id"])
+            details = self.details()
+            if not isinstance(details, dict):
+                raise TypeError("TMDb account details must be a JSON object")
+            os.environ["TMDB_ACCOUNT_ID"] = str(details["id"])
         return os.environ.get("TMDB_ACCOUNT_ID")
 
-    def details(self):
+    def details(self) -> TMDbJson:
         """
         Get your account details.
         :return:
@@ -35,7 +41,7 @@ class Account(TMDb):
             params="session_id=%s" % self.session_id
         )
 
-    async def async_details(self):
+    async def async_details(self) -> TMDbJson:
         """
         Get your account details.（异步版本）
         :return:
@@ -45,7 +51,7 @@ class Account(TMDb):
             params="session_id=%s" % self.session_id
         )
 
-    def created_lists(self, page=1):
+    def created_lists(self, page: int | None = 1) -> TMDbJson:
         """
         Get all of the lists created by an account. Will include private lists if you are the owner.
         :param page: int
@@ -57,7 +63,7 @@ class Account(TMDb):
             key="results"
         )
 
-    async def async_created_lists(self, page=1):
+    async def async_created_lists(self, page: int | None = 1) -> TMDbJson:
         """
         Get all of the lists created by an account. Will include private lists if you are the owner.（异步版本）
         :param page: int
@@ -69,7 +75,8 @@ class Account(TMDb):
             key="results"
         )
 
-    def _get_list(self, url, asc_sort=True, page=1):
+    def _get_list(self, url: str, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
+        """拼装会话、分页和排序参数，返回账号列表原始 JSON。"""
         params = "session_id=%s&page=%s" % (self.session_id, page)
         if asc_sort is False:
             params += "&sort_by=created_at.desc"
@@ -79,7 +86,8 @@ class Account(TMDb):
             key="results"
         )
 
-    async def _async_get_list(self, url, asc_sort=True, page=1):
+    async def _async_get_list(self, url: str, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
+        """拼装会话、分页和排序参数，返回账号列表原始 JSON。"""
         params = "session_id=%s&page=%s" % (self.session_id, page)
         if asc_sort is False:
             params += "&sort_by=created_at.desc"
@@ -89,7 +97,7 @@ class Account(TMDb):
             key="results"
         )
 
-    def favorite_movies(self, asc_sort=True, page=1):
+    def favorite_movies(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
         Get the list of your favorite movies.
         :param asc_sort: bool
@@ -98,7 +106,7 @@ class Account(TMDb):
         """
         return self._get_list("favorite_movies", asc_sort=asc_sort, page=page)
 
-    async def async_favorite_movies(self, asc_sort=True, page=1):
+    async def async_favorite_movies(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
         Get the list of your favorite movies.（异步版本）
         :param asc_sort: bool
@@ -107,7 +115,7 @@ class Account(TMDb):
         """
         return await self._async_get_list("favorite_movies", asc_sort=asc_sort, page=page)
 
-    def favorite_tv_shows(self, asc_sort=True, page=1):
+    def favorite_tv_shows(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
         Get the list of your favorite TV shows.
         :param asc_sort: bool
@@ -116,7 +124,7 @@ class Account(TMDb):
         """
         return self._get_list("favorite_tv", asc_sort=asc_sort, page=page)
 
-    async def async_favorite_tv_shows(self, asc_sort=True, page=1):
+    async def async_favorite_tv_shows(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
         Get the list of your favorite TV shows.（异步版本）
         :param asc_sort: bool
@@ -125,7 +133,7 @@ class Account(TMDb):
         """
         return await self._async_get_list("favorite_tv", asc_sort=asc_sort, page=page)
 
-    def mark_as_favorite(self, media_id, media_type, favorite=True):
+    def mark_as_favorite(self, media_id: int | str, media_type: str, favorite: bool = True) -> None:
         """
         This method allows you to mark a movie or TV show as a favorite item.
         :param media_id: int
@@ -145,7 +153,7 @@ class Account(TMDb):
             }
         )
 
-    async def async_mark_as_favorite(self, media_id, media_type, favorite=True):
+    async def async_mark_as_favorite(self, media_id: int | str, media_type: str, favorite: bool = True) -> None:
         """
         This method allows you to mark a movie or TV show as a favorite item.（异步版本）
         :param media_id: int
@@ -165,7 +173,7 @@ class Account(TMDb):
             }
         )
 
-    def unmark_as_favorite(self, media_id, media_type):
+    def unmark_as_favorite(self, media_id: int | str, media_type: str) -> None:
         """
         This method allows you to unmark a movie or TV show as a favorite item.
         :param media_id: int
@@ -173,7 +181,7 @@ class Account(TMDb):
         """
         self.mark_as_favorite(media_id, media_type, favorite=False)
 
-    async def async_unmark_as_favorite(self, media_id, media_type):
+    async def async_unmark_as_favorite(self, media_id: int | str, media_type: str) -> None:
         """
         This method allows you to unmark a movie or TV show as a favorite item.（异步版本）
         :param media_id: int
@@ -181,7 +189,7 @@ class Account(TMDb):
         """
         await self.async_mark_as_favorite(media_id, media_type, favorite=False)
 
-    def rated_movies(self, asc_sort=True, page=1):
+    def rated_movies(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
         Get a list of all the movies you have rated.
         :param asc_sort: bool
@@ -190,7 +198,7 @@ class Account(TMDb):
         """
         return self._get_list("rated_movies", asc_sort=asc_sort, page=page)
 
-    async def async_rated_movies(self, asc_sort=True, page=1):
+    async def async_rated_movies(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
         Get a list of all the movies you have rated.（异步版本）
         :param asc_sort: bool
@@ -199,7 +207,7 @@ class Account(TMDb):
         """
         return await self._async_get_list("rated_movies", asc_sort=asc_sort, page=page)
 
-    def rated_tv_shows(self, asc_sort=True, page=1):
+    def rated_tv_shows(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
         Get a list of all the TV shows you have rated.
         :param asc_sort: bool
@@ -208,7 +216,7 @@ class Account(TMDb):
         """
         return self._get_list("rated_tv", asc_sort=asc_sort, page=page)
 
-    async def async_rated_tv_shows(self, asc_sort=True, page=1):
+    async def async_rated_tv_shows(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
         Get a list of all the TV shows you have rated.（异步版本）
         :param asc_sort: bool
@@ -217,7 +225,7 @@ class Account(TMDb):
         """
         return await self._async_get_list("rated_tv", asc_sort=asc_sort, page=page)
 
-    def rated_episodes(self, asc_sort=True, page=1):
+    def rated_episodes(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
         Get a list of all the TV episodes you have rated.
         :param asc_sort: bool
@@ -226,7 +234,7 @@ class Account(TMDb):
         """
         return self._get_list("rated_episodes", asc_sort=asc_sort, page=page)
 
-    async def async_rated_episodes(self, asc_sort=True, page=1):
+    async def async_rated_episodes(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
         Get a list of all the TV episodes you have rated.（异步版本）
         :param asc_sort: bool
@@ -235,7 +243,7 @@ class Account(TMDb):
         """
         return await self._async_get_list("rated_episodes", asc_sort=asc_sort, page=page)
 
-    def movie_watchlist(self, asc_sort=True, page=1):
+    def movie_watchlist(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
         Get a list of all the movies you have added to your watchlist.
         :param asc_sort: bool
@@ -244,7 +252,7 @@ class Account(TMDb):
         """
         return self._get_list("movie_watchlist", asc_sort=asc_sort, page=page)
 
-    async def async_movie_watchlist(self, asc_sort=True, page=1):
+    async def async_movie_watchlist(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
         Get a list of all the movies you have added to your watchlist.（异步版本）
         :param asc_sort: bool
@@ -253,7 +261,7 @@ class Account(TMDb):
         """
         return await self._async_get_list("movie_watchlist", asc_sort=asc_sort, page=page)
 
-    def tv_show_watchlist(self, asc_sort=True, page=1):
+    def tv_show_watchlist(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
         Get a list of all the TV shows you have added to your watchlist.
         :param asc_sort: bool
@@ -262,7 +270,7 @@ class Account(TMDb):
         """
         return self._get_list("tv_watchlist", asc_sort=asc_sort, page=page)
 
-    async def async_tv_show_watchlist(self, asc_sort=True, page=1):
+    async def async_tv_show_watchlist(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
         Get a list of all the TV shows you have added to your watchlist.（异步版本）
         :param asc_sort: bool
@@ -271,7 +279,7 @@ class Account(TMDb):
         """
         return await self._async_get_list("tv_watchlist", asc_sort=asc_sort, page=page)
 
-    def add_to_watchlist(self, media_id, media_type, watchlist=True):
+    def add_to_watchlist(self, media_id: int | str, media_type: str, watchlist: bool = True) -> None:
         """
         Add a movie or TV show to your watchlist.
         :param media_id: int
@@ -291,7 +299,7 @@ class Account(TMDb):
             }
         )
 
-    async def async_add_to_watchlist(self, media_id, media_type, watchlist=True):
+    async def async_add_to_watchlist(self, media_id: int | str, media_type: str, watchlist: bool = True) -> None:
         """
         Add a movie or TV show to your watchlist.（异步版本）
         :param media_id: int
@@ -311,7 +319,7 @@ class Account(TMDb):
             }
         )
 
-    def remove_from_watchlist(self, media_id, media_type):
+    def remove_from_watchlist(self, media_id: int | str, media_type: str) -> None:
         """
         Remove a movie or TV show from your watchlist.
         :param media_id: int
@@ -319,7 +327,7 @@ class Account(TMDb):
         """
         self.add_to_watchlist(media_id, media_type, watchlist=False)
 
-    async def async_remove_from_watchlist(self, media_id, media_type):
+    async def async_remove_from_watchlist(self, media_id: int | str, media_type: str) -> None:
         """
         Remove a movie or TV show from your watchlist.（异步版本）
         :param media_id: int
