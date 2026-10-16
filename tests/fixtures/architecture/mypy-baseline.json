@@ -1027,10 +1027,6 @@
     "type-arg": 4,
     "union-attr": 3
   },
-  "app/db/oper/systemconfig.py": {
-    "no-any-return": 1,
-    "no-untyped-def": 2
-  },
   "app/db/oper/transferhistory.py": {
     "no-any-return": 2,
     "no-untyped-def": 6,

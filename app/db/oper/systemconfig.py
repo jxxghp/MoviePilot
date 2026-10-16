@@ -114,7 +114,7 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         self._require_loaded()
         with self._write_lock:
 
-            def write(db):
+            def write(db: Session) -> Optional[bool]:
                 """在当前事务中创建或更新配置记录。"""
                 conf = SystemConfig.get_by_key(db, key)
                 if conf:
@@ -207,7 +207,7 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         self._require_loaded()
         with self._write_lock:
 
-            def delete(db):
+            def delete(db: Session) -> None:
                 """在当前事务中删除配置记录。"""
                 conf = SystemConfig.get_by_key(db, key)
                 if conf:
