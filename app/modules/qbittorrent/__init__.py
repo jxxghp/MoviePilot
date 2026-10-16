@@ -1,7 +1,7 @@
-from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Set, Tuple, Union
+from __future__ import annotations
 
-from qbittorrentapi import TorrentDictionary
+from pathlib import Path
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 from app.domain import torrent as torrent_rules
 from app.domain.metainfo import MetaInfo
@@ -21,6 +21,9 @@ from app.schemas.types import (
     TorrentQueryStatus,
     TorrentStatus,
 )
+
+if TYPE_CHECKING:
+    from qbittorrentapi import TorrentDictionary
 
 _QBITTORRENT_DOWNLOADING_STATES = {
     "allocating",

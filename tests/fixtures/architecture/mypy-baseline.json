@@ -901,10 +901,6 @@
     "no-untyped-call": 1,
     "no-untyped-def": 5
   },
-  "app/modules/_base/downloader.py": {
-    "assignment": 1,
-    "attr-defined": 5
-  },
   "app/modules/_base/mediaserver.py": {
     "arg-type": 2,
     "assignment": 1,
@@ -1318,15 +1314,6 @@
     "union-attr": 4,
     "var-annotated": 3
   },
-  "app/modules/qbittorrent/__init__.py": {
-    "arg-type": 5,
-    "assignment": 16,
-    "empty-body": 1,
-    "no-redef": 2,
-    "operator": 1,
-    "str-bytes-safe": 2,
-    "type-arg": 8
-  },
   "app/modules/qqbot/api.py": {
     "no-any-return": 4,
     "type-arg": 13
@@ -1497,7 +1484,7 @@
     "type-arg": 2
   },
   "app/modules/transmission/__init__.py": {
-    "arg-type": 8,
+    "arg-type": 1,
     "assignment": 16,
     "empty-body": 1,
     "no-any-return": 1,
@@ -1506,14 +1493,6 @@
     "no-untyped-def": 6,
     "str-bytes-safe": 1,
     "type-arg": 6
-  },
-  "app/modules/transmission/transmission.py": {
-    "assignment": 19,
-    "misc": 1,
-    "no-any-return": 2,
-    "no-untyped-def": 4,
-    "type-arg": 14,
-    "union-attr": 1
   },
   "app/modules/trimemedia/api.py": {
     "misc": 2,
