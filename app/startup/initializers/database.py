@@ -140,7 +140,7 @@ def verify_database_revision() -> None:
         )
 
 
-def init_db():
+def init_db() -> None:
     """
     初始化数据库
     """
@@ -151,7 +151,7 @@ def init_db():
     Base.metadata.create_all(bind=get_engine())
 
 
-def update_db(alembic_cfg: Config | None = None):
+def update_db(alembic_cfg: Config | None = None) -> None:
     """
     更新数据库
     """
