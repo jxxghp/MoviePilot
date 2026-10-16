@@ -986,9 +986,6 @@
     "no-untyped-def": 2,
     "type-arg": 1
   },
-  "app/db/models/agenttaskrun.py": {
-    "no-any-return": 1
-  },
   "app/db/models/downloadhistory.py": {
     "no-untyped-def": 19
   },

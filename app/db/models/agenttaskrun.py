@@ -255,9 +255,10 @@ class AgentTaskRun(Base):
             run_id: str,
     ) -> Optional["AgentTaskRun"]:
         """按公开运行 ID 查询一次执行。"""
-        return db.execute(
+        run: Optional[AgentTaskRun] = db.execute(
             select(cls).where(cls.run_id == run_id)
         ).scalars().first()
+        return run
 
     @classmethod
     def list_for_task(
