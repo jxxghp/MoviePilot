@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from typing import Any, Dict, Generic, List, Optional, Type, TypeVar
+from typing import Any, Dict, Generic, List, Optional, Protocol, Type, TypeVar
 
 from app.schemas.system import ServiceInfo
 from app.schemas.types import ModuleType, SystemConfigKey
@@ -56,13 +56,35 @@ def get_service_configs(
     return _config_loader(config_key, conf_type)
 
 
-class ServiceBaseHelper(Generic[TConf]):
+class _ServiceConfig(Protocol):
+    """服务目录读取的配置字段；具体配置模型保留各自附加字段。"""
+
+    @property
+    def name(self) -> Optional[str]:
+        """返回配置的服务名称。"""
+        ...
+
+    @property
+    def type(self) -> Optional[str]:
+        """返回配置的服务类型。"""
+        ...
+
+    @property
+    def enabled(self) -> Optional[bool]:
+        """返回服务是否启用，兼容历史空值。"""
+        ...
+
+
+TServiceConf = TypeVar("TServiceConf", bound=_ServiceConfig)
+
+
+class ServiceBaseHelper(Generic[TServiceConf]):
     """通过应用端口查询服务配置和对应运行实例。"""
 
     def __init__(
         self,
         config_key: SystemConfigKey,
-        conf_type: Type[TConf],
+        conf_type: Type[TServiceConf],
         module_type: ModuleType,
     ) -> None:
         """绑定配置类型和模块能力类型，不抓取具体 Runtime 管理器。"""
@@ -70,7 +92,7 @@ class ServiceBaseHelper(Generic[TConf]):
         self.conf_type = conf_type
         self.module_type = module_type
 
-    def get_configs(self, include_disabled: bool = False) -> Dict[str, TConf]:
+    def get_configs(self, include_disabled: bool = False) -> Dict[str, TServiceConf]:
         """返回按名称索引的有效服务配置。"""
         configs = get_service_configs(self.config_key, self.conf_type)
         return {
@@ -81,7 +103,7 @@ class ServiceBaseHelper(Generic[TConf]):
             and (config.enabled or include_disabled)
         }
 
-    def get_config(self, name: str) -> Optional[TConf]:
+    def get_config(self, name: str) -> Optional[TServiceConf]:
         """按名称返回单个启用服务配置。"""
         return self.get_configs().get(name) if name else None
 
@@ -110,7 +132,7 @@ class ServiceBaseHelper(Generic[TConf]):
         self,
         type_filter: Optional[str] = None,
         name_filters: Optional[List[str]] = None,
-    ) -> Dict[str, ServiceInfo]:
+    ) -> Dict[Optional[str], ServiceInfo]:
         """按服务类型和名称集合过滤运行实例。"""
         names = set(name_filters) if name_filters else None
         return {
@@ -123,7 +145,7 @@ class ServiceBaseHelper(Generic[TConf]):
 
     def get_service(
         self,
-        name: str,
+        name: Optional[str],
         type_filter: Optional[str] = None,
     ) -> Optional[ServiceInfo]:
         """按名称和可选类型返回单个运行服务。"""

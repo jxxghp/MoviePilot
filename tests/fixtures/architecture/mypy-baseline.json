@@ -590,7 +590,6 @@
     "type-arg": 1
   },
   "app/application/downloader.py": {
-    "arg-type": 1,
     "no-untyped-def": 1
   },
   "app/application/formatting.py": {
@@ -612,7 +611,7 @@
     "type-arg": 5
   },
   "app/application/mediaserver.py": {
-    "arg-type": 2,
+    "arg-type": 1,
     "operator": 1
   },
   "app/application/messaging/agent.py": {
@@ -665,7 +664,6 @@
     "no-any-return": 1
   },
   "app/application/notification.py": {
-    "arg-type": 1,
     "no-untyped-call": 1,
     "no-untyped-def": 1
   },
@@ -719,10 +717,6 @@
   },
   "app/application/servarr.py": {
     "valid-type": 2
-  },
-  "app/application/service.py": {
-    "attr-defined": 5,
-    "misc": 1
   },
   "app/application/site/sites.pyi": {
     "type-arg": 7
