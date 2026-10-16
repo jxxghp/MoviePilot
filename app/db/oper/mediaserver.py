@@ -144,9 +144,9 @@ class MediaServerOper(DbOper):
             item = self._execute_sync_query(
                 lambda session: MediaServerItem.exist_by_media_identity(
                     session,
-                    media_source=cast(MediaSource, kwargs.get("media_source")),
+                    media_source=cast(MediaSource | str, kwargs.get("media_source")),
                     media_id=cast(str, kwargs.get("media_id")),
-                    mtype=cast(str, kwargs.get("mtype")),
+                    mtype=cast(Optional[str], kwargs.get("mtype")),
                     server=kwargs.get("server"),
                 )
             )
@@ -157,9 +157,9 @@ class MediaServerOper(DbOper):
                         lambda session: MediaServerItem.list_cross_source_by_title(
                             session,
                             title=cast(str, kwargs.get("title")),
-                            mtype=kwargs.get("mtype"),
-                            year=cast(str, kwargs.get("year")),
-                            media_source=kwargs["media_source"],
+                            mtype=cast(Optional[str], kwargs.get("mtype")),
+                            year=cast(str | int, kwargs.get("year")),
+                            media_source=cast(MediaSource | str, kwargs["media_source"]),
                             server=kwargs.get("server"),
                         )
                     ),
@@ -171,8 +171,8 @@ class MediaServerOper(DbOper):
                 lambda session: MediaServerItem.exists_by_title(
                     session,
                     title=cast(str, kwargs.get("title")),
-                    mtype=cast(str, kwargs.get("mtype")),
-                    year=cast(str, kwargs.get("year")),
+                    mtype=cast(Optional[str], kwargs.get("mtype")),
+                    year=cast(Optional[str | int], kwargs.get("year")),
                     server=kwargs.get("server"),
                 )
             )
@@ -195,9 +195,9 @@ class MediaServerOper(DbOper):
             item = await self._execute_async_query(
                 lambda session: MediaServerItem.async_exist_by_media_identity(
                     session,
-                    media_source=cast(MediaSource, kwargs.get("media_source")),
+                    media_source=cast(MediaSource | str, kwargs.get("media_source")),
                     media_id=cast(str, kwargs.get("media_id")),
-                    mtype=cast(str, kwargs.get("mtype")),
+                    mtype=cast(Optional[str], kwargs.get("mtype")),
                     server=kwargs.get("server"),
                 )
             )
@@ -208,9 +208,9 @@ class MediaServerOper(DbOper):
                         lambda session: MediaServerItem.async_list_cross_source_by_title(
                             session,
                             title=cast(str, kwargs.get("title")),
-                            mtype=kwargs.get("mtype"),
-                            year=cast(str, kwargs.get("year")),
-                            media_source=kwargs["media_source"],
+                            mtype=cast(Optional[str], kwargs.get("mtype")),
+                            year=cast(str | int, kwargs.get("year")),
+                            media_source=cast(MediaSource | str, kwargs["media_source"]),
                             server=kwargs.get("server"),
                         )
                     ),
@@ -222,8 +222,8 @@ class MediaServerOper(DbOper):
                 lambda session: MediaServerItem.async_exists_by_title(
                     session,
                     title=cast(str, kwargs.get("title")),
-                    mtype=cast(str, kwargs.get("mtype")),
-                    year=cast(str, kwargs.get("year")),
+                    mtype=cast(Optional[str], kwargs.get("mtype")),
+                    year=cast(Optional[str | int], kwargs.get("year")),
                     server=kwargs.get("server"),
                 )
             )
