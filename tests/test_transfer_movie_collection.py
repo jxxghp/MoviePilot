@@ -5,7 +5,7 @@ import pytest
 
 from app.application.history import DownloadHistorySnapshot
 from app.application.transfer.workflow import TransferTask
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.runtime.config import settings
@@ -16,6 +16,7 @@ from app.schemas.types import MediaSource, MediaType
 def _make_chain() -> TransferChain:
     """构造不启动后台线程的整理链测试实例。"""
     chain = object.__new__(TransferChain)
+    chain._scrape_batches = {}
     chain._media_exts = settings.RMT_MEDIAEXT
     chain._subtitle_exts = settings.RMT_SUBEXT
     chain._audio_exts = settings.RMT_AUDIOEXT
@@ -46,6 +47,7 @@ class _FileMeta(MetaBase):
     name = None
 
     def __init__(self, year: str = "2013"):
+        """初始化用于检验合集年份冲突的单部电影元数据。"""
         super().__init__(title="The Hunger Games Catching Fire")
         self.name = "The Hunger Games Catching Fire"
         self.year = year

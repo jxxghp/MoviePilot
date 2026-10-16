@@ -22,6 +22,7 @@ from app.application.transfer.workflow import (
     TransferAdmission,
     TransferAdmissionConflictError,
     TransferTask,
+    job_lock,
 )
 from app.chain.media import MediaChain
 from app.chain.storage import StorageChain
@@ -653,6 +654,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
                 downloader=downloader,
                 download_hash=download_hash,
                 transfer_batch_id=transfer_batch_id,
+                notification_debounce=fileitem.type == "file" and not manual,
                 manual=bool(manual),
                 background=bool(background),
                 preview=bool(preview),
@@ -720,6 +722,7 @@ class TransferWorkflowOwner(_TransferOwnerBase):
         downloader: Optional[str],
         download_hash: Optional[str],
         transfer_batch_id: str,
+        notification_debounce: bool,
         manual: bool,
         background: bool,
         preview: bool,
@@ -745,6 +748,12 @@ class TransferWorkflowOwner(_TransferOwnerBase):
             and sum(self._is_audio_file(item) for item, _ in file_items) > 1
         )
         music_batch_context = self._prepare_music_batch_context(file_items, batch_mtype)
+        # 监控逐文件调用没有完整批次边界，完成后仍需静默窗口等待同组后续文件。
+        with job_lock:
+            self._scrape_batches[transfer_batch_id] = {
+                "pending": set(), "targets": {}, "closed": False,
+                "notification_debounce": notification_debounce,
+            }
         try:
             for file_item, bluray_dir in self._music_transfer_items(file_items, music_batch_context):
                 if runtime_stop_state.is_system_stopped:

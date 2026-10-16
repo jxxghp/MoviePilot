@@ -6,6 +6,7 @@ from app.application.transfer.workflow import TransferTask, job_lock
 from app.chain._contracts import TransferMixinHost
 from app.chain.transfer.contract import _TransferOwnerBase
 from app.domain.context import MusicInfo
+from app.runtime.loop import main_loop_registry
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import (
     EventType,
@@ -176,7 +177,7 @@ class ScrapeBatchMixin(_TransferOwnerBase):
 
     def _flush_scrape_batch_if_ready(self, batch_id: Optional[str]):
         """
-        批次任务全部结束后发送聚合后的刮削事件。
+        批次任务全部结束后释放成功通知等待，并发送聚合后的刮削事件。
         """
         if not batch_id:
             return
@@ -190,11 +191,15 @@ class ScrapeBatchMixin(_TransferOwnerBase):
             ):
                 return
             targets = list(batch.get("targets", {}).values())
+            notification_debounce = batch.get("notification_debounce", False)
             self._scrape_batches.pop(batch_id, None)
 
         aggregator = getattr(self, "success_notification_aggregator", None)
         if aggregator is not None:
-            aggregator.release_batch(batch_id)
+            aggregator.release_batch(
+                batch_id,
+                loop=main_loop_registry.current if notification_debounce else None,
+            )
         for target in targets:
             fileitem = target.get("fileitem")
             if not fileitem:
