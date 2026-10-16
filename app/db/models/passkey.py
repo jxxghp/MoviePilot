@@ -1,14 +1,14 @@
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Self
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, select, update
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Select, String, Text, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, get_id_column
 
 
-def _get_by_user_id_statement(model: type["PassKey"], user_id: int):
+def _get_by_user_id_statement(model: type["PassKey"], user_id: int) -> "Select[tuple[PassKey]]":
     """构造按用户筛选启用 PassKey 的查询语句。"""
     return select(model).where(model.user_id == user_id, model.is_active.is_(True))
 
@@ -16,7 +16,7 @@ def _get_by_user_id_statement(model: type["PassKey"], user_id: int):
 def _get_by_credential_id_statement(
     model: type["PassKey"],
     credential_id: str,
-):
+) -> "Select[tuple[PassKey]]":
     """构造按凭证 ID 筛选启用 PassKey 的查询语句。"""
     return select(model).where(
         model.credential_id == credential_id,
@@ -66,12 +66,12 @@ class PassKey(Base):
         cls,
         db: Session,
         user_id: int,
-    ):
+    ) -> list[Self]:
         """在调用方 Session 中获取用户的所有启用 PassKey。"""
         return list(db.execute(_get_by_user_id_statement(cls, user_id)).scalars().all())
 
     @classmethod
-    async def async_get_by_user_id(cls, db: AsyncSession, user_id: int):
+    async def async_get_by_user_id(cls, db: AsyncSession, user_id: int) -> list[Self]:
         """在调用方 AsyncSession 中获取用户的所有启用 PassKey。"""
         result = await db.execute(_get_by_user_id_statement(cls, user_id))
         return list(result.scalars().all())
@@ -81,29 +81,33 @@ class PassKey(Base):
         cls,
         db: Session,
         credential_id: str,
-    ):
+    ) -> Optional[Self]:
         """在调用方 Session 中按凭证 ID 获取启用 PassKey。"""
-        return db.execute(_get_by_credential_id_statement(cls, credential_id)).scalars().first()
+        passkey: Optional[Self] = db.execute(_get_by_credential_id_statement(cls, credential_id)).scalars().first()
+        return passkey
 
     @classmethod
-    async def async_get_by_credential_id(cls, db: AsyncSession, credential_id: str):
+    async def async_get_by_credential_id(cls, db: AsyncSession, credential_id: str) -> Optional[Self]:
         """在调用方 AsyncSession 中根据凭证 ID 获取启用 PassKey。"""
         result = await db.execute(_get_by_credential_id_statement(cls, credential_id))
-        return result.scalars().first()
+        passkey: Optional[Self] = result.scalars().first()
+        return passkey
 
     @classmethod
-    def get_by_id(cls, db: Session, passkey_id: int):
+    def get_by_id(cls, db: Session, passkey_id: int) -> Optional[Self]:
         """在调用方 Session 中根据 ID 获取 PassKey。"""
-        return db.execute(select(cls).where(cls.id == passkey_id)).scalars().first()
+        passkey: Optional[Self] = db.execute(select(cls).where(cls.id == passkey_id)).scalars().first()
+        return passkey
 
     @classmethod
-    async def async_get_by_id(cls, db: AsyncSession, passkey_id: int):
+    async def async_get_by_id(cls, db: AsyncSession, passkey_id: int) -> Optional[Self]:
         """在调用方 AsyncSession 中根据 ID 获取 PassKey。"""
         result = await db.execute(select(cls).filter(cls.id == passkey_id))
-        return result.scalars().first()
+        passkey: Optional[Self] = result.scalars().first()
+        return passkey
 
     @classmethod
-    def delete_by_id(cls, db: Session, passkey_id: int, user_id: int):
+    def delete_by_id(cls, db: Session, passkey_id: int, user_id: int) -> bool:
         """删除指定用户的PassKey"""
         passkey = db.execute(select(cls).where(cls.id == passkey_id, cls.user_id == user_id)).scalars().first()
         if passkey:
@@ -112,7 +116,7 @@ class PassKey(Base):
         return False
 
     @classmethod
-    async def async_delete_by_id(cls, db: AsyncSession, passkey_id: int, user_id: int):
+    async def async_delete_by_id(cls, db: AsyncSession, passkey_id: int, user_id: int) -> bool:
         """异步删除指定用户的PassKey"""
         result = await db.execute(select(cls).filter(cls.id == passkey_id, cls.user_id == user_id))
         passkey = result.scalars().first()
@@ -121,7 +125,7 @@ class PassKey(Base):
             return True
         return False
 
-    def update_last_used(self, db: Session, sign_count: int):
+    def update_last_used(self, db: Session, sign_count: int) -> bool:
         """更新最后使用时间和签名计数"""
         db.execute(
             update(type(self))
@@ -133,7 +137,7 @@ class PassKey(Base):
         )
         return True
 
-    async def async_update_last_used(self, db: AsyncSession, sign_count: int):
+    async def async_update_last_used(self, db: AsyncSession, sign_count: int) -> bool:
         """异步更新最后使用时间和签名计数"""
         await db.execute(
             update(type(self))

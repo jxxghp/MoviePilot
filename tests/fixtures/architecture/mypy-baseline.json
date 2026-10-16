@@ -1001,9 +1001,6 @@
   "app/db/models/message.py": {
     "type-arg": 1
   },
-  "app/db/models/passkey.py": {
-    "no-untyped-def": 12
-  },
   "app/db/models/site.py": {
     "no-untyped-def": 10
   },
