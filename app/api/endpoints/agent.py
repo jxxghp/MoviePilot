@@ -91,7 +91,7 @@ def _parse_agent_channel_header(value: Optional[str]) -> Optional[NotificationCh
 )
 async def list_agent_mcp_servers(
     current_user: ApiPrincipal = Depends(get_current_active_user),
-) -> _SchemaResponse:
+) -> _SchemaResponse[dict[str, object]]:
     """
     查询 Agent 外部 MCP 服务器配置。
     """
@@ -116,7 +116,7 @@ async def list_agent_mcp_servers(
 async def save_agent_mcp_servers(
     request: _SchemaAgentMcpServersSaveRequest,
     current_user: ApiPrincipal = Depends(get_current_active_user),
-) -> _SchemaResponse:
+) -> _SchemaResponse[None]:
     """
     保存 Agent 外部 MCP 服务器配置。
     """
@@ -136,7 +136,7 @@ async def save_agent_mcp_servers(
 async def test_agent_mcp_server(
     request: _SchemaAgentMcpServerTestRequest,
     current_user: ApiPrincipal = Depends(get_current_active_user),
-) -> _SchemaResponse:
+) -> _SchemaResponse[dict[str, object]]:
     """
     测试 Agent 外部 MCP 服务器连接并读取工具列表。
     """
@@ -228,7 +228,7 @@ async def upload_web_agent_file(
     session_id: Optional[str] = Form(None),
     current_user: ApiPrincipal = Depends(get_current_active_user),
     service: AgentChatService = Depends(get_agent_chat_service),
-) -> _SchemaResponse:
+) -> _SchemaResponse[dict[str, object]]:
     """
     上传 Web 智能助手对话附件。
 
@@ -283,7 +283,7 @@ async def upload_web_agent_file(
 async def web_agent_callback(
     payload: _SchemaAgentWebChoiceRequest,
     current_user: ApiPrincipal = Depends(get_current_active_user),
-) -> _SchemaResponse:
+) -> _SchemaResponse[dict[str, object]]:
     """
     接收 Web 智能助手选择卡片回调。
 
@@ -322,7 +322,7 @@ async def list_web_agent_commands(
     current_user: ApiPrincipal = Depends(get_current_active_user),
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
-) -> _SchemaResponse:
+) -> _SchemaResponse[list[dict[str, object]]]:
     """
     获取当前 Web 智能助手可补全的斜杠命令。
 
@@ -376,7 +376,7 @@ async def list_agent_chat_sessions(
     service: AgentChatService = Depends(get_agent_chat_service),
     page: int = 1,
     count: int = 30,
-) -> _SchemaResponse:
+) -> _SchemaResponse[list[_SchemaAgentChatSessionSummary]]:
     """
     获取当前用户可访问的 Agent 历史会话列表。
 
@@ -403,7 +403,7 @@ async def get_agent_chat_session(
     session_id: str,
     current_user: ApiPrincipal = Depends(get_current_active_user),
     service: AgentChatService = Depends(get_agent_chat_service),
-) -> _SchemaResponse:
+) -> _SchemaResponse[dict[str, object]]:
     """
     获取一条 Agent 历史会话详情。
 
@@ -459,7 +459,7 @@ async def save_agent_chat_display(
     current_user: ApiPrincipal = Depends(get_current_active_user),
     service: AgentChatService = Depends(get_agent_chat_service),
     persistence: AgentChatPersistenceService = Depends(get_agent_chat_persistence),
-) -> _SchemaResponse:
+) -> _SchemaResponse[_SchemaAgentChatSessionSummary]:
     """
     保存前端聚合后的 Agent 展示消息。
 
@@ -504,7 +504,7 @@ async def delete_agent_chat_session(
     session_id: str,
     current_user: ApiPrincipal = Depends(get_current_active_user),
     service: AgentChatService = Depends(get_agent_chat_service),
-) -> _SchemaResponse:
+) -> _SchemaResponse[None]:
     """
     删除一条 Agent 历史会话。
 
@@ -529,7 +529,7 @@ async def stop_web_agent_session_task(
     session_id: str,
     current_user: ApiPrincipal = Depends(get_current_active_user),
     service: AgentChatService = Depends(get_agent_chat_service),
-) -> _SchemaResponse:
+) -> _SchemaResponse[dict[str, bool]]:
     """
     停止当前 Web 智能助手会话正在执行的任务。
 
