@@ -32,6 +32,7 @@ class VyoModule(_MediaServerModuleBase[Vyo]):
 
     @staticmethod
     def get_name() -> str:
+        """返回媒体服务器模块名称。"""
         return "Vyo"
 
     @staticmethod
@@ -71,7 +72,7 @@ class VyoModule(_MediaServerModuleBase[Vyo]):
             except Exception as err:
                 logger.error(f"停止 Vyo 模块实例失败：{err}")
 
-    def _test_server(self, server: Vyo, name: str) -> Optional[str]:
+    def _test_server(self, server: Vyo, name: Optional[str]) -> Optional[str]:
         """用配置完整性与 API Key 探测结果判断连接状态。"""
         if not server.is_configured():
             return f"{self.get_name()}配置不完整：{name}"
