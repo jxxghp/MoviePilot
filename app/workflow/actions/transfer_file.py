@@ -8,6 +8,7 @@ from app.chain.storage import StorageChain
 from app.chain.transfer.facade import TransferChain
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
+from app.schemas.file import FileItem
 from app.schemas.workflow import ActionContext, ActionParams
 from app.workflow.actions import BaseAction
 
@@ -34,9 +35,10 @@ class TransferFileAction(BaseAction):
         "concurrency_key": "transfer",
     }
 
-    def __init__(self, action_id: str):
+    def __init__(self, action_id: str) -> None:
+        """初始化当前动作的结果集合与失败状态。"""
         super().__init__(action_id)
-        self._fileitems = []
+        self._fileitems: list[FileItem] = []
         self._has_error = False
 
     name = "整理文件"
@@ -45,14 +47,15 @@ class TransferFileAction(BaseAction):
 
     @property
     def success(self) -> bool:
+        """返回动作是否未遇到终止性的处理失败。"""
         return not self._has_error
 
-    def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict[str, object], context: ActionContext) -> ActionContext:
         """
         从 downloads / fileitems 中整理文件，记录到fileitems
         """
 
-        def check_continue():
+        def check_continue() -> bool:
             """
             检查是否继续整理文件
             """
@@ -60,15 +63,15 @@ class TransferFileAction(BaseAction):
                 return False
             return True
 
-        params = TransferFileParams(**params)
+        action_params = TransferFileParams(**params)
         # 失败次数
         _failed_count = 0
         storagechain = StorageChain()
         transferchain = TransferChain()
         transferhis = transferchain.transfer_history_repository
-        if params.source == "downloads":
+        if action_params.source == "downloads":
             # 从下载任务中整理文件
-            for download in context.downloads:
+            for download in context.downloads or []:
                 if runtime_stop_state.is_workflow_stopped(workflow_id):
                     break
                 if not download.completed:
@@ -78,6 +81,10 @@ class TransferFileAction(BaseAction):
                 cache_key = f"{download.download_id}"
                 if self.check_cache(workflow_id, cache_key):
                     logger.info(f"{download.path} 已整理过，跳过")
+                    continue
+                if not download.path:
+                    _failed_count += 1
+                    logger.warning("已完成下载缺少文件路径，跳过整理")
                     continue
                 fileitem = storagechain.get_file_item(storage="local", path=Path(download.path))
                 if not fileitem:
@@ -101,7 +108,8 @@ class TransferFileAction(BaseAction):
                 self.save_cache(workflow_id, cache_key)
         else:
             # 从 fileitems 中整理文件
-            for fileitem in copy.deepcopy(context.fileitems):
+            source_files = context.fileitems if context.fileitems is not None else []
+            for fileitem in copy.deepcopy(source_files):
                 if not check_continue():
                     break
                 if not fileitem.path:
@@ -125,12 +133,14 @@ class TransferFileAction(BaseAction):
                     continue
                 logger.info(f"整理文件 {fileitem.path} 完成")
                 # 从 fileitems 中移除已整理的文件
-                context.fileitems.remove(fileitem)
+                source_files.remove(fileitem)
                 self._fileitems.append(fileitem)
                 # 记录已整理的文件
                 self.save_cache(workflow_id, cache_key)
 
         if self._fileitems:
+            if context.fileitems is None:
+                context.fileitems = []
             context.fileitems.extend(self._fileitems)
         elif _failed_count:
             self._has_error = True
