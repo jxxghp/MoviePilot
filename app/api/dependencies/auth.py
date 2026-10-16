@@ -16,7 +16,6 @@ from app.application.security.auth import (
 )
 from app.application.security.passkey import PasskeyRepository, PasskeyService
 from app.application.security.user import (
-    AsyncUnitOfWork,
     UserRepository,
     UserService,
 )
@@ -34,9 +33,7 @@ def get_user_service(
         repository=cast(
             UserRepository, runtime.authentication.user_repository(db)
         ),
-        unit_of_work=cast(
-            AsyncUnitOfWork, runtime.persistence.async_transaction(db)
-        ),
+        unit_of_work=runtime.persistence.async_transaction(db),
         configuration=get_configured_user_configuration(),
     )
 
@@ -66,11 +63,11 @@ def get_current_user(
     token_data: _SchemaTokenPayload = Depends(verify_token),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> Any:
-    """读取令牌对应用户；令牌对应账号不存在时按认证失败处理。"""
+    """读取令牌对应用户；主体 ID 缺失或账号不存在时按认证失败处理。"""
     user_repository = cast(
         AuthUserRepository, runtime.authentication.user_repository(db)
     )
-    user = user_repository.get_by_id(token_data.sub)
+    user = user_repository.get_by_id(token_data.sub) if token_data.sub is not None else None
     if not user:
         raise HTTPException(
             status_code=401,
@@ -85,11 +82,11 @@ async def get_current_user_async(
     token_data: _SchemaTokenPayload = Depends(verify_token),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> Any:
-    """异步读取令牌对应用户；令牌对应账号不存在时按认证失败处理。"""
+    """异步读取令牌对应用户；主体 ID 缺失或账号不存在时按认证失败处理。"""
     user_repository = cast(
         UserRepository, runtime.authentication.user_repository(db)
     )
-    user = await user_repository.async_get_by_id(token_data.sub)
+    user = await user_repository.async_get_by_id(token_data.sub) if token_data.sub is not None else None
     if not user:
         raise HTTPException(
             status_code=401,

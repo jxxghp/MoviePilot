@@ -57,6 +57,30 @@ def _user(*, active: bool = True, superuser: bool = False) -> SimpleNamespace:
     )
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("async_request", [False, True])
+async def test_current_user_rejects_missing_subject(async_request: bool) -> None:
+    """同步及异步用户依赖都须拒绝缺少主体 ID 的令牌，不向仓库传递空 ID。"""
+    repository = SimpleNamespace(get_by_id=Mock(), async_get_by_id=AsyncMock())
+    runtime = SimpleNamespace(authentication=SimpleNamespace(user_repository=lambda _db: repository))
+
+    with pytest.raises(HTTPException) as exc_info:
+        if async_request:
+            await auth_dependencies.get_current_user_async(
+                db=None, token_data=TokenPayload(sub=None), runtime=runtime
+            )
+        else:
+            auth_dependencies.get_current_user(
+                db=None, token_data=TokenPayload(sub=None), runtime=runtime
+            )
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "用户不存在"
+    assert exc_info.value.headers == {"WWW-Authenticate": "Bearer"}
+    repository.get_by_id.assert_not_called()
+    repository.async_get_by_id.assert_not_awaited()
+
+
 def test_current_user_update_rejects_admin_fields():
     """自助资料模型必须拒绝用户名、状态和权限等管理字段。"""
     assert set(CurrentUserUpdate.model_fields) == {
