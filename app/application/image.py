@@ -1,13 +1,13 @@
 import io
 import threading
-from collections.abc import Awaitable, Mapping
+from collections.abc import Awaitable, Mapping, Sequence
 from dataclasses import dataclass, field
 from email.message import Message
 from hashlib import sha256
 from http.cookiejar import CookieJar
 from http.cookies import CookieError, SimpleCookie
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Protocol, cast
+from typing import Any, Callable, List, Optional, Protocol, TypeVar, cast
 from urllib.parse import urljoin, urlsplit
 
 from PIL import Image
@@ -17,6 +17,21 @@ from app.application.security.url import SecurityUtils
 from app.foundation.singleton import Singleton
 from app.runtime.cache import AsyncFileCache, FileCache, cached
 from app.runtime.log import logger
+
+_WallpaperFunction = TypeVar("_WallpaperFunction", bound=Callable[..., object])
+
+
+def _cached_wallpaper(*, skip_empty: bool = False) -> Callable[[_WallpaperFunction], _WallpaperFunction]:
+    """保留壁纸函数签名，按原规则使用单项进程内缓存。"""
+
+    def decorate(function: _WallpaperFunction) -> _WallpaperFunction:
+        """以相同有效期缓存壁纸，空列表仍按调用方策略处理。"""
+        return cast(_WallpaperFunction, cached(
+            maxsize=1, ttl=3600, skip_empty=skip_empty, local_only=True,
+        )(function))
+
+    return decorate
+
 
 WallpaperProvider = Callable[[], Optional[str]]
 WallpaperListProvider = Callable[[int], List[str]]
@@ -314,21 +329,21 @@ class WallpaperHelper(metaclass=Singleton):
         wallpaper = self.get_static_wallpaper()
         return [wallpaper] if wallpaper else []
 
-    @cached(maxsize=1, ttl=3600, local_only=True)
+    @_cached_wallpaper()
     def get_tmdb_wallpaper(self) -> Optional[str]:
         """
         获取TMDB每日壁纸
         """
         return _tmdb_wallpaper_provider()
 
-    @cached(maxsize=1, ttl=3600, skip_empty=True, local_only=True)
+    @_cached_wallpaper(skip_empty=True)
     def get_tmdb_wallpapers(self, num: int = 10) -> List[str]:
         """
         获取7天的TMDB每日壁纸
         """
         return _tmdb_wallpaper_list_provider(num)
 
-    @cached(maxsize=1, ttl=3600, local_only=True)
+    @_cached_wallpaper()
     def get_bing_wallpaper(self) -> Optional[str]:
         """
         获取Bing每日壁纸
@@ -346,7 +361,7 @@ class WallpaperHelper(metaclass=Singleton):
                 print(str(err))
         return None
 
-    @cached(maxsize=1, ttl=3600, skip_empty=True, local_only=True)
+    @_cached_wallpaper(skip_empty=True)
     def get_bing_wallpapers(self, num: int = 7) -> List[str]:
         """
         获取7天的Bing每日壁纸
@@ -363,21 +378,21 @@ class WallpaperHelper(metaclass=Singleton):
                 print(str(err))
         return []
 
-    @cached(maxsize=1, ttl=3600, local_only=True)
+    @_cached_wallpaper()
     def get_mediaserver_wallpaper(self) -> Optional[str]:
         """
         获取媒体服务器壁纸
         """
         return _mediaserver_wallpaper_provider()
 
-    @cached(maxsize=1, ttl=3600, skip_empty=True, local_only=True)
+    @_cached_wallpaper(skip_empty=True)
     def get_mediaserver_wallpapers(self, num: int = 10) -> List[str]:
         """
         获取媒体服务器壁纸列表
         """
         return _mediaserver_wallpaper_list_provider(num)
 
-    @cached(maxsize=1, ttl=3600, local_only=True)
+    @_cached_wallpaper()
     def get_customize_wallpaper(self) -> Optional[str]:
         """
         获取自定义壁纸api壁纸
@@ -387,13 +402,13 @@ class WallpaperHelper(metaclass=Singleton):
             return wallpaper_list[0]
         return None
 
-    @cached(maxsize=1, ttl=3600, skip_empty=True, local_only=True)
+    @_cached_wallpaper(skip_empty=True)
     def get_customize_wallpapers(self) -> List[str]:
         """
         获取自定义壁纸api壁纸
         """
 
-        def find_files_with_suffixes(obj, suffixes: List[str]) -> List[str]:
+        def find_files_with_suffixes(obj: object, suffixes: Sequence[str]) -> List[str]:
             """
             递归查找对象中所有包含特定后缀的文件，返回匹配的字符串列表
             支持输入：字典、列表、字符串
@@ -446,7 +461,7 @@ class WallpaperHelper(metaclass=Singleton):
 class ImageHelper(metaclass=Singleton):
     """统一管理同步和异步图片缓存。"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         按全局图片缓存天数初始化文件缓存。
 
@@ -490,7 +505,7 @@ class ImageHelper(metaclass=Singleton):
                 image_format = (image.format or "").upper()
                 if verify:
                     image.verify()
-            mime_type = Image.MIME.get(image_format)
+            mime_type: Optional[str] = Image.MIME.get(image_format)
             if (
                 not mime_type
                 or not mime_type.startswith("image/")
@@ -503,7 +518,7 @@ class ImageHelper(metaclass=Singleton):
             return None
 
     @staticmethod
-    def _get_request_params(url: str, proxy: Optional[bool], cookies: Optional[str | dict]) -> dict:
+    def _get_request_params(url: str, proxy: Optional[bool], cookies: Optional[str | dict[str, str]]) -> dict[str, object]:
         """获取参数"""
         referer = "https://movie.douban.com/" if "doubanio.com" in url else None
         config = get_chain_runtime_config_snapshot()
@@ -690,7 +705,7 @@ class ImageHelper(metaclass=Singleton):
             url: str,
             proxy: Optional[bool] = None,
             use_cache: bool = True,
-            cookies: Optional[str | dict] = None) -> Optional[bytes]:
+            cookies: Optional[str | dict[str, str]] = None) -> Optional[bytes]:
         """
         获取图片（同步版本）
         """
@@ -707,7 +722,7 @@ class ImageHelper(metaclass=Singleton):
         url: str,
         proxy: Optional[bool] = None,
         use_cache: bool = True,
-        cookies: Optional[str | dict] = None,
+        cookies: Optional[str | dict[str, str]] = None,
         redirect_validator: Optional[Callable[[str], bool]] = None,
     ) -> Optional[tuple[bytes, str]]:
         """
@@ -744,7 +759,7 @@ class ImageHelper(metaclass=Singleton):
             url: str,
             proxy: Optional[bool] = None,
             use_cache: bool = True,
-            cookies: Optional[str | dict] = None) -> Optional[bytes]:
+            cookies: Optional[str | dict[str, str]] = None) -> Optional[bytes]:
         """
         获取图片（异步版本）
         """
@@ -761,7 +776,7 @@ class ImageHelper(metaclass=Singleton):
         url: str,
         proxy: Optional[bool] = None,
         use_cache: bool = True,
-        cookies: Optional[str | dict] = None,
+        cookies: Optional[str | dict[str, str]] = None,
         redirect_validator: Optional[Callable[[str], Awaitable[bool]]] = None,
     ) -> Optional[tuple[bytes, str]]:
         """
