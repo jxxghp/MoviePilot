@@ -1,4 +1,5 @@
 import time
+from collections.abc import Sequence
 from typing import Any, List, Optional, cast
 
 from sqlalchemy import delete as sqlalchemy_delete
@@ -358,7 +359,7 @@ class TransferHistoryOper(DbOper):
             lambda session: TransferHistory.statistic(session, days)
         )
 
-    async def async_statistic(self, days: int = 7) -> List[Any]:
+    async def async_statistic(self, days: int = 7) -> Sequence[Any]:
         """异步统计最近若干天的整理历史数量。"""
         return await self._execute_async_query(
             lambda session: TransferHistory.async_statistic(session, days)
