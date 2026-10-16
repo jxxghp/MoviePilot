@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, AsyncIterator, Awaitable, Callable, Optional, cast
+from typing import Any, AsyncIterator, Awaitable, Callable, Coroutine, Optional, cast
 
 from app.agent.steering import SteeringMessage
 from app.application import agent as agent_application
@@ -27,7 +27,9 @@ class WebAgentStreamDependencies:
     build_message_events_async: Callable[[Message], Awaitable[list[dict[str, Any]]]]
     save_display_snapshot: Callable[..., Awaitable[None]]
     split_output: Callable[[str], list[dict[str, Any]]]
-    create_background_task: Callable[[Awaitable[object]], asyncio.Task[object]]
+    create_background_task: Callable[
+        [Coroutine[Any, Any, object]], asyncio.Task[object]
+    ]
     source: str
     heartbeat_seconds: float
 
