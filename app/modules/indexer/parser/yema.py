@@ -3,7 +3,7 @@ import json
 from typing import Optional, Tuple
 
 from app.foundation import temporal as time_tools
-from app.modules.indexer.parser import SiteParserBase, SiteSchema
+from app.modules.indexer.parser import SitePage, SiteParserBase, SiteSchema
 from app.runtime.log import logger
 
 
@@ -15,7 +15,7 @@ class YemaSiteUserInfo(SiteParserBase):
     schema = SiteSchema.Yema
     request_mode = "apikey"
 
-    def _parse_site_page(self, html_text: str) -> None:
+    def _parse_site_page(self, html_text: SitePage) -> None:
         """
         配置 YemaPT 用户基本信息接口和认证请求头
 
@@ -36,7 +36,7 @@ class YemaSiteUserInfo(SiteParserBase):
             "User-Agent": self._ua,
         }
 
-    def _parse_user_base_info(self, html_text: str) -> None:
+    def _parse_user_base_info(self, html_text: SitePage) -> None:
         """
         解析开放 API 返回的用户基本信息和促销流量
 
@@ -46,6 +46,8 @@ class YemaSiteUserInfo(SiteParserBase):
             self.err_msg = "获取用户信息失败，未收到开放 API 响应"
             return
         try:
+            if isinstance(html_text, dict):
+                raise TypeError("the JSON object must be str, bytes or bytearray, not dict")
             payload = json.loads(html_text)
         except (TypeError, json.JSONDecodeError) as err:
             self.err_msg = "获取用户信息失败，开放 API 响应不是有效 JSON"
@@ -99,7 +101,7 @@ class YemaSiteUserInfo(SiteParserBase):
         """
         return None
 
-    def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:
+    def _parse_message_unread_links(self, html_text: str, msg_links: list[str]) -> Optional[str]:
         """
         跳过站内消息，开放 API 未提供该接口
 
