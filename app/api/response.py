@@ -4,10 +4,10 @@ from functools import wraps
 from typing import Annotated, Any, Callable, Coroutine, Optional, cast, get_args, get_origin
 
 from fastapi import APIRouter, Query, Request
-from fastapi.datastructures import DefaultPlaceholder
-from fastapi.responses import JSONResponse
 from fastapi._compat import ModelField
+from fastapi.datastructures import DefaultPlaceholder
 from fastapi.dependencies.utils import get_typed_return_annotation
+from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from fastapi.utils import create_model_field
 from starlette.responses import Response as StarletteResponse
