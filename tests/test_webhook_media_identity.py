@@ -155,3 +155,19 @@ def test_emby_series_identity_requests_provider_ids(monkeypatch) -> None:
         "http://emby.local/emby/Users/user-1/Items/series-item-1",
         {"api_key": "test-key", "Fields": "ProviderIds"},
     )
+
+
+def test_jellyfin_webhook_ignores_zero_runtime_percentage() -> None:
+    """时长为 0 的条目（如 strm）不应因计算播放进度而中断 webhook 解析。"""
+    client = Jellyfin.__new__(Jellyfin)
+    event = client.get_webhook_message(json.dumps({
+        "NotificationType": "PlaybackStart",
+        "ItemType": "Movie",
+        "Name": "测试电影",
+        "Year": 2026,
+        "PlaybackPositionTicks": 0,
+        "RunTimeTicks": 0,
+    }))
+
+    assert event is not None
+    assert event.percentage is None
