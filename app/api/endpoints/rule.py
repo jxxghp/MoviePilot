@@ -46,7 +46,7 @@ def _service(runtime: HostRuntime) -> FilterRuleService:
     )
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/builtin",
     summary="查询内置过滤规则",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -70,7 +70,7 @@ async def query_builtin_rules(
     )
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/custom",
     summary="查询自定义过滤规则",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -98,7 +98,7 @@ async def query_custom_rules(
     )
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/groups",
     summary="查询过滤规则组",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -127,7 +127,7 @@ async def query_rule_groups(
     )
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/custom",
     summary="新增自定义过滤规则",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -145,7 +145,7 @@ async def add_custom_rule(
     return _SchemaResponse(success=True, message=data.get("message"), data=data)
 
 
-@router.put(  # type: ignore[misc]
+@router.put(
     "/custom/reorder",
     summary="调整自定义过滤规则顺序",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -166,7 +166,7 @@ async def reorder_custom_rules(
     return _SchemaResponse(success=True, message=data.get("message"), data=data)
 
 
-@router.put(  # type: ignore[misc]
+@router.put(
     "/custom/{rule_id}",
     summary="更新自定义过滤规则",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -188,7 +188,7 @@ async def update_custom_rule(
     return _SchemaResponse(success=True, message=data.get("message"), data=data)
 
 
-@router.delete(  # type: ignore[misc]
+@router.delete(
     "/custom/{rule_id}",
     summary="删除自定义过滤规则",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -206,7 +206,7 @@ async def delete_custom_rule(
     return _SchemaResponse(success=True, message=data.get("message"), data=data)
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/groups",
     summary="新增过滤规则组",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -224,7 +224,7 @@ async def add_rule_group(
     return _SchemaResponse(success=True, message=data.get("message"), data=data)
 
 
-@router.put(  # type: ignore[misc]
+@router.put(
     "/groups/reorder",
     summary="调整过滤规则组顺序",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -245,7 +245,7 @@ async def reorder_rule_groups(
     return _SchemaResponse(success=True, message=data.get("message"), data=data)
 
 
-@router.put(  # type: ignore[misc]
+@router.put(
     "/groups/{name:path}",
     summary="更新过滤规则组",
     response_model=_SchemaResponse[_SchemaJsonObject],
@@ -267,7 +267,7 @@ async def update_rule_group(
     return _SchemaResponse(success=True, message=data.get("message"), data=data)
 
 
-@router.delete(  # type: ignore[misc]
+@router.delete(
     "/groups/{name:path}",
     summary="删除过滤规则组",
     response_model=_SchemaResponse[_SchemaJsonObject],
