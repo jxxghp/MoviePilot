@@ -8,7 +8,7 @@ from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
 from app.foundation import text as text_tools
 from app.foundation.dom import DomUtils
-from app.modules.indexer.parser import SiteParserBase, SiteSchema
+from app.modules.indexer.parser import SitePage, SiteParserBase, SiteSchema
 
 
 class TorrentLeechSiteUserInfo(SiteParserBase):
@@ -18,7 +18,7 @@ class TorrentLeechSiteUserInfo(SiteParserBase):
 
     schema = SiteSchema.TorrentLeech
 
-    def _parse_site_page(self, html_text: str) -> None:
+    def _parse_site_page(self, html_text: SitePage) -> None:
         """
         解析当前用户 ID 并初始化用户资料页面地址
 
@@ -57,7 +57,7 @@ class TorrentLeechSiteUserInfo(SiteParserBase):
         self._user_traffic_page = None
         self._torrent_seeding_page = f"profile/{self.userid}/seeding"
 
-    def _parse_user_base_info(self, html_text: str) -> None:
+    def _parse_user_base_info(self, html_text: SitePage) -> None:
         """
         使用用户 ID 初始化基础用户名
 
@@ -165,7 +165,7 @@ class TorrentLeechSiteUserInfo(SiteParserBase):
 
         return next_page
 
-    def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:
+    def _parse_message_unread_links(self, html_text: str, msg_links: list[str]) -> Optional[str]:
         """
         TorrentLeech 暂不解析未读消息链接
 
