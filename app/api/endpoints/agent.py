@@ -338,7 +338,7 @@ async def list_web_agent_commands(
     )
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/commands/run",
     summary="执行 Agent 斜杠命令",
     response_model=_SchemaResponse[_SchemaAgentCommandRunData],
