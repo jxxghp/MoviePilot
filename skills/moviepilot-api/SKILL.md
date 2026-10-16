@@ -228,7 +228,11 @@ When identity resolution fails, relay the gateway's actual remediation message a
 
 This Skill is the complete callable MoviePilot business API surface for the
 Agent. Every operation in `allowed-api-operations` has one exact parameter
-contract in a category file and one matching MCP `tools/list` branch. There is
+contract in a category file and one matching MCP `tools/list` branch in the
+default `full` schema mode. Clients explicitly sending
+`X-MCP-Schema-Mode: compact` receive a best-effort projection for oversized
+schemas; exact operation contracts remain available here and through
+`GET /api/v1/mcp/tools/moviepilot_api/schema`. There is
 no hidden fallback to an arbitrary REST route.
 
 MoviePilot's underlying OpenAPI document is larger because it also serves the

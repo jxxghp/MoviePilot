@@ -167,6 +167,8 @@ Python 内核继承宿主部署环境（含数据库配置与连接凭据），�
 | `mediaserver_operation` | Emby、Jellyfin、Plex、ZSpace、UGREEN、TrimeMedia、Navidrome、Vyo 原生媒体库、搜索、播放、扫描和刷新操作 | `skills/mediaserver-operation/SKILL.md` 与 `skills/mediaserver-operation/scripts/mp-mediaserver.py` 的 `ACTIONS` |
 | `database_operation` | MoviePilot 配置数据库表清单、实时 schema、只读 SQL 和明确授权写入 | `skills/database-operation/SKILL.md` 与 `skills/database-operation/scripts/mp-db.py` 的 `ACTIONS` |
 
+`tools/list` 默认返回上述完整合同，行为与既往一致。对工具 schema 体积敏感的客户端可以显式启用紧凑模式：请求时携带 `X-MCP-Schema-Mode: compact` 请求头。此时序列化后超过 5000 字节（Codex 等客户端触发逐级压缩的阈值）的工具 schema 会投影为顶层对象合同（根节点缺少 `type` 时补上 `object`）——保留 `type`、`required` 与顶层属性（含 `moviepilot_api` 完整的 231 项 `operation_id` 枚举），去掉各级 `oneOf`/`anyOf`/`allOf` 组合分支、`$defs` 定义表以及指向它的失效引用，并把引用已删除分支的属性说明改写为不依赖分支的直接描述（不在改写表内、仍引用分支的说明整条移除）。投影是 best-effort：`moviepilot_api` 投影后约 6 KB，仍高于该阈值（保留全部 operation 枚举本身就约占 5 KB），不承诺压入阈值以内；它的安全保证是根节点已不含组合关键字——客户端对超限 schema 的压缩不会再把整份 schema 替换为空对象，`type: object` 与 operation 枚举可继续用于发现与一次 `tools/call` 参数构造。逐 operation 的完整合同不受影响：`GET /api/v1/mcp/tools`、`GET /api/v1/mcp/tools/{tool_name}` 与 `GET /api/v1/mcp/tools/{tool_name}/schema` 始终返回完整合同；调用失败回执仍按所选 operation 返回精确参数合同，调用侧校验与权限判定不变。
+
 这四个工具都要求管理员级 MCP 集成身份；`tools/list` 的可见性不等于绕过业务权限或写操作确认。下载器和媒体服务器工具会在一次调用内自动选择默认/唯一实例；实例不明确时，错误结果会列出可复用的精确实例名。数据库工具不接受任意连接串或凭据，脚本从 MoviePilot 运行时配置读取数据库连接。
 
 `app/agent/policy/resources/api_mcp_schema.json` 是 `moviepilot_api` 的生成制品，不是设置项或 API 参数的手工事实源。`scripts/generate_agent_api_mcp_schema.py` 从当前 FastAPI OpenAPI、固定 operation 路由和 Agent 专用英文参数说明生成该文件；运行时直接读取它响应外部 MCP `tools/list`，测试会校验生成结果没有漂移。修改 API、请求模型或 operation 后应重新生成并提交该文件，不应直接编辑 JSON。
@@ -327,6 +329,17 @@ operation ID、权限、副作用、确认、恢复、结果敏感性及精确�
     }
   }
 }
+```
+
+### Codex（CLI / IDE 扩展）
+
+Codex 会对超过 5000 字节的工具 schema 逐级压缩：`moviepilot_api` 的根级 `oneOf` 会被整段替换为空对象，使严格校验的上游以 400 拒绝整个请求，一次会话里的所有工具调用都会失败。让 Codex 显式启用紧凑投影：
+
+```toml
+# ~/.codex/config.toml
+[mcp_servers.moviepilot]
+url = "http://localhost:3001/api/v1/mcp"
+http_headers = { "X-API-KEY" = "your_api_key_here", "X-MCP-Schema-Mode" = "compact" }
 ```
 
 ## 4.1 Agent 外部 MCP Client 配置

@@ -941,8 +941,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9563,
-  "edge_sha256": "8fc47a0f231e6f7bcb13c591365ded68951b1186b8d438be6e5af40fdb807719",
+  "edge_count": 9564,
+  "edge_sha256": "20aa028ee1ffe44f9dc04a763770593f1f79ca776e1e65ab632fbbbfee9ab989",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -2582,6 +2582,7 @@
     "app.api.endpoints.mcp -> app.agent",
     "app.api.endpoints.mcp -> app.agent.tools",
     "app.api.endpoints.mcp -> app.agent.tools.manager",
+    "app.api.endpoints.mcp -> app.agent.tools.projection",
     "app.api.endpoints.mcp -> app.api",
     "app.api.endpoints.mcp -> app.api.response",
     "app.api.endpoints.mcp -> app.runtime",
@@ -10508,7 +10509,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 1121,
+  "module_count": 1122,
   "modules": [
     "app",
     "app.adapters",
@@ -10696,6 +10697,7 @@
     "app.agent.tools.impl.view_image",
     "app.agent.tools.impl.write_file",
     "app.agent.tools.manager",
+    "app.agent.tools.projection",
     "app.agent.tools.result",
     "app.agent.tools.tags",
     "app.agent.web",

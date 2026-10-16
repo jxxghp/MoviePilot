@@ -354,6 +354,19 @@ def test_agent_manager_uses_focused_owner_modules_and_precise_facade():
     assert "from app.agent.orchestrator import AgentManager" not in startup_source
 
 
+def test_mcp_schema_projection_has_one_pure_owner() -> None:
+    """MCP schema 投影使用单词 owner，且不引入运行时或端点依赖。"""
+    owner = APP_ROOT / "agent" / "tools" / "projection.py"
+    assert owner.is_file()
+    assert not (owner.parent / "schema_budget.py").exists()
+    imports = [
+        node.module or ""
+        for node in ast.walk(_parse_source(owner))
+        if isinstance(node, ast.ImportFrom)
+    ]
+    assert not any(name == "app" or name.startswith("app.") for name in imports)
+
+
 def test_runtime_dependencies_use_same_named_single_word_package() -> None:
     """运行依赖能力必须使用同名包，且宿主直接依赖单一职责子模块。"""
     package = APP_ROOT / "runtime" / "dependencies"

@@ -114,6 +114,12 @@ nested `metadata.refresh` item fields, and cross-field rules. The external
 client should select the matching branch and make one `tools/call`; it does not
 need to call a discovery tool first.
 
+The default schema mode is `full`. Clients explicitly sending
+`X-MCP-Schema-Mode: compact` receive a best-effort projection for oversized
+schemas, without action-specific branches. Use this contract or the full
+`GET /api/v1/mcp/tools/{tool_name}/schema` response for exact arguments;
+call-time validation and authorization are unchanged.
+
 MCP call arguments use the same contract without shell quoting:
 
 ```json
