@@ -522,10 +522,6 @@
     "assignment": 2,
     "no-untyped-def": 2
   },
-  "app/application/messaging/skill.py": {
-    "no-untyped-def": 1,
-    "type-arg": 6
-  },
   "app/application/messaging/subscribe.py": {
     "arg-type": 1,
     "assignment": 2,
@@ -1647,24 +1643,16 @@
     "union-attr": 1,
     "var-annotated": 4
   },
-  "app/monitor/dispatcher.py": {
-    "arg-type": 4,
-    "assignment": 5,
-    "attr-defined": 1,
-    "no-untyped-def": 6
-  },
   "app/monitor/monitor.py": {
     "arg-type": 8,
     "assignment": 1,
     "attr-defined": 5,
-    "no-untyped-call": 2,
     "no-untyped-def": 2,
     "type-arg": 4,
     "union-attr": 1,
     "var-annotated": 2
   },
   "app/monitor/poller.py": {
-    "arg-type": 3,
     "no-untyped-def": 3,
     "type-arg": 2
   },
