@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
-from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from pydantic import Field
 from sqlalchemy import create_engine, select
@@ -18,7 +18,10 @@ from app.agent import orchestrator
 from app.agent.api.executor import MoviePilotApiExecutor
 from app.agent.middleware import config as config_middleware
 from app.agent.middleware import subagents
-from app.agent.middleware.summarization import FinalRequestCompactionMiddleware
+from app.agent.middleware.summarization import (
+    ContextPreservingSummarizationMiddleware,
+    FinalRequestCompactionMiddleware,
+)
 from app.agent.terminal.ownership import TerminalScope, bind_terminal_scope, close_terminal_scope
 from app.db.adapters.invocation import TransactionalInvocationRepository
 from app.db.models.agentinvocation import AgentInvocation
@@ -41,6 +44,11 @@ class _ScriptModel(FakeMessagesListChatModel):
     async def _agenerate(self, messages: list[Any], stop=None, run_manager=None, **kwargs: Any) -> Any:
         """记录包含生产系统提示词和中间件动态上下文的最终请求。"""
         self.requests.append(messages)
+        if run_manager is not None and run_manager.metadata.get("lc_source") == "summarization":
+            # 真实压缩会复用模型；摘要请求不能消耗下一条业务脚本响应。
+            return ChatResult(generations=[ChatGeneration(message=AIMessage(
+                content="脚本摘要：保留原任务的范围、分页边界和输出格式，依据已取得的回执继续完成任务。",
+            ))])
         return await super()._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
 
 
@@ -189,6 +197,19 @@ def _responses(world: EvaluationWorld) -> list[AIMessage]:
 
 
 @pytest.mark.asyncio
+async def test_script_summary_does_not_consume_next_business_response():
+    """真实摘要调用应使用独立脚本响应，避免吞掉业务终态并循环重放。"""
+    final_response = AIMessage(content='{"status":"completed"}')
+    model = _ScriptModel(responses=[final_response])
+    summarizer = ContextPreservingSummarizationMiddleware(model)
+
+    summary = await summarizer.acreate_summary([HumanMessage(content="保留任务边界并继续执行。")])
+    assert summary.startswith("脚本摘要：")
+    assert await model.ainvoke("继续") == final_response
+    assert len(model.requests) == 2
+
+
+@pytest.mark.asyncio
 async def test_steering_message_is_injected_at_a_real_tool_boundary(invocation_store):
     """生产图应在首个分页回执后注入补充 HumanMessage，并继续完成原任务。"""
     world = EvaluationWorld("steering_long_context")
@@ -219,7 +240,8 @@ async def test_steering_message_is_injected_at_a_real_tool_boundary(invocation_s
 
 
 @pytest.mark.asyncio
-async def test_multiple_steering_messages_preserve_each_model_boundary(invocation_store):
+@pytest.mark.parametrize("context_window", [128000, 256000])
+async def test_multiple_steering_messages_preserve_each_model_boundary(invocation_store, context_window):
     """连续补充消息应在各自业务回执后进入生产图，并保留提交顺序。"""
     world = EvaluationWorld("steering_multi_message")
     model = _ScriptModel(responses=_responses(world))
@@ -228,7 +250,7 @@ async def test_multiple_steering_messages_preserve_each_model_boundary(invocatio
         world,
         model,
         model_name="scripted-multi-steering-test",
-        context_window=128000,
+        context_window=context_window,
         max_iterations=64,
         invocation_repository=repository,
     )
@@ -246,13 +268,15 @@ async def test_multiple_steering_messages_preserve_each_model_boundary(invocatio
     applied_ids = [
         event["message_id"] for event in capture["steering_events"] if event["status"] == "applied"
     ]
-    context_ids = [
-        message["data"].get("additional_kwargs", {}).get("moviepilot_steering_message_id")
-        for message in capture["raw_messages"]
-        if message["type"] == "human"
-        and message["data"].get("additional_kwargs", {}).get("moviepilot_steering_message_id")
-    ]
-    assert context_ids == applied_ids
+    # 最终图状态允许压缩历史；从实际模型请求核验每条消息首次出现的工具回执边界。
+    injection_boundaries = {}
+    for request in model.requests:
+        latest_tool = next((message for message in reversed(request) if isinstance(message, ToolMessage)), None)
+        for message in request:
+            message_id = message.additional_kwargs.get("moviepilot_steering_message_id")
+            if isinstance(message, HumanMessage) and message_id and message_id not in injection_boundaries:
+                injection_boundaries[message_id] = latest_tool.tool_call_id if latest_tool is not None else None
+    assert list(injection_boundaries.items()) == [(applied_ids[0], "page-1"), (applied_ids[1], "page-3")]
 
 
 @pytest.fixture
