@@ -213,7 +213,7 @@ class _SubscribeSearchQueueCoordinator(_SubscribeOwnerBase):
     def exists(
         cls,
         mediainfo: MediaInfo,
-        meta: MetaBase = None,
+        meta: Optional[MetaBase] = None,
         repository: Optional[SubscriptionRepository] = None,
     ) -> bool:
         """
