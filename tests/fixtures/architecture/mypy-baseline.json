@@ -1243,9 +1243,6 @@
     "arg-type": 2,
     "no-untyped-def": 1
   },
-  "app/modules/dingtalk/dingtalk.py": {
-    "no-untyped-def": 1
-  },
   "app/modules/discord/__init__.py": {
     "arg-type": 9,
     "assignment": 10,
