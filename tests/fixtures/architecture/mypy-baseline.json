@@ -989,9 +989,6 @@
     "no-untyped-def": 20,
     "type-arg": 1
   },
-  "app/db/oper/agentchat.py": {
-    "type-arg": 6
-  },
   "app/db/oper/downloadhistory.py": {
     "no-any-return": 3,
     "no-untyped-def": 9,

@@ -30,16 +30,17 @@ class AgentChatOper(DbOper):
     def _channel_value(channel: Optional[Union[NotificationChannel, str]]) -> Optional[str]:
         """获取渠道枚举的字符串值。"""
         if isinstance(channel, NotificationChannel):
-            return channel.value
+            value: str = channel.value
+            return value
         return channel
 
     @staticmethod
-    def _normalize_messages(messages: Optional[list[dict]]) -> list[dict]:
+    def _normalize_messages(messages: Optional[list[dict[str, object]]]) -> list[dict[str, object]]:
         """规范化展示消息列表，避免 JSON 字段存入 None。"""
         return messages if isinstance(messages, list) else []
 
     @staticmethod
-    def _normalize_title(value: Optional[str], messages: list[dict]) -> str:
+    def _normalize_title(value: Optional[str], messages: list[dict[str, object]]) -> str:
         """生成会话标题。"""
         if value and value.strip():
             return value.strip()[:120]
@@ -61,7 +62,7 @@ class AgentChatOper(DbOper):
         return bool(value and value.strip() and value.strip() != DEFAULT_AGENT_CHAT_TITLE)
 
     @staticmethod
-    def _normalize_preview(messages: list[dict]) -> str:
+    def _normalize_preview(messages: list[dict[str, object]]) -> str:
         """生成会话预览文本。"""
         for message in reversed(messages):
             content = str(message.get("content") or "").strip()
@@ -147,7 +148,7 @@ class AgentChatOper(DbOper):
         self,
         session_id: str,
         user_id: Optional[str],
-        messages: list[dict],
+        messages: list[dict[str, object]],
     ) -> None:
         """
         保存可恢复 Agent 上下文的原始消息。
@@ -210,7 +211,7 @@ class AgentChatOper(DbOper):
         self,
         session_id: str,
         user_id: Optional[str] = None,
-        messages: Optional[list[dict]] = None,
+        messages: Optional[list[dict[str, object]]] = None,
         username: Optional[str] = None,
         channel: Optional[Union[NotificationChannel, str]] = None,
         source: Optional[str] = None,
@@ -254,7 +255,7 @@ class AgentChatOper(DbOper):
         self,
         session_id: str,
         user_id: Optional[str] = None,
-        messages: Optional[list[dict]] = None,
+        messages: Optional[list[dict[str, object]]] = None,
         username: Optional[str] = None,
         channel: Optional[Union[NotificationChannel, str]] = None,
         source: Optional[str] = None,
