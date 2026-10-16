@@ -84,11 +84,6 @@
   "app/adapters/web/plugin/routes.py": {
     "type-arg": 1
   },
-  "app/agent/callback/__init__.py": {
-    "no-untyped-call": 3,
-    "no-untyped-def": 8,
-    "type-arg": 1
-  },
   "app/agent/llm/capability.py": {
     "no-any-return": 4,
     "no-untyped-def": 6,
@@ -165,7 +160,7 @@
     "attr-defined": 7,
     "dict-item": 1,
     "no-any-return": 7,
-    "no-untyped-call": 3,
+    "no-untyped-call": 2,
     "no-untyped-def": 13,
     "type-arg": 12,
     "union-attr": 3,
@@ -1846,7 +1841,7 @@
     "arg-type": 8,
     "assignment": 1,
     "attr-defined": 5,
-    "no-untyped-call": 8,
+    "no-untyped-call": 2,
     "no-untyped-def": 2,
     "type-arg": 4,
     "union-attr": 1,
@@ -1863,11 +1858,6 @@
   },
   "app/monitor/syslimits.py": {
     "attr-defined": 1
-  },
-  "app/monitor/watcher.py": {
-    "no-untyped-call": 1,
-    "no-untyped-def": 8,
-    "type-arg": 1
   },
   "app/runtime/cache.py": {
     "arg-type": 8,

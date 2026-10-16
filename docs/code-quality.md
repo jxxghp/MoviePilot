@@ -70,12 +70,14 @@ uv run --locked --no-sync python scripts/architecture/complexity.py
 - `app/startup/lifecycle/components.py`：组件启动与关闭。
 
 三个文件及完整严格清单实测通过，不增加忽略规则或类型债务。全宿主 mypy ratchet 继续保留。
-严格清单当前仍采用 `follow_imports = skip` 和 `ignore_missing_imports = True`，不能等同于
-传递依赖全部严格。Agent session/lifecycle 与 Scheduler lifecycle 的扩围需要一起处理父类、
+严格清单默认采用 `follow_imports = skip` 和 `ignore_missing_imports = True`，不能等同于
+传递依赖全部严格。流式回调使用的 `app.chain.base` 和 `app.schemas.notification` 在导入时
+采用 `follow_imports = silent`，读取真实父类和渠道能力签名；这两个依赖未纳入严格清单，
+其存量错误仍由全宿主显式扫描完整报告并逐文件检查低水位。Agent session/lifecycle 与 Scheduler lifecycle 的扩围需要一起处理父类、
 回调和返回值类型；全仓错误计数为零并不保证单独纳入 strict frontier 后也为零。
 
 2026-10-16 开始逐文件清理类型债务，`app/domain/title.py` 通过局部可空类型声明保留
-既有搜索解析行为，并纳入严格清单；当前清单共 206 个文件（205 个生产文件和 1 个脚本）。
+既有搜索解析行为，并纳入严格清单；当前清单共 208 个文件（207 个生产文件和 1 个脚本）。
 每个生产文件完成针对性测试后独立提交，并纳入严格门禁。每批集中同步真实下降的
 类型基线和指标文档，运行完整本地单测与适用门禁后统一推送；不逐文件等待远端 CI。
 验收同时检查完整严格清单与全宿主 Linux 分析，避免 `follow_imports = skip` 隐藏依赖
