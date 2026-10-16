@@ -4,7 +4,44 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Optional, cast
+from typing import Any, Optional, Protocol
+
+
+class PluginMarketPort(Protocol):
+    """声明运行时所需的市场读取和兼容标注能力。"""
+
+    def get_local_repo_paths(self) -> list[Path]:
+        """返回可监测的本地仓库路径。"""
+        ...
+
+    def get_local_candidate(
+        self, plugin_id: str, **kwargs: Any,
+    ) -> Optional[dict[str, Any]]:
+        """按插件 ID 和可选来源筛选返回本地候选。"""
+        ...
+
+    def get_local_candidates(self) -> dict[str, dict[str, Any]]:
+        """返回以插件 ID 为键的全部本地候选。"""
+        ...
+
+    def make_local_repo_url(
+        self, plugin_id: str, repo_path: Optional[object] = None,
+        package_version: Optional[str] = None,
+    ) -> str:
+        """生成保留来源路径与插件代际的本地标识。"""
+        ...
+
+    def annotate_system_version(self, plugin_info: dict[str, Any]) -> dict[str, Any]:
+        """补充主程序版本兼容状态并返回该条目。"""
+        ...
+
+    def annotate_runtime_compatibility(self, plugin_info: dict[str, Any]) -> dict[str, Any]:
+        """补充运行时兼容状态并返回该条目。"""
+        ...
+
+    def is_package_compatible(self, plugin_info: dict[str, Any], package_version: str) -> bool:
+        """判断条目是否支持指定插件代际。"""
+        ...
 
 
 class PluginSystemServices:
@@ -13,7 +50,7 @@ class PluginSystemServices:
     def __init__(
         self,
         *,
-        market: Any,
+        market: PluginMarketPort,
         package: Any,
         dependency: Any,
         dependency_manifest_status: Callable[[Path], Optional[bool]],
@@ -34,11 +71,11 @@ class PluginSystemServices:
         """返回可监测的本地插件仓库路径。"""
         return self.market.get_local_repo_paths()
 
-    def local_candidate(self, plugin_id: str, **kwargs: Any) -> Optional[dict]:
+    def local_candidate(self, plugin_id: str, **kwargs: Any) -> Optional[dict[str, Any]]:
         """读取指定本地插件候选。"""
         return self.market.get_local_candidate(plugin_id, **kwargs)
 
-    def local_candidates(self) -> dict[str, dict]:
+    def local_candidates(self) -> dict[str, dict[str, Any]]:
         """读取全部本地插件候选。"""
         return self.market.get_local_candidates()
 
@@ -55,7 +92,7 @@ class PluginSystemServices:
             package_version,
         )
 
-    def annotate_system_version(self, plugin_info: dict) -> dict:
+    def annotate_system_version(self, plugin_info: dict[str, Any]) -> dict[str, Any]:
         """补充插件条目的主程序版本兼容信息。"""
         return self.market.annotate_system_version(plugin_info)
 
@@ -63,12 +100,9 @@ class PluginSystemServices:
         self, plugin_info: dict[str, Any]
     ) -> dict[str, Any]:
         """补充插件条目的运行时（free-threaded）兼容信息。"""
-        return cast(
-            dict[str, Any],
-            self.market.annotate_runtime_compatibility(plugin_info),
-        )
+        return self.market.annotate_runtime_compatibility(plugin_info)
 
-    def is_package_compatible(self, plugin_info: dict, package_version: str) -> bool:
+    def is_package_compatible(self, plugin_info: dict[str, Any], package_version: str) -> bool:
         """判断插件条目是否兼容指定代际。"""
         return self.market.is_package_compatible(plugin_info, package_version)
 
