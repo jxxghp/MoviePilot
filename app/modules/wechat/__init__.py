@@ -1,7 +1,7 @@
 import json
 import re
 import xml.dom.minidom
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 from urllib.parse import quote
 
 from app.adapters.external.wechat import WXBizMsgCrypt
@@ -163,7 +163,8 @@ class WechatModule(_MessageChannelModuleBase[WeChat]):
             </xml>
             """
             dom_tree = xml.dom.minidom.parseString(sMsg.decode('UTF-8'))
-            root_node = dom_tree.documentElement
+            # parseString 成功即有根元素；空文档会在解析阶段抛错。
+            root_node = cast(xml.dom.minidom.Element, dom_tree.documentElement)
             # 消息类型
             msg_type = DomUtils.tag_value(root_node, "MsgType")
             # Event event事件只有click才有效,enter_agent无效
