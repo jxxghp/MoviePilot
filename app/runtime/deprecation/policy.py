@@ -7,12 +7,15 @@
 import functools
 import inspect
 import threading
-from typing import Any, Callable, FrozenSet, Optional, Set, Tuple
+from typing import Callable, FrozenSet, Optional, ParamSpec, Set, Tuple, TypeVar, cast
 
 from app.runtime.deprecation import notices
 from app.runtime.deprecation.notices import DeprecationNotice, DeprecationStage
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
+
+_Params = ParamSpec("_Params")
+_Result = TypeVar("_Result")
 
 # 已告警过的 (标识, 触发来源)，保证每个来源只留一次痕迹
 _warned: Set[Tuple[str, Optional[str]]] = set()
@@ -167,7 +170,7 @@ def enforce_facade(facade: str, operation: str) -> None:
             return
 
 
-def deprecated(key: str) -> Callable:
+def deprecated(key: str) -> Callable[[Callable[_Params, _Result]], Callable[_Params, _Result]]:
     """
     把废弃语义施加到一个可调用对象上
 
@@ -177,20 +180,24 @@ def deprecated(key: str) -> Callable:
     :return: 装饰器
     """
 
-    def decorator(func: Callable) -> Callable:
+    def decorator(func: Callable[_Params, _Result]) -> Callable[_Params, _Result]:
+        """包装原函数，并保留参数及返回类型合同。"""
         if inspect.iscoroutinefunction(func):
 
             @functools.wraps(func)
-            async def async_wrapper(*args: Any, **kwargs: Any) -> Any:
+            async def async_wrapper(*args: _Params.args, **kwargs: _Params.kwargs) -> object:
+                """在协程执行时检查废弃阶段并保留异步调用形状。"""
                 context = getattr(func, "__qualname__", None)
                 guard(key, context=context)
                 warn(key, context=context)
                 return await func(*args, **kwargs)
 
-            return async_wrapper
+            # 已确认原函数返回协程；包装器保留同一 await 结果与调用参数。
+            return cast(Callable[_Params, _Result], async_wrapper)
 
         @functools.wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:
+        def wrapper(*args: _Params.args, **kwargs: _Params.kwargs) -> _Result:
+            """在原函数执行前应用废弃策略，随后透传结果或异常。"""
             context = getattr(func, "__qualname__", None)
             guard(key, context=context)
             warn(key, context=context)

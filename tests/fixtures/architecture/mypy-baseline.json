@@ -2395,9 +2395,6 @@
     "type-arg": 4,
     "unused-coroutine": 1
   },
-  "app/runtime/deprecation/policy.py": {
-    "type-arg": 2
-  },
   "app/runtime/events.py": {
     "list-item": 1,
     "misc": 1,
