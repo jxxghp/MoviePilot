@@ -238,6 +238,27 @@ def test_jsonrpc_tools_list_honours_compact_header(monkeypatch) -> None:
     )
     assert "protocolVersion" in json.loads(bytes(initialize_response.body).decode("utf-8"))["result"]
 
+    call_body = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {"name": "read_skill", "arguments": {}},
+        }
+    ).encode("utf-8")
+    call_results = [
+        json.loads(
+            bytes(
+                asyncio.run(
+                    mcp.mcp_jsonrpc(_request(headers=headers, body=call_body))
+                ).body
+            ).decode("utf-8")
+        )["result"]
+        for headers in (None, [(b"x-mcp-schema-mode", b"compact")])
+    ]
+    assert call_results[0] == call_results[1]
+    assert call_results[0]["isError"] is True
+
 
 def test_rest_tool_list_always_returns_full_contract(monkeypatch) -> None:
     """三个 REST 工具端点不受客户端 schema 模式影响，始终返回完整合同。"""

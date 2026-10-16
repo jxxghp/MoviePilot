@@ -12,11 +12,11 @@ schema 会依次执行「删除 description → 丢弃 ``$defs`` → 折叠深�
 客户端压缩阈值的工具 schema 投影为顶层对象合同——保留 ``type``/``required`` 与顶层
 属性（含 operation/action 枚举），去掉各级组合关键字、``$defs`` 与指向它们的失效
 本地引用，并把引用已删除分支的说明改写为不依赖分支的直接描述（无法改写的整条移除）。
-投影是 best-effort：它不承诺把结果压到阈值
-以内（``moviepilot_api`` 保留全部 231 个 operation 的枚举本身就约占 5 KB），而是
-保证根节点不再是组合节点，客户端的后续压缩不会再把整份 schema 替换为空对象。逐
-operation 的完整合同继续由 ``GET /api/v1/mcp/tools/{tool_name}/schema`` 与调用失败
-回执提供，调用侧校验行为不变；默认（``full``）模式不投影，保持既有完整合同。
+投影是 best-effort：它不承诺把结果压到阈值以内（``moviepilot_api`` 保留全部 231 个
+operation 的枚举本身就约占 5 KB），而是保证根节点不再是组合节点，客户端的后续压缩
+不会再把整份 schema 替换为空对象。逐 operation 的完整合同继续由
+``GET /api/v1/mcp/tools/{tool_name}/schema`` 与调用失败回执提供，调用侧校验行为不变；
+默认（``full``）模式不投影，保持既有完整合同。
 """
 
 from __future__ import annotations
@@ -97,7 +97,11 @@ def _rewrite_description(description: str) -> str | None:
 
 
 def _targets_projected_keyword(pointer: Any) -> bool:
-    """判断本地引用是否指向投影会删除的关键字（定义表或组合分支）。"""
+    """判断本地引用是否指向投影会删除的关键字（定义表或组合分支）。
+
+    只按指针首段判断：本仓库生成的 schema 只用根级 ``#/$defs/...`` 引用。
+    不按任意段匹配，避免误删由属性名构成的合法指针（如 ``#/properties/oneOf``）。
+    """
     if not isinstance(pointer, str) or not pointer.startswith("#/"):
         return False
     return pointer[2:].split("/", 1)[0] in PROJECTED_KEYWORDS
