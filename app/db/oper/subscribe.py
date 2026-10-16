@@ -162,33 +162,29 @@ class SubscribeOper(DbOper):
             return None
         media_source, media_id, season, episode_group, music_type = _lookup_values(identity)
         if username:
-            return cast(
-                Optional[Subscribe],
-                self._execute_sync_query(
-                    lambda session: Subscribe.exists_by_username(
-                        session,
-                        username=username,
-                        media_source=media_source,
-                        media_id=media_id,
-                        season=season,
-                        episode_group=episode_group,
-                        music_type=music_type,
-                    ),
-                ),
-            )
-        return cast(
-            Optional[Subscribe],
-            self._execute_sync_query(
-                lambda session: Subscribe.exists(
+            owned_subscription: Optional[Subscribe] = self._execute_sync_query(
+                lambda session: Subscribe.exists_by_username(
                     session,
+                    username=username,
                     media_source=media_source,
                     media_id=media_id,
                     season=season,
                     episode_group=episode_group,
                     music_type=music_type,
-                )
-            ),
+                ),
+            )
+            return owned_subscription
+        subscription: Optional[Subscribe] = self._execute_sync_query(
+            lambda session: Subscribe.exists(
+                session,
+                media_source=media_source,
+                media_id=media_id,
+                season=season,
+                episode_group=episode_group,
+                music_type=music_type,
+            )
         )
+        return subscription
 
     async def _async_exists(
         self,
@@ -208,29 +204,25 @@ class SubscribeOper(DbOper):
                 return None
             media_source, media_id, season, episode_group, music_type = _lookup_values(identity)
             if username:
-                return cast(
-                    Optional[Subscribe],
-                    await Subscribe.async_exists_by_username(
-                        session,
-                        username=username,
-                        media_source=media_source,
-                        media_id=media_id,
-                        season=season,
-                        episode_group=episode_group,
-                        music_type=music_type,
-                    ),
-                )
-            return cast(
-                Optional[Subscribe],
-                await Subscribe.async_exists(
+                owned_subscription: Optional[Subscribe] = await Subscribe.async_exists_by_username(
                     session,
+                    username=username,
                     media_source=media_source,
                     media_id=media_id,
                     season=season,
                     episode_group=episode_group,
                     music_type=music_type,
-                ),
+                )
+                return owned_subscription
+            subscription: Optional[Subscribe] = await Subscribe.async_exists(
+                session,
+                media_source=media_source,
+                media_id=media_id,
+                season=season,
+                episode_group=episode_group,
+                music_type=music_type,
             )
+            return subscription
 
         return cast(Optional[Subscribe], await self._execute_async_query(query))
 
@@ -482,17 +474,15 @@ class SubscribeOper(DbOper):
         music_type: Optional[str] = None,
     ) -> List[Subscribe]:
         """同步按规范媒体身份读取订阅。"""
-        return cast(
-            List[Subscribe],
-            self._execute_sync_query(
-                lambda session: Subscribe.list_by_media_identity(
-                    session,
-                    media_source=media_source,
-                    media_id=media_id,
-                    music_type=music_type,
-                )
-            ),
+        subscriptions: List[Subscribe] = self._execute_sync_query(
+            lambda session: Subscribe.list_by_media_identity(
+                session,
+                media_source=media_source,
+                media_id=media_id,
+                music_type=music_type,
+            )
         )
+        return subscriptions
 
     async def get_candidate(
         self,
@@ -585,19 +575,17 @@ class SubscribeOper(DbOper):
         """
         根据条件查询订阅
         """
-        return cast(
-            Optional[Subscribe],
-            self._execute_sync_query(
-                lambda session: Subscribe.get_by(
-                    session,
-                    type=type,
-                    media_source=media_source,
-                    media_id=media_id,
-                    season=season,
-                    music_type=music_type,
-                )
-            ),
+        subscription: Optional[Subscribe] = self._execute_sync_query(
+            lambda session: Subscribe.get_by(
+                session,
+                type=type,
+                media_source=media_source,
+                media_id=media_id,
+                season=season,
+                music_type=music_type,
+            )
         )
+        return subscription
 
     async def async_get_by(
         self,
@@ -628,7 +616,8 @@ class SubscribeOper(DbOper):
         """
         获取订阅列表
         """
-        return cast(List[Subscribe], self._execute_sync_query(lambda session: Subscribe.get_by_state(session, state)))
+        subscriptions: List[Subscribe] = self._execute_sync_query(lambda session: Subscribe.get_by_state(session, state))
+        return subscriptions
 
     async def async_list(
         self,
@@ -781,22 +770,19 @@ class SubscribeOper(DbOper):
         """
         获取指定用户的订阅
         """
-        return cast(
-            List[Subscribe],
-            self._execute_sync_query(
-                lambda session: Subscribe.list_by_username(
-                    session,
-                    username=username,
-                    state=state,
-                    mtype=mtype,
-                )
-            ),
+        subscriptions: List[Subscribe] = self._execute_sync_query(
+            lambda session: Subscribe.list_by_username(
+                session,
+                username=username,
+                state=state,
+                mtype=mtype,
+            )
         )
+        return subscriptions
 
     def list_by_type(self, mtype: str, days: int = 7) -> List[Subscribe]:
         """
         获取指定类型的订阅
         """
-        return cast(
-            List[Subscribe], self._execute_sync_query(lambda session: Subscribe.list_by_type(session, mtype, days))
-        )
+        subscriptions: List[Subscribe] = self._execute_sync_query(lambda session: Subscribe.list_by_type(session, mtype, days))
+        return subscriptions
