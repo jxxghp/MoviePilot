@@ -226,7 +226,7 @@ def _unquoted_assignment_value_end(
     outer_quote: str,
 ) -> int:
     """线性扫描未引号值，仅在容器外识别字段分隔符。"""
-    stack = []
+    stack: list[str] = []
     cursor = value_start
     while cursor < len(value):
         char = value[cursor]
