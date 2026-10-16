@@ -20,6 +20,7 @@ class BackupPolicy:
     max_count: int = 0
 
     def __post_init__(self) -> None:
+        """拒绝负数保留策略，避免备份清理范围不明确。"""
         if self.retention_days < 0 or self.max_count < 0:
             raise ValueError("数据库备份保留策略不能使用负数")
 
@@ -146,6 +147,7 @@ class DatabaseBackupService:
         target: str = "moviepilot",
         version: str | None = None,
     ) -> None:
+        """保存备份端口与动态策略，并建立单次创建操作的互斥边界。"""
         self._backend = backend
         self._artifact_store_factory = artifact_store_factory
         self._policy_reader = policy_reader
