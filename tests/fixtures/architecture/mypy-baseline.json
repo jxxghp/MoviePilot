@@ -992,9 +992,6 @@
   "app/db/models/agenttaskrun.py": {
     "no-any-return": 1
   },
-  "app/db/models/downloadfailure.py": {
-    "no-any-return": 1
-  },
   "app/db/models/downloadhistory.py": {
     "no-untyped-def": 19
   },
@@ -1007,17 +1004,8 @@
   "app/db/models/passkey.py": {
     "no-untyped-def": 12
   },
-  "app/db/models/plugindata.py": {
-    "no-untyped-def": 8
-  },
   "app/db/models/site.py": {
     "no-untyped-def": 10
-  },
-  "app/db/models/sitestatistic.py": {
-    "no-untyped-def": 3
-  },
-  "app/db/models/siteuserdata.py": {
-    "no-untyped-def": 5
   },
   "app/db/models/subscribe.py": {
     "arg-type": 8,

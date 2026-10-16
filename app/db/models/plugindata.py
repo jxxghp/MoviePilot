@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Optional, Self
 
 from sqlalchemy import JSON, Index, String, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,14 +21,14 @@ class PluginData(Base):
     )
 
     @classmethod
-    def get_plugin_data(cls, db: Session, plugin_id: str):
+    def get_plugin_data(cls, db: Session, plugin_id: str) -> list[Self]:
         """在调用方 Session 中读取插件全部数据。"""
         return list(db.execute(select(cls).where(cls.plugin_id == plugin_id)).scalars().all())
 
     @classmethod
     async def async_get_plugin_data(
         cls, db: AsyncSession, plugin_id: str
-    ):
+    ) -> list[Self]:
         """在调用方 AsyncSession 中读取插件全部数据。"""
         result = await db.execute(select(cls).where(cls.plugin_id == plugin_id))
         return list(result.scalars().all())
@@ -36,43 +36,45 @@ class PluginData(Base):
     @classmethod
     def get_plugin_data_by_key(
         cls, db: Session, plugin_id: str, key: str
-    ):
+    ) -> Optional[Self]:
         """在调用方 Session 中按键读取插件数据。"""
-        return db.execute(
+        data: Optional[Self] = db.execute(
             select(cls).where(cls.plugin_id == plugin_id, cls.key == key)
         ).scalars().first()
+        return data
 
     @classmethod
     async def async_get_plugin_data_by_key(
         cls, db: AsyncSession, plugin_id: str, key: str
-    ):
+    ) -> Optional[Self]:
         """在调用方 AsyncSession 中按键读取插件数据。"""
         result = await db.execute(
             select(cls).where(cls.plugin_id == plugin_id, cls.key == key)
         )
-        return result.scalar_one_or_none()
+        data: Optional[Self] = result.scalar_one_or_none()
+        return data
 
     @classmethod
-    def del_plugin_data_by_key(cls, db: Session, plugin_id: str, key: str):
+    def del_plugin_data_by_key(cls, db: Session, plugin_id: str, key: str) -> None:
         """在调用方事务中暂存单个插件键删除。"""
         db.execute(delete(cls).where(cls.plugin_id == plugin_id, cls.key == key))
 
     @classmethod
-    def del_plugin_data(cls, db: Session, plugin_id: str):
+    def del_plugin_data(cls, db: Session, plugin_id: str) -> None:
         """在调用方事务中暂存插件全部数据删除。"""
         db.execute(delete(cls).where(cls.plugin_id == plugin_id))
 
     @classmethod
     def get_plugin_data_by_plugin_id(
         cls, db: Session, plugin_id: str
-    ):
+    ) -> list[Self]:
         """在调用方 Session 中按插件 ID 读取数据。"""
         return list(db.execute(select(cls).where(cls.plugin_id == plugin_id)).scalars().all())
 
     @classmethod
     async def async_get_plugin_data_by_plugin_id(
         cls, db: AsyncSession, plugin_id: str
-    ):
+    ) -> list[Self]:
         """在调用方 AsyncSession 中按插件 ID 读取数据。"""
         result = await db.execute(select(cls).where(cls.plugin_id == plugin_id))
         return list(result.scalars().all())

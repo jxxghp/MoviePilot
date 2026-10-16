@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Self
 
 from sqlalchemy import Float, Index, Integer, String, delete, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
@@ -90,7 +90,7 @@ class DownloadFailure(Base):
         """
         新增或更新资源失败记录。
         """
-        failure = db.execute(
+        failure: Optional[Self] = db.execute(
             select(cls).where(cls.fingerprint == fingerprint)
         ).scalars().first()
         payload = {

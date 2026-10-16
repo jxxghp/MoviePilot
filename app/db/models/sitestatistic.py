@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, Self
 
 from sqlalchemy import JSON, Integer, String, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,21 +29,23 @@ class SiteStatistic(Base):
     note: Mapped[Optional[Any]] = mapped_column(JSON)
 
     @classmethod
-    def get_by_domain(cls, db: Session, domain: str):
+    def get_by_domain(cls, db: Session, domain: str) -> Optional[Self]:
         """在调用方 Session 中查询站点统计。"""
-        return db.execute(select(cls).where(cls.domain == domain)).scalars().first()
+        statistic: Optional[Self] = db.execute(select(cls).where(cls.domain == domain)).scalars().first()
+        return statistic
 
     @classmethod
     async def async_get_by_domain(
         cls,
         db: AsyncSession,
         domain: str,
-    ):
+    ) -> Optional[Self]:
         """在调用方 AsyncSession 中查询站点统计。"""
         result = await db.execute(select(cls).where(cls.domain == domain))
-        return result.scalar_one_or_none()
+        statistic: Optional[Self] = result.scalar_one_or_none()
+        return statistic
 
     @classmethod
-    def reset(cls, db: Session):
+    def reset(cls, db: Session) -> None:
         """在调用方持有的事务中暂存统计表清空操作。"""
         db.execute(delete(cls))
