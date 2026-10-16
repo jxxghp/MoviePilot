@@ -5,9 +5,6 @@
   "app/domain/meta/customization.py": {
     "E731": 1
   },
-  "app/domain/meta/releasegroup.py": {
-    "E731": 1
-  },
   "app/domain/meta/runtime.py": {
     "E731": 2
   },

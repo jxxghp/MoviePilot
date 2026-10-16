@@ -4,6 +4,7 @@ from tests.cases.groups import release_group_cases
 
 
 def test_release_group():
+    """逐站点核对既有发布标题的制作组识别结果。"""
     for info in release_group_cases:
         print(f"开始测试 {info.get('domain')}")
         for item in info.get('groups', []):

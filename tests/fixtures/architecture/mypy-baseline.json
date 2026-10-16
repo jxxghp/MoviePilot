@@ -1185,7 +1185,7 @@
   "app/domain/meta/metaanime.py": {
     "arg-type": 1,
     "assignment": 1,
-    "no-untyped-call": 5,
+    "no-untyped-call": 4,
     "no-untyped-def": 3,
     "type-arg": 1
   },
@@ -1208,15 +1208,9 @@
     "arg-type": 2,
     "assignment": 2,
     "attr-defined": 1,
-    "no-untyped-call": 3,
+    "no-untyped-call": 2,
     "no-untyped-def": 1,
     "type-arg": 2
-  },
-  "app/domain/meta/releasegroup.py": {
-    "arg-type": 1,
-    "assignment": 2,
-    "no-untyped-def": 3,
-    "type-arg": 1
   },
   "app/domain/meta/runtime.py": {
     "type-arg": 6
@@ -1230,7 +1224,7 @@
   "app/domain/metainfo.py": {
     "arg-type": 5,
     "assignment": 4,
-    "no-untyped-call": 2,
+    "no-untyped-call": 1,
     "no-untyped-def": 1,
     "type-arg": 10
   },
