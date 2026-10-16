@@ -904,7 +904,7 @@ class Jellyfin:
 
         playback_position_ticks = message.get('PlaybackPositionTicks')
         runtime_ticks = message.get('RunTimeTicks')
-        if playback_position_ticks is not None and runtime_ticks is not None:
+        if playback_position_ticks is not None and runtime_ticks:
             eventItem.percentage = playback_position_ticks / runtime_ticks * 100
 
         # 获取消息图片
