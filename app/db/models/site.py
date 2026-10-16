@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, Self
 
 from sqlalchemy import JSON, Boolean, Integer, String, delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -57,50 +57,53 @@ class Site(Base):
     downloader: Mapped[Optional[str]] = mapped_column(String)
 
     @classmethod
-    def get_by_domain(cls, db: Session, domain: str):
+    def get_by_domain(cls, db: Session, domain: str) -> Optional[Self]:
         """在调用方 Session 中按域名查询站点。"""
-        return db.execute(select(cls).where(cls.domain == domain)).scalars().first()
+        site: Optional[Self] = db.execute(select(cls).where(cls.domain == domain)).scalars().first()
+        return site
 
     @classmethod
     async def async_get_by_domain(
         cls,
         db: AsyncSession,
         domain: str,
-    ):
+    ) -> Optional[Self]:
         """在调用方 AsyncSession 中按域名查询站点。"""
         result = await db.execute(select(cls).where(cls.domain == domain))
-        return result.scalar_one_or_none()
+        site: Optional[Self] = result.scalar_one_or_none()
+        return site
 
     @classmethod
     async def async_get_by_name(
         cls,
         db: AsyncSession,
         name: str,
-    ):
+    ) -> Optional[Self]:
         """在调用方 AsyncSession 中按站点名称查询。"""
         result = await db.execute(select(cls).where(cls.name == name))
-        return result.scalar_one_or_none()
+        site: Optional[Self] = result.scalar_one_or_none()
+        return site
 
     @classmethod
-    def get_actives(cls, db: Session):
+    def get_actives(cls, db: Session) -> list[Self]:
         """在调用方 Session 中查询启用站点。"""
         return list(db.execute(
             select(cls).where(cls.is_active.is_(True))
         ).scalars().all())
 
     @classmethod
-    async def async_get_actives(cls, db: AsyncSession):
+    async def async_get_actives(cls, db: AsyncSession) -> list[Self]:
         """在调用方 AsyncSession 中查询启用站点。"""
         result = await db.execute(select(cls).where(cls.is_active.is_(True)))
         return list(result.scalars().all())
 
     @classmethod
-    def list_order_by_pri(cls, db: Session):
+    def list_order_by_pri(cls, db: Session) -> list[Self]:
         """在调用方 Session 中按优先级升序查询站点。"""
         return list(db.execute(select(cls).order_by(cls.pri)).scalars().all())
 
     @classmethod
-    async def async_list_order_by_pri(cls, db: AsyncSession):
+    async def async_list_order_by_pri(cls, db: AsyncSession) -> list[Self]:
         """在调用方 AsyncSession 中按优先级升序查询站点。"""
         result = await db.execute(select(cls).order_by(cls.pri))
         return list(result.scalars().all())
@@ -110,7 +113,7 @@ class Site(Base):
         cls,
         db: Session,
         ids: list[int],
-    ):
+    ) -> list[Optional[str]]:
         """在调用方 Session 中按 ID 查询域名。"""
         if not ids:
             return []
@@ -119,11 +122,11 @@ class Site(Base):
         ).scalars().all())
 
     @classmethod
-    def reset(cls, db: Session):
+    def reset(cls, db: Session) -> None:
         """在调用方持有的同步事务中暂存清空操作。"""
         db.execute(delete(cls))
 
     @classmethod
-    async def async_reset(cls, db: AsyncSession):
+    async def async_reset(cls, db: AsyncSession) -> None:
         """在调用方持有的异步事务中暂存清空操作。"""
         await db.execute(delete(cls))

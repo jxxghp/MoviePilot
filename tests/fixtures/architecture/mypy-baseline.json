@@ -998,9 +998,6 @@
   "app/db/models/message.py": {
     "type-arg": 1
   },
-  "app/db/models/site.py": {
-    "no-untyped-def": 10
-  },
   "app/db/models/subscribe.py": {
     "arg-type": 8,
     "no-untyped-def": 18
