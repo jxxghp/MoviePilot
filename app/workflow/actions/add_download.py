@@ -72,21 +72,10 @@ class AddDownloadAction(BaseAction):
             if self.check_cache(workflow_id, cache_key):
                 logger.info(f"{torrent_info.title} 已添加过下载，跳过")
                 continue
-            if not t.meta_info:
-                title = torrent_info.title
-                if title is None:
-                    self._has_error = True
-                    logger.warning("工作流资源缺少可识别的标题，跳过下载")
-                    continue
-                t.meta_info = MetaInfo(title=title, subtitle=torrent_info.description)
-            if not t.media_info:
-                t.media_info = MediaChain().recognize_by_meta(
-                    t.meta_info,
-                    obtain_images=False,
-                )
-            if not t.media_info:
-                self._has_error = True
-                logger.warning(f"{torrent_info.title} 未识别到媒体信息，无法下载")
+            if (
+                    not self._recognize_resource(t, title=torrent_info.title, subtitle=torrent_info.description)
+                    or t.meta_info is None
+            ):
                 continue
             download_context = self._to_domain_context(t)
             download_media_info = download_context.media_info
@@ -139,6 +128,30 @@ class AddDownloadAction(BaseAction):
 
         self.job_done(f"已添加 {len(self._added_downloads)} 个下载任务")
         return context
+
+    def _recognize_resource(
+            self,
+            resource: WorkflowTorrentContext | DownloadContext,
+            title: Optional[str],
+            subtitle: Optional[str],
+    ) -> bool:
+        """在缓存检查后补齐资源的媒体信息，保留已有元数据及失败状态。"""
+        if not resource.meta_info:
+            if title is None:
+                self._has_error = True
+                logger.warning("工作流资源缺少可识别的标题，跳过下载")
+                return False
+            resource.meta_info = MetaInfo(title=title, subtitle=subtitle)
+        if not resource.media_info:
+            resource.media_info = MediaChain().recognize_by_meta(
+                resource.meta_info,
+                obtain_images=False,
+            )
+        if not resource.media_info:
+            self._has_error = True
+            logger.warning(f"{title} 未识别到媒体信息，无法下载")
+            return False
+        return True
 
     def _iter_resources(
             self, workflow_id: int, context: ActionContext,
