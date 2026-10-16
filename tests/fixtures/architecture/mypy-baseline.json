@@ -1295,14 +1295,6 @@
   "app/foundation/environment.py": {
     "no-any-return": 1
   },
-  "app/foundation/reflection.py": {
-    "index": 1,
-    "no-untyped-call": 2,
-    "no-untyped-def": 5,
-    "operator": 1,
-    "type-arg": 2,
-    "unused-ignore": 1
-  },
   "app/foundation/singleton.py": {
     "arg-type": 2,
     "misc": 2,
@@ -2457,9 +2449,6 @@
     "arg-type": 1,
     "union-attr": 1,
     "var-annotated": 1
-  },
-  "app/runtime/extensions/module/dispatcher.py": {
-    "arg-type": 1
   },
   "app/runtime/extensions/module/manager.py": {
     "attr-defined": 1,
