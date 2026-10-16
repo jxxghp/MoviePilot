@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import re
-from typing import Optional
+from typing import Any, Optional, cast
 
 from lxml import etree
 
@@ -14,7 +14,7 @@ from app.modules.indexer.parser import SiteParserBase, SiteSchema
 class SpeedAppSiteUserInfo(SiteParserBase):
     """SpeedApp 用户资料、流量和站点统计解析器。"""
 
-    schema = SiteSchema.SpeedApp
+    schema = SiteSchema.SpeedApp  # type: ignore[assignment]
 
     def _parse_logged_in(self, html_text: str) -> bool:
         """通过 SpeedApp 的用户资料链接补充登录态识别。"""
@@ -26,16 +26,16 @@ class SpeedAppSiteUserInfo(SiteParserBase):
         finally:
             if html is not None:
                 del html
-        return super()._parse_logged_in(html_text)
+        return bool(super()._parse_logged_in(html_text))
 
     def _parse_site_page(self, html_text: str) -> None:
         """配置 SpeedApp 的资料和统计页面，避免调用不兼容的通用 PT 接口。"""
-        self._user_basic_page = "profile"
+        self._user_basic_page = "profile"  # type: ignore[assignment]
         self._user_detail_page = "profile/menu-stats"
-        self._user_traffic_page = None
-        self._torrent_seeding_page = None
-        self._user_mail_unread_page = None
-        self._sys_mail_unread_page = None
+        self._user_traffic_page = None  # type: ignore[assignment]
+        self._torrent_seeding_page = None  # type: ignore[assignment]
+        self._user_mail_unread_page = None  # type: ignore[assignment]
+        self._sys_mail_unread_page = None  # type: ignore[assignment]
 
     @staticmethod
     def _extract_number(text: str) -> Optional[str]:
@@ -44,7 +44,7 @@ class SpeedAppSiteUserInfo(SiteParserBase):
         return match.group(0) if match else None
 
     @staticmethod
-    def _extract_dt_value(html, labels: tuple[str, ...]) -> str:
+    def _extract_dt_value(html: Any, labels: tuple[str, ...]) -> str:
         """按资料页的 ``dt`` 标签读取相邻 ``dd`` 文本。"""
         normalized_labels = tuple(label.casefold() for label in labels)
         for label_node in html.xpath("//dt"):
@@ -53,18 +53,18 @@ class SpeedAppSiteUserInfo(SiteParserBase):
                 continue
             value_nodes = label_node.xpath("following-sibling::dd[1]")
             if value_nodes:
-                return value_nodes[0].xpath("string(.)").strip()
+                return cast(str, value_nodes[0].xpath("string(.)").strip())
         return ""
 
     @staticmethod
-    def _extract_link_value(html, href: str, title: str) -> str:
+    def _extract_link_value(html: Any, href: str, title: str) -> str:
         """读取 SpeedApp 统计菜单中指定链接的文本。"""
         nodes = html.xpath(f"//a[@href='{href}' and @title='{title}']")
-        return nodes[0].xpath("string(.)").strip() if nodes else ""
+        return cast(str, nodes[0].xpath("string(.)").strip()) if nodes else ""
 
     def _parse_user_base_info(self, html_text: str) -> None:
         """解析 SpeedApp 资料页中的用户身份、流量、等级和注册时间。"""
-        html = etree.HTML(self._prepare_html_text(html_text))
+        html = etree.HTML(self._prepare_html_text(html_text))  # type: ignore[no-untyped-call]
         try:
             if not DomUtils.has_child_elements(html):
                 return
@@ -75,7 +75,7 @@ class SpeedAppSiteUserInfo(SiteParserBase):
                 profile_match = re.search(r"/profile/([^/?#]+)", profile_href)
                 if not profile_match:
                     continue
-                self.userid = profile_match.group(1)
+                self.userid = profile_match.group(1)  # type: ignore[assignment]
                 self.username = profile_link.xpath("string(.)").strip() or self.userid
                 break
 
@@ -101,7 +101,7 @@ class SpeedAppSiteUserInfo(SiteParserBase):
 
             join_text = self._extract_dt_value(html, ("Signup date", "注册日期"))
             if join_text:
-                self.join_at = time_tools.normalize_datetime(join_text)
+                self.join_at = time_tools.normalize_datetime(join_text)  # type: ignore[assignment]
 
             message_nodes = html.xpath(
                 "//div[@id='notifications-oc-toggle']"
@@ -127,7 +127,7 @@ class SpeedAppSiteUserInfo(SiteParserBase):
 
     def _parse_user_detail_info(self, html_text: str) -> None:
         """解析 SpeedApp 菜单统计中的积分和当前做种数。"""
-        html = etree.HTML(self._prepare_html_text(html_text))
+        html = etree.HTML(self._prepare_html_text(html_text))  # type: ignore[no-untyped-call]
         try:
             if not DomUtils.has_child_elements(html):
                 return
@@ -158,7 +158,7 @@ class SpeedAppSiteUserInfo(SiteParserBase):
         """SpeedApp 菜单统计已提供做种数，不请求未声明的做种列表接口。"""
         return None
 
-    def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:
+    def _parse_message_unread_links(self, html_text: str, msg_links: list[Any]) -> Optional[str]:
         """SpeedApp 当前适配只读取通知数量，不解析通知正文。"""
         return None
 
