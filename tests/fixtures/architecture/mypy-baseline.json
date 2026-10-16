@@ -1000,11 +1000,6 @@
     "no-untyped-def": 6,
     "union-attr": 2
   },
-  "app/db/oper/user.py": {
-    "no-any-return": 4,
-    "no-untyped-def": 2,
-    "type-arg": 4
-  },
   "app/db/oper/workflow.py": {
     "arg-type": 1,
     "no-untyped-def": 1,
