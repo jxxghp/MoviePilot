@@ -150,7 +150,8 @@ def _get_web_agent_type() -> type:
     """首个 Web 对话请求才解析 WebAgent 运行时类型。"""
     from app.agent.web import _get_web_agent_type as get_web_agent_type
 
-    return get_web_agent_type()
+    web_agent_type: type = get_web_agent_type()
+    return web_agent_type
 
 
 def _handle_web_agent_message(**kwargs: Any) -> object:
@@ -178,7 +179,8 @@ class AgentInitializer:
     AI智能体初始化器
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """初始化启动关闭状态，并登记不持有实例的配置变更监听器。"""
         self._initialized = False
         self._manager: Any = None
         self._compat_injected = False
