@@ -969,11 +969,6 @@
     "valid-type": 1,
     "var-annotated": 1
   },
-  "app/db/oper/mediaserver.py": {
-    "arg-type": 12,
-    "no-untyped-def": 7,
-    "type-arg": 1
-  },
   "app/db/oper/workflow.py": {
     "arg-type": 1,
     "no-untyped-def": 1,
