@@ -33,7 +33,7 @@ from app.startup.composition.context import HostRuntime
 router = ResponseAPIRouter()
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/{subscription_id}/activity",
     summary="查看订阅业务活动",
     response_model=_SchemaSubscriptionActivityPage,
@@ -71,7 +71,7 @@ async def list_subscription_activity(
     }))
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/{subscription_id}/activity/{event_id}",
     summary="查看订阅活动详情",
     response_model=_SchemaSubscriptionActivityEvent,
@@ -108,7 +108,7 @@ async def _accessible_subscription_ids(
     return {item.id for item in subscribes if item.id is not None}
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/execution/batches",
     summary="查看订阅搜索进度",
     response_model=List[_SchemaSubscriptionBatchStatus],
@@ -128,7 +128,7 @@ async def list_subscription_execution_batches(
     return [_SchemaSubscriptionBatchStatus.model_validate(batch) for batch in batches]
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/execution/batches/{batch_id}",
     summary="查看一次订阅搜索",
     response_model=_SchemaSubscriptionBatchStatus,
@@ -150,7 +150,7 @@ async def get_subscription_execution_batch(
     return _SchemaSubscriptionBatchStatus.model_validate(batch)
 
 
-@router.put(  # type: ignore[misc]
+@router.put(
     "/execution/batches/{batch_id}/cancel",
     summary="停止一次订阅搜索",
     response_model=_SchemaResponse[None],
@@ -193,7 +193,7 @@ async def _authorize_subscription_logs(subscription_id: int, user: _SchemaTokenP
         await _require_subscription_log_access(subscription_id, query, user)
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/{subscription_id}/logs",
     summary="查看单个订阅的执行日志",
     response_model=None,
@@ -243,7 +243,7 @@ async def get_subscription_logs(
     return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"})
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/{subscription_id}/logs/download",
     summary="下载单个订阅的执行日志",
     response_model=None,
