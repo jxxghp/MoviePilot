@@ -42,18 +42,23 @@ class DashboardQueryService:
         """返回媒体服务总量和本月新增量。"""
         media_statistics = self._media_statistics(name)
         if media_statistics:
-            result = Statistic()
+            movie_count = tv_count = music_count = user_count = episode_count = 0
             has_episode_count = False
             for item in media_statistics:
-                result.movie_count += item.movie_count or 0
-                result.tv_count += item.tv_count or 0
-                result.music_count += item.music_count or 0
-                result.user_count += item.user_count or 0
+                movie_count += item.movie_count or 0
+                tv_count += item.tv_count or 0
+                music_count += item.music_count or 0
+                user_count += item.user_count or 0
                 if item.episode_count is not None:
-                    result.episode_count += item.episode_count or 0
+                    episode_count += item.episode_count or 0
                     has_episode_count = True
-            if not has_episode_count:
-                result.episode_count = None
+            result = Statistic(
+                movie_count=movie_count,
+                tv_count=tv_count,
+                music_count=music_count,
+                user_count=user_count,
+                episode_count=episode_count if has_episode_count else None,
+            )
         else:
             result = Statistic()
 

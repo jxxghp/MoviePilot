@@ -573,9 +573,6 @@
     "return": 1,
     "type-arg": 1
   },
-  "app/application/dashboard.py": {
-    "operator": 5
-  },
   "app/application/directory.py": {
     "arg-type": 6,
     "assignment": 2,
