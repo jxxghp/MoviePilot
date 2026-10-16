@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, ClassVar, Union
+from typing import Any, ClassVar, TypedDict, TypeVar, Union
 
 from app.application.configuration import get_configured_system_config
 from app.chain.base import ChainBase
@@ -7,10 +7,52 @@ from app.domain.context import MediaInfo as DomainMediaInfo
 from app.domain.context import MusicInfo as DomainMusicInfo
 from app.domain.context import TorrentInfo as DomainTorrentInfo
 from app.schemas.types import MediaType
-from app.schemas.workflow import ActionContext, ActionParams, ActionResult
+from app.schemas.workflow import ActionContext, ActionResult
+
+
+class _ActionFieldInput(TypedDict, total=False):
+    """声明插件和内置动作允许提供的字段元数据，不转换已有原始值。"""
+
+    name: str
+    label: object
+    kind: object
+    merge: object
+    identity: object
+
+
+class _ActionField(TypedDict):
+    """记录补齐展示默认值后的动作字段。"""
+
+    name: str
+    label: object
+    kind: object
+    merge: object
+    identity: object
+
+
+class _DeclaredActionContract(TypedDict, total=False):
+    """描述动作类可选声明的输入、输出和互斥键。"""
+
+    inputs: list[str | _ActionFieldInput]
+    outputs: list[str | _ActionFieldInput]
+    concurrency_key: object
+
+
+class _ResolvedActionContract(TypedDict):
+    """提供编辑器与运行器读取的完整动作契约投影。"""
+
+    inputs: list[_ActionField]
+    outputs: list[_ActionField]
+    condition_fields: list[_ActionField]
+    concurrency_key: object
+
+
+_CacheItem = TypeVar("_CacheItem")
 
 
 class ActionChain(ChainBase):
+    """复用已注册模块能力执行工作流动作所需的业务调用。"""
+
     pass
 
 
@@ -45,20 +87,21 @@ class BaseAction(ABC):
     # 完成标志
     _done_flag = False
     # 执行信息
-    _message = ""
+    _message: str | None = ""
     # 缓存键值
     _cache_key = "WorkflowCache-%s"
     # 动作输入输出契约，由具体动作按需覆盖
-    contract = {}
+    contract: ClassVar[_DeclaredActionContract] = {}
 
-    def __init__(self, action_id: str):
+    def __init__(self, action_id: str) -> None:
+        """建立当前动作的执行状态并绑定配置服务。"""
         self._action_id = action_id
         self._done_flag = False
         self._message = ""
         self.systemconfigoper = get_configured_system_config()
 
     @classmethod
-    def get_contract(cls) -> dict:
+    def get_contract(cls) -> _ResolvedActionContract:
         """
         获取动作输入输出契约。
         """
@@ -73,11 +116,11 @@ class BaseAction(ABC):
         }
 
     @classmethod
-    def _build_contract_fields(cls, fields: list) -> list:
+    def _build_contract_fields(cls, fields: list[str | _ActionFieldInput]) -> list[_ActionField]:
         """
         标准化动作契约字段。
         """
-        result = []
+        result: list[_ActionField] = []
         for field in fields:
             if isinstance(field, str):
                 field = {"name": field}
@@ -108,13 +151,13 @@ class BaseAction(ABC):
         pass
 
     @property
-    def message(self) -> str:
+    def message(self) -> str | None:
         """
         执行信息
         """
         return self._message
 
-    def job_done(self, message: str = None):
+    def job_done(self, message: str | None = None) -> None:
         """
         标记动作完成
         """
@@ -130,7 +173,7 @@ class BaseAction(ABC):
         action_cache = workflow_cache.get(self._action_id) or []
         return key in action_cache
 
-    def save_cache(self, workflow_id: int, data: Union[list, str]):
+    def save_cache(self, workflow_id: int, data: Union[list[_CacheItem], str]) -> None:
         """
         保存缓存
         """
@@ -148,14 +191,14 @@ class BaseAction(ABC):
         self.systemconfigoper.set(workflow_key, workflow_cache)
 
     @abstractmethod
-    def execute(self, workflow_id: int, params: ActionParams, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict[str, object], context: ActionContext) -> ActionContext:
         """
         执行动作
         """
         raise NotImplementedError
 
-    def execute_with_inputs(self, workflow_id: int, params: ActionParams, inputs: dict,
-                            runtime: dict, context: ActionContext) -> ActionResult:
+    def execute_with_inputs(self, workflow_id: int, params: dict[str, object], inputs: dict[str, object],
+                            runtime: dict[str, object], context: ActionContext) -> ActionResult:
         """
         使用显式输入与运行期信息执行动作。
         """
@@ -170,7 +213,7 @@ class BaseAction(ABC):
             outputs=outputs
         )
 
-    def _apply_inputs_to_context(self, inputs: dict, context: ActionContext) -> None:
+    def _apply_inputs_to_context(self, inputs: dict[str, object], context: ActionContext) -> None:
         """
         将显式输入回填到旧版上下文字段，兼容仍读取 context 的动作。
         """
@@ -189,7 +232,7 @@ class BaseAction(ABC):
                 setattr(context, field_name, value)
 
     @staticmethod
-    def _apply_runtime_to_context(runtime: dict, context: ActionContext) -> None:
+    def _apply_runtime_to_context(runtime: dict[str, object], context: ActionContext) -> None:
         """
         将运行期信息写入 runtime_state，供动作和执行状态读取。
         """
