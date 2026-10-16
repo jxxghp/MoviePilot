@@ -486,6 +486,26 @@ def test_completed_torrents_return_moviepilot_accessible_path():
     assert torrents[0].content_path == "/media/video/downloads/TV/Show.S01E01.mkv"
 
 
+def test_transmission_percent_done_fallback_is_normalized_to_percent():
+    """仅提供 Transmission 原始 percent_done 时也应符合下载器百分比契约。"""
+    server = MagicMock()
+    server.get_completed_torrents.return_value = [
+        SimpleNamespace(
+            name="Movie",
+            download_dir="/mnt/raid5/home_lt999lt/video/downloads/movie",
+            hashString="hash-tr",
+            labels=[],
+            percent_done=0.42,
+            status="seeding",
+        )
+    ]
+    module = _build_transmission_module(server)
+
+    torrents = module.list_torrents(status=TransmissionTorrentStatus.TRANSFER)
+
+    assert torrents[0].progress == 42
+
+
 def test_hash_lookup_return_moviepilot_accessible_path():
     """Transmission 按 Hash 查询时返回的路径字段均应完成路径映射。"""
     server = MagicMock()
