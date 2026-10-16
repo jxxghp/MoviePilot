@@ -941,8 +941,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9564,
-  "edge_sha256": "20aa028ee1ffe44f9dc04a763770593f1f79ca776e1e65ab632fbbbfee9ab989",
+  "edge_count": 9563,
+  "edge_sha256": "64ab9871d95e006af19070aa9b1690a6fd0b54d16cf4e8ad0ef2dc4870483940",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -6588,8 +6588,7 @@
     "app.db.oper.message -> app.db.models",
     "app.db.oper.message -> app.db.models.message",
     "app.db.oper.message -> app.schemas",
-    "app.db.oper.message -> app.schemas.message",
-    "app.db.oper.message -> app.schemas.notification",
+    "app.db.oper.message -> app.schemas.types",
     "app.db.oper.passkey -> app.db",
     "app.db.oper.passkey -> app.db.base",
     "app.db.oper.passkey -> app.db.models",
