@@ -988,9 +988,6 @@
     "arg-type": 8,
     "no-untyped-def": 18
   },
-  "app/db/models/subscribehistory.py": {
-    "no-untyped-def": 6
-  },
   "app/db/models/transferhistory.py": {
     "no-any-return": 3,
     "no-untyped-def": 20,
