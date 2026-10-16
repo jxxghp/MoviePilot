@@ -1,7 +1,7 @@
 import threading
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
-from typing import Any, Callable, Dict, Generic, Optional, Tuple, Type, TypeVar, Union
+from typing import Any, Callable, Dict, Generic, Mapping, Optional, Protocol, Tuple, Type, TypeVar, Union
 
 from app.runtime.extensions.service import ServiceConfigHelper
 from app.runtime.log import logger
@@ -45,7 +45,8 @@ class _ModuleBase(ConfigReloadMixin, metaclass=ABCMeta):
                 )
             self.init_module()
 
-    def get_reload_name(self):
+    def get_reload_name(self) -> Optional[str]:
+        """返回模块声明的日志名称，未实现元数据方法时保留 None。"""
         return self.get_name()
 
     @abstractmethod
@@ -64,14 +65,14 @@ class _ModuleBase(ConfigReloadMixin, metaclass=ABCMeta):
         pass
 
     @staticmethod
-    def get_name() -> str:
+    def get_name() -> Optional[str]:
         """
         获取模块名称
         """
         pass
 
     @staticmethod
-    def get_type() -> ModuleType:
+    def get_type() -> Optional[ModuleType]:
         """
         获取模块类型
         """
@@ -85,6 +86,7 @@ class _ModuleBase(ConfigReloadMixin, metaclass=ABCMeta):
         StorageSchema,
         OtherModulesType,
         MediaRecognizeType,
+        None,
     ]:
         """
         获取模块子类型（下载器、媒体服务器、消息通道、存储类型、其他杂项模块类型）
@@ -92,7 +94,7 @@ class _ModuleBase(ConfigReloadMixin, metaclass=ABCMeta):
         pass
 
     @staticmethod
-    def get_priority() -> int:
+    def get_priority() -> Optional[int]:
         """
         获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效
         """
@@ -114,9 +116,23 @@ class _ModuleBase(ConfigReloadMixin, metaclass=ABCMeta):
         pass
 
 
+class _ServiceConfig(Protocol):
+    """服务配置提供的名称与构造参数；保留现有模型允许的空配置。"""
+
+    @property
+    def name(self) -> Optional[str]:
+        """读取配置原始名称，包括尚未命名的配置。"""
+        ...
+
+    @property
+    def config(self) -> Optional[Mapping[str, object]]:
+        """读取服务构造参数，None 仍由实例化入口报错。"""
+        ...
+
+
 # 定义泛型，用于表示具体的服务类型和配置类型
 TService = TypeVar("TService", bound=object)
-TConf = TypeVar("TConf")
+TConf = TypeVar("TConf", bound=_ServiceConfig)
 
 
 class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
@@ -124,16 +140,16 @@ class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
     抽象服务基类，负责服务的初始化、获取实例和配置管理
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         初始化 ServiceBase 类的实例
         """
-        self._configs: Optional[Dict[str, TConf]] = None
-        self._instances: Optional[Dict[str, TService]] = None
+        self._configs: Optional[Dict[Optional[str], TConf]] = None
+        self._instances: Optional[Dict[Optional[str], TService]] = None
         self._service_name: Optional[str] = None
 
     def init_service(self, service_name: str,
-                     service_type: Optional[Union[Type[TService], Callable[..., TService]]] = None):
+                     service_type: Optional[Union[Type[TService], Callable[..., TService]]] = None) -> None:
         """
         初始化服务，获取配置并实例化对应服务
 
@@ -163,9 +179,14 @@ class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
 
     def _service_kwargs(self, conf: TConf) -> Dict[str, Any]:
         """构建类服务实例参数，允许具体模块传递稳定配置身份。"""
-        return {"name": conf.name, **conf.config}
+        name = conf.name
+        config = conf.config
+        if config is None:
+            # 保留原字典解包对空配置的 TypeError，不能静默实例化默认连接。
+            raise TypeError("'NoneType' object is not a mapping")
+        return {"name": name, **config}
 
-    def get_instances(self) -> Dict[str, TService]:
+    def get_instances(self) -> Dict[Optional[str], TService]:
         """
         获取服务实例列表
 
@@ -188,7 +209,7 @@ class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
         return self._instances.get(name) if name else None
 
     @abstractmethod
-    def get_configs(self) -> Dict[str, TConf]:
+    def get_configs(self) -> Dict[Optional[str], TConf]:
         """
         获取已启用的服务配置字典
 
@@ -220,13 +241,16 @@ class ServiceBase(Generic[TService, TConf], metaclass=ABCMeta):
 
         :return: 默认配置的名称，无配置时为 None
         """
+        configs = self._configs
+        if configs is None:
+            return None
         marked = next(
-            (conf for conf in self._configs.values() if getattr(conf, "default", False)),
+            (conf for conf in configs.values() if getattr(conf, "default", False)),
             None,
         )
         if marked:
             return marked.name
-        first_conf = next(iter(self._configs.values()), None)
+        first_conf = next(iter(configs.values()), None)
         return first_conf.name if first_conf else None
 
 
@@ -240,14 +264,14 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
     # 管理员未绑定个人 ID 时可作为管理员默认目标的渠道配置键。
     _notification_admin_default_config_keys: tuple[str, ...] = ()
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         初始化消息基类，并设置消息通道
         """
         super().__init__()
         self._channel: Optional[NotificationChannel] = None
 
-    def get_configs(self) -> Dict[str, NotificationConf]:
+    def get_configs(self) -> Dict[Optional[str], NotificationConf]:
         """
         获取已启用的消息通知渠道的配置字典
 
@@ -258,7 +282,7 @@ class _MessageBase(ServiceBase[TService, NotificationConf]):
             return {}
         return {conf.name: conf for conf in configs if conf.type == self._service_name and conf.enabled}
 
-    def check_message(self, message: Message, source: str = None) -> bool:
+    def check_message(self, message: Message, source: Optional[str] = None) -> bool:
         """
         检查消息渠道及消息类型，判断是否处理消息
 
@@ -344,7 +368,7 @@ class _DownloaderBase(ServiceBase[TService, DownloaderConf]):
     """
     CONFIG_WATCH = {SystemConfigKey.Downloaders.value}
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         初始化下载器基类
         """
@@ -352,7 +376,7 @@ class _DownloaderBase(ServiceBase[TService, DownloaderConf]):
         self._default_config_name: Optional[str] = None
 
     def init_service(self, service_name: str,
-                     service_type: Optional[Union[Type[TService], Callable[..., TService]]] = None):
+                     service_type: Optional[Union[Type[TService], Callable[..., TService]]] = None) -> None:
         """
         初始化服务，获取配置并实例化对应服务
 
@@ -384,7 +408,7 @@ class _DownloaderBase(ServiceBase[TService, DownloaderConf]):
         self._default_config_name = first_conf.name if first_conf else None
         return self._default_config_name
 
-    def get_configs(self) -> Dict[str, DownloaderConf]:
+    def get_configs(self) -> Dict[Optional[str], DownloaderConf]:
         """
         获取已启用的下载器的配置字典
 
@@ -395,7 +419,7 @@ class _DownloaderBase(ServiceBase[TService, DownloaderConf]):
             return {}
         return {conf.name: conf for conf in configs if conf.type == self._service_name and conf.enabled}
 
-    def reset_default_config_name(self):
+    def reset_default_config_name(self) -> None:
         """
         重置默认配置名称
         """
@@ -476,7 +500,7 @@ class _MediaServerBase(ServiceBase[TService, MediaServerConf]):
     """
     CONFIG_WATCH = {SystemConfigKey.MediaServers.value}
 
-    def get_configs(self) -> Dict[str, MediaServerConf]:
+    def get_configs(self) -> Dict[Optional[str], MediaServerConf]:
         """
         获取已启用的媒体服务器的配置字典
 
