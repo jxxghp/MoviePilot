@@ -1,7 +1,6 @@
 """从 FastAPI AppState 读取类型化宿主能力。"""
 
 from collections.abc import AsyncGenerator, Generator
-from typing import cast
 
 from fastapi import Depends, Request
 
@@ -111,7 +110,7 @@ def get_agent_chat_repository(
     runtime: AgentChatRuntime = Depends(get_agent_chat_runtime),
 ) -> AsyncAgentChatRepository:
     """构造绑定当前请求会话的 Agent 会话仓储。"""
-    return cast(AsyncAgentChatRepository, runtime.repository(session))
+    return runtime.repository(session)
 
 
 def get_agent_chat_transaction(
@@ -119,7 +118,7 @@ def get_agent_chat_transaction(
     runtime: AgentChatRuntime = Depends(get_agent_chat_runtime),
 ) -> AsyncUnitOfWork:
     """构造绑定当前请求会话的 Agent 会话事务端口。"""
-    return cast(AsyncUnitOfWork, runtime.transaction(session))
+    return runtime.transaction(session)
 
 
 def get_subscription_runtime(
@@ -150,7 +149,7 @@ def get_sync_subscription_repository(
     runtime: SubscriptionRuntime = Depends(get_subscription_runtime),
 ) -> SubscriptionQueryPort:
     """构造绑定当前请求同步 Session 的订阅查询仓储。"""
-    return cast(SubscriptionQueryPort, runtime.repository(session))
+    return runtime.repository(session)
 
 
 def get_subscription_history_repository(
@@ -166,7 +165,7 @@ def get_subscription_transaction(
     runtime: SubscriptionRuntime = Depends(get_subscription_runtime),
 ) -> AsyncUnitOfWork:
     """构造绑定当前订阅请求会话的异步事务端口。"""
-    return cast(AsyncUnitOfWork, runtime.transaction(session))
+    return runtime.transaction(session)
 
 
 def get_subscription_outbox(
