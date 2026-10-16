@@ -16,7 +16,7 @@ from app.schemas.response import Response as _SchemaResponse
 router = ResponseAPIRouter()
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/instance/{instance_id}/purge",
     summary="按选定范围彻底清理插件实例",
     response_model=_SchemaResponse[_SchemaPluginInstancePurgeOutcome],
