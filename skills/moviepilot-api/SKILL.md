@@ -67,6 +67,13 @@ allowed-api-operations: >-
 
 # MoviePilot API
 
+For a historical invalid plugin instance ID reported in logs, `plugin.instance.purge`
+accepts the exact ID with only `config: true` (all other scope flags false). It deletes
+only an empty disabled host record: no saved configuration, display overrides, default
+target, or log overrides. A saved empty configuration object still protects the record.
+This recovery path never stops plugins or deletes plugin data, databases, or files.
+Records with settings, clones, missing records, and mixed scopes are rejected.
+
 Unhandled exceptions outside the durable transfer step ledger stop automatic
 replay and create an `unhandled_execution_review` diagnostic. Repair or disable
 the failing plugin and inspect the files before resolving it as `not_applied`;

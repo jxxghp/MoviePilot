@@ -165,6 +165,7 @@ Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: `instance_id*` (string): Exact plugin instance ID returned by plugin.loglevel.get.
 - `query`: none
 - `body`: `config` (boolean; default `False`): Purge scope flag: delete this plugin instance's saved configuration values.; `data_directory` (boolean; default `False`): Purge scope flag: delete this plugin instance's entire data directory; its own database is always destroyed first.; `own_database` (boolean; default `False`): Purge scope flag: destroy this plugin instance's own database.; `plugin_data` (boolean; default `False`): Purge scope flag: delete this plugin instance's rows in the shared plugin data table.
+- **Historical invalid-ID recovery:** If the exact instance ID from a warning is rejected by normal validation, send only `config: true` (all other scope flags false). The host removes only an empty disabled host row with no display fields, default target, log override, or configuration; an empty configuration object still protects the row. It never stops a plugin or deletes plugin data, databases, or files. Rows with settings, clones, missing rows, or mixed scopes are rejected.
 
 ### `plugin.instance.set_enabled`
 `POST /api/v1/plugin/instance/{instance_id}/enabled`; policy effect: `reversible_write`.

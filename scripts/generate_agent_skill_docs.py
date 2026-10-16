@@ -287,6 +287,14 @@ _MEDIA_TYPE_FIELD_VALUES: dict[tuple[str, str, str], str] = {
 # when the contract is regenerated, so the running Skill carries the guidance
 # without anyone hand-editing the generated `api/*.md` files.
 _OPERATION_NOTES: dict[str, list[str]] = {
+    "plugin.instance.purge": [
+        "- **Historical invalid-ID recovery:** If the exact instance ID from a warning is "
+        "rejected by normal validation, send only `config: true` (all other scope flags false). "
+        "The host removes only an empty disabled host row with no display fields, default target, "
+        "log override, or configuration; an empty configuration object still protects the row. "
+        "It never stops a plugin or deletes plugin data, databases, or files. Rows with settings, "
+        "clones, missing rows, or mixed scopes are rejected.",
+    ],
     "library.exists": [
         "- **Agent note:** The media-type field name is `mtype` (placed inside `query`). "
         "Do **not** reuse the `type` field from the recognition result — `type` is not a "

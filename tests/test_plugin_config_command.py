@@ -11,6 +11,7 @@ def _command(
     mutation=None,
     directory_existed: bool = True,
     is_clone: bool = False,
+    purge_invalid_empty_host=None,
 ) -> PluginConfigCommand:
     """构造记录端口调用顺序的插件配置用例。"""
     return PluginConfigCommand(
@@ -42,6 +43,7 @@ def _command(
             calls.append(("purge_row", plugin_id)) or True
         ),
         is_clone=lambda _plugin_id: is_clone,
+        purge_invalid_empty_host=purge_invalid_empty_host,
     )
 
 
@@ -207,4 +209,52 @@ def test_sealed_purge_is_rejected_before_any_deletion() -> None:
 
     assert result.success is False
     assert "停机阶段" in result.message
+    assert calls == []
+
+
+def test_invalid_empty_host_purge_only_calls_database_port() -> None:
+    """非法残留只走专用端口，不停止实例或进入常规配置与文件删除路径。"""
+    calls: list[tuple] = []
+    command = _command(
+        calls,
+        purge_invalid_empty_host=lambda instance_id: calls.append(("empty_host", instance_id)) or True,
+    )
+    result = command.purge("Emby角色中文化", PluginPurgeScope(config=True))
+    assert result.success and result.instance_removed
+    assert result.purged == ("config",)
+    assert calls == [("empty_host", "Emby角色中文化")]
+
+
+def test_invalid_host_purge_preserves_rows_with_settings() -> None:
+    """专用端口拒绝非空记录时返回失败，不继续清配置或删除文件。"""
+    calls: list[tuple] = []
+    result = _command(calls, purge_invalid_empty_host=lambda _pid: False).purge(
+        "Emby角色中文化", PluginPurgeScope(config=True),
+    )
+    assert not result.success and not result.instance_removed
+    assert result.purged == ()
+    assert calls == []
+
+
+def test_invalid_host_purge_rejects_other_scopes_and_shutdown() -> None:
+    """其它删除范围与停机封口都不得进入残留清理端口。"""
+    calls: list[tuple] = []
+    def purge(instance_id: str) -> bool:
+        """记录不应到达的残留清理调用。"""
+        calls.append(("empty_host", instance_id))
+        return True
+    command = _command(calls, purge_invalid_empty_host=purge)
+    for scope in (
+        PluginPurgeScope(plugin_data=True),
+        PluginPurgeScope(config=True, plugin_data=True),
+        PluginPurgeScope(config=True, own_database=True),
+        PluginPurgeScope(config=True, data_directory=True),
+    ):
+        assert not command.purge("Emby角色中文化", scope).success
+    admission = PluginMutationAdmission()
+    admission.seal()
+    result = _command(calls, mutation=admission.hold, purge_invalid_empty_host=purge).purge(
+        "Emby角色中文化", PluginPurgeScope(config=True),
+    )
+    assert not result.success and "停机阶段" in result.message
     assert calls == []
