@@ -16,9 +16,9 @@ from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.schemas.common import JsonData
 from app.schemas.media import resolve_media_identity
+from app.schemas.subscribe import Subscribe as SubscribeView
 from app.schemas.subscribe import compute_subscribe_completed_tracks
 from app.schemas.types import MediaSource, MediaType
-from app.schemas.workflow import Subscribe as SubscribeView
 
 
 class SubscriptionQueryService:
