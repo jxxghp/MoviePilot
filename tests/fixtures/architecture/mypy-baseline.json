@@ -316,12 +316,6 @@
     "attr-defined": 1,
     "no-untyped-call": 2
   },
-  "app/api/endpoints/anthropic.py": {
-    "no-untyped-call": 1,
-    "no-untyped-def": 3,
-    "type-arg": 1,
-    "var-annotated": 1
-  },
   "app/api/endpoints/auth.py": {
     "arg-type": 1,
     "misc": 1
@@ -361,13 +355,6 @@
   },
   "app/api/endpoints/llm.py": {
     "no-untyped-def": 2
-  },
-  "app/api/endpoints/login.py": {
-    "union-attr": 33
-  },
-  "app/api/endpoints/mcp.py": {
-    "assignment": 3,
-    "index": 1
   },
   "app/api/endpoints/media.py": {
     "arg-type": 2,
@@ -488,9 +475,6 @@
   },
   "app/api/endpoints/workflow.py": {
     "assignment": 1
-  },
-  "app/api/response.py": {
-    "valid-type": 1
   },
   "app/api/servarr.py": {
     "arg-type": 2,
