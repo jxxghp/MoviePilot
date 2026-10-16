@@ -5,7 +5,7 @@ import re
 import shutil
 import threading
 import uuid
-from collections.abc import Callable, Coroutine, Mapping
+from collections.abc import Callable, Coroutine, Iterable, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional, Protocol, Union
 
@@ -17,7 +17,7 @@ from app.runtime.loop import main_loop_registry
 from app.runtime.state import SystemHelper
 from app.runtime.tasks import get_task_registry
 from app.schemas.message import Message
-from app.schemas.notification import NotificationChannel
+from app.schemas.types import NotificationChannel
 
 if TYPE_CHECKING:
     from app.application.messaging.update import SystemUpdateInteractionHandler
@@ -226,7 +226,7 @@ class SystemChain(_SystemUpdateChain):
     _restart_file = "__system_restart__"
     _plugin_restore_pending_file = "__plugin_restore_pending__"
 
-    def remote_clear_cache(self, channel: NotificationChannel, userid: Union[int, str], source: Optional[str] = None):
+    def remote_clear_cache(self, channel: NotificationChannel, userid: Union[int, str], source: Optional[str] = None) -> None:
         """
         清理系统缓存
         """
@@ -238,7 +238,7 @@ class SystemChain(_SystemUpdateChain):
             userid=userid,
             save_history=False))
 
-    def restart(self, channel: NotificationChannel, userid: Union[int, str], source: Optional[str] = None):
+    def restart(self, channel: NotificationChannel, userid: Union[int, str], source: Optional[str] = None) -> None:
         """
         重启系统
         """
@@ -260,7 +260,7 @@ class SystemChain(_SystemUpdateChain):
         SystemHelper.restart()
 
     @staticmethod
-    def backup_plugins():
+    def backup_plugins() -> None:
         """
         备份插件到用户配置目录（仅docker环境）
         """
@@ -327,7 +327,7 @@ class SystemChain(_SystemUpdateChain):
             logger.error(f"插件备份失败: {str(e)}")
 
     @staticmethod
-    def restore_plugins():
+    def restore_plugins() -> None:
         """
         从备份恢复插件到app/plugins目录，恢复完成后删除备份（仅docker环境）
         """
@@ -448,7 +448,10 @@ class SystemChain(_SystemUpdateChain):
             return False
 
     @staticmethod
-    def __replace_snapshot(source: Path, target: Path, *, ignore=None) -> None:
+    def __replace_snapshot(
+        source: Path, target: Path, *,
+        ignore: Callable[[str, list[str]], Iterable[str]] | None = None,
+    ) -> None:
         """复制到同级临时路径后替换目标，避免失败时丢失旧快照。"""
         target.parent.mkdir(parents=True, exist_ok=True)
         suffix = uuid.uuid4().hex
@@ -528,7 +531,7 @@ class SystemChain(_SystemUpdateChain):
             title += f"当前前端版本：{front_local_version}，远程版本：{front_release_version}"
         return title
 
-    def version(self, channel: NotificationChannel, userid: Union[int, str], source: Optional[str] = None):
+    def version(self, channel: NotificationChannel, userid: Union[int, str], source: Optional[str] = None) -> None:
         """
         查看当前版本、远程版本
         """
@@ -539,7 +542,7 @@ class SystemChain(_SystemUpdateChain):
             userid=userid,
             save_history=False))
 
-    def restart_finish(self):
+    def restart_finish(self) -> None:
         """
         如通过交互命令重启，
         重启完发送msg
@@ -658,11 +661,11 @@ class SystemChain(_SystemUpdateChain):
         return None
 
     @staticmethod
-    def get_server_local_version():
+    def get_server_local_version() -> str:
         """返回当前后端构建版本。"""
         return runtime_version.get_app_version()
 
     @staticmethod
-    def get_frontend_version():
+    def get_frontend_version() -> str | None:
         """返回当前部署的前端资源版本。"""
         return runtime_version.get_frontend_version()
