@@ -17,7 +17,8 @@ from app.db.oper.query import literal_contains
 async def _async_first(session: AsyncSession, statement: Any) -> Optional[Site]:
     """执行异步站点查询并返回首条记录。"""
     result = await session.execute(statement)
-    return result.scalars().first()
+    site: Optional[Site] = result.scalars().first()
+    return site
 
 
 async def _async_all(session: AsyncSession, statement: Any) -> list[Any]:
@@ -102,7 +103,7 @@ class SiteOper(DbOper):
     站点管理
     """
 
-    def add(self, **kwargs) -> Tuple[bool, str]:
+    def add(self, **kwargs: Any) -> Tuple[bool, str]:
         """
         新增站点
         """
@@ -116,11 +117,12 @@ class SiteOper(DbOper):
         """
         查询单个站点
         """
-        return self._execute_sync_query(
+        site: Optional[Site] = self._execute_sync_query(
             lambda session: session.execute(
                 select(Site).where(Site.id == sid)
             ).scalars().first()
         )
+        return site
 
     async def async_get(self, sid: int) -> Optional[Site]:
         """
@@ -139,6 +141,8 @@ class SiteOper(DbOper):
 
     async def stage_create(self, payload: Mapping[str, Any]) -> None:
         """暂存新增站点，不由仓储自行提交。"""
+        if not isinstance(self._db, AsyncSession):
+            raise RuntimeError("站点事务新增需要调用方提供 AsyncSession")
         values = dict(payload)
         values.pop("id", None)
         self._db.add(Site(**values))
@@ -159,11 +163,13 @@ class SiteOper(DbOper):
 
     async def stage_delete(self, site_id: int) -> None:
         """暂存站点删除，由请求级 UnitOfWork 统一提交。"""
+        if not isinstance(self._db, AsyncSession):
+            raise RuntimeError("站点事务删除需要调用方提供 AsyncSession")
         await self._db.execute(
             sqlalchemy_delete(Site).where(Site.id == site_id)
         )
 
-    async def stage_priorities(self, priorities: list[dict]) -> None:
+    async def stage_priorities(self, priorities: list[dict[str, Any]]) -> None:
         """暂存批量优先级更新，避免逐行独立提交。"""
         for priority in priorities:
             site_id = priority.get("id")
@@ -267,7 +273,7 @@ class SiteOper(DbOper):
             )
         )
 
-    def delete(self, sid: int):
+    def delete(self, sid: int) -> None:
         """
         删除站点
         """
@@ -279,9 +285,11 @@ class SiteOper(DbOper):
 
     async def stage_reset(self) -> None:
         """暂存清空站点表，由应用事务统一提交。"""
+        if not isinstance(self._db, AsyncSession):
+            raise RuntimeError("站点事务清空需要调用方提供 AsyncSession")
         await self._db.execute(sqlalchemy_delete(Site))
 
-    def update(self, sid: int, payload: dict) -> Optional[Site]:
+    def update(self, sid: int, payload: dict[str, Any]) -> Optional[Site]:
         """
         更新站点
         """
@@ -291,7 +299,7 @@ class SiteOper(DbOper):
         self._stage_update(site, payload)
         return site
 
-    async def async_update(self, sid: int, payload: dict) -> Optional[Site]:
+    async def async_update(self, sid: int, payload: dict[str, Any]) -> Optional[Site]:
         """
         异步更新站点。
         """
@@ -300,15 +308,16 @@ class SiteOper(DbOper):
             await self._stage_async_update(site, payload)
         return site
 
-    def get_by_domain(self, domain: str) -> Optional[Site]:
+    def get_by_domain(self, domain: Optional[str]) -> Optional[Site]:
         """
         按域名获取站点
         """
-        return self._execute_sync_query(
+        site: Optional[Site] = self._execute_sync_query(
             lambda session: session.execute(
                 select(Site).where(Site.domain == domain)
             ).scalars().first()
         )
+        return site
 
     async def async_get_by_domain(self, domain: str) -> Optional[Site]:
         """
@@ -376,7 +385,7 @@ class SiteOper(DbOper):
         })
         return True, "更新站点RSS地址成功"
 
-    def update_userdata(self, domain: str, name: str, payload: dict) -> Tuple[bool, str]:
+    def update_userdata(self, domain: str, name: str, payload: dict[str, Any]) -> Tuple[bool, str]:
         """
         更新站点用户数据
         """
@@ -577,7 +586,7 @@ class SiteOper(DbOper):
         self._execute_sync_write(write)
         return True
 
-    def success(self, domain: str, seconds: Optional[int] = None):
+    def success(self, domain: str, seconds: Optional[int] = None) -> None:
         """
         站点访问成功
         """
@@ -621,7 +630,7 @@ class SiteOper(DbOper):
 
         self._execute_sync_write(write)
 
-    def fail(self, domain: str):
+    def fail(self, domain: str) -> None:
         """
         站点访问失败
         """
@@ -644,7 +653,7 @@ class SiteOper(DbOper):
 
         self._execute_sync_write(write)
 
-    async def async_success(self, domain: str, seconds: Optional[int] = None):
+    async def async_success(self, domain: str, seconds: Optional[int] = None) -> None:
         """
         异步站点访问成功
         """
@@ -682,7 +691,7 @@ class SiteOper(DbOper):
 
         await self._execute_async_write(write)
 
-    async def async_fail(self, domain: str):
+    async def async_fail(self, domain: str) -> None:
         """
         异步站点访问失败
         """
