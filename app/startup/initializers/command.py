@@ -1,4 +1,5 @@
 from concurrent.futures import Future
+from typing import Any
 
 from app.application.commands import register_command_class, reset_command_class
 from app.command import Command
@@ -14,7 +15,7 @@ def reset_command_runtime() -> None:
     reset_command_class()
 
 
-def init_command():
+def init_command() -> None:
     """
     初始化命令
     """
@@ -26,7 +27,7 @@ def init_command():
         raise
 
 
-def restart_command() -> Future:
+def restart_command() -> Future[Any]:
     """
     重建命令并返回完成信号。
     """
