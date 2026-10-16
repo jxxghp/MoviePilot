@@ -720,9 +720,6 @@
   "app/application/servarr.py": {
     "valid-type": 2
   },
-  "app/application/server/share.py": {
-    "type-arg": 6
-  },
   "app/application/service.py": {
     "attr-defined": 5,
     "misc": 1

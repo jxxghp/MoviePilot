@@ -43,10 +43,10 @@ class ServerSharingService:
                 [int], Awaitable[Optional[WorkflowSnapshot]]
             ],
             user_uuid_provider: Callable[[], str],
-            subscribe_sender: Callable[[dict], Any],
-            async_subscribe_sender: Callable[[dict], Awaitable[Any]],
-            workflow_sender: Callable[[dict], Any],
-            async_workflow_sender: Callable[[dict], Awaitable[Any]],
+            subscribe_sender: Callable[[dict[str, object]], Any],
+            async_subscribe_sender: Callable[[dict[str, object]], Awaitable[Any]],
+            workflow_sender: Callable[[dict[str, object]], Any],
+            async_workflow_sender: Callable[[dict[str, object]], Awaitable[Any]],
             response_handler: Callable[[Any, Callable[[], None]], tuple[bool, str]],
             subscribe_cache_clearer: Callable[[], None],
             workflow_cache_clearer: Callable[[], None],
@@ -65,12 +65,13 @@ class ServerSharingService:
         self._subscribe_cache_clearer = subscribe_cache_clearer
         self._workflow_cache_clearer = workflow_cache_clearer
 
-    def build_subscribe_payload(self, item: Optional[dict]) -> Optional[dict]:
+    def build_subscribe_payload(self, item: Optional[dict[str, object]]) -> Optional[dict[str, object]]:
         """构造订阅分享载荷并隔离本地字段和旧专用 ID。"""
-        return build_subscribe_payload(item, self.SUBSCRIBE_FIELDS)
+        payload: dict[str, object] | None = build_subscribe_payload(item, self.SUBSCRIBE_FIELDS)
+        return payload
 
     @staticmethod
-    def prepare_workflow(workflow: WorkflowSnapshot) -> dict:
+    def prepare_workflow(workflow: WorkflowSnapshot) -> dict[str, object]:
         """移除本地字段并把动作和流程编码为中心服务兼容格式。"""
         workflow_dict = asdict(workflow)
         workflow_dict.pop("id", None)
@@ -113,7 +114,7 @@ class ServerSharingService:
         self,
         subscribe: Any,
         metadata: _ShareMetadata,
-    ) -> tuple[Optional[dict[str, Any]], str]:
+    ) -> tuple[Optional[dict[str, object]], str]:
         """统一订阅存在性、宿主字段投影和媒体身份完整性校验。"""
         if not subscribe:
             return None, "订阅不存在"
@@ -127,7 +128,7 @@ class ServerSharingService:
         self,
         workflow: Optional[WorkflowSnapshot],
         metadata: _ShareMetadata,
-    ) -> tuple[Optional[dict[str, Any]], str]:
+    ) -> tuple[Optional[dict[str, object]], str]:
         """统一工作流完整性校验和中心服务载荷投影。"""
         valid, message = self.validate_workflow(workflow)
         if not valid or workflow is None:
