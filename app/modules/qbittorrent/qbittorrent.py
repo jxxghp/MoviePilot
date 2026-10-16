@@ -572,7 +572,7 @@ class Qbittorrent:
             logger.error(f"暂停种子出错：{str(err)}")
             return False
 
-    def delete_torrents(self, delete_file: bool, ids: Union[str, list[str]]) -> bool:
+    def delete_torrents(self, delete_file: Optional[bool], ids: Union[str, list[str]]) -> bool:
         """
         删除种子
         """
