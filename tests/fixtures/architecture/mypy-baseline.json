@@ -2522,9 +2522,6 @@
     "no-untyped-call": 2,
     "no-untyped-def": 4
   },
-  "app/startup/initializers/routers.py": {
-    "no-untyped-def": 1
-  },
   "app/startup/initializers/workflow.py": {
     "no-untyped-def": 1
   },
