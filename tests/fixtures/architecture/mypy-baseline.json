@@ -727,9 +727,6 @@
   "app/chain/subscribe/search.py": {
     "assignment": 1
   },
-  "app/chain/theaudiodb.py": {
-    "type-arg": 1
-  },
   "app/chain/tmdb.py": {
     "no-any-return": 28,
     "type-arg": 2
@@ -1325,25 +1322,14 @@
     "union-attr": 4,
     "var-annotated": 3
   },
-  "app/modules/postgresql/__init__.py": {
-    "empty-body": 1,
-    "no-untyped-def": 1
-  },
   "app/modules/qbittorrent/__init__.py": {
-    "arg-type": 7,
+    "arg-type": 5,
     "assignment": 16,
     "empty-body": 1,
     "no-redef": 2,
     "operator": 1,
     "str-bytes-safe": 2,
     "type-arg": 8
-  },
-  "app/modules/qbittorrent/qbittorrent.py": {
-    "assignment": 10,
-    "no-any-return": 3,
-    "no-untyped-def": 5,
-    "return-value": 1,
-    "type-arg": 22
   },
   "app/modules/qqbot/api.py": {
     "no-any-return": 4,
@@ -1368,10 +1354,6 @@
     "attr-defined": 1,
     "no-untyped-def": 4,
     "type-arg": 10
-  },
-  "app/modules/redis/__init__.py": {
-    "empty-body": 1,
-    "no-untyped-def": 1
   },
   "app/modules/rtorrent/__init__.py": {
     "arg-type": 10,
@@ -1690,9 +1672,6 @@
     "type-arg": 5,
     "var-annotated": 1
   },
-  "app/monitor/syslimits.py": {
-    "attr-defined": 1
-  },
   "app/runtime/cache.py": {
     "arg-type": 8,
     "assignment": 1,
@@ -1988,9 +1967,6 @@
     "type-arg": 1,
     "union-attr": 2,
     "var-annotated": 1
-  },
-  "app/workflow/actions/fetch_torrents.py": {
-    "type-arg": 1
   },
   "app/workflow/actions/filter_medias.py": {
     "operator": 1,

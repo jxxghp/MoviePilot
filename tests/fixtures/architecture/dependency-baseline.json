@@ -943,8 +943,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9567,
-  "edge_sha256": "c611f503e4d688b4b07329b5cef5c90bce46b75f1f3cb90de97dcdd5d8c259f6",
+  "edge_count": 9569,
+  "edge_sha256": "7986477c6c80af87d50ae77e127dd1170aafc24e8ba38b615dd5a1eb1301eac9",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -5684,6 +5684,8 @@
     "app.chain.system -> app.schemas.types",
     "app.chain.theaudiodb -> app.chain",
     "app.chain.theaudiodb -> app.chain.musicbrainz",
+    "app.chain.theaudiodb -> app.domain",
+    "app.chain.theaudiodb -> app.domain.context",
     "app.chain.theaudiodb -> app.schemas",
     "app.chain.theaudiodb -> app.schemas.types",
     "app.chain.tmdb -> app.chain",
