@@ -125,7 +125,8 @@ class UgreenCrypto:
         encrypted = raw[12:]
         cipher = AESGCM(aes_key.encode("utf-8"))
         plain = cipher.decrypt(iv, encrypted, None)
-        return plain.decode("utf-8")
+        decoded: str = plain.decode("utf-8")
+        return decoded
 
     @staticmethod
     def build_security_key(token: str) -> str:
