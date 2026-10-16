@@ -48,7 +48,7 @@ class Command(metaclass=Singleton):
     全局命令管理，消费事件
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         # 插件管理器
         super().__init__()
         # 注册的命令集合
@@ -162,7 +162,7 @@ class Command(metaclass=Singleton):
         # 初始化命令
         self.init_commands()
 
-    def init_commands(self, pid: Optional[str] = None) -> Future:
+    def init_commands(self, pid: Optional[str] = None) -> Future[Any]:
         """
         提交菜单命令重建任务，并返回可等待的完成信号。
         """
