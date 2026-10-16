@@ -31,11 +31,6 @@
     "no-untyped-def": 59,
     "type-arg": 40
   },
-  "app/adapters/external/wechat.py": {
-    "no-untyped-call": 14,
-    "no-untyped-def": 14,
-    "union-attr": 1
-  },
   "app/adapters/network/browser.py": {
     "arg-type": 4,
     "no-any-return": 2,
@@ -422,7 +417,6 @@
     "arg-type": 4,
     "assignment": 1,
     "misc": 8,
-    "no-untyped-call": 2,
     "no-untyped-def": 8,
     "union-attr": 4
   },
@@ -1788,7 +1782,6 @@
     "attr-defined": 1,
     "empty-body": 1,
     "no-any-return": 2,
-    "no-untyped-call": 2,
     "no-untyped-def": 5,
     "type-arg": 4,
     "union-attr": 4
