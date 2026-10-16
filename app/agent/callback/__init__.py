@@ -53,13 +53,13 @@ class StreamingHandler:
     # 流式输出的刷新间隔（秒）
     FLUSH_INTERVAL = 0.3
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化文本缓冲、渠道消息身份及唯一刷新任务的生命周期状态。"""
         self._lock = threading.Lock()
         self._buffer = ""
         # 流式输出相关状态
         self._streaming_enabled = False
-        self._flush_task: Optional[asyncio.Task] = None
+        self._flush_task: Optional[asyncio.Task[None]] = None
         self._streaming_lifecycle_lock = asyncio.Lock()
         # 当前消息的发送信息（用于编辑消息）
         self._message_response: Optional[MessageResponse] = None
@@ -302,7 +302,7 @@ class StreamingHandler:
             self._live_tool_stats = {}
             return message
 
-    def clear(self):
+    def clear(self) -> None:
         """
         清空缓冲区（不返回内容）
         """
@@ -320,7 +320,7 @@ class StreamingHandler:
             self._thinking_active = False
             self._thinking_status_text = ""
 
-    def reset(self):
+    def reset(self) -> None:
         """
         重置缓冲区，清空已发送的文本从头更新，但保持消息编辑能力。
 
@@ -362,7 +362,7 @@ class StreamingHandler:
         original_message_id: Optional[str] = None,
         original_chat_id: Optional[str] = None,
         title: str = "",
-    ):
+    ) -> None:
         """串行启动流式输出，禁止新一轮覆盖尚未结束的刷新 owner。"""
         async with self._streaming_lifecycle_lock:
             await self._start_streaming(
@@ -384,7 +384,7 @@ class StreamingHandler:
         original_message_id: Optional[str] = None,
         original_chat_id: Optional[str] = None,
         title: str = "",
-    ):
+    ) -> None:
         """
         启动流式输出。
         始终标记为流式状态（用于 buffer 收集 token），
@@ -502,7 +502,7 @@ class StreamingHandler:
         tool_name: str,
         tool_message: Optional[str] = None,
         tool_kwargs: Optional[dict[str, Any]] = None,
-    ):
+    ) -> None:
         """
         记录一次工具调用，供非啰嗦模式下延迟汇总输出。
         """
@@ -639,6 +639,7 @@ class StreamingHandler:
         tool_message: Optional[str],
         tool_kwargs: dict[str, Any],
     ) -> tuple[str, Optional[Any]]:
+        """把工具调用归入展示类别并提取摘要目标，保留各工具原始目标类型。"""
         tool_name = (tool_name or "").strip().lower()
         tool_message = (tool_message or "").strip()
         tool_message_lower = tool_message.lower()
@@ -740,6 +741,7 @@ class StreamingHandler:
         return "tool", None
 
     def _consume_pending_tool_summary_locked(self) -> str:
+        """在持锁状态消费待展示统计，并登记摘要行供渠道富文本引用。"""
         pending_summary = self._build_pending_tool_summary_locked(self._buffer)
         if not pending_summary:
             return ""
@@ -792,6 +794,7 @@ class StreamingHandler:
 
     @staticmethod
     def _format_tool_stat(category: str, count: int) -> str:
+        """按工具类别生成计数文案，非正计数不输出摘要。"""
         if count <= 0:
             return ""
 
@@ -856,7 +859,7 @@ class StreamingHandler:
             for line in text.splitlines(keepends=True)
         )
 
-    async def _flush_loop(self):
+    async def _flush_loop(self) -> None:
         """
         定时刷新循环，定期将缓冲区内容发送/编辑到用户
         """
@@ -871,7 +874,7 @@ class StreamingHandler:
         except Exception as e:
             logger.error(f"流式刷新异常: {e}")
 
-    async def _cancel_flush_task(self):
+    async def _cancel_flush_task(self) -> None:
         """
         停止当前的定时刷新任务。
 
