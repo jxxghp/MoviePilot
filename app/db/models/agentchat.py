@@ -59,7 +59,8 @@ class AgentChat(Base):
         statement = select(cls).where(cls.session_id == session_id)
         if user_id is not None:
             statement = statement.where(cls.user_id == user_id)
-        return db.execute(statement.order_by(cls.id.desc())).scalars().first()
+        chat: Optional[AgentChat] = db.execute(statement.order_by(cls.id.desc())).scalars().first()
+        return chat
 
     @classmethod
     async def async_get_by_session(
@@ -72,7 +73,8 @@ class AgentChat(Base):
         if user_id is not None:
             statement = statement.where(cls.user_id == user_id)
         result = await db.execute(statement.order_by(cls.id.desc()))
-        return result.scalars().first()
+        chat: Optional[AgentChat] = result.scalars().first()
+        return chat
 
     @classmethod
     def list_by_page(

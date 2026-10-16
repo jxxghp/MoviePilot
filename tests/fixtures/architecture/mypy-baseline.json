@@ -981,9 +981,6 @@
     "no-untyped-def": 3,
     "type-arg": 1
   },
-  "app/db/models/agentchat.py": {
-    "no-any-return": 2
-  },
   "app/db/models/agenttask.py": {
     "no-any-return": 2,
     "no-untyped-def": 2,
