@@ -987,9 +987,13 @@ class Jellyfin:
         :param limit: 每次请求的最大项目数，用于分页。如果为 None 或 -1，则表示一次性获取所有数据，默认为 -1
 
         :return: 返回一个生成器对象，用于逐步获取媒体服务器中的项目
+
+        读取失败时抛出异常中止同步，避免空结果被当作媒体库已清空而删除旧缓存。
         """
-        if not parent or not self._host or not self._apikey:
-            return None
+        if not parent:
+            raise ValueError("Jellyfin 媒体库 ID 不能为空")
+        if not self._host or not self._apikey:
+            raise ConnectionError("Jellyfin 服务器未连接")
         url = f"{self._host}Users/{self.user}/Items"
         params = {
             "ParentId": parent,
@@ -1006,7 +1010,9 @@ class Jellyfin:
         try:
             res = self._request().get_res(url, params)
             if not res or res.status_code != 200:
-                return None
+                raise ConnectionError(
+                    f"读取 Jellyfin 媒体库 {parent} 失败，状态码：{res.status_code if res is not None else '无响应'}"
+                )
             items = res.json().get("Items") or []
             for item in items:
                 if not item:
@@ -1017,7 +1023,8 @@ class Jellyfin:
                 elif item.get("Type") in ["Movie", "Series", "MusicAlbum"]:
                     yield self.__format_item_info(item)
         except Exception as e:
-            logger.error("连接Users/Items出错：" + str(e))
+            logger.error(f"同步读取 Jellyfin 媒体库 {parent} 出错：{str(e)}")
+            raise
 
     def get_data(self, url: str) -> Optional[Response]:
         """
