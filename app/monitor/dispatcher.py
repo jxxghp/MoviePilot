@@ -21,8 +21,8 @@ from app.chain.transfer.facade import TransferChain
 from app.runtime.cache import TTLCache
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
+from app.schemas.file import FileItem
 from app.schemas.types import MediaType
-from app.schemas.workflow import FileItem
 
 
 class TransferDispatcher:
@@ -39,7 +39,7 @@ class TransferDispatcher:
             all_exts: Optional[List[str]] = None,
             cache: Optional[Any] = None,
             retry_abandoned_callback: Optional[Callable[[str, Path, str], None]] = None,
-    ):
+    ) -> None:
         """
         初始化整理分发器。
         :param all_exts: 监控的文件扩展名，默认取系统配置
@@ -194,19 +194,17 @@ class TransferDispatcher:
         :return: 配置的媒体类型，未配置或无匹配目录时返回 None
         """
         matching_dirs = [
-            dir_info
+            (dir_info, Path(download_path))
             for dir_info in DirectoryHelper().get_download_dirs()
             if dir_info.monitor_type == "monitor"
             and dir_info.storage == storage
-            and event_path.is_relative_to(Path(dir_info.download_path))
+            and (download_path := dir_info.download_path) is not None
+            and event_path.is_relative_to(Path(download_path))
         ]
         if not matching_dirs:
             return None
 
-        dir_info = max(
-            matching_dirs,
-            key=lambda item: len(Path(item.download_path).parts),
-        )
+        dir_info, _ = max(matching_dirs, key=lambda item: len(item[1].parts))
         if not dir_info.media_type:
             return None
         try:
@@ -217,9 +215,9 @@ class TransferDispatcher:
             )
             return None
 
-    def _register_pending(self, storage: str, event_path: Path, file_size: float = None,
-                          file_modify_time: float = None, fileid: Optional[str] = None,
-                          reason: str = "整理历史查询失败", count_attempt: bool = True):
+    def _register_pending(self, storage: str, event_path: Path, file_size: Optional[float] = None,
+                          file_modify_time: Optional[float] = None, fileid: Optional[str] = None,
+                          reason: str = "整理历史查询失败", count_attempt: bool = True) -> None:
         """
         登记暂时性故障的文件待重试，重复失败累计次数，超限后放弃。
         :param storage: 存储
@@ -269,7 +267,7 @@ class TransferDispatcher:
         except Exception as err:
             logger.error(f"发送目录监控重试放弃告警失败: {storage}:{event_path} - {err}")
 
-    def register_unreadable(self, storage: str, event_path: Path):
+    def register_unreadable(self, storage: str, event_path: Path) -> None:
         """
         登记读取失败的监控事件待重试。
 
@@ -299,7 +297,7 @@ class TransferDispatcher:
             logger.debug(f"重试读取文件大小失败: {event_path} - {err}")
             return None, None, True
 
-    def _discard_pending(self, storage: str, event_path: Path):
+    def _discard_pending(self, storage: str, event_path: Path) -> None:
         """
         历史查询已得到确定结果，移除待重试登记。
         :param storage: 存储
@@ -308,7 +306,7 @@ class TransferDispatcher:
         with self._pending_guard:
             self._pending_retries.pop(self._pending_key(storage, event_path), None)
 
-    def clear_pending(self):
+    def clear_pending(self) -> None:
         """
         清空待重试队列。监控停止或配置重载时调用，避免已移除的监控目录
         在数据库恢复后仍被看门狗送入整理链。
@@ -319,7 +317,7 @@ class TransferDispatcher:
             logger.debug(f"清理整理重试队列，丢弃 {len(self._pending_retries)} 个待重试条目")
             self._pending_retries.clear()
 
-    def retry_pending(self):
+    def retry_pending(self) -> None:
         """
         重试历史查询失败的文件，由健康检查周期驱动。
         成功或得到确定结果的条目在 handle_file 内部自动移除。
@@ -353,8 +351,8 @@ class TransferDispatcher:
                 fileid=fileid,
             )
 
-    def handle_file(self, storage: str, event_path: Path, file_size: float = None,
-                    file_modify_time: float = None, fileid: Optional[str] = None) -> bool:
+    def handle_file(self, storage: str, event_path: Path, file_size: Optional[float] = None,
+                    file_modify_time: Optional[float] = None, fileid: Optional[str] = None) -> bool:
         """
         整理一个文件。
         :param storage: 存储
@@ -371,9 +369,10 @@ class TransferDispatcher:
             return False
         # 蓝光原盘文件处理
         if self._is_bluray_sub(event_path):
-            event_path = self._get_bluray_dir(event_path)
-            if not event_path:
+            bluray_path = self._get_bluray_dir(event_path)
+            if not bluray_path:
                 return False
+            event_path = bluray_path
             is_bluray_folder = True
             if storage == "local":
                 try:
@@ -481,7 +480,7 @@ class TransferDispatcher:
                                    reason="整理执行异常")
             return False
 
-    def _invalidate_cache(self, key: str):
+    def _invalidate_cache(self, key: str) -> None:
         """
         使去重缓存条目失效，兼容缓存后端与测试注入的字典。
         :param key: 缓存键
