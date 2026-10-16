@@ -138,12 +138,16 @@ class TransferFileAction(BaseAction):
                 # 记录已整理的文件
                 self.save_cache(workflow_id, cache_key)
 
+        return self._complete_transfer(context, _failed_count)
+
+    def _complete_transfer(self, context: ActionContext, failed_count: int) -> ActionContext:
+        """写回成功文件并结算动作，延续部分成功时允许后续节点执行的规则。"""
         if self._fileitems:
             if context.fileitems is None:
                 context.fileitems = []
             context.fileitems.extend(self._fileitems)
-        elif _failed_count:
+        elif failed_count:
             self._has_error = True
 
-        self.job_done(f"整理成功 {len(self._fileitems)} 个文件，失败 {_failed_count} 个")
+        self.job_done(f"整理成功 {len(self._fileitems)} 个文件，失败 {failed_count} 个")
         return context
