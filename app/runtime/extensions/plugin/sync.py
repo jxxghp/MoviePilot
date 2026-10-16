@@ -205,7 +205,7 @@ class LocalPluginSyncService:
         self,
         *,
         installed_plugins: Callable[[], list[str]],
-        candidate: Callable[[str], Optional[dict]],
+        candidate: Callable[[str], Optional[dict[str, Any]]],
         system: Callable[[], PluginSystemServices],
         recent_sync: dict[str, float],
         log: Any,
@@ -217,7 +217,7 @@ class LocalPluginSyncService:
         self._recent_sync = recent_sync
         self._logger = log
 
-    def sync(self, plugin_id: str, candidate: Optional[dict] = None) -> bool:
+    def sync(self, plugin_id: str, candidate: Optional[dict[str, Any]] = None) -> bool:
         """同步已安装且兼容的本地插件，成功后记录短时事件抑制标记。"""
         normalized_plugin_id = plugin_id.lower()
         installed = {
