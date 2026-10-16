@@ -112,7 +112,7 @@ async def douban_recommend(
     return []
 
 
-@router.get(
+@router.get(  # type: ignore[misc]
     "/interests/{doubanid}/{type_name}",
     summary="豆瓣短评",
     response_model=_SchemaMediaCommentPage,
@@ -135,7 +135,7 @@ async def douban_interests(
     return _SchemaMediaCommentPage()
 
 
-@router.get(
+@router.get(  # type: ignore[misc]
     "/reviews/{doubanid}/{type_name}",
     summary="豆瓣影评",
     response_model=_SchemaMediaReviewPage,
