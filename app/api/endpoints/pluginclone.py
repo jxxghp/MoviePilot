@@ -31,7 +31,7 @@ from app.schemas.response import Response as _SchemaResponse
 router = ResponseAPIRouter()
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/clone/{plugin_id}/restorable",
     summary="列出可恢复的已停用分身",
     response_model=List[_SchemaPluginRestorableInstance],
@@ -65,7 +65,7 @@ def plugin_restorable_instances(
     return instances
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/clone/{plugin_id}",
     summary="创建插件分身",
     response_model=_SchemaResponse[_SchemaPluginCloneOutcome],
