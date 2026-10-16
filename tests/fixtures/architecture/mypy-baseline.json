@@ -1157,11 +1157,6 @@
     "arg-type": 2,
     "type-arg": 1
   },
-  "app/modules/indexer/parser/zhixing.py": {
-    "arg-type": 7,
-    "assignment": 7,
-    "no-untyped-def": 4
-  },
   "app/modules/indexer/spider/__init__.py": {
     "arg-type": 12,
     "assignment": 3,
