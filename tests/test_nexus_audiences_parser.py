@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import pytest
+
 from app.foundation.size import parse_size
 from app.modules.indexer.parser.nexus_audiences import NexusAudiencesSiteUserInfo
 
@@ -37,13 +39,44 @@ def test_audiences_userbar_metrics_override_generic_nexus_regex():
 
     assert parser.userid == "18978"
     assert parser.username == "jxxghp"
-    assert parser.user_level == "(江湖儿女)Elite User"
+    assert parser.user_level == "Elite User"
     assert parser.upload == parse_size("10.150 TB")
     assert parser.download == parse_size("3.624 TB")
     assert parser.ratio == 2.801
     assert parser.bonus == 1973896.2
     assert parser.seeding == 355
     assert parser.leeching == 7
+
+
+@pytest.mark.parametrize("parse_method", ["_parse_user_traffic_info", "_parse_user_detail_info"])
+@pytest.mark.parametrize("badge, expected", [
+    ("(小鬼当家)User", "User"),
+    ("(江湖儿女)Elite User", "Elite User"),
+    ("  (江湖儿女)  Elite User  ", "Elite User"),
+    ("Elite User", "Elite User"),
+    ("  User  ", "User"),
+    ("(小鬼当家)", "Power User"),
+    ("  ", "Power User"),
+])
+def test_audiences_user_level_omits_site_group(parse_method, badge, expected):
+    parser = NexusAudiencesSiteUserInfo(
+        site_name="Audiences",
+        url="https://audiences.me/",
+        site_cookie="",
+        apikey=None,
+        token=None,
+    )
+    parser.user_level = "Power User"
+    html_text = f"""
+    <html><body>
+      <a data-uploader-label="testuser" data-uploader-url="userdetails.php?id=123"
+         data-uploader-badge="{badge}">testuser</a>
+    </body></html>
+    """
+
+    getattr(parser, parse_method)(html_text)
+
+    assert parser.user_level == expected
 
 
 def test_audiences_inbox_total_unread_badge_uses_unread_part():
