@@ -217,6 +217,20 @@ def test_fatal_error_stops_reconnect(monkeypatch):
     assert attempts == [1]
 
 
+def test_stop_requested_during_connection_error_stops_without_reconnect(monkeypatch):
+    """连接异常发生后若已收到停止请求，run() 应立即退出而不再重连。"""
+    conn = _connection()
+
+    def fail_after_stop():
+        """模拟底层连接先收到停止请求、随后抛出断连异常。"""
+        conn._stop_event.set()
+        raise ConnectionError("peer closed")
+
+    monkeypatch.setattr(conn, "_run_once", fail_after_stop)
+
+    conn.run()
+
+
 def test_reconnect_count_limit(monkeypatch):
     """服务端限定重连次数时，连续失败超过上限后停止。"""
     attempts = []

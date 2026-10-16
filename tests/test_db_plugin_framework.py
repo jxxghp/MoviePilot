@@ -287,6 +287,7 @@ def test_only_declared_tables_are_created(plugin_data_root, sqlite_backend):
 def test_sqlite_database_lands_in_the_plugin_data_directory(plugin_data_root, sqlite_backend):
     """SQLite 库文件落在插件数据目录下，句柄独占引擎，不带 schema。"""
     handle = registry_module.get_database("demo")
+    assert registry_module.database_handles() == (handle,)
     assert handle.db_path == plugin_data_root / "demo" / "plugin.db"
     assert handle.owns_engine is True
     assert handle.schema is None

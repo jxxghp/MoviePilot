@@ -99,6 +99,7 @@ def test_loader_attributes_module_import_to_installed_plugin_id(tmp_path, monkey
     for name in ("pureplugin", "nativeplugin"):
         (tmp_path / name).mkdir()
         (tmp_path / name / "__init__.py").write_text("", encoding="utf-8")
+    (tmp_path / "_ignored").mkdir()
 
     def import_module(module_name: str) -> ModuleType:
         if module_name == "app.plugins.nativeplugin":

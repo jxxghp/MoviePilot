@@ -3,6 +3,8 @@
 import importlib
 import inspect
 
+import pytest
+
 from app.scheduler import Scheduler, SchedulerChain
 from app.scheduler.facade import Scheduler as ConcreteScheduler
 
@@ -15,6 +17,12 @@ def test_scheduler_package_root_keeps_legacy_type_identity() -> None:
     assert dynamic is ConcreteScheduler
     assert Scheduler.__module__ == "app.scheduler"
     assert SchedulerChain.__module__ == "app.scheduler"
+
+
+def test_scheduler_package_root_rejects_unknown_attribute() -> None:
+    """旧包根只暴露声明的兼容入口，未知属性应保持标准 AttributeError。"""
+    with pytest.raises(AttributeError, match="missing_scheduler_entrypoint"):
+        getattr(importlib.import_module("app.scheduler"), "missing_scheduler_entrypoint")
 
 
 def test_scheduler_legacy_methods_keep_plugin_call_shapes() -> None:

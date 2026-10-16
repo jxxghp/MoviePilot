@@ -7,6 +7,7 @@ from unittest.mock import Mock
 
 import pytest
 
+import app.startup.initializers.modules as modules_initializer
 from app.foundation.singleton import Singleton
 from app.runtime.event.binding import (
     EventBindingResolver,
@@ -188,6 +189,7 @@ def test_unloaded_module_decorator_wrapped_method_is_skipped() -> None:
 
 def test_free_function_handler_still_invoked_directly() -> None:
     """自由函数处理器不属于类声明，保持直调路径不被新跳过逻辑影响。"""
+    assert EventRegistry.handler_class_identifier(_free_function_handler) is None
     binding = EventBindingResolver(
         lock=threading.Lock(),
         resolvers=lambda: {},
@@ -322,6 +324,17 @@ def test_all_decorated_host_handler_classes_have_explicit_factories() -> None:
         "SubscribeChain",
         "WorkflowChain",
     }
+
+
+def test_plugin_classification_fields_skip_unmaterialized_manager(monkeypatch) -> None:
+    """插件管理器尚未创建时，分类字段 provider 应返回空快照。"""
+    monkeypatch.setattr(
+        modules_initializer,
+        "get_existing_plugin_manager",
+        lambda: None,
+    )
+
+    assert modules_initializer._plugin_classification_fields() == ()
 
 
 @pytest.mark.parametrize(

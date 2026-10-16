@@ -643,6 +643,20 @@ def test_openai_compatible_patch_skips_when_reasoning_content_missing() -> None:
     assert "reasoning_content" not in payload["messages"][1]
 
 
+def test_interleaved_reasoning_patch_skips_model_without_payload_method() -> None:
+    """模型没有请求负载方法时应记录并跳过补丁，而不是构造临时兼容实现。"""
+
+    class _ModelWithoutPayload:
+        """没有请求负载方法的最小模型替身。"""
+
+    llm_module._patch_interleaved_reasoning_request_support(
+        _ModelWithoutPayload,
+        patch_marker="_interleaved_reasoning_test_patch",
+    )
+
+    assert not hasattr(_ModelWithoutPayload, "_interleaved_reasoning_test_patch")
+
+
 def test_get_llm_uses_deepseek_thinking_level_controls() -> None:
     calls = []
     patch_calls = []

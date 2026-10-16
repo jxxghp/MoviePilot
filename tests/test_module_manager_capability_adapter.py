@@ -877,7 +877,7 @@ assert configured_modules.isdisjoint(sys.modules)
 
 
 def test_event_resolver_uses_exact_class_and_blocks_stopped_owner_fallback(
-    module_manager_harness,
+    module_manager_harness, monkeypatch,
 ) -> None:
     """同名 class 不能冒充 owner；已停止 owner 必须返回 Binding(None)。"""
     manager = module_manager_harness.manager
@@ -891,6 +891,13 @@ def test_event_resolver_uses_exact_class_and_blocks_stopped_owner_fallback(
         instance=running,
         owner_name="Sample",
     )
+
+    manager._modules.pop("SampleModule")
+    snapshot = Mock()
+    monkeypatch.setattr(manager._runtime, "snapshot", snapshot)
+    materialized_binding = manager.resolve_event_handler_instance(module_class)
+    assert materialized_binding == active_binding
+    snapshot.assert_called_once_with("SampleModule")
 
     impostor = type("SampleModule", (), {})
     impostor.__module__ = module_class.__module__
