@@ -340,7 +340,8 @@ def _restore_meta(payload: dict[str, Any]) -> MetaBase:
         or payload.get("name")
         or ""
     )
-    meta = MetaInfo(title)
+    # 音乐已按快照类型分流；影视发布名尾部的 .AAC 等编码不能再次触发音乐解析。
+    meta = MetaInfo(title, force_video=True)
     for key, value in payload.items():
         if key in {"season_episode", "edition", "name", "episode_list"}:
             continue
