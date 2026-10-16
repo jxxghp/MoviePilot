@@ -770,9 +770,6 @@
   "app/application/subscription/write.py": {
     "arg-type": 2
   },
-  "app/application/torrent/cache.py": {
-    "type-arg": 1
-  },
   "app/application/torrent/download.py": {
     "arg-type": 2,
     "assignment": 3,
