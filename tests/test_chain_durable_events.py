@@ -35,6 +35,9 @@ from app.application.outbox import (
     DOWNLOAD_MODULE_TOPIC,
     DOWNLOAD_NOTIFICATION_TOPIC,
     DOWNLOAD_SUBTITLE_TOPIC,
+    TRANSFER_COMPLETED_TOPIC,
+    ClaimedOutboxMessage,
+    OutboxDispatcher,
     PostCommitEffectError,
 )
 from app.application.transfer.execution import (
@@ -55,10 +58,12 @@ from app.db.models.transfersettlementreceipt import TransferSettlementReceipt
 from app.db.oper.transferhistory import TransferHistoryOper
 from app.db.uow import SqlAlchemyUnitOfWork
 from app.domain.context import Context, MediaInfo, TorrentInfo
+from app.domain.meta import runtime as meta_runtime
+from app.domain.meta.metamusic import MetaMusic
 from app.domain.metainfo import MetaInfo
 from app.schemas.file import FileItem
 from app.schemas.transfer import TransferInfo
-from app.schemas.types import MediaSource, MediaType
+from app.schemas.types import EventType, MediaSource, MediaType
 
 
 def _session_factory():
@@ -269,6 +274,102 @@ def test_durable_snapshots_are_json_and_restore_plugin_runtime_objects():
     assert type(restored_transfer["meta"]) is type(meta)
     assert isinstance(restored_transfer["mediainfo"], MediaInfo)
     assert isinstance(restored_transfer["transferinfo"], TransferInfo)
+
+
+@pytest.mark.parametrize("title", [
+    "一瓯春.S01E01.2026.2160p.WEB-DL.H265.SDR.60FPS.AAC",
+    "云雀叫天录.S01E01.2026.2160p.WEB-DL.H264.SDR.25FPS.AAC",
+    "Demo.2026.2160p.WEB-DL.H265.aac",
+    "Demo.2026.2160p.WEB-DL.H265.FLAC",
+    "[Group] Demo - 01 [1080p].AAC",
+])
+def test_durable_video_snapshots_preserve_metadata_with_audio_suffix(title, monkeypatch):
+    """影视发布名尾部的音频编码不能在持久事件恢复时改变解析对象类型。"""
+    monkeypatch.setattr(meta_runtime, "_audio_extensions_provider", lambda: (".aac", ".flac"))
+    meta = MetaInfo(f"{title}.mkv", force_video=True)
+    assert meta.org_string == title
+    meta.original_name = "整理时确认的原始名称"
+    context = Context(meta_info=meta)
+    transfer = json.loads(json.dumps(snapshot_transfer_result({"meta": meta})))
+    download = json.loads(json.dumps(snapshot_download_added({"context": context})))
+    processing = json.loads(json.dumps(snapshot_download_processing(
+        context=context,
+        download_dir=Path("/downloads"),
+        torrent_content=b"torrent-bytes",
+    )))
+
+    restored = [
+        restore_transfer_result(transfer)["meta"],
+        restore_download_added(download)["context"].meta_info,
+        restore_download_processing(processing).context.meta_info,
+    ]
+
+    for result in restored:
+        assert type(result) is type(meta)
+        assert result.type == meta.type
+        assert result.original_name == meta.original_name
+        assert result.to_dict() == meta.to_dict()
+
+
+@pytest.mark.parametrize("media_type", [MediaType.MUSIC.value, "music"])
+@pytest.mark.parametrize("title", ["Artist - Song.aac", "Artist - Album"])
+def test_durable_music_snapshots_keep_explicit_music_type(media_type, title):
+    """真实音乐仍按快照恢复标签，兼容旧类型标记及没有音频后缀的资源。"""
+    meta = MetaMusic(
+        org_string=title,
+        title="标签中的曲名",
+        artists=["标签中的歌手"],
+        album="标签中的专辑",
+        disc_number=2,
+        track_number=3,
+        audio_format="AAC",
+    )
+    snapshot = json.loads(json.dumps(snapshot_transfer_result({"meta": meta})))
+    snapshot["meta"]["type"] = media_type
+
+    restored = restore_transfer_result(snapshot)["meta"]
+
+    assert isinstance(restored, MetaMusic)
+    assert restored.to_dict() == meta.to_dict()
+
+
+def test_transfer_outbox_dispatches_video_release_ending_in_aac(monkeypatch):
+    """真实整理 handler 恢复 AAC 尾缀影视快照后应派发事件并完成消息结算。"""
+    from app.startup.composition import outbox as outbox_composition
+
+    monkeypatch.setattr(meta_runtime, "_audio_extensions_provider", lambda: (".aac",))
+    title = "一瓯春.S01E01.2026.2160p.WEB-DL.H265.SDR.60FPS.AAC"
+    meta = MetaInfo(f"{title}.mkv", force_video=True)
+    assert meta.org_string == title
+    fileitem = FileItem(
+        storage="local", path=f"/downloads/{title}.mkv", name=f"{title}.mkv", type="file",
+    )
+    payload = json.loads(json.dumps(snapshot_transfer_result({
+        "meta": meta,
+        "fileitem": fileitem,
+        "idempotency_key": "transfer.completed:7023:v1",
+    })))
+    message = ClaimedOutboxMessage(
+        7023, "transfer.completed:7023:v1", TRANSFER_COMPLETED_TOPIC, payload, 1, 1,
+    )
+    repository = Mock()
+    repository.claim.return_value = message
+    event_manager = Mock()
+    monkeypatch.setattr(outbox_composition, "EventManager", lambda: event_manager)
+    dispatcher = OutboxDispatcher(repository, outbox_composition.build_outbox_handlers())
+
+    assert dispatcher.dispatch_one() is True
+
+    event_manager.send_event_strict.assert_called_once()
+    event_type, restored = event_manager.send_event_strict.call_args.args
+    assert event_type == EventType.TransferComplete
+    assert restored["meta"].type == MediaType.TV
+    assert restored["meta"].to_dict() == meta.to_dict()
+    assert restored["fileitem"] == fileitem
+    assert restored["idempotency_key"] == message.event_key
+    repository.complete.assert_called_once()
+    assert repository.complete.call_args.args[:2] == (message.message_id, message.attempt)
+    repository.retry.assert_not_called()
 
 
 def test_download_history_and_event_intent_share_one_transaction():
