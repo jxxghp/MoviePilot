@@ -16,6 +16,7 @@ class SearchSessionOper:
     """所有变更使用调用方 Session；写入前核对队列任务租约仍属于调用方。"""
 
     def __init__(self, session: Session) -> None:
+        """保存拥有搜索任务租约事务的调用方会话。"""
         self._db = session
 
     def get(self, task_id: str) -> Optional[SearchSession]:
@@ -25,6 +26,7 @@ class SearchSessionOper:
 
     @staticmethod
     def _now() -> str:
+        """返回用于检查点和租约比较的 UTC 秒级时间。"""
         return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     def _lease_held(self, task_id: str, task_lease: Optional[str]) -> Any:
