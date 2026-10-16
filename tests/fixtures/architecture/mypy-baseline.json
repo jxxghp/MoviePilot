@@ -1483,17 +1483,6 @@
     "no-untyped-def": 3,
     "type-arg": 2
   },
-  "app/modules/transmission/__init__.py": {
-    "arg-type": 1,
-    "assignment": 16,
-    "empty-body": 1,
-    "no-any-return": 1,
-    "no-redef": 2,
-    "no-untyped-call": 8,
-    "no-untyped-def": 6,
-    "str-bytes-safe": 1,
-    "type-arg": 6
-  },
   "app/modules/trimemedia/api.py": {
     "misc": 2,
     "no-untyped-def": 11,

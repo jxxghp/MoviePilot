@@ -106,7 +106,7 @@
       "app/modules/slack/__init__.py:SlackModule.message_parser": 16,
       "app/modules/slack/slack.py:Slack.send_medias_msg": 18,
       "app/modules/transmission/__init__.py:TransmissionModule.download": 18,
-      "app/modules/transmission/__init__.py:TransmissionModule.list_torrents": 25,
+      "app/modules/transmission/__init__.py:TransmissionModule.list_torrents": 22,
       "app/modules/trimemedia/api.py:Api.request": 16,
       "app/modules/ugreen/ugreen.py:Ugreen.get_tv_episodes": 21,
       "app/modules/wechat/__init__.py:WechatModule.message_parser": 20,
