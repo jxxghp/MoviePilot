@@ -15,6 +15,7 @@ from typing import (
     AsyncIterator,
     Awaitable,
     Callable,
+    Coroutine,
     Optional,
     Protocol,
     Union,
@@ -51,7 +52,7 @@ _WEB_AGENT_BACKGROUND_TASKS: set[asyncio.Task[object]] = set()
 
 
 def create_web_agent_background_task(
-    coroutine: Awaitable[object],
+    coroutine: Coroutine[Any, Any, object],
 ) -> asyncio.Task[object]:
     """登记 Web Agent 后台任务，使应用关闭时可以统一收口。"""
     task = cast(
