@@ -25,7 +25,7 @@ from app.startup.composition.context import HostRuntime
 router = ResponseAPIRouter()
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/identifiers",
     summary="查询自定义识别词",
     response_model=Response[JsonObject],
@@ -45,7 +45,7 @@ async def query_custom_identifiers(
     )
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/identifiers",
     summary="更新自定义识别词",
     response_model=Response[JsonObject],
