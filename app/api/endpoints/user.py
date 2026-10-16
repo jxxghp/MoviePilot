@@ -131,7 +131,7 @@ async def update_user(
     return _SchemaResponse(success=True)
 
 
-@router.put(  # type: ignore[misc]
+@router.put(
     "/current", summary="更新当前用户资料", response_model=_SchemaUser
 )
 async def update_current_user(
