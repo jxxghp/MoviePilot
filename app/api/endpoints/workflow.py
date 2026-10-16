@@ -137,7 +137,7 @@ async def create_workflow(
     response_model=List[_SchemaPluginWorkflowActionGroup],
 )
 def list_plugin_actions(
-    plugin_id: str = None, _: Any = Depends(get_current_active_manage_user),
+    plugin_id: Optional[str] = None, _: Any = Depends(get_current_active_manage_user),
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
 ) -> Any:

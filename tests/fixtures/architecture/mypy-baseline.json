@@ -453,9 +453,6 @@
     "str-bytes-safe": 1,
     "type-arg": 3
   },
-  "app/api/endpoints/workflow.py": {
-    "assignment": 1
-  },
   "app/api/servarr.py": {
     "arg-type": 2,
     "assignment": 1,
