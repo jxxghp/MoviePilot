@@ -170,7 +170,7 @@ _DURABLE_REQUIRED = {
 }
 _TARGET_PLUGIN = {EventType.PluginAction, EventType.PluginTriggered}
 _HOST_ONLY = {EventType.SystemError, EventType.ConfigChanged, EventType.ModuleReload}
-_SENSITIVE_FIELDS = {
+_SENSITIVE_FIELDS: dict[EventType | ChainEventType, tuple[str, ...]] = {
     ChainEventType.AuthVerification: ("password", "token", "mfa_code"),
     ChainEventType.AuthIntercept: ("token",),
     ChainEventType.AgentLLMProvider: ("api_key",),
