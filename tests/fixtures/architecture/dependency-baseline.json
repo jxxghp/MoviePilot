@@ -941,8 +941,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9561,
-  "edge_sha256": "33be79e78a558a10f4add55117460d34d0e763269d71711bc27b387fe2c5552d",
+  "edge_count": 9563,
+  "edge_sha256": "8fc47a0f231e6f7bcb13c591365ded68951b1186b8d438be6e5af40fdb807719",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -983,6 +983,8 @@
     "app.adapters.external.location -> app.adapters",
     "app.adapters.external.location -> app.adapters.network",
     "app.adapters.external.location -> app.adapters.network.http",
+    "app.adapters.external.location -> app.schemas",
+    "app.adapters.external.location -> app.schemas.common",
     "app.adapters.external.market -> app.adapters",
     "app.adapters.external.market -> app.adapters.external",
     "app.adapters.external.market -> app.adapters.external.plugin",
