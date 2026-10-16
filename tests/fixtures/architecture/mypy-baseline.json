@@ -987,10 +987,6 @@
     "type-arg": 4,
     "union-attr": 3
   },
-  "app/db/oper/transferhistory.py": {
-    "no-untyped-def": 6,
-    "union-attr": 2
-  },
   "app/db/oper/workflow.py": {
     "arg-type": 1,
     "no-untyped-def": 1,
