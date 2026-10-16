@@ -3,8 +3,10 @@
 import asyncio
 import logging
 import time
+from collections.abc import Callable, Mapping
 from copy import deepcopy
 from datetime import datetime
+from typing import Protocol, TypeAlias, TypedDict, TypeVar, Union, cast
 
 import requests
 import requests.exceptions
@@ -15,6 +17,38 @@ from app.runtime.settings import get_runtime_setting
 
 from .exceptions import TMDbConnectionError, TMDbException
 
+TMDbJson: TypeAlias = Union[dict[str, "TMDbJson"], list["TMDbJson"], str, int, float, bool, None]
+_RequestFunction = TypeVar("_RequestFunction", bound=Callable[..., object])
+
+
+class _HttpResponse(Protocol):
+    """requests 与 httpx 响应在 TMDb 解析层使用的最小接口。"""
+
+    @property
+    def headers(self) -> Mapping[str, str]:
+        """读取保持大小写兼容语义的响应头。"""
+        ...
+
+    def json(self) -> TMDbJson:
+        """解析 JSON；无效内容按客户端原有规则抛出异常。"""
+        ...
+
+
+class _ResponseSnapshot(TypedDict):
+    """可序列化响应快照的固定字段，另带运行期快照标记。"""
+
+    headers: dict[str, str]
+    json: TMDbJson
+
+
+class _ClearableRequest(Protocol):
+    """缓存装饰器为同步请求附加的清理入口。"""
+
+    def cache_clear(self) -> None:
+        """清空当前请求函数绑定的缓存区。"""
+        ...
+
+
 logger = logging.getLogger(__name__)
 
 # 单次重试前的退避等待时间（秒）。NAS+FUSE网盘等环境下TMDB连接的失败大多是数秒内
@@ -24,7 +58,7 @@ logger = logging.getLogger(__name__)
 RETRY_BACKOFF_SECONDS = 2
 
 
-def _is_business_failure_snapshot(snapshot) -> bool:
+def _is_business_failure_snapshot(snapshot: object) -> bool:
     """
     判断响应快照是否为TMDB业务失败（success=false，如404/限流/服务端错误的合法JSON）。
 
@@ -38,7 +72,7 @@ def _is_business_failure_snapshot(snapshot) -> bool:
     return isinstance(json_data, dict) and json_data.get("success") is False
 
 
-def _is_empty_result_snapshot(snapshot) -> bool:
+def _is_empty_result_snapshot(snapshot: object) -> bool:
     """
     判断响应快照是否为空结果（列表/搜索类接口的 results 为空列表）。
 
@@ -55,22 +89,35 @@ def _is_empty_result_snapshot(snapshot) -> bool:
     return isinstance(results, list) and not results
 
 
+def _cache_request(function: _RequestFunction) -> _RequestFunction:
+    """保留请求的调用类型；cached 仅附加缓存管理入口而不改变返回值。"""
+    return cast(_RequestFunction, cached(
+        maxsize=get_runtime_setting('CONF').tmdb,
+        ttl=get_runtime_setting('CONF').meta,
+        skip_none=True,
+        skip_if=_is_business_failure_snapshot,
+        empty_ttl=get_runtime_setting('EMPTY_RESULT_CACHE_TTL'),
+        empty_if=_is_empty_result_snapshot,
+    )(function))
+
+
 class TMDb(object):
     """封装 TMDB 请求、响应缓存及有界的连接和限流重试。"""
 
     _RESPONSE_SNAPSHOT_MARKER = "__mp_tmdb_response_snapshot__"
 
-    def __init__(self, session=None, language=None):
-        self._api_key = get_runtime_setting('TMDB_API_KEY')
-        self._language = language or get_runtime_setting('TMDB_LOCALE') or "en-US"
-        self._session_id = None
+    def __init__(self, session: requests.Session | None = None, language: str | None = None) -> None:
+        """保存配置快照，并按调用方会话所有权初始化双入口客户端。"""
+        self._api_key: str | None = get_runtime_setting('TMDB_API_KEY')
+        self._language: str | None = language or get_runtime_setting('TMDB_LOCALE') or "en-US"
+        self._session_id: str | None = None
         self._session = session
         self._wait_on_rate_limit = True
-        self._proxies = get_runtime_setting('PROXY')
-        self._domain = get_runtime_setting('TMDB_API_DOMAIN')
-        self._page = None
-        self._total_results = None
-        self._total_pages = None
+        self._proxies: dict[str, str] | None = get_runtime_setting('PROXY')
+        self._domain: str | None = get_runtime_setting('TMDB_API_DOMAIN')
+        self._page: TMDbJson = None
+        self._total_results: TMDbJson = None
+        self._total_pages: TMDbJson = None
 
         self._owns_session = session is None
         self._init_session(session=session)
@@ -83,10 +130,10 @@ class TMDb(object):
         )
 
         self._remaining = 40
-        self._reset = None
+        self._reset: int | None = None
         self._timeout = 15
 
-    def _init_session(self, session=None):
+    def _init_session(self, session: requests.Session | None = None) -> None:
         """
         初始化同步请求会话。
         """
@@ -97,7 +144,7 @@ class TMDb(object):
             proxies=self.proxies,
         )
 
-    def _reset_owned_session(self):
+    def _reset_owned_session(self) -> None:
         """
         重建当前实例自持有的同步请求会话。
         """
@@ -111,75 +158,90 @@ class TMDb(object):
         self._init_session()
 
     @property
-    def page(self):
+    def page(self) -> TMDbJson:
+        """返回响应携带的页码，不转换上游字段。"""
         return self._page
 
     @property
-    def total_results(self):
+    def total_results(self) -> TMDbJson:
+        """返回响应携带的结果总数。"""
         return self._total_results
 
     @property
-    def total_pages(self):
+    def total_pages(self) -> TMDbJson:
+        """返回响应携带的总页数。"""
         return self._total_pages
 
     @property
-    def api_key(self):
+    def api_key(self) -> str | None:
+        """读取当前 API Key。"""
         return self._api_key
 
-    @property
-    def domain(self):
-        return self._domain
-
-    @property
-    def proxies(self):
-        return self._proxies
-
-    @proxies.setter
-    def proxies(self, proxies):
-        self._proxies = proxies
-
     @api_key.setter
-    def api_key(self, api_key):
+    def api_key(self, api_key: object) -> None:
+        """沿用旧入口的字符串转换规则保存 API Key。"""
         self._api_key = str(api_key)
 
+    @property
+    def domain(self) -> str | None:
+        """读取当前 API 域名。"""
+        return self._domain
+
     @domain.setter
-    def domain(self, domain):
+    def domain(self, domain: object) -> None:
+        """沿用旧入口的字符串转换规则保存 API 域名。"""
         self._domain = str(domain)
 
     @property
-    def language(self):
+    def proxies(self) -> dict[str, str] | None:
+        """读取当前 HTTP 代理映射。"""
+        return self._proxies
+
+    @proxies.setter
+    def proxies(self, proxies: dict[str, str] | None) -> None:
+        """保留调用方传入的代理映射。"""
+        self._proxies = proxies
+
+    @property
+    def language(self) -> str | None:
+        """读取请求使用的语言。"""
         return self._language
 
     @language.setter
-    def language(self, language):
+    def language(self, language: str | None) -> None:
+        """保存调用方指定的语言。"""
         self._language = language
 
     @property
-    def has_session(self):
+    def has_session(self) -> bool:
+        """判断是否已保存认证会话标识。"""
         return True if self._session_id else False
 
     @property
-    def session_id(self):
+    def session_id(self) -> str:
+        """读取认证会话；未认证时保持原异常。"""
         if not self._session_id:
             raise TMDbException("Must Authenticate to create a session run Authentication(username, password)")
         return self._session_id
 
     @session_id.setter
-    def session_id(self, session_id):
+    def session_id(self, session_id: str | None) -> None:
+        """保存或清空认证会话标识。"""
         self._session_id = session_id
 
     @property
-    def wait_on_rate_limit(self):
+    def wait_on_rate_limit(self) -> bool:
+        """读取是否等待服务端限流重置。"""
         return self._wait_on_rate_limit
 
     @wait_on_rate_limit.setter
-    def wait_on_rate_limit(self, wait_on_rate_limit):
+    def wait_on_rate_limit(self, wait_on_rate_limit: object) -> None:
+        """按原有真值规则设置限流等待开关。"""
         self._wait_on_rate_limit = bool(wait_on_rate_limit)
 
-    @cached(maxsize=get_runtime_setting('CONF').tmdb, ttl=get_runtime_setting('CONF').meta, skip_none=True,
-            skip_if=_is_business_failure_snapshot,
-            empty_ttl=get_runtime_setting('EMPTY_RESULT_CACHE_TTL'), empty_if=_is_empty_result_snapshot)
-    def request(self, method, url, data, json, **kwargs):
+    @_cache_request
+    def request(self, method: str, url: str, data: dict[str, TMDbJson] | None, json: dict[str, TMDbJson] | None, **kwargs: object) -> _ResponseSnapshot:
+        """发送同步请求并缓存隔离快照，仅在自持有会话下重试连接失败。"""
         req = self._request_once(method, url, data, json)
         if req is None and method == "GET" and self._owns_session:
             logger.debug(f"TMDB同步请求失败，等待{RETRY_BACKOFF_SECONDS}秒后重建会话重试一次")
@@ -194,18 +256,17 @@ class TMDb(object):
             raise TMDbConnectionError("无法连接TheMovieDb，请检查网络连接！")
         return self._snapshot_response(req)
 
-    def _request_once(self, method, url, data, json):
+    def _request_once(self, method: str, url: str, data: dict[str, TMDbJson] | None, json: dict[str, TMDbJson] | None) -> _HttpResponse | None:
         """
         执行一次TMDB同步请求，调用方负责决定是否重建会话后重试。
         """
         if method == "GET":
-            return self._req.get_res(url, params=data, json=json)
-        return self._req.post_res(url, data=data, json=json)
+            return cast(_HttpResponse | None, self._req.get_res(url, params=data, json=json))
+        return cast(_HttpResponse | None, self._req.post_res(url, data=data, json=json))
 
-    @cached(maxsize=get_runtime_setting('CONF').tmdb, ttl=get_runtime_setting('CONF').meta, skip_none=True,
-            skip_if=_is_business_failure_snapshot,
-            empty_ttl=get_runtime_setting('EMPTY_RESULT_CACHE_TTL'), empty_if=_is_empty_result_snapshot)
-    async def async_request(self, method, url, data, json, **kwargs):
+    @_cache_request
+    async def async_request(self, method: str, url: str, data: dict[str, TMDbJson] | None, json: dict[str, TMDbJson] | None, **kwargs: object) -> _ResponseSnapshot:
+        """发送异步请求，连接失败时最多退避重试一次。"""
         req = await self._async_request_once(method, url, data, json)
         if req is None:
             logger.debug(f"TMDB异步请求失败，等待{RETRY_BACKOFF_SECONDS}秒后重试一次")
@@ -217,43 +278,45 @@ class TMDb(object):
             raise TMDbConnectionError("无法连接TheMovieDb，请检查网络连接！")
         return self._snapshot_response(req)
 
-    async def _async_request_once(self, method, url, data, json):
+    async def _async_request_once(self, method: str, url: str, data: dict[str, TMDbJson] | None, json: dict[str, TMDbJson] | None) -> _HttpResponse | None:
         """
         执行一次TMDB异步请求，调用方负责决定是否重试。
         """
         if method == "GET":
-            return await self._async_req.get_res(url, params=data, json=json)
-        return await self._async_req.post_res(url, data=data, json=json)
+            return cast(_HttpResponse | None, await self._async_req.get_res(url, params=data, json=json))
+        return cast(_HttpResponse | None, await self._async_req.post_res(url, data=data, json=json))
 
     @classmethod
-    def _snapshot_response(cls, response):
+    def _snapshot_response(cls, response: _HttpResponse) -> _ResponseSnapshot:
         """
         生成可缓存的响应快照，并在入缓存前拦截明显异常的TMDB响应结构。
         """
         json_data = cls._decode_response_json(response)
         cls._validate_json_response(json_data)
         # Redis 不能稳定序列化 requests/httpx 响应对象，缓存里只保留当前流程会用到的数据。
-        return {
+        return cast(_ResponseSnapshot, {
             cls._RESPONSE_SNAPSHOT_MARKER: True,
             "headers": dict(response.headers.items()),
             "json": json_data,
-        }
+        })
 
     @classmethod
-    def _get_response_headers(cls, response):
+    def _get_response_headers(cls, response: _HttpResponse | _ResponseSnapshot) -> Mapping[str, str]:
+        """兼容缓存快照与原始 HTTP 响应的响应头。"""
         if isinstance(response, dict) and response.get(cls._RESPONSE_SNAPSHOT_MARKER):
             return response.get("headers") or {}
-        return response.headers
+        return cast(_HttpResponse, response).headers
 
     @classmethod
-    def _get_response_json(cls, response):
+    def _get_response_json(cls, response: _HttpResponse | _ResponseSnapshot) -> TMDbJson:
+        """读取原始 JSON，并隔离缓存命中的可变数据。"""
         if isinstance(response, dict) and response.get(cls._RESPONSE_SNAPSHOT_MARKER):
             # 调用方会补充 media_type 等字段，缓存快照必须隔离这些原地修改。
             return deepcopy(response.get("json"))
-        return cls._decode_response_json(response)
+        return cls._decode_response_json(cast(_HttpResponse, response))
 
     @classmethod
-    def _decode_response_json(cls, response):
+    def _decode_response_json(cls, response: _HttpResponse) -> TMDbJson:
         """
         解析TMDB响应JSON，并把空响应、代理错误页或错误编码的响应统一转换为TMDB异常。
         """
@@ -263,7 +326,7 @@ class TMDb(object):
             raise TMDbException(cls._build_invalid_json_message(response, err)) from err
 
     @staticmethod
-    def _get_header_value(headers, name):
+    def _get_header_value(headers: Mapping[str, str], name: str) -> str | None:
         """
         从不同响应头对象中按大小写兼容读取指定响应头。
         """
@@ -284,7 +347,7 @@ class TMDb(object):
         return None
 
     @classmethod
-    def _build_invalid_json_message(cls, response, parse_error: Exception = None):
+    def _build_invalid_json_message(cls, response: object, parse_error: Exception | None = None) -> str:
         """
         生成非JSON响应的诊断信息，避免日志只保留JSONDecodeError文本。
         """
@@ -323,7 +386,7 @@ class TMDb(object):
         return "，".join(message_parts)
 
     @staticmethod
-    def _validate_json_response(json_data):
+    def _validate_json_response(json_data: object) -> None:
         """
         校验TMDB响应JSON顶层结构，避免代理错误页等标量值继续按字典解析。
         """
@@ -339,7 +402,7 @@ class TMDb(object):
         )
 
     @staticmethod
-    def _get_json_key(json_data, key):
+    def _get_json_key(json_data: TMDbJson, key: str) -> TMDbJson:
         """
         从TMDB对象响应中读取指定字段，避免异常顶层结构触发AttributeError。
         """
@@ -350,14 +413,17 @@ class TMDb(object):
             )
         return json_data.get(key)
 
-    def cache_clear(self):
-        return self.request.cache_clear()
+    def cache_clear(self) -> None:
+        """通过缓存装饰器附加的入口清理同步请求缓存。"""
+        return cast(_ClearableRequest, self.request).cache_clear()
 
-    def _validate_api_key(self):
+    def _validate_api_key(self) -> None:
+        """在发送请求前拒绝缺失 API Key。"""
         if self.api_key is None or self.api_key == "":
             raise TMDbException("TheMovieDb API Key 未设置！")
 
-    def _build_url(self, action, params=""):
+    def _build_url(self, action: str, params: str = "") -> str:
+        """按旧格式拼接 API 路径、认证参数和语言。"""
         return "https://%s/3%s?api_key=%s&%s&language=%s" % (
             self.domain,
             action,
@@ -366,7 +432,7 @@ class TMDb(object):
             self.language,
         )
 
-    def _handle_headers(self, headers):
+    def _handle_headers(self, headers: Mapping[str, str] | None) -> None:
         """只记录当前响应的限流状态，缺失字段不能沿用上次耗尽的配额。"""
         normalized_headers = {
             str(key).lower(): value for key, value in dict(headers or {}).items()
@@ -376,7 +442,7 @@ class TMDb(object):
         reset = normalized_headers.get("x-ratelimit-reset")
         self._reset = int(reset) if reset is not None else None
 
-    def _handle_rate_limit(self):
+    def _handle_rate_limit(self) -> int:
         """计算尚未到期的限流等待；缺少重置时间时直接报告限流。"""
         if self._remaining < 1:
             if not self.wait_on_rate_limit or self._reset is None:
@@ -384,7 +450,7 @@ class TMDb(object):
             return max(0, self._reset - int(time.time()))
         return 0
 
-    def _process_json_response(self, json_data, is_async=False):
+    def _process_json_response(self, json_data: TMDbJson, is_async: bool = False) -> None:
         """
         从TMDB对象响应中记录分页信息；数组响应没有分页字段，直接跳过。
         """
@@ -401,7 +467,7 @@ class TMDb(object):
             self._total_pages = json_data["total_pages"]
 
     @staticmethod
-    def _handle_errors(json_data):
+    def _handle_errors(json_data: TMDbJson) -> None:
         """
         将TMDB标准错误字段转换为统一异常，非对象响应由结构校验提前处理。
         """
@@ -414,8 +480,9 @@ class TMDb(object):
         if "success" in json_data and json_data["success"] is False:
             raise TMDbException(json_data["status_message"])
 
-    def _request_obj(self, action, params="", call_cached=True,
-                     method="GET", data=None, json=None, key=None):
+    def _request_obj(self, action: str, params: str = "", call_cached: bool = True,
+                     method: str = "GET", data: dict[str, TMDbJson] | None = None, json: dict[str, TMDbJson] | None = None,
+                     key: str | None = None) -> TMDbJson:
         """同步解析响应；限流最多等待重试一次，避免递归耗尽请求调用栈。"""
         self._validate_api_key()
         url = self._build_url(action, params)
@@ -450,8 +517,9 @@ class TMDb(object):
             return self._get_json_key(json_data, key)
         return json_data
 
-    async def _async_request_obj(self, action, params="", call_cached=True,
-                                 method="GET", data=None, json=None, key=None):
+    async def _async_request_obj(self, action: str, params: str = "", call_cached: bool = True,
+                                 method: str = "GET", data: dict[str, TMDbJson] | None = None, json: dict[str, TMDbJson] | None = None,
+                                 key: str | None = None) -> TMDbJson:
         """异步解析响应，沿用同步入口的单次限流重试上限。"""
         self._validate_api_key()
         url = self._build_url(action, params)
@@ -486,6 +554,7 @@ class TMDb(object):
             return self._get_json_key(json_data, key)
         return json_data
 
-    def close(self):
+    def close(self) -> None:
+        """关闭当前同步会话，保持旧调用方所有权约定。"""
         if self._session:
             self._session.close()
