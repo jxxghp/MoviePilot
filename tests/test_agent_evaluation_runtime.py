@@ -251,7 +251,8 @@ async def test_script_summary_does_not_consume_next_business_response():
 
 
 @pytest.mark.asyncio
-async def test_steering_message_is_injected_at_a_real_tool_boundary(invocation_store):
+@pytest.mark.parametrize("context_window", [128000, 256000])
+async def test_steering_message_is_injected_at_a_real_tool_boundary(invocation_store, context_window):
     """生产图应在首个分页回执后注入补充 HumanMessage，并继续完成原任务。"""
     world = EvaluationWorld("steering_long_context")
     model = _ScriptModel(responses=_responses(world))
@@ -260,7 +261,7 @@ async def test_steering_message_is_injected_at_a_real_tool_boundary(invocation_s
         world,
         model,
         model_name="scripted-steering-test",
-        context_window=128000,
+        context_window=context_window,
         max_iterations=48,
         invocation_repository=repository,
     )
@@ -273,11 +274,18 @@ async def test_steering_message_is_injected_at_a_real_tool_boundary(invocation_s
     )
     assert grade.passed, grade.violations
     assert [event["status"] for event in capture["steering_events"]] == ["queued", "applied"]
-    assert any(
-        message["type"] == "human"
-        and message["data"].get("additional_kwargs", {}).get("moviepilot_steering_message_id")
-        for message in capture["raw_messages"]
-    )
+    applied_ids = [
+        event["message_id"] for event in capture["steering_events"] if event["status"] == "applied"
+    ]
+    # 最终历史可能已压缩；实际模型请求必须在 page-1 回执后收到同一条补充消息。
+    injection_boundaries = {}
+    for request in model.requests:
+        latest_tool = next((message for message in reversed(request) if isinstance(message, ToolMessage)), None)
+        for message in request:
+            message_id = message.additional_kwargs.get("moviepilot_steering_message_id")
+            if isinstance(message, HumanMessage) and message_id and message_id not in injection_boundaries:
+                injection_boundaries[message_id] = latest_tool.tool_call_id if latest_tool is not None else None
+    assert list(injection_boundaries.items()) == [(applied_ids[0], "page-1")]
 
 
 @pytest.mark.asyncio
