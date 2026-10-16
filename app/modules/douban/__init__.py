@@ -25,6 +25,21 @@ from app.runtime.execution import retry
 from app.runtime.log import logger
 from app.runtime.rate import rate_limit_exponential
 from app.runtime.settings import get_runtime_setting
+from app.schemas.comment import (
+    MediaComment as _SchemaMediaComment,
+)
+from app.schemas.comment import (
+    MediaCommentAuthor as _SchemaMediaCommentAuthor,
+)
+from app.schemas.comment import (
+    MediaCommentPage as _SchemaMediaCommentPage,
+)
+from app.schemas.comment import (
+    MediaReview as _SchemaMediaReview,
+)
+from app.schemas.comment import (
+    MediaReviewPage as _SchemaMediaReviewPage,
+)
 from app.schemas.context import MediaPerson
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.schemas.exception import APIRateLimitException
@@ -1993,6 +2008,130 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             return [MediaInfo(douban_info=info) for info in recommend]
         return []
 
+    @staticmethod
+    def _process_comment_author(doubaninfo: Optional[dict[str, Any]]) -> Optional[_SchemaMediaCommentAuthor]:
+        """
+        把豆瓣用户信息投影为评论作者
+        :param doubaninfo: 豆瓣用户信息
+        :return: 评论作者，缺少用户信息时返回 None
+        """
+        if not doubaninfo:
+            return None
+        return _SchemaMediaCommentAuthor(
+            id=str(doubaninfo.get("id")) if doubaninfo.get("id") else None,
+            name=doubaninfo.get("name"),
+            avatar=doubaninfo.get("avatar"),
+            url=doubaninfo.get("url"),
+        )
+
+    @staticmethod
+    def _process_comment_rating(doubaninfo: Optional[dict[str, Any]]) -> Optional[float]:
+        """
+        提取豆瓣五分制评分
+        :param doubaninfo: 豆瓣评分信息
+        :return: 五星制评分，未评分时返回 None
+        """
+        if not doubaninfo:
+            return None
+        value = doubaninfo.get("value")
+        return float(value) if value else None
+
+    def _process_interests(self, result: Optional[dict[str, Any]]) -> _SchemaMediaCommentPage:
+        """
+        把豆瓣短评响应投影为分页结果
+        :param result: 豆瓣短评响应
+        :return: 短评分页结果
+        """
+        if not result:
+            return _SchemaMediaCommentPage()
+        items = [
+            _SchemaMediaComment(
+                id=str(item.get("id")) if item.get("id") else None,
+                comment=item.get("comment"),
+                rating=self._process_comment_rating(item.get("rating")),
+                vote_count=item.get("vote_count"),
+                create_time=item.get("create_time"),
+                author=self._process_comment_author(item.get("user")),
+                url=item.get("sharing_url"),
+            )
+            for item in result.get("interests") or []
+        ]
+        return _SchemaMediaCommentPage(
+            start=result.get("start") or 0,
+            count=result.get("count") or len(items),
+            total=result.get("total") or len(items),
+            items=items,
+        )
+
+    def _process_reviews(self, result: Optional[dict[str, Any]]) -> _SchemaMediaReviewPage:
+        """
+        把豆瓣影评响应投影为分页结果
+        :param result: 豆瓣影评响应
+        :return: 影评分页结果
+        """
+        if not result:
+            return _SchemaMediaReviewPage()
+        items = [
+            _SchemaMediaReview(
+                id=str(item.get("id")) if item.get("id") else None,
+                title=item.get("title"),
+                abstract=item.get("abstract"),
+                rating=self._process_comment_rating(item.get("rating")),
+                useful_count=item.get("useful_count"),
+                comments_count=item.get("comments_count"),
+                create_time=item.get("create_time"),
+                author=self._process_comment_author(item.get("user")),
+                url=item.get("url") or item.get("sharing_url"),
+            )
+            for item in result.get("reviews") or []
+        ]
+        return _SchemaMediaReviewPage(
+            start=result.get("start") or 0,
+            count=result.get("count") or len(items),
+            total=result.get("total") or len(items),
+            items=items,
+        )
+
+    def douban_movie_interests(self, doubanid: str, start: int = 0, count: int = 20) -> _SchemaMediaCommentPage:
+        """
+        根据豆瓣ID查询电影短评
+        :param doubanid:  豆瓣ID
+        :param start:  起始偏移
+        :param count:  数量
+        """
+        result = self.doubanapi.movie_interests(subject_id=doubanid, start=start, count=count)
+        return self._process_interests(result)
+
+    def douban_tv_interests(self, doubanid: str, start: int = 0, count: int = 20) -> _SchemaMediaCommentPage:
+        """
+        根据豆瓣ID查询电视剧短评
+        :param doubanid:  豆瓣ID
+        :param start:  起始偏移
+        :param count:  数量
+        """
+        result = self.doubanapi.tv_interests(subject_id=doubanid, start=start, count=count)
+        return self._process_interests(result)
+
+    def douban_movie_reviews(self, doubanid: str, start: int = 0, count: int = 20) -> _SchemaMediaReviewPage:
+        """
+        根据豆瓣ID查询电影影评
+        :param doubanid:  豆瓣ID
+        :param start:  起始偏移
+        :param count:  数量
+        """
+        result = self.doubanapi.movie_reviews(subject_id=doubanid, start=start, count=count)
+        return self._process_reviews(result)
+
+    def douban_tv_reviews(self, doubanid: str, start: int = 0, count: int = 20) -> _SchemaMediaReviewPage:
+        """
+        根据豆瓣ID查询电视剧影评
+        :param doubanid:  豆瓣ID
+        :param start:  起始偏移
+        :param count:  数量
+        """
+        result = self.doubanapi.tv_reviews(subject_id=doubanid, start=start, count=count)
+        return self._process_reviews(result)
+
     def douban_person_detail(self, person_id: int) -> _SchemaMediaPerson:
         """
         获取人物详细信息
@@ -2090,6 +2229,50 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         if recommend:
             return [MediaInfo(douban_info=info) for info in recommend]
         return []
+
+    async def async_douban_movie_interests(self, doubanid: str, start: int = 0,
+                                           count: int = 20) -> _SchemaMediaCommentPage:
+        """
+        根据豆瓣ID查询电影短评（异步版本）
+        :param doubanid:  豆瓣ID
+        :param start:  起始偏移
+        :param count:  数量
+        """
+        result = await self.doubanapi.async_movie_interests(subject_id=doubanid, start=start, count=count)
+        return self._process_interests(result)
+
+    async def async_douban_tv_interests(self, doubanid: str, start: int = 0,
+                                        count: int = 20) -> _SchemaMediaCommentPage:
+        """
+        根据豆瓣ID查询电视剧短评（异步版本）
+        :param doubanid:  豆瓣ID
+        :param start:  起始偏移
+        :param count:  数量
+        """
+        result = await self.doubanapi.async_tv_interests(subject_id=doubanid, start=start, count=count)
+        return self._process_interests(result)
+
+    async def async_douban_movie_reviews(self, doubanid: str, start: int = 0,
+                                         count: int = 20) -> _SchemaMediaReviewPage:
+        """
+        根据豆瓣ID查询电影影评（异步版本）
+        :param doubanid:  豆瓣ID
+        :param start:  起始偏移
+        :param count:  数量
+        """
+        result = await self.doubanapi.async_movie_reviews(subject_id=doubanid, start=start, count=count)
+        return self._process_reviews(result)
+
+    async def async_douban_tv_reviews(self, doubanid: str, start: int = 0,
+                                      count: int = 20) -> _SchemaMediaReviewPage:
+        """
+        根据豆瓣ID查询电视剧影评（异步版本）
+        :param doubanid:  豆瓣ID
+        :param start:  起始偏移
+        :param count:  数量
+        """
+        result = await self.doubanapi.async_tv_reviews(subject_id=doubanid, start=start, count=count)
+        return self._process_reviews(result)
 
     async def async_douban_person_detail(self, person_id: int) -> _SchemaMediaPerson:
         """
