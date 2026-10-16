@@ -1,16 +1,16 @@
 import time
-from typing import Any, List, Optional
+from typing import Any, List, Optional, Self
 
-from sqlalchemy import JSON, Index, Integer, String, delete, func, select, update
+from sqlalchemy import JSON, ColumnElement, Index, Integer, String, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Mapped, Session, mapped_column
+from sqlalchemy.orm import InstrumentedAttribute, Mapped, Session, mapped_column
 
 from app.db.base import Base, execute_dml, get_id_column
 from app.db.models._constraints import media_identity_constraint
 from app.schemas.types import MediaSource
 
 
-def _title_like(column, title: str):
+def _title_like(column: InstrumentedAttribute[str], title: str) -> ColumnElement[bool]:
     """构造跨数据库大小写不敏感的标题匹配条件。"""
     return column.ilike(f"%{title}%")
 
@@ -84,15 +84,17 @@ class DownloadHistory(Base):
     )
 
     @classmethod
-    def get_by_hash(cls, db: Session, download_hash: str):
-        return db.execute(
+    def get_by_hash(cls, db: Session, download_hash: str) -> Optional["DownloadHistory"]:
+        """按下载任务哈希读取登记时间最新的下载历史。"""
+        history: Optional[DownloadHistory] = db.execute(
             select(DownloadHistory)
             .where(DownloadHistory.download_hash == download_hash)
             .order_by(DownloadHistory.date.desc())
         ).scalars().first()
+        return history
 
     @classmethod
-    def get_by_hashes(cls, db: Session, download_hashes: List[str]):
+    def get_by_hashes(cls, db: Session, download_hashes: List[str]) -> list["DownloadHistory"]:
         """
         批量查询多个下载任务的最新历史记录，避免在上层形成 N+1 查询。
         """
@@ -127,7 +129,7 @@ class DownloadHistory(Base):
     def get_by_media_identity(
             cls, db: Session, media_source: MediaSource, media_id: str,
             music_type: Optional[str] = None,
-    ):
+    ) -> list["DownloadHistory"]:
         """按规范媒体身份查询下载历史。"""
         if not media_source or media_id is None or not str(media_id).strip():
             return []
@@ -142,7 +144,8 @@ class DownloadHistory(Base):
     @classmethod
     def list_by_page(
         cls, db: Session, page: int = 1, count: int = 30
-    ):
+    ) -> list["DownloadHistory"]:
+        """按时间和主键倒序分页读取下载历史。"""
         return list(db.execute(
             select(DownloadHistory)
             .order_by(DownloadHistory.date.desc(), DownloadHistory.id.desc())
@@ -153,7 +156,8 @@ class DownloadHistory(Base):
     @classmethod
     async def async_list_by_page(
         cls, db: AsyncSession, page: int = 1, count: int = 30
-    ):
+    ) -> list[Self]:
+        """异步按时间和主键倒序分页读取下载历史。"""
         result = await db.execute(
             select(cls)
             .order_by(cls.date.desc(), cls.id.desc())
@@ -169,7 +173,8 @@ class DownloadHistory(Base):
         title: str,
         page: int = 1,
         count: int = 30,
-    ):
+    ) -> list[Self]:
+        """异步按标题模糊匹配并分页读取下载历史。"""
         query = (
             select(cls).filter(_title_like(cls.title, title)).order_by(cls.date.desc())
         )
@@ -178,24 +183,29 @@ class DownloadHistory(Base):
         return list(result.scalars().all())
 
     @classmethod
-    async def async_count(cls, db: AsyncSession):
+    async def async_count(cls, db: AsyncSession) -> int:
+        """异步统计下载历史总数，空表返回零。"""
         result = await db.execute(select(func.count(cls.id)))
-        return result.scalar()
+        count: int = result.scalar()
+        return count
 
     @classmethod
-    async def async_count_by_title(cls, db: AsyncSession, title: str):
+    async def async_count_by_title(cls, db: AsyncSession, title: str) -> int:
+        """异步统计标题模糊匹配的下载历史数量。"""
         result = await db.execute(
             select(func.count(cls.id)).filter(_title_like(cls.title, title))
         )
-        return result.scalar()
+        count: int = result.scalar()
+        return count
 
     @classmethod
-    def get_by_path(cls, db: Session, path: str):
+    def get_by_path(cls, db: Session, path: str) -> Optional["DownloadHistory"]:
         """保存目录被多次下载复用时，按登记顺序返回最新历史。"""
-        return db.execute(
+        history: Optional[DownloadHistory] = db.execute(
             select(DownloadHistory).where(DownloadHistory.path == path)
             .order_by(DownloadHistory.id.desc()).limit(1)
         ).scalars().first()
+        return history
 
     @classmethod
     def get_last_by(
@@ -208,7 +218,7 @@ class DownloadHistory(Base):
         episode: Optional[str] = None,
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
-    ):
+    ) -> list["DownloadHistory"]:
         """
         按媒体身份、季集或标题年份查询下载记录。
         """
@@ -235,7 +245,7 @@ class DownloadHistory(Base):
         ).scalars().all())
 
     @classmethod
-    def list_by_user_date(cls, db: Session, date: str, username: Optional[str] = None):
+    def list_by_user_date(cls, db: Session, date: str, username: Optional[str] = None) -> list["DownloadHistory"]:
         """
         查询某用户某时间之前的下载历史。
 
@@ -261,7 +271,7 @@ class DownloadHistory(Base):
         media_source: MediaSource,
         media_id: str,
         seasons: Optional[str] = None,
-    ):
+    ) -> list["DownloadHistory"]:
         """
         查询某时间之后的下载历史
         """
@@ -278,7 +288,8 @@ class DownloadHistory(Base):
         ).scalars().all())
 
     @classmethod
-    def list_by_type(cls, db: Session, mtype: str, days: int):
+    def list_by_type(cls, db: Session, mtype: str, days: int) -> list["DownloadHistory"]:
+        """读取指定媒体类型在最近若干天内的下载历史。"""
         return list(db.execute(
             select(DownloadHistory).where(
                 DownloadHistory.type == mtype,
@@ -340,25 +351,30 @@ class DownloadFiles(Base):
     )
 
     @classmethod
-    def get_by_hash(cls, db: Session, download_hash: str, state: Optional[int] = None):
+    def get_by_hash(cls, db: Session, download_hash: str, state: Optional[int] = None) -> list[Self]:
+        """按下载任务哈希读取文件列表，可选限定文件状态。"""
         statement = select(cls).where(cls.download_hash == download_hash)
         if state is not None:
             statement = statement.where(cls.state == state)
         return list(db.execute(statement).scalars().all())
 
     @classmethod
-    def get_by_fullpath(cls, db: Session, fullpath: str, all_files: bool = False):
+    def get_by_fullpath(cls, db: Session, fullpath: str, all_files: bool = False) -> list[Self] | Self | None:
+        """按完整路径返回最新记录，或在 all_files 为真时返回全部记录。"""
         result = db.execute(
             select(cls).where(cls.fullpath == fullpath).order_by(cls.id.desc())
         ).scalars()
-        return list(result.all()) if all_files else result.first()
+        files: list[Self] | Self | None = list(result.all()) if all_files else result.first()
+        return files
 
     @classmethod
-    def get_by_savepath(cls, db: Session, savepath: str):
+    def get_by_savepath(cls, db: Session, savepath: str) -> list[Self]:
+        """读取同一保存目录下的全部下载文件记录。"""
         return list(db.execute(select(cls).where(cls.savepath == savepath)).scalars().all())
 
     @classmethod
-    def delete_by_fullpath(cls, db: Session, fullpath: str):
+    def delete_by_fullpath(cls, db: Session, fullpath: str) -> None:
+        """把完整路径匹配的正常文件标记为删除，保留历史记录。"""
         db.execute(
             update(cls).where(cls.fullpath == fullpath, cls.state == 1).values(state=0)
         )
