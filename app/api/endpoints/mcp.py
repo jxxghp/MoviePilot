@@ -109,13 +109,14 @@ def create_jsonrpc_error(
     """
     创建 JSON-RPC 错误响应
     """
+    error_detail: Dict[str, object] = {"code": code, "message": message}
     error = {
         "jsonrpc": "2.0",
         "id": request_id,
-        "error": {"code": code, "message": message},
+        "error": error_detail,
     }
     if data is not None:
-        error["error"]["data"] = data
+        error_detail["data"] = data
     return error
 
 
@@ -164,7 +165,7 @@ async def _dispatch_jsonrpc_method(
     },
 )
 async def mcp_jsonrpc(
-    request: Request, _: Annotated[str, Depends(verify_apikey)] = None
+    request: Request, _: Annotated[Union[str, None], Depends(verify_apikey)] = None
 ) -> Union[JSONResponse, Response]:
     """
     MCP 标准 JSON-RPC 2.0 端点
@@ -184,7 +185,9 @@ async def mcp_jsonrpc(
     if not isinstance(body, dict) or body.get("jsonrpc") != "2.0":
         return JSONResponse(
             status_code=400,
-            content=create_jsonrpc_error(body.get("id"), -32600, "Invalid Request"),
+            content=create_jsonrpc_error(
+                body.get("id") if isinstance(body, dict) else None, -32600, "Invalid Request"
+            ),
         )
 
     method = body.get("method")
@@ -300,7 +303,7 @@ async def handle_tools_call(params: Dict[str, Any]) -> Dict[str, Any]:
     },
 )
 async def delete_mcp_session(
-    _: Annotated[str, Depends(verify_apikey)] = None,
+    _: Annotated[Union[str, None], Depends(verify_apikey)] = None,
 ) -> Union[JSONResponse, Response]:
     """
     终止 MCP 会话（无状态模式下仅返回成功）
@@ -347,7 +350,7 @@ async def list_tools(_: Annotated[str, Depends(verify_apikey)], page: Compatible
     summary="调用工具",
     response_model=_SchemaResponse[_SchemaToolCallData],
 )
-async def call_tool(request: _SchemaToolCallRequest, _: Annotated[str, Depends(verify_apikey)] = None) -> Any:
+async def call_tool(request: _SchemaToolCallRequest, _: Annotated[Union[str, None], Depends(verify_apikey)] = None) -> Any:
     """
     调用指定的工具
 

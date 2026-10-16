@@ -51,6 +51,10 @@ Fake-IP 等非公网解析地址需要通过 `IMAGE_PROXY_ALLOWED_PRIVATE_RANGES
 ### 端点
 **POST** `/api/v1/mcp`
 
+请求体须为单个 JSON-RPC 2.0 对象。非对象值（包括数组批量请求）或错误的协议版本返回
+HTTP 400、JSON-RPC 错误码 `-32600`；非对象请求的 `id` 为 `null`。无法解析的 JSON 返回
+HTTP 400、错误码 `-32700`。
+
 ### 支持的方法
 - `initialize`: 初始化会话，协商协议版本和能力。
 - `notifications/initialized`: 客户端确认初始化完成。
