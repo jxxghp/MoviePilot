@@ -142,7 +142,7 @@ class SkillInteractionHandler:
             messenger: MessageGateway,
             skill_catalog: Optional[SkillCatalogPort] = None,
             skill_helper: Optional[SkillCatalogPort] = None,
-    ):
+    ) -> None:
         """注入消息接口和技能目录端口，保留旧 ``skill_helper`` 关键字。"""
         self._messenger = messenger
         self.skillhelper = skill_catalog or skill_helper or _resolve_skill_catalog()
@@ -153,7 +153,7 @@ class SkillInteractionHandler:
             channel: NotificationChannel,
             userid: Union[str, int],
             source: Optional[str] = None,
-    ):
+    ) -> None:
         """
         /skills 入口。创建新会话并渲染首屏菜单。
         """
@@ -789,7 +789,7 @@ class SkillInteractionHandler:
             self,
             request: PendingSkillInteraction,
             force_market_refresh: bool = False,
-    ) -> Tuple[str, str, Optional[List[List[dict]]]]:
+    ) -> Tuple[str, str, Optional[List[List[dict[str, str]]]]]:
         """
         构建根菜单视图，汇总本地技能和市场概览。
         """
@@ -839,7 +839,7 @@ class SkillInteractionHandler:
     def _build_installed_view(
             self,
             request: PendingSkillInteraction
-    ) -> Tuple[str, str, Optional[List[List[dict]]]]:
+    ) -> Tuple[str, str, Optional[List[List[dict[str, str]]]]]:
         """
         构建已安装技能视图，列出来源和可删除状态。
         """
@@ -900,7 +900,7 @@ class SkillInteractionHandler:
             self,
             request: PendingSkillInteraction,
             force_market_refresh: bool = False,
-    ) -> Tuple[str, str, Optional[List[List[dict]]]]:
+    ) -> Tuple[str, str, Optional[List[List[dict[str, str]]]]]:
         """
         构建技能市场视图，仅展示尚未安装的技能。
         """
@@ -1000,7 +1000,7 @@ class SkillInteractionHandler:
     def _build_sources_view(
             self,
             request: PendingSkillInteraction,
-    ) -> Tuple[str, str, Optional[List[List[dict]]]]:
+    ) -> Tuple[str, str, Optional[List[List[dict[str, str]]]]]:
         """
         构建技能源管理视图，提供自定义 GitHub 源的增删入口。
         """
@@ -1111,7 +1111,7 @@ class SkillInteractionHandler:
             request: PendingSkillInteraction,
             page: int,
             total_pages: int,
-    ) -> List[List[dict]]:
+    ) -> List[List[dict[str, str]]]:
         """
         为分页视图生成上一页和下一页按钮。
         """
@@ -1130,7 +1130,7 @@ class SkillInteractionHandler:
             username: Optional[str],
             title: str,
             text: str,
-            buttons: Optional[List[List[dict]]] = None,
+            buttons: Optional[List[List[dict[str, str]]]] = None,
             original_message_id: Optional[Union[str, int]] = None,
             original_chat_id: Optional[str] = None,
     ) -> None:
