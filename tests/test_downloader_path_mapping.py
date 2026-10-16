@@ -680,7 +680,7 @@ def test_all_torrents_include_completed_and_downloading_states():
                 total_size=1024,
                 labels=[],
                 progress=100,
-                status="seed_pending",
+                status="seed pending",
             ),
             SimpleNamespace(
                 name="Downloading",
