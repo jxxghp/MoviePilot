@@ -6,7 +6,7 @@ from urllib.parse import urljoin
 from app.adapters.network.http import RequestUtils
 from app.domain import site as site_rules
 from app.foundation import temporal as time_tools
-from app.modules.indexer.parser import SiteParserBase, SiteSchema
+from app.modules.indexer.parser import SitePage, SiteParserBase, SiteSchema
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 
@@ -20,7 +20,7 @@ class RousiSiteUserInfo(SiteParserBase):
     schema = SiteSchema.RousiPro
     request_mode = "apikey"
 
-    def _parse_site_page(self, html_text: str):
+    def _parse_site_page(self, html_text: SitePage) -> None:
         """
         配置 API 请求地址和请求头
         使用 PeerGo MoviePilot 兼容的 /profile 接口获取用户信息。
@@ -41,14 +41,14 @@ class RousiSiteUserInfo(SiteParserBase):
         self._user_mail_unread_page = None
         self._sys_mail_unread_page = None
 
-    def _parse_logged_in(self, html_text):
+    def _parse_logged_in(self, html_text: str) -> bool:
         """
         判断是否登录成功
         API 认证模式下，通过 HTTP 状态码判断，此处始终返回 True
         """
         return True
 
-    def _parse_user_base_info(self, html_text: str):
+    def _parse_user_base_info(self, html_text: SitePage) -> None:
         """
         解析用户基本信息
         通过 API v1 接口获取用户完整信息，包括上传下载量、做种数据等
@@ -79,6 +79,8 @@ class RousiSiteUserInfo(SiteParserBase):
             return
 
         try:
+            if isinstance(html_text, dict):
+                raise TypeError("the JSON object must be str, bytes or bytearray, not dict")
             data = json.loads(html_text)
         except json.JSONDecodeError:
             logger.error(f"{self._site_name} JSON 解析失败")
@@ -132,14 +134,14 @@ class RousiSiteUserInfo(SiteParserBase):
         self.leeching = int(sl_data.get("leeching_count") or 0)
         self.leeching_size = int(sl_data.get("leeching_size") or 0)
 
-    def _parse_user_traffic_info(self, html_text: str):
+    def _parse_user_traffic_info(self, html_text: str) -> None:
         """
         解析用户流量信息
         Rousi.pro API v1 在 _parse_user_base_info 中已完成所有解析，此方法无需实现
         """
         pass
 
-    def _parse_user_detail_info(self, html_text: str):
+    def _parse_user_detail_info(self, html_text: str) -> None:
         """
         解析用户详细信息
         Rousi.pro API v1 在 _parse_user_base_info 中已完成所有解析，此方法无需实现
@@ -157,7 +159,7 @@ class RousiSiteUserInfo(SiteParserBase):
         """
         return None
 
-    def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:
+    def _parse_message_unread_links(self, html_text: str, msg_links: list[str]) -> Optional[str]:
         """
         解析未读消息链接
         Rousi.pro API v1 暂未提供消息相关接口
@@ -168,7 +170,7 @@ class RousiSiteUserInfo(SiteParserBase):
         """
         return None
 
-    def _parse_message_content(self, html_text) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    def _parse_message_content(self, html_text: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """
         解析消息内容
         Rousi.pro API v1 暂未提供消息相关接口
@@ -196,6 +198,7 @@ class RousiSiteUserInfo(SiteParserBase):
         }
 
         def __get_message_list(page: int):
+            """读取指定页未读消息，保留接口的分页数据结构。"""
             params = {
                 "page": page,
                 "page_size": 100,
