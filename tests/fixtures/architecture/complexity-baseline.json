@@ -126,7 +126,7 @@
       "app/startup/composition/outbox.py:build_outbox_handlers": 16,
       "app/workflow/__init__.py:WorkflowManager._check_complex_condition": 16,
       "app/workflow/actions/fetch_torrents.py:FetchTorrentsAction.execute": 16,
-      "app/workflow/actions/transfer_file.py:TransferFileAction.execute": 20
+      "app/workflow/actions/transfer_file.py:TransferFileAction.execute": 19
     },
     "PLR1702": {
       "app/adapters/network/http.py:AsyncRequestUtils.get_stream": 6,

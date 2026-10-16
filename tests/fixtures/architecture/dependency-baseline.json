@@ -943,8 +943,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9571,
-  "edge_sha256": "199c4cf99559cbb599ba3bd3bbdf7eb7c9e4863e292a4aceec33be9d967ad36e",
+  "edge_count": 9574,
+  "edge_sha256": "7f781ac160e0007148b864eceed30a7ddc60c7dd1f61d2596a803fd5e4b94683",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -10362,6 +10362,7 @@
     "app.workflow.actions.add_download -> app.runtime.stop",
     "app.workflow.actions.add_download -> app.schemas",
     "app.workflow.actions.add_download -> app.schemas.context",
+    "app.workflow.actions.add_download -> app.schemas.download",
     "app.workflow.actions.add_download -> app.schemas.types",
     "app.workflow.actions.add_download -> app.schemas.workflow",
     "app.workflow.actions.add_download -> app.workflow",
@@ -10478,6 +10479,7 @@
     "app.workflow.actions.scan_file -> app.runtime.log",
     "app.workflow.actions.scan_file -> app.runtime.stop",
     "app.workflow.actions.scan_file -> app.schemas",
+    "app.workflow.actions.scan_file -> app.schemas.file",
     "app.workflow.actions.scan_file -> app.schemas.workflow",
     "app.workflow.actions.scan_file -> app.workflow",
     "app.workflow.actions.scan_file -> app.workflow.actions",
@@ -10514,6 +10516,7 @@
     "app.workflow.actions.transfer_file -> app.runtime.log",
     "app.workflow.actions.transfer_file -> app.runtime.stop",
     "app.workflow.actions.transfer_file -> app.schemas",
+    "app.workflow.actions.transfer_file -> app.schemas.file",
     "app.workflow.actions.transfer_file -> app.schemas.workflow",
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"

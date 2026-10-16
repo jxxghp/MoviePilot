@@ -1931,18 +1931,6 @@
     "union-attr": 2,
     "valid-type": 1
   },
-  "app/workflow/actions/add_download.py": {
-    "arg-type": 1,
-    "attr-defined": 1,
-    "type-arg": 1,
-    "union-attr": 8,
-    "var-annotated": 1
-  },
-  "app/workflow/actions/add_subscribe.py": {
-    "type-arg": 1,
-    "union-attr": 1,
-    "var-annotated": 1
-  },
   "app/workflow/actions/fetch_medias.py": {
     "attr-defined": 1,
     "no-redef": 1,
@@ -1967,11 +1955,6 @@
   "app/workflow/actions/invoke_plugin.py": {
     "type-arg": 2
   },
-  "app/workflow/actions/scan_file.py": {
-    "type-arg": 1,
-    "union-attr": 2,
-    "var-annotated": 1
-  },
   "app/workflow/actions/scrape_file.py": {
     "arg-type": 1,
     "no-untyped-call": 1,
@@ -1982,13 +1965,5 @@
   "app/workflow/actions/send_event.py": {
     "assignment": 1,
     "type-arg": 1
-  },
-  "app/workflow/actions/transfer_file.py": {
-    "arg-type": 1,
-    "no-untyped-call": 1,
-    "no-untyped-def": 1,
-    "type-arg": 1,
-    "union-attr": 4,
-    "var-annotated": 1
   }
 }
