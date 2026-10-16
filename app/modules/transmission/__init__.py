@@ -20,7 +20,7 @@ from app.schemas.types import (
 )
 
 _TRANSMISSION_DOWNLOADING_STATES = {
-    "download_pending",
+    "download pending",
     "downloading",
 }
 _TRANSMISSION_PAUSED_STATES = {
