@@ -977,10 +977,6 @@
     "no-any-return": 1,
     "redundant-cast": 2
   },
-  "app/db/models/subscribe.py": {
-    "arg-type": 8,
-    "no-untyped-def": 18
-  },
   "app/db/oper/downloadhistory.py": {
     "no-any-return": 1,
     "no-untyped-def": 9,
