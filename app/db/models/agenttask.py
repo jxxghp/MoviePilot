@@ -1,6 +1,6 @@
 from typing import Optional
 
-from sqlalchemy import Boolean, Index, Integer, String, Text, select, update
+from sqlalchemy import Boolean, Index, Integer, Select, String, Text, select, update
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, execute_dml, get_id_column
@@ -10,7 +10,7 @@ def _get_for_user_statement(
         model: type["AgentTask"],
         task_id: int,
         user_id: Optional[str] = None,
-):
+) -> "Select[tuple[AgentTask]]":
     """构造按任务 ID 与可选用户归属收窄的查询语句。"""
     statement = select(model).where(model.id == task_id)
     if user_id is not None:
@@ -22,7 +22,7 @@ def _list_for_user_statement(
         model: type["AgentTask"],
         user_id: Optional[str] = None,
         enabled: Optional[bool] = None,
-):
+) -> "Select[tuple[AgentTask]]":
     """构造按用户、启用状态和创建时间排序的任务列表语句。"""
     statement = select(model)
     if user_id is not None:
@@ -81,7 +81,8 @@ class AgentTask(Base):
         task = cls(**kwargs)
         db.add(task)
         db.flush()
-        return task.id
+        task_id: int = task.id
+        return task_id
 
     @classmethod
     def get_for_user(
@@ -91,9 +92,10 @@ class AgentTask(Base):
             user_id: Optional[str] = None,
     ) -> Optional["AgentTask"]:
         """在调用方会话中按任务 ID 和可选用户 ID 查询。"""
-        return db.execute(
+        task: Optional[AgentTask] = db.execute(
             _get_for_user_statement(cls, task_id=task_id, user_id=user_id)
         ).scalars().first()
+        return task
 
     @classmethod
     def list_for_user(
@@ -112,7 +114,7 @@ class AgentTask(Base):
             cls,
             db: Session,
             task_id: int,
-            payload: dict,
+            payload: dict[str, object],
             user_id: Optional[str] = None,
     ) -> bool:
         """
