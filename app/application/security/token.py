@@ -102,7 +102,8 @@ def create_access_token(
         "level": level,
         "purpose": purpose,
     }
-    return jwt.encode(payload, secret_key, algorithm=ALGORITHM)
+    encoded: str = jwt.encode(payload, secret_key, algorithm=ALGORITHM)
+    return encoded
 
 
 def decode_access_token(
@@ -157,7 +158,8 @@ def get_password_hash(password: str) -> str:
 def decrypt(data: bytes, key: bytes) -> Optional[bytes]:
     """使用 Fernet 解密二进制数据，失败时记录诊断并返回空值。"""
     try:
-        return Fernet(key).decrypt(data)
+        decrypted: bytes = Fernet(key).decrypt(data)
+        return decrypted
     except Exception as error:
         logger.error(f"解密失败：{str(error)} - {traceback.format_exc()}")
         return None
@@ -165,7 +167,8 @@ def decrypt(data: bytes, key: bytes) -> Optional[bytes]:
 
 def encrypt_message(message: str, key: bytes) -> str:
     """使用 Fernet 加密文本并返回可传输字符串。"""
-    return Fernet(key).encrypt(message.encode()).decode()
+    encrypted: str = Fernet(key).encrypt(message.encode()).decode()
+    return encrypted
 
 
 def hash_sha256(message: str) -> str:
@@ -193,10 +196,10 @@ def aes_encrypt(data: str, key: str) -> str:
     if not data:
         return ""
     cipher = AES.new(key.encode("utf-8"), AES.MODE_CBC)
-    padding = AES.block_size - len(data) % AES.block_size
-    padded = data + chr(padding) * padding
-    result = cipher.encrypt(padded.encode("utf-8"))
-    return base64.b64encode(cipher.iv + result).decode("utf-8")
+    # CBC 按字节分块；先编码再填充，保留 ASCII 密文并支持多字节文本。
+    encoded = data.encode("utf-8")
+    result = cipher.encrypt(pad(encoded, AES.block_size))
+    return base64.b64encode(bytes(cipher.iv) + result).decode("utf-8")
 
 
 def nexusphp_encrypt(data_str: str, key: bytes) -> str:

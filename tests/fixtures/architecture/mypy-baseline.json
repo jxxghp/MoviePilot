@@ -678,10 +678,6 @@
     "no-any-return": 1,
     "type-arg": 3
   },
-  "app/application/security/token.py": {
-    "no-any-return": 3,
-    "operator": 1
-  },
   "app/application/security/url.py": {
     "attr-defined": 2,
     "has-type": 2,
