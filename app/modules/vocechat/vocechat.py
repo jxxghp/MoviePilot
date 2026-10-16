@@ -15,6 +15,8 @@ lock = threading.Lock()
 
 
 class VoceChat:
+    """管理 VoceChat 连接配置并向频道或用户发送消息。"""
+
     # host
     _host = None
     # apikey
@@ -25,7 +27,7 @@ class VoceChat:
     _client = None
     _file_client = None
 
-    def __init__(self, VOCECHAT_HOST: Optional[str] = None, VOCECHAT_API_KEY: Optional[str] = None, VOCECHAT_CHANNEL_ID: Optional[str] = None, **kwargs):
+    def __init__(self, VOCECHAT_HOST: Optional[str] = None, VOCECHAT_API_KEY: Optional[str] = None, VOCECHAT_CHANNEL_ID: Optional[str] = None, **kwargs: object) -> None:
         """
         初始化
         """
@@ -50,13 +52,13 @@ class VoceChat:
                 "accept": "*/*"
             })
 
-    def get_state(self):
+    def get_state(self) -> bool:
         """
         获取状态
         """
         return True if self.get_groups() else False
 
-    def get_groups(self):
+    def get_groups(self) -> object:
         """
         获取频道列表
         """
@@ -64,9 +66,11 @@ class VoceChat:
             return None
         result = self._client.get_res(f"{self._host}api/bot")
         if result and result.status_code == 200:
-            return result.json()
+            groups: object = result.json()
+            return groups
+        return None
 
-    def send_msg(self, title: str, text: Optional[str] = None,
+    def send_msg(self, title: Optional[str], text: Optional[str] = None,
                  image: Optional[str] = None,
                  userid: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
         """
@@ -109,6 +113,7 @@ class VoceChat:
 
     @staticmethod
     def _guess_mime_type(content: bytes, default: str = "image/jpeg") -> str:
+        """按文件头识别支持的图片格式，无法识别时保留调用方默认类型。"""
         if not content:
             return default
         if content.startswith(b"\x89PNG\r\n\x1a\n"):
@@ -141,13 +146,14 @@ class VoceChat:
         return res.content, mime_type or self._guess_mime_type(res.content)
 
     def download_file_to_data_url(self, path: str) -> Optional[str]:
+        """下载文件并保留检测到的 MIME 类型生成 data URL。"""
         file_data = self.download_file(path)
         if not file_data:
             return None
         content, mime_type = file_data
         return f"data:{mime_type};base64,{base64.b64encode(content).decode()}"
 
-    def send_medias_msg(self, title: str, medias: List[MediaInfo],
+    def send_medias_msg(self, title: Optional[str], medias: List[MediaInfo],
                         userid: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
         """
         发送列表类消息
