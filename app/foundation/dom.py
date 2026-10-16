@@ -2,7 +2,6 @@ from collections.abc import Sized
 from typing import Optional, TypeVar, Union, cast, overload
 from xml.dom import minidom
 
-
 _Default = TypeVar("_Default")
 
 
