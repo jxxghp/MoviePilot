@@ -7,7 +7,6 @@ from app.runtime.cache import cached
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 
-
 _Result = TypeVar("_Result")
 _RequestFunction = TypeVar("_RequestFunction", bound=Callable[..., object])
 
