@@ -70,20 +70,21 @@ uv run --locked --no-sync python scripts/architecture/complexity.py
 - `app/startup/lifecycle/components.py`：组件启动与关闭。
 
 三个文件及完整严格清单实测通过，不增加忽略规则或类型债务。全宿主 mypy ratchet 继续保留。
-严格清单默认采用 `follow_imports = skip` 和 `ignore_missing_imports = True`，不能等同于
-传递依赖全部严格。流式回调使用的 `app.chain.base` 和 `app.schemas.notification` 在导入时
-采用 `follow_imports = silent`，读取真实父类和渠道能力签名；这两个依赖未纳入严格清单，
-其存量错误仍由全宿主显式扫描完整报告并逐文件检查低水位。LLM Provider Facade 同样读取
-`auth`、`catalog`、`discovery`、`runtime` 和 `session` 五个职责 owner 的实际接口，
-这些依赖仍保留全宿主错误基线。Agent session/lifecycle 与 Scheduler lifecycle 的扩围需要一起处理父类、
-回调和返回值类型；全仓错误计数为零并不保证单独纳入 strict frontier 后也为零。
+严格清单对项目内部的 `app.*` 统一采用 `follow_imports = silent`，并将此策略应用于
+内部 `.pyi`，读取真实接口；外部依赖仍沿用 `follow_imports = skip` 和
+`ignore_missing_imports = True`。`silent` 只影响导入的非目标文件，`files` 中的目标仍然
+严格检查；全宿主 Linux 分析显式扫描整个 `app`，继续报告未清零文件的全部历史债务。
+本次将已有完整分析零错误的文件统一纳入严格清单，保留之前的全部目标，新增 551 个
+受保护文件。扩围前后对完整宿主逐文件、逐错误码核对，导入策略没有隐藏任何既有错误；
+订阅请求仓储补齐真实查询接口、API 移除恒等 cast 后，另消除 8 项原有类型错误。
+门禁扩围表示已清零代码受到保护，不表示本次修复了这些文件的业务实现。
 
 2026-10-16 开始逐文件清理类型债务，`app/domain/title.py` 通过局部可空类型声明保留
-既有搜索解析行为，并纳入严格清单；当前清单共 212 个文件（211 个生产文件和 1 个脚本）。
+既有搜索解析行为，并纳入严格清单；当前清单共 763 个文件（762 个生产文件和 1 个脚本）。
 每个生产文件完成针对性测试后独立提交，并纳入严格门禁。每批集中同步真实下降的
 类型基线和指标文档，运行完整本地单测与适用门禁后统一推送；不逐文件等待远端 CI。
-验收同时检查完整严格清单与全宿主 Linux 分析，避免 `follow_imports = skip` 隐藏依赖
-签名冲突；不通过忽略诊断或放宽类型合同接受回退。最新文件清单以 `mypy.ini` 为准，
+验收同时检查完整严格清单与全宿主 Linux 分析，保证导入接口和全量历史债务都受检查；
+不通过忽略诊断或放宽类型合同接受回退。最新文件清单以 `mypy.ini` 为准，
 债务总数以 `tests/fixtures/architecture/mypy-baseline.json` 为准。
 
 事件运行时的契约、注册、绑定、调度、错误处理和 payload 快照六个实现模块均已纳入

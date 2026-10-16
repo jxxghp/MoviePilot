@@ -291,9 +291,6 @@
     "attr-defined": 2,
     "type-arg": 1
   },
-  "app/api/context.py": {
-    "redundant-cast": 3
-  },
   "app/api/dependencies/agent.py": {
     "arg-type": 1
   },
@@ -307,9 +304,6 @@
   },
   "app/api/dependencies/site.py": {
     "arg-type": 2
-  },
-  "app/api/dependencies/subscription.py": {
-    "arg-type": 5
   },
   "app/api/dependencies/workflow.py": {
     "arg-type": 3,
