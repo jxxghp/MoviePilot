@@ -993,10 +993,6 @@
     "no-untyped-def": 20,
     "type-arg": 1
   },
-  "app/db/models/workflow.py": {
-    "no-untyped-def": 27,
-    "type-arg": 4
-  },
   "app/db/oper/agentchat.py": {
     "type-arg": 6
   },
@@ -1039,8 +1035,6 @@
   },
   "app/db/oper/workflow.py": {
     "arg-type": 1,
-    "no-any-return": 6,
-    "no-untyped-call": 3,
     "no-untyped-def": 1,
     "union-attr": 3
   },

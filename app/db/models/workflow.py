@@ -1,10 +1,10 @@
 from builtins import list as builtin_list
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, Self
 
 from sqlalchemy import JSON, Index, Integer, String, and_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, get_id_column
 
@@ -55,16 +55,18 @@ class Workflow(Base):
     )
 
     @classmethod
-    def get_enabled_workflows(cls, db):
+    def get_enabled_workflows(cls, db: Session) -> list[Self]:
+        """读取全部未暂停的工作流。"""
         return list(db.execute(select(cls).where(cls.state != 'P')).scalars().all())
 
     @classmethod
-    async def async_get_enabled_workflows(cls, db: AsyncSession):
+    async def async_get_enabled_workflows(cls, db: AsyncSession) -> list[Self]:
+        """异步读取全部未暂停的工作流。"""
         result = await db.execute(select(cls).where(cls.state != 'P'))
         return list(result.scalars().all())
 
     @classmethod
-    def get_timer_triggered_workflows(cls, db):
+    def get_timer_triggered_workflows(cls, db: Session) -> list[Self]:
         """获取定时触发的工作流"""
         return list(db.execute(select(cls).where(
             and_(
@@ -77,7 +79,7 @@ class Workflow(Base):
         )).scalars().all())
 
     @classmethod
-    async def async_get_timer_triggered_workflows(cls, db: AsyncSession):
+    async def async_get_timer_triggered_workflows(cls, db: AsyncSession) -> list[Self]:
         """异步获取定时触发的工作流"""
         result = await db.execute(select(cls).where(
             and_(
@@ -91,7 +93,7 @@ class Workflow(Base):
         return list(result.scalars().all())
 
     @classmethod
-    def get_event_triggered_workflows(cls, db):
+    def get_event_triggered_workflows(cls, db: Session) -> list[Self]:
         """获取事件触发的工作流"""
         return list(db.execute(select(cls).where(
             and_(
@@ -101,7 +103,7 @@ class Workflow(Base):
         )).scalars().all())
 
     @classmethod
-    async def async_get_event_triggered_workflows(cls, db: AsyncSession):
+    async def async_get_event_triggered_workflows(cls, db: AsyncSession) -> list[Self]:
         """异步获取事件触发的工作流"""
         result = await db.execute(select(cls).where(
             and_(
@@ -112,38 +114,45 @@ class Workflow(Base):
         return list(result.scalars().all())
 
     @classmethod
-    def get_by_name(cls, db, name: str):
-        return db.execute(select(cls).where(cls.name == name)).scalars().first()
+    def get_by_name(cls, db: Session, name: str) -> Optional[Self]:
+        """在调用方会话中按名称查询工作流。"""
+        workflow: Optional[Self] = db.execute(select(cls).where(cls.name == name)).scalars().first()
+        return workflow
 
     @classmethod
-    async def async_get_by_name(cls, db: AsyncSession, name: str):
+    async def async_get_by_name(cls, db: AsyncSession, name: str) -> Optional[Self]:
+        """在调用方异步会话中按名称查询工作流。"""
         result = await db.execute(select(cls).where(cls.name == name))
-        return result.scalars().first()
+        workflow: Optional[Self] = result.scalars().first()
+        return workflow
 
     @classmethod
-    def update_state(cls, db, wid: int, state: str):
+    def update_state(cls, db: Session, wid: int, state: str) -> bool:
+        """在调用方事务中暂存指定工作流状态。"""
         db.execute(update(cls).where(cls.id == wid).values(state=state))
         return True
 
     @classmethod
-    async def async_update_state(cls, db: AsyncSession, wid: int, state: str):
+    async def async_update_state(cls, db: AsyncSession, wid: int, state: str) -> bool:
         """在调用方持有的异步事务中暂存工作流状态。"""
         await db.execute(update(cls).where(cls.id == wid).values(state=state))
         return True
 
     @classmethod
-    def start(cls, db, wid: int):
+    def start(cls, db: Session, wid: int) -> bool:
+        """在调用方事务中暂存运行中状态。"""
         db.execute(update(cls).where(cls.id == wid).values(state='R'))
         return True
 
     @classmethod
-    async def async_start(cls, db: AsyncSession, wid: int):
+    async def async_start(cls, db: AsyncSession, wid: int) -> bool:
         """在调用方持有的异步事务中暂存运行中状态。"""
         await db.execute(update(cls).where(cls.id == wid).values(state='R'))
         return True
 
     @classmethod
-    def fail(cls, db, wid: int, result: str):
+    def fail(cls, db: Session, wid: int, result: str) -> bool:
+        """暂存未暂停工作流的失败结果和执行时间。"""
         db.execute(update(cls).where(
             and_(cls.id == wid, cls.state != "P")
         ).values(
@@ -154,7 +163,7 @@ class Workflow(Base):
         return True
 
     @classmethod
-    async def async_fail(cls, db: AsyncSession, wid: int, result: str):
+    async def async_fail(cls, db: AsyncSession, wid: int, result: str) -> bool:
         """在调用方持有的异步事务中暂存失败结果。"""
         await db.execute(update(cls).where(
             and_(cls.id == wid, cls.state != "P")
@@ -166,7 +175,8 @@ class Workflow(Base):
         return True
 
     @classmethod
-    def success(cls, db, wid: int, result: Optional[str] = None):
+    def success(cls, db: Session, wid: int, result: Optional[str] = None) -> bool:
+        """暂存未暂停工作流的成功结果并递增运行次数。"""
         db.execute(update(cls).where(
             and_(cls.id == wid, cls.state != "P")
         ).values(
@@ -178,7 +188,7 @@ class Workflow(Base):
         return True
 
     @classmethod
-    async def async_success(cls, db: AsyncSession, wid: int, result: Optional[str] = None):
+    async def async_success(cls, db: AsyncSession, wid: int, result: Optional[str] = None) -> bool:
         """在调用方持有的异步事务中暂存成功结果。"""
         await db.execute(update(cls).where(
             and_(cls.id == wid, cls.state != "P")
@@ -191,7 +201,8 @@ class Workflow(Base):
         return True
 
     @classmethod
-    def reset(cls, db, wid: int, reset_count: Optional[bool] = False):
+    def reset(cls, db: Session, wid: int, reset_count: Optional[bool] = False) -> bool:
+        """清空执行上下文，可选择同时重置运行次数。"""
         db.execute(update(cls).where(cls.id == wid).values(
             state='W',
             result=None,
@@ -203,7 +214,7 @@ class Workflow(Base):
         return True
 
     @classmethod
-    async def async_reset(cls, db: AsyncSession, wid: int, reset_count: Optional[bool] = False):
+    async def async_reset(cls, db: AsyncSession, wid: int, reset_count: Optional[bool] = False) -> bool:
         """在调用方持有的异步事务中暂存执行状态重置。"""
         await db.execute(update(cls).where(cls.id == wid).values(
             state='W',
@@ -216,8 +227,9 @@ class Workflow(Base):
         return True
 
     @classmethod
-    def update_current_action(cls, db, wid: int, action_id: str, context: dict,
-                              execution_state: Optional[dict] = None):
+    def update_current_action(cls, db: Session, wid: int, action_id: str, context: dict[str, object],
+                              execution_state: Optional[dict[str, object]] = None) -> bool:
+        """去重记录已执行动作并暂存上下文和执行状态。"""
         workflow = db.execute(select(cls).where(cls.id == wid)).scalars().first()
         current_actions = []
         if workflow and workflow.current_action:
@@ -234,8 +246,8 @@ class Workflow(Base):
         return True
 
     @classmethod
-    async def async_update_current_action(cls, db: AsyncSession, wid: int, action_id: str, context: dict,
-                                          execution_state: Optional[dict] = None):
+    async def async_update_current_action(cls, db: AsyncSession, wid: int, action_id: str, context: dict[str, object],
+                                          execution_state: Optional[dict[str, object]] = None) -> bool:
         """在调用方持有的异步事务中暂存动作进度。"""
         # 先获取当前current_action
         result = await db.execute(select(cls.current_action).where(cls.id == wid))
