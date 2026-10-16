@@ -606,9 +606,6 @@
     "no-untyped-def": 2,
     "type-arg": 5
   },
-  "app/application/mediaserver.py": {
-    "operator": 1
-  },
   "app/application/messaging/agent.py": {
     "arg-type": 1
   },

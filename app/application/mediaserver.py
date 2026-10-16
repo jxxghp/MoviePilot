@@ -402,10 +402,8 @@ def format_emby_family_item(
         if not user_data:
             user_state = None
         else:
-            resume = (
-                user_data.get("PlaybackPositionTicks")
-                and user_data.get("PlaybackPositionTicks") > 0
-            )
+            playback_position_ticks = user_data.get("PlaybackPositionTicks")
+            resume = playback_position_ticks and playback_position_ticks > 0
             last_played_date = user_data.get("LastPlayedDate")
             if last_played_date is not None and "." in last_played_date:
                 last_played_date = last_played_date.split(".")[0]
