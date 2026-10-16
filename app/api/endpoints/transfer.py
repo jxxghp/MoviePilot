@@ -284,7 +284,7 @@ def _manual_review_task_data(
     )
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/tasks/manual-reviews",
     summary="分页查询 durable 整理人工复核任务",
     response_model=_SchemaResponse[_SchemaTransferManualReviewPageData],
@@ -319,7 +319,7 @@ def list_transfer_manual_reviews(
     )
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/tasks/{task_id}/manual-review",
     summary="查询 durable 整理人工复核详情",
     response_model=_SchemaResponse[_SchemaTransferManualReviewTaskData],
@@ -342,7 +342,7 @@ def get_transfer_manual_review(
     return _SchemaResponse(success=True, data=_manual_review_task_data(task))
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/tasks/{task_id}/manual-review",
     summary="人工判定整理步骤的外部执行结果",
     response_model=_SchemaResponse[_SchemaTransferManualReviewData],
@@ -444,7 +444,7 @@ async def query_queue(_: _SchemaTokenPayload = Depends(verify_token), page: Comp
     return TransferChain().get_queue_tasks()
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/queue/page",
     summary="查询受限整理队列快照",
     response_model=_SchemaTransferQueuePageData,
