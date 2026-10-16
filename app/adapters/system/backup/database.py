@@ -9,7 +9,7 @@ import subprocess
 from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Mapping, Protocol, Sequence
+from typing import Callable, Literal, Mapping, Protocol, Sequence
 
 from sqlalchemy.engine import Engine
 
@@ -37,13 +37,14 @@ class ProcessRunner(Protocol):
     def __call__(
         self,
         command: Sequence[str],
+        /,
         *,
         env: Mapping[str, str],
-        capture_output: bool,
-        text: bool,
+        capture_output: Literal[True],
+        text: Literal[True],
         check: bool,
     ) -> ProcessResult:
-        """执行命令并返回结果。"""
+        """按位置传入命令，并以文本模式捕获标准输出和错误输出。"""
 
 
 def verify_database_backup(
@@ -89,6 +90,7 @@ def _require_tool(
     executable: str,
     tool_resolver: Callable[[str], str | None],
 ) -> str:
+    """解析客户端工具路径，缺失时在执行数据库操作前明确报错。"""
     resolved = tool_resolver(executable)
     if resolved is None:
         raise RuntimeError(
@@ -103,6 +105,7 @@ def _postgres_environment(
     password: str | None = None,
     sslmode: str | None = None,
 ) -> dict[str, str]:
+    """隔离继承的 PostgreSQL 凭证，仅传入本次操作所需的连接设置。"""
     environment = dict(os.environ)
     environment.pop("PGPASSWORD", None)
     environment.pop("PGSSLMODE", None)
@@ -120,6 +123,7 @@ class SQLiteBackupBackend:
     suffix = ".db"
 
     def __init__(self, engine: Engine) -> None:
+        """绑定活动 SQLite 文件路径，拒绝无法生成文件快照的内存数据库。"""
         self._engine = engine
         database = engine.url.database
         if not database or database == ":memory:":
@@ -169,6 +173,7 @@ class PostgreSQLBackupBackend:
         pg_dump: str = "pg_dump",
         pg_restore: str = "pg_restore",
     ) -> None:
+        """绑定活动引擎和可替换的客户端执行边界。"""
         self._engine = engine
         self._runner = runner
         self._tool_resolver = tool_resolver
@@ -220,6 +225,7 @@ class PostgreSQLBackupBackend:
             raise RuntimeError(f"pg_restore 执行失败，退出码 {result.returncode}")
 
     def _connection_arguments(self) -> list[str]:
+        """构建不含密码的客户端连接参数，优先使用 URL 查询项中的主机和端口。"""
         url = self._engine.url
         host = str(url.query.get("host") or url.host or "")
         port = str(url.query.get("port") or url.port or "")
@@ -236,6 +242,7 @@ class PostgreSQLBackupBackend:
         return arguments
 
     def _run(self, command: Sequence[str], *, include_password: bool) -> ProcessResult:
+        """捕获文本输出，并按操作需要向子进程环境注入凭证。"""
         return self._runner(
             command,
             env=self._environment(include_password=include_password),
@@ -245,9 +252,11 @@ class PostgreSQLBackupBackend:
         )
 
     def _require_tool(self, executable: str) -> str:
+        """通过当前解析器确认 PostgreSQL 客户端可用。"""
         return _require_tool(executable, self._tool_resolver)
 
     def _environment(self, *, include_password: bool) -> dict[str, str]:
+        """从活动引擎提取当前命令需要的密码与 SSL 设置。"""
         password = (
             str(self._engine.url.password)
             if include_password and self._engine.url.password

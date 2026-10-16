@@ -61,9 +61,6 @@
     "no-untyped-def": 33,
     "type-arg": 26
   },
-  "app/adapters/system/backup/database.py": {
-    "assignment": 2
-  },
   "app/adapters/system/fsproxy.py": {
     "arg-type": 1,
     "assignment": 1,
