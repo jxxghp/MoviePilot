@@ -310,16 +310,13 @@
     "redundant-cast": 2
   },
   "app/api/endpoints/agent.py": {
-    "misc": 13,
     "type-arg": 11
   },
   "app/api/endpoints/anilist.py": {
     "attr-defined": 1,
-    "misc": 8,
     "no-untyped-call": 2
   },
   "app/api/endpoints/anthropic.py": {
-    "misc": 1,
     "no-untyped-call": 1,
     "no-untyped-def": 3,
     "type-arg": 1,
@@ -327,64 +324,55 @@
   },
   "app/api/endpoints/auth.py": {
     "arg-type": 1,
-    "misc": 3
+    "misc": 1
   },
   "app/api/endpoints/bangumi.py": {
     "attr-defined": 1,
-    "misc": 5,
     "no-untyped-call": 3,
     "operator": 12
   },
   "app/api/endpoints/dashboard.py": {
     "arg-type": 2,
-    "misc": 19,
     "no-untyped-call": 2,
     "operator": 12
   },
   "app/api/endpoints/discover.py": {
     "arg-type": 20,
     "attr-defined": 1,
-    "misc": 6,
     "no-redef": 1,
     "no-untyped-call": 5,
     "operator": 2
   },
   "app/api/endpoints/douban.py": {
     "attr-defined": 1,
-    "misc": 5,
     "no-untyped-call": 2
   },
   "app/api/endpoints/download.py": {
     "arg-type": 6,
     "assignment": 5,
     "attr-defined": 4,
-    "misc": 10,
+    "misc": 1,
     "type-arg": 2
   },
   "app/api/endpoints/history.py": {
     "arg-type": 4,
-    "misc": 7,
     "no-untyped-call": 2,
     "no-untyped-def": 2
   },
   "app/api/endpoints/llm.py": {
-    "misc": 2,
     "no-untyped-def": 2
   },
   "app/api/endpoints/login.py": {
-    "misc": 3,
     "union-attr": 33
   },
   "app/api/endpoints/mcp.py": {
     "assignment": 3,
-    "index": 1,
-    "misc": 6
+    "index": 1
   },
   "app/api/endpoints/media.py": {
     "arg-type": 2,
     "assignment": 7,
     "attr-defined": 3,
-    "misc": 13,
     "no-untyped-call": 5,
     "no-untyped-def": 1
   },
@@ -392,14 +380,12 @@
     "arg-type": 4,
     "assignment": 1,
     "attr-defined": 1,
-    "misc": 8,
     "type-arg": 2,
     "union-attr": 1
   },
   "app/api/endpoints/message.py": {
     "arg-type": 4,
     "assignment": 1,
-    "misc": 8,
     "no-untyped-def": 8,
     "union-attr": 4
   },
@@ -407,24 +393,22 @@
     "attr-defined": 4,
     "call-overload": 1,
     "index": 2,
-    "misc": 16,
+    "misc": 7,
     "operator": 1,
     "type-arg": 2
   },
   "app/api/endpoints/music.py": {
     "arg-type": 6,
     "attr-defined": 1,
-    "misc": 10,
     "type-arg": 3
   },
   "app/api/endpoints/notification.py": {
-    "misc": 2,
     "no-untyped-def": 2
   },
   "app/api/endpoints/openai.py": {
     "attr-defined": 1,
     "has-type": 1,
-    "misc": 5,
+    "misc": 2,
     "no-any-return": 1,
     "no-untyped-call": 1,
     "no-untyped-def": 15,
@@ -434,21 +418,18 @@
   "app/api/endpoints/plugin.py": {
     "assignment": 1,
     "import-untyped": 1,
-    "misc": 28,
-    "no-any-return": 5,
+    "no-any-return": 4,
     "no-untyped-call": 1,
     "no-untyped-def": 2,
     "type-arg": 9
   },
   "app/api/endpoints/recommend.py": {
     "attr-defined": 2,
-    "misc": 16,
     "no-redef": 1
   },
   "app/api/endpoints/search.py": {
     "arg-type": 2,
     "attr-defined": 3,
-    "misc": 11,
     "no-untyped-call": 3,
     "no-untyped-def": 4,
     "type-arg": 14
@@ -457,21 +438,18 @@
     "arg-type": 6,
     "assignment": 2,
     "attr-defined": 2,
-    "misc": 26,
     "no-untyped-def": 2,
     "return-value": 1,
     "type-arg": 5
   },
   "app/api/endpoints/storage.py": {
     "assignment": 1,
-    "attr-defined": 1,
-    "misc": 7
+    "attr-defined": 1
   },
   "app/api/endpoints/subscribe.py": {
     "arg-type": 11,
     "assignment": 3,
     "attr-defined": 2,
-    "misc": 23,
     "no-any-return": 1,
     "no-untyped-call": 1,
     "no-untyped-def": 1,
@@ -480,47 +458,38 @@
   "app/api/endpoints/system.py": {
     "arg-type": 1,
     "attr-defined": 4,
-    "misc": 30,
     "no-untyped-call": 6,
     "no-untyped-def": 24,
     "type-arg": 6
   },
   "app/api/endpoints/tmdb.py": {
     "attr-defined": 1,
-    "misc": 11,
     "no-untyped-call": 2,
     "operator": 4,
     "type-arg": 3
   },
   "app/api/endpoints/torrent.py": {
-    "misc": 5,
     "no-untyped-call": 1,
     "no-untyped-def": 5
   },
   "app/api/endpoints/transfer.py": {
     "arg-type": 9,
     "attr-defined": 2,
-    "misc": 8,
     "operator": 3,
     "type-arg": 3
   },
   "app/api/endpoints/user.py": {
-    "misc": 10,
     "no-untyped-def": 2,
     "str-bytes-safe": 1,
     "type-arg": 3
   },
   "app/api/endpoints/webhook.py": {
-    "misc": 2,
     "no-untyped-def": 1
   },
   "app/api/endpoints/workflow.py": {
-    "assignment": 1,
-    "misc": 16
+    "assignment": 1
   },
   "app/api/response.py": {
-    "arg-type": 1,
-    "misc": 2,
     "valid-type": 1
   },
   "app/api/servarr.py": {
@@ -528,14 +497,13 @@
     "assignment": 1,
     "attr-defined": 1,
     "index": 3,
-    "misc": 16,
-    "no-any-return": 2,
+    "no-any-return": 1,
     "type-arg": 1,
     "union-attr": 1
   },
   "app/api/servcookie.py": {
     "import-untyped": 1,
-    "misc": 7,
+    "misc": 1,
     "no-any-return": 5,
     "return": 1,
     "type-arg": 1
@@ -931,7 +899,6 @@
   },
   "app/cli.py": {
     "attr-defined": 2,
-    "misc": 57,
     "no-any-return": 4,
     "type-arg": 3,
     "union-attr": 2
@@ -1003,9 +970,6 @@
     "assignment": 4,
     "no-untyped-def": 1,
     "type-arg": 10
-  },
-  "app/factory.py": {
-    "misc": 1
   },
   "app/foundation/temporal.py": {
     "import-untyped": 3,
