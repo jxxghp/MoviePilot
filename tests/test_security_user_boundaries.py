@@ -220,6 +220,33 @@ def test_upload_denies_foreign_session_without_saving_file(monkeypatch):
     save.assert_not_awaited()
 
 
+@pytest.mark.parametrize("method,path", [
+    ("GET", "/agent/sessions/web-agent:victim"),
+    ("POST", "/agent/sessions/web-agent:victim/stop"),
+])
+def test_session_endpoints_deny_foreign_session_without_server_error(monkeypatch, method, path):
+    """读取或停止他人会话返回统一拒绝结果，不能抛出 500 或触达运行中的 Agent。"""
+    principal = SimpleNamespace(id=2, name="attacker", is_superuser=False)
+    service = SimpleNamespace(
+        get=AsyncMock(return_value=SimpleNamespace(user_id="1", username="victim")),
+        get_accessible=AsyncMock(return_value=None),
+    )
+    manager = Mock()
+    manager.stop_current_task = AsyncMock(return_value=True)
+    monkeypatch.setattr(agent_endpoint.agent_application, "get_running_agent_manager", lambda: manager)
+    app = FastAPI()
+    app.include_router(agent_endpoint.router, prefix="/agent")
+    app.dependency_overrides[get_current_active_user] = lambda: principal
+    app.dependency_overrides[get_agent_chat_service] = lambda: service
+    with TestClient(app) as client:
+        response = client.request(method, path)
+    assert response.status_code == 200
+    assert response.json()["success"] is False
+    assert response.json()["message"] == "会话不存在或无权访问"
+    manager.stop_current_task.assert_not_awaited()
+    manager.is_session_busy.assert_not_called()
+
+
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_admin_memory_restore_requires_explicit_authorization_on_cache_reuse(asynchronous):
     """管理员恢复其他归属后，未授权调用也不能通过该管理员的缓存读取。"""
