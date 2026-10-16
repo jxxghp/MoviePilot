@@ -52,7 +52,7 @@ class DingTalkModule(_MessageChannelModuleBase[DingTalk]):
         """
         return False
 
-    def post_message(self, message: Message, **kwargs) -> None:
+    def post_message(self, message: Message, **kwargs: object) -> None:
         """向所有匹配消息范围的钉钉配置发送普通通知。"""
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
