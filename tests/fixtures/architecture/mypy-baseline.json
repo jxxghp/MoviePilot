@@ -984,11 +984,6 @@
     "no-untyped-def": 7,
     "type-arg": 1
   },
-  "app/db/oper/message.py": {
-    "attr-defined": 2,
-    "no-untyped-def": 2,
-    "type-arg": 5
-  },
   "app/db/oper/site.py": {
     "arg-type": 1,
     "no-any-return": 3,
