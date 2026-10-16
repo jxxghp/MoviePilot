@@ -1,7 +1,7 @@
 import json
 import re
 from threading import Lock
-from typing import List, Optional
+from typing import List, Optional, cast
 from urllib.parse import quote
 
 from app.adapters.network.http import RequestUtils
@@ -15,7 +15,13 @@ lock = Lock()
 
 
 class SynologyChat:
-    def __init__(self, SYNOLOGYCHAT_WEBHOOK: Optional[str] = None, SYNOLOGYCHAT_TOKEN: Optional[str] = None, **kwargs):
+    """管理群晖 Chat 机器人凭据并发送文本和资源列表。"""
+
+    def __init__(self, SYNOLOGYCHAT_WEBHOOK: Optional[str] = None, SYNOLOGYCHAT_TOKEN: Optional[str] = None, **kwargs: object) -> None:
+        """先建立禁用状态，只有凭据完整时才创建 HTTP 客户端。"""
+        self._webhook_url = ""
+        self._token: Optional[str] = None
+        self._domain: Optional[str] = None
         if not SYNOLOGYCHAT_WEBHOOK or not SYNOLOGYCHAT_TOKEN:
             logger.error("SynologyChat配置不完整！")
             return
@@ -25,8 +31,9 @@ class SynologyChat:
         if self._webhook_url:
             self._domain = url_tools.base_url(self._webhook_url)
 
-    def check_token(self, token: str) -> bool:
-        return True if token == self._token else False
+    def check_token(self, token: Optional[str]) -> bool:
+        """仅接受已配置机器人令牌，缺失配置和缺失入站令牌均不能通过认证。"""
+        return self._token is not None and token == self._token
 
     def get_state(self) -> bool:
         """
@@ -39,7 +46,7 @@ class SynologyChat:
             return True
         return False
 
-    def send_msg(self, title: str, text: Optional[str] = None, image: Optional[str] = None,
+    def send_msg(self, title: Optional[str], text: Optional[str] = None, image: Optional[str] = None,
                  userid: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
         """
         发送SynologyChat消息
@@ -68,12 +75,13 @@ class SynologyChat:
             if text:
                 caption = "*%s*\n%s" % (title, text.replace("\n\n", "\n"))
             else:
-                caption = title
+                # 正文为空时，上方检查已保证标题存在。
+                caption = cast(str, title)
 
             if link:
                 caption = f"{caption}\n[查看详情]({link})"
 
-            payload_data = {'text': quote(caption)}
+            payload_data: dict[str, object] = {'text': quote(caption)}
             if image:
                 payload_data['file_url'] = quote(image)
             if userid:
@@ -102,6 +110,7 @@ class SynologyChat:
         try:
             if not title or not isinstance(medias, list):
                 return False
+            image: Optional[str]
             index, image, caption = 1, "", "*%s*" % title
             for media in medias:
                 if not image:
@@ -121,11 +130,12 @@ class SynologyChat:
                                                          f"类型：{media.type.value}")
                 index += 1
 
+            userids: List[object]
             if userid:
                 userids = [int(userid)]
             else:
                 userids = self.__get_bot_users()
-            payload_data = {
+            payload_data: dict[str, object] = {
                 "text": quote(caption),
                 "user_ids": userids
             }
@@ -169,12 +179,13 @@ class SynologyChat:
             if link:
                 caption = f"{caption}\n[查看详情]({link})"
 
+            userids: List[object]
             if userid:
                 userids = [int(userid)]
             else:
                 userids = self.__get_bot_users()
 
-            payload_data = {
+            payload_data: dict[str, object] = {
                 "text": quote(caption),
                 "user_ids": userids
             }
@@ -183,7 +194,7 @@ class SynologyChat:
             logger.error(f"SynologyChat发送消息错误：{str(msg_e)}")
             return False
 
-    def __get_bot_users(self):
+    def __get_bot_users(self) -> List[object]:
         """
         查询机器人可见的用户列表
         """
@@ -199,7 +210,7 @@ class SynologyChat:
         else:
             return []
 
-    def __send_request(self, payload_data):
+    def __send_request(self, payload_data: dict[str, object]) -> bool:
         """
         发送消息请求
         """
