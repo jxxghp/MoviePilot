@@ -22,7 +22,6 @@ from app.schemas.types import (
     MediaType,
 )
 
-
 _RecommendationFunction = TypeVar("_RecommendationFunction", bound=Callable[..., object])
 
 
