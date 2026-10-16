@@ -943,8 +943,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9565,
-  "edge_sha256": "470543337cae761f4c44f9a111389b89d28553fbfb92ce6d3bc2eb7c6ea8b3c3",
+  "edge_count": 9568,
+  "edge_sha256": "eeb29fd095c84820c520d3697a1319607cd1614188bd39a85c3995416a009979",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -7601,6 +7601,9 @@
     "app.modules.indexer.parser.mtorrent -> app.modules.indexer.parser",
     "app.modules.indexer.parser.mtorrent -> app.runtime",
     "app.modules.indexer.parser.mtorrent -> app.runtime.log",
+    "app.modules.indexer.parser.nexus_audiences -> app.adapters",
+    "app.modules.indexer.parser.nexus_audiences -> app.adapters.network",
+    "app.modules.indexer.parser.nexus_audiences -> app.adapters.network.http",
     "app.modules.indexer.parser.nexus_audiences -> app.foundation",
     "app.modules.indexer.parser.nexus_audiences -> app.foundation.dom",
     "app.modules.indexer.parser.nexus_audiences -> app.foundation.size",
