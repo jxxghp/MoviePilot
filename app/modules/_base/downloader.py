@@ -6,20 +6,38 @@
 """
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, List, Optional, Tuple, TypeVar, Union
+from typing import Any, List, Optional, Protocol, Tuple, TypeVar, Union
 
 from torrentool.torrent import Torrent
 
 from app.domain import torrent as torrent_rules
-from app.modules import TService, _DownloaderBase, _ModuleBase
+from app.modules import _DownloaderBase, _ModuleBase
 from app.runtime.cache import FileCache
 from app.runtime.log import logger
 from app.schemas.types import TorrentQueryStatus, TorrentStatus
 
+
+class _DownloaderClient(Protocol):
+    """下载器连接巡检依赖的最小同步客户端接口。"""
+
+    def is_inactive(self) -> bool:
+        """判断已配置的客户端是否需要重新建立连接。"""
+        ...
+
+    def reconnect(self) -> None:
+        """按各下载器的既有登录策略刷新连接。"""
+        ...
+
+    def transfer_info(self) -> object:
+        """返回 SDK 原始传输状态，连接巡检只判断其是否为空。"""
+        ...
+
+
+DownloaderServiceT = TypeVar("DownloaderServiceT", bound=_DownloaderClient)
 TFile = TypeVar("TFile")
 
 
-class _DownloaderModuleBase(_ModuleBase, _DownloaderBase[TService]):
+class _DownloaderModuleBase(_ModuleBase, _DownloaderBase[DownloaderServiceT]):
     """
     下载器模块业务样板基类。
     """
@@ -57,10 +75,11 @@ class _DownloaderModuleBase(_ModuleBase, _DownloaderBase[TService]):
         return [item_factory(item) for item in source]
 
     def _get_torrent_info(self, content: Union[Path, str, bytes]) \
-            -> Tuple[Optional[Torrent], Optional[bytes]]:
+            -> Tuple[Optional[Torrent], Optional[Union[str, bytes]]]:
         """
         读取种子内容，返回解析后的种子信息与原始内容，磁力链接不解析
         """
+        torrent_content: Optional[Union[str, bytes]]
         torrent_info, torrent_content = None, None
         try:
             if isinstance(content, Path):
