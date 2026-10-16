@@ -15,8 +15,8 @@ from sqlalchemy.pool import StaticPool
 from app.api.dependencies import plugin as plugin_dependencies
 from app.api.dependencies.auth import get_current_active_superuser
 from app.api.endpoints import plugininstance as plugin_endpoint
-from app.db.oper.plugininstance import PluginInstanceOper
 from app.db.models.plugininstance import PluginInstance
+from app.db.oper.plugininstance import PluginInstanceOper
 from app.runtime.extensions.plugin.manager import PluginManager
 from app.runtime.extensions.plugin.storage import (
     PluginInstanceDirectory,
