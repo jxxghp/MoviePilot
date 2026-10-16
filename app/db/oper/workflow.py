@@ -171,9 +171,9 @@ class WorkflowOper(DbOper):
             lambda session: Workflow.get_event_triggered_workflows(session)
         )
 
-    def get_by_name(self, name: str) -> Workflow:
+    def get_by_name(self, name: str) -> Optional[Workflow]:
         """
-        按名称获取工作流
+        按名称获取工作流，未命中时返回 None。
         """
         return self._execute_sync_query(
             lambda session: Workflow.get_by_name(session, name)
