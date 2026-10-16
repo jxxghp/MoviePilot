@@ -1,12 +1,11 @@
-from ..tmdb import TMDb
+from urllib.parse import quote
 
-try:
-    from urllib import quote
-except ImportError:
-    from urllib.parse import quote
+from ..tmdb import TMDb
 
 
 class Search(TMDb):
+    """提供电影、剧集、人物及其他实体的同步和异步搜索。"""
+
     _urls = {
         "companies": "/search/company",
         "collections": "/search/collection",
@@ -69,7 +68,7 @@ class Search(TMDb):
         """
         params = "query=%s&page=%s" % (quote(term), page)
         if adult is not None:
-            params += "&include_adult=%s" % "true" if adult else "false"
+            params += "&include_adult=%s" % ("true" if adult else "false")
         if region is not None:
             params += "&region=%s" % quote(region)
         if year is not None:
@@ -94,7 +93,7 @@ class Search(TMDb):
         """
         params = "query=%s&page=%s" % (quote(term), page)
         if adult is not None:
-            params += "&include_adult=%s" % "true" if adult else "false"
+            params += "&include_adult=%s" % ("true" if adult else "false")
         if region is not None:
             params += "&region=%s" % quote(region)
         return self._request_obj(
@@ -114,7 +113,7 @@ class Search(TMDb):
         """
         params = "query=%s&page=%s" % (quote(term), page)
         if adult is not None:
-            params += "&include_adult=%s" % "true" if adult else "false"
+            params += "&include_adult=%s" % ("true" if adult else "false")
         if region is not None:
             params += "&region=%s" % quote(region)
         return self._request_obj(
@@ -134,7 +133,7 @@ class Search(TMDb):
         """
         params = "query=%s&page=%s" % (quote(term), page)
         if adult is not None:
-            params += "&include_adult=%s" % "true" if adult else "false"
+            params += "&include_adult=%s" % ("true" if adult else "false")
         if release_year is not None:
             params += "&first_air_date_year=%s" % release_year
         return self._request_obj(
@@ -194,7 +193,7 @@ class Search(TMDb):
         """
         params = "query=%s&page=%s" % (quote(term), page)
         if adult is not None:
-            params += "&include_adult=%s" % "true" if adult else "false"
+            params += "&include_adult=%s" % ("true" if adult else "false")
         if region is not None:
             params += "&region=%s" % quote(region)
         return await self._async_request_obj(
@@ -215,7 +214,7 @@ class Search(TMDb):
         """
         params = "query=%s&page=%s" % (quote(term), page)
         if adult is not None:
-            params += "&include_adult=%s" % "true" if adult else "false"
+            params += "&include_adult=%s" % ("true" if adult else "false")
         if region is not None:
             params += "&region=%s" % quote(region)
         return await self._async_request_obj(
@@ -237,7 +236,7 @@ class Search(TMDb):
         """
         params = "query=%s&page=%s" % (quote(term), page)
         if adult is not None:
-            params += "&include_adult=%s" % "true" if adult else "false"
+            params += "&include_adult=%s" % ("true" if adult else "false")
         if region is not None:
             params += "&region=%s" % quote(region)
         if year is not None:
@@ -262,7 +261,7 @@ class Search(TMDb):
         """
         params = "query=%s&page=%s" % (quote(term), page)
         if adult is not None:
-            params += "&include_adult=%s" % "true" if adult else "false"
+            params += "&include_adult=%s" % ("true" if adult else "false")
         if release_year is not None:
             params += "&first_air_date_year=%s" % release_year
         return await self._async_request_obj(
