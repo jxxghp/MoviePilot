@@ -1,7 +1,7 @@
 """调度器业务能力装配与生命周期入口。"""
 
 import asyncio
-from typing import Awaitable, Optional
+from typing import Awaitable, Callable, Optional
 
 from app.application.agenttask import AgentTaskRepository
 from app.application.image import WallpaperHelper
@@ -33,8 +33,8 @@ def reset_scheduler_runtime() -> None:
 
 def reset_scheduler_bindings() -> None:
     """在 Scheduler 已停止后撤销当前 lifespan 的仓储、业务能力和类登记。"""
-    # Singleton 元类保留旧动态接口，当前 owner 在此精确收窄为 Scheduler。
-    scheduler = Scheduler.get_existing_instance()  # type: ignore[no-untyped-call]
+    existing_scheduler: Callable[[], Optional[Scheduler]] = Scheduler.get_existing_instance
+    scheduler = existing_scheduler()
     if scheduler is not None:
         scheduler.reset_runtime_bindings()
     reset_scheduler_runtime()
