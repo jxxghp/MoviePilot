@@ -14,6 +14,7 @@ class SCGITransport(xmlrpc.client.Transport):
     """
 
     def single_request(self, host, handler, request_body, verbose=False):
+        """用 SCGI netstring 交换 XML-RPC 报文，并在解析前释放连接。"""
         # 建立socket连接
         parsed = urlparse(f"scgi://{host}")
         sock = socket.create_connection(
@@ -47,6 +48,7 @@ class SCGITransport(xmlrpc.client.Transport):
             response = response[header_end + 4 :]
 
         # 解析XML-RPC响应
+        self.verbose = verbose
         return self.parse_response(self._build_response(response))
 
     @staticmethod
@@ -58,7 +60,10 @@ class SCGITransport(xmlrpc.client.Transport):
         import io
 
         class _FakeSocket(io.BytesIO):
+            """为 HTTPResponse 提供内存 socket 接口，复用标准库 XML-RPC 解码。"""
+
             def makefile(self, *args, **kwargs):
+                """返回当前字节流供 HTTPResponse 读取。"""
                 return self
 
         raw = b"HTTP/1.0 200 OK\r\nContent-Type: text/xml\r\n\r\n" + data
@@ -80,6 +85,7 @@ class Rtorrent:
         password: Optional[str] = None,
         **kwargs,
     ):
+        """读取下载器连接配置并建立代理，连接失败时保留待重连状态。"""
         self._proxy = None
         if host and port:
             self._host = f"{host}:{port}"
@@ -103,7 +109,9 @@ class Rtorrent:
             if url.startswith("scgi://"):
                 # SCGI直连模式
                 logger.info(f"正在通过SCGI连接 rTorrent：{url}")
-                proxy = xmlrpc.client.ServerProxy(url, transport=SCGITransport())
+                # ServerProxy 仅接受 HTTP scheme；该 URI 只用于解析地址，实际报文仍由 SCGITransport 发送。
+                proxy_url = "http://" + url[len("scgi://"):]
+                proxy = xmlrpc.client.ServerProxy(proxy_url, transport=SCGITransport())
             else:
                 # HTTP模式 (通过nginx/ruTorrent代理)
                 if not url.startswith("http"):
