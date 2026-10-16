@@ -1,9 +1,20 @@
+from collections.abc import Mapping
 from enum import Enum
-from typing import Optional, Union
+from typing import Optional, TypedDict, Union
 
 from app.runtime.cache import AsyncTTLCache, TTLCache
 from app.runtime.localization import LocaleHelper
 from app.schemas.types import ProgressKey
+
+
+class ProgressSnapshot(TypedDict, total=False):
+    """进度缓存的已声明字段；允许历史或部分快照缺少键。"""
+
+    enable: bool
+    value: float
+    text: str
+    text_i18n: str
+    data: dict[str, object]
 
 
 class ProgressHelper:
@@ -43,7 +54,7 @@ class ProgressHelper:
     def end(
             self,
             text: Optional[str] = "",
-            data: Optional[dict] = None,
+            data: Optional[Mapping[str, object]] = None,
             value: Optional[Union[float, int]] = 100,
     ) -> None:
         """
@@ -66,7 +77,7 @@ class ProgressHelper:
             self,
             value: Optional[Union[float, int]] = None,
             text: Optional[str] = None,
-            data: Optional[dict] = None,
+            data: Optional[Mapping[str, object]] = None,
     ) -> None:
         """
         更新进度
@@ -84,14 +95,14 @@ class ProgressHelper:
             current['data'].update(data)
         self._progress[self._key] = current
 
-    def get(self, locale: Optional[str] = None) -> Optional[dict]:
+    def get(self, locale: Optional[str] = None) -> Optional[ProgressSnapshot]:
         """
         获取当前进度，并按语言补充前端展示字段。
 
         :param locale: 目标语言，未传入时使用当前请求上下文语言
         :return: 当前进度字典
         """
-        current = self._progress.get(self._key)
+        current: ProgressSnapshot | None = self._progress.get(self._key)
         if not current:
             return current
 
@@ -158,7 +169,7 @@ class AsyncProgressHelper:
     async def end(
             self,
             text: Optional[str] = "",
-            data: Optional[dict] = None,
+            data: Optional[Mapping[str, object]] = None,
             value: Optional[Union[float, int]] = 100,
     ) -> None:
         """
@@ -187,7 +198,7 @@ class AsyncProgressHelper:
             self,
             value: Optional[Union[float, int]] = None,
             text: Optional[str] = None,
-            data: Optional[dict] = None,
+            data: Optional[Mapping[str, object]] = None,
     ) -> None:
         """
         更新进度
@@ -205,14 +216,14 @@ class AsyncProgressHelper:
             current['data'].update(data)
         await self._progress.set(self._key, current)
 
-    async def get(self, locale: Optional[str] = None) -> Optional[dict]:
+    async def get(self, locale: Optional[str] = None) -> Optional[ProgressSnapshot]:
         """
         获取当前进度，并按语言补充前端展示字段。
 
         :param locale: 目标语言，未传入时使用当前请求上下文语言
         :return: 当前进度字典
         """
-        current = await self._progress.get(self._key)
+        current: ProgressSnapshot | None = await self._progress.get(self._key)
         if not current:
             return current
 

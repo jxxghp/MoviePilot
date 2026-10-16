@@ -182,6 +182,7 @@ def test_scheduler_records_cancelled_async_job_as_failed():
         raise asyncio.CancelledError
 
     async def run_task():
+        """等待取消传播到调度外壳并完成失败终态收口。"""
         job = scheduler._prepare_job(job_id)
         with pytest.raises(asyncio.CancelledError):
             await scheduler._run_coro_job(task, job_id, job)
@@ -245,6 +246,7 @@ def test_async_progress_end_rebuilds_terminal_snapshot_after_read_failure():
         """模拟读取失败但仍可写入的进度后端。"""
 
         def __init__(self):
+            """初始化用于观察终态写入的缓存槽位。"""
             self.value = None
 
         async def get(self, _key):

@@ -2400,10 +2400,6 @@
     "no-any-return": 6,
     "type-arg": 4
   },
-  "app/runtime/progress.py": {
-    "no-any-return": 4,
-    "type-arg": 6
-  },
   "app/runtime/rate.py": {
     "assignment": 1,
     "no-untyped-call": 8,
