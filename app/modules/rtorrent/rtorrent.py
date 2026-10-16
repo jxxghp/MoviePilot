@@ -87,6 +87,7 @@ class Rtorrent:
     ):
         """读取下载器连接配置并建立代理，连接失败时保留待重连状态。"""
         self._proxy = None
+        self._host = ""
         if host and port:
             self._host = f"{host}:{port}"
         elif host:

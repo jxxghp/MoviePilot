@@ -137,3 +137,18 @@ def test_http_login_keeps_standard_transport(monkeypatch, scheme):
     assert handler == "/RPC2"
     assert verbose is False
     assert xmlrpc.client.loads(body) == ((), "system.client_version")
+
+
+@pytest.mark.parametrize("host, port", [(None, None), ("", None), (None, 5000), ("", 5000)])
+def test_incomplete_configuration_keeps_client_disabled(monkeypatch, host, port):
+    """未配置主机时状态检查和重连保持禁用，不尝试建立网络代理。"""
+    proxy = Mock(side_effect=AssertionError("unconfigured client must not connect"))
+    monkeypatch.setattr("app.modules.rtorrent.rtorrent.xmlrpc.client.ServerProxy", proxy)
+
+    client = Rtorrent(host=host, port=port)
+
+    assert client.is_inactive() is False
+    client.reconnect()
+    assert client.is_inactive() is False
+    assert client.get_torrents() == ([], True)
+    proxy.assert_not_called()
