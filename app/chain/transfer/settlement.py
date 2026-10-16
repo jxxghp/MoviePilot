@@ -744,7 +744,8 @@ class TransferSettlementOwner(_TransferOwnerBase):
     ) -> bool:
         """确认种子下载完成；查询失败或缺失时记录原因，不把未知状态当作完成。"""
         try:
-            torrents = self.list_torrents(hashs=download_hash, downloader=downloader)
+            # Hash 已唯一定位任务；工作流自定义标签或调整 TORRENT_TAG 后的任务也要能回写。
+            torrents = self.list_torrents(hashs=download_hash, downloader=downloader, include_all_tags=True)
             if not torrents:
                 logger.warning(
                     f"下载器 {downloader} 中未查询到种子 {download_hash}，无法回写已整理标签，请检查种子是否已移除或历史关联是否正确"
