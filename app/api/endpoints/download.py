@@ -255,7 +255,7 @@ def download(
     return _SchemaResponse(success=True, data={"download_id": did})
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/artist-collection",
     summary="添加艺术家合集下载",
     response_model=_SchemaResponse[_SchemaDownloadAddedData],
@@ -428,7 +428,7 @@ def stop(
     return _SchemaResponse(success=True if ret else False)
 
 
-@router.patch(  # type: ignore[misc]
+@router.patch(
     "/{hashString}",
     summary="高级更新下载任务",
     response_model=_SchemaResponse[_SchemaDownloadTaskUpdateData],
@@ -461,7 +461,7 @@ async def update_task(
     )
 
 
-@router.post(  # type: ignore[misc]
+@router.post(
     "/{hashString}/classify-source",
     summary="识别并归类已有下载任务",
     response_model=_SchemaResponse[_SchemaDownloadSourceClassificationData],
