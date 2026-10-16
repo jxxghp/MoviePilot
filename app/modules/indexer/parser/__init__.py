@@ -3,7 +3,7 @@ import json
 import re
 from abc import ABCMeta, abstractmethod
 from enum import Enum
-from typing import Optional
+from typing import ClassVar, Literal, Optional, TypeAlias, Union
 from urllib.parse import urljoin, urlsplit
 
 from app.adapters.network.cloudflare import under_challenge
@@ -12,6 +12,10 @@ from app.domain.site import SiteUtils
 from app.foundation import size as size_tools
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
+
+# API 模式沿用空字典作为首页占位；实际响应正文仍是文本。
+SitePage: TypeAlias = Union[str, dict[str, object]]
+MessageContent: TypeAlias = tuple[Optional[str], Optional[str], Optional[str]]
 
 
 # 站点框架
@@ -44,7 +48,7 @@ class SiteParserBase(metaclass=ABCMeta):
     """站点用户数据解析器基类"""
 
     # 站点模版
-    schema = None
+    schema: ClassVar[Optional[SiteSchema]] = None
     # 请求模式 cookie/apikey
     request_mode = "cookie"
     # 详情页默认依赖用户 ID；当前会话接口可在配置页面时关闭此前置校验。
@@ -52,14 +56,14 @@ class SiteParserBase(metaclass=ABCMeta):
 
     def __init__(self, site_name: str,
                  url: str,
-                 site_cookie: str,
-                 apikey: str,
-                 token: str,
+                 site_cookie: Optional[str],
+                 apikey: Optional[str],
+                 token: Optional[str],
                  request_utils: Optional[RequestUtils] = None,
                  ua: Optional[str] = None,
                  emulate: bool = False,
-                 proxy: bool = None,
-                 api_url: Optional[str] = None):
+                 proxy: Optional[bool] = None,
+                 api_url: Optional[str] = None) -> None:
         """
         初始化站点用户数据解析器
 
@@ -90,12 +94,12 @@ class SiteParserBase(metaclass=ABCMeta):
         self._ua = ua
         self._emulate = emulate
         self._proxy = proxy
-        self._index_html = ""
+        self._index_html: SitePage = ""
         # 用户信息
-        self.username = None
-        self.userid = None
-        self.user_level = None
-        self.join_at = None
+        self.username: Union[str, int, None] = None
+        self.userid: Union[str, int, None] = None
+        self.user_level: Union[str, int, None] = None
+        self.join_at: Optional[str] = None
         self.bonus = 0.0
 
         # 上传/下载量按整数字节计，分享率为浮点数
@@ -115,63 +119,63 @@ class SiteParserBase(metaclass=ABCMeta):
         self.completed_size = 0
         self.incomplete_size = 0
         # 做种人数, 种子大小
-        self.seeding_info = []
+        self.seeding_info: list[list[int]] = []
 
         # 未读消息
         self.message_unread = 0
-        self.message_unread_contents = []
+        self.message_unread_contents: list[Union[MessageContent, tuple[Optional[str], Optional[str], Optional[str], Optional[str]]]] = []
         self.message_read_force = False
 
         # 全局附加请求头
-        self._addition_headers = None
+        self._addition_headers: Optional[dict[str, Optional[str]]] = None
 
         # 用户基础信息页面
-        self._user_basic_page = None
+        self._user_basic_page: Optional[str] = None
         # 用户基础信息参数
-        self._user_basic_params = None
+        self._user_basic_params: Optional[dict[str, object]] = None
         # 用户基础信息请求方法
-        self._user_basic_method = None
+        self._user_basic_method: Optional[str] = None
         # 用户基础信息请求头
-        self._user_basic_headers = None
+        self._user_basic_headers: Optional[dict[str, Optional[str]]] = None
 
         # 用户详情信息页面
-        self._user_detail_page = "userdetails.php?id="
+        self._user_detail_page: Optional[str] = "userdetails.php?id="
         # 用户详情信息参数
-        self._user_detail_params = None
+        self._user_detail_params: Optional[dict[str, object]] = None
         # 用户详情信息请求头
-        self._user_detail_headers = None
+        self._user_detail_headers: Optional[dict[str, Optional[str]]] = None
 
         # 用户流量信息页面
-        self._user_traffic_page = "index.php"
+        self._user_traffic_page: Optional[str] = "index.php"
         # 用户流量信息参数
-        self._user_traffic_params = None
+        self._user_traffic_params: Optional[dict[str, object]] = None
         # 用户流量信息请求头
-        self._user_traffic_headers = None
+        self._user_traffic_headers: Optional[dict[str, Optional[str]]] = None
 
         # 用户未读消息页面
-        self._user_mail_unread_page = "messages.php?action=viewmailbox&box=1&unread=yes"
+        self._user_mail_unread_page: Optional[str] = "messages.php?action=viewmailbox&box=1&unread=yes"
         # 系统未读消息页面
-        self._sys_mail_unread_page = "messages.php?action=viewmailbox&box=-2&unread=yes"
+        self._sys_mail_unread_page: Optional[str] = "messages.php?action=viewmailbox&box=-2&unread=yes"
         # 未读消息数参数
-        self._mail_unread_params = None
+        self._mail_unread_params: Optional[dict[str, object]] = None
         # 未读消息数请求头
-        self._mail_unread_headers = None
+        self._mail_unread_headers: Optional[dict[str, Optional[str]]] = None
         # 未读消息内容参数
-        self._mail_content_params = None
+        self._mail_content_params: Optional[dict[str, object]] = None
         # 未读消息内容请求头
-        self._mail_content_headers = None
+        self._mail_content_headers: Optional[dict[str, Optional[str]]] = None
 
         # 用户做种信息页面
-        self._torrent_seeding_page = "getusertorrentlistajax.php?userid="
+        self._torrent_seeding_page: Optional[str] = "getusertorrentlistajax.php?userid="
         # 用户做种信息参数
-        self._torrent_seeding_params = None
+        self._torrent_seeding_params: Optional[dict[str, object]] = None
         # 用户做种信息请求头
-        self._torrent_seeding_headers = None
+        self._torrent_seeding_headers: Optional[dict[str, Optional[str]]] = None
 
         # 错误信息
         self.err_msg: Optional[str] = None
 
-    def site_schema(self) -> SiteSchema:
+    def site_schema(self) -> Optional[SiteSchema]:
         """
         站点解析模型
         :return: 站点解析模型
@@ -179,7 +183,7 @@ class SiteParserBase(metaclass=ABCMeta):
         return self.schema
 
     @staticmethod
-    def num_filesize(text) -> int:
+    def num_filesize(text: Union[str, int, float]) -> int:
         """
         将站点页面中的文件大小文本转换为字节。
         """
@@ -196,7 +200,7 @@ class SiteParserBase(metaclass=ABCMeta):
             return bool(user_id) and user_id != "0"
         return bool(self.userid) and self.userid != 0
 
-    def parse(self):
+    def parse(self) -> None:
         """
         解析站点信息
         :return:
@@ -257,7 +261,7 @@ class SiteParserBase(metaclass=ABCMeta):
             # 关闭连接
             self.close()
 
-    def _pase_unread_msgs(self):
+    def _pase_unread_msgs(self) -> None:
         """
         解析所有未读消息标题和内容
         :return:
@@ -268,7 +272,7 @@ class SiteParserBase(metaclass=ABCMeta):
             for link in links:
                 if not link:
                     continue
-                msg_links = []
+                msg_links: list[str] = []
                 next_page = self._parse_message_unread_links(
                     self._get_page_content(
                         url=urljoin(self._base_url, link),
@@ -292,17 +296,20 @@ class SiteParserBase(metaclass=ABCMeta):
         # 解析未读消息内容
         for msg_link in unread_msg_links:
             logger.debug(f"{self._site_name} 信息链接 {msg_link}")
-            head, date, content = self._parse_message_content(
+            message = self._parse_message_content(
                 self._get_page_content(
                     urljoin(self._base_url, msg_link),
                     params=self._mail_content_params,
                     headers=self._mail_content_headers
                 )
             )
+            if message is None:
+                raise TypeError("cannot unpack non-iterable NoneType object")
+            head, date, content = message
             logger.debug(f"{self._site_name} 标题 {head} 时间 {date} 内容 {content}")
             self.message_unread_contents.append((head, date, content))
 
-    def _parse_seeding_pages(self):
+    def _parse_seeding_pages(self) -> None:
         """
         解析做种页面
         """
@@ -330,14 +337,16 @@ class SiteParserBase(metaclass=ABCMeta):
                     multi_page=True)
 
     @staticmethod
-    def _prepare_html_text(html_text):
+    def _prepare_html_text(html_text: SitePage) -> str:
         """
         处理掉HTML中的干扰部分
         """
+        if isinstance(html_text, dict):
+            raise TypeError("expected string or bytes-like object, got 'dict'")
         return re.sub(r"#\d+", "", re.sub(r"\d+px", "", html_text))
 
     @abstractmethod
-    def _parse_message_unread_links(self, html_text: str, msg_links: list) -> Optional[str]:
+    def _parse_message_unread_links(self, html_text: str, msg_links: list[str]) -> Optional[str]:
         """
         获取未阅读消息链接
         :param html_text:
@@ -348,10 +357,10 @@ class SiteParserBase(metaclass=ABCMeta):
     def _get_page_content(
         self,
         url: str,
-        params: dict = None,
-        headers: dict = None,
+        params: Optional[dict[str, object]] = None,
+        headers: Optional[dict[str, Optional[str]]] = None,
         method: Optional[str] = None,
-    ):
+    ) -> str:
         """
         获取页面内容
         :param url: 网页地址
@@ -360,7 +369,7 @@ class SiteParserBase(metaclass=ABCMeta):
         :param method: 强制使用的 HTTP 请求方法
         :return:
         """
-        req_headers = None
+        req_headers: Optional[dict[str, Optional[str]]] = None
         proxies = get_runtime_setting('PROXY') if self._proxy else None
         if self._ua or headers or self._addition_headers:
 
@@ -435,14 +444,15 @@ class SiteParserBase(metaclass=ABCMeta):
                     logger.warn(
                         f"{self._site_name} 检测到Cloudflare，请更新Cookie和UA")
                     return ""
-                return RequestUtils.get_decoded_html_content(res,
+                html_content: str = RequestUtils.get_decoded_html_content(res,
                                                              get_runtime_setting('ENCODING_DETECTION_PERFORMANCE_MODE'),
                                                              get_runtime_setting('ENCODING_DETECTION_MIN_CONFIDENCE'))
+                return html_content
 
         return ""
 
     @abstractmethod
-    def _parse_site_page(self, html_text: str):
+    def _parse_site_page(self, html_text: SitePage) -> None:
         """
         解析站点相关信息页面
         :param html_text:
@@ -451,7 +461,7 @@ class SiteParserBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def _parse_user_base_info(self, html_text: str):
+    def _parse_user_base_info(self, html_text: SitePage) -> None:
         """
         解析用户基础信息
         :param html_text:
@@ -473,7 +483,7 @@ class SiteParserBase(metaclass=ABCMeta):
         return logged_in
 
     @abstractmethod
-    def _parse_user_traffic_info(self, html_text: str):
+    def _parse_user_traffic_info(self, html_text: str) -> None:
         """
         解析用户的上传，下载，分享率等信息
         :param html_text:
@@ -482,7 +492,7 @@ class SiteParserBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: bool = False) -> Optional[str]:
+    def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: bool = False) -> Union[str, Literal[False], None]:
         """
         解析用户的做种相关信息
         :param html_text:
@@ -492,7 +502,7 @@ class SiteParserBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def _parse_user_detail_info(self, html_text: str):
+    def _parse_user_detail_info(self, html_text: str) -> None:
         """
         解析用户的详细信息
         加入时间/等级/魔力值等
@@ -502,7 +512,7 @@ class SiteParserBase(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def _parse_message_content(self, html_text):
+    def _parse_message_content(self, html_text: str) -> Optional[MessageContent]:
         """
         解析短消息内容
         :param html_text:
@@ -510,13 +520,13 @@ class SiteParserBase(metaclass=ABCMeta):
         """
         pass
 
-    def close(self):
+    def close(self) -> None:
         """
         关闭会话
         """
         self._request_utils.close()
 
-    def clear(self):
+    def clear(self) -> None:
         """
         清除当前解析器的所有信息
         """
@@ -524,7 +534,7 @@ class SiteParserBase(metaclass=ABCMeta):
         self.seeding_info.clear()
         self.message_unread_contents.clear()
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, object]:
         """
         转化为字典
         """
