@@ -93,6 +93,12 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
 
 ### 存储与监控的边界回归
 
+`tests/test_transfer_safe_overwrite.py` 使用真实临时文件验证覆盖失败保留旧文件，
+并在持久步骤边界模拟中断；copy、move、硬链接和软链接均须先完成新文件再替换旧目标。
+恢复回归还需验证源文件被替换、新目标变成半文件、备份被替换以及历史清理的符号链接路径，
+不能仅凭路径存在就删除源文件或旧备份。
+远端状态不明保持人工复核，不能通过删除旧文件后盲目重试证明成功。
+
 存储快照用例优先在 SDK 的目录列表、stat、类型查询和连接边界打桩，保留真实的路径映射、
 文件项构造、快照遍历及轮询逻辑。仅替换 `snapshot_storage` 的返回值可以验证轮询器，
 但不能证明存储适配器正确区分了空目录与查询失败。
@@ -109,6 +115,11 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
 边界复现同样的状态转换，并评估目录时间语义、分页和请求成本。
 
 ## 种子下载重试回归
+
+下载选集回归使用真实 qBittorrent/Transmission Module 与离线下载器端口，验证自定义识别词
+从订阅计划一直传到下载器文件选择；目标集数不匹配或优先级未确认时不启动任务，不能写成功历史。
+启动结果未知时尝试确认暂停；无法确认则明确要求检查下载器，不能宣称任务已停止。
+已有下载任务只按原始种子 info 字节或磁力中的 v1/v2 哈希确认，名称与大小相同不能接管任务。
 
 普通电视剧首次下载的整包优先回归见 `tests/test_subscribe_paged_search.py`：订阅没有下载记录，
 且最新媒体库缺失全部目标集时，先收集所选搜索范围内的候选再尝试完整包；单页策略仍只查每个
@@ -141,6 +152,14 @@ with patch.object(SomeModule, "fetch", new=AsyncMock(return_value=FAKE)):
 当前识别词和允许集数仍在每批重新应用。
 
 ## 自隔离：用了什么，就还原什么
+
+`tests/test_workflow_safety.py` 使用真实工作流 manager、执行器和节点线程模拟同 ID 重跑、
+终态事务阻塞与失败，确保准入之前没有 reset/start，真实结束和最终落盘之前不释放 owner。
+虚拟时钟验证普通同步动作超时、循环等待截止与协作取消；单节点无边图可执行，坏 DAG 保存和运行均拒绝。
+`tests/test_security_user_boundaries.py` 覆盖管理权限、已有/未落库会话隔离、用户名回收、
+旧记录恢复、缓存授权以及管理员续聊保留原归属和实际执行人。
+图片代理测试通过真实组合根 HTTP Adapter 和 MockTransport 验证跳转在请求前拒绝，
+事件契约/SDK 测试同时验证诊断无原始输入和嵌套快照隔离，均无需外部网络。
 
 用例若修改了**进程级状态**——`sys.modules` 桩、单例（`Singleton._instances`）、`lru_cache`、环境变量、`settings` 字段——必须在用例或模块结束时还原。pytest 一次性导入全部测试模块，未还原的污染会扩散到后续用例，产生“单独跑过、一起跑挂”的测不准现象。
 

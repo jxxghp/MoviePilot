@@ -1,5 +1,7 @@
 """插件 SDK 事件快照访问测试。"""
 
+import pytest
+
 from app.domain.context import Context, MediaInfo, MusicInfo
 from app.runtime.event.snapshot import (
     EventPayloadSnapshot as RuntimeEventPayloadSnapshot,
@@ -97,3 +99,30 @@ def test_invalid_known_event_returns_validation_errors_instead_of_raising() -> N
     assert snapshot.payload is None
     assert snapshot.errors
     assert "DownloadAddedContractData" in snapshot.errors[0]
+
+
+@pytest.mark.parametrize("event_type,raw,field", [
+    (EventType.PluginAction, {"plugin_id": "Demo", "custom": {"items": ["original"]}}, "custom"),
+    (ChainEventType.AgentLLMProvider, {"metadata": {"items": ["original"]}}, "metadata"),
+])
+def test_dict_snapshot_detaches_nested_extension_data(event_type, raw, field) -> None:
+    """dict 解析出的 Any/扩展字段也必须深复制，插件改快照不能污染原事件或另一个快照。"""
+    first = snapshot_event_data(event_type, raw)
+    second = snapshot_event_data(event_type, raw)
+    assert first.valid and second.valid
+    getattr(first.payload, field)["items"].append("changed")
+    assert raw[field]["items"] == ["original"]
+    assert getattr(second.payload, field)["items"] == ["original"]
+    raw[field]["items"].append("raw-change")
+    assert getattr(second.payload, field)["items"] == ["original"]
+
+
+def test_snapshot_validation_errors_do_not_expose_credentials() -> None:
+    """SDK 错误对象与日志使用同一脱敏策略，保留模型名而不带原始输入。"""
+    snapshot = snapshot_event_data(
+        ChainEventType.AuthVerification,
+        {"username": {"nested": "secret-username"}, "password": "secret-password"},
+    )
+    assert not snapshot.valid
+    assert "AuthCredentials" in snapshot.errors[0]
+    assert "secret-" not in str(snapshot.errors)

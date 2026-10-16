@@ -239,7 +239,13 @@ async def upload_web_agent_file(
     """
     mime_type = file.content_type or mimetypes.guess_type(file.filename or "")[0]
     safe_name = web_agent_application.sanitize_web_agent_upload_name(file.filename, mime_type)
-    upload_dir = await web_agent_application.get_web_agent_upload_dir(current_user, session_id, service)
+    try:
+        upload_dir = await web_agent_application.get_web_agent_upload_dir(current_user, session_id, service)
+    except PermissionError as err:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="会话不存在或无权访问",
+        ) from err
     target_path = upload_dir / f"{uuid.uuid4().hex[:8]}_{safe_name}"
     try:
         size = await web_agent_application.save_web_agent_upload(file, target_path)

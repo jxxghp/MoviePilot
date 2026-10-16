@@ -661,7 +661,7 @@ def test_workflow_chain_process_serializes_circular_context(monkeypatch):
     fake_manager = _FakeWorkflowManager(calls, results={"A": run_action})
     workflow = _build_workflow(
         actions=[{"id": "A", "type": "FakeAction", "name": "动作A", "data": {}}],
-        flows=[{"id": "flow-end", "source": "A", "target": "END", "animated": True}],
+        flows=[],
     )
     fake_oper = _FakeWorkflowOper(workflow)
     port_calls = []
@@ -909,7 +909,7 @@ def test_workflow_manager_shutdown_retains_blocked_execution_for_retry(monkeypat
 
         rejected = workflow_module.WorkflowExecutor(workflow)
         assert rejected.admit() is False
-        assert rejected.errmsg == "工作流服务正在停止"
+        assert rejected.errmsg == "工作流正在执行或服务正在停止"
     finally:
         release.set()
         execution_thread.join(timeout=2)
@@ -930,6 +930,7 @@ def test_workflow_manager_shutdown_continues_across_owner_failures():
         def __init__(self, manager, *, fail: bool = False):
             """保存管理器、失败开关和调用计数。"""
             self.manager = manager
+            self.workflow_id = id(self)
             self.fail = fail
             self.stop_calls = 0
             self.wait_calls = 0
@@ -1009,7 +1010,7 @@ def test_workflow_chain_rejects_execution_before_persisting_running_state(monkey
     success, message = workflow_module.WorkflowChain.process(workflow_id=1)
 
     assert success is False
-    assert message == "工作流服务正在停止"
+    assert message == "工作流正在执行或服务正在停止"
     assert workflowoper.started is False
 
 

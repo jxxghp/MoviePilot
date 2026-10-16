@@ -288,14 +288,14 @@ class AgentChatService:
         record: AgentChatRecord,
         principal: AgentChatPrincipal,
     ) -> bool:
-        """判断用户是否拥有会话访问权。"""
-        if principal.is_superuser:
+        """优先按稳定用户 ID 授权，仅无 ID 旧记录回退到用户名。"""
+        if getattr(principal, "is_superuser", False):
             return True
         user_id = str(principal.id)
         username = str(principal.name or "")
-        return record.user_id == user_id or (
-            bool(username) and record.username == username
-        )
+        if record.user_id:
+            return str(record.user_id) == user_id
+        return bool(username) and record.username == username
 
     @staticmethod
     def to_summary(record: AgentChatRecord) -> AgentChatSessionSummary:

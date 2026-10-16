@@ -1,5 +1,8 @@
 """种子身份与下载链接的纯领域判断规则。"""
 
+import base64
+import binascii
+import hashlib
 import re
 from typing import TYPE_CHECKING, Optional, Union
 from urllib.parse import parse_qs, urlsplit
@@ -17,6 +20,93 @@ def is_magnet_link(content: Union[str, bytes]) -> bool:
     if isinstance(content, bytes):
         return content.startswith(b"magnet:")
     return False
+
+
+def _bencoded_value_end(content: bytes, offset: int) -> int:
+    """跳过一个完整 bencode 值，保留 info 原始字节以避免重编码改变哈希。"""
+    marker = content[offset:offset + 1]
+    if marker == b"i":
+        end = content.index(b"e", offset + 1)
+        if not re.fullmatch(rb"0|-?[1-9][0-9]*", content[offset + 1:end]):
+            raise ValueError("bencode 整数无效")
+        return end + 1
+    if marker in (b"d", b"l"):
+        offset += 1
+        keys: set[bytes] = set()
+        while content[offset:offset + 1] != b"e":
+            if marker == b"d":
+                if not content[offset:offset + 1].isdigit():
+                    raise ValueError("bencode 字典键无效")
+                separator = content.index(b":", offset)
+                key_end = _bencoded_value_end(content, offset)
+                key = content[separator + 1:key_end]
+                if key in keys:
+                    raise ValueError("bencode 字典键重复")
+                keys.add(key)
+                offset = key_end
+            offset = _bencoded_value_end(content, offset)
+        return offset + 1
+    if marker.isdigit():
+        separator = content.index(b":", offset)
+        if not re.fullmatch(rb"0|[1-9][0-9]*", content[offset:separator]):
+            raise ValueError("bencode 字符串长度无效")
+        length = int(content[offset:separator])
+        end = separator + 1 + length
+        if end > len(content):
+            raise ValueError("bencode 字符串不完整")
+        return end
+    raise ValueError("bencode 值无效")
+
+
+def _bencoded_dictionary(content: bytes) -> dict[bytes, bytes]:
+    """提取字典直属键值的原始切片，不解码二进制文件树或 pieces root。"""
+    if not content.startswith(b"d") or _bencoded_value_end(content, 0) != len(content):
+        raise ValueError("bencode 字典无效")
+    result: dict[bytes, bytes] = {}
+    offset = 1
+    while content[offset:offset + 1] != b"e":
+        if not content[offset:offset + 1].isdigit():
+            raise ValueError("bencode 字典键无效")
+        separator = content.index(b":", offset)
+        key_end = _bencoded_value_end(content, offset)
+        key = content[separator + 1:key_end]
+        value_end = _bencoded_value_end(content, key_end)
+        if key in result:
+            raise ValueError("bencode 字典键重复")
+        result[key] = content[key_end:value_end]
+        offset = value_end
+    return result
+
+
+def download_hashes(content: Union[str, bytes]) -> frozenset[str]:
+    """读取实际种子或磁力的 v1/v2 身份；v2 同时接受下载器使用的 40 位截断哈希。
+
+    哈希只由原始 info 字节或明确的磁力标识构造，名称和大小不构成身份。
+    解析失败返回空集合，调用方不得据此接管其它已有任务。
+    """
+    try:
+        hashes: set[str] = set()
+        if is_magnet_link(content):
+            url = content.decode("utf-8") if isinstance(content, bytes) else content
+            for value in parse_qs(urlsplit(url).query).get("xt", []):
+                if match := re.fullmatch(r"urn:btih:([a-fA-F0-9]{40})", value):
+                    hashes.add(match.group(1).lower())
+                elif match := re.fullmatch(r"urn:btih:([a-zA-Z2-7]{32})", value):
+                    hashes.add(base64.b32decode(match.group(1).upper()).hex())
+                elif match := re.fullmatch(r"urn:btmh:1220([a-fA-F0-9]{64})", value):
+                    digest = match.group(1).lower()
+                    hashes.update((digest, digest[:40]))
+        elif isinstance(content, bytes):
+            info = _bencoded_dictionary(content).get(b"info", b"")
+            fields = _bencoded_dictionary(info)
+            if b"pieces" in fields:
+                hashes.add(hashlib.sha1(info).hexdigest())
+            if fields.get(b"meta version") == b"i2e":
+                digest = hashlib.sha256(info).hexdigest()
+                hashes.update((digest, digest[:40]))
+        return frozenset(hashes)
+    except (ValueError, TypeError, UnicodeError, binascii.Error, RecursionError):
+        return frozenset()
 
 
 def resource_identity(torrent: "TorrentInfo") -> Optional[tuple[str, str]]:

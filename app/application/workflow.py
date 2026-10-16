@@ -1,6 +1,7 @@
 """工作流状态与定义写操作应用用例。"""
 
 import json
+from collections import deque
 from collections.abc import Awaitable
 from dataclasses import dataclass
 from datetime import datetime
@@ -16,6 +17,82 @@ SUPPORTED_WORKFLOW_TRIGGERS = {
     WORKFLOW_TRIGGER_EVENT,
     WORKFLOW_TRIGGER_MANUAL,
 }
+
+
+def _workflow_graph_entries(value: object, kind: str) -> tuple[Mapping[str, object], ...]:
+    """规范化动作或流程列表，并拒绝共享 JSON 中格式错误的条目。"""
+    if value is None:
+        return ()
+    if not isinstance(value, (list, tuple)):
+        raise ValueError(f"工作流{kind}必须为列表")
+    entries: list[Mapping[str, object]] = []
+    for item in value:
+        if not isinstance(item, Mapping):
+            raise ValueError(f"工作流{kind}定义格式错误")
+        entries.append(item)
+    return tuple(entries)
+
+
+def _workflow_action_ids(actions: tuple[Mapping[str, object], ...]) -> set[str]:
+    """提取非空且唯一的动作 ID，避免执行器字典静默覆盖节点。"""
+    action_ids: set[str] = set()
+    for action in actions:
+        action_id = action.get("id")
+        if not isinstance(action_id, str) or not action_id.strip():
+            raise ValueError("工作流动作缺少 ID")
+        if action_id in action_ids:
+            raise ValueError(f"工作流动作 ID 重复：{action_id}")
+        action_ids.add(action_id)
+    return action_ids
+
+
+def _workflow_flow_endpoint(value: object, action_ids: set[str]) -> str:
+    """校验每个流程端点都指向图中已有的动作。"""
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("工作流流程端点不能为空")
+    if value not in action_ids:
+        raise ValueError(f"工作流流程端点不存在：{value}")
+    return value
+
+
+def _workflow_graph_edges(
+    flows: tuple[Mapping[str, object], ...], action_ids: set[str],
+) -> tuple[dict[str, list[str]], dict[str, int]]:
+    """校验流程 ID 和端点，并构造拓扑校验需要的出边与入度表。"""
+    outgoing: dict[str, list[str]] = {action_id: [] for action_id in action_ids}
+    incoming = dict.fromkeys(action_ids, 0)
+    flow_ids: set[str] = set()
+    for flow in flows:
+        flow_id = flow.get("id")
+        if flow_id is not None:
+            if not isinstance(flow_id, str):
+                raise ValueError("工作流流程 ID 格式错误")
+            if flow_id and flow_id in flow_ids:
+                raise ValueError(f"工作流流程 ID 重复：{flow_id}")
+            if flow_id:
+                flow_ids.add(flow_id)
+        source = _workflow_flow_endpoint(flow.get("source"), action_ids)
+        target = _workflow_flow_endpoint(flow.get("target"), action_ids)
+        outgoing[source].append(target)
+        incoming[target] += 1
+    return outgoing, incoming
+
+
+def validate_workflow_graph(actions: object, flows: object) -> None:
+    """校验工作流有向无环图；允许无动作草稿，但拒绝重复 ID 和无效流程端点。"""
+    action_ids = _workflow_action_ids(_workflow_graph_entries(actions, "动作"))
+    outgoing, incoming = _workflow_graph_edges(_workflow_graph_entries(flows, "流程"), action_ids)
+    ready = deque(action_id for action_id, degree in incoming.items() if degree == 0)
+    visited = 0
+    while ready:
+        source = ready.popleft()
+        visited += 1
+        for target in outgoing[source]:
+            incoming[target] -= 1
+            if incoming[target] == 0:
+                ready.append(target)
+    if visited != len(action_ids):
+        raise ValueError("工作流不能包含循环")
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,7 +147,7 @@ class WorkflowRuntime(Protocol):
         ...
 
     def register_execution(self, owner: "WorkflowExecutionOwner") -> bool:
-        """登记活动工作流执行 owner；停机封口后返回 False。"""
+        """原子登记活动执行，同 ID 已在运行或停机封口后返回 False。"""
         ...
 
     def unregister_execution(self, owner: "WorkflowExecutionOwner") -> None:
@@ -80,6 +157,11 @@ class WorkflowRuntime(Protocol):
 
 class WorkflowExecutionOwner(Protocol):
     """声明 concrete 工作流管理器需要持有的执行生命周期能力。"""
+
+    @property
+    def workflow_id(self) -> int:
+        """返回同一工作流执行互斥使用的稳定 ID。"""
+        ...
 
     def request_stop(self) -> None:
         """请求停止继续调度，并通知支持取消的活动动作。"""
@@ -543,6 +625,13 @@ class WorkflowMutationCommand:
         current = self._repository.get(workflow_id)
         if not current:
             return WorkflowMutationResult(False, "工作流不存在")
+        try:
+            validate_workflow_graph(
+                values.get("actions", getattr(current, "actions", None)),
+                values.get("flows", getattr(current, "flows", None)),
+            )
+        except ValueError as err:
+            return WorkflowMutationResult(False, str(err))
         if not current.trigger_type:
             values["trigger_type"] = WORKFLOW_TRIGGER_TIMER
 
@@ -638,6 +727,10 @@ class WorkflowDefinitionCommand:
     async def create(self, payload: Mapping[str, Any]) -> WorkflowMutationResult:
         """校验名称并暂存新工作流，提交失败时不产生运行时副作用。"""
         values = dict(payload)
+        try:
+            validate_workflow_graph(values.get("actions"), values.get("flows"))
+        except ValueError as err:
+            return WorkflowMutationResult(False, str(err))
         name = values.get("name")
         if name and await self._repository.async_get_by_name(name):
             return WorkflowMutationResult(False, "已存在相同名称的工作流")
@@ -691,6 +784,10 @@ class WorkflowDefinitionCommand:
             "context": {},
             "state": "P",
         }
+        try:
+            validate_workflow_graph(workflow_values["actions"], workflow_values["flows"])
+        except ValueError as err:
+            return WorkflowMutationResult(False, str(err))
         if await self._repository.async_get_by_name(workflow_values["name"]):
             return WorkflowMutationResult(False, "已存在相同名称的工作流")
         try:

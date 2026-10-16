@@ -14,6 +14,47 @@ from app.runtime.extensions.module.dispatcher import (
 )
 
 
+@pytest.mark.parametrize("provider_type", ["plugin", "system"])
+@pytest.mark.parametrize("async_dispatch", [False, True])
+@pytest.mark.parametrize("accepts_custom_words", [False, True])
+@pytest.mark.asyncio
+async def test_download_optional_mapping_keeps_legacy_provider_signatures(
+    provider_type, async_dispatch, accepts_custom_words,
+):
+    """同步/异步调度只为旧签名移除新增可选参数，新 provider 收到原规则。"""
+    calls = []
+
+    def legacy(content, download_dir, cookie, episodes, category, label, downloader):
+        """模拟未添加识别词参数的既有插件或宿主模块。"""
+        calls.append((content, download_dir, cookie, episodes, category, label, downloader))
+        return "legacy"
+
+    def current(**kwargs):
+        """模拟接受完整可选输入的新 provider。"""
+        calls.append(kwargs["custom_words"])
+        return "current"
+
+    callback = current if accepts_custom_words else legacy
+    module = _Module("下载器", 10, callback)
+    module.download = callback
+    dispatcher, plugin_error, system_error, _ = _dispatcher(
+        plugins={("legacy", "旧插件"): {"download": callback}} if provider_type == "plugin" else None,
+        modules=[module] if provider_type == "system" else None,
+    )
+    kwargs = {
+        "content": b"torrent", "download_dir": "/downloads", "cookie": "", "episodes": {170},
+        "category": None, "label": None, "downloader": "test", "custom_words": "EP+165",
+    }
+    result = (
+        await dispatcher.async_dispatch("download", **kwargs)
+        if async_dispatch else dispatcher.dispatch("download", **kwargs)
+    )
+    assert result == ("current" if accepts_custom_words else "legacy")
+    assert calls == (["EP+165"] if accepts_custom_words else [(b"torrent", "/downloads", "", {170}, None, None, "test")])
+    plugin_error.assert_not_called()
+    system_error.assert_not_called()
+
+
 class _PluginCatalog:
     """提供固定插件方法表的内存目录。"""
 

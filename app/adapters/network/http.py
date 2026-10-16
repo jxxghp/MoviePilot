@@ -95,6 +95,7 @@ class _TLS12HttpAdapter(HTTPAdapter):  # type: ignore[misc]
         *args: Any,
         **kwargs: Any,
     ) -> None:
+        """保存本次回退会话专用的 SSLContext 并初始化 HTTP 适配器。"""
         self._ssl_context = ssl_context
         super().__init__(*args, **kwargs)
 
@@ -105,10 +106,12 @@ class _TLS12HttpAdapter(HTTPAdapter):  # type: ignore[misc]
         block: bool = False,
         **pool_kwargs: Any,
     ) -> None:
+        """为直连连接池注入限制到 TLS 1.2 的 SSLContext。"""
         pool_kwargs["ssl_context"] = self._ssl_context
         super().init_poolmanager(connections, maxsize, block, **pool_kwargs)
 
     def proxy_manager_for(self, proxy: str, **proxy_kwargs: Any) -> Any:
+        """为代理连接池注入同一回退 SSLContext。"""
         proxy_kwargs["ssl_context"] = self._ssl_context
         return super().proxy_manager_for(proxy, **proxy_kwargs)
 
@@ -190,6 +193,7 @@ _H2_TUNNEL_BREAK_ERRORS = (
 
 
 def _h2_proxy_breaker_key(proxy: str, url: str) -> Tuple[str, str]:
+    """按代理与目标主机隔离 HTTP/2 熔断状态，解析失败保留原 URL 作为键。"""
     try:
         host = httpx2.URL(url).host or ""
     except Exception:
@@ -1026,6 +1030,7 @@ class RequestUtils:
             return getattr(response, "text", "") or ""
 
         def _try_decode(encodings):
+            """依次尝试去重后的候选编码，全部无法解码时返回空。"""
             seen_encodings = set()
             for encoding in encodings:
                 if not encoding:
@@ -1206,6 +1211,10 @@ class AsyncRequestUtils:
                 self._cookies = cookies
         else:
             self._cookies = None
+
+    def update_headers(self, headers: dict[str, Any]) -> None:
+        """更新实例请求头，保持与同步请求工具相同的显式覆盖入口。"""
+        self._headers.update(headers)
 
     @staticmethod
     def build_sdk_client_args(
@@ -1576,6 +1585,7 @@ class AsyncRequestUtils:
         raise_exception: Literal[True],
         **kwargs: Any,
     ) -> httpx2.Response:
+        """声明开启异常透传时，异步 GET 一定返回响应或抛出错误。"""
         ...
 
     @overload
@@ -1589,6 +1599,7 @@ class AsyncRequestUtils:
         raise_exception: bool = False,
         **kwargs: Any,
     ) -> Optional[httpx2.Response]:
+        """声明默认异步 GET 会把请求错误转换为空响应。"""
         ...
 
     async def get_res(
@@ -1767,6 +1778,7 @@ class AsyncRequestUtils:
         raise_exception: Literal[True],
         **kwargs: Any,
     ) -> httpx2.Response:
+        """声明开启异常透传时，异步 POST 一定返回响应或抛出错误。"""
         ...
 
     @overload
@@ -1781,6 +1793,7 @@ class AsyncRequestUtils:
         raise_exception: bool = False,
         **kwargs: Any,
     ) -> Optional[httpx2.Response]:
+        """声明默认异步 POST 会把请求错误转换为空响应。"""
         ...
 
     async def post_res(

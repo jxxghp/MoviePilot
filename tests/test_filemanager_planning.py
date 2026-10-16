@@ -44,17 +44,17 @@ class RecordingStorage:
     def __init__(self, calls: list[str], existing: FileItem = None):
         """保存调用日志与可选同名目标。"""
         self.calls = calls
-        self.existing = existing
+        self.files = {existing.path: existing} if existing else {}
 
     def get_item_strict(self, path: Path):
         """记录严格目标查询。"""
         self.calls.append("strict")
-        return self.existing
+        return self.files.get(path.as_posix())
 
     def get_item(self, path: Path):
         """记录普通目标查询。"""
         self.calls.append("get_item")
-        return self.existing
+        return self.files.get(path.as_posix())
 
     def get_folder(self, path: Path) -> FileItem:
         """记录可能创建目录的接口。"""
@@ -69,7 +69,16 @@ class RecordingStorage:
     def delete(self, fileitem: FileItem) -> bool:
         """记录删除副作用。"""
         self.calls.append("delete")
-        self.existing = None
+        self.files.pop(fileitem.path, None)
+        return True
+
+    def rename(self, fileitem: FileItem, name: str) -> bool:
+        """模拟拒绝覆盖已有目标的同目录重命名。"""
+        target = Path(fileitem.path).with_name(name)
+        self.calls.append(f"rename:{target.as_posix()}")
+        assert target.as_posix() not in self.files
+        source = self.files.pop(fileitem.path)
+        self.files[target.as_posix()] = source.model_copy(update={"path": target.as_posix(), "name": name})
         return True
 
     def is_support_transtype(self, transfer_type: str) -> bool:
@@ -79,6 +88,9 @@ class RecordingStorage:
     def copy(self, fileitem: FileItem, path: Path, name: str) -> bool:
         """记录复制副作用。"""
         self.calls.append(f"copy:{(path / name).as_posix()}")
+        self.files[(path / name).as_posix()] = fileitem.model_copy(update={
+            "path": (path / name).as_posix(), "name": name,
+        })
         return True
 
 
@@ -109,6 +121,7 @@ def _build_fileitem() -> FileItem:
         extension="mkv",
         type="file",
         size=1024,
+        modify_time=1.0,
     )
 
 
@@ -252,6 +265,7 @@ def test_execute_uses_frozen_target_and_intercepts_before_directory_or_delete(
         type="file",
         extension="mkv",
         size=100,
+        modify_time=1.0,
     )
     storage = RecordingStorage(calls, existing=existing)
 
@@ -270,7 +284,8 @@ def test_execute_uses_frozen_target_and_intercepts_before_directory_or_delete(
     intercept_index = calls.index(ChainEventType.TransferIntercept.value)
     assert intercept_index < calls.index("get_folder")
     assert intercept_index < calls.index("delete")
-    assert f"copy:{frozen_target}" in calls
+    assert f"rename:{frozen_target}" in calls
+    assert next(index for index, call in enumerate(calls) if call.startswith("copy:")) < calls.index("delete")
 
 
 def test_module_preserves_admission_input_while_freezing_resolved_directory():
@@ -347,7 +362,8 @@ def _build_cleanup_checkpoint(monkeypatch, calls: list[str]):
     return checkpoint, meta, mediainfo, cleanup_item
 
 
-def test_cleanup_runs_after_intercept_and_before_transfer_side_effects(monkeypatch):
+def test_cleanup_runs_after_new_target_is_materialized(monkeypatch):
+    """宿主重整理只能在新目标已完整落地后清理旧历史目的。"""
     calls: list[str] = []
     checkpoint, meta, mediainfo, cleanup_item = _build_cleanup_checkpoint(
         monkeypatch,
@@ -375,8 +391,8 @@ def test_cleanup_runs_after_intercept_and_before_transfer_side_effects(monkeypat
     assert result.success is True
     intercept_index = calls.index(ChainEventType.TransferIntercept.value)
     assert intercept_index < calls.index("cleanup_compat")
-    assert calls.index("cleanup_compat") < calls.index("get_folder")
-    assert calls.index("cleanup_compat") < next(
+    assert calls.index("get_folder") < calls.index("cleanup_compat")
+    assert calls.index("cleanup_compat") > next(
         index for index, call in enumerate(calls) if call.startswith("copy:")
     )
     assert cleaned_items == [cleanup_item]
@@ -438,7 +454,8 @@ def test_replayed_checkpoint_skips_cleanup_already_completed_before_provider(
     assert any(call.startswith("copy:") for call in calls)
 
 
-def test_cleanup_failure_raises_before_directory_or_copy(monkeypatch):
+def test_cleanup_failure_keeps_the_new_target_and_raises_for_retry(monkeypatch):
+    """旧目的清理失败可重试，已成功落地的新目标不能因此被删除。"""
     calls: list[str] = []
     checkpoint, meta, mediainfo, cleanup_item = _build_cleanup_checkpoint(
         monkeypatch,
@@ -464,8 +481,49 @@ def test_cleanup_failure_raises_before_directory_or_copy(monkeypatch):
 
     assert ChainEventType.TransferIntercept.value in calls
     assert "cleanup_compat_failed" in calls
-    assert "get_folder" not in calls
-    assert not any(call.startswith("copy:") for call in calls)
+    assert "get_folder" in calls
+    assert any(call.startswith("copy:") for call in calls)
+    assert checkpoint.final_target_path in transfer_storage.files
+
+
+def test_cleanup_is_not_called_when_materialization_fails(monkeypatch):
+    """新目标未落地时保留历史旧目的，不调用任何兼容删除能力。"""
+    calls = []
+    checkpoint, meta, mediainfo, _ = _build_cleanup_checkpoint(monkeypatch, calls)
+    storage = RecordingStorage(calls)
+    monkeypatch.setattr(storage, "copy", lambda *_args: False)
+    cleanup = Mock(return_value=True)
+    result = FileManagerModule().execute_transfer_plan(
+        checkpoint, meta=meta, mediainfo=mediainfo,
+        source_oper=storage, target_oper=storage, cleanup_media_file=cleanup,
+    )
+    assert result.success is False
+    cleanup.assert_not_called()
+
+
+@pytest.mark.parametrize("ancestor", [False, True])
+def test_cleanup_never_removes_the_new_target_or_its_parent(monkeypatch, ancestor):
+    """同路径或祖先目录的历史目的交文件级覆盖，不能整块删除新版本。"""
+    calls = []
+    checkpoint, meta, mediainfo, _ = _build_cleanup_checkpoint(monkeypatch, calls)
+    path = Path(checkpoint.final_target_path)
+    cleanup = FileItem(storage="alist", path=(path.parent if ancestor else path).as_posix(),
+                       type="dir" if ancestor else "file")
+    planning_input = replace(checkpoint.planning_input, options={
+        "cleanup_dest_fileitem": cleanup.model_dump(mode="json"),
+    })
+    checkpoint = replace(checkpoint, planning_input=planning_input)
+    storage = RecordingStorage(calls, existing=FileItem(
+        storage="alist", path=path.as_posix(), name=path.name, type="file", size=100, modify_time=1.0,
+    ))
+    unexpected_cleanup = Mock(side_effect=AssertionError("不可删除重合目的"))
+    result = FileManagerModule().execute_transfer_plan(
+        checkpoint, meta=meta, mediainfo=mediainfo,
+        source_oper=storage, target_oper=storage, cleanup_media_file=unexpected_cleanup,
+    )
+    assert result.success
+    assert path.as_posix() in storage.files
+    unexpected_cleanup.assert_not_called()
 
 
 def test_empty_directory_plan_is_zero_operation_without_intercept_or_cleanup(

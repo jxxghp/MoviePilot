@@ -794,6 +794,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         category: Optional[str] = None,
         label: Optional[str] = None,
         downloader: Optional[str] = None,
+        custom_words: Optional[str] = None,
     ) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
@@ -804,6 +805,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
         :param category:  种子分类
         :param label:  标签
         :param downloader:  下载器
+        :param custom_words: 来源识别词，选集须与订阅解析采用相同规则
         :return: 下载器名称、种子Hash、种子文件布局、错误原因
         """
         return self.run_module(
@@ -815,6 +817,7 @@ class ChainBase(RecognitionMixin, MessageProcessingMixin, NotificationMixin, met
             category=category,
             label=label,
             downloader=downloader,
+            custom_words=custom_words,
         )
 
     def download_added(

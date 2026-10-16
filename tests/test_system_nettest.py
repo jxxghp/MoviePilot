@@ -213,6 +213,8 @@ class TestNettestSecurity:
 
         with patch.object(system_endpoint, "ImageHelper", return_value=image_helper), patch.object(
             system_endpoint.HashUtils, "md5", return_value="etag", create=True
+        ), patch.object(
+            system_endpoint, "_get_image_proxy_trusted_hosts", return_value=set()
         ):
             resp = asyncio.run(
                 system_endpoint.fetch_image(
@@ -222,12 +224,19 @@ class TestNettestSecurity:
             )
 
         assert resp.status_code == 200
+        redirect_validator = image_helper.async_fetch_image_with_mime_type.await_args.kwargs["redirect_validator"]
         image_helper.async_fetch_image_with_mime_type.assert_awaited_once_with(
             url=image_url,
             proxy=None,
             use_cache=False,
             cookies=None,
+            redirect_validator=redirect_validator,
         )
+        assert callable(redirect_validator)
+        with patch.object(system_endpoint.SecurityUtils, "_hostname_addresses_async", new=AsyncMock(
+            return_value=[ipaddress.ip_address("192.168.1.50")],
+        )):
+            assert not asyncio.run(redirect_validator(image_url))
 
     def test_fetch_image_blocks_private_allowed_url_before_request(self):
         """
@@ -604,6 +613,8 @@ class TestNettestSecurity:
         with patch.object(system_endpoint, "ImageHelper", return_value=image_helper), patch.object(
             system_endpoint.HashUtils, "md5", return_value="etag", create=True
         ), patch.object(
+            system_endpoint, "_get_image_proxy_trusted_hosts", return_value=set()
+        ), patch.object(
             # is_safe_image_url_async 经 evaluate_url_safety_async 走异步解析
             # _hostname_addresses_async（loop.getaddrinfo）；必须 mock 异步版本，
             # 否则真实 DNS 逃逸到 img1.doubanio.com，且私网放行分支根本不会被执行到。
@@ -623,6 +634,10 @@ class TestNettestSecurity:
                     allowed_domains={"doubanio.com"},
                 )
             )
+            redirect_validator = image_helper.async_fetch_image_with_mime_type.await_args.kwargs["redirect_validator"]
+            assert callable(redirect_validator)
+            assert asyncio.run(redirect_validator("https://img2.doubanio.com/poster.webp"))
+            assert not asyncio.run(redirect_validator("https://unconfigured-cdn.example/poster.webp"))
 
         assert resp.status_code == 200
         image_helper.async_fetch_image_with_mime_type.assert_awaited_once_with(
@@ -630,6 +645,7 @@ class TestNettestSecurity:
             proxy=None,
             use_cache=False,
             cookies=None,
+            redirect_validator=redirect_validator,
         )
 
     def test_fetch_image_blocks_tampered_signed_private_url(self):

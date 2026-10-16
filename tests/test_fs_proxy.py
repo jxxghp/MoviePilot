@@ -47,6 +47,18 @@ def test_stat_matches_direct_call(tmp_path, proxy):
     assert result["is_file"] is True
     assert result["is_dir"] is False
     assert result["mtime"] == pytest.approx(media.stat().st_mtime, abs=1)
+    assert (result["dev"], result["ino"]) == (media.stat().st_dev, media.stat().st_ino)
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_realpath_resolves_parent_alias_for_missing_target(tmp_path, proxy, monkeypatch, enabled):
+    """目标尚未创建时，代理仍要解析父目录别名以保护重合的整理路径。"""
+    real = tmp_path / "library"
+    real.mkdir()
+    alias = tmp_path / "alias"
+    alias.symlink_to(real, target_is_directory=True)
+    monkeypatch.setattr(FileSystemProxy, "_enabled", staticmethod(lambda: enabled))
+    assert proxy.realpath(alias / "new.mkv") == real.resolve() / "new.mkv"
 
 
 def test_stat_on_directory(tmp_path, proxy):
@@ -125,7 +137,8 @@ def test_rename_within_same_storage(tmp_path, proxy):
 # 核心价值：超时可放弃
 # --------------------------------------------------------------------------- #
 
-def test_timeout_raises_and_kills_worker(tmp_path, monkeypatch):
+@pytest.mark.parametrize("operation", ["stat", "realpath"])
+def test_timeout_raises_and_kills_worker(tmp_path, monkeypatch, operation):
     """
     这是整个代理存在的意义：挂载不返回时，调用方必须在有限时间内拿到异常，
     而且冻住的进程要被真正杀掉——不能像线程那样永久悬挂。
@@ -141,7 +154,7 @@ def test_timeout_raises_and_kills_worker(tmp_path, monkeypatch):
     try:
         started = time.monotonic()
         with pytest.raises(FileSystemTimeout) as excinfo:
-            proxy.stat(tmp_path / "whatever.mkv")
+            getattr(proxy, operation)(tmp_path / "whatever.mkv")
         elapsed = time.monotonic() - started
 
         assert elapsed < 10, "超时后没有及时放弃"

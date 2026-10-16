@@ -138,6 +138,79 @@ def test_same_smb_storage_transfers_on_server(server_transfer, mode, command):
     state.storage.delete.assert_not_called()
 
 
+@pytest.mark.parametrize("mode", ["copy", "move", "link"])
+@pytest.mark.parametrize("fails", [False, True])
+def test_safe_overwrite_preserves_old_smb_file_until_new_version_is_complete(
+        server_transfer, monkeypatch, mode, fails,
+):
+    """真实 SMB 复制和 rename 分派必须兼容目标已存在且拒绝覆盖的服务端。"""
+    storage = server_transfer.storage
+    source = server_transfer.source
+    target = Path(server_transfer.target.path)
+    normalize = storage._normalize_path
+    files = {normalize(source.path): b"new", normalize(target): b"old"}
+    modified_times = {normalize(source.path): 200, normalize(target): 100}
+
+    def stat_file(path):
+        """按 SMB SDK 契约提供真实长度和修改时间，缺失路径抛 ENOENT。"""
+        if path not in files:
+            raise FileNotFoundError(errno.ENOENT, "missing")
+        return SimpleNamespace(st_size=len(files[path]), st_mtime=modified_times[path])
+
+    def materialize(src, dst):
+        """在写入新版本时旧版本必须仍完整存在，失败也只留下暂存片段。"""
+        assert files[normalize(target)] == b"old"
+        assert dst not in files
+        files[dst] = b"partial" if fails else files[src]
+        modified_times[dst] = modified_times[src] if mode == "link" else 300
+        if fails:
+            raise OSError(errno.ENOSPC, "server full")
+
+    def rename(src, dst):
+        """模拟 SMB rename 拒绝任何已存在的目的路径。"""
+        assert dst not in files
+        files[dst] = files.pop(src)
+        modified_times[dst] = modified_times.pop(src)
+
+    def remove(path):
+        """只在最终新版本可见后允许清理旧备份或移动源文件。"""
+        assert files[normalize(target)] == b"new"
+        files.pop(path)
+        modified_times.pop(path)
+
+    # 保留 SMB 文件投影和删除实现，避免 source 快照与 SDK 状态大小/时间互相矛盾。
+    monkeypatch.setattr(storage, "get_item", smb_module.SMB.get_item.__get__(storage))
+    monkeypatch.setattr(storage, "delete", smb_module.SMB.delete.__get__(storage))
+    monkeypatch.setattr(smbclient, "stat", stat_file)
+    monkeypatch.setattr(smbclient.path, "isdir", Mock(return_value=False))
+    monkeypatch.setattr(smbclient.path, "exists", Mock(side_effect=lambda path: path in files))
+    monkeypatch.setattr(smbclient, "remove", remove)
+    monkeypatch.setattr(smbclient, "copyfile", materialize)
+    monkeypatch.setattr(smbclient, "link", materialize)
+    monkeypatch.setattr(smbclient, "rename", rename)
+    source = storage.get_item_strict(Path(source.path))
+    assert source.size == len(b"new")
+    assert source.modify_time == 200
+    assert source.fileid is None  # 真实 SMB FileItem 当前不提供远端文件 ID。
+    kwargs = dict(
+        step_runner=None, source_fileitem=source.model_dump(mode="json"),
+        target_storage="smb", source_oper=storage, target_oper=storage,
+        target_file=target, transfer_type=mode,
+    )
+    if fails:
+        with pytest.raises(RuntimeError):
+            TransHandler._TransHandler__replace_target_with_steps(**kwargs)
+        assert files[normalize(target)] == b"old"
+        assert files[normalize(source.path)] == b"new"
+    else:
+        result, error = TransHandler._TransHandler__replace_target_with_steps(**kwargs)
+        assert result.path == target.as_posix()
+        assert not error
+        assert files[normalize(target)] == b"new"
+        assert (normalize(source.path) in files) is (mode != "move")
+        assert all(".mp-" not in path for path in files)
+
+
 @pytest.mark.parametrize("mode, command", [("copy", "copyfile"), ("move", "rename"), ("link", "link")])
 @pytest.mark.parametrize("error_number", [errno.ENOTSUP, errno.EACCES, errno.ECONNRESET, errno.EXDEV, errno.EEXIST])
 def test_server_transfer_failure_never_falls_back_or_deletes_source(server_transfer, mode, command, error_number):

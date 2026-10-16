@@ -3,6 +3,7 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx2
 import pytest
 
 from app.startup.composition import network as network_composition
@@ -53,7 +54,7 @@ async def test_network_test_transport_enforces_safe_http_options(monkeypatch) ->
 
 def test_image_transport_forwards_sync_request_options(monkeypatch) -> None:
     """同步图片适配器完整透传请求参数，并单独传递目标 URL。"""
-    response = object()
+    response = SimpleNamespace(status_code=200, content=b"image", headers={}, json=lambda: {"ok": True})
     request = MagicMock()
     request.get_res.return_value = response
     request_factory = MagicMock(return_value=request)
@@ -69,17 +70,19 @@ def test_image_transport_forwards_sync_request_options(monkeypatch) -> None:
         options=options,
     )
 
-    assert result is response
+    assert result.status_code == 200 and result.content == b"image"
+    assert result.json() == {"ok": True}
     request_factory.assert_called_once_with(**options)
     request.get_res.assert_called_once_with(
         url="https://images.example/poster.jpg",
+        allow_redirects=True,
     )
 
 
 @pytest.mark.asyncio
 async def test_image_transport_forwards_async_request_options(monkeypatch) -> None:
     """异步图片适配器完整透传请求参数，并单独传递目标 URL。"""
-    response = object()
+    response = SimpleNamespace(status_code=200, content=b"image", headers={}, json=lambda: {"ok": True})
     request = MagicMock()
     request.get_res = AsyncMock(return_value=response)
     request_factory = MagicMock(return_value=request)
@@ -95,11 +98,29 @@ async def test_image_transport_forwards_async_request_options(monkeypatch) -> No
         options=options,
     )
 
-    assert result is response
+    assert result.status_code == 200 and result.content == b"image"
+    assert result.json() == {"ok": True}
     request_factory.assert_called_once_with(**options)
     request.get_res.assert_awaited_once_with(
         url="https://images.example/backdrop.webp",
+        allow_redirects=True,
     )
+
+
+@pytest.mark.parametrize("response_kind", ["requests", "httpx"])
+def test_image_response_preserves_repeated_cookie_headers(response_kind) -> None:
+    """Set-Cookie 中的 Expires 逗号不能当分隔符，多条头必须保持独立。"""
+    cookies = ["expired=old; Expires=Thu, 01 Jan 1970 00:00:00 GMT", "session=new; Path=/"]
+    if response_kind == "httpx":
+        response = httpx2.Response(200, headers=[("Set-Cookie", value) for value in cookies], json={"ok": True})
+    else:
+        response = SimpleNamespace(
+            status_code=200, content=b"image", headers={"Set-Cookie": ", ".join(cookies)},
+            raw=SimpleNamespace(headers=SimpleNamespace(getlist=lambda _name: cookies)), json=lambda: {"ok": True},
+        )
+    result = network_composition._ImageTransportAdapter._adapt_response(response)
+    assert result.set_cookie_headers == tuple(cookies)
+    assert result.json() == {"ok": True}
 
 
 def test_internal_address_adapter_delegates_to_ip_utility(monkeypatch) -> None:

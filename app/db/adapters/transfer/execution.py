@@ -33,6 +33,7 @@ from app.application.transfer.execution import (
     TransferStepResult,
     TransferStepState,
     build_transfer_operation_id,
+    build_transfer_overwrite_paths,
 )
 from app.application.transfer.recovery import music_replanning_input
 from app.application.transfer.workflow import (
@@ -42,6 +43,7 @@ from app.application.transfer.workflow import (
     TRANSFER_PLAN_CHECKPOINT_LEGACY_VERSION,
     TRANSFER_PLAN_CHECKPOINT_VERSION,
     TransferPlanCheckpoint,
+    TransferPlanItem,
     TransferProviderInvocationSnapshot,
     TransferProviderReference,
 )
@@ -405,7 +407,115 @@ class TransactionalTransferExecutionRepository:
         return None
 
     @staticmethod
+    def _safe_overwrite_intents(
+            checkpoint: TransferPlanCheckpoint,
+            item: TransferPlanItem,
+    ) -> tuple[tuple[str, str, dict[str, Any]], ...]:
+        """仅从冻结叶计划推导安全覆盖的完整步骤及确定路径。"""
+        stage, backup = build_transfer_overwrite_paths(
+            source=item.source_fileitem, target_storage=item.target_storage,
+            target_path=item.target_path, transfer_type=checkpoint.resolved_transfer_type,
+        )
+        intents: list[tuple[str, str, dict[str, Any]]] = [
+            ("transfer", "stage_overwrite_target", {
+                "source": item.source_fileitem, "target_storage": item.target_storage,
+                "target_path": stage, "transfer_type": (
+                    "copy" if checkpoint.resolved_transfer_type == "move"
+                    else checkpoint.resolved_transfer_type
+                ),
+            }),
+            ("transfer", "backup_overwrite_target", {
+                "storage": item.target_storage, "source_path": item.target_path,
+                "target_path": backup,
+            }),
+            ("transfer", "promote_overwrite_target", {
+                "storage": item.target_storage, "source_path": stage,
+                "target_path": item.target_path,
+            }),
+        ]
+        if checkpoint.resolved_transfer_type == "move":
+            intents.append(("cleanup", "delete_overwrite_source", {
+                "storage": item.source_fileitem["storage"], "path": item.source_fileitem["path"],
+            }))
+        intents.append(("cleanup", "delete_overwrite_backup", {
+            "storage": item.target_storage, "path": backup,
+        }))
+        return tuple(intents)
+
+    @staticmethod
+    def _overwrite_decision_succeeded(
+            item: TransferPlanItem,
+            previous_steps: list[TransferExecutionStepModel],
+    ) -> bool:
+        """暂存只能在同一源和最终目标的覆盖裁决明确成功后开始。"""
+        return any(
+            step.phase == "decision" and step.kind in {"resolve_overwrite", "resolve_leaf_overwrite"}
+            and step.state == TransferStepState.SUCCEEDED.value
+            and step.intent_payload.get("source") == item.source_fileitem
+            and step.intent_payload.get("target_storage") == item.target_storage
+            and step.intent_payload.get("target_path") == item.target_path
+            and isinstance(step.result_payload, dict)
+            and step.result_payload.get("over_flag") is True
+            for step in previous_steps
+        )
+
+    @classmethod
+    def _safe_overwrite_intent_belongs_to_checkpoint(
+            cls,
+            checkpoint: TransferPlanCheckpoint,
+            *,
+            phase: str,
+            kind: str,
+            payload: dict[str, Any],
+            previous_steps: list[TransferExecutionStepModel],
+    ) -> bool:
+        """安全覆盖步骤必须精确匹配冻结计划且其前驱已经持久成功。"""
+        if phase == "decision" and kind == "resolve_leaf_overwrite":
+            return checkpoint.planning_input.source_fileitem.get("type") == "dir" and any(
+                payload == {"source": item.source_fileitem, "target_storage": item.target_storage,
+                            "target_path": item.target_path, "transfer_type": checkpoint.resolved_transfer_type}
+                for item in checkpoint.items
+            )
+        requested = (phase, kind, payload)
+        for item in checkpoint.items:
+            intents = cls._safe_overwrite_intents(checkpoint, item)
+            if requested not in intents:
+                continue
+            index = intents.index(requested)
+            if index == 0:
+                return cls._overwrite_decision_succeeded(item, previous_steps)
+            previous_phase, previous_kind, previous_payload = intents[index - 1]
+            return any(
+                step.phase == previous_phase and step.kind == previous_kind
+                and step.intent_payload == previous_payload
+                and step.state == TransferStepState.SUCCEEDED.value
+                for step in previous_steps
+            )
+        return False
+
+    @staticmethod
+    def _version_delete_intent_belongs_to_checkpoint(
+            checkpoint: TransferPlanCheckpoint,
+            payload: dict[str, Any],
+            previous_steps: list[TransferExecutionStepModel],
+    ) -> bool:
+        """版本删除仅消费已持久成功的发现清单，不能自由指定删除路径。"""
+        candidate = payload.get("item")
+        if (set(payload) != {"storage", "item"}
+                or payload.get("storage") != checkpoint.target_storage
+                or not isinstance(candidate, dict)):
+            return False
+        return any(
+            step.phase == "prepare" and step.kind == "discover_version_targets"
+            and step.state == TransferStepState.SUCCEEDED.value
+            and isinstance(step.result_payload, dict)
+            and candidate in step.result_payload.get("items", [])
+            for step in previous_steps
+        )
+
+    @classmethod
     def _intent_belongs_to_checkpoint(
+            cls,
             checkpoint: TransferPlanCheckpoint,
             *,
             phase: str,
@@ -414,6 +524,13 @@ class TransactionalTransferExecutionRepository:
             previous_steps: list[TransferExecutionStepModel],
     ) -> bool:
         """校验步骤类型及稳定参数由冻结计划或其已提交发现证据导出。"""
+        if kind in {
+                "stage_overwrite_target", "backup_overwrite_target", "promote_overwrite_target",
+                "delete_overwrite_source", "delete_overwrite_backup", "resolve_leaf_overwrite",
+        }:
+            return cls._safe_overwrite_intent_belongs_to_checkpoint(
+                checkpoint, phase=phase, kind=kind, payload=payload, previous_steps=previous_steps,
+            )
         if checkpoint.rejection_error:
             return (
                 phase == "planning"
@@ -515,20 +632,8 @@ class TransactionalTransferExecutionRepository:
                 "path": checkpoint.final_target_path,
             }
         if phase == "prepare" and kind == "delete_version_target":
-            candidate = payload.get("item")
-            if (
-                    set(payload) != {"storage", "item"}
-                    or payload.get("storage") != checkpoint.target_storage
-                    or not isinstance(candidate, dict)
-            ):
-                return False
-            return any(
-                step.phase == "prepare"
-                and step.kind == "discover_version_targets"
-                and step.state == TransferStepState.SUCCEEDED.value
-                and isinstance(step.result_payload, dict)
-                and candidate in step.result_payload.get("items", [])
-                for step in previous_steps
+            return cls._version_delete_intent_belongs_to_checkpoint(
+                checkpoint, payload, previous_steps,
             )
         return False
 

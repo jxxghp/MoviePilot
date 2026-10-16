@@ -209,9 +209,9 @@ def _resolve_add_media(
 
 
 @router.get("/", summary="正在下载", response_model=List[_SchemaDownloaderTorrent])
-def current(name: Optional[str] = None, _: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
+def current(name: Optional[str] = None, _: ApiPrincipal = Depends(get_current_active_manage_user), page: CompatiblePageParam = None, count: CompatibleCountParam = None) -> Any:
     """
-    查询正在下载的任务
+    查询全局下载任务，仅向具有管理权限的用户开放。
     """
     return DownloadChain().downloading(name)
 
@@ -406,10 +406,10 @@ def download_subtitle(
 def start(
     hashString: str,
     name: Optional[str] = None,
-    _: _SchemaTokenPayload = Depends(verify_token),
+    _: ApiPrincipal = Depends(get_current_active_manage_user),
 ) -> Any:
     """
-    开如下载任务
+    由管理用户启动指定下载任务。
     """
     ret = DownloadChain().set_downloading(hashString, "start", name=name)
     return _SchemaResponse(success=True if ret else False)
@@ -419,10 +419,10 @@ def start(
 def stop(
     hashString: str,
     name: Optional[str] = None,
-    _: _SchemaTokenPayload = Depends(verify_token),
+    _: ApiPrincipal = Depends(get_current_active_manage_user),
 ) -> Any:
     """
-    暂停下载任务
+    由管理用户暂停指定下载任务。
     """
     ret = DownloadChain().set_downloading(hashString, "stop", name=name)
     return _SchemaResponse(success=True if ret else False)
@@ -436,9 +436,9 @@ def stop(
 async def update_task(
     hashString: str,
     payload: _SchemaDownloadTaskUpdateRequest,
-    _: ApiPrincipal = Depends(get_current_active_user),
+    _: ApiPrincipal = Depends(get_current_active_manage_user),
 ) -> _SchemaResponse[Any]:
-    """执行下载任务启停、标签、限速、Tracker 和保存位置修改。"""
+    """由管理用户执行下载任务启停、标签、限速、Tracker 和保存位置修改。"""
     chain = DownloadChain()
     service = DownloadTaskMutationService(
         list_torrents=chain.list_torrents,
@@ -525,10 +525,10 @@ def paths(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePagePa
 def delete(
     hashString: str,
     name: Optional[str] = None,
-    _: _SchemaTokenPayload = Depends(verify_token),
+    _: ApiPrincipal = Depends(get_current_active_manage_user),
 ) -> Any:
     """
-    删除下载任务
+    由管理用户删除下载任务及其源文件。
     """
     ret = DownloadChain().remove_downloading(hashString, name=name)
     return _SchemaResponse(success=True if ret else False)

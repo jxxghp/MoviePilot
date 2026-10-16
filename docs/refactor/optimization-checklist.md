@@ -100,15 +100,15 @@ ARCH-201 至 ARCH-204 均达到实现、验证、提交、推送和远端门禁�
 
 | 指标 | 当前值 | 解释 |
 |---|---:|---|
-| 宿主 Python 模块 / 内部依赖边 | 1121 / 9,555 | `dependency-baseline.json` 当前快照；Telegram Rich Message 失败降级复用 `app.schemas.exception` 的 `ImmediateException`，新增 2 条合法依赖边（含父包展开），未新增模块或 SCC。成功通知聚合复用既有 owner 和领域模型，统一交由通知模板渲染；移除汇总发送端的模板上下文直连后，原聚合实现的 14 条新增依赖边减为 12 条，未新增模块或 SCC。社区勋章名单读取复用 `app.foundation.url` 标准化 GitHub 镜像地址，新增 2 条合法依赖边（含父包展开），未新增模块或 SCC。专辑订阅入库对账新增 1 个 Chain owner 和 18 条合法依赖边（含父包展开），仍经注入 Port 读取历史并通过既有 mutation 写入；订阅业务活动新增 4 个模块和 50 条合法内部依赖边（含父包展开），Application 仅定义事实与持久化 Port，DB Adapter/Oper 实现存取，组合根注入，未增加 Application/Chain 到具体 Adapter 或数据库的直连；插件实例校验复用 `app.domain.plugin` 的物理身份规则，兼容下划线 ID，新增 2 条合法依赖边（含父包展开）；种子失败冷却复用 `app.domain.torrent` 的限流语义，新增 1 条合法导入边；系统设置合同按 `app.application.settings` 包组织，系统设置 API 端点独立按 `app.api.endpoints.settings` 归档；消息音乐交互由 `app.chain.music_interaction` 包中的音乐解析/展示与订阅协调模块处理；已整理下载的站点字幕经 `app.chain.transfer` 自动整理队列完成命名与归档；网络连通性检测按 `app.application.nettest` 归档；工作流添加下载动作由 `app.workflow.actions.add_download` 转换工作流 Schema 为下载链领域上下文，新增 5 条合法模块导入边，资源过滤动作复用同一还原再新增 6 条；LLM 独占连接关闭复用宿主线程池；歌词字形转换复用 `app.foundation.text`；订阅创建使用 `app.domain.context.MediaInfo` 和运行时配置端口，将非 TMDB 影视身份投影为 TMDB 身份 |
+| 宿主 Python 模块 / 内部依赖边 | 1121 / 9,559 | `dependency-baseline.json` 当前快照；Telegram Rich Message 失败降级复用 `app.schemas.exception` 的 `ImmediateException`，新增 2 条合法依赖边（含父包展开），未新增模块或 SCC。成功通知聚合复用既有 owner 和领域模型，统一交由通知模板渲染；移除汇总发送端的模板上下文直连后，原聚合实现的 14 条新增依赖边减为 12 条，未新增模块或 SCC。社区勋章名单读取复用 `app.foundation.url` 标准化 GitHub 镜像地址，新增 2 条合法依赖边（含父包展开），未新增模块或 SCC。专辑订阅入库对账新增 1 个 Chain owner 和 18 条合法依赖边（含父包展开），仍经注入 Port 读取历史并通过既有 mutation 写入；订阅业务活动新增 4 个模块和 50 条合法内部依赖边（含父包展开），Application 仅定义事实与持久化 Port，DB Adapter/Oper 实现存取，组合根注入，未增加 Application/Chain 到具体 Adapter 或数据库的直连；插件实例校验复用 `app.domain.plugin` 的物理身份规则，兼容下划线 ID，新增 2 条合法依赖边（含父包展开）；种子失败冷却复用 `app.domain.torrent` 的限流语义，新增 1 条合法导入边；系统设置合同按 `app.application.settings` 包组织，系统设置 API 端点独立按 `app.api.endpoints.settings` 归档；消息音乐交互由 `app.chain.music_interaction` 包中的音乐解析/展示与订阅协调模块处理；已整理下载的站点字幕经 `app.chain.transfer` 自动整理队列完成命名与归档；网络连通性检测按 `app.application.nettest` 归档；工作流添加下载动作由 `app.workflow.actions.add_download` 转换工作流 Schema 为下载链领域上下文，新增 5 条合法模块导入边，资源过滤动作复用同一还原再新增 6 条；LLM 独占连接关闭复用宿主线程池；歌词字形转换复用 `app.foundation.text`；订阅创建使用 `app.domain.context.MediaInfo` 和运行时配置端口，将非 TMDB 影视身份投影为 TMDB 身份；本次安全与可靠性修复新增 4 条合法依赖边：WebAgent 复用渠道类型、宿主历史清理复用文件系统代理、两个下载器复用纯领域种子哈希规则，未新增模块或 SCC |
 | 非平凡 SCC | 1 | 仅保留精确 containment 的 29 模块 TMDB 移植包环 |
 | 跨层 DB 边界债务 | 0 | Application、Chain、API、Agent、Runtime、Workflow 到 DB 的受控债务均为零 |
 | Model/Oper 事务债务 | 0 | 自建 Session、自动事务装饰器、直接 commit/rollback 等基线均为零 |
-| Module Contract | 215 specs / 211 methods / 263 calls | 动态方法名为 0；分类事实富化通过显式合同进入插件调度，旧 YAML 分类方法已移除 |
+| Module Contract | 215 specs / 211 methods / 263 calls | 动态方法名为 0；分类事实富化通过显式合同进入插件调度，旧 YAML 分类方法已移除；download 新增 custom_words 可选参数，旧 provider 签名通过显式合同兼容 |
 | Event Contract | 53 | 均已有 payload model，但当前全部是 diagnostic enforcement |
-| Python 源码量 | 305,884 行 | 排除 `app/plugins/**`；61 个文件超过 1,000 行，11 个超过 2,000 行 |
-| 长方法 | 290 个超过 80 行 | AST 统计排除 `app/plugins/**`；65 个超过 150 行，21 个超过 250 行 |
-| 全量 mypy 历史债务 | 9,139 / 508 文件 | 通知排版补齐 Slack 消息块类型，历史债务减少 2 项；工作流资源过滤改用领域对象调用过滤链，恢复的节点输出在消费前归一化，并收紧可空资源列表的类型低水位；消息媒体交互类型债务已清零，canonical Facade 与 endpoint 类型边界已补齐，低水位只允许继续下降；微信 ClawBot 入站 item_list 媒体解析改为按子项键名分派后，类型错误减少 4 项；站点解析器分享率改用浮点初值，类型错误减少 20 项 |
+| Python 源码量 | 371,923 行 | 本次重新扫描物理行数，排除 `app/plugins/**`；74 个文件超过 1,000 行，12 个超过 2,000 行；源码尺寸仅作观察 |
+| 长方法 | 309 个超过 80 行 | 本次 AST 扫描排除 `app/plugins/**`；61 个超过 150 行，17 个超过 250 行；新增函数仍受 C901/嵌套深度门禁约束 |
+| 全量 mypy 历史债务 | 9,136 / 508 文件 | 通知排版补齐 Slack 消息块类型，历史债务减少 2 项；工作流资源过滤改用领域对象调用过滤链，恢复的节点输出在消费前归一化，并收紧可空资源列表的类型低水位；消息媒体交互类型债务已清零，canonical Facade 与 endpoint 类型边界已补齐，低水位只允许继续下降；微信 ClawBot 入站 item_list 媒体解析改为按子项键名分派后，类型错误减少 4 项；站点解析器分享率改用浮点初值，类型错误减少 20 项；本次下载与文件安全修复再减少 3 项，逐文件逐错误码无增长 |
 | Ruff 历史诊断 | 100 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
 | 覆盖率固定基线 | Application 80.00%，Domain 80.00% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
 
@@ -117,7 +117,7 @@ ARCH-201 至 ARCH-204 均达到实现、验证、提交、推送和远端门禁�
 | 文件 | 行数 | 主要职责混合 |
 |---|---:|---|
 | `app/chain/subscribe/`（已治理） | Facade 98 行 | 搜索、匹配、刷新、完成、规则引用与通知已拆至单一 owner；原 3,895 行单文件已删除 |
-| `app/agent/orchestrator.py` | 2,558 | 单 Agent 运行、流式输出、工具与中间件编排 |
+| `app/agent/orchestrator.py` | 2,790 | 单 Agent 运行、流式输出、工具与中间件编排 |
 | `app/agent/session.py` | 837 | 会话队列、worker、状态、取消与延迟清理 |
 | `app/agent/tasks.py` | 208 | 后台 prompt、持久化定时任务与心跳 |
 | `app/agent/lifecycle.py` | 166 | 接收门禁、启动、空闲回收与有界关闭 |
@@ -132,8 +132,8 @@ ARCH-201 至 ARCH-204 均达到实现、验证、提交、推送和远端门禁�
 | `app/adapters/system/plugin/health.py` | 1,060 | 插件运行环境保护、安装前后检查与故障恢复 |
 | `app/chain/transfer/`（已治理） | Facade 82 行 | 队列/恢复、规划、执行、结算、历史/通知已拆至单一 owner；旧 `transfer.py` 与 `_transfer.py` 已删除 |
 | `app/chain/search/`（已治理） | Facade 473 行 | 搜索计划、并发 fan-out、状态、分页和结果处理已拆至单一 owner；旧 2,970 行单文件已删除 |
-| `app/api/endpoints/agent.py`（已治理） | 577 | 只保留 HTTP/SSE、文件/音频传输映射；Agent 会话和事件编排已下沉 Application |
-| `app/application/messaging/agent.py` | 2,195 | WebAgent 会话、文件/音频、事件与消息桥接用例；是后续复杂度治理热点，不回流 endpoint |
+| `app/api/endpoints/agent.py`（已治理） | 645 | 只保留 HTTP/SSE、文件/音频传输映射；Agent 会话和事件编排已下沉 Application |
+| `app/application/messaging/agent.py` | 1,633 | WebAgent 会话、文件/音频、事件与消息桥接用例；是后续复杂度治理热点，不回流 endpoint |
 | `app/chain/download/`（已治理） | Facade 47 行 | 选择、提交、批量、历史、提交后处理、字幕和任务控制已拆至单一 owner；原 2,413 行单文件已删除 |
 | `app/chain/media/`（已治理） | Facade 213 行 | 识别、来源投影、插件事件、音乐目录、路径证据与缓存已拆至单一 owner；旧 2,191 行单文件已删除 |
 | `app/scheduler/`（已治理） | Facade 135 行 | 原 2,111 行单体已退役；catalog、execution、bridge、progress、registry、reconcile、lifecycle、maintenance 与注入合同已有独立 owner |

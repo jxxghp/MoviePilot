@@ -1,10 +1,14 @@
 import io
 import threading
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Awaitable, Mapping
+from dataclasses import dataclass, field
+from email.message import Message
 from hashlib import sha256
+from http.cookiejar import CookieJar
+from http.cookies import CookieError, SimpleCookie
 from pathlib import Path
-from typing import Any, Callable, List, Optional, Protocol
+from typing import Any, Callable, List, Optional, Protocol, cast
+from urllib.parse import urljoin, urlsplit
 
 from PIL import Image
 
@@ -22,6 +26,8 @@ _IMAGE_CACHE_HASH_LENGTH = 16
 # 可选择其他节点。
 _IMAGE_FETCH_ATTEMPTS = 2
 _IMAGE_RETRY_STATUS_CODES = frozenset({408, 500, 502, 503, 504})
+_IMAGE_REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
+_IMAGE_MAX_REDIRECTS = 5
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,12 +39,79 @@ class _ImageFetchRequest:
     use_cache: bool
 
 
+@dataclass
+class _ImageCookieRequest:
+    """为标准 CookieJar 提供纯请求元数据，不拥有网络传输能力。"""
+
+    url: str
+    headers: dict[str, str] = field(default_factory=dict)
+    unverifiable: bool = False
+
+    @property
+    def host(self) -> str:
+        """返回 Cookie 端口匹配需要的网络位置。"""
+        return urlsplit(self.url).netloc
+
+    @property
+    def type(self) -> str:
+        """返回 Secure Cookie 校验使用的 URL 协议。"""
+        return urlsplit(self.url).scheme
+
+    @property
+    def origin_req_host(self) -> str:
+        """返回当前独立请求的来源主机。"""
+        return urlsplit(self.url).hostname or ""
+
+    def get_full_url(self) -> str:
+        """返回标准 Cookie 域和路径算法消费的完整 URL。"""
+        return self.url
+
+    def get_header(self, name: str, default: Optional[str] = None) -> Optional[str]:
+        """按大小写无关的名称读取 CookieJar 生成的请求头。"""
+        return self.headers.get(name.lower(), default)
+
+    def has_header(self, name: str) -> bool:
+        """判断 CookieJar 是否已经写入指定请求头。"""
+        return name.lower() in self.headers
+
+    def add_unredirected_header(self, name: str, value: str) -> None:
+        """记录 CookieJar 按域、路径及 Secure 规则筛选后的请求头。"""
+        self.headers[name.lower()] = value
+
+
+@dataclass(frozen=True)
+class _ImageCookieResponse:
+    """只向标准 CookieJar 提供保留多个 Set-Cookie 的响应头。"""
+
+    headers: Message
+
+    def info(self) -> Message:
+        """返回 CookieJar 规定的可读取重复头的元数据对象。"""
+        return self.headers
+
+
 class ImageResponsePort(Protocol):
     """图片应用服务消费的最小 HTTP 响应契约。"""
 
-    status_code: int
-    content: bytes
-    headers: Mapping[str, str]
+    @property
+    def status_code(self) -> int:
+        """返回响应状态码。"""
+        ...
+
+    @property
+    def content(self) -> bytes:
+        """返回完整响应内容。"""
+        ...
+
+    @property
+    def headers(self) -> Mapping[str, str]:
+        """返回通用响应头。"""
+        ...
+
+    @property
+    def set_cookie_headers(self) -> tuple[str, ...]:
+        """返回保持独立的原始 Set-Cookie 响应头。"""
+        ...
 
     def json(self) -> Any:
         """返回响应 JSON 载荷。"""
@@ -492,15 +565,91 @@ class ImageHelper(metaclass=Singleton):
         return response is None or response.status_code in _IMAGE_RETRY_STATUS_CODES
 
     @staticmethod
+    def _redirect_target(response: ImageResponsePort, url: str) -> Optional[str]:
+        """解析相对重定向，只接受不带 URL 凭据的 HTTP(S) 目标。"""
+        location = response.headers.get("location") or response.headers.get("Location")
+        if not location:
+            return None
+        try:
+            target = urljoin(url, location)
+            parsed = urlsplit(target)
+            if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username is not None:
+                return None
+            return target
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _initial_redirect_cookies(url: str, options: Mapping[str, Any]) -> CookieJar:
+        """为单次请求尝试建立独立 CookieJar，把调用者 Cookie 绑定到初始主机。"""
+        jar = CookieJar()
+        cookies: SimpleCookie = SimpleCookie()
+        try:
+            value = options.get("cookies")
+            if isinstance(value, str):
+                cookies.load(value)
+            elif isinstance(value, Mapping):
+                for name, item in value.items():
+                    cookies[name] = str(item)
+        except CookieError:
+            return jar
+        headers = Message()
+        for cookie in cookies.values():
+            headers.add_header("Set-Cookie", f"{cookie.OutputString()}; Path=/")
+        # 标准库类型桩限定具体 HTTP 类，实际 CookieJar 只消费这些纯元数据方法。
+        jar.extract_cookies(cast(Any, _ImageCookieResponse(headers)), cast(Any, _ImageCookieRequest(url)))
+        return jar
+
+    @staticmethod
+    def _redirect_options(
+        options: Mapping[str, Any], source: str, target: str, response: ImageResponsePort, jar: CookieJar,
+    ) -> dict[str, Any]:
+        """同源沿用标准 Cookie 作用域；跨来源清除 Cookie/Referer，且不恢复早先凭据。"""
+        result = {**options, "allow_redirects": False}
+        if urlsplit(source)[:2] != urlsplit(target)[:2]:
+            jar.clear()
+            result.update(cookies=None, cookie_header=None, referer=None)
+            return result
+        raw_headers = getattr(response, "set_cookie_headers", ())
+        if not isinstance(raw_headers, (tuple, list)) or not raw_headers:
+            value = response.headers.get("set-cookie") or response.headers.get("Set-Cookie")
+            raw_headers = (value,) if isinstance(value, str) else ()
+        headers = Message()
+        for value in raw_headers:
+            headers.add_header("Set-Cookie", value)
+        jar.extract_cookies(cast(Any, _ImageCookieResponse(headers)), cast(Any, _ImageCookieRequest(source)))
+        request = _ImageCookieRequest(target)
+        jar.add_cookie_header(cast(Any, request))
+        result.update(cookies=None, cookie_header=request.get_header("Cookie"))
+        return result
+
+    @staticmethod
     def _fetch_image_response(
         transport: ImageTransport,
         request: _ImageFetchRequest,
         options: Mapping[str, Any],
+        redirect_validator: Optional[Callable[[str], bool]] = None,
     ) -> Optional[ImageResponsePort]:
-        """读取图片响应，瞬态失败时重新请求原始地址。"""
+        """逐跳校验后读取图片；重试从原地址开始，默认只允许公网重定向。"""
         response: Optional[ImageResponsePort] = None
         for _ in range(_IMAGE_FETCH_ATTEMPTS):
-            response = transport.get(request.url, options=options)
+            current_url = request.url
+            current_options = {**options, "allow_redirects": False}
+            cookies = ImageHelper._initial_redirect_cookies(request.url, options)
+            for redirect_count in range(_IMAGE_MAX_REDIRECTS + 1):
+                response = transport.get(current_url, options=current_options)
+                if response is None or response.status_code not in _IMAGE_REDIRECT_STATUS_CODES:
+                    break
+                target = ImageHelper._redirect_target(response, current_url)
+                if not target or redirect_count == _IMAGE_MAX_REDIRECTS:
+                    return response
+                allowed = redirect_validator(target) if redirect_validator else SecurityUtils.is_safe_url(
+                    target, {target}, strict=True, block_private=True,
+                )
+                if not allowed:
+                    return response
+                current_options = ImageHelper._redirect_options(current_options, current_url, target, response, cookies)
+                current_url = target
             if not ImageHelper._is_retryable_image_response(response):
                 break
         return response
@@ -510,11 +659,28 @@ class ImageHelper(metaclass=Singleton):
         transport: ImageTransport,
         request: _ImageFetchRequest,
         options: Mapping[str, Any],
+        redirect_validator: Optional[Callable[[str], Awaitable[bool]]] = None,
     ) -> Optional[ImageResponsePort]:
-        """异步读取图片响应，瞬态失败时重新请求原始地址。"""
+        """异步逐跳校验后读取图片，拒绝目标不会被发起请求或进入缓存。"""
         response: Optional[ImageResponsePort] = None
         for _ in range(_IMAGE_FETCH_ATTEMPTS):
-            response = await transport.async_get(request.url, options=options)
+            current_url = request.url
+            current_options = {**options, "allow_redirects": False}
+            cookies = ImageHelper._initial_redirect_cookies(request.url, options)
+            for redirect_count in range(_IMAGE_MAX_REDIRECTS + 1):
+                response = await transport.async_get(current_url, options=current_options)
+                if response is None or response.status_code not in _IMAGE_REDIRECT_STATUS_CODES:
+                    break
+                target = ImageHelper._redirect_target(response, current_url)
+                if not target or redirect_count == _IMAGE_MAX_REDIRECTS:
+                    return response
+                allowed = await redirect_validator(target) if redirect_validator else await SecurityUtils.is_safe_url_async(
+                    target, {target}, strict=True, block_private=True,
+                )
+                if not allowed:
+                    return response
+                current_options = ImageHelper._redirect_options(current_options, current_url, target, response, cookies)
+                current_url = target
             if not ImageHelper._is_retryable_image_response(response):
                 break
         return response
@@ -542,6 +708,7 @@ class ImageHelper(metaclass=Singleton):
         proxy: Optional[bool] = None,
         use_cache: bool = True,
         cookies: Optional[str | dict] = None,
+        redirect_validator: Optional[Callable[[str], bool]] = None,
     ) -> Optional[tuple[bytes, str]]:
         """
         同步获取图片及其内容识别 MIME 类型。
@@ -564,6 +731,7 @@ class ImageHelper(metaclass=Singleton):
                 transport,
                 request,
                 ImageHelper._get_request_params(request.url, proxy, cookies),
+                redirect_validator,
             ),
         )
         if result is None:
@@ -594,6 +762,7 @@ class ImageHelper(metaclass=Singleton):
         proxy: Optional[bool] = None,
         use_cache: bool = True,
         cookies: Optional[str | dict] = None,
+        redirect_validator: Optional[Callable[[str], Awaitable[bool]]] = None,
     ) -> Optional[tuple[bytes, str]]:
         """
         异步获取图片及其内容识别 MIME 类型。
@@ -616,6 +785,7 @@ class ImageHelper(metaclass=Singleton):
                 transport,
                 request,
                 ImageHelper._get_request_params(request.url, proxy, cookies),
+                redirect_validator,
             ),
         )
         if result is None:

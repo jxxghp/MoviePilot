@@ -400,6 +400,12 @@ DNS 后有限等待，超时保留原 executor 并向 startup 返回 `False`，�
 工作流节点线程池同样复用该 executor；所有 `WorkflowExecutor` 必须在 concrete `WorkflowManager` 登记，
 manager 停机先封口新执行并向活动 owner 发送本地取消，再有限等待执行线程和节点 worker。未收敛时必须
 保留动作注册表和执行 owner，并让工作流生命周期 fail-fast，禁止继续释放仍被动作使用的插件或模块依赖。
+准入在 manager 同一锁内按工作流 ID 互斥，不同 ID 可并发；先准入再重置执行状态。
+节点真实结束并完成 success/fail 终态事务后才释放同 ID owner，事务失败保留 owner 供收口重试。
+动作 timeout 是每次尝试的截止时间，调用前后和循环等待后均检查，并通过 runtime.cancel_token
+通知支持取消的动作；非协作同步调用只在真实返回后报告超时，不分离后台线程或提前释放 owner。
+Application 的图校验用于创建、更新、导入和已有定义运行：拒绝重复 ID、无效端点和循环，
+允许单动作或独立节点的无边图；无动作草稿可保存但不能执行。
 工作流读取统一使用 `app.application.workflow.WorkflowQueryService` 和冻结的 `WorkflowSnapshot`；
 `app.db.adapters.workflow.TransactionalWorkflowQueryRepository` 必须在自有短 Session 内完成 ORM 投影与
 嵌套 JSON 深拷贝。API、Agent、Chain、Scheduler、`WorkflowManager` 和中心服务分享不得读取 raw
@@ -753,12 +759,26 @@ exceptions and value domains used by both modules and upper layers live in
 method names. The directory remains unchanged because discovery and plugin code
 depend on this established runtime root.
 
+`download` 的 `custom_words` 是新增可选能力参数，下载链将规划时使用的原规则传给下载器，
+qBittorrent/Transmission 用同一规则选择文件。零匹配、目标集不完整或选择更新未确认均不写成功历史；
+启动结果未知须在下载器核实。添加失败后的已有任务只按原始种子或磁力 v1/v2 哈希确认，禁止名称/大小兜底。
+Module dispatcher 仅对合同明确声明的新增可选参数兼容旧签名；支持该参数或 `**kwargs` 的 provider
+完整接收参数，其他未知参数仍按原规则失败，不能用过滤掩盖 provider ABI 错误。
+
 SMB 同存储整理由 `app.modules.filemanager.storages.smb` 持有协议调用边界：
 复制调用 `smbclient.copyfile`（CopyChunk），共享内移动调用 `smbclient.rename`，硬链接调用
 `smbclient.link`；跨共享移动先用 SMB 查询确认目标未占用，服务端复制成功后才调用
 `smbclient.remove` 删除源文件。多共享挂载仍属于同一 SMB owner，路径首段选择已配置的共享。源目标同文件检查也通过 SMB 查询，不能使用本地临时下载/上传回退。
 下载器返回的远程路径保留存储 URI，整理 Chain 通过 `StorageChain` 查询源文件，
 不直接依赖 SMB SDK；断线后目标状态不明沿用持久步骤的保守恢复合同。
+宿主覆盖整理先在同目录暂存完整新文件，再将旧目标改名备份、提升新目标，确认后才清理旧备份和 move 源。
+步骤路径从冻结计划推导，DB 适配器逐项校验并要求前驱已持久成功；查询或操作结果未知时保留文件并隔离，
+禁止删除旧目标后盲目重放。`latest` 旧版本清理和宿主历史目的清理在新目标成功后执行，
+同存储重合目的不能整块删除新文件，本地符号链接路径在可超时的文件系统代理内规范化，并在清理前再次检查。
+暂存文件大小必须与源证据一致，清理源或备份前复核大小、修改时间及可用的稳定文件 ID，
+新目标还必须匹配提升步骤的持久凭据；旧快照缺少必要证据或文件已变更时保留文件并转人工复核。
+本地文件 ID 使用设备号和 inode，验证不额外读取整文件计算哈希。
+外部 legacy transfer provider 继续遵循原有兼容合同。
 
 SMB 目录快照不依赖祖先目录 mtime 推断后代变化，而在既有递归深度上限内逐层列举。
 存储通过 `snapshot_strict_query` 声明已实现 `get_item_strict` / `list_strict`；
@@ -1164,6 +1184,10 @@ match `runtime-contract-policy.json`. New, changed, duplicate, invalid and stale
 consumer identities fail independently, and `--write-host` never modifies the
 policy. The current host permits one dynamic consumer only: the configuration-
 driven workflow registration.
+
+事件契约校验诊断只记录模型名、异常类别或错误数量，不包含原始输入、动态字段名或异常文本，
+以免 Pydantic 的输入摘要泄露认证凭据。SDK `snapshot()` 保留原始 payload 引用作为旧 ABI 访问入口，
+同时深拷贝解析后的模型和嵌套扩展字段；修改 typed 快照不能回写原事件或其他快照。
 
 ## Key File Locations
 

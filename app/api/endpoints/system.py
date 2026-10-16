@@ -238,23 +238,32 @@ async def fetch_image(
         allowed_domains = await _get_image_proxy_allowed_domains()
 
     fetch_url = SecurityUtils.strip_url_signature(url)
+    private_ranges = get_runtime_settings().get("IMAGE_PROXY_ALLOWED_PRIVATE_RANGES", [])
+    trusted_hosts = _get_image_proxy_trusted_hosts()
     # 验证URL安全性
     if not await SecurityUtils.is_safe_image_url_async(
         url,
         allowed_domains,
-        allowed_private_ranges=get_runtime_settings().get(
-            "IMAGE_PROXY_ALLOWED_PRIVATE_RANGES",
-            [],
-        ),
-        trusted_hosts=_get_image_proxy_trusted_hosts(),
+        allowed_private_ranges=private_ranges,
+        trusted_hosts=trusted_hosts,
     ):
         return None
+
+    async def validate_redirect(target: str) -> bool:
+        """逐跳重新验证目标，不把原图片的签名或主机信任扩散给跳转地址。"""
+        return await SecurityUtils.is_safe_image_redirect_url_async(
+            target,
+            allowed_domains,
+            allowed_private_ranges=private_ranges,
+            trusted_hosts=trusted_hosts,
+        )
 
     image_result = await ImageHelper().async_fetch_image_with_mime_type(
         url=fetch_url,
         proxy=proxy,
         use_cache=use_cache,
         cookies=cookies,
+        redirect_validator=validate_redirect,
     )
 
     if image_result:
@@ -662,6 +671,7 @@ async def get_progress(
     locale = LocaleHelper.get_current_locale()
 
     async def event_generator():
+        """定期输出当前处理进度，在断开或系统停止时退出。"""
         try:
             while not runtime_stop_state.is_system_stopped:
                 if await request.is_disconnected():
@@ -742,6 +752,7 @@ async def get_message(
     message = MessageHelper()
 
     async def event_generator():
+        """输出积压消息和空闲心跳，在断开或系统停止时退出。"""
         try:
             while not runtime_stop_state.is_system_stopped:
                 if await request.is_disconnected():

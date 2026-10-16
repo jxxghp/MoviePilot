@@ -697,6 +697,7 @@ def test_download_single_persists_custom_words_snapshot(monkeypatch):
     )
 
     assert result == "hash123"
+    assert chain.download.call_args.kwargs["custom_words"] == custom_words
     assert captured["custom_words"] == custom_words
     assert captured["poster"] == "https://images.example.com/w500/poster.jpg"
     assert captured["image"] == "https://images.example.com/w500/backdrop.jpg"

@@ -88,6 +88,21 @@ def test_invalid_typed_payload_is_diagnostic_only() -> None:
     warning.assert_called_once()
 
 
+@pytest.mark.parametrize("event_type,payload", [
+    (ChainEventType.AuthVerification, {"username": 123, "password": "secret-password", "token": "secret-token"}),
+    (ChainEventType.AgentLLMProvider, {"provider": {"api_key": "secret-api-key"}, "api_key": "secret-api-key"}),
+])
+def test_invalid_event_diagnostics_never_include_raw_credentials(event_type, payload) -> None:
+    """字段校验失败时，诊断日志不能通过整个输入字典泄露合法或非法字段里的密钥。"""
+    with patch("app.runtime.events.logger.warning") as warning:
+        event = Event(event_type, payload)
+    assert event.event_data is payload
+    warning.assert_called_once()
+    diagnostics = str(warning.call_args)
+    assert "validation error" in diagnostics
+    assert "secret-" not in diagnostics
+
+
 def test_selected_user_side_effects_are_marked_durable_required() -> None:
     """所有 durable-required 事件必须一一登记唯一的恢复 topic。"""
     durable_events = {

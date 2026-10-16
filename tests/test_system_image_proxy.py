@@ -9,9 +9,12 @@ from types import SimpleNamespace
 from typing import Any, Optional
 from unittest.mock import AsyncMock, Mock, patch
 
+import httpx2
 import pytest
+import requests
 from PIL import Image
 
+from app.adapters.network import http as http_adapter
 from app.adapters.system.host import SystemUtils
 from app.api.endpoints import system as system_endpoint
 from app.application import image as image_service
@@ -24,6 +27,7 @@ from app.application.image import (
 from app.application.security.image import SiteImageDomainCache
 from app.runtime.cache import AsyncFileCache, FileCache
 from app.schemas.site import Site
+from app.startup.composition.network import _ImageTransportAdapter
 
 
 @pytest.fixture(autouse=True)
@@ -180,6 +184,230 @@ def isolated_image_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Ima
     monkeypatch.setattr(helper, "file_cache", FileCache(base=tmp_path, local_only=True))
     monkeypatch.setattr(helper, "async_file_cache", AsyncFileCache(base=tmp_path, local_only=True))
     return helper
+
+
+def _mock_image_http(monkeypatch, respond):
+    """替换同步和异步真实传输层，保留 HTTP 请求头与组合根的实际处理。"""
+    def sync_request(method, url, **kwargs):
+        """通过 requests 标准准备过程构造请求，随后交给内存响应器。"""
+        headers = {name: value for name, value in kwargs["headers"].items() if value is not None}
+        prepared = requests.Request(method, url, headers=headers, cookies=kwargs.get("cookies")).prepare()
+        return respond(httpx2.Request(method, url, headers=dict(prepared.headers)))
+
+    monkeypatch.setattr(http_adapter.requests, "request", sync_request)
+    monkeypatch.setattr(http_adapter, "_get_shared_async_transport", lambda **_: httpx2.MockTransport(respond))
+    configure_image_ports(transport=_ImageTransportAdapter(), internal_address=_FakeInternalAddress())
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["sync", "async"])
+@pytest.mark.parametrize("scheme", ["http", "https"])
+async def test_same_origin_redirect_preserves_cookie_scope_and_fetch_isolation(
+    monkeypatch, isolated_image_cache, mode, scheme,
+):
+    """同源临时 Cookie 支持多头、路径、Secure、删除及域校验，且不跨图片请求积累。"""
+    observed = []
+    content = _image_bytes("PNG")
+    source = f"{scheme}://image.example/start"
+
+    def respond(request):
+        """设置多个作用域 Cookie，记录原地址和下一跳收到的有效凭据。"""
+        observed.append((request.url.path, request.headers.get("cookie", "")))
+        if request.url.path == "/start":
+            return httpx2.Response(302, headers=[
+                ("location", "/poster/cover"), ("set-cookie", "auth=new; Path=/; Secure"),
+                ("set-cookie", "remove=; Max-Age=0; Path=/"),
+                ("set-cookie", "scoped=child; Path=/poster"), ("set-cookie", "scoped=root; Path=/"),
+                ("set-cookie", "outside=hidden; Path=/else"),
+                ("set-cookie", "wrong=hidden; Domain=unrelated.invalid; Path=/"),
+                ("set-cookie", "expired=hidden; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Path=/"),
+            ])
+        return httpx2.Response(200, content=content)
+
+    async def allow(_target):
+        """本用例只验证 Cookie；全部跳转均落在隔离的内存传输。"""
+        return True
+
+    _mock_image_http(monkeypatch, respond)
+    for user in ("one", "two"):
+        cookies = f"session={user}; remove=old"
+        if mode == "sync":
+            result = isolated_image_cache.fetch_image_with_mime_type(
+                source, proxy=False, use_cache=False, cookies=cookies, redirect_validator=lambda _url: True,
+            )
+        else:
+            result = await isolated_image_cache.async_fetch_image_with_mime_type(
+                source, proxy=False, use_cache=False, cookies=cookies, redirect_validator=allow,
+            )
+        assert result == (content, "image/png")
+    assert len(observed) == 4
+    for index, user in enumerate(("one", "two")):
+        initial, redirected = observed[index * 2:index * 2 + 2]
+        assert "auth=" not in initial[1] and f"session={user}" in initial[1]
+        assert f"session={user}" in redirected[1] and "remove=" not in redirected[1]
+        assert ("auth=new" in redirected[1]) is (scheme == "https")
+        assert "wrong=" not in redirected[1] and "outside=" not in redirected[1] and "expired=" not in redirected[1]
+        assert redirected[1].index("scoped=child") < redirected[1].index("scoped=root")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["sync", "async"])
+async def test_cross_origin_redirect_drops_cookie_jar_and_does_not_restore_credentials(
+    monkeypatch, isolated_image_cache, mode,
+):
+    """跨来源后返回初始来源也不恢复原 Cookie，服务器宽域 Cookie 同样不能越界。"""
+    observed = []
+    content = _image_bytes("PNG")
+    source = "https://img.doubanio.com/start"
+
+    def respond(request):
+        """模拟原来源、CDN、返回原来源三跳，每次都试图设置宽域 Cookie。"""
+        observed.append(dict(request.headers))
+        target = "https://cdn.doubanio.com/hop" if request.url.path == "/start" else "https://img.doubanio.com/final"
+        if request.url.path != "/final":
+            return httpx2.Response(302, headers={
+                "location": target, "set-cookie": "auth=private; Domain=.doubanio.com; Path=/",
+            })
+        return httpx2.Response(200, content=content)
+
+    async def allow(_target):
+        """跨来源授权与 Cookie 作用域分别验证，目标只使用内存传输。"""
+        return True
+
+    _mock_image_http(monkeypatch, respond)
+    if mode == "sync":
+        result = isolated_image_cache.fetch_image_with_mime_type(
+            source, proxy=False, use_cache=False, cookies="session=private", redirect_validator=lambda _url: True,
+        )
+    else:
+        result = await isolated_image_cache.async_fetch_image_with_mime_type(
+            source, proxy=False, use_cache=False, cookies="session=private", redirect_validator=allow,
+        )
+    assert result == (content, "image/png")
+    assert observed[0]["cookie"] == "session=private" and observed[0]["referer"]
+    assert len(observed) == 3
+    for headers in observed[1:]:
+        assert "cookie" not in headers and "referer" not in headers
+
+
+def test_custom_image_transport_cookie_header_fallback(isolated_image_cache):
+    """旧图片端口只有普通响应头时，仍可在同源跳转时设置临时 Cookie。"""
+    content = _image_bytes("PNG")
+    transport = _FakeImageTransport()
+    transport.get = Mock(side_effect=[
+        SimpleNamespace(status_code=302, headers={"Location": "/poster", "Set-Cookie": "auth=new; Path=/"}),
+        SimpleNamespace(status_code=200, content=content, headers={}),
+    ])
+    configure_image_ports(transport=transport, internal_address=_FakeInternalAddress())
+    result = isolated_image_cache.fetch_image_with_mime_type(
+        "https://image.example/start", proxy=False, use_cache=False, redirect_validator=lambda _url: True,
+    )
+    assert result == (content, "image/png")
+    assert transport.get.call_args.kwargs["options"]["cookie_header"] == "auth=new"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("target,address,expected", [
+    ("http://127.0.0.1/private", "127.0.0.1", False),
+    ("http://[::1]/private", "::1", False),
+    ("http://169.254.169.254/latest/meta-data", "169.254.169.254", False),
+    ("https://private.example/poster", "192.168.1.10", False),
+    ("file:///etc/passwd", "8.8.8.8", False),
+    ("https://user:password@cdn.example/poster", "8.8.8.8", False),
+    ("https://cdn.example/poster", "8.8.8.8", True),
+    ("/relative-poster", "8.8.8.8", True),
+])
+async def test_real_image_transport_checks_redirect_before_request(
+    monkeypatch: pytest.MonkeyPatch, isolated_image_cache: ImageHelper,
+    target: str, address: str, expected: bool,
+) -> None:
+    """端点经过真实 HTTP Adapter 时，也不能先自动跟随跳转再进行校验。"""
+    source = "https://image.tmdb.org/redirect"
+    requests = []
+    content = _image_bytes("PNG")
+
+    def respond(request):
+        """模拟允许站点的跳转和目标响应，记录真正到达传输层的请求。"""
+        requests.append(request)
+        if str(request.url) == source:
+            return httpx2.Response(302, headers={"location": target})
+        return httpx2.Response(200, content=content)
+
+    async def addresses(host):
+        """初始主机是公网，跳转主机使用参数指定的解析结果。"""
+        return [ipaddress.ip_address("8.8.8.8" if host == "image.tmdb.org" else address)]
+
+    monkeypatch.setattr(http_adapter, "_get_shared_async_transport", lambda **_: httpx2.MockTransport(respond))
+    monkeypatch.setattr(system_endpoint.SecurityUtils, "_hostname_addresses_async", addresses)
+    monkeypatch.setattr(system_endpoint, "_get_image_proxy_trusted_hosts", lambda: set())
+    monkeypatch.setattr(system_endpoint, "get_runtime_settings", lambda: {})
+    configure_image_ports(transport=_ImageTransportAdapter(), internal_address=_FakeInternalAddress())
+
+    response = await system_endpoint.fetch_image(
+        source, proxy=False, allowed_domains={"image.tmdb.org"}, cookies="session=private-cookie",
+    )
+
+    assert (response is not None) is expected
+    assert len(requests) == (2 if expected else 1)
+    if expected:
+        assert response.body == content
+        if target.startswith("https://cdn"):
+            assert "cookie" not in requests[1].headers
+        else:
+            assert requests[1].headers["cookie"] == "session=private-cookie"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("configured,trusted,expected", [
+    (False, False, False), (True, False, True), (False, True, True),
+])
+async def test_redirect_private_exceptions_apply_only_to_configured_targets(
+    monkeypatch: pytest.MonkeyPatch, configured: bool, trusted: bool, expected: bool,
+) -> None:
+    """允许私网段不能扩大为任意跳转授权，明确配置的主机才可使用该例外。"""
+    monkeypatch.setattr(
+        system_endpoint.SecurityUtils, "_hostname_addresses_async",
+        AsyncMock(return_value=[ipaddress.ip_address("198.18.0.2")]),
+    )
+    result = await system_endpoint.SecurityUtils.is_safe_image_redirect_url_async(
+        "https://cdn.example/poster",
+        {"cdn.example"} if configured else {"image.tmdb.org"},
+        allowed_private_ranges=["198.18.0.0/15"],
+        trusted_hosts={"cdn.example"} if trusted else set(),
+    )
+    assert result is expected
+
+
+@pytest.mark.parametrize("target", ["http://127.0.0.1/private", "https://private.example/poster"])
+def test_sync_image_redirect_refuses_private_target(
+    monkeypatch: pytest.MonkeyPatch, isolated_image_cache: ImageHelper, target: str,
+) -> None:
+    """同步图片路径同样必须在第二次请求之前校验 DNS。"""
+    transport = _FakeImageTransport(sync_response=SimpleNamespace(
+        status_code=302, content=b"", headers={"location": target},
+    ))
+    configure_image_ports(transport=transport, internal_address=_FakeInternalAddress())
+    monkeypatch.setattr(
+        system_endpoint.SecurityUtils, "_hostname_addresses", lambda _: [ipaddress.ip_address("127.0.0.1")],
+    )
+    assert isolated_image_cache.fetch_image("https://image.tmdb.org/redirect", use_cache=False) is None
+    assert len(transport.sync_calls) == 1
+    assert transport.sync_calls[0][1]["allow_redirects"] is False
+
+
+@pytest.mark.asyncio
+async def test_redirects_are_bounded_and_every_hop_is_checked(isolated_image_cache: ImageHelper) -> None:
+    """环形跳转有限终止，每次目标均先经过安全回调。"""
+    transport = _FakeImageTransport(async_response=SimpleNamespace(
+        status_code=302, content=b"", headers={"location": "/loop"},
+    ))
+    validator = AsyncMock(return_value=True)
+    configure_image_ports(transport=transport, internal_address=_FakeInternalAddress())
+    assert await isolated_image_cache.async_fetch_image_with_mime_type(
+        "https://image.tmdb.org/redirect", use_cache=False, redirect_validator=validator,
+    ) is None
+    assert len(transport.async_calls) == 6
+    assert validator.await_count == 5
 
 
 def test_bangumi_image_proxy_domain_is_added_to_allowlist() -> None:

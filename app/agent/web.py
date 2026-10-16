@@ -9,6 +9,7 @@ from app.agent.loader import get_moviepilot_agent_type
 from app.application.security.user import get_configured_user_id_lookup
 from app.runtime.log import logger
 from app.schemas.message import Message
+from app.schemas.types import NotificationChannel
 
 
 class _WebAgentStreamingHandlerMixin:
@@ -265,6 +266,8 @@ class _WebAgentMoviePilotAgentMixin:
     stream_handler: Any
     user_id: Optional[str]
     _streamed_output: str
+    channel: Optional[str]
+    source: Optional[str]
 
     def __init__(
         self,
@@ -272,6 +275,7 @@ class _WebAgentMoviePilotAgentMixin:
         message_callback: Optional[Callable[[Message], Awaitable[None] | None]] = None,
         **kwargs: Any,
     ) -> None:
+        """绑定当前 Web 消息回调，并装配支持结构化事件的流式处理器。"""
         tool_event_callback = kwargs.pop("tool_event_callback", None)
         super().__init__(*args, **kwargs)
         self._message_callback = message_callback
@@ -336,6 +340,14 @@ class _WebAgentMoviePilotAgentMixin:
         )
         context["message_callback"] = self._message_callback
         return dict(context)
+
+    async def _can_restore_cross_owner_history(self) -> bool:
+        """仅真实 Web 登录管理员可续聊已授权历史，不把后台复用扩展为全局读取。"""
+        return (
+            self.channel == NotificationChannel.WebAgent.value
+            and self.source == "web-agent"
+            and await self._is_system_admin_context()
+        )
 
     def _handle_stream_text(self, text: str) -> None:
         """文本输出交由 Web 流式处理器统一回调，避免重复增量。"""

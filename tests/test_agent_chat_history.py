@@ -368,8 +368,8 @@ def test_memory_restore_entries_share_lookup_and_projection(monkeypatch):
     ]
     assert restore.call_count == 2
     expected_calls = [
-        call(session_id="session-parity", user_id="user-parity", chat=snapshot),
-        call(session_id="session-parity", user_id="user-parity", chat=snapshot),
+        call(session_id="session-parity", user_id="user-parity", chat=snapshot, allow_cross_owner=False, legacy_username=None),
+        call(session_id="session-parity", user_id="user-parity", chat=snapshot, allow_cross_owner=False, legacy_username=None),
     ]
     assert restore.call_args_list == expected_calls
     assert chat.get_sync.call_args_list == [

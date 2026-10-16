@@ -941,8 +941,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9555,
-  "edge_sha256": "c196ccb5714ef31be34e6b64314f7f4544ae5a4ce734d99ef18604bd056eaf74",
+  "edge_count": 9559,
+  "edge_sha256": "4509a0f286f9a1314a125872c4bbe8218ac3afb6b480e4e9e4303f8ea519efba",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -2111,6 +2111,7 @@
     "app.agent.web -> app.runtime.log",
     "app.agent.web -> app.schemas",
     "app.agent.web -> app.schemas.message",
+    "app.agent.web -> app.schemas.types",
     "app.api.apiv1 -> app.api",
     "app.api.apiv1 -> app.api.routers",
     "app.api.context -> app.application",
@@ -7268,6 +7269,7 @@
     "app.modules.feishu.openapi -> app.runtime.log",
     "app.modules.filemanager.module -> app.adapters",
     "app.modules.filemanager.module -> app.adapters.system",
+    "app.modules.filemanager.module -> app.adapters.system.fsproxy",
     "app.modules.filemanager.module -> app.adapters.system.host",
     "app.modules.filemanager.module -> app.application",
     "app.modules.filemanager.module -> app.application.directory",
@@ -7978,6 +7980,7 @@
     "app.modules.postgresql -> app.schemas.types",
     "app.modules.qbittorrent -> app.domain",
     "app.modules.qbittorrent -> app.domain.metainfo",
+    "app.modules.qbittorrent -> app.domain.torrent",
     "app.modules.qbittorrent -> app.foundation",
     "app.modules.qbittorrent -> app.foundation.size",
     "app.modules.qbittorrent -> app.foundation.temporal",
@@ -8452,6 +8455,7 @@
     "app.modules.thetvdb.client -> app.runtime.settings",
     "app.modules.transmission -> app.domain",
     "app.modules.transmission -> app.domain.metainfo",
+    "app.modules.transmission -> app.domain.torrent",
     "app.modules.transmission -> app.foundation",
     "app.modules.transmission -> app.foundation.size",
     "app.modules.transmission -> app.foundation.temporal",

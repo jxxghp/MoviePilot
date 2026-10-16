@@ -13,10 +13,12 @@ from typing import Any, Callable, List, Optional, Tuple
 from pydantic import BaseModel
 
 from app.application.workflow import (
+    WorkflowExecutionPort,
     WorkflowSnapshot,
     get_configured_workflow_execution,
     get_configured_workflow_query,
     get_workflow_manager,
+    validate_workflow_graph,
 )
 from app.chain.base import ChainBase
 from app.runtime.events import Event, eventmanager
@@ -134,14 +136,22 @@ class WorkflowExecutor:
             self,
             workflow: WorkflowSnapshot,
             step_callback: Callable = None,
+            *,
+            from_begin: bool = False,
+            completion_callback: Optional[Callable[["WorkflowExecutor"], None]] = None,
     ):
         """
         初始化工作流执行器
         :param workflow: 工作流对象
         :param step_callback: 步骤回调函数
+        :param from_begin: 忽略历史节点和上下文，从头构建本次执行
+        :param completion_callback: 节点真实终止后、释放同 ID 所有权前提交终态
         """
+        validate_workflow_graph(workflow.actions, workflow.flows)
         # 工作流数据
         self.workflow = workflow
+        self._from_begin = from_begin
+        self._completion_callback = completion_callback
         self.step_callback = step_callback
         self.step_callback_extended = (
             len(inspect.signature(step_callback).parameters) > 2
@@ -149,14 +159,14 @@ class WorkflowExecutor:
             else False
         )
         self.actions: dict[str, Action] = {}
-        for action_data in workflow.actions:
+        for action_data in workflow.actions or ():
             action = Action(**dict(action_data))
             if not action.id:
                 raise ValueError("工作流动作缺少 ID")
             self.actions[action.id] = action
-        self.flows = [ActionFlow(**dict(flow)) for flow in workflow.flows]
+        self.flows = [ActionFlow(**dict(flow)) for flow in workflow.flows or ()]
         execution_config = getattr(workflow, "execution_config", None) or {}
-        execution_state = getattr(workflow, "execution_state", None) or {}
+        execution_state = {} if from_begin else (getattr(workflow, "execution_state", None) or {})
         self.execution_config = (
             execution_config.model_dump(exclude_none=True)
             if isinstance(execution_config, BaseModel)
@@ -245,7 +255,7 @@ class WorkflowExecutor:
                 self._admission_state = "rejected"
                 self.success = False
                 self.stopped = True
-                self.errmsg = "工作流服务正在停止"
+                self.errmsg = "工作流正在执行或服务正在停止"
                 self.executor.shutdown_bounded(timeout=0.0)
                 self._execute_returned.set()
                 self._stopped_event.set()
@@ -256,6 +266,11 @@ class WorkflowExecutor:
         runtime_stop_state.resume_workflow(self.workflow.id)
         return True
 
+    @property
+    def workflow_id(self) -> int:
+        """返回执行 owner 互斥准入所使用的工作流 ID。"""
+        return self.workflow.id
+
     def request_stop(self) -> None:
         """停止调度新节点，并通过本地令牌通知支持取消的活动动作。"""
         self._stop_event.set()
@@ -263,6 +278,8 @@ class WorkflowExecutor:
     def abort_before_execute(self) -> None:
         """执行状态启动失败时释放尚未使用的节点池和 manager owner。"""
         self.request_stop()
+        # reset/start 失败尚未真正执行，不提交误导性的成功或失败终态。
+        self._completion_callback = None
         converged = self.executor.shutdown_bounded(timeout=0.0)
         self._execute_returned.set()
         if converged:
@@ -287,10 +304,13 @@ class WorkflowExecutor:
         return self._stopped_event.is_set()
 
     def _release_execution(self) -> None:
-        """从 concrete manager 释放已真实终止的执行 owner。"""
+        """先完成终态事务，再释放已真实终止的执行 owner；事务失败允许重试。"""
         with self._execution_lock:
             if self._stopped_event.is_set():
                 return
+            if self._completion_callback is not None:
+                self._completion_callback(self)
+                self._completion_callback = None
             if self._registered_execution:
                 unregister = getattr(self.workflowmanager, "unregister_execution", None)
                 if callable(unregister):
@@ -345,7 +365,7 @@ class WorkflowExecutor:
         """
         legacy_actions = {
             action_id for action_id in (self.workflow.current_action or "").split(",")
-            if action_id in self.actions
+            if not self._from_begin and action_id in self.actions
         }
         states = {}
         for action_id in self.actions:
@@ -368,6 +388,8 @@ class WorkflowExecutor:
         按空上下文从头执行，避免执行数据库中来源不可信的序列化载荷。
         """
         context = ActionContext()
+        if self._from_begin:
+            return context
         if self.workflow.context:
             if self.workflow.current_action:
                 logger.info(f"工作流已执行动作：{self.workflow.current_action}")
@@ -492,13 +514,21 @@ class WorkflowExecutor:
                     copy.deepcopy(self.context),
                 )
                 future.add_done_callback(partial(context.run, self.on_node_complete))
+        except Exception as err:
+            self.success = False
+            self.has_failure = True
+            self.errmsg = str(err)
+            raise
         finally:
             converged = self.executor.shutdown_bounded(
                 timeout=WORKFLOW_EXECUTOR_STOP_TIMEOUT_SECONDS,
             )
-            self._execute_returned.set()
-            if converged:
-                self._release_execution()
+            try:
+                if converged:
+                    self._release_execution()
+            finally:
+                # 终态事务仍在进行时，停机等待不能把节点线程结束等同于 owner 已释放。
+                self._execute_returned.set()
 
     def pop_dispatchable_node(self) -> Optional[str]:
         """
@@ -1301,21 +1331,18 @@ class WorkflowChain(ChainBase):
         """
         workflow_execution = get_configured_workflow_execution()
 
-        # 重置工作流
-        if from_begin:
-            workflow_execution.reset(workflow_id)
-
         # 查询工作流数据
         workflow = get_configured_workflow_query().get_sync(workflow_id)
         if not workflow:
             logger.warn(f"工作流 {workflow_id} 不存在")
             return False, "工作流不存在"
+        try:
+            validate_workflow_graph(workflow.actions, workflow.flows)
+        except ValueError as err:
+            return False, str(err)
         if not workflow.actions:
             logger.warn(f"工作流 {workflow.name} 无动作")
             return False, "工作流无动作"
-        if not workflow.flows:
-            logger.warn(f"工作流 {workflow.name} 无流程")
-            return False, "工作流无流程"
 
         def save_step(
                 action: Action,
@@ -1349,23 +1376,29 @@ class WorkflowChain(ChainBase):
                     },
                 )
 
-        logger.info(f"开始执行工作流 {workflow.name}，共 {len(workflow.actions)} 个动作 ...")
-        if progress_callback:
-            progress_callback(
-                value=0,
-                text=f"开始执行工作流 {workflow.name} ...",
-                data={"total": len(workflow.actions), "finished": 0},
-            )
+        def commit_terminal(execution: WorkflowExecutor) -> None:
+            """同 ID 所有权持有期间提交最后一次结果，避免覆盖后续执行的状态。"""
+            if execution.stopped:
+                return
+            if not execution.success or execution.has_failure:
+                committed = workflow_execution.fail(workflow_id, result=execution.errmsg)
+            else:
+                committed = workflow_execution.success(workflow_id)
+            if not committed:
+                raise RuntimeError("工作流终态写入失败")
+
         # 执行工作流
-        executor = WorkflowExecutor(workflow, step_callback=save_step)
+        executor = WorkflowExecutor(
+            workflow, step_callback=save_step, from_begin=bool(from_begin), completion_callback=commit_terminal,
+        )
         if not executor.admit():
-            logger.warning("工作流服务正在停止，拒绝执行 %s", workflow.name)
+            logger.warning("%s，拒绝执行 %s", executor.errmsg, workflow.name)
             return False, executor.errmsg
-        try:
-            workflow_execution.start(workflow_id)
-        except Exception:
-            executor.abort_before_execute()
-            raise
+        started, message = WorkflowChain._start_execution(
+            executor, workflow_execution, bool(from_begin), progress_callback,
+        )
+        if not started:
+            return False, message
         executor.execute()
 
         if executor.stopped:
@@ -1374,12 +1407,38 @@ class WorkflowChain(ChainBase):
 
         if not executor.success or executor.has_failure:
             logger.info(f"工作流 {workflow.name} 执行失败：{executor.errmsg}")
-            workflow_execution.fail(workflow_id, result=executor.errmsg)
             return False, executor.errmsg
         logger.info(f"工作流 {workflow.name} 执行完成")
-        workflow_execution.success(workflow_id)
         if progress_callback:
             progress_callback(value=100, text=f"工作流 {workflow.name} 执行完成")
+        return True, ""
+
+    @staticmethod
+    def _start_execution(
+        executor: WorkflowExecutor,
+        execution: WorkflowExecutionPort,
+        from_begin: bool,
+        progress_callback: Optional[Callable[..., None]],
+    ) -> Tuple[bool, str]:
+        """仅在获得同 ID 准入后重置并启动；事务拒绝或异常均释放未执行 owner。"""
+        workflow = executor.workflow
+        try:
+            if from_begin and not execution.reset(workflow.id):
+                executor.abort_before_execute()
+                return False, "工作流重置失败"
+            if not execution.start(workflow.id):
+                executor.abort_before_execute()
+                return False, "工作流启动失败"
+            logger.info(f"开始执行工作流 {workflow.name}，共 {len(workflow.actions)} 个动作 ...")
+            if progress_callback:
+                progress_callback(
+                    value=0,
+                    text=f"开始执行工作流 {workflow.name} ...",
+                    data={"total": len(workflow.actions), "finished": 0},
+                )
+        except Exception:
+            executor.abort_before_execute()
+            raise
         return True, ""
 
     @staticmethod

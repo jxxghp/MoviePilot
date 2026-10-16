@@ -253,6 +253,13 @@ def get_event_contract(
     return EVENT_CONTRACTS[normalized]
 
 
+def describe_event_validation_error(model: type[BaseModel], error: Exception) -> str:
+    """只输出模型名和错误数量，避免校验输入、异常文本或动态字段名泄露凭据。"""
+    if isinstance(error, ValidationError):
+        return f"{model.__name__}: {error.error_count()} validation error(s)"
+    return f"{model.__name__}: {type(error).__name__}"
+
+
 def validate_event_payload(
     event_type: EventType | ChainEventType | str,
     payload: Any,
@@ -277,5 +284,5 @@ def validate_event_payload(
         try:
             model.model_validate(payload)
         except (ValidationError, TypeError, ValueError) as error:
-            problems.append(f"{model.__name__}: {error}")
+            problems.append(describe_event_validation_error(model, error))
     return tuple(problems)

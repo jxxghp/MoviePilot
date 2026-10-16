@@ -7,7 +7,11 @@ from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
-from app.runtime.event.contracts import get_event_contract, normalize_event_type
+from app.runtime.event.contracts import (
+    describe_event_validation_error,
+    get_event_contract,
+    normalize_event_type,
+)
 from app.schemas.types import ChainEventType, EventType
 
 
@@ -48,10 +52,10 @@ def _model_snapshot(
         cache[model] = payload.model_copy(deep=True)
         return cache[model]
     try:
-        cache[model] = model.model_validate(payload)
+        cache[model] = model.model_validate(payload).model_copy(deep=True)
     except (ValidationError, TypeError, ValueError) as error:
         cache[model] = None
-        errors.append(f"{label}:{model.__name__}: {error}")
+        errors.append(f"{label}:{describe_event_validation_error(model, error)}")
     return cache[model]
 
 

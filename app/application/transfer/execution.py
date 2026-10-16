@@ -7,6 +7,7 @@ import json
 from copy import deepcopy
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Protocol
 from uuid import uuid4
 
@@ -94,6 +95,26 @@ def _canonical_json(payload: Mapping[str, Any]) -> str:
         sort_keys=True,
         separators=(",", ":"),
         allow_nan=False,
+    )
+
+
+def build_transfer_overwrite_paths(
+        *,
+        source: Mapping[str, Any],
+        target_storage: str,
+        target_path: str,
+        transfer_type: str,
+) -> tuple[str, str]:
+    """从冻结叶操作推导同目录暂存和备份路径，保证执行与账本验证使用相同身份。"""
+    identity = _canonical_json({
+        "source": dict(source), "storage": target_storage,
+        "path": target_path, "type": transfer_type,
+    })
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:24]
+    target = Path(target_path)
+    return (
+        target.with_name(f".mp-stage-{digest}").as_posix(),
+        target.with_name(f".mp-backup-{digest}").as_posix(),
     )
 
 

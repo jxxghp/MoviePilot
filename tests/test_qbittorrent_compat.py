@@ -5,8 +5,11 @@ from enum import Enum
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
+from app.domain.torrent import download_hashes
+
 
 def _load_qbittorrent_modules():
+    """加载隔离依赖的 qBittorrent 模块，避免兼容测试连接真实服务。"""
     repo_root = Path(__file__).resolve().parents[1]
 
     app_module = types.ModuleType("app")
@@ -85,7 +88,11 @@ def _load_qbittorrent_modules():
             return None
 
     class _MetaInfo:
-        def __init__(self, name):
+        """提供旧下载器测试所需的最小解析结果。"""
+
+        def __init__(self, name, custom_words=None):
+            """接受宿主可选识别词，兼容真实模块新增的输入合同。"""
+            del custom_words
             self.name = name
             self.year = None
             self.season_episode = ""
@@ -203,6 +210,7 @@ def _load_qbittorrent_modules():
     schema_types_module.ModuleType = ModuleType
     schema_types_module.DownloaderType = DownloaderType
     torrent_rules_module.is_magnet_link = _is_magnet_link
+    torrent_rules_module.download_hashes = download_hashes
     url_tools_module.parse_address = _parse_address
     text_tools_module.random_string = _random_string
     size_tools_module.format_compact_size = _format_size
@@ -710,28 +718,30 @@ def test_download_cleans_temporary_tag_when_addition_lookup_fails():
 
 def test_download_removes_temporary_tag_from_existing_torrent():
     """重复添加任务时应从已存在的种子中删除本次临时标签。"""
+    content = b"d4:infod6:lengthi15e4:name4:test12:piece lengthi16384e6:pieces20:xxxxxxxxxxxxxxxxxxxxee"
+    torrent_hash = next(iter(download_hashes(content)))
     fake_server = MagicMock()
     fake_server.add_torrent.return_value = (False, [])
     fake_server.get_content_layout.return_value = "Original"
     fake_server.get_torrents.return_value = ([{
         "name": "test",
-        "total_size": len(b"torrent-content"),
-        "hash": "existing123",
+        "total_size": len(content),
+        "hash": torrent_hash,
         "tags": None,
     }], None)
 
     module = _build_module(fake_server)
     result = module.download(
-        content=b"torrent-content",
+        content=content,
         download_dir=Path("/downloads"),
         cookie="",
         downloader="qb",
     )
 
-    assert result == ("qb", "existing123", "Original", "下载任务已存在")
-    fake_server.delete_torrents_tag.assert_called_once_with("existing123", "tmp-tag-01")
+    assert result == ("qb", torrent_hash, "Original", "下载任务已存在")
+    fake_server.delete_torrents_tag.assert_called_once_with(torrent_hash, "tmp-tag-01")
     assert fake_server.mock_calls.index(
-        call.delete_torrents_tag("existing123", "tmp-tag-01")
+        call.delete_torrents_tag(torrent_hash, "tmp-tag-01")
     ) < fake_server.mock_calls.index(call.get_content_layout())
 
 
@@ -836,7 +846,9 @@ def test_download_episode_selection_retries_file_list_after_add():
     class _EpisodeMetaInfo:
         """测试用集数识别对象。"""
 
-        def __init__(self, name):
+        def __init__(self, name, custom_words=None):
+            """识别文件集数，并兼容模块传入的自定义规则。"""
+            del custom_words
             self.episode_list = [12] if "E12" in name else [1]
 
     fake_server = MagicMock()
@@ -860,8 +872,23 @@ def test_download_episode_selection_retries_file_list_after_add():
 
     assert result == ("qb", "abc123", "Original", "添加下载成功，已选择集数：[12]")
     fake_server.get_files.assert_called_once_with("abc123", retry=5, interval=1)
-    fake_server.set_files.assert_called_once_with(torrent_hash="abc123", file_ids=[1], priority=0)
+    assert fake_server.set_files.call_args_list == [
+        call(torrent_hash="abc123", file_ids=[1], priority=0),
+        call(torrent_hash="abc123", file_ids=[12], priority=1),
+    ]
     fake_server.start_torrents.assert_called_once_with("abc123")
+
+
+def test_force_start_returns_request_confirmation():
+    """强制继续请求必须返回确认状态，供选集提交判断能否成功结算。"""
+    fake_client = MagicMock()
+    with patch.object(Qbittorrent, "_Qbittorrent__login_qbittorrent", return_value=fake_client):
+        downloader = Qbittorrent(host="http://127.0.0.1", port=8080, username="admin", password="adminadmin")
+    downloader._force_resume = True
+    assert downloader.torrents_set_force_start("abc123") is True
+    fake_client.torrents_set_force_start.assert_called_once_with(enable=True, torrent_hashes="abc123")
+    fake_client.torrents_set_force_start.side_effect = RuntimeError("request failed")
+    assert downloader.torrents_set_force_start("abc123") is False
 
 
 def test_set_speed_limit_allows_single_direction_limit():

@@ -49,7 +49,7 @@ class LocalStorage(StorageBase):
 
     def __get_fileitem(self, path: Path) -> _SchemaFileItem:
         """
-        获取文件项
+        获取文件项，同时保留设备和 inode 身份用于恢复后的安全清理。
         """
         # 走代理读取：挂载挂死时这一步会在超时后抛 OSError，而不是永久悬挂线程。
         # 顺带只 stat 一次——原先 size 与 modify_time 各 stat 一次，在网络挂载上
@@ -64,6 +64,7 @@ class LocalStorage(StorageBase):
             extension=path.suffix[1:],
             size=info["size"],
             modify_time=info["mtime"],
+            fileid=f"{info['dev']}:{info['ino']}" if info.get("ino") else None,
         )
 
     def __get_diritem(self, path: Path) -> _SchemaFileItem:

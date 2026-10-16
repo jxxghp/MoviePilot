@@ -138,6 +138,7 @@ def _agent_provider_metric_type(provider: object) -> str:
 
 @dataclass
 class _SessionUsageSnapshot:
+    """保存当前会话的最近请求预算与累计模型用量。"""
     model: Optional[str] = None
     context_window_tokens: Optional[int] = None
     last_input_usage_available: bool = False
@@ -180,6 +181,7 @@ class _SessionUsageSnapshot:
     last_updated_at: Optional[datetime] = None
 
     def to_dict(self, session_id: str) -> dict[str, Any]:
+        """把用量快照投影为带会话 ID 的状态响应。"""
         return {
             "session_id": session_id,
             "model": self.model,
@@ -259,6 +261,7 @@ class _ThinkTagStripper:
     _THINK_END_TAG = "</think>"
 
     def __init__(self):
+        """初始化思考标签解析缓冲与标签内状态。"""
         self.buffer = ""
         self.in_think_tag = False
 
@@ -636,6 +639,13 @@ class MoviePilotAgent:
                 session_id=self.session_id,
                 user_id=self.user_id,
             )
+            if not chat and self.channel == NotificationChannel.WebAgent.value and self.source == "web-agent":
+                existing = await get_configured_agent_chat_service().get(session_id=self.session_id)
+                if existing:
+                    legacy_owner = not existing.user_id and existing.username == self.username
+                    if not legacy_owner and not await self._can_restore_cross_owner_history():
+                        return
+                    chat = existing
             if chat and has_custom_agent_chat_title(chat.title):
                 return
             title = await self._generate_chat_title(message)
@@ -643,18 +653,19 @@ class MoviePilotAgent:
                 return
             await get_configured_agent_chat_persistence().async_update_title_if_empty(
                 session_id=self.session_id,
-                user_id=self.user_id,
+                user_id=chat.user_id if chat else self.user_id,
                 title=title,
-                username=self.username,
-                channel=self.channel,
-                source=self.source,
-                original_chat_id=self.original_chat_id,
+                username=chat.username if chat else self.username,
+                channel=chat.channel if chat else self.channel,
+                source=chat.source if chat else self.source,
+                original_chat_id=chat.original_chat_id if chat else self.original_chat_id,
             )
         except Exception as e:
             logger.debug(f"生成Agent会话标题失败: {e}")
 
     @staticmethod
     def _coerce_int(value: Any) -> Optional[int]:
+        """把可转换的值归一化为整数，无效值返回空。"""
         if value is None:
             return None
         try:
@@ -680,10 +691,12 @@ class MoviePilotAgent:
 
     @classmethod
     def _get_model_name(cls, model: Any) -> Optional[str]:
+        """兼容不同模型实现的模型名称字段。"""
         return getattr(model, "model", None) or getattr(model, "model_name", None) or getattr(model, "model_id", None)
 
     @classmethod
     def _get_context_window_tokens(cls, model: Any) -> Optional[int]:
+        """从模型 profile 读取明确声明的正整数输入窗口。"""
         profile = getattr(model, "profile", None)
         if not profile:
             return None
@@ -704,6 +717,7 @@ class MoviePilotAgent:
         return None
 
     def _sync_model_profile(self, model: Any) -> None:
+        """把当前模型名称和输入窗口同步到会话用量快照。"""
         model_name = self._get_model_name(model)
         context_window_tokens = self._get_context_window_tokens(model)
         if model_name:
@@ -879,6 +893,7 @@ class MoviePilotAgent:
         self._session_usage.last_estimate_error_ratio = None
 
     def get_session_status(self) -> dict[str, Any]:
+        """返回会话预算和用量，首轮请求前使用运行配置兜底。"""
         if not self._session_usage.model and self._session_usage.last_request_sequence == 0:
             self._session_usage.model = get_runtime_setting("LLM_MODEL")
         if not self._session_usage.context_window_tokens and self._session_usage.last_request_sequence == 0:
@@ -1001,6 +1016,10 @@ class MoviePilotAgent:
             # 后台任务无渠道上下文时置空，交由通知链广播。
             "original_chat_id": None if self.is_background else self.original_chat_id,
         }
+
+    async def _can_restore_cross_owner_history(self) -> bool:
+        """默认只恢复本人或无归属旧历史，工具管理员语义不授予跨用户会话读取权。"""
+        return False
 
     def set_protected_output_callback(
         self,
@@ -1188,6 +1207,7 @@ class MoviePilotAgent:
             return "当前入口不支持安全交付敏感设置，未执行读取。"
 
         async def _execute_confirmed() -> str:
+            """再次确认工具权限后执行已批准的敏感读取。"""
             permission_result = await pending.tool._check_permission()
             if permission_result:
                 return permission_result
@@ -2233,6 +2253,11 @@ class MoviePilotAgent:
                 await self._memory.async_get_agent_messages(
                     session_id=self.session_id,
                     user_id=self.user_id,
+                    allow_cross_owner=await self._can_restore_cross_owner_history(),
+                    legacy_username=(
+                        self.username if self.channel == NotificationChannel.WebAgent.value
+                        and self.source == "web-agent" else None
+                    ),
                 )
             )
 

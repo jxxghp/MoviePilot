@@ -203,6 +203,7 @@ class WebAgentEventPublisher:
     """合并 WebAgent 文本增量，并通过有界队列向 SSE 消费者提供事件。"""
 
     def __init__(self) -> None:
+        """初始化有界事件队列、增量缓冲和单一异步推送任务。"""
         self._queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=WEB_AGENT_STREAM_QUEUE_MAX_SIZE)
         self._pending_events: deque[dict[str, Any]] = deque()
         self._pending_signal = asyncio.Event()
@@ -304,17 +305,24 @@ def build_web_agent_session_id(user: AgentChatPrincipal, session_id: Optional[st
     :return: 可用于 Agent 记忆隔离的服务端会话 ID
     """
     seed = str(session_id or "").strip() or uuid.uuid4().hex
-    if seed.startswith(WEB_AGENT_SESSION_PREFIX):
+    existing_chat = get_configured_agent_chat_service().get_sync(seed)
+    if existing_chat:
+        if not can_access_agent_chat(existing_chat, user):
+            raise PermissionError("会话不存在或无权访问")
         return seed
-    try:
-        existing_chat = get_configured_agent_chat_service().get_sync(seed)
-        if existing_chat and AgentChatService.can_access(existing_chat, user):
+    return _new_web_agent_session_id(user, seed)
+
+
+def _new_web_agent_session_id(user: AgentChatPrincipal, seed: str) -> str:
+    """未落库的会话也按用户 ID 分区，上传后可复用同一 ID 而不能占用他人队列。"""
+    namespace = f"{WEB_AGENT_SESSION_PREFIX}{user.id}:"
+    if seed.startswith(WEB_AGENT_SESSION_PREFIX):
+        suffix = seed.removeprefix(namespace)
+        if seed.startswith(namespace) and len(suffix) == 32 and all(char in "0123456789abcdef" for char in suffix):
             return seed
-    except Exception as e:
-        logger.debug(f"读取WebAgent历史会话失败: {e}")
-    user_part = user.name or str(user.id)
-    digest = hashlib.sha256(f"{user_part}:{seed}".encode("utf-8")).hexdigest()
-    return f"{WEB_AGENT_SESSION_PREFIX}{digest[:32]}"
+        raise PermissionError("会话不存在或无权访问")
+    digest = hashlib.sha256(f"{user.id}:{seed}".encode("utf-8")).hexdigest()
+    return f"{namespace}{digest[:32]}"
 
 
 async def build_web_agent_session_id_async(
@@ -322,36 +330,27 @@ async def build_web_agent_session_id_async(
     session_id: Optional[str],
     service: Optional[AgentChatService] = None,
 ) -> str:
-    """异步解析 Web Agent 会话 ID，并复用异步会话查询端口。"""
+    """异步解析会话并验证已有记录归属，Web 前缀不提供访问授权。"""
     seed = str(session_id or "").strip() or uuid.uuid4().hex
-    if seed.startswith(WEB_AGENT_SESSION_PREFIX):
+    if service is None:
+        service = get_configured_agent_chat_service()
+    existing_chat = await service.get(seed)
+    if existing_chat:
+        if not can_access_agent_chat(existing_chat, user):
+            raise PermissionError("会话不存在或无权访问")
         return seed
-    try:
-        if service is None:
-            service = get_configured_agent_chat_service()
-        existing_chat = await service.get(seed)
-        if existing_chat and AgentChatService.can_access(existing_chat, user):
-            return seed
-    except Exception as e:
-        logger.debug(f"读取WebAgent历史会话失败: {e}")
-    user_part = user.name or str(user.id)
-    digest = hashlib.sha256(f"{user_part}:{seed}".encode("utf-8")).hexdigest()
-    return f"{WEB_AGENT_SESSION_PREFIX}{digest[:32]}"
+    return _new_web_agent_session_id(user, seed)
 
 
 def can_access_agent_chat(chat: Any, user: AgentChatPrincipal) -> bool:
     """
     判断当前登录用户是否可以访问指定 Agent 会话。
 
-    超级用户可查看所有渠道历史；普通用户仅能查看 user_id 或 username 匹配自己的会话。
+    超级用户可查看所有渠道历史；普通用户优先按持久化 ID 匹配，只有无 ID 旧记录使用用户名。
     """
     if not chat or not user:
         return False
-    if getattr(user, "is_superuser", False):
-        return True
-    user_id = str(user.id)
-    username = str(user.name or "")
-    return chat.user_id == user_id or (bool(username) and chat.username == username)
+    return AgentChatService.can_access(chat, user)
 
 
 async def get_accessible_agent_chat(
@@ -508,12 +507,14 @@ async def save_web_agent_display_snapshot(
     persistence: Optional[AgentChatPersistenceService] = None,
 ) -> None:
     """
-    保存 WebAgent 当前展示消息快照。
+    保存 WebAgent 展示快照前重新检查归属，避免入口之后的会话变更造成越权覆盖。
     """
     if service is None:
         # 直接调用该内部 helper 时没有 FastAPI 依赖注入上下文。
         service = get_configured_agent_chat_service()
     existing_chat = await service.get(session_id)
+    if existing_chat and not can_access_agent_chat(existing_chat, current_user):
+        raise PermissionError("会话不存在或无权访问")
     if persistence is None:
         # 直接调用该内部 helper 时没有 FastAPI 依赖注入上下文。
         persistence = get_configured_agent_chat_persistence()
@@ -1489,11 +1490,16 @@ async def build_web_agent_stream(
     display_prompt = (command.display_text or command.text).strip()
     service = service or get_configured_agent_chat_service()
     persistence = persistence or get_configured_agent_chat_persistence()
-    session_id = await build_web_agent_session_id_async(
-        current_user,
-        command.session_id,
-        service,
-    )
+    try:
+        session_id = await build_web_agent_session_id_async(
+            current_user,
+            command.session_id,
+            service,
+        )
+    except PermissionError:
+        return WebAgentStreamResult(
+            events=_single_web_agent_event({"type": "error", "message": "会话不存在或无权访问"})
+        )
     is_secret_confirmation_candidate = (
         prompt in {"确认", "取消"} and not command.images and not command.audio_refs and not command.files
     )

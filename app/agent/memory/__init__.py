@@ -28,6 +28,8 @@ class ConversationMemory(BaseModel):
 
     session_id: str = Field(description="会话ID")
     user_id: Optional[str] = Field(default=None, description="用户ID")
+    owner_user_id: Optional[str] = Field(default=None, description="持久化会话原始归属，缓存复用时再次校验")
+    owner_username: Optional[str] = Field(default=None, description="无 ID 旧记录的用户名归属")
     messages: List[BaseMessage] = Field(default_factory=list, description="消息列表")
     updated_at: datetime = Field(default_factory=datetime.now, description="更新时间")
 
@@ -35,6 +37,7 @@ class ConversationMemory(BaseModel):
 
     @field_serializer("updated_at", when_used="json")
     def serialize_datetime(self, value: datetime) -> str:
+        """把记忆更新时间序列化为标准日期字符串。"""
         return value.isoformat()
 
 
@@ -134,9 +137,20 @@ class MemoryManager:
         session_id: str,
         user_id: str,
         chat: Optional[AgentChatRecord],
+        allow_cross_owner: bool = False,
+        legacy_username: Optional[str] = None,
     ) -> List[BaseMessage]:
-        """反序列化后清理历史工具图像并回填缓存，真实用户附件保持原样。"""
+        """仅恢复当前用户或无归属旧记录，再清理工具图像并回填缓存。"""
         if not chat or not chat.agent_messages:
+            return []
+        # 无用户条件的兼容查询只用于无归属旧记录，不能扩大到其他明确归属账号。
+        owner_id = getattr(chat, "user_id", None)
+        owner_username = getattr(chat, "username", None)
+        foreign_owner = (
+            str(owner_id) != str(user_id) if owner_id
+            else bool(owner_username and owner_username != legacy_username)
+        )
+        if foreign_owner and not allow_cross_owner:
             return []
         try:
             messages = messages_for_persistence(messages_from_dict(chat.agent_messages))
@@ -149,13 +163,16 @@ class MemoryManager:
         memory = ConversationMemory(
             session_id=session_id,
             user_id=user_id,
+            owner_user_id=owner_id,
+            owner_username=owner_username,
             messages=messages,
         )
         self.save_memory(memory)
         return memory.messages
 
     def get_agent_messages(
-            self, session_id: str, user_id: str
+            self, session_id: str, user_id: str, *, allow_cross_owner: bool = False,
+            legacy_username: Optional[str] = None,
     ) -> List[BaseMessage]:
         """
         为Agent获取最近的消息。
@@ -164,7 +181,7 @@ class MemoryManager:
         """
         memory = self.get_memory(session_id, user_id)
         if memory:
-            return memory.messages
+            return self._authorized_cached_messages(memory, user_id, allow_cross_owner, legacy_username)
 
         try:
             service = self._chat_service()
@@ -180,15 +197,32 @@ class MemoryManager:
             session_id=session_id,
             user_id=user_id,
             chat=chat,
+            allow_cross_owner=allow_cross_owner,
+            legacy_username=legacy_username,
         )
 
+    @staticmethod
+    def _authorized_cached_messages(
+        memory: ConversationMemory, user_id: str, allow_cross_owner: bool,
+        legacy_username: Optional[str],
+    ) -> List[BaseMessage]:
+        """恢复授权不会永久附着于缓存，每次跨归属读取都需要显式许可。"""
+        foreign_owner = (
+            memory.owner_user_id != str(user_id) if memory.owner_user_id
+            else bool(memory.owner_username and memory.owner_username != legacy_username)
+        )
+        if foreign_owner and not allow_cross_owner:
+            return []
+        return memory.messages
+
     async def async_get_agent_messages(
-        self, session_id: str, user_id: str
+        self, session_id: str, user_id: str, *, allow_cross_owner: bool = False,
+        legacy_username: Optional[str] = None,
     ) -> List[BaseMessage]:
         """异步恢复 Agent 消息，查询与会话应用服务保持同一异步端口。"""
         memory = self.get_memory(session_id, user_id)
         if memory:
-            return memory.messages
+            return self._authorized_cached_messages(memory, user_id, allow_cross_owner, legacy_username)
 
         try:
             service = self._chat_service()
@@ -204,6 +238,8 @@ class MemoryManager:
             session_id=session_id,
             user_id=user_id,
             chat=chat,
+            allow_cross_owner=allow_cross_owner,
+            legacy_username=legacy_username,
         )
 
     def _update_agent_messages(

@@ -1,0 +1,256 @@
+"""真实下载器模块与下载链的选集、身份确认边界回归。"""
+
+import hashlib
+from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import Mock
+
+import pytest
+from torrentool.bencode import Bencode
+
+from app.chain.download.facade import DownloadChain
+from app.domain.context import Context
+from app.modules.qbittorrent import QbittorrentModule
+from app.modules.transmission import TransmissionModule
+
+_CUSTOM_WORDS = (
+    "A.Will.Eternal.S04 => 一念永恒{[tmdbid=107371;type=tv]}S01 "
+    "&& S01 <> 2160p >> EP+165"
+)
+_FILES = ["A.Will.Eternal.S04E05.2160p.mkv", "A.Will.Eternal.S04E06.2160p.mkv"]
+
+
+def _torrent(version="v1"):
+    """构造只在内存解析的合法 v1/v2 种子和下载器可能使用的全部身份。"""
+    info = {"name": "Same.Show.S01", "piece length": 16384}
+    if version in {"v1", "hybrid"}:
+        info.update({"pieces": b"x" * 20, "files": [
+            {"length": 21, "path": [name]} for name in _FILES
+        ]})
+    if version in {"v2", "hybrid"}:
+        info.update({"meta version": 2, "file tree": {
+            name: {"": {"length": 21, "pieces root": b"\xff" * 32}} for name in _FILES
+        }})
+    hashes = []
+    if version in {"v1", "hybrid"}:
+        hashes.append(hashlib.sha1(Bencode.encode(info)).hexdigest())
+    if version in {"v2", "hybrid"}:
+        digest = hashlib.sha256(Bencode.encode(info)).hexdigest()
+        hashes.extend((digest, digest[:40]))
+    return Bencode.encode({"info": info}), hashes
+
+
+@pytest.fixture(params=[QbittorrentModule, TransmissionModule], ids=["qbittorrent", "transmission"])
+def downloader(request):
+    """使用真实模块实现，仅替换外部下载器客户端。"""
+    content, hashes = _torrent()
+    server = Mock()
+    server.add_torrent.return_value = (
+        (True, [hashes[0]]) if request.param is QbittorrentModule
+        else SimpleNamespace(hashString=hashes[0])
+    )
+    server.get_content_layout.return_value = "Original"
+    server.is_force_resume.return_value = False
+    server.get_files.side_effect = lambda *_args, **_kwargs: (
+        [{"id": index, "name": f"Folder.S09E99/{name}"} for index, name in enumerate(_FILES)]
+        if request.param is QbittorrentModule else
+        [SimpleNamespace(id=index, name=f"Folder.S09E99/{name}") for index, name in enumerate(_FILES)]
+    )
+    for method in ("set_files", "set_unwanted_files", "start_torrents", "stop_torrents"):
+        getattr(server, method).return_value = True
+    module = request.param.__new__(request.param)
+    module.get_instance = Mock(return_value=server)
+    module.normalize_path = Mock(side_effect=lambda path, _name: path)
+    module.get_default_config_name = Mock(return_value="test-downloader")
+    return module, server, content, hashes[0]
+
+
+def _submit(chain, content, episodes, custom_words):
+    """从下载链实际模块调用包装器提交，捕获成功或失败结算边界。"""
+    prepared = SimpleNamespace(
+        torrent_content=content, torrent=SimpleNamespace(site_cookie=""),
+        download_dir=Path("/downloads"), media=SimpleNamespace(category="TV"), site_downloader=None,
+    )
+    return chain._submit_prepared_download(
+        prepared=prepared, context=Context(), episodes=episodes, channel=None, source="subscribe",
+        downloader="test-downloader", userid=None, username=None, label=None,
+        custom_words=custom_words, governance=None,
+    )
+
+
+def test_subscription_mapping_reaches_real_downloader_selection(downloader):
+    """S04E05 映射为 E170 时，仅下载其物理文件且成功结算。"""
+    module, server, content, torrent_hash = downloader
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.run_module = lambda method, **kwargs: getattr(module, method)(**kwargs)
+    chain._settle_accepted_download = Mock()
+    chain._record_rejected_download = Mock()
+
+    result, _message = _submit(chain, content, {170}, _CUSTOM_WORDS)
+
+    assert result == torrent_hash
+    if isinstance(module, QbittorrentModule):
+        assert server.set_files.call_args_list[0].kwargs == {
+            "torrent_hash": torrent_hash, "file_ids": [1], "priority": 0,
+        }
+        assert server.set_files.call_args_list[1].kwargs["file_ids"] == [0]
+    else:
+        server.set_files.assert_called_once_with(torrent_hash, [0])
+        server.set_unwanted_files.assert_called_once_with(torrent_hash, [1])
+    server.start_torrents.assert_called_once_with(torrent_hash)
+    chain._settle_accepted_download.assert_called_once()
+    chain._record_rejected_download.assert_not_called()
+
+
+@pytest.mark.parametrize("failure", ["unmatched", "missing_files", "priority", "start"])
+def test_selection_failure_keeps_paused_task_and_never_settles_success(downloader, failure):
+    """零匹配或下载器未确认选集时，不启动整包或把非空 hash 当成功。"""
+    module, server, content, torrent_hash = downloader
+    words = None if failure == "unmatched" else _CUSTOM_WORDS
+    if failure == "missing_files":
+        server.get_files.side_effect = None
+        server.get_files.return_value = []
+    elif failure == "priority":
+        server.set_files.return_value = False
+    elif failure == "start":
+        server.start_torrents.return_value = False
+    chain = DownloadChain.__new__(DownloadChain)
+    chain.run_module = lambda method, **kwargs: getattr(module, method)(**kwargs)
+    chain._settle_accepted_download = Mock()
+    chain._record_rejected_download = Mock()
+
+    result, message = _submit(chain, content, {170}, words)
+
+    assert result is None
+    assert torrent_hash in message
+    assert ("启动任务未确认" if failure == "start" else "保持暂停") in message
+    if failure != "start":
+        server.start_torrents.assert_not_called()
+    else:
+        assert server.stop_torrents.call_count == (2 if isinstance(module, TransmissionModule) else 1)
+        assert all(call.args == (torrent_hash,) for call in server.stop_torrents.call_args_list)
+        assert "保持暂停" in message
+    chain._settle_accepted_download.assert_not_called()
+    chain._record_rejected_download.assert_called_once()
+
+
+@pytest.mark.parametrize("version", ["v1", "v2", "hybrid"])
+@pytest.mark.parametrize("matching", [True, False])
+def test_existing_task_requires_actual_info_hash(downloader, version, matching):
+    """添加失败只可接管实际 v1/v2 身份相同的任务，同名同大小不构成证明。"""
+    module, server, _content, _torrent_hash = downloader
+    content, hashes = _torrent(version)
+    existing_hash = hashes[-1] if matching else "a" * 40
+    server.add_torrent.return_value = (False, []) if isinstance(module, QbittorrentModule) else None
+    existing = {"name": "Same.Show.S01", "total_size": 42, "hash": existing_hash, "tags": "已整理"}
+    server.get_torrents.return_value = (
+        [existing] if isinstance(module, QbittorrentModule) else
+        [SimpleNamespace(name=existing["name"], total_size=42, hashString=existing_hash, labels=["已整理"])],
+        None,
+    )
+
+    result = module.download(content, Path("/downloads"), "", downloader="test-downloader")
+
+    assert result[1] == (existing_hash if matching else None)
+    if not matching:
+        server.remove_torrents_tag.assert_not_called()
+        server.set_torrents_tag.assert_not_called()
+        server.set_torrent_tag.assert_not_called()
+
+
+def test_existing_paused_task_cannot_bypass_failed_selection(downloader):
+    """重试遇到相同 hash 时仍须核验选集，不能把此前暂停的失败任务结算为成功。"""
+    module, server, content, torrent_hash = downloader
+    server.add_torrent.return_value = (False, []) if isinstance(module, QbittorrentModule) else None
+    server.get_torrents.return_value = (
+        [{"hash": torrent_hash, "name": "Same.Show.S01", "total_size": 42, "tags": ""}]
+        if isinstance(module, QbittorrentModule) else
+        [SimpleNamespace(hashString=torrent_hash, name="Same.Show.S01", total_size=42, labels=[])],
+        None,
+    )
+    result = module.download(content, Path("/downloads"), "", episodes={170}, downloader="test-downloader")
+    assert result[1] is None
+    assert "保持暂停" in result[3]
+    server.start_torrents.assert_not_called()
+
+
+@pytest.mark.parametrize("matching", [True, False])
+def test_transmission_duplicate_rpc_task_is_paused_before_selection(downloader, matching):
+    """RPC 把重复任务返回为非空 Torrent 时，先暂停正在运行的旧任务再选集。"""
+    module, server, content, torrent_hash = downloader
+    if not isinstance(module, TransmissionModule):
+        pytest.skip("Transmission RPC 重复添加返回非空 Torrent")
+    task_state = {"running": True}
+    list_files = server.get_files.side_effect
+
+    def stop_task(_torrent_hash):
+        """模拟重复添加不会修改状态、显式暂停才能停止的原任务。"""
+        task_state["running"] = False
+        return True
+
+    def get_paused_files(*args, **kwargs):
+        """在真正读取和选择文件前验证旧任务已经暂停。"""
+        assert not task_state["running"]
+        return list_files(*args, **kwargs)
+
+    server.stop_torrents.side_effect = stop_task
+    server.get_files.side_effect = get_paused_files
+    result = module.download(
+        content, Path("/downloads"), "", episodes={170},
+        custom_words=_CUSTOM_WORDS if matching else None,
+    )
+
+    server.stop_torrents.assert_called_once_with(torrent_hash)
+    assert result[1] == (torrent_hash if matching else None)
+    if not matching:
+        server.start_torrents.assert_not_called()
+        assert not task_state["running"]
+        assert "保持暂停" in result[3]
+
+
+@pytest.mark.parametrize("pause_result", [False, None])
+def test_transmission_duplicate_rpc_task_requires_confirmed_pause(downloader, pause_result):
+    """重复任务的暂停失败或状态未知时，不查询、重选或启动任何文件。"""
+    module, server, content, torrent_hash = downloader
+    if not isinstance(module, TransmissionModule):
+        pytest.skip("Transmission RPC 重复添加返回非空 Torrent")
+    server.stop_torrents.return_value = pause_result
+
+    result = module.download(content, Path("/downloads"), "", episodes={170}, custom_words=_CUSTOM_WORDS)
+
+    assert result[1] is None
+    assert torrent_hash in result[3] and "无法确认暂停" in result[3]
+    assert "保持暂停" not in result[3]
+    server.stop_torrents.assert_called_once_with(torrent_hash)
+    server.get_files.assert_not_called()
+    server.set_files.assert_not_called()
+    server.set_unwanted_files.assert_not_called()
+    server.start_torrents.assert_not_called()
+
+
+def test_unconfirmed_start_does_not_claim_task_is_paused(downloader):
+    """启动与补偿暂停均未确认时，应报告未知状态并继续失败结算。"""
+    module, server, content, torrent_hash = downloader
+    server.start_torrents.return_value = False
+    if isinstance(module, TransmissionModule):
+        server.stop_torrents.side_effect = [True, False]
+    else:
+        server.stop_torrents.return_value = False
+    result = module.download(content, Path("/downloads"), "", episodes={170}, custom_words=_CUSTOM_WORDS)
+    assert result[1] is None
+    assert torrent_hash in result[3] and "启动任务未确认" in result[3] and "未记录成功" in result[3]
+    assert "保持暂停" not in result[3]
+
+
+@pytest.mark.parametrize("started", [True, False])
+def test_qbittorrent_force_start_confirms_selection_result(downloader, started):
+    """强制继续模式使用其实际确认结果，不能因普通启动路径未执行而误判。"""
+    module, server, content, torrent_hash = downloader
+    if not isinstance(module, QbittorrentModule):
+        pytest.skip("Transmission 不提供 qBittorrent 强制继续模式")
+    server.is_force_resume.return_value = True
+    server.torrents_set_force_start.return_value = started
+    result = module.download(content, Path("/downloads"), "", episodes={170}, custom_words=_CUSTOM_WORDS)
+    assert result[1] == (torrent_hash if started else None)
+    server.torrents_set_force_start.assert_called_once_with(torrent_hash)
+    server.start_torrents.assert_not_called()

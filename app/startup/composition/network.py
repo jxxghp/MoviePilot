@@ -2,6 +2,7 @@
 
 import asyncio
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional, Union, cast
 
@@ -172,8 +173,51 @@ def _list_enabled_network_module_ids() -> tuple[str, ...]:
     return tuple(spec.id for spec in get_module_manager().list_enabled_specs())
 
 
+@dataclass(frozen=True, slots=True)
+class _ImageResponseAdapter:
+    """保留图片响应能力，并暴露没有合并的 Set-Cookie 头供标准 CookieJar 使用。"""
+
+    response: Any
+    set_cookie_headers: tuple[str, ...]
+
+    @property
+    def status_code(self) -> int:
+        """返回底层响应状态码。"""
+        return int(self.response.status_code)
+
+    @property
+    def content(self) -> bytes:
+        """返回底层响应的完整内容。"""
+        return cast(bytes, self.response.content)
+
+    @property
+    def headers(self) -> Mapping[str, str]:
+        """返回通用响应头，重复 Cookie 头由独立字段保留。"""
+        return cast(Mapping[str, str], self.response.headers)
+
+    def json(self) -> Any:
+        """保持壁纸 JSON 查询使用的原始解析能力。"""
+        return self.response.json()
+
+
 class _ImageTransportAdapter:
     """把通用 HTTP Adapter 收窄为图片应用服务的 GET 端口。"""
+
+    @staticmethod
+    def _adapt_response(response: Any) -> Optional[ImageResponsePort]:
+        """从 requests/httpx 的原始头中提取多个 Set-Cookie，不按逗号拆分到期时间。"""
+        if response is None:
+            return None
+        raw_headers = getattr(getattr(response, "raw", None), "headers", None)
+        get_values = getattr(raw_headers, "getlist", None)
+        if not callable(get_values):
+            get_values = getattr(response.headers, "get_list", None)
+        if callable(get_values):
+            values = tuple(get_values("Set-Cookie"))
+        else:
+            value = response.headers.get("Set-Cookie") or response.headers.get("set-cookie")
+            values = (value,) if value else ()
+        return _ImageResponseAdapter(response, values)
 
     def get(
         self,
@@ -182,8 +226,14 @@ class _ImageTransportAdapter:
         options: Mapping[str, Any],
     ) -> Optional[ImageResponsePort]:
         """同步创建短生命周期请求对象并返回响应。"""
-        response = RequestUtils(**dict(options)).get_res(url=url)
-        return cast(Optional[ImageResponsePort], response)
+        request_options = dict(options)
+        allow_redirects = request_options.pop("allow_redirects", True)
+        cookie_header = request_options.pop("cookie_header", None)
+        request = RequestUtils(**request_options)
+        if cookie_header:
+            request.update_headers({"Cookie": cookie_header})
+        response = request.get_res(url=url, allow_redirects=allow_redirects)
+        return self._adapt_response(response)
 
     async def async_get(
         self,
@@ -192,8 +242,14 @@ class _ImageTransportAdapter:
         options: Mapping[str, Any],
     ) -> Optional[ImageResponsePort]:
         """异步创建短生命周期请求对象并返回响应。"""
-        response = await AsyncRequestUtils(**dict(options)).get_res(url=url)
-        return cast(Optional[ImageResponsePort], response)
+        request_options = dict(options)
+        allow_redirects = request_options.pop("allow_redirects", True)
+        cookie_header = request_options.pop("cookie_header", None)
+        request = AsyncRequestUtils(**request_options)
+        if cookie_header:
+            request.update_headers({"Cookie": cookie_header})
+        response = await request.get_res(url=url, allow_redirects=allow_redirects)
+        return self._adapt_response(response)
 
 
 class _InternalAddressAdapter:

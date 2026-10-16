@@ -3871,6 +3871,7 @@
       "execution": "sync_or_async",
       "family": "anilist",
       "input_contract": "AniListMediaPageRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -3891,6 +3892,7 @@
       "execution": "sync_or_async",
       "family": "anilist",
       "input_contract": "AniListDiscoverArguments",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [],
@@ -3907,6 +3909,7 @@
       "execution": "sync_or_async",
       "family": "anilist",
       "input_contract": "AniListMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -3925,6 +3928,7 @@
       "execution": "sync_or_async",
       "family": "anilist",
       "input_contract": "AniListPersonPageRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -3945,6 +3949,7 @@
       "execution": "sync_or_async",
       "family": "anilist",
       "input_contract": "AniListPersonRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -3963,6 +3968,7 @@
       "execution": "sync_or_async",
       "family": "anilist",
       "input_contract": "AniListPageRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -3982,6 +3988,7 @@
       "execution": "sync_or_async",
       "family": "anilist",
       "input_contract": "AniListMediaPageRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4002,6 +4009,7 @@
       "execution": "sync_or_async",
       "family": "anilist",
       "input_contract": "AniListPageRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4021,6 +4029,7 @@
       "execution": "sync_or_async",
       "family": "storage",
       "input_contract": "StorageAnyFilesRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4040,6 +4049,7 @@
       "execution": "sync_or_async",
       "family": "anilist",
       "input_contract": "AniListMediaPageRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4060,6 +4070,7 @@
       "execution": "sync_or_async",
       "family": "anilist",
       "input_contract": "AniListDiscoverArguments",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [],
@@ -4076,6 +4087,7 @@
       "execution": "sync_or_async",
       "family": "anilist",
       "input_contract": "AniListMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4094,6 +4106,7 @@
       "execution": "sync_or_async",
       "family": "anilist",
       "input_contract": "AniListPersonPageRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4114,6 +4127,7 @@
       "execution": "sync_or_async",
       "family": "anilist",
       "input_contract": "AniListPersonRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4132,6 +4146,7 @@
       "execution": "sync_or_async",
       "family": "anilist",
       "input_contract": "AniListPageRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4151,6 +4166,7 @@
       "execution": "sync_or_async",
       "family": "anilist",
       "input_contract": "AniListMediaPageRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4171,6 +4187,7 @@
       "execution": "sync_or_async",
       "family": "anilist",
       "input_contract": "AniListPageRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4190,6 +4207,7 @@
       "execution": "sync_or_async",
       "family": "bangumi",
       "input_contract": "BangumiCalendarRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [],
@@ -4206,6 +4224,7 @@
       "execution": "sync_or_async",
       "family": "bangumi",
       "input_contract": "BangumiMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4224,6 +4243,7 @@
       "execution": "sync_or_async",
       "family": "bangumi",
       "input_contract": "BangumiDiscoverArguments",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [],
@@ -4240,6 +4260,7 @@
       "execution": "sync_or_async",
       "family": "bangumi",
       "input_contract": "BangumiMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4258,6 +4279,7 @@
       "execution": "sync_or_async",
       "family": "bangumi",
       "input_contract": "BangumiPersonRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4276,6 +4298,7 @@
       "execution": "sync_or_async",
       "family": "bangumi",
       "input_contract": "BangumiPersonRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4294,6 +4317,7 @@
       "execution": "sync_or_async",
       "family": "bangumi",
       "input_contract": "BangumiMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4312,6 +4336,7 @@
       "execution": "sync_or_async",
       "family": "douban",
       "input_contract": "DoubanDiscoverRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4334,6 +4359,7 @@
       "execution": "sync_or_async",
       "family": "douban",
       "input_contract": "DoubanInfoRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4354,6 +4380,7 @@
       "execution": "sync_or_async",
       "family": "douban",
       "input_contract": "DoubanMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4372,6 +4399,7 @@
       "execution": "sync_or_async",
       "family": "douban",
       "input_contract": "DoubanMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4390,6 +4418,7 @@
       "execution": "sync_or_async",
       "family": "douban",
       "input_contract": "DoubanPersonCreditsRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4409,6 +4438,7 @@
       "execution": "sync_or_async",
       "family": "douban",
       "input_contract": "DoubanPersonRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4427,6 +4457,7 @@
       "execution": "sync_or_async",
       "family": "douban",
       "input_contract": "DoubanMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4445,6 +4476,7 @@
       "execution": "sync_or_async",
       "family": "douban",
       "input_contract": "DoubanMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4463,6 +4495,7 @@
       "execution": "sync_or_async",
       "family": "media-recognition",
       "input_contract": "MediaAuxiliaryInfoRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": false,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4483,6 +4516,7 @@
       "execution": "sync_or_async",
       "family": "music",
       "input_contract": "MusicFingerprintRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4501,6 +4535,7 @@
       "execution": "sync_or_async",
       "family": "media-recognition",
       "input_contract": "DoubanMatchRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4524,6 +4559,7 @@
       "execution": "sync_or_async",
       "family": "music",
       "input_contract": "MusicAlbumMatchRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4544,6 +4580,7 @@
       "execution": "sync_or_async",
       "family": "media-recognition",
       "input_contract": "TmdbMatchRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4565,6 +4602,7 @@
       "execution": "sync_or_async",
       "family": "media-discovery",
       "input_contract": "MediaRankingRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4584,6 +4622,7 @@
       "execution": "sync_or_async",
       "family": "media-discovery",
       "input_contract": "MediaRankingRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4603,6 +4642,7 @@
       "execution": "sync_or_async",
       "family": "media-discovery",
       "input_contract": "MediaRankingRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4622,6 +4662,7 @@
       "execution": "sync_or_async",
       "family": "media-recognition",
       "input_contract": "MediaInfo",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4640,6 +4681,7 @@
       "execution": "sync_or_async",
       "family": "media-recognition",
       "input_contract": "MediaRecognitionRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4663,6 +4705,7 @@
       "execution": "sync_or_async",
       "family": "downloader",
       "input_contract": "TorrentRefreshRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4685,6 +4728,7 @@
       "execution": "sync_or_async",
       "family": "media-discovery",
       "input_contract": "CollectionSearchRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4704,6 +4748,7 @@
       "execution": "sync_or_async",
       "family": "media-recognition",
       "input_contract": "MediaSearchRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4723,6 +4768,7 @@
       "execution": "sync_or_async",
       "family": "media-discovery",
       "input_contract": "PersonSearchRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4742,6 +4788,7 @@
       "execution": "sync_or_async",
       "family": "media-discovery",
       "input_contract": "SubtitleSearchRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4762,6 +4809,7 @@
       "execution": "sync_or_async",
       "family": "media-discovery",
       "input_contract": "TorrentSearchRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4783,6 +4831,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbCollectionRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4801,6 +4850,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbDiscoverRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4828,6 +4878,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbEpisodesRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4848,6 +4899,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbGroupRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4866,6 +4918,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbInfoRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4886,6 +4939,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbMediaPageRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4905,6 +4959,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4923,6 +4978,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4941,6 +4997,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbPersonPageRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4960,6 +5017,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbPersonRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4978,6 +5036,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -4996,6 +5055,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbTrendingRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5014,6 +5074,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbMediaPageRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5033,6 +5094,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5051,6 +5113,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5069,6 +5132,7 @@
       "execution": "sync_or_async",
       "family": "media-discovery",
       "input_contract": "MediaRankingRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5088,6 +5152,7 @@
       "execution": "sync_or_async",
       "family": "media-discovery",
       "input_contract": "MediaRankingRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5107,6 +5172,7 @@
       "execution": "sync_or_async",
       "family": "media-discovery",
       "input_contract": "MediaRankingRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5126,6 +5192,7 @@
       "execution": "sync_or_async",
       "family": "media-discovery",
       "input_contract": "MediaRankingRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5145,6 +5212,7 @@
       "execution": "sync_or_async",
       "family": "media-recognition",
       "input_contract": "RecognitionCacheUpdateRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5164,6 +5232,7 @@
       "execution": "sync_or_async",
       "family": "bangumi",
       "input_contract": "BangumiCalendarRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [],
@@ -5180,6 +5249,7 @@
       "execution": "sync_or_async",
       "family": "bangumi",
       "input_contract": "BangumiMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5198,6 +5268,7 @@
       "execution": "sync_or_async",
       "family": "bangumi",
       "input_contract": "BangumiDiscoverArguments",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [],
@@ -5214,6 +5285,7 @@
       "execution": "sync_or_async",
       "family": "bangumi",
       "input_contract": "BangumiMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5232,6 +5304,7 @@
       "execution": "sync_or_async",
       "family": "bangumi",
       "input_contract": "BangumiPersonRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5250,6 +5323,7 @@
       "execution": "sync_or_async",
       "family": "bangumi",
       "input_contract": "BangumiPersonRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5268,6 +5342,7 @@
       "execution": "sync_or_async",
       "family": "bangumi",
       "input_contract": "BangumiMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5286,6 +5361,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "ChannelManageRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5305,6 +5381,7 @@
       "execution": "sync_or_async",
       "family": "category",
       "input_contract": "CacheClearRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": false,
       "public_to_plugins": true,
       "required_parameters": [],
@@ -5321,6 +5398,7 @@
       "execution": "sync_or_async",
       "family": "storage",
       "input_contract": "StorageCreateFolderRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5340,6 +5418,7 @@
       "execution": "sync_or_async",
       "family": "storage",
       "input_contract": "StorageDeleteRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5358,6 +5437,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "MessageDeleteRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5379,6 +5459,7 @@
       "execution": "sync_or_async",
       "family": "douban",
       "input_contract": "DoubanDiscoverRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5401,6 +5482,7 @@
       "execution": "sync_or_async",
       "family": "douban",
       "input_contract": "DoubanInfoRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5421,6 +5503,7 @@
       "execution": "sync_or_async",
       "family": "douban",
       "input_contract": "DoubanMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5439,6 +5522,7 @@
       "execution": "sync_or_async",
       "family": "douban",
       "input_contract": "DoubanMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5457,6 +5541,7 @@
       "execution": "sync_or_async",
       "family": "douban",
       "input_contract": "DoubanPersonCreditsRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5476,6 +5561,7 @@
       "execution": "sync_or_async",
       "family": "douban",
       "input_contract": "DoubanPersonRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5494,6 +5580,7 @@
       "execution": "sync_or_async",
       "family": "douban",
       "input_contract": "DoubanMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5512,6 +5599,7 @@
       "execution": "sync_or_async",
       "family": "douban",
       "input_contract": "DoubanMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5530,6 +5618,9 @@
       "execution": "sync_or_async",
       "family": "downloader",
       "input_contract": "DownloadTaskRequest",
+      "optional_parameters": [
+        "custom_words"
+      ],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5554,6 +5645,7 @@
       "execution": "sync_or_async",
       "family": "downloader",
       "input_contract": "DownloadAddedHook",
+      "optional_parameters": [],
       "plugin_short_circuit": false,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5574,6 +5666,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "MessageFileDownloadRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5593,6 +5686,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "MessageFileDownloadRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5612,6 +5706,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "MessageImageDownloadRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5631,6 +5726,7 @@
       "execution": "sync_or_async",
       "family": "storage",
       "input_contract": "StorageDownloadRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5650,6 +5746,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "MessageFileDownloadRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5669,6 +5766,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "MessageFileDownloadRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5688,6 +5786,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "MessageFileDownloadRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5707,6 +5806,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "MessageFileDownloadRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5726,6 +5826,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "MessageFileDownloadRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5745,6 +5846,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "MessageFileDownloadRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5764,6 +5866,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "MessageFileDownloadRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5783,6 +5886,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "MessageImageDownloadRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5802,6 +5906,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "MessageImageDownloadRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5821,6 +5926,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "MessageMediaDownloadRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5840,6 +5946,7 @@
       "execution": "sync_or_async",
       "family": "downloader",
       "input_contract": "DownloaderInfoRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5858,6 +5965,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "MessageEditRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5883,6 +5991,7 @@
       "execution": "sync_or_async",
       "family": "storage",
       "input_contract": "TransferPlanCheckpoint",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": false,
       "required_parameters": [
@@ -5905,6 +6014,7 @@
       "execution": "sync_or_async",
       "family": "downloader",
       "input_contract": "TorrentFilterRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5925,6 +6035,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "MessageFinalizeRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5943,6 +6054,7 @@
       "execution": "sync_or_async",
       "family": "storage",
       "input_contract": "StorageItemRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5962,6 +6074,7 @@
       "execution": "sync_or_async",
       "family": "storage",
       "input_contract": "StorageFolderRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -5981,6 +6094,7 @@
       "execution": "sync_or_async",
       "family": "media-recognition",
       "input_contract": "MediaAuxiliaryInfoRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": false,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6001,6 +6115,7 @@
       "execution": "sync_or_async",
       "family": "media-classification",
       "input_contract": "ClassificationEnrichmentRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": false,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6019,6 +6134,7 @@
       "execution": "sync_or_async",
       "family": "storage",
       "input_contract": "StorageParentRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6037,6 +6153,7 @@
       "execution": "sync_or_async",
       "family": "site",
       "input_contract": "SiteSearchPageSizeRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6056,6 +6173,7 @@
       "execution": "sync_or_async",
       "family": "downloader",
       "input_contract": "TorrentTrackersRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6075,6 +6193,7 @@
       "execution": "sync_or_async",
       "family": "music",
       "input_contract": "MusicFingerprintRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6093,6 +6212,7 @@
       "execution": "sync_or_async",
       "family": "storage",
       "input_contract": "StorageListRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6112,6 +6232,7 @@
       "execution": "sync_or_async",
       "family": "downloader",
       "input_contract": "TorrentListRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6133,6 +6254,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "MessageProcessingFinishRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6156,6 +6278,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "MessageProcessingStartRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6179,6 +6302,7 @@
       "execution": "sync_or_async",
       "family": "media-recognition",
       "input_contract": "DoubanMatchRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6202,6 +6326,7 @@
       "execution": "sync_or_async",
       "family": "music",
       "input_contract": "MusicAlbumMatchRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6222,6 +6347,7 @@
       "execution": "sync_or_async",
       "family": "media-recognition",
       "input_contract": "TmdbMatchRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6243,6 +6369,7 @@
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaExistsRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6263,6 +6390,7 @@
       "execution": "sync_or_async",
       "family": "storage",
       "input_contract": "MediaFilesRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6281,6 +6409,7 @@
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaStatisticRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6299,6 +6428,7 @@
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaServerImageCookiesRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6318,6 +6448,7 @@
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaServerItemRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6337,6 +6468,7 @@
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaServerItemsRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6358,6 +6490,7 @@
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaServerItemsCountRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6377,6 +6510,7 @@
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaServerRecentRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6397,6 +6531,7 @@
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaServerRecentImagesRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6418,6 +6553,7 @@
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaServerLibrariesRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6438,6 +6574,7 @@
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaServerPlayRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6457,6 +6594,7 @@
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaServerRecentRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6477,6 +6615,7 @@
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaServerSeasonEpisodesRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6497,6 +6636,7 @@
       "execution": "sync_or_async",
       "family": "media-server",
       "input_contract": "MediaServerEpisodesRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6516,6 +6656,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "MessageParseRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6537,6 +6678,7 @@
       "execution": "sync_or_async",
       "family": "metadata",
       "input_contract": "MetadataImageRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6557,6 +6699,7 @@
       "execution": "sync_or_async",
       "family": "metadata",
       "input_contract": "MetadataNfoRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6578,6 +6721,7 @@
       "execution": "sync_or_async",
       "family": "media-discovery",
       "input_contract": "MediaRankingRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6597,6 +6741,7 @@
       "execution": "sync_or_async",
       "family": "media-discovery",
       "input_contract": "MediaRankingRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6616,6 +6761,7 @@
       "execution": "sync_or_async",
       "family": "media-discovery",
       "input_contract": "MediaRankingRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6635,6 +6781,7 @@
       "execution": "sync_or_async",
       "family": "music",
       "input_contract": "MusicIdentityRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6654,6 +6801,7 @@
       "execution": "sync_or_async",
       "family": "music",
       "input_contract": "MusicRelatedRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6674,6 +6822,7 @@
       "execution": "sync_or_async",
       "family": "music",
       "input_contract": "MusicIdentityRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6693,6 +6842,7 @@
       "execution": "sync_or_async",
       "family": "music",
       "input_contract": "MusicArtistAlbumsRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6715,6 +6865,7 @@
       "execution": "sync_or_async",
       "family": "music",
       "input_contract": "MusicRelatedRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6735,6 +6886,7 @@
       "execution": "sync_or_async",
       "family": "music",
       "input_contract": "MusicCacheClearRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": false,
       "public_to_plugins": true,
       "required_parameters": [],
@@ -6751,6 +6903,7 @@
       "execution": "sync_or_async",
       "family": "music",
       "input_contract": "MusicCacheDeleteRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6769,6 +6922,7 @@
       "execution": "sync_or_async",
       "family": "music",
       "input_contract": "MusicCacheReadRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [],
@@ -6785,6 +6939,7 @@
       "execution": "sync_or_async",
       "family": "music",
       "input_contract": "MusicChartRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6806,6 +6961,7 @@
       "execution": "sync_or_async",
       "family": "music",
       "input_contract": "MusicDiscoverRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6830,6 +6986,7 @@
       "execution": "sync_or_async",
       "family": "music",
       "input_contract": "MusicFreshReleasesRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6853,6 +7010,7 @@
       "execution": "sync_or_async",
       "family": "music",
       "input_contract": "MusicLyricsRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6871,6 +7029,7 @@
       "execution": "sync_or_async",
       "family": "music",
       "input_contract": "MusicLyricsRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": false,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6889,6 +7048,7 @@
       "execution": "sync_or_async",
       "family": "media-recognition",
       "input_contract": "MediaInfo",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6907,6 +7067,7 @@
       "execution": "sync_or_async",
       "family": "metadata",
       "input_contract": "SpecificImageRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6930,6 +7091,7 @@
       "execution": "sync_or_async",
       "family": "storage",
       "input_contract": "TransferPlanningInput",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": false,
       "required_parameters": [
@@ -6961,6 +7123,7 @@
       "execution": "sync_or_async",
       "family": "media-recognition",
       "input_contract": "MediaRecognitionRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -6984,6 +7147,7 @@
       "execution": "sync_or_async",
       "family": "metadata",
       "input_contract": "RecommendNameRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7004,6 +7168,7 @@
       "execution": "sync_or_async",
       "family": "downloader",
       "input_contract": "TorrentRefreshRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7026,6 +7191,7 @@
       "execution": "sync_or_async",
       "family": "site",
       "input_contract": "SiteUserDataRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7044,6 +7210,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "CommandRegistrationRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": false,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7062,6 +7229,7 @@
       "execution": "sync_or_async",
       "family": "downloader",
       "input_contract": "TorrentRemoveRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7082,6 +7250,7 @@
       "execution": "sync_or_async",
       "family": "storage",
       "input_contract": "StorageRenameRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7101,6 +7270,7 @@
       "execution": "sync_or_async",
       "family": "site",
       "input_contract": "SearchTorrentRestoreRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": false,
       "required_parameters": [
@@ -7120,6 +7290,7 @@
       "execution": "sync_or_async",
       "family": "scheduling",
       "input_contract": "SchedulerJobRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": false,
       "public_to_plugins": true,
       "required_parameters": [],
@@ -7136,6 +7307,7 @@
       "execution": "sync_or_async",
       "family": "media-discovery",
       "input_contract": "CollectionSearchRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7155,6 +7327,7 @@
       "execution": "sync_or_async",
       "family": "media-recognition",
       "input_contract": "MediaSearchRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7174,6 +7347,7 @@
       "execution": "sync_or_async",
       "family": "music",
       "input_contract": "MusicSearchRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7194,6 +7368,7 @@
       "execution": "sync_or_async",
       "family": "media-discovery",
       "input_contract": "PersonSearchRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7213,6 +7388,7 @@
       "execution": "sync_or_async",
       "family": "media-discovery",
       "input_contract": "SubtitleSearchRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7233,6 +7409,7 @@
       "execution": "sync_or_async",
       "family": "media-discovery",
       "input_contract": "TorrentSearchRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7254,6 +7431,7 @@
       "execution": "sync_or_async",
       "family": "tvdb",
       "input_contract": "TvdbSearchRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7272,6 +7450,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "DirectMessageSendRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7290,6 +7469,7 @@
       "execution": "sync_or_async",
       "family": "messaging",
       "input_contract": "MessageSendRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [],
@@ -7306,6 +7486,7 @@
       "execution": "sync_or_async",
       "family": "downloader",
       "input_contract": "TorrentTagRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7326,6 +7507,7 @@
       "execution": "sync_or_async",
       "family": "site",
       "input_contract": "SiteSubtitleLinksRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7344,6 +7526,7 @@
       "execution": "sync_or_async",
       "family": "storage",
       "input_contract": "StorageSnapshotRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7366,6 +7549,7 @@
       "execution": "sync_or_async",
       "family": "downloader",
       "input_contract": "TorrentControlRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7385,6 +7569,7 @@
       "execution": "sync_or_async",
       "family": "downloader",
       "input_contract": "TorrentControlRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7404,6 +7589,7 @@
       "execution": "sync_or_async",
       "family": "storage",
       "input_contract": "StorageManageRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7423,6 +7609,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbCacheClearRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": false,
       "public_to_plugins": true,
       "required_parameters": [],
@@ -7439,6 +7626,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbCacheDeleteRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7457,6 +7645,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbCacheListRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [],
@@ -7473,6 +7662,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbCollectionRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7491,6 +7681,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbDiscoverRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7518,6 +7709,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbEpisodesRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7538,6 +7730,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbGroupRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7556,6 +7749,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbInfoRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7576,6 +7770,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbMediaPageRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7595,6 +7790,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7613,6 +7809,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7631,6 +7828,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbPersonPageRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7650,6 +7848,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbPersonRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7668,6 +7867,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7686,6 +7886,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbTrendingRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7704,6 +7905,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbMediaPageRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7723,6 +7925,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7741,6 +7944,7 @@
       "execution": "sync_or_async",
       "family": "tmdb",
       "input_contract": "TmdbMediaRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7759,6 +7963,7 @@
       "execution": "sync_or_async",
       "family": "downloader",
       "input_contract": "TorrentFilesRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7778,6 +7983,7 @@
       "execution": "sync_or_async",
       "family": "storage",
       "input_contract": "TransferRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7809,6 +8015,7 @@
       "execution": "sync_or_async",
       "family": "downloader",
       "input_contract": "TransferCompletedHook",
+      "optional_parameters": [],
       "plugin_short_circuit": false,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7828,6 +8035,7 @@
       "execution": "sync_or_async",
       "family": "media-discovery",
       "input_contract": "MediaRankingRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7847,6 +8055,7 @@
       "execution": "sync_or_async",
       "family": "media-discovery",
       "input_contract": "MediaRankingRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7866,6 +8075,7 @@
       "execution": "sync_or_async",
       "family": "media-discovery",
       "input_contract": "MediaRankingRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7885,6 +8095,7 @@
       "execution": "sync_or_async",
       "family": "media-discovery",
       "input_contract": "MediaRankingRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7904,6 +8115,7 @@
       "execution": "sync_or_async",
       "family": "tvdb",
       "input_contract": "TvdbInfoRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7922,6 +8134,7 @@
       "execution": "sync_or_async",
       "family": "tvdb",
       "input_contract": "TvdbInfoRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7940,6 +8153,7 @@
       "execution": "sync_or_async",
       "family": "media-recognition",
       "input_contract": "RecognitionCacheUpdateRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7959,6 +8173,7 @@
       "execution": "sync_or_async",
       "family": "downloader",
       "input_contract": "TorrentUpdateRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -7985,6 +8200,7 @@
       "execution": "sync_or_async",
       "family": "storage",
       "input_contract": "StorageUploadRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -8005,6 +8221,7 @@
       "execution": "sync_or_async",
       "family": "authentication",
       "input_contract": "UserAuthenticationRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [
@@ -8023,6 +8240,7 @@
       "execution": "sync_or_async",
       "family": "integration",
       "input_contract": "WebhookRequest",
+      "optional_parameters": [],
       "plugin_short_circuit": true,
       "public_to_plugins": true,
       "required_parameters": [

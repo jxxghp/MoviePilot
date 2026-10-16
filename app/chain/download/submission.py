@@ -677,6 +677,7 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             category=prepared.media.category,
             label=label,
             downloader=downloader or prepared.site_downloader,
+            custom_words=custom_words,
         )
         actual_downloader, download_hash, layout, error_msg = (
             result if result else (None, None, None, "未找到下载器")

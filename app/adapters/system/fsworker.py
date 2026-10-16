@@ -28,13 +28,15 @@ from typing import Any, Callable, Dict
 
 def _stat(payload, _emit):
     """
-    读取路径的基本属性。
+    读取路径属性及设备、inode 身份，供删除前确认仍是同一个文件。
     """
     path = payload["path"]
     info = os.stat(path)
     return {
         "size": info.st_size,
         "mtime": info.st_mtime,
+        "dev": info.st_dev,
+        "ino": info.st_ino,
         "is_dir": os.path.isdir(path),
         "is_file": os.path.isfile(path),
     }
@@ -49,6 +51,11 @@ def _exists(payload, _emit):
     """
     os.stat(payload["path"])
     return True
+
+
+def _realpath(payload: Dict[str, Any], _emit: Callable[[Dict[str, Any]], None]) -> str:
+    """解析已有父目录的符号链接，目标末段可尚不存在；异常交由代理保守处理。"""
+    return str(Path(payload["path"]).resolve())
 
 
 def _listdir(payload, _emit):
@@ -167,6 +174,7 @@ def _rmtree(payload, _emit):
 
 _HANDLERS = {
     "stat": _stat,
+    "realpath": _realpath,
     "exists": _exists,
     "listdir": _listdir,
     "copy": _copy,

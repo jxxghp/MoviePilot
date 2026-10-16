@@ -68,6 +68,7 @@ class ModuleMethodContract:
     supports_sync: bool = True
     supports_async: bool = True
     plugin_short_circuit: bool = True
+    optional_parameters: tuple[str, ...] = ()
 
 
 _DEFAULT_CONTRACT = ModuleMethodContract(family="legacy")
@@ -1259,6 +1260,7 @@ _METHOD_CONTRACTS = {
         result_contract="DownloadTaskResult | None",
         aggregation=ModuleResultAggregation.FIRST_NON_EMPTY,
         required_parameters=("content", "download_dir", "cookie", "episodes", "category", "label", "downloader"),
+        optional_parameters=("custom_words",),
     ),
     "download_added": ModuleMethodContract(
         family="downloader",
@@ -1826,6 +1828,25 @@ def diagnose_module_callable(method: str, callback: Callable[..., Any]) -> tuple
         and not any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values())
     )
     return tuple(f"missing-parameter:{name}" for name in missing)
+
+
+def compatible_module_kwargs(
+    method: str, callback: Callable[..., Any], kwargs: dict[str, Any],
+) -> dict[str, Any]:
+    """仅移除显式登记的新可选参数，保留旧 provider 签名和其它参数错误。
+
+    接受该参数或 **kwargs 的 provider 收到完整输入；无法检查签名时不推断兼容性。
+    """
+    optional = get_module_method_contract(method).optional_parameters
+    if not optional or not any(name in kwargs for name in optional):
+        return kwargs
+    try:
+        parameters = inspect.signature(callback).parameters
+    except (TypeError, ValueError):
+        return kwargs
+    if any(parameter.kind is inspect.Parameter.VAR_KEYWORD for parameter in parameters.values()):
+        return kwargs
+    return {name: value for name, value in kwargs.items() if name not in optional or name in parameters}
 
 
 def diagnose_module_result(method: str, result: Any) -> tuple[str, ...]:

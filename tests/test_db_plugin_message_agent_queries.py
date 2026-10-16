@@ -288,19 +288,26 @@ def test_agentchat_oper_reuses_explicit_query_sessions(db, monkeypatch):
     asyncio.run(check())
 
 
-def test_agentchat_list_by_page_matches_either_user_or_username(db):
+def test_agentchat_list_by_page_matches_id_or_unbound_legacy_username(db):
     """
-    同时给出用户 ID 与用户名时按「或」匹配。
+    稳定用户 ID 优先，仅无 ID 的旧渠道记录按用户名兼容匹配。
 
-    渠道侧只有用户名、前端只有用户 ID，改成「与」会让两边各自都查不到自己的会话。
+    同名但明确属于其他 ID 的会话不能出现在列表，避免用户名回收后继承旧用户历史。
     """
     db.add(_chat("s-by-id", user_id="uid-1", username=None),
-           _chat("s-by-name", user_id="uid-other", username="alice"),
+           _chat("s-by-name", user_id=None, username="alice"),
+           _chat("s-empty-id", user_id="", username="alice"),
+           _chat("s-foreign-id", user_id="uid-other", username="alice"),
            _chat("s-neither", user_id="uid-x", username="bob"))
 
     listed = AgentChat.list_by_page(db.session, user_id="uid-1", username="alice")
 
-    assert {c.session_id for c in listed} == {"s-by-id", "s-by-name"}
+    expected = {"s-by-id", "s-by-name", "s-empty-id"}
+    assert {c.session_id for c in listed} == expected
+    async_listed = db.run_async_session(
+        lambda session: AgentChat.async_list_by_page(session, user_id="uid-1", username="alice")
+    )
+    assert {c.session_id for c in async_listed} == expected
 
 
 @pytest.mark.parametrize("kwargs,expected", [

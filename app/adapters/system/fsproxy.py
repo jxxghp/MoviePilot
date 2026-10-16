@@ -81,7 +81,7 @@ class FileSystemProxy:
         """
         读取路径属性。
         :param path: 目标路径
-        :return: {"size", "mtime", "is_dir", "is_file"}
+        :return: {"size", "mtime", "dev", "ino", "is_dir", "is_file"}；dev/ino 标识当前文件身份
         """
         return self._call("stat", path=str(path))
 
@@ -99,6 +99,10 @@ class FileSystemProxy:
             return True
         except FileNotFoundError:
             return False
+
+    def realpath(self, path: Path) -> Path:
+        """在可超时的文件系统边界解析符号链接，并允许目标末段尚不存在。"""
+        return Path(self._call("realpath", path=str(path)))
 
     def listdir(self, path: Path) -> List[str]:
         """
@@ -294,9 +298,13 @@ class FileSystemProxy:
             return {
                 "size": info.st_size,
                 "mtime": info.st_mtime,
+                "dev": info.st_dev,
+                "ino": info.st_ino,
                 "is_dir": os.path.isdir(path),
                 "is_file": os.path.isfile(path),
             }
+        if op == "realpath":
+            return str(Path(payload["path"]).resolve())
         if op == "exists":
             os.stat(payload["path"])
             return True
@@ -406,6 +414,7 @@ class FileSystemProxy:
         holder: List[Union[bytes, BaseException]] = []
 
         def _read() -> None:
+            """读取代理响应并把线程内异常传回有界等待的调用方。"""
             try:
                 holder.append(stdout.readline())
             except Exception as err:  # noqa: BLE001

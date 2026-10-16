@@ -12,6 +12,7 @@ from app.foundation.reflection import ObjectUtils
 from app.runtime.execution import run_in_threadpool_to_completion
 from app.runtime.extensions.module.contracts import (
     ModuleResultAggregation,
+    compatible_module_kwargs,
     diagnose_module_callable,
     diagnose_module_result,
     get_module_method_contract,
@@ -364,7 +365,7 @@ class ModuleInvocationDispatcher:
                 )
                 if call_mode is _ProviderCallMode.STOP:
                     break
-                provider_result = provider.func(*args, **kwargs)
+                provider_result = provider.func(*args, **compatible_module_kwargs(method, provider.func, kwargs))
                 self._diagnose_result(method, provider_result, "plugin")
                 result = self._aggregate_provider_result(
                     result,
@@ -430,7 +431,7 @@ class ModuleInvocationDispatcher:
                 )
                 if call_mode is _ProviderCallMode.STOP:
                     break
-                provider_result = await self._async_call(func, *args, **kwargs)
+                provider_result = await self._async_call(func, *args, **compatible_module_kwargs(method, func, kwargs))
                 self._diagnose_result(method, provider_result, "plugin")
                 result = self._aggregate_provider_result(
                     result,
@@ -494,7 +495,7 @@ class ModuleInvocationDispatcher:
                 if call_mode is _ProviderCallMode.RELAY:
                     provider_result = func(result)
                 else:
-                    provider_result = func(*args, **kwargs)
+                    provider_result = func(*args, **compatible_module_kwargs(method, func, kwargs))
                 self._diagnose_result(method, provider_result, "system")
                 result = self._aggregate_provider_result(
                     result,
@@ -561,7 +562,7 @@ class ModuleInvocationDispatcher:
                 if call_mode is _ProviderCallMode.RELAY:
                     provider_result = await self._async_call(func, result)
                 else:
-                    provider_result = await self._async_call(func, *args, **kwargs)
+                    provider_result = await self._async_call(func, *args, **compatible_module_kwargs(method, func, kwargs))
                 self._diagnose_result(method, provider_result, "system")
                 result = self._aggregate_provider_result(
                     result,

@@ -1505,7 +1505,7 @@
     "empty-body": 1,
     "no-any-return": 2,
     "no-untyped-call": 1,
-    "no-untyped-def": 5,
+    "no-untyped-def": 4,
     "type-arg": 3,
     "var-annotated": 3
   },
@@ -1929,13 +1929,12 @@
     "no-redef": 2,
     "operator": 1,
     "str-bytes-safe": 2,
-    "type-arg": 8,
-    "var-annotated": 1
+    "type-arg": 8
   },
   "app/modules/qbittorrent/qbittorrent.py": {
     "assignment": 10,
     "no-any-return": 3,
-    "no-untyped-def": 6,
+    "no-untyped-def": 5,
     "return-value": 1,
     "type-arg": 22
   },

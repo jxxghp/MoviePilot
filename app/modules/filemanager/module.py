@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
+from app.adapters.system.fsproxy import fsproxy
 from app.adapters.system.host import SystemUtils
 from app.application.directory import DirectoryHelper
 from app.application.messaging.message import MessageHelper
@@ -34,7 +35,8 @@ class FileManagerModule(_ModuleBase):
     _storage_schemas = []
     _support_storages = []
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """初始化文件整理使用的目录和消息能力。"""
         super().__init__()
         self.directoryhelper = DirectoryHelper()
         self.messagehelper = MessageHelper()
@@ -149,6 +151,7 @@ class FileManagerModule(_ModuleBase):
         return None
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
+        """保留文件整理模块的设置初始化扩展入口。"""
         pass
 
     def storage_manage(self, storage: str, action: StorageAction, **params) -> Dict[str, Any]:
@@ -557,6 +560,23 @@ class FileManagerModule(_ModuleBase):
             preview=bool(preview),
         )
 
+    @staticmethod
+    def __cleanup_overlaps_new_target(checkpoint: TransferPlanCheckpoint, cleanup_item: FileItem) -> bool:
+        """拒绝整块清理与新目标重合的历史目的，避免删掉已落地的新文件。"""
+        if not cleanup_item.path:
+            raise ValueError("历史整理目的缺少文件路径")
+        if cleanup_item.storage != checkpoint.target_storage:
+            return False
+        cleanup_path = Path(cleanup_item.path)
+        new_paths = [Path(checkpoint.final_target_path)] + [Path(item.target_path) for item in checkpoint.items]
+        if checkpoint.target_storage == "local":
+            # 历史路径可通过符号链接父目录指向新目标；仅比较字符串会误删新文件。
+            # strict=False 允许尚未落地的目标，已有父目录的别名仍必须解析。
+            cleanup_path = fsproxy.realpath(cleanup_path)
+            new_paths = [fsproxy.realpath(path) for path in new_paths]
+        return any(cleanup_path == path or cleanup_path in path.parents or path in cleanup_path.parents
+                   for path in new_paths)
+
     def execute_transfer_plan(
             self,
             checkpoint: TransferPlanCheckpoint,
@@ -588,26 +608,37 @@ class FileManagerModule(_ModuleBase):
         cleanup_payload = checkpoint.planning_input.options.get(
             "cleanup_dest_fileitem"
         )
+        cleanup_fileitem: Optional[FileItem] = None
         if (
                 isinstance(cleanup_payload, dict)
                 and not checkpoint.preview
                 and not checkpoint.pre_execution_cleanup_completed
         ):
             cleanup_fileitem = FileItem.model_validate(cleanup_payload)
+            # 重合目的由文件级覆盖处理，统一删除目录会误删已经落地的新版本。
+            if self.__cleanup_overlaps_new_target(checkpoint, cleanup_fileitem):
+                cleanup_fileitem = None
+        else:
+            cleanup_fileitem = None
+        if cleanup_fileitem is not None:
+            cleanup_target: FileItem = cleanup_fileitem
             if not cleanup_media_file:
                 raise RuntimeError("整理计划缺少统一媒体删除兼容能力")
 
-            def cleanup_before_transfer() -> None:
-                """拦截通过后委托统一能力治理旧目标及父空目录。"""
-                if not cleanup_media_file(cleanup_fileitem):
+            def cleanup_before_transfer(item: FileItem = cleanup_target) -> None:
+                """新目标完整落地后委托统一能力治理不重合的旧目标及父空目录。"""
+                # 落地期间目录链接也可能变化，清理边界再次核对实际目标。
+                if self.__cleanup_overlaps_new_target(checkpoint, item):
+                    return
+                if not cleanup_media_file(item):
                     raise RuntimeError(
-                        f"{cleanup_fileitem.path} 删除失败，整理计划保留待重试"
+                        f"{item.path} 删除失败，整理计划保留待重试"
                     )
 
             if observe_cleanup_media_file:
-                def observe_cleanup_before_transfer() -> bool:
+                def observe_cleanup_before_transfer(item: FileItem = cleanup_target) -> bool:
                     """只读确认旧目标是否已经由统一能力清理。"""
-                    return observe_cleanup_media_file(cleanup_fileitem)
+                    return observe_cleanup_media_file(item)
 
         source_storage = source_fileitem.storage or "local"
         if not source_oper:

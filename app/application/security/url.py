@@ -853,6 +853,25 @@ class SecurityUtils:
         return False
 
     @staticmethod
+    async def is_safe_image_redirect_url_async(
+        url: str,
+        allowed_domains: Union[Set[str], List[str]],
+        allowed_private_ranges: Optional[Iterable[str]] = None,
+        trusted_hosts: Optional[Iterable[str]] = None,
+    ) -> bool:
+        """允许公网 CDN 跳转；私网例外仅属于配置主机，原图签名不会授权重定向目标。"""
+        if trusted_hosts and url_matches_trusted_hosts(url, trusted_hosts):
+            return True
+        configured_target = SecurityUtils.is_safe_url(url, allowed_domains)
+        return await SecurityUtils.is_safe_url_async(
+            url,
+            {url},
+            strict=True,
+            block_private=True,
+            allowed_private_ranges=allowed_private_ranges if configured_target else None,
+        )
+
+    @staticmethod
     def _diagnose_resolved_addresses(
         url: str,
         hostname: str,

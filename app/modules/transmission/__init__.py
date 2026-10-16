@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Union
 
+from app.domain import torrent as torrent_rules
 from app.domain.metainfo import MetaInfo
 from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
@@ -73,7 +74,8 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
 
     def download(self, content: Union[Path, str, bytes], download_dir: Path, cookie: str,
                  episodes: Set[int] = None, category: Optional[str] = None, label: Optional[str] = None,
-                 downloader: Optional[str] = None) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
+                 downloader: Optional[str] = None,
+                 custom_words: Optional[str] = None) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
         """
         根据种子文件，选择并添加下载任务
         :param content:  种子文件地址或者磁力链接或种子内容
@@ -83,6 +85,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         :param category:  分类，TR中未使用
         :param label:  标签
         :param downloader:  下载器
+        :param custom_words: 来源识别词，保持订阅与下载器文件选择的集数一致
         :return: 下载器名称、种子Hash、种子文件布局、错误原因
         """
 
@@ -91,6 +94,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
 
         # 读取种子的名称
         torrent_from_file, content = self._get_torrent_info(content)
+        expected_hashes = torrent_rules.download_hashes(content) if isinstance(content, (str, bytes)) else frozenset()
         # 检查是否为磁力链接
         is_magnet = isinstance(content, str) and content.startswith("magnet:") or isinstance(content,
                                                                                              bytes) and content.startswith(
@@ -135,8 +139,11 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
             if torrents:
                 try:
                     for torrent in torrents:
-                        # 名称与大小相等则认为是同一个种子
-                        if torrent.name == getattr(torrent_from_file, 'name', '') and torrent.total_size == getattr(torrent_from_file, 'total_size', 0):
+                        candidate_hashes = {
+                            str(getattr(torrent, key, None) or "").lower()
+                            for key in ("hashString", "hash_string", "infohash_v1", "infohash_v2")
+                        }
+                        if expected_hashes.intersection(candidate_hashes):
                             torrent_hash = torrent.hashString
                             logger.warn(f"下载器中已存在该种子任务：{torrent_hash} - {torrent.name}")
                             # 给种子打上标签
@@ -151,6 +158,12 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
                                 if get_runtime_setting('TORRENT_TAG') and get_runtime_setting('TORRENT_TAG') not in labels:
                                     labels.append(get_runtime_setting('TORRENT_TAG'))
                                     server.set_torrent_tag(ids=torrent_hash, tags=labels)
+                            if is_paused:
+                                selected, message = self._select_download_files(
+                                    server, torrent_hash, episodes or set(), custom_words,
+                                )
+                                if not selected:
+                                    return None, None, None, message
                             return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "下载任务已存在"
                 finally:
                     torrents.clear()
@@ -159,37 +172,49 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         else:
             torrent_hash = added_torrent.hashString
             if is_paused:
-                # 选择文件
-                torrent_files = server.get_files(torrent_hash)
-                if not torrent_files:
-                    return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "获取种子文件失败，下载任务可能在暂停状态"
-                # 需要的文件信息
-                file_ids = []
-                unwanted_file_ids = []
-                try:
-                    for torrent_file in torrent_files:
-                        file_id = torrent_file.id
-                        file_name = torrent_file.name
-                        meta_info = MetaInfo(file_name)
-                        if not meta_info.episode_list:
-                            unwanted_file_ids.append(file_id)
-                            continue
-                        selected = set(meta_info.episode_list).issubset(set(episodes))
-                        if not selected:
-                            unwanted_file_ids.append(file_id)
-                            continue
-                        file_ids.append(file_id)
-                    # 选择文件
-                    server.set_files(torrent_hash, file_ids)
-                    server.set_unwanted_files(torrent_hash, unwanted_file_ids)
-                    # 开始任务
-                    server.start_torrents(torrent_hash)
-                finally:
-                    torrent_files.clear()
-                    del torrent_files
+                selected, message = self._select_download_files(
+                    server, torrent_hash, episodes or set(), custom_words,
+                )
+                if not selected:
+                    return None, None, None, message
                 return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "添加下载任务成功"
             else:
                 return downloader or self.get_default_config_name(), torrent_hash, torrent_layout, "添加下载任务成功"
+
+    @staticmethod
+    def _select_download_files(
+            server: Transmission, torrent_hash: str, episodes: Set[int], custom_words: Optional[str],
+    ) -> Tuple[bool, str]:
+        """先确认任务暂停再按来源集数映射选集，兼容 RPC 返回正在运行的重复任务。"""
+        if not server.stop_torrents(torrent_hash):
+            return False, f"选集失败，任务 {torrent_hash} 无法确认暂停，未执行选集，请在下载器核实"
+        failure = f"选集失败，任务 {torrent_hash} 保持暂停，请在下载器检查"
+        torrent_files = server.get_files(torrent_hash)
+        if not torrent_files:
+            return False, f"{failure}：获取种子文件失败"
+        wanted: list[int] = []
+        unwanted: list[int] = []
+        matched: set[int] = set()
+        try:
+            for item in torrent_files:
+                meta = MetaInfo(Path(item.name).name, custom_words=custom_words.splitlines() if custom_words else [])
+                file_episodes = set(meta.episode_list)
+                if file_episodes and file_episodes.issubset(episodes):
+                    wanted.append(item.id)
+                    matched.update(file_episodes)
+                else:
+                    unwanted.append(item.id)
+        finally:
+            torrent_files.clear()
+        if not set(episodes).issubset(matched):
+            return False, f"{failure}：未找到目标集数 {sorted(set(episodes) - matched)}"
+        if not server.set_files(torrent_hash, wanted) or not server.set_unwanted_files(torrent_hash, unwanted):
+            return False, f"{failure}：文件选择设置未确认"
+        if not server.start_torrents(torrent_hash):
+            if server.stop_torrents(torrent_hash):
+                return False, f"{failure}：启动任务未确认，未记录成功"
+            return False, f"选集失败，任务 {torrent_hash} 启动任务未确认，请在下载器核实，未记录成功"
+        return True, "添加下载任务成功"
 
     def list_torrents(self, status: TorrentStatus = None,
                       hashs: Union[list, str] = None,

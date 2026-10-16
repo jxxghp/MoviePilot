@@ -55,6 +55,7 @@ class Qbittorrent:
 
     @staticmethod
     def __get_mapping_value(data: Any, key: str) -> Any:
+        """兼容字典、SDK 映射对象与属性对象的字段读取。"""
         if data is None:
             return None
         if isinstance(data, dict):
@@ -68,6 +69,7 @@ class Qbittorrent:
         return getattr(data, key, None)
 
     def __normalize_cookie(self, cookie: Any) -> dict:
+        """投影 Cookie API 支持的非空字段，统一不同 SDK 返回形状。"""
         result = {}
         for key in ("domain", "path", "name", "value", "expirationDate"):
             value = self.__get_mapping_value(cookie, key)
@@ -77,6 +79,7 @@ class Qbittorrent:
 
     @staticmethod
     def __cookie_key(cookie: dict) -> Optional[tuple]:
+        """以域、路径和名称标识 Cookie；缺少必要身份时返回空。"""
         name = cookie.get("name")
         domain = cookie.get("domain")
         path = cookie.get("path") or "/"
@@ -86,6 +89,7 @@ class Qbittorrent:
 
     @staticmethod
     def __build_site_cookies(url: str, cookie_header: str) -> List[dict]:
+        """把站点 Cookie 请求头转换为绑定目标主机的 Cookie API 条目。"""
         domain = urlparse(url).hostname
         if not domain:
             return []
@@ -103,6 +107,7 @@ class Qbittorrent:
         ]
 
     def __parse_add_torrent_response(self, response: Any) -> Tuple[bool, List[str]]:
+        """兼容旧版 Ok 文本和新版含成功、待处理计数及任务 ID 的添加响应。"""
         if not response:
             return False, []
         if isinstance(response, str):
@@ -121,9 +126,11 @@ class Qbittorrent:
         return "Ok" in str(response), []
 
     def __use_api_key_auth(self) -> bool:
+        """判断当前实例是否配置 API Key 认证。"""
         return bool(self._apikey)
 
     def __supports_cookie_api(self) -> bool:
+        """检查 Web API 版本是否支持 Cookie 管理，查询失败按不支持处理。"""
         if not self.qbc:
             return False
         try:
@@ -136,6 +143,7 @@ class Qbittorrent:
             return False
 
     def __sync_download_cookies(self, url: str, cookie_header: str) -> bool:
+        """保留已有 Cookie 并按域、路径和名称合并当前下载站点的凭据。"""
         if not self.qbc or not url or not cookie_header or not self.__supports_cookie_api():
             return False
 
@@ -404,18 +412,20 @@ class Qbittorrent:
         """
         return self._force_resume
 
-    def torrents_set_force_start(self, ids: Union[str, list]):
+    def torrents_set_force_start(self, ids: Union[str, list]) -> bool:
         """
-        设置强制作种
+        设置强制作种，并返回下载器是否确认请求。
         """
         if not self.qbc:
-            return
+            return False
         if not self._force_resume:
-            return
+            return False
         try:
             self.qbc.torrents_set_force_start(enable=True, torrent_hashes=ids)
+            return True
         except Exception as err:
             logger.error(f"设置强制作种出错：{str(err)}")
+            return False
 
     def __get_last_add_torrentid_by_tag(self, tags: Union[str, list],
                                         status: Optional[str] = None) -> Optional[str]:

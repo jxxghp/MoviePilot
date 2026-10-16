@@ -88,7 +88,10 @@ class AgentChat(Base):
         """
         statement = select(cls)
         if user_id is not None and username is not None:
-            statement = statement.where((cls.user_id == user_id) | (cls.username == username))
+            statement = statement.where(
+                (cls.user_id == user_id)
+                | (((cls.user_id.is_(None)) | (cls.user_id == "")) & (cls.username == username))
+            )
         elif user_id is not None:
             statement = statement.where(cls.user_id == user_id)
         elif username is not None:
@@ -113,7 +116,10 @@ class AgentChat(Base):
         """
         statement = select(cls)
         if user_id is not None and username is not None:
-            statement = statement.where((cls.user_id == user_id) | (cls.username == username))
+            statement = statement.where(
+                (cls.user_id == user_id)
+                | (((cls.user_id.is_(None)) | (cls.user_id == "")) & (cls.username == username))
+            )
         elif user_id is not None:
             statement = statement.where(cls.user_id == user_id)
         elif username is not None:

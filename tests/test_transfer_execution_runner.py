@@ -367,6 +367,7 @@ def test_cross_storage_move_materializes_before_independent_source_delete(tmp_pa
         name=source_path.name,
         type="file",
         size=source_path.stat().st_size,
+        modify_time=source_path.stat().st_mtime,
         extension="mkv",
     )
     target_item = FileItem(
@@ -375,11 +376,14 @@ def test_cross_storage_move_materializes_before_independent_source_delete(tmp_pa
         name="source.mkv",
         type="file",
         size=source_item.size,
+        modify_time=source_item.modify_time,
         extension="mkv",
     )
     source_oper = Mock()
     source_oper.delete.return_value = True
+    source_oper.get_item_strict.return_value = source_item
     target_oper = Mock()
+    target_oper.get_item_strict.return_value = target_item
     target_oper.get_folder.return_value = FileItem(
         storage="remote", path="/library", name="library", type="dir"
     )
@@ -422,7 +426,8 @@ def test_remote_to_local_transfer_creates_target_directory_before_download(tmp_p
     def download(*, fileitem, path):
         """模拟只接受已存在本地目录的网盘下载适配器。"""
         assert fileitem is source_item
-        assert path == target_file.parent
+        assert path.parent == target_file.parent
+        assert path.name.startswith(".mp-download-")
         assert path.is_dir()
         temporary_file = path / fileitem.name
         temporary_file.write_bytes(b"movie")
@@ -443,10 +448,8 @@ def test_remote_to_local_transfer_creates_target_directory_before_download(tmp_p
     assert error == ""
     assert result is not None
     assert target_file.read_bytes() == b"movie"
-    source_oper.download.assert_called_once_with(
-        fileitem=source_item,
-        path=target_file.parent,
-    )
+    source_oper.download.assert_called_once()
+    assert not source_oper.download.call_args.kwargs["path"].exists()
     source_oper.delete.assert_called_once_with(source_item)
 
 
@@ -459,11 +462,11 @@ def test_frozen_disc_plan_executes_and_replays_with_real_step_ledger(
     source = FileItem(
         storage="local", path="/disc" if directory else "/disc.iso",
         name="disc" if directory else "disc.iso", type="dir" if directory else "file",
-        size=100,
+        size=100, modify_time=1.0,
     ).model_dump(mode="json", exclude_unset=sparse)
     leaf = (
         FileItem(storage="local", path="/disc/BDMV/STREAM/00001.m2ts",
-                 name="00001.m2ts", type="file", size=200).model_dump(
+                 name="00001.m2ts", type="file", size=200, modify_time=1.0).model_dump(
                      mode="json", exclude_unset=sparse,
         )
         if directory else dict(source)
@@ -491,19 +494,25 @@ def test_frozen_disc_plan_executes_and_replays_with_real_step_ledger(
         kwargs["fileitem"].size = 999
         return True, ""
 
+    materialized_items = {}
+
     def materialize(**kwargs):
         """模拟存储适配器更新临时链接，源删除步骤仍须沿用冻结输入。"""
         assert kwargs["fileitem"].size == leaf["size"]
         kwargs["fileitem"].url = "https://temporary.invalid/refreshed"
-        return FileItem(storage="remote", path=kwargs["target_file"].as_posix()), ""
+        target_item = FileItem(storage="remote", path=kwargs["target_file"].as_posix(),
+                               type="file", size=leaf["size"], modify_time=1.0)
+        materialized_items[target_item.path] = target_item
+        return target_item, ""
 
     handler = TransHandler()
     monkeypatch.setattr(handler, "_TransHandler__intercept_transfer", intercept)
     transfer = Mock(side_effect=materialize)
     monkeypatch.setattr(TransHandler, "_TransHandler__transfer_command", transfer)
     source_oper = Mock()
+    source_oper.get_item_strict.return_value = FileItem(**leaf)
     target_oper = Mock()
-    target_oper.get_item_strict.return_value = None
+    target_oper.get_item_strict.side_effect = lambda path: materialized_items.get(path.as_posix())
     target_oper.get_folder.return_value = FileItem(storage="remote", path="/library", type="dir")
 
     for _ in range(2):

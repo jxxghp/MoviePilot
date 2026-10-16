@@ -2,6 +2,7 @@ import filecmp
 import re
 from copy import deepcopy
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, Callable, List, Optional, Tuple, cast
 
 from jinja2 import Template
@@ -17,11 +18,13 @@ from app.application.classification.reference import (
 from app.application.directory import DirectoryHelper
 from app.application.messaging.message import TemplateHelper
 from app.application.transfer.execution import (
+    TransferExecutionConflictError,
     TransferOperationObservation,
     TransferOperationObservationState,
     TransferPlanningRejectedError,
     TransferStepResult,
     TransferStepRunner,
+    build_transfer_overwrite_paths,
 )
 from app.application.transfer.workflow import (
     TransferPlanCheckpoint,
@@ -524,8 +527,7 @@ class TransHandler:
 
         策略拒绝须标记覆盖跳过，使结算保留已有成功历史。
         """
-        if self.__is_extra_file(fileitem, mediainfo):
-            return True, False, None
+        is_extra_file = self.__is_extra_file(fileitem, mediainfo)
         try:
             target_item = target_oper.get_item_strict(target_file)
         except StorageQueryError as query_error:
@@ -542,6 +544,8 @@ class TransHandler:
                 transfer_type=transfer_type,
                 need_notify=need_notify,
             )
+        if is_extra_file:
+            return target_item is not None, False, None
         if not target_item:
             return False, overwrite_mode == "latest" and target_file.suffix.casefold() not in {
                 ".jpg", ".jpeg", ".png", ".webp"
@@ -664,6 +668,59 @@ class TransHandler:
         """从已持久成功证据恢复目标文件，不再次访问外部存储。"""
         payload = result.payload.get("item")
         return FileItem.model_validate(payload) if isinstance(payload, dict) else None
+
+    @staticmethod
+    def __assert_file_identity(expected: FileItem, current: Optional[FileItem]) -> None:
+        """清理前比对冻结文件的大小、修改时间及可用身份；证据不足时保留文件。
+
+        本地链接的查询沿用 stat 语义，硬链接和软链接均比较实际内容的身份。
+        旧快照没有 fileid 时允许用完整大小、时间凭据；缺少这两项则不能自动删除。
+        """
+        if current is None:
+            raise TransferExecutionConflictError(f"文件 {expected.path} 已不可见，保留源文件和旧备份")
+        for field in ("size", "modify_time"):
+            frozen_value, live_value = getattr(expected, field), getattr(current, field)
+            if frozen_value is None or live_value is None:
+                raise StorageQueryError(f"文件 {expected.path} 缺少 {field} 身份凭据，需人工复核")
+            if frozen_value != live_value:
+                raise TransferExecutionConflictError(f"文件 {expected.path} 的 {field} 已变化，禁止清理")
+        if expected.type != current.type:
+            raise TransferExecutionConflictError(f"文件 {expected.path} 的类型已变化，禁止清理")
+        if expected.fileid:
+            if not current.fileid:
+                raise StorageQueryError(f"文件 {expected.path} 缺少 fileid 身份凭据，需人工复核")
+            if expected.fileid != current.fileid:
+                raise TransferExecutionConflictError(f"文件 {expected.path} 已被替换，禁止清理")
+
+    @classmethod
+    def __observe_safe_delete(
+            cls, storage_oper: StorageBase, path: Path, *,
+            frozen_item: Optional[FileItem], before_delete: Optional[Callable[[], None]],
+    ) -> TransferOperationObservation:
+        """只在删除对象和保留副本的身份都可确认时，允许未执行删除步骤重试。"""
+        try:
+            current = storage_oper.get_item_strict(path)
+            if current is None:
+                state = TransferOperationObservationState.APPLIED
+            else:
+                if before_delete:
+                    before_delete()
+                if frozen_item:
+                    cls.__assert_file_identity(frozen_item, current)
+                state = TransferOperationObservationState.NOT_APPLIED
+        except TransferExecutionConflictError as error:
+            return TransferOperationObservation(
+                state=TransferOperationObservationState.CONFLICT,
+                evidence=TransferStepResult(payload={"identity_error": str(error)}),
+            )
+        except Exception as error:
+            return TransferOperationObservation(
+                state=TransferOperationObservationState.UNKNOWN,
+                evidence=TransferStepResult(payload={"query_error": str(error)}),
+            )
+        return TransferOperationObservation(
+            state=state, evidence=TransferStepResult(payload={"path": path.as_posix(), "deleted": current is None}),
+        )
 
     @staticmethod
     def __observe_item_presence(
@@ -815,6 +872,8 @@ class TransHandler:
             target_oper: StorageBase,
             target_file: Path,
             transfer_type: str,
+            require_target_absent: bool = False,
+            materialize_kind: str = "materialize_target",
     ) -> tuple[Optional[FileItem], str]:
         """按冻结叶节点执行传输，并把跨存储 move 拆为落地与源删除。
 
@@ -835,6 +894,8 @@ class TransHandler:
 
         def execute_materialize() -> TransferStepResult:
             """执行一次目标落地并冻结其返回对象。"""
+            if require_target_absent and target_oper.get_item_strict(target_file) is not None:
+                raise RuntimeError(f"暂存目标已存在，需确认上次整理结果：{target_file}")
             new_item, error = cls.__transfer_command(
                 fileitem=fileitem,
                 target_storage=target_storage,
@@ -845,6 +906,13 @@ class TransHandler:
             )
             if not new_item:
                 raise RuntimeError(error or f"{fileitem.path} 整理失败")
+            if require_target_absent:
+                # SDK 的成功返回不能替代暂存文件的完整性证据，旧目标此时仍未移动。
+                staged_item = target_oper.get_item_strict(target_file)
+                if (fileitem.size is None or staged_item is None
+                        or staged_item.size != fileitem.size):
+                    raise TransferExecutionConflictError(f"暂存目标 {target_file} 大小无法确认，保留旧目标")
+                new_item = staged_item
             return TransferStepResult(payload={
                 "item": cls.__serialize_step_item(new_item),
                 "message": error,
@@ -853,7 +921,7 @@ class TransHandler:
         materialized = cls.__run_persisted_step(
             step_runner,
             phase="transfer",
-            kind="materialize_target",
+            kind=materialize_kind,
             payload=intent_payload,
             execute=execute_materialize,
             observe=lambda: cls.__observe_transfer_operation(
@@ -873,12 +941,20 @@ class TransHandler:
 
         def execute_source_delete() -> TransferStepResult:
             """在目标已落地后单独删除跨存储 move 的源文件。"""
-            if not source_oper.delete(FileItem(**source_fileitem)):
+            confirm_materialized_target()
+            current_source = source_oper.get_item_strict(Path(cast(str, fileitem.path)))
+            if current_source is not None:
+                cls.__assert_file_identity(fileitem, current_source)
+            if current_source is not None and not source_oper.delete(current_source):
                 raise RuntimeError(f"{fileitem.path} 源文件删除失败")
             return TransferStepResult(payload={
                 "source_path": fileitem.path,
                 "deleted": True,
             })
+
+        def confirm_materialized_target() -> None:
+            """删除跨存储移动源前核对当前目标仍与持久落地结果一致。"""
+            cls.__assert_file_identity(new_item, target_oper.get_item_strict(target_file))
 
         cls.__run_persisted_step(
             step_runner,
@@ -890,13 +966,150 @@ class TransHandler:
                 "target_path": target_file.as_posix(),
             },
             execute=execute_source_delete,
-            observe=lambda: cls.__observe_item_presence(
-                source_oper,
-                Path(cast(str, fileitem.path)),
-                applied_when_present=False,
+            observe=lambda: cls.__observe_safe_delete(
+                source_oper, Path(cast(str, fileitem.path)),
+                frozen_item=fileitem, before_delete=confirm_materialized_target,
             ),
         )
         return new_item, str(materialized.payload.get("message") or "")
+
+    @classmethod
+    def __rename_with_step(
+            cls,
+            *,
+            step_runner: Optional[TransferStepRunner],
+            storage_oper: StorageBase,
+            storage: str,
+            source: Path,
+            target: Path,
+            kind: str,
+            expected_source: Optional[FileItem] = None,
+    ) -> FileItem:
+        """在同目录无覆盖重命名，并以两端严格查询恢复中断的操作。"""
+        def execute() -> TransferStepResult:
+            """目标必须不存在，避免适配器的 rename 意外替换其它文件。"""
+            source_item = storage_oper.get_item_strict(source)
+            if source_item is None or storage_oper.get_item_strict(target) is not None:
+                raise RuntimeError(f"重命名路径状态冲突：{source} -> {target}")
+            if expected_source is not None:
+                cls.__assert_file_identity(expected_source, source_item)
+            if not storage_oper.rename(source_item, target.name):
+                raise RuntimeError(f"【{storage}】{source} 重命名失败")
+            target_item = storage_oper.get_item_strict(target)
+            if target_item is None:
+                raise RuntimeError(f"【{storage}】{target} 重命名后不可见")
+            if expected_source is not None:
+                cls.__assert_file_identity(expected_source, target_item)
+            return TransferStepResult(payload={"item": cls.__serialize_step_item(target_item)})
+
+        def observe() -> TransferOperationObservation:
+            """只接受一端存在的明确结果，两端同时存在或消失均禁止重放。"""
+            try:
+                source_item = storage_oper.get_item_strict(source)
+                target_item = storage_oper.get_item_strict(target)
+                if source_item is None and target_item is not None and expected_source is not None:
+                    cls.__assert_file_identity(expected_source, target_item)
+            except TransferExecutionConflictError as error:
+                return TransferOperationObservation(
+                    state=TransferOperationObservationState.CONFLICT,
+                    evidence=TransferStepResult(payload={"identity_error": str(error)}),
+                )
+            except Exception as error:
+                return TransferOperationObservation(
+                    state=TransferOperationObservationState.UNKNOWN,
+                    evidence=TransferStepResult(payload={"query_error": str(error)}),
+                )
+            if source_item is None and target_item is not None:
+                state = TransferOperationObservationState.APPLIED
+            elif source_item is not None and target_item is None:
+                state = TransferOperationObservationState.NOT_APPLIED
+            else:
+                state = TransferOperationObservationState.CONFLICT
+            return TransferOperationObservation(
+                state=state,
+                evidence=TransferStepResult(payload={
+                    "source_exists": source_item is not None,
+                    "target_exists": target_item is not None,
+                    "item": cls.__serialize_step_item(target_item),
+                }),
+            )
+
+        renamed = cls.__run_persisted_step(
+            step_runner, phase="transfer", kind=kind,
+            payload={"storage": storage, "source_path": source.as_posix(),
+                     "target_path": target.as_posix()},
+            execute=execute, observe=observe,
+        )
+        item = cls.__restore_step_item(renamed)
+        if item is None:
+            raise RuntimeError("重命名成功证据缺少目标文件")
+        return item
+
+    @classmethod
+    def __replace_target_with_steps(
+            cls,
+            *,
+            step_runner: Optional[TransferStepRunner],
+            source_fileitem: dict[str, Any],
+            target_storage: str,
+            source_oper: StorageBase,
+            target_oper: StorageBase,
+            target_file: Path,
+            transfer_type: str,
+    ) -> tuple[Optional[FileItem], str]:
+        """先完整暂存新版本，再备份旧版本、提升新文件，最后清理备份和移动源。
+
+        临时名由冻结输入确定，崩溃恢复会使用相同操作身份。备份和提升各自记账，
+        查询失败或远端结果不明时交给 runner 隔离，绝不猜测完成或删除备份。
+        """
+        if (source_fileitem.get("storage") == target_storage
+                and Path(source_fileitem["path"]) == target_file):
+            return None, "源文件和目标文件相同，已跳过覆盖以保留原文件"
+        stage_path, backup_path = build_transfer_overwrite_paths(
+            source=source_fileitem, target_storage=target_storage,
+            target_path=target_file.as_posix(), transfer_type=transfer_type,
+        )
+        stage, backup = Path(stage_path), Path(backup_path)
+        # move 也先 copy，提升成功前始终保留源文件。
+        new_item, message = cls.__execute_transfer_with_steps(
+            step_runner=step_runner, source_fileitem=source_fileitem,
+            target_storage=target_storage, source_oper=source_oper,
+            target_oper=target_oper, target_file=stage,
+            transfer_type="copy" if transfer_type == "move" else transfer_type,
+            require_target_absent=True,
+            materialize_kind="stage_overwrite_target",
+        )
+        if new_item is None:
+            return None, message
+        backup_item = cls.__rename_with_step(
+            step_runner=step_runner, storage_oper=target_oper,
+            storage=target_storage, source=target_file, target=backup,
+            kind="backup_overwrite_target",
+        )
+        new_item = cls.__rename_with_step(
+            step_runner=step_runner, storage_oper=target_oper,
+            storage=target_storage, source=stage, target=target_file,
+            kind="promote_overwrite_target", expected_source=new_item,
+        )
+
+        def confirm_replacement() -> None:
+            """清理前核对新目标的持久提升凭据，不能仅凭路径存在删除其它副本。"""
+            cls.__assert_file_identity(new_item, target_oper.get_item_strict(target_file))
+
+        if transfer_type == "move":
+            cls.__delete_target_with_step(
+                step_runner=step_runner, target_oper=source_oper,
+                target_storage=str(source_fileitem["storage"]),
+                target_file=Path(source_fileitem["path"]), kind="delete_overwrite_source",
+                before_delete=confirm_replacement, frozen_item=FileItem(**source_fileitem),
+            )
+        cls.__delete_target_with_step(
+            step_runner=step_runner, target_oper=target_oper,
+            target_storage=target_storage, target_file=backup,
+            kind="delete_overwrite_backup",
+            before_delete=confirm_replacement, frozen_item=backup_item,
+        )
+        return new_item, message
 
     @classmethod
     def __ensure_directory_with_step(
@@ -991,27 +1204,60 @@ class TransHandler:
             target_oper: StorageBase,
             target_storage: str,
             target_file: Path,
+            kind: str,
+            before_delete: Optional[Callable[[], None]] = None,
+            frozen_item: Optional[FileItem] = None,
     ) -> None:
-        """幂等删除覆盖目标，并持久记录删除意图和严格存在性证据。"""
+        """在保留副本和待删文件身份均确认后清理，证据不足交给账本人工复核。"""
         def execute() -> TransferStepResult:
             """只删除当前冻结目标，目标已不存在视为成功。"""
+            if before_delete:
+                before_delete()
             current = target_oper.get_item_strict(target_file)
+            if current is not None and frozen_item is not None:
+                cls.__assert_file_identity(frozen_item, current)
             if current is not None and not target_oper.delete(current):
                 raise RuntimeError(f"【{target_storage}】{target_file} 删除失败")
             return TransferStepResult(payload={"deleted": True})
 
         cls.__run_persisted_step(
             step_runner,
-            phase="prepare",
-            kind="delete_overwrite_target",
+            phase="cleanup",
+            kind=kind,
             payload={"storage": target_storage, "path": target_file.as_posix()},
             execute=execute,
-            observe=lambda: cls.__observe_item_presence(
-                target_oper,
-                target_file,
-                applied_when_present=False,
+            observe=lambda: cls.__observe_safe_delete(
+                target_oper, target_file, frozen_item=frozen_item, before_delete=before_delete,
             ),
         )
+
+    @classmethod
+    def __resolve_leaf_overwrite_with_step(
+            cls,
+            *,
+            step_runner: Optional[TransferStepRunner],
+            planned_item: TransferPlanItem,
+            target_oper: StorageBase,
+            transfer_type: str,
+    ) -> bool:
+        """冻结目录叶文件的目标存在性，重启时不根据已替换目标改变操作序列。"""
+        def execute() -> TransferStepResult:
+            """严格查询当前叶目标，失败时禁止对旧文件执行任何操作。"""
+            exists = target_oper.get_item_strict(Path(planned_item.target_path)) is not None
+            return TransferStepResult(payload={"over_flag": exists})
+
+        decision = cls.__run_persisted_step(
+            step_runner, phase="decision", kind="resolve_leaf_overwrite",
+            payload={"source": planned_item.source_fileitem,
+                     "target_storage": planned_item.target_storage,
+                     "target_path": planned_item.target_path, "transfer_type": transfer_type},
+            execute=execute,
+            observe=lambda: TransferOperationObservation(
+                state=TransferOperationObservationState.NOT_APPLIED,
+                evidence=TransferStepResult(payload={"reason": "read-only leaf decision may be repeated"}),
+            ),
+        )
+        return decision.payload.get("over_flag") is True
 
     def __resolve_overwrite_with_step(
             self,
@@ -1210,12 +1456,6 @@ class TransHandler:
                     transfer_type=transfer_type,
                     need_notify=checkpoint.need_notify,
                 )
-            self.__cleanup_with_step(
-                step_runner=step_runner,
-                cleanup=cleanup_before_transfer,
-                observe_cleanup=observe_cleanup_before_transfer,
-                source_path=cast(str, fileitem.path),
-            )
             target_diritem = self.__ensure_directory_with_step(
                 step_runner=step_runner,
                 target_oper=target_oper,
@@ -1243,7 +1483,15 @@ class TransHandler:
                         need_notify=checkpoint.need_notify,
                     )
                 source_item = FileItem(**planned_item.source_fileitem)
-                new_item, error = self.__execute_transfer_with_steps(
+                over_flag = self.__resolve_leaf_overwrite_with_step(
+                    step_runner=step_runner, planned_item=planned_item,
+                    target_oper=target_oper, transfer_type=transfer_type,
+                )
+                execute_transfer = (
+                    self.__replace_target_with_steps if over_flag
+                    else self.__execute_transfer_with_steps
+                )
+                new_item, error = execute_transfer(
                     step_runner=step_runner,
                     source_fileitem=planned_item.source_fileitem,
                     target_storage=planned_item.target_storage,
@@ -1265,6 +1513,12 @@ class TransHandler:
                     file_list=[source_item.path],
                     file_list_new=[new_item.path],
                 )
+            self.__cleanup_with_step(
+                step_runner=step_runner,
+                cleanup=cleanup_before_transfer,
+                observe_cleanup=observe_cleanup_before_transfer,
+                source_path=cast(str, fileitem.path),
+            )
             self.__update_result(
                 result=result,
                 success=True,
@@ -1345,12 +1599,6 @@ class TransHandler:
                 need_notify=checkpoint.need_notify,
             )
 
-        self.__cleanup_with_step(
-            step_runner=step_runner,
-            cleanup=cleanup_before_transfer,
-            observe_cleanup=observe_cleanup_before_transfer,
-            source_path=cast(str, fileitem.path),
-        )
         target_diritem = self.__ensure_directory_with_step(
             step_runner=step_runner,
             target_oper=target_oper,
@@ -1366,16 +1614,6 @@ class TransHandler:
                 transfer_type=transfer_type,
                 need_notify=checkpoint.need_notify,
             )
-        if delete_versions:
-            if step_runner is None:
-                self.__delete_version_files(target_oper, target_file)
-            else:
-                self.__delete_version_files_with_steps(
-                    step_runner=step_runner,
-                    storage_oper=target_oper,
-                    target_storage=target_storage,
-                    path=target_file,
-                )
         if step_runner is None:
             new_item, error = self.__transfer_file(
                 fileitem=fileitem,
@@ -1388,14 +1626,11 @@ class TransHandler:
                 result=result,
             )
         else:
-            if over_flag:
-                self.__delete_target_with_step(
-                    step_runner=step_runner,
-                    target_oper=target_oper,
-                    target_storage=target_storage,
-                    target_file=target_file,
-                )
-            new_item, error = self.__execute_transfer_with_steps(
+            execute_transfer = (
+                self.__replace_target_with_steps if over_flag
+                else self.__execute_transfer_with_steps
+            )
+            new_item, error = execute_transfer(
                 step_runner=step_runner,
                 source_fileitem=planned_item.source_fileitem,
                 target_storage=target_storage,
@@ -1422,6 +1657,22 @@ class TransHandler:
                 transfer_type=transfer_type,
                 need_notify=checkpoint.need_notify,
             )
+        if delete_versions:
+            if step_runner is None:
+                self.__delete_version_files(target_oper, target_file)
+            else:
+                self.__delete_version_files_with_steps(
+                    step_runner=step_runner,
+                    storage_oper=target_oper,
+                    target_storage=target_storage,
+                    path=target_file,
+                )
+        self.__cleanup_with_step(
+            step_runner=step_runner,
+            cleanup=cleanup_before_transfer,
+            observe_cleanup=observe_cleanup_before_transfer,
+            source_path=cast(str, fileitem.path),
+        )
         self.__update_result(
             result=result,
             success=True,
@@ -1433,6 +1684,28 @@ class TransHandler:
             need_notify=checkpoint.need_notify,
         )
         return result
+
+    @staticmethod
+    def __download_to_local(
+            fileitem: FileItem,
+            source_oper: StorageBase,
+            target_file: Path,
+            transfer_type: str,
+    ) -> tuple[bool, str]:
+        """隔离适配器按源文件名下载的临时目录，成功移动后再处理源文件。"""
+        if transfer_type not in ("copy", "move"):
+            return False, f"不支持的整理方式：{transfer_type}"
+        target_file.parent.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(prefix=".mp-download-", dir=target_file.parent) as temp_dir:
+            tmp_file = source_oper.download(fileitem=fileitem, path=Path(temp_dir))
+            if not tmp_file:
+                return False, f"{fileitem.path} {fileitem.storage} 下载失败"
+            move_result, move_error = SystemUtils.move(tmp_file, target_file)
+            if move_result != 0:
+                return False, f"{fileitem.path} 下载后移动到 {target_file} 失败：{move_error}"
+            if transfer_type == "move" and not source_oper.delete(fileitem):
+                return False, f"{fileitem.path} 源文件删除失败"
+        return True, ""
 
     @staticmethod
     def __transfer_command(
@@ -1570,23 +1843,10 @@ class TransHandler:
             if target_file.exists():
                 logger.warn(f"文件已存在：{target_file}")
                 return __get_targetitem(target_file), ""
-            # 网盘到本地
-            if transfer_type in ["copy", "move"]:
-                # 远程存储适配器会直接在传入目录创建文件，下载前必须先建好目录。
-                target_file.parent.mkdir(parents=True, exist_ok=True)
-                # 下载
-                tmp_file = source_oper.download(
-                    fileitem=fileitem, path=target_file.parent
-                )
-                if tmp_file:
-                    # 将tmp_file移动后target_file
-                    SystemUtils.move(tmp_file, target_file)
-                    if transfer_type == "move":
-                        # 删除源文件
-                        source_oper.delete(fileitem)
-                    return __get_targetitem(target_file), ""
-                else:
-                    return None, f"{fileitem.path} {fileitem.storage} 下载失败"
+            state, error = TransHandler.__download_to_local(
+                fileitem, source_oper, target_file, transfer_type,
+            )
+            return (__get_targetitem(target_file), "") if state else (None, error)
         elif fileitem.storage == target_storage:
             # 同一网盘
             if not source_oper.is_support_transtype(transfer_type):
@@ -1722,7 +1982,7 @@ class TransHandler:
         :param target_storage: 目标存储
         :param target_file: 新文件
         :param transfer_type: 整理方式
-        :param over_flag: 是否覆盖，为True时会先删除再整理
+        :param over_flag: 是否覆盖，为True时完整暂存后再替换旧文件
         :param source_oper: 源存储操作对象
         :param target_oper: 目标存储操作对象
         """
@@ -1730,35 +1990,29 @@ class TransHandler:
             f"正在整理文件：【{fileitem.storage}】{fileitem.path} 到 【{target_storage}】{target_file}，"
             f"操作类型：{transfer_type}"
         )
-        if target_storage == "local" and (
-            target_file.exists() or target_file.is_symlink()
-        ):
-            if not over_flag:
-                logger.warn(f"文件已存在：{target_file}")
-                return None, f"{target_file} 已存在"
-            else:
-                logger.info(f"正在删除已存在的文件：{target_file}")
-                target_file.unlink()
-        else:
-            exists_item = target_oper.get_item(target_file)
-            if exists_item:
-                if not over_flag:
-                    logger.warn(f"文件已存在：【{target_storage}】{target_file}")
-                    return None, f"【{target_storage}】{target_file} 已存在"
-                else:
-                    logger.info(
-                        f"正在删除已存在的文件：【{target_storage}】{target_file}"
-                    )
-                    target_oper.delete(exists_item)
+        if not over_flag and target_oper.get_item_strict(target_file) is not None:
+            logger.warn(f"文件已存在：【{target_storage}】{target_file}")
+            return None, f"【{target_storage}】{target_file} 已存在"
         # 执行文件整理命令
-        new_item, errmsg = self.__transfer_command(
-            fileitem=fileitem,
-            target_storage=target_storage,
-            source_oper=source_oper,
-            target_oper=target_oper,
-            target_file=target_file,
-            transfer_type=transfer_type,
-        )
+        if over_flag:
+            try:
+                new_item, errmsg = self.__replace_target_with_steps(
+                    step_runner=None, source_fileitem=fileitem.model_dump(mode="json"),
+                    target_storage=target_storage, source_oper=source_oper,
+                    target_oper=target_oper, target_file=target_file,
+                    transfer_type=transfer_type,
+                )
+            except RuntimeError as error:
+                return None, str(error)
+        else:
+            new_item, errmsg = self.__transfer_command(
+                fileitem=fileitem,
+                target_storage=target_storage,
+                source_oper=source_oper,
+                target_oper=target_oper,
+                target_file=target_file,
+                transfer_type=transfer_type,
+            )
         if new_item:
             self.__update_result(
                 result=result,
