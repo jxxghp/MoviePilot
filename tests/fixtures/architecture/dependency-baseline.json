@@ -944,7 +944,7 @@
     }
   },
   "edge_count": 9576,
-  "edge_sha256": "8b17623f680bdc983193697fdd0539baac2e58f32fa316fb439d6a61dfda6a28",
+  "edge_sha256": "f69fcd110b244bf788fd19ef93b05266eab9ea54dfaeedafc1b7f0af5ccbcffb",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -3627,8 +3627,8 @@
     "app.application.formatting -> app.runtime",
     "app.application.formatting -> app.runtime.log",
     "app.application.formatting -> app.schemas",
+    "app.application.formatting -> app.schemas.file",
     "app.application.formatting -> app.schemas.transfer",
-    "app.application.formatting -> app.schemas.workflow",
     "app.application.github_auth -> app.application",
     "app.application.github_auth -> app.application.configuration",
     "app.application.github_auth -> app.domain",

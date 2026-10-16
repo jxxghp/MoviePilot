@@ -481,14 +481,6 @@
     "return-value": 2,
     "type-arg": 1
   },
-  "app/application/formatting.py": {
-    "arg-type": 4,
-    "assignment": 4,
-    "attr-defined": 1,
-    "no-untyped-def": 7,
-    "operator": 3,
-    "type-arg": 2
-  },
   "app/application/history/__init__.py": {
     "no-any-return": 1
   },
@@ -749,10 +741,6 @@
   "app/chain/transfer/filter.py": {
     "arg-type": 1,
     "attr-defined": 1
-  },
-  "app/chain/transfer/format.py": {
-    "arg-type": 1,
-    "type-arg": 1
   },
   "app/chain/transfer/history.py": {
     "assignment": 1,
