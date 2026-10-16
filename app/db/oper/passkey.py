@@ -55,20 +55,21 @@ class PassKeyOper(DbOper):
         """按凭证 ID 读取启用的 PassKey。"""
         def query(session: Session) -> Optional[PassKey]:
             """在调用方会话中按凭证 ID 读取启用的 PassKey。"""
-            return session.execute(
+            passkey: Optional[PassKey] = session.execute(
                 _get_by_credential_id_statement(PassKey, credential_id)
             ).scalars().first()
+            return passkey
 
         return self._execute_sync_query(query)
 
     def create(self, payload: dict[str, Any]) -> PassKey:
         """创建 PassKey 凭证。"""
         passkey = PassKey(**payload)
-        self._execute_sync_write(lambda session: self._stage_create(session, passkey))
+        self._execute_sync_write(lambda session: self._stage_passkey_create(session, passkey))
         return passkey
 
     @staticmethod
-    def _stage_create(session: Any, passkey: PassKey) -> None:
+    def _stage_passkey_create(session: Session, passkey: PassKey) -> None:
         """在调用方事务中暂存凭证并分配主键。"""
         session.add(passkey)
         session.flush()

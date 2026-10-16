@@ -989,10 +989,6 @@
     "no-untyped-def": 2,
     "type-arg": 5
   },
-  "app/db/oper/passkey.py": {
-    "no-any-return": 1,
-    "override": 1
-  },
   "app/db/oper/site.py": {
     "arg-type": 1,
     "no-any-return": 3,
