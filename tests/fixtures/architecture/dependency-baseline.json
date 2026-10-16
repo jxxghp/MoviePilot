@@ -941,8 +941,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9563,
-  "edge_sha256": "64ab9871d95e006af19070aa9b1690a6fd0b54d16cf4e8ad0ef2dc4870483940",
+  "edge_count": 9571,
+  "edge_sha256": "3f7e0a3174aa1978c70e33d729008a97745b34aa3240b33a4cfc0fe1cec7ec30",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -7662,6 +7662,14 @@
     "app.modules.indexer.parser.small_horse -> app.modules",
     "app.modules.indexer.parser.small_horse -> app.modules.indexer",
     "app.modules.indexer.parser.small_horse -> app.modules.indexer.parser",
+    "app.modules.indexer.parser.speedapp -> app.foundation",
+    "app.modules.indexer.parser.speedapp -> app.foundation.dom",
+    "app.modules.indexer.parser.speedapp -> app.foundation.size",
+    "app.modules.indexer.parser.speedapp -> app.foundation.temporal",
+    "app.modules.indexer.parser.speedapp -> app.foundation.text",
+    "app.modules.indexer.parser.speedapp -> app.modules",
+    "app.modules.indexer.parser.speedapp -> app.modules.indexer",
+    "app.modules.indexer.parser.speedapp -> app.modules.indexer.parser",
     "app.modules.indexer.parser.sunnypt -> app.foundation",
     "app.modules.indexer.parser.sunnypt -> app.foundation.temporal",
     "app.modules.indexer.parser.sunnypt -> app.modules",
@@ -10508,7 +10516,7 @@
     "app.workflow.actions.transfer_file -> app.workflow",
     "app.workflow.actions.transfer_file -> app.workflow.actions"
   ],
-  "module_count": 1122,
+  "module_count": 1123,
   "modules": [
     "app",
     "app.adapters",
@@ -11283,6 +11291,7 @@
     "app.modules.indexer.parser.nexus_rabbit",
     "app.modules.indexer.parser.rousi",
     "app.modules.indexer.parser.small_horse",
+    "app.modules.indexer.parser.speedapp",
     "app.modules.indexer.parser.sunnypt",
     "app.modules.indexer.parser.tnode",
     "app.modules.indexer.parser.torrent_leech",
