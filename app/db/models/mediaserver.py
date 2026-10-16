@@ -98,7 +98,8 @@ class MediaServerItem(Base):
 
     @classmethod
     def exist_by_media_identity(
-            cls, db: Session, media_source: MediaSource, media_id: str, mtype: str,
+            cls, db: Session, media_source: MediaSource | str, media_id: str,
+            mtype: Optional[str],
             server: Optional[str] = None,
     ) -> Optional[Self]:
         """按规范媒体身份和类型查询媒体服务器条目。"""
@@ -114,7 +115,7 @@ class MediaServerItem(Base):
 
     @classmethod
     def exists_by_title(
-            cls, db: Session, title: str, mtype: str, year: str,
+            cls, db: Session, title: str, mtype: Optional[str], year: Optional[str | int],
             server: Optional[str] = None,
     ) -> Optional[Self]:
         """按标题及可选类型、年份和服务器查询首条记录。"""
@@ -130,8 +131,8 @@ class MediaServerItem(Base):
 
     @classmethod
     def _cross_source_title_statement(
-            cls, title: str, mtype: Optional[str], year: str,
-            media_source: MediaSource, server: Optional[str] = None,
+            cls, title: str, mtype: Optional[str], year: str | int,
+            media_source: MediaSource | str, server: Optional[str] = None,
     ) -> Select[tuple["MediaServerItem"]]:
         """构造跨来源标题回退查询；同来源条目在精确身份未命中时必然是另一部作品。"""
         statement = select(cls).where(
@@ -147,8 +148,8 @@ class MediaServerItem(Base):
 
     @classmethod
     def list_cross_source_by_title(
-            cls, db: Session, title: str, mtype: Optional[str], year: str,
-            media_source: MediaSource, server: Optional[str] = None,
+            cls, db: Session, title: str, mtype: Optional[str], year: str | int,
+            media_source: MediaSource | str, server: Optional[str] = None,
     ) -> List["MediaServerItem"]:
         """返回可作为跨来源候选的同标题同年份条目。"""
         statement = cls._cross_source_title_statement(
@@ -165,7 +166,8 @@ class MediaServerItem(Base):
 
     @classmethod
     async def async_exist_by_media_identity(
-            cls, db: AsyncSession, media_source: MediaSource, media_id: str, mtype: str,
+            cls, db: AsyncSession, media_source: MediaSource | str, media_id: str,
+            mtype: Optional[str],
             server: Optional[str] = None,
     ) -> Optional[Self]:
         """异步按规范媒体身份和类型查询媒体服务器条目。"""
@@ -182,8 +184,8 @@ class MediaServerItem(Base):
 
     @classmethod
     async def async_list_cross_source_by_title(
-            cls, db: AsyncSession, title: str, mtype: Optional[str], year: str,
-            media_source: MediaSource, server: Optional[str] = None,
+            cls, db: AsyncSession, title: str, mtype: Optional[str], year: str | int,
+            media_source: MediaSource | str, server: Optional[str] = None,
     ) -> List["MediaServerItem"]:
         """异步返回可作为跨来源候选的同标题同年份条目。"""
         statement = cls._cross_source_title_statement(
@@ -194,7 +196,7 @@ class MediaServerItem(Base):
 
     @classmethod
     async def async_exists_by_title(
-            cls, db: AsyncSession, title: str, mtype: str, year: str,
+            cls, db: AsyncSession, title: str, mtype: Optional[str], year: Optional[str | int],
             server: Optional[str] = None,
     ) -> Optional[Self]:
         """异步按标题及可选类型、年份和服务器查询首条记录。"""
