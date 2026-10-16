@@ -13,8 +13,8 @@ from app.domain.metainfo import MetaInfo
 from app.runtime.log import logger
 from app.runtime.stop import runtime_stop_state
 from app.schemas.context import Context as WorkflowTorrentContext
-from app.schemas.types import MediaType
 from app.schemas.download import DownloadTask
+from app.schemas.types import MediaType
 from app.schemas.workflow import ActionContext, ActionParams
 from app.workflow.actions import BaseAction, domain_media_info_from_dict, domain_torrent_info_from_dict
 
