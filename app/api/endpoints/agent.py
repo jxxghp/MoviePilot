@@ -415,11 +415,14 @@ async def get_agent_chat_session(
     chat = await web_agent_application.get_accessible_agent_chat(service, session_id, current_user)
     server_session_id = session_id
     if not chat:
-        server_session_id = await web_agent_application.build_web_agent_session_id_async(
-            current_user,
-            session_id,
-            service,
-        )
+        try:
+            server_session_id = await web_agent_application.build_web_agent_session_id_async(
+                current_user,
+                session_id,
+                service,
+            )
+        except PermissionError:
+            return _SchemaResponse(success=False, message="会话不存在或无权访问")
         if server_session_id != session_id:
             chat = await web_agent_application.get_accessible_agent_chat(
                 service,
@@ -535,11 +538,14 @@ async def stop_web_agent_session_task(
     :param service: Agent 会话应用服务
     :return: 停止结果
     """
-    server_session_id = await web_agent_application.build_web_agent_session_id_async(
-        current_user,
-        session_id,
-        service,
-    )
+    try:
+        server_session_id = await web_agent_application.build_web_agent_session_id_async(
+            current_user,
+            session_id,
+            service,
+        )
+    except PermissionError:
+        return _SchemaResponse(success=False, message="会话不存在或无权访问")
     chat = await web_agent_application.get_accessible_agent_chat(
         service,
         server_session_id,
