@@ -69,7 +69,7 @@ class PluginLifecycle:
         running: dict[str, Any],
         load_plugins: Callable[[Optional[str], list[str], Callable[[Any], bool]], list[Any]],
         loadable_plugins: Callable[[], list[str]],
-        plugin_config: Callable[[str], dict],
+        plugin_config: Callable[[str], dict[str, object]],
         auth_checker: Callable[[Any], bool],
         clear_modules: Callable[[Optional[str]], Any],
         clear_tools: Callable[[], None],
@@ -239,7 +239,7 @@ class PluginLifecycle:
                 )
 
     @observe_plugin_lifecycle("initialize")
-    def initialize(self, plugin_id: str, config: dict) -> None:
+    def initialize(self, plugin_id: str, config: dict[str, object]) -> None:
         """重新应用指定插件配置并刷新事件注册状态。"""
         plugin = self._running.get(plugin_id)
         if not plugin:
