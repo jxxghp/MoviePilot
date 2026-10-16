@@ -16,9 +16,6 @@
     "str-bytes-safe": 2,
     "union-attr": 14
   },
-  "app/adapters/external/cookiecloud.py": {
-    "arg-type": 1
-  },
   "app/adapters/external/ocr.py": {
     "arg-type": 1
   },
@@ -1142,13 +1139,6 @@
     "return-value": 4,
     "type-arg": 19,
     "var-annotated": 5
-  },
-  "app/modules/indexer/parser/bitpt.py": {
-    "arg-type": 4,
-    "assignment": 7,
-    "no-untyped-def": 1,
-    "override": 1,
-    "union-attr": 2
   },
   "app/modules/indexer/parser/rousi.py": {
     "no-untyped-def": 2

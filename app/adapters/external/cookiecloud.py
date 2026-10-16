@@ -56,7 +56,9 @@ class CookieCloudHelper:
             if not result:
                 return {}, "未从本地CookieCloud服务加载到cookie数据，请检查服务器设置、用户KEY及加密密码是否正确"
         else:
+            assert self._server is not None
             req_url = UrlUtils.combine_url(host=self._server, path=f"get/{self._key}")
+            assert req_url is not None
             with RequestUtils(content_type="application/json").response_manager(
                 method="GET", url=req_url
             ) as ret:
