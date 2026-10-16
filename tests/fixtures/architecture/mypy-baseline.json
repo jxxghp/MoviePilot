@@ -2514,9 +2514,6 @@
     "no-untyped-def": 3,
     "type-arg": 1
   },
-  "app/runtime/thread.py": {
-    "unused-ignore": 1
-  },
   "app/schemas/agent.py": {
     "misc": 24
   },
