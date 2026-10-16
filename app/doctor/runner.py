@@ -4,10 +4,10 @@ import os
 import platform
 import sys
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from app.adapters.system.host import SystemUtils
-from app.doctor.checks import default_checks
+from app.doctor.checks import DoctorRunnerProtocol, default_checks
 from app.doctor.models import (
     DoctorFinding,
     DoctorFindingStatus,
@@ -44,7 +44,7 @@ class DoctorRunner:
         """
         for check in default_checks():
             try:
-                check(self)
+                check(cast(DoctorRunnerProtocol, self))
             except Exception as err:
                 self.add(
                     finding_id=f"doctor.check_failed.{check.__name__.lstrip('_')}",
