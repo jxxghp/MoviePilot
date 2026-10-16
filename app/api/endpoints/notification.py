@@ -40,7 +40,7 @@ def _normalize_configs(value: list[NotificationConf]) -> list[dict[str, Any]]:
 async def save_config(
     configs: list[NotificationConf] = Body(...),
     _: object = Depends(get_current_active_superuser),
-):
+) -> _SchemaResponse[object]:
     """一次保存通知配置，并由渠道模块处理改名与删除缓存。"""
     try:
         current = _normalize_configs(configs)
@@ -84,7 +84,7 @@ async def save_config(
 def manage_channel(
     request: _SchemaManageRequest,
     _: object = Depends(get_current_active_superuser),
-):
+) -> _SchemaResponse[object]:
     """
     通知渠道统一管理入口
 
