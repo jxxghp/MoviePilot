@@ -84,10 +84,6 @@
     "type-arg": 5,
     "var-annotated": 1
   },
-  "app/adapters/system/resource.py": {
-    "no-untyped-call": 1,
-    "no-untyped-def": 2
-  },
   "app/adapters/system/rust.py": {
     "assignment": 1,
     "no-any-return": 7,

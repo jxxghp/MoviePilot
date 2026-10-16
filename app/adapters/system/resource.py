@@ -8,7 +8,9 @@ import platform
 import sys
 import sysconfig
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Optional
+
+from requests import Response
 
 from app.adapters.network.http import RequestUtils
 from app.adapters.system.host import SystemUtils
@@ -64,13 +66,14 @@ class ResourceHelper:
     )
 
     @property
-    def proxies(self):
+    def proxies(self) -> Optional[dict[str, str]]:
         """返回访问 GitHub 资源时应使用的代理配置。"""
-        return (
+        proxies: Optional[dict[str, str]] = (
             None
             if get_runtime_setting("GITHUB_PROXY")
             else get_runtime_setting("PROXY")
         )
+        return proxies
 
     @staticmethod
     def _get_python_version_tag() -> str:
@@ -105,9 +108,9 @@ class ResourceHelper:
             files.append(f"sites.cp{python_ver}-win_amd64.pyd")
         return files
 
-    def _load_resource_info(self):
+    def _load_resource_info(self) -> Optional[Response]:
         """读取 V3 资源清单。"""
-        response = RequestUtils(
+        response: Optional[Response] = RequestUtils(
             proxies=self.proxies,
             headers=get_runtime_setting("GITHUB_HEADERS"),
             timeout=10,
