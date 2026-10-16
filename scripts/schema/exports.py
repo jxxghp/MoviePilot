@@ -14,6 +14,7 @@ SCHEMA_MODULES = (
     "agent",
     "cache",
     "category",
+    "comment",
     "common",
     "context",
     "dashboard",
