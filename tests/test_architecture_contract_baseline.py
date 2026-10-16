@@ -126,16 +126,16 @@ def test_architecture_documents_match_generated_quality_metrics() -> None:
         for diagnostics in mypy.values()
         for count in diagnostics.values()
     )
-    application_coverage = coverage["application"]["percent"]
-    domain_coverage = coverage["domain"]["percent"]
+    coverage_scope = coverage["scope"]
+    total_coverage = coverage["total"]["percent"]
     event_facts = runtime["event_facts"]
 
     assert edge_count in overview
     assert f"{dependency['module_count']} / {edge_count}" in checklist
     assert f"全量 mypy 历史债务 | {mypy_count:,} / {len(mypy)} 文件" in checklist
     assert f"Ruff 历史诊断 | {ruff_count}" in checklist
-    assert f"Application {application_coverage:.2f}%" in checklist
-    assert f"Domain {domain_coverage:.2f}%" in checklist
+    assert coverage_scope == {"root": "app", "excluded": ["app/plugins"]}
+    assert f"全 app（排除 app/plugins）当前聚合 {total_coverage:.2f}%" in checklist
     if "**阶段状态：`CANCELLED`" in roadmap:
         assert "| S4-L5 Ruff 治理债务清零 | `CANCELLED` |" in roadmap
     else:

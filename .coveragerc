@@ -2,13 +2,11 @@
 branch = True
 source = app
 omit =
-    app/plugins/*/*
-    app/testing/*
-    app/helper/sites.py
+    app/plugins/*
 
 [report]
 show_missing = True
-skip_empty = True
+skip_empty = False
 precision = 2
 exclude_lines =
     pragma: no cover

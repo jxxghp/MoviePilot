@@ -100,7 +100,7 @@ FastAPI/Click 合同治理移除了 107 条已失效的类型忽略，修正 Ope
 | 优先级 | 现有缺口 | 建议落点与验收 |
 | --- | --- | --- |
 | P0 | GitHub `v3` 查询结果 `protected=false`，生效分支规则为空 | 增加固定名称的 CI 汇总检查，再配置 required checks；汇总要正确处理成功复用、取消和失败，不能把所有 skipped 当成功。远端规则属于仓库策略，当前改动未更改它 |
-| P1 | 覆盖率只阻断 Application/Domain 的聚合行覆盖率低于 80%；虽采集分支覆盖率，但没有分支下限 | 先为 transfer、download、scheduler、tasks、Agent 生命周期等关键文件组建立 Ubuntu 全量 CI 分支基线，再加入变更行覆盖率；避免用整个包的高覆盖率掩盖关键路径。macOS 报告只作诊断 |
+| P1 | 覆盖率曾只阻断 Application/Domain 的聚合行覆盖率 | 已扩展到除 `app/plugins` 外全部 `app` 文件；存量逐文件低水位只增不减，新文件至少 80%，仍不设置分支下限；macOS 报告只作诊断 |
 | P1 | strict frontier 对部分父类和传递依赖仍视为 Any | 按“父类/Port/DTO → lifecycle → 调用者”扩到 Agent session、Scheduler lifecycle、插件管理器；先消除真实类型问题，再纳入，不增添 ignore |
 | P1 | 漏洞审计位于正式版/Beta 发布链路，依赖兼容 PR 工作流只做平台安装验证 | 在依赖变更 PR 对同一 locked 运行时依赖做 pip-audit；不要复制一份依赖清单，也无需每个普通源码 PR 重跑多架构镜像扫描 |
 | P2 | 常规 Ruff 仅启用 E4/E7/E9/F/I | 优先试运行 B006（可变默认参数）、B023（循环变量闭包捕获）、B018（无效表达式）；审查误报后按范围纳入。审计时 app 中 B006 为 0、B023 为 5、B018 为 1，不自动把新诊断认定为已证实的 bug |

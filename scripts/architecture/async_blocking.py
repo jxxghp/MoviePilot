@@ -12,28 +12,8 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BASELINE = PROJECT_ROOT / "tests/fixtures/architecture/async-blocking-baseline.json"
-SCAN_ROOTS = (
-    "app/adapters",
-    "app/api",
-    "app/agent",
-    "app/application",
-    "app/chain",
-    "app/db",
-    "app/doctor",
-    "app/domain",
-    "app/foundation",
-    "app/monitor",
-    "app/modules",
-    "app/runtime",
-    "app/schemas",
-    "app/startup",
-    "app/workflow",
-    "app/cli.py",
-    "app/command.py",
-    "app/factory.py",
-    "app/main.py",
-    "app/scheduler",
-)
+SCAN_ROOTS = ("app",)
+EXCLUDED_ROOTS = ("app/plugins",)
 
 _SYNC_HTTP_METHODS = {
     "delete_res",
@@ -582,14 +562,28 @@ def _root_functions(
                     yield f"{node.name}.{method.name}", method
 
 
+def _is_excluded_path(root: Path, path: Path) -> bool:
+    """判断源码路径是否位于明确排除的插件目录。"""
+    relative = path.relative_to(root).as_posix()
+    return any(
+        relative == excluded or relative.startswith(f"{excluded}/")
+        for excluded in EXCLUDED_ROOTS
+    )
+
+
 def _scan_paths(root: Path, scan_roots: Sequence[str | Path]) -> Iterator[Path]:
-    """按稳定顺序产出存在的扫描目标。"""
+    """按稳定顺序产出存在且不属于插件目录的扫描目标。"""
     for scan_root in scan_roots:
         target = root / scan_root
         if target.is_file():
-            yield target
+            if not _is_excluded_path(root, target):
+                yield target
         elif target.is_dir():
-            yield from sorted(target.rglob("*.py"))
+            yield from (
+                path
+                for path in sorted(target.rglob("*.py"))
+                if not _is_excluded_path(root, path)
+            )
 
 
 def collect_async_blocking(

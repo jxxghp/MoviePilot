@@ -19,7 +19,7 @@
 | RES-002 | `DELIVERED`（R2） | 复杂度门禁漏扫私有方法、类/文件和 Scheduler；原生并发清单不完整 | `f7ca7e517`、`5cd5780d3`：完整宿主 AST、canonical owner/count、低水位与零增长门禁已落地 |
 | RES-003 | `DELIVERED`（R3） | Outbox after_commit 失败只有内存 pending 标记，重启不可恢复 | `9d06f91bb`：持久 intent、唯一 handler、claim/fencing、重启回放、幂等和失败观测完整闭环 |
 | RES-004 | `DELIVERED`（R4） | Startup initializer 与插件市场存在多套 Transport/Adapter/Manager 构造 | `7f5b8b469` 至 `046b0b305`：构造回收到 composition，兼容门面消费同一 owner，canonical 无重复正式实现 |
-| RES-005 | `DELIVERED`（R5） | 审计声明、机器门禁、CI 与远端交付状态需要重新校准 | 当前文档、固定 80% 覆盖率门禁与规则一致；Pylint `10.00/10`、架构/兼容、真实启动和最终 exact-head GitHub CI 闭环，远端 `0/0` |
+| RES-005 | `DELIVERED`（R5） | 审计声明、机器门禁、CI 与远端交付状态需要重新校准 | 当前文档、全 app 逐文件覆盖率低水位门禁与规则一致；Pylint `10.00/10`、架构/兼容、真实启动和最终 exact-head GitHub CI 闭环，远端 `0/0` |
 R2 原复杂度 v1/v2 实际使用源码行跨度，只覆盖 API、Application、Chain 和 Scheduler，
 且未强制固化下降后的低水位。2026-09-30 门禁调整将其替换为全宿主函数的 C901 圈复杂度
 （15）与 PLR1702 嵌套深度（5），源码尺寸降为观察报告；增长禁止写入，下降必须固化。
@@ -30,7 +30,7 @@ R2 原复杂度 v1/v2 实际使用源码行跨度，只覆盖 API、Application�
 `_parse_user_torrent_seeding_info` 的 C901 从 16 降至阈值 15 以内，基线仅移除此超限项。
 `concurrency.py` 扫描完整宿主源码，按 canonical import/alias、TaskGroup、可证明的
 loop/executor 来源和词法 owner 聚合数量。新增 owner、数量增长以及静态质量事实下降后
-未刷新低水位都会阻断 CI；覆盖率只要求 Application 与 Domain 达到固定 80%。
+未刷新低水位都会阻断 CI；覆盖率覆盖除 `app/plugins` 外全部 `app` 文件，存量低水位只增不减，新文件至少 80%。
 
 ## 1. 结论摘要
 
@@ -110,7 +110,7 @@ ARCH-201 至 ARCH-204 均达到实现、验证、提交、推送和远端门禁�
 | 长方法 | 309 个超过 80 行 | 本次 AST 扫描排除 `app/plugins/**`；61 个超过 150 行，17 个超过 250 行；新增函数仍受 C901/嵌套深度门禁约束 |
 | 全量 mypy 历史债务 | 6,038 / 311 文件 | 通知排版补齐 Slack 消息块类型，历史债务减少 2 项；工作流资源过滤改用领域对象调用过滤链，恢复的节点输出在消费前归一化，并收紧可空资源列表的类型低水位；消息媒体交互类型债务已清零，canonical Facade 与 endpoint 类型边界已补齐，低水位只允许继续下降；微信 ClawBot 入站 item_list 媒体解析改为按子项键名分派后，类型错误减少 4 项；站点解析器分享率改用浮点初值，类型错误减少 20 项；本次下载与文件安全修复再减少 3 项；Transmission 进度回退值归一化再减少 2 项，逐文件逐错误码无增长 |
 | Ruff 历史诊断 | 98 | 低水位门禁通过，但规则集只覆盖 `E4/E7/E9/F/I` |
-| 覆盖率固定基线 | Application 80.00%，Domain 80.00% | Chain、Runtime、Agent、Adapter、Startup 未进入包级覆盖率门禁 |
+| 覆盖率逐文件低水位 | 全 app（排除 app/plugins）当前聚合 70.69% | 存量文件低水位只增不减，新文件至少 80% |
 
 外部 MCP schema 紧凑投影由纯函数模块 `app.agent.tools.projection` 拥有，仅在请求头显式 opt-in 后应用；新增 1 个模块和 1 条合法端点依赖边，未新增 SCC。`list_exposed_tools` 返回类型注解使端点类型债务减少 5 项。
 
@@ -673,7 +673,7 @@ Pylint 10/10、Ruff、mypy/复杂度 ratchet、宿主与最新官方插件基线
 
 - 复杂度脚本只检查 API、Application、Chain 的公共入口；私有长方法、类/文件规模和圈复杂度不受控。
 - strict mypy 仅 41 个文件，高风险 lifecycle、Scheduler、Agent、Plugin Manager 多数不在 frontier。
-- coverage ratchet 只聚合 Application 和 Domain。
+- coverage ratchet 已按文件覆盖除 `app/plugins` 外全部 `app`。
 - Task owner gate 尚未盘点原生并发原语；Event producer/consumer 已纳入统一事实源和人工 policy。
 - Ruff 仅是有限规则集的历史低水位，不代表整体风格/正确性无债务。
 

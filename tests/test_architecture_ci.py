@@ -189,7 +189,8 @@ def test_coverage_jobs_parallelize_data_and_keep_one_global_ratchet() -> None:
     coverage_config = configparser.ConfigParser()
     coverage_config.read(PROJECT_ROOT / ".coveragerc", encoding="utf-8")
     assert coverage_config["run"]["source"].strip() == "app"
-    assert "app/plugins/*/*" in coverage_config["run"]["omit"].splitlines()
+    assert "app/plugins/*" in coverage_config["run"]["omit"].splitlines()
+    assert "app/testing/*" not in coverage_config["run"]["omit"].splitlines()
 
 
 def test_ci_reuse_requires_successful_proof_for_every_gate() -> None:

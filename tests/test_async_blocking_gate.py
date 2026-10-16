@@ -31,29 +31,27 @@ def _scan_source(
 
 
 def test_async_blocking_scan_covers_runtime_entrypoints() -> None:
-    """扫描范围必须覆盖全部 canonical 宿主目录和顶层运行入口。"""
-    assert {
-        "app/adapters",
-        "app/api",
-        "app/agent",
-        "app/application",
-        "app/chain",
-        "app/db",
-        "app/doctor",
-        "app/domain",
-        "app/foundation",
-        "app/monitor",
-        "app/modules",
-        "app/runtime",
-        "app/schemas",
-        "app/startup",
-        "app/workflow",
-        "app/cli.py",
-        "app/command.py",
-        "app/factory.py",
-        "app/main.py",
-        "app/scheduler",
-    }.issubset({str(path) for path in SCAN_ROOTS})
+    """扫描范围覆盖 app 全部源码，并由实现明确排除 plugins。"""
+    assert SCAN_ROOTS == ("app",)
+
+
+def test_async_blocking_scan_excludes_plugins(tmp_path: Path) -> None:
+    """即使根目录递归扫描，也不得把官方插件纳入宿主门禁。"""
+    app_root = tmp_path / "app"
+    plugin_root = app_root / "plugins"
+    plugin_root.mkdir(parents=True)
+    source = """
+        from pathlib import Path
+
+        async def read_file():
+            return Path('payload').read_text()
+    """
+    (app_root / "sample.py").write_text(textwrap.dedent(source), encoding="utf-8")
+    (plugin_root / "sample.py").write_text(textwrap.dedent(source), encoding="utf-8")
+
+    debt = collect_async_blocking(tmp_path)
+
+    assert debt == {"app/sample.py:read_file:Path.read_text": 1}
 
 
 def test_async_blocking_ratchet_allows_removal_and_rejects_growth() -> None:
