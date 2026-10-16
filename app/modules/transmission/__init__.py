@@ -1,5 +1,7 @@
+from __future__ import annotations
+
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Literal, Optional, Set, Tuple, Union, overload
 
 from app.domain import torrent as torrent_rules
 from app.domain.metainfo import MetaInfo
@@ -19,6 +21,17 @@ from app.schemas.types import (
     TorrentStatus,
 )
 
+if TYPE_CHECKING:
+    from transmission_rpc import Torrent
+
+# 只描述 SDK 已公开的数值字段及旧版别名；不转换原始返回值。
+_IntTorrentAttribute = Literal[
+    "total_size", "totalSize", "rate_download", "rateDownload", "rate_upload", "rateUpload",
+    "left_until_done", "leftUntilDone", "seed_idle_limit", "seedIdleLimit",
+    "download_limit", "downloadLimit", "upload_limit", "uploadLimit",
+]
+_FloatTorrentAttribute = Literal["progress", "percent_done", "seed_ratio_limit", "seedRatioLimit"]
+
 _TRANSMISSION_DOWNLOADING_STATES = {
     "download pending",
     "downloading",
@@ -28,8 +41,33 @@ _TRANSMISSION_PAUSED_STATES = {
 }
 
 
+@overload
+def _get_torrent_attr(torrent_data: Torrent, *attr_names: _IntTorrentAttribute) -> Optional[int]:
+    """读取 SDK 整数计数或限额，字段均不可用时返回空值。"""
+    ...
+
+@overload
+def _get_torrent_attr(torrent_data: Torrent, *attr_names: _FloatTorrentAttribute) -> Optional[float]:
+    """读取 SDK 比例或进度，字段均不可用时返回空值。"""
+    ...
+
+def _get_torrent_attr(
+    torrent_data: Torrent, *attr_names: Union[_IntTorrentAttribute, _FloatTorrentAttribute],
+) -> Optional[Union[int, float]]:
+    """
+    兼容 transmission-rpc 新旧字段名。
+    """
+    for attr_name in attr_names:
+        try:
+            value: Optional[Union[int, float]] = getattr(torrent_data, attr_name)
+            return value
+        except (AttributeError, KeyError, TypeError, ValueError):
+            continue
+    return None
+
+
 def _normalize_transmission_progress(
-    torrent_data: Any, attr_getter: Callable[..., Any]
+    torrent_data: Torrent, attr_getter: Callable[[Torrent, _FloatTorrentAttribute], Optional[float]]
 ) -> float:
     """读取 Transmission 任务进度并统一为百分比。"""
     progress = attr_getter(torrent_data, "progress")
@@ -80,16 +118,16 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         """
         return 2
 
-    def stop(self):
+    def stop(self) -> None:
         """下载器客户端由服务基类管理，本模块无额外停止动作。"""
         pass
 
-    def init_setting(self) -> Tuple[str, Union[str, bool]]:
+    def init_setting(self) -> Optional[Tuple[str, Union[str, bool]]]:
         """下载器实例由系统配置管理，不声明独立模块开关。"""
         pass
 
     def download(self, content: Union[Path, str, bytes], download_dir: Path, cookie: str,
-                 episodes: Set[int] = None, category: Optional[str] = None, label: Optional[str] = None,
+                 episodes: Optional[Set[int]] = None, category: Optional[str] = None, label: Optional[str] = None,
                  downloader: Optional[str] = None,
                  custom_words: Optional[str] = None) -> Optional[Tuple[Optional[str], Optional[str], Optional[str], str]]:
         """
@@ -109,20 +147,20 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
             return None, None, None, "下载内容为空"
 
         # 读取种子的名称
-        torrent_from_file, content = self._get_torrent_info(content)
-        expected_hashes = torrent_rules.download_hashes(content) if isinstance(content, (str, bytes)) else frozenset()
+        torrent_from_file, torrent_content = self._get_torrent_info(content)
+        expected_hashes = torrent_rules.download_hashes(torrent_content) if isinstance(torrent_content, (str, bytes)) else frozenset()
         # 检查是否为磁力链接
-        is_magnet = isinstance(content, str) and content.startswith("magnet:") or isinstance(content,
-                                                                                             bytes) and content.startswith(
+        is_magnet = isinstance(torrent_content, str) and torrent_content.startswith("magnet:") or isinstance(torrent_content,
+                                                                                             bytes) and torrent_content.startswith(
             b"magnet:")
-        if not torrent_from_file and not is_magnet:
+        if not torrent_content or (not torrent_from_file and not is_magnet):
             return None, None, None, "添加种子任务失败：无法读取种子文件"
 
         # 失败提示使用种子名称（磁力链接保留原文），不拼接种子文件的二进制内容
-        torrent_desc = torrent_from_file.name if torrent_from_file else content
+        torrent_desc = str(torrent_from_file.name if torrent_from_file else torrent_content)
 
         # 获取下载器
-        server: Transmission = self.get_instance(downloader)
+        server = self.get_instance(downloader)
         if not server:
             return None
 
@@ -138,7 +176,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
             labels = None
         # 添加任务
         added_torrent = server.add_torrent(
-            content=content,
+            content=torrent_content,
             download_dir=self.normalize_path(download_dir, downloader),
             is_paused=is_paused,
             labels=labels,
@@ -232,8 +270,8 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
             return False, f"选集失败，任务 {torrent_hash} 启动任务未确认，请在下载器核实，未记录成功"
         return True, "添加下载任务成功"
 
-    def list_torrents(self, status: TorrentStatus = None,
-                      hashs: Union[list, str] = None,
+    def list_torrents(self, status: Optional[Union[TorrentStatus, TorrentQueryStatus, str]] = None,
+                      hashs: Optional[Union[list[str], str]] = None,
                       downloader: Optional[str] = None,
                       include_all_tags: bool = False,
                       ) -> Optional[List[DownloaderTorrent]]:
@@ -246,63 +284,54 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         :return: 下载器中符合状态的种子列表
         """
         # 获取下载器
+        servers: Dict[Optional[str], Transmission]
         if downloader:
-            server: Transmission = self.get_instance(downloader)
+            server = self.get_instance(downloader)
             if not server:
                 return None
             servers = {downloader: server}
         else:
-            servers: Dict[str, Transmission] = self.get_instances()
+            servers = self.get_instances()
         ret_torrents = []
         query_status = self._normalize_query_status(status)
         query_tags = None if include_all_tags else get_runtime_setting('TORRENT_TAG')
 
-        def __get_torrent_attr(torrent_data, *attr_names):
-            """
-            兼容 transmission-rpc 新旧字段名。
-            """
-            for attr_name in attr_names:
-                try:
-                    return getattr(torrent_data, attr_name)
-                except (AttributeError, KeyError, TypeError, ValueError):
-                    continue
-            return None
-
-        def __get_torrent_size(torrent_data) -> int:
+        def __get_torrent_size(torrent_data: Torrent) -> int:
             """
             获取任务大小。
             """
-            return __get_torrent_attr(torrent_data, "total_size", "totalSize") or 0
+            return _get_torrent_attr(torrent_data, "total_size", "totalSize") or 0
 
-        def __get_torrent_labels(torrent_data) -> str:
+        def __get_torrent_labels(torrent_data: Torrent) -> str:
             """
             获取任务标签。
             """
             return ",".join(getattr(torrent_data, "labels", None) or [])
 
-        def __get_torrent_path(torrent_data) -> Path:
+        def __get_torrent_path(torrent_data: Torrent) -> Path:
             """
             获取任务内容路径。
             """
-            return Path(torrent_data.download_dir) / torrent_data.name
+            torrent_path: Path = Path(torrent_data.download_dir) / torrent_data.name
+            return torrent_path
 
-        def __build_torrent(downloader_name: str, torrent_data) -> DownloaderTorrent:
+        def __build_torrent(downloader_name: Optional[str], torrent_data: Torrent) -> DownloaderTorrent:
             """
             构造统一下载器任务对象。
             """
             meta = MetaInfo(torrent_data.name)
-            dlspeed = __get_torrent_attr(
+            dlspeed = _get_torrent_attr(
                 torrent_data, "rate_download", "rateDownload"
             ) or 0
-            upspeed = __get_torrent_attr(
+            upspeed = _get_torrent_attr(
                 torrent_data, "rate_upload", "rateUpload"
             ) or 0
-            left_until_done = __get_torrent_attr(
+            left_until_done = _get_torrent_attr(
                 torrent_data, "left_until_done", "leftUntilDone"
             ) or 0
             torrent_path = __get_torrent_path(torrent_data)
-            ratio_limit = __get_torrent_attr(torrent_data, "seed_ratio_limit", "seedRatioLimit")
-            seeding_time_limit = __get_torrent_attr(torrent_data, "seed_idle_limit", "seedIdleLimit")
+            ratio_limit = _get_torrent_attr(torrent_data, "seed_ratio_limit", "seedRatioLimit")
+            seeding_time_limit = _get_torrent_attr(torrent_data, "seed_idle_limit", "seedIdleLimit")
             return DownloaderTorrent(
                 downloader=downloader_name,
                 hash=torrent_data.hashString,
@@ -315,14 +344,14 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
                     Path(torrent_data.download_dir), downloader_name
                 ) if getattr(torrent_data, "download_dir", None) else None,
                 content_path=self.normalize_return_path(torrent_path, downloader_name),
-                progress=_normalize_transmission_progress(torrent_data, __get_torrent_attr),
+                progress=_normalize_transmission_progress(torrent_data, _get_torrent_attr),
                 size=__get_torrent_size(torrent_data),
                 state=self.__normalize_torrent_state(torrent_data.status),
                 dlspeed=size_tools.format_compact_size(dlspeed),
                 upspeed=size_tools.format_compact_size(upspeed),
                 tags=__get_torrent_labels(torrent_data),
-                download_limit=__get_torrent_attr(torrent_data, "download_limit", "downloadLimit"),
-                upload_limit=__get_torrent_attr(torrent_data, "upload_limit", "uploadLimit"),
+                download_limit=_get_torrent_attr(torrent_data, "download_limit", "downloadLimit"),
+                upload_limit=_get_torrent_attr(torrent_data, "upload_limit", "uploadLimit"),
                 ratio_limit=ratio_limit,
                 seeding_time_limit=seeding_time_limit,
                 left_time=time_tools.format_duration(
@@ -412,7 +441,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         :param downloader:  下载器
         """
         # 获取下载器
-        server: Transmission = self.get_instance(downloader)
+        server = self.get_instance(downloader)
         if not server:
             return None
         # 获取原标签
@@ -425,7 +454,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         server.set_torrent_tag(ids=hashs, tags=tags)
         return None
 
-    def remove_torrents(self, hashs: Union[str, list], delete_file: Optional[bool] = True,
+    def remove_torrents(self, hashs: Union[str, list[str]], delete_file: Optional[bool] = True,
                         downloader: Optional[str] = None) -> Optional[bool]:
         """
         删除下载器种子
@@ -435,12 +464,12 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         :return: bool
         """
         # 获取下载器
-        server: Transmission = self.get_instance(downloader)
+        server = self.get_instance(downloader)
         if not server:
             return None
         return server.delete_torrents(delete_file=delete_file, ids=hashs)
 
-    def set_torrents_tag(self, hashs: Union[str, list], tags: list,
+    def set_torrents_tag(self, hashs: Union[str, list[str]], tags: list[str],
                          downloader: Optional[str] = None) -> Optional[bool]:
         """
         设置种子标签
@@ -450,7 +479,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         :return: bool
         """
         # 获取下载器
-        server: Transmission = self.get_instance(downloader)
+        server = self.get_instance(downloader)
         if not server:
             return None
         # 获取原标签，TR默认会覆盖，需追加
@@ -463,7 +492,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
             downloader: Optional[str] = None,
             download_limit: Optional[float] = None,
             upload_limit: Optional[float] = None,
-            tracker_list: Optional[list] = None,
+            tracker_list: Optional[list[str]] = None,
             save_path: Optional[str] = None,
             category: Optional[str] = None,
             ratio_limit: Optional[float] = None,
@@ -482,7 +511,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         :param seeding_time_limit: 做种时间限制，单位分钟
         :return: 各项修改结果
         """
-        server: Transmission = self.get_instance(downloader)
+        server = self.get_instance(downloader)
         if not server:
             return None
         results = {}
@@ -515,20 +544,21 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
             self,
             hash_string: str,
             downloader: Optional[str] = None,
-    ) -> Optional[Dict[str, List[str]]]:
+    ) -> Optional[Dict[Optional[str], List[str]]]:
         """
         查询下载任务Tracker列表。
         :param hash_string: 种子Hash
         :param downloader: 下载器
         :return: 下载器名称到Tracker列表的映射
         """
+        servers: Dict[Optional[str], Transmission]
         if downloader:
-            server: Transmission = self.get_instance(downloader)
+            server = self.get_instance(downloader)
             if not server:
                 return None
             servers = {downloader: server}
         else:
-            servers: Dict[str, Transmission] = self.get_instances()
+            servers = self.get_instances()
         ret_trackers = {}
         for name, server in servers.items():
             trackers = server.get_trackers(hash_string)
@@ -536,7 +566,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
                 ret_trackers[name] = trackers
         return ret_trackers
 
-    def start_torrents(self, hashs: Union[list, str],
+    def start_torrents(self, hashs: Union[list[str], str],
                        downloader: Optional[str] = None) -> Optional[bool]:
         """
         开始下载
@@ -545,12 +575,12 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         :return: bool
         """
         # 获取下载器
-        server: Transmission = self.get_instance(downloader)
+        server = self.get_instance(downloader)
         if not server:
             return None
         return server.start_torrents(ids=hashs)
 
-    def stop_torrents(self, hashs: Union[list, str],
+    def stop_torrents(self, hashs: Union[list[str], str],
                       downloader: Optional[str] = None) -> Optional[bool]:
         """
         停止下载
@@ -559,7 +589,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         :return: bool
         """
         # 获取下载器
-        server: Transmission = self.get_instance(downloader)
+        server = self.get_instance(downloader)
         if not server:
             return None
         return server.stop_torrents(ids=hashs)
@@ -571,7 +601,7 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         获取种子文件列表，并在模块边界隔离 Transmission SDK 对象。
         """
         # 获取下载器
-        server: Transmission = self.get_instance(downloader)
+        server = self.get_instance(downloader)
         if not server:
             return None
         return self._normalize_torrent_files(
@@ -582,8 +612,9 @@ class TransmissionModule(_DownloaderModuleBase[Transmission]):
         """
         下载器信息
         """
+        servers: Iterable[Transmission]
         if downloader:
-            server: Transmission = self.get_instance(downloader)
+            server = self.get_instance(downloader)
             if not server:
                 return None
             servers = [server]
