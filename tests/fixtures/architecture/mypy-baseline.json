@@ -1176,16 +1176,10 @@
     "operator": 1,
     "type-arg": 36
   },
-  "app/domain/meta/customization.py": {
-    "assignment": 1,
-    "no-untyped-call": 2,
-    "no-untyped-def": 4,
-    "var-annotated": 1
-  },
   "app/domain/meta/metaanime.py": {
     "arg-type": 1,
     "assignment": 1,
-    "no-untyped-call": 4,
+    "no-untyped-call": 2,
     "no-untyped-def": 3,
     "type-arg": 1
   },
@@ -1208,7 +1202,6 @@
     "arg-type": 2,
     "assignment": 2,
     "attr-defined": 1,
-    "no-untyped-call": 2,
     "no-untyped-def": 1,
     "type-arg": 2
   },
@@ -1224,7 +1217,6 @@
   "app/domain/metainfo.py": {
     "arg-type": 5,
     "assignment": 4,
-    "no-untyped-call": 1,
     "no-untyped-def": 1,
     "type-arg": 10
   },
