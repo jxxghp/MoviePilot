@@ -674,7 +674,6 @@
     "no-untyped-def": 1
   },
   "app/application/security/cookie.py": {
-    "arg-type": 2,
     "assignment": 2,
     "no-any-return": 1,
     "type-arg": 3
@@ -685,11 +684,6 @@
   "app/application/security/token.py": {
     "no-any-return": 3,
     "operator": 1
-  },
-  "app/application/security/twofactor.py": {
-    "assignment": 2,
-    "return-value": 1,
-    "str-bytes-safe": 1
   },
   "app/application/security/url.py": {
     "attr-defined": 2,
