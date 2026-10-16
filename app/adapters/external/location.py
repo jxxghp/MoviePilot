@@ -1,18 +1,19 @@
 from app.adapters.network.http import RequestUtils
+from app.schemas.common import JsonData
 
 
 class WebUtils:
     """通过外部网络服务查询 IP 归属信息。"""
 
     @staticmethod
-    def get_location(ip: str):
+    def get_location(ip: str) -> JsonData:
         """
         查询IP所属地
         """
         return WebUtils.get_location1(ip) or WebUtils.get_location2(ip)
 
     @staticmethod
-    def get_location1(ip: str):
+    def get_location1(ip: str) -> JsonData:
         """
         https://api.mir6.com/api/ip
         {
@@ -41,13 +42,14 @@ class WebUtils:
         try:
             r = RequestUtils().get_res(f"https://api.mir6.com/api/ip?ip={ip}&type=json")
             if r:
-                return r.json().get("data", {}).get("location") or ''
+                location: JsonData = r.json().get("data", {}).get("location") or ''
+                return location
         except Exception as err:
             print(str(err))
         return ""
 
     @staticmethod
-    def get_location2(ip: str):
+    def get_location2(ip: str) -> JsonData:
         """
         https://whois.pconline.com.cn/ipJson.jsp?json=true&ip=
         {
@@ -66,7 +68,8 @@ class WebUtils:
         try:
             r = RequestUtils().get_res(f"https://whois.pconline.com.cn/ipJson.jsp?json=true&ip={ip}")
             if r:
-                return r.json().get("addr") or ''
+                location: JsonData = r.json().get("addr") or ''
+                return location
         except Exception as err:
             print(str(err))
         return ""

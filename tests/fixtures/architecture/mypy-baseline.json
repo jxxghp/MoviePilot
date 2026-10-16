@@ -19,9 +19,6 @@
   "app/adapters/external/cookiecloud.py": {
     "arg-type": 1
   },
-  "app/adapters/external/location.py": {
-    "no-untyped-def": 3
-  },
   "app/adapters/external/ocr.py": {
     "arg-type": 1
   },
