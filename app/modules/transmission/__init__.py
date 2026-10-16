@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from app.domain import torrent as torrent_rules
 from app.domain.metainfo import MetaInfo
@@ -28,17 +28,20 @@ _TRANSMISSION_PAUSED_STATES = {
 }
 
 
-def _normalize_transmission_progress(torrent_data, attr_getter) -> float:
+def _normalize_transmission_progress(
+    torrent_data: Any, attr_getter: Callable[..., Any]
+) -> float:
     """读取 Transmission 任务进度并统一为百分比。"""
     progress = attr_getter(torrent_data, "progress")
     if progress is not None:
-        return progress or 0
+        return float(progress or 0)
     percent_done = attr_getter(torrent_data, "percent_done")
     if percent_done is None:
         return 0
     # transmission-rpc 的 percent_done 原始值范围是 0..1；
     # 兼容旧适配器时仍可能收到已经归一化的百分比。
-    return percent_done * 100 if 0 <= percent_done <= 1 else percent_done
+    percent_value = float(percent_done)
+    return percent_value * 100 if 0 <= percent_value <= 1 else percent_value
 
 
 class TransmissionModule(_DownloaderModuleBase[Transmission]):

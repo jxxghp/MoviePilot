@@ -2204,8 +2204,8 @@
     "empty-body": 1,
     "no-any-return": 1,
     "no-redef": 2,
-    "no-untyped-call": 9,
-    "no-untyped-def": 7,
+    "no-untyped-call": 8,
+    "no-untyped-def": 6,
     "str-bytes-safe": 1,
     "type-arg": 6
   },
