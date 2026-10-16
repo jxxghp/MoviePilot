@@ -24,7 +24,7 @@ class AuthTicketStore(metaclass=Singleton):
     _ttl_seconds = 120
     _max_items = 1024
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         初始化内存票据缓存。
         """
