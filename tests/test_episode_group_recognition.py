@@ -1,17 +1,9 @@
-import sys
-from types import ModuleType
 from unittest.mock import patch
 
-sys.modules.setdefault("qbittorrentapi", ModuleType("qbittorrentapi"))
-setattr(sys.modules["qbittorrentapi"], "TorrentFilesList", list)
-sys.modules.setdefault("transmission_rpc", ModuleType("transmission_rpc"))
-setattr(sys.modules["transmission_rpc"], "File", object)
-sys.modules.setdefault("psutil", ModuleType("psutil"))
-
-from app.chain.base import ChainBase  # noqa: E402
-from app.domain.context import MediaInfo  # noqa: E402
-from app.domain.meta.metabase import MetaBase  # noqa: E402
-from app.schemas.types import MediaSource, MediaType  # noqa: E402
+from app.chain.base import ChainBase
+from app.domain.context import MediaInfo
+from app.domain.meta.metabase import MetaBase
+from app.schemas.types import MediaSource, MediaType
 
 
 def test_recognize_media_uses_meta_episode_group():
