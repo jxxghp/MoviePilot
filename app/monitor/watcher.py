@@ -34,6 +34,16 @@ class _PendingStability(TypedDict):
     warning_sent: bool
 
 
+class _PendingRescan(TypedDict):
+    """保留延迟重扫目录、已见文件、轮次、到期时间与连续失败次数。"""
+
+    path: Path
+    seen: set[str]
+    round: int
+    due: float
+    failures: int
+
+
 class LocalDirectoryWatcher:
     """
     基于 watchfiles 的本地目录监控线程。
@@ -68,7 +78,7 @@ class LocalDirectoryWatcher:
     FILE_STABILITY_WARNING_SECONDS = 30 * 60
 
     def __init__(self, mon_path: Path, callback: Any, force_polling: Optional[bool] = None,
-                 poll_delay_ms: Optional[int] = None):
+                 poll_delay_ms: Optional[int] = None) -> None:
         """
         初始化本地目录监控。
         :param mon_path: 监控目录
@@ -90,7 +100,7 @@ class LocalDirectoryWatcher:
         # 累计自动重启次数
         self._restart_count: int = 0
         # 待延迟重扫的新增目录
-        self._pending_rescans: list[dict] = []
+        self._pending_rescans: list[_PendingRescan] = []
         # 仍在写入中的文件事件；键为规范化路径，值保存上次采样和连续稳定次数
         self._pending_stability: dict[str, _PendingStability] = {}
 
@@ -126,7 +136,7 @@ class LocalDirectoryWatcher:
         """
         return self._poll_delay_ms
 
-    def start(self):
+    def start(self) -> None:
         """
         启动本地目录监控线程。
         """
@@ -154,13 +164,13 @@ class LocalDirectoryWatcher:
         )
         self._thread.start()
 
-    def stop(self):
+    def stop(self) -> None:
         """
         请求停止本地目录监控线程。
         """
         self._stop_event.set()
 
-    def join(self, timeout: Optional[float] = None):
+    def join(self, timeout: Optional[float] = None) -> None:
         """
         等待本地目录监控线程退出。
         :param timeout: 最长等待秒数
@@ -201,7 +211,7 @@ class LocalDirectoryWatcher:
         self._last_activity = time.monotonic()
         self._last_activity_wall = time.time()
 
-    def _run(self):
+    def _run(self) -> None:
         """
         运行 watchfiles 主循环，异常时退避重启，避免一次故障导致监控永久停摆。
         """
@@ -235,7 +245,7 @@ class LocalDirectoryWatcher:
                 if self._stop_event.wait(timeout=delay):
                     return
 
-    def _run_watch(self, force_polling: Optional[bool]):
+    def _run_watch(self, force_polling: Optional[bool]) -> None:
         """
         执行一次 watchfiles 监控循环。
         :param force_polling: 是否强制轮询
@@ -263,7 +273,7 @@ class LocalDirectoryWatcher:
             self._handle_changes(changes)
             self._mark_activity()
 
-    def _handle_changes(self, changes: set[tuple[Change, str]]):
+    def _handle_changes(self, changes: set[tuple[Change, str]]) -> None:
         """
         将 watchfiles 原始变更转换为目录监控事件。
         :param changes: watchfiles 返回的变更集合
@@ -529,7 +539,7 @@ class LocalDirectoryWatcher:
             return collected, False, True
         return collected, False, False
 
-    def _schedule_rescan(self, directory: Path, seen: set[str]):
+    def _schedule_rescan(self, directory: Path, seen: set[str]) -> None:
         """
         安排一个新增目录的延迟重扫。
         :param directory: 新增目录
@@ -561,7 +571,7 @@ class LocalDirectoryWatcher:
             "failures": 0,
         })
 
-    def _process_pending_rescans(self):
+    def _process_pending_rescans(self) -> None:
         """
         对到期的新增目录做延迟重扫，补回首次展开时尚不可见的文件。
         """
