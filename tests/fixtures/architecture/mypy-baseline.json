@@ -614,9 +614,6 @@
     "no-untyped-def": 2,
     "type-arg": 5
   },
-  "app/application/maintenance.py": {
-    "assignment": 1
-  },
   "app/application/mediaserver.py": {
     "arg-type": 2,
     "operator": 1

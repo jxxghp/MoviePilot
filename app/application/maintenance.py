@@ -7,7 +7,7 @@
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, ContextManager, Dict, Optional, Protocol
+from typing import Any, Callable, ContextManager, Dict, NotRequired, Optional, Protocol, TypedDict
 
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.runtime.log import logger
@@ -112,6 +112,15 @@ class CleanupUnitOfWork(Protocol):
     def rollback(self) -> None:
         """回滚失败批次并恢复会话可用状态。"""
         ...
+
+
+class CleanupBatchReport(TypedDict):
+    """分批清理统计及调用方随后补充的截止时间和保留天数。"""
+
+    deleted: int
+    batches: int
+    cutoff: NotRequired[str]
+    retention_days: NotRequired[int]
 
 
 class DataCleanupService:
@@ -405,7 +414,7 @@ class DataCleanupService:
         table_name: str,
         delete_batch: Callable[[Any], int],
         unit_of_work: CleanupUnitOfWork,
-    ) -> Dict[str, int]:
+    ) -> CleanupBatchReport:
         """循环执行单表分批删除，直到持久化端口返回零。"""
         total_deleted = 0
         batches = 0
