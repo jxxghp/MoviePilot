@@ -1,5 +1,6 @@
 import inspect
-from typing import Any
+from collections.abc import Awaitable, Callable
+from typing import Any, cast
 
 from app.runtime.events import Event, eventmanager
 from app.runtime.log import logger
@@ -35,11 +36,13 @@ class ConfigReloadMixin:
         method_name = "handle_config_changed"
 
         # 创建事件处理函数
-        def create_handler(is_async):
+        def create_handler(
+            is_async: bool,
+        ) -> Callable[[ConfigReloadMixin, Event], Awaitable[None] | None]:
             """按子类重载方法类型创建同步或异步事件包装器。"""
             if is_async:
 
-                async def wrapper(self: ConfigReloadMixin, event: Event):
+                async def async_wrapper(self: ConfigReloadMixin, event: Event) -> None:
                     """筛选配置键后异步执行子类重载逻辑。"""
                     if not event:
                         return
@@ -51,10 +54,12 @@ class ConfigReloadMixin:
                     logger.info(
                         f"配置 {', '.join(changed_keys)} 变更，重载 {self.get_reload_name()}..."
                     )
-                    await self.on_config_changed()
+                    await cast(Awaitable[None], self.on_config_changed())
+
+                return async_wrapper
             else:
 
-                def wrapper(self: ConfigReloadMixin, event: Event):
+                def wrapper(self: ConfigReloadMixin, event: Event) -> None:
                     """筛选配置键后同步执行子类重载逻辑。"""
                     if not event:
                         return
@@ -81,10 +86,10 @@ class ConfigReloadMixin:
         # 添加为事件处理器
         eventmanager.add_event_listener(EventType.ConfigChanged, handler)
 
-    def on_config_changed(self):
+    def on_config_changed(self) -> Awaitable[None] | None:
         """子类重写此方法实现具体重载逻辑"""
         pass
 
-    def get_reload_name(self):
+    def get_reload_name(self) -> str:
         """功能/模块名称"""
         return self.__class__.__name__

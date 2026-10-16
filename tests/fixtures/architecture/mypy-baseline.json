@@ -2417,11 +2417,6 @@
     "type-arg": 5,
     "var-annotated": 1
   },
-  "app/runtime/reload.py": {
-    "misc": 1,
-    "no-untyped-call": 5,
-    "no-untyped-def": 5
-  },
   "app/runtime/scheduling.py": {
     "import-untyped": 1,
     "no-any-return": 1,

@@ -35,9 +35,11 @@ class _ReloadRecorder(ConfigReloadMixin):
     CONFIG_WATCH = {"TEST_RELOAD_KEY"}
 
     def __init__(self):
+        """初始化同步重载调用计数。"""
         self.reload_count = 0
 
     def on_config_changed(self):
+        """记录同步重载调用，供键筛选断言使用。"""
         self.reload_count += 1
 
 
@@ -47,9 +49,11 @@ class _AsyncReloadRecorder(ConfigReloadMixin):
     CONFIG_WATCH = {"TEST_RELOAD_KEY"}
 
     def __init__(self):
+        """初始化异步重载调用计数。"""
         self.reload_count = 0
 
     async def on_config_changed(self):
+        """记录异步重载调用，供等待执行的断言使用。"""
         self.reload_count += 1
 
 
@@ -60,6 +64,7 @@ def recorder(request, monkeypatch):
     instance = recorder_cls()
 
     def resolver(owner_class):
+        """只解析当前参数化用例的处理器实例。"""
         if owner_class is recorder_cls:
             return EventHandlerBinding(instance=instance, owner_name=owner_class.__name__)
         return None
@@ -131,6 +136,7 @@ async def test_resolve_falls_back_to_qualname_when_name_mismatched(monkeypatch):
     wrapper.__qualname__ = f"{_ReloadRecorder.__name__}.handle_config_changed"
 
     def resolver(owner_class):
+        """把测试包装器解析到指定同步重载实例。"""
         if owner_class is _ReloadRecorder:
             return EventHandlerBinding(instance=instance, owner_name=owner_class.__name__)
         return None
@@ -159,10 +165,12 @@ def test_externally_managed_reload_class_does_not_register_listener(monkeypatch)
     )
 
     class _ExternallyManagedReloadRecorder(ConfigReloadMixin):
+        """模拟由外部生命周期唯一绑定事件的组件。"""
         CONFIG_RELOAD_MANAGED_EXTERNALLY = True
         CONFIG_WATCH = {"TEST_RELOAD_KEY"}
 
         def on_config_changed(self):
+            """保持空重载实现，验证类定义阶段不会注册监听。"""
             pass
 
     assert registrations == []
