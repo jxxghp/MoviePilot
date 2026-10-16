@@ -1,6 +1,6 @@
 ---
 name: moviepilot-api
-version: 56
+version: 57
 description: >-
   Use this skill for MoviePilot product operations such as media search, torrent
   search, downloads, subscriptions, library checks, sites, storage, workflows,
@@ -105,6 +105,13 @@ as a workaround or bypass an ambiguous binding.
 For `subscription.update`, omit settings that should stay unchanged. Send JSON
 `null` to clear a supported optional setting; see [Subscription APIs](api/subscription.md)
 for the exact fields and the form empty-string compatibility rule.
+
+Music downloads keep an existing media category and otherwise use the Chinese
+music label as the downloader category, without changing library or metadata categories.
+qBittorrent still follows MoviePilot's configured automatic-management toggle:
+when enabled, its category rules control the save location; when disabled,
+MoviePilot omits the category and explicitly disables automatic management so
+the requested `save_path` applies. Existing tasks are not reclassified or moved.
 
 This file is intentionally kept as the routing and execution guide. Detailed
 operation contracts live in the linked category files under `api/`; load only

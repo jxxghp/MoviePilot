@@ -669,12 +669,16 @@ class DownloadSubmissionOwner(_DownloadResourceOwner):
             return None, "订阅下载在提交前已取消"
         if governance and governance.mark_started:
             governance.mark_started()
+        category = prepared.media.category
+        # 音乐尚无目录分类时仍提供稳定的下载器分类，不回写媒体的目录或元数据分类。
+        if not category and prepared.media.type == MediaType.MUSIC:
+            category = MediaType.MUSIC.value
         result = self.download(
             content=prepared.torrent_content,
             cookie=prepared.torrent.site_cookie,
             episodes=cast(Set[int], episodes),
             download_dir=prepared.download_dir,
-            category=prepared.media.category,
+            category=category,
             label=label,
             downloader=downloader or prepared.site_downloader,
             custom_words=custom_words,
