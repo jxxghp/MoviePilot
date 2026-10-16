@@ -48,7 +48,7 @@ class LLMProviderManager(
 ):
     """组合 Provider 各职责 owner，并稳定既有公开调用签名。"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化 Provider 目录缓存与临时授权会话状态。"""
         self._lock = threading.RLock()
         self._models_dev_lock = asyncio.Lock()
