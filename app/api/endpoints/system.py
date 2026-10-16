@@ -361,7 +361,7 @@ async def cache_img(
     )
 
 
-@router.get(  # type: ignore[misc]
+@router.get(
     "/notification-image",
     summary="通知图片代理",
     response_model=None,
