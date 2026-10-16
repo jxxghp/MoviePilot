@@ -2412,9 +2412,6 @@
   "app/runtime/event/contracts.py": {
     "arg-type": 1
   },
-  "app/runtime/event/dispatch.py": {
-    "type-arg": 5
-  },
   "app/runtime/events.py": {
     "list-item": 1,
     "misc": 1,
