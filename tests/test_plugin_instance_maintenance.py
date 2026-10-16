@@ -15,7 +15,7 @@ from sqlalchemy.pool import StaticPool
 from app.api.dependencies import plugin as plugin_dependencies
 from app.api.dependencies.auth import get_current_active_superuser
 from app.api.endpoints import plugininstance as plugin_endpoint
-from app.db.adapters.plugininstance import PluginInstanceMaintenance
+from app.db.oper.plugininstance import PluginInstanceOper
 from app.db.models.plugininstance import PluginInstance
 from app.runtime.extensions.plugin.manager import PluginManager
 from app.runtime.extensions.plugin.storage import (
@@ -53,15 +53,20 @@ def _insert(sessions, **overrides) -> None:
         session.add(PluginInstance(**fields))
 
 
+def _purge(sessions, instance_id: str) -> bool:
+    """在独立测试事务中调用现有实例 Oper 的历史清理端口。"""
+    with sessions.begin() as session:
+        return PluginInstanceOper(session).purge_invalid_empty_host(instance_id)
+
+
 @pytest.mark.parametrize("config_data", [None, null()])
 def test_purge_removes_only_empty_invalid_host_and_is_repeatable(sessions, config_data) -> None:
     """SQL NULL 与 JSON null 均能回收，正常插件和不存在的记录不受影响。"""
     _insert(sessions, config_data=config_data, plugin_name="", log_level="")
     _insert(sessions, instance_id="Valid_Plugin", source_plugin_id="Valid_Plugin")
-    maintenance = PluginInstanceMaintenance(sessions)
-    assert maintenance.purge_invalid_empty_host(INVALID_ID)
-    assert not maintenance.purge_invalid_empty_host(INVALID_ID)
-    assert not maintenance.purge_invalid_empty_host("Valid_Plugin")
+    assert _purge(sessions, INVALID_ID)
+    assert not _purge(sessions, INVALID_ID)
+    assert not _purge(sessions, "Valid_Plugin")
     with sessions() as session:
         assert PluginInstance.get_by_instance_id(session, INVALID_ID) is None
         assert PluginInstance.get_by_instance_id(session, "Valid_Plugin") is not None
@@ -83,7 +88,7 @@ def test_purge_removes_only_empty_invalid_host_and_is_repeatable(sessions, confi
 def test_purge_preserves_every_setting_and_clone_identity(sessions, settings) -> None:
     """每个设置列和分身身份都构成保留理由，空配置对象也不能误删。"""
     _insert(sessions, **settings)
-    assert not PluginInstanceMaintenance(sessions).purge_invalid_empty_host(INVALID_ID)
+    assert not _purge(sessions, INVALID_ID)
     with sessions() as session:
         record = PluginInstance.get_by_instance_id(session, INVALID_ID)
         assert record is not None
@@ -96,7 +101,7 @@ def test_purge_uses_bound_database_identity(sessions) -> None:
     malicious_id = "../'; DELETE FROM plugininstance; --"
     _insert(sessions)
     _insert(sessions, instance_id=malicious_id, source_plugin_id=malicious_id)
-    assert PluginInstanceMaintenance(sessions).purge_invalid_empty_host(malicious_id)
+    assert _purge(sessions, malicious_id)
     with sessions() as session:
         assert PluginInstance.get_by_instance_id(session, INVALID_ID) is not None
 
@@ -104,9 +109,11 @@ def test_purge_uses_bound_database_identity(sessions) -> None:
 def test_http_purge_routes_invalid_empty_host_to_database_only(sessions, monkeypatch) -> None:
     """真实依赖工厂与 Manager 端口能清掉中文残留，且不进入任何运行时删除操作。"""
     _insert(sessions)
-    directory = PluginInstanceDirectory(
-        purge_invalid_empty_host=PluginInstanceMaintenance(sessions).purge_invalid_empty_host,
-    )
+    def purge(instance_id: str) -> bool:
+        """为 HTTP 测试打开一个独立事务并调用实例 Oper。"""
+        return _purge(sessions, instance_id)
+
+    directory = PluginInstanceDirectory(purge_invalid_empty_host=purge)
     manager = object.__new__(PluginManager)
     manager._plugin_instance_store = PluginInstanceStore(
         storage=PluginStorage, directory=lambda: directory,

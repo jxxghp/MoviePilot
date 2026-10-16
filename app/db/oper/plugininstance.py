@@ -6,12 +6,13 @@ import copy
 from datetime import datetime, timezone
 from typing import Any, Optional, Union
 
-from sqlalchemy import select, update
+from sqlalchemy import JSON, delete, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.db.base import DbOper
 from app.db.models.plugininstance import PluginInstance
+from app.schemas.plugin import validate_plugin_id
 
 
 def _now() -> str:
@@ -151,6 +152,48 @@ class PluginInstanceOper(DbOper):
                 return False
             session.delete(existing)
             return True
+
+        return bool(self._execute_sync_write(stage))
+
+    def purge_invalid_empty_host(self, instance_id: str) -> bool:
+        """原子删除非法 ID 的空本体行，不接触插件文件或其它数据表。
+
+        该路径专门服务历史迁移残留：只有 ID 非法、行是未启用本体、没有展示或日志
+        覆盖且配置为 SQL NULL/JSON null 时才删除。所有条件进入同一条 DELETE，避免
+        检查后并发保存配置导致误删；空对象仍是一份配置，不能当作无配置回收。
+        """
+        try:
+            validate_plugin_id(instance_id)
+        except ValueError:
+            pass
+        else:
+            return False
+
+        def stage(session: Session) -> bool:
+            """在调用方事务中删除满足历史空行条件的记录。"""
+            result = session.execute(
+                delete(PluginInstance).where(
+                    PluginInstance.instance_id == instance_id,
+                    PluginInstance.source_plugin_id == instance_id,
+                    PluginInstance.is_enabled.is_(False),
+                    PluginInstance.is_default_target.is_(False),
+                    or_(
+                        PluginInstance.config_data.is_(None),
+                        PluginInstance.config_data == JSON.NULL,
+                    ),
+                    *(
+                        or_(field.is_(None), field == "")
+                        for field in (
+                            PluginInstance.plugin_name,
+                            PluginInstance.plugin_desc,
+                            PluginInstance.plugin_icon,
+                            PluginInstance.log_level,
+                            PluginInstance.log_expires_at,
+                        )
+                    ),
+                ).execution_options(synchronize_session=False)
+            )
+            return bool(result.rowcount)
 
         return bool(self._execute_sync_write(stage))
 

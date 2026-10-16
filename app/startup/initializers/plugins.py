@@ -82,7 +82,6 @@ from app.application.plugin.transaction import (
 from app.application.scheduling import update_plugin_job
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.db.adapters.pluginidentity import TransactionalPluginIdentityStore
-from app.db.adapters.plugininstance import PluginInstanceMaintenance
 from app.db.models.plugininstance import PluginInstance as PluginInstanceRecord
 from app.db.oper.plugindata import PluginDataOper
 from app.db.oper.plugininstance import PluginInstanceOper
@@ -403,9 +402,7 @@ def _build_plugin_instance_directory() -> PluginInstanceDirectory:
         list_by_source=_list_by_source,
         save=_save_plugin_instance_record,
         delete=oper.delete,
-        purge_invalid_empty_host=(
-            PluginInstanceMaintenance(SessionFactory).purge_invalid_empty_host
-        ),
+        purge_invalid_empty_host=PluginInstanceOper().purge_invalid_empty_host,
         list_enabled=_list_enabled,
         set_enabled=lambda instance_id, is_enabled: oper.set_enabled(
             instance_id=instance_id,
