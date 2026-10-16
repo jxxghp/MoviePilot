@@ -466,7 +466,9 @@ def test_loader_executes_each_instance_in_an_isolated_module_namespace(
         import_scanner=lambda **_kwargs: None,
         log=_logger(),
     )
-    validator = lambda candidate: hasattr(candidate, "init_plugin")
+    def validator(candidate):
+        """判断候选类是否提供插件实例初始化入口。"""
+        return hasattr(candidate, "init_plugin")
     import app.plugins as plugin_package
 
     source_module = ModuleType("app.plugins.demoplugin")
@@ -509,6 +511,29 @@ def test_loader_executes_each_instance_in_an_isolated_module_namespace(
     ]
     assert sys.modules["app.plugins.demoplugin"] is source_module
     assert plugin_package.demoplugin is source_module
+
+
+def test_loader_handles_missing_pickle_module_and_instance_icon_metadata():
+    """插件类型模块已卸载时应安全跳过，并保留分身图标元数据。"""
+    from app.runtime.extensions.plugin import loader as loader_module
+
+    class Candidate:
+        """提供分身元数据适配所需的最小插件类。"""
+
+        __module__ = "removed_plugin_module"
+
+    loader_module._drop_pickle_reference(Candidate)
+    instance = PluginInstance(
+        instance_id="DemoPluginWork",
+        source_plugin_id="DemoPlugin",
+        plugin_icon="icon.svg",
+    )
+
+    PluginLoader._adapt_instance_class(Candidate, instance)
+
+    assert Candidate.plugin_icon == "icon.svg"
+    assert Candidate.plugin_instance_id == "DemoPluginWork"
+    assert Candidate.plugin_config_prefix == "demopluginwork_"
 
 
 def _import_host_package(module_name: str, source_dir: Path) -> ModuleType:

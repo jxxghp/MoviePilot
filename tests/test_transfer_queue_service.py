@@ -11,6 +11,7 @@ from app.application.transfer.workflow import (
     TransferPlanningInput,
     TransferQueueService,
 )
+from app.chain.transfer.queue import TransferQueueOwner
 from app.db.adapters.transfer.admission import TransactionalTransferAdmissionRepository
 from app.db.models.transferhistory import TransferHistory
 from app.db.models.transferpending import TransferPending
@@ -182,6 +183,11 @@ def test_transfer_queue_service_lists_and_removes_through_ports():
     dependencies["expire_tasks"].assert_called_once_with()
     dependencies["list_tasks"].assert_called_once_with()
     dependencies["remove_task"].assert_called_once_with(fileitem)
+
+
+def test_transfer_queue_target_directory_returns_none_without_transfer_info():
+    """没有整理结果时目标目录应保持为空，避免恢复流程误用旧路径。"""
+    assert TransferQueueOwner._TransferChain__get_transfer_target_dir_path(None, None) is None
 
 
 @pytest.mark.parametrize("failure, manual, expected", [
