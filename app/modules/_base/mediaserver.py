@@ -4,7 +4,7 @@
 定时重连与连接测试。服务器差异（认证 API、存在性检查端点、连接探测方式）
 通过类属性与钩子方法保留在各模块。
 """
-from typing import Optional, Tuple
+from typing import Iterable, Optional, Tuple
 
 from app.application.mediaserver import MusicMediaServerHelper
 from app.domain.context import MediaInfo
@@ -40,6 +40,7 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
         if not credentials or credentials.grant_type != "password":
             return None
         # 确定要认证的服务器列表
+        servers: Iterable[tuple[Optional[str], TService]]
         if service_name:
             # 如果指定了服务名，获取该服务实例
             servers = (
@@ -88,6 +89,7 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
         :param server:  媒体服务器名称
         :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
         """
+        servers: Iterable[tuple[Optional[str], Optional[TService]]]
         if server:
             servers = [(server, self.get_instance(server))]
         else:
@@ -183,7 +185,7 @@ class _MediaServerModuleBase(_ModuleBase, _MediaServerBase[TService]):
                 return False, error
         return True, ""
 
-    def _test_server(self, server, name: str) -> Optional[str]:
+    def _test_server(self, server, name: Optional[str]) -> Optional[str]:
         """
         连接测试钩子，返回失败信息，None 表示就绪，子类可覆写。
         """
