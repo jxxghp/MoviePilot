@@ -2404,9 +2404,6 @@
     "no-untyped-def": 11,
     "type-arg": 10
   },
-  "app/runtime/extensions/plugin/metadata.py": {
-    "type-arg": 4
-  },
   "app/runtime/extensions/plugin/monitor.py": {
     "index": 1,
     "type-arg": 3

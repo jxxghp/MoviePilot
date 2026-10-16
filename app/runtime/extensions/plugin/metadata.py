@@ -17,10 +17,10 @@ class PluginMetadataMapper:
         *,
         plugin_instance: Callable[[str], Optional[Any]],
         plugin_class: Callable[[str], Optional[Any]],
-        annotate_system_version: Callable[[dict], dict],
+        annotate_system_version: Callable[[dict[str, object]], dict[str, object]],
         annotate_runtime_compatibility: Callable[[dict[str, Any]], dict[str, Any]],
-        is_package_compatible: Callable[[dict, str], bool],
-        auth_checker: Callable[[Plugin, dict], bool],
+        is_package_compatible: Callable[[dict[str, object], str], bool],
+        auth_checker: Callable[[Plugin, dict[str, object]], bool],
         version_compare: Callable[[str, str, str], bool],
         log: Any,
     ) -> None:
@@ -37,7 +37,7 @@ class PluginMetadataMapper:
     def map(
         self,
         plugin_id: str,
-        plugin_info: dict,
+        plugin_info: dict[str, object],
         market: str,
         installed_plugins: list[str],
         add_time: int,

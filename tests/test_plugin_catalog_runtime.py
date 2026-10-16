@@ -51,7 +51,9 @@ async def test_async_online_normalizes_market_configuration(monkeypatch) -> None
     requested_markets: list[str] = []
 
     class FakeMarketCatalog:
+        """记录真实目录入口请求的市场列表，替代外部市场访问。"""
         async def async_collect(self, **kwargs):
+            """捕获规范化后的市场参数并返回空目录。"""
             requested_markets.extend(kwargs["markets"])
             return []
 
@@ -93,6 +95,7 @@ async def test_async_online_normalizes_market_configuration(monkeypatch) -> None
 def test_installed_catalog_keeps_plugins_that_are_not_loaded():
     """已安装清单中的插件即使缺依赖或源码也必须保留可观察卡片。"""
     class ActivePlugin:
+        """提供已加载插件元数据，与缺依赖和缺源码的占位条目对照。"""
         plugin_name = "已运行插件"
         plugin_version = "1.0.0"
         plugin_order = 0
@@ -148,6 +151,7 @@ def test_local_repository_failure_does_not_break_catalog_projection():
     warnings: list[str] = []
 
     def local_candidates():
+        """模拟本地仓损坏，使目录验证异常隔离与显式抛错两种入口。"""
         raise RuntimeError("invalid local package")
 
     facade = PluginCatalogFacade(
@@ -189,6 +193,7 @@ def test_local_projects_effective_log_level_for_virtual_instance(
     set_plugin_instance_log_level("CatalogOverlayVirtual", "DEBUG")
 
     class DemoPlugin:
+        """为虚拟实例的日志等级覆盖提供最小源插件元数据。"""
         plugin_name = "Demo"
         plugin_order = 0
 
@@ -214,6 +219,7 @@ def test_local_reports_no_log_override_when_instance_follows_global_level(
 ):
     """没有覆盖的分身实例不应带任何日志等级徽标信息。"""
     class DemoPlugin:
+        """为沿用全局日志等级的虚拟实例提供最小源插件元数据。"""
         plugin_name = "Demo"
         plugin_order = 0
 
@@ -245,6 +251,7 @@ def test_local_projects_effective_log_level_for_physical_plugin(
     set_plugin_instance_log_level("CatalogOverlayHost", "WARNING")
 
     class DemoPlugin:
+        """为物理插件日志等级覆盖提供最小插件元数据。"""
         plugin_name = "Demo"
         plugin_order = 0
 

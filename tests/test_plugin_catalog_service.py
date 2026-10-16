@@ -201,6 +201,7 @@ async def test_async_collect_preserves_each_repository_update_candidate():
     service = _service()
 
     async def loader(market: str, package_version: str | None, _force: bool):
+        """按仓库返回不同版本，验证来源保留模式不会提前跨仓去重。"""
         if package_version is None:
             return []
         version = "2.0.0" if market == "https://market-bound" else "3.0.0"
