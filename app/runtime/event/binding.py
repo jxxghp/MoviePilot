@@ -55,7 +55,7 @@ class EventBindingResolver:
             return tuple(sorted(self._unresolved))
 
     @staticmethod
-    def parse_handler_names(handler: Callable) -> tuple[str, str]:
+    def parse_handler_names(handler: Callable[..., object]) -> tuple[str, str]:
         """解析处理器限定名中的类名和方法名。"""
         names = handler.__qualname__.split(".")
         if len(names) < 2:
@@ -63,7 +63,7 @@ class EventBindingResolver:
         return names[0], names[1]
 
     @staticmethod
-    def is_class_method_declaration(handler: Callable) -> bool:
+    def is_class_method_declaration(handler: Callable[..., object]) -> bool:
         """判断处理器是否声明在类体内（限定名含类前缀或签名首参为 self/cls）。
 
         模块级顶层自由函数的限定名不含 ``.``；类方法、装饰器包装和嵌套函数
@@ -87,11 +87,11 @@ class EventBindingResolver:
         return parameters[0].name in ("self", "cls")
 
     @staticmethod
-    def owner_class(handler: Callable) -> Optional[Type[Any]]:
+    def owner_class(handler: Callable[..., object]) -> Optional[Type[Any]]:
         """从处理器对象本身解析声明类，不按字符串动态导入模块。"""
         if inspect.ismethod(handler):
-            owner = handler.__self__
-            return owner if isinstance(owner, type) else type(owner)
+            bound_owner = handler.__self__
+            return bound_owner if isinstance(bound_owner, type) else type(bound_owner)
         module = inspect.getmodule(handler)
         if not module:
             return None
@@ -114,9 +114,10 @@ class EventBindingResolver:
 
     def resolve(
         self,
-        handler: Callable,
-    ) -> Optional[tuple[Callable, EventHandlerBinding, str, str]]:
+        handler: Callable[..., object],
+    ) -> Optional[tuple[Callable[..., object], EventHandlerBinding, str, str]]:
         """通过显式 resolver 解析当前实例方法；自由函数直接返回。"""
+        binding: Optional[EventHandlerBinding]
         owner_class = self.owner_class(handler)
         method_name = getattr(
             handler,

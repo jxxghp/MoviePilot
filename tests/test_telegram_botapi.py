@@ -185,6 +185,32 @@ def test_polling_backs_off_on_failure_and_stops_promptly():
     assert not thread.is_alive()
 
 
+def test_polling_rebuilds_only_the_long_polling_session_after_network_failure():
+    """长轮询连接失败后应重建独立会话，避免后续更新继续复用坏连接池。"""
+    client = TelegramBotApi("1:abc")
+    client._get_polling_http()
+    replies = [TelegramNetworkError("getUpdates", "connection reset"), []]
+    polling_sessions = []
+
+    def fake_get_updates(offset, timeout):
+        """记录每次拉取使用的会话，并在恢复后结束测试轮询。"""
+        polling_sessions.append(client._polling_http)
+        reply = replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        client.stop_polling(0)
+        return reply
+
+    with patch.object(client, "get_updates", side_effect=fake_get_updates), \
+            patch.object(client._polling_stop, "wait"):
+        client.polling(lambda update: None, long_polling_timeout=1)
+
+    assert polling_sessions[0] is not None
+    assert polling_sessions[0] is not polling_sessions[1]
+    assert client._http is not polling_sessions[1]
+    client.close()
+
+
 def test_polling_reports_persistent_failures_and_resets_after_recovery():
     """失败每分钟警告，恢复后再次中断立即警告，offset 和退避计数均保持正确。"""
     client = TelegramBotApi("1:abc")

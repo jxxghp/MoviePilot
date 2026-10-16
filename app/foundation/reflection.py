@@ -8,10 +8,18 @@ import threading
 import tokenize
 import weakref
 from pathlib import Path
-from types import CodeType, FunctionType
-from typing import Any, Callable, List, Optional, get_type_hints
+from types import CodeType, FunctionType, ModuleType
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, get_type_hints
 
 FilterFuncType = Callable[[str, Any], bool]
+
+# 静态分析覆盖实际接收的可调用对象；运行时保留原注解供签名自省使用。
+if TYPE_CHECKING:
+    _ArgumentCallable = Callable[..., object]
+    _SignatureCallable = Callable[..., object]
+else:
+    _ArgumentCallable = Callable
+    _SignatureCallable = FunctionType
 
 
 # check_method 结果缓存：弱引用代码对象，模块或插件卸载后自动清理
@@ -60,7 +68,7 @@ class ModuleHelper:
         filter_func: FilterFuncType = _default_filter,
     ) -> List[Any]:
         """加载包的一级模块，并返回通过过滤器的去重类对象。"""
-        submodules: list = []
+        submodules: list[type[object]] = []
         loaded_modules = set()
         packages = importlib.import_module(package_path)
         for _, package_name, _ in pkgutil.iter_modules(packages.__path__):
@@ -92,7 +100,7 @@ class ModuleHelper:
         submodules = []
         packages = importlib.import_module(package_path)
 
-        def reload_module_objects(target_module):
+        def reload_module_objects(target_module: ModuleType) -> list[type[object]]:
             """重载一个模块并返回过滤后的类对象。"""
             importlib.reload(target_module)
             return [
@@ -103,7 +111,7 @@ class ModuleHelper:
                 and filter_func(name, obj)
             ]
 
-        def reload_sub_modules(parent_module, parent_module_name):
+        def reload_sub_modules(parent_module: ModuleType, parent_module_name: str) -> None:
             """重载父包下能够成功导入的所有子模块。"""
             for _, sub_module_name, _ in pkgutil.walk_packages(
                 parent_module.__path__,
@@ -147,7 +155,7 @@ class ObjectUtils:
     """提供对象类型、函数实现和签名检查能力。"""
 
     @staticmethod
-    def is_obj(obj: Any):
+    def is_obj(obj: Any) -> bool:
         """判断值是否属于可展开的复合对象。"""
         if isinstance(obj, list) \
                 or isinstance(obj, dict) \
@@ -162,7 +170,7 @@ class ObjectUtils:
         return True
 
     @staticmethod
-    def is_objstr(obj: Any):
+    def is_objstr(obj: Any) -> bool:
         """判断字符串是否以常见复合对象字面量开头。"""
         if not isinstance(obj, str):
             return False
@@ -171,7 +179,7 @@ class ObjectUtils:
             or str(obj).startswith("(")
 
     @staticmethod
-    def arguments(func: Callable) -> int:
+    def arguments(func: _ArgumentCallable) -> int:
         """
         返回函数的参数个数
         """
@@ -212,7 +220,7 @@ class ObjectUtils:
             return not all(_is_placeholder_stmt(stmt) for stmt in node.body)
         except Exception:
             # 源代码分析失败时，进行字节码分析
-            code_obj = func.__code__  # type: ignore[attr-defined]
+            code_obj = func.__code__
             instructions = list(dis.get_instructions(code_obj))
             # 检查是否为仅返回None的简单结构
             if len(instructions) == 2:
@@ -221,7 +229,7 @@ class ObjectUtils:
                         second.opname == 'RETURN_VALUE'):
                     # 验证加载的常量是否为None
                     const_index = first.arg
-                    if (const_index < len(code_obj.co_consts) and
+                    if (const_index is not None and const_index < len(code_obj.co_consts) and
                             code_obj.co_consts[const_index] is None):
                         # 未实现的空函数
                         return False
@@ -229,7 +237,7 @@ class ObjectUtils:
             return True
 
     @staticmethod
-    def check_signature(func: FunctionType, *args) -> bool:
+    def check_signature(func: _SignatureCallable, *args: object) -> bool:
         """
         检查输出与函数的参数类型是否一致
         """

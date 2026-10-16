@@ -14,8 +14,7 @@ _THREAD_POOL_STOP_TIMEOUT_SECONDS = 10.0
 _OwnedThreadPoolExecutor = OwnedThreadPoolExecutor
 
 
-# strict mypy 跳过 foundation 实现导入，因此无法在本文件解析既有 Singleton 元类类型。
-class ThreadHelper(metaclass=Singleton):  # type: ignore[metaclass]
+class ThreadHelper(metaclass=Singleton):
     """
     共享后台线程池 owner，负责关联上下文传播和生命周期收敛。
     """

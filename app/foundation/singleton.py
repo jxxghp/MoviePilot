@@ -1,7 +1,11 @@
 import abc
 import threading
 import weakref
-from typing import Any
+from typing import Any, Callable, Optional, TypeVar, cast
+
+_ExistingInstance = TypeVar("_ExistingInstance")
+
+_InstanceKey = tuple[type[object], tuple[object, ...], frozenset[tuple[str, object]]]
 
 
 class Singleton(abc.ABCMeta, type):
@@ -9,7 +13,7 @@ class Singleton(abc.ABCMeta, type):
     类单例模式（按参数）
     """
 
-    _instances: dict = {}
+    _instances: dict[_InstanceKey, object] = {}
     _lock = threading.RLock()
 
     def get_existing_instance(cls, *args: Any, **kwargs: Any) -> Any:
@@ -30,7 +34,7 @@ class Singleton(abc.ABCMeta, type):
                 cls._instances.pop(key, None)
             return bool(keys)
 
-    def __call__(cls, *args, **kwargs):
+    def __call__(cls, *args: object, **kwargs: object) -> object:
         """按类和构造参数创建或复用实例。"""
         key = (cls, args, frozenset(kwargs.items()))
         with cls._lock:
@@ -38,11 +42,14 @@ class Singleton(abc.ABCMeta, type):
                 if getattr(cls, "_retain_failed_singleton", False):
                     # 启动线程的 lifecycle owner 必须先发布身份再执行 __init__；
                     # 构造中途抛错时保留实例，启动失败清理才能找到已创建的 owner。
-                    instance = cls.__new__(cls, *args, **kwargs)
+                    instance_type: type[object] = cls
+                    construct: Callable[..., object] = instance_type.__new__
+                    instance = construct(cls, *args, **kwargs)
                     if not isinstance(instance, cls):
                         return instance
                     cls._instances[key] = instance
-                    cls.__init__(instance, *args, **kwargs)
+                    initialize: Callable[..., None] = instance_type.__init__
+                    initialize(instance, *args, **kwargs)
                 else:
                     cls._instances[key] = super().__call__(*args, **kwargs)
             return cls._instances[key]
@@ -60,13 +67,15 @@ class SingletonClass(abc.ABCMeta, type):
     类单例模式（按类）
     """
 
-    _instances: dict = {}
+    _instances: dict[type[object], object] = {}
     _lock = threading.RLock()
 
-    def get_existing_instance(cls):
-        """返回已创建实例，不触发初始化"""
-        with cls._lock:
-            return cls._instances.get(cls)
+    def get_existing_instance(cls: type[_ExistingInstance]) -> Optional[_ExistingInstance]:
+        """返回与类键对应的已创建实例，不触发初始化。"""
+        # cls 是本元类的实例；缓存按该类键保存其构造结果。
+        singleton_class = cast(SingletonClass, cls)
+        with singleton_class._lock:
+            return cast(Optional[_ExistingInstance], singleton_class._instances.get(cls))
 
     def release_existing_instance(cls, instance: object) -> bool:
         """仅在身份匹配时释放已收敛实例，供显式生命周期重新创建 owner。"""
@@ -76,18 +85,21 @@ class SingletonClass(abc.ABCMeta, type):
             cls._instances.pop(cls, None)
             return True
 
-    def __call__(cls, *args, **kwargs):
+    def __call__(cls, *args: object, **kwargs: object) -> object:
         """按类创建或复用唯一实例。"""
         with cls._lock:
             if cls not in cls._instances:
                 if getattr(cls, "_retain_failed_singleton", False):
                     # 与参数化单例保持相同的 owner 发布顺序；锁会阻止其他线程
                     # 在 __init__ 返回或抛错前读取半构造实例。
-                    instance = cls.__new__(cls, *args, **kwargs)
+                    instance_type: type[object] = cls
+                    construct: Callable[..., object] = instance_type.__new__
+                    instance = construct(cls, *args, **kwargs)
                     if not isinstance(instance, cls):
                         return instance
                     cls._instances[cls] = instance
-                    cls.__init__(instance, *args, **kwargs)
+                    initialize: Callable[..., None] = instance_type.__init__
+                    initialize(instance, *args, **kwargs)
                 else:
                     cls._instances[cls] = super().__call__(*args, **kwargs)
             return cls._instances[cls]
@@ -104,7 +116,7 @@ class WeakSingleton(abc.ABCMeta, type):
     """
     弱引用单例模式 - 当没有强引用时自动清理
     """
-    _instances: weakref.WeakKeyDictionary = weakref.WeakKeyDictionary()
+    _instances: weakref.WeakKeyDictionary[type[object], object] = weakref.WeakKeyDictionary()
     _lock = threading.RLock()
 
     def get_existing_instance(cls) -> Any:
@@ -120,7 +132,7 @@ class WeakSingleton(abc.ABCMeta, type):
             cls._instances.pop(cls, None)
             return True
 
-    def __call__(cls, *args, **kwargs):
+    def __call__(cls, *args: object, **kwargs: object) -> object:
         """按类创建或复用仍有强引用的实例。"""
         with cls._lock:
             if cls not in cls._instances:

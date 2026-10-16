@@ -7,7 +7,7 @@ class IpUtils:
     """提供 IP 地址、域名和内外网判断能力。"""
 
     @staticmethod
-    def is_ipv4(ip):
+    def is_ipv4(ip: str) -> bool:
         """
         判断是不是ipv4
         """
@@ -24,7 +24,7 @@ class IpUtils:
         return True
 
     @staticmethod
-    def is_ipv6(ip):
+    def is_ipv6(ip: str) -> bool:
         """
         判断是不是ipv6
         """
@@ -35,20 +35,20 @@ class IpUtils:
         return True
 
     @staticmethod
-    def is_internal(hostname):
+    def is_internal(hostname: str) -> bool:
         """
         判断一个 host 是否为内网地址，无法提取主机名时按外网处理
         """
-        hostname = urlparse(hostname).hostname
-        if not hostname:
+        parsed_hostname = urlparse(hostname).hostname
+        if not parsed_hostname:
             return False
-        if IpUtils.is_ip(hostname):
-            return IpUtils.is_private_ip(hostname)
+        if IpUtils.is_ip(parsed_hostname):
+            return IpUtils.is_private_ip(parsed_hostname)
         else:
-            return IpUtils.is_internal_domain(hostname)
+            return IpUtils.is_internal_domain(parsed_hostname)
 
     @staticmethod
-    def is_ip(addr):
+    def is_ip(addr: str) -> bool:
         """
         判断是不是ip
         """
@@ -59,7 +59,7 @@ class IpUtils:
             return False
 
     @staticmethod
-    def is_internal_domain(domain):
+    def is_internal_domain(domain: str) -> bool:
         """
         判断域名是否为内部域名
         """
@@ -73,7 +73,7 @@ class IpUtils:
         return IpUtils.is_private_ip(ip)
 
     @staticmethod
-    def is_private_ip(ip_str):
+    def is_private_ip(ip_str: str) -> bool:
         """
         判断是不是内网ip
         """

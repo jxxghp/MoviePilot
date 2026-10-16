@@ -235,17 +235,17 @@ class EventDispatcher:
                     run_sync_in_threadpool=True,
                 )
 
-    def safe_invoke_sync(self, handler: Callable, event: Any) -> None:
+    def safe_invoke_sync(self, handler: Callable[..., object], event: Any) -> None:
         """仅在处理器启用时执行同步调用。"""
         if self._registry.is_handler_enabled(handler):
             self.invoke_sync(handler, event)
 
-    async def safe_invoke_async(self, handler: Callable, event: Any) -> None:
+    async def safe_invoke_async(self, handler: Callable[..., object], event: Any) -> None:
         """仅在处理器启用时执行异步调用。"""
         if self._registry.is_handler_enabled(handler):
             await self.invoke_async(handler, event)
 
-    def invoke_sync(self, handler: Callable, event: Any) -> None:
+    def invoke_sync(self, handler: Callable[..., object], event: Any) -> None:
         """解析实例绑定并同步调用处理器。"""
         resolved = self._binding_resolver.resolve(handler)
         if not resolved:
@@ -300,7 +300,7 @@ class EventDispatcher:
                 )
                 raise
 
-    async def invoke_async(self, handler: Callable, event: Any) -> None:
+    async def invoke_async(self, handler: Callable[..., object], event: Any) -> None:
         """解析实例绑定，并按处理器类型选择协程、线程池或同步调用。"""
         resolved = self._binding_resolver.resolve(handler)
         if not resolved:
@@ -368,7 +368,7 @@ class EventDispatcher:
 
     @staticmethod
     def should_dispatch_to_target_plugin(
-        handler: Callable,
+        handler: Callable[..., object],
         handler_identifier: str,
         target_plugin_id: str,
     ) -> bool:

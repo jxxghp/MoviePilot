@@ -13,7 +13,7 @@ from app.schemas.types import MUSIC_ENTITY_RECORDING, MediaSource, MediaType, Mu
 class TorrentCacheRecognitionService:
     """执行种子缓存条目的媒体重新识别用例。"""
 
-    def __init__(self, torrents_chain: Any, media_chain: Any):
+    def __init__(self, torrents_chain: Any, media_chain: Any) -> None:
         """初始化缓存和媒体识别依赖。"""
         self.torrents_chain = torrents_chain
         self.media_chain = media_chain
@@ -25,7 +25,7 @@ class TorrentCacheRecognitionService:
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
         music_type: Optional[MusicTargetEntityType] = None,
-    ) -> tuple[bool, str, Optional[dict]]:
+    ) -> tuple[bool, str, Optional[dict[str, object]]]:
         """重新识别缓存条目并持久化影视、音乐分离后的缓存。
 
         返回值保持端点原有的成功标识、用户消息和响应数据三元组，便于旧插件
