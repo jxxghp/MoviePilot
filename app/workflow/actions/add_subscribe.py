@@ -25,9 +25,10 @@ class AddSubscribeAction(BaseAction):
         "outputs": [{"name": "subscribes", "label": "订阅", "kind": "list"}],
     }
 
-    def __init__(self, action_id: str):
+    def __init__(self, action_id: str) -> None:
+        """初始化当前动作的结果集合与失败状态。"""
         super().__init__(action_id)
-        self._added_subscribes = []
+        self._added_subscribes: list[int] = []
         self._has_error = False
 
     name = "添加订阅"
@@ -36,14 +37,16 @@ class AddSubscribeAction(BaseAction):
 
     @property
     def success(self) -> bool:
+        """返回动作是否未遇到终止性的处理失败。"""
         return not self._has_error
 
-    def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict[str, object], context: ActionContext) -> ActionContext:
         """
         将medias中的信息添加订阅，如果订阅不存在的话
         """
         _started = False
-        for media in context.medias:
+        subscribechain = None
+        for media in context.medias or []:
             if runtime_stop_state.is_workflow_stopped(workflow_id):
                 break
             # 检查缓存
@@ -73,6 +76,8 @@ class AddSubscribeAction(BaseAction):
 
         if self._added_subscribes:
             logger.info(f"已添加 {len(self._added_subscribes)} 个订阅")
+            if subscribechain is None:
+                subscribechain = SubscribeChain()
             for sid in self._added_subscribes:
                 subscribe = subscribechain.subscription_repository.get(sid)
                 if subscribe:
