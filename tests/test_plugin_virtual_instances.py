@@ -466,9 +466,7 @@ def test_loader_executes_each_instance_in_an_isolated_module_namespace(
         import_scanner=lambda **_kwargs: None,
         log=_logger(),
     )
-    def validator(candidate):
-        """判断候选类是否提供插件实例初始化入口。"""
-        return hasattr(candidate, "init_plugin")
+    validator = lambda candidate: hasattr(candidate, "init_plugin")
     import app.plugins as plugin_package
 
     source_module = ModuleType("app.plugins.demoplugin")
