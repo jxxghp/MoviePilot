@@ -79,7 +79,7 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         """使用 Navidrome 用户凭据完成辅助认证。"""
         if not credentials or credentials.grant_type != "password":
             return None
-        servers = (
+        servers: list[tuple[Optional[str], Optional[Navidrome]]] = (
             [(service_name, self.get_instance(service_name))]
             if service_name and self.get_instance(service_name)
             else list(self.get_instances().items())
@@ -112,7 +112,7 @@ class NavidromeModule(_ModuleBase, _MediaServerBase[Navidrome]):
         """判断音乐是否已存在于 Navidrome 音乐库。"""
         if mediainfo.type != MediaType.MUSIC:
             return None
-        servers = (
+        servers: list[tuple[Optional[str], Optional[Navidrome]]] = (
             [(server, self.get_instance(server))]
             if server
             else list(self.get_instances().items())
