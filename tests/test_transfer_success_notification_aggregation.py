@@ -25,6 +25,8 @@ from app.runtime.loop import main_loop_registry
 from app.schemas.file import FileItem
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import ContentType, EventType, MediaType, MessageType, SystemConfigKey
+from tests.test_manual_transfer_history import _patch_transfer_planning
+from tests.test_transfer_sync_extra_files import make_transfer_chain
 
 
 class _Loop:
@@ -33,16 +35,24 @@ class _Loop:
     def __init__(self):
         """初始化可手动触发的定时回调。"""
         self.timers = []
+        self.now = 0
 
     def call_soon_threadsafe(self, callback, *args):
         """同步登记事件循环回调。"""
         callback(*args)
 
-    def call_later(self, _delay, callback, *args):
+    def call_later(self, delay, callback, *args):
         """保存定时器并提供可取消的句柄。"""
-        timer = SimpleNamespace(callback=callback, args=args, cancel=Mock())
+        timer = SimpleNamespace(callback=callback, args=args, cancel=Mock(), deadline=self.now + delay)
         self.timers.append(timer)
         return timer
+
+    def advance(self, seconds):
+        """推进虚拟时间，只触发已到期且未取消的定时器。"""
+        self.now += seconds
+        for timer in list(self.timers):
+            if timer.deadline <= self.now and not timer.cancel.called:
+                timer.callback(*timer.args)
 
     def flush(self):
         """按登记顺序触发定时器，包含已取消回调以验证代际保护。"""
@@ -168,6 +178,120 @@ def test_unbatched_events_use_quiet_window_and_deduplicate_paths(chain, monkeypa
     chain.post_message.assert_called_once()
     assert chain.post_message.call_args.kwargs["transferinfo"].file_count == 2
     assert chain.post_message.call_args.kwargs["transferinfo"].total_size == 200
+
+
+@pytest.mark.parametrize("manual,source_type", [(False, "file"), (True, "file"), (False, "dir")])
+def test_single_file_workflow_notification_policy(chain, monkeypatch, manual, source_type):
+    """真实工作流仅为自动文件入口启用静默窗，目录与手动单文件仍在批次结束即发。"""
+    owner = make_transfer_chain()
+    owner.runtime_config = chain.runtime_config
+    owner.success_notification_aggregator = chain.success_notification_aggregator
+    owner.post_message = chain.post_message
+    task = _task()
+    fileitem = FileItem(storage="local", path="/downloads/Show/S01E01.mkv", name="S01E01.mkv",
+                        extension="mkv", type="file")
+    _patch_transfer_planning(monkeypatch, owner, fileitem, None, [], [])
+    owner._register_scrape_batch_task = TransferChain._register_scrape_batch_task.__get__(owner)
+    owner._close_scrape_batch = TransferChain._close_scrape_batch.__get__(owner)
+    queued = []
+
+    def enqueue(task):
+        """保留真实批次登记，只隔离后台线程与文件执行。"""
+        owner._register_scrape_batch_task(task)
+        queued.append(task)
+        return True
+
+    owner.put_to_queue = enqueue
+    loop = _Loop()
+    monkeypatch.setattr(type(main_loop_registry), "current", property(lambda _self: loop))
+    source = fileitem if source_type == "file" else FileItem(storage="local", path="/downloads/Album/", type="dir")
+
+    success, _ = owner.do_transfer(fileitem=source, manual=manual, background=True)
+
+    assert success and len(queued) == 1
+    queued[0].meta, queued[0].mediainfo = task.meta, task.mediainfo
+    owner.notify_successful_transfer(queued[0], _result())
+    owner._finish_scrape_batch_task(queued[0])
+    if not manual and source_type == "file":
+        owner.post_message.assert_not_called()
+        loop.advance(30)
+    owner.post_message.assert_called_once()
+    assert not owner._scrape_batches
+
+
+def test_monitor_episode_batches_merge_after_last_completion(chain, monkeypatch):
+    """13 个间隔十秒的单文件批次只在末集静默三十秒后发一条季集汇总。"""
+    loop = _Loop()
+    monkeypatch.setattr(type(main_loop_registry), "current", property(lambda _self: loop))
+    batch_ids = []
+    for number in range(1, 14):
+        loop.advance(10)
+        batch_id = f"monitor-{number}"
+        batch_ids.append(batch_id)
+        task = _task(number, batch=batch_id, download_hash=None)
+        task.meta = MetaInfo(f"Show S01E{number:02d}")
+        task.mediainfo = MediaInfo(title="Show", year="2026", type=MediaType.TV)
+        chain._register_scrape_batch_task(task)
+        chain._scrape_batches[batch_id]["notification_debounce"] = True
+        chain._close_scrape_batch(batch_id)
+        chain.notify_successful_transfer(task, _result(number))
+        chain._finish_scrape_batch_task(task)
+        chain.post_message.assert_not_called()
+    assert len(set(batch_ids)) == 13
+    loop.advance(29)
+    chain.post_message.assert_not_called()
+    loop.advance(1)
+    chain.post_message.assert_called_once()
+    context = chain.post_message.call_args.kwargs
+    assert context["season_episode"] == "S01 E01-E13"
+    assert context["transferinfo"].file_count == 13
+    assert context["transferinfo"].total_size == 1300
+    assert chain.post_message.call_args.args[0].title is None
+    assert not chain._scrape_batches
+
+
+@pytest.mark.parametrize("monitor_first", [False, True])
+def test_monitor_window_survives_overlapping_explicit_batch(monitor_first):
+    """重叠批次两种完成顺序都保留静默窗，旧定时器不得越过新批次等待。"""
+    loop = _Loop()
+    aggregator = TransferNotificationAggregator[str]()
+    callback = Mock()
+    aggregator.schedule(group_key="group", notification="monitor", callback=callback, defer_until="monitor")
+    aggregator.release_batch("monitor", loop=loop)
+    old_timer = loop.timers[-1]
+    aggregator.schedule(group_key="group", notification="batch", callback=callback, defer_until="batch")
+    aggregator.schedule(group_key="group", notification="monitor2", callback=callback, defer_until="monitor2")
+    old_timer.callback(*old_timer.args)
+    if monitor_first:
+        aggregator.release_batch("monitor2", loop=loop)
+    else:
+        aggregator.release_batch("batch")
+    loop.advance(60)
+    callback.assert_not_called()
+    if monitor_first:
+        aggregator.release_batch("batch")
+    else:
+        aggregator.release_batch("monitor2", loop=loop)
+    loop.advance(29)
+    aggregator.release_batch("unrelated")
+    aggregator.release_batch("monitor2", loop=loop)
+    callback.assert_not_called()
+    loop.advance(1)
+    callback.assert_called_once_with(["monitor", "batch", "monitor2"])
+    assert not aggregator._debounce_loops
+
+
+def test_monitor_timer_failure_falls_back_without_losing_notification():
+    """批次释放时循环停止要立即发送，关闭时不再重复发送。"""
+    loop = Mock()
+    loop.call_soon_threadsafe.side_effect = RuntimeError("loop closed")
+    aggregator = TransferNotificationAggregator[str]()
+    callback = Mock()
+    aggregator.schedule(group_key="group", notification="monitor", callback=callback, defer_until="monitor")
+    aggregator.release_batch("monitor", loop=loop)
+    aggregator.close()
+    callback.assert_called_once_with(["monitor"])
+    assert not aggregator._debounce_loops
 
 
 def test_overlapping_batches_wait_for_both_and_shutdown_flushes_once(chain):
@@ -304,7 +428,8 @@ def test_old_callback_cannot_flush_recreated_group():
 
 @pytest.mark.parametrize("media_type", [MediaType.MOVIE, MediaType.TV, MediaType.MUSIC])
 @pytest.mark.parametrize("file_count", [1, 3])
-def test_success_notifications_render_configured_template(chain, monkeypatch, media_type, file_count):
+@pytest.mark.parametrize("debounce", [False, True])
+def test_success_notifications_render_configured_template(chain, monkeypatch, media_type, file_count, debounce):
     """单文件与汇总通知经真实入口和模板引擎渲染，隔离配置、历史和渠道边界。"""
     template = """{
         'title': '自定义 {{ title_year }}{% if track_number %} #{{ track_number }}{% endif %}'
@@ -319,6 +444,8 @@ def test_success_notifications_render_configured_template(chain, monkeypatch, me
     chain.post_message = TransferChain.post_message.__get__(chain)
     chain.messageoper = Mock()
     chain._dispatch_notification_steps = Mock()
+    loop = _Loop()
+    monkeypatch.setattr(type(main_loop_registry), "current", property(lambda _self: loop))
 
     for number in range(1, file_count + 1):
         task = _task(number)
@@ -326,10 +453,14 @@ def test_success_notifications_render_configured_template(chain, monkeypatch, me
             task.meta = MetaInfo("Movie 2026" if media_type == MediaType.MOVIE else f"Show S01E{number:02d}")
             task.mediainfo = MediaInfo(title="Movie" if media_type == MediaType.MOVIE else "Show", year="2026", type=media_type)
         chain._register_scrape_batch_task(task)
+        chain._scrape_batches["batch"]["notification_debounce"] = debounce
         chain.notify_successful_transfer(task, _result(number))
         chain._finish_scrape_batch_task(task)
     chain._dispatch_notification_steps.assert_not_called()
     chain._close_scrape_batch("batch")
+    if debounce:
+        chain._dispatch_notification_steps.assert_not_called()
+        loop.advance(30)
 
     chain._dispatch_notification_steps.assert_called_once()
     message = chain._dispatch_notification_steps.call_args.args[0]

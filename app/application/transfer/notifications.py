@@ -72,6 +72,7 @@ class TransferNotificationAggregator[Notification]:
         self._generations: dict[str, int] = {}
         self._next_generation = 0
         self._waiting_batches: dict[str, set[str]] = {}
+        self._debounce_loops: dict[str, asyncio.AbstractEventLoop] = {}
         self._lock = threading.Lock()
         self._closed = False
 
@@ -84,7 +85,7 @@ class TransferNotificationAggregator[Notification]:
             loop: Optional[asyncio.AbstractEventLoop] = None,
             defer_until: Optional[str] = None,
     ) -> None:
-        """先登记快照；明确批次由完成信号刷新，其余通知使用事件循环静默窗口。"""
+        """先登记快照；明确批次等待完成信号，其余通知使用事件循环静默窗口。"""
         # 先在调用线程登记快照，关闭流程才能覆盖已接收但尚未进入事件循环的通知。
         with self._lock:
             if self._closed:
@@ -97,8 +98,20 @@ class TransferNotificationAggregator[Notification]:
             self._generations[group_key] = generation
             if defer_until:
                 self._waiting_batches.setdefault(group_key, set()).add(defer_until)
+            if loop is not None:
+                self._debounce_loops[group_key] = loop
         if defer_until:
             return
+        self._schedule_flush(group_key, generation, callback, loop)
+
+    def _schedule_flush(
+            self,
+            group_key: str,
+            generation: int,
+            callback: Callable[[list[Notification]], None],
+            loop: Optional[asyncio.AbstractEventLoop],
+    ) -> None:
+        """统一投递静默窗口，事件循环不可用时回退为立即发送。"""
         if loop is None:
             self.flush(group_key, generation, callback)
             return
@@ -170,22 +183,28 @@ class TransferNotificationAggregator[Notification]:
             timer = self._timers.pop(group_key, None)
             self._generations.pop(group_key, None)
             self._waiting_batches.pop(group_key, None)
+            self._debounce_loops.pop(group_key, None)
         if timer:
             timer.cancel()
         if not notifications:
             return
         self._deliver(group_key, notifications, callback)
 
-    def release_batch(self, batch_id: str) -> None:
-        """批次全部终结后刷新相关分组；单文件批次同样即时发送且不等待静默窗。"""
+    def release_batch(self, batch_id: str, *, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
+        """批次终结后释放等待；传入循环时合并后续文件，同组仍须等待其他批次。"""
         with self._lock:
             ready = []
             for group_key, batches in self._waiting_batches.items():
-                batches.discard(batch_id)
+                if batch_id not in batches:
+                    continue
+                batches.remove(batch_id)
+                if loop is not None:
+                    self._debounce_loops[group_key] = loop
                 if not batches:
-                    ready.append((group_key, self._generations[group_key], self._callbacks[group_key]))
-        for group_key, generation, callback in ready:
-            self.flush(group_key, generation, callback)
+                    ready.append((group_key, self._generations[group_key], self._callbacks[group_key],
+                                  self._debounce_loops.get(group_key)))
+        for group_key, generation, callback, debounce_loop in ready:
+            self._schedule_flush(group_key, generation, callback, debounce_loop)
 
     @staticmethod
     def _deliver(
@@ -219,6 +238,7 @@ class TransferNotificationAggregator[Notification]:
             self._buffers.clear()
             self._callbacks.clear()
             self._waiting_batches.clear()
+            self._debounce_loops.clear()
 
         for timer in timers:
             timer.cancel()
