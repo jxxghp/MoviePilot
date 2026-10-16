@@ -943,8 +943,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9568,
-  "edge_sha256": "fdb83f62e22a3d11e6475165ef69b6a6f78a8cb2efcfcdeb03a5fbdc18fabdd6",
+  "edge_count": 9567,
+  "edge_sha256": "c611f503e4d688b4b07329b5cef5c90bce46b75f1f3cb90de97dcdd5d8c259f6",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -8142,7 +8142,6 @@
     "app.modules.synologychat -> app.runtime.log",
     "app.modules.synologychat -> app.schemas",
     "app.modules.synologychat -> app.schemas.message",
-    "app.modules.synologychat -> app.schemas.notification",
     "app.modules.synologychat -> app.schemas.types",
     "app.modules.synologychat.synologychat -> app.adapters",
     "app.modules.synologychat.synologychat -> app.adapters.network",
