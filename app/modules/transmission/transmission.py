@@ -1,4 +1,4 @@
-from typing import Any, List, Optional, Tuple, Union, cast
+from typing import List, Optional, Sequence, Tuple, Union
 
 import transmission_rpc
 from transmission_rpc import Client, File, Torrent
@@ -6,6 +6,8 @@ from transmission_rpc.session import Session, SessionStats
 
 from app.foundation.url import UrlUtils
 from app.runtime.log import logger
+
+TorrentIds = Union[str, int, Sequence[Union[str, int]]]
 
 
 class Transmission:
@@ -21,11 +23,14 @@ class Transmission:
 
     def __init__(self, host: Optional[str] = None, port: Optional[int] = None,
                  username: Optional[str] = None, password: Optional[str] = None,
-                 rename_partial_files: Optional[bool] = True, **kwargs):
+                 rename_partial_files: Optional[bool] = True, **kwargs: object) -> None:
         """
         若不设置参数，则创建配置文件设置的下载器
         """
-        self.trc = None
+        self.trc: Optional[Client] = None
+        self._host: Optional[str] = None
+        self._port: Optional[int] = None
+        self._protocol: object
         if host and port:
             self._protocol, self._host, self._port = kwargs.get("protocol", "http"), host, port
         elif host:
@@ -79,7 +84,7 @@ class Transmission:
                                           username=self._username,
                                           password=self._password,
                                           # transmission-rpc supports Requests timeout tuples at runtime.
-                                          timeout=cast(Any, (3, 60)))
+                                          timeout=(3, 60))
             self.__sync_incomplete_file_suffix(trt, enabled=bool(self._rename_partial_files))
             return trt
         except Exception as err:
@@ -94,14 +99,14 @@ class Transmission:
             return False
         return True if not self.trc else False
 
-    def reconnect(self):
+    def reconnect(self) -> None:
         """
         重连
         """
         self.trc = self.__login_transmission()
 
-    def get_torrents(self, ids: Union[str, list] = None, status: Union[str, list] = None,
-                     tags: Union[str, list] = None) -> Tuple[List[Torrent], bool]:
+    def get_torrents(self, ids: Optional[TorrentIds] = None, status: Optional[Union[str, list[str]]] = None,
+                     tags: Optional[Union[str, list[str]]] = None) -> Tuple[List[Torrent], bool]:
         """
         获取种子列表
         返回结果 种子列表, 是否有错误
@@ -134,8 +139,8 @@ class Transmission:
             del torrents
         return ret_torrents, False
 
-    def get_completed_torrents(self, ids: Union[str, list] = None,
-                               tags: Union[str, list] = None) -> Optional[List[Torrent]]:
+    def get_completed_torrents(self, ids: Optional[TorrentIds] = None,
+                               tags: Optional[Union[str, list[str]]] = None) -> Optional[List[Torrent]]:
         """
         获取已完成的种子列表
         return 种子列表, 发生错误时返回None
@@ -149,8 +154,8 @@ class Transmission:
             logger.error(f"获取已完成的种子列表出错：{str(err)}")
             return None
 
-    def get_downloading_torrents(self, ids: Union[str, list] = None,
-                                 tags: Union[str, list] = None) -> Optional[List[Torrent]]:
+    def get_downloading_torrents(self, ids: Optional[TorrentIds] = None,
+                                 tags: Optional[Union[str, list[str]]] = None) -> Optional[List[Torrent]]:
         """
         获取正在下载的种子列表
         return 种子列表, 发生错误时返回None
@@ -166,7 +171,7 @@ class Transmission:
             logger.error(f"获取正在下载的种子列表出错：{str(err)}")
             return None
 
-    def set_torrent_tag(self, ids: str, tags: list, org_tags: list = None) -> bool:
+    def set_torrent_tag(self, ids: TorrentIds, tags: list[str], org_tags: Optional[list[str]] = None) -> bool:
         """
         设置种子标签，注意TR默认会覆盖原有标签，如需追加需传入原有标签
         """
@@ -181,7 +186,7 @@ class Transmission:
             logger.error(f"设置种子标签出错：{str(err)}")
             return False
 
-    def get_torrent_tags(self, ids: str) -> List[str]:
+    def get_torrent_tags(self, ids: TorrentIds) -> List[str]:
         """
         获取所有种子标签
         """
@@ -202,8 +207,8 @@ class Transmission:
     def add_torrent(self, content: Union[str, bytes],
                     is_paused: Optional[bool] = False,
                     download_dir: Optional[str] = None,
-                    labels=None,
-                    cookie=None) -> Optional[Torrent]:
+                    labels: Optional[list[str]] = None,
+                    cookie: Optional[str] = None) -> Optional[Torrent]:
         """
         添加下载任务
         :param content: 种子urls或文件内容
@@ -225,7 +230,7 @@ class Transmission:
             logger.error(f"添加种子出错：{str(err)}")
             return None
 
-    def start_torrents(self, ids: Union[str, list]) -> bool:
+    def start_torrents(self, ids: TorrentIds) -> bool:
         """
         启动种子
         """
@@ -238,7 +243,7 @@ class Transmission:
             logger.error(f"启动种子出错：{str(err)}")
             return False
 
-    def stop_torrents(self, ids: Union[str, list]) -> bool:
+    def stop_torrents(self, ids: TorrentIds) -> bool:
         """
         停止种子
         """
@@ -251,7 +256,7 @@ class Transmission:
             logger.error(f"停止种子出错：{str(err)}")
             return False
 
-    def delete_torrents(self, delete_file: bool, ids: Union[str, list]) -> bool:
+    def delete_torrents(self, delete_file: Optional[bool], ids: TorrentIds) -> bool:
         """
         删除种子
         """
@@ -284,13 +289,15 @@ class Transmission:
         try:
             get_files = getattr(torrent, "get_files", None)
             if callable(get_files):
-                return get_files()
-            return torrent.files()
+                files: List[File] = get_files()
+                return files
+            legacy_files: List[File] = torrent.files()
+            return legacy_files
         except Exception as err:
             logger.error(f"获取种子文件列表出错：{str(err)}")
             return None
 
-    def set_files(self, tid: str, file_ids: list) -> bool:
+    def set_files(self, tid: str, file_ids: list[int]) -> bool:
         """
         设置下载文件的状态
         """
@@ -303,7 +310,7 @@ class Transmission:
             logger.error(f"设置下载文件状态出错：{str(err)}")
             return False
 
-    def set_unwanted_files(self, tid: str, file_ids: list) -> bool:
+    def set_unwanted_files(self, tid: str, file_ids: list[int]) -> bool:
         """
         设置下载文件的状态
         """
@@ -328,13 +335,17 @@ class Transmission:
             logger.error(f"获取传输信息出错：{str(err)}")
             return None
 
-    def set_speed_limit(self, download_limit: float = None, upload_limit: float = None) -> bool:
+    def set_speed_limit(self, download_limit: Optional[float] = None, upload_limit: Optional[float] = None) -> bool:
         """
         设置速度限制
         :param download_limit: 下载速度限制，单位KB/s
         :param upload_limit: 上传速度限制，单位kB/s
+        两个限速均需提供；缺少参数时沿用失败返回，不修改会话。
         """
         if not self.trc:
+            return False
+        if download_limit is None or upload_limit is None:
+            logger.error("设置速度限制出错：未提供下载或上传限速")
             return False
         try:
             download_limit_enabled = True if download_limit else False
@@ -373,7 +384,7 @@ class Transmission:
             upload_limit
         )
 
-    def recheck_torrents(self, ids: Union[str, list]) -> bool:
+    def recheck_torrents(self, ids: TorrentIds) -> bool:
         """
         重新校验种子
         """
@@ -388,10 +399,10 @@ class Transmission:
 
     def change_torrent(self,
                        hash_string: str,
-                       upload_limit=None,
-                       download_limit=None,
-                       ratio_limit=None,
-                       seeding_time_limit=None) -> bool:
+                       upload_limit: Optional[float] = None,
+                       download_limit: Optional[float] = None,
+                       ratio_limit: Optional[float] = None,
+                       seeding_time_limit: Optional[int] = None) -> bool:
         """
         设置种子
         :param hash_string: ID
@@ -403,7 +414,10 @@ class Transmission:
         """
         if not hash_string:
             return False
-        change_kwargs = {"ids": hash_string}
+        if not self.trc:
+            logger.error("设置种子出错：Transmission 客户端未连接")
+            return False
+        change_kwargs: dict[str, object] = {"ids": hash_string}
         if upload_limit is not None:
             change_kwargs["uploadLimited"] = bool(upload_limit)
             change_kwargs["uploadLimit"] = int(upload_limit)
@@ -443,7 +457,7 @@ class Transmission:
             logger.error(f"设置种子保存目录出错：{str(err)}")
             return False
 
-    def update_tracker(self, hash_string: str, tracker_list: list = None) -> bool:
+    def update_tracker(self, hash_string: str, tracker_list: Optional[list[str]] = None) -> bool:
         """
         tr4.0及以上弃用直接设置tracker 共用change方法
         https://github.com/trim21/transmission-rpc/blob/8eb82629492a0eeb0bb565f82c872bf9ccdcb313/transmission_rpc/client.py#L654
@@ -478,9 +492,9 @@ class Transmission:
                 return list(tracker_list)
             trackers = getattr(torrent, "trackers", None) or []
             return [
-                tracker.get("announce")
+                announce
                 for tracker in trackers
-                if isinstance(tracker, dict) and tracker.get("announce")
+                if isinstance(tracker, dict) and (announce := tracker.get("announce"))
             ]
         except Exception as err:
             logger.error(f"获取tracker出错：{str(err)}")
