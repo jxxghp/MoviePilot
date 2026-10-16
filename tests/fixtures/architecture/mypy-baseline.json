@@ -2409,11 +2409,6 @@
   "app/runtime/deprecation/policy.py": {
     "type-arg": 2
   },
-  "app/runtime/event/binding.py": {
-    "assignment": 1,
-    "no-redef": 1,
-    "type-arg": 5
-  },
   "app/runtime/event/contracts.py": {
     "arg-type": 1
   },
