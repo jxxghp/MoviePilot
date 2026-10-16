@@ -259,7 +259,7 @@ class TorrentsChain(ChainBase):
         self.remove_cache(self._music_rss_file)
         logger.info('种子缓存数据清理完成')
 
-    async def async_clear_torrents(self):
+    async def async_clear_torrents(self) -> None:
         """
         异步清理种子缓存数据，包含音乐独立缓存
         """
