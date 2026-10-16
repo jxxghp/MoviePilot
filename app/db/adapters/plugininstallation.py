@@ -166,11 +166,12 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
     @staticmethod
     def __identity_query(session: Session, plugin_id: str) -> IdentityModel | None:
         """读取并锁定指定插件的身份行。"""
-        return session.execute(
+        identity: IdentityModel | None = session.execute(
             select(IdentityModel)
             .where(IdentityModel.normalized_plugin_id == plugin_id.lower())
             .with_for_update()
         ).scalar_one_or_none()
+        return identity
 
     @staticmethod
     def __membership_state(current: object, plugin_id: str) -> bool:
@@ -355,13 +356,11 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
             return record, current_membership
 
         try:
-            return cast(
-                PluginInstallationRecord,
-                self.__update_membership_atomically(
-                    _INSTALLED_PLUGINS_KEY,
-                    reserve,
-                ),
+            updated_record: PluginInstallationRecord = self.__update_membership_atomically(
+                _INSTALLED_PLUGINS_KEY,
+                reserve,
             )
+            return updated_record
         except IntegrityError as error:
             raise PluginInstallationConflictError(
                 f"插件安装事务创建发生并发竞争: {record.transaction_id}"
@@ -479,13 +478,11 @@ class TransactionalPluginInstallationStore(PluginInstallationStore):
             return self.__to_record(row), updated_membership
 
         try:
-            return cast(
-                PluginInstallationRecord,
-                self.__update_membership_atomically(
-                    _INSTALLED_PLUGINS_KEY,
-                    commit,
-                ),
+            updated_record: PluginInstallationRecord = self.__update_membership_atomically(
+                _INSTALLED_PLUGINS_KEY,
+                commit,
             )
+            return updated_record
         except IntegrityError as error:
             raise PluginInstallationConflictError(
                 f"插件 {transaction_id} 的身份提交发生唯一键竞争"

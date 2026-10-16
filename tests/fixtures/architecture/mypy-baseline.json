@@ -973,10 +973,6 @@
     "valid-type": 1,
     "var-annotated": 1
   },
-  "app/db/adapters/plugininstallation.py": {
-    "no-any-return": 1,
-    "redundant-cast": 2
-  },
   "app/db/oper/downloadhistory.py": {
     "no-any-return": 1,
     "no-untyped-def": 9,
