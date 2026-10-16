@@ -1264,14 +1264,6 @@
     "no-any-return": 1,
     "operator": 2
   },
-  "app/foundation/text.py": {
-    "arg-type": 1,
-    "no-any-return": 2,
-    "no-untyped-def": 3,
-    "return-value": 1,
-    "type-arg": 5,
-    "union-attr": 1
-  },
   "app/main.py": {
     "misc": 1,
     "no-untyped-call": 1,
@@ -1564,7 +1556,7 @@
     "no-any-return": 2,
     "no-untyped-call": 3,
     "no-untyped-def": 1,
-    "return-value": 5,
+    "return-value": 4,
     "type-arg": 19,
     "var-annotated": 5
   },
@@ -2014,8 +2006,7 @@
     "no-untyped-call": 70,
     "no-untyped-def": 7,
     "operator": 24,
-    "type-arg": 47,
-    "union-attr": 2
+    "type-arg": 47
   },
   "app/modules/themoviedb/tmdbv3api/as_obj.py": {
     "assignment": 1,

@@ -117,3 +117,31 @@ def test_string_utils_routes_representative_capabilities():
     assert StringUtils.is_valid_html_element(
         etree.HTML("<html><body></body></html>")
     ) is True
+
+
+def test_string_utils_keeps_empty_and_nullable_text_results():
+    """插件依赖的空值返回形状不能被类型治理改为空字符串或二元组。"""
+    assert StringUtils.get_idlist(content="", dicts=[{"name": "A", "id": 1}]) == []
+    assert StringUtils.get_idlist(content="   ", dicts=[]) == ([], "")
+    assert StringUtils.str_title(s=None) is None
+    assert StringUtils.str_title(s="") == ""
+    assert StringUtils.str_title(s="hello WORLD") == "Hello World"
+    assert StringUtils.safe_strip(None) is None
+    assert StringUtils.safe_strip("  value  ") == "value"
+
+
+def test_string_utils_preserves_named_id_order_and_replacement():
+    """名称按原始词列表匹配，ID 去重且保留类型，替换沿用整串规则。"""
+    entries = [
+        {}, {"name": None}, {"name": "A", "id": 1}, {"name": "B", "id": 1},
+        {"name": "B", "id": "second"}, {"name": "C"},
+    ]
+    assert StringUtils.get_idlist(content="A A+B B C", dicts=entries) == ([1, "second", None], "+")
+    assert entries[-1] == {"name": "C"}
+
+
+def test_string_utils_keeps_recursive_list_cleaning_defaults():
+    """列表递归沿用默认清理参数，保留历史的嵌套列表和空元素。"""
+    assert StringUtils.clear(text="A.B C", replace_word="-", allow_space=True) == "A-B C"
+    assert StringUtils.clear(text=["A.B C"], replace_word="-", allow_space=True) == ["ABC"]
+    assert StringUtils.clear(text=[["A.B"], None, "C-D"]) == [["AB"], None, "CD"]

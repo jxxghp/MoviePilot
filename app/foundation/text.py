@@ -3,7 +3,8 @@
 import html
 import random
 import re
-from typing import Dict, Generator, List, Optional, Union
+from collections.abc import Mapping
+from typing import Dict, Generator, List, Optional, TypedDict, Union, overload
 
 import moviepilot_rust
 
@@ -52,15 +53,17 @@ def render_notification(title: Optional[str], blocks: List[Dict[str, Optional[st
 
 def cut(text: str, HMM: bool = True, cut_all: bool = False) -> list[str]:
     """通过统一原生入口执行中文分词。"""
-    return moviepilot_rust.jieba_cut(text, hmm=HMM, cut_all=cut_all)
+    words: list[str] = moviepilot_rust.jieba_cut(text, hmm=HMM, cut_all=cut_all)
+    return words
 
 
 def convert(text: str, target: str) -> str:
     """通过统一入口执行 MediaWiki 中文简繁转换。"""
-    return moviepilot_rust.zhconv_fast(text, target)
+    converted: str = moviepilot_rust.zhconv_fast(text, target)
+    return converted
 
 
-def contains_chinese(value: Union[str, list]) -> bool:
+def contains_chinese(value: Union[str, list[str]]) -> bool:
     """判断文本或文本列表中是否包含中文字符。"""
     if not value:
         return False
@@ -113,11 +116,23 @@ def parse_float(value: str) -> float:
         return 0.0
 
 
+@overload
+def remove_punctuation(value: str, replacement: str = "", allow_space: bool = False) -> str:
+    """保留单段文本清理后的字符串返回类型。"""
+    ...
+
+
+@overload
+def remove_punctuation(value: list[str], replacement: str = "", allow_space: bool = False) -> list[str]:
+    """保留文本列表清理后的列表返回类型。"""
+    ...
+
+
 def remove_punctuation(
-    value: Union[list, str],
+    value: Union[list[str], str],
     replacement: str = "",
     allow_space: bool = False,
-) -> Union[list, str]:
+) -> Union[list[str], str]:
     """移除历史匹配规则使用的标点和零宽字符。"""
     punctuation = r"[、.。,，·:：;；!！?？'’\"“”()（）\[\]【】「」\-—―\+\|\\_/&#～~]"
     if not value:
@@ -156,7 +171,7 @@ def random_string(length: int = 16) -> str:
     return "".join(alphabet[random.randint(0, last_index)] for _index in range(length))
 
 
-def parse_bool(value, default: bool = False) -> bool:
+def parse_bool(value: object, default: bool = False) -> bool:
     """按历史配置规则把字符串或数值转换为布尔值。"""
     if isinstance(value, str) and not value:
         return default
@@ -167,21 +182,29 @@ def parse_bool(value, default: bool = False) -> bool:
     return isinstance(value, str) and value.lower() in {"y", "true", "1", "yes", "on"}
 
 
-def cookiejar_to_string(cookiejar: dict) -> str:
+def cookiejar_to_string(cookiejar: Mapping[str, str]) -> str:
     """把键值形式的 CookieJar 序列化为 Cookie 请求头文本。"""
     return "; ".join("=".join(item) for item in cookiejar.items())
 
 
-def extract_named_ids(content: str, entries: List[dict]):
+class NamedIdEntry(TypedDict, total=False):
+    """命名条目的原始字段；缺失名称不会匹配，ID 保留原始值。"""
+
+    name: str | None
+    id: object
+
+
+def extract_named_ids(content: str, entries: List[NamedIdEntry]) -> tuple[list[object], str] | list[object]:
     """从空格分隔文本中提取命名条目 ID，并返回剩余内容。"""
     if not content:
         return []
-    identifiers = []
+    identifiers: list[object] = []
     content_parts = content.split()
     for entry in entries:
-        if entry.get("name") in content_parts and entry.get("id") not in identifiers:
+        name = entry.get("name")
+        if name is not None and name in content_parts and entry.get("id") not in identifiers:
             identifiers.append(entry.get("id"))
-            content = content.replace(entry.get("name"), "")
+            content = content.replace(name, "")
     return identifiers, re.sub(r"\s+", " ", content).strip()
 
 
@@ -238,7 +261,19 @@ def split_by_bytes(value: str, max_length: int) -> Generator[str, None, None]:
         yield buffer.strip()
 
 
-def title_case(value: Optional[str]) -> str:
+@overload
+def title_case(value: str) -> str:
+    """字符串输入保留字符串返回类型。"""
+    ...
+
+
+@overload
+def title_case(value: None) -> None:
+    """空值沿用历史返回，不转换为空字符串。"""
+    ...
+
+
+def title_case(value: Optional[str]) -> Optional[str]:
     """转换为标题大小写，并兼容空值。"""
     return value.title() if value else value
 
@@ -272,7 +307,7 @@ def common_prefix(first: str, second: str) -> str:
     return "".join(prefix)
 
 
-def strip_optional(value) -> Optional[str]:
+def strip_optional(value: Optional[str]) -> Optional[str]:
     """去除可空值两端空白，并保持 None。"""
     return value.strip() if value is not None else None
 

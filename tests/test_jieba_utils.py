@@ -10,6 +10,7 @@ def test_cut_accepts_hmm_argument():
 
 
 def test_cut_preserves_full_mode_contract():
+    """全模式保留原生分词的完整候选顺序与内容。"""
     assert cut("南京市长江大桥", cut_all=True) == [
         "南京",
         "南京市",
