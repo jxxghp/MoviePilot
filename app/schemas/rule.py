@@ -3,7 +3,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 
-class CustomRule(BaseModel):
+class CustomRule(BaseModel):  # type: ignore[misc]
     """
     自定义规则项
     """
@@ -24,7 +24,7 @@ class CustomRule(BaseModel):
     publish_time: Optional[str] = None
 
 
-class FilterRuleGroup(BaseModel):
+class FilterRuleGroup(BaseModel):  # type: ignore[misc]
     """
     过滤规则组
     """
