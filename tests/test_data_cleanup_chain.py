@@ -19,7 +19,7 @@ from app.application.maintenance import (
     DataCleanupService,
     read_cleanup_policy,
 )
-from app.db import Base
+from app.db.base import Base
 from app.db.maintenance import DatabaseCleanupRepository
 from app.db.models.downloadhistory import DownloadFiles, DownloadHistory
 from app.db.models.message import Message

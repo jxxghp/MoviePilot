@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from coverage import Coverage
 
 from scripts.architecture.coverage_ratchet import (
     collect_package_coverage,
@@ -213,6 +214,55 @@ def test_coverage_ratchet_only_allows_existing_low_watermark_to_increase() -> No
     assert compare_coverage(baseline, current) == [
         "app/application/a.py: 存量覆盖率下降 80.00%->70.00%"
     ]
+
+
+def test_coverage_ratchet_allows_fewer_statements_without_new_misses() -> None:
+    """
+    文档表达式退出统计后，未覆盖行数不变不能误报为回退。
+    """
+    baseline = _coverage_snapshot({"app/agent/middleware/jobs.py": (118, 92)})
+    current = _coverage_snapshot({"app/agent/middleware/jobs.py": (109, 83)})
+
+    assert compare_coverage(baseline, current) == []
+
+
+def test_coverage_ratchet_rejects_new_misses_despite_fewer_statements() -> None:
+    """
+    即使语句总数减少，未覆盖行数增加仍须判为回退。
+    """
+    baseline = _coverage_snapshot({"app/agent/middleware/jobs.py": (118, 92)})
+    current = _coverage_snapshot({"app/agent/middleware/jobs.py": (109, 82)})
+
+    assert compare_coverage(baseline, current) == [
+        "app/agent/middleware/jobs.py: 存量覆盖率下降 77.97%->75.23%"
+    ]
+
+
+def test_coverage_config_excludes_only_standalone_ellipsis(tmp_path: Path) -> None:
+    """
+    协议占位语句不计覆盖率，含省略号的真实语句仍须执行。
+    """
+    source = tmp_path / "ellipsis_contract.py"
+    lines = [
+        "def placeholder():",
+        "    ...",
+        "def real_value():",
+        "    return ...",
+        "def actual_text():",
+        '    return "..."',
+    ]
+    source.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    coverage = Coverage(
+        config_file=str(PROJECT_ROOT / ".coveragerc"),
+        data_file=str(tmp_path / ".coverage"),
+        source=[str(tmp_path)],
+    )
+
+    _, statements, excluded, missing, _ = coverage.analysis2(str(source))
+
+    assert 2 in excluded
+    assert 4 in statements and 4 in missing
+    assert 6 in statements and 6 in missing
 
 
 def test_coverage_ratchet_requires_new_files_to_reach_eighty_percent() -> None:

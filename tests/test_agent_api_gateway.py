@@ -11,6 +11,8 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from langchain_core.utils.function_calling import convert_to_openai_tool
 
+from app.agent.api.arguments import api_input_contract
+
 # 策略包根通过 __getattr__ 惰性导出，Pylint 无法静态解析。
 # pylint: disable=no-name-in-module
 from app.agent.policy import (
@@ -664,6 +666,30 @@ def test_gateway_returns_operation_contract_when_input_is_invalid() -> None:
     assert status["enum"] == ["active", "inactive", "all"]
     assert "enabled" not in json.dumps(payload, ensure_ascii=False)
     executor.execute.assert_not_awaited()
+
+
+def test_input_contract_truncates_long_field_description_without_leaking_values() -> None:
+    """
+    超长字段说明应保持有界，且只回传合同文本。
+    """
+    description = "字段说明 " * 40
+    schema = {
+        "oneOf": [{
+            "properties": {
+                "operation_id": {"const": "example.read"},
+                "query": {"type": "object", "properties": {
+                    "keyword": {"type": "string", "description": description}
+                }},
+            }
+        }]
+    }
+
+    contract = api_input_contract("example.read", schema)
+    bounded = contract["query"]["fields"]["keyword"]["description"]
+
+    assert len(bounded) <= 180
+    assert bounded.endswith("…")
+    assert bounded == description[:179].rstrip() + "…"
 
 
 def test_gateway_rejects_admin_operation_for_non_admin_before_http() -> None:

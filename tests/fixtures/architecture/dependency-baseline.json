@@ -963,8 +963,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9584,
-  "edge_sha256": "fc5c745bb4d0a28cd0c7e5536d74e92cd122acee1dda876ce8cc1a46771a2f23",
+  "edge_count": 9585,
+  "edge_sha256": "434ad26b8b1c34a87a07d47ba2e3f5ce5c5a92465c0ccf207174fba2b5f1fa65",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -10172,6 +10172,7 @@
     "app.startup.initializers.modules -> app.startup.initializers.resources",
     "app.startup.initializers.modules -> app.startup.initializers.scheduler",
     "app.startup.initializers.monitor -> app.monitor",
+    "app.startup.initializers.monitor -> app.monitor.monitor",
     "app.startup.initializers.monitor -> app.runtime",
     "app.startup.initializers.monitor -> app.runtime.execution",
     "app.startup.initializers.network -> app.startup",

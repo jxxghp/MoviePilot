@@ -257,11 +257,26 @@ def _file_ratio_is_lower(
     ) * current_statements
 
 
+def _fewer_statements_without_new_misses(
+    previous: Mapping[str, int | float], current: Mapping[str, int | float]
+) -> bool:
+    """
+    允许语句减少且未覆盖行数不增加造成的比例下降。
+    """
+    previous_statements = int(previous["statements"])
+    current_statements = int(current["statements"])
+    return (
+        current_statements < previous_statements
+        and current_statements - int(current["covered_lines"])
+        <= previous_statements - int(previous["covered_lines"])
+    )
+
+
 def classify_coverage(
     baseline: Mapping[str, Any], current: Mapping[str, Any]
 ) -> tuple[list[str], list[str]]:
     """
-    拒绝存量文件覆盖率下降，并要求新文件达到 80%。
+    拒绝存量文件新增未覆盖行造成的回退，并要求新文件达到 80%。
 
     :param baseline: 已确认的逐文件覆盖率低水位
     :param current: 当前逐文件覆盖率快照
@@ -285,7 +300,9 @@ def classify_coverage(
                 )
             else:
                 improvements.append(f"{path}: 新文件达到覆盖率门槛")
-        elif _file_ratio_is_lower(previous, values):
+        elif _file_ratio_is_lower(previous, values) and not _fewer_statements_without_new_misses(
+            previous, values
+        ):
             regressions.append(
                 f"{path}: 存量覆盖率下降 "
                 f"{float(previous['percent']):.2f}%->{float(values['percent']):.2f}%"

@@ -69,12 +69,14 @@ class _FakeResponse:
 @pytest.fixture
 def _clear_skill_interactions():
     """
-    隔离测试之间共享的会话与交互状态，并在结束时清理。
+    隔离测试之间共享的会话、交互状态和技能市场缓存。
     """
+    SkillHelper._list_market_source_skills.cache_clear()
     try:
         yield
     finally:
         skill_interaction_manager.clear()
+        SkillHelper._list_market_source_skills.cache_clear()
 
 
 @pytest.mark.usefixtures("_clear_skill_interactions")
@@ -323,10 +325,11 @@ def test_skillhelper_falls_back_to_rest_registry_listing_when_runtime_missing() 
 
     with (
         patch.object(helper, "_discover_clawhub_runtime_env", return_value=None),
-        patch.object(helper, "_request_registry", return_value=response),
+        patch.object(helper, "_request_registry", return_value=response) as request_registry,
     ):
         skills = helper._list_market_source_skills("https://clawhub.ai")
 
+    request_registry.assert_called_once()
     assert len(skills) == 1
     assert skills[0].id == "weather-forecast"
     assert skills[0].source_type == "registry"

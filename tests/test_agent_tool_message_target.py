@@ -10,7 +10,7 @@ from app.agent.tools.impl.ask_user_choice import (
     UserChoiceOptionInput,
 )
 from app.agent.tools.impl.send_message import SendMessageTool
-from app.schemas import Message
+from app.schemas.message import Message
 from app.schemas.types import NotificationChannel
 
 
