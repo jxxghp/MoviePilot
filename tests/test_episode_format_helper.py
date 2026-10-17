@@ -1,3 +1,7 @@
+"""
+验证剧集定位模板推荐、样本筛选、原生识别校验及整理链参数传递。
+"""
+
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -39,7 +43,9 @@ def _patch_media_exts(monkeypatch):
     [("-1", 2), ("EP*2-1", 5), ("EP+EP-1", 5)],
 )
 def test_format_parser_applies_safe_episode_offset(offset: str, expected: int):
-    """剧集偏移仅计算白名单算术表达式，并保留现有偏移语义。"""
+    """
+    剧集偏移仅计算白名单算术表达式，并保留现有偏移语义。
+    """
     parser = FormatParser(eformat="", offset=offset)
     file_meta = SimpleNamespace(begin_episode=3, end_episode=3)
 
@@ -47,7 +53,9 @@ def test_format_parser_applies_safe_episode_offset(offset: str, expected: int):
 
 
 def test_format_parser_applies_safe_episode_offset_to_template_episode():
-    """带定位模板时也应使用白名单计算集数偏移。"""
+    """
+    带定位模板时也应使用白名单计算集数偏移。
+    """
     parser = FormatParser(eformat="Show - {ep}.mkv", offset="EP*2-1")
     file_meta = SimpleNamespace(begin_episode=None, end_episode=None)
 
@@ -55,7 +63,9 @@ def test_format_parser_applies_safe_episode_offset_to_template_episode():
 
 
 def test_format_parser_applies_safe_episode_offset_to_explicit_range():
-    """显式集数区间的起止集数都应使用安全偏移计算。"""
+    """
+    显式集数区间的起止集数都应使用安全偏移计算。
+    """
     parser = FormatParser(eformat="", details="03-04", offset="EP+1")
     file_meta = SimpleNamespace(begin_episode=None, end_episode=None)
 
@@ -63,7 +73,9 @@ def test_format_parser_applies_safe_episode_offset_to_explicit_range():
 
 
 def test_format_parser_rejects_code_execution_in_episode_offset():
-    """剧集偏移中的函数调用必须被拒绝，不能执行系统命令。"""
+    """
+    剧集偏移中的函数调用必须被拒绝，不能执行系统命令。
+    """
     parser = FormatParser(
         eformat="",
         offset="EP+__import__('os').system('touch /tmp/moviepilot-format-parser-rce')*0",
@@ -77,6 +89,9 @@ def test_format_parser_rejects_code_execution_in_episode_offset():
 
 
 def test_rule_recommend_supports_range_episode_validation():
+    """
+    自定义规则推荐支持对连续剧集范围进行完整校验。
+    """
     helper = EpisodeFormatRuleHelper()
     rule = EpisodeFormatRule(
         name="区间规则",
@@ -92,12 +107,18 @@ def test_rule_recommend_supports_range_episode_validation():
 
 
 def test_episode_matches_rejects_missing_range_end():
+    """
+    候选只识别出起始集时，不能通过多集范围匹配。
+    """
     helper = EpisodeFormatRuleHelper()
 
     assert helper._episode_matches(1, None, "01-E02") is False
 
 
 def test_locate_episode_ignores_version_suffix_digits():
+    """
+    定位集数时忽略版本后缀中的数字。
+    """
     helper = EpisodeFormatRuleHelper()
     file_name = "Show - 01 v2.mkv"
 
@@ -108,6 +129,9 @@ def test_locate_episode_ignores_version_suffix_digits():
 
 
 def test_locate_episode_supports_hash_prefix():
+    """
+    集数定位支持带井号前缀的编号。
+    """
     helper = EpisodeFormatRuleHelper()
     file_name = "[AI-Raws] 不滅のあなたへ #01 (BD HEVC 1920x1080 yuv444p10le FLAC)[DE0EC3BA].mkv"
 
@@ -126,6 +150,9 @@ def test_locate_episode_supports_hash_prefix():
     ],
 )
 def test_locate_episode_supports_east_asian_title_quotes(file_name: str):
+    """
+    集数定位兼容东亚书名和标题引号。
+    """
     helper = EpisodeFormatRuleHelper()
 
     start, end = helper._locate_episode(file_name, "01")
@@ -134,6 +161,9 @@ def test_locate_episode_supports_east_asian_title_quotes(file_name: str):
 
 
 def test_auto_recommend_supports_episode_before_japanese_quote():
+    """
+    自动推荐支持日文引号前的集数，并将变化标题提取为变量。
+    """
     helper = EpisodeFormatRuleHelper()
     samples = [
         _make_file("[U2-Rip]バカとテストと召喚獣 01「バカとクラスと召喚戦爭」(BD 1920x1080 x264 FLACx2).mkv"),
@@ -151,6 +181,9 @@ def test_auto_recommend_supports_episode_before_japanese_quote():
 
 
 def test_auto_recommend_returns_low_confidence_for_single_sample():
+    """
+    只有一个有效样本时可以生成模板，但应报告低置信度。
+    """
     helper = EpisodeFormatRuleHelper()
     sample = _make_file("[Seed-Raws] Tari Tari - 01 (BD 1280x720 AVC AAC).mp4")
 
@@ -167,6 +200,9 @@ def test_auto_recommend_returns_low_confidence_for_single_sample():
 
 
 def test_auto_recommend_relaxes_size_filter_for_small_media():
+    """
+    小体积媒体缺少足够样本时放宽大小过滤，并降低置信度。
+    """
     helper = EpisodeFormatRuleHelper()
     samples = [
         _make_file("Show.S01E01.mkv", size=40 * 1024 * 1024),
@@ -183,6 +219,9 @@ def test_auto_recommend_relaxes_size_filter_for_small_media():
 
 
 def test_auto_recommend_rejects_without_clear_majority():
+    """
+    样本命名没有明确多数模式时拒绝自动生成模板。
+    """
     helper = EpisodeFormatRuleHelper()
     samples = [
         _make_file("[A] Show [01].mkv"),
@@ -197,6 +236,9 @@ def test_auto_recommend_rejects_without_clear_majority():
 
 
 def test_validate_auto_template_checks_expected_episode_consistency():
+    """
+    模板校验必须匹配样本预期集数，不能只验证文件名形状。
+    """
     helper = EpisodeFormatRuleHelper()
     samples = [
         _AutoRecommendSample(
@@ -210,6 +252,9 @@ def test_validate_auto_template_checks_expected_episode_consistency():
 
 
 def test_insert_variable_placeholder_preserves_existing_placeholders():
+    """
+    插入新变量占位符时保留已有占位符。
+    """
     helper = EpisodeFormatRuleHelper()
     all_file_names = [
         "Show - 01 [x265_flac][1080p].mkv",
@@ -234,6 +279,9 @@ def test_insert_variable_placeholder_preserves_existing_placeholders():
 
 
 def test_insert_variable_placeholder_does_not_double_escape_braces():
+    """
+    变量替换不得对已经转义的花括号重复转义。
+    """
     helper = EpisodeFormatRuleHelper()
     all_file_names = [
         "Show - 01 {v1}.mkv",
@@ -258,6 +306,9 @@ def test_insert_variable_placeholder_does_not_double_escape_braces():
 
 
 def test_auto_recommend_validates_all_majority_samples():
+    """
+    生成模板后必须校验所有多数模式样本，不能忽略失败样本。
+    """
     helper = EpisodeFormatRuleHelper()
     samples = [
         _make_file(f"Show - {index:02d}.mkv")
@@ -273,6 +324,9 @@ def test_auto_recommend_validates_all_majority_samples():
 
 
 def test_auto_recommend_returns_false_when_parse_raises(monkeypatch):
+    """
+    模板解析抛出异常时返回失败结果及说明。
+    """
     helper = EpisodeFormatRuleHelper()
     samples = [
         _make_file("Show - 01 [1080p].mkv"),
@@ -301,12 +355,18 @@ def test_auto_recommend_returns_false_when_parse_raises(monkeypatch):
     ],
 )
 def test_extract_episode_fallback_supports_cjk_patterns(file_name: str, expected: str):
+    """
+    集数回退提取支持中日韩命名格式。
+    """
     helper = EpisodeFormatRuleHelper()
 
     assert helper._extract_episode_fallback(file_name) == expected
 
 
 def test_auto_recommend_is_stable_when_sample_order_changes():
+    """
+    调整样本输入顺序不应改变自动推荐结果。
+    """
     helper = EpisodeFormatRuleHelper()
     samples = [
         _make_file("Show - 01 [1080p].mkv"),
@@ -328,6 +388,9 @@ def test_auto_recommend_is_stable_when_sample_order_changes():
 
 
 def test_auto_recommend_supports_hash_episode_names():
+    """
+    多个井号集数样本可生成高置信度模板。
+    """
     helper = EpisodeFormatRuleHelper()
     samples = [
         _make_file("[AI-Raws] 不滅のあなたへ #01 (BD HEVC 1920x1080 yuv444p10le FLAC)[DE0EC3BA].mkv"),
@@ -346,6 +409,9 @@ def test_auto_recommend_supports_hash_episode_names():
 
 
 def test_auto_recommend_ignores_episode_zero_specials():
+    """
+    第零集特别篇不参与正片模板的多数模式统计。
+    """
     helper = EpisodeFormatRuleHelper()
     samples = [
         _make_file("[VCB] Show [00][1080p][x264_2flac].mkv"),
@@ -364,6 +430,9 @@ def test_auto_recommend_ignores_episode_zero_specials():
 
 
 def test_auto_recommend_validates_media_subtitle_and_audio_together():
+    """
+    媒体、字幕和音轨样本共同参与模板验证。
+    """
     helper = EpisodeFormatRuleHelper()
     sample_names = [
         "Show - 01.mkv",
@@ -386,6 +455,9 @@ def test_auto_recommend_validates_media_subtitle_and_audio_together():
 
 
 def test_auto_recommend_ignores_non_integer_episode_samples():
+    """
+    非整数集数样本不纳入正片模板统计。
+    """
     helper = EpisodeFormatRuleHelper()
     sample_names = [
         "[T.H.X&VCB-Studio] Hyouka [01][Ma10p_1080p][x265_flac_aac].mkv",
@@ -412,6 +484,9 @@ def test_auto_recommend_ignores_non_integer_episode_samples():
 
 
 def test_auto_recommend_ignores_special_sp_samples():
+    """
+    SP 特别篇样本不干扰正片模板推荐。
+    """
     helper = EpisodeFormatRuleHelper()
     sample_names = [
         "[Tonikaku Kawaii S2][01][BDRIP][1080P][H264_FLAC].mkv",
@@ -433,6 +508,9 @@ def test_auto_recommend_ignores_special_sp_samples():
 
 
 def test_auto_recommend_ignores_promotional_special_samples():
+    """
+    宣传与特别内容样本不干扰正片模板推荐。
+    """
     helper = EpisodeFormatRuleHelper()
     sample_names = [
         "[VCB-Studio] Show [01][Ma10p_1080p][x265_flac].mkv",
@@ -457,6 +535,9 @@ def test_auto_recommend_ignores_promotional_special_samples():
 
 
 def test_auto_recommend_rejects_when_valid_media_coverage_is_too_low():
+    """
+    有效正片样本覆盖率不足时拒绝自动模板。
+    """
     helper = EpisodeFormatRuleHelper()
     sample_names = [
         "Show - 01.mkv",
@@ -474,6 +555,9 @@ def test_auto_recommend_rejects_when_valid_media_coverage_is_too_low():
 
 
 def test_auto_recommend_uses_native_episode_as_fallback(monkeypatch):
+    """
+    模板识别不足时允许使用原生集数结果补充样本。
+    """
     helper = EpisodeFormatRuleHelper()
     samples = [
         _make_file("Show - 01.mkv"),
@@ -506,6 +590,9 @@ def test_auto_recommend_uses_native_episode_as_fallback(monkeypatch):
 
 
 def test_auto_recommend_rejects_when_native_episode_conflicts(monkeypatch):
+    """
+    模板与可信原生集数识别冲突时拒绝推荐。
+    """
     helper = EpisodeFormatRuleHelper()
     samples = [
         _make_file("Show - 01.mkv"),
@@ -527,6 +614,9 @@ def test_auto_recommend_rejects_when_native_episode_conflicts(monkeypatch):
 
 
 def test_auto_recommend_degrades_native_conflict_for_title_sequence_number(monkeypatch):
+    """
+    原生识别误命中标题序号时降低其冲突权重。
+    """
     helper = EpisodeFormatRuleHelper()
     samples = [
         _make_file("[VCB-Studio] Getsuyoubi no Tawawa 2 [01][Ma10p_1080p][x265_flac].mkv"),
@@ -550,6 +640,9 @@ def test_auto_recommend_degrades_native_conflict_for_title_sequence_number(monke
 
 
 def test_auto_recommend_prefers_bracket_episode_over_title_sequence_native(monkeypatch):
+    """
+    括号中的真实集数优先于原生识别误取的标题序号。
+    """
     helper = EpisodeFormatRuleHelper()
     samples = [
         _make_file("[VCB-Studio] Kono Subarashii Sekai ni Shukufuku wo! 3 [01][Ma10p_1080p][x265_flac_aac].mkv"),
@@ -577,6 +670,9 @@ def test_auto_recommend_prefers_bracket_episode_over_title_sequence_native(monke
 
 
 def test_auto_recommend_corrects_anitopy_title_sequence_bias(monkeypatch):
+    """
+    自动推荐纠正 anitopy 对标题序号的偏差，并保留真实多数样本。
+    """
     helper = EpisodeFormatRuleHelper()
     samples = [
         _make_file(f"[VCB-Studio] Kono Subarashii Sekai ni Shukufuku wo! 3 [{index:02d}][Ma10p_1080p][x265_flac_aac].mkv")
@@ -610,6 +706,9 @@ def test_auto_recommend_corrects_anitopy_title_sequence_bias(monkeypatch):
 
 
 def test_auto_recommend_supports_optional_finale_suffix():
+    """
+    自动模板支持只在部分样本出现的完结后缀。
+    """
     helper = EpisodeFormatRuleHelper()
     sample_names = [
         "[SHIGURE] Rakudai Kishi no Cavalry - 01 [1080p][AVC_Hi10p_FLAC].mkv",
@@ -631,6 +730,9 @@ def test_auto_recommend_supports_optional_finale_suffix():
 
 
 def test_should_prefer_fallback_episode_when_anitopy_hits_title_sequence():
+    """
+    anitopy 命中标题序号时优先使用后续真实集数的回退结果。
+    """
     helper = EpisodeFormatRuleHelper()
 
     assert helper._should_prefer_fallback_episode(
@@ -646,6 +748,9 @@ def test_should_prefer_fallback_episode_when_anitopy_hits_title_sequence():
 
 
 def test_should_prefer_fallback_episode_preserves_anitopy_multi_episode_list():
+    """
+    原生识别返回多集列表时，不以单个回退集数覆盖。
+    """
     helper = EpisodeFormatRuleHelper()
 
     assert helper._should_prefer_fallback_episode(
@@ -656,6 +761,9 @@ def test_should_prefer_fallback_episode_preserves_anitopy_multi_episode_list():
 
 
 def test_extract_episode_with_native_fallback_keeps_anitopy_range_list(monkeypatch):
+    """
+    原生多集列表归一化为范围，并保留未使用回退的标志。
+    """
     helper = EpisodeFormatRuleHelper()
     item = _make_file("Show - 01-02 [02].mkv")
 
@@ -680,6 +788,9 @@ def test_extract_episode_with_native_fallback_keeps_anitopy_range_list(monkeypat
 
 
 def test_should_degrade_native_conflict_only_for_preceding_title_number():
+    """
+    仅对位于真实集数前方的标题数字降低原生冲突权重。
+    """
     helper = EpisodeFormatRuleHelper()
 
     assert helper._should_degrade_native_conflict(
@@ -695,12 +806,18 @@ def test_should_degrade_native_conflict_only_for_preceding_title_number():
 
 
 def test_calculate_variable_span_keeps_optional_base_suffix_span():
+    """
+    可选基础后缀在其他样本缺失时仍保留完整变量区间。
+    """
     helper = EpisodeFormatRuleHelper()
 
     assert helper._calculate_variable_span(" Fin ", [""]) == (0, 5)
 
 
 def test_auto_recommend_marks_native_verified_samples(monkeypatch):
+    """
+    自动推荐分别统计原生校验通过与原生回退的样本数量。
+    """
     helper = EpisodeFormatRuleHelper()
     samples = [
         _make_file("Show.S01E01.mkv"),
@@ -723,6 +840,9 @@ def test_auto_recommend_marks_native_verified_samples(monkeypatch):
 
 
 def test_transfer_chain_recommend_episode_format_passes_helper_data(monkeypatch):
+    """
+    整理链保留剧集模板辅助服务返回的数据和状态。
+    """
     chain = object.__new__(TransferChain)
     file_item = FileItem(
         storage="local",
@@ -783,6 +903,9 @@ def test_transfer_chain_recommend_episode_format_passes_helper_data(monkeypatch)
 
 
 def test_transfer_chain_recommend_episode_format_uses_selected_fileitems(monkeypatch):
+    """
+    显式选择文件时，模板推荐使用这些文件作为样本。
+    """
     chain = object.__new__(TransferChain)
     monkeypatch.setattr(chain, "_media_exts", [".mkv", ".mp4"], raising=False)
     monkeypatch.setattr(chain, "_subtitle_exts", [".ass", ".ssa"], raising=False)
@@ -845,6 +968,9 @@ def test_transfer_chain_recommend_episode_format_uses_selected_fileitems(monkeyp
 
 
 def test_transfer_chain_recommend_episode_format_rejects_invalid_selected_fileitems():
+    """
+    选中的文件不满足智能识别条件时拒绝模板推荐。
+    """
     chain = object.__new__(TransferChain)
     chain._media_exts = [".mkv", ".mp4"]
     chain._subtitle_exts = [".ass", ".ssa"]
@@ -878,6 +1004,9 @@ def test_transfer_chain_recommend_episode_format_rejects_invalid_selected_fileit
 
 
 def test_transfer_chain_episode_format_samples_include_extra_files(monkeypatch):
+    """
+    整理链模板样本包含相关字幕和音轨文件。
+    """
     chain = object.__new__(TransferChain)
     directory = FileItem(
         storage="local",
