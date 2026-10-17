@@ -1,3 +1,7 @@
+"""
+rTorrent 宿主模块，将下载器操作与结果映射到统一任务接口。
+"""
+
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Union
 
@@ -21,7 +25,9 @@ from app.schemas.types import (
 
 
 class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
-    """rTorrent 下载器模块，负责任务添加、标签和文件状态转换。"""
+    """
+    rTorrent 下载器模块，负责任务添加、标签和文件状态转换。
+    """
 
     def init_module(self) -> None:
         """
@@ -33,7 +39,9 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
 
     @staticmethod
     def get_name() -> str:
-        """返回模块展示名称。"""
+        """
+        返回模块展示名称。
+        """
         return "Rtorrent"
 
     @staticmethod
@@ -58,11 +66,15 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         return 3
 
     def stop(self):
-        """下载器客户端由服务基类管理，本模块无额外停止动作。"""
+        """
+        下载器客户端由服务基类管理，本模块无额外停止动作。
+        """
         pass
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        """下载器实例由系统配置管理，不声明独立模块开关。"""
+        """
+        下载器实例由系统配置管理，不声明独立模块开关。
+        """
         pass
 
     def download(

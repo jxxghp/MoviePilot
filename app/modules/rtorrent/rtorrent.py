@@ -1,3 +1,7 @@
+"""
+rTorrent XML-RPC 客户端及 SCGI 传输，负责下载器响应映射。
+"""
+
 import http.client
 import io
 import socket
@@ -12,7 +16,25 @@ from app.runtime.log import logger
 
 
 class TorrentData(TypedDict):
-    """rTorrent 多调用结果映射，保留现有下载器字典字段。"""
+    """
+    rTorrent 多调用结果映射，保留现有下载器字典字段。
+
+    :ivar hash: 种子哈希，供任务操作和筛选使用
+    :ivar name: 下载器中的任务名称
+    :ivar total_size: 总字节数
+    :ivar completed: 已下载字节数
+    :ivar dlspeed: 当前下载速率，字节每秒
+    :ivar upspeed: 当前上传速率，字节每秒
+    :ivar state: 启动状态，0 为停止，1 为启动
+    :ivar complete: 完成标记，0 为未完成，1 为完成
+    :ivar save_path: 保存目录
+    :ivar tags: custom1 存储的逗号分隔标签
+    :ivar is_active: 下载器返回的活动状态
+    :ivar is_open: 下载器返回的文件打开状态
+    :ivar ratio: 从千分比转换后的分享率
+    :ivar content_path: 完整内容路径
+    :ivar progress: 下载进度百分比，零大小任务为 0
+    """
 
     hash: str
     name: str
@@ -32,7 +54,15 @@ class TorrentData(TypedDict):
 
 
 class TorrentFileData(TypedDict):
-    """rTorrent 文件索引和分块进度的字典合同。"""
+    """
+    rTorrent 文件索引和分块进度的字典合同。
+
+    :ivar id: 文件在种子中的零基索引
+    :ivar name: 种子内文件路径
+    :ivar size: 文件字节数
+    :ivar priority: 下载优先级，0 表示不下载
+    :ivar progress: 按已完成分块计算的百分比
+    """
 
     id: int
     name: str
@@ -42,7 +72,9 @@ class TorrentFileData(TypedDict):
 
 
 def _rpc_rows(value: object) -> list[list[object]]:
-    """校验 XML-RPC 多调用的二维数组，异常仍由调用方原有错误分支处理。"""
+    """
+    校验 XML-RPC 多调用的二维数组，异常仍由调用方原有错误分支处理。
+    """
     if not isinstance(value, (list, tuple)):
         raise TypeError("rTorrent multicall response must be an array")
     rows: list[list[object]] = []
@@ -54,21 +86,27 @@ def _rpc_rows(value: object) -> list[list[object]]:
 
 
 def _rpc_text(value: object) -> str:
-    """校验外部返回的文本，不将意外对象强转为路径或标签。"""
+    """
+    校验外部返回的文本，不将意外对象强转为路径或标签。
+    """
     if not isinstance(value, str):
         raise TypeError("rTorrent response field must be text")
     return value
 
 
 def _rpc_number(value: object) -> Union[int, float]:
-    """保留 XML-RPC 数值原值，拒绝不能执行原有算术的字段。"""
+    """
+    保留 XML-RPC 数值原值，拒绝不能执行原有算术的字段。
+    """
     if not isinstance(value, (int, float)):
         raise TypeError("rTorrent response field must be numeric")
     return value
 
 
 def _rpc_integer(value: object) -> int:
-    """保留比率和分块字段原有的 int 转换，兼容数字字符串。"""
+    """
+    保留比率和分块字段原有的 int 转换，兼容数字字符串。
+    """
     if not isinstance(value, (str, bytes, bytearray, int, float)):
         raise TypeError("rTorrent response field must be convertible to int")
     return int(value)
@@ -83,7 +121,9 @@ class SCGITransport(xmlrpc.client.Transport):
         self, host: Union[str, tuple[str, dict[str, str]]], handler: str,
         request_body: Buffer, verbose: bool = False,
     ) -> tuple[Any, ...]:
-        """用 SCGI netstring 交换 XML-RPC 报文，并在解析前释放连接。"""
+        """
+        用 SCGI netstring 交换 XML-RPC 报文，并在解析前释放连接。
+        """
         request_body = bytes(request_body)
         if isinstance(host, tuple):
             host = host[0]
@@ -129,10 +169,14 @@ class SCGITransport(xmlrpc.client.Transport):
         构造类文件对象用于parse_response
         """
         class _FakeSocket(io.BytesIO):
-            """为 HTTPResponse 提供内存 socket 接口，复用标准库 XML-RPC 解码。"""
+            """
+            为 HTTPResponse 提供内存 socket 接口，复用标准库 XML-RPC 解码。
+            """
 
             def makefile(self, *args: object, **kwargs: object) -> io.BytesIO:
-                """返回当前字节流供 HTTPResponse 读取。"""
+                """
+                返回当前字节流供 HTTPResponse 读取。
+                """
                 return self
 
         raw = b"HTTP/1.0 200 OK\r\nContent-Type: text/xml\r\n\r\n" + data
@@ -155,7 +199,9 @@ class Rtorrent:
         password: Optional[str] = None,
         **kwargs: object,
     ) -> None:
-        """读取下载器连接配置并建立代理，连接失败时保留待重连状态。"""
+        """
+        读取下载器连接配置并建立代理，连接失败时保留待重连状态。
+        """
         self._proxy = None
         self._host = ""
         if host and port:
