@@ -1,4 +1,6 @@
-"""下载历史原子写入与持久化结算 owner。"""
+"""
+下载历史原子写入与持久化结算 owner。
+"""
 
 import time
 from pathlib import Path
@@ -28,7 +30,9 @@ from app.schemas.types import (
 
 
 class DownloadHistoryOwner(_DownloadOwnerBase):
-    """下载历史原子写入与持久化结算 owner。"""
+    """
+    下载历史原子写入与持久化结算 owner。
+    """
 
     @staticmethod
     def _build_download_note(
@@ -36,7 +40,9 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             media: MediaInfo | MusicInfo,
             meta: MetaBase,
     ) -> dict[str, Any]:
-        """构造下载历史备注，并为音乐保存可恢复的版本化上下文。"""
+        """
+        构造下载历史备注，并为音乐保存可恢复的版本化上下文。
+        """
         note: dict[str, Any] = {"source": source}
         if getattr(media, "type", None) != MediaType.MUSIC:
             return note
@@ -71,7 +77,9 @@ class DownloadHistoryOwner(_DownloadOwnerBase):
             torrent_content: Union[str, bytes],
             custom_words: Optional[str],
     ) -> None:
-        """提交下载历史、文件明细和 durable 下载事件。"""
+        """
+        提交下载历史、文件明细和 durable 下载事件。
+        """
         if layout == "NoSubfolder" or not folder_name:
             download_path = download_dir / file_list[0] if file_list else download_dir
         elif folder_name:

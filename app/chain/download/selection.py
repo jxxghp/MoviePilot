@@ -1,4 +1,6 @@
-"""下载候选规范化、排序和媒体选择 owner。"""
+"""
+下载候选规范化、排序和媒体选择 owner。
+"""
 
 import json
 from pathlib import Path
@@ -30,13 +32,17 @@ from app.schemas.types import (
 
 
 def _new_torrent_helper() -> TorrentHelper:
-    """构造保留动态初始化行为但具有静态返回类型的种子助手。"""
+    """
+    构造保留动态初始化行为但具有静态返回类型的种子助手。
+    """
     factory = cast(Callable[[], TorrentHelper], TorrentHelper)
     return factory()
 
 
 def _confirmed_batch_contexts(contexts: List[Context]) -> List[Context]:
-    """排除待人工确认的资源，覆盖原始候选及插件替换候选两个入口。"""
+    """
+    排除待人工确认的资源，覆盖原始候选及插件替换候选两个入口。
+    """
     confirmed = [context for context in contexts if getattr(context, "match_status", None) in (None, "exact")]
     if len(confirmed) != len(contexts):
         logger.warning(f"跳过 {len(contexts) - len(confirmed)} 个待人工确认的资源，不参与自动批量下载")
@@ -44,7 +50,9 @@ def _confirmed_batch_contexts(contexts: List[Context]) -> List[Context]:
 
 
 class DownloadSelectionOwner(_DownloadOwnerBase):
-    """下载候选规范化、排序和媒体选择 owner。"""
+    """
+    下载候选规范化、排序和媒体选择 owner。
+    """
 
     @classmethod
     def _record_music_album_track_keys(
@@ -52,7 +60,9 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
             context: Context,
             file_list: Optional[List[str]],
     ) -> None:
-        """记录种子中可识别的音轨键，允许专辑订阅跨多次资源下载累计完成。"""
+        """
+        记录种子中可识别的音轨键，允许专辑订阅跨多次资源下载累计完成。
+        """
         media = context.media_info
         if (
                 not media
@@ -72,7 +82,9 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
 
     @staticmethod
     def _music_resource_track_key(file: str) -> Optional[str]:
-        """把音轨身份编码成跨下载资源稳定保存的 JSON 键。"""
+        """
+        把音轨身份编码成跨下载资源稳定保存的 JSON 键。
+        """
         identity = DownloadSelectionOwner._music_resource_track_identity(file)
         if identity is None:
             return None
@@ -80,7 +92,9 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
 
     @staticmethod
     def _music_resource_track_identity(file: str) -> Optional[Tuple[int, Union[int, str]]]:
-        """从资源文件路径提取盘号和曲序，缺少曲序时按归一化曲名去重。"""
+        """
+        从资源文件路径提取盘号和曲序，缺少曲序时按归一化曲名去重。
+        """
         file_path = Path(str(file))
         file_meta = MetaMusic(
             org_string=file_path.name,
@@ -95,7 +109,9 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
 
     @staticmethod
     def _media_identity_keys(media: Optional[MediaInfo]) -> Set[str]:
-        """返回媒体的统一身份键，用于临时缺失集映射匹配。"""
+        """
+        返回媒体的统一身份键，用于临时缺失集映射匹配。
+        """
         if not media:
             return set()
         source, media_id = resolve_media_identity(media=media)
@@ -104,7 +120,9 @@ class DownloadSelectionOwner(_DownloadOwnerBase):
 
     @classmethod
     def _matches_media_identity(cls, media: Optional[MediaInfo], media_key: object) -> bool:
-        """判断媒体是否命中来源与原生 ID 组成的统一身份键。"""
+        """
+        判断媒体是否命中来源与原生 ID 组成的统一身份键。
+        """
         return media_key is not None and str(media_key) in cls._media_identity_keys(media)
 
     def _prepare_batch_download_contexts(
