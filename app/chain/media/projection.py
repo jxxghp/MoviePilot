@@ -1,4 +1,6 @@
-"""跨媒体来源身份投影与匹配 owner。"""
+"""
+不同媒体来源之间的身份匹配与转换。
+"""
 
 from __future__ import annotations
 
@@ -20,12 +22,19 @@ _ProjectionSource = Mapping[str, Any]
 
 
 class _ProjectionRule(Enum):
-    """标识内置身份投影规则或插件事件兜底。"""
+    """
+    标识内置身份投影规则或插件事件兜底。
+    """
 
+    # 根据豆瓣详情匹配 TMDB 身份。
     DOUBAN_TO_TMDB = auto()
+    # 根据 Bangumi 详情匹配 TMDB 身份。
     BANGUMI_TO_TMDB = auto()
+    # 根据 TMDB 详情匹配豆瓣身份。
     TMDB_TO_DOUBAN = auto()
+    # 根据 Bangumi 详情匹配豆瓣身份。
     BANGUMI_TO_DOUBAN = auto()
+    # 交给插件事件完成未内置的来源转换。
     EVENT = auto()
 
 
@@ -44,7 +53,16 @@ _NUMERIC_SOURCE_RULES: Final = {
 
 @dataclass(frozen=True)
 class _ProjectionPlan:
-    """保存一次身份投影的标准化输入和确定规则。"""
+    """
+    保存一次身份投影的标准化输入和确定规则。
+
+    :param rule: 来源与目标组合对应的内置匹配规则或事件回退规则
+    :param source: 现有媒体身份所属的数据来源
+    :param target: 需要转换到的数据来源
+    :param media_id: 现有来源的规范化原生媒体标识
+    :param media_type: 调用方限定的影视类型，None 表示未限定
+    :param season: 投影时需要保留的电视剧季号，None 表示未指定
+    """
 
     rule: _ProjectionRule
     source: MediaSource
@@ -56,7 +74,15 @@ class _ProjectionPlan:
 
 @dataclass(frozen=True)
 class _TmdbMatch:
-    """描述由来源详情生成的 TMDB 名称匹配请求。"""
+    """
+    描述由来源详情生成的 TMDB 名称匹配请求。
+
+    :param names: 按优先级排列、已去重的可匹配标题
+    :param year: 来源确认的发行年份，None 表示未提供年份
+    :param media_type: 匹配的电影或电视剧类型
+    :param season: 用于 TMDB 匹配的季号，None 表示未指定
+    :param include_season: 是否把已确定的季号写回匹配结果，默认不写入
+    """
 
     names: tuple[str, ...]
     year: Optional[str]
@@ -67,7 +93,15 @@ class _TmdbMatch:
 
 @dataclass(frozen=True)
 class _DoubanMatch:
-    """描述由来源详情生成的豆瓣匹配请求。"""
+    """
+    描述由来源详情生成的豆瓣匹配请求。
+
+    :param name: 用于豆瓣匹配的标题
+    :param year: 来源确认的发行年份，None 表示未提供年份
+    :param media_type: 限定的影视类型，None 表示未限定
+    :param season: 用于标题解析的季号，None 表示未指定
+    :param imdb_id: 可用于跨来源精确匹配的 IMDb 标识，None 时不使用该证据
+    """
 
     name: str
     year: Optional[str]
@@ -80,7 +114,9 @@ _ProjectionMatch = _TmdbMatch | _DoubanMatch
 
 
 def _optional_text(value: object) -> Optional[str]:
-    """把来源字段标准化为非空文本，避免把空值传给标题解析器。"""
+    """
+    把来源字段标准化为非空文本，避免把空值传给标题解析器。
+    """
     if value is None:
         return None
     text = str(value).strip()
@@ -88,7 +124,9 @@ def _optional_text(value: object) -> Optional[str]:
 
 
 def _unique_names(values: Sequence[object]) -> tuple[str, ...]:
-    """按来源优先级稳定去重可用于匹配的非空标题。"""
+    """
+    按来源优先级稳定去重可用于匹配的非空标题。
+    """
     names: list[str] = []
     seen: set[str] = set()
     for value in values:
@@ -107,7 +145,9 @@ def _build_projection_plan(
     media_type: Optional[MediaType],
     season: Optional[int],
 ) -> Optional[_ProjectionPlan]:
-    """标准化身份并确定内置规则；不支持的组合保留给插件事件。"""
+    """
+    标准化身份并确定内置规则；不支持的组合保留给插件事件。
+    """
     target = normalize_media_source(target_source)
     source, normalized_id = resolve_media_identity(
         media_source=media_source,
@@ -132,7 +172,9 @@ def _build_douban_tmdb_match(
     plan: _ProjectionPlan,
     source_info: _ProjectionSource,
 ) -> Optional[_TmdbMatch]:
-    """把豆瓣详情投影为 TMDB 名称、年份、类型和季请求。"""
+    """
+    把豆瓣详情投影为 TMDB 名称、年份、类型和季请求。
+    """
     title = _optional_text(source_info.get("title"))
     if not title:
         return None
@@ -161,7 +203,9 @@ def _build_bangumi_tmdb_match(
     plan: _ProjectionPlan,
     source_info: _ProjectionSource,
 ) -> Optional[_TmdbMatch]:
-    """把 Bangumi 详情投影为 TMDB 名称匹配请求。"""
+    """
+    把 Bangumi 详情投影为 TMDB 名称匹配请求。
+    """
     from app.domain.projection.bangumi import resolve_media_type
 
     title = _optional_text(source_info.get("name"))
@@ -183,7 +227,9 @@ def _build_tmdb_douban_match(
     plan: _ProjectionPlan,
     source_info: _ProjectionSource,
 ) -> Optional[_DoubanMatch]:
-    """把 TMDB 详情投影为豆瓣标题、年份和外部身份请求。"""
+    """
+    把 TMDB 详情投影为豆瓣标题、年份和外部身份请求。
+    """
     name = _optional_text(source_info.get("title") or source_info.get("name"))
     if not name:
         return None
@@ -205,7 +251,9 @@ def _build_bangumi_douban_match(
     plan: _ProjectionPlan,
     source_info: _ProjectionSource,
 ) -> Optional[_DoubanMatch]:
-    """把 Bangumi 详情投影为豆瓣名称、年份、类型和季请求。"""
+    """
+    把 Bangumi 详情投影为豆瓣名称、年份、类型和季请求。
+    """
     from app.domain.projection.bangumi import resolve_media_type
 
     title = _optional_text(source_info.get("name_cn") or source_info.get("name"))
@@ -225,7 +273,9 @@ def _build_projection_match(
     plan: _ProjectionPlan,
     source_info: _ProjectionSource,
 ) -> Optional[_ProjectionMatch]:
-    """依据已确定规则纯计算目标来源所需的匹配参数。"""
+    """
+    依据已确定规则纯计算目标来源所需的匹配参数。
+    """
     builders = {
         _ProjectionRule.DOUBAN_TO_TMDB: _build_douban_tmdb_match,
         _ProjectionRule.BANGUMI_TO_TMDB: _build_bangumi_tmdb_match,
@@ -240,7 +290,9 @@ def _load_projection_source(
     owner: MediaProjectionOwner,
     plan: _ProjectionPlan,
 ) -> Optional[_ProjectionPayload]:
-    """同步读取规则指定的来源详情。"""
+    """
+    同步读取规则指定的来源详情。
+    """
     if plan.rule == _ProjectionRule.DOUBAN_TO_TMDB:
         return owner.douban_info(doubanid=plan.media_id, mtype=plan.media_type)
     if plan.rule in {
@@ -259,7 +311,9 @@ async def _async_load_projection_source(
     owner: MediaProjectionOwner,
     plan: _ProjectionPlan,
 ) -> Optional[_ProjectionPayload]:
-    """异步读取规则指定的来源详情。"""
+    """
+    异步读取规则指定的来源详情。
+    """
     if plan.rule == _ProjectionRule.DOUBAN_TO_TMDB:
         source_info = await owner.async_douban_info(
             doubanid=plan.media_id,
@@ -282,7 +336,9 @@ def _apply_projection_match(
     owner: MediaProjectionOwner,
     match: _ProjectionMatch,
 ) -> Optional[_ProjectionPayload]:
-    """同步执行纯匹配参数，并隔离对来源模块返回对象的修改。"""
+    """
+    同步执行纯匹配参数，并隔离对来源模块返回对象的修改。
+    """
     if isinstance(match, _TmdbMatch):
         result = owner._match_tmdb_with_names(
             meta_names=match.names,
@@ -306,7 +362,9 @@ async def _async_apply_projection_match(
     owner: MediaProjectionOwner,
     match: _ProjectionMatch,
 ) -> Optional[_ProjectionPayload]:
-    """异步执行纯匹配参数，并隔离对来源模块返回对象的修改。"""
+    """
+    异步执行纯匹配参数，并隔离对来源模块返回对象的修改。
+    """
     if isinstance(match, _TmdbMatch):
         result = await owner._async_match_tmdb_with_names(
             meta_names=match.names,
@@ -330,7 +388,9 @@ def _convert_builtin_projection(
     owner: MediaProjectionOwner,
     plan: _ProjectionPlan,
 ) -> Optional[_ProjectionPayload]:
-    """同步执行来源读取、纯投影和目标匹配三阶段流程。"""
+    """
+    同步执行来源读取、纯投影和目标匹配三阶段流程。
+    """
     source_info = _load_projection_source(owner, plan)
     match = _build_projection_match(plan, source_info) if source_info else None
     return _apply_projection_match(owner, match) if match else None
@@ -340,20 +400,26 @@ async def _async_convert_builtin_projection(
     owner: MediaProjectionOwner,
     plan: _ProjectionPlan,
 ) -> Optional[_ProjectionPayload]:
-    """异步执行来源读取、纯投影和目标匹配三阶段流程。"""
+    """
+    异步执行来源读取、纯投影和目标匹配三阶段流程。
+    """
     source_info = await _async_load_projection_source(owner, plan)
     match = _build_projection_match(plan, source_info) if source_info else None
     return await _async_apply_projection_match(owner, match) if match else None
 
 
 class MediaProjectionOwner(_MediaOwnerBase):
-    """跨媒体来源身份投影与匹配 owner。"""
+    """
+    不同媒体来源之间的身份匹配与转换。
+    """
 
     def _dispatch_projection_event(
         self,
         plan: _ProjectionPlan,
     ) -> Optional[_ProjectionPayload]:
-        """同步把非内置来源组合交给官方插件转换事件。"""
+        """
+        同步把非内置来源组合交给官方插件转换事件。
+        """
         event_data = _SchemaMediaRecognizeConvertEventData(
             media_source=plan.source,
             media_id=plan.media_id,
@@ -373,7 +439,9 @@ class MediaProjectionOwner(_MediaOwnerBase):
         self,
         plan: _ProjectionPlan,
     ) -> Optional[_ProjectionPayload]:
-        """异步把非内置来源组合交给官方插件转换事件。"""
+        """
+        异步把非内置来源组合交给官方插件转换事件。
+        """
         event_data = _SchemaMediaRecognizeConvertEventData(
             media_source=plan.source,
             media_id=plan.media_id,
@@ -397,7 +465,9 @@ class MediaProjectionOwner(_MediaOwnerBase):
         mtype: Optional[MediaType] = None,
         season: Optional[int] = None,
     ) -> Optional[_ProjectionPayload]:
-        """使用统一媒体身份在影视来源之间同步转换原始详情。"""
+        """
+        使用统一媒体身份在影视来源之间同步转换原始详情。
+        """
         plan = _build_projection_plan(
             target_source, media_source, media_id, mtype, season
         )
@@ -411,7 +481,9 @@ class MediaProjectionOwner(_MediaOwnerBase):
     def _extract_year_from_bangumi(
         bangumiinfo: Mapping[str, Any],
     ) -> Optional[str]:
-        """从 Bangumi 上映日期中提取四位年份。"""
+        """
+        从 Bangumi 上映日期中提取四位年份。
+        """
         release_date = _optional_text(
             bangumiinfo.get("date") or bangumiinfo.get("air_date")
         )
@@ -422,7 +494,9 @@ class MediaProjectionOwner(_MediaOwnerBase):
         tmdbinfo: Mapping[str, Any],
         season: Optional[int] = None,
     ) -> Optional[str]:
-        """优先从 TMDB 首映日期、再从指定季日期中提取年份。"""
+        """
+        优先从 TMDB 首映日期、再从指定季日期中提取年份。
+        """
         release_date = _optional_text(tmdbinfo.get("release_date"))
         if release_date:
             return release_date[:4]
@@ -444,7 +518,9 @@ class MediaProjectionOwner(_MediaOwnerBase):
         mtype: MediaType,
         season: Optional[int] = None,
     ) -> Optional[_ProjectionPayload]:
-        """按稳定名称顺序同步匹配第一条 TMDB 结果。"""
+        """
+        按稳定名称顺序同步匹配第一条 TMDB 结果。
+        """
         for name in meta_names:
             tmdbinfo = self.match_tmdbinfo(
                 name=name,
@@ -463,7 +539,9 @@ class MediaProjectionOwner(_MediaOwnerBase):
         mtype: MediaType,
         season: Optional[int] = None,
     ) -> Optional[_ProjectionPayload]:
-        """按稳定名称顺序异步匹配第一条 TMDB 结果。"""
+        """
+        按稳定名称顺序异步匹配第一条 TMDB 结果。
+        """
         for name in meta_names:
             tmdbinfo = await self.async_match_tmdbinfo(
                 name=name,
@@ -483,7 +561,9 @@ class MediaProjectionOwner(_MediaOwnerBase):
         mtype: Optional[MediaType] = None,
         season: Optional[int] = None,
     ) -> Optional[_ProjectionPayload]:
-        """使用统一媒体身份在影视来源之间异步转换原始详情。"""
+        """
+        使用统一媒体身份在影视来源之间异步转换原始详情。
+        """
         plan = _build_projection_plan(
             target_source, media_source, media_id, mtype, season
         )

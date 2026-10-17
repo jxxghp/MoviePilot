@@ -1,4 +1,6 @@
-"""媒体原生路由与同步异步识别回退 owner。"""
+"""
+媒体原生来源路由与同步、异步识别回退编排。
+"""
 
 from copy import deepcopy
 from dataclasses import dataclass
@@ -28,16 +30,28 @@ from app.schemas.types import (
 
 
 class _NativeRecognitionAction(Enum):
-    """标识媒体识别入口下一步需要执行的真实 I/O 动作。"""
+    """
+    标识媒体识别入口下一步需要执行的真实 I/O 动作。
+    """
 
+    # 按音乐来源协议识别音乐实体。
     MUSIC = "music"
+    # 通过影视模块识别电影或电视剧。
     VIDEO = "video"
+    # 输入不足以执行原生识别，不发起请求。
     NONE = "none"
 
 
 @dataclass(frozen=True, slots=True)
 class _NativeRecognitionPlan:
-    """冻结同步与异步原生识别入口共用的路由和调用参数。"""
+    """
+    冻结同步与异步原生识别入口共用的路由和调用参数。
+
+    :param action: 需要执行的音乐识别、影视识别或无需识别动作
+    :param kwargs: 交给对应识别入口的命名参数
+    :param refresh_cache: 是否绕过旧缓存获取新结果，默认允许复用缓存
+    :param sources: 音乐未绑定身份时依次尝试的来源，空元组表示仅执行 kwargs 中的来源
+    """
 
     action: _NativeRecognitionAction
     kwargs: Mapping[str, Any]
@@ -46,21 +60,36 @@ class _NativeRecognitionPlan:
 
 
 def _music_fallback_info(info: Optional[MusicInfo], meta: MetaMusic, diagnostic: dict[str, Any]) -> MusicInfo:
-    """附加来源尝试记录而不污染来源缓存对象；未命中只保留本地元数据。"""
+    """
+    附加来源尝试记录而不污染来源缓存对象；未命中只保留本地元数据。
+    """
     result = deepcopy(info) if info is not None else MusicInfo.from_meta(meta)
     result.raw_data = {**(result.raw_data or {}), "recognition": diagnostic}
     return result
 
 
 def _native_music_candidate(info: Optional[MusicInfo], source: MediaSource, kind: Optional[str]) -> bool:
-    """回退只能采用同一来源及所请求实体类型的有效主身份。"""
+    """
+    回退只能采用同一来源及所请求实体类型的有效主身份。
+    """
     return bool(isinstance(info, MusicInfo) and info.media_id and info.media_source == source
                 and (not kind or info.music_type == kind))
 
 
 @dataclass(frozen=True, slots=True)
 class _MetaRecognitionRequest:
-    """冻结一次按标题识别所需的元数据、副本和来源决策。"""
+    """
+    冻结一次按标题识别所需的元数据、副本和来源决策。
+
+    :param title: 本次识别使用的原始标题文本
+    :param metainfo: 经过入口规范化、用于实际识别的元数据
+    :param share_meta: 供共享识别与插件使用的元数据副本
+    :param mtype: 调用方指定的媒体类型，None 时由元数据和来源决定
+    :param media_source: 显式指定的媒体来源，None 时选择默认来源
+    :param episode_group: 电视剧识别使用的剧集组标识，None 表示未指定
+    :param music_type: 音乐实体类型，None 时由元数据或默认规则选择
+    :param is_music: 是否按音乐识别协议处理本次请求
+    """
 
     title: str
     metainfo: MetaBase
@@ -73,7 +102,9 @@ class _MetaRecognitionRequest:
 
     @property
     def plugin_event(self) -> ChainEventType:
-        """返回与媒体类型匹配的辅助识别事件。"""
+        """
+        返回与媒体类型匹配的辅助识别事件。
+        """
         return (
             ChainEventType.MusicNameRecognize
             if self.is_music
@@ -82,14 +113,18 @@ class _MetaRecognitionRequest:
 
 
 class MediaRecognitionOwner(_MediaOwnerBase):
-    """媒体原生路由与同步异步识别回退 owner。"""
+    """
+    媒体原生来源路由与同步、异步识别回退编排。
+    """
 
     def _native_recognition_plan(
         self,
         module_kwargs: Mapping[str, Any],
         cache: bool,
     ) -> _NativeRecognitionPlan:
-        """把媒体类型、显式来源和默认来源归并为唯一原生识别计划。"""
+        """
+        把媒体类型、显式来源和默认来源归并为唯一原生识别计划。
+        """
         meta = module_kwargs.get("meta")
         mtype = module_kwargs.get("mtype")
         media_source = module_kwargs.get("media_source")
@@ -144,7 +179,9 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         module_kwargs: dict[str, Any],
         cache: bool,
     ) -> Optional[MediaInfo]:
-        """影视使用原主来源；未绑定身份的音乐按已配置内置来源有序回退。"""
+        """
+        影视使用原主来源；未绑定身份的音乐按已配置内置来源有序回退。
+        """
         plan = MediaRecognitionOwner._native_recognition_plan(
             self, module_kwargs, cache
         )
@@ -172,7 +209,9 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         module_kwargs: dict[str, Any],
         cache: bool,
     ) -> Optional[MediaInfo]:
-        """异步识别使用与同步入口相同的来源计划，保留显式来源与主身份约束。"""
+        """
+        异步识别使用与同步入口相同的来源计划，保留显式来源与主身份约束。
+        """
         plan = MediaRecognitionOwner._native_recognition_plan(
             self, module_kwargs, cache
         )
@@ -204,7 +243,9 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         episode_group: Optional[str],
         music_type: Optional[str],
     ) -> _MetaRecognitionRequest:
-        """为同步与异步标题识别冻结相同的元数据副本和来源语义。"""
+        """
+        为同步与异步标题识别冻结相同的元数据副本和来源语义。
+        """
         return _MetaRecognitionRequest(
             title=metainfo.title,
             metainfo=metainfo,
@@ -218,12 +259,16 @@ class MediaRecognitionOwner(_MediaOwnerBase):
 
     @staticmethod
     def _has_remote_identity(result: Optional[MediaInfo]) -> bool:
-        """音乐识别仅在取得远端来源身份后视为完整命中。"""
+        """
+        音乐识别仅在取得远端来源身份后视为完整命中。
+        """
         return bool(result and result.media_source and result.media_id)
 
     @staticmethod
     def _music_recognition_is_terminal(result: Optional[MediaInfo]) -> bool:
-        """远端命中或已知歧义都结束自动层级选择，后者继续作为待确认结果返回。"""
+        """
+        远端命中或已知歧义都结束自动层级选择，后者继续作为待确认结果返回。
+        """
         return MediaRecognitionOwner._has_remote_identity(result) or music_recognition_needs_confirmation(result)
 
     @staticmethod
@@ -231,7 +276,9 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         request: _MetaRecognitionRequest,
         mediainfo: Optional[MediaInfo],
     ) -> Optional[MediaInfo]:
-        """统一识别结果的空值判定与成功日志，图片补充留给各 I/O 外壳。"""
+        """
+        统一识别结果的空值判定与成功日志，图片补充留给各 I/O 外壳。
+        """
         if not mediainfo:
             return None
         logger.info(
@@ -302,7 +349,9 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         )
 
         def native_recognize() -> Optional[MediaInfo]:
-            """使用请求级数据源执行原生识别。"""
+            """
+            使用请求级数据源执行原生识别。
+            """
             return self.recognize_media(
                 meta=request.metainfo,
                 mtype=request.mtype,
@@ -313,7 +362,9 @@ class MediaRecognitionOwner(_MediaOwnerBase):
             )
 
         def plugin_recognize() -> Optional[MediaInfo]:
-            """执行辅助识别并保持请求级数据源约束。"""
+            """
+            执行辅助识别并保持请求级数据源约束。
+            """
             if request.is_music and not isinstance(request.metainfo, MetaMusic):
                 return None
             return self.recognize_help(
@@ -411,7 +462,9 @@ class MediaRecognitionOwner(_MediaOwnerBase):
         )
 
         async def native_recognize() -> Optional[MediaInfo]:
-            """异步使用请求级数据源执行原生识别。"""
+            """
+            异步使用请求级数据源执行原生识别。
+            """
             return await self.async_recognize_media(
                 meta=request.metainfo,
                 mtype=request.mtype,
@@ -422,7 +475,9 @@ class MediaRecognitionOwner(_MediaOwnerBase):
             )
 
         async def plugin_recognize() -> Optional[MediaInfo]:
-            """异步执行辅助识别并保持请求级数据源约束。"""
+            """
+            异步执行辅助识别并保持请求级数据源约束。
+            """
             if request.is_music and not isinstance(request.metainfo, MetaMusic):
                 return None
             return await self.async_recognize_help(
