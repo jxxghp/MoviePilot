@@ -1,1 +1,3 @@
-"""API presentation helpers isolated from domain dependency assembly."""
+"""
+API 表现层的协议编码与响应构造，不负责领域依赖装配。
+"""

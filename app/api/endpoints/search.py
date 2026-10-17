@@ -1,3 +1,7 @@
+"""
+提供媒体资源搜索及搜索结果查询接口。
+"""
+
 import asyncio
 import json
 import time
@@ -60,7 +64,9 @@ def _resolve_media_season(
         explicit_season: Optional[int],
         recognized_season: Optional[int],
 ) -> Optional[int]:
-    """合并显式季号与识别结果，显式值优先且季 0 属于有效业务值。"""
+    """
+    合并显式季号与识别结果，显式值优先且季 0 属于有效业务值。
+    """
     return explicit_season if explicit_season is not None else recognized_season
 
 
@@ -70,7 +76,9 @@ async def _resolve_media_search_params(
         media_type: Optional[MediaType] = None,
         music_type: Optional[str] = None,
 ) -> tuple[Optional[dict], str]:
-    """校验统一媒体身份并构造 SearchChain 精确搜索参数。"""
+    """
+    校验统一媒体身份并构造 SearchChain 精确搜索参数。
+    """
     normalized_source, normalized_media_id = resolve_media_identity(
         media_source=media_source,
         media_id=media_id,
@@ -134,7 +142,9 @@ def _serialize_signed_subtitle_results(subtitles: List[Any]) -> List[dict]:
 
 
 def _serialize_context_results(contexts: list[Context]) -> list[dict[str, Any]]:
-    """序列化 canonical 搜索上下文，集中保持传输层投影合同。"""
+    """
+    序列化 canonical 搜索上下文，集中保持传输层投影合同。
+    """
     return [context.to_dict() for context in contexts]
 
 
@@ -420,7 +430,9 @@ async def search_by_id_stream(
     site_list = _parse_site_list(sites)
 
     async def event_source():
-        """解析媒体身份并输出精确搜索流事件。"""
+        """
+        解析媒体身份并输出精确搜索流事件。
+        """
         search_params, message = await _resolve_media_search_params(
             media_source=media_source,
             media_id=media_id,

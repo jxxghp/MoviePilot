@@ -1,3 +1,7 @@
+"""
+提供订阅查询、创建、修改和控制接口。
+"""
+
 from typing import Annotated, Any, List, Optional
 
 import cn2an
@@ -100,7 +104,9 @@ __all__ = [
 
 
 def _public_subscription_message(message: Optional[object]) -> str:
-    """延迟加载订阅错误转换器，避免启动阶段增加宿主模块。"""
+    """
+    延迟加载订阅错误转换器，避免启动阶段增加宿主模块。
+    """
     from app.runtime.errors import public_error_message
 
     return public_error_message(message, context="subscription")
@@ -110,7 +116,9 @@ async def _attach_execution_status(
     subscribes: list[_SchemaSubscribe],
     status_service: object,
 ) -> list[_SchemaSubscribe]:
-    """批量附加当前执行状态，保持无执行记录时的旧响应形状。"""
+    """
+    批量附加当前执行状态，保持无执行记录时的旧响应形状。
+    """
     loader = getattr(status_service, "for_subscriptions", None)
     if not callable(loader):
         return subscribes
@@ -180,7 +188,9 @@ def matches_subscribe_music_type(
     subscribe: Any,
     music_type: Optional[str],
 ) -> bool:
-    """匹配订阅音乐实体，并把迁移前未标注类型的历史记录兼容为单曲。"""
+    """
+    匹配订阅音乐实体，并把迁移前未标注类型的历史记录兼容为单曲。
+    """
     if not music_type:
         return True
     subscribe_music_type = getattr(subscribe, "music_type", None)

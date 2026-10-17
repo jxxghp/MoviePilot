@@ -1,4 +1,6 @@
-"""系统内置模块目录、开关和可用性测试接口。"""
+"""
+系统内置模块目录、开关和可用性测试接口。
+"""
 
 from fastapi import Depends
 
@@ -33,7 +35,9 @@ _MODULE_DESCRIPTION_FALLBACKS = {
 
 
 def _module_description(module_id: str, name: str, module_type: str) -> str:
-    """读取模块的本地化职责说明，并为新增模块按类型提供可读兜底。"""
+    """
+    读取模块的本地化职责说明，并为新增模块按类型提供可读兜底。
+    """
     fallback = _MODULE_DESCRIPTION_FALLBACKS.get(module_type, f"{name} 模块。")
     return LocaleHelper.translate(
         f"system.modules.{module_id}.description",
@@ -49,7 +53,9 @@ def _module_description(module_id: str, name: str, module_type: str) -> str:
 def modulelist(
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> _SchemaResponse[_SchemaSystemModuleListData]:
-    """查询当前配置下应参与健康检查的模块 ID 列表。"""
+    """
+    查询当前配置下应参与健康检查的模块 ID 列表。
+    """
     modules = []
     for spec in get_module_manager().list_enabled_specs():
         module_id = spec.id
@@ -76,7 +82,9 @@ def modulelist(
 def module_catalog(
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> _SchemaResponse[_SchemaSystemModuleCatalogListData]:
-    """返回模块及其服务类型目录，供前端选择器统一构造选项。"""
+    """
+    返回模块及其服务类型目录，供前端选择器统一构造选项。
+    """
     manager = get_module_manager()
     specs = manager.list_specs()
     snapshot = capture_host_module_config(specs)
@@ -120,7 +128,9 @@ def module_catalog(
 async def module_settings(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse[_SchemaSystemModuleSettingListData]:
-    """查询没有其它激活配置、可由用户统一控制的内置模块。"""
+    """
+    查询没有其它激活配置、可由用户统一控制的内置模块。
+    """
     configured = get_runtime_settings().get("MODULE_ENABLE", {})
     if not isinstance(configured, dict):
         configured = {}
@@ -159,6 +169,8 @@ def moduletest(
     moduleid: str,
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> _SchemaResponse[None]:
-    """运行指定模块的内置可用性测试。"""
+    """
+    运行指定模块的内置可用性测试。
+    """
     state, errmsg = get_module_manager().test(moduleid)
     return _SchemaResponse(success=state, message=errmsg)

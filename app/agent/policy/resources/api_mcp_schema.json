@@ -3397,7 +3397,7 @@
               "type": "null"
             }
           ],
-          "description": "站点主域名Key",
+          "description": "用于匹配站点的主域名键",
           "title": "Domain"
         },
         "downloader": {
@@ -3518,7 +3518,7 @@
             }
           ],
           "default": 0,
-          "description": "站点优先级",
+          "description": "站点搜索优先级，数值越小越靠前，默认 0",
           "title": "Pri"
         },
         "proxy": {
@@ -3557,7 +3557,7 @@
             }
           ],
           "default": 0,
-          "description": "是否演染",
+          "description": "是否使用浏览器渲染站点页面，0 表示关闭",
           "title": "Render"
         },
         "rss": {
@@ -3582,7 +3582,7 @@
             }
           ],
           "default": 15,
-          "description": "超时时间",
+          "description": "单次站点请求的超时秒数，默认 15 秒",
           "title": "Timeout"
         },
         "token": {
@@ -7018,7 +7018,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -7031,7 +7031,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -7074,7 +7074,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -7087,7 +7087,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -7162,7 +7162,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "days": {
@@ -7188,7 +7188,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -7279,7 +7279,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -7292,7 +7292,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -7409,7 +7409,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -7422,7 +7422,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -7541,7 +7541,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -7554,7 +7554,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -7597,7 +7597,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "name": {
@@ -7622,7 +7622,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -7666,7 +7666,7 @@
                   "type": "null"
                 }
               ],
-              "description": "要返回的精确规则标识；在查询串中重复传入 rule_ids，省略时列出该操作对应的全部规则。",
+              "description": "要返回的内置规则标识；可在查询字符串中重复传入 rule_ids，省略时列出全部内置规则。",
               "title": "Rule Ids"
             }
           },
@@ -7710,7 +7710,7 @@
                   "type": "null"
                 }
               ],
-              "description": "要返回的精确规则标识；在查询串中重复传入 rule_ids，省略时列出该操作对应的全部规则。",
+              "description": "要返回的自定义规则标识；可在查询字符串中重复传入 rule_ids，省略时列出全部自定义规则。",
               "title": "Rule Ids"
             }
           },
@@ -7928,7 +7928,7 @@
                   "type": "null"
                 }
               ],
-              "description": "要返回的精确规则组名称；在查询串中重复传入 group_names，省略时列出全部规则组。",
+              "description": "要返回的规则组名称；可在查询字符串中重复传入 group_names，省略时列出全部规则组。",
               "title": "Group Names"
             },
             "include_usage": {
@@ -8487,7 +8487,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -8500,7 +8500,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -8559,7 +8559,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -8572,7 +8572,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -8637,7 +8637,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "episode_group": {
@@ -8662,7 +8662,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -9168,7 +9168,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "media_id": {
@@ -9205,7 +9205,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             },
             "season": {
@@ -9270,7 +9270,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -9283,7 +9283,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -9917,7 +9917,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -9930,7 +9930,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -10569,7 +10569,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "force": {
@@ -10602,7 +10602,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             },
             "query": {
@@ -10853,7 +10853,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "force": {
@@ -10886,7 +10886,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             },
             "query": {
@@ -11481,7 +11481,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -11494,7 +11494,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -11743,7 +11743,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "include_candidates": {
@@ -11790,7 +11790,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             },
             "season": {
@@ -11935,7 +11935,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -11948,7 +11948,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -12114,7 +12114,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "name": {
@@ -12139,7 +12139,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             },
             "status": {
@@ -12344,7 +12344,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -12357,7 +12357,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -12415,7 +12415,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -12428,7 +12428,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -12504,7 +12504,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -12517,7 +12517,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -12644,7 +12644,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -12657,7 +12657,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             },
             "workdate": {
@@ -12713,7 +12713,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -12726,7 +12726,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -12801,7 +12801,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -12814,7 +12814,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -12903,7 +12903,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "keyword": {
@@ -12928,7 +12928,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             },
             "sort": {
@@ -13093,7 +13093,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "directory_type": {
@@ -13124,7 +13124,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             },
             "storage_type": {
@@ -13605,7 +13605,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -13618,7 +13618,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -13817,7 +13817,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -13830,7 +13830,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -14238,7 +14238,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -14251,7 +14251,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -14493,7 +14493,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -14506,7 +14506,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -14565,7 +14565,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "episode": {
@@ -14606,7 +14606,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             },
             "season": {
@@ -14824,7 +14824,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -14837,7 +14837,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -15081,7 +15081,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -15094,7 +15094,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -15754,7 +15754,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -15767,7 +15767,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -15852,7 +15852,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -15865,7 +15865,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -15961,7 +15961,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -15974,7 +15974,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             }
           },
@@ -16070,7 +16070,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "name": {
@@ -16095,7 +16095,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             },
             "state": {
@@ -16196,7 +16196,7 @@
                   "type": "null"
                 }
               ],
-              "description": "当前页最多返回的记录数。",
+              "description": "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，此时省略 count 使用 50 条。",
               "title": "Count"
             },
             "page": {
@@ -16209,7 +16209,7 @@
                   "type": "null"
                 }
               ],
-              "description": "从 1 开始的结果页码。",
+              "description": "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。",
               "title": "Page"
             },
             "plugin_id": {

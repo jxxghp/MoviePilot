@@ -1,3 +1,7 @@
+"""
+接收外部服务回调并交给对应消息或业务流程处理。
+"""
+
 from typing import Annotated, Any
 
 from fastapi import Depends, Request

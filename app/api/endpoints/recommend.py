@@ -1,3 +1,7 @@
+"""
+提供媒体推荐列表及相关来源查询接口。
+"""
+
 from collections.abc import Awaitable, Callable
 from typing import Any, List, Optional
 
@@ -38,7 +42,9 @@ router = ResponseAPIRouter()
 
 
 async def _require_tmdb_result(operation: Awaitable[List[Any]]) -> List[Any]:
-    """保留 TMDB 成功空列表，并把上游请求异常转换为明确的网关错误。"""
+    """
+    保留 TMDB 成功空列表，并把上游请求异常转换为明确的网关错误。
+    """
     try:
         return await operation
     except TMDbException as error:
@@ -49,7 +55,9 @@ async def _require_tmdb_result(operation: Awaitable[List[Any]]) -> List[Any]:
 
 
 def _normalize_agent_media_type(media_type: str) -> Optional[str]:
-    """将 Agent 媒体类型转换为推荐链使用的稳定标识。"""
+    """
+    将 Agent 媒体类型转换为推荐链使用的稳定标识。
+    """
     if media_type == "all":
         return media_type
     media_type_enum = MediaType.from_agent(media_type)
@@ -67,7 +75,9 @@ async def _fetch_listenbrainz_chart(
     with_cover: bool,
     entity: Optional[str],
 ) -> List[Any] | _SchemaResponse[Any]:
-    """校验榜单参数并获取 ListenBrainz 榜单结果。"""
+    """
+    校验榜单参数并获取 ListenBrainz 榜单结果。
+    """
     if range_name not in LISTENBRAINZ_CHART_RANGES:
         return _SchemaResponse(success=False, message="无效的榜单周期")
     if sort_by not in {"listen_count.desc", "listen_count.asc"}:
@@ -95,7 +105,9 @@ async def _fetch_listenbrainz_fresh(
     future: bool,
     with_cover: bool,
 ) -> List[Any] | _SchemaResponse[Any]:
-    """校验新发行参数并获取 ListenBrainz 新发行结果。"""
+    """
+    校验新发行参数并获取 ListenBrainz 新发行结果。
+    """
     if music_type not in {None, MUSIC_ENTITY_ALBUM}:
         return _SchemaResponse(success=False, message="新发行结果只支持专辑")
     if fresh_sort not in LISTENBRAINZ_FRESH_SORTS:
@@ -133,7 +145,9 @@ async def _recommend_listenbrainz(
     min_listen_count: int,
     with_cover: bool,
 ) -> _SchemaResponse[Any]:
-    """执行 ListenBrainz 推荐分支并统一转换音乐结果。"""
+    """
+    执行 ListenBrainz 推荐分支并统一转换音乐结果。
+    """
     if media_type not in {"all", "music"}:
         return _SchemaResponse(
             success=False,
@@ -181,7 +195,9 @@ def _media_source_operations(
     page: int,
     count: int,
 ) -> dict[str, Callable[[], Awaitable[List[Any]]]]:
-    """构造影视推荐来源到链方法的延迟调用映射。"""
+    """
+    构造影视推荐来源到链方法的延迟调用映射。
+    """
     return {
         "tmdb_trending": lambda: chain.async_tmdb_trending(page=page),
         "tmdb_movies": lambda: chain.async_tmdb_movies(page=page),
@@ -207,7 +223,9 @@ async def _fetch_media_recommendations(
     page: int,
     count: int,
 ) -> tuple[bool, List[Any]]:
-    """获取影视推荐结果，并处理按媒体类型拆分的豆瓣热门来源。"""
+    """
+    获取影视推荐结果，并处理按媒体类型拆分的豆瓣热门来源。
+    """
     if source == "douban_hot":
         results: List[Any] = []
         if media_type in {"all", "movie"}:
@@ -222,7 +240,9 @@ async def _fetch_media_recommendations(
 
 
 def _project_agent_recommendations(results: List[Any], count: int) -> List[dict[str, Any]]:
-    """将推荐链结果裁剪为 Agent 稳定响应字段。"""
+    """
+    将推荐链结果裁剪为 Agent 稳定响应字段。
+    """
     projected = []
     for item in (results or [])[:count]:
         if not isinstance(item, dict):
@@ -289,7 +309,9 @@ async def agent_recommendations(
     with_cover: bool = False,
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> _SchemaResponse[Any]:
-    """按稳定来源标识返回有界影视、动画或音乐推荐结果。"""
+    """
+    按稳定来源标识返回有界影视、动画或音乐推荐结果。
+    """
     page = max(1, page)
     count = 20
     normalized_media_type = _normalize_agent_media_type(media_type)
@@ -359,7 +381,9 @@ async def music_weekly(
     count: Optional[int] = 30,
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
-    """浏览本周全站热门音乐。"""
+    """
+    浏览本周全站热门音乐。
+    """
     return await RecommendChain().async_music_weekly(page=page, count=count)
 
 
@@ -373,7 +397,9 @@ async def music_douban(
     count: Optional[int] = 30,
     _: _SchemaTokenPayload = Depends(verify_token),
 ) -> Any:
-    """浏览豆瓣音乐推荐合集。"""
+    """
+    浏览豆瓣音乐推荐合集。
+    """
     return await RecommendChain().async_music_douban(page=page, count=count)
 
 

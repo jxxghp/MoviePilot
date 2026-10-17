@@ -1,3 +1,7 @@
+"""
+提供工作流定义、运行状态和执行控制接口。
+"""
+
 from typing import Any, List, Literal, Optional
 
 from fastapi import Depends, Response
@@ -78,7 +82,9 @@ async def list_agent_workflows(
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
 ) -> List[dict[str, Any]]:
-    """按旧 Agent 过滤与字段投影返回工作流列表，避免输出完整动作上下文。"""
+    """
+    按旧 Agent 过滤与字段投影返回工作流列表，避免输出完整动作上下文。
+    """
     state_filter = None if state == "all" else state
     trigger_filter = None if trigger_type == "all" else trigger_type
     page, count = resolve_compatible_pagination(page, count)

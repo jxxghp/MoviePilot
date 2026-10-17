@@ -2438,7 +2438,7 @@
       "owner": "host-runtime",
       "path": "/api/v1/anthropic/v1/messages",
       "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
-      "summary": "Anthropic compatible messages",
+      "summary": "Anthropic 兼容消息生成",
       "tags": [
         "anthropic"
       ]
@@ -4449,7 +4449,7 @@
       "owner": "host-runtime",
       "path": "/api/v1/openai/v1/chat/completions",
       "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
-      "summary": "OpenAI compatible chat completions",
+      "summary": "OpenAI 兼容聊天补全",
       "tags": [
         "openai"
       ]
@@ -4461,7 +4461,7 @@
       "owner": "host-runtime",
       "path": "/api/v1/openai/v1/models",
       "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
-      "summary": "OpenAI compatible models",
+      "summary": "OpenAI 兼容模型列表",
       "tags": [
         "openai"
       ]
@@ -4473,7 +4473,7 @@
       "owner": "host-runtime",
       "path": "/api/v1/openai/v1/responses",
       "reason": "Authentication, protocol compatibility, conversation transport, callback, or account lifecycle endpoint; never recursively exposed as an Agent business action.",
-      "summary": "OpenAI compatible responses",
+      "summary": "OpenAI 兼容响应生成",
       "tags": [
         "openai"
       ]

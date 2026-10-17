@@ -1,3 +1,7 @@
+"""
+提供用户账号、权限和个人配置管理接口。
+"""
+
 import base64
 import re
 from typing import Annotated, Any, List
@@ -44,7 +48,9 @@ _INVALID_PASSWORD_MESSAGE = "密码须为6至50位，并包含字母、数字、
 
 
 def _prepare_password(user_info: dict[str, Any]) -> str | None:
-    """按统一密码规则处理用户写入，并移除不会持久化的明文密码字段。"""
+    """
+    按统一密码规则处理用户写入，并移除不会持久化的明文密码字段。
+    """
     password = user_info.pop("password", None)
     if not password:
         return None
@@ -141,7 +147,9 @@ async def update_current_user(
     user_in: _SchemaCurrentUserUpdate,
     current_user: Any = Depends(get_current_active_user_async),
 ) -> Any:
-    """仅更新当前用户允许自助维护的资料和通知身份设置。"""
+    """
+    仅更新当前用户允许自助维护的资料和通知身份设置。
+    """
     user_info = user_in.model_dump(exclude_unset=True)
     password_error = _prepare_password(user_info)
     if password_error:

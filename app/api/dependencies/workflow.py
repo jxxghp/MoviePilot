@@ -1,4 +1,6 @@
-"""工作流领域的请求级 command/query 依赖。"""
+"""
+工作流领域的请求级 command/query 依赖。
+"""
 
 from typing import cast
 
@@ -24,7 +26,9 @@ def get_workflow_mutation_command(
     db: Session = Depends(get_sync_session),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> WorkflowMutationCommand:
-    """组装请求级工作流写用例和提交后的调度副作用。"""
+    """
+    组装请求级工作流写用例和提交后的调度副作用。
+    """
     scheduler = get_scheduler()
     workflow_manager = get_workflow_manager()
     system_config = cast(WorkflowCachePort, runtime.workflow.system_config())
@@ -47,7 +51,9 @@ def get_workflow_definition_command(
     db: AsyncSession = Depends(get_async_session),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> WorkflowDefinitionCommand:
-    """组装工作流创建、复用和重置的异步写用例。"""
+    """
+    组装工作流创建、复用和重置的异步写用例。
+    """
     system_config = cast(WorkflowCachePort, runtime.workflow.system_config())
     return WorkflowDefinitionCommand(
         repository=runtime.workflow.repository(db),
@@ -63,5 +69,7 @@ def get_workflow_definition_command(
 def get_workflow_query_service(
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> WorkflowQueryService:
-    """返回组合根装配的工作流只读查询用例。"""
+    """
+    返回组合根装配的工作流只读查询用例。
+    """
     return runtime.workflow.query

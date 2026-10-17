@@ -1,3 +1,7 @@
+"""
+提供媒体识别、详情、图片和季集信息查询接口。
+"""
+
 from pathlib import Path
 from typing import Annotated, Any, List, Optional, Union, cast
 from uuid import UUID
@@ -81,7 +85,9 @@ _BUILTIN_MEDIA_SOURCE_MODULES = {
 
 
 def _enabled_builtin_media_sources() -> set[MediaSource]:
-    """按宿主模块启用状态返回可供前端选择的内置媒体来源。"""
+    """
+    按宿主模块启用状态返回可供前端选择的内置媒体来源。
+    """
     try:
         enabled_module_ids = {
             spec.id for spec in get_module_manager().list_enabled_specs()
@@ -97,7 +103,9 @@ def _enabled_builtin_media_sources() -> set[MediaSource]:
 
 
 def _registered_media_sources() -> list[_SchemaMediaSourceInfo]:
-    """合并内置与启用插件声明的媒体来源，并按来源标识去重。"""
+    """
+    合并内置与启用插件声明的媒体来源，并按来源标识去重。
+    """
     from app.application.plugin.runtime import get_plugin_manager
 
     enabled_builtin_sources = _enabled_builtin_media_sources()
@@ -120,7 +128,9 @@ def _registered_media_sources() -> list[_SchemaMediaSourceInfo]:
 
 
 def _split_media_source_query(value: object) -> tuple[str, ...]:
-    """展开重复或逗号分隔的来源参数，并在枚举校验前规范历史别名。"""
+    """
+    展开重复或逗号分隔的来源参数，并在枚举校验前规范历史别名。
+    """
     if value in (None, ""):
         return ()
     values = value if isinstance(value, (list, tuple)) else (value,)
@@ -138,14 +148,18 @@ MediaSourceQuery = Annotated[
 def _get_search_result_source(
     obj: Union[_SchemaMediaInfo, _SchemaMediaPerson, dict[str, Any]],
 ) -> Any:
-    """读取影视、人物或音乐搜索结果中的媒体来源标识。"""
+    """
+    读取影视、人物或音乐搜索结果中的媒体来源标识。
+    """
     if isinstance(obj, dict):
         return obj.get("media_source") or obj.get("source")
     return getattr(obj, "media_source", None) or getattr(obj, "source", None)
 
 
 def _serialize_search_result(obj: Any) -> dict[str, Any]:
-    """将域对象或 Pydantic 人物对象转换为统一搜索响应字典。"""
+    """
+    将域对象或 Pydantic 人物对象转换为统一搜索响应字典。
+    """
     if isinstance(obj, dict):
         return obj
     if hasattr(obj, "to_dict"):
@@ -159,7 +173,9 @@ def _is_valid_source_media_id(
     media_source: Optional[MediaSource],
     media_id: str,
 ) -> bool:
-    """按媒体数据源校验原生 ID，并兼容豆瓣音乐的曲目复合 ID。"""
+    """
+    按媒体数据源校验原生 ID，并兼容豆瓣音乐的曲目复合 ID。
+    """
     normalized_source, normalized_media_id = resolve_media_identity(
         media_source=media_source,
         media_id=media_id,
@@ -185,7 +201,9 @@ def _build_recognize_metainfo(
     subtitle: Optional[str] = None,
     custom_words: Optional[str] = None,
 ) -> MetaBase:
-    """构造标题识别元数据，并兼容第三方客户端传入媒体文件路径。"""
+    """
+    构造标题识别元数据，并兼容第三方客户端传入媒体文件路径。
+    """
     custom_word_list = custom_words.split("\n") if custom_words else None
     normalized_title = title.replace("\\", "/")
     title_path = Path(normalized_title)
@@ -207,7 +225,9 @@ def _build_media_seasons(
     mediainfo: Any,
     season: Optional[int] = None,
 ) -> List[_SchemaMediaSeason]:
-    """将任意数据源的统一媒体信息转换为季信息响应。"""
+    """
+    将任意数据源的统一媒体信息转换为季信息响应。
+    """
     seasons_info = []
     for item in mediainfo.season_info or []:
         season_number = item.get("season_number")
@@ -256,11 +276,12 @@ async def recognize(
 ) -> Any:
     """
     根据标题、副标题识别媒体信息
+
     :param title: 标题
     :param subtitle: 副标题
     :param custom_words: 临时识别词（每行一条规则），传入时仅在本次识别中生效，不会保存到系统配置
     :param media_source: 请求级识别数据源
-    :param _:
+    :param _: 已校验的访问令牌载荷
     """
     # 识别媒体信息，传入临时识别词时优先于系统配置的识别词生效
     metainfo = _build_recognize_metainfo(title, subtitle, custom_words)
@@ -383,7 +404,8 @@ async def search(
     elif type == "collection":
         collections = await media_chain.async_search_collections(name=title, media_source=source_selection)
         result = [collection.to_dict() for collection in collections] if collections else []
-    else:  # person
+    # 人物信息分支
+    else:
         persons = await media_chain.async_search_persons(name=title, media_source=source_selection)
         result = [_serialize_search_result(person) for person in persons or []]
 
@@ -407,7 +429,9 @@ async def search(
 def source(
     _: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageParam = None, count: CompatibleCountParam = None
 ) -> list[_SchemaMediaSourceInfo]:
-    """返回内置及启用插件注册的媒体数据源，供前端统一构造来源选项。"""
+    """
+    返回内置及启用插件注册的媒体数据源，供前端统一构造来源选项。
+    """
     return _registered_media_sources()
 
 
@@ -530,7 +554,9 @@ def scrape(
     ] = None,
     _: object = Depends(get_current_active_manage_user),
 ) -> Any:
-    """按请求级媒体身份、剧集组和音乐实体设置刮削单项媒体；会覆盖目标目录的图片和 NFO，与文件管理一样要求管理权限。"""
+    """
+    按请求级媒体身份、剧集组和音乐实体设置刮削单项媒体；会覆盖目标目录的图片和 NFO，与文件管理一样要求管理权限。
+    """
     return _scrape_impl(
         fileitem,
         storage,

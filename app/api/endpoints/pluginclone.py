@@ -1,4 +1,5 @@
-"""插件分身的创建、恢复与可恢复清单接口。
+"""
+插件分身的创建、恢复与可恢复清单接口。
 
 这些路由并入 ``plugin`` 路由器，路径与单文件时期完全一致；单独成篇只是让分身创建与
 插件目录、市场、静态资源等关注点各自分开，与 ``pluginfolder``/``pluginloglevel``/
@@ -103,6 +104,7 @@ def clone_plugin(
                 register_plugin(message)
                 # 将分身插件添加到原插件所在的文件夹中
                 add_clone_to_plugin_folder(plugin_id, message)
+            # 插件注册失败需要统一清理并保留原异常，避免仅捕获部分异常留下半成品。
             except Exception as register_error:  # noqa: BLE001
                 logger.error(f"插件分身 {message} 已创建，注册宿主能力失败：{register_error}")
                 return _SchemaResponse(

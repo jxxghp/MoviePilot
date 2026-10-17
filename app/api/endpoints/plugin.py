@@ -1,3 +1,7 @@
+"""
+提供插件目录、配置、安装和运行状态管理接口。
+"""
+
 import asyncio
 import mimetypes
 from typing import Annotated, Any, Dict, List, Optional
@@ -92,7 +96,9 @@ _plugin_release_refresh_tasks: set[asyncio.Task] = set()
 
 
 def _plugin_source_identity_schema(identity: Any) -> _SchemaPluginSourceIdentity:
-    """把持久化身份映射为公共来源确认 DTO。"""
+    """
+    把持久化身份映射为公共来源确认 DTO。
+    """
     return _SchemaPluginSourceIdentity(
         plugin_id=identity.plugin_id,
         trusted_source_type=identity.trusted_source_type.value,
@@ -126,7 +132,9 @@ def _schedule_plugin_release_refresh(plugin_id: str, repo_url: str, task_registr
     _plugin_release_refresh_tasks.add(task)
 
     def _discard_task(completed_task: asyncio.Task) -> None:
-        """从受管集合移除已经结束的插件更新任务。"""
+        """
+        从受管集合移除已经结束的插件更新任务。
+        """
         _plugin_release_refresh_tasks.discard(completed_task)
 
     task.add_done_callback(_discard_task)
@@ -199,7 +207,9 @@ async def all_plugins(
     count: CompatibleCountParam = None,
     response: Response = None,
 ) -> List[_SchemaPlugin]:
-    """查询插件清单；未指定分页或限量时返回完整清单。"""
+    """
+    查询插件清单；未指定分页或限量时返回完整清单。
+    """
     plugins = await get_plugin_catalog_query().query(state=state or "all", force=force)
     if query:
         plugins = [item["plugin"] for item in search_plugin_candidates(query, plugins)]
@@ -232,7 +242,9 @@ async def installed(
 async def runtime_status(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> _SchemaPluginRuntimeSummary:
-    """返回插件页轮询所需的轻量状态摘要。"""
+    """
+    返回插件页轮询所需的轻量状态摘要。
+    """
     plugin_manager = get_plugin_manager()
     statuses = plugin_manager.get_plugin_runtime_statuses()
     installed_plugin_ids = {
@@ -395,7 +407,9 @@ async def rate_plugin(
 
 @router.post("/reload/{plugin_id}", summary="重新加载插件", response_model=_SchemaResponse[None])
 def reload_plugin(plugin_id: str, _: ApiPrincipal = Depends(get_current_active_superuser)) -> Any:
-    """重新加载插件并刷新其命令、定时任务和动态 API 注册。"""
+    """
+    重新加载插件并刷新其命令、定时任务和动态 API 注册。
+    """
     try:
         runtime_status = reload_plugin_runtime(plugin_id)
     except PluginMutationRejectedError as error:
@@ -454,7 +468,9 @@ async def get_plugin_source_identity(
     plugin_id: str,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> Any:
-    """返回显式换源确认所需的当前可信来源和 revision。"""
+    """
+    返回显式换源确认所需的当前可信来源和 revision。
+    """
     identity = await get_plugin_persistence().get_identity(plugin_id)
     if identity is None:
         return _SchemaResponse(success=False, message="未找到该插件的仓库绑定信息")
@@ -474,7 +490,9 @@ async def get_plugin_source_options(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     force: bool = False,
 ) -> Any:
-    """返回与真实安装相同库存中的脱敏候选和当前准入状态。"""
+    """
+    返回与真实安装相同库存中的脱敏候选和当前准入状态。
+    """
     inspection = await get_plugin_install_service().inspect_source(
         plugin_id=plugin_id,
         force=force,
@@ -508,7 +526,9 @@ async def install_plugin_from_source(
     request: _SchemaPluginSourceInstallRequest,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> Any:
-    """安装管理员明确选择的初始在线来源，不承担已绑定插件换源。"""
+    """
+    安装管理员明确选择的初始在线来源，不承担已绑定插件换源。
+    """
     result = await get_plugin_install_service().install(
         plugin_id=plugin_id,
         repo_url=request.repo_url,
@@ -537,7 +557,9 @@ async def change_plugin_source(
     request: _SchemaPluginSourceChangeRequest,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> Any:
-    """按精确身份 revision 安装明确选择的新在线来源。"""
+    """
+    按精确身份 revision 安装明确选择的新在线来源。
+    """
     result = await get_plugin_install_service().install(
         plugin_id=plugin_id,
         repo_url=request.repo_url,
@@ -612,7 +634,7 @@ def plugin_form(plugin_id: str, _: ApiPrincipal = Depends(get_current_active_sup
     try:
         conf, model = plugin_instance.get_form()
         stored_config = plugin_manager.get_plugin_config(plugin_id)
-        # Merge stored config with defaults so all keys exist for v-show evaluation
+        # 合并默认值和已保存配置，确保 v-show 表达式引用的配置键存在。
         merged_model = {**model, **(stored_config or {})}
         return {
             "render_mode": render_mode,
@@ -761,15 +783,19 @@ async def plugin_static_file(
     # 强制修正 .mjs 和 .js 的 MIME 类型
     if suffix in [".js", ".mjs"]:
         response_type = "application/javascript"
-    elif suffix == ".css" and not response_type:  # 如果 guess_type 没猜对 css，也修正
+    # 如果 guess_type 没猜对 css，也修正
+    elif suffix == ".css" and not response_type:
         response_type = "text/css"
-    elif not response_type:  # 对于其他猜不出的类型
+    # 对于其他猜不出的类型
+    elif not response_type:
         response_type = "application/octet-stream"
 
     try:
         # 异步生成器函数，用于流式读取文件
         async def file_generator():
-            """分块异步读取插件文件供下载响应使用。"""
+            """
+            分块异步读取插件文件供下载响应使用。
+            """
             async with aiofiles.open(plugin_file_path, mode="rb") as file:
                 # 8KB 块大小
                 while chunk := await file.read(8192):
@@ -800,7 +826,9 @@ async def plugin_capabilities(
     plugin_id: Optional[str] = None,
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> _SchemaResponse[Any]:
-    """查询运行中插件注册的安全命令、动作和定时服务元数据。"""
+    """
+    查询运行中插件注册的安全命令、动作和定时服务元数据。
+    """
     manager = get_plugin_manager()
     commands = [
         _SchemaPluginRuntimeCommandCapability(
@@ -862,7 +890,9 @@ async def plugin_data(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> _SchemaResponse[Any]:
-    """读取插件单键或全部持久化数据，并对大结果进行裁剪。"""
+    """
+    读取插件单键或全部持久化数据，并对大结果进行裁剪。
+    """
     try:
         data = await PluginDataQueryService(
             runtime.agent.plugin_data,
@@ -883,7 +913,9 @@ async def plugin_data_summary(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> _SchemaResponse[Any]:
-    """读取不包含插件持久化原值的键、类型和大小摘要。"""
+    """
+    读取不包含插件持久化原值的键、类型和大小摘要。
+    """
     try:
         data = await PluginDataSummaryService(
             runtime.agent.plugin_data,

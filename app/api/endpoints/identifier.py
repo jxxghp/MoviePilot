@@ -1,4 +1,6 @@
-"""自定义识别词结构化读写端点。"""
+"""
+自定义识别词结构化读写端点。
+"""
 
 from typing import Any
 
@@ -33,7 +35,9 @@ router = ResponseAPIRouter()
 async def query_custom_identifiers(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
 ) -> Response[Any]:
-    """返回完整的自定义识别词列表。"""
+    """
+    返回完整的自定义识别词列表。
+    """
     identifiers = [
         item
         for item in (get_configured_system_config().get(SystemConfigKey.CustomIdentifiers) or [])
@@ -55,7 +59,9 @@ async def update_custom_identifiers(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> Response[Any]:
-    """完整替换自定义识别词，并拒绝基于过期快照的覆盖。"""
+    """
+    完整替换自定义识别词，并拒绝基于过期快照的覆盖。
+    """
     identifiers = list(payload.identifiers)
     try:
         data = await SystemSettingsService(
