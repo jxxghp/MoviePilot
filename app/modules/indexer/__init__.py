@@ -11,6 +11,7 @@ from urllib.parse import urljoin
 from app.application.site.health import get_configured_site_health_service
 from app.application.site.observation import report_site_search_outcome, report_site_search_page
 from app.application.site.query import get_configured_site_query_service
+
 # 站点目录由外部资源在运行时提供，静态检查环境不包含其实体模块。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.domain import site as site_rules

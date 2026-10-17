@@ -51,6 +51,7 @@ class ParentWatch:
         """
         # 仅 Windows 分支需要进程句柄类型，延迟导入以保持其他平台独立。
         import ctypes  # pylint: disable=import-outside-toplevel
+
         # 与 ctypes 一同按平台加载句柄参数类型。
         from ctypes import wintypes  # pylint: disable=import-outside-toplevel
 

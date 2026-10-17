@@ -4,7 +4,8 @@
 
 from typing import Any, Generic, Optional, TypeVar
 
-from pydantic import BaseModel, ConfigDict, field_validator, Field as _Field
+from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import Field as _Field
 
 from app.runtime.localization import LocaleHelper
 

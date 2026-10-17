@@ -5,7 +5,8 @@
 from datetime import datetime
 from typing import List
 
-from pydantic import BaseModel, Field as _Field
+from pydantic import BaseModel
+from pydantic import Field as _Field
 
 
 class RequestMetrics(BaseModel):

@@ -11,6 +11,7 @@ from typing import Annotated, Any, Optional
 from urllib.parse import urlsplit
 
 import anyio
+
 # 导入时注册 AVIF 解码器，因此保留未直接引用的依赖。
 import pillow_avif  # noqa: F401  # pylint: disable=unused-import
 from fastapi import Body, Depends, Header, HTTPException, Request, Response
@@ -52,6 +53,7 @@ from app.application.scheduling import get_scheduler
 from app.application.security.image import normalize_image_domain, site_image_domains
 from app.application.security.url import SecurityUtils
 from app.application.site.query import get_configured_site_query_service
+
 # 站点目录由外部资源加载，静态检查无法解析其动态导出。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.system import LogFileData, LogNotFoundError

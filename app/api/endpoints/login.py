@@ -24,6 +24,7 @@ from app.application.image import WallpaperHelper
 from app.application.security.throttle import build_login_throttle_key, get_login_throttle
 from app.application.security.token import PasswordTooLongError, create_access_token, get_password_hash
 from app.application.security.user import UserNameConflictError, UserService
+
 # 站点目录由外部资源加载，静态检查无法解析其动态导出。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.chain.user import MfaRequired, UserChain

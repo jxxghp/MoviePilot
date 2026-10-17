@@ -11,10 +11,13 @@ from typing import Any, Callable, Dict, List, Optional, Self, Set, Union
 
 # 兼容第三方库缺失的类型元数据，保留现有导入检查豁免。
 import yaml  # type: ignore[import-untyped]
+
 # 兼容第三方库缺失的类型元数据，保留现有导入检查豁免。
 from yaml.constructor import ConstructorError  # type: ignore[import-untyped]
+
 # 兼容第三方库缺失的类型元数据，保留现有导入检查豁免。
 from yaml.events import AliasEvent  # type: ignore[import-untyped]
+
 # 兼容第三方库缺失的类型元数据，保留现有导入检查豁免。
 from yaml.nodes import MappingNode  # type: ignore[import-untyped]
 

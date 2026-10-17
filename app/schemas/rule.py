@@ -4,7 +4,8 @@
 
 from typing import Optional
 
-from pydantic import BaseModel, Field as _Field
+from pydantic import BaseModel
+from pydantic import Field as _Field
 
 
 # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。

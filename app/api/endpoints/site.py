@@ -37,6 +37,7 @@ from app.application.scheduling import get_scheduler
 from app.application.site.auth import normalize_site_auth_params
 from app.application.site.mutation import SiteMutationCommand
 from app.application.site.query import SiteQueryService
+
 # 站点目录由外部资源加载，静态检查无法解析其动态导出。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.chain.site import SiteChain

@@ -18,6 +18,7 @@ from app.application.directory import (
     validate_download_save_path,
 )
 from app.application.download.admission import SubscriptionDownloadGovernance
+
 # 站点资源包在启动时加载，静态检查环境可能无法解析其实现。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.torrent.download import TorrentHelper

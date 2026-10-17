@@ -10,6 +10,7 @@ from lxml import etree
 
 from app.adapters.network.http import RequestUtils
 from app.application.site.query import get_configured_site_query_service
+
 # 站点资源在安装时提供，静态源码树不包含运行时生成的目录。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.domain.context import Context
