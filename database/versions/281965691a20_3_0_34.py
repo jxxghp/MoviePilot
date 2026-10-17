@@ -1,8 +1,9 @@
-"""3.0.34 插件实例描述符迁入独立表。
+"""
+3.0.34 插件实例描述符迁入独立表。
 
-Revision ID: 281965691a20
-Revises: b2d4f6a8c1e3
-Create Date: 2026-09-02
+版本标识： 281965691a20
+前置版本： b2d4f6a8c1e3
+创建时间： 2026-09-02
 """
 
 from datetime import datetime, timezone
@@ -20,7 +21,9 @@ _LEGACY_KEY = "PluginInstances"
 
 
 def _id_column(dialect_name: str) -> sa.Column:
-    """保持 PostgreSQL Identity 与 SQLite 整数主键的当前模型语义一致。"""
+    """
+    保持 PostgreSQL Identity 与 SQLite 整数主键的当前模型语义一致。
+    """
     if dialect_name == "postgresql":
         return sa.Column(
             "id",
@@ -32,7 +35,8 @@ def _id_column(dialect_name: str) -> sa.Column:
 
 
 def _legacy_entries(connection: sa.engine.Connection) -> list[dict]:
-    """读取旧 systemconfig 单键里的实例描述，兼容历史字典与列表两种载荷形态。
+    """
+    读取旧 systemconfig 单键里的实例描述，兼容历史字典与列表两种载荷形态。
 
     :param connection: 当前迁移事务连接
     :return: 已补全 ``instance_id`` 的实例字典列表，损坏项直接跳过
@@ -65,7 +69,8 @@ def _legacy_entries(connection: sa.engine.Connection) -> list[dict]:
 
 
 def upgrade() -> None:
-    """建立插件实例描述符表，并把旧 systemconfig 单键的现有内容逐条搬入。
+    """
+    建立插件实例描述符表，并把旧 systemconfig 单键的现有内容逐条搬入。
 
     实例描述符原本挤在 ``PluginInstances`` 这一个 JSON 单键里：改任何一个分身都要
     读出整份载荷再整份写回，条目数随分身数量增长，而表里没有任何一列说得出某一条
@@ -136,7 +141,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """删除插件实例描述符表，不触碰原 systemconfig 单键。"""
+    """
+    删除插件实例描述符表，不触碰原 systemconfig 单键。
+    """
     inspector = sa.inspect(op.get_bind())
     if _TABLE not in inspector.get_table_names():
         return

@@ -1,8 +1,9 @@
-"""3.0.20 增加订阅搜索站点预算与批次启动抖动。
+"""
+3.0.20 增加订阅搜索站点预算与批次启动抖动。
 
-Revision ID: d2a7c5e9f1b4
-Revises: c1f4a8d2e6b9
-Create Date: 2026-09-01
+版本标识： d2a7c5e9f1b4
+前置版本： c1f4a8d2e6b9
+创建时间： 2026-09-01
 """
 
 # Alembic 的 op 是运行期代理，静态分析无法看到实际操作方法。
@@ -21,12 +22,16 @@ _BUDGET_TABLE = "subscriptionsitebudget"
 
 
 def _table_names() -> set[str]:
-    """返回当前数据库表名集合。"""
+    """
+    返回当前数据库表名集合。
+    """
     return set(sa.inspect(op.get_bind()).get_table_names())
 
 
 def _column_names(table_name: str) -> set[str]:
-    """返回指定表的当前字段名集合。"""
+    """
+    返回指定表的当前字段名集合。
+    """
     return {
         column["name"]
         for column in sa.inspect(op.get_bind()).get_columns(table_name)
@@ -34,7 +39,9 @@ def _column_names(table_name: str) -> set[str]:
 
 
 def upgrade() -> None:
-    """创建单站点预算，并让搜索任务支持持久启动抖动。"""
+    """
+    创建单站点预算，并让搜索任务支持持久启动抖动。
+    """
     tables = _table_names()
     if _TASK_TABLE in tables and "available_at" not in _column_names(_TASK_TABLE):
         with op.batch_alter_table(_TASK_TABLE) as batch_op:
@@ -81,7 +88,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """移除站点预算与任务启动抖动。"""
+    """
+    移除站点预算与任务启动抖动。
+    """
     tables = _table_names()
     if _BUDGET_TABLE in tables:
         op.drop_table(_BUDGET_TABLE)

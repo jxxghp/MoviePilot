@@ -1,8 +1,9 @@
-"""3.0.9 add installed plugin source identities.
+"""
+3.0.9 增加已安装插件的来源身份表。
 
-Revision ID: d2e4f6a8b0c1
-Revises: c7d9a1e4f2b6
-Create Date: 2026-08-25
+版本标识： d2e4f6a8b0c1
+前置版本： c7d9a1e4f2b6
+创建时间： 2026-08-25
 """
 
 from alembic import op
@@ -16,7 +17,9 @@ depends_on = None
 
 
 def _id_column(dialect_name: str) -> sa.Column:
-    """保持 PostgreSQL Identity 与 SQLite 整数主键的当前模型语义一致。"""
+    """
+    保持 PostgreSQL Identity 与 SQLite 整数主键的当前模型语义一致。
+    """
     if dialect_name == "postgresql":
         return sa.Column(
             "id",
@@ -28,7 +31,9 @@ def _id_column(dialect_name: str) -> sa.Column:
 
 
 def upgrade() -> None:
-    """创建一插件一行、支持 revision 条件写的来源身份表。"""
+    """
+    创建一插件一行、支持版本条件写入的来源身份表。
+    """
     if "pluginidentity" in sa.inspect(op.get_bind()).get_table_names():
         return
     op.create_table(
@@ -70,7 +75,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """删除尚未启用生产写入的插件来源身份表。"""
+    """
+    删除插件来源身份表，表中已有来源绑定记录会随之移除。
+    """
     if "pluginidentity" not in sa.inspect(op.get_bind()).get_table_names():
         return
     op.drop_table("pluginidentity")

@@ -1,8 +1,9 @@
-"""3.0.18 强制用户身份唯一并建立用户从属数据级联约束。
+"""
+3.0.18 强制用户身份唯一并建立用户从属数据级联约束。
 
-Revision ID: a9d4f2c7e6b1
-Revises: f6d8b0c2e4a7
-Create Date: 2026-08-28
+版本标识： a9d4f2c7e6b1
+前置版本： f6d8b0c2e4a7
+创建时间： 2026-08-28
 """
 
 from collections import defaultdict
@@ -25,6 +26,7 @@ _USER_CONFIG_FOREIGN_KEY = "fk_userconfig_username_user"
 _USER_CONFIG_UNIQUE = "uq_userconfig_username_key"
 _PASSKEY_TABLE = "passkey"
 _PASSKEY_FOREIGN_KEY = "fk_passkey_user_id_user"
+# 为 SQLite 批量重建中的匿名约束生成稳定名称，便于精确移除与重建。
 _FOREIGN_KEY_NAMING_CONVENTION = {
     "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
     "uq": "uq_%(table_name)s_%(column_0_name)s_%(column_1_name)s",
@@ -32,7 +34,9 @@ _FOREIGN_KEY_NAMING_CONVENTION = {
 
 
 def _column_names() -> set[str]:
-    """返回用户表字段；表不存在时允许迁移空数据库。"""
+    """
+    返回用户表字段；表不存在时允许迁移空数据库。
+    """
     inspector = sa.inspect(op.get_bind())
     if _TABLE_NAME not in inspector.get_table_names():
         return set()
@@ -40,12 +44,16 @@ def _column_names() -> set[str]:
 
 
 def _index_definitions() -> dict[str, dict]:
-    """返回用户表按名称索引的当前定义。"""
+    """
+    返回用户表按名称索引的当前定义。
+    """
     return {index["name"]: index for index in sa.inspect(op.get_bind()).get_indexes(_TABLE_NAME) if index.get("name")}
 
 
 def _constraint_definitions() -> dict[str, dict]:
-    """返回用户表按名称索引的唯一约束定义。"""
+    """
+    返回用户表按名称索引的唯一约束定义。
+    """
     return {
         constraint["name"]: constraint
         for constraint in sa.inspect(op.get_bind()).get_unique_constraints(_TABLE_NAME)
@@ -54,7 +62,9 @@ def _constraint_definitions() -> dict[str, dict]:
 
 
 def _table_columns(table_name: str) -> dict[str, dict]:
-    """返回指定表的字段定义；表不存在时返回空映射。"""
+    """
+    返回指定表的字段定义；表不存在时返回空映射。
+    """
     inspector = sa.inspect(op.get_bind())
     if table_name not in inspector.get_table_names():
         return {}
@@ -62,7 +72,9 @@ def _table_columns(table_name: str) -> dict[str, dict]:
 
 
 def _foreign_keys(table_name: str) -> list[dict]:
-    """返回指定表的外键定义；表不存在时返回空列表。"""
+    """
+    返回指定表的外键定义；表不存在时返回空列表。
+    """
     inspector = sa.inspect(op.get_bind())
     if table_name not in inspector.get_table_names():
         return []
@@ -70,7 +82,9 @@ def _foreign_keys(table_name: str) -> list[dict]:
 
 
 def _unique_constraints(table_name: str) -> list[dict]:
-    """返回指定表的唯一约束；表不存在时返回空列表。"""
+    """
+    返回指定表的唯一约束；表不存在时返回空列表。
+    """
     inspector = sa.inspect(op.get_bind())
     if table_name not in inspector.get_table_names():
         return []
@@ -85,7 +99,9 @@ def _foreign_key_matches(
     ondelete: Optional[str],
     onupdate: Optional[str],
 ) -> bool:
-    """判断外键列、目标列与级联动作是否完全符合规范。"""
+    """
+    判断外键列、目标列与级联动作是否完全符合规范。
+    """
     options = foreign_key.get("options") or {}
     actual_ondelete = str(options.get("ondelete") or "").upper() or None
     actual_onupdate = str(options.get("onupdate") or "").upper() or None
@@ -105,7 +121,9 @@ def _delete_orphans(
     referred_column: str,
     delete_nulls: bool,
 ) -> None:
-    """建立约束前删除无法归属到现有用户的历史从属行。"""
+    """
+    建立约束前删除无法归属到现有用户的历史从属行。
+    """
     columns = _table_columns(table_name)
     if column not in columns:
         return
@@ -119,7 +137,9 @@ def _delete_orphans(
 
 
 def _normalize_user_configs() -> None:
-    """删除空键和重复配置，仅保留每个用户键最早的历史行。"""
+    """
+    删除空键和重复配置，仅保留每个用户键最早的历史行。
+    """
     columns = _table_columns(_USER_CONFIG_TABLE)
     if not {"id", "username", "key"}.issubset(columns):
         return
@@ -145,7 +165,9 @@ def _normalize_user_configs() -> None:
 
 
 def _repair_user_config_unique() -> None:
-    """把用户配置键约束修复为命名的非空双列唯一约束。"""
+    """
+    把用户配置键约束修复为命名的非空双列唯一约束。
+    """
     columns = _table_columns(_USER_CONFIG_TABLE)
     if "key" not in columns:
         return
@@ -195,7 +217,9 @@ def _repair_foreign_key(
     ondelete: Optional[str],
     onupdate: Optional[str] = None,
 ) -> None:
-    """跨 SQLite/PostgreSQL 精确修复一条用户从属外键。"""
+    """
+    跨 SQLite/PostgreSQL 精确修复一条用户从属外键。
+    """
     columns = _table_columns(table_name)
     if column not in columns:
         return
@@ -241,7 +265,9 @@ def _repair_foreign_key(
 
 
 def _drop_user_config_foreign_key() -> None:
-    """降级时移除用户名外键并恢复历史可空字段。"""
+    """
+    降级时移除用户名外键并恢复历史可空字段。
+    """
     columns = _table_columns(_USER_CONFIG_TABLE)
     if "username" not in columns:
         return
@@ -284,7 +310,9 @@ def _replacement_name(
     user_id: int,
     used_names: set[str],
 ) -> str:
-    """生成可重放且不覆盖任何现有用户的重复用户名。"""
+    """
+    生成可重放且不覆盖任何现有用户的重复用户名。
+    """
     base_name = f"{original_name}__duplicate_{user_id}"
     candidate = base_name
     collision = 1
@@ -295,7 +323,8 @@ def _replacement_name(
 
 
 def _normalize_duplicate_names() -> None:
-    """保留同名最早用户，并就地停用、重命名其余用户。
+    """
+    保留同名最早用户，并就地停用、重命名其余用户。
 
     迁移不删除或合并用户行，因此按 ``user.id`` 建立的 PassKey 等外键
     仍指向原记录。没有外键语义的历史用户名快照也不做猜测性改写。
@@ -330,7 +359,9 @@ def _normalize_duplicate_names() -> None:
 
 
 def _repair_unique_index() -> None:
-    """把用户名约束修复为精确的单列唯一索引。"""
+    """
+    把用户名约束修复为精确的单列唯一索引。
+    """
     constraints = _constraint_definitions()
     if _UNIQUE_INDEX in constraints:
         with op.batch_alter_table(_TABLE_NAME) as batch_op:
@@ -357,7 +388,9 @@ def _repair_unique_index() -> None:
 
 
 def upgrade() -> None:
-    """归一用户身份并约束 UserConfig、PassKey 必须归属现有用户。"""
+    """
+    归一用户身份并约束 UserConfig、PassKey 必须归属现有用户。
+    """
     columns = _column_names()
     if not columns:
         return
@@ -401,7 +434,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """撤销用户名唯一索引，但保留已停用和改名的历史用户。
+    """
+    撤销用户名唯一索引，但保留已停用和改名的历史用户。
 
     自动恢复原重名会覆盖升级后的合法改名，也无法判定共享用户名快照的
     归属，因此降级只恢复旧版非唯一查询索引。

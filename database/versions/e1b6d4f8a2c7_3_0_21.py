@@ -1,8 +1,9 @@
-"""3.0.21 增加订阅下载幂等与待对账提交账本。
+"""
+3.0.21 增加订阅下载幂等与待对账提交账本。
 
-Revision ID: e1b6d4f8a2c7
-Revises: d2a7c5e9f1b4
-Create Date: 2026-09-01
+版本标识： e1b6d4f8a2c7
+前置版本： d2a7c5e9f1b4
+创建时间： 2026-09-01
 """
 
 # Alembic 的 op 是运行期代理，静态分析无法看到实际操作方法。
@@ -20,12 +21,16 @@ _TABLE = "subscriptiondownloadsubmission"
 
 
 def _table_names() -> set[str]:
-    """返回当前数据库表名集合。"""
+    """
+    返回当前数据库表名集合。
+    """
     return set(sa.inspect(op.get_bind()).get_table_names())
 
 
 def upgrade() -> None:
-    """创建向后兼容的独立订阅下载提交账本。"""
+    """
+    创建向后兼容的独立订阅下载提交账本。
+    """
     if _TABLE in _table_names():
         return
     op.create_table(
@@ -67,6 +72,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """移除订阅下载提交账本，不改动旧下载历史。"""
+    """
+    移除订阅下载提交账本，不改动旧下载历史。
+    """
     if _TABLE in _table_names():
         op.drop_table(_TABLE)

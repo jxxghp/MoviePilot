@@ -1,4 +1,6 @@
-"""订阅业务活动与完成历史的稳定关联标识。"""
+"""
+订阅业务活动与完成历史的稳定关联标识。
+"""
 
 from uuid import uuid4
 
@@ -12,7 +14,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    """为已有活动订阅分配身份，只从升级后的真实业务开始记录。"""
+    """
+    为已有活动订阅分配身份，只从升级后的真实业务开始记录。
+    """
     bind = op.get_bind()
     inspector = sa.inspect(bind)
     for table in ("subscribe", "subscribehistory"):
@@ -37,7 +41,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """移除活动表与身份列，订阅原有业务数据保持可用。"""
+    """
+    移除活动表与身份列，订阅原有业务数据保持可用。
+    """
     inspector = sa.inspect(op.get_bind())
     if "subscribeactivity" in inspector.get_table_names():
         op.drop_table("subscribeactivity")

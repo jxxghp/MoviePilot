@@ -1,8 +1,9 @@
-"""3.0.25 移除订阅下载提交持久账本。
+"""
+3.0.25 移除订阅下载提交持久账本。
 
-Revision ID: c8f2e6a1d4b9
-Revises: b6c1d9e4a7f2
-Create Date: 2026-09-03
+版本标识： c8f2e6a1d4b9
+前置版本： b6c1d9e4a7f2
+创建时间： 2026-09-03
 """
 
 # Alembic 的 op 是运行期代理，静态分析无法看到实际操作方法。
@@ -20,18 +21,24 @@ _TABLE = "subscriptiondownloadsubmission"
 
 
 def _table_names() -> set[str]:
-    """返回当前数据库表名集合。"""
+    """
+    返回当前数据库表名集合。
+    """
     return set(sa.inspect(op.get_bind()).get_table_names())
 
 
 def upgrade() -> None:
-    """删除不再参与订阅执行的下载提交账本。"""
+    """
+    删除不再参与订阅执行的下载提交账本。
+    """
     if _TABLE in _table_names():
         op.drop_table(_TABLE)
 
 
 def downgrade() -> None:
-    """恢复 3.0.24 使用的下载提交账本结构。"""
+    """
+    恢复 3.0.24 使用的下载提交账本结构。
+    """
     if _TABLE in _table_names():
         return
     op.create_table(

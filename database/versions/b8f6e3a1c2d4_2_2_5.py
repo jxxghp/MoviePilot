@@ -1,15 +1,15 @@
-"""2.2.5
-mediaserveritem 改为按 server + item_id 唯一
+"""
+2.2.5 mediaserveritem 改为按 server + item_id 唯一
 
-Revision ID: b8f6e3a1c2d4
-Revises: 93f8cb6a4d1e
-Create Date: 2026-05-09
+版本标识： b8f6e3a1c2d4
+前置版本： 93f8cb6a4d1e
+创建时间： 2026-05-09
 """
 
 from alembic import op
 import sqlalchemy as sa
 
-# revision identifiers, used by Alembic.
+# Alembic 使用以下标识连接迁移版本链。
 revision = "b8f6e3a1c2d4"
 down_revision = "93f8cb6a4d1e"
 branch_labels = None
@@ -28,10 +28,16 @@ mediaserveritem = sa.table(
 
 
 def _table_exists(inspector: sa.Inspector) -> bool:
+    """
+    检查本次迁移的目标表是否存在。
+    """
     return TABLE_NAME in inspector.get_table_names()
 
 
 def _has_index_signature(inspector: sa.Inspector, unique: bool) -> bool:
+    """
+    按字段顺序和唯一性确认是否已存在等价索引。
+    """
     target_columns = tuple(INDEX_COLUMNS)
     for index in inspector.get_indexes(TABLE_NAME):
         if tuple(index.get("column_names") or []) == target_columns and bool(index.get("unique")) == unique:
@@ -40,6 +46,9 @@ def _has_index_signature(inspector: sa.Inspector, unique: bool) -> bool:
 
 
 def _drop_index_if_exists(inspector: sa.Inspector) -> None:
+    """
+    仅删除本次迁移命名的索引，不改动其他索引。
+    """
     for index in inspector.get_indexes(TABLE_NAME):
         if index.get("name") == INDEX_NAME:
             op.drop_index(INDEX_NAME, table_name=TABLE_NAME)
@@ -47,6 +56,9 @@ def _drop_index_if_exists(inspector: sa.Inspector) -> None:
 
 
 def _deduplicate_rows() -> None:
+    """
+    对非空服务器与条目标识分组保留最大 ID，删除其余重复记录。
+    """
     bind = op.get_bind()
     keep_ids = (
         sa.select(sa.func.max(mediaserveritem.c.id))
@@ -68,6 +80,9 @@ def _deduplicate_rows() -> None:
 
 
 def upgrade() -> None:
+    """
+    清理媒体库重复条目，并建立服务器与条目标识的联合唯一索引。
+    """
     inspector = sa.inspect(op.get_bind())
     if not _table_exists(inspector):
         return
@@ -80,6 +95,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """
+    删除本版本命名的媒体库联合唯一索引，不恢复已清理的重复行。
+    """
     inspector = sa.inspect(op.get_bind())
     if not _table_exists(inspector):
         return

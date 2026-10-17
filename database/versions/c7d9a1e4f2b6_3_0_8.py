@@ -1,8 +1,9 @@
-"""3.0.8 add durable side-effect outbox.
+"""
+3.0.8 增加业务提交后副作用的持久投递表。
 
-Revision ID: c7d9a1e4f2b6
-Revises: 73370ce9bab7
-Create Date: 2026-08-21
+版本标识： c7d9a1e4f2b6
+前置版本： 73370ce9bab7
+创建时间： 2026-08-21
 """
 
 from alembic import op
@@ -16,8 +17,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    """创建可认领、有限重试并进入 dead letter 的 outbox 表。"""
-    # fresh 安装先由 metadata.create_all 建当前结构，再补跑 Alembic 链；此时只需推进 revision。
+    """
+    创建可认领、有限重试并进入 死信 的 outbox 表。
+    """
+    # 全新安装先由 metadata.create_all 建当前结构，再补跑 Alembic 链；此时只需推进版本标记。
     if "outboxmessage" in sa.inspect(op.get_bind()).get_table_names():
         return
     op.create_table(
@@ -46,7 +49,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """删除 outbox；未投递副作用会不可逆丢失，降级前必须确认队列为空。"""
+    """
+    删除 outbox；未投递副作用会不可逆丢失，降级前必须确认队列为空。
+    """
     if "outboxmessage" not in sa.inspect(op.get_bind()).get_table_names():
         return
     op.drop_index("ix_outboxmessage_claim", table_name="outboxmessage")

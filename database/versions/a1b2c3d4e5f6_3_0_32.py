@@ -1,4 +1,6 @@
-"""3.0.32 增加整理失败的阶段、恢复动作、重试和下载器清理状态。"""
+"""
+3.0.32 增加整理失败的阶段、恢复动作、重试和下载器清理状态。
+"""
 
 import sqlalchemy as sa
 from alembic import op
@@ -10,7 +12,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    """兼容已有数据库，补充失败闭环的可见状态字段。"""
+    """
+    兼容已有数据库，补充失败闭环的可见状态字段。
+    """
     inspector = sa.inspect(op.get_bind())
     columns = {column["name"] for column in inspector.get_columns("transferhistory")}
     additions = (
@@ -38,7 +42,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """移除失败闭环字段，保留原有整理历史数据。"""
+    """
+    移除失败闭环字段，保留原有整理历史数据。
+    """
     inspector = sa.inspect(op.get_bind())
     columns = {column["name"] for column in inspector.get_columns("transferhistory")}
     for column_name in (

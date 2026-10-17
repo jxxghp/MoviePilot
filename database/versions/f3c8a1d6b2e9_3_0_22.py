@@ -1,8 +1,9 @@
-"""3.0.22 增加订阅搜索业务阶段与当前站点。
+"""
+3.0.22 增加订阅搜索业务阶段与当前站点。
 
-Revision ID: f3c8a1d6b2e9
-Revises: e1b6d4f8a2c7
-Create Date: 2026-09-01
+版本标识： f3c8a1d6b2e9
+前置版本： e1b6d4f8a2c7
+创建时间： 2026-09-01
 """
 
 # Alembic 的 op 是运行期代理，静态分析无法看到实际操作方法。
@@ -20,7 +21,9 @@ _TABLE = "subscriptionsearchtask"
 
 
 def _column_names() -> set[str]:
-    """返回当前订阅搜索任务列名集合。"""
+    """
+    返回当前订阅搜索任务列名集合。
+    """
     inspector = sa.inspect(op.get_bind())
     if _TABLE not in set(inspector.get_table_names()):
         return set()
@@ -28,7 +31,9 @@ def _column_names() -> set[str]:
 
 
 def upgrade() -> None:
-    """为存量队列增加带默认值的可观察阶段字段。"""
+    """
+    为存量队列增加带默认值的可观察阶段字段。
+    """
     columns = _column_names()
     if not columns:
         return
@@ -50,7 +55,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """移除业务阶段字段，保留原搜索队列事实。"""
+    """
+    移除业务阶段字段，保留原搜索队列事实。
+    """
     columns = _column_names()
     if "current_site_id" in columns:
         op.drop_column(_TABLE, "current_site_id")

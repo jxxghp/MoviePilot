@@ -1,4 +1,6 @@
-"""3.0.29 修复旧分类名称中的目录层级路径。"""
+"""
+3.0.29 修复旧分类名称中的目录层级路径。
+"""
 
 from collections.abc import Mapping
 
@@ -13,11 +15,17 @@ depends_on = None
 
 _TABLE = "systemconfig"
 _POLICY_KEY = "MediaClassificationPolicy"
+# 只修复旧策略迁移生成的电影与电视剧分类，保留用户自建分类。
 _LEGACY_CATEGORY_PREFIXES = ("legacy.movie.", "legacy.tv.")
+# 分类路径最多包含四层，与当前分类路径安全契约保持一致。
 _MAX_CATEGORY_DEPTH = 4
+# 分类路径单段最多 64 个字符，避免迁移出无法使用的目录名。
 _MAX_CATEGORY_SEGMENT_LENGTH = 64
+# 完整分类相对路径最多 240 个字符，保留跨平台文件路径余量。
 _MAX_CATEGORY_PATH_LENGTH = 240
+# 分类目录段禁止使用的跨平台路径分隔符与文件名保留字符。
 _ILLEGAL_PATH_CHARACTERS = frozenset('<>:"/\\|?*')
+# Windows 保留设备名；即使当前数据库在其他系统上也不能生成此类目录。
 _WINDOWS_RESERVED_NAMES = {
     "CON",
     "PRN",
@@ -29,12 +37,16 @@ _WINDOWS_RESERVED_NAMES = {
 
 
 def _table_exists() -> bool:
-    """检查系统配置表是否存在。"""
+    """
+    检查系统配置表是否存在。
+    """
     return _TABLE in set(sa.inspect(op.get_bind()).get_table_names())
 
 
 def _system_config_relation() -> TableClause:
-    """构造只包含本次 JSON 数据修复所需字段的系统配置关系。"""
+    """
+    构造只包含本次 JSON 数据修复所需字段的系统配置关系。
+    """
     return sa.table(
         _TABLE,
         sa.column("id", sa.Integer()),
@@ -44,7 +56,9 @@ def _system_config_relation() -> TableClause:
 
 
 def _path_segment_is_invalid(segment: str) -> bool:
-    """判断分类路径段是否包含目录穿越或跨平台非法文件名。"""
+    """
+    判断分类路径段是否包含目录穿越或跨平台非法文件名。
+    """
     if not segment or segment != segment.strip():
         return True
     if segment in {".", ".."} or segment.endswith((".", " ")):
@@ -57,7 +71,9 @@ def _path_segment_is_invalid(segment: str) -> bool:
 
 
 def _safe_legacy_path(name: str) -> list[str] | None:
-    """把可安全还原的旧分类名转换成目录路径段。"""
+    """
+    把可安全还原的旧分类名转换成目录路径段。
+    """
     segments = name.split("/")
     if (
         not segments
@@ -70,7 +86,9 @@ def _safe_legacy_path(name: str) -> list[str] | None:
 
 
 def _repair_category(category: object) -> tuple[object, bool]:
-    """仅修复首版 legacy 影视分类的单段斜杠路径。"""
+    """
+    仅修复首版 legacy 影视分类的单段斜杠路径。
+    """
     if not isinstance(category, Mapping):
         return category, False
     category_id = category.get("id")
@@ -94,7 +112,9 @@ def _repair_category(category: object) -> tuple[object, bool]:
 
 
 def _repair_policy_snapshot(snapshot: object) -> tuple[object, bool]:
-    """修复一个活动或历史策略快照中的 legacy 分类路径。"""
+    """
+    修复一个活动或历史策略快照中的 legacy 分类路径。
+    """
     if not isinstance(snapshot, Mapping):
         return snapshot, False
     categories = snapshot.get("categories")
@@ -114,7 +134,9 @@ def _repair_policy_snapshot(snapshot: object) -> tuple[object, bool]:
 
 
 def _repair_policy_state(value: object) -> tuple[object, bool]:
-    """修复策略状态中的活动版本和有限历史版本。"""
+    """
+    修复策略状态中的活动版本和有限历史版本。
+    """
     if not isinstance(value, Mapping):
         return value, False
     repaired_state = dict(value)
@@ -141,7 +163,9 @@ def _repair_policy_state(value: object) -> tuple[object, bool]:
 
 
 def _repair_stored_policy() -> None:
-    """回写数据库中已迁移策略的安全路径段，保持 revision 和目录字符串不变。"""
+    """
+    回写数据库中已迁移策略的安全路径段，保持 revision 和目录字符串不变。
+    """
     relation = _system_config_relation()
     connection = op.get_bind()
     rows = (
@@ -157,11 +181,15 @@ def _repair_stored_policy() -> None:
 
 
 def upgrade() -> None:
-    """修复已完成迁移的分类策略，避免旧斜杠名称触发路径安全错误。"""
+    """
+    修复已完成迁移的分类策略，避免旧斜杠名称触发路径安全错误。
+    """
     if _table_exists():
         _repair_stored_policy()
 
 
 def downgrade() -> None:
-    """数据修复不可逆，降级不恢复为原有的不安全路径表示。"""
+    """
+    数据修复不可逆，降级不恢复为原有的不安全路径表示。
+    """
     pass

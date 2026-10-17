@@ -1,9 +1,9 @@
-"""2.2.11
-新增下载失败资源冷却表
+"""
+2.2.11 新增下载失败资源冷却表
 
-Revision ID: b7d4a9c2e6f1
-Revises: 8ab72c49d1e3
-Create Date: 2026-07-07
+版本标识： b7d4a9c2e6f1
+前置版本： 8ab72c49d1e3
+创建时间： 2026-07-07
 """
 
 from alembic import op
@@ -16,12 +16,16 @@ depends_on = None
 
 
 def _has_table(inspector: sa.Inspector, table_name: str) -> bool:
-    """检查数据表是否已存在。"""
+    """
+    检查数据表是否已存在。
+    """
     return table_name in inspector.get_table_names()
 
 
 def upgrade() -> None:
-    """升级数据库结构。"""
+    """
+    升级数据库结构。
+    """
     inspector = sa.inspect(op.get_bind())
     if _has_table(inspector, "downloadfailure"):
         return
@@ -70,7 +74,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """回滚数据库结构。"""
+    """
+    回滚数据库结构。
+    """
     inspector = sa.inspect(op.get_bind())
     if not _has_table(inspector, "downloadfailure"):
         return
