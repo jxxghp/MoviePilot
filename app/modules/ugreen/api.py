@@ -20,7 +20,7 @@ class ApiResult:
     msg: str = ""
     data: Any = None
     debug: Optional[str] = None
-    raw: Optional[dict] = None
+    raw: Optional[dict[str, Any]] = None
 
     @property
     def success(self) -> bool:
@@ -150,16 +150,17 @@ class Api:
             return None
 
     @staticmethod
-    def _extract_rsa_token(resp_json: dict, headers: Mapping[str, str]) -> Optional[str]:
+    def _extract_rsa_token(resp_json: dict[str, Any], headers: Mapping[str, str]) -> Optional[str]:
         token = headers.get("x-rsa-token") or headers.get("X-Rsa-Token")
-        if token:
+        if isinstance(token, str) and token:
             return token
         token = resp_json.get("xRsaToken") or resp_json.get("x-rsa-token")
-        if token:
+        if isinstance(token, str) and token:
             return token
         data = resp_json.get("data") if isinstance(resp_json, Mapping) else None
         if isinstance(data, Mapping):
-            return data.get("xRsaToken") or data.get("x-rsa-token")
+            token = data.get("xRsaToken") or data.get("x-rsa-token")
+            return token if isinstance(token, str) else None
         return None
 
     def _common_headers(self) -> dict[str, str]:
@@ -179,10 +180,10 @@ class Api:
         self,
         url: str,
         method: str = "GET",
-        headers: Optional[dict] = None,
-        params: Optional[dict] = None,
-        json_data: Optional[dict] = None,
-    ) -> Optional[dict]:
+        headers: Optional[dict[str, Any]] = None,
+        params: Optional[dict[str, Any]] = None,
+        json_data: Optional[dict[str, Any]] = None,
+    ) -> Optional[dict[str, Any]]:
         """
         发送 HTTP 请求并尝试解析为 JSON。
         """
@@ -208,7 +209,8 @@ class Api:
             if resp is None:
                 logger.error(f"请求绿联接口失败：{url} 未收到 HTTP 响应")
                 return None
-            return resp.json()
+            payload = resp.json()
+            return payload if isinstance(payload, dict) else None
         except Exception as err:
             logger.error(f"请求绿联接口失败：{url} {err}")
             return None
@@ -219,7 +221,7 @@ class Api:
             return ApiResult(code=-1, msg="响应格式错误", raw=None)
         code = payload.get("code")
         try:
-            code = int(code)
+            code = int(code) if isinstance(code, (str, int, float)) else -1
         except Exception:
             code = -1
         return ApiResult(
@@ -332,7 +334,7 @@ class Api:
         self._username = username
         return self._token
 
-    def export_session_state(self) -> Optional[dict]:
+    def export_session_state(self) -> Optional[dict[str, Any]]:
         """
         导出当前登录会话，供持久化存储使用。
         """
@@ -445,8 +447,8 @@ class Api:
         self,
         path: str,
         method: str = "GET",
-        params: Optional[dict] = None,
-        data: Optional[dict] = None,
+        params: Optional[dict[str, Any]] = None,
+        data: Optional[dict[str, Any]] = None,
     ) -> ApiResult:
         """
         统一请求入口。
@@ -489,7 +491,7 @@ class Api:
         decrypted = self._crypto.decrypt_response(payload, req.aes_key)
         return self._build_result(decrypted)
 
-    def current_user(self) -> Optional[dict]:
+    def current_user(self) -> Optional[dict[str, Any]]:
         """
         获取当前登录用户信息。
         """
@@ -498,7 +500,7 @@ class Api:
             return None
         return dict(result.data)
 
-    def media_list(self) -> Optional[list[dict]]:
+    def media_list(self) -> Optional[list[dict[str, Any]]]:
         """
         获取首页媒体库列表（`media_lib_info_list`）。
         """
@@ -508,7 +510,7 @@ class Api:
         items = result.data.get("media_lib_info_list")
         return items if isinstance(items, list) else None
 
-    def media_lib_users(self) -> list[dict]:
+    def media_lib_users(self) -> list[dict[str, Any]]:
         """
         获取媒体库用户列表。
         """
@@ -518,7 +520,7 @@ class Api:
         users = result.data.get("user_info_arr")
         return users if isinstance(users, list) else []
 
-    def recently_played(self, page: int = 1, page_size: int = 12) -> Optional[dict]:
+    def recently_played(self, page: int = 1, page_size: int = 12) -> Optional[dict[str, Any]]:
         """
         获取继续观看列表。
         """
@@ -531,9 +533,9 @@ class Api:
                 "create_time_order": "false",
             },
         )
-        return result.data if result.success and isinstance(result.data, Mapping) else None
+        return dict(result.data) if result.success and isinstance(result.data, Mapping) else None
 
-    def recently_updated(self, page: int = 1, page_size: int = 20) -> Optional[dict]:
+    def recently_updated(self, page: int = 1, page_size: int = 20) -> Optional[dict[str, Any]]:
         """
         获取最近更新列表。
         """
@@ -546,9 +548,9 @@ class Api:
                 "create_time_order": "false",
             },
         )
-        return result.data if result.success and isinstance(result.data, Mapping) else None
+        return dict(result.data) if result.success and isinstance(result.data, Mapping) else None
 
-    def recently_played_info(self, item_id: Union[str, int]) -> Optional[dict]:
+    def recently_played_info(self, item_id: Union[str, int]) -> Optional[dict[str, Any]]:
         """
         获取单个视频的播放状态与基础详情信息。
         """
@@ -563,7 +565,7 @@ class Api:
             return dict(result.data)
         return None
 
-    def search(self, keyword: str, offset: int = 0, limit: int = 200) -> Optional[dict]:
+    def search(self, keyword: str, offset: int = 0, limit: int = 200) -> Optional[dict[str, Any]]:
         """
         搜索媒体（电影/剧集）。
         """
@@ -577,9 +579,9 @@ class Api:
                 "keyword": keyword,
             },
         )
-        return result.data if result.success and isinstance(result.data, Mapping) else None
+        return dict(result.data) if result.success and isinstance(result.data, Mapping) else None
 
-    def video_all(self, classification: int, page: int = 1, page_size: int = 20) -> Optional[dict]:
+    def video_all(self, classification: int, page: int = 1, page_size: int = 20) -> Optional[dict[str, Any]]:
         """
         获取 `v1/video/all` 分类列表。
 
@@ -604,7 +606,7 @@ class Api:
                 "clarity": -1,
             },
         )
-        return result.data if result.success and isinstance(result.data, Mapping) else None
+        return dict(result.data) if result.success and isinstance(result.data, Mapping) else None
 
     def poster_wall_get_folder(
         self,
@@ -613,7 +615,7 @@ class Api:
         page_size: int = 100,
         sort_type: int = 1,
         order_type: int = 1,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         获取海报墙文件夹与条目（可按目录路径递归展开）。
         """
@@ -626,7 +628,7 @@ class Api:
         if path:
             params["path"] = path
         result = self.request("v1/video/poster_wall/media_lib/get_folder", params=params)
-        return result.data if result.success and isinstance(result.data, Mapping) else None
+        return dict(result.data) if result.success and isinstance(result.data, Mapping) else None
 
     def get_movie(
         self,
@@ -634,7 +636,7 @@ class Api:
         media_lib_set_id: Union[str, int],
         path: Optional[str] = None,
         folder_path: Optional[str] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[dict[str, Any]]:
         """
         获取电影详情。
         """
@@ -648,9 +650,9 @@ class Api:
         if folder_path:
             params["folder_path"] = folder_path
         result = self.request("v1/video/details/getMovie", params=params)
-        return result.data if result.success and isinstance(result.data, Mapping) else None
+        return dict(result.data) if result.success and isinstance(result.data, Mapping) else None
 
-    def get_tv(self, item_id: Union[str, int], folder_path: str = "ALL") -> Optional[dict]:
+    def get_tv(self, item_id: Union[str, int], folder_path: str = "ALL") -> Optional[dict[str, Any]]:
         """
         获取剧集详情（含季/集信息）。
         """
@@ -661,7 +663,7 @@ class Api:
                 "folder_path": folder_path,
             },
         )
-        return result.data if result.success and isinstance(result.data, Mapping) else None
+        return dict(result.data) if result.success and isinstance(result.data, Mapping) else None
 
     def scan(self, media_lib_set_id: Union[str, int], scan_type: int = 2, op_type: int = 2) -> bool:
         """
@@ -681,7 +683,7 @@ class Api:
         )
         return result.success
 
-    def scan_status(self, only_brief: bool = True) -> list[dict]:
+    def scan_status(self, only_brief: bool = True) -> list[dict[str, Any]]:
         """
         获取媒体库扫描状态。
         """
