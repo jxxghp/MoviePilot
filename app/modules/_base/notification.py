@@ -1,4 +1,5 @@
-"""消息渠道模块业务样板基类。
+"""
+消息渠道模块业务样板基类。
 
 沉淀各消息渠道模块逐字复制的样板：管理员判断、连接测试、
 斜杠命令注册。渠道差异（客户端类型、菜单 API、前置条件）通过
@@ -56,7 +57,9 @@ class _MessageChannelModuleBase(_ModuleBase, _MessageBase[TService]):
 
     def test(self) -> Optional[Tuple[bool, str]]:
         """
-        测试模块连接性
+        检查全部已配置消息渠道实例的就绪状态。
+
+        :return: 首个失败的说明或整体成功结果；没有实例时返回 None
         """
         if not self.get_instances():
             return None
@@ -74,7 +77,9 @@ class _MessageChannelModuleBase(_ModuleBase, _MessageBase[TService]):
         return bool(client.get_state()), ""
 
     def _stop_service_instances(self) -> bool:
-        """停止全部渠道实例，并聚合客户端返回的资源收敛结果。"""
+        """
+        停止全部渠道实例，并聚合客户端返回的资源收敛结果。
+        """
         converged = True
         for client in self.get_instances().values():
             stop = getattr(client, "stop", None)
@@ -90,9 +95,12 @@ class _MessageChannelModuleBase(_ModuleBase, _MessageBase[TService]):
 
     def register_commands(self, commands: Dict[str, dict]) -> None:
         """
-        注册命令，实现这个函数接收系统可用的命令菜单
+        为每个启用命令菜单的渠道实例注册可用命令。
 
-        :param commands: 命令字典
+        先发送可修改命令集合的事件，再限制为宿主原始命令的子集。
+        事件取消或筛选后没有命令时清理该实例的旧菜单。
+
+        :param commands: 宿主可用命令映射；各实例使用深复制，事件修改不会污染其他实例
         """
         for client_config in self.get_configs().values():
             if not self._commands_enabled(client_config.config):
