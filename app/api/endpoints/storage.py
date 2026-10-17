@@ -29,12 +29,12 @@ from app.foundation import text as text_tools
 from app.runtime.localization import LocaleHelper
 from app.runtime.progress import ProgressHelper
 from app.schemas.common import ManageRequest as _SchemaManageRequest
+from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.storage import StorageCatalogOption as _SchemaStorageCatalogOption
 from app.schemas.storage import StorageOption as _SchemaStorageOption
 from app.schemas.system import TransferDirectoryConf as _SchemaTransferDirectoryConf
 from app.schemas.types import ProgressKey, StorageSchema
-from app.schemas.file import FileItem as _SchemaFileItem
 
 router = ResponseAPIRouter()
 
