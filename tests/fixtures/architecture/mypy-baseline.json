@@ -828,15 +828,6 @@
     "type-arg": 9,
     "var-annotated": 1
   },
-  "app/modules/feishu/feishu.py": {
-    "arg-type": 5,
-    "assignment": 1,
-    "call-overload": 1,
-    "no-untyped-def": 1,
-    "return-value": 1,
-    "type-arg": 22,
-    "union-attr": 2
-  },
   "app/modules/feishu/module.py": {
     "assignment": 6,
     "attr-defined": 1,

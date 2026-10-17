@@ -59,8 +59,8 @@ class Feishu:
             FEISHU_VERIFICATION_TOKEN: Optional[str] = None,
             FEISHU_ENCRYPT_KEY: Optional[str] = None,
             name: Optional[str] = None,
-            **kwargs,
-    ):
+            **kwargs: Any,
+    ) -> None:
         """
         读取应用配置并启动后台长连接接收线程。
 
@@ -189,7 +189,7 @@ class Feishu:
         finally:
             self._ready.clear()
 
-    def _forward_to_message_chain(self, payload: dict) -> bool:
+    def _forward_to_message_chain(self, payload: JsonDict) -> bool:
         """
         将飞书入站消息转发到统一消息入口，复用现有交互主链。
         """
@@ -254,7 +254,7 @@ class Feishu:
         return text, images, audio_refs, files
 
     @staticmethod
-    def _resolve_post_message_body(content: dict) -> Optional[dict]:
+    def _resolve_post_message_body(content: JsonDict) -> Optional[JsonDict]:
         """
         解析飞书富文本消息在事件和 webhook 结构中的正文节点。
         """
@@ -275,7 +275,7 @@ class Feishu:
         return None
 
     @staticmethod
-    def _parse_post_element_text(element: dict) -> str:
+    def _parse_post_element_text(element: JsonDict) -> str:
         """
         将飞书富文本元素转换为消息链可消费的纯文本片段。
         """
@@ -303,7 +303,7 @@ class Feishu:
 
     @staticmethod
     def _parse_post_message_content(
-            content: dict,
+            content: JsonDict,
             message_id: Optional[str] = None,
     ) -> Tuple[str, Optional[List[IncomingMessage.MessageImage]]]:
         """
@@ -455,7 +455,7 @@ class Feishu:
             name=action.get("name"),
         )
 
-        payload = {
+        payload: JsonDict = {
             "type": "cardAction",
             "source": self._name,
             "message_id": context.get("open_message_id"),
@@ -645,11 +645,11 @@ class Feishu:
         images = IncomingMessage.MessageImage.normalize_list(message.get("images"))
         audio_refs = None
         if isinstance(message.get("audio_refs"), list):
-            audio_refs = [str(item).strip() for item in message.get("audio_refs") if str(item).strip()] or None
+            audio_refs = [str(item).strip() for item in (message.get("audio_refs") or []) if str(item).strip()] or None
         files = None
         if isinstance(message.get("files"), list):
             normalized_files = []
-            for item in message.get("files"):
+            for item in (message.get("files") or []):
                 if isinstance(item, dict) and item.get("ref"):
                     normalized_files.append(IncomingMessage.MessageAttachment(**item))
             files = normalized_files or None
@@ -690,7 +690,7 @@ class Feishu:
 
     def _resolve_target(
             self,
-            userid: Optional[str] = None,
+            userid: Optional[Union[str, int]] = None,
             chat_id: Optional[str] = None,
             receive_id_type: Optional[str] = None,
     ) -> Optional[Tuple[str, str]]:
@@ -702,7 +702,11 @@ class Feishu:
         :param receive_id_type: open_id、user_id 或 chat_id；未指定时依据已记录身份推断
         :return: 接收标识与类型的二元组；无显式及默认目标返回 None
         """
-        resolved_userid = (userid or "").strip() or None
+        user_value = userid or ""
+        if isinstance(user_value, int):
+            # 保留历史非零整数在目标解析处失败的异常类型与外层捕获边界。
+            raise AttributeError("'int' object has no attribute 'strip'")
+        resolved_userid = user_value.strip() or None
         resolved_chat_id = (chat_id or "").strip() or None
         normalized_receive_id_type = (receive_id_type or "").strip() or None
         if not resolved_userid and not resolved_chat_id:
@@ -740,11 +744,11 @@ class Feishu:
     def _send_with_fallback_broadcast(
             self,
             msg_type: str,
-            content: dict,
-            userid: Optional[str] = None,
+            content: JsonDict,
+            userid: Optional[Union[str, int]] = None,
             chat_id: Optional[str] = None,
             receive_id_type: Optional[str] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[JsonDict]:
         """
         按解析目标发送消息，无明确目标时发送给已互动会话。
 
@@ -918,7 +922,7 @@ class Feishu:
             text: Optional[str],
             text_size: str = "normal",
             margin: Optional[str] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[JsonDict]:
         """
         构造非空卡片文字区块，按需设置图片布局所需的外边距。
         """
@@ -1038,16 +1042,16 @@ class Feishu:
         return str(callback_data).strip() if callback_data else None
 
     @staticmethod
-    def _card_actions(buttons: Optional[List[List[dict]]], margin: Optional[str] = None) -> List[dict]:
+    def _card_actions(buttons: Optional[List[List[JsonDict]]], margin: Optional[str] = None) -> List[JsonDict]:
         """
         将统一按钮结构转换为飞书卡片按钮配置。
         """
         if not buttons:
             return []
         card_rows = []
-        for row in buttons[:8]:
+        for button_row in buttons[:8]:
             columns = []
-            for button in row[:3]:
+            for button in button_row[:3]:
                 text = (button or {}).get("text")
                 if not text:
                     continue
@@ -1094,14 +1098,14 @@ class Feishu:
                     }
                 )
             if columns:
-                row = {
+                card_row: JsonDict = {
                     "tag": "column_set",
                     "flex_mode": "none",
                     "columns": columns,
                 }
                 if margin:
-                    row["margin"] = margin
-                card_rows.append(row)
+                    card_row["margin"] = margin
+                card_rows.append(card_row)
         return card_rows
 
     def _build_card(
@@ -1109,13 +1113,13 @@ class Feishu:
             title: Optional[str],
             text: Optional[str],
             link: Optional[str],
-            buttons: Optional[List[List[dict]]],
+            buttons: Optional[List[List[JsonDict]]],
             image_key: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         构建飞书交互卡片结构。
         """
-        elements: List[dict] = []
+        elements: List[JsonDict] = []
         if image_key:
             # 图文混合消息需要让图片贴近卡片顶部，避免先展示文字再露出海报。
             elements.append(
@@ -1169,7 +1173,7 @@ class Feishu:
         """
         构建支持 CardKit 流式更新的飞书卡片 JSON 2.0。
         """
-        elements: List[dict] = []
+        elements: List[JsonDict] = []
         title_content = self._escape_card_text(title).strip() if title else ""
         body_content = self._escape_card_text(
             self._strip_streaming_markdown_images(text)
@@ -1235,11 +1239,11 @@ class Feishu:
             self,
             title: Optional[str],
             text: Optional[str],
-            userid: Optional[str] = None,
+            userid: Optional[Union[str, int]] = None,
             chat_id: Optional[str] = None,
             receive_id_type: Optional[str] = None,
             original_message_id: Optional[str] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[JsonDict]:
         """
         发送或回复流式卡片，并记录后续更新需要的卡片标识与序号。
         """
@@ -1276,7 +1280,7 @@ class Feishu:
     def _send_agent_streaming_images(
             self,
             image_urls: List[str],
-            userid: Optional[str] = None,
+            userid: Optional[Union[str, int]] = None,
             chat_id: Optional[str] = None,
             receive_id_type: Optional[str] = None,
             sent_image_urls: Optional[List[str]] = None,
@@ -1400,7 +1404,7 @@ class Feishu:
         )
         return False
 
-    def _send_message(self, receive_id: str, receive_id_type: str, msg_type: str, content: dict) -> Optional[dict]:
+    def _send_message(self, receive_id: str, receive_id_type: str, msg_type: str, content: JsonDict) -> Optional[JsonDict]:
         """
         调用飞书 IM API 发送消息，并返回统一结果结构。
         """
@@ -1439,9 +1443,9 @@ class Feishu:
             self,
             message_id: str,
             msg_type: str,
-            content: dict,
+            content: JsonDict,
             reply_in_thread: bool = False,
-    ) -> Optional[dict]:
+    ) -> Optional[JsonDict]:
         """
         按原消息回复，保持飞书会话中的引用关系。
         """
@@ -1576,7 +1580,7 @@ class Feishu:
             chat_id: Optional[str] = None,
             receive_id_type: Optional[str] = None,
             original_message_id: Optional[str] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[JsonDict]:
         """
         发送纯文本，按原消息回复或按目标投递。
 
@@ -1608,8 +1612,11 @@ class Feishu:
 
         if not result:
             return {"success": False}
-        result["chat_id"] = result.get("chat_id") or chat_id or self._user_chat_mapping.get(
-            userid or "") or self._default_chat_id
+        result["chat_id"] = (
+            result.get("chat_id") or chat_id
+            or (self._user_chat_mapping.get(userid or "") if isinstance(userid, str) or not userid else None)
+            or self._default_chat_id
+        )
         return result
 
     def send_file(
@@ -1622,7 +1629,7 @@ class Feishu:
             file_name: Optional[str] = None,
             receive_id_type: Optional[str] = None,
             original_message_id: Optional[str] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[JsonDict]:
         """
         发送本地图片卡片或普通文件，必要时补发说明。
 
@@ -1703,8 +1710,11 @@ class Feishu:
 
         if not result:
             return {"success": False}
-        result["chat_id"] = result.get("chat_id") or chat_id or self._user_chat_mapping.get(
-            userid or "") or self._default_chat_id
+        result["chat_id"] = (
+            result.get("chat_id") or chat_id
+            or (self._user_chat_mapping.get(userid or "") if isinstance(userid, str) or not userid else None)
+            or self._default_chat_id
+        )
         return result
 
     def send_voice(
@@ -1715,7 +1725,7 @@ class Feishu:
             caption: Optional[str] = None,
             receive_id_type: Optional[str] = None,
             original_message_id: Optional[str] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[JsonDict]:
         """
         上传并发送本地语音，可另外发送文字说明。
 
@@ -1764,18 +1774,21 @@ class Feishu:
 
         if not result:
             return {"success": False}
-        result["chat_id"] = result.get("chat_id") or chat_id or self._user_chat_mapping.get(
-            userid or "") or self._default_chat_id
+        result["chat_id"] = (
+            result.get("chat_id") or chat_id
+            or (self._user_chat_mapping.get(userid or "") if isinstance(userid, str) or not userid else None)
+            or self._default_chat_id
+        )
         return result
 
     def send_notification(
             self,
             message: Message,
-            userid: Optional[str] = None,
+            userid: Optional[Union[str, int]] = None,
             chat_id: Optional[str] = None,
             receive_id_type: Optional[str] = None,
             original_message_id: Optional[str] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[JsonDict]:
         """
         发送通知卡片，符合条件的 Agent 正文使用流式卡片。
 
@@ -1795,8 +1808,8 @@ class Feishu:
         )
         if is_streaming_agent_text:
             try:
-                stream_image_urls = []
-                if self._is_external_image_url(message.image):
+                stream_image_urls: List[str] = []
+                if message.image and self._is_external_image_url(message.image):
                     stream_image_urls.append(message.image)
                 stream_image_urls.extend(self._extract_markdown_image_urls(message.text))
                 result = self._send_streaming_card_message(
@@ -1812,8 +1825,11 @@ class Feishu:
                 return {"success": False}
             if not result:
                 return {"success": False}
-            result["chat_id"] = result.get("chat_id") or chat_id or self._user_chat_mapping.get(
-                userid or "") or self._default_chat_id
+            result["chat_id"] = (
+                result.get("chat_id") or chat_id
+                or (self._user_chat_mapping.get(userid or "") if isinstance(userid, str) or not userid else None)
+                or self._default_chat_id
+            )
             sent_image_urls = self._send_agent_streaming_images(
                 stream_image_urls,
                 userid=userid,
@@ -1851,8 +1867,11 @@ class Feishu:
 
         if not result:
             return {"success": False}
-        result["chat_id"] = result.get("chat_id") or chat_id or self._user_chat_mapping.get(
-            userid or "") or self._default_chat_id
+        result["chat_id"] = (
+            result.get("chat_id") or chat_id
+            or (self._user_chat_mapping.get(userid or "") if isinstance(userid, str) or not userid else None)
+            or self._default_chat_id
+        )
         return result
 
     def _build_notification_cards(self, message: Message, image_key: Optional[str]) -> List[JsonDict]:
@@ -1885,7 +1904,7 @@ class Feishu:
         ) for index, text in enumerate(texts)]
 
     def edit_message(self, message_id: str, title: Optional[str] = None, text: Optional[str] = None,
-                     buttons: Optional[List[List[dict]]] = None, metadata: Optional[dict] = None,
+                     buttons: Optional[List[List[JsonDict]]] = None, metadata: Optional[JsonDict] = None,
                      chat_id: Optional[str] = None) -> bool:
         """
         更新普通交互卡片或继续写入流式正文。
@@ -2007,7 +2026,7 @@ class Feishu:
             userid: Optional[str] = None,
             chat_id: Optional[str] = None,
             receive_id_type: Optional[str] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[JsonDict]:
         """
         将前 10 个媒体候选项渲染为通知卡片。
 
@@ -2048,7 +2067,7 @@ class Feishu:
             userid: Optional[str] = None,
             chat_id: Optional[str] = None,
             receive_id_type: Optional[str] = None,
-    ) -> Optional[dict]:
+    ) -> Optional[JsonDict]:
         """
         将前 10 个种子候选项渲染为通知卡片。
 
