@@ -1,4 +1,6 @@
-"""插件常用的无状态通用工具。"""
+"""
+插件常用的无状态通用工具。
+"""
 
 from app.adapters.system.host import SystemUtils
 from app.application.security.otp import OtpUtils

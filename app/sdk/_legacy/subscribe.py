@@ -1,4 +1,6 @@
-"""把旧订阅 Oper 写入调用转交给新的应用服务。"""
+"""
+把旧订阅 Oper 写入调用转交给新的应用服务。
+"""
 
 from typing import Any, Optional, cast
 
@@ -21,10 +23,14 @@ from app.schemas.common import JsonData
 
 
 class SubscribeOper(CanonicalSubscribeOper):
-    """保留旧 ``mediainfo`` 写入签名，同时继承新的查询接口。"""
+    """
+    保留旧 ``mediainfo`` 写入签名，同时继承新的查询接口。
+    """
 
     def add_history(self, **kwargs: Any) -> None:
-        """兼容旧订阅历史写入并委托历史表 Oper。"""
+        """
+        兼容旧订阅历史写入并委托历史表 Oper。
+        """
         payload = SubscriptionHistoryPatch.from_subscription(cast(dict[str, JsonData], kwargs))
         CanonicalSubscribeHistoryOper(self._db).add(payload.to_payload())
 
@@ -98,7 +104,9 @@ class SubscribeOper(CanonicalSubscribeOper):
 
 
 class SubscribeHistoryOper(CanonicalSubscribeHistoryOper):
-    """保留旧订阅历史 Oper 的插件导入身份与完整查询接口。"""
+    """
+    保留旧订阅历史 Oper 的插件导入身份与完整查询接口。
+    """
 
 
 __all__ = ["SubscribeHistoryOper", "SubscribeOper"]

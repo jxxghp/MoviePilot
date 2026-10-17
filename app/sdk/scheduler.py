@@ -1,4 +1,6 @@
-"""插件可使用的窄调度服务门面。"""
+"""
+插件可使用的窄调度服务门面。
+"""
 
 from app.application.scheduling import (
     add_plugin_once_job,

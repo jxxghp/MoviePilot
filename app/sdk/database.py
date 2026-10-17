@@ -1,4 +1,6 @@
-"""插件可使用的数据库备份只读门面和自有数据库入口。"""
+"""
+插件可使用的数据库备份只读门面和自有数据库入口。
+"""
 
 from app.application.backup import BackupArtifact, BackupVerification
 from app.application.database import get_database_governance as _get_database_governance
@@ -17,15 +19,28 @@ __all__ = [
 
 
 def create_backup() -> BackupArtifact:
-    """在宿主管理目录中创建当前数据库的一致备份。"""
+    """
+    在宿主管理目录中创建当前数据库的一致备份。
+
+    :return: 已创建备份的名称、路径和数据库类型等信息
+    """
     return _get_database_governance().create_backup()
 
 
 def list_backups() -> tuple[BackupArtifact, ...]:
-    """列出宿主管理目录中的数据库备份。"""
+    """
+    列出宿主管理目录中的数据库备份。
+
+    :return: 备份记录元组；未找到备份时返回空元组
+    """
     return _get_database_governance().list_backups()
 
 
 def verify_backup(name: str) -> BackupVerification:
-    """按文件名校验一个宿主管理的数据库备份。"""
+    """
+    按文件名校验一个宿主管理的数据库备份，不执行还原。
+
+    :param name: 受管备份的文件名，不接受任意目录中的文件路径
+    :return: 备份校验结果及检查方式、失败原因等信息
+    """
     return _get_database_governance().verify_backup(name)

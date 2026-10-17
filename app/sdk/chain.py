@@ -1,4 +1,6 @@
-"""插件可使用的稳定 Chain 基类入口。"""
+"""
+插件可使用的稳定 Chain 基类入口。
+"""
 
 from app.chain.base import ChainBase
 
