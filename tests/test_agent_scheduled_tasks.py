@@ -1,3 +1,4 @@
+# 本文件覆盖多个惰性公开入口，Pylint 无法静态解析其导出符号。
 # pylint: disable=no-name-in-module
 
 """

@@ -2751,7 +2751,9 @@ def test_plugin_runtime_owners_are_shared_with_compat_facade():
     health = object()
     dependency = object()
     configure_plugin_runtime_owners(
+        # 只验证依赖所有者的对象身份，用占位对象隔离真实资源构造。
         health=health,  # type: ignore[arg-type]
+        # 只验证依赖所有者的对象身份，用占位对象隔离真实资源构造。
         dependency=dependency,  # type: ignore[arg-type]
     )
     try:

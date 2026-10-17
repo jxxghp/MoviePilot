@@ -37,8 +37,10 @@ def clear_token_cache() -> Generator[None, None, None]:
     """
     在测试前后清理 AList 登录令牌缓存
     """
+    # 直接访问内部令牌缓存，验证不同实现之间的缓存隔离。
     Alist._Alist__login_token.cache_clear()  # noqa
     yield
+    # 直接访问内部令牌缓存，验证不同实现之间的缓存隔离。
     Alist._Alist__login_token.cache_clear()  # noqa
 
 
@@ -82,9 +84,13 @@ def test_alistgo_token_isolated_from_alist(clear_token_cache) -> None:
     alistgo = AlistGo()
     with patch.object(Alist, "get_conf", _conf):
         with patch.object(alist_module, "RequestUtils", return_value=request_utils):
+            # 直接访问内部令牌缓存，验证不同实现之间的缓存隔离。
             assert alist._Alist__generate_token() == "token-alist"  # noqa
+            # 直接访问内部令牌缓存，验证不同实现之间的缓存隔离。
             assert alistgo._Alist__generate_token() == "token-alistgo"  # noqa
+            # 直接访问内部令牌缓存，验证不同实现之间的缓存隔离。
             assert alist._Alist__generate_token() == "token-alist"  # noqa
+            # 直接访问内部令牌缓存，验证不同实现之间的缓存隔离。
             assert alistgo._Alist__generate_token() == "token-alistgo"  # noqa
 
     assert request_utils.post_res.call_count == 2
@@ -113,12 +119,16 @@ def test_init_storage_keeps_other_storage_token(clear_token_cache) -> None:
     alistgo = AlistGo()
     with patch.object(Alist, "get_conf", _conf):
         with patch.object(alist_module, "RequestUtils", return_value=request_utils):
+            # 直接访问内部令牌缓存，验证不同实现之间的缓存隔离。
             assert alist._Alist__generate_token() == "token-alist"  # noqa
+            # 直接访问内部令牌缓存，验证不同实现之间的缓存隔离。
             assert alistgo._Alist__generate_token() == "token-alistgo"  # noqa
 
             alistgo.init_storage()
 
+            # 直接访问内部令牌缓存，验证不同实现之间的缓存隔离。
             assert alist._Alist__generate_token() == "token-alist"  # noqa
+            # 直接访问内部令牌缓存，验证不同实现之间的缓存隔离。
             assert alistgo._Alist__generate_token() == "token-alistgo-new"  # noqa
 
     assert request_utils.post_res.call_count == 3

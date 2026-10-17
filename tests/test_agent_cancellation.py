@@ -22,6 +22,7 @@ def test_execute_agent_propagates_task_cancellation():
         等待取消的最小 LangGraph 替身。
         """
 
+        # 模型调用替身保留兼容签名，测试只使用取消事件而不读取调用参数。
         async def ainvoke(self, _payload, config=None):  # noqa: ARG002
             """
             阻塞到外层任务取消。
