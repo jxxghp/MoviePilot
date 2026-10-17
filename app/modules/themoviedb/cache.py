@@ -29,7 +29,7 @@ class TmdbCache(metaclass=WeakSingleton):
     }
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """初始化 TMDB 识别缓存并恢复未过期的持久化数据。"""
         self.maxsize = get_runtime_setting('CONF').tmdb
         self.ttl = get_runtime_setting('CONF').meta
@@ -103,7 +103,7 @@ class TmdbCache(metaclass=WeakSingleton):
             self._expires_at[key] = time() + ttl
             self._dirty = True
 
-    def clear(self):
+    def clear(self) -> None:
         """
         清空所有TMDB缓存
         """
@@ -224,7 +224,7 @@ class TmdbCache(metaclass=WeakSingleton):
                 return redis_data
             return {}
 
-    def update(self, meta: MetaBase, info: dict) -> None:
+    def update(self, meta: MetaBase, info: Optional[dict[str, Any]]) -> None:
         """
         新增或更新缓存条目
         """

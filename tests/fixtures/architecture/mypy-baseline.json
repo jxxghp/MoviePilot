@@ -419,18 +419,6 @@
     "no-untyped-def": 1,
     "type-arg": 2
   },
-  "app/application/messaging/message.py": {
-    "arg-type": 5,
-    "assignment": 9,
-    "dict-item": 1,
-    "misc": 1,
-    "no-any-return": 4,
-    "no-untyped-call": 2,
-    "no-untyped-def": 12,
-    "type-arg": 18,
-    "union-attr": 2,
-    "var-annotated": 1
-  },
   "app/application/messaging/plugin.py": {
     "arg-type": 5,
     "no-untyped-call": 1,
@@ -977,7 +965,6 @@
     "assignment": 2,
     "attr-defined": 1,
     "no-redef": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 3,
     "operator": 6,
     "type-arg": 2,
@@ -1020,21 +1007,6 @@
   "app/modules/indexer/parser/sunnypt.py": {
     "arg-type": 2,
     "type-arg": 1
-  },
-  "app/modules/indexer/spider/__init__.py": {
-    "arg-type": 10,
-    "assignment": 3,
-    "dict-item": 3,
-    "misc": 1,
-    "no-any-return": 7,
-    "no-untyped-call": 3,
-    "no-untyped-def": 26,
-    "operator": 6,
-    "override": 1,
-    "return-value": 1,
-    "type-arg": 19,
-    "union-attr": 5,
-    "var-annotated": 2
   },
   "app/modules/indexer/spider/haidan.py": {
     "arg-type": 1,
@@ -1237,22 +1209,10 @@
     "misc": 2,
     "no-untyped-def": 2
   },
-  "app/modules/themoviedb/__init__.py": {
-    "arg-type": 5,
-    "assignment": 11,
-    "empty-body": 1,
-    "index": 2,
-    "no-any-return": 4,
-    "no-untyped-call": 5,
-    "no-untyped-def": 3,
-    "return-value": 2,
-    "type-arg": 19,
-    "union-attr": 2
-  },
   "app/modules/themoviedb/cache.py": {
     "no-any-return": 3,
-    "no-untyped-def": 4,
-    "type-arg": 5,
+    "no-untyped-def": 2,
+    "type-arg": 4,
     "union-attr": 5
   },
   "app/modules/themoviedb/scraper.py": {
@@ -1261,14 +1221,6 @@
     "no-any-return": 4,
     "no-untyped-def": 3,
     "type-arg": 6
-  },
-  "app/modules/themoviedb/tmdbapi.py": {
-    "arg-type": 1,
-    "attr-defined": 2,
-    "no-any-return": 3,
-    "no-untyped-def": 7,
-    "operator": 24,
-    "type-arg": 47
   },
   "app/modules/themoviedb/tmdbv3api/as_obj.py": {
     "assignment": 1,
@@ -1283,28 +1235,16 @@
   },
   "app/modules/trimemedia/api.py": {
     "misc": 2,
-    "no-untyped-def": 11,
+    "no-untyped-def": 9,
     "type-arg": 6
   },
   "app/modules/trimemedia/module.py": {
     "assignment": 1,
     "empty-body": 1,
-    "no-any-return": 3,
-    "no-untyped-call": 1,
+    "no-any-return": 1,
     "no-untyped-def": 7,
     "return": 1,
     "type-arg": 2
-  },
-  "app/modules/trimemedia/trimemedia.py": {
-    "arg-type": 5,
-    "no-any-return": 1,
-    "no-untyped-call": 8,
-    "no-untyped-def": 9,
-    "operator": 1,
-    "return": 1,
-    "type-arg": 2,
-    "union-attr": 32,
-    "var-annotated": 4
   },
   "app/modules/ugreen/module.py": {
     "arg-type": 3,

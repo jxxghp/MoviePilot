@@ -348,7 +348,7 @@ class Api:
                 return True
         return False
 
-    def task_running(self):
+    def task_running(self) -> bool:
         """
         当前正在运行的任务
         """
@@ -375,7 +375,7 @@ class Api:
 
     def item_list(
         self,
-        guid: Optional[str] = None,
+        guid: Optional[Union[str, int]] = None,
         types=None,
         exclude_grouped_video=True,
         page=1,
@@ -432,7 +432,7 @@ class Api:
             return int(total_count) if total_count is not None else None
         return None
 
-    def search_list(self, keywords: str) -> Optional[list[Item]]:
+    def search_list(self, keywords: Optional[str]) -> Optional[list[Item]]:
         """
         搜索影片、演员
         """
@@ -606,7 +606,7 @@ class Api:
                 logger.error(f"请求接口 {url} 异常：" + str(e))
         return None
 
-    def close(self):
+    def close(self) -> None:
         """
         关闭API会话
         """
