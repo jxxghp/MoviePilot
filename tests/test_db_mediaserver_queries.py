@@ -18,14 +18,18 @@ from app.schemas.types import MediaSource
 
 @pytest.fixture(autouse=True)
 def _track(db):
-    """把媒体服务器条目表纳入用例级回收。"""
+    """
+    把媒体服务器条目表纳入用例级回收。
+    """
     db.watermark(MediaServerItem)
 
 
 def _item(server: str, item_id: str, title: str = "片名", item_type: str = "电影",
           year: str = "2026", media_id: str = "1001",
           lst_mod_date: str = "2026-08-13 10:00:00") -> MediaServerItem:
-    """构造一条媒体服务器条目。"""
+    """
+    构造一条媒体服务器条目。
+    """
     return MediaServerItem(server=server, library="lib", item_id=item_id,
                            item_type=item_type, title=title, year=year,
                            media_source=str(MediaSource.TMDB), media_id=media_id,
@@ -46,7 +50,9 @@ def test_get_by_itemid_matches_async_twin(db):
 
 
 def test_mediaserver_oper_reuses_explicit_query_sessions(db, monkeypatch):
-    """媒体服务器 Oper 绑定调用方会话后不得再创建兼容查询会话。"""
+    """
+    媒体服务器 Oper 绑定调用方会话后不得再创建兼容查询会话。
+    """
     db.add(_item("emby", "explicit-ms", media_id="explicit-1001"))
     monkeypatch.setattr(
         db_base,
@@ -63,7 +69,9 @@ def test_mediaserver_oper_reuses_explicit_query_sessions(db, monkeypatch):
     ) is not None
 
     async def check() -> None:
-        """验证异步存在性查询复用显式 AsyncSession。"""
+        """
+        验证异步存在性查询复用显式 AsyncSession。
+        """
         async with async_session_scope() as session:
             monkeypatch.setattr(
                 db_base,
@@ -121,7 +129,9 @@ def test_exist_by_media_identity_requires_source_id_and_type(db):
 
 
 def test_media_server_exists_falls_back_to_title_after_source_miss(db):
-    """非主来源身份未命中时，电影和电视剧应按标题信息回退且校验季号。"""
+    """
+    非主来源身份未命中时，电影和电视剧应按标题信息回退且校验季号。
+    """
     movie = _item(
         "emby",
         "cross-source-movie",
@@ -193,7 +203,9 @@ def test_media_server_exists_falls_back_to_title_after_source_miss(db):
 
 
 def test_async_media_server_exists_falls_back_to_title_after_source_miss(db):
-    """异步媒体库查询应与同步入口一样支持跨来源标题回退。"""
+    """
+    异步媒体库查询应与同步入口一样支持跨来源标题回退。
+    """
     item = _item(
         "emby",
         "async-cross-source",
@@ -205,7 +217,9 @@ def test_async_media_server_exists_falls_back_to_title_after_source_miss(db):
     db.add(item)
 
     async def query(session):
-        """在显式异步会话中查询跨来源电影。"""
+        """
+        在显式异步会话中查询跨来源电影。
+        """
         return await MediaServerOper(session).async_exists(
             title="异步跨来源电影",
             year="2022",
@@ -218,7 +232,9 @@ def test_async_media_server_exists_falls_back_to_title_after_source_miss(db):
 
 
 def test_cross_source_title_fallback_requires_matching_year(db):
-    """跨来源无法比对 ID，标题回退必须带年份，同名不同年份的作品不得互相命中。"""
+    """
+    跨来源无法比对 ID，标题回退必须带年份，同名不同年份的作品不得互相命中。
+    """
     anime = _item(
         "emby",
         "same-title-anime",
@@ -243,11 +259,15 @@ def test_cross_source_title_fallback_requires_matching_year(db):
     assert oper.exists(year="2024", **query) is anime
 
     async def query_without_year(session):
-        """异步入口缺少年份时同样不得按标题回退。"""
+        """
+        异步入口缺少年份时同样不得按标题回退。
+        """
         return await MediaServerOper(session).async_exists(**query)
 
     async def query_other_year(session):
-        """异步入口年份不一致时不得命中同名条目。"""
+        """
+        异步入口年份不一致时不得命中同名条目。
+        """
         return await MediaServerOper(session).async_exists(year="2026", **query)
 
     assert db.run_async_session(query_without_year) is None
@@ -255,7 +275,9 @@ def test_cross_source_title_fallback_requires_matching_year(db):
 
 
 def test_cross_source_fallback_skips_same_source_conflicts(db):
-    """精确身份未命中时，同来源条目必然是另一部作品，不得作为标题回退结果。"""
+    """
+    精确身份未命中时，同来源条目必然是另一部作品，不得作为标题回退结果。
+    """
     db.add(_item("emby", "other-tmdb-work", title="同源冲突", year="2026",
                  media_id="tmdb-other"))
 
@@ -269,7 +291,9 @@ def test_cross_source_fallback_skips_same_source_conflicts(db):
 
 
 def test_cross_source_fallback_rejects_ambiguous_same_title_year(db):
-    """同名同年的候选指向不同作品时无法区分，宁可判为未入库。"""
+    """
+    同名同年的候选指向不同作品时无法区分，宁可判为未入库。
+    """
     db.add(
         _item("emby", "ambiguous-anime", title="同名同年", item_type="电视剧",
               year="2026", media_id="tmdb-anime"),
@@ -287,14 +311,18 @@ def test_cross_source_fallback_rejects_ambiguous_same_title_year(db):
     assert MediaServerOper(db.session).exists(**query) is None
 
     async def query_async(session):
-        """异步入口应同样拒绝歧义候选。"""
+        """
+        异步入口应同样拒绝歧义候选。
+        """
         return await MediaServerOper(session).async_exists(**query)
 
     assert db.run_async_session(query_async) is None
 
 
 def test_cross_source_fallback_prefers_copy_with_target_season(db):
-    """同一作品在多个媒体库各有一份时不算歧义，应选包含目标季的条目。"""
+    """
+    同一作品在多个媒体库各有一份时不算歧义，应选包含目标季的条目。
+    """
     season_one = _item("emby", "copy-season-one", title="多库剧集", item_type="电视剧",
                        year="2023", media_id="tmdb-same")
     season_one.seasoninfo = {1: [1, 2]}
@@ -314,7 +342,9 @@ def test_cross_source_fallback_prefers_copy_with_target_season(db):
 
 
 def test_exact_identity_does_not_require_year(db):
-    """精确来源身份命中时不依赖年份，避免补传年份后误判已入库作品缺失。"""
+    """
+    精确来源身份命中时不依赖年份，避免补传年份后误判已入库作品缺失。
+    """
     item = _item(
         "emby",
         "exact-identity-tv",
@@ -373,7 +403,9 @@ def test_exists_by_title_matches_async_twin(db):
 
 
 def test_oper_season_lookup_accepts_json_string_keys(db):
-    """跨 Session 后的 JSON 季号键为字符串，查询仍应按整数季号命中。"""
+    """
+    跨 Session 后的 JSON 季号键为字符串，查询仍应按整数季号命中。
+    """
     item = _item("emby", "season-json", item_type="电视剧", media_id="season-1")
     item.seasoninfo = {"1": [1, 2]}
     db.add(item)
@@ -386,7 +418,9 @@ def test_oper_season_lookup_accepts_json_string_keys(db):
     ) == "season-json"
 
     async def check() -> None:
-        """验证异步查询与同步查询采用相同的 JSON 季号兼容规则。"""
+        """
+        验证异步查询与同步查询采用相同的 JSON 季号兼容规则。
+        """
         async with async_session_scope() as session:
             assert await MediaServerOper(session).async_get_item_id(
                 media_source=MediaSource.TMDB,

@@ -1,4 +1,6 @@
-"""验证 composition owner 对称撤销其发布的 lifespan provider。"""
+"""
+验证 composition owner 对称撤销其发布的 lifespan provider。
+"""
 
 from __future__ import annotations
 
@@ -29,7 +31,9 @@ from app.startup.composition import server as server_composition
 
 
 def test_agent_owner_reset_is_symmetric_and_idempotent(monkeypatch) -> None:
-    """Agent owner 撤销数据上下文、任务执行与两类会话服务。"""
+    """
+    Agent owner 撤销数据上下文、任务执行与两类会话服务。
+    """
     monkeypatch.setattr(chat_provider, "_configured_agent_chat_service", None)
     monkeypatch.setattr(chat_provider, "_configured_agent_chat_persistence", None)
     monkeypatch.setattr(task_provider, "_service", None)
@@ -52,7 +56,9 @@ def test_agent_owner_reset_is_symmetric_and_idempotent(monkeypatch) -> None:
     assert data_state["current"] is composition.data
 
     def reset_data() -> None:
-        """撤销测试中的 Agent 数据上下文。"""
+        """
+        撤销测试中的 Agent 数据上下文。
+        """
         data_state.pop("current", None)
 
     agent_composition.reset_agent_services(data_context_resetter=reset_data)
@@ -69,7 +75,9 @@ def test_agent_owner_reset_is_symmetric_and_idempotent(monkeypatch) -> None:
 
 
 def test_security_owner_reset_is_symmetric_and_idempotent(monkeypatch) -> None:
-    """Security owner 撤销身份查询、认证、PassKey 与 Web 访问 provider。"""
+    """
+    Security owner 撤销身份查询、认证、PassKey 与 Web 访问 provider。
+    """
     monkeypatch.setattr(user_provider, "_configured_user_id_lookup", None)
     monkeypatch.setattr(user_provider, "_configured_user_name_lookup", None)
     monkeypatch.setattr(user_provider, "_configured_user_channel_lookup", None)
@@ -84,8 +92,11 @@ def test_security_owner_reset_is_symmetric_and_idempotent(monkeypatch) -> None:
         by_name=lambda _username: object(),
         by_channel=lambda **_bindings: "user",
     )
+    # 仅验证组合根重置时的对象身份，使用无业务行为的占位依赖。
     auth_provider.configure_auth_service(object())  # type: ignore[arg-type]
+    # 仅验证组合根重置时的对象身份，使用无业务行为的占位依赖。
     passkey_provider.configure_passkey_challenge_cache(object())  # type: ignore[arg-type]
+    # 仅验证组合根重置时的对象身份，使用无业务行为的占位依赖。
     passkey_provider.configure_passkey_service(object())  # type: ignore[arg-type]
     access_provider.set_superuser_token_payload_provider(lambda: object())
     access_provider.set_token_identity_validator(lambda _payload: None)
@@ -112,17 +123,23 @@ def test_security_owner_reset_is_symmetric_and_idempotent(monkeypatch) -> None:
 
 
 def test_network_owner_reset_is_symmetric_and_idempotent(monkeypatch) -> None:
-    """Network owner 撤销探测、图片和消息回环端口。"""
+    """
+    Network owner 撤销探测、图片和消息回环端口。
+    """
     monkeypatch.setattr(network_provider, "_configured_network_test_service", None)
     monkeypatch.setattr(image_provider, "_image_transport", None)
     monkeypatch.setattr(image_provider, "_internal_address", None)
     monkeypatch.setattr(ingress_provider, "_message_ingress_port", None)
 
+    # 仅验证组合根重置时的对象身份，使用无业务行为的占位依赖。
     network_provider.configure_network_test_service(object())  # type: ignore[arg-type]
     image_provider.configure_image_ports(
+        # 仅验证组合根重置时的对象身份，使用无业务行为的占位依赖。
         transport=object(),  # type: ignore[arg-type]
+        # 仅验证组合根重置时的对象身份，使用无业务行为的占位依赖。
         internal_address=object(),  # type: ignore[arg-type]
     )
+    # 仅验证组合根重置时的对象身份，使用无业务行为的占位依赖。
     ingress_provider.configure_message_ingress_port(object())  # type: ignore[arg-type]
 
     network_composition.reset_application_network_ports()
@@ -138,7 +155,9 @@ def test_network_owner_reset_is_symmetric_and_idempotent(monkeypatch) -> None:
 
 
 def test_outbox_owner_reset_is_symmetric_and_idempotent(monkeypatch) -> None:
-    """Outbox owner 撤销 dispatcher 工厂并恢复显式未配置错误。"""
+    """
+    Outbox owner 撤销 dispatcher 工厂并恢复显式未配置错误。
+    """
     monkeypatch.setattr(outbox_provider, "_configured_dispatcher", None)
     outbox_provider.configure_outbox_dispatcher(Mock())
 
@@ -150,7 +169,9 @@ def test_outbox_owner_reset_is_symmetric_and_idempotent(monkeypatch) -> None:
 
 
 def test_server_owner_reset_is_symmetric_and_idempotent(monkeypatch) -> None:
-    """Server owner 同时撤销上报与分享服务。"""
+    """
+    Server owner 同时撤销上报与分享服务。
+    """
     monkeypatch.setattr(server_provider, "_server_report_service", None)
     monkeypatch.setattr(server_provider, "_server_sharing_service", None)
     server_provider.configure_server_application_services(
@@ -168,7 +189,9 @@ def test_server_owner_reset_is_symmetric_and_idempotent(monkeypatch) -> None:
 
 
 def test_chain_owner_reset_is_symmetric_and_idempotent(monkeypatch) -> None:
-    """Chain owner 撤销无参上下文，并把壁纸来源恢复为空结果。"""
+    """
+    Chain owner 撤销无参上下文，并把壁纸来源恢复为空结果。
+    """
     monkeypatch.setattr(
         chain_provider,
         "_context_provider",
@@ -195,7 +218,9 @@ def test_chain_owner_reset_is_symmetric_and_idempotent(monkeypatch) -> None:
 
 
 def test_composition_owner_resets_run_in_reverse_publication_order(monkeypatch) -> None:
-    """多 provider owner 必须按发布逆序撤销，避免依赖先于消费者消失。"""
+    """
+    多 provider owner 必须按发布逆序撤销，避免依赖先于消费者消失。
+    """
     calls: list[str] = []
 
     for module, names in (

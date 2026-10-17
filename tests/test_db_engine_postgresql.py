@@ -104,7 +104,9 @@ def test_budget_uses_sqlite_pool_for_sqlite(monkeypatch):
 
 
 def test_budget_counts_database_worker_with_sync_nullpool(monkeypatch):
-    """同步 NullPool 需要同时计入通用线程池和专属数据库 worker。"""
+    """
+    同步 NullPool 需要同时计入通用线程池和专属数据库 worker。
+    """
     monkeypatch.setattr(settings, "DB_TYPE", "postgresql", raising=False)
     monkeypatch.setattr(settings, "DB_POOL_TYPE", "NullPool", raising=False)
     threadpool_size = settings.CONF.threadpool
@@ -224,7 +226,9 @@ def test_pg_sync_engine_applies_pool_settings(monkeypatch):
 
 
 def test_pg_sync_engine_uses_psycopg_on_free_threaded_python(monkeypatch):
-    """free-threaded 运行时不能加载会重新启用 GIL 的 psycopg2 扩展。"""
+    """
+    free-threaded 运行时不能加载会重新启用 GIL 的 psycopg2 扩展。
+    """
     monkeypatch.setattr(engine_module, "is_free_threaded_runtime", lambda: True)
     captured = {}
     monkeypatch.setattr(engine_module, "create_engine",
