@@ -1,3 +1,7 @@
+"""
+验证本地化资源加载与语言选择。
+"""
+
 import ast
 import asyncio
 import json
@@ -15,12 +19,16 @@ from version import APP_VERSION
 
 
 def _has_chinese(text: str) -> bool:
-    """判断文本是否包含中文字符。"""
+    """
+    判断文本是否包含中文字符。
+    """
     return any("\u4e00" <= char <= "\u9fff" for char in text)
 
 
 def _sample_message_expression(value: ast.AST) -> list[str]:
-    """从接口 message 表达式中生成用于翻译校验的样本文本。"""
+    """
+    从接口 message 表达式中生成用于翻译校验的样本文本。
+    """
     if isinstance(value, ast.Constant) and isinstance(value.value, str):
         return [value.value]
     if isinstance(value, ast.JoinedStr):
@@ -55,7 +63,9 @@ def _sample_message_expression(value: ast.AST) -> list[str]:
 
 
 def _sample_progress_text_expression(value: ast.AST) -> list[str]:
-    """从进度 text 表达式中生成用于翻译校验的样本文本。"""
+    """
+    从进度 text 表达式中生成用于翻译校验的样本文本。
+    """
     if isinstance(value, ast.Constant) and isinstance(value.value, str):
         return [value.value]
     if isinstance(value, ast.JoinedStr):
@@ -101,7 +111,9 @@ def _sample_progress_text_expression(value: ast.AST) -> list[str]:
 
 
 def _is_progress_text_call(node: ast.Call) -> bool:
-    """判断调用是否可能写入前端展示的进度文本。"""
+    """
+    判断调用是否可能写入前端展示的进度文本。
+    """
     func = ast.unparse(node.func)
     return (
         func.endswith("progress_callback")
@@ -111,14 +123,18 @@ def _is_progress_text_call(node: ast.Call) -> bool:
 
 
 def test_locale_helper_normalizes_supported_aliases():
-    """语言别名应规范化为项目支持的语言标识。"""
+    """
+    语言别名应规范化为项目支持的语言标识。
+    """
     assert LocaleHelper.normalize_locale("en") == "en-US"
     assert LocaleHelper.normalize_locale("zh_Hant") == "zh-TW"
     assert LocaleHelper.normalize_locale("unknown") == "zh-CN"
 
 
 def test_locale_helper_reads_request_headers_by_priority():
-    """请求语言应优先使用显式前端语言头，再回退 Accept-Language。"""
+    """
+    请求语言应优先使用显式前端语言头，再回退 Accept-Language。
+    """
     request = SimpleNamespace(
         headers={
             "x-moviepilot-locale": "en-US",
@@ -130,7 +146,9 @@ def test_locale_helper_reads_request_headers_by_priority():
 
 
 def test_locale_helper_reads_query_locale_before_headers():
-    """SSE 请求可通过查询参数显式指定前端语言。"""
+    """
+    SSE 请求可通过查询参数显式指定前端语言。
+    """
     request = SimpleNamespace(
         query_params={"locale": "zh-TW"},
         headers={
@@ -143,7 +161,9 @@ def test_locale_helper_reads_query_locale_before_headers():
 
 
 def test_locale_helper_parses_accept_language_quality():
-    """Accept-Language 应按 q 权重选择支持的语言。"""
+    """
+    Accept-Language 应按 q 权重选择支持的语言。
+    """
     request = SimpleNamespace(
         headers={
             "accept-language": "fr-FR, en-US;q=0.8, zh-TW;q=0.9",
@@ -154,7 +174,9 @@ def test_locale_helper_parses_accept_language_quality():
 
 
 def test_locale_helper_translates_module_name_and_keeps_missing_text():
-    """翻译存在时返回目标语言，缺失时返回默认文本。"""
+    """
+    翻译存在时返回目标语言，缺失时返回默认文本。
+    """
     assert LocaleHelper.translate(
         "system.modules.DoubanModule.name",
         locale="en-US",
@@ -168,7 +190,9 @@ def test_locale_helper_translates_module_name_and_keeps_missing_text():
 
 
 def test_locale_helper_translates_dynamic_message_patterns():
-    """动态消息应保留变量并翻译模板文本。"""
+    """
+    动态消息应保留变量并翻译模板文本。
+    """
     assert LocaleHelper.translate_text(
         "无法连接Qbittorrent下载器：默认",
         locale="en-US",
@@ -184,7 +208,9 @@ def test_locale_helper_translates_dynamic_message_patterns():
 
 
 def test_locale_helper_translates_common_backend_response_messages():
-    """常见后端链路消息应能生成英文展示文本。"""
+    """
+    常见后端链路消息应能生成英文展示文本。
+    """
     samples = {
         "QQ Bot 默认 未就绪": "QQ Bot 默认 is not ready",
         "微信 ClawBot 工作 未就绪：未登录": "WeChat ClawBot 工作 is not ready: 未登录",
@@ -237,7 +263,9 @@ def test_locale_helper_translates_common_backend_response_messages():
 
 
 def test_database_backup_messages_have_english_and_traditional_chinese() -> None:
-    """数据库备份 API 与配置校验文案应覆盖所有受支持的非默认语言。"""
+    """
+    数据库备份 API 与配置校验文案应覆盖所有受支持的非默认语言。
+    """
     samples = {
         "读取数据库备份列表失败，请查看日志": (
             "Failed to load database backups. Check the logs for details",
@@ -294,7 +322,9 @@ def test_database_backup_messages_have_english_and_traditional_chinese() -> None
 
 
 def test_response_localizes_message_from_locale_context():
-    """通用 Response 应根据请求语言上下文直接翻译消息。"""
+    """
+    通用 Response 应根据请求语言上下文直接翻译消息。
+    """
     token = LocaleHelper.set_current_locale("en-US")
     try:
         response = Response(success=False, message="模块不支持测试")
@@ -306,7 +336,9 @@ def test_response_localizes_message_from_locale_context():
 
 
 def test_http_exception_handler_returns_localized_response_envelope():
-    """HTTPException 响应应统一封装并直接翻译错误文本。"""
+    """
+    HTTPException 响应应统一封装并直接翻译错误文本。
+    """
     token = LocaleHelper.set_current_locale("en-US")
     try:
         response = asyncio.run(
@@ -331,7 +363,9 @@ def test_http_exception_handler_returns_localized_response_envelope():
 
 
 def test_application_docs_use_v1_openapi_and_backend_version():
-    """接口文档应展示 v1 地址并使用真实后端版本号；是否开放由 API_DOCS_ENABLE 决定。"""
+    """
+    接口文档应展示 v1 地址并使用真实后端版本号；是否开放由 API_DOCS_ENABLE 决定。
+    """
     app = create_app()
 
     assert app.version == APP_VERSION
@@ -341,7 +375,9 @@ def test_application_docs_use_v1_openapi_and_backend_version():
 
 
 def test_progress_helper_get_adds_i18n_fields_without_mutating_cache():
-    """通用进度字典应返回展示字段翻译，同时保留缓存中的原始中文。"""
+    """
+    通用进度字典应返回展示字段翻译，同时保留缓存中的原始中文。
+    """
     progress = ProgressHelper("__test_i18n_progress")
     progress.start()
     progress.update(
@@ -363,7 +399,9 @@ def test_progress_helper_get_adds_i18n_fields_without_mutating_cache():
 
 
 def test_schedule_info_auto_fills_i18n_display_fields():
-    """后台服务数据应补充前端展示所需的多语言字段。"""
+    """
+    后台服务数据应补充前端展示所需的多语言字段。
+    """
     token = LocaleHelper.set_current_locale("en-US")
     try:
         schedule = ScheduleInfo(
@@ -406,7 +444,9 @@ def test_schedule_info_auto_fills_i18n_display_fields():
 
 
 def test_scheduler_progress_patterns_translate_dynamic_texts():
-    """定时任务进度动态模板应翻译固定词并保留业务变量。"""
+    """
+    定时任务进度动态模板应翻译固定词并保留业务变量。
+    """
     assert (
         LocaleHelper.translate_text("同步媒体服务器 开始执行 ...", locale="en-US")
         == "Starting Sync Media Servers ..."
@@ -426,7 +466,9 @@ def test_scheduler_progress_patterns_translate_dynamic_texts():
 
 
 def test_scheduler_progress_texts_have_english_translations():
-    """定时任务相关进度文案应有英文翻译，避免前端切英文后回退中文。"""
+    """
+    定时任务相关进度文案应有英文翻译，避免前端切英文后回退中文。
+    """
     untranslated = []
     progress_paths = [
         *sorted(Path("app/scheduler").glob("*.py")),
@@ -455,7 +497,9 @@ def test_scheduler_progress_texts_have_english_translations():
 
 
 def test_api_endpoint_literal_messages_have_english_translations():
-    """接口直接返回的中文 message 应有英文翻译，避免前端切英文后回退中文。"""
+    """
+    接口直接返回的中文 message 应有英文翻译，避免前端切英文后回退中文。
+    """
     untranslated = []
     for path in Path("app/api/endpoints").glob("*.py"):
         tree = ast.parse(path.read_text())
@@ -479,7 +523,9 @@ def test_api_endpoint_literal_messages_have_english_translations():
 
 
 def test_api_endpoint_dynamic_messages_have_english_translations():
-    """接口动态拼接的中文 message 应由模板翻译覆盖。"""
+    """
+    接口动态拼接的中文 message 应由模板翻译覆盖。
+    """
     untranslated = []
     for path in Path("app/api/endpoints").glob("*.py"):
         tree = ast.parse(path.read_text())
@@ -513,7 +559,9 @@ def test_api_endpoint_dynamic_messages_have_english_translations():
 
 
 def test_api_endpoint_message_expressions_have_english_translations():
-    """接口 message 表达式中的中文分支应有英文翻译。"""
+    """
+    接口 message 表达式中的中文分支应有英文翻译。
+    """
     untranslated = []
     for path in Path("app/api/endpoints").glob("*.py"):
         tree = ast.parse(path.read_text())
@@ -536,7 +584,9 @@ def test_api_endpoint_message_expressions_have_english_translations():
 
 
 def test_api_endpoint_http_exception_details_have_english_translations():
-    """HTTPException 的中文 detail 应有英文翻译。"""
+    """
+    HTTPException 的中文 detail 应有英文翻译。
+    """
     untranslated = []
     for path in Path("app/api/endpoints").glob("*.py"):
         tree = ast.parse(path.read_text())

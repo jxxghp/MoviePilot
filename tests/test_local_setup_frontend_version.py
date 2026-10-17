@@ -1,3 +1,7 @@
+"""
+验证本地前端安装时的版本选择和兼容处理。
+"""
+
 from __future__ import annotations
 
 import importlib.util
@@ -12,7 +16,9 @@ MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "local_setup.py"
 
 
 def load_local_setup_module():
-    """隔离加载本地安装脚本，避免跨用例修改模块状态。"""
+    """
+    隔离加载本地安装脚本，避免跨用例修改模块状态。
+    """
     module_name = f"moviepilot_local_setup_frontend_{uuid.uuid4().hex}"
     spec = importlib.util.spec_from_file_location(module_name, MODULE_PATH)
     module = importlib.util.module_from_spec(spec)
@@ -22,7 +28,9 @@ def load_local_setup_module():
 
 
 def test_repo_frontend_version_reads_version_file():
-    """前端固定版本取自当前源码声明。"""
+    """
+    前端固定版本取自当前源码声明。
+    """
     module = load_local_setup_module()
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -36,7 +44,9 @@ def test_repo_frontend_version_reads_version_file():
             assert module._repo_frontend_version() == "v9.9.9"
 
 def test_resolve_frontend_release_uses_repo_frontend_version_by_default():
-    """普通模式请求源码声明的前端 Release。"""
+    """
+    普通模式请求源码声明的前端 Release。
+    """
     module = load_local_setup_module()
     release = {
         "tag_name": "v9.9.9",
@@ -60,7 +70,9 @@ def test_resolve_frontend_release_uses_repo_frontend_version_by_default():
     assert download_url == "https://example.com/dist.zip"
 
 def test_parser_leaves_frontend_version_empty_until_runtime_resolution():
-    """未显式指定版本时延迟到运行阶段读取最新源码。"""
+    """
+    未显式指定版本时延迟到运行阶段读取最新源码。
+    """
     module = load_local_setup_module()
     parser = module.build_parser()
 
@@ -76,7 +88,9 @@ def test_parser_leaves_frontend_version_empty_until_runtime_resolution():
 @pytest.mark.parametrize("enabled", ["true", "1", "yes", "false", "0"])
 @pytest.mark.parametrize("target", ["backend", "frontend", "all"])
 def test_update_uses_configured_dev_mode(monkeypatch, enabled, target):
-    """DEV 配置作用于所有手动更新目标，前端从最新 Release 解析。"""
+    """
+    DEV 配置作用于所有手动更新目标，前端从最新 Release 解析。
+    """
     module = load_local_setup_module()
     monkeypatch.delenv("MOVIEPILOT_UPDATE_DEV", raising=False)
     monkeypatch.setattr(module, "read_env_value", lambda _key: enabled)
@@ -94,7 +108,9 @@ def test_update_uses_configured_dev_mode(monkeypatch, enabled, target):
     (["--offline-backend", "--ref", "v3.0.0", "--frontend-version", "v3.0.0"], ("v3.0.0", "v3.0.0")),
 ])
 def test_explicit_update_options_and_detached_head(monkeypatch, options, expected):
-    """显式选项覆盖 DEV 默认值，离线安装保持下载清单的版本。"""
+    """
+    显式选项覆盖 DEV 默认值，离线安装保持下载清单的版本。
+    """
     module = load_local_setup_module()
     monkeypatch.setenv("MOVIEPILOT_UPDATE_DEV", "true")
     monkeypatch.setattr(module, "_git_output", lambda *_args: "HEAD")
@@ -104,7 +120,9 @@ def test_explicit_update_options_and_detached_head(monkeypatch, options, expecte
 
 
 def test_environment_overrides_saved_dev_config(monkeypatch):
-    """进程环境配置优先于 app.env 中保存的 DEV 偏好。"""
+    """
+    进程环境配置优先于 app.env 中保存的 DEV 偏好。
+    """
     module = load_local_setup_module()
     monkeypatch.setenv("MOVIEPILOT_UPDATE_DEV", "false")
     monkeypatch.setattr(module, "read_env_value", lambda _key: "true")
@@ -112,7 +130,9 @@ def test_environment_overrides_saved_dev_config(monkeypatch):
 
 
 def test_dev_frontend_downloads_latest_release():
-    """latest 必须访问最新 Release API，不读取后端固定前端版本。"""
+    """
+    latest 必须访问最新 Release API，不读取后端固定前端版本。
+    """
     module = load_local_setup_module()
     release = {"tag_name": "v3.0.11", "assets": [{"name": "dist.zip", "browser_download_url": "https://example.com/dist.zip"}]}
     with patch.object(module, "fetch_json", return_value=release) as fetch, patch.object(
@@ -124,7 +144,9 @@ def test_dev_frontend_downloads_latest_release():
 
 @pytest.mark.parametrize("target", ["backend", "frontend", "all"])
 def test_update_command_passes_dev_selection_to_installers(monkeypatch, tmp_path, target):
-    """命令入口把 DEV 选择传给实际安装边界，并保持后端先于前端执行。"""
+    """
+    命令入口把 DEV 选择传给实际安装边界，并保持后端先于前端执行。
+    """
     module = load_local_setup_module()
     monkeypatch.setenv("MOVIEPILOT_UPDATE_DEV", "true")
     monkeypatch.setattr(module.sys, "argv", ["local_setup.py", "update", target, "--skip-resources"])
@@ -142,7 +164,9 @@ def test_update_command_passes_dev_selection_to_installers(monkeypatch, tmp_path
 
 @pytest.mark.parametrize("fetch, branch", [(True, "v3"), (False, "v3"), (True, "HEAD")])
 def test_switching_to_dev_branch_fetches_latest_tip(monkeypatch, tmp_path, fetch, branch):
-    """切回开发分支后快进远端提交；离线安装和标签检出不拉取分支。"""
+    """
+    切回开发分支后快进远端提交；离线安装和标签检出不拉取分支。
+    """
     module = load_local_setup_module()
     (tmp_path / ".git").touch()
     monkeypatch.setattr(module, "ROOT", tmp_path)
@@ -165,7 +189,9 @@ def test_switching_to_dev_branch_fetches_latest_tip(monkeypatch, tmp_path, fetch
 def test_update_reinstalls_repacked_frontend_in_dev_mode(
     monkeypatch, tmp_path, target, version_args, saved_dev, mode_args, refresh
 ):
-    """连续更新同版本不同内容的 ZIP：DEV 真正替换文件，普通模式仍复用已安装版本。"""
+    """
+    连续更新同版本不同内容的 ZIP：DEV 真正替换文件，普通模式仍复用已安装版本。
+    """
     import zipfile
 
     module = load_local_setup_module()
@@ -196,14 +222,18 @@ def test_update_reinstalls_repacked_frontend_in_dev_mode(
     downloads = []
 
     def download_repacked_release(url, path):
-        """模拟同一个 Release URL 每次提供重新构建的内容。"""
+        """
+        模拟同一个 Release URL 每次提供重新构建的内容。
+        """
         downloads.append(url)
         with zipfile.ZipFile(path, "w") as archive:
             archive.writestr("dist/version.txt", "v3.0.11")
             archive.writestr("dist/index.html", f"build-{len(downloads)}")
 
     def install_runtime_deps(*_args, **_kwargs):
-        """恢复已安装依赖标记，保证第二次确实面对完整的同版本前端。"""
+        """
+        恢复已安装依赖标记，保证第二次确实面对完整的同版本前端。
+        """
         (public / "node_modules" / "express").mkdir(parents=True, exist_ok=True)
 
     monkeypatch.setattr(module, "download_file", download_repacked_release)

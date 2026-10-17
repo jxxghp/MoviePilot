@@ -1,9 +1,15 @@
+"""
+验证 LRCLIB 歌词查询、匹配和返回值映射。
+"""
+
 from app.domain.context import MusicInfo
 from app.modules.lrclib import LrclibModule
 
 
 class _FakeLrclibResponse:
-    """模拟 LRCLIB HTTP 响应，供解析、缓存和限流测试复用。"""
+    """
+    模拟 LRCLIB HTTP 响应，供解析、缓存和限流测试复用。
+    """
 
     def __init__(self, payload, status_code=200, headers=None):
         self._payload = payload
@@ -13,25 +19,35 @@ class _FakeLrclibResponse:
         self.closed = False
 
     def json(self):
-        """返回预设 JSON 负载。"""
+        """
+        返回预设 JSON 负载。
+        """
         return self._payload
 
     def close(self):
-        """记录响应已关闭。"""
+        """
+        记录响应已关闭。
+        """
         self.closed = True
 
     def __bool__(self):
-        """复现 requests.Response 对 4xx/5xx 响应返回 False 的行为。"""
+        """
+        复现 requests.Response 对 4xx/5xx 响应返回 False 的行为。
+        """
         return self.status_code < 400
 
 
 def test_music_lyrics_prefers_exact_signature_and_synced_lyrics(monkeypatch) -> None:
-    """元数据完整时应调用精确接口并优先返回同步歌词。"""
+    """
+    元数据完整时应调用精确接口并优先返回同步歌词。
+    """
     module = LrclibModule()
     requested = []
 
     def fake_request(path, params=None):
-        """记录精确查询参数并返回同步歌词。"""
+        """
+        记录精确查询参数并返回同步歌词。
+        """
         requested.append((path, params))
         return {
             "id": 3396226,
@@ -70,11 +86,15 @@ def test_music_lyrics_prefers_exact_signature_and_synced_lyrics(monkeypatch) -> 
 
 
 def test_music_lyrics_search_fallback_rejects_wrong_duration(monkeypatch) -> None:
-    """精确接口未命中后只能选取标题、艺术家和时长均可信的搜索结果。"""
+    """
+    精确接口未命中后只能选取标题、艺术家和时长均可信的搜索结果。
+    """
     module = LrclibModule()
 
     def fake_request(path, params=None):
-        """精确查询返回未命中，搜索返回一条错误版本和一条正确版本。"""
+        """
+        精确查询返回未命中，搜索返回一条错误版本和一条正确版本。
+        """
         if path == "/api/get":
             return {}
         return [
@@ -114,12 +134,16 @@ def test_music_lyrics_search_fallback_rejects_wrong_duration(monkeypatch) -> Non
 
 
 def test_music_lyrics_queries_simplified_metadata(monkeypatch) -> None:
-    """繁体音乐信息应使用简体标题、艺术家和专辑查询 LRCLIB。"""
+    """
+    繁体音乐信息应使用简体标题、艺术家和专辑查询 LRCLIB。
+    """
     module = LrclibModule()
     requested = []
 
     def fake_request(path, params=None):
-        """记录归一后的精确查询参数并返回歌词。"""
+        """
+        记录归一后的精确查询参数并返回歌词。
+        """
         requested.append((path, params))
         return {
             "id": 3,
@@ -152,11 +176,15 @@ def test_music_lyrics_queries_simplified_metadata(monkeypatch) -> None:
 
 
 def test_music_lyrics_search_matches_traditional_candidate(monkeypatch) -> None:
-    """搜索结果使用繁体艺术家或标题时仍应匹配简体查询身份。"""
+    """
+    搜索结果使用繁体艺术家或标题时仍应匹配简体查询身份。
+    """
     module = LrclibModule()
 
     def fake_request(path, params=None):
-        """模拟精确接口未命中和繁体搜索结果。"""
+        """
+        模拟精确接口未命中和繁体搜索结果。
+        """
         if path == "/api/get":
             return {}
         return [
@@ -180,7 +208,9 @@ def test_music_lyrics_search_matches_traditional_candidate(monkeypatch) -> None:
 
 
 def test_request_json_honors_retry_after_once(monkeypatch) -> None:
-    """LRCLIB 返回带 Retry-After 的过载响应时应等待并串行重试一次。"""
+    """
+    LRCLIB 返回带 Retry-After 的过载响应时应等待并串行重试一次。
+    """
     responses = iter(
         [
             _FakeLrclibResponse(None, status_code=503, headers={"Retry-After": "2"}),
@@ -202,7 +232,9 @@ def test_request_json_honors_retry_after_once(monkeypatch) -> None:
 
 
 def test_request_json_retry_network_failure_is_not_cached(monkeypatch) -> None:
-    """过载重试遇到网络失败时应安全返回且不把失败写入缓存。"""
+    """
+    过载重试遇到网络失败时应安全返回且不把失败写入缓存。
+    """
     responses = iter(
         [
             _FakeLrclibResponse(None, status_code=429, headers={"Retry-After": "0"}),
@@ -223,11 +255,15 @@ def test_request_json_retry_network_failure_is_not_cached(monkeypatch) -> None:
 
 
 def test_request_json_caches_not_found_response(monkeypatch) -> None:
-    """未匹配结果也应缓存，避免整库重复刮削持续请求同一首歌。"""
+    """
+    未匹配结果也应缓存，避免整库重复刮削持续请求同一首歌。
+    """
     calls = {"count": 0}
 
     def fake_request(*_args, **_kwargs):
-        """记录请求次数并返回 404。"""
+        """
+        记录请求次数并返回 404。
+        """
         calls["count"] += 1
         return _FakeLrclibResponse(None, status_code=404)
 
@@ -242,11 +278,15 @@ def test_request_json_caches_not_found_response(monkeypatch) -> None:
 
 
 def test_request_json_caches_success_response(monkeypatch) -> None:
-    """成功歌词响应应进入有界 TLRU 缓存，相同签名只访问一次外部 API。"""
+    """
+    成功歌词响应应进入有界 TLRU 缓存，相同签名只访问一次外部 API。
+    """
     calls = {"count": 0}
 
     def fake_request(*_args, **_kwargs):
-        """记录请求次数并返回固定歌词。"""
+        """
+        记录请求次数并返回固定歌词。
+        """
         calls["count"] += 1
         return _FakeLrclibResponse(
             {"id": 2, "syncedLyrics": "[00:01.00]晴天"},

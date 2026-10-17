@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+验证站点用户数据读取失败时的回退策略。
+"""
+
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -8,12 +12,16 @@ from app.modules.indexer.parser import SiteSchema
 
 
 def _build_parser_constructor(schema_value: str, calls: list[str]) -> Mock:
-    """构造记录解析调用的站点解析器桩。"""
+    """
+    构造记录解析调用的站点解析器桩。
+    """
     constructor = Mock(name=f"{schema_value}Parser")
     constructor.schema = SimpleNamespace(value=schema_value)
 
     def build_parser(**_kwargs):
-        """构造一个解析失败且不发起真实请求的解析器实例。"""
+        """
+        构造一个解析失败且不发起真实请求的解析器实例。
+        """
         parser = Mock()
         parser.userid = None
         parser.username = None
@@ -39,7 +47,9 @@ def _build_parser_constructor(schema_value: str, calls: list[str]) -> Mock:
 
 
 def test_refresh_userdata_fallback_only_uses_common_schemas(monkeypatch):
-    """声明模型失败时只尝试常用模型，不触发专用模型兜底请求。"""
+    """
+    声明模型失败时只尝试常用模型，不触发专用模型兜底请求。
+    """
     calls = []
     parser_constructors = [
         _build_parser_constructor(SiteSchema.NexusPhp.value, calls),
@@ -70,13 +80,17 @@ def test_refresh_userdata_fallback_only_uses_common_schemas(monkeypatch):
 
 
 def test_refresh_userdata_uses_declared_page_and_runtime_user_agent(monkeypatch):
-    """用户数据刷新应使用站点声明页面，并为未配置站点 UA 补充运行时 UA。"""
+    """
+    用户数据刷新应使用站点声明页面，并为未配置站点 UA 补充运行时 UA。
+    """
     captured = {}
     constructor = Mock(name="NexusPhpParser")
     constructor.schema = SimpleNamespace(value=SiteSchema.NexusPhp.value)
 
     def build_parser(**kwargs):
-        """构造一个成功返回用户 ID 的解析器桩。"""
+        """
+        构造一个成功返回用户 ID 的解析器桩。
+        """
         captured.update(kwargs)
         parser = Mock()
         parser.userid = "123"

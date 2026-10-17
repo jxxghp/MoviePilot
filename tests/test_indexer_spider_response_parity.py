@@ -1,3 +1,7 @@
+"""
+验证各站点爬虫对响应异常和空结果的处理一致性。
+"""
+
 import asyncio
 
 import pytest
@@ -20,20 +24,28 @@ from app.schemas.types import MediaType
 
 
 class _FakeResponse:
-    """提供 Spider 响应判定所需的最小 HTTP 响应契约。"""
+    """
+    提供 Spider 响应判定所需的最小 HTTP 响应契约。
+    """
 
     def __init__(self, payload=None, status_code: int = 200, text: str = ""):
-        """保存固定状态、JSON 数据和响应文本。"""
+        """
+        保存固定状态、JSON 数据和响应文本。
+        """
         self._payload = payload
         self.status_code = status_code
         self.text = text
 
     def __bool__(self) -> bool:
-        """按 requests.Response 的成功状态布尔语义返回结果。"""
+        """
+        按 requests.Response 的成功状态布尔语义返回结果。
+        """
         return self.status_code < 400
 
     def json(self):
-        """返回预设 JSON 数据。"""
+        """
+        返回预设 JSON 数据。
+        """
         if isinstance(self._payload, Exception):
             raise self._payload
         return self._payload
@@ -115,7 +127,9 @@ _PROCESSOR_CASES = {
 
 
 def _build_api_spider(name: str, monkeypatch, indexer=None):
-    """构造不访问数据库或网络的专用 API Spider。"""
+    """
+    构造不访问数据库或网络的专用 API Spider。
+    """
     if name in {"mtorrent", "hddolby", "haidan", "rousi"}:
         module = {
             "mtorrent": mtorrent_module,
@@ -147,13 +161,17 @@ def test_api_spider_response_processors_cover_success_empty_and_errors(
     name,
     monkeypatch,
 ):
-    """各 API Spider 应由同一纯响应入口处理成功、空结果和失败分支。"""
+    """
+    各 API Spider 应由同一纯响应入口处理成功、空结果和失败分支。
+    """
     spider = _build_api_spider(name, monkeypatch)
     case = _PROCESSOR_CASES[name]
     parser_calls = []
 
     def parse_result(results, *_args):
-        """记录处理器传入解析器的数据并返回可识别投影。"""
+        """
+        记录处理器传入解析器的数据并返回可识别投影。
+        """
         parser_calls.append(results)
         return [{"title": "projected"}]
 
@@ -182,7 +200,9 @@ def test_api_spider_response_processors_cover_success_empty_and_errors(
     ["rousi", "sunnypt", "yema"],
 )
 def test_json_validating_spiders_preserve_invalid_payload_fallback(name, monkeypatch):
-    """已声明 JSON 容错的 Spider 应继续把解析异常稳定降级为空错误结果。"""
+    """
+    已声明 JSON 容错的 Spider 应继续把解析异常稳定降级为空错误结果。
+    """
     spider = _build_api_spider(name, monkeypatch)
     case = _PROCESSOR_CASES[name]
     processor = getattr(spider, case["processor"])
@@ -195,7 +215,9 @@ def test_json_validating_spiders_preserve_invalid_payload_fallback(name, monkeyp
     ["mtorrent", "hddolby", "torrentleech", "haidan", "tnode"],
 )
 def test_legacy_json_exception_semantics_are_not_broadened(name, monkeypatch):
-    """未提供 JSON 容错的旧 Spider 重构后仍应向调用方传播同一解析异常。"""
+    """
+    未提供 JSON 容错的旧 Spider 重构后仍应向调用方传播同一解析异常。
+    """
     spider = _build_api_spider(name, monkeypatch)
     case = _PROCESSOR_CASES[name]
     processor = getattr(spider, case["processor"])
@@ -225,23 +247,31 @@ _SEARCH_CASES = {
 
 @pytest.mark.parametrize("name", _SEARCH_CASES)
 def test_api_spider_sync_async_entries_share_response_projection(name, monkeypatch):
-    """同步和异步 HTTP 边界应把响应交给同一个状态与结果投影入口。"""
+    """
+    同步和异步 HTTP 边界应把响应交给同一个状态与结果投影入口。
+    """
     spider = _build_api_spider(name, monkeypatch)
     io_method, processor_name, search_kwargs = _SEARCH_CASES[name]
     response = object()
     processor_calls = []
 
     def process_response(actual_response, *_args):
-        """记录同步和异步入口交付的原始响应对象。"""
+        """
+        记录同步和异步入口交付的原始响应对象。
+        """
         processor_calls.append(actual_response)
         return False, [{"title": "projected"}]
 
     def sync_request(*_args, **_kwargs):
-        """回放同步 HTTP 响应。"""
+        """
+        回放同步 HTTP 响应。
+        """
         return response
 
     async def async_request(*_args, **_kwargs):
-        """回放异步 HTTP 响应。"""
+        """
+        回放异步 HTTP 响应。
+        """
         return response
 
     monkeypatch.setattr(spider, processor_name, process_response)
@@ -251,7 +281,9 @@ def test_api_spider_sync_async_entries_share_response_projection(name, monkeypat
         monkeypatch.setattr(spider, "_TNodeSpider__get_token", lambda: "token")
 
         async def async_token():
-            """返回与同步入口相同的固定 CSRF 令牌。"""
+            """
+            返回与同步入口相同的固定 CSRF 令牌。
+            """
             return "token"
 
         monkeypatch.setattr(spider, "_TNodeSpider__async_get_token", async_token)
@@ -264,7 +296,9 @@ def test_api_spider_sync_async_entries_share_response_projection(name, monkeypat
 
 
 def test_tnode_token_projection_is_identical_for_sync_and_async_responses(monkeypatch):
-    """TNode 两种首页请求应共享同一 CSRF 文本解析和无效状态判定。"""
+    """
+    TNode 两种首页请求应共享同一 CSRF 文本解析和无效状态判定。
+    """
     spider = _build_api_spider("tnode", monkeypatch)
     valid = _FakeResponse(text='<meta name="x-csrf-token" content="same-token">')
     invalid = _FakeResponse(text='<meta name="x-csrf-token" content="ignored">', status_code=403)
@@ -291,16 +325,22 @@ def test_missing_credentials_reject_sync_and_async_search_without_network(
     search_kwargs,
     monkeypatch,
 ):
-    """具备本地认证门禁的 Spider 两种入口都应在 HTTP 前返回错误。"""
+    """
+    具备本地认证门禁的 Spider 两种入口都应在 HTTP 前返回错误。
+    """
     indexer = {**_COMMON_INDEXER, credential: None}
     spider = _build_api_spider(name, monkeypatch, indexer=indexer)
 
     def unexpected_request(*_args, **_kwargs):
-        """认证缺失时若触发同步网络请求则立即失败。"""
+        """
+        认证缺失时若触发同步网络请求则立即失败。
+        """
         pytest.fail("missing credentials must skip sync network I/O")
 
     async def unexpected_async_request(*_args, **_kwargs):
-        """认证缺失时若触发异步网络请求则立即失败。"""
+        """
+        认证缺失时若触发异步网络请求则立即失败。
+        """
         pytest.fail("missing credentials must skip async network I/O")
 
     monkeypatch.setattr(RequestUtils, "get_res", unexpected_request)
@@ -315,28 +355,38 @@ def test_missing_credentials_reject_sync_and_async_search_without_network(
 def test_yema_sync_async_entries_share_request_plan_and_result_finalizer(
     monkeypatch,
 ):
-    """Yema 分类搜索的两种入口仅替换 HTTP，规划和归并决策必须同源。"""
+    """
+    Yema 分类搜索的两种入口仅替换 HTTP，规划和归并决策必须同源。
+    """
     spider = _build_api_spider("yema", monkeypatch)
     prepare = []
     finalized = []
     original_prepare = spider._prepare_search_requests
 
     def prepare_search_requests(**kwargs):
-        """记录两种入口交给共享请求规划器的参数。"""
+        """
+        记录两种入口交给共享请求规划器的参数。
+        """
         prepare.append(kwargs)
         return original_prepare(**kwargs)
 
     def finalize_search_responses(responses):
-        """记录两种入口交给共享结果归并器的响应序列。"""
+        """
+        记录两种入口交给共享结果归并器的响应序列。
+        """
         finalized.append(responses)
         return False, [{"title": "projected"}]
 
     def sync_request(*_args, **kwargs):
-        """返回可按分类请求体识别的同步响应。"""
+        """
+        返回可按分类请求体识别的同步响应。
+        """
         return ("sync", kwargs["json"]["categoryId"])
 
     async def async_request(*_args, **kwargs):
-        """返回可按分类请求体识别的异步响应。"""
+        """
+        返回可按分类请求体识别的异步响应。
+        """
         return ("async", kwargs["json"]["categoryId"])
 
     monkeypatch.setattr(spider, "_prepare_search_requests", prepare_search_requests)
@@ -359,16 +409,22 @@ def test_yema_sync_async_entries_share_request_plan_and_result_finalizer(
 
 
 def test_tnode_and_torrentleech_preflight_failures_skip_network(monkeypatch):
-    """令牌缺失和不支持中文的入口都应在同步、异步 HTTP 前终止。"""
+    """
+    令牌缺失和不支持中文的入口都应在同步、异步 HTTP 前终止。
+    """
     tnode = _build_api_spider("tnode", monkeypatch)
     torrentleech = _build_api_spider("torrentleech", monkeypatch)
 
     def no_token():
-        """回放同步令牌缺失。"""
+        """
+        回放同步令牌缺失。
+        """
         return None
 
     async def no_async_token():
-        """回放异步令牌缺失。"""
+        """
+        回放异步令牌缺失。
+        """
         return None
 
     monkeypatch.setattr(tnode, "_TNodeSpider__get_token", no_token)
@@ -381,7 +437,9 @@ def test_tnode_and_torrentleech_preflight_failures_skip_network(monkeypatch):
 
 
 def test_site_spider_sync_async_share_admission_and_decoding(monkeypatch):
-    """普通页面 Spider 仅保留 HTTP 与线程执行差异，准入和解码投影保持一致。"""
+    """
+    普通页面 Spider 仅保留 HTTP 与线程执行差异，准入和解码投影保持一致。
+    """
     indexer = {
         "id": "generic",
         "name": "Generic",
@@ -393,20 +451,28 @@ def test_site_spider_sync_async_share_admission_and_decoding(monkeypatch):
     parsed = []
 
     def sync_request(*_args, **_kwargs):
-        """回放普通页面同步响应。"""
+        """
+        回放普通页面同步响应。
+        """
         return response
 
     async def async_request(*_args, **_kwargs):
-        """回放普通页面异步响应。"""
+        """
+        回放普通页面异步响应。
+        """
         return response
 
     def decode(actual_response, **_kwargs):
-        """记录统一解码入口收到的响应。"""
+        """
+        记录统一解码入口收到的响应。
+        """
         assert actual_response is response
         return actual_response.text
 
     def parse(_self, text):
-        """记录两种入口交付的相同解析文本。"""
+        """
+        记录两种入口交付的相同解析文本。
+        """
         parsed.append(text)
         return [{"title": text}]
 
@@ -448,7 +514,9 @@ def test_site_spider_sync_async_share_admission_and_decoding(monkeypatch):
     ],
 )
 def test_site_spider_records_failure_detail_for_unusable_page(monkeypatch, response, detail):
-    """未拿到可用页面时同步、异步入口都记录状态码与页面摘要，供搜索失败原因展示。"""
+    """
+    未拿到可用页面时同步、异步入口都记录状态码与页面摘要，供搜索失败原因展示。
+    """
     indexer = {
         "id": "generic",
         "name": "Generic",
@@ -458,7 +526,9 @@ def test_site_spider_records_failure_detail_for_unusable_page(monkeypatch, respo
     }
 
     async def async_request(*_args, **_kwargs):
-        """回放普通页面异步响应。"""
+        """
+        回放普通页面异步响应。
+        """
         return response
 
     monkeypatch.setattr(RequestUtils, "get_res", lambda *_args, **_kwargs: response)

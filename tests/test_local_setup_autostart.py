@@ -1,3 +1,7 @@
+"""
+验证本地安装流程的自动启动配置与平台行为。
+"""
+
 from __future__ import annotations
 
 import importlib.util
@@ -9,7 +13,9 @@ MODULE_PATH = Path(__file__).resolve().parents[1] / "scripts" / "local_setup.py"
 
 
 def load_local_setup_module():
-    """加载独立模块实例，避免测试间共享本地安装脚本状态。"""
+    """
+    加载独立模块实例，避免测试间共享本地安装脚本状态。
+    """
     module_name = f"moviepilot_local_setup_autostart_{uuid.uuid4().hex}"
     spec = importlib.util.spec_from_file_location(module_name, MODULE_PATH)
     module = importlib.util.module_from_spec(spec)
@@ -21,7 +27,9 @@ def load_local_setup_module():
 def test_linux_systemd_unit_keeps_services_alive_and_retries_startup_failures(
     monkeypatch, tmp_path: Path
 ) -> None:
-    """systemd unit 应覆盖 CLI 启动窗口，并在成功后保留派生服务。"""
+    """
+    systemd unit 应覆盖 CLI 启动窗口，并在成功后保留派生服务。
+    """
     module = load_local_setup_module()
     launcher = tmp_path / "moviepilot-start.sh"
     launcher.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
@@ -63,7 +71,9 @@ def test_linux_systemd_unit_keeps_services_alive_and_retries_startup_failures(
 def test_disabling_linux_autostart_stops_active_unit_before_removing_it(
     monkeypatch, tmp_path: Path
 ) -> None:
-    """取消自启动必须停止 active (exited) unit 及其 cgroup 子进程。"""
+    """
+    取消自启动必须停止 active (exited) unit 及其 cgroup 子进程。
+    """
     module = load_local_setup_module()
     unit_path = tmp_path / module.LINUX_SYSTEMD_UNIT_NAME
     desktop_path = tmp_path / module.LINUX_XDG_AUTOSTART_FILENAME

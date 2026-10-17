@@ -1,3 +1,7 @@
+"""
+验证本地文件复制和移动时的权限继承、时间戳与跨盘回退。
+"""
+
 import errno
 import os
 from pathlib import Path
@@ -10,19 +14,25 @@ SOURCE_MTIME_NS = 1_000_000_000_000_000_000
 
 
 def _make_storage() -> local_storage_module.LocalStorage:
-    """绕过配置初始化，构造仅用于文件操作测试的本地存储实例。"""
+    """
+    绕过配置初始化，构造仅用于文件操作测试的本地存储实例。
+    """
     return object.__new__(local_storage_module.LocalStorage)
 
 
 def _default_file_mode(directory: Path) -> int:
-    """获取当前进程在目标目录中新建文件时的默认权限。"""
+    """
+    获取当前进程在目标目录中新建文件时的默认权限。
+    """
     sentinel = directory / "mode-sentinel.bin"
     sentinel.write_bytes(b"")
     return sentinel.stat().st_mode & 0o777
 
 
 def _prepare_source(source: Path, target_mode: int) -> int:
-    """创建与目标默认权限不同的可读源文件，并设置固定修改时间。"""
+    """
+    创建与目标默认权限不同的可读源文件，并设置固定修改时间。
+    """
     source.write_bytes(b"moviepilot-acl-test")
     source_mode = 0o600 if target_mode != 0o600 else 0o640
     source.chmod(source_mode)
@@ -31,7 +41,9 @@ def _prepare_source(source: Path, target_mode: int) -> int:
 
 
 def _assert_copied_file(source_content: bytes, target: Path, target_mode: int) -> None:
-    """校验复制结果保留内容和时间戳，同时沿用目标目录权限。"""
+    """
+    校验复制结果保留内容和时间戳，同时沿用目标目录权限。
+    """
     assert target.stat().st_mode & 0o777 == target_mode
     assert target.stat().st_mtime_ns == SOURCE_MTIME_NS
     target.chmod(target_mode | 0o400)
@@ -39,7 +51,9 @@ def _assert_copied_file(source_content: bytes, target: Path, target_mode: int) -
 
 
 def test_copy_with_progress_keeps_target_permissions(tmp_path: Path) -> None:
-    """进度复制应保留时间戳，但不得用源权限覆盖目标目录赋予的权限。"""
+    """
+    进度复制应保留时间戳，但不得用源权限覆盖目标目录赋予的权限。
+    """
     source = tmp_path / "progress-source.bin"
     target = tmp_path / "progress-target.bin"
     target_mode = _default_file_mode(tmp_path)
@@ -60,7 +74,9 @@ def test_copy_with_progress_keeps_target_permissions(tmp_path: Path) -> None:
 
 
 def test_copy_keeps_target_permissions(tmp_path: Path) -> None:
-    """普通复制应让新文件继承目标目录权限，并继续保留源文件时间戳。"""
+    """
+    普通复制应让新文件继承目标目录权限，并继续保留源文件时间戳。
+    """
     source = tmp_path / "copy-source.bin"
     target = tmp_path / "copy-target.bin"
     target_mode = _default_file_mode(tmp_path)
@@ -85,7 +101,9 @@ def test_copy_keeps_target_permissions(tmp_path: Path) -> None:
 
 
 def test_cross_device_move_keeps_target_permissions(tmp_path: Path) -> None:
-    """跨盘移动降级为复制时应继承目标权限，成功后再删除源文件。"""
+    """
+    跨盘移动降级为复制时应继承目标权限，成功后再删除源文件。
+    """
     source = tmp_path / "cross-device-source.bin"
     target = tmp_path / "cross-device-target.bin"
     target_mode = _default_file_mode(tmp_path)
@@ -131,7 +149,9 @@ def test_cross_device_move_keeps_target_permissions(tmp_path: Path) -> None:
 
 
 def test_same_device_move_still_uses_rename(tmp_path: Path) -> None:
-    """同盘移动应继续使用原子重命名，不复制文件或改变原有权限。"""
+    """
+    同盘移动应继续使用原子重命名，不复制文件或改变原有权限。
+    """
     source = tmp_path / "same-device-source.bin"
     target = tmp_path / "same-device-target.bin"
     source.write_bytes(b"same-device")
