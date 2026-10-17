@@ -626,7 +626,7 @@ class RequestUtils:
         :param raise_exception: 是否在发生异常时抛出异常，否则默认拦截异常返回None
         :param kwargs: 其他请求参数，如headers、cookies（字符串或字典）、proxies等
         :return: HTTP响应对象
-        :raises: requests.exceptions.RequestException 仅raise_exception为True时会抛出
+        :raises requests.exceptions.RequestException: 请求失败且 raise_exception=True
         """
         if self._session is None:
             req_method = requests.request
@@ -752,7 +752,7 @@ class RequestUtils:
         :param raise_exception: 是否在发生异常时抛出异常，否则默认拦截异常返回None
         :param kwargs: 其他请求参数，如headers, cookies, proxies等
         :return: HTTP响应对象，若发生RequestException则返回None
-        :raises: requests.exceptions.RequestException 仅raise_exception为True时会抛出
+        :raises requests.exceptions.RequestException: 请求失败且 raise_exception=True
         """
         return self.request(
             method="get",
@@ -806,7 +806,7 @@ class RequestUtils:
         :param raise_exception: 是否在发生异常时抛出异常，否则默认拦截异常返回None
         :param kwargs: 其他请求参数，如headers, cookies, proxies等
         :return: HTTP响应对象，若发生RequestException则返回None
-        :raises: requests.exceptions.RequestException 仅raise_exception为True时会抛出
+        :raises requests.exceptions.RequestException: 请求失败且 raise_exception=True
         """
         return self.request(
             method="post",
@@ -843,7 +843,7 @@ class RequestUtils:
         :param raise_exception: 是否在发生异常时抛出异常，否则默认拦截异常返回None
         :param kwargs: 其他请求参数，如headers, cookies, proxies等
         :return: HTTP响应对象，若发生RequestException则返回None
-        :raises: requests.exceptions.RequestException 仅raise_exception为True时会抛出
+        :raises requests.exceptions.RequestException: 请求失败且 raise_exception=True
         """
         return self.request(
             method="put",
@@ -876,7 +876,7 @@ class RequestUtils:
         :param raise_exception: 是否在发生异常时抛出异常，否则默认拦截异常返回None
         :param kwargs: 其他请求参数，如headers, cookies, proxies等
         :return: HTTP响应对象，若发生RequestException则返回None
-        :raises: requests.exceptions.RequestException 仅raise_exception为True时会抛出
+        :raises requests.exceptions.RequestException: 请求失败且 raise_exception=True
         """
         return self.request(
             method="delete",
@@ -1407,7 +1407,7 @@ class AsyncRequestUtils:
         :param raise_exception: 是否在发生异常时抛出异常，否则默认拦截异常返回None
         :param kwargs: 其他请求参数，如headers, cookies, proxies等
         :return: HTTP响应对象
-        :raises: HTTP 客户端请求异常仅在 raise_exception=True 时抛出
+        :raises httpx2.RequestError: 请求失败且 raise_exception=True
         """
         # 运行时 self._cookies 只能是 dict | None（cookie_parse 默认 array=False 返回 dict）
         cookies_dict: Optional[dict] = self._cookies if isinstance(self._cookies, dict) else None
@@ -1723,7 +1723,7 @@ class AsyncRequestUtils:
         :param raise_exception: 是否在发生异常时抛出异常，否则默认拦截异常返回None
         :param kwargs: 其他请求参数，如headers, cookies, proxies等
         :return: HTTP响应对象，若发生RequestError则返回None
-        :raises: HTTP 客户端请求异常仅在 raise_exception=True 时抛出
+        :raises httpx2.RequestError: 请求失败且 raise_exception=True
         """
         return await self.request(
             method="get",
@@ -1926,7 +1926,7 @@ class AsyncRequestUtils:
         :param raise_exception: 是否在发生异常时抛出异常，否则默认拦截异常返回None
         :param kwargs: 其他请求参数，如headers, cookies, proxies等
         :return: HTTP响应对象，若发生RequestError则返回None
-        :raises: HTTP 客户端请求异常仅在 raise_exception=True 时抛出
+        :raises httpx2.RequestError: 请求失败且 raise_exception=True
         """
         return await self.request(
             method="post",
@@ -1963,7 +1963,7 @@ class AsyncRequestUtils:
         :param raise_exception: 是否在发生异常时抛出异常，否则默认拦截异常返回None
         :param kwargs: 其他请求参数，如headers, cookies, proxies等
         :return: HTTP响应对象，若发生RequestError则返回None
-        :raises: HTTP 客户端请求异常仅在 raise_exception=True 时抛出
+        :raises httpx2.RequestError: 请求失败且 raise_exception=True
         """
         return await self.request(
             method="put",
@@ -1996,7 +1996,7 @@ class AsyncRequestUtils:
         :param raise_exception: 是否在发生异常时抛出异常，否则默认拦截异常返回None
         :param kwargs: 其他请求参数，如headers, cookies, proxies等
         :return: HTTP响应对象，若发生RequestError则返回None
-        :raises: HTTP 客户端请求异常仅在 raise_exception=True 时抛出
+        :raises httpx2.RequestError: 请求失败且 raise_exception=True
         """
         return await self.request(
             method="delete",
