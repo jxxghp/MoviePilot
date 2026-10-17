@@ -26,24 +26,42 @@ class _FakeStorageOper:
     calls = []
 
     def set_config(self, conf):
+        """
+        记录传入的存储配置，不连接真实存储服务。
+        """
         _FakeStorageOper.calls.append(("set_config", conf))
 
     def reset_config(self):
+        """
+        记录配置重置调用，供存储管理入口断言使用。
+        """
         _FakeStorageOper.calls.append(("reset_config", None))
 
     def usage(self):
+        """
+        返回固定的总容量与可用容量，隔离实际存储空间查询。
+        """
         return schemas.StorageUsage(total=100, available=40)
 
     def support_transtype(self):
+        """
+        声明虚拟存储只支持移动，供传输能力查询使用。
+        """
         return {"move": True}
 
     def check_login(self, **kwargs):
+        """
+        记录登录检查参数，并返回固定成功结果。
+        """
         _FakeStorageOper.calls.append(("check_login", kwargs))
         return {"status": True}, None
 
 
 @pytest.fixture
 def module(monkeypatch):
+    """
+    构造仅支持虚拟存储的文件管理模块，并清空前一用例的调用记录。
+    """
     _FakeStorageOper.calls.clear()
     module = FileManagerModule()
     monkeypatch.setattr(module, "_support_storages", ["fakestore"])

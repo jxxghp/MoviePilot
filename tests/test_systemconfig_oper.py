@@ -319,6 +319,9 @@ async def test_async_set_persists_falsy_value_on_existing_record():
 
     class _InlineDatabaseExecutor:
         async def run(self, operation):
+            """
+            直接执行传入操作并返回结果，隔离真实后台执行器调度。
+            """
             return operation()
 
     service = SystemConfigService(
@@ -342,6 +345,9 @@ async def test_async_set_creates_record_for_falsy_value():
 
     class _InlineDatabaseExecutor:
         async def run(self, operation):
+            """
+            直接执行传入操作并返回结果，隔离真实后台执行器调度。
+            """
             return operation()
 
     service = SystemConfigService(

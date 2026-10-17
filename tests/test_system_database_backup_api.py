@@ -37,17 +37,29 @@ class _Governance:
         )
 
     def list_backups(self):
+        """
+        返回预设备份条目，避免接口测试访问真实备份目录。
+        """
         return (self.artifact,)
 
     def create_backup(self):
+        """
+        返回预设新备份条目，不执行真实数据库备份。
+        """
         return self.artifact
 
     def verify_backup(self, name: str):
+        """
+        拒绝带路径的备份名称，否则返回含内部详情的成功校验结果。
+        """
         if "/" in name:
             raise ValueError("数据库备份文件名不能包含路径")
         return BackupVerification(True, "PRAGMA integrity_check", "private detail")
 
     def delete_backup(self, name: str):
+        """
+        拒绝带路径的备份名称，并为指定缺失文件模拟不存在错误。
+        """
         if "/" in name:
             raise ValueError("数据库备份文件名不能包含路径")
         if name == "missing.db":
@@ -111,6 +123,9 @@ async def test_verify_database_backup_rejects_path_input(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_delete_database_backup_accepts_only_managed_name(monkeypatch) -> None:
+    """
+    删除备份接口只接受受管文件名，并将非法名称转为客户端错误。
+    """
     governance = _Governance()
     monkeypatch.setattr(system_endpoint, "get_database_governance", lambda: governance)
 

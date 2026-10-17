@@ -604,19 +604,31 @@ def test_get_image_mime_type_uses_pillow_detected_format(
     image_format: str,
     expected_mime: str,
 ):
+    """
+    图片 MIME 类型依据 Pillow 检测出的实际格式确定。
+    """
     assert ImageHelper.get_image_mime_type(_image_bytes(image_format)) == expected_mime
 
 
 def test_get_image_mime_type_rejects_non_image_pillow_mime():
+    """
+    Pillow 返回非图片 MIME 类型时拒绝该内容。
+    """
     assert ImageHelper.get_image_mime_type(_image_bytes("EPS")) is None
 
 
 def test_get_image_mime_type_rejects_scriptable_svg_mime():
+    """
+    即使图像可解析，也拒绝可执行脚本的 SVG MIME 类型。
+    """
     with patch.dict(Image.MIME, {"PNG": "image/svg+xml"}):
         assert ImageHelper.get_image_mime_type(_image_bytes("PNG")) is None
 
 
 def test_fetch_image_with_mime_type_only_reads_cached_format_header():
+    """
+    同步缓存命中时只读取已缓存格式头，避免重复完整验证图片。
+    """
     content = _image_bytes("PNG")
     image_helper = ImageHelper()
 
@@ -638,6 +650,9 @@ def test_fetch_image_with_mime_type_only_reads_cached_format_header():
 
 
 def test_fetch_image_with_mime_type_validates_network_content_once():
+    """
+    同步网络图片内容只完整验证一次，并返回实际 MIME 类型。
+    """
     content = _image_bytes("PNG")
     image_helper = ImageHelper()
     response = Mock(status_code=200, content=content)
@@ -747,6 +762,9 @@ async def test_async_fetch_image_retries_transient_upstream_failure():
 
 
 def test_async_fetch_image_with_mime_type_only_reads_cached_format_header():
+    """
+    异步缓存命中时只读取已缓存格式头，避免重复完整验证图片。
+    """
     content = _image_bytes("PNG")
     image_helper = ImageHelper()
 
@@ -770,6 +788,9 @@ def test_async_fetch_image_with_mime_type_only_reads_cached_format_header():
 
 
 def test_async_fetch_image_with_mime_type_validates_network_content_once():
+    """
+    异步网络图片内容只完整验证一次，并返回实际 MIME 类型。
+    """
     content = _image_bytes("PNG")
     image_helper = ImageHelper()
     response = Mock(status_code=200, content=content)
@@ -931,6 +952,9 @@ def test_image_request_uses_internal_address_port_for_proxy_decision(monkeypatch
 
 
 def test_fetch_image_does_not_trust_active_url_suffix():
+    """
+    图片代理不信任可能触发主动内容的 URL 后缀，使用实际内容类型。
+    """
     content = _image_bytes("PNG", b"<script>window.xss = true</script>")
     image_helper = Mock()
     image_helper.async_fetch_image_with_mime_type = AsyncMock(
@@ -956,6 +980,9 @@ def test_fetch_image_does_not_trust_active_url_suffix():
 
 
 def test_fetch_image_rejects_unverified_content():
+    """
+    图片内容未通过验证时，代理不生成可用响应。
+    """
     image_helper = Mock()
     image_helper.async_fetch_image_with_mime_type = AsyncMock(return_value=None)
 
@@ -975,6 +1002,9 @@ def test_fetch_image_rejects_unverified_content():
 
 
 def test_fetch_image_adds_nosniff_to_not_modified_response():
+    """
+    图片代理的未修改响应也包含禁止 MIME 嗅探的响应头。
+    """
     content = _image_bytes("JPEG")
     image_helper = Mock()
     image_helper.async_fetch_image_with_mime_type = AsyncMock(

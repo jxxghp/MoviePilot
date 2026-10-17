@@ -189,6 +189,9 @@ def test_check_exposes_new_stable_release(monkeypatch, tmp_path):
 
 
 def test_check_logs_when_application_is_current(monkeypatch, tmp_path):
+    """
+    手动检查确认已是最新版时记录结果，并保持不可更新的空闲状态。
+    """
     manager = _manager(monkeypatch, tmp_path)
     logs = []
     releases = [
@@ -269,6 +272,9 @@ def test_public_download_request_omits_github_authorization(monkeypatch, tmp_pat
 
 
 def test_scheduled_check_failure_stays_silent(monkeypatch, tmp_path):
+    """
+    定时检查失败时保留错误状态信息，但不输出主动通知日志。
+    """
     manager = _manager(monkeypatch, tmp_path)
     monkeypatch.setattr(
         manager,
@@ -283,6 +289,9 @@ def test_scheduled_check_failure_stays_silent(monkeypatch, tmp_path):
 
 
 def test_interrupted_download_becomes_retryable_failure(monkeypatch, tmp_path):
+    """
+    下载中断后进入可重试的失败状态。
+    """
     manager = _manager(monkeypatch, tmp_path)
     manager._write_state(state="downloading", version="v3.1.0")
 
@@ -483,6 +492,9 @@ def test_ready_resource_update_clears_after_loaded_version_reaches_target(
 
 
 def test_download_prepares_matching_backend_and_frontend_archives(monkeypatch, tmp_path):
+    """
+    更新下载准备相互匹配的后端与前端归档，完成后进入可安装状态。
+    """
     manager = _manager(monkeypatch, tmp_path)
     backend_fixture = tmp_path / "source-backend.zip"
     frontend_fixture = tmp_path / "source-frontend.zip"
@@ -635,6 +647,9 @@ def test_resource_manifest_requires_complete_current_platform_package(monkeypatc
 
 
 def test_request_install_rejects_modified_prepared_package(monkeypatch, tmp_path):
+    """
+    已准备的更新包被修改后，安装请求必须拒绝校验失败的内容。
+    """
     manager = _manager(monkeypatch, tmp_path)
     manager._root.mkdir(parents=True)
     manager._backend_archive.write_bytes(b"backend")
@@ -663,6 +678,9 @@ def test_request_install_rejects_modified_prepared_package(monkeypatch, tmp_path
 
 
 def test_cancel_install_returns_prepared_update_to_ready(monkeypatch, tmp_path):
+    """
+    取消安装等待后，已准备的更新恢复到可安装状态。
+    """
     manager = _manager(monkeypatch, tmp_path)
     manager._root.mkdir(parents=True)
     manager._install_file.write_text("{}", encoding="utf-8")

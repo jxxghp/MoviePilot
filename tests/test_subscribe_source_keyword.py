@@ -10,6 +10,9 @@ from app.schemas.types import MediaType
 
 
 def test_subscribe_source_keyword_includes_episode_group():
+    """
+    订阅来源关键词编码与解析保留剧集组标识。
+    """
     subscribe = SimpleNamespace(
         id=1,
         name="Test Show",

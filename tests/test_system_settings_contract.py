@@ -23,6 +23,9 @@ from app.schemas.types import SystemConfigKey
 
 
 def test_subscription_search_strategy_contract_declares_three_choices() -> None:
+    """
+    订阅搜索策略 Schema 明确声明智能、完整和单页三种选项。
+    """
     from pydantic import ValidationError
 
     spec = ALL_SETTING_SPECS[SystemConfigKey.SubscribeSearchStrategy.value]

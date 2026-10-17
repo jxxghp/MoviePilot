@@ -191,6 +191,9 @@ async def test_stop_during_final_progress_does_not_mark_completed_job_unsubmitte
         """
 
         async def get(self):
+            """
+            通知收尾读取已经开始，并保持等待以验证关闭取消能够传递。
+            """
             finish_started.set()
             await asyncio.Event().wait()
 
@@ -384,6 +387,9 @@ async def test_sync_job_callback_and_finish_handles_are_owned(monkeypatch) -> No
             pass
 
         async def update(self, **_kwargs) -> None:
+            """
+            阻塞进度更新并记录取消次数，随后继续传播取消异常。
+            """
             nonlocal cancelled
             update_started.set()
             try:
@@ -393,6 +399,9 @@ async def test_sync_job_callback_and_finish_handles_are_owned(monkeypatch) -> No
                 raise
 
         async def get(self):
+            """
+            阻塞收尾读取并记录取消次数；正常释放时返回空进度。
+            """
             nonlocal cancelled
             finish_started.set()
             try:
@@ -403,6 +412,9 @@ async def test_sync_job_callback_and_finish_handles_are_owned(monkeypatch) -> No
             return None
 
         async def end(self, **_kwargs) -> None:
+            """
+            提供无副作用的结束入口，使测试聚焦取消与读取过程。
+            """
             pass
 
     _patch_progress(monkeypatch, BlockingProgress)
@@ -440,6 +452,9 @@ async def test_stale_progress_cannot_update_replaced_job(monkeypatch) -> None:
             pass
 
         async def update(self, **kwargs) -> None:
+            """
+            记录进度更新参数，供任务状态断言使用。
+            """
             updates.append(kwargs)
 
     monkeypatch.setattr(scheduler_progress, "AsyncProgressHelper", RecordingProgress)
@@ -480,11 +495,17 @@ async def test_final_progress_waits_for_pending_update(monkeypatch) -> None:
         """
 
         async def update(self, **_kwargs) -> None:
+            """
+            等待测试允许后记录进度写入，验证关闭不会提前结束在途更新。
+            """
             update_started.set()
             await allow_update.wait()
             writes.append("update")
 
         async def end(self, **_kwargs) -> None:
+            """
+            记录结束写入并通知测试收尾已完成。
+            """
             writes.append("end")
             finished.set()
 
@@ -522,12 +543,21 @@ async def test_replaced_job_keeps_active_state_without_stale_progress(monkeypatc
             pass
 
         def start(self) -> None:
+            """
+            提供无副作用的进度启动入口。
+            """
             pass
 
         def update(self, **kwargs) -> None:
+            """
+            将进度更新合入共享详情，模拟同步进度存储。
+            """
             detail.update(kwargs)
 
         def get(self):
+            """
+            返回当前进度详情，供同步收尾路径读取。
+            """
             return detail
 
     class RecordingAsyncProgress:
@@ -538,6 +568,9 @@ async def test_replaced_job_keeps_active_state_without_stale_progress(monkeypatc
             pass
 
         async def get(self):
+            """
+            返回当前进度详情，供异步收尾路径读取。
+            """
             return detail
 
     monkeypatch.setattr(scheduler_execution, "ProgressHelper", RecordingProgress)

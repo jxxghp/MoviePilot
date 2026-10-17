@@ -177,6 +177,9 @@ def test_site_budget_ignores_legacy_success_interval(tmp_path):
 
 
 def test_automatic_pagination_shares_success_interval_across_subscriptions(tmp_path):
+    """
+    不同订阅的自动分页共用站点成功请求间隔。
+    """
     repository, engine = _repository(tmp_path)
     before = datetime.now(timezone.utc)
     first = repository.claim_site(site_id=9, owner="subscription-a", lease_seconds=900, minimum_interval=10)

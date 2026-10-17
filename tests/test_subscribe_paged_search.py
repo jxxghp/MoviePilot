@@ -442,6 +442,9 @@ def test_ready_batch_uses_original_partial_pack_selection_and_returns_full_missi
 
 
 def test_ready_batch_cannot_expand_existing_candidate_episode_restriction(subscription):
+    """
+    已就绪下载批次不得扩大候选原有的允许剧集范围。
+    """
     scope = subscription
     current = replace(scope.initial, total_episode=2)
     scope.current["value"] = current
@@ -519,6 +522,9 @@ def test_full_season_upgrade_keeps_complete_pack_requirement(subscription, files
 
 
 def test_episode_upgrade_keeps_original_full_pack_first(subscription):
+    """
+    按集洗版仍优先保留原始完整合集候选。
+    """
     scope = subscription
     current = replace(scope.initial, total_episode=2, best_version=1, current_priority=0)
     scope.current["value"] = current
@@ -596,6 +602,9 @@ def test_scan_end_reconciles_current_missing_after_target_was_submitted(subscrip
 
 
 def test_scan_end_cannot_finalize_replaced_subscription(subscription):
+    """
+    分页扫描结束时，不得完成已被替换的订阅版本。
+    """
     scope = subscription
     target = SubscriptionSearchTarget(scope.initial, build_subscribe_meta(scope.initial), scope.media,
                                       _missing(scope, scope.initial), "tmdb:1")
@@ -621,6 +630,9 @@ def test_scan_end_still_reconciles_a_subscription_paused_during_the_accepted_sea
 
 @pytest.mark.parametrize("media_type", [MediaType.TV, MediaType.MOVIE])
 def test_scan_end_still_finishes_when_current_media_is_complete(subscription, media_type):
+    """
+    扫描结束时当前媒体已完整，仍应正常完成订阅。
+    """
     scope = subscription
     current = replace(scope.initial, type=media_type.value, note=[1])
     scope.current["value"] = current

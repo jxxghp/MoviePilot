@@ -25,6 +25,9 @@ from app.schemas.types import MediaType, SystemConfigKey
     ("single_page", False, "single_page"), ("smart", True, "full"), ("single_page", True, "full"),
 ])
 def test_subscription_search_strategy_and_upgrade_override(monkeypatch, strategy, best_version, expected):
+    """
+    订阅搜索策略遵循配置，并按洗版模式应用对应覆盖规则。
+    """
     values = {SystemConfigKey.SubscribeSearchStrategy: strategy}
     monkeypatch.setattr(subscribe_search, "get_configured_system_config", lambda: SimpleNamespace(get=values.get))
     assert subscribe_search._subscription_search_strategy(best_version) == expected
