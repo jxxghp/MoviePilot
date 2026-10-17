@@ -32,7 +32,7 @@ class TorrentData(TypedDict):
     :ivar is_active: 下载器返回的活动状态
     :ivar is_open: 下载器返回的文件打开状态
     :ivar ratio: 从千分比转换后的分享率
-    :ivar content_path: 完整内容路径
+    :ivar content_path: 完整内容路径；下载器未提供时为 None，由调用端回退计算
     :ivar progress: 下载进度百分比，零大小任务为 0
     """
 
@@ -49,7 +49,7 @@ class TorrentData(TypedDict):
     is_active: Union[int, float]
     is_open: Union[int, float]
     ratio: float
-    content_path: str
+    content_path: Optional[str]
     progress: float
 
 
@@ -92,6 +92,13 @@ def _rpc_text(value: object) -> str:
     if not isinstance(value, str):
         raise TypeError("rTorrent response field must be text")
     return value
+
+
+def _rpc_optional_text(value: object) -> Optional[str]:
+    """保留下载器空路径返回，使调用端继续回退到保存目录和任务名。"""
+    if value is None:
+        return None
+    return _rpc_text(value)
 
 
 def _rpc_number(value: object) -> Union[int, float]:
@@ -318,7 +325,7 @@ class Rtorrent:
                     "is_open": _rpc_number(r[11]),
                     "ratio": _rpc_integer(r[12]) / 1000.0 if r[12] else 0,
                     "progress": 0,
-                    "content_path": _rpc_text(r[13]),  # base_path 即完整内容路径
+                    "content_path": _rpc_optional_text(r[13]),  # base_path 即完整内容路径
                 }
                 # 计算进度
                 if torrent["total_size"] > 0:
