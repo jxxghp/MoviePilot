@@ -48,7 +48,7 @@ class OcrHelper:
                 except (ValueError, binascii.Error):
                     return ""
             else:
-                ret = RequestUtils(ua=ua,
+                ret = RequestUtils(ua=ua or "",
                                    cookies=cookie).get_res(image_url)
                 if ret is not None:
                     raw_image = ret.content or b""
