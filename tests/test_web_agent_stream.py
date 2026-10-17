@@ -1026,6 +1026,9 @@ def test_prepare_web_agent_audio_attachment_async_keeps_loop_responsive(tmp_path
         returncode = 0
 
         async def communicate(self):
+            """
+            等待测试放行后生成模拟音频文件，检查转换期间事件循环仍可响应。
+            """
             started.set()
             await release.wait()
             converted_path.write_bytes(b"wav-bytes")
@@ -1086,12 +1089,18 @@ def test_prepare_web_agent_audio_attachment_async_cancellation_reaps_process(tmp
         _release = asyncio.Event()
 
         def kill(self):
+            """
+            记录子进程被终止并释放通信等待，模拟取消后的回收。
+            """
             nonlocal killed
             killed = True
             self.returncode = -9
             self._release.set()
 
         async def communicate(self):
+            """
+            通知测试通信已开始，等待进程终止后返回空输出。
+            """
             started.set()
             if self.returncode is None:
                 await self._release.wait()
@@ -1148,11 +1157,17 @@ def test_prepare_web_agent_audio_attachment_async_communicate_error_reaps_proces
         returncode = None
 
         def kill(self):
+            """
+            记录进程终止状态，供通信异常后的资源回收断言。
+            """
             nonlocal killed
             killed = True
             self.returncode = -9
 
         async def communicate(self):
+            """
+            首次通信模拟管道异常，终止后再次通信成功以验证进程回收。
+            """
             nonlocal communicate_calls
             communicate_calls += 1
             started.set()
@@ -1206,6 +1221,9 @@ def test_prepare_web_agent_audio_attachment_async_cancellation_cleans_completed_
         returncode = 0
 
         async def communicate(self):
+            """
+            生成已经完成的转换文件，检查随后的取消是否清理产物。
+            """
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_bytes(b"wav-bytes")
             return b"", b""
@@ -1271,12 +1289,18 @@ def test_prepare_web_agent_audio_attachment_async_timeout_falls_back(tmp_path):
         _release = asyncio.Event()
 
         def kill(self):
+            """
+            终止超时的转换进程并唤醒通信等待，供降级处理收尾。
+            """
             nonlocal killed
             killed = True
             self.returncode = -9
             self._release.set()
 
         async def communicate(self):
+            """
+            保持转换通信等待直到进程被终止，模拟超时场景。
+            """
             started.set()
             if self.returncode is None:
                 await self._release.wait()
@@ -1749,19 +1773,34 @@ def test_web_agent_stream_emits_secret_result_only_as_protected_event():
             return self._pending_secret_confirmation is not None
 
         def set_output_callback(self, output_callback):
+            """
+            保存普通输出回调，供测试区分公开流与受保护结果。
+            """
             self.output_callback = output_callback
 
         def set_message_callback(self, message_callback):
+            """
+            保存消息回调，模拟 Agent 对话事件订阅。
+            """
             self.message_callback = message_callback
 
         def set_protected_output_callback(self, protected_output_callback):
+            """
+            保存受保护输出回调，使敏感结果可以进入专用事件通道。
+            """
             self.protected_output_callback = protected_output_callback
 
         async def process(self, _message, **_kwargs):
+            """
+            通过受保护回调发送敏感标记，并仅返回可公开的处理确认。
+            """
             self.protected_output_callback(secret_marker)
             return "敏感设置确认已处理。"
 
         async def cleanup(self):
+            """
+            完成无资源的 Agent 清理入口，避免测试引入外部副作用。
+            """
             return None
 
     session_id = _build_web_agent_session_id(user, payload.session_id)

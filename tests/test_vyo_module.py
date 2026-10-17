@@ -67,16 +67,28 @@ class _FakeApi:
 
     @property
     def configured(self) -> bool:
+        """
+        固定声明客户端已配置，避免配置校验阻断被测请求路径。
+        """
         return True
 
     def close(self) -> None:
+        """
+        记录客户端关闭状态，供资源释放断言使用。
+        """
         self.closed = True
 
     def image_url(self, item_id: str, image_type: str, host: Optional[str] = None) -> str:
         # 复用真实实现，避免假 Api 自行拼装掩盖「URL 不得携带凭据」这一约束
+        """
+        调用真实图片地址构造逻辑，检查生成地址不包含 API 凭据。
+        """
         return Api(host=host or self._host, apikey="k").image_url(item_id, image_type)
 
     def request(self, api, method=None, params=None, data=None, base_path=None, suppress_log=False):
+        """
+        记录请求并派发到预设路由；未登记的接口返回未找到结果。
+        """
         self.calls.append({"api": api, "method": method, "params": params or {}, "data": data,
                            "base_path": base_path})
         handler = self.routes.get(api)

@@ -51,6 +51,9 @@ def _module_config() -> SimpleNamespace:
 
 
 def test_ilink_parse_incoming_uses_seq_as_message_id_fallback():
+    """
+    入站消息缺少独立消息标识时，使用序列号作为去重标识。
+    """
     client = _create_client()
 
     message = client._parse_incoming(
@@ -162,6 +165,9 @@ def test_ilink_parse_incoming_keeps_legacy_file_item_types():
 
 
 def test_ilink_extract_updates_keeps_empty_sync_buf():
+    """
+    提取更新时保留服务端返回的空同步游标，不回退为旧值。
+    """
     client = _create_client(bot_token="token", sync_buf="cursor-old")
 
     items, sync_buf = client._extract_updates(
@@ -183,6 +189,9 @@ def test_ilink_extract_updates_keeps_empty_sync_buf():
 
 
 def test_ilink_poll_updates_resets_sync_buf_when_server_returns_empty_cursor():
+    """
+    轮询收到空游标后重置本地同步状态，避免继续使用旧游标。
+    """
     client = _create_client(bot_token="token", sync_buf="cursor-old")
     response = MagicMock()
     response.json.return_value = {
@@ -207,6 +216,9 @@ def test_ilink_poll_updates_resets_sync_buf_when_server_returns_empty_cursor():
 
 
 def test_ilink_poll_updates_accepts_canonical_payload_without_explicit_success_flag():
+    """
+    标准更新结构即使没有显式成功标志，也可被正常处理。
+    """
     client = _create_client(bot_token="token", sync_buf="cursor-old")
     response = MagicMock()
     response.json.return_value = {
@@ -231,6 +243,9 @@ def test_ilink_poll_updates_accepts_canonical_payload_without_explicit_success_f
 
 
 def test_ilink_poll_updates_rejects_noncanonical_nested_success_payload():
+    """
+    拒绝非标准嵌套成功结构，避免把不受支持的消息格式当作更新。
+    """
     client = _create_client(bot_token="token", sync_buf="cursor-old")
     response = MagicMock()
     response.json.return_value = {
@@ -258,6 +273,9 @@ def test_ilink_poll_updates_rejects_noncanonical_nested_success_payload():
 
 
 def test_ilink_poll_updates_rejects_failed_payload_even_if_it_contains_messages():
+    """
+    响应已声明失败时，即使附带消息也不能作为成功更新消费。
+    """
     client = _create_client(bot_token="token", sync_buf="cursor-old")
     failed_response = MagicMock()
     failed_response.json.return_value = {
@@ -294,6 +312,9 @@ def test_ilink_poll_updates_rejects_failed_payload_even_if_it_contains_messages(
 
 
 def test_ilink_test_connection_accepts_getconfig_ilink_user_id_limitation():
+    """
+    连通性自检缺少额外用户参数的提示不等同于连接失败。
+    """
     client = _create_client(bot_token="token")
     response = MagicMock()
     response.json.return_value = {
@@ -310,6 +331,9 @@ def test_ilink_test_connection_accepts_getconfig_ilink_user_id_limitation():
 
 
 def test_wechatclawbot_message_parser_deduplicates_message_id():
+    """
+    渠道消息解析按消息标识去重，重复投递不再次处理。
+    """
     module = WechatClawBotModule()
     body = json.dumps(
         {
@@ -411,6 +435,9 @@ def test_wechatclawbot_message_parser_logs_unrecognized_content():
 
 
 def test_wechatclawbot_send_msg_uses_plain_text_payload():
+    """
+    普通机器人消息以纯文本发送，保留标题、正文与链接。
+    """
     bot = _create_bot()
     mock_client = MagicMock()
     mock_client.send_text.return_value = True
@@ -432,6 +459,9 @@ def test_wechatclawbot_send_msg_uses_plain_text_payload():
 
 
 def test_wechatclawbot_send_msg_prefers_text_when_text_and_image_coexist():
+    """
+    正文和配图同时存在时优先发送正文，不额外加载远端图片。
+    """
     bot = _create_bot()
     mock_client = MagicMock()
     mock_client.send_text.return_value = True
@@ -461,6 +491,9 @@ def test_wechatclawbot_send_msg_prefers_text_when_text_and_image_coexist():
 
 
 def test_wechatclawbot_send_file_prefers_image_when_image_file_has_caption():
+    """
+    图片文件带说明时仍按图片发送，避免退化为纯文本消息。
+    """
     bot = _create_bot()
     mock_client = MagicMock()
     mock_client.send_text.return_value = True
@@ -490,6 +523,9 @@ def test_wechatclawbot_send_file_prefers_image_when_image_file_has_caption():
 
 
 def test_wechatclawbot_send_file_prefers_file_when_generic_file_has_caption():
+    """
+    普通文件带说明时仍发送文件内容，避免丢失附件。
+    """
     bot = _create_bot()
     mock_client = MagicMock()
     mock_client.send_text.return_value = True

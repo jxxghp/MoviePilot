@@ -60,6 +60,9 @@ def _post(status_code=201):
             captured.update(headers=headers, timeout=timeout, verify=verify)
 
         def post_res(self, url, data=None, **_):
+            """
+            记录推送地址与加密请求体，并返回指定 HTTP 状态的离线响应。
+            """
             captured.update(url=url, body=data)
             return SimpleNamespace(status_code=status_code, reason="R", text="detail")
 

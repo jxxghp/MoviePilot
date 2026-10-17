@@ -23,6 +23,9 @@ class _FakeUgreenApi:
 
     @staticmethod
     def video_all(classification: int, page: int = 1, page_size: int = 1):
+        """
+        按电影和电视剧分类返回预设总数，模拟不提供集数统计的绿联接口。
+        """
         if classification == -102:
             return {"total_num": 12}
         if classification == -103:
@@ -35,18 +38,30 @@ class _FakeReconnectApi:
 
     @staticmethod
     def login(_username, _password):
+        """
+        返回固定登录令牌，隔离重连流程的真实认证请求。
+        """
         return "test-token"
 
     @staticmethod
     def current_user():
+        """
+        返回预设当前用户，模拟登录后的身份查询成功。
+        """
         return {"name": "tester"}
 
     @staticmethod
     def close():
+        """
+        保留客户端关闭入口，不释放任何真实网络资源。
+        """
         return None
 
     @staticmethod
     def export_session_state():
+        """
+        返回可持久化的测试令牌与公钥，供会话恢复流程使用。
+        """
         return {"token": "test-token", "public_key": "public-key"}
 
 
@@ -57,6 +72,9 @@ class _PagedFolderApi:
         self.stop_after = stop_after
 
     def poster_wall_get_folder(self, page: int, page_size: int = 100):
+        """
+        记录目录分页请求，并按预设页数模拟末页标记。
+        """
         self.calls += 1
         self.pages.append(page)
         if self.stop_after is not None and page >= self.stop_after:
@@ -268,6 +286,9 @@ def _build_media_service() -> tuple[Ugreen, _FakeMediaApi]:
 
 
 def test_resolve_scan_type():
+    """
+    扫描模式支持具名策略与数字形式，并归一化为接口扫描类型。
+    """
     resolve = Ugreen._Ugreen__resolve_scan_type
 
     assert resolve(scan_mode="new_and_modified") == 1
@@ -284,6 +305,9 @@ def test_resolve_scan_type():
 
 
 def test_resolve_verify_ssl():
+    """
+    证书校验设置兼容布尔值与常见字符串，未配置时默认开启。
+    """
     resolve = Ugreen._Ugreen__resolve_verify_ssl
     assert resolve(True) is True
     assert resolve(False) is False
@@ -367,6 +391,9 @@ def test_media_service_supports_library_query_and_core_media_operations():
 
 
 def test_get_medias_count_episode_is_none():
+    """
+    绿联只提供电影和电视剧数量时，集数保持未知而非误填为零。
+    """
     ugreen = Ugreen.__new__(Ugreen)
     ugreen._host = "http://127.0.0.1:9999"
     ugreen._username = "tester"
@@ -381,6 +408,9 @@ def test_get_medias_count_episode_is_none():
 
 
 def test_reconnect_does_not_eagerly_load_libraries():
+    """
+    客户端重连不立即加载媒体库，避免认证路径触发额外扫描。
+    """
     ugreen = Ugreen.__new__(Ugreen)
     ugreen._host = "http://127.0.0.1:9999"
     ugreen._username = "tester"
@@ -404,6 +434,9 @@ def test_reconnect_does_not_eagerly_load_libraries():
 
 
 def test_load_library_paths_stops_at_last_page():
+    """
+    读取媒体库路径时遇到末页标记立即停止请求。
+    """
     ugreen = Ugreen.__new__(Ugreen)
     ugreen._username = "tester"
     ugreen._api = _PagedFolderApi(stop_after=3)
@@ -415,6 +448,9 @@ def test_load_library_paths_stops_at_last_page():
 
 
 def test_load_library_paths_respects_page_limit():
+    """
+    接口始终不报告末页时，媒体库路径读取仍受页数上限约束。
+    """
     ugreen = Ugreen.__new__(Ugreen)
     ugreen._username = "tester"
     ugreen._api = _PagedFolderApi()
@@ -449,6 +485,9 @@ class _DashboardRepository:
     reason="dashboard endpoint dependencies are missing",
 )
 def test_statistic_all_episode_missing():
+    """
+    所有媒体服务均缺少集数统计时，聚合结果保留未知状态。
+    """
     mocked_stats = [
         schemas.Statistic(movie_count=10, tv_count=20, episode_count=None, user_count=2),
         schemas.Statistic(movie_count=1, tv_count=2, episode_count=None, user_count=1),
@@ -472,6 +511,9 @@ def test_statistic_all_episode_missing():
     reason="dashboard endpoint dependencies are missing",
 )
 def test_statistic_mixed_episode_count():
+    """
+    部分媒体服务提供集数时，只累加已知数量并兼容缺失值。
+    """
     mocked_stats = [
         schemas.Statistic(movie_count=10, tv_count=20, episode_count=None, user_count=2),
         schemas.Statistic(movie_count=1, tv_count=2, episode_count=6, user_count=1),

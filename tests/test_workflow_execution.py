@@ -1197,9 +1197,15 @@ class _FakeEventManager:
         self.removed = []
 
     def add_event_listener(self, event_type, handler):
+        """
+        记录事件监听注册类型，供工作流运行器的生命周期断言。
+        """
         self.added.append(event_type)
 
     def remove_event_listener(self, event_type, handler):
+        """
+        记录事件监听注销类型，检查工作流收尾释放监听。
+        """
         self.removed.append(event_type)
 
 

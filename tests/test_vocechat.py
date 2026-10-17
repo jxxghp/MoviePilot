@@ -21,6 +21,9 @@ from app.modules.vocechat.vocechat import VoceChat
     ],
 )
 def test_send_msg_normalizes_vocechat_target(userid: str, endpoint: str):
+    """
+    VoceChat 目标标识归一化到正确的用户或频道发送端点。
+    """
     client = Mock()
     client.post_res.return_value = SimpleNamespace(status_code=200)
     vocechat = VoceChat(
@@ -38,6 +41,9 @@ def test_send_msg_normalizes_vocechat_target(userid: str, endpoint: str):
 
 @pytest.mark.parametrize("userid", ["UID#", "GID#", "SID#123", "abc"])
 def test_send_msg_rejects_invalid_vocechat_target(userid: str):
+    """
+    非法 VoceChat 目标在发起请求前被拒绝，避免误发消息。
+    """
     client = Mock()
     vocechat = VoceChat(
         VOCECHAT_HOST="https://voce.example.com",

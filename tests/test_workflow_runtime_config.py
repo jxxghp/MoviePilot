@@ -51,6 +51,9 @@ def test_fetch_rss_reads_proxy_from_chain_snapshot(monkeypatch):
         """
 
         def parse(self, **kwargs):
+            """
+            记录 RSS 解析参数并返回固定种子，检查代理配置来自链层快照。
+            """
             captured.update(kwargs)
             return [{
                 "title": "Example",
@@ -88,9 +91,15 @@ def test_scan_file_filters_extensions_from_chain_snapshot(monkeypatch):
         """
 
         def get_file_item(self, storage, directory):
+            """
+            构造存储目录条目，保留请求中的存储类型与路径。
+            """
             return SimpleNamespace(storage=storage, path=str(directory))
 
         def list_files(self, fileitem, recursion=True):
+            """
+            返回视频、文本和字幕文件，供工作流扩展名过滤检查。
+            """
             return [
                 SimpleNamespace(extension="mkv"),
                 SimpleNamespace(extension="txt"),
@@ -132,9 +141,15 @@ def test_add_subscribe_uses_superuser_from_chain_snapshot(monkeypatch):
         }))
 
         def exists(self, _mediainfo):
+            """
+            模拟目标尚未订阅，使测试进入订阅创建分支。
+            """
             return False
 
         def add(self, **kwargs):
+            """
+            记录订阅创建参数并返回固定标识，检查创建者来自配置快照。
+            """
             captured.update(kwargs)
             return 42, "ok"
 
@@ -171,6 +186,9 @@ def test_fetch_medias_internal_api_uses_chain_snapshot(monkeypatch):
             pass
 
         def post_res(self, url):
+            """
+            记录内部媒体接口地址并返回空列表，隔离真实 HTTP 请求。
+            """
             captured["url"] = url
             return SimpleNamespace(json=lambda: [])
 
@@ -207,6 +225,9 @@ def test_send_message_uses_workflow_url_from_chain_snapshot(monkeypatch):
         """
 
         def post_message(self, message):
+            """
+            记录工作流通知，检查消息链接使用运行配置中的工作流地址。
+            """
             captured.append(message)
 
     monkeypatch.setattr(send_message_module, "ActionChain", FakeActionChain)

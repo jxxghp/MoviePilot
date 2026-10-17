@@ -32,6 +32,9 @@ def test_fetch_downloads_updates_context_downloads(monkeypatch):
         """
 
         def list_torrents(self, hashs=None, downloader=None, **kwargs):
+            """
+            记录下载器查询条件并返回已完成任务，供工作流上下文更新检查。
+            """
             calls.append((hashs, downloader))
             return [SimpleNamespace(path="/downloads/movie.mkv", progress=100)]
 
@@ -66,6 +69,9 @@ def test_fetch_torrents_filters_special_season_zero(monkeypatch):
         """
 
         def search_by_title(self, **_kwargs):
+            """
+            返回特别篇与第一季候选，检查工作流按季筛选种子。
+            """
             return [
                 Context(
                     meta_info=MetaInfo("Test S00"),
@@ -103,6 +109,9 @@ def test_scrape_file_keeps_workflow_action_context(monkeypatch):
         """
 
         def exists(self, fileitem):
+            """
+            模拟待刮削文件存在，使测试聚焦工作流上下文传递。
+            """
             return True
 
     class FakeMediaChain:
@@ -111,6 +120,9 @@ def test_scrape_file_keeps_workflow_action_context(monkeypatch):
         """
 
         def recognize_by_path(self, path, obtain_images=False):
+            """
+            返回固定媒体识别结果，隔离实际路径识别。
+            """
             return SimpleNamespace(meta_info="meta", media_info="media")
 
     class FakeScrapingChain:
@@ -119,6 +131,9 @@ def test_scrape_file_keeps_workflow_action_context(monkeypatch):
         """
 
         def scrape_metadata(self, fileitem, meta=None, mediainfo=None):
+            """
+            记录文件路径与识别结果，检查刮削收到完整工作流上下文。
+            """
             scraped.append((fileitem.path, meta, mediainfo))
 
     monkeypatch.setattr(scrape_file_module, "StorageChain", FakeStorageChain)
@@ -157,6 +172,9 @@ def test_scrape_file_does_not_cache_failed_music_scrape(monkeypatch):
         """
 
         def exists(self, fileitem):
+            """
+            模拟音乐文件存在，避免存储检查掩盖刮削失败场景。
+            """
             return True
 
     class FakeMediaChain:
@@ -165,6 +183,9 @@ def test_scrape_file_does_not_cache_failed_music_scrape(monkeypatch):
         """
 
         def recognize_by_path(self, path, obtain_images=False):
+            """
+            返回音乐识别结果，进入歌词保存失败的刮削分支。
+            """
             return SimpleNamespace(meta_info="music-meta", media_info="music")
 
     class FakeScrapingChain:
@@ -173,6 +194,9 @@ def test_scrape_file_does_not_cache_failed_music_scrape(monkeypatch):
         """
 
         def scrape_metadata(self, fileitem, meta=None, mediainfo=None):
+            """
+            模拟歌词保存失败，检查该失败不会被缓存为成功刮削。
+            """
             return False, "歌词保存失败"
 
     monkeypatch.setattr(scrape_file_module, "StorageChain", FakeStorageChain)
@@ -231,6 +255,9 @@ def test_execute_with_inputs_maps_contract_inputs_outputs_and_runtime(monkeypatc
 
         @property
         def success(self) -> bool:
+            """
+            将动作状态固定为成功，使输入输出映射断言独立于业务执行。
+            """
             return True
 
         def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:

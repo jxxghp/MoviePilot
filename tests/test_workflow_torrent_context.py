@@ -72,6 +72,9 @@ def test_filter_torrents_restores_schema_context_for_media_and_publish_rules(mon
 
         @staticmethod
         def filter_torrents(rule_groups, torrent_list, mediainfo=None):
+            """
+            将恢复后的上下文传给真实筛选模块，检查媒体和发布规则仍可读取字段。
+            """
             return module.filter_torrents(rule_groups=rule_groups, torrent_list=torrent_list, mediainfo=mediainfo)
 
     monkeypatch.setattr(filter_torrents, "ActionChain", _FilterChain)
