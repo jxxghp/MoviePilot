@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+解析 FileList 站点的用户资料、流量和做种信息。
+"""
+
 import re
 from typing import Optional
 
@@ -12,11 +16,15 @@ from app.modules.indexer.parser import SitePage, SiteParserBase, SiteSchema
 
 
 class FileListSiteUserInfo(SiteParserBase):
-    """解析 FileList 站点的用户资料、流量与消息。"""
+    """
+    解析 FileList 站点的用户资料、流量与消息。
+    """
     schema = SiteSchema.FileList
 
     def _parse_site_page(self, html_text: SitePage) -> None:
-        """识别并配置站点数据页面与请求参数。"""
+        """
+        识别并配置站点数据页面与请求参数。
+        """
         html_text = self._prepare_html_text(html_text)
 
         user_detail = re.search(r"userdetails.php\?id=(\d+)", html_text)
@@ -27,7 +35,9 @@ class FileListSiteUserInfo(SiteParserBase):
         self._torrent_seeding_page = f"snatchlist.php?id={self.userid}&action=torrents&type=seeding"
 
     def _parse_user_base_info(self, html_text: SitePage) -> None:
-        """解析站点用户身份和页面提供的基础统计。"""
+        """
+        解析站点用户身份和页面提供的基础统计。
+        """
         html_text = self._prepare_html_text(html_text)
         html = etree.HTML(html_text)
         try:
@@ -40,14 +50,16 @@ class FileListSiteUserInfo(SiteParserBase):
 
     def _parse_user_traffic_info(self, html_text: str) -> None:
         """
-        上传/下载/分享率 [做种数/魔力值]
-        :param html_text:
-        :return:
+        上传/下载/分享率 [做种数/魔力值]。
+
+        :param html_text: 当前页面或 API 响应文本
         """
         return
 
     def _parse_user_detail_info(self, html_text: str) -> None:
-        """解析用户等级、注册时间及其他资料。"""
+        """
+        解析用户等级、注册时间及其他资料。
+        """
         html_text = self._prepare_html_text(html_text)
         html = etree.HTML(html_text)
         try:
@@ -88,8 +100,9 @@ class FileListSiteUserInfo(SiteParserBase):
 
     def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: Optional[bool] = False) -> Optional[str]:
         """
-        做种相关信息
-        :param html_text:
+        做种相关信息。
+
+        :param html_text: 当前页面或 API 响应文本
         :param multi_page: 是否多页数据
         :return: 下页地址
         """
@@ -124,9 +137,13 @@ class FileListSiteUserInfo(SiteParserBase):
         return next_page
 
     def _parse_message_unread_links(self, html_text: str, msg_links: list[str]) -> Optional[str]:
-        """收集未读消息链接，返回仍需读取的下一页。"""
+        """
+        收集未读消息链接，返回仍需读取的下一页。
+        """
         return None
 
     def _parse_message_content(self, html_text: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
-        """解析消息标题、日期和正文；无独立消息页时返回空结果。"""
+        """
+        解析消息标题、日期和正文；无独立消息页时返回空结果。
+        """
         return None, None, None

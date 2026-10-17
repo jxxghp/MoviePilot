@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+解析 Audiences 站点的用户资料、流量和做种信息。
+"""
+
 import json
 import re
 from typing import Optional
@@ -16,7 +20,9 @@ from app.runtime.log import logger
 
 
 class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
-    """解析 NexusAudiences 站点的用户资料、流量与消息。"""
+    """
+    解析 NexusAudiences 站点的用户资料、流量与消息。
+    """
     schema = SiteSchema.NexusAudiences
     __UNKNOWN_UNREAD_COUNT = 99999
 
@@ -344,14 +350,14 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
 
     def _parse_user_traffic_info(self, html_text: str) -> None:
         """
-        解析用户流量信息
+        解析用户流量信息。
         """
         super()._parse_user_traffic_info(html_text)
         self.__parse_userbar_info(html_text)
 
     def _parse_user_detail_info(self, html_text: str) -> None:
         """
-        解析用户额外信息
+        解析用户额外信息。
         """
         super()._parse_user_detail_info(html_text)
         self.__parse_userbar_info(html_text)
@@ -424,7 +430,7 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
 
     def __parse_compact_metric(self, html: etree._Element, metric: str, field: str) -> None:
         """
-        按 compact metric 的 class 读取新版用户栏中的单项数据。
+        按 紧凑指标节点的 class 读取新版用户栏中的单项数据。
         """
         values = html.xpath(
             f'//*[contains(concat(" ", normalize-space(@class), " "), " site-userbar__compact-metric--{metric} ")]'
@@ -529,7 +535,9 @@ class NexusAudiencesSiteUserInfo(NexusPhpSiteUserInfo):
         return bool(message_link.xpath('.//*[contains(@class, "site-userbar__compact-tool-badge--unread")]'))
 
     def _parse_seeding_pages(self) -> None:
-        """按站点页面规则读取做种列表并保留明确的汇总数据。"""
+        """
+        按站点页面规则读取做种列表并保留明确的汇总数据。
+        """
         if not self._torrent_seeding_page:
             return
         self._torrent_seeding_headers = {"Referer": urljoin(self._base_url, self._user_detail_page)}

@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+解析 Unit3D 站点的用户资料、流量和做种信息。
+"""
+
 import re
 from typing import Optional
 from urllib.parse import urlsplit
@@ -13,12 +17,16 @@ from app.modules.indexer.parser import SitePage, SiteParserBase, SiteSchema
 
 
 class Unit3dSiteUserInfo(SiteParserBase):
-    """Unit3D 架构站点的用户信息解析器。"""
+    """
+    Unit3D 架构站点的用户信息解析器。
+    """
 
     schema = SiteSchema.Unit3d
 
     def _parse_user_base_info(self, html_text: SitePage) -> None:
-        """解析用户名并将 Unit3D 的用户名作为用户标识供后续请求使用。"""
+        """
+        解析用户名并将 Unit3D 的用户名作为用户标识供后续请求使用。
+        """
         html_text = self._prepare_html_text(html_text)
         html = etree.HTML(html_text)
         try:
@@ -46,14 +54,16 @@ class Unit3dSiteUserInfo(SiteParserBase):
                 del html
 
     def _parse_site_page(self, html_text: SitePage) -> None:
-        """Unit3D 不需要从站点首页解析额外的站点级数据。"""
+        """
+        Unit3D 不需要从站点首页解析额外的站点级数据。
+        """
         pass
 
     def _parse_user_detail_info(self, html_text: str) -> None:
         """
-        解析用户额外信息，加入时间，等级
-        :param html_text:
-        :return:
+        解析用户额外信息，加入时间，等级。
+
+        :param html_text: 当前页面或 API 响应文本
         """
         html = etree.HTML(html_text)
         try:
@@ -78,8 +88,9 @@ class Unit3dSiteUserInfo(SiteParserBase):
 
     def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: Optional[bool] = False) -> Optional[str]:
         """
-        做种相关信息
-        :param html_text:
+        做种相关信息。
+
+        :param html_text: 当前页面或 API 响应文本
         :param multi_page: 是否多页数据
         :return: 下页地址
         """
@@ -130,7 +141,9 @@ class Unit3dSiteUserInfo(SiteParserBase):
         return next_page
 
     def _parse_user_traffic_info(self, html_text: str) -> None:
-        """解析用户上传量、下载量和分享率。"""
+        """
+        解析用户上传量、下载量和分享率。
+        """
         html_text = self._prepare_html_text(html_text)
         upload_match = re.search(r"[^总]上[传傳]量?[:：_<>/a-zA-Z-=\"'\s#;]+([\d,.\s]+[KMGTPI]*B)", html_text,
                                  re.IGNORECASE)
@@ -143,9 +156,13 @@ class Unit3dSiteUserInfo(SiteParserBase):
             ratio_match and ratio_match.group(1).strip()) else 0.0
 
     def _parse_message_unread_links(self, html_text: str, msg_links: list[str]) -> Optional[str]:
-        """Unit3D 没有兼容的未读消息列表解析。"""
+        """
+        Unit3D 没有兼容的未读消息列表解析。
+        """
         return None
 
     def _parse_message_content(self, html_text: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
-        """Unit3D 没有兼容的未读消息正文解析。"""
+        """
+        Unit3D 没有兼容的未读消息正文解析。
+        """
         return None, None, None

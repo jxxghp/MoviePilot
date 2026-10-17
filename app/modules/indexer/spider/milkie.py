@@ -1,3 +1,7 @@
+"""
+通过 Milkie 接口搜索种子并转换为通用索引结果。
+"""
+
 from typing import Any, List, Optional, Tuple
 from urllib.parse import quote
 
@@ -9,7 +13,9 @@ from app.schemas.types import MediaType
 
 
 class MilkieSpider:
-    """Milkie JSON API 种子搜索适配器。"""
+    """
+    Milkie JSON API 种子搜索适配器。
+    """
 
     _size = 100
     _timeout = 15
@@ -33,7 +39,9 @@ class MilkieSpider:
     }
 
     def __init__(self, indexer: dict[str, Any]):
-        """使用站点配置初始化 Milkie 请求上下文。"""
+        """
+        使用站点配置初始化 Milkie 请求上下文。
+        """
         if indexer:
             self._indexerid = indexer.get('id')
             self._domain = indexer.get('domain')
@@ -49,13 +57,16 @@ class MilkieSpider:
     def get_search_page_size(cls, keyword: Optional[str] = None) -> Optional[int]:
         """
         获取搜索接口单页容量。
+
+        :param keyword: 保留统一入口参数，不影响本站的分页容量
+        :return: 本站搜索接口的固定单页记录数
         """
         return cls._size
 
     def __get_params(self, keyword: Optional[str] = None, mtype: Optional[MediaType] = None,
                      page: Optional[int] = 0) -> dict[str, Any]:
         """
-        获取搜索参数
+        获取搜索参数。
         """
         params = {
             "pi": int(page or 0),
@@ -75,7 +86,9 @@ class MilkieSpider:
         return params
 
     def __parse_created_at(self, created_at: str) -> str:
-        """将站点 ISO8601 发布时间转换为本地日期时间文本。"""
+        """
+        将站点 ISO8601 发布时间转换为本地日期时间文本。
+        """
         parsed = time_tools.parse_datetime(created_at)
         if not parsed:
             return created_at or ""
@@ -83,7 +96,7 @@ class MilkieSpider:
 
     def __parse_result(self, results: List[dict[str, Any]]) -> List[dict[str, Any]]:
         """
-        解析搜索结果
+        解析搜索结果。
         """
         torrents: List[dict[str, Any]] = []
         if not results:
@@ -117,7 +130,9 @@ class MilkieSpider:
         return torrents
 
     def __process_response(self, res: Any) -> Tuple[bool, List[dict[str, Any]]]:
-        """统一判定搜索响应状态并投影 Milkie 种子结果。"""
+        """
+        统一判定搜索响应状态并投影 Milkie 种子结果。
+        """
         if res and res.status_code == 200:
             results = res.json().get("torrents") or []
             return False, self.__parse_result(results)
@@ -131,7 +146,9 @@ class MilkieSpider:
         return True, []
 
     def __get_headers(self) -> dict[str, str]:
-        """构造带 API Key 认证的请求头。"""
+        """
+        构造带 API Key 认证的请求头。
+        """
         return {
             "x-milkie-auth": self._apikey or "",
             "User-Agent": self._ua or ""
@@ -140,16 +157,19 @@ class MilkieSpider:
     def search(self, keyword: str, mtype: Optional[MediaType] = None,
                page: Optional[int] = 0) -> Tuple[bool, List[dict[str, Any]]]:
         """
-        搜索
+        同步搜索 Milkie 种子。
+
+        :param keyword: 搜索关键词；为空时按站点接口规则浏览资源
+        :param mtype: 目标媒体类型，未指定时不额外限制媒体类型
+        :param page: 从 0 开始的搜索页码
+        :return: 是否发生错误及标准化资源列表；空列表也可能表示没有匹配资源
         """
         if not self._apikey:
             logger.warn(f"{self._name} 未配置 API Key，无法搜索")
             return True, []
 
-        # 获取请求参数
         params = self.__get_params(keyword, mtype, page)
 
-        # 发送请求
         res = RequestUtils(
             headers=self.__get_headers(),
             proxies=self._proxy,
@@ -160,16 +180,19 @@ class MilkieSpider:
     async def async_search(self, keyword: str, mtype: Optional[MediaType] = None,
                            page: Optional[int] = 0) -> Tuple[bool, List[dict[str, Any]]]:
         """
-        异步搜索
+        异步搜索 Milkie 种子。
+
+        :param keyword: 搜索关键词；为空时按站点接口规则浏览资源
+        :param mtype: 目标媒体类型，未指定时不额外限制媒体类型
+        :param page: 从 0 开始的搜索页码
+        :return: 是否发生错误及标准化资源列表；空列表也可能表示没有匹配资源
         """
         if not self._apikey:
             logger.warn(f"{self._name} 未配置 API Key，无法搜索")
             return True, []
 
-        # 获取请求参数
         params = self.__get_params(keyword, mtype, page)
 
-        # 发送请求
         res = await AsyncRequestUtils(
             headers=self.__get_headers(),
             proxies=self._proxy,

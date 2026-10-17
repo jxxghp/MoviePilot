@@ -1,3 +1,7 @@
+"""
+通过 TorrentLeech 接口搜索种子并转换为通用索引结果。
+"""
+
 from typing import Any, List, Optional, Tuple
 from urllib.parse import quote
 
@@ -10,7 +14,9 @@ from app.schemas.types import MediaType
 
 
 class TorrentLeech:
-    """TorrentLeech JSON 搜索接口索引器。"""
+    """
+    TorrentLeech JSON 搜索接口索引器。
+    """
 
     _indexer = None
     _proxy = None
@@ -24,19 +30,26 @@ class TorrentLeech:
     @classmethod
     def get_search_page_size(cls, keyword: Optional[str] = None) -> Optional[int]:
         """
-        获取搜索接口单页容量；关键词搜索 URL 当前没有可靠页码入口。
+        获取 TorrentLeech 当前搜索入口的分页容量。
+
+        :param keyword: 有关键词时使用搜索 URL，无关键词时使用浏览 URL
+        :return: 浏览接口的单页数量；关键词搜索没有可靠页码入口，返回 None
         """
         return None if keyword else cls._size
 
     def __init__(self, indexer: dict):
-        """初始化站点认证信息和媒体分类配置。"""
+        """
+        初始化站点认证信息和媒体分类配置。
+        """
         self._indexer = indexer
         if indexer.get('proxy'):
             self._proxy = get_runtime_setting('PROXY')
             self._timeout = indexer.get('timeout') or 15
 
     def __category_ids(self, mtype: MediaType = None) -> List[str]:
-        """读取资源包中与请求媒体类型对应的 TorrentLeech 分类 ID。"""
+        """
+        读取资源包中与请求媒体类型对应的 TorrentLeech 分类 ID。
+        """
         category_key = {
             MediaType.MOVIE: "movie",
             MediaType.TV: "tv",
@@ -51,7 +64,9 @@ class TorrentLeech:
         ]
 
     def __get_search_url(self, keyword: str, mtype: MediaType = None) -> str:
-        """按媒体类型构造 TorrentLeech 搜索接口地址。"""
+        """
+        按媒体类型构造 TorrentLeech 搜索接口地址。
+        """
         domain = self._indexer.get('domain')
         encoded_keyword = quote(keyword)
         category_ids = self.__category_ids(mtype)
@@ -64,7 +79,7 @@ class TorrentLeech:
 
     def __parse_result(self, results: List[dict], mtype: MediaType = None) -> List[dict]:
         """
-        解析搜索结果
+        解析搜索结果。
         """
         torrents = []
         if not results:
@@ -101,7 +116,9 @@ class TorrentLeech:
         res: Any,
         mtype: Any = None,
     ) -> Tuple[bool, List[dict[str, Any]]]:
-        """统一判定搜索响应状态并按请求媒体类型投影 TorrentLeech 结果。"""
+        """
+        统一判定搜索响应状态并按请求媒体类型投影 TorrentLeech 结果。
+        """
         if res and res.status_code == 200:
             results = res.json().get('torrentList') or []
             return False, self.__parse_result(results, mtype)
@@ -120,7 +137,12 @@ class TorrentLeech:
         page: Optional[int] = 0,
     ) -> Tuple[bool, List[dict]]:
         """
-        搜索种子
+        同步搜索 TorrentLeech 种子。
+
+        :param keyword: 搜索关键词；为空时按站点接口规则浏览资源
+        :param mtype: 目标媒体类型，未指定时不额外限制媒体类型
+        :param page: 从 0 开始的搜索页码
+        :return: 是否发生错误及标准化资源列表；空列表也可能表示没有匹配资源
         """
         if text_tools.contains_chinese(keyword):
             # 不支持中文
@@ -149,7 +171,12 @@ class TorrentLeech:
         page: Optional[int] = 0,
     ) -> Tuple[bool, List[dict]]:
         """
-        异步搜索种子
+        异步搜索 TorrentLeech 种子。
+
+        :param keyword: 搜索关键词；为空时按站点接口规则浏览资源
+        :param mtype: 目标媒体类型，未指定时不额外限制媒体类型
+        :param page: 从 0 开始的搜索页码
+        :return: 是否发生错误及标准化资源列表；空列表也可能表示没有匹配资源
         """
         if text_tools.contains_chinese(keyword):
             # 不支持中文
