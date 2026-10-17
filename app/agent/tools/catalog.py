@@ -4,7 +4,7 @@ import hashlib
 import json
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, cast
 
 from pydantic import BaseModel
 
@@ -34,7 +34,8 @@ def _schema_digest(tool: Any) -> str:
     """计算工具当前 Pydantic 参数契约摘要。"""
     args_schema = getattr(tool, "args_schema", None)
     if isinstance(args_schema, type) and issubclass(args_schema, BaseModel):
-        schema = args_schema.model_json_schema()
+        schema_model = cast(type[BaseModel], args_schema)
+        schema = schema_model.model_json_schema()
     elif isinstance(args_schema, Mapping):
         schema = dict(args_schema)
     else:
