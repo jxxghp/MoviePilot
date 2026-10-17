@@ -1,4 +1,6 @@
-"""数据库备份与宿主调度器的接入合同。"""
+"""
+数据库备份与宿主调度器的接入合同。
+"""
 
 import ast
 import threading
@@ -16,19 +18,27 @@ from app.scheduler.registry import ExecutionRegistry
 
 
 class _SchedulerStub:
-    """记录 Scheduler 注册结果的最小调度器替身。"""
+    """
+    记录 Scheduler 注册结果的最小调度器替身。
+    """
 
     def __init__(self) -> None:
-        """初始化空作业表。"""
+        """
+        初始化空作业表。
+        """
         self.jobs = {}
 
     def add_job(self, func, *, trigger, id, **kwargs) -> None:
-        """按作业 ID 保存最近一次注册参数。"""
+        """
+        按作业 ID 保存最近一次注册参数。
+        """
         self.jobs[id] = {"func": func, "trigger": trigger, **kwargs}
 
 
 def _scheduler() -> Scheduler:
-    """构造不启动后台线程的 Scheduler。"""
+    """
+    构造不启动后台线程的 Scheduler。
+    """
     scheduler = object.__new__(Scheduler)
     scheduler._scheduler = _SchedulerStub()
     scheduler._jobs = {}
@@ -39,7 +49,9 @@ def _scheduler() -> Scheduler:
 
 
 def _config(**changes) -> SchedulerRuntimeConfig:
-    """构造数据库备份测试所需的最小调度配置快照。"""
+    """
+    构造数据库备份测试所需的最小调度配置快照。
+    """
     config = SchedulerRuntimeConfig(
         dev=False,
         timezone="Asia/Shanghai",
@@ -66,6 +78,9 @@ def _config(**changes) -> SchedulerRuntimeConfig:
 
 
 def test_database_backup_schedule_only_watches_job_shape() -> None:
+    """
+    备份调度只监听影响任务开关与时间表达式的配置。
+    """
     assert Scheduler.CONFIG_WATCH.intersection({
         "DB_BACKUP_ENABLE",
         "DB_BACKUP_CRON",
@@ -77,13 +92,17 @@ def test_database_backup_schedule_only_watches_job_shape() -> None:
 
 
 def test_auto_update_setting_is_hot_reloadable() -> None:
-    """主程序或资源开关变更时均应触发 Scheduler 重建。"""
+    """
+    主程序或资源开关变更时均应触发 Scheduler 重建。
+    """
     assert "MOVIEPILOT_AUTO_UPDATE" in Scheduler.CONFIG_WATCH
     assert "AUTO_UPDATE_RESOURCE" in Scheduler.CONFIG_WATCH
 
 
 def test_wallpaper_settings_are_hot_reloadable() -> None:
-    """壁纸来源或地址变化时必须重建调度器并清理缓存。"""
+    """
+    壁纸来源或地址变化时必须重建调度器并清理缓存。
+    """
     assert Scheduler.CONFIG_WATCH.issuperset({
         "WALLPAPER",
         "WALLPAPER_IMAGE_URL",
@@ -93,7 +112,9 @@ def test_wallpaper_settings_are_hot_reloadable() -> None:
 
 @pytest.mark.parametrize("wallpaper", ["", "tmdb"])
 def test_wallpaper_schedule_follows_wallpaper_setting(monkeypatch, wallpaper) -> None:
-    """无壁纸时不注册缓存任务，启用来源后恢复注册。"""
+    """
+    无壁纸时不注册缓存任务，启用来源后恢复注册。
+    """
     scheduler = _scheduler()
     scheduler._services = Mock()
     background_scheduler = Mock()
@@ -115,7 +136,9 @@ def test_wallpaper_schedule_follows_wallpaper_setting(monkeypatch, wallpaper) ->
 
 
 def test_disabled_database_backup_does_not_register_job() -> None:
-    """关闭备份时不注册作业。"""
+    """
+    关闭备份时不注册作业。
+    """
     scheduler = _scheduler()
 
     scheduler._register_database_backup_job(_config())
@@ -124,7 +147,9 @@ def test_disabled_database_backup_does_not_register_job() -> None:
 
 
 def test_enabled_database_backup_without_cron_does_not_register_job() -> None:
-    """总开关开启但未配置周期时，不启用定时备份。"""
+    """
+    总开关开启但未配置周期时，不启用定时备份。
+    """
     scheduler = _scheduler()
     scheduler._register_database_backup_job(_config(db_backup_enable=True))
 
@@ -132,6 +157,9 @@ def test_enabled_database_backup_without_cron_does_not_register_job() -> None:
 
 
 def test_enabled_database_backup_registers_single_replaceable_job(monkeypatch) -> None:
+    """
+    重复注册备份调度时替换同名任务，保持单一任务实例。
+    """
     scheduler = _scheduler()
     trigger = object()
     monkeypatch.setattr(scheduler_catalog.TimerUtils, "build_schedule_trigger", Mock(return_value=trigger))
@@ -149,7 +177,9 @@ def test_enabled_database_backup_registers_single_replaceable_job(monkeypatch) -
 def test_auto_update_check_is_registered_only_when_enabled(
     monkeypatch, auto_update, auto_update_resource
 ) -> None:
-    """任一开关开启即注册检查任务，均关闭则不注册。"""
+    """
+    任一开关开启即注册检查任务，均关闭则不注册。
+    """
     scheduler = _scheduler()
     scheduler._services = Mock()
     background_scheduler = Mock()
@@ -171,6 +201,9 @@ def test_auto_update_check_is_registered_only_when_enabled(
 
 
 def test_scheduled_backup_uses_registered_database_governance(monkeypatch) -> None:
+    """
+    定时备份使用已注册的数据库治理实例。
+    """
     governance = Mock()
     monkeypatch.setattr(scheduler_maintenance, "get_database_governance", lambda: governance)
 
@@ -182,7 +215,9 @@ def test_scheduled_backup_uses_registered_database_governance(monkeypatch) -> No
 
 @pytest.mark.parametrize("enabled", [False, True])
 def test_subscription_search_scans_due_items_only_when_enabled(monkeypatch, enabled) -> None:
-    """系统开关控制到期扫描，五分钟扫描节奏与实际搜索间隔分别传递。"""
+    """
+    系统开关控制到期扫描，五分钟扫描节奏与实际搜索间隔分别传递。
+    """
     scheduler = _scheduler()
     scheduler._services = Mock()
     background_scheduler = Mock()
@@ -204,6 +239,9 @@ def test_subscription_search_scans_due_items_only_when_enabled(monkeypatch, enab
 
 
 def test_scheduler_database_dependencies_are_explicit_module_imports() -> None:
+    """
+    调度器数据库依赖必须在模块层显式导入，不隐藏在函数内。
+    """
     scheduler_root = Path(__file__).parents[1] / "app" / "scheduler"
     trees = [ast.parse(path.read_text(encoding="utf-8")) for path in scheduler_root.glob("*.py")]
     function_imports = [
@@ -220,7 +258,9 @@ def test_scheduler_database_dependencies_are_explicit_module_imports() -> None:
 
 
 def test_cookiecloud_credentials_are_hot_reloadable() -> None:
-    """补全或清空 CookieCloud 凭据后必须重建定时同步任务。"""
+    """
+    补全或清空 CookieCloud 凭据后必须重建定时同步任务。
+    """
     assert Scheduler.CONFIG_WATCH.issuperset({
         "COOKIECLOUD_INTERVAL",
         "COOKIECLOUD_HOST",
@@ -232,7 +272,9 @@ def test_cookiecloud_credentials_are_hot_reloadable() -> None:
 
 @pytest.mark.parametrize("configured", [False, True])
 def test_cookiecloud_schedule_requires_configuration(monkeypatch, configured) -> None:
-    """未配置 CookieCloud 时只保留手动入口，不注册定时同步。"""
+    """
+    未配置 CookieCloud 时只保留手动入口，不注册定时同步。
+    """
     scheduler = _scheduler()
     scheduler._services = Mock()
     background_scheduler = Mock()
@@ -267,7 +309,9 @@ def test_cookiecloud_schedule_requires_configuration(monkeypatch, configured) ->
     ],
 )
 def test_scheduler_config_reports_cookiecloud_configuration(values, expected) -> None:
-    """调度快照与下载入口使用相同的必要参数判断。"""
+    """
+    调度快照与下载入口使用相同的必要参数判断。
+    """
     from app.runtime.config import Settings
     from app.startup.composition.configuration import build_scheduler_runtime_config
 

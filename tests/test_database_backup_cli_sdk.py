@@ -1,3 +1,7 @@
+"""
+验证数据库备份命令与插件 SDK 的授权边界和参数传递。
+"""
+
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import Mock
@@ -20,6 +24,9 @@ def _artifact(tmp_path: Path) -> BackupArtifact:
 
 
 def test_cli_backup_list_and_verify_use_local_governance(tmp_path: Path, monkeypatch) -> None:
+    """
+    备份、列举和校验命令统一调用本地数据库治理入口。
+    """
     governance = Mock()
     governance.create_backup.return_value = _artifact(tmp_path)
     governance.list_backups.return_value = (governance.create_backup.return_value,)
@@ -38,6 +45,9 @@ def test_cli_backup_list_and_verify_use_local_governance(tmp_path: Path, monkeyp
 
 
 def test_cli_restore_requires_explicit_offline_confirmation(tmp_path: Path, monkeypatch) -> None:
+    """
+    恢复命令只有收到显式确认才调用数据库恢复入口。
+    """
     governance = Mock()
     governance.restore_backup.return_value = _artifact(tmp_path)
     monkeypatch.setattr(cli_module, "build_database_governance", lambda: governance)
@@ -51,6 +61,9 @@ def test_cli_restore_requires_explicit_offline_confirmation(tmp_path: Path, monk
 
 
 def test_sdk_exposes_backup_without_restore_or_policy_controls(tmp_path: Path, monkeypatch) -> None:
+    """
+    插件 SDK 仅公开备份创建、列举与校验，不开放恢复和删除权限。
+    """
     governance = Mock()
     artifact = _artifact(tmp_path)
     verification = BackupVerification(True, "integrity_check")
@@ -68,6 +81,9 @@ def test_sdk_exposes_backup_without_restore_or_policy_controls(tmp_path: Path, m
 
 
 def test_sdk_rejects_invalid_name_at_host_boundary(monkeypatch) -> None:
+    """
+    插件传入的非法备份名称由宿主边界拒绝并传播异常。
+    """
     governance = Mock()
     governance.verify_backup.side_effect = ValueError("数据库备份文件名无效")
     monkeypatch.setattr(database_sdk, "_get_database_governance", lambda: governance)
