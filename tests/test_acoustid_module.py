@@ -168,6 +168,22 @@ def test_identify_music_by_fingerprint_skips_missing_fpcalc(tmp_path, monkeypatc
     post_res.assert_not_called()
 
 
+def test_generate_fingerprint_skips_missing_fpcalc(monkeypatch):
+    """同步指纹生成在依赖缺失时应直接返回，不把空路径交给子进程。"""
+    module = AcoustIdModule()
+    monkeypatch.setattr("app.modules.acoustid.music_request_timeout", lambda **_: 5)
+
+    assert module._generate_fingerprint(Path("/music/track.flac")) is None
+
+
+def test_async_generate_fingerprint_skips_missing_fpcalc(monkeypatch):
+    """异步指纹生成在依赖缺失时应直接返回，不创建子进程。"""
+    module = AcoustIdModule()
+    monkeypatch.setattr("app.modules.acoustid.music_request_timeout", lambda **_: 5)
+
+    assert asyncio.run(module._async_generate_fingerprint(Path("/music/track.flac"))) is None
+
+
 def test_test_fails_without_local_fpcalc_and_skips_network(monkeypatch):
     """缺少本地 fpcalc 时，测试应直接失败且不发起任何网络请求。"""
     monkeypatch.setattr("app.modules.acoustid.shutil.which", lambda _: None)
