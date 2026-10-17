@@ -1,3 +1,7 @@
+"""
+验证加密 DNS 执行器的惰性创建、关闭和套接字恢复。
+"""
+
 import socket
 import threading
 import time
@@ -8,7 +12,9 @@ from app.runtime.execution import OwnedThreadPoolExecutor
 
 
 def test_doh_executor_is_lazy_and_shutdown_restores_socket(monkeypatch):
-    """DoH 线程池按需创建，并在模块关闭时恢复系统 DNS"""
+    """
+    DoH 线程池按需创建，并在模块关闭时恢复系统 DNS
+    """
     original_getaddrinfo = socket.getaddrinfo
     helper = object.__new__(doh.DohHelper)
     monkeypatch.setattr("app.runtime.config.settings.DOH_DOMAINS", "example.com")
@@ -36,7 +42,9 @@ def test_doh_executor_is_lazy_and_shutdown_restores_socket(monkeypatch):
 
 
 def test_doh_shutdown_is_bounded_and_retryable(monkeypatch):
-    """阻塞查询超时时保留同一 owner，释放后可重试并安全重新启用。"""
+    """
+    阻塞查询超时时保留同一 owner，释放后可重试并安全重新启用。
+    """
     original_getaddrinfo = socket.getaddrinfo
     helper = object.__new__(doh.DohHelper)
     entered = threading.Event()
@@ -45,7 +53,9 @@ def test_doh_shutdown_is_bounded_and_retryable(monkeypatch):
     monkeypatch.setattr(doh, "_orig_getaddrinfo", lambda host, *args, **kwargs: [])
 
     def blocked_query() -> None:
-        """模拟底层网络栈未按 DoH 请求超时返回的同步查询。"""
+        """
+        模拟底层网络栈未按 DoH 请求超时返回的同步查询。
+        """
         entered.set()
         release.wait()
 
@@ -82,7 +92,9 @@ def test_doh_shutdown_is_bounded_and_retryable(monkeypatch):
 
 
 def test_doh_config_reload_disables_and_closes_executor(monkeypatch):
-    """热更新关闭 DoH 时恢复系统 DNS 并释放已创建的线程池"""
+    """
+    热更新关闭 DoH 时恢复系统 DNS 并释放已创建的线程池
+    """
     original_getaddrinfo = socket.getaddrinfo
     helper = object.__new__(doh.DohHelper)
     monkeypatch.setattr("app.runtime.config.settings.DOH_DOMAINS", "example.com")
@@ -148,7 +160,9 @@ def test_enable_doh_reuses_cached_host_resolution(monkeypatch):
 
 
 def test_doh_queries_use_each_request_context(monkeypatch):
-    """复用的 DoH worker 应按查询恢复关联 ID，不能丢失或粘住首个请求。"""
+    """
+    复用的 DoH worker 应按查询恢复关联 ID，不能丢失或粘住首个请求。
+    """
     original_getaddrinfo = socket.getaddrinfo
     observed = []
     helper = object.__new__(doh.DohHelper)

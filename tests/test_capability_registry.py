@@ -1,3 +1,7 @@
+"""
+验证能力清单发现、不可变配置和无效清单拒绝规则。
+"""
+
 from __future__ import annotations
 
 import sys
@@ -55,7 +59,9 @@ def _discover(root: Path) -> CapabilityRegistry:
 
 
 def test_discovery_reads_toml_without_importing_entrypoint(tmp_path: Path) -> None:
-    """能力发现只能读取声明，不能执行 entrypoint 对应的 Python 模块。"""
+    """
+    能力发现只能读取声明，不能执行 entrypoint 对应的 Python 模块。
+    """
     _write_manifest(tmp_path)
     (tmp_path / "sample_implementation.py").write_text(
         "raise AssertionError('entrypoint must not be imported during discovery')\n",
@@ -77,15 +83,19 @@ def test_discovery_reads_toml_without_importing_entrypoint(tmp_path: Path) -> No
 
 
 def test_discovered_specs_are_recursively_immutable(tmp_path: Path) -> None:
-    """Registry 暴露的声明及嵌套 metadata/selector 都不能被调用方改写。"""
+    """
+    Registry 暴露的声明及嵌套 metadata/selector 都不能被调用方改写。
+    """
     _write_manifest(tmp_path)
     spec = _discover(tmp_path).require_spec("sample.capability")
 
     with pytest.raises(TypeError):
         spec.metadata["name"] = "changed"
     with pytest.raises(TypeError):
+        # 故意修改只读结构，验证运行时拒绝非法变更。
         spec.selector.config["key"] = "changed"  # type: ignore[union-attr]
     with pytest.raises(AttributeError):
+        # 故意修改只读结构，验证运行时拒绝非法变更。
         spec.watch.append("changed")  # type: ignore[attr-defined]
 
 
@@ -115,7 +125,9 @@ def test_registry_fails_closed_for_invalid_manifest(
     replacement: str,
     match: str,
 ) -> None:
-    """未知或不完整声明必须阻止 Registry 构建，不能静默丢失能力。"""
+    """
+    未知或不完整声明必须阻止 Registry 构建，不能静默丢失能力。
+    """
     _write_manifest(tmp_path, replacement)
 
     with pytest.raises(CapabilityManifestError, match=match):
@@ -123,7 +135,9 @@ def test_registry_fails_closed_for_invalid_manifest(
 
 
 def test_selector_presence_must_match_activation_policy(tmp_path: Path) -> None:
-    """只有 when_configured 声明可以且必须携带配置 selector。"""
+    """
+    只有 when_configured 声明可以且必须携带配置 selector。
+    """
     bootstrap = _BASE_MANIFEST.replace(
         'policy = "when_configured"', 'policy = "bootstrap"'
     )
@@ -134,7 +148,9 @@ def test_selector_presence_must_match_activation_policy(tmp_path: Path) -> None:
 
 
 def test_registry_rejects_duplicate_ids_across_roots(tmp_path: Path) -> None:
-    """多个声明根出现相同 capability ID 时必须 fail closed。"""
+    """
+    多个声明根出现相同 capability ID 时必须 fail closed。
+    """
     first_root = tmp_path / "first"
     second_root = tmp_path / "second"
     _write_manifest(first_root)
@@ -153,13 +169,17 @@ def test_registry_rejects_duplicate_ids_across_roots(tmp_path: Path) -> None:
 
 
 def test_registry_rejects_root_without_manifest(tmp_path: Path) -> None:
-    """注册了声明根却没有任何 manifest 时应直接失败。"""
+    """
+    注册了声明根却没有任何 manifest 时应直接失败。
+    """
     with pytest.raises(CapabilityManifestError, match="capability.toml"):
         _discover(tmp_path)
 
 
 def test_current_host_module_manifests_follow_the_strict_nested_schema() -> None:
-    """仓内 Host Module 声明必须全部通过同一套嵌套 schema。"""
+    """
+    仓内 Host Module 声明必须全部通过同一套嵌套 schema。
+    """
     modules_root = Path(__file__).parents[1] / "app" / "modules"
     imported_before = set(sys.modules)
     registry = CapabilityRegistry.discover(

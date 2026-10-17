@@ -1,3 +1,7 @@
+"""
+验证 Bangumi 标题识别、人物加载和来源元数据刮削。
+"""
+
 from unittest.mock import Mock
 from xml.dom import minidom
 
@@ -8,7 +12,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def _bangumi_info() -> dict:
-    """构造Bangumi识别与刮削测试详情。"""
+    """
+    构造Bangumi识别与刮削测试详情。
+    """
     return {
         "id": 400602,
         "name": "Sousou no Frieren",
@@ -28,7 +34,9 @@ def _bangumi_info() -> dict:
 
 
 def test_bangumi_title_recognition_loads_detail_and_people() -> None:
-    """Bangumi标题识别应搜索候选、读取详情并补齐演职员。"""
+    """
+    Bangumi标题识别应搜索候选、读取详情并补齐演职员。
+    """
     module = BangumiModule()
     module.bangumiapi = Mock()
     module.bangumiapi.search.return_value = [
@@ -60,7 +68,9 @@ def test_bangumi_title_recognition_loads_detail_and_people() -> None:
 
 
 def test_bangumi_scraper_generates_source_nfo() -> None:
-    """Bangumi来源应可生成带Bangumi唯一ID的NFO与图片清单。"""
+    """
+    Bangumi来源应可生成带Bangumi唯一ID的NFO与图片清单。
+    """
     module = BangumiModule()
     module.bangumiapi = Mock()
     module.scraper = MediaScraperHelper()

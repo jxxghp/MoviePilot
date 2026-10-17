@@ -1,3 +1,7 @@
+"""
+验证数据库索引迁移对历史结构和当前模型的兼容。
+"""
+
 import importlib
 import os
 import subprocess
@@ -210,7 +214,9 @@ def _index_signatures(
         connection,
         table_name: str,
 ) -> dict[str, tuple[tuple[str, ...], bool]]:
-    """返回索引名称到字段顺序及唯一性的映射。"""
+    """
+    返回索引名称到字段顺序及唯一性的映射。
+    """
     return {
         index["name"]: (
             tuple(index.get("column_names") or ()),
@@ -221,7 +227,9 @@ def _index_signatures(
 
 
 def _bind_migration(monkeypatch, connection):
-    """把历史 revision 绑定到当前 disposable connection。"""
+    """
+    把历史 revision 绑定到当前 disposable connection。
+    """
     migration = importlib.import_module(MIGRATION_MODULE)
     context = MigrationContext.configure(connection)
     monkeypatch.setattr(migration, "op", Operations(context))
@@ -232,7 +240,9 @@ def _run_current_schema_chain(
         repository: Path,
         environment: dict[str, str],
 ) -> None:
-    """在隔离数据库中执行当前建表、完整升级及最终结构断言。"""
+    """
+    在隔离数据库中执行当前建表、完整升级及最终结构断言。
+    """
     completed = subprocess.run(
         [sys.executable, "-c", CURRENT_SCHEMA_CHAIN_SCRIPT],
         cwd=repository,
@@ -252,7 +262,9 @@ def _run_current_schema_chain(
 def test_index_migration_preserves_legacy_media_server_semantics(
         monkeypatch,
 ) -> None:
-    """旧字段存在时应保持 2.2.4 的索引替换与回滚语义。"""
+    """
+    旧字段存在时应保持 2.2.4 的索引替换与回滚语义。
+    """
     engine = sa.create_engine("sqlite://")
     metadata = sa.MetaData()
     media_server = sa.Table(
@@ -292,7 +304,9 @@ def test_index_migration_preserves_legacy_media_server_semantics(
 def test_index_migration_skips_only_indexes_with_missing_columns(
         monkeypatch,
 ) -> None:
-    """当前 schema 应跳过旧字段索引，同时继续处理其他适用索引。"""
+    """
+    当前 schema 应跳过旧字段索引，同时继续处理其他适用索引。
+    """
     engine = sa.create_engine("sqlite://")
     metadata = sa.MetaData()
     media_server = sa.Table(
@@ -349,7 +363,9 @@ def test_index_migration_skips_only_indexes_with_missing_columns(
 
 
 def test_current_schema_reaches_current_alembic_head(tmp_path: Path) -> None:
-    """真实 fresh 启动链应到动态解析的唯一 head，且重复升级保持幂等。"""
+    """
+    真实 fresh 启动链应到动态解析的唯一 head，且重复升级保持幂等。
+    """
     repository = Path(__file__).resolve().parents[1]
     environment = os.environ.copy()
     environment.update({
@@ -364,7 +380,9 @@ def test_current_schema_reaches_current_alembic_head(tmp_path: Path) -> None:
 def test_current_schema_reaches_current_alembic_head_on_postgresql(
         tmp_path: Path,
 ) -> None:
-    """PostgreSQL fresh schema 应到唯一 head，不能被吞异常伪装成成功。"""
+    """
+    PostgreSQL fresh schema 应到唯一 head，不能被吞异常伪装成成功。
+    """
     prefix = "MOVIEPILOT_TEST_POSTGRESQL_"
     host = os.getenv(f"{prefix}HOST")
     database = os.getenv(f"{prefix}DATABASE")
