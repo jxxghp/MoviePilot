@@ -1,4 +1,6 @@
-"""FastAPI 动态插件路由适配器。"""
+"""
+FastAPI 动态插件路由适配器。
+"""
 
 import asyncio
 from concurrent.futures import Future
@@ -12,7 +14,8 @@ from fastapi.routing import APIRoute
 
 
 def _clear_fastapi_callable_caches() -> None:
-    """清空 FastAPI 按可调用对象身份缓存的分类结果。
+    """
+    清空 FastAPI 按可调用对象身份缓存的分类结果。
 
     FastAPI 在模块级 ``lru_cache`` 中以强引用保存每个端点与依赖函数（容量 4096），
     插件路由移除后旧端点函数仍被缓存持有，进而经 ``__globals__`` 留住整个旧插件模块，
@@ -26,7 +29,9 @@ def _clear_fastapi_callable_caches() -> None:
 
 
 class FastAPIDynamicRouteRegistry:
-    """在 FastAPI 上注册插件自由响应路由，并维护 OpenAPI 缓存。"""
+    """
+    在 FastAPI 上注册插件自由响应路由，并维护 OpenAPI 缓存。
+    """
 
     _dispatch_admission_timeout = 5.0
 
@@ -41,7 +46,18 @@ class FastAPIDynamicRouteRegistry:
         log: Any,
         event_loop: Callable[[], asyncio.AbstractEventLoop | None] | None = None,
     ) -> None:
-        """注入应用、插件投影、认证依赖和日志端口。"""
+        """
+        注入应用、插件查询入口、认证依赖和日志端口。
+
+        :param app: 持有动态路由表的 FastAPI 应用
+        :param plugin_ids: 返回当前插件标识列表的回调
+        :param plugin_apis: 按插件标识返回路由声明的回调
+        :param verify_token: 路由选择 bear 认证时使用的令牌校验依赖
+        :param verify_apikey: 默认 API 密钥校验依赖
+        :param prefix: 插件路由的共同路径前缀
+        :param log: 记录路由注册与移除结果的日志对象
+        :param event_loop: 返回主事件循环的回调；省略时直接在调用线程更新路由
+        """
         self._app = app
         self._plugin_ids = plugin_ids
         self._plugin_apis = plugin_apis
@@ -52,7 +68,17 @@ class FastAPIDynamicRouteRegistry:
         self._event_loop = event_loop
 
     def update(self, plugin_id: Optional[str], action: str) -> None:
-        """在主事件循环中按插件生命周期新增或移除动态路由。"""
+        """
+        按插件生命周期新增或移除动态路由，并使 OpenAPI 缓存失效。
+
+        配置事件循环后在该循环执行更新；跨线程调用会阻塞到更新结束。
+        等待准入超过 5 秒且更新尚未开始时放弃请求；一旦开始则等待确定结果。
+
+        :param plugin_id: 要更新的插件标识；为空时处理当前全部插件
+        :param action: add 先移除旧路由再注册当前声明，remove 只移除旧路由
+        :raises ValueError: 动作不是 add 或 remove
+        :raises RuntimeError: 指定的事件循环不可用，或未在准入期限内接收更新
+        """
         if self._event_loop is None:
             self._update(plugin_id, action)
             return
@@ -77,7 +103,9 @@ class FastAPIDynamicRouteRegistry:
         dispatch_abandoned = False
 
         def apply_update() -> None:
-            """在目标 loop 的单个回调中完成路由表与 OpenAPI 投影切换。"""
+            """
+            在目标事件循环的单个回调中完成路由表与 OpenAPI 缓存更新。
+            """
             nonlocal dispatch_started
             with dispatch_lock:
                 if dispatch_abandoned:
@@ -104,7 +132,9 @@ class FastAPIDynamicRouteRegistry:
             completed.result()
 
     def _update(self, plugin_id: Optional[str], action: str) -> None:
-        """执行不可中断的路由表与 OpenAPI 投影更新。"""
+        """
+        执行不可中断的路由表与 OpenAPI 投影更新。
+        """
         if action not in {"add", "remove"}:
             raise ValueError("Action must be 'add' or 'remove'")
 
@@ -151,7 +181,14 @@ class FastAPIDynamicRouteRegistry:
             _clear_fastapi_callable_caches()
 
     def remove(self, plugin_id: str) -> bool:
-        """移除指定插件前缀下的全部动态路由。"""
+        """
+        移除指定插件前缀下的全部动态路由。
+
+        直接修改路由表，不清理 OpenAPI 或函数分类缓存；完整生命周期更新应调用 update。
+
+        :param plugin_id: 要移除的插件标识；为空时不操作
+        :return: 至少成功移除一条路由时返回 True；无匹配或全部移除失败时返回 False
+        """
         if not plugin_id:
             return False
         prefix = f"{self._prefix}/{plugin_id}/"
@@ -174,6 +211,8 @@ class FastAPIDynamicRouteRegistry:
 
     @staticmethod
     def _route_path(route: Any) -> Optional[str]:
-        """返回公开路由路径，跳过 FastAPI 内部的无路径 include 包装器。"""
+        """
+        返回公开路由路径，跳过 FastAPI 内部的无路径 include 包装器。
+        """
         path = getattr(route, "path", None)
         return path if isinstance(path, str) else None

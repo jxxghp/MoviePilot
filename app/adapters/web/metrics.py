@@ -1,4 +1,6 @@
-"""HTTP route/status/latency 指标 ASGI 适配器。"""
+"""
+记录 HTTP 路由、状态码和响应耗时的 ASGI 适配器。
+"""
 
 from __future__ import annotations
 
@@ -11,14 +13,22 @@ from app.runtime.observability import record_metric
 
 
 class HttpMetricsMiddleware:
-    """按路由模板、方法和状态码记录低基数 HTTP 时延。"""
+    """
+    按路由模板、方法和状态码记录低基数 HTTP 时延。
+    """
 
     def __init__(self, app: ASGIApp) -> None:
-        """保存下游 ASGI 应用。"""
+        """
+        保存下游 ASGI 应用。
+        """
         self._app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        """只治理 HTTP scope，并在响应开始后读取路由模板。"""
+        """
+        记录 HTTP 请求从开始处理到响应结束的耗时，其他连接类型直接转交下游。
+
+        下游抛出异常时也记录指标；尚未收到响应头时按 500 状态记录。
+        """
         if scope.get("type") != "http":
             await self._app(scope, receive, send)
             return
@@ -26,7 +36,9 @@ class HttpMetricsMiddleware:
         status = "500"
 
         async def send_with_metrics(message: Message) -> None:
-            """捕获响应状态并原样转发 ASGI 消息。"""
+            """
+            捕获响应状态并原样转发 ASGI 消息。
+            """
             nonlocal status
             if message.get("type") == "http.response.start":
                 status = str(message.get("status", 500))
@@ -45,7 +57,11 @@ class HttpMetricsMiddleware:
             )
 
     def _resolve_route_template(self, scope: Scope) -> str:
-        """遍历 ASGI wrapper 找到匹配路由模板，绝不回退到具体请求 path。"""
+        """
+        逐层检查 ASGI 应用，找到匹配的路由模板。
+
+        只记录模板，避免具体请求路径造成高基数标签；未匹配时返回 unmatched。
+        """
         route = scope.get("route")
         if route is not None and getattr(route, "path", None):
             route_path: str = route.path

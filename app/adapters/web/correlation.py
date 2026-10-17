@@ -1,4 +1,6 @@
-"""HTTP 请求关联 ID 的 ASGI 适配器。"""
+"""
+HTTP 请求关联 ID 的 ASGI 适配器。
+"""
 
 from __future__ import annotations
 
@@ -12,14 +14,22 @@ from app.runtime.correlation import (
 
 
 class CorrelationIdMiddleware:
-    """验证入口 ID、绑定请求上下文并把同一 ID 写回响应。"""
+    """
+    验证入口 ID、绑定请求上下文并把同一 ID 写回响应。
+    """
 
     def __init__(self, app: ASGIApp) -> None:
-        """保存下游 ASGI 应用。"""
+        """
+        保存下游 ASGI 应用。
+        """
         self._app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        """只治理 HTTP scope，并让绑定覆盖完整流式响应生命周期。"""
+        """
+        为 HTTP 请求绑定关联 ID，绑定范围覆盖完整流式响应生命周期。
+
+        其他连接类型直接转交下游；请求结束或抛出异常后恢复原有上下文。
+        """
         if scope.get("type") != "http":
             await self._app(scope, receive, send)
             return
@@ -31,7 +41,9 @@ class CorrelationIdMiddleware:
         scope.setdefault("state", {})["request_id"] = correlation_id
 
         async def send_with_correlation(message: Message) -> None:
-            """在响应开始帧中覆盖为当前请求的安全关联 ID。"""
+            """
+            在响应开始帧中覆盖为当前请求的安全关联 ID。
+            """
             if message.get("type") == "http.response.start":
                 headers = list(message.get("headers") or [])
                 header_name = CORRELATION_ID_HEADER.lower().encode("ascii")
