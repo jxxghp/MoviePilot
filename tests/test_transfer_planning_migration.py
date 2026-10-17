@@ -1,4 +1,6 @@
-"""整理规划输入与检查点字段的 Alembic 迁移测试。"""
+"""
+整理规划输入与检查点字段的 Alembic 迁移测试。
+"""
 
 import importlib
 import json
@@ -47,7 +49,9 @@ POST_LEASE_EXECUTION_COLUMNS = {
 
 
 def _bind_migration(monkeypatch, connection, module_name=PLANNING_MIGRATION):
-    """把迁移绑定到隔离数据库连接。"""
+    """
+    把迁移绑定到隔离数据库连接。
+    """
     migration = importlib.import_module(module_name)
     monkeypatch.setattr(
         migration,
@@ -58,7 +62,9 @@ def _bind_migration(monkeypatch, connection, module_name=PLANNING_MIGRATION):
 
 
 def _create_admission_table(connection) -> None:
-    """创建 3.0.13 时代的持久准入表。"""
+    """
+    创建 3.0.13 时代的持久准入表。
+    """
     metadata = sa.MetaData()
     table = sa.Table(
         "transferpending",
@@ -99,7 +105,9 @@ def _create_admission_table(connection) -> None:
 
 
 def _planning_row(connection) -> dict[str, object]:
-    """读取单条规划持久字段快照。"""
+    """
+    读取单条规划持久字段快照。
+    """
     return dict(connection.execute(sa.text(
         "SELECT task_id, state, input_version, planning_input, "
         "input_fingerprint, checkpoint_version, checkpoint_payload, planned_at "
@@ -108,7 +116,9 @@ def _planning_row(connection) -> dict[str, object]:
 
 
 def _assert_upgrade_downgrade_reupgrade(connection, monkeypatch) -> None:
-    """断言规划迁移在当前隔离连接上的完整可逆生命周期。"""
+    """
+    断言规划迁移在当前隔离连接上的完整可逆生命周期。
+    """
     _create_admission_table(connection)
     planning_migration = _bind_migration(monkeypatch, connection)
     lease_migration = _bind_migration(monkeypatch, connection, LEASE_MIGRATION)
@@ -199,14 +209,18 @@ def _assert_upgrade_downgrade_reupgrade(connection, monkeypatch) -> None:
 
 
 def test_transfer_planning_upgrade_downgrade_reupgrade(monkeypatch) -> None:
-    """SQLite 应支持规划字段重复升级、降级和再次升级。"""
+    """
+    SQLite 应支持规划字段重复升级、降级和再次升级。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         _assert_upgrade_downgrade_reupgrade(connection, monkeypatch)
 
 
 def test_provider_pending_downgrade_restores_accepted_on_sqlite(monkeypatch) -> None:
-    """旧版本无法解释 provider 快照，降级时必须保守恢复为 accepted。"""
+    """
+    旧版本无法解释 provider 快照，降级时必须保守恢复为 accepted。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         _create_admission_table(connection)
@@ -234,7 +248,9 @@ def test_provider_pending_downgrade_restores_accepted_on_sqlite(monkeypatch) -> 
 
 
 def test_partial_upgrade_preserves_existing_planning_json(monkeypatch) -> None:
-    """迁移中断后重跑应补齐版本和指纹，不得覆盖已经写入的完整输入。"""
+    """
+    迁移中断后重跑应补齐版本和指纹，不得覆盖已经写入的完整输入。
+    """
     engine = sa.create_engine("sqlite://")
     planning_input = TransferPlanningInput(
         source_fileitem={
@@ -284,7 +300,9 @@ def test_partial_upgrade_preserves_existing_planning_json(monkeypatch) -> None:
 
 
 def test_partial_upgrade_recomputes_inconsistent_planning_identity(monkeypatch) -> None:
-    """部分升级留下的版本和指纹必须按最终 JSON 重算，不能保留伪身份。"""
+    """
+    部分升级留下的版本和指纹必须按最终 JSON 重算，不能保留伪身份。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         _create_admission_table(connection)
@@ -313,7 +331,9 @@ def test_partial_upgrade_recomputes_inconsistent_planning_identity(monkeypatch) 
 
 
 def test_replayed_upgrade_repairs_complete_but_mismatched_identity(monkeypatch) -> None:
-    """重复执行升级也必须修复完整三元组中与 payload 不一致的旧值。"""
+    """
+    重复执行升级也必须修复完整三元组中与 payload 不一致的旧值。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         _create_admission_table(connection)
@@ -336,7 +356,9 @@ def test_replayed_upgrade_repairs_complete_but_mismatched_identity(monkeypatch) 
 
 
 def test_transfer_planning_migration_runs_on_postgresql(monkeypatch) -> None:
-    """配置隔离 PostgreSQL 时真实验证规划字段的完整可逆迁移。"""
+    """
+    配置隔离 PostgreSQL 时真实验证规划字段的完整可逆迁移。
+    """
     prefix = "MOVIEPILOT_TEST_POSTGRESQL_"
     host = os.getenv(f"{prefix}HOST")
     database = os.getenv(f"{prefix}DATABASE")

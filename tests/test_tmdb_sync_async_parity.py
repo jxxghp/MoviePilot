@@ -1,4 +1,6 @@
-"""TMDB 模块同步与异步公开能力的业务决策一致性测试。"""
+"""
+TMDB 模块同步与异步公开能力的业务决策一致性测试。
+"""
 
 import asyncio
 from typing import Optional
@@ -14,7 +16,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def _module_with_clients() -> TheMovieDbModule:
-    """构造不触发模块生命周期、只注入测试客户端的 TMDB 模块。"""
+    """
+    构造不触发模块生命周期、只注入测试客户端的 TMDB 模块。
+    """
     module = object.__new__(TheMovieDbModule)
     module.tmdb = Mock()
     module.cache = Mock()
@@ -23,7 +27,9 @@ def _module_with_clients() -> TheMovieDbModule:
 
 
 def _movie_info(tmdbid: int = 10) -> dict:
-    """构造可投影为 MediaInfo 的最小电影详情。"""
+    """
+    构造可投影为 MediaInfo 的最小电影详情。
+    """
     return {
         "id": tmdbid,
         "media_type": MediaType.MOVIE,
@@ -34,7 +40,9 @@ def _movie_info(tmdbid: int = 10) -> dict:
 
 
 def test_recognize_sync_async_share_identity_cache_and_result_decisions() -> None:
-    """显式 TMDB 身份在双入口应产生相同查询、缓存写入和媒体结果。"""
+    """
+    显式 TMDB 身份在双入口应产生相同查询、缓存写入和媒体结果。
+    """
     module = _module_with_clients()
     info = _movie_info()
     module.tmdb.get_info.return_value = info
@@ -92,7 +100,9 @@ def test_recognize_sync_async_share_identity_cache_and_result_decisions() -> Non
 
 
 def test_recognize_sync_async_pass_episode_group_as_group_id() -> None:
-    """剧集组 ID 应按 TmdbApi 的 group_id 参数在双入口转发。"""
+    """
+    剧集组 ID 应按 TmdbApi 的 group_id 参数在双入口转发。
+    """
     module = _module_with_clients()
     info = _movie_info()
     group_id = "5ad0ec240e0a26303f00d84d"
@@ -126,7 +136,9 @@ def test_recognize_sync_async_pass_episode_group_as_group_id() -> None:
 
 
 def test_recognize_sync_async_share_negative_cache_short_circuit() -> None:
-    """负缓存命中时双入口都不得继续访问 TMDB 客户端。"""
+    """
+    负缓存命中时双入口都不得继续访问 TMDB 客户端。
+    """
     module = _module_with_clients()
     module.tmdb.async_get_info = AsyncMock()
     module.tmdb.async_match = AsyncMock()
@@ -159,7 +171,9 @@ def test_recognize_sync_async_share_negative_cache_short_circuit() -> None:
 
 
 def test_recognize_sync_async_share_identity_connection_failure() -> None:
-    """显式身份查询连接失败时双入口都应失败且不得写入负缓存。"""
+    """
+    显式身份查询连接失败时双入口都应失败且不得写入负缓存。
+    """
     module = _module_with_clients()
     sync_lookup = Mock(side_effect=TMDbConnectionError("offline"))
     async_lookup = AsyncMock(side_effect=TMDbConnectionError("offline"))
@@ -197,7 +211,9 @@ def test_recognize_sync_async_share_identity_connection_failure() -> None:
 
 
 def test_name_match_sync_async_share_ordered_fallback_plan() -> None:
-    """电视剧名称识别的带季查询与无年份回退在双入口应完全同序。"""
+    """
+    电视剧名称识别的带季查询与无年份回退在双入口应完全同序。
+    """
     module = _module_with_clients()
     meta = MetaBase("测试剧 S02 2024")
     meta.name = "测试剧"
@@ -231,7 +247,9 @@ def test_name_match_sync_async_share_ordered_fallback_plan() -> None:
 
 
 def test_media_search_sync_async_share_combination_and_sorting() -> None:
-    """未知类型且有年份时，双入口应合并电影和电视剧并按日期倒序。"""
+    """
+    未知类型且有年份时，双入口应合并电影和电视剧并按日期倒序。
+    """
     module = _module_with_clients()
     meta = MetaBase("同名作品 2024")
     meta.name = "同名作品"
@@ -273,7 +291,9 @@ def test_media_search_sync_async_share_combination_and_sorting() -> None:
 def test_obtain_images_sync_async_share_query_and_mapping(
     monkeypatch: pytest.MonkeyPatch, media_source: str, recognize_source: str, media_type: MediaType,
 ) -> None:
-    """图片补全双入口应选择同一接口、语言参数和最佳图片映射。"""
+    """
+    图片补全双入口应选择同一接口、语言参数和最佳图片映射。
+    """
     module = _module_with_clients()
     monkeypatch.setattr("app.modules.themoviedb.get_runtime_setting", lambda key: (
         recognize_source if key == "RECOGNIZE_SOURCE" else lambda path: f"https://images.test{path}"
@@ -324,7 +344,9 @@ def test_obtain_images_sync_async_skip_ineligible_media(
     monkeypatch: pytest.MonkeyPatch, media_source: str, recognize_source: str,
     tmdb_id: Optional[int], complete_images: bool,
 ) -> None:
-    """不适用来源、缺少 TMDB ID 或图片齐全时，双入口原样返回且不查询图片。"""
+    """
+    不适用来源、缺少 TMDB ID 或图片齐全时，双入口原样返回且不查询图片。
+    """
     monkeypatch.setattr("app.modules.themoviedb.get_runtime_setting", lambda _key: recognize_source)
     module = _module_with_clients()
     media = MediaInfo()

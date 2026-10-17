@@ -1,3 +1,7 @@
+"""
+验证音乐整理中专辑候选的选择与确认。
+"""
+
 from copy import deepcopy
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,7 +21,9 @@ from tests.test_transfer_sync_extra_files import (
 
 
 def _album() -> MusicAlbumInfo:
-    """构造已选择的简体中文发行版。"""
+    """
+    构造已选择的简体中文发行版。
+    """
     classification = ClassificationResult(
         recommended=ClassificationSelection(
             category_id="music.album",
@@ -71,7 +77,9 @@ def _album() -> MusicAlbumInfo:
 
 
 def _directory_item(path: Path) -> FileItem:
-    """构造手动整理使用的专辑目录项。"""
+    """
+    构造手动整理使用的专辑目录项。
+    """
     return FileItem(
         storage="local",
         path=path.as_posix() + "/",
@@ -81,7 +89,9 @@ def _directory_item(path: Path) -> FileItem:
 
 
 def _prepare_chain(monkeypatch, fileitems: list[FileItem]):
-    """隔离文件规划外部依赖，返回可同步观察的整理链。"""
+    """
+    隔离文件规划外部依赖，返回可同步观察的整理链。
+    """
     chain = make_transfer_chain()
     bind_empty_history_repositories(chain)
     monkeypatch.setattr(
@@ -102,7 +112,9 @@ def _prepare_chain(monkeypatch, fileitems: list[FileItem]):
 
 
 def _shared_recording() -> MusicInfo:
-    """构造会触发整批重新识别的共享单曲上下文。"""
+    """
+    构造会触发整批重新识别的共享单曲上下文。
+    """
     return MusicInfo(
         media_source=MediaSource.MusicBrainz,
         media_id="recording-shared",
@@ -114,9 +126,13 @@ def _shared_recording() -> MusicInfo:
 
 
 def _patch_local_music_reads(monkeypatch, local_metas: dict[Path, MetaMusic]) -> None:
-    """为在线匹配用例提供缺曲名的部分标签，完整曲名由路径解析测试桩补齐。"""
+    """
+    为在线匹配用例提供缺曲名的部分标签，完整曲名由路径解析测试桩补齐。
+    """
     def partial_tags(path):
-        """保留专辑分组证据，让本组用例仍实际执行远端候选对齐分支。"""
+        """
+        保留专辑分组证据，让本组用例仍实际执行远端候选对齐分支。
+        """
         meta = deepcopy(local_metas[Path(path)])
         meta.title = None
         return meta
@@ -133,7 +149,9 @@ def _patch_local_music_reads(monkeypatch, local_metas: dict[Path, MetaMusic]) ->
 
 
 def test_selected_album_tracks_override_source_tag_names(tmp_path, monkeypatch):
-    """手动选定专辑后应使用所选发行版的逐曲简体名称。"""
+    """
+    手动选定专辑后应使用所选发行版的逐曲简体名称。
+    """
     album_dir = tmp_path / "周杰伦 - 七里香 (2004)"
     album_dir.mkdir()
     paths = [album_dir / "01.flac", album_dir / "02.flac"]
@@ -184,7 +202,9 @@ def test_selected_album_tracks_override_source_tag_names(tmp_path, monkeypatch):
 
 
 def test_selected_music_fileitems_keep_album_batch_context(tmp_path, monkeypatch):
-    """显式多选音轨应在单个批次中应用专辑曲目和分类。"""
+    """
+    显式多选音轨应在单个批次中应用专辑曲目和分类。
+    """
     album_dir = tmp_path / "周杰伦 - 七里香 (2004)"
     album_dir.mkdir()
     paths = [album_dir / "01.flac", album_dir / "02.flac"]
@@ -236,7 +256,9 @@ def test_selected_music_fileitems_keep_album_batch_context(tmp_path, monkeypatch
 
 
 def test_automatic_music_fileitems_receive_album_identity_and_category(tmp_path, monkeypatch):
-    """自动多选音轨应用目录级专辑识别结果覆盖本地繁体标签。"""
+    """
+    自动多选音轨应用目录级专辑识别结果覆盖本地繁体标签。
+    """
     album_dir = tmp_path / "周杰伦 - 七里香 (2004)"
     album_dir.mkdir()
     paths = [album_dir / "01.flac", album_dir / "02.flac"]
@@ -299,7 +321,9 @@ def test_automatic_music_fileitems_receive_album_identity_and_category(tmp_path,
 def test_manual_single_track_directory_uses_local_single_and_directory_year(
         tmp_path, monkeypatch,
 ):
-    """无远端命中时，手动单曲目录应按 Single 归档并采用目录年份。"""
+    """
+    无远端命中时，手动单曲目录应按 Single 归档并采用目录年份。
+    """
     single_dir = tmp_path / "Taylor Swift" / "2010-Today Was a Fairytale"
     single_dir.mkdir(parents=True)
     audio_path = single_dir / "Taylor Swift - Today Was a Fairytale.flac"
@@ -356,7 +380,9 @@ def test_manual_single_track_directory_uses_local_single_and_directory_year(
 
 
 def test_same_directory_tagged_disc_groups_are_independent_albums(tmp_path, monkeypatch):
-    """同一物理目录中的 CD1/CD2 标签分组都应获得独立且稳定的 Album 上下文。"""
+    """
+    同一物理目录中的 CD1/CD2 标签分组都应获得独立且稳定的 Album 上下文。
+    """
     album_dir = tmp_path / "Taylor Swift" / "2012-Red Deluxe"
     album_dir.mkdir(parents=True)
     audio_paths = [album_dir / f"{index:02d}.flac" for index in range(1, 5)]
@@ -418,7 +444,9 @@ def test_same_directory_tagged_disc_groups_are_independent_albums(tmp_path, monk
 
 
 def test_directory_year_is_reapplied_after_album_recognition(tmp_path, monkeypatch):
-    """远端再版年份不能覆盖发行目录明确给出的年份。"""
+    """
+    远端再版年份不能覆盖发行目录明确给出的年份。
+    """
     album_dir = tmp_path / "Taylor Swift" / "2020-evermore" / "CD1"
     album_dir.mkdir(parents=True)
     audio_paths = [album_dir / "01.flac", album_dir / "02.flac"]
@@ -488,7 +516,9 @@ def test_directory_year_is_reapplied_after_album_recognition(tmp_path, monkeypat
 
 
 def test_album_directory_consensus_overrides_title_track_single_release(tmp_path, monkeypatch):
-    """专辑目录中的同名单曲命中不能把该曲拆入 Single 分类。"""
+    """
+    专辑目录中的同名单曲命中不能把该曲拆入 Single 分类。
+    """
     album_dir = tmp_path / "Taylor Swift" / "Speak Now (2010)"
     album_dir.mkdir(parents=True)
     audio_paths = [album_dir / "01 - Mine.flac", album_dir / "04 - Speak Now.flac"]
@@ -517,7 +547,9 @@ def test_album_directory_consensus_overrides_title_track_single_release(tmp_path
     )
 
     def recognize_track(_self, path, **_kwargs):
-        """构造把目录内曲目误识别为单曲发行的候选。"""
+        """
+        构造把目录内曲目误识别为单曲发行的候选。
+        """
         meta = deepcopy(local_metas[Path(path)])
         info = MusicInfo(
             media_source=MediaSource.MusicBrainz,
@@ -561,7 +593,9 @@ def test_album_directory_consensus_overrides_title_track_single_release(tmp_path
 
 
 def test_album_directory_consensus_preserves_explicit_ep_type(tmp_path, monkeypatch):
-    """多音轨目录已由 MusicBrainz 明确识别为 EP 时不得强制改成 Album。"""
+    """
+    多音轨目录已由 MusicBrainz 明确识别为 EP 时不得强制改成 Album。
+    """
     album_dir = tmp_path / "Taylor Swift" / "The Taylor Swift Holiday Collection"
     album_dir.mkdir(parents=True)
     audio_paths = [album_dir / "01.flac", album_dir / "02.flac"]
@@ -590,7 +624,9 @@ def test_album_directory_consensus_preserves_explicit_ep_type(tmp_path, monkeypa
     )
 
     def recognize_ep(_self, path, **_kwargs):
-        """构造保留发行类型的 EP 识别结果。"""
+        """
+        构造保留发行类型的 EP 识别结果。
+        """
         meta = deepcopy(local_metas[Path(path)])
         info = MusicInfo(
             media_source=MediaSource.MusicBrainz,
@@ -631,7 +667,9 @@ def test_album_directory_consensus_preserves_explicit_ep_type(tmp_path, monkeypa
 
 
 def test_manual_album_identity_forwards_full_selected_album(monkeypatch):
-    """手动指定专辑 ID 时不应在进入整理链前丢失曲目表。"""
+    """
+    手动指定专辑 ID 时不应在进入整理链前丢失曲目表。
+    """
     chain = make_transfer_chain()
     album = _album()
     captured = {}
@@ -641,7 +679,9 @@ def test_manual_album_identity_forwards_full_selected_album(monkeypatch):
     )
 
     def do_transfer(**kwargs):
-        """记录手动入口传入的完整专辑上下文。"""
+        """
+        记录手动入口传入的完整专辑上下文。
+        """
         captured.update(kwargs)
         return True, ""
 
@@ -668,7 +708,9 @@ def test_manual_album_identity_forwards_full_selected_album(monkeypatch):
 
 
 def test_selected_album_rejects_duplicate_local_editions(tmp_path, monkeypatch):
-    """同一手动批次包含两套同曲序文件时应阻止目标覆盖。"""
+    """
+    同一手动批次包含两套同曲序文件时应阻止目标覆盖。
+    """
     album_dir = tmp_path / "周杰伦 - 七里香 (2004)"
     extra_dir = album_dir / "附加原版"
     extra_dir.mkdir(parents=True)

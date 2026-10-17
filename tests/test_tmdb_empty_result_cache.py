@@ -22,29 +22,39 @@ HEADERS = {"Content-Type": "application/json"}
 
 
 def _snapshot(payload: dict) -> dict:
-    """构造一个带快照标记的响应结构。"""
+    """
+    构造一个带快照标记的响应结构。
+    """
     return {TMDb._RESPONSE_SNAPSHOT_MARKER: True, "headers": {}, "json": payload}
 
 
 def _request_region_cache():
-    """取出 TMDb.request 装饰器使用的内存缓存区实例。"""
+    """
+    取出 TMDb.request 装饰器使用的内存缓存区实例。
+    """
     return MemoryBackend._region_caches[MemoryBackend.get_region(TMDb.request.cache_region)]
 
 
 def _make_tmdb() -> TMDb:
-    """构造带测试 API Key 的 TMDb 客户端。"""
+    """
+    构造带测试 API Key 的 TMDb 客户端。
+    """
     tmdb = TMDb()
     tmdb.api_key = "test-key"
     return tmdb
 
 
 def test_empty_result_cache_ttl_is_thirty_minutes():
-    """空结果缓存的独立过期时间应为 30 分钟。"""
+    """
+    空结果缓存的独立过期时间应为 30 分钟。
+    """
     assert settings.EMPTY_RESULT_CACHE_TTL == 30 * 60
 
 
 def test_empty_result_snapshot_predicate():
-    """空结果谓词只认 results 为空列表的快照，详情与有结果的响应不算空。"""
+    """
+    空结果谓词只认 results 为空列表的快照，详情与有结果的响应不算空。
+    """
     assert _is_empty_result_snapshot(_snapshot(EMPTY_PAYLOAD))
     assert not _is_empty_result_snapshot(_snapshot(NOT_EMPTY_PAYLOAD))
     assert not _is_empty_result_snapshot(_snapshot({"id": 98865, "title": "Test"}))
@@ -54,7 +64,9 @@ def test_empty_result_snapshot_predicate():
 
 
 def test_empty_result_is_cached_but_expires_with_short_ttl():
-    """空结果快照仍入缓存避免重复回源，但按短 TTL 过期后恢复回源。"""
+    """
+    空结果快照仍入缓存避免重复回源，但按短 TTL 过期后恢复回源。
+    """
     tmdb = _make_tmdb()
     url = "https://api.tmdb.test/empty-short-ttl"
     fake = _FakeResponse(EMPTY_PAYLOAD, HEADERS)
@@ -74,7 +86,9 @@ def test_empty_result_is_cached_but_expires_with_short_ttl():
 
 
 def test_non_empty_result_keeps_default_ttl():
-    """有结果的响应不受短 TTL 影响，过期点仍为默认元数据缓存 TTL 之后。"""
+    """
+    有结果的响应不受短 TTL 影响，过期点仍为默认元数据缓存 TTL 之后。
+    """
     tmdb = _make_tmdb()
     url = "https://api.tmdb.test/non-empty-default-ttl"
     fake = _FakeResponse(NOT_EMPTY_PAYLOAD, HEADERS)
@@ -93,7 +107,9 @@ def test_non_empty_result_keeps_default_ttl():
 
 
 def test_async_empty_result_is_cached_with_short_ttl():
-    """异步请求的空结果快照与同步路径一致，入缓存但按短 TTL 过期。"""
+    """
+    异步请求的空结果快照与同步路径一致，入缓存但按短 TTL 过期。
+    """
     tmdb = _make_tmdb()
     url = "https://api.tmdb.test/async-empty-short-ttl"
     fake = _FakeResponse(EMPTY_PAYLOAD, HEADERS)

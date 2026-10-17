@@ -1,3 +1,7 @@
+"""
+验证种子推送与订阅候选的匹配规则。
+"""
+
 from types import SimpleNamespace
 
 from app.chain.torrents import TorrentsChain
@@ -6,7 +10,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def _chain() -> TorrentsChain:
-    """构造不触发外部依赖初始化的种子链实例。"""
+    """
+    构造不触发外部依赖初始化的种子链实例。
+    """
     return object.__new__(TorrentsChain)
 
 

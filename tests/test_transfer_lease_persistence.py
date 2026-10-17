@@ -1,4 +1,6 @@
-"""整理恢复租约的原子 claim、续租和陈旧 token 防护测试。"""
+"""
+整理恢复租约的原子 claim、续租和陈旧 token 防护测试。
+"""
 
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -29,7 +31,9 @@ from app.db.oper.transferpending import TransferPendingOper
 
 
 def _planning_input(path: str) -> TransferPlanningInput:
-    """构造与测试源路径绑定的最小规划输入。"""
+    """
+    构造与测试源路径绑定的最小规划输入。
+    """
     return TransferPlanningInput(
         source_fileitem={
             "storage": "local",
@@ -43,7 +47,9 @@ def _planning_input(path: str) -> TransferPlanningInput:
 
 
 def _checkpoint(planning_input: TransferPlanningInput) -> TransferPlanCheckpoint:
-    """构造无需文件副作用的合法宿主跳过检查点。"""
+    """
+    构造无需文件副作用的合法宿主跳过检查点。
+    """
     return TransferPlanCheckpoint(
         planning_input=planning_input,
         target_storage="local",
@@ -58,7 +64,9 @@ def _checkpoint(planning_input: TransferPlanningInput) -> TransferPlanCheckpoint
 def _provider_checkpoint(
         planning_input: TransferPlanningInput,
 ) -> TransferPlanCheckpoint:
-    """构造只冻结 provider ABI、尚未完成宿主规划的检查点。"""
+    """
+    构造只冻结 provider ABI、尚未完成宿主规划的检查点。
+    """
     invocation = TransferProviderInvocationSnapshot(
         fileitem=planning_input.source_fileitem,
         meta=planning_input.meta,
@@ -89,7 +97,9 @@ def _provider_checkpoint(
 
 @pytest.fixture
 def repository_factory(tmp_path):
-    """创建允许多线程独立 Session 竞争的 SQLite 租约仓储工厂。"""
+    """
+    创建允许多线程独立 Session 竞争的 SQLite 租约仓储工厂。
+    """
     engine = create_engine(
         f"sqlite:///{tmp_path / 'transfer-lease.db'}",
         connect_args={"check_same_thread": False, "timeout": 10},
@@ -104,7 +114,9 @@ def repository_factory(tmp_path):
 
 @pytest.fixture
 def lease_clock(monkeypatch):
-    """为所有仓储实例提供可推进的固定 UTC 时钟。"""
+    """
+    为所有仓储实例提供可推进的固定 UTC 时钟。
+    """
     clock = {"now": datetime(2026, 8, 27, 10, 0, tzinfo=timezone.utc)}
     monkeypatch.setattr(
         TransactionalTransferAdmissionRepository,
@@ -116,7 +128,9 @@ def lease_clock(monkeypatch):
 
 @pytest.fixture
 def business_clock(monkeypatch):
-    """为业务审计字段提供与 UTC 租约时钟明确分离的宿主本地时间。"""
+    """
+    为业务审计字段提供与 UTC 租约时钟明确分离的宿主本地时间。
+    """
     clock = {"now": "2026-08-27 18:00:00"}
     monkeypatch.setattr(
         TransactionalTransferAdmissionRepository,
@@ -130,7 +144,9 @@ def _admit(
         repository: TransactionalTransferAdmissionRepository,
         path: str,
 ) -> TransferAdmission:
-    """登记一个带完整版本化输入的测试任务。"""
+    """
+    登记一个带完整版本化输入的测试任务。
+    """
     return repository.admit(
         storage="local",
         src_path=path,
@@ -142,7 +158,10 @@ def _pending_snapshot(
         repository: TransactionalTransferAdmissionRepository,
         task_id: str,
 ) -> dict[str, Any]:
-    """在 Session 关闭前冻结测试需要检查的持久登记字段。"""
+    """
+    在 Session 关闭前冻结测试需要检查的持久登记字段。
+    """
+    # 直接检查测试数据库中的租约或检查点，避免经公开投影掩盖持久状态。
     with repository._session_factory() as session:  # noqa: SLF001
         pending = session.execute(
             select(TransferPending).where(TransferPending.task_id == task_id)
@@ -164,7 +183,9 @@ def test_claim_heartbeat_expired_takeover_and_stale_token_guards(
         lease_clock,
         business_clock,
 ) -> None:
-    """新 token 才增加 attempt，过期 token 不能续租、释放或删除接管者。"""
+    """
+    新 token 才增加 attempt，过期 token 不能续租、释放或删除接管者。
+    """
     repository = repository_factory()
     admitted = _admit(repository, "/downloads/movie.mkv")
     assert admitted.created_at == "2026-08-27 18:00:00"
@@ -265,6 +286,7 @@ def test_claim_heartbeat_expired_takeover_and_stale_token_guards(
         task_id=admitted.task_id,
         lease_token=third.lease_token,
     ) == 1
+    # 直接检查测试数据库中的租约或检查点，避免经公开投影掩盖持久状态。
     with repository._session_factory() as session:  # noqa: SLF001
         assert session.execute(
             select(TransferPending).where(
@@ -277,7 +299,9 @@ def test_claim_recoverable_respects_order_limit_and_active_lease(
         repository_factory,
         lease_clock,
 ) -> None:
-    """批量恢复跳过有效租约，并按登记顺序逐条 CAS 到请求上限。"""
+    """
+    批量恢复跳过有效租约，并按登记顺序逐条 CAS 到请求上限。
+    """
     repository = repository_factory()
     first = _admit(repository, "/downloads/a.mkv")
     second = _admit(repository, "/downloads/b.mkv")
@@ -321,7 +345,9 @@ def test_claim_recoverable_skips_corrupt_projection_and_claims_later_tasks(
         business_clock,
         monkeypatch,
 ) -> None:
-    """毒行应留下单次诊断但不持有租约或饿死后续健康任务。"""
+    """
+    毒行应留下单次诊断但不持有租约或饿死后续健康任务。
+    """
     repository = repository_factory()
     messages: list[str] = []
     monkeypatch.setattr(
@@ -333,6 +359,7 @@ def test_claim_recoverable_skips_corrupt_projection_and_claims_later_tasks(
         _admit(repository, "/downloads/b-healthy.mkv"),
         _admit(repository, "/downloads/c-healthy.mkv"),
     ]
+    # 直接检查测试数据库中的租约或检查点，避免经公开投影掩盖持久状态。
     with repository._session_factory() as session:  # noqa: SLF001
         pending = session.execute(
             select(TransferPending).where(
@@ -365,6 +392,7 @@ def test_claim_recoverable_skips_corrupt_projection_and_claims_later_tasks(
     assert _pending_snapshot(repository, corrupt.task_id) == corrupt_snapshot
     assert len(messages) == 1
 
+    # 直接检查测试数据库中的租约或检查点，避免经公开投影掩盖持久状态。
     with repository._session_factory() as session:  # noqa: SLF001
         pending = session.execute(
             select(TransferPending).where(
@@ -389,7 +417,9 @@ def test_projection_diagnostic_changes_are_recorded_once_each(
         business_clock,
         monkeypatch,
 ) -> None:
-    """相同投影错误不重复写库，错误类型变化时才更新诊断并再次告警。"""
+    """
+    相同投影错误不重复写库，错误类型变化时才更新诊断并再次告警。
+    """
     repository = repository_factory()
     messages: list[str] = []
     monkeypatch.setattr(
@@ -397,6 +427,7 @@ def test_projection_diagnostic_changes_are_recorded_once_each(
         messages.append,
     )
     admitted = _admit(repository, "/downloads/changing-corrupt.mkv")
+    # 直接检查测试数据库中的租约或检查点，避免经公开投影掩盖持久状态。
     with repository._session_factory() as session:  # noqa: SLF001
         pending = session.execute(
             select(TransferPending).where(
@@ -423,6 +454,7 @@ def test_projection_diagnostic_changes_are_recorded_once_each(
     assert _pending_snapshot(repository, admitted.task_id) == first
     assert len(messages) == 1
 
+    # 直接检查测试数据库中的租约或检查点，避免经公开投影掩盖持久状态。
     with repository._session_factory() as session:  # noqa: SLF001
         pending = session.execute(
             select(TransferPending).where(
@@ -451,14 +483,18 @@ def test_projection_diagnostic_cas_is_concurrency_safe(
         repository_factory,
         monkeypatch,
 ) -> None:
-    """并发恢复观察到同一损坏时只允许一个诊断写入者和一条运行日志。"""
+    """
+    并发恢复观察到同一损坏时只允许一个诊断写入者和一条运行日志。
+    """
     repository = repository_factory()
     admitted = _admit(repository, "/downloads/concurrent-corrupt.mkv")
     messages: list[str] = []
     message_lock = Lock()
 
     def capture(message: str) -> None:
-        """并发安全收集错误日志。"""
+        """
+        并发安全收集错误日志。
+        """
         with message_lock:
             messages.append(message)
 
@@ -470,8 +506,11 @@ def test_projection_diagnostic_cas_is_concurrency_safe(
     projection_error = TransferAdmissionProjectionError("same corruption")
 
     def record(_: int) -> bool:
-        """让两个独立 Session 同时竞争同一诊断 CAS。"""
+        """
+        让两个独立 Session 同时竞争同一诊断 CAS。
+        """
         barrier.wait(timeout=5)
+        # 直接触发损坏投影隔离入口，验证失败后的持久恢复状态。
         return repository_factory()._record_projection_failure(  # noqa: SLF001
             task_id=admitted.task_id,
             error=projection_error,
@@ -490,7 +529,9 @@ def test_projection_diagnostic_does_not_overwrite_active_lease(
         repository_factory,
         monkeypatch,
 ) -> None:
-    """诊断 CAS 不得覆盖已经由健康 worker 取得有效租约的任务。"""
+    """
+    诊断 CAS 不得覆盖已经由健康 worker 取得有效租约的任务。
+    """
     repository = repository_factory()
     admitted = _admit(repository, "/downloads/active-lease.mkv")
     claimed = repository.claim_task(
@@ -506,6 +547,7 @@ def test_projection_diagnostic_does_not_overwrite_active_lease(
         messages.append,
     )
 
+    # 直接触发损坏投影隔离入口，验证失败后的持久恢复状态。
     recorded = repository._record_projection_failure(  # noqa: SLF001
         task_id=admitted.task_id,
         error=TransferAdmissionProjectionError("stale observation"),
@@ -520,9 +562,12 @@ def test_projection_diagnostic_database_failure_propagates(
         repository_factory,
         monkeypatch,
 ) -> None:
-    """诊断留痕的数据库基础设施异常必须向上游传播而非静默跳过。"""
+    """
+    诊断留痕的数据库基础设施异常必须向上游传播而非静默跳过。
+    """
     repository = repository_factory()
     admitted = _admit(repository, "/downloads/db-error-corrupt.mkv")
+    # 直接检查测试数据库中的租约或检查点，避免经公开投影掩盖持久状态。
     with repository._session_factory() as session:  # noqa: SLF001
         pending = session.execute(
             select(TransferPending).where(
@@ -533,7 +578,9 @@ def test_projection_diagnostic_database_failure_propagates(
         session.commit()
 
     def fail_diagnostic(*_args, **_kwargs):
-        """模拟诊断短事务的底层数据库写入失败。"""
+        """
+        模拟诊断短事务的底层数据库写入失败。
+        """
         raise RuntimeError("database unavailable")
 
     monkeypatch.setattr(
@@ -553,9 +600,12 @@ def test_projection_diagnostic_database_failure_propagates(
 def test_claim_task_wraps_persisted_json_decode_failure(
         repository_factory,
 ) -> None:
-    """持久 JSON 解码错误应归类为投影损坏，而不是数据库基础设施故障。"""
+    """
+    持久 JSON 解码错误应归类为投影损坏，而不是数据库基础设施故障。
+    """
     repository = repository_factory()
     admitted = _admit(repository, "/downloads/invalid-json.mkv")
+    # 直接检查测试数据库中的租约或检查点，避免经公开投影掩盖持久状态。
     with repository._session_factory() as session:  # noqa: SLF001
         session.execute(
             text(
@@ -572,6 +622,7 @@ def test_claim_task_wraps_persisted_json_decode_failure(
             owner_id="recovery-worker",
             lease_seconds=60,
         )
+    # 直接检查测试数据库中的租约或检查点，避免经公开投影掩盖持久状态。
     with repository._session_factory() as session:  # noqa: SLF001
         snapshot = session.execute(
             text(
@@ -589,7 +640,9 @@ def test_concurrent_recovery_callers_scan_past_lost_candidates(
         lease_clock,
         monkeypatch,
 ) -> None:
-    """并发 caller 竞争同一首批后应继续向后扫描并各自填满限额。"""
+    """
+    并发 caller 竞争同一首批后应继续向后扫描并各自填满限额。
+    """
     setup_repository = repository_factory()
     admitted = [
         _admit(setup_repository, f"/downloads/concurrent-{index}.mkv")
@@ -601,7 +654,9 @@ def test_concurrent_recovery_callers_scan_past_lost_candidates(
     original = TransferPending.list_claimable_candidates.__func__
 
     def synchronized_candidates(cls, db, **kwargs):
-        """强制两个 caller 在取得相同首批候选后再进入逐任务 CAS。"""
+        """
+        强制两个 caller 在取得相同首批候选后再进入逐任务 CAS。
+        """
         nonlocal initial_scans
         candidates = original(cls, db, **kwargs)
         if kwargs.get("after_cursor") is None:
@@ -617,7 +672,9 @@ def test_concurrent_recovery_callers_scan_past_lost_candidates(
     )
 
     def recover(owner_id: str) -> list[TransferAdmission]:
-        """使用独立仓储与 Session 执行一次有界恢复扫描。"""
+        """
+        使用独立仓储与 Session 执行一次有界恢复扫描。
+        """
         return repository_factory().claim_recoverable(
             owner_id=owner_id,
             limit=2,
@@ -638,7 +695,9 @@ def test_unclaimed_enqueue_failure_cannot_overwrite_claimed_task(
         repository_factory,
         business_clock,
 ) -> None:
-    """task-id-only 入队失败入口不得改写已经由 worker claim 的登记。"""
+    """
+    task-id-only 入队失败入口不得改写已经由 worker claim 的登记。
+    """
     repository = repository_factory()
     admitted = _admit(repository, "/downloads/claimed.mkv")
     business_clock["now"] = "2026-08-27 18:01:00"
@@ -664,7 +723,9 @@ def test_planning_writes_require_current_unexpired_lease(
         repository_factory,
         lease_clock,
 ) -> None:
-    """checkpoint 和规划错误均不得由已过期或已被接管的 worker 写入。"""
+    """
+    checkpoint 和规划错误均不得由已过期或已被接管的 worker 写入。
+    """
     repository = repository_factory()
     path = "/downloads/planning.mkv"
     planning_input = _planning_input(path)
@@ -731,7 +792,9 @@ def test_provider_checkpoint_sets_planned_time_and_host_plan_refreshes_it(
         lease_clock,
         business_clock,
 ) -> None:
-    """provider 阶段提交冻结时间，宿主计划刷新该时间，幂等重试不改动。"""
+    """
+    provider 阶段提交冻结时间，宿主计划刷新该时间，幂等重试不改动。
+    """
     repository = repository_factory()
     path = "/downloads/provider-plan.mkv"
     planning_input = _planning_input(path)
@@ -784,13 +847,17 @@ def test_concurrent_claim_uses_rowcount_as_single_winner(
         repository_factory,
         lease_clock,
 ) -> None:
-    """并发 worker 即使读取同一任务，也只能有一个 CAS 更新获胜。"""
+    """
+    并发 worker 即使读取同一任务，也只能有一个 CAS 更新获胜。
+    """
     setup_repository = repository_factory()
     admitted = _admit(setup_repository, "/downloads/concurrent.mkv")
     barrier = Barrier(2)
 
     def claim(owner_id: str):
-        """等待竞争者就绪后使用独立 Session claim 同一任务。"""
+        """
+        等待竞争者就绪后使用独立 Session claim 同一任务。
+        """
         repository = repository_factory()
         barrier.wait()
         return repository.claim_task(
@@ -808,7 +875,9 @@ def test_concurrent_claim_uses_rowcount_as_single_winner(
 
 
 def _manual_planning_input(path: str) -> TransferPlanningInput:
-    """构造与旧自动任务不同的手动目标与输入选项。"""
+    """
+    构造与旧自动任务不同的手动目标与输入选项。
+    """
     return replace(
         _planning_input(path),
         target_path="/library/reorganized",
@@ -819,7 +888,10 @@ def _manual_planning_input(path: str) -> TransferPlanningInput:
 def _replacement_snapshot(
         repository: TransactionalTransferAdmissionRepository,
 ) -> dict[str, list[dict[str, Any]]]:
-    """冻结临时库的任务、步骤与历史，断言拒绝或回滚未改变任何持久证据。"""
+    """
+    冻结临时库的任务、步骤与历史，断言拒绝或回滚未改变任何持久证据。
+    """
+    # 直接检查测试数据库中的租约或检查点，避免经公开投影掩盖持久状态。
     with repository._session_factory() as session:  # noqa: SLF001
         return {
             model.__tablename__: [
@@ -837,7 +909,9 @@ def test_manual_admission_replaces_expired_unstarted_task_and_can_plan(
         lease_clock,
         planned: bool,
 ) -> None:
-    """旧自动任务未产生执行证据且租约过期时，手动重做须新建身份并完成重新规划。"""
+    """
+    旧自动任务未产生执行证据且租约过期时，手动重做须新建身份并完成重新规划。
+    """
     repository = repository_factory()
     path = "/downloads/manual-retry.mkv"
     old = _admit(repository, path)
@@ -887,7 +961,9 @@ def test_manual_admission_replaces_expired_unstarted_task_and_can_plan(
 def test_automatic_admission_keeps_identity_and_never_infers_manual_replacement(
         repository_factory,
 ) -> None:
-    """自动准入保持同输入幂等，规划 JSON 中的 manual 选项不能隐式授权替换。"""
+    """
+    自动准入保持同输入幂等，规划 JSON 中的 manual 选项不能隐式授权替换。
+    """
     repository = repository_factory()
     path = "/downloads/automatic.mkv"
     old = _admit(repository, path)
@@ -908,7 +984,10 @@ def _seed_orphaned_execution(
         execution_state: str,
         corrupt_json: bool,
 ) -> None:
-    """构造无历史但含旧执行步骤、悬空回执和可选损坏 JSON 的失效任务。"""
+    """
+    构造无历史但含旧执行步骤、悬空回执和可选损坏 JSON 的失效任务。
+    """
+    # 直接检查测试数据库中的租约或检查点，避免经公开投影掩盖持久状态。
     with repository._session_factory() as session:  # noqa: SLF001
         pending = TransferPending.get_by_task_id(session, task_id=task_id)
         pending.execution_state = execution_state
@@ -947,7 +1026,9 @@ def test_manual_admission_preserves_active_or_history_bound_task_evidence(
         evidence: str,
         corrupt_json: bool,
 ) -> None:
-    """即使旧 JSON 损坏，活动租约或真实历史绑定仍须阻止替换并保留全部证据。"""
+    """
+    即使旧 JSON 损坏，活动租约或真实历史绑定仍须阻止替换并保留全部证据。
+    """
     repository = repository_factory()
     path = "/downloads/protected.mkv"
     old = _admit(repository, path)
@@ -958,6 +1039,7 @@ def test_manual_admission_preserves_active_or_history_bound_task_evidence(
     _seed_orphaned_execution(
         repository, old.task_id, execution_state="broken-state", corrupt_json=corrupt_json,
     )
+    # 直接检查测试数据库中的租约或检查点，避免经公开投影掩盖持久状态。
     with repository._session_factory() as session:  # noqa: SLF001
         if evidence != "active_lease":
             session.add(TransferHistory(
@@ -992,7 +1074,9 @@ def test_manual_admission_replaces_inactive_orphan_with_steps_and_damaged_payloa
         execution_state: str,
         corrupt_json: bool,
 ) -> None:
-    """显式手动重做可放弃无历史的失效旧执行及坏数据，新任务仍能领取并重新规划。"""
+    """
+    显式手动重做可放弃无历史的失效旧执行及坏数据，新任务仍能领取并重新规划。
+    """
     repository = repository_factory()
     path = "/downloads/orphaned-execution.mkv"
     old = _admit(repository, path)
@@ -1035,10 +1119,13 @@ def test_manual_admission_replaces_inactive_orphan_regardless_of_planning_state(
         repository_factory,
         state: str,
 ) -> None:
-    """放弃无历史旧任务不依赖旧规划状态或检查点是否合法。"""
+    """
+    放弃无历史旧任务不依赖旧规划状态或检查点是否合法。
+    """
     repository = repository_factory()
     path = "/downloads/orphaned-plan.mkv"
     old = _admit(repository, path)
+    # 直接检查测试数据库中的租约或检查点，避免经公开投影掩盖持久状态。
     with repository._session_factory() as session:  # noqa: SLF001
         pending = TransferPending.get_by_task_id(session, task_id=old.task_id)
         pending.state = state
@@ -1058,7 +1145,9 @@ def test_manual_replacement_cas_preserves_concurrent_winner(
         monkeypatch,
         winner: str,
 ) -> None:
-    """读取旧任务后竞争者先取得租约或新建身份时，旧 CAS 不得删除竞争胜者。"""
+    """
+    读取旧任务后竞争者先取得租约或新建身份时，旧 CAS 不得删除竞争胜者。
+    """
     repository = repository_factory()
     other_repository = repository_factory()
     path = "/downloads/concurrent-replacement.mkv"
@@ -1074,7 +1163,9 @@ def test_manual_replacement_cas_preserves_concurrent_winner(
     winner_started = False
 
     def concurrent_delete(oper, **kwargs) -> int:
-        """在旧身份已读取、CAS 尚未执行的窗口内，用独立 Session 提交竞争者。"""
+        """
+        在旧身份已读取、CAS 尚未执行的窗口内，用独立 Session 提交竞争者。
+        """
         nonlocal winner_started, winner_snapshot
         if not winner_started:
             winner_started = True
@@ -1087,6 +1178,7 @@ def test_manual_replacement_cas_preserves_concurrent_winner(
                     task_id=old.task_id, lease_token=old_claim.lease_token, lease_seconds=120,
                 ) is not None
             elif winner == "history":
+                # 直接检查测试数据库中的租约或检查点，避免经公开投影掩盖持久状态。
                 with other_repository._session_factory() as session:  # noqa: SLF001
                     session.add(TransferHistory(
                         transfer_task_id=old.task_id, transfer_settlement_revision=1,
@@ -1117,7 +1209,9 @@ def test_manual_replacement_rolls_back_old_task_if_new_admission_fails(
         repository_factory,
         monkeypatch,
 ) -> None:
-    """新准入失败必须回滚同事务中的旧任务删除，避免手动重做丢失登记。"""
+    """
+    新准入失败必须回滚同事务中的旧任务删除，避免手动重做丢失登记。
+    """
     repository = repository_factory()
     path = "/downloads/rollback-replacement.mkv"
     old = _admit(repository, path)
@@ -1127,7 +1221,9 @@ def test_manual_replacement_rolls_back_old_task_if_new_admission_fails(
     before = _replacement_snapshot(repository)
 
     def fail_admission(_oper, **_kwargs) -> None:
-        """模拟 CAS 删除成功后的新任务写入失败。"""
+        """
+        模拟 CAS 删除成功后的新任务写入失败。
+        """
         raise RuntimeError("new admission failed")
 
     monkeypatch.setattr(TransferPendingOper, "stage_admit", fail_admission)

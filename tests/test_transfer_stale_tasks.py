@@ -1,4 +1,6 @@
-"""整理任务失活收敛行为测试。"""
+"""
+整理任务失活收敛行为测试。
+"""
 
 from app.application.transfer import jobs as app_transfer_jobs
 from app.application.transfer.workflow import JobManager, TransferTask
@@ -36,7 +38,9 @@ class _FakeMeta(MetaBase):
         self.part = None
 
     def to_dict(self):
-        """返回 TransferJobTask 所需的元数据字典。"""
+        """
+        返回 TransferJobTask 所需的元数据字典。
+        """
         return {
             "title": self.title,
             "name": self.name,
@@ -55,7 +59,9 @@ class _FakeMeta(MetaBase):
 
 
 def _make_task(name: str = "Test.Show.S01E01.mkv") -> TransferTask:
-    """创建失活检测使用的整理任务。"""
+    """
+    创建失活检测使用的整理任务。
+    """
     return TransferTask(
         fileitem=FileItem(
             storage="local",
@@ -71,7 +77,9 @@ def _make_task(name: str = "Test.Show.S01E01.mkv") -> TransferTask:
 
 
 def test_external_running_task_expires_without_heartbeat(monkeypatch):
-    """外部接管的运行中任务超过心跳期限后应被标记失败并清理。"""
+    """
+    外部接管的运行中任务超过心跳期限后应被标记失败并清理。
+    """
     clock = [100.0]
     monkeypatch.setattr(app_transfer_jobs, "monotonic", lambda: clock[0])
     manager = JobManager()
@@ -87,7 +95,9 @@ def test_external_running_task_expires_without_heartbeat(monkeypatch):
 
 
 def test_main_thread_execution_is_not_expired(monkeypatch):
-    """主程序整理线程仍在执行的任务不应被失活检测伪清理。"""
+    """
+    主程序整理线程仍在执行的任务不应被失活检测伪清理。
+    """
     clock = [100.0]
     monkeypatch.setattr(app_transfer_jobs, "monotonic", lambda: clock[0])
     manager = JobManager()
@@ -107,7 +117,9 @@ def test_main_thread_execution_is_not_expired(monkeypatch):
 
 
 def test_waiting_task_and_refreshed_heartbeat_do_not_expire(monkeypatch):
-    """等待中任务不受失活期限影响，重复运行状态更新可刷新外部心跳。"""
+    """
+    等待中任务不受失活期限影响，重复运行状态更新可刷新外部心跳。
+    """
     clock = [100.0]
     monkeypatch.setattr(app_transfer_jobs, "monotonic", lambda: clock[0])
     manager = JobManager()

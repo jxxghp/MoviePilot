@@ -1,4 +1,6 @@
-"""验证插件仓测试引导复现生产运行时的插件导入命名空间。"""
+"""
+验证插件仓测试引导复现生产运行时的插件导入命名空间。
+"""
 
 import sys
 from importlib import import_module
@@ -23,7 +25,9 @@ def test_prepare_plugin_backend_exposes_runtime_namespace(
     prepare_name: str,
     source_dir: str,
 ) -> None:
-    """市场仓源码只通过 ``app.plugins.<id>`` 规范身份导入。"""
+    """
+    市场仓源码只通过 ``app.plugins.<id>`` 规范身份导入。
+    """
     plugin_id = f"namespace_probe_{source_dir.replace('.', '_')}"
     plugin_dir = tmp_path / source_dir / plugin_id
     plugin_dir.mkdir(parents=True)

@@ -1,4 +1,6 @@
-"""认证链使用 TMDb 已解析的 JSON 字典，而不是属性包装对象。"""
+"""
+认证链使用 TMDb 已解析的 JSON 字典，而不是属性包装对象。
+"""
 
 from unittest.mock import Mock, call
 
@@ -9,7 +11,9 @@ from app.modules.themoviedb.tmdbv3api.objs.auth import Authentication
 
 
 def test_authentication_reads_json_credentials_and_preserves_request_order(monkeypatch):
-    """真实字典中的 token 和 session 必须按顺序传递，注销后清空会话。"""
+    """
+    真实字典中的 token 和 session 必须按顺序传递，注销后清空会话。
+    """
     request = Mock(side_effect=[
         {"success": True, "expires_at": "2030-01-01 00:00:00 UTC", "request_token": "token"},
         {"success": True},
@@ -39,7 +43,9 @@ def test_authentication_reads_json_credentials_and_preserves_request_order(monke
 @pytest.mark.parametrize("value", [None, "", 42, [], {}])
 @pytest.mark.parametrize("field", ["request_token", "session_id"])
 def test_authentication_rejects_missing_or_invalid_credentials(monkeypatch, field, value):
-    """失败的凭据解析应终止认证，不能把空值或非字符串发给下一步。"""
+    """
+    失败的凭据解析应终止认证，不能把空值或非字符串发给下一步。
+    """
     responses = [{field: value}]
     if field == "session_id":
         responses = [{"request_token": "token"}, {"success": True}, *responses]

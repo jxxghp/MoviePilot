@@ -1,3 +1,7 @@
+"""
+验证整理预览对真实文件操作的隔离。
+"""
+
 from pathlib import Path
 
 from app.domain.context import MediaInfo
@@ -13,22 +17,28 @@ class GuardedStorage:
     用于验证预览模式不会访问可能有副作用的存储整理接口。
     """
 
-    def get_folder(self, path: Path):  # pragma: no cover - 被调用即失败
+    # 被调用即失败。
+    def get_folder(self, path: Path):  # pragma: no cover
         raise AssertionError(f"预览不应创建或获取目标目录：{path}")
 
-    def get_item(self, path: Path):  # pragma: no cover - 被调用即失败
+    # 被调用即失败。
+    def get_item(self, path: Path):  # pragma: no cover
         raise AssertionError(f"预览不应探测目标文件：{path}")
 
-    def copy(self, *args, **kwargs):  # pragma: no cover - 被调用即失败
+    # 被调用即失败。
+    def copy(self, *args, **kwargs):  # pragma: no cover
         raise AssertionError("预览不应复制文件")
 
-    def move(self, *args, **kwargs):  # pragma: no cover - 被调用即失败
+    # 被调用即失败。
+    def move(self, *args, **kwargs):  # pragma: no cover
         raise AssertionError("预览不应移动文件")
 
-    def rename(self, *args, **kwargs):  # pragma: no cover - 被调用即失败
+    # 被调用即失败。
+    def rename(self, *args, **kwargs):  # pragma: no cover
         raise AssertionError("预览不应重命名文件")
 
-    def delete(self, *args, **kwargs):  # pragma: no cover - 被调用即失败
+    # 被调用即失败。
+    def delete(self, *args, **kwargs):  # pragma: no cover
         raise AssertionError("预览不应删除文件")
 
 

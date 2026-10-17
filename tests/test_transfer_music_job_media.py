@@ -1,3 +1,7 @@
+"""
+验证音乐整理作业中的媒体详情投影。
+"""
+
 from app import schemas
 from app.application.transfer.workflow import JobManager, TransferTask
 from app.domain.meta.metamusic import MetaMusic
@@ -5,7 +9,9 @@ from app.schemas.file import FileItem
 
 
 def _music_task() -> TransferTask:
-    """构造未识别出媒体信息的音乐整理任务，复现 #6325 场景。"""
+    """
+    构造未识别出媒体信息的音乐整理任务，复现 #6325 场景。
+    """
     meta = MetaMusic(
         org_string="歌手 - 歌曲名 (1998) [FLAC]",
         title="歌曲名",
@@ -26,7 +32,9 @@ def _music_task() -> TransferTask:
 
 
 def test_add_music_task_without_mediainfo_builds_music_info():
-    """音乐任务识别失败登记作业时应按 MusicInfo 兜底，而不是把 int 年份塞进 MediaInfo。"""
+    """
+    音乐任务识别失败登记作业时应按 MusicInfo 兜底，而不是把 int 年份塞进 MediaInfo。
+    """
     jobview = JobManager()
     task = _music_task()
 
@@ -46,7 +54,9 @@ def test_add_music_task_without_mediainfo_builds_music_info():
 
 
 def test_add_music_task_without_year_keeps_title():
-    """无年份的音乐兜底展示不应拼接空年份。"""
+    """
+    无年份的音乐兜底展示不应拼接空年份。
+    """
     task = _music_task()
     task.meta = MetaMusic(org_string="歌曲名", title="歌曲名")
 

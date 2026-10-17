@@ -1,3 +1,7 @@
+"""
+验证整理作业的登记、状态更新和结束管理。
+"""
+
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
@@ -30,7 +34,9 @@ from app.schemas.types import EventType, MediaSource, MediaType
 
 
 def _reset_failed_retries(src_path, storage=None):
-    """清空失败重试计数，隔离用例之间共享的模块级计数缓存。"""
+    """
+    清空失败重试计数，隔离用例之间共享的模块级计数缓存。
+    """
     clear_transfer_failures(src_path, storage)
 
 
@@ -48,7 +54,9 @@ class FakeMeta(MetaBase):
     season_episode = None
 
     def __init__(self, episode: int, season: int = 1):
-        """初始化固定季集解析结果。"""
+        """
+        初始化固定季集解析结果。
+        """
         super().__init__(title=f"Test Show S{season:02d}E{episode:02d}")
         self.name = "Test Show"
         self.title = f"Test Show S{season:02d}E{episode:02d}"
@@ -66,16 +74,22 @@ class FakeMeta(MetaBase):
 
     @property
     def season(self):
-        """返回用于作业分组的季标识。"""
+        """
+        返回用于作业分组的季标识。
+        """
         return f"S{self.begin_season:02d}"
 
     @property
     def episode(self):
-        """返回用于整理命名的集标识。"""
+        """
+        返回用于整理命名的集标识。
+        """
         return f"E{self.begin_episode:02d}"
 
     def to_dict(self):
-        """按历史事件契约导出测试元数据。"""
+        """
+        按历史事件契约导出测试元数据。
+        """
         return {
             "title": self.title,
             "name": self.name,
@@ -102,7 +116,9 @@ class FakeMedia(MediaInfo):
     """
 
     def __init__(self, tmdb_id: int = 12345):
-        """构造与正式 MediaInfo 身份字段一致的测试媒体对象。"""
+        """
+        构造与正式 MediaInfo 身份字段一致的测试媒体对象。
+        """
         super().__init__()
         self.tmdb_id = tmdb_id
         self.douban_id = None
@@ -114,11 +130,15 @@ class FakeMedia(MediaInfo):
         self.title_year = "Test Show (2026)"
 
     def clear(self):
-        """模拟正式媒体对象的清理接口。"""
+        """
+        模拟正式媒体对象的清理接口。
+        """
         pass
 
     def to_dict(self):
-        """返回测试媒体对象的序列化字段。"""
+        """
+        返回测试媒体对象的序列化字段。
+        """
         return {
             "type": MediaType.TV.value,
             "title": "Test Show",
@@ -134,7 +154,9 @@ class FakeMedia(MediaInfo):
 
 
 def make_media_info() -> MediaInfo:
-    """构造固定影视身份，避免测试访问外部媒体服务。"""
+    """
+    构造固定影视身份，避免测试访问外部媒体服务。
+    """
     media = MediaInfo()
     media.type = MediaType.TV
     media.title = "Test Show"
@@ -149,7 +171,9 @@ def make_media_info() -> MediaInfo:
 
 
 def make_task(episode: int, season: int = 1) -> TransferTask:
-    """构造单集整理任务及其源文件。"""
+    """
+    构造单集整理任务及其源文件。
+    """
     name = f"Test.Show.S{season:02d}E{episode:02d}.mkv"
     return TransferTask(
         fileitem=FileItem(
@@ -166,7 +190,9 @@ def make_task(episode: int, season: int = 1) -> TransferTask:
 
 
 def make_transfer_chain() -> TransferChain:
-    """构造带内存 durable admission 契约的整理链测试骨架。"""
+    """
+    构造带内存 durable admission 契约的整理链测试骨架。
+    """
     chain = object.__new__(TransferChain)
     chain.transfer_history_repository = MagicMock()
     chain.download_history_repository = MagicMock()
@@ -185,7 +211,9 @@ def make_transfer_chain() -> TransferChain:
     admissions_by_id = {}
 
     def admit(*, storage, src_path, planning_input=None, replace_inactive=False):
-        """按源身份幂等返回测试用 durable admission。"""
+        """
+        按源身份幂等返回测试用 durable admission。
+        """
         del replace_inactive
         identity = storage, src_path
         existing = admissions_by_identity.get(identity)
@@ -205,7 +233,9 @@ def make_transfer_chain() -> TransferChain:
         return admission
 
     def claim_task(*, task_id, owner_id, lease_seconds):
-        """为测试任务返回唯一 token，并保留正式 claim 的参数约束。"""
+        """
+        为测试任务返回唯一 token，并保留正式 claim 的参数约束。
+        """
         assert lease_seconds > 0
         admission = admissions_by_id[task_id]
         claimed = replace(
@@ -221,7 +251,9 @@ def make_transfer_chain() -> TransferChain:
         return claimed
 
     def checkpoint_plan(*, task_id, lease_token, input_fingerprint, checkpoint):
-        """回读带检查点的持久投影，供同步整理测试执行真实编排。"""
+        """
+        回读带检查点的持久投影，供同步整理测试执行真实编排。
+        """
         del input_fingerprint
         admission = admissions_by_id[task_id]
         assert admission.lease_token == lease_token
@@ -243,15 +275,21 @@ def make_transfer_chain() -> TransferChain:
     chain._TransferChain__ensure_lease_heartbeat_owner = MagicMock()
 
     class ImmediateStepRunner:
-        """为 JobManager 测试提交纯内存步骤与聚合执行检查点。"""
+        """
+        为 JobManager 测试提交纯内存步骤与聚合执行检查点。
+        """
 
         def run(self, *, phase, kind, payload, execute, observe):
-            """立即执行确定性测试步骤，不使用恢复探测。"""
+            """
+            立即执行确定性测试步骤，不使用恢复探测。
+            """
             del phase, kind, payload, observe
             return execute()
 
         def checkpoint(self, transferinfo):
-            """把测试整理结果冻结为可供 task-aware writer 使用的检查点。"""
+            """
+            把测试整理结果冻结为可供 task-aware writer 使用的检查点。
+            """
             return TransferExecutionCheckpoint.create(
                 payload={
                     "outcome": "succeeded" if transferinfo.success else "failed",
@@ -266,7 +304,9 @@ def make_transfer_chain() -> TransferChain:
     )
 
     def transfer_result(**kwargs):
-        """执行测试历史暂存与发布，并返回已删除 pending 的原子回执。"""
+        """
+        执行测试历史暂存与发布，并返回已删除 pending 的原子回执。
+        """
         staging = SimpleNamespace(
             get_success_by_src=lambda *_args, **_kwargs: SimpleNamespace(
                 id=99,
@@ -291,7 +331,9 @@ def bind_terminal_checkpoint(
         task: TransferTask,
         transferinfo: TransferInfo,
 ) -> None:
-    """为直接回调测试绑定 task identity、lease 与聚合执行检查点。"""
+    """
+    为直接回调测试绑定 task identity、lease 与聚合执行检查点。
+    """
     task_id = f"terminal-{abs(hash(task.fileitem.path))}"
     task.bind_admission_task_id(task_id)
     task.bind_execution_lease(
@@ -312,7 +354,9 @@ def bind_terminal_checkpoint(
 
 
 def make_fileitem(path: str, size: int = 1024) -> FileItem:
-    """构造带路径和大小的本地测试文件项。"""
+    """
+    构造带路径和大小的本地测试文件项。
+    """
     file_path = path
     name = file_path.rsplit("/", 1)[-1]
     suffix = name.rsplit(".", 1)[-1] if "." in name else ""
@@ -342,7 +386,9 @@ def execute_transfer_plan(
         need_scrape: bool = False,
         need_notify: bool = True,
 ) -> TransferInfo:
-    """在测试中显式规划并执行单文件整理。"""
+    """
+    在测试中显式规划并执行单文件整理。
+    """
     planning_input = TransferPlanningInput(
         source_fileitem=fileitem.model_dump(mode="json"),
         meta=meta.to_dict(),
@@ -381,7 +427,9 @@ def execute_transfer_plan(
 
 
 def migrate_to_media_job(jobview: JobManager, task: TransferTask):
-    """把元数据任务迁入媒体作业，验证作业归属。"""
+    """
+    把元数据任务迁入媒体作业，验证作业归属。
+    """
     task.mediainfo = FakeMedia()
     jobview.migrate_task(task)
     jobview.running_task(task)
@@ -390,7 +438,9 @@ def migrate_to_media_job(jobview: JobManager, task: TransferTask):
 
 
 class TestTransferJobManager:
-    """整理作业、重试预算与终态回调的原生 pytest 回归。"""
+    """
+    整理作业、重试预算与终态回调的原生 pytest 回归。
+    """
 
     def test_same_storage_success_uses_target_path_when_metadata_is_delayed(self):
         """
@@ -652,7 +702,9 @@ class TestTransferJobManager:
         assert ([target_item.path]) == (event_data["file_list"])
 
     def test_manual_episode_offset_applies_once(self):
-        """手动集偏移只能在任务生成时应用一次。"""
+        """
+        手动集偏移只能在任务生成时应用一次。
+        """
         chain = make_transfer_chain()
         source_fileitem = make_fileitem("/downloads/Test.Show.2026.S01E14.mkv")
         planned_episodes = []
@@ -665,7 +717,9 @@ class TestTransferJobManager:
         chain._close_scrape_batch = lambda batch_id: None
 
         def fake_handle_transfer(task, callback=None):
-            """捕获整理任务与参数并返回预设结果，隔离真实文件操作。"""
+            """
+            捕获整理任务与参数并返回预设结果，隔离真实文件操作。
+            """
             planned_episodes.append(task.meta.begin_episode)
             return True, ""
 
@@ -697,7 +751,9 @@ class TestTransferJobManager:
         assert ([13]) == (planned_episodes)
 
     def test_completed_media_job_is_removed_after_last_meta_task_fails(self):
-        """最后一个元数据任务失败后应移除已完成媒体作业。"""
+        """
+        最后一个元数据任务失败后应移除已完成媒体作业。
+        """
         jobview = JobManager()
         tasks = [make_task(episode) for episode in range(1, 4)]
         for task in tasks:
@@ -716,7 +772,9 @@ class TestTransferJobManager:
         assert ([]) == (jobview.list_jobs())
 
     def test_completed_media_job_is_removed_after_all_meta_tasks_migrate(self):
-        """元数据任务全部迁移后应移除已完成媒体作业。"""
+        """
+        元数据任务全部迁移后应移除已完成媒体作业。
+        """
         jobview = JobManager()
         tasks = [make_task(episode) for episode in range(1, 3)]
         for task in tasks:
@@ -729,7 +787,9 @@ class TestTransferJobManager:
         assert ([]) == (jobview.list_jobs())
 
     def test_exception_marks_unfinished_meta_task_failed_and_cleans_jobs(self):
-        """异常应标记未完成元数据任务失败并清理作业。"""
+        """
+        异常应标记未完成元数据任务失败并清理作业。
+        """
         jobview = JobManager()
         tasks = [make_task(episode) for episode in range(1, 3)]
         for task in tasks:
@@ -744,7 +804,9 @@ class TestTransferJobManager:
         assert ([]) == (jobview.list_jobs())
 
     def test_exception_marks_unfinished_media_task_failed_and_cleans_jobs(self):
-        """异常应标记未完成媒体任务失败并清理作业。"""
+        """
+        异常应标记未完成媒体任务失败并清理作业。
+        """
         jobview = JobManager()
         task = make_task(1)
         assert (jobview.add_task(task))
@@ -759,7 +821,9 @@ class TestTransferJobManager:
         assert ([]) == (jobview.list_jobs())
 
     def test_pre_recognized_jobs_with_same_meta_do_not_block_each_other(self):
-        """相同元数据的预识别作业应保持独立生命周期。"""
+        """
+        相同元数据的预识别作业应保持独立生命周期。
+        """
         jobview = JobManager()
         task1 = make_task(1)
         task2 = make_task(2)
@@ -795,7 +859,9 @@ class TestTransferJobManager:
         assert (task1.fileitem) == (jobs[0].tasks[0].fileitem)
 
     def test_pre_recognized_migrations_with_same_meta_do_not_link_jobs(self):
-        """相同元数据的预识别任务迁移不得错误关联作业。"""
+        """
+        相同元数据的预识别任务迁移不得错误关联作业。
+        """
         jobview = JobManager()
         task1 = make_task(1)
         task2 = make_task(2)
@@ -816,12 +882,16 @@ class TestTransferJobManager:
         assert (task2.fileitem) == (jobs[0].tasks[0].fileitem)
 
     def test_exception_failure_does_not_mark_downloader_without_history(self):
-        """没有成功历史的异常任务不得回写下载器已整理标记。"""
+        """
+        没有成功历史的异常任务不得回写下载器已整理标记。
+        """
         chain = make_transfer_chain()
         completed = []
 
         def fake_transfer_completed(hashs, downloader):
-            """记录下载器已整理标记，避免调用真实下载器。"""
+            """
+            记录下载器已整理标记，避免调用真实下载器。
+            """
             completed.append((hashs, downloader))
 
         chain.transfer_completed = fake_transfer_completed
@@ -837,12 +907,16 @@ class TestTransferJobManager:
         assert ([]) == (chain.jobview.list_jobs())
 
     def test_successful_history_skip_marks_downloader_hash_completed(self):
-        """成功历史跳过后应正确回写下载器状态。"""
+        """
+        成功历史跳过后应正确回写下载器状态。
+        """
         chain = make_transfer_chain()
         completed = []
 
         def fake_transfer_completed(hashs, downloader):
-            """记录下载器已整理标记，避免调用真实下载器。"""
+            """
+            记录下载器已整理标记，避免调用真实下载器。
+            """
             completed.append((hashs, downloader))
 
         chain.transfer_completed = fake_transfer_completed
@@ -890,7 +964,9 @@ class TestTransferJobManager:
         completed = []
 
         def fake_transfer_completed(hashs, downloader):
-            """记录下载器已整理标记，避免调用真实下载器。"""
+            """
+            记录下载器已整理标记，避免调用真实下载器。
+            """
             completed.append((hashs, downloader))
 
         chain.transfer_completed = fake_transfer_completed
@@ -902,7 +978,9 @@ class TestTransferJobManager:
         planned = []
 
         def fake_handle_transfer(task, callback=None):
-            """记录放行重试后实际进入整理执行阶段的文件。"""
+            """
+            记录放行重试后实际进入整理执行阶段的文件。
+            """
             planned.append(task.fileitem.path)
             return True, ""
 
@@ -962,7 +1040,9 @@ class TestTransferJobManager:
         completed = []
 
         def fake_transfer_completed(hashs, downloader):
-            """记录下载器已整理标记，避免调用真实下载器。"""
+            """
+            记录下载器已整理标记，避免调用真实下载器。
+            """
             completed.append((hashs, downloader))
 
         chain.transfer_completed = fake_transfer_completed
@@ -974,7 +1054,9 @@ class TestTransferJobManager:
         planned = []
 
         def fake_handle_transfer(task, callback=None):
-            """达到重试上限时不应有文件进入实际整理执行阶段。"""
+            """
+            达到重试上限时不应有文件进入实际整理执行阶段。
+            """
             planned.append(task.fileitem.path)
             return True, ""
 
@@ -1112,13 +1194,17 @@ class TestTransferJobManager:
             _reset_failed_retries(src_path, storage)
 
     def test_unrecognized_task_waits_for_durable_settlement_before_completion(self):
-        """拒绝检查点建立后、writer 结算前不得提前完成下载种子或移除作业。"""
+        """
+        拒绝检查点建立后、writer 结算前不得提前完成下载种子或移除作业。
+        """
         chain = make_transfer_chain()
         chain.post_message = lambda *_args, **_kwargs: None
         completed = []
 
         def fake_transfer_completed(hashs, downloader):
-            """记录下载器已整理标记，避免调用真实下载器。"""
+            """
+            记录下载器已整理标记，避免调用真实下载器。
+            """
             completed.append((hashs, downloader))
 
         chain.transfer_completed = fake_transfer_completed
@@ -1153,14 +1239,18 @@ class TestTransferJobManager:
         chain.durable_event_writer.transfer_result.assert_not_called()
 
     def test_unrecognized_task_does_not_read_history_before_writer(self):
-        """拒绝步骤完成但 writer 未调用时，不得读取失败历史或发送通知。"""
+        """
+        拒绝步骤完成但 writer 未调用时，不得读取失败历史或发送通知。
+        """
         chain = make_transfer_chain()
         notifications = []
         chain.post_message = lambda message, **_kwargs: notifications.append(message)
         completed = []
 
         def fake_transfer_completed(hashs, downloader):
-            """记录下载器已整理标记，避免调用真实下载器。"""
+            """
+            记录下载器已整理标记，避免调用真实下载器。
+            """
             completed.append((hashs, downloader))
 
         chain.transfer_completed = fake_transfer_completed
@@ -1192,7 +1282,9 @@ class TestTransferJobManager:
         chain.durable_event_writer.transfer_result.assert_not_called()
 
     def test_unrecognized_task_does_not_publish_redo_before_writer(self):
-        """即使历史函数可用，未经过 task-aware writer 也不得发布 redo。"""
+        """
+        即使历史函数可用，未经过 task-aware writer 也不得发布 redo。
+        """
         chain = make_transfer_chain()
         notifications = []
         chain.post_message = lambda message, **_kwargs: notifications.append(message)
@@ -1221,7 +1313,9 @@ class TestTransferJobManager:
         chain.durable_event_writer.transfer_result.assert_not_called()
 
     def test_do_transfer_syncs_same_stem_extra_files_by_default(self):
-        """默认整理应同步同名字幕等附属文件。"""
+        """
+        默认整理应同步同名字幕等附属文件。
+        """
         chain = make_transfer_chain()
         planned = []
         main_fileitem = make_fileitem(
@@ -1239,7 +1333,9 @@ class TestTransferJobManager:
         chain._close_scrape_batch = lambda batch_id: None
 
         def fake_handle_transfer(task, callback=None):
-            """捕获整理任务与参数并返回预设结果，隔离真实文件操作。"""
+            """
+            捕获整理任务与参数并返回预设结果，隔离真实文件操作。
+            """
             planned.append(task.fileitem.path)
             return True, ""
 
@@ -1288,13 +1384,17 @@ class TestTransferJobManager:
                 ]) == (planned)
 
     def test_manual_transfer_enables_sync_extra_files(self):
-        """手动整理默认启用附属文件同步。"""
+        """
+        手动整理默认启用附属文件同步。
+        """
         chain = make_transfer_chain()
         captured = {}
         fileitem = make_fileitem("/downloads/Test Show (2026)/Test.Show.S01E01.2026.mkv")
 
         def fake_do_transfer(**kwargs):
-            """记录手动整理选项并返回预设结果。"""
+            """
+            记录手动整理选项并返回预设结果。
+            """
             captured.update(kwargs)
             return True, ""
 
@@ -1312,13 +1412,17 @@ class TestTransferJobManager:
         assert (captured["sync_extra_files"])
 
     def test_manual_transfer_respects_sync_extra_files_argument(self):
-        """手动整理应遵守显式附属文件同步选项。"""
+        """
+        手动整理应遵守显式附属文件同步选项。
+        """
         chain = make_transfer_chain()
         captured = {}
         fileitem = make_fileitem("/downloads/Test Show (2026)/Test.Show.S01E01.2026.mkv")
 
         def fake_do_transfer(**kwargs):
-            """记录手动整理选项并返回预设结果。"""
+            """
+            记录手动整理选项并返回预设结果。
+            """
             captured.update(kwargs)
             return True, ""
 
@@ -1336,7 +1440,9 @@ class TestTransferJobManager:
         assert not (captured["sync_extra_files"])
 
     def test_do_transfer_skips_manual_single_file_when_epformat_misses(self):
-        """手动单文件不匹配集格式时应跳过实际整理。"""
+        """
+        手动单文件不匹配集格式时应跳过实际整理。
+        """
         chain = make_transfer_chain()
         planned = []
         subtitle_fileitem = make_fileitem(
@@ -1348,7 +1454,9 @@ class TestTransferJobManager:
         chain._close_scrape_batch = lambda batch_id: None
 
         def fake_handle_transfer(task, callback=None):
-            """捕获整理任务与参数并返回预设结果，隔离真实文件操作。"""
+            """
+            捕获整理任务与参数并返回预设结果，隔离真实文件操作。
+            """
             planned.append((task.fileitem.path, task.meta.begin_episode))
             return True, ""
 
@@ -1394,7 +1502,9 @@ class TestTransferJobManager:
         assert ([]) == (planned)
 
     def test_do_transfer_syncs_extra_files_when_epformat_only_matches_main_video(self):
-        """集格式仅匹配主视频时仍需同步其附属文件。"""
+        """
+        集格式仅匹配主视频时仍需同步其附属文件。
+        """
         chain = make_transfer_chain()
         planned = []
         main_fileitem = make_fileitem(
@@ -1418,7 +1528,9 @@ class TestTransferJobManager:
         chain._close_scrape_batch = lambda batch_id: None
 
         def fake_handle_transfer(task, callback=None):
-            """捕获整理任务与参数并返回预设结果，隔离真实文件操作。"""
+            """
+            捕获整理任务与参数并返回预设结果，隔离真实文件操作。
+            """
             planned.append((task.fileitem.path, task.meta.begin_episode))
             return True, ""
 
@@ -1467,7 +1579,9 @@ class TestTransferJobManager:
                 ]) == (planned)
 
     def test_do_transfer_syncs_matching_extra_files_for_each_main_video(self):
-        """批量整理时附属文件应逐个匹配各自主视频。"""
+        """
+        批量整理时附属文件应逐个匹配各自主视频。
+        """
         chain = make_transfer_chain()
         planned = []
         main_ep1_fileitem = make_fileitem(
@@ -1508,7 +1622,9 @@ class TestTransferJobManager:
         chain._close_scrape_batch = lambda batch_id: None
 
         def fake_handle_transfer(task, callback=None):
-            """捕获整理任务与参数并返回预设结果，隔离真实文件操作。"""
+            """
+            捕获整理任务与参数并返回预设结果，隔离真实文件操作。
+            """
             planned.append((task.fileitem.path, task.meta.begin_episode))
             return True, ""
 
@@ -1524,7 +1640,9 @@ class TestTransferJobManager:
         list_files_calls = []
 
         def fake_list_files(fileitem, recursion=False):
-            """返回预设目录内容，隔离真实存储扫描。"""
+            """
+            返回预设目录内容，隔离真实存储扫描。
+            """
             list_files_calls.append((fileitem.path, recursion))
             return [
                 main_ep1_fileitem,
@@ -1569,7 +1687,9 @@ class TestTransferJobManager:
         assert ([]) == (list_files_calls)
 
     def test_scrape_event_is_aggregated_by_transfer_batch_across_seasons(self):
-        """同批次跨季整理应聚合为一次刮削事件。"""
+        """
+        同批次跨季整理应聚合为一次刮削事件。
+        """
         chain = make_transfer_chain()
         chain.eventmanager = MagicMock()
         chain.transfer_completed = lambda *args, **kwargs: None
@@ -1660,7 +1780,9 @@ class TestTransferJobManager:
         assert ({}) == (chain._scrape_batches)
 
     def test_scrape_event_keeps_immediate_behavior_without_transfer_batch(self):
-        """无批次任务保持立即发送刮削事件的既有行为。"""
+        """
+        无批次任务保持立即发送刮削事件的既有行为。
+        """
         chain = make_transfer_chain()
         chain.eventmanager = MagicMock()
         chain.transfer_completed = lambda *args, **kwargs: None

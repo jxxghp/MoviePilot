@@ -99,7 +99,9 @@ def test_build_returns_independent_dicts() -> None:
 
 
 def test_notification_template_exposes_container_hostname(monkeypatch) -> None:
-    """通知模板的实例名应取运行中的主机名，且不能被业务字段覆盖。"""
+    """
+    通知模板的实例名应取运行中的主机名，且不能被业务字段覆盖。
+    """
     monkeypatch.setattr(
         "app.application.messaging.message.socket.gethostname",
         lambda: "nas-moviepilot",
@@ -142,7 +144,9 @@ def test_build_exposes_total_episodes_from_current_season() -> None:
 
 
 def test_build_preserves_special_season_context() -> None:
-    """显式 S00 必须优先于媒体回退季，并使用特别季年份。"""
+    """
+    显式 S00 必须优先于媒体回退季，并使用特别季年份。
+    """
     meta = MetaInfo("Test Show S00E01")
     mediainfo = MediaInfo(
         title="Test Show",
@@ -159,7 +163,9 @@ def test_build_preserves_special_season_context() -> None:
 
 
 def test_file_rename_context_keeps_source_specific_id_variables() -> None:
-    """文件重命名沿用原专用ID变量，不暴露统一身份字段。"""
+    """
+    文件重命名沿用原专用ID变量，不暴露统一身份字段。
+    """
     mediainfo = MediaInfo(
         media_source=MediaSource.AniList,
         media_id="170942",
@@ -187,7 +193,9 @@ def test_file_rename_context_keeps_source_specific_id_variables() -> None:
 
 
 def test_build_exposes_music_audio_specs_for_notifications() -> None:
-    """下载和整理通知上下文应包含格式化音质及可独立引用的技术参数。"""
+    """
+    下载和整理通知上下文应包含格式化音质及可独立引用的技术参数。
+    """
     meta = MetaMusic(
         title="晴天",
         artists=["周杰伦"],
@@ -224,7 +232,9 @@ def _build_music_context(album, year):
 
 
 def test_music_rename_strips_duplicate_album_year() -> None:
-    """专辑名尾部的年份标记不应与模板追加的年份重复（issue #6355）。"""
+    """
+    专辑名尾部的年份标记不应与模板追加的年份重复（issue #6355）。
+    """
     context = _build_music_context(album="欲望反光 (2018)", year=2018)
 
     assert context["album"] == "欲望反光"
@@ -232,7 +242,9 @@ def test_music_rename_strips_duplicate_album_year() -> None:
 
 
 def test_music_rename_strips_album_year_different_from_media_year() -> None:
-    """标签专辑名年份与识别年份不一致时，仅保留模板追加的识别年份。"""
+    """
+    标签专辑名年份与识别年份不一致时，仅保留模板追加的识别年份。
+    """
     context = _build_music_context(
         album="洛克先生Mr.Rock演唱会Live纪实 (2010)", year=2009
     )
@@ -242,7 +254,9 @@ def test_music_rename_strips_album_year_different_from_media_year() -> None:
 
 
 def test_music_rename_strips_repeated_album_year_suffixes() -> None:
-    """历史整理已生成的重复年份目录再次重命名时，所有尾部年份都应被剥离。"""
+    """
+    历史整理已生成的重复年份目录再次重命名时，所有尾部年份都应被剥离。
+    """
     context = _build_music_context(album="爱的时刻自选辑 (2009) (2009)", year=2015)
 
     assert context["album"] == "爱的时刻自选辑"
@@ -250,14 +264,18 @@ def test_music_rename_strips_repeated_album_year_suffixes() -> None:
 
 
 def test_music_rename_keeps_album_year_when_no_standalone_year() -> None:
-    """没有独立年份可渲染时保留专辑名自带的年份，避免信息丢失。"""
+    """
+    没有独立年份可渲染时保留专辑名自带的年份，避免信息丢失。
+    """
     context = _build_music_context(album="欲望反光 (2018)", year=None)
 
     assert context["album"] == "欲望反光 (2018)"
 
 
 def test_music_rename_keeps_plain_album_title() -> None:
-    """不含年份的普通专辑名不受影响。"""
+    """
+    不含年份的普通专辑名不受影响。
+    """
     context = _build_music_context(album="叶惠美", year=2003)
 
     assert context["album"] == "叶惠美"

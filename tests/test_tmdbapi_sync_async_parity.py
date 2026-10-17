@@ -1,4 +1,6 @@
-"""TmdbApi 同步与异步入口共享业务决策的回归测试。"""
+"""
+TmdbApi 同步与异步入口共享业务决策的回归测试。
+"""
 
 import asyncio
 from copy import deepcopy
@@ -17,7 +19,9 @@ from app.schemas.types import MediaType
 
 
 def _api() -> TmdbApi:
-    """构造不初始化真实 TMDB 客户端的最小 API 实例。"""
+    """
+    构造不初始化真实 TMDB 客户端的最小 API 实例。
+    """
     api = object.__new__(TmdbApi)
     api.tmdb = SimpleNamespace(language="en")
     api.search = SimpleNamespace(
@@ -37,7 +41,9 @@ def _api() -> TmdbApi:
 
 
 def _movie_detail(tmdbid: int, title: str = "展示标题") -> dict:
-    """构造包含别名、分级和多语言标题的电影详情。"""
+    """
+    构造包含别名、分级和多语言标题的电影详情。
+    """
     return {
         "id": tmdbid,
         "title": title,
@@ -66,7 +72,9 @@ def _movie_detail(tmdbid: int, title: str = "展示标题") -> dict:
 
 
 def _tv_detail(tmdbid: int, name: str = "目标剧") -> dict:
-    """构造包含季年份和译名的电视剧详情。"""
+    """
+    构造包含季年份和译名的电视剧详情。
+    """
     return {
         "id": tmdbid,
         "name": name,
@@ -107,7 +115,9 @@ def test_search_lists_share_query_and_projection(
     title_field: str,
     year_kwargs: dict[str, str],
 ) -> None:
-    """电影和剧集列表双入口应共享参数、标题过滤和类型投影。"""
+    """
+    电影和剧集列表双入口应共享参数、标题过滤和类型投影。
+    """
     api = _api()
     sync_items = [
         {"id": 1, title_field: "目标作品"},
@@ -128,7 +138,9 @@ def test_search_lists_share_query_and_projection(
 
 
 def test_match_movie_sync_async_share_year_fallback_and_original_title() -> None:
-    """电影匹配双入口应按当前、下一年顺序回退并采信原标题。"""
+    """
+    电影匹配双入口应按当前、下一年顺序回退并采信原标题。
+    """
     api = _api()
     sync_hit = {
         "id": 10,
@@ -154,7 +166,9 @@ def test_match_movie_sync_async_share_year_fallback_and_original_title() -> None
 
 
 def test_match_movie_sync_async_share_alias_detail_fallback() -> None:
-    """标题未命中时双入口应同序查询详情并使用别名。"""
+    """
+    标题未命中时双入口应同序查询详情并使用别名。
+    """
     api = _api()
     sync_candidate = {
         "id": 11,
@@ -190,7 +204,9 @@ def test_match_movie_sync_async_share_alias_detail_fallback() -> None:
 def test_match_tv_season_sync_async_share_detail_year_decision(
     group_seasons: Optional[list[dict]],
 ) -> None:
-    """首播年份不同的剧集应由同一季年份规则在双入口命中。"""
+    """
+    首播年份不同的剧集应由同一季年份规则在双入口命中。
+    """
     api = _api()
     sync_candidate = {
         "id": 20,
@@ -234,7 +250,9 @@ def test_match_tv_season_sync_async_share_detail_year_decision(
 
 
 def test_match_multi_sync_async_share_sorting_and_alias_type_lookup() -> None:
-    """多类型别名匹配双入口应跳过无关类型并按候选类型查详情。"""
+    """
+    多类型别名匹配双入口应跳过无关类型并按候选类型查详情。
+    """
     api = _api()
     sync_multis = [
         {"id": 1, "media_type": "person", "name": "目标别名"},
@@ -274,7 +292,9 @@ def test_match_multi_sync_async_share_sorting_and_alias_type_lookup() -> None:
 def test_match_multi_sync_async_share_empty_and_exception_results(
     outcome: Union[list, Exception], expected: Optional[dict]
 ) -> None:
-    """多类型搜索的空结果和异常在双入口应保留相同三态语义。"""
+    """
+    多类型搜索的空结果和异常在双入口应保留相同三态语义。
+    """
     api = _api()
     if isinstance(outcome, Exception):
         api.search.multi.side_effect = outcome
@@ -288,7 +308,9 @@ def test_match_multi_sync_async_share_empty_and_exception_results(
 
 
 def test_get_info_sync_async_share_projection() -> None:
-    """详情双入口应共享类型、别名、分级和多语言字段投影。"""
+    """
+    详情双入口应共享类型、别名、分级和多语言字段投影。
+    """
     api = _api()
     sync_detail = _movie_detail(30)
     async_detail = deepcopy(sync_detail)
@@ -320,7 +342,9 @@ def test_get_info_unknown_type_sync_async_share_lookup_order(
     movie_exists: bool,
     expected_type: Optional[MediaType],
 ) -> None:
-    """未知类型详情双入口应先查剧集再查电影并统一判断歧义。"""
+    """
+    未知类型详情双入口应先查剧集再查电影并统一判断歧义。
+    """
     api = _api()
     sync_calls = []
     async_calls = []
@@ -356,7 +380,9 @@ def test_get_info_unknown_type_sync_async_share_lookup_order(
 
 
 def test_get_info_sync_async_propagate_connection_error_at_same_boundary() -> None:
-    """显式连接错误传播开关在同步与异步详情入口应保持一致。"""
+    """
+    显式连接错误传播开关在同步与异步详情入口应保持一致。
+    """
     api = _api()
     error = TMDbConnectionError("无法连接 TMDB")
     api.movie.details.side_effect = error

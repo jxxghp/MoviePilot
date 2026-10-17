@@ -1,4 +1,6 @@
-"""覆盖整理必须先完整落地新版本，失败及恢复时保留旧版本。"""
+"""
+覆盖整理必须先完整落地新版本，失败及恢复时保留旧版本。
+"""
 
 import errno
 import os
@@ -34,21 +36,29 @@ from app.schemas.types import MediaType
 
 
 class _ImmediateStepRunner:
-    """直接执行步骤，保留测试可观察的持久操作顺序。"""
+    """
+    直接执行步骤，保留测试可观察的持久操作顺序。
+    """
 
     def __init__(self) -> None:
-        """初始化操作记录。"""
+        """
+        初始化操作记录。
+        """
         self.kinds = []
 
     def run(self, *, phase, kind, payload, execute, observe):
-        """记录意图并执行外部操作。"""
+        """
+        记录意图并执行外部操作。
+        """
         del phase, payload, observe
         self.kinds.append(kind)
         return execute()
 
 
 def _checkpoint(source: Path, target: Path, *, transfer_type="copy", mode="always"):
-    """构造使用真实本地文件的冻结单文件计划。"""
+    """
+    构造使用真实本地文件的冻结单文件计划。
+    """
     source_item = object.__new__(LocalStorage).get_item_strict(source).model_dump(mode="json")
     planning_input = TransferPlanningInput(source_fileitem=source_item)
     return TransferPlanCheckpoint(
@@ -63,7 +73,9 @@ def _checkpoint(source: Path, target: Path, *, transfer_type="copy", mode="alway
 
 
 def _execute(checkpoint, monkeypatch, runner):
-    """使用真实本地存储执行计划，隔离插件及进度展示。"""
+    """
+    使用真实本地存储执行计划，隔离插件及进度展示。
+    """
     storage = object.__new__(LocalStorage)
     handler = TransHandler()
     monkeypatch.setattr(handler, "_TransHandler__intercept_transfer", lambda **_kwargs: (True, ""))
@@ -77,14 +89,18 @@ def _execute(checkpoint, monkeypatch, runner):
 
 @pytest.mark.parametrize("durable", [False, True])
 def test_failed_overwrite_keeps_complete_old_target(tmp_path, monkeypatch, durable):
-    """磁盘不足时不能提前删除已存在的完整媒体文件。"""
+    """
+    磁盘不足时不能提前删除已存在的完整媒体文件。
+    """
     source = tmp_path / "download.mkv"
     target = tmp_path / "Movie.2026.mkv"
     source.write_bytes(b"new-version")
     target.write_bytes(b"old-version")
 
     def disk_full(*_args, **_kwargs):
-        """在真实本地复制边界模拟空间耗尽。"""
+        """
+        在真实本地复制边界模拟空间耗尽。
+        """
         raise OSError(errno.ENOSPC, "No space left on device")
 
     monkeypatch.setattr("app.modules.filemanager.storages.local.fsproxy.copy", disk_full)
@@ -102,7 +118,9 @@ def test_failed_overwrite_keeps_complete_old_target(tmp_path, monkeypatch, durab
 
 @pytest.mark.parametrize("durable", [False, True])
 def test_latest_keeps_other_versions_when_materialization_fails(tmp_path, monkeypatch, durable):
-    """latest 模式只能在新目标完整落地以后清理其它版本。"""
+    """
+    latest 模式只能在新目标完整落地以后清理其它版本。
+    """
     source = tmp_path / "downloads" / "download.mkv"
     source.parent.mkdir()
     target = tmp_path / "Movie.2026.2160p.mkv"
@@ -124,7 +142,9 @@ def test_latest_keeps_other_versions_when_materialization_fails(tmp_path, monkey
 @pytest.mark.parametrize("transfer_type", ["copy", "move", "link", "softlink"])
 @pytest.mark.parametrize("durable", [False, True])
 def test_safe_overwrite_preserves_transfer_modes(tmp_path, monkeypatch, transfer_type, durable):
-    """覆盖时保留复制、移动、硬链接和软链接各自的文件语义。"""
+    """
+    覆盖时保留复制、移动、硬链接和软链接各自的文件语义。
+    """
     source = tmp_path / "download.mkv"
     target = tmp_path / "Movie.2026.mkv"
     source.write_bytes(b"new-version")
@@ -145,11 +165,15 @@ def test_safe_overwrite_preserves_transfer_modes(tmp_path, monkeypatch, transfer
 
 @pytest.fixture
 def repository_factory():
-    """为真实文件操作建立独立 SQLite 账本并绑定实际冻结计划。"""
+    """
+    为真实文件操作建立独立 SQLite 账本并绑定实际冻结计划。
+    """
     engines = []
 
     def create(checkpoint):
-        """创建带有效租约的单任务步骤仓储。"""
+        """
+        创建带有效租约的单任务步骤仓储。
+        """
         engine = create_engine("sqlite+pysqlite:///:memory:")
         engines.append(engine)
         Base.metadata.create_all(engine, tables=[
@@ -181,7 +205,9 @@ def repository_factory():
 
 
 def _durable_runner(repository, checkpoint):
-    """在每次重启后以同一个冻结计划重建真实持久 runner。"""
+    """
+    在每次重启后以同一个冻结计划重建真实持久 runner。
+    """
     return execution_module._DurableTransferStepRunner(
         task_id="safe-overwrite", lease_token="lease",
         checkpoint_fingerprint=checkpoint.fingerprint, repository=repository,
@@ -192,7 +218,9 @@ def _durable_runner(repository, checkpoint):
 def test_overwrite_recovers_after_rename_with_real_step_ledger(
         tmp_path, monkeypatch, repository_factory, crash_after,
 ):
-    """备份或提升已生效但未记成功时，重启只恢复事实而不重做文件操作。"""
+    """
+    备份或提升已生效但未记成功时，重启只恢复事实而不重做文件操作。
+    """
     source = tmp_path / "download.mkv"
     target = tmp_path / "Movie.2026.mkv"
     source.write_bytes(b"new-version")
@@ -206,10 +234,14 @@ def test_overwrite_recovers_after_rename_with_real_step_ledger(
     crashed = False
 
     class ProcessStopped(BaseException):
-        """模拟进程在外部操作完成后退出，绕过普通异常恢复。"""
+        """
+        模拟进程在外部操作完成后退出，绕过普通异常恢复。
+        """
 
     def rename(self, fileitem, name):
-        """执行真实 rename 后注入一次进程中断。"""
+        """
+        执行真实 rename 后注入一次进程中断。
+        """
         nonlocal crashed
         result = real_rename(self, fileitem, name)
         renamed.append(name)
@@ -239,7 +271,9 @@ def test_overwrite_recovers_after_rename_with_real_step_ledger(
 def test_unknown_rename_result_preserves_files_and_requires_manual_review(
         tmp_path, monkeypatch, repository_factory, crash_after,
 ):
-    """中断后无法查询备份结果时不能重复覆盖或删除任何保留的文件。"""
+    """
+    中断后无法查询备份结果时不能重复覆盖或删除任何保留的文件。
+    """
     source = tmp_path / "download.mkv"
     target = tmp_path / "Movie.2026.mkv"
     source.write_bytes(b"new-version")
@@ -249,10 +283,14 @@ def test_unknown_rename_result_preserves_files_and_requires_manual_review(
     real_rename = LocalStorage.rename
 
     class ProcessStopped(BaseException):
-        """保留 STARTED 账本状态以模拟真实重启。"""
+        """
+        保留 STARTED 账本状态以模拟真实重启。
+        """
 
     def crash_after_backup(self, fileitem, name):
-        """真实备份或提升完成后立即中断。"""
+        """
+        真实备份或提升完成后立即中断。
+        """
         result = real_rename(self, fileitem, name)
         should_crash = name.startswith(".mp-backup-") if crash_after == "backup" else name == target.name
         if should_crash:
@@ -265,7 +303,9 @@ def test_unknown_rename_result_preserves_files_and_requires_manual_review(
     real_query = LocalStorage.get_item_strict
 
     def unavailable(self, path):
-        """仅在备份观察边界模拟远端查询失败。"""
+        """
+        仅在备份观察边界模拟远端查询失败。
+        """
         unavailable_path = path.name.startswith(".mp-backup-") if crash_after == "backup" else path == target
         if unavailable_path:
             raise OSError("storage unavailable")
@@ -284,7 +324,9 @@ def test_unknown_rename_result_preserves_files_and_requires_manual_review(
 
 @pytest.mark.parametrize("durable", [False, True])
 def test_latest_cleans_other_versions_only_after_target_is_complete(tmp_path, monkeypatch, durable):
-    """成功路径延后清理其它版本，复制过程中旧版本仍完整可读。"""
+    """
+    成功路径延后清理其它版本，复制过程中旧版本仍完整可读。
+    """
     source = tmp_path / "downloads" / "download.mkv"
     source.parent.mkdir()
     source.write_bytes(b"new-version")
@@ -294,7 +336,9 @@ def test_latest_cleans_other_versions_only_after_target_is_complete(tmp_path, mo
     real_copy = LocalStorage.copy
 
     def copy(self, *args):
-        """在真实文件复制开始时验证旧版本仍然可用。"""
+        """
+        在真实文件复制开始时验证旧版本仍然可用。
+        """
         assert previous.read_bytes() == b"old-version"
         return real_copy(self, *args)
 
@@ -311,7 +355,9 @@ def test_latest_cleans_other_versions_only_after_target_is_complete(tmp_path, mo
 
 @pytest.mark.parametrize("exists", [False, True])
 def test_extra_file_overwrite_only_backs_up_an_existing_target(tmp_path, monkeypatch, exists):
-    """字幕等附加文件首次整理无需备份，已有目标则沿用安全覆盖。"""
+    """
+    字幕等附加文件首次整理无需备份，已有目标则沿用安全覆盖。
+    """
     source = tmp_path / "download.srt"
     target = tmp_path / "Movie.2026.srt"
     source.write_bytes(b"new-subtitle")
@@ -326,7 +372,9 @@ def test_extra_file_overwrite_only_backs_up_an_existing_target(tmp_path, monkeyp
 def test_remote_download_with_same_source_name_never_writes_over_old_target(
         tmp_path, monkeypatch, fails,
 ):
-    """网盘适配器按源文件名下载时，必须隔离目录后再安全替换已有目标。"""
+    """
+    网盘适配器按源文件名下载时，必须隔离目录后再安全替换已有目标。
+    """
     target = tmp_path / "Movie.2026.mkv"
     target.write_bytes(b"old-version")
     source = FileItem(storage="alist", path="/downloads/Movie.2026.mkv", name=target.name,
@@ -335,7 +383,9 @@ def test_remote_download_with_same_source_name_never_writes_over_old_target(
     target_oper = object.__new__(LocalStorage)
 
     def download(*, fileitem, path):
-        """保留旧版本验证成功及只写入部分内容后失败两种真实下载语义。"""
+        """
+        保留旧版本验证成功及只写入部分内容后失败两种真实下载语义。
+        """
         assert target.read_bytes() == b"old-version"
         assert path.parent == target.parent
         assert path != target.parent
@@ -344,7 +394,9 @@ def test_remote_download_with_same_source_name_never_writes_over_old_target(
         return None if fails else downloaded
 
     def delete(_item):
-        """移动源删除必须发生在最终新版本已完整可读以后。"""
+        """
+        移动源删除必须发生在最终新版本已完整可读以后。
+        """
         assert target.read_bytes() == b"new-version"
         return True
 
@@ -374,7 +426,9 @@ def test_remote_download_with_same_source_name_never_writes_over_old_target(
 def test_directory_leaf_overwrite_replays_from_real_ledger(
         tmp_path, monkeypatch, repository_factory, transfer_type,
 ):
-    """目录叶目标也必须安全覆盖，重启不能根据替换后的存在性改变步骤身份。"""
+    """
+    目录叶目标也必须安全覆盖，重启不能根据替换后的存在性改变步骤身份。
+    """
     source = tmp_path / "downloads" / "Movie.2026.mkv"
     source.parent.mkdir()
     source.write_bytes(b"new-version")
@@ -397,7 +451,9 @@ def test_directory_leaf_overwrite_replays_from_real_ledger(
 
 
 def test_safe_overwrite_steps_reject_free_paths_and_unfinished_predecessors(tmp_path):
-    """账本仅接收冻结计划推导路径，且每个新增覆盖步骤都必须有已完成前驱。"""
+    """
+    账本仅接收冻结计划推导路径，且每个新增覆盖步骤都必须有已完成前驱。
+    """
     source = tmp_path / "download.mkv"
     source.write_bytes(b"new")
     checkpoint = _checkpoint(source, tmp_path / "Movie.mkv", transfer_type="move")
@@ -410,7 +466,9 @@ def test_safe_overwrite_steps_reject_free_paths_and_unfinished_predecessors(tmp_
     )]
     for phase, kind, payload in repository._safe_overwrite_intents(checkpoint, item):
         def validate(history, candidate):
-            """核对某个候选意图的冻结计划归属与已完成前驱。"""
+            """
+            核对某个候选意图的冻结计划归属与已完成前驱。
+            """
             return repository._intent_belongs_to_checkpoint(
                 checkpoint, phase=phase, kind=kind, payload=candidate, previous_steps=history,
             )
@@ -430,7 +488,9 @@ def test_safe_overwrite_steps_reject_free_paths_and_unfinished_predecessors(tmp_
 
 @pytest.mark.parametrize("transfer_type", ["copy", "move", "link", "softlink"])
 def test_overwrite_never_deletes_a_source_that_is_also_the_target(tmp_path, monkeypatch, transfer_type):
-    """原地整理不可把提升后的新目标当成移动源删除，也不能建立指向自身的软链接。"""
+    """
+    原地整理不可把提升后的新目标当成移动源删除，也不能建立指向自身的软链接。
+    """
     source = tmp_path / "Movie.2026.mkv"
     source.write_bytes(b"original")
     result = _execute(_checkpoint(source, source, transfer_type=transfer_type), monkeypatch, None)
@@ -442,7 +502,9 @@ def test_overwrite_never_deletes_a_source_that_is_also_the_target(tmp_path, monk
 def test_completed_promotion_does_not_allow_cleanup_when_new_target_becomes_unqueryable(
         tmp_path, monkeypatch, repository_factory,
 ):
-    """提升已记成功但结算前重启，目标查询失败时仍保留源文件和旧备份。"""
+    """
+    提升已记成功但结算前重启，目标查询失败时仍保留源文件和旧备份。
+    """
     source = tmp_path / "download.mkv"
     target = tmp_path / "Movie.2026.mkv"
     source.write_bytes(b"new-version")
@@ -453,10 +515,14 @@ def test_completed_promotion_does_not_allow_cleanup_when_new_target_becomes_unqu
     real_run = runner.run
 
     class ProcessStopped(BaseException):
-        """模拟提升成功已落账、源删除尚未开始时进程退出。"""
+        """
+        模拟提升成功已落账、源删除尚未开始时进程退出。
+        """
 
     def stop_before_cleanup(**kwargs):
-        """仅在清理源文件之前注入中断。"""
+        """
+        仅在清理源文件之前注入中断。
+        """
         if kwargs["kind"] == "delete_overwrite_source":
             raise ProcessStopped()
         return real_run(**kwargs)
@@ -467,7 +533,9 @@ def test_completed_promotion_does_not_allow_cleanup_when_new_target_becomes_unqu
     real_query = LocalStorage.get_item_strict
 
     def unavailable(self, path):
-        """模拟重启后新目标所在挂载不可查询。"""
+        """
+        模拟重启后新目标所在挂载不可查询。
+        """
         if path == target:
             raise OSError("target unavailable")
         return real_query(self, path)
@@ -485,7 +553,9 @@ def test_completed_promotion_does_not_allow_cleanup_when_new_target_becomes_unqu
 def test_history_cleanup_preserves_new_target_through_local_symlink_alias(
         tmp_path, monkeypatch, repository_factory, ancestor,
 ):
-    """历史目的经符号链接父目录指向新文件或其祖先时，不能再整体删除。"""
+    """
+    历史目的经符号链接父目录指向新文件或其祖先时，不能再整体删除。
+    """
     source, library = tmp_path / "download.mkv", tmp_path / "library"
     library.mkdir()
     target = library / "Movie.2026.mkv"
@@ -522,7 +592,9 @@ def test_history_cleanup_preserves_new_target_through_local_symlink_alias(
 def test_completed_promotion_rechecks_live_files_before_destructive_cleanup(
         tmp_path, monkeypatch, repository_factory, mutation,
 ):
-    """恢复已成功提升的账本时，源、目标或备份变更必须保留文件并等待复核。"""
+    """
+    恢复已成功提升的账本时，源、目标或备份变更必须保留文件并等待复核。
+    """
     source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
     source.write_bytes(b"new-version")
     target.write_bytes(b"old-version")
@@ -532,10 +604,14 @@ def test_completed_promotion_rechecks_live_files_before_destructive_cleanup(
     real_run = runner.run
 
     class ProcessStopped(BaseException):
-        """模拟提升结果已落账、源文件清理尚未开始时进程退出。"""
+        """
+        模拟提升结果已落账、源文件清理尚未开始时进程退出。
+        """
 
     def stop_before_cleanup(**kwargs):
-        """仅中断第一次源清理，保留真实 SQLite 步骤结果。"""
+        """
+        仅中断第一次源清理，保留真实 SQLite 步骤结果。
+        """
         if kwargs["kind"] == "delete_overwrite_source":
             raise ProcessStopped()
         return real_run(**kwargs)
@@ -568,7 +644,9 @@ def test_completed_promotion_rechecks_live_files_before_destructive_cleanup(
 def test_overwrite_preserves_all_copies_when_cleanup_identity_evidence_is_missing(
         tmp_path, monkeypatch, repository_factory, missing_evidence,
 ):
-    """旧快照或适配器缺少修改时间时，禁止把当前查询结果当作原文件凭据。"""
+    """
+    旧快照或适配器缺少修改时间时，禁止把当前查询结果当作原文件凭据。
+    """
     source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
     source.write_bytes(b"new-version")
     target.write_bytes(b"old-version")
@@ -582,7 +660,9 @@ def test_overwrite_preserves_all_copies_when_cleanup_identity_evidence_is_missin
         real_query = LocalStorage.get_item_strict
 
         def query_without_time(self, path):
-            """模拟目标适配器未提供可持久验证的修改时间。"""
+            """
+            模拟目标适配器未提供可持久验证的修改时间。
+            """
             item = real_query(self, path)
             return item.model_copy(update={"modify_time": None}) if item and path == target else item
 
@@ -598,7 +678,9 @@ def test_overwrite_preserves_all_copies_when_cleanup_identity_evidence_is_missin
 def test_reported_success_with_partial_stage_does_not_move_old_target(
         tmp_path, monkeypatch, repository_factory,
 ):
-    """适配器返回成功但暂存文件不完整时，真实大小校验须阻止旧目标备份或删除。"""
+    """
+    适配器返回成功但暂存文件不完整时，真实大小校验须阻止旧目标备份或删除。
+    """
     source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
     source.write_bytes(b"new-version")
     target.write_bytes(b"old-version")
@@ -606,7 +688,9 @@ def test_reported_success_with_partial_stage_does_not_move_old_target(
     repository = repository_factory(checkpoint)
 
     def partial_copy(_storage, _item, directory, name):
-        """模拟远端 SDK 错把部分写入报告为成功。"""
+        """
+        模拟远端 SDK 错把部分写入报告为成功。
+        """
         (directory / name).write_bytes(b"partial")
         return True
 
@@ -621,7 +705,9 @@ def test_reported_success_with_partial_stage_does_not_move_old_target(
 def test_uncommitted_promotion_does_not_adopt_replaced_target_as_success_evidence(
         tmp_path, monkeypatch, repository_factory,
 ):
-    """提升已生效但未记成功时，恢复须沿用暂存凭据，不能采纳后来被替换的文件。"""
+    """
+    提升已生效但未记成功时，恢复须沿用暂存凭据，不能采纳后来被替换的文件。
+    """
     source, target = tmp_path / "download.mkv", tmp_path / "Movie.2026.mkv"
     source.write_bytes(b"new-version")
     target.write_bytes(b"old-version")
@@ -630,10 +716,14 @@ def test_uncommitted_promotion_does_not_adopt_replaced_target_as_success_evidenc
     real_rename = LocalStorage.rename
 
     class ProcessStopped(BaseException):
-        """模拟文件提升完成后、账本写入成功前退出。"""
+        """
+        模拟文件提升完成后、账本写入成功前退出。
+        """
 
     def promote_then_stop(self, fileitem, name):
-        """保留真实 rename 副作用，在最终提升操作后停止。"""
+        """
+        保留真实 rename 副作用，在最终提升操作后停止。
+        """
         result = real_rename(self, fileitem, name)
         if name == target.name:
             raise ProcessStopped()

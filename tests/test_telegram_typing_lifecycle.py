@@ -1,3 +1,7 @@
+"""
+验证Telegram 输入状态的启动、续期和结束清理。
+"""
+
 import asyncio
 import threading
 import time
@@ -11,6 +15,7 @@ from app.agent.manager import AgentManager
 from app.agent.session import _async_start_processing_status, _MessageTask
 from app.chain.message import MessageChain
 from app.command import Command, _finish_command_processing_status
+# 此用例覆盖运行时惰性导出，静态检查无法解析该公开入口。
 from app.modules.telegram import TelegramModule  # pylint: disable=no-name-in-module
 from app.modules.telegram.telegram import Telegram
 from app.runtime.loop import main_loop_registry
@@ -18,7 +23,9 @@ from app.schemas.types import NotificationChannel
 
 
 def _wait_until(predicate, timeout: float = 1.0) -> bool:
-    """等待后台线程完成目标状态，避免用例依赖固定 sleep 时长。"""
+    """
+    等待后台线程完成目标状态，避免用例依赖固定 sleep 时长。
+    """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if predicate():
@@ -28,35 +35,49 @@ def _wait_until(predicate, timeout: float = 1.0) -> bool:
 
 
 class _FakeTelegramBot:
-    """记录 typing 调用的轻量 bot，避免后台线程与 Mock 内部锁交互。"""
+    """
+    记录 typing 调用的轻量 bot，避免后台线程与 Mock 内部锁交互。
+    """
 
     def __init__(self):
-        """初始化调用记录和首个动作事件。"""
+        """
+        初始化调用记录和首个动作事件。
+        """
         self.chat_actions = []
         self.action_event = threading.Event()
 
     def send_chat_action(self, chat_id, action):
-        """记录一次 typing 动作并唤醒等待者。"""
+        """
+        记录一次 typing 动作并唤醒等待者。
+        """
         self.chat_actions.append((chat_id, action))
         self.action_event.set()
 
 
 class _BlockingTelegramBot:
-    """模拟阻塞中的 Telegram SDK 请求。"""
+    """
+    模拟阻塞中的 Telegram SDK 请求。
+    """
 
     def __init__(self) -> None:
-        """初始化进入和释放请求的事件屏障。"""
+        """
+        初始化进入和释放请求的事件屏障。
+        """
         self.entered = threading.Event()
         self.release = threading.Event()
 
     def send_chat_action(self, _chat_id, _action) -> None:
-        """阻塞请求，直到测试显式释放。"""
+        """
+        阻塞请求，直到测试显式释放。
+        """
         self.entered.set()
         self.release.wait(timeout=1)
 
 
 def _telegram_client(bot=None) -> Telegram:
-    """构造不连接外部服务且持有独立运行状态的 Telegram client。"""
+    """
+    构造不连接外部服务且持有独立运行状态的 Telegram client。
+    """
     telegram = Telegram.__new__(Telegram)
     telegram._bot = bot or _FakeTelegramBot()
     telegram._polling_thread = None
@@ -137,7 +158,9 @@ def test_short_typing_task_can_stop_before_first_chat_action():
 
 
 def test_typing_owner_is_isolated_between_config_instances():
-    """不同 Telegram 配置即使 chat_id 相同也不得互相停止 typing。"""
+    """
+    不同 Telegram 配置即使 chat_id 相同也不得互相停止 typing。
+    """
     first = _telegram_client()
     second = _telegram_client()
     try:
@@ -156,7 +179,9 @@ def test_typing_owner_is_isolated_between_config_instances():
 
 
 def test_typing_stop_keeps_blocked_thread_owner_until_terminal():
-    """SDK 请求阻塞超过等待预算时，不得提前删除线程 owner。"""
+    """
+    SDK 请求阻塞超过等待预算时，不得提前删除线程 owner。
+    """
     bot = _BlockingTelegramBot()
     telegram = _telegram_client(bot)
     try:
@@ -180,17 +205,25 @@ def test_typing_stop_keeps_blocked_thread_owner_until_terminal():
 
 
 def test_typing_start_failure_releases_registered_owner(monkeypatch):
-    """线程启动失败时应清理已登记的 owner 和停止信号。"""
+    """
+    线程启动失败时应清理已登记的 owner 和停止信号。
+    """
     telegram = _telegram_client()
 
     class FailingThread:
-        """模拟登记成功后无法启动的线程对象。"""
+        """
+        模拟登记成功后无法启动的线程对象。
+        """
 
         def __init__(self, **_kwargs) -> None:
-            """接收真实 Thread 构造参数。"""
+            """
+            接收真实 Thread 构造参数。
+            """
 
         def start(self) -> None:
-            """模拟系统拒绝创建新线程。"""
+            """
+            模拟系统拒绝创建新线程。
+            """
             raise RuntimeError("thread start failed")
 
     monkeypatch.setattr("app.modules.telegram.telegram.threading.Thread", FailingThread)
@@ -203,7 +236,9 @@ def test_typing_start_failure_releases_registered_owner(monkeypatch):
 
 
 def test_typing_start_is_rejected_after_client_stop():
-    """client 停止封口后不得再接受新的 typing 线程。"""
+    """
+    client 停止封口后不得再接受新的 typing 线程。
+    """
     telegram = _telegram_client()
     telegram._bot = None
 
@@ -452,10 +487,14 @@ def test_agent_start_processing_status_uses_chain_interface():
         calls = []
 
         class FakeAgentChain:
-            """记录 processing status 请求的 Agent Chain 替身。"""
+            """
+            记录 processing status 请求的 Agent Chain 替身。
+            """
 
             def start_message_processing_status(self, **kwargs):
-                """记录请求并返回预设状态。"""
+                """
+                记录请求并返回预设状态。
+                """
                 calls.append(kwargs)
                 return status
 

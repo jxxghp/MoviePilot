@@ -1,3 +1,7 @@
+"""
+验证从整理历史重新发起任务的参数恢复与校验。
+"""
+
 from types import SimpleNamespace
 
 from app.api.endpoints.transfer import (
@@ -11,14 +15,20 @@ from app.schemas.transfer import EpisodeFormatRecommendItem, ManualTransferItem
 
 
 def test_manual_music_transfer_forwards_entity_namespace(monkeypatch):
-    """手动音乐整理应把请求选择的单曲或专辑命名空间传入整理链。"""
+    """
+    手动音乐整理应把请求选择的单曲或专辑命名空间传入整理链。
+    """
     captured = {}
 
     class FakeTransferChain:
-        """记录手动整理 API 向整理链传入的参数。"""
+        """
+        记录手动整理 API 向整理链传入的参数。
+        """
 
         def manual_transfer(self, **kwargs):
-            """保存整理参数并模拟成功。"""
+            """
+            保存整理参数并模拟成功。
+            """
             captured.update(kwargs)
             return True, ""
 
@@ -47,14 +57,20 @@ def test_manual_music_transfer_forwards_entity_namespace(monkeypatch):
 
 
 def test_manual_transfer_failure_returns_path_stage_and_recovery_action(monkeypatch):
-    """文件管理器手动整理失败时，应直接返回源路径、失败阶段和恢复动作。"""
+    """
+    文件管理器手动整理失败时，应直接返回源路径、失败阶段和恢复动作。
+    """
 
     class FakeTransferChain:
-        """模拟目标存储写入失败的整理链。"""
+        """
+        模拟目标存储写入失败的整理链。
+        """
 
         @staticmethod
         def manual_transfer(**_kwargs):
-            """返回稳定的目标写入失败原因。"""
+            """
+            返回稳定的目标写入失败原因。
+            """
             return False, "目标路径不可写"
 
     monkeypatch.setattr("app.api.endpoints.transfer.TransferChain", FakeTransferChain)
@@ -83,11 +99,15 @@ def test_manual_transfer_failure_returns_path_stage_and_recovery_action(monkeypa
 
 
 def test_manual_music_directory_defaults_to_album_namespace(monkeypatch):
-    """旧客户端只声明音乐目录时，后端应按整张专辑而不是单曲解释媒体 ID。"""
+    """
+    旧客户端只声明音乐目录时，后端应按整张专辑而不是单曲解释媒体 ID。
+    """
     captured = {}
 
     class FakeTransferChain:
-        """记录手动整理调用参数。"""
+        """
+        记录手动整理调用参数。
+        """
 
         def manual_transfer(self, **kwargs):
             captured.update(kwargs)
@@ -117,11 +137,15 @@ def test_manual_music_directory_defaults_to_album_namespace(monkeypatch):
 
 
 def test_manual_music_file_defaults_to_recording_namespace(monkeypatch):
-    """旧客户端只声明音乐文件时，后端应继续按单曲解释媒体 ID。"""
+    """
+    旧客户端只声明音乐文件时，后端应继续按单曲解释媒体 ID。
+    """
     captured = {}
 
     class FakeTransferChain:
-        """记录手动整理调用参数。"""
+        """
+        记录手动整理调用参数。
+        """
 
         def manual_transfer(self, **kwargs):
             captured.update(kwargs)
@@ -152,7 +176,9 @@ def test_manual_music_file_defaults_to_recording_namespace(monkeypatch):
 
 
 def test_manual_transfer_from_history_preserves_download_context(monkeypatch):
-    """复用历史识别信息时应传递原下载上下文。"""
+    """
+    复用历史识别信息时应传递原下载上下文。
+    """
     history = SimpleNamespace(
         status=0,
         mode="copy",
@@ -175,6 +201,9 @@ def test_manual_transfer_from_history_preserves_download_context(monkeypatch):
     captured = {}
 
     class FakeTransferChain:
+        """
+        替代整理入口，验证历史记录恢复后的参数而不操作文件。
+        """
         def manual_transfer(self, **kwargs):
             captured.update(kwargs)
             return True, ""
@@ -196,7 +225,9 @@ def test_manual_transfer_from_history_preserves_download_context(monkeypatch):
 
 
 def test_manual_transfer_without_history_recognition_ignores_old_hash(monkeypatch):
-    """从历史重新识别时应忽略旧下载上下文。"""
+    """
+    从历史重新识别时应忽略旧下载上下文。
+    """
     history = SimpleNamespace(
         status=0,
         mode="copy",
@@ -219,10 +250,14 @@ def test_manual_transfer_without_history_recognition_ignores_old_hash(monkeypatc
     captured = {}
 
     class FakeTransferChain:
-        """记录 API 传入整理链的参数。"""
+        """
+        记录 API 传入整理链的参数。
+        """
 
         def manual_transfer(self, **kwargs):
-            """记录手动整理参数。"""
+            """
+            记录手动整理参数。
+            """
             captured.update(kwargs)
             return True, ""
 
@@ -271,6 +306,9 @@ def test_manual_transfer_from_history_passes_old_dest_cleanup_to_chain(monkeypat
     captured = {}
 
     class FakeTransferChain:
+        """
+        替代整理入口，验证历史记录恢复后的参数而不操作文件。
+        """
         def manual_transfer(self, **kwargs):
             captured.update(kwargs)
             return True, ""
@@ -317,6 +355,9 @@ def test_manual_transfer_from_history_preview_does_not_cleanup_old_dest(monkeypa
     captured = {}
 
     class FakeTransferChain:
+        """
+        替代整理入口，验证历史记录恢复后的参数而不操作文件。
+        """
         def manual_transfer(self, **kwargs):
             captured.update(kwargs)
             return True, {
@@ -362,6 +403,9 @@ def test_manual_transfer_preview_uses_explicit_fileitems_instead_of_directory(mo
     captured = []
 
     class FakeTransferChain:
+        """
+        替代整理入口，验证历史记录恢复后的参数而不操作文件。
+        """
         def manual_transfer(self, **kwargs):
             captured.append(kwargs)
             fileitem = kwargs["fileitem"]
@@ -422,6 +466,9 @@ def test_manual_transfer_preview_multi_select_collects_failures(monkeypatch):
     ]
 
     class FakeTransferChain:
+        """
+        替代整理入口，验证历史记录恢复后的参数而不操作文件。
+        """
         def manual_transfer(self, **kwargs):
             fileitem = kwargs["fileitem"]
             if fileitem.path.endswith("E02.mkv"):
@@ -465,7 +512,9 @@ def test_manual_transfer_preview_multi_select_collects_failures(monkeypatch):
 
 
 def test_manual_transfer_music_files_share_one_album_batch(monkeypatch):
-    """明确选择音乐类型时，多选音轨应共享专辑批次上下文。"""
+    """
+    明确选择音乐类型时，多选音轨应共享专辑批次上下文。
+    """
     selected_fileitems = [
         {
             "storage": "local",
@@ -479,6 +528,9 @@ def test_manual_transfer_music_files_share_one_album_batch(monkeypatch):
     captured = []
 
     class FakeTransferChain:
+        """
+        替代整理入口，验证历史记录恢复后的参数而不操作文件。
+        """
         def manual_transfer(self, **kwargs):
             captured.append(kwargs)
             return True, {
@@ -526,7 +578,9 @@ def test_manual_transfer_music_files_share_one_album_batch(monkeypatch):
 
 
 def test_manual_transfer_auto_audio_selection_uses_single_file_flow(monkeypatch):
-    """自动类型下多选音频仍逐文件识别，避免数量改变音乐分类结果。"""
+    """
+    自动类型下多选音频仍逐文件识别，避免数量改变音乐分类结果。
+    """
     selected_fileitems = [
         FileItem(
             storage="local",
@@ -540,10 +594,14 @@ def test_manual_transfer_auto_audio_selection_uses_single_file_flow(monkeypatch)
     captured = []
 
     class FakeTransferChain:
-        """记录自动多选请求是否保留逐文件识别语义。"""
+        """
+        记录自动多选请求是否保留逐文件识别语义。
+        """
 
         def manual_transfer(self, **kwargs):
-            """返回当前文件的一条成功预览。"""
+            """
+            返回当前文件的一条成功预览。
+            """
             captured.append(kwargs)
             fileitem = kwargs["fileitem"]
             return True, {
@@ -586,7 +644,9 @@ def test_manual_transfer_auto_audio_selection_uses_single_file_flow(monkeypatch)
 
 
 def test_manual_transfer_music_batch_ignores_non_disc_alternate_directory(monkeypatch):
-    """根目录已有完整专辑时，不得把“附加原版”等任意子目录当成第二张碟。"""
+    """
+    根目录已有完整专辑时，不得把“附加原版”等任意子目录当成第二张碟。
+    """
     selected_fileitems = [
         {
             "storage": "local",
@@ -605,6 +665,9 @@ def test_manual_transfer_music_batch_ignores_non_disc_alternate_directory(monkey
     captured = []
 
     class FakeTransferChain:
+        """
+        替代整理入口，验证历史记录恢复后的参数而不操作文件。
+        """
         def manual_transfer(self, **kwargs):
             captured.append(kwargs)
             return True, {
@@ -639,7 +702,9 @@ def test_manual_transfer_music_batch_ignores_non_disc_alternate_directory(monkey
 
 
 def test_manual_transfer_history_ids_share_one_music_album_batch(monkeypatch):
-    """多选整理历史应先还原文件集合，再以一个专辑批次进入整理链。"""
+    """
+    多选整理历史应先还原文件集合，再以一个专辑批次进入整理链。
+    """
     paths = (
         "/downloads/七里香/01.flac",
         "/downloads/七里香/02.flac",
@@ -664,6 +729,9 @@ def test_manual_transfer_history_ids_share_one_music_album_batch(monkeypatch):
     captured = []
 
     class FakeTransferChain:
+        """
+        替代整理入口，验证历史记录恢复后的参数而不操作文件。
+        """
         def manual_transfer(self, **kwargs):
             captured.append(kwargs)
             selected = kwargs["selected_fileitems"]
@@ -705,6 +773,9 @@ def test_match_manual_transfer_target_path_returns_directory_match(monkeypatch):
     captured = {}
 
     class FakeDirectoryHelper:
+        """
+        提供测试目标目录，验证重新整理时的目录选择。
+        """
         def get_dir(self, **kwargs):
             captured.update(kwargs)
             return TransferDirectoryConf(
@@ -747,6 +818,9 @@ def test_match_manual_transfer_target_path_returns_directory_match(monkeypatch):
 
 def test_match_manual_transfer_target_path_returns_null_for_ambiguous_matches(monkeypatch):
     class FakeDirectoryHelper:
+        """
+        提供测试目标目录，验证重新整理时的目录选择。
+        """
         def get_dir(self, **kwargs):
             src_path = kwargs["src_path"].as_posix()
             return TransferDirectoryConf(
@@ -808,6 +882,9 @@ def test_match_manual_transfer_target_path_accepts_multiple_history_records(monk
     }
 
     class FakeDirectoryHelper:
+        """
+        提供测试目标目录，验证重新整理时的目录选择。
+        """
         def get_dir(self, **_kwargs):
             return TransferDirectoryConf(
                 library_storage="local",
@@ -845,6 +922,9 @@ def test_recommend_episode_format_passes_selected_fileitems(monkeypatch):
     captured = {}
 
     class FakeTransferChain:
+        """
+        替代整理入口，验证历史记录恢复后的参数而不操作文件。
+        """
         def recommend_episode_format(self, **kwargs):
             captured.update(kwargs)
             return True, "", {"episode_format": "Show.S01E{ep}.mkv"}
@@ -884,6 +964,9 @@ def test_recommend_episode_format_accepts_fileitems_without_fileitem(monkeypatch
     captured = {}
 
     class FakeTransferChain:
+        """
+        替代整理入口，验证历史记录恢复后的参数而不操作文件。
+        """
         def recommend_episode_format(self, **kwargs):
             captured.update(kwargs)
             return True, "", {"episode_format": "Show.S01E{ep}.mkv"}

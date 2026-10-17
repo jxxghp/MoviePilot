@@ -1,4 +1,6 @@
-"""旧整理历史 Oper 的精确插件 ABI 门禁。"""
+"""
+旧整理历史 Oper 的精确插件 ABI 门禁。
+"""
 
 import importlib
 import inspect
@@ -8,7 +10,9 @@ from app.runtime.compat.manifest import MODULE_ALIASES
 
 
 def test_legacy_transfer_history_import_targets_private_sdk_facade() -> None:
-    """旧 DB 路径必须精确路由到私有 SDK 门面。"""
+    """
+    旧 DB 路径必须精确路由到私有 SDK 门面。
+    """
     alias = MODULE_ALIASES["app.db.transferhistory_oper"]
     legacy = importlib.import_module("app.db.transferhistory_oper")
 
@@ -26,7 +30,9 @@ def test_legacy_transfer_history_import_targets_private_sdk_facade() -> None:
 
 
 def test_legacy_transfer_history_oper_preserves_exact_write_abi() -> None:
-    """兼容类冻结旧方法参数，并以脱离 Session 的快照替代 ORM 注解。"""
+    """
+    兼容类冻结旧方法参数，并以脱离 Session 的快照替代 ORM 注解。
+    """
     legacy = importlib.import_module("app.db.transferhistory_oper")
     oper_type = legacy.TransferHistoryOper
     public_methods = {
@@ -58,7 +64,9 @@ def test_legacy_transfer_history_oper_preserves_exact_write_abi() -> None:
 
 
 def test_legacy_add_force_preserves_replace_behavior(db) -> None:
-    """旧 add_force 继续按同源存储替换并返回可读记录。"""
+    """
+    旧 add_force 继续按同源存储替换并返回可读记录。
+    """
     legacy = importlib.import_module("app.db.transferhistory_oper")
     oper = legacy.TransferHistoryOper(db.session)
 
@@ -89,7 +97,9 @@ def test_legacy_add_force_preserves_replace_behavior(db) -> None:
 
 
 def test_legacy_transfer_history_helper_keeps_exact_application_route() -> None:
-    """旧 Helper 路径继续复用应用层实现，不创建第二份兼容模块。"""
+    """
+    旧 Helper 路径继续复用应用层实现，不创建第二份兼容模块。
+    """
     alias = MODULE_ALIASES["app.helper.transferhistory"]
 
     assert alias.target == "app.application.history"

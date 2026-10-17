@@ -1,4 +1,6 @@
-"""整理完成事件只对应实际目标文件，静默跳过仍正常结算。"""
+"""
+整理完成事件只对应实际目标文件，静默跳过仍正常结算。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
@@ -36,7 +38,9 @@ def test_transfer_result_events_require_completed_target(
         failed_event: EventType,
         outcome: str,
 ) -> None:
-    """视频、字幕和音频跳过不发完成事件，正常完成和失败保留原事件与终态。"""
+    """
+    视频、字幕和音频跳过不发完成事件，正常完成和失败保留原事件与终态。
+    """
     chain = make_transfer_chain()
     chain.eventmanager = MagicMock()
     chain.queue_failed_transfer_notification = MagicMock()

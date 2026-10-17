@@ -1,3 +1,7 @@
+"""
+验证TMDB 缓存读取、刷新与失效管理。
+"""
+
 import asyncio
 import inspect
 import pickle
@@ -12,78 +16,112 @@ from app.schemas.types import MediaType, SystemConfigKey
 
 
 class _MemoryCacheStub:
-    """提供 TMDB 缓存管理测试所需的最小内存后端。"""
+    """
+    提供 TMDB 缓存管理测试所需的最小内存后端。
+    """
 
     def __init__(self, data: dict):
-        """使用给定字典初始化测试缓存。"""
+        """
+        使用给定字典初始化测试缓存。
+        """
         self.data = data
 
     def items(self):
-        """返回全部缓存条目。"""
+        """
+        返回全部缓存条目。
+        """
         return self.data.items()
 
     def get(self, key: str):
-        """读取指定缓存条目。"""
+        """
+        读取指定缓存条目。
+        """
         return self.data.get(key)
 
     def delete(self, key: str):
-        """删除指定缓存条目。"""
+        """
+        删除指定缓存条目。
+        """
         self.data.pop(key, None)
 
     def set(self, key: str, value, ttl=None):
-        """写入指定缓存条目。"""
+        """
+        写入指定缓存条目。
+        """
         self.data[key] = value
 
     def clear(self):
-        """清空全部缓存条目。"""
+        """
+        清空全部缓存条目。
+        """
         self.data.clear()
 
 
 class _FileCacheStub:
-    """提供 TMDB 持久化测试所需的统一文件缓存替身。"""
+    """
+    提供 TMDB 持久化测试所需的统一文件缓存替身。
+    """
 
     def __init__(self, content: bytes = None):
-        """使用预置序列化内容初始化文件缓存。"""
+        """
+        使用预置序列化内容初始化文件缓存。
+        """
         self.content = content
         self.set_calls = []
         self.delete_calls = []
 
     def get(self, key: str, region: str):
-        """读取预置缓存内容。"""
+        """
+        读取预置缓存内容。
+        """
         return self.content
 
     def set(self, key: str, value: bytes, region: str):
-        """记录统一文件缓存写入。"""
+        """
+        记录统一文件缓存写入。
+        """
         self.content = value
         self.set_calls.append((key, region))
 
     def delete(self, key: str, region: str):
-        """记录统一文件缓存删除。"""
+        """
+        记录统一文件缓存删除。
+        """
         self.content = None
         self.delete_calls.append((key, region))
 
 
 class _TTLCacheStub(_MemoryCacheStub):
-    """记录每条数据恢复时剩余 TTL 的内存缓存替身。"""
+    """
+    记录每条数据恢复时剩余 TTL 的内存缓存替身。
+    """
 
     def __init__(self):
-        """初始化空缓存和 TTL 记录。"""
+        """
+        初始化空缓存和 TTL 记录。
+        """
         super().__init__({})
         self.ttls = {}
 
     @staticmethod
     def is_redis() -> bool:
-        """测试替身固定使用非 Redis 后端。"""
+        """
+        测试替身固定使用非 Redis 后端。
+        """
         return False
 
     def set(self, key: str, value, ttl=None):
-        """写入缓存并记录本次设置的 TTL。"""
+        """
+        写入缓存并记录本次设置的 TTL。
+        """
         super().set(key, value, ttl=ttl)
         self.ttls[key] = ttl
 
 
 def _build_tmdb_cache(data: dict) -> TmdbCache:
-    """构造绕过单例初始化的 TMDB 缓存测试实例。"""
+    """
+    构造绕过单例初始化的 TMDB 缓存测试实例。
+    """
     cache = object.__new__(TmdbCache)
     cache._cache = _MemoryCacheStub(data)
     cache._expires_at = {key: float("inf") for key in data}
@@ -98,7 +136,9 @@ def _build_tmdb_cache(data: dict) -> TmdbCache:
 def _build_initialized_tmdb_cache(monkeypatch, file_cache: _FileCacheStub,
                                   runtime_cache: _TTLCacheStub,
                                   now: float = 1000) -> TmdbCache:
-    """使用可控时间和缓存替身初始化完整 TMDB 缓存实例。"""
+    """
+    使用可控时间和缓存替身初始化完整 TMDB 缓存实例。
+    """
     monkeypatch.setattr(tmdb_cache_module, "time", lambda: now)
     monkeypatch.setattr(tmdb_cache_module, "TTLCache", lambda **kwargs: runtime_cache)
     monkeypatch.setattr(tmdb_cache_module, "FileCache", lambda **kwargs: file_cache)
@@ -108,7 +148,9 @@ def _build_initialized_tmdb_cache(monkeypatch, file_cache: _FileCacheStub,
 
 
 def test_tmdb_cache_management_endpoints_require_superuser():
-    """识别缓存管理接口必须仅允许超级管理员访问。"""
+    """
+    识别缓存管理接口必须仅允许超级管理员访问。
+    """
     endpoints = [
         tmdb_endpoint.tmdb_recognition_cache,
         tmdb_endpoint.delete_tmdb_recognition_cache,
@@ -121,7 +163,9 @@ def test_tmdb_cache_management_endpoints_require_superuser():
 
 
 def test_tmdb_cache_list_items_normalizes_media_type_and_sorting():
-    """管理列表应输出稳定顺序和前端可识别的媒体类型。"""
+    """
+    管理列表应输出稳定顺序和前端可识别的媒体类型。
+    """
     cache = _build_tmdb_cache({
         "[电视剧][zh-CN]Zulu-2024-1": {
             "id": 2,
@@ -146,7 +190,9 @@ def test_tmdb_cache_list_items_normalizes_media_type_and_sorting():
 
 
 def test_tmdb_cache_delete_and_clear_persist_immediately(monkeypatch):
-    """管理操作应修改运行时缓存并立即触发本地持久化。"""
+    """
+    管理操作应修改运行时缓存并立即触发本地持久化。
+    """
     cache = _build_tmdb_cache({"first": {"id": 1}, "second": {"id": 2}})
     saved_forces = []
     monkeypatch.setattr(cache, "save", lambda force=False: saved_forces.append(force))
@@ -160,7 +206,9 @@ def test_tmdb_cache_delete_and_clear_persist_immediately(monkeypatch):
 
 
 def test_tmdb_cache_restores_only_unexpired_persisted_items(monkeypatch):
-    """TMDB 持久化恢复应保留每条数据原有期限并跳过已过期条目。"""
+    """
+    TMDB 持久化恢复应保留每条数据原有期限并跳过已过期条目。
+    """
     payload = {
         "version": tmdb_cache_module.PERSISTENCE_VERSION,
         "items": {
@@ -190,7 +238,9 @@ def test_tmdb_cache_restores_only_unexpired_persisted_items(monkeypatch):
 
 
 def test_tmdb_cache_persists_individual_expiration_with_file_cache(monkeypatch):
-    """TMDB 持久化应通过统一文件缓存保存每条数据的独立过期时间。"""
+    """
+    TMDB 持久化应通过统一文件缓存保存每条数据的独立过期时间。
+    """
     file_cache = _FileCacheStub()
     runtime_cache = _TTLCacheStub()
     cache = _build_initialized_tmdb_cache(
@@ -227,7 +277,9 @@ def test_tmdb_cache_persists_individual_expiration_with_file_cache(monkeypatch):
 
 
 def test_tmdb_cache_migrates_legacy_file_to_global_file_cache(monkeypatch):
-    """旧 TMDB 缓存应迁移到全局文件缓存并删除旧文件。"""
+    """
+    旧 TMDB 缓存应迁移到全局文件缓存并删除旧文件。
+    """
     primary_cache = _FileCacheStub()
     legacy_cache = _FileCacheStub(pickle.dumps({
         "legacy": {"id": 1, "title": "旧缓存"},
@@ -236,7 +288,9 @@ def test_tmdb_cache_migrates_legacy_file_to_global_file_cache(monkeypatch):
     file_cache_calls = []
 
     def build_file_cache(**kwargs):
-        """记录全局文件缓存构造参数并返回对应替身。"""
+        """
+        记录全局文件缓存构造参数并返回对应替身。
+        """
         file_cache_calls.append(kwargs)
         return next(file_caches)
 
@@ -269,7 +323,9 @@ def test_tmdb_cache_migrates_legacy_file_to_global_file_cache(monkeypatch):
 
 
 def test_tmdb_cache_endpoint_returns_management_statistics(monkeypatch):
-    """查询接口应返回识别成功和失败条目的统计。"""
+    """
+    查询接口应返回识别成功和失败条目的统计。
+    """
     cache = _build_tmdb_cache({
         "recognized": {"id": 1, "title": "Alpha", "type": MediaType.MOVIE},
         "unrecognized": {"id": 0},
@@ -303,7 +359,9 @@ def test_tmdb_cache_endpoint_returns_management_statistics(monkeypatch):
 
 
 def test_tmdb_cache_delete_endpoint_reports_missing_item(monkeypatch):
-    """删除接口应区分成功删除与缓存不存在。"""
+    """
+    删除接口应区分成功删除与缓存不存在。
+    """
     cache = _build_tmdb_cache({"existing": {"id": 1}})
     monkeypatch.setattr(
         tmdb_endpoint.TmdbChain, "delete_cache", staticmethod(cache.delete)
@@ -321,7 +379,9 @@ def test_tmdb_cache_delete_endpoint_reports_missing_item(monkeypatch):
 
 
 def test_tmdb_cache_clear_endpoint_removes_all_items(monkeypatch):
-    """清空接口应删除全部识别缓存。"""
+    """
+    清空接口应删除全部识别缓存。
+    """
     cache = _build_tmdb_cache({"existing": {"id": 1}})
     monkeypatch.setattr(
         tmdb_endpoint.TmdbChain, "clear_cache", staticmethod(cache.clear)

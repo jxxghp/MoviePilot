@@ -1,4 +1,6 @@
-"""整理执行证据 3.0.16 Alembic 迁移的保守升级与可逆性测试。"""
+"""
+整理执行证据 3.0.16 Alembic 迁移的保守升级与可逆性测试。
+"""
 
 import importlib
 from datetime import datetime, timezone
@@ -30,7 +32,9 @@ LEGACY_DIAGNOSTIC = "升级检测到既有执行迹象，需人工确认后再�
 
 
 def _bind_migration(monkeypatch, connection):
-    """把 3.0.16 迁移绑定到隔离 SQLite 连接。"""
+    """
+    把 3.0.16 迁移绑定到隔离 SQLite 连接。
+    """
     migration = importlib.import_module(MIGRATION)
     monkeypatch.setattr(
         migration,
@@ -41,7 +45,9 @@ def _bind_migration(monkeypatch, connection):
 
 
 def _create_legacy_tables(connection) -> tuple[sa.Table, sa.Table]:
-    """创建具备 3.0.15 租约字段的最小 pending/history 表。"""
+    """
+    创建具备 3.0.15 租约字段的最小 pending/history 表。
+    """
     metadata = sa.MetaData()
     pending = sa.Table(
         "transferpending",
@@ -79,7 +85,9 @@ def _create_legacy_tables(connection) -> tuple[sa.Table, sa.Table]:
 
 
 def _insert_legacy_rows(connection, pending: sa.Table) -> None:
-    """写入安全未开始和多种执行结果未知的旧任务。"""
+    """
+    写入安全未开始和多种执行结果未知的旧任务。
+    """
     base = {
         "storage": "local",
         "created_at": "2026-08-27 10:00:00",
@@ -130,7 +138,9 @@ def _insert_legacy_rows(connection, pending: sa.Table) -> None:
 
 
 def _assert_execution_tables_match_models(connection) -> None:
-    """断言步骤与 append-only 回执表的字段、约束和索引精确匹配 ORM。"""
+    """
+    断言步骤与 append-only 回执表的字段、约束和索引精确匹配 ORM。
+    """
     inspector = sa.inspect(connection)
     step_columns = {
         column["name"]: column["nullable"]
@@ -280,7 +290,9 @@ def _assert_execution_tables_match_models(connection) -> None:
 
 
 def test_upgrade_is_conservative_and_repairs_interrupted_indexes(monkeypatch):
-    """旧执行迹象必须隔离，重复升级应补齐索引且不覆盖保守状态。"""
+    """
+    旧执行迹象必须隔离，重复升级应补齐索引且不覆盖保守状态。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         pending, _ = _create_legacy_tables(connection)
@@ -336,7 +348,9 @@ def test_upgrade_is_conservative_and_repairs_interrupted_indexes(monkeypatch):
 def test_downgrade_marks_step_evidence_then_reupgrade_keeps_manual_review(
         monkeypatch,
 ) -> None:
-    """降级不得丢失执行不确定性，再升级也不能把该任务自动重放。"""
+    """
+    降级不得丢失执行不确定性，再升级也不能把该任务自动重放。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         pending, _ = _create_legacy_tables(connection)
@@ -381,7 +395,9 @@ def test_downgrade_marks_step_evidence_then_reupgrade_keeps_manual_review(
 def test_downgrade_archives_and_reupgrade_restores_settlement_receipts(
         monkeypatch,
 ) -> None:
-    """降级必须归档 append-only 终态证据，重复降级和重升均不得丢失。"""
+    """
+    降级必须归档 append-only 终态证据，重复降级和重升均不得丢失。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         pending, _ = _create_legacy_tables(connection)
@@ -418,7 +434,9 @@ def test_downgrade_archives_and_reupgrade_restores_settlement_receipts(
 
 
 def test_upgrade_repairs_owned_indexes_by_columns_and_uniqueness(monkeypatch) -> None:
-    """关键索引同名但列或唯一性错误时必须按 ORM 契约重建。"""
+    """
+    关键索引同名但列或唯一性错误时必须按 ORM 契约重建。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         pending, _ = _create_legacy_tables(connection)
@@ -456,7 +474,9 @@ def test_upgrade_repairs_owned_indexes_by_columns_and_uniqueness(monkeypatch) ->
 
 
 def test_upgrade_without_pending_table_is_a_safe_noop(monkeypatch):
-    """全新数据库尚未执行前置迁移时本版本应安全等待迁移链建表。"""
+    """
+    全新数据库尚未执行前置迁移时本版本应安全等待迁移链建表。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         migration = _bind_migration(monkeypatch, connection)
@@ -466,7 +486,9 @@ def test_upgrade_without_pending_table_is_a_safe_noop(monkeypatch):
 
 
 def test_execution_table_ddl_compiles_for_postgresql(monkeypatch) -> None:
-    """步骤与回执建表 DDL 必须在生产 PostgreSQL 方言下可编译。"""
+    """
+    步骤与回执建表 DDL 必须在生产 PostgreSQL 方言下可编译。
+    """
     output = StringIO()
     context = MigrationContext.configure(
         dialect_name="postgresql",
@@ -484,7 +506,9 @@ def test_execution_table_ddl_compiles_for_postgresql(monkeypatch) -> None:
 
 
 def test_repair_indexes_ignores_postgresql_unique_backing_index(monkeypatch) -> None:
-    """PG 唯一约束后端索引应留给约束治理，普通意外索引仍须删除。"""
+    """
+    PG 唯一约束后端索引应留给约束治理，普通意外索引仍须删除。
+    """
     migration = importlib.import_module(MIGRATION)
     table_name = "transfersettlementreceipt"
     indexes = [
@@ -509,7 +533,9 @@ def test_repair_indexes_ignores_postgresql_unique_backing_index(monkeypatch) -> 
     created = []
 
     def drop_index(index_name: str, *, table_name: str) -> None:
-        """记录删除并模拟 PostgreSQL 反射结果随 DDL 更新。"""
+        """
+        记录删除并模拟 PostgreSQL 反射结果随 DDL 更新。
+        """
         dropped.append((index_name, table_name))
         indexes[:] = [item for item in indexes if item["name"] != index_name]
 
@@ -549,7 +575,9 @@ def test_repair_indexes_ignores_postgresql_unique_backing_index(monkeypatch) -> 
 
 
 def test_interrupted_column_upgrade_preserves_existing_manual_state(monkeypatch):
-    """字段阶段中断后重跑应补齐 schema 且保留已写入的人工复核状态。"""
+    """
+    字段阶段中断后重跑应补齐 schema 且保留已写入的人工复核状态。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         pending, _ = _create_legacy_tables(connection)
@@ -587,7 +615,9 @@ def test_interrupted_column_upgrade_preserves_existing_manual_state(monkeypatch)
 
 
 def test_upgrade_recreates_empty_partial_execution_tables(monkeypatch) -> None:
-    """中断升级留下的空残表应无损重建为完整步骤与回执 schema。"""
+    """
+    中断升级留下的空残表应无损重建为完整步骤与回执 schema。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         pending, _ = _create_legacy_tables(connection)
@@ -607,7 +637,9 @@ def test_upgrade_recreates_empty_partial_execution_tables(monkeypatch) -> None:
 
 
 def test_upgrade_replaces_old_single_task_receipt_unique(monkeypatch) -> None:
-    """中断版本的 task 单列唯一约束必须移除，保留数据后允许追加新 revision。"""
+    """
+    中断版本的 task 单列唯一约束必须移除，保留数据后允许追加新 revision。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         pending, _ = _create_legacy_tables(connection)
@@ -678,7 +710,9 @@ def test_upgrade_rejects_nonempty_partial_execution_table(
         create_sql: str,
         insert_sql: str,
 ) -> None:
-    """含数据残表不能猜测修复，且必须报告明确迁移冲突而非缺列 SQL。"""
+    """
+    含数据残表不能猜测修复，且必须报告明确迁移冲突而非缺列 SQL。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         pending, _ = _create_legacy_tables(connection)
@@ -697,7 +731,9 @@ def test_upgrade_rejects_nonempty_partial_execution_table(
 def test_upgrade_adds_synthetic_review_when_nonmanual_step_already_exists(
         monkeypatch,
 ) -> None:
-    """已有普通步骤不代表可人工判定，迁移仍须补 synthetic 并稳定回填时间。"""
+    """
+    已有普通步骤不代表可人工判定，迁移仍须补 synthetic 并稳定回填时间。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         pending, _ = _create_legacy_tables(connection)
@@ -736,7 +772,9 @@ def test_upgrade_adds_synthetic_review_when_nonmanual_step_already_exists(
 def test_migrated_legacy_reviews_are_discoverable_resolvable_and_retryable(
         monkeypatch,
 ) -> None:
-    """迁移遗留任务应可分页判定，判定后仍须重新规划才能准备步骤。"""
+    """
+    迁移遗留任务应可分页判定，判定后仍须重新规划才能准备步骤。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         pending, _ = _create_legacy_tables(connection)
