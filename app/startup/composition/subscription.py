@@ -148,6 +148,16 @@ def _publish_deleted_sync(payload: dict[str, Any]) -> None:
     eventmanager.send_event(EventType.SubscribeDeleted, payload)
 
 
+async def _report_deleted(payload: Mapping[str, JsonData]) -> object:
+    """把删除统计端口的只读映射转换为服务端兼容的普通字典。"""
+    return await MoviePilotServerHelper.async_sub_done_durable(dict(payload))
+
+
+def _report_deleted_sync(payload: Mapping[str, JsonData]) -> object:
+    """把同步删除统计端口的只读映射转换为服务端兼容的普通字典。"""
+    return MoviePilotServerHelper.sub_done_durable(dict(payload))
+
+
 def _publish_completed(payload: dict[str, Any]) -> None:
     """发布已提交的订阅完成事件。"""
     eventmanager.send_event(EventType.SubscribeComplete, payload)
@@ -209,7 +219,7 @@ async def delete_subscribe_scope() -> AsyncIterator[DeleteSubscribeCommand]:
             repository=SessionSubscriptionRepository(session),
             unit_of_work=SqlAlchemyAsyncUnitOfWork(session),
             publish_deleted=_publish_deleted,
-            report_deleted=MoviePilotServerHelper.async_sub_done_durable,
+            report_deleted=_report_deleted,
             outbox=SqlAlchemyAsyncOutboxStager(session),
             dispatch_store=SqlAlchemyAsyncOutboxDispatchStore(
                 async_session_scope
@@ -226,7 +236,7 @@ def sync_delete_subscribe_scope() -> Iterator[SyncDeleteSubscribeCommand]:
             repository=SessionSubscriptionRepository(session),
             unit_of_work=SqlAlchemyUnitOfWork(session),
             publish_deleted=_publish_deleted_sync,
-            report_deleted=MoviePilotServerHelper.sub_done_durable,
+            report_deleted=_report_deleted_sync,
             outbox=SqlAlchemyOutboxStager(session),
             dispatch_store=SqlAlchemyOutboxDispatchStore(SessionFactory),
         )
