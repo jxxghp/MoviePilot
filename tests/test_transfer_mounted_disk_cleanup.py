@@ -114,6 +114,24 @@ def test_disabled_cleanup_does_not_change_remote_storage_cleanup():
     is_network_filesystem.assert_not_called()
 
 
+def test_missing_local_source_path_skips_filesystem_detection():
+    """历史任务缺少源路径时直接采用清理默认值，不把 None 传给 Path。"""
+    task = _make_task()
+    task.fileitem.path = None
+
+    with patch(
+            "app.startup.composition.chain.SystemUtils.is_network_filesystem"
+    ) as is_network_filesystem:
+        should_delete = TransferChain._should_delete_empty_source_directories(
+            task,
+            False,
+            {},
+        )
+
+    assert should_delete is True
+    is_network_filesystem.assert_not_called()
+
+
 def test_mounted_filesystem_detection_is_cached_by_source_directory():
     """
     同一源根目录的批量任务应只检测一次文件系统。
