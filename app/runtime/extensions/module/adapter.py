@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import importlib
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from collections.abc import Callable, Iterable
 from typing import Any, Mapping
 
 from app.runtime.capabilities.model import (
