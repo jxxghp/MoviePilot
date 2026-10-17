@@ -2,7 +2,8 @@
 初始化目录监控及其后台任务。
 """
 
-from app.monitor.monitor import Monitor
+# 包根按需公开 Monitor，静态检查无法解析该惰性导出。
+from app.monitor import Monitor  # pylint: disable=no-name-in-module
 from app.runtime.execution import run_in_threadpool_to_completion
 
 

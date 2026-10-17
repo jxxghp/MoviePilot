@@ -12,6 +12,7 @@ from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.modules.themoviedb import TheMovieDbModule
 from app.modules.themoviedb.tmdbv3api.exceptions import TMDbConnectionError
+from app.schemas.category import ClassificationEnrichmentRequest, ClassificationIdentityFacts
 from app.schemas.types import MediaSource, MediaType
 
 
@@ -37,6 +38,76 @@ def _movie_info(tmdbid: int = 10) -> dict:
         "release_date": "2024-02-03",
         "genres": [{"id": 18, "name": "剧情"}],
     }
+
+
+@pytest.mark.parametrize(
+    ("status_code", "expected"),
+    [
+        (200, (True, "")),
+        (503, (False, "无法连接 tmdb.example，错误码：503")),
+        (None, (False, "tmdb.example 网络连接失败")),
+    ],
+)
+def test_tmdb_connection_check_reports_http_and_network_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    status_code: Optional[int],
+    expected: tuple[bool, str],
+) -> None:
+    """
+    连接检查应区分认证成功、服务端错误和没有 HTTP 响应。
+    """
+    response = Mock(status_code=status_code) if status_code is not None else None
+    request = Mock()
+    request.get_res.return_value = response
+    request_factory = Mock(return_value=request)
+    settings = {
+        "NORMAL_USER_AGENT": "test-agent",
+        "PROXY": None,
+        "TMDB_API_DOMAIN": "tmdb.example",
+        "TMDB_API_KEY": "test-key",
+    }
+    monkeypatch.setattr("app.modules.themoviedb.RequestUtils", request_factory)
+    monkeypatch.setattr("app.modules.themoviedb.get_runtime_setting", settings.__getitem__)
+
+    assert _module_with_clients().test() == expected
+    request_factory.assert_called_once_with(ua="test-agent", proxies=None)
+    request.get_res.assert_called_once_with(
+        "https://tmdb.example/3/movie/550?api_key=test-key"
+    )
+
+
+@pytest.mark.parametrize(
+    ("tmdb_id", "expected_calls"),
+    [
+        ("invalid-id", 0),
+        ("129", 1),
+    ],
+)
+def test_tmdb_enrichment_rejects_invalid_or_missing_details(
+    tmdb_id: str,
+    expected_calls: int,
+) -> None:
+    """
+    非数字身份或未取得详情时不能向分类规则提供推测的事实。
+    """
+    module = _module_with_clients()
+    module.tmdb_info = Mock(return_value=None)
+    request = ClassificationEnrichmentRequest(
+        identity=ClassificationIdentityFacts(
+            media_source=MediaSource.Douban.value,
+            media_id="1291561",
+        ),
+        media_type=MediaType.MOVIE.value,
+        missing_fields=["media.countries"],
+        external_ids={MediaSource.TMDB.value: tmdb_id},
+        policy_revision=3,
+        timeout_seconds=2.5,
+    )
+
+    assert module.get_media_classification_facts(request) is None
+    assert module.tmdb_info.call_count == expected_calls
+    if expected_calls:
+        module.tmdb_info.assert_called_once_with(tmdbid=129, mtype=MediaType.MOVIE)
 
 
 def test_recognize_sync_async_share_identity_cache_and_result_decisions() -> None:
