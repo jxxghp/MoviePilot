@@ -183,8 +183,8 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
 
     # 元数据缓存
     cache: TmdbCache
-    # TMDB
-    tmdb: TmdbApi
+    # TMDB 客户端由 init_module 生命周期初始化；属性访问保持初始化后的非空合同。
+    _tmdb: Optional[TmdbApi] = None
     # 刮削器
     scraper: TmdbScraper
 
@@ -195,6 +195,22 @@ class TheMovieDbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         self.cache = TmdbCache()
         self.tmdb = TmdbApi()
         self.scraper = TmdbScraper()
+
+    @property
+    def tmdb(self) -> TmdbApi:
+        """
+        返回已初始化的 TMDB 客户端。
+        """
+        if self._tmdb is None:
+            self._tmdb = TmdbApi()
+        return self._tmdb
+
+    @tmdb.setter
+    def tmdb(self, client: TmdbApi) -> None:
+        """
+        保存模块生命周期提供的 TMDB 客户端。
+        """
+        self._tmdb = client
 
     @staticmethod
     def get_name() -> str:
