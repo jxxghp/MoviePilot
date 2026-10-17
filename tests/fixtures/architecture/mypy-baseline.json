@@ -16,9 +16,6 @@
     "str-bytes-safe": 2,
     "union-attr": 14
   },
-  "app/adapters/external/ocr.py": {
-    "arg-type": 1
-  },
   "app/adapters/external/server.py": {
     "arg-type": 5,
     "assignment": 1,
@@ -181,9 +178,6 @@
     "no-untyped-def": 7,
     "type-arg": 2,
     "var-annotated": 1
-  },
-  "app/agent/tools/catalog.py": {
-    "attr-defined": 1
   },
   "app/agent/tools/factory.py": {
     "arg-type": 1,
@@ -1547,11 +1541,6 @@
     "no-untyped-call": 2,
     "no-untyped-def": 16,
     "type-arg": 22
-  },
-  "app/runtime/extensions/module/adapter.py": {
-    "arg-type": 1,
-    "union-attr": 1,
-    "var-annotated": 1
   },
   "app/runtime/extensions/module/manager.py": {
     "attr-defined": 1,
