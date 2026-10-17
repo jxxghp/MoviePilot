@@ -403,6 +403,52 @@ def test_publish_refreshes_base_and_preserves_build_cache() -> None:
     assert "scope=moviepilot-v3-standard-docker," in publish["cache-to"]
 
 
+def test_release_gate_only_publishes_changed_versions(tmp_path: Path) -> None:
+    """
+    自动发布只接受版本值变化，手动重建保留入口。
+    """
+    workflow = _load_workflow()
+    gate = workflow["jobs"]["release-gate"]
+    build = workflow["jobs"]["Docker-build"]
+    assert build["needs"] == "release-gate"
+    assert build["if"] == "needs.release-gate.outputs.publish == 'true'"
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    version_file = repo / "version.py"
+    version_file.write_text(
+        "APP_VERSION = 'v3.1.6'\nFRONTEND_VERSION = 'v3.1.6'\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "-C", str(repo), "add", "version.py"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "-c", "user.name=Test", "-c", "user.email=test@example.com",
+         "commit", "-qm", "base"],
+        check=True,
+    )
+    before_sha = subprocess.check_output(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True
+    ).strip()
+    command = next(step for step in gate["steps"] if step.get("id") == "detect")["run"]
+    output_file = tmp_path / "output"
+
+    def detect(event_name: str, content: str) -> str:
+        version_file.write_text(content, encoding="utf-8")
+        output_file.write_text("", encoding="utf-8")
+        subprocess.run(
+            ["bash", "-e", "-c", command], cwd=repo, check=True,
+            env={**os.environ, "EVENT_NAME": event_name, "BEFORE_SHA": before_sha,
+                 "GITHUB_OUTPUT": str(output_file)},
+        )
+        return output_file.read_text(encoding="utf-8").strip()
+
+    assert detect("push", "\"\"\"说明文字\"\"\"\nAPP_VERSION = 'v3.1.6'\nFRONTEND_VERSION = 'v3.1.6'\n") == "publish=false"
+    assert detect("push", "APP_VERSION = 'v3.1.7'\nFRONTEND_VERSION = 'v3.1.6'\n") == "publish=true"
+    assert detect("push", "APP_VERSION = 'v3.1.6'\nFRONTEND_VERSION = 'v3.1.7'\n") == "publish=true"
+    assert detect("workflow_dispatch", "APP_VERSION = 'v3.1.6'\nFRONTEND_VERSION = 'v3.1.6'\n") == "publish=true"
+
+
 def test_release_publishes_free_threaded_image_with_separate_metadata_and_cache() -> None:
     """
     free-threaded 发布必须使用 v3t 命名、参数和独立缓存。
