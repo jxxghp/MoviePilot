@@ -6,6 +6,7 @@ from urllib.parse import parse_qs
 
 import pytest
 
+from app.modules.themoviedb.tmdbv3api.objs.discover import Discover
 from app.modules.themoviedb.tmdbv3api.objs.search import Search
 
 
@@ -29,3 +30,31 @@ def test_adult_option_preserves_query_and_page(monkeypatch, method, asynchronous
         expected["include_adult"] = ["true" if adult else "false"]
     assert parameters == expected
     assert request.call_args.kwargs["key"] == "results"
+
+
+@pytest.mark.parametrize(
+    ("method", "asynchronous", "path"),
+    [
+        ("discover_movies", False, "/discover/movie"),
+        ("discover_tv_shows", False, "/discover/tv"),
+        ("async_discover_movies", True, "/discover/movie"),
+        ("async_discover_tv_shows", True, "/discover/tv"),
+    ],
+)
+def test_discover_methods_preserve_typed_query_contract(monkeypatch, method, asynchronous, path):
+    """TMDb v3 的四个 discover 入口应将 tuple 查询交给对应请求端口。"""
+    request = (AsyncMock if asynchronous else Mock)(return_value={"id": 42})
+    client = object.__new__(Discover)
+    monkeypatch.setattr(client, "_async_request_obj" if asynchronous else "_request_obj", request)
+
+    operation = getattr(client, method)
+    params = (("page", 2), ("with_genres", "35"), ("test_method", method))
+    result = asyncio.run(operation(params_tuple=params)) if asynchronous else operation(params)
+
+    assert result == {"id": 42}
+    request.assert_called_once()
+    assert request.call_args.args[0] == path
+    assert request.call_args.kwargs["key"] == "results"
+    assert "page=2" in request.call_args.args[1]
+    assert "with_genres=35" in request.call_args.args[1]
+    assert f"test_method={method}" in request.call_args.args[1]
