@@ -10,6 +10,7 @@
 | `app/api/endpoints/douban.py` | `attr-defined` 1 | 豆瓣响应模型改从同一定义模块导入，保留原模型对象。 |
 | `app/api/endpoints/recommend.py` | `attr-defined` 2、`no-redef` 1 | 响应模型直接从定义模块导入；推荐来源事件结果按登记的载荷模型校验。 |
 | `app/chain/subscribe/notify.py` | `union-attr` 6 | 通知构造和失败反馈使用已识别媒体的既有阶段不变量；识别失败在调用前返回。 |
+| `app/sdk/string.py` | `attr-defined` 1、`no-untyped-def` 2、`type-arg` 1 | 兼容转发器保留动态旧关键字与反射签名，并明确实现结果类型。 |
 
 ## 需单独设计或外部条件
 
