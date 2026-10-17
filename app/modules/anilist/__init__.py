@@ -1,3 +1,7 @@
+"""
+AniList 动画识别、榜单浏览、人物关系与媒体刮削模块。
+"""
+
 from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple, Union
 
@@ -23,14 +27,25 @@ from app.schemas.types import (
 
 @dataclass(frozen=True, slots=True)
 class _AniListRecognitionPlan:
-    """描述一次 AniList 识别应走显式详情还是标题搜索。"""
+    """
+    一次 AniList 识别使用的明确身份或标题线索。
+
+    :param media_id: 已校验的正整数标识，None 表示标题搜索
+    :param meta: 标题、类型、年份和季号线索，仅按身份查询时可为 None
+    :param label: 用于日志展示的标识或搜索名称
+    """
 
     media_id: Optional[int]
     meta: Optional[MetaBase]
     label: str
 
     def require_meta(self) -> MetaBase:
-        """返回标题搜索计划必有的解析元数据。"""
+        """
+        读取标题搜索必须具备的媒体线索。
+
+        :return: 计划保存的媒体线索
+        :raises RuntimeError: 计划不包含 meta，调用方错误进入标题搜索分支
+        """
         if self.meta is None:
             raise RuntimeError("AniList 标题识别计划缺少解析元数据")
         return self.meta
@@ -38,7 +53,12 @@ class _AniListRecognitionPlan:
 
 @dataclass(frozen=True, slots=True)
 class _AniListSearchPlan:
-    """保存 AniList 搜索来源准入结果和有效查询元数据。"""
+    """
+    来源选择与有效搜索线索的检查结果。
+
+    :param enabled: 本次来源选择是否启用 AniList
+    :param meta: 有效的标题线索；未启用或标题缺失时为 None
+    """
 
     enabled: bool
     meta: Optional[MetaBase]
@@ -46,7 +66,7 @@ class _AniListSearchPlan:
 
 class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     """
-    AniList 动画媒体识别与刮削模块
+    AniList 动画媒体识别与刮削模块。
     """
 
     auxiliary_media_source = MediaSource.AniList
@@ -56,41 +76,57 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     scraper: MediaScraperHelper = None
 
     def init_module(self) -> None:
-        """初始化 AniList 客户端与通用刮削器"""
+        """
+        初始化 AniList 客户端与通用刮削器。
+        """
         self.anilist_api = AniListApi()
         self.scraper = MediaScraperHelper()
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        """AniList 模块无需独立开关"""
+        """
+        AniList 模块无需独立开关。
+        """
         return None
 
     def stop(self) -> None:
-        """关闭 AniList 模块"""
+        """
+        结束模块生命周期，当前实现没有额外关闭动作。
+        """
         return None
 
     def test(self) -> Tuple[bool, str]:
-        """测试 AniList GraphQL API 连通性"""
+        """
+        测试 AniList GraphQL API 连通性。
+        """
         result = self.anilist_api.search("Cowboy Bebop", count=1)
         return (True, "") if result else (False, "AniList网络连接失败")
 
     @staticmethod
     def get_name() -> str:
-        """获取模块名称"""
+        """
+        获取模块名称。
+        """
         return "AniList"
 
     @staticmethod
     def get_type() -> ModuleType:
-        """获取模块类型"""
+        """
+        获取模块类型。
+        """
         return ModuleType.MediaRecognize
 
     @staticmethod
     def get_subtype() -> MediaRecognizeType:
-        """获取模块子类型"""
+        """
+        获取模块子类型。
+        """
         return MediaRecognizeType.AniList
 
     @staticmethod
     def get_priority() -> int:
-        """获取模块优先级"""
+        """
+        获取模块优先级。
+        """
         return 4
 
     @staticmethod
@@ -111,7 +147,9 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         media_id: Optional[str],
         requested_type: Optional[MediaType],
     ) -> Optional[_AniListRecognitionPlan]:
-        """统一校验来源、媒体类型和显式 AniList ID。"""
+        """
+        统一校验来源、媒体类型和显式 AniList ID。
+        """
         if requested_type == MediaType.MUSIC or getattr(meta, "type", None) == MediaType.MUSIC:
             return None
         if media_source and media_source != MediaSource.AniList:
@@ -134,7 +172,9 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         meta: Optional[MetaBase],
         media_source: Optional[MediaSourceSelection],
     ) -> _AniListSearchPlan:
-        """统一决定 AniList 搜索是否响应以及是否具备查询标题。"""
+        """
+        统一决定 AniList 搜索是否响应以及是否具备查询标题。
+        """
         enabled = is_media_source_enabled(media_source, MediaSource.AniList)
         return _AniListSearchPlan(
             enabled=enabled,
@@ -169,14 +209,18 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     def _select_matching_info(
         cls, meta: MetaBase, infos: list[dict[str, Any]]
     ) -> Optional[dict[str, Any]]:
-        """从已获取的候选列表中选择首个类型与年份均匹配的条目。"""
+        """
+        从已获取的候选列表中选择首个类型与年份均匹配的条目。
+        """
         return next((info for info in infos if cls._matches_meta(meta, info)), None)
 
     @classmethod
     def _build_recognized_media(
         cls, info: dict[str, Any], meta: Optional[MetaBase]
     ) -> MediaInfo:
-        """把识别详情投影为统一媒体信息并保留解析季号。"""
+        """
+        把识别详情投影为统一媒体信息并保留解析季号。
+        """
         mediainfo = MediaInfo(anilist_info=cls._enrich_people(info))
         if meta and meta.begin_season is not None:
             mediainfo.season = meta.begin_season
@@ -186,7 +230,9 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
     def _project_search_results(
         cls, meta: MetaBase, infos: list[dict[str, Any]]
     ) -> list[MediaInfo]:
-        """过滤 AniList 搜索候选并投影为统一媒体信息列表。"""
+        """
+        过滤 AniList 搜索候选并投影为统一媒体信息列表。
+        """
         return [
             MediaInfo(anilist_info=cls._enrich_people(info))
             for info in infos
@@ -195,7 +241,9 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
 
     @staticmethod
     def _project_media_list(infos: list[dict[str, Any]]) -> list[MediaInfo]:
-        """把 AniList 媒体列表投影为统一媒体信息列表。"""
+        """
+        把 AniList 媒体列表投影为统一媒体信息列表。
+        """
         return [MediaInfo(anilist_info=info) for info in infos]
 
     @staticmethod
@@ -326,12 +374,13 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         **kwargs,
     ) -> Optional[MediaInfo]:
         """
-        按 AniList ID 或标题识别动画媒体信息。
+        按 AniList 标识或标题线索识别动画。
 
-        :param meta: 标题解析元数据
-        :param media_source: 请求级识别数据源
-        :param media_id: 数据源原生ID
-        :return: 统一媒体信息
+        :param meta: 标题、类型、年份和可选季号线索
+        :param media_source: 明确来源；省略时标题识别使用全局来源配置
+        :param media_id: AniList 正整数标识，仅在明确选择 AniList 时接受
+        :param kwargs: mtype 指定请求媒体类型，音乐请求不处理；其他参数不使用
+        :return: 统一媒体模型；请求不适用、无匹配或查询失败时为 None
         """
         plan = self._recognition_plan(
             meta, media_source, media_id, kwargs.get("mtype")
@@ -360,12 +409,13 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         **kwargs,
     ) -> Optional[MediaInfo]:
         """
-        异步按 AniList ID 或标题识别动画媒体信息。
+        异步按 AniList 标识或标题线索识别动画。
 
-        :param meta: 标题解析元数据
-        :param media_source: 请求级识别数据源
-        :param media_id: 数据源原生ID
-        :return: 统一媒体信息
+        :param meta: 标题、类型、年份和可选季号线索
+        :param media_source: 明确来源；省略时标题识别使用全局来源配置
+        :param media_id: AniList 正整数标识，仅在明确选择 AniList 时接受
+        :param kwargs: mtype 指定请求媒体类型，音乐请求不处理；其他参数不使用
+        :return: 统一媒体模型；请求不适用、无匹配或查询失败时为 None
         """
         plan = self._recognition_plan(
             meta, media_source, media_id, kwargs.get("mtype")
@@ -409,11 +459,11 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         self, meta: MetaBase, media_source: Optional[MediaSourceSelection] = None
     ) -> Optional[List[MediaInfo]]:
         """
-        搜索 AniList 动画媒体信息。
+        查询并筛选 AniList 动画候选。
 
-        :param meta: 标题解析元数据
-        :param media_source: 请求级搜索数据源
-        :return: 统一媒体信息列表
+        :param meta: 包含标题的媒体线索
+        :param media_source: 本次搜索启用的来源选择条件
+        :return: 统一媒体列表；来源未启用时为 None，标题缺失或无匹配时为空列表
         """
         plan = self._search_plan(meta, media_source)
         if not plan.enabled:
@@ -428,11 +478,11 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         self, meta: MetaBase, media_source: Optional[MediaSourceSelection] = None
     ) -> Optional[List[MediaInfo]]:
         """
-        异步搜索 AniList 动画媒体信息。
+        异步查询并筛选 AniList 动画候选。
 
-        :param meta: 标题解析元数据
-        :param media_source: 请求级搜索数据源
-        :return: 统一媒体信息列表
+        :param meta: 包含标题的媒体线索
+        :param media_source: 本次搜索启用的来源选择条件
+        :return: 统一媒体列表；来源未启用时为 None，标题缺失或无匹配时为空列表
         """
         plan = self._search_plan(meta, media_source)
         if not plan.enabled:
@@ -444,27 +494,29 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
 
     def anilist_info(self, anilist_id: int) -> Optional[dict]:
         """
-        获取 AniList 动画详情。
+        读取原始 AniList 动画详情。
 
-        :param anilist_id: AniList 媒体 ID
-        :return: AniList 媒体详情
+        :param anilist_id: AniList 动画条目标识
+        :return: 原始详情映射；标识为空或请求失败时为 None
         """
         return self.anilist_api.detail(anilist_id) if anilist_id else None
 
     async def async_anilist_info(self, anilist_id: int) -> Optional[dict]:
         """
-        异步获取 AniList 动画详情。
+        异步读取原始 AniList 动画详情。
 
-        :param anilist_id: AniList 媒体 ID
-        :return: AniList 媒体详情
+        :param anilist_id: AniList 动画条目标识
+        :return: 原始详情映射；标识为空或请求失败时为 None
         """
         return await self.anilist_api.async_detail(anilist_id) if anilist_id else None
 
     def anilist_trending(self, page: int = 1, count: int = 20) -> List[MediaInfo]:
         """
-        获取 AniList 当前趋势榜。
+        查询当前动画趋势榜。
 
-        :return: 统一媒体信息列表
+        :param page: 从 1 开始的页码，原样传入服务端
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :return: 统一媒体列表；请求失败时为空列表
         """
         return self._project_media_list(
             self.anilist_api.trending(page=page, count=count)
@@ -472,18 +524,22 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
 
     async def async_anilist_trending(self, page: int = 1, count: int = 20) -> List[MediaInfo]:
         """
-        异步获取 AniList 当前趋势榜。
+        异步查询当前动画趋势榜。
 
-        :return: 统一媒体信息列表
+        :param page: 从 1 开始的页码，原样传入服务端
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :return: 统一媒体列表；请求失败时为空列表
         """
         infos = await self.anilist_api.async_trending(page=page, count=count)
         return self._project_media_list(infos)
 
     def anilist_popular_this_season(self, page: int = 1, count: int = 20) -> List[MediaInfo]:
         """
-        获取 AniList 本季热门榜。
+        查询本地当前季度的动画人气榜。
 
-        :return: 统一媒体信息列表
+        :param page: 从 1 开始的页码，原样传入服务端
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :return: 统一媒体列表；请求失败时为空列表
         """
         return self._project_media_list(
             self.anilist_api.popular_this_season(page=page, count=count)
@@ -493,26 +549,30 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         self, page: int = 1, count: int = 20
     ) -> List[MediaInfo]:
         """
-        异步获取 AniList 本季热门榜。
+        异步查询本地当前季度的动画人气榜。
 
-        :return: 统一媒体信息列表
+        :param page: 从 1 开始的页码，原样传入服务端
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :return: 统一媒体列表；请求失败时为空列表
         """
         infos = await self.anilist_api.async_popular_this_season(page=page, count=count)
         return self._project_media_list(infos)
 
     def anilist_discover(self, **kwargs) -> List[MediaInfo]:
         """
-        按组合条件探索 AniList 动画。
+        按组合条件探索动画。
 
-        :return: 统一媒体信息列表
+        :param kwargs: 传入客户端的分页与筛选条件，如 page、count、genre、season_year
+        :return: 统一媒体列表；无结果或请求失败时为空列表
         """
         return self._project_media_list(self.anilist_api.discover(**kwargs))
 
     async def async_anilist_discover(self, **kwargs) -> List[MediaInfo]:
         """
-        异步按组合条件探索 AniList 动画。
+        异步按组合条件探索动画。
 
-        :return: 统一媒体信息列表
+        :param kwargs: 传入客户端的分页与筛选条件，如 page、count、genre、season_year
+        :return: 统一媒体列表；无结果或请求失败时为空列表
         """
         infos = await self.anilist_api.async_discover(**kwargs)
         return self._project_media_list(infos)
@@ -521,9 +581,12 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         self, anilist_id: int, page: int = 1, count: int = 20
     ) -> List[_SchemaMediaPerson]:
         """
-        获取 AniList 动画配音演员。
+        查询动画的日语配音演员。
 
-        :return: 媒体人物列表
+        :param anilist_id: AniList 动画条目标识
+        :param page: 从 1 开始的页码，原样传入服务端
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :return: 统一人物列表，跳过无法转换的角色关系；无结果时为空列表
         """
         persons = (
             self._build_credit_person(edge)
@@ -535,9 +598,12 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         self, anilist_id: int, page: int = 1, count: int = 20
     ) -> List[_SchemaMediaPerson]:
         """
-        异步获取 AniList 动画配音演员。
+        异步查询动画的日语配音演员。
 
-        :return: 媒体人物列表
+        :param anilist_id: AniList 动画条目标识
+        :param page: 从 1 开始的页码，原样传入服务端
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :return: 统一人物列表，跳过无法转换的角色关系；无结果时为空列表
         """
         edges = await self.anilist_api.async_credits(anilist_id, page=page, count=count)
         persons = (self._build_credit_person(edge) for edge in edges)
@@ -547,9 +613,12 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         self, anilist_id: int, page: int = 1, count: int = 20
     ) -> List[MediaInfo]:
         """
-        获取 AniList 动画相关推荐。
+        读取动画相关推荐。
 
-        :return: 统一媒体信息列表
+        :param anilist_id: AniList 动画条目标识
+        :param page: 从 1 开始的页码，原样传入服务端
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :return: 按推荐顺序排列的统一媒体列表；无结果时为空列表
         """
         infos = self.anilist_api.recommendations(anilist_id, page=page, count=count)
         return self._project_media_list(infos)
@@ -558,9 +627,12 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         self, anilist_id: int, page: int = 1, count: int = 20
     ) -> List[MediaInfo]:
         """
-        异步获取 AniList 动画相关推荐。
+        异步读取动画相关推荐。
 
-        :return: 统一媒体信息列表
+        :param anilist_id: AniList 动画条目标识
+        :param page: 从 1 开始的页码，原样传入服务端
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :return: 按推荐顺序排列的统一媒体列表；无结果时为空列表
         """
         infos = await self.anilist_api.async_recommendations(
             anilist_id, page=page, count=count
@@ -569,10 +641,10 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
 
     def anilist_person_detail(self, person_id: int) -> Optional[_SchemaMediaPerson]:
         """
-        获取 AniList 人物详情。
+        查询 AniList 人物详情。
 
-        :param person_id: AniList 人物 ID
-        :return: 媒体人物信息
+        :param person_id: AniList 人物标识
+        :return: 统一人物模型；无结果或查询失败时为 None
         """
         info = self.anilist_api.person_detail(person_id)
         return self._build_person_detail(info) if info else None
@@ -581,10 +653,10 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         self, person_id: int
     ) -> Optional[_SchemaMediaPerson]:
         """
-        异步获取 AniList 人物详情。
+        异步查询 AniList 人物详情。
 
-        :param person_id: AniList 人物 ID
-        :return: 媒体人物信息
+        :param person_id: AniList 人物标识
+        :return: 统一人物模型；无结果或查询失败时为 None
         """
         info = await self.anilist_api.async_person_detail(person_id)
         return self._build_person_detail(info) if info else None
@@ -593,9 +665,12 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         self, person_id: int, page: int = 1, count: int = 20
     ) -> List[MediaInfo]:
         """
-        获取 AniList 人物参与的动画作品。
+        查询 AniList 人物的配音作品。
 
-        :return: 统一媒体信息列表
+        :param person_id: AniList 人物标识
+        :param page: 从 1 开始的页码，原样传入服务端
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :return: 统一媒体列表；无结果或查询失败时为空列表
         """
         infos = self.anilist_api.person_credits(person_id, page=page, count=count)
         return self._project_media_list(infos)
@@ -604,9 +679,12 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         self, person_id: int, page: int = 1, count: int = 20
     ) -> List[MediaInfo]:
         """
-        异步获取 AniList 人物参与的动画作品。
+        异步查询 AniList 人物的配音作品。
 
-        :return: 统一媒体信息列表
+        :param person_id: AniList 人物标识
+        :param page: 从 1 开始的页码，原样传入服务端
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :return: 统一媒体列表；无结果或查询失败时为空列表
         """
         infos = await self.anilist_api.async_person_credits(
             person_id, page=page, count=count
@@ -621,12 +699,13 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         **kwargs,
     ) -> Optional[bytes]:
         """
-        生成 AniList 来源的 NFO 内容。
+        为选择 AniList 刮削来源的媒体生成 NFO。
 
-        :param mediainfo: 统一媒体信息
-        :param season: 季号
-        :param episode: 集号
-        :return: UTF-8 编码的 NFO XML 字节
+        :param mediainfo: 统一媒体信息，scrape_source 优先于全局配置
+        :param season: 可选季号，省略时生成媒体级内容
+        :param episode: 可选集号，与季号共同决定内容范围
+        :param kwargs: 统一刮削接口的额外参数，当前不读取
+        :return: UTF-8 XML 字节；刮削来源不符或无法生成时为 None
         """
         scrape_source = mediainfo.scrape_source or get_runtime_setting('SCRAP_SOURCE')
         if scrape_source != "anilist":
@@ -640,12 +719,12 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         episode: Optional[int] = None,
     ) -> Optional[dict]:
         """
-        获取 AniList 来源的刮削图片清单。
+        为选择 AniList 刮削来源的媒体生成图片下载清单。
 
-        :param mediainfo: 统一媒体信息
-        :param season: 季号
-        :param episode: 集号
-        :return: 图片文件名与下载地址映射
+        :param mediainfo: 统一媒体信息，scrape_source 优先于全局配置
+        :param season: 可选季号
+        :param episode: 可选集号
+        :return: 图片文件名到地址的映射；刮削来源不符时为 None
         """
         scrape_source = mediainfo.scrape_source or get_runtime_setting('SCRAP_SOURCE')
         if scrape_source != "anilist":
@@ -653,5 +732,7 @@ class AniListModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         return self.scraper.get_metadata_img(mediainfo, season=season, episode=episode)
 
     def clear_cache(self) -> None:
-        """清理 AniList 接口缓存"""
+        """
+        清理 AniList 接口缓存。
+        """
         self.anilist_api.clear_cache()

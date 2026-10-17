@@ -1,3 +1,7 @@
+"""
+AniList GraphQL 客户端，统一查询计划、中文标题补充及同步异步缓存。
+"""
+
 from dataclasses import dataclass
 from datetime import date
 from typing import Any, Callable, Optional, Protocol, TypeVar, cast
@@ -12,31 +16,53 @@ _RequestFunction = TypeVar("_RequestFunction", bound=Callable[..., object])
 
 
 class _GraphQLResponse(Protocol):
-    """客户端响应在 GraphQL 解码阶段使用的最小接口。"""
+    """
+    客户端响应在 GraphQL 解码阶段使用的最小接口。
+    """
 
     @property
     def status_code(self) -> int:
-        """读取 HTTP 状态码。"""
+        """
+        读取已经取得的 HTTP 响应状态码。
+
+        :return: 原始 HTTP 状态码，调用方仅接受 200
+        """
         ...
 
     def json(self) -> object:
-        """返回尚未验证结构的 JSON 内容。"""
+        """
+        解码响应正文，不负责校验 GraphQL 业务结构。
+
+        解码失败可抛出解析异常，由 GraphQL 提取层统一记录并返回空结果。
+
+        :return: JSON 解码后的原始值，调用方继续检查映射和 data 字段
+        """
         ...
 
 
 class _ClearableRequest(Protocol):
-    """缓存装饰器附加的同步清理入口。"""
+    """
+    缓存装饰器附加的同步清理入口。
+    """
 
     def cache_clear(self) -> None:
-        """清空当前请求的缓存。"""
+        """
+        同步清空此查询使用的缓存命名空间。
+
+        同步与异步查询共享缓存身份时，两者后续调用均需重新获取结果。
+        """
         ...
 
 
 def _cached_request(shared_key: str) -> Callable[[_RequestFunction], _RequestFunction]:
-    """保留查询签名，并沿用同一同步异步缓存命名空间和过期策略。"""
+    """
+    保留查询签名，并沿用同一同步异步缓存命名空间和过期策略。
+    """
 
     def decorate(function: _RequestFunction) -> _RequestFunction:
-        """缓存查询结果而不转换返回载荷。"""
+        """
+        缓存查询结果而不转换返回载荷。
+        """
         return cast(_RequestFunction, cached(
             maxsize=get_runtime_setting('CONF').anilist,
             ttl=get_runtime_setting('CONF').meta,
@@ -49,7 +75,12 @@ def _cached_request(shared_key: str) -> Callable[[_RequestFunction], _RequestFun
 
 @dataclass(frozen=True, slots=True)
 class _AniListRequestPlan:
-    """冻结 GraphQL 查询与变量，供同步和异步传输外壳共用。"""
+    """
+    同步与异步传输共用的 GraphQL 查询计划。
+
+    :param query: 包含所需字段和变量声明的 GraphQL 查询文本
+    :param variables: 变量名到业务值的独立映射，不修改调用方传入的映射
+    """
 
     query: str
     variables: dict[str, Any]
@@ -57,7 +88,9 @@ class _AniListRequestPlan:
 
 class AniListApi:
     """
-    AniList 中文 GraphQL API 客户端
+    通过中文代理或官方 GraphQL 接口查询 AniList，并补充中文标题。
+
+    代理失败后该实例改用官方接口；中文数据集在实例内缓存。
     """
 
     _base_url = "https://trace.moe/anilist/"
@@ -196,7 +229,9 @@ class AniListApi:
     """
 
     def __init__(self) -> None:
-        """初始化同步与异步请求客户端"""
+        """
+        初始化同步与异步请求客户端。
+        """
         headers = {
             "User-Agent": get_runtime_setting('NORMAL_USER_AGENT'),
             "Accept": "application/json",
@@ -240,7 +275,9 @@ class AniListApi:
     def _request_plan(
             query: str, variables: dict[str, Any]
     ) -> _AniListRequestPlan:
-        """构造同步与异步 GraphQL 传输共同使用的请求计划。"""
+        """
+        构造同步与异步 GraphQL 传输共同使用的请求计划。
+        """
         return _AniListRequestPlan(query=query, variables=dict(variables))
 
     @classmethod
@@ -249,16 +286,20 @@ class AniListApi:
             result: Optional[dict[str, Any]],
             translations: dict[object, dict[str, Any]],
     ) -> Optional[dict[str, Any]]:
-        """把成功响应与中文数据集按同一规则合并。"""
+        """
+        把成功响应与中文数据集按同一规则合并。
+        """
         return cls._inject_chinese(result, translations) if result else result
 
     def _invoke(self, query: str, variables: dict[str, Any]) -> Optional[dict[str, Any]]:
         """
-        执行同步 GraphQL 请求。
+        请求 GraphQL 并合并中文标题数据。
 
-        :param query: GraphQL 查询
-        :param variables: 查询变量
-        :return: GraphQL data 字段
+        优先使用中文代理；失败后在当前实例内禁用该代理并回退官方接口。
+
+        :param query: GraphQL 查询文本
+        :param variables: 本次查询的变量映射
+        :return: 经中文字段补充的 data 映射；请求或 GraphQL 业务失败时为 None
         """
         plan = self._request_plan(query, variables)
         payload = {"query": plan.query, "variables": plan.variables}
@@ -274,11 +315,13 @@ class AniListApi:
 
     async def _async_invoke(self, query: str, variables: dict[str, Any]) -> Optional[dict[str, Any]]:
         """
-        执行异步 GraphQL 请求。
+        异步请求 GraphQL 并合并中文标题数据。
 
-        :param query: GraphQL 查询
-        :param variables: 查询变量
-        :return: GraphQL data 字段
+        优先使用中文代理；失败后在当前实例内禁用该代理并回退官方接口。
+
+        :param query: GraphQL 查询文本
+        :param variables: 本次查询的变量映射
+        :return: 经中文字段补充的 data 映射；请求或 GraphQL 业务失败时为 None
         """
         plan = self._request_plan(query, variables)
         payload = {"query": plan.query, "variables": plan.variables}
@@ -354,11 +397,11 @@ class AniListApi:
     @classmethod
     def _inject_chinese(cls, value: _Result, translations: dict[object, dict[str, Any]]) -> _Result:
         """
-        递归合并 anilist-chinese 标题，覆盖代理不会处理的嵌套媒体。
+        递归把中文标题与别名合并到媒体响应中。
 
-        :param value: AniList GraphQL data 字段或其子节点
-        :param translations: 中文标题数据索引
-        :return: 合并中文标题后的原数据结构
+        :param value: 待处理的嵌套响应，列表和映射会原地修改
+        :param translations: 以 AniList 标识索引的中文标题数据
+        :return: 传入的对象本身，非容器值保持不变
         """
         if isinstance(value, list):
             for item in value:
@@ -438,7 +481,9 @@ class AniListApi:
     def _media_id_plan(
             media_ids: list[int]
     ) -> tuple[list[int], dict[str, Any]]:
-        """去重批量媒体 ID，并构造根级 Page 查询变量。"""
+        """
+        去重批量媒体 ID，并构造根级 Page 查询变量。
+        """
         unique_ids = list(dict.fromkeys(media_id for media_id in media_ids if media_id))
         return unique_ids, {"ids": unique_ids, "count": len(unique_ids)}
 
@@ -446,14 +491,18 @@ class AniListApi:
     def _field(
             result: Optional[dict[str, Any]], name: str
     ) -> Optional[dict[str, Any]]:
-        """从 GraphQL data 中提取一个根字段。"""
+        """
+        从 GraphQL data 中提取一个根字段。
+        """
         return result.get(name) if result else None
 
     @staticmethod
     def _credits_edges(
             result: Optional[dict[str, Any]]
     ) -> list[dict[str, Any]]:
-        """从动画人物响应中提取配音关系边。"""
+        """
+        从动画人物响应中提取配音关系边。
+        """
         if not result:
             return []
         return result.get("Media", {}).get("characters", {}).get("edges") or []
@@ -462,7 +511,9 @@ class AniListApi:
     def _recommendation_ids(
             result: Optional[dict[str, Any]]
     ) -> list[int]:
-        """按推荐关系顺序提取有效 AniList 媒体 ID。"""
+        """
+        按推荐关系顺序提取有效 AniList 媒体 ID。
+        """
         if not result:
             return []
         nodes = result.get("Media", {}).get("recommendations", {}).get("nodes") or []
@@ -480,7 +531,9 @@ class AniListApi:
     def _person_media_ids(
             result: Optional[dict[str, Any]]
     ) -> list[int]:
-        """按人物作品关系顺序提取有效 AniList 媒体 ID。"""
+        """
+        按人物作品关系顺序提取有效 AniList 媒体 ID。
+        """
         if not result:
             return []
         nodes = result.get("Staff", {}).get("characterMedia", {}).get("nodes") or []
@@ -493,12 +546,16 @@ class AniListApi:
 
     @staticmethod
     def _trend_filters(page: int, count: int) -> dict[str, Any]:
-        """构造当前趋势榜共同使用的探索参数。"""
+        """
+        构造当前趋势榜共同使用的探索参数。
+        """
         return {"page": page, "count": count, "sort": "TRENDING_DESC"}
 
     @classmethod
     def _season_filters(cls, page: int, count: int) -> dict[str, Any]:
-        """构造当前季度热门榜共同使用的探索参数。"""
+        """
+        构造当前季度热门榜共同使用的探索参数。
+        """
         season, season_year = cls._current_season()
         return {
             "page": page,
@@ -555,10 +612,10 @@ class AniListApi:
     @_cached_request("detail")
     def detail(self, anilist_id: int) -> Optional[dict[str, Any]]:
         """
-        根据 AniList ID 获取动画详情。
+        读取 AniList 动画详情并补充中文字段。
 
-        :param anilist_id: AniList 媒体 ID
-        :return: AniList 媒体详情
+        :param anilist_id: AniList 动画条目标识
+        :return: 原始媒体映射；请求失败或详情缺失时为 None
         """
         query = f"query ($id: Int!) {{ Media(id: $id, type: ANIME) {{ {self._media_fields} }} }}"
         return self._field(self._invoke(query, {"id": anilist_id}), "Media")
@@ -566,10 +623,10 @@ class AniListApi:
     @_cached_request("detail")
     async def async_detail(self, anilist_id: int) -> Optional[dict[str, Any]]:
         """
-        异步根据 AniList ID 获取动画详情。
+        异步读取 AniList 动画详情并补充中文字段。
 
-        :param anilist_id: AniList 媒体 ID
-        :return: AniList 媒体详情
+        :param anilist_id: AniList 动画条目标识
+        :return: 原始媒体映射；请求失败或详情缺失时为 None
         """
         query = f"query ($id: Int!) {{ Media(id: $id, type: ANIME) {{ {self._media_fields} }} }}"
         result = await self._async_invoke(query, {"id": anilist_id})
@@ -578,11 +635,11 @@ class AniListApi:
     @_cached_request("search")
     def search(self, name: str, count: int = 20) -> list[dict[str, Any]]:
         """
-        按标题搜索 AniList 动画。
+        按标题查询动画候选。
 
-        :param name: 动画标题
-        :param count: 返回条数
-        :return: AniList 媒体列表
+        :param name: 用于全文匹配的动画标题
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :return: 原始媒体列表；无匹配或请求失败时为空列表
         """
         result = self._invoke(
             self._search_query, {"search": name, "count": count}
@@ -592,11 +649,11 @@ class AniListApi:
     @_cached_request("search")
     async def async_search(self, name: str, count: int = 20) -> list[dict[str, Any]]:
         """
-        异步按标题搜索 AniList 动画。
+        异步按标题查询动画候选。
 
-        :param name: 动画标题
-        :param count: 返回条数
-        :return: AniList 媒体列表
+        :param name: 用于全文匹配的动画标题
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :return: 原始媒体列表；无匹配或请求失败时为空列表
         """
         result = await self._async_invoke(
             self._search_query, {"search": name, "count": count}
@@ -618,9 +675,19 @@ class AniListApi:
         sort: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         """
-        按组合条件探索 AniList 动画。
+        按组合条件探索非成人动画。
 
-        :return: AniList 媒体列表
+        :param page: 从 1 开始的页码，原样传入服务端
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :param search: 可选标题关键词
+        :param genre: 可选题材名称，按 AniList 取值传入
+        :param media_format: 可选发布格式，如 TV 或 MOVIE
+        :param season: 可选季度枚举，如 WINTER 或 FALL
+        :param season_year: 可选季度所属年份
+        :param status: 可选播出状态
+        :param country: 可选来源国家或地区代码
+        :param sort: 可选排序枚举，空值使用 POPULARITY_DESC
+        :return: 原始媒体列表；无匹配或请求失败时为空列表
         """
         variables = self._page_variables(
             page=page,
@@ -651,9 +718,19 @@ class AniListApi:
         sort: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         """
-        异步按组合条件探索 AniList 动画。
+        异步按组合条件探索非成人动画。
 
-        :return: AniList 媒体列表
+        :param page: 从 1 开始的页码，原样传入服务端
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :param search: 可选标题关键词
+        :param genre: 可选题材名称，按 AniList 取值传入
+        :param media_format: 可选发布格式，如 TV 或 MOVIE
+        :param season: 可选季度枚举，如 WINTER 或 FALL
+        :param season_year: 可选季度所属年份
+        :param status: 可选播出状态
+        :param country: 可选来源国家或地区代码
+        :param sort: 可选排序枚举，空值使用 POPULARITY_DESC
+        :return: 原始媒体列表；无匹配或请求失败时为空列表
         """
         variables = self._page_variables(
             page=page,
@@ -672,50 +749,53 @@ class AniListApi:
 
     def trending(self, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
         """
-        获取 AniList 当前趋势榜。
+        按趋势热度降序读取动画榜单。
 
-        :param page: 页码
-        :param count: 每页条数
-        :return: AniList 媒体列表
+        :param page: 从 1 开始的页码，原样传入服务端
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :return: 原始媒体列表；请求失败时为空列表
         """
         return self.discover(**self._trend_filters(page, count))
 
     async def async_trending(self, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
         """
-        异步获取 AniList 当前趋势榜。
+        异步按趋势热度降序读取动画榜单。
 
-        :param page: 页码
-        :param count: 每页条数
-        :return: AniList 媒体列表
+        :param page: 从 1 开始的页码，原样传入服务端
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :return: 原始媒体列表；请求失败时为空列表
         """
         return await self.async_discover(**self._trend_filters(page, count))
 
     def popular_this_season(self, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
         """
-        获取 AniList 本季热门榜。
+        按本地当前日期确定季度，查询该季度人气榜。
 
-        :param page: 页码
-        :param count: 每页条数
-        :return: AniList 媒体列表
+        :param page: 从 1 开始的页码，原样传入服务端
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :return: 原始媒体列表；请求失败时为空列表
         """
         return self.discover(**self._season_filters(page, count))
 
     async def async_popular_this_season(self, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
         """
-        异步获取 AniList 本季热门榜。
+        异步按本地当前日期确定季度，查询该季度人气榜。
 
-        :param page: 页码
-        :param count: 每页条数
-        :return: AniList 媒体列表
+        :param page: 从 1 开始的页码，原样传入服务端
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :return: 原始媒体列表；请求失败时为空列表
         """
         return await self.async_discover(**self._season_filters(page, count))
 
     @_cached_request("credits")
     def credits(self, anilist_id: int, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
         """
-        获取 AniList 动画的日语配音演员。
+        分页读取动画角色及其日语配音演员。
 
-        :return: AniList 人物边列表
+        :param anilist_id: AniList 动画条目标识
+        :param page: 从 1 开始的页码，原样传入服务端
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :return: 原始角色关系列表；无结果或请求失败时为空列表
         """
         result = self._invoke(
             self._credits_query,
@@ -726,9 +806,12 @@ class AniListApi:
     @_cached_request("credits")
     async def async_credits(self, anilist_id: int, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
         """
-        异步获取 AniList 动画的日语配音演员。
+        异步分页读取动画角色及其日语配音演员。
 
-        :return: AniList 人物边列表
+        :param anilist_id: AniList 动画条目标识
+        :param page: 从 1 开始的页码，原样传入服务端
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :return: 原始角色关系列表；无结果或请求失败时为空列表
         """
         result = await self._async_invoke(
             self._credits_query,
@@ -739,9 +822,12 @@ class AniListApi:
     @_cached_request("recommendations")
     def recommendations(self, anilist_id: int, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
         """
-        获取 AniList 动画相关推荐。
+        读取动画推荐关系，再批量补全媒体详情。
 
-        :return: AniList 媒体列表
+        :param anilist_id: AniList 动画条目标识
+        :param page: 从 1 开始的页码，原样传入服务端
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :return: 按推荐关系顺序排列的媒体列表；无结果或请求失败时为空列表
         """
         result = self._invoke(
             self._recommendations_query,
@@ -752,9 +838,12 @@ class AniListApi:
     @_cached_request("recommendations")
     async def async_recommendations(self, anilist_id: int, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
         """
-        异步获取 AniList 动画相关推荐。
+        异步读取动画推荐关系，再批量补全媒体详情。
 
-        :return: AniList 媒体列表
+        :param anilist_id: AniList 动画条目标识
+        :param page: 从 1 开始的页码，原样传入服务端
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :return: 按推荐关系顺序排列的媒体列表；无结果或请求失败时为空列表
         """
         result = await self._async_invoke(
             self._recommendations_query,
@@ -765,10 +854,10 @@ class AniListApi:
     @_cached_request("person_detail")
     def person_detail(self, person_id: int) -> Optional[dict[str, Any]]:
         """
-        获取 AniList 演员详情。
+        读取 AniList 人物详情。
 
-        :param person_id: AniList 人物 ID
-        :return: AniList 人物详情
+        :param person_id: AniList 人物标识
+        :return: 原始 Staff 映射；请求失败或人物不存在时为 None
         """
         return self._field(
             self._invoke(self._person_detail_query, {"id": person_id}),
@@ -778,10 +867,10 @@ class AniListApi:
     @_cached_request("person_detail")
     async def async_person_detail(self, person_id: int) -> Optional[dict[str, Any]]:
         """
-        异步获取 AniList 演员详情。
+        异步读取 AniList 人物详情。
 
-        :param person_id: AniList 人物 ID
-        :return: AniList 人物详情
+        :param person_id: AniList 人物标识
+        :return: 原始 Staff 映射；请求失败或人物不存在时为 None
         """
         result = await self._async_invoke(
             self._person_detail_query, {"id": person_id}
@@ -791,9 +880,12 @@ class AniListApi:
     @_cached_request("person_credits")
     def person_credits(self, person_id: int, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
         """
-        获取 AniList 演员参与的动画作品。
+        查询人物配音作品，并按关系顺序补全媒体详情。
 
-        :return: AniList 媒体列表
+        :param person_id: AniList 人物标识
+        :param page: 从 1 开始的页码，原样传入服务端
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :return: 原始媒体列表；无结果或请求失败时为空列表
         """
         result = self._invoke(
             self._person_credits_query,
@@ -804,9 +896,12 @@ class AniListApi:
     @_cached_request("person_credits")
     async def async_person_credits(self, person_id: int, page: int = 1, count: int = 20) -> list[dict[str, Any]]:
         """
-        异步获取 AniList 演员参与的动画作品。
+        异步查询人物配音作品，并按关系顺序补全媒体详情。
 
-        :return: AniList 媒体列表
+        :param person_id: AniList 人物标识
+        :param page: 从 1 开始的页码，原样传入服务端
+        :param count: 每页条数，原样传入服务端，不在本地截断范围
+        :return: 原始媒体列表；无结果或请求失败时为空列表
         """
         result = await self._async_invoke(
             self._person_credits_query,
@@ -815,7 +910,9 @@ class AniListApi:
         return await self._async_medias_by_ids(self._person_media_ids(result))
 
     def clear_cache(self) -> None:
-        """清理 AniList 接口缓存"""
+        """
+        清理 AniList 接口缓存。
+        """
         for method in (
             self.detail,
             self.search,
