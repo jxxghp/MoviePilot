@@ -1,4 +1,6 @@
-"""MoviePilot 内部能力运行时的惰性公共导出。"""
+"""
+MoviePilot 内部能力运行时的惰性公共导出。
+"""
 
 from __future__ import annotations
 
@@ -32,7 +34,9 @@ __all__ = sorted(_EXPORT_MODULES)
 
 
 def __getattr__(name: str) -> Any:
-    """仅在显式访问公共符号时导入对应叶模块，并缓存 canonical 对象。"""
+    """
+    仅在显式访问公共符号时导入对应叶模块，并缓存 canonical 对象。
+    """
     module_name = _EXPORT_MODULES.get(name)
     if module_name is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
@@ -42,5 +46,7 @@ def __getattr__(name: str) -> Any:
 
 
 def __dir__() -> list[str]:
-    """向交互式工具公开稳定导出名，而不触发叶模块导入。"""
+    """
+    向交互式工具公开稳定导出名，而不触发叶模块导入。
+    """
     return sorted(set(globals()) | set(__all__))

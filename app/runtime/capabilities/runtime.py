@@ -1,3 +1,7 @@
+"""
+能力解析、启动、重载和关闭状态机，协调并发调用与遗留资源清理。
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -30,7 +34,23 @@ from app.runtime.capabilities.registry import CapabilityRegistry
 
 @dataclass(slots=True)
 class _CapabilityState:
-    """Runtime 私有状态；所有可变字段均由 lock 保护。"""
+    """
+    Runtime 私有状态；所有可变字段均由 lock 保护。
+
+    :param spec: 注册时冻结的能力声明
+    :param lock: 保护该能力所有可变状态的可重入锁
+    :param materialization: 实现对象的解析状态，初始为未解析
+    :param lifecycle: 外部资源的生命周期状态，初始为已发现
+    :param generation: 状态转换代次，用于拒绝过期结果，初始为 0
+    :param implementation: 已解析的实现对象；尚未解析时为 None
+    :param instance: 当前已发布实例；不可见时为 None
+    :param pending_stop: 尚未成功停止、仍由运行时持有的资源；没有时为 None
+    :param pending_cleanup: 失败启动后仍待清理的候选资源；没有时为 None
+    :param pending_cleanup_error: 触发候选资源清理的异常；没有时为 None
+    :param last_error: 最近一次状态转换异常；没有时为 None
+    :param inflight: 正在进行的状态转换完成信号；空闲时为 None
+    :param inflight_operation: 正在进行的操作名称；空闲时为 None
+    """
 
     spec: CapabilitySpec
     lock: threading.RLock = field(default_factory=threading.RLock)
@@ -39,7 +59,6 @@ class _CapabilityState:
     generation: int = 0
     implementation: Any = None
     instance: Any = None
-    # 撤销可见性后仍未确认释放的资源由 Runtime 持有，禁止并行创建第二实例。
     pending_stop: Any = None
     pending_cleanup: Any = None
     pending_cleanup_error: Optional[BaseException] = None
@@ -50,19 +69,30 @@ class _CapabilityState:
 
 @dataclass(frozen=True, slots=True)
 class _PublishedTransition:
-    """表示状态机已经拥有可直接返回的发布结果。"""
+    """
+    表示状态机已经拥有可直接返回的发布结果。
+
+    :param result: 状态机已经发布、可直接交给调用方的结果
+    """
 
     result: Any
 
 
 @dataclass(frozen=True, slots=True)
 class _SettledTransition:
-    """表示停止状态无需 I/O 即已真实收敛。"""
+    """
+    表示停止状态无需 I/O 即已真实收敛。
+    """
 
 
 @dataclass(frozen=True, slots=True)
 class _TransitionWait:
-    """表示调用方必须等待另一位 owner 完成当前状态转换。"""
+    """
+    表示调用方必须等待另一位 owner 完成当前状态转换。
+
+    :param future: 其他执行方负责完成的状态转换信号
+    :param operation: 正在等待的操作名称；未标记时为 None
+    """
 
     future: Future[Any]
     operation: Optional[str]
@@ -70,7 +100,12 @@ class _TransitionWait:
 
 @dataclass(frozen=True, slots=True)
 class _MaterializationClaim:
-    """记录一次物化状态转换的唯一 owner。"""
+    """
+    记录一次物化状态转换的唯一 owner。
+
+    :param generation: 本次解析占用的代次
+    :param future: 由本次解析完成或异常终结的共享信号
+    """
 
     generation: int
     future: Future[Any]
@@ -78,7 +113,16 @@ class _MaterializationClaim:
 
 @dataclass(frozen=True, slots=True)
 class _ActivationClaim:
-    """记录启动状态转换以及需要先收敛的遗留资源。"""
+    """
+    记录启动状态转换以及需要先收敛的遗留资源。
+
+    :param generation: 本次激活占用的代次
+    :param future: 向等待者发布本次激活结果的信号
+    :param implementation: 已解析且用于创建候选资源的实现对象
+    :param pending_stop: 激活前需要完成停止的旧资源；没有时为 None
+    :param pending_cleanup: 激活前需要清理的失败候选；没有时为 None
+    :param pending_cleanup_error: 遗留候选启动失败的原因；没有时为 None
+    """
 
     generation: int
     future: Future[Any]
@@ -90,7 +134,14 @@ class _ActivationClaim:
 
 @dataclass(frozen=True, slots=True)
 class _ReloadClaim:
-    """记录重载状态转换及已撤销可见性的旧实例。"""
+    """
+    记录重载状态转换及已撤销可见性的旧实例。
+
+    :param generation: 本次重载占用的代次
+    :param future: 向等待者发布本次重载结果的信号
+    :param implementation: 创建新一代资源使用的实现对象
+    :param previous: 已撤销可见性的上一代实例，供重载交接使用
+    """
 
     generation: int
     future: Future[Any]
@@ -100,7 +151,15 @@ class _ReloadClaim:
 
 @dataclass(frozen=True, slots=True)
 class _StopClaim:
-    """记录停止状态转换及 Runtime 仍持有的全部资源 owner。"""
+    """
+    记录停止状态转换及 Runtime 仍持有的全部资源 owner。
+
+    :param generation: 本次停止占用的代次
+    :param future: 向等待者发布停止结果的信号
+    :param stop_owner: 运行时仍负责停止的资源实例
+    :param pending_cleanup: 仍需清理的失败候选；没有时为 None
+    :param pending_cleanup_error: 失败候选的原始异常；没有时为 None
+    """
 
     generation: int
     future: Future[Any]
@@ -110,7 +169,9 @@ class _StopClaim:
 
 
 class CapabilityRuntime:
-    """协调能力实现物化和资源生命周期的通用运行时。"""
+    """
+    协调能力实现物化和资源生命周期的通用运行时。
+    """
 
     def __init__(
         self,
@@ -141,7 +202,9 @@ class CapabilityRuntime:
 
     @property
     def is_shutdown(self) -> bool:
-        """返回 Runtime 是否已进入不可逆关闭态。"""
+        """
+        返回 Runtime 是否已进入不可逆关闭态。
+        """
         return self._shutdown
 
     def _state(self, capability_id: str) -> _CapabilityState:
@@ -149,11 +212,15 @@ class CapabilityRuntime:
         return self._states[capability_id]
 
     def get_spec(self, capability_id: str) -> CapabilitySpec | None:
-        """返回保留在 Registry 中的声明，不受运行失败影响。"""
+        """
+        返回保留在 Registry 中的声明，不受运行失败影响。
+        """
         return self._registry.get_spec(capability_id)
 
     def list_specs(self) -> tuple[CapabilitySpec, ...]:
-        """返回全部声明；FAILED 能力不会从列表中消失。"""
+        """
+        返回全部声明；FAILED 能力不会从列表中消失。
+        """
         return self._registry.list_specs()
 
     def _adapter(self, state: _CapabilityState, expected: AdapterExecutionMode) -> Any:
@@ -260,7 +327,9 @@ class CapabilityRuntime:
         *,
         retry: bool,
     ) -> Union[_PublishedTransition, _TransitionWait, _MaterializationClaim]:
-        """声明一次物化转换，且不执行任何 adapter I/O。"""
+        """
+        声明一次物化转换，且不执行任何 adapter I/O。
+        """
         with state.lock:
             if state.materialization is CapabilityMaterializationState.RESOLVED:
                 return _PublishedTransition(state.implementation)
@@ -286,7 +355,9 @@ class CapabilityRuntime:
         operation: str,
         retry: bool,
     ) -> Union[_PublishedTransition, _TransitionWait, _ActivationClaim]:
-        """声明一次启动转换并原子撤销遗留 owner 的共享状态。"""
+        """
+        声明一次启动转换并原子撤销遗留 owner 的共享状态。
+        """
         with state.lock:
             if operation == "activate" and state.instance is not None:
                 return _PublishedTransition(state.instance)
@@ -333,7 +404,9 @@ class CapabilityRuntime:
     def _claim_reload(
         state: _CapabilityState,
     ) -> Union[_TransitionWait, _ReloadClaim]:
-        """声明一次重载转换并先撤销旧实例的外部可见性。"""
+        """
+        声明一次重载转换并先撤销旧实例的外部可见性。
+        """
         with state.lock:
             if state.inflight is not None:
                 return _TransitionWait(state.inflight, state.inflight_operation)
@@ -367,7 +440,9 @@ class CapabilityRuntime:
     def _claim_stop(
         state: _CapabilityState,
     ) -> Union[_SettledTransition, _TransitionWait, _StopClaim]:
-        """声明一次停止转换并原子接管尚未释放的资源。"""
+        """
+        声明一次停止转换并原子接管尚未释放的资源。
+        """
         with state.lock:
             if state.inflight is not None:
                 return _TransitionWait(state.inflight, state.inflight_operation)
@@ -406,7 +481,9 @@ class CapabilityRuntime:
         claim: _MaterializationClaim,
         implementation: Any,
     ) -> None:
-        """提交物化成功状态并唤醒全部等待者。"""
+        """
+        提交物化成功状态并唤醒全部等待者。
+        """
         with state.lock:
             state.implementation = implementation
             state.materialization = CapabilityMaterializationState.RESOLVED
@@ -420,7 +497,9 @@ class CapabilityRuntime:
         claim: _MaterializationClaim,
         error: BaseException,
     ) -> BaseException:
-        """提交物化失败状态并返回稳定的公开异常。"""
+        """
+        提交物化失败状态并返回稳定的公开异常。
+        """
         with state.lock:
             state.materialization = CapabilityMaterializationState.FAILED
             state.last_error = error
@@ -437,7 +516,9 @@ class CapabilityRuntime:
         implementation: Any,
         candidate: Any,
     ) -> None:
-        """仅在候选启动成功后提交实现与可见实例。"""
+        """
+        仅在候选启动成功后提交实现与可见实例。
+        """
         with state.lock:
             state.implementation = implementation
             state.materialization = CapabilityMaterializationState.RESOLVED
@@ -458,7 +539,9 @@ class CapabilityRuntime:
         error: BaseException,
         lifecycle_error: BaseException,
     ) -> BaseException:
-        """提交启动失败状态，并保留尚未释放的旧 owner。"""
+        """
+        提交启动失败状态，并保留尚未释放的旧 owner。
+        """
         with state.lock:
             state.implementation = implementation
             state.materialization = (
@@ -482,7 +565,9 @@ class CapabilityRuntime:
         claim: _ReloadClaim,
         candidate: Any,
     ) -> None:
-        """提交重载后的新实例并恢复对外可见性。"""
+        """
+        提交重载后的新实例并恢复对外可见性。
+        """
         with state.lock:
             state.instance = candidate
             state.lifecycle = CapabilityLifecycleState.RUNNING
@@ -499,7 +584,9 @@ class CapabilityRuntime:
         error: BaseException,
         lifecycle_error: BaseException,
     ) -> BaseException:
-        """提交重载失败状态，必要时保留未释放的旧实例。"""
+        """
+        提交重载失败状态，必要时保留未释放的旧实例。
+        """
         with state.lock:
             state.instance = None
             if not previous_released:
@@ -516,7 +603,9 @@ class CapabilityRuntime:
         state: _CapabilityState,
         claim: _StopClaim,
     ) -> None:
-        """提交资源真实收敛后的停止状态。"""
+        """
+        提交资源真实收敛后的停止状态。
+        """
         with state.lock:
             state.lifecycle = CapabilityLifecycleState.STOPPED
             state.last_error = None
@@ -532,7 +621,9 @@ class CapabilityRuntime:
         pending_cleanup: Any,
         error: BaseException,
     ) -> BaseException:
-        """提交停止失败状态并归还仍未释放的资源 owner。"""
+        """
+        提交停止失败状态并归还仍未释放的资源 owner。
+        """
         with state.lock:
             state.lifecycle = CapabilityLifecycleState.FAILED
             state.last_error = error
@@ -547,7 +638,9 @@ class CapabilityRuntime:
 
     @staticmethod
     def _publish_pending_stop_released(state: _CapabilityState) -> None:
-        """在遗留停止成功后把启动转换推进到 STARTING。"""
+        """
+        在遗留停止成功后把启动转换推进到 STARTING。
+        """
         with state.lock:
             state.lifecycle = CapabilityLifecycleState.STARTING
 
@@ -557,20 +650,26 @@ class CapabilityRuntime:
         candidate: Any,
         error: Optional[BaseException],
     ) -> None:
-        """清理重试失败时归还 Runtime 对候选资源的所有权。"""
+        """
+        清理重试失败时归还 Runtime 对候选资源的所有权。
+        """
         with state.lock:
             state.pending_cleanup = candidate
             state.pending_cleanup_error = error
 
     @staticmethod
     def _failure_lifecycle(error: BaseException) -> CapabilityLifecycleState:
-        """把关闭竞态与普通失败映射到统一生命周期结果。"""
+        """
+        把关闭竞态与普通失败映射到统一生命周期结果。
+        """
         if isinstance(error, CapabilityRuntimeClosedError):
             return CapabilityLifecycleState.STOPPED
         return CapabilityLifecycleState.FAILED
 
     def _calibrate_consumer_materialization(self, state: _CapabilityState) -> None:
-        """从 sys.modules 校准显式 consumer import，不触发任何新导入。"""
+        """
+        从 sys.modules 校准显式 consumer import，不触发任何新导入。
+        """
         module_name, symbol_name = state.spec.entrypoint.split(":", maxsplit=1)
         module = sys.modules.get(module_name)
         namespace = getattr(module, "__dict__", None) if module is not None else None
@@ -601,7 +700,9 @@ class CapabilityRuntime:
         )
 
     def snapshot(self, capability_id: str) -> CapabilitySnapshot:
-        """返回状态快照，并校准外部显式导入产生的 canonical 对象。"""
+        """
+        返回状态快照，并校准外部显式导入产生的 canonical 对象。
+        """
         state = self._state(capability_id)
         self._calibrate_consumer_materialization(state)
         with state.lock:
@@ -615,7 +716,9 @@ class CapabilityRuntime:
             )
 
     def observations(self, capability_id: Optional[str] = None) -> tuple[CapabilityObservation, ...]:
-        """返回按发生顺序记录的不可变观测快照。"""
+        """
+        返回按发生顺序记录的不可变观测快照。
+        """
         with self._observation_lock:
             items = tuple(self._observations)
         if capability_id is None:
@@ -623,13 +726,17 @@ class CapabilityRuntime:
         return tuple(item for item in items if item.capability_id == capability_id)
 
     def get_running(self, capability_id: str) -> Any:
-        """只查询已发布实例，不触发物化或启动。"""
+        """
+        只查询已发布实例，不触发物化或启动。
+        """
         state = self._state(capability_id)
         with state.lock:
             return state.instance
 
     def materialize(self, capability_id: str, *, reason: str, retry: bool = False) -> Any:
-        """通过同步 adapter 显式物化实现，不启动领域资源。"""
+        """
+        通过同步 adapter 显式物化实现，不启动领域资源。
+        """
         state = self._state(capability_id)
         adapter = self._adapter(state, AdapterExecutionMode.SYNC)
         self._calibrate_consumer_materialization(state)
@@ -690,7 +797,9 @@ class CapabilityRuntime:
         reason: str,
         retry: bool = False,
     ) -> Any:
-        """通过异步 adapter 显式物化实现，不阻塞事件循环。"""
+        """
+        通过异步 adapter 显式物化实现，不阻塞事件循环。
+        """
         state = self._state(capability_id)
         adapter = self._adapter(state, AdapterExecutionMode.ASYNC)
         self._calibrate_consumer_materialization(state)
@@ -777,7 +886,9 @@ class CapabilityRuntime:
         return CapabilityOperationError(capability_id, operation, error)
 
     def activate(self, capability_id: str, *, reason: str, retry: bool = False) -> Any:
-        """同步启动能力，并在 start 成功后原子发布候选实例。"""
+        """
+        同步启动能力，并在 start 成功后原子发布候选实例。
+        """
         return self._activate_sync(capability_id, reason=reason, retry=retry, previous=None)
 
     async def activate_async(
@@ -787,7 +898,9 @@ class CapabilityRuntime:
         reason: str,
         retry: bool = False,
     ) -> Any:
-        """异步启动能力，并以 Future 协调并发调用者。"""
+        """
+        异步启动能力，并以 Future 协调并发调用者。
+        """
         return await self._activate_async(capability_id, reason=reason, retry=retry, previous=None)
 
     def _activate_sync(
@@ -1113,7 +1226,9 @@ class CapabilityRuntime:
             return RuntimeError(f"{error}; cleanup failed: {cleanup_error}")
 
     def reload(self, capability_id: str, *, reason: str) -> Any:
-        """撤销当前实例后，通过同步 adapter 完成新 generation 的资源切换。"""
+        """
+        撤销当前实例后，通过同步 adapter 完成新 generation 的资源切换。
+        """
         state = self._state(capability_id)
         adapter = self._adapter(state, AdapterExecutionMode.SYNC)
         while True:
@@ -1205,7 +1320,9 @@ class CapabilityRuntime:
             raise operation_error from error
 
     async def reload_async(self, capability_id: str, *, reason: str) -> Any:
-        """撤销当前实例后，通过异步 adapter 完成新 generation 的资源切换。"""
+        """
+        撤销当前实例后，通过异步 adapter 完成新 generation 的资源切换。
+        """
         state = self._state(capability_id)
         adapter = self._adapter(state, AdapterExecutionMode.ASYNC)
         while True:
@@ -1297,11 +1414,15 @@ class CapabilityRuntime:
             raise operation_error from error
 
     def stop(self, capability_id: str, *, reason: str) -> None:
-        """同步撤销并停止能力资源；物化实现保留供后续显式重启。"""
+        """
+        同步撤销并停止能力资源；物化实现保留供后续显式重启。
+        """
         self._stop_sync(capability_id, reason=reason, shutdown=False)
 
     def _stop_sync(self, capability_id: str, *, reason: str, shutdown: bool) -> bool:
-        """停止同步能力并返回资源 owner 是否已经真实收敛。"""
+        """
+        停止同步能力并返回资源 owner 是否已经真实收敛。
+        """
         state = self._state(capability_id)
         adapter = self._adapter(state, AdapterExecutionMode.SYNC)
         while True:
@@ -1385,7 +1506,9 @@ class CapabilityRuntime:
             return False
 
     async def stop_async(self, capability_id: str, *, reason: str) -> None:
-        """异步撤销并停止能力资源。"""
+        """
+        异步撤销并停止能力资源。
+        """
         await self._stop_async(capability_id, reason=reason, shutdown=False)
 
     async def _stop_async(
@@ -1395,7 +1518,9 @@ class CapabilityRuntime:
         reason: str,
         shutdown: bool,
     ) -> bool:
-        """停止异步能力并返回资源 owner 是否已经真实收敛。"""
+        """
+        停止异步能力并返回资源 owner 是否已经真实收敛。
+        """
         state = self._state(capability_id)
         adapter = self._adapter(state, AdapterExecutionMode.ASYNC)
         while True:
@@ -1479,7 +1604,9 @@ class CapabilityRuntime:
             return False
 
     def shutdown(self, *, reason: str) -> bool:
-        """不可逆关闭同步 Runtime，并返回全部 owner 是否收敛。"""
+        """
+        不可逆关闭同步 Runtime，并返回全部 owner 是否收敛。
+        """
         async_kinds = {
             kind
             for kind, adapter in self._adapters.items()
@@ -1498,7 +1625,9 @@ class CapabilityRuntime:
         return converged
 
     async def shutdown_async(self, *, reason: str) -> bool:
-        """不可逆关闭混合 Runtime，并返回全部 owner 是否收敛。"""
+        """
+        不可逆关闭混合 Runtime，并返回全部 owner 是否收敛。
+        """
         with self._shutdown_lock:
             self._shutdown = True
         converged = True

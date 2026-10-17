@@ -1,4 +1,6 @@
-"""插件运行时持久化端口。"""
+"""
+插件运行时持久化端口。
+"""
 
 from __future__ import annotations
 
@@ -34,47 +36,67 @@ PluginExists = Callable[[str], bool]
 
 
 def _empty_read(_key: Any) -> Any:
-    """组合根尚未装配时返回空配置。"""
+    """
+    组合根尚未装配时返回空配置。
+    """
     return None
 
 
 def _ignore_write(_key: Any, _value: Any) -> None:
-    """组合根尚未装配时忽略同步配置写入。"""
+    """
+    组合根尚未装配时忽略同步配置写入。
+    """
 
 
 async def _ignore_async_write(_key: Any, _value: Any) -> None:
-    """组合根尚未装配时忽略异步配置写入。"""
+    """
+    组合根尚未装配时忽略异步配置写入。
+    """
 
 
 def _ignore_delete(_key: Any) -> bool:
-    """组合根尚未装配时报告配置未删除。"""
+    """
+    组合根尚未装配时报告配置未删除。
+    """
     return False
 
 
 def _empty_read_config(_instance_id: str) -> Any:
-    """组合根尚未装配时报告实例没有业务参数。"""
+    """
+    组合根尚未装配时报告实例没有业务参数。
+    """
     return None
 
 
 def _ignore_write_config(_instance_id: str, _config: Any) -> None:
-    """组合根尚未装配时忽略同步业务参数写入。"""
+    """
+    组合根尚未装配时忽略同步业务参数写入。
+    """
 
 
 async def _ignore_async_write_config(_instance_id: str, _config: Any) -> None:
-    """组合根尚未装配时忽略异步业务参数写入。"""
+    """
+    组合根尚未装配时忽略异步业务参数写入。
+    """
 
 
 def _ignore_delete_config(_instance_id: str) -> bool:
-    """组合根尚未装配时报告业务参数未删除。"""
+    """
+    组合根尚未装配时报告业务参数未删除。
+    """
     return False
 
 
 def _ignore_plugin_data_delete(_plugin_id: str) -> None:
-    """组合根尚未装配时忽略插件数据删除。"""
+    """
+    组合根尚未装配时忽略插件数据删除。
+    """
 
 
 def _no_log_level(_instance_id: str) -> LogLevelOverride:
-    """组合根尚未装配时报告实例没有日志等级覆盖。"""
+    """
+    组合根尚未装配时报告实例没有日志等级覆盖。
+    """
     return (None, None)
 
 
@@ -83,11 +105,15 @@ def _ignore_log_level_write(
     _level: Optional[str],
     _expires_at: Optional[datetime],
 ) -> None:
-    """组合根尚未装配时忽略日志等级落盘。"""
+    """
+    组合根尚未装配时忽略日志等级落盘。
+    """
 
 
 class PluginStorage:
-    """封装插件运行时所需的最小持久化能力。"""
+    """
+    封装插件运行时所需的最小持久化能力。
+    """
 
     def __init__(
             self,
@@ -104,7 +130,9 @@ class PluginStorage:
             read_log_level: LogLevelReader = _no_log_level,
             write_log_level: LogLevelWriter = _ignore_log_level_write,
     ) -> None:
-        """保存由启动组合根提供的读写函数。"""
+        """
+        保存由启动组合根提供的读写函数。
+        """
         self._read = read
         self._write = write
         self._async_write = async_write
@@ -118,43 +146,63 @@ class PluginStorage:
         self._write_log_level = write_log_level
 
     def read(self, key: Any) -> Any:
-        """读取插件运行时配置。"""
+        """
+        读取插件运行时配置。
+        """
         return self._read(key)
 
     def write(self, key: Any, value: Any) -> Any:
-        """同步保存插件运行时配置。"""
+        """
+        同步保存插件运行时配置。
+        """
         return self._write(key, value)
 
     async def async_write(self, key: Any, value: Any) -> Any:
-        """异步保存插件运行时配置。"""
+        """
+        异步保存插件运行时配置。
+        """
         return await self._async_write(key, value)
 
     def delete(self, key: Any) -> bool:
-        """删除插件运行时配置。"""
+        """
+        删除插件运行时配置。
+        """
         return self._delete(key)
 
     def read_config(self, instance_id: str) -> Any:
-        """读取该实例配置行上的业务参数。"""
+        """
+        读取该实例配置行上的业务参数。
+        """
         return self._read_config(instance_id)
 
     def write_config(self, instance_id: str, config: Any) -> Any:
-        """同步把业务参数写进该实例的配置行。"""
+        """
+        同步把业务参数写进该实例的配置行。
+        """
         return self._write_config(instance_id, config)
 
     async def async_write_config(self, instance_id: str, config: Any) -> Any:
-        """异步把业务参数写进该实例的配置行。"""
+        """
+        异步把业务参数写进该实例的配置行。
+        """
         return await self._async_write_config(instance_id, config)
 
     def delete_config(self, instance_id: str) -> bool:
-        """清除该实例配置行上的业务参数。"""
+        """
+        清除该实例配置行上的业务参数。
+        """
         return self._delete_config(instance_id)
 
     def delete_data(self, plugin_id: str) -> Any:
-        """删除指定插件的业务数据。"""
+        """
+        删除指定插件的业务数据。
+        """
         return self._delete_data(plugin_id)
 
     def read_log_level(self, instance_id: str) -> LogLevelOverride:
-        """读取实例配置里登记的日志等级覆盖与失效时间。"""
+        """
+        读取实例配置里登记的日志等级覆盖与失效时间。
+        """
         return self._read_log_level(instance_id)
 
     def write_log_level(
@@ -163,12 +211,15 @@ class PluginStorage:
         level: Optional[str],
         expires_at: Optional[datetime],
     ) -> None:
-        """把日志等级覆盖写进该实例的配置行。"""
+        """
+        把日志等级覆盖写进该实例的配置行。
+        """
         self._write_log_level(instance_id, level, expires_at)
 
 
 class PluginConfigStore:
-    """封装插件配置的存在性和强制删除规则。
+    """
+    封装插件配置的存在性和强制删除规则。
 
     配置按实例 ID 直接落在该实例自己的配置行上，不再经过宿主系统设置存储的字符串键：
     插件配置与系统设置的生命周期、数量级和归属都不同，共用一张键值表会让系统设置被
@@ -182,13 +233,17 @@ class PluginConfigStore:
         database: Callable[[], PluginDatabase],
         plugin_exists: PluginExists,
     ) -> None:
-        """保存持久化端口、自有数据库端口和运行态插件查询端口。"""
+        """
+        保存持久化端口、自有数据库端口和运行态插件查询端口。
+        """
         self._storage = storage
         self._database = database
         self._plugin_exists = plugin_exists
 
     def read(self, plugin_id: str) -> dict[str, object]:
-        """读取配置并过滤历史空键。"""
+        """
+        读取配置并过滤历史空键。
+        """
         if not self._plugin_exists(plugin_id):
             return {}
         config = self._storage().read_config(plugin_id)
@@ -199,18 +254,20 @@ class PluginConfigStore:
         }
 
     def has_config(self, instance_id: str) -> bool:
-        """判断该实例行上是否留有业务参数。
+        """
+        判断该实例行上是否留有业务参数。
 
         不复用 :meth:`read`：那里要求插件类当前已登记，而这里问的恰恰是已停用、因而
         不在类注册表里的实例——走 :meth:`read` 会让每一个可恢复分身都报告「没有配置」。
-
         :param instance_id: 实例 ID
         :return: 该实例是否留有业务参数
         """
         return bool(self._storage().read_config(instance_id))
 
     def write(self, plugin_id: str, config: dict[str, object], force: bool = False) -> bool:
-        """保存配置，默认拒绝不存在插件的配置写入。"""
+        """
+        保存配置，默认拒绝不存在插件的配置写入。
+        """
         if not force and not self._plugin_exists(plugin_id):
             return False
         self._storage().write_config(plugin_id, config)
@@ -222,20 +279,26 @@ class PluginConfigStore:
         config: dict[str, object],
         force: bool = False,
     ) -> bool:
-        """异步保存配置并保持同步写入的存在性规则。"""
+        """
+        异步保存配置并保持同步写入的存在性规则。
+        """
         if not force and not self._plugin_exists(plugin_id):
             return False
         await self._storage().async_write_config(plugin_id, config)
         return True
 
     def delete(self, plugin_id: str, force: bool = False) -> bool:
-        """删除配置并保持停止插件后的强制删除能力。"""
+        """
+        删除配置并保持停止插件后的强制删除能力。
+        """
         if not force and not self._plugin_exists(plugin_id):
             return False
         return self._storage().delete_config(plugin_id)
 
     def read_log_level(self, instance_id: str) -> LogLevelOverride:
-        """读取实例的日志等级覆盖；它与业务参数同属该实例的配置。"""
+        """
+        读取实例的日志等级覆盖；它与业务参数同属该实例的配置。
+        """
         return self._storage().read_log_level(instance_id)
 
     def write_log_level(
@@ -244,11 +307,15 @@ class PluginConfigStore:
         level: Optional[str],
         expires_at: Optional[datetime],
     ) -> None:
-        """写入实例的日志等级覆盖。"""
+        """
+        写入实例的日志等级覆盖。
+        """
         self._storage().write_log_level(instance_id, level, expires_at)
 
     def delete_data(self, plugin_id: str, force: bool = False) -> bool:
-        """删除插件业务数据与自有数据库，并保持旧的布尔结果合同。"""
+        """
+        删除插件业务数据与自有数据库，并保持旧的布尔结果合同。
+        """
         if not force and not self._plugin_exists(plugin_id):
             return False
         self._storage().delete_data(plugin_id)
@@ -256,7 +323,8 @@ class PluginConfigStore:
         return True
 
     def delete_data_rows(self, plugin_id: str) -> None:
-        """只删该实例在插件数据表里的行，不碰它的自有数据库。
+        """
+        只删该实例在插件数据表里的行，不碰它的自有数据库。
 
         彻底清理要让用户逐项勾选删除范围，因而这两件事必须能分开做；
         :meth:`delete_data` 仍把它们捆在一起，服务「重置」那条既有语义。
@@ -264,7 +332,9 @@ class PluginConfigStore:
         self._storage().delete_data(plugin_id)
 
     def destroy_database(self, plugin_id: str) -> None:
-        """销毁该实例的自有数据库并释放句柄。"""
+        """
+        销毁该实例的自有数据库并释放句柄。
+        """
         self._database().destroy(plugin_id)
 
 
@@ -277,36 +347,49 @@ InstanceEnabler = Callable[[str, bool], bool]
 
 
 def _empty_instance_get(_instance_id: str) -> PluginInstance | None:
-    """组合根尚未装配时返回空实例描述。"""
+    """
+    组合根尚未装配时返回空实例描述。
+    """
     return None
 
 
 def _empty_instance_list() -> list[PluginInstance]:
-    """组合根尚未装配时返回空实例列表。"""
+    """
+    组合根尚未装配时返回空实例列表。
+    """
     return []
 
 
 def _empty_instance_list_by_source(_source_plugin_id: str) -> list[PluginInstance]:
-    """组合根尚未装配时返回空实例列表。"""
+    """
+    组合根尚未装配时返回空实例列表。
+    """
     return []
 
 
 def _ignore_instance_save(_instance: PluginInstance) -> None:
-    """组合根尚未装配时忽略实例描述写入。"""
+    """
+    组合根尚未装配时忽略实例描述写入。
+    """
 
 
 def _ignore_instance_delete(_instance_id: str) -> bool:
-    """组合根尚未装配时报告实例描述未删除。"""
+    """
+    组合根尚未装配时报告实例描述未删除。
+    """
     return False
 
 
 def _ignore_instance_enable(_instance_id: str, _is_enabled: bool) -> bool:
-    """组合根尚未装配时报告启用位未写入。"""
+    """
+    组合根尚未装配时报告启用位未写入。
+    """
     return False
 
 
 class PluginInstanceDirectory:
-    """封装插件实例表的持久化能力。
+    """
+    封装插件实例表的持久化能力。
 
     分身与源插件本体共用同一张表、同一套读写原语，两者靠 ``instance_id`` 是否等于
     ``source_plugin_id`` 区分；本类不做角色过滤，角色隔离由调用方
@@ -333,7 +416,9 @@ class PluginInstanceDirectory:
             set_enabled: InstanceEnabler = _ignore_instance_enable,
             purge_invalid_empty_host: InstanceDeleter = _ignore_instance_delete,
     ) -> None:
-        """保存由启动组合根提供的实例表读写函数。"""
+        """
+        保存由启动组合根提供的实例表读写函数。
+        """
         self._get = get
         self._list_all = list_all
         self._list_by_source = list_by_source
@@ -344,51 +429,74 @@ class PluginInstanceDirectory:
         self._purge_invalid_empty_host = purge_invalid_empty_host
 
     def get(self, instance_id: str) -> PluginInstance | None:
-        """按实例 ID 读取单条描述，不区分分身与本体。"""
+        """
+        按实例 ID 读取单条描述，不区分分身与本体。
+        """
         return self._get(instance_id)
 
     def list_all(self) -> list[PluginInstance]:
-        """列出表中全部描述，不区分分身与本体。"""
+        """
+        列出表中全部描述，不区分分身与本体。
+        """
         return self._list_all()
 
     def list_by_source(self, source_plugin_id: str) -> list[PluginInstance]:
-        """按源插件 ID 列出其全部描述，不区分分身与本体。"""
+        """
+        按源插件 ID 列出其全部描述，不区分分身与本体。
+        """
         return self._list_by_source(source_plugin_id)
 
     def save(self, instance: PluginInstance) -> None:
-        """新增或更新一条描述，以 ``instance_id`` 为稳定键。"""
+        """
+        新增或更新一条描述，以 ``instance_id`` 为稳定键。
+        """
         self._save(instance)
 
     def delete(self, instance_id: str) -> bool:
-        """按实例 ID 删除一行，连同其配置，返回删除前是否存在。"""
+        """
+        按实例 ID 删除一行，连同其配置，返回删除前是否存在。
+        """
         return self._delete(instance_id)
 
     def list_enabled(self) -> list[PluginInstance]:
-        """列出应当被实例化并启动的行，不含停用的，不区分分身与本体。"""
+        """
+        列出应当被实例化并启动的行，不含停用的，不区分分身与本体。
+        """
         return self._list_enabled()
 
     def set_enabled(self, instance_id: str, is_enabled: bool) -> bool:
-        """写入启用位，返回该行是否存在。"""
+        """
+        写入启用位，返回该行是否存在。
+        """
         return self._set_enabled(instance_id, is_enabled)
 
     def purge_invalid_empty_host(self, instance_id: str) -> bool:
-        """仅删除无法投影且不承载任何设置的历史本体行。"""
+        """
+        仅删除无法投影且不承载任何设置的历史本体行。
+        """
         return self._purge_invalid_empty_host(instance_id)
 
 
 class _LegacyInstanceEntry(NamedTuple):
-    """旧 systemconfig 单键里的一条实例描述，连同其原始载荷的内容指纹。"""
+    """
+    旧 systemconfig 单键里的一条实例描述，连同其原始载荷的内容指纹。
+
+    :param instance: 从历史配置解析的插件实例信息
+    :param fingerprint: 原始载荷内容指纹，用于检测迁移后源数据是否变化
+    """
 
     instance: PluginInstance
     fingerprint: str
 
 
 def _payload_fingerprint(payload: dict[str, Any]) -> str:
-    """为旧键里的一条原始载荷算内容指纹，用于判定旧版本此后有没有改动过它。
+    """
+    为旧键里的一条原始载荷算内容指纹，用于判定旧版本此后有没有改动过它。
 
     指纹取自原始载荷而非模型 dump：模型字段将来增减会让全部指纹一起失配，把用户在
     独立表里的改动当成「旧载荷变化」整批盖回去。键排序后再序列化，旧版本重写整个键
     造成的字段顺序变化不会被误判成内容变化。
+
     :param payload: 旧键里的单条原始载荷
     :return: 十六进制摘要
     """
@@ -397,7 +505,8 @@ def _payload_fingerprint(payload: dict[str, Any]) -> str:
 
 
 class PluginInstanceStore:
-    """管理共享源码的分身实例描述，并把源插件本体自身的那一行单独成一组读写口。
+    """
+    管理共享源码的分身实例描述，并把源插件本体自身的那一行单独成一组读写口。
 
     两类记录同存一张表，靠 ``instance_id`` 是否等于 ``source_plugin_id`` 区分：
     ``all()``/``get()``/``save()``/``delete()``/``for_source()``/``enabled()`` 只服务分身，
@@ -415,7 +524,9 @@ class PluginInstanceStore:
             storage: Callable[[], "PluginStorage"],
             directory: Callable[[], PluginInstanceDirectory],
     ) -> None:
-        """保存独立表持久化端口，以及旧 systemconfig 单键端口供兜底导入使用。"""
+        """
+        保存独立表持久化端口，以及旧 systemconfig 单键端口供兜底导入使用。
+        """
         self._storage = storage
         self._directory = directory
         self._bootstrap_checked = False
@@ -424,11 +535,14 @@ class PluginInstanceStore:
         self._bootstrap_lock = threading.RLock()
 
     def purge_invalid_empty_host(self, instance_id: str) -> bool:
-        """让持久化端口直接核对历史空行，不经严格描述符投影或旧键导入。"""
+        """
+        让持久化端口直接核对历史空行，不经严格描述符投影或旧键导入。
+        """
         return self._directory().purge_invalid_empty_host(instance_id)
 
     def _ensure_bootstrapped(self) -> None:
-        """把旧 systemconfig 单键的实例描述变更合并进独立表，每进程成功一次。
+        """
+        把旧 systemconfig 单键的实例描述变更合并进独立表，每进程成功一次。
 
         完成标记在合并与指纹落盘全部成功之后才提交：读取、列举、保存、写指纹任何
         一步遇到暂时性故障都会把异常抛给调用方，此时若标记已经落下，本进程后续调用
@@ -447,7 +561,8 @@ class PluginInstanceStore:
             self._bootstrap_checked = True
 
     def _merge_legacy_instances(self) -> None:
-        """执行一轮旧键与独立表的合并：新增、改写与删除三类变更都要同步过去。
+        """
+        执行一轮旧键与独立表的合并：新增、改写与删除三类变更都要同步过去。
 
         alembic 迁移已经搬过一轮，这里兜的是「库结构升级后又用旧版本写过分身」这类
         回滚往返：旧键刻意保留作回滚依据、从不清理，旧版本只认它，因此它在迁移之后
@@ -493,7 +608,9 @@ class PluginInstanceStore:
             storage.write(SystemConfigKey.PluginInstancesImported, fingerprints)
 
     def _legacy_instances(self) -> dict[str, _LegacyInstanceEntry]:
-        """解析旧 systemconfig 单键里的实例描述，兼容历史字典与列表两种载荷形态。"""
+        """
+        解析旧 systemconfig 单键里的实例描述，兼容历史字典与列表两种载荷形态。
+        """
         raw_instances = self._storage().read(SystemConfigKey.PluginInstances) or {}
         if isinstance(raw_instances, list):
             entries = {
@@ -521,7 +638,9 @@ class PluginInstanceStore:
         return instances
 
     def all(self) -> dict[str, PluginInstance]:
-        """读取全部登记的分身实例，不含源插件本体自身的那一行。"""
+        """
+        读取全部登记的分身实例，不含源插件本体自身的那一行。
+        """
         self._ensure_bootstrapped()
         return {
             record.instance_id: record
@@ -530,13 +649,16 @@ class PluginInstanceStore:
         }
 
     def get(self, instance_id: str) -> PluginInstance | None:
-        """读取指定分身实例描述；本体自身的那一行不会从这里返回。"""
+        """
+        读取指定分身实例描述；本体自身的那一行不会从这里返回。
+        """
         self._ensure_bootstrapped()
         record = self._directory().get(instance_id)
         return record if record is not None and not record.is_host else None
 
     def save(self, instance: PluginInstance) -> None:
-        """新增或更新分身实例描述，并以实例 ID 作为稳定持久化键。
+        """
+        新增或更新分身实例描述，并以实例 ID 作为稳定持久化键。
 
         分身的实例 ID 必须区别于其源插件 ID：两者相等的那一行表示的是本体自身，
         按分身写入会把本体承载的业务参数顶掉。
@@ -549,7 +671,9 @@ class PluginInstanceStore:
         self._directory().save(instance)
 
     def delete(self, instance_id: str) -> bool:
-        """删除指定分身实例描述连同其配置，返回删除前是否存在。"""
+        """
+        删除指定分身实例描述连同其配置，返回删除前是否存在。
+        """
         self._ensure_bootstrapped()
         record = self.get(instance_id)
         if record is None:
@@ -557,7 +681,9 @@ class PluginInstanceStore:
         return self._directory().delete(record.instance_id)
 
     def enabled(self) -> dict[str, PluginInstance]:
-        """读取应当被实例化并启动的分身实例，不含停用的与本体记录。"""
+        """
+        读取应当被实例化并启动的分身实例，不含停用的与本体记录。
+        """
         self._ensure_bootstrapped()
         return {
             record.instance_id: record
@@ -566,7 +692,9 @@ class PluginInstanceStore:
         }
 
     def enable(self, instance_id: str) -> bool:
-        """启用指定分身实例，返回启用前它是否存在且处于停用状态。"""
+        """
+        启用指定分身实例，返回启用前它是否存在且处于停用状态。
+        """
         self._ensure_bootstrapped()
         record = self.get(instance_id)
         if record is None or record.is_enabled:
@@ -574,7 +702,8 @@ class PluginInstanceStore:
         return self._directory().set_enabled(record.instance_id, True)
 
     def disable(self, instance_id: str) -> bool:
-        """停用指定分身实例，返回停用前它是否存在且处于启用状态。
+        """
+        停用指定分身实例，返回停用前它是否存在且处于启用状态。
 
         停用不删行：业务参数、展示信息原样留在那一行，再次启用即恢复。要连配置一并
         抹掉走 :meth:`delete`。
@@ -586,7 +715,8 @@ class PluginInstanceStore:
         return self._directory().set_enabled(record.instance_id, False)
 
     def all_hosts(self) -> dict[str, PluginInstance]:
-        """一次性读取全部源插件本体记录，不含分身实例。
+        """
+        一次性读取全部源插件本体记录，不含分身实例。
 
         供目录投影批量取数使用：按插件 ID 遍历卡片时只做内存字典查找，不再逐张卡片
         各查一次数据库。
@@ -599,7 +729,8 @@ class PluginInstanceStore:
         }
 
     def enabled_hosts(self) -> dict[str, PluginInstance]:
-        """读取应当被装载的源插件本体记录，不含停用的与分身实例。
+        """
+        读取应当被装载的源插件本体记录，不含停用的与分身实例。
 
         本体与分身在这里终于用同一个判据：``is_enabled`` 决定一份配置是否应当被
         实例化并启动。安装清单退回去只回答「这个插件的包在不在磁盘上」，不再兼任
@@ -614,7 +745,8 @@ class PluginInstanceStore:
         }
 
     def enable_host(self, plugin_id: str) -> bool:
-        """把源插件本体登记为应当装载，没有本体记录时按默认视图建出。
+        """
+        把源插件本体登记为应当装载，没有本体记录时按默认视图建出。
 
         安装收尾必须调用：本体的装载判据已经归口到启用位，只往安装清单里加一条而
         不建出这一行，插件会装完却不加载。
@@ -638,7 +770,8 @@ class PluginInstanceStore:
         return self._directory().set_enabled(host.instance_id, True)
 
     def disable_host(self, plugin_id: str) -> bool:
-        """停用源插件本体但保留其全部设置，返回停用前它是否存在且处于启用状态。
+        """
+        停用源插件本体但保留其全部设置，返回停用前它是否存在且处于启用状态。
 
         业务参数保留——那是用户的数据，重装或重新启用后应当还在；默认目标置位与
         日志等级覆盖由启用位置假时一并清掉，它们只对在册实例有意义。
@@ -650,13 +783,16 @@ class PluginInstanceStore:
         return self._directory().set_enabled(host.instance_id, False)
 
     def get_host(self, plugin_id: str) -> PluginInstance | None:
-        """读取源插件本体自身那一行；该插件从未登记过任何设置时为 None。"""
+        """
+        读取源插件本体自身那一行；该插件从未登记过任何设置时为 None。
+        """
         self._ensure_bootstrapped()
         record = self._directory().get(plugin_id)
         return record if record is not None and record.is_host else None
 
     def save_host(self, instance: PluginInstance) -> None:
-        """新增或更新源插件本体自身那一行，本体的 ``source_plugin_id`` 恒等于自身 ID。
+        """
+        新增或更新源插件本体自身那一行，本体的 ``source_plugin_id`` 恒等于自身 ID。
 
         归一而不是拒绝：本体行的一对身份列必然相等，调用方传进来的 ``source_plugin_id``
         对本体而言没有可选值，就地纠正比让调用方各自记住这条约束更不容易出错。
@@ -667,7 +803,9 @@ class PluginInstanceStore:
         )
 
     def for_source(self, source_plugin_id: str) -> list[PluginInstance]:
-        """按持久化顺序返回引用同一源码插件的全部分身，不含本体自身那一行。"""
+        """
+        按持久化顺序返回引用同一源码插件的全部分身，不含本体自身那一行。
+        """
         self._ensure_bootstrapped()
         return [
             record
@@ -681,22 +819,30 @@ _plugin_instance_directory = PluginInstanceDirectory()
 
 
 def configure_plugin_instance_directory(directory: PluginInstanceDirectory) -> None:
-    """由启动组合根替换插件实例表持久化实现。"""
+    """
+    由启动组合根替换插件实例表持久化实现。
+    """
     global _plugin_instance_directory
     _plugin_instance_directory = directory
 
 
 def get_plugin_instance_directory() -> PluginInstanceDirectory:
-    """返回当前插件实例表持久化端口。"""
+    """
+    返回当前插件实例表持久化端口。
+    """
     return _plugin_instance_directory
 
 
 def configure_plugin_storage(storage: PluginStorage) -> None:
-    """由启动组合根替换插件运行时持久化实现。"""
+    """
+    由启动组合根替换插件运行时持久化实现。
+    """
     global _plugin_storage
     _plugin_storage = storage
 
 
 def get_plugin_storage() -> PluginStorage:
-    """返回当前插件运行时持久化端口。"""
+    """
+    返回当前插件运行时持久化端口。
+    """
     return _plugin_storage

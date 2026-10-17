@@ -1,3 +1,7 @@
+"""
+插件管理门面，协调实例目录、生命周期、市场与公开扩展能力。
+"""
+
 import asyncio
 import concurrent.futures
 import inspect
@@ -61,25 +65,35 @@ PluginRouteRefresher = Callable[[str], None]
 
 
 def _ignore_legacy_diagnostics(**_kwargs) -> None:
-    """在启动组合根尚未注入兼容服务时保持插件加载可用。"""
+    """
+    在启动组合根尚未注入兼容服务时保持插件加载可用。
+    """
 
 
 def _ignore_plugin_resource_imports(**_kwargs) -> None:
-    """未进入应用启动组合时不主动创建进程级宿主资源。"""
+    """
+    未进入应用启动组合时不主动创建进程级宿主资源。
+    """
 
 
 def _unavailable_site_auth_level() -> int:
-    """站点能力尚未装配时返回未认证等级。"""
+    """
+    站点能力尚未装配时返回未认证等级。
+    """
     return 0
 
 
 def _unavailable_plugin_catalog_factory(_mapper: Callable[..., Any]) -> Any:
-    """在启动组合根尚未装配目录用例时拒绝隐式跨层构造。"""
+    """
+    在启动组合根尚未装配目录用例时拒绝隐式跨层构造。
+    """
     raise RuntimeError("插件目录应用服务尚未由启动组合根装配")
 
 
 def _unavailable_plugin_runtime_factory(_manager: "PluginManager") -> PluginRuntime:
-    """拒绝在启动组合根尚未注入依赖图时隐式构造插件 Runtime。"""
+    """
+    拒绝在启动组合根尚未注入依赖图时隐式构造插件 Runtime。
+    """
     raise RuntimeError("插件 Runtime 工厂尚未由启动组合根装配")
 
 
@@ -110,7 +124,9 @@ def _warn_if_plugin_enabled_gil(
 
 
 def _unavailable_plugin_route_refresher(_plugin_id: str) -> None:
-    """在 HTTP 组合尚未装配时拒绝发布不完整的热重载投影。"""
+    """
+    在 HTTP 组合尚未装配时拒绝发布不完整的热重载投影。
+    """
     raise RuntimeError("插件动态路由刷新器尚未由启动组合根装配")
 
 
@@ -132,7 +148,9 @@ def configure_plugin_legacy_import_services(
     diagnostics_configurator: LegacyDiagnosticsConfigurator,
     import_scanner: LegacyImportScanner,
 ) -> None:
-    """由启动组合根注入插件旧导入诊断服务，避免扩展层反向依赖兼容层。"""
+    """
+    由启动组合根注入插件旧导入诊断服务，避免扩展层反向依赖兼容层。
+    """
     global _legacy_diagnostics_configurator, _legacy_import_scanner
     _legacy_diagnostics_configurator = diagnostics_configurator
     _legacy_import_scanner = import_scanner
@@ -141,37 +159,49 @@ def configure_plugin_legacy_import_services(
 def configure_plugin_resource_import_preparer(
     preparer: LegacyPluginImportPreparer,
 ) -> None:
-    """注入旧插件导入前的宿主资源准备器。"""
+    """
+    注入旧插件导入前的宿主资源准备器。
+    """
     global _legacy_plugin_import_preparer
     _legacy_plugin_import_preparer = preparer
 
 
 def configure_site_auth_level_provider(provider: SiteAuthLevelProvider) -> None:
-    """由启动组合根注入站点认证等级，避免扩展运行时依赖应用服务。"""
+    """
+    由启动组合根注入站点认证等级，避免扩展运行时依赖应用服务。
+    """
     global _site_auth_level_provider
     _site_auth_level_provider = provider
 
 
 def configure_plugin_catalog_factory(factory: PluginCatalogFactory) -> None:
-    """由启动组合根注入插件目录应用服务工厂，消除 Runtime 反向依赖。"""
+    """
+    由启动组合根注入插件目录应用服务工厂，消除 Runtime 反向依赖。
+    """
     global _plugin_catalog_factory
     _plugin_catalog_factory = factory
 
 
 def configure_plugin_runtime_factory(factory: PluginRuntimeFactory) -> None:
-    """由启动组合根注入完整插件 Runtime 工厂。"""
+    """
+    由启动组合根注入完整插件 Runtime 工厂。
+    """
     global _plugin_runtime_factory
     _plugin_runtime_factory = factory
 
 
 def reset_plugin_runtime_factory() -> None:
-    """恢复未装配工厂，仅供隔离测试清理进程级依赖。"""
+    """
+    恢复未装配工厂，仅供隔离测试清理进程级依赖。
+    """
     global _plugin_runtime_factory
     _plugin_runtime_factory = _unavailable_plugin_runtime_factory
 
 
 def configure_plugin_route_refresher(refresher: PluginRouteRefresher) -> None:
-    """由启动组合根注入热重载后的动态路由投影刷新器。"""
+    """
+    由启动组合根注入热重载后的动态路由投影刷新器。
+    """
     global _plugin_route_refresher
     _plugin_route_refresher = refresher
 
@@ -179,7 +209,9 @@ def configure_plugin_route_refresher(refresher: PluginRouteRefresher) -> None:
 def _resolve_plugin_handler_instance(
     owner_class: Type[Any],
 ) -> Optional[EventHandlerBinding]:
-    """通过当前插件管理器单例解析实例，避免事件总线持有过期对象。"""
+    """
+    通过当前插件管理器单例解析实例，避免事件总线持有过期对象。
+    """
     manager = cast(
         Optional["PluginManager"],
         PluginManager.get_existing_instance(),
@@ -191,14 +223,20 @@ def _resolve_plugin_handler_instance(
 
 @observe_compat_facade("PluginManager")
 class PluginManager(ConfigReloadMixin, metaclass=Singleton):
-    """插件管理器"""
+    """
+    统一插件目录、实例生命周期和扩展能力的宿主调用入口。
+
+    各职责由同一 PluginRuntime 管理；插件实例、后台任务和资源关闭由其生命周期服务协调。
+    """
     CONFIG_WATCH = {"DEV", "PLUGIN_AUTO_RELOAD", "PLUGIN_LOCAL_REPO_PATHS"}
     AGENT_TOOLS_BUILD_MAX_ATTEMPTS = 3
     # 略长于 watchfiles 默认 debounce，吸收包写入完成后才交付的延迟批次。
     MONITOR_SETTLE_SECONDS = 2.0
 
     def __init__(self) -> None:
-        """消费组合根注入的唯一 Runtime，并保留旧私有字段的对象身份。"""
+        """
+        消费组合根注入的唯一 Runtime，并保留旧私有字段的对象身份。
+        """
         self._monitor_suppression_lock = threading.Lock()
         self._suppressed_monitor_plugins: Dict[str, int] = {}
         self._monitor_suppressed_until: Dict[str, float] = {}
@@ -243,7 +281,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             self,
             owner_class: Type[Any],
     ) -> Optional[EventHandlerBinding]:
-        """为插件声明的事件方法解析当前运行实例。"""
+        """
+        为插件声明的事件方法解析当前运行实例。
+        """
         plugin_id = owner_class.__name__
         # 旧测试与部分扩展会替换私有映射来构造隔离运行态，解析器继续尊重该接缝。
         if self._plugins.get(plugin_id) is not owner_class:
@@ -259,10 +299,11 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         )
 
     def init_config(self):
-        """按最新系统配置完整重启插件。"""
+        """
+        按最新系统配置完整重启插件。
+        """
         try:
             with self.mutation("配置热重载"):
-                # 停止已有插件
                 self.stop()
                 classification = self.classify_plugins()
                 self.apply_plugin_dependency_classification(classification)
@@ -273,7 +314,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def start(self, pid: Optional[str] = None) -> Dict[str, PluginRuntimeStatus]:
         """
-        启动加载插件
+        启动加载插件。
+
         :param pid: 插件ID，为空加载所有插件
         """
 
@@ -301,7 +343,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def init_plugin(self, plugin_id: str, conf: dict):
         """
-        初始化插件
+        初始化插件。
+
         :param plugin_id: 插件ID
         :param conf: 插件配置
         """
@@ -326,12 +369,15 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     @property
     def _plugin_agent_tools_revision(self) -> int:
-        """兼容读取旧私有字段，实际版本由独立工具目录持有。"""
+        """
+        兼容读取旧私有字段，实际版本由独立工具目录持有。
+        """
         return self._plugin_tool_catalog.revision
 
     def stop(self, pid: Optional[str] = None) -> None:
         """
-        停止插件服务
+        停止插件服务。
+
         :param pid: 插件ID，为空停止所有插件
         """
         try:
@@ -342,11 +388,15 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             logger.warning(str(error))
 
     def mutation(self, operation: str) -> ContextManager[None]:
-        """为一个完整插件可变事务取得可跨异步边界传播的准入 lease。"""
+        """
+        为一个完整插件可变事务取得可跨异步边界传播的准入 lease。
+        """
         return self._plugin_mutation_admission.hold(operation)
 
     def reopen_plugins(self) -> bool:
-        """为新应用生命周期解除运行时封口，仍活跃的 quiesce owner 禁止复用。"""
+        """
+        为新应用生命周期解除运行时封口，仍活跃的 quiesce owner 禁止复用。
+        """
         with self._plugin_quiesce_lock:
             futures = (
                 self._plugin_quiesce_future,
@@ -365,7 +415,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             return True
 
     async def quiesce_plugins(self, timeout: float = 240.0) -> bool:
-        """封口变更事务并停用插件 handler，超时后保留 Future ownership。"""
+        """
+        封口变更事务并停用插件 handler，超时后保留 Future ownership。
+        """
         if self._plugin_mutation_admission.is_held():
             logger.warning("插件可变事务不能等待自身收敛，拒绝在事务内执行停机")
             return False
@@ -385,7 +437,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         except asyncio.TimeoutError:
             logger.error(f"插件后台服务未在 {timeout:g} 秒内收敛")
             return False
-        except Exception as error:  # noqa: BLE001  Future 异常必须转为生命周期结果
+        # Future 异常必须转为生命周期结果
+        except Exception as error:  # noqa: BLE001
             logger.error(f"插件后台服务停止失败：{error}", exc_info=True)
             return False
         finally:
@@ -395,7 +448,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                         self._plugin_quiesce_future = None
 
     async def quiesce_plugin_services(self, timeout: float = 240.0) -> bool:
-        """在事件结算后执行旧插件停机 hook，并有界等待同步 owner。"""
+        """
+        在事件结算后执行旧插件停机 hook，并有界等待同步 owner。
+        """
         with self._plugin_quiesce_lock:
             prepare_future = self._plugin_quiesce_future
             if prepare_future is not None and not prepare_future.done():
@@ -422,7 +477,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         except asyncio.TimeoutError:
             logger.error(f"插件旧停机 hook 未在 {timeout:g} 秒内收敛")
             return False
-        except Exception as error:  # noqa: BLE001  Future 异常必须转为生命周期结果
+        # Future 异常必须转为生命周期结果
+        except Exception as error:  # noqa: BLE001
             logger.error(f"插件旧停机 hook 执行失败：{error}", exc_info=True)
             return False
         finally:
@@ -432,7 +488,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                         self._plugin_service_quiesce_future = None
 
     def finalize_plugins(self) -> bool:
-        """确认 quiesce owner 已结束后禁用 handler 并卸载插件实例。"""
+        """
+        确认 quiesce owner 已结束后禁用 handler 并卸载插件实例。
+        """
         with self._plugin_quiesce_lock:
             futures = (
                 self._plugin_quiesce_future,
@@ -447,14 +505,17 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         return self._plugin_lifecycle.finalize()
 
     def _quiesce_after_mutations(self) -> bool:
-        """等待已获准变更自然结束后，再停用插件事件入口。"""
+        """
+        等待已获准变更自然结束后，再停用插件事件入口。
+        """
         self._plugin_mutation_admission.wait_until_idle()
         return self._plugin_lifecycle.quiesce_handlers()
 
     @property
     def running_plugins(self) -> Dict[str, Any]:
         """
-        获取运行态插件列表
+        获取运行态插件列表。
+
         :return: 运行态插件列表
         """
         return self._plugin_registry.running
@@ -462,21 +523,28 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     @property
     def plugins(self) -> Dict[str, Any]:
         """
-        获取插件列表
+        获取插件列表。
+
         :return: 插件列表
         """
         return self._plugin_registry.classes
 
     def on_config_changed(self):
-        """在插件监控配置变化后重建文件监控。"""
+        """
+        在插件监控配置变化后重建文件监控。
+        """
         self.reload_monitor()
 
     def get_reload_name(self) -> str:
-        """返回配置重载日志使用的功能名称。"""
+        """
+        返回配置重载日志使用的功能名称。
+        """
         return "插件文件修改监测"
 
     def start_monitor(self, *, reopen: bool = False) -> None:
-        """按当前配置启动监控；新生命周期可显式解除既有封口。"""
+        """
+        按当前配置启动监控；新生命周期可显式解除既有封口。
+        """
         if reopen and not self._plugin_monitor.reopen():
             return
         if (
@@ -490,7 +558,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def reload_monitor(self):
         """
-        重新加载插件文件修改监测
+        重新加载插件文件修改监测。
         """
         self._plugin_monitor.reload(
             enabled=(
@@ -503,11 +571,15 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         )
 
     def stop_monitor(self, timeout: float = 5.0) -> bool:
-        """停止插件文件监控，并返回线程是否在预算内真正退出。"""
+        """
+        停止插件文件监控，并返回线程是否在预算内真正退出。
+        """
         return self._plugin_monitor.stop(timeout=timeout)
 
     def close_monitor(self, timeout: float = 5.0) -> bool:
-        """封口当前生命周期的文件监控，并返回线程是否真正退出。"""
+        """
+        封口当前生命周期的文件监控，并返回线程是否真正退出。
+        """
         return self._plugin_monitor.close(timeout=timeout)
 
     def _run_file_watcher(self):
@@ -536,7 +608,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self,
         plugin_id: str,
     ) -> PluginRuntimeStatus:
-        """重载源码树，并发布源插件及虚拟实例的动态路由投影。"""
+        """
+        重载源码树，并发布源插件及虚拟实例的动态路由投影。
+        """
         with self.mutation("热重载插件路由"):
             status = self.reload_plugin_tree(plugin_id)
             reload_targets = self.get_plugin_reload_targets(plugin_id)
@@ -558,6 +632,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     def _get_plugin_id_from_path(self, event_path: Path) -> Optional[str]:
         """
         根据文件路径解析出插件的ID。
+
         :param event_path: 被修改文件的 Path 对象。
         :return: 插件ID字符串，如果不是有效插件文件则返回 None。
         """
@@ -565,13 +640,13 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def _get_local_plugin_candidate_from_path(self, event_path: Path) -> Optional[dict]:
         """
-        根据本地插件仓库路径解析具体插件候选，保留 plugins/plugins.v2 来源差异
+        根据本地插件仓库路径解析具体插件候选，保留 plugins/plugins.v2 来源差异。
         """
         return self._plugin_paths.local_candidate(event_path)
 
     def _sync_local_plugin_if_installed(self, pid: str, candidate: Optional[dict] = None) -> bool:
         """
-        已安装本地插件源码变化时，同步到运行目录
+        已安装本地插件源码变化时，同步到运行目录。
         """
         try:
             with self.mutation("同步本地插件源码"):
@@ -582,7 +657,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     @contextmanager
     def suppress_plugin_monitor(self, plugin_id: str):
-        """在插件包写入及其文件事件收敛期间阻止监控重复重载。"""
+        """
+        在插件包写入及其文件事件收敛期间阻止监控重复重载。
+        """
         with self.mutation("更新插件包"):
             normalized_id = plugin_id.lower()
             with self._monitor_suppression_lock:
@@ -603,7 +680,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                         self._suppressed_monitor_plugins[normalized_id] = count - 1
 
     def is_plugin_monitor_suppressed(self, plugin_id: str) -> bool:
-        """判断插件是否处于包写入或延迟文件事件收敛阶段。"""
+        """
+        判断插件是否处于包写入或延迟文件事件收敛阶段。
+        """
         with self._monitor_suppression_lock:
             normalized_id = plugin_id.lower()
             if self._suppressed_monitor_plugins.get(normalized_id, 0) > 0:
@@ -618,7 +697,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def remove_plugin(self, plugin_id: str):
         """
-        从内存中移除一个插件
+        从内存中移除一个插件。
+
         :param plugin_id: 插件ID
         """
         try:
@@ -630,12 +710,15 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             logger.warning(str(error))
 
     def remove_plugin_package(self, plugin_id: str) -> bool:
-        """把插件物理目录删除委托给唯一包文件事务 owner。"""
+        """
+        把插件物理目录删除委托给唯一包文件事务 owner。
+        """
         return self._plugin_runtime.system().remove_plugin_package(plugin_id)
 
     def reload_plugin(self, plugin_id: str) -> PluginRuntimeStatus:
         """
-        将一个插件重新加载到内存
+        将一个插件重新加载到内存。
+
         :param plugin_id: 插件ID
         """
         try:
@@ -658,7 +741,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             return PluginRuntimeStatus.LOAD_FAILED
 
     def reload_plugin_tree(self, plugin_id: str) -> PluginRuntimeStatus:
-        """重载源码插件，并同步刷新所有引用该源码的虚拟实例。"""
+        """
+        重载源码插件，并同步刷新所有引用该源码的虚拟实例。
+        """
         try:
             with self.mutation("重载插件实例树"):
                 with self._plugin_quiesce_lock:
@@ -672,7 +757,9 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             return PluginRuntimeStatus.LOAD_FAILED
 
     def get_plugin_reload_targets(self, plugin_id: str) -> List[str]:
-        """返回源码更新后需要刷新注册信息的源插件及其实例 ID。"""
+        """
+        返回源码更新后需要刷新注册信息的源插件及其实例 ID。
+        """
         source_plugin_id = self.get_plugin_source_id(plugin_id)
         return [
             source_plugin_id,
@@ -691,7 +778,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         online_restore_plugins: set[str] | None = None,
     ) -> List[str]:
         """
-        安装本地不存在或需要更新的插件
+        安装本地不存在或需要更新的插件。
         """
 
         with self.mutation("同步插件包"):
@@ -703,7 +790,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     @staticmethod
     def install_plugin_missing_dependencies() -> List[str]:
         """
-        安装插件中缺失或不兼容的依赖项
+        安装插件中缺失或不兼容的依赖项。
         """
         manager = PluginManager()
         with manager.mutation("安装插件依赖"):
@@ -711,39 +798,53 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     @staticmethod
     def install_plugin_missing_dependencies_with_status() -> PluginDependencyInstallResult:
-        """安装插件缺失依赖并返回缺失项及安装成功状态。"""
+        """
+        安装插件缺失依赖并返回缺失项及安装成功状态。
+        """
         manager = PluginManager()
         with manager.mutation("安装插件依赖"):
             return manager._plugin_dependencies.install_missing_with_status()
 
     @staticmethod
     async def async_install_plugin_missing_dependencies_with_status() -> PluginDependencyInstallResult:
-        """在异步启动链中恢复插件依赖并保留取消语义。"""
+        """
+        在异步启动链中恢复插件依赖并保留取消语义。
+        """
         manager = PluginManager()
         with manager.mutation("安装插件依赖"):
             return await manager._plugin_dependencies.async_install_missing_with_status()
 
     def classify_plugins(self) -> PluginDependencyClassification:
-        """返回依赖 owner 计算的物理插件与虚拟实例分类。"""
+        """
+        返回依赖 owner 计算的物理插件与虚拟实例分类。
+        """
         return self._plugin_dependencies.classify_plugins()
 
     def apply_plugin_dependency_classification(
         self,
         classification: PluginDependencyClassification,
     ) -> None:
-        """把分类结果委托依赖 owner 写入唯一运行状态注册表。"""
+        """
+        把分类结果委托依赖 owner 写入唯一运行状态注册表。
+        """
         self._plugin_dependencies.apply_classification(classification)
 
     def set_plugin_settling(self, settling: bool) -> None:
-        """更新启动后的插件恢复任务状态。"""
+        """
+        更新启动后的插件恢复任务状态。
+        """
         self._plugin_registry.set_settling(settling)
 
     def get_plugin_runtime_statuses(self) -> Dict[str, PluginRuntimeStatus]:
-        """返回插件运行状态快照。"""
+        """
+        返回插件运行状态快照。
+        """
         return self._plugin_registry.runtime_status_snapshot()
 
     def get_plugin_runtime_generation(self) -> int:
-        """返回插件状态变化代次。"""
+        """
+        返回插件状态变化代次。
+        """
         return self._plugin_registry.generation
 
     def mark_plugin_restart_required(
@@ -751,47 +852,65 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         plugin_id: str,
         distributions: tuple[str, ...],
     ) -> None:
-        """记录已落盘但尚未由当前进程完整激活的原生依赖。"""
+        """
+        记录已落盘但尚未由当前进程完整激活的原生依赖。
+        """
         self._plugin_registry.mark_restart_required(plugin_id, distributions)
 
     def get_plugin_restart_requirements(self) -> Dict[str, tuple[str, ...]]:
-        """返回当前进程的插件原生依赖重启要求。"""
+        """
+        返回当前进程的插件原生依赖重启要求。
+        """
         return self._plugin_registry.restart_required_snapshot()
 
     def get_plugin_gil_fallbacks(self) -> list[str]:
-        """返回当前进程内加载时导致 free-threaded 运行时回退到 GIL 的插件 ID。"""
+        """
+        返回当前进程内加载时导致 free-threaded 运行时回退到 GIL 的插件 ID。
+        """
         return self._plugin_registry.gil_fallback_snapshot()
 
     def is_plugin_settling(self) -> bool:
-        """返回插件源码和依赖是否仍在后台恢复。"""
+        """
+        返回插件源码和依赖是否仍在后台恢复。
+        """
         return self._plugin_registry.settling
 
     def get_plugin_config(self, pid: str) -> dict:
         """
-        获取插件配置
+        获取插件配置。
+
         :param pid: 插件ID
         """
         return self._plugin_config_store.read(pid)
 
     def get_plugin_instances(self) -> dict[str, PluginInstance]:
-        """返回全部有效虚拟插件实例描述。"""
+        """
+        返回全部有效虚拟插件实例描述。
+        """
         return self._plugin_instance_store.all()
 
     def get_plugin_instance(self, plugin_id: str) -> Optional[PluginInstance]:
-        """返回指定虚拟插件实例描述，物理插件返回空。"""
+        """
+        返回指定虚拟插件实例描述，物理插件返回空。
+        """
         return self._plugin_instance_store.get(plugin_id)
 
     def get_plugin_source_id(self, plugin_id: str) -> str:
-        """解析插件运行身份对应的源码身份，普通插件保持原值。"""
+        """
+        解析插件运行身份对应的源码身份，普通插件保持原值。
+        """
         instance = self._plugin_instance_store.get(plugin_id)
         return instance.source_plugin_id if instance else plugin_id
 
     def get_plugin_source_instances(self, plugin_id: str) -> List[PluginInstance]:
-        """返回直接引用指定源码插件的虚拟实例。"""
+        """
+        返回直接引用指定源码插件的虚拟实例。
+        """
         return self._plugin_instance_store.for_source(plugin_id)
 
     def delete_plugin_instance(self, plugin_id: str) -> bool:
-        """删除虚拟实例描述；调用方仍负责停止实例和清理业务数据。
+        """
+        删除虚拟实例描述；调用方仍负责停止实例和清理业务数据。
 
         同时清掉该实例的进程内日志等级覆盖：覆盖表按实例 ID 常驻进程，只删库里那
         一行的话，同一进程内用相同后缀重建的分身会继承上一个分身的等级——界面显示
@@ -807,7 +926,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         return deleted
 
     def delete_plugin_data_rows(self, instance_id: str) -> None:
-        """只删该实例在插件数据表里的行，不碰它的自有数据库。
+        """
+        只删该实例在插件数据表里的行，不碰它的自有数据库。
 
         与 :meth:`delete_plugin_data` 的区别正在于此：那个方法把数据表与自有库捆在
         一起删，而彻底清理要让用户逐项勾选，两者必须拆开。
@@ -815,11 +935,14 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         self._plugin_config_store.delete_data_rows(instance_id)
 
     def destroy_plugin_own_database(self, instance_id: str) -> None:
-        """销毁该实例的自有数据库并释放句柄。"""
+        """
+        销毁该实例的自有数据库并释放句柄。
+        """
         self._plugin_config_store.destroy_database(instance_id)
 
     def delete_plugin_data_directory(self, instance_id: str) -> bool:
-        """删除该实例在插件数据目录下的整个目录，返回删除前它是否存在。
+        """
+        删除该实例在插件数据目录下的整个目录，返回删除前它是否存在。
 
         这个目录此前没有任何代码清理过：插件把落盘文件写在这里，卸载与重置都只动
         数据库，目录会一直留着，重建同名实例时静默继承上一轮的文件。
@@ -831,7 +954,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         return remove_plugin_data_directory(instance_id)
 
     def purge_plugin_instance(self, instance_id: str) -> bool:
-        """彻底删除一个分身实例的行连同其配置，返回删除前它是否存在。
+        """
+        彻底删除一个分身实例的行连同其配置，返回删除前它是否存在。
 
         调用方需自行持有 ``mutation`` 上下文；彻底清理的各个步骤必须落在同一个
         lease 内，否则停机封口可能卡在两步之间，留下删了一半的实例。
@@ -847,16 +971,21 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         return deleted
 
     def purge_invalid_empty_plugin_instance(self, instance_id: str) -> bool:
-        """在调用方 mutation lease 内仅回收非法 ID 的空本体行。"""
+        """
+        在调用方 mutation lease 内仅回收非法 ID 的空本体行。
+        """
         return self._plugin_instance_store.purge_invalid_empty_host(instance_id)
 
     def is_plugin_clone(self, instance_id: str) -> bool:
-        """判断该实例 ID 是否为分身而非源插件本体。"""
+        """
+        判断该实例 ID 是否为分身而非源插件本体。
+        """
         return self._plugin_instance_store.get(instance_id) is not None
 
     def save_plugin_config(self, pid: str, conf: dict, force: bool = False) -> bool:
         """
-        保存插件配置
+        保存插件配置。
+
         :param pid: 插件ID
         :param conf: 配置
         :param force: 强制保存
@@ -873,6 +1002,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     ) -> bool:
         """
         异步保存插件配置。
+
         :param pid: 插件ID
         :param conf: 配置
         :param force: 强制保存
@@ -886,7 +1016,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def delete_plugin_config(self, pid: str, force: bool = False) -> bool:
         """
-        删除插件配置
+        删除插件配置。
+
         :param pid: 插件ID
         :param force: 插件停止后仍允许按插件 ID 删除持久化配置
         """
@@ -899,7 +1030,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def delete_plugin_data(self, pid: str, force: bool = False) -> bool:
         """
-        删除插件数据
+        删除插件数据。
+
         :param pid: 插件ID
         :param force: 插件停止后仍允许按插件 ID 删除持久化数据
         """
@@ -912,99 +1044,100 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def get_plugin_state(self, pid: str) -> bool:
         """
-        获取插件状态
+        获取插件状态。
+
         :param pid: 插件ID
         """
         plugin = self._plugin_registry.instance(pid)
         return plugin.get_state() if plugin else False
 
     def _plugin_projection(self) -> PluginProjection:
-        """返回类型化 Runtime 持有的唯一能力投影。"""
+        """
+        返回类型化 Runtime 持有的唯一能力投影。
+        """
         return self._plugin_runtime.projection
 
     def _plugin_catalog(self) -> Any:
-        """兼容旧私有入口，返回绑定唯一元数据 owner 的目录服务。"""
+        """
+        兼容旧私有入口，返回绑定唯一元数据 owner 的目录服务。
+        """
         return _plugin_catalog_factory(self._plugin_metadata.map)
 
     def get_plugin_commands(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        获取插件命令
-        [{
-            "cmd": "/xx",
-            "event": EventType.xx,
-            "desc": "xxxx",
-            "data": {},
-            "pid": "",
-        }]
+        收集插件声明的交互命令。
+
+        每条记录包含命令文本 cmd、事件 event、中文说明 desc、附加数据 data 和所属实例 pid。
+
+        :param pid: 限定的插件实例标识；为 None 时收集全部运行插件
+        :return: 可交给命令路由登记的命令列表
         """
         return self._plugin_projection().commands(pid)
 
     def get_plugin_apis(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        获取插件API
-        [{
-            "path": "/xx",
-            "endpoint": self.xxx,
-            "methods": ["GET", "POST"],
-            "summary": "API名称",
-            "description": "API说明",
-            "allow_anonymous": false
-        }]
+        收集插件声明的 HTTP 接口。
+
+        记录包含 path、endpoint、methods、summary、description 和 allow_anonymous，
+        供宿主统一装配路由和访问控制。
+
+        :param pid: 限定的插件实例标识；为 None 时收集全部运行插件
+        :return: 插件接口声明列表
         """
         return self._plugin_projection().apis(pid)
 
     def get_plugin_services(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        获取插件服务
-        [{
-            "id": "服务ID",
-            "name": "服务名称",
-            "trigger": "触发器：cron、interval、date、CronTrigger.from_crontab()",
-            "func": self.xxx,
-            "kwargs": {} # 定时器参数,
-            "func_kwargs": {} # 方法参数
-        }]
+        收集插件声明的定时服务。
+
+        记录包含服务标识、名称、触发器和执行函数；kwargs 配置调度器，func_kwargs 传给执行函数。
+
+        :param pid: 限定的插件实例标识；为 None 时收集全部运行插件
+        :return: 可交给宿主调度器登记的服务声明列表
         """
         return self._plugin_projection().services(pid)
 
     def get_plugin_modules(self, pid: Optional[str] = None) -> Dict[tuple, Dict[str, Any]]:
         """
-        获取插件模块
-        {
-            plugin_id: {
-                method: function
-            }
-        }
+        收集插件对模块方法的实现。
+
+        :param pid: 限定的插件实例标识；为 None 时收集全部运行插件
+        :return: 插件身份到模块方法名称与调用对象的映射
         """
         return self._plugin_projection().modules(pid)
 
     def get_media_sources(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
-        """获取运行中插件声明的媒体数据源。"""
+        """
+        获取运行中插件声明的媒体数据源。
+        """
         return self._plugin_projection().media_sources(pid)
 
     def get_classification_fields(
         self,
         pid: Optional[str] = None,
     ) -> tuple[ClassificationFieldDefinition, ...]:
-        """获取当前启用插件声明的扩展分类字段快照。"""
+        """
+        获取当前启用插件声明的扩展分类字段快照。
+        """
         return self._plugin_classification.fields(pid)
 
     def get_classification_facts(
         self,
         media: Any,
     ) -> dict[str, dict[str, ClassificationFactValue]]:
-        """校验媒体识别结果携带的插件扩展事实并返回分类器输入。"""
+        """
+        校验媒体识别结果携带的插件扩展事实并返回分类器输入。
+        """
         return self._plugin_classification.facts(media)
 
     def get_plugin_actions(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        获取插件动作
-        [{
-            "id": "动作ID",
-            "name": "动作名称",
-            "func": self.xxx,
-            "kwargs": {} # 需要附加传递的参数
-        }]
+        收集插件声明的工作流动作。
+
+        动作记录包含标识、中文名称、执行函数以及需要附加传入的 kwargs。
+
+        :param pid: 限定的插件实例标识；为 None 时收集全部运行插件
+        :return: 工作流动作声明列表
         """
         return self._plugin_projection().actions(pid)
 
@@ -1019,12 +1152,10 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def get_plugin_agent_tools(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        获取插件智能体工具
-        [{
-            "plugin_id": "插件ID",
-            "plugin_name": "插件名称",
-            "tools": [ToolClass1, ToolClass2, ...]
-        }]
+        收集运行中插件声明的智能体工具。
+
+        :param pid: 限定的插件实例标识；为 None 时收集全部运行插件
+        :return: 包含 plugin_id、plugin_name 和工具类列表 tools 的登记记录
         """
         return self._plugin_tool_catalog.get(
             self._running_plugins,
@@ -1035,7 +1166,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     @staticmethod
     def get_plugin_remote_entry(plugin_id: str, dist_path: str) -> str:
         """
-        获取插件的远程入口地址
+        获取插件的远程入口地址。
+
         :param plugin_id: 插件 ID
         :param dist_path: 插件的分发路径
         :return: 远程入口地址
@@ -1054,7 +1186,7 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def get_plugin_remotes(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
         """
-        获取插件联邦组件列表
+        获取插件联邦组件列表。
         """
         return self._plugin_projection().remotes(pid)
 
@@ -1080,19 +1212,20 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def get_plugin_dashboard_meta(self) -> List[Dict[str, str]]:
         """
-        获取所有插件仪表盘元信息
+        获取所有插件仪表盘元信息。
         """
         return self._plugin_projection().dashboard_metadata()
 
     def get_plugin_dashboard(self, pid: str, key: str, user_agent: str = None) -> Optional[_SchemaPluginDashboard]:
         """
-        获取插件仪表盘
+        获取插件仪表盘。
         """
         return self._plugin_projection().dashboard(pid, key, user_agent)
 
     def get_plugin_attr(self, pid: str, attr: str) -> Any:
         """
-        获取插件属性
+        获取插件属性。
+
         :param pid: 插件ID
         :param attr: 属性名
         """
@@ -1105,7 +1238,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def run_plugin_method(self, pid: str, method: str, *args, **kwargs) -> Any:
         """
-        运行插件方法
+        运行插件方法。
+
         :param pid: 插件ID
         :param method: 方法名
         :param args: 参数
@@ -1120,7 +1254,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     async def async_run_plugin_method(self, pid: str, method: str, *args, **kwargs) -> Any:
         """
-        异步运行插件方法，同步实现经受控线程入口执行
+        异步运行插件方法，同步实现经受控线程入口执行。
+
         :param pid: 插件ID
         :param method: 方法名
         :param args: 参数
@@ -1138,30 +1273,32 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def get_plugin_ids(self) -> List[str]:
         """
-        获取所有插件ID
+        获取所有插件ID。
         """
         return self._plugin_registry.plugin_ids()
 
     def get_running_plugin_ids(self) -> List[str]:
         """
-        获取所有运行态插件ID
+        获取所有运行态插件ID。
         """
         return self._plugin_registry.running_ids()
 
     def get_online_plugins(self, force: bool = False) -> List[_SchemaPlugin]:
         """
-        获取所有在线插件信息
+        获取所有在线插件信息。
         """
         return self._plugin_catalog_view.online(force)
 
     def get_local_plugins(self) -> List[_SchemaPlugin]:
         """
-        获取所有本地已下载的插件信息
+        获取所有本地已下载的插件信息。
         """
         return self._plugin_catalog_view.local()
 
     def get_installed_plugins(self) -> List[_SchemaPlugin]:
-        """按安装清单返回插件，即使运行时尚未加载也保留卡片。"""
+        """
+        按安装清单返回插件，即使运行时尚未加载也保留卡片。
+        """
         return self._plugin_catalog_view.installed()
 
     def get_local_plugin_version(self, pid: str) -> Optional[str]:
@@ -1174,13 +1311,14 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def get_local_repo_plugins(self) -> List[_SchemaPlugin]:
         """
-        获取本地插件仓库目录中的插件信息
+        获取本地插件仓库目录中的插件信息。
         """
         return self._plugin_catalog_view.local_repository()
 
     def is_plugin_exists(self, pid: str, version: str = None) -> bool:
         """
-        判断插件是否存在，并满足版本要求(有传入version时)
+        判断插件是否存在，并满足版本要求(有传入version时)。
+
         :param pid: 插件ID
         :param version: 插件版本
         """
@@ -1190,7 +1328,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                                 package_version: Optional[str] = None,
                                 force: bool = False) -> Optional[List[_SchemaPlugin]]:
         """
-        从指定的市场获取插件信息
+        从指定的市场获取插件信息。
+
         :param market: 市场的 URL 或标识
         :param package_version: 首选插件版本 (如 "v2", "v3")，如果不指定则获取 v1 版本
         :param force: 是否强制刷新（忽略缓存）
@@ -1205,7 +1344,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     def process_plugins_list(self, higher_version_plugins: List[_SchemaPlugin],
                              base_version_plugins: List[_SchemaPlugin]) -> List[_SchemaPlugin]:
         """
-        处理插件列表：合并、去重、排序、保留最高版本
+        处理插件列表：合并、去重、排序、保留最高版本。
+
         :param higher_version_plugins: 高版本插件列表
         :param base_version_plugins: 基础版本插件列表
         :return: 处理后的插件列表
@@ -1219,7 +1359,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                              installed_apps: List[str], add_time: int,
                              package_version: Optional[str] = None) -> Optional[_SchemaPlugin]:
         """
-        处理单个插件信息，创建 schemas.Plugin 对象
+        处理单个插件信息，创建 schemas.Plugin 对象。
+
         :param pid: 插件ID
         :param plugin_info: 插件信息字典
         :param market: 市场URL
@@ -1253,7 +1394,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             progress_callback: Optional[Callable[..., None]] = None,
     ) -> List[_SchemaPlugin]:
         """
-        异步获取所有在线插件信息
+        异步获取所有在线插件信息。
+
         :param force: 是否强制刷新（忽略缓存）
         :param progress_callback: 定时服务进度更新回调
         """
@@ -1266,14 +1408,17 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             self,
             force: bool = False,
     ) -> List[_SchemaPlugin]:
-        """获取按仓库保留的在线插件候选，供来源准入和更新选择。"""
+        """
+        获取按仓库保留的在线插件候选，供来源准入和更新选择。
+        """
         return await self._plugin_catalog_view.async_online_candidates(force)
 
     async def async_get_plugins_from_market(self, market: str,
                                             package_version: Optional[str] = None,
                                             force: bool = False) -> Optional[List[_SchemaPlugin]]:
         """
-        异步从指定的市场获取插件信息
+        异步从指定的市场获取插件信息。
+
         :param market: 市场的 URL 或标识
         :param package_version: 首选插件版本 (如 "v2", "v3")，如果不指定则获取 v1 版本
         :param force: 是否强制刷新（忽略缓存）
@@ -1291,7 +1436,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         source: Optional[Union[dict, Type[Any]]] = None,
     ) -> bool:
         """
-        设置并检查插件的认证级别
+        设置并检查插件的认证级别。
+
         :param plugin: 插件对象或包含 auth_level 属性的对象
         :param source: 可选的字典对象或类对象，可能包含 "level" 或 "auth_level" 键
         :return: 如果插件的认证级别有效且当前环境的认证级别满足要求，返回 True，否则返回 False
@@ -1301,7 +1447,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
     @staticmethod
     def __get_plugin_private_key(plugin_id: str) -> Optional[str]:
         """
-        根据插件标识获取对应的私钥
+        根据插件标识获取对应的私钥。
+
         :param plugin_id: 插件标识
         :return: 对应的插件私钥，如果未找到则返回 None
         """
@@ -1311,7 +1458,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
                      version: str = None, icon: str = None,
                      restore_previous: bool = True) -> Tuple[bool, str]:
         """
-        创建插件分身
+        创建插件分身。
+
         :param plugin_id: 原插件ID
         :param suffix: 分身后缀；留空时由运行时自动分配最小可用序号
         :param name: 分身名称
@@ -1337,7 +1485,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
             return False, str(error)
 
     def get_restorable_plugin_instances(self, plugin_id: str) -> List[Dict[str, Any]]:
-        """列出该插件名下已停用、设置仍留存可恢复的分身。
+        """
+        列出该插件名下已停用、设置仍留存可恢复的分身。
 
         停用只把启用位置假，业务参数与展示信息都还在那一行上；用户在创建分身时挑一个
         拿回来，比按后缀去猜哪个留有残留可靠得多。启用中的分身不在此列——它们的配置
@@ -1368,7 +1517,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def get_plugin_instance_log_levels(self, plugin_id: str) -> List[Dict[str, Any]]:
         """
-        查询插件全部实例（含本体）当前的日志等级设置
+        查询插件全部实例（含本体）当前的日志等级设置。
+
         :param plugin_id: 插件ID
         :return: 每个实例的等级设置条目列表，首项固定是本体自身
         :raise LookupError: 插件不存在，或 plugin_id 实为某个分身自身的实例ID
@@ -1383,7 +1533,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
         expires_at: Optional[datetime] = None,
     ) -> None:
         """
-        设置指定实例的日志等级覆盖，运行期立即生效并落盘
+        设置指定实例的日志等级覆盖，运行期立即生效并落盘。
+
         :param plugin_id: 插件ID
         :param instance_id: 实例ID
         :param level: 目标日志等级
@@ -1395,7 +1546,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def clear_plugin_instance_log_level(self, plugin_id: str, instance_id: str) -> None:
         """
-        清除指定实例的日志等级覆盖，立即回落全局等级，重复清除保持幂等
+        清除指定实例的日志等级覆盖，立即回落全局等级，重复清除保持幂等。
+
         :param plugin_id: 插件ID
         :param instance_id: 实例ID
         :raise LookupError: 插件不存在，或实例不存在／不归属该插件
@@ -1404,20 +1556,22 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def mark_plugin_loadable(self, plugin_id: str) -> None:
         """
-        把源插件本体登记为应当装载，用于安装收尾
+        把源插件本体登记为应当装载，用于安装收尾。
 
         本体的装载判据在实例表的启用位上，安装清单只回答「包在不在磁盘上」。安装
         完成时不登记这一行，插件靠定向重载当次能跑起来，重启后却不会再被加载。
+
         :param plugin_id: 插件ID
         """
         self._plugin_instance_store.enable_host(plugin_id)
 
     def disable_plugin_host(self, plugin_id: str) -> bool:
         """
-        卸载收尾：停用源插件本体但保留其业务参数
+        卸载收尾：停用源插件本体但保留其业务参数。
 
         业务参数是用户的数据，重装同名插件后应当还在；默认目标置位与日志等级覆盖
         只对在册实例有意义，随停用一并清除，不会被下一次重装静默继承。
+
         :param plugin_id: 插件ID
         :return: 停用前它是否存在且处于启用状态
         """
@@ -1427,13 +1581,14 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def set_plugin_instance_enabled(self, instance_id: str, enabled: bool) -> bool:
         """
-        启用或停用一个实例，本体与分身走同一个入口
+        启用或停用一个实例，本体与分身走同一个入口。
 
         启用位是「这份配置是否应当被实例化并启动」的唯一判据，本体与分身因而可以
         共用一个开关：调用方只给实例ID，由本方法按它是分身还是本体分发。
 
         停用不删任何设置：业务参数与展示信息原样留在那一行，再次启用即恢复；删行
         才是彻底清理，不从这里走。
+
         :param instance_id: 实例ID，等于插件ID时表示本体自身
         :param enabled: 目标启用状态
         :return: 该实例存在且状态确实发生了变化
@@ -1460,7 +1615,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def resolve_plugin_call_target(self, plugin_id: str) -> str:
         """
-        确定按插件ID发起、未指定实例的调用应当落到哪个实例
+        确定按插件ID发起、未指定实例的调用应当落到哪个实例。
+
         :param plugin_id: 插件ID，也可以是调用方已经明确知道的具体实例ID
         :return: 应当使用的实例ID
         :raise LookupError: 该插件已有分身但未设置默认调用目标，或默认调用目标已停用
@@ -1469,7 +1625,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def set_plugin_instance_default_target(self, plugin_id: str, instance_id: str) -> bool:
         """
-        设置指定插件实例为默认调用目标，并清除同插件的旧默认
+        设置指定插件实例为默认调用目标，并清除同插件的旧默认。
+
         :param plugin_id: 插件ID
         :param instance_id: 实例ID
         :return: 目标实例存在时为True，指定的非本体实例不归属该插件时为False
@@ -1479,7 +1636,8 @@ class PluginManager(ConfigReloadMixin, metaclass=Singleton):
 
     def clear_plugin_instance_default_target(self, plugin_id: str, instance_id: str) -> None:
         """
-        清除指定插件实例的默认调用目标置位，仅当当前置位的正是该实例时才动作
+        清除指定插件实例的默认调用目标置位，仅当当前置位的正是该实例时才动作。
+
         :param plugin_id: 插件ID
         :param instance_id: 实例ID
         :raise LookupError: 插件不存在，或 plugin_id 实为某个分身自身的实例ID

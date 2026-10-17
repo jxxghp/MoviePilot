@@ -1,3 +1,7 @@
+"""
+记录历史导入路径使用来源，仅在调试诊断中输出迁移提示。
+"""
+
 import ast
 import inspect
 import threading
@@ -18,7 +22,13 @@ WarningEmitter = Callable[[str], object]
 
 @dataclass(frozen=True, slots=True)
 class LegacyImportUsage:
-    """记录一次旧导入路径命中及其调用来源。"""
+    """
+    记录一次旧导入路径命中及其调用来源。
+
+    :param consumer: 使用旧导入路径的消费者标识
+    :param legacy_module: 本次命中的历史模块路径
+    :param origin: 触发导入的来源文件；无法识别时为 None
+    """
 
     consumer: str
     legacy_module: str
@@ -35,7 +45,9 @@ _scan_cache: Dict[Path, Tuple[int, int, Tuple[Tuple[str, int], ...], Optional[st
 
 
 def _find_import_consumer() -> str:
-    """从导入调用栈中识别触发兼容导入的插件或主程序模块。"""
+    """
+    从导入调用栈中识别触发兼容导入的插件或主程序模块。
+    """
     frame = inspect.currentframe()
     try:
         frame = frame.f_back if frame else None
@@ -53,7 +65,9 @@ def _find_import_consumer() -> str:
 
 
 def _find_alias(legacy_path: str) -> Optional[Union[ModuleAlias, SymbolAlias]]:
-    """查找旧模块或旧符号对应的精确兼容规则。"""
+    """
+    查找旧模块或旧符号对应的精确兼容规则。
+    """
     module_alias = MODULE_ALIASES.get(legacy_path) or PACKAGE_ALIASES.get(
         legacy_path
     )
@@ -69,7 +83,9 @@ def _format_warning(
         usage: LegacyImportUsage,
         alias: Union[ModuleAlias, SymbolAlias],
 ) -> str:
-    """生成包含实际目标和推荐 SDK 路径的单行兼容警告。"""
+    """
+    生成包含实际目标和推荐 SDK 路径的单行兼容警告。
+    """
     consumer = usage.consumer
     if consumer.startswith("app.plugins."):
         parts = consumer.split(".")
@@ -89,7 +105,9 @@ def _format_warning(
 
 
 def _emit_usage(usage: LegacyImportUsage) -> None:
-    """按调用方和旧路径去重后输出兼容警告。"""
+    """
+    按调用方和旧路径去重后输出兼容警告。
+    """
     alias = _find_alias(usage.legacy_module)
     if not alias:
         return
@@ -107,7 +125,9 @@ def _emit_usage(usage: LegacyImportUsage) -> None:
 
 
 def record_legacy_import(legacy_module: str) -> None:
-    """记录运行时 Finder 实际解析到的旧模块路径。"""
+    """
+    记录运行时 Finder 实际解析到的旧模块路径。
+    """
     with _lock:
         if _enabled is False:
             return
@@ -141,7 +161,9 @@ def configure_legacy_import_diagnostics(
 
 
 def _extract_legacy_imports(tree: ast.AST) -> Tuple[Tuple[str, int], ...]:
-    """从插件 AST 中提取映射表已登记的静态旧导入。"""
+    """
+    从插件 AST 中提取映射表已登记的静态旧导入。
+    """
     matches: Set[Tuple[str, int]] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -181,7 +203,9 @@ def _extract_legacy_imports(tree: ast.AST) -> Tuple[Tuple[str, int], ...]:
 
 
 def _scan_plugin_file(path: Path) -> Tuple[Tuple[Tuple[str, int], ...], Optional[str]]:
-    """解析单个插件文件，并按文件状态缓存旧导入扫描结果。"""
+    """
+    解析单个插件文件，并按文件状态缓存旧导入扫描结果。
+    """
     stat = path.stat()
     with _lock:
         cached = _scan_cache.get(path)
@@ -230,7 +254,9 @@ def scan_plugin_legacy_imports(plugin_id: str, plugin_dir: Path) -> None:
 
 
 def get_legacy_import_diagnostics() -> Dict[str, object]:
-    """返回只读诊断快照，供测试和后续 doctor 能力使用。"""
+    """
+    返回只读诊断快照，供测试和后续 doctor 能力使用。
+    """
     with _lock:
         return {
             "enabled": _enabled,
@@ -241,7 +267,9 @@ def get_legacy_import_diagnostics() -> Dict[str, object]:
 
 
 def reset_legacy_import_diagnostics() -> None:
-    """清空进程级诊断状态，仅供隔离测试使用。"""
+    """
+    清空进程级诊断状态，仅供隔离测试使用。
+    """
     with _lock:
         global _enabled, _emitter
         _enabled = None

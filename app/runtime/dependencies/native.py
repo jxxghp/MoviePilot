@@ -1,4 +1,6 @@
-"""识别当前进程已经加载、但磁盘载荷在依赖安装中发生变化的原生发行包。"""
+"""
+识别当前进程已经加载、但磁盘载荷在依赖安装中发生变化的原生发行包。
+"""
 
 from __future__ import annotations
 
@@ -22,27 +24,46 @@ _NATIVE_FILE_PATTERN = re.compile(
 
 
 class _WindowsKernel32Api(Protocol):
-    """描述原生依赖探针使用的 Kernel32 调用。"""
+    """
+    描述原生依赖探针使用的 Kernel32 调用。
+
+    :ivar GetCurrentProcess: 取得当前进程的伪句柄，供系统模块枚举使用
+    """
 
     GetCurrentProcess: Callable[[], int]
 
 
 class _WindowsPsapiApi(Protocol):
-    """描述原生依赖探针使用的 PSAPI 调用。"""
+    """
+    描述原生依赖探针使用的 PSAPI 调用。
+
+    :ivar EnumProcessModulesEx: 枚举指定进程已加载的模块并回填所需缓冲区大小
+    :ivar GetModuleFileNameExW: 读取指定进程模块的宽字符完整文件路径
+    """
 
     EnumProcessModulesEx: Callable[[int, Any, int, Any, int], int]
     GetModuleFileNameExW: Callable[[int, Any, Any, int], int]
 
 
 class _WindowsLibraries(Protocol):
-    """描述 ctypes.windll 下本探针需要的系统动态库。"""
+    """
+    描述 ctypes.windll 下本探针需要的系统动态库。
+
+    :ivar kernel32: 提供当前进程句柄的系统动态库
+    :ivar psapi: 提供进程模块枚举和路径查询的系统动态库
+    """
 
     kernel32: _WindowsKernel32Api
     psapi: _WindowsPsapiApi
 
 
 class _WindowsCtypesApi(Protocol):
-    """描述仅在 Windows 运行时由 ctypes 暴露的平台入口。"""
+    """
+    描述仅在 Windows 运行时由 ctypes 暴露的平台入口。
+
+    :ivar windll: 按 Windows 调用约定加载的系统动态库入口
+    :ivar get_last_error: 读取当前线程最近一次系统调用的错误码
+    """
 
     windll: _WindowsLibraries
     get_last_error: Callable[[], int]
@@ -50,7 +71,14 @@ class _WindowsCtypesApi(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class NativeArtifactState:
-    """原生文件在一次依赖安装边界上的轻量磁盘指纹。"""
+    """
+    原生文件在一次依赖安装边界上的轻量磁盘指纹。
+
+    :param path: 原生载荷文件路径
+    :param size: 采集时的文件字节数
+    :param modified_ns: 文件最后修改时间，单位为纳秒
+    :param file_id: 设备号与文件节点号组成的文件身份
+    """
 
     path: str
     size: int
@@ -60,7 +88,13 @@ class NativeArtifactState:
 
 @dataclass(frozen=True, slots=True)
 class NativeDistributionState:
-    """当前已加载发行包及其全部原生载荷的磁盘状态。"""
+    """
+    当前已加载发行包及其全部原生载荷的磁盘状态。
+
+    :param name: 规范化后的发行包名称
+    :param version: 采集时已安装的版本
+    :param artifacts: 该发行包原生载荷文件的指纹集合
+    """
 
     name: str
     version: str
@@ -69,14 +103,25 @@ class NativeDistributionState:
 
 @dataclass(frozen=True, slots=True)
 class LoadedNativeDependencySnapshot:
-    """依赖安装前，当前进程已加载原生发行包的稳定快照。"""
+    """
+    依赖安装前，当前进程已加载原生发行包的稳定快照。
+
+    :param distributions: 当前进程已加载的原生发行包快照；未加载时为空元组
+    """
 
     distributions: tuple[NativeDistributionState, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
 class NativeDependencyChange:
-    """一个已加载发行包在磁盘上被替换的原生载荷摘要。"""
+    """
+    一个已加载发行包在磁盘上被替换的原生载荷摘要。
+
+    :param distribution: 发生替换的发行包名称
+    :param previous_version: 依赖安装前的版本
+    :param current_version: 依赖安装后的版本；发行包已移除时为 None
+    :param artifacts: 检测到变化的原生载荷路径集合
+    """
 
     distribution: str
     previous_version: str
@@ -85,7 +130,9 @@ class NativeDependencyChange:
 
 
 def capture_loaded_native_dependencies() -> LoadedNativeDependencySnapshot:
-    """捕获当前进程已加载原生文件所属发行包的磁盘状态。"""
+    """
+    捕获当前进程已加载原生文件所属发行包的磁盘状态。
+    """
     loaded_paths = _loaded_native_paths()
     if not loaded_paths:
         return LoadedNativeDependencySnapshot()
@@ -105,7 +152,9 @@ def capture_loaded_native_dependencies() -> LoadedNativeDependencySnapshot:
 def detect_changed_native_dependencies(
     baseline: LoadedNativeDependencySnapshot,
 ) -> tuple[NativeDependencyChange, ...]:
-    """比较安装后的磁盘状态，只报告基线中已经加载的原生发行包。"""
+    """
+    比较安装后的磁盘状态，只报告基线中已经加载的原生发行包。
+    """
     changes = []
     for previous in baseline.distributions:
         current = _current_distribution_state(previous.name)
@@ -136,12 +185,16 @@ def detect_changed_native_dependencies(
 
 
 def _iter_installed_distributions() -> Iterable[Distribution]:
-    """隔离发行包枚举，便于在测试中构造确定性文件布局。"""
+    """
+    隔离发行包枚举，便于在测试中构造确定性文件布局。
+    """
     return distributions()
 
 
 def _current_distribution_state(name: str) -> NativeDistributionState | None:
-    """读取安装后的同名发行包；卸载完成时返回空状态。"""
+    """
+    读取安装后的同名发行包；卸载完成时返回空状态。
+    """
     try:
         installed_distribution = distribution(name)
     except PackageNotFoundError:
@@ -152,7 +205,9 @@ def _current_distribution_state(name: str) -> NativeDistributionState | None:
 def _distribution_state(
     installed_distribution: Distribution,
 ) -> NativeDistributionState | None:
-    """读取一个发行包的全部原生文件，避免漏掉扩展旁加载的本地库。"""
+    """
+    读取一个发行包的全部原生文件，避免漏掉扩展旁加载的本地库。
+    """
     distribution_name = installed_distribution.metadata.get("Name")
     if not distribution_name:
         return None
@@ -174,7 +229,9 @@ def _distribution_state(
 
 
 def _artifact_state(path: Path) -> NativeArtifactState | None:
-    """读取文件身份而不散列大型本地库，避免插件安装前产生明显 I/O。"""
+    """
+    读取文件身份而不散列大型本地库，避免插件安装前产生明显 I/O。
+    """
     try:
         stat = path.stat()
     except OSError:
@@ -188,7 +245,9 @@ def _artifact_state(path: Path) -> NativeArtifactState | None:
 
 
 def _loaded_native_paths() -> set[str]:
-    """合并 Python 扩展模块和平台加载器可见的原生文件路径。"""
+    """
+    合并 Python 扩展模块和平台加载器可见的原生文件路径。
+    """
     paths = {
         _path_key(module_file)
         for module in tuple(sys.modules.values())
@@ -202,7 +261,9 @@ def _loaded_native_paths() -> set[str]:
 
 
 def _platform_loaded_library_paths() -> set[str]:
-    """读取当前进程映射的本地库；失败时由 Python 扩展模块路径继续兜底。"""
+    """
+    读取当前进程映射的本地库；失败时由 Python 扩展模块路径继续兜底。
+    """
     try:
         if sys.platform.startswith("linux"):
             return _linux_loaded_library_paths()
@@ -216,7 +277,9 @@ def _platform_loaded_library_paths() -> set[str]:
 
 
 def _linux_loaded_library_paths() -> set[str]:
-    """从 procfs 读取 Linux 当前进程的文件映射。"""
+    """
+    从 procfs 读取 Linux 当前进程的文件映射。
+    """
     paths = set()
     with Path("/proc/self/maps").open(encoding="utf-8", errors="replace") as maps:
         for line in maps:
@@ -228,7 +291,9 @@ def _linux_loaded_library_paths() -> set[str]:
 
 
 def _macos_loaded_library_paths() -> set[str]:
-    """通过 dyld 查询 macOS 当前进程已装载镜像。"""
+    """
+    通过 dyld 查询 macOS 当前进程已装载镜像。
+    """
     process = ctypes.CDLL(None)
     image_count = process._dyld_image_count
     image_count.argtypes = []
@@ -244,7 +309,9 @@ def _macos_loaded_library_paths() -> set[str]:
 
 
 def _windows_loaded_library_paths() -> set[str]:
-    """通过 PSAPI 查询 Windows 当前进程已装载模块。"""
+    """
+    通过 PSAPI 查询 Windows 当前进程已装载模块。
+    """
     from ctypes import wintypes
 
     windows_ctypes = cast(_WindowsCtypesApi, ctypes)
@@ -284,10 +351,14 @@ def _windows_loaded_library_paths() -> set[str]:
 
 
 def _is_native_file(path: str) -> bool:
-    """识别 Python 扩展及其常见旁加载本地库。"""
+    """
+    识别 Python 扩展及其常见旁加载本地库。
+    """
     return bool(_NATIVE_FILE_PATTERN.search(path))
 
 
 def _path_key(path: str | os.PathLike[str]) -> str:
-    """把不同平台的等价路径归一到可比较键。"""
+    """
+    把不同平台的等价路径归一到可比较键。
+    """
     return os.path.normcase(os.path.realpath(os.fspath(path)))

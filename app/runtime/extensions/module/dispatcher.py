@@ -1,4 +1,6 @@
-"""宿主模块与插件模块的统一调用算法。"""
+"""
+宿主模块与插件模块的统一调用算法。
+"""
 
 from __future__ import annotations
 
@@ -24,19 +26,32 @@ from app.schemas.exception import RateLimitExceededException
 
 
 class ModuleCatalog(Protocol):
-    """声明模块调度器消费的最小模块目录能力。"""
+    """
+    声明模块调度器消费的最小模块目录能力。
+    """
 
     def get_running_modules(self, method: str) -> Any:
-        """返回实现指定方法的运行中宿主模块。"""
+        """
+        返回实现指定方法的运行中宿主模块。
+
+        :param method: 需要查找实现方的模块方法名称
+        :return: 可迭代的运行模块快照，仅包含实现指定方法的宿主模块
+        """
 
 
 class PluginModuleCatalog(Protocol):
-    """声明模块调度器消费的最小插件模块目录能力。"""
+    """
+    声明模块调度器消费的最小插件模块目录能力。
+    """
 
     def get_plugin_modules(
         self,
     ) -> Mapping[tuple[str, str], Mapping[str, Callable[..., Any]]]:
-        """返回插件标识到模块方法表的当前快照。"""
+        """
+        返回插件标识到模块方法表的当前快照。
+
+        :return: 插件标识到其模块方法映射的当前快照
+        """
 
 
 ModuleErrorHandler = Callable[..., None]
@@ -44,24 +59,40 @@ AsyncFunctionRunner = Callable[..., Any]
 
 
 class FrozenModuleProviderMissingError(LookupError):
-    """表示冻结插件 provider 已无法在当前精确目录中解析。"""
+    """
+    表示冻结插件 provider 已无法在当前精确目录中解析。
+    """
 
 
 @dataclass(frozen=True, slots=True)
 class FrozenPluginProviderRef:
-    """保存可持久化的插件 provider 身份及其冻结方法。"""
+    """
+    保存可持久化的插件 provider 身份及其冻结方法。
+
+    :param plugin_id: 冻结时选中的插件实例标识，不接受空字符串
+    :param plugin_name: 冻结时的插件显示名称，不接受空字符串
+    :param method: 冻结的模块方法名称，不接受空字符串
+    """
 
     plugin_id: str
     plugin_name: str
     method: str
 
     def __post_init__(self) -> None:
-        """拒绝无法精确解析的空 provider 身份。"""
+        """
+        拒绝无法精确解析的空插件身份。
+
+        :raises ValueError: 插件标识、显示名称或方法名为空字符串
+        """
         if not self.plugin_id or not self.plugin_name or not self.method:
             raise ValueError("冻结插件 provider 缺少 id、名称或方法")
 
     def to_payload(self) -> dict[str, str]:
-        """生成可直接写入 JSON 的稳定 provider 引用。"""
+        """
+        生成可直接写入 JSON 的稳定插件引用。
+
+        :return: 包含插件标识、显示名称和冻结方法名的字典
+        """
         return {
             "plugin_id": self.plugin_id,
             "plugin_name": self.plugin_name,
@@ -70,7 +101,13 @@ class FrozenPluginProviderRef:
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any]) -> "FrozenPluginProviderRef":
-        """从持久化映射恢复并校验 provider 引用。"""
+        """
+        从持久化映射恢复并校验插件引用。
+
+        :param payload: 包含 plugin_id、plugin_name 和 method 的持久化字段映射
+        :return: 已通过非空检查的冻结引用
+        :raises ValueError: 必需身份字段缺失或为空字符串
+        """
         return cls(
             plugin_id=str(payload.get("plugin_id") or ""),
             plugin_name=str(payload.get("plugin_name") or ""),
@@ -80,7 +117,13 @@ class FrozenPluginProviderRef:
 
 @dataclass(frozen=True, slots=True)
 class _PluginProvider:
-    """绑定一次目录解析得到的插件身份和可调用对象。"""
+    """
+    绑定一次目录解析得到的插件身份和可调用对象。
+
+    :param plugin_id: 提供模块能力的插件实例标识
+    :param plugin_name: 供日志和结果说明使用的插件名称
+    :param func: 本次目录解析得到的能力调用对象
+    """
 
     plugin_id: str
     plugin_name: str
@@ -88,15 +131,22 @@ class _PluginProvider:
 
 
 class _ProviderCallMode(StrEnum):
-    """描述当前 provider 应采用的兼容调用方式。"""
+    """
+    描述当前 provider 应采用的兼容调用方式。
+    """
 
+    # 使用调用方原始参数调用提供方
     ORIGINAL = "original"
+    # 将上一提供方的结果接力传入下一提供方
     RELAY = "relay"
+    # 停止继续调用后续提供方
     STOP = "stop"
 
 
 class ModuleInvocationDispatcher:
-    """按既有聚合、短路和异常规则执行插件与宿主模块。"""
+    """
+    按既有聚合、短路和异常规则执行插件与宿主模块。
+    """
 
     def __init__(
         self,
@@ -108,7 +158,9 @@ class ModuleInvocationDispatcher:
         rate_limit_handler: ModuleErrorHandler,
         async_function_runner: AsyncFunctionRunner = run_in_threadpool_to_completion,
     ) -> None:
-        """保存模块目录和策略回调，不主动发现或创建任何运行时资源。"""
+        """
+        保存模块目录和策略回调，不主动发现或创建任何运行时资源。
+        """
         self._module_catalog = module_catalog
         self._plugin_catalog = plugin_catalog
         self._plugin_error_handler = plugin_error_handler
@@ -118,7 +170,9 @@ class ModuleInvocationDispatcher:
 
     @staticmethod
     def is_valid_empty(result: Any) -> bool:
-        """保持旧协议中 ``None`` 与全 ``None`` 元组的空结果定义。"""
+        """
+        保持旧协议中 ``None`` 与全 ``None`` 元组的空结果定义。
+        """
         if isinstance(result, tuple):
             return all(value is None for value in result)
         return result is None
@@ -127,7 +181,9 @@ class ModuleInvocationDispatcher:
         self,
         method: str,
     ) -> tuple[FrozenPluginProviderRef, ...]:
-        """按当前插件目录顺序冻结实现指定方法的精确 provider 引用。"""
+        """
+        按当前插件目录顺序冻结实现指定方法的精确 provider 引用。
+        """
         return tuple(
             FrozenPluginProviderRef(
                 plugin_id=provider.plugin_id,
@@ -146,7 +202,9 @@ class ModuleInvocationDispatcher:
         before_invoke: Callable[[], None] | None = None,
         **kwargs: Any,
     ) -> Any:
-        """解析全部冻结引用后运行前置钩子，并严格执行原顺序 provider。"""
+        """
+        解析全部冻结引用后运行前置钩子，并严格执行原顺序 provider。
+        """
         resolved = self._resolve_frozen_plugin_providers(method, providers)
         if resolved and before_invoke is not None:
             before_invoke()
@@ -160,11 +218,15 @@ class ModuleInvocationDispatcher:
         )
 
     def dispatch(self, method: str, *args: Any, **kwargs: Any) -> Any:
-        """先执行插件模块，再按优先级执行宿主模块。"""
+        """
+        先执行插件模块，再按优先级执行宿主模块。
+        """
         return self._dispatch(method, *args, strict_errors=False, **kwargs)
 
     def dispatch_strict(self, method: str, *args: Any, **kwargs: Any) -> Any:
-        """执行模块并传播 provider 异常，使空结果与查询失败保持可区分。"""
+        """
+        执行模块并传播 provider 异常，使空结果与查询失败保持可区分。
+        """
         return self._dispatch(method, *args, strict_errors=True, **kwargs)
 
     def _dispatch(
@@ -174,7 +236,9 @@ class ModuleInvocationDispatcher:
         strict_errors: bool,
         **kwargs: Any,
     ) -> Any:
-        """按统一聚合规则调度，并由调用方选择是否隔离 provider 异常。"""
+        """
+        按统一聚合规则调度，并由调用方选择是否隔离 provider 异常。
+        """
         contract = get_module_method_contract(method)
         logger.debug("模块方法契约：%s -> %s", method, contract.family)
         result = None
@@ -207,7 +271,9 @@ class ModuleInvocationDispatcher:
             )
 
     async def async_dispatch(self, method: str, *args: Any, **kwargs: Any) -> Any:
-        """以与同步路径相同的聚合规则执行同步或异步模块方法。"""
+        """
+        以与同步路径相同的聚合规则执行同步或异步模块方法。
+        """
         contract = get_module_method_contract(method)
         logger.debug("异步模块方法契约：%s -> %s", method, contract.family)
         result = None
@@ -245,7 +311,9 @@ class ModuleInvocationDispatcher:
         strict_errors: bool = False,
         **kwargs: Any,
     ) -> Any:
-        """同步执行插件方法，保留插件顺序、短路和列表合并语义。"""
+        """
+        同步执行插件方法，保留插件顺序、短路和列表合并语义。
+        """
         providers = self._collect_plugin_providers(
             method,
             error_kwargs=kwargs,
@@ -267,7 +335,9 @@ class ModuleInvocationDispatcher:
         error_kwargs: Mapping[str, Any],
         strict_errors: bool = False,
     ) -> tuple[_PluginProvider, ...]:
-        """从同一插件目录快照收集 provider，并隔离损坏的方法表。"""
+        """
+        从同一插件目录快照收集 provider，并隔离损坏的方法表。
+        """
         providers = []
         for plugin, module_dict in self._plugin_catalog.get_plugin_modules().items():
             plugin_id, plugin_name = plugin
@@ -305,7 +375,9 @@ class ModuleInvocationDispatcher:
         method: str,
         providers: tuple[FrozenPluginProviderRef, ...],
     ) -> tuple[_PluginProvider, ...]:
-        """一次性精确解析全部冻结引用，缺失时在执行任何副作用前失败。"""
+        """
+        一次性精确解析全部冻结引用，缺失时在执行任何副作用前失败。
+        """
         module_catalog = self._plugin_catalog.get_plugin_modules()
         resolved = []
         for provider in providers:
@@ -342,7 +414,9 @@ class ModuleInvocationDispatcher:
         strict_errors: bool = False,
         **kwargs: Any,
     ) -> Any:
-        """按统一契约执行已解析插件序列，并按调用模式处理 provider 故障。"""
+        """
+        按统一契约执行已解析插件序列，并按调用模式处理 provider 故障。
+        """
         aggregation = get_module_method_contract(method).aggregation
         for provider in providers:
             try:
@@ -403,7 +477,9 @@ class ModuleInvocationDispatcher:
         *args: Any,
         **kwargs: Any,
     ) -> Any:
-        """异步执行插件方法，并把同步函数移入线程池。"""
+        """
+        异步执行插件方法，并把同步函数移入线程池。
+        """
         aggregation = get_module_method_contract(method).aggregation
         for plugin, module_dict in self._plugin_catalog.get_plugin_modules().items():
             plugin_id, plugin_name = plugin
@@ -466,7 +542,9 @@ class ModuleInvocationDispatcher:
         strict_errors: bool = False,
         **kwargs: Any,
     ) -> Any:
-        """同步执行按优先级排序的宿主模块，并支持签名接力。"""
+        """
+        同步执行按优先级排序的宿主模块，并支持签名接力。
+        """
         logger.debug("请求系统模块执行：%s ...", method)
         aggregation = get_module_method_contract(method).aggregation
         modules = sorted(
@@ -533,7 +611,9 @@ class ModuleInvocationDispatcher:
         *args: Any,
         **kwargs: Any,
     ) -> Any:
-        """异步执行宿主模块，并保持同步路径的签名接力与聚合顺序。"""
+        """
+        异步执行宿主模块，并保持同步路径的签名接力与聚合顺序。
+        """
         logger.debug("请求系统模块执行：%s ...", method)
         aggregation = get_module_method_contract(method).aggregation
         modules = sorted(
@@ -598,7 +678,9 @@ class ModuleInvocationDispatcher:
         *,
         allow_relay: bool,
     ) -> _ProviderCallMode:
-        """按契约选择下一 provider 的调用方式，并冻结 legacy 接力语义。"""
+        """
+        按契约选择下一 provider 的调用方式，并冻结 legacy 接力语义。
+        """
         if aggregation is ModuleResultAggregation.FAN_OUT:
             return _ProviderCallMode.ORIGINAL
         if cls.is_valid_empty(result):
@@ -634,7 +716,9 @@ class ModuleInvocationDispatcher:
         call_mode: _ProviderCallMode,
         aggregation: ModuleResultAggregation,
     ) -> Any:
-        """合并单个 provider 结果，接力调用则用新结果替换旧结果。"""
+        """
+        合并单个 provider 结果，接力调用则用新结果替换旧结果。
+        """
         if aggregation is ModuleResultAggregation.FAN_OUT:
             return result
         if call_mode is _ProviderCallMode.RELAY:
@@ -649,7 +733,9 @@ class ModuleInvocationDispatcher:
 
     @staticmethod
     def _record_timeout(method: str, provider_type: str, error: Exception) -> None:
-        """仅把真实超时归入低基数模块超时指标。"""
+        """
+        仅把真实超时归入低基数模块超时指标。
+        """
         if isinstance(error, TimeoutError):
             record_metric(
                 "module.provider.timeout",
@@ -664,7 +750,9 @@ class ModuleInvocationDispatcher:
         caller_type: str,
         abi_source: str,
     ) -> None:
-        """记录未知动态方法的兼容命中，便于按真实调用逐项迁移。"""
+        """
+        记录未知动态方法的兼容命中，便于按真实调用逐项迁移。
+        """
         if not is_explicit_module_method(method):
             record_metric(
                 "module.contract.legacy_hit",
@@ -679,7 +767,9 @@ class ModuleInvocationDispatcher:
         callback: Callable[..., Any],
         owner: str,
     ) -> None:
-        """记录 Contract V2 签名偏差，兼容阶段不阻断旧插件执行。"""
+        """
+        记录 Contract V2 签名偏差，兼容阶段不阻断旧插件执行。
+        """
         problems = diagnose_module_callable(method, callback)
         if problems:
             logger.warning(
@@ -691,7 +781,9 @@ class ModuleInvocationDispatcher:
 
     @staticmethod
     def _diagnose_result(method: str, result: Any, provider_type: str) -> None:
-        """记录 provider 结果形状偏差，保持旧插件返回值原样继续执行。"""
+        """
+        记录 provider 结果形状偏差，保持旧插件返回值原样继续执行。
+        """
         problems = diagnose_module_result(method, result)
         if problems:
             record_metric(
@@ -713,14 +805,18 @@ class ModuleInvocationDispatcher:
         *args: Any,
         **kwargs: Any,
     ) -> Any:
-        """调用协程函数，或通过注入的线程池执行器运行同步函数。"""
+        """
+        调用协程函数，或通过注入的线程池执行器运行同步函数。
+        """
         if inspect.iscoroutinefunction(func):
             return await func(*args, **kwargs)
         return await self._async_function_runner(func, *args, **kwargs)
 
     @staticmethod
     def _module_name(module: Any, fallback: str) -> str:
-        """读取模块展示名，失败时回退到稳定类名。"""
+        """
+        读取模块展示名，失败时回退到稳定类名。
+        """
         try:
             return cast(str, module.get_name())
         except Exception as err:

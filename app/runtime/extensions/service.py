@@ -1,4 +1,6 @@
-"""按服务配置 Schema 构造并校验运行时配置。"""
+"""
+按服务配置 Schema 构造并校验运行时配置。
+"""
 
 from collections.abc import Callable
 from typing import Any, List, Type, TypeVar
@@ -15,7 +17,9 @@ ServiceConfigReader = Callable[[SystemConfigKey], Any]
 
 
 def _empty_service_config(_config_key: SystemConfigKey) -> Any:
-    """组合根尚未装配时返回空服务配置。"""
+    """
+    组合根尚未装配时返回空服务配置。
+    """
     return None
 
 
@@ -23,7 +27,9 @@ _service_config_reader: ServiceConfigReader = _empty_service_config
 
 
 def configure_service_config_reader(reader: ServiceConfigReader) -> ServiceConfigReader:
-    """注入服务配置读取能力，并返回先前 reader 供隔离环境恢复。"""
+    """
+    注入服务配置读取能力，并返回先前 reader 供隔离环境恢复。
+    """
     global _service_config_reader
     previous = _service_config_reader
     _service_config_reader = reader
@@ -31,17 +37,23 @@ def configure_service_config_reader(reader: ServiceConfigReader) -> ServiceConfi
 
 
 def reset_service_config_reader() -> None:
-    """恢复空配置读取器，禁止复用旧 lifespan 的配置对象。"""
+    """
+    恢复空配置读取器，禁止复用旧 lifespan 的配置对象。
+    """
     global _service_config_reader
     _service_config_reader = _empty_service_config
 
 
 class ServiceConfigHelper:
-    """读取并校验通知、下载器和媒体服务器的宿主配置。"""
+    """
+    读取并校验通知、下载器和媒体服务器的宿主配置。
+    """
 
     @staticmethod
     def get_configs(config_key: SystemConfigKey, conf_type: Type[_Config]) -> List[_Config]:
-        """按指定 Schema 过滤单条非法配置，避免影响同组其它服务。"""
+        """
+        按指定 Schema 过滤单条非法配置，避免影响同组其它服务。
+        """
         config_data = _service_config_reader(config_key)
         if not config_data:
             return []
@@ -60,7 +72,9 @@ class ServiceConfigHelper:
 
     @staticmethod
     def get_downloader_configs() -> List[DownloaderConf]:
-        """返回已通过结构校验的下载器配置。"""
+        """
+        返回已通过结构校验的下载器配置。
+        """
         return ServiceConfigHelper.get_configs(
             SystemConfigKey.Downloaders,
             DownloaderConf,
@@ -68,7 +82,9 @@ class ServiceConfigHelper:
 
     @staticmethod
     def get_mediaserver_configs() -> List[MediaServerConf]:
-        """返回已通过结构校验的媒体服务器配置。"""
+        """
+        返回已通过结构校验的媒体服务器配置。
+        """
         return ServiceConfigHelper.get_configs(
             SystemConfigKey.MediaServers,
             MediaServerConf,
@@ -76,7 +92,9 @@ class ServiceConfigHelper:
 
     @staticmethod
     def get_notification_configs() -> List[NotificationConf]:
-        """返回已通过结构校验的通知配置。"""
+        """
+        返回已通过结构校验的通知配置。
+        """
         return ServiceConfigHelper.get_configs(
             SystemConfigKey.Notifications,
             NotificationConf,
@@ -84,7 +102,9 @@ class ServiceConfigHelper:
 
     @staticmethod
     def get_notification_switches() -> List[NotificationSwitchConf]:
-        """返回已通过结构校验的通知场景开关。"""
+        """
+        返回已通过结构校验的通知场景开关。
+        """
         return ServiceConfigHelper.get_configs(
             SystemConfigKey.NotificationSwitchs,
             NotificationSwitchConf,
@@ -92,7 +112,9 @@ class ServiceConfigHelper:
 
     @staticmethod
     def get_notification_switch(mtype: MessageType) -> str:
-        """返回指定通知场景的目标范围，缺少配置时默认仅管理员。"""
+        """
+        返回指定通知场景的目标范围，缺少配置时默认仅管理员。
+        """
         for switch in ServiceConfigHelper.get_notification_switches():
             if switch.type == mtype.value:
                 return switch.action or "admin"

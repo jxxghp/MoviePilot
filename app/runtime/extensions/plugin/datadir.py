@@ -1,4 +1,5 @@
-"""插件数据目录的定位与删除，按插件标识拼出的数据路径一律从这里出去。
+"""
+插件数据目录的定位与删除，按插件标识拼出的数据路径一律从这里出去。
 
 插件数据根是配置根下的一层子目录（``CONFIG_PATH/plugins``），而插件标识在多条路径上
 都来自 HTTP 请求。把标识直接拼进路径再交给文件系统，一个 ``..`` 就能把删除动作抬到
@@ -18,6 +19,7 @@ from app.runtime.settings import get_runtime_setting
 def plugin_data_root() -> Path:
     """
     返回插件数据根目录。
+
     :return: 插件数据根目录，生产环境下为 ``CONFIG_PATH/plugins``
     """
     return Path(get_runtime_setting("PLUGIN_DATA_PATH"))
@@ -110,7 +112,9 @@ def remove_plugin_data_directory(plugin_id: str) -> bool:
     target = _require_within_data_root(data_dir)
 
     def _log_failure(_function: Any, path: Any, error: BaseException) -> None:
-        """逐个记录删不掉的条目，避免整目录清理静默留下残余。"""
+        """
+        逐个记录删不掉的条目，避免整目录清理静默留下残余。
+        """
         logger.warning(f"删除插件 {plugin_id} 的数据目录条目 {path} 失败：{error}")
 
     shutil.rmtree(target, onexc=_log_failure)
