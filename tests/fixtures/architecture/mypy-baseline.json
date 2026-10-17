@@ -1073,21 +1073,8 @@
     "arg-type": 7,
     "assignment": 16,
     "empty-body": 1,
-    "no-untyped-call": 1,
     "no-untyped-def": 5,
     "type-arg": 1
-  },
-  "app/modules/plex/plex.py": {
-    "arg-type": 2,
-    "assignment": 2,
-    "misc": 1,
-    "no-any-return": 1,
-    "no-untyped-def": 9,
-    "operator": 5,
-    "return-value": 1,
-    "type-arg": 3,
-    "union-attr": 4,
-    "var-annotated": 3
   },
   "app/modules/qqbot/gateway.py": {
     "no-untyped-def": 3,

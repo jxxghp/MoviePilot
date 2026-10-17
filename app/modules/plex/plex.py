@@ -8,10 +8,13 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Union
 from urllib.parse import quote_plus
 
+from plexapi.audio import Album, Artist, Track
 from plexapi.base import PlexPartialObject
 from plexapi.exceptions import NotFound
+from plexapi.library import Library
 from plexapi.myplex import MyPlexAccount
 from plexapi.server import PlexServer
+from plexapi.video import Episode, Movie, Season, Show
 from requests import RequestException
 
 from app.adapters.network.http import RequestUtils
@@ -103,7 +106,7 @@ class Plex:
             return False
         return True if not self._plex else False
 
-    def reconnect(self):
+    def reconnect(self) -> None:
         """
         重建 Plex SDK 客户端并刷新媒体库目录缓存；失败时清空 SDK 客户端。
         """
@@ -136,7 +139,11 @@ class Plex:
             logger.error(f"Authentication failed: {e}")
         return None
 
-    @cached(maxsize=32, ttl=86400)
+    _image_cache: Callable[
+        [Callable[..., Optional[List[str]]]], Callable[..., Optional[List[str]]]
+    ] = cached(maxsize=32, ttl=86400)
+
+    @_image_cache
     def __get_library_images(self, library_key: str, mtype: int) -> Optional[List[str]]:
         """
         分页读取最近新增媒体，选取最多 4 张不同的库封面。
@@ -150,7 +157,7 @@ class Plex:
         if not self._plex:
             return None
         # 返回结果
-        poster_urls = {}
+        poster_urls: dict[str, None] = {}
         # 页码计数
         container_start = 0
         # 需要的总条数/每页的条数
@@ -370,7 +377,7 @@ class Plex:
                         year: Optional[str] = None,
                         media_source: Optional[MediaSource] = None,
                         media_id: Optional[str] = None,
-                        season: Optional[int] = None) -> Tuple[Optional[str], Optional[Dict[int, list]]]:
+                        season: Optional[int] = None) -> Tuple[Optional[str], Optional[Dict[int, List[int]]]]:
         """
         查询电视剧及其各季已有的分集编号。
 
@@ -413,7 +420,7 @@ class Plex:
         ):
             return None, {}
         episodes = videos.episodes()
-        season_episodes = {}
+        season_episodes: Dict[int, List[int]] = {}
         for episode in episodes:
             if season is not None and episode.seasonNumber != int(season):
                 continue
@@ -463,6 +470,8 @@ class Plex:
         :param year: 年份，可以为空，为空时不按年份过滤
         :return: Plex搜索返回的电视剧条目列表
         """
+        if self._plex is None:
+            raise AttributeError("'NoneType' object has no attribute 'library'")
         # 兼容年份为空的场景
         kwargs = {"year": year} if year else {}
         # 根据标题和年份搜索候选，后续仍需核对规范媒体来源身份。
@@ -491,7 +500,11 @@ class Plex:
         :param plex_url: 是否返回Plex的URL，默认为True（仅在配置了外网地址和Token时有效）
         :return: 图片对应在plex服务器或TMDB中的URL
         """
-        if not self._plex or depth > 2 or not item_id:
+        if not self._plex:
+            return None
+        if depth is None:
+            raise TypeError("'>' not supported between instances of 'NoneType' and 'int'")
+        if depth > 2 or not item_id:
             return None
         try:
             image_url = None
@@ -579,7 +592,7 @@ class Plex:
             return None
         return UrlUtils.combine_url(host=image_host, path=image_path, query=query)
 
-    def refresh_root_library(self) -> bool:
+    def refresh_root_library(self) -> Union[bool, Library]:
         """
         请求 Plex 刷新整个媒体库。
 
@@ -587,7 +600,8 @@ class Plex:
         """
         if not self._plex:
             return False
-        return self._plex.library.update()
+        updated: Library = self._plex.library.update()
+        return updated
 
     def refresh_library_by_items(self, items: List[_SchemaRefreshMediaItem]) -> Optional[bool]:
         """
@@ -615,13 +629,13 @@ class Plex:
             return refreshed is not False
         else:
             # 否则一个一个刷新
-            for path, lib_key in result_dict.items():
-                logger.info(f"刷新媒体库：{lib_key} - {path}")
-                self._plex.query(f'/library/sections/{lib_key}/refresh?path={quote_plus(Path(path).parent.as_posix())}')
+            for refresh_path, lib_key in result_dict.items():
+                logger.info(f"刷新媒体库：{lib_key} - {refresh_path}")
+                self._plex.query(f'/library/sections/{lib_key}/refresh?path={quote_plus(Path(refresh_path).parent.as_posix())}')
         return True
 
     @staticmethod
-    def __find_librarie(path: Path, libraries: List[Any]) -> Tuple[str, Optional[Path]]:
+    def __find_librarie(path: Optional[Path], libraries: List[Any]) -> Tuple[str, Optional[Path]]:
         """
         按路径归属查找第一个匹配的媒体库。
 
@@ -670,14 +684,14 @@ class Plex:
         return None
 
     @staticmethod
-    def __get_ids(guids: List[Any]) -> dict:
+    def __get_ids(guids: List[Any]) -> dict[str, Union[str, int, None]]:
         """
         从 Plex Guid 提取 IMDb、TMDB 和 TVDB 来源标识。
 
         :param guids: 包含 id 的字典或 SDK Guid 对象列表
         :return: 含 imdb_id、tmdb_id、tvdb_id 的字典；缺失项为 None，TMDB 标识转换为整数，无法转换时忽略
         """
-        def parse_tmdb_id(value: str) -> tuple[bool, int]:
+        def parse_tmdb_id(value: str) -> tuple[bool, Optional[int]]:
             """
             尝试将TMDB ID字符串转换为整数。如果成功，返回(True, int)，失败则返回(False, None)。
             """
@@ -692,7 +706,7 @@ class Plex:
             "tmdb://": "tmdb_id",
             "tvdb://": "tvdb_id"
         }
-        ids = {varname: None for varname in guid_mapping.values()}
+        ids: dict[str, Union[str, int, None]] = {varname: None for varname in guid_mapping.values()}
         for guid in guids:
             guid_id = guid['id'] if isinstance(guid, dict) else guid.id
             for prefix, varname in guid_mapping.items():
@@ -709,7 +723,7 @@ class Plex:
 
         return ids
 
-    def __fetch_item(self, item_id: Union[int, str]):
+    def __fetch_item(self, item_id: Union[int, str]) -> Union[Movie, Show, Season, Episode, Artist, Album, Track]:
         """
         根据给定的item_id获取媒体项。
 
@@ -721,9 +735,12 @@ class Plex:
             elif not item_id.startswith("/library/metadata/"):
                 # 其他媒体服务器的 UUID 不能作为 Plex metadata key，直接按失效缓存回退。
                 raise NotFound(f"invalid Plex metadata id: {item_id}")
-        return self._plex.fetchItem(item_id)
+        if self._plex is None:
+            raise AttributeError("'NoneType' object has no attribute 'fetchItem'")
+        item: Union[Movie, Show, Season, Episode, Artist, Album, Track] = self._plex.fetchItem(item_id)
+        return item
 
-    def __build_media_server_item(self, item) -> Optional[_SchemaMediaServerItem]:
+    def __build_media_server_item(self, item: Union[Movie, Show, Season, Episode, Artist, Album, Track, None]) -> Optional[_SchemaMediaServerItem]:
         """
         按 Plex 条目实际具备的字段构造媒体信息，兼容艺人、专辑和曲目。
 
@@ -965,7 +982,7 @@ class Plex:
 
         return eventItem
 
-    def get_plex(self):
+    def get_plex(self) -> Optional[PlexServer]:
         """
         提供当前 Plex SDK 客户端供扩展调用。
 
@@ -980,6 +997,8 @@ class Plex:
         :param item_id: Plex 条目标识，可以是数字标识或 /library/metadata/ 路径
         :return: 以外网播放地址或服务地址为根的条目链接；调用前须已经建立 SDK 连接
         """
+        if self._plex is None:
+            raise AttributeError("'NoneType' object has no attribute 'machineIdentifier'")
         return f'{self._playhost or self._host}web/index.html#!/server/{self._plex.machineIdentifier}/details?key={item_id}&X-Plex-Token={self._token}'
 
     def get_resume(self, num: Optional[int] = 12) -> Optional[List[_SchemaMediaServerPlayItem]]:
@@ -1002,7 +1021,7 @@ class Plex:
                                       container_size=num,
                                       maxresults=num,
                                       params=params)
-        ret_resume = []
+        ret_resume: List[_SchemaMediaServerPlayItem] = []
         for item in items:
             item_type = MediaType.MOVIE.value if item.TYPE == "movie" else MediaType.TV.value
             if item_type == MediaType.MOVIE.value:
@@ -1046,9 +1065,11 @@ class Plex:
             "count": num,
             "excludeContinueWatching": 1
         }
-        ret_resume = []
+        ret_resume: List[_SchemaMediaServerPlayItem] = []
         sub_result = []
         offset = 0
+        if num is None:
+            raise TypeError("'>=' not supported between instances of 'int' and 'NoneType'")
         while True:
             if len(ret_resume) >= num:
                 break
@@ -1103,7 +1124,7 @@ class Plex:
             offset += num
         return ret_resume[:num]
 
-    def get_data(self, endpoint: str, **kwargs) -> Optional[Any]:
+    def get_data(self, endpoint: str, **kwargs: object) -> Optional[Any]:
         """
         使用复用的 HTTP 会话发送自定义 GET 请求。
 
@@ -1113,7 +1134,7 @@ class Plex:
         """
         return self.__request(method="get", endpoint=endpoint, **kwargs)
 
-    def post_data(self, endpoint: str, **kwargs) -> Optional[Any]:
+    def post_data(self, endpoint: str, **kwargs: object) -> Optional[Any]:
         """
         使用复用的 HTTP 会话发送自定义 POST 请求。
 
@@ -1123,7 +1144,7 @@ class Plex:
         """
         return self.__request(method="post", endpoint=endpoint, **kwargs)
 
-    def put_data(self, endpoint: str, **kwargs) -> Optional[Any]:
+    def put_data(self, endpoint: str, **kwargs: object) -> Optional[Any]:
         """
         使用复用的 HTTP 会话发送自定义 PUT 请求。
 
@@ -1133,7 +1154,7 @@ class Plex:
         """
         return self.__request(method="put", endpoint=endpoint, **kwargs)
 
-    def __request(self, method: str, endpoint: str, **kwargs) -> Optional[Any]:
+    def __request(self, method: str, endpoint: str, **kwargs: object) -> Optional[Any]:
         """
         为自定义 Plex 请求补充令牌请求头，并记录请求异常。
 
@@ -1158,7 +1179,7 @@ class Plex:
             logger.error("连接Plex出错：" + str(e))
             return None
 
-    def __get_request_headers(self) -> dict:
+    def __get_request_headers(self) -> dict[str, str]:
         """
         获取请求头。
         """
@@ -1168,7 +1189,7 @@ class Plex:
             "Content-Type": "application/json"
         }
 
-    def close(self):
+    def close(self) -> None:
         """
         关闭自定义 HTTP 请求会话；不主动关闭 Plex SDK 客户端。
         """
