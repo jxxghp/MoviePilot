@@ -1,7 +1,10 @@
+from typing import Any
+
 from ..tmdb import TMDb
 
 
 class Season(TMDb):
+    """提供 TMDB 季度接口的同步与异步封装。"""
     _urls = {
         "details": "/tv/%s/season/%s",
         "account_states": "/tv/%s/season/%s/account_states",
@@ -14,7 +17,7 @@ class Season(TMDb):
         "videos": "/tv/%s/season/%s/videos",
     }
 
-    def details(self, tv_id, season_num, append_to_response="videos,trailers,images,credits,translations"):
+    def details(self, tv_id: int, season_num: int, append_to_response: str | None="videos,trailers,images,credits,translations") -> Any:
         """
         Get the TV season details by id.
         :param tv_id: int
@@ -27,7 +30,7 @@ class Season(TMDb):
             params="append_to_response=%s" % append_to_response
         )
 
-    def account_states(self, tv_id, season_num):
+    def account_states(self, tv_id: int, season_num: int) -> Any:
         """
         Get all of the user ratings for the season's episodes.
         :param tv_id: int
@@ -40,7 +43,7 @@ class Season(TMDb):
             key="results"
         )
 
-    def aggregate_credits(self, tv_id, season_num):
+    def aggregate_credits(self, tv_id: int, season_num: int) -> Any:
         """
         Get the aggregate credits for TV season.
         This call differs from the main credits call in that it does not only return the season credits,
@@ -51,7 +54,7 @@ class Season(TMDb):
         """
         return self._request_obj(self._urls["aggregate_credits"] % (tv_id, season_num))
 
-    def changes(self, season_id, start_date=None, end_date=None, page=1):
+    def changes(self, season_id: int, start_date: str | None=None, end_date: str | None=None, page: int=1) -> Any:
         """
         Get the changes for a TV season. By default only the last 24 hours are returned.
         You can query up to 14 days in a single query by using the start_date and end_date query parameters.
@@ -72,7 +75,7 @@ class Season(TMDb):
             key="changes"
         )
 
-    def credits(self, tv_id, season_num):
+    def credits(self, tv_id: int, season_num: int) -> Any:
         """
         Get the credits for TV season.
         :param tv_id: int
@@ -81,7 +84,7 @@ class Season(TMDb):
         """
         return self._request_obj(self._urls["credits"] % (tv_id, season_num))
 
-    def external_ids(self, tv_id, season_num):
+    def external_ids(self, tv_id: int, season_num: int) -> Any:
         """
         Get the external ids for a TV season.
         :param tv_id: int
@@ -90,7 +93,7 @@ class Season(TMDb):
         """
         return self._request_obj(self._urls["external_ids"] % (tv_id, season_num))
 
-    def images(self, tv_id, season_num, include_image_language=None):
+    def images(self, tv_id: int, season_num: int, include_image_language: str | None=None) -> Any:
         """
         Get the images that belong to a TV season.
         :param tv_id: int
@@ -104,7 +107,7 @@ class Season(TMDb):
             key="posters"
         )
 
-    def translations(self, tv_id, season_num):
+    def translations(self, tv_id: int, season_num: int) -> Any:
         """
         Get a list of the translations that exist for a TV show.
         :param tv_id: int
@@ -115,7 +118,7 @@ class Season(TMDb):
             key="translations"
         )
 
-    def videos(self, tv_id, season_num, include_video_language=None, page=1):
+    def videos(self, tv_id: int, season_num: int, include_video_language: str | None=None, page: int=1) -> Any:
         """
         Get the videos that have been added to a TV show.
         :param tv_id: int
@@ -133,7 +136,7 @@ class Season(TMDb):
         )
 
     # 异步版本方法
-    async def async_details(self, tv_id, season_num, append_to_response="videos,trailers,images,credits,translations"):
+    async def async_details(self, tv_id: int, season_num: int, append_to_response: str | None="videos,trailers,images,credits,translations") -> Any:
         """
         Get the TV season details by id.（异步版本）
         :param tv_id: int
@@ -146,7 +149,7 @@ class Season(TMDb):
             params="append_to_response=%s" % append_to_response
         )
 
-    async def async_account_states(self, tv_id, season_num):
+    async def async_account_states(self, tv_id: int, season_num: int) -> Any:
         """
         Get all of the user ratings for the season's episodes.（异步版本）
         :param tv_id: int
@@ -159,7 +162,7 @@ class Season(TMDb):
             key="results"
         )
 
-    async def async_aggregate_credits(self, tv_id, season_num):
+    async def async_aggregate_credits(self, tv_id: int, season_num: int) -> Any:
         """
         Get the aggregate credits for TV season.
         This call differs from the main credits call in that it does not only return the season credits,
@@ -170,7 +173,7 @@ class Season(TMDb):
         """
         return await self._async_request_obj(self._urls["aggregate_credits"] % (tv_id, season_num))
 
-    async def async_changes(self, season_id, start_date=None, end_date=None, page=1):
+    async def async_changes(self, season_id: int, start_date: str | None=None, end_date: str | None=None, page: int=1) -> Any:
         """
         Get the changes for a TV season. By default only the last 24 hours are returned.
         You can query up to 14 days in a single query by using the start_date and end_date query parameters.（异步版本）
@@ -191,7 +194,7 @@ class Season(TMDb):
             key="changes"
         )
 
-    async def async_credits(self, tv_id, season_num):
+    async def async_credits(self, tv_id: int, season_num: int) -> Any:
         """
         Get the credits for TV season.（异步版本）
         :param tv_id: int
@@ -200,7 +203,7 @@ class Season(TMDb):
         """
         return await self._async_request_obj(self._urls["credits"] % (tv_id, season_num))
 
-    async def async_external_ids(self, tv_id, season_num):
+    async def async_external_ids(self, tv_id: int, season_num: int) -> Any:
         """
         Get the external ids for a TV season.（异步版本）
         :param tv_id: int
@@ -209,7 +212,7 @@ class Season(TMDb):
         """
         return await self._async_request_obj(self._urls["external_ids"] % (tv_id, season_num))
 
-    async def async_images(self, tv_id, season_num, include_image_language=None):
+    async def async_images(self, tv_id: int, season_num: int, include_image_language: str | None=None) -> Any:
         """
         Get the images that belong to a TV season.（异步版本）
         :param tv_id: int
@@ -223,7 +226,7 @@ class Season(TMDb):
             key="posters"
         )
 
-    async def async_translations(self, tv_id, season_num):
+    async def async_translations(self, tv_id: int, season_num: int) -> Any:
         """
         Get a list of the translations that exist for a TV show.（异步版本）
         :param tv_id: int
@@ -234,7 +237,7 @@ class Season(TMDb):
             key="translations"
         )
 
-    async def async_videos(self, tv_id, season_num, include_video_language=None, page=1):
+    async def async_videos(self, tv_id: int, season_num: int, include_video_language: str | None=None, page: int=1) -> Any:
         """
         Get the videos that have been added to a TV show.（异步版本）
         :param tv_id: int
