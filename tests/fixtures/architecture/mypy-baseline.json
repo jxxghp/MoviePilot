@@ -829,7 +829,7 @@
     "union-attr": 18
   },
   "app/modules/douban/__init__.py": {
-    "assignment": 24,
+    "assignment": 23,
     "empty-body": 1,
     "no-any-return": 1,
     "no-untyped-def": 7,
@@ -1260,7 +1260,6 @@
     "index": 2,
     "no-any-return": 4,
     "no-untyped-def": 3,
-    "return-value": 1,
     "type-arg": 6
   },
   "app/modules/themoviedb/tmdbapi.py": {

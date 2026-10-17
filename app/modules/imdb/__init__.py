@@ -713,8 +713,15 @@ class ImdbModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         season: Optional[int] = None,
         episode: Optional[int] = None,
         **kwargs,
-    ) -> Optional[bytes]:
-        """生成 IMDb 来源的 UTF-8 编码 NFO XML 字节。"""
+    ) -> Optional[str]:
+        """
+        生成 IMDb 来源的 NFO XML 文本。
+
+        :param mediainfo: 媒体信息
+        :param season: 季号
+        :param episode: 集号
+        :return: UTF-8 编码声明的 XML 文本；非 IMDb 来源时返回 None
+        """
         del kwargs
         if (mediainfo.scrape_source or get_runtime_setting('SCRAP_SOURCE')) != MediaSource.IMDb.value:
             return None

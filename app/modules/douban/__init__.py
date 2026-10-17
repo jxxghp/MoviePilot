@@ -1880,11 +1880,13 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
                                                         count=count)
         return self._project_collection(infos)
 
-    def metadata_nfo(self, mediainfo: MediaInfo, season: int = None, **kwargs) -> Optional[bytes]:
+    def metadata_nfo(self, mediainfo: MediaInfo, season: Optional[int] = None, **kwargs) -> Optional[str]:
         """
-        获取 UTF-8 编码的 NFO XML 字节
+        获取 UTF-8 编码声明的 NFO XML 文本。
+
         :param mediainfo: 媒体信息
         :param season: 季号
+        :return: NFO XML 文本；非豆瓣来源时返回 None
         """
         if (mediainfo.scrape_source or get_runtime_setting('SCRAP_SOURCE')) != "douban":
             return None

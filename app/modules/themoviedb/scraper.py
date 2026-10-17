@@ -39,11 +39,13 @@ class TmdbScraper:
         episode: Optional[int] = None,
     ) -> Optional[str]:
         """
-        获取NFO文件内容文本
+        获取 NFO 文件内容文本。
+
         :param meta: 元数据
         :param mediainfo: 媒体信息
         :param season: 季号
         :param episode: 集号
+        :return: UTF-8 编码声明的 XML 文本；无法生成时返回 None
         """
         if mediainfo.type == MediaType.MOVIE:
             # 电影元数据文件
@@ -79,7 +81,7 @@ class TmdbScraper:
                 # 电视剧元数据文件
                 doc = self.__gen_tv_nfo_file(mediainfo=mediainfo)
         if doc:
-            return doc.toprettyxml(indent="  ", encoding="utf-8")  # noqa
+            return doc.toprettyxml(indent="  ", encoding="utf-8").decode("utf-8")
 
         return None
 

@@ -13,11 +13,13 @@ class DoubanScraper:
     _force_nfo = False
     _force_img = False
 
-    def get_metadata_nfo(self, mediainfo: MediaInfo, season: Optional[int] = None) -> Optional[bytes]:
+    def get_metadata_nfo(self, mediainfo: MediaInfo, season: Optional[int] = None) -> Optional[str]:
         """
-        获取 UTF-8 编码的 NFO XML 字节
+        获取 UTF-8 编码声明的 NFO XML 文本。
+
         :param mediainfo: 媒体信息
         :param season: 季号
+        :return: NFO XML 文本；无法生成时返回 None
         """
         if mediainfo.type == MediaType.MOVIE:
             # 电影元数据文件
@@ -30,7 +32,7 @@ class DoubanScraper:
                 # 电视剧元数据文件
                 doc = self.__gen_tv_nfo_file(mediainfo=mediainfo)
         if doc:
-            return doc.toprettyxml(indent="  ", encoding="utf-8") # noqa
+            return doc.toprettyxml(indent="  ", encoding="utf-8").decode("utf-8")
 
         return None
 
