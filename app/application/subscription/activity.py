@@ -112,7 +112,7 @@ class SubscriptionActivityRepository(Protocol):
         先确认活动或历史订阅归属，再返回稳定游标分页。
 
         :param subscription_id: 目标订阅或订阅历史的数据库主键
-        :param username: 当前用户名称，或查询时限定的订阅归属用户
+        :param username: 发起读取的本地用户名，用于校验订阅归属
         :param superuser: 当前用户是否具有跨用户访问权限
         :param history: 是否按订阅历史记录校验归属
         :param kind: 要筛选的活动类型；None 表示不限类型
@@ -131,7 +131,7 @@ class SubscriptionActivityRepository(Protocol):
 
         :param subscription_id: 目标订阅或订阅历史的数据库主键
         :param event_id: 同一业务轮次的稳定事件标识
-        :param username: 当前用户名称，或查询时限定的订阅归属用户
+        :param username: 发起读取的本地用户名，用于校验订阅归属
         :param superuser: 当前用户是否具有跨用户访问权限
         :param history: 是否按订阅历史记录校验归属
         :return: 完整活动详情；订阅或活动不存在，或无权访问时返回 None

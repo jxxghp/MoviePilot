@@ -690,9 +690,9 @@ class SubscriptionQueryPort(Protocol):
         """
         异步按用户、状态、类型和窗口读取订阅快照。
 
-        :param username: 当前用户名称，或查询时限定的订阅归属用户
+        :param username: 用于筛选订阅归属的本地用户名
         :param state: 可选订阅状态筛选；None 表示不限制
-        :param mtype: 媒体类型筛选；可空接口中 None 表示不限制
+        :param mtype: 媒体类型筛选；None 表示不限制
         :param page: 页码，从 1 开始；可选窗口仅在 page 和 count 均提供时生效
         :param count: 每页最多返回的记录数
         :return: 属于指定用户且满足其他筛选条件的订阅快照列表
@@ -709,8 +709,8 @@ class SubscriptionQueryPort(Protocol):
         按与公开列表相同的筛选范围返回订阅总数。
 
         :param state: 可选订阅状态筛选；None 表示不限制
-        :param username: 当前用户名称，或查询时限定的订阅归属用户
-        :param mtype: 媒体类型筛选；可空接口中 None 表示不限制
+        :param username: 订阅归属用户筛选；None 表示不限用户
+        :param mtype: 媒体类型筛选；None 表示不限制
         :return: 满足相同筛选条件的活动订阅总数
         """
         ...
@@ -778,8 +778,8 @@ class SubscriptionHistoryQueryPort(Protocol):
         """
         异步按类型分页读取订阅历史快照。
 
-        :param mtype: 媒体类型筛选；可空接口中 None 表示不限制
-        :param page: 页码，从 1 开始；可选窗口仅在 page 和 count 均提供时生效
+        :param mtype: 用于筛选订阅历史的媒体类型
+        :param page: 页码，从 1 开始，默认读取第一页
         :param count: 每页最多返回的记录数
         :return: 指定媒体类型的订阅历史快照列表
         """
@@ -795,9 +795,9 @@ class SubscriptionHistoryQueryPort(Protocol):
         """
         异步按类型和用户分页读取订阅历史快照。
 
-        :param mtype: 媒体类型筛选；可空接口中 None 表示不限制
-        :param username: 当前用户名称，或查询时限定的订阅归属用户
-        :param page: 页码，从 1 开始；可选窗口仅在 page 和 count 均提供时生效
+        :param mtype: 用于筛选订阅历史的媒体类型
+        :param username: 用于筛选订阅归属的本地用户名
+        :param page: 页码，从 1 开始，默认读取第一页
         :param count: 每页最多返回的记录数
         :return: 指定媒体类型和用户的订阅历史快照列表
         """
@@ -807,7 +807,7 @@ class SubscriptionHistoryQueryPort(Protocol):
         """
         异步统计指定媒体类型的订阅历史。
 
-        :param mtype: 媒体类型筛选；可空接口中 None 表示不限制
+        :param mtype: 用于筛选订阅历史的媒体类型
         :return: 指定媒体类型的订阅历史数量
         """
         ...
@@ -820,8 +820,8 @@ class SubscriptionHistoryQueryPort(Protocol):
         """
         异步统计指定媒体类型和用户的订阅历史。
 
-        :param mtype: 媒体类型筛选；可空接口中 None 表示不限制
-        :param username: 当前用户名称，或查询时限定的订阅归属用户
+        :param mtype: 用于筛选订阅历史的媒体类型
+        :param username: 用于筛选订阅归属的本地用户名
         :return: 指定媒体类型和用户的订阅历史数量
         """
         ...
@@ -846,7 +846,7 @@ class SubscriptionWritePort(Protocol):
 
         :param identity: 含来源、原生标识及必要季集维度的订阅身份
         :param payload: 经白名单约束的订阅写入字段
-        :param username: 创建订阅的用户；None 表示未绑定用户
+        :param username: 查重范围：None 表示跨用户查重，空字符串跳过查重，其他值只查该用户；新记录归属取自 payload
         :param after_commit: 新建提交后或查重命中已有订阅时执行的回调；None 表示无附加回调
         :param notification: 提交后通知使用的字段快照；None 表示不附加通知意图
         :param occurrence_id: 本次创建事实标识，参与副作用幂等键；None 时由实现生成
@@ -868,7 +868,7 @@ class SubscriptionWritePort(Protocol):
 
         :param identity: 含来源、原生标识及必要季集维度的订阅身份
         :param payload: 经白名单约束的订阅写入字段
-        :param username: 创建订阅的用户；None 表示未绑定用户
+        :param username: 查重范围：None 表示跨用户查重，空字符串跳过查重，其他值只查该用户；新记录归属取自 payload
         :param after_commit: 新建提交后或查重命中已有订阅时执行的回调；None 表示无附加回调
         :param notification: 提交后通知使用的字段快照；None 表示不附加通知意图
         :param occurrence_id: 本次创建事实标识，参与副作用幂等键；None 时由实现生成
@@ -893,7 +893,7 @@ class SubscriptionStagingPort(Protocol):
 
         :param identity: 含来源、原生标识及必要季集维度的订阅身份
         :param payload: 经白名单约束的订阅写入字段
-        :param username: 订阅归属用户；None 表示查询不限定用户或新增未绑定用户
+        :param username: 查重范围：None 表示跨用户查重，空字符串跳过查重，其他值只查该用户；新记录归属取自 payload
         :return: 暂存的订阅主键、说明和是否新建标记，不表示事务已经提交
         """
         ...
@@ -909,7 +909,7 @@ class SubscriptionStagingPort(Protocol):
 
         :param identity: 含来源、原生标识及必要季集维度的订阅身份
         :param payload: 经白名单约束的订阅写入字段
-        :param username: 订阅归属用户；None 表示查询不限定用户或新增未绑定用户
+        :param username: 查重范围：None 表示跨用户查重，空字符串跳过查重，其他值只查该用户；新记录归属取自 payload
         :return: 暂存的订阅主键、说明和是否新建标记，不表示事务已经提交
         """
         ...
@@ -953,9 +953,9 @@ class SubscriptionStagingPort(Protocol):
         """
         异步读取用户或管理员指定媒体类型范围内可搜索的订阅主键。
 
-        :param username: 订阅归属用户；None 表示查询不限定用户或新增未绑定用户
+        :param username: 订阅归属用户筛选；None 表示不限用户
         :param state: 可搜索订阅的状态筛选
-        :param mtype: 媒体类型筛选；可空接口中 None 表示不限制
+        :param mtype: 媒体类型筛选；None 表示不限制
         :return: 指定用户、状态和媒体类型范围内的可搜索订阅主键
         """
         ...
