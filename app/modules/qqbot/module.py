@@ -1,7 +1,7 @@
 """
-QQ Bot 通知模块
-基于 QQ 开放平台，支持主动消息推送和 Gateway 接收消息
-注意：用户/群需曾与机器人交互过才能收到主动消息，且每月有配额限制
+QQ 通知渠道路由、入站解析与附件下载入口。
+
+主动发送对象与配额由 QQ 平台控制；后台网关接收入站消息。
 """
 
 import json
@@ -31,9 +31,11 @@ register_channel_admin_resolver(
 
 
 class QQBotModule(_MessageChannelModuleBase[QQBot]):
-    """QQ Bot 通知模块"""
+    """
+    QQ Bot 通知模块。
+    """
 
-    # 管理员配置键，与渠道 resolver 保持一致
+    # 管理员配置键，与渠道管理员解析器保持一致
     _admin_config_key = "QQBOT_ADMINS"
     _notification_user_target_keys = (
         "qq_userid",
@@ -69,43 +71,57 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
     )
 
     def init_module(self) -> None:
-        """初始化 QQ Bot 通知服务并设置渠道标识。"""
+        """
+        初始化 QQ Bot 通知服务并设置渠道标识。
+        """
         super().init_service(service_name=QQBot.__name__.lower(), service_type=QQBot)
         self._channel = NotificationChannel.QQ
 
     @staticmethod
     def get_name() -> str:
-        """返回渠道的显示名称。"""
+        """
+        返回渠道的显示名称。
+        """
         return "QQ"
 
     @staticmethod
     def get_type() -> ModuleType:
-        """声明模块属于通知服务。"""
+        """
+        声明模块属于通知服务。
+        """
         return ModuleType.Notification
 
     @staticmethod
     def get_subtype() -> NotificationChannel:
-        """返回 QQ 通知渠道标识。"""
+        """
+        返回 QQ 通知渠道标识。
+        """
         return NotificationChannel.QQ
 
     @staticmethod
     def get_priority() -> int:
-        """返回通知模块的加载优先级。"""
+        """
+        返回通知模块的加载优先级。
+        """
         return 10
 
     def _commands_enabled(self, config: Optional[dict]) -> bool:
         """
-        QQ 机器人客户端未提供命令注册/删除 API，跳过命令注册，
+        QQ 机器人客户端未提供命令注册/删除 API，跳过命令注册，。
         避免基类默认钩子调用不存在的 client.register_commands。
         """
         return False
 
     def stop(self) -> bool:
-        """停止全部 QQ Bot 实例，并返回资源是否全部收敛。"""
+        """
+        停止全部 QQ Bot 实例，并返回资源是否全部收敛。
+        """
         return self._stop_service_instances()
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        """保留设置初始化钩子，实例配置由通知服务管理。"""
+        """
+        保留设置初始化钩子，实例配置由通知服务管理。
+        """
         pass
 
     @staticmethod
@@ -122,8 +138,15 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
         self, source: str, body: Any, form: Any, args: Any
     ) -> Optional[IncomingMessage]:
         """
-        解析 Gateway 转发的 QQ 消息
-        body 格式: {"type": "C2C_MESSAGE_CREATE"|"GROUP_AT_MESSAGE_CREATE", "content": "...", "author": {...}, "id": "...", ...}
+        解析网关单聊或群聊消息，校验发言人的管理员权限。
+
+        群聊回复路由使用 group:群标识，管理员身份仍按实际发言人判断。
+
+        :param source: 通知配置名称
+        :param body: 网关事件字典或编码为 JSON 的字节
+        :param form: 兼容统一入口的表单参数，当前不使用
+        :param args: 兼容统一入口的查询参数，当前不使用
+        :return: 统一消息对象；配置缺失、内容为空、不支持的事件或权限不足时返回 None
         """
         client_config = self.get_config(source)
         if not client_config:
@@ -215,7 +238,9 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
     def _extract_images(
         cls, msg_body: dict
     ) -> Optional[List[IncomingMessage.MessageImage]]:
-        """提取 QQ 图片附件与兼容图片字段，按引用去重。"""
+        """
+        提取 QQ 图片附件与兼容图片字段，按引用去重。
+        """
         images: List[IncomingMessage.MessageImage] = []
         attachments = msg_body.get("attachments") or []
         if isinstance(attachments, list):
@@ -277,7 +302,9 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
 
     @classmethod
     def _extract_audio_refs(cls, msg_body: dict) -> Optional[List[str]]:
-        """提取音频附件，并生成可回读的 QQ 文件引用。"""
+        """
+        提取音频附件，并生成可回读的 QQ 文件引用。
+        """
         audio_refs: List[str] = []
         attachments = msg_body.get("attachments") or []
         if isinstance(attachments, list):
@@ -310,7 +337,9 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
     def _extract_files(
         cls, msg_body: dict
     ) -> Optional[List[IncomingMessage.MessageAttachment]]:
-        """提取图片和音频以外的文件附件，保留文件元数据。"""
+        """
+        提取图片和音频以外的文件附件，保留文件元数据。
+        """
         files: List[IncomingMessage.MessageAttachment] = []
         attachments = msg_body.get("attachments") or []
         if isinstance(attachments, list):
@@ -349,7 +378,11 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
 
     def download_qq_file_bytes(self, file_ref: str, source: str) -> Optional[bytes]:
         """
-        下载QQ音频附件并返回原始字节
+        下载 QQ 文件引用中的音频或普通附件。
+
+        :param file_ref: qq://file/ 开头的内部文件引用
+        :param source: 所属通知配置名称
+        :return: 非空文件字节；引用、配置或下载不可用时返回 None
         """
         if not file_ref or not file_ref.startswith("qq://file/"):
             return None
@@ -362,7 +395,9 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
         return None
 
     def post_message(self, message: Message, **kwargs) -> None:
-        """按通知路由发送 QQ 消息，并保留原正文作为权限不足时的回退。"""
+        """
+        按通知路由发送 QQ 消息，并保留原正文作为权限不足时的回退。
+        """
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
@@ -388,7 +423,9 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
                 )
 
     def post_medias_message(self, message: Message, medias: List[MediaInfo]) -> None:
-        """按实例和用户路由发送 QQ 媒体候选列表。"""
+        """
+        按实例和用户路由发送 QQ 媒体候选列表。
+        """
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
@@ -413,7 +450,9 @@ class QQBotModule(_MessageChannelModuleBase[QQBot]):
     def post_torrents_message(
         self, message: Message, torrents: List[Context]
     ) -> None:
-        """按实例和用户路由发送 QQ 种子候选列表。"""
+        """
+        按实例和用户路由发送 QQ 种子候选列表。
+        """
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue

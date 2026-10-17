@@ -1,6 +1,5 @@
 """
-QQ Bot 通知客户端
-基于 QQ 开放平台 API，支持主动消息推送和 Gateway 接收消息
+QQ 主动通知发送、历史互动对象缓存和后台网关生命周期管理。
 """
 
 import hashlib
@@ -27,14 +26,17 @@ from app.runtime.cache import FileCache
 from app.runtime.log import logger
 from app.runtime.thread import ThreadHelper
 
-# QQ Markdown 图片展示尺寸限制，避免竖版海报被客户端拉伸变形
+# QQ Markdown 图片展示尺寸限制，单位像素，避免竖版海报被客户端拉伸变形
 _DEFAULT_IMAGE_SIZE: Tuple[int, int] = (208, 320)
 _MAX_IMAGE_SIZE: Tuple[int, int] = (512, 512)
 
 
 class QQBot:
-    """QQ Bot 通知客户端"""
+    """
+    QQ Bot 通知客户端。
+    """
 
+    # 停止时等待网关线程的最长秒数；超时交由上层决定后续处理。
     _gateway_join_timeout_seconds = 20
 
     def __init__(
@@ -47,12 +49,16 @@ class QQBot:
             **kwargs,
     ):
         """
-        初始化 QQ Bot
-        :param QQ_APP_ID: QQ 机器人 AppID
-        :param QQ_APP_SECRET: QQ 机器人 AppSecret
-        :param QQ_OPENID: 默认接收者 openid（单聊）
-        :param QQ_GROUP_OPENID: 默认群组 openid（群聊，与 QQ_OPENID 二选一）
-        :param name: 配置名称，用于消息来源标识和 Gateway 接收
+        保存机器人配置、恢复已互动对象，并启动后台网关线程。
+
+        缺少应用凭据时保持未就绪状态；完整配置会读取文件缓存并开始网络连接。
+
+        :param QQ_APP_ID: 机器人应用标识，必填
+        :param QQ_APP_SECRET: 机器人应用密钥，必填
+        :param QQ_OPENID: 默认单聊接收人标识
+        :param QQ_GROUP_OPENID: 默认群聊标识；同时配置单聊时优先使用群聊
+        :param name: 通知配置名称，用于区分消息来源和持久化缓存
+        :param kwargs: 兼容额外配置字段，当前不使用
         """
         self._gateway_stop = None
         self._gateway_thread = None
@@ -79,7 +85,6 @@ class QQBot:
         self._processed_msg_ids: set = set()
         self._max_processed_ids = 1000
 
-        # Gateway 后台线程
         self._gateway_stop = threading.Event()
         self._gateway_thread = None
         self._start_gateway()
@@ -87,7 +92,9 @@ class QQBot:
         logger.info("QQ Bot 客户端初始化完成")
 
     def _load_known_targets(self) -> None:
-        """从缓存加载曾互动的用户/群"""
+        """
+        从缓存加载曾互动的用户/群。
+        """
         try:
             content = self._filecache.get(self._cache_key)
             if content:
@@ -98,14 +105,18 @@ class QQBot:
             logger.debug(f"QQ Bot 加载 known_targets 失败: {e}")
 
     def _save_known_targets(self) -> None:
-        """持久化曾互动的用户/群到缓存"""
+        """
+        持久化曾互动的用户/群到缓存。
+        """
         try:
             self._filecache.set(self._cache_key, pickle.dumps(list(self._known_targets)))
         except Exception as e:
             logger.debug(f"QQ Bot 保存 known_targets 失败: {e}")
 
     def _forward_to_message_chain(self, payload: dict) -> bool:
-        """通过受管线程池把 QQ Bot 入站 payload 转交统一消息入口。"""
+        """
+        通过受管线程池把 QQ Bot 入站载荷 转交统一消息入口。
+        """
         return submit_message_to_host(
             payload,
             self._config_name,
@@ -113,7 +124,9 @@ class QQBot:
         )
 
     def _on_gateway_message(self, payload: dict) -> None:
-        """Gateway 收到消息时转发至 MP 消息链，并记录发送者用于广播"""
+        """
+        Gateway 收到消息时转发至 MP 消息链，并记录发送者用于广播。
+        """
         msg_id = payload.get("id")
         if msg_id:
             if msg_id in self._processed_msg_ids:
@@ -139,7 +152,9 @@ class QQBot:
         self._forward_to_message_chain(payload)
 
     def _start_gateway(self) -> None:
-        """启动 Gateway WebSocket 连接（后台线程）"""
+        """
+        启动 Gateway WebSocket 连接（后台线程）。
+        """
         try:
             self._gateway_thread = threading.Thread(
                 target=run_gateway,
@@ -161,7 +176,11 @@ class QQBot:
             logger.error(f"QQ Bot Gateway 启动失败: {e}")
 
     def stop(self) -> bool:
-        """停止 Gateway 连接，并返回后台线程是否已经终止。"""
+        """
+        通知网关停止并关闭连接，最多等待后台线程 20 秒。
+
+        :return: 网关线程已终止或从未启动时返回 True；仍存活时返回 False
+        """
         if self._gateway_stop is not None:
             self._gateway_stop.set()
         try:
@@ -184,13 +203,18 @@ class QQBot:
         return True
 
     def get_state(self) -> bool:
-        """获取就绪状态"""
+        """
+        返回初始化时的凭据就绪状态。
+
+        :return: 应用标识和密钥齐全时返回 True；不代表网关当前在线
+        """
         return self._ready
 
     def _get_target(self, userid: Optional[str] = None, targets: Optional[dict] = None) -> tuple:
         """
-        解析发送目标
-        :return: (target_id, is_group)
+        按显式接收人、目标字典、默认配置的顺序选择发送目标。
+
+        :return: 目标标识及是否群聊的二元组；未配置时为 (None, False)
         """
         # 优先使用 userid（可能是 openid）
         if userid:
@@ -199,7 +223,6 @@ class QQBot:
                 return userid[6:].strip(), True
             return str(userid), False
 
-        # 从 targets 获取
         if targets:
             qq_openid = targets.get("qq_userid") or targets.get("qq_openid")
             qq_group = targets.get("qq_group_openid") or targets.get("qq_group")
@@ -208,7 +231,6 @@ class QQBot:
             if qq_openid:
                 return str(qq_openid), False
 
-        # 使用默认配置
         if self._default_group_openid:
             return self._default_group_openid, True
         if self._default_openid:
@@ -217,14 +239,20 @@ class QQBot:
         return None, False
 
     def _get_broadcast_targets(self) -> list:
-        """获取广播目标列表（曾发过消息的用户/群）"""
+        """
+        获取广播目标列表（曾发过消息的用户/群）。
+        """
         return list(self._known_targets)
 
     @staticmethod
     def _get_image_size(url: str) -> Optional[Tuple[int, int]]:
         """
-        从图片 URL 获取尺寸，只下载前 64KB 解析文件头（参考 OpenClaw）
-        :return: (width, height) 或 None
+        请求图片前 64 KiB 并用文件头解析像素尺寸。
+
+        使用 Range 请求；服务端可能忽略范围并返回完整文件，解析仅使用前 65536 字节。
+
+        :param url: 可下载的图片地址
+        :return: 宽高像素二元组；请求或解析失败返回 None
         """
         try:
             resp = RequestUtils(timeout=5).get_res(
@@ -259,7 +287,9 @@ class QQBot:
 
     @staticmethod
     def _escape_markdown(text: str) -> str:
-        """转义 Markdown 特殊字符，避免破坏格式。不转义 ()，QQ 会误解析 \\( \\) 导致括号丢失或乱码"""
+        """
+        转义 Markdown 特殊字符；保留圆括号，避免 QQ 误解析转义后的括号。
+        """
         if not text:
             return ""
         text = text.replace("\\", "\\\\")
@@ -276,8 +306,14 @@ class QQBot:
             formatted_text: Optional[str] = None,
     ) -> tuple:
         """
-        将消息格式化为 QQ Markdown，类似 Telegram 处理方式
-        :return: (content, use_markdown)
+        将通知标题、正文、图片和链接拼接为 QQ Markdown。
+
+        :param title: 可选标题，去除换行后加粗
+        :param text: 待转义的普通正文
+        :param image: 图片地址；HTTP(S) 图片会附带受限展示尺寸
+        :param link: 可选详情链接
+        :param formatted_text: 已格式化正文，非空时优先于 text 且不再转义
+        :return: 正文及是否包含非空内容的二元组
         """
         parts = []
         if title:
@@ -319,14 +355,19 @@ class QQBot:
             **kwargs,
     ) -> bool:
         """
-        发送 QQ 消息
-        :param title: 标题
-        :param text: 正文
-        :param image: 图片 URL（QQ 主动消息暂不支持图片，可拼入文本）
-        :param link: 链接
-        :param userid: 目标 openid 或 group:xxx
-        :param targets: 目标字典
-        :param kwargs: formatted_texts 是有界渠道正文列表，权限不足仍使用原 text 回退。
+        向指定目标或历史互动对象发送主动通知。
+
+        未指定目标时依次使用默认配置和已互动对象。Markdown 权限错误会回退到完整纯文本，
+        并停止向该目标发送余下分段；其他目标继续尝试。
+
+        :param title: 通知标题
+        :param text: 普通正文，也用于权限不足时的纯文本回退
+        :param image: 可选图片地址，Markdown 使用尺寸标记嵌入
+        :param link: 可选详情链接
+        :param userid: 优先使用的 openid，group: 前缀表示群聊
+        :param targets: 渠道目标字典；未指定 userid 时读取，群聊优先
+        :param kwargs: buttons 提供按钮，formatted_texts 提供已格式化分段正文
+        :return: 至少一个目标的一段消息成功时返回 True；全部失败、未就绪或没有接收人时返回 False
         """
         if not self._ready:
             return False
@@ -346,7 +387,6 @@ class QQBot:
                     "QQ Bot: 未指定接收者且无互动用户，请在配置中设置 QQ_OPENID/QQ_GROUP_OPENID 或先让用户发消息")
                 return False
 
-        # 使用 Markdown 格式发送（类似 Telegram）
         content, use_markdown = self._format_message_markdown(title=title, text=text, image=image, link=link)
         logger.info(f"QQ Bot 发送内容 (use_markdown={use_markdown}):\n{content}")
 
@@ -354,7 +394,6 @@ class QQBot:
             logger.warn("QQ Bot: 消息内容为空")
             return False
 
-        # 处理按钮
         keyboard = self._build_keyboard(kwargs.get("buttons"))
         use_markdown = bool(keyboard) or use_markdown
         contents = [self._format_message_markdown(title=title, formatted_text=part, image=image, link=link)[0]
@@ -387,7 +426,11 @@ class QQBot:
 
     @staticmethod
     def _build_keyboard(buttons: Optional[List[List[Dict[str, Any]]]]) -> Optional[Dict[str, Any]]:
-        """保留原有 QQ 按钮协议，使富文本分段和纯文本回退共享同一键盘。"""
+        """
+        把统一按钮行转换为 QQ 键盘，按 30 个字符截断按钮标题。
+
+        :return: QQ 键盘配置；没有有效按钮行时返回 None
+        """
         rows = []
         btn_id = 1
         for row in buttons or []:
@@ -413,7 +456,9 @@ class QQBot:
 
     @staticmethod
     def _plain_content(title: str, text: Optional[str], image: Optional[str], link: Optional[str]) -> str:
-        """权限不足时恢复原通知的完整纯文本，避免每个富文本分段重复回退。"""
+        """
+        权限不足时恢复原通知的完整纯文本，避免每个富文本分段重复回退。
+        """
         parts = [f"【{title}】"] if title else []
         parts.extend(part for part in (text, image, link) if part)
         return "\n".join(parts).strip()
@@ -426,7 +471,16 @@ class QQBot:
             link: Optional[str] = None,
             **kwargs,
     ) -> bool:
-        """发送媒体列表（转为文本）"""
+        """
+        将媒体列表转为文本后按主动消息规则发送。
+
+        :param medias: 待展示的媒体列表，空列表不发送
+        :param userid: openid 或带 group: 前缀的群聊标识
+        :param title: 可选列表标题；为空时使用默认标题
+        :param link: 可选详情链接
+        :param kwargs: 转交 send_msg 的目标字典、按钮和格式化分段等参数
+        :return: 至少一段消息发送成功时返回 True，空列表或发送失败返回 False
+        """
         if not medias:
             return False
         lines = [f"{i + 1}. {m.title_year} - {m.type.value}" for i, m in enumerate(medias)]
@@ -447,7 +501,16 @@ class QQBot:
             link: Optional[str] = None,
             **kwargs,
     ) -> bool:
-        """发送种子列表（转为文本）"""
+        """
+        将种子列表转为文本后按主动消息规则发送。
+
+        :param torrents: 待展示的种子列表，空列表不发送
+        :param userid: openid 或带 group: 前缀的群聊标识
+        :param title: 可选列表标题；为空时使用默认标题
+        :param link: 可选详情链接
+        :param kwargs: 转交 send_msg 的目标字典、按钮和格式化分段等参数
+        :return: 至少一段消息发送成功时返回 True，空列表或发送失败返回 False
+        """
         if not torrents:
             return False
         lines = []
