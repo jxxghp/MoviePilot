@@ -1,3 +1,7 @@
+"""
+飞牛影视客户端，协调登录、媒体库权限、刷新、播放链接与图片授权。
+"""
+
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
@@ -17,7 +21,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 class TrimeMedia:
-    """飞牛影视媒体服务器客户端。"""
+    """
+    飞牛影视媒体服务器客户端。
+    """
 
     _username: Optional[str] = None
     _password: Optional[str] = None
@@ -43,6 +49,19 @@ class TrimeMedia:
         sync_libraries: Optional[list] = None,
         **kwargs,
     ):
+        """
+        保存飞牛服务配置并登录，同时探测可用的外网播放地址。
+
+        地址、用户名或密码缺失时不连接；连接失败时保留配置供后续重连。
+
+        :param host: 飞牛服务地址；探测时优先补齐 /v 路径
+        :param username: 登录用户名
+        :param password: 登录密码
+        :param access_code: 可选设备访问码，启用后用于登录和图片请求
+        :param play_host: 可选外网播放地址，探测失败时保留规整后的配置值
+        :param sync_libraries: 同步媒体库标识，空列表或包含 all 表示不限制
+        :param kwargs: 通用服务配置的额外参数，当前不读取
+        """
         if not host or not username or not password:
             logger.error("飞牛影视配置不完整！！")
             return
@@ -65,18 +84,24 @@ class TrimeMedia:
     @property
     def api(self) -> Optional[fnapi.Api]:
         """
-        获得飞牛API
+        获得飞牛API。
         """
         return self._api
 
     @property
     def version(self) -> Optional[fnapi.Version]:
         """
-        获得飞牛API的版本
+        获得飞牛API的版本。
         """
         return self._version
 
     class _ApiCreateResult:
+        """
+        已经验证可访问的飞牛 API 与对应版本信息。
+
+        :ivar api: 通过访问码及版本探测的客户端，接管方负责关闭
+        :ivar version: 客户端版本接口返回的前后端版本
+        """
         api: fnapi.Api
         version: fnapi.Version
 
@@ -85,9 +110,9 @@ class TrimeMedia:
         host: Optional[str], access_code: Optional[str] = None
     ) -> Optional["TrimeMedia._ApiCreateResult"]:
         """
-        创建一个飞牛API
+        创建一个飞牛API。
 
-        :param host:  服务端地址
+        :param host: 服务端地址
         :param access_code: 访问码，未开启时为空
         :return: 如果地址无效、不可访问则返回None
         """
@@ -116,14 +141,24 @@ class TrimeMedia:
         return None
 
     def close(self):
+        """
+        登出当前用户并关闭飞牛 API 会话。
+        """
         self.disconnect()
 
     def is_configured(self) -> bool:
+        """
+        检查是否同时配置服务地址、用户名和密码。
+
+        :return: 三项配置均非空时返回 True，不代表服务当前可达
+        """
         return bool(self._host and self._username and self._password)
 
     def is_authenticated(self) -> bool:
         """
-        是否已登录
+        检查当前实例是否具有完整登录上下文。
+
+        :return: 配置完整且 API、令牌和用户信息均存在时返回 True，不发起远程验证
         """
         return (
             self.is_configured()
@@ -134,7 +169,9 @@ class TrimeMedia:
 
     def is_inactive(self) -> bool:
         """
-        判断是否需要重连
+        通过用户信息查询验证当前会话，并更新用户缓存。
+
+        :return: 尚未认证或当前用户信息查询失败时返回 True
         """
         if not self.is_authenticated():
             return True
@@ -143,7 +180,11 @@ class TrimeMedia:
 
     def reconnect(self):
         """
-        重连
+        关闭旧连接，重新探测版本、验证访问码并登录。
+
+        成功后刷新媒体库缓存；目录查询失败不会撤销已经建立的认证状态。
+
+        :return: 登录并获取用户信息后返回 True；配置缺失、探测或认证失败时返回 False
         """
         if not self.is_configured():
             return False
@@ -170,7 +211,7 @@ class TrimeMedia:
 
     def disconnect(self):
         """
-        断开与飞牛的连接
+        退出当前账号、关闭 HTTP 会话并清空客户端及用户状态。
         """
         if self._api:
             self._api.logout()
@@ -183,7 +224,12 @@ class TrimeMedia:
         self, hidden: Optional[bool] = False
     ) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
-        获取媒体服务器所有媒体库列表
+        按用户权限读取媒体库，管理员接口同时提供实际目录。
+
+        每次成功查询都会替换实例的媒体库缓存，后续路径匹配使用该缓存。
+
+        :param hidden: 是否隐藏同步范围外的媒体库
+        :return: 统一媒体库列表；未认证或查询失败时返回 None，其他分类库始终不返回
         """
         if not self.is_authenticated():
             return None
@@ -230,7 +276,9 @@ class TrimeMedia:
 
     def get_user_count(self) -> int:
         """
-        获取用户数量(非管理员不能调用)
+        查询管理员账号可见的用户数量。
+
+        :return: 用户总数；未认证、非管理员或查询失败时返回 0
         """
         if not self.is_authenticated():
             return 0
@@ -240,9 +288,9 @@ class TrimeMedia:
 
     def get_medias_count(self) -> _SchemaStatistic:
         """
-        获取媒体数量
+        查询电影、电视剧及可用的音乐统计。
 
-        :return: MovieCount SeriesCount
+        :return: 统一统计对象；未认证或请求失败时返回空统计
         """
         if not self.is_authenticated():
             return _SchemaStatistic()
@@ -256,11 +304,14 @@ class TrimeMedia:
 
     def authenticate(self, username: str, password: str) -> Optional[str]:
         """
-        用户认证
+        使用独立临时 API 验证用户名和密码。
 
-        :param username: 用户名
-        :param password: 密码
-        :return: 认证成功返回token，否则返回None
+        验证结束后会登出并关闭临时会话；返回令牌仅用于认证结果，不保证之后仍可访问服务。
+        当前辅助认证探测不传递实例的访问码，开启访问码的服务可能无法通过此入口。
+
+        :param username: 待验证的用户名
+        :param password: 待验证的原始密码
+        :return: 成功时返回认证令牌，输入不完整或认证失败时返回 None
         """
         if not username or not password:
             return None
@@ -279,13 +330,13 @@ class TrimeMedia:
         media_id: Optional[str] = None,
     ) -> Optional[List[_SchemaMediaServerItem]]:
         """
-        根据标题和年份，检查电影是否在飞牛中存在，存在则返回列表
+        搜索电影并核对名称、年份和来源身份。
 
-        :param title: 标题
-        :param year: 年份，为空则不过滤
-        :param media_source: 媒体来源
-        :param media_id: 媒体来源原生ID
-        :return: 含title、year属性的字典列表
+        :param title: 需匹配标题或原始标题的电影名称
+        :param year: 可选年份，与发行日期前四位比较
+        :param media_source: 用于排除身份冲突的来源
+        :param media_id: 对应来源内的媒体标识
+        :return: 统一电影条目列表；未认证时返回 None，无匹配或搜索失败时返回空列表
         """
         if not self.is_authenticated():
             return None
@@ -308,11 +359,18 @@ class TrimeMedia:
         return movies
 
     def __get_series_id_by_name(self, name: str, year: str) -> Optional[str]:
+        """
+        从搜索候选中按剧名与首播年份查找电视剧。
+
+        :param name: 目标剧名
+        :param year: 可选年份，空值时不限年份
+        :return: 首个匹配电视剧的 guid；无匹配或搜索失败时返回 None
+        """
         items = self._api.search_list(keywords=name) or []
         for item in items:
             if item.type != fnapi.Type.TV:
                 continue
-            # 可惜搜索接口不下发original_title 也不能指定分类、年份
+            # 搜索接口可能不返回 original_title，也不能直接限定分类或年份。
             if name in [item.title, item.original_title]:
                 if not year or (item.air_date and item.air_date[:4] == year):
                     return item.guid
@@ -328,15 +386,18 @@ class TrimeMedia:
         season: Optional[int] = None,
     ) -> Tuple[Optional[str], Optional[Dict[int, list]]]:
         """
-        根据标题和年份和季，返回飞牛中的剧集列表
+        查询电视剧已入库的季集编号，并校验媒体来源身份。
 
-        :param item_id: 飞牛影视中的guid
-        :param title: 标题
-        :param year: 年份
-        :param media_source: 媒体来源
-        :param media_id: 媒体来源原生ID
-        :param season: 季
-        :return: 集号的列表
+        缓存标识失效时按标题重新搜索；个别季的分集查询失败会保留其他季已经取得的结果。
+
+        :param item_id: 优先使用的缓存电视剧 guid
+        :param title: 缺少标识或缓存失效时回退搜索的剧名
+        :param year: 搜索时限定的首播年份，空值不限制
+        :param media_source: 用于排除身份冲突的来源
+        :param media_id: 对应来源内的标识
+        :param season: 目标季号，None 表示全部季
+        :return: 电视剧 guid 与“季号到集号列表”映射；未认证或标题查找失败时返回两项 None，
+            详情无效、身份冲突或季列表不可用时返回 None 和空映射
         """
         if not self.is_authenticated():
             return None, None
@@ -386,7 +447,11 @@ class TrimeMedia:
 
     def refresh_root_library(self) -> Optional[bool]:
         """
-        通知飞牛刷新整个媒体库(非管理员不能调用)
+        以管理员身份请求扫描全部媒体库。
+
+        扫描前先查询运行任务，兼容服务端可能错误报告重复任务的行为。
+
+        :return: 扫描请求是否成功；未认证返回 None，非管理员返回 False，不等待扫描结束
         """
         if not self.is_authenticated():
             return None
@@ -394,7 +459,7 @@ class TrimeMedia:
             logger.error("飞牛仅支持管理员账号刷新媒体库")
             return False
 
-        # 必须调用 否则容易误报 -14 Task duplicate
+        # 扫描前先查询任务状态，避免服务端误报 -14（重复任务）。
         self._api.task_running()
         logger.info("刷新所有媒体库")
         return self._api.mdb_scanall()
@@ -403,9 +468,12 @@ class TrimeMedia:
         self, items: List[_SchemaRefreshMediaItem]
     ) -> Optional[bool]:
         """
-        按路径刷新所在的媒体库(非管理员不能调用)
+        按整理目标路径定位媒体库，并以管理员身份请求刷新。
 
-        :param items: 已识别的需要刷新媒体库的媒体信息列表
+        路径无法定位或单库刷新失败时回退全库刷新；重复媒体库只请求一次。
+
+        :param items: 包含 target_path 的媒体刷新请求列表
+        :return: 扫描请求结果；未认证返回 None，非管理员返回 False
         """
         if not self.is_authenticated():
             return None
@@ -422,7 +490,7 @@ class TrimeMedia:
             # 媒体库去重
             libraries.add(lib.guid)
 
-        # 必须调用 否则容易误报 -14 Task duplicate
+        # 扫描前先查询任务状态，避免服务端误报 -14（重复任务）。
         self._api.task_running()
         for lib_guid in libraries:
             # 逐个刷新
@@ -434,9 +502,17 @@ class TrimeMedia:
         return True
 
     def __match_library_by_path(self, path: Path) -> Optional[fnapi.MediaDb]:
+        """
+        按缓存的实际目录查找第一个包含目标路径的媒体库。
+
+        解析路径后按目录层级比较；普通用户接口不提供目录时无法定位，只能由调用方回退全库刷新。
+
+        :param path: 待刷新的目标路径
+        :return: 匹配的媒体库对象；路径为空或无目录匹配时返回 None
+        """
         def is_subpath(_path: Path, _parent: Path) -> bool:
             """
-            判断_path是否是_parent的子目录下
+            判断_path是否是_parent的子目录下。
             """
             _path = _path.resolve()
             _parent = _parent.resolve()
@@ -451,11 +527,20 @@ class TrimeMedia:
         return None
 
     def get_webhook_message(self, body: Any) -> Optional[_SchemaWebhookEventInfo]:
+        """
+        保留统一 Webhook 入口，飞牛当前不实现事件解析。
+
+        :param body: 兼容接口的请求体，当前不读取
+        :return: 始终返回 None
+        """
         pass
 
     def get_iteminfo(self, itemid: str) -> Optional[_SchemaMediaServerItem]:
         """
-        获取单个项目详情
+        查询单个条目并转换为统一媒体详情。
+
+        :param itemid: 飞牛条目 guid
+        :return: 统一条目模型；未认证或查询失败时返回 None
         """
         if not self.is_authenticated():
             return None
@@ -465,6 +550,12 @@ class TrimeMedia:
 
     @staticmethod
     def __build_media_server_item(item: fnapi.Item):
+        """
+        将飞牛条目投影为统一媒体身份和用户观看状态。
+
+        :param item: 包含类型、日期、身份及播放时间的飞牛条目
+        :return: 统一媒体条目；日期前四位作为年份，播放秒数除以总秒数转换为百分比
+        """
         if item.air_date and item.type == fnapi.Type.TV:
             year = item.air_date[:4]
         elif item.release_date:
@@ -504,7 +595,7 @@ class TrimeMedia:
     @staticmethod
     def __build_play_url(host: str, item: fnapi.Item) -> str:
         """
-        拼装播放链接
+        拼装播放链接。
         """
         if item.type == fnapi.Type.EPISODE:
             return f"{host}/tv/episode/{item.guid}"
@@ -521,6 +612,12 @@ class TrimeMedia:
     def __build_media_server_play_item(
         self, item: fnapi.Item
     ) -> _SchemaMediaServerPlayItem:
+        """
+        构造仪表盘播放条目，分集展示剧名和季集副标题。
+
+        :param item: 飞牛媒体条目
+        :return: 需要 Cookie 访问图片的播放模型，含观看百分比及对应网页链接
+        """
         if item.type == fnapi.Type.EPISODE:
             title = item.tv_title
             subtitle = f"S{item.season_number}:{item.episode_number} - {item.title}"
@@ -550,7 +647,7 @@ class TrimeMedia:
 
     def get_items_count(self, parent: Union[str, int]) -> Optional[int]:
         """
-        获取指定媒体库可同步的媒体条目总数
+        获取指定媒体库可同步的媒体条目总数。
 
         :param parent: 媒体库ID
         :return: 媒体条目总数，查询失败时返回None
@@ -569,13 +666,14 @@ class TrimeMedia:
         limit: Optional[int] = -1,
     ) -> Generator[_SchemaMediaServerItem | None | Any, Any, None]:
         """
-        获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
+        查询一页媒体库内容，并递归展开目录中的电影和电视剧。
 
-        :param parent: 媒体库ID，用于标识要获取的媒体库
-        :param start_index: 起始索引，用于分页获取数据。默认为 0，即从第一个项目开始获取
-        :param limit: 每次请求的最大项目数，用于分页。如果为 None 或 -1，则表示一次性获取所有数据，默认为 -1
+        未认证时不产生条目；底层查询失败按空列表结束当前层，不向上传播专门的同步失败异常。
 
-        :return: 返回一个生成器对象，用于逐步获取媒体服务器中的项目
+        :param parent: 媒体库或父目录 guid
+        :param start_index: 当前实现将该值加 1 作为页码；并非条目偏移，默认 0 请求第一页
+        :param limit: 传给服务端的每页数量；None 或 -1 传为 -1，递归子目录使用默认不限数量
+        :yields: 统一电影或电视剧条目
         """
         if not self.is_authenticated():
             return None
@@ -600,9 +698,10 @@ class TrimeMedia:
 
     def get_play_url(self, item_id: str) -> Optional[str]:
         """
-        获取媒体的外网播放链接
+        读取条目类型后构造外网或内部网页播放链接。
 
-        :param item_id: 媒体ID
+        :param item_id: 飞牛条目 guid
+        :return: 对应电影、剧集、季或分集页面的链接；未认证或条目查询失败时返回 None
         """
         if not self.is_authenticated():
             return None
@@ -615,9 +714,10 @@ class TrimeMedia:
         self, num: Optional[int] = 12
     ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
-        获取继续观看列表
+        获取同步范围内的继续观看条目。
 
-        :param num: 列表大小，None不限制数量
+        :param num: 最多保留的条目数；None 不限数量
+        :return: 播放列表；未认证或查询失败时返回 None
         """
         if not self.is_authenticated():
             return None
@@ -635,7 +735,12 @@ class TrimeMedia:
 
     def get_latest(self, num=20) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
-        获取最近更新列表
+        读取近期创建的媒体，并筛选同步范围内的条目。
+
+        先请求至少 100 条或目标数量的 5 倍，再按媒体库范围筛选，不继续请求下一页。
+
+        :param num: 最多保留的条目数，默认 20
+        :return: 最新媒体列表；未认证或查询失败时返回 None
         """
         if not self.is_authenticated():
             return None
@@ -657,7 +762,13 @@ class TrimeMedia:
 
     def get_latest_backdrops(self, num=20, remote=False) -> Optional[List[str]]:
         """
-        获取最近更新的媒体Backdrop图片
+        查询最新媒体的背景图，缺少背景图时回退海报。
+
+        图片链接不保证可匿名访问，调用方可能仍需通过 get_image_cookies 获取授权 Cookie。
+
+        :param num: 最多返回的图片数量，默认 20
+        :param remote: 是否优先使用外网播放地址作为图片根地址
+        :return: 图片 URL 列表；未认证时返回 None，没有可用查询结果时返回空列表
         """
         if not self.is_authenticated():
             return None
@@ -680,7 +791,7 @@ class TrimeMedia:
             if (item_details := self._api.item(item.guid)) is None:
                 continue
             if remote:
-                # FIXME 新版飞牛的壁纸无法直接在浏览器中访问
+                # 外网地址只影响图片根地址，访问时仍可能需要认证 Cookie。
                 img_host = self._playhost or self._api.host
             else:
                 img_host = self._api.host
@@ -696,6 +807,12 @@ class TrimeMedia:
         return backdrops
 
     def __is_library_blocked(self, library_guid: str):
+        """
+        判断媒体库是否属于其他分类或被同步范围排除。
+
+        :param library_guid: 待判断的媒体库 guid
+        :return: 缓存中属于 OTHERS，或非空同步范围未包含该库且没有 all 时返回 True
+        """
         if library := self._libraries.get(library_guid):
             if library.category == fnapi.Category.OTHERS:
                 # 忽略这个库
@@ -712,7 +829,10 @@ class TrimeMedia:
 
     def get_image_cookies(self, image_url: str):
         """
-        获得指定图片的Cookies
+        为当前飞牛服务同源图片提供登录和访问码 Cookie。
+
+        :param image_url: 需要获取授权信息的图片 URL，必须通过服务地址的严格安全检查
+        :return: 包含 Trim-MC-token 和可选访问码凭据的字典；未认证、地址为空或不是允许地址时返回 None
         """
         if not self.is_authenticated():
             return None

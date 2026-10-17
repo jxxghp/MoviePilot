@@ -1,3 +1,7 @@
+"""
+飞牛模块，将媒体库、播放信息与受保护图片接入统一接口。
+"""
+
 from typing import Any, Generator, List, Optional, Tuple, Union
 
 from app.modules._base.mediaserver import _MediaServerModuleBase
@@ -13,14 +17,16 @@ from app.schemas.types import MediaServerType, ModuleType
 
 
 class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
-    """将飞牛影视接入媒体服务器统一接口。"""
+    """
+    将飞牛影视接入媒体服务器统一接口。
+    """
 
     # 媒体库标识（ExistMediaInfo.server_type）
     _server_type_value = "trimemedia"
 
     def init_module(self) -> None:
         """
-        初始化模块
+        初始化模块。
         """
         super().init_service(
             service_name=TrimeMedia.__name__.lower(),
@@ -31,40 +37,48 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
 
     @staticmethod
     def get_name() -> str:
-        """返回媒体服务器模块名称。"""
+        """
+        返回媒体服务器模块名称。
+        """
         return "飞牛影视"
 
     @staticmethod
     def get_type() -> ModuleType:
         """
-        获取模块类型
+        获取模块类型。
         """
         return ModuleType.MediaServer
 
     @staticmethod
     def get_subtype() -> MediaServerType:
         """
-        获取模块子类型
+        获取模块子类型。
         """
         return MediaServerType.TrimeMedia
 
     @staticmethod
     def get_priority() -> int:
         """
-        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效
+        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效。
         """
         return 4
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        """模块不提供额外的初始化开关。"""
+        """
+        模块不提供额外的初始化开关。
+        """
         pass
 
     def _is_inactive(self, server) -> bool:
-        """未配置的实例不参与定时重连。"""
+        """
+        未配置的实例不参与定时重连。
+        """
         return server.is_configured() and server.is_inactive()
 
     def stop(self) -> None:
-        """停止模块"""
+        """
+        登出并断开已认证的飞牛实例，单个失败不阻止其余实例清理。
+        """
         for server in self.get_instances().values():
             try:
                 if server.is_authenticated():
@@ -73,7 +87,9 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
                 logger.error(f"停止飞牛影视模块实例失败：{err}")
 
     def _test_server(self, server, name: Optional[str]) -> Optional[str]:
-        """飞牛影视用配置完整性与重连结果探测连接状态。"""
+        """
+        飞牛影视用配置完整性与重连结果探测连接状态。
+        """
         if not server.is_configured():
             return f"{self.get_name()}配置不完整：{name}"
         if server.is_inactive() and not server.reconnect():
@@ -84,12 +100,12 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
         self, body: Any, form: Any, args: Any
     ) -> Optional[_SchemaWebhookEventInfo]:
         """
-        解析Webhook报文体
+        保留飞牛 Webhook 路由入口，当前客户端不解析事件。
 
-        :param body:  请求体
-        :param form:  请求表单
-        :param args:  请求参数
-        :return: 字典，解析为消息时需要包含：title、text、image
+        :param body: 传给客户端的请求体
+        :param form: 兼容统一接口的表单，当前不使用
+        :param args: 请求参数，source 可指定实例
+        :return: 当前客户端始终返回 None
         """
         source = args.get("source")
         if source:
@@ -112,7 +128,10 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
         self, server: Optional[str] = None
     ) -> Optional[List[_SchemaStatistic]]:
         """
-        媒体数量统计
+        汇总飞牛实例的媒体与用户数量。
+
+        :param server: 指定实例，省略时汇总所有飞牛实例
+        :return: 统计列表；指定实例不可用时返回 None，非管理员用户数记为 0
         """
         if server:
             server_obj: Optional[TrimeMedia] = self.get_instance(server)
@@ -134,7 +153,12 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
         self, server: Optional[str] = None, hidden: Optional[bool] = False, **kwargs
     ) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
-        媒体库列表
+        查询用户可见的媒体库。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param hidden: 是否隐藏同步范围外的媒体库
+        :param kwargs: 兼容统一媒体服务器接口的额外参数，当前不使用
+        :return: 媒体库列表；实例不可用或查询失败时返回 None
         """
         server_obj: Optional[TrimeMedia] = self.get_instance(server)
         if server_obj:
@@ -149,14 +173,13 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
         limit: Optional[int] = -1,
     ) -> Optional[Generator]:
         """
-        获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
+        返回飞牛媒体库的递归条目生成器。
 
-        :param server: 媒体服务器名称
-        :param library_id: 媒体库ID，用于标识要获取的媒体库
-        :param start_index: 起始索引，用于分页获取数据。默认为 0，即从第一个项目开始获取
-        :param limit: 每次请求的最大项目数，用于分页。如果为 None 或 -1，则表示一次性获取所有数据，默认为 -1
-
-        :return: 返回一个生成器对象，用于逐步获取媒体服务器中的项目
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param library_id: 媒体库 guid
+        :param start_index: 传给客户端的零基页序号，当前并非条目偏移
+        :param limit: 服务端每页数量，None 或 -1 表示不限
+        :return: 电影和电视剧条目生成器；实例不存在时返回 None，底层查询失败可能提前结束迭代
         """
         server_obj: Optional[TrimeMedia] = self.get_instance(server)
         if server_obj:
@@ -167,7 +190,7 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
         self, server: str, library_id: Union[str, int]
     ) -> Optional[int]:
         """
-        获取指定媒体库可同步的媒体条目总数
+        获取指定媒体库可同步的媒体条目总数。
 
         :param server: 媒体服务器名称
         :param library_id: 媒体库ID
@@ -182,7 +205,11 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
         self, server: str, item_id: str
     ) -> Optional[_SchemaMediaServerItem]:
         """
-        媒体库项目详情
+        查询单个飞牛条目的统一详情。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param item_id: 飞牛媒体条目 guid
+        :return: 统一媒体模型；实例不可用或请求失败时返回 None
         """
         server_obj: Optional[TrimeMedia] = self.get_instance(server)
         if server_obj:
@@ -193,7 +220,11 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
         self, server: str, item_id: Union[str, int]
     ) -> Optional[List[_SchemaMediaServerSeasonInfo]]:
         """
-        获取剧集信息
+        查询电视剧已经入库的季集编号。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param item_id: 飞牛媒体条目 guid
+        :return: 季集列表；标识为空或实例不可用时返回 None，无可用数据时返回空列表
         """
         if not isinstance(item_id, str):
             return None
@@ -212,7 +243,12 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
         self, server: str, count: Optional[int] = 20, **kwargs
     ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
-        获取媒体服务器正在播放信息
+        查询同步范围内的继续观看条目。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param count: 最多保留条目数，None 表示不限
+        :param kwargs: 兼容统一媒体服务器接口的额外参数，当前不使用
+        :return: 播放列表；实例不可用或查询失败时返回 None
         """
         server_obj: Optional[TrimeMedia] = self.get_instance(server)
         if not server_obj:
@@ -223,7 +259,11 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
         self, server: str, item_id: Union[str, int]
     ) -> Optional[str]:
         """
-        获取媒体库播放地址
+        构造飞牛媒体条目的网页播放链接。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param item_id: 飞牛媒体条目 guid
+        :return: 网页 URL；标识、实例或条目不可用时返回 None
         """
         if not isinstance(item_id, str):
             return None
@@ -239,7 +279,12 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
         **kwargs,
     ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
-        获取媒体服务器最新入库条目
+        查询同步范围内最近创建的媒体条目。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param count: 最多保留条目数，默认 20
+        :param kwargs: 兼容统一媒体服务器接口的额外参数，当前不使用
+        :return: 最新媒体列表；实例不可用或请求失败时返回 None
         """
         server_obj: Optional[TrimeMedia] = self.get_instance(server)
         if not server_obj:
@@ -254,12 +299,13 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
         **kwargs,
     ) -> List[str]:
         """
-        获取媒体服务器最新入库条目的图片
+        查询最新媒体的背景图或海报地址。
 
-        :param server: 媒体服务器名称
-        :param count: 获取数量
-        :param remote: True为外网链接, False为内网链接
-        :return: 图片链接列表
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param count: 最多返回图片数
+        :param remote: 是否优先使用外网播放地址
+        :param kwargs: 兼容统一媒体服务器接口的额外参数，当前不使用
+        :return: 图片 URL 列表；实例不可用或无可用图片时返回空列表，访问可能需要认证 Cookie
         """
         server_obj: Optional[TrimeMedia] = self.get_instance(server)
         if not server_obj:
@@ -273,10 +319,12 @@ class TrimeMediaModule(_MediaServerModuleBase[TrimeMedia]):
         **kwargs,
     ) -> Optional[str | dict]:
         """
-        获取飞牛影视服务器的图片Cookies
+        为指定图片查找同源飞牛实例的授权 Cookie。
 
-        :param server: 媒体服务器名称
-        :param image_url: 图片网址
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param image_url: 待访问的图片地址
+        :param kwargs: 兼容统一媒体服务器接口的额外参数，当前不使用
+        :return: 包含登录及可选访问码凭据的 Cookie；地址为空或无允许该地址的实例时返回 None
         """
         if not image_url:
             return None
