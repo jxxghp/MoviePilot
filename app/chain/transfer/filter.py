@@ -47,7 +47,7 @@ from app.schemas.types import (
     MUSIC_ENTITY_RECORDING,
     MediaType,
 )
-from app.schemas.workflow import FileItem
+from app.schemas.file import FileItem
 
 
 class NetworkFilesystemPort(Protocol):
@@ -697,11 +697,14 @@ class FileFilterMixin(_TransferOwnerBase):
             return True
         if task.fileitem.storage != "local":
             return True
+        file_path = task.fileitem.path
+        if not file_path:
+            return True
 
         source_directory = (
             Path(task.target_directory.download_path)
             if task.target_directory and task.target_directory.download_path
-            else Path(task.fileitem.path).parent
+            else Path(file_path).parent
         )
         if source_directory not in mounted_filesystem_cache:
             mounted_filesystem_cache[source_directory] = (
