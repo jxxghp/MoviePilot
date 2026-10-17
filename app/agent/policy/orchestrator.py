@@ -1,4 +1,6 @@
-"""Agent 工具策略观测、脱敏回执与共享执行边界。"""
+"""
+Agent 工具策略观测、脱敏回执与共享执行边界。
+"""
 
 import asyncio
 import time
@@ -41,7 +43,9 @@ def call_policy_hook(
     *args: Any,
     **kwargs: Any,
 ) -> Optional[_HookResult]:
-    """以 fail-open 方式调用兼容观测 hook，故障只记录稳定类型。"""
+    """
+    以 fail-open 方式调用兼容观测 hook，故障只记录稳定类型。
+    """
     try:
         return hook(*args, **kwargs)
     except Exception as error:
@@ -53,7 +57,9 @@ def call_policy_hook(
 
 
 def _normalize_policy_arguments(tool: Any, arguments: Mapping[str, Any]) -> dict[str, Any]:
-    """为策略生成 Pydantic 规范化副本，不改变真实执行参数。"""
+    """
+    为策略生成 Pydantic 规范化副本，不改变真实执行参数。
+    """
     raw_arguments = dict(arguments or {})
     args_schema = getattr(tool, "args_schema", None)
     if not args_schema:
@@ -67,17 +73,23 @@ def _normalize_policy_arguments(tool: Any, arguments: Mapping[str, Any]) -> dict
 
 
 def _result_payload(result: Any) -> Any:
-    """从 LangChain 工具消息中提取模型可见结果供脱敏摘要使用。"""
+    """
+    从 LangChain 工具消息中提取模型可见结果供脱敏摘要使用。
+    """
     if isinstance(result, ToolMessage):
         return result.content
     return result
 
 
 class AgentToolPolicyOrchestrator:
-    """让 Agent middleware 与 direct manager 复用同一策略生命周期。"""
+    """
+    让 Agent middleware 与 direct manager 复用同一策略生命周期。
+    """
 
     def __init__(self, registry: ToolPolicyRegistry = DEFAULT_TOOL_POLICY_REGISTRY) -> None:
-        """绑定工具策略解析表。"""
+        """
+        绑定工具策略解析表。
+        """
         self.registry = registry
 
     def start(
@@ -88,7 +100,9 @@ class AgentToolPolicyOrchestrator:
         arguments: Mapping[str, Any],
         invocation_id: Optional[str] = None,
     ) -> PolicyObservation:
-        """解析调用策略，并创建不影响现有 allow 行为的观测对象。"""
+        """
+        解析调用策略，并创建不影响现有 allow 行为的观测对象。
+        """
         tool_name = str(getattr(tool, "name", None) or "unknown_tool")
         normalized_arguments = _normalize_policy_arguments(tool, arguments)
         policy = self.registry.resolve(
@@ -144,7 +158,9 @@ class AgentToolPolicyOrchestrator:
 
     @staticmethod
     def finish(observation: PolicyObservation, result: Any) -> ExecutionReceipt:
-        """依据实际工具协议生成回执，提交中或业务失败不能标为成功。"""
+        """
+        依据实际工具协议生成回执，提交中或业务失败不能标为成功。
+        """
         outcome = inspect_tool_result(result)
         if observation.policy.result_sensitivity is ResultSensitivity.SECRET:
             result_summary = '{"protected_result": "***"}'
@@ -177,7 +193,9 @@ class AgentToolPolicyOrchestrator:
         observation: PolicyObservation,
         error: BaseException,
     ) -> tuple[bool, bool]:
-        """标记取消或超时后无法确认的写操作终态。"""
+        """
+        标记取消或超时后无法确认的写操作终态。
+        """
         interrupted = isinstance(error, (asyncio.CancelledError, TimeoutError))
         read_only = observation.policy.effect in {
             ActionEffect.SAFE_READ,
@@ -193,7 +211,9 @@ class AgentToolPolicyOrchestrator:
 
     @staticmethod
     def fail(observation: PolicyObservation, error: BaseException) -> ExecutionReceipt:
-        """生成失败回执 envelope，不把异常中的凭据写入日志。"""
+        """
+        生成失败回执 envelope，不把异常中的凭据写入日志。
+        """
         error_summary = summarize_error(error)
         external_may_continue, needs_reconcile = AgentToolPolicyOrchestrator._uncertain_external_state(
             observation, error

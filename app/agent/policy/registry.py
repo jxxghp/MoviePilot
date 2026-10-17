@@ -1,4 +1,6 @@
-"""工具策略例外与参数级策略解析。"""
+"""
+工具策略例外与参数级策略解析。
+"""
 
 from typing import Any, Mapping
 
@@ -18,7 +20,9 @@ SAFE_READ_TOOL_NAMES: frozenset[str] = frozenset()
 
 
 def requests_system_setting_secrets(arguments: Mapping[str, Any]) -> bool:
-    """判断结构化 API 参数是否请求读取未脱敏系统设置。"""
+    """
+    判断结构化 API 参数是否请求读取未脱敏系统设置。
+    """
     if str(arguments.get("operation_id") or "") not in {
         "config.system.get",
         "config.system.describe",
@@ -60,7 +64,9 @@ BUILTIN_LEGACY_SHADOW_INVENTORY = frozenset(
 
 
 class ToolPolicyRegistry:
-    """解析固定和动态工具的宿主策略。"""
+    """
+    解析固定和动态工具的宿主策略。
+    """
 
     def __init__(
         self,
@@ -68,7 +74,9 @@ class ToolPolicyRegistry:
         safe_read_tool_names: frozenset[str] = SAFE_READ_TOOL_NAMES,
         builtin_legacy_shadow_inventory: frozenset[str] = (BUILTIN_LEGACY_SHADOW_INVENTORY),
     ) -> None:
-        """建立 SAFE_READ 例外与固定工具 inventory。"""
+        """
+        建立 SAFE_READ 例外与固定工具 inventory。
+        """
         overlap = safe_read_tool_names & builtin_legacy_shadow_inventory
         if overlap:
             raise ValueError(f"工具策略 inventory 存在重复项: {sorted(overlap)}")
@@ -77,7 +85,9 @@ class ToolPolicyRegistry:
 
     @property
     def builtin_tool_inventory(self) -> set[str]:
-        """返回用于测试校验的固定工具 inventory。"""
+        """
+        返回用于测试校验的固定工具 inventory。
+        """
         return set(self._safe_read_tool_names | self._builtin_legacy_shadow_inventory)
 
     def resolve(
@@ -87,7 +97,9 @@ class ToolPolicyRegistry:
         arguments: Mapping[str, Any],
         requires_admin: bool,
     ) -> ActionPolicy:
-        """根据工具名和宿主权限声明解析当前参数级策略。"""
+        """
+        根据工具名和宿主权限声明解析当前参数级策略。
+        """
         required_role = PrincipalRole.SYSTEM_ADMIN if requires_admin else PrincipalRole.USER
         if tool_name == 'execute_code':
             return ActionPolicy(
