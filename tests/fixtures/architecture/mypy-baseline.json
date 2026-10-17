@@ -1506,7 +1506,6 @@
     "list-item": 1,
     "misc": 1,
     "no-any-return": 2,
-    "no-untyped-call": 2,
     "no-untyped-def": 16,
     "type-arg": 22
   },
@@ -1524,13 +1523,6 @@
   "app/runtime/extensions/plugin/projection.py": {
     "assignment": 1,
     "type-arg": 8,
-    "var-annotated": 1
-  },
-  "app/runtime/rate.py": {
-    "assignment": 1,
-    "no-untyped-call": 8,
-    "no-untyped-def": 14,
-    "type-arg": 5,
     "var-annotated": 1
   },
   "app/runtime/scheduling.py": {
