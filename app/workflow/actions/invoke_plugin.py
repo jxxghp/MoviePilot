@@ -2,6 +2,7 @@ from pydantic import Field
 
 from app.application.plugin.runtime import get_plugin_manager
 from app.runtime.log import logger
+from app.schemas.common import JsonData
 from app.schemas.workflow import ActionContext, ActionParams
 from app.workflow.actions import BaseAction
 
@@ -12,7 +13,7 @@ class InvokePluginParams(ActionParams):
     """
     plugin_id: str = Field(default=None, description="插件ID")
     action_id: str = Field(default=None, description="动作ID")
-    action_params: dict = Field(default={}, description="动作参数")
+    action_params: dict[str, JsonData] = Field(default_factory=dict, description="动作参数")
 
 
 class InvokePluginAction(BaseAction):
@@ -34,7 +35,7 @@ class InvokePluginAction(BaseAction):
     def success(self) -> bool:
         return self._success
 
-    def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict[str, object], context: ActionContext) -> ActionContext:
         """
         执行插件定义的动作
         """
