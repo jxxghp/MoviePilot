@@ -1057,9 +1057,6 @@
     "type-arg": 19,
     "var-annotated": 5
   },
-  "app/modules/indexer/parser/rousi.py": {
-    "no-untyped-def": 2
-  },
   "app/modules/indexer/parser/sunnypt.py": {
     "arg-type": 2,
     "type-arg": 1
