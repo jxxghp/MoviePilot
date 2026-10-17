@@ -1,4 +1,6 @@
-"""多来源音乐目录搜索应用服务。"""
+"""
+多来源音乐目录搜索应用服务。
+"""
 
 import asyncio
 from itertools import zip_longest
@@ -11,29 +13,57 @@ from app.schemas.types import MediaSource, MediaSourceSelection, MusicEntityType
 
 
 class MusicSourcePort(Protocol):
-    """目录服务只依赖音乐搜索与专辑详情，不依赖具体Chain或来源模块。"""
+    """
+    目录服务只依赖音乐搜索与专辑详情，不依赖具体Chain或来源模块。
+    """
 
     def search_music(self, meta: MetaMusic, limit: int = 20,
                      music_types: Optional[Iterable[MusicEntityType]] = None) -> list[MusicInfo]:
-        """同步搜索一个固定来源。"""
+        """
+        同步搜索一个固定来源。
+
+        :param meta: 解析后的音乐查询信息，包含标题、艺术家及可用身份线索
+        :param limit: 本来源最多返回的候选数量，默认 20 条
+        :param music_types: 允许搜索的音乐实体类型；None 使用来源的默认范围
+        :return: 该来源匹配的音乐候选列表；未命中时为空列表
+        """
         ...
 
     async def async_search_music(self, meta: MetaMusic, limit: int = 20,
                                  music_types: Optional[Iterable[MusicEntityType]] = None) -> list[MusicInfo]:
-        """异步搜索一个固定来源。"""
+        """
+        异步搜索一个固定来源。
+
+        :param meta: 解析后的音乐查询信息，包含标题、艺术家及可用身份线索
+        :param limit: 本来源最多返回的候选数量，默认 20 条
+        :param music_types: 允许搜索的音乐实体类型；None 使用来源的默认范围
+        :return: 该来源匹配的音乐候选列表；未命中时为空列表
+        """
         ...
 
     def get_music_album(self, media_id: str) -> Optional[MusicAlbumInfo]:
-        """读取同来源专辑及其曲目表。"""
+        """
+        读取同来源专辑及其曲目表。
+
+        :param media_id: 当前来源中的原生专辑标识
+        :return: 包含曲目表的专辑详情；不存在或未能获取时返回 None
+        """
         ...
 
     async def async_get_music_album(self, media_id: str) -> Optional[MusicAlbumInfo]:
-        """异步读取同来源专辑及其曲目表。"""
+        """
+        异步读取同来源专辑及其曲目表。
+
+        :param media_id: 当前来源中的原生专辑标识
+        :return: 包含曲目表的专辑详情；不存在或未能获取时返回 None
+        """
         ...
 
 
 class MusicCatalogService:
-    """编排音乐来源选择、容错搜索和候选归一化。"""
+    """
+    编排音乐来源选择、容错搜索和候选归一化。
+    """
 
     def __init__(
         self,
@@ -41,7 +71,9 @@ class MusicCatalogService:
         warning: Callable[[str], None],
         primary_source: MediaSource = MediaSource.MusicBrainz,
     ) -> None:
-        """注入来源解析器、告警输出和默认音乐来源。"""
+        """
+        注入来源解析器、告警输出和默认音乐来源。
+        """
         self._source_resolver = source_resolver
         self._warning = warning
         self._primary_source = primary_source
@@ -50,7 +82,9 @@ class MusicCatalogService:
         self,
         media_source: Optional[MediaSourceSelection],
     ) -> list[MediaSource]:
-        """解析有序音乐来源，保留合法插件扩展来源并去重。"""
+        """
+        解析有序音乐来源，保留合法插件扩展来源并去重。
+        """
         if not media_source:
             return [self._primary_source]
         raw_sources = (
@@ -70,7 +104,9 @@ class MusicCatalogService:
         candidates: Optional[Iterable[MusicInfo | dict[str, Any]]],
         limit: Optional[int] = None,
     ) -> list[MusicInfo]:
-        """标准化并按来源身份或元数据去重音乐候选。"""
+        """
+        标准化并按来源身份或元数据去重音乐候选。
+        """
         results = []
         identities = set()
         for candidate in candidates or []:
@@ -105,7 +141,9 @@ class MusicCatalogService:
         media_source: Optional[MediaSourceSelection] = None,
         music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> list[MusicInfo]:
-        """顺序搜索一个或多个音乐来源，隔离单一来源失败。"""
+        """
+        顺序搜索一个或多个音乐来源，隔离单一来源失败。
+        """
         meta = query if isinstance(query, MetaMusic) else MetaMusic.parse_query(query)
         normalized_music_types = tuple(music_types) if music_types is not None else None
         candidates = []
@@ -129,7 +167,9 @@ class MusicCatalogService:
         media_source: Optional[MediaSourceSelection] = None,
         music_types: Optional[Iterable[MusicEntityType]] = None,
     ) -> list[MusicInfo]:
-        """并行搜索一个或多个音乐来源，隔离单一来源失败。"""
+        """
+        并行搜索一个或多个音乐来源，隔离单一来源失败。
+        """
         meta = query if isinstance(query, MetaMusic) else MetaMusic.parse_query(query)
         normalized_music_types = tuple(music_types) if music_types is not None else None
         searches = []
@@ -142,7 +182,9 @@ class MusicCatalogService:
 
     @classmethod
     def merge_sources(cls, groups: list[list[MusicInfo]], limit: int) -> list[MusicInfo]:
-        """先按来源独立去重再轮询合并，避免首个来源占满全局条数上限。"""
+        """
+        先按来源独立去重再轮询合并，避免首个来源占满全局条数上限。
+        """
         normalized = [cls.normalize_candidates(group) for group in groups]
         candidates = [item for row in zip_longest(*normalized) for item in row if item is not None]
         return cls.normalize_candidates(candidates, limit=limit)
@@ -155,7 +197,9 @@ class MusicCatalogService:
         limit: int,
         music_types: Optional[Iterable[MusicEntityType]],
     ) -> list[MusicInfo]:
-        """异步搜索单个来源，并把异常降级为空候选。"""
+        """
+        异步搜索单个来源，并把异常降级为空候选。
+        """
         try:
             search_options: dict[str, Any] = {"limit": limit}
             if music_types is not None:

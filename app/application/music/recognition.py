@@ -1,4 +1,6 @@
-"""音乐来源的有序识别回退；来源失败隔离，身份、候选校验由注入的业务入口负责。"""
+"""
+音乐来源的有序识别回退；来源失败隔离，身份、候选校验由注入的业务入口负责。
+"""
 
 from typing import Any, Awaitable, Callable, Iterable, Optional, Sequence, TypeVar
 
@@ -24,7 +26,9 @@ def enrich_music_artist_aliases(
         pairs: Iterable[tuple[MetaMusic, MusicInfo | MusicAlbumInfo]], source: MediaSource,
         lookup: Callable[[str], list[str]],
 ) -> None:
-    """按需补充本次候选别名；来源回调须校验精确ID，缓存和请求预算仍由来源边界执行。"""
+    """
+    按需补充本次候选别名；来源回调须校验精确ID，缓存和请求预算仍由来源边界执行。
+    """
     for artist_id, candidates in music_artist_alias_targets(pairs, source).items():
         aliases = lookup(artist_id)
         for candidate in candidates:
@@ -35,7 +39,9 @@ async def async_enrich_music_artist_aliases(
         pairs: Iterable[tuple[MetaMusic, MusicInfo | MusicAlbumInfo]], source: MediaSource,
         lookup: Callable[[str], Awaitable[list[str]]],
 ) -> None:
-    """异步别名补证使用相同候选准入与去重上限，取消向调用方传播。"""
+    """
+    异步别名补证使用相同候选准入与去重上限，取消向调用方传播。
+    """
     for artist_id, candidates in music_artist_alias_targets(pairs, source).items():
         aliases = await lookup(artist_id)
         for candidate in candidates:
@@ -43,7 +49,9 @@ async def async_enrich_music_artist_aliases(
 
 
 def unique_music_match(candidates: Sequence[_Candidate]) -> Optional[_Candidate]:
-    """仅接受一个不同来源身份的合理候选；重复行不制造歧义，不同ID不能按返回顺序选中。"""
+    """
+    仅接受一个不同来源身份的合理候选；重复行不制造歧义，不同ID不能按返回顺序选中。
+    """
     unique = {(item.media_source, item.media_id or id(item)): item for item in candidates}
     if len(unique) > 1:
         report_music_recognition("ambiguous", "存在多个同样符合证据的音乐候选，请手动选择", [
@@ -55,7 +63,9 @@ def unique_music_match(candidates: Sequence[_Candidate]) -> Optional[_Candidate]
 
 
 def _source_result(result: Any, observation: MusicRecognitionObservation, accepted: bool) -> bool:
-    """成功须经过调用方核验；来源已报告的歧义、冲突或未完成查询不能成为成功结果。"""
+    """
+    成功须经过调用方核验；来源已报告的歧义、冲突或未完成查询不能成为成功结果。
+    """
     if music_recognition_is_blocked(result):
         diagnostic = result.raw_data["recognition"]
         report_music_recognition(diagnostic["status"], diagnostic.get("message", ""), diagnostic.get("candidates"))
@@ -67,7 +77,9 @@ def _source_result(result: Any, observation: MusicRecognitionObservation, accept
 
 
 def _finish_sources(observation: MusicRecognitionObservation, matched: bool) -> dict[str, Any]:
-    """汇总所有来源的终态；歧义优先，全部未命中时保留服务故障而非错误缓存为空。"""
+    """
+    汇总所有来源的终态；歧义优先，全部未命中时保留服务故障而非错误缓存为空。
+    """
     if matched:
         report_music_recognition("matched", "音乐来源已匹配当前证据")
     elif observation.sources:
@@ -83,7 +95,9 @@ def recognize_music_sources(
         recognize: Callable[[MediaSource], Optional[_Result]],
         accepts: Callable[[Optional[_Result], MediaSource], bool],
 ) -> tuple[Optional[_Result], dict[str, Any]]:
-    """依次核验最多三个内置来源，每来源8次/45秒且服从更小的外层总预算。"""
+    """
+    依次核验最多三个内置来源，每来源8次/45秒且服从更小的外层总预算。
+    """
     selected = tuple(dict.fromkeys(sources))[:3]
     with capture_music_recognition(seconds=45 * len(selected), request_limit=8 * len(selected)) as total:
         for source in selected:
@@ -107,7 +121,9 @@ async def async_recognize_music_sources(
         recognize: Callable[[MediaSource], Awaitable[Optional[_Result]]],
         accepts: Callable[[Optional[_Result], MediaSource], bool],
 ) -> tuple[Optional[_Result], dict[str, Any]]:
-    """异步回退沿用相同来源次序、独立诊断和共享预算；取消继续向调用方传播。"""
+    """
+    异步回退沿用相同来源次序、独立诊断和共享预算；取消继续向调用方传播。
+    """
     selected = tuple(dict.fromkeys(sources))[:3]
     with capture_music_recognition(seconds=45 * len(selected), request_limit=8 * len(selected)) as total:
         for source in selected:
