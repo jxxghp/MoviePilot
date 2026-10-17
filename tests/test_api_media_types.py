@@ -105,6 +105,57 @@ def test_popular_subscriptions_normalize_record_type(monkeypatch, type_name, exp
     assert result[0]["type"] == expected.value
 
 
+def test_popular_subscriptions_preserves_optional_fields_and_filters_invalid_records(monkeypatch) -> None:
+    """热门订阅应转换可选字段，并跳过类型或人数无效的记录。"""
+    statistic = AsyncMock(return_value=[
+        {
+            "name": "测试媒体",
+            "type": "tv",
+            "count": "2",
+            "media_source": "tmdb",
+            "media_id": 123,
+            "season": "2",
+            "year": "2024",
+            "description": "简介",
+            "vote": "8.5",
+            "poster": "/poster",
+            "backdrop": "/backdrop",
+        },
+        {"name": "无类型", "count": 3},
+        {"name": "无人数", "type": "movie", "count": ""},
+    ])
+    monkeypatch.setattr(
+        subscribe.MoviePilotServerHelper, "async_get_subscribe_statistic", statistic,
+    )
+
+    result = asyncio.run(subscribe.popular_subscribes(stype="all"))
+
+    assert len(result) == 2
+    assert result[0]["type"] == MediaType.TV.value
+    assert result[0]["media_id"] == "123"
+    assert result[0]["season"] == 2
+    assert result[0]["year"] == 2024
+    assert result[0]["vote_average"] == 8.5
+    assert result[1]["type"] == MediaType.MOVIE.value
+
+
+def test_share_subscribe_rejects_incomplete_payload() -> None:
+    """分享订阅缺少必要字段时应直接返回参数错误。"""
+    from app.api.endpoints.subscribe import subscribe_share
+    from app.schemas.subscribe import SubscribeShare
+
+    response = asyncio.run(
+        subscribe_share(
+            sub=SubscribeShare(subscribe_id=7, share_title=None, share_comment="", share_user="alice"),
+            mutation=Mock(),
+            current_user=SimpleNamespace(name="alice", is_superuser=False),
+        )
+    )
+
+    assert not response.success
+    assert response.message == "订阅分享参数不完整"
+
+
 @pytest.mark.parametrize("type_name,expected", MEDIA_TYPES + [(None, MediaType.UNKNOWN)])
 def test_library_missing_forwards_meta_type(monkeypatch, type_name, expected) -> None:
     """缺失查询应向下载链传入解析后的类型，空值沿用标题推断。"""
