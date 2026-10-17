@@ -7,6 +7,7 @@
 | 生产文件 | 消除的错误 | 合同依据 |
 | --- | --- | --- |
 | `app/api/endpoints/anilist.py` | `attr-defined` 1 | `MediaInfo` 改从定义模块 `app.schemas.context` 导入；运行时对象身份不变。 |
+| `app/api/endpoints/douban.py` | `attr-defined` 1 | 豆瓣响应模型改从同一定义模块导入，保留原模型对象。 |
 
 ## 需单独设计或外部条件
 

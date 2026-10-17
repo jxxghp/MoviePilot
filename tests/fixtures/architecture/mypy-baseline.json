@@ -282,9 +282,6 @@
     "no-redef": 1,
     "operator": 2
   },
-  "app/api/endpoints/douban.py": {
-    "attr-defined": 1
-  },
   "app/api/endpoints/download.py": {
     "arg-type": 6,
     "assignment": 5,

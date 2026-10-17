@@ -16,10 +16,10 @@ from app.chain.douban import DoubanChain
 from app.domain.context import MediaInfo
 from app.schemas.comment import MediaCommentPage as _SchemaMediaCommentPage
 from app.schemas.comment import MediaReviewPage as _SchemaMediaReviewPage
+from app.schemas.context import MediaInfo as _SchemaMediaInfo
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import MediaType
-from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 
 router = ResponseAPIRouter()
 
