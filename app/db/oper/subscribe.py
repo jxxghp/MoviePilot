@@ -38,13 +38,17 @@ async def _async_subscription_rows(
     session: AsyncSession,
     statement: Any,
 ) -> List[Subscribe]:
-    """执行订阅列表语句并返回 ORM 行。"""
+    """
+    执行订阅列表语句并返回 ORM 行。
+    """
     result = await session.execute(statement)
     return list(result.scalars().all())
 
 
 async def _async_scalar(session: AsyncSession, statement: Any) -> int:
-    """执行订阅计数语句并返回整数。"""
+    """
+    执行订阅计数语句并返回整数。
+    """
     result = await session.execute(statement)
     return int(result.scalar_one())
 
@@ -53,29 +57,39 @@ AsyncAfterCommitEffect = Callable[[int], Awaitable[None]]
 
 
 class SubscribeStageResult:
-    """Oper 暂存结果，按 Application 端口需要暴露最小只读状态。"""
+    """
+    Oper 暂存结果，按 Application 端口需要暴露最小只读状态。
+    """
 
     __slots__ = ("_subscribe_id", "_message", "_created")
 
     def __init__(self, subscribe_id: int, message: str, created: bool) -> None:
-        """保存写入后的订阅 ID、消息和是否创建标志。"""
+        """
+        保存写入后的订阅 ID、消息和是否创建标志。
+        """
         self._subscribe_id = subscribe_id
         self._message = message
         self._created = created
 
     @property
     def subscribe_id(self) -> int:
-        """返回已暂存或已存在的订阅 ID。"""
+        """
+        返回已暂存或已存在的订阅 ID。
+        """
         return self._subscribe_id
 
     @property
     def message(self) -> str:
-        """返回暂存结果的人类可读消息。"""
+        """
+        返回暂存结果的人类可读消息。
+        """
         return self._message
 
     @property
     def created(self) -> bool:
-        """返回本次暂存是否创建了新记录。"""
+        """
+        返回本次暂存是否创建了新记录。
+        """
         return self._created
 
 
@@ -112,6 +126,7 @@ def _persistable(payload: Mapping[str, JsonData]) -> dict[str, JsonData]:
     SQLite 会靠类型亲和悄悄替我们转好——漏了只在生产库上炸，所以放在紧挨建模的地方。
     二是盖建库时间戳：调用方传进来的 date 不作数，否则订阅列表的默认排序与过期清理
     都会读到一个假的建库时间。
+
     :param payload: 应用层翻译好的写入字段
     :return: 可直接建模的字段字典
     """
@@ -127,7 +142,9 @@ def _persistable(payload: Mapping[str, JsonData]) -> dict[str, JsonData]:
 def _lookup_values(
     identity: Mapping[str, JsonData],
 ) -> tuple[MediaSource | str | None, str | None, int | None, str | None, str | None]:
-    """把宽 JSON 身份收窄为订阅模型查询参数。"""
+    """
+    把宽 JSON 身份收窄为订阅模型查询参数。
+    """
     raw_source = identity.get("media_source")
     raw_id = identity.get("media_id")
     raw_season = identity.get("season")
@@ -154,6 +171,7 @@ class SubscribeOper(DbOper):
     ) -> Optional[Subscribe]:
         """
         按身份查重。
+
         :param identity: 查重身份
         :param username: 非空时只在该用户的订阅内查
         :return: 命中的订阅行，未命中为 None
@@ -193,13 +211,16 @@ class SubscribeOper(DbOper):
     ) -> Optional[Subscribe]:
         """
         按身份查重（异步）。
+
         :param identity: 查重身份
         :param username: 非空时只在该用户的订阅内查
         :return: 命中的订阅行，未命中为 None
         """
 
         async def query(session: AsyncSession) -> Optional[Subscribe]:
-            """在调用方或组合根异步会话中执行订阅查重。"""
+            """
+            在调用方或组合根异步会话中执行订阅查重。
+            """
             if username == "":
                 return None
             media_source, media_id, season, episode_group, music_type = _lookup_values(identity)
@@ -232,7 +253,9 @@ class SubscribeOper(DbOper):
         payload: Mapping[str, JsonData],
         username: Optional[str] = None,
     ) -> SubscribeStageResult:
-        """暂存同步新增并 flush 主键，不提交调用方拥有的事务。"""
+        """
+        暂存同步新增并 flush 主键，不提交调用方拥有的事务。
+        """
         if not isinstance(self._db, Session):
             raise RuntimeError("同步订阅新增需要调用方提供 Session")
         subscribe = self._exists(identity, username)
@@ -255,7 +278,9 @@ class SubscribeOper(DbOper):
         payload: Mapping[str, JsonData],
         username: Optional[str] = None,
     ) -> SubscribeStageResult:
-        """暂存异步新增并 flush 主键，不提交调用方拥有的事务。"""
+        """
+        暂存异步新增并 flush 主键，不提交调用方拥有的事务。
+        """
         if not isinstance(self._db, AsyncSession):
             raise RuntimeError("异步订阅新增需要调用方提供 AsyncSession")
         subscribe = await self._async_exists(identity, username)
@@ -284,6 +309,7 @@ class SubscribeOper(DbOper):
 
         回读不是多余的一次查询——写入可能被唯一约束或事务回滚吞掉，此时若报成功，
         调用方会继续按订阅已建立往下走，用户看到「订阅成功」却永远等不到资源。
+
         :param identity: 查重身份（media_source/media_id/music_type/season/episode_group）
         :param payload: 订阅表的写入字段，媒体翻译由 application/subscription/write.py 完成
         :param username: 非空时把查重限定在该用户的订阅内
@@ -312,6 +338,7 @@ class SubscribeOper(DbOper):
     ) -> Tuple[int, str]:
         """
         异步新增订阅，语义与 add 完全一致。
+
         :param identity: 查重身份（media_source/media_id/music_type/season/episode_group）
         :param payload: 订阅表的写入字段，媒体翻译由 application/subscription/write.py 完成
         :param username: 非空时把查重限定在该用户的订阅内
@@ -359,7 +386,9 @@ class SubscribeOper(DbOper):
         episode_group: Optional[str] = None,
         music_type: Optional[str] = None,
     ) -> Optional[Subscribe]:
-        """异步按媒体身份、季号及可选剧集组读取命中的订阅。"""
+        """
+        异步按媒体身份、季号及可选剧集组读取命中的订阅。
+        """
         return await self._async_exists(
             {
                 "media_source": media_source,
@@ -378,7 +407,9 @@ class SubscribeOper(DbOper):
         return self.get_by_id(sid)
 
     def get_by_id(self, record_id: int) -> Optional[Subscribe]:
-        """按稳定记录 ID 读取单条订阅。"""
+        """
+        按稳定记录 ID 读取单条订阅。
+        """
         return cast(
             Optional[Subscribe],
             self._execute_sync_query(
@@ -391,10 +422,14 @@ class SubscribeOper(DbOper):
         filters: SubscriptionFilter,
         page: QueryPageRequest,
     ) -> tuple[list[Subscribe], int]:
-        """按稳定筛选和分页合同读取订阅记录及总数。"""
+        """
+        按稳定筛选和分页合同读取订阅记录及总数。
+        """
 
         def execute(session: Session) -> tuple[list[Subscribe], int]:
-            """在同一会话中构造并执行订阅 count/page 查询。"""
+            """
+            在同一会话中构造并执行订阅 count/page 查询。
+            """
             conditions = media_identity_conditions(Subscribe, filters)
             ids = enum_values(filters.ids)
             names = enum_values(filters.names)
@@ -454,7 +489,9 @@ class SubscribeOper(DbOper):
         media_id: str,
         music_type: Optional[str] = None,
     ) -> List[Subscribe]:
-        """异步按规范媒体身份读取订阅。"""
+        """
+        异步按规范媒体身份读取订阅。
+        """
         return cast(
             List[Subscribe],
             await self._execute_async_query(
@@ -473,7 +510,9 @@ class SubscribeOper(DbOper):
         media_id: str,
         music_type: Optional[str] = None,
     ) -> List[Subscribe]:
-        """同步按规范媒体身份读取订阅。"""
+        """
+        同步按规范媒体身份读取订阅。
+        """
         subscriptions: List[Subscribe] = self._execute_sync_query(
             lambda session: Subscribe.list_by_media_identity(
                 session,
@@ -488,7 +527,9 @@ class SubscribeOper(DbOper):
         self,
         subscribe_id: int,
     ) -> Optional[SubscribeDeletionCandidate]:
-        """读取订阅删除用例需要的权限字段与完整事件快照。"""
+        """
+        读取订阅删除用例需要的权限字段与完整事件快照。
+        """
         subscribe = await self.async_get(subscribe_id)
         return self._deletion_candidate(subscribe_id, subscribe)
 
@@ -496,7 +537,9 @@ class SubscribeOper(DbOper):
         self,
         subscribe_id: int,
     ) -> Optional[SubscribeDeletionCandidate]:
-        """同步读取订阅删除用例需要的权限字段与完整事件快照。"""
+        """
+        同步读取订阅删除用例需要的权限字段与完整事件快照。
+        """
         return self._deletion_candidate(subscribe_id, self.get(subscribe_id))
 
     @staticmethod
@@ -504,7 +547,9 @@ class SubscribeOper(DbOper):
         subscribe_id: int,
         subscribe: Optional[Subscribe],
     ) -> Optional[SubscribeDeletionCandidate]:
-        """把 ORM 行投影为同步和异步删除命令共用的稳定快照。"""
+        """
+        把 ORM 行投影为同步和异步删除命令共用的稳定快照。
+        """
         if not subscribe:
             return None
         values = subscribe.__dict__
@@ -521,7 +566,9 @@ class SubscribeOper(DbOper):
         season: Optional[int],
         music_type: Optional[str],
     ) -> List[SubscribeDeletionCandidate]:
-        """按媒体身份读取去重后的订阅删除快照。"""
+        """
+        按媒体身份读取去重后的订阅删除快照。
+        """
         subscribes = await self.async_list_by_media_identity(media_source, media_id, music_type)
         candidates = []
         seen_ids = set()
@@ -552,7 +599,9 @@ class SubscribeOper(DbOper):
         state: str,
         mtype: Optional[str] = None,
     ) -> List[int]:
-        """返回用户或管理员指定媒体类型范围内的订阅编号。"""
+        """
+        返回用户或管理员指定媒体类型范围内的订阅编号。
+        """
         subscribes = (
             await self.async_list_by_username(username, state=state, mtype=mtype)
             if username is not None
@@ -625,7 +674,9 @@ class SubscribeOper(DbOper):
         page: Optional[int] = None,
         count: Optional[int] = None,
     ) -> List[Subscribe]:
-        """按可选状态和数据库窗口异步获取订阅列表。"""
+        """
+        按可选状态和数据库窗口异步获取订阅列表。
+        """
         statement = select(Subscribe).order_by(Subscribe.id)
         if state:
             statement = statement.where(Subscribe.state.in_(state.split(",")))
@@ -646,7 +697,9 @@ class SubscribeOper(DbOper):
         page: Optional[int] = None,
         count: Optional[int] = None,
     ) -> List[Subscribe]:
-        """按用户筛选和数据库窗口异步获取订阅。"""
+        """
+        按用户筛选和数据库窗口异步获取订阅。
+        """
         statement = select(Subscribe).where(Subscribe.username == username).order_by(Subscribe.id)
         if state:
             statement = statement.where(Subscribe.state == state)
@@ -667,7 +720,9 @@ class SubscribeOper(DbOper):
         username: Optional[str] = None,
         mtype: Optional[str] = None,
     ) -> int:
-        """按公开列表筛选条件返回订阅精确总数。"""
+        """
+        按公开列表筛选条件返回订阅精确总数。
+        """
         statement = select(func.count()).select_from(Subscribe)
         if state:
             statement = statement.where(Subscribe.state.in_(state.split(",")))
@@ -686,7 +741,9 @@ class SubscribeOper(DbOper):
         title: str,
         season: Optional[int] = None,
     ) -> List[Subscribe]:
-        """在 Oper 会话边界内异步按标题获取订阅。"""
+        """
+        在 Oper 会话边界内异步按标题获取订阅。
+        """
         return cast(
             List[Subscribe],
             await self._execute_async_query(
@@ -711,13 +768,17 @@ class SubscribeOper(DbOper):
         await self._stage_async_delete(Subscribe, sid)
 
     async def stage_delete(self, sid: int) -> None:
-        """登记订阅删除但不提交，由 Application UnitOfWork 控制事务边界。"""
+        """
+        登记订阅删除但不提交，由 Application UnitOfWork 控制事务边界。
+        """
         if not isinstance(self._db, AsyncSession):
             raise RuntimeError("异步订阅删除需要调用方提供 AsyncSession")
         await self._db.execute(sqlalchemy_delete(Subscribe).where(Subscribe.id == sid))
 
     def stage_delete_sync(self, sid: int) -> None:
-        """同步登记订阅删除但不提交，由 Application UnitOfWork 控制事务边界。"""
+        """
+        同步登记订阅删除但不提交，由 Application UnitOfWork 控制事务边界。
+        """
         if not isinstance(self._db, Session):
             raise RuntimeError("同步订阅删除需要调用方提供 Session")
         self._db.execute(sqlalchemy_delete(Subscribe).where(Subscribe.id == sid))
@@ -737,7 +798,9 @@ class SubscribeOper(DbOper):
         sid: int,
         payload: Mapping[str, JsonData],
     ) -> Optional[Subscribe]:
-        """在调用方 AsyncSession 中暂存订阅更新并 flush，不提交事务。"""
+        """
+        在调用方 AsyncSession 中暂存订阅更新并 flush，不提交事务。
+        """
         if not isinstance(self._db, AsyncSession):
             raise RuntimeError("异步订阅修改需要调用方提供 AsyncSession")
         subscribe = await self.async_get(sid)

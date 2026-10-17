@@ -1,3 +1,7 @@
+"""
+系统运行配置键值的数据访问入口，适配调用方会话及兼容事务执行器。
+"""
+
 import copy
 import json
 import threading
@@ -22,7 +26,9 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
     """
 
     def __init__(self) -> None:
-        """初始化空快照，数据库加载由启动组合根显式执行。"""
+        """
+        初始化空快照，数据库加载由启动组合根显式执行。
+        """
         super().__init__()
         self.__SYSTEMCONF: dict[str, Any] = {}
         self._snapshot_lock = threading.RLock()
@@ -30,7 +36,9 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         self._loaded = False
 
     def load_snapshot(self, db: Optional[Session] = None) -> None:
-        """从显式会话或 Oper 事务边界加载配置并发布内存快照。"""
+        """
+        从显式会话或 Oper 事务边界加载配置并发布内存快照。
+        """
         with self._write_lock:
             snapshot = self._load_snapshot_values(db)
             with self._snapshot_lock:
@@ -38,9 +46,13 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
                 self._loaded = True
 
     def _load_snapshot_values(self, db: Optional[Session]) -> dict[str, Any]:
-        """逐行读取配置并把历史非法 JSON 修复为可继续运行的空值。"""
+        """
+        逐行读取配置并把历史非法 JSON 修复为可继续运行的空值。
+        """
         def load(session: Session) -> dict[str, Any]:
-            """读取 JSON 文本，避免驱动先解码字符串标量后被再次解析。"""
+            """
+            读取 JSON 文本，避免驱动先解码字符串标量后被再次解析。
+            """
             snapshot: dict[str, Any] = {}
             statement = (
                 "SELECT id, key, CAST(value AS TEXT) AS value "
@@ -78,17 +90,23 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         return load(db) if db is not None else self._execute_sync_query(load)
 
     def _require_loaded(self) -> None:
-        """阻止消费者读取尚未完成启动加载的半成品快照。"""
+        """
+        阻止消费者读取尚未完成启动加载的半成品快照。
+        """
         if not self._loaded:
             raise RuntimeError("系统配置快照尚未加载")
 
     def _publish_value(self, key: str, value: Any) -> None:
-        """在事务成功后短暂持锁发布单项配置。"""
+        """
+        在事务成功后短暂持锁发布单项配置。
+        """
         with self._snapshot_lock:
             self.__SYSTEMCONF[key] = copy.deepcopy(value)
 
     def _publish_delete(self, key: str) -> None:
-        """在事务成功后短暂持锁移除单项配置。"""
+        """
+        在事务成功后短暂持锁移除单项配置。
+        """
         with self._snapshot_lock:
             self.__SYSTEMCONF.pop(key, None)
 
@@ -96,7 +114,9 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         self,
         values: Mapping[SystemConfigKey, Any],
     ) -> None:
-        """在外部事务提交后一次发布多项配置快照。"""
+        """
+        在外部事务提交后一次发布多项配置快照。
+        """
         with self._snapshot_lock:
             self._require_loaded()
             for key, value in values.items():
@@ -105,6 +125,7 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
     def set(self, key: Union[str, SystemConfigKey], value: Any) -> Optional[bool]:
         """
         设置系统设置
+
         :param key: 配置键
         :param value: 配置值
         :return: 是否设置成功（True 成功/False 失败/None 无需更新）
@@ -115,7 +136,9 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         with self._write_lock:
 
             def write(db: Session) -> Optional[bool]:
-                """在当前事务中创建或更新配置记录。"""
+                """
+                在当前事务中创建或更新配置记录。
+                """
                 conf = SystemConfig.get_by_key(db, key)
                 if conf:
                     if conf.value == value:
@@ -136,14 +159,18 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         key: Union[str, SystemConfigKey],
         mutation: Callable[[Session, Any], tuple[T, Any]],
     ) -> T:
-        """在配置写锁内提交关联记录，并在事务成功后发布最终配置值。"""
+        """
+        在配置写锁内提交关联记录，并在事务成功后发布最终配置值。
+        """
         if isinstance(key, SystemConfigKey):
             key = key.value
         self._require_loaded()
         with self._write_lock:
 
             def write(db: Session) -> tuple[T, Any]:
-                """锁定配置行，把关联写入与最终配置值放入同一事务。"""
+                """
+                锁定配置行，把关联写入与最终配置值放入同一事务。
+                """
                 conf = db.execute(
                     select(SystemConfig)
                     .where(SystemConfig.key == key)
@@ -208,7 +235,9 @@ class SystemConfigOper(DbOper, metaclass=Singleton):
         with self._write_lock:
 
             def delete(db: Session) -> None:
-                """在当前事务中删除配置记录。"""
+                """
+                在当前事务中删除配置记录。
+                """
                 conf = SystemConfig.get_by_key(db, key)
                 if conf:
                     db.delete(conf)

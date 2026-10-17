@@ -1,3 +1,7 @@
+"""
+已完成订阅的历史记录的数据访问入口，适配调用方会话及兼容事务执行器。
+"""
+
 import time
 from collections.abc import Mapping
 from typing import List, Optional, cast
@@ -31,7 +35,9 @@ class SubscribeHistoryOper(DbOper):
 
     @staticmethod
     def _persistable(payload: Mapping[str, JsonData]) -> dict[str, JsonData]:
-        """过滤历史表列并归一化整型开关和完成时间。"""
+        """
+        过滤历史表列并归一化整型开关和完成时间。
+        """
         values = {key: value for key, value in payload.items() if hasattr(SubscribeHistory, key) and key != "id"}
         for field in (
             "best_version",
@@ -45,11 +51,15 @@ class SubscribeHistoryOper(DbOper):
         return values
 
     def add(self, payload: Mapping[str, JsonData]) -> None:
-        """兼容独立事务入口，新增一条订阅历史。"""
+        """
+        兼容独立事务入口，新增一条订阅历史。
+        """
         self._stage_create(SubscribeHistory(**self._persistable(payload)))
 
     def stage_add(self, payload: Mapping[str, JsonData]) -> None:
-        """在调用方同步 Session 中暂存订阅历史并 flush。"""
+        """
+        在调用方同步 Session 中暂存订阅历史并 flush。
+        """
         if not isinstance(self._db, Session):
             raise RuntimeError("订阅历史暂存需要调用方提供同步 Session")
         self._db.add(SubscribeHistory(**self._persistable(payload)))
@@ -63,7 +73,9 @@ class SubscribeHistoryOper(DbOper):
         episode_group: Optional[str] = None,
         music_type: Optional[str] = None,
     ) -> bool:
-        """同步判断完整媒体身份是否已有订阅历史。"""
+        """
+        同步判断完整媒体身份是否已有订阅历史。
+        """
         return bool(
             self._execute_sync_query(
                 lambda session: SubscribeHistory.exists(
@@ -78,7 +90,9 @@ class SubscribeHistoryOper(DbOper):
         )
 
     def get_by_id(self, record_id: int) -> Optional[SubscribeHistory]:
-        """按稳定记录 ID 读取单条订阅历史。"""
+        """
+        按稳定记录 ID 读取单条订阅历史。
+        """
         return cast(
             Optional[SubscribeHistory],
             self._execute_sync_query(
@@ -93,10 +107,14 @@ class SubscribeHistoryOper(DbOper):
         filters: SubscriptionHistoryFilter,
         page: QueryPageRequest,
     ) -> tuple[list[SubscribeHistory], int]:
-        """按稳定筛选和分页合同读取订阅历史记录及总数。"""
+        """
+        按稳定筛选和分页合同读取订阅历史记录及总数。
+        """
 
         def execute(session: Session) -> tuple[list[SubscribeHistory], int]:
-            """在同一会话中构造并执行订阅历史 count/page 查询。"""
+            """
+            在同一会话中构造并执行订阅历史 count/page 查询。
+            """
             conditions = media_identity_conditions(SubscribeHistory, filters)
             ids = enum_values(filters.ids)
             names = enum_values(filters.names)
@@ -170,7 +188,9 @@ class SubscribeHistoryOper(DbOper):
         page: int = 1,
         count: int = 30,
     ) -> List[SubscribeHistory]:
-        """异步按媒体类型和用户分页查询订阅历史。"""
+        """
+        异步按媒体类型和用户分页查询订阅历史。
+        """
         return await self._execute_async_query(
             lambda session: SubscribeHistory.async_list_by_type_and_username(
                 session,
@@ -182,7 +202,9 @@ class SubscribeHistoryOper(DbOper):
         )
 
     async def async_count_by_type(self, mtype: str) -> int:
-        """异步统计指定媒体类型的订阅历史。"""
+        """
+        异步统计指定媒体类型的订阅历史。
+        """
         return await self._execute_async_query(
             lambda session: SubscribeHistory.async_count_by_type(session, mtype)
         )
@@ -192,7 +214,9 @@ class SubscribeHistoryOper(DbOper):
         mtype: str,
         username: str,
     ) -> int:
-        """异步统计指定媒体类型和 owner 的订阅历史。"""
+        """
+        异步统计指定媒体类型和 owner 的订阅历史。
+        """
         return await self._execute_async_query(
             lambda session: SubscribeHistory.async_count_by_type_and_username(
                 session,
@@ -202,10 +226,14 @@ class SubscribeHistoryOper(DbOper):
         )
 
     async def async_get(self, history_id: int) -> Optional[SubscribeHistory]:
-        """异步按 ID 查询订阅历史。"""
+        """
+        异步按 ID 查询订阅历史。
+        """
 
         async def query(session: AsyncSession) -> Optional[SubscribeHistory]:
-            """在调用方异步会话中按主键查询历史。"""
+            """
+            在调用方异步会话中按主键查询历史。
+            """
             result = await session.execute(select(SubscribeHistory).where(SubscribeHistory.id == history_id))
             return cast(Optional[SubscribeHistory], result.scalars().first())
 
@@ -215,5 +243,7 @@ class SubscribeHistoryOper(DbOper):
         )
 
     async def async_delete(self, history_id: int) -> None:
-        """异步删除订阅历史。"""
+        """
+        异步删除订阅历史。
+        """
         await self._stage_async_delete(SubscribeHistory, history_id)

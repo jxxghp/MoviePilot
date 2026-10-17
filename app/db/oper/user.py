@@ -46,22 +46,30 @@ class UserOper(DbOper):
         )
 
     def get_by_id(self, user_id: int) -> Optional[User]:
-        """按 ID 获取用户。"""
+        """
+        按 ID 获取用户。
+        """
         return self._execute_sync_query(
             lambda session: User.get_by_id(session, user_id)
         )
 
     async def async_list(self) -> List[User]:
-        """异步获取用户列表。"""
+        """
+        异步获取用户列表。
+        """
         users: List[User] = await self._execute_async_query(User.async_list)
         return users
 
     async def async_create(self, payload: dict[str, Any]) -> Optional[User]:
-        """异步创建用户。"""
+        """
+        异步创建用户。
+        """
         user = User(**payload)
 
         async def stage(session: AsyncSession) -> User:
-            """在当前异步事务中暂存用户并分配主键。"""
+            """
+            在当前异步事务中暂存用户并分配主键。
+            """
             session.add(user)
             await session.flush()
             return user
@@ -69,11 +77,15 @@ class UserOper(DbOper):
         return await self._execute_async_write(stage)
 
     async def async_update(self, user_id: int, payload: dict[str, Any]) -> Optional[User]:
-        """异步更新用户。"""
+        """
+        异步更新用户。
+        """
         user = await self.async_get_by_id(user_id)
         if user:
             async def stage(session: AsyncSession) -> User:
-                """在当前事务中更新用户字段，必要时重新附加游离对象。"""
+                """
+                在当前事务中更新用户字段，必要时重新附加游离对象。
+                """
                 for key, value in payload.items():
                     setattr(user, key, value)
                 updated_user: User = await session.merge(user)
@@ -83,13 +95,17 @@ class UserOper(DbOper):
         return user
 
     async def async_delete(self, user_id: int) -> bool:
-        """异步删除用户。"""
+        """
+        异步删除用户。
+        """
         return bool(await self._execute_async_write(
             lambda session: User.async_delete_by_id(session, user_id)
         ))
 
     async def async_delete_by_name(self, name: str) -> bool:
-        """在独立异步事务中按用户名删除用户。"""
+        """
+        在独立异步事务中按用户名删除用户。
+        """
         return bool(await self._execute_async_write(
             lambda session: User().async_delete_by_name(session, name)
         ))
@@ -100,7 +116,9 @@ class UserOper(DbOper):
         otp: bool,
         secret: str,
     ) -> bool:
-        """异步更新用户 OTP 状态。"""
+        """
+        异步更新用户 OTP 状态。
+        """
         return bool(await self._execute_async_write(
             lambda session: User.async_update_otp_by_name(
                 session, name, otp, secret
@@ -112,7 +130,9 @@ class UserOper(DbOper):
         异步根据用户名获取用户。
         """
         async def query(session: AsyncSession) -> Optional[User]:
-            """在调用方异步会话中执行用户名查询。"""
+            """
+            在调用方异步会话中执行用户名查询。
+            """
             result = await session.execute(select(User).where(User.name == name))
             found_user: Optional[User] = result.scalars().first()
             return found_user
@@ -124,7 +144,9 @@ class UserOper(DbOper):
         异步根据用户 ID 获取用户。
         """
         async def query(session: AsyncSession) -> Optional[User]:
-            """在调用方异步会话中执行用户 ID 查询。"""
+            """
+            在调用方异步会话中执行用户 ID 查询。
+            """
             result = await session.execute(select(User).where(User.id == user_id))
             found_user: Optional[User] = result.scalars().first()
             return found_user
