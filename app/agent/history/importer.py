@@ -1,4 +1,6 @@
-"""旧恢复快照的可续跑搬迁；每次只处理有界会话批次。"""
+"""
+旧恢复快照的可续跑搬迁；每次只处理有界会话批次。
+"""
 
 import sqlite3
 from collections.abc import Callable
@@ -13,7 +15,9 @@ from app.application.messaging.recall import RecallLegacyRepository, RecallMessa
 
 def import_page(connection: sqlite3.Connection, legacy: RecallLegacyRepository, user_id: str,
                 append: Callable[[str, RecallSession, tuple[RecallMessage, ...]], None]) -> dict[str, Any]:
-    """搬迁成功后才前进游标，失败可重试；结果始终携带尚未完成状态。"""
+    """
+    搬迁成功后才前进游标，失败可重试；结果始终携带尚未完成状态。
+    """
     state = dict(connection.execute("SELECT key,value FROM state_meta WHERE key IN ('legacy_cursor','legacy_done')"))
     if state.get('legacy_done'):
         return dict(complete=True)

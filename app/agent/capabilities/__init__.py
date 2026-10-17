@@ -1,4 +1,6 @@
-"""Agent Capability 声明与通用入口适配器。"""
+"""
+Agent Capability 声明与通用入口适配器。
+"""
 
 AGENT_ENTRYPOINT_KIND = "agent_entrypoint"
 AGENT_SERVICE_KIND = "agent_service"
