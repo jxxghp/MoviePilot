@@ -1,4 +1,5 @@
-"""回复结束纠偏：识别尚未执行的尾部动作并限制续行次数。
+"""
+回复结束纠偏：识别尚未执行的尾部动作并限制续行次数。
 
 保留短回复、尾部动作与语言上下文边界；中文尾部动作是同一规则的本地化。
 """
@@ -28,13 +29,17 @@ FRAGMENT_NUDGE = (
 
 
 def trailing_continue_intent(text: str) -> bool:
-    """只检测四百字符内回复的最后一百六十字符，不把中途描述当结束意图。"""
+    """
+    只检测四百字符内回复的最后一百六十字符，不把中途描述当结束意图。
+    """
     text = text.strip()
     return bool(text and len(text) <= 400 and _TRAILING_ACTION.search(text[-160:]))
 
 
 def intermediate_ack(text: str, user_text: str, *, tool_results: int) -> bool:
-    """Codex 专属默认：无工具回执的短未来动作回复还须有工作区上下文。"""
+    """
+    Codex 专属默认：无工具回执的短未来动作回复还须有工作区上下文。
+    """
     text = text.strip().lower()
     if tool_results or not text or len(text) > 1200 or not _ACK_FUTURE.search(text):
         return False
@@ -45,7 +50,9 @@ def intermediate_ack(text: str, user_text: str, *, tool_results: int) -> bool:
 
 
 def degenerate_final(text: str, user_text: str) -> bool:
-    """只纠正异常标点开头或语言不符的极短碎片，正常数字、路径和中文短答不触发。"""
+    """
+    只纠正异常标点开头或语言不符的极短碎片，正常数字、路径和中文短答不触发。
+    """
     text = text.strip()
     if not text or len(text) > 24 or text.endswith(('.', '!', '?', '。', '！', '？')):
         return False

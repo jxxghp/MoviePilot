@@ -1,4 +1,6 @@
-"""Agent 终端会话管理器。"""
+"""
+Agent 终端会话管理器。
+"""
 
 from __future__ import annotations
 
@@ -56,10 +58,14 @@ _SHARE_ACTIONS = frozenset({"read", "wait", "write", "interrupt", "kill"})
 
 
 class _TerminalSessionManager:
-    """管理 Agent 后台终端会话的生命周期。"""
+    """
+    管理 Agent 后台终端会话的生命周期。
+    """
 
     def __init__(self) -> None:
-        """初始化会话表和并发保护锁。"""
+        """
+        初始化会话表和并发保护锁。
+        """
         self._sessions: dict[str, _TerminalSession] = {}
         self._lock = asyncio.Lock()
         self._close_lock = asyncio.Lock()
@@ -73,7 +79,9 @@ class _TerminalSessionManager:
 
     @staticmethod
     def _normalize_bool(value: Any, default: bool = True) -> bool:
-        """兼容 LLM 或 HTTP 传入的 bool/string/int 布尔值。"""
+        """
+        兼容 LLM 或 HTTP 传入的 bool/string/int 布尔值。
+        """
         if value is None:
             return default
         if isinstance(value, bool):
@@ -84,12 +92,16 @@ class _TerminalSessionManager:
 
     @staticmethod
     def _validate_command(command: str, *, confirmed: bool = False) -> None:
-        """拒绝明显危险或空白命令。"""
+        """
+        拒绝明显危险或空白命令。
+        """
         validate_command_safety(command, confirmed=confirmed)
 
     @staticmethod
     def _set_nonblocking(fd: int) -> None:
-        """将 PTY master fd 设置为非阻塞，避免后台读取任务卡住事件循环。"""
+        """
+        将 PTY master fd 设置为非阻塞，避免后台读取任务卡住事件循环。
+        """
         if _fcntl is None:
             raise RuntimeError("当前平台不支持 PTY 非阻塞设置")
         flags = _fcntl.fcntl(fd, _fcntl.F_GETFL)
@@ -97,7 +109,9 @@ class _TerminalSessionManager:
 
     @staticmethod
     def _pipe_subprocess_kwargs() -> dict[str, Any]:
-        """生成普通管道模式的子进程参数。"""
+        """
+        生成普通管道模式的子进程参数。
+        """
         kwargs: dict[str, Any] = {
             "stdin": asyncio.subprocess.PIPE,
             "stdout": asyncio.subprocess.PIPE,
@@ -124,7 +138,9 @@ class _TerminalSessionManager:
         shell: Optional[str] = None,
         login: Optional[bool] = None,
     ) -> dict[str, Any]:
-        """启动后台命令，在首个输出、完成或首次等待预算到期时交付会话。"""
+        """
+        启动后台命令，在首个输出、完成或首次等待预算到期时交付会话。
+        """
         owner = require_terminal_scope()
         self._validate_command(command, confirmed=confirm_dangerous)
         validate_output_budget(max_output_chars)
@@ -209,7 +225,9 @@ class _TerminalSessionManager:
     async def _recover_started_session(
         self, launch: asyncio.Task[_TerminalSession], session: Optional[_TerminalSession], owner: TerminalScope,
     ) -> None:
-        """启动预留持有迟到进程；先回收再取得登记锁，避免取消被登记阻塞。"""
+        """
+        启动预留持有迟到进程；先回收再取得登记锁，避免取消被登记阻塞。
+        """
         if session is None:
             try:
                 session = await launch
@@ -219,7 +237,9 @@ class _TerminalSessionManager:
         await self._discard_started_session(session)
 
     def _release_start_locked(self, owner: TerminalScope) -> None:
-        """同一登记锁中释放全局与任务启动预留，关闭者才可确认快照完整。"""
+        """
+        同一登记锁中释放全局与任务启动预留，关闭者才可确认快照完整。
+        """
         self._starting -= 1
         if self._starting == 0:
             self._starts_idle.set()
@@ -231,7 +251,9 @@ class _TerminalSessionManager:
             self._owner_idle.pop(owner).set()
 
     async def _discard_started_session(self, session: _TerminalSession) -> None:
-        """首次返回前取消时回收无从寻址的进程，并撤销其会话登记。"""
+        """
+        首次返回前取消时回收无从寻址的进程，并撤销其会话登记。
+        """
         converged = await self._terminate_session(session)
         async with self._lock:
             if converged and self._sessions.get(session.session_id) is session:
@@ -242,7 +264,9 @@ class _TerminalSessionManager:
     async def _start_pty_session(
         self, command: str, cwd: str, env: dict[str, str], *, shell_policy: Optional[AgentShell] = None,
     ) -> _TerminalSession:
-        """通过 PTY fork 启动交互式命令会话。"""
+        """
+        通过 PTY fork 启动交互式命令会话。
+        """
         if _pty is None:
             raise RuntimeError("当前平台不支持 PTY 会话")
         shell_policy = shell_policy or resolve_agent_shell(environment=env, cwd=cwd)
@@ -273,7 +297,9 @@ class _TerminalSessionManager:
     async def _start_pipe_session(
         self, command: str, cwd: str, env: dict[str, str], *, shell_policy: Optional[AgentShell] = None,
     ) -> _TerminalSession:
-        """通过普通 stdin/stdout/stderr 管道启动命令会话。"""
+        """
+        通过普通 stdin/stdout/stderr 管道启动命令会话。
+        """
         shell_policy = shell_policy or resolve_agent_shell(environment=env, cwd=cwd)
         process = await asyncio.create_subprocess_exec(
             *shell_policy.build_argv(command), cwd=cwd, env=env, **self._pipe_subprocess_kwargs(),
@@ -300,7 +326,9 @@ class _TerminalSessionManager:
 
     @staticmethod
     async def _read_pty(session: _TerminalSession) -> None:
-        """持续从 PTY 读取增量输出。"""
+        """
+        持续从 PTY 读取增量输出。
+        """
         complete = False
         try:
             while session.master_fd is not None:
@@ -327,7 +355,9 @@ class _TerminalSessionManager:
         stream: asyncio.StreamReader,
         stream_name: str,
     ) -> None:
-        """持续从普通管道读取增量输出。"""
+        """
+        持续从普通管道读取增量输出。
+        """
         complete = False
         try:
             while True:
@@ -340,7 +370,9 @@ class _TerminalSessionManager:
             session.finish_stream(stream_name, complete=complete)
 
     async def _wait_pty_process(self, session: _TerminalSession) -> None:
-        """等待 PTY 子进程结束并完成输出读取任务收尾。"""
+        """
+        等待 PTY 子进程结束并完成输出读取任务收尾。
+        """
         try:
             _, status = await asyncio.to_thread(os.waitpid, session.pid, 0)
             exit_code = os.waitstatus_to_exitcode(status)
@@ -357,7 +389,9 @@ class _TerminalSessionManager:
             session.close_pty()
 
     async def _wait_pipe_process(self, session: _TerminalSession) -> None:
-        """等待普通管道子进程结束并完成输出读取任务收尾。"""
+        """
+        等待普通管道子进程结束并完成输出读取任务收尾。
+        """
         try:
             if not session.process:
                 session.mark_error("进程对象不存在")
@@ -374,7 +408,9 @@ class _TerminalSessionManager:
 
     @staticmethod
     async def _finish_reader_tasks(session: _TerminalSession) -> None:
-        """等待输出读取任务退出，超时后取消残留任务。"""
+        """
+        等待输出读取任务退出，超时后取消残留任务。
+        """
         if session.reader_tasks:
             done, pending = await asyncio.wait(session.reader_tasks, timeout=1)
             for task in pending:
@@ -393,7 +429,9 @@ class _TerminalSessionManager:
         max_bytes: Optional[int] = TERMINAL_DEFAULT_READ_BYTES,
         max_output_chars: Optional[int] = None,
     ) -> dict[str, Any]:
-        """读取会话当前保留的增量输出。"""
+        """
+        读取会话当前保留的增量输出。
+        """
         session, _ = self._get_accessible_session(session_id, "read")
         return read_payload(
             session, since_seq=since_seq, since_offset=since_offset, max_bytes=max_bytes, max_output_chars=max_output_chars,
@@ -409,7 +447,9 @@ class _TerminalSessionManager:
         max_bytes: Optional[int] = TERMINAL_DEFAULT_READ_BYTES,
         max_output_chars: Optional[int] = None,
     ) -> dict[str, Any]:
-        """等待未读输出或输出最终收尾；零预算只取快照，不终止后台命令。"""
+        """
+        等待未读输出或输出最终收尾；零预算只取快照，不终止后台命令。
+        """
         session, scope = self._get_accessible_session(session_id, "wait")
         normalized_timeout = self._normalize_wait_timeout(timeout_ms)
         payload = await self._wait_for_output(
@@ -426,7 +466,9 @@ class _TerminalSessionManager:
         extra_fields: Optional[dict[str, Any]] = None,
         scope: TerminalScope, action: str,
     ) -> dict[str, Any]:
-        """先捕获通知再查输出，无数据到 await 之间的变化也能唤醒所有等待者。"""
+        """
+        先捕获通知再查输出，无数据到 await 之间的变化也能唤醒所有等待者。
+        """
         loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout_ms / 1000
         while True:
@@ -455,7 +497,9 @@ class _TerminalSessionManager:
     async def _wait_for_change(
         session: _TerminalSession, scope: TerminalScope, changed: asyncio.Event, timeout: float,
     ) -> None:
-        """输出和双方作用域封口任一变化都结束等待，取消时收齐短命通知任务。"""
+        """
+        输出和双方作用域封口任一变化都结束等待，取消时收齐短命通知任务。
+        """
         events = {changed, scope.changed}
         if session.owner is not None:
             events.add(session.owner.changed)
@@ -472,7 +516,9 @@ class _TerminalSessionManager:
         since_offset: Optional[int] = None, max_bytes: Optional[int] = TERMINAL_DEFAULT_READ_BYTES,
         max_output_chars: Optional[int] = None, close_stdin: bool = False,
     ) -> dict[str, Any]:
-        """串行写入输入和可选管道 EOF；关闭 stdin 不影响输出读取器。"""
+        """
+        串行写入输入和可选管道 EOF；关闭 stdin 不影响输出读取器。
+        """
         session, scope = self._get_accessible_session(session_id, "write")
         validate_output_budget(max_output_chars)
         resolve_cursor(session, since_seq=since_seq, since_offset=since_offset)
@@ -518,7 +564,9 @@ class _TerminalSessionManager:
     async def _write_pipe_input(
         self, session: _TerminalSession, scope: TerminalScope, data: bytes, *, close_stdin: bool,
     ) -> None:
-        """在会话输入锁内先排空末段，再半关闭并等待写端收尾。"""
+        """
+        在会话输入锁内先排空末段，再半关闭并等待写端收尾。
+        """
         writer = session.process.stdin if session.process else None
         if writer is None:
             raise RuntimeError("进程 stdin 不可写")
@@ -536,7 +584,9 @@ class _TerminalSessionManager:
         self, *, session_id: str, since_seq: Optional[int] = None, since_offset: Optional[int] = None,
         max_bytes: Optional[int] = TERMINAL_DEFAULT_READ_BYTES, max_output_chars: Optional[int] = None,
     ) -> dict[str, Any]:
-        """只发送一次真实中断信号，不改变终止意图，也不等待或升级成强杀。"""
+        """
+        只发送一次真实中断信号，不改变终止意图，也不等待或升级成强杀。
+        """
         session, _ = self._get_accessible_session(session_id, "interrupt")
         validate_output_budget(max_output_chars)
         resolve_cursor(session, since_seq=since_seq, since_offset=since_offset)
@@ -570,7 +620,9 @@ class _TerminalSessionManager:
         max_bytes: Optional[int] = TERMINAL_DEFAULT_READ_BYTES,
         max_output_chars: Optional[int] = None,
     ) -> dict[str, Any]:
-        """向会话进程组发送信号并等待短暂清理。"""
+        """
+        向会话进程组发送信号并等待短暂清理。
+        """
         session, scope = self._get_accessible_session(session_id, "kill")
         validate_output_budget(max_output_chars)
         resolve_cursor(session, since_seq=since_seq, since_offset=since_offset)
@@ -589,7 +641,9 @@ class _TerminalSessionManager:
         )
 
     async def close(self) -> None:
-        """停止全部会话，未确认进程和读取器收尾的记录保留给下次关闭。"""
+        """
+        停止全部会话，未确认进程和读取器收尾的记录保留给下次关闭。
+        """
         async with self._close_lock:
             async with self._lock:
                 self._closed = True
@@ -616,7 +670,9 @@ class _TerminalSessionManager:
                         self._sessions.pop(session.session_id, None)
 
     async def close_owner(self, owner: TerminalScope) -> bool:
-        """先封口并撤销能力，再只收敛本任务的启动和进程；未收敛时保留事实供重试。"""
+        """
+        先封口并撤销能力，再只收敛本任务的启动和进程；未收敛时保留事实供重试。
+        """
         owner.seal()
         async with self._lock:
             revoked = set(self._grants.pop(owner, {}))
@@ -647,7 +703,9 @@ class _TerminalSessionManager:
             )
 
     async def _terminate_session(self, session: _TerminalSession) -> bool:
-        """同一终端的关闭串行执行，真实收尾前不丢弃进程或输出读取器。"""
+        """
+        同一终端的关闭串行执行，真实收尾前不丢弃进程或输出读取器。
+        """
         async with session.termination_lock:
             if session.status == "running":
                 session.kill_requested = True
@@ -666,7 +724,9 @@ class _TerminalSessionManager:
 
     @staticmethod
     async def _wait_for_exit(session: _TerminalSession) -> bool:
-        """复用终止与关闭的有界等待，超时不取消会话原本的进程收尾任务。"""
+        """
+        复用终止与关闭的有界等待，超时不取消会话原本的进程收尾任务。
+        """
         if session.wait_task is not None:
             try:
                 await asyncio.wait_for(asyncio.shield(session.wait_task), timeout=TERMINAL_KILL_GRACE_SECONDS)
@@ -683,7 +743,9 @@ class _TerminalSessionManager:
         )
 
     def _get_accessible_session(self, session_id: str, action: str) -> tuple[_TerminalSession, TerminalScope]:
-        """所有用户动作共用归属查表，未知句柄与无权访问返回同一最小错误。"""
+        """
+        所有用户动作共用归属查表，未知句柄与无权访问返回同一最小错误。
+        """
         scope = require_terminal_scope()
         session = self._sessions.get(session_id)
         if session is None:
@@ -692,7 +754,9 @@ class _TerminalSessionManager:
         return session, scope
 
     def _check_access(self, session: _TerminalSession, scope: TerminalScope, action: str) -> None:
-        """每个可暂停边界重新核对原调用者，封口或撤销后不再泄露输出或继续写入。"""
+        """
+        每个可暂停边界重新核对原调用者，封口或撤销后不再泄露输出或继续写入。
+        """
         if (
             self._closed or scope.closed or not scope.user_id or not scope.task_id
             or session.owner is None or session.owner.closed
@@ -704,7 +768,9 @@ class _TerminalSessionManager:
             raise TerminalAccessError()
 
     def share(self, parent: TerminalScope, child: TerminalScope, grants: dict[str, frozenset[str]]) -> None:
-        """宿主原子授予同用户指定任务的有限动作；受授者不能继续转授。"""
+        """
+        宿主原子授予同用户指定任务的有限动作；受授者不能继续转授。
+        """
         if (
             require_terminal_scope() is not parent or parent is child or child.closed
             or not child.task_id or not child.user_id or parent.user_id != child.user_id
@@ -718,7 +784,9 @@ class _TerminalSessionManager:
 
     @staticmethod
     def _normalize_wait_timeout(timeout_ms: Optional[int]) -> int:
-        """限制 wait 单次等待时间，避免工具调用长时间占用模型回合。"""
+        """
+        限制 wait 单次等待时间，避免工具调用长时间占用模型回合。
+        """
         try:
             normalized = int(TERMINAL_WAIT_DEFAULT_MS if timeout_ms is None else timeout_ms)
         except (TypeError, ValueError):
@@ -729,7 +797,9 @@ class _TerminalSessionManager:
 
     @staticmethod
     def _normalize_yield_timeout(yield_time_ms: Optional[int]) -> int:
-        """首次等待接受显式零值，直调入口也拒绝布尔和非法负数。"""
+        """
+        首次等待接受显式零值，直调入口也拒绝布尔和非法负数。
+        """
         if yield_time_ms is None:
             return TERMINAL_YIELD_DEFAULT_MS
         if type(yield_time_ms) is not int or yield_time_ms < 0:
@@ -738,7 +808,9 @@ class _TerminalSessionManager:
 
     @staticmethod
     def _resolve_signal(sig: Optional[str | int]) -> int:
-        """只接受已知有效且当前终止路径可真实发送的信号，绝不把拼写错误当 TERM。"""
+        """
+        只接受已知有效且当前终止路径可真实发送的信号，绝不把拼写错误当 TERM。
+        """
         if isinstance(sig, bool) or (sig is not None and not isinstance(sig, (str, int))):
             raise ValueError("signal 必须为已知名称或有效正整数")
         number: Optional[int] = int(sig) if isinstance(sig, int) else None
@@ -757,7 +829,9 @@ class _TerminalSessionManager:
 
     @staticmethod
     def _send_signal(session: _TerminalSession, sig: int) -> None:
-        """优先向进程组发信号，失败时回退到单进程。"""
+        """
+        优先向进程组发信号，失败时回退到单进程。
+        """
         try:
             if os.name == "posix":
                 os.killpg(session.pid, sig)
@@ -772,11 +846,15 @@ class _TerminalSessionManager:
             pass
 
     def _active_session_count_locked(self) -> int:
-        """统计仍在运行的会话数量。"""
+        """
+        统计仍在运行的会话数量。
+        """
         return sum(1 for session in self._sessions.values() if session.status == "running")
 
     def _cleanup_finished_sessions_locked(self) -> None:
-        """清理已经结束且超过保留时间的会话。"""
+        """
+        清理已经结束且超过保留时间的会话。
+        """
         now = time.time()
         expired_ids = [
             session_id
@@ -793,7 +871,9 @@ terminal_session_manager = _TerminalSessionManager()
 
 
 def get_terminal_session_manager() -> _TerminalSessionManager:
-    """返回当前进程的终端会话管理器，避免复用已完成关停的实例。"""
+    """
+    返回当前进程的终端会话管理器，避免复用已完成关停的实例。
+    """
     global terminal_session_manager
     if (
         terminal_session_manager._closed and not terminal_session_manager._sessions
