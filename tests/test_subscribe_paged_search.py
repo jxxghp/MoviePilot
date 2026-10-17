@@ -20,9 +20,14 @@ from app.application.subscription.priority import (
 )
 from app.chain.download import DownloadChain
 from app.chain.search.facade import SearchChain
+from app.chain.search.result import SearchResultOwner
 from app.chain.subscribe.facade import SubscribeChain
 from app.chain.subscribe.metadata import SubscriptionSearchTarget
-from app.chain.subscribe.search import _finish_paged_subscription, _process_paged_subscription
+from app.chain.subscribe.search import (
+    _build_subscription_candidate_filter,
+    _finish_paged_subscription,
+    _process_paged_subscription,
+)
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
 from app.schemas.mediaserver import ExistMediaInfo, NotExistMediaInfo
@@ -105,6 +110,50 @@ def test_paged_search_keeps_new_missing_episodes_in_completion(subscription, mon
     assert completion_calls
     for call in completion_calls:
         assert call.kwargs["no_exists"]["tmdb:1"][1].episodes == [2]
+
+
+def test_best_version_search_uses_normal_rules_for_never_downloaded_episodes(subscription, monkeypatch):
+    """洗版候选同时包含缺集和升级集时，缺集使用普通订阅规则组。"""
+    scope = subscription
+    subscribe = replace(
+        scope.initial,
+        best_version=1,
+        total_episode=2,
+        episode_priority={"1": 80},
+    )
+    target = SubscriptionSearchTarget(
+        subscribe,
+        build_subscribe_meta(subscribe),
+        scope.media,
+        {"tmdb:1": {1: NotExistMediaInfo(season=1, episodes=[1, 2], total_episode=2)}},
+        "tmdb:1",
+    )
+    contexts = [
+        Context(meta_info=MetaInfo("Example Show S01E01"), media_info=scope.media,
+                torrent_info=TorrentInfo(site=1, title="Example Show S01E01")),
+        Context(meta_info=MetaInfo("Example Show S01E02"), media_info=scope.media,
+                torrent_info=TorrentInfo(site=1, title="Example Show S01E02")),
+    ]
+    monkeypatch.setattr(
+        subscribe_search,
+        "get_configured_system_config",
+        lambda: SimpleNamespace(get=lambda key: {
+            SystemConfigKey.SubscribeFilterRuleGroups: ["normal"],
+            SystemConfigKey.BestVersionFilterRuleGroups: ["best"],
+        }.get(key)),
+    )
+    monkeypatch.setattr(SearchResultOwner, "_filter_identified_contexts", lambda _owner, items, *_args: items)
+    calls = []
+    scope.chain._filter_search_contexts = lambda _subscribe, items, *, apply_best_version=True: (
+        calls.append((items, apply_best_version)) or items
+    )
+
+    candidate_filter = _build_subscription_candidate_filter(scope.chain, SearchChain(), subscribe, target)
+    assert {item.meta_info.episode_list[0] for item in candidate_filter(contexts)} == {1, 2}
+    assert [(items[0].meta_info.episode_list, apply_best) for items, apply_best in calls] == [
+        ([2], False),
+        ([1], True),
+    ]
 
 
 @pytest.mark.parametrize("explicit_missing", [False, True])

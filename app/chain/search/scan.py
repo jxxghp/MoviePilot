@@ -245,7 +245,9 @@ class SearchScan:
         media = self.media
         values = {"media": [media.media_source, media.media_id, media.type, media.title, media.season, media.episode_group],
                   "keyword": self.plan.keyword,
-                  "custom_words": self.plan.custom_words, "rules": self.plan.rule_groups,
+                  "custom_words": self.plan.custom_words,
+                  "rules": self.plan.rule_groups_signature
+                  if self.plan.rule_groups_signature is not None else self.plan.rule_groups,
                   "filter": self.plan.filter_params,
                   "sites": sorted(self.sources.sites), "full": self.full, "target_scope": self.target_scope,
                   "raw_title": False, "multiple_names": self.owner.runtime_config.search_multiple_name,

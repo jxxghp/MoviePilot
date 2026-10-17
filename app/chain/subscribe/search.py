@@ -40,6 +40,7 @@ from app.application.subscription.sitebudget import (
 from app.chain.media import MediaChain
 from app.chain.search.execution import MediaSearchPlan
 from app.chain.search.facade import SearchChain
+from app.chain.search.result import SearchResultOwner
 from app.chain.search.scan import SearchScan, search_targets
 from app.chain.subscribe.contract import _SubscribeOwnerBase
 from app.chain.subscribe.metadata import (
@@ -91,6 +92,89 @@ def _subscription_search_strategy(best_version: bool) -> str:
     return cast(str, strategy) if strategy in ("smart", "full", "single_page") else "smart"
 
 
+def _subscription_rule_groups(subscribe: SubscriptionSnapshot) -> tuple[list[str], list[str]]:
+    """返回订阅普通搜索和洗版升级各自使用的规则组。"""
+    configuration = get_configured_system_config()
+    if subscribe.filter_groups:
+        groups = list(subscribe.filter_groups)
+        return groups, groups
+    return (
+        configuration.get(SystemConfigKey.SubscribeFilterRuleGroups) or [],
+        configuration.get(SystemConfigKey.BestVersionFilterRuleGroups) or [],
+    )
+
+
+def _best_version_target_episodes(
+    subscribe: SubscriptionSnapshot,
+    target: SubscriptionSearchTarget,
+) -> set[int]:
+    """返回本轮洗版搜索覆盖的目标集数，用于区分首次下载与升级候选。"""
+    season_info = (target.missing.get(target.media_key) or {}).get(subscribe.season)
+    if season_info and season_info.episodes:
+        return set(season_info.episodes)
+    start_episode = subscribe.start_episode or 1
+    total_episode = subscribe.total_episode or 0
+    return set(range(start_episode, total_episode + 1)) if total_episode >= start_episode else set()
+
+
+def _build_subscription_candidate_filter(
+    owner: _SubscribeOwnerBase,
+    searchchain: SearchChain,
+    subscribe: SubscriptionSnapshot,
+    target: SubscriptionSearchTarget,
+) -> Callable[[list[Context]], list[Context]]:
+    """按资源覆盖范围选择普通规则或洗版规则，再执行订阅候选校验。"""
+    normal_groups, best_groups = _subscription_rule_groups(subscribe)
+    if not subscribe.best_version or target.media.type != MediaType.TV:
+        return partial(owner._filter_search_contexts, subscribe)
+
+    target_episodes = _best_version_target_episodes(subscribe, target)
+    downloaded_episodes = set(
+        owner._SubscribeChain__get_downloaded_best_version_episodes(
+            subscribe, total_episode=subscribe.total_episode,
+        )
+    )
+
+    def filter_contexts(contexts: list[Context]) -> list[Context]:
+        """分别过滤首次下载候选和已有集数升级候选。"""
+        initial_downloads: list[Context] = []
+        upgrades: list[Context] = []
+        for context in contexts:
+            episodes = set(context.meta_info.episode_list if context.meta_info else [])
+            if not episodes:
+                episodes = set(target_episodes)
+            if episodes and episodes <= downloaded_episodes:
+                upgrades.append(context)
+            else:
+                initial_downloads.append(context)
+
+        filtered: list[Context] = []
+        for candidates, groups, apply_best_version in (
+            (initial_downloads, normal_groups, False),
+            (upgrades, best_groups, True),
+        ):
+            if not candidates:
+                continue
+            candidates = SearchResultOwner._filter_identified_contexts(
+                searchchain,
+                candidates,
+                target.media,
+                groups,
+                {},
+                None,
+            )
+            filtered.extend(
+                owner._filter_search_contexts(
+                    subscribe,
+                    candidates,
+                    apply_best_version=apply_best_version,
+                )
+            )
+        return filtered
+
+    return filter_contexts
+
+
 def _process_paged_subscription(owner: _SubscribeOwnerBase, subscribe: SubscriptionSnapshot,
                                 searchchain: SearchChain, target: SubscriptionSearchTarget,
                                 rule_key: SystemConfigKey,
@@ -98,13 +182,26 @@ def _process_paged_subscription(owner: _SubscribeOwnerBase, subscribe: Subscript
     """影视订阅在每页处理后分批提交，保留当前任务的持久恢复身份。"""
     if not isinstance(target.media, MediaInfo):
         raise ValueError("增量搜索仅适用于影视订阅")
+    dynamic_rule_groups = subscribe.best_version and target.media.type == MediaType.TV
+    candidate_filter: Callable[[list[Context]], list[Context]] = partial(
+        cast(Any, owner)._filter_search_contexts,
+        subscribe,
+    )
+    rule_groups = subscribe.filter_groups or get_configured_system_config().get(rule_key) or []
+    rule_groups_signature = None
+    if dynamic_rule_groups:
+        rule_groups = []
+        normal_groups, best_groups = _subscription_rule_groups(subscribe)
+        rule_groups_signature = {"normal": normal_groups, "best": best_groups}
+        candidate_filter = _build_subscription_candidate_filter(owner, searchchain, subscribe, target)
     plan = MediaSearchPlan(
         mediainfo=target.media, keyword=subscribe.keyword, no_exists=target.missing,
         sites=owner.get_sub_sites(subscribe),
-        rule_groups=subscribe.filter_groups or get_configured_system_config().get(rule_key) or [],
+        rule_groups=rule_groups,
         area="imdbid" if subscribe.search_imdbid and target.media.imdb_id else "title",
         custom_words=subscribe.custom_words.split("\n") if subscribe.custom_words else None,
-        filter_params=owner.get_params(subscribe), candidate_filter=partial(cast(Any, owner)._filter_search_contexts, subscribe),
+        filter_params=owner.get_params(subscribe), candidate_filter=candidate_filter,
+        rule_groups_signature=rule_groups_signature,
     )
     repository = getattr(getattr(owner, "subscription_search_repository", None), "sessions", None) if execution_context else None
     snapshot = repository.get(task_id=execution_context.task_id) if repository and execution_context and execution_context.task_id else None
@@ -944,8 +1041,10 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
         self,
         subscribe: SubscriptionSnapshot,
         contexts: list[Any],
+        *,
+        apply_best_version: bool = True,
     ) -> list[Any]:
-        """过滤不满足洗版范围或优先级的搜索候选，并释放原结果列表。"""
+        """过滤不满足订阅范围或洗版优先级的候选，并释放原结果列表。"""
         matched = []
         activity = current_activity_run()
         try:
@@ -961,7 +1060,7 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
                     continue
                 if isinstance(media, MusicInfo) and subscribe.best_version:
                     torrent_info.pri_order = torrent_info.pri_order or torrent_meta.audio_quality_score
-                if subscribe.best_version and media.type == MediaType.TV:
+                if apply_best_version and subscribe.best_version and media.type == MediaType.TV:
                     if not self._SubscribeChain__is_full_season_best_version_resource(torrent_meta, subscribe):
                         logger.debug(f"{subscribe.name} 正在全集洗版，{torrent_info.title} 不是全集资源")
                         continue
@@ -976,7 +1075,8 @@ class SubscribeSearchOwner(_SubscribeSearchQueueOwner):
                         logger.debug(f"{subscribe.name} 正在洗版，{torrent_info.title} 优先级未达到当前模式的升级条件")
                         continue
                 if (
-                    subscribe.best_version
+                    apply_best_version
+                    and subscribe.best_version
                     and media.type != MediaType.TV
                     and subscribe.current_priority
                     and torrent_info.pri_order <= subscribe.current_priority

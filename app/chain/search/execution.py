@@ -33,6 +33,8 @@ class MediaSearchPlan:
     filter_params: Optional[Dict[str, str]] = None
     include_candidates: bool = False
     candidate_filter: Optional[Callable[[List[Context]], List[Context]]] = None
+    # 动态规则选择时用于检查点失效判断的稳定规则快照。
+    rule_groups_signature: Optional[Any] = None
 
 
 @dataclass(frozen=True, slots=True)
