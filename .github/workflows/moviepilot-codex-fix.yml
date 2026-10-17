@@ -1,4 +1,4 @@
-# Manual fix dispatch. Codex receives write permissions only in the reusable workflow.
+# 分发手动修复请求；Codex 只在被调用的工作流中获得写权限。
 name: MoviePilot Codex fix
 
 on:
