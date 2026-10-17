@@ -1,4 +1,6 @@
-"""宿主运行时组合根的对象身份、发布与冷导入测试。"""
+"""
+宿主运行时组合根的对象身份、发布与冷导入测试。
+"""
 
 from __future__ import annotations
 
@@ -13,7 +15,9 @@ from app.startup.composition import runtime as runtime_composition
 
 
 def _inputs() -> runtime_composition.RuntimeInputs:
-    """构造不连接数据库、不启动线程的最小运行时输入。"""
+    """
+    构造不连接数据库、不启动线程的最小运行时输入。
+    """
     dependencies = runtime_composition.RuntimeDependencies(
         download_history=Mock(name="download_history"),
         transfer_history=Mock(name="transfer_history"),
@@ -65,7 +69,9 @@ def _inputs() -> runtime_composition.RuntimeInputs:
 
 
 def test_runtime_composition_reuses_dependencies_and_projects_api_identity() -> None:
-    """HostRuntime、Agent、Chain 依赖与旧 API 投影必须保持同一对象身份。"""
+    """
+    HostRuntime、Agent、Chain 依赖与旧 API 投影必须保持同一对象身份。
+    """
     inputs = _inputs()
 
     composition = runtime_composition.compose_runtime(inputs)
@@ -118,7 +124,9 @@ def test_runtime_composition_reuses_dependencies_and_projects_api_identity() -> 
 
 
 def test_runtime_composition_publishes_and_resets_exact_projection(monkeypatch) -> None:
-    """运行时 owner 应发布并按对称顺序撤销其拥有的全部投影。"""
+    """
+    运行时 owner 应发布并按对称顺序撤销其拥有的全部投影。
+    """
     composition = runtime_composition.compose_runtime(_inputs())
     published: dict[str, object] = {}
     reset_order: list[str] = []
@@ -180,7 +188,9 @@ def test_runtime_composition_publishes_and_resets_exact_projection(monkeypatch) 
 
 
 def test_runtime_composition_import_is_cold() -> None:
-    """导入 runtime owner 不得加载 initializer、启动 worker/队列或发布端口。"""
+    """
+    导入 runtime owner 不得加载 initializer、启动 worker/队列或发布端口。
+    """
     completed = subprocess.run(
         [
             sys.executable,

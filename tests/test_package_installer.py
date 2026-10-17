@@ -1,3 +1,7 @@
+"""
+验证依赖包安装器的命令构造、结果解析与失败处理。
+"""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -105,7 +109,9 @@ def test_build_strategies_fail_closed_when_uv_missing(tmp_path):
 
 
 def test_build_strategies_passes_all_manifests_to_one_uv_process(tmp_path):
-    """多个插件清单必须进入同一个 uv 命令并保持输入顺序。"""
+    """
+    多个插件清单必须进入同一个 uv 命令并保持输入顺序。
+    """
     modern = tmp_path / "modern" / "pyproject.toml"
     modern.parent.mkdir()
     modern.write_text("[project]\nname='modern'\nversion='1'\n", encoding="utf-8")
@@ -131,7 +137,9 @@ def test_build_strategies_passes_all_manifests_to_one_uv_process(tmp_path):
 
 
 def test_project_sync_selects_current_runtime_group(tmp_path, monkeypatch):
-    """主项目恢复必须显式选择当前解释器对应的互斥运行依赖组。"""
+    """
+    主项目恢复必须显式选择当前解释器对应的互斥运行依赖组。
+    """
     project = tmp_path / "project"
     project.mkdir()
     pyproject = project / "pyproject.toml"

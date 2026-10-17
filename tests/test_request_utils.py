@@ -1,3 +1,7 @@
+"""
+验证统一 HTTP 工具的请求参数、响应处理与资源释放。
+"""
+
 import requests
 
 from app.adapters.network import http as http_module
@@ -41,18 +45,26 @@ class _FakeSession:
 
 
 class _FakeCookies:
-    """测试用 Cookie jar，仅暴露 RequestUtils 所需能力。"""
+    """
+    测试用 Cookie jar，仅暴露 RequestUtils 所需能力。
+    """
 
     def __init__(self) -> None:
-        """初始化空 Cookie 集合。"""
+        """
+        初始化空 Cookie 集合。
+        """
         self._values = {}
 
     def update(self, values: dict) -> None:
-        """合并 Cookie。"""
+        """
+        合并 Cookie。
+        """
         self._values.update(values)
 
     def get_dict(self) -> dict:
-        """返回 Cookie 独立快照。"""
+        """
+        返回 Cookie 独立快照。
+        """
         return dict(self._values)
 
 
@@ -63,7 +75,9 @@ def _make_response(status_code: int = 200) -> requests.Response:
 
 
 def test_configured_user_agent_marks_plugin_requests(monkeypatch):
-    """启动层注入宿主 UA 后，同步和异步客户端仍应标记插件调用来源。"""
+    """
+    启动层注入宿主 UA 后，同步和异步客户端仍应标记插件调用来源。
+    """
     monkeypatch.setattr(http_module, "_default_user_agent", None)
     monkeypatch.setattr(http_module, "get_caller", lambda: "DemoPlugin")
     http_module.configure_default_user_agent("MoviePilot-Test")
@@ -135,7 +149,9 @@ def test_request_utils_raises_retry_error_when_retry_still_fails():
 
 
 def test_request_utils_retries_proxy_connect_error_with_tls12(monkeypatch):
-    """同步代理 HTTPS 幂等请求连接失败时应进入 TLS 1.2 回退路径。"""
+    """
+    同步代理 HTTPS 幂等请求连接失败时应进入 TLS 1.2 回退路径。
+    """
     response = _make_response()
     calls = []
 
@@ -164,7 +180,9 @@ def test_request_utils_retries_proxy_connect_error_with_tls12(monkeypatch):
 
 
 def test_request_utils_does_not_retry_proxy_tls_for_post(monkeypatch):
-    """代理 TLS 回退不得重复非幂等请求。"""
+    """
+    代理 TLS 回退不得重复非幂等请求。
+    """
     fallback_calls = []
 
     def fake_request(_method, _url, **_kwargs):
@@ -187,7 +205,9 @@ def test_request_utils_does_not_retry_proxy_tls_for_post(monkeypatch):
 
 
 def test_request_utils_owns_persistent_headers_cookies_and_close(monkeypatch):
-    """宿主持久客户端应封装 Session 状态，并只暴露规范状态操作。"""
+    """
+    宿主持久客户端应封装 Session 状态，并只暴露规范状态操作。
+    """
     response = _make_response()
     session = _FakeSession([response])
     monkeypatch.setattr(http_module.requests, "Session", lambda: session)
@@ -209,7 +229,9 @@ def test_request_utils_owns_persistent_headers_cookies_and_close(monkeypatch):
 
 
 def test_request_utils_does_not_close_compat_injected_session() -> None:
-    """旧 session= 兼容入口的生命周期仍由调用方管理。"""
+    """
+    旧 session= 兼容入口的生命周期仍由调用方管理。
+    """
     session = _FakeSession([])
 
     RequestUtils(session=session).close()
@@ -218,7 +240,9 @@ def test_request_utils_does_not_close_compat_injected_session() -> None:
 
 
 def test_request_utils_preserves_default_and_explicit_tls_verification() -> None:
-    """同步统一客户端默认保持兼容值，迁移调用方可显式启用证书校验。"""
+    """
+    同步统一客户端默认保持兼容值，迁移调用方可显式启用证书校验。
+    """
     default_session = _FakeSession([_make_response()])
     secure_session = _FakeSession([_make_response()])
 
@@ -232,7 +256,9 @@ def test_request_utils_preserves_default_and_explicit_tls_verification() -> None
 
 
 def test_request_utils_normalizes_per_request_cookie_string(monkeypatch) -> None:
-    """单次请求传入 Cookie 字符串时应先转换为 requests 支持的字典。"""
+    """
+    单次请求传入 Cookie 字符串时应先转换为 requests 支持的字典。
+    """
     response = _make_response()
     session = requests.Session()
     prepared_requests = []
@@ -253,7 +279,9 @@ def test_request_utils_normalizes_per_request_cookie_string(monkeypatch) -> None
 
 
 def test_cookie_parse_preserves_percent_encoded_signature_values(monkeypatch) -> None:
-    """Cookie 签名中的百分号编码必须按浏览器原值发送，不能被 URL 解码破坏。"""
+    """
+    Cookie 签名中的百分号编码必须按浏览器原值发送，不能被 URL 解码破坏。
+    """
     raw_cookie = "session=abc%2Fdef%2Bghi%3D%3D; userid=123"
     parsed_cookie = cookie_parse(raw_cookie)
     browser_cookies = cookie_parse(raw_cookie, array=True)

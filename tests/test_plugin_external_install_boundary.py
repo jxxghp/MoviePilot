@@ -1,4 +1,6 @@
-"""插件包安装的外部调用边界测试。"""
+"""
+插件包安装的外部调用边界测试。
+"""
 
 import asyncio
 from types import SimpleNamespace
@@ -27,7 +29,9 @@ REPO_URL = "https://github.com/example/moviepilot-plugins"
 
 
 def test_package_manager_sync_preserves_external_install_contract() -> None:
-    """同步包适配器必须调用包级入口，不能再次进入公开 Gateway。"""
+    """
+    同步包适配器必须调用包级入口，不能再次进入公开 Gateway。
+    """
     manager = PluginPackageManager(source=Mock())
     manager.install_raw = Mock(return_value=(True, "installed"))
 
@@ -52,7 +56,9 @@ def test_package_manager_sync_preserves_external_install_contract() -> None:
 
 @pytest.mark.asyncio
 async def test_package_manager_async_preserves_external_install_contract() -> None:
-    """异步包适配器必须调用包级入口，不能再次进入公开 Gateway。"""
+    """
+    异步包适配器必须调用包级入口，不能再次进入公开 Gateway。
+    """
     manager = PluginPackageManager(source=Mock())
     manager.async_install_raw = AsyncMock(return_value=(True, "installed"))
 
@@ -79,7 +85,9 @@ async def test_package_manager_async_preserves_external_install_contract() -> No
 async def test_package_manager_captures_native_state_only_when_dependency_install_starts(
     monkeypatch,
 ) -> None:
-    """包适配器只在安装器确认存在依赖清单后记录原生载荷。"""
+    """
+    包适配器只在安装器确认存在依赖清单后记录原生载荷。
+    """
     checkpoint = SimpleNamespace(native_dependencies=None)
     baseline = object()
     capture = Mock(return_value=baseline)
@@ -123,7 +131,9 @@ async def test_dependency_manifest_is_observed_before_install(
     filename,
     content,
 ) -> None:
-    """两类插件依赖清单共用同一安装前观察边界。"""
+    """
+    两类插件依赖清单共用同一安装前观察边界。
+    """
     plugin_root = tmp_path / "plugins"
     plugin_dir = plugin_root / "demoplugin"
     plugin_dir.mkdir(parents=True)
@@ -156,7 +166,9 @@ async def test_dependency_observer_failure_does_not_block_install(
     tmp_path,
     monkeypatch,
 ) -> None:
-    """原生状态观察异常不应改变插件依赖安装结果。"""
+    """
+    原生状态观察异常不应改变插件依赖安装结果。
+    """
     plugin_root = tmp_path / "plugins"
     plugin_dir = plugin_root / "demoplugin"
     plugin_dir.mkdir(parents=True)
@@ -188,7 +200,9 @@ async def test_dependency_observer_is_not_called_without_manifest(
     tmp_path,
     monkeypatch,
 ) -> None:
-    """未声明依赖的插件不承担原生环境快照成本。"""
+    """
+    未声明依赖的插件不承担原生环境快照成本。
+    """
     plugin_root = tmp_path / "plugins"
     (plugin_root / "demoplugin").mkdir(parents=True)
     manager = PluginPackageManager(plugin_root=plugin_root)
@@ -219,7 +233,9 @@ async def test_empty_dependency_manifest_does_not_trigger_native_snapshot(
     filename,
     content,
 ) -> None:
-    """空清单保持既有安装兼容，但不枚举宿主原生发行包。"""
+    """
+    空清单保持既有安装兼容，但不枚举宿主原生发行包。
+    """
     plugin_root = tmp_path / "plugins"
     plugin_dir = plugin_root / "demoplugin"
     plugin_dir.mkdir(parents=True)
@@ -249,7 +265,9 @@ async def test_legacy_unparsed_requirement_still_triggers_native_snapshot(
     tmp_path,
     monkeypatch,
 ) -> None:
-    """历史 VCS 或选项式依赖不能因结构化解析为空而漏过观察。"""
+    """
+    历史 VCS 或选项式依赖不能因结构化解析为空而漏过观察。
+    """
     plugin_root = tmp_path / "plugins"
     plugin_dir = plugin_root / "demoplugin"
     plugin_dir.mkdir(parents=True)
@@ -283,7 +301,9 @@ async def test_legacy_unparsed_requirement_still_triggers_native_snapshot(
 def test_external_sync_helper_rejects_until_gateway_is_configured(
     monkeypatch,
 ) -> None:
-    """外部同步入口在宿主未装配来源门禁时不得直接写入插件包。"""
+    """
+    外部同步入口在宿主未装配来源门禁时不得直接写入插件包。
+    """
     helper = PluginHelper()
     monkeypatch.setattr(
         market,
@@ -306,7 +326,9 @@ def test_external_sync_helper_rejects_until_gateway_is_configured(
 async def test_external_async_helper_rejects_until_gateway_is_configured(
     monkeypatch,
 ) -> None:
-    """外部异步入口在宿主未装配来源门禁时不得直接写入插件包。"""
+    """
+    外部异步入口在宿主未装配来源门禁时不得直接写入插件包。
+    """
     helper = PluginHelper()
     monkeypatch.setattr(
         market,
@@ -326,7 +348,9 @@ async def test_external_async_helper_rejects_until_gateway_is_configured(
 
 
 def test_external_sync_helper_uses_configured_gateway(monkeypatch) -> None:
-    """外部同步调用必须把所有参数交给宿主统一安装用例。"""
+    """
+    外部同步调用必须把所有参数交给宿主统一安装用例。
+    """
     gateway = Mock(return_value=(False, "source conflict"))
     monkeypatch.setattr(market, "_plugin_install_gateway", gateway)
 
@@ -339,7 +363,9 @@ def test_external_sync_helper_uses_configured_gateway(monkeypatch) -> None:
 def test_sync_gateway_returns_failure_when_runtime_loop_is_unavailable(
     monkeypatch,
 ) -> None:
-    """主事件循环释放后，同步兼容入口应稳定返回失败结果。"""
+    """
+    主事件循环释放后，同步兼容入口应稳定返回失败结果。
+    """
     gateway = Mock()
     monkeypatch.setattr(global_vars, "CURRENT_EVENT_LOOP", None)
 
@@ -360,10 +386,14 @@ def test_sync_gateway_returns_failure_when_runtime_loop_is_unavailable(
 
 @pytest.mark.asyncio
 async def test_external_async_helper_uses_configured_gateway(monkeypatch) -> None:
-    """外部异步调用必须把所有参数交给宿主统一安装用例。"""
+    """
+    外部异步调用必须把所有参数交给宿主统一安装用例。
+    """
 
     async def gateway(*args):
-        """返回统一 Gateway 的结果。"""
+        """
+        返回统一 Gateway 的结果。
+        """
         seen.append(args)
         return False, "source conflict"
 
@@ -386,12 +416,16 @@ async def test_external_async_helper_uses_configured_gateway(monkeypatch) -> Non
 async def test_external_async_helper_preserves_failure_tuple_on_gateway_error(
     monkeypatch,
 ) -> None:
-    """公开异步 Helper 在持久化等内部异常下仍返回兼容二元组。"""
+    """
+    公开异步 Helper 在持久化等内部异常下仍返回兼容二元组。
+    """
     gateway = Mock()
     gateway.install = AsyncMock(side_effect=RuntimeError("persistence unavailable"))
 
     async def install(*args):
-        """按组合根的真实参数映射进入公开异步兼容包装层。"""
+        """
+        按组合根的真实参数映射进入公开异步兼容包装层。
+        """
         plugin_id, repo_url, package_version, release_version, force = args
         return await plugins_initializer._run_plugin_install_async(
             gateway,
@@ -421,7 +455,9 @@ async def test_external_async_helper_preserves_failure_tuple_on_gateway_error(
 async def test_http_install_forwards_repo_url_without_granting_source_authority(
     monkeypatch,
 ) -> None:
-    """普通更新保留绑定仓库提示，但不能把它升级为选源授权。"""
+    """
+    普通更新保留绑定仓库提示，但不能把它升级为选源授权。
+    """
     gateway = Mock()
     gateway.install = AsyncMock(
         return_value=SimpleNamespace(
@@ -459,7 +495,9 @@ async def test_http_install_forwards_repo_url_without_granting_source_authority(
 async def test_http_explicit_source_install_uses_explicit_gateway_mode(
     monkeypatch,
 ) -> None:
-    """专用来源安装入口必须把管理员选择传给统一 Gateway。"""
+    """
+    专用来源安装入口必须把管理员选择传给统一 Gateway。
+    """
     gateway = Mock()
     gateway.install = AsyncMock(
         return_value=SimpleNamespace(
@@ -499,7 +537,9 @@ async def test_http_explicit_source_install_uses_explicit_gateway_mode(
 async def test_http_source_change_requires_revision_and_explicit_gateway_mode(
     monkeypatch,
 ) -> None:
-    """管理员换源入口必须把目标仓库和精确 revision 交给统一 Gateway。"""
+    """
+    管理员换源入口必须把目标仓库和精确 revision 交给统一 Gateway。
+    """
     gateway = Mock()
     gateway.install = AsyncMock(
         return_value=SimpleNamespace(
@@ -541,7 +581,9 @@ async def test_http_source_change_requires_revision_and_explicit_gateway_mode(
 async def test_http_source_identity_returns_current_cas_evidence(
     monkeypatch,
 ) -> None:
-    """来源查询只公开确认和显式换源所需的最小身份字段。"""
+    """
+    来源查询只公开确认和显式换源所需的最小身份字段。
+    """
     identity = SimpleNamespace(
         plugin_id="DemoPlugin",
         trusted_source_type=SimpleNamespace(value="official"),
@@ -573,7 +615,9 @@ async def test_http_source_identity_returns_current_cas_evidence(
 
 
 def test_source_change_schema_rejects_invalid_revision_and_blank_repo() -> None:
-    """显式换源请求在进入业务层前拒绝无来源或无效 revision。"""
+    """
+    显式换源请求在进入业务层前拒绝无来源或无效 revision。
+    """
     with pytest.raises(ValidationError):
         PluginSourceChangeRequest(repo_url="  ", expected_revision=1)
     with pytest.raises(ValidationError):
@@ -587,7 +631,9 @@ def test_source_change_schema_rejects_invalid_revision_and_blank_repo() -> None:
 
 @pytest.mark.asyncio
 async def test_http_source_options_return_sanitized_candidates(monkeypatch) -> None:
-    """来源候选接口保留在线选择信息，但本地候选不公开路径。"""
+    """
+    来源候选接口保留在线选择信息，但本地候选不公开路径。
+    """
     identity = SimpleNamespace(
         plugin_id="DemoPlugin",
         trusted_source_type=SimpleNamespace(value="official"),
@@ -652,7 +698,9 @@ async def test_http_source_options_return_sanitized_candidates(monkeypatch) -> N
 
 
 def test_source_api_openapi_uses_structured_contracts() -> None:
-    """来源查询、初始选源和换源 API 必须公开稳定结构模型。"""
+    """
+    来源查询、初始选源和换源 API 必须公开稳定结构模型。
+    """
     app = FastAPI()
     app.include_router(plugin_endpoint.router, prefix="/api/v1/plugin")
 
@@ -678,7 +726,9 @@ def test_source_api_openapi_uses_structured_contracts() -> None:
 async def test_agent_install_uses_application_gateway(
     monkeypatch,
 ) -> None:
-    """Agent 安装入口只能转发到唯一 Application Gateway。"""
+    """
+    Agent 安装入口只能转发到唯一 Application Gateway。
+    """
     gateway = Mock()
     gateway.install = AsyncMock(
         return_value=SimpleNamespace(
@@ -709,7 +759,9 @@ async def test_agent_install_uses_application_gateway(
 
 
 def test_startup_composition_configures_external_helper_gateway(monkeypatch) -> None:
-    """启动组合根必须装配独立 owner，并向公开 Helper 发布同一 Gateway。"""
+    """
+    启动组合根必须装配独立 owner，并向公开 Helper 发布同一 Gateway。
+    """
     transport = Mock()
     market_client = Mock()
     package_manager = Mock()
@@ -800,7 +852,9 @@ def test_startup_composition_configures_external_helper_gateway(monkeypatch) -> 
         monkeypatch.setattr(plugins_initializer, name, Mock())
 
     def configure_gateway(**kwargs) -> None:
-        """记录组合根提供给外部 Helper 的同步/异步端口。"""
+        """
+        记录组合根提供给外部 Helper 的同步/异步端口。
+        """
         gateway_calls.append(kwargs)
 
     monkeypatch.setattr(

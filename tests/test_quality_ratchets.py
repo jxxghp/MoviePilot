@@ -1,4 +1,6 @@
-"""Ruff 与覆盖率增量门禁测试。"""
+"""
+Ruff 与覆盖率增量门禁测试。
+"""
 
 import json
 import subprocess
@@ -28,7 +30,9 @@ from scripts.architecture.ruff_ratchet import (
 
 
 def test_ruff_ratchet_rejects_new_rule_and_count_growth() -> None:
-    """Ruff 基线拒绝新增、增长以及尚未固化的下降。"""
+    """
+    Ruff 基线拒绝新增、增长以及尚未固化的下降。
+    """
     baseline = {"app/example.py": {"F401": 2}}
 
     assert compare_counts(baseline, {"app/example.py": {"F401": 1}}) == [
@@ -49,7 +53,9 @@ def test_ruff_ratchet_rejects_new_rule_and_count_growth() -> None:
 
 
 def test_ruff_diagnostics_are_aggregated_by_relative_file_and_code() -> None:
-    """Ruff JSON 的绝对路径必须归一化为稳定仓库路径。"""
+    """
+    Ruff JSON 的绝对路径必须归一化为稳定仓库路径。
+    """
     path = PROJECT_ROOT / "app" / "example.py"
     diagnostics = [
         {"filename": str(path), "code": "F401"},
@@ -63,7 +69,9 @@ def test_ruff_diagnostics_are_aggregated_by_relative_file_and_code() -> None:
 
 
 def test_run_ruff_rejects_tool_failure() -> None:
-    """Ruff 工具异常必须 fail-closed，不能把空输出当成零诊断。"""
+    """
+    Ruff 工具异常必须 fail-closed，不能把空输出当成零诊断。
+    """
     result = subprocess.CompletedProcess(
         args=[],
         returncode=2,
@@ -87,7 +95,9 @@ def test_run_ruff_rejects_status_payload_mismatch(
     stdout: str,
     message: str,
 ) -> None:
-    """Ruff 退出状态必须与结构化诊断是否存在一致。"""
+    """
+    Ruff 退出状态必须与结构化诊断是否存在一致。
+    """
     result = subprocess.CompletedProcess(
         args=[],
         returncode=returncode,
@@ -103,7 +113,9 @@ def test_ruff_write_refuses_to_legalize_regression(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """已有基线出现增长时，--write 不得覆盖原文件。"""
+    """
+    已有基线出现增长时，--write 不得覆盖原文件。
+    """
     baseline_path = tmp_path / "ruff-baseline.json"
     baseline_path.write_text("{}\n", encoding="utf-8")
     monkeypatch.setattr(
@@ -126,7 +138,9 @@ def test_ruff_write_persists_reduced_low_watermark(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """没有增长时，--write 应把下降后的 Ruff 快照固化。"""
+    """
+    没有增长时，--write 应把下降后的 Ruff 快照固化。
+    """
     baseline_path = tmp_path / "ruff-baseline.json"
     baseline_path.write_text(
         json.dumps({"app/example.py": {"F401": 2}}),
@@ -151,17 +165,23 @@ def test_ruff_write_persists_reduced_low_watermark(
 
 
 def _coverage_report(files):
-    """构造最小 coverage.py JSON 报告。"""
+    """
+    构造最小 coverage.py JSON 报告。
+    """
     return {"files": {path: {"summary": {"num_statements": s, "covered_lines": c}} for path, (s, c) in files.items()}}
 
 
 def _coverage_snapshot(files):
-    """将最小报告转换为 coverage ratchet 快照。"""
+    """
+    将最小报告转换为 coverage ratchet 快照。
+    """
     return collect_package_coverage(_coverage_report(files))
 
 
 def test_coverage_ratchet_collects_all_app_files_except_plugins() -> None:
-    """覆盖率快照覆盖 app 全部文件，并排除 plugins。"""
+    """
+    覆盖率快照覆盖 app 全部文件，并排除 plugins。
+    """
     snapshot = _coverage_snapshot(
         {
             "app/application/a.py": (10, 8),
@@ -181,7 +201,9 @@ def test_coverage_ratchet_collects_all_app_files_except_plugins() -> None:
 
 
 def test_coverage_ratchet_only_allows_existing_low_watermark_to_increase() -> None:
-    """存量文件覆盖率下降失败，计数变化但比例不降可以通过。"""
+    """
+    存量文件覆盖率下降失败，计数变化但比例不降可以通过。
+    """
     baseline = _coverage_snapshot(
         {"app/application/a.py": (10, 8), "app/chain/a.py": (10, 5)}
     )
@@ -194,7 +216,9 @@ def test_coverage_ratchet_only_allows_existing_low_watermark_to_increase() -> No
 
 
 def test_coverage_ratchet_requires_new_files_to_reach_eighty_percent() -> None:
-    """不在低水位快照中的新文件必须达到 80% 覆盖率。"""
+    """
+    不在低水位快照中的新文件必须达到 80% 覆盖率。
+    """
     baseline = _coverage_snapshot({"app/application/existing.py": (10, 5)})
     below_floor = _coverage_snapshot(
         {"app/application/existing.py": (10, 5), "app/new.py": (10, 7)}
@@ -209,7 +233,9 @@ def test_coverage_ratchet_requires_new_files_to_reach_eighty_percent() -> None:
 
 
 def test_coverage_snapshot_validation_is_fail_closed() -> None:
-    """非法路径和派生百分比必须被受控拒绝。"""
+    """
+    非法路径和派生百分比必须被受控拒绝。
+    """
     snapshot = _coverage_snapshot({"app/application/a.py": (10, 8)})
     snapshot["files"]["app/plugins/x.py"] = {
         "statements": 1,
@@ -229,14 +255,18 @@ def test_coverage_snapshot_validation_is_fail_closed() -> None:
 
 
 def test_coverage_main_rejects_empty_governed_report() -> None:
-    """没有受治理文件的报告不能被误判为通过。"""
+    """
+    没有受治理文件的报告不能被误判为通过。
+    """
     snapshot = _coverage_snapshot({})
 
     assert any("缺少受治理文件" in problem for problem in validate_coverage(snapshot, require_data=True))
 
 
 def test_coverage_main_rejects_malformed_report(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """缺少 files 对象的 JSON 报告必须返回失败而不是抛出栈。"""
+    """
+    缺少 files 对象的 JSON 报告必须返回失败而不是抛出栈。
+    """
     report_path = tmp_path / "coverage.json"
     report_path.write_text("{}\n", encoding="utf-8")
     monkeypatch.setattr(sys, "argv", ["coverage_ratchet.py", "--report", str(report_path)])
@@ -244,7 +274,9 @@ def test_coverage_main_rejects_malformed_report(tmp_path: Path, monkeypatch: pyt
 
 
 def test_coverage_write_refuses_to_legalize_regression(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """已有低水位出现下降时，--write 不得覆盖原文件。"""
+    """
+    已有低水位出现下降时，--write 不得覆盖原文件。
+    """
     report_path = tmp_path / "coverage.json"
     baseline_path = tmp_path / "coverage-baseline.json"
     report_path.write_text(
@@ -264,7 +296,9 @@ def test_coverage_write_refuses_to_legalize_regression(tmp_path: Path, monkeypat
 
 
 def test_coverage_write_persists_improved_low_watermarks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """--write 固化提升后的文件，并保留未提升文件的旧比例。"""
+    """
+    --write 固化提升后的文件，并保留未提升文件的旧比例。
+    """
     report_path = tmp_path / "coverage.json"
     baseline_path = tmp_path / "coverage-baseline.json"
     current_files = {
@@ -306,7 +340,9 @@ def test_coverage_write_persists_improved_low_watermarks(tmp_path: Path, monkeyp
 
 
 def test_coverage_write_rejects_malformed_existing_baseline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """已有 malformed 基线不能借 --write 被静默洗掉。"""
+    """
+    已有 malformed 基线不能借 --write 被静默洗掉。
+    """
     report_path = tmp_path / "coverage.json"
     baseline_path = tmp_path / "coverage-baseline.json"
     report_path.write_text(

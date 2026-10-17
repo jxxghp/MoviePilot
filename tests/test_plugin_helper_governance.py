@@ -1,4 +1,6 @@
-"""PluginHelper 兼容门面与插件 Application/Adapter owner 的治理回归。"""
+"""
+PluginHelper 兼容门面与插件 Application/Adapter owner 的治理回归。
+"""
 
 import ast
 from pathlib import Path
@@ -31,7 +33,9 @@ from app.domain.plugin import (
 
 
 def _class_methods(path: Path, class_name: str) -> set[str]:
-    """读取生产类的方法集合，避免兼容门面重新吸收具体实现。"""
+    """
+    读取生产类的方法集合，避免兼容门面重新吸收具体实现。
+    """
     tree = ast.parse(path.read_text(encoding="utf-8"))
     for node in tree.body:
         if isinstance(node, ast.ClassDef) and node.name == class_name:
@@ -44,7 +48,9 @@ def _class_methods(path: Path, class_name: str) -> set[str]:
 
 
 def test_helper_keeps_package_implementation_out_of_compat_facade() -> None:
-    """Helper 不得重新物理拥有安装、解压、备份或恢复实现。"""
+    """
+    Helper 不得重新物理拥有安装、解压、备份或恢复实现。
+    """
     methods = _class_methods(
         Path("app/adapters/external/market.py"),
         "PluginHelper",
@@ -68,7 +74,9 @@ def test_helper_keeps_package_implementation_out_of_compat_facade() -> None:
 
 
 def test_package_owner_has_no_helper_private_port() -> None:
-    """包 owner 与组合根不得反向解析 Helper 私有实现。"""
+    """
+    包 owner 与组合根不得反向解析 Helper 私有实现。
+    """
     helper_private_prefix = "_Plugin" "Helper__"
     package_path = Path("app/adapters/system/plugin/package.py")
     package_source = package_path.read_text(encoding="utf-8")
@@ -98,7 +106,9 @@ def test_package_owner_has_no_helper_private_port() -> None:
 
 
 def test_plugin_tests_do_not_reach_helper_private_implementation() -> None:
-    """插件测试只能验证 Helper 公开 ABI，市场实现细节应直接落到 owner。"""
+    """
+    插件测试只能验证 Helper 公开 ABI，市场实现细节应直接落到 owner。
+    """
     helper_private_prefix = "_Plugin" "Helper__"
     forbidden_attributes = {
         "_package_version_candidates",
@@ -125,7 +135,9 @@ def test_plugin_tests_do_not_reach_helper_private_implementation() -> None:
 
 
 def test_local_source_policy_round_trip(tmp_path: Path) -> None:
-    """本地来源编码、插件 ID、路径和代际解析共享同一纯领域合同。"""
+    """
+    本地来源编码、插件 ID、路径和代际解析共享同一纯领域合同。
+    """
     repo_path = tmp_path / "plugin source"
     repo_url = build_local_repo_url(
         "Demo Plugin",
@@ -144,7 +156,9 @@ def test_local_source_policy_round_trip(tmp_path: Path) -> None:
 
 
 def test_local_source_policy_covers_empty_and_invalid_references() -> None:
-    """纯领域解析器对无参数、非本地和畸形本地标识返回稳定结果。"""
+    """
+    纯领域解析器对无参数、非本地和畸形本地标识返回稳定结果。
+    """
     assert build_local_plugin_source("Demo Plugin") == "local://Demo%20Plugin"
     assert parse_local_plugin_reference("https://example.com/plugin") is None
     assert parse_local_plugin_path("https://example.com/plugin") is None
@@ -158,7 +172,9 @@ def test_local_source_policy_covers_empty_and_invalid_references() -> None:
 
 
 def test_generation_candidate_policy_is_stable_and_deduplicated() -> None:
-    """兼容代际和安装候选顺序必须稳定，并把基础索引放在末尾。"""
+    """
+    兼容代际和安装候选顺序必须稳定，并把基础索引放在末尾。
+    """
     assert compatible_plugin_generations(None) == ()
     assert compatible_plugin_generations("v3") == ("v3", "v2")
     assert compatible_plugin_generations("v2") == ("v2",)
@@ -189,7 +205,9 @@ def test_generation_policy_has_one_explicit_false_rule(
     generation: str | None,
     expected: bool,
 ) -> None:
-    """当前代际显式 false 不得被专用索引绕过，运行时声明不改变代际结论。"""
+    """
+    当前代际显式 false 不得被专用索引绕过，运行时声明不改变代际结论。
+    """
     assert is_plugin_generation_compatible(
         metadata,
         generation,
@@ -212,7 +230,9 @@ def test_runtime_policy_only_rejects_explicit_free_threaded_refusal(
     free_threaded: bool,
     compatible: bool,
 ) -> None:
-    """运行时判据只在 free-threaded 且显式声明不支持时拒绝。"""
+    """
+    运行时判据只在 free-threaded 且显式声明不支持时拒绝。
+    """
     result, message = check_plugin_runtime_compatibility(
         metadata,
         free_threaded=free_threaded,
@@ -240,7 +260,9 @@ def test_generation_policy_covers_all_owner_decisions(
     current: str | None,
     expected: bool,
 ) -> None:
-    """领域 owner 必须独立覆盖无代际、当前代际、兼容代际和未知代际。"""
+    """
+    领域 owner 必须独立覆盖无代际、当前代际、兼容代际和未知代际。
+    """
     assert is_plugin_generation_compatible(
         metadata,
         generation,
@@ -266,7 +288,9 @@ def test_system_version_policy_covers_valid_and_invalid_contracts(
     compatible: bool,
     message_part: str,
 ) -> None:
-    """系统版本约束必须拒绝错误类型、错误格式、坏宿主版本和不匹配范围。"""
+    """
+    系统版本约束必须拒绝错误类型、错误格式、坏宿主版本和不匹配范围。
+    """
     accepted, message = check_plugin_system_version(
         metadata,
         current_version=current_version,
@@ -276,7 +300,9 @@ def test_system_version_policy_covers_valid_and_invalid_contracts(
 
 
 def test_release_plan_policy_rejects_unlisted_version() -> None:
-    """指定 Release 必须来自市场已经读取的可安装版本列表。"""
+    """
+    指定 Release 必须来自市场已经读取的可安装版本列表。
+    """
     plan, message = build_plugin_release_install_plan(
         plugin_id="Demo",
         metadata={"release": True, "version": "2.0.0"},
@@ -290,7 +316,9 @@ def test_release_plan_policy_rejects_unlisted_version() -> None:
 
 
 def _checkpoint(tmp_path: Path) -> PluginPackageCheckpoint:
-    """构造不触碰文件系统的包事务快照。"""
+    """
+    构造不触碰文件系统的包事务快照。
+    """
     return PluginPackageCheckpoint(
         plugin_id="Demo",
         plugin_dir=tmp_path / "demo",
@@ -306,7 +334,9 @@ def _checkpoint(tmp_path: Path) -> PluginPackageCheckpoint:
 def test_package_owner_disables_compat_backup_when_checkpoint_exists(
     tmp_path: Path,
 ) -> None:
-    """主安装事务已有 durable checkpoint 时，兼容下载层不得再维护第二套备份。"""
+    """
+    主安装事务已有 durable checkpoint 时，兼容下载层不得再维护第二套备份。
+    """
     manager = PluginPackageManager(Mock())
     manager.install_raw = Mock(return_value=(True, ""))
     checkpoint = _checkpoint(tmp_path)
@@ -323,7 +353,9 @@ def test_package_owner_disables_compat_backup_when_checkpoint_exists(
 async def test_async_package_owner_disables_compat_backup_when_checkpoint_exists(
     tmp_path: Path,
 ) -> None:
-    """异步主安装事务同样只允许 durable checkpoint 拥有恢复材料。"""
+    """
+    异步主安装事务同样只允许 durable checkpoint 拥有恢复材料。
+    """
     manager = PluginPackageManager(Mock())
     manager.async_install_raw = AsyncMock(return_value=(True, ""))
     checkpoint = _checkpoint(tmp_path)

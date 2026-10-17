@@ -1,3 +1,7 @@
+"""
+验证插件发布技能的差异预览、同步和安全过滤。
+"""
+
 import importlib.util
 import json
 import sys
@@ -7,7 +11,9 @@ from typing import Any, Optional
 
 
 def load_publish_plugin_module() -> Any:
-    """加载插件发布脚本模块。"""
+    """
+    加载插件发布脚本模块。
+    """
     script_path = (
         Path(__file__).resolve().parents[1]
         / "skills"
@@ -23,7 +29,9 @@ def load_publish_plugin_module() -> Any:
 
 
 def test_collect_local_files_excludes_secrets_and_keeps_dist(tmp_path: Path) -> None:
-    """收集本地插件文件时应排除敏感文件并保留前端构建产物。"""
+    """
+    收集本地插件文件时应排除敏感文件并保留前端构建产物。
+    """
     module = load_publish_plugin_module()
     plugin_dir = tmp_path / "plugins.v2" / "myplugin"
     plugin_dir.mkdir(parents=True)
@@ -50,7 +58,9 @@ def test_collect_local_files_excludes_secrets_and_keeps_dist(tmp_path: Path) -> 
 
 
 def test_merge_package_content_preserves_other_plugins() -> None:
-    """合并 package 文件时只更新目标插件条目。"""
+    """
+    合并 package 文件时只更新目标插件条目。
+    """
     module = load_publish_plugin_module()
     remote_content = json.dumps(
         {
@@ -72,7 +82,9 @@ def test_merge_package_content_preserves_other_plugins() -> None:
 
 
 def test_push_creates_public_repo_when_explicitly_requested(tmp_path: Path) -> None:
-    """显式允许自动建仓时，推送会默认创建公开仓库。"""
+    """
+    显式允许自动建仓时，推送会默认创建公开仓库。
+    """
     module = load_publish_plugin_module()
     plugin_dir = tmp_path / "plugins.v2" / "myplugin"
     plugin_dir.mkdir(parents=True)
@@ -83,19 +95,27 @@ def test_push_creates_public_repo_when_explicitly_requested(tmp_path: Path) -> N
     )
 
     class FakeClient:
-        """模拟缺失仓库的 GitHub 客户端。"""
+        """
+        模拟缺失仓库的 GitHub 客户端。
+        """
 
         def __init__(self) -> None:
-            """初始化调用记录。"""
+            """
+            初始化调用记录。
+            """
             self.created_private = None
             self.put_paths: list[str] = []
 
         def repo_exists(self) -> bool:
-            """返回仓库不存在。"""
+            """
+            返回仓库不存在。
+            """
             return False
 
         def create_repo(self, private: bool = False) -> dict[str, Any]:
-            """记录建仓可见性。"""
+            """
+            记录建仓可见性。
+            """
             self.created_private = private
             return {"private": private, "html_url": "https://github.com/example/repo"}
 
@@ -106,18 +126,24 @@ def test_push_creates_public_repo_when_explicitly_requested(tmp_path: Path) -> N
             message: str,
             sha: Optional[str] = None,
         ) -> dict[str, Any]:
-            """记录上传路径。"""
+            """
+            记录上传路径。
+            """
             self.put_paths.append(path)
             return {"content": {"path": path}}
 
         def delete_file(self, path: str, message: str, sha: str) -> dict[str, Any]:
-            """记录删除路径。"""
+            """
+            记录删除路径。
+            """
             return {"content": {"path": path}}
 
     fake_client = FakeClient()
 
     def fake_build_context(args: Namespace, require_token: bool = False) -> dict[str, Any]:
-        """构造无需访问网络的推送上下文。"""
+        """
+        构造无需访问网络的推送上下文。
+        """
         layout = module.Layout(package_file="package.v2.json", plugin_root="plugins.v2")
         return {
             "repo": args.repo,
@@ -166,22 +192,32 @@ def test_push_creates_public_repo_when_explicitly_requested(tmp_path: Path) -> N
 
 
 def test_create_repo_dry_run_does_not_touch_github() -> None:
-    """建仓 dry-run 不访问 GitHub，只返回计划。"""
+    """
+    建仓 dry-run 不访问 GitHub，只返回计划。
+    """
     module = load_publish_plugin_module()
 
     class FakeClient:
-        """模拟不应被调用的 GitHub 客户端。"""
+        """
+        模拟不应被调用的 GitHub 客户端。
+        """
 
         def repo_exists(self) -> bool:
-            """如果被调用则说明 dry-run 行为错误。"""
+            """
+            如果被调用则说明 dry-run 行为错误。
+            """
             raise AssertionError("dry-run should not query GitHub")
 
         def create_repo(self, private: bool = False) -> dict[str, Any]:
-            """如果被调用则说明 dry-run 行为错误。"""
+            """
+            如果被调用则说明 dry-run 行为错误。
+            """
             raise AssertionError("dry-run should not create GitHub repo")
 
     def fake_build_context(args: Namespace, require_token: bool = False) -> dict[str, Any]:
-        """构造无需访问网络的建仓上下文。"""
+        """
+        构造无需访问网络的建仓上下文。
+        """
         return {
             "repo": args.repo,
             "branch": args.branch,

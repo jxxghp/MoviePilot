@@ -1,4 +1,6 @@
-"""插件实例日志等级覆盖列 Alembic 迁移测试。"""
+"""
+插件实例日志等级覆盖列 Alembic 迁移测试。
+"""
 
 from __future__ import annotations
 
@@ -15,7 +17,9 @@ MIGRATION_MODULE = "database.versions.487f7e681955_3_0_36"
 
 
 def _bind_migration(monkeypatch, connection):
-    """把迁移绑定到隔离数据库连接。"""
+    """
+    把迁移绑定到隔离数据库连接。
+    """
     migration = importlib.import_module(MIGRATION_MODULE)
     context = MigrationContext.configure(connection)
     monkeypatch.setattr(migration, "op", Operations(context))
@@ -23,7 +27,9 @@ def _bind_migration(monkeypatch, connection):
 
 
 def _create_legacy_table(connection: sa.engine.Connection) -> None:
-    """建出加列前的表结构（3.0.35 的落点），模拟迁移前的存量数据库。"""
+    """
+    建出加列前的表结构（3.0.35 的落点），模拟迁移前的存量数据库。
+    """
     now = datetime.now(timezone.utc).isoformat()
     table = sa.Table(
         "plugininstance",
@@ -52,7 +58,9 @@ def _create_legacy_table(connection: sa.engine.Connection) -> None:
 def test_plugin_instance_log_level_migration_adds_columns_and_keeps_existing_rows(
     monkeypatch,
 ) -> None:
-    """新增列必须可空，且不得影响已有行；重复升级与完整回滚都要幂等。"""
+    """
+    新增列必须可空，且不得影响已有行；重复升级与完整回滚都要幂等。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         _create_legacy_table(connection)
@@ -106,7 +114,9 @@ def test_plugin_instance_log_level_migration_adds_columns_and_keeps_existing_row
 def test_plugin_instance_log_level_migration_accepts_fresh_current_schema(
     monkeypatch,
 ) -> None:
-    """create_all 已建当前表时重复升级不得因列已存在而报错。"""
+    """
+    create_all 已建当前表时重复升级不得因列已存在而报错。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         PluginInstance.__table__.create(connection)
@@ -122,7 +132,9 @@ def test_plugin_instance_log_level_migration_accepts_fresh_current_schema(
 
 
 def test_plugin_instance_log_level_migration_skips_when_table_absent(monkeypatch) -> None:
-    """表尚未建出时升级要安静跳过，不得因反射不到表而炸掉整条迁移链。"""
+    """
+    表尚未建出时升级要安静跳过，不得因反射不到表而炸掉整条迁移链。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         migration = _bind_migration(monkeypatch, connection)

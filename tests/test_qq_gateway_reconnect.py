@@ -1,4 +1,6 @@
-"""验证 QQ Gateway 重连与 HTTP 主动通知的独立生命周期。"""
+"""
+验证 QQ Gateway 重连与 HTTP 主动通知的独立生命周期。
+"""
 
 import json
 import threading
@@ -14,7 +16,9 @@ from app.modules.qqbot import gateway, qqbot
 def test_gateway_reconnect_restores_dispatch_and_resets_backoff(
     monkeypatch: pytest.MonkeyPatch, opcode: int, ready_event: str,
 ) -> None:
-    """服务端重连指令必须退出旧连接，成功鉴权后恢复短退避及入站派发。"""
+    """
+    服务端重连指令必须退出旧连接，成功鉴权后恢复短退避及入站派发。
+    """
     stop_event = threading.Event()
     sockets = []
     sleeps = []
@@ -23,14 +27,18 @@ def test_gateway_reconnect_restores_dispatch_and_resets_backoff(
     heartbeat_sequences = []
 
     def build_websocket(_url, **callbacks):
-        """用四轮连接覆盖成功、鉴权前失败和再次成功后的重连。"""
+        """
+        用四轮连接覆盖成功、鉴权前失败和再次成功后的重连。
+        """
         ws = Mock()
         sockets.append(ws)
         index = len(sockets)
         heartbeat_received = threading.Event()
 
         def send(message):
-            """记录新连接的首个心跳，检查旧会话序号不会泄漏。"""
+            """
+            记录新连接的首个心跳，检查旧会话序号不会泄漏。
+            """
             payload = json.loads(message)
             if payload["op"] == 1:
                 if not heartbeat_received.is_set():
@@ -40,7 +48,9 @@ def test_gateway_reconnect_restores_dispatch_and_resets_backoff(
         ws.send.side_effect = send
 
         def run_forever(**_kwargs):
-            """模拟完整协议回调，不连接真实 QQ 服务。"""
+            """
+            模拟完整协议回调，不连接真实 QQ 服务。
+            """
             callbacks["on_message"](ws, json.dumps({
                 "op": 10, "d": {"heartbeat_interval": 1},
             }))
@@ -88,7 +98,9 @@ def test_gateway_reconnect_restores_dispatch_and_resets_backoff(
 def test_proactive_notification_does_not_depend_on_gateway(
     monkeypatch: pytest.MonkeyPatch, is_group: bool,
 ) -> None:
-    """Gateway 已断开时仍通过 HTTP 向配置的用户或群发送主动通知。"""
+    """
+    Gateway 已断开时仍通过 HTTP 向配置的用户或群发送主动通知。
+    """
     client = qqbot.QQBot.__new__(qqbot.QQBot)
     client._ready = True
     client._app_id = "app"

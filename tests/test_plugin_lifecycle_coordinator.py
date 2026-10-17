@@ -1,4 +1,6 @@
-"""插件生命周期协调器的启动 owner/token 契约测试。"""
+"""
+插件生命周期协调器的启动 owner/token 契约测试。
+"""
 
 import asyncio
 import threading
@@ -11,13 +13,17 @@ from app.application.plugin.lifecycle import PluginLifecycleCoordinator
 
 
 async def _assert_event_waits(event: asyncio.Event) -> None:
-    """确认事件在短预算内仍未发生，避免测试依赖固定 sleep 时序。"""
+    """
+    确认事件在短预算内仍未发生，避免测试依赖固定 sleep 时序。
+    """
     with pytest.raises(asyncio.TimeoutError):
         await asyncio.wait_for(asyncio.shield(event.wait()), timeout=0.03)
 
 
 async def _cancel_task(task: asyncio.Task) -> None:
-    """取消仍在等待生命周期资格的任务并消费其终态。"""
+    """
+    取消仍在等待生命周期资格的任务并消费其终态。
+    """
     task.cancel()
     with suppress(asyncio.CancelledError):
         await task
@@ -25,7 +31,9 @@ async def _cancel_task(task: asyncio.Task) -> None:
 
 @pytest.mark.asyncio
 async def test_startup_scope_yields_opaque_token_for_matching_plugin_hold() -> None:
-    """启动 owner 取得的 token 可让内部取得逐插件资格。"""
+    """
+    启动 owner 取得的 token 可让内部取得逐插件资格。
+    """
     coordinator = PluginLifecycleCoordinator()
 
     async with coordinator.hold_startup() as startup_token:
@@ -51,7 +59,9 @@ async def test_startup_scope_yields_opaque_token_for_matching_plugin_hold() -> N
 
 @pytest.mark.asyncio
 async def test_external_and_duplicate_plugin_holds_remain_blocked() -> None:
-    """启动内部的逐插件资格不向外部调用放行，且同插件仍保持互斥。"""
+    """
+    启动内部的逐插件资格不向外部调用放行，且同插件仍保持互斥。
+    """
     coordinator = PluginLifecycleCoordinator()
     internal_release = asyncio.Event()
     duplicate_release = asyncio.Event()
@@ -96,7 +106,9 @@ async def test_external_and_duplicate_plugin_holds_remain_blocked() -> None:
 
 @pytest.mark.asyncio
 async def test_foreign_and_expired_tokens_cannot_bypass_current_startup_lease() -> None:
-    """其他 coordinator 或旧 lease 的 token 不得绕过当前启动 owner。"""
+    """
+    其他 coordinator 或旧 lease 的 token 不得绕过当前启动 owner。
+    """
     first = PluginLifecycleCoordinator()
     second = PluginLifecycleCoordinator()
 
@@ -131,7 +143,9 @@ async def test_foreign_and_expired_tokens_cannot_bypass_current_startup_lease() 
 
 @pytest.mark.asyncio
 async def test_startup_token_can_cross_threads_without_contextvar() -> None:
-    """显式 token 可跨线程传递，资格判断不依赖隐式 ContextVar。"""
+    """
+    显式 token 可跨线程传递，资格判断不依赖隐式 ContextVar。
+    """
     coordinator = PluginLifecycleCoordinator()
     main_thread = threading.current_thread().name
 
@@ -154,7 +168,9 @@ async def test_startup_token_can_cross_threads_without_contextvar() -> None:
 
 @pytest.mark.asyncio
 async def test_hold_without_token_retains_startup_waiting_compatibility() -> None:
-    """无参数调用继续遵守启动全局资格的等待语义。"""
+    """
+    无参数调用继续遵守启动全局资格的等待语义。
+    """
     coordinator = PluginLifecycleCoordinator()
     async with coordinator.hold_startup():
         entered = asyncio.Event()

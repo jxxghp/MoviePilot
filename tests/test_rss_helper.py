@@ -1,3 +1,7 @@
+"""
+验证RSS 内容获取、解析与种子信息转换。
+"""
+
 from types import SimpleNamespace
 
 from app.adapters.network.http import RequestUtils
@@ -5,7 +9,9 @@ from app.application.rss import RssHelper, configure_rss_ports, reset_rss_ports
 
 
 def test_rss_site_domain_prefers_configured_multilevel_domain():
-    """RSS 站点域名匹配应保留配置中的多级域名，并为普通域名回退。"""
+    """
+    RSS 站点域名匹配应保留配置中的多级域名，并为普通域名回退。
+    """
     assert RssHelper._get_site_domain("https://u2.dmhy.org/getrss.php") == "u2.dmhy.org"
     assert RssHelper._get_site_domain("https://tracker.example.com/rss") == "example.com"
 
@@ -47,23 +53,33 @@ def test_rss_helper_decodes_utf8_xml_before_python_parser():
 
         @staticmethod
         def decode_xml(response, **kwargs):
-            """复用真实编码策略验证 Port 边界前后的旧行为。"""
+            """
+            复用真实编码策略验证 Port 边界前后的旧行为。
+            """
             return RequestUtils.get_decoded_xml_content(response, **kwargs)
 
     class FakeBrowserPort:
-        """占位浏览器 Port，本用例不会触达。"""
+        """
+        占位浏览器 Port，本用例不会触达。
+        """
 
         @staticmethod
         def render(**_kwargs):
-            """拒绝意外浏览器访问。"""
+            """
+            拒绝意外浏览器访问。
+            """
             raise AssertionError("不应访问浏览器")
 
     class FakeParserPort:
-        """关闭原生解析以验证 Python 解析兜底。"""
+        """
+        关闭原生解析以验证 Python 解析兜底。
+        """
 
         @staticmethod
         def parse(_content, _max_items):
-            """返回 None 触发 Python 解析。"""
+            """
+            返回 None 触发 Python 解析。
+            """
             return None
 
     configure_rss_ports(

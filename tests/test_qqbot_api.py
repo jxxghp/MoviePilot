@@ -1,4 +1,6 @@
-"""验证 QQ Bot API 的响应边界和消息请求组装。"""
+"""
+验证 QQ Bot API 的响应边界和消息请求组装。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -9,22 +11,30 @@ from app.modules.qqbot import api
 
 
 class _RequestClient:
-    """提供可控的 QQ API HTTP 响应。"""
+    """
+    提供可控的 QQ API HTTP 响应。
+    """
 
     def __init__(self, response: object) -> None:
         self.response = response
 
     def post_res(self, *_args: object, **_kwargs: object) -> object:
-        """返回预设的 POST 响应。"""
+        """
+        返回预设的 POST 响应。
+        """
         return self.response
 
     def get_res(self, *_args: object, **_kwargs: object) -> object:
-        """返回预设的 GET 响应。"""
+        """
+        返回预设的 GET 响应。
+        """
         return self.response
 
 
 def test_get_access_token_caches_and_reuses_valid_token(monkeypatch: pytest.MonkeyPatch) -> None:
-    """有效的令牌响应应被缓存，并在有效期内复用。"""
+    """
+    有效的令牌响应应被缓存，并在有效期内复用。
+    """
     api.clear_token_cache()
     response = SimpleNamespace(json=lambda: {"access_token": "token", "expires_in": 7200})
     client = Mock(return_value=_RequestClient(response))
@@ -39,7 +49,9 @@ def test_get_access_token_caches_and_reuses_valid_token(monkeypatch: pytest.Monk
 def test_get_access_token_rejects_invalid_response(
     monkeypatch: pytest.MonkeyPatch, payload: object,
 ) -> None:
-    """令牌响应不是对象或令牌不是字符串时应失败。"""
+    """
+    令牌响应不是对象或令牌不是字符串时应失败。
+    """
     api.clear_token_cache()
     response = SimpleNamespace(json=lambda: payload)
     monkeypatch.setattr(api, "RequestUtils", Mock(return_value=_RequestClient(response)))
@@ -49,7 +61,9 @@ def test_get_access_token_rejects_invalid_response(
 
 
 def test_api_request_validates_json_and_status(monkeypatch: pytest.MonkeyPatch) -> None:
-    """API 请求应收窄 JSON 对象，并将 HTTP 错误转换为异常。"""
+    """
+    API 请求应收窄 JSON 对象，并将 HTTP 错误转换为异常。
+    """
     response = SimpleNamespace(json=lambda: {"url": "wss://gateway"}, status_code=200)
     monkeypatch.setattr(api, "RequestUtils", Mock(return_value=_RequestClient(response)))
     assert api.get_gateway_url("token") == "wss://gateway"
@@ -61,7 +75,9 @@ def test_api_request_validates_json_and_status(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_send_message_builds_passive_and_proactive_requests(monkeypatch: pytest.MonkeyPatch) -> None:
-    """统一发送接口应按消息类型和 msg_id 选择正确的请求路径。"""
+    """
+    统一发送接口应按消息类型和 msg_id 选择正确的请求路径。
+    """
     request = Mock(return_value={"id": "sent"})
     monkeypatch.setattr(api, "_api_request", request)
 
@@ -72,6 +88,8 @@ def test_send_message_builds_passive_and_proactive_requests(monkeypatch: pytest.
 
 
 def test_proactive_message_rejects_blank_content() -> None:
-    """主动消息不能发送空白内容。"""
+    """
+    主动消息不能发送空白内容。
+    """
     with pytest.raises(ValueError, match="不能为空"):
         api.send_proactive_c2c_message("token", "user", "  ")

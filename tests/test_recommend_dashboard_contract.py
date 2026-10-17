@@ -1,3 +1,7 @@
+"""
+验证推荐仪表盘数据投影与响应契约。
+"""
+
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -22,7 +26,9 @@ async def test_dashboard_recommend_endpoints_preserve_successful_empty_results(
     endpoint,
     chain_method,
 ):
-    """TMDB 成功返回空列表时，推荐卡片接口应保留真实空结果。"""
+    """
+    TMDB 成功返回空列表时，推荐卡片接口应保留真实空结果。
+    """
     with patch("app.api.endpoints.recommend.RecommendChain") as chain_cls:
         chain_mock = AsyncMock(return_value=[])
         setattr(chain_cls.return_value, chain_method, chain_mock)
@@ -49,7 +55,9 @@ async def test_dashboard_recommend_endpoints_report_upstream_failures(
     endpoint,
     chain_method,
 ):
-    """TMDB 请求异常时，推荐卡片接口应返回明确的网关错误。"""
+    """
+    TMDB 请求异常时，推荐卡片接口应返回明确的网关错误。
+    """
     with patch("app.api.endpoints.recommend.RecommendChain") as chain_cls:
         setattr(
             chain_cls.return_value,
@@ -97,7 +105,9 @@ async def test_tmdb_recommend_queries_only_propagate_failures_in_strict_mode(
     dependency_method,
     kwargs,
 ):
-    """推荐 endpoint 的严格模式应保留异常，其他调用方继续沿用空列表降级。"""
+    """
+    推荐 endpoint 的严格模式应保留异常，其他调用方继续沿用空列表降级。
+    """
     api = TmdbApi.__new__(TmdbApi)
     dependency = SimpleNamespace(
         **{dependency_method: AsyncMock(side_effect=TMDbException("remote unavailable"))}

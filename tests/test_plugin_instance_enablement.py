@@ -1,4 +1,6 @@
-"""插件实例启停语义测试：数据访问层、实例存储与运行期装载取数。"""
+"""
+插件实例启停语义测试：数据访问层、实例存储与运行期装载取数。
+"""
 
 from __future__ import annotations
 
@@ -17,11 +19,15 @@ _INSTANCE_IDS = ("EnablementHost", "EnablementHostX2", "EnablementOther")
 
 @pytest.fixture(autouse=True)
 def purge_written_rows():
-    """删除用例写入的行，测试库在整个会话内共享，残留会干扰后续用例。"""
+    """
+    删除用例写入的行，测试库在整个会话内共享，残留会干扰后续用例。
+    """
     yield
 
     def purge(session: Session) -> None:
-        """按本文件使用的固定标识精确删除，不触碰其他用例的数据。"""
+        """
+        按本文件使用的固定标识精确删除，不触碰其他用例的数据。
+        """
         session.execute(
             delete(PluginInstanceRecord).where(
                 PluginInstanceRecord.instance_id.in_(_INSTANCE_IDS)
@@ -32,12 +38,12 @@ def purge_written_rows():
 
 
 # --------------------------------------------------------------------------- #
-# PluginInstanceOper.set_enabled
 # --------------------------------------------------------------------------- #
 
 
 def test_set_enabled_keeps_configuration_when_disabling():
-    """停用只翻启用位，业务参数与展示信息原样留在那一行等待再次启用。
+    """
+    停用只翻启用位，业务参数与展示信息原样留在那一行等待再次启用。
 
     这正是这一列存在的理由：把「在册」与「有配置」拆开，让用户能停掉一个实例而
     不必在「删掉配置」和「留着它继续跑」之间二选一。
@@ -72,7 +78,8 @@ def test_set_enabled_keeps_configuration_when_disabling():
 
 
 def test_disabling_clears_default_target_and_log_level_override():
-    """停用同时清掉默认调用目标置位与日志等级覆盖，两者只对在册实例才有意义。
+    """
+    停用同时清掉默认调用目标置位与日志等级覆盖，两者只对在册实例才有意义。
 
     不清默认目标，未指定实例的外部调用会被路由到一个不会被实例化的实例；不清日志
     等级，运行期停用时清掉的进程内覆盖与库里留下的那份会长期不一致。
@@ -101,7 +108,9 @@ def test_disabling_clears_default_target_and_log_level_override():
 
 
 def test_set_enabled_reports_false_for_a_row_that_does_not_exist():
-    """行不存在时如实返回失败，不隐式建行。"""
+    """
+    行不存在时如实返回失败，不隐式建行。
+    """
     oper = PluginInstanceOper()
 
     assert oper.set_enabled(instance_id="EnablementMissing", is_enabled=True) is False
@@ -109,7 +118,9 @@ def test_set_enabled_reports_false_for_a_row_that_does_not_exist():
 
 
 def test_list_enabled_excludes_disabled_rows():
-    """运行期装载取数只看启用中的行。"""
+    """
+    运行期装载取数只看启用中的行。
+    """
     oper = PluginInstanceOper()
     oper.save(instance_id="EnablementHost", source_plugin_id="EnablementHost", is_enabled=True)
     oper.save(
@@ -128,7 +139,9 @@ def test_list_enabled_excludes_disabled_rows():
 
 
 def test_an_enabled_host_row_is_never_recycled_as_empty():
-    """启用中的本体行不算「只剩身份列」，清空配置不得把它连同装载判据一起回收。"""
+    """
+    启用中的本体行不算「只剩身份列」，清空配置不得把它连同装载判据一起回收。
+    """
     oper = PluginInstanceOper()
     oper.save(instance_id="EnablementHost", source_plugin_id="EnablementHost", is_enabled=True)
     oper.save_config_data(
@@ -150,21 +163,29 @@ def test_an_enabled_host_row_is_never_recycled_as_empty():
 
 
 class _FakeDirectory:
-    """在内存里模拟实例表读写的目录替身。"""
+    """
+    在内存里模拟实例表读写的目录替身。
+    """
 
     def __init__(self, records: dict[str, PluginInstance]) -> None:
         self.records = records
 
     def get(self, instance_id: str):
-        """按实例 ID 读取单行。"""
+        """
+        按实例 ID 读取单行。
+        """
         return self.records.get(instance_id)
 
     def list_all(self):
-        """列出全部行，含停用的。"""
+        """
+        列出全部行，含停用的。
+        """
         return list(self.records.values())
 
     def list_by_source(self, source_plugin_id: str):
-        """按源插件列出全部行。"""
+        """
+        按源插件列出全部行。
+        """
         return [
             record
             for record in self.records.values()
@@ -172,19 +193,27 @@ class _FakeDirectory:
         ]
 
     def list_enabled(self):
-        """列出启用中的行。"""
+        """
+        列出启用中的行。
+        """
         return [record for record in self.records.values() if record.is_enabled]
 
     def save(self, instance: PluginInstance) -> None:
-        """新增或更新一行。"""
+        """
+        新增或更新一行。
+        """
         self.records[instance.instance_id] = instance
 
     def delete(self, instance_id: str) -> bool:
-        """删除一行。"""
+        """
+        删除一行。
+        """
         return self.records.pop(instance_id, None) is not None
 
     def set_enabled(self, instance_id: str, is_enabled: bool) -> bool:
-        """写入启用位。"""
+        """
+        写入启用位。
+        """
         record = self.records.get(instance_id)
         if record is None:
             return False
@@ -193,7 +222,9 @@ class _FakeDirectory:
 
 
 def _store(records: dict[str, PluginInstance]) -> tuple[PluginInstanceStore, _FakeDirectory]:
-    """构造挂接内存目录、且旧键导入已标记完成的实例存储。"""
+    """
+    构造挂接内存目录、且旧键导入已标记完成的实例存储。
+    """
     directory = _FakeDirectory(records)
     storage = PluginStorage(read=lambda _key: True, write=lambda _key, _value: None)
     return (
@@ -203,21 +234,27 @@ def _store(records: dict[str, PluginInstance]) -> tuple[PluginInstanceStore, _Fa
 
 
 def _clone(instance_id: str, source: str, *, enabled: bool = True) -> PluginInstance:
-    """构造一个分身实例描述。"""
+    """
+    构造一个分身实例描述。
+    """
     return PluginInstance(
         instance_id=instance_id, source_plugin_id=source, is_enabled=enabled
     )
 
 
 def _host(plugin_id: str, *, enabled: bool = True) -> PluginInstance:
-    """构造一个本体实例描述。"""
+    """
+    构造一个本体实例描述。
+    """
     return PluginInstance(
         instance_id=plugin_id, source_plugin_id=plugin_id, is_enabled=enabled
     )
 
 
 def test_enabled_hosts_is_the_host_loading_criterion():
-    """本体的装载取数只给出启用中的本体，停用的本体不在其中。"""
+    """
+    本体的装载取数只给出启用中的本体，停用的本体不在其中。
+    """
     store, _ = _store(
         {
             "PluginA": _host("PluginA"),
@@ -232,7 +269,8 @@ def test_enabled_hosts_is_the_host_loading_criterion():
 
 
 def test_disabled_clone_stays_registered_and_visible():
-    """停用的分身仍在册：卡片列表、卸载守卫与默认目标候选都要看得见它。
+    """
+    停用的分身仍在册：卡片列表、卸载守卫与默认目标候选都要看得见它。
 
     读取口若替调用方把停用的行藏起来，卸载守卫会放过一个还留着行的分身，用户随后
     只能看到一个既列不出来、也删不掉的孤儿实例。
@@ -249,7 +287,9 @@ def test_disabled_clone_stays_registered_and_visible():
 
 
 def test_enable_and_disable_report_whether_state_changed():
-    """重复启用或重复停用报告未发生变化，调用方据此决定要不要重载运行态。"""
+    """
+    重复启用或重复停用报告未发生变化，调用方据此决定要不要重载运行态。
+    """
     store, _ = _store(
         {"PluginA": _host("PluginA"), "PluginAx2": _clone("PluginAx2", "PluginA")}
     )
@@ -261,7 +301,8 @@ def test_enable_and_disable_report_whether_state_changed():
 
 
 def test_enable_host_creates_the_row_when_the_plugin_has_none():
-    """安装收尾时本体还没有行，必须按默认视图建出并置为启用。
+    """
+    安装收尾时本体还没有行，必须按默认视图建出并置为启用。
 
     只往安装清单里加一条而不建这一行，插件会装完当次靠定向重载跑起来、重启后再也
     不加载。
@@ -277,7 +318,9 @@ def test_enable_host_creates_the_row_when_the_plugin_has_none():
 
 
 def test_disable_host_keeps_the_row_and_its_configuration():
-    """停用本体保留整行，只翻启用位。"""
+    """
+    停用本体保留整行，只翻启用位。
+    """
     store, directory = _store({"PluginA": _host("PluginA")})
 
     assert store.disable_host("PluginA") is True
@@ -288,7 +331,9 @@ def test_disable_host_keeps_the_row_and_its_configuration():
 
 
 def test_host_and_clone_views_never_leak_into_each_other():
-    """本体与分身两组读写口互不可见，避免按分身写入顶掉本体那一行。"""
+    """
+    本体与分身两组读写口互不可见，避免按分身写入顶掉本体那一行。
+    """
     store, _ = _store(
         {"PluginA": _host("PluginA"), "PluginAx2": _clone("PluginAx2", "PluginA")}
     )

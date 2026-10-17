@@ -1,3 +1,7 @@
+"""
+验证插件文件监控的启动、更新与关闭。
+"""
+
 import asyncio
 import threading
 import time
@@ -27,19 +31,25 @@ from app.startup.initializers import plugins as plugins_initializer
 
 @pytest.fixture(autouse=True)
 def _restore_main_loop_registry():
-    """每个插件生命周期用例后恢复主循环投递目标。"""
+    """
+    每个插件生命周期用例后恢复主循环投递目标。
+    """
     previous = main_loop_registry.current
     yield
     main_loop_registry.replace_compat(previous)
 
 
 def _reset_plugin_manager() -> None:
-    """清除插件管理器单例，保证构造时序测试彼此隔离。"""
+    """
+    清除插件管理器单例，保证构造时序测试彼此隔离。
+    """
     Singleton._instances.pop((PluginManager, (), frozenset()), None)
 
 
 def _patch_runtime_settings(monkeypatch, **values) -> None:
-    """按键注入插件运行时配置，避免测试恢复模块级 Settings 代理。"""
+    """
+    按键注入插件运行时配置，避免测试恢复模块级 Settings 代理。
+    """
     settings = SimpleNamespace(**values)
     monkeypatch.setattr(
         plugin_manager_module,
@@ -57,7 +67,9 @@ def test_plugin_manager_constructor_does_not_start_monitor_before_runtime(
     dev: bool,
     auto_reload: bool,
 ) -> None:
-    """组合根尚未装配时，构造插件管理器不得提前启动开发监控线程。"""
+    """
+    组合根尚未装配时，构造插件管理器不得提前启动开发监控线程。
+    """
     _reset_plugin_manager()
     reset_plugin_system()
     start = MagicMock()
@@ -76,7 +88,9 @@ def test_plugin_manager_constructor_does_not_start_monitor_before_runtime(
 
 
 def test_init_plugins_starts_monitor_after_runtime_and_routes(monkeypatch) -> None:
-    """启动阶段只加载依赖已就绪的插件，再开放路由和文件监控。"""
+    """
+    启动阶段只加载依赖已就绪的插件，再开放路由和文件监控。
+    """
     order: list[str] = []
     manager = MagicMock()
     manager.classify_plugins.return_value = PluginDependencyClassification(
@@ -110,7 +124,9 @@ def test_init_plugins_starts_monitor_after_runtime_and_routes(monkeypatch) -> No
 
 
 def test_init_plugins_defers_installed_local_candidate_until_sync(monkeypatch) -> None:
-    """本地仓候选不得在源码协调前先启动运行目录中的旧载荷。"""
+    """
+    本地仓候选不得在源码协调前先启动运行目录中的旧载荷。
+    """
     order: list[str] = []
     manager = MagicMock()
     manager.classify_plugins.return_value = PluginDependencyClassification(
@@ -141,7 +157,9 @@ def test_init_plugins_defers_installed_local_candidate_until_sync(monkeypatch) -
 
 
 def test_init_plugins_skips_invalid_installed_plugin_id(monkeypatch) -> None:
-    """历史安装清单含不合规 ID 时，不能阻断其他插件的启动。"""
+    """
+    历史安装清单含不合规 ID 时，不能阻断其他插件的启动。
+    """
     manager = MagicMock()
     manager.classify_plugins.return_value = PluginDependencyClassification(
         ready=("ReadyPlugin",),
@@ -167,7 +185,9 @@ def test_init_plugins_skips_invalid_installed_plugin_id(monkeypatch) -> None:
 
 
 def test_plugin_manager_projects_dependency_classification_to_runtime_status() -> None:
-    """真实管理器按分类字段写入三类启动状态，避免测试替身掩盖字段漂移。"""
+    """
+    真实管理器按分类字段写入三类启动状态，避免测试替身掩盖字段漂移。
+    """
     _reset_plugin_manager()
     manager = PluginManager()
 
@@ -188,7 +208,9 @@ def test_plugin_manager_projects_dependency_classification_to_runtime_status() -
 
 
 def test_plugin_manager_promotes_running_dependency_after_recovery() -> None:
-    """依赖恢复后，运行中的插件状态必须允许后台流程触发重载。"""
+    """
+    依赖恢复后，运行中的插件状态必须允许后台流程触发重载。
+    """
     _reset_plugin_manager()
     manager = PluginManager()
     manager._plugin_registry.running["DependencyRecovered"] = object()
@@ -212,7 +234,9 @@ def test_plugin_manager_promotes_running_dependency_after_recovery() -> None:
 
 
 def _patch_sync_plugins(monkeypatch, manager: MagicMock) -> MagicMock:
-    """隔离后台执行器并返回动态路由注册替身。"""
+    """
+    隔离后台执行器并返回动态路由注册替身。
+    """
     async def execute(_loop, task_func, _task_name):
         return task_func()
 
@@ -262,7 +286,9 @@ def _patch_sync_plugins(monkeypatch, manager: MagicMock) -> MagicMock:
 async def test_sync_plugins_installs_local_payload_before_first_activation(
     monkeypatch,
 ) -> None:
-    """本地高版本写入完成后才能首次激活对应插件。"""
+    """
+    本地高版本写入完成后才能首次激活对应插件。
+    """
     order: list[str] = []
     manager = MagicMock()
     manager.sync.side_effect = lambda *_args, **_kwargs: (
@@ -290,7 +316,9 @@ async def test_sync_plugins_installs_local_payload_before_first_activation(
 async def test_sync_plugins_does_not_activate_after_package_sync_failure(
     monkeypatch,
 ) -> None:
-    """包同步失败后不得继续激活启动阶段主动延后的旧载荷。"""
+    """
+    包同步失败后不得继续激活启动阶段主动延后的旧载荷。
+    """
     manager = MagicMock()
     _patch_sync_plugins(monkeypatch, manager)
     monkeypatch.setattr(
@@ -309,7 +337,9 @@ async def test_sync_plugins_does_not_activate_after_package_sync_failure(
 async def test_sync_plugins_rejects_before_configuring_mutable_services(
     monkeypatch,
 ) -> None:
-    """启动后同步在 admission 封口后不重装配服务、不写包或运行态。"""
+    """
+    启动后同步在 admission 封口后不重装配服务、不写包或运行态。
+    """
     admission = PluginMutationAdmission()
     admission.seal()
     manager = MagicMock()
@@ -329,7 +359,9 @@ async def test_sync_plugins_rejects_before_configuring_mutable_services(
 async def test_sync_plugins_activates_ready_plugins_when_dependencies_fail(
     monkeypatch,
 ) -> None:
-    """依赖恢复失败时仍激活无关的已就绪插件。"""
+    """
+    依赖恢复失败时仍激活无关的已就绪插件。
+    """
     manager = MagicMock()
     manager.sync.return_value = ["demo"]
     manager.async_install_plugin_missing_dependencies_with_status.return_value = (
@@ -354,7 +386,9 @@ async def test_sync_plugins_activates_ready_plugins_when_dependencies_fail(
 async def test_sync_plugins_loads_only_plugins_that_become_ready(
     monkeypatch,
 ) -> None:
-    """后台依赖恢复后只启动尚未运行且当前已就绪的插件。"""
+    """
+    后台依赖恢复后只启动尚未运行且当前已就绪的插件。
+    """
     manager = MagicMock()
     manager.sync.return_value = []
     manager.async_install_plugin_missing_dependencies_with_status.return_value = (
@@ -383,7 +417,9 @@ async def test_sync_plugins_loads_only_plugins_that_become_ready(
 
 @pytest.mark.asyncio
 async def test_sync_plugins_reloads_only_updated_running_plugins(monkeypatch) -> None:
-    """源码同步只重载对应运行实例，不重启其他插件。"""
+    """
+    源码同步只重载对应运行实例，不重启其他插件。
+    """
     manager = MagicMock()
     manager.sync.return_value = ["UpdatedPlugin"]
     manager.async_install_plugin_missing_dependencies_with_status.return_value = (
@@ -411,7 +447,9 @@ async def test_sync_plugins_reloads_only_updated_running_plugins(monkeypatch) ->
 async def test_sync_plugins_reloads_running_plugin_after_sync_failure(
     monkeypatch,
 ) -> None:
-    """回滚后仍运行的插件需重新确认运行态，并继续激活其他就绪插件。"""
+    """
+    回滚后仍运行的插件需重新确认运行态，并继续激活其他就绪插件。
+    """
     manager = MagicMock()
     manager.sync.return_value = []
     manager.async_install_plugin_missing_dependencies_with_status.return_value = (
@@ -442,7 +480,9 @@ async def test_sync_plugins_reloads_running_plugin_after_sync_failure(
 async def test_sync_plugins_continues_startup_when_failed_plugin_is_not_ready(
     monkeypatch,
 ) -> None:
-    """不可恢复的单插件失败仍让启动继续完成依赖与服务初始化。"""
+    """
+    不可恢复的单插件失败仍让启动继续完成依赖与服务初始化。
+    """
     manager = MagicMock()
     manager.sync.return_value = []
     manager.async_install_plugin_missing_dependencies_with_status.return_value = (
@@ -471,7 +511,9 @@ async def test_sync_plugins_continues_startup_when_failed_plugin_is_not_ready(
 async def test_sync_plugins_reloads_running_plugin_after_dependency_recovery(
     monkeypatch,
 ) -> None:
-    """依赖恢复后，已运行的旧实例必须切换到新源码。"""
+    """
+    依赖恢复后，已运行的旧实例必须切换到新源码。
+    """
     manager = MagicMock()
     manager.sync.return_value = []
     manager.async_install_plugin_missing_dependencies_with_status.return_value = (
@@ -497,7 +539,9 @@ async def test_sync_plugins_reloads_running_plugin_after_dependency_recovery(
 
 @pytest.mark.asyncio
 async def test_sync_plugins_keeps_runtime_when_nothing_changed(monkeypatch) -> None:
-    """源码和依赖均无变化时保留首次初始化结果。"""
+    """
+    源码和依赖均无变化时保留首次初始化结果。
+    """
     manager = MagicMock()
     manager.sync.return_value = []
     manager.async_install_plugin_missing_dependencies_with_status.return_value = (
@@ -522,7 +566,9 @@ async def test_sync_plugins_keeps_runtime_when_nothing_changed(monkeypatch) -> N
 async def test_sync_plugins_keeps_event_loop_responsive_during_activation(
     monkeypatch,
 ) -> None:
-    """插件初始化运行在线程池时，Web 事件循环仍可继续调度。"""
+    """
+    插件初始化运行在线程池时，Web 事件循环仍可继续调度。
+    """
     manager = MagicMock()
     manager.sync.return_value = []
     manager.async_install_plugin_missing_dependencies_with_status.return_value = (
@@ -589,7 +635,9 @@ def test_start_monitor_respects_runtime_configuration(
     auto_reload: bool,
     expected_calls: int,
 ) -> None:
-    """首次启动只在开发模式或插件自动重载启用时创建监控线程。"""
+    """
+    首次启动只在开发模式或插件自动重载启用时创建监控线程。
+    """
     _reset_plugin_manager()
     reset_plugin_system()
     _patch_runtime_settings(
@@ -609,7 +657,9 @@ def test_start_monitor_respects_runtime_configuration(
 
 
 def test_plugin_monitor_waits_until_dependency_settlement(monkeypatch) -> None:
-    """后台依赖收敛期间不启动文件监控，避免源码写入触发重复重载。"""
+    """
+    后台依赖收敛期间不启动文件监控，避免源码写入触发重复重载。
+    """
     _reset_plugin_manager()
     reset_plugin_system()
     _patch_runtime_settings(
@@ -639,12 +689,16 @@ def test_plugin_monitor_waits_until_dependency_settlement(monkeypatch) -> None:
 
 
 def test_monitor_stop_keeps_thread_owned_until_it_really_exits() -> None:
-    """停止超时后保留活线程引用，使后续停机调用仍能继续等待。"""
+    """
+    停止超时后保留活线程引用，使后续停机调用仍能继续等待。
+    """
     started = threading.Event()
     release = threading.Event()
 
     def runner() -> None:
-        """模拟暂时无法响应停止事件的文件监控循环。"""
+        """
+        模拟暂时无法响应停止事件的文件监控循环。
+        """
         started.set()
         release.wait()
 
@@ -666,13 +720,17 @@ def test_monitor_stop_keeps_thread_owned_until_it_really_exits() -> None:
 
 
 def test_monitor_stop_counts_lifecycle_lock_wait_in_timeout() -> None:
-    """并发重建占用生命周期锁时，停止调用不得突破自身预算。"""
+    """
+    并发重建占用生命周期锁时，停止调用不得突破自身预算。
+    """
     controller = PluginMonitorController(runner=lambda: None, log=MagicMock())
     lock_acquired = threading.Event()
     release = threading.Event()
 
     def hold_lifecycle_lock() -> None:
-        """模拟配置重载在停止请求到达时仍持有生命周期锁。"""
+        """
+        模拟配置重载在停止请求到达时仍持有生命周期锁。
+        """
         with controller._lifecycle_lock:
             lock_acquired.set()
             release.wait()
@@ -694,7 +752,9 @@ def test_monitor_stop_counts_lifecycle_lock_wait_in_timeout() -> None:
 
 
 def test_shutdown_seal_blocks_reload_between_stop_and_start(monkeypatch) -> None:
-    """停机封口落在热重载停启间隙时，旧重载不得再创建监控线程。"""
+    """
+    停机封口落在热重载停启间隙时，旧重载不得再创建监控线程。
+    """
     reload_stopped = threading.Event()
     resume_reload = threading.Event()
     runner_started = threading.Event()
@@ -705,7 +765,9 @@ def test_shutdown_seal_blocks_reload_between_stop_and_start(monkeypatch) -> None
     original_stop = controller.stop
 
     def pause_after_stop(timeout: float = 5.0) -> bool:
-        """把配置热重载稳定暂停在旧线程已停、新线程未启的窗口。"""
+        """
+        把配置热重载稳定暂停在旧线程已停、新线程未启的窗口。
+        """
         stopped = original_stop(timeout=timeout)
         reload_stopped.set()
         resume_reload.wait()
@@ -737,7 +799,9 @@ def test_shutdown_seal_blocks_reload_between_stop_and_start(monkeypatch) -> None
 
 
 def test_plugin_manager_stop_monitor_returns_controller_result(monkeypatch) -> None:
-    """管理器停止入口透传线程收口结果和调用预算。"""
+    """
+    管理器停止入口透传线程收口结果和调用预算。
+    """
     _reset_plugin_manager()
     reset_plugin_system()
     manager = PluginManager()
@@ -752,7 +816,9 @@ def test_plugin_manager_stop_monitor_returns_controller_result(monkeypatch) -> N
 
 
 def test_plugin_manager_start_monitor_can_reopen_new_lifespan(monkeypatch) -> None:
-    """新应用生命周期可显式解除封口，再按运行配置启动监控。"""
+    """
+    新应用生命周期可显式解除封口，再按运行配置启动监控。
+    """
     _reset_plugin_manager()
     reset_plugin_system()
     _patch_runtime_settings(
@@ -776,7 +842,9 @@ def test_plugin_manager_start_monitor_can_reopen_new_lifespan(monkeypatch) -> No
 
 
 def test_stop_plugin_monitor_does_not_materialize_manager() -> None:
-    """插件运行时尚未创建时，独立停机入口直接视为已完成。"""
+    """
+    插件运行时尚未创建时，独立停机入口直接视为已完成。
+    """
     _reset_plugin_manager()
 
     assert plugins_initializer.stop_plugin_monitor(timeout=0) is True
@@ -784,7 +852,9 @@ def test_stop_plugin_monitor_does_not_materialize_manager() -> None:
 
 
 def test_stop_plugin_monitor_returns_existing_manager_result(monkeypatch) -> None:
-    """启动层入口只操作既有管理器，并透传超时失败。"""
+    """
+    启动层入口只操作既有管理器，并透传超时失败。
+    """
     manager = MagicMock()
     manager.close_monitor.return_value = False
     manager_type = SimpleNamespace(get_existing_instance=lambda: manager)
@@ -796,7 +866,9 @@ def test_stop_plugin_monitor_returns_existing_manager_result(monkeypatch) -> Non
 
 @pytest.mark.asyncio
 async def test_phased_plugin_shutdown_does_not_materialize_manager() -> None:
-    """三个停机入口在插件管理器尚未创建时都直接视为已收敛。"""
+    """
+    三个停机入口在插件管理器尚未创建时都直接视为已收敛。
+    """
     _reset_plugin_manager()
 
     assert await plugins_initializer.quiesce_plugins(timeout=0) is True
@@ -809,7 +881,9 @@ async def test_phased_plugin_shutdown_does_not_materialize_manager() -> None:
 async def test_quiesce_timeout_retains_future_owner_until_worker_finishes(
     monkeypatch,
 ) -> None:
-    """同步插件 hook 超时后必须保留 Future，且未结束前拒绝卸载实例。"""
+    """
+    同步插件 hook 超时后必须保留 Future，且未结束前拒绝卸载实例。
+    """
     _reset_plugin_manager()
     reset_plugin_system()
     _patch_runtime_settings(
@@ -823,7 +897,9 @@ async def test_quiesce_timeout_retains_future_owner_until_worker_finishes(
     release = threading.Event()
 
     def blocking_quiesce() -> bool:
-        """模拟无法由 asyncio 取消的同步旧插件 hook。"""
+        """
+        模拟无法由 asyncio 取消的同步旧插件 hook。
+        """
         started.set()
         release.wait(timeout=2)
         return True
@@ -862,7 +938,9 @@ async def test_quiesce_timeout_retains_future_owner_until_worker_finishes(
 
 @pytest.mark.asyncio
 async def test_quiesce_seals_runtime_until_new_lifespan_reopens(monkeypatch) -> None:
-    """屏障前封口后 start/reload/config 不能重开 producer，新 lifespan 可显式恢复。"""
+    """
+    屏障前封口后 start/reload/config 不能重开 producer，新 lifespan 可显式恢复。
+    """
     _reset_plugin_manager()
     reset_plugin_system()
     _patch_runtime_settings(
@@ -888,7 +966,9 @@ async def test_quiesce_seals_runtime_until_new_lifespan_reopens(monkeypatch) -> 
     manager.classify_plugins = MagicMock()
 
     class DemoPlugin:
-        """代表 quiesce 后仍由严格生命周期持有的运行实例。"""
+        """
+        代表 quiesce 后仍由严格生命周期持有的运行实例。
+        """
 
     plugin_instance = DemoPlugin()
     manager._plugins["DemoPlugin"] = DemoPlugin
@@ -935,7 +1015,9 @@ async def test_quiesce_seals_runtime_until_new_lifespan_reopens(monkeypatch) -> 
 
 
 def test_plugin_monitor_skips_installing_plugin_until_package_write_finishes(tmp_path) -> None:
-    """安装替换目录期间，文件事件不得抢先导入未完成的插件包。"""
+    """
+    安装替换目录期间，文件事件不得抢先导入未完成的插件包。
+    """
     reload_plugin = MagicMock()
     monitor = PluginChangeMonitor(
         runtime_root=tmp_path,
@@ -959,7 +1041,9 @@ def test_plugin_monitor_skips_installing_plugin_until_package_write_finishes(tmp
 
 
 def test_monitor_reload_refreshes_source_and_instance_routes(monkeypatch) -> None:
-    """源码热重载后必须刷新源插件及其虚拟实例的动态路由投影。"""
+    """
+    源码热重载后必须刷新源插件及其虚拟实例的动态路由投影。
+    """
     admission = PluginMutationAdmission()
     manager = SimpleNamespace(
         mutation=admission.hold,
@@ -991,7 +1075,9 @@ def test_plugin_monitor_suppression_covers_delayed_write_events(
     monkeypatch,
     tmp_path,
 ) -> None:
-    """重叠写入退出后的延迟批次不重复重载，后续真实修改仍可重载。"""
+    """
+    重叠写入退出后的延迟批次不重复重载，后续真实修改仍可重载。
+    """
     _reset_plugin_manager()
     reset_plugin_system()
     _patch_runtime_settings(
@@ -1037,7 +1123,9 @@ def test_plugin_monitor_suppression_covers_delayed_write_events(
 
 
 def test_config_change_reloads_monitor(monkeypatch) -> None:
-    """配置热更新继续使用重建语义，不复用首次启动入口。"""
+    """
+    配置热更新继续使用重建语义，不复用首次启动入口。
+    """
     _reset_plugin_manager()
     reset_plugin_system()
     _patch_runtime_settings(
@@ -1057,7 +1145,9 @@ def test_config_change_reloads_monitor(monkeypatch) -> None:
 
 
 def test_stop_plugins_stops_monitor_before_plugin_runtime(monkeypatch) -> None:
-    """关闭时先隔离文件变化，再停止插件实例。"""
+    """
+    关闭时先隔离文件变化，再停止插件实例。
+    """
     order: list[str] = []
     manager = MagicMock()
     manager.stop_monitor.side_effect = lambda: order.append("monitor") or True
@@ -1071,7 +1161,9 @@ def test_stop_plugins_stops_monitor_before_plugin_runtime(monkeypatch) -> None:
 
 
 def test_stop_plugins_still_stops_runtime_when_monitor_stop_fails(monkeypatch) -> None:
-    """监控线程停止异常不得阻止插件实例释放资源。"""
+    """
+    监控线程停止异常不得阻止插件实例释放资源。
+    """
     manager = MagicMock()
     manager.stop_monitor.side_effect = RuntimeError("monitor stop failed")
     manager_type = SimpleNamespace(get_existing_instance=lambda: manager)
@@ -1083,7 +1175,9 @@ def test_stop_plugins_still_stops_runtime_when_monitor_stop_fails(monkeypatch) -
 
 
 def test_stop_plugins_does_not_materialize_manager() -> None:
-    """插件初始化尚未创建管理器时，失败清理不得反向构造运行时。"""
+    """
+    插件初始化尚未创建管理器时，失败清理不得反向构造运行时。
+    """
     _reset_plugin_manager()
 
     assert plugins_initializer.stop_plugins() is True
@@ -1092,7 +1186,9 @@ def test_stop_plugins_does_not_materialize_manager() -> None:
 
 
 def test_stop_plugins_remains_idempotent(monkeypatch) -> None:
-    """兼容停机入口可重复调用，并保持每次先停监控再停插件。"""
+    """
+    兼容停机入口可重复调用，并保持每次先停监控再停插件。
+    """
     order: list[str] = []
     manager = MagicMock()
     manager.stop_monitor.side_effect = lambda: order.append("monitor") or True
@@ -1107,7 +1203,9 @@ def test_stop_plugins_remains_idempotent(monkeypatch) -> None:
 
 
 def test_plugin_manager_legacy_stop_preserves_none_return() -> None:
-    """公共 PluginManager.stop 委托单阶段停机后保持历史 None 返回 ABI。"""
+    """
+    公共 PluginManager.stop 委托单阶段停机后保持历史 None 返回 ABI。
+    """
     manager = object.__new__(PluginManager)
     manager._plugin_quiesce_lock = threading.RLock()
     manager._plugin_runtime_closed = False
@@ -1121,7 +1219,9 @@ def test_plugin_manager_legacy_stop_preserves_none_return() -> None:
 
 
 def test_config_reload_continues_after_legacy_stop() -> None:
-    """配置热重载保持旧行为，stop 的 None 返回不得阻止重新分类和启动。"""
+    """
+    配置热重载保持旧行为，stop 的 None 返回不得阻止重新分类和启动。
+    """
     manager = object.__new__(PluginManager)
     manager._plugin_quiesce_lock = threading.RLock()
     manager._plugin_runtime_closed = False
@@ -1148,7 +1248,9 @@ def test_config_reload_continues_after_legacy_stop() -> None:
 
 
 def test_remove_plugin_clears_registry_after_legacy_stop() -> None:
-    """卸载路径保持忽略旧 stop 返回值并继续清理注册表。"""
+    """
+    卸载路径保持忽略旧 stop 返回值并继续清理注册表。
+    """
     manager = object.__new__(PluginManager)
     manager._plugin_quiesce_lock = threading.RLock()
     manager._plugin_runtime_closed = False

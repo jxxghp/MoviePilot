@@ -1,3 +1,7 @@
+"""
+验证插件评分提交、查询与统计结果处理。
+"""
+
 import asyncio
 from unittest.mock import AsyncMock, patch
 
@@ -13,7 +17,9 @@ from app.application.plugin.rating import PluginRatingService
 
 
 def test_server_helper_uses_plugin_rating_endpoints() -> None:
-    """评分辅助方法应使用独立中心端路径并传递评分载荷。"""
+    """
+    评分辅助方法应使用独立中心端路径并传递评分载荷。
+    """
 
     async def run_scenario() -> None:
         runtime_setting = server_module.get_runtime_setting
@@ -53,7 +59,9 @@ def test_server_helper_uses_plugin_rating_endpoints() -> None:
 
 
 def test_plugin_rating_endpoints_return_center_results() -> None:
-    """评分查询和提交接口应返回中心端结果并校验安装状态。"""
+    """
+    评分查询和提交接口应返回中心端结果并校验安装状态。
+    """
 
     async def run_scenario() -> None:
         rating_result = {
@@ -95,7 +103,9 @@ def test_plugin_rating_endpoints_return_center_results() -> None:
 
 
 def test_plugin_rating_rejects_uninstalled_plugin() -> None:
-    """未安装插件不能借助 MoviePilot 接口向中心端提交评分。"""
+    """
+    未安装插件不能借助 MoviePilot 接口向中心端提交评分。
+    """
 
     async def run_scenario() -> None:
         submit_rating = AsyncMock()
@@ -124,7 +134,9 @@ def test_plugin_rating_rejects_uninstalled_plugin() -> None:
 
 
 def test_plugin_rating_service_reset_isolates_lifespans(monkeypatch) -> None:
-    """停机清理后不得继续复用上一 lifespan 的评分端口。"""
+    """
+    停机清理后不得继续复用上一 lifespan 的评分端口。
+    """
     service = PluginRatingService(
         installed_plugins=lambda: [],
         statistic=AsyncMock(return_value={}),

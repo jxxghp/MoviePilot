@@ -1,4 +1,6 @@
-"""插件实例启用位 Alembic 迁移测试。"""
+"""
+插件实例启用位 Alembic 迁移测试。
+"""
 
 from __future__ import annotations
 
@@ -16,7 +18,9 @@ MIGRATION_MODULE = "database.versions.b7d1e4a9c206_3_0_38"
 
 
 def _bind_migration(monkeypatch, connection):
-    """把迁移绑定到隔离数据库连接。"""
+    """
+    把迁移绑定到隔离数据库连接。
+    """
     migration = importlib.import_module(MIGRATION_MODULE)
     context = MigrationContext.configure(connection)
     monkeypatch.setattr(migration, "op", Operations(context))
@@ -24,7 +28,9 @@ def _bind_migration(monkeypatch, connection):
 
 
 def _create_legacy_schema(connection: sa.engine.Connection, *, installed=None) -> sa.Table:
-    """建出加列前的实例表与系统设置表，模拟迁移前的存量数据库。"""
+    """
+    建出加列前的实例表与系统设置表，模拟迁移前的存量数据库。
+    """
     now = datetime.now(timezone.utc).isoformat()
     table = sa.Table(
         "plugininstance",
@@ -70,7 +76,8 @@ def _create_legacy_schema(connection: sa.engine.Connection, *, installed=None) -
 
 
 def test_enablement_migration_enables_existing_rows_and_backfills_hosts(monkeypatch) -> None:
-    """存量分身一律置真，安装清单里的插件补出启用中的本体行；重复升级保持幂等。
+    """
+    存量分身一律置真，安装清单里的插件补出启用中的本体行；重复升级保持幂等。
 
     列建出来默认为假而不回填，升级后全部插件都会变成「装着但永不加载」——这一列
     同时是本体的装载判据，回填因此是迁移的正文而不是附带步骤。
@@ -102,7 +109,9 @@ def test_enablement_migration_enables_existing_rows_and_backfills_hosts(monkeypa
 
 
 def test_enablement_migration_tolerates_a_missing_installed_list(monkeypatch) -> None:
-    """安装清单不存在时只补启用位，不因读不到清单而中断升级。"""
+    """
+    安装清单不存在时只补启用位，不因读不到清单而中断升级。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         _create_legacy_schema(connection, installed=None)
@@ -117,7 +126,9 @@ def test_enablement_migration_tolerates_a_missing_installed_list(monkeypatch) ->
 
 
 def test_enablement_migration_ignores_a_malformed_installed_list(monkeypatch) -> None:
-    """安装清单不是字符串数组时按空清单处理，不能让升级崩在一条脏数据上。"""
+    """
+    安装清单不是字符串数组时按空清单处理，不能让升级崩在一条脏数据上。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         _create_legacy_schema(connection, installed=None)
@@ -137,7 +148,9 @@ def test_enablement_migration_ignores_a_malformed_installed_list(monkeypatch) ->
 
 
 def test_enablement_migration_accepts_fresh_current_schema(monkeypatch) -> None:
-    """create_all 已建当前表时重复升级不得因列已存在而报错。"""
+    """
+    create_all 已建当前表时重复升级不得因列已存在而报错。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         PluginInstance.__table__.create(connection)

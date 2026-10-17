@@ -1,4 +1,5 @@
-"""插件数据目录解析的包含性回归测试。
+"""
+插件数据目录解析的包含性回归测试。
 
 插件标识在重置、卸载、彻底清理等路径上直接来自 HTTP 路径段，而插件数据根是配置根下
 的一层子目录。把标识就地拼进路径再交给文件系统，一个 ``..`` 就足以让删除动作抬到配置
@@ -41,7 +42,8 @@ TRAVERSAL_IDS = (
 
 @pytest.fixture(name="config_root")
 def fixture_config_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """搭出「配置根 / 插件数据根 / 同级受保护内容」这一真实布局。
+    """
+    搭出「配置根 / 插件数据根 / 同级受保护内容」这一真实布局。
 
     插件数据根在生产里就是 ``CONFIG_PATH/plugins``，逃出一层即落在配置根上。受保护
     目录、宿主库文件与哨兵内容用来证明越界删除确实发生过，而不是只看函数返回值。
@@ -64,7 +66,9 @@ def fixture_config_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path
 
 
 def _sentinels_intact(config_root: Path) -> bool:
-    """插件数据根之外的内容是否原封不动。"""
+    """
+    插件数据根之外的内容是否原封不动。
+    """
     return (
         (config_root / "protected" / "keep.txt").is_file()
         and (config_root / "user.db").is_file()
@@ -79,7 +83,9 @@ def _sentinels_intact(config_root: Path) -> bool:
 
 @pytest.mark.parametrize("plugin_id", TRAVERSAL_IDS)
 def test_resolution_rejects_every_encoding_of_an_escaping_id(plugin_id: str) -> None:
-    """越界标识的每一种写法都要在解析阶段被拒。"""
+    """
+    越界标识的每一种写法都要在解析阶段被拒。
+    """
     with pytest.raises(ValueError):
         resolve_plugin_data_directory(plugin_id)
 
@@ -87,7 +93,8 @@ def test_resolution_rejects_every_encoding_of_an_escaping_id(plugin_id: str) -> 
 def test_resolution_keeps_legacy_ids_with_separators_in_their_name(
     config_root: Path,
 ) -> None:
-    """判据是「必须是一个路径段」而不是字符白名单，带下划线、连字符的旧插件照常可用。
+    """
+    判据是「必须是一个路径段」而不是字符白名单，带下划线、连字符的旧插件照常可用。
 
     插件标识历史上就是 Python 类名，``My_Plugin`` 一类写法一直存在；把它们一并拒掉
     是纯粹的功能回退，而它们本来就逃不出数据根。
@@ -101,7 +108,8 @@ def test_resolution_keeps_legacy_ids_with_separators_in_their_name(
 def test_percent_encoded_looking_names_are_ordinary_directory_names(
     config_root: Path,
 ) -> None:
-    """``%2e%2e`` 这类字面量只是古怪的目录名，不该被当成越界而拒绝。
+    """
+    ``%2e%2e`` 这类字面量只是古怪的目录名，不该被当成越界而拒绝。
 
     百分号编码是传输层的事：服务端拿到的路径段已经解码过，真正危险的是解码结果。
     把未解码的形态也一并拒掉属于在错误的层次上猜测，反而会挡住合法目录名。
@@ -122,7 +130,8 @@ def test_directory_removal_rejects_escaping_ids_on_its_own(
     config_root: Path,
     plugin_id: str,
 ) -> None:
-    """删除函数自身即拒绝越界标识，不指望调用方先做过校验。
+    """
+    删除函数自身即拒绝越界标识，不指望调用方先做过校验。
 
     目录删除是不可逆的终点：它必须自带包含性判断，将来新增调用方忘了校验也不至于把
     配置目录整个删掉。
@@ -136,7 +145,9 @@ def test_directory_removal_rejects_escaping_ids_on_its_own(
 def test_directory_removal_deletes_only_the_matching_plugin_directory(
     config_root: Path,
 ) -> None:
-    """合法标识照常删除，且只删它自己那一层。"""
+    """
+    合法标识照常删除，且只删它自己那一层。
+    """
     assert remove_plugin_data_directory("DemoPlugin") is True
 
     assert not (config_root / "plugins" / "DemoPlugin").exists()
@@ -147,7 +158,9 @@ def test_directory_removal_deletes_only_the_matching_plugin_directory(
 def test_directory_removal_reports_a_missing_directory_without_deleting(
     config_root: Path,
 ) -> None:
-    """目录本就不存在时如实回报未删除，而不是谎报清理过它。"""
+    """
+    目录本就不存在时如实回报未删除，而不是谎报清理过它。
+    """
     assert remove_plugin_data_directory("NeverExisted") is False
 
 
@@ -158,7 +171,8 @@ def test_directory_removal_reports_a_missing_directory_without_deleting(
 def test_directory_removal_refuses_to_follow_a_symlink_out_of_the_root(
     config_root: Path,
 ) -> None:
-    """数据根下的软链指向根外时拒绝删除，而不是顺着它把目标删掉。
+    """
+    数据根下的软链指向根外时拒绝删除，而不是顺着它把目标删掉。
 
     ``resolve()`` 会跟随软链，因此包含性判断必须建立在解析之后的真实路径上；只比较
     拼接出来的字面路径，一条 ``plugins/Evil -> /config/protected`` 的软链就能骗过它。
@@ -180,13 +194,17 @@ def test_directory_removal_refuses_to_follow_a_symlink_out_of_the_root(
 
 @pytest.mark.parametrize("plugin_id", TRAVERSAL_IDS)
 def test_database_path_rejects_escaping_ids(plugin_id: str) -> None:
-    """库文件路径同样按统一入口解析；销毁会 unlink 它，越界即拒。"""
+    """
+    库文件路径同样按统一入口解析；销毁会 unlink 它，越界即拒。
+    """
     with pytest.raises(ValueError):
         sqlite_database_path(plugin_id)
 
 
 def test_database_path_stays_inside_the_plugin_directory(config_root: Path) -> None:
-    """合法标识下库文件仍落在该插件自己的数据目录里。"""
+    """
+    合法标识下库文件仍落在该插件自己的数据目录里。
+    """
     assert sqlite_database_path("DemoPlugin") == (
         config_root / "plugins" / "DemoPlugin" / DATABASE_FILENAME
     )
@@ -196,7 +214,8 @@ def test_destroying_a_database_with_an_escaping_id_unlinks_nothing(
     config_root: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """销毁入口拿到越界标识时什么都不删，只留一条日志。
+    """
+    销毁入口拿到越界标识时什么都不删，只留一条日志。
 
     这条路径在 ``GET /plugin/reset/{plugin_id}`` 上是可达的：重置按 ``force`` 删数据，
     不检查插件是否存在，``..`` 会把库文件路径解析到配置根下的同名文件上。

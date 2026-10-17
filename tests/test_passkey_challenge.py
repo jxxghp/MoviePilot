@@ -1,3 +1,7 @@
+"""
+验证通行密钥挑战的缓存、有效期和一次性消费。
+"""
+
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -103,7 +107,9 @@ def test_concurrent_consumers_have_single_winner():
 
 
 def test_challenge_store_requires_explicit_cache(monkeypatch):
-    """未完成启动装配时不得签发一个实际未保存的事务 token。"""
+    """
+    未完成启动装配时不得签发一个实际未保存的事务 token。
+    """
     monkeypatch.setattr(PasskeyChallengeStore, "_cache", None)
 
     with pytest.raises(RuntimeError, match="缓存尚未配置"):
@@ -119,17 +125,25 @@ def test_challenge_cache_failure_is_not_treated_as_a_cache_miss(
     monkeypatch,
     operation,
 ):
-    """安全缓存故障必须向认证入口传播，不能伪装成正常 miss。"""
+    """
+    安全缓存故障必须向认证入口传播，不能伪装成正常 miss。
+    """
     class FailingCache:
-        """模拟严格缓存写入或领取故障。"""
+        """
+        模拟严格缓存写入或领取故障。
+        """
 
         def store(self, _key, _value):
-            """按用例模拟写入结果。"""
+            """
+            按用例模拟写入结果。
+            """
             if operation == "store":
                 raise RuntimeError("cache unavailable")
 
         def consume(self, _key):
-            """按用例模拟领取结果。"""
+            """
+            按用例模拟领取结果。
+            """
             if operation == "consume":
                 raise RuntimeError("cache unavailable")
             return None

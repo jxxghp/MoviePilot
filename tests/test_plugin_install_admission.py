@@ -1,4 +1,6 @@
-"""插件来源准入与目标身份规划测试。"""
+"""
+插件来源准入与目标身份规划测试。
+"""
 
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -34,7 +36,9 @@ def _online_candidate(
     source_key: str = OFFICIAL,
     source_type: TrustedPluginSourceType = TrustedPluginSourceType.OFFICIAL,
 ) -> PluginMarketCandidate:
-    """构造一个可安装在线候选。"""
+    """
+    构造一个可安装在线候选。
+    """
     owner_repo = source_key.removeprefix("github:")
     return PluginMarketCandidate(
         plugin_id="DemoPlugin",
@@ -48,7 +52,9 @@ def _online_candidate(
 
 
 def _identity() -> PluginIdentity:
-    """构造已经绑定官方来源的旧载荷身份。"""
+    """
+    构造已经绑定官方来源的旧载荷身份。
+    """
     return PluginIdentity(
         plugin_id="DemoPlugin",
         normalized_plugin_id="demoplugin",
@@ -74,7 +80,9 @@ def _identity() -> PluginIdentity:
 
 
 def _inventory(*candidates, local_candidates=()) -> CandidateInventory:
-    """构造完整市场库存。"""
+    """
+    构造完整市场库存。
+    """
     return CandidateInventory(
         (MarketRead.present("https://github.com/example/plugins", candidates),),
         tuple(local_candidates),
@@ -82,7 +90,9 @@ def _inventory(*candidates, local_candidates=()) -> CandidateInventory:
 
 
 def test_same_source_update_preserves_binding_and_advances_payload() -> None:
-    """同源更新只推进载荷事实，不改变既有可信绑定依据。"""
+    """
+    同源更新只推进载荷事实，不改变既有可信绑定依据。
+    """
     current = _identity()
     admission = admit_plugin_install(
         _inventory(_online_candidate()),
@@ -108,7 +118,9 @@ def test_same_source_update_preserves_binding_and_advances_payload() -> None:
 
 
 def test_current_release_marks_declaration_as_matching_payload() -> None:
-    """按当前 package 版本安装时，声明快照应标记为对应当前载荷。"""
+    """
+    按当前 package 版本安装时，声明快照应标记为对应当前载荷。
+    """
     admission = admit_plugin_install(
         _inventory(_online_candidate()),
         request=PluginInstallAdmissionRequest(
@@ -131,7 +143,9 @@ def test_current_release_marks_declaration_as_matching_payload() -> None:
 
 
 def test_historical_release_marks_declaration_as_not_matching_payload() -> None:
-    """安装历史 Release 时必须保留其声明版本，并标记与当前载荷不对应。"""
+    """
+    安装历史 Release 时必须保留其声明版本，并标记与当前载荷不对应。
+    """
     admission = admit_plugin_install(
         _inventory(_online_candidate()),
         request=PluginInstallAdmissionRequest(
@@ -157,7 +171,9 @@ def test_historical_release_marks_declaration_as_not_matching_payload() -> None:
 
 
 def test_first_online_binding_uses_payload_commit_time() -> None:
-    """首次在线绑定在载荷提交时生效，不能早于身份创建时间。"""
+    """
+    首次在线绑定在载荷提交时生效，不能早于身份创建时间。
+    """
     applied_at = NOW + timedelta(seconds=1)
     admission = admit_plugin_install(
         _inventory(_online_candidate()),
@@ -183,7 +199,9 @@ def test_first_online_binding_uses_payload_commit_time() -> None:
 
 
 def test_force_semantics_cannot_authorize_source_change() -> None:
-    """普通安装即使替换载荷，也不能选择不同于已绑定来源的仓库。"""
+    """
+    普通安装即使替换载荷，也不能选择不同于已绑定来源的仓库。
+    """
     with pytest.raises(PluginSourceAdmissionError, match="已绑定其他仓库"):
         admit_plugin_install(
             _inventory(
@@ -206,7 +224,9 @@ def test_force_semantics_cannot_authorize_source_change() -> None:
 
 @pytest.mark.parametrize("revision", [None, 2, 4])
 def test_source_change_requires_exact_identity_revision(revision: int | None) -> None:
-    """显式换源必须携带当前身份的精确 revision。"""
+    """
+    显式换源必须携带当前身份的精确 revision。
+    """
     with pytest.raises(PluginSourceAdmissionError, match="状态已变化"):
         admit_plugin_install(
             _inventory(
@@ -229,7 +249,9 @@ def test_source_change_requires_exact_identity_revision(revision: int | None) ->
 
 
 def test_source_change_builds_explicit_transition() -> None:
-    """合法换源把 trusted 与 payload 一起指向明确选择的新仓库。"""
+    """
+    合法换源把 trusted 与 payload 一起指向明确选择的新仓库。
+    """
     candidate = _online_candidate(
         source_key=THIRD_PARTY,
         source_type=TrustedPluginSourceType.THIRD_PARTY,
@@ -261,7 +283,9 @@ def test_source_change_builds_explicit_transition() -> None:
 
 
 def test_local_payload_preserves_existing_online_trust() -> None:
-    """本地开发载荷覆盖时保留此前可信在线来源，便于之后同源恢复。"""
+    """
+    本地开发载荷覆盖时保留此前可信在线来源，便于之后同源恢复。
+    """
     local = PluginLocalCandidate(
         plugin_id="DemoPlugin",
         repo_url="local://DemoPlugin?package_version=v3",
@@ -293,7 +317,9 @@ def test_local_payload_preserves_existing_online_trust() -> None:
 
 
 def test_first_local_payload_creates_local_only_identity() -> None:
-    """首次本地安装不会伪造在线可信来源。"""
+    """
+    首次本地安装不会伪造在线可信来源。
+    """
     local = PluginLocalCandidate(
         plugin_id="DemoPlugin",
         repo_url="local://DemoPlugin?package_version=v3",
@@ -323,7 +349,9 @@ def test_first_local_payload_creates_local_only_identity() -> None:
 
 
 def test_local_reference_selects_configured_candidate_without_path() -> None:
-    """无路径本地来源标识仍能选择配置内候选。"""
+    """
+    无路径本地来源标识仍能选择配置内候选。
+    """
     local = PluginLocalCandidate(
         plugin_id="DemoPlugin",
         repo_url=(
@@ -357,7 +385,9 @@ def test_local_reference_selects_configured_candidate_without_path() -> None:
 
 
 def test_legacy_identity_can_bind_explicit_online_source() -> None:
-    """存量未绑定身份可在管理员明确选源后建立在线可信来源。"""
+    """
+    存量未绑定身份可在管理员明确选源后建立在线可信来源。
+    """
     legacy = replace(
         _identity(),
         trusted_source_type=TrustedPluginSourceType.UNKNOWN,
@@ -399,7 +429,9 @@ def test_legacy_identity_can_bind_explicit_online_source() -> None:
 
 
 def test_source_change_rejects_local_payload_reference() -> None:
-    """带 revision 的显式换源只能切换在线可信来源。"""
+    """
+    带 revision 的显式换源只能切换在线可信来源。
+    """
     local = PluginLocalCandidate(
         plugin_id="DemoPlugin",
         repo_url="local://DemoPlugin?path=/private/plugins&version=v3",

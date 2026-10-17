@@ -1,3 +1,7 @@
+"""
+验证rTorrent 调用协议与下载任务状态兼容。
+"""
+
 import importlib.util
 import sys
 import types

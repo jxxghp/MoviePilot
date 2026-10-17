@@ -1,4 +1,6 @@
-"""插件实例默认调用目标设置与清除接口测试。"""
+"""
+插件实例默认调用目标设置与清除接口测试。
+"""
 
 from __future__ import annotations
 
@@ -17,29 +19,36 @@ from app.api.endpoints.plugintarget import (
 
 
 def _depends_default(func, parameter_name: str):
-    """取出端点函数指定参数的 FastAPI Depends 默认值。"""
+    """
+    取出端点函数指定参数的 FastAPI Depends 默认值。
+    """
     return inspect.signature(func).parameters[parameter_name].default
 
 
 def _manager(**methods):
-    """按方法名快速拼装一个鸭子类型的 Manager 替身。"""
+    """
+    按方法名快速拼装一个鸭子类型的 Manager 替身。
+    """
     return type("Manager", (), methods)()
 
 
 def test_both_endpoints_require_superuser_dependency():
-    """设为默认与清除默认两个端点都要求超级管理员。"""
+    """
+    设为默认与清除默认两个端点都要求超级管理员。
+    """
     for func in (set_plugin_instance_default_target, clear_plugin_instance_default_target):
         depends = _depends_default(func, "_")
         assert depends.dependency is get_current_active_superuser
 
 
 # --------------------------------------------------------------------------- #
-# PUT /instances/{plugin_id}/{instance_id}/default_target
 # --------------------------------------------------------------------------- #
 
 
 def test_put_delegates_to_manager_and_reports_success(monkeypatch):
-    """设置请求原样转交给 Manager，命中时返回成功。"""
+    """
+    设置请求原样转交给 Manager，命中时返回成功。
+    """
     calls: list = []
     manager = _manager(
         set_plugin_instance_default_target=lambda self, *a: (calls.append(a), True)[1]
@@ -53,7 +62,9 @@ def test_put_delegates_to_manager_and_reports_success(monkeypatch):
 
 
 def test_put_reports_missing_instance_as_404(monkeypatch):
-    """目标实例不归属该插件时，Manager 返回 False，接口须映射为 404。"""
+    """
+    目标实例不归属该插件时，Manager 返回 False，接口须映射为 404。
+    """
     manager = _manager(set_plugin_instance_default_target=lambda self, *a: False)
     monkeypatch.setattr(plugintarget_endpoint, "get_plugin_manager", lambda: manager)
 
@@ -64,7 +75,9 @@ def test_put_reports_missing_instance_as_404(monkeypatch):
 
 
 def test_put_reports_missing_plugin_as_404(monkeypatch):
-    """插件本身不存在时返回 404。"""
+    """
+    插件本身不存在时返回 404。
+    """
 
     def _raise(*_a):
         raise LookupError("插件 Missing 不存在")
@@ -79,7 +92,9 @@ def test_put_reports_missing_plugin_as_404(monkeypatch):
 
 
 def test_put_maps_unique_index_violation_to_409(monkeypatch):
-    """并发置位撞上条件唯一索引时映射为可重试的 409，而不是 500。"""
+    """
+    并发置位撞上条件唯一索引时映射为可重试的 409，而不是 500。
+    """
 
     def _raise(*_a):
         raise IntegrityError("stmt", {}, Exception("unique"))
@@ -94,12 +109,13 @@ def test_put_maps_unique_index_violation_to_409(monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
-# DELETE /instances/{plugin_id}/{instance_id}/default_target
 # --------------------------------------------------------------------------- #
 
 
 def test_delete_delegates_to_manager_and_is_idempotent(monkeypatch):
-    """清除请求原样转交给 Manager，重复调用同样返回成功。"""
+    """
+    清除请求原样转交给 Manager，重复调用同样返回成功。
+    """
     calls: list = []
     manager = _manager(
         clear_plugin_instance_default_target=lambda self, *a: calls.append(a)
@@ -115,7 +131,9 @@ def test_delete_delegates_to_manager_and_is_idempotent(monkeypatch):
 
 
 def test_delete_reports_missing_plugin_as_404(monkeypatch):
-    """插件本身不存在时返回 404。"""
+    """
+    插件本身不存在时返回 404。
+    """
 
     def _raise(*_a):
         raise LookupError("插件 Missing 不存在")
@@ -130,6 +148,8 @@ def test_delete_reports_missing_plugin_as_404(monkeypatch):
 
 
 def test_router_registers_default_target_paths():
-    """路由器暴露设为默认与清除默认两个路径，注册在插件前缀下。"""
+    """
+    路由器暴露设为默认与清除默认两个路径，注册在插件前缀下。
+    """
     paths = {route.path for route in plugintarget_endpoint.router.routes}
     assert "/instances/{plugin_id}/{instance_id}/default_target" in paths

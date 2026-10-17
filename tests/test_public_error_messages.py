@@ -1,4 +1,6 @@
-"""统一前台错误文案的转换规则测试。"""
+"""
+统一前台错误文案的转换规则测试。
+"""
 
 import asyncio
 import json
@@ -23,12 +25,16 @@ from app.schemas.response import Response
     ],
 )
 def test_transfer_status_uses_human_readable_messages(source: str, expected: str) -> None:
-    """整理状态不应把内部调度术语直接返回给用户。"""
+    """
+    整理状态不应把内部调度术语直接返回给用户。
+    """
     assert public_error_message(source, context="transfer") == expected
 
 
 def test_public_error_message_preserves_source_wording() -> None:
-    """错误文本由业务源头负责生成，公共函数只做空白规范化。"""
+    """
+    错误文本由业务源头负责生成，公共函数只做空白规范化。
+    """
     message = public_error_message(
         "整理步骤意图 operation_id=op-1 的 checkpoint evidence 无效",
         context="transfer",
@@ -38,12 +44,16 @@ def test_public_error_message_preserves_source_wording() -> None:
 
 
 def test_subscription_status_does_not_expose_provider_timeout() -> None:
-    """订阅执行状态不应把服务商和超时实现细节展示给前端。"""
+    """
+    订阅执行状态不应把服务商和超时实现细节展示给前端。
+    """
     assert public_error_message("provider timeout", context="subscription") == "provider timeout"
 
 
 def test_post_commit_failure_explains_background_retry() -> None:
-    """提交后的副作用失败应说明业务已进入后台补偿，而不是暴露 Outbox 术语。"""
+    """
+    提交后的副作用失败应说明业务已进入后台补偿，而不是暴露 Outbox 术语。
+    """
     assert (
         public_error_message("提交后的相关处理未完成，系统将自动重试", context="outbox")
         == "提交后的相关处理未完成，系统将自动重试"
@@ -51,7 +61,9 @@ def test_post_commit_failure_explains_background_retry() -> None:
 
 
 def test_standard_response_applies_the_same_public_message_policy() -> None:
-    """标准接口响应和显式调用转换函数必须使用同一套规则。"""
+    """
+    标准接口响应和显式调用转换函数必须使用同一套规则。
+    """
     response = Response(
         success=False,
         message="整理结果确认失败，后台将自动重试",
@@ -61,12 +73,16 @@ def test_standard_response_applies_the_same_public_message_policy() -> None:
 
 
 def test_clear_business_message_is_preserved() -> None:
-    """已有明确的业务提示不能因统一处理而丢失具体操作建议。"""
+    """
+    已有明确的业务提示不能因统一处理而丢失具体操作建议。
+    """
     assert public_error_message("源目录不存在：/downloads/demo") == "源目录不存在：/downloads/demo"
 
 
 def test_transfer_history_hides_internal_error_in_nested_public_data() -> None:
-    """整理历史的嵌套失败原因也不能绕过前台文案边界。"""
+    """
+    整理历史的嵌套失败原因也不能绕过前台文案边界。
+    """
     history = TransferHistory(
         id=1,
         status=False,
@@ -77,7 +93,9 @@ def test_transfer_history_hides_internal_error_in_nested_public_data() -> None:
 
 
 def test_post_commit_error_keeps_background_retry_message() -> None:
-    """未捕获的提交后效果异常应说明业务已提交且会自动补偿。"""
+    """
+    未捕获的提交后效果异常应说明业务已提交且会自动补偿。
+    """
     error = PostCommitEffectError(
         PostCommitResult(value=None, business_committed=True),
         (RuntimeError("provider failed"),),
