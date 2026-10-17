@@ -22,6 +22,8 @@ from app.schemas.types import MediaSource, MediaType
 
 
 class Emby:
+    """Emby媒体服务器客户端。"""
+
     _host: Optional[str] = None
     _playhost: Optional[str] = None
     _apikey: Optional[str] = None
@@ -175,7 +177,10 @@ class Emby:
                 library_type = MediaType.TV.value
             else:
                 library_type = MediaType.UNKNOWN.value
-            image = self.__get_local_image_by_id(library.get("Id"))
+            image = self.__get_local_image_by_id(
+                library.get("Id"),
+                image_tag=(library.get("ImageTags") or {}).get("Primary"),
+            )
             server_id = library.get("ServerId") or self.serverid
             server_query = f"serverId={server_id}&" if server_id else ""
             libraries.append(
@@ -1251,16 +1256,16 @@ class Emby:
         return f"{host_url}Items/{item_id}/" \
             f"Images/Backdrop?tag={image_tag}&api_key={self._apikey}"
 
-    def __get_local_image_by_id(self, item_id: str) -> str:
+    def __get_local_image_by_id(self, item_id: str, image_tag: Optional[str] = None) -> str:
         """
         根据ItemId从媒体服务器查询本地图片地址
         :param: item_id: 在Emby中的ID
-        :param: remote 是否远程使用，TG微信等客户端调用应为True
-        :param: inner 是否NT内部调用，为True是会使用NT中转
+        :param: image_tag: Emby图片版本标签，用于使图片缓存随封面更新失效
         """
         if not self._host or not self._apikey:
             return ""
-        return "%sItems/%s/Images/Primary" % (self._host, item_id)
+        image_url = f"{self._host}Items/{item_id}/Images/Primary"
+        return f"{image_url}?tag={image_tag}" if image_tag else image_url
 
     def get_resume(self, num: Optional[int] = 12, username: Optional[str] = None) -> Optional[
             List[_SchemaMediaServerPlayItem]]:
@@ -1279,7 +1284,7 @@ class Emby:
         params = {
             "Limit": 100,
             "MediaTypes": "Video",
-            "Fields": "ProductionYear,Path",
+            "Fields": "ProductionYear,Path,ImageTags",
             "api_key": self._apikey,
         }
         try:
@@ -1312,12 +1317,18 @@ class Emby:
                             image = self.get_backdrop_url(item_id=item.get("Id"),
                                                           image_tag=item.get("BackdropImageTags")[0])
                         else:
-                            image = self.__get_local_image_by_id(item.get("Id"))
+                            image = self.__get_local_image_by_id(
+                                item.get("Id"),
+                                image_tag=(item.get("ImageTags") or {}).get("Primary"),
+                            )
                     else:
                         image = self.get_backdrop_url(item_id=item.get("SeriesId"),
                                                       image_tag=item.get("SeriesPrimaryImageTag"))
                         if not image:
-                            image = self.__get_local_image_by_id(item.get("SeriesId"))
+                            image = self.__get_local_image_by_id(
+                                item.get("SeriesId"),
+                                image_tag=item.get("SeriesPrimaryImageTag"),
+                            )
                     ret_resume.append(_SchemaMediaServerPlayItem(
                         id=item.get("Id"),
                         item_id=item.get("Id"),
@@ -1354,7 +1365,7 @@ class Emby:
         params = {
             "Limit": 100,
             "MediaTypes": "Video",
-            "Fields": "ProductionYear,Path,BackdropImageTags",
+            "Fields": "ProductionYear,Path,BackdropImageTags,ImageTags",
             "api_key": self._apikey
         }
         try:
@@ -1376,7 +1387,10 @@ class Emby:
                     item_type = MediaType.MOVIE.value if item.get("Type") == "Movie" else MediaType.TV.value
                     server_id = item.get("ServerId") or self.serverid
                     link = self.get_play_url(item.get("Id"), server_id=server_id)
-                    image = self.__get_local_image_by_id(item_id=item.get("Id"))
+                    image = self.__get_local_image_by_id(
+                        item_id=item.get("Id"),
+                        image_tag=(item.get("ImageTags") or {}).get("Primary"),
+                    )
                     ret_latest.append(_SchemaMediaServerPlayItem(
                         id=item.get("Id"),
                         item_id=item.get("Id"),
