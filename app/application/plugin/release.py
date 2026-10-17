@@ -1,4 +1,6 @@
-"""插件更新说明和 Release 版本查询用例。"""
+"""
+插件更新说明和 Release 版本查询用例。
+"""
 
 from __future__ import annotations
 
@@ -20,7 +22,15 @@ SourcePluginIdResolver = Callable[[str], str]
 
 @dataclass(frozen=True, slots=True)
 class PluginReleaseSnapshot:
-    """描述指定插件仓库的 Release 展示快照。"""
+    """
+    描述指定插件仓库的 Release 展示快照。
+
+    :param release_supported: 当前来源是否支持版本发布列表
+    :param latest_version: 市场可见的最新插件版本；未知时为 None
+    :param current_version: 宿主当前安装的插件版本；未安装或未知时为 None
+    :param items: 发布列表的版本和说明条目
+    :param refresh_required: 缓存不足时是否需要后台刷新，默认 False
+    """
 
     release_supported: bool
     latest_version: str | None
@@ -30,7 +40,9 @@ class PluginReleaseSnapshot:
 
 
 class PluginReleaseService:
-    """协调可信仓库元数据、Release 缓存和本地版本查询。"""
+    """
+    协调可信仓库元数据、Release 缓存和本地版本查询。
+    """
 
     def __init__(
         self,
@@ -48,7 +60,9 @@ class PluginReleaseService:
         refresh_releases: ReleaseRefresher,
         free_threaded: Callable[[], bool],
     ) -> None:
-        """保存源身份归一、运行态、来源身份和市场读取窄端口。"""
+        """
+        保存源身份归一、运行态、来源身份和市场读取窄端口。
+        """
         self._source_plugin_id = source_plugin_id
         self._installed_plugins = installed_plugins
         self._local_repo_plugins = local_repo_plugins
@@ -63,7 +77,8 @@ class PluginReleaseService:
         self._free_threaded = free_threaded
 
     async def history(self, plugin_id: str, *, force: bool = True) -> Plugin | None:
-        """按可信绑定仓库读取单个已安装插件的更新说明。
+        """
+        按可信绑定仓库读取单个已安装插件的更新说明。
 
         先把分身归一到源插件：分身只是共享同一份源码的运行实例，安装清单、本地插件
         仓与来源身份都只登记在源插件名下，拿分身自身 ID（源插件 ID 加后缀）去查会一路
@@ -119,7 +134,8 @@ class PluginReleaseService:
         *,
         force: bool = False,
     ) -> PluginReleaseSnapshot:
-        """读取 Release 快照，并标记是否需要后台强制刷新已有缓存。
+        """
+        读取 Release 快照，并标记是否需要后台强制刷新已有缓存。
 
         先把分身归一到源插件：Release 记录与本地版本号都按源插件登记，拿分身自身 ID
         去查市场索引与本地版本会一并落空，界面上表现为该分身没有任何可选版本。
@@ -154,13 +170,17 @@ class PluginReleaseService:
         )
 
     async def refresh(self, plugin_id: str, repo_url: str) -> None:
-        """强制刷新指定仓库的 Release 缓存。"""
+        """
+        强制刷新指定仓库的 Release 缓存。
+        """
         await self._refresh_releases(plugin_id, repo_url)
 
     async def _market_plugin(
         self, plugin_id: str, repo_url: str, force: bool
     ) -> Plugin | None:
-        """按当前、兼容和基础索引顺序读取一个插件。"""
+        """
+        按当前、兼容和基础索引顺序读取一个插件。
+        """
         version_flag = self._version_flag()
         package_versions: list[str | None] = [version_flag] if version_flag else []
         package_versions.extend(self._compatible_flags(version_flag))
@@ -180,26 +200,34 @@ _release_service: PluginReleaseService | None = None
 
 
 def configure_plugin_release_service(service: PluginReleaseService) -> None:
-    """由启动组合根发布当前 lifespan 的 Release 查询服务。"""
+    """
+    由启动组合根发布当前 lifespan 的 Release 查询服务。
+    """
     global _release_service
     _release_service = service
 
 
 def get_plugin_release_service() -> PluginReleaseService:
-    """返回已经由启动组合根装配的 Release 查询服务。"""
+    """
+    返回已经由启动组合根装配的 Release 查询服务。
+    """
     if _release_service is None:
         raise RuntimeError("插件 Release 查询服务尚未完成初始化")
     return _release_service
 
 
 def reset_plugin_release_service() -> None:
-    """清除当前 lifespan 的 Release 查询服务，供停机和隔离测试使用。"""
+    """
+    清除当前 lifespan 的 Release 查询服务，供停机和隔离测试使用。
+    """
     global _release_service
     _release_service = None
 
 
 def _trusted_repo_url(identity: PluginIdentity | None) -> str | None:
-    """把持久化的 GitHub 来源键投影为仓库 URL。"""
+    """
+    把持久化的 GitHub 来源键投影为仓库 URL。
+    """
     if identity is None or not identity.trusted_source_key:
         return None
     owner_repo = identity.trusted_source_key.removeprefix("github:")
@@ -207,7 +235,9 @@ def _trusted_repo_url(identity: PluginIdentity | None) -> str | None:
 
 
 def _merge_market_metadata(plugin: Plugin, market_plugin: Plugin) -> Plugin:
-    """在隔离副本上合并市场展示元数据。"""
+    """
+    在隔离副本上合并市场展示元数据。
+    """
     return cast(
         Plugin,
         plugin.model_copy(
@@ -238,7 +268,9 @@ def _project_release_item(
     latest_version: str | None,
     current_version: str | None,
 ) -> dict[str, Any]:
-    """复制并标记一个 Release 条目的最新和当前版本状态。"""
+    """
+    复制并标记一个 Release 条目的最新和当前版本状态。
+    """
     version = item.get("version")
     return {
         **item,

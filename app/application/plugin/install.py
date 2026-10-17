@@ -1,4 +1,6 @@
-"""插件载荷安装、数据库提交和运行态切换的统一应用用例。"""
+"""
+插件载荷安装、数据库提交和运行态切换的统一应用用例。
+"""
 
 from __future__ import annotations
 
@@ -39,21 +41,34 @@ T = TypeVar("T")
 
 
 class PluginPackageCheckpoint(Protocol):
-    """安装 journal 构造和崩溃恢复所需的最小文件快照事实。"""
+    """
+    安装安装日志构造和崩溃恢复所需的最小文件快照事实。
+
+    :ivar plugin_existed: 安装前是否存在插件运行目录
+    :ivar persistent_backup_existed: 安装前是否存在容器持久恢复备份
+    """
 
     plugin_existed: bool
     persistent_backup_existed: bool
 
 
 class PluginPackageTransactionPort(Protocol):
-    """插件安装用例可见的唯一文件与持久备份事务端口。"""
+    """
+    插件安装用例可见的唯一文件与持久备份事务端口。
+    """
 
     async def async_checkpoint(
         self,
         plugin_id: str,
         transaction_id: str | None = None,
     ) -> PluginPackageCheckpoint:
-        """创建运行目录恢复快照。"""
+        """
+        创建运行目录恢复快照。
+
+        :param plugin_id: 目标插件的物理标识
+        :param transaction_id: 关联安装日志的事务标识；None 由包管理端生成
+        :return: 可用于提交前恢复和提交后清理的文件快照
+        """
 
     async def async_install(
         self,
@@ -64,48 +79,103 @@ class PluginPackageTransactionPort(Protocol):
         force_install: bool = False,
         checkpoint: PluginPackageCheckpoint | None = None,
     ) -> tuple[bool, str]:
-        """执行已经通过来源准入的原始包安装。"""
+        """
+        执行已经通过来源准入的原始包安装。
+
+        :param plugin_id: 目标插件的物理标识
+        :param repo_url: 已经通过来源准入的仓库地址
+        :param package_version: 插件包代际；None 使用安装端默认代际
+        :param release_version: 指定的发布版本；None 使用候选默认版本
+        :param force_install: 是否强制重新安装已有版本，默认 False
+        :param checkpoint: 现有安装恢复快照；None 使用包管理端支持的独立安装路径
+        :return: 安装是否成功与结果说明组成的元组
+        """
 
     async def async_restore(self, checkpoint: PluginPackageCheckpoint) -> None:
-        """恢复数据库提交前的运行目录和持久备份。"""
+        """
+        恢复数据库提交前的运行目录和持久备份。
+
+        :param checkpoint: 该次安装持有的文件与持久备份恢复快照
+        """
 
     async def async_cleanup(self, checkpoint: PluginPackageCheckpoint) -> None:
-        """清理已不再被 journal 引用的恢复材料。"""
+        """
+        清理已不再被安装日志引用的恢复材料。
+
+        :param checkpoint: 该次安装持有的文件与持久备份恢复快照
+        """
 
     async def async_stage_persistent_backup(
         self,
         checkpoint: PluginPackageCheckpoint,
     ) -> None:
-        """准备新的容器持久恢复备份。"""
+        """
+        准备新的容器持久恢复备份。
+
+        :param checkpoint: 该次安装持有的文件与持久备份恢复快照
+        """
 
     async def async_activate_persistent_backup(
         self,
         checkpoint: PluginPackageCheckpoint,
     ) -> None:
-        """激活新备份并保留旧备份用于提交前补偿。"""
+        """
+        激活新备份并保留旧备份用于提交前补偿。
+
+        :param checkpoint: 该次安装持有的文件与持久备份恢复快照
+        """
 
     async def async_finalize_persistent_backup(
         self,
         checkpoint: PluginPackageCheckpoint,
     ) -> None:
-        """数据库提交后删除旧持久备份。"""
+        """
+        数据库提交后删除旧持久备份。
+
+        :param checkpoint: 该次安装持有的文件与持久备份恢复快照
+        """
 
     async def async_commit(self, checkpoint: PluginPackageCheckpoint) -> None:
-        """清理已提交事务的运行目录快照。"""
+        """
+        清理已提交事务的运行目录快照。
+
+        :param checkpoint: 该次安装持有的文件与持久备份恢复快照
+        """
 
     async def async_payload_receipt(self, plugin_id: str) -> str:
-        """读取当前运行目录的稳定载荷收据。"""
+        """
+        读取当前运行目录的稳定载荷收据。
+
+        :param plugin_id: 目标插件的物理标识
+        :return: 当前运行目录的 sha256 内容收据
+        """
 
     async def async_native_dependency_changes(
         self,
         checkpoint: PluginPackageCheckpoint,
     ) -> tuple[NativeDependencyChange, ...]:
-        """返回安装期间被替换的已加载原生发行包。"""
+        """
+        返回安装期间被替换的已加载原生发行包。
+
+        :param checkpoint: 该次安装持有的文件与持久备份恢复快照
+        :return: 安装期间发生替换且已加载到进程的原生依赖变更
+        """
 
 
 @dataclass(frozen=True, slots=True)
 class PluginInstallRollback:
-    """描述提交前失败中各类可补偿副作用的恢复结果。"""
+    """
+    描述提交前失败中各类可补偿副作用的恢复结果。
+
+    :param file_attempted: 是否已尝试恢复安装前文件
+    :param file_restored: 安装前文件是否恢复成功
+    :param runtime_attempted: 是否已尝试恢复原插件运行态
+    :param runtime_restored: 原运行态是否恢复成功
+    :param registrations_attempted: 是否已尝试恢复插件注册项
+    :param registrations_restored: 原注册项是否恢复成功
+    :param journal_deleted: 补偿完成后是否已删除安装事务日志
+    :param errors: 各补偿步骤未能完成的可读错误
+    """
 
     file_attempted: bool = False
     file_restored: bool = False
@@ -119,7 +189,23 @@ class PluginInstallRollback:
 
 @dataclass(frozen=True, slots=True)
 class PluginInstallResult:
-    """描述插件安装结果、失败阶段和可观察补偿状态。"""
+    """
+    描述插件安装结果、失败阶段和可观察补偿状态。
+
+    :param success: 操作是否完成其预期目标
+    :param message: 操作结果或失败原因的说明，默认空字符串
+    :param refreshed_only: 是否仅刷新运行态而未重新安装载荷
+    :param package_installed: 新的插件载荷是否已经安装到运行目录
+    :param installed_list_persisted: 已安装清单是否已完成数据库提交
+    :param runtime_reloaded: 插件运行态是否已重新加载
+    :param registrations_refreshed: 插件路由等注册项是否已刷新
+    :param restart_required: 已加载原生依赖发生变化后是否需要重启宿主
+    :param reported: 安装结果是否已经上报中心服务
+    :param report_error: 上报失败的原因；空字符串表示无上报错误
+    :param failure_stage: 安装失败所在阶段；成功时为 None
+    :param checkpoint_cleanup_error: 恢复材料清理失败的原因；空字符串表示无清理错误
+    :param rollback: 数据库提交前失败的各项补偿结果
+    """
 
     success: bool
     message: str = ""
@@ -138,7 +224,23 @@ class PluginInstallResult:
 
 @dataclass(slots=True)
 class _InstallState:
-    """记录取消补偿和数据库提交边界所需的事务状态。"""
+    """
+    记录取消补偿和数据库提交边界所需的事务状态。
+
+    :param transaction_id: 可跨重启定位恢复材料的安装事务标识
+    :param checkpoint: 当前文件恢复快照；创建前为 None
+    :param journal_created: 已确认安装日志创建成功
+    :param journal_unknown: 创建安装日志的结果尚不确定，必须保留恢复材料
+    :param target_identity: 拟与已安装清单一同提交的来源身份
+    :param stage: 当前执行阶段，用于失败定位，初始为 package_checkpoint
+    :param package_installed: 新插件载荷是否已经安装
+    :param runtime_touched: 运行态是否已经受到本次安装影响
+    :param registrations_touched: 注册项是否已经受到本次安装影响
+    :param native_dependencies_checked: 是否已经核对已加载原生依赖的变化
+    :param native_dependency_changes: 本次安装替换的已加载原生依赖
+    :param committed: 已确认数据库目标提交完成
+    :param commit_unknown: 数据库提交结果不确定，禁止按未提交状态盲目回滚
+    """
 
     transaction_id: str
     checkpoint: Any = None
@@ -156,7 +258,9 @@ class _InstallState:
 
 
 class PluginInstallCommand:
-    """以一个 Gateway 后端协调来源、文件、数据库与运行态提交。"""
+    """
+    以一个安装网关后端协调来源、文件、数据库与运行态提交。
+    """
 
     def __init__(
         self,
@@ -176,7 +280,9 @@ class PluginInstallCommand:
         clock: Callable[[], datetime],
         transaction_id_factory: Callable[[], str],
     ) -> None:
-        """保存单一安装事务所需的窄端口。"""
+        """
+        保存单一安装事务所需的窄端口。
+        """
         self.__persistence = persistence
         self.__installed_plugins_reader = installed_plugins_reader
         self.__loadable_marker = loadable_marker
@@ -200,7 +306,9 @@ class PluginInstallCommand:
         force: bool,
         local_sync: bool = False,
     ) -> PluginInstallResult:
-        """执行已准入事务；共享 Python 依赖不属于文件与数据库补偿边界。"""
+        """
+        执行已准入事务；共享 Python 依赖不属于文件与数据库补偿边界。
+        """
         plugin_id = admission.candidate.plugin_id
         state = _InstallState(transaction_id=self.__transaction_id_factory())
         try:
@@ -236,7 +344,9 @@ class PluginInstallCommand:
         local_sync: bool,
         state: _InstallState,
     ) -> PluginInstallResult:
-        """执行文件准备、运行态验证和数据库最终提交。"""
+        """
+        执行文件准备、运行态验证和数据库最终提交。
+        """
         candidate = admission.candidate
         plugin_id = candidate.plugin_id
         membership_before = any(
@@ -261,7 +371,9 @@ class PluginInstallCommand:
 
         try:
             async def create_checkpoint() -> None:
-                """在取消传播前保存已经创建完成的恢复材料引用。"""
+                """
+                在取消传播前保存已经创建完成的恢复材料引用。
+                """
                 state.checkpoint = await self.__packages.async_checkpoint(
                     plugin_id,
                     state.transaction_id,
@@ -293,7 +405,9 @@ class PluginInstallCommand:
         )
         try:
             async def create_journal() -> None:
-                """在取消传播前记录 PREPARED 已持久化。"""
+                """
+                在取消传播前记录 PREPARED 已持久化。
+                """
                 await self.__persistence.create_installation(record)
                 state.journal_created = True
 
@@ -435,7 +549,9 @@ class PluginInstallCommand:
         state.stage = "database_commit"
         try:
             async def commit_database() -> None:
-                """仅在数据库调用明确返回后标记提交已确认。"""
+                """
+                仅在数据库调用明确返回后标记提交已确认。
+                """
                 await self.__persistence.commit_installation(
                     state.transaction_id,
                     identity_target=state.target_identity,
@@ -508,7 +624,9 @@ class PluginInstallCommand:
         )
 
     async def __payload_matches(self, admission: PluginInstallAdmission) -> bool:
-        """确认身份元数据与当前运行目录收据都描述同一载荷。"""
+        """
+        确认身份元数据与当前运行目录收据都描述同一载荷。
+        """
         identity = admission.identity_before
         candidate = admission.candidate
         if identity is None or identity.payload_source_type is PluginPayloadSourceType.UNKNOWN:
@@ -530,7 +648,8 @@ class PluginInstallCommand:
             current_receipt = await self.__await_side_effect(
                 self.__packages.async_payload_receipt(candidate.plugin_id)
             )
-        except Exception as error:  # noqa: BLE001 - 无法证明相同就走完整安装
+        # 无法证明相同就走完整安装
+        except Exception as error:  # noqa: BLE001
             logger.warning(
                 "读取插件 %s 当前载荷收据失败，将重新安装：%s",
                 candidate.plugin_id,
@@ -546,7 +665,9 @@ class PluginInstallCommand:
         *,
         report: bool,
     ) -> PluginInstallResult:
-        """刷新已经提交且载荷事实未变化的插件运行态。"""
+        """
+        刷新已经提交且载荷事实未变化的插件运行态。
+        """
         failure_stage = "runtime_reload"
         try:
             await self.__reload_active(plugin_id)
@@ -586,7 +707,9 @@ class PluginInstallCommand:
         *,
         allow_pending_restart: bool = False,
     ) -> bool:
-        """重载插件；原生载荷已替换时允许等待新进程完成激活。"""
+        """
+        重载插件；原生载荷已替换时允许等待新进程完成激活。
+        """
         runtime_status = await self.__await_side_effect(
             self.__target_reloader(plugin_id)
         )
@@ -606,7 +729,9 @@ class PluginInstallCommand:
         plugin_id: str,
         state: _InstallState,
     ) -> None:
-        """记录共享依赖越过可回滚边界后的进程级激活要求。"""
+        """
+        记录共享依赖越过可回滚边界后的进程级激活要求。
+        """
         if state.native_dependencies_checked or state.checkpoint is None:
             return
         state.native_dependencies_checked = True
@@ -614,7 +739,8 @@ class PluginInstallCommand:
             changes = await self.__await_side_effect(
                 self.__packages.async_native_dependency_changes(state.checkpoint)
             )
-        except Exception as error:  # noqa: BLE001 - 诊断失败不能改写安装终态
+        # 诊断失败不能改写安装终态
+        except Exception as error:  # noqa: BLE001
             logger.warning(
                 "检测插件 %s 原生依赖变更失败，继续使用原安装结果：%s",
                 plugin_id,
@@ -633,7 +759,9 @@ class PluginInstallCommand:
         )
 
     async def __finish_committed(self, state: _InstallState) -> str:
-        """幂等清理 COMMITTED 事务；失败时保留 journal 供启动回放。"""
+        """
+        幂等清理 COMMITTED 事务；失败时保留安装日志供启动回放。
+        """
         try:
             await self.__await_side_effect(
                 self.__packages.async_finalize_persistent_backup(state.checkpoint)
@@ -647,7 +775,8 @@ class PluginInstallCommand:
                     expected_phase=PluginInstallationPhase.COMMITTED,
                 )
             )
-        except Exception as error:  # noqa: BLE001 - 已提交终态不能反向回滚
+        # 已提交终态不能反向回滚
+        except Exception as error:  # noqa: BLE001
             logger.warning(
                 "插件安装事务 %s 已提交但清理未完成：%s",
                 state.transaction_id,
@@ -660,7 +789,9 @@ class PluginInstallCommand:
         self,
         state: _InstallState,
     ) -> bool | None:
-        """PREPARED 创建确认异常时核对事务是否已经持久化。"""
+        """
+        PREPARED 创建确认异常时核对事务是否已经持久化。
+        """
         if state.journal_created:
             return True
         task = asyncio.create_task(
@@ -695,7 +826,9 @@ class PluginInstallCommand:
         self,
         state: _InstallState,
     ) -> bool | None:
-        """提交确认异常时读取 journal，拒绝猜测数据库最终状态。"""
+        """
+        提交确认异常时读取安装日志，拒绝猜测数据库最终状态。
+        """
         if state.committed:
             return True
         task = asyncio.create_task(
@@ -703,7 +836,8 @@ class PluginInstallCommand:
         )
         try:
             record = await await_task_to_terminal(task)
-        except BaseException as error:  # 数据库仍不可用时只能留待启动恢复
+        # 数据库仍不可用时只能留待启动恢复
+        except BaseException as error:
             state.commit_unknown = True
             logger.error(
                 "插件安装事务 %s 无法确认数据库提交结果：%s",
@@ -733,7 +867,9 @@ class PluginInstallCommand:
         stage: str,
         message: str,
     ) -> PluginInstallResult:
-        """补偿 PREPARED 事务，并把失败阶段与恢复结果返回调用方。"""
+        """
+        补偿 PREPARED 事务，并把失败阶段与恢复结果返回调用方。
+        """
         rollback = await self.__fail_prepared(plugin_id=plugin_id, state=state)
         return PluginInstallResult(
             success=False,
@@ -749,14 +885,17 @@ class PluginInstallCommand:
         plugin_id: str,
         state: _InstallState,
     ) -> PluginInstallRollback:
-        """恢复数据库提交前的文件和运行态，成功后删除 PREPARED journal。"""
+        """
+        恢复数据库提交前的文件和运行态，成功后删除 PREPARED 安装日志。
+        """
         errors: list[str] = []
         file_restored = False
         journal_deleted = False
         try:
             await self.__packages.async_restore(state.checkpoint)
             file_restored = True
-        except Exception as error:  # noqa: BLE001 - 保留 journal 供下次启动重试
+        # 保留安装日志供下次启动重试
+        except Exception as error:  # noqa: BLE001
             errors.append(f"插件文件恢复失败：{error}")
 
         runtime_restored = False
@@ -765,12 +904,14 @@ class PluginInstallCommand:
             try:
                 await self.__rollback_reloader(plugin_id)
                 runtime_restored = True
-            except Exception as error:  # noqa: BLE001 - 返回完整补偿诊断
+            # 返回完整补偿诊断
+            except Exception as error:  # noqa: BLE001
                 errors.append(f"插件运行态恢复失败：{error}")
             if runtime_restored:
                 try:
                     await self.__registration_refresher(plugin_id)
                     registrations_restored = True
+                # 补偿失败需保留完整诊断，不覆盖原安装失败结果。
                 except Exception as error:  # noqa: BLE001
                     errors.append(f"插件注册恢复失败：{error}")
 
@@ -785,12 +926,14 @@ class PluginInstallCommand:
                     expected_phase=PluginInstallationPhase.PREPARED,
                 )
                 journal_deleted = True
-            except Exception as error:  # noqa: BLE001 - marker 让恢复可安全重试
+            # 持久标记让恢复可安全重试
+            except Exception as error:  # noqa: BLE001
                 errors.append(f"插件安装事务删除失败：{error}")
         if journal_deleted:
             try:
                 await self.__packages.async_cleanup(state.checkpoint)
-            except Exception as error:  # noqa: BLE001 - orphan 不再影响业务终态
+            # 孤立恢复材料不再影响业务终态
+            except Exception as error:  # noqa: BLE001
                 errors.append(f"插件恢复材料清理失败：{error}")
 
         return PluginInstallRollback(
@@ -807,10 +950,13 @@ class PluginInstallCommand:
         )
 
     async def __rollback_without_journal(self, checkpoint: Any) -> PluginInstallRollback:
-        """journal 创建失败时恢复文件并立即清理无主快照。"""
+        """
+        安装日志创建失败时恢复文件并立即清理无主快照。
+        """
         errors: list[str] = []
         try:
             await self.__packages.async_restore(checkpoint)
+        # 补偿失败需保留完整诊断，不覆盖原安装失败结果。
         except Exception as error:  # noqa: BLE001
             return PluginInstallRollback(
                 file_attempted=True,
@@ -818,7 +964,8 @@ class PluginInstallCommand:
             )
         try:
             await self.__packages.async_cleanup(checkpoint)
-        except Exception as error:  # noqa: BLE001 - 无 journal 的孤儿不影响旧载荷
+        # 无安装日志的孤儿不影响旧载荷
+        except Exception as error:  # noqa: BLE001
             errors.append(f"插件恢复材料清理失败：{error}")
         return PluginInstallRollback(
             file_attempted=True,
@@ -832,7 +979,9 @@ class PluginInstallCommand:
         plugin_id: str,
         state: _InstallState,
     ) -> None:
-        """保留取消语义，但不在补偿完成前释放插件生命周期 owner。"""
+        """
+        保留取消语义，但不在补偿完成前释放插件生命周期持有者。
+        """
         if state.committed:
             logger.warning(
                 "插件 %s 在数据库提交后被取消，安装终态将在启动时继续清理",
@@ -872,7 +1021,9 @@ class PluginInstallCommand:
 
     @staticmethod
     async def __await_side_effect(operation: Awaitable[T]) -> T:
-        """让不可安全中断的副作用进入终态后再传播调用方取消。"""
+        """
+        让不可安全中断的副作用进入终态后再传播调用方取消。
+        """
         task = asyncio.ensure_future(operation)
         try:
             return await asyncio.shield(task)
@@ -890,11 +1041,14 @@ class PluginInstallCommand:
         *,
         enabled: bool,
     ) -> tuple[bool, str]:
-        """执行非关键远程上报，不改变本地安装终态。"""
+        """
+        执行非关键远程上报，不改变本地安装终态。
+        """
         if not enabled:
             return False, ""
         try:
             result = await self.__install_reporter(plugin_id, repo_url)
             return result is not False, "" if result is not False else "安装上报未确认"
-        except Exception as error:  # noqa: BLE001 - 远程上报不回滚本地安装
+        # 远程上报不回滚本地安装
+        except Exception as error:  # noqa: BLE001
             return False, str(error)
