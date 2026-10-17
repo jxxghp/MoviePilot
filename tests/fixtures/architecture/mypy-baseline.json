@@ -1021,21 +1021,6 @@
     "arg-type": 2,
     "type-arg": 1
   },
-  "app/modules/indexer/spider/__init__.py": {
-    "arg-type": 10,
-    "assignment": 3,
-    "dict-item": 3,
-    "misc": 1,
-    "no-any-return": 7,
-    "no-untyped-call": 3,
-    "no-untyped-def": 26,
-    "operator": 6,
-    "override": 1,
-    "return-value": 1,
-    "type-arg": 19,
-    "union-attr": 5,
-    "var-annotated": 2
-  },
   "app/modules/indexer/spider/haidan.py": {
     "arg-type": 1,
     "assignment": 5,
@@ -1242,8 +1227,8 @@
     "assignment": 11,
     "empty-body": 1,
     "index": 2,
-    "no-any-return": 4,
-    "no-untyped-call": 5,
+    "no-any-return": 2,
+    "no-untyped-call": 3,
     "no-untyped-def": 3,
     "return-value": 2,
     "type-arg": 19,
@@ -1262,14 +1247,6 @@
     "no-untyped-def": 3,
     "return-value": 1,
     "type-arg": 6
-  },
-  "app/modules/themoviedb/tmdbapi.py": {
-    "arg-type": 1,
-    "attr-defined": 2,
-    "no-any-return": 3,
-    "no-untyped-def": 7,
-    "operator": 24,
-    "type-arg": 47
   },
   "app/modules/themoviedb/tmdbv3api/as_obj.py": {
     "assignment": 1,
