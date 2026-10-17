@@ -12,11 +12,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from app.api.servarr import arr_add_series, arr_series_lookup
+from app.api.servarr import arr_add_movie, arr_add_series, arr_series_lookup
 from app.application.servarr import ServarrSubscriptionService
 from app.db.adapters.subscription import SessionSubscriptionRepository
 from app.db.models.subscribe import Subscribe
-from app.schemas.servarr import SonarrSeason, SonarrSeries
+from app.schemas.servarr import RadarrMovie, SonarrSeason, SonarrSeries
 from app.schemas.types import MediaSource, MediaType
 
 _TVDB_ID = 454898
@@ -55,6 +55,17 @@ def _run_add(tv, subscriptions, batch_writer):
             _="api-token",
             subscriptions=subscriptions,
             batch_writer=batch_writer,
+        )
+    )
+
+
+def _run_add_movie(movie, subscriptions):
+    """直接调用新增电影订阅处理函数。"""
+    return asyncio.run(
+        arr_add_movie(
+            movie=movie,
+            _="api-token",
+            subscriptions=subscriptions,
         )
     )
 
@@ -102,6 +113,34 @@ def test_add_series_without_tmdbid_resolves_identity_via_tvdbid():
         mtype=MediaType.TV,
         username="Seerr",
     )
+
+
+def test_add_movie_converts_year_for_subscription_contract():
+    """Servarr 电影请求的年份应转换为订阅写入端口要求的字符串。"""
+    subscriptions = MagicMock()
+    subscriptions.list_by_media_identity = AsyncMock(return_value=[])
+    subscribe_chain = MagicMock()
+    subscribe_chain.async_add = AsyncMock(return_value=(123, ""))
+    movie = RadarrMovie(title="A Movie", year=2024, tmdbId=42)
+
+    with patch("app.api.servarr.SubscribeChain", return_value=subscribe_chain):
+        result = _run_add_movie(movie, subscriptions)
+
+    assert result.id == 123
+    subscribe_chain.async_add.assert_awaited_once()
+    assert subscribe_chain.async_add.await_args.kwargs["year"] == "2024"
+
+
+def test_add_movie_rejects_missing_title_or_year():
+    """缺少电影标题或年份时应拒绝请求，避免向订阅端口传入空值。"""
+    subscriptions = MagicMock()
+    subscriptions.list_by_media_identity = AsyncMock(return_value=[])
+    movie = RadarrMovie(tmdbId=42)
+
+    with pytest.raises(HTTPException) as excinfo:
+        _run_add_movie(movie, subscriptions)
+
+    assert excinfo.value.status_code == 422
 
 
 def test_add_series_with_empty_seasons_falls_back_to_all_seasons():
