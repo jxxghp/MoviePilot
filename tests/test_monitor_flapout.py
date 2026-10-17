@@ -8,13 +8,12 @@ FUSE 挂载抖动时,事件到达派发环节的瞬间文件可能恰好从视�
 "恢复可见(继续整理)"与"确实已删除(自动放弃)"。
 """
 
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 from watchfiles import Change
-
 
 from app.monitor.watcher import LocalDirectoryWatcher
 

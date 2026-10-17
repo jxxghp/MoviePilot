@@ -23,11 +23,11 @@ with stub_modules(
         "app.db.oper.systemconfig": _systemconfig_stub,
     }
 ):
-    from app.schemas.file import FileItem
     from app.chain.scraping import ScrapingChain, ScrapingConfig, ScrapingOption
     from app.domain.context import MediaInfo
     from app.domain.metainfo import MetaInfo
     from app.runtime.events import Event
+    from app.schemas.file import FileItem
     from app.schemas.types import (
         EventType,
         MediaType,

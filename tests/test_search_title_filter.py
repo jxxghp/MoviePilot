@@ -14,10 +14,13 @@ ensure_optional_stub("psutil", __spec__=importlib.machinery.ModuleSpec("psutil",
 
 # 先准备依赖替身或导入路径，再加载被测模块以保持测试隔离。
 from app.chain.search import SearchChain  # noqa: E402
+
 # 先准备依赖替身或导入路径，再加载被测模块以保持测试隔离。
 from app.chain.search import title as search_module  # noqa: E402
+
 # 先准备依赖替身或导入路径，再加载被测模块以保持测试隔离。
 from app.domain.context import TorrentInfo  # noqa: E402
+
 # 先准备依赖替身或导入路径，再加载被测模块以保持测试隔离。
 from app.schemas.types import SystemConfigKey  # noqa: E402
 

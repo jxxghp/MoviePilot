@@ -8,13 +8,13 @@
 - 不同 (host, reason) 互不吞并。
 """
 
-from types import SimpleNamespace
-import pytest_asyncio
-import pytest
-
 import asyncio
+from types import SimpleNamespace
 from typing import List, Optional
 from unittest.mock import patch
+
+import pytest
+import pytest_asyncio
 
 from app.application.security import url as security_module
 from app.application.security.url import (

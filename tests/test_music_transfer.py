@@ -19,6 +19,7 @@ from app.application.transfer.execution import (
 )
 from app.application.transfer.workflow import JobManager, TransferTask
 from app.chain.media import MediaChain
+
 # 此用例覆盖运行时惰性导出，静态检查无法解析该公开入口。
 from app.chain.transfer import TransferChain  # pylint: disable=no-name-in-module
 from app.domain.context import MusicInfo

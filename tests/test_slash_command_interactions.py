@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from app.testing.bootstrap import ensure_optional_stub
 
 ensure_optional_stub("qbittorrentapi", TorrentFilesList=list)

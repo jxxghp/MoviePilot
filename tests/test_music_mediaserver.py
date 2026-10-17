@@ -16,8 +16,10 @@ from app.modules.jellyfin import JellyfinModule
 from app.modules.jellyfin.jellyfin import Jellyfin
 from app.modules.plex import PlexModule
 from app.modules.plex.plex import Plex
+
 # 此用例覆盖运行时惰性导出，静态检查无法解析该公开入口。
 from app.modules.trimemedia import TrimeMediaModule  # pylint: disable=no-name-in-module
+
 # 此用例覆盖运行时惰性导出，静态检查无法解析该公开入口。
 from app.modules.ugreen import UgreenModule  # pylint: disable=no-name-in-module
 from app.modules.zspace import ZSpaceModule

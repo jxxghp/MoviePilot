@@ -11,6 +11,7 @@ import pytest
 # 注册真实 Plex 音乐和电影类型，供列表 XML 解析测试使用。
 from plexapi.audio import Album, Artist, Track  # noqa: F401  # pylint: disable=unused-import
 from plexapi.library import MovieSection, MusicSection
+
 # 导入仅用于触发 Plex 类型注册，测试不直接引用该类。
 from plexapi.video import Movie  # noqa: F401  # pylint: disable=unused-import
 

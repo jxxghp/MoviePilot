@@ -9,8 +9,8 @@ from typing import Union
 from unittest.mock import patch
 
 import pytest
-from app import schemas
 
+from app import schemas
 from app.modules.filemanager.storages import rclone as rclone_module
 from app.modules.filemanager.storages.rclone import Rclone
 

@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
 from app.testing.bootstrap import ensure_optional_stub
 
 ensure_optional_stub("qbittorrentapi", TorrentFilesList=list)

@@ -6,6 +6,7 @@ import socket
 from unittest.mock import patch
 
 import pytest
+
 from app.application.security.url import (
     SecurityUtils,
     UrlSafetyDiagnosis,

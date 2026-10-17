@@ -2,13 +2,13 @@
 验证搜索推荐的后台任务、分页边界及缓存重放参数。
 """
 
-import pytest_asyncio
-import pytest
-
 import asyncio
 import importlib.machinery
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
+
+import pytest
+import pytest_asyncio
 
 from app.testing.bootstrap import ensure_optional_stub
 
@@ -19,20 +19,28 @@ ensure_optional_stub("psutil", __spec__=importlib.machinery.ModuleSpec("psutil",
 
 # 可选依赖必须先装配，以下导入才可安全加载搜索链与工具能力。
 from app.agent.contracts import ReplyMode  # noqa: E402
+
 # 先准备依赖替身或导入路径，再加载被测模块以保持测试隔离。
 from app.agent.manager import agent_manager  # noqa: E402
+
 # 先准备依赖替身或导入路径，再加载被测模块以保持测试隔离。
 from app.agent.tools.factory import MoviePilotToolFactory  # noqa: E402
+
 # 先准备依赖替身或导入路径，再加载被测模块以保持测试隔离。
 from app.chain.search import SearchChain  # noqa: E402
+
 # 先准备依赖替身或导入路径，再加载被测模块以保持测试隔离。
 from app.chain.search.recommend import recommend_coordinator  # noqa: E402
+
 # 先准备依赖替身或导入路径，再加载被测模块以保持测试隔离。
 from app.modules.indexer import IndexerModule  # noqa: E402
+
 # 先准备依赖替身或导入路径，再加载被测模块以保持测试隔离。
 from app.runtime.config import settings  # noqa: E402
+
 # 先准备依赖替身或导入路径，再加载被测模块以保持测试隔离。
 from app.runtime.tasks import TaskRegistry  # noqa: E402
+
 # 先准备依赖替身或导入路径，再加载被测模块以保持测试隔离。
 from app.schemas.types import MediaType  # noqa: E402
 
