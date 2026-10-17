@@ -1,4 +1,6 @@
-"""Agent、插件和工作流动态任务对账。"""
+"""
+Agent、插件和工作流动态任务对账。
+"""
 
 import threading
 import traceback
@@ -31,23 +33,31 @@ from app.schemas.types import MessageType, SystemConfigKey
 
 
 class SchedulerReconcileOwner(_SchedulerOwnerBase):
-    """Agent、插件和工作流动态任务对账。"""
+    """
+    Agent、插件和工作流动态任务对账。
+    """
 
     def configure_agent_tasks(self, repository: AgentTaskRepository) -> None:
-        """在调度器启动前绑定唯一自主任务仓储。"""
+        """
+        在调度器启动前绑定唯一自主任务仓储。
+        """
         if self._lifecycle_state not in {"new", "stopped"}:
             raise RuntimeError("Scheduler 已运行，不能替换 AgentTask 仓储")
         self._agent_tasks = repository
 
     def _agent_task_repository(self) -> AgentTaskRepository:
-        """返回显式注入仓储；缺少组合根装配时稳定失败。"""
+        """
+        返回显式注入仓储；缺少组合根装配时稳定失败。
+        """
         if self._agent_tasks is None:
             raise RuntimeError("Scheduler 的 AgentTask 仓储尚未注入")
         return self._agent_tasks
 
     @staticmethod
     def _get_agent_task_job_id(task_id: int) -> str:
-        """生成 Agent 自主定时任务的调度器 Job ID。"""
+        """
+        生成 Agent 自主定时任务的调度器 Job ID。
+        """
         return f"{AGENT_TASK_JOB_PREFIX}-{task_id}"
 
     def start_agent_task(self, task_id: int) -> bool:
@@ -183,7 +193,9 @@ class SchedulerReconcileOwner(_SchedulerOwnerBase):
         generation: int,
         run_id: str,
     ) -> bool:
-        """移除本次执行或其运行中重载产生的 AgentTask 调度注册。"""
+        """
+        移除本次执行或其运行中重载产生的 AgentTask 调度注册。
+        """
         job_id = self._get_agent_task_job_id(task_id)
         with self._lock:
             job = self._jobs.get(job_id)

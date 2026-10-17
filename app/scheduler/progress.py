@@ -1,4 +1,6 @@
-"""调度任务进度快照与终态收敛。"""
+"""
+调度任务进度快照与终态收敛。
+"""
 
 import time
 from datetime import datetime
@@ -16,7 +18,9 @@ SCHEDULER_PROGRESS_PREFIX = "scheduler"
 
 
 class SchedulerProgressOwner(_SchedulerOwnerBase):
-    """调度任务进度快照与终态收敛。"""
+    """
+    调度任务进度快照与终态收敛。
+    """
 
     def _finish_unsubmitted_job(
         self,
@@ -25,7 +29,9 @@ class SchedulerProgressOwner(_SchedulerOwnerBase):
         generation: int,
         error: Optional[str],
     ) -> None:
-        """收尾协程无法提交时同步释放任务状态和运行所有权。"""
+        """
+        收尾协程无法提交时同步释放任务状态和运行所有权。
+        """
         finished_at = self._format_time()
         metric_started_at = None
         with self._lock:

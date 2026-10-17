@@ -1,4 +1,6 @@
-"""调度器内置维护任务。"""
+"""
+调度器内置维护任务。
+"""
 
 import gc
 
@@ -10,11 +12,15 @@ from app.scheduler.contract import _SchedulerOwnerBase
 
 
 class SchedulerMaintenanceOwner(_SchedulerOwnerBase):
-    """调度器内置维护任务。"""
+    """
+    调度器内置维护任务。
+    """
 
     @staticmethod
     def database_backup() -> BackupArtifact:
-        """按当前宿主策略创建一次定时数据库备份。"""
+        """
+        按当前宿主策略创建一次定时数据库备份。
+        """
         return get_database_governance().create_backup()
 
     def clear_cache(self) -> None:
