@@ -1,4 +1,6 @@
-from ..tmdb import TMDb, TMDbJson
+from typing import Any
+
+from ..tmdb import TMDb
 
 
 class TV(TMDb):
@@ -32,7 +34,7 @@ class TV(TMDb):
         "group_episodes": "/tv/episode_group/%s",
     }
 
-    def details(self, tv_id: int, append_to_response: str="videos,trailers,images,credits,translations") -> TMDbJson:
+    def details(self, tv_id: int, append_to_response: str | None="videos,trailers,images,credits,translations") -> Any:
         """
         Get the primary TV show details by id.
         :param tv_id: int
@@ -44,7 +46,7 @@ class TV(TMDb):
             params="append_to_response=%s" % append_to_response,
         )
 
-    def account_states(self, tv_id: int) -> TMDbJson:
+    def account_states(self, tv_id: int) -> Any:
         """
         Grab the following account states for a session:
         TV show rating, If it belongs to your watchlist, or If it belongs to your favourite list.
@@ -56,7 +58,7 @@ class TV(TMDb):
             params="session_id=%s" % self.session_id
         )
 
-    def aggregate_credits(self, tv_id: int) -> TMDbJson:
+    def aggregate_credits(self, tv_id: int) -> Any:
         """
         Get the aggregate credits (cast and crew) that have been added to a TV show.
         This call differs from the main credits call in that it does not return the newest season but rather,
@@ -66,7 +68,7 @@ class TV(TMDb):
         """
         return self._request_obj(self._urls["aggregate_credits"] % tv_id)
 
-    def alternative_titles(self, tv_id: int) -> TMDbJson:
+    def alternative_titles(self, tv_id: int) -> Any:
         """
         Returns all of the alternative titles for a TV show.
         :param tv_id: int
@@ -77,7 +79,7 @@ class TV(TMDb):
             key="results"
         )
 
-    def changes(self, tv_id: int, start_date: str | None=None, end_date: str | None=None, page: int=1) -> TMDbJson:
+    def changes(self, tv_id: int, start_date: str | None=None, end_date: str | None=None, page: int=1) -> Any:
         """
         Get the changes for a TV show. By default only the last 24 hours are returned.
         You can query up to 14 days in a single query by using the start_date and end_date query parameters.
@@ -97,7 +99,7 @@ class TV(TMDb):
             key="changes"
         )
 
-    def content_ratings(self, tv_id: int) -> TMDbJson:
+    def content_ratings(self, tv_id: int) -> Any:
         """
         Get the list of content ratings (certifications) that have been added to a TV show.
         :param tv_id: int
@@ -108,7 +110,7 @@ class TV(TMDb):
             key="results"
         )
 
-    def credits(self, tv_id: int) -> TMDbJson:
+    def credits(self, tv_id: int) -> Any:
         """
         Get the credits (cast and crew) that have been added to a TV show.
         :param tv_id: int
@@ -116,7 +118,7 @@ class TV(TMDb):
         """
         return self._request_obj(self._urls["credits"] % tv_id)
 
-    def episode_groups(self, tv_id: int) -> TMDbJson:
+    def episode_groups(self, tv_id: int) -> Any:
         """
         Get all of the episode groups that have been created for a TV show.
         :param tv_id: int
@@ -127,10 +129,10 @@ class TV(TMDb):
             key="results"
         )
 
-    def group_episodes(self, group_id: int) -> TMDbJson:
+    def group_episodes(self, group_id: int | str) -> Any:
         """
         查询剧集组所有剧集
-        :param group_id: int
+        :param group_id: int | str
         :return:
         """
         return self._request_obj(
@@ -138,7 +140,7 @@ class TV(TMDb):
             key="groups"
         )
 
-    def external_ids(self, tv_id: int) -> TMDbJson:
+    def external_ids(self, tv_id: int) -> Any:
         """
         Get the external ids for a TV show.
         :param tv_id: int
@@ -146,7 +148,7 @@ class TV(TMDb):
         """
         return self._request_obj(self._urls["external_ids"] % tv_id)
 
-    def images(self, tv_id: int, include_image_language: str | None=None) -> TMDbJson:
+    def images(self, tv_id: int, include_image_language: str | None=None) -> Any:
         """
         Get the images that belong to a TV show.
         Querying images with a language parameter will filter the results.
@@ -162,7 +164,7 @@ class TV(TMDb):
             params="include_image_language=%s" % include_image_language if include_image_language else ""
         )
 
-    def keywords(self, tv_id: int) -> TMDbJson:
+    def keywords(self, tv_id: int) -> Any:
         """
         Get the keywords that have been added to a TV show.
         :param tv_id: int
@@ -173,7 +175,7 @@ class TV(TMDb):
             key="results"
         )
 
-    def recommendations(self, tv_id: int, page: int=1) -> TMDbJson:
+    def recommendations(self, tv_id: int, page: int=1) -> Any:
         """
         Get the list of TV show recommendations for this item.
         :param tv_id: int
@@ -186,7 +188,7 @@ class TV(TMDb):
             key="results"
         )
 
-    def reviews(self, tv_id: int, page: int=1) -> TMDbJson:
+    def reviews(self, tv_id: int, page: int=1) -> Any:
         """
         Get the reviews for a TV show.
         :param tv_id: int
@@ -199,7 +201,7 @@ class TV(TMDb):
             key="results"
         )
 
-    def screened_theatrically(self, tv_id: int) -> TMDbJson:
+    def screened_theatrically(self, tv_id: int) -> Any:
         """
         Get a list of seasons or episodes that have been screened in a film festival or theatre.
         :param tv_id: int
@@ -210,7 +212,7 @@ class TV(TMDb):
             key="results"
         )
 
-    def similar(self, tv_id: int, page: int=1) -> TMDbJson:
+    def similar(self, tv_id: int, page: int=1) -> Any:
         """
         Get the primary TV show details by id.
         :param tv_id: int
@@ -223,7 +225,7 @@ class TV(TMDb):
             key="results"
         )
 
-    def translations(self, tv_id: int) -> TMDbJson:
+    def translations(self, tv_id: int) -> Any:
         """
         Get a list of the translations that exist for a TV show.
         :param tv_id: int
@@ -234,7 +236,7 @@ class TV(TMDb):
             key="translations"
         )
 
-    def videos(self, tv_id: int, include_video_language: str | None=None, page: int=1) -> TMDbJson:
+    def videos(self, tv_id: int, include_video_language: str | None=None, page: int=1) -> Any:
         """
         Get the videos that have been added to a TV show.
         :param tv_id: int
@@ -250,7 +252,7 @@ class TV(TMDb):
             params=params
         )
 
-    def watch_providers(self, tv_id: int) -> TMDbJson:
+    def watch_providers(self, tv_id: int) -> Any:
         """
         You can query this method to get a list of the availabilities per country by provider.
         :param tv_id: int
@@ -285,14 +287,14 @@ class TV(TMDb):
             method="DELETE"
         )
 
-    def latest(self) -> TMDbJson:
+    def latest(self) -> Any:
         """
         Get the most newly created TV show. This is a live response and will continuously change.
         :return:
         """
         return self._request_obj(self._urls["latest"])
 
-    def airing_today(self, page: int=1) -> TMDbJson:
+    def airing_today(self, page: int=1) -> Any:
         """
         Get a list of TV shows that are airing today.
         This query is purely day based as we do not currently support airing times.
@@ -305,7 +307,7 @@ class TV(TMDb):
             key="results"
         )
 
-    def on_the_air(self, page: int=1) -> TMDbJson:
+    def on_the_air(self, page: int=1) -> Any:
         """
         Get a list of shows that are currently on the air.
         :param page:
@@ -317,7 +319,7 @@ class TV(TMDb):
             key="results"
         )
 
-    def popular(self, page: int=1) -> TMDbJson:
+    def popular(self, page: int=1) -> Any:
         """
         Get a list of the current popular TV shows on TMDb. This list updates daily.
         :param page:
@@ -329,7 +331,7 @@ class TV(TMDb):
             key="results"
         )
 
-    def top_rated(self, page: int=1) -> TMDbJson:
+    def top_rated(self, page: int=1) -> Any:
         """
         Get a list of the top rated TV shows on TMDb.
         :param page:
@@ -342,7 +344,7 @@ class TV(TMDb):
         )
 
     # 异步版本方法
-    async def async_details(self, tv_id: int, append_to_response: str="videos,trailers,images,credits,translations") -> TMDbJson:
+    async def async_details(self, tv_id: int, append_to_response: str | None="videos,trailers,images,credits,translations") -> Any:
         """
         Get the primary TV show details by id.（异步版本）
         :param tv_id: int
@@ -354,7 +356,7 @@ class TV(TMDb):
             params="append_to_response=%s" % append_to_response,
         )
 
-    async def async_account_states(self, tv_id: int) -> TMDbJson:
+    async def async_account_states(self, tv_id: int) -> Any:
         """
         Grab the following account states for a session:
         TV show rating, If it belongs to your watchlist, or If it belongs to your favourite list.（异步版本）
@@ -366,7 +368,7 @@ class TV(TMDb):
             params="session_id=%s" % self.session_id
         )
 
-    async def async_aggregate_credits(self, tv_id: int) -> TMDbJson:
+    async def async_aggregate_credits(self, tv_id: int) -> Any:
         """
         Get the aggregate credits (cast and crew) that have been added to a TV show.
         This call differs from the main credits call in that it does not return the newest season but rather,
@@ -376,7 +378,7 @@ class TV(TMDb):
         """
         return await self._async_request_obj(self._urls["aggregate_credits"] % tv_id)
 
-    async def async_alternative_titles(self, tv_id: int) -> TMDbJson:
+    async def async_alternative_titles(self, tv_id: int) -> Any:
         """
         Returns all of the alternative titles for a TV show.（异步版本）
         :param tv_id: int
@@ -387,7 +389,7 @@ class TV(TMDb):
             key="results"
         )
 
-    async def async_changes(self, tv_id: int, start_date: str | None=None, end_date: str | None=None, page: int=1) -> TMDbJson:
+    async def async_changes(self, tv_id: int, start_date: str | None=None, end_date: str | None=None, page: int=1) -> Any:
         """
         Get the changes for a TV show. By default only the last 24 hours are returned.
         You can query up to 14 days in a single query by using the start_date and end_date query parameters.（异步版本）
@@ -407,7 +409,7 @@ class TV(TMDb):
             key="changes"
         )
 
-    async def async_content_ratings(self, tv_id: int) -> TMDbJson:
+    async def async_content_ratings(self, tv_id: int) -> Any:
         """
         Get the list of content ratings (certifications) that have been added to a TV show.（异步版本）
         :param tv_id: int
@@ -418,7 +420,7 @@ class TV(TMDb):
             key="results"
         )
 
-    async def async_credits(self, tv_id: int) -> TMDbJson:
+    async def async_credits(self, tv_id: int) -> Any:
         """
         Get the credits (cast and crew) that have been added to a TV show.（异步版本）
         :param tv_id: int
@@ -426,7 +428,7 @@ class TV(TMDb):
         """
         return await self._async_request_obj(self._urls["credits"] % tv_id)
 
-    async def async_episode_groups(self, tv_id: int) -> TMDbJson:
+    async def async_episode_groups(self, tv_id: int) -> Any:
         """
         Get all of the episode groups that have been created for a TV show.（异步版本）
         :param tv_id: int
@@ -437,10 +439,10 @@ class TV(TMDb):
             key="results"
         )
 
-    async def async_group_episodes(self, group_id: int) -> TMDbJson:
+    async def async_group_episodes(self, group_id: int | str) -> Any:
         """
         查询剧集组所有剧集（异步版本）
-        :param group_id: int
+        :param group_id: int | str
         :return:
         """
         return await self._async_request_obj(
@@ -448,7 +450,7 @@ class TV(TMDb):
             key="groups"
         )
 
-    async def async_external_ids(self, tv_id: int) -> TMDbJson:
+    async def async_external_ids(self, tv_id: int) -> Any:
         """
         Get the external ids for a TV show.（异步版本）
         :param tv_id: int
@@ -456,7 +458,7 @@ class TV(TMDb):
         """
         return await self._async_request_obj(self._urls["external_ids"] % tv_id)
 
-    async def async_images(self, tv_id: int, include_image_language: str | None=None) -> TMDbJson:
+    async def async_images(self, tv_id: int, include_image_language: str | None=None) -> Any:
         """
         Get the images that belong to a TV show.
         Querying images with a language parameter will filter the results.
@@ -472,7 +474,7 @@ class TV(TMDb):
             params="include_image_language=%s" % include_image_language if include_image_language else ""
         )
 
-    async def async_keywords(self, tv_id: int) -> TMDbJson:
+    async def async_keywords(self, tv_id: int) -> Any:
         """
         Get the keywords that have been added to a TV show.（异步版本）
         :param tv_id: int
@@ -483,7 +485,7 @@ class TV(TMDb):
             key="results"
         )
 
-    async def async_recommendations(self, tv_id: int, page: int=1) -> TMDbJson:
+    async def async_recommendations(self, tv_id: int, page: int=1) -> Any:
         """
         Get the list of TV show recommendations for this item.（异步版本）
         :param tv_id: int
@@ -496,7 +498,7 @@ class TV(TMDb):
             key="results"
         )
 
-    async def async_reviews(self, tv_id: int, page: int=1) -> TMDbJson:
+    async def async_reviews(self, tv_id: int, page: int=1) -> Any:
         """
         Get the reviews for a TV show.（异步版本）
         :param tv_id: int
@@ -509,7 +511,7 @@ class TV(TMDb):
             key="results"
         )
 
-    async def async_screened_theatrically(self, tv_id: int) -> TMDbJson:
+    async def async_screened_theatrically(self, tv_id: int) -> Any:
         """
         Get a list of seasons or episodes that have been screened in a film festival or theatre.（异步版本）
         :param tv_id: int
@@ -520,7 +522,7 @@ class TV(TMDb):
             key="results"
         )
 
-    async def async_similar(self, tv_id: int, page: int=1) -> TMDbJson:
+    async def async_similar(self, tv_id: int, page: int=1) -> Any:
         """
         Get the primary TV show details by id.（异步版本）
         :param tv_id: int
@@ -533,7 +535,7 @@ class TV(TMDb):
             key="results"
         )
 
-    async def async_translations(self, tv_id: int) -> TMDbJson:
+    async def async_translations(self, tv_id: int) -> Any:
         """
         Get a list of the translations that exist for a TV show.（异步版本）
         :param tv_id: int
@@ -544,7 +546,7 @@ class TV(TMDb):
             key="translations"
         )
 
-    async def async_videos(self, tv_id: int, include_video_language: str | None=None, page: int=1) -> TMDbJson:
+    async def async_videos(self, tv_id: int, include_video_language: str | None=None, page: int=1) -> Any:
         """
         Get the videos that have been added to a TV show.（异步版本）
         :param tv_id: int
@@ -560,7 +562,7 @@ class TV(TMDb):
             params=params
         )
 
-    async def async_watch_providers(self, tv_id: int) -> TMDbJson:
+    async def async_watch_providers(self, tv_id: int) -> Any:
         """
         You can query this method to get a list of the availabilities per country by provider.（异步版本）
         :param tv_id: int
@@ -595,14 +597,14 @@ class TV(TMDb):
             method="DELETE"
         )
 
-    async def async_latest(self) -> TMDbJson:
+    async def async_latest(self) -> Any:
         """
         Get the most newly created TV show. This is a live response and will continuously change.（异步版本）
         :return:
         """
         return await self._async_request_obj(self._urls["latest"])
 
-    async def async_airing_today(self, page: int=1) -> TMDbJson:
+    async def async_airing_today(self, page: int=1) -> Any:
         """
         Get a list of TV shows that are airing today.
         This query is purely day based as we do not currently support airing times.（异步版本）
@@ -615,7 +617,7 @@ class TV(TMDb):
             key="results"
         )
 
-    async def async_on_the_air(self, page: int=1) -> TMDbJson:
+    async def async_on_the_air(self, page: int=1) -> Any:
         """
         Get a list of shows that are currently on the air.（异步版本）
         :param page:
@@ -627,7 +629,7 @@ class TV(TMDb):
             key="results"
         )
 
-    async def async_popular(self, page: int=1) -> TMDbJson:
+    async def async_popular(self, page: int=1) -> Any:
         """
         Get a list of the current popular TV shows on TMDb. This list updates daily.（异步版本）
         :param page:
@@ -639,7 +641,7 @@ class TV(TMDb):
             key="results"
         )
 
-    async def async_top_rated(self, page: int=1) -> TMDbJson:
+    async def async_top_rated(self, page: int=1) -> Any:
         """
         Get a list of the top rated TV shows on TMDb.（异步版本）
         :param page:
