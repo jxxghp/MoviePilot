@@ -1,4 +1,6 @@
-"""LLM Provider 稳定 Facade。"""
+"""
+LLM Provider 稳定 Facade。
+"""
 
 from __future__ import annotations
 
@@ -46,10 +48,14 @@ class LLMProviderManager(
     _ProviderRuntime,
     metaclass=Singleton,
 ):
-    """组合 Provider 各职责 owner，并稳定既有公开调用签名。"""
+    """
+    组合 Provider 各职责 owner，并稳定既有公开调用签名。
+    """
 
     def __init__(self) -> None:
-        """初始化 Provider 目录缓存与临时授权会话状态。"""
+        """
+        初始化 Provider 目录缓存与临时授权会话状态。
+        """
         self._lock = threading.RLock()
         self._models_dev_lock = asyncio.Lock()
         self._pending_sessions: dict[str, PendingAuthSession] = {}
@@ -59,7 +65,9 @@ class LLMProviderManager(
         self._models_dev_cache_path = Path(get_runtime_setting("TEMP_PATH")) / "llm_provider_models_dev_cache.json"
 
     async def clear_auth(self, provider_id: str) -> None:
-        """移除 Provider 持久鉴权信息。"""
+        """
+        移除 Provider 持久鉴权信息。
+        """
         return await _ProviderAuth.clear_auth(self, provider_id)
 
     def create_bedrock_client(
@@ -71,7 +79,9 @@ class LLMProviderManager(
         use_proxy: Optional[bool] = None,
         read_timeout: Optional[int] = None,
     ) -> Any:
-        """创建使用统一认证和网络策略的 Bedrock 客户端。"""
+        """
+        创建使用统一认证和网络策略的 Bedrock 客户端。
+        """
         return _ProviderDiscovery.create_bedrock_client(
             self,
             service_name,
@@ -83,7 +93,9 @@ class LLMProviderManager(
         )
 
     def get_auth_status(self, provider_id: str) -> dict[str, Any]:
-        """返回前端展示用的 Provider 鉴权摘要。"""
+        """
+        返回前端展示用的 Provider 鉴权摘要。
+        """
         return _ProviderAuth.get_auth_status(self, provider_id)
 
     async def get_models_dev_data(
@@ -91,7 +103,9 @@ class LLMProviderManager(
         force_refresh: bool = False,
         use_proxy: Optional[bool] = None,
     ) -> dict[str, Any]:
-        """返回带本地缓存与离线回退的 models.dev 原始目录。"""
+        """
+        返回带本地缓存与离线回退的 models.dev 原始目录。
+        """
         return await _ProviderDiscovery.get_models_dev_data(
             self,
             force_refresh,
@@ -99,15 +113,21 @@ class LLMProviderManager(
         )
 
     def get_provider(self, provider_id: str) -> ProviderSpec:
-        """按标识返回 Provider 定义。"""
+        """
+        按标识返回 Provider 定义。
+        """
         return _ProviderCatalog.get_provider(self, provider_id)
 
     def get_saved_auth(self, provider_id: str) -> dict[str, Any] | None:
-        """读取 Provider 持久鉴权信息。"""
+        """
+        读取 Provider 持久鉴权信息。
+        """
         return _ProviderAuth.get_saved_auth(self, provider_id)
 
     def get_session_status(self, session_id: str) -> dict[str, Any]:
-        """返回临时授权会话的公开状态。"""
+        """
+        返回临时授权会话的公开状态。
+        """
         return _ProviderSession.get_session_status(self, session_id)
 
     async def handle_chatgpt_callback(
@@ -118,7 +138,9 @@ class LLMProviderManager(
         error: Optional[str],
         error_description: Optional[str],
     ) -> tuple[bool, str]:
-        """完成 ChatGPT OAuth 回调并返回公开结果。"""
+        """
+        完成 ChatGPT OAuth 回调并返回公开结果。
+        """
         return await _ProviderAuth.handle_chatgpt_callback(
             self,
             provider_id,
@@ -138,7 +160,9 @@ class LLMProviderManager(
         use_proxy: Optional[bool] = None,
         force_refresh: bool = False,
     ) -> list[dict[str, Any]]:
-        """返回 Provider 可用模型目录。"""
+        """
+        返回 Provider 可用模型目录。
+        """
         return await _ProviderDiscovery.list_models(
             self,
             provider_id,
@@ -151,7 +175,9 @@ class LLMProviderManager(
         )
 
     def list_providers(self) -> list[dict[str, Any]]:
-        """同步返回当前缓存可见的 Provider 目录。"""
+        """
+        同步返回当前缓存可见的 Provider 目录。
+        """
         return _ProviderCatalog.list_providers(self)
 
     async def list_providers_async(
@@ -159,7 +185,9 @@ class LLMProviderManager(
         force_refresh: bool = False,
         use_proxy: Optional[bool] = None,
     ) -> list[dict[str, Any]]:
-        """刷新动态目录后返回 Provider 目录。"""
+        """
+        刷新动态目录后返回 Provider 目录。
+        """
         return await _ProviderCatalog.list_providers_async(
             self,
             force_refresh,
@@ -167,7 +195,9 @@ class LLMProviderManager(
         )
 
     async def poll_auth_session(self, session_id: str) -> dict[str, Any]:
-        """轮询一次设备码授权会话。"""
+        """
+        轮询一次设备码授权会话。
+        """
         return await _ProviderSession.poll_auth_session(self, session_id)
 
     async def provider_manage(self, provider: str, action: str, **params: Any) -> Dict[str, Any]:
@@ -203,7 +233,9 @@ class LLMProviderManager(
             return {"success": False, "message": self._sanitize_error(str(err)), "data": None}
 
     async def _manage_list_models(self, provider: str, **params: Any) -> Dict[str, Any]:
-        """管理动作：查询模型目录，附带授权状态摘要。"""
+        """
+        管理动作：查询模型目录，附带授权状态摘要。
+        """
         api_key = params.get("api_key")
         try:
             models = await self.list_models(
@@ -233,7 +265,9 @@ class LLMProviderManager(
         }
 
     def _requires_api_key(self, provider_id: str) -> bool:
-        """判断测试调用是否必须 API Key：支持 OAuth 授权或已有保存凭据的提供商可豁免。"""
+        """
+        判断测试调用是否必须 API Key：支持 OAuth 授权或已有保存凭据的提供商可豁免。
+        """
         try:
             spec = self.get_provider(provider_id)
         except Exception:
@@ -243,7 +277,9 @@ class LLMProviderManager(
         return not spec.oauth_methods
 
     async def _manage_test(self, provider: str, **params: Any) -> Dict[str, Any]:
-        """管理动作：使用传入配置或当前已保存配置执行一次最小 LLM 调用。"""
+        """
+        管理动作：使用传入配置或当前已保存配置执行一次最小 LLM 调用。
+        """
         from app.agent.llm.helper import LLMHelper, LLMTestTimeout
 
         provider_name = provider or get_runtime_setting("LLM_PROVIDER")
@@ -291,7 +327,9 @@ class LLMProviderManager(
 
     @staticmethod
     def _sanitize_error(message: str, api_key: Optional[str] = None) -> str:
-        """清理错误信息中的敏感字段，并把 SDK 内部解析错误改写为可定位的基础地址提示。"""
+        """
+        清理错误信息中的敏感字段，并把 SDK 内部解析错误改写为可定位的基础地址提示。
+        """
         if not message:
             return "LLM 没有返回任何内容"
 
@@ -327,7 +365,9 @@ class LLMProviderManager(
         base_url: Optional[str] = None,
         base_url_preset_id: Optional[str] = None,
     ) -> dict[str, Any] | None:
-        """同步解析缓存中的模型元数据。"""
+        """
+        同步解析缓存中的模型元数据。
+        """
         return _ProviderCatalog.resolve_cached_model_metadata(
             self,
             provider_id,
@@ -342,7 +382,9 @@ class LLMProviderManager(
         base_url: Optional[str],
         base_url_preset_id: Optional[str] = None,
     ) -> Optional[str]:
-        """解析兼容接口用于查询模型列表的基础地址。"""
+        """
+        解析兼容接口用于查询模型列表的基础地址。
+        """
         return _ProviderCatalog.resolve_model_list_base_url(
             self,
             provider_id,
@@ -358,7 +400,9 @@ class LLMProviderManager(
         base_url_preset_id: Optional[str] = None,
         use_proxy: Optional[bool] = None,
     ) -> dict[str, Any] | None:
-        """解析模型元数据并按需要刷新公共目录。"""
+        """
+        解析模型元数据并按需要刷新公共目录。
+        """
         return await _ProviderCatalog.resolve_model_metadata(
             self,
             provider_id,
@@ -378,7 +422,9 @@ class LLMProviderManager(
         user_agent: Optional[str] = None,
         use_proxy: Optional[bool] = None,
     ) -> dict[str, Any]:
-        """解析创建模型客户端所需的统一运行时参数。"""
+        """
+        解析创建模型客户端所需的统一运行时参数。
+        """
         return await _ProviderRuntime.resolve_runtime(
             self,
             provider_id,
@@ -395,7 +441,9 @@ class LLMProviderManager(
         provider_id: str,
         auth_data: dict[str, Any],
     ) -> None:
-        """保存 Provider 持久鉴权信息。"""
+        """
+        保存 Provider 持久鉴权信息。
+        """
         return await _ProviderAuth.save_auth(self, provider_id, auth_data)
 
     async def start_auth(
@@ -404,7 +452,9 @@ class LLMProviderManager(
         method_id: str,
         callback_url: Optional[str] = None,
     ) -> dict[str, Any]:
-        """启动 Provider OAuth 或设备码授权。"""
+        """
+        启动 Provider OAuth 或设备码授权。
+        """
         return await _ProviderAuth.start_auth(
             self,
             provider_id,

@@ -1,4 +1,6 @@
-"""LLM 服务端工具能力注册与解析。"""
+"""
+LLM 服务端工具能力注册与解析。
+"""
 
 from dataclasses import dataclass
 from fnmatch import fnmatch
@@ -8,10 +10,14 @@ WEB_SEARCH_MODES = frozenset({"local", "builtin", "auto", "disabled"})
 
 
 class ServerToolUnavailableError(ValueError):
-    """表示用户强制选择了当前模型不可用的服务端工具。"""
+    """
+    表示用户强制选择了当前模型不可用的服务端工具。
+    """
 
     def __init__(self, *, provider: str, model: str, tool_id: str) -> None:
-        """初始化服务端工具不可用异常。"""
+        """
+        初始化服务端工具不可用异常。
+        """
         self.provider = provider
         self.model = model
         self.tool_id = tool_id
@@ -23,7 +29,18 @@ class ServerToolUnavailableError(ValueError):
 
 @dataclass(frozen=True)
 class ServerToolCapability:
-    """描述一个模型可用的服务端工具能力。"""
+    """
+    描述一个模型可用的服务端工具能力。
+
+    :param tool_id: 模型服务端工具的稳定能力标识
+    :param provider_ids: 支持该能力的规范化提供商标识集合
+    :param model_patterns: 允许使用该能力的模型名称通配模式
+    :param required_api_protocol: 调用该能力要求的模型 API 协议
+    :param client_adapter: 构造服务端工具请求使用的客户端适配类型
+    :param tool_definition: 提交给模型服务的原生工具声明
+    :param base_url_patterns: 允许使用该能力的基础地址子串；为空时不限制地址
+    :param match_without_base_url: 未配置基础地址时是否允许匹配，默认 True
+    """
 
     tool_id: str
     provider_ids: tuple[str, ...]
@@ -35,7 +52,9 @@ class ServerToolCapability:
     match_without_base_url: bool = True
 
     def matches(self, provider: str, model: str, base_url: Optional[str] = None) -> bool:
-        """判断给定 provider/model 是否匹配当前能力。"""
+        """
+        判断给定 provider/model 是否匹配当前能力。
+        """
         normalized_provider = str(provider or "").strip().lower()
         normalized_model = str(model or "").strip().lower().removeprefix("models/")
         normalized_base_url = str(base_url or "").strip().lower()
@@ -53,7 +72,9 @@ class ServerToolCapability:
         )
 
     def serialize(self) -> dict[str, Any]:
-        """返回供 API 与前端使用的能力元数据。"""
+        """
+        返回供 API 与前端使用的能力元数据。
+        """
         return {
             "id": self.tool_id,
             "required_api_protocol": self.required_api_protocol,
@@ -63,7 +84,17 @@ class ServerToolCapability:
 
 @dataclass(frozen=True)
 class ServerToolResolution:
-    """记录本次联网搜索模式解析后的执行策略。"""
+    """
+    记录本次联网搜索模式解析后的执行策略。
+
+    :param mode: 规范化后的联网搜索模式：local、builtin、auto 或 disabled
+    :param use_local_web_search: 是否向本轮模型提供 MoviePilot 本地联网搜索工具
+    :param server_tools: 需要提交给模型服务的原生工具声明；不使用时为空元组
+    :param client_adapter: 原生工具使用的客户端适配类型；不使用时为 None
+    :param required_api_protocol: 原生工具要求的 API 协议；没有要求时为 None
+    :param available: 当前模型和接口地址是否具备所选服务端工具能力
+    :param reason: 能力不可用或选择该策略的原因；无需说明时为 None
+    """
 
     mode: str
     use_local_web_search: bool
@@ -75,7 +106,9 @@ class ServerToolResolution:
 
 
 class ServerToolRegistry:
-    """集中注册模型服务端工具，并解析通用执行策略。"""
+    """
+    集中注册模型服务端工具，并解析通用执行策略。
+    """
 
     _CAPABILITIES = (
         ServerToolCapability(
@@ -148,7 +181,9 @@ class ServerToolRegistry:
 
     @classmethod
     def normalize_web_search_mode(cls, mode: Optional[str]) -> str:
-        """规范化联网搜索模式，未知值回退为本地搜索。"""
+        """
+        规范化联网搜索模式，未知值回退为本地搜索。
+        """
         normalized = str(mode or "local").strip().lower()
         return normalized if normalized in WEB_SEARCH_MODES else "local"
 
@@ -161,7 +196,9 @@ class ServerToolRegistry:
         base_url: Optional[str] = None,
         tool_id: str,
     ) -> Optional[ServerToolCapability]:
-        """查找指定模型的服务端工具能力。"""
+        """
+        查找指定模型的服务端工具能力。
+        """
         return next(
             (
                 capability
@@ -180,7 +217,9 @@ class ServerToolRegistry:
             model: str,
             base_url: Optional[str] = None,
     ) -> list[dict[str, Any]]:
-        """列出指定模型可用的服务端工具能力。"""
+        """
+        列出指定模型可用的服务端工具能力。
+        """
         return [
             capability.serialize()
             for capability in cls._CAPABILITIES
@@ -197,7 +236,9 @@ class ServerToolRegistry:
         api_protocol: Optional[str],
         base_url: Optional[str] = None,
     ) -> ServerToolResolution:
-        """解析联网搜索应使用本地工具还是模型服务端工具。"""
+        """
+        解析联网搜索应使用本地工具还是模型服务端工具。
+        """
         normalized_mode = cls.normalize_web_search_mode(mode)
         normalized_protocol = str(api_protocol or "auto").strip().lower()
         capability = cls.get_capability(
