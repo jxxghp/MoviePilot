@@ -1,7 +1,10 @@
+from typing import Any
+
 from ..tmdb import TMDb
 
 
 class Episode(TMDb):
+    """提供 TMDB 剧集接口的同步与异步封装。"""
     _urls = {
         "details": "/tv/%s/season/%s/episode/%s",
         "account_states": "/tv/%s/season/%s/episode/%s/account_states",
@@ -15,7 +18,7 @@ class Episode(TMDb):
         "videos": "/tv/%s/season/%s/episode/%s/videos",
     }
 
-    def details(self, tv_id, season_num, episode_num, append_to_response="trailers,images,casts,translations"):
+    def details(self, tv_id: int, season_num: int, episode_num: int, append_to_response: str | None="trailers,images,casts,translations") -> Any:
         """
         Get the TV episode details by id.
         :param tv_id: int
@@ -29,7 +32,7 @@ class Episode(TMDb):
             params="append_to_response=%s" % append_to_response
         )
 
-    def account_states(self, tv_id, season_num, episode_num):
+    def account_states(self, tv_id: int, season_num: int, episode_num: int) -> Any:
         """
         Get your rating for a episode.
         :param tv_id: int
@@ -42,7 +45,7 @@ class Episode(TMDb):
             params="session_id=%s" % self.session_id
         )
 
-    def changes(self, episode_id, start_date=None, end_date=None, page=1):
+    def changes(self, episode_id: int, start_date: str | None=None, end_date: str | None=None, page: int=1) -> Any:
         """
         Get the changes for a TV episode. By default only the last 24 hours are returned.
         You can query up to 14 days in a single query by using the start_date and end_date query parameters.
@@ -63,7 +66,7 @@ class Episode(TMDb):
             key="changes"
         )
 
-    def credits(self, tv_id, season_num, episode_num):
+    def credits(self, tv_id: int, season_num: int, episode_num: int) -> Any:
         """
         Get the credits for TV season.
         :param tv_id: int
@@ -73,7 +76,7 @@ class Episode(TMDb):
         """
         return self._request_obj(self._urls["credits"] % (tv_id, season_num, episode_num))
 
-    def external_ids(self, tv_id, season_num, episode_num):
+    def external_ids(self, tv_id: int, season_num: int, episode_num: int) -> Any:
         """
         Get the external ids for a TV episode.
         :param tv_id: int
@@ -83,7 +86,7 @@ class Episode(TMDb):
         """
         return self._request_obj(self._urls["external_ids"] % (tv_id, season_num, episode_num))
 
-    def images(self, tv_id, season_num, episode_num, include_image_language=None):
+    def images(self, tv_id: int, season_num: int, episode_num: int, include_image_language: str | None=None) -> Any:
         """
         Get the images that belong to a TV episode.
         :param tv_id: int
@@ -98,7 +101,7 @@ class Episode(TMDb):
             key="stills"
         )
 
-    def translations(self, tv_id, season_num, episode_num):
+    def translations(self, tv_id: int, season_num: int, episode_num: int) -> Any:
         """
         Get the translation data for an episode.
         :param tv_id: int
@@ -111,7 +114,7 @@ class Episode(TMDb):
             key="translations"
         )
 
-    def rate_tv_episode(self, tv_id, season_num, episode_num, rating):
+    def rate_tv_episode(self, tv_id: int, season_num: int, episode_num: int, rating: float) -> Any:
         """
         Rate a TV episode.
         :param tv_id: int
@@ -126,7 +129,7 @@ class Episode(TMDb):
             json={"value": rating}
         )
 
-    def delete_rating(self, tv_id, season_num, episode_num):
+    def delete_rating(self, tv_id: int, season_num: int, episode_num: int) -> Any:
         """
         Remove your rating for a TV episode.
         :param tv_id: int
@@ -139,7 +142,7 @@ class Episode(TMDb):
             method="DELETE"
         )
 
-    def videos(self, tv_id, season_num, episode_num, include_video_language=None):
+    def videos(self, tv_id: int, season_num: int, episode_num: int, include_video_language: str | None=None) -> Any:
         """
         Get the videos that have been added to a TV episode.
         :param tv_id: int
@@ -157,8 +160,8 @@ class Episode(TMDb):
         )
 
     # 异步版本方法
-    async def async_details(self, tv_id, season_num, episode_num,
-                            append_to_response="trailers,images,casts,translations"):
+    async def async_details(self, tv_id: int, season_num: int, episode_num: int,
+                            append_to_response: str | None = "trailers,images,casts,translations") -> Any:
         """
         Get the TV episode details by id.（异步版本）
         :param tv_id: int
@@ -172,7 +175,7 @@ class Episode(TMDb):
             params="append_to_response=%s" % append_to_response
         )
 
-    async def async_account_states(self, tv_id, season_num, episode_num):
+    async def async_account_states(self, tv_id: int, season_num: int, episode_num: int) -> Any:
         """
         Get your rating for a episode.（异步版本）
         :param tv_id: int
@@ -185,7 +188,7 @@ class Episode(TMDb):
             params="session_id=%s" % self.session_id
         )
 
-    async def async_changes(self, episode_id, start_date=None, end_date=None, page=1):
+    async def async_changes(self, episode_id: int, start_date: str | None=None, end_date: str | None=None, page: int=1) -> Any:
         """
         Get the changes for a TV episode. By default only the last 24 hours are returned.
         You can query up to 14 days in a single query by using the start_date and end_date query parameters.（异步版本）
@@ -206,7 +209,7 @@ class Episode(TMDb):
             key="changes"
         )
 
-    async def async_credits(self, tv_id, season_num, episode_num):
+    async def async_credits(self, tv_id: int, season_num: int, episode_num: int) -> Any:
         """
         Get the credits for TV season.（异步版本）
         :param tv_id: int
@@ -216,7 +219,7 @@ class Episode(TMDb):
         """
         return await self._async_request_obj(self._urls["credits"] % (tv_id, season_num, episode_num))
 
-    async def async_external_ids(self, tv_id, season_num, episode_num):
+    async def async_external_ids(self, tv_id: int, season_num: int, episode_num: int) -> Any:
         """
         Get the external ids for a TV episode.（异步版本）
         :param tv_id: int
@@ -226,7 +229,7 @@ class Episode(TMDb):
         """
         return await self._async_request_obj(self._urls["external_ids"] % (tv_id, season_num, episode_num))
 
-    async def async_images(self, tv_id, season_num, episode_num, include_image_language=None):
+    async def async_images(self, tv_id: int, season_num: int, episode_num: int, include_image_language: str | None=None) -> Any:
         """
         Get the images that belong to a TV episode.（异步版本）
         :param tv_id: int
@@ -241,7 +244,7 @@ class Episode(TMDb):
             key="stills"
         )
 
-    async def async_translations(self, tv_id, season_num, episode_num):
+    async def async_translations(self, tv_id: int, season_num: int, episode_num: int) -> Any:
         """
         Get the translation data for an episode.（异步版本）
         :param tv_id: int
@@ -254,7 +257,7 @@ class Episode(TMDb):
             key="translations"
         )
 
-    async def async_rate_tv_episode(self, tv_id, season_num, episode_num, rating):
+    async def async_rate_tv_episode(self, tv_id: int, season_num: int, episode_num: int, rating: float) -> Any:
         """
         Rate a TV episode.（异步版本）
         :param tv_id: int
@@ -269,7 +272,7 @@ class Episode(TMDb):
             json={"value": rating}
         )
 
-    async def async_delete_rating(self, tv_id, season_num, episode_num):
+    async def async_delete_rating(self, tv_id: int, season_num: int, episode_num: int) -> Any:
         """
         Remove your rating for a TV episode.（异步版本）
         :param tv_id: int
@@ -282,7 +285,7 @@ class Episode(TMDb):
             method="DELETE"
         )
 
-    async def async_videos(self, tv_id, season_num, episode_num, include_video_language=None):
+    async def async_videos(self, tv_id: int, season_num: int, episode_num: int, include_video_language: str | None=None) -> Any:
         """
         Get the videos that have been added to a TV episode.（异步版本）
         :param tv_id: int
