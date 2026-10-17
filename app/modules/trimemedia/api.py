@@ -494,7 +494,7 @@ class Api:
                 return True
         return False
 
-    def task_running(self):
+    def task_running(self) -> bool:
         """
         查询服务端当前是否存在运行任务。
 
@@ -525,7 +525,7 @@ class Api:
 
     def item_list(
         self,
-        guid: Optional[str] = None,
+        guid: Optional[Union[str, int]] = None,
         types=None,
         exclude_grouped_video=True,
         page=1,
@@ -536,7 +536,7 @@ class Api:
         """
         按媒体库、类型及排序条件查询一页条目。
 
-        :param guid: 祖先媒体库或目录标识，空值时不限祖先
+        :param guid: 祖先媒体库或目录标识，可传字符串或数字；空值时不限祖先
         :param types: 媒体类型列表；None 默认查询电影、剧集、目录和视频，空列表不筛选类型
         :param exclude_grouped_video: 是否排除已归组视频，默认启用
         :param page: 从 1 开始的页码
@@ -591,11 +591,11 @@ class Api:
             return int(total_count) if total_count is not None else None
         return None
 
-    def search_list(self, keywords: str) -> Optional[list[Item]]:
+    def search_list(self, keywords: Optional[str]) -> Optional[list[Item]]:
         """
         按关键词查询影片和演员相关条目。
 
-        :param keywords: 搜索关键词
+        :param keywords: 搜索关键词；未提供时交由服务端处理
         :return: 条目列表；无结果时为空列表，请求失败时返回 None
         """
         if (
@@ -815,7 +815,7 @@ class Api:
                 logger.error(f"请求接口 {url} 异常：" + str(e))
         return None
 
-    def close(self):
+    def close(self) -> None:
         """
         关闭API会话。
         """

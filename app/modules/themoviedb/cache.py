@@ -31,7 +31,7 @@ class TmdbCache(metaclass=WeakSingleton):
     本地后端保存未过期的有效识别结果，不保存未命中条目。
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         初始化 TMDB 识别缓存并恢复未过期的持久化数据。
         """
@@ -111,7 +111,7 @@ class TmdbCache(metaclass=WeakSingleton):
             self._expires_at[key] = time() + ttl
             self._dirty = True
 
-    def clear(self):
+    def clear(self) -> None:
         """
         清空识别缓存和过期记录，并立即同步到本地持久化。
         """
@@ -240,7 +240,7 @@ class TmdbCache(metaclass=WeakSingleton):
                 return redis_data
             return {}
 
-    def update(self, meta: MetaBase, info: dict) -> None:
+    def update(self, meta: MetaBase, info: Optional[dict[str, Any]]) -> None:
         """
         从 TMDB 结果更新识别缓存，区分未命中和网络失败。
 

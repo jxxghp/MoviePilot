@@ -3,7 +3,7 @@
 """
 
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union
+from typing import Dict, Generator, List, Optional, Tuple, Union
 
 import app.modules.trimemedia.api as fnapi
 from app.application.mediaserver import MediaServerIdentityHelper
@@ -46,9 +46,9 @@ class TrimeMedia:
         password: Optional[str] = None,
         access_code: Optional[str] = None,
         play_host: Optional[str] = None,
-        sync_libraries: Optional[list] = None,
-        **kwargs,
-    ):
+        sync_libraries: Optional[list[str]] = None,
+        **kwargs: object,
+    ) -> None:
         """
         保存飞牛服务配置并登录，同时探测可用的外网播放地址。
 
@@ -140,7 +140,7 @@ class TrimeMedia:
         res.api.close()
         return None
 
-    def close(self):
+    def close(self) -> None:
         """
         登出当前用户并关闭飞牛 API 会话。
         """
@@ -175,10 +175,11 @@ class TrimeMedia:
         """
         if not self.is_authenticated():
             return True
+        assert self._api is not None
         self._userinfo = self._api.user_info()
         return self._userinfo is None
 
-    def reconnect(self):
+    def reconnect(self) -> bool:
         """
         关闭旧连接，重新探测版本、验证访问码并登录。
 
@@ -209,7 +210,7 @@ class TrimeMedia:
         self.get_librarys()
         return True
 
-    def disconnect(self):
+    def disconnect(self) -> None:
         """
         退出当前账号、关闭 HTTP 会话并清空客户端及用户状态。
         """
@@ -233,6 +234,8 @@ class TrimeMedia:
         """
         if not self.is_authenticated():
             return None
+        assert self._api is not None
+        assert self._userinfo is not None
         if self._userinfo.is_admin == 1:
             mdb_list = self._api.mdb_list()
         else:
@@ -282,6 +285,7 @@ class TrimeMedia:
         """
         if not self.is_authenticated():
             return 0
+        assert self._api is not None
         if not self._userinfo or self._userinfo.is_admin != 1:
             return 0
         return len(self._api.user_list() or [])
@@ -294,6 +298,7 @@ class TrimeMedia:
         """
         if not self.is_authenticated():
             return _SchemaStatistic()
+        assert self._api is not None
         if (info := self._api.mediadb_sum()) is None:
             return _SchemaStatistic()
         return _SchemaStatistic(
@@ -323,6 +328,7 @@ class TrimeMedia:
             finally:
                 result.api.logout()
                 result.api.close()
+        return None
 
     def get_movies(
         self, title: str, year: Optional[str] = None,
@@ -340,6 +346,7 @@ class TrimeMedia:
         """
         if not self.is_authenticated():
             return None
+        assert self._api is not None
         movies = []
         items = self._api.search_list(keywords=title) or []
         for item in items:
@@ -358,7 +365,7 @@ class TrimeMedia:
                 movies.append(self.__build_media_server_item(item))
         return movies
 
-    def __get_series_id_by_name(self, name: str, year: str) -> Optional[str]:
+    def __get_series_id_by_name(self, name: Optional[str], year: Optional[str]) -> Optional[str]:
         """
         从搜索候选中按剧名与首播年份查找电视剧。
 
@@ -366,6 +373,7 @@ class TrimeMedia:
         :param year: 可选年份，空值时不限年份
         :return: 首个匹配电视剧的 guid；无匹配或搜索失败时返回 None
         """
+        assert self._api is not None
         items = self._api.search_list(keywords=name) or []
         for item in items:
             if item.type != fnapi.Type.TV:
@@ -384,7 +392,7 @@ class TrimeMedia:
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
         season: Optional[int] = None,
-    ) -> Tuple[Optional[str], Optional[Dict[int, list]]]:
+    ) -> Tuple[Optional[str], Optional[Dict[int, list[int]]]]:
         """
         查询电视剧已入库的季集编号，并校验媒体来源身份。
 
@@ -401,6 +409,7 @@ class TrimeMedia:
         """
         if not self.is_authenticated():
             return None, None
+        assert self._api is not None
 
         cached_item_id = item_id
         if not item_id:
@@ -436,13 +445,13 @@ class TrimeMedia:
                 # 没有匹配的季
                 return None, {}
 
-        season_episodes = {}
+        season_episodes: Dict[int, list[int]] = {}
         for item in seasons:
             episodes = self._api.episode_list(item.guid)
             for episode in episodes or []:
-                if episode.season_number not in season_episodes:
-                    season_episodes[episode.season_number] = []
-                season_episodes[episode.season_number].append(episode.episode_number)
+                if episode.season_number is None or episode.episode_number is None:
+                    continue
+                season_episodes.setdefault(episode.season_number, []).append(episode.episode_number)
         return item_id, season_episodes
 
     def refresh_root_library(self) -> Optional[bool]:
@@ -455,6 +464,7 @@ class TrimeMedia:
         """
         if not self.is_authenticated():
             return None
+        assert self._api is not None
         if not self._userinfo or self._userinfo.is_admin != 1:
             logger.error("飞牛仅支持管理员账号刷新媒体库")
             return False
@@ -477,6 +487,7 @@ class TrimeMedia:
         """
         if not self.is_authenticated():
             return None
+        assert self._api is not None
         if not self._userinfo or self._userinfo.is_admin != 1:
             logger.error("飞牛仅支持管理员账号刷新媒体库")
             return False
@@ -501,7 +512,7 @@ class TrimeMedia:
                 return self.refresh_root_library()
         return True
 
-    def __match_library_by_path(self, path: Path) -> Optional[fnapi.MediaDb]:
+    def __match_library_by_path(self, path: Optional[Path]) -> Optional[fnapi.MediaDb]:
         """
         按缓存的实际目录查找第一个包含目标路径的媒体库。
 
@@ -526,14 +537,14 @@ class TrimeMedia:
                     return lib
         return None
 
-    def get_webhook_message(self, body: Any) -> Optional[_SchemaWebhookEventInfo]:
+    def get_webhook_message(self, body: object) -> Optional[_SchemaWebhookEventInfo]:
         """
         保留统一 Webhook 入口，飞牛当前不实现事件解析。
 
         :param body: 兼容接口的请求体，当前不读取
         :return: 始终返回 None
         """
-        pass
+        return None
 
     def get_iteminfo(self, itemid: str) -> Optional[_SchemaMediaServerItem]:
         """
@@ -544,12 +555,13 @@ class TrimeMedia:
         """
         if not self.is_authenticated():
             return None
+        assert self._api is not None
         if item := self._api.item(guid=itemid):
             return self.__build_media_server_item(item)
         return None
 
     @staticmethod
-    def __build_media_server_item(item: fnapi.Item):
+    def __build_media_server_item(item: fnapi.Item) -> _SchemaMediaServerItem:
         """
         将飞牛条目投影为统一媒体身份和用户观看状态。
 
@@ -618,6 +630,7 @@ class TrimeMedia:
         :param item: 飞牛媒体条目
         :return: 需要 Cookie 访问图片的播放模型，含观看百分比及对应网页链接
         """
+        assert self._api is not None
         if item.type == fnapi.Type.EPISODE:
             title = item.tv_title
             subtitle = f"S{item.season_number}:{item.episode_number} - {item.title}"
@@ -654,6 +667,7 @@ class TrimeMedia:
         """
         if not self.is_authenticated():
             return None
+        assert self._api is not None
         return self._api.item_count(
             guid=str(parent),
             types=[fnapi.Type.MOVIE, fnapi.Type.TV],
@@ -664,7 +678,7 @@ class TrimeMedia:
         parent: Union[str, int],
         start_index: Optional[int] = 0,
         limit: Optional[int] = -1,
-    ) -> Generator[_SchemaMediaServerItem | None | Any, Any, None]:
+    ) -> Generator[_SchemaMediaServerItem, None, None]:
         """
         查询一页媒体库内容，并递归展开目录中的电影和电视剧。
 
@@ -677,8 +691,11 @@ class TrimeMedia:
         """
         if not self.is_authenticated():
             return None
+        assert self._api is not None
         if (page_size := limit) is None:
             page_size = -1
+        if start_index is None:
+            raise TypeError("unsupported operand type(s) for +: 'NoneType' and 'int'")
         items = (
             self._api.item_list(
                 guid=parent,
@@ -690,8 +707,7 @@ class TrimeMedia:
         )
         for item in items:
             if item.type == fnapi.Type.DIRECTORY:
-                for items in self.get_items(parent=item.guid):
-                    yield items
+                yield from self.get_items(parent=item.guid)
             elif item.type in [fnapi.Type.MOVIE, fnapi.Type.TV]:
                 yield self.__build_media_server_item(item)
         return None
@@ -705,6 +721,7 @@ class TrimeMedia:
         """
         if not self.is_authenticated():
             return None
+        assert self._api is not None
         if (item := self._api.item(item_id)) is None:
             return None
         # 根据查询到的信息拼装出播放链接
@@ -721,10 +738,11 @@ class TrimeMedia:
         """
         if not self.is_authenticated():
             return None
+        assert self._api is not None
         items = self._api.play_list()
         if items is None:
             return None
-        ret_resume = []
+        ret_resume: list[_SchemaMediaServerPlayItem] = []
         for item in items:
             if len(ret_resume) == num:
                 break
@@ -733,7 +751,7 @@ class TrimeMedia:
             ret_resume.append(self.__build_media_server_play_item(item))
         return ret_resume
 
-    def get_latest(self, num=20) -> Optional[List[_SchemaMediaServerPlayItem]]:
+    def get_latest(self, num: Optional[int] = 20) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
         读取近期创建的媒体，并筛选同步范围内的条目。
 
@@ -744,6 +762,9 @@ class TrimeMedia:
         """
         if not self.is_authenticated():
             return None
+        if num is None:
+            raise TypeError("unsupported operand type(s) for *: 'NoneType' and 'int'")
+        assert self._api is not None
         items = self._api.item_list(
             page=1,
             page_size=max(100, num * 5),
@@ -751,7 +772,7 @@ class TrimeMedia:
         )
         if items is None:
             return None
-        latest = []
+        latest: list[_SchemaMediaServerPlayItem] = []
         for item in items:
             if len(latest) == num:
                 break
@@ -760,7 +781,7 @@ class TrimeMedia:
             latest.append(self.__build_media_server_play_item(item))
         return latest
 
-    def get_latest_backdrops(self, num=20, remote=False) -> Optional[List[str]]:
+    def get_latest_backdrops(self, num: Optional[int] = 20, remote: Optional[bool] = False) -> Optional[List[str]]:
         """
         查询最新媒体的背景图，缺少背景图时回退海报。
 
@@ -772,6 +793,9 @@ class TrimeMedia:
         """
         if not self.is_authenticated():
             return None
+        if num is None:
+            raise TypeError("unsupported operand type(s) for *: 'NoneType' and 'int'")
+        assert self._api is not None
         items = (
             self._api.item_list(
                 page=1,
@@ -780,7 +804,7 @@ class TrimeMedia:
             )
             or []
         )
-        backdrops = []
+        backdrops: list[str] = []
         for item in items:
             if len(backdrops) == num:
                 break
@@ -795,6 +819,7 @@ class TrimeMedia:
                 img_host = self._playhost or self._api.host
             else:
                 img_host = self._api.host
+            item_image: Optional[str]
             if item_details.backdrops:
                 item_image = item_details.backdrops
             else:
@@ -806,7 +831,7 @@ class TrimeMedia:
             backdrops.append(f"{img_host}{item_image}")
         return backdrops
 
-    def __is_library_blocked(self, library_guid: str):
+    def __is_library_blocked(self, library_guid: str) -> bool:
         """
         判断媒体库是否属于其他分类或被同步范围排除。
 
@@ -827,7 +852,7 @@ class TrimeMedia:
             else False
         )
 
-    def get_image_cookies(self, image_url: str):
+    def get_image_cookies(self, image_url: str) -> Optional[dict[str, Optional[str]]]:
         """
         为当前飞牛服务同源图片提供登录和访问码 Cookie。
 
@@ -836,6 +861,7 @@ class TrimeMedia:
         """
         if not self.is_authenticated():
             return None
+        assert self._api is not None
         if not image_url or not SecurityUtils.is_safe_url(
             image_url, [self._api.host], strict=True
         ):
