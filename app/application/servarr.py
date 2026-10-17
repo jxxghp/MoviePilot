@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Optional, Protocol
+from typing import TYPE_CHECKING, Any, List, Optional, Protocol
 
 from app.schemas.types import MediaSource
 
@@ -89,7 +89,7 @@ class ServarrSubscriptionService:
         self._sync_repository = sync_repository
         self._unit_of_work = unit_of_work
 
-    async def list(self) -> list[ServarrSubscription]:
+    async def list(self) -> List[ServarrSubscription]:
         """读取全部订阅并转换为脱离 ORM 会话的投影。"""
         return [self._project(record) for record in await self._async_repository.async_list()]
 
@@ -102,7 +102,7 @@ class ServarrSubscriptionService:
         self,
         media_source: MediaSource,
         media_id: str,
-    ) -> list[ServarrSubscription]:
+    ) -> List[ServarrSubscription]:
         """异步按媒体身份读取订阅投影。"""
         records = await self._async_repository.async_list_by_media_identity(
             media_source=media_source,
@@ -114,7 +114,7 @@ class ServarrSubscriptionService:
         self,
         media_source: MediaSource,
         media_id: str,
-    ) -> list[ServarrSubscription]:
+    ) -> List[ServarrSubscription]:
         """同步按媒体身份读取订阅投影。"""
         records = self._sync_repository.list_by_media_identity(
             media_source=media_source,
