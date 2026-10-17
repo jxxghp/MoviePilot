@@ -1,3 +1,7 @@
+"""
+验证下载器路径映射、远程存储适配与任务状态查询。
+"""
+
 import sys
 import types
 from enum import Enum
@@ -9,7 +13,9 @@ import pytest
 
 
 def _load_downloader_base():
-    """隔离宿主服务依赖，加载真实下载器路径映射实现。"""
+    """
+    隔离宿主服务依赖，加载真实下载器路径映射实现。
+    """
     repo_root = Path(__file__).resolve().parents[1]
 
     app_module = types.ModuleType("app")
@@ -32,40 +38,59 @@ def _load_downloader_base():
     mixins_module = types.ModuleType("app.runtime.reload")
 
     class StorageSchema(Enum):
-        """提供路径映射识别所需的存储类型。"""
+        """
+        提供路径映射识别所需的存储类型。
+        """
 
+        # 本地文件存储
         Local = "local"
+        # 通过 Rclone 挂载的存储
         Rclone = "rclone"
+        # 通过 SMB 访问的共享存储
         SMB = "smb"
 
     class _ConfigReloadMixin:
-        """隔离配置热重载的运行时依赖。"""
+        """
+        隔离配置热重载的运行时依赖。
+        """
 
         pass
 
     class _Logger:
-        """隔离模块基类加载时使用的无副作用日志桩。"""
+        """
+        隔离模块基类加载时使用的无副作用日志桩。
+        """
 
         def error(self, *_args, **_kwargs):
-            """忽略测试范围外的错误日志输出。"""
+            """
+            忽略测试范围外的错误日志输出。
+            """
             pass
 
     class _ServiceConfigHelper:
-        """使用空配置隔离下载器之外的服务初始化。"""
+        """
+        使用空配置隔离下载器之外的服务初始化。
+        """
 
         @staticmethod
         def get_downloader_configs():
-            """不从真实配置加载下载器。"""
+            """
+            不从真实配置加载下载器。
+            """
             return []
 
         @staticmethod
         def get_notification_configs():
-            """不从真实配置加载通知渠道。"""
+            """
+            不从真实配置加载通知渠道。
+            """
             return []
 
         @staticmethod
         def get_mediaserver_configs():
-            """不从真实配置加载媒体服务器。"""
+            """
+            不从真实配置加载媒体服务器。
+            """
             return []
 
     schema_types_module.StorageSchema = StorageSchema
@@ -136,7 +161,9 @@ def _load_downloader_base():
 
 
 def _load_transmission_module():
-    """隔离下载器客户端与宿主依赖，加载真实 Transmission 模块。"""
+    """
+    隔离下载器客户端与宿主依赖，加载真实 Transmission 模块。
+    """
     repo_root = Path(__file__).resolve().parents[1]
 
     app_module = types.ModuleType("app")
@@ -176,22 +203,32 @@ def _load_transmission_module():
     torrentool_torrent_module = types.ModuleType("torrentool.torrent")
 
     class _ModuleBase:
-        """隔离模块注册及生命周期管理。"""
+        """
+        隔离模块注册及生命周期管理。
+        """
 
         pass
 
     class _DownloaderBase:
-        """保留下载器模块的泛型基类入口。"""
+        """
+        保留下载器模块的泛型基类入口。
+        """
 
         def __class_getitem__(cls, _item):
-            """让隔离基类接受生产代码的客户端类型参数。"""
+            """
+            让隔离基类接受生产代码的客户端类型参数。
+            """
             return cls
 
     class _DownloaderModuleBase(_ModuleBase, _DownloaderBase):
-        """隔离测试用的下载器模块基类桩，与 app.modules._base 行为对齐。"""
+        """
+        隔离测试用的下载器模块基类桩，与 app.modules._base 行为对齐。
+        """
 
         def _get_torrent_info(self, content):
-            """与真实基类一致的种子信息读取，磁力链接不解析。"""
+            """
+            与真实基类一致的种子信息读取，磁力链接不解析。
+            """
             torrent_content = content
             if isinstance(content, Path):
                 torrent_content = content.read_bytes() if content.exists() else None
@@ -204,7 +241,9 @@ def _load_transmission_module():
 
         @staticmethod
         def _normalize_query_status(status):
-            """与真实基类一致的查询状态归一，返回隔离测试枚举。"""
+            """
+            与真实基类一致的查询状态归一，返回隔离测试枚举。
+            """
             status_value = getattr(status, "value", status)
             status_text = str(status_value or "").strip().lower()
             if not status_text or status_text in {"all", "全部"}:
@@ -220,32 +259,48 @@ def _load_transmission_module():
             return TorrentQueryStatus.ALL
 
     class _TransferTorrent:
-        """保留整理任务构造时传入的字段，供断言检查。"""
+        """
+        保留整理任务构造时传入的字段，供断言检查。
+        """
 
         def __init__(self, **kwargs):
-            """保存模块实际返回的整理任务字段。"""
+            """
+            保存模块实际返回的整理任务字段。
+            """
             self.__dict__.update(kwargs)
 
     class _DownloadingTorrent:
-        """保留下载中任务构造时传入的字段，供断言检查。"""
+        """
+        保留下载中任务构造时传入的字段，供断言检查。
+        """
 
         def __init__(self, **kwargs):
-            """保存模块实际返回的下载中任务字段。"""
+            """
+            保存模块实际返回的下载中任务字段。
+            """
             self.__dict__.update(kwargs)
 
     class _DownloaderTorrent:
-        """保留统一下载任务构造时传入的字段，供断言检查。"""
+        """
+        保留统一下载任务构造时传入的字段，供断言检查。
+        """
 
         def __init__(self, **kwargs):
-            """保存模块实际返回的统一下载任务字段。"""
+            """
+            保存模块实际返回的统一下载任务字段。
+            """
             self.__dict__.update(kwargs)
 
     class _DownloaderFile:
-        """隔离加载 Transmission 时提供下载器文件 DTO 的最小契约。"""
+        """
+        隔离加载 Transmission 时提供下载器文件 DTO 的最小契约。
+        """
 
         @classmethod
         def model_validate(cls, value):
-            """按生产 DTO 入口把 SDK 对象投影为测试快照。"""
+            """
+            按生产 DTO 入口把 SDK 对象投影为测试快照。
+            """
             if isinstance(value, cls):
                 return value
             payload = value if isinstance(value, dict) else vars(value)
@@ -254,69 +309,107 @@ def _load_transmission_module():
             return instance
 
     class TorrentStatus(Enum):
-        """提供下载器历史查询入口使用的状态。"""
+        """
+        提供下载器历史查询入口使用的状态。
+        """
 
+        # 等待或正在整理的任务
         TRANSFER = "transfer"
+        # 正在下载的任务
         DOWNLOADING = "downloading"
 
     class TorrentQueryStatus(Enum):
-        """提供统一下载器查询入口使用的状态。"""
+        """
+        提供统一下载器查询入口使用的状态。
+        """
 
+        # 所有状态的任务
         ALL = "all"
+        # 等待或正在整理的任务
         TRANSFER = "transfer"
+        # 正在下载的任务
         DOWNLOADING = "downloading"
+        # 已经完成下载的任务
         COMPLETED = "completed"
+        # 暂停下载的任务
         PAUSED = "paused"
 
     class DownloadTaskState(Enum):
-        """提供统一下载任务返回值使用的状态。"""
+        """
+        提供统一下载任务返回值使用的状态。
+        """
 
+        # 正在下载的任务
         DOWNLOADING = "downloading"
+        # 暂停下载的任务
         PAUSED = "paused"
+        # 已经完成下载的任务
         COMPLETED = "completed"
 
     class _Logger:
-        """隔离 Transmission 测试的运行日志输出。"""
+        """
+        隔离 Transmission 测试的运行日志输出。
+        """
 
         def debug(self, *_args, **_kwargs):
-            """忽略测试范围外的调试日志。"""
+            """
+            忽略测试范围外的调试日志。
+            """
             pass
 
         def info(self, *_args, **_kwargs):
-            """忽略测试范围外的普通日志。"""
+            """
+            忽略测试范围外的普通日志。
+            """
             pass
 
         def error(self, *_args, **_kwargs):
-            """忽略测试范围外的错误日志。"""
+            """
+            忽略测试范围外的错误日志。
+            """
             pass
 
     class _MetaInfo:
-        """提供下载任务展示所需的最小媒体元数据。"""
+        """
+        提供下载任务展示所需的最小媒体元数据。
+        """
 
         def __init__(self, name):
-            """保留种子名称并将未解析的媒体字段置空。"""
+            """
+            保留种子名称并将未解析的媒体字段置空。
+            """
             self.name = name
             self.year = None
             self.season_episode = ""
             self.episode_list = []
 
     def _is_magnet_link(value):
-        """按生产领域规则识别测试磁力链接。"""
+        """
+        按生产领域规则识别测试磁力链接。
+        """
         return isinstance(value, str) and value.startswith("magnet:")
 
     def _format_size(value):
-        """返回隔离测试需要的简化容量文本。"""
+        """
+        返回隔离测试需要的简化容量文本。
+        """
         return str(value)
 
     def _format_duration(value):
-        """返回隔离测试需要的简化时长文本。"""
+        """
+        返回隔离测试需要的简化时长文本。
+        """
         return str(value)
 
     class _FileCache:
-        """隔离真实文件缓存，避免读取运行时状态。"""
+        """
+        隔离真实文件缓存，避免读取运行时状态。
+        """
 
         def get(self, *_args, **_kwargs):
-            """固定返回缓存未命中。"""
+            """
+            固定返回缓存未命中。
+            """
             return None
 
     transmission_client_module.Transmission = object
@@ -420,7 +513,9 @@ TransmissionModule, TransmissionTorrentStatus, transmission_module = _load_trans
 
 
 def _build_base(path_mapping):
-    """构造只依赖显式路径映射的下载器基类。"""
+    """
+    构造只依赖显式路径映射的下载器基类。
+    """
     downloader = DownloaderBase.__new__(DownloaderBase)
     downloader.get_config = MagicMock(
         return_value=SimpleNamespace(path_mapping=path_mapping)
@@ -429,7 +524,9 @@ def _build_base(path_mapping):
 
 
 def _build_transmission_module(server):
-    """注入离线下载器及固定路径映射，避免初始化真实服务。"""
+    """
+    注入离线下载器及固定路径映射，避免初始化真实服务。
+    """
     module = TransmissionModule.__new__(TransmissionModule)
     module.get_instances = MagicMock(return_value={"tr": server})
     module.get_instance = MagicMock(return_value=server)
@@ -442,7 +539,9 @@ def _build_transmission_module(server):
 
 
 def test_normalize_path_maps_moviepilot_path_to_downloader_path():
-    """MoviePilot 访问路径应转换为下载器容器内路径。"""
+    """
+    MoviePilot 访问路径应转换为下载器容器内路径。
+    """
     downloader = _build_base([("/media", "/mnt/raid5/home_lt999lt")])
 
     result = downloader.normalize_path(Path("/media/video/downloads/movie"), "tr")
@@ -451,7 +550,9 @@ def test_normalize_path_maps_moviepilot_path_to_downloader_path():
 
 
 def test_normalize_return_path_maps_downloader_path_back_to_moviepilot_path():
-    """下载器容器内路径应转换回 MoviePilot 可访问路径。"""
+    """
+    下载器容器内路径应转换回 MoviePilot 可访问路径。
+    """
     downloader = _build_base([("/media", "/mnt/raid5/home_lt999lt")])
 
     result = downloader.normalize_return_path(
@@ -462,7 +563,9 @@ def test_normalize_return_path_maps_downloader_path_back_to_moviepilot_path():
 
 
 def test_path_mapping_matches_complete_path_segment_only():
-    """路径映射只应命中完整路径段，避免误伤相似前缀。"""
+    """
+    路径映射只应命中完整路径段，避免误伤相似前缀。
+    """
     downloader = _build_base([("/media", "/mnt/media")])
 
     result = downloader.normalize_return_path(Path("/mnt/media2/Show.mkv"), "tr")
@@ -471,7 +574,9 @@ def test_path_mapping_matches_complete_path_segment_only():
 
 
 def test_blank_path_mapping_entry_is_ignored():
-    """空路径映射项应被忽略，继续使用后续有效配置。"""
+    """
+    空路径映射项应被忽略，继续使用后续有效配置。
+    """
     downloader = _build_base(
         [("", "/downloads"), ("/media2", ""), ("/media", "/mnt/media")]
     )
@@ -482,7 +587,9 @@ def test_blank_path_mapping_entry_is_ignored():
 
 
 def test_normalize_path_strips_storage_prefix_after_mapping():
-    """带存储类型前缀的路径映射后应返回下载器原生路径。"""
+    """
+    带存储类型前缀的路径映射后应返回下载器原生路径。
+    """
     downloader = _build_base([("local:/media", "/downloads")])
 
     result = downloader.normalize_path(Path("local:/media/movie"), "qb")
@@ -491,7 +598,9 @@ def test_normalize_path_strips_storage_prefix_after_mapping():
 
 
 def test_smb_mapping_round_trip_preserves_storage_identity():
-    """SMB 共享路径下发为下载器原生路径，返回时必须恢复存储身份。"""
+    """
+    SMB 共享路径下发为下载器原生路径，返回时必须恢复存储身份。
+    """
     downloader = _build_base([("smb:/incoming", "/downloads")])
 
     outbound = downloader.normalize_path(Path("smb:/incoming/Movie/movie.mkv"), "qb")
@@ -503,14 +612,18 @@ def test_smb_mapping_round_trip_preserves_storage_identity():
 
 
 def test_return_path_keeps_local_mapping_compatible():
-    """旧 local 前缀映射仍返回普通本地路径。"""
+    """
+    旧 local 前缀映射仍返回普通本地路径。
+    """
     downloader = _build_base([("local:/media", "/downloads")])
 
     assert downloader.normalize_return_path(Path("/downloads/movie.mkv"), "qb") == "/media/movie.mkv"
 
 
 def test_completed_torrents_return_moviepilot_accessible_path():
-    """Transmission 已完成任务返回的路径字段均应为 MoviePilot 可访问路径。"""
+    """
+    Transmission 已完成任务返回的路径字段均应为 MoviePilot 可访问路径。
+    """
     server = MagicMock()
     server.get_completed_torrents.return_value = [
         SimpleNamespace(
@@ -546,7 +659,9 @@ def test_completed_torrents_return_moviepilot_accessible_path():
     ],
 )
 def test_transmission_progress_uses_percentage_contract(progress_fields, expected_progress):
-    """原始进度须转换为百分比，已有 progress（含零值）须优先保留。"""
+    """
+    原始进度须转换为百分比，已有 progress（含零值）须优先保留。
+    """
     server = MagicMock()
     server.get_completed_torrents.return_value = [
         SimpleNamespace(
@@ -566,7 +681,9 @@ def test_transmission_progress_uses_percentage_contract(progress_fields, expecte
 
 
 def test_hash_lookup_return_moviepilot_accessible_path():
-    """Transmission 按 Hash 查询时返回的路径字段均应完成路径映射。"""
+    """
+    Transmission 按 Hash 查询时返回的路径字段均应完成路径映射。
+    """
     server = MagicMock()
     server.get_torrents.return_value = (
         [
@@ -592,7 +709,9 @@ def test_hash_lookup_return_moviepilot_accessible_path():
 
 
 def test_list_torrents_normalizes_parsed_year_to_string(monkeypatch):
-    """种子名称解析出的整数年份应按下载任务契约转换为字符串。"""
+    """
+    种子名称解析出的整数年份应按下载任务契约转换为字符串。
+    """
     server = MagicMock()
     server.get_torrents.return_value = (
         [
@@ -625,7 +744,9 @@ def test_list_torrents_normalizes_parsed_year_to_string(monkeypatch):
 
 
 def test_list_torrents_ignores_missing_transmission_limit_fields():
-    """Transmission 任务缺少做种限制字段时不应中断列表查询。"""
+    """
+    Transmission 任务缺少做种限制字段时不应中断列表查询。
+    """
 
     class _TorrentWithMissingLimitFields:
         """
@@ -669,7 +790,9 @@ def test_list_torrents_ignores_missing_transmission_limit_fields():
 
 
 def test_all_torrents_include_completed_and_downloading_states():
-    """Transmission 默认列表应同时包含已完成和下载中的任务状态。"""
+    """
+    Transmission 默认列表应同时包含已完成和下载中的任务状态。
+    """
     server = MagicMock()
     server.get_torrents.return_value = (
         [
@@ -709,7 +832,9 @@ def test_all_torrents_include_completed_and_downloading_states():
 
 
 def test_include_all_tags_removes_builtin_tag_filter():
-    """查询全部标签任务时不应附加 MoviePilot 内置标签过滤。"""
+    """
+    查询全部标签任务时不应附加 MoviePilot 内置标签过滤。
+    """
     server = MagicMock()
     server.get_torrents.return_value = (
         [
