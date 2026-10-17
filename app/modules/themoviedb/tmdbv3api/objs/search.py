@@ -19,11 +19,11 @@ class Search(TMDb):
         "tv_shows": "/search/tv",
     }
 
-    def companies(self, term: str, page: int=1) -> Any:
+    def companies(self, term: Any, page: Any=1) -> Any:
         """
         Search for companies.
-        :param term: str
-        :param page: int
+        :param term: Any
+        :param page: Any
         :return:
         """
         return self._request_obj(
@@ -32,11 +32,11 @@ class Search(TMDb):
             key="results"
         )
 
-    def collections(self, term: str, page: int=1) -> Any:
+    def collections(self, term: Any, page: Any=1) -> Any:
         """
         Search for collections.
-        :param term: str
-        :param page: int
+        :param term: Any
+        :param page: Any
         :return:
         """
         return self._request_obj(
@@ -45,11 +45,11 @@ class Search(TMDb):
             key="results"
         )
 
-    def keywords(self, term: str, page: int=1) -> Any:
+    def keywords(self, term: Any, page: Any=1) -> Any:
         """
         Search for keywords.
-        :param term: str
-        :param page: int
+        :param term: Any
+        :param page: Any
         :return:
         """
         return self._request_obj(
@@ -58,15 +58,15 @@ class Search(TMDb):
             key="results"
         )
 
-    def movies(self, term: str, adult: bool | None=None, region: str | None=None, year: int | None=None, release_year: int | None=None, page: int=1) -> Any:
+    def movies(self, term: Any, adult: Any=None, region: Any | None=None, year: Any=None, release_year: Any=None, page: Any=1) -> Any:
         """
         Search for movies.
-        :param term: str
+        :param term: Any
         :param adult: bool
-        :param region: str
-        :param year: int
-        :param release_year: int
-        :param page: int
+        :param region: Any
+        :param year: Any
+        :param release_year: Any
+        :param page: Any
         :return:
         """
         params = "query=%s&page=%s" % (quote(term), page)
@@ -84,14 +84,14 @@ class Search(TMDb):
             key="results"
         )
 
-    def multi(self, term: str, adult: bool | None=None, region: str | None=None, page: int=1) -> Any:
+    def multi(self, term: Any, adult: Any=None, region: Any | None=None, page: Any=1) -> Any:
         """
         Search multiple models in a single request.
         Multi search currently supports searching for movies, tv shows and people in a single request.
-        :param term: str
+        :param term: Any
         :param adult: bool
-        :param region: str
-        :param page: int
+        :param region: Any
+        :param page: Any
         :return:
         """
         params = "query=%s&page=%s" % (quote(term), page)
@@ -105,13 +105,13 @@ class Search(TMDb):
             key="results"
         )
 
-    def people(self, term: str, adult: bool | None=None, region: str | None=None, page: int=1) -> Any:
+    def people(self, term: Any, adult: Any=None, region: Any | None=None, page: Any=1) -> Any:
         """
         Search for people.
-        :param term: str
+        :param term: Any
         :param adult: bool
-        :param region: str
-        :param page: int
+        :param region: Any
+        :param page: Any
         :return:
         """
         params = "query=%s&page=%s" % (quote(term), page)
@@ -125,13 +125,13 @@ class Search(TMDb):
             key="results"
         )
 
-    def tv_shows(self, term: str, adult: bool | None=None, release_year: int | None=None, page: int=1) -> Any:
+    def tv_shows(self, term: Any, adult: Any=None, release_year: Any=None, page: Any=1) -> Any:
         """
         Search for a TV show.
-        :param term: str
+        :param term: Any
         :param adult: bool
-        :param release_year: int
-        :param page: int
+        :param release_year: Any
+        :param page: Any
         :return:
         """
         params = "query=%s&page=%s" % (quote(term), page)
@@ -146,11 +146,11 @@ class Search(TMDb):
         )
 
     # 异步版本方法
-    async def async_companies(self, term: str, page: int=1) -> Any:
+    async def async_companies(self, term: Any, page: Any=1) -> Any:
         """
         Search for companies.（异步版本）
-        :param term: str
-        :param page: int
+        :param term: Any
+        :param page: Any
         :return:
         """
         return await self._async_request_obj(
@@ -159,11 +159,11 @@ class Search(TMDb):
             key="results"
         )
 
-    async def async_collections(self, term: str, page: int=1) -> Any:
+    async def async_collections(self, term: Any, page: Any=1) -> Any:
         """
         Search for collections.（异步版本）
-        :param term: str
-        :param page: int
+        :param term: Any
+        :param page: Any
         :return:
         """
         return await self._async_request_obj(
@@ -172,11 +172,11 @@ class Search(TMDb):
             key="results"
         )
 
-    async def async_keywords(self, term: str, page: int=1) -> Any:
+    async def async_keywords(self, term: Any, page: Any=1) -> Any:
         """
         Search for keywords.（异步版本）
-        :param term: str
-        :param page: int
+        :param term: Any
+        :param page: Any
         :return:
         """
         return await self._async_request_obj(
@@ -185,13 +185,13 @@ class Search(TMDb):
             key="results"
         )
 
-    async def async_people(self, term: str, adult: bool | None=None, region: str | None=None, page: int=1) -> Any:
+    async def async_people(self, term: Any, adult: Any=None, region: Any | None=None, page: Any=1) -> Any:
         """
         Search for people.（异步版本）
-        :param term: str
+        :param term: Any
         :param adult: bool
-        :param region: str
-        :param page: int
+        :param region: Any
+        :param page: Any
         :return:
         """
         params = "query=%s&page=%s" % (quote(term), page)
@@ -205,14 +205,14 @@ class Search(TMDb):
             key="results"
         )
 
-    async def async_multi(self, term: str, adult: bool | None=None, region: str | None=None, page: int=1) -> Any:
+    async def async_multi(self, term: Any, adult: Any=None, region: Any | None=None, page: Any=1) -> Any:
         """
         Search multiple models in a single request.（异步版本）
         Multi search currently supports searching for movies, tv shows and people in a single request.
-        :param term: str
+        :param term: Any
         :param adult: bool
-        :param region: str
-        :param page: int
+        :param region: Any
+        :param page: Any
         :return:
         """
         params = "query=%s&page=%s" % (quote(term), page)
@@ -226,15 +226,15 @@ class Search(TMDb):
             key="results"
         )
 
-    async def async_movies(self, term: str, adult: bool | None=None, region: str | None=None, year: int | None=None, release_year: int | None=None, page: int=1) -> Any:
+    async def async_movies(self, term: Any, adult: Any=None, region: Any | None=None, year: Any=None, release_year: Any=None, page: Any=1) -> Any:
         """
         Search for movies.（异步版本）
-        :param term: str
+        :param term: Any
         :param adult: bool
-        :param region: str
-        :param year: int
-        :param release_year: int
-        :param page: int
+        :param region: Any
+        :param year: Any
+        :param release_year: Any
+        :param page: Any
         :return:
         """
         params = "query=%s&page=%s" % (quote(term), page)
@@ -253,13 +253,13 @@ class Search(TMDb):
             key="results"
         )
 
-    async def async_tv_shows(self, term: str, adult: bool | None=None, release_year: int | None=None, page: int=1) -> Any:
+    async def async_tv_shows(self, term: Any, adult: Any=None, release_year: Any=None, page: Any=1) -> Any:
         """
         Search for a TV show.（异步版本）
-        :param term: str
+        :param term: Any
         :param adult: bool
-        :param release_year: int
-        :param page: int
+        :param release_year: Any
+        :param page: Any
         :return:
         """
         params = "query=%s&page=%s" % (quote(term), page)
