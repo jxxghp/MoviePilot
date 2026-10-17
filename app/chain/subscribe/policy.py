@@ -375,7 +375,9 @@ class SubscribePolicyOwner(_SubscribePriorityPolicyOwner):
             [
                 context
                 for context in contexts
-                if context.media_info.type == MediaType.TV
+                if context.media_info is not None
+                and context.media_info.type == MediaType.TV
+                and context.meta_info is not None
                 and self._SubscribeChain__is_full_season_resource(meta=context.meta_info, subscribe=subscribe)
             ]
             if full_pack_no_exists
