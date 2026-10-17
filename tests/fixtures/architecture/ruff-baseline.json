@@ -26,9 +26,6 @@
   "app/modules/slack/__init__.py": {
     "F401": 2
   },
-  "app/modules/themoviedb/tmdbv3api/__init__.py": {
-    "F401": 25
-  },
   "app/modules/zspace/__init__.py": {
     "F401": 4
   },
