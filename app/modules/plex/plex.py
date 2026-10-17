@@ -1005,6 +1005,8 @@ class Plex:
         """
         获取同步范围内可以继续观看的媒体。
 
+        只使用列表已有字段，缺失的年份、图片或时长不触发逐条详情请求。
+
         :param num: 最多返回条目数量，默认 12
         :return: 包含观看进度百分比的媒体列表；未连接或无法读取媒体库范围时返回 None，SDK 请求异常向上传播
         """
@@ -1023,6 +1025,9 @@ class Plex:
                                       params=params)
         ret_resume: List[_SchemaMediaServerPlayItem] = []
         for item in items:
+            if isinstance(item, PlexPartialObject):
+                # SDK 会为缺失属性同步重载详情，继续观看展示不能等待额外的媒体探测。
+                item._autoReload = False
             item_type = MediaType.MOVIE.value if item.TYPE == "movie" else MediaType.TV.value
             if item_type == MediaType.MOVIE.value:
                 title = item.title
