@@ -1069,19 +1069,6 @@
     "no-untyped-def": 1,
     "type-arg": 1
   },
-  "app/modules/jellyfin/jellyfin.py": {
-    "arg-type": 7,
-    "assignment": 4,
-    "dict-item": 1,
-    "no-any-return": 11,
-    "no-untyped-call": 2,
-    "no-untyped-def": 5,
-    "operator": 4,
-    "return": 1,
-    "type-arg": 9,
-    "union-attr": 1,
-    "var-annotated": 3
-  },
   "app/modules/listenbrainz/__init__.py": {
     "misc": 2,
     "no-any-return": 2
