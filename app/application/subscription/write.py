@@ -369,19 +369,26 @@ def _translate(
     """
     owner_scope = bool(kwargs.pop("owner_scope", False))
     username = kwargs.get("username") if owner_scope else None
+    raw_media_source = kwargs.get("media_source")
+    requested_media_source = (
+        raw_media_source
+        if isinstance(raw_media_source, (MediaSource, str))
+        else None
+    )
     media_source, media_id = resolve_media_identity(
         media=mediainfo,
-        media_source=kwargs.get("media_source"),
+        media_source=requested_media_source,
         media_id=kwargs.get("media_id"),
     )
     if not media_source or not media_id:
         return None
     music_type = _music_entity(mediainfo)
+    raw_season = kwargs.get("season")
     identity = SubscriptionIdentity(
         media_source=MediaSource(media_source),
         media_id=media_id,
         music_type=music_type,
-        season=kwargs.get("season") if isinstance(kwargs.get("season"), int) else None,
+        season=raw_season if isinstance(raw_season, int) else None,
         episode_group=mediainfo.episode_group,
     )
     payload = cast(
