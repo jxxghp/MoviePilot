@@ -4,6 +4,7 @@ import importlib
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
+from collections.abc import Callable, Iterable
 from typing import Any, Mapping
 
 from app.runtime.capabilities.model import (
@@ -43,7 +44,7 @@ NON_SWITCHABLE_HOST_MODULE_IDS = frozenset(
 _SETTING_SELECTOR = "setting_truthy"
 _SERVICE_SELECTOR = "system_config_item"
 _MODULE_ROOT = Path(__file__).resolve().parents[3] / "modules"
-_SERVICE_CONFIG_GETTERS = MappingProxyType({
+_SERVICE_CONFIG_GETTERS: Mapping[str, Callable[[], Iterable[Any]]] = MappingProxyType({
     SystemConfigKey.Downloaders.value: ServiceConfigHelper.get_downloader_configs,
     SystemConfigKey.MediaServers.value: ServiceConfigHelper.get_mediaserver_configs,
     SystemConfigKey.Notifications.value: ServiceConfigHelper.get_notification_configs,
@@ -151,7 +152,10 @@ def _validate_manifest_inventory(registry: CapabilityRegistry) -> None:
         if isinstance(priority, bool) or not isinstance(priority, int):
             raise ValueError(f"{spec.source}: metadata.priority 必须是整数")
         if spec.activation is ActivationPolicy.WHEN_CONFIGURED:
-            selector_key = str(spec.selector.config["key"])
+            selector = spec.selector
+            if selector is None:
+                raise ValueError(f"{spec.source}: WHEN_CONFIGURED 必须声明 selector")
+            selector_key = str(selector.config["key"])
             if selector_key not in spec.watch:
                 raise ValueError(
                     f"{spec.source}: activation.watch 必须包含 selector 配置键"
@@ -191,7 +195,7 @@ def capture_host_module_config(
         key: get_runtime_setting(key)
         for key in sorted(setting_keys)
     }
-    service_values = {
+    service_values: dict[str, tuple[Any, ...]] = {
         key: tuple(_SERVICE_CONFIG_GETTERS[key]())
         for key in sorted(service_keys)
     }
