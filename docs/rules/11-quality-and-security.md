@@ -148,6 +148,8 @@ Before contributor submission, check applicable items below. Maintainer executio
 - [ ] If MCP/API behavior changed: `docs/mcp-api.md` and related skill files are updated
 - [ ] If database schema changed: a new Alembic migration exists under `database/versions/`
 - [ ] No secrets are included in code, logs, or committed files
-- [ ] Public or cross-module contracts and non-obvious business behavior have useful Chinese documentation
+- [ ] Added and modified objects comply with [08 — Comments and Documentation Style](08-comment-styles.md): Chinese explanations, multiline triple-double-quoted docstrings, shared parameter/return field lists, and complete required module, class, function, and method documentation
+- [ ] Every affected dataclass, Pydantic, and Protocol declaration has accurate documentation; Pydantic field descriptions reach the Schema, and comment migration has not changed model behavior
+- [ ] Older file styles and passing static checks do not replace comment review; existing migration work does not justify new violations
 
-*Last Updated: 2026-08-19*
+*Last Updated: 2026-10-17*

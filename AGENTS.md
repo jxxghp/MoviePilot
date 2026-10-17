@@ -36,7 +36,7 @@ For work that changes or reviews repository behavior, identify the domains actua
 
 ### Comments and Documentation
 * **Primary Reference:** `docs/rules/08-comment-styles.md`
-* **Required Constraints:** Public or cross-module contracts and non-obvious business behavior require concise Chinese docstrings. Small self-evident private helpers and test scaffolding may omit them. Comments must explain the *why*, not restate the code.
+* **Required Constraints:** All comment prose must be Chinese. Every docstring uses multiline triple double quotes with each delimiter on its own line and reStructuredText / Sphinx field lists such as `:param:` and `:return:`; older single-line or English file styles are not exceptions. Substantive modules, public classes, and public functions/methods require documentation. Every dataclass, Pydantic model, and Protocol must document its class, each declared field/member, and explicit methods, including private types and test scaffolding. Dataclasses use `:param:` / `:ivar:`; Pydantic fields use Chinese `Field(description=...)`; Protocol methods document each part of the calling contract. Small self-evident private helpers may omit docstrings, but non-obvious behavior must explain its rationale. Detailed formats and boundaries are defined in `08-comment-styles.md`.
 
 ### External Communication and Interfaces
 * **Primary Reference:** `docs/rules/09-external-response.md`
@@ -136,8 +136,8 @@ Architecture, persistence, security, external protocols, cross-module lifecycle,
 ### Implementation Guidelines
 
 * **Pattern Adherence:** Avoid generic boilerplate. If `04-design-patterns.md` defines a project-level pattern for a scenario, you are required to use it.
-* **Documentation Standards:** Docstring style for any new function or module must match `08-comment-styles.md`.
-* **Documentation Gate:** Public or cross-module contracts and non-obvious business behavior without useful Chinese documentation are rejected. Do not require comments that merely restate self-evident syntax.
+* **Documentation Standards:** New and modified comments must follow `docs/rules/08-comment-styles.md`, the sole detailed source for comment conventions. Preserve code identifiers and tool syntax, but write explanations in Chinese. Do not rewrite runtime SQL, templates, or other strings as docstrings.
+* **Documentation Gate:** Reject changes with missing required documentation, single-line docstrings, English comment prose, or undocumented dataclass / Pydantic / Protocol declarations. The rule against restating code does not waive required explanations of business meaning. Migrate existing violations within task scope; they are not accepted exceptions. Passing current static checks does not establish compliance with every comment rule.
 * **Command Reliance:** Prefer commands documented in `03-commands.md`; use other necessary standard commands with explicit, scoped arguments.
 * **Minimal Change Principle:** Prefer the smallest correct change. Do not perform unrelated refactors, mass renames, or formatting-only cleanup.
 * **Output Language:** Summaries, validation results, and risk notes default to Chinese unless the user requests otherwise.
@@ -223,4 +223,4 @@ For the full documentation map and cross-references, refer to:
 
 **[Documentation Hub Index](./docs/rules/README.md)**
 
-*Last Updated: 2026-10-09*
+*Last Updated: 2026-10-17*

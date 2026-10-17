@@ -230,6 +230,12 @@ Docker 镜像直接基于官方基础镜像构建，只安装应用运行所需�
 3. **架构与静态检查**：按受影响合同选择架构策略、snapshot 和 ratchet；策略测试先于 snapshot。Pylint 候选范围分别取 PR base 到 HEAD、暂存 diff、未暂存 diff 及本次新文件的并集；以实际待提交的索引 tree 过滤路径并检查内容。仅暂存本次选择的路径/hunks；代码、项目配置与仓内 lint 依赖必须来自同一 tree。只有全部 tracked 工作树与索引一致（`git diff --quiet`）且没有会影响 lint 的额外配置或导入输入时才使用工作树快捷路径，否则（含部分暂存）按 `AGENTS.md` 导出索引验证。这是现有 lint 的输入选择，不增加门禁；大范围 Python 变化在同一待提交 tree 中检查 `app/`。
 4. **最终核对**：复用仍有效的证据，只重跑被后续变化失效的检查；检查最终 diff、`git diff --check` 和工作树。CI 失败归属及维护者预授权按 [协作规则](rules/12-collaboration-and-distribution.md) 处理。
 
+提交前还须按 [注释规范](rules/08-comment-styles.md) 审查本次新增和修改的对象：说明文字使用中文，
+文档字符串使用多行三双引号，参数与返回值统一使用 `:param:` / `:return:` 字段列表，
+dataclass、Pydantic 和 Protocol 的声明项逐项提供说明。Pydantic 字段使用 `Field(description=...)`，
+不得因注释调整改变模型行为。旧文件风格不构成例外；现有 Pylint / Ruff 检查未覆盖全部注释要求，
+检查通过不能代替这项审查。
+
 主仓架构检查不依赖独立插件仓；官方插件兼容观察通过每周或手工工作流单独运行，仅上传语义差异
 报告，不自动更新基线。普通主仓改动不要求额外检出插件仓或运行观察任务。宿主架构门禁和 changed-file
 Pylint 由 `v3` PR/push 的 GitHub Actions 执行，`app/` 全量 Pylint 是建议性报告。
