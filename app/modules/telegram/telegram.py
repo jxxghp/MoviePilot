@@ -880,52 +880,17 @@ class Telegram:
                 reply_markup = self._create_force_reply_markup()
 
             if rich_message:
-                if original_message_id and original_chat_id and not force_reply:
-                    result = self.edit_msg(
-                        chat_id=original_chat_id,
-                        message_id=original_message_id,
-                        text=text or "",
-                        rich_message=rich_message,
-                        buttons=buttons,
-                        stop_typing=stop_typing,
-                    )
-                    return {
-                        "success": bool(result),
-                        "message_id": original_message_id,
-                        "chat_id": original_chat_id,
-                    }
-
-                target_chat_id = (
-                    original_chat_id
-                    if force_reply and original_chat_id
-                    else chat_id
+                return self._send_rich_message(
+                    chat_id=chat_id,
+                    text=text,
+                    buttons=buttons,
+                    force_reply=force_reply,
+                    original_message_id=original_message_id,
+                    original_chat_id=original_chat_id,
+                    stop_typing=stop_typing,
+                    rich_message=rich_message,
+                    reply_markup=reply_markup,
                 )
-                try:
-                    sent = self.__send_rich_message(
-                        chat_id=target_chat_id,
-                        rich_message=rich_message,
-                        reply_markup=reply_markup,
-                        reply_to_message_id=(
-                            original_message_id if force_reply else None
-                        ),
-                    )
-                except Exception as rich_err:
-                    if self._is_rate_limit_error(rich_err):
-                        self._mark_rate_limit(target_chat_id, rich_err, operation="发送")
-                        sent = None
-                    else:
-                        # Rich Message 失败不再等同于通知丢失，降级为纯文本重发一次。
-                        logger.warning(
-                            f"Telegram Rich Message 发送失败，降级为纯文本：{rich_err}"
-                        )
-                        sent = self.__send_plain_fallback(
-                            chat_id=target_chat_id,
-                            rich_message=rich_message,
-                            reply_markup=reply_markup,
-                        )
-                self._remember_sent_message(sent, target_chat_id)
-                self._stop_typing_if_needed(chat_id, stop_typing)
-                return self._sent_result(sent, chat_id)
 
             # 判断是编辑消息还是发送新消息
             if original_message_id and original_chat_id:
@@ -976,6 +941,61 @@ class Telegram:
             logger.error(f"发送消息失败：{msg_e}")
             self._stop_typing_if_needed(chat_id, stop_typing)
             return {"success": False}
+
+    def _send_rich_message(
+            self,
+            *,
+            chat_id: Union[str, int],
+            text: Optional[str],
+            buttons: Optional[List[List[dict]]],
+            force_reply: bool,
+            original_message_id: Optional[int],
+            original_chat_id: Optional[str],
+            stop_typing: bool,
+            rich_message: str,
+            reply_markup: Optional[JsonDict],
+    ) -> JsonDict:
+        """发送或编辑 Rich Message，并在限流时隔离后续输出请求。"""
+        if original_message_id and original_chat_id and not force_reply:
+            result = self.edit_msg(
+                chat_id=original_chat_id,
+                message_id=original_message_id,
+                text=text or "",
+                rich_message=rich_message,
+                buttons=buttons,
+                stop_typing=stop_typing,
+            )
+            return {
+                "success": bool(result),
+                "message_id": original_message_id,
+                "chat_id": original_chat_id,
+            }
+
+        target_chat_id = original_chat_id if force_reply and original_chat_id else chat_id
+        try:
+            sent = self.__send_rich_message(
+                chat_id=target_chat_id,
+                rich_message=rich_message,
+                reply_markup=reply_markup,
+                reply_to_message_id=original_message_id if force_reply else None,
+            )
+        except Exception as rich_err:
+            if self._is_rate_limit_error(rich_err):
+                self._mark_rate_limit(target_chat_id, rich_err, operation="发送")
+                sent = None
+            else:
+                # Rich Message 发送失败不再等同于通知丢失，降级为纯文本重发一次。
+                logger.warning(
+                    f"Telegram Rich Message 发送失败，降级为纯文本：{rich_err}"
+                )
+                sent = self.__send_plain_fallback(
+                    chat_id=target_chat_id,
+                    rich_message=rich_message,
+                    reply_markup=reply_markup,
+                )
+        self._remember_sent_message(sent, target_chat_id)
+        self._stop_typing_if_needed(chat_id, stop_typing)
+        return self._sent_result(sent, chat_id)
 
     @staticmethod
     def _sent_result(sent: Any, chat_id: Union[str, int]) -> JsonDict:
