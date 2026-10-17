@@ -1,4 +1,6 @@
-"""无业务状态的文本识别、清理、转换和分段能力。"""
+"""
+无业务状态的文本识别、清理、转换和分段能力。
+"""
 
 import html
 import random
@@ -10,7 +12,9 @@ import moviepilot_rust
 
 
 def _escape_notification_text(value: str, text_format: str) -> str:
-    """把外部文本转为指定语法的数据，避免注入格式、链接或群体提醒。"""
+    """
+    把外部文本转为指定语法的数据，避免注入格式、链接或群体提醒。
+    """
     value = value.replace("@", "@\u200b")
     if text_format == "markdown":
         value = value.replace("<", "＜").replace(">", "＞")
@@ -22,7 +26,14 @@ def _escape_notification_text(value: str, text_format: str) -> str:
 
 
 def render_notification(title: Optional[str], blocks: List[Dict[str, Optional[str]]], text_format: str) -> str:
-    """把通用文本段落转换为指定格式，不读取渠道配置或识别业务含义。"""
+    """
+    把通用文本段落转换为指定格式，不读取渠道配置或识别业务含义。
+
+    :param title: 通知总标题，仅在 rich_markdown 格式中输出
+    :param blocks: 含 title 和 text 的文本段落，原文会进行格式转义
+    :param text_format: 目标文本格式：markdown、mrkdwn 或 rich_markdown
+    :return: 可交给对应渠道渲染的文本
+    """
     bold = "*" if text_format == "mrkdwn" else "**"
     paragraphs = []
     if title and text_format == "rich_markdown":
@@ -52,19 +63,34 @@ def render_notification(title: Optional[str], blocks: List[Dict[str, Optional[st
 
 
 def cut(text: str, HMM: bool = True, cut_all: bool = False) -> list[str]:
-    """通过统一原生入口执行中文分词。"""
+    """
+    通过统一原生入口执行中文分词。
+
+    :param text: 待分词的中文文本
+    :param HMM: 是否启用隐马尔可夫模型识别未登录词
+    :param cut_all: 是否采用全模式分词
+    :return: 原生分词器产生的词语列表
+    """
     words: list[str] = moviepilot_rust.jieba_cut(text, hmm=HMM, cut_all=cut_all)
     return words
 
 
 def convert(text: str, target: str) -> str:
-    """通过统一入口执行 MediaWiki 中文简繁转换。"""
+    """
+    通过统一入口执行 MediaWiki 中文简繁转换。
+
+    :param text: 待转换的中文文本
+    :param target: MediaWiki 转换目标代码，例如 zh-cn 或 zh-tw
+    :return: 转换后的文本
+    """
     converted: str = moviepilot_rust.zhconv_fast(text, target)
     return converted
 
 
 def contains_chinese(value: Union[str, list[str]]) -> bool:
-    """判断文本或文本列表中是否包含中文字符。"""
+    """
+    判断文本或文本列表中是否包含中文字符。
+    """
     if not value:
         return False
     if isinstance(value, list):
@@ -73,27 +99,37 @@ def contains_chinese(value: Union[str, list[str]]) -> bool:
 
 
 def contains_japanese(value: str) -> bool:
-    """判断文本中是否包含平假名或片假名。"""
+    """
+    判断文本中是否包含平假名或片假名。
+    """
     return re.search(r"[\u3040-\u309F\u30A0-\u30FF]", value) is not None
 
 
 def contains_korean(value: str) -> bool:
-    """判断文本中是否包含韩文字符。"""
+    """
+    判断文本中是否包含韩文字符。
+    """
     return re.search(r"[\uAC00-\uD7FF]", value) is not None
 
 
 def is_all_chinese(value: str) -> bool:
-    """判断除空格外的全部字符是否都是中文。"""
+    """
+    判断除空格外的全部字符是否都是中文。
+    """
     return all(character == " " or "\u4e00" <= character <= "\u9fff" for character in value)
 
 
 def is_english_word(value: str) -> bool:
-    """判断文本是否为不含空格的英文字母单词。"""
+    """
+    判断文本是否为不含空格的英文字母单词。
+    """
     return value.encode().isalpha()
 
 
 def parse_int(value: str) -> int:
-    """解析可能带千位分隔符的整数，无法解析时返回零。"""
+    """
+    解析可能带千位分隔符的整数，无法解析时返回零。
+    """
     if value:
         value = value.strip()
     if not value:
@@ -105,7 +141,9 @@ def parse_int(value: str) -> int:
 
 
 def parse_float(value: str) -> float:
-    """解析可能带千位分隔符的浮点数，无法解析时返回零。"""
+    """
+    解析可能带千位分隔符的浮点数，无法解析时返回零。
+    """
     if value:
         value = value.strip()
     if not value:
@@ -118,13 +156,17 @@ def parse_float(value: str) -> float:
 
 @overload
 def remove_punctuation(value: str, replacement: str = "", allow_space: bool = False) -> str:
-    """保留单段文本清理后的字符串返回类型。"""
+    """
+    保留单段文本清理后的字符串返回类型。
+    """
     ...
 
 
 @overload
 def remove_punctuation(value: list[str], replacement: str = "", allow_space: bool = False) -> list[str]:
-    """保留文本列表清理后的列表返回类型。"""
+    """
+    保留文本列表清理后的列表返回类型。
+    """
     ...
 
 
@@ -133,7 +175,14 @@ def remove_punctuation(
     replacement: str = "",
     allow_space: bool = False,
 ) -> Union[list[str], str]:
-    """移除历史匹配规则使用的标点和零宽字符。"""
+    """
+    移除历史匹配规则使用的标点和零宽字符。
+
+    :param value: 待清理文本或文本列表，空值保持原样
+    :param replacement: 单段文本中标点的替换内容
+    :param allow_space: 单段文本是否保留合并后的空格
+    :return: 清理后的同类结构；列表元素沿用默认替换与空格规则
+    """
     punctuation = r"[、.。,，·:：;；!！?？'’\"“”()（）\[\]【】「」\-—―\+\|\\_/&#～~]"
     if not value:
         return value
@@ -151,28 +200,40 @@ def remove_punctuation(
 
 
 def normalize_upper(value: Optional[str]) -> str:
-    """移除历史匹配标点、空白并转换为大写。"""
+    """
+    移除历史匹配标点、空白并转换为大写。
+    """
     if not value:
         return ""
     return remove_punctuation(value).upper().strip()
 
 
 def sanitize_filename(value: str) -> Optional[str]:
-    """移除文件名中不允许使用的字符并替换英文冒号。"""
+    """
+    移除文件名中不允许使用的字符并替换英文冒号。
+    """
     if not value:
         return None
     return re.sub(r"[*?\\/\"<>~|]", "", value, flags=re.IGNORECASE).replace(":", "：")
 
 
 def random_string(length: int = 16) -> str:
-    """生成兼容历史字符集的指定长度随机字符串。"""
+    """
+    生成兼容历史字符集的指定长度随机字符串。
+    """
     alphabet = "ABCDEFGHIGKLMNOPQRSTUVWXYZabcdefghigklmnopqrstuvwxyz0123456789"
     last_index = len(alphabet) - 1
     return "".join(alphabet[random.randint(0, last_index)] for _index in range(length))
 
 
 def parse_bool(value: object, default: bool = False) -> bool:
-    """按历史配置规则把字符串或数值转换为布尔值。"""
+    """
+    按历史配置规则把字符串或数值转换为布尔值。
+
+    :param value: 待解析值，数值大于 0 才视为真
+    :param default: 仅在输入为空字符串时使用的默认值
+    :return: 布尔值，字符串忽略大小写，仅 y、true、1、yes、on 视为真
+    """
     if isinstance(value, str) and not value:
         return default
     if isinstance(value, bool):
@@ -183,19 +244,32 @@ def parse_bool(value: object, default: bool = False) -> bool:
 
 
 def cookiejar_to_string(cookiejar: Mapping[str, str]) -> str:
-    """把键值形式的 CookieJar 序列化为 Cookie 请求头文本。"""
+    """
+    把键值形式的 CookieJar 序列化为 Cookie 请求头文本。
+    """
     return "; ".join("=".join(item) for item in cookiejar.items())
 
 
 class NamedIdEntry(TypedDict, total=False):
-    """命名条目的原始字段；缺失名称不会匹配，ID 保留原始值。"""
+    """
+    命名条目的原始字段；缺失名称不会匹配，ID 保留原始值。
+
+    :ivar name: 用于匹配的名称；缺失或为 None 时不匹配
+    :ivar id: 命中后返回的原始标识，保留输入类型
+    """
 
     name: str | None
     id: object
 
 
 def extract_named_ids(content: str, entries: List[NamedIdEntry]) -> tuple[list[object], str] | list[object]:
-    """从空格分隔文本中提取命名条目 ID，并返回剩余内容。"""
+    """
+    从空格分隔文本中提取命名条目 ID，并返回剩余内容。
+
+    :param content: 按空白分隔的待匹配文本
+    :param entries: 名称与原始标识条目，缺失名称时跳过
+    :return: 非空输入返回去重标识列表与剩余文本；空输入直接返回空列表
+    """
     if not content:
         return []
     identifiers: list[object] = []
@@ -209,14 +283,22 @@ def extract_named_ids(content: str, entries: List[NamedIdEntry]) -> tuple[list[o
 
 
 def format_amount(amount: object, currency: str = "$") -> str:
-    """使用千位分隔符和货币前缀格式化金额。"""
+    """
+    使用千位分隔符和货币前缀格式化金额。
+
+    :param amount: 支持数字格式化的金额；零值或其他假值直接显示为 0
+    :param currency: 非零金额前的货币符号
+    :return: 带千位分隔符的金额文本
+    """
     if not amount:
         return "0"
     return currency + format(amount, ",")
 
 
 def count_words(value: str) -> int:
-    """统计中英文混合文本中的汉字数和英文单词数。"""
+    """
+    统计中英文混合文本中的汉字数和英文单词数。
+    """
     if not value:
         return 0
     chinese_words = [
@@ -227,7 +309,13 @@ def count_words(value: str) -> int:
 
 
 def split_by_bytes(value: str, max_length: int) -> Generator[str, None, None]:
-    """按 UTF-8 字节上限分段，优先保持换行和英文单词完整。"""
+    """
+    按 UTF-8 字节上限分段，优先保持换行和英文单词完整。
+
+    :param value: 待分段文本；空输入产生一个空字符串
+    :param max_length: 分段目标上限，单位为 UTF-8 字节；单个完整词语可能超过上限
+    :yields: 按原顺序输出的文本段，首尾空白会被去除
+    """
     if not value:
         yield ""
     lines = re.split("\n", value)
@@ -263,29 +351,39 @@ def split_by_bytes(value: str, max_length: int) -> Generator[str, None, None]:
 
 @overload
 def title_case(value: str) -> str:
-    """字符串输入保留字符串返回类型。"""
+    """
+    字符串输入保留字符串返回类型。
+    """
     ...
 
 
 @overload
 def title_case(value: None) -> None:
-    """空值沿用历史返回，不转换为空字符串。"""
+    """
+    空值沿用历史返回，不转换为空字符串。
+    """
     ...
 
 
 def title_case(value: Optional[str]) -> Optional[str]:
-    """转换为标题大小写，并兼容空值。"""
+    """
+    转换为标题大小写，并兼容空值。
+    """
     return value.title() if value else value
 
 
 def escape_markdown(value: str) -> str:
-    """转义 Markdown 保留字符，并保持历史二次转义语义。"""
+    """
+    转义 Markdown 保留字符，并保持历史二次转义语义。
+    """
     escaped = re.sub(r"([_*\[\]()~`>#+\-=|.!{}])", r"\\\1", value)
     return re.sub(r"\\\\([_*\[\]()~`>#+\-=|.!{}])", r"\1", escaped)
 
 
 def is_number(value: str) -> bool:
-    """判断文本能否转换为整数或浮点数。"""
+    """
+    判断文本能否转换为整数或浮点数。
+    """
     if not value:
         return False
     try:
@@ -296,7 +394,9 @@ def is_number(value: str) -> bool:
 
 
 def common_prefix(first: str, second: str) -> str:
-    """返回两个字符串从首字符开始的公共前缀。"""
+    """
+    返回两个字符串从首字符开始的公共前缀。
+    """
     if not first or not second:
         return ""
     prefix = []
@@ -308,12 +408,16 @@ def common_prefix(first: str, second: str) -> str:
 
 
 def strip_optional(value: Optional[str]) -> Optional[str]:
-    """去除可空值两端空白，并保持 None。"""
+    """
+    去除可空值两端空白，并保持 None。
+    """
     return value.strip() if value is not None else None
 
 
 def natural_sort_key(value: str) -> List[Union[int, str]]:
-    """把文本拆成数字和小写文本片段，供自然排序使用。"""
+    """
+    把文本拆成数字和小写文本片段，供自然排序使用。
+    """
     if value is None:
         return []
     if not isinstance(value, str):
