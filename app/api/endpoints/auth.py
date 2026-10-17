@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, cast
 
 from fastapi import Depends, HTTPException, Request, Response
 from pydantic import BaseModel
@@ -20,7 +20,7 @@ from app.schemas.user import AuthProviderInfo as _SchemaAuthProviderInfo
 router = ResponseAPIRouter()
 
 
-class AuthExchangeRequest(BaseModel):
+class AuthExchangeRequest(BaseModel):  # type: ignore[misc]
     """
     插件认证票据兑换请求。
     """
@@ -89,7 +89,7 @@ def auth_exchange(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user = service.get_user_by_id(ticket_data.get("user_id"))
+    user = service.get_user_by_id(cast(int, ticket_data.get("user_id")))
     if not user or not user.is_active:
         raise HTTPException(
             status_code=401,
