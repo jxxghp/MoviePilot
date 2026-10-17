@@ -380,13 +380,12 @@ class Qbittorrent:
 
     def delete_torrents_tag(self, ids: Optional[Union[str, list[str]]], tag: Union[str, list[str]]) -> bool:
         """
-        从指定种子移除标签，并删除全局标签定义
+        从指定种子移除标签，并删除全局标签定义。
 
         qBittorrent 5.x 添加任务后可能暂时无法按响应中的种子 ID 查询任务，
         移除接口此时会静默成功，因此需读取任务标签确认清理结果。
 
         :param ids: 种子Hash列表；未知种子Hash时传入None，仅删除全局标签定义
-
         :param tag: 标签内容
         :return: 是否删除成功
         """
