@@ -35,9 +35,9 @@ class Site(BaseModel):
     public: Optional[int] = Field(default=0, description="是否公开站点")
     note: Optional[JsonData] = Field(default=None, description="备注")
     timeout: Optional[int] = Field(default=15, description="超时时间")
-    limit_interval: Optional[int] = Field(default=None, description="流控单位周期")
-    limit_count: Optional[int] = Field(default=None, description="流控次数")
-    limit_seconds: Optional[int] = Field(default=None, description="流控间隔")
+    limit_interval: Optional[int] = Field(default=None, description="请求流控统计窗口长度，单位为秒；None 表示未配置")
+    limit_count: Optional[int] = Field(default=None, description="流控统计窗口内允许的最大请求数；None 表示未配置")
+    limit_seconds: Optional[int] = Field(default=None, description="相邻请求之间的最小间隔，单位为秒；None 表示未配置")
     is_active: Optional[bool] = Field(default=True, description="是否启用")
     downloader: Optional[str] = Field(default=None, description="下载器")
 

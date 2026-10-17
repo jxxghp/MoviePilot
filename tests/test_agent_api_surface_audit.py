@@ -1,4 +1,6 @@
-"""Agent API surface inventory and generated contract drift tests."""
+"""
+Agent API 接口清单与生成契约的漂移检查。
+"""
 
 import json
 import re
@@ -15,19 +17,25 @@ API_SKILL = PROJECT_ROOT / "skills/moviepilot-api/SKILL.md"
 
 
 def _read_api_skill_contract() -> str:
-    """Read the API Skill entrypoint together with all categorized contracts."""
+    """
+    读取 API Skill 入口及全部分类契约文档。
+    """
     skill_root = API_SKILL.parent
     paths = [API_SKILL, *sorted((skill_root / "api").glob("*.md"))]
     return "\n".join(path.read_text(encoding="utf-8") for path in paths)
 
 
 def _load_generator() -> dict:
-    """Load the audit generator without invoking its file-writing entrypoint."""
+    """
+    加载清单生成器，不调用写文件入口。
+    """
     return runpy.run_path(str(PROJECT_ROOT / "scripts/generate_agent_api_surface_audit.py"))
 
 
 def test_agent_api_surface_audit_matches_live_openapi_and_registry() -> None:
-    """The checked-in complete inventory must match live OpenAPI and the gateway registry."""
+    """
+    已提交的完整接口清单必须与当前 OpenAPI 和网关注册表一致。
+    """
     generator = _load_generator()
     live = generator["generate_audit"]()
     checked_in = json.loads(AUDIT_JSON.read_text(encoding="utf-8"))
@@ -49,7 +57,9 @@ def test_agent_api_surface_audit_matches_live_openapi_and_registry() -> None:
 
 
 def test_cleanup_confirmation_stays_in_authenticated_management_workflow() -> None:
-    """人工确认清理只关闭历史提示，不应作为 Agent 已验证外部清理的业务工具。"""
+    """
+    人工确认清理只关闭历史提示，不应作为 Agent 已验证外部清理的业务工具。
+    """
     classify = _load_generator()["_classify"]
     disposition, owner, _, operations = classify(
         method="POST",
@@ -61,7 +71,9 @@ def test_cleanup_confirmation_stays_in_authenticated_management_workflow() -> No
 
 
 def test_community_recognition_stays_in_frontend_workflow() -> None:
-    """贡献徽章是管理员身份的界面投影，不可经 Agent 工具继承或读取凭据。"""
+    """
+    贡献徽章是管理员身份的界面投影，不可经 Agent 工具继承或读取凭据。
+    """
     classify = _load_generator()["_classify"]
     disposition, owner, _, operations = classify(
         method="GET", path="/api/v1/github/community", tags=["github"], gateway_routes={},
@@ -70,7 +82,9 @@ def test_community_recognition_stays_in_frontend_workflow() -> None:
 
 
 def test_recent_business_routes_are_exposed_as_stable_gateway_operations() -> None:
-    """近期高层业务端点必须保持在 moviepilot_api，而不是落入边界归属。"""
+    """
+    近期高层业务端点必须保持在 moviepilot_api，而不是落入边界归属。
+    """
     audit = json.loads(AUDIT_JSON.read_text(encoding="utf-8"))
     routes = {(item["method"], item["path"]): item for item in audit["operations"]}
     expected = {
@@ -93,7 +107,9 @@ def test_recent_business_routes_are_exposed_as_stable_gateway_operations() -> No
 
 
 def test_moviepilot_api_skill_routes_contracts_to_category_files() -> None:
-    """API Skill 通过分类文档索引全部 operation 及请求体合同。"""
+    """
+    API Skill 通过分类文档索引全部 operation 及请求体合同。
+    """
     entrypoint = API_SKILL.read_text(encoding="utf-8")
     category_files = {
         path.stem: path.read_text(encoding="utf-8")
@@ -110,8 +126,10 @@ def test_moviepilot_api_skill_routes_contracts_to_category_files() -> None:
     assert all("## Body Models" in content for content in category_files.values())
 
 
-def test_every_gateway_operation_has_one_exact_english_skill_and_mcp_contract() -> None:
-    """Every approved operation must be discoverable with matching exact English contracts."""
+def test_every_gateway_operation_has_exact_skill_and_chinese_mcp_contract() -> None:
+    """
+    每个获准操作都必须有唯一的 Skill 契约及对应的中文 MCP 契约。
+    """
     skill = _read_api_skill_contract()
     schema = MoviePilotApiTool(session_id="audit", user_id="1").get_mcp_input_schema()
     branches = {
@@ -124,13 +142,15 @@ def test_every_gateway_operation_has_one_exact_english_skill_and_mcp_contract() 
         assert skill.count(f"### `{operation_id}`") == 1
         branch = branches[operation_id]
         assert branch["description"].strip()
-        assert not re.search(r"[\u3400-\u9fff]", branch["description"]), operation_id
+        assert re.search(r"[\u3400-\u9fff]", branch["description"]), operation_id
         assert route.method in skill.split(f"### `{operation_id}`", 1)[1].split("\n### `", 1)[0]
         assert route.path in skill.split(f"### `{operation_id}`", 1)[1].split("\n### `", 1)[0]
 
 
 def test_every_gateway_path_placeholder_is_required_by_its_mcp_branch() -> None:
-    """固定路由的每个路径占位符都必须在工具 schema 中以同名必填字段暴露。"""
+    """
+    固定路由的每个路径占位符都必须在工具 schema 中以同名必填字段暴露。
+    """
     schema = MoviePilotApiTool(session_id="audit", user_id="1").get_mcp_input_schema()
     branches = {
         branch["properties"]["operation_id"]["const"]: branch
@@ -145,7 +165,9 @@ def test_every_gateway_path_placeholder_is_required_by_its_mcp_branch() -> None:
 
 
 def test_every_non_gateway_openapi_route_has_an_explicit_owner_and_reason() -> None:
-    """Unexposed REST routes must remain visible and deliberately owned, never silently omitted."""
+    """
+    未向网关暴露的 REST 路由也必须有明确归属，不得从接口清单中静默遗漏。
+    """
     audit = json.loads(AUDIT_JSON.read_text(encoding="utf-8"))
     keys = set()
     for item in audit["operations"]:

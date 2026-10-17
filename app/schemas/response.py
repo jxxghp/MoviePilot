@@ -4,7 +4,7 @@
 
 from typing import Any, Generic, Optional, TypeVar
 
-from pydantic import BaseModel, ConfigDict, field_validator, Field
+from pydantic import BaseModel, ConfigDict, field_validator, Field as _Field
 
 from app.runtime.localization import LocaleHelper
 
@@ -21,9 +21,9 @@ class Response(BaseModel, Generic[DataT]):
         json_schema_extra={"required": ["success", "message", "data"]}
     )
 
-    success: bool = Field(description="状态")
-    message: str = Field(default="", description="消息文本")
-    data: Optional[DataT] = Field(default=None, description="数据")
+    success: bool = _Field(description="状态")
+    message: str = _Field(default="", description="消息文本")
+    data: Optional[DataT] = _Field(default=None, description="数据")
 
     @field_validator("message", mode="before")
     @classmethod
@@ -51,6 +51,6 @@ class ValidationIssue(BaseModel):
     请求参数校验失败时返回的单项错误信息。
     """
 
-    location: list[str | int] = Field(description="参数位置")
-    message: str = Field(description="错误说明")
-    error_type: str = Field(description="错误类型")
+    location: list[str | int] = _Field(description="参数位置")
+    message: str = _Field(description="错误说明")
+    error_type: str = _Field(description="错误类型")

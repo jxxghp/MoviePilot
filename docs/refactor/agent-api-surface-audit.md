@@ -640,10 +640,10 @@ Plugin ratings include this installation's own rating and require the same admin
 | `GET` | `/api/v1/system/setting/public/{key}` | system | `gateway` | config.public.get | 查询公开系统设置 |
 | `GET` | `/api/v1/system/setting/{key}` | system | `consolidated` | config.system.get | 查询系统设置 |
 | `POST` | `/api/v1/system/setting/{key}` | system | `consolidated` | config.system.update | 更新系统设置 |
-| `GET` | `/api/v1/system/settings` | system | `gateway` | config.system.get | Discover or read registered system settings |
-| `POST` | `/api/v1/system/settings` | system | `gateway` | config.system.update | Update one registered system setting |
-| `GET` | `/api/v1/system/settings/catalog` | system | `gateway` | config.system.list | List system setting contracts |
-| `GET` | `/api/v1/system/settings/describe/{setting_key}` | system | `gateway` | config.system.describe | Describe one system setting contract |
+| `GET` | `/api/v1/system/settings` | system | `gateway` | config.system.get | 发现或读取已登记的系统设置 |
+| `POST` | `/api/v1/system/settings` | system | `gateway` | config.system.update | 更新单项已登记系统设置 |
+| `GET` | `/api/v1/system/settings/catalog` | system | `gateway` | config.system.list | 列出系统设置契约 |
+| `GET` | `/api/v1/system/settings/describe/{setting_key}` | system | `gateway` | config.system.describe | 查询单项系统设置契约 |
 | `POST` | `/api/v1/system/update/check` | system | `gateway` | system.update.check | 立即检查系统更新 |
 | `POST` | `/api/v1/system/update/download` | system | `gateway` | system.update.download | 后台下载系统更新 |
 | `POST` | `/api/v1/system/update/install` | system | `gateway` | system.update.install | 确认重启安装系统更新 |
