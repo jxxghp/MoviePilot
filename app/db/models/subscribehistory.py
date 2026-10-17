@@ -1,3 +1,9 @@
+"""
+已完成订阅的历史记录的 ORM 模型与会话内数据操作。
+
+会话及事务由调用方管理，本模块不负责提交或回滚。
+"""
+
 from typing import Any, Optional, Self
 
 from sqlalchemy import JSON, ColumnElement, Float, Index, Integer, String, func, or_, select
@@ -120,7 +126,9 @@ class SubscribeHistory(Base):
 
     @classmethod
     def list_by_type(cls, db: Session, mtype: str, page: int = 1, count: int = 30) -> list[Self]:
-        """在调用方 Session 中按媒体类型分页查询订阅历史。"""
+        """
+        在调用方 Session 中按媒体类型分页查询订阅历史。
+        """
         return list(db.execute(
             select(cls).where(
                 cls.type == mtype
@@ -131,7 +139,9 @@ class SubscribeHistory(Base):
 
     @classmethod
     async def async_list_by_type(cls, db: AsyncSession, mtype: str, page: int = 1, count: int = 30) -> list[Self]:
-        """在调用方 AsyncSession 中按媒体类型分页查询订阅历史。"""
+        """
+        在调用方 AsyncSession 中按媒体类型分页查询订阅历史。
+        """
         result = await db.execute(
             select(cls).filter(
                 cls.type == mtype
@@ -167,7 +177,9 @@ class SubscribeHistory(Base):
 
     @classmethod
     async def async_count_by_type(cls, db: AsyncSession, mtype: str) -> int:
-        """统计指定媒体类型的订阅历史。"""
+        """
+        统计指定媒体类型的订阅历史。
+        """
         result = await db.execute(
             select(func.count(cls.id)).where(cls.type == mtype)
         )
@@ -180,7 +192,9 @@ class SubscribeHistory(Base):
         mtype: str,
         username: str,
     ) -> int:
-        """统计指定媒体类型和 owner 的订阅历史。"""
+        """
+        统计指定媒体类型和 owner 的订阅历史。
+        """
         if not username:
             return 0
         result = await db.execute(
@@ -198,7 +212,9 @@ class SubscribeHistory(Base):
             media_id: Optional[str] = None,
             music_type: Optional[str] = None,
     ) -> Optional[ColumnElement[bool]]:
-        """按统一媒体身份优先级构造订阅历史查询条件。"""
+        """
+        按统一媒体身份优先级构造订阅历史查询条件。
+        """
         if not media_source or media_id is None or not str(media_id).strip():
             return None
         condition = (
@@ -218,7 +234,9 @@ class SubscribeHistory(Base):
             episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
     ) -> Optional[Self]:
-        """按媒体身份、季号及可选剧集组查询订阅历史。"""
+        """
+        按媒体身份、季号及可选剧集组查询订阅历史。
+        """
         condition = cls._identity_condition(
             media_source, media_id, music_type
         )
@@ -238,7 +256,9 @@ class SubscribeHistory(Base):
             episode_group: Optional[str] = None,
             music_type: Optional[str] = None,
     ) -> Optional[Self]:
-        """异步按媒体身份、季号及可选剧集组查询订阅历史。"""
+        """
+        异步按媒体身份、季号及可选剧集组查询订阅历史。
+        """
         condition = cls._identity_condition(
             media_source, media_id, music_type
         )

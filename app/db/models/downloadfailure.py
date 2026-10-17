@@ -1,3 +1,9 @@
+"""
+下载失败及重试状态的 ORM 模型与会话内数据操作。
+
+会话及事务由调用方管理，本模块不负责提交或回滚。
+"""
+
 from typing import List, Optional, Self
 
 from sqlalchemy import Float, Index, Integer, String, delete, select

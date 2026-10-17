@@ -1,3 +1,9 @@
+"""
+站点图标缓存的 ORM 模型与会话内数据操作。
+
+会话及事务由调用方管理，本模块不负责提交或回滚。
+"""
+
 from typing import Optional, Self
 
 from sqlalchemy import String, select
@@ -23,7 +29,9 @@ class SiteIcon(Base):
 
     @classmethod
     def get_by_domain(cls, db: Session, domain: str) -> Optional[Self]:
-        """在调用方 Session 中查询站点图标。"""
+        """
+        在调用方 Session 中查询站点图标。
+        """
         icon: Optional[Self] = db.execute(select(cls).where(cls.domain == domain)).scalars().first()
         return icon
 
@@ -33,7 +41,9 @@ class SiteIcon(Base):
         db: AsyncSession,
         domain: str,
     ) -> Optional[Self]:
-        """在调用方 AsyncSession 中查询站点图标。"""
+        """
+        在调用方 AsyncSession 中查询站点图标。
+        """
         result = await db.execute(select(cls).where(cls.domain == domain))
         icon: Optional[Self] = result.scalar_one_or_none()
         return icon

@@ -1,3 +1,9 @@
+"""
+持久化整理任务、检查点与租约的 ORM 模型与会话内数据操作。
+
+会话及事务由调用方管理，本模块不负责提交或回滚。
+"""
+
 from datetime import datetime
 from typing import Any, List, Optional, cast
 from uuid import uuid4
@@ -172,6 +178,7 @@ class TransferPending(Base):
         在调用方会话中暂存一条持久接纳记录。
 
         相同存储与路径已存在时返回原记录，确保重复监控事件复用同一个任务标识。
+
         :param db: 数据库会话
         :param task_id: 任务标识
         :param storage: 存储
@@ -216,6 +223,7 @@ class TransferPending(Base):
                         src_path: str) -> Optional["TransferPending"]:
         """
         按存储与源路径查询一条持久接纳记录。
+
         :param db: 数据库会话
         :param storage: 存储
         :param src_path: 源文件路径
@@ -237,6 +245,7 @@ class TransferPending(Base):
     def get_by_task_id(cls, db: Session, *, task_id: str) -> Optional["TransferPending"]:
         """
         按稳定任务标识查询一条持久登记。
+
         :param db: 数据库会话
         :param task_id: 稳定任务标识
         :return: 接纳记录
@@ -252,7 +261,9 @@ class TransferPending(Base):
     def get_task_id_by_identity(
             cls, db: Session, *, storage: str, src_path: str,
     ) -> Optional[str]:
-        """仅查询源文件的稳定身份，使显式重做不依赖损坏规划 JSON 的反序列化。"""
+        """
+        仅查询源文件的稳定身份，使显式重做不依赖损坏规划 JSON 的反序列化。
+        """
         return cast(Optional[str], db.scalar(select(cls.task_id).where(
             cls.storage == storage, cls.src_path == src_path,
         )))
@@ -272,6 +283,7 @@ class TransferPending(Base):
 
         返回候选不等于取得租约；调用方必须继续执行带相同过期条件的 claim CAS，
         并以受影响行数决定竞争结果。
+
         :param db: 数据库会话
         :param states: 可恢复业务状态
         :param now_time: 当前 UTC 时间
@@ -407,7 +419,8 @@ class TransferPending(Base):
             now_utc: str,
             updated_at: str,
     ) -> int:
-        """仅以有效租约和完整冻结计划把任务推进或保持为 running。
+        """
+        仅以有效租约和完整冻结计划把任务推进或保持为 running。
 
         PostgreSQL 的 JSON 类型不支持直接等值比较，计划匹配条件会在该方言下
         临时转换为 JSONB，避免执行 CAS 时触发数据库操作符错误。
@@ -456,7 +469,9 @@ class TransferPending(Base):
             db: Session,
             checkpoint_payload: dict[str, Any],
     ) -> ColumnElement[bool]:
-        """构造跨数据库的冻结计划匹配条件。"""
+        """
+        构造跨数据库的冻结计划匹配条件。
+        """
         if db.get_bind(mapper=cls).dialect.name == "postgresql":
             return sql_cast(cls.checkpoint_payload, JSONB) == sql_cast(
                 checkpoint_payload,
@@ -476,7 +491,9 @@ class TransferPending(Base):
             now_utc: str,
             updated_at: str,
     ) -> int:
-        """以有效租约进入 retry_wait，并原子释放当前租约。"""
+        """
+        以有效租约进入 retry_wait，并原子释放当前租约。
+        """
         if not all((task_id, lease_token, error, retry_due_at, now_utc, updated_at)):
             return 0
         return execute_dml(
@@ -519,7 +536,9 @@ class TransferPending(Base):
             now_utc: str,
             updated_at: str,
     ) -> int:
-        """以有效租约隔离执行结果未知的任务，并释放自动调度租约。"""
+        """
+        以有效租约隔离执行结果未知的任务，并释放自动调度租约。
+        """
         if not all((task_id, lease_token, error, now_utc, updated_at)):
             return 0
         return execute_dml(
@@ -561,7 +580,9 @@ class TransferPending(Base):
             now_utc: str,
             updated_at: str,
     ) -> int:
-        """以有效租约保存可重放执行检查点并进入 settling。"""
+        """
+        以有效租约保存可重放执行检查点并进入 settling。
+        """
         if not all((
                 task_id,
                 lease_token,
@@ -612,7 +633,9 @@ class TransferPending(Base):
             now_utc: str,
             updated_at: str,
     ) -> int:
-        """以有效 lease 保存预算耗尽失败检查点并保持租约进入 settling。"""
+        """
+        以有效 lease 保存预算耗尽失败检查点并保持租约进入 settling。
+        """
         return execute_dml(
             db,
             update(cls)
@@ -650,7 +673,9 @@ class TransferPending(Base):
             retry_due_at: str,
             updated_at: str,
     ) -> int:
-        """仅将无租约 FAILED 任务 CAS 为立即到期的 retry_wait。"""
+        """
+        仅将无租约 FAILED 任务 CAS 为立即到期的 retry_wait。
+        """
         if not all((task_id, reason, requested_by, retry_due_at, updated_at)):
             return 0
         return execute_dml(
@@ -684,7 +709,9 @@ class TransferPending(Base):
             retry_due_at: str,
             updated_at: str,
     ) -> int:
-        """无 lease 地 CAS 提交人工判定审计并交回 retry_wait 调度。"""
+        """
+        无 lease 地 CAS 提交人工判定审计并交回 retry_wait 调度。
+        """
         if decision not in {"not_applied", "applied"}:
             return 0
         return execute_dml(
@@ -725,7 +752,9 @@ class TransferPending(Base):
             now_utc: str,
             updated_at: str,
     ) -> int:
-        """以执行指纹和结算版本 CAS 保留失败终态及其历史。"""
+        """
+        以执行指纹和结算版本 CAS 保留失败终态及其历史。
+        """
         return execute_dml(
             db,
             update(cls)
@@ -766,6 +795,7 @@ class TransferPending(Base):
 
         历史存在性子查询把用户看到的失败回执纳入同一个 CAS，避免陈旧页面误删
         已重试、已人工判定或已产生新结算版本的任务。
+
         :param db: 数据库会话
         :param task_id: 稳定任务标识
         :param history_id: 失败终态历史标识
@@ -806,7 +836,9 @@ class TransferPending(Base):
             expected_revision: int,
             now_utc: str,
     ) -> int:
-        """以执行指纹和结算版本 CAS 删除已成功结算的 pending。"""
+        """
+        以执行指纹和结算版本 CAS 删除已成功结算的 pending。
+        """
         return execute_dml(
             db,
             delete(cls).where(
@@ -837,6 +869,7 @@ class TransferPending(Base):
 
         claim 的投影失败会先回滚，因此这里不得重新占用租约。CAS 同时保护
         已被其他 worker 领取的任务，并避免周期恢复反复刷新相同错误。
+
         :param db: 数据库会话
         :param task_id: 稳定任务标识
         :param states: 可恢复业务状态
@@ -910,7 +943,9 @@ class TransferPending(Base):
             cls, db: Session, *, task_id: str, lease_token: str, error: str,
             retry_due_at: str, now_time: str, updated_at: str, max_retries: int,
     ) -> int:
-        """只对尚无文件计划和操作证据的接纳任务记录可恢复失败，并原子释放租约。"""
+        """
+        只对尚无文件计划和操作证据的接纳任务记录可恢复失败，并原子释放租约。
+        """
         return execute_dml(
             db, update(cls).where(
                 cls.task_id == task_id, cls.state == "accepted",
@@ -1043,7 +1078,8 @@ class TransferPending(Base):
             src_path: str,
             now_time: str,
     ) -> int:
-        """仅为显式重做删除无有效租约且无真实历史绑定的旧任务。
+        """
+        仅为显式重做删除无有效租约且无真实历史绑定的旧任务。
 
         旧规划或执行状态可能损坏，放弃权只由稳定身份、当前租约和实际历史决定；
         悬空历史标识不能永久阻挡重做。步骤由调用方在同一事务中清理。
@@ -1085,6 +1121,7 @@ class TransferPending(Base):
 
         provider 调用快照也属于冻结计划，必须同事务写入 planned_at 才能准备执行；
         后续回退到宿主计划时，以新的检查点提交时间刷新该字段。
+
         :param db: 数据库会话
         :param task_id: 稳定任务标识
         :param input_fingerprint: 规划输入规范 JSON 指纹
@@ -1136,7 +1173,9 @@ class TransferPending(Base):
             cls, db: Session, *, task_id: str, lease_token: str,
             error: str, now_utc: str, updated_at: str,
     ) -> int:
-        """以当前租约收口未记账异常；已释放租约的重试和复核不得重复计数。"""
+        """
+        以当前租约收口未记账异常；已释放租约的重试和复核不得重复计数。
+        """
         return execute_dml(
             db,
             update(cls).where(
@@ -1168,6 +1207,7 @@ class TransferPending(Base):
                                 now_time: str, updated_at: str) -> int:
         """
         为接纳态或 provider 待执行任务记录规划失败，不改变其恢复状态。
+
         :param db: 数据库会话
         :param task_id: 稳定任务标识
         :param lease_token: 当前且未过期的租约令牌
@@ -1197,6 +1237,7 @@ class TransferPending(Base):
                                error: str, now_time: str) -> int:
         """
         在调用方会话中记录任务最近一次入队失败。
+
         :param db: 数据库会话
         :param task_id: 任务标识
         :param error: 失败原因

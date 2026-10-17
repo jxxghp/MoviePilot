@@ -1,3 +1,9 @@
+"""
+站点请求成功率与耗时统计的 ORM 模型与会话内数据操作。
+
+会话及事务由调用方管理，本模块不负责提交或回滚。
+"""
+
 from datetime import datetime
 from typing import Any, Optional, Self
 
@@ -30,7 +36,9 @@ class SiteStatistic(Base):
 
     @classmethod
     def get_by_domain(cls, db: Session, domain: str) -> Optional[Self]:
-        """在调用方 Session 中查询站点统计。"""
+        """
+        在调用方 Session 中查询站点统计。
+        """
         statistic: Optional[Self] = db.execute(select(cls).where(cls.domain == domain)).scalars().first()
         return statistic
 
@@ -40,12 +48,16 @@ class SiteStatistic(Base):
         db: AsyncSession,
         domain: str,
     ) -> Optional[Self]:
-        """在调用方 AsyncSession 中查询站点统计。"""
+        """
+        在调用方 AsyncSession 中查询站点统计。
+        """
         result = await db.execute(select(cls).where(cls.domain == domain))
         statistic: Optional[Self] = result.scalar_one_or_none()
         return statistic
 
     @classmethod
     def reset(cls, db: Session) -> None:
-        """在调用方持有的事务中暂存统计表清空操作。"""
+        """
+        在调用方持有的事务中暂存统计表清空操作。
+        """
         db.execute(delete(cls))

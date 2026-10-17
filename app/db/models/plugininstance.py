@@ -1,4 +1,6 @@
-"""共享源码插件的实例描述符与配置持久化模型。"""
+"""
+共享源码插件的实例描述符与配置持久化模型。
+"""
 
 from __future__ import annotations
 
@@ -21,7 +23,8 @@ from app.db.base import Base, get_id_column
 
 
 class PluginInstance(Base):
-    """持久化一个共享源码插件的运行实例，一实例一行。
+    """
+    持久化一个共享源码插件的运行实例，一实例一行。
 
     ``instance_id`` 既是分身的实例 ID，也可以等于 ``source_plugin_id`` 表示源插件
     本体自身；两者相等即本体，不等即分身，不再另设模式列——该列会是从这个等式复制
@@ -94,12 +97,15 @@ class PluginInstance(Base):
 
     @property
     def is_host(self) -> bool:
-        """该行是否为源插件本体自身，而非共享其源码的分身。"""
+        """
+        该行是否为源插件本体自身，而非共享其源码的分身。
+        """
         return bool(self.instance_id == self.source_plugin_id)
 
     @property
     def carries_only_identity(self) -> bool:
-        """除一对身份列外是否已不承载任何设置。
+        """
+        除一对身份列外是否已不承载任何设置。
 
         本体行会在插件首次存配置时被隐式建出，配置被删掉后若各列皆空就只剩身份列，
         留着会让「有哪些插件登记过本体设置」的枚举逐步失真，因而可以回收。分身行不
@@ -123,7 +129,9 @@ class PluginInstance(Base):
 
     @classmethod
     def get_by_instance_id(cls, db: Session, instance_id: str) -> Optional[Self]:
-        """在调用方 Session 中按实例 ID 查询单行。"""
+        """
+        在调用方 Session 中按实例 ID 查询单行。
+        """
         return cast(
             Optional[Self],
             db.execute(select(cls).where(cls.instance_id == instance_id)).scalars().first(),
@@ -135,13 +143,17 @@ class PluginInstance(Base):
         db: AsyncSession,
         instance_id: str,
     ) -> Optional[Self]:
-        """在调用方 AsyncSession 中按实例 ID 查询单行。"""
+        """
+        在调用方 AsyncSession 中按实例 ID 查询单行。
+        """
         result = await db.execute(select(cls).where(cls.instance_id == instance_id))
         return cast(Optional[Self], result.scalars().first())
 
     @classmethod
     def list_by_source_plugin_id(cls, db: Session, source_plugin_id: str) -> List[Self]:
-        """在调用方 Session 中列出某个源插件名下的全部实例，含本体与各个分身。"""
+        """
+        在调用方 Session 中列出某个源插件名下的全部实例，含本体与各个分身。
+        """
         return cast(
             List[Self],
             list(
