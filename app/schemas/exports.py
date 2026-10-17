@@ -1,4 +1,6 @@
-"""由 scripts/schema/exports.py 生成，请勿手工编辑。"""
+"""
+由 scripts/schema/exports.py 生成，请勿手工编辑。
+"""
 
 SCHEMA_EXPORTS = {
     'APIRateLimitException': ('app.schemas.exception', 'APIRateLimitException'),

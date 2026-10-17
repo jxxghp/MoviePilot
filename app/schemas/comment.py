@@ -1,12 +1,17 @@
-"""豆瓣短评与影评的稳定结果模型。"""
+"""
+豆瓣短评与影评的稳定结果模型。
+"""
 
 from typing import Optional
 
 from pydantic import BaseModel, Field
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class MediaCommentAuthor(BaseModel):  # type: ignore[misc]
-    """评论作者的身份投影。"""
+    """
+    评论作者的身份投影。
+    """
 
     id: Optional[str] = Field(default=None, description="作者 ID")
     name: Optional[str] = Field(default=None, description="作者昵称")
@@ -14,8 +19,11 @@ class MediaCommentAuthor(BaseModel):  # type: ignore[misc]
     url: Optional[str] = Field(default=None, description="作者主页地址")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class MediaComment(BaseModel):  # type: ignore[misc]
-    """豆瓣短评条目，评分按豆瓣五分制归一。"""
+    """
+    豆瓣短评条目，评分按豆瓣五分制归一。
+    """
 
     id: Optional[str] = Field(default=None, description="短评 ID")
     comment: Optional[str] = Field(default=None, description="短评正文")
@@ -26,8 +34,11 @@ class MediaComment(BaseModel):  # type: ignore[misc]
     url: Optional[str] = Field(default=None, description="短评地址")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class MediaReview(BaseModel):  # type: ignore[misc]
-    """豆瓣影评条目，正文以摘要形式返回。"""
+    """
+    豆瓣影评条目，正文以摘要形式返回。
+    """
 
     id: Optional[str] = Field(default=None, description="影评 ID")
     title: Optional[str] = Field(default=None, description="影评标题")
@@ -40,8 +51,11 @@ class MediaReview(BaseModel):  # type: ignore[misc]
     url: Optional[str] = Field(default=None, description="影评地址")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class MediaCommentPage(BaseModel):  # type: ignore[misc]
-    """短评分页结果，total 为豆瓣侧的总条目数。"""
+    """
+    短评分页结果，total 为豆瓣侧的总条目数。
+    """
 
     start: int = Field(default=0, description="起始偏移")
     count: int = Field(default=0, description="本页条目数")
@@ -49,8 +63,11 @@ class MediaCommentPage(BaseModel):  # type: ignore[misc]
     items: list[MediaComment] = Field(default_factory=list, description="短评列表")
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class MediaReviewPage(BaseModel):  # type: ignore[misc]
-    """影评分页结果，total 为豆瓣侧的总条目数。"""
+    """
+    影评分页结果，total 为豆瓣侧的总条目数。
+    """
 
     start: int = Field(default=0, description="起始偏移")
     count: int = Field(default=0, description="本页条目数")
