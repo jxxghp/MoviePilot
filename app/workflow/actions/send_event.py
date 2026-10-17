@@ -26,13 +26,13 @@ class SendEventAction(BaseAction):
     def success(self) -> bool:
         return self.done
 
-    def execute(self, workflow_id: int, params: dict, context: ActionContext) -> ActionContext:
+    def execute(self, workflow_id: int, params: dict[str, object], context: ActionContext) -> ActionContext:
         """
         发送工作流事件，以更插件干预工作流执行
         """
         # 触发资源下载事件，更新执行上下文
         event = eventmanager.send_event(ChainEventType.WorkflowExecution, context)
-        if event and event.event_data:
+        if event and isinstance(event.event_data, ActionContext):
             context = event.event_data
 
         self.job_done()
