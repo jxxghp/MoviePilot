@@ -1,3 +1,7 @@
+"""
+企业微信智能机器人长连接、消息确认、互动用户缓存和通知渲染。
+"""
+
 import base64
 import hashlib
 import json
@@ -27,15 +31,17 @@ from app.schemas.types import NotificationChannel
 
 class WeChatBot:
     """
-    企业微信智能机器人（长连接模式）
-    固定使用：
-    - dmPolicy = open
-    - groupPolicy = disabled
+    通过 WebSocket 长连接收发企业微信智能机器人消息。
+
+    接收端只处理私聊，管理员配置约束命令执行；已互动用户持久化后可作为通知接收对象。
     """
 
     _default_ws_url = "wss://openws.work.weixin.qq.com"
+    # 应用心跳间隔，单位为秒
     _heartbeat_interval = 30
+    # 认证及单条消息确认各自的等待上限，单位为秒
     _ack_timeout = 10
+    # 关闭时等待网关和心跳线程退出的独立预算，单位为秒
     _gateway_join_timeout_seconds = 5
     _heartbeat_join_timeout_seconds = 2
 
@@ -47,6 +53,17 @@ class WeChatBot:
                  WECHAT_ADMINS: Optional[str] = None,
                  name: Optional[str] = None,
                  **kwargs):
+        """
+        加载互动用户并启动网关和心跳线程。
+
+        :param WECHAT_BOT_ID: 机器人标识；与密钥缺失时保持未就绪状态
+        :param WECHAT_BOT_SECRET: 机器人长连接密钥
+        :param WECHAT_BOT_CHAT_ID: 默认通知目标，支持 user: 或 group: 前缀
+        :param WECHAT_BOT_WS_URL: WebSocket 地址；为空时使用官方长连接地址
+        :param WECHAT_ADMINS: 以逗号分隔的管理员用户标识
+        :param name: 实例名称，用于日志和互动用户缓存隔离；为空时使用 wechat
+        :param kwargs: 通知实例附加配置，当前不使用
+        """
         self._config_name = name or "wechat"
         self._bot_id = WECHAT_BOT_ID
         self._bot_secret = WECHAT_BOT_SECRET
@@ -83,7 +100,11 @@ class WeChatBot:
     @staticmethod
     def _split_content(content: str, max_bytes: int = 4000) -> List[str]:
         """
-        将 markdown 内容拆分为较小分块，避免消息过长发送失败
+        按 UTF-8 字节数拆分 Markdown 并保持字符完整。
+
+        :param content: 原始正文；分块首尾空白会被移除
+        :param max_bytes: 每块字节上限，默认 4000；必须足以容纳文本中的单个字符
+        :return: 非空文本分块；原正文为空时返回空列表
         """
         if not content:
             return []
@@ -116,6 +137,9 @@ class WeChatBot:
         return [chunk for chunk in chunks if chunk]
 
     def _start_gateway(self) -> None:
+        """
+        启动网关及心跳守护线程；网关仍运行时不重复启动。
+        """
         if self._ws_thread and self._ws_thread.is_alive():
             return
 
@@ -127,7 +151,13 @@ class WeChatBot:
         logger.info(f"企业微信智能机器人长连接已启动：{self._config_name}")
 
     def stop(self) -> bool:
-        """停止网关与心跳线程，并返回两个 owner 是否均已终止。"""
+        """
+        请求停止长连接和心跳，并在有限时间内等待线程退出。
+
+        网关最多等待 5 秒，心跳最多等待 2 秒；不会等待当前调用线程自身。
+
+        :return: 两个线程均已退出时返回 True，否则返回 False
+        """
         self._stop_event.set()
         self._authenticated.clear()
         if self._ws_app:
@@ -158,9 +188,17 @@ class WeChatBot:
         return converged
 
     def get_state(self) -> bool:
+        """
+        检查配置和长连接认证是否均已就绪。
+
+        :return: 客户端已初始化且收到成功订阅确认时返回 True
+        """
         return self._ready and self._authenticated.is_set()
 
     def _load_known_targets(self) -> None:
+        """
+        从实例文件缓存恢复已互动用户；损坏缓存只记录日志。
+        """
         try:
             content = self._filecache.get(self._cache_key)
             if not content:
@@ -172,12 +210,20 @@ class WeChatBot:
             logger.debug(f"加载企业微信智能机器人已互动用户失败：{err}")
 
     def _save_known_targets(self) -> None:
+        """
+        按稳定顺序持久化已互动用户；缓存写入失败只记录日志。
+        """
         try:
             self._filecache.set(self._cache_key, pickle.dumps(sorted(self._known_targets)))
         except Exception as err:
             logger.debug(f"保存企业微信智能机器人已互动用户失败：{err}")
 
     def _remember_target(self, userid: Optional[str]) -> None:
+        """
+        记录新的互动用户并立即写入实例缓存。
+
+        :param userid: 发送者标识；空值或已记录用户不会触发写入
+        """
         target = str(userid).strip() if userid else None
         if not target:
             return
@@ -186,6 +232,11 @@ class WeChatBot:
             self._save_known_targets()
 
     def _run_gateway(self) -> None:
+        """
+        维护 WebSocket 连接，断开后逐步延长重连间隔。
+
+        重连间隔依次为 1、2、5、10、30、60 秒，此后维持 60 秒，直到收到停止信号。
+        """
         reconnect_delays = [1, 2, 5, 10, 30, 60]
         attempt = 0
 
@@ -219,6 +270,9 @@ class WeChatBot:
                 time.sleep(0.1)
 
     def _heartbeat_loop(self) -> None:
+        """
+        认证后每 30 秒发送应用心跳，停止信号到达时退出。
+        """
         while not self._stop_event.is_set():
             if self._authenticated.is_set():
                 try:
@@ -234,6 +288,11 @@ class WeChatBot:
                 time.sleep(0.1)
 
     def _on_open(self, ws) -> None:
+        """
+        连接建立后提交机器人订阅凭据。
+
+        :param ws: WebSocket 回调参数，发送时使用实例连接
+        """
         logger.info(f"企业微信智能机器人连接成功，开始订阅：{self._config_name}")
         self._send_raw({
             "cmd": "aibot_subscribe",
@@ -245,6 +304,12 @@ class WeChatBot:
         })
 
     def _on_message(self, ws, message: str) -> None:
+        """
+        解析确认、订阅结果和回调事件，并更新认证状态。
+
+        :param ws: WebSocket 回调参数，当前不使用
+        :param message: 服务器发送的 JSON 文本
+        """
         try:
             payload = json.loads(message)
         except Exception as err:
@@ -274,14 +339,33 @@ class WeChatBot:
             self._handle_callback_event(payload)
 
     def _on_error(self, ws, error) -> None:
+        """
+        清除认证状态并记录连接错误。
+
+        :param ws: WebSocket 回调参数，当前不使用
+        :param error: 底层连接错误
+        """
         self._authenticated.clear()
         logger.error(f"企业微信智能机器人 WebSocket 错误：{error}")
 
     def _on_close(self, ws, close_status_code, close_msg) -> None:
+        """
+        连接关闭时清除认证状态并记录关闭原因。
+
+        :param ws: WebSocket 回调参数，当前不使用
+        :param close_status_code: 服务器关闭状态码，可能为空
+        :param close_msg: 服务器关闭说明，可能为空
+        """
         self._authenticated.clear()
         logger.info(f"企业微信智能机器人连接关闭：{close_status_code} {close_msg}")
 
     def _resolve_ack(self, req_id: str, payload: dict) -> None:
+        """
+        将服务器确认交给等待同一请求标识的发送线程。
+
+        :param req_id: 请求关联标识
+        :param payload: 完整确认报文；无对应等待者时忽略
+        """
         with self._acks_lock:
             pending = self._pending_acks.get(req_id)
         if not pending:
@@ -290,11 +374,26 @@ class WeChatBot:
         pending["event"].set()
 
     def _send_raw(self, payload: dict) -> None:
+        """
+        向当前连接发送未经确认等待的 JSON 报文。
+
+        连接不可用时抛出 RuntimeError；此方法本身不获取发送锁。
+
+        :param payload: 原始协议报文
+        """
         if not self._ws_app or not self._ws_app.sock or not self._ws_app.sock.connected:
             raise RuntimeError("企业微信智能机器人未连接")
         self._ws_app.send(json.dumps(payload, ensure_ascii=False))
 
     def _send_with_ack(self, payload: dict) -> bool:
+        """
+        等待认证后串行写入报文，并等待对应服务器确认。
+
+        认证和确认各最多等待 10 秒；等待记录在结束时清理，底层发送异常向上传播。
+
+        :param payload: 必须在 headers.req_id 中包含请求标识的协议报文
+        :return: 收到错误码为 0 的确认时返回 True；缺少标识、认证或确认超时及服务端错误返回 False
+        """
         req_id = (payload.get("headers") or {}).get("req_id")
         if not req_id:
             return False
@@ -325,12 +424,23 @@ class WeChatBot:
                 self._pending_acks.pop(req_id, None)
 
     def _handle_callback_event(self, payload: dict) -> None:
+        """
+        记录旧连接被服务器替换的事件；其他事件当前忽略。
+
+        :param payload: 机器人事件回调报文
+        """
         event = ((payload.get("body") or {}).get("event") or {}).get("eventtype")
         if event == "disconnected_event":
             logger.info(f"企业微信智能机器人旧连接被踢下线：{self._config_name}")
 
     @staticmethod
     def _extract_text_from_body(body: dict) -> Optional[str]:
+        """
+        提取文本、语音转写或混合消息文字，无正文时回退到引用文字。
+
+        :param body: 机器人回调 body 字典
+        :return: 去除首尾空白并以换行拼接的正文；无有效文字返回 None
+        """
         msgtype = body.get("msgtype")
         text_parts = []
 
@@ -360,6 +470,12 @@ class WeChatBot:
 
     @staticmethod
     def _build_image_ref(image_payload: dict) -> Optional[str]:
+        """
+        将图片下载地址、可选密钥和格式封装为内部引用。
+
+        :param image_payload: 图片元数据，兼容多种下载地址及密钥字段名
+        :return: wxbot://image/ 引用；输入无效或缺少下载地址返回 None
+        """
         if not image_payload or not isinstance(image_payload, dict):
             return None
         download_url = (
@@ -386,6 +502,12 @@ class WeChatBot:
     def _extract_images_from_body(
         cls, body: dict
     ) -> Optional[List["IncomingMessage.MessageImage"]]:
+        """
+        提取图片或混合消息中的图片，无正文图片时回退到引用图片。
+
+        :param body: 机器人回调 body 字典
+        :return: 包含内部图片引用的列表；没有可下载图片时返回 None
+        """
         images: List["IncomingMessage.MessageImage"] = []
         msgtype = body.get("msgtype")
 
@@ -432,6 +554,13 @@ class WeChatBot:
 
     @staticmethod
     def _guess_mime_type(content: bytes, default: str = "image/jpeg") -> str:
+        """
+        根据图片文件头识别常见图片格式。
+
+        :param content: 图片字节
+        :param default: 空内容或未知格式使用的 MIME 类型
+        :return: 识别出的 MIME 类型或默认值
+        """
         if not content:
             return default
         if content.startswith(b"\x89PNG\r\n\x1a\n"):
@@ -447,6 +576,12 @@ class WeChatBot:
         return default
 
     def download_image_to_data_url(self, image_ref: str) -> Optional[str]:
+        """
+        下载内部图片引用，并按元数据中的可选密钥解密。
+
+        :param image_ref: 包含下载地址和可选 AES 密钥的 wxbot://image/ 引用
+        :return: Base64 图片数据地址；引用无效、下载或解密失败返回 None
+        """
         if not image_ref or not image_ref.startswith("wxbot://image/"):
             return None
         encoded = image_ref.replace("wxbot://image/", "", 1)
@@ -492,6 +627,13 @@ class WeChatBot:
         return f"data:{mime_type};base64,{base64.b64encode(content).decode()}"
 
     def _handle_callback_message(self, payload: dict) -> None:
+        """
+        接收私聊文本或图片，记录互动用户并检查管理员命令权限。
+
+        群聊及无文字、无图片的消息会忽略；通过检查的原始报文交给统一消息入口。
+
+        :param payload: 完整机器人消息回调报文
+        """
         body = payload.get("body") or {}
         sender = ((body.get("from") or {}).get("userid") or "").strip()
         if not sender:
@@ -532,7 +674,12 @@ class WeChatBot:
         self._forward_to_message_chain(payload)
 
     def _forward_to_message_chain(self, payload: dict) -> bool:
-        """通过受管线程池把企业微信 payload 转交统一消息入口。"""
+        """
+        通过受管线程池将原始回调提交给统一消息入口。
+
+        :param payload: 保留来源字段的机器人回调报文
+        :return: 入口任务成功提交时返回 True，否则返回 False
+        """
         return submit_message_to_host(
             payload,
             self._config_name,
@@ -541,6 +688,13 @@ class WeChatBot:
 
     @staticmethod
     def _normalize_target(userid: Optional[str], default_chat_id: Optional[str]) -> Tuple[Optional[str], int]:
+        """
+        解析通知目标前缀，并回退到默认目标。
+
+        :param userid: 显式目标，非空时优先使用
+        :param default_chat_id: 未显式指定时使用的默认目标
+        :return: 目标标识与会话类型的二元组；类型 1 为私聊、2 为群聊，无目标时标识为 None
+        """
         target = str(userid).strip() if userid else (default_chat_id.strip() if default_chat_id else None)
         if not target:
             return None, 1
@@ -557,7 +711,15 @@ class WeChatBot:
                         text: Optional[str] = None,
                         image: Optional[str] = None,
                         link: Optional[str] = None) -> str:
-        """构造企业微信智能机器人使用的 Markdown 消息正文。"""
+        """
+        将标题、正文、封面和跳转链接组合成 Markdown。
+
+        :param title: 可选加粗标题
+        :param text: 正文，连续两个换行会合并为一个
+        :param image: 经企业微信图片地址适配后使用的封面地址
+        :param link: 可选消息跳转地址
+        :return: 合并后的正文；全部为空时返回空字符串
+        """
         parts = []
         if title:
             parts.append(f"**{title}**")
@@ -570,12 +732,27 @@ class WeChatBot:
         return "\n\n".join(part for part in parts if part).strip()
 
     def _resolve_targets(self, userid: Optional[str] = None) -> List[Tuple[str, int]]:
+        """
+        按显式目标、默认目标、已互动用户的顺序确定接收对象。
+
+        :param userid: 接收用户或 group: 群标识；为空时优先使用默认目标，否则发送给所有已互动用户
+        :return: 目标标识和会话类型的列表；已互动用户按标识排序
+        """
         target, chat_type = self._normalize_target(userid=userid, default_chat_id=self._default_chat_id)
         if target:
             return [(target, chat_type)]
         return [(known_userid, 1) for known_userid in sorted(self._known_targets)]
 
     def _send_markdown(self, content: str, userid: Optional[str] = None) -> Optional[bool]:
+        """
+        向每个目标分块发送 Markdown，并等待服务器确认。
+
+        一个目标的分块失败后停止该目标的后续分块，继续处理其他目标；不会撤回已发送内容。
+
+        :param content: 待发送正文
+        :param userid: 接收用户或 group: 群标识；为空时优先使用默认目标，否则发送给所有已互动用户
+        :return: 至少一个目标的全部分块发送成功时返回 True；内容为空、无目标或全部目标失败返回 False
+        """
         if not content:
             return False
 
@@ -610,10 +787,27 @@ class WeChatBot:
 
     def send_msg(self, title: str, text: Optional[str] = None, image: Optional[str] = None,
                  userid: Optional[str] = None, link: Optional[str] = None) -> Optional[bool]:
+        """
+        将通知组合成 Markdown 并发送给目标会话。
+
+        :param title: 通知标题
+        :param text: 可选正文
+        :param image: 可选封面地址
+        :param userid: 接收用户或 group: 群标识；为空时优先使用默认目标，否则发送给所有已互动用户
+        :param link: 可选跳转链接
+        :return: 至少一个目标的全部分块发送成功时返回 True；内容为空、无目标或全部目标失败返回 False
+        """
         content = self._build_markdown(title=title, text=text, image=image, link=link)
         return self._send_markdown(content=content, userid=userid)
 
     def send_medias_msg(self, medias: List[MediaInfo], userid: Optional[str] = None) -> Optional[bool]:
+        """
+        将媒体候选顺序、评分和详情地址组合成 Markdown 列表。
+
+        :param medias: 按原顺序展示的媒体候选项
+        :param userid: 接收用户或 group: 群标识；为空时优先使用默认目标，否则发送给所有已互动用户
+        :return: 至少一个目标的全部分块发送成功时返回 True；内容为空、无目标或全部目标失败返回 False
+        """
         if not medias:
             return False
 
@@ -630,6 +824,15 @@ class WeChatBot:
     def send_torrents_msg(self, torrents: List[Context],
                           userid: Optional[str] = None, title: Optional[str] = None,
                           link: Optional[str] = None) -> Optional[bool]:
+        """
+        发送带站点、资源信息和详情地址的种子候选列表。
+
+        :param torrents: 含种子信息的上下文列表
+        :param userid: 接收用户或 group: 群标识；为空时优先使用默认目标，否则发送给所有已互动用户
+        :param title: 列表标题；为空时使用“种子列表”
+        :param link: 追加在标题后的可选链接
+        :return: 至少一个目标的全部分块发送成功时返回 True；内容为空、无目标或全部目标失败返回 False
+        """
         if not torrents:
             return False
 
@@ -659,12 +862,14 @@ class WeChatBot:
 
     def create_menus(self, commands: Dict[str, dict]):
         """
-        智能机器人模式不支持传统自建应用菜单
+        保留客户端菜单接口；智能机器人模式不支持应用菜单。
+
+        :param commands: 兼容应用客户端的命令映射，当前忽略
         """
         return
 
     def delete_menus(self):
         """
-        智能机器人模式不支持传统自建应用菜单
+        保留客户端菜单清理接口；智能机器人模式不执行菜单操作。
         """
         return
