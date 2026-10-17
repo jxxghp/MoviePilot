@@ -10,6 +10,8 @@ from app.api.response import (
 )
 from app.chain.douban import DoubanChain
 from app.domain.context import MediaInfo
+from app.schemas.comment import MediaCommentPage as _SchemaMediaCommentPage
+from app.schemas.comment import MediaReviewPage as _SchemaMediaReviewPage
 from app.schemas.context import MediaPerson as _SchemaMediaPerson
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
 from app.schemas.types import MediaType
@@ -24,6 +26,11 @@ def _paginate_medias(medias: Sequence[Any], page: int, count: int) -> list[Any]:
     normalized_count = max(count, 1)
     start = (normalized_page - 1) * normalized_count
     return list(medias[start : start + normalized_count])
+
+
+def _resolve_media_type(type_name: str) -> Optional[MediaType]:
+    """把 Agent 类型名或中文类型名解析为媒体类型。"""
+    return MediaType.from_agent(type_name) or MediaType(type_name)
 
 
 @router.get(
@@ -70,7 +77,7 @@ async def douban_credits(
     """
     根据豆瓣ID查询演员阵容，type_name: 电影/movie、电视剧/tv
     """
-    mediatype = MediaType.from_agent(type_name) or MediaType(type_name)
+    mediatype = _resolve_media_type(type_name)
     if mediatype == MediaType.MOVIE:
         return await DoubanChain().async_movie_credits(doubanid=doubanid)
     elif mediatype == MediaType.TV:
@@ -93,7 +100,7 @@ async def douban_recommend(
     """
     根据豆瓣ID查询推荐电影/电视剧，type_name: 电影/movie、电视剧/tv
     """
-    mediatype = MediaType.from_agent(type_name) or MediaType(type_name)
+    mediatype = _resolve_media_type(type_name)
     if mediatype == MediaType.MOVIE:
         medias = await DoubanChain().async_movie_recommend(doubanid=doubanid)
     elif mediatype == MediaType.TV:
@@ -103,6 +110,52 @@ async def douban_recommend(
     if medias:
         return [media.to_dict() for media in _paginate_medias(medias, page, count)]
     return []
+
+
+@router.get(
+    "/interests/{doubanid}/{type_name}",
+    summary="豆瓣短评",
+    response_model=_SchemaMediaCommentPage,
+)
+async def douban_interests(
+    doubanid: str,
+    type_name: str,
+    start: int = 0,
+    count: int = 20,
+    _: _SchemaTokenPayload = Depends(verify_token),
+) -> Any:
+    """
+    根据豆瓣ID查询短评，type_name: 电影/movie、电视剧/tv
+    """
+    mediatype = _resolve_media_type(type_name)
+    if mediatype == MediaType.MOVIE:
+        return await DoubanChain().async_movie_interests(doubanid=doubanid, start=start, count=count)
+    elif mediatype == MediaType.TV:
+        return await DoubanChain().async_tv_interests(doubanid=doubanid, start=start, count=count)
+    return _SchemaMediaCommentPage()
+
+
+@router.get(
+    "/reviews/{doubanid}/{type_name}",
+    summary="豆瓣影评",
+    response_model=_SchemaMediaReviewPage,
+)
+async def douban_reviews(
+    doubanid: str,
+    type_name: str,
+    start: int = 0,
+    count: int = 20,
+    _: _SchemaTokenPayload = Depends(verify_token),
+) -> Any:
+    """
+    根据豆瓣ID查询影评，type_name: 电影/movie、电视剧/tv
+    """
+    mediatype = _resolve_media_type(type_name)
+    if mediatype == MediaType.MOVIE:
+        return await DoubanChain().async_movie_reviews(doubanid=doubanid, start=start, count=count)
+    elif mediatype == MediaType.TV:
+        return await DoubanChain().async_tv_reviews(doubanid=doubanid, start=start, count=count)
+    return _SchemaMediaReviewPage()
 
 
 @router.get("/{doubanid}", summary="查询豆瓣详情", response_model=_SchemaMediaInfo)

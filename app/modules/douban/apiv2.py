@@ -1067,6 +1067,102 @@ class DoubanApi(metaclass=WeakSingleton):
         return await self.__async_invoke_search(self._urls["tv_photos"] % subject_id,
                                                 start=start, count=count, _ts=ts)
 
+    def movie_interests(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
+                        ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> dict[str, Any]:
+        """
+        电影短评
+        :param subject_id: 电影id
+        :param start: 开始
+        :param count: 数量
+        :param ts: 时间戳
+        """
+        return self.__invoke_search(self._urls["movie_interests"] % subject_id,
+                                    start=start, count=count, _ts=ts)
+
+    async def async_movie_interests(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
+                                    ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> dict[str, Any]:
+        """
+        电影短评（异步版本）
+        :param subject_id: 电影id
+        :param start: 开始
+        :param count: 数量
+        :param ts: 时间戳
+        """
+        return await self.__async_invoke_search(self._urls["movie_interests"] % subject_id,
+                                                start=start, count=count, _ts=ts)
+
+    def tv_interests(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
+                     ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> dict[str, Any]:
+        """
+        电视剧短评
+        :param subject_id: 电视剧id
+        :param start: 开始
+        :param count: 数量
+        :param ts: 时间戳
+        """
+        return self.__invoke_search(self._urls["tv_interests"] % subject_id,
+                                    start=start, count=count, _ts=ts)
+
+    async def async_tv_interests(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
+                                 ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> dict[str, Any]:
+        """
+        电视剧短评（异步版本）
+        :param subject_id: 电视剧id
+        :param start: 开始
+        :param count: 数量
+        :param ts: 时间戳
+        """
+        return await self.__async_invoke_search(self._urls["tv_interests"] % subject_id,
+                                                start=start, count=count, _ts=ts)
+
+    def movie_reviews(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
+                      ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> dict[str, Any]:
+        """
+        电影影评
+        :param subject_id: 电影id
+        :param start: 开始
+        :param count: 数量
+        :param ts: 时间戳
+        """
+        return self.__invoke_search(self._urls["movie_reviews"] % subject_id,
+                                    start=start, count=count, _ts=ts)
+
+    async def async_movie_reviews(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
+                                  ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> dict[str, Any]:
+        """
+        电影影评（异步版本）
+        :param subject_id: 电影id
+        :param start: 开始
+        :param count: 数量
+        :param ts: 时间戳
+        """
+        return await self.__async_invoke_search(self._urls["movie_reviews"] % subject_id,
+                                                start=start, count=count, _ts=ts)
+
+    def tv_reviews(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
+                   ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> dict[str, Any]:
+        """
+        电视剧影评
+        :param subject_id: 电视剧id
+        :param start: 开始
+        :param count: 数量
+        :param ts: 时间戳
+        """
+        return self.__invoke_search(self._urls["tv_reviews"] % subject_id,
+                                    start=start, count=count, _ts=ts)
+
+    async def async_tv_reviews(self, subject_id: str, start: Optional[int] = 0, count: Optional[int] = 20,
+                               ts: str = datetime.strftime(datetime.now(), '%Y%m%d')) -> dict[str, Any]:
+        """
+        电视剧影评（异步版本）
+        :param subject_id: 电视剧id
+        :param start: 开始
+        :param count: 数量
+        :param ts: 时间戳
+        """
+        return await self.__async_invoke_search(self._urls["tv_reviews"] % subject_id,
+                                                start=start, count=count, _ts=ts)
+
     def person_detail(self, subject_id: int):
         """
         用户详情
