@@ -1,4 +1,6 @@
-"""Amazon Bedrock provider 的凭证解析、Region 提取与运行时解析测试"""
+"""
+Amazon Bedrock provider 的凭证解析、Region 提取与运行时解析测试
+"""
 
 import asyncio
 import time
@@ -17,7 +19,9 @@ _MANAGER_SINGLETON_KEY = (LLMProviderManager, (), frozenset())
 
 @pytest.fixture(autouse=True)
 def _reset_manager_singleton():
-    """每个用例前后清理 LLMProviderManager 单例，避免缓存互相污染"""
+    """
+    每个用例前后清理 LLMProviderManager 单例，避免缓存互相污染
+    """
     previous_manager = Singleton._instances.pop(_MANAGER_SINGLETON_KEY, None)
     yield
     Singleton._instances.pop(_MANAGER_SINGLETON_KEY, None)
@@ -26,6 +30,9 @@ def _reset_manager_singleton():
 
 
 def test_bedrock_provider_registered():
+    """
+    Bedrock 提供方注册正确的运行方式、默认地址和区域预设。
+    """
     manager = LLMProviderManager()
     spec = manager.get_provider("amazon-bedrock")
 
@@ -39,6 +46,9 @@ def test_bedrock_provider_registered():
 
 
 def test_parse_bedrock_credentials_bearer_api_key():
+    """
+    普通 Bedrock API Key 解析为 Bearer 认证凭据。
+    """
     credentials = LLMProviderManager._parse_bedrock_credentials(
         "bedrock-api-key-abcdef123456"
     )
@@ -48,6 +58,9 @@ def test_parse_bedrock_credentials_bearer_api_key():
 
 
 def test_parse_bedrock_credentials_sigv4_ak_sk():
+    """
+    访问密钥和私有密钥组合解析为不带会话令牌的 SigV4 凭据。
+    """
     credentials = LLMProviderManager._parse_bedrock_credentials(
         "AKIAIOSFODNN7EXAMPLE:wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
     )
@@ -59,6 +72,9 @@ def test_parse_bedrock_credentials_sigv4_ak_sk():
 
 
 def test_parse_bedrock_credentials_sigv4_with_session_token():
+    """
+    临时 SigV4 凭据保留显式会话令牌。
+    """
     credentials = LLMProviderManager._parse_bedrock_credentials(
         "ASIAIOSFODNN7EXAMPLE:secret/key:session-token-value"
     )
@@ -68,17 +84,25 @@ def test_parse_bedrock_credentials_sigv4_with_session_token():
 
 
 def test_parse_bedrock_credentials_empty_rejected():
+    """
+    拒绝空 Bedrock 凭据。
+    """
     with pytest.raises(LLMProviderAuthError):
         LLMProviderManager._parse_bedrock_credentials("")
 
 
 def test_parse_bedrock_credentials_malformed_colon_rejected():
+    """
+    拒绝分隔字段不完整的 Bedrock 凭据。
+    """
     with pytest.raises(LLMProviderAuthError):
         LLMProviderManager._parse_bedrock_credentials("AKIA123:")
 
 
 def test_extract_bedrock_region_from_base_url():
-    """应从标准、FIPS 与 PrivateLink Bedrock 端点提取 Region"""
+    """
+    应从标准、FIPS 与 PrivateLink Bedrock 端点提取 Region
+    """
     extract = LLMProviderManager._extract_bedrock_region
 
     assert extract("https://bedrock-runtime.us-east-1.amazonaws.com") == "us-east-1"
@@ -100,7 +124,9 @@ def test_extract_bedrock_region_from_base_url():
 
 
 def test_bedrock_endpoint_url_passthrough():
-    """自定义 Bedrock 端点应透传，标准端点交由 boto3 推导"""
+    """
+    自定义 Bedrock 端点应透传，标准端点交由 boto3 推导
+    """
     resolve = LLMProviderManager._bedrock_endpoint_url
 
     # 标准公有端点交由 boto3 推导，不显式透传
@@ -128,7 +154,9 @@ def test_bedrock_endpoint_url_passthrough():
 
 
 def test_create_bedrock_client_uses_custom_endpoint():
-    """创建 Bedrock 客户端时应把 PrivateLink 地址传给 boto3"""
+    """
+    创建 Bedrock 客户端时应把 PrivateLink 地址传给 boto3
+    """
     manager = LLMProviderManager()
     endpoint_url = (
         "https://vpce-0abc123-xyz.bedrock-runtime.us-west-2.vpce.amazonaws.com"
@@ -153,6 +181,9 @@ def test_create_bedrock_client_uses_custom_endpoint():
 
 
 def test_resolve_runtime_bedrock_bearer():
+    """
+    Bearer 运行配置从服务地址提取对应 AWS 区域。
+    """
     manager = LLMProviderManager()
     runtime = asyncio.run(
         manager.resolve_runtime(
@@ -169,6 +200,9 @@ def test_resolve_runtime_bedrock_bearer():
 
 
 def test_resolve_runtime_bedrock_sigv4_default_region():
+    """
+    未指定服务地址时，SigV4 运行配置使用默认 AWS 区域。
+    """
     manager = LLMProviderManager()
     runtime = asyncio.run(
         manager.resolve_runtime(
@@ -185,6 +219,9 @@ def test_resolve_runtime_bedrock_sigv4_default_region():
 
 
 def test_resolve_runtime_bedrock_missing_credentials_rejected():
+    """
+    缺少凭据时拒绝解析 Bedrock 运行配置。
+    """
     manager = LLMProviderManager()
     with pytest.raises(LLMProviderAuthError):
         asyncio.run(
@@ -197,7 +234,9 @@ def test_resolve_runtime_bedrock_missing_credentials_rejected():
 
 
 def test_bedrock_model_matches_region():
-    """目录模型应按 Profile 分区及裸模型 ON_DEMAND Region 过滤"""
+    """
+    目录模型应按 Profile 分区及裸模型 ON_DEMAND Region 过滤
+    """
     matches = LLMProviderManager._bedrock_model_matches_region
 
     # 已知裸模型 ID 仅在其支持 ON_DEMAND 的 Region 保留
@@ -228,7 +267,9 @@ def test_bedrock_model_matches_region():
 
 
 def test_bedrock_au_profile_matches_melbourne_region():
-    """AU Inference Profile 应允许从悉尼和墨尔本 Region 调用"""
+    """
+    AU Inference Profile 应允许从悉尼和墨尔本 Region 调用
+    """
     matches = LLMProviderManager._bedrock_model_matches_region
 
     assert matches("au.amazon.nova-lite-v1:0", "ap-southeast-2")
@@ -236,7 +277,9 @@ def test_bedrock_au_profile_matches_melbourne_region():
 
 
 def test_list_models_bedrock_custom_endpoint_skips_control_plane():
-    """自定义 runtime 端点刷新模型时应直接使用离线目录"""
+    """
+    自定义 runtime 端点刷新模型时应直接使用离线目录
+    """
     manager = LLMProviderManager()
     manager._models_dev_data = {
         "amazon-bedrock": {
@@ -271,7 +314,9 @@ def test_list_models_bedrock_custom_endpoint_skips_control_plane():
 
 
 def test_list_models_bedrock_keeps_control_plane_on_demand_models():
-    """控制面返回的 ON_DEMAND 基础模型不应被静态降级规则遗漏"""
+    """
+    控制面返回的 ON_DEMAND 基础模型不应被静态降级规则遗漏
+    """
     manager = LLMProviderManager()
     client = MagicMock()
     client.get_paginator.return_value.paginate.return_value = [
@@ -322,7 +367,9 @@ def test_list_models_bedrock_keeps_control_plane_on_demand_models():
 
 
 def test_list_models_bedrock_falls_back_to_models_dev_on_control_plane_denial():
-    """控制面被拒（如 API Key 仅授权 bedrock-runtime）时降级 models.dev 目录"""
+    """
+    控制面被拒（如 API Key 仅授权 bedrock-runtime）时降级 models.dev 目录
+    """
     manager = LLMProviderManager()
     # 预填 models.dev 内存缓存，降级路径不触发真实网络请求
     manager._models_dev_data = {
