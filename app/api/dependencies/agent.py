@@ -46,8 +46,6 @@ def get_message_query_service(
     runtime: HostRuntime = Depends(get_host_runtime),
 ) -> MessageQueryService:
     """组装消息历史异步查询服务。"""
-    repository = cast(
-        AsyncMessageQueryRepository,
-        runtime.messaging.repository(db),
+    return MessageQueryService(
+        repository=cast(AsyncMessageQueryRepository, runtime.messaging.repository(db)),
     )
-    return MessageQueryService(repository=repository)
