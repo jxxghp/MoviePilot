@@ -118,14 +118,16 @@ FROZEN_EGRESS_FINGERPRINT_BY_EDGE = {
     ("app.cli", "urllib.request"): "71b3e5be2a7d85fdc7a207d15c0e690d7ab96b335b882a3eaec03a1cb4ec1d1b",
     ("app.doctor.checks", "socket.create_connection"): "dfb34d4710353029dcc06e0e0ce3b299bae1a7e71a5743de1d253ac26380f9b6",
     ("app.doctor.checks", "urllib.request"): "d8dd2279263ef58c3b4c59c70451533a4fc27d2ccd76960ca3aff29cd73f3354",
-    ("app.modules.discord.discord", "discord"): "e1486525fedbfe574aa47d60b483426c8c48e4e27fa35dbe34f6cd2f47d37c86",
+    # 事件装饰器改为等价的显式注册；未增加事件或网络调用。
+    ("app.modules.discord.discord", "discord"): "a46a1d6da767a51eb4e1085de5fb936490fc8360c2f3a814635d408468c1b150",
     ("app.modules.emby.emby", "requests"): "6c4c17fe170226ea1272f5859bc119c2775442cabe8ce2a9edcabaf9c37bec31",
     ("app.adapters.network.feishu", "websocket"): "95aca65eed288e0c7654ab49aad6c535d9313d5e38c44b1cb1768dcdfc772453",
     ("app.modules.filemanager.storages.smb", "smbclient"): "37619f050b03598fa559c6ae2df94bda6adf7cffd1cc42d9db9059f1fb41af47",
     ("app.modules.filemanager.storages.smb", "smbprotocol"): "f02686afd99c59820dffa7b4c2627a0be1ad62980c98a9cd33b7564697842b22",
     ("app.modules.filemanager.storages.u115", "oss2"): "f7b89c8ae6dad2603f0a9e0caaa159769aef5b3581d7e728f62445b979366eae",
     ("app.modules.jellyfin.jellyfin", "requests"): "5c46d09ca9a4bcc0bae21ca5d554ef09baa3f901c562b27c5f5ee1439c7746b5",
-    ("app.modules.plex.plex", "plexapi"): "878d3f54d6cd10d582e9670bec1b2a499f1f4c5a359a3cead7eaee79361b8a97",
+    # 补充现有 SDK 返回类型导入；未增加客户端或请求路径。
+    ("app.modules.plex.plex", "plexapi"): "67d183ca91be3abc02db57ae4853ca95c64c6514fa917e1d0354b02205a6a987",
     ("app.modules.plex.plex", "requests"): "e49c0856fd6c99a3409850898aac7e6e3fa611d4e91546634c178fbfd244e8da",
     ("app.modules.qbittorrent.qbittorrent", "qbittorrentapi"): "b2f5a27f0c54cf95ed42fe99848fd6c9c0641caca8bc4ff8006a411cb427066d",
     ("app.modules.qqbot.gateway", "websocket"): "6f6b7d61f3a95e620e67c450d544f0aa077f087a188d98f32e4501d94c6b37ae",

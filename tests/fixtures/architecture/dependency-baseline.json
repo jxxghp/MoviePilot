@@ -497,7 +497,7 @@
           "from:discord.app_commands as app_commands",
           "import:discord as discord"
         ],
-        "fingerprint": "e1486525fedbfe574aa47d60b483426c8c48e4e27fa35dbe34f6cd2f47d37c86",
+        "fingerprint": "a46a1d6da767a51eb4e1085de5fb936490fc8360c2f3a814635d408468c1b150",
         "kind": "network_sdk",
         "source": "app.modules.discord.discord",
         "target": "discord",
@@ -522,6 +522,9 @@
           "Discord._build_view|call:ui.View",
           "Discord._get_dm_channel|call:fetch_user",
           "Discord._get_dm_channel|call:get_user",
+          "Discord._register_events|call:event",
+          "Discord._register_events|call:event",
+          "Discord._register_events|call:event",
           "Discord._resolve_channel|call:fetch_channel",
           "Discord._resolve_channel|call:fetch_channel",
           "Discord._resolve_channel|call:fetch_channel",
@@ -651,12 +654,20 @@
       },
       {
         "bindings": [
+          "from:plexapi.audio.Album as Album",
+          "from:plexapi.audio.Artist as Artist",
+          "from:plexapi.audio.Track as Track",
           "from:plexapi.base.PlexPartialObject as PlexPartialObject",
           "from:plexapi.exceptions.NotFound as NotFound",
+          "from:plexapi.library.Library as Library",
           "from:plexapi.myplex.MyPlexAccount as MyPlexAccount",
-          "from:plexapi.server.PlexServer as PlexServer"
+          "from:plexapi.server.PlexServer as PlexServer",
+          "from:plexapi.video.Episode as Episode",
+          "from:plexapi.video.Movie as Movie",
+          "from:plexapi.video.Season as Season",
+          "from:plexapi.video.Show as Show"
         ],
-        "fingerprint": "878d3f54d6cd10d582e9670bec1b2a499f1f4c5a359a3cead7eaee79361b8a97",
+        "fingerprint": "67d183ca91be3abc02db57ae4853ca95c64c6514fa917e1d0354b02205a6a987",
         "kind": "network_sdk",
         "source": "app.modules.plex.plex",
         "target": "plexapi",
