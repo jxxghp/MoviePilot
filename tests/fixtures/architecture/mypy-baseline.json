@@ -345,10 +345,6 @@
     "no-untyped-def": 2,
     "type-arg": 9
   },
-  "app/api/endpoints/recommend.py": {
-    "attr-defined": 2,
-    "no-redef": 1
-  },
   "app/api/endpoints/search.py": {
     "arg-type": 2,
     "attr-defined": 3,

@@ -22,13 +22,14 @@ from app.chain.listenbrainz import (
 from app.chain.recommend import RecommendChain
 from app.domain.media import normalize_music_type
 from app.runtime.events import eventmanager
+from app.schemas.context import MediaInfo as _SchemaMediaInfo
 from app.schemas.event import RecommendMediaSource as _SchemaRecommendMediaSource
 from app.schemas.event import RecommendSourceEventData
 from app.schemas.exception import TMDbException
+from app.schemas.music import MusicInfo as _SchemaMusicInfo
 from app.schemas.recommend import AgentRecommendationItem as _SchemaAgentRecommendationItem
 from app.schemas.response import Response as _SchemaResponse
 from app.schemas.token import TokenPayload as _SchemaTokenPayload
-from app.schemas.transfer import MusicInfo as _SchemaMusicInfo
 from app.schemas.types import (
     MUSIC_ENTITY_ALBUM,
     MUSIC_ENTITY_RECORDING,
@@ -36,7 +37,6 @@ from app.schemas.types import (
     MediaType,
     media_type_to_agent,
 )
-from app.schemas.workflow import MediaInfo as _SchemaMediaInfo
 
 router = ResponseAPIRouter()
 
@@ -283,9 +283,11 @@ def source(_: _SchemaTokenPayload = Depends(verify_token), page: CompatiblePageP
     event = eventmanager.send_event(ChainEventType.RecommendSource, event_data)
     # 使用事件返回的上下文数据
     if event and event.event_data:
-        event_data: RecommendSourceEventData = event.event_data
-        if event_data.extra_sources:
-            return event_data.extra_sources
+        source_data = event.event_data
+        if not isinstance(source_data, RecommendSourceEventData):
+            raise AttributeError("推荐来源事件载荷缺少 extra_sources")
+        if source_data.extra_sources:
+            return source_data.extra_sources
     return []
 
 
