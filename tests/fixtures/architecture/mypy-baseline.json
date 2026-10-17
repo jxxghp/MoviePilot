@@ -30,14 +30,6 @@
     "no-any-return": 1,
     "no-untyped-def": 3
   },
-  "app/adapters/network/http.py": {
-    "assignment": 28,
-    "misc": 1,
-    "no-any-return": 15,
-    "no-untyped-call": 7,
-    "no-untyped-def": 33,
-    "type-arg": 26
-  },
   "app/adapters/system/fsproxy.py": {
     "arg-type": 1,
     "assignment": 1,
@@ -911,7 +903,6 @@
   "app/modules/filemanager/storages/alipan.py": {
     "arg-type": 19,
     "assignment": 7,
-    "attr-defined": 1,
     "empty-body": 2,
     "no-any-return": 5,
     "no-untyped-call": 4,
@@ -925,7 +916,6 @@
   "app/modules/filemanager/storages/alist.py": {
     "arg-type": 13,
     "assignment": 2,
-    "attr-defined": 1,
     "empty-body": 2,
     "misc": 1,
     "no-any-return": 4,
@@ -969,18 +959,9 @@
     "union-attr": 5
   },
   "app/modules/filemanager/storages/u115.py": {
-    "arg-type": 16,
-    "assignment": 7,
-    "attr-defined": 1,
-    "call-overload": 17,
-    "empty-body": 2,
-    "no-any-return": 6,
-    "no-untyped-call": 3,
-    "no-untyped-def": 5,
-    "operator": 2,
-    "override": 2,
-    "type-arg": 8,
-    "union-attr": 32
+    "assignment": 1,
+    "no-untyped-call": 1,
+    "override": 2
   },
   "app/modules/filemanager/transhandler.py": {
     "arg-type": 18,
@@ -1032,7 +1013,7 @@
     "type-arg": 1
   },
   "app/modules/indexer/spider/__init__.py": {
-    "arg-type": 12,
+    "arg-type": 10,
     "assignment": 3,
     "dict-item": 3,
     "misc": 1,
@@ -1047,7 +1028,7 @@
     "var-annotated": 2
   },
   "app/modules/indexer/spider/haidan.py": {
-    "arg-type": 3,
+    "arg-type": 1,
     "assignment": 5,
     "no-any-return": 1,
     "no-untyped-def": 2,
@@ -1080,7 +1061,7 @@
     "var-annotated": 3
   },
   "app/modules/indexer/spider/tnode.py": {
-    "arg-type": 4,
+    "arg-type": 2,
     "assignment": 1,
     "misc": 2,
     "return-value": 2,
@@ -1401,7 +1382,7 @@
     "type-arg": 1
   },
   "app/modules/zspace/zspace.py": {
-    "arg-type": 10,
+    "arg-type": 9,
     "assignment": 3,
     "no-any-return": 12,
     "no-untyped-call": 2,
