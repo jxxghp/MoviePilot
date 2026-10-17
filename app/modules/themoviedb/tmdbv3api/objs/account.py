@@ -1,3 +1,7 @@
+"""
+TMDB 账号接口的同步与异步调用封装。
+"""
+
 import os
 
 from ..exceptions import TMDbException
@@ -5,7 +9,12 @@ from ..tmdb import TMDb, TMDbJson
 
 
 class Account(TMDb):
-    """提供 TMDb 账号详情、收藏、评分和待看列表接口。"""
+    """
+    提供 TMDb 账号详情、收藏、评分和待看列表接口。
+
+    网络、限流和业务响应处理沿用 TMDb 基类；接口字段保持原始 JSON 结构，
+    不在此层转换为 MoviePilot 领域模型。
+    """
 
     _urls = {
         "details": "/account",
@@ -23,7 +32,9 @@ class Account(TMDb):
 
     @property
     def account_id(self) -> str | None:
-        """读取缓存的账号 ID；未配置时沿用账号详情查询及环境变量缓存。"""
+        """
+        读取缓存的账号 ID；未配置时沿用账号详情查询及环境变量缓存。
+        """
         if not os.environ.get("TMDB_ACCOUNT_ID"):
             details = self.details()
             if not isinstance(details, dict):
@@ -33,8 +44,9 @@ class Account(TMDb):
 
     def details(self) -> TMDbJson:
         """
-        Get your account details.
-        :return:
+        查询账号详情。
+
+        :return: 接口原始 JSON 对象或数组；未取得响应时返回 None
         """
         return self._request_obj(
             self._urls["details"],
@@ -43,8 +55,9 @@ class Account(TMDb):
 
     async def async_details(self) -> TMDbJson:
         """
-        Get your account details.（异步版本）
-        :return:
+        查询账号详情。
+
+        :return: 接口原始 JSON 对象或数组；未取得响应时返回 None
         """
         return await self._async_request_obj(
             self._urls["details"],
@@ -53,9 +66,10 @@ class Account(TMDb):
 
     def created_lists(self, page: int | None = 1) -> TMDbJson:
         """
-        Get all of the lists created by an account. Will include private lists if you are the owner.
-        :param page: int
-        :return:
+        查询当前账号创建的片单，包含本人可见的私有片单。
+
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._request_obj(
             self._urls["created_lists"] % self.account_id,
@@ -65,9 +79,10 @@ class Account(TMDb):
 
     async def async_created_lists(self, page: int | None = 1) -> TMDbJson:
         """
-        Get all of the lists created by an account. Will include private lists if you are the owner.（异步版本）
-        :param page: int
-        :return:
+        查询当前账号创建的片单，包含本人可见的私有片单。
+
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_request_obj(
             self._urls["created_lists"] % self.account_id,
@@ -76,7 +91,14 @@ class Account(TMDb):
         )
 
     def _get_list(self, url: str, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
-        """拼装会话、分页和排序参数，返回账号列表原始 JSON。"""
+        """
+        按账号、分页和排序条件查询指定列表。
+
+        :param url: 账号列表在 _urls 中的键名
+        :param asc_sort: True 保留接口默认顺序，False 按创建时间降序
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
+        """
         params = "session_id=%s&page=%s" % (self.session_id, page)
         if asc_sort is False:
             params += "&sort_by=created_at.desc"
@@ -87,7 +109,14 @@ class Account(TMDb):
         )
 
     async def _async_get_list(self, url: str, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
-        """拼装会话、分页和排序参数，返回账号列表原始 JSON。"""
+        """
+        按账号、分页和排序条件查询指定列表。
+
+        :param url: 账号列表在 _urls 中的键名
+        :param asc_sort: True 保留接口默认顺序，False 按创建时间降序
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
+        """
         params = "session_id=%s&page=%s" % (self.session_id, page)
         if asc_sort is False:
             params += "&sort_by=created_at.desc"
@@ -99,46 +128,52 @@ class Account(TMDb):
 
     def favorite_movies(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
-        Get the list of your favorite movies.
-        :param asc_sort: bool
-        :param page: int
-        :return:
+        查询当前账号收藏的电影。
+
+        :param asc_sort: True 保留接口默认顺序，False 按创建时间降序
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._get_list("favorite_movies", asc_sort=asc_sort, page=page)
 
     async def async_favorite_movies(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
-        Get the list of your favorite movies.（异步版本）
-        :param asc_sort: bool
-        :param page: int
-        :return:
+        查询当前账号收藏的电影。
+
+        :param asc_sort: True 保留接口默认顺序，False 按创建时间降序
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_get_list("favorite_movies", asc_sort=asc_sort, page=page)
 
     def favorite_tv_shows(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
-        Get the list of your favorite TV shows.
-        :param asc_sort: bool
-        :param page: int
-        :return:
+        查询当前账号收藏的电视剧。
+
+        :param asc_sort: True 保留接口默认顺序，False 按创建时间降序
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._get_list("favorite_tv", asc_sort=asc_sort, page=page)
 
     async def async_favorite_tv_shows(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
-        Get the list of your favorite TV shows.（异步版本）
-        :param asc_sort: bool
-        :param page: int
-        :return:
+        查询当前账号收藏的电视剧。
+
+        :param asc_sort: True 保留接口默认顺序，False 按创建时间降序
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_get_list("favorite_tv", asc_sort=asc_sort, page=page)
 
     def mark_as_favorite(self, media_id: int | str, media_type: str, favorite: bool = True) -> None:
         """
-        This method allows you to mark a movie or TV show as a favorite item.
-        :param media_id: int
-        :param media_type: str
-        :param favorite:bool
+        设置当前账号的媒体收藏状态。
+
+        :param media_id: 目标媒体的 TMDB 标识
+        :param media_type: 媒体类型，movie 表示电影，tv 表示电视剧
+        :param favorite: True 加入收藏，False 取消收藏
+        :raises TMDbException: 媒体类型不是 movie 或 tv，或服务端拒绝操作
         """
         if media_type not in ["tv", "movie"]:
             raise TMDbException("Media Type should be tv or movie.")
@@ -155,10 +190,12 @@ class Account(TMDb):
 
     async def async_mark_as_favorite(self, media_id: int | str, media_type: str, favorite: bool = True) -> None:
         """
-        This method allows you to mark a movie or TV show as a favorite item.（异步版本）
-        :param media_id: int
-        :param media_type: str
-        :param favorite:bool
+        设置当前账号的媒体收藏状态。
+
+        :param media_id: 目标媒体的 TMDB 标识
+        :param media_type: 媒体类型，movie 表示电影，tv 表示电视剧
+        :param favorite: True 加入收藏，False 取消收藏
+        :raises TMDbException: 媒体类型不是 movie 或 tv，或服务端拒绝操作
         """
         if media_type not in ["tv", "movie"]:
             raise TMDbException("Media Type should be tv or movie.")
@@ -175,116 +212,132 @@ class Account(TMDb):
 
     def unmark_as_favorite(self, media_id: int | str, media_type: str) -> None:
         """
-        This method allows you to unmark a movie or TV show as a favorite item.
-        :param media_id: int
-        :param media_type: str
+        取消当前账号的媒体收藏。
+
+        :param media_id: 目标媒体的 TMDB 标识
+        :param media_type: 媒体类型，movie 表示电影，tv 表示电视剧
+        :raises TMDbException: 媒体类型不是 movie 或 tv，或服务端拒绝操作
         """
         self.mark_as_favorite(media_id, media_type, favorite=False)
 
     async def async_unmark_as_favorite(self, media_id: int | str, media_type: str) -> None:
         """
-        This method allows you to unmark a movie or TV show as a favorite item.（异步版本）
-        :param media_id: int
-        :param media_type: str
+        取消当前账号的媒体收藏。
+
+        :param media_id: 目标媒体的 TMDB 标识
+        :param media_type: 媒体类型，movie 表示电影，tv 表示电视剧
+        :raises TMDbException: 媒体类型不是 movie 或 tv，或服务端拒绝操作
         """
         await self.async_mark_as_favorite(media_id, media_type, favorite=False)
 
     def rated_movies(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
-        Get a list of all the movies you have rated.
-        :param asc_sort: bool
-        :param page: int
-        :return:
+        查询当前账号已评分的电影。
+
+        :param asc_sort: True 保留接口默认顺序，False 按创建时间降序
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._get_list("rated_movies", asc_sort=asc_sort, page=page)
 
     async def async_rated_movies(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
-        Get a list of all the movies you have rated.（异步版本）
-        :param asc_sort: bool
-        :param page: int
-        :return:
+        查询当前账号已评分的电影。
+
+        :param asc_sort: True 保留接口默认顺序，False 按创建时间降序
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_get_list("rated_movies", asc_sort=asc_sort, page=page)
 
     def rated_tv_shows(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
-        Get a list of all the TV shows you have rated.
-        :param asc_sort: bool
-        :param page: int
-        :return:
+        查询当前账号已评分的电视剧。
+
+        :param asc_sort: True 保留接口默认顺序，False 按创建时间降序
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._get_list("rated_tv", asc_sort=asc_sort, page=page)
 
     async def async_rated_tv_shows(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
-        Get a list of all the TV shows you have rated.（异步版本）
-        :param asc_sort: bool
-        :param page: int
-        :return:
+        查询当前账号已评分的电视剧。
+
+        :param asc_sort: True 保留接口默认顺序，False 按创建时间降序
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_get_list("rated_tv", asc_sort=asc_sort, page=page)
 
     def rated_episodes(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
-        Get a list of all the TV episodes you have rated.
-        :param asc_sort: bool
-        :param page: int
-        :return:
+        查询当前账号已评分的单集。
+
+        :param asc_sort: True 保留接口默认顺序，False 按创建时间降序
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._get_list("rated_episodes", asc_sort=asc_sort, page=page)
 
     async def async_rated_episodes(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
-        Get a list of all the TV episodes you have rated.（异步版本）
-        :param asc_sort: bool
-        :param page: int
-        :return:
+        查询当前账号已评分的单集。
+
+        :param asc_sort: True 保留接口默认顺序，False 按创建时间降序
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_get_list("rated_episodes", asc_sort=asc_sort, page=page)
 
     def movie_watchlist(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
-        Get a list of all the movies you have added to your watchlist.
-        :param asc_sort: bool
-        :param page: int
-        :return:
+        查询当前账号的电影待看列表。
+
+        :param asc_sort: True 保留接口默认顺序，False 按创建时间降序
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._get_list("movie_watchlist", asc_sort=asc_sort, page=page)
 
     async def async_movie_watchlist(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
-        Get a list of all the movies you have added to your watchlist.（异步版本）
-        :param asc_sort: bool
-        :param page: int
-        :return:
+        查询当前账号的电影待看列表。
+
+        :param asc_sort: True 保留接口默认顺序，False 按创建时间降序
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_get_list("movie_watchlist", asc_sort=asc_sort, page=page)
 
     def tv_show_watchlist(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
-        Get a list of all the TV shows you have added to your watchlist.
-        :param asc_sort: bool
-        :param page: int
-        :return:
+        查询当前账号的电视剧待看列表。
+
+        :param asc_sort: True 保留接口默认顺序，False 按创建时间降序
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return self._get_list("tv_watchlist", asc_sort=asc_sort, page=page)
 
     async def async_tv_show_watchlist(self, asc_sort: bool = True, page: int | None = 1) -> TMDbJson:
         """
-        Get a list of all the TV shows you have added to your watchlist.（异步版本）
-        :param asc_sort: bool
-        :param page: int
-        :return:
+        查询当前账号的电视剧待看列表。
+
+        :param asc_sort: True 保留接口默认顺序，False 按创建时间降序
+        :param page: 请求页码，从 1 开始；仅取该页，不自动遍历后续页
+        :return: 响应的 results 字段原值；未取得响应或字段缺失时返回 None
         """
         return await self._async_get_list("tv_watchlist", asc_sort=asc_sort, page=page)
 
     def add_to_watchlist(self, media_id: int | str, media_type: str, watchlist: bool = True) -> None:
         """
-        Add a movie or TV show to your watchlist.
-        :param media_id: int
-        :param media_type: str
-        :param watchlist: bool
+        设置媒体是否加入当前账号的待看列表。
+
+        :param media_id: 目标媒体的 TMDB 标识
+        :param media_type: 媒体类型，movie 表示电影，tv 表示电视剧
+        :param watchlist: True 加入待看列表，False 移除
+        :raises TMDbException: 媒体类型不是 movie 或 tv，或服务端拒绝操作
         """
         if media_type not in ["tv", "movie"]:
             raise TMDbException("Media Type should be tv or movie.")
@@ -301,10 +354,12 @@ class Account(TMDb):
 
     async def async_add_to_watchlist(self, media_id: int | str, media_type: str, watchlist: bool = True) -> None:
         """
-        Add a movie or TV show to your watchlist.（异步版本）
-        :param media_id: int
-        :param media_type: str
-        :param watchlist: bool
+        设置媒体是否加入当前账号的待看列表。
+
+        :param media_id: 目标媒体的 TMDB 标识
+        :param media_type: 媒体类型，movie 表示电影，tv 表示电视剧
+        :param watchlist: True 加入待看列表，False 移除
+        :raises TMDbException: 媒体类型不是 movie 或 tv，或服务端拒绝操作
         """
         if media_type not in ["tv", "movie"]:
             raise TMDbException("Media Type should be tv or movie.")
@@ -321,16 +376,20 @@ class Account(TMDb):
 
     def remove_from_watchlist(self, media_id: int | str, media_type: str) -> None:
         """
-        Remove a movie or TV show from your watchlist.
-        :param media_id: int
-        :param media_type: str
+        从当前账号的待看列表移除媒体。
+
+        :param media_id: 目标媒体的 TMDB 标识
+        :param media_type: 媒体类型，movie 表示电影，tv 表示电视剧
+        :raises TMDbException: 媒体类型不是 movie 或 tv，或服务端拒绝操作
         """
         self.add_to_watchlist(media_id, media_type, watchlist=False)
 
     async def async_remove_from_watchlist(self, media_id: int | str, media_type: str) -> None:
         """
-        Remove a movie or TV show from your watchlist.（异步版本）
-        :param media_id: int
-        :param media_type: str
+        从当前账号的待看列表移除媒体。
+
+        :param media_id: 目标媒体的 TMDB 标识
+        :param media_type: 媒体类型，movie 表示电影，tv 表示电视剧
+        :raises TMDbException: 媒体类型不是 movie 或 tv，或服务端拒绝操作
         """
         await self.async_add_to_watchlist(media_id, media_type, watchlist=False)
