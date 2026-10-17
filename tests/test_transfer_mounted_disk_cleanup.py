@@ -87,6 +87,14 @@ def test_disabled_cleanup_still_deletes_ordinary_local_source_directories():
     assert should_delete is True
 
 
+def test_missing_local_file_path_skips_filesystem_detection():
+    """本地任务缺少路径时应安全跳过挂载盘检测。"""
+    task = _make_task()
+    task.fileitem.path = None
+
+    assert TransferChain._should_delete_empty_source_directories(task, False, {}) is True
+
+
 def test_disabled_cleanup_does_not_change_remote_storage_cleanup():
     """
     开关关闭时非本地存储仍应执行原有空目录清理。

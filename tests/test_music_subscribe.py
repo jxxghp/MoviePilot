@@ -179,6 +179,14 @@ def test_build_subscribe_meta_returns_music_meta():
     assert meta.original_name == "晴天"
 
 
+def test_build_subscribe_meta_ignores_invalid_music_year():
+    """音乐订阅的非数字年份应被安全忽略，不能阻断订阅流程。"""
+    meta = build_subscribe_meta(_subscribe(year="unknown"))
+
+    assert isinstance(meta, MetaMusic)
+    assert meta.year is None
+
+
 def test_music_subscribe_recovers_completion_from_persisted_download_note():
     """进程重启后音乐订阅应像电影一样用已确认下载备注恢复完成状态。"""
     subscribe = _subscribe(note=[1])
