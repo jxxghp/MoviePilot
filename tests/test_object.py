@@ -10,6 +10,9 @@ from app.foundation.reflection import ObjectUtils
 
 
 def test_check_method():
+    """
+    方法实现检测区分真实函数体与空实现、文档占位和未实现异常。
+    """
     def implemented_function():
         return "Hello"
 
@@ -80,6 +83,9 @@ class _Module:
 
 
 def test_check_method_handles_bound_and_decorated_methods():
+    """
+    方法实现检测兼容绑定方法与装饰器包裹的方法占位。
+    """
     module = _Module()
 
     assert not ObjectUtils.check_method(module.placeholder)
@@ -88,6 +94,9 @@ def test_check_method_handles_bound_and_decorated_methods():
 
 
 def test_check_method_does_not_leave_source_in_linecache():
+    """
+    读取方法源码进行检测后，不在全局行缓存中残留该文件。
+    """
     linecache.clearcache()
 
     def pass_function():
@@ -98,6 +107,9 @@ def test_check_method_does_not_leave_source_in_linecache():
 
 
 def test_check_method_caches_result_per_code_object(monkeypatch):
+    """
+    共享同一代码对象的闭包复用检测结果，避免重复读取源码。
+    """
     calls = []
     original = reflection._read_function_source
     monkeypatch.setattr(

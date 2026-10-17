@@ -17,6 +17,9 @@ from app.schemas.types import NotificationAction, NotificationChannel
 
 @pytest.fixture
 def module():
+    """
+    为渠道管理测试创建独立的微信机器人模块实例。
+    """
     return WechatClawBotModule()
 
 
@@ -66,6 +69,9 @@ def test_channel_manage_builds_temporary_client_from_form_params(module, monkeyp
 
     class _FakeClient:
         def test_connection(self):
+            """
+            记录临时客户端的连通性检查，并返回需要扫码绑定的失败结果。
+            """
             captured["called"] = True
             return False, "未登录，请先扫码完成绑定"
 

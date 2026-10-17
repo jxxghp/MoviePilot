@@ -15,6 +15,9 @@ from scripts import verify_runtime_profile
 
 
 def test_free_threaded_runtime_tracks_interpreter_build(monkeypatch):
+    """
+    根据解释器编译标记识别自由线程运行时，避免与当前 GIL 开关混淆。
+    """
     monkeypatch.setattr(
         environment.sysconfig,
         "get_config_var",
@@ -25,12 +28,18 @@ def test_free_threaded_runtime_tracks_interpreter_build(monkeypatch):
 
 
 def test_gil_status_tracks_current_interpreter_state(monkeypatch):
+    """
+    查询解释器当前 GIL 状态，支持运行时已禁用 GIL 的情况。
+    """
     monkeypatch.setattr(environment.sys, "_is_gil_enabled", lambda: False)
 
     assert environment.is_gil_enabled() is False
 
 
 def test_runtime_dependency_group_tracks_interpreter_abi(monkeypatch):
+    """
+    按解释器 ABI 选择标准或自由线程运行依赖组。
+    """
     monkeypatch.setattr(dependencies, "is_free_threaded_runtime", lambda: False)
     assert dependencies.runtime_dependency_group() == "runtime-standard"
 
@@ -39,6 +48,9 @@ def test_runtime_dependency_group_tracks_interpreter_abi(monkeypatch):
 
 
 def test_runtime_requirements_include_project_and_active_group(tmp_path: Path, monkeypatch):
+    """
+    运行依赖同时包含项目公共依赖与当前 ABI 对应的依赖组。
+    """
     project_file = tmp_path / "pyproject.toml"
     project_file.write_text(
         """
@@ -67,6 +79,9 @@ runtime-free-threaded = ["free-threaded==3"]
 
 
 def test_runtime_profiles_share_gil_safe_crcmod_distribution():
+    """
+    两种运行配置共享支持 GIL 策略的 CRC 实现，排除旧间接依赖。
+    """
     project_file = Path(__file__).resolve().parents[1] / "pyproject.toml"
     with project_file.open("rb") as file:
         document = tomllib.load(file)

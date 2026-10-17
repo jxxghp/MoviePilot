@@ -45,6 +45,9 @@ def setup_function():
 
 
 def test_registration_transaction_is_bound_to_current_user():
+    """
+    注册事务绑定发起用户，其他用户不能使用该事务完成凭据注册。
+    """
     token = PasskeyChallengeStore.issue(
         challenge="server-challenge",
         purpose="registration",
@@ -71,6 +74,9 @@ def test_registration_transaction_is_bound_to_current_user():
 
 
 def test_registration_uses_server_challenge():
+    """
+    注册校验采用服务端保存的挑战值，忽略客户端自行提交的挑战。
+    """
     token = PasskeyChallengeStore.issue(
         challenge="server-challenge",
         purpose="registration",
@@ -104,6 +110,9 @@ def test_registration_uses_server_challenge():
 
 
 def test_authentication_transaction_rejects_other_user_credential():
+    """
+    认证事务拒绝使用其他用户持有的凭据，避免跨账户完成认证。
+    """
     token = PasskeyChallengeStore.issue(
         challenge="server-challenge",
         purpose="authentication",
@@ -143,6 +152,9 @@ def test_authentication_transaction_rejects_other_user_credential():
 
 
 def test_authentication_finish_token_cannot_be_replayed():
+    """
+    认证完成后消费事务令牌，再次提交同一令牌必须失败。
+    """
     token = PasskeyChallengeStore.issue(
         challenge="server-challenge",
         purpose="authentication",

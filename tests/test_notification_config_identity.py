@@ -10,6 +10,9 @@ from app.schemas.system import NotificationConf
 
 
 def test_notification_config_normalizes_names_and_rejects_duplicates():
+    """
+    保存渠道配置前清理名称空白，并按不区分大小写的身份规则拒绝重名。
+    """
     configs = [NotificationConf(name=" Alpha ", type="telegram")]
     assert _normalize_configs(configs)[0]["name"] == "Alpha"
 
@@ -36,6 +39,9 @@ def test_notification_channel_switches_keep_string_list_contract():
 
 
 def test_reconcile_cached_states_migrates_renamed_identity_and_cleans_removed(monkeypatch):
+    """
+    渠道改名时迁移对应会话缓存，并清理已删除渠道的缓存。
+    """
     values = {}
 
     class FakeCache:
@@ -90,11 +96,17 @@ def test_reconcile_cached_states_migrates_renamed_identity_and_cleans_removed(mo
 
 @pytest.mark.parametrize("identity", ["stable-id", "display-name"])
 def test_cache_key_is_stable_for_same_identity(identity):
+    """
+    同一渠道身份始终生成相同缓存键，保证会话可重复定位。
+    """
     assert WechatClawBot._build_cache_key(identity) == WechatClawBot._build_cache_key(identity)
 
 
 @pytest.mark.asyncio
 async def test_save_config_does_not_touch_cache_when_persistence_fails(monkeypatch):
+    """
+    配置持久化失败时不提前迁移或清理渠道会话缓存。
+    """
     calls = {"reconcile": 0}
 
     class FakeConfig:
@@ -132,6 +144,9 @@ async def test_save_config_does_not_touch_cache_when_persistence_fails(monkeypat
 
 @pytest.mark.asyncio
 async def test_save_config_saves_channels_without_loaded_clawbot_module(monkeypatch):
+    """
+    微信机器人模块尚未加载时仍可正常保存渠道配置。
+    """
     calls = []
 
     class FakeConfig:

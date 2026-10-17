@@ -56,15 +56,27 @@ def _load_qbittorrent_modules():
 
     class _Logger:
         def info(self, *_args, **_kwargs):
+            """
+            吞掉普通日志，避免兼容性测试依赖真实日志系统。
+            """
             pass
 
         def warn(self, *_args, **_kwargs):
+            """
+            兼容旧警告日志方法，不向外部日志设施写入。
+            """
             pass
 
         def warning(self, *_args, **_kwargs):
+            """
+            接收标准警告日志调用，保持测试过程无日志副作用。
+            """
             pass
 
         def error(self, *_args, **_kwargs):
+            """
+            接收错误日志调用，隔离下载器兼容测试的日志输出。
+            """
             pass
 
     def _is_magnet_link(value):
@@ -101,6 +113,9 @@ def _load_qbittorrent_modules():
 
     class _FileCache:
         def get(self, *_args, **_kwargs):
+            """
+            固定模拟缓存未命中，避免测试读取真实文件缓存。
+            """
             return None
 
     class _MetaInfo:
@@ -128,9 +143,15 @@ def _load_qbittorrent_modules():
     # 隔离环境下的下载器业务样板基类，镜像 app.modules._base.downloader 的行为
     class _DownloaderModuleBase(_ModuleBase, _DownloaderBase):
         def test(self):
+            """
+            固定返回下载器连通成功，供模块兼容入口测试使用。
+            """
             return True, ""
 
         def scheduler_job(self):
+            """
+            保留调度入口但不创建任务，避免测试启动后台服务。
+            """
             pass
 
         @staticmethod
@@ -172,6 +193,9 @@ def _load_qbittorrent_modules():
     class _Torrent:
         @staticmethod
         def from_string(content):
+            """
+            按输入长度生成最小种子信息，隔离真实种子解析依赖。
+            """
             return types.SimpleNamespace(name="test", total_size=len(content))
 
     class _DownloaderTorrent:

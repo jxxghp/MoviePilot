@@ -15,6 +15,9 @@ from app.runtime.cache import TTLCache
 
 
 def setup_function():
+    """
+    每个测试重新注入挑战缓存，隔离前一用例的事务令牌。
+    """
     configure_passkey_challenge_cache(TTLCache(
         region="passkey_challenge",
         maxsize=4096,
@@ -23,6 +26,9 @@ def setup_function():
 
 
 def test_challenge_can_only_be_consumed_once():
+    """
+    挑战事务只能成功消费一次，后续读取不再返回挑战值。
+    """
     token = PasskeyChallengeStore.issue(
         challenge="server-challenge",
         purpose="authentication",
@@ -47,6 +53,9 @@ def test_challenge_can_only_be_consumed_once():
 
 
 def test_wrong_purpose_invalidates_transaction():
+    """
+    以错误用途消费事务会使令牌失效，不能再用原用途重试。
+    """
     token = PasskeyChallengeStore.issue(
         challenge="server-challenge",
         purpose="registration",
@@ -70,6 +79,9 @@ def test_wrong_purpose_invalidates_transaction():
 
 
 def test_expired_challenge_cannot_be_consumed(monkeypatch):
+    """
+    挑战超过缓存有效期后不能继续用于认证。
+    """
     expired_cache = TTLCache(region="expired_passkey_challenge", maxsize=1, ttl=0)
     monkeypatch.setattr(PasskeyChallengeStore, "_cache", expired_cache)
     token = PasskeyChallengeStore.issue(
@@ -88,6 +100,9 @@ def test_expired_challenge_cannot_be_consumed(monkeypatch):
 
 
 def test_concurrent_consumers_have_single_winner():
+    """
+    多个线程并发消费同一事务时，只允许一个调用取得挑战。
+    """
     token = PasskeyChallengeStore.issue(
         challenge="server-challenge",
         purpose="authentication",
