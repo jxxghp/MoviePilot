@@ -1927,9 +1927,10 @@ class Telegram:
         parse_mode = kwargs.get("parse_mode")
         try:
             if image:
-                return self._api.send_photo(
+                return self.__send_photo_or_text(
                     photo=image,
                     caption=self._prepare_text(caption, parse_mode),
+                    disable_web_page_preview=disable_web_page_preview,
                     **kwargs,
                 )
             else:
@@ -1945,7 +1946,22 @@ class Telegram:
                 raise NonRetryableTelegramError(
                     f"发送 Telegram {'图片' if image else '文本'}消息被限流：{err}"
                 ) from err
-            raise RetryException(f"发送{'图片' if image else '文本'}消息失败")
+            raise RetryException(f"发送{'图片' if image else '文本'}消息失败：{err}") from err
+
+    def __send_photo_or_text(
+            self, *, photo: Any, caption: Optional[str],
+            disable_web_page_preview: Optional[bool] = None, **kwargs: Any,
+    ) -> Any:
+        """海报上传失败立即降级为同一正文，保留会话、话题和按钮；429 不追加请求。"""
+        try:
+            return self._api.send_photo(photo=photo, caption=caption, **kwargs)
+        except Exception as error:
+            if self._is_rate_limit_error(error) or not caption:
+                raise
+            logger.warning(f"Telegram 海报发送失败，改为发送文本：{error}")
+        return self._api.send_message(
+            text=caption, disable_web_page_preview=disable_web_page_preview, **kwargs,
+        )
 
     @retry(RetryException, logger=logger)
     def __send_long_plain_message(
@@ -1966,11 +1982,12 @@ class Telegram:
             for index, chunk in enumerate(chunks):
                 current_reply_markup = reply_markup if index == 0 else None
                 if image and index == 0:
-                    ret = self._api.send_photo(
+                    ret = self.__send_photo_or_text(
                         **kwargs,
                         photo=image,
                         caption=chunk,
                         reply_markup=current_reply_markup,
+                        disable_web_page_preview=disable_web_page_preview,
                     )
                     continue
                 msg_kwargs = dict(**kwargs)
@@ -2028,7 +2045,7 @@ class Telegram:
                     )
 
                 elif item.content_type == ContentTypes.PHOTO or (image and i == 0):
-                    ret = self._api.send_photo(
+                    ret = self.__send_photo_or_text(
                         **kwargs,
                         photo=(
                             getattr(item, "file_name", ""),
@@ -2036,6 +2053,7 @@ class Telegram:
                         ),
                         caption=self._telegramify_item_caption(item),
                         reply_markup=current_reply_markup,
+                        disable_web_page_preview=disable_web_page_preview,
                     )
 
                 elif item.content_type == ContentTypes.FILE:

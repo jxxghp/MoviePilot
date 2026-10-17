@@ -952,6 +952,15 @@ Durable post-commit side effects have a separate boundary:
 - Immediate request-thread delivery and the dispatcher both claim before
   calling a handler. Lease acquisition is atomic, while complete/retry is fenced
   by the claimed attempt so an expired owner cannot settle a newer claim.
+- Scheduled recovery owns at most 20 active topic workers, submitted through
+  the injected `ThreadHelper` port. Each worker processes a bounded batch in
+  sequence; a blocked transfer event cannot prevent a download notification
+  topic from running. Each scan renews active leases and excludes active topics
+  from new claims. An expired lease never releases a live in-process owner.
+  Scheduler shutdown seals recovery and waits for actual worker completion
+  before plugin, module or database teardown; a timeout preserves ownership and
+  fails shutdown rather than resetting bindings. Retry backoff starts when the
+  failed handler finishes, not when the message was claimed.
 - `PostCommitResult` distinguishes the committed business value from completed
   and pending effects. This does not provide exactly-once delivery: a process may
   stop after an external sink succeeds but before complete is persisted. Outbox

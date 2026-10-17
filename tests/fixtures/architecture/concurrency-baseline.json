@@ -680,6 +680,12 @@
     },
     "target": "app.runtime.execution.run_in_threadpool_to_completion"
   },
+  "app/startup/initializers/scheduler.py:app.runtime.execution.run_in_threadpool_to_completion": {
+    "owners": {
+      "stop_scheduler.stop_and_reset": 1
+    },
+    "target": "app.runtime.execution.run_in_threadpool_to_completion"
+  },
   "app/startup/lifecycle/__init__.py:app.runtime.execution.run_in_threadpool_to_completion": {
     "owners": {
       "offload_shutdown_callback.invoke": 1,

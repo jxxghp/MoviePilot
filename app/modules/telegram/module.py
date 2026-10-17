@@ -472,8 +472,9 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         """
         发送消息
         :param message: 消息体
-        :return: 成功或失败
+        未确认发送时抛错，由普通模块派发记录错误，持久派发保留重试意图。
         """
+        failures = []
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
                 continue
@@ -485,9 +486,10 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                     logger.warn("用户没有指定 Telegram用户ID，消息无法发送")
                     return
             client: Telegram = self.get_instance(conf.name)
+            result = None
             if client:
                 if message.file_path:
-                    client.send_file(
+                    result = client.send_file(
                         file_path=message.file_path,
                         file_name=message.file_name,
                         title=message.title,
@@ -497,7 +499,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                         parse_mode=message.parse_mode,
                     )
                 elif message.voice_path:
-                    client.send_voice(
+                    result = client.send_voice(
                         voice_path=message.voice_path,
                         userid=userid,
                         caption=message.voice_caption,
@@ -511,7 +513,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                     original_message_id = (
                         message.original_message_id if has_interaction_context else None
                     )
-                    client.send_msg(
+                    result = client.send_msg(
                         title=message.title,
                         text=message.text,
                         image=message.image,
@@ -525,6 +527,10 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                         parse_mode=message.parse_mode,
                         rich_message=self._notification_rich_message(message),
                     )
+            if not result or not result.get("success"):
+                failures.append(conf.name or "Telegram")
+        if failures:
+            raise RuntimeError(f"Telegram 通知发送未确认：{', '.join(failures)}")
 
     def post_medias_message(
         self, message: Message, medias: List[MediaInfo]

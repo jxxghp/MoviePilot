@@ -51,6 +51,11 @@ focused 测试验证，不要求启动产品全套测试。
 目标 base 复现或其他充分证据说明，并按 `docs/rules/12-collaboration-and-distribution.md`
 的已记录维护者决定处置。已预授权的同一范围无需逐次重问，缺少证据时保留未知，不伪报通过。
 
+持久通知恢复由 `tests/test_outbox_recovery.py` 使用临时 SQLite、真实线程及屏障验证：
+整理事件阻塞时下载通知仍能完成、同类事件不会并行重复认领、在途租约续期、崩溃租约接管、
+提交失败与取消后的重试，以及关闭超时保留资源。`tests/test_telegram.py` 覆盖海报失败后的文本
+兜底、会话/话题/按钮保留、429 不追加请求，以及发送失败不能被 outbox 当作成功确认。
+
 ## 隔离模型（`tests/conftest.py`）
 
 收集任何测试模块、`import app.*` **之前**，conftest 完成两件事：

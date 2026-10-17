@@ -5,6 +5,7 @@ from typing import Awaitable, Callable, Optional
 
 from app.application.agenttask import AgentTaskRepository
 from app.application.image import WallpaperHelper
+from app.application.outbox import stop_outbox_recovery
 from app.application.scheduling import (
     get_scheduler,
     register_scheduler_class,
@@ -16,6 +17,7 @@ from app.chain.site import SiteChain
 from app.chain.subscribe.facade import SubscribeChain
 from app.chain.transfer.facade import TransferChain
 from app.chain.workflow import WorkflowChain
+from app.runtime.execution import run_in_threadpool_to_completion
 from app.scheduler.chain import SchedulerChain
 from app.scheduler.facade import Scheduler
 from app.scheduler.services import SchedulerServices
@@ -103,12 +105,16 @@ def stop_scheduler() -> Optional[Awaitable[None]]:
         asyncio.get_running_loop()
     except RuntimeError:
         scheduler.stop()
+        if not stop_outbox_recovery():
+            raise RuntimeError("Outbox 后台处理尚未停止")
         reset_scheduler_bindings()
         return None
 
     async def stop_and_reset() -> None:
         """等待异步调度器收口后清除 provider。"""
         await scheduler.stop_async()
+        if not await run_in_threadpool_to_completion(stop_outbox_recovery):
+            raise RuntimeError("Outbox 后台处理尚未停止")
         reset_scheduler_bindings()
 
     return stop_and_reset()

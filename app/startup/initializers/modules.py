@@ -706,7 +706,7 @@ async def _initialize_modules() -> HostRuntime:
     configure_runtime_data_providers()
     configure_server_services(workflow_query, runtime_dependencies.subscription)
     configure_workflow_execution_composition()
-    configure_outbox_dispatcher(build_outbox_dispatcher)
+    configure_outbox_dispatcher(build_outbox_dispatcher, submit=ThreadHelper().submit)
     configure_transfer_retry_config(
         lambda: TransferRetryConfig(
             max_failed_retries=get_runtime_setting("TRANSFER_MAX_FAILED_RETRIES"),

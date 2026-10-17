@@ -996,7 +996,7 @@ def test_modules_initializer_delegates_outbox_composition():
     composition_source = (APP_ROOT / "startup" / "composition" / "outbox.py").read_text(encoding="utf-8")
     package_source = (APP_ROOT / "startup" / "composition" / "__init__.py").read_text(encoding="utf-8")
 
-    assert "configure_outbox_dispatcher(build_outbox_dispatcher)" in initializer_source
+    assert "configure_outbox_dispatcher(build_outbox_dispatcher, submit=ThreadHelper().submit)" in initializer_source
     for retired_name in ("_build_outbox_handlers", "_build_outbox_dispatcher"):
         assert retired_name not in initializer_source
     for detail in (

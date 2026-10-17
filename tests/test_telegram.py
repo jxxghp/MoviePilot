@@ -11,6 +11,7 @@ import pytest
 
 from app.domain.context import Context, MediaInfo, TorrentInfo
 from app.domain.metainfo import MetaInfo
+from app.modules.telegram.botapi import TelegramApiError, TelegramNetworkError
 from app.modules.telegram.module import TelegramModule
 from app.modules.telegram.telegram import Telegram
 from app.schemas.message import Message
@@ -351,6 +352,96 @@ def test_send_msg_markdown_escaping(telegram):
     send_kwargs = telegram.bot.send_message.call_args.kwargs
     assert send_kwargs["parse_mode"] == "MarkdownV2"
     assert send_kwargs["text"].startswith("*测试标题*\n")
+
+
+@pytest.mark.parametrize("error", [
+    TelegramApiError("sendPhoto", "invalid photo", 400),
+    TelegramNetworkError("sendPhoto", "timeout"),
+])
+def test_photo_failure_falls_back_without_losing_notification_context(telegram, error):
+    """图片被拒绝或网络失败时立即发正文，保留格式、链接、话题与按钮。"""
+    telegram.bot.send_photo.side_effect = error
+    telegram.bot.send_message.return_value = {"message_id": 18, "chat": {"id": "fake_chat_id"}}
+    telegram._telegram_topic_id = 101
+    result = telegram.send_msg(
+        title="下载已添加", text="<b>正文</b>", image="https://example.com/poster.jpg",
+        link="https://example.com/detail", parse_mode="HTML", disable_web_page_preview=True,
+        buttons=[[{"text": "查看", "url": "https://example.com"}]],
+    )
+    assert result == {"success": True, "message_id": 18, "chat_id": "fake_chat_id"}
+    telegram.bot.send_photo.assert_called_once()
+    telegram.bot.send_message.assert_called_once()
+    photo = telegram.bot.send_photo.call_args.kwargs
+    text = telegram.bot.send_message.call_args.kwargs
+    assert text["text"] == photo["caption"]
+    assert "正文" in text["text"] and "https://example.com/detail" in text["text"]
+    for key in ("chat_id", "message_thread_id", "reply_markup", "parse_mode"):
+        assert text[key] == photo[key]
+    assert text["message_thread_id"] == 101 and text["disable_web_page_preview"] is True
+
+
+def test_photo_rate_limit_does_not_send_fallback_or_retry(telegram):
+    """429 必须尊重冷却期，不再用文本请求加重限流。"""
+    telegram.bot.send_photo.side_effect = TelegramApiError(
+        "sendPhoto", "Too Many Requests", 429, {"retry_after": 17},
+    )
+    result = telegram.send_msg(title="通知", image="https://example.com/poster.jpg")
+    assert result["success"] is False
+    telegram.bot.send_photo.assert_called_once()
+    telegram.bot.send_message.assert_not_called()
+
+
+@pytest.mark.parametrize("parse_mode", ["", "MarkdownV2"])
+def test_long_photo_notification_preserves_all_text_after_fallback(telegram, parse_mode):
+    """长正文首段图片失败时改发文本，其余分段与首段按钮保持完整。"""
+    telegram.bot.send_photo.side_effect = TelegramNetworkError("sendPhoto", "timeout")
+    body = "完整通知内容" * 800
+    result = telegram.send_msg(
+        title="", text=body, parse_mode=parse_mode, image="https://example.com/poster.jpg",
+        buttons=[[{"text": "查看", "url": "https://example.com"}]],
+    )
+    assert result["success"] is True
+    telegram.bot.send_photo.assert_called_once()
+    chunks = [call.kwargs for call in telegram.bot.send_message.call_args_list]
+    assert len(chunks) > 1
+    assert "".join(chunk["text"] for chunk in chunks).replace("\n", "") == body
+    assert chunks[0]["reply_markup"] is not None
+    assert all(chunk["reply_markup"] is None for chunk in chunks[1:])
+
+
+def test_notification_failure_is_not_acknowledged_by_outbox(telegram, monkeypatch):
+    """图片和正文最终都失败时，模块抛错使持久消息进入重试而非完成。"""
+    from datetime import datetime, timezone
+
+    from app.application.outbox import ClaimedOutboxMessage, OutboxDispatcher
+
+    telegram.bot.send_photo.side_effect = TelegramNetworkError("sendPhoto", "timeout")
+    telegram.bot.send_message.side_effect = TelegramApiError("sendMessage", "forbidden", 403)
+    # 只移除测试中的真实退避等待，保留完整重试与模块派发路径。
+    monkeypatch.setattr("app.runtime.execution.time.sleep", lambda _seconds: None)
+    module = TelegramModule()
+    monkeypatch.setattr(module, "get_configs", lambda: {"tg": SimpleNamespace(name="tg")})
+    monkeypatch.setattr(module, "check_message", lambda *_args: True)
+    monkeypatch.setattr(module, "get_instance", lambda _name: telegram)
+    store = MagicMock()
+    store.claim.return_value = ClaimedOutboxMessage(1, "download:1", "notification", {}, 1, 1)
+    message = Message(title="下载完成", image="https://example.com/poster.jpg")
+    dispatcher = OutboxDispatcher(
+        store, {"notification": lambda _claimed: module.post_message(message)},
+        clock=lambda: datetime(2026, 10, 17, tzinfo=timezone.utc),
+    )
+    assert dispatcher.dispatch_one()
+    store.complete.assert_not_called()
+    store.retry.assert_called_once()
+    assert store.retry.call_args.kwargs["dead"] is False
+    assert "Telegram 通知发送未确认" in store.retry.call_args.kwargs["last_error"]
+
+
+def test_photo_success_does_not_send_duplicate_text(telegram):
+    """正常图片通知仍只发一次，文本兜底仅在失败时启用。"""
+    assert telegram.send_msg(title="通知", image="https://example.com/poster.jpg")["success"]
+    telegram.bot.send_photo.assert_called_once()
+    telegram.bot.send_message.assert_not_called()
 
 
 def test_telegramify_current_fields_are_used_directly():

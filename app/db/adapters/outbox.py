@@ -36,6 +36,9 @@ def _message(model: OutboxMessage, attempt: int) -> ClaimedOutboxMessage:
 def _claim_query(
     now_text: str,
     event_key: Optional[str] = None,
+    *,
+    topic: Optional[str] = None,
+    exclude_topics: tuple[str, ...] = (),
 ) -> Select[tuple[OutboxMessage]]:
     """构造到期且 lease 可取得的候选查询。"""
     statement = select(OutboxMessage).where(
@@ -48,6 +51,10 @@ def _claim_query(
     )
     if event_key is not None:
         statement = statement.where(OutboxMessage.event_key == event_key)
+    if topic is not None:
+        statement = statement.where(OutboxMessage.topic == topic)
+    if exclude_topics:
+        statement = statement.where(OutboxMessage.topic.not_in(exclude_topics))
     return statement.order_by(OutboxMessage.id).limit(1)
 
 
@@ -114,9 +121,12 @@ class SqlAlchemyOutboxDispatchStore:
         self,
         now: datetime,
         lease_until: datetime,
+        *,
+        topic: Optional[str] = None,
+        exclude_topics: tuple[str, ...] = (),
     ) -> Optional[ClaimedOutboxMessage]:
         """原子认领最早一条到期消息。"""
-        return self._claim(now, lease_until)
+        return self._claim(now, lease_until, topic=topic, exclude_topics=exclude_topics)
 
     def claim_by_event_key(
         self,
@@ -132,11 +142,16 @@ class SqlAlchemyOutboxDispatchStore:
         now: datetime,
         lease_until: datetime,
         event_key: Optional[str] = None,
+        *,
+        topic: Optional[str] = None,
+        exclude_topics: tuple[str, ...] = (),
     ) -> Optional[ClaimedOutboxMessage]:
         """在独立事务中以 compare-and-swap 取得 lease。"""
         now_text = _iso(now)
         with self._session_factory() as session:
-            candidate = session.execute(_claim_query(now_text, event_key)).scalars().first()
+            candidate = session.execute(_claim_query(
+                now_text, event_key, topic=topic, exclude_topics=exclude_topics,
+            )).scalars().first()
             if candidate is None:
                 return None
             next_attempt = candidate.attempt + 1
@@ -146,6 +161,20 @@ class SqlAlchemyOutboxDispatchStore:
             )
             session.commit()
             return _message(candidate, next_attempt) if claimed else None
+
+    def renew(self, message_id: int, attempt: int, lease_until: datetime) -> bool:
+        """只延长当前 processing owner 的租约，绝不恢复已完成或被接管的记录。"""
+        with self._session_factory() as session:
+            changed = execute_dml(
+                session,
+                update(OutboxMessage).where(
+                    OutboxMessage.id == message_id,
+                    OutboxMessage.status == "processing",
+                    OutboxMessage.attempt == attempt,
+                ).values(lease_until=_iso(lease_until)),
+            )
+            session.commit()
+            return bool(changed)
 
     def complete(
         self,
