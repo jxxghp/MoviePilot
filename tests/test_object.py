@@ -1,3 +1,7 @@
+"""
+验证反射工具对占位方法、装饰器与源码缓存的判断。
+"""
+
 import functools
 import linecache
 
@@ -13,7 +17,9 @@ def test_check_method():
         pass
 
     def docstring_function():
-        """This is a docstring."""
+        """
+        只有文档而没有实现的方法占位。
+        """
 
     def ellipsis_function():
         ...
@@ -42,10 +48,14 @@ def test_check_method():
 
 
 class _Module:
-    """模拟模块类：占位方法与已实现方法并存，并经装饰器包装。"""
+    """
+    模拟模块类：占位方法与已实现方法并存，并经装饰器包装。
+    """
 
     def placeholder(self):
-        """未实现"""
+        """
+        未实现
+        """
 
     @staticmethod
     def _wrap(func):
@@ -57,9 +67,15 @@ class _Module:
 
     @_wrap
     def decorated_placeholder(self):
+        """
+        保留无实现方法，用于验证装饰器展开后的判定。
+        """
         pass
 
     def implemented(self):
+        """
+        返回固定结果，作为有实现方法的对照。
+        """
         return 1
 
 

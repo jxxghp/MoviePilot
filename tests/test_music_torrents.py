@@ -1,3 +1,7 @@
+"""
+验证音乐种子的站点分类、浏览和 RSS 识别路由。
+"""
+
 import asyncio
 import copy
 from types import SimpleNamespace
@@ -11,7 +15,9 @@ from app.schemas.types import MediaType
 
 
 def test_async_browse_passes_music_type_to_indexer():
-    """站点浏览应把音乐类型传入现有索引刷新接口。"""
+    """
+    站点浏览应把音乐类型传入现有索引刷新接口。
+    """
     chain = TorrentsChain()
     chain.async_refresh_torrents = AsyncMock(return_value=[])
     sites_helper = Mock()
@@ -38,7 +44,9 @@ def test_async_browse_passes_music_type_to_indexer():
 
 
 def test_music_cache_context_uses_music_models():
-    """站点缓存识别到音乐分类时不应进入影视识别链。"""
+    """
+    站点缓存识别到音乐分类时不应进入影视识别链。
+    """
     chain = TorrentsChain()
     torrent = Mock(
         title="Daft Punk - Get Lucky",
@@ -73,7 +81,9 @@ def test_music_cache_context_uses_music_models():
 
 
 def test_rss_sets_music_category_from_site_media_type():
-    """RSS 报文不带分类，音乐站点的种子应按站点媒体类型补充音乐分类。"""
+    """
+    RSS 报文不带分类，音乐站点的种子应按站点媒体类型补充音乐分类。
+    """
     chain = TorrentsChain()
     site = {
         "id": 9,
@@ -107,7 +117,9 @@ def test_rss_sets_music_category_from_site_media_type():
 
 
 def test_music_browse_paths_detects_dedicated_entry():
-    """站点用 type=music 声明的独立音乐入口应被识别，默认入口已覆盖时不重复抓取。"""
+    """
+    站点用 type=music 声明的独立音乐入口应被识别，默认入口已覆盖时不重复抓取。
+    """
     mixed_site = {
         "search": {
             "paths": [
@@ -134,7 +146,9 @@ def test_music_browse_paths_detects_dedicated_entry():
 
 
 def test_spider_music_entry_browse_resolves_music_category():
-    """音乐入口浏览应请求专用页面，并把音乐分类种子解析为音乐类型。"""
+    """
+    音乐入口浏览应请求专用页面，并把音乐分类种子解析为音乐类型。
+    """
     indexer = {
         "id": "hhanclub",
         "name": "憨憨",
@@ -195,7 +209,9 @@ def test_spider_music_entry_browse_resolves_music_category():
 
 
 def test_refresh_include_music_fetches_music_entry():
-    """存在音乐订阅时，spider 刷新应额外抓取音乐专用入口，并把音乐写入独立缓存。"""
+    """
+    存在音乐订阅时，spider 刷新应额外抓取音乐专用入口，并把音乐写入独立缓存。
+    """
     chain = TorrentsChain()
     default_torrent = TorrentInfo(
         site=1, site_name="Test",
@@ -276,7 +292,9 @@ def test_refresh_include_music_fetches_music_entry():
 
 
 def test_rss_refresh_include_music_fetches_dedicated_entry():
-    """RSS 模式有音乐订阅时也应补抓独立音乐入口，并写入音乐缓存。"""
+    """
+    RSS 模式有音乐订阅时也应补抓独立音乐入口，并写入音乐缓存。
+    """
     chain = TorrentsChain()
     video_torrent = TorrentInfo(
         site=1,
@@ -296,7 +314,9 @@ def test_rss_refresh_include_music_fetches_dedicated_entry():
     )
 
     def _fake_browse(domain, keyword=None, cat=None, page=None, mtype=None):
-        """模拟音乐专用入口的两页抓取结果。"""
+        """
+        模拟音乐专用入口的两页抓取结果。
+        """
         assert mtype == MediaType.MUSIC
         return [music_torrent] if not page else []
 
@@ -339,7 +359,9 @@ def test_rss_refresh_include_music_fetches_dedicated_entry():
 
 
 def test_music_cache_not_evicted_by_video_torrents():
-    """影视缓存按配额裁剪时，音乐独立缓存中的资源不应被挤出。"""
+    """
+    影视缓存按配额裁剪时，音乐独立缓存中的资源不应被挤出。
+    """
     chain = TorrentsChain()
 
     def _music_context(title, enclosure, pubdate):

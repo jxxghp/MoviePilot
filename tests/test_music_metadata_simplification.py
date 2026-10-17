@@ -1,4 +1,6 @@
-"""音乐专辑详情与整理命名共享简体开关，并保留原始来源证据。"""
+"""
+音乐专辑详情与整理命名共享简体开关，并保留原始来源证据。
+"""
 
 import asyncio
 from copy import deepcopy
@@ -20,7 +22,9 @@ from app.runtime.config import ConfigModel, settings
 def test_album_details_simplify_tracks_without_mutating_source(
         monkeypatch, asynchronous, simplified, album_title,
 ):
-    """同步、异步详情均转换曲目；仅曲目含繁体时也不能污染来源缓存。"""
+    """
+    同步、异步详情均转换曲目；仅曲目含繁体时也不能污染来源缓存。
+    """
     source = MusicAlbumInfo(
         media_source="musicbrainz", media_id="album-1", title=album_title,
         artists=["優里"] if album_title != "Album" else ["Artist"],
@@ -77,7 +81,9 @@ def test_album_details_simplify_tracks_without_mutating_source(
 def test_music_naming_converts_selected_fields_without_changing_identity(
         monkeypatch, music_type, simplified,
 ):
-    """本地标签、录音与专辑命名同样转简体，录音身份不替换本地发行专辑。"""
+    """
+    本地标签、录音与专辑命名同样转简体，录音身份不替换本地发行专辑。
+    """
     meta = MetaMusic(
         title="後來", artists=["優里", "UMI"], album="歲月",
         album_artist="優里", year=2026, track_number=1, disc_number=2, total_discs=2,

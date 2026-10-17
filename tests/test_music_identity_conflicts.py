@@ -1,4 +1,6 @@
-"""录音标识与发行来源的一致性必须贯穿自动匹配、缓存及文件名回退。"""
+"""
+录音标识与发行来源的一致性必须贯穿自动匹配、缓存及文件名回退。
+"""
 
 import asyncio
 import shutil
@@ -28,7 +30,9 @@ OTHER_ISRC = "USABC2400002"
 
 
 def _recording(isrc=OTHER_ISRC, **kwargs):
-    """构造同名歌曲以保证测试只由身份约束决定结果。"""
+    """
+    构造同名歌曲以保证测试只由身份约束决定结果。
+    """
     return MusicInfo(title="Song", artists=["Artist"], media_source=MediaSource.MusicBrainz,
                      media_id="recording", isrc=isrc, track_number=1, **kwargs)
 
@@ -45,7 +49,9 @@ def _recording(isrc=OTHER_ISRC, **kwargs):
     (ISRC, None, {"isrc": ISRC}, False, False),
 ])
 def test_isrc_evidence_validates_all_recording_codes(local, remote, extras, matched, conflict):
-    """有效列表、展示分隔符和缺失值有不同语义，异常列表不得当成已验证身份。"""
+    """
+    有效列表、展示分隔符和缺失值有不同语义，异常列表不得当成已验证身份。
+    """
     info = _recording(remote, raw_data={"isrcs": extras})
     meta = MetaMusic(title="Song", isrc=local)
     assert music_isrc_matches(info, meta) is matched
@@ -54,7 +60,9 @@ def test_isrc_evidence_validates_all_recording_codes(local, remote, extras, matc
 
 @pytest.mark.parametrize("reverse", [False, True])
 def test_recording_candidates_cannot_outvote_explicit_isrc(reverse):
-    """明确冲突的唯一同名候选被拒绝，完整ISRC列表命中不受列表顺序干扰。"""
+    """
+    明确冲突的唯一同名候选被拒绝，完整ISRC列表命中不受列表顺序干扰。
+    """
     meta = MetaMusic(title="Song", artists=["Artist"], isrc=ISRC)
     wrong = _recording()
     assert MusicBrainzModule._select_candidate(meta, [wrong], MediaSource.MusicBrainz) is None
@@ -65,7 +73,9 @@ def test_recording_candidates_cannot_outvote_explicit_isrc(reverse):
 
 
 def test_album_alignment_uses_isrc_and_preserves_manual_correction():
-    """自动对位拒绝冲突；人工选版可纠正错误旧标签，但仍不能覆盖严重时长冲突。"""
+    """
+    自动对位拒绝冲突；人工选版可纠正错误旧标签，但仍不能覆盖严重时长冲突。
+    """
     local = MetaMusic(title="Song", track_number=1, isrc=ISRC)
     wrong = _recording()
     assert align_music_tracks([local], [wrong]) == {}
@@ -80,7 +90,9 @@ def test_album_alignment_uses_isrc_and_preserves_manual_correction():
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize("same_recording", [False, True])
 def test_cache_rechecks_isrc_including_secondary_codes(monkeypatch, asynchronous, same_recording):
-    """旧缓存冲突须重新查询，同一录音的第二个ISRC则可直接复用缓存。"""
+    """
+    旧缓存冲突须重新查询，同一录音的第二个ISRC则可直接复用缓存。
+    """
     meta = MetaMusic(title="Song", artists=["Artist"], isrc=ISRC)
     cache = _build_music_cache({})
     module = _build_module_with_cache(cache)
@@ -101,7 +113,9 @@ def test_cache_rechecks_isrc_including_secondary_codes(monkeypatch, asynchronous
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize("same_recording", [False, True])
 def test_release_lookup_preserves_isrc_for_track_alignment(monkeypatch, asynchronous, same_recording):
-    """真正的Release响应投影后仍保留全部ISRC，自动整专不能接受错误录音。"""
+    """
+    真正的Release响应投影后仍保留全部ISRC，自动整专不能接受错误录音。
+    """
     module = MusicBrainzModule()
     detail = _release_detail("release", "七里香", "周杰伦", ALBUM_TRACKS)
     codes = [OTHER_ISRC, ISRC] if same_recording else [OTHER_ISRC]
@@ -125,7 +139,9 @@ def test_release_lookup_preserves_isrc_for_track_alignment(monkeypatch, asynchro
     ("musicbrainz_release_id", "other-release"), ("musicbrainz_release_group_id", "other-group"),
 ])
 def test_automatic_album_source_and_directory_reject_conflicting_tracks(tmp_path, monkeypatch, asynchronous, field, value):
-    """来源链和整专编排均拒绝混源或混版曲目；不依赖用户显式指定发行ID才核验。"""
+    """
+    来源链和整专编排均拒绝混源或混版曲目；不依赖用户显式指定发行ID才核验。
+    """
     album = MusicBrainzModule._release_to_album(_release_detail("release", "七里香", "周杰伦", ALBUM_TRACKS))
     setattr(album.tracks[1], field, value)
     source = MusicBrainzChain()
@@ -147,7 +163,9 @@ def test_automatic_album_source_and_directory_reject_conflicting_tracks(tmp_path
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_secondary_album_cannot_mix_source_namespaces(tmp_path, monkeypatch, asynchronous):
-    """次级来源的专辑壳也不能让其它来源的同名曲目取得当前来源身份。"""
+    """
+    次级来源的专辑壳也不能让其它来源的同名曲目取得当前来源身份。
+    """
     directory, chain, _config, _primary = _directory_setup(tmp_path, monkeypatch, "theaudiodb")
     album = _album(MediaSource.TheAudioDB)
     album.tracks[0].media_source = MediaSource.DoubanMusic
@@ -158,7 +176,9 @@ def test_secondary_album_cannot_mix_source_namespaces(tmp_path, monkeypatch, asy
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_real_tags_keep_isrc_constraint_through_filename_fallback(tmp_path, monkeypatch, asynchronous):
-    """读取真实FLAC后，标签层被拒绝不能通过文件名层丢弃ISRC约束后重新误命中。"""
+    """
+    读取真实FLAC后，标签层被拒绝不能通过文件名层丢弃ISRC约束后重新误命中。
+    """
     path = tmp_path / "01 - Artist - Song.flac"
     shutil.copyfile(Path(__file__).parent / "fixtures/audio/silence.flac", path)
     audio = FLAC(path)
@@ -181,7 +201,9 @@ def test_real_tags_keep_isrc_constraint_through_filename_fallback(tmp_path, monk
 
 @pytest.mark.parametrize("title", ["Song", "Track 01"])
 def test_high_fingerprint_score_cannot_hide_isrc_conflict(title):
-    """强指纹也须与实际标签的明确录音身份相容，占位曲名不能使ISRC被忽略。"""
+    """
+    强指纹也须与实际标签的明确录音身份相容，占位曲名不能使ISRC被忽略。
+    """
     tags = MetaMusic(title=title, artists=["Artist"], isrc=ISRC, duration=180)
     info = _recording(duration=180)
     assert not _fingerprint_info_matches_evidence(info, tags, MetaMusic(title="Song"), fingerprint_score=.99)

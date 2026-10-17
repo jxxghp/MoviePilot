@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 # 使用导入期替身隔离站点与配置依赖，因此导入位置受控。
+# 测试先准备环境与依赖替身，再导入刮削模块。
 # ruff: noqa: E402
 from app.testing import stub_modules
 

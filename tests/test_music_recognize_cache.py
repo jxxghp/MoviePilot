@@ -1,4 +1,5 @@
-"""MusicBrainz 音乐识别本地持久化缓存测试。
+"""
+MusicBrainz 音乐识别本地持久化缓存测试。
 
 覆盖缓存键生成、读写回环、负缓存、持久化恢复与保存、管理端点
 统计与权限，以及 MusicBrainzModule 识别流程对缓存的命中与回填。
@@ -20,78 +21,112 @@ from app.modules.musicbrainz.cache import MusicBrainzCache
 
 
 class _MemoryCacheStub:
-    """提供音乐缓存管理测试所需的最小内存后端。"""
+    """
+    提供音乐缓存管理测试所需的最小内存后端。
+    """
 
     def __init__(self, data: dict):
-        """使用给定字典初始化测试缓存。"""
+        """
+        使用给定字典初始化测试缓存。
+        """
         self.data = data
 
     @staticmethod
     def is_redis() -> bool:
-        """测试替身固定使用非 Redis 后端。"""
+        """
+        测试替身固定使用非 Redis 后端。
+        """
         return False
 
     def items(self):
-        """返回全部缓存条目。"""
+        """
+        返回全部缓存条目。
+        """
         return self.data.items()
 
     def get(self, key: str):
-        """读取指定缓存条目。"""
+        """
+        读取指定缓存条目。
+        """
         return self.data.get(key)
 
     def delete(self, key: str):
-        """删除指定缓存条目。"""
+        """
+        删除指定缓存条目。
+        """
         self.data.pop(key, None)
 
     def set(self, key: str, value, ttl=None):
-        """写入指定缓存条目。"""
+        """
+        写入指定缓存条目。
+        """
         self.data[key] = value
 
     def clear(self):
-        """清空全部缓存条目。"""
+        """
+        清空全部缓存条目。
+        """
         self.data.clear()
 
 
 class _TTLCacheStub(_MemoryCacheStub):
-    """记录每条数据恢复时剩余 TTL 的内存缓存替身。"""
+    """
+    记录每条数据恢复时剩余 TTL 的内存缓存替身。
+    """
 
     def __init__(self):
-        """初始化空缓存和 TTL 记录。"""
+        """
+        初始化空缓存和 TTL 记录。
+        """
         super().__init__({})
         self.ttls = {}
 
     def set(self, key: str, value, ttl=None):
-        """写入缓存并记录本次设置的 TTL。"""
+        """
+        写入缓存并记录本次设置的 TTL。
+        """
         super().set(key, value, ttl=ttl)
         self.ttls[key] = ttl
 
 
 class _FileCacheStub:
-    """提供音乐缓存持久化测试所需的统一文件缓存替身。"""
+    """
+    提供音乐缓存持久化测试所需的统一文件缓存替身。
+    """
 
     def __init__(self, content: bytes = None):
-        """使用预置序列化内容初始化文件缓存。"""
+        """
+        使用预置序列化内容初始化文件缓存。
+        """
         self.content = content
         self.set_calls = []
         self.delete_calls = []
 
     def get(self, key: str, region: str):
-        """读取预置缓存内容。"""
+        """
+        读取预置缓存内容。
+        """
         return self.content
 
     def set(self, key: str, value: bytes, region: str):
-        """记录统一文件缓存写入。"""
+        """
+        记录统一文件缓存写入。
+        """
         self.content = value
         self.set_calls.append((key, region))
 
     def delete(self, key: str, region: str):
-        """记录统一文件缓存删除。"""
+        """
+        记录统一文件缓存删除。
+        """
         self.content = None
         self.delete_calls.append((key, region))
 
 
 def _build_music_cache(data: dict) -> MusicBrainzCache:
-    """构造绕过单例初始化的音乐识别缓存测试实例。"""
+    """
+    构造绕过单例初始化的音乐识别缓存测试实例。
+    """
     cache = object.__new__(MusicBrainzCache)
     cache.maxsize = 256
     cache.ttl = 3600
@@ -107,7 +142,9 @@ def _build_music_cache(data: dict) -> MusicBrainzCache:
 def _build_initialized_music_cache(monkeypatch, file_cache: _FileCacheStub,
                                    runtime_cache: _TTLCacheStub,
                                    now: float = 1000) -> MusicBrainzCache:
-    """使用可控时间和缓存替身初始化完整音乐识别缓存实例。"""
+    """
+    使用可控时间和缓存替身初始化完整音乐识别缓存实例。
+    """
     monkeypatch.setattr(music_cache_module, "time", lambda: now)
     monkeypatch.setattr(music_cache_module, "TTLCache", lambda **kwargs: runtime_cache)
     monkeypatch.setattr(music_cache_module, "FileCache", lambda **kwargs: file_cache)
@@ -117,7 +154,9 @@ def _build_initialized_music_cache(monkeypatch, file_cache: _FileCacheStub,
 
 
 def _music_info(**kwargs) -> MusicInfo:
-    """构造标准音乐识别结果，默认携带远端身份。"""
+    """
+    构造标准音乐识别结果，默认携带远端身份。
+    """
     defaults = {
         "media_source": "musicbrainz",
         "media_id": "rec-1",
@@ -131,7 +170,9 @@ def _music_info(**kwargs) -> MusicInfo:
 
 
 def test_music_cache_endpoints_require_superuser():
-    """音乐识别缓存管理接口必须仅允许超级管理员访问。"""
+    """
+    音乐识别缓存管理接口必须仅允许超级管理员访问。
+    """
     endpoints = [
         music_endpoint.music_recognition_cache,
         music_endpoint.delete_music_recognition_cache,
@@ -144,7 +185,9 @@ def test_music_cache_endpoints_require_superuser():
 
 
 def test_music_cache_key_prefers_media_id():
-    """携带数据源原生 ID 的元数据应以 ID 作为缓存键主身份。"""
+    """
+    携带数据源原生 ID 的元数据应以 ID 作为缓存键主身份。
+    """
     cache = _build_music_cache({})
     meta = MetaMusic(
         title="晴天",
@@ -162,7 +205,9 @@ def test_music_cache_key_prefers_media_id():
 
 @pytest.mark.parametrize("version", [1, 2])
 def test_music_cache_rebuilds_legacy_identity_keys(monkeypatch, version):
-    """旧缓存可能串用实体或保存了截断名称的错误身份，升级后不再恢复。"""
+    """
+    旧缓存可能串用实体或保存了截断名称的错误身份，升级后不再恢复。
+    """
     file_cache = _FileCacheStub(pickle.dumps({
         "version": version, "items": {"[音乐]legacy": {"expires_at": 2000, "value": _music_info().to_dict()}},
     }))
@@ -172,7 +217,9 @@ def test_music_cache_rebuilds_legacy_identity_keys(monkeypatch, version):
 
 
 def test_music_cache_update_and_get_roundtrip():
-    """识别结果入缓存后应能还原出标准音乐信息，且不保存上游原始响应。"""
+    """
+    识别结果入缓存后应能还原出标准音乐信息，且不保存上游原始响应。
+    """
     cache = _build_music_cache({})
     meta = MetaMusic(title="晴天", artists=["周杰伦"], album="叶惠美", year=2003)
     info = _music_info(raw_data={"payload": "large"})
@@ -190,7 +237,9 @@ def test_music_cache_update_and_get_roundtrip():
 
 @pytest.mark.parametrize("field,value", [("version", "Live"), ("isrc", "USABC2600001")])
 def test_music_cache_separates_recording_identity_evidence(field, value):
-    """相同标题署名但版本或 ISRC 不同的请求不能共用识别结果。"""
+    """
+    相同标题署名但版本或 ISRC 不同的请求不能共用识别结果。
+    """
     cache = _build_music_cache({})
     original = MetaMusic(title="晴天", artists=["周杰伦"])
     variant = MetaMusic.from_dict(original.to_dict())
@@ -200,7 +249,9 @@ def test_music_cache_separates_recording_identity_evidence(field, value):
 
 
 def test_music_cache_separates_requested_entity_scope():
-    """单曲、专辑与未限定实体的请求分别缓存，负缓存也不能跨实体阻止回退。"""
+    """
+    单曲、专辑与未限定实体的请求分别缓存，负缓存也不能跨实体阻止回退。
+    """
     cache = _build_music_cache({})
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
     cache.update(meta, _music_info(music_type="album"), music_type="album")
@@ -211,7 +262,9 @@ def test_music_cache_separates_requested_entity_scope():
 
 
 def test_music_cache_key_does_not_confuse_field_separators():
-    """名称中的连字符与多艺人分隔符不能把不同字段组合编码成同一个缓存键。"""
+    """
+    名称中的连字符与多艺人分隔符不能把不同字段组合编码成同一个缓存键。
+    """
     cache = _build_music_cache({})
     original = MetaMusic(title="A-B", artists=["C"])
     other = MetaMusic(title="A", artists=["B-C"])
@@ -220,7 +273,9 @@ def test_music_cache_key_does_not_confuse_field_separators():
 
 
 def test_music_cache_get_miss_returns_none():
-    """未命中的缓存查询应返回 None 而不是抛错。"""
+    """
+    未命中的缓存查询应返回 None 而不是抛错。
+    """
     cache = _build_music_cache({})
     meta = MetaMusic(title="未知曲目")
 
@@ -228,7 +283,9 @@ def test_music_cache_get_miss_returns_none():
 
 
 def test_music_cache_list_items_normalizes_and_sorts():
-    """管理列表应输出稳定顺序和前端展示所需字段。"""
+    """
+    管理列表应输出稳定顺序和前端展示所需字段。
+    """
     cache = _build_music_cache({
         "z-key": {
             "media_id": "rec-2",
@@ -255,7 +312,9 @@ def test_music_cache_list_items_normalizes_and_sorts():
 
 
 def test_music_cache_delete_and_clear_persist_immediately(monkeypatch):
-    """管理操作应修改运行时缓存并立即触发本地持久化。"""
+    """
+    管理操作应修改运行时缓存并立即触发本地持久化。
+    """
     cache = _build_music_cache({"first": {"media_id": "rec-1"}, "second": {"media_id": "rec-2"}})
     saved_forces = []
     monkeypatch.setattr(cache, "save", lambda force=False: saved_forces.append(force))
@@ -269,7 +328,9 @@ def test_music_cache_delete_and_clear_persist_immediately(monkeypatch):
 
 
 def test_music_cache_restores_only_unexpired_persisted_items(monkeypatch):
-    """持久化恢复应保留每条数据原有期限并跳过已过期条目。"""
+    """
+    持久化恢复应保留每条数据原有期限并跳过已过期条目。
+    """
     payload = {
         "version": music_cache_module.PERSISTENCE_VERSION,
         "items": {
@@ -298,7 +359,9 @@ def test_music_cache_restores_only_unexpired_persisted_items(monkeypatch):
 
 
 def test_music_cache_persists_only_items_with_media_id(monkeypatch):
-    """持久化应跳过未识别的负缓存条目，只保存携带远端身份的结果。"""
+    """
+    持久化应跳过未识别的负缓存条目，只保存携带远端身份的结果。
+    """
     file_cache = _FileCacheStub()
     runtime_cache = _TTLCacheStub()
     cache = _build_initialized_music_cache(
@@ -335,7 +398,9 @@ def test_music_cache_persists_only_items_with_media_id(monkeypatch):
 
 
 def test_music_cache_save_removes_file_when_empty(monkeypatch):
-    """全部条目失效后保存应删除持久化文件。"""
+    """
+    全部条目失效后保存应删除持久化文件。
+    """
     file_cache = _FileCacheStub(pickle.dumps({"version": 1, "items": {}}))
     runtime_cache = _TTLCacheStub()
     cache = _build_initialized_music_cache(
@@ -354,7 +419,9 @@ def test_music_cache_save_removes_file_when_empty(monkeypatch):
 
 
 def test_music_cache_endpoint_returns_management_statistics(monkeypatch):
-    """查询接口应返回识别成功和失败条目的统计。"""
+    """
+    查询接口应返回识别成功和失败条目的统计。
+    """
     cache = _build_music_cache({
         "recognized": {"media_id": "rec-1", "title": "晴天"},
         "unrecognized": {"media_id": "", "title": "未知曲目"},
@@ -373,7 +440,9 @@ def test_music_cache_endpoint_returns_management_statistics(monkeypatch):
 
 
 def test_music_cache_delete_endpoint_reports_missing_item(monkeypatch):
-    """删除接口应区分成功删除与缓存不存在。"""
+    """
+    删除接口应区分成功删除与缓存不存在。
+    """
     cache = _build_music_cache({"existing": {"media_id": "rec-1"}})
     monkeypatch.setattr(
         music_endpoint.MusicBrainzChain, "delete_cache", staticmethod(cache.delete)
@@ -391,7 +460,9 @@ def test_music_cache_delete_endpoint_reports_missing_item(monkeypatch):
 
 
 def test_music_cache_clear_endpoint_removes_all_items(monkeypatch):
-    """清空接口应删除全部音乐识别缓存。"""
+    """
+    清空接口应删除全部音乐识别缓存。
+    """
     cache = _build_music_cache({"existing": {"media_id": "rec-1"}})
     monkeypatch.setattr(
         music_endpoint.MusicBrainzChain, "clear_cache", staticmethod(cache.clear)
@@ -404,14 +475,18 @@ def test_music_cache_clear_endpoint_removes_all_items(monkeypatch):
 
 
 def _build_module_with_cache(cache: MusicBrainzCache) -> MusicBrainzModule:
-    """构造挂载测试缓存的 MusicBrainz 模块实例。"""
+    """
+    构造挂载测试缓存的 MusicBrainz 模块实例。
+    """
     module = MusicBrainzModule()
     module.cache = cache
     return module
 
 
 def test_module_recognize_media_hits_cache_without_search(monkeypatch):
-    """识别缓存命中时应直接返回缓存结果，不再触发 MusicBrainz 搜索。"""
+    """
+    识别缓存命中时应直接返回缓存结果，不再触发 MusicBrainz 搜索。
+    """
     cache = _build_music_cache({})
     module = _build_module_with_cache(cache)
     meta = MetaMusic(title="晴天", artists=["周杰伦"], album="叶惠美", year=2003)
@@ -429,7 +504,9 @@ def test_module_recognize_media_hits_cache_without_search(monkeypatch):
 
 @pytest.mark.parametrize("async_mode", [False, True])
 def test_module_recording_request_cannot_reuse_album_cache(monkeypatch, async_mode):
-    """显式单曲识别不能读取此前未限定请求缓存下来的同名专辑。"""
+    """
+    显式单曲识别不能读取此前未限定请求缓存下来的同名专辑。
+    """
     cache = _build_music_cache({})
     module = _build_module_with_cache(cache)
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
@@ -454,7 +531,9 @@ def test_module_recording_request_cannot_reuse_album_cache(monkeypatch, async_mo
 
 
 def test_module_recognize_media_bypasses_cache_when_disabled(monkeypatch):
-    """cache=False 时不读取缓存，重新走搜索识别流程。"""
+    """
+    cache=False 时不读取缓存，重新走搜索识别流程。
+    """
     cache = _build_music_cache({})
     module = _build_module_with_cache(cache)
     meta = MetaMusic(title="晴天", artists=["周杰伦"], album="叶惠美", year=2003)
@@ -470,7 +549,9 @@ def test_module_recognize_media_bypasses_cache_when_disabled(monkeypatch):
 
 
 def test_module_recognize_media_writes_search_result_to_cache(monkeypatch):
-    """搜索识别成功后应回填本地识别缓存。"""
+    """
+    搜索识别成功后应回填本地识别缓存。
+    """
     cache = _build_music_cache({})
     module = _build_module_with_cache(cache)
     meta = MetaMusic(title="晴天", artists=["周杰伦"], album="叶惠美", year=2003)
@@ -487,7 +568,9 @@ def test_module_recognize_media_writes_search_result_to_cache(monkeypatch):
 
 
 def test_module_recognize_media_caches_offline_fallback(monkeypatch):
-    """搜索无结果的兜底信息也应进入负缓存，避免重复请求。"""
+    """
+    搜索无结果的兜底信息也应进入负缓存，避免重复请求。
+    """
     cache = _build_music_cache({})
     module = _build_module_with_cache(cache)
     meta = MetaMusic(title="未知曲目", artists=["未知艺术家"])
@@ -505,7 +588,9 @@ def test_module_recognize_media_caches_offline_fallback(monkeypatch):
 
 
 def test_module_update_recognize_cache_only_for_musicbrainz_music():
-    """共享识别回填仅处理本数据源的音乐结果。"""
+    """
+    共享识别回填仅处理本数据源的音乐结果。
+    """
     cache = _build_music_cache({})
     module = _build_module_with_cache(cache)
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
@@ -520,7 +605,9 @@ def test_module_update_recognize_cache_only_for_musicbrainz_music():
 
 @pytest.mark.parametrize("async_mode", [False, True])
 def test_shared_recognition_replaces_entity_scoped_negative_cache(async_mode):
-    """共享回填的公开契约没有请求类型，也必须覆盖已确认单曲对应的旧负缓存。"""
+    """
+    共享回填的公开契约没有请求类型，也必须覆盖已确认单曲对应的旧负缓存。
+    """
     cache = _build_music_cache({})
     module = _build_module_with_cache(cache)
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
@@ -537,7 +624,9 @@ def test_shared_recognition_replaces_entity_scoped_negative_cache(async_mode):
 @pytest.mark.parametrize("async_mode", [False, True])
 @pytest.mark.parametrize("isrc_identity", [False, True])
 def test_cached_recording_rechecks_explicit_version_conflicts(monkeypatch, async_mode, isrc_identity):
-    """旧正缓存不能绕过版本冲突确认；已核验的同一 ISRC 则保留身份优先级。"""
+    """
+    旧正缓存不能绕过版本冲突确认；已核验的同一 ISRC 则保留身份优先级。
+    """
     cache = _build_music_cache({})
     module = _build_module_with_cache(cache)
     isrc = "USABC2600001" if isrc_identity else None

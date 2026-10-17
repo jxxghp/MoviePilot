@@ -1,4 +1,6 @@
-"""目录监控 owner 的生命周期与停机屏障回归。"""
+"""
+目录监控 owner 的生命周期与停机屏障回归。
+"""
 
 import asyncio
 import threading
@@ -16,7 +18,9 @@ from app.startup.initializers.monitor import init_monitor, stop_monitor
 
 
 def _build_monitor() -> Monitor:
-    """构造绕过单例初始化、但具备完整生命周期字段的 Monitor 骨架。"""
+    """
+    构造绕过单例初始化、但具备完整生命周期字段的 Monitor 骨架。
+    """
     monitor = object.__new__(Monitor)
     monitor._lifecycle_lock = threading.RLock()
     monitor._owner_lock = threading.Lock()
@@ -42,12 +46,16 @@ def _build_monitor() -> Monitor:
 
 
 def _blocking_watcher(mon_path: Path):
-    """构造只有显式 release 后才退出的 watcher 与控制事件。"""
+    """
+    构造只有显式 release 后才退出的 watcher 与控制事件。
+    """
     started = threading.Event()
     release = threading.Event()
 
     def run() -> None:
-        """模拟无法被 stop event 唤醒的 FUSE watcher。"""
+        """
+        模拟无法被 stop event 唤醒的 FUSE watcher。
+        """
         started.set()
         release.wait()
 
@@ -63,13 +71,17 @@ def _blocking_watcher(mon_path: Path):
 
 
 def test_close_budget_includes_lifecycle_lock_wait() -> None:
-    """停机 deadline 必须先于生命周期锁等待建立，锁竞争超时后立即返回。"""
+    """
+    停机 deadline 必须先于生命周期锁等待建立，锁竞争超时后立即返回。
+    """
     monitor = _build_monitor()
     lock_acquired = threading.Event()
     release_lock = threading.Event()
 
     def hold_lifecycle_lock() -> None:
-        """占住生命周期锁，模拟配置重载阻塞在挂载访问中。"""
+        """
+        占住生命周期锁，模拟配置重载阻塞在挂载访问中。
+        """
         with monitor._lifecycle_lock:
             lock_acquired.set()
             release_lock.wait()
@@ -91,7 +103,9 @@ def test_close_budget_includes_lifecycle_lock_wait() -> None:
 
 
 def test_close_timeout_retains_watcher_and_seals_config_reload(tmp_path) -> None:
-    """挂死 watcher 超时时保留句柄，且配置变化不能重开已封口生命周期。"""
+    """
+    挂死 watcher 超时时保留句柄，且配置变化不能重开已封口生命周期。
+    """
     monitor = _build_monitor()
     watcher, thread, release = _blocking_watcher(tmp_path)
     monitor._watchers = [watcher]
@@ -115,7 +129,9 @@ def test_close_timeout_retains_watcher_and_seals_config_reload(tmp_path) -> None
 
 
 def test_reopen_allows_only_an_explicit_new_lifespan() -> None:
-    """close 后普通 init 被拒绝，显式 reopen 收敛旧 owner 后才允许重新初始化。"""
+    """
+    close 后普通 init 被拒绝，显式 reopen 收敛旧 owner 后才允许重新初始化。
+    """
     monitor = _build_monitor()
     initialize = MagicMock(return_value=True)
     monitor._Monitor__initialize_monitors = initialize
@@ -131,13 +147,17 @@ def test_reopen_allows_only_an_explicit_new_lifespan() -> None:
 
 
 def test_close_tracks_recovery_and_blocks_post_seal_dispatch() -> None:
-    """恢复动作解冻后只能退出，不能越过封口继续派发整理重试。"""
+    """
+    恢复动作解冻后只能退出，不能越过封口继续派发整理重试。
+    """
     monitor = _build_monitor()
     entered = threading.Event()
     release = threading.Event()
 
     def blocking_local_retry() -> None:
-        """模拟恢复线程阻塞在 FUSE 本地目录访问。"""
+        """
+        模拟恢复线程阻塞在 FUSE 本地目录访问。
+        """
         entered.set()
         release.wait()
 
@@ -160,7 +180,9 @@ def test_close_tracks_recovery_and_blocks_post_seal_dispatch() -> None:
 
 
 def test_recovery_start_and_registration_are_atomic(monkeypatch) -> None:
-    """close 不得在恢复线程登记后、真正 start 前把它误判为已收敛。"""
+    """
+    close 不得在恢复线程登记后、真正 start 前把它误判为已收敛。
+    """
     executor = RecoveryExecutor()
     start_entered = threading.Event()
     allow_start = threading.Event()
@@ -168,7 +190,9 @@ def test_recovery_start_and_registration_are_atomic(monkeypatch) -> None:
     original_start = threading.Thread.start
 
     def delayed_recovery_start(thread: threading.Thread) -> None:
-        """只暂停恢复线程的 start，稳定放大登记与启动之间的竞态窗口。"""
+        """
+        只暂停恢复线程的 start，稳定放大登记与启动之间的竞态窗口。
+        """
         if thread.name.startswith("MoviePilot-MonitorRecovery-"):
             start_entered.set()
             assert allow_start.wait(timeout=1)
@@ -203,14 +227,18 @@ def test_recovery_start_and_registration_are_atomic(monkeypatch) -> None:
 
 
 def test_close_tracks_compensation_and_blocks_post_seal_dispatch(tmp_path) -> None:
-    """补偿扫描解冻后不得在旧 lifespan 中继续把文件送入整理链。"""
+    """
+    补偿扫描解冻后不得在旧 lifespan 中继续把文件送入整理链。
+    """
     monitor = _build_monitor()
     entered = threading.Event()
     release = threading.Event()
     candidate = tmp_path / "late.mkv"
 
     def blocking_collect(_mon_path: Path):
-        """模拟补偿扫描阻塞在目录遍历。"""
+        """
+        模拟补偿扫描阻塞在目录遍历。
+        """
         entered.set()
         release.wait()
         return [(candidate, time.time(), 1)]
@@ -231,7 +259,9 @@ def test_close_tracks_compensation_and_blocks_post_seal_dispatch(tmp_path) -> No
 
 
 def test_close_tracks_scheduler_shutdown_thread() -> None:
-    """scheduler shutdown 阻塞时保留线程和 scheduler，恢复后才能清空句柄。"""
+    """
+    scheduler shutdown 阻塞时保留线程和 scheduler，恢复后才能清空句柄。
+    """
     monitor = _build_monitor()
     entered = threading.Event()
     release = threading.Event()
@@ -239,7 +269,9 @@ def test_close_tracks_scheduler_shutdown_thread() -> None:
     scheduler.running = True
 
     def blocking_shutdown(*, wait: bool) -> None:
-        """模拟等待在途 APScheduler job 的同步 shutdown。"""
+        """
+        模拟等待在途 APScheduler job 的同步 shutdown。
+        """
         assert wait is True
         entered.set()
         release.wait()
@@ -262,12 +294,16 @@ def test_close_tracks_scheduler_shutdown_thread() -> None:
 
 @pytest.mark.asyncio
 async def test_stop_monitor_cancellation_waits_for_sync_close(monkeypatch) -> None:
-    """生命周期取消异步 stop 后，线程池调用仍由任务持有到同步 close 结束。"""
+    """
+    生命周期取消异步 stop 后，线程池调用仍由任务持有到同步 close 结束。
+    """
     entered = threading.Event()
     release = threading.Event()
 
     def blocking_close(timeout: float) -> bool:
-        """模拟仍在同步收尾的 Monitor.close。"""
+        """
+        模拟仍在同步收尾的 Monitor.close。
+        """
         assert timeout == 1
         entered.set()
         release.wait()
@@ -288,7 +324,9 @@ async def test_stop_monitor_cancellation_waits_for_sync_close(monkeypatch) -> No
 
 
 def test_init_monitor_explicitly_reopens_existing_lifespan(monkeypatch) -> None:
-    """同进程测试中的新 lifespan 必须显式 reopen，再初始化同一个 Monitor。"""
+    """
+    同进程测试中的新 lifespan 必须显式 reopen，再初始化同一个 Monitor。
+    """
     monitor = SimpleNamespace(
         lifecycle_closed=True,
         reopen=MagicMock(return_value=True),
@@ -306,7 +344,9 @@ def test_init_monitor_explicitly_reopens_existing_lifespan(monkeypatch) -> None:
 async def test_constructor_failure_publishes_started_watcher_to_cleanup(
     monkeypatch,
 ) -> None:
-    """Monitor 构造中途失败后，stop-only 入口仍必须找到已启动 watcher owner。"""
+    """
+    Monitor 构造中途失败后，stop-only 入口仍必须找到已启动 watcher owner。
+    """
     instances = dict(SingletonClass._instances)
     instances.pop(Monitor, None)
     monkeypatch.setattr(SingletonClass, "_instances", instances)
@@ -315,7 +355,9 @@ async def test_constructor_failure_publishes_started_watcher_to_cleanup(
     watchers: list[threading.Thread] = []
 
     def failing_init(monitor: Monitor) -> None:
-        """模拟 watcher 已启动、后续 scheduler 启动失败的构造过程。"""
+        """
+        模拟 watcher 已启动、后续 scheduler 启动失败的构造过程。
+        """
         watcher = threading.Thread(
             target=lambda: (watcher_started.set(), watcher_release.wait()),
             name="monitor-partial-construction",
@@ -325,7 +367,9 @@ async def test_constructor_failure_publishes_started_watcher_to_cleanup(
         watcher.start()
 
         def close(timeout: float) -> bool:
-            """模拟真实 close 释放并等待半构造实例已经发布的 watcher。"""
+            """
+            模拟真实 close 释放并等待半构造实例已经发布的 watcher。
+            """
             watcher_release.set()
             watcher.join(timeout=timeout)
             return not watcher.is_alive()

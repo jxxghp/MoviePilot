@@ -1,4 +1,6 @@
-"""目录监控分发器的整理历史查重与整理异常重试测试。"""
+"""
+目录监控分发器的整理历史查重与整理异常重试测试。
+"""
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -40,7 +42,9 @@ def _history(status: bool = True, size=None, src_fileitem=..., src=None, src_sto
 
 
 def _reset_failed_retries(src_path, storage=None):
-    """清空失败重试计数，隔离用例之间共享的模块级计数缓存。"""
+    """
+    清空失败重试计数，隔离用例之间共享的模块级计数缓存。
+    """
     clear_transfer_failures(src_path, storage)
 
 
@@ -77,7 +81,9 @@ def _patch_chain(monkeypatch, side_effect=None) -> MagicMock:
 
 
 def test_no_history_goes_to_transfer(monkeypatch):
-    """没有任何整理记录的文件应直接进入整理链。"""
+    """
+    没有任何整理记录的文件应直接进入整理链。
+    """
     dispatcher = _build_dispatcher()
     _patch_history(monkeypatch, record=None)
     chain = _patch_chain(monkeypatch)
@@ -95,7 +101,9 @@ def test_no_history_goes_to_transfer(monkeypatch):
     ],
 )
 def test_dedup_is_scoped_to_storage(monkeypatch, event_path, duplicate_path):
-    """不同存储的同路径文件独立整理，同存储的文件或蓝光目录仍保持去重。"""
+    """
+    不同存储的同路径文件独立整理，同存储的文件或蓝光目录仍保持去重。
+    """
     dispatcher = _build_dispatcher()
     _patch_history(monkeypatch, record=None)
     chain = _patch_chain(monkeypatch)
@@ -116,7 +124,9 @@ def test_dedup_is_scoped_to_storage(monkeypatch, event_path, duplicate_path):
     ["/downloads/a.mkv", "/downloads/Movie/BDMV/STREAM/00001.m2ts"],
 )
 def test_failed_transfer_retries_independently_of_other_storage(monkeypatch, event_path):
-    """失败重试只清理当前存储的去重记录，其他存储成功后不能阻塞该重试。"""
+    """
+    失败重试只清理当前存储的去重记录，其他存储成功后不能阻塞该重试。
+    """
     dispatcher = _build_dispatcher()
     _patch_history(monkeypatch, record=None)
     chain = _patch_chain(monkeypatch, side_effect=[RuntimeError("整理失败"), None, None])
@@ -138,7 +148,9 @@ def test_failed_transfer_retries_independently_of_other_storage(monkeypatch, eve
 
 
 def test_failed_history_is_retried_within_retry_budget(monkeypatch):
-    """失败重试次数未达上限（默认计数为 0）时，失败的整理记录不得永久锁死文件，应放行重试。"""
+    """
+    失败重试次数未达上限（默认计数为 0）时，失败的整理记录不得永久锁死文件，应放行重试。
+    """
     dispatcher = _build_dispatcher()
     _patch_history(monkeypatch, record=_history(status=False, size=100))
     chain = _patch_chain(monkeypatch)
@@ -148,7 +160,9 @@ def test_failed_history_is_retried_within_retry_budget(monkeypatch):
 
 
 def test_failed_history_is_skipped_when_retry_budget_exhausted(monkeypatch):
-    """失败重试次数已达上限时，失败的整理记录仍应被拦截、跳过整理。"""
+    """
+    失败重试次数已达上限时，失败的整理记录仍应被拦截、跳过整理。
+    """
     monkeypatch.setattr(settings, "TRANSFER_MAX_FAILED_RETRIES", 1)
     src_path = "/downloads/a.mkv"
     _reset_failed_retries(src_path, "local")
@@ -166,7 +180,9 @@ def test_failed_history_is_skipped_when_retry_budget_exhausted(monkeypatch):
 
 
 def test_failed_history_new_version_bypasses_exhausted_retry_budget(monkeypatch):
-    """失败预算耗尽后新版本仍应进入整理链，而不是被错误标记为已处理。"""
+    """
+    失败预算耗尽后新版本仍应进入整理链，而不是被错误标记为已处理。
+    """
     monkeypatch.setattr(settings, "TRANSFER_MAX_FAILED_RETRIES", 1)
     src_path = "/downloads/failed-new-version.mkv"
     _reset_failed_retries(src_path, "local")
@@ -198,7 +214,9 @@ def test_failed_history_new_version_bypasses_exhausted_retry_budget(monkeypatch)
 
 
 def test_should_skip_by_history_returns_true_when_retry_budget_exhausted(monkeypatch):
-    """直接调用 _should_skip_by_history：失败计数达到上限时应判定为跳过。"""
+    """
+    直接调用 _should_skip_by_history：失败计数达到上限时应判定为跳过。
+    """
     monkeypatch.setattr(settings, "TRANSFER_MAX_FAILED_RETRIES", 1)
     src_path = "/downloads/b.mkv"
     _reset_failed_retries(src_path, "local")
@@ -217,7 +235,9 @@ def test_should_skip_by_history_returns_true_when_retry_budget_exhausted(monkeyp
 
 
 def test_success_history_with_changed_size_is_retried(monkeypatch):
-    """同路径重新上传的不同版本应放行，由整理链的覆盖模式决断。"""
+    """
+    同路径重新上传的不同版本应放行，由整理链的覆盖模式决断。
+    """
     dispatcher = _build_dispatcher()
     _patch_history(monkeypatch, record=_history(status=True, size=100))
     chain = _patch_chain(monkeypatch)
@@ -227,7 +247,9 @@ def test_success_history_with_changed_size_is_retried(monkeypatch):
 
 
 def test_success_history_without_change_is_skipped(monkeypatch):
-    """已成功整理且文件未变化时跳过，并留下 debug 痕迹便于排查。"""
+    """
+    已成功整理且文件未变化时跳过，并留下 debug 痕迹便于排查。
+    """
     dispatcher = _build_dispatcher()
     _patch_history(monkeypatch, record=_history(status=True, size=100))
     chain = _patch_chain(monkeypatch)
@@ -240,7 +262,9 @@ def test_success_history_without_change_is_skipped(monkeypatch):
 
 
 def test_success_history_without_size_info_is_skipped(monkeypatch):
-    """记录中缺少源文件大小时无法比对，保守跳过而不是重复整理。"""
+    """
+    记录中缺少源文件大小时无法比对，保守跳过而不是重复整理。
+    """
     chain_calls = []
     for src_fileitem in (None, {}, {"size": None}, {"size": "未知"}, "bad-json"):
         dispatcher = _build_dispatcher()
@@ -254,7 +278,9 @@ def test_success_history_without_size_info_is_skipped(monkeypatch):
 
 
 def test_bluray_folder_without_file_size_is_skipped(monkeypatch):
-    """蓝光原盘目录没有文件大小可比对，已成功整理过时应跳过。"""
+    """
+    蓝光原盘目录没有文件大小可比对，已成功整理过时应跳过。
+    """
     dispatcher = _build_dispatcher()
     monkeypatch.setattr("app.monitor.dispatcher.fsproxy.has_file_suffix",
                         MagicMock(return_value=False))
@@ -270,7 +296,9 @@ def test_bluray_folder_without_file_size_is_skipped(monkeypatch):
 
 
 def test_success_history_wins_over_failed_history(monkeypatch):
-    """同一源路径同时存在成功与失败记录时，以成功记录为准。"""
+    """
+    同一源路径同时存在成功与失败记录时，以成功记录为准。
+    """
     dispatcher = _build_dispatcher()
     _patch_history(monkeypatch,
                    record=_history(status=False, size=100),
@@ -282,7 +310,9 @@ def test_success_history_wins_over_failed_history(monkeypatch):
 
 
 def test_history_query_error_registers_pending(monkeypatch):
-    """整理历史查询异常仍应登记待重试，而不是被当作已整理跳过。"""
+    """
+    整理历史查询异常仍应登记待重试，而不是被当作已整理跳过。
+    """
     dispatcher = _build_dispatcher()
     oper = MagicMock()
     oper.get_by_src.side_effect = RuntimeError("数据库不可用")
@@ -298,7 +328,9 @@ def test_history_query_error_registers_pending(monkeypatch):
 
 
 def test_transfer_exception_registers_pending_and_retries(monkeypatch):
-    """整理执行抛异常的文件必须登记待重试，否则已落地的文件永久丢失。"""
+    """
+    整理执行抛异常的文件必须登记待重试，否则已落地的文件永久丢失。
+    """
     dispatcher = _build_dispatcher()
     _patch_history(monkeypatch, record=None)
     chain = _patch_chain(monkeypatch, side_effect=RuntimeError("数据库瞬断"))
@@ -315,7 +347,9 @@ def test_transfer_exception_registers_pending_and_retries(monkeypatch):
 
 
 def test_transfer_exception_retry_keeps_attempt_count(monkeypatch):
-    """整理持续异常时重试次数要累计，避免无限重试。"""
+    """
+    整理持续异常时重试次数要累计，避免无限重试。
+    """
     dispatcher = _build_dispatcher()
     _patch_history(monkeypatch, record=None)
     _patch_chain(monkeypatch, side_effect=RuntimeError("持续失败"))
@@ -327,7 +361,9 @@ def test_transfer_exception_retry_keeps_attempt_count(monkeypatch):
 
 
 def test_bluray_retry_uses_origin_event_path(monkeypatch):
-    """蓝光原盘整理异常后应按原始事件路径重试，重试时重新解析目录。"""
+    """
+    蓝光原盘整理异常后应按原始事件路径重试，重试时重新解析目录。
+    """
     dispatcher = _build_dispatcher()
     monkeypatch.setattr("app.monitor.dispatcher.fsproxy.has_file_suffix",
                         MagicMock(return_value=False))
@@ -341,7 +377,9 @@ def test_bluray_retry_uses_origin_event_path(monkeypatch):
 
 
 def test_bluray_waits_for_all_download_temp_files_before_transfer(tmp_path, monkeypatch):
-    """蓝光文件事件遇到其他未完成文件时延后，并在临时后缀消失后重试。"""
+    """
+    蓝光文件事件遇到其他未完成文件时延后，并在临时后缀消失后重试。
+    """
     stream = tmp_path / "Movie" / "BDMV" / "STREAM"
     stream.mkdir(parents=True)
     event_path = stream / "00001.m2ts"
@@ -374,7 +412,9 @@ def test_bluray_waits_for_all_download_temp_files_before_transfer(tmp_path, monk
 
 
 def test_bluray_scan_error_defers_transfer(tmp_path, monkeypatch):
-    """扫描错误不可当作目录已完整，健康检查应保留重试机会。"""
+    """
+    扫描错误不可当作目录已完整，健康检查应保留重试机会。
+    """
     event_path = tmp_path / "Movie" / "BDMV" / "STREAM" / "00001.m2ts"
     dispatcher = _build_dispatcher()
     chain = _patch_chain(monkeypatch)
@@ -387,7 +427,9 @@ def test_bluray_scan_error_defers_transfer(tmp_path, monkeypatch):
 
 
 def test_bluray_temporary_event_never_enters_transfer(tmp_path, monkeypatch):
-    """直接派发临时后缀事件时也不能绕过普通文件的候选过滤。"""
+    """
+    直接派发临时后缀事件时也不能绕过普通文件的候选过滤。
+    """
     event_path = tmp_path / "Movie" / "BDMV" / "STREAM" / "00001.m2ts.!qB"
     dispatcher = _build_dispatcher()
     chain = _patch_chain(monkeypatch)

@@ -1,4 +1,6 @@
-"""用真实音频与链接验证标签刮削不会改写PT源文件。"""
+"""
+用真实音频与链接验证标签刮削不会改写PT源文件。
+"""
 
 import base64
 import hashlib
@@ -34,7 +36,9 @@ _TRACK = "b10bbbfc-cf9e-42e0-be17-e2c3e1d2600d"
 
 
 def _audio_file(tmp_path, container):
-    """构造真实静音容器，编码来源与读取回归共用，不需要网络或ffmpeg。"""
+    """
+    构造真实静音容器，编码来源与读取回归共用，不需要网络或ffmpeg。
+    """
     path = tmp_path / f"seed.{container}"
     factories = {"wav": _write_wave, "dsf": _write_dsf, "aiff": _write_aiff, "dff": _write_dff}
     if container in factories:
@@ -48,7 +52,9 @@ def _audio_file(tmp_path, container):
 @pytest.mark.parametrize("wrong_extension", [False, True])
 def test_native_container_writes_metadata_cover_and_release_ids_without_touching_seed(
         tmp_path, container, link_type, wrong_extension):
-    """真实容器及错误后缀都须可补写标签/封面，保留不同身份与年份且源字节不变。"""
+    """
+    真实容器及错误后缀都须可补写标签/封面，保留不同身份与年份且源字节不变。
+    """
     source = _audio_file(tmp_path, container)
     extension = ("mp3" if container == "wav" else "wav") if wrong_extension else container
     target = tmp_path / f"library.{extension}"
@@ -86,7 +92,9 @@ def test_native_container_writes_metadata_cover_and_release_ids_without_touching
 
 @pytest.mark.parametrize("link_type", ["hardlink", "symlink"])
 def test_music_metadata_write_detaches_destination_from_seed(tmp_path, link_type):
-    """目标补写曲名后源文件仍逐字节相同，硬/软链接均不得穿透修改源标签。"""
+    """
+    目标补写曲名后源文件仍逐字节相同，硬/软链接均不得穿透修改源标签。
+    """
     source = tmp_path / "seed.flac"
     shutil.copyfile(Path(__file__).parent / "fixtures/audio/silence.flac", source)
     tags = FLAC(source)
@@ -106,7 +114,9 @@ def test_music_metadata_write_detaches_destination_from_seed(tmp_path, link_type
 
 @pytest.mark.parametrize("link_type", ["hardlink", "symlink"])
 def test_failed_cover_write_keeps_seed_and_original_target(tmp_path, monkeypatch, link_type):
-    """即使曲名已写入副本，后续封面失败也不能提交部分结果或改写源文件。"""
+    """
+    即使曲名已写入副本，后续封面失败也不能提交部分结果或改写源文件。
+    """
     source = tmp_path / "seed.flac"
     shutil.copyfile(Path(__file__).parent / "fixtures/audio/silence.flac", source)
     target = tmp_path / "library.flac"
@@ -122,7 +132,9 @@ def test_failed_cover_write_keeps_seed_and_original_target(tmp_path, monkeypatch
 
 
 def test_disabled_metadata_outputs_do_not_detach_hardlink(tmp_path):
-    """全部输出关闭时无需复制音频，保留原有链接及空间节约。"""
+    """
+    全部输出关闭时无需复制音频，保留原有链接及空间节约。
+    """
     source = tmp_path / "seed.flac"
     shutil.copyfile(Path(__file__).parent / "fixtures/audio/silence.flac", source)
     target = tmp_path / "library.flac"
@@ -136,7 +148,9 @@ def test_disabled_metadata_outputs_do_not_detach_hardlink(tmp_path):
 @pytest.mark.parametrize("overwrite", [True, False])
 @pytest.mark.parametrize("with_cover", [False, True])
 def test_unchanged_metadata_keeps_existing_link(tmp_path, monkeypatch, container, overwrite, with_cover):
-    """没有实际标签变化时保留硬链接，不能无故永久复制整张专辑占用空间。"""
+    """
+    没有实际标签变化时保留硬链接，不能无故永久复制整张专辑占用空间。
+    """
     source = _audio_file(tmp_path, container)
     info = MusicInfo(title="Existing", artists=["Artist"], album="Album", track_number=1, disc_number=1)
     assert AudioMetadataHelper.write(source, info, cover_data=_COVER if with_cover else None)
@@ -151,7 +165,9 @@ def test_unchanged_metadata_keeps_existing_link(tmp_path, monkeypatch, container
 
 
 def test_read_only_seed_permissions_are_preserved(tmp_path):
-    """PT源只读也能补写独立目标，只读权限和源文件内容均保持原样。"""
+    """
+    PT源只读也能补写独立目标，只读权限和源文件内容均保持原样。
+    """
     source = _audio_file(tmp_path, "flac")
     source.chmod(0o444)
     target = tmp_path / "library.flac"
@@ -170,7 +186,9 @@ def test_read_only_seed_permissions_are_preserved(tmp_path):
 @pytest.mark.parametrize("write_tags", [False, True])
 def test_mapped_seed_permissions_leave_detached_audio_readable(
         tmp_path, monkeypatch, visible_mode, link_type, container, write_tags):
-    """模拟挂载层映射的权限，标签或封面写入后的副本至少可读写且不改源权限。"""
+    """
+    模拟挂载层映射的权限，标签或封面写入后的副本至少可读写且不改源权限。
+    """
     source = _audio_file(tmp_path, container)
     source.chmod(0o640)
     target = tmp_path / f"library.{container}"
@@ -180,7 +198,9 @@ def test_mapped_seed_permissions_leave_detached_audio_readable(
     source_stat = source.stat()
 
     def mapped_stat(path, *args, **kwargs):
-        """只映射源 inode 的可见 mode，实际读取仍由宿主权限模拟 NAS ACL 放行。"""
+        """
+        只映射源 inode 的可见 mode，实际读取仍由宿主权限模拟 NAS ACL 放行。
+        """
         result = original_stat(path, *args, **kwargs)
         if (result.st_dev, result.st_ino) == (source_stat.st_dev, source_stat.st_ino):
             values = {name: getattr(result, name) for name in dir(result) if name.startswith("st_")}
@@ -210,14 +230,18 @@ def test_mapped_seed_permissions_leave_detached_audio_readable(
 
 
 def test_concurrent_destination_change_cancels_replacement(tmp_path, monkeypatch):
-    """目标被另一整理过程替换时不提交过时副本，也不覆盖另一过程的新内容。"""
+    """
+    目标被另一整理过程替换时不提交过时副本，也不覆盖另一过程的新内容。
+    """
     source = _audio_file(tmp_path, "flac")
     target = tmp_path / "library.flac"
     os.link(source, target)
     before = source.read_bytes()
 
     def change_destination(**_kwargs):
-        """在临时副本写完标签后模拟另一个进程更新目录项。"""
+        """
+        在临时副本写完标签后模拟另一个进程更新目录项。
+        """
         target.unlink()
         target.write_bytes(b"concurrent")
 
@@ -231,7 +255,9 @@ def test_concurrent_destination_change_cancels_replacement(tmp_path, monkeypatch
 
 @pytest.mark.parametrize("link_type", ["hardlink", "symlink"])
 def test_lyricsfile_overwrite_keeps_seed_sidecar(tmp_path, link_type):
-    """Lyricsfile覆盖也须替换目标目录项，不能穿透从下载目录复制的链接。"""
+    """
+    Lyricsfile覆盖也须替换目标目录项，不能穿透从下载目录复制的链接。
+    """
     source = tmp_path / "seed.lyricsfile.yaml"
     source.write_text("original", encoding="utf-8")
     audio_path = tmp_path / "library.flac"
@@ -249,7 +275,9 @@ def test_lyricsfile_overwrite_keeps_seed_sidecar(tmp_path, link_type):
 @pytest.mark.parametrize("model", [MusicInfo, MetaMusic])
 @pytest.mark.parametrize("display_year", [2003, "2003"])
 def test_original_year_does_not_become_current_release_date(tmp_path, model, display_year):
-    """只确定首发年份的专辑不能制造当前发行年份，标签仍能保留和展示首发年。"""
+    """
+    只确定首发年份的专辑不能制造当前发行年份，标签仍能保留和展示首发年。
+    """
     path = _audio_file(tmp_path, "flac")
     assert AudioMetadataHelper.write(path, model(title="Album", music_type="album", year=display_year, original_year=2003))
     tags = FLAC(path)
@@ -260,7 +288,9 @@ def test_original_year_does_not_become_current_release_date(tmp_path, model, dis
 
 @pytest.mark.parametrize("mode", ["copy", "link", "softlink"])
 def test_real_transfer_followed_by_scrape_preserves_seed_and_updates_library(tmp_path, monkeypatch, mode):
-    """真实规划、存储执行及刮削入口串联后，补写只作用于最终命名的媒体库文件。"""
+    """
+    真实规划、存储执行及刮削入口串联后，补写只作用于最终命名的媒体库文件。
+    """
     source = _audio_file(tmp_path, "flac")
     before = source.read_bytes()
     storage = LocalStorage()
@@ -299,20 +329,30 @@ def test_real_transfer_followed_by_scrape_preserves_seed_and_updates_library(tmp
 
 
 def test_native_ape_tags_keep_standard_names_and_identity_namespaces(tmp_path):
-    """真实APEv2标签块保存后可按播放器通用键读回；此例不宣称验证APE音频解码。"""
+    """
+    真实APEv2标签块保存后可按播放器通用键读回；此例不宣称验证APE音频解码。
+    """
     class ApeTagFile:
-        """把原生APEv2标签块交给通用音频写入逻辑，不伪造标签映射行为。"""
+        """
+        把原生APEv2标签块交给通用音频写入逻辑，不伪造标签映射行为。
+        """
 
         def __init__(self):
-            """创建尚未附着音频的真实APEv2标签块。"""
+            """
+            创建尚未附着音频的真实APEv2标签块。
+            """
             self.tags = APEv2()
 
         def __setitem__(self, key, value):
-            """由Mutagen负责原生字段编码和校验。"""
+            """
+            由Mutagen负责原生字段编码和校验。
+            """
             self.tags[key] = value
 
         def save(self, path):
-            """写入实际APEv2二进制结构以验证读写回环。"""
+            """
+            写入实际APEv2二进制结构以验证读写回环。
+            """
             self.tags.save(path)
 
     path = tmp_path / "native-ape-tags"
@@ -337,7 +377,9 @@ def test_native_ape_tags_keep_standard_names_and_identity_namespaces(tmp_path):
 
 @pytest.mark.parametrize("container", ["wav", "dsf", "flac", "mp3", "m4a"])
 def test_writing_other_fields_preserves_more_precise_tag_dates(tmp_path, container):
-    """改曲名时不能把已有完整日期截断成年份；各容器都保留同年日期的精度。"""
+    """
+    改曲名时不能把已有完整日期截断成年份；各容器都保留同年日期的精度。
+    """
     path = _audio_file(tmp_path, container)
     assert AudioMetadataHelper.write(path, MusicInfo(title="Old"))
     audio = MutagenFile(path)

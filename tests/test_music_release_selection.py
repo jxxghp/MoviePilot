@@ -1,4 +1,6 @@
-"""人工选定具体发行的HTTP、来源核验和整理预览/执行合同。"""
+"""
+人工选定具体发行的HTTP、来源核验和整理预览/执行合同。
+"""
 
 import asyncio
 from copy import deepcopy
@@ -32,7 +34,9 @@ DELUXE = "c3333333-3333-4333-8333-333333333333"
 
 
 def _payloads():
-    """发行组内嵌列表只展示标准版，豪华版需直查且包含不同曲目与日期。"""
+    """
+    发行组内嵌列表只展示标准版，豪华版需直查且包含不同曲目与日期。
+    """
     group = {"id": GROUP, "title": "Album", "primary-type": "Album", "first-release-date": "2004",
              "artist-credit": [{"artist": {"name": "Artist"}}],
              "releases": [{"id": STANDARD, "status": "Official", "date": "2004"}]}
@@ -46,11 +50,15 @@ def _payloads():
 
 
 def _module(monkeypatch, group, release):
-    """隔离唯一HTTP边界，同步/异步均走真实MusicBrainz投影及版本选择。"""
+    """
+    隔离唯一HTTP边界，同步/异步均走真实MusicBrainz投影及版本选择。
+    """
     calls = []
 
     def request(path, params=None):
-        """记录请求并拒绝未声明的回退、别名或其它外网访问。"""
+        """
+        记录请求并拒绝未声明的回退、别名或其它外网访问。
+        """
         calls.append((path, params))
         assert path in {f"/release-group/{GROUP}", f"/release/{DELUXE}"}
         return deepcopy(group if path.startswith("/release-group/") else release)
@@ -63,7 +71,9 @@ def _module(monkeypatch, group, release):
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize("invalid", [None, "group", "release", "membership", "missing", "empty_tracks"])
 def test_explicit_release_is_verified_without_default_fallback(monkeypatch, asynchronous, invalid):
-    """缺失列表不妨碍直查；错误实体/归属/服务空响应均不能回退默认版。"""
+    """
+    缺失列表不妨碍直查；错误实体/归属/服务空响应均不能回退默认版。
+    """
     group, release = _payloads()
     if invalid == "group":
         group["id"] = STANDARD
@@ -94,7 +104,9 @@ def test_explicit_release_is_verified_without_default_fallback(monkeypatch, asyn
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize("returned_release", [STANDARD, None, DELUXE])
 def test_source_chain_rejects_provider_ignoring_explicit_edition(monkeypatch, asynchronous, returned_release):
-    """旧插件忽略新入参而返回默认版时必须失败，不能静默把它当成人工选择。"""
+    """
+    旧插件忽略新入参而返回默认版时必须失败，不能静默把它当成人工选择。
+    """
     chain = MusicBrainzChain()
     album = MusicAlbumInfo(media_source=MediaSource.MusicBrainz, media_id=GROUP,
                            musicbrainz_release_id=returned_release, musicbrainz_release_group_id=GROUP,
@@ -109,7 +121,9 @@ def test_source_chain_rejects_provider_ignoring_explicit_edition(monkeypatch, as
 
 
 def test_old_album_lookup_omits_new_keyword_and_other_sources_refuse_it(monkeypatch):
-    """未使用新能力的来源签名保持兼容，显式MB发行不跨源解释。"""
+    """
+    未使用新能力的来源签名保持兼容，显式MB发行不跨源解释。
+    """
     for chain in (MusicBrainzChain(), TheAudioDbChain()):
         dispatch = Mock(return_value=None)
         monkeypatch.setattr(chain, "run_module", dispatch)
@@ -123,7 +137,9 @@ def test_old_album_lookup_omits_new_keyword_and_other_sources_refuse_it(monkeypa
 @pytest.mark.parametrize("changes", [{"media_source": "theaudiodb"}, {"media_id": None}, {"music_type": "recording"},
                                     {"music_type": None}, {"type_name": "电影"}, {"musicbrainz_release_id": "../bad"}])
 def test_manual_request_rejects_conflicting_release_namespace(changes):
-    """请求Schema直接拒绝跨来源、录音或影视身份组合与非法发行ID。"""
+    """
+    请求Schema直接拒绝跨来源、录音或影视身份组合与非法发行ID。
+    """
     values = dict(media_source="musicbrainz", media_id=GROUP, music_type="album", musicbrainz_release_id=DELUXE)
     with pytest.raises(ValidationError):
         ManualTransferItem(**(values | changes))
@@ -131,7 +147,9 @@ def test_manual_request_rejects_conflicting_release_namespace(changes):
 
 @pytest.mark.anyio
 async def test_album_http_preserves_edition_and_rejects_wrong_source(monkeypatch):
-    """实际HTTP校验并传递具体发行ID，旧请求不新增关键字，错误归属返回404。"""
+    """
+    实际HTTP校验并传递具体发行ID，旧请求不新增关键字，错误归属返回404。
+    """
     group, release = _payloads()
     module, _calls = _module(monkeypatch, group, release)
     album = module.music_album(MediaSource.MusicBrainz, GROUP, musicbrainz_release_id=DELUXE)
@@ -157,7 +175,9 @@ async def test_album_http_preserves_edition_and_rejects_wrong_source(monkeypatch
 
 @pytest.mark.parametrize("selected_files", [False, True])
 def test_manual_edition_preview_execution_and_replay_keep_same_tracks(tmp_path, monkeypatch, selected_files):
-    """真实FLAC经API到曲目规划，预览与执行同版；冻结任务重放不另选标准版或改源文件。"""
+    """
+    真实FLAC经API到曲目规划，预览与执行同版；冻结任务重放不另选标准版或改源文件。
+    """
     paths = _audio_files(tmp_path / "Artist - Album")
     original = [sha256(path.read_bytes()).hexdigest() for path in paths]
     items = [make_fileitem(str(path)) for path in paths]
@@ -174,7 +194,9 @@ def test_manual_edition_preview_execution_and_replay_keep_same_tracks(tmp_path, 
     planned = []
 
     def execute(task, callback=None):
-        """在真实规划后的文件操作边界记录版本，不接触生产存储。"""
+        """
+        在真实规划后的文件操作边界记录版本，不接触生产存储。
+        """
         planned.append((task.preview, task.mediainfo.to_dict(), task.planning_input))
         if task.preview and callback:
             callback(task, TransferInfo(success=True))
@@ -203,7 +225,9 @@ def test_manual_edition_preview_execution_and_replay_keep_same_tracks(tmp_path, 
 
 
 def test_invalid_manual_release_cannot_enqueue_or_fall_back(monkeypatch):
-    """旧调用绕过HTTP时同样拒绝不完整发行身份，查不到发行也不进入文件整理。"""
+    """
+    旧调用绕过HTTP时同样拒绝不完整发行身份，查不到发行也不进入文件整理。
+    """
     owner = make_transfer_chain()
     execute = Mock()
     monkeypatch.setattr(owner, "do_transfer", execute)
@@ -218,7 +242,9 @@ def test_invalid_manual_release_cannot_enqueue_or_fall_back(monkeypatch):
 
 
 def test_explicit_release_remote_storage_fails_before_lookup(monkeypatch):
-    """远端无法读取曲目证据时明确拒绝指定发行，防止退回逐文件默认识别。"""
+    """
+    远端无法读取曲目证据时明确拒绝指定发行，防止退回逐文件默认识别。
+    """
     owner = make_transfer_chain()
     lookup = Mock()
     monkeypatch.setattr("app.chain.transfer.history.MediaChain", lookup)
@@ -230,7 +256,9 @@ def test_explicit_release_remote_storage_fails_before_lookup(monkeypatch):
 
 
 def test_explicit_release_cue_keeps_album_identity_and_companion(tmp_path, monkeypatch):
-    """整轨按CUE逻辑曲目核验所选版，音频和索引仍作为同一专辑，不伪造单曲身份。"""
+    """
+    整轨按CUE逻辑曲目核验所选版，音频和索引仍作为同一专辑，不伪造单曲身份。
+    """
     from tests.test_music_cue import CUE, _image_pair
 
     cue_text = CUE.replace("测试歌手", "Artist").replace("专辑示例", "Album")
@@ -251,7 +279,9 @@ def test_explicit_release_cue_keeps_album_identity_and_companion(tmp_path, monke
     planned = []
 
     def capture(task, callback=None):
-        """在文件处理边界核验音频与配套文件共享Album身份。"""
+        """
+        在文件处理边界核验音频与配套文件共享Album身份。
+        """
         planned.append(task)
         callback(task, TransferInfo(success=True))
         return True, ""
@@ -270,7 +300,9 @@ def test_explicit_release_cue_keeps_album_identity_and_companion(tmp_path, monke
 @pytest.mark.parametrize("field,value", [("musicbrainz_release_id", STANDARD), ("musicbrainz_release_group_id", STANDARD),
                                        ("album_id", STANDARD), ("media_source", "theaudiodb")])
 def test_explicit_album_rejects_mixed_provider_track_identities(monkeypatch, field, value):
-    """插件返回的专辑与曲目必须来自同一个发行版，不因专辑外壳ID正确而放行混合数据。"""
+    """
+    插件返回的专辑与曲目必须来自同一个发行版，不因专辑外壳ID正确而放行混合数据。
+    """
     group, release = _payloads()
     module, _calls = _module(monkeypatch, group, release)
     album = module.music_album(MediaSource.MusicBrainz, GROUP, musicbrainz_release_id=DELUXE)

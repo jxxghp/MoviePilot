@@ -1,4 +1,6 @@
-"""可选 SDK 的按需导入合同：存储发现与 API 路由加载不得把 115、SMB、Passkey 的 SDK 带入常驻内存。"""
+"""
+可选 SDK 的按需导入合同：存储发现与 API 路由加载不得把 115、SMB、Passkey 的 SDK 带入常驻内存。
+"""
 
 from __future__ import annotations
 
@@ -11,7 +13,9 @@ _OPTIONAL_SDKS = ("oss2", "aliyunsdkcore", "aliyunsdkkms", "smbclient", "smbprot
 
 
 def _run_isolated(script: str) -> dict:
-    """在全新解释器中执行导入探针，避免当前 pytest 模块缓存干扰。"""
+    """
+    在全新解释器中执行导入探针，避免当前 pytest 模块缓存干扰。
+    """
     completed = subprocess.run(
         [sys.executable, "-c", script],
         check=True,
@@ -22,7 +26,9 @@ def _run_isolated(script: str) -> dict:
 
 
 def test_storage_discovery_and_api_routes_keep_optional_sdks_cold() -> None:
-    """文件整理模块发现存储、注册 API 路由后，可选 SDK 仍未导入。"""
+    """
+    文件整理模块发现存储、注册 API 路由后，可选 SDK 仍未导入。
+    """
     result = _run_isolated(
         f"""
 import json

@@ -1,9 +1,15 @@
+"""
+验证媒体服务器独立同步周期和稳定的调度任务标识。
+"""
+
 from app.scheduler.facade import Scheduler
 from app.schemas.system import MediaServerConf
 
 
 def test_build_mediaserver_sync_schedules_uses_server_interval_and_legacy_fallback():
-    """媒体服务器自动任务应支持独立周期，并在缺省时回退旧全局值。"""
+    """
+    媒体服务器自动任务应支持独立周期，并在缺省时回退旧全局值。
+    """
     schedules = Scheduler._build_mediaserver_sync_schedules(
         mediaservers=[
             MediaServerConf(name="default", enabled=True),
@@ -23,7 +29,9 @@ def test_build_mediaserver_sync_schedules_uses_server_interval_and_legacy_fallba
 
 
 def test_build_mediaserver_sync_schedules_keeps_ids_stable():
-    """同名媒体服务器重载配置后应生成稳定的自动任务标识。"""
+    """
+    同名媒体服务器重载配置后应生成稳定的自动任务标识。
+    """
     mediaservers = [MediaServerConf(name="My Plex", enabled=True, sync_interval=8)]
 
     first = Scheduler._build_mediaserver_sync_schedules(mediaservers, 6)

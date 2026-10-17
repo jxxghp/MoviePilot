@@ -1,4 +1,6 @@
-"""实际发行身份、曲目覆盖率、候选歧义及 CUE 整专匹配的回归。"""
+"""
+实际发行身份、曲目覆盖率、候选歧义及 CUE 整专匹配的回归。
+"""
 
 import asyncio
 from copy import deepcopy
@@ -20,7 +22,9 @@ from tests.test_music_cue import _image_pair
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_release_id_uses_direct_lookup_without_search(monkeypatch, asynchronous):
-    """真实发行ID进入同步/异步直查，不重复按文件名搜索候选。"""
+    """
+    真实发行ID进入同步/异步直查，不重复按文件名搜索候选。
+    """
     module = MusicBrainzModule()
     detail = _release_detail("release-direct", "七里香", "周杰伦", ALBUM_TRACKS)
     request = AsyncMock(return_value=detail) if asynchronous else Mock(return_value=detail)
@@ -38,7 +42,9 @@ def test_release_id_uses_direct_lookup_without_search(monkeypatch, asynchronous)
 
 @pytest.mark.parametrize("field,value", [("musicbrainz_release_id", "other"), ("musicbrainz_release_group_id", "other"), ("release_year", 2023)])
 def test_identity_and_current_release_year_conflicts_are_not_offset_by_score(field, value):
-    """曲目完全一致也不能抵消明确发行身份或当前发行年的冲突。"""
+    """
+    曲目完全一致也不能抵消明确发行身份或当前发行年的冲突。
+    """
     meta = MetaMusic(album="七里香", artists=["周杰伦"], **{field: value})
     detail = _release_detail("release-1", "七里香", "周杰伦", ALBUM_TRACKS)
 
@@ -46,14 +52,18 @@ def test_identity_and_current_release_year_conflicts_are_not_offset_by_score(fie
 
 
 def test_different_artist_with_identical_titles_and_durations_is_rejected():
-    """同名专辑的另一位艺人不能凭相同结构获得高分通过。"""
+    """
+    同名专辑的另一位艺人不能凭相同结构获得高分通过。
+    """
     detail = _release_detail("release-1", "七里香", "Different Artist", ALBUM_TRACKS)
 
     assert MusicBrainzModule._select_release_match(MetaMusic(album="七里香", artists=["周杰伦"]), _local_tracks(), [detail]) is None
 
 
 def test_different_recordings_with_tied_scores_require_confirmation():
-    """实际录音序列不同的近分候选不能按搜索返回顺序自动选中。"""
+    """
+    实际录音序列不同的近分候选不能按搜索返回顺序自动选中。
+    """
     first = _release_detail("release-1", "七里香", "周杰伦", ALBUM_TRACKS)
     other = deepcopy(first)
     other["id"] = "release-2"
@@ -65,7 +75,9 @@ def test_different_recordings_with_tied_scores_require_confirmation():
 
 
 def test_equivalent_release_content_ignores_response_order():
-    """同发行组的录音和位置不变时，响应数组顺序不产生虚假歧义。"""
+    """
+    同发行组的录音和位置不变时，响应数组顺序不产生虚假歧义。
+    """
     first = _release_detail("release-1", "七里香", "周杰伦", ALBUM_TRACKS)
     other = deepcopy(first)
     other["id"] = "release-2"
@@ -75,7 +87,9 @@ def test_equivalent_release_content_ignores_response_order():
 
 
 def test_actual_performer_conflict_is_rejected_but_album_credit_is_not_performer():
-    """合辑逐曲艺人必须核对，目录继承的专辑艺人不能冒充每首歌的演唱者。"""
+    """
+    合辑逐曲艺人必须核对，目录继承的专辑艺人不能冒充每首歌的演唱者。
+    """
     detail = _release_detail("release-1", "七里香", "Various Artists", ALBUM_TRACKS)
     for track in detail["media"][0]["tracks"]:
         track["recording"]["artist-credit"] = [{"artist": {"id": "guest", "name": "Guest"}}]
@@ -92,7 +106,9 @@ def test_actual_performer_conflict_is_rejected_but_album_credit_is_not_performer
 
 
 def test_track_coverage_and_matching_are_order_independent():
-    """评分实际使用曲目对位，乱序文件不改变匹配结果或分数。"""
+    """
+    评分实际使用曲目对位，乱序文件不改变匹配结果或分数。
+    """
     detail = _release_detail("release-1", "七里香", "周杰伦", ALBUM_TRACKS)
     meta = MetaMusic(album="七里香", artists=["周杰伦"])
     first = MusicBrainzModule._select_release_match(meta, _local_tracks(), [detail])
@@ -104,7 +120,9 @@ def test_track_coverage_and_matching_are_order_independent():
 
 
 def test_unmatched_bonus_and_duplicate_files_reject_entire_candidate():
-    """不能先接受高分专辑，再让额外文件随排序绑定或部分冒认身份。"""
+    """
+    不能先接受高分专辑，再让额外文件随排序绑定或部分冒认身份。
+    """
     detail = _release_detail("release-1", "七里香", "周杰伦", ALBUM_TRACKS)
     meta = MetaMusic(album="七里香", artists=["周杰伦"])
     for extras in ([MetaMusic(title="Unrelated Bonus")], [_local_tracks()[0]]):
@@ -112,14 +130,18 @@ def test_unmatched_bonus_and_duplicate_files_reject_entire_candidate():
 
 
 def test_partial_album_with_known_titles_still_matches():
-    """只下载部分歌曲时要求本地文件全覆盖，不要求必须凑齐完整专辑。"""
+    """
+    只下载部分歌曲时要求本地文件全覆盖，不要求必须凑齐完整专辑。
+    """
     detail = _release_detail("release-1", "七里香", "周杰伦", ALBUM_TRACKS)
 
     assert MusicBrainzModule._select_release_match(MetaMusic(album="七里香", artists=["周杰伦"]), _local_tracks()[1:], [detail]) is not None
 
 
 def test_absence_of_bonus_tracks_does_not_prove_standard_edition():
-    """已有曲目也可能来自豪华版的部分下载，少了附赠曲本身不能消除发行歧义。"""
+    """
+    已有曲目也可能来自豪华版的部分下载，少了附赠曲本身不能消除发行歧义。
+    """
     standard = _release_detail("standard", "七里香", "周杰伦", ALBUM_TRACKS)
     deluxe = _release_detail("deluxe", "七里香", "周杰伦", [*ALBUM_TRACKS, ("Bonus", 200)])
 
@@ -127,7 +149,9 @@ def test_absence_of_bonus_tracks_does_not_prove_standard_edition():
 
 
 def test_explicit_live_version_cannot_select_studio_album():
-    """已知现场录音版本先参与准入，不能先选录音室版再逐曲失败。"""
+    """
+    已知现场录音版本先参与准入，不能先选录音室版再逐曲失败。
+    """
     studio = _release_detail("studio", "七里香", "周杰伦", ALBUM_TRACKS)
     live = deepcopy(studio)
     live["id"] = "live"
@@ -141,7 +165,9 @@ def test_explicit_live_version_cannot_select_studio_album():
 
 @pytest.mark.parametrize("name", ["Music", "inbox", "Downloads", "Various Artists"])
 def test_generic_directory_does_not_generate_album_search(name):
-    """普通目录只能使用实际曲名反查，不能重复查询伪专辑。"""
+    """
+    普通目录只能使用实际曲名反查，不能重复查询伪专辑。
+    """
     queries = MusicBrainzModule._release_queries(MetaMusic(title=name), _local_tracks())
 
     assert queries
@@ -149,7 +175,9 @@ def test_generic_directory_does_not_generate_album_search(name):
 
 
 def test_real_tag_album_and_numeric_song_are_searchable():
-    """真正名为 Music 的专辑和数字歌曲不会被目录占位规则丢弃。"""
+    """
+    真正名为 Music 的专辑和数字歌曲不会被目录占位规则丢弃。
+    """
     queries = MusicBrainzModule._release_queries(
         MetaMusic(album="Music", field_sources={"album": "tag"}),
         [MetaMusic(title="22", field_sources={"title": "tag"})],
@@ -160,20 +188,26 @@ def test_real_tag_album_and_numeric_song_are_searchable():
 
 
 def test_release_group_id_limits_queries_to_its_namespace():
-    """发行组ID只约束发行搜索，不能冒充具体发行或录音ID。"""
+    """
+    发行组ID只约束发行搜索，不能冒充具体发行或录音ID。
+    """
     assert MusicBrainzModule._release_queries(MetaMusic(musicbrainz_release_group_id="group-1"), _local_tracks()) == ["rgid:group-1"]
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_track_title_lookup_uses_recording_index_then_related_releases(monkeypatch, asynchronous):
-    """按官方 Recording 搜索响应形状回放，曲名反查不能向 Release 索引发送 recording 字段。"""
+    """
+    按官方 Recording 搜索响应形状回放，曲名反查不能向 Release 索引发送 recording 字段。
+    """
     module = MusicBrainzModule()
     detail = _release_detail("related-release", "七里香", "周杰伦", ALBUM_TRACKS)
     recording_payload = {"recordings": [{"id": "rec-1", "score": 100, "title": "我的地盘",
                                         "releases": [{"id": "related-release", "title": "七里香"}]}]}
 
     def respond(path, params=None):
-        """重放搜索和详情，任何错误的实体路由都直接失败。"""
+        """
+        重放搜索和详情，任何错误的实体路由都直接失败。
+        """
         if path == "/recording":
             assert 'recording:"我的地盘"' in params["query"]
             return recording_payload
@@ -190,7 +224,9 @@ def test_track_title_lookup_uses_recording_index_then_related_releases(monkeypat
 
 
 def test_multiple_recording_hits_rank_shared_album_ahead_of_first_songs_single():
-    """有限详情预算先用于多首歌共同出现的发行，不被第一首歌的多个单曲版占满。"""
+    """
+    有限详情预算先用于多首歌共同出现的发行，不被第一首歌的多个单曲版占满。
+    """
     releases, seen = [], set()
     payload = {"recordings": [
         {"id": "one", "score": "100", "releases": [{"id": "single"}, {"id": "album"}]},
@@ -208,7 +244,9 @@ def test_multiple_recording_hits_rank_shared_album_ahead_of_first_songs_single()
 
 
 def test_reissue_keeps_original_and_current_year_distinct():
-    """原始2004年与2023再版并不冲突，明确的当前年份仍必须匹配。"""
+    """
+    原始2004年与2023再版并不冲突，明确的当前年份仍必须匹配。
+    """
     detail = _release_detail("reissue", "七里香", "周杰伦", ALBUM_TRACKS)
     detail["date"] = "2023-01-01"
     detail["release-group"]["first-release-date"] = "2004-08-03"
@@ -224,7 +262,9 @@ def test_reissue_keeps_original_and_current_year_distinct():
 
 
 def test_context_and_cache_include_release_identity_and_years(tmp_path):
-    """标签和种子传播发行证据，手动改变发行上下文不会命中旧目录缓存。"""
+    """
+    标签和种子传播发行证据，手动改变发行上下文不会命中旧目录缓存。
+    """
     tracks = [MetaMusic(album="七里香", musicbrainz_release_id="release-1", original_year=2004, release_year=2023)]
     context = _album_context_with_resource(tmp_path, tracks, None)
 
@@ -236,7 +276,9 @@ def test_context_and_cache_include_release_identity_and_years(tmp_path):
 
 
 def test_conflicting_release_context_never_reaches_network(tmp_path, monkeypatch):
-    """直接目录识别遇到多发行强标签冲突时明确保留未识别，不能按多数投票选错版。"""
+    """
+    直接目录识别遇到多发行强标签冲突时明确保留未识别，不能按多数投票选错版。
+    """
     files = [tmp_path / f"{index}.flac" for index in (1, 2)]
     metas = [MetaMusic(title=str(index), musicbrainz_release_id=f"release-{index}") for index in (1, 2)]
     monkeypatch.setattr(AudioMetadataHelper, "read_many", Mock(return_value=metas))
@@ -249,7 +291,9 @@ def test_conflicting_release_context_never_reaches_network(tmp_path, monkeypatch
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_single_cue_image_matches_as_two_logical_tracks(tmp_path, monkeypatch, asynchronous):
-    """一个整轨文件使用两首逻辑歌曲验证，输出必须仍是专辑而非第一首录音。"""
+    """
+    一个整轨文件使用两首逻辑歌曲验证，输出必须仍是专辑而非第一首录音。
+    """
     audio, cue = _image_pair(tmp_path)
     detail = _release_detail("image-release", "专辑示例", "测试歌手", [("第一首歌曲", 1), ("第二首歌曲", 2)])
     album = MusicBrainzModule._release_to_album(detail)
@@ -273,7 +317,9 @@ def test_single_cue_image_matches_as_two_logical_tracks(tmp_path, monkeypatch, a
 
 
 def test_manual_cue_selection_validates_tracks_before_binding_album(tmp_path):
-    """手选发行也不能给曲目数量或时长不符的整轨直接绑定任意专辑。"""
+    """
+    手选发行也不能给曲目数量或时长不符的整轨直接绑定任意专辑。
+    """
     audio, _cue = _image_pair(tmp_path)
     wrong = MusicBrainzModule._release_to_album(_release_detail("wrong", "Wrong", "Other", [("First", 180)]))
 

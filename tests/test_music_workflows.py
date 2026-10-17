@@ -1,3 +1,7 @@
+"""
+验证音乐工作流的搜索条件拆分与标题规格清理。
+"""
+
 import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
@@ -15,7 +19,9 @@ from app.schemas.types import MediaSource
 
 
 def test_parse_query_supports_artist_title_format():
-    """艺术家与标题格式应拆分为结构化搜索条件。"""
+    """
+    艺术家与标题格式应拆分为结构化搜索条件。
+    """
     meta = MetaMusic.parse_query("  周杰伦  -  晴天  ")
 
     assert meta.artists == ["周杰伦"]
@@ -24,7 +30,9 @@ def test_parse_query_supports_artist_title_format():
 
 
 def test_parse_query_keeps_plain_title():
-    """普通文本应保留为歌曲或专辑标题。"""
+    """
+    普通文本应保留为歌曲或专辑标题。
+    """
     meta = MetaMusic.parse_query("  Random   Access Memories ")
 
     assert meta.artists == []
@@ -32,7 +40,9 @@ def test_parse_query_keeps_plain_title():
 
 
 def test_parse_query_strips_quality_tokens_before_artist_split():
-    """音质规格不应参与艺术家/曲名拆分，年份括号与格式后缀需剔除。"""
+    """
+    音质规格不应参与艺术家/曲名拆分，年份括号与格式后缀需剔除。
+    """
     meta = MetaMusic.parse_query("毛阿敏 - 永遠是朋友(2000) - ALAC [16B-44.1kHz]")
 
     assert meta.artists == ["毛阿敏"]
@@ -41,7 +51,9 @@ def test_parse_query_strips_quality_tokens_before_artist_split():
 
 
 def test_parse_query_does_not_misplit_quality_only_tail():
-    """无艺术家时格式规格段不能被误拆成曲名，曲名不能丢字。"""
+    """
+    无艺术家时格式规格段不能被误拆成曲名，曲名不能丢字。
+    """
     meta = MetaMusic.parse_query("永遠是朋友(2000) - ALAC [16B-44.1kHz]")
 
     assert meta.artists == []
@@ -49,7 +61,9 @@ def test_parse_query_does_not_misplit_quality_only_tail():
 
 
 def test_parse_query_strips_trailing_artist_suffix():
-    """曲名尾部重复的艺术家署名应被剥离，不作为曲名参与检索。"""
+    """
+    曲名尾部重复的艺术家署名应被剥离，不作为曲名参与检索。
+    """
     meta = MetaMusic.parse_query("毛阿敏 - 名人名曲-毛阿敏(2000)")
 
     assert meta.artists == ["毛阿敏"]
@@ -63,7 +77,9 @@ def test_parse_query_strips_trailing_artist_suffix():
 
 
 def test_parse_query_keeps_non_artist_suffix():
-    """曲名尾段与艺术家不一致时不应被误剥离。"""
+    """
+    曲名尾段与艺术家不一致时不应被误剥离。
+    """
     meta = MetaMusic.parse_query("毛阿敏 - 思念 - 现场版")
 
     assert meta.artists == ["毛阿敏"]
@@ -71,7 +87,9 @@ def test_parse_query_keeps_non_artist_suffix():
 
 
 def test_build_site_keywords_searches_album_before_combined_artist():
-    """专辑先按专辑名扩大召回，再用艺术家与专辑名组合词回退。"""
+    """
+    专辑先按专辑名扩大召回，再用艺术家与专辑名组合词回退。
+    """
     info = MusicInfo(
         music_type="album",
         title="Get Lucky",
@@ -86,7 +104,9 @@ def test_build_site_keywords_searches_album_before_combined_artist():
 
 
 def test_build_site_keywords_searches_track_before_combined_artist():
-    """单曲先按曲名扩大召回，且关键词不能混入所属专辑名。"""
+    """
+    单曲先按曲名扩大召回，且关键词不能混入所属专辑名。
+    """
     info = MusicInfo(
         music_type="recording",
         title="Get Lucky",
@@ -101,7 +121,9 @@ def test_build_site_keywords_searches_track_before_combined_artist():
 
 
 def test_build_site_keywords_places_simplified_album_terms_before_original_terms():
-    """繁体专辑信息应先搜索简体名称及组合词，再回退原文且不单搜艺术家。"""
+    """
+    繁体专辑信息应先搜索简体名称及组合词，再回退原文且不单搜艺术家。
+    """
     info = MusicInfo(
         music_type="album",
         title="永遠是朋友",
@@ -118,7 +140,9 @@ def test_build_site_keywords_places_simplified_album_terms_before_original_terms
 
 
 def test_build_site_keywords_places_simplified_recording_terms_before_original_terms():
-    """繁体单曲信息应先搜索简体曲名及组合词，不生成仅艺术家的关键词。"""
+    """
+    繁体单曲信息应先搜索简体曲名及组合词，不生成仅艺术家的关键词。
+    """
     info = MusicInfo(
         music_type="recording",
         title="後來",
@@ -135,7 +159,9 @@ def test_build_site_keywords_places_simplified_recording_terms_before_original_t
 
 
 def test_album_resource_match_requires_selected_album_title():
-    """专辑订阅只接受同时包含目标专辑名和艺术家的站点资源。"""
+    """
+    专辑订阅只接受同时包含目标专辑名和艺术家的站点资源。
+    """
     album = MusicInfo(
         music_type="album",
         title="Random Access Memories",
@@ -152,7 +178,9 @@ def test_album_resource_match_requires_selected_album_title():
 
 
 def test_recording_resource_match_does_not_treat_album_name_as_track_alias():
-    """单曲候选的兼容 names 即使包含专辑名，也不能让整专标题冒充目标单曲。"""
+    """
+    单曲候选的兼容 names 即使包含专辑名，也不能让整专标题冒充目标单曲。
+    """
     recording = MusicInfo(
         music_type="recording",
         title="Get Lucky",
@@ -169,7 +197,9 @@ def test_recording_resource_match_does_not_treat_album_name_as_track_alias():
 
 
 def test_resource_match_requires_artist_when_target_artist_is_known():
-    """同名作品很多，目标已知艺术家时资源标题也必须包含该艺术家。"""
+    """
+    同名作品很多，目标已知艺术家时资源标题也必须包含该艺术家。
+    """
     recording = MusicInfo(
         music_type="recording",
         title="晴天",
@@ -182,7 +212,9 @@ def test_resource_match_requires_artist_when_target_artist_is_known():
 
 
 def test_album_resource_match_combines_title_description_and_converts_traditional_chinese():
-    """专辑名与艺术家可分处标题和副标题，繁简及干扰符号不影响匹配。"""
+    """
+    专辑名与艺术家可分处标题和副标题，繁简及干扰符号不影响匹配。
+    """
     album = MusicInfo(
         music_type="album",
         title="永远是朋友",
@@ -198,7 +230,9 @@ def test_album_resource_match_combines_title_description_and_converts_traditiona
 
 
 def test_recording_resource_match_combines_title_description_and_converts_traditional_chinese():
-    """单曲按曲名与艺术家匹配，并统一繁简及全角符号。"""
+    """
+    单曲按曲名与艺术家匹配，并统一繁简及全角符号。
+    """
     recording = MusicInfo(
         music_type="recording",
         title="晴天",
@@ -213,14 +247,18 @@ def test_recording_resource_match_combines_title_description_and_converts_tradit
 
 
 def test_music_resource_match_rejects_target_without_artist():
-    """目标缺少艺术家时不能仅凭同名专辑或单曲放行。"""
+    """
+    目标缺少艺术家时不能仅凭同名专辑或单曲放行。
+    """
     recording = MusicInfo(music_type="recording", title="晴天")
 
     assert SearchChain.matches_music_resource(recording, "周杰伦 - 晴天 FLAC") is False
 
 
 def test_normalize_candidates_deduplicates_source_identity():
-    """同一来源和媒体 ID 的音乐候选应只保留一次。"""
+    """
+    同一来源和媒体 ID 的音乐候选应只保留一次。
+    """
     results = MediaChain.normalize_music_candidates(
         [
             MusicInfo(media_source="musicbrainz", media_id="recording-1", title="A"),
@@ -238,7 +276,9 @@ def test_normalize_candidates_deduplicates_source_identity():
 
 
 def test_normalize_candidates_keeps_different_entities_with_same_source_id():
-    """同一来源 ID 在不同音乐实体命名空间下不能互相去重。"""
+    """
+    同一来源 ID 在不同音乐实体命名空间下不能互相去重。
+    """
     results = MediaChain.normalize_music_candidates(
         [
             MusicInfo(media_source="musicbrainz", media_id="shared-id", music_type="recording", title="Song"),
@@ -250,7 +290,9 @@ def test_normalize_candidates_keeps_different_entities_with_same_source_id():
 
 
 def test_normalize_candidates_deduplicates_metadata_without_id():
-    """缺少来源 ID 时应按标题、艺术家和专辑去重。"""
+    """
+    缺少来源 ID 时应按标题、艺术家和专辑去重。
+    """
     results = MediaChain.normalize_music_candidates(
         [
             MusicInfo(title="One More Time", artists=["Daft Punk"], album="Discovery"),
@@ -262,7 +304,9 @@ def test_normalize_candidates_deduplicates_metadata_without_id():
 
 
 def test_to_meta_preserves_selected_identity():
-    """候选转换后应保留下载和整理所需的标准身份。"""
+    """
+    候选转换后应保留下载和整理所需的标准身份。
+    """
     info = MusicInfo(
         media_source="musicbrainz",
         media_id="recording-1",
@@ -283,12 +327,16 @@ def test_to_meta_preserves_selected_identity():
 
 
 def test_chart_converts_page_to_listenbrainz_offset(monkeypatch):
-    """音乐榜单处理链应将页码转换为模块需要的偏移量。"""
+    """
+    音乐榜单处理链应将页码转换为模块需要的偏移量。
+    """
     chain = ListenBrainzChain()
     requested = {}
 
     def fake_run_module(method, **kwargs):
-        """记录榜单模块调用并返回重复候选。"""
+        """
+        记录榜单模块调用并返回重复候选。
+        """
         requested.update(method=method, **kwargs)
         return [
             MusicInfo(media_source="musicbrainz", media_id="recording-1", title="晴天"),
@@ -310,11 +358,15 @@ def test_chart_converts_page_to_listenbrainz_offset(monkeypatch):
 
 
 def test_async_chart_applies_music_explore_filters(monkeypatch):
-    """音乐探索应按收听次数、封面条件和升序设置筛选榜单。"""
+    """
+    音乐探索应按收听次数、封面条件和升序设置筛选榜单。
+    """
     chain = RecommendChain()
 
     async def fake_music_chart(**kwargs):
-        """返回包含不同热度和封面状态的榜单候选。"""
+        """
+        返回包含不同热度和封面状态的榜单候选。
+        """
         return [
             MusicInfo(media_id="1", media_source="musicbrainz", title="A", listen_count=300),
             MusicInfo(
@@ -351,7 +403,9 @@ def test_async_chart_applies_music_explore_filters(monkeypatch):
 
 
 def test_musicbrainz_module_select_candidate_prefers_matching_audio_tags():
-    """文件识别应优先选择标题、艺术家和专辑均匹配的 MusicBrainz 候选。"""
+    """
+    文件识别应优先选择标题、艺术家和专辑均匹配的 MusicBrainz 候选。
+    """
     meta = MetaMusic(title="晴天", artists=["周杰伦"], album="叶惠美")
     candidates = [
         MusicInfo(media_source="musicbrainz", media_id="1", title="晴天", artists=["其他歌手"]),
@@ -370,7 +424,9 @@ def test_musicbrainz_module_select_candidate_prefers_matching_audio_tags():
 
 
 def test_async_recognize_by_path_reads_local_audio_tags(tmp_path, monkeypatch):
-    """本地音频识别应使用内嵌标签补全艺术家、专辑并提高封面候选命中率。"""
+    """
+    本地音频识别应使用内嵌标签补全艺术家、专辑并提高封面候选命中率。
+    """
     audio_path = tmp_path / "02. 眼泪成诗.m4a"
     audio_path.write_bytes(b"audio")
     meta = MetaMusic(
@@ -416,7 +472,9 @@ def test_async_recognize_by_path_reads_local_audio_tags(tmp_path, monkeypatch):
 
 
 def test_media_chain_default_recognition_only_queries_musicbrainz(monkeypatch):
-    """自动音乐识别只应调用 MusicBrainz 主数据源。"""
+    """
+    自动音乐识别只应调用 MusicBrainz 主数据源。
+    """
     chain = MediaChain()
     meta = MetaMusic(
         title="晴天",
@@ -448,7 +506,9 @@ def test_media_chain_default_recognition_only_queries_musicbrainz(monkeypatch):
 
 
 def test_recognize_from_source_selects_only_declared_music_source_chain(monkeypatch):
-    """单源识别只允许调用声明该音乐来源的模块，忽略同接口影视模块。"""
+    """
+    单源识别只允许调用声明该音乐来源的模块，忽略同接口影视模块。
+    """
     chain = MediaChain()
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
     expected = MusicInfo(
@@ -477,7 +537,9 @@ def test_recognize_from_source_selects_only_declared_music_source_chain(monkeypa
 
 
 def test_default_recognition_does_not_fallback_after_musicbrainz_miss(monkeypatch):
-    """MusicBrainz 未命中时自动识别不得继续请求其它音乐来源。"""
+    """
+    MusicBrainz 未命中时自动识别不得继续请求其它音乐来源。
+    """
     chain = MediaChain()
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
     recognize_source = Mock(return_value=None)
@@ -493,7 +555,9 @@ def test_default_recognition_does_not_fallback_after_musicbrainz_miss(monkeypatc
 
 
 def test_async_default_recognition_only_queries_musicbrainz(monkeypatch):
-    """异步自动音乐识别也只应调用 MusicBrainz 主数据源。"""
+    """
+    异步自动音乐识别也只应调用 MusicBrainz 主数据源。
+    """
     chain = MediaChain()
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
     expected = MusicInfo(
@@ -521,7 +585,9 @@ def test_async_default_recognition_only_queries_musicbrainz(monkeypatch):
 
 
 def test_musicbrainz_source_chain_calls_module_async_method(monkeypatch):
-    """单源异步识别必须直接等待模块异步入口。"""
+    """
+    单源异步识别必须直接等待模块异步入口。
+    """
     chain = MusicBrainzChain()
     expected = MusicInfo(
         media_source="musicbrainz",
@@ -543,7 +609,9 @@ def test_musicbrainz_source_chain_calls_module_async_method(monkeypatch):
 
 
 def test_async_identify_by_fingerprint_uses_async_module_contract(monkeypatch):
-    """指纹异步链路应请求模块的异步方法名。"""
+    """
+    指纹异步链路应请求模块的异步方法名。
+    """
     chain = AcoustIdChain()
     async_run_module = AsyncMock(return_value="recording-1")
     monkeypatch.setattr(chain, "async_run_module", async_run_module)
@@ -558,12 +626,16 @@ def test_async_identify_by_fingerprint_uses_async_module_contract(monkeypatch):
 
 
 def test_async_chart_forwards_album_entity(monkeypatch):
-    """热门专辑探索应把实体类型透传给 ListenBrainz 榜单模块。"""
+    """
+    热门专辑探索应把实体类型透传给 ListenBrainz 榜单模块。
+    """
     chain = ListenBrainzChain()
     requested = {}
 
     async def fake_async_run_module(method, **kwargs):
-        """记录榜单请求参数并返回一个专辑候选。"""
+        """
+        记录榜单请求参数并返回一个专辑候选。
+        """
         requested.update(method=method, **kwargs)
         return [
             MusicInfo(
@@ -586,12 +658,16 @@ def test_async_chart_forwards_album_entity(monkeypatch):
 
 
 def test_async_fresh_releases_keeps_official_order(monkeypatch):
-    """新发行探索应保留官方排序，只按封面条件过滤。"""
+    """
+    新发行探索应保留官方排序，只按封面条件过滤。
+    """
     chain = RecommendChain()
     requested = {}
 
     async def fake_fresh_releases(**kwargs):
-        """记录新发行请求参数并返回带封面与不带封面的候选。"""
+        """
+        记录新发行请求参数并返回带封面与不带封面的候选。
+        """
         requested.update(**kwargs)
         return [
             MusicInfo(media_id="b", media_source="musicbrainz", music_type="album", title="B"),
@@ -620,11 +696,15 @@ def test_async_fresh_releases_keeps_official_order(monkeypatch):
 
 
 def test_async_artist_related_preserves_source_results(monkeypatch):
-    """关联艺术家来源链应保留来源返回顺序和实体。"""
+    """
+    关联艺术家来源链应保留来源返回顺序和实体。
+    """
     chain = MusicBrainzChain()
 
     async def fake_async_run_module(method, **kwargs):
-        """返回重复的关联艺术家候选。"""
+        """
+        返回重复的关联艺术家候选。
+        """
         assert method == "music_artist_related"
         return [
             MusicArtistInfo(media_source="musicbrainz", media_id="artist-1", name="Brian May"),
@@ -640,11 +720,15 @@ def test_async_artist_related_preserves_source_results(monkeypatch):
 
 
 def test_async_album_returns_source_chain_result(monkeypatch):
-    """媒体链应按来源和 ID 返回来源链提供的标准专辑对象。"""
+    """
+    媒体链应按来源和 ID 返回来源链提供的标准专辑对象。
+    """
     chain = MediaChain()
 
     async def fake_get_album(media_id):
-        """模拟插件模块以字典形式返回专辑详情。"""
+        """
+        模拟插件模块以字典形式返回专辑详情。
+        """
         assert media_id == "release-group-1"
         return MusicAlbumInfo(
             media_source="musicbrainz",

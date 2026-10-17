@@ -1,3 +1,7 @@
+"""
+验证已创建的监控分发器读取最新运行配置。
+"""
+
 from pathlib import Path
 from unittest.mock import patch
 
@@ -5,7 +9,9 @@ from app.monitor.dispatcher import TransferDispatcher
 
 
 def test_transfer_dispatcher_reads_runtime_extensions_at_use_time() -> None:
-    """验证已创建的监控分发器会读取最新的整理后缀配置。"""
+    """
+    验证已创建的监控分发器会读取最新的整理后缀配置。
+    """
     runtime_settings = {
         "DOWNLOAD_TMPEXT": [".part"],
         "RMT_MEDIAEXT": [".mkv"],

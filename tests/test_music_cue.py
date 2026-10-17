@@ -1,4 +1,6 @@
-"""CUE 专辑识别、整轨旁挂归档和真实复制/硬链接的引用完整性。"""
+"""
+CUE 专辑识别、整轨旁挂归档和真实复制/硬链接的引用完整性。
+"""
 
 import asyncio
 import hashlib
@@ -82,7 +84,9 @@ _SPLIT_TRACKS = (("01 - 第一首.flac", "第一首", 1), ("02 - 第二首.flac"
 
 
 def _split_album(tmp_path, *, text, tracks=_SPLIT_TRACKS, cue_name="album.cue"):
-    """创建分轨专辑目录：每只 FLAC 自带曲目标签，另放一份指定内容的 CUE。"""
+    """
+    创建分轨专辑目录：每只 FLAC 自带曲目标签，另放一份指定内容的 CUE。
+    """
     source = tmp_path / "source"
     source.mkdir()
     for name, title, number in tracks:
@@ -96,7 +100,9 @@ def _split_album(tmp_path, *, text, tracks=_SPLIT_TRACKS, cue_name="album.cue"):
 
 
 def _image_pair(tmp_path, *, encoding="utf-8", text=CUE, cue_name="album.cue"):
-    """创建三秒实际整轨 FLAC 和两个逻辑曲目的 CUE。"""
+    """
+    创建三秒实际整轨 FLAC 和两个逻辑曲目的 CUE。
+    """
     source = tmp_path / "source"
     source.mkdir()
     audio = source / "image.flac"
@@ -107,7 +113,9 @@ def _image_pair(tmp_path, *, encoding="utf-8", text=CUE, cue_name="album.cue"):
 
 
 def test_cue_parser_separates_album_and_track_text():
-    """全局标题/艺人不被 TRACK 标题覆盖，INDEX 00 不能替代 INDEX 01。"""
+    """
+    全局标题/艺人不被 TRACK 标题覆盖，INDEX 00 不能替代 INDEX 01。
+    """
     parsed = parse_music_cue(CUE)
 
     assert parsed.title == "专辑示例"
@@ -126,14 +134,18 @@ def test_cue_parser_separates_album_and_track_text():
     CUE.replace("TRACK 02 AUDIO", "TRACK 02 MODE1/2352"),
 ])
 def test_invalid_cue_structure_is_rejected(text):
-    """无效编号、缺失和逆序索引不能进入专辑识别。"""
+    """
+    无效编号、缺失和逆序索引不能进入专辑识别。
+    """
     with pytest.raises(ValueError):
         parse_music_cue(text)
 
 
 @pytest.mark.parametrize("encoding", ["utf-8", "utf-8-sig", "utf-16", "gb18030"])
 def test_image_cue_metadata_is_album_and_keeps_source_hashes(tmp_path, encoding):
-    """常见编码的整轨按专辑读取，不能沿用文件内错误的第一首 Recording ID。"""
+    """
+    常见编码的整轨按专辑读取，不能沿用文件内错误的第一首 Recording ID。
+    """
     audio, cue = _image_pair(tmp_path, encoding=encoding)
     tags = FLAC(audio)
     tags["title"] = ["第一首歌曲"]
@@ -157,7 +169,9 @@ def test_image_cue_metadata_is_album_and_keeps_source_hashes(tmp_path, encoding)
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_image_cue_never_runs_recording_fingerprint(tmp_path, monkeypatch, asynchronous):
-    """整轨开头的指纹只代表其中一曲，路径识别不能把它当作整个专辑。"""
+    """
+    整轨开头的指纹只代表其中一曲，路径识别不能把它当作整个专辑。
+    """
     audio, _ = _image_pair(tmp_path)
     sync_fingerprint = Mock(side_effect=AssertionError("整轨不应调用首曲指纹"))
     async_fingerprint = AsyncMock(side_effect=AssertionError("整轨不应调用首曲指纹"))
@@ -178,7 +192,9 @@ def test_image_cue_never_runs_recording_fingerprint(tmp_path, monkeypatch, async
 
 @pytest.mark.parametrize("bad_reference", ["../image.flac", "C:\\music\\image.flac"])
 def test_cue_reference_errors_block_even_without_category_folders(tmp_path, bad_reference):
-    """跨目录引用不能靠关闭分类目录绕过检查；同目录引用交给存在性判定。"""
+    """
+    跨目录引用不能靠关闭分类目录绕过检查；同目录引用交给存在性判定。
+    """
     audio, _ = _image_pair(tmp_path, text=CUE.replace('"image.flac"', f'"{bad_reference}"'))
     meta = AudioMetadataHelper.read(audio)
     task = TransferTask(fileitem=make_fileitem(str(audio)), meta=meta, mediainfo=MusicInfo.from_meta(meta),
@@ -191,7 +207,9 @@ def test_cue_reference_errors_block_even_without_category_folders(tmp_path, bad_
 
 @pytest.mark.parametrize("stale_reference", ["image.wav"])
 def test_cue_reference_missing_from_directory_falls_back_to_tags(tmp_path, stale_reference):
-    """引用文件已不存在的陈旧索引（转制未更新扩展名等）不得阻断整理，回退标签。"""
+    """
+    引用文件已不存在的陈旧索引（转制未更新扩展名等）不得阻断整理，回退标签。
+    """
     audio, _ = _image_pair(tmp_path, text=CUE.replace('"image.flac"', f'"{stale_reference}"'))
     tags = FLAC(audio)
     tags.update(title=["独立单曲"], artist=["测试歌手"], album=["专辑示例"], tracknumber=["2"])
@@ -206,7 +224,9 @@ def test_cue_reference_missing_from_directory_falls_back_to_tags(tmp_path, stale
 
 
 def test_stale_wav_cue_does_not_block_flac_split_album(tmp_path):
-    """WAV 时代留档 CUE 全部引用不存在的 .wav 时，FLAC 分轨按自带标签正常整理。"""
+    """
+    WAV 时代留档 CUE 全部引用不存在的 .wav 时，FLAC 分轨按自带标签正常整理。
+    """
     source = tmp_path / "source"
     source.mkdir()
     for name in ("01 - 以父之名.flac", "02 - 懦夫.flac"):
@@ -231,7 +251,9 @@ FILE "02 - 懦夫.wav" WAVE
 
 
 def test_broken_index_without_existing_references_is_ignored(tmp_path):
-    """结构损坏且引用文件全部不存在的 CUE 同样按陈旧索引忽略，不再阻断。"""
+    """
+    结构损坏且引用文件全部不存在的 CUE 同样按陈旧索引忽略，不再阻断。
+    """
     audio, _ = _image_pair(tmp_path, text=CUE.replace('"image.flac"', '"image.wav"')
                            .replace("    INDEX 01 00:01:00\n", ""))
 
@@ -242,7 +264,9 @@ def test_broken_index_without_existing_references_is_ignored(tmp_path):
 
 
 def test_single_audio_collects_nonmatching_stem_cue_companion(tmp_path, monkeypatch):
-    """FILE 关联有效时，CUE 文件名无需与音频同主干，且应在音频后加入归档。"""
+    """
+    FILE 关联有效时，CUE 文件名无需与音频同主干，且应在音频后加入归档。
+    """
     audio, cue = _image_pair(tmp_path, cue_name="album-index.cue")
     owner = make_transfer_chain()
     storage = SimpleNamespace(get_item=lambda item: item)
@@ -257,7 +281,9 @@ def test_single_audio_collects_nonmatching_stem_cue_companion(tmp_path, monkeypa
 @pytest.mark.parametrize("mode", ["copy", "link", "softlink"])
 @pytest.mark.parametrize("scrape", [False, True])
 def test_real_archive_preserves_cue_references_and_source_bytes(tmp_path, monkeypatch, mode, scrape):
-    """真实规划与存储执行可规范专辑目录，同时保留索引引用和原始做种内容。"""
+    """
+    真实规划与存储执行可规范专辑目录，同时保留索引引用和原始做种内容。
+    """
     audio, cue = _image_pair(tmp_path)
     original = {path: path.read_bytes() for path in (audio, cue)}
     meta = AudioMetadataHelper.read(audio)
@@ -303,7 +329,9 @@ def test_real_archive_preserves_cue_references_and_source_bytes(tmp_path, monkey
 
 
 def test_split_cue_supplies_track_metadata_without_claiming_image(tmp_path):
-    """分轨 CUE 可补标签，但其多个文件不是一个整轨文件。"""
+    """
+    分轨 CUE 可补标签，但其多个文件不是一个整轨文件。
+    """
     source = tmp_path / "source"
     source.mkdir()
     for name in ("one.flac", "two.flac"):
@@ -331,7 +359,9 @@ INDEX 01 00:00:00
 
 @pytest.mark.parametrize("invalid", [False, True])
 def test_disabled_cue_preserves_track_tags_across_readers(tmp_path, monkeypatch, invalid):
-    """显式关闭后所有读取入口都忽略 CUE，坏索引不阻断分轨标签且原文件不变。"""
+    """
+    显式关闭后所有读取入口都忽略 CUE，坏索引不阻断分轨标签且原文件不变。
+    """
     audio, cue = _image_pair(tmp_path, text=CUE.replace("00:01:00", "00:00:00") if invalid else CUE)
     tags = FLAC(audio)
     tags.update(title=["独立单曲"], artist=["测试歌手"], album=["专辑示例"], tracknumber=["2"])
@@ -361,7 +391,9 @@ def test_disabled_cue_preserves_track_tags_across_readers(tmp_path, monkeypatch,
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize("per_task", [False, True])
 def test_album_cache_separates_cue_recognition_modes(tmp_path, monkeypatch, asynchronous, per_task):
-    """同目录切换 CUE 开关后同步、异步识别均重新计算，原模式仍可复用自己的缓存。"""
+    """
+    同目录切换 CUE 开关后同步、异步识别均重新计算，原模式仍可复用自己的缓存。
+    """
     audio, _ = _image_pair(tmp_path)
     chain = MediaChain()
     monkeypatch.setattr(chain, "_album_dir_cache", AlbumDirectoryCache(capacity=4))
@@ -383,7 +415,9 @@ def test_album_cache_separates_cue_recognition_modes(tmp_path, monkeypatch, asyn
 
 @pytest.mark.parametrize("mode", ["copy", "link", "softlink"])
 def test_disabled_cue_organizes_tagged_audio_without_copying_invalid_index(tmp_path, monkeypatch, mode):
-    """复制及链接实际落盘按分轨标签命名，错误 CUE 与做种源内容保持原样。"""
+    """
+    复制及链接实际落盘按分轨标签命名，错误 CUE 与做种源内容保持原样。
+    """
     audio, cue = _image_pair(tmp_path, text=CUE.replace("00:01:00", "00:00:00"))
     tags = FLAC(audio)
     tags.update(title=["独立单曲"], artist=["测试歌手"], album=["专辑示例"], tracknumber=["2"])
@@ -421,7 +455,9 @@ def test_disabled_cue_organizes_tagged_audio_without_copying_invalid_index(tmp_p
     CUE.replace("00:01:00", "00:03:00"),
 ])
 def test_broken_index_with_different_stem_is_not_ignored(tmp_path, text):
-    """文件名不同但 FILE 明确关联的坏 CUE 也必须可见，不能误识别为首曲。"""
+    """
+    文件名不同但 FILE 明确关联的坏 CUE 也必须可见，不能误识别为首曲。
+    """
     audio, _ = _image_pair(tmp_path, text=text, cue_name="different-index.cue")
 
     meta = AudioMetadataHelper.read(audio)
@@ -431,7 +467,9 @@ def test_broken_index_with_different_stem_is_not_ignored(tmp_path, text):
 
 
 def test_broken_index_in_split_album_falls_back_to_tags(tmp_path):
-    """分轨专辑的坏索引只丢逻辑切点，每只文件按自带标签整理，不能一条坏索引阻断全专。"""
+    """
+    分轨专辑的坏索引只丢逻辑切点，每只文件按自带标签整理，不能一条坏索引阻断全专。
+    """
     source = _split_album(tmp_path, text=SPLIT_BROKEN_CUE)
 
     for name, title, number in _SPLIT_TRACKS:
@@ -445,7 +483,9 @@ def test_broken_index_in_split_album_falls_back_to_tags(tmp_path):
 
 
 def test_broken_index_in_multi_disc_image_still_blocks(tmp_path):
-    """多碟整轨的每个 FILE 块都含多条音轨，索引是唯一曲目来源，损坏必须继续阻断。"""
+    """
+    多碟整轨的每个 FILE 块都含多条音轨，索引是唯一曲目来源，损坏必须继续阻断。
+    """
     source = _split_album(tmp_path, text=DISC_BROKEN_CUE,
                           tracks=(("disc1.flac", "第一首", 1), ("disc2.flac", "第三首", 3)))
 
@@ -457,7 +497,9 @@ def test_broken_index_in_multi_disc_image_still_blocks(tmp_path):
 
 
 def test_broken_index_with_single_existing_track_still_blocks(tmp_path):
-    """分轨专辑只剩一只已下载文件时无法与整轨镜像区分，保持可见错误而不静默退回标签。"""
+    """
+    分轨专辑只剩一只已下载文件时无法与整轨镜像区分，保持可见错误而不静默退回标签。
+    """
     source = _split_album(tmp_path, text=SPLIT_BROKEN_CUE, tracks=(_SPLIT_TRACKS[0],))
 
     meta = AudioMetadataHelper.read(source / _SPLIT_TRACKS[0][0])
@@ -471,7 +513,9 @@ def test_broken_index_with_single_existing_track_still_blocks(tmp_path):
 @pytest.mark.parametrize("cue_enabled", [False, True])
 @pytest.mark.parametrize("override", [None, False, True])
 def test_transfer_entrypoint_respects_cue_setting(tmp_path, monkeypatch, mtype, invalid, cue_enabled, override):
-    """自动遵循全局，手动可覆盖 CUE 策略；真实规划与执行均保持本次策略。"""
+    """
+    自动遵循全局，手动可覆盖 CUE 策略；真实规划与执行均保持本次策略。
+    """
     audio, cue = _image_pair(tmp_path, text=CUE.replace("00:01:00", "00:10:00") if invalid else CUE)
     tags = FLAC(audio)
     tags.update(title=["独立单曲"], artist=["测试歌手"], album=["专辑示例"], tracknumber=["2"])
@@ -493,7 +537,9 @@ def test_transfer_entrypoint_respects_cue_setting(tmp_path, monkeypatch, mtype, 
     plans = []
 
     def preview(task, **_kwargs):
-        """使用真实规划与预览执行，不触发实际文件写入。"""
+        """
+        使用真实规划与预览执行，不触发实际文件写入。
+        """
         plans.append(task)
         handler = TransHandler()
         checkpoint = handler.plan_transfer(
@@ -539,11 +585,15 @@ def test_transfer_entrypoint_respects_cue_setting(tmp_path, monkeypatch, mtype, 
 
 
 def test_cue_override_isolated_between_concurrent_tasks_and_restored_on_error(monkeypatch):
-    """并发手动识别及嵌套异常不能串用策略或修改其它任务的系统默认。"""
+    """
+    并发手动识别及嵌套异常不能串用策略或修改其它任务的系统默认。
+    """
     monkeypatch.setattr(settings, "MUSIC_CUE_ENABLE", True)
 
     async def recognize(enabled: bool) -> bool:
-        """跨异步切换读取当前任务的独立 CUE 策略。"""
+        """
+        跨异步切换读取当前任务的独立 CUE 策略。
+        """
         with use_music_cue(enabled):
             await asyncio.sleep(0)
             assert music_cue_enabled() == enabled
@@ -553,7 +603,9 @@ def test_cue_override_isolated_between_concurrent_tasks_and_restored_on_error(mo
             return music_cue_enabled()
 
     async def concurrent() -> list[bool]:
-        """让两个相反策略的整理任务在同一事件循环内交错运行。"""
+        """
+        让两个相反策略的整理任务在同一事件循环内交错运行。
+        """
         return await asyncio.gather(recognize(False), recognize(True))
 
     assert asyncio.run(concurrent()) == [False, True]
@@ -563,7 +615,9 @@ def test_cue_override_isolated_between_concurrent_tasks_and_restored_on_error(mo
 
 @pytest.mark.parametrize("enabled", [False, True])
 def test_queued_music_task_restores_cue_policy_after_serialization(tmp_path, monkeypatch, enabled):
-    """持久队列回读规划快照后仍用提交策略，执行与后续任务不受全局切换影响。"""
+    """
+    持久队列回读规划快照后仍用提交策略，执行与后续任务不受全局切换影响。
+    """
     audio, _ = _image_pair(tmp_path)
     chain = make_transfer_chain()
     item = LocalStorage().get_item(audio)
@@ -575,7 +629,9 @@ def test_queued_music_task_restores_cue_policy_after_serialization(tmp_path, mon
     monkeypatch.setattr(settings, "MUSIC_CUE_ENABLE", not enabled)
 
     def perform(_task, _callback):
-        """在真实执行入口读取音频，验证已冻结的 CUE 策略。"""
+        """
+        在真实执行入口读取音频，验证已冻结的 CUE 策略。
+        """
         assert music_cue_enabled() == enabled
         assert (AudioMetadataHelper.read(audio).music_layout == "image_cue") == enabled
         return True, ""
@@ -587,7 +643,9 @@ def test_queued_music_task_restores_cue_policy_after_serialization(tmp_path, mon
 
 @pytest.mark.parametrize("enabled", [False, True])
 def test_manual_dialog_receives_global_cue_default(monkeypatch, enabled):
-    """登录后的全局设置接口向手动弹窗提供真实默认值，兼容全局关闭的用户。"""
+    """
+    登录后的全局设置接口向手动弹窗提供真实默认值，兼容全局关闭的用户。
+    """
     from app.api.endpoints.system import get_user_global_setting
 
     monkeypatch.setattr(settings, "MUSIC_CUE_ENABLE", enabled)

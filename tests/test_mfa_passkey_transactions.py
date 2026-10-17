@@ -1,3 +1,7 @@
+"""
+验证通行密钥挑战事务与用户身份绑定。
+"""
+
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -30,6 +34,9 @@ def _request() -> Request:
 
 
 def setup_function():
+    """
+    为每个用例重建独立的通行密钥挑战缓存。
+    """
     configure_passkey_challenge_cache(TTLCache(
         region="passkey_challenge",
         maxsize=4096,
@@ -200,12 +207,18 @@ def test_authentication_finish_token_cannot_be_replayed():
 def test_authentication_finish_fails_closed_when_challenge_backend_fails(
     monkeypatch,
 ):
-    """challenge 后端故障不得继续查询凭证或签发 Token。"""
+    """
+    challenge 后端故障不得继续查询凭证或签发 Token。
+    """
     class FailingCache:
-        """模拟 challenge 原子领取期间缓存不可用。"""
+        """
+        模拟 challenge 原子领取期间缓存不可用。
+        """
 
         def consume(self, _key):
-            """报告后端不可用。"""
+            """
+            报告后端不可用。
+            """
             raise RuntimeError("cache unavailable")
 
     monkeypatch.setattr(PasskeyChallengeStore, "_cache", FailingCache())
@@ -240,7 +253,9 @@ def test_authentication_finish_fails_closed_when_challenge_backend_fails(
 def test_authentication_finish_does_not_issue_token_when_sign_count_write_fails(
     cas_failure,
 ):
-    """签名计数 CAS 冲突或事务失败时，认证不得越过持久化门禁。"""
+    """
+    签名计数 CAS 冲突或事务失败时，认证不得越过持久化门禁。
+    """
     token = PasskeyChallengeStore.issue(
         challenge="server-challenge",
         purpose="authentication",
@@ -313,7 +328,9 @@ def test_authentication_finish_does_not_issue_token_when_sign_count_write_fails(
 
 @pytest.mark.asyncio
 async def test_passkey_delete_verifies_password_without_public_password_field():
-    """删除 PassKey 应通过认证服务校验密码，而不是读取公开用户快照字段。"""
+    """
+    删除 PassKey 应通过认证服务校验密码，而不是读取公开用户快照字段。
+    """
     data = mfa_endpoint.PassKeyDeleteRequest(passkey_id=10, password="password")
     current_user = SimpleNamespace(id=7, name="user")
     passkey_service = SimpleNamespace(delete_by_id=Mock(return_value=True))
@@ -333,7 +350,9 @@ async def test_passkey_delete_verifies_password_without_public_password_field():
 
 @pytest.mark.asyncio
 async def test_passkey_delete_rejects_invalid_password_before_deletion():
-    """密码错误时不得删除 PassKey。"""
+    """
+    密码错误时不得删除 PassKey。
+    """
     data = mfa_endpoint.PassKeyDeleteRequest(passkey_id=10, password="wrong")
     passkey_service = SimpleNamespace(delete_by_id=Mock())
     user_service = SimpleNamespace(verify_password=AsyncMock(return_value=False))

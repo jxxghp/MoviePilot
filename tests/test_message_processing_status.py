@@ -1,3 +1,7 @@
+"""
+验证消息处理中状态的记录与完成清理。
+"""
+
 import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch

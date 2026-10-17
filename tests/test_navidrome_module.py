@@ -1,4 +1,6 @@
-"""Navidrome 媒体服务器模块接入测试。"""
+"""
+Navidrome 媒体服务器模块接入测试。
+"""
 from unittest.mock import Mock
 
 from app import schemas
@@ -10,19 +12,25 @@ from app.schemas.types import MediaServerType, ModuleType
 
 
 def test_navidrome_module_declares_media_server_identity():
-    """Navidrome 应以媒体服务器身份注册，供统一媒体服务器链调用。"""
+    """
+    Navidrome 应以媒体服务器身份注册，供统一媒体服务器链调用。
+    """
     assert NavidromeModule.get_name() == "Navidrome"
     assert NavidromeModule.get_type() == ModuleType.MediaServer
     assert NavidromeModule.get_subtype() == MediaServerType.Navidrome
 
 
 def test_navidrome_module_has_no_system_switch():
-    """Navidrome 由服务配置控制启用，不能返回无效的系统开关名。"""
+    """
+    Navidrome 由服务配置控制启用，不能返回无效的系统开关名。
+    """
     assert NavidromeModule().init_setting() is None
 
 
 def test_navidrome_module_is_discovered_without_unconfigured_activation():
-    """Navidrome 始终可发现，但没有启用配置时不应创建服务资源。"""
+    """
+    Navidrome 始终可发现，但没有启用配置时不应创建服务资源。
+    """
     manager = ModuleManager()
 
     assert "NavidromeModule" in manager.get_module_ids()
@@ -30,7 +38,9 @@ def test_navidrome_module_is_discovered_without_unconfigured_activation():
 
 
 def test_navidrome_module_ignores_non_music_media():
-    """Navidrome 只管理音乐，影视存在性检查应交给其它媒体服务器。"""
+    """
+    Navidrome 只管理音乐，影视存在性检查应交给其它媒体服务器。
+    """
     from app.domain.context import MediaInfo
     from app.schemas.types import MediaType
 
@@ -41,12 +51,16 @@ def test_navidrome_module_ignores_non_music_media():
 
 
 def test_navidrome_refresh_requests_incremental_scan(monkeypatch):
-    """音乐入库完成后应通过 Subsonic startScan 触发 Navidrome 增量扫描。"""
+    """
+    音乐入库完成后应通过 Subsonic startScan 触发 Navidrome 增量扫描。
+    """
     client = object.__new__(Navidrome)
     requested = []
 
     def fake_call(method, **kwargs):
-        """记录媒体库刷新使用的 Subsonic 方法和参数。"""
+        """
+        记录媒体库刷新使用的 Subsonic 方法和参数。
+        """
         requested.append((method, kwargs))
         return {"status": "ok"}
 
@@ -57,7 +71,9 @@ def test_navidrome_refresh_requests_incremental_scan(monkeypatch):
 
 
 def test_navidrome_search_filters_exact_album_and_song(monkeypatch):
-    """Navidrome 模糊搜索结果必须按实体名称和艺术家精确过滤。"""
+    """
+    Navidrome 模糊搜索结果必须按实体名称和艺术家精确过滤。
+    """
     client = object.__new__(Navidrome)
     monkeypatch.setattr(
         client,
@@ -86,7 +102,9 @@ def test_navidrome_search_filters_exact_album_and_song(monkeypatch):
 
 
 def test_navidrome_now_playing_uses_song_title_instead_of_album(monkeypatch):
-    """正在播放接口返回单曲时，仪表盘标题必须显示曲名而不是所属专辑名。"""
+    """
+    正在播放接口返回单曲时，仪表盘标题必须显示曲名而不是所属专辑名。
+    """
     client = object.__new__(Navidrome)
     client._play_host = "https://music.example.com"
     monkeypatch.setattr(
@@ -118,7 +136,9 @@ def test_navidrome_now_playing_uses_song_title_instead_of_album(monkeypatch):
 
 
 def test_navidrome_album_exists_requires_complete_track_count(monkeypatch):
-    """同名专辑曲目不足时不得把整专订阅判定为已完整入库。"""
+    """
+    同名专辑曲目不足时不得把整专订阅判定为已完整入库。
+    """
     module = NavidromeModule()
     service = Mock()
     service.get_iteminfo.return_value = schemas.MediaServerItem(

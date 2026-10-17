@@ -1,3 +1,7 @@
+"""
+验证媒体身份清理迁移的回填、约束及旧专用字段删除。
+"""
+
 import importlib
 
 import pytest
@@ -34,7 +38,9 @@ PREFIXED_IDENTITIES = (
 
 
 def _legacy_identity_columns(include_mediaid: bool = False) -> list[sa.Column]:
-    """构造升级前来源专用媒体身份字段。"""
+    """
+    构造升级前来源专用媒体身份字段。
+    """
     columns = [
         sa.Column("tmdbid", sa.Integer()),
         sa.Column("imdbid", sa.String()),
@@ -49,7 +55,9 @@ def _legacy_identity_columns(include_mediaid: bool = False) -> list[sa.Column]:
 
 
 def _create_tables(connection) -> dict[str, sa.Table]:
-    """创建媒体身份清理升级前六张通用媒体表的最小结构。"""
+    """
+    创建媒体身份清理升级前六张通用媒体表的最小结构。
+    """
     metadata = sa.MetaData()
     tables = {
         "subscribe": sa.Table(
@@ -106,14 +114,18 @@ def _create_tables(connection) -> dict[str, sa.Table]:
 
 
 def _operations(connection) -> Operations:
-    """创建绑定当前连接的 Alembic Operations。"""
+    """
+    创建绑定当前连接的 Alembic Operations。
+    """
     return Operations(MigrationContext.configure(connection))
 
 
 def test_cleanup_migration_keeps_one_complete_identity_and_drops_legacy_columns(
         monkeypatch,
 ) -> None:
-    """升级应修复半对身份、保留完整身份并删除六表全部专用列。"""
+    """
+    升级应修复半对身份、保留完整身份并删除六表全部专用列。
+    """
     migration = importlib.import_module(
         "database.versions.8a4c7e1d2f90_3_0_2"
     )
@@ -251,7 +263,9 @@ def test_cleanup_migration_keeps_one_complete_identity_and_drops_legacy_columns(
 
 
 def test_cleanup_migration_backfills_every_supported_mediaid_prefix(monkeypatch) -> None:
-    """升级应从历史组合字段回填全部规范来源及仍受支持的别名。"""
+    """
+    升级应从历史组合字段回填全部规范来源及仍受支持的别名。
+    """
     migration = importlib.import_module(
         "database.versions.8a4c7e1d2f90_3_0_2"
     )
@@ -299,7 +313,9 @@ def test_cleanup_migration_backfills_every_supported_mediaid_prefix(monkeypatch)
 
 
 def test_cleanup_migration_rejects_invalid_database_identity_pairs(monkeypatch) -> None:
-    """升级后的数据库应允许插件来源，并拒绝半对、非法来源和零值身份。"""
+    """
+    升级后的数据库应允许插件来源，并拒绝半对、非法来源和零值身份。
+    """
     migration = importlib.import_module(
         "database.versions.8a4c7e1d2f90_3_0_2"
     )
@@ -342,7 +358,9 @@ def test_cleanup_migration_rejects_invalid_database_identity_pairs(monkeypatch) 
 
 
 def test_cleanup_migration_downgrade_restores_legacy_schema(monkeypatch) -> None:
-    """降级应恢复旧列并移除仅由本次迁移引入的媒体库身份列。"""
+    """
+    降级应恢复旧列并移除仅由本次迁移引入的媒体库身份列。
+    """
     migration = importlib.import_module(
         "database.versions.8a4c7e1d2f90_3_0_2"
     )

@@ -1,3 +1,7 @@
+"""
+验证启动器重建虚拟环境时的解释器选择和执行边界。
+"""
+
 import os
 import stat
 import subprocess
@@ -17,7 +21,9 @@ LAUNCHER = Path(__file__).resolve().parents[1] / "moviepilot"
     ],
 )
 def test_recreate_commands_use_external_bootstrap_python(tmp_path, arguments):
-    """所有会删除 venv 的 launcher 入口都不能由目标 venv Python 执行。"""
+    """
+    所有会删除 venv 的 launcher 入口都不能由目标 venv Python 执行。
+    """
     root = tmp_path / "moviepilot"
     root.mkdir()
     launcher = root / "moviepilot"
@@ -67,7 +73,9 @@ def test_recreate_commands_use_external_bootstrap_python(tmp_path, arguments):
 
 
 def test_recreate_accepts_explicit_external_python(tmp_path):
-    """显式指定的外部 Python 可作为重建命令的执行解释器。"""
+    """
+    显式指定的外部 Python 可作为重建命令的执行解释器。
+    """
     root = tmp_path / "moviepilot"
     root.mkdir()
     launcher = root / "moviepilot"
@@ -120,7 +128,9 @@ def test_recreate_accepts_explicit_external_python(tmp_path):
 def test_recreate_excludes_custom_venv_from_external_bootstrap(
     tmp_path, arguments, python_option
 ):
-    """自定义 --venv 目录中的解释器也不能执行重建流程。"""
+    """
+    自定义 --venv 目录中的解释器也不能执行重建流程。
+    """
     root = tmp_path / "moviepilot"
     root.mkdir()
     launcher = root / "moviepilot"
@@ -167,7 +177,9 @@ def test_recreate_excludes_custom_venv_from_external_bootstrap(
 
 
 def test_runtime_commands_prefer_project_runtime_launcher(tmp_path):
-    """运行命令优先使用项目 venv 下保留专用身份的 Python 入口。"""
+    """
+    运行命令优先使用项目 venv 下保留专用身份的 Python 入口。
+    """
     root = tmp_path / "moviepilot"
     root.mkdir()
     launcher = root / "moviepilot"

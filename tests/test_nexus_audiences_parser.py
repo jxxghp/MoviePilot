@@ -1,3 +1,7 @@
+"""
+验证Nexus Audience 站点页面的种子信息解析。
+"""
+
 # -*- coding: utf-8 -*-
 import pytest
 

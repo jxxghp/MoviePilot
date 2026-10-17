@@ -1,4 +1,6 @@
-"""音乐识别失败的真实事务、接纳重放与零文件副作用重规划。"""
+"""
+音乐识别失败的真实事务、接纳重放与零文件副作用重规划。
+"""
 
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
@@ -49,7 +51,9 @@ from tests.test_transfer_sync_extra_files import bind_empty_history_repositories
 
 @pytest.fixture
 def store(tmp_path, monkeypatch):
-    """用隔离SQLite及可控租约时钟验证跨实例、跨重启的状态行为。"""
+    """
+    用隔离SQLite及可控租约时钟验证跨实例、跨重启的状态行为。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'music-recovery.db'}")
     for model in (TransferHistory, TransferPending, TransferExecutionStep, TransferSettlementReceipt):
         model.__table__.create(engine)
@@ -63,7 +67,9 @@ def store(tmp_path, monkeypatch):
 
 
 def _input(paths):
-    """冻结真实音频范围及尚未成功的媒体识别结果。"""
+    """
+    冻结真实音频范围及尚未成功的媒体识别结果。
+    """
     item = LocalStorage().get_item(paths[0])
     meta = MetaMusic(title="旧错误曲名", album="Album", artists=["Artist"])
     info = MusicInfo.from_meta(meta)
@@ -79,7 +85,9 @@ def _input(paths):
 
 
 def _claim(admissions, planning):
-    """准入并取得用于当前测试的真实租约。"""
+    """
+    准入并取得用于当前测试的真实租约。
+    """
     admitted = admissions.admit(storage="local", src_path=planning.source_fileitem["path"], planning_input=planning)
     claimed = admissions.claim_task(task_id=admitted.task_id, owner_id="test", lease_seconds=120)
     assert claimed is not None
@@ -87,14 +95,18 @@ def _claim(admissions, planning):
 
 
 def _state(factory, task_id):
-    """从新Session读取状态，避免用ORM内存值冒充已提交的结果。"""
+    """
+    从新Session读取状态，避免用ORM内存值冒充已提交的结果。
+    """
     with factory() as session:
         row = session.execute(select(TransferPending).where(TransferPending.task_id == task_id)).scalar_one()
         return row.state, row.execution_state, row.retry_count, row.checkpoint_payload, row.lease_token
 
 
 def test_planning_backoff_survives_restart_and_obeys_due_time_and_budget(store, tmp_path, monkeypatch):
-    """故障退避保持accepted且没有检查点；到期后新仓储实例可以claim，预算耗尽不再延期。"""
+    """
+    故障退避保持accepted且没有检查点；到期后新仓储实例可以claim，预算耗尽不再延期。
+    """
     admissions, executions, factory, clock = store
     planning = _input(_audio_files(tmp_path / "Artist - Album (2004)"))
     claimed = _claim(admissions, planning)
@@ -115,7 +127,9 @@ def test_planning_backoff_survives_restart_and_obeys_due_time_and_budget(store, 
 
 
 def test_planning_backoff_rejects_stale_lease_and_existing_plan(store, tmp_path):
-    """陈旧worker和已有计划均不能借识别故障重置执行状态。"""
+    """
+    陈旧worker和已有计划均不能借识别故障重置执行状态。
+    """
     admissions, _executions, factory, _clock = store
     planning = _input(_audio_files(tmp_path / "Artist - Album (2004)"))
     claimed = _claim(admissions, planning)
@@ -132,7 +146,9 @@ def test_planning_backoff_rejects_stale_lease_and_existing_plan(store, tmp_path)
 
 @pytest.mark.parametrize("evidence", ["checkpoint_version", "history"])
 def test_retry_budget_exhaustion_does_not_hide_existing_evidence(store, tmp_path, evidence):
-    """即使重试预算为零，也必须先拒绝不完整计划或已有历史，不能直接写新拒绝计划。"""
+    """
+    即使重试预算为零，也必须先拒绝不完整计划或已有历史，不能直接写新拒绝计划。
+    """
     admissions, _executions, factory, _clock = store
     planning = _input(_audio_files(tmp_path / "Artist - Album (2004)"))
     claimed = _claim(admissions, planning)
@@ -150,7 +166,9 @@ def test_retry_budget_exhaustion_does_not_hide_existing_evidence(store, tmp_path
 
 
 def test_missing_source_can_abandon_only_unplanned_backoff(store, tmp_path):
-    """源文件被移除时，无计划、无步骤的退避记录仍可正常清理。"""
+    """
+    源文件被移除时，无计划、无步骤的退避记录仍可正常清理。
+    """
     admissions, _executions, factory, clock = store
     paths = _audio_files(tmp_path / "Artist - Album (2004)")
     claimed = _claim(admissions, _input(paths))
@@ -165,7 +183,9 @@ def test_missing_source_can_abandon_only_unplanned_backoff(store, tmp_path):
 
 
 def test_accepted_replay_reads_current_album_instead_of_saved_failure(tmp_path, monkeypatch):
-    """恢复重新读取当前音频并按原范围匹配，冻结输入中的旧失败信息保持审计用途。"""
+    """
+    恢复重新读取当前音频并按原范围匹配，冻结输入中的旧失败信息保持审计用途。
+    """
     paths = _audio_files(tmp_path / "Artist - Album (2004)")
     planning = _input(paths)
     task = TransferTask(fileitem=LocalStorage().get_item(paths[0]), meta=MetaMusic.from_dict(planning.meta),
@@ -188,7 +208,9 @@ def test_accepted_replay_reads_current_album_instead_of_saved_failure(tmp_path, 
 
 
 def test_accepted_replay_without_media_still_marks_music_scope_for_refresh(store, tmp_path, monkeypatch):
-    """故障发生在准入后的识别阶段时，原输入没有mediainfo也必须恢复音乐识别范围。"""
+    """
+    故障发生在准入后的识别阶段时，原输入没有mediainfo也必须恢复音乐识别范围。
+    """
     admissions, _executions, _factory, _clock = store
     paths = _audio_files(tmp_path / "Artist - Album (2004)")
     planning = replace(_input(paths), mediainfo=None)
@@ -205,7 +227,9 @@ def test_accepted_replay_without_media_still_marks_music_scope_for_refresh(store
 
 
 def test_transient_lookup_defers_without_planning_or_file_operations(store, tmp_path, monkeypatch):
-    """临时故障在进入文件计划前退出，并调用已有恢复调度器。"""
+    """
+    临时故障在进入文件计划前退出，并调用已有恢复调度器。
+    """
     admissions, _executions, factory, _clock = store
     paths = _audio_files(tmp_path / "Artist - Album (2004)")
     planning = _input(paths)
@@ -232,7 +256,9 @@ def test_transient_lookup_defers_without_planning_or_file_operations(store, tmp_
 
 
 def _rejection(planning):
-    """构造真实零文件副作用拒绝检查点。"""
+    """
+    构造真实零文件副作用拒绝检查点。
+    """
     return TransferPlanCheckpoint(planning_input=planning, target_storage="local",
                                   root_target_path=planning.source_fileitem["path"],
                                   final_target_path=planning.source_fileitem["path"], resolved_transfer_type="copy",
@@ -241,7 +267,9 @@ def _rejection(planning):
 
 
 def _failed_rejection(store, paths):
-    """用正式步骤仓储提交拒绝证据，再建立已失败终态和历史用于重试测试。"""
+    """
+    用正式步骤仓储提交拒绝证据，再建立已失败终态和历史用于重试测试。
+    """
     admissions, executions, factory, _clock = store
     planning = _input(paths)
     claimed = _claim(admissions, planning)
@@ -274,7 +302,9 @@ def _failed_rejection(store, paths):
 
 
 def test_retry_replans_zero_effect_music_rejection_and_preserves_history(store, tmp_path):
-    """人工重试零操作音乐拒绝会生成新准入，旧失败历史仍可审计。"""
+    """
+    人工重试零操作音乐拒绝会生成新准入，旧失败历史仍可审计。
+    """
     _admissions, executions, factory, _clock = store
     claimed, planning, history_id = _failed_rejection(store, _audio_files(tmp_path / "Artist - Album (2004)"))
 
@@ -295,7 +325,9 @@ def test_retry_replans_zero_effect_music_rejection_and_preserves_history(store, 
 
 
 def test_replanning_failure_rolls_back_old_internal_evidence(store, tmp_path, monkeypatch):
-    """新准入写入失败时整个事务回滚，旧任务、拒绝证据和历史都保留。"""
+    """
+    新准入写入失败时整个事务回滚，旧任务、拒绝证据和历史都保留。
+    """
     _admissions, executions, factory, _clock = store
     claimed, _planning, history_id = _failed_rejection(store, _audio_files(tmp_path / "Artist - Album (2004)"))
     monkeypatch.setattr("app.db.oper.transferpending.TransferPendingOper.stage_admit", Mock(side_effect=RuntimeError("write failed")))
@@ -309,7 +341,9 @@ def test_replanning_failure_rolls_back_old_internal_evidence(store, tmp_path, mo
 
 
 def test_replanning_stale_history_revision_rolls_back_the_rejection_step(store, tmp_path):
-    """历史版本已变化时，重规划CAS失败且不能丢失之前的拒绝证据。"""
+    """
+    历史版本已变化时，重规划CAS失败且不能丢失之前的拒绝证据。
+    """
     _admissions, executions, factory, _clock = store
     claimed, _planning, history_id = _failed_rejection(store, _audio_files(tmp_path / "Artist - Album (2004)"))
     with factory() as session:
@@ -326,7 +360,9 @@ def test_replanning_stale_history_revision_rolls_back_the_rejection_step(store, 
 
 
 def test_unsafe_replay_scope_does_not_query_other_directory(tmp_path, monkeypatch):
-    """损坏或越界的范围不进入识别，也不能借文件名恢复时读取无关文件。"""
+    """
+    损坏或越界的范围不进入识别，也不能借文件名恢复时读取无关文件。
+    """
     paths = _audio_files(tmp_path / "Artist - Album (2004)")
     planning = _input(paths)
     options = dict(planning.options)
@@ -345,7 +381,9 @@ def test_unsafe_replay_scope_does_not_query_other_directory(tmp_path, monkeypatc
 
 
 def test_recovered_album_executes_real_copy_once_with_original_input(store, tmp_path, monkeypatch):
-    """退避后用新识别结果冻结并执行真实复制，原输入不变，后续重放不重复写文件。"""
+    """
+    退避后用新识别结果冻结并执行真实复制，原输入不变，后续重放不重复写文件。
+    """
     admissions, executions, _factory, clock = store
     paths = _audio_files(tmp_path / "Artist - Album (2004)")
     original = paths[0].read_bytes()
@@ -377,7 +415,9 @@ def test_recovered_album_executes_real_copy_once_with_original_input(store, tmp_
     monkeypatch.setattr(storage, "copy", copies)
 
     def execute():
-        """模拟重启后用同一计划及操作账本执行。"""
+        """
+        模拟重启后用同一计划及操作账本执行。
+        """
         runner = _DurableTransferStepRunner(task_id=replay.task_id, lease_token=replay.lease_token,
                                             checkpoint_fingerprint=checkpoint.fingerprint, repository=executions)
         return handler.execute_transfer_plan(checkpoint, meta=task.meta, mediainfo=task.mediainfo,
@@ -393,7 +433,9 @@ def test_recovered_album_executes_real_copy_once_with_original_input(store, tmp_
 
 
 def test_music_retry_with_file_operation_evidence_never_replans(store, tmp_path):
-    """即使拒绝记录意外混有外部操作证据，重试也必须保留原任务与操作账本。"""
+    """
+    即使拒绝记录意外混有外部操作证据，重试也必须保留原任务与操作账本。
+    """
     _admissions, executions, factory, _clock = store
     claimed, _planning, history_id = _failed_rejection(store, _audio_files(tmp_path / "Artist - Album (2004)"))
     with factory() as session:
@@ -414,7 +456,9 @@ def test_music_retry_with_file_operation_evidence_never_replans(store, tmp_path)
 
 
 def test_remote_retry_never_reads_matching_local_path(tmp_path, monkeypatch):
-    """远端重试仍只用名称与种子，不因路径在本机存在而读取本机标签。"""
+    """
+    远端重试仍只用名称与种子，不因路径在本机存在而读取本机标签。
+    """
     paths = _audio_files(tmp_path / "Artist - Album")
     planning = _input(paths)
     remote_item = {**planning.source_fileitem, "storage": "smb"}
@@ -435,7 +479,9 @@ def test_remote_retry_never_reads_matching_local_path(tmp_path, monkeypatch):
 
 
 def test_cue_companion_replay_uses_original_main_audio(tmp_path):
-    """CUE旁挂恢复使用原主音频，保留整轨语义，不能把CUE文件当歌曲识别。"""
+    """
+    CUE旁挂恢复使用原主音频，保留整轨语义，不能把CUE文件当歌曲识别。
+    """
     audio, cue = _image_pair(tmp_path)
     planning = _input([audio])
     task = TransferTask(fileitem=LocalStorage().get_item(cue), meta=MetaMusic.from_dict(planning.meta),
@@ -453,7 +499,9 @@ def test_cue_companion_replay_uses_original_main_audio(tmp_path):
 
 
 def test_replanning_explicit_music_identity_refreshes_only_classification(tmp_path, monkeypatch):
-    """显式选定的媒体身份和名称不被重新猜测，重规划仅重算当时未通过的分类。"""
+    """
+    显式选定的媒体身份和名称不被重新猜测，重规划仅重算当时未通过的分类。
+    """
     paths = _audio_files(tmp_path / "Artist - Album (2004)")
     selected = MusicInfo(media_source="musicbrainz", media_id="selected-recording", title="Selected Song", album="Album")
     planning = replace(_input(paths), media_source="musicbrainz", media_id=selected.media_id,

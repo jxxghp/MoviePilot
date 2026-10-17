@@ -1,3 +1,7 @@
+"""
+验证不同媒体服务器的媒体库条目数量查询。
+"""
+
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -13,15 +17,21 @@ from app.modules.zspace.zspace import ZSpace
 
 
 class _FakeResponse:
-    """模拟媒体服务器 HTTP 响应。"""
+    """
+    模拟媒体服务器 HTTP 响应。
+    """
 
     def __init__(self, payload: dict, status_code: int = 200):
-        """保存响应数据和状态码。"""
+        """
+        保存响应数据和状态码。
+        """
         self._payload = payload
         self.status_code = status_code
 
     def json(self) -> dict:
-        """返回模拟的 JSON 数据。"""
+        """
+        返回模拟的 JSON 数据。
+        """
         return self._payload
 
 
@@ -35,7 +45,9 @@ class _FakeResponse:
 def test_emby_compatible_items_count_uses_recursive_type_filter(
     client_class, request_utils_path, url_path
 ):
-    """Emby 兼容服务应通过递归类型过滤查询媒体库总数。"""
+    """
+    Emby 兼容服务应通过递归类型过滤查询媒体库总数。
+    """
     client = client_class.__new__(client_class)
     client._host = "http://media.local/"
     client._apikey = "token"
@@ -56,7 +68,9 @@ def test_emby_compatible_items_count_uses_recursive_type_filter(
 
 
 def test_zspace_items_count_uses_total_record_count():
-    """极影视应使用兼容接口返回的 TotalRecordCount。"""
+    """
+    极影视应使用兼容接口返回的 TotalRecordCount。
+    """
     client = ZSpace.__new__(ZSpace)
     client._host = "http://zspace.local/"
     client._apikey = "token"
@@ -78,7 +92,9 @@ def test_zspace_items_count_uses_total_record_count():
 
 
 def test_plex_items_count_uses_section_total_size():
-    """Plex 应直接读取媒体库分区的条目总数。"""
+    """
+    Plex 应直接读取媒体库分区的条目总数。
+    """
     client = Plex.__new__(Plex)
     section = SimpleNamespace(totalSize=31)
     client._plex = SimpleNamespace(
@@ -89,7 +105,9 @@ def test_plex_items_count_uses_section_total_size():
 
 
 def test_ugreen_items_count_uses_library_video_count():
-    """绿联影视应复用媒体库列表中的视频总数。"""
+    """
+    绿联影视应复用媒体库列表中的视频总数。
+    """
     client = Ugreen.__new__(Ugreen)
     client._host = "http://ugreen.local"
     client._username = "tester"
@@ -102,7 +120,9 @@ def test_ugreen_items_count_uses_library_video_count():
 
 
 def test_trimemedia_item_count_reads_list_total():
-    """飞牛影视应通过媒体列表接口的 total 字段获取总数。"""
+    """
+    飞牛影视应通过媒体列表接口的 total 字段获取总数。
+    """
     api = TrimeMediaApi.__new__(TrimeMediaApi)
     response = SimpleNamespace(success=True, data={"list": [], "total": 19})
 
