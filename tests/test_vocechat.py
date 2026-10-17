@@ -1,3 +1,7 @@
+"""
+验证VoceChat 通知客户端的消息请求与响应处理。
+"""
+
 import json
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -57,7 +61,9 @@ def test_send_msg_rejects_invalid_vocechat_target(userid: str):
 def test_message_parser_routes_reply_to_origin(
     target: dict, content: str, expected_userid: str, endpoint: str
 ):
-    """频道搜索与序号交互回原频道，私聊回复发起用户。"""
+    """
+    频道搜索与序号交互回原频道，私聊回复发起用户。
+    """
     module = VoceChatModule()
     vocechat = VoceChat(
         VOCECHAT_HOST="https://voce.example.com",

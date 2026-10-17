@@ -1,4 +1,6 @@
-"""知行解析器的数值属性与对外 Schema 兼容合同。"""
+"""
+知行解析器的数值属性与对外 Schema 兼容合同。
+"""
 
 from unittest.mock import Mock
 
@@ -16,7 +18,9 @@ from app.schemas.site import SiteUserData
 def test_numeric_properties_preserve_site_schema_and_seeding_fallback(
     monkeypatch, seeding_page, seeding, seeding_size,
 ):
-    """离线解析保留页面统计和详情回退，属性采用基类数值类型，API 数值不变。"""
+    """
+    离线解析保留页面统计和详情回退，属性采用基类数值类型，API 数值不变。
+    """
     parser = ZhixingSiteUserInfo(
         site_name="offline", url="https://zhixing.invalid/", site_cookie="", apikey=None, token=None,
         request_utils=Mock(),

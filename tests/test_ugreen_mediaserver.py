@@ -1,3 +1,7 @@
+"""
+验证绿联媒体服务器的目录查询、登录和会话管理。
+"""
+
 from unittest.mock import patch
 
 import pytest
@@ -71,7 +75,9 @@ class _PagedFolderApi:
 
 
 class _FakeMediaApi:
-    """媒体库服务接口的最小伪实现。"""
+    """
+    媒体库服务接口的最小伪实现。
+    """
 
     host = "https://nas.example:9443"
     token = "media-token"
@@ -79,12 +85,16 @@ class _FakeMediaApi:
     server_id = "server-id"
 
     def __init__(self) -> None:
-        """初始化可记录请求参数的伪媒体接口。"""
+        """
+        初始化可记录请求参数的伪媒体接口。
+        """
         self.calls: list[tuple[str, dict]] = []
 
     @staticmethod
     def _movie() -> dict:
-        """返回电影条目样本。"""
+        """
+        返回电影条目样本。
+        """
         return {
             "Id": "movie-id",
             "Type": "Movie",
@@ -99,7 +109,9 @@ class _FakeMediaApi:
 
     @staticmethod
     def _series() -> dict:
-        """返回电视剧条目样本。"""
+        """
+        返回电视剧条目样本。
+        """
         return {
             "Id": "series-id",
             "Type": "Series",
@@ -113,7 +125,9 @@ class _FakeMediaApi:
 
     @staticmethod
     def _episode() -> dict:
-        """返回剧集条目样本。"""
+        """
+        返回剧集条目样本。
+        """
         return {
             "Id": "episode-id",
             "Type": "Episode",
@@ -128,11 +142,15 @@ class _FakeMediaApi:
         }
 
     def current_user(self) -> dict:
-        """返回有效媒体库用户。"""
+        """
+        返回有效媒体库用户。
+        """
         return {"Id": self.user_id, "Name": "tester"}
 
     def views(self) -> list[dict]:
-        """返回电影和电视剧媒体库视图。"""
+        """
+        返回电影和电视剧媒体库视图。
+        """
         return [
             {
                 "Id": "movie-library",
@@ -149,7 +167,9 @@ class _FakeMediaApi:
         ]
 
     def items(self, **kwargs: object) -> dict:
-        """按查询条件返回预置的用户条目。"""
+        """
+        按查询条件返回预置的用户条目。
+        """
         self.calls.append(("items", dict(kwargs)))
         parent_id = kwargs.get("parent_id")
         ids = kwargs.get("ids")
@@ -179,14 +199,18 @@ class _FakeMediaApi:
         return {"Items": [], "TotalRecordCount": 0}
 
     def item(self, item_id: str) -> dict | None:
-        """返回指定媒体条目详情。"""
+        """
+        返回指定媒体条目详情。
+        """
         return {
             "movie-id": self._movie(),
             "series-id": self._series(),
         }.get(item_id)
 
     def counts(self) -> dict:
-        """返回媒体库数量统计。"""
+        """
+        返回媒体库数量统计。
+        """
         return {
             "MovieCount": 11,
             "SeriesCount": 3,
@@ -195,27 +219,37 @@ class _FakeMediaApi:
         }
 
     def resume(self, limit: int = 20) -> list[dict]:
-        """返回继续观看条目。"""
+        """
+        返回继续观看条目。
+        """
         _ = limit
         return [self._movie() | {"UserData": {"PlayedPercentage": 50.0}}, self._episode()]
 
     def episodes(self, series_id: str, season: int | None = None) -> list[dict]:
-        """返回指定剧集的已入库集数。"""
+        """
+        返回指定剧集的已入库集数。
+        """
         assert series_id == "series-id"
         assert season in (None, 1)
         return [self._episode()]
 
     def image_url(self, item_id: str, image_type: str = "Primary") -> str:
-        """返回伪造的媒体图片地址。"""
+        """
+        返回伪造的媒体图片地址。
+        """
         return f"{self.host}/emby/Items/{item_id}/Images/{image_type}?api_key={self.token}"
 
     def close(self) -> None:
-        """关闭伪媒体接口。"""
+        """
+        关闭伪媒体接口。
+        """
         return None
 
 
 def _build_media_service() -> tuple[Ugreen, _FakeMediaApi]:
-    """构造已认证的媒体库服务模式绿联实例。"""
+    """
+    构造已认证的媒体库服务模式绿联实例。
+    """
     media_api = _FakeMediaApi()
     ugreen = Ugreen.__new__(Ugreen)
     ugreen._host = media_api.host
@@ -261,7 +295,9 @@ def test_resolve_verify_ssl():
 
 
 def test_resolve_connection_mode_uses_media_service_port():
-    """9443 默认使用媒体库服务，显式 internal 可保留旧接口行为。"""
+    """
+    9443 默认使用媒体库服务，显式 internal 可保留旧接口行为。
+    """
     resolve = Ugreen._Ugreen__resolve_connection_mode
 
     assert resolve("https://nas.example:9443") == Ugreen.MEDIA_SERVICE_CONNECTION_MODE
@@ -271,7 +307,9 @@ def test_resolve_connection_mode_uses_media_service_port():
 
 
 def test_media_service_supports_library_query_and_core_media_operations():
-    """媒体库服务模式应覆盖媒体库、搜索、详情、播放和同步查询能力。"""
+    """
+    媒体库服务模式应覆盖媒体库、搜索、详情、播放和同步查询能力。
+    """
     ugreen, media_api = _build_media_service()
 
     libraries = ugreen.get_librarys()
@@ -389,11 +427,15 @@ def test_load_library_paths_respects_page_limit():
 
 
 class _DashboardRepository:
-    """Dashboard 汇总测试使用的零增量历史仓储。"""
+    """
+    Dashboard 汇总测试使用的零增量历史仓储。
+    """
 
     @staticmethod
     def monthly_media_statistics() -> TransferHistoryMonthlyStatistics:
-        """返回全零月度统计，隔离媒体服务汇总断言。"""
+        """
+        返回全零月度统计，隔离媒体服务汇总断言。
+        """
         return TransferHistoryMonthlyStatistics(
             movies=0,
             tv_shows=0,

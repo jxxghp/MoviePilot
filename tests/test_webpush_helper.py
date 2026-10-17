@@ -1,3 +1,7 @@
+"""
+验证Web Push 订阅参数与推送请求构造。
+"""
+
 import importlib
 
 from app.adapters.network.webpush import WebPushDeliveryError
@@ -44,7 +48,9 @@ def test_webpush_options_for_non_wns_endpoint() -> None:
 
 
 def test_legacy_webpush_path_reuses_message_endpoint() -> None:
-    """旧 Web Push helper 路径应复用消息端点中的同一实现。"""
+    """
+    旧 Web Push helper 路径应复用消息端点中的同一实现。
+    """
     legacy = importlib.import_module("app.helper.webpush")
 
     assert legacy.is_webpush_subscription_gone is is_webpush_subscription_gone

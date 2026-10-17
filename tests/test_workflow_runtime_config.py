@@ -1,3 +1,7 @@
+"""
+验证工作流动作对运行配置和注入能力的使用。
+"""
+
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -18,7 +22,9 @@ from app.workflow.actions.send_message import SendMessageAction
 
 
 def _runtime_config(**overrides):
-    """构造仅覆盖测试关注字段的 Chain 配置快照。"""
+    """
+    构造仅覆盖测试关注字段的 Chain 配置快照。
+    """
     values = {
         "media_extensions": (".mkv",),
         "subtitle_extensions": (".srt",),
@@ -34,11 +40,15 @@ def _runtime_config(**overrides):
 
 
 def test_fetch_rss_reads_proxy_from_chain_snapshot(monkeypatch):
-    """RSS 动作应使用一次 Chain 快照中的代理，而不是全局 settings。"""
+    """
+    RSS 动作应使用一次 Chain 快照中的代理，而不是全局 settings。
+    """
     captured = {}
 
     class FakeRssHelper:
-        """记录 RSS 请求参数的测试替身。"""
+        """
+        记录 RSS 请求参数的测试替身。
+        """
 
         def parse(self, **kwargs):
             captured.update(kwargs)
@@ -68,10 +78,14 @@ def test_fetch_rss_reads_proxy_from_chain_snapshot(monkeypatch):
 
 
 def test_scan_file_filters_extensions_from_chain_snapshot(monkeypatch):
-    """扫描动作应按快照后缀集合筛选媒体文件。"""
+    """
+    扫描动作应按快照后缀集合筛选媒体文件。
+    """
 
     class FakeStorageChain:
-        """返回固定文件列表的存储链测试替身。"""
+        """
+        返回固定文件列表的存储链测试替身。
+        """
 
         def get_file_item(self, storage, directory):
             return SimpleNamespace(storage=storage, path=str(directory))
@@ -101,11 +115,15 @@ def test_scan_file_filters_extensions_from_chain_snapshot(monkeypatch):
 
 
 def test_add_subscribe_uses_superuser_from_chain_snapshot(monkeypatch):
-    """添加订阅动作应将快照中的超级管理员传给订阅链。"""
+    """
+    添加订阅动作应将快照中的超级管理员传给订阅链。
+    """
     captured = {}
 
     class FakeSubscribeChain:
-        """记录订阅新增参数的测试替身。"""
+        """
+        记录订阅新增参数的测试替身。
+        """
 
         subscription_repository = SimpleNamespace(get=lambda _sid: SimpleNamespace(to_dict=lambda: {
             "id": 42,
@@ -139,11 +157,15 @@ def test_add_subscribe_uses_superuser_from_chain_snapshot(monkeypatch):
 
 
 def test_fetch_medias_internal_api_uses_chain_snapshot(monkeypatch):
-    """获取媒体动作构造内部 API 地址时应读取 Chain 快照。"""
+    """
+    获取媒体动作构造内部 API 地址时应读取 Chain 快照。
+    """
     captured = {}
 
     class FakeRequest:
-        """记录内部 API 请求地址的测试替身。"""
+        """
+        记录内部 API 请求地址的测试替身。
+        """
 
         def __init__(self, **_kwargs):
             pass
@@ -174,11 +196,15 @@ def test_fetch_medias_internal_api_uses_chain_snapshot(monkeypatch):
 
 
 def test_send_message_uses_workflow_url_from_chain_snapshot(monkeypatch):
-    """工作流消息链接应来自 Chain 快照，而不是全局部署设置。"""
+    """
+    工作流消息链接应来自 Chain 快照，而不是全局部署设置。
+    """
     captured = []
 
     class FakeActionChain:
-        """记录发送消息载荷的测试替身。"""
+        """
+        记录发送消息载荷的测试替身。
+        """
 
         def post_message(self, message):
             captured.append(message)

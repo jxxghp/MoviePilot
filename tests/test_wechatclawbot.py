@@ -1,3 +1,7 @@
+"""
+验证微信渠道客户端的会话、消息和配置行为。
+"""
+
 import json
 import tempfile
 from types import SimpleNamespace
@@ -10,12 +14,16 @@ CLIENT_BASE_URL = "https://ilinkai.weixin.qq.com"
 
 
 def _create_client(**kwargs) -> ILinkClient:
-    """构造指向 iLink 服务端的客户端实例。"""
+    """
+    构造指向 iLink 服务端的客户端实例。
+    """
     return ILinkClient(base_url=CLIENT_BASE_URL, **kwargs)
 
 
 def _empty_state() -> dict:
-    """构造未登录的微信 ClawBot 持久化状态。"""
+    """
+    构造未登录的微信 ClawBot 持久化状态。
+    """
     return {
         "bot_token": None,
         "account_id": None,
@@ -28,13 +36,17 @@ def _empty_state() -> dict:
 
 
 def _create_bot() -> WechatClawBot:
-    """构造不自动轮询的微信 ClawBot 实例。"""
+    """
+    构造不自动轮询的微信 ClawBot 实例。
+    """
     with patch.object(WechatClawBot, "_load_state", return_value=_empty_state()):
         return WechatClawBot(name="wechatclawbot-test", auto_start_polling=False)
 
 
 def _module_config() -> SimpleNamespace:
-    """构造消息解析所需的渠道配置。"""
+    """
+    构造消息解析所需的渠道配置。
+    """
     return SimpleNamespace(name="wechatclawbot-test", config={})
 
 
@@ -55,7 +67,9 @@ def test_ilink_parse_incoming_uses_seq_as_message_id_fallback():
 
 
 def test_ilink_parse_incoming_extracts_item_list_media():
-    """iLink 下行媒体放在 item_list 子项的 media 中，应解析为可直接下载的附件引用。"""
+    """
+    iLink 下行媒体放在 item_list 子项的 media 中，应解析为可直接下载的附件引用。
+    """
     client = _create_client()
     image_url = "https://novac2c.cdn.weixin.qq.com/c2c/download?fileid=image-1"
     voice_url = "https://novac2c.cdn.weixin.qq.com/c2c/download?fileid=voice-1"
@@ -118,7 +132,9 @@ def test_ilink_parse_incoming_extracts_item_list_media():
 
 
 def test_ilink_parse_incoming_keeps_legacy_file_item_types():
-    """历史报文把文件放在 type=5/6 的 file_item 中，仍需保持兼容。"""
+    """
+    历史报文把文件放在 type=5/6 的 file_item 中，仍需保持兼容。
+    """
     client = _create_client()
     file_url = "https://novac2c.cdn.weixin.qq.com/c2c/download?fileid=legacy-1"
 
@@ -325,7 +341,9 @@ def test_wechatclawbot_message_parser_deduplicates_message_id():
 
 
 def test_wechatclawbot_message_parser_accepts_image_only_message():
-    """图片入站消息（无文本）应进入 Agent 链路，而不是被判为无效消息丢弃。"""
+    """
+    图片入站消息（无文本）应进入 Agent 链路，而不是被判为无效消息丢弃。
+    """
     module = WechatClawBotModule()
     client = _create_client()
     parsed_message = client._parse_incoming(
@@ -363,7 +381,9 @@ def test_wechatclawbot_message_parser_accepts_image_only_message():
 
 
 def test_wechatclawbot_message_parser_logs_unrecognized_content():
-    """无法识别的入站内容应留下诊断日志，而不是静默丢弃。"""
+    """
+    无法识别的入站内容应留下诊断日志，而不是静默丢弃。
+    """
     module = WechatClawBotModule()
     body = json.dumps(
         {

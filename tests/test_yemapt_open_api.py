@@ -1,3 +1,7 @@
+"""
+验证野马站点开放接口的检索与结果解析。
+"""
+
 import asyncio
 import base64
 import json
@@ -10,29 +14,41 @@ from app.schemas.types import MediaType
 
 
 class _FakeResponse:
-    """构造 YemaPT 开放 API 测试使用的最小响应对象。"""
+    """
+    构造 YemaPT 开放 API 测试使用的最小响应对象。
+    """
 
     def __init__(self, payload: dict, status_code: int = 200):
-        """保存响应数据和状态码。"""
+        """
+        保存响应数据和状态码。
+        """
         self._payload = payload
         self.status_code = status_code
         self.reason = "OK"
         self.text = json.dumps(payload)
 
     def __bool__(self) -> bool:
-        """按 HTTP 成功状态模拟 requests.Response 的布尔值。"""
+        """
+        按 HTTP 成功状态模拟 requests.Response 的布尔值。
+        """
         return self.status_code < 400
 
     def json(self) -> dict:
-        """返回预设 JSON 数据。"""
+        """
+        返回预设 JSON 数据。
+        """
         return self._payload
 
     def close(self) -> None:
-        """模拟释放短生命周期响应。"""
+        """
+        模拟释放短生命周期响应。
+        """
 
 
 def _build_indexer() -> dict:
-    """构造 YemaPT 开放 API Spider 所需的最小站点配置。"""
+    """
+    构造 YemaPT 开放 API Spider 所需的最小站点配置。
+    """
     return {
         "id": "yemapt",
         "name": "YemaPT",
@@ -44,7 +60,9 @@ def _build_indexer() -> dict:
 
 
 def _torrent_response() -> _FakeResponse:
-    """构造 YemaPT 公开种子列表响应。"""
+    """
+    构造 YemaPT 公开种子列表响应。
+    """
     return _FakeResponse({
         "success": True,
         "showType": 0,
@@ -68,11 +86,15 @@ def _torrent_response() -> _FakeResponse:
 
 
 def test_yemapt_search_uses_open_api_auth_and_maps_fields(monkeypatch):
-    """YemaPT 搜索应使用 AuthKey、开放接口及标准字段映射。"""
+    """
+    YemaPT 搜索应使用 AuthKey、开放接口及标准字段映射。
+    """
     captured = {}
 
     def fake_post_res(request, url: str, json: dict = None, **_kwargs):
-        """记录开放 API 搜索请求并回放种子数据。"""
+        """
+        记录开放 API 搜索请求并回放种子数据。
+        """
         captured.update({
             "url": url,
             "json": json,
@@ -140,7 +162,9 @@ def test_yemapt_search_uses_open_api_auth_and_maps_fields(monkeypatch):
 
 
 def test_yemapt_search_rejects_business_failure(monkeypatch):
-    """HTTP 成功但业务失败时，YemaPT 搜索必须返回错误。"""
+    """
+    HTTP 成功但业务失败时，YemaPT 搜索必须返回错误。
+    """
     monkeypatch.setattr(
         "app.modules.indexer.spider.yema.RequestUtils.post_res",
         lambda *_args, **_kwargs: _FakeResponse({
@@ -157,7 +181,9 @@ def test_yemapt_search_rejects_business_failure(monkeypatch):
 
 
 def test_yemapt_maps_audio_and_music_video_categories_to_music():
-    """YemaPT 音乐和 MV/演唱会分类都应映射为统一音乐类型。"""
+    """
+    YemaPT 音乐和 MV/演唱会分类都应映射为统一音乐类型。
+    """
     results = YemaSpider(_build_indexer())._parse_result([
         {"id": 101, "showName": "Album FLAC", "categoryId": 8},
         {"id": 102, "showName": "Live Concert", "categoryId": 16},
@@ -170,11 +196,15 @@ def test_yemapt_maps_audio_and_music_video_categories_to_music():
 
 
 def test_yemapt_music_search_queries_both_music_categories(monkeypatch):
-    """YemaPT 音乐搜索应分别查询音乐和 MV/演唱会分类。"""
+    """
+    YemaPT 音乐搜索应分别查询音乐和 MV/演唱会分类。
+    """
     request_payloads = []
 
     def fake_post_res(_request, url: str, json: dict = None, **_kwargs):
-        """记录音乐分类请求并按分类返回一条种子。"""
+        """
+        记录音乐分类请求并按分类返回一条种子。
+        """
         request_payloads.append(json)
         category_id = json["categoryId"]
         return _FakeResponse({
@@ -205,11 +235,15 @@ def test_yemapt_music_search_queries_both_music_categories(monkeypatch):
 
 
 def test_yemapt_tv_search_queries_all_video_categories(monkeypatch):
-    """YemaPT 剧集搜索应覆盖剧集、短剧、综艺、动漫、纪录片和体育。"""
+    """
+    YemaPT 剧集搜索应覆盖剧集、短剧、综艺、动漫、纪录片和体育。
+    """
     request_payloads = []
 
     def fake_post_res(_request, url: str, json: dict = None, **_kwargs):
-        """记录剧集分类请求并返回空的成功响应。"""
+        """
+        记录剧集分类请求并返回空的成功响应。
+        """
         request_payloads.append(json)
         return _FakeResponse({"success": True, "data": []})
 
@@ -231,11 +265,15 @@ def test_yemapt_tv_search_queries_all_video_categories(monkeypatch):
 
 
 def test_yemapt_async_search_uses_open_api(monkeypatch):
-    """YemaPT 异步搜索应使用与同步搜索相同的开放 API 契约。"""
+    """
+    YemaPT 异步搜索应使用与同步搜索相同的开放 API 契约。
+    """
     captured = {}
 
     async def fake_post_res(request, url: str, json: dict = None, **_kwargs):
-        """记录异步开放 API 请求并回放种子数据。"""
+        """
+        记录异步开放 API 请求并回放种子数据。
+        """
         captured.update({
             "url": url,
             "json": json,
@@ -261,7 +299,9 @@ def test_yemapt_async_search_uses_open_api(monkeypatch):
 
 
 def test_yemapt_user_parser_uses_basic_info_only(monkeypatch):
-    """YemaPT 用户解析器应仅调用开放 API 已提供的基本信息接口。"""
+    """
+    YemaPT 用户解析器应仅调用开放 API 已提供的基本信息接口。
+    """
     captured = []
     payload = {
         "success": True,
@@ -278,7 +318,9 @@ def test_yemapt_user_parser_uses_basic_info_only(monkeypatch):
     }
 
     def fake_post_res(_request, url: str, json: dict = None, **kwargs):
-        """记录用户基本信息请求并回放开放 API 响应。"""
+        """
+        记录用户基本信息请求并回放开放 API 响应。
+        """
         captured.append((url, json, kwargs.get("headers"), kwargs.get("cookies")))
         return _FakeResponse(payload)
 
@@ -312,11 +354,15 @@ def test_yemapt_user_parser_uses_basic_info_only(monkeypatch):
 
 
 def test_yemapt_download_generates_and_urlencodes_temporary_key(monkeypatch):
-    """YemaPT 下载应临时生成凭证并在下载 URL 中安全编码。"""
+    """
+    YemaPT 下载应临时生成凭证并在下载 URL 中安全编码。
+    """
     captured = {}
 
     def fake_post_res(request, url: str, params: dict = None, **_kwargs):
-        """回放下载凭证接口响应。"""
+        """
+        回放下载凭证接口响应。
+        """
         captured.update({
             "credential_url": url,
             "credential_params": params,
@@ -326,7 +372,9 @@ def test_yemapt_download_generates_and_urlencodes_temporary_key(monkeypatch):
         return _FakeResponse({"success": True, "data": "abc+/="})
 
     def fake_download_torrent(_helper, **kwargs):
-        """记录最终种子文件下载地址并返回有效种子内容。"""
+        """
+        记录最终种子文件下载地址并返回有效种子内容。
+        """
         captured.update(kwargs)
         return None, b"torrent-content", "Movie", ["Movie.mkv"], ""
 

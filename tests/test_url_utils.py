@@ -1,3 +1,7 @@
+"""
+验证URL 解析、拼接和规范化规则。
+"""
+
 import pytest
 
 from app.foundation.url import UrlUtils, url_matches_trusted_hosts
@@ -42,5 +46,7 @@ def test_standardize_base_url_keeps_permissive_contract():
     ],
 )
 def test_url_matches_trusted_hosts_requires_exact_http_host(url, trusted_hosts, expected):
-    """受信主机匹配只放行 HTTP(S) 且端口或主机名精确命中的地址。"""
+    """
+    受信主机匹配只放行 HTTP(S) 且端口或主机名精确命中的地址。
+    """
     assert url_matches_trusted_hosts(url, trusted_hosts) is expected
