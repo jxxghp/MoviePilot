@@ -1,3 +1,7 @@
+"""
+音频标签、歌词和 CUE 元数据的扫描、读取与写入。
+"""
+
 import re
 import shutil
 import struct
@@ -57,7 +61,14 @@ _ASF_FIELDS = {
 
 @dataclass(slots=True)
 class _AudioScan:
-    """仅在当前扫描中保存元数据副本，不保留可写 Mutagen 对象或文件句柄。"""
+    """
+    仅在当前扫描中保存元数据副本，不保留可写 Mutagen 对象或文件句柄。
+
+    :param tags: 以文件签名为键的音频标签副本缓存，None 记录无法读取标签的结果
+    :param cues: 以文件签名为键的 CUE 文本缓存
+    :param lock: 保护同一扫描上下文缓存访问的可重入锁
+    :param active: 扫描上下文是否仍有效，退出后禁止继续复用其缓存
+    """
 
     tags: OrderedDict[_AudioSignature, Optional[MetaMusic]] = field(default_factory=OrderedDict)
     cues: OrderedDict[_AudioSignature, str] = field(default_factory=OrderedDict)
@@ -70,14 +81,18 @@ _music_cue_policy: ContextVar[Optional[bool]] = ContextVar("music_cue_policy", d
 
 
 def music_cue_enabled() -> bool:
-    """优先读取本次整理的 CUE 策略，未绑定时继承系统设置。"""
+    """
+    优先读取本次整理的 CUE 策略，未绑定时继承系统设置。
+    """
     enabled = _music_cue_policy.get()
     return bool(get_runtime_setting("MUSIC_CUE_ENABLE")) if enabled is None else enabled
 
 
 @contextmanager
 def use_music_cue(enabled: Optional[bool] = None) -> Iterator[None]:
-    """隔离本次识别策略，允许线程上下文继承且退出或异常时恢复原策略。"""
+    """
+    隔离本次识别策略，允许线程上下文继承且退出或异常时恢复原策略。
+    """
     token = _music_cue_policy.set(music_cue_enabled() if enabled is None else enabled)
     try:
         yield
@@ -87,7 +102,9 @@ def use_music_cue(enabled: Optional[bool] = None) -> Iterator[None]:
 
 @contextmanager
 def capture_audio_metadata() -> Iterator[None]:
-    """一次整理共享有界只读快照，退出后连同继承上下文的 worker 也不能继续复用。"""
+    """
+    一次整理共享有界只读快照，退出后连同继承上下文的 worker 也不能继续复用。
+    """
     existing = _audio_scan.get()
     if existing is not None and existing.active:
         yield
@@ -105,7 +122,9 @@ def capture_audio_metadata() -> Iterator[None]:
 
 
 def _audio_signature(path: Path) -> Optional[_AudioSignature]:
-    """文件替换、内容或元数据变更都使扫描快照失效；保留路径别名的目录语义。"""
+    """
+    文件替换、内容或元数据变更都使扫描快照失效；保留路径别名的目录语义。
+    """
     try:
         stat = path.stat()
         return str(path.absolute()), stat.st_ino, stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns
@@ -115,7 +134,8 @@ def _audio_signature(path: Path) -> Optional[_AudioSignature]:
 
 @contextmanager
 def _audio_write_target(path: Path) -> Iterator[Path]:
-    """链接目标在独立副本上完成全部标签写入，成功后只替换媒体库中的目录项。
+    """
+    链接目标在独立副本上完成全部标签写入，成功后只替换媒体库中的目录项。
 
     不解析并改写符号链接指向的源文件。临时文件与目标同目录，以便原子替换；
     任一写入失败或期间目标发生变化时保留原链接，并清理未提交副本。
@@ -145,7 +165,9 @@ def _audio_write_target(path: Path) -> Iterator[Path]:
 
 
 def _read_cue_text(path: Path) -> str:
-    """同一扫描复用 CUE 文本，文件发生变化时重新读取。"""
+    """
+    同一扫描复用 CUE 文本，文件发生变化时重新读取。
+    """
     scan, signature = _audio_scan.get(), _audio_signature(path)
     if scan is None or not scan.active or signature is None:
         return _load_cue_text(path)
@@ -164,7 +186,9 @@ def _read_cue_text(path: Path) -> str:
 
 
 def _load_cue_text(path: Path) -> str:
-    """有界读取 CUE，优先 Unicode，再用已有编码探测与 GB18030 兼容中文旧文件。"""
+    """
+    有界读取 CUE，优先 Unicode，再用已有编码探测与 GB18030 兼容中文旧文件。
+    """
     with path.open("rb") as stream:
         payload = stream.read(1024 * 1024 + 1)
     if len(payload) > 1024 * 1024:
@@ -182,7 +206,9 @@ def _load_cue_text(path: Path) -> str:
 
 
 def _cue_mentions_audio(text: str, path: Path) -> bool:
-    """即使索引结构损坏，也保留 FILE 对当前音频的明确关联，避免错误回退指纹。"""
+    """
+    即使索引结构损坏，也保留 FILE 对当前音频的明确关联，避免错误回退指纹。
+    """
     for line in text.splitlines():
         match = re.match(r'\s*FILE\s+(?:"([^"\r\n]+)"|(\S+))', line, re.IGNORECASE)
         if match:
@@ -193,7 +219,9 @@ def _cue_mentions_audio(text: str, path: Path) -> bool:
 
 
 def _cue_file_references(text: str) -> list[str]:
-    """从原始 CUE 文本提取 FILE 引用名，供解析失败时判断引用是否仍然存在。"""
+    """
+    从原始 CUE 文本提取 FILE 引用名，供解析失败时判断引用是否仍然存在。
+    """
     references = []
     for line in text.splitlines():
         match = re.match(r'\s*FILE\s+(?:"([^"\r\n]+)"|(\S+))', line, re.IGNORECASE)
@@ -203,7 +231,9 @@ def _cue_file_references(text: str) -> list[str]:
 
 
 def _cue_references_existing_audio(path: Path, names: Any) -> bool:
-    """CUE 至少引用一个目录中真实存在的音频才可采信；跨目录引用保守视为存在。"""
+    """
+    CUE 至少引用一个目录中真实存在的音频才可采信；跨目录引用保守视为存在。
+    """
     for name in names:
         try:
             reference = _cue_reference_name(name)
@@ -215,7 +245,8 @@ def _cue_references_existing_audio(path: Path, names: Any) -> bool:
 
 
 def _cue_split_audio_files(path: Path, text: str) -> list[str]:
-    """列出 CUE 中只声明单条音轨、且文件确实存在于同目录的 FILE 引用名。
+    """
+    列出 CUE 中只声明单条音轨、且文件确实存在于同目录的 FILE 引用名。
 
     FILE 块只有一条音轨说明该文件本身就是一整支曲目，曲目边界来自文件本身；块内
     有两条以上音轨说明该文件是整轨镜像，索引才是唯一的曲目来源。跨目录引用无法
@@ -248,7 +279,9 @@ def _cue_split_audio_files(path: Path, text: str) -> list[str]:
 
 
 def _cue_candidates(path: Path) -> list[Path]:
-    """只扫描音频同目录的有限 CUE，不遍历全集或其它目录。"""
+    """
+    只扫描音频同目录的有限 CUE，不遍历全集或其它目录。
+    """
     candidates = []
     for item in path.parent.iterdir():
         if item.is_file() and item.suffix.casefold() == ".cue" and not item.name.startswith("."):
@@ -259,7 +292,9 @@ def _cue_candidates(path: Path) -> list[Path]:
 
 
 def _cue_reference_name(name: str) -> str:
-    """只允许同目录相对文件名，绝对路径、目录穿越及跨目录引用必须人工处理。"""
+    """
+    只允许同目录相对文件名，绝对路径、目录穿越及跨目录引用必须人工处理。
+    """
     normalized = PurePosixPath(name.replace("\\", "/"))
     if PureWindowsPath(name).drive or normalized.is_absolute() or len(normalized.parts) != 1 or name in {".", ".."}:
         raise ValueError("CUE 引用了目录外或跨目录音频，请保留原目录结构后处理")
@@ -267,7 +302,9 @@ def _cue_reference_name(name: str) -> str:
 
 
 def _find_audio_cue(path: Path) -> Optional[tuple[Path, MusicCueSheet]]:
-    """以 FILE 引用定位关联 CUE，冲突或整轨损坏索引不能退回首曲指纹识别。"""
+    """
+    以 FILE 引用定位关联 CUE，冲突或整轨损坏索引不能退回首曲指纹识别。
+    """
     matches: list[tuple[Path, MusicCueSheet]] = []
     for candidate in _cue_candidates(path):
         try:
@@ -304,7 +341,9 @@ def _find_audio_cue(path: Path) -> Optional[tuple[Path, MusicCueSheet]]:
 
 
 def _apply_audio_cue(path: Path, meta: MetaMusic) -> MetaMusic:
-    """按开关读取关联 CUE；关闭时保留分轨标签，不扫描、校验或归档索引。"""
+    """
+    按开关读取关联 CUE；关闭时保留分轨标签，不扫描、校验或归档索引。
+    """
     if not music_cue_enabled() or path.suffix.casefold() == ".cue" or not path.is_file():
         return meta
     try:
@@ -359,7 +398,9 @@ def _apply_audio_cue(path: Path, meta: MetaMusic) -> MetaMusic:
 
 
 def _read_mp4_tags(tags: MP4Tags) -> dict[str, list[str]]:
-    """读取标准 MP4 atom 与明确的文本 freeform，覆盖 EasyMP4 未注册的发行 ID。"""
+    """
+    读取标准 MP4 atom 与明确的文本 freeform，覆盖 EasyMP4 未注册的发行 ID。
+    """
     atoms = {"title": "\xa9nam", "artist": "\xa9ART", "album": "\xa9alb",
              "albumartist": "aART", "date": "\xa9day", "genre": "\xa9gen", "composer": "\xa9wrt"}
     values = {key: [str(value) for value in tags.get(atom, [])] for key, atom in atoms.items()}
@@ -383,13 +424,17 @@ def _read_mp4_tags(tags: MP4Tags) -> dict[str, list[str]]:
 
 
 def _asf_text_values(values: Any) -> list[str]:
-    """ASF文本/整数/布尔属性均有合法文本含义，二进制属性不能伪装成标题或MBID。"""
+    """
+    ASF文本/整数/布尔属性均有合法文本含义，二进制属性不能伪装成标题或MBID。
+    """
     return [str(int(item.value)) if isinstance(item, ASFBoolAttribute) else str(item).strip()
             for item in values or [] if not isinstance(item, (ASFByteArrayAttribute, bytes)) and str(item).strip()]
 
 
 def _read_asf_tags(tags: ASFTags) -> dict[str, list[str]]:
-    """优先读取Windows Media原生键，再兼容旧小写写入；WM/Track为零基编号。"""
+    """
+    优先读取Windows Media原生键，再兼容旧小写写入；WM/Track为零基编号。
+    """
     values = {key.casefold(): _asf_text_values(items) for key, items in tags.items()}
     for key, aliases in _ASF_FIELDS.items():
         values[key] = next((items for alias in (*aliases, key)
@@ -403,7 +448,9 @@ def _read_asf_tags(tags: ASFTags) -> dict[str, list[str]]:
 
 
 def _write_asf_tags(tags: ASFTags, values: dict[str, list[str]]) -> bool:
-    """差异预检后只替换所需字段及其兼容别名，保留用户其它ASF属性。"""
+    """
+    差异预检后只替换所需字段及其兼容别名，保留用户其它ASF属性。
+    """
     for key, value in values.items():
         names = _ASF_FIELDS.get(key, (key,))
         aliases = {name.casefold() for name in (*names, key)}
@@ -419,7 +466,9 @@ def _write_asf_tags(tags: ASFTags, values: dict[str, list[str]]) -> bool:
 
 
 def _mark_asf_quality(meta: MetaMusic, audio: ASF) -> None:
-    """ASF编码类型来自音频流的Codec List；不能从码率、扩展名或描述中的宣传词推断无损。"""
+    """
+    ASF编码类型来自音频流的Codec List；不能从码率、扩展名或描述中的宣传词推断无损。
+    """
     codec = audio.info.codec_type.casefold()
     if codec.startswith("windows media audio"):
         meta.apply_audio_quality("WMA lossless" if "lossless" in codec else "WMA", overwrite=True, evidence_source="stream")
@@ -432,7 +481,9 @@ def _mark_asf_quality(meta: MetaMusic, audio: ASF) -> None:
 
 
 def _write_binary_cover(audio: Any, path: Path, data: bytes, mime: str, overwrite: bool) -> None:
-    """ASF与APE使用专用二进制属性保存封面，保留缺失才补写的策略。"""
+    """
+    ASF与APE使用专用二进制属性保存封面，保留缺失才补写的策略。
+    """
     if audio.tags is None:
         audio.add_tags()
     key = "WM/Picture" if isinstance(audio, ASF) else "Cover Art (Front)"
@@ -449,13 +500,17 @@ def _write_binary_cover(audio: Any, path: Path, data: bytes, mime: str, overwrit
 
 
 def _performer_pair(value: str) -> tuple[str, str]:
-    """解析PERFORMER专用的“人名 (乐器)”标签，不拆分人名内部的逗号或斜线。"""
+    """
+    解析PERFORMER专用的“人名 (乐器)”标签，不拆分人名内部的逗号或斜线。
+    """
     match = re.fullmatch(r"(.+?)\s+\(([^()]+)\)", value.strip())
     return (match[2].strip(), match[1].strip()) if match else ("performer", value.strip())
 
 
 def _id3_credit_field(tags: ID3, frame_id: str, role: str) -> Optional[str]:
-    """按原生人员帧职责分类，v2.4制作人员表中的未知职责不猜为乐器。"""
+    """
+    按原生人员帧职责分类，v2.4制作人员表中的未知职责不猜为乐器。
+    """
     nonperformers = {"producer", "engineer", "mix", "dj-mix", "remixer", "arranger", "writer", "lyricist", "mastering"}
     role_fields = {"composer": "composer", "conductor": "conductor", "orchestra": "orchestra", "ensemble": "orchestra"}
     role = role.casefold()
@@ -468,7 +523,9 @@ def _id3_credit_field(tags: ID3, frame_id: str, role: str) -> Optional[str]:
 
 
 def _id3_credit_values(tags: ID3) -> dict[str, list[str]]:
-    """读取演奏人员帧，兼容v2.3 IPLS转TIPL；制作、混音等职责不伪装成演奏者。"""
+    """
+    读取演奏人员帧，兼容v2.3 IPLS转TIPL；制作、混音等职责不伪装成演奏者。
+    """
     result: dict[str, list[str]] = {}
     for frame_id in ("TMCL", "IPLS", "TIPL"):
         for frame in tags.getall(frame_id):
@@ -483,7 +540,9 @@ def _id3_credit_values(tags: ID3) -> dict[str, list[str]]:
 
 
 def _remove_id3_credit_aliases(tags: ID3, key: str) -> bool:
-    """覆盖明确角色时清理其旧人员帧/自定义别名，保留制作人和其它职责。"""
+    """
+    覆盖明确角色时清理其旧人员帧/自定义别名，保留制作人和其它职责。
+    """
     changed = False
     for frame_id in ("TMCL", "TIPL", "IPLS"):
         for frame in tags.getall(frame_id):
@@ -501,7 +560,9 @@ def _remove_id3_credit_aliases(tags: ID3, key: str) -> bool:
 
 
 def _credit_tag_values(credits: dict[str, Any]) -> dict[str, list[str]]:
-    """角色模型统一转换为文本标签，预检和写入使用同一乐器署名格式。"""
+    """
+    角色模型统一转换为文本标签，预检和写入使用同一乐器署名格式。
+    """
     return {
         "composer": credits["composers"], "conductor": credits["conductors"], "orchestra": credits["orchestras"],
         "performer": [f"{name} ({role})" if role != "performer" else name
@@ -510,7 +571,9 @@ def _credit_tag_values(credits: dict[str, Any]) -> dict[str, list[str]]:
 
 
 def _remove_mp4_credit_aliases(tags: MP4Tags, values: dict[str, list[str]]) -> bool:
-    """纠正MP4角色时移除其大小写变体和ENSEMBLE别名，避免读回仍混有旧阵容。"""
+    """
+    纠正MP4角色时移除其大小写变体和ENSEMBLE别名，避免读回仍混有旧阵容。
+    """
     changed = False
     for atom in list(tags.keys()):
         name = atom.casefold().removeprefix("----:com.apple.itunes:")
@@ -522,7 +585,9 @@ def _remove_mp4_credit_aliases(tags: MP4Tags, values: dict[str, list[str]]) -> b
 
 
 def _mark_audio_evidence(meta: MetaMusic, audio: Any) -> MetaMusic:
-    """记录实际标签和流参数的来源，名称推测不能获得标签级可信度。"""
+    """
+    记录实际标签和流参数的来源，名称推测不能获得标签级可信度。
+    """
     tag_fields = (
         "title", "artists", "album", "album_artist", "year", "original_year", "release_year",
         "disc_number", "track_number", "total_discs", "total_tracks", "version", "isrc",
@@ -549,11 +614,15 @@ def _mark_audio_evidence(meta: MetaMusic, audio: Any) -> MetaMusic:
 
 
 class AudioMetadataHelper:
-    """读取和写入音频标签，并转换为标准音乐元数据。"""
+    """
+    读取和写入音频标签，并转换为标准音乐元数据。
+    """
 
     @classmethod
     def read(cls, path: Path) -> MetaMusic:
-        """读取本地音频标签，并以完整文件名模式和目录线索补充缺失字段。"""
+        """
+        读取本地音频标签，并以完整文件名模式和目录线索补充缺失字段。
+        """
         tag_meta = cls.read_tags(path)
         meta = tag_meta.apply_path_context(path) if tag_meta else cls.read_filename(path)
         return _apply_audio_cue(path, meta)
@@ -563,7 +632,9 @@ class AudioMetadataHelper:
             cls,
             path: Path,
     ) -> tuple[MetaMusic, Optional[MetaMusic], MetaMusic]:
-        """分别返回合并元数据、纯标签元数据和纯文件名元数据。"""
+        """
+        分别返回合并元数据、纯标签元数据和纯文件名元数据。
+        """
         filename_meta = cls.read_filename(path)
         tag_meta = cls.read_tags(path) if path.exists() and path.is_file() else None
         if not tag_meta:
@@ -573,17 +644,23 @@ class AudioMetadataHelper:
 
     @classmethod
     def read_many(cls, paths: list[Path]) -> list[MetaMusic]:
-        """批量读取一组音频路径的标签与文件名元数据。"""
+        """
+        批量读取一组音频路径的标签与文件名元数据。
+        """
         return [cls.read(path) for path in paths]
 
     @staticmethod
     def with_cue_context(path: Path, meta: MetaMusic) -> MetaMusic:
-        """在隔离副本上附加 CUE 事实，批次缓存的纯标签不能被路径或索引污染。"""
+        """
+        在隔离副本上附加 CUE 事实，批次缓存的纯标签不能被路径或索引污染。
+        """
         return _apply_audio_cue(path, MetaMusic.from_dict(meta.to_dict()).apply_path_context(path))
 
     @classmethod
     def read_tags(cls, path: Path) -> Optional[MetaMusic]:
-        """只读取本地音频标签和流参数，不使用文件名或目录补齐。"""
+        """
+        只读取本地音频标签和流参数，不使用文件名或目录补齐。
+        """
         scan, signature = _audio_scan.get(), _audio_signature(path)
         if scan is None or not scan.active or signature is None:
             return cls._read_tags(path)
@@ -602,7 +679,9 @@ class AudioMetadataHelper:
 
     @classmethod
     def _read_tags(cls, path: Path) -> Optional[MetaMusic]:
-        """解析实际容器的原生标签；扫描缓存只包裹此只读操作。"""
+        """
+        解析实际容器的原生标签；扫描缓存只包裹此只读操作。
+        """
         try:
             audio = cls._open_audio(path)
         except Exception as err:
@@ -673,7 +752,9 @@ class AudioMetadataHelper:
 
     @staticmethod
     def _open_audio(path: Path) -> Any:
-        """读取实际容器；错误扩展名重试不带后缀提示，保存时必须明确传入目标路径。"""
+        """
+        读取实际容器；错误扩展名重试不带后缀提示，保存时必须明确传入目标路径。
+        """
         try:
             return MutagenFile(path, easy=False)
         except MutagenError:
@@ -682,7 +763,8 @@ class AudioMetadataHelper:
 
     @staticmethod
     def _readable_tags(tags: Any) -> Any:
-        """将原生ID3/MP4/ASF及Vorbis/APEv2映射到统一键，不修改音频。
+        """
+        将原生ID3/MP4/ASF及Vorbis/APEv2映射到统一键，不修改音频。
 
         原生读取可保留 Easy 包装未注册的发行字段；Recording 的身份只取
         专用字段，不能误用 Release Track ID。
@@ -721,7 +803,9 @@ class AudioMetadataHelper:
 
     @classmethod
     def _read_credits(cls, tags: Any) -> dict[str, Any]:
-        """把容器中的明确古典角色投影为独立字段，演奏乐器保留为映射键。"""
+        """
+        把容器中的明确古典角色投影为独立字段，演奏乐器保留为映射键。
+        """
         performers: dict[str, list[str]] = {}
         for value in cls._values(tags, "performer"):
             role, name = _performer_pair(value)
@@ -734,7 +818,9 @@ class AudioMetadataHelper:
 
     @classmethod
     def read_lyrics(cls, path: Path) -> Optional[MusicLyrics]:
-        """读取常见音频容器中的逐行同步歌词、纯文本歌词和 Lyricsfile 标签。"""
+        """
+        读取常见音频容器中的逐行同步歌词、纯文本歌词和 Lyricsfile 标签。
+        """
         try:
             audio = MutagenFile(path, easy=False)
         except Exception as err:
@@ -788,7 +874,9 @@ class AudioMetadataHelper:
 
     @staticmethod
     def _tag_text(tags: dict[str, Any], *keys: str) -> Optional[str]:
-        """从不同容器的单值或列表标签中提取首个非空文本。"""
+        """
+        从不同容器的单值或列表标签中提取首个非空文本。
+        """
         for key in keys:
             value = tags.get(key.casefold())
             if isinstance(value, (list, tuple)) and value:
@@ -802,7 +890,9 @@ class AudioMetadataHelper:
 
     @staticmethod
     def _sylt_to_lrc(frame: SYLT) -> Optional[str]:
-        """把 ID3 SYLT 的毫秒时间戳转换为通用 LRC 行。"""
+        """
+        把 ID3 SYLT 的毫秒时间戳转换为通用 LRC 行。
+        """
         output = []
         for text, timestamp in frame.text or []:
             if not str(text or "").strip():
@@ -813,7 +903,9 @@ class AudioMetadataHelper:
 
     @staticmethod
     def read_filename(path: Path) -> MetaMusic:
-        """只从文件名和目录结构解析音乐元数据。"""
+        """
+        只从文件名和目录结构解析音乐元数据。
+        """
         return MetaMusic(
             org_string=path.name,
             title=path.stem,
@@ -832,7 +924,9 @@ class AudioMetadataHelper:
             write_tags: bool = True,
             cover_overwrite: Optional[bool] = None,
     ) -> bool:
-        """按独立策略写入标签与封面；链接目标仅在独立副本写入成功后替换。"""
+        """
+        按独立策略写入标签与封面；链接目标仅在独立副本写入成功后替换。
+        """
         if not write_tags and not cover_data:
             return True
         try:
@@ -864,12 +958,16 @@ class AudioMetadataHelper:
 
     @classmethod
     def _needs_tag_write(cls, audio: Any, music: Union[MetaMusic, MusicInfo], overwrite: bool) -> bool:
-        """先只读比较已有标签，完整元数据不应触发大音频文件的副本创建。"""
+        """
+        先只读比较已有标签，完整元数据不应触发大音频文件的副本创建。
+        """
         return bool(cls._tag_updates(audio, music, overwrite))
 
     @classmethod
     def _tag_updates(cls, audio: Any, music: Union[MetaMusic, MusicInfo], overwrite: bool) -> dict[str, list[str]]:
-        """预检和实际写入共用字段差异，年份模型不能抹掉标签中同年的完整日期。"""
+        """
+        预检和实际写入共用字段差异，年份模型不能抹掉标签中同年的完整日期。
+        """
         tags = cls._readable_tags(audio.tags)
         credits = _credit_tag_values(cls._read_credits(tags))
         aliases = {"albumartist": ("albumartist", "album artist"), "date": ("date", "year"),
@@ -903,7 +1001,9 @@ class AudioMetadataHelper:
 
     @staticmethod
     def _has_cover(audio: Any) -> bool:
-        """按现有封面支持范围判定缺失策略，避免为已存在的图片复制整段音频。"""
+        """
+        按现有封面支持范围判定缺失策略，避免为已存在的图片复制整段音频。
+        """
         if isinstance(audio, FLAC):
             return bool(audio.pictures)
         tags = getattr(audio, "tags", None)
@@ -919,7 +1019,9 @@ class AudioMetadataHelper:
 
     @classmethod
     def _write_tag_values(cls, audio: Any, music: Union[MetaMusic, MusicInfo], overwrite: bool, path: Path) -> None:
-        """按标签策略保存可支持的字段；空标签音频仍然是可写的有效容器。"""
+        """
+        按标签策略保存可支持的字段；空标签音频仍然是可写的有效容器。
+        """
         if audio.tags is None:
             audio.add_tags()
         values = cls._tag_updates(audio, music, overwrite)
@@ -936,7 +1038,9 @@ class AudioMetadataHelper:
 
     @classmethod
     def _write_text_tags(cls, audio: Any, values: dict[str, list[str]], overwrite: bool, path: Path) -> bool:
-        """写入Vorbis/APEv2文本字段，并使用APE播放器通用的字段名。"""
+        """
+        写入Vorbis/APEv2文本字段，并使用APE播放器通用的字段名。
+        """
         # APEv2的MusicBrainz字段沿用下划线名称，不能套用ID3 TXXX描述中的空格。
         ape_fields = {"albumartist": "Album Artist", "date": "Year", "originaldate": "Originalyear",
                       "tracknumber": "Track", "discnumber": "Disc"}
@@ -960,7 +1064,9 @@ class AudioMetadataHelper:
 
     @staticmethod
     def _write_id3_tags(tags: ID3, values: dict[str, list[str]], overwrite: bool) -> bool:
-        """按原生ID3帧写入WAV/DSF/MP3等容器，不把Easy字段名当作ID3帧名。"""
+        """
+        按原生ID3帧写入WAV/DSF/MP3等容器，不把Easy字段名当作ID3帧名。
+        """
         fields = {"title": "TIT2", "artist": "TPE1", "album": "TALB", "albumartist": "TPE2",
                   "date": "TDRC", "originaldate": "TDOR", "tracknumber": "TRCK", "discnumber": "TPOS", "isrc": "TSRC",
                   "composer": "TCOM", "conductor": "TPE3"}
@@ -989,7 +1095,9 @@ class AudioMetadataHelper:
 
     @classmethod
     def _write_mp4_tags(cls, tags: MP4Tags, values: dict[str, list[str]], overwrite: bool) -> bool:
-        """写入MP4标准atom和文本freeform，保留曲序/总数及各类发行身份。"""
+        """
+        写入MP4标准atom和文本freeform，保留曲序/总数及各类发行身份。
+        """
         atoms = {"title": "\xa9nam", "artist": "\xa9ART", "album": "\xa9alb", "albumartist": "aART", "date": "\xa9day", "composer": "\xa9wrt"}
         custom = {"musicbrainz_trackid": "MusicBrainz Track Id", "musicbrainz_albumid": "MusicBrainz Album Id",
                   "musicbrainz_releasegroupid": "MusicBrainz Release Group Id", "musicbrainz_releasetrackid": "MusicBrainz Release Track Id",
@@ -1015,7 +1123,9 @@ class AudioMetadataHelper:
 
     @classmethod
     def _tag_values(cls, music: Union[MetaMusic, MusicInfo]) -> dict[str, Any]:
-        """把标准音乐对象转换为容器无关的文本字段，身份与年份保持各自语义。"""
+        """
+        把标准音乐对象转换为容器无关的文本字段，身份与年份保持各自语义。
+        """
         track_number = cls._number_text(
             getattr(music, "track_number", None),
             getattr(music, "total_tracks", None),
@@ -1051,7 +1161,9 @@ class AudioMetadataHelper:
     def _musicbrainz_recording_id(
             music: Union[MetaMusic, MusicInfo],
     ) -> Optional[str]:
-        """仅将 MusicBrainz 单曲身份写入 recording 标签，避免误写专辑 ID。"""
+        """
+        仅将 MusicBrainz 单曲身份写入 recording 标签，避免误写专辑 ID。
+        """
         if (
                 getattr(music, "media_source", None) == MediaSource.MusicBrainz
                 and (getattr(music, "music_type", None) or MUSIC_ENTITY_RECORDING)
@@ -1063,7 +1175,9 @@ class AudioMetadataHelper:
 
     @staticmethod
     def _number_text(current: Optional[int], total: Optional[int]) -> Optional[str]:
-        """把曲序或碟号转换为常见的 current/total 标签文本。"""
+        """
+        把曲序或碟号转换为常见的 current/total 标签文本。
+        """
         if current is None:
             return None
         return f"{current}/{total}" if total else str(current)
@@ -1076,7 +1190,9 @@ class AudioMetadataHelper:
             cover_mime: str,
             overwrite: bool,
     ) -> None:
-        """按容器写入内嵌封面，链接隔离由外层写入事务统一负责。"""
+        """
+        按容器写入内嵌封面，链接隔离由外层写入事务统一负责。
+        """
         audio = cls._open_audio(path)
         if isinstance(audio, (MonkeysAudio, ASF)):
             _write_binary_cover(audio, path, cover_data, cover_mime, overwrite)
@@ -1128,7 +1244,9 @@ class AudioMetadataHelper:
 
     @staticmethod
     def _values(tags: Any, key: str) -> list[str]:
-        """从容器的统一文本字段或兼容标签中提取非空字符串列表。"""
+        """
+        从容器的统一文本字段或兼容标签中提取非空字符串列表。
+        """
         value = tags.get(key) if hasattr(tags, "get") else None
         if value is None or isinstance(value, APEBinaryValue):
             return []
@@ -1138,13 +1256,17 @@ class AudioMetadataHelper:
 
     @classmethod
     def _first(cls, tags: Any, key: str) -> Optional[str]:
-        """返回指定音频标签的第一个非空值。"""
+        """
+        返回指定音频标签的第一个非空值。
+        """
         values = cls._values(tags, key)
         return values[0] if values else None
 
     @classmethod
     def _first_of(cls, tags: Any, *keys: str) -> Optional[str]:
-        """按顺序返回多个音频标签中的第一个非空值。"""
+        """
+        按顺序返回多个音频标签中的第一个非空值。
+        """
         for key in keys:
             if value := cls._first(tags, key):
                 return value
@@ -1152,7 +1274,9 @@ class AudioMetadataHelper:
 
     @staticmethod
     def _normalize_musicbrainz_id(value: Optional[str]) -> Optional[str]:
-        """校验并规范化音频标签中的 MusicBrainz UUID。"""
+        """
+        校验并规范化音频标签中的 MusicBrainz UUID。
+        """
         try:
             return str(UUID(str(value)))
         except (AttributeError, TypeError, ValueError):
@@ -1163,7 +1287,9 @@ class AudioMetadataHelper:
             value: Optional[str],
             total_value: Optional[str] = None,
     ) -> tuple[Optional[int], Optional[int]]:
-        """读取组合或独立曲数/碟数，优先有效组合总数并排除非正编号。"""
+        """
+        读取组合或独立曲数/碟数，优先有效组合总数并排除非正编号。
+        """
         parts = str(value or "").split("/", 1)
         current = AudioMetadataHelper._positive_int(parts[0])
         total = AudioMetadataHelper._positive_int(parts[1]) if len(parts) > 1 else None
@@ -1172,20 +1298,26 @@ class AudioMetadataHelper:
 
     @staticmethod
     def _positive_int(value: Any) -> Optional[int]:
-        """曲序、碟号和总数必须为正数，零及无效文本不构成位置证据。"""
+        """
+        曲序、碟号和总数必须为正数，零及无效文本不构成位置证据。
+        """
         number = AudioMetadataHelper._optional_int(value)
         return number if number is not None and number > 0 else None
 
     @staticmethod
     def _year(value: Optional[str]) -> Optional[int]:
-        """从完整或不完整日期标签中提取四位年份。"""
+        """
+        从完整或不完整日期标签中提取四位年份。
+        """
         if not value:
             return None
         return AudioMetadataHelper._optional_int(str(value)[:4])
 
     @staticmethod
     def _audio_format(path: Path, info: Any) -> Optional[str]:
-        """结合扩展名与流编码识别音频格式，区分同为 M4A 容器的 AAC 和 ALAC。"""
+        """
+        结合扩展名与流编码识别音频格式，区分同为 M4A 容器的 AAC 和 ALAC。
+        """
         codec_text = " ".join(
             str(value or "")
             for value in (
@@ -1207,7 +1339,9 @@ class AudioMetadataHelper:
 
     @staticmethod
     def _optional_int(value: Any) -> Optional[int]:
-        """将音频技术参数安全转换为整数。"""
+        """
+        将音频技术参数安全转换为整数。
+        """
         try:
             return int(value) if value is not None and str(value).strip() else None
         except (TypeError, ValueError):

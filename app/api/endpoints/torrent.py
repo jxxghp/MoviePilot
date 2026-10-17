@@ -1,3 +1,7 @@
+"""
+提供种子详情、状态查询和资源处理接口。
+"""
+
 from typing import Optional
 
 from fastapi import Depends
@@ -106,6 +110,7 @@ async def delete_cache(
 ) -> _SchemaResponse[None]:
     """
     删除指定的种子缓存
+
     :param domain: 站点域名
     :param torrent_hash: 种子hash（使用title+description的md5）
     :param _: 当前用户，必须是超级用户
@@ -202,6 +207,7 @@ async def reidentify_cache(
 ) -> _SchemaResponse[_SchemaTorrentReidentifyData]:
     """
     重新识别指定的种子
+
     :param domain: 站点域名
     :param torrent_hash: 种子hash（使用title+description的md5）
     :param media_source: 媒体数据源

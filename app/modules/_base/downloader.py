@@ -1,4 +1,5 @@
-"""下载器模块业务样板基类。
+"""
+下载器模块业务样板基类。
 
 沉淀三个内置下载器模块（qbittorrent/transmission/rtorrent）逐字复制的样板：
 连接测试、定时重连、种子信息读取与查询状态归一。差异化逻辑
@@ -18,18 +19,32 @@ from app.schemas.types import TorrentQueryStatus, TorrentStatus
 
 
 class _DownloaderClient(Protocol):
-    """下载器连接巡检依赖的最小同步客户端接口。"""
+    """
+    下载器连接巡检依赖的最小同步客户端接口。
+    """
 
     def is_inactive(self) -> bool:
-        """判断已配置的客户端是否需要重新建立连接。"""
+        """
+        判断已配置的客户端是否需要重新建立连接。
+
+        :return: 连接未就绪时返回 True，否则返回 False
+        """
         ...
 
     def reconnect(self) -> None:
-        """按各下载器的既有登录策略刷新连接。"""
+        """
+        按下载器的登录策略刷新连接。
+
+        实现方负责替换连接状态；调用结束不代表连接一定成功，需继续检查服务状态。
+        """
         ...
 
     def transfer_info(self) -> object:
-        """返回 SDK 原始传输状态，连接巡检只判断其是否为空。"""
+        """
+        读取下载器的原始传输状态。
+
+        :return: 下载器状态对象；不可用时返回空值，巡检调用方仅检查其真假值
+        """
         ...
 
 
@@ -44,7 +59,9 @@ class _DownloaderModuleBase(_ModuleBase, _DownloaderBase[DownloaderServiceT]):
 
     def test(self) -> Optional[Tuple[bool, str]]:
         """
-        测试模块连接性
+        检查全部已启用下载器的连接状态，必要时先尝试重连。
+
+        :return: 首个失败的说明或整体成功结果；没有实例时返回 None
         """
         if not self.get_instances():
             return None
@@ -57,7 +74,9 @@ class _DownloaderModuleBase(_ModuleBase, _DownloaderBase[DownloaderServiceT]):
 
     def scheduler_job(self) -> None:
         """
-        定时任务，每10分钟调用一次
+        巡检已配置下载器，对失活连接发起重连。
+
+        由模块调度器每十分钟调用一次。
         """
         for name, server in self.get_instances().items():
             if server.is_inactive():
@@ -68,7 +87,13 @@ class _DownloaderModuleBase(_ModuleBase, _DownloaderBase[DownloaderServiceT]):
     def _normalize_torrent_files(
         files: Any, item_factory: Callable[[Any], TFile]
     ) -> Optional[List[TFile]]:
-        """把 provider 文件集合统一投影为不依赖外部 SDK 的宿主 DTO。"""
+        """
+        将下载器文件集合投影为宿主数据对象。
+
+        :param files: 下载器返回的集合；带 data 属性时读取该属性
+        :param item_factory: 把单个下载器文件转换为宿主文件对象的函数
+        :return: 转换后的文件列表；下载器返回 None 时仍返回 None
+        """
         if files is None:
             return None
         source = getattr(files, "data", files)
@@ -77,7 +102,12 @@ class _DownloaderModuleBase(_ModuleBase, _DownloaderBase[DownloaderServiceT]):
     def _get_torrent_info(self, content: Union[Path, str, bytes]) \
             -> Tuple[Optional[Torrent], Optional[Union[str, bytes]]]:
         """
-        读取种子内容，返回解析后的种子信息与原始内容，磁力链接不解析
+        读取种子内容并解析元信息，磁力链接保持原样。
+
+        路径不存在时查询本地种子缓存，不向外部站点重新下载。
+
+        :param content: 本地路径、种子内容或磁力链接
+        :return: 种子对象与原始内容；磁力链接的对象为空，读取或解析异常时两项均为空
         """
         torrent_content: Optional[Union[str, bytes]]
         torrent_info, torrent_content = None, None
@@ -110,7 +140,10 @@ class _DownloaderModuleBase(_ModuleBase, _DownloaderBase[DownloaderServiceT]):
             status: Optional[Union[TorrentStatus, TorrentQueryStatus, str]]
     ) -> TorrentQueryStatus:
         """
-        归一任务查询状态。
+        把旧状态枚举、文本别名和新查询状态归一。
+
+        :param status: 下载状态枚举或字符串，兼容中文与旧名称
+        :return: 规范查询状态；空值或未知值回退为查询全部
         """
         status_value = getattr(status, "value", status)
         status_text = str(status_value or "").strip().lower()

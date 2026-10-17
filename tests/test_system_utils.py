@@ -1,3 +1,7 @@
+"""
+验证系统工具的文件、进程和资源统计行为。
+"""
+
 import asyncio
 import errno
 import itertools
@@ -19,7 +23,9 @@ from app.runtime.state import SystemHelper
 
 
 def test_get_config_path_uses_repository_config_for_source_runtime():
-    """源码运行时应从项目根目录读取配置，不能随适配器目录层级偏移。"""
+    """
+    源码运行时应从项目根目录读取配置，不能随适配器目录层级偏移。
+    """
     expected = Path(__file__).resolve().parents[1] / "config"
 
     with patch.dict(os.environ, {}, clear=True), \
@@ -30,7 +36,9 @@ def test_get_config_path_uses_repository_config_for_source_runtime():
 
 
 def test_get_config_path_preserves_explicit_config_dir():
-    """显式配置目录始终优先于运行环境推导。"""
+    """
+    显式配置目录始终优先于运行环境推导。
+    """
     explicit_path = Path("/custom/moviepilot-config")
 
     with patch.dict(os.environ, {"CONFIG_DIR": "/ignored"}, clear=True), \
@@ -39,7 +47,9 @@ def test_get_config_path_preserves_explicit_config_dir():
 
 
 def test_get_config_path_preserves_runtime_specific_defaults():
-    """容器和冻结程序继续使用各自稳定的配置目录。"""
+    """
+    容器和冻结程序继续使用各自稳定的配置目录。
+    """
     with patch.dict(os.environ, {}, clear=True), \
             patch.object(SystemUtils, "is_docker", return_value=True):
         assert SystemUtils.get_config_path() == Path("/config")
@@ -52,7 +62,9 @@ def test_get_config_path_preserves_runtime_specific_defaults():
 
 
 def test_execute_with_subprocess_keeps_stdout_when_command_fails():
-    """命令失败时如果原因只写入 stdout，也需要回传给调用方用于错误提示。"""
+    """
+    命令失败时如果原因只写入 stdout，也需要回传给调用方用于错误提示。
+    """
     error = subprocess.CalledProcessError(
         returncode=1,
         cmd=["pip", "check"],
@@ -69,7 +81,9 @@ def test_execute_with_subprocess_keeps_stdout_when_command_fails():
 
 
 def test_execute_with_subprocess_reports_empty_failure_output():
-    """命令失败且没有输出时应给出明确占位信息，避免错误原因看起来被截断。"""
+    """
+    命令失败且没有输出时应给出明确占位信息，避免错误原因看起来被截断。
+    """
     error = subprocess.CalledProcessError(
         returncode=2,
         cmd=["pip", "check"],
@@ -86,7 +100,9 @@ def test_execute_with_subprocess_reports_empty_failure_output():
 
 
 def test_docker_restart_delegates_to_supervisor():
-    """容器内重启只委托 supervisor，不向当前进程或 Docker daemon 发信号。"""
+    """
+    容器内重启只委托 supervisor，不向当前进程或 Docker daemon 发信号。
+    """
     with patch("app.runtime.state.is_docker", return_value=True), \
             patch.object(SystemHelper, "_SystemHelper__supervisor_config") as supervisor_config, \
             patch.object(SystemHelper, "_SystemHelper__supervisorctl") as supervisorctl, \
@@ -111,7 +127,9 @@ def test_docker_restart_delegates_to_supervisor():
 
 
 def test_docker_update_restart_reenters_entrypoint_for_pending_install():
-    """待安装更新先启动 root worker 替换 Docker 程序目录。"""
+    """
+    待安装更新先启动 root worker 替换 Docker 程序目录。
+    """
     with patch("app.runtime.state.is_docker", return_value=True), \
             patch.object(SystemHelper, "_SystemHelper__supervisor_config") as supervisor_config, \
             patch.object(SystemHelper, "_SystemHelper__supervisorctl") as supervisorctl, \
@@ -136,19 +154,27 @@ def test_docker_update_restart_reenters_entrypoint_for_pending_install():
 
 
 def test_supervisor_restart_command_restarts_frontend_and_backend(monkeypatch):
-    """延迟任务必须通过本地 supervisor 同时重启前后端进程。"""
+    """
+    延迟任务必须通过本地 supervisor 同时重启前后端进程。
+    """
     callback = None
 
     class ImmediateTimer:
-        """立即执行回调的计时器桩，隔离真实延迟线程。"""
+        """
+        立即执行回调的计时器桩，隔离真实延迟线程。
+        """
         def __init__(self, _delay, timer_callback):
-            """保存待触发回调并模拟计时器属性。"""
+            """
+            保存待触发回调并模拟计时器属性。
+            """
             nonlocal callback
             callback = timer_callback
             self.daemon = False
 
         def start(self):
-            """立即触发已保存回调。"""
+            """
+            立即触发已保存回调。
+            """
             callback()
 
     popen_mock = MagicMock()
@@ -165,19 +191,27 @@ def test_supervisor_restart_command_restarts_frontend_and_backend(monkeypatch):
 
 
 def test_supervisor_shutdown_command(monkeypatch):
-    """一次性 Dev 更新使用 supervisor shutdown，交回 root 入口执行更新流程。"""
+    """
+    一次性 Dev 更新使用 supervisor shutdown，交回 root 入口执行更新流程。
+    """
     callback = None
 
     class ImmediateTimer:
-        """立即执行回调的计时器桩，隔离真实延迟线程。"""
+        """
+        立即执行回调的计时器桩，隔离真实延迟线程。
+        """
         def __init__(self, _delay, timer_callback):
-            """保存待触发回调并模拟计时器属性。"""
+            """
+            保存待触发回调并模拟计时器属性。
+            """
             nonlocal callback
             callback = timer_callback
             self.daemon = False
 
         def start(self):
-            """立即触发已保存回调。"""
+            """
+            立即触发已保存回调。
+            """
             callback()
 
     popen_mock = MagicMock()
@@ -190,7 +224,9 @@ def test_supervisor_shutdown_command(monkeypatch):
 
 
 def test_upgrade_dev_always_marks_bootstrap_update():
-    """Dev 更新即使已配置 dev 模式也要留下入口消费标记。"""
+    """
+    Dev 更新即使已配置 dev 模式也要留下入口消费标记。
+    """
     with patch.object(SystemHelper, "queue_one_shot_dev_update", return_value=(True, "")) as queue_mock, \
             patch.object(SystemHelper, "restart", return_value=(True, "")) as restart_mock:
         ret, msg = SystemHelper.upgrade_dev()
@@ -202,7 +238,9 @@ def test_upgrade_dev_always_marks_bootstrap_update():
 
 
 def test_execute_with_subprocess_passes_env_to_subprocess():
-    """命令执行应把调用方指定的环境变量传给子进程。"""
+    """
+    命令执行应把调用方指定的环境变量传给子进程。
+    """
     with patch("app.adapters.system.host.subprocess.run") as run_mock:
         run_mock.return_value.stdout = "ok"
         run_mock.return_value.stderr = ""
@@ -218,7 +256,9 @@ def test_execute_with_subprocess_passes_env_to_subprocess():
 
 
 def test_execute_with_subprocess_uses_safe_command_in_failure_message():
-    """失败提示使用安全命令文本，避免暴露调用凭据。"""
+    """
+    失败提示使用安全命令文本，避免暴露调用凭据。
+    """
     error = subprocess.CalledProcessError(
         returncode=1,
         cmd=["pip", "install", "-i", "https://user:pass@mirror.example/simple"],
@@ -241,7 +281,9 @@ def test_execute_with_subprocess_uses_safe_command_in_failure_message():
 
 @pytest.mark.asyncio
 async def test_async_subprocess_timeout_reaps_process():
-    """异步安装命令超时后应终止并回收子进程。"""
+    """
+    异步安装命令超时后应终止并回收子进程。
+    """
     success, message = await SystemUtils.execute_with_subprocess_async(
         [sys.executable, "-c", "import time; time.sleep(60)"],
         timeout=0.05,
@@ -253,7 +295,9 @@ async def test_async_subprocess_timeout_reaps_process():
 
 @pytest.mark.asyncio
 async def test_async_subprocess_cancellation_reaps_process(tmp_path):
-    """调用方取消安装任务时，底层子进程不得继续运行。"""
+    """
+    调用方取消安装任务时，底层子进程不得继续运行。
+    """
     marker = tmp_path / "pid"
     command = [
         sys.executable,
@@ -289,7 +333,9 @@ async def test_async_subprocess_cancellation_reaps_process(tmp_path):
 
 @pytest.mark.asyncio
 async def test_async_subprocess_cancellation_reaps_process_tree(tmp_path):
-    """取消安装命令时，子进程派生的构建进程也不得继续运行。"""
+    """
+    取消安装命令时，子进程派生的构建进程也不得继续运行。
+    """
     marker = tmp_path / "pids"
     child_code = "import time; time.sleep(60)"
     command = [
@@ -336,7 +382,9 @@ async def test_async_subprocess_cancellation_reaps_process_tree(tmp_path):
 @pytest.mark.skipif(os.name == "nt", reason="Windows 没有 POSIX 进程组信号语义")
 @pytest.mark.asyncio
 async def test_async_subprocess_reaps_descendant_after_early_pipe_close(tmp_path):
-    """父进程关闭管道后，忽略终止信号的后代也必须被强制回收。"""
+    """
+    父进程关闭管道后，忽略终止信号的后代也必须被强制回收。
+    """
     marker = tmp_path / "pids"
     child_code = (
         "import os, signal, time; os.close(1); os.close(2); "
@@ -385,7 +433,9 @@ async def test_async_subprocess_reaps_descendant_after_early_pipe_close(tmp_path
 
 
 def test_execute_with_subprocess_redacts_userinfo_from_stdout_and_stderr():
-    """标准输出和错误输出中的 URL 用户信息都应被隐藏。"""
+    """
+    标准输出和错误输出中的 URL 用户信息都应被隐藏。
+    """
     error = subprocess.CalledProcessError(
         returncode=1,
         cmd=["pip", "install"],
@@ -404,7 +454,9 @@ def test_execute_with_subprocess_redacts_userinfo_from_stdout_and_stderr():
 
 
 def test_execute_with_subprocess_redacts_userinfo_from_non_http_scheme():
-    """非 HTTP 协议的 URL 用户信息也应被隐藏。"""
+    """
+    非 HTTP 协议的 URL 用户信息也应被隐藏。
+    """
     error = subprocess.CalledProcessError(
         returncode=1,
         cmd=["pip", "install"],
@@ -423,7 +475,9 @@ def test_execute_with_subprocess_redacts_userinfo_from_non_http_scheme():
 
 
 def test_execute_with_subprocess_redacts_success_output_userinfo():
-    """命令成功时输出中的 URL 用户信息仍应被隐藏。"""
+    """
+    命令成功时输出中的 URL 用户信息仍应被隐藏。
+    """
     with patch("app.adapters.system.host.subprocess.run") as run_mock:
         run_mock.return_value.stdout = "Using https://user:pass@mirror.example/simple\n"
         run_mock.return_value.stderr = "Proxy socks5://proxy_user:proxy_pass@proxy.example:7890\n"
@@ -438,7 +492,9 @@ def test_execute_with_subprocess_redacts_success_output_userinfo():
 
 
 def test_execute_with_subprocess_redacts_unknown_error_userinfo_and_invalid_port():
-    """未知异常和无效端口不能导致 URL 用户信息泄漏。"""
+    """
+    未知异常和无效端口不能导致 URL 用户信息泄漏。
+    """
     with patch(
         "app.adapters.system.host.subprocess.run",
         side_effect=RuntimeError("bad url https://user:pass@example.com:notaport/simple"),
@@ -451,9 +507,13 @@ def test_execute_with_subprocess_redacts_unknown_error_userinfo_and_invalid_port
 
 
 def _fake_stat_with_devs(dev_by_path):
-    """构造按路径返回指定 st_dev 的 os.stat 桩。"""
+    """
+    构造按路径返回指定 st_dev 的 os.stat 桩。
+    """
     def _fake_stat(path, *args, **kwargs):
-        """按路径返回指定设备号的文件状态。"""
+        """
+        按路径返回指定设备号的文件状态。
+        """
         result = MagicMock()
         result.st_dev = dev_by_path[str(path)]
         return result
@@ -461,9 +521,13 @@ def _fake_stat_with_devs(dev_by_path):
 
 
 def _fill_fs_info(fsid, num_devices=1, truncate=False):
-    """构造填充 BTRFS_IOC_FS_INFO 缓冲区的 ioctl 桩。"""
+    """
+    构造填充 BTRFS_IOC_FS_INFO 缓冲区的 ioctl 桩。
+    """
     def _ioctl(fd, request, buffer, mutate_flag):
-        """校验 ioctl 参数并写入预设内核响应。"""
+        """
+        校验 ioctl 参数并写入预设内核响应。
+        """
         assert fd == 42
         assert request == 0x8400941F
         assert mutate_flag is True
@@ -478,7 +542,9 @@ def _fill_fs_info(fsid, num_devices=1, truncate=False):
 
 @pytest.fixture
 def linux_platform(monkeypatch):
-    """将当前用例的平台标识切换为 Linux amd64。"""
+    """
+    将当前用例的平台标识切换为 Linux amd64。
+    """
     monkeypatch.setattr("app.adapters.system.host.sys.platform", "linux")
     monkeypatch.setattr(SystemUtils, "is_x86_64", lambda: True)
     monkeypatch.setattr(SystemUtils, "is_aarch64", lambda: False)
@@ -486,7 +552,9 @@ def linux_platform(monkeypatch):
 
 @pytest.mark.parametrize("num_devices", [1, 2])
 def test_get_btrfs_fsid_reads_kernel_result_and_closes_fd(num_devices, linux_platform):
-    """读取内核返回的 Btrfs 文件系统标识后必须关闭目录句柄。"""
+    """
+    读取内核返回的 Btrfs 文件系统标识后必须关闭目录句柄。
+    """
     fsid = bytes.fromhex("88e3aff5fa2946d591a55977be984655")
     with patch("app.adapters.system.host.os.open", return_value=42), \
             patch("app.adapters.system.host.fcntl.ioctl", side_effect=_fill_fs_info(fsid, num_devices)), \
@@ -499,7 +567,9 @@ def test_get_btrfs_fsid_reads_kernel_result_and_closes_fd(num_devices, linux_pla
 
 @pytest.mark.parametrize("error_number", [errno.ENOTTY, errno.EACCES, errno.EPERM, errno.EINVAL])
 def test_get_btrfs_fsid_falls_back_on_expected_ioctl_errors(error_number, linux_platform):
-    """预期 ioctl 错误应回退为空标识并释放句柄。"""
+    """
+    预期 ioctl 错误应回退为空标识并释放句柄。
+    """
     with patch("app.adapters.system.host.os.open", return_value=42), \
             patch("app.adapters.system.host.fcntl.ioctl", side_effect=OSError(error_number, os.strerror(error_number))), \
             patch("app.adapters.system.host.os.close") as close_mock:
@@ -510,7 +580,9 @@ def test_get_btrfs_fsid_falls_back_on_expected_ioctl_errors(error_number, linux_
 
 
 def test_get_btrfs_fsid_falls_back_when_directory_cannot_be_opened(linux_platform):
-    """目录无法打开时应返回空标识。"""
+    """
+    目录无法打开时应返回空标识。
+    """
     with patch("app.adapters.system.host.os.open", side_effect=OSError(errno.EACCES, "denied")), \
             patch("app.adapters.system.host.os.close") as close_mock:
         result = SystemUtils._get_btrfs_fsid(Path("/data"))
@@ -528,7 +600,9 @@ def test_get_btrfs_fsid_falls_back_when_directory_cannot_be_opened(linux_platfor
     ],
 )
 def test_get_btrfs_fsid_rejects_invalid_kernel_results(fsid, num_devices, truncate, linux_platform):
-    """不完整或无效的内核结果不能用作文件系统标识。"""
+    """
+    不完整或无效的内核结果不能用作文件系统标识。
+    """
     with patch("app.adapters.system.host.os.open", return_value=42), \
             patch("app.adapters.system.host.fcntl.ioctl", side_effect=_fill_fs_info(fsid, num_devices, truncate)), \
             patch("app.adapters.system.host.os.close") as close_mock:
@@ -539,7 +613,9 @@ def test_get_btrfs_fsid_rejects_invalid_kernel_results(fsid, num_devices, trunca
 
 
 def test_get_btrfs_fsid_is_disabled_outside_linux():
-    """非 Linux 平台不得调用 Btrfs 专用接口。"""
+    """
+    非 Linux 平台不得调用 Btrfs 专用接口。
+    """
     with patch("app.adapters.system.host.sys.platform", "darwin"), \
             patch("app.adapters.system.host.os.open") as open_mock:
         result = SystemUtils._get_btrfs_fsid(Path("/data"))
@@ -549,7 +625,9 @@ def test_get_btrfs_fsid_is_disabled_outside_linux():
 
 
 def test_get_btrfs_fsid_is_disabled_on_unsupported_linux_architecture():
-    """不支持的 Linux 架构应跳过 Btrfs 专用接口。"""
+    """
+    不支持的 Linux 架构应跳过 Btrfs 专用接口。
+    """
     with patch("app.adapters.system.host.sys.platform", "linux"), \
             patch.object(SystemUtils, "is_x86_64", return_value=False), \
             patch.object(SystemUtils, "is_aarch64", return_value=False), \
@@ -561,14 +639,18 @@ def test_get_btrfs_fsid_is_disabled_on_unsupported_linux_architecture():
 
 
 def test_btrfs_fsid_dedup_setting_is_opt_in():
-    """Btrfs 文件系统去重只在显式启用后生效。"""
+    """
+    Btrfs 文件系统去重只在显式启用后生效。
+    """
     assert ConfigModel().BTRFS_FSID_DEDUP is False
     assert ConfigModel(BTRFS_FSID_DEDUP="true").BTRFS_FSID_DEDUP is True
 
 
 @pytest.mark.parametrize("mode", ["release", "dev", " DEV ", "RELEASE"])
 def test_auto_update_mode_is_normalized(monkeypatch, mode):
-    """旧模式规范化为布尔 true，已有的新 Dev 偏好不被覆盖。"""
+    """
+    旧模式规范化为布尔 true，已有的新 Dev 偏好不被覆盖。
+    """
     updates = []
     monkeypatch.setattr(
         Settings,
@@ -587,7 +669,9 @@ def test_auto_update_mode_is_normalized(monkeypatch, mode):
 
 
 def test_legacy_dev_tracking_is_migrated_once(monkeypatch, tmp_path):
-    """首次拆分配置时持久化两个开关，重读后继续保留 Dev 跟踪。"""
+    """
+    首次拆分配置时持久化两个开关，重读后继续保留 Dev 跟踪。
+    """
     env_file = tmp_path / "app.env"
     env_file.write_text("MOVIEPILOT_AUTO_UPDATE='dev'\n", encoding="utf-8")
     monkeypatch.setattr("app.runtime.config.get_env_path", lambda: env_file)
@@ -603,7 +687,9 @@ def test_legacy_dev_tracking_is_migrated_once(monkeypatch, tmp_path):
 
 @pytest.mark.parametrize("enabled", [True, False, "true", "false"])
 def test_update_switches_remain_independent_booleans(enabled):
-    """部署设置与调度快照仅暴露布尔值，Dev 跟踪不影响自动检查。"""
+    """
+    部署设置与调度快照仅暴露布尔值，Dev 跟踪不影响自动检查。
+    """
     from app.startup.composition.configuration import build_scheduler_runtime_config
 
     expected = str(enabled).lower() == "true"
@@ -615,7 +701,9 @@ def test_update_switches_remain_independent_booleans(enabled):
 
 @pytest.mark.parametrize("value", ["dev", "release", True, False])
 def test_update_setting_normalizes_auto_update_on_save(monkeypatch, value):
-    """设置写入入口与启动读取入口使用同一套布尔转换规则。"""
+    """
+    设置写入入口与启动读取入口使用同一套布尔转换规则。
+    """
     config = Settings(MOVIEPILOT_AUTO_UPDATE=False, MOVIEPILOT_UPDATE_DEV=False)
     monkeypatch.setattr(Settings, "update_env_config", lambda *_args: (True, ""))
     config.update_setting("MOVIEPILOT_AUTO_UPDATE", value)
@@ -624,7 +712,9 @@ def test_update_setting_normalizes_auto_update_on_save(monkeypatch, value):
 
 
 def test_space_usage_default_path_does_not_read_fsid():
-    """默认空间统计不得读取 Btrfs 文件系统标识。"""
+    """
+    默认空间统计不得读取 Btrfs 文件系统标识。
+    """
     with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
         paths = [Path(tmp1), Path(tmp2)]
         dev_by_path = {str(paths[0]): 38, str(paths[1]): 32}
@@ -641,7 +731,9 @@ def test_space_usage_default_path_does_not_read_fsid():
 
 @pytest.mark.parametrize("system_platform", ["darwin", "win32"])
 def test_space_usage_opt_in_does_not_read_fsid_outside_linux(system_platform):
-    """非 Linux 平台即使启用去重也不得读取文件系统标识。"""
+    """
+    非 Linux 平台即使启用去重也不得读取文件系统标识。
+    """
     path = MagicMock()
     path.exists.return_value = True
     path.drive = "D:"
@@ -662,7 +754,9 @@ def test_space_usage_opt_in_does_not_read_fsid_outside_linux(system_platform):
 
 
 def test_space_usage_opt_in_uses_original_behavior_on_unsupported_linux_architecture():
-    """不支持的 Linux 架构应沿用原空间统计行为。"""
+    """
+    不支持的 Linux 架构应沿用原空间统计行为。
+    """
     with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
         paths = [Path(tmp1), Path(tmp2)]
         dev_by_path = {str(path): 38 for path in paths}
@@ -682,7 +776,9 @@ def test_space_usage_opt_in_uses_original_behavior_on_unsupported_linux_architec
 
 @pytest.mark.parametrize(("is_x86_64", "is_aarch64"), [(True, False), (False, True)])
 def test_space_usage_merges_btrfs_subvolumes_with_same_fsid(is_x86_64, is_aarch64, monkeypatch):
-    """相同 Btrfs 文件系统的子卷容量只统计一次。"""
+    """
+    相同 Btrfs 文件系统的子卷容量只统计一次。
+    """
     monkeypatch.setattr("app.adapters.system.host.sys.platform", "linux")
     monkeypatch.setattr(SystemUtils, "is_x86_64", lambda: is_x86_64)
     monkeypatch.setattr(SystemUtils, "is_aarch64", lambda: is_aarch64)
@@ -701,7 +797,9 @@ def test_space_usage_merges_btrfs_subvolumes_with_same_fsid(is_x86_64, is_aarch6
 
 
 def test_space_usage_counts_different_btrfs_fsids_separately(linux_platform):
-    """不同 Btrfs 文件系统的容量必须分别统计。"""
+    """
+    不同 Btrfs 文件系统的容量必须分别统计。
+    """
     with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
         paths = [Path(tmp1), Path(tmp2)]
         dev_by_path = {str(paths[0]): 38, str(paths[1]): 32}
@@ -716,7 +814,9 @@ def test_space_usage_counts_different_btrfs_fsids_separately(linux_platform):
 
 
 def test_space_usage_falls_back_to_st_dev_when_fsid_is_unavailable(linux_platform):
-    """文件系统标识不可用时回退到设备号去重。"""
+    """
+    文件系统标识不可用时回退到设备号去重。
+    """
     with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
         paths = [Path(tmp1), Path(tmp2)]
         dev_by_path = {str(paths[0]): 60, str(paths[1]): 60}
@@ -732,7 +832,9 @@ def test_space_usage_falls_back_to_st_dev_when_fsid_is_unavailable(linux_platfor
 
 @pytest.mark.parametrize("fsids", [(b"a" * 16, None), (None, b"a" * 16)])
 def test_space_usage_keeps_st_dev_dedup_when_fsid_availability_differs(fsids, linux_platform):
-    """标识可用性不一致时仍保留设备号去重。"""
+    """
+    标识可用性不一致时仍保留设备号去重。
+    """
     with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
         paths = [Path(tmp1), Path(tmp2)]
         dev_by_path = {str(path): 38 for path in paths}
@@ -747,7 +849,9 @@ def test_space_usage_keeps_st_dev_dedup_when_fsid_availability_differs(fsids, li
 
 
 def test_space_usage_keeps_st_dev_dedup_when_fsid_is_consistent(linux_platform):
-    """一致的文件系统标识不得破坏设备号去重。"""
+    """
+    一致的文件系统标识不得破坏设备号去重。
+    """
     with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
         paths = [Path(tmp1), Path(tmp2)]
         dev_by_path = {str(path): 38 for path in paths}
@@ -762,7 +866,9 @@ def test_space_usage_keeps_st_dev_dedup_when_fsid_is_consistent(linux_platform):
 
 
 def test_space_usage_does_not_merge_different_st_devs_when_one_fsid_is_unavailable(linux_platform):
-    """有标识缺失时不得合并不同设备号。"""
+    """
+    有标识缺失时不得合并不同设备号。
+    """
     with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2:
         paths = [Path(tmp1), Path(tmp2)]
         dev_by_path = {str(paths[0]): 38, str(paths[1]): 32}
@@ -777,7 +883,9 @@ def test_space_usage_does_not_merge_different_st_devs_when_one_fsid_is_unavailab
 
 
 def test_space_usage_counts_a_repeated_path_once():
-    """重复路径只贡献一次空间统计结果。"""
+    """
+    重复路径只贡献一次空间统计结果。
+    """
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp)
         with patch.object(SystemUtils, "_get_btrfs_fsid", return_value=None), \
@@ -790,7 +898,9 @@ def test_space_usage_counts_a_repeated_path_once():
 
 
 def test_space_usage_merges_consistent_fsid_observed_within_same_st_dev(linux_platform):
-    """同一设备号下观察到的一致标识可以合并统计。"""
+    """
+    同一设备号下观察到的一致标识可以合并统计。
+    """
     with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2, \
             tempfile.TemporaryDirectory() as tmp3:
         paths = [Path(tmp1), Path(tmp2), Path(tmp3)]
@@ -806,7 +916,9 @@ def test_space_usage_merges_consistent_fsid_observed_within_same_st_dev(linux_pl
 
 
 def test_space_usage_transitive_merge_is_independent_of_path_order(linux_platform):
-    """传递合并结果不应依赖输入路径顺序。"""
+    """
+    传递合并结果不应依赖输入路径顺序。
+    """
     fsid = b"a" * 16
     records = [("first", 38, None), ("bridge", 38, fsid), ("other", 32, fsid)]
 
@@ -827,7 +939,9 @@ def test_space_usage_transitive_merge_is_independent_of_path_order(linux_platfor
 
 
 def test_space_usage_conflicting_fsids_do_not_bridge_independent_groups(linux_platform):
-    """冲突的文件系统标识不能连接本来独立的分组。"""
+    """
+    冲突的文件系统标识不能连接本来独立的分组。
+    """
     with tempfile.TemporaryDirectory() as tmp1, tempfile.TemporaryDirectory() as tmp2, \
             tempfile.TemporaryDirectory() as tmp3, tempfile.TemporaryDirectory() as tmp4:
         paths = [Path(tmp1), Path(tmp2), Path(tmp3), Path(tmp4)]
@@ -849,7 +963,9 @@ def test_space_usage_conflicting_fsids_do_not_bridge_independent_groups(linux_pl
 
 
 def test_space_usage_uses_earliest_path_for_each_final_group(linux_platform):
-    """最终分组应使用最早路径对应的空间统计。"""
+    """
+    最终分组应使用最早路径对应的空间统计。
+    """
     fsid = b"a" * 16
     paths = [MagicMock(name=name) for name in ("first", "same-dev", "same-fsid", "independent")]
     for path in paths:
@@ -870,7 +986,9 @@ def test_space_usage_uses_earliest_path_for_each_final_group(linux_platform):
 
 
 def test_space_usage_keeps_windows_drive_behavior_without_fsid_lookup():
-    """Windows 驱动器统计不应引入文件系统标识查询。"""
+    """
+    Windows 驱动器统计不应引入文件系统标识查询。
+    """
     path = MagicMock()
     path.exists.return_value = True
     path.drive = "D:"
@@ -886,7 +1004,9 @@ def test_space_usage_keeps_windows_drive_behavior_without_fsid_lookup():
 
 
 def test_local_storage_usage_forwards_btrfs_fsid_setting():
-    """存储层从运行配置门面取得去重开关，不能依赖已移除的具体配置对象。"""
+    """
+    存储层从运行配置门面取得去重开关，不能依赖已移除的具体配置对象。
+    """
     from app.modules.filemanager.storages import local as local_storage_module
 
     download_dir = MagicMock(download_path="/downloads")
@@ -909,7 +1029,9 @@ def test_local_storage_usage_forwards_btrfs_fsid_setting():
 
 
 def test_dashboard_downloader_forwards_btrfs_fsid_setting():
-    """下载器仪表盘应转交 Btrfs 文件系统去重开关。"""
+    """
+    下载器仪表盘应转交 Btrfs 文件系统去重开关。
+    """
     from app.api.endpoints import dashboard as dashboard_module
 
     download_dir = MagicMock(download_path="/downloads")

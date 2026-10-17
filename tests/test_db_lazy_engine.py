@@ -28,7 +28,8 @@ from app.runtime.config import global_vars, settings
 
 @pytest.fixture
 def _reset_engines():
-    """复原引擎缓存，避免用例之间相互影响。
+    """
+    复原引擎缓存，避免用例之间相互影响。
 
     只做「存档—还原」，不负责释放：用例必须自行给 ``_get_database_engine`` 打桩，
     绝不能在这里落下真引擎——还原会把它从槽里丢掉，那条连接便再无人 dispose。
@@ -40,7 +41,9 @@ def _reset_engines():
 
 @pytest.fixture
 def _reset_pooled_engines():
-    """复原按事件循环缓存的池化引擎。"""
+    """
+    复原按事件循环缓存的池化引擎。
+    """
     saved = dict(session_module._pooled_async_engines)
     yield
     session_module._pooled_async_engines.clear()
@@ -129,7 +132,9 @@ def test_db_query_decorator_resolves_session_at_call_time(monkeypatch):
 
     @decorators_module.db_query
     def _fetch(db=None):
-        """装饰器未拿到会话时应自行创建一个并塞回 db 位置。"""
+        """
+        装饰器未拿到会话时应自行创建一个并塞回 db 位置。
+        """
         return db
 
     # 按各 Oper 的常态调用：db 显式传 None，由装饰器补上会话
@@ -149,7 +154,9 @@ def test_concurrent_first_access_creates_exactly_one_engine(_reset_engines, monk
     barrier = threading.Barrier(16)
 
     def slow_factory(**_kwargs):
-        """放大创建耗时，把竞态窗口撑开到必定命中。"""
+        """
+        放大创建耗时，把竞态窗口撑开到必定命中。
+        """
         time.sleep(0.02)
         marker = object()
         created.append(marker)
@@ -159,7 +166,9 @@ def test_concurrent_first_access_creates_exactly_one_engine(_reset_engines, monk
     got = []
 
     def worker():
-        """所有线程在同一时刻发起首次访问。"""
+        """
+        所有线程在同一时刻发起首次访问。
+        """
         barrier.wait()
         got.append(engine_module.get_engine())
 
@@ -217,14 +226,18 @@ def test_pooled_path_does_not_create_the_global_async_engine(
     engine_module._async_engine = None
 
     def _boom():
-        """任何对全局异步引擎的获取都是失败信号。"""
+        """
+        任何对全局异步引擎的获取都是失败信号。
+        """
         raise AssertionError("池化路径获取了全局异步引擎")
 
     # 打在 session 模块的名字上：_resolve_async_engine 用的是它自己 __dict__ 里的这个名字
     monkeypatch.setattr(session_module, "get_global_async_engine", _boom)
 
     async def run():
-        """在「当前循环即常驻循环」的前提下真的走一遍会话作用域。"""
+        """
+        在「当前循环即常驻循环」的前提下真的走一遍会话作用域。
+        """
         global_vars.CURRENT_EVENT_LOOP = asyncio.get_running_loop()
         session_module._pooled_async_engines.clear()
         try:

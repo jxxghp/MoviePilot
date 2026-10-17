@@ -1,3 +1,7 @@
+"""
+验证qBittorrent 客户端方法和任务状态的兼容适配。
+"""
+
 import importlib.util
 import sys
 import types
@@ -9,7 +13,9 @@ from app.domain.torrent import download_hashes
 
 
 def _load_qbittorrent_modules():
-    """加载隔离依赖的 qBittorrent 模块，避免兼容测试连接真实服务。"""
+    """
+    加载隔离依赖的 qBittorrent 模块，避免兼容测试连接真实服务。
+    """
     repo_root = Path(__file__).resolve().parents[1]
 
     app_module = types.ModuleType("app")
@@ -50,48 +56,77 @@ def _load_qbittorrent_modules():
 
     class _Logger:
         def info(self, *_args, **_kwargs):
+            """
+            吞掉普通日志，避免兼容性测试依赖真实日志系统。
+            """
             pass
 
         def warn(self, *_args, **_kwargs):
+            """
+            兼容旧警告日志方法，不向外部日志设施写入。
+            """
             pass
 
         def warning(self, *_args, **_kwargs):
+            """
+            接收标准警告日志调用，保持测试过程无日志副作用。
+            """
             pass
 
         def error(self, *_args, **_kwargs):
+            """
+            接收错误日志调用，隔离下载器兼容测试的日志输出。
+            """
             pass
 
     def _is_magnet_link(value):
-        """按生产领域规则识别测试磁力链接。"""
+        """
+        按生产领域规则识别测试磁力链接。
+        """
         if isinstance(value, bytes):
             return value.startswith(b"magnet:")
         return isinstance(value, str) and value.startswith("magnet:")
 
     def _parse_address(address, include_scheme=False):
-        """返回隔离测试使用的主机和固定端口。"""
+        """
+        返回隔离测试使用的主机和固定端口。
+        """
         return address, 8080
 
     def _random_string(_length):
-        """生成可断言的固定临时标签。"""
+        """
+        生成可断言的固定临时标签。
+        """
         return "tmp-tag-01"
 
     def _format_size(value):
-        """返回隔离测试需要的简化容量文本。"""
+        """
+        返回隔离测试需要的简化容量文本。
+        """
         return str(value)
 
     def _format_duration(value):
-        """返回隔离测试需要的简化时长文本。"""
+        """
+        返回隔离测试需要的简化时长文本。
+        """
         return str(value)
 
     class _FileCache:
         def get(self, *_args, **_kwargs):
+            """
+            固定模拟缓存未命中，避免测试读取真实文件缓存。
+            """
             return None
 
     class _MetaInfo:
-        """提供旧下载器测试所需的最小解析结果。"""
+        """
+        提供旧下载器测试所需的最小解析结果。
+        """
 
         def __init__(self, name, custom_words=None):
-            """接受宿主可选识别词，兼容真实模块新增的输入合同。"""
+            """
+            接受宿主可选识别词，兼容真实模块新增的输入合同。
+            """
             del custom_words
             self.name = name
             self.year = None
@@ -108,14 +143,22 @@ def _load_qbittorrent_modules():
     # 隔离环境下的下载器业务样板基类，镜像 app.modules._base.downloader 的行为
     class _DownloaderModuleBase(_ModuleBase, _DownloaderBase):
         def test(self):
+            """
+            固定返回下载器连通成功，供模块兼容入口测试使用。
+            """
             return True, ""
 
         def scheduler_job(self):
+            """
+            保留调度入口但不创建任务，避免测试启动后台服务。
+            """
             pass
 
         @staticmethod
         def _normalize_torrent_files(files, item_factory):
-            """镜像宿主边界的文件集合投影。"""
+            """
+            镜像宿主边界的文件集合投影。
+            """
             if files is None:
                 return None
             source = getattr(files, "data", files)
@@ -150,6 +193,9 @@ def _load_qbittorrent_modules():
     class _Torrent:
         @staticmethod
         def from_string(content):
+            """
+            按输入长度生成最小种子信息，隔离真实种子解析依赖。
+            """
             return types.SimpleNamespace(name="test", total_size=len(content))
 
     class _DownloaderTorrent:
@@ -157,39 +203,72 @@ def _load_qbittorrent_modules():
             self.__dict__.update(kwargs)
 
     class _DownloaderFile:
-        """隔离加载测试使用的最小下载器文件 DTO。"""
+        """
+        隔离加载测试使用的最小下载器文件 DTO。
+        """
 
         def __init__(self, **kwargs):
-            """保存文件字段。"""
+            """
+            保存文件字段。
+            """
             self.__dict__.update(kwargs)
 
         @classmethod
         def model_validate(cls, item):
-            """兼容字典和属性对象输入。"""
+            """
+            兼容字典和属性对象输入。
+            """
             if isinstance(item, dict):
                 return cls(**item)
             return cls(**vars(item))
 
     class TorrentStatus(Enum):
+        """
+        仅提供模块兼容测试需要的种子状态。
+        """
+        # 已经下载完成、可进入整理阶段。
         TRANSFER = "transfer"
+        # 仍在下载中的任务。
         DOWNLOADING = "downloading"
 
     class TorrentQueryStatus(Enum):
+        """
+        仅提供查询筛选所需的任务状态枚举。
+        """
+        # 不限定任务状态。
         ALL = "all"
+        # 已经下载完成、可进入整理阶段。
         TRANSFER = "transfer"
+        # 仍在下载中的任务。
         DOWNLOADING = "downloading"
+        # 已完成下载的任务。
         COMPLETED = "completed"
+        # 已暂停的任务。
         PAUSED = "paused"
 
     class DownloadTaskState(Enum):
+        """
+        隔离宿主导入时使用的统一下载任务状态。
+        """
+        # 仍在下载中的任务。
         DOWNLOADING = "downloading"
+        # 已暂停的任务。
         PAUSED = "paused"
+        # 已完成下载的任务。
         COMPLETED = "completed"
 
     class ModuleType(Enum):
+        """
+        声明测试下载器所属的模块类型。
+        """
+        # 下载器模块。
         Downloader = "Downloader"
 
     class DownloaderType(Enum):
+        """
+        声明测试客户端的下载器类型。
+        """
+        # qBittorrent 下载器。
         Qbittorrent = "Qbittorrent"
 
     log_module.logger = _Logger()
@@ -323,7 +402,9 @@ QbittorrentModule = qbittorrent_package_module.QbittorrentModule
 
 
 def test_login_uses_api_key_header_without_auth_login():
-    """API Key 登录时应使用 Bearer Header 并跳过用户名密码登录。"""
+    """
+    API Key 登录时应使用 Bearer Header 并跳过用户名密码登录。
+    """
     fake_client = MagicMock()
     fake_client.app_version.return_value = "v5.2.0"
 
@@ -435,7 +516,9 @@ def test_completed_status_includes_qbittorrent_finished_upload_states():
 
 
 def test_list_torrents_normalizes_parsed_year_to_string(monkeypatch):
-    """种子名称解析出的整数年份应按下载任务契约转换为字符串。"""
+    """
+    种子名称解析出的整数年份应按下载任务契约转换为字符串。
+    """
     server = MagicMock()
     server.get_torrents.return_value = (
         [
@@ -551,7 +634,9 @@ def test_list_torrents_include_all_tags_removes_builtin_tag_filter():
 
 
 def test_add_torrent_accepts_structured_success_response():
-    """新版 qBittorrent API 结构化成功响应应返回新增种子 ID。"""
+    """
+    新版 qBittorrent API 结构化成功响应应返回新增种子 ID。
+    """
     fake_client = MagicMock()
     fake_client.torrents_add.return_value = {
         "success_count": 1,
@@ -569,7 +654,9 @@ def test_add_torrent_accepts_structured_success_response():
 
 
 def test_add_torrent_accepts_pending_success_response_without_ids():
-    """新版 qBittorrent API 待处理成功响应没有 ID 时仍应视为添加成功。"""
+    """
+    新版 qBittorrent API 待处理成功响应没有 ID 时仍应视为添加成功。
+    """
     fake_client = MagicMock()
     fake_client.torrents_add.return_value = {
         "success_count": 0,
@@ -587,7 +674,9 @@ def test_add_torrent_accepts_pending_success_response_without_ids():
 
 
 def test_add_torrent_uses_cookie_api_for_qbittorrent_52():
-    """qBittorrent 5.2 对应 Web API 应通过 Cookie API 同步站点 Cookie。"""
+    """
+    qBittorrent 5.2 对应 Web API 应通过 Cookie API 同步站点 Cookie。
+    """
     fake_client = MagicMock()
     fake_client.app_web_api_version.return_value = "2.11.3"
     fake_client.app_cookies.return_value = [
@@ -626,7 +715,9 @@ def test_add_torrent_uses_cookie_api_for_qbittorrent_52():
 
 
 def test_add_torrent_keeps_legacy_cookie_param_for_old_webapi():
-    """旧版 qBittorrent Web API 不支持 Cookie API 时保留添加种子 Cookie 参数。"""
+    """
+    旧版 qBittorrent Web API 不支持 Cookie API 时保留添加种子 Cookie 参数。
+    """
     fake_client = MagicMock()
     fake_client.app_web_api_version.return_value = "2.11.2"
     fake_client.torrents_add.return_value = "Ok."
@@ -645,7 +736,9 @@ def test_add_torrent_keeps_legacy_cookie_param_for_old_webapi():
 
 
 def _build_module(server):
-    """构造仅包含下载所需方法的 QbittorrentModule 测试实例。"""
+    """
+    构造仅包含下载所需方法的 QbittorrentModule 测试实例。
+    """
     module = QbittorrentModule.__new__(QbittorrentModule)
     module.get_instance = MagicMock(return_value=server)
     module.normalize_path = MagicMock(side_effect=lambda path, _downloader: path)
@@ -654,7 +747,9 @@ def _build_module(server):
 
 
 def test_download_prefers_added_torrent_ids_before_tag_lookup():
-    """添加任务响应包含种子 ID 时应优先使用响应值。"""
+    """
+    添加任务响应包含种子 ID 时应优先使用响应值。
+    """
     fake_server = MagicMock()
     fake_server.add_torrent.return_value = (True, ["abc123"])
     fake_server.get_content_layout.return_value = "Original"
@@ -678,7 +773,9 @@ def test_download_prefers_added_torrent_ids_before_tag_lookup():
 
 
 def test_download_falls_back_to_tag_lookup_when_added_ids_missing():
-    """添加任务响应缺少种子 ID 时应回退到临时标签查询。"""
+    """
+    添加任务响应缺少种子 ID 时应回退到临时标签查询。
+    """
     fake_server = MagicMock()
     fake_server.add_torrent.return_value = (True, [])
     fake_server.get_content_layout.return_value = "Original"
@@ -699,7 +796,9 @@ def test_download_falls_back_to_tag_lookup_when_added_ids_missing():
 
 
 def test_download_cleans_temporary_tag_when_addition_lookup_fails():
-    """添加失败且无法查询下载器时仍应清理临时标签。"""
+    """
+    添加失败且无法查询下载器时仍应清理临时标签。
+    """
     fake_server = MagicMock()
     fake_server.add_torrent.return_value = (False, [])
     fake_server.get_torrents.return_value = ([], True)
@@ -717,7 +816,9 @@ def test_download_cleans_temporary_tag_when_addition_lookup_fails():
 
 
 def test_download_removes_temporary_tag_from_existing_torrent():
-    """重复添加任务时应从已存在的种子中删除本次临时标签。"""
+    """
+    重复添加任务时应从已存在的种子中删除本次临时标签。
+    """
     content = b"d4:infod6:lengthi15e4:name4:test12:piece lengthi16384e6:pieces20:xxxxxxxxxxxxxxxxxxxxee"
     torrent_hash = next(iter(download_hashes(content)))
     fake_server = MagicMock()
@@ -746,7 +847,9 @@ def test_download_removes_temporary_tag_from_existing_torrent():
 
 
 def test_delete_torrents_tag_uses_supported_qbittorrent_api_arguments():
-    """删除标签时应分别调用任务移除接口和全局标签删除接口。"""
+    """
+    删除标签时应分别调用任务移除接口和全局标签删除接口。
+    """
     fake_client = MagicMock()
     fake_client.torrents_info.return_value = [{"hash": "abc123", "tags": "moviepilot-tag"}]
     downloader = Qbittorrent.__new__(Qbittorrent)
@@ -762,7 +865,9 @@ def test_delete_torrents_tag_uses_supported_qbittorrent_api_arguments():
 
 
 def test_delete_torrents_tag_retries_until_new_torrent_tag_is_removed():
-    """新添加任务尚未可见或标签状态滞后时应重试并验证删除结果。"""
+    """
+    新添加任务尚未可见或标签状态滞后时应重试并验证删除结果。
+    """
     fake_client = MagicMock()
     fake_client.torrents_info.side_effect = [
         [],
@@ -783,7 +888,9 @@ def test_delete_torrents_tag_retries_until_new_torrent_tag_is_removed():
 
 
 def test_delete_torrents_tag_reports_unverified_cleanup():
-    """重试后仍无法读取目标任务时不得把标签清理误报为成功。"""
+    """
+    重试后仍无法读取目标任务时不得把标签清理误报为成功。
+    """
     fake_client = MagicMock()
     fake_client.torrents_info.return_value = []
     downloader = Qbittorrent.__new__(Qbittorrent)
@@ -800,7 +907,9 @@ def test_delete_torrents_tag_reports_unverified_cleanup():
 
 
 def test_get_torrent_id_by_tag_deletes_temporary_tag_after_lookup_timeout():
-    """按标签查询超时时也应删除全局临时标签，避免随机标签残留。"""
+    """
+    按标签查询超时时也应删除全局临时标签，避免随机标签残留。
+    """
     fake_client = MagicMock()
     downloader = Qbittorrent.__new__(Qbittorrent)
     downloader.qbc = fake_client
@@ -820,7 +929,9 @@ def test_get_torrent_id_by_tag_deletes_temporary_tag_after_lookup_timeout():
 
 
 def test_get_files_retries_until_qbittorrent_files_available():
-    """qBittorrent 添加任务后文件列表短暂未就绪时应重试。"""
+    """
+    qBittorrent 添加任务后文件列表短暂未就绪时应重试。
+    """
     torrent_files = [{"id": 12, "name": "Show.S01E12.mkv"}]
     fake_client = MagicMock()
     fake_client.torrents_files.side_effect = [
@@ -841,13 +952,19 @@ def test_get_files_retries_until_qbittorrent_files_available():
 
 
 def test_download_episode_selection_retries_file_list_after_add():
-    """按集选择下载时应等待 qBittorrent 刚添加的任务文件列表。"""
+    """
+    按集选择下载时应等待 qBittorrent 刚添加的任务文件列表。
+    """
 
     class _EpisodeMetaInfo:
-        """测试用集数识别对象。"""
+        """
+        测试用集数识别对象。
+        """
 
         def __init__(self, name, custom_words=None):
-            """识别文件集数，并兼容模块传入的自定义规则。"""
+            """
+            识别文件集数，并兼容模块传入的自定义规则。
+            """
             del custom_words
             self.episode_list = [12] if "E12" in name else [1]
 
@@ -880,7 +997,9 @@ def test_download_episode_selection_retries_file_list_after_add():
 
 
 def test_force_start_returns_request_confirmation():
-    """强制继续请求必须返回确认状态，供选集提交判断能否成功结算。"""
+    """
+    强制继续请求必须返回确认状态，供选集提交判断能否成功结算。
+    """
     fake_client = MagicMock()
     with patch.object(Qbittorrent, "_Qbittorrent__login_qbittorrent", return_value=fake_client):
         downloader = Qbittorrent(host="http://127.0.0.1", port=8080, username="admin", password="adminadmin")

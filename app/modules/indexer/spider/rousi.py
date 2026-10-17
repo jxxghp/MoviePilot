@@ -1,3 +1,7 @@
+"""
+通过 Rousi.pro PeerGo 接口搜索种子并转换为通用索引结果。
+"""
+
 import base64
 import json
 from typing import List, Optional, Tuple
@@ -44,10 +48,18 @@ class RousiSpider:
     def get_search_page_size(cls, keyword: Optional[str] = None) -> Optional[int]:
         """
         获取搜索接口单页容量。
+
+        :param keyword: 保留统一入口参数，不影响本站的分页容量
+        :return: 本站搜索接口的固定单页记录数
         """
         return cls._size
 
     def __init__(self, indexer: dict):
+        """
+        使用站点配置初始化 PeerGo 搜索和下载接口。
+
+        :param indexer: 包含域名、API Key、代理和超时秒数的站点配置
+        """
         self.systemconfig = get_configured_system_config()
         if indexer:
             self._indexerid = indexer.get('id')
@@ -66,7 +78,7 @@ class RousiSpider:
 
     def __get_params(self, keyword: str, mtype: MediaType = None, cat: Optional[str] = None, page: Optional[int] = 0) -> dict:
         """
-        构建 API 请求参数
+        构建 API 请求参数。
 
         :param keyword: 搜索关键词
         :param mtype: 媒体类型 (MOVIE/TV/MUSIC)
@@ -84,7 +96,7 @@ class RousiSpider:
         # API 不支持多分类搜索,只使用单个 category 参数
         # 优先使用用户选择的分类,如果用户未选择则根据 mtype 推断
         if cat:
-            # 用户选择了特定分类,需要将分类 ID 映射回 API 的 category name
+            # 用户指定分类时，将分类 ID 映射为 API 接受的分类名称。
             category_names = self.__get_category_names_by_ids(cat)
             if category_names:
                 # 如果用户选择了多个分类,只取第一个
@@ -102,15 +114,15 @@ class RousiSpider:
 
     def __get_category_names_by_ids(self, cat: str) -> Optional[list]:
         """
-        根据用户选择的分类 ID 获取 API 的 category names
+        将用户选择的分类 ID 转为 API 接受的分类名称。
 
-        :param cat: 用户选择的分类 ID（逗号分隔的多个ID，如 "1,2,3"）
-        :return: API 的 category names 列表（如 ["movie", "tv", "documentary"]）
+        :param cat: 逗号分隔的分类 ID，例如 1,2,3
+        :return: 分类名称列表，例如 movie、tv、documentary；无输入时返回 None
         """
         if not cat:
             return None
 
-        # ID 到 category name 的映射
+        # 分类 ID 到 API 分类名称的映射。
         id_to_name = {
             '1': 'movie',
             '2': 'tv',
@@ -120,7 +132,7 @@ class RousiSpider:
             '6': 'variety'
         }
 
-        # 分割多个分类 ID 并映射为 category names
+        # 按逗号拆分分类 ID，并保留能映射到 API 名称的分类。
         cat_ids = [c.strip() for c in cat.split(',') if c.strip()]
         category_names = [id_to_name.get(cat_id) for cat_id in cat_ids if cat_id in id_to_name]
 
@@ -128,7 +140,7 @@ class RousiSpider:
 
     def __process_response(self, res) -> Tuple[bool, List[dict]]:
         """
-        处理 API 响应
+        处理 API 响应。
 
         :param res: 请求响应对象
         :return: (是否发生错误, 种子列表)
@@ -156,7 +168,7 @@ class RousiSpider:
 
     def __parse_result(self, results: List[dict]) -> List[dict]:
         """
-        解析搜索结果
+        解析搜索结果。
 
         将 API 返回的种子数据转换为 MoviePilot 标准格式
 
@@ -226,7 +238,7 @@ class RousiSpider:
 
     def search(self, keyword: str, mtype: MediaType = None, cat: Optional[str] = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
         """
-        同步搜索种子
+        同步搜索种子。
 
         :param keyword: 搜索关键词
         :param mtype: 媒体类型 (MOVIE/TV/MUSIC)
@@ -254,7 +266,7 @@ class RousiSpider:
 
     async def async_search(self, keyword: str, mtype: MediaType = None, cat: Optional[str] = None, page: Optional[int] = 0) -> Tuple[bool, List[dict]]:
         """
-        异步搜索种子
+        异步搜索种子。
 
         :param keyword: 搜索关键词
         :param mtype: 媒体类型 (MOVIE/TV/MUSIC)
@@ -282,7 +294,7 @@ class RousiSpider:
 
     def __get_download_url(self, torrent_id: int) -> str:
         """
-        构建种子下载链接
+        构建种子下载链接。
 
         MoviePilot 会携带个人 API Key 请求详情接口，再提取带 capability 的短时下载地址。
 

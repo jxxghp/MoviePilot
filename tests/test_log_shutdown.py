@@ -1,3 +1,7 @@
+"""
+验证日志关闭、刷新及并发创建文件处理器时的资源回收。
+"""
+
 import subprocess
 import sys
 import threading
@@ -17,7 +21,9 @@ from app.runtime.log import (
 
 
 def test_runtime_config_cold_import_does_not_start_log_writer() -> None:
-    """冷导入配置模块不得创建日志后台线程。"""
+    """
+    冷导入配置模块不得创建日志后台线程。
+    """
     result = subprocess.run(
         [
             sys.executable,
@@ -38,7 +44,9 @@ def test_runtime_config_cold_import_does_not_start_log_writer() -> None:
 
 
 def test_log_writer_restarts_with_new_owner_after_shutdown(tmp_path) -> None:
-    """完整关闭后下一轮 lifespan 必须创建新的日志 owner。"""
+    """
+    完整关闭后下一轮 lifespan 必须创建新的日志 owner。
+    """
     previous_writer = LoggerManager._writer
     previous_log_path = LoggerManager._log_path
     previous_instance = NonBlockingFileHandler._instance
@@ -63,7 +71,9 @@ def test_start_log_writer_rejects_retained_stopping_owner_until_retry(
     monkeypatch,
     tmp_path,
 ) -> None:
-    """关闭失败后不得复用停止态 writer；重试收敛后才能创建新 owner。"""
+    """
+    关闭失败后不得复用停止态 writer；重试收敛后才能创建新 owner。
+    """
     previous_writer = LoggerManager._writer
     previous_log_path = LoggerManager._log_path
     previous_instance = NonBlockingFileHandler._instance
@@ -77,7 +87,9 @@ def test_start_log_writer_rejects_retained_stopping_owner_until_retry(
     real_shutdown = first.shutdown
 
     def block_batch(_batch: list[LogEntry]) -> None:
-        """占住真实 writer 线程，制造一次可恢复的关闭超时。"""
+        """
+        占住真实 writer 线程，制造一次可恢复的关闭超时。
+        """
         entered.set()
         release.wait()
 
@@ -112,7 +124,9 @@ def test_start_log_writer_rejects_retained_stopping_owner_until_retry(
 
 
 def test_non_blocking_file_handler_shutdown_wakes_writer_and_closes_handlers(tmp_path):
-    """日志关闭应立即唤醒空闲写线程，并关闭所有已打开的文件处理器"""
+    """
+    日志关闭应立即唤醒空闲写线程，并关闭所有已打开的文件处理器
+    """
     original_instance = NonBlockingFileHandler._instance
     NonBlockingFileHandler._instance = None
     handler = NonBlockingFileHandler()
@@ -141,7 +155,9 @@ def test_non_blocking_file_handler_shutdown_wakes_writer_and_closes_handlers(tmp
 
 
 def test_non_blocking_file_handler_shutdown_drains_queued_batches(monkeypatch, tmp_path):
-    """停止标记之前已进入队列的日志应跨批次全部写完"""
+    """
+    停止标记之前已进入队列的日志应跨批次全部写完
+    """
     original_instance = NonBlockingFileHandler._instance
     NonBlockingFileHandler._instance = None
     monkeypatch.setattr(log_settings, "BATCH_WRITE_SIZE", 2)
@@ -173,7 +189,9 @@ def test_non_blocking_file_handler_shutdown_drains_queued_batches(monkeypatch, t
 
 
 def test_non_blocking_file_handler_creates_one_handler_for_concurrent_first_write(monkeypatch, tmp_path):
-    """同一路径首次并发写入时只创建并关闭一个文件处理器"""
+    """
+    同一路径首次并发写入时只创建并关闭一个文件处理器
+    """
     original_instance = NonBlockingFileHandler._instance
     NonBlockingFileHandler._instance = None
     handler = NonBlockingFileHandler()
@@ -185,6 +203,9 @@ def test_non_blocking_file_handler_creates_one_handler_for_concurrent_first_writ
     results = []
 
     class ProbeHandler:
+        """
+        记录处理器创建和关闭状态，通过事件扩大并发创建窗口。
+        """
         def __init__(self, **kwargs):
             self.closed = False
             created_handlers.append(self)
@@ -194,13 +215,22 @@ def test_non_blocking_file_handler_creates_one_handler_for_concurrent_first_writ
 
         @staticmethod
         def setFormatter(formatter):
+            """
+            接受格式器配置，测试替身不进行真实日志格式化。
+            """
             pass
 
         @staticmethod
         def flush():
+            """
+            模拟无缓冲的处理器刷新，不执行文件写入。
+            """
             pass
 
         def close(self):
+            """
+            标记处理器已关闭，供资源泄漏断言使用。
+            """
             self.closed = True
 
     monkeypatch.setattr("app.runtime.log.RotatingFileHandler", ProbeHandler)
@@ -237,7 +267,9 @@ def test_non_blocking_file_handler_creates_one_handler_for_concurrent_first_writ
 
 
 def test_non_blocking_file_handler_uses_handler_lock(monkeypatch, tmp_path):
-    """日志写入通过 Handler 入口串行化 emit 与 rollover"""
+    """
+    日志写入通过 Handler 入口串行化 emit 与 rollover
+    """
     original_instance = NonBlockingFileHandler._instance
     NonBlockingFileHandler._instance = None
     handler = NonBlockingFileHandler()
@@ -259,7 +291,9 @@ def test_non_blocking_file_handler_shutdown_is_bounded_and_retryable(
     monkeypatch,
     tmp_path,
 ):
-    """批量写入阻塞时关闭必须有限返回，并保留同一 writer 供重试。"""
+    """
+    批量写入阻塞时关闭必须有限返回，并保留同一 writer 供重试。
+    """
     original_instance = NonBlockingFileHandler._instance
     NonBlockingFileHandler._instance = None
     monkeypatch.setattr(log_settings, "WRITE_TIMEOUT", 0.01)
@@ -268,7 +302,9 @@ def test_non_blocking_file_handler_shutdown_is_bounded_and_retryable(
     release = threading.Event()
 
     def block_batch(_batch):
-        """模拟文件系统写入永久占用批量 writer。"""
+        """
+        模拟文件系统写入永久占用批量 writer。
+        """
         entered.set()
         release.wait()
 
@@ -300,7 +336,9 @@ def test_non_blocking_file_handler_does_not_bypass_full_queue(
     monkeypatch,
     tmp_path,
 ):
-    """队列达到显式容量后不得再通过无界线程池形成第二条写入路径。"""
+    """
+    队列达到显式容量后不得再通过无界线程池形成第二条写入路径。
+    """
     original_instance = NonBlockingFileHandler._instance
     NonBlockingFileHandler._instance = None
     monkeypatch.setattr(log_settings, "ASYNC_FILE_QUEUE_SIZE", 1)
@@ -311,7 +349,9 @@ def test_non_blocking_file_handler_does_not_bypass_full_queue(
     written: list[str] = []
 
     def block_batch(batch):
-        """占住唯一 writer，使后续日志稳定留在有界队列中。"""
+        """
+        占住唯一 writer，使后续日志稳定留在有界队列中。
+        """
         written.extend(entry.message for entry in batch)
         entered.set()
         release.wait()
@@ -340,7 +380,9 @@ def test_non_blocking_file_handler_does_not_bypass_full_queue(
 
 
 def test_non_blocking_file_handler_bounds_handler_close(monkeypatch, tmp_path):
-    """文件处理器 close 阻塞时也必须保留关闭线程并支持最终重试。"""
+    """
+    文件处理器 close 阻塞时也必须保留关闭线程并支持最终重试。
+    """
     original_instance = NonBlockingFileHandler._instance
     NonBlockingFileHandler._instance = None
     handler = NonBlockingFileHandler()
@@ -349,7 +391,9 @@ def test_non_blocking_file_handler_bounds_handler_close(monkeypatch, tmp_path):
     log_handler = MagicMock()
 
     def block_close():
-        """模拟文件系统在 flush 后阻塞关闭句柄。"""
+        """
+        模拟文件系统在 flush 后阻塞关闭句柄。
+        """
         close_entered.set()
         close_release.wait()
 
@@ -372,7 +416,9 @@ def test_non_blocking_file_handler_bounds_handler_close(monkeypatch, tmp_path):
 
 
 def test_logger_manager_retains_nonconverged_writer_for_retry(tmp_path):
-    """平台日志门面不得在底层 writer 未收敛时丢失其 owner。"""
+    """
+    平台日志门面不得在底层 writer 未收敛时丢失其 owner。
+    """
     previous_writer = LoggerManager._writer
     previous_log_path = LoggerManager._log_path
     writer = MagicMock()
@@ -394,7 +440,9 @@ def test_logger_manager_retains_nonconverged_writer_for_retry(tmp_path):
 
 
 def test_logger_manager_refuses_to_replace_nonconverged_writer(tmp_path):
-    """重新装配不得用新 writer 覆盖仍持有资源的旧 owner。"""
+    """
+    重新装配不得用新 writer 覆盖仍持有资源的旧 owner。
+    """
     original_writer = LoggerManager._writer
     original_log_path = LoggerManager._log_path
     previous_writer = MagicMock()

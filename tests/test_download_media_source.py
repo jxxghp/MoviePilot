@@ -1,3 +1,7 @@
+"""
+验证下载提交传递通用媒体来源，并校验标识和人工确认。
+"""
+
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -8,7 +12,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def test_download_add_passes_generic_media_source(monkeypatch) -> None:
-    """不含媒体信息的下载应按统一来源ID执行精确识别。"""
+    """
+    不含媒体信息的下载应按统一来源ID执行精确识别。
+    """
     captured = {}
     media = MediaInfo(
         anilist_info={
@@ -19,18 +25,26 @@ def test_download_add_passes_generic_media_source(monkeypatch) -> None:
     )
 
     class FakeMediaChain:
-        """记录下载接口传入的媒体识别参数。"""
+        """
+        记录下载接口传入的媒体识别参数。
+        """
 
         def recognize_media(self, **kwargs):
-            """返回固定媒体信息并保存识别参数。"""
+            """
+            返回固定媒体信息并保存识别参数。
+            """
             captured["recognize"] = kwargs
             return media
 
     class FakeDownloadChain:
-        """模拟下载任务提交。"""
+        """
+        模拟下载任务提交。
+        """
 
         def download_single(self, **kwargs):
-            """保存下载上下文并返回任务ID。"""
+            """
+            保存下载上下文并返回任务ID。
+            """
             captured["download"] = kwargs
             return "download-1"
 
@@ -51,7 +65,9 @@ def test_download_add_passes_generic_media_source(monkeypatch) -> None:
 
 
 def test_download_add_rejects_source_without_media_id() -> None:
-    """显式媒体来源必须和原生 ID 成对提供，不能退回标题猜测。"""
+    """
+    显式媒体来源必须和原生 ID 成对提供，不能退回标题猜测。
+    """
     response = download_endpoint.add(
         torrent_in=schemas.TorrentInfo(title="测试动画 S01E01"),
         media_source="bangumi",
@@ -63,7 +79,9 @@ def test_download_add_rejects_source_without_media_id() -> None:
 
 
 def test_download_add_requires_confirmation_when_recognition_fails(monkeypatch) -> None:
-    """未识别的影视资源必须先由用户确认，不能直接提交下载。"""
+    """
+    未识别的影视资源必须先由用户确认，不能直接提交下载。
+    """
     media_chain = Mock()
     media_chain.recognize_by_meta.return_value = None
     download_chain = Mock()
@@ -85,7 +103,9 @@ def test_download_add_requires_confirmation_when_recognition_fails(monkeypatch) 
 
 
 def test_download_add_allows_confirmed_unrecognized_video(monkeypatch) -> None:
-    """用户确认后应使用种子元数据提交未识别的影视合集。"""
+    """
+    用户确认后应使用种子元数据提交未识别的影视合集。
+    """
     media_chain = Mock()
     media_chain.recognize_by_meta.return_value = None
     download_chain = Mock()
@@ -110,7 +130,9 @@ def test_download_add_allows_confirmed_unrecognized_video(monkeypatch) -> None:
 
 
 def test_download_add_requires_confirmation_for_unrecognized_music(monkeypatch) -> None:
-    """未识别的音乐资源同样需要先由用户确认，不能直接提交下载。"""
+    """
+    未识别的音乐资源同样需要先由用户确认，不能直接提交下载。
+    """
     media_chain = Mock()
     media_chain.recognize_by_meta.return_value = None
     download_chain = Mock()
@@ -133,7 +155,9 @@ def test_download_add_requires_confirmation_for_unrecognized_music(monkeypatch) 
 
 
 def test_download_add_allows_confirmed_unrecognized_music(monkeypatch) -> None:
-    """用户确认后音乐资源也应使用种子元数据继续下载。"""
+    """
+    用户确认后音乐资源也应使用种子元数据继续下载。
+    """
     media_chain = Mock()
     media_chain.recognize_by_meta.return_value = None
     download_chain = Mock()
@@ -159,14 +183,20 @@ def test_download_add_allows_confirmed_unrecognized_music(monkeypatch) -> None:
 
 
 def test_subtitle_download_passes_generic_media_source(monkeypatch) -> None:
-    """字幕下载接口应把统一来源ID传递到下载链。"""
+    """
+    字幕下载接口应把统一来源ID传递到下载链。
+    """
     captured = {}
 
     class FakeDownloadChain:
-        """记录字幕下载参数。"""
+        """
+        记录字幕下载参数。
+        """
 
         def download_subtitle(self, **kwargs):
-            """保存参数并返回固定成功结果。"""
+            """
+            保存参数并返回固定成功结果。
+            """
             captured.update(kwargs)
             return True, "字幕下载成功", ["/tmp/subtitle.ass"]
 

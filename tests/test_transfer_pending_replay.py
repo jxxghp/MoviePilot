@@ -25,6 +25,8 @@ from app.application.transfer.workflow import (
     TransferPlanningInput,
     TransferTask,
 )
+
+# 此用例覆盖运行时惰性导出，静态检查无法解析该公开入口。
 from app.chain.transfer import TransferChain  # pylint: disable=no-name-in-module
 from app.schemas.file import FileItem
 
@@ -63,7 +65,9 @@ def _execution_snapshot(
         state: TransferExecutionState = TransferExecutionState.NOT_STARTED,
         steps: tuple[object, ...] = (),
 ) -> TransferExecutionSnapshot:
-    """构造回放判定所需的最小执行状态投影。"""
+    """
+    构造回放判定所需的最小执行状态投影。
+    """
     return TransferExecutionSnapshot(
         task_id=task_id,
         state=state,
@@ -79,7 +83,9 @@ def _execution_snapshot(
 
 
 def _admission(path: str, task_id: str = "task-1") -> TransferAdmission:
-    """构造一条可脱离数据库会话使用的准入快照。"""
+    """
+    构造一条可脱离数据库会话使用的准入快照。
+    """
     planning_input = TransferPlanningInput(
         source_fileitem=_task(path).fileitem.model_dump(mode="json"),
         meta=None,
@@ -150,7 +156,9 @@ def test_admit_transfer_records_storage_and_path():
 
 
 def test_terminal_without_settlement_releases_claim_and_keeps_pending():
-    """缺少原子终态回执时必须释放租约并保留 pending 供恢复。"""
+    """
+    缺少原子终态回执时必须释放租约并保留 pending 供恢复。
+    """
     admissions = MagicMock()
     admissions.release_claim.return_value = True
     chain = _build_chain(admissions)
@@ -230,7 +238,9 @@ def test_replay_discards_vanished_files(tmp_path):
 def test_replay_releases_claim_when_vanished_source_abandon_is_rejected(
         tmp_path,
 ) -> None:
-    """注销 CAS 被执行证据拒绝时必须释放 claim，不能留下无人续期的毒任务。"""
+    """
+    注销 CAS 被执行证据拒绝时必须释放 claim，不能留下无人续期的毒任务。
+    """
     admissions = MagicMock()
     missing = tmp_path / "state-changed.mkv"
     admission = _admission(str(missing))
@@ -269,7 +279,9 @@ def test_replay_with_execution_evidence_uses_frozen_source_when_source_vanished(
         execution_state,
         steps,
 ) -> None:
-    """已有执行状态或步骤证据时不得用源消失推断任务可删除。"""
+    """
+    已有执行状态或步骤证据时不得用源消失推断任务可删除。
+    """
     missing = tmp_path / "already-moved.mkv"
     planning_input = TransferPlanningInput(
         source_fileitem=_task(str(missing)).fileitem.model_dump(mode="json"),
@@ -299,7 +311,9 @@ def test_replay_with_execution_evidence_uses_frozen_source_when_source_vanished(
     )
 
     def reject_stat(*_args, **_kwargs):
-        """冻结恢复触碰源文件即判定测试失败。"""
+        """
+        冻结恢复触碰源文件即判定测试失败。
+        """
         pytest.fail("已有执行证据的恢复不得探测已经消失的源文件")
 
     monkeypatch.setattr(Path, "stat", reject_stat)
@@ -387,7 +401,9 @@ def test_replay_is_noop_without_registrations():
 
 
 def test_replay_waits_for_a_free_worker_capacity_slot():
-    """已有 worker 槽位被租约占用时，恢复器不得继续批量 claim。"""
+    """
+    已有 worker 槽位被租约占用时，恢复器不得继续批量 claim。
+    """
     admissions = MagicMock()
     chain = _build_chain(admissions)
     chain._owned_leases["running-task"] = (
@@ -401,7 +417,9 @@ def test_replay_waits_for_a_free_worker_capacity_slot():
 
 
 def test_replay_claims_only_free_worker_capacity_slots():
-    """恢复 claim 数量应受整理并发度与当前持有租约共同限制。"""
+    """
+    恢复 claim 数量应受整理并发度与当前持有租约共同限制。
+    """
     admissions = MagicMock()
     admissions.claim_recoverable.return_value = []
     chain = _build_chain(admissions)
@@ -484,7 +502,9 @@ def test_replay_stop_keeps_unprocessed_registrations(tmp_path, monkeypatch):
     transferred = []
 
     def transfer_first(**kwargs):
-        """首条回放送入整理链后模拟宿主发出关闭信号。"""
+        """
+        首条回放送入整理链后模拟宿主发出关闭信号。
+        """
         transferred.append(kwargs["fileitem"].path)
         stop_event.set()
 
@@ -501,7 +521,9 @@ def test_replay_registers_entire_claimed_batch_before_first_source_stat(
         tmp_path,
         monkeypatch,
 ):
-    """批量 claim 返回后必须先把全部 token 交给 heartbeat，再做逐条同步 I/O。"""
+    """
+    批量 claim 返回后必须先把全部 token 交给 heartbeat，再做逐条同步 I/O。
+    """
     first = _admission(str(tmp_path / "A.mkv"), "task-1")
     second = _admission(str(tmp_path / "B.mkv"), "task-2")
     admissions = MagicMock()
@@ -510,7 +532,9 @@ def test_replay_registers_entire_claimed_batch_before_first_source_stat(
     chain = _build_chain(admissions)
 
     def observe_owned_batch(*_args, **_kwargs):
-        """首个 stat 前观察两个 token 已同时进入续期集合。"""
+        """
+        首个 stat 前观察两个 token 已同时进入续期集合。
+        """
         assert set(chain._owned_leases) == {"task-1", "task-2"}
         return None, False
 
@@ -530,7 +554,9 @@ def test_replay_releases_claim_when_jobview_rejects_recovered_task(
         tmp_path,
         monkeypatch,
 ):
-    """恢复任务未进入队列时必须立即 release，不能靠租约自然过期。"""
+    """
+    恢复任务未进入队列时必须立即 release，不能靠租约自然过期。
+    """
     media = tmp_path / "Movie.2024.mkv"
     media.write_bytes(b"x")
     admission = _admission(str(media))
@@ -561,7 +587,9 @@ def test_replay_releases_claim_when_jobview_rejects_recovered_task(
 
 
 def test_claimed_enqueue_failure_never_uses_unfenced_error_writer() -> None:
-    """陈旧 token 入队失败只能 release_claim，不能覆盖新 owner 的 last_error。"""
+    """
+    陈旧 token 入队失败只能 release_claim，不能覆盖新 owner 的 last_error。
+    """
     admissions = MagicMock()
     admissions.release_claim.return_value = False
     chain = _build_chain(admissions)
@@ -594,7 +622,9 @@ def test_claimed_enqueue_failure_never_uses_unfenced_error_writer() -> None:
 @pytest.mark.parametrize("state", ["waiting", "running", "failed", "completed"])
 @pytest.mark.parametrize("active", [False, True])
 def test_manual_restart_replaces_only_finished_inactive_jobview(state, active):
-    """手动重做清理批次残留终态，仍在执行或等待的同源任务必须保留。"""
+    """
+    手动重做清理批次残留终态，仍在执行或等待的同源任务必须保留。
+    """
     import queue
 
     from app.application.transfer.workflow import JobManager
@@ -633,7 +663,9 @@ def test_manual_restart_replaces_only_finished_inactive_jobview(state, active):
 
 @pytest.mark.parametrize("state", ["waiting", "running", "failed", "completed"])
 def test_recovery_requeues_orphaned_jobview_without_losing_group(state):
-    """残留视图没有真实执行者时必须恢复入队，并保留同组其他文件。"""
+    """
+    残留视图没有真实执行者时必须恢复入队，并保留同组其他文件。
+    """
     import queue
 
     from app.application.transfer.workflow import JobManager
@@ -662,7 +694,9 @@ def test_recovery_requeues_orphaned_jobview_without_losing_group(state):
 
 @pytest.mark.parametrize("running", [False, True])
 def test_recovery_reuses_real_task_without_second_enqueue(running):
-    """相同租约的真实任务已排队或被 worker 取走时，回放应幂等成功。"""
+    """
+    相同租约的真实任务已排队或被 worker 取走时，回放应幂等成功。
+    """
     import queue
 
     from app.application.transfer.workflow import JobManager
@@ -695,7 +729,9 @@ def test_recovery_reuses_real_task_without_second_enqueue(running):
 
 
 def test_recovery_does_not_reuse_a_different_execution_lease():
-    """不能把旧执行者当作新租约已入队，也不能覆盖仍持有的真实任务。"""
+    """
+    不能把旧执行者当作新租约已入队，也不能覆盖仍持有的真实任务。
+    """
     import queue
 
     from app.application.transfer.workflow import JobManager
@@ -721,7 +757,9 @@ def test_recovery_does_not_reuse_a_different_execution_lease():
 
 
 def test_normal_enqueue_is_visible_to_recovery_without_readmission():
-    """普通准入任务也登记真实队列凭证，恢复同一租约不再次准入或入队。"""
+    """
+    普通准入任务也登记真实队列凭证，恢复同一租约不再次准入或入队。
+    """
     import queue
 
     from app.application.transfer.workflow import JobManager

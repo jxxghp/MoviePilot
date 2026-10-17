@@ -1,3 +1,7 @@
+"""
+绿联模块，将双协议媒体库查询、刷新和播放信息接入统一接口。
+"""
+
 from typing import Any, Generator, List, Optional, Tuple, Union
 
 from app.modules._base.mediaserver import _MediaServerModuleBase
@@ -13,14 +17,16 @@ from app.schemas.types import MediaServerType, ModuleType
 
 
 class UgreenModule(_MediaServerModuleBase[Ugreen]):
-    """将绿联影视接入媒体服务器统一接口。"""
+    """
+    将绿联影视接入媒体服务器统一接口。
+    """
 
     # 媒体库标识（ExistMediaInfo.server_type）
     _server_type_value = "ugreen"
 
     def init_module(self) -> None:
         """
-        初始化模块
+        初始化模块。
         """
         super().init_service(
             service_name=Ugreen.__name__.lower(),
@@ -31,40 +37,48 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
 
     @staticmethod
     def get_name() -> str:
-        """返回媒体服务器模块名称。"""
+        """
+        返回媒体服务器模块名称。
+        """
         return "绿联影视"
 
     @staticmethod
     def get_type() -> ModuleType:
         """
-        获取模块类型
+        获取模块类型。
         """
         return ModuleType.MediaServer
 
     @staticmethod
     def get_subtype() -> MediaServerType:
         """
-        获取模块子类型
+        获取模块子类型。
         """
         return MediaServerType.Ugreen
 
     @staticmethod
     def get_priority() -> int:
         """
-        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效
+        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效。
         """
         return 5
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        """模块不提供额外的初始化开关。"""
+        """
+        模块不提供额外的初始化开关。
+        """
         pass
 
     def _is_inactive(self, server) -> bool:
-        """未配置的实例不参与定时重连。"""
+        """
+        未配置的实例不参与定时重连。
+        """
         return server.is_configured() and server.is_inactive()
 
     def stop(self) -> None:
-        """停止模块"""
+        """
+        断开已认证实例的连接，逐个记录关闭失败并继续清理其他实例。
+        """
         for server in self.get_instances().values():
             try:
                 if server.is_authenticated():
@@ -73,7 +87,9 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
                 logger.error(f"停止绿联影视模块实例失败：{err}")
 
     def _test_server(self, server, name: Optional[str]) -> Optional[str]:
-        """绿联影视用配置完整性与重连结果探测连接状态。"""
+        """
+        绿联影视用配置完整性与重连结果探测连接状态。
+        """
         if not server.is_configured():
             return f"{self.get_name()}配置不完整：{name}"
         if server.is_inactive() and not server.reconnect():
@@ -84,7 +100,12 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         self, body: Any, form: Any, args: Any
     ) -> Optional[_SchemaWebhookEventInfo]:
         """
-        解析Webhook报文体
+        保留统一 Webhook 路由入口；绿联客户端目前不解析事件。
+
+        :param body: 传给客户端的请求体
+        :param form: 兼容统一接口的表单，当前不使用
+        :param args: 查询参数，source 可指定实例
+        :return: 当前客户端均返回 None
         """
         source = args.get("source")
         if source:
@@ -107,7 +128,10 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         self, server: Optional[str] = None
     ) -> Optional[List[_SchemaStatistic]]:
         """
-        媒体数量统计
+        汇总指定实例或全部绿联实例的媒体与用户统计。
+
+        :param server: 指定实例名称；省略时汇总全部实例
+        :return: 统计列表；指定实例不存在时返回 None
         """
         if server:
             server_obj: Optional[Ugreen] = self.get_instance(server)
@@ -130,7 +154,12 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         self, server: Optional[str] = None, hidden: Optional[bool] = False, **kwargs
     ) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
-        媒体库列表
+        查询可见媒体库并按需应用同步范围筛选。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param hidden: 是否隐藏同步范围外的库
+        :param kwargs: 为统一媒体服务器接口保留，当前不使用
+        :return: 媒体库列表；实例不可用或查询失败时返回 None
         """
         server_obj: Optional[Ugreen] = self.get_instance(server)
         if server_obj:
@@ -145,7 +174,13 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         limit: Optional[int] = -1,
     ) -> Optional[Generator]:
         """
-        获取媒体服务器项目列表
+        返回媒体库同步条目的迭代器。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param library_id: 媒体库标识
+        :param start_index: 需要跳过的起始条目数
+        :param limit: 期望条目上限，None 或 -1 表示不限；应传正数或不限标记
+        :return: 统一媒体条目生成器；实例不存在时返回 None，底层失败可能提前结束迭代
         """
         server_obj: Optional[Ugreen] = self.get_instance(server)
         if server_obj:
@@ -156,7 +191,7 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         self, server: str, library_id: Union[str, int]
     ) -> Optional[int]:
         """
-        获取指定媒体库可同步的媒体条目总数
+        获取指定媒体库可同步的媒体条目总数。
 
         :param server: 媒体服务器名称
         :param library_id: 媒体库ID
@@ -171,7 +206,11 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         self, server: str, item_id: str
     ) -> Optional[_SchemaMediaServerItem]:
         """
-        媒体库项目详情
+        查询统一媒体条目详情。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param item_id: 对应绿联服务的媒体条目标识
+        :return: 条目详情；实例不存在、条目无效或查询失败时返回 None
         """
         server_obj: Optional[Ugreen] = self.get_instance(server)
         if server_obj:
@@ -182,7 +221,11 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         self, server: str, item_id: Union[str, int]
     ) -> Optional[List[_SchemaMediaServerSeasonInfo]]:
         """
-        获取剧集信息
+        查询电视剧已经入库的季集编号。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param item_id: 对应绿联服务的媒体条目标识
+        :return: 季集列表；标识为空或实例不存在时返回 None，无可用数据时返回空列表
         """
         if not item_id:
             return None
@@ -201,7 +244,12 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         self, server: str, count: Optional[int] = 20, **kwargs
     ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
-        获取媒体服务器正在播放信息
+        查询当前账号的继续观看列表。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param count: 期望条目数量，空值或 0 由客户端回退为 12
+        :param kwargs: 为统一媒体服务器接口保留，当前不使用
+        :return: 播放条目列表；实例不可用或请求失败时返回 None
         """
         server_obj: Optional[Ugreen] = self.get_instance(server)
         if not server_obj:
@@ -212,7 +260,11 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         self, server: str, item_id: Union[str, int]
     ) -> Optional[str]:
         """
-        获取媒体库播放地址
+        生成媒体条目的网页跳转链接。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param item_id: 对应绿联服务的媒体条目标识
+        :return: 媒体库条目链接或 NAS 根地址；标识、实例或条目不可用时返回 None
         """
         if not item_id:
             return None
@@ -228,7 +280,12 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         **kwargs,
     ) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
-        获取媒体服务器最新入库条目
+        查询当前账号最近入库的电影和电视剧。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param count: 期望条目数量，客户端最少请求 1 条
+        :param kwargs: 为统一媒体服务器接口保留，当前不使用
+        :return: 最新媒体列表；实例不可用或请求失败时返回 None
         """
         server_obj: Optional[Ugreen] = self.get_instance(server)
         if not server_obj:
@@ -243,7 +300,13 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         **kwargs,
     ) -> List[str]:
         """
-        获取媒体服务器最新入库条目的图片
+        获取最新媒体的背景图或主封面。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param count: 期望图片数量
+        :param remote: 媒体库服务模式是否优先使用外网图片地址
+        :param kwargs: 为统一媒体服务器接口保留，当前不使用
+        :return: 图片 URL 列表；实例不可用或没有可用图片时返回空列表
         """
         server_obj: Optional[Ugreen] = self.get_instance(server)
         if not server_obj:
@@ -257,7 +320,12 @@ class UgreenModule(_MediaServerModuleBase[Ugreen]):
         **kwargs,
     ) -> Optional[str | dict]:
         """
-        获取绿联影视服务器的图片Cookies
+        保留统一图片 Cookie 查询接口。
+
+        :param server: 媒体服务器配置名称，空值使用默认实例
+        :param image_url: 待查询的图片地址，空值时直接返回
+        :param kwargs: 为统一媒体服务器接口保留，当前不使用
+        :return: 当前绿联客户端不提供图片 Cookie，返回 None
         """
         if not image_url:
             return None

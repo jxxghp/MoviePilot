@@ -1,4 +1,6 @@
-"""命令门面与真实注册表的缺省值契约回归。"""
+"""
+命令门面与真实注册表的缺省值契约回归。
+"""
 
 from unittest.mock import Mock
 
@@ -11,7 +13,9 @@ from app.schemas.types import EventType, NotificationChannel
 
 @pytest.fixture
 def command_registry(monkeypatch):
-    """保留真实注册表查询逻辑，跳过单例初始化和外部服务装配。"""
+    """
+    保留真实注册表查询逻辑，跳过单例初始化和外部服务装配。
+    """
     registry = object.__new__(Command)
     registry._commands = {
         "/demo": {"description": "示例命令", "pid": "demo-plugin"},
@@ -22,7 +26,9 @@ def command_registry(monkeypatch):
 
 @pytest.mark.parametrize("command", ["/missing", " missing 参数 "])
 def test_missing_command_is_rejected_before_publishing(command_registry, command):
-    """真实注册表用空字典表示缺失，门面应报错且不发送执行事件。"""
+    """
+    真实注册表用空字典表示缺失，门面应报错且不发送执行事件。
+    """
     assert command_registry.get("/missing") == {}
     publish_event = Mock()
 
@@ -33,7 +39,9 @@ def test_missing_command_is_rejected_before_publishing(command_registry, command
 
 
 def test_registered_command_keeps_arguments_and_channel(command_registry):
-    """已注册命令仍传递原参数、用户和渠道，并返回插件描述。"""
+    """
+    已注册命令仍传递原参数、用户和渠道，并返回插件描述。
+    """
     publish_event = Mock()
     assert commands.get_commands() is command_registry._commands
 

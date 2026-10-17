@@ -1,4 +1,6 @@
-"""音乐媒体服务器统一匹配契约测试。"""
+"""
+音乐媒体服务器统一匹配契约测试。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -14,14 +16,20 @@ from app.modules.jellyfin import JellyfinModule
 from app.modules.jellyfin.jellyfin import Jellyfin
 from app.modules.plex import PlexModule
 from app.modules.plex.plex import Plex
+
+# 此用例覆盖运行时惰性导出，静态检查无法解析该公开入口。
 from app.modules.trimemedia import TrimeMediaModule  # pylint: disable=no-name-in-module
+
+# 此用例覆盖运行时惰性导出，静态检查无法解析该公开入口。
 from app.modules.ugreen import UgreenModule  # pylint: disable=no-name-in-module
 from app.modules.zspace import ZSpaceModule
 from app.modules.zspace.zspace import ZSpace
 
 
 def _recording() -> MusicInfo:
-    """构造媒体库匹配使用的单曲目标。"""
+    """
+    构造媒体库匹配使用的单曲目标。
+    """
     return MusicInfo(
         media_source="musicbrainz",
         media_id="recording-1",
@@ -33,7 +41,9 @@ def _recording() -> MusicInfo:
 
 
 def _album() -> MusicInfo:
-    """构造媒体库完整性匹配使用的专辑目标。"""
+    """
+    构造媒体库完整性匹配使用的专辑目标。
+    """
     return MusicInfo(
         media_source="musicbrainz",
         media_id="release-group-1",
@@ -46,7 +56,9 @@ def _album() -> MusicInfo:
 
 
 def test_music_media_server_helper_requires_exact_recording_and_artist():
-    """同名异艺人的单曲不得误判为已入库，目标艺术家和曲名均匹配才算存在。"""
+    """
+    同名异艺人的单曲不得误判为已入库，目标艺术家和曲名均匹配才算存在。
+    """
     wrong_artist = schemas.MediaServerItem(
         item_id="wrong",
         title="晴天",
@@ -63,7 +75,9 @@ def test_music_media_server_helper_requires_exact_recording_and_artist():
 
 
 def test_music_media_server_helper_requires_complete_album_track_count():
-    """专辑名称和艺术家相同但曲目不足时，仍必须保持订阅等待整专。"""
+    """
+    专辑名称和艺术家相同但曲目不足时，仍必须保持订阅等待整专。
+    """
     incomplete = schemas.MediaServerItem(
         item_id="album-10",
         title="叶惠美",
@@ -80,7 +94,9 @@ def test_music_media_server_helper_requires_complete_album_track_count():
 
 
 def test_music_media_server_helper_normalizes_emby_music_fields():
-    """Emby 系音乐字段应统一提取艺术家、专辑和整专曲目数。"""
+    """
+    Emby 系音乐字段应统一提取艺术家、专辑和整专曲目数。
+    """
     note = MusicMediaServerHelper.build_note({
         "Type": "MusicAlbum",
         "Name": "叶惠美",
@@ -105,7 +121,9 @@ def test_music_media_server_helper_normalizes_emby_music_fields():
     ],
 )
 def test_emby_family_clients_preserve_item_contract(formatter, server, server_id):
-    """Emby 系客户端复用统一转换时必须保留服务身份及音乐匹配字段。"""
+    """
+    Emby 系客户端复用统一转换时必须保留服务身份及音乐匹配字段。
+    """
     item = formatter({
         "Id": "album-1",
         "ServerId": "server-1",
@@ -142,7 +160,9 @@ def test_emby_family_clients_preserve_item_contract(formatter, server, server_id
 
 
 def test_plex_music_client_preserves_album_artist_and_track_count():
-    """Plex 专辑搜索结果应保留父级艺术家和 leafCount，供整专完整性判断。"""
+    """
+    Plex 专辑搜索结果应保留父级艺术家和 leafCount，供整专完整性判断。
+    """
     album_item = SimpleNamespace(
         type="album",
         title="叶惠美",
@@ -185,7 +205,9 @@ def test_music_media_server_modules_ignore_fuzzy_result_and_select_exact_match(
         module_class,
         server_type,
 ):
-    """所有通用媒体服务器模块都必须在模糊搜索后应用统一音乐精确匹配。"""
+    """
+    所有通用媒体服务器模块都必须在模糊搜索后应用统一音乐精确匹配。
+    """
     service = Mock()
     service.get_music.return_value = [
         schemas.MediaServerItem(
@@ -230,7 +252,9 @@ def test_music_media_server_modules_require_complete_album(
         module_class,
         server_type,
 ):
-    """所有通用媒体服务器都只能用完整专辑条目结束整专订阅。"""
+    """
+    所有通用媒体服务器都只能用完整专辑条目结束整专订阅。
+    """
     service = Mock()
     service.get_music.return_value = [
         schemas.MediaServerItem(

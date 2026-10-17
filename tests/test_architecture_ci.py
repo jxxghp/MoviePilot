@@ -1,4 +1,6 @@
-"""后端架构治理工作流的静态契约测试。"""
+"""
+后端架构治理工作流的静态契约测试。
+"""
 
 import configparser
 from pathlib import Path
@@ -12,13 +14,17 @@ WORKFLOW_ROOT = PROJECT_ROOT / ".github" / "workflows"
 
 
 def _load_workflow(name: str) -> dict:
-    """以 YAML 1.2 解析 GitHub Actions 工作流。"""
+    """
+    以 YAML 1.2 解析 GitHub Actions 工作流。
+    """
     yaml = YAML(typ="safe")
     return yaml.load((WORKFLOW_ROOT / name).read_text(encoding="utf-8"))
 
 
 def _step_commands(workflow: dict, job_name: str) -> str:
-    """拼接指定 job 的命令，便于断言关键门禁没有被移除。"""
+    """
+    拼接指定 job 的命令，便于断言关键门禁没有被移除。
+    """
     return "\n".join(
         step.get("run", "")
         for step in workflow["jobs"][job_name]["steps"]
@@ -26,7 +32,9 @@ def _step_commands(workflow: dict, job_name: str) -> str:
 
 
 def test_unit_test_workflow_has_independent_host_architecture_gate():
-    """主仓 PR 与推送必须在全量分片外快速执行宿主架构门禁。"""
+    """
+    主仓 PR 与推送必须在全量分片外快速执行宿主架构门禁。
+    """
     workflow = _load_workflow("test.yml")
     commands = "\n".join(
         _step_commands(workflow, job_name) for job_name in ("architecture", "architecture-ratchets")
@@ -93,7 +101,9 @@ def test_unit_test_workflow_has_independent_host_architecture_gate():
 
 
 def test_official_plugin_observation_is_scheduled_and_never_writes_fixture():
-    """跨仓观察应定时或手工运行，只上传语义报告而不刷新 fixture。"""
+    """
+    跨仓观察应定时或手工运行，只上传语义报告而不刷新 fixture。
+    """
     workflow = _load_workflow("architecture-observe.yml")
     commands = _step_commands(workflow, "observe")
     steps = workflow["jobs"]["observe"]["steps"]
@@ -110,7 +120,9 @@ def test_official_plugin_observation_is_scheduled_and_never_writes_fixture():
 
 
 def test_coverage_jobs_parallelize_data_and_keep_one_global_ratchet() -> None:
-    """Coverage 分片并行采集数据，再由单一报告 job 合并并检查全局低水位。"""
+    """
+    Coverage 分片并行采集数据，再由单一报告 job 合并并检查全局低水位。
+    """
     workflow = _load_workflow("test.yml")
     assert "pytest" not in workflow["jobs"]
     shard_job = workflow["jobs"]["coverage-shard"]
@@ -194,7 +206,9 @@ def test_coverage_jobs_parallelize_data_and_keep_one_global_ratchet() -> None:
 
 
 def test_ci_reuse_requires_successful_proof_for_every_gate() -> None:
-    """证明必须依赖全部硬门禁，推送只能通过保守判定跳过昂贵任务。"""
+    """
+    证明必须依赖全部硬门禁，推送只能通过保守判定跳过昂贵任务。
+    """
     for filename, gates in {
         "test.yml": ["architecture", "architecture-ratchets", "coverage-shard", "coverage-report"],
         "pylint.yml": ["pylint"],
@@ -222,7 +236,9 @@ def test_ci_reuse_requires_successful_proof_for_every_gate() -> None:
 
 
 def test_pylint_workflow_runs_for_v3_pull_requests_and_pushes():
-    """改动文件应硬门禁，而全仓存量问题只能生成建议性报告。"""
+    """
+    改动文件应硬门禁，而全仓存量问题只能生成建议性报告。
+    """
     workflow = _load_workflow("pylint.yml")
     commands = _step_commands(workflow, "pylint")
 
@@ -242,7 +258,9 @@ def test_pylint_workflow_runs_for_v3_pull_requests_and_pushes():
 
 
 def test_upload_artifact_actions_share_node24_major():
-    """主仓工件上传统一为 v7；采集器工作流已迁出，不得重新混入主仓发布。"""
+    """
+    主仓工件上传统一为 v7；采集器工作流已迁出，不得重新混入主仓发布。
+    """
     actions_by_workflow: dict[str, list[str]] = {}
     for workflow_path in WORKFLOW_ROOT.glob("*.yml"):
         workflow = _load_workflow(workflow_path.name)
@@ -268,7 +286,9 @@ def test_upload_artifact_actions_share_node24_major():
 
 
 def test_native_dependency_update_probe_has_narrow_automatic_triggers():
-    """昂贵的三平台探针只跟随生产安装边界变化，并保留手工验收入口。"""
+    """
+    昂贵的三平台探针只跟随生产安装边界变化，并保留手工验收入口。
+    """
     workflow = _load_workflow("native-dependency-update.yml")
     expected_paths = [
         "app/adapters/external/market.py",
@@ -289,7 +309,9 @@ def test_native_dependency_update_probe_has_narrow_automatic_triggers():
 
 
 def test_dependency_compatibility_covers_windows_free_threaded_profile():
-    """依赖门禁必须真实安装并检查 Windows free-threaded profile。"""
+    """
+    依赖门禁必须真实安装并检查 Windows free-threaded profile。
+    """
     workflow = _load_workflow("dependency-compat.yml")
     matrix = workflow["jobs"]["install"]["strategy"]["matrix"]["include"]
     free_threaded = next(item for item in matrix if item["expected-profile"] == "free-threaded")

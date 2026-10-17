@@ -1,3 +1,7 @@
+"""
+持久化整理任务、检查点与租约的数据访问入口，适配调用方会话及兼容事务执行器。
+"""
+
 from typing import Any, Optional
 
 from app.db.base import DbOper
@@ -16,7 +20,9 @@ class TransferPendingOper(DbOper):
             self, *, task_id: str, lease_token: str, error: str,
             now_utc: str, updated_at: str,
     ) -> int:
-        """在调用方事务中暂存异常隔离，失败计数与租约释放使用同一 CAS。"""
+        """
+        在调用方事务中暂存异常隔离，失败计数与租约释放使用同一 CAS。
+        """
         return self._execute_sync_write(
             lambda session: TransferPending.isolate_unhandled_failure(
                 session, task_id=task_id, lease_token=lease_token,
@@ -32,6 +38,7 @@ class TransferPendingOper(DbOper):
         在当前会话中暂存一条持久接纳记录。
 
         适配器应传入显式 Session，使提交与回滚仍由应用用例对应的 UoW 管理。
+
         :param task_id: 任务标识
         :param storage: 存储
         :param src_path: 源文件路径
@@ -60,6 +67,7 @@ class TransferPendingOper(DbOper):
                         src_path: str) -> Optional[TransferPending]:
         """
         使用当前会话按存储与源路径查询接纳记录。
+
         :param storage: 存储
         :param src_path: 源文件路径
         :return: 接纳记录
@@ -80,7 +88,9 @@ class TransferPendingOper(DbOper):
             src_path: str,
             now_time: str,
     ) -> int:
-        """在调用方准入事务中 CAS 删除无有效租约且无真实历史绑定的旧任务。"""
+        """
+        在调用方准入事务中 CAS 删除无有效租约且无真实历史绑定的旧任务。
+        """
         return self._execute_sync_write(
             lambda session: TransferPending.delete_inactive_for_replacement(
                 session,
@@ -92,7 +102,9 @@ class TransferPendingOper(DbOper):
         )
 
     def get_task_id_by_identity(self, *, storage: str, src_path: str) -> Optional[str]:
-        """只读稳定任务身份，避免损坏规划 JSON 阻断用户显式重做。"""
+        """
+        只读稳定任务身份，避免损坏规划 JSON 阻断用户显式重做。
+        """
         return self._execute_sync_query(
             lambda session: TransferPending.get_task_id_by_identity(
                 session, storage=storage, src_path=src_path,
@@ -102,6 +114,7 @@ class TransferPendingOper(DbOper):
     def get_by_task_id(self, *, task_id: str) -> Optional[TransferPending]:
         """
         使用当前会话按稳定任务标识查询接纳记录。
+
         :param task_id: 稳定任务标识
         :return: 接纳记录
         """
@@ -127,6 +140,7 @@ class TransferPendingOper(DbOper):
     ) -> int:
         """
         在当前会话中以输入指纹为条件暂存完整计划检查点。
+
         :param task_id: 稳定任务标识
         :param input_fingerprint: 规划输入规范 JSON 指纹
         :param checkpoint_version: 检查点格式版本
@@ -158,6 +172,7 @@ class TransferPendingOper(DbOper):
                                       updated_at: str) -> int:
         """
         在当前会话中记录规划失败并保持任务处于接纳态。
+
         :param task_id: 稳定任务标识
         :param lease_token: 当前且未过期的租约令牌
         :param error: 失败原因
@@ -298,7 +313,9 @@ class TransferPendingOper(DbOper):
 
     def stage_defer_planning(self, *, task_id: str, lease_token: str, error: str,
                             retry_due_at: str, now_time: str, updated_at: str, max_retries: int) -> int:
-        """在调用方事务内按租约和空操作证据约束暂存规划退避。"""
+        """
+        在调用方事务内按租约和空操作证据约束暂存规划退避。
+        """
         return self._execute_sync_write(lambda session: TransferPending.defer_planning(
             session, task_id=task_id, lease_token=lease_token, error=error,
             retry_due_at=retry_due_at, now_time=now_time, updated_at=updated_at, max_retries=max_retries,
@@ -362,6 +379,7 @@ class TransferPendingOper(DbOper):
                                      now_time: str) -> int:
         """
         在当前会话中暂存最近一次入队失败。
+
         :param task_id: 任务标识
         :param error: 失败原因
         :param now_time: 当前时间
@@ -387,7 +405,9 @@ class TransferPendingOper(DbOper):
             now_utc: str,
             updated_at: str,
     ) -> int:
-        """以有效租约暂存任务执行状态为 running。"""
+        """
+        以有效租约暂存任务执行状态为 running。
+        """
         return self._execute_sync_write(
             lambda session: TransferPending.stage_execution_running(
                 session,
@@ -411,7 +431,9 @@ class TransferPendingOper(DbOper):
             now_utc: str,
             updated_at: str,
     ) -> int:
-        """暂存重试世代和到期时间，并原子释放当前租约。"""
+        """
+        暂存重试世代和到期时间，并原子释放当前租约。
+        """
         return self._execute_sync_write(
             lambda session: TransferPending.defer_execution(
                 session,
@@ -433,7 +455,9 @@ class TransferPendingOper(DbOper):
             now_utc: str,
             updated_at: str,
     ) -> int:
-        """暂存人工复核隔离状态，并原子释放当前租约。"""
+        """
+        暂存人工复核隔离状态，并原子释放当前租约。
+        """
         return self._execute_sync_write(
             lambda session: TransferPending.mark_execution_manual_review(
                 session,
@@ -456,7 +480,9 @@ class TransferPendingOper(DbOper):
             now_utc: str,
             updated_at: str,
     ) -> int:
-        """以有效租约暂存聚合执行检查点并进入 settling。"""
+        """
+        以有效租约暂存聚合执行检查点并进入 settling。
+        """
         return self._execute_sync_write(
             lambda session: TransferPending.checkpoint_execution(
                 session,
@@ -482,7 +508,9 @@ class TransferPendingOper(DbOper):
             now_utc: str,
             updated_at: str,
     ) -> int:
-        """暂存预算耗尽失败检查点，并保留有效 lease 进入 settling。"""
+        """
+        暂存预算耗尽失败检查点，并保留有效 lease 进入 settling。
+        """
         return self._execute_sync_write(
             lambda session: TransferPending.checkpoint_exhausted_failure(
                 session,
@@ -506,7 +534,9 @@ class TransferPendingOper(DbOper):
             retry_due_at: str,
             updated_at: str,
     ) -> int:
-        """仅将 FAILED 任务暂存为立即到期的 retry_wait。"""
+        """
+        仅将 FAILED 任务暂存为立即到期的 retry_wait。
+        """
         return self._execute_sync_write(
             lambda session: TransferPending.request_execution_retry(
                 session,
@@ -528,7 +558,9 @@ class TransferPendingOper(DbOper):
             retry_due_at: str,
             updated_at: str,
     ) -> int:
-        """无 lease 地暂存人工判定审计并交回 retry_wait 调度。"""
+        """
+        无 lease 地暂存人工判定审计并交回 retry_wait 调度。
+        """
         return self._execute_sync_write(
             lambda session: TransferPending.resolve_manual_review(
                 session,
@@ -553,7 +585,9 @@ class TransferPendingOper(DbOper):
             now_utc: str,
             updated_at: str,
     ) -> int:
-        """以执行指纹和结算版本暂存失败终态。"""
+        """
+        以执行指纹和结算版本暂存失败终态。
+        """
         return self._execute_sync_write(
             lambda session: TransferPending.stage_terminal_failure(
                 session,
@@ -575,7 +609,9 @@ class TransferPendingOper(DbOper):
             history_id: int,
             settlement_revision: int,
     ) -> int:
-        """暂存与指定失败回执精确匹配的无租约 pending 删除。"""
+        """
+        暂存与指定失败回执精确匹配的无租约 pending 删除。
+        """
         return self._execute_sync_write(
             lambda session: TransferPending.delete_terminal_failure(
                 session,
@@ -594,7 +630,9 @@ class TransferPendingOper(DbOper):
             expected_revision: int,
             now_utc: str,
     ) -> int:
-        """以执行指纹和结算版本暂存成功 pending 删除。"""
+        """
+        以执行指纹和结算版本暂存成功 pending 删除。
+        """
         return self._execute_sync_write(
             lambda session: TransferPending.delete_terminal_success(
                 session,

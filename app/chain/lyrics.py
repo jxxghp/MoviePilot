@@ -1,4 +1,6 @@
-"""歌词候选聚合与择优处理链。"""
+"""
+歌词候选聚合与择优处理链。
+"""
 
 import time
 from dataclasses import dataclass
@@ -11,15 +13,25 @@ from app.domain.meta.metamusic import MetaMusic
 
 
 class _LyricsAction(Enum):
-    """歌词状态机允许调用的模块接口。"""
+    """
+    歌词状态机允许调用的模块接口。
+    """
 
+    # 调用兼容旧插件的单歌词接口。
     LEGACY = "music_lyrics"
+    # 调用可返回多份歌词候选的新接口。
     CANDIDATES = "music_lyrics_candidates"
 
 
 @dataclass(frozen=True, slots=True)
 class _LyricsRequest:
-    """保存歌词聚合的初始候选、截止状态和本地兜底。"""
+    """
+    保存歌词聚合的初始候选、截止状态和本地兜底。
+
+    :param candidates: 调用方提供的本地歌词候选，按原始顺序保留
+    :param fallback: 媒体详情已有歌词构成的回退候选，没有歌词时为 None
+    :param budget_exceeded: 进入远程模块调用前是否已超过截止时间
+    """
 
     candidates: tuple[MusicLyrics, ...]
     fallback: Optional[MusicLyrics]
@@ -28,14 +40,21 @@ class _LyricsRequest:
 
 @dataclass(frozen=True, slots=True)
 class _LyricsOutcome:
-    """保存聚合后的稳定候选顺序及预算状态。"""
+    """
+    保存聚合后的稳定候选顺序及预算状态。
+
+    :param candidates: 去重并保持首次出现顺序的有效歌词候选
+    :param budget_exceeded: 是否因调用前预算耗尽而仅返回已有候选，默认 False
+    """
 
     candidates: tuple[MusicLyrics, ...]
     budget_exceeded: bool = False
 
 
 def _normalize_lyrics_results(value: Any) -> list[MusicLyrics]:
-    """把模块的单结果、列表或字典结果统一转换为候选列表。"""
+    """
+    把模块的单结果、列表或字典结果统一转换为候选列表。
+    """
     values = value if isinstance(value, list) else [value]
     normalized = []
     for item in values:
@@ -47,7 +66,9 @@ def _normalize_lyrics_results(value: Any) -> list[MusicLyrics]:
 
 
 def _deduplicate_lyrics(candidates: list[MusicLyrics]) -> list[MusicLyrics]:
-    """按来源身份和内容去重，并保留首次出现位置。"""
+    """
+    按来源身份和内容去重，并保留首次出现位置。
+    """
     selected: dict[tuple[str, str, str], MusicLyrics] = {}
     for candidate in candidates:
         if not candidate or not (candidate.content or candidate.instrumental):
@@ -71,7 +92,9 @@ def _build_lyrics_request(
     local_candidates: Optional[list[MusicLyrics]],
     deadline: Optional[float],
 ) -> _LyricsRequest:
-    """构造一次歌词聚合请求，截止时间只在进入模块调用前判定。"""
+    """
+    构造一次歌词聚合请求，截止时间只在进入模块调用前判定。
+    """
     fallback_text = str(getattr(music, "lyrics", None) or "").strip()
     fallback = (
         MusicLyrics(
@@ -93,7 +116,9 @@ def _build_lyrics_request(
 def _lyrics_plan(
     request: _LyricsRequest,
 ) -> Generator[_LyricsAction, Any, _LyricsOutcome]:
-    """按旧接口、新接口和本地兜底的唯一顺序聚合歌词。"""
+    """
+    按旧接口、新接口和本地兜底的唯一顺序聚合歌词。
+    """
     candidates = list(request.candidates)
     if request.budget_exceeded:
         return _LyricsOutcome(
@@ -110,14 +135,18 @@ def _lyrics_plan(
 
 
 class LyricsChain(ChainBase):
-    """聚合本地、插件和宿主歌词候选，并按匹配度与内容质量择优。"""
+    """
+    聚合本地、插件和宿主歌词候选，并按匹配度与内容质量择优。
+    """
 
     def get_music_lyrics_candidates(
         self,
         music: Union[MetaMusic, MusicInfo],
         local_candidates: Optional[list[MusicLyrics]] = None,
     ) -> list[MusicLyrics]:
-        """获取所有标准化歌词候选，同时兼容旧版单结果插件接口。"""
+        """
+        获取所有标准化歌词候选，同时兼容旧版单结果插件接口。
+        """
         request = _build_lyrics_request(music, local_candidates, self.deadline)
         plan = _lyrics_plan(request)
         outcome = _LyricsOutcome(candidates=())
@@ -141,7 +170,9 @@ class LyricsChain(ChainBase):
         music: Union[MetaMusic, MusicInfo],
         local_candidates: Optional[list[MusicLyrics]] = None,
     ) -> Optional[MusicLyrics]:
-        """返回匹配可信且质量最高的歌词候选。"""
+        """
+        返回匹配可信且质量最高的歌词候选。
+        """
         candidates = self.get_music_lyrics_candidates(music, local_candidates)
         return self._select_best(candidates)
 
@@ -150,7 +181,9 @@ class LyricsChain(ChainBase):
         music: Union[MetaMusic, MusicInfo],
         local_candidates: Optional[list[MusicLyrics]] = None,
     ) -> list[MusicLyrics]:
-        """异步聚合新旧模块候选，并复用同步路径的本地兜底规则。"""
+        """
+        异步聚合新旧模块候选，并复用同步路径的本地兜底规则。
+        """
         request = _build_lyrics_request(music, local_candidates, self.deadline)
         plan = _lyrics_plan(request)
         outcome = _LyricsOutcome(candidates=())
@@ -174,13 +207,17 @@ class LyricsChain(ChainBase):
         music: Union[MetaMusic, MusicInfo],
         local_candidates: Optional[list[MusicLyrics]] = None,
     ) -> Optional[MusicLyrics]:
-        """异步返回质量最高的标准歌词候选。"""
+        """
+        异步返回质量最高的标准歌词候选。
+        """
         candidates = await self.async_get_music_lyrics_candidates(music, local_candidates)
         return self._select_best(candidates)
 
     @staticmethod
     def _select_best(candidates: list[MusicLyrics]) -> Optional[MusicLyrics]:
-        """在可信候选中按内容质量、匹配度和来源优先级择优。"""
+        """
+        在可信候选中按内容质量、匹配度和来源优先级择优。
+        """
         if not candidates:
             return None
         return max(
@@ -193,7 +230,9 @@ class LyricsChain(ChainBase):
         )
 
     def __init__(self, deadline: Optional[float] = None) -> None:
-        """保存批次查询截止时间，防止单张专辑长期占用刮削任务。"""
+        """
+        保存批次查询截止时间，防止单张专辑长期占用刮削任务。
+        """
         super().__init__()
         self.deadline = deadline
         self.budget_exceeded = False

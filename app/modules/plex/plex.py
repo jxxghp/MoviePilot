@@ -1,3 +1,7 @@
+"""
+Plex 客户端，负责媒体库同步、媒体身份查询、播放链接及 Webhook 转换。
+"""
+
 import json
 import time
 from pathlib import Path
@@ -25,16 +29,22 @@ from app.schemas.mediaserver import RefreshMediaItem as _SchemaRefreshMediaItem
 from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.schemas.types import MediaSource, MediaType
 
+# 全量同步每页读取 50 条，避免一次构造整个媒体库的 SDK 对象。
 PLEX_LIBRARY_SYNC_PAGE_SIZE = 50
+# 同步超时最多尝试 3 次，包含首次请求。
 PLEX_SYNC_TIMEOUT_MAX_ATTEMPTS = 3
+# 同步超时重试之间的等待秒数。
 PLEX_SYNC_TIMEOUT_RETRY_DELAY_SECONDS = 1
+# 同步无需流派和演职员等关联节点；保留媒体路径和来源 Guid 以免逐项补查详情。
 PLEX_SYNC_EXCLUDE_ELEMENTS = (
     "Genre,Country,Rating,Collection,Director,Writer,Role,Producer,Similar,Style,Mood,Format"
 )
 
 
 class Plex:
-    """Plex 媒体服务器客户端，负责连接管理和媒体库数据读取。"""
+    """
+    Plex 媒体服务器客户端，负责连接管理和媒体库数据读取。
+    """
 
     _plex = None
     _request_utils = None
@@ -42,13 +52,17 @@ class Plex:
 
     def __init__(self, host: Optional[str] = None, token: Optional[str] = None, play_host: Optional[str] = None,
                  sync_libraries: Optional[list[str]] = None, timeout: Optional[int] = 30, **kwargs: Any) -> None:
-        """初始化 Plex 连接和单次请求超时配置。
+        """
+        连接 Plex 并缓存媒体库目录，建立可复用的自定义请求会话。
 
-        :param host: Plex 服务地址
-        :param token: Plex 访问令牌
-        :param play_host: 用于生成播放链接的外网地址
-        :param sync_libraries: 需要同步的媒体库 ID
-        :param timeout: Plex 请求超时时间，单位为秒
+        缺少地址或令牌时不创建客户端；SDK 连接失败时保留未连接状态。
+
+        :param host: Plex 服务根地址
+        :param token: 服务访问令牌
+        :param play_host: 外网播放地址，省略时链接使用服务地址
+        :param sync_libraries: 同步媒体库标识列表；空列表或包含 all 表示不限制
+        :param timeout: SDK 单次请求超时秒数；无效、非正或空值回退为 30
+        :param kwargs: 通用服务配置的额外参数，当前不读取
         """
         try:
             self._timeout = int(timeout or 30)
@@ -81,7 +95,9 @@ class Plex:
 
     def is_inactive(self) -> bool:
         """
-        判断是否需要重连
+        判断已配置的服务是否需要重新连接。
+
+        :return: 地址和令牌存在但 SDK 客户端为空时返回 True
         """
         if not self._host or not self._token:
             return False
@@ -89,7 +105,7 @@ class Plex:
 
     def reconnect(self):
         """
-        重连
+        重建 Plex SDK 客户端并刷新媒体库目录缓存；失败时清空 SDK 客户端。
         """
         try:
             self._plex = PlexServer(self._host, self._token, timeout=self._timeout)
@@ -100,10 +116,11 @@ class Plex:
 
     def authenticate(self, username: str, password: str) -> Optional[Tuple[str, str]]:
         """
-        用户认证
-        :param username: 用户名
-        :param password: 密码
-        :return: 认证成功返回 (token, 用户名)，否则返回 None
+        登录 Plex 账号，并验证该账号能否访问当前服务器。
+
+        :param username: Plex 登录用户名或邮箱
+        :param password: Plex 登录密码
+        :return: 访问令牌和账号规范用户名；输入不完整、登录或服务器连接失败时返回 None
         """
         if not username or not password:
             return None
@@ -122,9 +139,13 @@ class Plex:
     @cached(maxsize=32, ttl=86400)
     def __get_library_images(self, library_key: str, mtype: int) -> Optional[List[str]]:
         """
-        获取媒体服务器最近添加的媒体的图片列表
-        param: library_key
-        param: type type的含义: 1 电影 2 剧集 详见 plexapi/utils.py中SEARCHTYPES的定义
+        分页读取最近新增媒体，选取最多 4 张不同的库封面。
+
+        分集优先使用父级封面；结果最多缓存一天，供媒体库卡片展示。
+
+        :param library_key: Plex 媒体库标识
+        :param mtype: Plex 搜索类型值：1 为电影，2 为剧集，8 为音乐
+        :return: 带服务令牌的本地图片 URL 列表；SDK 未连接时返回 None
         """
         if not self._plex:
             return None
@@ -159,7 +180,10 @@ class Plex:
 
     def get_librarys(self, hidden: Optional[bool] = False) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
-        获取媒体服务器所有媒体库列表
+        刷新媒体库目录，并转换支持的电影、剧集和音乐库。
+
+        :param hidden: 是否隐藏未选入同步范围的库；默认返回全部支持的媒体库
+        :return: 统一媒体库列表；SDK 未连接或读取库目录失败时返回 None
         """
         if not self._plex:
             return None
@@ -201,8 +225,9 @@ class Plex:
 
     def get_medias_count(self) -> _SchemaStatistic:
         """
-        获得电影、电视剧、动漫媒体数量
-        :return: movie_count tv_count episode_count
+        统计同步范围内的电影、电视剧、分集与音乐条目数量。
+
+        :return: 统一统计对象；SDK 未连接时返回空统计，SDK 查询异常向调用方传播
         """
         if not self._plex:
             return _SchemaStatistic()
@@ -234,13 +259,14 @@ class Plex:
                    media_source: Optional[MediaSource] = None,
                    media_id: Optional[str] = None) -> Optional[List[_SchemaMediaServerItem]]:
         """
-        根据标题和年份，检查电影是否在Plex中存在，存在则返回列表
-        :param title: 标题
-        :param original_title: 原产地标题
-        :param year: 年份，为空则不过滤
-        :param media_source: 媒体来源
-        :param media_id: 媒体来源原生ID
-        :return: 含title、year属性的字典列表
+        按标题和可选年份搜索电影，并排除来源身份冲突。
+
+        :param title: 搜索标题
+        :param original_title: 不同于标题时补充搜索的原始标题
+        :param year: 可选年份，空值表示不限年份
+        :param media_source: 用于校验身份的媒体来源
+        :param media_id: 对应来源内的标识
+        :return: 去重后的电影条目列表；未连接时返回 None，无匹配项时返回空列表，SDK 查询异常向上传播
         """
         if not self._plex:
             return None
@@ -290,7 +316,16 @@ class Plex:
         self, title: Optional[str] = None, artist: Optional[str] = None,
         album: Optional[str] = None,
     ) -> List[_SchemaMediaServerItem]:
-        """按歌曲、艺术家或专辑名称查询 Plex 音乐条目。"""
+        """
+        在音乐库中按专辑、歌曲或艺术家名称搜索候选。
+
+        此方法不做名称精确匹配，由上层音乐匹配服务核对候选。
+
+        :param title: 歌曲标题；未提供专辑名时作为查询词
+        :param artist: 艺术家名称；没有专辑名和歌曲标题时作为查询词
+        :param album: 专辑名称，优先作为查询词
+        :return: 统一音乐候选列表；未连接或查询词为空时返回空列表，查询中途失败时保留已取得的候选
+        """
         if not self._plex:
             return []
         query = album or title or artist
@@ -337,15 +372,18 @@ class Plex:
                         media_id: Optional[str] = None,
                         season: Optional[int] = None) -> Tuple[Optional[str], Optional[Dict[int, list]]]:
         """
-        根据标题、年份、季查询电视剧所有集信息
-        :param item_id: 媒体ID
-        :param title: 标题
-        :param original_title: 原产地标题
-        :param year: 年份，可以为空，为空时不按年份过滤
-        :param media_source: 媒体来源
-        :param media_id: 媒体来源原生ID
-        :param season: 季号，数字
-        :return: 所有集的列表
+        查询电视剧及其各季已有的分集编号。
+
+        缓存条目标识不存在或请求失败时回退到标题搜索；其他 SDK 异常继续向调用方传播。
+
+        :param item_id: Plex 条目标识，可以是数字标识或 /library/metadata/ 路径
+        :param title: 缺少有效条目标识时使用的剧名
+        :param original_title: 标题搜索无结果时使用的原始剧名
+        :param year: 可选年份，空值表示不限年份
+        :param media_source: 用于排除身份冲突的媒体来源
+        :param media_id: 对应来源内的标识
+        :param season: 指定季号，None 表示全部季
+        :return: 电视剧条目路径及“季号到集号列表”映射；未连接、无匹配或身份冲突时返回 None 和空映射
         """
         if not self._plex:
             return None, {}
@@ -353,7 +391,7 @@ class Plex:
             try:
                 videos = self.__fetch_item(item_id)
             except (NotFound, RequestException):
-                # Plex删除并重新入库后metadata id会变化，缓存的旧item_id失效时回退到搜索路径。
+                # Plex 删除并重新入库后元数据标识会变化，缓存的旧item_id失效时回退到搜索路径。
                 logger.warning(f"Plex缓存的电视剧媒体ID {item_id} 已失效，尝试按标题重新搜索：{title}")
                 videos = self.__search_show(title=title,
                                             original_title=original_title,
@@ -389,10 +427,11 @@ class Plex:
 
     def get_season_episode_ids(self, item_id: str, season: int) -> Dict[int, str]:
         """
-        获取指定季的集号到媒体服务器条目 ID 映射
-        :param item_id: 剧集在 Plex 中的 ID / key
+        查询指定季中每一集的 Plex 条目路径。
+
+        :param item_id: Plex 条目标识，可以是数字标识或 /library/metadata/ 路径
         :param season: 季号
-        :return: {集号: episode_item_key}
+        :return: 集号到条目路径的映射；输入不完整、未连接、无分集或查询失败时返回空映射
         """
         if not self._plex or not item_id:
             return {}
@@ -418,6 +457,7 @@ class Plex:
                       year: Optional[str] = None) -> Any:
         """
         按标题搜索Plex电视剧条目，供常规查询和缓存item_id失效后的回退查询复用。
+
         :param title: 标题
         :param original_title: 原产地标题
         :param year: 年份，可以为空，为空时不按年份过滤
@@ -425,7 +465,7 @@ class Plex:
         """
         # 兼容年份为空的场景
         kwargs = {"year": year} if year else {}
-        # 根据标题和年份模糊搜索，该结果不够准确，后续仍会通过tmdb_id校验。
+        # 根据标题和年份搜索候选，后续仍需核对规范媒体来源身份。
         videos = self._plex.library.search(title=title,
                                            libtype="show",
                                            **kwargs)
@@ -443,7 +483,8 @@ class Plex:
                                depth: Optional[int] = 0,
                                plex_url: Optional[bool] = True) -> Optional[str]:
         """
-        根据ItemId从Plex查询图片地址
+        根据ItemId从Plex查询图片地址。
+
         :param item_id: 在Plex中的ID
         :param image_type: 图片的类型，Poster或者Backdrop等
         :param depth: 当前递归深度，默认为0
@@ -472,7 +513,7 @@ class Plex:
                 image_url = local_image_url
             else:
                 if image_type == "Poster":
-                    # 这里必须通过 item.posters() 走 Plex 的规范 metadata endpoint，
+                    # 这里必须通过 item.posters() 走 Plex 的规范元数据端点，
                     # 不能直接拼原始 item_id，否则 show webhook 返回 /children 时会变成 /children/posters。
                     images = item.posters() if hasattr(item, "posters") else []
                     images = images or []
@@ -482,7 +523,7 @@ class Plex:
                     images = item.arts() if hasattr(item, "arts") else []
                     images = images or []
                     # 这里对episode进行特殊处理，实际上episode的Backdrop是Poster
-                    # 也有个别情况，比如机智的凡人小子episode就是Poster，因此这里把episode的优先级降低，默认还是取art
+                    # 部分分集只提供海报；先尝试背景图，缺少时再回退海报。
                     if not images and item.TYPE == "episode":
                         images = item.posters() if hasattr(item, "posters") else []
                         images = images or []
@@ -540,7 +581,9 @@ class Plex:
 
     def refresh_root_library(self) -> bool:
         """
-        通知Plex刷新整个媒体库
+        请求 Plex 刷新整个媒体库。
+
+        :return: 原样返回 Plex SDK 的刷新结果，未连接时返回 False；不等待扫描完成，SDK 异常向上传播
         """
         if not self._plex:
             return False
@@ -548,7 +591,12 @@ class Plex:
 
     def refresh_library_by_items(self, items: List[_SchemaRefreshMediaItem]) -> Optional[bool]:
         """
-        按路径刷新媒体库 item: target_path
+        根据媒体目标路径合并刷新范围，并请求扫描对应父目录。
+
+        任一目标路径无法归属媒体库时改为刷新根库；SDK 请求异常向调用方传播。
+
+        :param items: 包含 target_path 的媒体刷新请求列表
+        :return: 局部刷新请求完成或根库刷新未明确返回 False 时返回 True；未连接时返回 False
         """
         if not self._plex:
             return False
@@ -575,13 +623,18 @@ class Plex:
     @staticmethod
     def __find_librarie(path: Path, libraries: List[Any]) -> Tuple[str, Optional[Path]]:
         """
-        判断这个path属于哪个媒体库
-        多个媒体库配置的目录不应有重复和嵌套,
+        按路径归属查找第一个匹配的媒体库。
+
+        先解析路径再比较目录层级；多个库路径重叠时按传入列表顺序选择。
+
+        :param path: 待刷新的目标路径；None 表示无法定位
+        :param libraries: 包含 locations 目录配置的 Plex 媒体库对象列表
+        :return: 媒体库标识与原目标路径；未匹配或处理异常时返回空标识和 None
         """
 
         def is_subpath(_path: Path, _parent: Path) -> bool:
             """
-            判断_path是否是_parent的子目录下
+            判断_path是否是_parent的子目录下。
             """
             _path = _path.resolve()
             _parent = _parent.resolve()
@@ -602,7 +655,10 @@ class Plex:
 
     def get_iteminfo(self, itemid: str) -> Optional[_SchemaMediaServerItem]:
         """
-        获取单个项目详情
+        查询单个条目并转换为统一媒体模型。
+
+        :param itemid: Plex 数字标识或条目路径
+        :return: 条目详情；未连接、条目不存在或查询失败时返回 None
         """
         if not self._plex:
             return None
@@ -615,8 +671,16 @@ class Plex:
 
     @staticmethod
     def __get_ids(guids: List[Any]) -> dict:
+        """
+        从 Plex Guid 提取 IMDb、TMDB 和 TVDB 来源标识。
+
+        :param guids: 包含 id 的字典或 SDK Guid 对象列表
+        :return: 含 imdb_id、tmdb_id、tvdb_id 的字典；缺失项为 None，TMDB 标识转换为整数，无法转换时忽略
+        """
         def parse_tmdb_id(value: str) -> tuple[bool, int]:
-            """尝试将TMDB ID字符串转换为整数。如果成功，返回(True, int)，失败则返回(False, None)。"""
+            """
+            尝试将TMDB ID字符串转换为整数。如果成功，返回(True, int)，失败则返回(False, None)。
+            """
             try:
                 int_value = int(value)
                 return True, int_value
@@ -647,7 +711,8 @@ class Plex:
 
     def __fetch_item(self, item_id: Union[int, str]):
         """
-        根据给定的item_id获取媒体项
+        根据给定的item_id获取媒体项。
+
         :param item_id: 媒体项的ID，可以是整数或字符串，如果是字符串且表示为数字，将会被转换为整数
         """
         if isinstance(item_id, str):
@@ -660,9 +725,10 @@ class Plex:
 
     def __build_media_server_item(self, item) -> Optional[_SchemaMediaServerItem]:
         """
-        按 Plex 条目实际具备的字段构造媒体信息，兼容艺人、专辑和曲目
+        按 Plex 条目实际具备的字段构造媒体信息，兼容艺人、专辑和曲目。
+
         :param item: Plex媒体项目
-        :return: MediaServerItem
+        :return: 标准媒体条目，包含播放状态和路径；输入为空时返回 None
         """
         if not item:
             return None
@@ -701,7 +767,7 @@ class Plex:
 
     def get_items_count(self, parent: Union[str, int]) -> Optional[int]:
         """
-        获取指定媒体库可同步的媒体条目总数
+        获取指定媒体库可同步的媒体条目总数。
 
         :param parent: 媒体库ID
         :return: 媒体条目总数，查询失败时返回None
@@ -718,13 +784,17 @@ class Plex:
     def get_items(self, parent: Union[str, int], start_index: Optional[int] = 0, limit: Optional[int] = -1) \
             -> Generator[MediaServerItem | None, Any, None]:
         """
-        分页读取包含媒体路径和 Guid 的列表；读取失败时中止同步以保护旧缓存。
+        分页读取包含媒体路径与来源身份的条目，逐项转换为统一模型。
 
-        :param parent: 媒体库ID，用于标识要获取的媒体库
-        :param start_index: 起始索引，用于分页获取数据。默认为 0，即从第一个项目开始获取
-        :param limit: 本次调用的最大项目数；None 或 -1 表示从起始索引开始读取整个媒体库
+        查询媒体库、读取分页和转换条目中的超时最多尝试 3 次，重试间隔 1 秒。
+        读取失败向上传播，防止同步过程将失败误判为媒体库清空。
 
-        :return: 返回一个生成器对象，用于逐步获取媒体服务器中的项目
+        :param parent: 媒体库数字标识，不接受空值
+        :param start_index: 起始条目索引，空值或负值按 0 处理
+        :param limit: 本次最多读取数量；None 或 -1 表示每页 50 条持续读取，其他非正值不产生条目
+        :yields: 统一媒体条目
+        :raises ValueError: 媒体库标识为空或指定媒体库不存在
+        :raises ConnectionError: SDK 客户端未连接
         """
         if not parent:
             raise ValueError("Plex 媒体库 ID 不能为空")
@@ -793,12 +863,22 @@ class Plex:
 
     @staticmethod
     def _is_timeout_exception(error: Exception) -> bool:
-        """识别 PlexAPI 底层 HTTP 客户端抛出的超时异常。"""
+        """
+        识别 PlexAPI 底层 HTTP 客户端抛出的超时异常。
+        """
         return any("timeout" in exception_type.__name__.casefold() for exception_type in type(error).__mro__)
 
     @staticmethod
     def _retry_timeout(operation: Callable[[], Any], description: str) -> Any:
-        """对 Plex 同步中的超时操作重试，耗尽后向上传递失败以保留旧缓存。"""
+        """
+        只对超时异常重试，避免同步时一次瞬时超时丢失整个媒体库。
+
+        最多尝试 3 次，重试间隔 1 秒；异常类或父类名称包含 timeout 时按超时处理。
+
+        :param operation: 每次尝试执行的无参操作
+        :param description: 写入重试日志的操作说明
+        :return: 操作的原始结果；非超时异常立即传播，最后一次超时也传播给调用方
+        """
         for attempt in range(PLEX_SYNC_TIMEOUT_MAX_ATTEMPTS):
             try:
                 return operation()
@@ -816,107 +896,13 @@ class Plex:
 
     def get_webhook_message(self, form: Any) -> Optional[_SchemaWebhookEventInfo]:
         """
-        解析Plex报文
-        eventItem  字段的含义
-        event      事件类型
-        item_type  媒体类型 TV,MOV
-        item_name  TV:琅琊榜 S1E6 剖心明志 虎口脱险
-                   MOV:猪猪侠大冒险(2001)
-        overview   剧情描述
-        {
-          "event": "media.scrobble",
-          "user": false,
-          "owner": true,
-          "Account": {
-            "id": 31646104,
-            "thumb": "https://plex.tv/users/xx",
-            "title": "播放"
-          },
-          "Server": {
-            "title": "Media-Server",
-            "uuid": "xxxx"
-          },
-          "Player": {
-            "local": false,
-            "publicAddress": "xx.xx.xx.xx",
-            "title": "MagicBook",
-            "uuid": "wu0uoa1ujfq90t0c5p9f7fw0"
-          },
-          "Metadata": {
-            "librarySectionType": "show",
-            "ratingKey": "40294",
-            "key": "/library/metadata/40294",
-            "parentRatingKey": "40291",
-            "grandparentRatingKey": "40275",
-            "guid": "plex://episode/615580a9fa828e7f1a0caabd",
-            "parentGuid": "plex://season/615580a9fa828e7f1a0caab8",
-            "grandparentGuid": "plex://show/60e81fd8d8000e002d7d2976",
-            "type": "episode",
-            "title": "The World's Strongest Senior",
-            "titleSort": "World's Strongest Senior",
-            "grandparentKey": "/library/metadata/40275",
-            "parentKey": "/library/metadata/40291",
-            "librarySectionTitle": "动漫剧集",
-            "librarySectionID": 7,
-            "librarySectionKey": "/library/sections/7",
-            "grandparentTitle": "范马刃牙",
-            "parentTitle": "Combat Shadow Fighting Saga / Great Prison Battle Saga",
-            "originalTitle": "Baki Hanma",
-            "contentRating": "TV-MA",
-            "summary": "The world is shaken by news",
-            "index": 1,
-            "parentIndex": 1,
-            "audienceRating": 8.5,
-            "viewCount": 1,
-            "lastViewedAt": 1694320444,
-            "year": 2021,
-            "thumb": "/library/metadata/40294/thumb/1693544504",
-            "art": "/library/metadata/40275/art/1693952979",
-            "parentThumb": "/library/metadata/40291/thumb/1691115271",
-            "grandparentThumb": "/library/metadata/40275/thumb/1693952979",
-            "grandparentArt": "/library/metadata/40275/art/1693952979",
-            "duration": 1500000,
-            "originallyAvailableAt": "2021-09-30",
-            "addedAt": 1691115281,
-            "updatedAt": 1693544504,
-            "audienceRatingImage": "themoviedb://image.rating",
-            "Guid": [
-              {
-                "id": "imdb://tt14765720"
-              },
-              {
-                "id": "tmdb://3087250"
-              },
-              {
-                "id": "tvdb://8530933"
-              }
-            ],
-            "Rating": [
-              {
-                "image": "themoviedb://image.rating",
-                "value": 8.5,
-                "type": "audience"
-              }
-            ],
-            "Director": [
-              {
-                "id": 115144,
-                "filter": "director=115144",
-                "tag": "Keiya Saito",
-                "tagKey": "5f401c8d04a86500409ea6c1"
-              }
-            ],
-            "Writer": [
-              {
-                "id": 115135,
-                "filter": "writer=115135",
-                "tag": "Tatsuhiko Urahata",
-                "tagKey": "5d7768e07a53e9001e6db1ce",
-                "thumb": "https://metadata-static.plex.tv/f/people/f6f90dc89fa87d459f85d40a09720c05.jpg"
-              }
-            ]
-          }
-        }
+        解析 Plex 表单事件，补全媒体名称、设备、用户和背景图。
+
+        分集使用 grandparentTitle、parentIndex 和 index 生成季集标题；
+        存在媒体条目标识时会查询图片，原始负载保留到 json_object 供后续处理。
+
+        :param form: 表单对象，payload 字段为包含 event 和 Metadata 等字段的 JSON
+        :return: 统一 Webhook 事件；表单或 payload 为空、JSON 解析失败或没有事件类型时返回 None
         """
         if not form:
             return None
@@ -981,20 +967,27 @@ class Plex:
 
     def get_plex(self):
         """
-        获取plex对象，以便直接操作
+        提供当前 Plex SDK 客户端供扩展调用。
+
+        :return: 已建立的 SDK 客户端，未连接时为 None；调用方不得据此推断本次请求必然成功
         """
         return self._plex
 
     def get_play_url(self, item_id: str) -> str:
         """
-        拼装媒体播放链接
-        :param item_id: 媒体的的ID
+        构造带访问令牌的 Plex 网页播放链接。
+
+        :param item_id: Plex 条目标识，可以是数字标识或 /library/metadata/ 路径
+        :return: 以外网播放地址或服务地址为根的条目链接；调用前须已经建立 SDK 连接
         """
         return f'{self._playhost or self._host}web/index.html#!/server/{self._plex.machineIdentifier}/details?key={item_id}&X-Plex-Token={self._token}'
 
     def get_resume(self, num: Optional[int] = 12) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
-        获取继续观看的媒体
+        获取同步范围内可以继续观看的媒体。
+
+        :param num: 最多返回条目数量，默认 12
+        :return: 包含观看进度百分比的媒体列表；未连接或无法读取媒体库范围时返回 None，SDK 请求异常向上传播
         """
         if not self._plex:
             return None
@@ -1034,7 +1027,12 @@ class Plex:
 
     def get_latest(self, num: Optional[int] = 20) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
-        获取最近添加媒体
+        在允许同步的媒体库中汇总最近新增条目。
+
+        通过 promoted 分组排除继续观看项，按 addedAt 降序汇总；SDK 请求异常向调用方传播。
+
+        :param num: 最多返回条目数量，默认 20
+        :return: 按获取到的推荐分组内容排序后的最新条目列表；未连接或无法读取库范围时返回 None
         """
         if not self._plex:
             return None
@@ -1107,34 +1105,42 @@ class Plex:
 
     def get_data(self, endpoint: str, **kwargs) -> Optional[Any]:
         """
-        自定义从媒体服务器获取数据
-        :param endpoint: 端点
-        :param kwargs: 其他请求参数，如headers, cookies, proxies等
+        使用复用的 HTTP 会话发送自定义 GET 请求。
+
+        :param endpoint: 相对于服务根地址的端点或请求 URL
+        :param kwargs: 透传给 RequestUtils 的请求参数，可覆盖默认请求头和异常选项
+        :return: 原始响应，由调用方读取和关闭；会话未创建或请求异常时返回 None
         """
         return self.__request(method="get", endpoint=endpoint, **kwargs)
 
     def post_data(self, endpoint: str, **kwargs) -> Optional[Any]:
         """
-        自定义从媒体服务器获取数据
-        :param endpoint: 端点
-        :param kwargs: 其他请求参数，如headers, cookies, proxies等
+        使用复用的 HTTP 会话发送自定义 POST 请求。
+
+        :param endpoint: 相对于服务根地址的端点或请求 URL
+        :param kwargs: 透传给 RequestUtils 的请求参数，可覆盖默认请求头和异常选项
+        :return: 原始响应，由调用方读取和关闭；会话未创建或请求异常时返回 None
         """
         return self.__request(method="post", endpoint=endpoint, **kwargs)
 
     def put_data(self, endpoint: str, **kwargs) -> Optional[Any]:
         """
-        自定义从媒体服务器获取数据
-        :param endpoint: 端点
-        :param kwargs: 其他请求参数，如headers, cookies, proxies等
+        使用复用的 HTTP 会话发送自定义 PUT 请求。
+
+        :param endpoint: 相对于服务根地址的端点或请求 URL
+        :param kwargs: 透传给 RequestUtils 的请求参数，可覆盖默认请求头和异常选项
+        :return: 原始响应，由调用方读取和关闭；会话未创建或请求异常时返回 None
         """
         return self.__request(method="put", endpoint=endpoint, **kwargs)
 
     def __request(self, method: str, endpoint: str, **kwargs) -> Optional[Any]:
         """
-        自定义从媒体服务器获取数据
-        :param method: HTTP方法，如 get, post, put 等
-        :param endpoint: 端点
-        :param kwargs: 其他请求参数，如headers, cookies, proxies等
+        为自定义 Plex 请求补充令牌请求头，并记录请求异常。
+
+        :param method: 请求工具支持的方法名，如 get、post 或 put
+        :param endpoint: 相对服务根地址的端点或请求 URL
+        :param kwargs: 请求参数；未显式提供时添加认证请求头并启用异常抛出，再在此边界捕获
+        :return: 原始响应；会话不可用、方法不存在或请求失败时返回 None
         """
         if not self._request_utils:
             return None
@@ -1153,7 +1159,9 @@ class Plex:
             return None
 
     def __get_request_headers(self) -> dict:
-        """获取请求头"""
+        """
+        获取请求头。
+        """
         return {
             "X-Plex-Token": self._token,
             "Accept": "application/json",
@@ -1161,6 +1169,8 @@ class Plex:
         }
 
     def close(self):
-        """关闭自定义 Plex HTTP 请求客户端。"""
+        """
+        关闭自定义 HTTP 请求会话；不主动关闭 Plex SDK 客户端。
+        """
         if self._request_utils:
             self._request_utils.close()

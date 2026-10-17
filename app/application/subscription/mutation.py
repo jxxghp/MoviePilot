@@ -1,4 +1,6 @@
-"""订阅写操作用例及其数据端口。"""
+"""
+订阅写操作用例及其数据端口。
+"""
 
 from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager, AbstractContextManager
@@ -43,7 +45,9 @@ def _normalized_subscription_patch(
     subscribe: SubscriptionSnapshot,
     payload: dict[str, JsonData],
 ) -> SubscriptionPatch:
-    """按订阅媒体类型规范化人工分类稳定引用并构造写入补丁。"""
+    """
+    按订阅媒体类型规范化人工分类稳定引用并构造写入补丁。
+    """
     normalized = normalize_classification_reference_payload(
         payload,
         media_type=subscribe.type,
@@ -53,7 +57,12 @@ def _normalized_subscription_patch(
 
 @dataclass(frozen=True, slots=True)
 class SubscriptionActor:
-    """订阅写操作的权限主体。"""
+    """
+    订阅写操作的权限主体。
+
+    :param name: 发起订阅变更的本地用户名
+    :param is_superuser: 操作人是否具有超级管理员权限
+    """
 
     name: str
     is_superuser: bool
@@ -64,7 +73,16 @@ SubscribeHistoryDeletionStatus = Literal["deleted", "not_found", "forbidden"]
 
 @dataclass(frozen=True, slots=True)
 class SubscriptionMutation:
-    """一次订阅变更前后的稳定快照。"""
+    """
+    一次订阅变更前后的稳定快照。
+
+    :param snapshot: 更新后的稳定订阅快照
+    :param old: 更新前的字段字典
+    :param new: 更新后的字段字典
+    :param event_published: 本次变更事件是否已完成发布
+    :param business_committed: 订阅业务事务是否已成功提交
+    :param pending_effects: 提交后仍等待投递的副作用标识
+    """
 
     snapshot: SubscriptionSnapshot
     old: dict[str, JsonData]
@@ -80,7 +98,9 @@ def _modified_event(
     old: dict[str, JsonData],
     updated: SubscriptionSnapshot,
 ) -> tuple[str, dict[str, JsonData]]:
-    """构造订阅修改 intent 共用的稳定键和事件快照。"""
+    """
+    构造订阅修改 intent 共用的稳定键和事件快照。
+    """
     event_payload = SubscribeModifiedEventData(
         subscribe_id=subscribe_id,
         old_subscribe_info=old,
@@ -93,7 +113,9 @@ def _modified_event(
 
 
 def _reset_payload(subscribe: SubscriptionSnapshot) -> dict[str, JsonData]:
-    """构造同步与异步重置共享的订阅字段补丁。"""
+    """
+    构造同步与异步重置共享的订阅字段补丁。
+    """
     return {
         "note": [],
         "downloaded_tracks": [] if subscribe.music_type == MUSIC_ENTITY_ALBUM else None,
@@ -110,7 +132,9 @@ def _reset_payload(subscribe: SubscriptionSnapshot) -> dict[str, JsonData]:
 
 
 class SyncSubscriptionMutationService:
-    """用一个同步 UoW 原子提交订阅修改和 durable 事件 intent。"""
+    """
+    用一个同步 UoW 原子提交订阅修改和 durable 事件 intent。
+    """
 
     def __init__(
         self,
@@ -120,7 +144,9 @@ class SyncSubscriptionMutationService:
         dispatch_store: OutboxDispatchStore,
         publish_modified: SyncSubscribeModifiedPublisher,
     ) -> None:
-        """注入同一 Session 的仓储、事务、outbox 与提交后发布端口。"""
+        """
+        注入同一 Session 的仓储、事务、outbox 与提交后发布端口。
+        """
         self._repository = repository
         self._unit_of_work = unit_of_work
         self._outbox = outbox
@@ -132,7 +158,9 @@ class SyncSubscriptionMutationService:
         subscribe_id: int,
         actor: SubscriptionActor,
     ) -> SubscriptionSnapshot | None:
-        """同步读取当前主体可访问的订阅。"""
+        """
+        同步读取当前主体可访问的订阅。
+        """
         subscribe = self._repository.get(subscribe_id)
         return subscribe if SubscriptionMutationService.can_access(subscribe, actor) else None
 
@@ -144,7 +172,9 @@ class SyncSubscriptionMutationService:
         existing: SubscriptionSnapshot | None = None,
         scene: str = "update",
     ) -> SubscriptionMutation | None:
-        """同步更新订阅，并在同一事务暂存可恢复的修改事件。"""
+        """
+        同步更新订阅，并在同一事务暂存可恢复的修改事件。
+        """
         subscribe = existing or self.get_accessible(subscribe_id, actor)
         if subscribe and not SubscriptionMutationService.can_access(subscribe, actor):
             return None
@@ -198,7 +228,9 @@ class SyncSubscriptionMutationService:
         state: str,
         actor: SubscriptionActor,
     ) -> SubscriptionMutation | None:
-        """同步更新订阅状态并返回前后快照。"""
+        """
+        同步更新订阅状态并返回前后快照。
+        """
         return self.update(
             subscribe_id,
             {"state": state},
@@ -211,7 +243,9 @@ class SyncSubscriptionMutationService:
         subscribe_id: int,
         actor: SubscriptionActor,
     ) -> SubscriptionMutation | None:
-        """同步重置订阅进度和手工集数标记。"""
+        """
+        同步重置订阅进度和手工集数标记。
+        """
         subscribe = self.get_accessible(subscribe_id, actor)
         if not subscribe:
             return None
@@ -228,7 +262,9 @@ class SyncSubscriptionMutationService:
 
 
 class SubscriptionMutationService:
-    """编排订阅访问控制、更新和历史删除。"""
+    """
+    编排订阅访问控制、更新和历史删除。
+    """
 
     def __init__(
         self,
@@ -239,7 +275,9 @@ class SubscriptionMutationService:
         publish_modified: SubscribeModifiedPublisher,
         history_repository: SubscriptionHistoryStagingPort | None = None,
     ) -> None:
-        """注入订阅数据、事务与 durable 事件端口。"""
+        """
+        注入订阅数据、事务与 durable 事件端口。
+        """
         self._repository = repository
         self._history_repository = history_repository
         self._unit_of_work = unit_of_work
@@ -252,7 +290,9 @@ class SubscriptionMutationService:
         subscribe_id: int,
         actor: SubscriptionActor,
     ) -> SubscriptionSnapshot | None:
-        """读取当前主体可访问的订阅。"""
+        """
+        读取当前主体可访问的订阅。
+        """
         subscribe = await self._repository.async_get(subscribe_id)
         return subscribe if self.can_access(subscribe, actor) else None
 
@@ -264,7 +304,9 @@ class SubscriptionMutationService:
         existing: SubscriptionSnapshot | None = None,
         scene: str = "update",
     ) -> SubscriptionMutation | None:
-        """更新订阅，并在同一事务暂存可恢复的 SubscribeModified 事件。"""
+        """
+        更新订阅，并在同一事务暂存可恢复的 SubscribeModified 事件。
+        """
         subscribe = existing or await self.get_accessible(subscribe_id, actor)
         if subscribe and not self.can_access(subscribe, actor):
             return None
@@ -299,7 +341,9 @@ class SubscriptionMutationService:
             raise
 
         async def publish_event() -> None:
-            """发布本次事务已持久化的订阅修改事件。"""
+            """
+            发布本次事务已持久化的订阅修改事件。
+            """
             await self._publish_modified(event_payload)
 
         delivered = await deliver_async_outbox_effect(
@@ -322,7 +366,9 @@ class SubscriptionMutationService:
         state: str,
         actor: SubscriptionActor,
     ) -> SubscriptionMutation | None:
-        """更新订阅状态并返回前后快照。"""
+        """
+        更新订阅状态并返回前后快照。
+        """
         return await self.update(
             subscribe_id,
             {"state": state},
@@ -335,7 +381,9 @@ class SubscriptionMutationService:
         subscribe_id: int,
         actor: SubscriptionActor,
     ) -> SubscriptionMutation | None:
-        """重置订阅进度和手工集数标记。"""
+        """
+        重置订阅进度和手工集数标记。
+        """
         subscribe = await self.get_accessible(subscribe_id, actor)
         if not subscribe:
             return None
@@ -355,7 +403,9 @@ class SubscriptionMutationService:
         history_id: int,
         actor: SubscriptionActor,
     ) -> bool:
-        """删除当前主体可访问的订阅历史。"""
+        """
+        删除当前主体可访问的订阅历史。
+        """
         return (await self.delete_history_with_status(history_id, actor)) == "deleted"
 
     async def delete_history_with_status(
@@ -363,7 +413,9 @@ class SubscriptionMutationService:
         history_id: int,
         actor: SubscriptionActor,
     ) -> SubscribeHistoryDeletionStatus:
-        """删除订阅历史并返回可供 HTTP 层判断的结果状态。"""
+        """
+        删除订阅历史并返回可供 HTTP 层判断的结果状态。
+        """
         if self._history_repository is None:
             raise RuntimeError("订阅历史数据端口未配置")
         history = await self._history_repository.async_get(history_id)
@@ -384,7 +436,9 @@ class SubscriptionMutationService:
         subscribe: SubscriptionSnapshot | SubscriptionHistorySnapshot | None,
         actor: SubscriptionActor,
     ) -> bool:
-        """判断主体是否可访问订阅或订阅历史。"""
+        """
+        判断主体是否可访问订阅或订阅历史。
+        """
         if not subscribe:
             return False
         if actor.is_superuser:
@@ -394,7 +448,9 @@ class SubscriptionMutationService:
 
 
 def _modified_event_key(subscribe_id: int, scene: str) -> str:
-    """为一次订阅修改生成重试期间稳定且跨多次相同变更不碰撞的幂等键。"""
+    """
+    为一次订阅修改生成重试期间稳定且跨多次相同变更不碰撞的幂等键。
+    """
     return f"subscribe.modified:{subscribe_id}:{scene}:{uuid4().hex}:v1"
 
 

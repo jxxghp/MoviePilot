@@ -1,3 +1,7 @@
+"""
+验证 SQLite 与 PostgreSQL 备份后端的快照、恢复和离线校验。
+"""
+
 from __future__ import annotations
 
 import sqlite3
@@ -19,6 +23,9 @@ from app.adapters.system.backup.database import (
 
 
 def test_sqlite_backup_includes_committed_wal_data(tmp_path: Path) -> None:
+    """
+    SQLite 备份应包含已提交到 WAL 的数据。
+    """
     source = tmp_path / "user.db"
     with sqlite3.connect(source) as connection:
         connection.execute("PRAGMA journal_mode=WAL")
@@ -38,7 +45,9 @@ def test_sqlite_backup_includes_committed_wal_data(tmp_path: Path) -> None:
 
 
 def test_sqlite_backup_can_be_verified_without_active_engine(tmp_path: Path) -> None:
-    """Doctor 等离线入口不应为校验备份而构造活动数据库引擎。"""
+    """
+    Doctor 等离线入口不应为校验备份而构造活动数据库引擎。
+    """
     artifact = tmp_path / "backup.db"
     with sqlite3.connect(artifact) as connection:
         connection.execute("CREATE TABLE entries (value TEXT NOT NULL)")
@@ -47,6 +56,9 @@ def test_sqlite_backup_can_be_verified_without_active_engine(tmp_path: Path) -> 
 
 
 def test_sqlite_restore_replaces_database_and_removes_old_wal_files(tmp_path: Path) -> None:
+    """
+    恢复 SQLite 备份时替换数据库，并移除旧 WAL 与共享内存文件。
+    """
     source = tmp_path / "user.db"
     backup = tmp_path / "backup.db"
     for path, value in ((source, "old"), (backup, "restored")):
@@ -66,7 +78,9 @@ def test_sqlite_restore_replaces_database_and_removes_old_wal_files(tmp_path: Pa
 
 
 class _Runner:
-    """记录 PostgreSQL 客户端命令并生成可校验的测试归档。"""
+    """
+    记录 PostgreSQL 客户端命令并生成可校验的测试归档。
+    """
 
     def __init__(self) -> None:
         self.calls: list[tuple[list[str], dict[str, Any]]] = []
@@ -76,7 +90,9 @@ class _Runner:
         command: list[str],
         **kwargs: Any,
     ) -> subprocess.CompletedProcess[str]:
-        """记录命令参数并模拟成功的 pg_dump/pg_restore 结果。"""
+        """
+        记录命令参数并模拟成功的 pg_dump/pg_restore 结果。
+        """
         command = list(command)
         self.calls.append((command, kwargs))
         if "--file" in command:
@@ -86,14 +102,18 @@ class _Runner:
 
 
 class _FailedRunner:
-    """模拟 PostgreSQL 客户端返回不可读取归档。"""
+    """
+    模拟 PostgreSQL 客户端返回不可读取归档。
+    """
 
     def __call__(
         self,
         command: list[str],
         **_kwargs: Any,
     ) -> subprocess.CompletedProcess[str]:
-        """返回固定失败结果，供离线校验分支使用。"""
+        """
+        返回固定失败结果，供离线校验分支使用。
+        """
         return subprocess.CompletedProcess(command, 1, "", "invalid archive")
 
 
@@ -113,6 +133,9 @@ def _postgres_backend(runner: _Runner) -> PostgreSQLBackupBackend:
 
 
 def test_postgresql_backup_keeps_password_out_of_command_and_file(tmp_path: Path) -> None:
+    """
+    PostgreSQL 密码仅通过子进程环境传入，不写入命令或备份文件。
+    """
     runner = _Runner()
     backend = _postgres_backend(runner)
     artifact = tmp_path / "backup.dump"
@@ -128,6 +151,9 @@ def test_postgresql_backup_keeps_password_out_of_command_and_file(tmp_path: Path
 
 
 def test_postgresql_verify_and_restore_use_pg_restore(tmp_path: Path) -> None:
+    """
+    PostgreSQL 使用 pg_restore 校验归档，并在单事务中恢复。
+    """
     runner = _Runner()
     backend = _postgres_backend(runner)
     artifact = tmp_path / "backup.dump"
@@ -146,7 +172,9 @@ def test_postgresql_verify_and_restore_use_pg_restore(tmp_path: Path) -> None:
 
 
 def test_postgresql_backup_can_be_verified_without_active_engine(tmp_path: Path) -> None:
-    """PostgreSQL 归档校验只依赖 pg_restore，不连接活动数据库。"""
+    """
+    PostgreSQL 归档校验只依赖 pg_restore，不连接活动数据库。
+    """
     runner = _Runner()
     artifact = tmp_path / "backup.dump"
     artifact.write_bytes(b"PGDMP")
@@ -166,7 +194,9 @@ def test_postgresql_backup_can_be_verified_without_active_engine(tmp_path: Path)
 
 
 def test_postgresql_offline_verify_rejects_invalid_archive(tmp_path: Path) -> None:
-    """pg_restore 无法读取归档目录时备份必须判定为无效。"""
+    """
+    pg_restore 无法读取归档目录时备份必须判定为无效。
+    """
     artifact = tmp_path / "backup.dump"
     artifact.write_bytes(b"invalid")
 
@@ -182,7 +212,9 @@ def test_postgresql_offline_verify_rejects_invalid_archive(tmp_path: Path) -> No
 
 
 def test_postgresql_offline_verify_reports_missing_client(tmp_path: Path) -> None:
-    """缺少 pg_restore 时离线校验应给出可执行的安装提示。"""
+    """
+    缺少 pg_restore 时离线校验应给出可执行的安装提示。
+    """
     artifact = tmp_path / "backup.dump"
     artifact.write_bytes(b"PGDMP")
 
@@ -195,6 +227,9 @@ def test_postgresql_offline_verify_reports_missing_client(tmp_path: Path) -> Non
 
 
 def test_postgresql_source_install_reports_missing_native_client() -> None:
+    """
+    源码安装缺少 pg_dump 时，备份入口给出客户端安装提示。
+    """
     runner = _Runner()
     engine = SimpleNamespace(
         url=make_url("postgresql://moviepilot:secret@database/moviepilot"),

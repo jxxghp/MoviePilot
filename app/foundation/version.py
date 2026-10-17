@@ -1,4 +1,6 @@
-"""历史版本比较规则。"""
+"""
+历史版本比较规则。
+"""
 
 import re
 from typing import Optional, Tuple
@@ -12,7 +14,9 @@ _COMPARISON_TYPES = {"ge", "gt", "le", "lt", "eq", "==", ">=", ">", "<=", "<"}
 
 
 def _normalize_version(version: str) -> list[int]:
-    """将历史版本格式转换为保持原有排序语义的整数序列。"""
+    """
+    将历史版本格式转换为保持原有排序语义的整数序列。
+    """
     parts = re.split(r"[.-]", version.strip().lstrip("vV"))
     return [
         int(part)
@@ -28,7 +32,15 @@ def compare_version(
     target: str,
     verbose: bool = False,
 ) -> Optional[bool] | Tuple[Optional[bool], str | Exception]:
-    """按 MoviePilot 历史规则比较版本号，并可返回可读比较结果。"""
+    """
+    按 MoviePilot 历史规则比较版本号。
+
+    :param source: 待比较版本，允许 v 或 V 前缀
+    :param comparison: 比较操作：ge、gt、le、lt、eq 或对应比较符号
+    :param target: 比较目标版本，缺失的数字段按零补齐
+    :param verbose: 是否同时返回可读说明或失败异常
+    :return: 默认返回比较结果，失败返回 None；详细模式返回结果与说明或异常的元组
+    """
     try:
         if not source or not target:
             raise ValueError("要比较的版本号不全")

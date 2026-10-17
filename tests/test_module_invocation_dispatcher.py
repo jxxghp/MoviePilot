@@ -1,4 +1,6 @@
-"""模块调用调度器的同步、异步协议回归测试。"""
+"""
+模块调用调度器的同步、异步协议回归测试。
+"""
 
 from __future__ import annotations
 
@@ -21,16 +23,22 @@ from app.runtime.extensions.module.dispatcher import (
 async def test_download_optional_mapping_keeps_legacy_provider_signatures(
     provider_type, async_dispatch, accepts_custom_words,
 ):
-    """同步/异步调度只为旧签名移除新增可选参数，新 provider 收到原规则。"""
+    """
+    同步/异步调度只为旧签名移除新增可选参数，新 provider 收到原规则。
+    """
     calls = []
 
     def legacy(content, download_dir, cookie, episodes, category, label, downloader):
-        """模拟未添加识别词参数的既有插件或宿主模块。"""
+        """
+        模拟未添加识别词参数的既有插件或宿主模块。
+        """
         calls.append((content, download_dir, cookie, episodes, category, label, downloader))
         return "legacy"
 
     def current(**kwargs):
-        """模拟接受完整可选输入的新 provider。"""
+        """
+        模拟接受完整可选输入的新 provider。
+        """
         calls.append(kwargs["custom_words"])
         return "current"
 
@@ -56,48 +64,70 @@ async def test_download_optional_mapping_keeps_legacy_provider_signatures(
 
 
 class _PluginCatalog:
-    """提供固定插件方法表的内存目录。"""
+    """
+    提供固定插件方法表的内存目录。
+    """
 
     def __init__(self, modules: dict) -> None:
-        """保存测试提供的插件模块快照。"""
+        """
+        保存测试提供的插件模块快照。
+        """
         self.modules = modules
 
     def get_plugin_modules(self) -> dict:
-        """返回当前插件模块快照。"""
+        """
+        返回当前插件模块快照。
+        """
         return self.modules
 
 
 class _ModuleCatalog:
-    """提供固定宿主模块序列的内存目录。"""
+    """
+    提供固定宿主模块序列的内存目录。
+    """
 
     def __init__(self, modules: list) -> None:
-        """保存测试提供的宿主模块。"""
+        """
+        保存测试提供的宿主模块。
+        """
         self.modules = modules
 
     def get_running_modules(self, _method: str) -> list:
-        """返回所有测试模块，由调度器负责优先级排序。"""
+        """
+        返回所有测试模块，由调度器负责优先级排序。
+        """
         return list(self.modules)
 
 
 class _Module:
-    """实现可配置优先级和调用函数的测试宿主模块。"""
+    """
+    实现可配置优先级和调用函数的测试宿主模块。
+    """
 
     def __init__(self, name: str, priority: int, func: Callable) -> None:
-        """保存展示名、优先级和测试调用函数。"""
+        """
+        保存展示名、优先级和测试调用函数。
+        """
         self._name = name
         self._priority = priority
         self._func = func
 
     def get_name(self) -> str:
-        """返回测试模块展示名。"""
+        """
+        返回测试模块展示名。
+        """
         return self._name
 
     def get_priority(self) -> int:
-        """返回调度优先级。"""
+        """
+        返回调度优先级。
+        """
         return self._priority
 
     def execute(self, *args, **kwargs):
-        """把模块调用转发到测试函数。"""
+        """
+        把模块调用转发到测试函数。
+        """
         return self._func(*args, **kwargs)
 
 
@@ -107,13 +137,17 @@ def _dispatcher(
     modules: list | None = None,
     async_runner: Callable | None = None,
 ) -> tuple[ModuleInvocationDispatcher, Mock, Mock, Mock]:
-    """构造完全内存化的调度器及错误策略替身。"""
+    """
+    构造完全内存化的调度器及错误策略替身。
+    """
     plugin_error = Mock()
     system_error = Mock()
     rate_error = Mock()
 
     async def default_runner(func, *args, **kwargs):
-        """在测试事件循环中直接运行同步函数。"""
+        """
+        在测试事件循环中直接运行同步函数。
+        """
         return func(*args, **kwargs)
 
     dispatcher = ModuleInvocationDispatcher(
@@ -128,7 +162,9 @@ def _dispatcher(
 
 
 def test_plugin_scalar_short_circuits_system_modules() -> None:
-    """插件返回非空标量时不得继续执行宿主模块。"""
+    """
+    插件返回非空标量时不得继续执行宿主模块。
+    """
     system_call = Mock(return_value="system")
     dispatcher, _, _, _ = _dispatcher(
         plugins={("P1", "插件一"): {"execute": lambda: "plugin"}},
@@ -140,13 +176,17 @@ def test_plugin_scalar_short_circuits_system_modules() -> None:
 
 
 def test_strict_dispatch_propagates_plugin_failure_before_host_fallback() -> None:
-    """严格查询不得把插件 provider 异常吞成空结果后继续宿主 fallback。"""
+    """
+    严格查询不得把插件 provider 异常吞成空结果后继续宿主 fallback。
+    """
     system_call = Mock(return_value=None)
     module = _Module("系统", 10, system_call)
     setattr(module, "get_file_item", module.execute)
 
     def failed_provider(**_kwargs):
-        """模拟插件存储查询发生网络或 I/O 故障。"""
+        """
+        模拟插件存储查询发生网络或 I/O 故障。
+        """
         raise RuntimeError("provider lookup failed")
 
     dispatcher, plugin_error, _, _ = _dispatcher(
@@ -166,7 +206,9 @@ def test_strict_dispatch_propagates_plugin_failure_before_host_fallback() -> Non
 
 
 def test_strict_dispatch_preserves_confirmed_absence() -> None:
-    """全部 provider 正常返回空值时，严格查询仍以 None 表示确认不存在。"""
+    """
+    全部 provider 正常返回空值时，严格查询仍以 None 表示确认不存在。
+    """
     module = _Module("系统", 10, lambda **_kwargs: None)
     setattr(module, "get_file_item", module.execute)
     dispatcher, _, _, _ = _dispatcher(
@@ -185,9 +227,13 @@ def test_strict_dispatch_preserves_confirmed_absence() -> None:
 
 
 def test_strict_dispatch_propagates_host_io_failure() -> None:
-    """严格查询也必须传播宿主存储适配器的 I/O 故障。"""
+    """
+    严格查询也必须传播宿主存储适配器的 I/O 故障。
+    """
     def failed_host(**_kwargs):
-        """模拟宿主存储 stat 或远端请求失败。"""
+        """
+        模拟宿主存储 stat 或远端请求失败。
+        """
         raise RuntimeError("host io failed")
 
     module = _Module("系统", 10, failed_host)
@@ -205,7 +251,9 @@ def test_strict_dispatch_propagates_host_io_failure() -> None:
 
 
 def test_frozen_plugin_providers_preserve_original_order_after_catalog_reorder() -> None:
-    """冻结执行必须采用持久化顺序，不受当前插件目录重排影响。"""
+    """
+    冻结执行必须采用持久化顺序，不受当前插件目录重排影响。
+    """
     calls = []
     plugins = {
         ("P1", "插件一"): {"transfer": lambda: calls.append("P1")},
@@ -233,11 +281,15 @@ def test_frozen_plugin_providers_preserve_original_order_after_catalog_reorder()
 
 
 def test_frozen_plugin_provider_propagates_failure_and_stops() -> None:
-    """冻结序列中的插件异常必须向上抛出，不能伪装成空结果。"""
+    """
+    冻结序列中的插件异常必须向上抛出，不能伪装成空结果。
+    """
     calls = []
 
     def fail() -> None:
-        """记录调用后模拟旧插件执行失败。"""
+        """
+        记录调用后模拟旧插件执行失败。
+        """
         calls.append("P1")
         raise RuntimeError("provider failed")
 
@@ -260,7 +312,9 @@ def test_frozen_plugin_provider_propagates_failure_and_stops() -> None:
 
 
 def test_frozen_plugin_provider_first_non_empty_short_circuits() -> None:
-    """冻结 transfer 序列仍应在首个非空结果后停止。"""
+    """
+    冻结 transfer 序列仍应在首个非空结果后停止。
+    """
     second_provider = Mock(return_value="second")
     dispatcher, _, _, _ = _dispatcher(
         plugins={
@@ -277,7 +331,9 @@ def test_frozen_plugin_provider_first_non_empty_short_circuits() -> None:
 
 
 def test_frozen_plugin_provider_missing_fails_before_any_execution() -> None:
-    """任一冻结 provider 缺失时必须显式失败且不得产生部分执行。"""
+    """
+    任一冻结 provider 缺失时必须显式失败且不得产生部分执行。
+    """
     first_provider = Mock(return_value=None)
     plugins = {
         ("P1", "插件一"): {"transfer": first_provider},
@@ -297,7 +353,9 @@ def test_frozen_plugin_provider_missing_fails_before_any_execution() -> None:
 
 
 def test_frozen_plugin_provider_missing_fails_before_pre_invoke_hook() -> None:
-    """全部冻结引用解析成功前不得触发 cleanup 等前置副作用。"""
+    """
+    全部冻结引用解析成功前不得触发 cleanup 等前置副作用。
+    """
     first_provider = Mock(return_value=None)
     before_invoke = Mock()
     plugins = {
@@ -320,7 +378,9 @@ def test_frozen_plugin_provider_missing_fails_before_pre_invoke_hook() -> None:
 
 
 def test_empty_frozen_plugin_provider_sequence_skips_pre_invoke_hook() -> None:
-    """没有冻结 provider 时不得执行仅服务于 provider 的前置副作用。"""
+    """
+    没有冻结 provider 时不得执行仅服务于 provider 的前置副作用。
+    """
     before_invoke = Mock()
     dispatcher, _, _, _ = _dispatcher()
 
@@ -336,7 +396,9 @@ def test_empty_frozen_plugin_provider_sequence_skips_pre_invoke_hook() -> None:
 
 
 def test_ordinary_transfer_dispatch_remains_dynamic_and_compatible() -> None:
-    """普通 transfer 调度仍按当前目录动态发现并采用既有短路语义。"""
+    """
+    普通 transfer 调度仍按当前目录动态发现并采用既有短路语义。
+    """
     system_call = Mock(return_value="system")
     module = _Module("系统", 10, system_call)
     setattr(module, "transfer", module.execute)
@@ -350,7 +412,9 @@ def test_ordinary_transfer_dispatch_remains_dynamic_and_compatible() -> None:
 
 
 def test_host_internal_contract_skips_plugin_provider() -> None:
-    """宿主内部两阶段协议不得暴露给同名第三方 provider。"""
+    """
+    宿主内部两阶段协议不得暴露给同名第三方 provider。
+    """
     plugin_call = Mock(return_value="plugin")
     system_call = Mock(return_value="system")
     module = _Module("系统", 10, system_call)
@@ -369,7 +433,9 @@ def test_host_internal_contract_skips_plugin_provider() -> None:
 
 @pytest.mark.asyncio
 async def test_async_host_internal_contract_skips_plugin_provider() -> None:
-    """异步调度同样只允许宿主执行内部检查点协议。"""
+    """
+    异步调度同样只允许宿主执行内部检查点协议。
+    """
     plugin_call = Mock(return_value="plugin")
     system_call = Mock(return_value="system")
     module = _Module("系统", 10, system_call)
@@ -387,11 +453,15 @@ async def test_async_host_internal_contract_skips_plugin_provider() -> None:
 
 
 def test_fan_out_contract_runs_every_provider_and_ignores_results() -> None:
-    """副作用广播应执行全部插件和宿主 provider，并稳定返回 None。"""
+    """
+    副作用广播应执行全部插件和宿主 provider，并稳定返回 None。
+    """
     calls = []
 
     def record(name: str, result):
-        """生成记录调用顺序并返回测试哨兵的 provider。"""
+        """
+        生成记录调用顺序并返回测试哨兵的 provider。
+        """
         return lambda: calls.append(name) or result
 
     system_20 = _Module("系统二", 20, record("system-20", "ignored-system"))
@@ -412,16 +482,22 @@ def test_fan_out_contract_runs_every_provider_and_ignores_results() -> None:
 
 @pytest.mark.asyncio
 async def test_async_fan_out_contract_matches_sync_execution() -> None:
-    """异步广播也应忽略返回值并执行全部同步或异步 provider。"""
+    """
+    异步广播也应忽略返回值并执行全部同步或异步 provider。
+    """
     calls = []
 
     async def plugin_call():
-        """记录异步插件调用并返回应被忽略的哨兵。"""
+        """
+        记录异步插件调用并返回应被忽略的哨兵。
+        """
         calls.append("plugin")
         return "ignored-plugin"
 
     def system_call():
-        """记录同步宿主调用并返回应被忽略的哨兵。"""
+        """
+        记录同步宿主调用并返回应被忽略的哨兵。
+        """
         calls.append("system")
         return "ignored-system"
 
@@ -437,11 +513,15 @@ async def test_async_fan_out_contract_matches_sync_execution() -> None:
 
 
 def test_list_results_merge_in_plugin_then_priority_order() -> None:
-    """列表结果应先按插件顺序合并，再按宿主优先级继续合并。"""
+    """
+    列表结果应先按插件顺序合并，再按宿主优先级继续合并。
+    """
     calls = []
 
     def result(value: str) -> Callable:
-        """生成记录调用顺序并返回单项列表的模块函数。"""
+        """
+        生成记录调用顺序并返回单项列表的模块函数。
+        """
         return lambda: calls.append(value) or [value]
 
     dispatcher, _, _, _ = _dispatcher(
@@ -465,7 +545,9 @@ def test_list_results_merge_in_plugin_then_priority_order() -> None:
 
 
 def test_result_shape_diagnosis_does_not_break_system_dispatch() -> None:
-    """provider 结果形状异常时只记录诊断，不得击穿宿主模块调度。"""
+    """
+    provider 结果形状异常时只记录诊断，不得击穿宿主模块调度。
+    """
     module = _Module("异常结果模块", 10, lambda: "unexpected")
     setattr(module, "search_medias", module.execute)
     dispatcher, _, system_error, _ = _dispatcher(modules=[module])
@@ -475,41 +557,59 @@ def test_result_shape_diagnosis_does_not_break_system_dispatch() -> None:
 
 
 def test_system_signature_relay_passes_previous_result() -> None:
-    """单参数宿主方法应接收上一模块的非列表结果。"""
+    """
+    单参数宿主方法应接收上一模块的非列表结果。
+    """
     class FirstModule:
-        """产生首个字典结果的测试模块。"""
+        """
+        产生首个字典结果的测试模块。
+        """
 
         @staticmethod
         def get_name() -> str:
-            """返回测试模块名。"""
+            """
+            返回测试模块名。
+            """
             return "第一步"
 
         @staticmethod
         def get_priority() -> int:
-            """返回第一优先级。"""
+            """
+            返回第一优先级。
+            """
             return 10
 
         @staticmethod
         def execute() -> dict:
-            """产生首个模块结果。"""
+            """
+            产生首个模块结果。
+            """
             return {"value": 1}
 
     class SecondModule:
-        """消费上一结果的测试模块。"""
+        """
+        消费上一结果的测试模块。
+        """
 
         @staticmethod
         def get_name() -> str:
-            """返回测试模块名。"""
+            """
+            返回测试模块名。
+            """
             return "第二步"
 
         @staticmethod
         def get_priority() -> int:
-            """返回第二优先级。"""
+            """
+            返回第二优先级。
+            """
             return 20
 
         @staticmethod
         def execute(previous: dict) -> dict:
-            """接收上一模块结果并生成下一结果。"""
+            """
+            接收上一模块结果并生成下一结果。
+            """
             return {"value": previous["value"] + 1}
 
     dispatcher, _, _, _ = _dispatcher(
@@ -520,25 +620,37 @@ def test_system_signature_relay_passes_previous_result() -> None:
 
 
 def test_explicit_pipeline_contract_relays_previous_result() -> None:
-    """图片补全契约应按优先级把上一 provider 结果交给下一 provider。"""
+    """
+    图片补全契约应按优先级把上一 provider 结果交给下一 provider。
+    """
     class ImageModule:
-        """在统一媒体对象上记录当前图片 provider。"""
+        """
+        在统一媒体对象上记录当前图片 provider。
+        """
 
         def __init__(self, name: str, priority: int) -> None:
-            """保存 provider 名称和优先级。"""
+            """
+            保存 provider 名称和优先级。
+            """
             self._name = name
             self._priority = priority
 
         def get_name(self) -> str:
-            """返回测试模块名。"""
+            """
+            返回测试模块名。
+            """
             return self._name
 
         def get_priority(self) -> int:
-            """返回测试优先级。"""
+            """
+            返回测试优先级。
+            """
             return self._priority
 
         def obtain_images(self, mediainfo: dict) -> dict:
-            """追加当前 provider 名称并返回同一媒体结果。"""
+            """
+            追加当前 provider 名称并返回同一媒体结果。
+            """
             return {
                 **mediainfo,
                 "providers": [*mediainfo.get("providers", []), self._name],
@@ -557,41 +669,59 @@ def test_explicit_pipeline_contract_relays_previous_result() -> None:
 
 
 def test_first_non_empty_contract_stops_legacy_signature_relay() -> None:
-    """显式首个非空契约不得再把结果交给后续宿主 provider 改写。"""
+    """
+    显式首个非空契约不得再把结果交给后续宿主 provider 改写。
+    """
     class FirstModule:
-        """返回首个识别结果的宿主模块。"""
+        """
+        返回首个识别结果的宿主模块。
+        """
 
         @staticmethod
         def get_name() -> str:
-            """返回测试模块名。"""
+            """
+            返回测试模块名。
+            """
             return "第一识别源"
 
         @staticmethod
         def get_priority() -> int:
-            """返回第一优先级。"""
+            """
+            返回第一优先级。
+            """
             return 10
 
         @staticmethod
         def recognize_media() -> str:
-            """返回首个非空识别结果。"""
+            """
+            返回首个非空识别结果。
+            """
             return "first"
 
     class RelayCompatibleModule:
-        """模拟可接受上一结果的旧式宿主模块。"""
+        """
+        模拟可接受上一结果的旧式宿主模块。
+        """
 
         @staticmethod
         def get_name() -> str:
-            """返回测试模块名。"""
+            """
+            返回测试模块名。
+            """
             return "旧式接力源"
 
         @staticmethod
         def get_priority() -> int:
-            """返回第二优先级。"""
+            """
+            返回第二优先级。
+            """
             return 20
 
         @staticmethod
         def recognize_media(previous: str) -> str:
-            """若被调用则改写上一结果。"""
+            """
+            若被调用则改写上一结果。
+            """
             return f"relayed:{previous}"
 
     dispatcher, _, _, _ = _dispatcher(
@@ -602,23 +732,33 @@ def test_first_non_empty_contract_stops_legacy_signature_relay() -> None:
 
 
 def test_ordered_list_contract_bypasses_legacy_signature_relay() -> None:
-    """显式列表聚合契约应按原参数调用并保留 provider 顺序。"""
+    """
+    显式列表聚合契约应按原参数调用并保留 provider 顺序。
+    """
     class SearchModule:
-        """区分原参数调用与旧式结果接力的搜索模块。"""
+        """
+        区分原参数调用与旧式结果接力的搜索模块。
+        """
 
         @staticmethod
         def get_name() -> str:
-            """返回测试模块名。"""
+            """
+            返回测试模块名。
+            """
             return "系统搜索源"
 
         @staticmethod
         def get_priority() -> int:
-            """返回稳定优先级。"""
+            """
+            返回稳定优先级。
+            """
             return 10
 
         @staticmethod
         def search_medias(previous: list | None = None) -> list[str]:
-            """原参数调用返回系统结果，接力调用返回可检测哨兵。"""
+            """
+            原参数调用返回系统结果，接力调用返回可检测哨兵。
+            """
             return ["relayed"] if previous is not None else ["system"]
 
     dispatcher, _, _, _ = _dispatcher(
@@ -632,21 +772,31 @@ def test_ordered_list_contract_bypasses_legacy_signature_relay() -> None:
 
 
 def test_ordered_mapping_contract_merges_system_downloader_results() -> None:
-    """未指定下载器时应按宿主优先级合并各 provider 的 Tracker 映射。"""
+    """
+    未指定下载器时应按宿主优先级合并各 provider 的 Tracker 映射。
+    """
     class TrackerModule:
-        """返回单个下载器 Tracker 映射的测试模块。"""
+        """
+        返回单个下载器 Tracker 映射的测试模块。
+        """
 
         def __init__(self, name: str, priority: int) -> None:
-            """保存下载器名称和 provider 优先级。"""
+            """
+            保存下载器名称和 provider 优先级。
+            """
             self._name = name
             self._priority = priority
 
         def get_name(self) -> str:
-            """返回测试模块名。"""
+            """
+            返回测试模块名。
+            """
             return self._name
 
         def get_priority(self) -> int:
-            """返回测试优先级。"""
+            """
+            返回测试优先级。
+            """
             return self._priority
 
         def get_torrent_trackers(
@@ -654,7 +804,9 @@ def test_ordered_mapping_contract_merges_system_downloader_results() -> None:
             hash_string: str,
             downloader: str | None = None,
         ) -> dict[str, list[str]]:
-            """返回当前测试下载器的 Tracker 映射。"""
+            """
+            返回当前测试下载器的 Tracker 映射。
+            """
             assert hash_string == "hash"
             assert downloader is None
             return {self._name: [f"https://{self._name}.test/announce"]}
@@ -677,7 +829,9 @@ def test_ordered_mapping_contract_merges_system_downloader_results() -> None:
 
 
 def test_plugin_mapping_keeps_existing_host_short_circuit() -> None:
-    """插件返回 Tracker 映射后仍应保持插件优先，不再调用宿主 provider。"""
+    """
+    插件返回 Tracker 映射后仍应保持插件优先，不再调用宿主 provider。
+    """
     system_call = Mock(return_value={"system": ["https://system.test"]})
     module = _Module("系统", 10, system_call)
     setattr(module, "get_torrent_trackers", module.execute)
@@ -701,9 +855,13 @@ def test_plugin_mapping_keeps_existing_host_short_circuit() -> None:
 
 
 def test_module_exception_uses_error_policy_and_continues() -> None:
-    """普通异常应交给错误策略，后续空结果模块仍可继续运行。"""
+    """
+    普通异常应交给错误策略，后续空结果模块仍可继续运行。
+    """
     def broken():
-        """模拟模块执行失败。"""
+        """
+        模拟模块执行失败。
+        """
         raise RuntimeError("broken")
 
     dispatcher, _, system_error, _ = _dispatcher(
@@ -719,16 +877,22 @@ def test_module_exception_uses_error_policy_and_continues() -> None:
 
 @pytest.mark.asyncio
 async def test_async_dispatch_awaits_coroutines_and_offloads_sync_functions() -> None:
-    """异步路径应直接等待协程，并通过注入执行器运行同步方法。"""
+    """
+    异步路径应直接等待协程，并通过注入执行器运行同步方法。
+    """
     offloaded = []
 
     async def async_runner(func, *args, **kwargs):
-        """记录被移出事件循环的同步函数。"""
+        """
+        记录被移出事件循环的同步函数。
+        """
         offloaded.append(func)
         return func(*args, **kwargs)
 
     async def plugin_call():
-        """返回插件列表结果。"""
+        """
+        返回插件列表结果。
+        """
         return ["plugin"]
 
     sync_module = _Module("同步模块", 10, lambda: ["system"])
@@ -744,27 +908,39 @@ async def test_async_dispatch_awaits_coroutines_and_offloads_sync_functions() ->
 
 @pytest.mark.asyncio
 async def test_async_ordered_list_contract_uses_same_aggregation_policy() -> None:
-    """异步 dispatcher 应与同步路径共享显式列表聚合语义。"""
+    """
+    异步 dispatcher 应与同步路径共享显式列表聚合语义。
+    """
     class SearchModule:
-        """提供异步路径下可识别调用方式的同步 provider。"""
+        """
+        提供异步路径下可识别调用方式的同步 provider。
+        """
 
         @staticmethod
         def get_name() -> str:
-            """返回测试模块名。"""
+            """
+            返回测试模块名。
+            """
             return "异步系统搜索源"
 
         @staticmethod
         def get_priority() -> int:
-            """返回稳定优先级。"""
+            """
+            返回稳定优先级。
+            """
             return 10
 
         @staticmethod
         def search_medias(previous: list | None = None) -> list[str]:
-            """原参数调用返回系统结果，接力调用返回可检测哨兵。"""
+            """
+            原参数调用返回系统结果，接力调用返回可检测哨兵。
+            """
             return ["relayed"] if previous is not None else ["system"]
 
     async def plugin_search() -> list[str]:
-        """返回插件搜索结果。"""
+        """
+        返回插件搜索结果。
+        """
         return ["plugin"]
 
     dispatcher, _, _, _ = _dispatcher(
@@ -781,7 +957,9 @@ async def test_async_ordered_list_contract_uses_same_aggregation_policy() -> Non
 
 
 def test_plugin_non_mapping_module_decl_is_reported_and_skipped() -> None:
-    """插件把方法表声明成 list 时走错误策略，且不影响后续健康插件。"""
+    """
+    插件把方法表声明成 list 时走错误策略，且不影响后续健康插件。
+    """
     dispatcher, plugin_error, _, _ = _dispatcher(
         plugins={
             ("Bad", "坏插件"): ["not-a-mapping"],
@@ -794,7 +972,9 @@ def test_plugin_non_mapping_module_decl_is_reported_and_skipped() -> None:
 
 
 def test_unknown_plugin_method_records_legacy_abi_hit(monkeypatch) -> None:
-    """未知第三方方法继续执行，同时记录可迁移的 legacy ABI 来源。"""
+    """
+    未知第三方方法继续执行，同时记录可迁移的 legacy ABI 来源。
+    """
     hits = []
     monkeypatch.setattr(
         "app.runtime.extensions.module.dispatcher.record_metric",
@@ -818,7 +998,9 @@ def test_unknown_plugin_method_records_legacy_abi_hit(monkeypatch) -> None:
 
 
 def test_unknown_host_method_records_legacy_abi_hit(monkeypatch) -> None:
-    """宿主临时新增而未登记的方法保持执行并留下迁移信号。"""
+    """
+    宿主临时新增而未登记的方法保持执行并留下迁移信号。
+    """
     hits = []
     monkeypatch.setattr(
         "app.runtime.extensions.module.dispatcher.record_metric",
@@ -826,21 +1008,29 @@ def test_unknown_host_method_records_legacy_abi_hit(monkeypatch) -> None:
     )
 
     class LegacyModule:
-        """提供未进入清单的宿主兼容方法。"""
+        """
+        提供未进入清单的宿主兼容方法。
+        """
 
         @staticmethod
         def get_name() -> str:
-            """返回测试模块名称。"""
+            """
+            返回测试模块名称。
+            """
             return "旧模块"
 
         @staticmethod
         def get_priority() -> int:
-            """返回稳定测试优先级。"""
+            """
+            返回稳定测试优先级。
+            """
             return 1
 
         @staticmethod
         def third_party_host() -> str:
-            """返回兼容方法结果。"""
+            """
+            返回兼容方法结果。
+            """
             return "ok"
 
     dispatcher, _, _, _ = _dispatcher(modules=[LegacyModule()])
@@ -860,7 +1050,9 @@ def test_unknown_host_method_records_legacy_abi_hit(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_async_plugin_non_mapping_module_decl_is_reported_and_skipped() -> None:
-    """异步路径下坏插件同样被隔离，嵌套补丁场景不再冒泡击穿调度。"""
+    """
+    异步路径下坏插件同样被隔离，嵌套补丁场景不再冒泡击穿调度。
+    """
     dispatcher, plugin_error, _, _ = _dispatcher(
         plugins={
             ("Bad", "坏插件"): ["not-a-mapping"],

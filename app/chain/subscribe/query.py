@@ -1,4 +1,6 @@
-"""订阅查询、关注与现存媒体投影"""
+"""
+订阅查询、关注与现存媒体投影
+"""
 
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, cast
 
@@ -41,7 +43,9 @@ from app.schemas.types import (
 
 
 def _public_subscribe_view(subscribe: SubscriptionSnapshot) -> _SchemaSubscribe:
-    """将订阅内部快照投影为公开 DTO，并隐藏活动音轨事实。"""
+    """
+    将订阅内部快照投影为公开 DTO，并隐藏活动音轨事实。
+    """
     payload = subscribe.to_dict()
     payload["completed_tracks"] = compute_subscribe_completed_tracks(subscribe)
     payload.pop("downloaded_tracks", None)
@@ -49,16 +53,18 @@ def _public_subscribe_view(subscribe: SubscriptionSnapshot) -> _SchemaSubscribe:
 
 
 class SubscribeQueryOwner(_SubscribeOwnerBase):
-    """订阅查询、关注与现存媒体投影，作为 SubscribeChain 的单一职责实现 owner。"""
+    """
+    订阅查询、关注与现存媒体投影，作为 SubscribeChain 的单一职责组件。
+    """
 
     @staticmethod
     def get_sub_sites(subscribe: SubscriptionSnapshot) -> List[int]:
         """
         获取订阅中涉及的站点清单
+
         :param subscribe: 订阅信息对象
         :return: 涉及的站点清单
         """
-        # 从系统配置获取默认订阅站点
         default_sites = get_configured_system_config().get(SystemConfigKey.RssSites) or []
         # 如果订阅未指定站点，直接返回默认站点
         if not subscribe.sites:
@@ -66,9 +72,7 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
         # 如果默认订阅站点未设置，直接返回订阅指定站点
         if not default_sites:
             return subscribe.sites or []
-        # 尝试解析订阅中的站点数据
         user_sites = subscribe.sites
-        # 计算 user_sites 和 default_sites 的交集
         intersection_sites = [site for site in user_sites if site in default_sites]
         # 如果交集为空，返回默认站点
         return intersection_sites if intersection_sites else default_sites
@@ -78,24 +82,22 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
         获取指定媒体类型订阅涉及的站点清单（节约资源）
         未指定媒体类型时保持原有全量订阅行为；指定类型却没有可搜索订阅时返回 None，
         避免调用方把空站点误解为“搜索所有站点”。
+
         :param mtype: 可选媒体类型
         :return: 返回[]代表所有站点命中，返回None代表没有订阅
         """
         ret_sites = []
         subscribes = self.subscription_repository.list()
         if not subscribes:
-            # 没有订阅
             return None
         has_searchable_subscription = False
-        # 刷新订阅选中的Rss站点
+        # 只刷新当前订阅涉及的 RSS 站点，避免访问无关站点。
         for subscribe in subscribes:
             if mtype is not None and subscribe.type != mtype:
                 continue
-            # 刷新选中的站点
             if subscribe.state in self.get_states_for_search("R"):
                 has_searchable_subscription = True
                 ret_sites.extend(self.get_sub_sites(subscribe))
-        # 去重
         if ret_sites:
             ret_sites = list(set(ret_sites))
 
@@ -105,7 +107,9 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
         return ret_sites
 
     def has_music_subscribe(self, mtype: Optional[str] = None) -> bool:
-        """判断指定范围内是否存在音乐订阅，用于决定是否额外刷新站点音乐入口。"""
+        """
+        判断指定范围内是否存在音乐订阅，用于决定是否额外刷新站点音乐入口。
+        """
         if mtype is not None and mtype != MediaType.MUSIC.value:
             return False
         return cast(bool, self._subscription_query().has_music(self.get_states_for_search("R")))
@@ -178,11 +182,9 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
                 # 已经订阅过跳过
                 if repository.history_exists(identity):
                     continue
-                # 去除无效属性
                 for key in list(share_sub.keys()):
                     if not hasattr(_SchemaSubscribe(), key):
                         share_sub.pop(key)
-                # 类型转换
                 subscribe_in = _SchemaSubscribe(**share_sub)
                 mtype = MediaType(subscribe_in.type)
                 # 非 TMDB 标题可能携带季号，入库前统一拆分。
@@ -194,7 +196,6 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
                     subscribe_in.name = meta.name
                     if subscribe_in.season is None:
                         subscribe_in.season = meta.begin_season
-                # 标题转换
                 if subscribe_in.name:
                     title = subscribe_in.name
                 else:
@@ -264,7 +265,6 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
         """
         获取订阅默认参数
         """
-        # 默认过滤规则
         default_rule = get_configured_system_config().get(SystemConfigKey.SubscribeDefaultParams) or {}
         return {
             key: value
@@ -294,10 +294,8 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
         if not subscribe:
             return None
 
-        # 返回订阅数据
         subscribe_info = _SchemaSubscrbieInfo()
 
-        # 所有集的数据
         episodes: Dict[int, _SchemaSubscribeEpisodeInfo] = {}
         if (
             subscribe.media_source == MediaSource.TMDB.value
@@ -305,7 +303,6 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
             and str(subscribe.media_id).isdigit()
             and subscribe.type == MediaType.TV.value
         ):
-            # 查询TMDB中的集信息
             tmdb_episodes = TmdbChain().tmdb_episodes(
                 tmdbid=int(subscribe.media_id), season=subscribe.season, episode_group=subscribe.episode_group
             )
@@ -323,12 +320,10 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
                 info.title = f"第 {i} 集"
                 episodes[i] = info
         else:
-            # 电影
             info = _SchemaSubscribeEpisodeInfo()
             info.title = subscribe.name
             episodes[0] = info
 
-        # 所有下载记录
         downloadhis = self.download_history_repository
         download_his = []
         if subscribe.media_source and subscribe.media_id:
@@ -341,15 +336,12 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
             for his in download_his:
                 if not his.download_hash:
                     continue
-                # 查询下载文件
                 files = downloadhis.get_files_by_hash(his.download_hash, state=1)
                 if files:
                     for file in files:
                         if not file.filepath:
                             continue
-                        # 识别文件名
                         file_meta = MetaInfo(file.filepath)
-                        # 下载文件信息
                         file_info = _SchemaSubscribeDownloadFileInfo(
                             torrent_title=his.torrent_name,
                             site_name=his.torrent_site,
@@ -372,7 +364,6 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
         except ValueError:
             logger.error(f"订阅 {subscribe.name} 类型错误：{subscribe.type}")
             return subscribe_info
-        # 识别媒体信息
         mediainfo: MediaInfo = MediaChain().recognize_media(
             meta=meta,
             mtype=meta.type,
@@ -387,13 +378,10 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
             )
             return subscribe_info
 
-        # 所有媒体库文件记录
         library_fileitems = self.media_files(mediainfo)
         if library_fileitems:
             for fileitem in library_fileitems:
-                # 识别文件名
                 file_meta = MetaInfo(fileitem.path)
-                # 媒体库文件信息
                 file_info = _SchemaSubscribeLibraryFileInfo(
                     storage=fileitem.storage,
                     file_path=fileitem.path,
@@ -410,7 +398,6 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
 
         self._append_subscribe_media_servers(subscribe, mediainfo, episodes)
 
-        # 更新订阅信息
         subscribe_info.subscribe = _public_subscribe_view(subscribe)
         subscribe_info.episodes = episodes
         return subscribe_info
@@ -421,7 +408,9 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
         mediainfo: MediaInfo,
         episodes: Dict[int, _SchemaSubscribeEpisodeInfo],
     ) -> None:
-        """合并媒体服务器条目，跳过已经由本地媒体库记录覆盖的服务。"""
+        """
+        合并媒体服务器条目，跳过已经由本地媒体库记录覆盖的服务。
+        """
         mediaserver_chain = MediaServerChain()
         server_names = list(MediaServerHelper().get_services().keys())
 
@@ -430,7 +419,9 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
             server_name: Optional[str],
             server_type: Optional[str],
         ) -> bool:
-            """判断媒体库列表是否已经包含目标服务条目。"""
+            """
+            判断媒体库列表是否已经包含目标服务条目。
+            """
             for info in library_list or []:
                 if info.server and server_name and info.server == server_name:
                     return True
@@ -522,9 +513,7 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
         :param meta: 媒体元数据
         :param mediainfo: 媒体信息
         :param mediakey: 媒体标识符
-        :return:
-            - exist_flag (bool): 布尔值，表示媒体是否已经完全下载或已存在
-            - no_exists (dict): 缺失的媒体信息，包含缺失的集数或其他相关信息
+        :return: 是否已经全部下载或入库，以及按媒体键和季号组织的缺集范围
         """
         if isinstance(mediainfo, MusicInfo) and subscribe.music_type == MUSIC_ENTITY_ALBUM:
             subscribe = self._reconcile_music_album_progress(subscribe, mediainfo)
@@ -560,5 +549,4 @@ class SubscribeQueryOwner(_SubscribeOwnerBase):
                 scene="existing_media",
             )
 
-        # 返回结果，表示媒体未完全下载或存在
         return False, no_exists

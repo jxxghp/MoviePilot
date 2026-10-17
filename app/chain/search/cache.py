@@ -1,4 +1,6 @@
-"""搜索参数与结果缓存适配 owner。"""
+"""
+搜索参数与结果缓存适配 owner。
+"""
 
 from typing import Any, Dict, List, Optional, cast
 
@@ -16,7 +18,9 @@ from app.schemas.types import (
 
 
 class SearchCacheOwner(_SearchOwnerBase):
-    """搜索参数与结果缓存适配 owner。"""
+    """
+    搜索参数与结果缓存适配 owner。
+    """
 
     @staticmethod
     def _stringify_sites(sites: Optional[List[int]]) -> str:
@@ -34,7 +38,9 @@ class SearchCacheOwner(_SearchOwnerBase):
         return normalize_search_params(params)
 
     def _search_state(self) -> SearchStateService:
-        """构造绑定当前 Chain 缓存端口的搜索状态服务。"""
+        """
+        构造绑定当前 Chain 缓存端口的搜索状态服务。
+        """
         return SearchStateService(
             save_cache=self.save_cache,
             load_cache=self.load_cache,
@@ -154,13 +160,19 @@ class SearchCacheOwner(_SearchOwnerBase):
         )
 
     def _save_results(self, results: List[Context]) -> None:
-        """通过搜索状态 owner 保存同步资源结果，避免业务入口直写缓存键。"""
+        """
+        通过搜索状态 owner 保存同步资源结果，避免业务入口直写缓存键。
+        """
         self._search_state().save_results(results)
 
     async def _async_save_results(self, results: List[Context]) -> None:
-        """通过搜索状态 owner 保存异步资源结果，统一结果发布边界。"""
+        """
+        通过搜索状态 owner 保存异步资源结果，统一结果发布边界。
+        """
         await self._search_state().async_save_results(results)
 
     async def _async_save_subtitles(self, subtitles: List[SubtitleInfo]) -> None:
-        """通过搜索状态 owner 保存字幕结果，统一字幕发布边界。"""
+        """
+        通过搜索状态 owner 保存字幕结果，统一字幕发布边界。
+        """
         await self._search_state().async_save_subtitle_results(subtitles)

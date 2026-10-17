@@ -1,4 +1,6 @@
-"""已提交插件载荷的版本化 package 声明快照。"""
+"""
+已提交插件载荷的版本化 package 声明快照。
+"""
 
 from __future__ import annotations
 
@@ -24,7 +26,9 @@ def _optional_text(
     *,
     max_length: int | None = None,
 ) -> str | None:
-    """把外部可选文本规范为非空字符串。"""
+    """
+    把外部可选文本规范为非空字符串。
+    """
     if not isinstance(value, str):
         return None
     normalized = value.strip()
@@ -34,7 +38,9 @@ def _optional_text(
 
 
 def _labels(value: object) -> list[str]:
-    """把历史逗号字符串和字符串数组统一为有序标签列表。"""
+    """
+    把历史逗号字符串和字符串数组统一为有序标签列表。
+    """
     if isinstance(value, str):
         items = value.split(",")
     elif isinstance(value, list):
@@ -49,7 +55,9 @@ def _labels(value: object) -> list[str]:
 
 
 def _normalize_manifest(value: object) -> dict[str, object]:
-    """仅保留当前载荷展示和声明消费者需要的 package 字段。"""
+    """
+    仅保留当前载荷展示和声明消费者需要的 package 字段。
+    """
     if not isinstance(value, Mapping):
         return {}
     manifest: dict[str, object] = {}
@@ -72,7 +80,9 @@ def _normalize_manifest(value: object) -> dict[str, object]:
 
 
 def _normalize_runtime(value: object) -> dict[str, bool]:
-    """保留可向后扩展的宿主代际和运行时变体布尔声明。"""
+    """
+    保留可向后扩展的宿主代际和运行时变体布尔声明。
+    """
     if not isinstance(value, Mapping):
         return {}
     return {
@@ -87,7 +97,9 @@ def _normalize_runtime(value: object) -> dict[str, bool]:
 
 
 def _encode(value: Mapping[str, object]) -> str:
-    """生成不可从外部原地修改的稳定内部表示。"""
+    """
+    生成不可从外部原地修改的稳定内部表示。
+    """
     return json.dumps(
         value,
         ensure_ascii=False,
@@ -98,12 +110,18 @@ def _encode(value: Mapping[str, object]) -> str:
 
 @dataclass(frozen=True, slots=True)
 class PluginDeclaredMetadata:
-    """封装一份受限、版本化且不参与来源授信的 package 声明。"""
+    """
+    封装一份受限、版本化且不参与来源授信的 package 声明。
+
+    :param _encoded: 经过白名单规范化的声明元数据 JSON，构造时校验并规范编码
+    """
 
     _encoded: str = field(repr=False)
 
     def __post_init__(self) -> None:
-        """拒绝绕过工厂构造的非规范内部状态。"""
+        """
+        拒绝绕过工厂构造的非规范内部状态。
+        """
         normalized = self._normalize_storage(json.loads(self._encoded))
         object.__setattr__(self, "_encoded", _encode(normalized))
 
@@ -115,7 +133,9 @@ class PluginDeclaredMetadata:
         declaration_version: str | None,
         manifest_matches_payload: bool,
     ) -> "PluginDeclaredMetadata":
-        """从安装候选生成与载荷一起提交的受限声明快照。"""
+        """
+        从安装候选生成与载荷一起提交的受限声明快照。
+        """
         runtime = _normalize_runtime(package)
         value = {
             "schema_version": _SCHEMA_VERSION,
@@ -128,12 +148,16 @@ class PluginDeclaredMetadata:
 
     @classmethod
     def from_storage(cls, value: object) -> "PluginDeclaredMetadata":
-        """校验数据库 JSON，并忽略当前合同未消费的额外字段。"""
+        """
+        校验数据库 JSON，并忽略当前合同未消费的额外字段。
+        """
         return cls(_encode(cls._normalize_storage(value)))
 
     @staticmethod
     def _normalize_storage(value: object) -> dict[str, object]:
-        """验证快照结构，同时宽容丢弃非法可选展示字段。"""
+        """
+        验证快照结构，同时宽容丢弃非法可选展示字段。
+        """
         if not isinstance(value, Mapping):
             raise ValueError("插件声明快照必须是 JSON 对象")
         if value.get("schema_version") != _SCHEMA_VERSION:
@@ -153,16 +177,22 @@ class PluginDeclaredMetadata:
 
     @property
     def declaration_version(self) -> str | None:
-        """返回生成该快照的 package 条目版本。"""
+        """
+        返回生成该快照的 package 条目版本。
+        """
         return _optional_text(self.to_json().get("declaration_version"))
 
     @property
     def manifest_matches_payload(self) -> bool:
-        """说明该 package 声明是否与当前已提交载荷对应。"""
+        """
+        说明该 package 声明是否与当前已提交载荷对应。
+        """
         return bool(self.to_json()["manifest_matches_payload"])
 
     def runtime_support(self, runtime_name: str) -> bool | None:
-        """读取一个规范运行时声明；缺省保持未声明语义。"""
+        """
+        读取一个规范运行时声明；缺省保持未声明语义。
+        """
         if not _RUNTIME_FIELD_PATTERN.fullmatch(runtime_name):
             raise ValueError("运行时声明必须使用 v<数字> 或 v<数字>t")
         runtime = self.to_json().get("runtime")
@@ -172,7 +202,9 @@ class PluginDeclaredMetadata:
         return value if isinstance(value, bool) else None
 
     def display_fallback(self, *, installed_version: str) -> dict[str, str]:
-        """生成插件加载失败时可安全补齐的展示字段。"""
+        """
+        生成插件加载失败时可安全补齐的展示字段。
+        """
         manifest = self.to_json().get("manifest")
         fallback = {
             "plugin_version": installed_version,
@@ -197,7 +229,9 @@ class PluginDeclaredMetadata:
         return fallback
 
     def to_json(self) -> dict[str, object]:
-        """返回可持久化且与内部状态相互隔离的 JSON 副本。"""
+        """
+        返回可持久化且与内部状态相互隔离的 JSON 副本。
+        """
         value: object = json.loads(self._encoded)
         if not isinstance(value, dict):
             raise ValueError("插件声明快照内部状态必须是 JSON 对象")

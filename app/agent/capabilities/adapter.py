@@ -1,4 +1,6 @@
-"""Agent canonical entrypoint 的 Capability Runtime 适配器。"""
+"""
+将 Agent 标准入口接入能力运行时的适配器。
+"""
 
 from __future__ import annotations
 
@@ -24,7 +26,9 @@ _SETTING_SELECTOR = "setting_truthy"
 
 
 def _validate_setting_selector(config: Mapping[str, Any]) -> None:
-    """限制 selector 只能读取已声明的应用设置。"""
+    """
+    限制 selector 只能读取已声明的应用设置。
+    """
     key = config["key"]
     if not isinstance(key, str) or not key or not has_runtime_setting(key):
         raise ValueError(f"未知应用设置：{key!r}")
@@ -39,7 +43,9 @@ AGENT_SELECTOR_SCHEMAS = {
 
 
 def _load_entrypoint(spec: CapabilitySpec) -> Any:
-    """按 manifest 解析 canonical 符号，不创建额外业务对象。"""
+    """
+    按 manifest 解析 canonical 符号，不创建额外业务对象。
+    """
     module_name, symbol_name = spec.entrypoint.split(":", maxsplit=1)
     module = importlib.import_module(module_name)
     try:
@@ -51,7 +57,9 @@ def _load_entrypoint(spec: CapabilitySpec) -> Any:
 
 
 def _lifecycle_method(spec: CapabilitySpec, candidate: Any, name: str) -> Any:
-    """读取 Agent Service 必需的异步生命周期方法。"""
+    """
+    读取 Agent Service 必需的异步生命周期方法。
+    """
     callback = getattr(candidate, name, None)
     if not callable(callback):
         raise CapabilityAdapterContractError(
@@ -61,13 +69,17 @@ def _lifecycle_method(spec: CapabilitySpec, candidate: Any, name: str) -> Any:
 
 
 class AgentEntrypointAdapter:
-    """把 canonical Python 符号作为无资源副作用的同步能力发布。"""
+    """
+    把 canonical Python 符号作为无资源副作用的同步能力发布。
+    """
 
     execution_mode = AdapterExecutionMode.SYNC
 
     @staticmethod
     def materialize(spec: CapabilitySpec) -> Any:
-        """按 manifest entrypoint 导入 canonical 符号。"""
+        """
+        按 manifest entrypoint 导入 canonical 符号。
+        """
         return _load_entrypoint(spec)
 
     @staticmethod
@@ -77,7 +89,9 @@ class AgentEntrypointAdapter:
         _generation: int,
         _previous: Any = None,
     ) -> Any:
-        """发布 canonical 符号本身，不创建第二份业务对象。"""
+        """
+        发布 canonical 符号本身，不创建第二份业务对象。
+        """
         return implementation
 
     @staticmethod
@@ -86,7 +100,9 @@ class AgentEntrypointAdapter:
         _candidate: Any,
         _generation: int,
     ) -> None:
-        """entrypoint 不拥有业务资源，初始化由独立 service 能力负责。"""
+        """
+        entrypoint 不拥有业务资源，初始化由独立 service 能力负责。
+        """
 
     @staticmethod
     def stop(
@@ -94,7 +110,9 @@ class AgentEntrypointAdapter:
         _instance: Any,
         _generation: int,
     ) -> None:
-        """撤销入口可见性；业务资源由独立 service 能力关闭。"""
+        """
+        撤销入口可见性；业务资源由独立 service 能力关闭。
+        """
 
     @staticmethod
     def cleanup(
@@ -103,17 +121,23 @@ class AgentEntrypointAdapter:
         _generation: int,
         _error: BaseException,
     ) -> None:
-        """entrypoint 启动无副作用，因此失败候选无需额外释放。"""
+        """
+        entrypoint 启动无副作用，因此失败候选无需额外释放。
+        """
 
 
 class AgentServiceAdapter:
-    """把具备 initialize/close 的 canonical 对象接入异步资源生命周期。"""
+    """
+    把具备 initialize/close 的 canonical 对象接入异步资源生命周期。
+    """
 
     execution_mode = AdapterExecutionMode.ASYNC
 
     @staticmethod
     async def materialize(spec: CapabilitySpec) -> Any:
-        """在线程中导入 canonical service，避免阻塞应用事件循环。"""
+        """
+        在线程中导入 canonical service，避免阻塞应用事件循环。
+        """
         return await asyncio.to_thread(_load_entrypoint, spec)
 
     @staticmethod
@@ -123,7 +147,9 @@ class AgentServiceAdapter:
         _generation: int,
         _previous: Any = None,
     ) -> Any:
-        """复用 canonical service，不复制其内部队列和后台任务所有权。"""
+        """
+        复用 canonical service，不复制其内部队列和后台任务所有权。
+        """
         return implementation
 
     @staticmethod
@@ -132,7 +158,9 @@ class AgentServiceAdapter:
         candidate: Any,
         _generation: int,
     ) -> None:
-        """等待 service 在当前应用事件循环完成初始化。"""
+        """
+        等待 service 在当前应用事件循环完成初始化。
+        """
         result = _lifecycle_method(spec, candidate, "initialize")()
         if not inspect.isawaitable(result):
             raise CapabilityAdapterContractError(
@@ -146,7 +174,9 @@ class AgentServiceAdapter:
         instance: Any,
         _generation: int,
     ) -> None:
-        """等待 service 停止后台任务并释放其资源。"""
+        """
+        等待 service 停止后台任务并释放其资源。
+        """
         result = _lifecycle_method(spec, instance, "close")()
         if not inspect.isawaitable(result):
             raise CapabilityAdapterContractError(
@@ -165,12 +195,16 @@ class AgentServiceAdapter:
         generation: int,
         _error: BaseException,
     ) -> None:
-        """初始化失败或关闭竞态时按相同 close 合同释放部分资源。"""
+        """
+        初始化失败或关闭竞态时按相同 close 合同释放部分资源。
+        """
         await AgentServiceAdapter.stop(spec, candidate, generation)
 
 
 def _validate_registry(registry: CapabilityRegistry) -> None:
-    """固定 entrypoint 物化轴与 service 资源轴的声明合同。"""
+    """
+    固定 entrypoint 物化轴与 service 资源轴的声明合同。
+    """
     for spec in registry.list_specs():
         if set(spec.metadata) != {"name"}:
             raise ValueError(f"{spec.source}: Agent Capability metadata 只能包含 name")
@@ -199,7 +233,9 @@ def _validate_registry(registry: CapabilityRegistry) -> None:
 def build_agent_capability_registry(
     roots: Iterable[Path | str] | None = None,
 ) -> CapabilityRegistry:
-    """发现 data-only Agent manifests，不导入编排器、Provider 或工具实现。"""
+    """
+    发现只包含声明数据的 Agent 能力清单，不导入编排器、提供方或工具实现。
+    """
     registry = CapabilityRegistry.discover(
         tuple(roots) if roots is not None else (_DEFAULT_CAPABILITY_ROOT,),
         kinds={AGENT_ENTRYPOINT_KIND, AGENT_SERVICE_KIND},
@@ -210,7 +246,9 @@ def build_agent_capability_registry(
 
 
 def should_run_agent_service(spec: CapabilitySpec) -> bool:
-    """依据 manifest selector 判断 service 是否应拥有运行实例。"""
+    """
+    依据 manifest selector 判断 service 是否应拥有运行实例。
+    """
     selector = spec.selector
     if (
         spec.kind != AGENT_SERVICE_KIND

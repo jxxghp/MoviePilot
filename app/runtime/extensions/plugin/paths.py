@@ -1,4 +1,6 @@
-"""插件运行目录、本地仓和联邦产物路径解析。"""
+"""
+插件运行目录、本地仓和联邦产物路径解析。
+"""
 
 from __future__ import annotations
 
@@ -11,7 +13,9 @@ from app.runtime.extensions.plugin.system import PluginSystemServices
 
 
 class PluginPathResolver:
-    """把文件事件解析为插件 ID、本地候选和联邦入口状态。"""
+    """
+    把文件事件解析为插件 ID、本地候选和联邦入口状态。
+    """
 
     def __init__(
         self,
@@ -22,7 +26,9 @@ class PluginPathResolver:
         strict_system_version: Callable[[], bool],
         log: Any,
     ) -> None:
-        """保存运行目录和插件市场路径解析端口。"""
+        """
+        保存运行目录和插件市场路径解析端口。
+        """
         self._runtime_root = runtime_root.resolve()
         self._running = running
         self._system = system
@@ -33,7 +39,9 @@ class PluginPathResolver:
         self,
         event_path: Path,
     ) -> Optional[tuple[str, Optional[dict[str, Any]], bool]]:
-        """识别联邦构建产物变化并确认入口文件已完整生成。"""
+        """
+        识别联邦构建产物变化并确认入口文件已完整生成。
+        """
         try:
             event_path = event_path.resolve()
             candidate = self.local_candidate(event_path)
@@ -89,7 +97,9 @@ class PluginPathResolver:
             return None
 
     def runtime_plugin(self, event_path: Path) -> Optional[str]:
-        """从运行目录中的插件 ``__init__.py`` AST 解析插件类名。"""
+        """
+        从运行目录中的插件 ``__init__.py`` AST 解析插件类名。
+        """
         try:
             event_path = event_path.resolve()
             if not event_path.is_relative_to(self._runtime_root):
@@ -117,7 +127,9 @@ class PluginPathResolver:
             return None
 
     def local_candidate(self, event_path: Path) -> Optional[dict[str, Any]]:
-        """按 ``plugins``、``plugins.v2``、``plugins.v3`` 目录解析候选。"""
+        """
+        按 ``plugins``、``plugins.v2``、``plugins.v3`` 目录解析候选。
+        """
         try:
             event_path = event_path.resolve()
             for repo_path in self._system().local_repo_paths():

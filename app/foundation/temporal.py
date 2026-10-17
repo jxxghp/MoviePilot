@@ -1,4 +1,6 @@
-"""日期、时间戳和时长的无状态转换能力。"""
+"""
+日期、时间戳和时长的无状态转换能力。
+"""
 
 import bisect
 import datetime
@@ -14,7 +16,9 @@ _DATE_TEXT_LANGUAGES = ["zh", "zh-Hant", "ja", "en"]
 
 
 def format_approx_duration(seconds: Union[str, int, float]) -> str:
-    """把秒数格式化为单一最大单位的近似时长。"""
+    """
+    把秒数格式化为单一最大单位的近似时长。
+    """
     try:
         seconds = float(seconds)
     except (TypeError, ValueError):
@@ -30,7 +34,9 @@ def format_approx_duration(seconds: Union[str, int, float]) -> str:
 
 
 def format_duration(seconds: Union[str, int, float]) -> str:
-    """把秒数格式化为时分秒组合文本。"""
+    """
+    把秒数格式化为时分秒组合文本。
+    """
     hours = seconds // 3600
     remainder_seconds = seconds % 3600
     minutes = remainder_seconds // 60
@@ -45,7 +51,9 @@ def format_duration(seconds: Union[str, int, float]) -> str:
 
 
 def parse_datetime(value: Any) -> Optional[datetime.datetime]:
-    """将常见日期表达解析为 datetime，无法解析时返回 None。"""
+    """
+    将常见日期表达解析为 datetime，无法解析时返回 None。
+    """
     try:
         return dateutil.parser.parse(value)
     except (TypeError, ValueError, dateutil.parser.ParserError):
@@ -53,7 +61,9 @@ def parse_datetime(value: Any) -> Optional[datetime.datetime]:
 
 
 def normalize_datetime(value: str) -> str:
-    """把常见绝对或相对日期文本统一为本地日期时间格式。"""
+    """
+    把常见绝对或相对日期文本统一为本地日期时间格式。
+    """
     if not value:
         return value
     try:
@@ -64,7 +74,9 @@ def normalize_datetime(value: str) -> str:
 
 
 def format_timestamp(timestamp: str, date_format: str = "%Y-%m-%d %H:%M:%S") -> str:
-    """把 Unix 时间戳转换为指定格式的本地日期文本。"""
+    """
+    把 Unix 时间戳转换为指定格式的本地日期文本。
+    """
     if isinstance(timestamp, str) and not timestamp.isdigit():
         return timestamp
     try:
@@ -74,7 +86,9 @@ def format_timestamp(timestamp: str, date_format: str = "%Y-%m-%d %H:%M:%S") -> 
 
 
 def parse_timestamp(value: str) -> float:
-    """把日期表达转换为 Unix 时间戳，无法解析时返回零。"""
+    """
+    把日期表达转换为 Unix 时间戳，无法解析时返回零。
+    """
     if not value:
         return 0
     try:
@@ -85,7 +99,9 @@ def parse_timestamp(value: str) -> float:
 
 
 def format_minutes(minutes: int) -> str:
-    """把分钟数格式化为小时和分钟组合文本。"""
+    """
+    把分钟数格式化为小时和分钟组合文本。
+    """
     if not minutes:
         return ""
     hours, remaining_minutes = divmod(minutes, 60)
@@ -95,7 +111,9 @@ def format_minutes(minutes: int) -> str:
 
 
 def format_remaining(value: str) -> str:
-    """把本地日期时间文本格式化为距当前时间的剩余时长。"""
+    """
+    把本地日期时间文本格式化为距当前时间的剩余时长。
+    """
     if not value:
         return ""
     try:

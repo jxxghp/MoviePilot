@@ -1,3 +1,7 @@
+"""
+受控线程池提交与关闭，保留任务上下文并回收线程执行资源。
+"""
+
 import threading
 from concurrent.futures import Future
 from contextvars import copy_context
@@ -20,13 +24,17 @@ class ThreadHelper(metaclass=Singleton):
     """
 
     def __init__(self) -> None:
-        """按系统配置创建共享后台线程池。"""
+        """
+        按系统配置创建共享后台线程池。
+        """
         self._lifecycle_lock = threading.RLock()
         self.pool = self._new_pool()
 
     @staticmethod
     def _new_pool() -> OwnedThreadPoolExecutor:
-        """按当前运行配置构造一个新的共享线程池 owner。"""
+        """
+        按当前运行配置构造一个新的共享线程池 owner。
+        """
         return OwnedThreadPoolExecutor(
             max_workers=get_runtime_setting('CONF').threadpool
         )
@@ -38,15 +46,16 @@ class ThreadHelper(metaclass=Singleton):
             **kwargs: Any,
     ) -> Future[_Result]:
         """
-        提交任务
-        :param func: 函数
-        :param args: 参数
-        :param kwargs: 参数
-        :return: future
+        向共享后台线程池提交任务，并传播提交时捕获的上下文。
+
+        :param func: 需要在线程池中执行的同步函数
+        :param args: 传给目标函数的位置参数
+        :param kwargs: 传给目标函数的关键字参数
+        :return: 可等待执行结果或取消尚未开始工作的 Future
         """
         context = copy_context()
         with self._lifecycle_lock:
-            # strict mypy 跳过 execution 实现导入，需要在兼容门面恢复 Future 泛型。
+            # mypy 严格检查跳过 execution 实现导入，需要在兼容门面恢复 Future 泛型。
             return cast(
                 Future[_Result],
                 self.pool.submit(context.run, func, *args, **kwargs),

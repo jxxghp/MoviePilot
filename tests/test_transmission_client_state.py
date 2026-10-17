@@ -1,4 +1,6 @@
-"""Transmission 未配置状态和 SDK 参数转发的兼容边界。"""
+"""
+Transmission 未配置状态和 SDK 参数转发的兼容边界。
+"""
 
 from unittest.mock import Mock
 
@@ -11,7 +13,9 @@ from app.modules.transmission.transmission import Transmission
 @pytest.mark.parametrize("host", [None, "", "invalid-address"])
 @pytest.mark.parametrize("rename_partial_files", [None, False, True])
 def test_missing_address_keeps_state_and_reconnect_safe(monkeypatch, host, rename_partial_files):
-    """未配置或地址解析失败时不连接网络，状态查询与重连均能正常结束。"""
+    """
+    未配置或地址解析失败时不连接网络，状态查询与重连均能正常结束。
+    """
     factory = Mock()
     monkeypatch.setattr(client_module.transmission_rpc, "Client", factory)
     monkeypatch.setattr(client_module.UrlUtils, "parse_url_params", lambda **_kwargs: None)
@@ -28,7 +32,9 @@ def test_missing_address_keeps_state_and_reconnect_safe(monkeypatch, host, renam
 
 @pytest.mark.parametrize("rename_partial_files", [None, False, True])
 def test_configured_partial_file_flag_preserves_raw_value(monkeypatch, rename_partial_files):
-    """配置中的空值与布尔值保留原样，继续由登录层决定 SDK 开关。"""
+    """
+    配置中的空值与布尔值保留原样，继续由登录层决定 SDK 开关。
+    """
     sdk = Mock()
     monkeypatch.setattr(Transmission, "_Transmission__login_transmission", lambda _self: sdk)
     client = Transmission(host="transmission.invalid", port=9091, rename_partial_files=rename_partial_files)
@@ -39,7 +45,9 @@ def test_configured_partial_file_flag_preserves_raw_value(monkeypatch, rename_pa
 
 @pytest.mark.parametrize("protocol", [None, "http", "https"])
 def test_explicit_protocol_is_forwarded_without_coercion(monkeypatch, protocol):
-    """已有 protocol 扩展参数仍原样传给 SDK，包括显式空值。"""
+    """
+    已有 protocol 扩展参数仍原样传给 SDK，包括显式空值。
+    """
     sdk = Mock()
     sdk.get_session.return_value = {"rename-partial-files": True}
     factory = Mock(return_value=sdk)
@@ -51,7 +59,9 @@ def test_explicit_protocol_is_forwarded_without_coercion(monkeypatch, protocol):
 
 @pytest.mark.parametrize("download_limit,upload_limit", [(None, None), (None, 1), (1, None)])
 def test_incomplete_speed_limits_keep_failure_without_sdk_write(download_limit, upload_limit):
-    """缺少任一限速时维持失败返回，不能误把缺省参数当作关闭限速。"""
+    """
+    缺少任一限速时维持失败返回，不能误把缺省参数当作关闭限速。
+    """
     client = Transmission.__new__(Transmission)
     client.trc = Mock()
     assert client.set_speed_limit(download_limit, upload_limit) is False
@@ -60,7 +70,9 @@ def test_incomplete_speed_limits_keep_failure_without_sdk_write(download_limit, 
 
 @pytest.mark.parametrize("download_limit,upload_limit", [(0, 0), (1.5, 20.9)])
 def test_explicit_speed_limits_preserve_integer_conversion(download_limit, upload_limit):
-    """显式零值仍关闭限速，非零值保留原来的整数转换和开关行为。"""
+    """
+    显式零值仍关闭限速，非零值保留原来的整数转换和开关行为。
+    """
     client = Transmission.__new__(Transmission)
     client.trc = Mock()
     assert client.set_speed_limit(download_limit, upload_limit) is True

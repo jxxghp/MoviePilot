@@ -1,4 +1,6 @@
-"""配置快照启动顺序测试。"""
+"""
+配置快照启动顺序测试。
+"""
 
 import asyncio
 from types import SimpleNamespace
@@ -14,22 +16,32 @@ from app.startup.initializers import modules as modules_initializer
 
 
 class _InlineWorker:
-    """按提交顺序执行配置加载操作。"""
+    """
+    按提交顺序执行配置加载操作。
+    """
 
     async def run(self, operation):
-        """执行并返回操作结果。"""
+        """
+        执行并返回操作结果。
+        """
         return operation()
 
 
 class _MutableSettings:
-    """提供运行时配置代理回归测试所需的最小可变设置实现。"""
+    """
+    提供运行时配置代理回归测试所需的最小可变设置实现。
+    """
 
     def __init__(self) -> None:
-        """初始化一项可读写的部署设置。"""
+        """
+        初始化一项可读写的部署设置。
+        """
         self.VALUE = "before"
 
     def model_dump(self, *, include=None, exclude=None):
-        """导出测试设置快照。"""
+        """
+        导出测试设置快照。
+        """
         values = {"VALUE": self.VALUE}
         if include is not None:
             values = {key: value for key, value in values.items() if key in include}
@@ -38,19 +50,25 @@ class _MutableSettings:
         return values
 
     def update_settings(self, env):
-        """批量更新测试设置。"""
+        """
+        批量更新测试设置。
+        """
         for key, value in env.items():
             setattr(self, key, value)
         return {key: (True, "") for key in env}
 
     def update_setting(self, key, value):
-        """更新单项测试设置。"""
+        """
+        更新单项测试设置。
+        """
         setattr(self, key, value)
         return True, ""
 
 
 def _isolate_startup_failure_cleanup(monkeypatch) -> None:
-    """隔离启动失败回滚中的非目标进程 owner，避免关闭其他用例共享资源。"""
+    """
+    隔离启动失败回滚中的非目标进程 owner，避免关闭其他用例共享资源。
+    """
     absent_owner = SimpleNamespace(get_existing_instance=lambda: None)
     for name in (
         "ModuleManager",
@@ -99,23 +117,35 @@ def _isolate_startup_failure_cleanup(monkeypatch) -> None:
 async def test_runtime_settings_service_uses_legacy_settings_from_startup_root(
     monkeypatch,
 ) -> None:
-    """组合根装配的设置服务应直接读写唯一部署配置对象。"""
+    """
+    组合根装配的设置服务应直接读写唯一部署配置对象。
+    """
     legacy_settings = _MutableSettings()
 
     class _SystemConfig:
-        """提供无需数据库的系统配置快照桩。"""
+        """
+        提供无需数据库的系统配置快照桩。
+        """
 
         def load_snapshot(self):
-            """模拟系统配置快照加载。"""
+            """
+            模拟系统配置快照加载。
+            """
 
         def publish_many(self, _values):
-            """模拟事务提交后的系统配置快照发布。"""
+            """
+            模拟事务提交后的系统配置快照发布。
+            """
 
     class _UserConfig:
-        """提供无需数据库的用户配置快照桩。"""
+        """
+        提供无需数据库的用户配置快照桩。
+        """
 
         def load_snapshot(self):
-            """模拟用户配置快照加载。"""
+            """
+            模拟用户配置快照加载。
+            """
 
     monkeypatch.setattr(configuration_composition, "SystemConfigOper", _SystemConfig)
     monkeypatch.setattr(
@@ -142,24 +172,36 @@ async def test_runtime_settings_service_uses_legacy_settings_from_startup_root(
 async def test_configuration_services_publish_after_both_snapshots_load(
     monkeypatch,
 ) -> None:
-    """两个完整快照加载成功前不发布任一配置服务。"""
+    """
+    两个完整快照加载成功前不发布任一配置服务。
+    """
     events = []
 
     class _SystemConfig:
-        """记录系统配置快照加载顺序。"""
+        """
+        记录系统配置快照加载顺序。
+        """
 
         def load_snapshot(self):
-            """登记系统快照已加载。"""
+            """
+            登记系统快照已加载。
+            """
             events.append("load-system")
 
         def publish_many(self, _values):
-            """模拟事务提交后的系统配置快照发布。"""
+            """
+            模拟事务提交后的系统配置快照发布。
+            """
 
     class _UserConfig:
-        """记录用户配置快照加载顺序。"""
+        """
+        记录用户配置快照加载顺序。
+        """
 
         def load_snapshot(self):
-            """登记用户快照已加载。"""
+            """
+            登记用户快照已加载。
+            """
             events.append("load-user")
 
     monkeypatch.setattr(configuration_composition, "SystemConfigOper", _SystemConfig)
@@ -203,21 +245,31 @@ async def test_configuration_services_publish_after_both_snapshots_load(
 async def test_configuration_load_failure_does_not_publish_partial_service(
     monkeypatch,
 ) -> None:
-    """任一快照加载失败时不发布半套配置服务。"""
+    """
+    任一快照加载失败时不发布半套配置服务。
+    """
     published = []
 
     class _SystemConfig:
-        """提供成功的系统配置快照加载桩。"""
+        """
+        提供成功的系统配置快照加载桩。
+        """
 
         def load_snapshot(self):
-            """模拟系统配置加载成功。"""
+            """
+            模拟系统配置加载成功。
+            """
             return None
 
     class _UserConfig:
-        """提供失败的用户配置快照加载桩。"""
+        """
+        提供失败的用户配置快照加载桩。
+        """
 
         def load_snapshot(self):
-            """模拟用户配置加载失败。"""
+            """
+            模拟用户配置加载失败。
+            """
             raise RuntimeError("load failed")
 
     monkeypatch.setattr(configuration_composition, "SystemConfigOper", _SystemConfig)
@@ -247,7 +299,9 @@ async def test_configuration_load_failure_does_not_publish_partial_service(
 
 
 def test_publish_configuration_reuses_composed_runtime_and_settings(monkeypatch) -> None:
-    """正式运行时与兼容入口必须共享同一组配置对象。"""
+    """
+    正式运行时与兼容入口必须共享同一组配置对象。
+    """
     events = {}
     system_service = SimpleNamespace(configure_change_publisher=MagicMock())
     user_service = object()
@@ -313,7 +367,9 @@ def test_publish_configuration_reuses_composed_runtime_and_settings(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_modules_startup_failure_stops_database_runtime(monkeypatch) -> None:
-    """首次启动失败时关闭 worker、撤销 provider 并释放数据库引擎。"""
+    """
+    首次启动失败时关闭 worker、撤销 provider 并释放数据库引擎。
+    """
     _isolate_startup_failure_cleanup(monkeypatch)
     monkeypatch.setattr(
         modules_initializer,
@@ -344,7 +400,9 @@ async def test_modules_startup_failure_stops_database_runtime(monkeypatch) -> No
 async def test_modules_startup_failure_preserves_original_error_when_cleanup_fails(
     monkeypatch,
 ) -> None:
-    """数据库任务清理失败时仍向上层保留原始启动异常。"""
+    """
+    数据库任务清理失败时仍向上层保留原始启动异常。
+    """
     _isolate_startup_failure_cleanup(monkeypatch)
     startup_error = RuntimeError("startup failed")
     monkeypatch.setattr(
@@ -377,13 +435,19 @@ async def test_modules_startup_failure_preserves_original_error_when_cleanup_fai
 
 @pytest.mark.asyncio
 async def test_database_worker_owner_is_retained_when_shutdown_fails(monkeypatch) -> None:
-    """数据库 worker 关闭失败时保留 owner，允许后续重试或诊断。"""
+    """
+    数据库 worker 关闭失败时保留 owner，允许后续重试或诊断。
+    """
 
     class _FailingWorker:
-        """模拟无法完成关闭的数据库 worker。"""
+        """
+        模拟无法完成关闭的数据库 worker。
+        """
 
         async def shutdown(self):
-            """抛出关闭错误以验证 owner 保留。"""
+            """
+            抛出关闭错误以验证 owner 保留。
+            """
             raise RuntimeError("shutdown failed")
 
     worker = _FailingWorker()
@@ -402,26 +466,36 @@ async def test_database_worker_owner_is_retained_when_shutdown_fails(monkeypatch
 async def test_database_runtime_rejects_parallel_start_and_allows_next_lifespan(
     monkeypatch,
 ) -> None:
-    """数据库 runtime 在启动中拒绝重入，成功关闭后才允许新 lifespan。"""
+    """
+    数据库 runtime 在启动中拒绝重入，成功关闭后才允许新 lifespan。
+    """
     started = asyncio.Event()
     release = asyncio.Event()
     created = []
 
     class _Worker:
-        """阻塞首次启动以验证并行重入保护。"""
+        """
+        阻塞首次启动以验证并行重入保护。
+        """
 
         def __init__(self) -> None:
-            """记录构造出的唯一 worker。"""
+            """
+            记录构造出的唯一 worker。
+            """
             self.stopped = False
             created.append(self)
 
         async def start(self) -> None:
-            """等待测试允许后完成启动。"""
+            """
+            等待测试允许后完成启动。
+            """
             started.set()
             await release.wait()
 
         async def shutdown(self) -> None:
-            """记录 worker 已完成关闭。"""
+            """
+            记录 worker 已完成关闭。
+            """
             self.stopped = True
 
     monkeypatch.setattr(database_composition, "DatabaseWorker", _Worker)
@@ -460,14 +534,20 @@ async def test_database_runtime_rejects_parallel_start_and_allows_next_lifespan(
 async def test_database_runtime_start_failure_does_not_publish_transaction_runners(
     monkeypatch,
 ) -> None:
-    """Worker 启动失败时不得留下可调用的无会话事务入口。"""
+    """
+    Worker 启动失败时不得留下可调用的无会话事务入口。
+    """
     published = []
 
     class _FailingWorker:
-        """模拟线程池准备阶段失败的数据库 worker。"""
+        """
+        模拟线程池准备阶段失败的数据库 worker。
+        """
 
         async def start(self) -> None:
-            """在 owner 发布前抛出启动错误。"""
+            """
+            在 owner 发布前抛出启动错误。
+            """
             raise RuntimeError("worker start failed")
 
     monkeypatch.setattr(database_composition, "DatabaseWorker", _FailingWorker)
@@ -489,7 +569,9 @@ async def test_database_runtime_start_failure_does_not_publish_transaction_runne
 
 @pytest.mark.asyncio
 async def test_database_service_reset_revokes_transaction_runners() -> None:
-    """数据库服务撤销后同步和异步无会话写入口都必须恢复未装配错误。"""
+    """
+    数据库服务撤销后同步和异步无会话写入口都必须恢复未装配错误。
+    """
     from app.db.uow import (
         configure_transaction_runners,
         run_async_transaction,
@@ -497,7 +579,9 @@ async def test_database_service_reset_revokes_transaction_runners() -> None:
     )
 
     async def async_runner(_operation):
-        """返回固定值以证明 reset 前异步 runner 已发布。"""
+        """
+        返回固定值以证明 reset 前异步 runner 已发布。
+        """
         return "async"
 
     configure_transaction_runners(
@@ -517,7 +601,9 @@ async def test_database_service_reset_revokes_transaction_runners() -> None:
 
 @pytest.mark.asyncio
 async def test_startup_failure_revokes_published_database_services(monkeypatch) -> None:
-    """后续启动阶段失败并关闭 worker 后不得留下已失效的全局服务。"""
+    """
+    后续启动阶段失败并关闭 worker 后不得留下已失效的全局服务。
+    """
     _isolate_startup_failure_cleanup(monkeypatch)
     from app.application.configuration import get_configured_system_config
     from app.application.plugin.transaction import get_plugin_persistence

@@ -1,4 +1,6 @@
-"""跨 API、Agent 和宿主回执使用的敏感字段身份判定。"""
+"""
+跨 API、Agent 和宿主回执使用的敏感字段身份判定。
+"""
 
 import re
 from typing import Any
@@ -39,7 +41,9 @@ _SECRET_SETTING_ENDINGS = ("_encrypt_key",)
 
 
 def _normalize_field_name(value: Any) -> str:
-    """将短字段名规范化为 snake_case，非字符串不参与身份推导。"""
+    """
+    将短字段名规范化为 snake_case，非字符串不参与身份推导。
+    """
     if type(value) is not str:
         return ""
     text = value.strip()
@@ -51,7 +55,9 @@ def _normalize_field_name(value: Any) -> str:
 
 
 def is_secret_setting_key(key: Any) -> bool:
-    """按完整字段或类型后缀识别凭据，避免误伤 token 统计与过期配置。"""
+    """
+    按完整字段或类型后缀识别凭据，避免误伤 token 统计与过期配置。
+    """
     normalized = _normalize_field_name(key)
     if not normalized:
         return False

@@ -1,4 +1,6 @@
-"""插件可用的稳定安全能力门面与旧 ``app.core.security`` 目标。"""
+"""
+插件可用的稳定安全能力门面与旧 ``app.core.security`` 目标。
+"""
 
 from app.adapters.web.security.access import (
     anthropic_api_key_header,

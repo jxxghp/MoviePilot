@@ -1,3 +1,7 @@
+"""
+提供通知渠道配置查询、管理和测试接口。
+"""
+
 from typing import Any, Dict
 
 from fastapi import Body, Depends
@@ -15,7 +19,9 @@ router = ResponseAPIRouter()
 
 
 def _normalize_configs(value: list[NotificationConf]) -> list[dict[str, Any]]:
-    """规整通知配置身份和名称，拒绝会导致运行目录覆盖的输入。"""
+    """
+    规整通知配置身份和名称，拒绝会导致运行目录覆盖的输入。
+    """
     normalized: list[dict[str, Any]] = []
     names: set[str] = set()
     for config in value:
@@ -41,7 +47,9 @@ async def save_config(
     configs: list[NotificationConf] = Body(...),
     _: object = Depends(get_current_active_superuser),
 ) -> _SchemaResponse[object]:
-    """一次保存通知配置，并由渠道模块处理改名与删除缓存。"""
+    """
+    一次保存通知配置，并由渠道模块处理改名与删除缓存。
+    """
     try:
         current = _normalize_configs(configs)
         previous = get_configured_system_config().get(SystemConfigKey.Notifications) or []

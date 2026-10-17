@@ -1,4 +1,6 @@
-"""完整媒体识别结果的分类执行与兼容回退服务。"""
+"""
+完整媒体识别结果的分类执行与兼容回退服务。
+"""
 
 from __future__ import annotations
 
@@ -24,35 +26,47 @@ from app.schemas.category import (
     ClassificationSelection,
 )
 
+# 可以在完整识别出口执行自动分类的标准媒体对象。
 ClassificationSubject: TypeAlias = (
     MediaInfo | MusicInfo | MusicAlbumInfo | MusicArtistInfo
 )
-"""可以在完整识别出口执行自动分类的标准媒体对象。"""
 
+# 按当前插件注册表校验并提供来源扩展分类事实的端口。
 ClassificationExtensionFactsProvider: TypeAlias = Callable[
     [ClassificationSubject],
     Mapping[str, Mapping[str, ClassificationFactValue]],
 ]
-"""按当前插件注册表校验并提供来源扩展分类事实的端口。"""
 
 _LEGACY_TMDB_SOURCE: Final[str] = "themoviedb"
 _LEGACY_RULE_PREFIX: Final[str] = "legacy."
 
 
 class ClassificationRuntimePort(Protocol):
-    """分类执行只需要的活动策略与 legacy 快照端口。"""
+    """
+    分类执行只需要的活动策略与旧格式快照端口。
+    """
 
     def active_policy(self) -> ClassificationPolicy | None:
-        """返回活动策略；配置不可用时返回空值。"""
+        """
+        返回活动策略；配置不可用时返回空值。
+
+        :return: 当前活动策略；配置尚未就绪或不可用时返回 None
+        """
         ...
 
     def legacy_config(self) -> CategoryConfig:
-        """返回隔离的 legacy 配置快照。"""
+        """
+        返回隔离的旧格式配置快照。
+
+        :return: 与运行时状态隔离的旧格式分类配置副本
+        """
         ...
 
 
 class ClassificationExecutionPort(Protocol):
-    """Chain、订阅和整理应用层共享的纯分类执行端口。"""
+    """
+    Chain、订阅和整理应用层共享的分类执行端口。
+    """
 
     async def async_build_facts(
         self,
@@ -60,7 +74,13 @@ class ClassificationExecutionPort(Protocol):
         *,
         policy: ClassificationPolicy | None = None,
     ) -> ClassificationFacts | None:
-        """按指定或活动策略异步准备事实，供预览和新旧策略比较复用。"""
+        """
+        按指定或活动策略异步准备事实，供预览和新旧策略比较复用。
+
+        :param media: 已完成媒体识别的标准对象，构造事实时不原地修改
+        :param policy: 构造事实采用的策略；None 使用当前活动策略
+        :return: 按策略需要补充后的事实；策略不可用或媒体无法建立标准事实时返回 None
+        """
         ...
 
     def build_facts(
@@ -69,7 +89,13 @@ class ClassificationExecutionPort(Protocol):
         *,
         policy: ClassificationPolicy | None = None,
     ) -> ClassificationFacts | None:
-        """同步构造与实际分类一致的完整事实快照，不写入媒体或策略。"""
+        """
+        同步构造与实际分类一致的完整事实快照，不写入媒体或策略。
+
+        :param media: 已完成媒体识别的标准对象，构造事实时不原地修改
+        :param policy: 构造事实采用的策略；None 使用当前活动策略
+        :return: 按策略需要补充后的事实；策略不可用或媒体无法建立标准事实时返回 None
+        """
         ...
 
     def finalize(
@@ -85,7 +111,16 @@ class ClassificationExecutionPort(Protocol):
         refresh: bool = False,
         allow_enrichment: bool = True,
     ) -> ClassificationSubject:
-        """分类完整媒体；离线整理可禁止外部事实补充，仍执行当前用户分类策略。"""
+        """
+        分类完整媒体；离线整理可禁止外部事实补充，仍执行当前用户分类策略。
+
+        :param media: 待分类的完整识别结果，返回时与原对象隔离
+        :param extensions: 调用方提供的来源扩展事实；None 只使用已注册扩展提供方
+        :param effective_override: 显式指定的最终分类；None 时保留媒体已有的显式选择
+        :param refresh: 为调用兼容保留的刷新标志；当前实现始终按本次读取的策略重新计算
+        :param allow_enrichment: 是否允许外部补充缺失事实；False 时仅使用本地可得事实
+        :return: 带本次分类结果的独立媒体副本；策略不可用时保留显式分类或执行兼容回退
+        """
         ...
 
     async def async_finalize(
@@ -101,12 +136,23 @@ class ClassificationExecutionPort(Protocol):
         refresh: bool = False,
         allow_enrichment: bool = True,
     ) -> ClassificationSubject:
-        """异步分类完整媒体对象，并允许有界补充缺失标准事实。"""
+        """
+        异步分类完整媒体对象，并允许有界补充缺失标准事实。
+
+        :param media: 待分类的完整识别结果，返回时与原对象隔离
+        :param extensions: 调用方提供的来源扩展事实；None 只使用已注册扩展提供方
+        :param effective_override: 显式指定的最终分类；None 时保留媒体已有的显式选择
+        :param refresh: 为调用兼容保留的刷新标志；当前实现始终按本次读取的策略重新计算
+        :param allow_enrichment: 是否允许外部补充缺失事实；False 时仅使用本地可得事实
+        :return: 带本次分类结果的独立媒体副本；策略不可用时保留显式分类或执行兼容回退
+        """
         ...
 
 
 class ClassificationEnrichmentPort(Protocol):
-    """分类执行服务消费的同步与异步缺失事实补充端口。"""
+    """
+    分类执行服务消费的同步与异步缺失事实补充端口。
+    """
 
     def enrich(
         self,
@@ -114,7 +160,14 @@ class ClassificationEnrichmentPort(Protocol):
         facts: ClassificationFacts,
         media: object,
     ) -> ClassificationFacts:
-        """同步补充缺失标准事实。"""
+        """
+        同步补充缺失标准事实。
+
+        :param policy: 决定所需字段及补充范围的分类策略
+        :param facts: 主来源已确认的标准事实，不得被无依据覆盖
+        :param media: 用于提取媒体身份和来源详情的标准对象
+        :return: 合并已验证补充信息的事实；无可用补充时保留原有事实
+        """
         ...
 
     async def async_enrich(
@@ -123,12 +176,21 @@ class ClassificationEnrichmentPort(Protocol):
         facts: ClassificationFacts,
         media: object,
     ) -> ClassificationFacts:
-        """异步补充缺失标准事实。"""
+        """
+        异步补充缺失标准事实。
+
+        :param policy: 决定所需字段及补充范围的分类策略
+        :param facts: 主来源已确认的标准事实，不得被无依据覆盖
+        :param media: 用于提取媒体身份和来源详情的标准对象
+        :return: 合并已验证补充信息的事实；无可用补充时保留原有事实
+        """
         ...
 
 
 class ClassificationExecutionService:
-    """按当前不可变策略分类完整媒体对象，并隔离来源缓存对象。"""
+    """
+    按当前不可变策略分类完整媒体对象，并隔离来源缓存对象。
+    """
 
     def __init__(
         self,
@@ -137,7 +199,9 @@ class ClassificationExecutionService:
         extension_facts_provider: ClassificationExtensionFactsProvider | None = None,
         enrichment: ClassificationEnrichmentPort | None = None,
     ) -> None:
-        """保存策略运行时、扩展事实校验端口和可选跨来源补充服务。"""
+        """
+        保存策略运行时、扩展事实校验端口和可选跨来源补充服务。
+        """
         self._runtime = runtime
         self._extension_facts_provider = extension_facts_provider
         self._enrichment = enrichment
@@ -148,7 +212,9 @@ class ClassificationExecutionService:
         *,
         policy: ClassificationPolicy | None = None,
     ) -> ClassificationFacts | None:
-        """按指定或活动策略补充事实，隔离候选策略与原媒体对象。"""
+        """
+        按指定或活动策略补充事实，隔离候选策略与原媒体对象。
+        """
         finalized, policy, facts, _ = self._prepare(
             media,
             extensions=None,
@@ -161,7 +227,8 @@ class ClassificationExecutionService:
         if self._enrichment is not None:
             try:
                 facts = await self._enrichment.async_enrich(policy, facts, finalized)
-            except Exception:  # noqa: BLE001  详情补充失败时保留主来源事实
+            # 详情补充失败时保留主来源事实
+            except Exception:  # noqa: BLE001
                 pass
         return facts
 
@@ -171,7 +238,9 @@ class ClassificationExecutionService:
         *,
         policy: ClassificationPolicy | None = None,
     ) -> ClassificationFacts | None:
-        """同步构造并按当前策略补充缺失事实，不修改媒体对象。"""
+        """
+        同步构造并按当前策略补充缺失事实，不修改媒体对象。
+        """
         finalized, active_policy, facts, _ = self._prepare(
             media,
             extensions=None,
@@ -185,7 +254,8 @@ class ClassificationExecutionService:
         if self._enrichment is not None:
             try:
                 facts = self._enrichment.enrich(policy, facts, finalized)
-            except Exception:  # noqa: BLE001 详情补充失败时保留主来源事实
+            # 详情补充失败时保留主来源事实
+            except Exception:  # noqa: BLE001
                 pass
         return facts
 
@@ -202,7 +272,9 @@ class ClassificationExecutionService:
         refresh: bool = False,
         allow_enrichment: bool = True,
     ) -> ClassificationSubject:
-        """复制并分类完整结果；离线调用可禁用外部补充，但仍应用当前策略。"""
+        """
+        复制并分类完整结果；离线调用可禁用外部补充，但仍应用当前策略。
+        """
         finalized, policy, facts, effective_override = self._prepare(
             media,
             extensions=extensions,
@@ -215,7 +287,8 @@ class ClassificationExecutionService:
         if allow_enrichment and self._enrichment is not None:
             try:
                 facts = self._enrichment.enrich(policy, facts, finalized)
-            except Exception:  # noqa: BLE001  分类补充不得成为识别硬依赖
+            # 分类补充不得成为识别硬依赖
+            except Exception:  # noqa: BLE001
                 pass
         return self._apply_evaluation(
             finalized,
@@ -237,7 +310,9 @@ class ClassificationExecutionService:
         refresh: bool = False,
         allow_enrichment: bool = True,
     ) -> ClassificationSubject:
-        """异步分类完整结果，支持只使用本地事实，补充失败时保留原始事实。"""
+        """
+        异步分类完整结果，支持只使用本地事实，补充失败时保留原始事实。
+        """
         finalized, policy, facts, effective_override = self._prepare(
             media,
             extensions=extensions,
@@ -254,7 +329,8 @@ class ClassificationExecutionService:
                     facts,
                     finalized,
                 )
-            except Exception:  # noqa: BLE001  分类补充不得成为识别硬依赖
+            # 分类补充不得成为识别硬依赖
+            except Exception:  # noqa: BLE001
                 pass
         return self._apply_evaluation(
             finalized,
@@ -278,7 +354,9 @@ class ClassificationExecutionService:
         ClassificationFacts | None,
         ClassificationSelection | None,
     ]:
-        """复制媒体、读取一次策略并构造同步异步共用的初始事实。"""
+        """
+        复制媒体、读取一次策略并构造同步异步共用的初始事实。
+        """
         del refresh
         effective_override = effective_override or _explicit_effective_override(media)
         finalized = deepcopy(media)
@@ -327,7 +405,9 @@ class ClassificationExecutionService:
         *,
         effective_override: ClassificationSelection | None,
     ) -> ClassificationSubject:
-        """应用纯求值结果、降级保护和人工覆盖，并更新兼容目录分类。"""
+        """
+        应用纯求值结果、降级保护和人工覆盖，并更新兼容目录分类。
+        """
         evaluation = evaluate_classification_facts(policy, facts)
         result = evaluation.result.model_copy(deep=True)
         carried = _degraded_automatic_selection(finalized, policy, result)
@@ -346,19 +426,24 @@ class ClassificationExecutionService:
         self,
         media: ClassificationSubject,
     ) -> Mapping[str, Mapping[str, ClassificationFactValue]]:
-        """隔离可选插件事实端口故障，媒体识别结果仍按缺失字段继续分类。"""
+        """
+        隔离可选插件事实端口故障，媒体识别结果仍按缺失字段继续分类。
+        """
         if self._extension_facts_provider is None:
             return {}
         try:
             return self._extension_facts_provider(media)
-        except Exception:  # noqa: BLE001  扩展事实不得成为识别硬依赖
+        # 扩展事实不得成为识别硬依赖
+        except Exception:  # noqa: BLE001
             return {}
 
     def finalize_many(
         self,
         media_items: Mapping[str, ClassificationSubject],
     ) -> dict[str, ClassificationSubject]:
-        """逐项分类路径映射，保持键顺序并隔离每个来源结果。"""
+        """
+        逐项分类路径映射，保持键顺序并隔离每个来源结果。
+        """
         return {
             key: self.finalize(media)
             for key, media in media_items.items()
@@ -370,7 +455,9 @@ class ClassificationExecutionService:
         *,
         effective_override: ClassificationSelection | None,
     ) -> None:
-        """策略不可用时仅恢复 legacy TMDB 目录分类并标记失效状态。"""
+        """
+        策略不可用时仅恢复旧格式 TMDB 目录分类并标记失效状态。
+        """
         media.set_library_category("")
         legacy_category = resolve_legacy_tmdb_category(
             self._runtime.legacy_config(),
@@ -406,7 +493,9 @@ def _evaluate_legacy_tmdb_compatibility(
     *,
     trace: bool = False,
 ) -> ClassificationEvaluation | None:
-    """让旧 TMDB 分类规则消费非 TMDB 来源已经拥有的标准事实。"""
+    """
+    让旧 TMDB 分类规则消费非 TMDB 来源已经拥有的标准事实。
+    """
     if facts.identity.media_source == _LEGACY_TMDB_SOURCE:
         return None
     legacy_rules = [
@@ -432,7 +521,9 @@ def _legacy_tmdb_compatibility_facts(
     policy: ClassificationPolicy,
     facts: ClassificationFacts,
 ) -> ClassificationFacts:
-    """把跨来源标准字段投影到旧规则的 TMDB 扩展命名空间。"""
+    """
+    把跨来源标准字段投影到旧规则的 TMDB 扩展命名空间。
+    """
     extensions = {
         str(source): {str(key): value for key, value in values.items()}
         for source, values in facts.extensions.items()
@@ -460,7 +551,9 @@ def evaluate_classification_facts(
     *,
     trace: bool = False,
 ) -> ClassificationEvaluation:
-    """按真实执行路径求值事实，并兼容非 TMDB 来源的旧 TMDB 规则。"""
+    """
+    按真实执行路径求值事实，并兼容非 TMDB 来源的旧 TMDB 规则。
+    """
     evaluation = ClassificationEvaluator.evaluate(policy, facts, trace=trace)
     legacy_evaluation = _evaluate_legacy_tmdb_compatibility(policy, facts, trace=trace)
     if legacy_evaluation is not None and _uses_fallback(evaluation.result):
@@ -471,7 +564,9 @@ def evaluate_classification_facts(
 def _legacy_tmdb_info_from_standard_facts(
     facts: ClassificationFacts,
 ) -> dict[str, object]:
-    """构造旧规则投影所需的有限 TMDB 字段，不伪造缺失事实。"""
+    """
+    构造旧规则投影所需的有限 TMDB 字段，不伪造缺失事实。
+    """
     media = facts.media
     info: dict[str, object] = {}
     if media.language:
@@ -499,7 +594,9 @@ def _legacy_tmdb_info_from_standard_facts(
 
 
 def _uses_fallback(result: ClassificationResult) -> bool:
-    """判断主来源求值是否没有命中具体分类规则。"""
+    """
+    判断主来源求值是否没有命中具体分类规则。
+    """
     selection = result.effective or result.recommended
     return selection is None or selection.source in {None, "fallback", "source_fallback"}
 
@@ -509,7 +606,9 @@ def _classification_extensions(
     media: ClassificationSubject,
     supplied: Mapping[str, Mapping[str, ClassificationFactValue]] | None,
 ) -> dict[str, dict[str, ClassificationFactValue]]:
-    """合并受控调用方扩展事实和策略实际需要的 legacy TMDB 事实。"""
+    """
+    合并受控调用方扩展事实和策略实际需要的旧格式 TMDB 事实。
+    """
     merged = {
         str(source): {str(key): value for key, value in values.items()}
         for source, values in (supplied or {}).items()
@@ -528,7 +627,9 @@ def _merge_supplied_extensions(
     registered: Mapping[str, Mapping[str, ClassificationFactValue]],
     supplied: Mapping[str, Mapping[str, ClassificationFactValue]] | None,
 ) -> dict[str, dict[str, ClassificationFactValue]]:
-    """合并已校验插件事实和受信调用方事实，显式调用方值具有最终优先级。"""
+    """
+    合并已校验插件事实和受信调用方事实，显式调用方值具有最终优先级。
+    """
     merged = {
         str(source): {str(key): value for key, value in values.items()}
         for source, values in registered.items()
@@ -543,7 +644,9 @@ def _merge_supplied_extensions(
 def _explicit_effective_override(
     media: ClassificationSubject,
 ) -> ClassificationSelection | None:
-    """保留已装配的人工覆盖，避免补充元数据时被自动推荐覆盖。"""
+    """
+    保留已装配的人工覆盖，避免补充元数据时被自动推荐覆盖。
+    """
     classification = getattr(media, "classification", None)
     if not isinstance(classification, ClassificationResult):
         return None
@@ -558,7 +661,8 @@ def _degraded_automatic_selection(
     policy: ClassificationPolicy,
     result: ClassificationResult,
 ) -> ClassificationSelection | None:
-    """事实缺失把同策略结果打成兜底时，返回可复用的既有自动分类选择。
+    """
+    事实缺失把同策略结果打成兜底时，返回可复用的既有自动分类选择。
 
     补充元数据的入口会先裁剪媒体字段再重新分类，此时缺失事实只会让结果更差，
     不会带来新的判断依据。因此仅在既有快照来自同一策略修订且命中过规则，而本次
@@ -586,12 +690,16 @@ def _degraded_automatic_selection(
 
 
 def _enum_text(value: object) -> str:
-    """把字符串枚举或普通值转换为去空白文本。"""
+    """
+    把字符串枚举或普通值转换为去空白文本。
+    """
     if isinstance(value, Enum):
         value = value.value
     return str(value or "").strip()
 
 
 def _category_path_snapshot(selection: ClassificationSelection) -> str:
-    """把已校验路径投影为过渡期 library_category 兼容字符串。"""
+    """
+    把已校验路径投影为过渡期 library_category 兼容字符串。
+    """
     return "/".join(selection.category_path)

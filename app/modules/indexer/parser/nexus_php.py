@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+解析 NexusPHP 站点的用户资料、流量和做种信息。
+"""
+
 import re
 from typing import Any, Optional, Union
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -22,7 +26,9 @@ class NexusPhpSiteUserInfo(SiteParserBase):
     _summary_seeding_size: Optional[int] = None
 
     def _parse_site_page(self, html_text: SitePage) -> None:
-        """识别用户详情入口，并为定制站点选择已知的做种接口。"""
+        """
+        识别用户详情入口，并为定制站点选择已知的做种接口。
+        """
         html_text = self._prepare_html_text(html_text)
 
         # NexusPHP v1.10+ 使用 UUID 标识用户，详情链接参数为 uuid
@@ -80,9 +86,9 @@ class NexusPhpSiteUserInfo(SiteParserBase):
 
     def _parse_message_unread(self, html_text: str) -> None:
         """
-        解析未读短消息数量
-        :param html_text:
-        :return:
+        解析未读短消息数量。
+
+        :param html_text: 当前页面或 API 响应文本
         """
         html = etree.HTML(html_text)
         try:
@@ -107,7 +113,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
 
     def _parse_user_base_info(self, html_text: SitePage) -> None:
         """
-        解析用户基本信息
+        解析用户基本信息。
         """
         if isinstance(html_text, dict):
             raise TypeError("expected string or bytes-like object, got 'dict'")
@@ -145,7 +151,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
 
     def _parse_user_traffic_info(self, html_text: str) -> None:
         """
-        解析用户流量信息
+        解析用户流量信息。
         """
         html_text = self._prepare_html_text(html_text)
         upload_match = re.search(r"[^总]上[传傳]量?[:：_<>/a-zA-Z-=\"'\s#;]+([\d,.\s]+[KMGTPI]*B)", html_text,
@@ -218,9 +224,10 @@ class NexusPhpSiteUserInfo(SiteParserBase):
     @staticmethod
     def _parse_ucoin(html: etree._Element) -> tuple[bool, float]:
         """
-        解析ucoin, 统一转换为铜币
-        :param html:
-        :return:
+        解析站点金币、银币和铜币，并统一换算为铜币。
+
+        :param html: 包含货币标记的页面节点
+        :return: 是否取得非零货币值及换算结果；没有有效值时返回 False 和 0.0
         """
         if DomUtils.has_child_elements(html):
             gold, silver, copper = None, None, None
@@ -274,7 +281,9 @@ class NexusPhpSiteUserInfo(SiteParserBase):
             self.seeding_size = self._summary_seeding_size
 
     def _parse_seeding_summary(self, html: Any) -> None:
-        """读取已知定制站点的明确汇总，不把缺失体积推算为真实值。"""
+        """
+        读取已知定制站点的明确汇总，不把缺失体积推算为真实值。
+        """
         if self._site_domain.lower().removeprefix("www.") not in {
             "pterclub.net", "pterclub.com", "keepfrds.com", "pt.sjtu.edu.cn"
         }:
@@ -293,8 +302,9 @@ class NexusPhpSiteUserInfo(SiteParserBase):
 
     def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: Optional[bool] = False) -> Optional[str]:
         """
-        做种相关信息
-        :param html_text:
+        做种相关信息。
+
+        :param html_text: 当前页面或 API 响应文本
         :param multi_page: 是否多页数据
         :return: 下页地址
         """
@@ -374,7 +384,9 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         return next_page
 
     def _seeding_columns(self, html: Any) -> tuple[int, int]:
-        """优先使用表头标记，朋友的无标记模板使用已确认的固定列位。"""
+        """
+        优先使用表头标记，朋友的无标记模板使用已确认的固定列位。
+        """
         size_col = 3
         seeders_col = 4
         # 搜索size列
@@ -399,7 +411,9 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         return size_col, seeders_col
 
     def _seeding_next_page(self, html: Any) -> Optional[str]:
-        """筛除详情链接并补齐下一页的用户标识。"""
+        """
+        筛除详情链接并补齐下一页的用户标识。
+        """
         # 是否存在下页数据
         next_page = None
         next_page_text = html.xpath(
@@ -412,7 +426,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
                 break
             next_page = None
 
-        # fix up page url
+        # 补齐分页地址所需的用户标识，避免请求错误的做种列表。
         if next_page:
             next_page = self._fixup_next_page_url(next_page, self.userid)
         return next_page
@@ -439,9 +453,9 @@ class NexusPhpSiteUserInfo(SiteParserBase):
 
     def _parse_user_detail_info(self, html_text: str) -> None:
         """
-        解析用户额外信息，加入时间，等级
-        :param html_text:
-        :return:
+        解析用户额外信息，加入时间，等级。
+
+        :param html_text: 当前页面或 API 响应文本
         """
         html = etree.HTML(html_text)
         try:
@@ -514,16 +528,16 @@ class NexusPhpSiteUserInfo(SiteParserBase):
 
     def _fixup_torrent_seeding_page(self, html: etree._Element) -> None:
         """
-        修正种子页面链接
-        :param html:
-        :return:
+        从页面入口或脚本参数补齐做种列表地址和用户标识。
+
+        :param html: 用户详情页面节点，缺失时保留当前地址
         """
         # 单独的种子页面
         seeding_url_text = html.xpath('//a[contains(@href,"getusertorrentlist.php") '
                                       'and contains(@href,"seeding")]/@href')
         if seeding_url_text:
             self._torrent_seeding_page = seeding_url_text[0].strip()
-        # 从JS调用种获取用户ID
+        # 从 JavaScript 调用中获取用户 ID。
         seeding_url_text = html.xpath('//a[contains(@href, "javascript: getusertorrentlistajax") '
                                       'and contains(@href,"seeding")]/@href')
         csrf_text = html.xpath('//meta[@name="x-csrf"]/@content')
@@ -538,12 +552,6 @@ class NexusPhpSiteUserInfo(SiteParserBase):
                     = "ajax_getusertorrentlist.php"
                 self._torrent_seeding_params = {'userid': self.userid, 'type': 'seeding', 'csrf': csrf_text[0].strip()}
 
-        # 分类做种模式
-        # 临时屏蔽
-        # seeding_url_text = html.xpath('//tr/td[text()="当前做种"]/following-sibling::td[1]'
-        #                              '/table//td/a[contains(@href,"seeding")]/@href')
-        # if seeding_url_text:
-        #    self._torrent_seeding_page = seeding_url_text
 
     @staticmethod
     def _parse_user_level_marker(page_text: str, userid: Union[str, int, None]) -> Optional[str]:
@@ -596,7 +604,9 @@ class NexusPhpSiteUserInfo(SiteParserBase):
             self.user_level = user_level
 
     def _parse_message_unread_links(self, html_text: str, msg_links: list[str]) -> Optional[str]:
-        """解析未读消息链接及下一页入口。"""
+        """
+        解析未读消息链接及下一页入口。
+        """
         html = etree.HTML(html_text)
         try:
             if not DomUtils.has_child_elements(html):
@@ -616,7 +626,9 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         return next_page
 
     def _parse_message_content(self, html_text: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
-        """解析消息标题、时间和正文。"""
+        """
+        解析消息标题、时间和正文。
+        """
         html = etree.HTML(html_text)
         try:
             if not DomUtils.has_child_elements(html):
@@ -648,7 +660,9 @@ class NexusPhpSiteUserInfo(SiteParserBase):
         return message_head_text, message_date_text, message_content_text
 
     def _fixup_traffic_info(self, html: etree._Element) -> None:
-        """从详情表格补读为零的流量、分享率和魔力值，非零值保持不变。"""
+        """
+        从详情表格补读为零的流量、分享率和魔力值，非零值保持不变。
+        """
         if not self.upload:
             upload_text = self._traffic_table_value(html, r"上[传傳]量?")
             if upload_text is not None:
@@ -665,7 +679,7 @@ class NexusPhpSiteUserInfo(SiteParserBase):
                 ratio = round(self.upload / self.download, 3) if self.download else 0.0
             self.ratio = ratio
 
-        # fixup bonus
+        # 用户详情表中的魔力值可补齐首页缺失的数据。
         if not self.bonus:
             bonus_text = html.xpath('//tr/td[text()="魔力值" or text()="猫粮"]/following-sibling::td[1]/text()')
             if bonus_text:
@@ -673,7 +687,9 @@ class NexusPhpSiteUserInfo(SiteParserBase):
 
     @staticmethod
     def _traffic_table_value(html: Any, field: str) -> Optional[str]:
-        """按单元格字段名读取数值，支持同格或相邻列布局，排除“实际”流量。"""
+        """
+        按单元格字段名读取数值，支持同格或相邻列布局，排除“实际”流量。
+        """
         for cell in html.xpath('//tr/td[not(.//td)]'):
             cell_text = " ".join(cell.xpath("string(.)").split())
             field_match = re.fullmatch(rf"{field}\s*[:：]?\s*(.*)", cell_text)

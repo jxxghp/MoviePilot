@@ -1,4 +1,6 @@
-"""插件生命周期六类状态中的运行结果测试。"""
+"""
+插件生命周期六类状态中的运行结果测试。
+"""
 
 from unittest.mock import MagicMock
 
@@ -8,17 +10,28 @@ from app.schemas.plugin import PluginRuntimeStatus
 
 
 def _plugin_class(*, init_error: Exception | None = None):
-    """构造满足插件最小生命周期合同的测试类。"""
+    """
+    构造满足插件最小生命周期合同的测试类。
+    """
     class DemoPlugin:
+        """
+        在初始化后保持启用，用于验证生命周期公开状态。
+        """
         plugin_name = "演示插件"
         plugin_version = "1.0.0"
 
         def init_plugin(self, _config):
+            """
+            初始化时按测试配置抛出异常，模拟插件启动失败。
+            """
             if init_error:
                 raise init_error
 
         @staticmethod
         def get_state():
+            """
+            固定返回启用状态，隔离插件自身开关对生命周期状态的影响。
+            """
             return True
 
     return DemoPlugin
@@ -34,7 +47,9 @@ def _lifecycle(
     log=None,
     runtime_compatible=True,
 ):
-    """构造隔离外部事件和模块清理的生命周期实例。"""
+    """
+    构造隔离外部事件和模块清理的生命周期实例。
+    """
     classes = {}
     running = {}
     statuses = {}
@@ -61,7 +76,9 @@ def _lifecycle(
 
 
 def test_lifecycle_records_active_result():
-    """插件完成构造和初始化后进入 active。"""
+    """
+    插件完成构造和初始化后进入 active。
+    """
     lifecycle, classes, running, statuses = _lifecycle(
         plugins=[_plugin_class()],
     )
@@ -75,7 +92,9 @@ def test_lifecycle_records_active_result():
 
 
 def test_targeted_lifecycle_accepts_case_insensitive_directory_id():
-    """市场目录 ID 通常为小写，不能因插件类名大小写不同而误报加载失败。"""
+    """
+    市场目录 ID 通常为小写，不能因插件类名大小写不同而误报加载失败。
+    """
     lifecycle, classes, running, statuses = _lifecycle(
         plugins=[_plugin_class()],
     )
@@ -89,7 +108,9 @@ def test_targeted_lifecycle_accepts_case_insensitive_directory_id():
 
 
 def test_lifecycle_records_policy_block_without_runtime_instance():
-    """类已发现但权限策略拒绝时进入 blocked_by_policy。"""
+    """
+    类已发现但权限策略拒绝时进入 blocked_by_policy。
+    """
     lifecycle, _classes, running, statuses = _lifecycle(
         plugins=[_plugin_class()],
         auth=False,
@@ -103,7 +124,9 @@ def test_lifecycle_records_policy_block_without_runtime_instance():
 
 
 def test_lifecycle_records_load_failure_for_init_exception():
-    """插件初始化异常时保留类信息并进入 load_failed。"""
+    """
+    插件初始化异常时保留类信息并进入 load_failed。
+    """
     lifecycle, classes, running, statuses = _lifecycle(
         plugins=[_plugin_class(init_error=RuntimeError("init failed"))],
     )
@@ -117,7 +140,9 @@ def test_lifecycle_records_load_failure_for_init_exception():
 
 
 def test_lifecycle_records_load_failure_when_loader_returns_no_class():
-    """目标源码没有可加载类时进入 load_failed 并记录插件及诊断阶段。"""
+    """
+    目标源码没有可加载类时进入 load_failed 并记录插件及诊断阶段。
+    """
     log = MagicMock()
     lifecycle, _classes, running, statuses = _lifecycle(plugins=[], log=log)
 
@@ -131,7 +156,9 @@ def test_lifecycle_records_load_failure_when_loader_returns_no_class():
 
 
 def test_lifecycle_reports_incompatible_runtime_instead_of_load_failure():
-    """载荷声明与当前运行时不兼容时，卡片要显示不支持而不是加载失败。"""
+    """
+    载荷声明与当前运行时不兼容时，卡片要显示不支持而不是加载失败。
+    """
     lifecycle, _classes, running, statuses = _lifecycle(
         plugins=[],
         runtime_compatible=False,
@@ -145,7 +172,9 @@ def test_lifecycle_reports_incompatible_runtime_instead_of_load_failure():
 
 
 def test_classification_registration_precedes_event_enablement():
-    """启用插件必须先刷新分类声明，再开放可能产生扩展事实的事件入口。"""
+    """
+    启用插件必须先刷新分类声明，再开放可能产生扩展事实的事件入口。
+    """
     order: list[str] = []
     lifecycle, _classes, _running, _statuses = _lifecycle(
         plugins=[_plugin_class()],
@@ -160,12 +189,16 @@ def test_classification_registration_precedes_event_enablement():
 
 
 def test_invalid_classification_declaration_does_not_fail_plugin_start():
-    """可选分类声明异常会被撤销并记录，但插件主体仍进入 active。"""
+    """
+    可选分类声明异常会被撤销并记录，但插件主体仍进入 active。
+    """
     removals: list[str] = []
     log = MagicMock()
 
     def fail_refresh(_plugin_id, _instance):
-        """模拟插件返回命名空间不合法的分类字段声明。"""
+        """
+        模拟插件返回命名空间不合法的分类字段声明。
+        """
         raise ValueError("invalid field")
 
     lifecycle, _classes, running, _statuses = _lifecycle(
@@ -184,23 +217,31 @@ def test_invalid_classification_declaration_does_not_fail_plugin_start():
 
 
 def test_disable_and_stop_remove_classification_registration():
-    """配置禁用和最终停止都必须撤销当前运行实例拥有的分类声明。"""
+    """
+    配置禁用和最终停止都必须撤销当前运行实例拥有的分类声明。
+    """
     removals: list[str] = []
 
     class DemoPlugin:
-        """允许测试切换启用状态的运行时插件。"""
+        """
+        允许测试切换启用状态的运行时插件。
+        """
 
         plugin_name = "演示插件"
         plugin_version = "1.0.0"
         enabled = True
 
         def init_plugin(self, config):
-            """按配置切换启用状态。"""
+            """
+            按配置切换启用状态。
+            """
             if "enabled" in config:
                 self.enabled = bool(config["enabled"])
 
         def get_state(self):
-            """返回当前测试状态。"""
+            """
+            返回当前测试状态。
+            """
             return self.enabled
 
     lifecycle, _classes, _running, _statuses = _lifecycle(
@@ -220,29 +261,41 @@ def test_disable_and_stop_remove_classification_registration():
 
 
 def test_phased_quiesce_disables_events_before_hooks_and_keeps_instance():
-    """宿主先停用 handler，再在事件结算后执行旧 hook 并保留实例。"""
+    """
+    宿主先停用 handler，再在事件结算后执行旧 hook 并保留实例。
+    """
     order: list[str] = []
 
     class DemoPlugin:
-        """记录旧插件 ABI hook 调用顺序的测试插件。"""
+        """
+        记录旧插件 ABI hook 调用顺序的测试插件。
+        """
 
         plugin_name = "演示插件"
         plugin_version = "1.0.0"
 
         def init_plugin(self, _config):
-            """接受宿主初始化配置。"""
+            """
+            接受宿主初始化配置。
+            """
 
         @staticmethod
         def get_state():
-            """保持插件事件 handler 启用。"""
+            """
+            保持插件事件 handler 启用。
+            """
             return True
 
         def close(self):
-            """停止插件私有计时器和 watcher。"""
+            """
+            停止插件私有计时器和 watcher。
+            """
             order.append("close")
 
         def stop_service(self):
-            """停止插件服务并允许尾事件继续投递。"""
+            """
+            停止插件服务并允许尾事件继续投递。
+            """
             order.append("stop_service")
 
     lifecycle, classes, running, _statuses = _lifecycle(plugins=[DemoPlugin])
@@ -273,32 +326,44 @@ def test_phased_quiesce_disables_events_before_hooks_and_keeps_instance():
 
 
 def test_quiesce_runs_stop_service_after_close_failure_and_retries_missing_hook():
-    """close 异常不能跳过 stop_service，重试时只补偿尚未成功的 hook。"""
+    """
+    close 异常不能跳过 stop_service，重试时只补偿尚未成功的 hook。
+    """
     order: list[str] = []
     close_fails = [True]
 
     class DemoPlugin:
-        """首次 close 失败、stop_service 正常完成的测试插件。"""
+        """
+        首次 close 失败、stop_service 正常完成的测试插件。
+        """
 
         plugin_name = "演示插件"
         plugin_version = "1.0.0"
 
         def init_plugin(self, _config):
-            """接受宿主初始化配置。"""
+            """
+            接受宿主初始化配置。
+            """
 
         @staticmethod
         def get_state():
-            """保持插件为启用状态。"""
+            """
+            保持插件为启用状态。
+            """
             return True
 
         def close(self):
-            """首次调用模拟插件私有资源关闭异常。"""
+            """
+            首次调用模拟插件私有资源关闭异常。
+            """
             order.append("close")
             if close_fails[0]:
                 raise RuntimeError("close failed")
 
         def stop_service(self):
-            """记录旧 ABI 的第二个停机 hook。"""
+            """
+            记录旧 ABI 的第二个停机 hook。
+            """
             order.append("stop_service")
 
     lifecycle, classes, running, _statuses = _lifecycle(plugins=[DemoPlugin])
@@ -319,25 +384,35 @@ def test_quiesce_runs_stop_service_after_close_failure_and_retries_missing_hook(
 
 
 def test_quiesce_does_not_close_resources_until_all_handlers_are_disabled():
-    """任一 handler 停用失败时不得调用可能破坏共享资源的旧停机 hook。"""
+    """
+    任一 handler 停用失败时不得调用可能破坏共享资源的旧停机 hook。
+    """
     close = MagicMock()
 
     class DemoPlugin:
-        """提供可观察 close hook 的测试插件。"""
+        """
+        提供可观察 close hook 的测试插件。
+        """
 
         plugin_name = "演示插件"
         plugin_version = "1.0.0"
 
         def init_plugin(self, _config):
-            """接受宿主初始化配置。"""
+            """
+            接受宿主初始化配置。
+            """
 
         @staticmethod
         def get_state():
-            """保持插件事件 handler 启用。"""
+            """
+            保持插件事件 handler 启用。
+            """
             return True
 
         def close(self):
-            """记录资源关闭调用。"""
+            """
+            记录资源关闭调用。
+            """
             close()
 
     lifecycle, classes, running, _statuses = _lifecycle(plugins=[DemoPlugin])
@@ -357,29 +432,41 @@ def test_quiesce_does_not_close_resources_until_all_handlers_are_disabled():
 
 
 def test_legacy_stop_entry_remains_idempotent():
-    """旧 stop 先解绑事件、保持 None 返回，且重复调用不重复执行 hook。"""
+    """
+    旧 stop 先解绑事件、保持 None 返回，且重复调用不重复执行 hook。
+    """
     order: list[str] = []
 
     class DemoPlugin:
-        """提供可计数停机 hook 的兼容测试插件。"""
+        """
+        提供可计数停机 hook 的兼容测试插件。
+        """
 
         plugin_name = "演示插件"
         plugin_version = "1.0.0"
 
         def init_plugin(self, _config):
-            """接受宿主初始化配置。"""
+            """
+            接受宿主初始化配置。
+            """
 
         @staticmethod
         def get_state():
-            """保持插件为启用状态。"""
+            """
+            保持插件为启用状态。
+            """
             return True
 
         def close(self):
-            """记录 close 调用。"""
+            """
+            记录 close 调用。
+            """
             order.append("close")
 
         def stop_service(self):
-            """记录 stop_service 调用。"""
+            """
+            记录 stop_service 调用。
+            """
             order.append("stop_service")
 
     lifecycle, _classes, running, _statuses = _lifecycle(plugins=[DemoPlugin])
@@ -397,30 +484,42 @@ def test_legacy_stop_entry_remains_idempotent():
 
 
 def test_legacy_stop_force_finalizes_after_hook_failure():
-    """旧 stop 即使 hook 报错也释放实例，并保持历史 None 返回 ABI。"""
+    """
+    旧 stop 即使 hook 报错也释放实例，并保持历史 None 返回 ABI。
+    """
     order: list[str] = []
 
     class DemoPlugin:
-        """close 失败但仍应完成兼容卸载的测试插件。"""
+        """
+        close 失败但仍应完成兼容卸载的测试插件。
+        """
 
         plugin_name = "演示插件"
         plugin_version = "1.0.0"
 
         def init_plugin(self, _config):
-            """接受宿主初始化配置。"""
+            """
+            接受宿主初始化配置。
+            """
 
         @staticmethod
         def get_state():
-            """保持插件为启用状态。"""
+            """
+            保持插件为启用状态。
+            """
             return True
 
         def close(self):
-            """模拟旧插件关闭异常。"""
+            """
+            模拟旧插件关闭异常。
+            """
             order.append("close")
             raise RuntimeError("close failed")
 
         def stop_service(self):
-            """证明 close 异常不会跳过后续 hook。"""
+            """
+            证明 close 异常不会跳过后续 hook。
+            """
             order.append("stop_service")
 
     lifecycle, classes, running, _statuses = _lifecycle(plugins=[DemoPlugin])
@@ -437,35 +536,49 @@ def test_legacy_stop_force_finalizes_after_hook_failure():
 
 
 def test_legacy_reload_continues_after_old_instance_hook_failure():
-    """旧实例 hook 失败只影响诊断，不得阻止 reload 创建新实例。"""
+    """
+    旧实例 hook 失败只影响诊断，不得阻止 reload 创建新实例。
+    """
     instances: list[object] = []
     stop_service = MagicMock()
 
     class DemoPlugin:
-        """记录每次构造并让 close 持续失败的重载测试插件。"""
+        """
+        记录每次构造并让 close 持续失败的重载测试插件。
+        """
 
         plugin_name = "演示插件"
         plugin_version = "1.0.0"
 
         def __init__(self):
-            """记录新建的运行实例。"""
+            """
+            记录新建的运行实例。
+            """
             instances.append(self)
 
         def init_plugin(self, _config):
-            """接受宿主初始化配置。"""
+            """
+            接受宿主初始化配置。
+            """
 
         @staticmethod
         def get_state():
-            """保持插件为启用状态。"""
+            """
+            保持插件为启用状态。
+            """
             return True
 
         @staticmethod
         def close():
-            """模拟旧实例退出异常。"""
+            """
+            模拟旧实例退出异常。
+            """
             raise RuntimeError("close failed")
 
         def stop_service(self):
-            """记录旧 ABI 的第二个停机 hook。"""
+            """
+            记录旧 ABI 的第二个停机 hook。
+            """
             stop_service()
 
     lifecycle, _classes, running, statuses = _lifecycle(plugins=[DemoPlugin])

@@ -1,3 +1,7 @@
+"""
+图片安全代理、缓存、重定向与登录壁纸选择。
+"""
+
 import io
 import threading
 from collections.abc import Awaitable, Mapping, Sequence
@@ -22,10 +26,14 @@ _WallpaperFunction = TypeVar("_WallpaperFunction", bound=Callable[..., object])
 
 
 def _cached_wallpaper(*, skip_empty: bool = False) -> Callable[[_WallpaperFunction], _WallpaperFunction]:
-    """保留壁纸函数签名，按原规则使用单项进程内缓存。"""
+    """
+    保留壁纸函数签名，按原规则使用单项进程内缓存。
+    """
 
     def decorate(function: _WallpaperFunction) -> _WallpaperFunction:
-        """以相同有效期缓存壁纸，空列表仍按调用方策略处理。"""
+        """
+        以相同有效期缓存壁纸，空列表仍按调用方策略处理。
+        """
         return cast(_WallpaperFunction, cached(
             maxsize=1, ttl=3600, skip_empty=skip_empty, local_only=True,
         )(function))
@@ -47,7 +55,13 @@ _IMAGE_MAX_REDIRECTS = 5
 
 @dataclass(frozen=True, slots=True)
 class _ImageFetchRequest:
-    """冻结同步与异步图片获取共用的缓存键和传输参数。"""
+    """
+    冻结同步与异步图片获取共用的缓存键和传输参数。
+
+    :param url: 已解析并用于远端获取的图片 URL
+    :param cache_path: 当前 URL 对应的图片缓存文件路径
+    :param use_cache: 本次请求是否允许读取和写入图片缓存
+    """
 
     url: str
     cache_path: str
@@ -56,7 +70,13 @@ class _ImageFetchRequest:
 
 @dataclass
 class _ImageCookieRequest:
-    """为标准 CookieJar 提供纯请求元数据，不拥有网络传输能力。"""
+    """
+    为标准 CookieJar 提供纯请求元数据，不拥有网络传输能力。
+
+    :param url: 当前跳转步骤的完整请求 URL，供 Cookie 域与路径匹配
+    :param headers: 按小写名称保存 CookieJar 生成的请求头
+    :param unverifiable: 是否属于无法验证来源的请求，默认作为独立可验证请求
+    """
 
     url: str
     headers: dict[str, str] = field(default_factory=dict)
@@ -64,77 +84,121 @@ class _ImageCookieRequest:
 
     @property
     def host(self) -> str:
-        """返回 Cookie 端口匹配需要的网络位置。"""
+        """
+        返回 Cookie 端口匹配需要的网络位置。
+        """
         return urlsplit(self.url).netloc
 
     @property
     def type(self) -> str:
-        """返回 Secure Cookie 校验使用的 URL 协议。"""
+        """
+        返回 Secure Cookie 校验使用的 URL 协议。
+        """
         return urlsplit(self.url).scheme
 
     @property
     def origin_req_host(self) -> str:
-        """返回当前独立请求的来源主机。"""
+        """
+        返回当前独立请求的来源主机。
+        """
         return urlsplit(self.url).hostname or ""
 
     def get_full_url(self) -> str:
-        """返回标准 Cookie 域和路径算法消费的完整 URL。"""
+        """
+        返回标准 Cookie 域和路径算法消费的完整 URL。
+        """
         return self.url
 
     def get_header(self, name: str, default: Optional[str] = None) -> Optional[str]:
-        """按大小写无关的名称读取 CookieJar 生成的请求头。"""
+        """
+        按大小写无关的名称读取 CookieJar 生成的请求头。
+        """
         return self.headers.get(name.lower(), default)
 
     def has_header(self, name: str) -> bool:
-        """判断 CookieJar 是否已经写入指定请求头。"""
+        """
+        判断 CookieJar 是否已经写入指定请求头。
+        """
         return name.lower() in self.headers
 
     def add_unredirected_header(self, name: str, value: str) -> None:
-        """记录 CookieJar 按域、路径及 Secure 规则筛选后的请求头。"""
+        """
+        记录 CookieJar 按域、路径及 Secure 规则筛选后的请求头。
+        """
         self.headers[name.lower()] = value
 
 
 @dataclass(frozen=True)
 class _ImageCookieResponse:
-    """只向标准 CookieJar 提供保留多个 Set-Cookie 的响应头。"""
+    """
+    只向标准 CookieJar 提供保留多个 Set-Cookie 的响应头。
+
+    :param headers: 保留重复 Set-Cookie 字段的响应头对象
+    """
 
     headers: Message
 
     def info(self) -> Message:
-        """返回 CookieJar 规定的可读取重复头的元数据对象。"""
+        """
+        返回 CookieJar 规定的可读取重复头的元数据对象。
+        """
         return self.headers
 
 
 class ImageResponsePort(Protocol):
-    """图片应用服务消费的最小 HTTP 响应契约。"""
+    """
+    图片应用服务消费的最小 HTTP 响应契约。
+    """
 
     @property
     def status_code(self) -> int:
-        """返回响应状态码。"""
+        """
+        返回响应状态码。
+
+        :return: HTTP 响应状态码
+        """
         ...
 
     @property
     def content(self) -> bytes:
-        """返回完整响应内容。"""
+        """
+        返回完整响应内容。
+
+        :return: 响应正文的完整字节内容
+        """
         ...
 
     @property
     def headers(self) -> Mapping[str, str]:
-        """返回通用响应头。"""
+        """
+        返回通用响应头。
+
+        :return: 用于缓存、重定向和内容类型判断的响应头映射
+        """
         ...
 
     @property
     def set_cookie_headers(self) -> tuple[str, ...]:
-        """返回保持独立的原始 Set-Cookie 响应头。"""
+        """
+        返回保持独立的原始 Set-Cookie 响应头。
+
+        :return: 按原始字段保留的 Set-Cookie 值，避免逗号合并破坏过期时间
+        """
         ...
 
     def json(self) -> Any:
-        """返回响应 JSON 载荷。"""
+        """
+        返回响应 JSON 载荷。
+
+        :return: 响应正文解码后的 JSON 值
+        """
         ...
 
 
 class ImageTransport(Protocol):
-    """图片与壁纸读取所需的同步、异步 GET 端口。"""
+    """
+    图片与壁纸读取所需的同步、异步 GET 端口。
+    """
 
     def get(
         self,
@@ -142,7 +206,13 @@ class ImageTransport(Protocol):
         *,
         options: Mapping[str, Any],
     ) -> Optional[ImageResponsePort]:
-        """同步读取远端图片或壁纸响应。"""
+        """
+        同步读取远端图片或壁纸响应。
+
+        :param url: 当前请求的图片或壁纸接口 URL
+        :param options: 请求头、超时、代理及重定向控制等客户端选项
+        :return: 远端 HTTP 响应；未取得响应时为 None
+        """
         ...
 
     async def async_get(
@@ -151,15 +221,28 @@ class ImageTransport(Protocol):
         *,
         options: Mapping[str, Any],
     ) -> Optional[ImageResponsePort]:
-        """异步读取远端图片响应。"""
+        """
+        异步读取远端图片响应。
+
+        :param url: 当前请求的图片或壁纸接口 URL
+        :param options: 请求头、超时、代理及重定向控制等客户端选项
+        :return: 远端 HTTP 响应；未取得响应时为 None
+        """
         ...
 
 
 class InternalAddressPort(Protocol):
-    """判断 URL 是否指向无需代理的内部地址。"""
+    """
+    判断 URL 是否指向无需代理的内部地址。
+    """
 
     def is_internal(self, url: str) -> bool:
-        """返回 URL 是否属于内部地址。"""
+        """
+        返回 URL 是否属于内部地址。
+
+        :param url: 需要判定是否绕过代理的完整 URL
+        :return: URL 指向内部地址时为 True
+        """
         ...
 
 
@@ -169,7 +252,9 @@ _internal_address: Optional[InternalAddressPort] = None
 
 
 def _clear_wallpaper_caches() -> None:
-    """清除依赖外部 provider 或 transport 的壁纸函数缓存。"""
+    """
+    清除依赖外部 provider 或 transport 的壁纸函数缓存。
+    """
     for method_name in (
         "get_tmdb_wallpaper",
         "get_tmdb_wallpapers",
@@ -190,7 +275,9 @@ def configure_image_ports(
     transport: ImageTransport,
     internal_address: InternalAddressPort,
 ) -> tuple[Optional[ImageTransport], Optional[InternalAddressPort]]:
-    """由启动组合根装配图片 I/O 端口，并清除旧实现产生的壁纸缓存。"""
+    """
+    由启动组合根装配图片 I/O 端口，并清除旧实现产生的壁纸缓存。
+    """
     global _image_transport, _internal_address
     with _image_port_lock:
         previous = (_image_transport, _internal_address)
@@ -204,7 +291,9 @@ def reset_image_ports(
     transport: Optional[ImageTransport] = None,
     internal_address: Optional[InternalAddressPort] = None,
 ) -> None:
-    """恢复指定图片端口；省略参数时回到未装配状态并清缓存。"""
+    """
+    恢复指定图片端口；省略参数时回到未装配状态并清缓存。
+    """
     global _image_transport, _internal_address
     with _image_port_lock:
         _image_transport = transport
@@ -213,7 +302,9 @@ def reset_image_ports(
 
 
 def _image_ports_snapshot() -> tuple[ImageTransport, InternalAddressPort]:
-    """读取一致的图片端口快照，未装配时稳定失败。"""
+    """
+    读取一致的图片端口快照，未装配时稳定失败。
+    """
     with _image_port_lock:
         transport = _image_transport
         internal_address = _internal_address
@@ -223,12 +314,16 @@ def _image_ports_snapshot() -> tuple[ImageTransport, InternalAddressPort]:
 
 
 def _empty_wallpaper_provider() -> Optional[str]:
-    """在启动组合根尚未装配壁纸来源时返回空结果。"""
+    """
+    在启动组合根尚未装配壁纸来源时返回空结果。
+    """
     return None
 
 
 def _empty_wallpaper_list_provider(_count: int) -> List[str]:
-    """在启动组合根尚未装配壁纸来源时返回空列表。"""
+    """
+    在启动组合根尚未装配壁纸来源时返回空列表。
+    """
     return []
 
 
@@ -249,7 +344,9 @@ def configure_wallpaper_providers(
     mediaserver_wallpaper: WallpaperProvider,
     mediaserver_wallpapers: WallpaperListProvider,
 ) -> None:
-    """由启动组合根注入需要业务 Chain 才能提供的壁纸来源。"""
+    """
+    由启动组合根注入需要业务 Chain 才能提供的壁纸来源。
+    """
     global _tmdb_wallpaper_provider
     global _tmdb_wallpaper_list_provider
     global _mediaserver_wallpaper_provider
@@ -262,7 +359,9 @@ def configure_wallpaper_providers(
 
 
 def reset_wallpaper_providers() -> None:
-    """恢复空壁纸来源并清除旧 lifespan 产生的壁纸缓存。"""
+    """
+    恢复空壁纸来源并清除旧 lifespan 产生的壁纸缓存。
+    """
     global _tmdb_wallpaper_provider
     global _tmdb_wallpaper_list_provider
     global _mediaserver_wallpaper_provider
@@ -283,7 +382,9 @@ class WallpaperHelper(metaclass=Singleton):
     """
 
     def clear_cache(self) -> None:
-        """清除全部壁纸来源缓存，使壁纸配置变更即时生效。"""
+        """
+        清除全部壁纸来源缓存，使壁纸配置变更即时生效。
+        """
         _clear_wallpaper_caches()
 
     def get_wallpaper(self) -> Optional[str]:
@@ -321,11 +422,15 @@ class WallpaperHelper(metaclass=Singleton):
         return []
 
     def get_static_wallpaper(self) -> Optional[str]:
-        """原样返回前端可访问的静态壁纸地址。"""
+        """
+        原样返回前端可访问的静态壁纸地址。
+        """
         return get_chain_runtime_config_snapshot().wallpaper_image_url
 
     def get_static_wallpapers(self) -> List[str]:
-        """以单项列表返回静态壁纸，确保前端沿用统一的列表契约。"""
+        """
+        以单项列表返回静态壁纸，确保前端沿用统一的列表契约。
+        """
         wallpaper = self.get_static_wallpaper()
         return [wallpaper] if wallpaper else []
 
@@ -415,24 +520,20 @@ class WallpaperHelper(metaclass=Singleton):
             """
             _result = []
 
-            # 处理字符串
             if isinstance(obj, str):
                 if obj.endswith(tuple(suffixes)):
                     _result.append(obj)
 
-            # 处理字典
             elif isinstance(obj, dict):
                 for value in obj.values():
                     _result.extend(find_files_with_suffixes(value, suffixes))
 
-            # 处理列表
             elif isinstance(obj, list):
                 for item in obj:
                     _result.extend(find_files_with_suffixes(item, suffixes))
 
             return _result
 
-        # 判断是否存在自定义壁纸api
         config = get_chain_runtime_config_snapshot()
         if config.customize_wallpaper_api_url:
             wallpaper_list = []
@@ -442,7 +543,6 @@ class WallpaperHelper(metaclass=Singleton):
                 options={"timeout": 15},
             )
             if resp and resp.status_code == 200:
-                # 如果返回的是图片格式
                 content_type = resp.headers.get('Content-Type')
                 if content_type and content_type.lower().startswith('image/'):
                     wallpaper_list.append(config.customize_wallpaper_api_url)
@@ -459,7 +559,9 @@ class WallpaperHelper(metaclass=Singleton):
 
 
 class ImageHelper(metaclass=Singleton):
-    """统一管理同步和异步图片缓存。"""
+    """
+    统一管理同步和异步图片缓存。
+    """
 
     def __init__(self) -> None:
         """
@@ -519,7 +621,9 @@ class ImageHelper(metaclass=Singleton):
 
     @staticmethod
     def _get_request_params(url: str, proxy: Optional[bool], cookies: Optional[str | dict[str, str]]) -> dict[str, object]:
-        """获取参数"""
+        """
+        获取参数
+        """
         referer = "https://movie.douban.com/" if "doubanio.com" in url else None
         config = get_chain_runtime_config_snapshot()
         if proxy is None:
@@ -544,7 +648,9 @@ class ImageHelper(metaclass=Singleton):
         use_cache: bool,
         cookies: Optional[str | dict[str, str]],
     ) -> Optional[_ImageFetchRequest]:
-        """统一空 URL 拒绝、缓存键和远端传输参数生成。"""
+        """
+        统一空 URL 拒绝、缓存键和远端传输参数生成。
+        """
         if not url:
             return None
         return _ImageFetchRequest(
@@ -556,7 +662,9 @@ class ImageHelper(metaclass=Singleton):
     def _cached_image(
         self, content: Optional[bytes]
     ) -> Optional[tuple[bytes, str]]:
-        """缓存内容只读取格式头，返回可直接复用的图片结果。"""
+        """
+        缓存内容只读取格式头，返回可直接复用的图片结果。
+        """
         if not content:
             return None
         mime_type = self.get_image_mime_type(content, verify=False)
@@ -567,7 +675,9 @@ class ImageHelper(metaclass=Singleton):
         request: _ImageFetchRequest,
         response: Optional[ImageResponsePort],
     ) -> Optional[tuple[bytes, str]]:
-        """统一远端状态码与图片内容校验，拒绝结果不得进入缓存。"""
+        """
+        统一远端状态码与图片内容校验，拒绝结果不得进入缓存。
+        """
         if response is None or response.status_code != 200:
             logger.warn(f"Failed to fetch image from URL: {request.url}")
             return None
@@ -576,12 +686,16 @@ class ImageHelper(metaclass=Singleton):
 
     @staticmethod
     def _is_retryable_image_response(response: Optional[ImageResponsePort]) -> bool:
-        """判断图片响应是否属于可立即重试的瞬态失败。"""
+        """
+        判断图片响应是否属于可立即重试的瞬态失败。
+        """
         return response is None or response.status_code in _IMAGE_RETRY_STATUS_CODES
 
     @staticmethod
     def _redirect_target(response: ImageResponsePort, url: str) -> Optional[str]:
-        """解析相对重定向，只接受不带 URL 凭据的 HTTP(S) 目标。"""
+        """
+        解析相对重定向，只接受不带 URL 凭据的 HTTP(S) 目标。
+        """
         location = response.headers.get("location") or response.headers.get("Location")
         if not location:
             return None
@@ -596,7 +710,9 @@ class ImageHelper(metaclass=Singleton):
 
     @staticmethod
     def _initial_redirect_cookies(url: str, options: Mapping[str, Any]) -> CookieJar:
-        """为单次请求尝试建立独立 CookieJar，把调用者 Cookie 绑定到初始主机。"""
+        """
+        为单次请求尝试建立独立 CookieJar，把调用者 Cookie 绑定到初始主机。
+        """
         jar = CookieJar()
         cookies: SimpleCookie = SimpleCookie()
         try:
@@ -619,7 +735,9 @@ class ImageHelper(metaclass=Singleton):
     def _redirect_options(
         options: Mapping[str, Any], source: str, target: str, response: ImageResponsePort, jar: CookieJar,
     ) -> dict[str, Any]:
-        """同源沿用标准 Cookie 作用域；跨来源清除 Cookie/Referer，且不恢复早先凭据。"""
+        """
+        同源沿用标准 Cookie 作用域；跨来源清除 Cookie/Referer，且不恢复早先凭据。
+        """
         result = {**options, "allow_redirects": False}
         if urlsplit(source)[:2] != urlsplit(target)[:2]:
             jar.clear()
@@ -645,7 +763,9 @@ class ImageHelper(metaclass=Singleton):
         options: Mapping[str, Any],
         redirect_validator: Optional[Callable[[str], bool]] = None,
     ) -> Optional[ImageResponsePort]:
-        """逐跳校验后读取图片；重试从原地址开始，默认只允许公网重定向。"""
+        """
+        逐跳校验后读取图片；重试从原地址开始，默认只允许公网重定向。
+        """
         response: Optional[ImageResponsePort] = None
         for _ in range(_IMAGE_FETCH_ATTEMPTS):
             current_url = request.url
@@ -676,7 +796,9 @@ class ImageHelper(metaclass=Singleton):
         options: Mapping[str, Any],
         redirect_validator: Optional[Callable[[str], Awaitable[bool]]] = None,
     ) -> Optional[ImageResponsePort]:
-        """异步逐跳校验后读取图片，拒绝目标不会被发起请求或进入缓存。"""
+        """
+        异步逐跳校验后读取图片，拒绝目标不会被发起请求或进入缓存。
+        """
         response: Optional[ImageResponsePort] = None
         for _ in range(_IMAGE_FETCH_ATTEMPTS):
             current_url = request.url

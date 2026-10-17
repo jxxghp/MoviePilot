@@ -1,3 +1,7 @@
+"""
+验证系统网络诊断的目标选择和结果汇总。
+"""
+
 import asyncio
 import ipaddress
 import sys
@@ -10,7 +14,9 @@ from app.testing.stub import restore_modules, snapshot_modules
 
 
 def _stub(name: str, **attrs) -> tuple:
-    """构造带指定属性的占位模块，返回 ``(模块名, 模块)`` 供 :func:`stub_modules` 使用。"""
+    """
+    构造带指定属性的占位模块，返回 ``(模块名, 模块)`` 供 :func:`stub_modules` 使用。
+    """
     module = ModuleType(name)
     for key, value in attrs.items():
         setattr(module, key, value)
@@ -18,22 +24,32 @@ def _stub(name: str, **attrs) -> tuple:
 
 
 class _Dummy:
-    """为端点导入期依赖提供可调用的最小占位实现。"""
+    """
+    为端点导入期依赖提供可调用的最小占位实现。
+    """
 
     def __init__(self, *args, **kwargs):
-        """接受任意构造参数以模拟不同依赖类型。"""
+        """
+        接受任意构造参数以模拟不同依赖类型。
+        """
         pass
 
     def __getattr__(self, _name):
-        """为未显式声明的属性返回无副作用调用桩。"""
+        """
+        为未显式声明的属性返回无副作用调用桩。
+        """
         return lambda *args, **kwargs: None
 
 
 class _DummyError(Exception):
-    """模拟带耗时字段的 Agent 测试异常。"""
+    """
+    模拟带耗时字段的 Agent 测试异常。
+    """
 
     def __init__(self, message="", duration_ms=None):
-        """保存异常消息和可选耗时。"""
+        """
+        保存异常消息和可选耗时。
+        """
         super().__init__(message)
         self.duration_ms = duration_ms
 
@@ -98,7 +114,9 @@ finally:
 
 
 def _network_test_service(transport, **settings) -> NetworkTestService:
-    """构造不访问真实网络且读取独立设置快照的网络测试服务。"""
+    """
+    构造不访问真实网络且读取独立设置快照的网络测试服务。
+    """
     values = {
         "NORMAL_USER_AGENT": "MoviePilot-Test",
         **settings,
@@ -111,7 +129,9 @@ def _network_test_service(transport, **settings) -> NetworkTestService:
 
 
 class TestNettestSecurity:
-    """验证 System 安全入口和网络测试应用边界。"""
+    """
+    验证 System 安全入口和网络测试应用边界。
+    """
 
     def test_get_env_setting_reports_rust_available_and_enabled_separately(self):
         """
@@ -144,7 +164,9 @@ class TestNettestSecurity:
         assert not resp.data["PYTHON_GIL_ENABLED"]
 
     def test_get_env_setting_masks_github_token(self):
-        """系统环境快照不得把 GitHub Token 原文返回给前端。"""
+        """
+        系统环境快照不得把 GitHub Token 原文返回给前端。
+        """
         runtime_config = SimpleNamespace(
             snapshot=Mock(return_value={"GITHUB_TOKEN": "gho_secret_token"}),
         )
@@ -167,7 +189,9 @@ class TestNettestSecurity:
         assert resp.data["GITHUB_TOKEN"] is None
 
     def test_get_user_global_setting_reports_runtime_variant(self):
-        """登录后的全局设置应提供导航所需的解释器类型。"""
+        """
+        登录后的全局设置应提供导航所需的解释器类型。
+        """
         runtime_config = SimpleNamespace(
             snapshot=Mock(return_value={}),
             get=Mock(return_value=False),
@@ -243,10 +267,14 @@ class TestNettestSecurity:
         图片代理即使拿到内网 allowlist 项，也必须在发起请求前拦截。
         """
         class FailIfCalled:
-            """确保危险图片地址不会物化请求实现。"""
+            """
+            确保危险图片地址不会物化请求实现。
+            """
 
             def __init__(self, *args, **kwargs):
-                """任何构造都表示测试失败。"""
+                """
+                任何构造都表示测试失败。
+                """
                 raise AssertionError("fetch_image should block private URLs before fetching")
 
         with patch.object(system_endpoint, "ImageHelper", FailIfCalled):
@@ -260,7 +288,9 @@ class TestNettestSecurity:
         assert resp is None
 
     def test_nettest_targets_are_served_by_application(self):
-        """目标接口只投影应用服务提供的公开目录字段。"""
+        """
+        目标接口只投影应用服务提供的公开目录字段。
+        """
         service = _network_test_service(_Dummy())
         with patch.object(
             system_endpoint,
@@ -275,7 +305,9 @@ class TestNettestSecurity:
         assert all(set(item) == {"id", "name", "address", "icon"} for item in resp.data)
 
     def test_nettest_imdb_graphql_uses_post_probe(self):
-        """IMDb GraphQL 探测应使用模块客户端采用的 POST 请求格式。"""
+        """
+        IMDb GraphQL 探测应使用模块客户端采用的 POST 请求格式。
+        """
         captured = {}
         response = SimpleNamespace(
             status_code=200,
@@ -285,7 +317,9 @@ class TestNettestSecurity:
         )
 
         async def respond(method, url, **options):
-            """记录 IMDb 探测请求并返回成功响应。"""
+            """
+            记录 IMDb 探测请求并返回成功响应。
+            """
             captured.update(method=method, url=url, **options)
             return response
 
@@ -305,7 +339,9 @@ class TestNettestSecurity:
         }
 
     def test_nettest_theaudiodb_uses_current_free_key_and_health_endpoint(self):
-        """TheAudioDB 探测应使用当前公开测试 Key 和模块连通性接口。"""
+        """
+        TheAudioDB 探测应使用当前公开测试 Key 和模块连通性接口。
+        """
         captured = {}
         response = SimpleNamespace(
             status_code=200,
@@ -315,7 +351,9 @@ class TestNettestSecurity:
         )
 
         async def respond(method, url, **options):
-            """记录 TheAudioDB 探测请求并返回成功响应。"""
+            """
+            记录 TheAudioDB 探测请求并返回成功响应。
+            """
             captured.update(method=method, url=url, **options)
             return response
 
@@ -331,13 +369,19 @@ class TestNettestSecurity:
         )
 
     def test_nettest_blocks_unknown_target_before_transport(self):
-        """未知目标在应用服务目录匹配阶段即返回，不得触发传输端口。"""
+        """
+        未知目标在应用服务目录匹配阶段即返回，不得触发传输端口。
+        """
 
         class FailTransport:
-            """确保未知目标不会进入传输边界。"""
+            """
+            确保未知目标不会进入传输边界。
+            """
 
             async def get(self, *_args, **_kwargs):
-                """任何请求都表示目录准入失效。"""
+                """
+                任何请求都表示目录准入失效。
+                """
                 raise AssertionError("未知网络测试目标不应触发外部请求")
 
         service = _network_test_service(FailTransport())
@@ -357,25 +401,35 @@ class TestNettestSecurity:
         assert "不存在" in resp.message
 
     def test_nettest_blocks_unapproved_redirect(self):
-        """应用服务必须在第二次请求前阻断目标规则之外的跳转。"""
+        """
+        应用服务必须在第二次请求前阻断目标规则之外的跳转。
+        """
         captured = {"calls": 0, "closed": 0}
 
         class FakeResponse:
-            """返回未授权重定向并记录资源释放。"""
+            """
+            返回未授权重定向并记录资源释放。
+            """
 
             status_code = 302
             headers = {"location": "https://169.254.169.254/latest/meta-data/"}
             text = ""
 
             async def aclose(self):
-                """记录应用服务已关闭被拒绝的响应。"""
+                """
+                记录应用服务已关闭被拒绝的响应。
+                """
                 captured["closed"] += 1
 
         class FakeTransport:
-            """记录未授权重定向场景中的请求次数。"""
+            """
+            记录未授权重定向场景中的请求次数。
+            """
 
             async def get(self, _url, **_kwargs):
-                """返回固定的元数据服务跳转响应。"""
+                """
+                返回固定的元数据服务跳转响应。
+                """
                 captured["calls"] += 1
                 return FakeResponse()
 
@@ -400,7 +454,9 @@ class TestNettestSecurity:
         assert captured == {"calls": 1, "closed": 1}
 
     def test_nettest_allows_known_external_redirects(self):
-        """内置目标声明的跨域跳转继续可用，并释放每个响应对象。"""
+        """
+        内置目标声明的跨域跳转继续可用，并释放每个响应对象。
+        """
         cases = {
             "telegram_api": "https://core.telegram.org/bots",
             "douban_api": "https://www.douban.com/doubanapp/frodo?wechat=0&os=Other",
@@ -412,23 +468,33 @@ class TestNettestSecurity:
             closed = []
 
             class FakeResponse:
-                """模拟可关闭的重定向或成功响应。"""
+                """
+                模拟可关闭的重定向或成功响应。
+                """
 
                 def __init__(self, status_code, headers=None, text=""):
-                    """保存网络测试所需的最小响应字段。"""
+                    """
+                    保存网络测试所需的最小响应字段。
+                    """
                     self.status_code = status_code
                     self.headers = headers or {}
                     self.text = text
 
                 async def aclose(self):
-                    """记录当前响应已被应用服务释放。"""
+                    """
+                    记录当前响应已被应用服务释放。
+                    """
                     closed.append(self.status_code)
 
             class FakeTransport:
-                """先返回受信跳转，再返回成功响应。"""
+                """
+                先返回受信跳转，再返回成功响应。
+                """
 
                 async def get(self, url, **_kwargs):
-                    """按调用顺序生成两段受控响应。"""
+                    """
+                    按调用顺序生成两段受控响应。
+                    """
                     call_urls.append(url)
                     if len(call_urls) == 1:
                         return FakeResponse(302, headers={"location": redirect_url})
@@ -452,7 +518,9 @@ class TestNettestSecurity:
             assert closed == [302, 200]
 
     def test_nettest_rejects_malformed_port_and_path_prefix_confusion(self):
-        """畸形端口和相似路径不得绕过逐目标重定向白名单。"""
+        """
+        畸形端口和相似路径不得绕过逐目标重定向白名单。
+        """
         redirect_urls = (
             "https://www.douban.com:99999/doubanapp/frodo",
             "https://www.douban.com/doubanapp/frodoevil",
@@ -460,24 +528,34 @@ class TestNettestSecurity:
 
         for redirect_url in redirect_urls:
             class FakeResponse:
-                """返回当前恶意重定向并允许应用服务释放资源。"""
+                """
+                返回当前恶意重定向并允许应用服务释放资源。
+                """
 
                 status_code = 302
                 headers = {"location": redirect_url}
                 text = ""
 
                 async def aclose(self):
-                    """模拟关闭已读取的重定向响应。"""
+                    """
+                    模拟关闭已读取的重定向响应。
+                    """
 
             class FakeTransport:
-                """只允许应用服务发起第一跳请求。"""
+                """
+                只允许应用服务发起第一跳请求。
+                """
 
                 def __init__(self) -> None:
-                    """初始化请求计数。"""
+                    """
+                    初始化请求计数。
+                    """
                     self.calls = 0
 
                 async def get(self, _url, **_kwargs):
-                    """返回恶意跳转，第二次调用即表示准入失败。"""
+                    """
+                    返回恶意跳转，第二次调用即表示准入失败。
+                    """
                     self.calls += 1
                     if self.calls > 1:
                         raise AssertionError("恶意重定向不应触发第二跳请求")
@@ -492,14 +570,20 @@ class TestNettestSecurity:
             assert transport.calls == 1
 
     def test_nettest_uses_configured_transport_options_and_content_rule(self):
-        """应用服务固定代理、请求头和内容校验，不信任旧 include 参数。"""
+        """
+        应用服务固定代理、请求头和内容校验，不信任旧 include 参数。
+        """
         captured = {}
 
         class FakeTransport:
-            """捕获应用服务传给传输端口的受控参数。"""
+            """
+            捕获应用服务传给传输端口的受控参数。
+            """
 
             async def get(self, url, **kwargs):
-                """记录请求并返回包含固定校验文本的响应。"""
+                """
+                记录请求并返回包含固定校验文本的响应。
+                """
                 captured["url"] = url
                 captured.update(kwargs)
                 return SimpleNamespace(
@@ -537,13 +621,19 @@ class TestNettestSecurity:
         assert captured["user_agent"] == "MoviePilot-Test"
 
     def test_nettest_fails_when_expected_content_is_missing(self):
-        """代理返回成功状态但缺少服务端固定内容时仍应判定失效。"""
+        """
+        代理返回成功状态但缺少服务端固定内容时仍应判定失效。
+        """
 
         class FakeTransport:
-            """返回缺少预期内容的成功状态响应。"""
+            """
+            返回缺少预期内容的成功状态响应。
+            """
 
             async def get(self, _url, **_kwargs):
-                """模拟代理落地页冒充目标内容。"""
+                """
+                模拟代理落地页冒充目标内容。
+                """
                 return SimpleNamespace(
                     status_code=200,
                     headers={},
@@ -570,13 +660,19 @@ class TestNettestSecurity:
         assert "PIP加速代理" in resp.message
 
     def test_nettest_preserves_exact_legacy_url_matching(self):
-        """旧客户端传入内置 URL 时仍可解析，任意 URL 不会扩大准入面。"""
+        """
+        旧客户端传入内置 URL 时仍可解析，任意 URL 不会扩大准入面。
+        """
 
         class FakeTransport:
-            """为旧 URL 精确匹配提供无网络成功响应。"""
+            """
+            为旧 URL 精确匹配提供无网络成功响应。
+            """
 
             async def get(self, _url, **_kwargs):
-                """返回满足无需内容校验目标的最小响应。"""
+                """
+                返回满足无需内容校验目标的最小响应。
+                """
                 return SimpleNamespace(status_code=200, headers={}, text="ok")
 
         service = _network_test_service(FakeTransport())
@@ -657,10 +753,14 @@ class TestNettestSecurity:
         ).replace("/Items/abc/Images/Primary", "/System/Info/Public")
 
         class FailIfCalled:
-            """确保篡改签名的私网图片不会物化请求实现。"""
+            """
+            确保篡改签名的私网图片不会物化请求实现。
+            """
 
             def __init__(self, *args, **kwargs):
-                """任何构造都表示签名校验被绕过。"""
+                """
+                任何构造都表示签名校验被绕过。
+                """
                 raise AssertionError("fetch_image should block tampered signed URLs")
 
         with patch.object(system_endpoint, "ImageHelper", FailIfCalled):

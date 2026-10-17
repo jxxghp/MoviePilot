@@ -1,3 +1,7 @@
+"""
+集中导出 TMDB 基础客户端和各类接口封装。
+"""
+
 from .objs.account import Account
 from .objs.auth import Authentication
 from .objs.certification import Certification

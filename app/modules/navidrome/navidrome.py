@@ -1,4 +1,6 @@
-"""Navidrome Subsonic/OpenSubsonic API 客户端。"""
+"""
+Navidrome Subsonic/OpenSubsonic API 客户端。
+"""
 
 import hashlib
 import re
@@ -17,7 +19,9 @@ from app.schemas.types import MediaType
 
 
 class Navidrome:
-    """通过 Subsonic API 访问 Navidrome 音乐库。"""
+    """
+    通过 Subsonic API 访问 Navidrome 音乐库。
+    """
 
     def __init__(
         self,
@@ -28,7 +32,16 @@ class Navidrome:
         sync_libraries: Optional[list] = None,
         **kwargs: Any,
     ) -> None:
-        """初始化 Navidrome 连接配置。"""
+        """
+        保存连接配置并调用 ping 验证当前用户。
+
+        :param host: Navidrome 服务地址，省略时客户端保持未连接状态
+        :param username: Subsonic 登录用户名
+        :param password: Subsonic 登录密码
+        :param play_host: 仪表盘跳转使用的地址，省略时使用服务地址
+        :param sync_libraries: 同步库选择；隐藏未选库时只识别 all 标记
+        :param kwargs: 统一服务配置的额外参数，当前不读取
+        """
         self._host = UrlUtils.standardize_base_url(host) if host else None
         self._play_host = UrlUtils.standardize_base_url(play_host) if play_host else self._host
         self._username = username or ""
@@ -37,13 +50,17 @@ class Navidrome:
         self.user = self.get_user()
 
     def _api_url(self) -> Optional[str]:
-        """返回 Subsonic REST 根地址。"""
+        """
+        返回 Subsonic REST 根地址。
+        """
         if not self._host:
             return None
         return f"{self._host.rstrip('/')}/rest"
 
     def _params(self, **kwargs: Any) -> Dict[str, Any]:
-        """构造 Subsonic token 鉴权参数。"""
+        """
+        构造 Subsonic token 鉴权参数。
+        """
         salt = secrets.token_hex(8)
         token = hashlib.md5(f"{self._password}{salt}".encode("utf-8")).hexdigest()
         params: Dict[str, Any] = {
@@ -58,7 +75,13 @@ class Navidrome:
         return params
 
     def _call(self, method: str, **kwargs: Any) -> Optional[dict]:
-        """调用 Subsonic 方法并返回成功响应体。"""
+        """
+        通过 Subsonic 接口获取业务成功的响应体。
+
+        :param method: rest 根路径下的接口名称
+        :param kwargs: 请求参数；值为 None 的项不会发送
+        :return: subsonic-response 对象；配置不完整、HTTP 或业务请求失败时返回 None
+        """
         url = self._api_url()
         if not url or not self._username or not self._password:
             return None
@@ -80,19 +103,37 @@ class Navidrome:
                 response.close()
 
     def is_inactive(self) -> bool:
-        """判断当前连接是否不可用。"""
+        """
+        判断完整连接配置是否尚未通过用户验证。
+
+        :return: 地址及用户名密码均已配置但 user 为空时返回 True；配置缺失时返回 False
+        """
         return bool(self._host and self._username and self._password and not self.user)
 
     def reconnect(self) -> None:
-        """重新验证 Navidrome 连接。"""
+        """
+        重新验证 Navidrome 连接。
+        """
         self.user = self.get_user()
 
     def get_user(self) -> Optional[str]:
-        """验证凭据并返回配置用户名。"""
+        """
+        调用 ping 验证配置中的用户名和密码。
+
+        :return: 验证成功时返回配置用户名，配置不完整或验证失败时返回 None
+        """
         return self._username if self._call("ping") else None
 
     def authenticate(self, username: str, password: str) -> Optional[str]:
-        """验证用户凭据，成功时返回 Navidrome 用户名。"""
+        """
+        临时使用给定凭据验证 Navidrome 用户。
+
+        验证期间会修改当前实例凭据，并在结束后恢复；此方法未提供并发认证隔离。
+
+        :param username: 待验证的用户名
+        :param password: 待验证的密码
+        :return: 验证成功时返回用户名作为认证结果；输入为空、地址缺失或认证失败时返回 None
+        """
         if not username or not password or not self._host:
             return None
         original_username, original_password = self._username, self._password
@@ -103,16 +144,24 @@ class Navidrome:
             self._username, self._password = original_username, original_password
 
     def get_user_count(self) -> int:
-        """返回当前凭据可确认的用户数量。"""
+        """
+        返回当前连接能够确认的用户数量。
+
+        :return: 实例用户已验证时返回 1，否则返回 0；不枚举服务端所有用户
+        """
         return 1 if self.user else 0
 
     @staticmethod
     def _album_name(album: dict) -> str:
-        """从 Subsonic 专辑对象提取稳定标题。"""
+        """
+        从 Subsonic 专辑对象提取稳定标题。
+        """
         return album.get("name") or album.get("album") or ""
 
     def _album_to_item(self, album: dict) -> _SchemaMediaServerItem:
-        """将 Subsonic 专辑转换为统一媒体条目。"""
+        """
+        将 Subsonic 专辑转换为统一媒体条目。
+        """
         album_id = str(album.get("id") or "")
         return _SchemaMediaServerItem(
             id=album_id,
@@ -127,7 +176,9 @@ class Navidrome:
         )
 
     def _song_to_item(self, song: dict) -> _SchemaMediaServerItem:
-        """将 Subsonic 单曲转换为统一音乐条目。"""
+        """
+        将 Subsonic 单曲转换为统一音乐条目。
+        """
         song_id = str(song.get("id") or "")
         title = song.get("title") or song.get("name") or ""
         return _SchemaMediaServerItem(
@@ -144,14 +195,18 @@ class Navidrome:
 
     @staticmethod
     def _same_name(left: Optional[str], right: Optional[str]) -> bool:
-        """忽略大小写、空白和标点比较 Navidrome 音乐名称。"""
+        """
+        忽略大小写、空白和标点比较 Navidrome 音乐名称。
+        """
         normalized_left = re.sub(r"[^\w]+", "", str(left or "").casefold())
         normalized_right = re.sub(r"[^\w]+", "", str(right or "").casefold())
         return bool(normalized_left) and normalized_left == normalized_right
 
     @classmethod
     def _same_artist(cls, item: dict, artist: Optional[str]) -> bool:
-        """检查专辑或单曲的艺术家是否与目标一致；目标为空时不限制。"""
+        """
+        检查专辑或单曲的艺术家是否与目标一致；目标为空时不限制。
+        """
         if not artist:
             return True
         return any(
@@ -160,7 +215,9 @@ class Navidrome:
         )
 
     def _album_cover(self, album: dict) -> Optional[str]:
-        """返回专辑封面地址。"""
+        """
+        返回专辑封面地址。
+        """
         cover_id = album.get("coverArt")
         if not cover_id:
             return None
@@ -170,7 +227,13 @@ class Navidrome:
         return f"{url}/getCoverArt?{urlencode(self._params(id=cover_id, size=512))}"
 
     def _albums(self, list_type: str = "alphabeticalByName", size: int = 500) -> List[dict]:
-        """分页读取专辑列表。"""
+        """
+        分页读取专辑，直至短页、空页或接口失败。
+
+        :param list_type: Subsonic 专辑排序方式，默认按名称排序
+        :param size: 每页请求数量，默认 500
+        :return: 已读取的专辑列表；中途失败会返回此前已读取的部分结果
+        """
         albums: List[dict] = []
         offset = 0
         while True:
@@ -185,11 +248,20 @@ class Navidrome:
         return albums
 
     def get_medias_count(self) -> _SchemaStatistic:
-        """统计 Navidrome 专辑数量并映射为音乐数量。"""
+        """
+        统计专辑数量并映射为音乐数量。
+
+        :return: 音乐统计对象；用户未验证时返回空统计，接口中途失败可能只计入已读取的专辑
+        """
         return _SchemaStatistic(music_count=len(self._albums())) if self.user else _SchemaStatistic()
 
     def get_librarys(self, hidden: Optional[bool] = False) -> Optional[List[_SchemaMediaServerLibrary]]:
-        """返回单个虚拟音乐库。"""
+        """
+        将全部专辑展示为单个虚拟音乐库。
+
+        :param hidden: 是否应用同步库筛选；启用且非空同步库配置不含 all 时隐藏音乐库
+        :return: 虚拟音乐库列表；用户未验证或音乐库被隐藏时返回空列表
+        """
         if not self.user or (hidden and self._sync_libraries and "all" not in self._sync_libraries):
             return []
         count = self.get_items_count("music")
@@ -205,18 +277,34 @@ class Navidrome:
         )]
 
     def get_items_count(self, library_id: str = "music") -> int:
-        """返回虚拟音乐库中的专辑数量。"""
+        """
+        统计虚拟音乐库中的专辑数量。
+
+        :param library_id: 兼容统一媒体库接口的标识，当前只有一个音乐库，因此不参与筛选
+        :return: 已查询到的专辑数量；用户未验证时返回 0
+        """
         return len(self._albums()) if self.user else 0
 
     def get_items(self, start_index: int = 0, limit: int = -1) -> Generator[_SchemaMediaServerItem, None, None]:
-        """逐条返回 Navidrome 专辑。"""
+        """
+        读取全部专辑后按切片范围逐项返回。
+
+        :param start_index: 专辑列表起始索引，默认为 0
+        :param limit: 返回数量；-1 或 None 表示从起始位置返回到末尾
+        :yields: 已转换为统一媒体模型的专辑条目
+        """
         albums = self._albums()
         end = None if limit is None or limit == -1 else start_index + limit
         for album in albums[start_index:end]:
             yield self._album_to_item(album)
 
     def get_iteminfo(self, item_id: str) -> Optional[_SchemaMediaServerItem]:
-        """获取 Navidrome 专辑详情。"""
+        """
+        根据专辑标识获取详情。
+
+        :param item_id: Navidrome 条目标识
+        :return: 统一专辑条目；专辑不存在或请求失败时返回 None
+        """
         payload = self._call("getAlbum", id=item_id)
         album = ((payload or {}).get("album") or {})
         return self._album_to_item(album) if album else None
@@ -225,7 +313,16 @@ class Navidrome:
         self, title: Optional[str] = None, artist: Optional[str] = None,
         album: Optional[str] = None,
     ) -> List[_SchemaMediaServerItem]:
-        """按歌曲或专辑名称精确筛选音乐条目，避免模糊搜索误报已入库。"""
+        """
+        搜索专辑或歌曲，并按名称和艺术家精确筛选。
+
+        上游每次最多查询 20 张专辑和 20 首单曲；本方法不分页扩大候选范围。
+
+        :param title: 目标单曲标题；未指定 album 时用于单曲匹配
+        :param artist: 可选艺术家名称，省略时不限艺术家
+        :param album: 目标专辑名称；提供时优先查询和匹配专辑
+        :return: 名称忽略大小写、空白及标点后匹配的音乐条目；查询词为空或请求失败时返回空列表
+        """
         target = album or title
         query = " ".join(dict.fromkeys(filter(None, [target, artist]))).strip()
         if not query:
@@ -249,7 +346,9 @@ class Navidrome:
         ]
 
     def _to_play_item(self, album: dict) -> _SchemaMediaServerPlayItem:
-        """将专辑转换为仪表盘播放/最新条目。"""
+        """
+        将专辑转换为仪表盘播放/最新条目。
+        """
         album_id = str(album.get("id") or "")
         return _SchemaMediaServerPlayItem(
             id=album_id,
@@ -263,7 +362,9 @@ class Navidrome:
         )
 
     def _song_to_play_item(self, song: dict) -> _SchemaMediaServerPlayItem:
-        """将正在播放的单曲转换为仪表盘条目，避免把所属专辑名误作曲名。"""
+        """
+        将正在播放的单曲转换为仪表盘条目，避免把所属专辑名误作曲名。
+        """
         song_id = str(song.get("id") or "")
         return _SchemaMediaServerPlayItem(
             id=song_id,
@@ -277,22 +378,43 @@ class Navidrome:
         )
 
     def get_latest(self, count: int = 20) -> List[_SchemaMediaServerPlayItem]:
-        """返回最近新增专辑。"""
+        """
+        查询最近新增专辑，并转换为仪表盘条目。
+
+        :param count: 最多返回的专辑数，默认 20
+        :return: 按新增时间排序的专辑列表；查询失败时可能为空或仅含已读取部分
+        """
         return [self._to_play_item(album) for album in self._albums("newest")[:count]]
 
     def get_resume(self, count: int = 20) -> List[_SchemaMediaServerPlayItem]:
-        """返回当前用户正在播放的音乐。"""
+        """
+        查询服务端当前正在播放的音乐。
+
+        :param count: 最多返回的播放条目数，默认 20
+        :return: 服务端 getNowPlaying 返回范围内的条目，不再按用户名过滤；请求失败时返回空列表
+        """
         payload = self._call("getNowPlaying")
         items = ((payload or {}).get("nowPlaying") or {}).get("entry") or []
         return [self._song_to_play_item(item) for item in items[:count]]
 
     def get_play_url(self, item_id: str) -> Optional[str]:
-        """返回 Navidrome 流播放地址。"""
+        """
+        构造带 Subsonic 鉴权参数的音频流地址。
+
+        这里只构造地址，不验证条目存在或凭据有效；不使用仪表盘跳转地址 play_host。
+
+        :param item_id: Navidrome 条目标识
+        :return: 基于服务地址生成的 stream URL，包含用户名及随机盐生成的令牌；地址缺失时返回 None
+        """
         url = self._api_url()
         if not url:
             return None
         return f"{url}/stream?{urlencode(self._params(id=item_id))}"
 
     def refresh_root_library(self) -> bool:
-        """请求 Navidrome 执行增量音乐库扫描。"""
+        """
+        请求服务端执行一次增量音乐库扫描。
+
+        :return: 扫描请求被接受时返回 True；请求失败时返回 False，不等待扫描完成
+        """
         return self._call("startScan", fullScan=False) is not None

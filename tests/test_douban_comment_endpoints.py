@@ -1,4 +1,6 @@
-"""豆瓣短评与影评端点的媒体类型路由测试。"""
+"""
+豆瓣短评与影评端点的媒体类型路由测试。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -11,7 +13,9 @@ from app.schemas.comment import MediaCommentPage, MediaReviewPage
 
 @pytest.mark.asyncio
 async def test_comment_endpoints_delegate_to_movie_and_tv_chains(monkeypatch) -> None:
-    """短评和影评端点应按电影或电视剧类型调用对应异步链方法。"""
+    """
+    短评和影评端点应按电影或电视剧类型调用对应异步链方法。
+    """
     comment_page = MediaCommentPage(start=3, count=2, total=10)
     review_page = MediaReviewPage(start=3, count=2, total=10)
     chain = SimpleNamespace(
@@ -35,6 +39,8 @@ async def test_comment_endpoints_delegate_to_movie_and_tv_chains(monkeypatch) ->
 
 @pytest.mark.asyncio
 async def test_comment_endpoints_return_empty_page_for_unknown_type() -> None:
-    """未知媒体类型应返回对应的空分页结果。"""
+    """
+    未知媒体类型应返回对应的空分页结果。
+    """
     assert await endpoint.douban_interests("1", "music", _=None) == MediaCommentPage()
     assert await endpoint.douban_reviews("1", "music", _=None) == MediaReviewPage()

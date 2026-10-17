@@ -1,3 +1,7 @@
+"""
+通知服务的配置发现、实例管理与渠道选择。
+"""
+
 from typing import Optional
 
 from app.application.service import ServiceBaseHelper, get_service_configs
@@ -6,10 +10,14 @@ from app.schemas.types import MessageType, ModuleType, SystemConfigKey
 
 
 class NotificationHelper(ServiceBaseHelper[NotificationConf]):
-    """提供按持久化配置发现通知服务的能力。"""
+    """
+    提供按持久化配置发现通知服务的能力。
+    """
 
     def __init__(self) -> None:
-        """绑定通知配置和通知模块类型。"""
+        """
+        绑定通知配置和通知模块类型。
+        """
         super().__init__(
             config_key=SystemConfigKey.Notifications,
             conf_type=NotificationConf,
@@ -37,14 +45,18 @@ class NotificationHelper(ServiceBaseHelper[NotificationConf]):
 def get_notification_configs(
     include_disabled: bool = False,
 ) -> list[NotificationConf]:
-    """返回通知配置列表，并按调用方需要决定是否包含禁用项。"""
+    """
+    返回通知配置列表，并按调用方需要决定是否包含禁用项。
+    """
     return list(
         NotificationHelper().get_configs(include_disabled=include_disabled).values()
     )
 
 
 def get_notification_switch(mtype: MessageType) -> str:
-    """返回指定通知场景的目标范围，缺少配置时默认仅管理员。"""
+    """
+    返回指定通知场景的目标范围，缺少配置时默认仅管理员。
+    """
     for switch in get_service_configs(
         SystemConfigKey.NotificationSwitchs,
         NotificationSwitchConf,

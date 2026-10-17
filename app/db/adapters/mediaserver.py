@@ -1,4 +1,6 @@
-"""媒体服务器本地缓存的显式短会话与事务适配器。"""
+"""
+媒体服务器本地缓存的显式短会话与事务适配器。
+"""
 
 from __future__ import annotations
 
@@ -17,19 +19,27 @@ T = TypeVar("T")
 
 
 class TransactionalMediaServerRepository:
-    """让每次媒体库缓存查询或变更各自拥有一个短生命周期 Session。"""
+    """
+    让每次媒体库缓存查询或变更各自拥有一个短生命周期 Session。
+    """
 
     def __init__(self, session_factory: Callable[[], Session]) -> None:
-        """保存由启动组合根提供的同步会话工厂。"""
+        """
+        保存由启动组合根提供的同步会话工厂。
+        """
         self._session_factory = session_factory
 
     def _read(self, operation: Callable[[MediaServerOper], T]) -> T:
-        """在独立只读会话中执行媒体库缓存查询。"""
+        """
+        在独立只读会话中执行媒体库缓存查询。
+        """
         with self._session_factory() as session:
             return operation(MediaServerOper(db=session))
 
     def _write(self, operation: Callable[[MediaServerOper], T]) -> T:
-        """在独立 UoW 中执行并提交一项媒体库缓存变更。"""
+        """
+        在独立 UoW 中执行并提交一项媒体库缓存变更。
+        """
         with self._session_factory() as session:
             unit_of_work = SqlAlchemyUnitOfWork(session)
             try:
@@ -51,7 +61,9 @@ class TransactionalMediaServerRepository:
         media_id: Optional[str] = None,
         season: Optional[int] = None,
     ) -> Optional[str]:
-        """在短会话中返回匹配条目的服务器 item_id。"""
+        """
+        在短会话中返回匹配条目的服务器 item_id。
+        """
         item_id: Optional[str] = self._read(
             lambda repository: repository.get_item_id(
                 server=server,
@@ -66,7 +78,9 @@ class TransactionalMediaServerRepository:
         return item_id
 
     def upsert(self, item: MediaServerSyncItem) -> bool:
-        """在单个短事务中新增或更新一个媒体库同步条目。"""
+        """
+        在单个短事务中新增或更新一个媒体库同步条目。
+        """
         payload = {
             "server": item.server,
             "library": item.library,
@@ -95,7 +109,9 @@ class TransactionalMediaServerRepository:
         return created
 
     def delete_stale(self, *, server: str, sync_time: str) -> int:
-        """在短事务中删除指定服务器本轮未更新的条目。"""
+        """
+        在短事务中删除指定服务器本轮未更新的条目。
+        """
         deleted: int = self._write(
             lambda repository: repository.delete_stale(
                 server=server,
@@ -105,7 +121,9 @@ class TransactionalMediaServerRepository:
         return deleted
 
     def delete_excluded_servers(self, servers: list[str]) -> int:
-        """在短事务中删除已停用或已移除服务器的条目。"""
+        """
+        在短事务中删除已停用或已移除服务器的条目。
+        """
         deleted: int = self._write(
             lambda repository: repository.delete_excluded_servers(servers)
         )

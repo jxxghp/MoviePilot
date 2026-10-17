@@ -1,3 +1,7 @@
+"""
+验证本地诊断报告格式、数据库损坏与备份可用性判定。
+"""
+
 from __future__ import annotations
 
 import sqlite3
@@ -12,12 +16,16 @@ from app.runtime.config import settings
 
 
 def _current_log_timestamp() -> str:
-    """返回 Doctor 近期日志测试使用的当前时间戳。"""
+    """
+    返回 Doctor 近期日志测试使用的当前时间戳。
+    """
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
 def test_doctor_report_has_stable_json_shape(tmp_path, monkeypatch):
-    """doctor JSON 报告应包含稳定状态、环境、汇总和发现列表。"""
+    """
+    doctor JSON 报告应包含稳定状态、环境、汇总和发现列表。
+    """
     monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
     (settings.LOG_PATH).mkdir(parents=True, exist_ok=True)
     (settings.ROOT_PATH / "public").mkdir(exist_ok=True)
@@ -38,7 +46,9 @@ def test_doctor_reports_valid_backup_when_sqlite_database_is_corrupt(
     tmp_path,
     monkeypatch,
 ):
-    """主数据库损坏时 Doctor 仍应离线校验备份并给出还原命令。"""
+    """
+    主数据库损坏时 Doctor 仍应离线校验备份并给出还原命令。
+    """
     monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
     (tmp_path / "user.db").write_bytes(b"not a sqlite database")
     backup_dir = settings.DATABASE_BACKUP_PATH
@@ -64,7 +74,9 @@ def test_doctor_reports_valid_backup_when_sqlite_database_is_corrupt(
 
 
 def test_doctor_distinguishes_missing_and_mismatched_backups(tmp_path, monkeypatch):
-    """无备份与仅存在其他数据库类型备份应生成不同诊断结论。"""
+    """
+    无备份与仅存在其他数据库类型备份应生成不同诊断结论。
+    """
     monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
     runner = DoctorRunner()
     checks._check_database_backups(runner)
@@ -84,7 +96,9 @@ def test_doctor_distinguishes_missing_and_mismatched_backups(tmp_path, monkeypat
 
 
 def test_doctor_reports_invalid_backup_without_modifying_it(tmp_path, monkeypatch):
-    """Doctor --fix 也只校验备份，不覆盖或删除无效文件。"""
+    """
+    Doctor --fix 也只校验备份，不覆盖或删除无效文件。
+    """
     monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
     backup_dir = settings.DATABASE_BACKUP_PATH
     backup_dir.mkdir(parents=True)
@@ -105,7 +119,9 @@ def test_doctor_reports_invalid_backup_without_modifying_it(tmp_path, monkeypatc
 
 
 def test_doctor_exposes_missing_pg_restore_in_text_finding(tmp_path, monkeypatch):
-    """PostgreSQL 离线校验工具缺失时应直接告诉用户如何补齐。"""
+    """
+    PostgreSQL 离线校验工具缺失时应直接告诉用户如何补齐。
+    """
     def missing_pg_restore(*_args, **_kwargs):
         raise RuntimeError("未找到 pg_restore，请安装 PostgreSQL client 并加入 PATH")
 
@@ -127,7 +143,9 @@ def test_doctor_exposes_missing_pg_restore_in_text_finding(tmp_path, monkeypatch
 
 
 def test_doctor_formatters_include_status_and_finding(tmp_path, monkeypatch):
-    """doctor 文本和 JSON 格式化应展示状态与诊断项。"""
+    """
+    doctor 文本和 JSON 格式化应展示状态与诊断项。
+    """
     monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
     report = run_doctor()
     report.add_finding(
@@ -151,7 +169,9 @@ def test_doctor_formatters_include_status_and_finding(tmp_path, monkeypatch):
 
 
 def test_doctor_fix_removes_stale_runtime(tmp_path, monkeypatch):
-    """doctor --fix 应清理指向失效进程的 runtime 文件。"""
+    """
+    doctor --fix 应清理指向失效进程的 runtime 文件。
+    """
     monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
     settings.TEMP_PATH.mkdir(parents=True, exist_ok=True)
     runtime_file = settings.TEMP_PATH / "moviepilot.runtime.json"
@@ -166,7 +186,9 @@ def test_doctor_fix_removes_stale_runtime(tmp_path, monkeypatch):
 
 
 def test_doctor_accepts_healthy_unmanaged_backend_port(monkeypatch):
-    """doctor 在容器中应把健康的非 CLI 管理后端端口识别为正常。"""
+    """
+    doctor 在容器中应把健康的非 CLI 管理后端端口识别为正常。
+    """
     occupant = SimpleNamespace(pid=12345)
     monkeypatch.setattr(checks, "_port_occupants", lambda port: [occupant])
     monkeypatch.setattr(checks, "_process_description", lambda process: f"PID {process.pid} (python)")
@@ -189,7 +211,9 @@ def test_doctor_accepts_healthy_unmanaged_backend_port(monkeypatch):
 
 
 def test_doctor_plugin_log_error_does_not_degrade_report(tmp_path, monkeypatch):
-    """插件独立日志中的错误应保留告警，但不降低系统整体状态。"""
+    """
+    插件独立日志中的错误应保留告警，但不降低系统整体状态。
+    """
     monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
     plugin_log = settings.LOG_PATH / "plugins" / "demo.log"
     plugin_log.parent.mkdir(parents=True, exist_ok=True)
@@ -215,7 +239,9 @@ def test_doctor_plugin_load_error_in_main_log_does_not_degrade_report(
     tmp_path,
     monkeypatch,
 ):
-    """主日志中的插件加载异常应归入插件告警，不降低系统整体状态。"""
+    """
+    主日志中的插件加载异常应归入插件告警，不降低系统整体状态。
+    """
     monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
     app_log = settings.LOG_PATH / "moviepilot.log"
     app_log.parent.mkdir(parents=True, exist_ok=True)
@@ -240,7 +266,9 @@ def test_doctor_plugin_error_mirrored_to_stdio_does_not_degrade_report(
     tmp_path,
     monkeypatch,
 ):
-    """插件错误镜像到后端 stdio 日志时仍不应降低系统整体状态。"""
+    """
+    插件错误镜像到后端 stdio 日志时仍不应降低系统整体状态。
+    """
     monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
     plugin_log = settings.LOG_PATH / "plugins" / "DemoPlugin.log"
     plugin_log.parent.mkdir(parents=True, exist_ok=True)
@@ -265,7 +293,9 @@ def test_doctor_plugin_error_mirrored_to_stdio_does_not_degrade_report(
 
 
 def test_doctor_core_log_error_still_degrades_report(tmp_path, monkeypatch):
-    """核心日志错误仍应参与系统整体状态聚合。"""
+    """
+    核心日志错误仍应参与系统整体状态聚合。
+    """
     monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
     app_log = settings.LOG_PATH / "moviepilot.log"
     app_log.parent.mkdir(parents=True, exist_ok=True)
@@ -289,7 +319,9 @@ def test_doctor_mixed_plugin_and_core_log_errors_keep_core_status(
     tmp_path,
     monkeypatch,
 ):
-    """同一主日志混有插件和核心错误时，仅核心错误应影响整体状态。"""
+    """
+    同一主日志混有插件和核心错误时，仅核心错误应影响整体状态。
+    """
     monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
     app_log = settings.LOG_PATH / "moviepilot.log"
     app_log.parent.mkdir(parents=True, exist_ok=True)
@@ -316,7 +348,9 @@ def test_doctor_mixed_plugin_and_core_log_errors_keep_core_status(
 
 
 def test_doctor_deduplicates_mirrored_plugin_errors(tmp_path, monkeypatch):
-    """同一插件错误出现在主日志和插件日志时应只生成一条聚合告警。"""
+    """
+    同一插件错误出现在主日志和插件日志时应只生成一条聚合告警。
+    """
     monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     app_log = settings.LOG_PATH / "moviepilot.log"
@@ -349,7 +383,9 @@ def test_doctor_deduplicates_mirrored_plugin_errors(tmp_path, monkeypatch):
 
 
 def test_doctor_ignores_errors_outside_log_window(tmp_path, monkeypatch):
-    """超出日志诊断时间窗的历史错误不应污染当前 Doctor 结果。"""
+    """
+    超出日志诊断时间窗的历史错误不应污染当前 Doctor 结果。
+    """
     monkeypatch.setattr(settings, "CONFIG_DIR", str(tmp_path))
     timestamp = (datetime.now() - timedelta(hours=25)).strftime("%Y-%m-%d %H:%M:%S")
     app_log = settings.LOG_PATH / "moviepilot.log"

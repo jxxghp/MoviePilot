@@ -1,4 +1,6 @@
-"""Chain 无参兼容入口与跨层依赖的宿主组合根。"""
+"""
+Chain 无参兼容入口与跨层依赖的宿主组合根。
+"""
 
 from collections.abc import Mapping
 from functools import partial
@@ -76,7 +78,9 @@ _event_manager_factory: Callable[[], EventManager] = EventManager
 
 
 def execute_legacy_transfer_command(**kwargs: Any) -> Any:
-    """把旧 Chain ABI 延迟转入唯一 TransferChain durable command。"""
+    """
+    将旧 Chain 整理接口延迟转发到 TransferChain 的唯一持久化命令。
+    """
     from app.chain.transfer.facade import TransferChain
 
     return TransferChain().execute_legacy_transfer_command(**kwargs)
@@ -90,7 +94,9 @@ def build_chain_runtime_context(
     classification_service: ClassificationExecutionService,
     system_service: SystemService,
 ) -> ChainRuntimeContext:
-    """创建 Chain 无参兼容入口共享的运行时对象与数据端口。"""
+    """
+    创建 Chain 无参兼容入口共享的运行时对象与数据端口。
+    """
     return ChainRuntimeContext(
         module_manager=ModuleManager(),
         plugin_manager=PluginManager(),
@@ -136,7 +142,9 @@ def build_chain_runtime_context(
 
 
 def configure_wallpaper_services() -> None:
-    """把需要 Chain 编排的壁纸来源注入图片服务。"""
+    """
+    把需要 Chain 编排的壁纸来源注入图片服务。
+    """
     configure_wallpaper_providers(
         tmdb_wallpaper=lambda: TmdbChain().get_random_wallpager(),
         tmdb_wallpapers=lambda count: TmdbChain().get_trending_wallpapers(count),
@@ -148,7 +156,9 @@ def configure_wallpaper_services() -> None:
 def configure_directory_classification_service(
     runtime: ClassificationRuntime,
 ) -> None:
-    """把活动分类策略解析能力装配给目录选择与路径生成服务。"""
+    """
+    把活动分类策略解析能力装配给目录选择与路径生成服务。
+    """
     configure_directory_classification_resolver(
         ClassificationCategoryResolver(runtime)
     )
@@ -162,7 +172,9 @@ def configure_chain_runtime_context(
     classification_service: ClassificationExecutionService,
     system_service: SystemService,
 ) -> None:
-    """登记按需构造的 Chain 上下文，保持无参 Chain 的插件兼容合同。"""
+    """
+    登记按需构造的 Chain 上下文，保持无参 Chain 的插件兼容合同。
+    """
     configure_chain_runtime_context_provider(
         lambda: build_chain_runtime_context(
             dependencies=dependencies,
@@ -175,14 +187,18 @@ def configure_chain_runtime_context(
 
 
 def reset_chain_services() -> None:
-    """按发布逆序撤销 Chain 无参上下文和壁纸来源。"""
+    """
+    按发布逆序撤销 Chain 无参上下文和壁纸来源。
+    """
     configure_chain_runtime_context_provider(None)
     reset_directory_classification_resolver()
     reset_wallpaper_providers()
 
 
 class _RecognitionShareAdapter:
-    """把 MoviePilot Server 共享识别能力适配为 Chain 窄端口。"""
+    """
+    把 MoviePilot Server 共享识别能力适配为 Chain 窄端口。
+    """
 
     def report_recognize_share(
             self,
@@ -190,7 +206,9 @@ class _RecognitionShareAdapter:
             mediainfo: Optional[MediaInfo | MusicInfo],
             keyword_meta: Optional[MetaBase] = None,
     ) -> bool:
-        """同步上报共享识别结果。"""
+        """
+        同步上报共享识别结果。
+        """
         return bool(MoviePilotServerHelper.report_recognize_share(
             meta=meta, mediainfo=mediainfo, keyword_meta=keyword_meta
         ))
@@ -201,7 +219,9 @@ class _RecognitionShareAdapter:
             mediainfo: Optional[MediaInfo | MusicInfo],
             keyword_meta: Optional[MetaBase] = None,
     ) -> bool:
-        """异步上报共享识别结果。"""
+        """
+        异步上报共享识别结果。
+        """
         return bool(await MoviePilotServerHelper.async_report_recognize_share(
             meta=meta, mediainfo=mediainfo, keyword_meta=keyword_meta
         ))
@@ -213,7 +233,9 @@ class _RecognitionShareAdapter:
             keyword_meta: Optional[MetaBase] = None,
             music_type: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
-        """同步查询共享识别结果。"""
+        """
+        同步查询共享识别结果。
+        """
         result = MoviePilotServerHelper.query_recognize_share(
             meta=meta,
             mtype=mtype,
@@ -229,7 +251,9 @@ class _RecognitionShareAdapter:
             keyword_meta: Optional[MetaBase] = None,
             music_type: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
-        """异步查询共享识别结果。"""
+        """
+        异步查询共享识别结果。
+        """
         result = await MoviePilotServerHelper.async_query_recognize_share(
             meta=meta,
             mtype=mtype,
@@ -242,32 +266,46 @@ class _RecognitionShareAdapter:
             self,
             item: Optional[dict[str, Any]],
     ) -> Optional[dict[str, Any]]:
-        """把服务端结果转换为本地识别参数。"""
+        """
+        把服务端结果转换为本地识别参数。
+        """
         return MoviePilotServerHelper.to_recognize_params(item)
 
 
 class _SubscriptionShareAdapter:
-    """把 MoviePilot Server 订阅共享能力适配为 Chain 窄端口。"""
+    """
+    把 MoviePilot Server 订阅共享能力适配为 Chain 窄端口。
+    """
 
     def report_added(self, payload: dict[str, Any]) -> bool:
-        """同步上报新增订阅统计。"""
+        """
+        同步上报新增订阅统计。
+        """
         return bool(MoviePilotServerHelper.sub_reg_durable(payload))
 
     async def async_report_added(self, payload: dict[str, Any]) -> bool:
-        """异步上报新增订阅统计。"""
+        """
+        异步上报新增订阅统计。
+        """
         return bool(await MoviePilotServerHelper.async_sub_reg_durable(payload))
 
     def list_shares(self) -> list[dict[str, Any]]:
-        """读取当前用户可见的订阅分享。"""
+        """
+        读取当前用户可见的订阅分享。
+        """
         return MoviePilotServerHelper.get_subscribe_shares()
 
     def report_completed(self, payload: Mapping[str, JsonData]) -> bool:
-        """同步上报订阅完成统计。"""
+        """
+        同步上报订阅完成统计。
+        """
         return bool(MoviePilotServerHelper.sub_done_durable(dict(payload)))
 
 
 class _NetworkFilesystemAdapter:
-    """把宿主文件系统探测能力适配为整理 Chain 窄端口。"""
+    """
+    把宿主文件系统探测能力适配为整理 Chain 窄端口。
+    """
 
     def is_network_filesystem(
             self,
@@ -275,14 +313,18 @@ class _NetworkFilesystemAdapter:
             *,
             include_local_fuse: bool = False,
     ) -> bool:
-        """判断路径是否位于网络或指定的本地 FUSE 文件系统。"""
+        """
+        判断路径是否位于网络或指定的本地 FUSE 文件系统。
+        """
         return bool(SystemUtils.is_network_filesystem(
             path, include_local_fuse=include_local_fuse
         ))
 
 
 def configure_chain_port_composition() -> None:
-    """原子装配 Chain 的共享服务与文件系统端口。"""
+    """
+    原子装配 Chain 的共享服务与文件系统端口。
+    """
     reset_chain_port_composition()
     try:
         configure_recognition_share_port(
@@ -300,7 +342,9 @@ def configure_chain_port_composition() -> None:
 
 
 def reset_chain_port_composition() -> None:
-    """释放 Chain 技术端口，支持重复 lifespan 与启动失败回滚。"""
+    """
+    释放 Chain 技术端口，支持重复 lifespan 与启动失败回滚。
+    """
     reset_network_filesystem_port()
     reset_subscription_share_port()
     reset_recognition_share_port()

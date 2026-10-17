@@ -1,4 +1,6 @@
-"""自动音乐来源顺序、隔离诊断和不可重置的请求预算。"""
+"""
+自动音乐来源顺序、隔离诊断和不可重置的请求预算。
+"""
 
 import asyncio
 import shutil
@@ -27,7 +29,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def _accepts(info, source):
-    """测试入口采用实际的来源与主身份判据，不凭对象非空判定远端命中。"""
+    """
+    测试入口采用实际的来源与主身份判据，不凭对象非空判定远端命中。
+    """
     return bool(info and info.media_source == source and info.media_id)
 
 
@@ -38,17 +42,23 @@ def _accepts(info, source):
     ("invalid,musicbrainz,anilist", (MediaSource.MusicBrainz,)),
 ])
 def test_configured_music_sources_keep_order_and_ignore_video_sources(configured, expected):
-    """混合来源设置不会把影视来源派发为音乐服务，默认设置仍保持MusicBrainz。"""
+    """
+    混合来源设置不会把影视来源派发为音乐服务，默认设置仍保持MusicBrainz。
+    """
     assert music_recognition_sources(configured) == expected
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_source_failure_does_not_poison_following_source(asynchronous):
-    """首源故障不阻断后源的实际HTTP额度，两次请求仍计入同一操作总量。"""
+    """
+    首源故障不阻断后源的实际HTTP额度，两次请求仍计入同一操作总量。
+    """
     calls = []
 
     def recognize(source):
-        """第一来源记录服务故障，第二来源以自己的身份成功命中。"""
+        """
+        第一来源记录服务故障，第二来源以自己的身份成功命中。
+        """
         calls.append(source)
         assert music_request_timeout() is not None
         if source == MediaSource.MusicBrainz:
@@ -69,7 +79,9 @@ def test_source_failure_does_not_poison_following_source(asynchronous):
 
 @pytest.mark.parametrize("state", ["ambiguous", "conflict"])
 def test_ambiguous_or_conflicting_source_stops_weaker_fallback(state):
-    """已知冲突不能因为另一个来源愿意返回首个同名结果而被掩盖。"""
+    """
+    已知冲突不能因为另一个来源愿意返回首个同名结果而被掩盖。
+    """
     pending = MusicInfo(title="Song", raw_data={"recognition": {"status": state, "message": "需要确认"}})
     recognize = Mock(side_effect=[pending, MusicInfo(media_source="theaudiodb", media_id="wrong", title="Song")])
 
@@ -80,7 +92,9 @@ def test_ambiguous_or_conflicting_source_stops_weaker_fallback(state):
 
 
 def test_outer_budget_cannot_be_reset_by_changing_source():
-    """来源范围独立失败，但不能通过新建子范围恢复已用完的外层请求额度。"""
+    """
+    来源范围独立失败，但不能通过新建子范围恢复已用完的外层请求额度。
+    """
     with capture_music_recognition(seconds=5, request_limit=1) as total:
         with capture_music_source("first") as first:
             assert music_request_timeout() is not None
@@ -93,9 +107,13 @@ def test_outer_budget_cannot_be_reset_by_changing_source():
 
 @pytest.mark.asyncio
 async def test_concurrent_source_scopes_claim_shared_budget_atomically():
-    """并行继承同一观察范围时也只能消耗总额度，不能分别领取一份完整预算。"""
+    """
+    并行继承同一观察范围时也只能消耗总额度，不能分别领取一份完整预算。
+    """
     async def claim(source):
-        """让两个来源交错执行后领取共享HTTP名额。"""
+        """
+        让两个来源交错执行后领取共享HTTP名额。
+        """
         with capture_music_source(source):
             await asyncio.sleep(0)
             return music_request_timeout()
@@ -106,9 +124,13 @@ async def test_concurrent_source_scopes_claim_shared_budget_atomically():
 
 
 def test_all_empty_sources_keep_service_error_and_fresh_operation_recovers():
-    """没有成功回退时保留故障语义，下一次独立操作不继承上次状态。"""
+    """
+    没有成功回退时保留故障语义，下一次独立操作不继承上次状态。
+    """
     def failed(source):
-        """只有第一个来源出现故障，后面的来源正常无匹配。"""
+        """
+        只有第一个来源出现故障，后面的来源正常无匹配。
+        """
         if source == MediaSource.MusicBrainz:
             raise OSError("offline")
         return None
@@ -123,7 +145,9 @@ def test_all_empty_sources_keep_service_error_and_fresh_operation_recovers():
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_native_recognition_uses_configured_fallback_without_mutating_provider_result(monkeypatch, asynchronous):
-    """自动识别使用配置顺序；成功保留来源ID，附加诊断不会污染来源缓存对象。"""
+    """
+    自动识别使用配置顺序；成功保留来源ID，附加诊断不会污染来源缓存对象。
+    """
     chain = object.__new__(MediaChain)
     monkeypatch.setattr("app.chain.media.recognition.get_chain_runtime_config_snapshot",
                         lambda: SimpleNamespace(search_source="musicbrainz,theaudiodb,doubanmusic"))
@@ -143,7 +167,9 @@ def test_native_recognition_uses_configured_fallback_without_mutating_provider_r
 
 @pytest.mark.parametrize("explicit", [False, True])
 def test_bound_or_explicit_identity_does_not_cross_sources(monkeypatch, explicit):
-    """已绑定身份经过真实请求规划后仍固定来源，不用其它来源解释同一个ID。"""
+    """
+    已绑定身份经过真实请求规划后仍固定来源，不用其它来源解释同一个ID。
+    """
     chain = object.__new__(MediaChain)
     monkeypatch.setattr("app.chain.media.recognition.get_chain_runtime_config_snapshot",
                         lambda: SimpleNamespace(search_source="theaudiodb,musicbrainz,doubanmusic"))
@@ -163,7 +189,9 @@ def test_bound_or_explicit_identity_does_not_cross_sources(monkeypatch, explicit
 
 
 def test_unbound_track_with_explicit_release_evidence_stays_in_musicbrainz(monkeypatch):
-    """只有发行MBID时也不能将其映射到其它来源的同名专辑。"""
+    """
+    只有发行MBID时也不能将其映射到其它来源的同名专辑。
+    """
     chain = object.__new__(MediaChain)
     monkeypatch.setattr("app.chain.media.recognition.get_chain_runtime_config_snapshot",
                         lambda: SimpleNamespace(search_source="theaudiodb,musicbrainz"))
@@ -176,7 +204,9 @@ def test_unbound_track_with_explicit_release_evidence_stays_in_musicbrainz(monke
 
 @pytest.mark.parametrize("state", ["ambiguous", "conflict", "service_error", "budget_exhausted"])
 def test_path_tiers_preserve_unresolved_diagnostics(monkeypatch, state):
-    """无远端ID的诊断不能在版本校验中丢失，再用文件名启动一轮弱查询。"""
+    """
+    无远端ID的诊断不能在版本校验中丢失，再用文件名启动一轮弱查询。
+    """
     chain = object.__new__(MediaChain)
     meta = MetaMusic(title="Song")
     pending = MusicInfo(title="Song", raw_data={"recognition": {"status": state}})
@@ -191,7 +221,9 @@ def test_path_tiers_preserve_unresolved_diagnostics(monkeypatch, state):
 
 
 def test_ambiguity_cannot_be_overwritten_by_plugin_or_shared_identity():
-    """原生已判定歧义时，真实插件规划和共享状态机都必须保留待确认结果。"""
+    """
+    原生已判定歧义时，真实插件规划和共享状态机都必须保留待确认结果。
+    """
     chain = object.__new__(MediaChain)
     chain.eventmanager = Mock()
     meta = MetaMusic(title="Song")
@@ -209,23 +241,33 @@ def test_ambiguity_cannot_be_overwritten_by_plugin_or_shared_identity():
 
 
 class _Response:
-    """模拟HTTP响应及明确的资源释放，不允许测试访问真实服务。"""
+    """
+    模拟HTTP响应及明确的资源释放，不允许测试访问真实服务。
+    """
 
     def __init__(self, payload, status=200):
-        """保存响应内容及关闭状态。"""
+        """
+        保存响应内容及关闭状态。
+        """
         self.payload, self.status_code, self.closed = payload, status, False
         self.content, self.headers, self.text = b"json", {}, ""
 
     def json(self):
-        """返回已设定的JSON结构。"""
+        """
+        返回已设定的JSON结构。
+        """
         return self.payload
 
     def close(self):
-        """标记同步响应释放。"""
+        """
+        标记同步响应释放。
+        """
         self.closed = True
 
     async def aclose(self):
-        """标记异步响应释放。"""
+        """
+        标记异步响应释放。
+        """
         self.closed = True
 
 
@@ -233,7 +275,9 @@ class _Response:
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize("source", ["theaudiodb", "doubanmusic"])
 async def test_secondary_provider_counts_requests_and_recovers_uncached_failure(monkeypatch, source, asynchronous):
-    """次级来源真实HTTP边界也服从预算，故障后同一请求可恢复而不会命中长负缓存。"""
+    """
+    次级来源真实HTTP边界也服从预算，故障后同一请求可恢复而不会命中长负缓存。
+    """
     failed, recovered = _Response({}, 503), _Response({"album": [{"id": "ok"}]})
     network = (AsyncMock if asynchronous else Mock)(side_effect=[failed, recovered])
     client = SimpleNamespace(get_res=network)
@@ -243,7 +287,9 @@ async def test_secondary_provider_counts_requests_and_recovers_uncached_failure(
                             lambda **_kwargs: client)
 
         async def request(query):
-            """通过实际同步或异步请求入口验证共享缓存。"""
+            """
+            通过实际同步或异步请求入口验证共享缓存。
+            """
             return await TheAudioDbModule._async_request_json("searchalbum.php", {"a": query}) if asynchronous else (
                 TheAudioDbModule._request_json("searchalbum.php", {"a": query}))
     else:
@@ -255,7 +301,9 @@ async def test_secondary_provider_counts_requests_and_recovers_uncached_failure(
         monkeypatch.setattr("app.modules.douban.apiv2.AsyncRequestUtils", lambda **_kwargs: client)
 
         async def request(query):
-            """音乐API请求仍经过实际解析和关闭逻辑。"""
+            """
+            音乐API请求仍经过实际解析和关闭逻辑。
+            """
             return await api.async_music_search(query) if asynchronous else api.music_search(query)
     try:
         with capture_music_recognition(seconds=5, request_limit=1) as first:
@@ -275,7 +323,9 @@ async def test_secondary_provider_counts_requests_and_recovers_uncached_failure(
 
 
 def _directory_setup(tmp_path, monkeypatch, sources, *, known_album=True):
-    """使用真实无标签FLAC和独立媒体链测试整专来源选择，不注册全局单例。"""
+    """
+    使用真实无标签FLAC和独立媒体链测试整专来源选择，不注册全局单例。
+    """
     directory = tmp_path / ("Artist - Album" if known_album else "Music")
     directory.mkdir()
     for index, title in enumerate(("First", "Second"), 1):
@@ -295,7 +345,9 @@ def _directory_setup(tmp_path, monkeypatch, sources, *, known_album=True):
 
 
 def _album(source, identity="album-one", *, tracks=True):
-    """构造同一来源命名空间内的完整专辑和原生曲目身份。"""
+    """
+    构造同一来源命名空间内的完整专辑和原生曲目身份。
+    """
     album = MusicAlbumInfo(media_source=source, media_id=identity, title="Album", artists=["Artist"])
     if tracks:
         album.tracks = [MusicInfo(media_source=source, media_id=f"{identity}-track-{index}", title=title,
@@ -306,7 +358,9 @@ def _album(source, identity="album-one", *, tracks=True):
 
 
 def _backend(albums):
-    """模拟来源链的读边界，真正的搜索计划、候选核验和文件对位继续运行。"""
+    """
+    模拟来源链的读边界，真正的搜索计划、候选核验和文件对位继续运行。
+    """
     by_id = {album.media_id: album for album in albums}
     cards = [album.to_music_info() for album in albums]
     return SimpleNamespace(search_music=Mock(return_value=cards), async_search_music=AsyncMock(return_value=cards),
@@ -315,11 +369,15 @@ def _backend(albums):
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_directory_fallback_requires_complete_tracks_and_keeps_source_identity(tmp_path, monkeypatch, asynchronous):
-    """首源故障时可按完整次级曲目表整理；匹配身份始终属于该次级来源。"""
+    """
+    首源故障时可按完整次级曲目表整理；匹配身份始终属于该次级来源。
+    """
     directory, chain, _config, primary = _directory_setup(tmp_path, monkeypatch, "musicbrainz,theaudiodb")
 
     def fail_primary(*_args, **_kwargs):
-        """复现主元数据源短暂不可用。"""
+        """
+        复现主元数据源短暂不可用。
+        """
         report_music_recognition("service_error", "临时不可用")
         return None
 
@@ -339,7 +397,9 @@ def test_directory_fallback_requires_complete_tracks_and_keeps_source_identity(t
 
 @pytest.mark.parametrize("case", ["no_tracks", "ambiguous", "wrong_source", "wrong_duration"])
 def test_directory_does_not_invent_alignment_or_pick_first_album(tmp_path, monkeypatch, case):
-    """没有曲目、等价多候选、混源ID及明显时长冲突都不能产生自动文件映射。"""
+    """
+    没有曲目、等价多候选、混源ID及明显时长冲突都不能产生自动文件映射。
+    """
     directory, chain, _config, _primary = _directory_setup(tmp_path, monkeypatch, "theaudiodb")
     album = _album(MediaSource.TheAudioDB, tracks=case != "no_tracks")
     albums = [album, _album(MediaSource.TheAudioDB, "other")] if case == "ambiguous" else [album]
@@ -357,7 +417,9 @@ def test_directory_does_not_invent_alignment_or_pick_first_album(tmp_path, monke
 
 
 def test_source_configuration_change_invalidates_directory_negative_cache(tmp_path, monkeypatch):
-    """切换来源后必须重新匹配，不能复用同一目录在旧来源中的无匹配结果。"""
+    """
+    切换来源后必须重新匹配，不能复用同一目录在旧来源中的无匹配结果。
+    """
     directory, chain, config, primary = _directory_setup(tmp_path, monkeypatch, "musicbrainz")
     backend = _backend([_album(MediaSource.TheAudioDB)])
     monkeypatch.setattr(chain, "_music_source_chain", lambda _source: backend)
@@ -372,14 +434,18 @@ def test_source_configuration_change_invalidates_directory_negative_cache(tmp_pa
 
 
 def test_directory_lookup_freezes_source_choice_with_cache_key(tmp_path, monkeypatch):
-    """配置在缓存键生成后改变，也不能将新来源的结果存入旧来源键。"""
+    """
+    配置在缓存键生成后改变，也不能将新来源的结果存入旧来源键。
+    """
     directory, chain, config, _primary = _directory_setup(tmp_path, monkeypatch, "theaudiodb")
     backends = {source: _backend([_album(source)]) for source in (MediaSource.TheAudioDB, MediaSource.DoubanMusic)}
     monkeypatch.setattr(chain, "_music_source_chain", backends.get)
     original = chain._album_dir_cache.resolve
 
     def change_config(key, signature, resolver):
-        """在真实缓存准备加载时切换下一次请求的来源。"""
+        """
+        在真实缓存准备加载时切换下一次请求的来源。
+        """
         config["sources"] = "doubanmusic"
         return original(key, signature, resolver)
 
@@ -392,7 +458,9 @@ def test_directory_lookup_freezes_source_choice_with_cache_key(tmp_path, monkeyp
 
 
 def test_unknown_album_can_be_discovered_from_two_track_names(tmp_path, monkeypatch):
-    """专辑目录名无意义时，使用真实曲名返回的同来源album_id汇总候选再完整核验。"""
+    """
+    专辑目录名无意义时，使用真实曲名返回的同来源album_id汇总候选再完整核验。
+    """
     directory, chain, _config, _primary = _directory_setup(tmp_path, monkeypatch, "theaudiodb", known_album=False)
     album = _album(MediaSource.TheAudioDB)
     backend = _backend([album])
@@ -407,7 +475,9 @@ def test_unknown_album_can_be_discovered_from_two_track_names(tmp_path, monkeypa
 
 
 def test_secondary_recording_candidates_are_not_selected_by_response_order():
-    """同名同艺人的不同原生ID没有额外证据时必须保持歧义。"""
+    """
+    同名同艺人的不同原生ID没有额外证据时必须保持歧义。
+    """
     candidates = [MusicInfo(media_source="theaudiodb", media_id=identity, title="Song", artists=["Artist"])
                   for identity in ("one", "two")]
     with capture_music_recognition() as observed:
@@ -417,7 +487,9 @@ def test_secondary_recording_candidates_are_not_selected_by_response_order():
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_secondary_catalog_preserves_local_multidisc_edition(tmp_path, monkeypatch, asynchronous):
-    """真实标签的再版年及双碟曲序不能被次级目录的单碟首版布局覆盖。"""
+    """
+    真实标签的再版年及双碟曲序不能被次级目录的单碟首版布局覆盖。
+    """
     from mutagen.flac import FLAC
 
     directory, chain, _config, _primary = _directory_setup(tmp_path, monkeypatch, "theaudiodb")
@@ -453,14 +525,18 @@ def test_secondary_catalog_preserves_local_multidisc_edition(tmp_path, monkeypat
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize("music_type", ["album", "recording"])
 def test_douban_distinct_matching_identities_require_confirmation(asynchronous, music_type):
-    """同步和异步豆瓣搜索遇到同名同署名的不同身份时都不能取第一个。"""
+    """
+    同步和异步豆瓣搜索遇到同名同署名的不同身份时都不能取第一个。
+    """
     from app.modules.douban import DoubanModule
 
     module = object.__new__(DoubanModule)
     cards = [{"id": identity, "title": "Album", "artists": [{"name": "Artist"}]} for identity in ("100", "200")]
 
     def detail(subject_id):
-        """提供同证据的两个专辑曲目表。"""
+        """
+        提供同证据的两个专辑曲目表。
+        """
         return {"id": subject_id, "title": "Album", "singer": [{"name": "Artist"}],
                 "songs": [{"title": "First", "track_number": 1}]}
 
@@ -480,7 +556,9 @@ def test_douban_distinct_matching_identities_require_confirmation(asynchronous, 
 
 @pytest.mark.parametrize("state", ["budget_exhausted", "service_error", "ambiguous", "conflict"])
 def test_source_cache_cannot_turn_failed_parent_into_success(state):
-    """外层已中断的识别不能因后续来源命中缓存而返回成功身份。"""
+    """
+    外层已中断的识别不能因后续来源命中缓存而返回成功身份。
+    """
     with capture_music_recognition() as observation:
         report_music_recognition(state, "外层已中断")
         result, diagnostic = recognize_music_sources((MediaSource.TheAudioDB,), lambda source: MusicInfo(
@@ -491,7 +569,9 @@ def test_source_cache_cannot_turn_failed_parent_into_success(state):
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_directory_does_not_confirm_truncated_candidates(tmp_path, monkeypatch, asynchronous):
-    """超过有界详情核验范围时保留歧义，不能仅凭前五个候选宣布唯一。"""
+    """
+    超过有界详情核验范围时保留歧义，不能仅凭前五个候选宣布唯一。
+    """
     directory, chain, _config, _primary = _directory_setup(tmp_path, monkeypatch, "theaudiodb")
     backend = _backend([_album(MediaSource.TheAudioDB, str(index + 10)) for index in range(6)])
     monkeypatch.setattr(chain, "_music_source_chain", lambda _source: backend)
@@ -503,7 +583,9 @@ def test_directory_does_not_confirm_truncated_candidates(tmp_path, monkeypatch, 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_empty_directory_diagnostics_survive_single_file_fallback(tmp_path, monkeypatch, asynchronous):
-    """空目录映射仍须把待确认原因送到单文件识别，并保留本地展示信息。"""
+    """
+    空目录映射仍须把待确认原因送到单文件识别，并保留本地展示信息。
+    """
     from app.chain.media.path import _finalize_music_path_info
     from app.domain.music import MusicDirectoryMatch
 

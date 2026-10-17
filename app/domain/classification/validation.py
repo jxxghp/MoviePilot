@@ -1,3 +1,7 @@
+"""
+分类策略和目录路径的纯校验，汇总可发布性错误与警告。
+"""
+
 import json
 import re
 import unicodedata
@@ -46,7 +50,12 @@ _ILLEGAL_PATH_CHARACTERS = frozenset('<>:"/\\|?*')
 
 @dataclass(frozen=True, slots=True)
 class _CategoryPathViolation:
-    """描述分类路径中的一个结构化违规位置和消息。"""
+    """
+    描述分类路径中的一个结构化违规位置和消息。
+
+    :param message: 可展示给用户的分类路径违规说明
+    :param segment_index: 违规路径段的零基序号；整体路径错误时为 None
+    """
 
     message: str
     segment_index: int | None = None
@@ -55,7 +64,9 @@ class _CategoryPathViolation:
 def validate_classification_category_path(
     segments: Sequence[str],
 ) -> tuple[str, ...]:
-    """校验并冻结相对于媒体类型根目录的分类路径段。"""
+    """
+    校验并冻结相对于媒体类型根目录的分类路径段。
+    """
     violations = _category_path_violations(segments)
     if violations:
         raise ValueError(violations[0].message)
@@ -64,10 +75,18 @@ def validate_classification_category_path(
 
 @dataclass
 class _ValidationCollector:
+    """
+    按检查顺序收集分类策略的错误和警告。
+
+    :param issues: 按检查顺序累积的错误与警告，默认从空列表开始
+    """
+
     issues: list[ClassificationValidationIssue] = field(default_factory=list)
 
     def error(self, code: str, message: str, path: list[str | int]) -> None:
-        """追加阻止策略发布的结构化错误。"""
+        """
+        追加阻止策略发布的结构化错误。
+        """
         self.issues.append(
             ClassificationValidationIssue(
                 severity="error",
@@ -78,7 +97,9 @@ class _ValidationCollector:
         )
 
     def warning(self, code: str, message: str, path: list[str | int]) -> None:
-        """追加允许策略发布但需要用户确认的结构化警告。"""
+        """
+        追加允许策略发布但需要用户确认的结构化警告。
+        """
         self.issues.append(
             ClassificationValidationIssue(
                 severity="warning",
@@ -91,7 +112,7 @@ class _ValidationCollector:
 
 class ClassificationPolicyValidator:
     """
-    媒体分类策略纯校验器
+    媒体分类策略纯校验器。
 
     校验器只检查策略、标准字段目录和调用方提供的扩展字段，不访问配置、插件或持久化状态。
     """
@@ -103,7 +124,7 @@ class ClassificationPolicyValidator:
         extra_fields: Iterable[ClassificationFieldDefinition] = (),
     ) -> ClassificationValidationResult:
         """
-        校验分类策略是否满足发布约束
+        校验分类策略是否满足发布约束。
 
         :param policy: 待发布的完整分类策略
         :param extra_fields: 当前已注册来源声明的扩展字段
@@ -129,7 +150,9 @@ class ClassificationPolicyValidator:
         extra_fields: Sequence[ClassificationFieldDefinition],
         collector: _ValidationCollector,
     ) -> None:
-        """校验扩展字段的 ID、类型、操作符和来源命名空间。"""
+        """
+        校验扩展字段的 ID、类型、操作符和来源命名空间。
+        """
         standard_ids = {definition.id for definition in standard_field_definitions()}
         seen_ids: set[str] = set()
         for index, definition in enumerate(extra_fields):
@@ -201,7 +224,9 @@ class ClassificationPolicyValidator:
         policy: ClassificationPolicy,
         collector: _ValidationCollector,
     ) -> dict[str, Any]:
-        """校验分类 ID、名称、路径和同媒体类型路径唯一性。"""
+        """
+        校验分类 ID、名称、路径和同媒体类型路径唯一性。
+        """
         categories: dict[str, Any] = {}
         paths: dict[tuple[str, tuple[str, ...]], str] = {}
         for index, category in enumerate(policy.categories):
@@ -247,7 +272,9 @@ class ClassificationPolicyValidator:
         base_path: list[str | int],
         collector: _ValidationCollector,
     ) -> None:
-        """校验分类相对路径的层级、段长度和跨平台文件名安全性。"""
+        """
+        校验分类相对路径的层级、段长度和跨平台文件名安全性。
+        """
         for violation in _category_path_violations(segments):
             path = [*base_path, "path"]
             if violation.segment_index is not None:
@@ -266,7 +293,9 @@ class ClassificationPolicyValidator:
         fields: Mapping[str, ClassificationFieldDefinition],
         collector: _ValidationCollector,
     ) -> None:
-        """校验规则身份、目标引用、条件复杂度和字段契约。"""
+        """
+        校验规则身份、目标引用、条件复杂度和字段契约。
+        """
         if len(policy.rules) > MAX_RULES:
             collector.error(
                 "max_rules_exceeded",
@@ -337,7 +366,9 @@ class ClassificationPolicyValidator:
         base_path: list[str | int],
         collector: _ValidationCollector,
     ) -> None:
-        """校验分类规则和标签规则各自允许的目标结构。"""
+        """
+        校验分类规则和标签规则各自允许的目标结构。
+        """
         category_id = rule.target.category_id
         if rule.kind == "label":
             if category_id:
@@ -392,7 +423,9 @@ class ClassificationPolicyValidator:
         depth: int,
         collector: _ValidationCollector,
     ) -> int:
-        """递归校验条件树并返回叶子条件数量。"""
+        """
+        递归校验条件树并返回叶子条件数量。
+        """
         if isinstance(node, ClassificationCondition):
             cls._validate_condition(node, rule, fields, path, collector)
             return 1
@@ -424,7 +457,9 @@ class ClassificationPolicyValidator:
         path: list[str | int],
         collector: _ValidationCollector,
     ) -> None:
-        """校验叶子条件的字段、操作符、媒体类型、来源范围和值结构。"""
+        """
+        校验叶子条件的字段、操作符、媒体类型、来源范围和值结构。
+        """
         definition = fields.get(condition.field)
         if not definition:
             collector.error(
@@ -459,7 +494,9 @@ class ClassificationPolicyValidator:
         path: list[str | int],
         collector: _ValidationCollector,
     ) -> None:
-        """按字段值类型校验条件值和范围结构。"""
+        """
+        按字段值类型校验条件值和范围结构。
+        """
         operator = condition.operator
         value = condition.value
         if operator in {"exists", "not_exists", "is_true", "is_false"}:
@@ -553,7 +590,9 @@ class ClassificationPolicyValidator:
         path: list[str | int],
         collector: _ValidationCollector,
     ) -> None:
-        """确保来源扩展字段只被其声明来源范围内的规则引用。"""
+        """
+        确保来源扩展字段只被其声明来源范围内的规则引用。
+        """
         extension_sources = [source for source, support in definition.source_support.items() if support == "extension"]
         if not field_id.startswith("extensions.") or not extension_sources:
             return
@@ -580,7 +619,9 @@ class ClassificationPolicyValidator:
         path: list[str | int],
         collector: _ValidationCollector,
     ) -> None:
-        """提示规则范围内只提供部分事实覆盖的数据源。"""
+        """
+        提示规则范围内只提供部分事实覆盖的数据源。
+        """
         scoped_sources = rule.sources or list(definition.source_support)
         partial_sources = [source for source in scoped_sources if definition.source_support.get(source) == "partial"]
         if partial_sources:
@@ -599,7 +640,9 @@ class ClassificationPolicyValidator:
         path: list[str | int],
         collector: _ValidationCollector,
     ) -> None:
-        """阻止规则限定到全部无法提供该字段的数据源。"""
+        """
+        阻止规则限定到全部无法提供该字段的数据源。
+        """
         scoped_sources = rule.sources or list(definition.source_support)
         if not scoped_sources:
             return
@@ -622,7 +665,9 @@ class ClassificationPolicyValidator:
         categories: Mapping[str, Any],
         collector: _ValidationCollector,
     ) -> None:
-        """确保每种媒体类型的全局兜底引用同类型的可用分类。"""
+        """
+        确保每种媒体类型的全局兜底引用同类型的可用分类。
+        """
         for media_type in ALL_MEDIA_TYPES:
             category_id = policy.fallbacks.get(cast(ClassificationMediaType, media_type))
             path: list[str | int] = ["fallbacks", media_type]
@@ -660,7 +705,9 @@ class ClassificationPolicyValidator:
         fields: Mapping[str, ClassificationFieldDefinition],
         collector: _ValidationCollector,
     ) -> None:
-        """校验字段别名只引用已登记字段且不形成直接或间接循环。"""
+        """
+        校验字段别名只引用已登记字段且不形成直接或间接循环。
+        """
         for field_id, aliases in policy.field_aliases.items():
             path: list[str | int] = ["field_aliases", field_id]
             if field_id not in fields:
@@ -690,7 +737,9 @@ class ClassificationPolicyValidator:
         path: list[str | int],
         collector: _ValidationCollector,
     ) -> None:
-        """校验媒体类型集合非空、不重复且属于分类体系支持范围。"""
+        """
+        校验媒体类型集合非空、不重复且属于分类体系支持范围。
+        """
         if not media_types:
             collector.error("empty_media_types", "媒体类型不能为空", path)
             return
@@ -710,7 +759,9 @@ class ClassificationPolicyValidator:
         policy: ClassificationPolicy,
         collector: _ValidationCollector,
     ) -> None:
-        """对条件完全相同且适用范围重叠的主分类规则给出顺序提示。"""
+        """
+        对条件完全相同且适用范围重叠的主分类规则给出顺序提示。
+        """
         seen: dict[str, ClassificationRule] = {}
         for index, rule in enumerate(policy.rules):
             if not rule.enabled or rule.kind != "category":
@@ -734,7 +785,9 @@ class ClassificationPolicyValidator:
 def _group_children(
     group: ClassificationConditionGroup,
 ) -> tuple[str, list[ClassificationConditionNode]]:
-    """读取严格条件组中的操作符和子节点。"""
+    """
+    读取严格条件组中的操作符和子节点。
+    """
     if group.all is not None:
         return "all", group.all
     if group.any is not None:
@@ -745,7 +798,9 @@ def _group_children(
 
 
 def _path_segment_is_illegal(segment: str) -> bool:
-    """判断路径段是否触发目录穿越、控制字符或跨平台非法文件名约束。"""
+    """
+    判断路径段是否触发目录穿越、控制字符或跨平台非法文件名约束。
+    """
     if segment in {".", ".."} or segment != segment.strip():
         return True
     if segment.endswith((".", " ")):
@@ -761,7 +816,9 @@ def _path_segment_is_illegal(segment: str) -> bool:
 def _category_path_violations(
     segments: Sequence[str],
 ) -> tuple[_CategoryPathViolation, ...]:
-    """返回分类路径的全部违规，供发布校验和运行时防御复用。"""
+    """
+    返回分类路径的全部违规，供发布校验和运行时防御复用。
+    """
     if isinstance(segments, (str, bytes)):
         return (_CategoryPathViolation("分类目录路径必须使用路径段数组"),)
     values = tuple(segments)
@@ -804,22 +861,30 @@ def _category_path_violations(
 
 
 def _normalize_path_segment(segment: str) -> str:
-    """按 Unicode NFC 和大小写折叠构造跨平台路径唯一键。"""
+    """
+    按 Unicode NFC 和大小写折叠构造跨平台路径唯一键。
+    """
     return unicodedata.normalize("NFC", segment).casefold()
 
 
 def _is_number(value: Any) -> bool:
-    """判断值是否为分类规则支持的整数或浮点数，布尔值不属于数字。"""
+    """
+    判断值是否为分类规则支持的整数或浮点数，布尔值不属于数字。
+    """
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
 def _is_non_empty_scalar_list(value: Any) -> bool:
-    """判断值是否为不含 null 或嵌套对象的非空标量列表。"""
+    """
+    判断值是否为不含 null 或嵌套对象的非空标量列表。
+    """
     return isinstance(value, list) and bool(value) and all(isinstance(item, (str, int, float, bool)) for item in value)
 
 
 def _option_value(option: Any) -> Any:
-    """兼容简单枚举值和包含 value 字段的前端选项目录。"""
+    """
+    兼容简单枚举值和包含 value 字段的前端选项目录。
+    """
     if isinstance(option, Mapping):
         return option.get("value")
     if hasattr(option, "value"):
@@ -828,7 +893,9 @@ def _option_value(option: Any) -> Any:
 
 
 def _alias_has_cycle(alias: str, aliases: Mapping[str, str]) -> bool:
-    """检测从一个别名出发是否会回到已经访问过的别名。"""
+    """
+    检测从一个别名出发是否会回到已经访问过的别名。
+    """
     visited: set[str] = set()
     current = alias
     while current in aliases:
@@ -840,7 +907,9 @@ def _alias_has_cycle(alias: str, aliases: Mapping[str, str]) -> bool:
 
 
 def _rules_overlap(left: ClassificationRule, right: ClassificationRule) -> bool:
-    """判断两条规则的媒体类型和来源范围是否存在交集。"""
+    """
+    判断两条规则的媒体类型和来源范围是否存在交集。
+    """
     if not set(left.media_types).intersection(right.media_types):
         return False
     if not left.sources or not right.sources:

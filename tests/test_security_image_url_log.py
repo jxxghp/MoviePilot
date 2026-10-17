@@ -9,9 +9,12 @@
 """
 
 import asyncio
+from types import SimpleNamespace
 from typing import List, Optional
-from unittest import IsolatedAsyncioTestCase
 from unittest.mock import patch
+
+import pytest
+import pytest_asyncio
 
 from app.application.security import url as security_module
 from app.application.security.url import (
@@ -23,6 +26,29 @@ from app.runtime.coalesce import EventCoalescer
 
 _TEST_WINDOW = 0.05
 _TEST_WAIT = _TEST_WINDOW * 4
+
+
+@pytest_asyncio.fixture
+async def image_log_context():
+    """
+    临时安装短窗口的图片阻断日志合并器，关闭后恢复原有实例。
+
+    :return: 包含测试合并器和允许域名集合的上下文
+    """
+    original = security_module._image_proxy_block_log_coalescer
+    coalescer = EventCoalescer(
+        window_seconds=_TEST_WINDOW,
+        on_flush=security_module._log_image_proxy_block_summary,
+        source="image_proxy_test",
+    )
+    security_module._image_proxy_block_log_coalescer = coalescer
+    try:
+        yield SimpleNamespace(_coalescer=coalescer, _allowed_domains={"image.tmdb.org"})
+    finally:
+        try:
+            await coalescer.close()
+        finally:
+            security_module._image_proxy_block_log_coalescer = original
 
 
 def _diag(
@@ -45,244 +71,266 @@ def _diag(
     )
 
 
-class IsSafeImageUrlLogTest(IsolatedAsyncioTestCase):
+async def _invoke(
+    image_log_context,
+    diagnosis: UrlSafetyDiagnosis,
+    *,
+    url: str = "https://image.tmdb.org/t/p/w500/x.jpg",
+    signed_clean_url: Optional[str] = None,
+    allowed_private_ranges: Optional[List[str]] = None,
+):
     """
-    `is_safe_image_url_async` 阻断路径的结构化日志 + 聚合行为校验。
+    以指定诊断结果与签名校验返回值驱动 `is_safe_image_url_async`，捕获 warning。
     """
 
-    async def asyncSetUp(self) -> None:
-        # 用短窗口实例临时替换模块级 coalescer，便于在测试内驱动窗口到期 flush
-        self._original_coalescer = security_module._image_proxy_block_log_coalescer
-        self._coalescer = EventCoalescer(
-            window_seconds=_TEST_WINDOW,
-            on_flush=security_module._log_image_proxy_block_summary,
-            source="image_proxy_test",
-        )
-        security_module._image_proxy_block_log_coalescer = self._coalescer
-        self._allowed_domains = {"image.tmdb.org"}
-
-    async def asyncTearDown(self) -> None:
-        await self._coalescer.close()
-        security_module._image_proxy_block_log_coalescer = self._original_coalescer
-
-    async def _invoke(
-        self,
-        diagnosis: UrlSafetyDiagnosis,
-        *,
-        url: str = "https://image.tmdb.org/t/p/w500/x.jpg",
-        signed_clean_url: Optional[str] = None,
-        allowed_private_ranges: Optional[List[str]] = None,
-    ):
+    async def fake_evaluate(*_args, **_kwargs):
         """
-        以指定诊断结果与签名校验返回值驱动 `is_safe_image_url_async`，捕获 warning。
+        返回预设地址安全诊断结果，隔离真实 DNS 与网络检查。
         """
-        async def fake_evaluate(*_args, **_kwargs):
-            return diagnosis
+        return diagnosis
 
-        warns: List[str] = []
-        with patch.object(
+    warns: List[str] = []
+    with (
+        patch.object(
             SecurityUtils,
             "evaluate_url_safety_async",
             side_effect=fake_evaluate,
-        ), patch.object(
+        ),
+        patch.object(
             SecurityUtils,
             "verify_signed_url",
             return_value=signed_clean_url,
-        ), patch.object(
+        ),
+        patch.object(
             security_module.logger,
             "warn",
             side_effect=warns.append,
-        ):
-            allowed = await SecurityUtils.is_safe_image_url_async(
-                url,
-                self._allowed_domains,
-                allowed_private_ranges=allowed_private_ranges,
-            )
-        return allowed, warns
-
-    async def test_domain_not_allowed_emits_clean_reason_label(self):
-        """
-        普通外链（未携带 mp_sig）撞 allowlist 失败时，warning 标记
-        DOMAIN_NOT_ALLOWED，不附 fake-ip 提示，也不挂签名失败标记，
-        避免误导未签名调用方以为必须签名。
-        """
-        allowed, warns = await self._invoke(
-            _diag(UrlSafetyReason.DOMAIN_NOT_ALLOWED),
+        ),
+    ):
+        allowed = await SecurityUtils.is_safe_image_url_async(
+            url,
+            image_log_context._allowed_domains,
+            allowed_private_ranges=allowed_private_ranges,
         )
+    return allowed, warns
 
-        self.assertFalse(allowed)
-        self.assertEqual(len(warns), 1)
-        self.assertIn("reason=domain_not_allowed", warns[0])
-        self.assertIn("Blocked unsafe image URL", warns[0])
-        self.assertNotIn("fake-ip", warns[0])
-        self.assertNotIn("invalid_signature", warns[0])
 
-    async def test_invalid_signature_tag_only_when_url_signed(self):
-        """
-        URL 显式携带 `#mp_sig=...` 但校验失败时，reason 末尾追加
-        `invalid_signature`，便于区分"签名失效"与"未签名外链拦截"。
-        """
-        allowed, warns = await self._invoke(
-            _diag(UrlSafetyReason.DOMAIN_NOT_ALLOWED),
-            url="https://attacker.example.com/x.jpg#mp_sig=deadbeef&mp_purpose=image-proxy",
-        )
+@pytest.mark.asyncio
+async def test_domain_not_allowed_emits_clean_reason_label(image_log_context) -> None:
+    """
+    普通外链（未携带 mp_sig）撞 allowlist 失败时，warning 标记
+    DOMAIN_NOT_ALLOWED，不附 fake-ip 提示，也不挂签名失败标记，
+    避免误导未签名调用方以为必须签名。
+    """
+    allowed, warns = await _invoke(
+        image_log_context,
+        _diag(UrlSafetyReason.DOMAIN_NOT_ALLOWED),
+    )
 
-        self.assertFalse(allowed)
-        self.assertEqual(len(warns), 1)
-        self.assertIn(
-            "reason=domain_not_allowed+invalid_signature", warns[0]
-        )
+    assert not allowed
+    assert len(warns) == 1
+    assert "reason=domain_not_allowed" in warns[0]
+    assert "Blocked unsafe image URL" in warns[0]
+    assert "fake-ip" not in warns[0]
+    assert "invalid_signature" not in warns[0]
 
-    async def test_non_global_dns_result_lists_ips_with_hint(self):
-        """
-        DNS 解析到非公网且未配置允许网段时，warning 列出解析 IP 并附 fake-ip 提示。
-        """
-        allowed, warns = await self._invoke(
-            _diag(
-                UrlSafetyReason.NON_GLOBAL_DNS_RESULT,
-                ips=["198.18.16.96", "198.18.16.97"],
-            ),
-        )
 
-        self.assertFalse(allowed)
-        self.assertEqual(len(warns), 1)
-        warning = warns[0]
-        self.assertIn("reason=non_global_dns_result", warning)
-        self.assertIn("host=image.tmdb.org", warning)
-        self.assertIn("ips=198.18.16.96,198.18.16.97", warning)
-        self.assertIn("IMAGE_PROXY_ALLOWED_PRIVATE_RANGES", warning)
-        self.assertIn("198.18.0.0/15", warning)
+@pytest.mark.asyncio
+async def test_invalid_signature_tag_only_when_url_signed(image_log_context) -> None:
+    """
+    URL 显式携带 `#mp_sig=...` 但校验失败时，reason 末尾追加
+    `invalid_signature`，便于区分"签名失效"与"未签名外链拦截"。
+    """
+    allowed, warns = await _invoke(
+        image_log_context,
+        _diag(UrlSafetyReason.DOMAIN_NOT_ALLOWED),
+        url="https://attacker.example.com/x.jpg#mp_sig=deadbeef&mp_purpose=image-proxy",
+    )
 
-    async def test_configured_ranges_skip_fakeip_hint(self):
-        """
-        已配置 allowed_private_ranges 时不再追加 fake-ip 提示，避免重复引导。
-        warning 同时把已生效的网段列在字段里供运维对照。
-        """
-        _, warns = await self._invoke(
-            _diag(
-                UrlSafetyReason.MIXED_OR_DISALLOWED_PRIVATE_RESULT,
-                ips=["10.0.0.8"],
-            ),
-            allowed_private_ranges=["198.18.0.0/15"],
-        )
+    assert not allowed
+    assert len(warns) == 1
+    assert "reason=domain_not_allowed+invalid_signature" in warns[0]
 
-        self.assertEqual(len(warns), 1)
-        warning = warns[0]
-        self.assertIn("reason=mixed_or_disallowed_private_result", warning)
-        self.assertIn("allowed_private_ranges=198.18.0.0/15", warning)
-        self.assertNotIn("提示", warning)
 
-    async def test_dns_resolution_failed_carries_empty_ips(self):
-        """
-        DNS 解析失败的 warning 携带空 ips 字段，便于运维直接定位 DNS 路径。
-        """
-        _, warns = await self._invoke(
-            _diag(UrlSafetyReason.DNS_RESOLUTION_FAILED, ips=[]),
-        )
-
-        self.assertEqual(len(warns), 1)
-        self.assertIn("reason=dns_resolution_failed", warns[0])
-        self.assertIn("ips=,", warns[0])
-
-    async def test_signed_url_success_silently_allows(self):
-        """
-        标准校验失败但签名 URL 校验通过时返回 True，且不输出 warning，
-        避免运维误判后端预签名路径是异常拦截。
-        """
-        allowed, warns = await self._invoke(
-            _diag(UrlSafetyReason.DOMAIN_NOT_ALLOWED),
-            signed_clean_url="https://image.tmdb.org/t/p/w500/x.jpg",
-        )
-
-        self.assertTrue(allowed)
-        self.assertEqual(warns, [])
-
-    async def test_repeated_block_in_window_emits_only_first_warning(self):
-        """
-        同 (host, reason) 在窗口内的多次命中只输出首条 warning；窗口到期后
-        补一条聚合摘要，count 等于窗口内总命中数，sample_url 来自首条事件。
-        """
-        diag = _diag(
+@pytest.mark.asyncio
+async def test_non_global_dns_result_lists_ips_with_hint(image_log_context) -> None:
+    """
+    DNS 解析到非公网且未配置允许网段时，warning 列出解析 IP 并附 fake-ip 提示。
+    """
+    allowed, warns = await _invoke(
+        image_log_context,
+        _diag(
             UrlSafetyReason.NON_GLOBAL_DNS_RESULT,
+            ips=["198.18.16.96", "198.18.16.97"],
+        ),
+    )
+
+    assert not allowed
+    assert len(warns) == 1
+    warning = warns[0]
+    assert "reason=non_global_dns_result" in warning
+    assert "host=image.tmdb.org" in warning
+    assert "ips=198.18.16.96,198.18.16.97" in warning
+    assert "IMAGE_PROXY_ALLOWED_PRIVATE_RANGES" in warning
+    assert "198.18.0.0/15" in warning
+
+
+@pytest.mark.asyncio
+async def test_configured_ranges_skip_fakeip_hint(image_log_context) -> None:
+    """
+    已配置 allowed_private_ranges 时不再追加 fake-ip 提示，避免重复引导。
+    warning 同时把已生效的网段列在字段里供运维对照。
+    """
+    _, warns = await _invoke(
+        image_log_context,
+        _diag(
+            UrlSafetyReason.MIXED_OR_DISALLOWED_PRIVATE_RESULT,
+            ips=["10.0.0.8"],
+        ),
+        allowed_private_ranges=["198.18.0.0/15"],
+    )
+
+    assert len(warns) == 1
+    warning = warns[0]
+    assert "reason=mixed_or_disallowed_private_result" in warning
+    assert "allowed_private_ranges=198.18.0.0/15" in warning
+    assert "提示" not in warning
+
+
+@pytest.mark.asyncio
+async def test_dns_resolution_failed_carries_empty_ips(image_log_context) -> None:
+    """
+    DNS 解析失败的 warning 携带空 ips 字段，便于运维直接定位 DNS 路径。
+    """
+    _, warns = await _invoke(
+        image_log_context,
+        _diag(UrlSafetyReason.DNS_RESOLUTION_FAILED, ips=[]),
+    )
+
+    assert len(warns) == 1
+    assert "reason=dns_resolution_failed" in warns[0]
+    assert "ips=," in warns[0]
+
+
+@pytest.mark.asyncio
+async def test_signed_url_success_silently_allows(image_log_context) -> None:
+    """
+    标准校验失败但签名 URL 校验通过时返回 True，且不输出 warning，
+    避免运维误判后端预签名路径是异常拦截。
+    """
+    allowed, warns = await _invoke(
+        image_log_context,
+        _diag(UrlSafetyReason.DOMAIN_NOT_ALLOWED),
+        signed_clean_url="https://image.tmdb.org/t/p/w500/x.jpg",
+    )
+
+    assert allowed
+    assert warns == []
+
+
+@pytest.mark.asyncio
+async def test_repeated_block_in_window_emits_only_first_warning(image_log_context) -> None:
+    """
+    同 (host, reason) 在窗口内的多次命中只输出首条 warning；窗口到期后
+    补一条聚合摘要，count 等于窗口内总命中数，sample_url 来自首条事件。
+    """
+    diag = _diag(
+        UrlSafetyReason.NON_GLOBAL_DNS_RESULT,
+        ips=["198.18.16.96"],
+    )
+
+    async def fake_evaluate(*_args, **_kwargs):
+        """
+        返回预设地址安全诊断结果，隔离真实 DNS 与网络检查。
+        """
+        return diag
+
+    warns: List[str] = []
+    with (
+        patch.object(
+            SecurityUtils,
+            "evaluate_url_safety_async",
+            side_effect=fake_evaluate,
+        ),
+        patch.object(
+            SecurityUtils,
+            "verify_signed_url",
+            return_value=None,
+        ),
+        patch.object(
+            security_module.logger,
+            "warn",
+            side_effect=warns.append,
+        ),
+    ):
+        for i in range(5):
+            await SecurityUtils.is_safe_image_url_async(
+                f"https://image.tmdb.org/t/p/w500/{i}.jpg",
+                image_log_context._allowed_domains,
+            )
+        assert len(warns) == 1
+        assert "/0.jpg" in warns[0]
+
+        await asyncio.sleep(_TEST_WAIT)
+
+    assert len(warns) == 2
+    summary = warns[1]
+    assert "aggregated" in summary
+    assert "count=5" in summary
+    assert "/0.jpg" in summary
+    assert "/1.jpg" not in summary
+    assert "/4.jpg" not in summary
+    # 摘要附带首条样例的解析 IP，便于直接锁定批量拦截的网络成因
+    assert "sample_ips=198.18.16.96" in summary
+
+
+@pytest.mark.asyncio
+async def test_different_keys_do_not_collapse(image_log_context) -> None:
+    """
+    不同 (host, reason) 各自计数与输出，互不吞并。
+    """
+    warns: List[str] = []
+    sequence = {
+        "evil": _diag(UrlSafetyReason.DOMAIN_NOT_ALLOWED, host=None),
+        "tmdb": _diag(
+            UrlSafetyReason.NON_GLOBAL_DNS_RESULT,
+            host="image.tmdb.org",
             ips=["198.18.16.96"],
+        ),
+    }
+
+    async def fake_evaluate(url, *_args, **_kwargs):
+        """
+        返回预设地址安全诊断结果，隔离真实 DNS 与网络检查。
+        """
+        return sequence["evil"] if "evil" in url else sequence["tmdb"]
+
+    with (
+        patch.object(
+            SecurityUtils,
+            "evaluate_url_safety_async",
+            side_effect=fake_evaluate,
+        ),
+        patch.object(
+            SecurityUtils,
+            "verify_signed_url",
+            return_value=None,
+        ),
+        patch.object(
+            security_module.logger,
+            "warn",
+            side_effect=warns.append,
+        ),
+    ):
+        await SecurityUtils.is_safe_image_url_async(
+            "https://evil.example.com/x.jpg",
+            image_log_context._allowed_domains,
+        )
+        await SecurityUtils.is_safe_image_url_async(
+            "https://image.tmdb.org/t/p/w500/a.jpg",
+            image_log_context._allowed_domains,
         )
 
-        async def fake_evaluate(*_args, **_kwargs):
-            return diag
-
-        warns: List[str] = []
-        with patch.object(
-            SecurityUtils,
-            "evaluate_url_safety_async",
-            side_effect=fake_evaluate,
-        ), patch.object(
-            SecurityUtils,
-            "verify_signed_url",
-            return_value=None,
-        ), patch.object(
-            security_module.logger,
-            "warn",
-            side_effect=warns.append,
-        ):
-            for i in range(5):
-                await SecurityUtils.is_safe_image_url_async(
-                    f"https://image.tmdb.org/t/p/w500/{i}.jpg",
-                    self._allowed_domains,
-                )
-            self.assertEqual(len(warns), 1)
-            self.assertIn("/0.jpg", warns[0])
-
-            await asyncio.sleep(_TEST_WAIT)
-
-        self.assertEqual(len(warns), 2)
-        summary = warns[1]
-        self.assertIn("aggregated", summary)
-        self.assertIn("count=5", summary)
-        self.assertIn("/0.jpg", summary)
-        self.assertNotIn("/1.jpg", summary)
-        self.assertNotIn("/4.jpg", summary)
-        # 摘要附带首条样例的解析 IP，便于直接锁定批量拦截的网络成因
-        self.assertIn("sample_ips=198.18.16.96", summary)
-
-    async def test_different_keys_do_not_collapse(self):
-        """
-        不同 (host, reason) 各自计数与输出，互不吞并。
-        """
-        warns: List[str] = []
-        sequence = {
-            "evil": _diag(UrlSafetyReason.DOMAIN_NOT_ALLOWED, host=None),
-            "tmdb": _diag(
-                UrlSafetyReason.NON_GLOBAL_DNS_RESULT,
-                host="image.tmdb.org",
-                ips=["198.18.16.96"],
-            ),
-        }
-
-        async def fake_evaluate(url, *_args, **_kwargs):
-            return sequence["evil"] if "evil" in url else sequence["tmdb"]
-
-        with patch.object(
-            SecurityUtils,
-            "evaluate_url_safety_async",
-            side_effect=fake_evaluate,
-        ), patch.object(
-            SecurityUtils,
-            "verify_signed_url",
-            return_value=None,
-        ), patch.object(
-            security_module.logger,
-            "warn",
-            side_effect=warns.append,
-        ):
-            await SecurityUtils.is_safe_image_url_async(
-                "https://evil.example.com/x.jpg",
-                self._allowed_domains,
-            )
-            await SecurityUtils.is_safe_image_url_async(
-                "https://image.tmdb.org/t/p/w500/a.jpg",
-                self._allowed_domains,
-            )
-
-        self.assertEqual(len(warns), 2)
-        self.assertIn("reason=domain_not_allowed", warns[0])
-        self.assertIn("reason=non_global_dns_result", warns[1])
+    assert len(warns) == 2
+    assert "reason=domain_not_allowed" in warns[0]
+    assert "reason=non_global_dns_result" in warns[1]

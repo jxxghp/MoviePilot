@@ -1,3 +1,7 @@
+"""
+管理工作流实例及动作执行生命周期。
+"""
+
 import threading
 from time import monotonic, sleep
 from typing import Any, Dict, List, Optional, Tuple
@@ -21,16 +25,22 @@ _WORKFLOW_STOP_TIMEOUT_SECONDS = 10.0
 
 
 class _ActionDeadlineToken:
-    """把单次动作截止时间与工作流取消信号组合为协作停止令牌。"""
+    """
+    把单次动作截止时间与工作流取消信号组合为协作停止令牌。
+    """
 
     def __init__(self, workflow_id: int, deadline: float, cancel_token: Optional[Any]) -> None:
-        """保存单调时钟截止时间和上层工作流令牌。"""
+        """
+        保存单调时钟截止时间和上层工作流令牌。
+        """
         self.workflow_id = workflow_id
         self.deadline = deadline
         self.cancel_token = cancel_token
 
     def is_cancelled(self) -> bool:
-        """到达截止时间或收到上层停止请求时通知支持取消的动作退出。"""
+        """
+        到达截止时间或收到上层停止请求时通知支持取消的动作退出。
+        """
         return bool(
             monotonic() >= self.deadline
             or (self.cancel_token and self.cancel_token.is_cancelled())
@@ -44,7 +54,9 @@ class WorkflowManager(metaclass=Singleton):
     """
 
     def __init__(self) -> None:
-        """创建动作、事件触发器和活动执行 owner 注册表。"""
+        """
+        创建动作、事件触发器和活动执行 owner 注册表。
+        """
         # 所有动作定义
         self._lock = threading.RLock()
         self._actions: Dict[str, Any] = {}
@@ -87,7 +99,9 @@ class WorkflowManager(metaclass=Singleton):
         self.load_workflow_events()
 
     def register_execution(self, owner: WorkflowExecutionOwner) -> bool:
-        """在同一锁内登记执行，拒绝停机封口和同一工作流的重复准入。"""
+        """
+        在同一锁内登记执行，拒绝停机封口和同一工作流的重复准入。
+        """
         with self._lock:
             if not self._accepting_executions:
                 return False
@@ -97,7 +111,9 @@ class WorkflowManager(metaclass=Singleton):
             return True
 
     def unregister_execution(self, owner: WorkflowExecutionOwner) -> None:
-        """仅在执行及其节点线程池真实终止后释放 owner。"""
+        """
+        仅在执行及其节点线程池真实终止后释放 owner。
+        """
         with self._lock:
             self._executions.pop(id(owner), None)
 
@@ -218,7 +234,9 @@ class WorkflowManager(metaclass=Singleton):
 
     def _execute_action_once(self, workflow_id: int, action: Action, context: ActionContext,
                              inputs: dict, runtime: dict, cancel_token: Optional[Any]) -> ActionResult:
-        """运行单次尝试，保留同步动作真实返回后再判断失败和超时的语义。"""
+        """
+        运行单次尝试，保留同步动作真实返回后再判断失败和超时的语义。
+        """
         action_obj = self._actions[action.type](action.id)
         logger.info(f"执行动作: {action.id} - {action.name}")
         try:
@@ -239,7 +257,9 @@ class WorkflowManager(metaclass=Singleton):
     def _run_action_with_loop(self, workflow_id: int, action: Action, action_obj: Any,
                               context: ActionContext, inputs: dict, runtime: dict,
                               cancel_token: Optional[Any]) -> ActionResult:
-        """循环前后均检查截止时间，并向动作传递协作令牌；不分离阻塞节点线程。"""
+        """
+        循环前后均检查截止时间，并向动作传递协作令牌；不分离阻塞节点线程。
+        """
         timeout = self._get_action_timeout(action)
         deadline = monotonic() + timeout if timeout else None
         action_token = _ActionDeadlineToken(workflow_id, deadline, cancel_token) if deadline is not None else cancel_token
@@ -274,7 +294,9 @@ class WorkflowManager(metaclass=Singleton):
 
     def _call_action(self, workflow_id: int, action: Action, action_obj: Any,
                      context: ActionContext, inputs: dict, runtime: dict) -> ActionResult:
-        """兼容新旧动作入口并把真实同步返回值转换为统一结果。"""
+        """
+        兼容新旧动作入口并把真实同步返回值转换为统一结果。
+        """
         if hasattr(action_obj, "execute_with_inputs"):
             result = action_obj.execute_with_inputs(workflow_id, action.data, inputs, runtime, context)
         else:
@@ -283,17 +305,23 @@ class WorkflowManager(metaclass=Singleton):
 
     @staticmethod
     def _get_action_data_value(action: Action, key: str) -> Any:
-        """读取兼容旧版存放在 data 中的动作参数。"""
+        """
+        读取兼容旧版存放在 data 中的动作参数。
+        """
         data = action.data or {}
         return data.get(key) if isinstance(data, dict) else None
 
     def _get_action_timeout(self, action: Action) -> Optional[int]:
-        """读取新旧动作配置中的单次尝试超时秒数。"""
+        """
+        读取新旧动作配置中的单次尝试超时秒数。
+        """
         timeout = action.timeout or self._get_action_data_value(action, "timeout")
         return int(timeout) if timeout else None
 
     def _get_retry_config(self, action: Action) -> dict:
-        """归一化动作重试次数、间隔和退避配置。"""
+        """
+        归一化动作重试次数、间隔和退避配置。
+        """
         retry_config = action.retry or self._get_action_data_value(action, "retry") or {}
         if isinstance(retry_config, BaseModel):
             retry_config = retry_config.model_dump(exclude_none=True)
@@ -307,13 +335,17 @@ class WorkflowManager(metaclass=Singleton):
 
     @staticmethod
     def _is_cancelled(workflow_id: int, cancel_token: Optional[Any]) -> bool:
-        """组合调用方取消令牌和全局工作流停止状态。"""
+        """
+        组合调用方取消令牌和全局工作流停止状态。
+        """
         if cancel_token and cancel_token.is_cancelled():
             return True
         return runtime_stop_state.is_workflow_stopped(workflow_id)
 
     def _sleep_with_cancel(self, workflow_id: int, seconds: float, cancel_token: Optional[Any]) -> None:
-        """分段等待，并在取消或截止时立即停止继续等待。"""
+        """
+        分段等待，并在取消或截止时立即停止继续等待。
+        """
         deadline = monotonic() + seconds
         while monotonic() < deadline:
             if self._is_cancelled(workflow_id, cancel_token):

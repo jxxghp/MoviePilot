@@ -1,3 +1,7 @@
+"""
+验证音乐上下文的类型映射、数据往返和媒体展示字段。
+"""
+
 from app.domain.context import Context, MediaInfo, MusicInfo
 from app.domain.meta.metamusic import MetaMusic
 from app.schemas.context import Context as ContextSchema
@@ -8,7 +12,9 @@ from app.schemas.types import MediaSource, MediaType, media_type_to_agent
 
 
 def test_media_type_supports_music_agent_conversion():
-    """音乐媒体类型应支持 Agent 标识双向转换。"""
+    """
+    音乐媒体类型应支持 Agent 标识双向转换。
+    """
     assert MediaType.from_agent("music") == MediaType.MUSIC
     assert MediaType.MUSIC.to_agent() == "music"
     assert media_type_to_agent(MediaType.MUSIC) == "music"
@@ -19,7 +25,9 @@ def test_media_type_supports_music_agent_conversion():
 
 
 def test_music_meta_round_trip_preserves_list_isolation():
-    """MetaMusic 字典往返后应保留字段且不共享可变列表。"""
+    """
+    MetaMusic 字典往返后应保留字段且不共享可变列表。
+    """
     meta = MetaMusic(
         org_string="Jay Chou - Common Jasmin Orange",
         title="七里香",
@@ -41,7 +49,9 @@ def test_music_meta_round_trip_preserves_list_isolation():
 
 
 def test_music_info_serializes_shared_media_display_fields():
-    """MusicInfo 应输出现有媒体卡片可复用的展示字段。"""
+    """
+    MusicInfo 应输出现有媒体卡片可复用的展示字段。
+    """
     info = MusicInfo(
         media_source="musicbrainz",
         media_id="release-1",
@@ -63,7 +73,9 @@ def test_music_info_serializes_shared_media_display_fields():
 
 
 def test_core_context_serializes_music_models_without_video_fields():
-    """核心 Context 应使用既有外层结构序列化音乐对象。"""
+    """
+    核心 Context 应使用既有外层结构序列化音乐对象。
+    """
     context = Context(
         meta_info=MetaMusic(title="七里香", artists=["周杰伦"]),
         media_info=MusicInfo(
@@ -83,7 +95,9 @@ def test_core_context_serializes_music_models_without_video_fields():
 
 
 def test_schema_context_uses_music_models_for_music_payload():
-    """API Context 应将音乐负载解析为音乐专属 Schema。"""
+    """
+    API Context 应将音乐负载解析为音乐专属 Schema。
+    """
     context = ContextSchema.model_validate(
         {
             "meta_info": {
@@ -109,7 +123,9 @@ def test_schema_context_uses_music_models_for_music_payload():
 
 
 def test_schema_context_keeps_video_payload_on_existing_model():
-    """电影负载应继续使用现有 MediaInfo Schema。"""
+    """
+    电影负载应继续使用现有 MediaInfo Schema。
+    """
     context = ContextSchema.model_validate(
         {
             "media_info": {
@@ -127,7 +143,9 @@ def test_schema_context_keeps_video_payload_on_existing_model():
 
 
 def test_core_video_context_remains_compatible():
-    """新增音乐模型后现有电影 Context 序列化应保持兼容。"""
+    """
+    新增音乐模型后现有电影 Context 序列化应保持兼容。
+    """
     context = Context(
         media_info=MediaInfo(
             media_source=MediaSource.TMDB,

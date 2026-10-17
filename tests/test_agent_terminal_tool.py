@@ -1,4 +1,6 @@
-"""终端分页必须完整穿过真实 ToolNode、策略和通用工具输出预算。"""
+"""
+终端分页必须完整穿过真实 ToolNode、策略和通用工具输出预算。
+"""
 
 import json
 from typing import Any
@@ -22,17 +24,23 @@ pytestmark = pytest.mark.usefixtures("terminal_scope")
 
 
 class _PageModel(FakeMessagesListChatModel):
-    """只固定两轮工具协议，真实分页和外层预算均由生产实现执行。"""
+    """
+    只固定两轮工具协议，真实分页和外层预算均由生产实现执行。
+    """
 
     def bind_tools(self, _tools: Any, **_kwargs: Any) -> "_PageModel":
-        """接收图内工具，不产生真实模型或网络调用。"""
+        """
+        接收图内工具，不产生真实模型或网络调用。
+        """
         return self
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("partial", [True, False])
 async def test_terminal_page_or_error_reaches_model_without_outer_truncation(monkeypatch, partial):
-    """大转义正文保留真实消费游标，小页错误也必须保持失败状态及恢复参数。"""
+    """
+    大转义正文保留真实消费游标，小页错误也必须保持失败状态及恢复参数。
+    """
     manager = _TerminalSessionManager()
     session = _TerminalSession(owner=current_terminal_scope(), session_id="term-page-test", command="completed command", cwd=".", pid=123456789, use_pty=False)
     text = "\\\n\"\t" * 20000
@@ -80,6 +88,8 @@ async def test_terminal_page_or_error_reaches_model_without_outer_truncation(mon
 
 @pytest.mark.parametrize("field", ["since_seq", "since_offset", "yield_time_ms"])
 def test_terminal_cursor_schema_rejects_boolean_numbers(field):
-    """模型参数不能在 Pydantic 转换时把布尔值变成游标或等待时间。"""
+    """
+    模型参数不能在 Pydantic 转换时把布尔值变成游标或等待时间。
+    """
     with pytest.raises(ValueError):
         ExecuteCommandInput.model_validate({"action": "read", field: True})

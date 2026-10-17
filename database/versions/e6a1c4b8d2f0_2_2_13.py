@@ -1,9 +1,9 @@
-"""2.2.13
-为整理历史增加统一媒体数据源与原生ID
+"""
+2.2.13 为整理历史增加统一媒体数据源与原生ID
 
-Revision ID: e6a1c4b8d2f0
-Revises: c4e8f7a1b2d3
-Create Date: 2026-07-21
+版本标识： e6a1c4b8d2f0
+前置版本： c4e8f7a1b2d3
+创建时间： 2026-07-21
 """
 
 from alembic import op
@@ -41,7 +41,9 @@ def _has_index(
     table_name: str,
     index_name: str,
 ) -> bool:
-    """检查数据表是否已存在指定索引。"""
+    """
+    检查数据表是否已存在指定索引。
+    """
     if table_name not in inspector.get_table_names():
         return False
     return any(
@@ -51,7 +53,9 @@ def _has_index(
 
 
 def _column_names(inspector: sa.Inspector, table_name: str) -> set[str]:
-    """读取数据表当前全部字段名。"""
+    """
+    读取数据表当前全部字段名。
+    """
     if table_name not in inspector.get_table_names():
         return set()
     return {
@@ -61,7 +65,9 @@ def _column_names(inspector: sa.Inspector, table_name: str) -> set[str]:
 
 
 def _ensure_column_and_index(column_name: str) -> None:
-    """独立补齐整理历史的规范身份字段及其索引。"""
+    """
+    独立补齐整理历史的规范身份字段及其索引。
+    """
     table_name = "transferhistory"
     index_name = f"ix_{table_name}_{column_name}"
     inspector = sa.inspect(op.get_bind())
@@ -77,7 +83,9 @@ def _ensure_column_and_index(column_name: str) -> None:
 
 
 def upgrade() -> None:
-    """升级整理历史数据源字段。"""
+    """
+    升级整理历史数据源字段。
+    """
     _ensure_column_and_index("media_source")
     _ensure_column_and_index("media_id")
 
@@ -124,7 +132,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """回滚整理历史数据源字段。"""
+    """
+    回滚整理历史数据源字段。
+    """
     for column_name in ("media_id", "media_source"):
         index_name = f"ix_transferhistory_{column_name}"
         inspector = sa.inspect(op.get_bind())

@@ -1,4 +1,6 @@
-"""覆盖工作流资源在 RSS 领域对象与搜索/恢复后的 Schema 对象之间流转的契约。"""
+"""
+覆盖工作流资源在 RSS 领域对象与搜索/恢复后的 Schema 对象之间流转的契约。
+"""
 
 from datetime import datetime, timedelta
 
@@ -16,7 +18,9 @@ from app.workflow.actions.filter_torrents import FilterTorrentsAction
 
 
 def _domain_context(pubdate: str) -> Context:
-    """构造 RSS 动作产出的领域资源上下文。"""
+    """
+    构造 RSS 动作产出的领域资源上下文。
+    """
     return Context(
         meta_info=MetaInfo("Movie 2024 1080p"),
         media_info=MediaInfo(title="Movie", type=MediaType.MOVIE, tmdb_id=42),
@@ -29,7 +33,9 @@ def _domain_context(pubdate: str) -> Context:
 
 
 def test_domain_torrent_context_survives_persist_and_restore():
-    """RSS 领域资源写入数据库后应能还原，不能被存成文本导致恢复时整份上下文被丢弃。"""
+    """
+    RSS 领域资源写入数据库后应能还原，不能被存成文本导致恢复时整份上下文被丢弃。
+    """
     context = ActionContext()
     context.torrents.append(_domain_context("2026-10-01 08:00:00"))
 
@@ -43,7 +49,9 @@ def test_domain_torrent_context_survives_persist_and_restore():
 
 
 def test_filter_torrents_restores_schema_context_for_media_and_publish_rules(monkeypatch):
-    """搜索或恢复得到的 Schema 资源应能按媒体类型规则组和发布时间规则过滤，并保留原对象与优先级。"""
+    """
+    搜索或恢复得到的 Schema 资源应能按媒体类型规则组和发布时间规则过滤，并保留原对象与优先级。
+    """
     recent = (datetime.now() - timedelta(minutes=30)).strftime("%Y-%m-%d %H:%M:%S")
     stale = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d %H:%M:%S")
     fresh_source = WorkflowContext.model_validate(_domain_context(recent).to_dict())
@@ -58,10 +66,15 @@ def test_filter_torrents_restores_schema_context_for_media_and_publish_rules(mon
     module.rule_set = {"PUB": {"publish_time": "0-120"}}
 
     class _FilterChain:
-        """把动作的过滤请求交给真实过滤模块，绕开模块管理器装配。"""
+        """
+        把动作的过滤请求交给真实过滤模块，绕开模块管理器装配。
+        """
 
         @staticmethod
         def filter_torrents(rule_groups, torrent_list, mediainfo=None):
+            """
+            将恢复后的上下文传给真实筛选模块，检查媒体和发布规则仍可读取字段。
+            """
             return module.filter_torrents(rule_groups=rule_groups, torrent_list=torrent_list, mediainfo=mediainfo)
 
     monkeypatch.setattr(filter_torrents, "ActionChain", _FilterChain)

@@ -1,10 +1,15 @@
+"""
+验证过滤规则组与媒体类型的匹配范围。
+"""
+
 from contextlib import contextmanager
 from unittest.mock import MagicMock
 
 from app.application.filtering import normalize_media_type
 from app.application.rules import RuleHelper
 
-# pylint: disable=no-name-in-module  # SubscribeChain 由惰性稳定入口导出，Pylint 无法静态解析。
+# 由惰性稳定入口导出，Pylint 无法静态解析。
+# pylint: disable=no-name-in-module  # SubscribeChain
 from app.chain.subscribe import SubscribeChain
 from app.domain.context import MediaInfo, MusicInfo, TorrentInfo
 from app.modules.filter import FilterModule
@@ -15,13 +20,17 @@ from app.schemas.types import EventType, MediaType, SystemConfigKey
 
 
 def test_agent_rule_group_media_type_accepts_music_aliases():
-    """Agent 规则组写入入口应统一接受中英文音乐类型。"""
+    """
+    Agent 规则组写入入口应统一接受中英文音乐类型。
+    """
     assert normalize_media_type("music") == MediaType.MUSIC.value
     assert normalize_media_type("音乐") == MediaType.MUSIC.value
 
 
 def test_music_rule_group_matches_music_media(monkeypatch):
-    """音乐规则组应在音乐搜索和订阅的过滤上下文中生效。"""
+    """
+    音乐规则组应在音乐搜索和订阅的过滤上下文中生效。
+    """
     helper = RuleHelper()
     groups = [
         FilterRuleGroup(name="music", rule_string="FLAC", media_type=MediaType.MUSIC.value),
@@ -38,7 +47,9 @@ def test_music_rule_group_matches_music_media(monkeypatch):
 
 
 def test_music_rule_group_filters_music_torrents(monkeypatch):
-    """音乐专属规则组被选中后应实际过滤音乐资源。"""
+    """
+    音乐专属规则组被选中后应实际过滤音乐资源。
+    """
     helper = RuleHelper()
     groups = [FilterRuleGroup(name="music", rule_string="FLAC", media_type=MediaType.MUSIC.value)]
     monkeypatch.setattr(helper, "get_rule_groups", lambda: groups)
@@ -58,7 +69,9 @@ def test_music_rule_group_filters_music_torrents(monkeypatch):
 
 
 def test_rule_group_category_cannot_cross_media_types(monkeypatch):
-    """二级分类相同时仍必须先匹配规则组的主媒体类型。"""
+    """
+    二级分类相同时仍必须先匹配规则组的主媒体类型。
+    """
     helper = RuleHelper()
     groups = [
         FilterRuleGroup(
@@ -75,12 +88,16 @@ def test_rule_group_category_cannot_cross_media_types(monkeypatch):
 
 
 def test_reconcile_rule_group_references_removes_all_dangling_bindings(monkeypatch):
-    """规则组事件必须委托单一原子服务处理全部引用。"""
+    """
+    规则组事件必须委托单一原子服务处理全部引用。
+    """
     mutation = MagicMock()
 
     @contextmanager
     def mutation_scope():
-        """提供可观测的同步规则组事务作用域。"""
+        """
+        提供可观测的同步规则组事务作用域。
+        """
         yield mutation
 
     chain = object.__new__(SubscribeChain)
@@ -105,12 +122,16 @@ def test_reconcile_rule_group_references_removes_all_dangling_bindings(monkeypat
 
 
 def test_site_deleted_delegates_reference_cleanup_to_atomic_scope() -> None:
-    """站点删除事件不得分别修改 SystemConfig 和订阅仓储。"""
+    """
+    站点删除事件不得分别修改 SystemConfig 和订阅仓储。
+    """
     mutation = MagicMock()
 
     @contextmanager
     def mutation_scope():
-        """提供可观测的同步站点引用事务作用域。"""
+        """
+        提供可观测的同步站点引用事务作用域。
+        """
         yield mutation
 
     chain = object.__new__(SubscribeChain)

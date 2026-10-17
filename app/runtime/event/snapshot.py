@@ -1,4 +1,6 @@
-"""事件 payload 的只读契约快照访问。"""
+"""
+事件 payload 的只读契约快照访问。
+"""
 
 from __future__ import annotations
 
@@ -17,7 +19,20 @@ from app.schemas.types import ChainEventType, EventType
 
 @dataclass(frozen=True, slots=True)
 class EventPayloadSnapshot:
-    """保存原始 payload 及按登记契约解析出的独立快照。"""
+    """
+    保存原始 payload 及按登记契约解析出的独立快照。
+
+    :param event_type: 原事件的枚举或字符串名称
+    :param raw: 未经模型解析的原始载荷
+    :param payload: 按完整载荷模型解析的快照；未声明或失败时为 None
+    :param input: 按链式输入模型解析的快照；未声明或失败时为 None
+    :param output: 按链式输出模型解析的快照；未声明或失败时为 None
+    :param known: 事件是否在契约目录中登记
+    :param schema_version: 登记契约的结构版本；未知事件时为 None
+    :param payload_mode: 登记契约的载荷保存模式；未知事件时为 None
+    :param validation_mode: 登记契约的校验策略；未知事件时为 None
+    :param errors: 模型解析和契约校验的错误说明，成功时为空元组
+    """
 
     event_type: EventType | ChainEventType | str
     raw: Any
@@ -32,7 +47,11 @@ class EventPayloadSnapshot:
 
     @property
     def valid(self) -> bool:
-        """返回已知事件的全部登记模型是否都通过校验。"""
+        """
+        判断已知事件的全部登记模型是否都通过校验。
+
+        :return: 事件已登记且没有校验错误时返回 True
+        """
         return self.known and not self.errors
 
 
@@ -43,7 +62,9 @@ def _model_snapshot(
     cache: dict[type[BaseModel], BaseModel | None],
     errors: list[str],
 ) -> BaseModel | None:
-    """按单个模型构造快照，同一模型在一次访问中只解析一次。"""
+    """
+    按单个模型构造快照，同一模型在一次访问中只解析一次。
+    """
     if model is None:
         return None
     if model in cache:
@@ -63,7 +84,9 @@ def snapshot_event_data(
     event_type: EventType | ChainEventType | str,
     event_data: Any,
 ) -> EventPayloadSnapshot:
-    """按事件注册契约解析 payload，未知自定义事件保持原始数据并返回未登记状态。"""
+    """
+    按事件注册契约解析 payload，未知自定义事件保持原始数据并返回未登记状态。
+    """
     normalized = normalize_event_type(event_type)
     try:
         contract = get_event_contract(normalized)

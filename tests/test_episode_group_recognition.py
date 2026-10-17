@@ -1,3 +1,7 @@
+"""
+验证识别链沿用元数据中的剧集组配置。
+"""
+
 from unittest.mock import patch
 
 from app.chain.base import ChainBase

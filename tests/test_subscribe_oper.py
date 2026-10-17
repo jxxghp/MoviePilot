@@ -1,3 +1,7 @@
+"""
+验证订阅数据访问的查询和更新条件。
+"""
+
 import asyncio
 import os
 from types import SimpleNamespace
@@ -21,10 +25,14 @@ from app.schemas.types import MediaSource, MediaType
 
 
 class _OperWriteAdapter:
-    """在测试中显式模拟 DB adapter 的 DTO 解包边界。"""
+    """
+    在测试中显式模拟 DB adapter 的 DTO 解包边界。
+    """
 
     def __init__(self, repository: SubscribeOper) -> None:
-        """保存待验证查重与建模行为的表级 Oper。"""
+        """
+        保存待验证查重与建模行为的表级 Oper。
+        """
         self._repository = repository
 
     def add(
@@ -35,7 +43,9 @@ class _OperWriteAdapter:
         after_commit: AfterCommitEffect | None = None,
         notification=None,
     ) -> tuple[int, str]:
-        """解包 typed DTO 后调用同步表级写入。"""
+        """
+        解包 typed DTO 后调用同步表级写入。
+        """
         return self._repository.add(
             identity.to_payload(),
             payload.to_payload(),
@@ -51,7 +61,9 @@ class _OperWriteAdapter:
         after_commit: AsyncAfterCommitEffect | None = None,
         notification=None,
     ) -> tuple[int, str]:
-        """解包 typed DTO 后调用异步表级写入。"""
+        """
+        解包 typed DTO 后调用异步表级写入。
+        """
         return await self._repository.async_add(
             identity.to_payload(),
             payload.to_payload(),
@@ -75,7 +87,9 @@ def _add(**kwargs):
 
 
 async def _async_add(**kwargs):
-    """异步写入路径，与 _add 共用注入方式。"""
+    """
+    异步写入路径，与 _add 共用注入方式。
+    """
     session = MagicMock()
     session.flush = AsyncMock()
     return await async_add_subscribe(
@@ -85,7 +99,9 @@ async def _async_add(**kwargs):
 
 
 def _media(episode_group):
-    """构造订阅新增路径所需的稳定 MediaInfo 契约替身。"""
+    """
+    构造订阅新增路径所需的稳定 MediaInfo 契约替身。
+    """
     return SimpleNamespace(
         title="测试剧",
         year="2026",
@@ -144,7 +160,9 @@ def test_add_history_converts_boolean_integer_flags(monkeypatch):
 
 @pytest.mark.parametrize("episode_group", [None, "eg-1"])
 def test_add_scopes_duplicate_lookup_by_episode_group(episode_group):
-    """同步新增前后都必须按剧集组查询，主季和自定义组不能互相去重。"""
+    """
+    同步新增前后都必须按剧集组查询，主季和自定义组不能互相去重。
+    """
     persisted = SimpleNamespace(id=88)
     created = SimpleNamespace(create=MagicMock())
 
@@ -194,7 +212,9 @@ def test_add_rejects_incomplete_media_identity(identity):
 
 @pytest.mark.parametrize("identity", _INCOMPLETE_IDENTITIES)
 def test_async_add_rejects_incomplete_media_identity(identity):
-    """异步新增与同步路径共用同一道身份守卫，两条链路不能一宽一严。"""
+    """
+    异步新增与同步路径共用同一道身份守卫，两条链路不能一宽一严。
+    """
     with (
         patch("app.application.subscription.write.resolve_media_identity", return_value=identity),
         patch("app.db.oper.subscribe.Subscribe") as subscribe_model,
@@ -226,7 +246,9 @@ def test_add_reports_failure_when_the_new_subscribe_cannot_be_read_back():
 
 
 def test_async_add_reports_failure_when_the_new_subscribe_cannot_be_read_back():
-    """异步新增的回查落空路径与同步一致。"""
+    """
+    异步新增的回查落空路径与同步一致。
+    """
     created = SimpleNamespace(async_create=AsyncMock())
     with patch("app.db.oper.subscribe.Subscribe") as subscribe_model:
         subscribe_model.async_exists = AsyncMock(side_effect=[None, None])
@@ -255,7 +277,9 @@ def test_add_reports_existing_subscription_without_creating():
 
 
 def test_async_add_reports_existing_subscription_without_creating():
-    """异步新增命中既有订阅时同样不建第二条。"""
+    """
+    异步新增命中既有订阅时同样不建第二条。
+    """
     existing = SimpleNamespace(id=78)
     with patch("app.db.oper.subscribe.Subscribe") as subscribe_model:
         subscribe_model.async_exists = AsyncMock(return_value=existing)
@@ -268,7 +292,9 @@ def test_async_add_reports_existing_subscription_without_creating():
 
 
 def test_music_subscribe_persists_release_cover_as_poster_and_backdrop():
-    """音乐订阅应把 MusicBrainz 发行封面写入订阅海报和背景字段。"""
+    """
+    音乐订阅应把 MusicBrainz 发行封面写入订阅海报和背景字段。
+    """
     persisted = SimpleNamespace(id=92)
     created = SimpleNamespace(create=MagicMock())
     media = MusicInfo(
@@ -291,7 +317,9 @@ def test_music_subscribe_persists_release_cover_as_poster_and_backdrop():
 
 
 def test_music_subscribe_persists_numeric_year_as_string():
-    """音乐识别链路的年份可能是数字，写库前必须转字符串避免 PostgreSQL 类型错误。"""
+    """
+    音乐识别链路的年份可能是数字，写库前必须转字符串避免 PostgreSQL 类型错误。
+    """
     persisted = SimpleNamespace(id=93)
     created = SimpleNamespace(create=MagicMock())
     media = MusicInfo(
@@ -314,7 +342,9 @@ def test_music_subscribe_persists_numeric_year_as_string():
 
 
 def test_music_album_subscription_persists_entity_and_track_count():
-    """专辑订阅必须保存实体类型和总曲目数，供搜索校验与完成判定复用。"""
+    """
+    专辑订阅必须保存实体类型和总曲目数，供搜索校验与完成判定复用。
+    """
     persisted = SimpleNamespace(id=94)
     created = SimpleNamespace(create=MagicMock())
     media = MusicInfo(
@@ -339,7 +369,9 @@ def test_music_album_subscription_persists_entity_and_track_count():
 
 
 def test_music_recording_subscription_drops_album_track_count_and_scopes_identity():
-    """单曲只持久化实体类型，重复查询也必须携带实体，不能与专辑身份串用。"""
+    """
+    单曲只持久化实体类型，重复查询也必须携带实体，不能与专辑身份串用。
+    """
     persisted = SimpleNamespace(id=95)
     created = SimpleNamespace(create=MagicMock())
     media = MusicInfo(
@@ -366,7 +398,9 @@ def test_music_recording_subscription_drops_album_track_count_and_scopes_identit
 
 @pytest.mark.parametrize("episode_group", [None, "eg-1"])
 def test_async_add_scopes_duplicate_lookup_by_episode_group(episode_group):
-    """异步新增与同步路径使用相同的剧集组身份契约。"""
+    """
+    异步新增与同步路径使用相同的剧集组身份契约。
+    """
     persisted = SimpleNamespace(id=89)
     created = SimpleNamespace(async_create=AsyncMock())
 
@@ -387,7 +421,9 @@ def test_async_add_scopes_duplicate_lookup_by_episode_group(episode_group):
 
 
 def test_owner_scoped_add_forwards_episode_group_sync_and_async():
-    """按 owner 去重的同步与异步新增也必须使用同一剧集组身份。"""
+    """
+    按 owner 去重的同步与异步新增也必须使用同一剧集组身份。
+    """
     media = _media("eg-owner")
     sync_persisted = SimpleNamespace(id=90)
     sync_created = SimpleNamespace(create=MagicMock())
@@ -427,7 +463,9 @@ def test_owner_scoped_add_forwards_episode_group_sync_and_async():
 
 
 def test_exists_defaults_to_main_season_episode_group():
-    """省略剧集组时按主季查询，显式剧集组按对应范围查询。"""
+    """
+    省略剧集组时按主季查询，显式剧集组按对应范围查询。
+    """
     oper = SubscribeOper(db=object())
     with patch("app.db.oper.subscribe.Subscribe") as subscribe_model:
         subscribe_model.exists.return_value = SimpleNamespace(id=1)
@@ -466,7 +504,9 @@ def test_exists_defaults_to_main_season_episode_group():
 
 
 def test_subscribe_exists_distinguishes_same_season_episode_groups(db):
-    """同一媒体同一季的主季、自定义剧集组应分别命中各自订阅。"""
+    """
+    同一媒体同一季的主季、自定义剧集组应分别命中各自订阅。
+    """
     db.watermark(Subscribe)
     media_id = str(-(900_000_000 + os.getpid()))
     rows = [
@@ -527,7 +567,9 @@ def test_subscribe_exists_distinguishes_same_season_episode_groups(db):
 
 
 def test_subscribe_exists_distinguishes_music_entities_with_same_source_id(db):
-    """统一来源 ID 相同时，单曲与专辑仍是两条独立订阅身份。"""
+    """
+    统一来源 ID 相同时，单曲与专辑仍是两条独立订阅身份。
+    """
     db.watermark(Subscribe)
     media_id = f"music-shared-{os.getpid()}"
     rows = [
@@ -570,7 +612,9 @@ def test_subscribe_exists_distinguishes_music_entities_with_same_source_id(db):
 
 
 def test_subscribe_chain_exists_forwards_episode_group():
-    """订阅前置存在性检查必须查询当前剧集组，不能退回主季范围。"""
+    """
+    订阅前置存在性检查必须查询当前剧集组，不能退回主季范围。
+    """
     from app.chain.subscribe.facade import SubscribeChain
 
     media = _media("eg-1")

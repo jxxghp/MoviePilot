@@ -1,3 +1,7 @@
+"""
+组织离线检查，收集运行环境并生成可供命令行使用的诊断报告。
+"""
+
 from __future__ import annotations
 
 import os
@@ -40,7 +44,9 @@ class DoctorRunner:
 
     def run(self) -> DoctorReport:
         """
-        执行所有默认诊断检查并返回报告。
+        依次执行默认检查，将检查自身抛出的异常记录为错误发现。
+
+        :return: 当前运行器持有的报告；重复运行会继续向同一报告追加发现
         """
         for check in default_checks():
             try:
@@ -102,7 +108,9 @@ class DoctorRunner:
 
     @staticmethod
     def _environment() -> dict[str, Any]:
-        """收集 Doctor 报告所需的本地运行环境信息。"""
+        """
+        收集 Doctor 报告所需的本地运行环境信息。
+        """
         return {
             "runtime": "Docker" if SystemUtils.is_docker() else platform.system(),
             "platform": platform.platform(),
@@ -119,5 +127,11 @@ class DoctorRunner:
 
 
 def run_doctor(*, fix: bool = False, deep: bool = False) -> DoctorReport:
-    """运行 MoviePilot 离线诊断并返回报告。"""
+    """
+    创建运行器并执行一次 MoviePilot 离线诊断。
+
+    :param fix: 是否执行检查项允许的安全修复，默认只读检查
+    :param deep: 是否执行可能较慢或需要连接配置服务的深度检查
+    :return: 包含本次环境快照和检查发现的报告
+    """
     return DoctorRunner(fix=fix, deep=deep).run()

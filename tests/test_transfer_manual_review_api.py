@@ -1,4 +1,6 @@
-"""验证 durable 整理人工复核 API 的鉴权和公开契约。"""
+"""
+验证 durable 整理人工复核 API 的鉴权和公开契约。
+"""
 
 from __future__ import annotations
 
@@ -22,18 +24,24 @@ from app.schemas.transfer import TransferManualReviewRequest
 
 
 class _ManualReviewCommand:
-    """记录人工复核调用并返回可控结果。"""
+    """
+    记录人工复核调用并返回可控结果。
+    """
 
     calls: list[tuple[object, dict]] = []
     result: TransferManualReviewResult | None = None
     error: Exception | None = None
 
     def __init__(self, repository: object) -> None:
-        """保存端点取得的仓储替身。"""
+        """
+        保存端点取得的仓储替身。
+        """
         self._repository = repository
 
     def resolve_manual_review(self, **kwargs) -> TransferManualReviewResult:
-        """记录参数，并按测试配置返回或抛出结果。"""
+        """
+        记录参数，并按测试配置返回或抛出结果。
+        """
         self.calls.append((self._repository, kwargs))
         if self.error:
             raise self.error
@@ -42,7 +50,9 @@ class _ManualReviewCommand:
 
 
 def _install_command(monkeypatch) -> object:
-    """构造不接触数据库的人工复核仓储并安装命令替身。"""
+    """
+    构造不接触数据库的人工复核仓储并安装命令替身。
+    """
     repository = object()
     _ManualReviewCommand.calls = []
     _ManualReviewCommand.error = None
@@ -63,7 +73,9 @@ def _install_command(monkeypatch) -> object:
     ],
 )
 def test_manual_review_endpoints_require_manage_permission(endpoint) -> None:
-    """人工复核发现、详情与判定必须复用全局 manage 权限依赖。"""
+    """
+    人工复核发现、详情与判定必须复用全局 manage 权限依赖。
+    """
     dependency = inspect.signature(
         endpoint
     ).parameters["current_user"].default.dependency
@@ -92,14 +104,18 @@ def test_manual_review_request_rejects_unsafe_decisions(
     payload: dict,
     message: str,
 ) -> None:
-    """公开 schema 不允许 FAILED，且 APPLIED 必须携带结果证据。"""
+    """
+    公开 schema 不允许 FAILED，且 APPLIED 必须携带结果证据。
+    """
     with pytest.raises(ValidationError, match=message):
         TransferManualReviewRequest.model_validate(payload)
 
 
 @pytest.mark.parametrize("notes", [{}, {"reason": ""}, {"reason": "   "}])
 def test_manual_review_request_allows_optional_reason(notes: dict) -> None:
-    """省略、空白或空字符串说明均可提交，空白输入统一为空字符串。"""
+    """
+    省略、空白或空字符串说明均可提交，空白输入统一为空字符串。
+    """
     request = TransferManualReviewRequest.model_validate({
         "operation_id": "op-1",
         "decision": "not_applied",
@@ -112,7 +128,9 @@ def test_manual_review_request_allows_optional_reason(notes: dict) -> None:
 def test_manual_review_applied_wraps_result_and_hides_internal_state(
     monkeypatch,
 ) -> None:
-    """APPLIED 应包装版本化结果，响应不得泄漏 lease 或 attempt。"""
+    """
+    APPLIED 应包装版本化结果，响应不得泄漏 lease 或 attempt。
+    """
     repository = _install_command(monkeypatch)
     _ManualReviewCommand.result = SimpleNamespace(
         task_id="task-1",
@@ -162,7 +180,9 @@ def test_manual_review_applied_wraps_result_and_hides_internal_state(
 
 
 def test_manual_review_not_applied_uses_username_fallback(monkeypatch) -> None:
-    """名称为空时应稳定回退到 username，并允许安全重新调度。"""
+    """
+    名称为空时应稳定回退到 username，并允许安全重新调度。
+    """
     repository = _install_command(monkeypatch)
     _ManualReviewCommand.result = SimpleNamespace(
         task_id="task-2",
@@ -190,7 +210,9 @@ def test_manual_review_not_applied_uses_username_fallback(monkeypatch) -> None:
 
 
 def test_manual_review_conflict_returns_http_409(monkeypatch) -> None:
-    """重复或过期人工判定必须返回资源冲突而非伪成功。"""
+    """
+    重复或过期人工判定必须返回资源冲突而非伪成功。
+    """
     repository = _install_command(monkeypatch)
     _ManualReviewCommand.error = TransferExecutionConflictError("步骤已被判定")
 

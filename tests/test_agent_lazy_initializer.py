@@ -1,3 +1,7 @@
+"""
+验证 Agent 配置监听器注册幂等，且不会提前创建运行实例。
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -14,7 +18,9 @@ from app.startup.initializers import agent as agent_initializer
 
 @pytest.mark.anyio
 async def test_disabled_initializer_does_not_materialize_manager(monkeypatch) -> None:
-    """功能关闭时启动阶段不得解析完整 Agent 模块。"""
+    """
+    功能关闭时启动阶段不得解析完整 Agent 模块。
+    """
     activate = AsyncMock(return_value=None)
     monkeypatch.setattr(
         agent_initializer,
@@ -32,7 +38,9 @@ async def test_disabled_initializer_does_not_materialize_manager(monkeypatch) ->
 
 @pytest.mark.anyio
 async def test_cleanup_without_initialized_manager_does_not_query(monkeypatch) -> None:
-    """清理空状态只能关闭已持有资源，不能为清理而触发首次导入。"""
+    """
+    清理空状态只能关闭已持有资源，不能为清理而触发首次导入。
+    """
     activate = AsyncMock(side_effect=AssertionError("service activated"))
     monkeypatch.setattr(agent_initializer, "activate_agent_service", activate)
 
@@ -45,7 +53,9 @@ async def test_cleanup_without_initialized_manager_does_not_query(monkeypatch) -
 async def test_failed_initialize_keeps_manager_for_shutdown_cleanup(
     monkeypatch,
 ) -> None:
-    """初始化中途失败时仍须保留实际 manager，供应用关闭释放部分资源。"""
+    """
+    初始化中途失败时仍须保留实际 manager，供应用关闭释放部分资源。
+    """
     manager = AsyncMock()
     manager.initialize.side_effect = RuntimeError("partial initialization")
     monkeypatch.setattr(agent_initializer.settings, "AI_AGENT_ENABLE", True)
@@ -63,7 +73,9 @@ async def test_failed_initialize_keeps_manager_for_shutdown_cleanup(
 async def test_compat_stop_closes_injected_manager_without_building_runtime(
     monkeypatch,
 ) -> None:
-    """显式注入对象由兼容路径关闭，不为其构建空 Capability Runtime。"""
+    """
+    显式注入对象由兼容路径关闭，不为其构建空 Capability Runtime。
+    """
     events = []
     manager = AsyncMock()
     manager.initialize.side_effect = lambda: events.append("initialize")
@@ -91,7 +103,9 @@ async def test_compat_stop_closes_injected_manager_without_building_runtime(
 async def test_production_initializer_delegates_lifecycle_to_runtime(
     monkeypatch,
 ) -> None:
-    """生产路径只协调 service，不得再次手工 initialize 或 close canonical manager。"""
+    """
+    生产路径只协调 service，不得再次手工 initialize 或 close canonical manager。
+    """
     manager = AsyncMock()
     activate = AsyncMock(return_value=manager)
     monkeypatch.setattr(agent_initializer, "agent_manager", None)
@@ -112,7 +126,9 @@ async def test_production_initializer_delegates_lifecycle_to_runtime(
 async def test_production_stop_seals_runtime_without_manually_closing_manager(
     monkeypatch,
 ) -> None:
-    """生产关闭由 Runtime 关闸并释放 service，initializer 只清理自身引用。"""
+    """
+    生产关闭由 Runtime 关闸并释放 service，initializer 只清理自身引用。
+    """
     manager = AsyncMock()
     initializer = agent_initializer.AgentInitializer()
     initializer._manager = manager
@@ -138,7 +154,9 @@ async def test_production_stop_seals_runtime_without_manually_closing_manager(
 async def test_production_stop_retains_manager_when_runtime_does_not_converge(
     monkeypatch,
 ) -> None:
-    """Agent service 未收敛时不得释放 initializer 引用或下游工具资源。"""
+    """
+    Agent service 未收敛时不得释放 initializer 引用或下游工具资源。
+    """
     manager = AsyncMock()
     initializer = agent_initializer.AgentInitializer()
     initializer._manager = manager
@@ -186,7 +204,9 @@ async def test_production_stop_retains_manager_when_runtime_does_not_converge(
 
 @pytest.mark.anyio
 async def test_config_listener_delegates_watch_filter_to_runtime(monkeypatch) -> None:
-    """配置监听器只转交 changed keys，不维护第二份启用开关。"""
+    """
+    配置监听器只转交 changed keys，不维护第二份启用开关。
+    """
     manager = AsyncMock()
     reconcile = AsyncMock(return_value=manager)
     monkeypatch.setattr(agent_initializer, "reconcile_agent_service", reconcile)
@@ -208,7 +228,9 @@ async def test_config_listener_delegates_watch_filter_to_runtime(monkeypatch) ->
 
 
 def test_config_listener_registration_is_idempotent_and_instance_free() -> None:
-    """重复构造 initializer 不得累积监听器或持有过期实例。"""
+    """
+    重复构造 initializer 不得累积监听器或持有过期实例。
+    """
     subscribers = getattr(
         agent_initializer.eventmanager,
         "_EventManager__broadcast_subscribers",
@@ -231,7 +253,9 @@ def test_config_listener_registration_is_idempotent_and_instance_free() -> None:
 
 @pytest.mark.anyio
 async def test_config_event_after_shutdown_is_fail_closed(monkeypatch) -> None:
-    """关闭后的配置事件不得把 service 重新标为初始化成功。"""
+    """
+    关闭后的配置事件不得把 service 重新标为初始化成功。
+    """
     reconcile = AsyncMock(side_effect=CapabilityRuntimeClosedError("closed"))
     monkeypatch.setattr(agent_initializer, "reconcile_agent_service", reconcile)
     initializer = agent_initializer.AgentInitializer()
@@ -252,7 +276,9 @@ async def test_config_event_after_shutdown_is_fail_closed(monkeypatch) -> None:
 async def test_stop_skips_tool_executor_cleanup_when_factory_is_unresolved(
     monkeypatch,
 ) -> None:
-    """工具能力从未解析时，关闭路径不得为线程池清理导入工具基础模块。"""
+    """
+    工具能力从未解析时，关闭路径不得为线程池清理导入工具基础模块。
+    """
     fake_base = types.ModuleType("app.agent.tools.base")
     cleanup = MagicMock()
     fake_base.shutdown_blocking_executors = cleanup
@@ -278,7 +304,9 @@ async def test_stop_skips_tool_executor_cleanup_when_factory_is_unresolved(
 async def test_stop_closes_tool_executor_after_factory_materialization(
     monkeypatch,
 ) -> None:
-    """工具能力已解析时，应取消仍排队的阻塞工具任务。"""
+    """
+    工具能力已解析时，应取消仍排队的阻塞工具任务。
+    """
     fake_base = types.ModuleType("app.agent.tools.base")
     seal = MagicMock()
     cleanup = AsyncMock(return_value=True)
@@ -310,7 +338,9 @@ async def test_stop_closes_tool_executor_after_factory_materialization(
 
 @pytest.mark.anyio
 async def test_stop_retains_running_blocking_tool_until_retry(monkeypatch) -> None:
-    """阻塞工具超过预算时 stop 返回 False，真实结束后重试才释放 owner。"""
+    """
+    阻塞工具超过预算时 stop 返回 False，真实结束后重试才释放 owner。
+    """
     from app.agent.tools.base import (
         MoviePilotTool,
         _blocking_futures,
@@ -330,7 +360,9 @@ async def test_stop_retains_running_blocking_tool_until_retry(monkeypatch) -> No
         return "done"
 
     async def _wait_until_started() -> None:
-        """等待阻塞工具线程启动，避免把永久等待任务留在默认线程池。"""
+        """
+        等待阻塞工具线程启动，避免把永久等待任务留在默认线程池。
+        """
         while not started.is_set():
             await asyncio.sleep(0)
 

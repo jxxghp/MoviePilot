@@ -1,4 +1,6 @@
-"""订阅候选批次与无损索引合同测试。"""
+"""
+订阅候选批次与无损索引合同测试。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -21,7 +23,9 @@ def _context(
     season: int = 1,
     enclosure: str = None,
 ) -> Context:
-    """构造可配置身份、类型和季的候选上下文。"""
+    """
+    构造可配置身份、类型和季的候选上下文。
+    """
     meta = MetaInfo(title=title)
     meta.type = media_type
     meta.begin_season = season
@@ -52,7 +56,9 @@ def _context(
 
 
 def _subscribe(**overrides) -> SubscriptionSnapshot:
-    """构造候选路由使用的电视剧订阅。"""
+    """
+    构造候选路由使用的电视剧订阅。
+    """
     values = {
         "id": 1,
         "name": "目标剧集",
@@ -69,12 +75,16 @@ def _subscribe(**overrides) -> SubscriptionSnapshot:
 
 
 def _candidate_count(groups: dict[str, list[Context]]) -> int:
-    """统计分站点候选总数。"""
+    """
+    统计分站点候选总数。
+    """
     return sum(len(contexts) for contexts in groups.values())
 
 
 def test_refresh_returns_complete_cache_with_new_candidates():
-    """刷新结果必须包含既有缓存和本轮新增资源的完整候选。"""
+    """
+    刷新结果必须包含既有缓存和本轮新增资源的完整候选。
+    """
     chain = TorrentsChain()
     existing = _context("既有剧集 S01E01", media_id="100")
     duplicate = TorrentInfo(
@@ -99,7 +109,9 @@ def test_refresh_returns_complete_cache_with_new_candidates():
     ]
 
     def _load_cache(filename):
-        """仅影视 RSS 缓存预置一条历史候选。"""
+        """
+        仅影视 RSS 缓存预置一条历史候选。
+        """
         if filename == TorrentsChain._rss_file:
             return {"example.com": [existing]}
         return {}
@@ -130,7 +142,9 @@ def test_refresh_returns_complete_cache_with_new_candidates():
 
 
 def test_candidate_index_routes_all_canonical_fallback_classes_without_loss():
-    """索引必须保留未知身份、识别失败和可复核冲突，只排除确定冲突。"""
+    """
+    索引必须保留未知身份、识别失败和可复核冲突，只排除确定冲突。
+    """
     exact = _context("目标剧集 S01E01", media_id="100")
     inferred_conflict = _context("目标剧集 S01E02", media_id="200")
     failed_with_meta_id = _context(
@@ -167,7 +181,9 @@ def test_candidate_index_routes_all_canonical_fallback_classes_without_loss():
 
 
 def test_candidate_index_custom_words_preserve_complete_candidate_set():
-    """自定义识别词可能改变身份、类型和季，索引不得提前排除任何候选。"""
+    """
+    自定义识别词可能改变身份、类型和季，索引不得提前排除任何候选。
+    """
     candidates = {
         "example.com": [
             _context("其他剧集 S02E01", media_id="400", meta_media_id="400", season=2),
@@ -183,7 +199,9 @@ def test_candidate_index_custom_words_preserve_complete_candidate_set():
 
 
 def test_candidate_index_target_scale_avoids_subscription_candidate_product():
-    """200 条订阅与 1000 候选只检查命中身份位置，并按唯一媒体合并事实读取。"""
+    """
+    200 条订阅与 1000 候选只检查命中身份位置，并按唯一媒体合并事实读取。
+    """
     media_count = 100
     subscription_count = 200
     site_count = 20

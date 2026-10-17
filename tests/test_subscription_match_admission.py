@@ -1,4 +1,6 @@
-"""订阅 Match 通道的逐订阅准入与异常隔离测试。"""
+"""
+订阅 Match 通道的逐订阅准入与异常隔离测试。
+"""
 
 import threading
 from dataclasses import replace
@@ -13,7 +15,9 @@ from app.schemas.types import MediaType
 
 
 def _subscribe(subscribe_id: int, *, name: str | None = None) -> SubscriptionSnapshot:
-    """构造 Match 编排所需的活动电影订阅快照。"""
+    """
+    构造 Match 编排所需的活动电影订阅快照。
+    """
     return SubscriptionSnapshot(
         id=subscribe_id,
         name=name or f"匹配电影 {subscribe_id}",
@@ -29,7 +33,9 @@ def _chain(
     listed: list[SubscriptionSnapshot],
     current: dict[int, SubscriptionSnapshot] | None = None,
 ) -> SubscribeChain:
-    """构造只执行 Match 编排层的订阅链。"""
+    """
+    构造只执行 Match 编排层的订阅链。
+    """
     snapshots = current or {subscribe.id: subscribe for subscribe in listed}
     chain = object.__new__(SubscribeChain)
     chain.subscription_repository = SimpleNamespace(
@@ -48,7 +54,9 @@ def _assert_channel_and_subscription_released(
     chain: SubscribeChain,
     subscription_ids: tuple[int, ...],
 ) -> None:
-    """验证 Match 通道锁和所有订阅 owner 均已释放。"""
+    """
+    验证 Match 通道锁和所有订阅 owner 均已释放。
+    """
     assert chain._match_lock.acquire(blocking=False) is True
     chain._match_lock.release()
     for subscription_id in subscription_ids:
@@ -62,7 +70,9 @@ def _assert_channel_and_subscription_released(
 
 
 def test_match_skips_subscription_owned_by_search() -> None:
-    """Search 已持有同一订阅时 Match 本轮直接跳过。"""
+    """
+    Search 已持有同一订阅时 Match 本轮直接跳过。
+    """
     subscribe = _subscribe(1)
     chain = _chain([subscribe])
     process = Mock(side_effect=AssertionError("冲突订阅不应进入 Match"))
@@ -83,14 +93,18 @@ def test_match_skips_subscription_owned_by_search() -> None:
 
 
 def test_match_reloads_subscription_after_admission() -> None:
-    """Match 取得 owner 后使用最新订阅快照并传入独立执行上下文。"""
+    """
+    Match 取得 owner 后使用最新订阅快照并传入独立执行上下文。
+    """
     listed = _subscribe(2, name="旧快照")
     current = replace(listed, name="最新快照")
     chain = _chain([listed], {listed.id: current})
     captured = []
 
     def process(**kwargs):
-        """记录 Match 单订阅执行入口收到的快照与上下文。"""
+        """
+        记录 Match 单订阅执行入口收到的快照与上下文。
+        """
         captured.append(kwargs)
 
     chain._match_subscription = process
@@ -106,14 +120,18 @@ def test_match_reloads_subscription_after_admission() -> None:
 
 
 def test_match_isolates_one_subscription_failure_and_releases_all_owners() -> None:
-    """单条 Match 异常不阻止后续订阅，且所有 owner 最终释放。"""
+    """
+    单条 Match 异常不阻止后续订阅，且所有 owner 最终释放。
+    """
     first = _subscribe(3)
     second = _subscribe(4)
     chain = _chain([first, second])
     processed = []
 
     def process(**kwargs):
-        """让首条订阅失败并记录后续订阅仍被执行。"""
+        """
+        让首条订阅失败并记录后续订阅仍被执行。
+        """
         subscribe = kwargs["subscribe"]
         processed.append(subscribe.id)
         if subscribe.id == first.id:
@@ -128,14 +146,18 @@ def test_match_isolates_one_subscription_failure_and_releases_all_owners() -> No
 
 
 def test_match_continues_when_latest_subscription_read_fails() -> None:
-    """单条最新快照读取失败不能泄漏 owner 或中止后续 Match。"""
+    """
+    单条最新快照读取失败不能泄漏 owner 或中止后续 Match。
+    """
     first = _subscribe(5)
     second = _subscribe(6)
     chain = _chain([first, second])
     processed = []
 
     def get(subscription_id: int):
-        """模拟首条读取异常并返回第二条当前快照。"""
+        """
+        模拟首条读取异常并返回第二条当前快照。
+        """
         if subscription_id == first.id:
             raise RuntimeError("repository failure")
         return second
@@ -150,7 +172,9 @@ def test_match_continues_when_latest_subscription_read_fails() -> None:
 
 
 def test_match_skips_subscription_paused_after_admission() -> None:
-    """取得准入后订阅变为暂停态时，不应继续访问候选或下载边界。"""
+    """
+    取得准入后订阅变为暂停态时，不应继续访问候选或下载边界。
+    """
     listed = _subscribe(7)
     paused = replace(listed, state="S")
     chain = _chain([listed], {listed.id: paused})
@@ -174,7 +198,9 @@ def test_match_skips_subscription_paused_after_admission() -> None:
 
 
 def test_match_progress_reports_completed_skipped_and_failed_counts() -> None:
-    """Match 最终进度必须区分正常执行、准入跳过和单订阅失败。"""
+    """
+    Match 最终进度必须区分正常执行、准入跳过和单订阅失败。
+    """
     completed = _subscribe(8)
     skipped = _subscribe(9)
     failed = _subscribe(10)
@@ -206,7 +232,9 @@ def test_match_progress_reports_completed_skipped_and_failed_counts() -> None:
 
 
 def test_match_stop_does_not_report_unvisited_subscriptions_as_completed(monkeypatch) -> None:
-    """系统停止后未访问的订阅不得计入完成或跳过。"""
+    """
+    系统停止后未访问的订阅不得计入完成或跳过。
+    """
     subscribes = [_subscribe(11), _subscribe(12)]
     chain = _chain(subscribes)
     progress = Mock()
@@ -232,7 +260,9 @@ def test_match_stop_does_not_report_unvisited_subscriptions_as_completed(monkeyp
 
 
 def test_match_logs_one_bounded_start_and_finish_summary(monkeypatch) -> None:
-    """Match INFO 只保留轮次摘要，并明确任务完成不等于订阅成功。"""
+    """
+    Match INFO 只保留轮次摘要，并明确任务完成不等于订阅成功。
+    """
     completed = _subscribe(13)
     conflicted = _subscribe(14)
     cancelled = _subscribe(15)
@@ -245,7 +275,9 @@ def test_match_logs_one_bounded_start_and_finish_summary(monkeypatch) -> None:
     assert search_lease is not None
 
     def process(**kwargs):
-        """让一条正常处理完成，另一条在安全边界取消。"""
+        """
+        让一条正常处理完成，另一条在安全边界取消。
+        """
         if kwargs["subscribe"].id == cancelled.id:
             raise subscribe_match.SubscriptionSearchCancelled("cancelled")
         return "completed"
@@ -268,7 +300,9 @@ def test_match_logs_one_bounded_start_and_finish_summary(monkeypatch) -> None:
 
 
 def test_match_summary_distinguishes_ttl_timeout(monkeypatch) -> None:
-    """Match 安全边界因 TTL 停止时必须单独计数。"""
+    """
+    Match 安全边界因 TTL 停止时必须单独计数。
+    """
     subscribe = _subscribe(16)
     chain = _chain([subscribe])
     now = [0.0]
@@ -277,7 +311,9 @@ def test_match_summary_distinguishes_ttl_timeout(monkeypatch) -> None:
     )
 
     def expire(**_kwargs):
-        """让当前 owner 在单订阅执行返回前超过 TTL。"""
+        """
+        让当前 owner 在单订阅执行返回前超过 TTL。
+        """
         now[0] = chain._SUBSCRIPTION_EXECUTION_TTL + 1
         return "skipped"
 
@@ -293,12 +329,18 @@ def test_match_summary_distinguishes_ttl_timeout(monkeypatch) -> None:
 
 
 def test_match_logs_subscription_admission_release_failure(monkeypatch) -> None:
-    """订阅 owner token 无法释放时必须同时进入错误日志和轮次摘要。"""
+    """
+    订阅 owner token 无法释放时必须同时进入错误日志和轮次摘要。
+    """
     class _ReleaseRejectingAdmission(SubscriptionExecutionAdmission):
-        """模拟当前 owner 已被替换的释放冲突。"""
+        """
+        模拟当前 owner 已被替换的释放冲突。
+        """
 
         def release(self, lease):
-            """拒绝释放以触发可见性合同。"""
+            """
+            拒绝释放以触发可见性合同。
+            """
             del lease
             return False
 

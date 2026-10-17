@@ -1,4 +1,6 @@
-"""CLI 状态文件格式和受管进程展示的回归。"""
+"""
+CLI 状态文件格式和受管进程展示的回归。
+"""
 
 import json
 from pathlib import Path
@@ -12,14 +14,18 @@ from app import cli as cli_module
 
 @pytest.mark.parametrize("payload", [None, [], [1], "invalid", 3, True])
 def test_non_object_state_file_is_ignored(tmp_path: Path, payload: object) -> None:
-    """状态文件即使是合法 JSON，也必须是对象才能交给进程及更新状态消费者。"""
+    """
+    状态文件即使是合法 JSON，也必须是对象才能交给进程及更新状态消费者。
+    """
     path = tmp_path / "state.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
     assert cli_module._read_json_file(path) is None
 
 
 def test_object_state_file_preserves_contents(tmp_path: Path) -> None:
-    """有效状态文件保留原有字段及嵌套内容。"""
+    """
+    有效状态文件保留原有字段及嵌套内容。
+    """
     path = tmp_path / "state.json"
     payload = {"pid": 123, "targets": ["resources"], "metadata": {"ok": True}}
     path.write_text(json.dumps(payload), encoding="utf-8")
@@ -31,9 +37,13 @@ def test_object_state_file_preserves_contents(tmp_path: Path) -> None:
 def test_status_only_reads_managed_process_ids(
     monkeypatch: pytest.MonkeyPatch, backend_state: str, frontend_state: str
 ) -> None:
-    """受管服务展示 PID；停止或外部服务没有进程对象时仍可显示状态。"""
+    """
+    受管服务展示 PID；停止或外部服务没有进程对象时仍可显示状态。
+    """
     def service_status(state: str, pid: int) -> tuple:
-        """返回与服务探测器相同的状态及进程关联。"""
+        """
+        返回与服务探测器相同的状态及进程关联。
+        """
         if state in {"running", "starting"}:
             return state, {"pid": pid}, SimpleNamespace(pid=pid), {}
         return state, None, None, {}

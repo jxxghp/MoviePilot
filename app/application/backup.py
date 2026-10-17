@@ -1,4 +1,6 @@
-"""数据库备份与离线还原用例。"""
+"""
+数据库备份与离线还原用例。
+"""
 
 from __future__ import annotations
 
@@ -13,21 +15,38 @@ from app.runtime.log import logger
 
 @dataclass(frozen=True, slots=True)
 class BackupPolicy:
-    """一次备份操作使用的目录与保留策略快照。"""
+    """
+    一次备份操作使用的目录与保留策略快照。
+
+    :param root: 正式备份及临时文件的受管根目录
+    :param retention_days: 备份保留天数，0 表示不按时间清理，禁止负数
+    :param max_count: 最多保留的备份数量，0 表示不按数量清理，禁止负数
+    """
 
     root: Path
     retention_days: int = 0
     max_count: int = 0
 
     def __post_init__(self) -> None:
-        """拒绝负数保留策略，避免备份清理范围不明确。"""
+        """
+        拒绝负数保留策略，避免备份清理范围不明确。
+        """
         if self.retention_days < 0 or self.max_count < 0:
             raise ValueError("数据库备份保留策略不能使用负数")
 
 
 @dataclass(frozen=True, slots=True)
 class BackupArtifact:
-    """一个已完成校验并发布的数据库备份文件。"""
+    """
+    一个已完成校验并发布的数据库备份文件。
+
+    :param name: 正式备份的受管文件名，不包含目录
+    :param db_type: 数据库类型，sqlite 或 postgresql
+    :param created_at: 从受管文件名解析的本地创建时间
+    :param path: 正式备份文件在受管目录内的路径
+    :param size: 正式备份文件大小，单位为字节
+    :param target: 备份所属数据库目标，默认 moviepilot
+    """
 
     name: str
     db_type: str
@@ -39,7 +58,13 @@ class BackupArtifact:
 
 @dataclass(frozen=True, slots=True)
 class BackupVerification:
-    """数据库备份文件的基础内容校验结果。"""
+    """
+    数据库备份文件的基础内容校验结果。
+
+    :param valid: 备份内容是否通过当前数据库类型的基础校验
+    :param method: 实际采用的校验方法标识
+    :param detail: 校验结果的补充说明，未提供时为 None
+    """
 
     valid: bool
     method: str
@@ -47,61 +72,125 @@ class BackupVerification:
 
 
 class DatabaseBackupInProgressError(RuntimeError):
-    """同一宿主进程已有数据库备份正在创建。"""
+    """
+    同一宿主进程已有数据库备份正在创建。
+    """
 
 
 class BackupCheck(Protocol):
-    """数据库适配器校验结果的结构合同。"""
+    """
+    数据库适配器校验结果的结构合同。
+    """
 
     @property
     def valid(self) -> bool:
-        """返回制品是否通过校验。"""
+        """
+        返回制品是否通过校验。
+
+        :return: 校验通过时为 True
+        """
 
     @property
     def method(self) -> str:
-        """返回本次校验使用的方法。"""
+        """
+        返回本次校验使用的方法。
+
+        :return: 本次实际使用的内容校验方法标识
+        """
 
     @property
     def detail(self) -> str | None:
-        """返回校验失败详情，无详情时返回空值。"""
+        """
+        返回校验失败详情，无详情时返回空值。
+
+        :return: 校验失败或结果详情，无详情时为 None
+        """
 
 
 class DatabaseBackupBackend(Protocol):
-    """活动数据库创建、校验和离线还原所需的最小技术端口。"""
+    """
+    活动数据库创建、校验和离线还原所需的最小技术端口。
+
+    :ivar db_type: 当前后端的数据库类型，sqlite 或 postgresql
+    :ivar suffix: 该数据库备份格式的文件扩展名，包括前导点
+    """
 
     db_type: str
     suffix: str
 
     def create(self, destination: Path) -> None:
-        """把活动数据库的一致快照写入目标文件。"""
+        """
+        把活动数据库的一致快照写入目标文件。
+
+        :param destination: 调用方创建并拥有的临时备份路径
+        """
 
     def verify(self, artifact: Path) -> BackupCheck:
-        """在不修改数据库的前提下校验备份文件。"""
+        """
+        在不修改数据库的前提下校验备份文件。
+
+        :param artifact: 待校验的备份文件路径
+        :return: 校验是否通过、所用方法及失败详情
+        """
 
     def restore(self, artifact: Path) -> None:
-        """把已校验制品还原到离线目标数据库。"""
+        """
+        把已校验制品还原到离线目标数据库。
+
+        :param artifact: 已通过内容校验且与目标数据库类型匹配的备份路径
+        """
 
 
 class BackupArtifactStore(Protocol):
-    """管理一个备份根目录内正式制品与临时文件的技术端口。"""
+    """
+    管理一个备份根目录内正式制品与临时文件的技术端口。
+    """
 
     def create_temporary(self, suffix: str) -> Path:
-        """创建由当前存储实例拥有的私有临时文件。"""
+        """
+        创建由当前存储实例拥有的私有临时文件。
+
+        :param suffix: 数据库备份格式的扩展名，包括前导点
+        :return: 与正式备份处于同一受管目录的临时文件路径；调用方负责发布或丢弃
+        """
 
     def publish(self, temporary: Path, name: str) -> Path:
-        """把已校验临时文件原子发布为正式制品。"""
+        """
+        把已校验临时文件原子发布为正式制品。
+
+        :param temporary: 当前操作拥有且已校验通过的临时文件
+        :param name: 目标正式制品文件名，不允许包含目录
+        :return: 发布后的正式备份路径
+        """
 
     def discard(self, temporary: Path) -> None:
-        """清理当前操作拥有的未发布临时文件。"""
+        """
+        清理当前操作拥有的未发布临时文件。
+
+        :param temporary: 当前操作拥有的临时文件路径；文件已不存在时可安全重复清理
+        """
 
     def list(self) -> list[Path]:
-        """按创建时间倒序返回当前根目录内的正式制品。"""
+        """
+        按创建时间倒序返回当前根目录内的正式制品。
+
+        :return: 按创建时间倒序排列的正式备份路径，不包含临时文件
+        """
 
     def resolve(self, name: str) -> Path:
-        """按受限文件名解析一个必须存在的正式制品。"""
+        """
+        按受限文件名解析一个必须存在的正式制品。
+
+        :param name: 符合受管命名规则的备份文件名，不允许包含目录
+        :return: 受管根目录下已存在的正式备份路径
+        """
 
     def delete(self, name: str) -> None:
-        """删除一个已通过名称约束的正式制品。"""
+        """
+        删除一个已通过名称约束的正式制品。
+
+        :param name: 待删除的正式备份文件名，不允许包含目录
+        """
 
     def available_name(
         self,
@@ -112,30 +201,68 @@ class BackupArtifactStore(Protocol):
         target: str = "moviepilot",
         version: str | None = None,
     ) -> str:
-        """返回当前根目录中可用的正式制品文件名。"""
+        """
+        返回当前根目录中可用的正式制品文件名。
+
+        :param db_type: 备份数据库类型，sqlite 或 postgresql
+        :param created_at: 用于文件命名的本地创建时间
+        :param suffix: 数据库备份格式扩展名，包括前导点
+        :param target: 备份所属目标标识，默认 moviepilot
+        :param version: 写入文件名的版本号；None 时主程序目标使用当前版本，其他目标可省略
+        :return: 当前尚未占用的受管备份文件名，重名时添加序号
+        """
 
     def database_type(self, name: str) -> str:
-        """从受管文件名读取数据库类型。"""
+        """
+        从受管文件名读取数据库类型。
+
+        :param name: 符合受管命名规则的正式备份文件名
+        :return: 文件名中声明的数据库类型
+        """
 
     def target(self, name: str) -> str:
-        """从受管文件名读取备份目标。"""
+        """
+        从受管文件名读取备份目标。
+
+        :param name: 符合受管命名规则的正式备份文件名
+        :return: 文件名中的备份目标；旧格式归属于 moviepilot
+        """
 
     def created_at(self, name: str) -> datetime:
-        """从受管文件名读取制品创建时间。"""
+        """
+        从受管文件名读取制品创建时间。
+
+        :param name: 符合受管命名规则的正式备份文件名
+        :return: 文件名中记录的本地创建时间
+        """
 
     def size(self, name: str) -> int:
-        """返回受管正式制品的字节数。"""
+        """
+        返回受管正式制品的字节数。
+
+        :param name: 符合受管命名规则的正式备份文件名
+        :return: 正式备份文件的字节数
+        """
 
 
 class BackupArtifactStoreFactory(Protocol):
-    """按一次策略快照的根目录构造制品存储端口。"""
+    """
+    按一次策略快照的根目录构造制品存储端口。
+    """
 
     def __call__(self, root: Path) -> BackupArtifactStore:
-        """返回仅能访问指定备份根目录的制品存储。"""
+        """
+        返回仅能访问指定备份根目录的制品存储。
+
+        :param root: 本次备份策略允许访问的根目录
+        :return: 限制在指定根目录内操作的制品存储实例
+        """
 
 
 class DatabaseBackupService:
-    """管理单文件数据库备份及明确的离线还原操作。"""
+    """
+    管理单文件数据库备份及明确的离线还原操作。
+    """
 
     def __init__(
         self,
@@ -147,7 +274,9 @@ class DatabaseBackupService:
         target: str = "moviepilot",
         version: str | None = None,
     ) -> None:
-        """保存备份端口与动态策略，并建立单次创建操作的互斥边界。"""
+        """
+        保存备份端口与动态策略，并建立单次创建操作的互斥边界。
+        """
         self._backend = backend
         self._artifact_store_factory = artifact_store_factory
         self._policy_reader = policy_reader
@@ -157,7 +286,9 @@ class DatabaseBackupService:
         self._create_lock = Lock()
 
     def create(self) -> BackupArtifact:
-        """创建、校验并发布一个在线一致快照。"""
+        """
+        创建、校验并发布一个在线一致快照。
+        """
         if not self._create_lock.acquire(blocking=False):
             raise DatabaseBackupInProgressError("已有数据库备份任务正在执行")
         try:
@@ -196,12 +327,16 @@ class DatabaseBackupService:
             self._create_lock.release()
 
     def list(self) -> tuple[BackupArtifact, ...]:
-        """按创建时间倒序列出受管数据库备份文件。"""
+        """
+        按创建时间倒序列出受管数据库备份文件。
+        """
         files = self._artifact_store_factory(self._policy_reader().root)
         return tuple(self._artifact(files, path) for path in files.list())
 
     def verify(self, name: str) -> BackupVerification:
-        """按文件名校验一个受管数据库备份。"""
+        """
+        按文件名校验一个受管数据库备份。
+        """
         files = self._artifact_store_factory(self._policy_reader().root)
         path = files.resolve(name)
         self._require_matching_type(files, path)
@@ -209,11 +344,15 @@ class DatabaseBackupService:
         return BackupVerification(result.valid, result.method, result.detail)
 
     def delete(self, name: str) -> None:
-        """删除一个受管数据库备份文件。"""
+        """
+        删除一个受管数据库备份文件。
+        """
         self._artifact_store_factory(self._policy_reader().root).delete(name)
 
     def restore(self, name: str) -> BackupArtifact:
-        """校验后将受管制品还原到当前 CLI 解析出的离线数据库目标。"""
+        """
+        校验后将受管制品还原到当前 CLI 解析出的离线数据库目标。
+        """
         files = self._artifact_store_factory(self._policy_reader().root)
         path = files.resolve(name)
         self._require_matching_type(files, path)
@@ -236,7 +375,9 @@ class DatabaseBackupService:
         *,
         keep: str,
     ) -> None:
-        """新备份发布成功后按天数或份数清理同一目录中的旧文件。"""
+        """
+        新备份发布成功后按天数或份数清理同一目录中的旧文件。
+        """
         cutoff = (
             self._clock() - timedelta(days=policy.retention_days)
             if policy.retention_days > 0
@@ -256,7 +397,9 @@ class DatabaseBackupService:
         files: BackupArtifactStore,
         path: Path,
     ) -> None:
-        """拒绝把其他数据库类型的制品交给当前后端。"""
+        """
+        拒绝把其他数据库类型的制品交给当前后端。
+        """
         db_type = files.database_type(path.name)
         if db_type != self._backend.db_type:
             raise ValueError(
@@ -270,7 +413,9 @@ class DatabaseBackupService:
         *,
         created_at: datetime | None = None,
     ) -> BackupArtifact:
-        """通过存储端口把受管路径投影为应用制品。"""
+        """
+        通过存储端口把受管路径投影为应用制品。
+        """
         return BackupArtifact(
             name=path.name,
             db_type=files.database_type(path.name),

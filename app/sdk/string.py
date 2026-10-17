@@ -1,4 +1,6 @@
-"""为插件保留历史 StringUtils 类的轻量兼容门面。"""
+"""
+为插件保留历史 StringUtils 类的轻量兼容门面。
+"""
 
 from functools import wraps
 from inspect import signature
@@ -58,11 +60,15 @@ from app.foundation.version import compare_version
 
 
 def _legacy_alias(function: Callable, **keyword_aliases: str) -> Callable:
-    """创建支持旧关键字名称的静态方法转发器。"""
+    """
+    创建支持旧关键字名称的静态方法转发器。
+    """
 
     @wraps(function)
     def call(*args, **kwargs):
-        """把旧关键字转换为 canonical 参数后调用真实实现。"""
+        """
+        把旧关键字转换为 canonical 参数后调用真实实现。
+        """
         for legacy_name, canonical_name in keyword_aliases.items():
             if legacy_name in kwargs:
                 kwargs[canonical_name] = kwargs.pop(legacy_name)
@@ -84,14 +90,18 @@ def _legacy_alias(function: Callable, **keyword_aliases: str) -> Callable:
 
 
 def _legacy_md5_hash(data) -> str:
-    """保持 StringUtils.md5_hash 对空值和对象文本化的历史语义。"""
+    """
+    保持 StringUtils.md5_hash 对空值和对象文本化的历史语义。
+    """
     if not data:
         return ""
     return HashUtils.md5(str(data))
 
 
 class StringUtils:
-    """组合已拆分实现，保持插件使用的历史静态方法接口。"""
+    """
+    组合已拆分实现，保持插件使用的历史静态方法接口。
+    """
 
     num_filesize = staticmethod(parse_size)
     str_timelong = staticmethod(_legacy_alias(format_approx_duration, time_sec="seconds"))

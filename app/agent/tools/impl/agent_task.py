@@ -1,9 +1,12 @@
-"""Agent 自主定时任务统一工具。"""
+"""
+Agent 自主定时任务统一工具。
+"""
 
 import json
 from datetime import datetime, timedelta
 from typing import Literal, Optional, Type, cast
 
+# pytz 未提供完整类型标记，保留现有时区实现的导入。
 import pytz  # type: ignore[import-untyped]
 from pydantic import BaseModel, Field, model_validator
 
@@ -17,57 +20,60 @@ AgentTaskAction = Literal["create", "list", "update", "run", "delete"]
 AgentTaskTriggerType = Literal["date", "cron"]
 
 
+# Pydantic 在运行时生成模型成员，当前类型检查环境无法完整解析其动态基类。
 class AgentTaskInput(BaseModel):  # type: ignore[misc]
-    """统一管理 Agent 自主定时任务的输入参数。"""
+    """
+    统一管理 Agent 自主定时任务的输入参数。
+    """
 
     action: AgentTaskAction = Field(
         ...,
-        description=(
-            "Action to perform: create, list, update, run, or delete. "
-            "Use list before changing a task when its integer task_id is unknown."
-        ),
+        description="任务动作：create、list、update、run 或 delete；不知道整数 task_id 时应先 list 查询",
     )
     task_id: Optional[int] = Field(
         None,
         ge=1,
-        description="Task ID for list, update, run, or delete.",
+        description="list、update、run 或 delete 使用的任务整数标识",
     )
     name: Optional[str] = Field(
         None,
         min_length=1,
         max_length=100,
-        description="Task name for create or update.",
+        description="create 或 update 使用的任务名称",
     )
     content: Optional[str] = Field(
         None,
         min_length=1,
         max_length=10000,
-        description="Complete instructions for create or update.",
+        description="create 或 update 使用的完整任务指令",
     )
     trigger_type: Optional[AgentTaskTriggerType] = Field(
         None,
-        description="Use date for one future run or cron for recurring work.",
+        description="date 表示未来执行一次，cron 表示周期执行",
     )
     trigger: Optional[str] = Field(
         None,
         min_length=1,
         max_length=200,
-        description="ISO 8601 date or standard five-field cron expression.",
+        description="ISO 8601 日期时间或标准五字段 cron 表达式",
     )
     delay_minutes: Optional[int] = Field(
         None,
         ge=1,
         le=525600,
-        description=("Relative delay for a one-time date task. Use instead of trigger with trigger_type=date."),
+        description="一次性 date 任务的相对延迟分钟数，与 trigger 二选一",
     )
     enabled: Optional[bool] = Field(
         None,
-        description=("For list, optionally filter by enabled state. For update, set false to pause or true to resume."),
+        description="list 时按启用状态筛选；update 时 False 暂停、True 恢复",
     )
 
+    # Pydantic 校验器由运行时注册，保留第三方装饰器所需的动态类型兼容。
     @model_validator(mode="after")  # type: ignore[misc]
     def validate_action(self) -> "AgentTaskInput":
-        """按动作校验必填字段和触发参数组合。"""
+        """
+        按动作校验必填字段和触发参数组合。
+        """
         if self.name is not None:
             self.name = self.name.strip()
             if not self.name:
@@ -109,7 +115,9 @@ class AgentTaskInput(BaseModel):  # type: ignore[misc]
         require_schedule: bool,
         normalize_exact: bool,
     ) -> None:
-        """校验 date/cron 触发组合，并按需规范化绝对触发值。"""
+        """
+        校验 date/cron 触发组合，并按需规范化绝对触发值。
+        """
         if require_schedule and self.trigger_type is None:
             raise ValueError("修改触发配置时必须提供 trigger_type")
         if self.trigger_type == "date":
@@ -124,6 +132,7 @@ class AgentTaskInput(BaseModel):  # type: ignore[misc]
         if normalize_exact and self.trigger_type is not None:
             normalized_type, normalized_trigger = TimerUtils.normalize_schedule_trigger(
                 trigger_type=self.trigger_type,
+                # 前置分支已拒绝缺失触发值，延迟任务也已提前返回。
                 trigger_value=self.trigger,  # type: ignore[arg-type]
                 timezone_name=get_runtime_setting("TZ"),
                 require_future=True,
@@ -133,26 +142,43 @@ class AgentTaskInput(BaseModel):  # type: ignore[misc]
 
 
 class AgentTaskTool(MoviePilotTool):
-    """通过一个动作式接口管理当前用户的自主定时任务。"""
+    """
+    通过一个动作式接口管理当前用户的自主定时任务。
+    """
 
-    name: str = "agent_task"
-    tags: list[str] = [
-        ToolTag.Read,
-        ToolTag.Write,
-        ToolTag.AgentTask,
-        ToolTag.Admin,
-    ]
-    description: str = (
-        "Manage persistent autonomous agent tasks with one structured action. Use create "
-        "for explicitly requested delayed or recurring work, list to inspect current-user "
-        "tasks, update to change or pause one, run to queue one immediately, and delete "
-        "to permanently remove it. Task IDs are integers and are not scheduler job IDs."
+    name: str = Field(
+        default="agent_task",
+        description="供模型调用的稳定工具名称",
     )
-    args_schema: Type[BaseModel] = AgentTaskInput
-    require_admin: bool = True
+    tags: list[str] = Field(
+        default=[ToolTag.Read, ToolTag.Write, ToolTag.AgentTask, ToolTag.Admin],
+        description="工具的能力和权限分类标签，初始化时会统一归一化",
+    )
+    description: str = Field(
+        default=(
+            "通过结构化动作管理持久化自主任务。"
+            "用户明确要求延迟或周期工作时用 create；"
+            "list 查看当前用户任务；"
+            "update 修改或暂停；"
+            "run 立即入队；"
+            "delete 永久删除。"
+            "任务标识是整数，与调度器作业标识不同。"
+        ),
+        description="供模型理解工具用途、输入约束和调用边界的说明",
+    )
+    args_schema: Type[BaseModel] = Field(
+        default=AgentTaskInput,
+        description="工具输入参数的验证模型或 JSON Schema",
+    )
+    require_admin: bool = Field(
+        default=True,
+        description="是否仅允许系统管理员调用",
+    )
 
     def get_tool_message(self, **kwargs: object) -> Optional[str]:
-        """生成统一任务操作的用户可见提示。"""
+        """
+        生成统一任务操作的用户可见提示。
+        """
         action = str(kwargs.get("action") or "list")
         action_name = {
             "create": "创建",
@@ -166,7 +192,9 @@ class AgentTaskTool(MoviePilotTool):
 
     @staticmethod
     def _absolute_trigger(payload: AgentTaskInput) -> str:
-        """将相对分钟或绝对表达式转换为规范化触发值。"""
+        """
+        将相对分钟或绝对表达式转换为规范化触发值。
+        """
         trigger_value = payload.trigger
         if payload.trigger_type == "date" and payload.delay_minutes is not None:
             timezone = pytz.timezone(get_runtime_setting("TZ"))
@@ -186,7 +214,9 @@ class AgentTaskTool(MoviePilotTool):
         return normalized
 
     def _create_task(self, payload: AgentTaskInput) -> dict[str, object]:
-        """持久化任务并立即注册到运行时调度器。"""
+        """
+        持久化任务并立即注册到运行时调度器。
+        """
         from app.application.scheduling import update_agent_task_job
 
         trigger_value = self._absolute_trigger(payload)
@@ -222,7 +252,9 @@ class AgentTaskTool(MoviePilotTool):
         task_id: Optional[int],
         enabled: Optional[bool],
     ) -> list[dict[str, object]]:
-        """读取当前用户任务及运行时下一次触发时间。"""
+        """
+        读取当前用户任务及运行时下一次触发时间。
+        """
         from app.application.scheduling import get_agent_task_next_run
 
         oper = self.data.tasks
@@ -254,7 +286,9 @@ class AgentTaskTool(MoviePilotTool):
         self,
         payload: AgentTaskInput,
     ) -> Optional[dict[str, object]]:
-        """更新当前用户任务并刷新运行时调度。"""
+        """
+        更新当前用户任务并刷新运行时调度。
+        """
         from app.application.scheduling import update_agent_task_job
 
         if payload.task_id is None:
@@ -340,7 +374,9 @@ class AgentTaskTool(MoviePilotTool):
         )
 
     def _get_task_state(self, task_id: int) -> tuple[str, Optional[str]]:
-        """校验任务归属和状态，返回可执行性及任务名称。"""
+        """
+        校验任务归属和状态，返回可执行性及任务名称。
+        """
         task = self.data.tasks.get(task_id=task_id, user_id=str(self._user_id))
         if not task:
             return "not_found", None
@@ -351,7 +387,9 @@ class AgentTaskTool(MoviePilotTool):
         return "ready", task.name
 
     def _delete_task(self, task_id: int) -> bool:
-        """删除当前用户任务并移除运行时调度。"""
+        """
+        删除当前用户任务并移除运行时调度。
+        """
         from app.application.scheduling import remove_agent_task_job
 
         deleted = self.data.tasks.delete(
@@ -362,6 +400,7 @@ class AgentTaskTool(MoviePilotTool):
             remove_agent_task_job(task_id)
         return deleted
 
+    # 具体参数由 args_schema 验证，执行入口保留与工具基类的动态分发兼容。
     async def run(  # type: ignore[override]
         self,
         action: AgentTaskAction,
@@ -374,7 +413,9 @@ class AgentTaskTool(MoviePilotTool):
         enabled: Optional[bool] = None,
         **kwargs: object,
     ) -> str:
-        """执行一项任务创建、查询、更新、立即运行或删除操作。"""
+        """
+        执行一项任务创建、查询、更新、立即运行或删除操作。
+        """
         payload = AgentTaskInput(
             action=action,
             task_id=task_id,
@@ -414,7 +455,9 @@ class AgentTaskTool(MoviePilotTool):
         return await self._delete(payload.task_id)
 
     async def _run_now(self, task_id: Optional[int]) -> str:
-        """立即提交一项已启用且属于当前用户的任务。"""
+        """
+        立即提交一项已启用且属于当前用户的任务。
+        """
         from app.application.scheduling import start_agent_task
 
         if task_id is None:
@@ -435,7 +478,9 @@ class AgentTaskTool(MoviePilotTool):
         return f"Agent 定时任务 {task_id} 已提交立即执行：{task_name}。执行完成后将通过已配置的通知渠道广播结果"
 
     async def _delete(self, task_id: Optional[int]) -> str:
-        """永久删除一项属于当前用户的自主定时任务。"""
+        """
+        永久删除一项属于当前用户的自主定时任务。
+        """
         if task_id is None:
             raise ValueError("delete 缺少 task_id")
         deleted = await self.run_blocking("db", self._delete_task, task_id)

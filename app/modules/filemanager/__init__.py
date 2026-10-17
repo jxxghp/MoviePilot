@@ -1,4 +1,5 @@
-"""文件管理模块的惰性兼容入口。
+"""
+文件管理模块的惰性兼容入口。
 
 宿主能力清单和历史调用方继续使用 ``app.modules.filemanager:FileManagerModule``；
 实现移入 ``module`` 后，包初始化不再反向加载传输处理器和存储实现。
@@ -13,7 +14,13 @@ _EXPORTS = {
 
 
 def __getattr__(name: str) -> Any:
-    """按需解析旧包级导出，并缓存解析结果。"""
+    """
+    按需解析旧包级导出，并缓存解析结果。
+
+    :raises AttributeError: 符号不在兼容导出清单中
+    :param name: 调用方请求的兼容符号名
+    :return: 对应的实现对象
+    """
     contract = _EXPORTS.get(name)
     if contract is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
@@ -27,7 +34,11 @@ def __getattr__(name: str) -> Any:
 
 
 def __dir__() -> list[str]:
-    """向交互式工具公开兼容符号而不提前导入实现。"""
+    """
+    向交互式工具公开兼容符号而不提前导入实现。
+
+    :return: 当前全局符号与兼容导出符号合并后的有序列表
+    """
     return sorted({*globals(), *_EXPORTS})
 
 

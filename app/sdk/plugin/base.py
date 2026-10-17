@@ -1,4 +1,6 @@
-"""插件继承的契约基类与插件处理链。"""
+"""
+插件继承的契约基类与插件处理链。
+"""
 
 from abc import ABCMeta, abstractmethod
 from pathlib import Path
@@ -46,7 +48,9 @@ class _PluginBase(metaclass=ABCMeta):
     is_clone: bool = False
 
     def __init__(self) -> None:
-        """创建插件链入口并初始化插件数据访问对象。"""
+        """
+        创建插件链入口并初始化插件数据访问对象。
+        """
         # 插件数据
         self.plugindata = PluginDataOper()
         # 处理链
@@ -388,7 +392,7 @@ class _PluginBase(metaclass=ABCMeta):
         """
         获取插件数据
         :param key: 数据key
-        :param plugin_id: plugin_id
+        :param plugin_id: 数据所属插件标识；为空时使用当前插件类名
         """
         if not plugin_id:
             plugin_id = self.__class__.__name__
@@ -412,7 +416,7 @@ class _PluginBase(metaclass=ABCMeta):
         """
         删除插件数据
         :param key: 数据key
-        :param plugin_id: plugin_id
+        :param plugin_id: 数据所属插件标识；为空时使用当前插件类名
         """
         if not plugin_id:
             plugin_id = self.__class__.__name__
@@ -437,5 +441,7 @@ class _PluginBase(metaclass=ABCMeta):
         ))
 
     def close(self) -> None:
-        """保留插件资源释放钩子，具体插件可覆盖实现。"""
+        """
+        保留插件资源释放钩子，具体插件可覆盖实现。
+        """
         pass

@@ -1,4 +1,6 @@
-"""分页搜索的收集与连续进度语义，不依赖站点请求或持久化。"""
+"""
+分页搜索的收集与连续进度语义，不依赖站点请求或持久化。
+"""
 
 import hashlib
 import json
@@ -15,12 +17,16 @@ UNMATCHED_PAGE_LIMIT = 3
 
 
 def search_resource_id(torrent: Any) -> str:
-    """资源去重键，与原搜索结果去重一致：站点名 + 标题 + 描述。"""
+    """
+    资源去重键，与原搜索结果去重一致：站点名 + 标题 + 描述。
+    """
     return f"{torrent.site_name}_{torrent.title}_{torrent.description}"
 
 
 def search_page_signature(resource_ids: Iterable[str]) -> Optional[str]:
-    """按原搜索去重键生成整页摘要，保留顺序与重复项；空页返回 None。"""
+    """
+    按原搜索去重键生成整页摘要，保留顺序与重复项；空页返回 None。
+    """
     page_ids = tuple(resource_ids)
     if not page_ids:
         return None
@@ -29,48 +35,71 @@ def search_page_signature(resource_ids: Iterable[str]) -> Optional[str]:
 
 @dataclass(frozen=True, slots=True)
 class SearchResourceEvidence:
-    """一条资源的去重键及匹配目标；None 表示识别尚不能给出结论。"""
+    """
+    一条资源的去重键及匹配目标；None 表示识别尚不能给出结论。
+
+    :param resource_id: 由站点、标题和描述组成的资源去重键
+    :param targets: 资源覆盖的搜索目标；None 表示识别结果尚不能确定
+    :param latest: 资源覆盖的各季最大集号（季号字符串, 集号），不限于本轮缺集，用于判断站点已收录范围
+    """
 
     resource_id: str
     targets: Optional[frozenset[str]]
-    # 资源覆盖的各季最大集号（季号字符串, 集号），不限于本轮缺集，用于判断站点已收录范围。
     latest: tuple[tuple[str, int], ...] = ()
 
 
 @dataclass(slots=True)
 class SearchSourceCursor:
-    """一个站点实际查询的连续页进度；重拉第一页只补入新资源，不拼接缺席证据。"""
+    """
+    一个站点实际查询的连续页进度；重拉第一页只补入新资源，不拼接缺席证据。
+
+    :param next_page: 下次连续请求的页号，从 0 开始
+    :param exhausted: 来源是否已明确到达末页
+    :param failed: 来源是否已失败并停止本轮请求
+    :param seen: 已在确定识别结果中出现过的目标
+    :param closed: 已有连续页证据表明无需继续搜索的目标
+    :param found: 是否返回过任何资源；只需要有无，不保存逐条去重键以控制检查点体积
+    :param last_request_at: 上次收到页面结果的时间戳，单位为秒
+    :param refresh_pending: 中断恢复后待重拉第一页；先拉下一页再重拉，保证每次重拉前至少推进一页，不会卡在第一页
+    :param head_refresh: 下一次请求是否补拉第一页
+    :param last_page_signature: 上一页的整页摘要，只用于识别站点越过末页后重复返回同一页
+    :param error: 最近一次来源失败的说明；无错误时为 None
+    :param failure_outcome: 最近一次来源失败的分类；无错误时为 None
+    :param page_limit: 当前来源页数上限；未指定时使用全局上限
+    :param matched_work: 作品匹配不局限于当前缺集；见过同作品的其他季集也不能按异常查询提前停止
+    :param unmatched_pages: 从未匹配目标作品时连续出现的明确不匹配页数
+    """
 
     next_page: int = 0
     exhausted: bool = False
     failed: bool = False
     seen: set[str] = field(default_factory=set)
     closed: set[str] = field(default_factory=set)
-    # 是否返回过任何资源；只需要有无，不保存逐条去重键以控制检查点体积。
     found: bool = False
     last_request_at: float = 0
-    # 中断恢复后待重拉第一页；先拉下一页再重拉，保证每次重拉前至少推进一页，不会卡在第一页。
     refresh_pending: bool = False
     head_refresh: bool = False
-    # 上一页的整页摘要，只用于识别站点越过末页后重复返回同一页。
     last_page_signature: Optional[str] = None
     error: Optional[str] = None
     failure_outcome: Optional[str] = None
     page_limit: Optional[int] = None
-    # 作品匹配不局限于当前缺集；见过同作品的其他季集也不能按异常查询提前停止。
     matched_work: bool = False
     unmatched_pages: int = 0
 
     @property
     def limit_reached(self) -> bool:
-        """页数范围或异常查询早停不代表站点搜尽，下载失败也不能突破本轮限制。"""
+        """
+        页数范围或异常查询早停不代表站点搜尽，下载失败也不能突破本轮限制。
+        """
         return (self.next_page >= min(self.page_limit or MAX_SEARCH_PAGES, MAX_SEARCH_PAGES)
                 or self.unmatched_pages >= UNMATCHED_PAGE_LIMIT)
 
     def _observe_query_matches(
         self, evidence: list[SearchResourceEvidence], *, matched_work: bool, stop_unmatched: bool,
     ) -> None:
-        """只累计从未命中作品的明确不匹配连续页；未知页打断计数，补拉首页不增加计数。"""
+        """
+        只累计从未命中作品的明确不匹配连续页；未知页打断计数，补拉首页不增加计数。
+        """
         self.matched_work = (self.matched_work or matched_work or bool(self.seen)
                              or any(item.targets or item.latest for item in evidence))
         if self.matched_work or not stop_unmatched or any(item.targets is None for item in evidence):
@@ -79,14 +108,18 @@ class SearchSourceCursor:
             self.unmatched_pages = self.unmatched_pages + 1 if evidence else 0
 
     def page_to_request(self, now: float) -> int:
-        """中断超过门槛后，先拉原来的下一页，下一次请求再重拉第一页；连续翻页不会触发。"""
+        """
+        中断超过门槛后，先拉原来的下一页，下一次请求再重拉第一页；连续翻页不会触发。
+        """
         if (not self.refresh_pending and not self.head_refresh and self.next_page
                 and now - self.last_request_at >= HEAD_REFRESH_SECONDS):
             self.refresh_pending = True
         return 0 if self.head_refresh else self.next_page
 
     def cancel_head_refresh(self) -> None:
-        """请求失败时放弃本次重拉第一页。"""
+        """
+        请求失败时放弃本次重拉第一页。
+        """
         self.refresh_pending = False
         self.head_refresh = False
 
@@ -94,7 +127,9 @@ class SearchSourceCursor:
         self, *, page: int, evidence: list[SearchResourceEvidence], targets: set[str],
         exhausted: bool, now: float, matched_work: bool = False, stop_unmatched: bool = False,
     ) -> bool:
-        """收集一页；含识别未知资源的页面照常推进，但不作为任何目标的缺席证据。"""
+        """
+        收集一页；含识别未知资源的页面照常推进，但不作为任何目标的缺席证据。
+        """
         self.last_request_at = now
         self.error = None
         self._observe_query_matches(evidence, matched_work=matched_work, stop_unmatched=stop_unmatched)
@@ -130,35 +165,49 @@ class SearchSourceCursor:
         return True
 
     def drives_search(self, targets: set[str], fallback: set[str]) -> bool:
-        """完整兜底可重开 closed 来源，但不能越过用户配置的页数范围。"""
+        """
+        完整兜底可重开 closed 来源，但不能越过用户配置的页数范围。
+        """
         return not (self.exhausted or self.failed or self.limit_reached) and bool((targets - self.closed) | (targets & fallback))
 
 
 @dataclass(slots=True)
 class SearchCollection:
-    """各来源共用目标收集屏障，成功目标不再驱动分页。"""
+    """
+    各来源共用目标收集屏障，成功目标不再驱动分页。
+
+    :param targets: 本轮需要收集候选的目标集合
+    :param sources: 来源标识到各自分页进度的映射
+    :param settled: 已成功提交或确认已存在的目标
+    :param fallback: 需要从当前进度继续完整搜索的目标
+    :param released: 本轮任一来源出现过的本作品各季最大集号，键为季号字符串
+    """
 
     targets: set[str]
     sources: dict[str, SearchSourceCursor] = field(default_factory=dict)
     settled: set[str] = field(default_factory=set)
     fallback: set[str] = field(default_factory=set)
-    # 本轮任一来源出现过的本作品各季最大集号，键为季号字符串。
     released: dict[str, int] = field(default_factory=dict)
 
     @property
     def remaining(self) -> set[str]:
-        """仍需择优或寻找候选的目标。"""
+        """
+        仍需择优或寻找候选的目标。
+        """
         return self.targets - self.settled
 
     def observe(self, evidence: Iterable[SearchResourceEvidence]) -> None:
-        """记录站点已收录范围；只增不减，较深页面出现更新集数时相应目标恢复正常收集。"""
+        """
+        记录站点已收录范围；只增不减，较深页面出现更新集数时相应目标恢复正常收集。
+        """
         for item in evidence:
             for season, episode in item.latest:
                 if episode > self.released.get(season, 0):
                     self.released[season] = episode
 
     def unreleased(self) -> set[str]:
-        """超过本轮各来源已见最大集号的缺集视为站点尚未收录：各来源只查第一页，之后交给订阅模式追更。
+        """
+        超过本轮各来源已见最大集号的缺集视为站点尚未收录：各来源只查第一页，之后交给订阅模式追更。
 
         判断依据是站点资源而不是播出时间：已播出但站点还没有的集同样等订阅模式抓取。
         站点结果一般按上传时间倒序，最新的集出现在前面；若较新的集只出现在更深页（如第一页被重新上传的
@@ -174,7 +223,9 @@ class SearchCollection:
         return result
 
     def ready(self, *, full: bool = False) -> set[str]:
-        """完整模式等待所有来源结束；智能模式可按关闭证据或站点未收录判断提前就绪。"""
+        """
+        完整模式等待所有来源结束；智能模式可按关闭证据或站点未收录判断提前就绪。
+        """
         if not self.sources:
             return set()
         unreleased = set() if full else self.unreleased()
@@ -189,7 +240,9 @@ class SearchCollection:
         }
 
     def active_sources(self, *, full: bool = False) -> list[str]:
-        """完整模式由所有未满足目标驱动分页，智能模式才按站点已见集号裁剪目标。"""
+        """
+        完整模式由所有未满足目标驱动分页，智能模式才按站点已见集号裁剪目标。
+        """
         driving = self.remaining if full else self.remaining - self.unreleased()
         fallback = driving if full else self.fallback
         return [key for key, source in self.sources.items()
@@ -197,14 +250,20 @@ class SearchCollection:
 
     @property
     def pending(self) -> set[str]:
-        """仍值得在本轮继续寻找的目标；只剩站点未收录目标时本轮结束并释放检查点。"""
+        """
+        仍值得在本轮继续寻找的目标；只剩站点未收录目标时本轮结束并释放检查点。
+        """
         return self.remaining - self.unreleased()
 
     def settle(self, targets: set[str]) -> None:
-        """仅对已确认提交或已经存在的目标结算。"""
+        """
+        仅对已确认提交或已经存在的目标结算。
+        """
         self.settled.update(targets & self.targets)
         self.fallback.difference_update(targets)
 
     def deepen(self, targets: set[str]) -> None:
-        """无合格候选或明确失败后，从来源当前进度继续完整兜底；站点未收录目标不兜底翻页。"""
+        """
+        无合格候选或明确失败后，从来源当前进度继续完整兜底；站点未收录目标不兜底翻页。
+        """
         self.fallback.update(targets & self.pending)

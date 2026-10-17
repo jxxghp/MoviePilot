@@ -1,4 +1,6 @@
-"""比较标准与 free-threaded MoviePilot 镜像的 PostgreSQL 同步驱动。"""
+"""
+比较标准与自由线程 MoviePilot 镜像的 PostgreSQL 同步驱动。
+"""
 
 from __future__ import annotations
 
@@ -17,16 +19,19 @@ from typing import Any
 
 try:
     import docker
-except ImportError:  # pragma: no cover - 保留无 Docker SDK 环境下的 --help
+# 保留无 Docker SDK 环境下的 --help。
+except ImportError:  # pragma: no cover
     docker = None
 
 
 SCHEMA_VERSION = 1
+# 固定比较标准解释器的两种驱动，以及自由线程解释器的原生 psycopg 实现。
 VARIANTS = (
     ("v3_psycopg2", "psycopg2"),
     ("v3_psycopg3_binary", "psycopg3"),
     ("v3t_psycopg3_c", "psycopg3"),
 )
+# 三种方案的六种全排列，使每种方案在各顺序位置出现次数相同。
 ORDERS = (
     (VARIANTS[0], VARIANTS[1], VARIANTS[2]),
     (VARIANTS[1], VARIANTS[2], VARIANTS[0]),
@@ -38,16 +43,22 @@ ORDERS = (
 
 
 class HarnessInvalid(RuntimeError):
-    """表示制品、数据库或样本不满足可比较合同。"""
+    """
+    表示制品、数据库或样本不满足可比较合同。
+    """
 
 
 def utc_now() -> str:
-    """返回 JSON 使用的 UTC 时间。"""
+    """
+    返回 JSON 使用的 UTC 时间。
+    """
     return datetime.now(timezone.utc).isoformat()
 
 
 def normalize_campaign(value: str) -> str:
-    """限制 campaign，使输出目录和 Docker 标签可安全复用。"""
+    """
+    限制实验标识，使输出目录和 Docker 标签可安全复用。
+    """
     normalized = value.strip().lower()
     if not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,39}", normalized):
         raise argparse.ArgumentTypeError(
@@ -57,7 +68,9 @@ def normalize_campaign(value: str) -> str:
 
 
 def immutable_image(value: str) -> str:
-    """只接受带完整 sha256 digest 的镜像引用。"""
+    """
+    只接受带完整 SHA256 摘要的镜像引用。
+    """
     reference = value.strip()
     if not re.fullmatch(r"[^\s@]+@sha256:[0-9a-f]{64}", reference):
         raise argparse.ArgumentTypeError("镜像必须使用 repository@sha256:<64 hex> 不可变引用")
@@ -65,12 +78,16 @@ def immutable_image(value: str) -> str:
 
 
 def sample_order(round_index: int) -> tuple[tuple[str, str], ...]:
-    """返回三方案的平衡全排列，消除固定位置偏置。"""
+    """
+    返回三方案的平衡全排列，消除固定位置偏置。
+    """
     return ORDERS[round_index % len(ORDERS)]
 
 
 def atomic_write_json(path: Path, payload: Any) -> None:
-    """原子写入 JSON，避免长采样中断留下半个结果。"""
+    """
+    原子写入 JSON，避免长采样中断留下半个结果。
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(f"{path.suffix}.tmp")
     temporary.write_text(
@@ -81,7 +98,9 @@ def atomic_write_json(path: Path, payload: Any) -> None:
 
 
 def require_docker_client():
-    """连接本机 Docker Engine。"""
+    """
+    连接本机 Docker Engine。
+    """
     if docker is None:
         raise HarnessInvalid("缺少 docker Python SDK，请使用 MoviePilot 工作区环境执行")
     try:
@@ -116,7 +135,9 @@ def require_docker_client():
 
 
 def image_identity(client, reference: str) -> dict[str, Any]:
-    """读取不可变镜像身份与 MoviePilot 源码标签。"""
+    """
+    读取不可变镜像身份与 MoviePilot 源码标签。
+    """
     image_id = reference.rsplit("@", 1)[-1]
     try:
         image = client.images.get(reference)
@@ -144,7 +165,7 @@ def image_identity(client, reference: str) -> dict[str, Any]:
     }
 
 
-BENCHMARK_SCRIPT = r"""
+BENCHMARK_SCRIPT = r'''
 import concurrent.futures
 import hashlib
 import importlib.metadata
@@ -195,6 +216,9 @@ elif driver == "psycopg3":
     implementation = driver_module.pq.__impl__
 
     def optional_version(name):
+        """
+        读取可选驱动发行版版本；未安装时返回 None。
+        """
         try:
             return importlib.metadata.version(name)
         except importlib.metadata.PackageNotFoundError:
@@ -227,13 +251,22 @@ wheel_tags = sorted(
 )
 
 def connect():
+    """
+    使用当前选定驱动连接探针专用 PostgreSQL 数据库。
+    """
     return driver_module.connect(dsn)
 
 def percentile(values, ratio):
+    """
+    按当前探针的排序下标规则读取分位值；输入必须非空。
+    """
     ordered = sorted(values)
     return ordered[min(len(ordered) - 1, int((len(ordered) - 1) * ratio))]
 
 def latency_summary(values):
+    """
+    把非空毫秒样本汇总为中位数、百分之九十五分位与最大值。
+    """
     return {
         "p50_ms": statistics.median(values),
         "p95_ms": percentile(values, 0.95),
@@ -286,6 +319,9 @@ with connect() as connection:
         serial_seconds = time.perf_counter() - started
 
 def concurrent_worker(worker_index):
+    """
+    为单个工作线程创建独立连接，读取固定随机序列并返回结果摘要。
+    """
     worker_randomizer = random.Random(314159 + worker_index)
     checksum = hashlib.sha256()
     with connect() as connection:
@@ -326,6 +362,9 @@ long_ready = threading.Event()
 long_errors = []
 
 def long_transaction():
+    """
+    在独立事务中持有行锁，配合同期探针检查其他连接能否并行读写。
+    """
     try:
         with connect() as connection:
             with connection.cursor() as cursor:
@@ -417,7 +456,7 @@ print(json.dumps({
         "contended_update_seconds": contended_update_seconds,
     },
 }, sort_keys=True))
-"""
+'''
 
 
 def run_sample(
@@ -432,7 +471,9 @@ def run_sample(
     table_name: str,
     args: argparse.Namespace,
 ) -> dict[str, Any]:
-    """在目标镜像中执行一次独立样本。"""
+    """
+    在目标镜像中执行一次独立样本。
+    """
     environment = {
         "MP_PG_DRIVER": driver,
         "MP_PG_DSN": args.dsn,
@@ -496,7 +537,9 @@ def cleanup_table(
     table_name: str,
     args: argparse.Namespace,
 ) -> None:
-    """在成功或失败后删除 campaign 独占的测试表。"""
+    """
+    在成功或失败后删除实验独占的测试表。
+    """
     try:
         client.containers.run(
             image["runtime_reference"],
@@ -513,7 +556,9 @@ def cleanup_table(
 
 
 def validate_sample(variant: str, sample: dict[str, Any]) -> None:
-    """验证驱动、ABI 和长事务并行合同。"""
+    """
+    验证驱动、ABI 和长事务并行合同。
+    """
     runtime = sample["runtime"]
     if runtime["python_version"].split(".")[:2] != ["3", "14"]:
         raise HarnessInvalid(f"{variant} 不是 Python 3.14")
@@ -546,7 +591,9 @@ def validate_sample(variant: str, sample: dict[str, Any]) -> None:
 
 
 def validate_campaign(samples: list[dict[str, Any]], rounds: int) -> None:
-    """验证三方案样本数量和固定查询结果完全一致。"""
+    """
+    验证三方案样本数量和固定查询结果完全一致。
+    """
     for variant, _driver in VARIANTS:
         variant_samples = [
             sample for sample in samples if sample["variant"] == variant
@@ -575,7 +622,9 @@ def validate_campaign(samples: list[dict[str, Any]], rounds: int) -> None:
 
 
 def median_at(samples: list[dict[str, Any]], *keys: str) -> float:
-    """汇总指定路径的样本中位数。"""
+    """
+    汇总指定路径的样本中位数。
+    """
     values = []
     for sample in samples:
         value: Any = sample
@@ -586,7 +635,9 @@ def median_at(samples: list[dict[str, Any]], *keys: str) -> float:
 
 
 def summarize(samples: list[dict[str, Any]]) -> dict[str, Any]:
-    """生成三方案中位数和相对标准 V3/psycopg2 的比例。"""
+    """
+    生成三方案中位数和相对标准 V3/psycopg2 的比例。
+    """
     grouped = {
         variant: [sample for sample in samples if sample["variant"] == variant]
         for variant, _driver in VARIANTS
@@ -627,7 +678,9 @@ def summarize(samples: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def render_report(result: dict[str, Any]) -> str:
-    """生成维护者可读的 Markdown 摘要。"""
+    """
+    生成维护者可读的 Markdown 摘要。
+    """
     summary = result["summary"]
     lines = [
         "# PostgreSQL driver A/B",
@@ -658,7 +711,9 @@ def render_report(result: dict[str, Any]) -> str:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    """解析命令行参数。"""
+    """
+    解析命令行参数。
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--campaign", required=True, type=normalize_campaign)
     parser.add_argument("--postgres-container", required=True)
@@ -691,7 +746,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """执行 A/B 并写入原始 JSON 与报告。"""
+    """
+    执行 A/B 并写入原始 JSON 与报告。
+    """
     args = parse_args(argv)
     output_dir = args.output_dir or (
         Path.cwd() / ".artifacts" / "postgresql-driver-ab" / args.campaign

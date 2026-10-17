@@ -1,3 +1,7 @@
+"""
+验证工作流修改命令的校验与持久化委托。
+"""
+
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -14,7 +18,9 @@ from app.application.workflow import (
 
 
 def _workflow(trigger_type="timer", timer="0 0 * * *", event_type="DownloadAdded"):
-    """构造工作流写用例使用的最小快照。"""
+    """
+    构造工作流写用例使用的最小快照。
+    """
     return SimpleNamespace(
         id=7,
         trigger_type=trigger_type,
@@ -24,7 +30,9 @@ def _workflow(trigger_type="timer", timer="0 0 * * *", event_type="DownloadAdded
 
 
 def _snapshot() -> WorkflowSnapshot:
-    """构造查询服务返回的冻结工作流快照。"""
+    """
+    构造查询服务返回的冻结工作流快照。
+    """
     return WorkflowSnapshot(
         id=7,
         name="query",
@@ -48,7 +56,9 @@ def _snapshot() -> WorkflowSnapshot:
 
 
 def _command(workflow=None, commit_error=None):
-    """构造可观察工作流事务与运行时副作用的命令。"""
+    """
+    构造可观察工作流事务与运行时副作用的命令。
+    """
     repository = Mock()
     repository.get = Mock(return_value=workflow)
     repository.stage_state = Mock(return_value=True)
@@ -72,7 +82,9 @@ def _command(workflow=None, commit_error=None):
 
 
 def _execution_command(commit_error=None):
-    """构造可观察的工作流执行状态事务命令。"""
+    """
+    构造可观察的工作流执行状态事务命令。
+    """
     repository = Mock()
     repository.stage_start = Mock(return_value=True)
     repository.stage_success = Mock(return_value=True)
@@ -89,7 +101,9 @@ def _execution_command(commit_error=None):
 
 
 def test_workflow_execution_port_requires_explicit_configuration(monkeypatch):
-    """执行状态端口必须显式装配，并原样返回组合根登记的服务。"""
+    """
+    执行状态端口必须显式装配，并原样返回组合根登记的服务。
+    """
     monkeypatch.setattr(
         workflow_application,
         "_configured_workflow_execution",
@@ -106,7 +120,9 @@ def test_workflow_execution_port_requires_explicit_configuration(monkeypatch):
 
 
 def test_execution_step_is_staged_before_unit_of_work_commit():
-    """工作流进度写入必须由应用命令暂存后统一提交。"""
+    """
+    工作流进度写入必须由应用命令暂存后统一提交。
+    """
     command, repository, unit_of_work = _execution_command()
 
     result = command.step(7, "action-1", {"value": 1}, {"runtime": {}})
@@ -123,7 +139,9 @@ def test_execution_step_is_staged_before_unit_of_work_commit():
 
 
 def test_execution_commit_failure_rolls_back():
-    """执行状态提交失败时必须回滚并保留原始异常。"""
+    """
+    执行状态提交失败时必须回滚并保留原始异常。
+    """
     command, repository, unit_of_work = _execution_command(
         RuntimeError("commit failed")
     )
@@ -137,7 +155,9 @@ def test_execution_commit_failure_rolls_back():
 
 @pytest.mark.asyncio
 async def test_workflow_query_service_delegates_list_and_get_to_repository():
-    """工作流查询服务只调用读取端口，不持有数据库会话或事务。"""
+    """
+    工作流查询服务只调用读取端口，不持有数据库会话或事务。
+    """
     repository = Mock()
     snapshot = _snapshot()
     repository.async_list = AsyncMock(return_value=[snapshot])
@@ -156,7 +176,9 @@ async def test_workflow_query_service_delegates_list_and_get_to_repository():
 
 
 def test_start_timer_workflow_commits_before_registering_job():
-    """启用定时工作流必须先提交 W 状态，再登记定时任务。"""
+    """
+    启用定时工作流必须先提交 W 状态，再登记定时任务。
+    """
     calls = []
     command, dependencies = _command(_workflow())
     dependencies["unit_of_work"].commit.side_effect = lambda: calls.append("commit")
@@ -170,7 +192,9 @@ def test_start_timer_workflow_commits_before_registering_job():
 
 
 def test_start_rejects_missing_workflow_without_transaction():
-    """工作流不存在时不得暂存状态或触发事务。"""
+    """
+    工作流不存在时不得暂存状态或触发事务。
+    """
     command, dependencies = _command()
 
     result = command.start(7)
@@ -182,7 +206,9 @@ def test_start_rejects_missing_workflow_without_transaction():
 
 
 def test_start_rejects_invalid_trigger_without_transaction():
-    """未知触发类型不得更新数据库或注册运行时触发器。"""
+    """
+    未知触发类型不得更新数据库或注册运行时触发器。
+    """
     command, dependencies = _command(_workflow(trigger_type="unknown"))
 
     result = command.start(7)
@@ -193,7 +219,9 @@ def test_start_rejects_invalid_trigger_without_transaction():
 
 
 def test_pause_event_workflow_commits_before_runtime_cleanup():
-    """停用事件工作流必须提交 P 状态后再移除事件和停止执行。"""
+    """
+    停用事件工作流必须提交 P 状态后再移除事件和停止执行。
+    """
     calls = []
     command, dependencies = _command(_workflow(trigger_type="event", timer=None))
     dependencies["unit_of_work"].commit.side_effect = lambda: calls.append("commit")
@@ -207,7 +235,9 @@ def test_pause_event_workflow_commits_before_runtime_cleanup():
 
 
 def test_delete_commit_failure_rolls_back_without_runtime_side_effects():
-    """删除提交失败必须回滚，且不得删除缓存或运行时触发器。"""
+    """
+    删除提交失败必须回滚，且不得删除缓存或运行时触发器。
+    """
     command, dependencies = _command(
         _workflow(),
         commit_error=RuntimeError("commit failed"),
@@ -222,7 +252,9 @@ def test_delete_commit_failure_rolls_back_without_runtime_side_effects():
 
 
 def test_update_refreshes_timer_and_event_after_commit():
-    """更新工作流提交后重建定时器并刷新事件注册。"""
+    """
+    更新工作流提交后重建定时器并刷新事件注册。
+    """
     workflow = _workflow()
     command, dependencies = _command(workflow)
 
@@ -237,7 +269,9 @@ def test_update_refreshes_timer_and_event_after_commit():
 
 
 def _definition_command(*, existing=None, commit_error=None, report_fork=None):
-    """构造可观察异步工作流定义事务的命令。"""
+    """
+    构造可观察异步工作流定义事务的命令。
+    """
     repository = Mock()
     repository.async_get_by_name = AsyncMock(return_value=existing)
     repository.async_get = AsyncMock(return_value=existing)
@@ -258,7 +292,9 @@ def _definition_command(*, existing=None, commit_error=None, report_fork=None):
 
 @pytest.mark.asyncio
 async def test_create_workflow_applies_defaults_and_commits_once():
-    """创建工作流由应用用例补齐默认状态并统一提交。"""
+    """
+    创建工作流由应用用例补齐默认状态并统一提交。
+    """
     command, dependencies = _definition_command()
 
     result = await command.create({"name": "Demo", "state": None})
@@ -273,7 +309,9 @@ async def test_create_workflow_applies_defaults_and_commits_once():
 
 @pytest.mark.asyncio
 async def test_create_duplicate_name_has_no_transaction():
-    """名称重复时不得暂存或提交工作流。"""
+    """
+    名称重复时不得暂存或提交工作流。
+    """
     command, dependencies = _definition_command(existing=SimpleNamespace(id=1))
 
     result = await command.create({"name": "Demo"})
@@ -285,7 +323,9 @@ async def test_create_duplicate_name_has_no_transaction():
 
 @pytest.mark.asyncio
 async def test_fork_commits_before_reporting_remote_count():
-    """共享工作流必须先本地提交，随后才更新远程复用次数。"""
+    """
+    共享工作流必须先本地提交，随后才更新远程复用次数。
+    """
     calls = []
 
     async def commit():
@@ -314,7 +354,9 @@ async def test_fork_commits_before_reporting_remote_count():
 
 @pytest.mark.asyncio
 async def test_fork_ignores_shared_execution_context():
-    """复用共享工作流时不得导入分享载荷中的执行上下文。"""
+    """
+    复用共享工作流时不得导入分享载荷中的执行上下文。
+    """
     command, dependencies = _definition_command()
 
     result = await command.fork(
@@ -333,7 +375,9 @@ async def test_fork_ignores_shared_execution_context():
 
 @pytest.mark.asyncio
 async def test_fork_accepts_malformed_shared_context():
-    """分享载荷中的上下文不参与复用，其 JSON 格式错误也不应阻止创建。"""
+    """
+    分享载荷中的上下文不参与复用，其 JSON 格式错误也不应阻止创建。
+    """
     command, dependencies = _definition_command()
 
     result = await command.fork({"name": "Forked", "context": "{"})
@@ -344,7 +388,9 @@ async def test_fork_accepts_malformed_shared_context():
 
 @pytest.mark.asyncio
 async def test_fork_invalid_json_stops_before_database_write():
-    """共享内容 JSON 无效时不得创建半成品工作流。"""
+    """
+    共享内容 JSON 无效时不得创建半成品工作流。
+    """
     command, dependencies = _definition_command()
 
     result = await command.fork({"name": "Forked", "actions": "{"})
@@ -356,7 +402,9 @@ async def test_fork_invalid_json_stops_before_database_write():
 
 @pytest.mark.asyncio
 async def test_reset_commit_failure_does_not_stop_runtime_or_delete_cache():
-    """重置提交失败时只回滚数据库，不影响现有运行态。"""
+    """
+    重置提交失败时只回滚数据库，不影响现有运行态。
+    """
     command, dependencies = _definition_command(
         existing=_workflow(),
         commit_error=RuntimeError("commit failed"),
@@ -372,7 +420,9 @@ async def test_reset_commit_failure_does_not_stop_runtime_or_delete_cache():
 
 @pytest.mark.asyncio
 async def test_reset_commits_before_runtime_cleanup():
-    """工作流重置成功后再停止执行并删除缓存。"""
+    """
+    工作流重置成功后再停止执行并删除缓存。
+    """
     calls = []
     command, dependencies = _definition_command(existing=_workflow())
     dependencies["unit_of_work"].commit.side_effect = lambda: calls.append("commit")

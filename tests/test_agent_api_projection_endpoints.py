@@ -1,4 +1,6 @@
-"""Focused tests for safe user-level Agent API projections."""
+"""
+验证普通用户可见的 Agent API 投影及敏感数据隔离。
+"""
 
 import asyncio
 from types import SimpleNamespace
@@ -11,7 +13,9 @@ from app.schemas.token import TokenPayload
 
 
 class _SiteQuery:
-    """Return a stable mixed site list for projection tests."""
+    """
+    为投影测试提供稳定的混合站点列表。
+    """
 
     async def list_ordered(
         self,
@@ -22,7 +26,9 @@ class _SiteQuery:
         page=None,
         count=None,
     ):
-        """Apply the endpoint's database-query contract to two fixed sites."""
+        """
+        使用两个固定站点模拟端点的数据库查询契约。
+        """
         common = {
             "domain": "example.invalid",
             "url": "https://example.invalid/",
@@ -59,13 +65,17 @@ class _SiteQuery:
         return sites
 
     async def get_by_domain(self, domain):
-        """按域名返回第一个固定站点。"""
+        """
+        按域名返回第一个固定站点。
+        """
         sites = await self.list_ordered()
         return next((site for site in sites if site.domain == domain), None)
 
 
 class _WorkflowQuery:
-    """Return workflows with private action context that the Agent projection must omit."""
+    """
+    提供含私有动作上下文的工作流，验证 Agent 投影会排除这些信息。
+    """
 
     async def list(
         self,
@@ -76,7 +86,9 @@ class _WorkflowQuery:
         page=None,
         count=None,
     ):
-        """Apply the endpoint's database-query contract to two fixed workflows."""
+        """
+        使用两个固定工作流模拟端点的数据库查询契约。
+        """
         workflows = [
             SimpleNamespace(
                 id=1,
@@ -130,7 +142,9 @@ class _WorkflowQuery:
 
 
 def test_site_agent_projection_filters_and_hides_secrets_for_normal_users() -> None:
-    """Normal users may list sites but must not receive authentication material."""
+    """
+    普通用户可以列出站点，但不能取得认证材料。
+    """
     result = asyncio.run(
         site_endpoint.read_agent_sites(
             status="active",
@@ -145,7 +159,9 @@ def test_site_agent_projection_filters_and_hides_secrets_for_normal_users() -> N
 
 
 def test_site_agent_projection_returns_auth_fields_only_to_superusers() -> None:
-    """A verified superuser keeps the old administrator site-query fidelity."""
+    """
+    已验证的管理员仍能获得完整站点查询信息。
+    """
     result = asyncio.run(
         site_endpoint.read_agent_sites(
             status="inactive",
@@ -164,7 +180,9 @@ def _token(*, super_user: bool) -> TokenPayload:
 
 
 def test_site_rss_list_hides_secrets_for_normal_users(monkeypatch) -> None:
-    """订阅站点列表对普通用户只返回选择站点所需的字段，不返回认证凭据。"""
+    """
+    订阅站点列表对普通用户只返回选择站点所需的字段，不返回认证凭据。
+    """
     monkeypatch.setattr(
         site_endpoint,
         "get_configured_system_config",
@@ -184,7 +202,9 @@ def test_site_rss_list_hides_secrets_for_normal_users(monkeypatch) -> None:
 
 
 def test_site_rss_list_keeps_secrets_for_superusers(monkeypatch) -> None:
-    """超级管理员读取订阅站点列表时保持原有完整字段。"""
+    """
+    超级管理员读取订阅站点列表时保持原有完整字段。
+    """
     monkeypatch.setattr(
         site_endpoint,
         "get_configured_system_config",
@@ -200,7 +220,9 @@ def test_site_rss_list_keeps_secrets_for_superusers(monkeypatch) -> None:
 
 
 def test_site_by_domain_hides_secrets_for_normal_users() -> None:
-    """按域名查询站点时，普通用户拿不到认证凭据，超级管理员保持完整字段。"""
+    """
+    按域名查询站点时，普通用户拿不到认证凭据，超级管理员保持完整字段。
+    """
     normal = asyncio.run(
         site_endpoint.read_site_by_domain(
             site_url="https://example.invalid/",
@@ -222,7 +244,9 @@ def test_site_by_domain_hides_secrets_for_normal_users() -> None:
 
 
 def test_workflow_agent_projection_filters_without_returning_action_context() -> None:
-    """User-level workflow discovery must expose state without private execution payloads."""
+    """
+    用户级工作流发现只暴露状态，不包含私有执行载荷。
+    """
     result = asyncio.run(
         workflow_endpoint.list_agent_workflows(
             state="R",
@@ -251,12 +275,18 @@ def test_workflow_agent_projection_filters_without_returning_action_context() ->
 
 
 def test_storage_agent_list_reuses_bounded_filter_and_sort(monkeypatch) -> None:
-    """User-level storage reads must preserve keyword filtering and stable sorting."""
+    """
+    用户级存储读取保留关键词过滤及稳定排序。
+    """
     class _StorageChain:
-        """Return a fixed directory listing without touching a real storage provider."""
+        """
+        返回固定目录列表，不访问真实存储服务。
+        """
 
         def list_files(self, _fileitem):
-            """Return two entries in reverse natural-name order."""
+            """
+            返回两个与自然名称顺序相反的目录项。
+            """
             return [
                 FileItem(path="/b", name="Episode 10", modify_time=1),
                 FileItem(path="/a", name="Episode 2", modify_time=2),

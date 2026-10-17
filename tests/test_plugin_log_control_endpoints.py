@@ -1,4 +1,6 @@
-"""插件实例日志等级查询与设置接口测试。"""
+"""
+插件实例日志等级查询与设置接口测试。
+"""
 
 from __future__ import annotations
 
@@ -19,17 +21,23 @@ from app.schemas.plugin import PluginInstanceLogLevelUpdateRequest
 
 
 def _depends_default(func, parameter_name: str):
-    """取出端点函数指定参数的 FastAPI Depends 默认值。"""
+    """
+    取出端点函数指定参数的 FastAPI Depends 默认值。
+    """
     return inspect.signature(func).parameters[parameter_name].default
 
 
 def _manager(**methods):
-    """按方法名快速拼装一个鸭子类型的 Manager 替身。"""
+    """
+    按方法名快速拼装一个鸭子类型的 Manager 替身。
+    """
     return type("Manager", (), methods)()
 
 
 def test_all_endpoints_require_superuser_dependency():
-    """三个日志等级端点都要求超级管理员，不能被低权限用户直接调用。"""
+    """
+    三个日志等级端点都要求超级管理员，不能被低权限用户直接调用。
+    """
     for func in (
         plugin_instance_log_levels,
         set_plugin_instance_log_level,
@@ -40,7 +48,8 @@ def test_all_endpoints_require_superuser_dependency():
 
 
 def test_get_returns_manager_levels_wrapped_in_plugin_overview(monkeypatch):
-    """查询接口把 Manager 组装好的等级列表包进插件级总览对象，而不是裸列表。
+    """
+    查询接口把 Manager 组装好的等级列表包进插件级总览对象，而不是裸列表。
 
     响应模型直接裸露列表会被宿主分页契约门禁判定为集合接口、要求声明分页参数；
     插件实例数量始终很小，因而包一层 plugin_id + instances。
@@ -69,7 +78,9 @@ def test_get_returns_manager_levels_wrapped_in_plugin_overview(monkeypatch):
 
 
 def test_get_reports_missing_plugin_as_404(monkeypatch):
-    """插件不存在时查询接口返回 404，而不是让异常穿透或吞掉。"""
+    """
+    插件不存在时查询接口返回 404，而不是让异常穿透或吞掉。
+    """
 
     def _raise(_plugin_id):
         raise LookupError("插件 Missing 不存在")
@@ -86,7 +97,9 @@ def test_get_reports_missing_plugin_as_404(monkeypatch):
 
 
 def test_put_delegates_to_manager_and_reports_success(monkeypatch):
-    """设置请求原样转交给 Manager，携带等级与失效时间。"""
+    """
+    设置请求原样转交给 Manager，携带等级与失效时间。
+    """
     calls: list = []
     manager = _manager(
         set_plugin_instance_log_level=lambda self, *a, **kw: calls.append((a, kw))
@@ -106,7 +119,9 @@ def test_put_delegates_to_manager_and_reports_success(monkeypatch):
 
 
 def test_put_reports_missing_plugin_or_instance_as_404(monkeypatch):
-    """未知插件或实例时设置接口返回 404。"""
+    """
+    未知插件或实例时设置接口返回 404。
+    """
 
     def _raise(*_a, **_kw):
         raise LookupError("插件实例 Missing 不存在")
@@ -126,7 +141,9 @@ def test_put_reports_missing_plugin_or_instance_as_404(monkeypatch):
 
 
 def test_put_reports_invalid_level_as_400(monkeypatch):
-    """非法等级时设置接口返回 400。"""
+    """
+    非法等级时设置接口返回 400。
+    """
 
     def _raise(*_a, **_kw):
         raise ValueError("不支持的日志等级：LOUD")
@@ -146,7 +163,9 @@ def test_put_reports_invalid_level_as_400(monkeypatch):
 
 
 def test_delete_delegates_to_manager_and_is_idempotent(monkeypatch):
-    """清除请求原样转交给 Manager，重复调用同样返回成功。"""
+    """
+    清除请求原样转交给 Manager，重复调用同样返回成功。
+    """
     calls: list = []
     manager = _manager(
         clear_plugin_instance_log_level=lambda self, *a: calls.append(a)
@@ -162,7 +181,9 @@ def test_delete_delegates_to_manager_and_is_idempotent(monkeypatch):
 
 
 def test_delete_reports_missing_plugin_or_instance_as_404(monkeypatch):
-    """未知插件或实例时清除接口返回 404。"""
+    """
+    未知插件或实例时清除接口返回 404。
+    """
 
     def _raise(*_a):
         raise LookupError("插件实例 Missing 不存在")

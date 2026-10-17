@@ -1,4 +1,6 @@
-"""用锁定供应商 SDK 的真实请求准备入口验证工具图像观察，完全禁止出站。"""
+"""
+用锁定供应商 SDK 的真实请求准备入口验证工具图像观察，完全禁止出站。
+"""
 
 import base64
 import json
@@ -30,9 +32,13 @@ _SIGNED_THOUGHTS = {
 
 @pytest.fixture(autouse=True)
 def deny_provider_network(monkeypatch: pytest.MonkeyPatch) -> None:
-    """SDK 只能准备本地请求，连 DNS 或直接 IP 连接都立即视为测试失败。"""
+    """
+    SDK 只能准备本地请求，连 DNS 或直接 IP 连接都立即视为测试失败。
+    """
     def deny(*_args: Any, **_kwargs: Any) -> Any:
-        """防止认证发现、图像 URL 下载或遥测越过离线边界。"""
+        """
+        防止认证发现、图像 URL 下载或遥测越过离线边界。
+        """
         raise AssertionError("供应商视觉协议测试禁止真实网络")
 
     monkeypatch.setattr(socket, "getaddrinfo", deny)
@@ -43,7 +49,9 @@ def deny_provider_network(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(scope="module")
 def screenshot() -> tuple[bytes, str]:
-    """固定随机图片超过普通文字上限，验证编码转换没有截断或重新压缩。"""
+    """
+    固定随机图片超过普通文字上限，验证编码转换没有截断或重新压缩。
+    """
     image = Image.frombytes("RGB", (384, 256), random.Random(81).randbytes(384 * 256 * 3))
     with image, BytesIO() as stream:
         image.save(stream, format="JPEG", quality=90)
@@ -55,7 +63,9 @@ def screenshot() -> tuple[bytes, str]:
 
 @pytest.fixture
 def production_google_signatures(monkeypatch: pytest.MonkeyPatch) -> None:
-    """局部应用生产签名兼容层，结束后还原所有 SDK 全局修改与补丁标记。"""
+    """
+    局部应用生产签名兼容层，结束后还原所有 SDK 全局修改与补丁标记。
+    """
     for name in ("_is_gemini_3_or_later", "_parse_chat_history"):
         monkeypatch.setattr(google_models, name, getattr(google_models, name))
     monkeypatch.setattr(
@@ -66,7 +76,9 @@ def production_google_signatures(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _messages(image_url: str, *, signed: bool = False) -> list[Any]:
-    """一批同名浏览器工具的两个回复必须完整保留，再加入临时图片观察。"""
+    """
+    一批同名浏览器工具的两个回复必须完整保留，再加入临时图片观察。
+    """
     return [
         HumanMessage(content="只核对页面上实际可见的信息", id="real-user"),
         AIMessage(content="", id="tool-request", tool_calls=[
@@ -82,7 +94,9 @@ def _messages(image_url: str, *, signed: bool = False) -> list[Any]:
 
 
 def _project(model: Any, image_url: str, *, signed: bool = False) -> tuple[ModelRequest, ModelRequest, list[dict[str, Any]]]:
-    """使用真正的视觉 middleware，并保留原始图快照供 SDK 转换后再比较。"""
+    """
+    使用真正的视觉 middleware，并保留原始图快照供 SDK 转换后再比较。
+    """
     messages = _messages(image_url, signed=signed)
     request = ModelRequest(model=model, messages=messages, state={"messages": messages}, tools=[])
     original = messages_to_dict(messages)
@@ -94,14 +108,18 @@ def _project(model: Any, image_url: str, *, signed: bool = False) -> tuple[Model
 
 
 def _assert_original_unchanged(request: ModelRequest, original: list[dict[str, Any]]) -> None:
-    """原始图、状态与真实用户消息都不能被 SDK 格式化或临时观察污染。"""
+    """
+    原始图、状态与真实用户消息都不能被 SDK 格式化或临时观察污染。
+    """
     assert messages_to_dict(request.messages) == original
     assert messages_to_dict(request.state["messages"]) == original
     assert not any(message.additional_kwargs.get(TOOL_OBSERVATION_MARKER) for message in request.messages)
 
 
 def test_anthropic_request_payload_keeps_tool_batch_and_complete_image(screenshot: tuple[bytes, str]) -> None:
-    """ChatAnthropic._get_request_payload 将观察转成合法 base64 image source，两个 tool_result 仍在最前。"""
+    """
+    ChatAnthropic._get_request_payload 将观察转成合法 base64 image source，两个 tool_result 仍在最前。
+    """
     data, image_url = screenshot
     # model_construct 只创建配置对象，不执行客户端认证初始化；准备函数不会使用 client。
     model = ChatAnthropic.model_construct(
@@ -130,7 +148,9 @@ def test_anthropic_request_payload_keeps_tool_batch_and_complete_image(screensho
 def test_google_request_payload_keeps_inline_bytes_pairing_and_signatures(
     screenshot: tuple[bytes, str], production_google_signatures: None, model_name: str, signed: bool,
 ) -> None:
-    """ChatGoogleGenerativeAI._prepare_request 保留图片完整字节，并维持生产的并行工具 thought signature 合同。"""
+    """
+    ChatGoogleGenerativeAI._prepare_request 保留图片完整字节，并维持生产的并行工具 thought signature 合同。
+    """
     del production_google_signatures
     data, image_url = screenshot
     model = ChatGoogleGenerativeAI.model_construct(

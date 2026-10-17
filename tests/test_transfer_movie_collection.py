@@ -1,3 +1,7 @@
+"""
+验证电影合集整理时的媒体识别与目录规划。
+"""
+
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -14,7 +18,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def _make_chain() -> TransferChain:
-    """构造不启动后台线程的整理链测试实例。"""
+    """
+    构造不启动后台线程的整理链测试实例。
+    """
     chain = object.__new__(TransferChain)
     chain._scrape_batches = {}
     chain._media_exts = settings.RMT_MEDIAEXT
@@ -47,7 +53,9 @@ class _FileMeta(MetaBase):
     name = None
 
     def __init__(self, year: str = "2013"):
-        """初始化用于检验合集年份冲突的单部电影元数据。"""
+        """
+        初始化用于检验合集年份冲突的单部电影元数据。
+        """
         super().__init__(title="The Hunger Games Catching Fire")
         self.name = "The Hunger Games Catching Fire"
         self.year = year
@@ -58,12 +66,16 @@ class _FileMeta(MetaBase):
 
 
 def _make_file_meta(year: str = "2013") -> _FileMeta:
-    """构造电影合集文件的元数据。"""
+    """
+    构造电影合集文件的元数据。
+    """
     return _FileMeta(year=year)
 
 
 def _make_history() -> DownloadHistorySnapshot:
-    """构造被合集首部电影占用的下载历史。"""
+    """
+    构造被合集首部电影占用的下载历史。
+    """
     return DownloadHistorySnapshot(
         id=1,
         path="/downloads/The.Hunger.Games.Complete.4-Film.Collection",
@@ -83,7 +95,9 @@ def _make_history() -> DownloadHistorySnapshot:
 
 
 def test_movie_year_conflict_only_applies_to_movies():
-    """仅电影年份冲突应触发逐文件识别，电视剧季包仍复用下载历史。"""
+    """
+    仅电影年份冲突应触发逐文件识别，电视剧季包仍复用下载历史。
+    """
     file_meta = _make_file_meta()
     movie_history = _make_history()
     tv_history = replace(movie_history, type=MediaType.TV.value)
@@ -95,7 +109,9 @@ def test_movie_year_conflict_only_applies_to_movies():
 
 
 def test_conflicting_download_history_recognizes_movie_by_file_meta(monkeypatch):
-    """手动整理未指定媒体时，冲突的合集历史应回退到文件元数据识别。"""
+    """
+    手动整理未指定媒体时，冲突的合集历史应回退到文件元数据识别。
+    """
     chain = object.__new__(TransferChain)
     fallback_media = MediaInfo(
         type=MediaType.MOVIE,
@@ -160,7 +176,9 @@ def test_conflicting_download_history_recognizes_movie_by_file_meta(monkeypatch)
 def test_movie_collection_conflict_only_drops_automatic_media(
         monkeypatch, manual: bool, expected_tmdb_id: int
 ):
-    """自动整理应丢弃冲突的合集媒体，手动明确指定的媒体仍应保留。"""
+    """
+    自动整理应丢弃冲突的合集媒体，手动明确指定的媒体仍应保留。
+    """
     chain = _make_chain()
     source_file = FileItem(
         storage="local",
@@ -184,7 +202,9 @@ def test_movie_collection_conflict_only_drops_automatic_media(
     captured_tasks = []
 
     def fake_handle_transfer(task, callback=None):
-        """记录整理任务，避免执行真实文件操作。"""
+        """
+        记录整理任务，避免执行真实文件操作。
+        """
         captured_tasks.append(task)
         return True, ""
 

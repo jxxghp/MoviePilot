@@ -1,9 +1,9 @@
-"""3.0.2
-统一通用媒体表的来源与原生 ID
+"""
+3.0.2 统一通用媒体表的来源与原生 ID
 
-Revision ID: 8a4c7e1d2f90
-Revises: 6f9a1c2d3e4b
-Create Date: 2026-08-12
+版本标识： 8a4c7e1d2f90
+前置版本： 6f9a1c2d3e4b
+创建时间： 2026-08-12
 """
 
 from collections.abc import Iterable
@@ -19,6 +19,7 @@ branch_labels = None
 depends_on = None
 
 
+# 统一媒体身份后按表移除的旧来源专用标识列。
 LEGACY_COLUMNS = {
     "subscribe": (
         "tmdbid", "imdbid", "tvdbid", "doubanid", "bangumiid",
@@ -40,6 +41,7 @@ LEGACY_COLUMNS = {
     "mediaserveritem": ("tmdbid", "imdbid", "tvdbid"),
 }
 
+# 旧来源字段的确定性回填优先级，前面的有效来源优先。
 SOURCE_COLUMNS = (
     ("themoviedb", "tmdbid"),
     ("douban", "doubanid"),
@@ -49,6 +51,7 @@ SOURCE_COLUMNS = (
     ("tvdb", "tvdbid"),
 )
 
+# 历史来源别名到统一来源标识的映射，扩展来源不在此处猜测。
 SOURCE_ALIASES = {
     "tmdb": "themoviedb",
     "themoviedb": "themoviedb",
@@ -70,6 +73,7 @@ SOURCE_ALIASES = {
     "tencentvideodiscover": "tencentvideodiscover",
     "tencent_video": "tencentvideodiscover",
 }
+# 允许身份同时为空，否则来源与媒体标识必须成对且非空。
 MEDIA_IDENTITY_CHECK_SQL = (
     "(media_source IS NULL AND media_id IS NULL) OR "
     "(media_source IS NOT NULL AND "
@@ -78,28 +82,37 @@ MEDIA_IDENTITY_CHECK_SQL = (
     "media_source NOT LIKE '% %' AND "
     "media_id IS NOT NULL AND trim(media_id) <> '' AND trim(media_id) <> '0')"
 )
+# 来源标识只接受小写字母开头的受限字符，最多 64 个字符。
 MEDIA_SOURCE_PATTERN = re.compile(r"^[a-z][a-z0-9._-]{0,63}$")
 
 
 def _inspector() -> sa.Inspector:
-    """返回使用当前迁移连接的数据库检查器。"""
+    """
+    返回使用当前迁移连接的数据库检查器。
+    """
     return sa.inspect(op.get_bind())
 
 
 def _has_table(table_name: str) -> bool:
-    """检查数据表是否存在。"""
+    """
+    检查数据表是否存在。
+    """
     return table_name in _inspector().get_table_names()
 
 
 def _column_names(table_name: str) -> set[str]:
-    """读取数据表当前全部字段名。"""
+    """
+    读取数据表当前全部字段名。
+    """
     if not _has_table(table_name):
         return set()
     return {column["name"] for column in _inspector().get_columns(table_name)}
 
 
 def _ensure_identity_columns(table_name: str) -> None:
-    """为旧库补齐规范媒体身份字段。"""
+    """
+    为旧库补齐规范媒体身份字段。
+    """
     columns = _column_names(table_name)
     if "media_source" not in columns:
         op.add_column(table_name, sa.Column("media_source", sa.String(), nullable=True))
@@ -108,7 +121,9 @@ def _ensure_identity_columns(table_name: str) -> None:
 
 
 def _identity_missing(table: sa.TableClause):
-    """返回任一规范身份字段为空的 SQL 条件。"""
+    """
+    返回任一规范身份字段为空的 SQL 条件。
+    """
     return sa.or_(
         table.c.media_source.is_(None),
         table.c.media_source == "",
@@ -118,7 +133,9 @@ def _identity_missing(table: sa.TableClause):
 
 
 def _normalize_existing_sources(table_name: str) -> None:
-    """规范内置来源别名，并保留插件注册的扩展来源标识。"""
+    """
+    规范内置来源别名，并保留插件注册的扩展来源标识。
+    """
     table = sa.table(
         table_name,
         sa.column("media_source", sa.String()),
@@ -138,7 +155,9 @@ def _normalize_existing_sources(table_name: str) -> None:
 
 
 def _clear_invalid_or_partial_identity(table_name: str) -> None:
-    """清空无效或仅有一半的身份，允许后续从旧字段重新回填。"""
+    """
+    清空无效或仅有一半的身份，允许后续从旧字段重新回填。
+    """
     table = sa.table(
         table_name,
         sa.column("media_source", sa.String()),
@@ -167,7 +186,9 @@ def _clear_invalid_or_partial_identity(table_name: str) -> None:
 
 
 def _backfill_prefixed_media_id(table_name: str, columns: set[str]) -> None:
-    """从旧的 ``prefix:id`` 组合字段回填内置或插件扩展身份。"""
+    """
+    从旧的 ``prefix:id`` 组合字段回填内置或插件扩展身份。
+    """
     if "mediaid" not in columns:
         return
     table = sa.table(
@@ -234,7 +255,9 @@ def _backfill_prefixed_media_id(table_name: str, columns: set[str]) -> None:
 
 
 def _backfill_source_columns(table_name: str, columns: set[str]) -> None:
-    """按确定优先级从旧的来源专用字段回填规范身份。"""
+    """
+    按确定优先级从旧的来源专用字段回填规范身份。
+    """
     table_columns = [
         sa.column("media_source", sa.String()),
         sa.column("media_id", sa.String()),
@@ -262,7 +285,9 @@ def _backfill_source_columns(table_name: str, columns: set[str]) -> None:
 
 
 def _drop_legacy_indexes(table_name: str, columns: Iterable[str]) -> None:
-    """删除引用待移除字段的普通索引或唯一约束。"""
+    """
+    删除引用待移除字段的普通索引或唯一约束。
+    """
     legacy_columns = set(columns)
     inspector = _inspector()
     for index in inspector.get_indexes(table_name):
@@ -277,7 +302,9 @@ def _drop_legacy_indexes(table_name: str, columns: Iterable[str]) -> None:
 
 
 def _drop_legacy_columns(table_name: str, columns: Iterable[str]) -> None:
-    """以批处理方式移除旧媒体身份字段，兼容 SQLite。"""
+    """
+    以批处理方式移除旧媒体身份字段，兼容 SQLite。
+    """
     existing = _column_names(table_name)
     targets = [column for column in columns if column in existing]
     if not targets:
@@ -289,7 +316,9 @@ def _drop_legacy_columns(table_name: str, columns: Iterable[str]) -> None:
 
 
 def _ensure_identity_indexes() -> None:
-    """为规范身份字段建立查询索引。"""
+    """
+    为规范身份字段建立查询索引。
+    """
     for table_name in LEGACY_COLUMNS:
         if not _has_table(table_name):
             continue
@@ -329,7 +358,9 @@ def _ensure_identity_indexes() -> None:
 
 
 def _ensure_identity_constraints() -> None:
-    """为六张通用媒体表建立可扩展来源与身份成对数据库约束。"""
+    """
+    为六张通用媒体表建立可扩展来源与身份成对数据库约束。
+    """
     for table_name in LEGACY_COLUMNS:
         if not _has_table(table_name):
             continue
@@ -348,7 +379,9 @@ def _ensure_identity_constraints() -> None:
 
 
 def _drop_identity_constraints() -> None:
-    """降级时移除本次迁移新增的媒体身份数据库约束。"""
+    """
+    降级时移除本次迁移新增的媒体身份数据库约束。
+    """
     for table_name in LEGACY_COLUMNS:
         if not _has_table(table_name):
             continue
@@ -364,7 +397,9 @@ def _drop_identity_constraints() -> None:
 
 
 def upgrade() -> None:
-    """回填规范媒体身份，并删除通用表中的全部来源专用 ID 字段。"""
+    """
+    回填规范媒体身份，并删除通用表中的全部来源专用 ID 字段。
+    """
     for table_name, legacy_columns in LEGACY_COLUMNS.items():
         if not _has_table(table_name):
             continue
@@ -380,7 +415,9 @@ def upgrade() -> None:
 
 
 def _restore_legacy_columns(table_name: str, columns: Iterable[str]) -> None:
-    """降级时恢复旧字段，并从当前主身份回填能够确定的来源字段。"""
+    """
+    降级时恢复旧字段，并从当前主身份回填能够确定的来源字段。
+    """
     if not _has_table(table_name):
         return
     existing = _column_names(table_name)
@@ -414,7 +451,9 @@ def _restore_legacy_columns(table_name: str, columns: Iterable[str]) -> None:
 
 
 def downgrade() -> None:
-    """恢复旧列；已被规范身份舍弃的辅助来源 ID 无法无损恢复。"""
+    """
+    恢复旧列；已被规范身份舍弃的辅助来源 ID 无法无损恢复。
+    """
     _drop_identity_constraints()
     for table_name, legacy_columns in LEGACY_COLUMNS.items():
         _restore_legacy_columns(table_name, legacy_columns)

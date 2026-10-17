@@ -1,3 +1,9 @@
+"""
+站点用户流量、积分和做种数据的 ORM 模型与会话内数据操作。
+
+会话及事务由调用方管理，本模块不负责提交或回滚。
+"""
+
 from datetime import datetime
 from typing import Any, Optional, Self
 
@@ -67,7 +73,9 @@ class SiteUserData(Base):
         workdate: Optional[str] = None,
         worktime: Optional[str] = None,
     ) -> list[Self]:
-        """按域名及可选日期、时间读取站点用户快照。"""
+        """
+        按域名及可选日期、时间读取站点用户快照。
+        """
         statement = select(cls).where(cls.domain == domain)
         if workdate and worktime:
             statement = statement.where(cls.updated_day == workdate,
@@ -84,7 +92,9 @@ class SiteUserData(Base):
         workdate: Optional[str] = None,
         worktime: Optional[str] = None,
     ) -> list[Self]:
-        """按域名及可选日期、时间读取站点用户快照。"""
+        """
+        按域名及可选日期、时间读取站点用户快照。
+        """
         query = select(cls).filter(cls.domain == domain)
         if workdate and worktime:
             query = query.filter(cls.updated_day == workdate, cls.updated_time == worktime)
@@ -95,7 +105,9 @@ class SiteUserData(Base):
 
     @classmethod
     def get_by_date(cls, db: Session, date: str) -> list[Self]:
-        """读取指定日期的全部站点用户快照。"""
+        """
+        读取指定日期的全部站点用户快照。
+        """
         return list(db.execute(select(cls).where(cls.updated_day == date)).scalars().all())
 
     @classmethod

@@ -1,3 +1,9 @@
+"""
+站点配置与认证信息的 ORM 模型与会话内数据操作。
+
+会话及事务由调用方管理，本模块不负责提交或回滚。
+"""
+
 from datetime import datetime
 from typing import Any, Optional, Self
 
@@ -23,13 +29,13 @@ class Site(Base):
     pri: Mapped[Optional[int]] = mapped_column(Integer, default=1)
     # RSS地址，未启用
     rss: Mapped[Optional[str]] = mapped_column(String)
-    # Cookie
+    # 站点认证请求使用的 Cookie 文本。
     cookie: Mapped[Optional[str]] = mapped_column(String)
-    # User-Agent
+    # 站点请求使用的浏览器标识。
     ua: Mapped[Optional[str]] = mapped_column(String)
-    # ApiKey
+    # 站点接口认证使用的 API 密钥。
     apikey: Mapped[Optional[str]] = mapped_column(String)
-    # Token
+    # 站点接口认证使用的令牌。
     token: Mapped[Optional[str]] = mapped_column(String)
     # 是否使用代理 0-否，1-是
     proxy: Mapped[Optional[int]] = mapped_column(Integer)
@@ -58,7 +64,9 @@ class Site(Base):
 
     @classmethod
     def get_by_domain(cls, db: Session, domain: str) -> Optional[Self]:
-        """在调用方 Session 中按域名查询站点。"""
+        """
+        在调用方 Session 中按域名查询站点。
+        """
         site: Optional[Self] = db.execute(select(cls).where(cls.domain == domain)).scalars().first()
         return site
 
@@ -68,7 +76,9 @@ class Site(Base):
         db: AsyncSession,
         domain: str,
     ) -> Optional[Self]:
-        """在调用方 AsyncSession 中按域名查询站点。"""
+        """
+        在调用方 AsyncSession 中按域名查询站点。
+        """
         result = await db.execute(select(cls).where(cls.domain == domain))
         site: Optional[Self] = result.scalar_one_or_none()
         return site
@@ -79,32 +89,42 @@ class Site(Base):
         db: AsyncSession,
         name: str,
     ) -> Optional[Self]:
-        """在调用方 AsyncSession 中按站点名称查询。"""
+        """
+        在调用方 AsyncSession 中按站点名称查询。
+        """
         result = await db.execute(select(cls).where(cls.name == name))
         site: Optional[Self] = result.scalar_one_or_none()
         return site
 
     @classmethod
     def get_actives(cls, db: Session) -> list[Self]:
-        """在调用方 Session 中查询启用站点。"""
+        """
+        在调用方 Session 中查询启用站点。
+        """
         return list(db.execute(
             select(cls).where(cls.is_active.is_(True))
         ).scalars().all())
 
     @classmethod
     async def async_get_actives(cls, db: AsyncSession) -> list[Self]:
-        """在调用方 AsyncSession 中查询启用站点。"""
+        """
+        在调用方 AsyncSession 中查询启用站点。
+        """
         result = await db.execute(select(cls).where(cls.is_active.is_(True)))
         return list(result.scalars().all())
 
     @classmethod
     def list_order_by_pri(cls, db: Session) -> list[Self]:
-        """在调用方 Session 中按优先级升序查询站点。"""
+        """
+        在调用方 Session 中按优先级升序查询站点。
+        """
         return list(db.execute(select(cls).order_by(cls.pri)).scalars().all())
 
     @classmethod
     async def async_list_order_by_pri(cls, db: AsyncSession) -> list[Self]:
-        """在调用方 AsyncSession 中按优先级升序查询站点。"""
+        """
+        在调用方 AsyncSession 中按优先级升序查询站点。
+        """
         result = await db.execute(select(cls).order_by(cls.pri))
         return list(result.scalars().all())
 
@@ -114,7 +134,9 @@ class Site(Base):
         db: Session,
         ids: list[int],
     ) -> list[Optional[str]]:
-        """在调用方 Session 中按 ID 查询域名。"""
+        """
+        在调用方 Session 中按 ID 查询域名。
+        """
         if not ids:
             return []
         return list(db.execute(
@@ -123,10 +145,14 @@ class Site(Base):
 
     @classmethod
     def reset(cls, db: Session) -> None:
-        """在调用方持有的同步事务中暂存清空操作。"""
+        """
+        在调用方持有的同步事务中暂存清空操作。
+        """
         db.execute(delete(cls))
 
     @classmethod
     async def async_reset(cls, db: AsyncSession) -> None:
-        """在调用方持有的异步事务中暂存清空操作。"""
+        """
+        在调用方持有的异步事务中暂存清空操作。
+        """
         await db.execute(delete(cls))

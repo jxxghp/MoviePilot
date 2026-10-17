@@ -1,4 +1,5 @@
-"""外部 MCP ``tools/list`` 的 schema 预算投影（显式 opt-in）。
+"""
+外部 MCP ``tools/list`` 的 schema 预算投影（显式 opt-in）。
 
 主流 MCP 客户端会对工具 schema 做有损压缩。以 Codex 为例，规范化后超过 5000 字节的
 schema 会依次执行「删除 description → 丢弃 ``$defs`` → 折叠深层复杂对象 → 移除组合
@@ -52,35 +53,56 @@ PROJECTION_MARKER = "x-moviepilot-schema-projection"
 
 # 投影会删除根级组合分支，引用这些分支的说明必须同步改写为直接描述。
 DESCRIPTION_REWRITES = {
-    "Select the oneOf branch matching operation_id and send exactly its documented fields. "
-    "Collection branches also describe their additive output metadata in x-moviepilot-collection.": (
-        "Select the operation_id and send exactly that operation's documented fields. "
-        "Collection operations also describe their additive output metadata in "
-        "x-moviepilot-collection."
+    '选择与 operation_id 匹配的 oneOf 分支，仅发送该分支声明的字段。集合分支还通过 x-moviepilot-collection 说明额外返回的集合元数据。': (
+        '选择 operation_id，仅发送该操作声明的字段；集合操作还通过 x-moviepilot-collection 说明额外返回的集合元数据。'
     ),
-    "Exact allowlisted MoviePilot operation ID selecting this oneOf branch.": (
-        "Exact allowlisted MoviePilot operation ID."
+    '白名单中的精确操作标识，用于选择对应 oneOf 分支。': (
+        '白名单中的精确操作标识。'
     ),
-    "Resource identities inserted only into the selected operation's fixed route placeholders. "
-    "Use the exact names and types in its oneOf branch.": (
-        "Resource identities inserted only into the selected operation's fixed route placeholders; "
-        "exact names and types are defined by the selected operation."
+    '仅替换选定操作固定路由占位符的资源身份；名称和类型必须匹配对应 oneOf 分支。': (
+        '仅替换选定操作固定路由占位符的资源标识；名称和类型以该操作的契约为准。'
     ),
-    "Filters and control values sent in the query string. "
-    "Use the exact names, types, defaults, and enums in the selected operation's oneOf branch.": (
-        "Filters and control values sent in the query string; exact names, types, defaults and "
-        "enums are defined by the selected operation."
+    '通过查询字符串发送的筛选和控制值；名称、类型、默认值和枚举必须匹配所选操作的 oneOf 分支。': (
+        '通过查询字符串发送的筛选和控制值；名称、类型、默认值和枚举以该操作的契约为准。'
     ),
-    "Request value for the selected operation. Match the exact operation oneOf branch; "
-    "scalar and object request bodies are not interchangeable.": (
-        "Request value for the selected operation; scalar and object request bodies are not "
-        "interchangeable."
+    '选定操作的请求值；必须匹配对应 oneOf 分支，标量与对象请求体不能互换。': (
+        '选定操作的请求值；标量与对象请求体不能互换。'
+    ),
+    # 兼容缓存或外部客户端仍持有的旧英文元数据；键是需要精确匹配的历史输入。
+    (
+        'Select the oneOf branch matching operation_id and send exactly its documented fields. Collectio'
+        'n branches also describe their additive output metadata in x-moviepilot-collection.'
+    ): (
+        '选择 operation_id，仅发送该操作声明的字段；集合操作还通过 x-moviepilot-collection 说明额外返回的集合元数据。'
+    ),
+    'Exact allowlisted MoviePilot operation ID selecting this oneOf branch.': (
+        '白名单中的精确操作标识。'
+    ),
+    (
+        "Resource identities inserted only into the selected operation's fixed route placeholders. Use t"
+        'he exact names and types in its oneOf branch.'
+    ): (
+        '仅替换选定操作固定路由占位符的资源标识；名称和类型以该操作的契约为准。'
+    ),
+    (
+        'Filters and control values sent in the query string. Use the exact names, types, defaults, and '
+        "enums in the selected operation's oneOf branch."
+    ): (
+        '通过查询字符串发送的筛选和控制值；名称、类型、默认值和枚举以该操作的契约为准。'
+    ),
+    (
+        'Request value for the selected operation. Match the exact operation oneOf branch; scalar and ob'
+        'ject request bodies are not interchangeable.'
+    ): (
+        '选定操作的请求值；标量与对象请求体不能互换。'
     ),
 }
 
 
 def serialized_schema_bytes(schema: Any) -> int:
-    """返回 schema 紧凑序列化后的字节数；无法序列化时按超出阈值处理。"""
+    """
+    返回 schema 紧凑序列化后的字节数；无法序列化时按超出阈值处理。
+    """
     try:
         payload = json.dumps(schema, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
     except (TypeError, ValueError):
@@ -89,12 +111,16 @@ def serialized_schema_bytes(schema: Any) -> int:
 
 
 def schema_within_client_budget(schema: Any) -> bool:
-    """判断 schema 是否在客户端压缩阈值以内。"""
+    """
+    判断 schema 是否在客户端压缩阈值以内。
+    """
     return serialized_schema_bytes(schema) <= MCP_CLIENT_SCHEMA_COMPACTION_BYTES
 
 
 def _rewrite_description(description: str) -> Optional[str]:
-    """改写引用已删除组合分支的说明；无法改写的引用直接移除。"""
+    """
+    改写引用已删除组合分支的说明；无法改写的引用直接移除。
+    """
     rewrite = DESCRIPTION_REWRITES.get(description)
     if rewrite is not None:
         return rewrite
@@ -104,7 +130,9 @@ def _rewrite_description(description: str) -> Optional[str]:
 
 
 def _targets_projected_keyword(pointer: Any, removed_paths: set[tuple[str, ...]]) -> bool:
-    """按实际删除位置识别失效 JSON Pointer，同时保留名称恰好为关键字的属性引用。"""
+    """
+    按实际删除位置识别失效 JSON Pointer，同时保留名称恰好为关键字的属性引用。
+    """
     if not isinstance(pointer, str) or not pointer.startswith("#/"):
         return False
     parts = tuple(part.replace("~1", "/").replace("~0", "~") for part in unquote(pointer[2:]).split("/"))
@@ -117,7 +145,9 @@ def _project_schema_node(
     removed_paths: set[tuple[str, ...]],
     references: list[tuple[dict[str, Any], str, Any]],
 ) -> Any:
-    """只递归 schema 位置，并记录删除位置及引用，供整棵投影完成后清理前向引用。"""
+    """
+    只递归 schema 位置，并记录删除位置及引用，供整棵投影完成后清理前向引用。
+    """
     if isinstance(node, list):
         return [
             _project_schema_node(item, (*path, str(index)), removed_paths, references)
@@ -154,14 +184,17 @@ def _project_schema_node(
 
 
 def project_schema_for_budget(schema: Mapping[str, Any]) -> dict[str, Any]:
-    """把超出客户端阈值的 schema 投影为顶层对象合同。"""
+    """
+    把超出客户端阈值的 schema 投影为顶层对象合同。
+    """
     removed_paths: set[tuple[str, ...]] = {(key,) for key in PROJECTED_KEYWORDS}
     references: list[tuple[dict[str, Any], str, Any]] = []
     projected = _project_schema_node(schema, (), removed_paths, references)
     for node, key, pointer in references:
         if _targets_projected_keyword(pointer, removed_paths):
             del node[key]
-    if not isinstance(projected, dict):  # pragma: no cover - 调用方已保证是对象
+    # 调用方已保证输入是对象，此分支仅作防御性兜底。
+    if not isinstance(projected, dict):  # pragma: no cover
         projected = {}
     projected.setdefault("type", "object")
     projected[PROJECTION_MARKER] = {
@@ -173,7 +206,9 @@ def project_schema_for_budget(schema: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def project_tool_schema(schema: Any) -> tuple[Any, bool]:
-    """按客户端压缩阈值返回 ``(schema, 是否投影)``；阈值内 schema 原样返回。"""
+    """
+    按客户端压缩阈值返回 ``(schema, 是否投影)``；阈值内 schema 原样返回。
+    """
     if not isinstance(schema, Mapping) or schema_within_client_budget(schema):
         return schema, False
     return project_schema_for_budget(schema), True

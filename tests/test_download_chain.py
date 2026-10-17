@@ -1,3 +1,7 @@
+"""
+验证下载链路的提交、历史写入、剧集识别和后续处理。
+"""
+
 from collections.abc import Iterator
 from dataclasses import asdict
 from pathlib import Path
@@ -32,7 +36,9 @@ from app.schemas.types import MediaSource, MediaType
 
 @pytest.fixture(autouse=True)
 def _restore_eventmanager_instance_override() -> Iterator[None]:
-    """每个用例后恢复事件单例实例属性，避免遮蔽后续类级 monkeypatch。"""
+    """
+    每个用例后恢复事件单例实例属性，避免遮蔽后续类级 monkeypatch。
+    """
     instance = eventmanager
     marker = object()
     original = vars(instance).get("send_event", marker)
@@ -45,14 +51,20 @@ def _restore_eventmanager_instance_override() -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def _mock_tmdb_supplement(monkeypatch):
-    """隔离下载用例中的 TMDB 辅助识别外部边界。"""
+    """
+    隔离下载用例中的 TMDB 辅助识别外部边界。
+    """
 
     class _NoopMediaChain:
-        """保持原媒体对象不变的 TMDB 辅助识别替身。"""
+        """
+        保持原媒体对象不变的 TMDB 辅助识别替身。
+        """
 
         @staticmethod
         def supplement_tmdb_info(media, _meta):
-            """返回原媒体对象。"""
+            """
+            返回原媒体对象。
+            """
             return media
 
     monkeypatch.setattr(download_submission, "MediaChain", _NoopMediaChain)
@@ -66,7 +78,9 @@ class _FakeDownloadHistoryOper:
     """
 
     def add(self, _history, _files=()):
-        """忽略当前用例无需验证的类型化历史写入。"""
+        """
+        忽略当前用例无需验证的类型化历史写入。
+        """
         pass
 
 
@@ -76,6 +90,9 @@ class _FakeTorrentHelper:
     """
 
     def get_fileinfo_from_torrent_content(self, _torrent_content):
+        """
+        返回空种子名称和文件列表，隔离真实种子内容解析。
+        """
         return "", []
 
 
@@ -87,6 +104,9 @@ class _FakeThreadHelper:
     submitted = []
 
     def submit(self, func, *args, **kwargs):
+        """
+        记录待执行函数及参数，由测试决定何时运行。
+        """
         self.submitted.append((func, args, kwargs))
 
 
@@ -251,21 +271,31 @@ def test_download_site_subtitles_uses_downloader_content_path_without_creating_s
         content_path,
         expected_target_dir,
 ):
-    """TempPath 字幕应定位到种子根目录，避免同名目录内单文件重复拼接。"""
+    """
+    TempPath 字幕应定位到种子根目录，避免同名目录内单文件重复拼接。
+    """
     accessed_paths = []
 
     class _FakeTorrentHelper:
-        """提供固定的多文件种子目录名。"""
+        """
+        提供固定的多文件种子目录名。
+        """
 
         def get_fileinfo_from_torrent_content(self, _content):
-            """返回多文件种子目录名。"""
+            """
+            返回多文件种子目录名。
+            """
             return "Demo.Movie", []
 
     class _FakeStorageChain:
-        """只让 TempPath 下的实际内容目录可见。"""
+        """
+        只让 TempPath 下的实际内容目录可见。
+        """
 
         def get_file_item(self, storage, path):
-            """记录查询并返回 TempPath 内容目录。"""
+            """
+            记录查询并返回 TempPath 内容目录。
+            """
             accessed_paths.append((storage, path))
             if path == expected_target_dir:
                 return FileItem(
@@ -277,7 +307,9 @@ def test_download_site_subtitles_uses_downloader_content_path_without_creating_s
             return None
 
         def create_folder(self, *_args, **_kwargs):
-            """若生产代码尝试预建目录则让测试失败。"""
+            """
+            若生产代码尝试预建目录则让测试失败。
+            """
             pytest.fail("TempPath 字幕处理不应在 save_path 预建目录")
 
     monkeypatch.setattr(download_subtitle, "TorrentHelper", _FakeTorrentHelper)
@@ -320,7 +352,9 @@ def test_download_site_subtitles_uses_downloader_content_path_without_creating_s
 @pytest.mark.parametrize("download_hash", [None, "not-yet-visible"])
 @pytest.mark.parametrize("storage, prefix", [("smb", "smb:"), ("local", "")])
 def test_subtitle_fallback_separates_storage_identity_from_path(download_hash, storage, prefix):
-    """下载器尚未返回内容目录时，字幕存储查询也只能接收去掉协议前缀的路径。"""
+    """
+    下载器尚未返回内容目录时，字幕存储查询也只能接收去掉协议前缀的路径。
+    """
     list_torrents = MagicMock(return_value=[])
 
     result = download_subtitle._resolve_site_subtitle_target_dir(
@@ -333,23 +367,35 @@ def test_subtitle_fallback_separates_storage_identity_from_path(download_hash, s
 
 
 def test_download_site_subtitles_does_not_create_missing_save_folder(monkeypatch):
-    """找不到实际内容目录时应放弃字幕写入，不能制造迁移冲突目录。"""
+    """
+    找不到实际内容目录时应放弃字幕写入，不能制造迁移冲突目录。
+    """
     class _FakeTorrentHelper:
-        """提供固定的多文件种子目录名。"""
+        """
+        提供固定的多文件种子目录名。
+        """
 
         def get_fileinfo_from_torrent_content(self, _content):
-            """返回多文件种子目录名。"""
+            """
+            返回多文件种子目录名。
+            """
             return "Demo.Movie", []
 
     class _FakeStorageChain:
-        """模拟最终 save_path 下尚未出现种子目录。"""
+        """
+        模拟最终 save_path 下尚未出现种子目录。
+        """
 
         def get_file_item(self, _storage, _path):
-            """始终报告目标目录不存在。"""
+            """
+            始终报告目标目录不存在。
+            """
             return None
 
         def create_folder(self, *_args, **_kwargs):
-            """若生产代码尝试预建目录则让测试失败。"""
+            """
+            若生产代码尝试预建目录则让测试失败。
+            """
             pytest.fail("缺失目录时不应预建 save_path 子目录")
 
     monkeypatch.setattr(download_subtitle, "TorrentHelper", _FakeTorrentHelper)
@@ -385,7 +431,9 @@ def test_download_site_subtitles_does_not_create_missing_save_folder(monkeypatch
 
 
 def test_download_site_subtitles_recreates_source_directory_and_queues_subtitle(monkeypatch):
-    """视频整理后源目录被移动清理时，应恢复目录并把新字幕交给整理队列。"""
+    """
+    视频整理后源目录被移动清理时，应恢复目录并把新字幕交给整理队列。
+    """
     accessed_paths = []
     created_dirs = []
     transfer_calls = []
@@ -405,22 +453,32 @@ def test_download_site_subtitles_recreates_source_directory_and_queues_subtitle(
     )]
 
     class _FakeTorrentHelper:
-        """提供固定的多文件种子目录名。"""
+        """
+        提供固定的多文件种子目录名。
+        """
 
         def get_fileinfo_from_torrent_content(self, _content):
-            """返回多文件种子目录名。"""
+            """
+            返回多文件种子目录名。
+            """
             return "Demo.Show", []
 
     class _FakeStorageChain:
-        """模拟源目录被整理清理并能重新创建。"""
+        """
+        模拟源目录被整理清理并能重新创建。
+        """
 
         def get_file_item(self, storage, path):
-            """记录源目录检查并报告其不存在。"""
+            """
+            记录源目录检查并报告其不存在。
+            """
             accessed_paths.append((storage, path))
             return None
 
         def get_folder(self, storage, path):
-            """仅重建原下载目录。"""
+            """
+            仅重建原下载目录。
+            """
             created_dirs.append((storage, path))
             return FileItem(
                 storage=storage,
@@ -430,17 +488,23 @@ def test_download_site_subtitles_recreates_source_directory_and_queues_subtitle(
             )
 
         def list_files(self, _folder, recursion=False):
-            """提供字幕文件，并确认保存操作先于队列提交。"""
+            """
+            提供字幕文件，并确认保存操作先于队列提交。
+            """
             assert recursion is False
             assert "saved" in operation_order
             operation_order.append("list")
             return [subtitle_item]
 
     class _FakeTransferChain:
-        """记录标准整理队列提交。"""
+        """
+        记录标准整理队列提交。
+        """
 
         def do_transfer(self, **kwargs):
-            """保存自动整理请求参数。"""
+            """
+            保存自动整理请求参数。
+            """
             transfer_calls.append(kwargs)
             operation_order.append("queued")
             return True, "已添加到整理队列"
@@ -471,19 +535,27 @@ def test_download_site_subtitles_recreates_source_directory_and_queues_subtitle(
     chain._site_subtitle_links = MagicMock(return_value=["https://example.com/subtitle.srt"])
 
     class _FakeResponse:
-        """为字幕下载回调提供可关闭的成功响应。"""
+        """
+        为字幕下载回调提供可关闭的成功响应。
+        """
 
         status_code = 200
         content = b"subtitle-content"
 
         def close(self):
-            """模拟释放网络响应。"""
+            """
+            模拟释放网络响应。
+            """
 
     class _FakeHttp:
-        """返回固定字幕响应，避免真实网络请求。"""
+        """
+        返回固定字幕响应，避免真实网络请求。
+        """
 
         def get(self, *_args, **_kwargs):
-            """返回成功响应。"""
+            """
+            返回成功响应。
+            """
             return _FakeResponse()
 
     monkeypatch.setattr(
@@ -493,7 +565,9 @@ def test_download_site_subtitles_recreates_source_directory_and_queues_subtitle(
     )
 
     def _save_response(**kwargs):
-        """记录字幕已保存到重新创建的原下载目录。"""
+        """
+        记录字幕已保存到重新创建的原下载目录。
+        """
         assert kwargs["working_dir_item"].path == target_dir.as_posix()
         operation_order.append("saved")
 
@@ -530,21 +604,29 @@ def test_download_site_subtitles_recreates_source_directory_and_queues_subtitle(
 
 
 def test_download_single_supplements_category_before_download_event(monkeypatch):
-    """下载事件和目录选择前应已有 TMDB 分类，同时保留原识别源身份。"""
+    """
+    下载事件和目录选择前应已有 TMDB 分类，同时保留原识别源身份。
+    """
     captured = {}
 
     class _FakeMediaChain:
-        """模拟 TMDB 辅助识别并记录调用。"""
+        """
+        模拟 TMDB 辅助识别并记录调用。
+        """
 
         @staticmethod
         def supplement_tmdb_info(media, _meta):
-            """给原媒体对象补充下载分类。"""
+            """
+            给原媒体对象补充下载分类。
+            """
             media.tmdb_id = 12345
             media.category = "日本动画"
             return media
 
     def cancel_download(_event_type, event_data):
-        """捕获下载事件后取消，避免进入真实下载流程。"""
+        """
+        捕获下载事件后取消，避免进入真实下载流程。
+        """
         captured["event_data"] = event_data
         event_data.cancel = True
         return SimpleNamespace(event_data=event_data)
@@ -579,11 +661,15 @@ def test_download_single_supplements_category_before_download_event(monkeypatch)
 
 @pytest.mark.parametrize("save_path", ["", "   "])
 def test_resource_download_event_treats_blank_save_path_as_default(monkeypatch, save_path):
-    """旧订阅持久化的空白保存目录表示使用默认目录，不能被路径校验拒绝。"""
+    """
+    旧订阅持久化的空白保存目录表示使用默认目录，不能被路径校验拒绝。
+    """
     captured = {}
 
     def keep_event(_event_type, event_data):
-        """记录事件订阅方看到的保存目录。"""
+        """
+        记录事件订阅方看到的保存目录。
+        """
         captured["save_path"] = event_data.options["save_path"]
         return SimpleNamespace(event_data=event_data)
 
@@ -603,10 +689,14 @@ def test_resource_download_event_treats_blank_save_path_as_default(monkeypatch, 
 
 
 def test_resource_download_event_treats_blank_override_as_default(monkeypatch):
-    """事件把保存目录改成空白时同样回到默认目录。"""
+    """
+    事件把保存目录改成空白时同样回到默认目录。
+    """
 
     def blank_override(_event_type, event_data):
-        """模拟插件清空保存目录。"""
+        """
+        模拟插件清空保存目录。
+        """
         event_data.options["save_path"] = " "
         return SimpleNamespace(event_data=event_data)
 
@@ -625,7 +715,9 @@ def test_resource_download_event_treats_blank_override_as_default(monkeypatch):
 
 
 def test_resource_download_event_still_rejects_invalid_save_path(monkeypatch):
-    """非空白的非法保存目录仍按白名单拒绝。"""
+    """
+    非空白的非法保存目录仍按白名单拒绝。
+    """
     monkeypatch.setattr(eventmanager, "send_event", lambda *_args: None)
     context = Context(
         meta_info=MetaInfo("测试剧集 S01E01"),
@@ -641,14 +733,20 @@ def test_resource_download_event_still_rejects_invalid_save_path(monkeypatch):
 
 
 def test_download_single_persists_custom_words_snapshot(monkeypatch):
-    """下载成功登记历史时，应把传入的订阅识别词原样存入快照，供整理时原样复现识别。"""
+    """
+    下载成功登记历史时，应把传入的订阅识别词原样存入快照，供整理时原样复现识别。
+    """
     captured = {}
 
     class _CapturingDownloadHistoryOper:
-        """捕获写入下载历史的字段，验证识别词快照确实落库。"""
+        """
+        捕获写入下载历史的字段，验证识别词快照确实落库。
+        """
 
         def add(self, history, _files=()):
-            """捕获下载历史字段。"""
+            """
+            捕获下载历史字段。
+            """
             captured.update(history.to_payload())
 
     _FakeThreadHelper.submitted = []
@@ -851,6 +949,9 @@ class _FakeBatchTorrentHelper:
         return results
 
     def get_torrent_episodes(self, _files, custom_words=None):
+        """
+        记录自定义识别词配置，并返回预设剧集编号的副本。
+        """
         type(self).received_custom_words = custom_words
         return list(self.episodes)
 
@@ -886,12 +987,16 @@ def _build_tv_context(episode_list=None):
 
 
 def _tv_no_exists(season: int, info: NotExistMediaInfo) -> dict:
-    """以统一媒体身份键构造单季缺集测试数据。"""
+    """
+    以统一媒体身份键构造单季缺集测试数据。
+    """
     return {"tmdb:1": {season: info}}
 
 
 def test_download_identity_matching_uses_only_media_source_and_media_id():
-    """通用下载匹配不得再把来源特定辅助 ID 当作主身份键。"""
+    """
+    通用下载匹配不得再把来源特定辅助 ID 当作主身份键。
+    """
     media = SimpleNamespace(
         media_source=MediaSource.Douban,
         media_id="douban-1",
@@ -907,11 +1012,15 @@ def test_download_identity_matching_uses_only_media_source_and_media_id():
 
 
 def test_download_failure_fingerprint_ignores_auxiliary_provider_ids():
-    """缺少主身份时失败指纹应按标题年份降级，不得依赖 IMDb 或 TVDB 辅助 ID。"""
+    """
+    缺少主身份时失败指纹应按标题年份降级，不得依赖 IMDb 或 TVDB 辅助 ID。
+    """
     torrent = SimpleNamespace(site=1, torrent_id="torrent-1")
 
     def build_context(imdb_id: str, tvdb_id: int):
-        """构造只有辅助 Provider ID 的失败上下文。"""
+        """
+        构造只有辅助 Provider ID 的失败上下文。
+        """
         return SimpleNamespace(
             media_info=SimpleNamespace(
                 type=MediaType.MOVIE,
@@ -970,7 +1079,9 @@ def test_batch_download_rejects_complete_coverage_when_files_do_not_cover_target
 
 
 def test_batch_download_preserves_special_season_zero(monkeypatch):
-    """特别季整季需求必须以季 0 匹配候选，不能回退成第 1 季。"""
+    """
+    特别季整季需求必须以季 0 匹配候选，不能回退成第 1 季。
+    """
     _FakeBatchTorrentHelper.episodes = list(range(1, 7))
     monkeypatch.setattr(download_batch, "TorrentHelper", _FakeBatchTorrentHelper)
     monkeypatch.setattr(download_selection, "TorrentHelper", _FakeBatchTorrentHelper)
@@ -1114,7 +1225,9 @@ def test_batch_download_does_not_download_duplicate_movie_after_success(monkeypa
 
 
 def test_batch_download_threads_custom_words_to_download_single(monkeypatch):
-    """订阅识别词须经 batch_download 透传到 download_single，作为整理快照随下载存档。"""
+    """
+    订阅识别词须经 batch_download 透传到 download_single，作为整理快照随下载存档。
+    """
     _FakeBatchTorrentHelper.episodes = []
     monkeypatch.setattr(download_batch, "TorrentHelper", _FakeBatchTorrentHelper)
     monkeypatch.setattr(download_selection, "TorrentHelper", _FakeBatchTorrentHelper)
@@ -1140,7 +1253,9 @@ def test_batch_download_threads_custom_words_to_download_single(monkeypatch):
 
 
 def test_batch_download_applies_custom_words_to_torrent_file_episodes(monkeypatch):
-    """订阅识别词须用于种子文件集数解析，确保跨季映射后能选中缺失集。"""
+    """
+    订阅识别词须用于种子文件集数解析，确保跨季映射后能选中缺失集。
+    """
     _FakeBatchTorrentHelper.episodes = [170]
     _FakeBatchTorrentHelper.received_custom_words = None
     monkeypatch.setattr(download_batch, "TorrentHelper", _FakeBatchTorrentHelper)
@@ -1252,7 +1367,9 @@ def test_download_single_records_failure_cooldown_when_downloader_rejects(monkey
 
 
 def test_download_failure_query_skips_non_subscribe_sources(monkeypatch):
-    """非订阅下载不得读取失败冷却，避免改变手工下载行为。"""
+    """
+    非订阅下载不得读取失败冷却，避免改变手工下载行为。
+    """
     query = MagicMock(side_effect=AssertionError("unexpected query"))
     repository = SimpleNamespace(
         get_active_by_fingerprints=query,
@@ -1269,17 +1386,23 @@ def test_download_failure_query_skips_non_subscribe_sources(monkeypatch):
 
 
 def test_download_failure_query_failure_is_fail_open(monkeypatch):
-    """冷却查询失败时继续下载候选，并记录一次明确错误。"""
+    """
+    冷却查询失败时继续下载候选，并记录一次明确错误。
+    """
 
     class _FailingDownloadFailureRepository:
-        """模拟失败的下载冷却查询端口。"""
+        """
+        模拟失败的下载冷却查询端口。
+        """
 
         def get_active_by_fingerprints(
             self,
             fingerprints: list[str],
             now_time: str,
         ) -> dict[str, DownloadFailureSnapshot]:
-            """拒绝查询以验证 Chain 的 fail-open 语义。"""
+            """
+            拒绝查询以验证 Chain 的 fail-open 语义。
+            """
             assert fingerprints
             assert now_time
             raise RuntimeError("query failed")
@@ -1298,13 +1421,19 @@ def test_download_failure_query_failure_is_fail_open(monkeypatch):
 
 
 def test_download_failure_write_failure_is_fail_open(monkeypatch):
-    """冷却写入失败不得覆盖原下载结果，并记录一次明确错误。"""
+    """
+    冷却写入失败不得覆盖原下载结果，并记录一次明确错误。
+    """
 
     class _FailingDownloadFailureRepository:
-        """模拟失败的下载冷却写入端口。"""
+        """
+        模拟失败的下载冷却写入端口。
+        """
 
         def record_failure(self, failure: DownloadFailureWrite) -> None:
-            """拒绝写入以验证 Chain 的 fail-open 语义。"""
+            """
+            拒绝写入以验证 Chain 的 fail-open 语义。
+            """
             assert failure.fingerprint
             raise RuntimeError("write failed")
 
@@ -1325,7 +1454,9 @@ def test_download_failure_write_failure_is_fail_open(monkeypatch):
 
 
 def test_download_failure_fingerprint_distinguishes_special_season_zero():
-    """失败冷却指纹应区分特别季与未指定季，避免错误共享冷却状态。"""
+    """
+    失败冷却指纹应区分特别季与未指定季，避免错误共享冷却状态。
+    """
     def build_context(season):
         return SimpleNamespace(
             media_info=SimpleNamespace(
@@ -1619,7 +1750,9 @@ def test_batch_download_complete_coverage_ignores_allowed_episode_narrowing(monk
 
 
 def test_batch_download_skips_multi_episode_pack_outside_upgrade_allowlist(monkeypatch):
-    """分集洗版只允许 E20/E21 时，已达上限的 E01-E03 整包不得进入下载器。"""
+    """
+    分集洗版只允许 E20/E21 时，已达上限的 E01-E03 整包不得进入下载器。
+    """
     _FakeBatchTorrentHelper.episodes = [1, 2, 3]
     monkeypatch.setattr(download_batch, "TorrentHelper", _FakeBatchTorrentHelper)
     monkeypatch.setattr(download_selection, "TorrentHelper", _FakeBatchTorrentHelper)
@@ -1646,7 +1779,9 @@ def test_batch_download_skips_multi_episode_pack_outside_upgrade_allowlist(monke
 
 
 def test_batch_download_complete_coverage_pack_respects_upgrade_allowlist(monkeypatch):
-    """完整覆盖任务不能让部分剧集获准的显式整包绕过分集洗版限制。"""
+    """
+    完整覆盖任务不能让部分剧集获准的显式整包绕过分集洗版限制。
+    """
     _FakeBatchTorrentHelper.episodes = []
     monkeypatch.setattr(download_batch, "TorrentHelper", _FakeBatchTorrentHelper)
     monkeypatch.setattr(download_selection, "TorrentHelper", _FakeBatchTorrentHelper)
@@ -1677,7 +1812,9 @@ def test_batch_download_complete_coverage_pack_respects_upgrade_allowlist(monkey
 
 
 def test_batch_download_skips_unlabelled_full_pack_outside_upgrade_allowlist(monkeypatch):
-    """标题无集号的整季包也不能绕过分集洗版的允许集下载已达上限剧集。"""
+    """
+    标题无集号的整季包也不能绕过分集洗版的允许集下载已达上限剧集。
+    """
     _FakeBatchTorrentHelper.episodes = [1, 2, 3]
     monkeypatch.setattr(download_batch, "TorrentHelper", _FakeBatchTorrentHelper)
     monkeypatch.setattr(download_selection, "TorrentHelper", _FakeBatchTorrentHelper)
@@ -1708,7 +1845,9 @@ def test_batch_download_skips_unlabelled_full_pack_outside_upgrade_allowlist(mon
 def test_batch_download_unlabelled_full_pack_checks_actual_episode_allowlist(
     monkeypatch, torrent_episodes, downloaded
 ):
-    """整季目标均获准时可下载，但种子文件多出未获准剧集时须跳过。"""
+    """
+    整季目标均获准时可下载，但种子文件多出未获准剧集时须跳过。
+    """
     _FakeBatchTorrentHelper.episodes = torrent_episodes
     monkeypatch.setattr(download_batch, "TorrentHelper", _FakeBatchTorrentHelper)
     monkeypatch.setattr(download_selection, "TorrentHelper", _FakeBatchTorrentHelper)
@@ -1808,7 +1947,9 @@ def test_downloading_includes_media_type_and_source_site(monkeypatch):
 
 
 def _prepared_download_for_settle(download_dir: Path) -> download_submission._PreparedDownload:
-    """构造仅用于下载结算路径断言的准备事实。"""
+    """
+    构造仅用于下载结算路径断言的准备事实。
+    """
     file_name = "The.Ordinary.Jackpot.S01E01.1080p.mkv"
     return download_submission._PreparedDownload(
         torrent=TorrentInfo(title=file_name),
@@ -1825,7 +1966,9 @@ def _prepared_download_for_settle(download_dir: Path) -> download_submission._Pr
 
 
 def _settle_accepted_download(chain, download_dir: Path) -> None:
-    """以固定下载上下文调用一次成功结算。"""
+    """
+    以固定下载上下文调用一次成功结算。
+    """
     chain._settle_accepted_download(
         prepared=_prepared_download_for_settle(download_dir),
         context=Context(),
@@ -1842,7 +1985,9 @@ def _settle_accepted_download(chain, download_dir: Path) -> None:
 
 
 def test_settle_accepted_download_uses_downloader_actual_save_dir():
-    """下载器中已存在同 Hash 任务时，下载历史须落到下载器实际保存目录。"""
+    """
+    下载器中已存在同 Hash 任务时，下载历史须落到下载器实际保存目录。
+    """
     chain = DownloadChain.__new__(DownloadChain)
     chain.list_torrents = MagicMock(return_value=[DownloaderTorrent(
         hash="hash123",
@@ -1859,7 +2004,9 @@ def test_settle_accepted_download_uses_downloader_actual_save_dir():
 
 
 def test_settle_accepted_download_keeps_expected_dir_without_downloader_task():
-    """下载器查询不到任务时保持预期目录，不改变既有结算行为。"""
+    """
+    下载器查询不到任务时保持预期目录，不改变既有结算行为。
+    """
     chain = DownloadChain.__new__(DownloadChain)
     chain.list_torrents = MagicMock(return_value=[])
     chain._settle_download_success = MagicMock()
@@ -1870,7 +2017,9 @@ def test_settle_accepted_download_keeps_expected_dir_without_downloader_task():
 
 
 def test_settle_accepted_download_falls_back_when_downloader_lookup_fails():
-    """下载器查询失败时回退预期目录，不能因回读失败阻断下载结算。"""
+    """
+    下载器查询失败时回退预期目录，不能因回读失败阻断下载结算。
+    """
     chain = DownloadChain.__new__(DownloadChain)
     chain.list_torrents = MagicMock(side_effect=RuntimeError("downloader unavailable"))
     chain._settle_download_success = MagicMock()
@@ -1881,7 +2030,9 @@ def test_settle_accepted_download_falls_back_when_downloader_lookup_fails():
 
 
 def test_settle_accepted_download_skips_lookup_for_remote_dir():
-    """远程存储保存目录不由本地回读，保持预期值且不查询下载器。"""
+    """
+    远程存储保存目录不由本地回读，保持预期值且不查询下载器。
+    """
     chain = DownloadChain.__new__(DownloadChain)
     chain.list_torrents = MagicMock(return_value=[])
     chain._settle_download_success = MagicMock()
@@ -1893,7 +2044,9 @@ def test_settle_accepted_download_skips_lookup_for_remote_dir():
 
 
 def test_settle_accepted_download_records_actual_path_for_existing_torrent():
-    """复现刷流先下载场景：下载历史与文件明细须记录下载器实际路径。"""
+    """
+    复现刷流先下载场景：下载历史与文件明细须记录下载器实际路径。
+    """
     chain = DownloadChain.__new__(DownloadChain)
     chain.runtime_config = SimpleNamespace(media_extensions=(".mkv",))
     chain.durable_event_writer = None

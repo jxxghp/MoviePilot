@@ -1,3 +1,7 @@
+"""
+仪表盘所需媒体库统计和下载器运行状态的汇总。
+"""
+
 from typing import List, Optional, cast
 
 from app.chain.base import ChainBase

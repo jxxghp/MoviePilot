@@ -1,3 +1,7 @@
+"""
+媒体服务器条目缓存的数据访问入口，适配调用方会话及兼容事务执行器。
+"""
+
 from typing import TYPE_CHECKING, Any, Optional, Union, cast
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +23,9 @@ class MediaServerOper(DbOper):
         self,
         db: Optional[Union[Session, AsyncSession]] = None,
     ) -> None:
-        """保存调用方提供的同步或异步查询会话。"""
+        """
+        保存调用方提供的同步或异步查询会话。
+        """
         super().__init__(db)
 
     @staticmethod
@@ -34,7 +40,9 @@ class MediaServerOper(DbOper):
 
     @staticmethod
     def _contains_season(item: MediaServerItem, season: int) -> bool:
-        """兼容 JSON 往返后变为字符串的 seasoninfo 键。"""
+        """
+        兼容 JSON 往返后变为字符串的 seasoninfo 键。
+        """
         seasoninfo = item.seasoninfo or {}
         return season in seasoninfo or str(season) in seasoninfo
 

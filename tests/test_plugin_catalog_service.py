@@ -1,3 +1,7 @@
+"""
+验证插件目录来源查询与已安装插件信息汇总。
+"""
+
 import asyncio
 from unittest.mock import Mock
 
@@ -15,7 +19,9 @@ def _plugin(
         repo_url: str,
         package_version: str | None = "v3",
 ) -> Plugin:
-    """构造目录合并测试使用的最小插件 DTO。"""
+    """
+    构造目录合并测试使用的最小插件 DTO。
+    """
     plugin = Plugin(
         id=plugin_id,
         plugin_version=version,
@@ -26,7 +32,9 @@ def _plugin(
 
 
 def _service(**overrides) -> PluginCatalogService:
-    """构造完全依赖内存假对象的插件目录应用服务。"""
+    """
+    构造完全依赖内存假对象的插件目录应用服务。
+    """
     defaults = {
         "market_loader": Mock(return_value={}),
         "async_market_loader": Mock(),
@@ -45,7 +53,9 @@ def _service(**overrides) -> PluginCatalogService:
 
 
 def test_merge_prefers_higher_generation_over_same_base_entry():
-    """高代际索引出现同 ID 同版本时不再保留基础索引副本。"""
+    """
+    高代际索引出现同 ID 同版本时不再保留基础索引副本。
+    """
     service = _service()
     higher = _plugin("Demo", "2.0.0", "https://market-a")
     base = _plugin("Demo", "2.0.0", "https://market-b")
@@ -56,7 +66,9 @@ def test_merge_prefers_higher_generation_over_same_base_entry():
 
 
 def test_merge_prefers_newer_version_and_remote_source():
-    """相同插件保留最高版本，同版本时市场来源覆盖本地副本。"""
+    """
+    相同插件保留最高版本，同版本时市场来源覆盖本地副本。
+    """
     service = _service()
     old_remote = _plugin("Demo", "1.0.0", "https://market-a")
     new_local = _plugin("Demo", "2.0.0", "local://Demo")
@@ -72,7 +84,9 @@ def test_merge_prefers_newer_version_and_remote_source():
 
 
 def test_merge_treats_plugin_id_casing_as_one_physical_plugin():
-    """同一物理插件的市场与本地 ID 大小写差异不能产生两个目录条目。"""
+    """
+    同一物理插件的市场与本地 ID 大小写差异不能产生两个目录条目。
+    """
     service = _service()
     online = _plugin("DownloadCenter", "3.2.1", "https://market-a")
     local = _plugin("downloadcenter", "3.3.2", "local://DownloadCenter")
@@ -87,7 +101,9 @@ def test_merge_treats_plugin_id_casing_as_one_physical_plugin():
 
 
 def test_merge_by_source_deduplicates_plugin_id_casing_within_generation():
-    """同一仓库和代际内的 ID 大小写差异不能产生重复候选。"""
+    """
+    同一仓库和代际内的 ID 大小写差异不能产生重复候选。
+    """
     service = _service()
     old = _plugin("DownloadCenter", "3.2.1", "https://market-a")
     new = _plugin("downloadcenter", "3.3.2", "https://market-a")
@@ -102,7 +118,9 @@ def test_merge_by_source_deduplicates_plugin_id_casing_within_generation():
 
 
 def test_merge_by_source_preserves_candidates_across_generations():
-    """跨代际候选必须保留，由来源准入按代际优先级继续决策。"""
+    """
+    跨代际候选必须保留，由来源准入按代际优先级继续决策。
+    """
     service = _service()
     v3 = _plugin("DownloadCenter", "3.2.1", "https://market-a", "v3")
     v2 = _plugin("downloadcenter", "9.0.0", "https://market-a", "v2")
@@ -117,7 +135,9 @@ def test_merge_by_source_preserves_candidates_across_generations():
 
 
 def test_load_maps_market_entries_with_installed_snapshot():
-    """单市场读取只获取一次已安装快照并按索引顺序映射 DTO。"""
+    """
+    单市场读取只获取一次已安装快照并按索引顺序映射 DTO。
+    """
     mapper = Mock(side_effect=lambda plugin_id, *_args: plugin_id)
     installed_provider = Mock(return_value=["Installed"])
     service = _service(
@@ -135,7 +155,9 @@ def test_load_maps_market_entries_with_installed_snapshot():
 
 
 def test_metadata_mapper_preserves_package_generation_without_serializing_it():
-    """市场映射必须保留候选代际，同时不能扩张插件 API 响应。"""
+    """
+    市场映射必须保留候选代际，同时不能扩张插件 API 响应。
+    """
     mapper = PluginMetadataMapper(
         plugin_instance=lambda _plugin_id: None,
         plugin_class=lambda _plugin_id: None,
@@ -164,13 +186,17 @@ def test_metadata_mapper_preserves_package_generation_without_serializing_it():
 
 @pytest.mark.asyncio
 async def test_async_collect_isolates_failure_and_completes_progress():
-    """异步市场单任务失败时保留成功结果，并把进度推进到完成态。"""
+    """
+    异步市场单任务失败时保留成功结果，并把进度推进到完成态。
+    """
     progress = Mock()
     error = Mock()
     service = _service(error=error)
 
     async def loader(market: str, package_version: str | None, _force: bool):
-        """模拟一个失败代际和其余可正常完成的市场请求。"""
+        """
+        模拟一个失败代际和其余可正常完成的市场请求。
+        """
         await asyncio.sleep(0)
         if market == "https://market-a" and package_version == "v3":
             raise RuntimeError("unavailable")
@@ -197,11 +223,15 @@ async def test_async_collect_isolates_failure_and_completes_progress():
 
 @pytest.mark.asyncio
 async def test_async_collect_preserves_each_repository_update_candidate():
-    """来源准入读取应保留每个仓库的最高版本，不能先按插件 ID 全局去重。"""
+    """
+    来源准入读取应保留每个仓库的最高版本，不能先按插件 ID 全局去重。
+    """
     service = _service()
 
     async def loader(market: str, package_version: str | None, _force: bool):
-        """按仓库返回不同版本，验证来源保留模式不会提前跨仓去重。"""
+        """
+        按仓库返回不同版本，验证来源保留模式不会提前跨仓去重。
+        """
         if package_version is None:
             return []
         version = "2.0.0" if market == "https://market-bound" else "3.0.0"
@@ -224,7 +254,9 @@ async def test_async_collect_preserves_each_repository_update_candidate():
 
 @pytest.mark.asyncio
 async def test_async_collect_cancels_all_loaders_when_parent_is_cancelled():
-    """请求取消时必须取消并回收全部市场 loader，不能把子任务遗留在事件循环。"""
+    """
+    请求取消时必须取消并回收全部市场 loader，不能把子任务遗留在事件循环。
+    """
     service = _service()
     blocker = asyncio.Event()
     all_started = asyncio.Event()
@@ -232,7 +264,9 @@ async def test_async_collect_cancels_all_loaders_when_parent_is_cancelled():
     cancelled = 0
 
     async def loader(_market: str, _package_version: str | None, _force: bool):
-        """记录市场 loader 的启动和取消，并等待测试释放。"""
+        """
+        记录市场 loader 的启动和取消，并等待测试释放。
+        """
         nonlocal started, cancelled
         started += 1
         if started == 2:
@@ -266,14 +300,18 @@ async def test_async_collect_cancels_all_loaders_when_parent_is_cancelled():
 
 @pytest.mark.asyncio
 async def test_async_collect_cleans_loaders_when_progress_callback_fails():
-    """进度回调异常也必须取消并回收尚未完成的市场 loader。"""
+    """
+    进度回调异常也必须取消并回收尚未完成的市场 loader。
+    """
     service = _service()
     blocker = asyncio.Event()
     slow_started = asyncio.Event()
     slow_cancelled = asyncio.Event()
 
     async def loader(market: str, _package_version: str | None, _force: bool):
-        """让一个市场立即完成，另一个保持阻塞以验证异常清理。"""
+        """
+        让一个市场立即完成，另一个保持阻塞以验证异常清理。
+        """
         if market == "https://market-a":
             await slow_started.wait()
             return []
@@ -286,7 +324,9 @@ async def test_async_collect_cleans_loaders_when_progress_callback_fails():
         return []
 
     def progress(*, value: float, **_kwargs) -> None:
-        """首个市场完成时模拟进度消费者失败。"""
+        """
+        首个市场完成时模拟进度消费者失败。
+        """
         if value > 0:
             raise RuntimeError("progress unavailable")
 

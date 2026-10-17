@@ -1,4 +1,5 @@
-"""调度器工具服务门面。
+"""
+调度器工具服务门面。
 
 Agent 工具与 API 端点对运行时调度器的操作统一经本模块调用，
 Scheduler 实现由 startup 组合根在生命周期装配阶段注册，避免 application 层
@@ -22,22 +23,42 @@ _scheduler_class: Any = None
 
 
 class JobOverlapPolicy(StrEnum):
-    """描述同一 job 已运行时的新触发处理策略。"""
+    """
+    描述同一 job 已运行时的新触发处理策略。
+    """
 
+    # 前一次尚未结束时跳过本次触发。
     SKIP = "skip"
 
 
 class JobRecoveryPolicy(StrEnum):
-    """描述进程重启后是否以及如何重建执行意图。"""
+    """
+    描述进程重启后是否以及如何重建执行意图。
+    """
 
+    # 不补跑中断执行，等待下一次计划触发。
     NEXT_SCHEDULE = "next_schedule"
+    # 依靠持久队列恢复未完成的执行意图。
     DURABLE_QUEUE = "durable_queue"
+    # 重启后仅允许显式手动触发。
     MANUAL_ONLY = "manual_only"
 
 
 @dataclass(frozen=True, slots=True)
 class JobSpec:
-    """数据化声明一个业务 job 的执行和恢复合同。"""
+    """
+    数据化声明一个业务 job 的执行和恢复合同。
+
+    :param job_id: 调度任务的唯一稳定标识
+    :param name: 向日志和管理界面展示的任务名称
+    :param func: 调度触发时调用的业务函数
+    :param owner: 任务生命周期所属的业务组件标识
+    :param overlap: 前一次仍在执行时的重入策略，默认跳过新触发
+    :param timeout_seconds: 声明的执行超时秒数，None 表示不声明超时
+    :param manual: 是否允许通过管理界面手动触发
+    :param recovery: 进程重启后的恢复策略，默认等待下一次计划触发
+    :param kwargs: 每次调用业务函数时使用的关键字参数
+    """
 
     job_id: str
     name: str
@@ -50,7 +71,9 @@ class JobSpec:
     kwargs: dict[str, Any] = field(default_factory=dict)
 
     def to_runtime_state(self) -> dict[str, Any]:
-        """生成兼容 Scheduler Facade 的可变执行状态。"""
+        """
+        生成兼容 Scheduler Facade 的可变执行状态。
+        """
         return {
             "name": self.name,
             "func": self.func,
@@ -65,16 +88,22 @@ class JobSpec:
 
 
 class JobCatalog:
-    """保存唯一 job ID 到声明的映射。"""
+    """
+    保存唯一 job ID 到声明的映射。
+    """
 
     def __init__(self, specs: list[JobSpec]) -> None:
-        """拒绝重复 ID，并冻结供 Scheduler 初始化的声明集合。"""
+        """
+        拒绝重复 ID，并冻结供 Scheduler 初始化的声明集合。
+        """
         self._specs = {spec.job_id: spec for spec in specs}
         if len(self._specs) != len(specs):
             raise ValueError("JobSpec job_id 不得重复")
 
     def runtime_states(self) -> dict[str, dict[str, Any]]:
-        """返回兼容旧 Scheduler `_jobs` 的全新状态字典。"""
+        """
+        返回兼容旧 Scheduler `_jobs` 的全新状态字典。
+        """
         return {
             job_id: spec.to_runtime_state()
             for job_id, spec in self._specs.items()
@@ -82,11 +111,15 @@ class JobCatalog:
 
 
 class JobExecutionState:
-    """集中维护兼容 job 字典的 overlap 与终态字段。"""
+    """
+    集中维护兼容 job 字典的 overlap 与终态字段。
+    """
 
     @staticmethod
     def begin(job: dict[str, Any], started_at: str) -> bool:
-        """按 overlap policy 尝试进入 running，已运行时返回 False。"""
+        """
+        按 overlap policy 尝试进入 running，已运行时返回 False。
+        """
         if job.get("running") and job.get(
             "overlap", JobOverlapPolicy.SKIP.value
         ) == JobOverlapPolicy.SKIP.value:
@@ -101,7 +134,9 @@ class JobExecutionState:
 
     @staticmethod
     def finish(job: dict[str, Any], finished_at: str, error: str | None) -> None:
-        """写入成功或失败终态并释放 running 标记。"""
+        """
+        写入成功或失败终态并释放 running 标记。
+        """
         job.update(
             running=False,
             last_finished_at=finished_at,
@@ -112,14 +147,18 @@ class JobExecutionState:
     async def await_result(
         awaitable: Awaitable[Any], timeout_seconds: int | None
     ) -> Any:
-        """等待协程任务；声明了超时时由 asyncio 负责取消底层任务。"""
+        """
+        等待协程任务；声明了超时时由 asyncio 负责取消底层任务。
+        """
         if timeout_seconds is None:
             return await awaitable
         return await asyncio.wait_for(awaitable, timeout=timeout_seconds)
 
 
 def register_scheduler_class(scheduler_class: Any) -> Any:
-    """注册 Scheduler 类，并返回先前实现供失败回滚。"""
+    """
+    注册 Scheduler 类，并返回先前实现供失败回滚。
+    """
     global _scheduler_class
     previous = _scheduler_class
     _scheduler_class = scheduler_class
@@ -127,12 +166,16 @@ def register_scheduler_class(scheduler_class: Any) -> Any:
 
 
 def reset_scheduler_class() -> None:
-    """清除 Scheduler 实现，避免跨 lifespan 保留具体运行时。"""
+    """
+    清除 Scheduler 实现，避免跨 lifespan 保留具体运行时。
+    """
     register_scheduler_class(None)
 
 
 def get_scheduler() -> Any:
-    """返回调度器实例。"""
+    """
+    返回调度器实例。
+    """
     if _scheduler_class is None:
         raise RuntimeError(
             "调度器服务未初始化：请先通过 register_scheduler_class 注册 Scheduler 类"
@@ -141,30 +184,42 @@ def get_scheduler() -> Any:
 
 
 class Scheduler:
-    """应用层调度器兼容门面，不直接导入顶层 Scheduler 实现。"""
+    """
+    应用层调度器兼容门面，不直接导入顶层 Scheduler 实现。
+    """
 
     def __new__(cls) -> Any:
-        """返回组合根注册的调度器实例。"""
+        """
+        返回组合根注册的调度器实例。
+        """
         return get_scheduler()
 
 
 def list_scheduler_jobs() -> List[Any]:
-    """列出运行时调度器的全部任务。"""
+    """
+    列出运行时调度器的全部任务。
+    """
     return cast(List[Any], get_scheduler().list())
 
 
 def start_scheduler_job(job_id: str, **kwargs: Any) -> None:
-    """立即运行指定的运行时定时任务。"""
+    """
+    立即运行指定的运行时定时任务。
+    """
     get_scheduler().start(job_id, **kwargs)
 
 
 def update_plugin_job(plugin_id: str) -> None:
-    """更新插件的定时任务。"""
+    """
+    更新插件的定时任务。
+    """
     get_scheduler().update_plugin_job(plugin_id)
 
 
 def remove_plugin_job(plugin_id: str) -> None:
-    """移除插件的定时任务。"""
+    """
+    移除插件的定时任务。
+    """
     get_scheduler().remove_plugin_job(plugin_id)
 
 
@@ -196,25 +251,35 @@ def add_plugin_once_job(
 
 
 def remove_plugin_once_job(plugin_id: str, job_id: str) -> None:
-    """取消插件尚未执行的一次性任务。"""
+    """
+    取消插件尚未执行的一次性任务。
+    """
     get_scheduler().remove_plugin_once_job(plugin_id, job_id)
 
 
 def start_agent_task(task_id: int) -> bool:
-    """立即执行 Agent 自主定时任务。"""
+    """
+    立即执行 Agent 自主定时任务。
+    """
     return cast(bool, get_scheduler().start_agent_task(task_id))
 
 
 def get_agent_task_next_run(task_id: int) -> Optional[Any]:
-    """查询 Agent 自主定时任务的下一次运行时间。"""
+    """
+    查询 Agent 自主定时任务的下一次运行时间。
+    """
     return get_scheduler().get_agent_task_next_run(task_id)
 
 
 def update_agent_task_job(task_id: int) -> Optional[Any]:
-    """更新 Agent 自主定时任务的注册信息，返回下一次运行时间。"""
+    """
+    更新 Agent 自主定时任务的注册信息，返回下一次运行时间。
+    """
     return get_scheduler().update_agent_task_job(task_id)
 
 
 def remove_agent_task_job(task_id: int) -> None:
-    """移除 Agent 自主定时任务的注册信息。"""
+    """
+    移除 Agent 自主定时任务的注册信息。
+    """
     get_scheduler().remove_agent_task_job(task_id)

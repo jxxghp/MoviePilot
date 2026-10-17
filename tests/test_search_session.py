@@ -1,4 +1,6 @@
-"""订阅搜索检查点的任务租约、版本 CAS 与凭据排除回归。"""
+"""
+订阅搜索检查点的任务租约、版本 CAS 与凭据排除回归。
+"""
 
 from datetime import datetime, timedelta, timezone
 
@@ -15,6 +17,9 @@ from app.domain.context import TorrentInfo
 
 @pytest.fixture
 def repository(tmp_path):
+    """
+    创建隔离 SQLite 搜索库与有效任务租约，并在测试后释放引擎。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'search.db'}")
     Base.metadata.create_all(engine)
     now = datetime.now(timezone.utc).isoformat()
@@ -35,6 +40,9 @@ def _set_lease(engine, token):
 
 
 def test_only_current_task_lease_and_version_can_advance(repository):
+    """
+    只有当前任务租约与检查点版本匹配时才允许推进。
+    """
     repo, engine = repository
     assert repo.create(task_id="task", payload="{}", task_lease="wrong") is None
     first = repo.create(task_id="task", payload='{"page":0}', task_lease="old")
@@ -50,6 +58,9 @@ def test_only_current_task_lease_and_version_can_advance(repository):
 
 
 def test_cancel_request_stops_checkpoint_writes(repository):
+    """
+    任务收到取消请求后停止写入检查点。
+    """
     repo, engine = repository
     first = repo.create(task_id="task", payload="{}", task_lease="old")
     with sessionmaker(bind=engine)() as session:
@@ -59,6 +70,9 @@ def test_cancel_request_stops_checkpoint_writes(repository):
 
 
 def test_checkpoint_excludes_credentials_and_indirect_download_recipe():
+    """
+    检查点不保存凭据或可间接还原下载凭据的请求配方。
+    """
     torrent = TorrentInfo(site=1, title="Show", site_cookie="cookie-secret",
                           enclosure="[encoded-api-key]https://api.example/download",
                           page_url="https://site.example/details.php?id=23")
@@ -70,6 +84,9 @@ def test_checkpoint_excludes_credentials_and_indirect_download_recipe():
 
 
 def test_unrecognized_download_query_is_not_persisted():
+    """
+    无法确认安全性的下载查询参数不得持久化。
+    """
     torrent = TorrentInfo(enclosure="https://site.example/download?id=1&passkey=secret")
     assert torrent_snapshot(torrent)["enclosure"] is None
     torrent.enclosure = "https://site.example/ticket/opaque-private-capability"
@@ -78,6 +95,9 @@ def test_unrecognized_download_query_is_not_persisted():
 
 @pytest.mark.parametrize("system_stop,cancelled,expected", [(True, False, "requeued"), (False, True, "cancelled")])
 def test_partial_submission_does_not_finish_an_interrupted_search_round(system_stop, cancelled, expected):
+    """
+    只提交部分目标不足以把中断的搜索轮次标记为完成。
+    """
     from types import SimpleNamespace
     from unittest.mock import Mock
 
@@ -93,6 +113,9 @@ def test_partial_submission_does_not_finish_an_interrupted_search_round(system_s
 
 
 def test_finished_round_removes_its_checkpoint_only_with_the_current_lease_and_version(repository):
+    """
+    完成轮次时仅允许当前租约与版本删除检查点。
+    """
     repo, _ = repository
     first = repo.create(task_id="task", payload="{}", task_lease="old")
     repo.delete(snapshot=first, task_lease="stale")
@@ -103,6 +126,9 @@ def test_finished_round_removes_its_checkpoint_only_with_the_current_lease_and_v
 
 def test_stale_worker_cannot_delete_progress_saved_after_lease_handover(repository):
     # 旧执行者持有 version=0 快照；租约交接后新执行者保存 version=1，旧执行者随后删除不得生效。
+    """
+    租约交接后的旧工作任务不能删除新持有者保存的进度。
+    """
     repo, engine = repository
     stale = repo.create(task_id="task", payload='{"page":0}', task_lease="old")
     _set_lease(engine, "new")
@@ -126,6 +152,9 @@ def _queue(tmp_path):
 @pytest.mark.parametrize("state", ["completed", "failed", "cancelled", "skipped"])
 def test_terminal_task_releases_its_checkpoint(tmp_path, state):
     # 同一订阅之后的搜索是新任务，终态任务的检查点不会再被续用。
+    """
+    任务进入终态后释放关联检查点。
+    """
     queue, engine = _queue(tmp_path)
     queue.enqueue(subscription_ids=(1,), source="timer", priority=10)
     task = queue.claim_next(owner="worker")
@@ -136,6 +165,9 @@ def test_terminal_task_releases_its_checkpoint(tmp_path, state):
 
 
 def test_deferred_task_keeps_checkpoint_until_batch_is_cancelled(tmp_path):
+    """
+    延后执行的任务保留检查点，直到所属批次取消。
+    """
     queue, engine = _queue(tmp_path)
     enqueued = queue.enqueue(subscription_ids=(1,), source="timer", priority=10)
     task = queue.claim_next(owner="worker")
@@ -151,6 +183,9 @@ def test_deferred_task_keeps_checkpoint_until_batch_is_cancelled(tmp_path):
 
 
 def test_checkpoints_not_updated_for_fourteen_days_are_purged(repository):
+    """
+    十四天未更新的孤立检查点会被清理。
+    """
     from app.db.models.searchsession import SearchSession
 
     repo, engine = repository
@@ -170,10 +205,16 @@ def test_checkpoints_not_updated_for_fourteen_days_are_purged(repository):
     "https://site.example/dl/AbCdEfGh12345678IjKlMnOp9.torrent?id=1",
 ])
 def test_passkey_in_download_path_is_not_persisted(enclosure):
+    """
+    下载路径中包含 passkey 时不保存该地址。
+    """
     assert torrent_snapshot(TorrentInfo(enclosure=enclosure))["enclosure"] is None
 
 
 def test_readable_page_paths_are_still_persisted():
+    """
+    可安全读取的详情页和下载路径仍允许持久化。
+    """
     torrent = TorrentInfo(page_url="https://site.example/torrents/1234567890123456789",
                           enclosure="https://site.example/download.php?id=1&https=1")
     snapshot = torrent_snapshot(torrent)
@@ -182,6 +223,9 @@ def test_readable_page_paths_are_still_persisted():
 
 
 def test_internal_candidate_id_is_not_exported():
+    """
+    内部候选标识不进入公开种子字典，并保持旧构造参数兼容。
+    """
     torrent = TorrentInfo(site=1, title="Show")
     torrent.search_resource_id = "internal"
     assert "search_resource_id" not in torrent.to_dict()
@@ -190,6 +234,9 @@ def test_internal_candidate_id_is_not_exported():
 
 def test_late_first_create_after_lease_handover_cannot_fail_the_new_owner(repository):
     # 审查复现的交错：旧执行者在租约交接后才插入首个检查点，新执行者此前读到的是空。
+    """
+    租约交接后迟到的首次创建不能覆盖或影响新持有者。
+    """
     from app.db.models.searchsession import SearchSession
 
     repo, engine = repository
@@ -213,6 +260,9 @@ def test_late_first_create_after_lease_handover_cannot_fail_the_new_owner(reposi
 
 
 def test_first_create_statement_compiles_for_postgresql():
+    """
+    首次创建检查点使用 PostgreSQL 可编译的冲突忽略语句。
+    """
     from sqlalchemy import literal, select
     from sqlalchemy.dialects import postgresql
     from sqlalchemy.dialects.postgresql import insert

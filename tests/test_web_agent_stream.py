@@ -1,3 +1,7 @@
+"""
+验证Web Agent 事件流、工具执行和会话资源释放。
+"""
+
 import asyncio
 import time
 from queue import Queue
@@ -10,7 +14,8 @@ import pytest
 from app import schemas
 from app.agent.contracts import ReplyMode
 
-# pylint: disable=no-name-in-module  # 旧公开入口由 runtime compat 惰性注入，Pylint 无法静态解析。
+# 旧公开入口由 运行时兼容层 惰性注入，Pylint 无法静态解析。
+# pylint: disable=no-name-in-module
 from app.agent.orchestrator import agent_manager
 from app.agent.session import AgentSessionOwner
 from app.agent.steering import SteeringMessage
@@ -103,7 +108,9 @@ from app.schemas.types import EventType, MessageType, NotificationChannel
 
 @pytest.fixture(autouse=True)
 def _running_agent_service():
-    """本文件验证运行态 Web Agent 行为，显式提供已启动的 canonical manager。"""
+    """
+    本文件验证运行态 Web Agent 行为，显式提供已启动的 canonical manager。
+    """
     was_accepting = agent_manager._accepting_tasks
     agent_manager._accepting_tasks = True
     MessageChain._user_sessions.clear()
@@ -134,7 +141,9 @@ def _running_agent_service():
 
 
 def test_web_agent_non_transport_helpers_are_application_owned():
-    """附件、音频、事件投影和会话写入不得回流到 FastAPI 端点。"""
+    """
+    附件、音频、事件投影和会话写入不得回流到 FastAPI 端点。
+    """
     ownership = {
         "WebAgentEventPublisher",
         "apply_web_agent_display_event",
@@ -155,7 +164,9 @@ def test_web_agent_non_transport_helpers_are_application_owned():
 
 @pytest.mark.asyncio
 async def test_steering_ack_stream_reports_a_queued_message_without_an_assistant_bubble():
-    """运行中补充消息只返回短确认流，主 Agent 的展示气泡由原流继续持有。"""
+    """
+    运行中补充消息只返回短确认流，主 Agent 的展示气泡由原流继续持有。
+    """
     message = SteeringMessage.create(session_id="session", user_id="user", text="补充要求")
     events = [event async for event in _build_steering_ack_stream(session_id="session", message=message)]
 
@@ -172,7 +183,9 @@ async def test_steering_ack_stream_reports_a_queued_message_without_an_assistant
 
 
 def test_web_agent_steering_uses_current_assistant_identity_when_segments_are_equal():
-    """展示内容相同的助手段也必须把 steering 插入到当前对象之后。"""
+    """
+    展示内容相同的助手段也必须把 steering 插入到当前对象之后。
+    """
     assistant_before = {
         "id": "assistant-same",
         "role": "assistant",
@@ -184,7 +197,9 @@ def test_web_agent_steering_uses_current_assistant_identity_when_segments_are_eq
     published = []
 
     def build_display_message(*, role, status="done", **_kwargs):
-        """构造最小展示消息，保持测试只验证时间线定位。"""
+        """
+        构造最小展示消息，保持测试只验证时间线定位。
+        """
         return {"id": f"{role}-{len(published)}", "role": role, "status": status, "content": ""}
 
     callback = _build_web_agent_steering_callback(
@@ -207,7 +222,9 @@ def test_web_agent_steering_uses_current_assistant_identity_when_segments_are_eq
 
 
 def test_web_agent_stream_events_keep_their_assistant_segment_identity():
-    """迟到的文本和工具事件必须携带产生它们的助手段 ID。"""
+    """
+    迟到的文本和工具事件必须携带产生它们的助手段 ID。
+    """
     published = []
     applied = []
     assistant_message_ref = {"message": {"id": "assistant-before"}}
@@ -245,7 +262,9 @@ def test_web_agent_stream_events_keep_their_assistant_segment_identity():
 
 
 def test_split_web_agent_output_extracts_verbose_tool_message():
-    """应将啰嗦模式工具提示拆成独立工具事件，并保留渠道展示文案。"""
+    """
+    应将啰嗦模式工具提示拆成独立工具事件，并保留渠道展示文案。
+    """
     events = _split_web_agent_output("准备查询。\n\n⚙️ => 查询站点\n\n已完成")
 
     assert events == [
@@ -256,7 +275,9 @@ def test_split_web_agent_output_extracts_verbose_tool_message():
 
 
 def test_split_web_agent_output_extracts_summary_tool_message():
-    """应将非啰嗦模式工具汇总行拆成独立工具事件，并保留渠道展示文案。"""
+    """
+    应将非啰嗦模式工具汇总行拆成独立工具事件，并保留渠道展示文案。
+    """
     events = _split_web_agent_output("（查询了 2 次数据）\n\n这里是结果")
 
     assert events == [
@@ -266,7 +287,9 @@ def test_split_web_agent_output_extracts_summary_tool_message():
 
 
 def test_split_web_agent_output_preserves_standalone_newline_delta():
-    """独立换行增量应保留，避免流式 Markdown 列表被拼成同一行。"""
+    """
+    独立换行增量应保留，避免流式 Markdown 列表被拼成同一行。
+    """
     chunks = [
         "可以这样操作：",
         "\n",
@@ -285,7 +308,9 @@ def test_split_web_agent_output_preserves_standalone_newline_delta():
 
 
 def test_web_agent_event_publisher_coalesces_text_before_semantic_events():
-    """连续文本应合并，且工具事件前的文本顺序不能改变。"""
+    """
+    连续文本应合并，且工具事件前的文本顺序不能改变。
+    """
 
     async def scenario():
         publisher = _WebAgentEventPublisher()
@@ -311,7 +336,9 @@ def test_web_agent_event_publisher_coalesces_text_before_semantic_events():
 
 
 def test_web_agent_event_publisher_rejects_events_after_close():
-    """连接关闭后必须显式拒绝事件，避免把敏感结果误报为已交付。"""
+    """
+    连接关闭后必须显式拒绝事件，避免把敏感结果误报为已交付。
+    """
 
     async def scenario():
         publisher = _WebAgentEventPublisher()
@@ -322,7 +349,9 @@ def test_web_agent_event_publisher_rejects_events_after_close():
 
 
 def test_build_web_agent_session_id_is_stable_per_user_and_seed():
-    """同一用户和前端会话标识应生成稳定的服务端会话 ID。"""
+    """
+    同一用户和前端会话标识应生成稳定的服务端会话 ID。
+    """
     user = SimpleNamespace(id=1, name="admin")
 
     first = _build_web_agent_session_id(user, "browser-session")
@@ -335,7 +364,9 @@ def test_build_web_agent_session_id_is_stable_per_user_and_seed():
 
 
 def test_build_web_agent_session_id_reuses_accessible_history():
-    """传入已有历史会话 ID 时应直接复用，避免跨渠道继续对话丢上下文。"""
+    """
+    传入已有历史会话 ID 时应直接复用，避免跨渠道继续对话丢上下文。
+    """
     user = SimpleNamespace(id=1, name="admin", is_superuser=True)
     AgentChatOper().save_display_messages(
         session_id="telegram-session",
@@ -352,7 +383,9 @@ def test_build_web_agent_session_id_reuses_accessible_history():
 
 
 def test_build_web_agent_session_id_async_uses_native_async_persistence():
-    """异步 Web 会话解析应通过 native async 会话服务读取历史。"""
+    """
+    异步 Web 会话解析应通过 native async 会话服务读取历史。
+    """
     user = SimpleNamespace(id=1, name="admin", is_superuser=True)
     service = SimpleNamespace(
         get=AsyncMock(
@@ -375,7 +408,9 @@ def test_build_web_agent_session_id_async_uses_native_async_persistence():
 
 
 def test_apply_web_agent_display_event_updates_snapshot():
-    """WebAgent SSE 事件应按到达顺序聚合为服务端展示快照。"""
+    """
+    WebAgent SSE 事件应按到达顺序聚合为服务端展示快照。
+    """
     message = {
         "id": "assistant-1",
         "role": "assistant",
@@ -414,7 +449,9 @@ def test_apply_web_agent_display_event_updates_snapshot():
 
 
 def test_apply_web_agent_display_event_done_clears_thinking_snapshot():
-    """WebAgent 终态事件应清理没有正文收口的 thinking 标记。"""
+    """
+    WebAgent 终态事件应清理没有正文收口的 thinking 标记。
+    """
     message = _build_web_agent_display_message(role="assistant", status="streaming")
 
     _apply_web_agent_display_event(
@@ -430,7 +467,9 @@ def test_apply_web_agent_display_event_done_clears_thinking_snapshot():
 
 
 def test_apply_web_agent_display_event_tracks_parallel_tool_lifecycle_by_id():
-    """并行工具必须按稳定调用 ID 独立收口，不能由后一条开始事件覆盖前一条状态。"""
+    """
+    并行工具必须按稳定调用 ID 独立收口，不能由后一条开始事件覆盖前一条状态。
+    """
     message = {
         "id": "assistant-1",
         "role": "assistant",
@@ -487,7 +526,9 @@ def test_apply_web_agent_display_event_tracks_parallel_tool_lifecycle_by_id():
 
 
 def test_agent_chat_display_schema_preserves_ordered_segments():
-    """前端回传会话快照时应保留文字和工具的有序片段。"""
+    """
+    前端回传会话快照时应保留文字和工具的有序片段。
+    """
     payload = schemas.AgentChatDisplaySaveRequest(
         messages=[
             {
@@ -516,7 +557,9 @@ def test_agent_chat_display_schema_preserves_ordered_segments():
 
 
 def test_build_web_agent_input_attachments_marks_kinds():
-    """WebAgent 用户输入附件应转换为可展示的附件记录。"""
+    """
+    WebAgent 用户输入附件应转换为可展示的附件记录。
+    """
     attachments = _build_web_agent_input_attachments(
         images=["data:image/png;base64,abc"],
         files=[
@@ -535,7 +578,9 @@ def test_build_web_agent_input_attachments_marks_kinds():
 
 
 def test_build_web_agent_command_items_returns_slash_commands():
-    """WebAgent 命令建议应返回可展示的斜杠命令。"""
+    """
+    WebAgent 命令建议应返回可展示的斜杠命令。
+    """
     with patch(
         "app.application.messaging.agent.get_commands",
         return_value={
@@ -558,7 +603,9 @@ def test_build_web_agent_command_items_returns_slash_commands():
 
 
 def test_build_web_agent_command_items_includes_sites_command():
-    """WebAgent 命令建议应包含内建站点管理命令。"""
+    """
+    WebAgent 命令建议应包含内建站点管理命令。
+    """
     with patch(
         "app.application.messaging.agent.get_commands",
         return_value={
@@ -571,7 +618,9 @@ def test_build_web_agent_command_items_includes_sites_command():
 
 
 def test_build_web_agent_traditional_callback_payload_wraps_callback():
-    """传统按钮回调应包装为可继续提交给 MessageChain 的消息。"""
+    """
+    传统按钮回调应包装为可继续提交给 MessageChain 的消息。
+    """
     payload = _build_web_agent_traditional_callback_payload(
         "skills:req-1:root",
         original_message_id="assistant-1",
@@ -585,7 +634,9 @@ def test_build_web_agent_traditional_callback_payload_wraps_callback():
 
 
 def test_web_agent_stream_returns_error_for_unknown_command():
-    """不存在的 WebAgent 斜杠命令应立即返回错误，不进入等待队列。"""
+    """
+    不存在的 WebAgent 斜杠命令应立即返回错误，不进入等待队列。
+    """
     payload = schemas.AgentWebChatRequest(
         text="/missing_command 参数",
         session_id="browser-session",
@@ -609,7 +660,9 @@ def test_web_agent_stream_returns_error_for_unknown_command():
 
 
 def test_web_agent_stream_does_not_bind_request_scoped_chat_service():
-    """流式路由不能把请求级 Agent 会话服务捕获到后台任务。"""
+    """
+    流式路由不能把请求级 Agent 会话服务捕获到后台任务。
+    """
     from app.api.dependencies.agent import get_agent_chat_service
     from app.api.endpoints import agent as agent_endpoint
 
@@ -619,7 +672,9 @@ def test_web_agent_stream_does_not_bind_request_scoped_chat_service():
 
 
 def test_build_web_agent_message_update_event_converts_buttons():
-    """WebAgent 编辑消息应转换为可原地更新卡片的事件。"""
+    """
+    WebAgent 编辑消息应转换为可原地更新卡片的事件。
+    """
     event = build_web_agent_message_update_event(
         message_id="assistant-1",
         title="技能管理",
@@ -635,7 +690,9 @@ def test_build_web_agent_message_update_event_converts_buttons():
 
 
 def test_build_web_agent_display_message_from_events_marks_done():
-    """传统消息事件应聚合为完成态助手展示消息。"""
+    """
+    传统消息事件应聚合为完成态助手展示消息。
+    """
     message = _build_web_agent_display_message_from_events(
         [
             {"type": "delta", "content": "菜单"},
@@ -656,7 +713,9 @@ def test_build_web_agent_display_message_from_events_marks_done():
 
 
 def test_has_web_agent_traditional_interaction_detects_pending_skills():
-    """WebAgent 应能识别命令后的传统交互上下文。"""
+    """
+    WebAgent 应能识别命令后的传统交互上下文。
+    """
     skill_interaction_manager.clear()
     try:
         skill_interaction_manager.create_or_replace(
@@ -673,7 +732,9 @@ def test_has_web_agent_traditional_interaction_detects_pending_skills():
 
 
 def test_web_agent_admin_context_uses_current_user_id():
-    """Web Agent 工具权限应按当前登录用户 ID 判断管理员身份。"""
+    """
+    Web Agent 工具权限应按当前登录用户 ID 判断管理员身份。
+    """
     agent = _get_web_agent_type()(
         session_id="web-agent:session",
         user_id="7",
@@ -694,7 +755,9 @@ def test_web_agent_admin_context_uses_current_user_id():
 
 
 def test_web_agent_reused_for_background_task_disables_streaming():
-    """Web Agent 被后台任务复用且渠道已清空时应改用非流式广播。"""
+    """
+    Web Agent 被后台任务复用且渠道已清空时应改用非流式广播。
+    """
     agent = _get_web_agent_type()(
         session_id="web-agent:scheduled-session",
         user_id="7",
@@ -709,7 +772,9 @@ def test_web_agent_reused_for_background_task_disables_streaming():
 
 
 def test_web_agent_output_callback_receives_only_new_text():
-    """WebAgent 外部回调应接收增量，同时内部仍保留完整输出。"""
+    """
+    WebAgent 外部回调应接收增量，同时内部仍保留完整输出。
+    """
     outputs = []
     agent = _get_web_agent_type()(
         session_id="web-agent:incremental-output",
@@ -729,7 +794,9 @@ def test_web_agent_output_callback_receives_only_new_text():
 
 
 def test_web_agent_tool_summary_is_emitted_before_following_text():
-    """Web 工具状态应在调用发生时输出，不能拖到正文结束后。"""
+    """
+    Web 工具状态应在调用发生时输出，不能拖到正文结束后。
+    """
     outputs = []
     agent = _get_web_agent_type()(
         session_id="web-agent:tool-order",
@@ -751,7 +818,9 @@ def test_web_agent_tool_summary_is_emitted_before_following_text():
 
 
 def test_web_agent_middleware_tool_emits_detail_in_verbose_mode():
-    """中间件私有工具在啰嗦模式下应立即输出逐条工具明细。"""
+    """
+    中间件私有工具在啰嗦模式下应立即输出逐条工具明细。
+    """
     outputs = []
     agent = _get_web_agent_type()(
         session_id="web-agent:middleware-tool-detail",
@@ -774,7 +843,9 @@ def test_web_agent_middleware_tool_emits_detail_in_verbose_mode():
 
 
 def test_web_agent_channel_supports_streaming_and_attachments():
-    """WebAgent 渠道应声明流式、多媒体和文件发送能力。"""
+    """
+    WebAgent 渠道应声明流式、多媒体和文件发送能力。
+    """
     assert ChannelCapabilityManager.supports_capability(NotificationChannel.WebAgent, ChannelCapability.INLINE_BUTTONS)
     assert ChannelCapabilityManager.supports_capability(
         NotificationChannel.WebAgent, ChannelCapability.CALLBACK_QUERIES
@@ -786,7 +857,9 @@ def test_web_agent_channel_supports_streaming_and_attachments():
 
 
 def test_build_web_agent_message_events_extracts_image():
-    """Agent 工具发送图片消息时应转换为图片附件事件。"""
+    """
+    Agent 工具发送图片消息时应转换为图片附件事件。
+    """
     events = _build_web_agent_message_events(
         schemas.Message(
             channel=NotificationChannel.WebAgent,
@@ -813,7 +886,9 @@ def test_build_web_agent_message_events_extracts_image():
 
 
 def test_extract_web_agent_message_supports_wrapped_message_event():
-    """NoticeMessage 包装 Message 时应仍能解析为 WebAgent 通知。"""
+    """
+    NoticeMessage 包装 Message 时应仍能解析为 WebAgent 通知。
+    """
     message = schemas.Message(
         channel=NotificationChannel.WebAgent,
         source="web-agent",
@@ -827,7 +902,9 @@ def test_extract_web_agent_message_supports_wrapped_message_event():
 
 
 def test_dispatch_web_agent_message_event_accepts_wrapped_message_event():
-    """WebAgent 等待队列应接收 message 包装格式的 NoticeMessage 事件。"""
+    """
+    WebAgent 等待队列应接收 message 包装格式的 NoticeMessage 事件。
+    """
     notice_queue = Queue()
     attach_web_agent_message_queue("1", notice_queue)
     message = schemas.Message(
@@ -851,7 +928,9 @@ def test_dispatch_web_agent_message_event_accepts_wrapped_message_event():
 
 
 def test_collect_web_agent_traditional_events_does_not_emit_submit_hint():
-    """传统命令未产生通知时不应返回“命令已提交”的兜底提示。"""
+    """
+    传统命令未产生通知时不应返回“命令已提交”的兜底提示。
+    """
     user = SimpleNamespace(id=1, name="admin")
 
     with (
@@ -878,7 +957,9 @@ def test_collect_web_agent_traditional_events_does_not_emit_submit_hint():
 
 
 def test_build_web_agent_message_events_registers_local_file(tmp_path):
-    """Agent 工具发送本地文件时应生成可下载附件事件。"""
+    """
+    Agent 工具发送本地文件时应生成可下载附件事件。
+    """
     file_path = tmp_path / "report.txt"
     file_path.write_text("hello", encoding="utf-8")
 
@@ -902,7 +983,9 @@ def test_build_web_agent_message_events_registers_local_file(tmp_path):
 
 
 def test_build_web_agent_message_events_registers_voice_attachment(tmp_path):
-    """Agent 工具发送语音时应转换为可播放的音频附件事件。"""
+    """
+    Agent 工具发送语音时应转换为可播放的音频附件事件。
+    """
     voice_path = tmp_path / "reply.wav"
     voice_path.write_bytes(b"wav-bytes")
 
@@ -927,7 +1010,9 @@ def test_build_web_agent_message_events_registers_voice_attachment(tmp_path):
 
 
 def test_prepare_web_agent_audio_attachment_async_keeps_loop_responsive(tmp_path):
-    """异步转码等待期间事件循环仍应可调度其它任务。"""
+    """
+    异步转码等待期间事件循环仍应可调度其它任务。
+    """
     source_path = tmp_path / "reply.opus"
     source_path.write_bytes(b"opus-bytes")
     converted_path = tmp_path / "voice" / "reply_web_abcdef12.wav"
@@ -935,9 +1020,15 @@ def test_prepare_web_agent_audio_attachment_async_keeps_loop_responsive(tmp_path
     release = asyncio.Event()
 
     class FakeProcess:
+        """
+        模拟子进程输出与结束行为，验证事件流取消和清理。
+        """
         returncode = 0
 
         async def communicate(self):
+            """
+            等待测试放行后生成模拟音频文件，检查转换期间事件循环仍可响应。
+            """
             started.set()
             await release.wait()
             converted_path.write_bytes(b"wav-bytes")
@@ -981,7 +1072,9 @@ def test_prepare_web_agent_audio_attachment_async_keeps_loop_responsive(tmp_path
 
 
 def test_prepare_web_agent_audio_attachment_async_cancellation_reaps_process(tmp_path):
-    """取消 WebAgent 转码时应终止并回收 ffmpeg，不能留下半成品。"""
+    """
+    取消 WebAgent 转码时应终止并回收 ffmpeg，不能留下半成品。
+    """
     source_path = tmp_path / "reply.opus"
     source_path.write_bytes(b"opus-bytes")
     output_path = tmp_path / "voice" / "reply_web_abcdef12.wav"
@@ -989,16 +1082,25 @@ def test_prepare_web_agent_audio_attachment_async_cancellation_reaps_process(tmp
     killed = False
 
     class FakeProcess:
+        """
+        模拟子进程输出与结束行为，验证事件流取消和清理。
+        """
         returncode = None
         _release = asyncio.Event()
 
         def kill(self):
+            """
+            记录子进程被终止并释放通信等待，模拟取消后的回收。
+            """
             nonlocal killed
             killed = True
             self.returncode = -9
             self._release.set()
 
         async def communicate(self):
+            """
+            通知测试通信已开始，等待进程终止后返回空输出。
+            """
             started.set()
             if self.returncode is None:
                 await self._release.wait()
@@ -1039,7 +1141,9 @@ def test_prepare_web_agent_audio_attachment_async_cancellation_reaps_process(tmp
 
 
 def test_prepare_web_agent_audio_attachment_async_communicate_error_reaps_process(tmp_path):
-    """ffmpeg 通信异常时应终止仍运行的进程并回退原文件。"""
+    """
+    ffmpeg 通信异常时应终止仍运行的进程并回退原文件。
+    """
     source_path = tmp_path / "reply.opus"
     source_path.write_bytes(b"opus-bytes")
     started = asyncio.Event()
@@ -1047,14 +1151,23 @@ def test_prepare_web_agent_audio_attachment_async_communicate_error_reaps_proces
     communicate_calls = 0
 
     class FakeProcess:
+        """
+        模拟子进程输出与结束行为，验证事件流取消和清理。
+        """
         returncode = None
 
         def kill(self):
+            """
+            记录进程终止状态，供通信异常后的资源回收断言。
+            """
             nonlocal killed
             killed = True
             self.returncode = -9
 
         async def communicate(self):
+            """
+            首次通信模拟管道异常，终止后再次通信成功以验证进程回收。
+            """
             nonlocal communicate_calls
             communicate_calls += 1
             started.set()
@@ -1093,16 +1206,24 @@ def test_prepare_web_agent_audio_attachment_async_communicate_error_reaps_proces
 def test_prepare_web_agent_audio_attachment_async_cancellation_cleans_completed_output(
     tmp_path,
 ):
-    """转码完成后检查产物期间取消，也应清理未登记的 WAV。"""
+    """
+    转码完成后检查产物期间取消，也应清理未登记的 WAV。
+    """
     source_path = tmp_path / "reply.opus"
     source_path.write_bytes(b"opus-bytes")
     output_path = tmp_path / "voice" / "reply_web_abcdef12.wav"
     exists_started = asyncio.Event()
 
     class FakeProcess:
+        """
+        模拟子进程输出与结束行为，验证事件流取消和清理。
+        """
         returncode = 0
 
         async def communicate(self):
+            """
+            生成已经完成的转换文件，检查随后的取消是否清理产物。
+            """
             output_path.parent.mkdir(parents=True, exist_ok=True)
             output_path.write_bytes(b"wav-bytes")
             return b"", b""
@@ -1152,23 +1273,34 @@ def test_prepare_web_agent_audio_attachment_async_cancellation_cleans_completed_
 
 
 def test_prepare_web_agent_audio_attachment_async_timeout_falls_back(tmp_path):
-    """转码超时应回退原文件并回收 ffmpeg。"""
+    """
+    转码超时应回退原文件并回收 ffmpeg。
+    """
     source_path = tmp_path / "reply.opus"
     source_path.write_bytes(b"opus-bytes")
     started = asyncio.Event()
     killed = False
 
     class FakeProcess:
+        """
+        模拟子进程输出与结束行为，验证事件流取消和清理。
+        """
         returncode = None
         _release = asyncio.Event()
 
         def kill(self):
+            """
+            终止超时的转换进程并唤醒通信等待，供降级处理收尾。
+            """
             nonlocal killed
             killed = True
             self.returncode = -9
             self._release.set()
 
         async def communicate(self):
+            """
+            保持转换通信等待直到进程被终止，模拟超时场景。
+            """
             started.set()
             if self.returncode is None:
                 await self._release.wait()
@@ -1207,7 +1339,9 @@ def test_prepare_web_agent_audio_attachment_async_timeout_falls_back(tmp_path):
 
 
 def test_transcribe_web_agent_audio_files_reads_registered_upload(tmp_path):
-    """WebAgent 上传录音应从临时附件登记表读取并转写为文本。"""
+    """
+    WebAgent 上传录音应从临时附件登记表读取并转写为文本。
+    """
     voice_path = tmp_path / "recording.webm"
     voice_path.write_bytes(b"webm-bytes")
     _WEB_AGENT_FILE_REGISTRY["audio-test"] = {
@@ -1242,7 +1376,9 @@ def test_transcribe_web_agent_audio_files_reads_registered_upload(tmp_path):
 
 
 def test_web_agent_stream_returns_error_when_voice_transcription_fails():
-    """仅发送语音且转写失败时应直接返回错误事件。"""
+    """
+    仅发送语音且转写失败时应直接返回错误事件。
+    """
     payload = schemas.AgentWebChatRequest(
         text="",
         session_id="browser-session",
@@ -1270,7 +1406,9 @@ def test_web_agent_stream_returns_error_when_voice_transcription_fails():
 
 
 def test_web_agent_stream_does_not_block_event_loop_during_transcription():
-    """同步音频 provider 等待时，事件循环仍应让其他任务获得执行机会。"""
+    """
+    同步音频 provider 等待时，事件循环仍应让其他任务获得执行机会。
+    """
     payload = schemas.AgentWebChatRequest(
         text="",
         session_id="browser-session",
@@ -1318,7 +1456,9 @@ def test_web_agent_stream_does_not_block_event_loop_during_transcription():
 
 
 def test_web_agent_stream_binds_session_to_agent_manager():
-    """WebAgent 普通对话应统一进入 AgentManager 并绑定远程命令会话。"""
+    """
+    WebAgent 普通对话应统一进入 AgentManager 并绑定远程命令会话。
+    """
     payload = schemas.AgentWebChatRequest(
         text="查看会话",
         session_id="browser-session",
@@ -1327,32 +1467,44 @@ def test_web_agent_stream_binds_session_to_agent_manager():
     user = SimpleNamespace(id=1, name="admin", is_superuser=True)
 
     class FakeWebAgent:
-        """测试用 WebAgent，模拟 AgentManager 内部的持久实例。"""
+        """
+        测试用 WebAgent，模拟 AgentManager 内部的持久实例。
+        """
 
         def __init__(self, **kwargs):
             self.__dict__.update(kwargs)
             self.processed = []
 
         def set_output_callback(self, output_callback):
-            """更新当前 SSE 输出回调。"""
+            """
+            更新当前 SSE 输出回调。
+            """
             self.output_callback = output_callback
 
         def set_protected_output_callback(self, protected_output_callback):
-            """更新当前 SSE 受保护输出回调。"""
+            """
+            更新当前 SSE 受保护输出回调。
+            """
             self.protected_output_callback = protected_output_callback
 
         def set_message_callback(self, message_callback):
-            """更新当前 SSE 通知回调。"""
+            """
+            更新当前 SSE 通知回调。
+            """
             self.message_callback = message_callback
 
         async def process(self, message, **kwargs):
-            """模拟一次 WebAgent 推理输出。"""
+            """
+            模拟一次 WebAgent 推理输出。
+            """
             self.processed.append((message, kwargs))
             self.output_callback("状态正常")
             return "状态正常"
 
         async def cleanup(self):
-            """模拟 Agent 资源清理。"""
+            """
+            模拟 Agent 资源清理。
+            """
             return None
 
     session_id = _build_web_agent_session_id(user, payload.session_id)
@@ -1395,7 +1547,9 @@ def test_web_agent_stream_binds_session_to_agent_manager():
 
 
 def test_web_agent_stream_queues_mid_run_input_into_the_same_assistant_stream():
-    """第一条 WebAgent 流运行时的第二条请求应在真实应用点切分助手回合。"""
+    """
+    第一条 WebAgent 流运行时的第二条请求应在真实应用点切分助手回合。
+    """
     first_payload = schemas.AgentWebChatRequest(
         text="开始长任务",
         session_id="mid-run-steering",
@@ -1411,7 +1565,9 @@ def test_web_agent_stream_queues_mid_run_input_into_the_same_assistant_stream():
     session_id = "web-agent:mid-run-steering"
 
     async def scenario():
-        """并发消费两条 HTTP 流，检查排队和应用的先后顺序。"""
+        """
+        并发消费两条 HTTP 流，检查排队和应用的先后顺序。
+        """
         owner = AgentSessionOwner()
         owner._accepting_tasks = True
         started = asyncio.Event()
@@ -1419,28 +1575,40 @@ def test_web_agent_stream_queues_mid_run_input_into_the_same_assistant_stream():
         instances = []
 
         class BlockingWebAgent:
-            """阻塞首轮推理并记录后续 steering 消息的测试 Agent。"""
+            """
+            阻塞首轮推理并记录后续 steering 消息的测试 Agent。
+            """
 
             def __init__(self, **kwargs):
-                """保存会话回调并登记实例数量。"""
+                """
+                保存会话回调并登记实例数量。
+                """
                 self.__dict__.update(kwargs)
                 self.processed = []
                 instances.append(self)
 
             def set_output_callback(self, output_callback):
-                """更新当前助手流的文本回调。"""
+                """
+                更新当前助手流的文本回调。
+                """
                 self.output_callback = output_callback
 
             def set_protected_output_callback(self, protected_output_callback):
-                """更新当前助手流的敏感结果回调。"""
+                """
+                更新当前助手流的敏感结果回调。
+                """
                 self.protected_output_callback = protected_output_callback
 
             def set_message_callback(self, message_callback):
-                """更新当前助手流的主动消息回调。"""
+                """
+                更新当前助手流的主动消息回调。
+                """
                 self.message_callback = message_callback
 
             async def process(self, message, **_kwargs):
-                """首轮保持运行，后续回合输出补充消息已生效。"""
+                """
+                首轮保持运行，后续回合输出补充消息已生效。
+                """
                 self.processed.append(message)
                 if message == "开始长任务":
                     if callable(self.tool_event_callback):
@@ -1469,11 +1637,15 @@ def test_web_agent_stream_queues_mid_run_input_into_the_same_assistant_stream():
                 return message
 
             async def cleanup(self):
-                """模拟 Agent 资源清理。"""
+                """
+                模拟 Agent 资源清理。
+                """
                 return True
 
         async def collect(iterator, initial=None):
-            """收集 SSE 文本，支持保留已读取的首个事件。"""
+            """
+            收集 SSE 文本，支持保留已读取的首个事件。
+            """
             chunks = list(initial or [])
             async for chunk in iterator:
                 chunks.append(chunk.decode("utf-8") if isinstance(chunk, bytes) else chunk)
@@ -1566,7 +1738,9 @@ def test_web_agent_stream_queues_mid_run_input_into_the_same_assistant_stream():
 
 
 def test_web_agent_stream_emits_secret_result_only_as_protected_event():
-    """敏感结果只能进入命名 protected SSE，不能进入普通快照。"""
+    """
+    敏感结果只能进入命名 protected SSE，不能进入普通快照。
+    """
     secret_marker = "WEB_SECRET_MARKER **literal** <img src=x>"
     payload = schemas.AgentWebChatRequest(
         text="确认",
@@ -1580,7 +1754,9 @@ def test_web_agent_stream_emits_secret_result_only_as_protected_event():
     user = SimpleNamespace(id=1, name="admin", is_superuser=True)
 
     class FakeProtectedAgent:
-        """直接触发受保护输出的 WebAgent 测试替身。"""
+        """
+        直接触发受保护输出的 WebAgent 测试替身。
+        """
 
         def __init__(self, **kwargs):
             self.__dict__.update(kwargs)
@@ -1591,23 +1767,40 @@ def test_web_agent_stream_emits_secret_result_only_as_protected_event():
             )
 
         def has_pending_secret_confirmation(self):
-            """模拟当前会话存在有效的敏感读取确认。"""
+            """
+            模拟当前会话存在有效的敏感读取确认。
+            """
             return self._pending_secret_confirmation is not None
 
         def set_output_callback(self, output_callback):
+            """
+            保存普通输出回调，供测试区分公开流与受保护结果。
+            """
             self.output_callback = output_callback
 
         def set_message_callback(self, message_callback):
+            """
+            保存消息回调，模拟 Agent 对话事件订阅。
+            """
             self.message_callback = message_callback
 
         def set_protected_output_callback(self, protected_output_callback):
+            """
+            保存受保护输出回调，使敏感结果可以进入专用事件通道。
+            """
             self.protected_output_callback = protected_output_callback
 
         async def process(self, _message, **_kwargs):
+            """
+            通过受保护回调发送敏感标记，并仅返回可公开的处理确认。
+            """
             self.protected_output_callback(secret_marker)
             return "敏感设置确认已处理。"
 
         async def cleanup(self):
+            """
+            完成无资源的 Agent 清理入口，避免测试引入外部副作用。
+            """
             return None
 
     session_id = _build_web_agent_session_id(user, payload.session_id)
@@ -1676,7 +1869,9 @@ def test_web_agent_stream_emits_secret_result_only_as_protected_event():
 
 
 def test_web_agent_cancel_keeps_existing_display_history():
-    """取消敏感读取不得覆盖当前会话已有的普通展示历史。"""
+    """
+    取消敏感读取不得覆盖当前会话已有的普通展示历史。
+    """
     payload = schemas.AgentWebChatRequest(
         text="取消",
         session_id="browser-secret-cancel",
@@ -1740,7 +1935,9 @@ def test_web_agent_cancel_keeps_existing_display_history():
 
 
 def test_web_agent_stream_rejects_confirmation_without_protected_capability():
-    """旧客户端未声明 protected 能力时不得把确认交给 Agent。"""
+    """
+    旧客户端未声明 protected 能力时不得把确认交给 Agent。
+    """
     payload = schemas.AgentWebChatRequest(
         text="确认",
         session_id="browser-secret-legacy",
@@ -1775,7 +1972,9 @@ def test_web_agent_stream_rejects_confirmation_without_protected_capability():
 
 
 def test_web_agent_stream_keeps_confirmation_without_pending_on_normal_path():
-    """无待确认操作时，纯文本确认仍是普通 Agent 消息。"""
+    """
+    无待确认操作时，纯文本确认仍是普通 Agent 消息。
+    """
     payload = schemas.AgentWebChatRequest(
         text="确认",
         session_id="browser-ordinary-confirmation",
@@ -1808,7 +2007,9 @@ def test_web_agent_stream_keeps_confirmation_without_pending_on_normal_path():
 
 
 def test_web_agent_stream_drops_secret_result_after_disconnect():
-    """确认请求断线后不改造通用队列，并拒绝向关闭的连接投递密钥。"""
+    """
+    确认请求断线后不改造通用队列，并拒绝向关闭的连接投递密钥。
+    """
     payload = schemas.AgentWebChatRequest(
         text="确认",
         session_id="browser-secret-disconnect",
@@ -1820,7 +2021,9 @@ def test_web_agent_stream_drops_secret_result_after_disconnect():
     agent_completed = asyncio.Event()
 
     async def disconnect_after_agent_starts():
-        """等待确认进入处理流程后再模拟浏览器断线。"""
+        """
+        等待确认进入处理流程后再模拟浏览器断线。
+        """
         await agent_started.wait()
         return True
 
@@ -1847,7 +2050,9 @@ def test_web_agent_stream_drops_secret_result_after_disconnect():
     delivery_results = []
 
     async def finish_after_disconnect(**kwargs):
-        """断线后继续完成只读任务，并尝试向已关闭发布器投递。"""
+        """
+        断线后继续完成只读任务，并尝试向已关闭发布器投递。
+        """
         agent_started.set()
         await release_agent.wait()
         delivery_results.append(kwargs["protected_output_callback"]("DISCONNECTED_SECRET_MARKER"))
@@ -1902,13 +2107,17 @@ def test_web_agent_stream_drops_secret_result_after_disconnect():
 
 
 def test_web_agent_stream_emits_heartbeat_during_idle_tool_wait():
-    """长时间没有 Agent 事件时应发送 SSE heartbeat 保持连接。"""
+    """
+    长时间没有 Agent 事件时应发送 SSE heartbeat 保持连接。
+    """
     payload = schemas.AgentWebChatRequest(text="分析系统状态", session_id="browser-heartbeat")
     request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
     user = SimpleNamespace(id=1, name="admin", is_superuser=True)
 
     async def slow_process_message(**kwargs):
-        """模拟工具执行期间暂时没有可见输出。"""
+        """
+        模拟工具执行期间暂时没有可见输出。
+        """
         await asyncio.sleep(0.035)
         kwargs["output_callback"]("状态正常")
 
@@ -1959,7 +2168,9 @@ def test_web_agent_stream_emits_heartbeat_during_idle_tool_wait():
 
 
 def test_web_agent_stop_finishes_stream_without_error():
-    """停止运行中的 Web Agent 后应正常结束 SSE，不能继续等待或报执行错误。"""
+    """
+    停止运行中的 Web Agent 后应正常结束 SSE，不能继续等待或报执行错误。
+    """
     payload = schemas.AgentWebChatRequest(
         text="执行长任务",
         session_id="browser-stop",
@@ -1969,7 +2180,9 @@ def test_web_agent_stop_finishes_stream_without_error():
     session_id = "web-agent:stop"
 
     class BlockingWebAgent:
-        """阻塞到会话 worker 被停止的 Web Agent 替身。"""
+        """
+        阻塞到会话 worker 被停止的 Web Agent 替身。
+        """
 
         started = None
 
@@ -1977,12 +2190,16 @@ def test_web_agent_stop_finishes_stream_without_error():
             self.__dict__.update(kwargs)
 
         async def process(self, _message, **_kwargs):
-            """等待外层 worker 取消。"""
+            """
+            等待外层 worker 取消。
+            """
             self.started.set()
             await asyncio.Event().wait()
 
         async def cleanup(self):
-            """模拟 Agent 资源清理。"""
+            """
+            模拟 Agent 资源清理。
+            """
             return None
 
     async def scenario():
@@ -2041,7 +2258,9 @@ def test_web_agent_stop_finishes_stream_without_error():
 
 
 def test_web_agent_stream_rechecks_running_service_before_enqueue():
-    """响应建立后服务若已关闭，生成器必须稳定返回错误且不向旧 manager 入队。"""
+    """
+    响应建立后服务若已关闭，生成器必须稳定返回错误且不向旧 manager 入队。
+    """
     payload = schemas.AgentWebChatRequest(
         text="检查状态",
         session_id="shutdown-race",
@@ -2084,7 +2303,9 @@ def test_web_agent_stream_rechecks_running_service_before_enqueue():
 
 
 def test_web_agent_traditional_stream_keeps_alive_and_saves_after_done():
-    """传统消息等待期间应保活，且展示快照不能阻塞终态。"""
+    """
+    传统消息等待期间应保活，且展示快照不能阻塞终态。
+    """
     payload = schemas.AgentWebChatRequest(text="/状态", session_id="traditional-heartbeat")
     request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
     user = SimpleNamespace(id=1, name="admin", is_superuser=True)
@@ -2093,12 +2314,16 @@ def test_web_agent_traditional_stream_keeps_alive_and_saves_after_done():
     snapshot_finished = ThreadEvent()
 
     async def slow_collect(**_kwargs):
-        """模拟传统消息链路等待外部结果。"""
+        """
+        模拟传统消息链路等待外部结果。
+        """
         await asyncio.sleep(0.035)
         return [{"type": "delta", "content": "状态正常"}]
 
     async def slow_snapshot(**_kwargs):
-        """阻塞快照写入，便于断言 done 不等待落库。"""
+        """
+        阻塞快照写入，便于断言 done 不等待落库。
+        """
         await asyncio.to_thread(snapshot_started.set)
         await asyncio.to_thread(snapshot_release.wait, 2)
         await asyncio.to_thread(snapshot_finished.set)
@@ -2172,20 +2397,26 @@ def test_web_agent_traditional_stream_keeps_alive_and_saves_after_done():
 
 
 def test_web_agent_traditional_stream_drains_collection_on_cancellation():
-    """传统 SSE 被取消时必须等待请求级 collection 子任务完成清理。"""
+    """
+    传统 SSE 被取消时必须等待请求级 collection 子任务完成清理。
+    """
     payload = schemas.AgentWebChatRequest(text="/状态", session_id="traditional-cancel")
     request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
     user = SimpleNamespace(id=1, name="admin", is_superuser=True)
 
     async def scenario():
-        """取消正在等待的 SSE 读取，并观察 collection 的清理时序。"""
+        """
+        取消正在等待的 SSE 读取，并观察 collection 的清理时序。
+        """
         started = asyncio.Event()
         cancelling = asyncio.Event()
         release_cleanup = asyncio.Event()
         cleanup_finished = asyncio.Event()
 
         async def blocked_collect(**_kwargs):
-            """阻塞传统消息收集，并在取消后等待测试释放清理。"""
+            """
+            阻塞传统消息收集，并在取消后等待测试释放清理。
+            """
             started.set()
             try:
                 await asyncio.Event().wait()
@@ -2236,7 +2467,9 @@ def test_web_agent_traditional_stream_drains_collection_on_cancellation():
 
 
 def test_web_agent_stream_sends_done_before_snapshot_persistence_finishes():
-    """展示快照落库缓慢时，前端终态不应被数据库操作阻塞。"""
+    """
+    展示快照落库缓慢时，前端终态不应被数据库操作阻塞。
+    """
     payload = schemas.AgentWebChatRequest(text="检查系统", session_id="browser-snapshot")
     request = SimpleNamespace(is_disconnected=AsyncMock(return_value=False))
     user = SimpleNamespace(id=1, name="admin", is_superuser=True)
@@ -2245,11 +2478,15 @@ def test_web_agent_stream_sends_done_before_snapshot_persistence_finishes():
     snapshot_finished = ThreadEvent()
 
     async def immediate_process_message(**kwargs):
-        """立即生成一段文本，随后进入终态。"""
+        """
+        立即生成一段文本，随后进入终态。
+        """
         kwargs["output_callback"]("检查完成")
 
     async def slow_snapshot(**_kwargs):
-        """阻塞快照写入，便于验证 done 的发送时机。"""
+        """
+        阻塞快照写入，便于验证 done 的发送时机。
+        """
         await asyncio.to_thread(snapshot_started.set)
         await asyncio.to_thread(snapshot_release.wait, 2)
         await asyncio.to_thread(snapshot_finished.set)
@@ -2326,7 +2563,9 @@ async def _collect_streaming_response(
     *,
     wait_for_background: bool = True,
 ):
-    """读取 StreamingResponse，并按用例语义等待生产 owner 完成收尾。"""
+    """
+    读取 StreamingResponse，并按用例语义等待生产 owner 完成收尾。
+    """
     chunks = []
     try:
         async for chunk in response.body_iterator:
@@ -2338,7 +2577,9 @@ async def _collect_streaming_response(
 
 
 def test_build_web_agent_message_events_extracts_choice_card():
-    """Agent 按钮通知应转换为 Web 选择卡片事件而非普通文本。"""
+    """
+    Agent 按钮通知应转换为 Web 选择卡片事件而非普通文本。
+    """
     events = _build_web_agent_message_events(
         schemas.Message(
             channel=NotificationChannel.WebAgent,
@@ -2402,7 +2643,9 @@ def test_build_web_agent_message_events_extracts_choice_card():
 
 
 def test_resolve_web_agent_choice_payload_returns_next_message():
-    """Web 按钮回调应解析为下一条用户消息并返回卡片反馈。"""
+    """
+    Web 按钮回调应解析为下一条用户消息并返回卡片反馈。
+    """
     agent_interaction_manager.clear()
     request = agent_interaction_manager.create_request(
         session_id="web-agent:session",
@@ -2439,7 +2682,9 @@ def test_resolve_web_agent_choice_payload_returns_next_message():
 
 
 def test_personal_learning_commands_are_not_admin_traditional_commands():
-    """Web 普通用户也能管理自己的学习数据；其它斜杠命令仍走旧权限链。"""
+    """
+    Web 普通用户也能管理自己的学习数据；其它斜杠命令仍走旧权限链。
+    """
     from app.application.messaging.agent import is_web_agent_traditional_message
     assert not is_web_agent_traditional_message('/memory pending')
     assert not is_web_agent_traditional_message('/skills pin media-workflow')

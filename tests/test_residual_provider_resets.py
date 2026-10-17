@@ -1,4 +1,6 @@
-"""验证剩余启动 provider 可撤销、幂等且不会跨 lifespan 串用对象。"""
+"""
+验证剩余启动 provider 可撤销、幂等且不会跨 lifespan 串用对象。
+"""
 
 from __future__ import annotations
 
@@ -39,7 +41,9 @@ _MISSING = object()
 
 @pytest.fixture
 def database_governance_state() -> Iterator[None]:
-    """保存并恢复进程级数据库治理门面，避免污染其它测试。"""
+    """
+    保存并恢复进程级数据库治理门面，避免污染其它测试。
+    """
     try:
         previous: Any = get_database_governance()
     except RuntimeError:
@@ -51,10 +55,13 @@ def database_governance_state() -> Iterator[None]:
 
 
 def test_database_governance_reset_contract(database_governance_state: None) -> None:
-    """数据库治理 reset 后拒绝旧对象，并允许下一代重新装配。"""
+    """
+    数据库治理 reset 后拒绝旧对象，并允许下一代重新装配。
+    """
     first = object()
     second = object()
 
+    # 注入只实现当前用例所需能力的替身，验证配置替换与重置。
     configure_database_governance(first)  # type: ignore[arg-type]
     assert get_database_governance() is first
 
@@ -63,13 +70,16 @@ def test_database_governance_reset_contract(database_governance_state: None) -> 
     with pytest.raises(RuntimeError, match="数据库治理服务尚未配置"):
         get_database_governance()
 
+    # 注入只实现当前用例所需能力的替身，验证配置替换与重置。
     configure_database_governance(second)  # type: ignore[arg-type]
     assert get_database_governance() is second
     assert get_database_governance() is not first
 
 
 def test_resource_version_provider_reset_contract() -> None:
-    """资源版本 reset 恢复空版本，下一代不得调用上一代 provider。"""
+    """
+    资源版本 reset 恢复空版本，下一代不得调用上一代 provider。
+    """
     previous = resource_module._resource_version_provider
     calls: list[str] = []
     try:
@@ -92,13 +102,17 @@ def test_resource_version_provider_reset_contract() -> None:
 
 
 def test_tool_manager_data_context_reset_contract() -> None:
-    """工具管理器 reset 应清除旧上下文和由它物化的工具目录。"""
+    """
+    工具管理器 reset 应清除旧上下文和由它物化的工具目录。
+    """
     manager = MoviePilotToolsManager()
     first = object()
     second = object()
 
+    # 注入只实现当前用例所需能力的替身，验证配置替换与重置。
     manager.set_data_context(first)  # type: ignore[arg-type]
     manager.tools = [object()]
+    # 用哨兵对象替换运行状态，确认重置会清除旧依赖。
     manager.catalog = object()  # type: ignore[assignment]
     manager._catalog_materialized = True
     manager._catalog_managed_by_factory = True
@@ -111,13 +125,16 @@ def test_tool_manager_data_context_reset_contract() -> None:
     assert manager._plugin_agent_tools_revision == -1
     assert manager._catalog_materialized is False
 
+    # 注入只实现当前用例所需能力的替身，验证配置替换与重置。
     manager.set_data_context(second)  # type: ignore[arg-type]
     assert manager._data is second
     assert manager._data is not first
 
 
 def test_scheduler_runtime_binding_reset_contract() -> None:
-    """停止态 Scheduler reset 后拒绝旧仓储和服务，并允许下一代装配。"""
+    """
+    停止态 Scheduler reset 后拒绝旧仓储和服务，并允许下一代装配。
+    """
     scheduler = object.__new__(Scheduler)
     Scheduler.__init__(scheduler)
     first_tasks = object()
@@ -125,7 +142,9 @@ def test_scheduler_runtime_binding_reset_contract() -> None:
     second_tasks = object()
     second_services = object()
 
+    # 注入只实现当前用例所需能力的替身，验证配置替换与重置。
     scheduler.configure_agent_tasks(first_tasks)  # type: ignore[arg-type]
+    # 注入只实现当前用例所需能力的替身，验证配置替换与重置。
     scheduler.configure_services(first_services)  # type: ignore[arg-type]
     assert scheduler._agent_task_repository() is first_tasks
     assert scheduler._scheduler_services() is first_services
@@ -137,7 +156,9 @@ def test_scheduler_runtime_binding_reset_contract() -> None:
     with pytest.raises(RuntimeError, match="业务能力尚未注入"):
         scheduler._scheduler_services()
 
+    # 注入只实现当前用例所需能力的替身，验证配置替换与重置。
     scheduler.configure_agent_tasks(second_tasks)  # type: ignore[arg-type]
+    # 注入只实现当前用例所需能力的替身，验证配置替换与重置。
     scheduler.configure_services(second_services)  # type: ignore[arg-type]
     assert scheduler._agent_task_repository() is second_tasks
     assert scheduler._scheduler_services() is second_services
@@ -145,24 +166,36 @@ def test_scheduler_runtime_binding_reset_contract() -> None:
 
 
 def test_event_manager_host_binding_reset_contract() -> None:
-    """事件总线可分别撤销 resolver、错误通知和宿主 listener。"""
+    """
+    事件总线可分别撤销 resolver、错误通知和宿主 listener。
+    """
     manager = object.__new__(EventManager)
     EventManager.__init__(manager)
 
     def first_resolver(_owner: type) -> None:
-        """代表上一 lifespan 的实例解析器。"""
+        """
+        代表上一 lifespan 的实例解析器。
+        """
 
     def second_resolver(_owner: type) -> None:
-        """代表下一 lifespan 的实例解析器。"""
+        """
+        代表下一 lifespan 的实例解析器。
+        """
 
     def first_notifier(_title: str, _message: str) -> None:
-        """代表上一 lifespan 的错误通知器。"""
+        """
+        代表上一 lifespan 的错误通知器。
+        """
 
     def second_notifier(_title: str, _message: str) -> None:
-        """代表下一 lifespan 的错误通知器。"""
+        """
+        代表下一 lifespan 的错误通知器。
+        """
 
     def listener(_event: object) -> None:
-        """提供可按稳定标识注册和撤销的测试 listener。"""
+        """
+        提供可按稳定标识注册和撤销的测试 listener。
+        """
 
     manager.register_handler_instance_resolver("host", first_resolver)
     manager.set_error_notifier(first_notifier)
@@ -186,7 +219,9 @@ def test_event_manager_host_binding_reset_contract() -> None:
 
 
 def test_reset_event_services_unregisters_lifespan_resolvers(monkeypatch) -> None:
-    """模块 lifespan 结束时应撤销宿主与配置 owner resolver。"""
+    """
+    模块 lifespan 结束时应撤销宿主与配置 owner resolver。
+    """
     manager = object.__new__(EventManager)
     EventManager.__init__(manager)
     singleton_key = (EventManager, (), frozenset())
@@ -196,10 +231,14 @@ def test_reset_event_services_unregisters_lifespan_resolvers(monkeypatch) -> Non
     owner.on_config_changed = reload_config
 
     def plugin_resolver(_owner: type) -> None:
-        """代表插件运行时独立拥有的 resolver。"""
+        """
+        代表插件运行时独立拥有的 resolver。
+        """
 
     def config_resolver(owner_class: type) -> EventHandlerBinding | None:
-        """代表当前 lifespan 持有的配置 owner resolver。"""
+        """
+        代表当前 lifespan 持有的配置 owner resolver。
+        """
         if owner_class is SystemHelper:
             return EventHandlerBinding(
                 instance=owner,
@@ -237,7 +276,9 @@ def test_reset_event_services_unregisters_lifespan_resolvers(monkeypatch) -> Non
 def test_managed_resource_owner_reset_releases_only_closed_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """托管资源 reset 只释放已关闭引用，不把释放动作伪装为完整重启。"""
+    """
+    托管资源 reset 只释放已关闭引用，不把释放动作伪装为完整重启。
+    """
     first = SimpleNamespace(is_shutdown=True)
     second = SimpleNamespace(is_shutdown=True)
     monkeypatch.setattr(managed_resource_composition, "_managed_resource_runtime", first)
@@ -248,6 +289,7 @@ def test_managed_resource_owner_reset_releases_only_closed_runtime(
     assert managed_resource_composition._managed_resource_runtime is None
     assert managed_resource_facade._managed_resource_runtime is None
 
+    # 注入只实现当前用例所需能力的替身，验证配置替换与重置。
     configure_managed_resource_runtime(second)  # type: ignore[arg-type]
     assert managed_resource_facade._managed_resource_runtime is second
     assert managed_resource_facade._managed_resource_runtime is not first
@@ -257,7 +299,9 @@ def test_managed_resource_owner_reset_releases_only_closed_runtime(
 def test_managed_resource_owner_refuses_to_release_live_runtime(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """托管资源仍活动时 reset 必须保留 owner，避免隐藏未收口资源。"""
+    """
+    托管资源仍活动时 reset 必须保留 owner，避免隐藏未收口资源。
+    """
     runtime = SimpleNamespace(is_shutdown=False)
     monkeypatch.setattr(managed_resource_composition, "_managed_resource_runtime", runtime)
     monkeypatch.setattr(managed_resource_facade, "_managed_resource_runtime", runtime)

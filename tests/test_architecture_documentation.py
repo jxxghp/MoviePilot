@@ -1,4 +1,6 @@
-"""架构规则文档的可执行一致性约束。"""
+"""
+架构规则文档的可执行一致性约束。
+"""
 
 import re
 from pathlib import Path
@@ -10,7 +12,9 @@ COMPATIBILITY_MARKERS = ("legacy plugin abi", "compatibility", "兼容")
 
 
 def test_no_session_oper_examples_are_explicitly_compatibility_only() -> None:
-    """无 Session Oper 示例必须紧邻 Legacy/Compat 说明，不能冒充宿主规范。"""
+    """
+    无 Session Oper 示例必须紧邻 Legacy/Compat 说明，不能冒充宿主规范。
+    """
     violations: list[str] = []
     for path in RULE_DOCUMENTS:
         content = path.read_text(encoding="utf-8")

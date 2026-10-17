@@ -1,3 +1,7 @@
+"""
+验证种子过滤规则解析与候选筛选。
+"""
+
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -20,6 +24,7 @@ class _RuleHelper:
         """
         self._groups = groups
 
+    # 保留被替换接口的参数签名，当前替身只返回预设规则。
     def get_rule_group_by_media(self, media=None, group_names=None):  # noqa: ARG002
         """
         按名称返回测试规则组。
@@ -110,7 +115,9 @@ def test_builtin_cnsub_rule_ignores_trailing_file_size_unit():
 
 
 def test_builtin_music_rules_assign_format_and_bitrate_priority():
-    """内置音乐规则应允许格式和码率共同参与订阅洗版优先级。"""
+    """
+    内置音乐规则应允许格式和码率共同参与订阅洗版优先级。
+    """
     module = _build_filter_module(
         rule_string="FLAC > BITRATE320",
         rule_set=BUILTIN_RULE_SET,

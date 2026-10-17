@@ -1,3 +1,7 @@
+"""
+Slack 通知路由、入站消息解析、附件下载与处理状态反馈。
+"""
+
 import json
 import re
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -24,11 +28,14 @@ register_channel_admin_resolver(
 
 
 class SlackModule(_MessageChannelModuleBase[Slack]):
-    # 管理员配置键，与渠道 resolver 保持一致
-    """处理 Slack 消息收发及通知实例路由。"""
+    """
+    处理 Slack 消息收发及通知实例路由。
+    """
+    # 管理员配置键，与渠道管理员解析器保持一致。
     _admin_config_key = "SLACK_ADMINS"
     _notification_user_target_keys = ("slack_userid",)
     _notification_admin_default_config_keys = ("SLACK_CHANNEL",)
+    # 使用“眼睛”表情反馈消息正在处理。
     PROCESSING_REACTION = "eyes"
     _AUDIO_SUFFIXES = (
         ".mp3",
@@ -47,43 +54,49 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
 
     def init_module(self) -> None:
         """
-        初始化模块
+        初始化模块。
         """
         super().init_service(service_name=Slack.__name__.lower(), service_type=Slack)
         self._channel = NotificationChannel.Slack
 
     @staticmethod
     def get_name() -> str:
-        """返回渠道的显示名称。"""
+        """
+        返回渠道的显示名称。
+        """
         return "Slack"
 
     @staticmethod
     def get_type() -> ModuleType:
         """
-        获取模块类型
+        获取模块类型。
         """
         return ModuleType.Notification
 
     @staticmethod
     def get_subtype() -> NotificationChannel:
         """
-        获取模块子类型
+        获取模块子类型。
         """
         return NotificationChannel.Slack
 
     @staticmethod
     def get_priority() -> int:
         """
-        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效
+        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效。
         """
         return 3
 
     def stop(self) -> bool:
-        """停止全部 Slack 实例，并返回资源是否全部收敛。"""
+        """
+        停止全部 Slack 实例，并返回资源是否全部收敛。
+        """
         return self._stop_service_instances()
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        """保留设置初始化钩子，实例配置由通知服务管理。"""
+        """
+        保留设置初始化钩子，实例配置由通知服务管理。
+        """
         pass
 
     @staticmethod
@@ -98,126 +111,16 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         self, source: str, body: Any, form: Any, args: Any
     ) -> Optional[IncomingMessage]:
         """
-        解析消息内容，返回字典，注意以下约定值：
-        userid: 用户ID
-        username: 用户名
-        text: 内容
-        :param source: 消息来源
-        :param body: 请求体
-        :param form: 表单
-        :param args: 参数
-        :return: 渠道、消息体
+        解析 Slack 普通消息、提及、快捷方式、命令和按钮回调。
+
+        命令按实际发言人校验管理员身份。按钮回调保留原消息时间戳和频道以支持编辑。
+
+        :param source: 通知服务配置名称
+        :param body: JSON 编码的事件报文，兼容被重复编码为字符串的报文
+        :param form: 兼容统一入口的表单参数，当前不使用
+        :param args: 兼容统一入口的查询参数，当前不使用
+        :return: 统一消息对象；配置缺失、JSON 无效、事件不支持或权限不足时返回 None
         """
-        """
-        # 消息
-        {
-            'client_msg_id': '',
-            'type': 'message',
-            'text': 'hello',
-            'user': '',
-            'ts': '1670143568.444289',
-            'blocks': [{
-                'type': 'rich_text',
-                'block_id': 'i2j+',
-                'elements': [{
-                    'type': 'rich_text_section',
-                    'elements': [{
-                        'type': 'text',
-                        'text': 'hello'
-                    }]
-                }]
-            }],
-            'team': '',
-            'client': '',
-            'event_ts': '1670143568.444289',
-            'channel_type': 'im'
-        }
-        # 命令
-        {
-          "token": "",
-          "team_id": "",
-          "team_domain": "",
-          "channel_id": "",
-          "channel_name": "directmessage",
-          "user_id": "",
-          "user_name": "",
-          "command": "/subscribes",
-          "text": "",
-          "api_app_id": "",
-          "is_enterprise_install": "false",
-          "response_url": "",
-          "trigger_id": ""
-        }
-        # 快捷方式
-        {
-          "type": "shortcut",
-          "token": "XXXXXXXXXXXXX",
-          "action_ts": "1581106241.371594",
-          "team": {
-            "id": "TXXXXXXXX",
-            "domain": "shortcuts-test"
-          },
-          "user": {
-            "id": "UXXXXXXXXX",
-            "username": "aman",
-            "team_id": "TXXXXXXXX"
-          },
-          "callback_id": "shortcut_create_task",
-          "trigger_id": "944799105734.773906753841.38b5894552bdd4a780554ee59d1f3638"
-        }
-        # 按钮点击
-        {
-          "type": "block_actions",
-          "team": {
-            "id": "T9TK3CUKW",
-            "domain": "example"
-          },
-          "user": {
-            "id": "UA8RXUSPL",
-            "username": "jtorrance",
-            "team_id": "T9TK3CUKW"
-          },
-          "api_app_id": "AABA1ABCD",
-          "token": "9s8d9as89d8as9d8as989",
-          "container": {
-            "type": "message_attachment",
-            "message_ts": "1548261231.000200",
-            "attachment_id": 1,
-            "channel_id": "CBR2V3XEX",
-            "is_ephemeral": false,
-            "is_app_unfurl": false
-          },
-          "trigger_id": "12321423423.333649436676.d8c1bb837935619ccad0f624c448ffb3",
-          "client": {
-            "id": "CBR2V3XEX",
-            "name": "review-updates"
-          },
-          "message": {
-            "bot_id": "BAH5CA16Z",
-            "type": "message",
-            "text": "This content can't be displayed.",
-            "user": "UAJ2RU415",
-            "ts": "1548261231.000200",
-            ...
-          },
-          "response_url": "https://hooks.slack.com/actions/AABA1ABCD/1232321423432/D09sSasdasdAS9091209",
-          "actions": [
-            {
-              "action_id": "WaXA",
-              "block_id": "=qXel",
-              "text": {
-                "type": "plain_text",
-                "text": "View",
-                "emoji": true
-              },
-              "value": "click_me_123",
-              "type": "button",
-              "action_ts": "1548426417.840180"
-            }
-          ]
-        }
-        """
-        # 获取服务配置
         client_config = self.get_config(source)
         if not client_config:
             return None
@@ -255,7 +158,6 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
             elif msg_json.get("type") == "block_actions":
                 userid = msg_json.get("user", {}).get("id")
                 callback_data = msg_json.get("actions")[0].get("value")
-                # 使用CALLBACK前缀标识按钮回调
                 text = f"CALLBACK:{callback_data}"
                 username = msg_json.get("user", {}).get("name")
                 if str(callback_data).strip().startswith("/") and self._should_reject_admin_command(
@@ -264,7 +166,6 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                     self._send_admin_denied(client, userid)
                     return None
 
-                # 获取原消息信息用于编辑
                 message_info = msg_json.get("message", {})
                 # Slack消息的时间戳作为消息ID
                 message_ts = message_info.get("ts")
@@ -277,7 +178,6 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                     f"userid={userid}, username={username}, callback_data={callback_data}"
                 )
 
-                # 创建包含回调信息的CommingMessage
                 return IncomingMessage(
                     channel=NotificationChannel.Slack,
                     source=client_config.name,
@@ -357,7 +257,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         msg_json: dict,
     ) -> Optional[List[IncomingMessage.MessageImage]]:
         """
-        从Slack消息中提取图片URL
+        从Slack消息中提取图片URL。
         """
         files = msg_json.get("files", [])
         if not files:
@@ -387,7 +287,7 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
     @classmethod
     def _extract_audio_refs(cls, msg_json: dict) -> Optional[List[str]]:
         """
-        从Slack消息中提取音频文件引用
+        从Slack消息中提取音频文件引用。
         """
         files = msg_json.get("files", [])
         if not files:
@@ -451,10 +351,11 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
 
     def download_slack_file_to_data_url(self, file_url: str, source: str) -> Optional[str]:
         """
-        下载Slack文件并转为data URL
-        :param file_url: Slack私有文件URL
-        :param source: 来源名称
-        :return: data URL
+        下载 Slack 私有图片并转换为 data URL。
+
+        :param file_url: Slack 私有文件下载地址
+        :param source: 所属通知配置名称
+        :return: 带 MIME 类型的 Base64 地址；配置、客户端或下载不可用时返回 None
         """
         config = self.get_config(source)
         if not config:
@@ -472,7 +373,11 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
 
     def download_slack_file_bytes(self, file_ref: str, source: str) -> Optional[bytes]:
         """
-        下载Slack音频文件并返回原始字节
+        下载 Slack 文件引用并返回原始字节。
+
+        :param file_ref: slack://file/ 开头的内部文件引用
+        :param source: 所属通知配置名称
+        :return: 非空文件内容；配置、客户端或下载不可用时返回 None
         """
         if not file_ref or not file_ref.startswith("slack://file/"):
             return None
@@ -491,9 +396,12 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
 
     def post_message(self, message: Message, **kwargs) -> None:
         """
-        发送消息
-        :param message: 消息
-        :return: 成功或失败
+        向通过渠道范围筛选的 Slack 配置发送普通通知。
+
+        不汇总客户端发送结果；客户端负责记录发送失败。
+
+        :param message: 提供通知范围、接收人、标题和原消息标识等信息的消息
+        :param kwargs: 兼容统一接口的扩展参数，当前不使用
         """
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
@@ -532,10 +440,12 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         self, message: Message, medias: List[MediaInfo]
     ) -> None:
         """
-        发送媒体信息选择列表
-        :param message: 消息体
-        :param medias: 媒体信息
-        :return: 成功或失败
+        向通过渠道范围筛选的 Slack 配置发送媒体候选列表。
+
+        不汇总客户端发送结果；客户端负责记录发送失败。
+
+        :param message: 提供通知范围、接收人、标题和原消息标识等信息的消息
+        :param medias: 待展示的媒体列表
         """
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
@@ -555,10 +465,12 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         self, message: Message, torrents: List[Context]
     ) -> None:
         """
-        发送种子信息选择列表
-        :param message: 消息体
-        :param torrents: 种子信息
-        :return: 成功或失败
+        向通过渠道范围筛选的 Slack 配置发送种子候选列表。
+
+        不汇总客户端发送结果；客户端负责记录发送失败。
+
+        :param message: 提供通知范围、接收人、标题和原消息标识等信息的消息
+        :param torrents: 待展示的种子上下文列表
         """
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
@@ -582,12 +494,13 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         chat_id: Optional[str] = None,
     ) -> Optional[bool]:
         """
-        删除消息
+        删除消息。
+
         :param channel: 消息渠道
         :param source: 指定的消息源
         :param message_id: 消息ID（Slack中为时间戳）
         :param chat_id: 聊天ID（频道ID）
-        :return: 删除是否成功
+        :return: 删除成功返回 True，失败返回 False；非 Slack 渠道返回 None
         """
         if channel != self._channel:
             return None
@@ -614,7 +527,8 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         metadata: Optional[dict] = None,
     ) -> Optional[bool]:
         """
-        编辑消息
+        编辑消息。
+
         :param channel: 消息渠道
         :param source: 指定的消息源
         :param message_id: 消息ID
@@ -622,7 +536,8 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         :param text: 新的消息内容
         :param title: 消息标题
         :param buttons: 新的按钮列表
-        :return: 编辑是否成功
+        :param metadata: 兼容统一编辑接口的元数据，当前不使用
+        :return: 编辑成功返回 True，失败返回 False；非 Slack 渠道返回 None
         """
         if channel != self._channel:
             return None
@@ -652,7 +567,15 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         text: Optional[str] = None,
     ) -> Optional[dict]:
         """
-        使用 Slack reaction 标记“正在处理”。
+        给入站消息添加正在处理的表情反应。
+
+        :param channel: 目标通知渠道；非 Slack 时不处理
+        :param source: 通知配置名称
+        :param userid: 兼容统一接口的用户标识；开始时随状态保存，不参与频道定位
+        :param message_id: Slack 消息时间戳
+        :param chat_id: 消息所在频道标识
+        :param text: 原始文本；为空或以 CALLBACK: 开头时不添加标记
+        :return: 成功时返回可供结束清理使用的状态字典；不适用或失败时返回 None
         """
         if channel != self._channel:
             return None
@@ -692,7 +615,15 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
         status: Optional[dict] = None,
     ) -> Optional[bool]:
         """
-        移除 Slack “正在处理” reaction。
+        清除入站消息的正在处理表情反应。
+
+        :param channel: 目标通知渠道；非 Slack 时不处理
+        :param source: 通知配置名称
+        :param userid: 兼容统一接口的用户标识；开始时随状态保存，不参与频道定位
+        :param message_id: Slack 消息时间戳
+        :param chat_id: 消息所在频道标识
+        :param status: 开始时返回的状态，优先使用其中的消息、频道和表情信息
+        :return: 清除成功时返回 True，失败返回 False；非 Slack 渠道返回 None
         """
         if channel != self._channel:
             return None
@@ -716,9 +647,12 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
 
     def send_direct_message(self, message: Message) -> Optional[MessageResponse]:
         """
-        直接发送消息并返回消息ID等信息
-        :param message: 消息体
-        :return: 消息响应（包含message_id, chat_id等）
+        向首个成功匹配的 Slack 实例直接发送文件或文本。
+
+        文本使用 Slack 时间戳作为消息标识；文件上传可能仅返回文件标识，频道标识可能为空。
+
+        :param message: 包含接收人、文件或文本内容的通知消息
+        :return: 首次发送成功的消息响应；没有可用目标或全部失败时返回 None
         """
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
@@ -749,8 +683,6 @@ class SlackModule(_MessageChannelModuleBase[Slack]):
                     )
                 if result and result[0]:
                     # Slack 使用时间戳作为 message_id，chat_id 是频道ID
-                    # 注意：这里返回的是发送后的结果，需要获取实际的 message_id
-                    # 由于 Slack API 返回的是 result[1]，包含完整响应，我们需要从中提取
                     response_data = result[1]
                     message_id = None
                     channel_id = None

@@ -1,3 +1,7 @@
+"""
+验证工具超时、后台线程占用和 API 特例的执行期限。
+"""
+
 import asyncio
 import threading
 from unittest.mock import patch
@@ -20,33 +24,45 @@ from app.runtime.correlation import correlation_scope, get_correlation_id
 
 
 class SlowAgentTool(MoviePilotTool):
-    """用于验证工具超时保护的慢工具。"""
+    """
+    用于验证工具超时保护的慢工具。
+    """
 
     name: str = "slow_agent_tool"
     description: str = "Test slow tool."
 
     async def run(self, **kwargs) -> str:
-        """等待足够久以触发测试中的短超时。"""
+        """
+        等待足够久以触发测试中的短超时。
+        """
         await asyncio.sleep(1)
         return "finished"
 
 
 class BlockingAgentTool(MoviePilotTool):
-    """用于验证阻塞调用并发名额释放时机的工具。"""
+    """
+    用于验证阻塞调用并发名额释放时机的工具。
+    """
 
     name: str = "blocking_agent_tool"
     description: str = "Test blocking tool."
 
     async def run(self, **kwargs) -> str:
-        """本测试不会直接调用该方法。"""
+        """
+        本测试不会直接调用该方法。
+        """
         return "unused"
 
 
 class SlowMoviePilotApiTool(MoviePilotApiTool):
-    """用于验证 search.torrents 的 operation 级等待上限。"""
+    """
+    用于验证 search.torrents 的 operation 级等待上限。
+    """
 
     async def run(self, **kwargs) -> str:
-        """短暂等待以区分 search.torrents 与其它 operation 的超时。"""
+        """
+        短暂等待以区分 search.torrents 与其它 operation 的超时。
+        """
         del kwargs
         await asyncio.sleep(0.03)
         return "finished"
@@ -54,7 +70,9 @@ class SlowMoviePilotApiTool(MoviePilotApiTool):
 
 @pytest.fixture(autouse=True)
 def _reset_blocking_executor_runtime():
-    """每个用例前后恢复阻塞池门禁，避免进程级 owner 状态串扰。"""
+    """
+    每个用例前后恢复阻塞池门禁，避免进程级 owner 状态串扰。
+    """
     assert reopen_blocking_executors() is True
     yield
     assert shutdown_blocking_executors(cancel_futures=True) is True
@@ -62,7 +80,9 @@ def _reset_blocking_executor_runtime():
 
 
 def test_arun_raises_timeout_when_tool_exceeds_limit():
-    """底层工具入口应把超时交给宿主策略记录失败终态。"""
+    """
+    底层工具入口应把超时交给宿主策略记录失败终态。
+    """
     tool = SlowAgentTool(session_id="session-1", user_id="10001")
 
     async def _run_tool():
@@ -74,7 +94,9 @@ def test_arun_raises_timeout_when_tool_exceeds_limit():
 
 
 def test_http_tool_manager_uses_same_timeout_guard():
-    """HTTP/MCP 工具入口绕过 _arun 时也应复用工具超时保护。"""
+    """
+    HTTP/MCP 工具入口绕过 _arun 时也应复用工具超时保护。
+    """
     manager = MoviePilotToolsManager(is_admin=True)
     manager.tools = [SlowAgentTool(session_id="session-1", user_id="10001")]
 
@@ -88,7 +110,9 @@ def test_http_tool_manager_uses_same_timeout_guard():
 
 
 def test_moviepilot_api_extends_timeout_only_for_search_torrents(monkeypatch):
-    """search.torrents 可超过全局工具上限，其它 API operation 仍受原配置限制。"""
+    """
+    search.torrents 可超过全局工具上限，其它 API operation 仍受原配置限制。
+    """
     tool = SlowMoviePilotApiTool(session_id="session-1", user_id="10001")
     monkeypatch.setattr("app.agent.tools.base._get_tool_timeout_seconds", lambda: 0.01)
     assert tool._get_run_timeout_seconds(operation_id="search.torrents") == 300
@@ -103,7 +127,9 @@ def test_moviepilot_api_extends_timeout_only_for_search_torrents(monkeypatch):
 
 
 def test_run_blocking_keeps_bucket_slot_until_worker_finishes():
-    """被取消的阻塞调用在底层线程结束前不应释放同桶并发名额。"""
+    """
+    被取消的阻塞调用在底层线程结束前不应释放同桶并发名额。
+    """
     tool = BlockingAgentTool(session_id="session-1", user_id="10001")
     started = asyncio.Event()
     release = threading.Event()
@@ -140,7 +166,9 @@ def test_run_blocking_keeps_bucket_slot_until_worker_finishes():
 
 
 def test_run_blocking_preserves_each_call_context():
-    """长期复用的工具线程必须读取当前调用，而不是首个调用的上下文。"""
+    """
+    长期复用的工具线程必须读取当前调用，而不是首个调用的上下文。
+    """
     async def _run_scenario():
         observed = []
         for correlation_id in ("request-one", "request-two"):
@@ -154,7 +182,9 @@ def test_run_blocking_preserves_each_call_context():
 
 
 def test_shutdown_blocking_executors_clears_agent_tool_workers():
-    """测试结束清理应关闭 Agent 工具阻塞线程池，避免全量测试退出时等待 worker。"""
+    """
+    测试结束清理应关闭 Agent 工具阻塞线程池，避免全量测试退出时等待 worker。
+    """
 
     async def _create_worker():
         await MoviePilotTool.run_blocking("web", lambda: "done")
@@ -170,7 +200,9 @@ def test_shutdown_blocking_executors_clears_agent_tool_workers():
 
 
 def test_shutdown_blocking_executors_cancels_queued_workers_and_is_idempotent():
-    """收尾清理应取消尚未开始的排队任务，并允许重复调用。"""
+    """
+    收尾清理应取消尚未开始的排队任务，并允许重复调用。
+    """
     shutdown_blocking_executors(wait=False, cancel_futures=True)
     started = [threading.Event(), threading.Event()]
     release = threading.Event()
@@ -208,12 +240,16 @@ def test_shutdown_blocking_executors_cancels_queued_workers_and_is_idempotent():
 
 @pytest.mark.asyncio
 async def test_close_blocking_executors_retains_owner_until_retry() -> None:
-    """同步调用超时后保留 Future/executor，完成后的重复 close 才成功。"""
+    """
+    同步调用超时后保留 Future/executor，完成后的重复 close 才成功。
+    """
     started = threading.Event()
     release = threading.Event()
 
     def _blocking_call() -> str:
-        """等待测试释放，稳定制造超过关停预算的运行 Future。"""
+        """
+        等待测试释放，稳定制造超过关停预算的运行 Future。
+        """
         started.set()
         release.wait()
         return "done"
@@ -250,28 +286,38 @@ async def test_close_blocking_executors_retains_owner_until_retry() -> None:
 
 
 def test_create_agent_config_uses_llm_max_iterations():
-    """Agent 执行配置应把 LLM_MAX_ITERATIONS 传给 LangGraph recursion_limit。"""
+    """
+    Agent 执行配置应把 LLM_MAX_ITERATIONS 传给 LangGraph recursion_limit。
+    """
     from langchain_core.messages import AIMessage
 
     from app.agent.orchestrator import MoviePilotAgent
 
     class _FakeGraphState:
-        """提供最小 LangGraph 状态替身。"""
+        """
+        提供最小 LangGraph 状态替身。
+        """
 
         values = {"messages": [AIMessage(content="ok")]}
 
     class _FakeAgent:
-        """记录 ainvoke 收到的 config。"""
+        """
+        记录 ainvoke 收到的 config。
+        """
 
         def __init__(self) -> None:
             self.config = None
 
         async def ainvoke(self, _payload, config=None):
-            """保存运行配置供断言。"""
+            """
+            保存运行配置供断言。
+            """
             self.config = config
 
         def get_state(self, _config):
-            """返回最小消息状态。"""
+            """
+            返回最小消息状态。
+            """
             return _FakeGraphState()
 
     async def _execute() -> dict:
@@ -280,7 +326,9 @@ def test_create_agent_config_uses_llm_max_iterations():
         agent._should_stream = lambda: False
 
         async def _create_agent(streaming=False):
-            """返回测试替身 Agent。"""
+            """
+            返回测试替身 Agent。
+            """
             return fake_agent
 
         agent._create_agent = _create_agent

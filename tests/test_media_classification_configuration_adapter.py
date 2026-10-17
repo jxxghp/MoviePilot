@@ -1,4 +1,6 @@
-"""分类策略 SystemConfig 适配器的真实数据库事务测试。"""
+"""
+分类策略 SystemConfig 适配器的真实数据库事务测试。
+"""
 
 import copy
 import threading
@@ -40,9 +42,12 @@ _ISOLATED_KEYS = (
 )
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.fixture(autouse=True)  # type: ignore[misc]
 def _isolate_system_config(db: Any) -> Iterator[None]:
-    """隔离策略和目录配置，并在用例结束后恢复共享测试库原值。"""
+    """
+    隔离策略和目录配置，并在用例结束后恢复共享测试库原值。
+    """
     db.watermark(SystemConfig)
     snapshots = [
         (row.id, row.key, copy.deepcopy(row.value))
@@ -63,7 +68,9 @@ def _isolate_system_config(db: Any) -> Iterator[None]:
 
 
 def _store(db: Any) -> tuple[SystemConfigClassificationPolicyStore, SystemConfigOper]:
-    """构造已加载全局快照和真实短会话分类策略仓储。"""
+    """
+    构造已加载全局快照和真实短会话分类策略仓储。
+    """
     oper = SystemConfigOper()
     oper.load_snapshot(db.session)
     return (
@@ -77,7 +84,9 @@ def _store(db: Any) -> tuple[SystemConfigClassificationPolicyStore, SystemConfig
 
 
 def test_old_source_fallback_is_promoted_to_global_fallback() -> None:
-    """旧策略读取时应保留迁移生成的分类兜底，并移除废弃字段。"""
+    """
+    旧策略读取时应保留迁移生成的分类兜底，并移除废弃字段。
+    """
     state = {
         "active": {
             "fallbacks": {
@@ -108,7 +117,9 @@ def test_old_source_fallback_is_promoted_to_global_fallback() -> None:
 
 
 def test_old_non_tmdb_source_fallback_becomes_compatibility_rule() -> None:
-    """旧非 TMDB 来源兜底应转换为末尾来源限定规则，避免升级丢失行为。"""
+    """
+    旧非 TMDB 来源兜底应转换为末尾来源限定规则，避免升级丢失行为。
+    """
     state = {
         "active": {
             "fallbacks": {
@@ -141,7 +152,9 @@ def test_old_non_tmdb_source_fallback_becomes_compatibility_rule() -> None:
 
 
 def test_adapter_initializes_and_round_trips_json_datetime(db: Any) -> None:
-    """首次创建原子写入 JSON，并在提交后发布系统配置快照。"""
+    """
+    首次创建原子写入 JSON，并在提交后发布系统配置快照。
+    """
     store, oper = _store(db)
     service = ClassificationPolicyConfigurationService(store, clock=lambda: NOW)
 
@@ -158,7 +171,9 @@ def test_adapter_initializes_and_round_trips_json_datetime(db: Any) -> None:
 def test_adapter_rejects_stale_database_revision_and_service_reloads(
     db: Any,
 ) -> None:
-    """数据库事实源先更新时，陈旧服务冲突并刷新活动快照。"""
+    """
+    数据库事实源先更新时，陈旧服务冲突并刷新活动快照。
+    """
     store, _oper = _store(db)
     service = ClassificationPolicyConfigurationService(store, clock=lambda: NOW)
     revision_one = service.initialize()
@@ -183,7 +198,9 @@ def test_adapter_rejects_stale_database_revision_and_service_reloads(
 
 
 def test_adapter_detects_corrupt_persisted_state(db: Any) -> None:
-    """损坏配置必须显式报错，不能静默覆盖为默认策略。"""
+    """
+    损坏配置必须显式报错，不能静默覆盖为默认策略。
+    """
     store, _oper = _store(db)
     db.add(
         SystemConfig(
@@ -199,7 +216,9 @@ def test_adapter_detects_corrupt_persisted_state(db: Any) -> None:
 def test_adapter_revalidates_directory_references_inside_cas_transaction(
     db: Any,
 ) -> None:
-    """即使应用层快照陈旧，CAS 事务也必须阻止破坏最新目录引用。"""
+    """
+    即使应用层快照陈旧，CAS 事务也必须阻止破坏最新目录引用。
+    """
     store, _oper = _store(db)
     service = ClassificationPolicyConfigurationService(store, clock=lambda: NOW)
     service.initialize()
@@ -240,7 +259,9 @@ def test_adapter_revalidates_directory_references_inside_cas_transaction(
 def test_directory_write_wins_shared_lock_and_blocks_category_removal(
     db: Any,
 ) -> None:
-    """目录事务先取得共锁时，随后发布不得删除其刚绑定的分类。"""
+    """
+    目录事务先取得共锁时，随后发布不得删除其刚绑定的分类。
+    """
     store, oper = _store(db)
     service = ClassificationPolicyConfigurationService(store, clock=lambda: NOW)
     service.initialize()
@@ -261,7 +282,9 @@ def test_directory_write_wins_shared_lock_and_blocks_category_removal(
     policy_errors: list[BaseException] = []
 
     def blocking_normalizer(value: object, policy):
-        """在目录事务持有共锁时暂停，制造策略发布交错。"""
+        """
+        在目录事务持有共锁时暂停，制造策略发布交错。
+        """
         normalizer_entered.set()
         if not release_normalizer.wait(2):
             raise TimeoutError("目录规范化等待发布测试超时")
@@ -284,17 +307,23 @@ def test_directory_write_wins_shared_lock_and_blocks_category_removal(
     candidate.categories = [category for category in candidate.categories if category.id != "tv.anime.jp"]
 
     def save_directory() -> None:
-        """在线程私有会话中保存目录并记录异常。"""
+        """
+        在线程私有会话中保存目录并记录异常。
+        """
         try:
             directory_store.save(directory_value)
-        except BaseException as error:  # noqa: BLE001 线程异常需要回传主测试断言
+        # 线程异常需要回传主测试断言。
+        except BaseException as error:  # noqa: BLE001
             directory_errors.append(error)
 
     def remove_category() -> None:
-        """并发发布删除分类的候选策略并记录异常。"""
+        """
+        并发发布删除分类的候选策略并记录异常。
+        """
         try:
             service.publish(candidate, expected_revision=2)
-        except BaseException as error:  # noqa: BLE001 线程异常需要回传主测试断言
+        # 线程异常需要回传主测试断言。
+        except BaseException as error:  # noqa: BLE001
             policy_errors.append(error)
 
     directory_thread = threading.Thread(target=save_directory, daemon=True)
@@ -318,7 +347,9 @@ def test_directory_write_wins_shared_lock_and_blocks_category_removal(
 def test_policy_write_wins_shared_lock_and_blocks_stale_directory_binding(
     db: Any,
 ) -> None:
-    """策略事务先取得共锁时，随后目录写入不得绑定已删除分类。"""
+    """
+    策略事务先取得共锁时，随后目录写入不得绑定已删除分类。
+    """
     store, oper = _store(db)
     service = ClassificationPolicyConfigurationService(store, clock=lambda: NOW)
     service.initialize()
@@ -339,7 +370,9 @@ def test_policy_write_wins_shared_lock_and_blocks_stale_directory_binding(
     directory_errors: list[BaseException] = []
 
     def blocking_validator(policy, directories):
-        """在策略事务持有共锁时暂停，制造目录保存交错。"""
+        """
+        在策略事务持有共锁时暂停，制造目录保存交错。
+        """
         validator_entered.set()
         if not release_validator.wait(2):
             raise TimeoutError("策略引用复验等待目录测试超时")
@@ -364,14 +397,19 @@ def test_policy_write_wins_shared_lock_and_blocks_stale_directory_binding(
     )
 
     def remove_category() -> None:
-        """在线程私有会话中发布删除分类的策略。"""
+        """
+        在线程私有会话中发布删除分类的策略。
+        """
         try:
             blocking_service.publish(candidate, expected_revision=2)
-        except BaseException as error:  # noqa: BLE001 线程异常需要回传主测试断言
+        # 线程异常需要回传主测试断言。
+        except BaseException as error:  # noqa: BLE001
             policy_errors.append(error)
 
     def save_directory() -> None:
-        """并发保存仍绑定旧分类 ID 的目录并记录异常。"""
+        """
+        并发保存仍绑定旧分类 ID 的目录并记录异常。
+        """
         try:
             directory_store.save(
                 [
@@ -383,7 +421,8 @@ def test_policy_write_wins_shared_lock_and_blocks_stale_directory_binding(
                     }
                 ]
             )
-        except BaseException as error:  # noqa: BLE001 线程异常需要回传主测试断言
+        # 线程异常需要回传主测试断言。
+        except BaseException as error:  # noqa: BLE001
             directory_errors.append(error)
 
     policy_thread = threading.Thread(target=remove_category, daemon=True)

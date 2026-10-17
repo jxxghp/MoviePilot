@@ -1,4 +1,6 @@
-"""Agent 系统设置完整合同、Schema、写入边界和并发语义测试。"""
+"""
+Agent 系统设置完整合同、Schema、写入边界和并发语义测试。
+"""
 
 from contextlib import nullcontext
 from unittest.mock import AsyncMock, MagicMock
@@ -21,6 +23,9 @@ from app.schemas.types import SystemConfigKey
 
 
 def test_subscription_search_strategy_contract_declares_three_choices() -> None:
+    """
+    订阅搜索策略 Schema 明确声明智能、完整和单页三种选项。
+    """
     from pydantic import ValidationError
 
     spec = ALL_SETTING_SPECS[SystemConfigKey.SubscribeSearchStrategy.value]
@@ -34,7 +39,9 @@ def test_subscription_search_strategy_contract_declares_three_choices() -> None:
 
 
 def test_settings_contract_covers_every_declared_source() -> None:
-    """合同必须覆盖全部 Settings 字段和全部 SystemConfigKey，且每项有来源说明。"""
+    """
+    合同必须覆盖全部 Settings 字段和全部 SystemConfigKey，且每项有来源说明。
+    """
     assert set(CORE_SETTING_SPECS) == set(Settings.model_fields)
     assert set(SYSTEMCONFIG_SETTING_SPECS) == {item.value for item in SystemConfigKey}
     assert len(ALL_SETTING_SPECS) == len(Settings.model_fields) + len(SystemConfigKey)
@@ -51,7 +58,9 @@ def test_settings_contract_covers_every_declared_source() -> None:
 
 
 def test_settings_contract_exposes_machine_readable_boundaries() -> None:
-    """合同应公开单位、示例、依赖和复杂设置的专用 operation 边界。"""
+    """
+    合同应公开单位、示例、依赖和复杂设置的专用 operation 边界。
+    """
     runtime_spec = ALL_SETTING_SPECS["ACCESS_TOKEN_EXPIRE_MINUTES"]
     assert runtime_spec.unit == "minutes"
     assert runtime_spec.examples
@@ -71,7 +80,9 @@ def test_settings_contract_exposes_machine_readable_boundaries() -> None:
 
 
 def test_settings_catalog_is_lightweight_and_value_free() -> None:
-    """list 阶段只返回合同索引，不应读取当前配置值。"""
+    """
+    list 阶段只返回合同索引，不应读取当前配置值。
+    """
     runtime = MagicMock()
     system = MagicMock()
     service = settings_module.SystemSettingsService(runtime, system, AsyncMock())
@@ -88,7 +99,9 @@ def test_settings_catalog_is_lightweight_and_value_free() -> None:
 
 
 def test_settings_describe_returns_schema_value_and_revision() -> None:
-    """describe 阶段应返回单项完整 schema、当前值和稳定 revision。"""
+    """
+    describe 阶段应返回单项完整 schema、当前值和稳定 revision。
+    """
     runtime = MagicMock()
     runtime.get.return_value = "gpt-test"
     system = MagicMock()
@@ -104,7 +117,9 @@ def test_settings_describe_returns_schema_value_and_revision() -> None:
 
 
 def test_structured_sensitive_settings_preserve_non_secret_match_fields() -> None:
-    """复杂敏感配置只隐藏凭据字段，保留名称和类型供 Agent 定位条目。"""
+    """
+    复杂敏感配置只隐藏凭据字段，保留名称和类型供 Agent 定位条目。
+    """
     spec = ALL_SETTING_SPECS[SystemConfigKey.Notifications.value]
     redacted = settings_module.redact_setting_value(
         spec,
@@ -117,7 +132,9 @@ def test_structured_sensitive_settings_preserve_non_secret_match_fields() -> Non
 
 @pytest.mark.asyncio
 async def test_settings_update_rejects_managed_and_internal_generic_writes(monkeypatch) -> None:
-    """通用写入口必须拒绝专用 operation 和内部状态设置。"""
+    """
+    通用写入口必须拒绝专用 operation 和内部状态设置。
+    """
     runtime = MagicMock()
     system = MagicMock()
     publish = AsyncMock()
@@ -140,13 +157,17 @@ async def test_settings_update_rejects_managed_and_internal_generic_writes(monke
 
 @pytest.mark.asyncio
 async def test_runtime_settings_revision_is_optional_but_protects_conditional_writes(monkeypatch) -> None:
-    """旧调用可省略 revision，新调用提供旧 revision 时必须拒绝并发覆盖。"""
+    """
+    旧调用可省略 revision，新调用提供旧 revision 时必须拒绝并发覆盖。
+    """
     runtime = MagicMock()
     state = {"value": "old"}
     runtime.get.side_effect = lambda _key: state["value"]
 
     def update(_key, value):
-        """更新测试中的运行时设置快照。"""
+        """
+        更新测试中的运行时设置快照。
+        """
         state["value"] = value
         return True, "updated"
 
@@ -177,7 +198,9 @@ async def test_runtime_settings_revision_is_optional_but_protects_conditional_wr
 
 
 def test_setting_key_resolution_accepts_enum_names_and_values() -> None:
-    """设置解析应同时支持 SystemConfigKey 的枚举名和值。"""
+    """
+    设置解析应同时支持 SystemConfigKey 的枚举名和值。
+    """
     by_name = settings_module.resolve_setting_spec(SystemConfigKey.Downloaders.name)
     by_value = settings_module.resolve_setting_spec(SystemConfigKey.Downloaders.value)
     assert by_name is not None
@@ -186,7 +209,9 @@ def test_setting_key_resolution_accepts_enum_names_and_values() -> None:
 
 
 def test_system_setting_operations_expose_the_three_stage_contract() -> None:
-    """Agent 网关必须公开 list、describe、get 和 update 的固定路由与参数分支。"""
+    """
+    Agent 网关必须公开 list、describe、get 和 update 的固定路由与参数分支。
+    """
     assert API_OPERATION_ROUTES["config.system.list"].method == "GET"
     assert API_OPERATION_ROUTES["config.system.list"].path == "/api/v1/system/settings/catalog"
     assert API_OPERATION_ROUTES["config.system.describe"].method == "GET"

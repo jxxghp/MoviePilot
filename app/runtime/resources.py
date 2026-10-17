@@ -1,4 +1,6 @@
-"""进程级托管资源的轻量调用门面。"""
+"""
+进程级托管资源的轻量调用门面。
+"""
 
 from __future__ import annotations
 
@@ -11,26 +13,59 @@ MANAGED_RESOURCE_ASYNC_KIND = "managed_resource.async"
 
 
 class ManagedResourceRuntime(Protocol):
-    """Managed Resource 门面依赖的最小 Capability Runtime 合同。"""
+    """
+    Managed Resource 门面依赖的最小 Capability Runtime 合同。
+    """
 
     @property
     def is_shutdown(self) -> bool:
-        """返回 Runtime 是否已进入不可逆关闭态。"""
+        """
+        返回 Runtime 是否已进入不可逆关闭态。
+
+        :return: 运行时是否已进入不可逆关闭态
+        """
 
     def get_spec(self, capability_id: str) -> Any:
-        """返回资源声明。"""
+        """
+        返回资源声明。
+
+        :param capability_id: 托管资源的能力标识；观测查询传 None 时返回全部能力记录
+        :return: 对应的能力声明；未登记时返回 None
+        """
 
     def get_running(self, capability_id: str) -> Any:
-        """只查询已发布实例。"""
+        """
+        只查询已发布实例。
+
+        :param capability_id: 托管资源的能力标识；观测查询传 None 时返回全部能力记录
+        :return: 已经发布的资源实例；已登记但未运行时返回 None，未知标识由实现方报告领域错误
+        """
 
     def snapshot(self, capability_id: str) -> Any:
-        """返回资源状态快照。"""
+        """
+        返回资源状态快照。
+
+        :param capability_id: 托管资源的能力标识；观测查询传 None 时返回全部能力记录
+        :return: 指定能力的只读状态快照
+        """
 
     def observations(self, capability_id: Optional[str] = None) -> tuple[Any, ...]:
-        """返回资源转换观测。"""
+        """
+        返回资源转换观测。
+
+        :param capability_id: 托管资源的能力标识；观测查询传 None 时返回全部能力记录
+        :return: 按能力筛选的状态转换观测元组
+        """
 
     def activate(self, capability_id: str, *, reason: str, retry: bool = False) -> Any:
-        """通过同步 adapter 激活资源。"""
+        """
+        通过同步 adapter 激活资源。
+
+        :param capability_id: 托管资源的能力标识；观测查询传 None 时返回全部能力记录
+        :param reason: 本次生命周期操作的触发原因，用于观测记录
+        :param retry: 是否允许重新尝试此前失败的激活，默认不重试
+        :return: 激活成功后发布的资源实例；已有可用实例时可直接复用
+        """
 
     async def activate_async(
         self,
@@ -39,16 +74,38 @@ class ManagedResourceRuntime(Protocol):
         reason: str,
         retry: bool = False,
     ) -> Any:
-        """通过异步 adapter 激活资源。"""
+        """
+        通过异步 adapter 激活资源。
+
+        :param capability_id: 托管资源的能力标识；观测查询传 None 时返回全部能力记录
+        :param reason: 本次生命周期操作的触发原因，用于观测记录
+        :param retry: 是否允许重新尝试此前失败的激活，默认不重试
+        :return: 等待激活成功后发布的资源实例；已有可用实例时可直接复用
+        """
 
     def stop(self, capability_id: str, *, reason: str) -> None:
-        """通过同步 adapter 停止资源。"""
+        """
+        通过同步 adapter 停止资源。
+
+        :param capability_id: 托管资源的能力标识；观测查询传 None 时返回全部能力记录
+        :param reason: 本次生命周期操作的触发原因，用于观测记录
+        """
 
     async def stop_async(self, capability_id: str, *, reason: str) -> None:
-        """通过异步 adapter 停止资源。"""
+        """
+        通过异步 adapter 停止资源。
+
+        :param capability_id: 托管资源的能力标识；观测查询传 None 时返回全部能力记录
+        :param reason: 本次生命周期操作的触发原因，用于观测记录
+        """
 
     async def shutdown_async(self, *, reason: str) -> bool:
-        """关闭混合 Runtime，并返回全部资源是否收敛。"""
+        """
+        关闭混合 Runtime，并返回全部资源是否收敛。
+
+        :param reason: 本次生命周期操作的触发原因，用于观测记录
+        :return: 所有资源均已实际停止时返回 True，否则返回 False 并保留未收敛资源
+        """
 
 
 _runtime_lock = threading.RLock()
@@ -56,7 +113,9 @@ _managed_resource_runtime: Optional[ManagedResourceRuntime] = None
 
 
 def configure_managed_resource_runtime(runtime: ManagedResourceRuntime) -> None:
-    """由启动组合层注入唯一的 Managed Resource Runtime。"""
+    """
+    由启动组合层注入唯一的托管资源运行时。
+    """
     if runtime is None:
         raise ValueError("Managed Resource Runtime 不能为空")
     global _managed_resource_runtime
@@ -65,7 +124,9 @@ def configure_managed_resource_runtime(runtime: ManagedResourceRuntime) -> None:
 
 
 def reset_managed_resource_runtime() -> None:
-    """释放已关闭 Runtime 的门面引用；未配置时保持幂等。"""
+    """
+    释放已关闭 Runtime 的门面引用；未配置时保持幂等。
+    """
     global _managed_resource_runtime
     with _runtime_lock:
         runtime = _managed_resource_runtime
@@ -83,7 +144,9 @@ def _runtime(*, required: Literal[False]) -> Optional[ManagedResourceRuntime]: .
 
 
 def _runtime(*, required: bool) -> Optional[ManagedResourceRuntime]:
-    """读取当前 Runtime；资源使用路径要求启动组合已经完成装配。"""
+    """
+    读取当前 Runtime；资源使用路径要求启动组合已经完成装配。
+    """
     with _runtime_lock:
         runtime = _managed_resource_runtime
     if runtime is None and required:
@@ -92,7 +155,9 @@ def _runtime(*, required: bool) -> Optional[ManagedResourceRuntime]:
 
 
 def _resource_kind(runtime: ManagedResourceRuntime, capability_id: str) -> str:
-    """返回声明的执行模式；未知资源继续沿用 Runtime 的领域错误。"""
+    """
+    返回声明的执行模式；未知资源继续沿用 Runtime 的领域错误。
+    """
     spec = runtime.get_spec(capability_id)
     if spec is None:
         runtime.get_running(capability_id)
@@ -106,7 +171,9 @@ def acquire_managed_resource(
     reason: str,
     retry: bool = True,
 ) -> Any:
-    """同步激活一个声明为同步模式的托管资源。"""
+    """
+    同步激活一个声明为同步模式的托管资源。
+    """
     runtime = _runtime(required=True)
     kind = _resource_kind(runtime, capability_id)
     if kind != MANAGED_RESOURCE_SYNC_KIND:
@@ -120,7 +187,9 @@ async def acquire_managed_resource_async(
     reason: str,
     retry: bool = True,
 ) -> Any:
-    """异步激活资源；同步资源移交工作线程，避免阻塞事件循环。"""
+    """
+    异步激活资源；同步资源移交工作线程，避免阻塞事件循环。
+    """
     runtime = _runtime(required=True)
     kind = _resource_kind(runtime, capability_id)
     if kind == MANAGED_RESOURCE_ASYNC_KIND:
@@ -140,7 +209,9 @@ async def acquire_managed_resource_async(
 
 
 def get_running_managed_resource(capability_id: str) -> Any:
-    """只查询已发布资源；Runtime 未配置时返回 None，不触发初始化。"""
+    """
+    只查询已发布资源；Runtime 未配置时返回 None，不触发初始化。
+    """
     runtime = _runtime(required=False)
     if runtime is None:
         return None
@@ -148,7 +219,9 @@ def get_running_managed_resource(capability_id: str) -> Any:
 
 
 def managed_resource_snapshot(capability_id: str) -> Any:
-    """返回资源状态快照；Runtime 未配置时返回 None。"""
+    """
+    返回资源状态快照；Runtime 未配置时返回 None。
+    """
     runtime = _runtime(required=False)
     if runtime is None:
         return None
@@ -158,7 +231,9 @@ def managed_resource_snapshot(capability_id: str) -> Any:
 def managed_resource_observations(
     capability_id: Optional[str] = None,
 ) -> tuple[Any, ...]:
-    """返回资源转换观测；Runtime 未配置时返回空快照。"""
+    """
+    返回资源转换观测；Runtime 未配置时返回空快照。
+    """
     runtime = _runtime(required=False)
     if runtime is None:
         return ()
@@ -166,7 +241,9 @@ def managed_resource_observations(
 
 
 def stop_managed_resource(capability_id: str, *, reason: str) -> None:
-    """同步停止资源；Runtime 未配置时保持幂等且不反向初始化。"""
+    """
+    同步停止资源；Runtime 未配置时保持幂等且不反向初始化。
+    """
     runtime = _runtime(required=False)
     if runtime is None:
         return
@@ -177,7 +254,9 @@ def stop_managed_resource(capability_id: str, *, reason: str) -> None:
 
 
 async def stop_managed_resource_async(capability_id: str, *, reason: str) -> None:
-    """异步停止资源；同步资源移交工作线程。"""
+    """
+    异步停止资源；同步资源移交工作线程。
+    """
     runtime = _runtime(required=False)
     if runtime is None:
         return
@@ -192,7 +271,9 @@ async def stop_managed_resource_async(capability_id: str, *, reason: str) -> Non
 
 
 async def shutdown_managed_resource_runtime(*, reason: str) -> bool:
-    """关闭已配置 Runtime，未配置时按已收敛处理。"""
+    """
+    关闭已配置 Runtime，未配置时按已收敛处理。
+    """
     runtime = _runtime(required=False)
     if runtime is None:
         return True

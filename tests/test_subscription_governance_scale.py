@@ -1,4 +1,6 @@
-"""订阅执行治理最终受控规模门禁。"""
+"""
+订阅执行治理最终受控规模门禁。
+"""
 
 import json
 import threading
@@ -20,7 +22,9 @@ from scripts.validation.subscription_governance_scale import (
 
 
 def test_subscription_governance_controlled_scale_matrix() -> None:
-    """两档最终矩阵必须同时满足正确性、压力、恢复和订阅准入门禁。"""
+    """
+    两档最终矩阵必须同时满足正确性、压力、恢复和订阅准入门禁。
+    """
     result = run_acceptance()
 
     assert result["schema_version"] == 5
@@ -101,37 +105,51 @@ def test_subscription_governance_controlled_scale_matrix() -> None:
 
 
 def test_scale_pressure_waits_for_transport_after_first_lease(monkeypatch, tmp_path):
-    """首个租约取得后延迟进入请求，也必须在请求真正进行时验证并发拒绝。"""
+    """
+    首个租约取得后延迟进入请求，也必须在请求真正进行时验证并发拒绝。
+    """
     coordinator = threading.current_thread()
     contender_observed = threading.Event()
     first_lease = threading.Event()
 
     class RequestStartedEvent(threading.Event):
-        """让租约持有者知道另一 owner 已等待真实请求开始。"""
+        """
+        让租约持有者知道另一 owner 已等待真实请求开始。
+        """
 
         def wait(self, timeout=None):
-            """排除主协调线程的等待，仅由请求竞争方放行首个租约。"""
+            """
+            排除主协调线程的等待，仅由请求竞争方放行首个租约。
+            """
             if threading.current_thread() is not coordinator:
                 contender_observed.set()
             return super().wait(timeout)
 
     class DelayedRequestBoundary(scale._ScaleSiteRequestBoundary):
-        """区分正确的在途等待与过早发生的预算拒绝。"""
+        """
+        区分正确的在途等待与过早发生的预算拒绝。
+        """
 
         def __init__(self, *, site_id):
-            """替换请求开始事件，控制首个租约到网络边界之间的调度。"""
+            """
+            替换请求开始事件，控制首个租约到网络边界之间的调度。
+            """
             super().__init__(site_id=site_id)
             self.first_started = RequestStartedEvent()
 
         def record_budget_rejection(self):
-            """保留拒绝瞬间的在途数量，再解除首个租约的受控暂停。"""
+            """
+            保留拒绝瞬间的在途数量，再解除首个租约的受控暂停。
+            """
             super().record_budget_rejection()
             contender_observed.set()
 
     original_acquire = scale.SubscriptionSiteBudgetController.acquire
 
     def acquire_before_transport(self, site_id):
-        """将首个合法租约暂停到竞争方已等待请求或提前遭到拒绝。"""
+        """
+        将首个合法租约暂停到竞争方已等待请求或提前遭到拒绝。
+        """
         claim = original_acquire(self, site_id)
         if not first_lease.is_set():
             first_lease.set()
@@ -149,10 +167,14 @@ def test_scale_pressure_waits_for_transport_after_first_lease(monkeypatch, tmp_p
 
 @pytest.mark.parametrize("mutation", ["bypass", "early_release", "allow_concurrent"])
 def test_scale_validator_rejects_fake_site_pressure(monkeypatch, tmp_path, mutation):
-    """绕过 wrapper、提前释放或并发放行时，请求边界峰值必须暴露门禁失效。"""
+    """
+    绕过 wrapper、提前释放或并发放行时，请求边界峰值必须暴露门禁失效。
+    """
     if mutation == "bypass":
         def bypass_wrapper(self, *, site, keyword, mtype, page):
-            """模拟绕过预算 wrapper 的请求路径。"""
+            """
+            模拟绕过预算 wrapper 的请求路径。
+            """
             return self.search_site_torrents(
                 site=site,
                 keyword=keyword,
@@ -169,7 +191,9 @@ def test_scale_validator_rejects_fake_site_pressure(monkeypatch, tmp_path, mutat
         release_guard = threading.Lock()
 
         def early_release_wrapper(self, *, site, keyword, mtype, page):
-            """模拟请求边界前错误释放站点租约。"""
+            """
+            模拟请求边界前错误释放站点租约。
+            """
             budget = self._subscription_site_budget
             # 将错误释放本身串行化，避免第二个 owner 在首个释放动作完成前
             # 被正常拒绝，从而掩盖“请求期间已失去租约”的变异。
@@ -193,7 +217,9 @@ def test_scale_validator_rejects_fake_site_pressure(monkeypatch, tmp_path, mutat
         original_claim = scale.TransactionalSubscriptionSearchRepository.claim_site
 
         def allow_concurrent_claim(self, *, site_id, owner, lease_seconds):
-            """模拟仓储错误地向第二 owner 发放同站点租约。"""
+            """
+            模拟仓储错误地向第二 owner 发放同站点租约。
+            """
             claim = original_claim(
                 self,
                 site_id=site_id,
@@ -227,17 +253,23 @@ def test_scale_validator_rejects_fake_site_pressure(monkeypatch, tmp_path, mutat
 
 
 def test_scale_validator_rejects_unfinished_site_wrapper(monkeypatch, tmp_path):
-    """延后已登记但 wrapper 尚未返回时，压力门禁必须拒绝并暴露未收口 owner。"""
+    """
+    延后已登记但 wrapper 尚未返回时，压力门禁必须拒绝并暴露未收口 owner。
+    """
     original_wrapper = SearchChain._search_site_torrents_with_budget
     release_stalled = threading.Event()
     threads_before = set(threading.enumerate())
 
     def stall_after_rejection(self, *, site, keyword, mtype, page):
-        """模拟预算拒绝已记录、调用方却未取得返回值的挂起路径。"""
+        """
+        模拟预算拒绝已记录、调用方却未取得返回值的挂起路径。
+        """
         original_record_deferred = self.record_subscription_site_budget_deferred
 
         def record_deferred_and_stall(deferral) -> None:
-            """在拒绝已登记后阻塞原始 wrapper 的返回。"""
+            """
+            在拒绝已登记后阻塞原始 wrapper 的返回。
+            """
             original_record_deferred(deferral)
             release_stalled.wait()
 
@@ -276,7 +308,9 @@ def test_scale_validator_rejects_unfinished_site_wrapper(monkeypatch, tmp_path):
 
 
 def test_scale_validator_rejects_candidate_loss(monkeypatch) -> None:
-    """候选路由少返回任意资源时，完整匹配集合门禁必须失败。"""
+    """
+    候选路由少返回任意资源时，完整匹配集合门禁必须失败。
+    """
     original_route = CandidateIndex.route_for_match
 
     def route_with_loss(self, *args, **kwargs):
@@ -295,7 +329,9 @@ def test_scale_validator_rejects_candidate_loss(monkeypatch) -> None:
 
 
 def test_scale_validator_rejects_duplicate_download_and_completion(monkeypatch) -> None:
-    """同订阅重复下载或错误完成时，多重集合门禁必须失败。"""
+    """
+    同订阅重复下载或错误完成时，多重集合门禁必须失败。
+    """
     from scripts.validation import subscription_governance_scale as scale
 
     original_download = scale._ScaleDownloadBoundary.download_single

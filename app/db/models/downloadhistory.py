@@ -1,3 +1,9 @@
+"""
+下载历史及关联文件列表的 ORM 模型与会话内数据操作。
+
+会话及事务由调用方管理，本模块不负责提交或回滚。
+"""
+
 import time
 from typing import Any, List, Optional, Self
 
@@ -11,7 +17,9 @@ from app.schemas.types import MediaSource
 
 
 def _title_like(column: InstrumentedAttribute[str], title: str) -> ColumnElement[bool]:
-    """构造跨数据库大小写不敏感的标题匹配条件。"""
+    """
+    构造跨数据库大小写不敏感的标题匹配条件。
+    """
     return column.ilike(f"%{title}%")
 
 
@@ -33,9 +41,9 @@ class DownloadHistory(Base):
     media_id: Mapped[Optional[str]] = mapped_column(String, index=True)
     # 音乐实体类型：recording 单曲、album 专辑
     music_type: Mapped[Optional[str]] = mapped_column(String)
-    # Sxx
+    # 下载资源的季范围文本，使用 Sxx 格式。
     seasons: Mapped[Optional[str]] = mapped_column(String)
-    # Exx
+    # 下载资源的集范围文本，使用 Exx 格式。
     episodes: Mapped[Optional[str]] = mapped_column(String)
     # 背景图
     image: Mapped[Optional[str]] = mapped_column(String)
@@ -85,7 +93,9 @@ class DownloadHistory(Base):
 
     @classmethod
     def get_by_hash(cls, db: Session, download_hash: str) -> Optional["DownloadHistory"]:
-        """按下载任务哈希读取登记时间最新的下载历史。"""
+        """
+        按下载任务哈希读取登记时间最新的下载历史。
+        """
         history: Optional[DownloadHistory] = db.execute(
             select(DownloadHistory)
             .where(DownloadHistory.download_hash == download_hash)
@@ -130,7 +140,9 @@ class DownloadHistory(Base):
             cls, db: Session, media_source: MediaSource, media_id: str,
             music_type: Optional[str] = None,
     ) -> list["DownloadHistory"]:
-        """按规范媒体身份查询下载历史。"""
+        """
+        按规范媒体身份查询下载历史。
+        """
         if not media_source or media_id is None or not str(media_id).strip():
             return []
         statement = select(DownloadHistory).where(
@@ -145,7 +157,9 @@ class DownloadHistory(Base):
     def list_by_page(
         cls, db: Session, page: int = 1, count: int = 30
     ) -> list["DownloadHistory"]:
-        """按时间和主键倒序分页读取下载历史。"""
+        """
+        按时间和主键倒序分页读取下载历史。
+        """
         return list(db.execute(
             select(DownloadHistory)
             .order_by(DownloadHistory.date.desc(), DownloadHistory.id.desc())
@@ -157,7 +171,9 @@ class DownloadHistory(Base):
     async def async_list_by_page(
         cls, db: AsyncSession, page: int = 1, count: int = 30
     ) -> list[Self]:
-        """异步按时间和主键倒序分页读取下载历史。"""
+        """
+        异步按时间和主键倒序分页读取下载历史。
+        """
         result = await db.execute(
             select(cls)
             .order_by(cls.date.desc(), cls.id.desc())
@@ -174,7 +190,9 @@ class DownloadHistory(Base):
         page: int = 1,
         count: int = 30,
     ) -> list[Self]:
-        """异步按标题模糊匹配并分页读取下载历史。"""
+        """
+        异步按标题模糊匹配并分页读取下载历史。
+        """
         query = (
             select(cls).filter(_title_like(cls.title, title)).order_by(cls.date.desc())
         )
@@ -184,14 +202,18 @@ class DownloadHistory(Base):
 
     @classmethod
     async def async_count(cls, db: AsyncSession) -> int:
-        """异步统计下载历史总数，空表返回零。"""
+        """
+        异步统计下载历史总数，空表返回零。
+        """
         result = await db.execute(select(func.count(cls.id)))
         count: int = result.scalar()
         return count
 
     @classmethod
     async def async_count_by_title(cls, db: AsyncSession, title: str) -> int:
-        """异步统计标题模糊匹配的下载历史数量。"""
+        """
+        异步统计标题模糊匹配的下载历史数量。
+        """
         result = await db.execute(
             select(func.count(cls.id)).filter(_title_like(cls.title, title))
         )
@@ -200,7 +222,9 @@ class DownloadHistory(Base):
 
     @classmethod
     def get_by_path(cls, db: Session, path: str) -> Optional["DownloadHistory"]:
-        """保存目录被多次下载复用时，按登记顺序返回最新历史。"""
+        """
+        保存目录被多次下载复用时，按登记顺序返回最新历史。
+        """
         history: Optional[DownloadHistory] = db.execute(
             select(DownloadHistory).where(DownloadHistory.path == path)
             .order_by(DownloadHistory.id.desc()).limit(1)
@@ -250,6 +274,7 @@ class DownloadHistory(Base):
         查询某用户某时间之前的下载历史。
 
         条件是 date < 传入时刻，等于该时刻的那条不计入；oper 层的同名方法描述一致。
+
         :param db: 数据库会话
         :param date: 时间水位，取该时刻之前的记录
         :param username: 下载用户，不传则跨用户返回
@@ -289,7 +314,9 @@ class DownloadHistory(Base):
 
     @classmethod
     def list_by_type(cls, db: Session, mtype: str, days: int) -> list["DownloadHistory"]:
-        """读取指定媒体类型在最近若干天内的下载历史。"""
+        """
+        读取指定媒体类型在最近若干天内的下载历史。
+        """
         return list(db.execute(
             select(DownloadHistory).where(
                 DownloadHistory.type == mtype,
@@ -352,7 +379,9 @@ class DownloadFiles(Base):
 
     @classmethod
     def get_by_hash(cls, db: Session, download_hash: str, state: Optional[int] = None) -> list[Self]:
-        """按下载任务哈希读取文件列表，可选限定文件状态。"""
+        """
+        按下载任务哈希读取文件列表，可选限定文件状态。
+        """
         statement = select(cls).where(cls.download_hash == download_hash)
         if state is not None:
             statement = statement.where(cls.state == state)
@@ -360,7 +389,9 @@ class DownloadFiles(Base):
 
     @classmethod
     def get_by_fullpath(cls, db: Session, fullpath: str, all_files: bool = False) -> list[Self] | Self | None:
-        """按完整路径返回最新记录，或在 all_files 为真时返回全部记录。"""
+        """
+        按完整路径返回最新记录，或在 all_files 为真时返回全部记录。
+        """
         result = db.execute(
             select(cls).where(cls.fullpath == fullpath).order_by(cls.id.desc())
         ).scalars()
@@ -369,12 +400,16 @@ class DownloadFiles(Base):
 
     @classmethod
     def get_by_savepath(cls, db: Session, savepath: str) -> list[Self]:
-        """读取同一保存目录下的全部下载文件记录。"""
+        """
+        读取同一保存目录下的全部下载文件记录。
+        """
         return list(db.execute(select(cls).where(cls.savepath == savepath)).scalars().all())
 
     @classmethod
     def delete_by_fullpath(cls, db: Session, fullpath: str) -> None:
-        """把完整路径匹配的正常文件标记为删除，保留历史记录。"""
+        """
+        把完整路径匹配的正常文件标记为删除，保留历史记录。
+        """
         db.execute(
             update(cls).where(cls.fullpath == fullpath, cls.state == 1).values(state=0)
         )

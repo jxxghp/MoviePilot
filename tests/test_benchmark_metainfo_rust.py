@@ -1,3 +1,7 @@
+"""
+验证媒体识别基准测试使用生产入口，并隔离视频与音乐输入。
+"""
+
 from contextlib import contextmanager
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -8,7 +12,9 @@ from scripts import benchmark_metainfo_rust as benchmark
 
 
 def test_build_inputs_separates_video_and_music_domains():
-    """影视与音乐输入应独立扩展，并按 repeat 稳定重复。"""
+    """
+    影视与音乐输入应独立扩展，并按 repeat 稳定重复。
+    """
     video_once = benchmark.build_video_inputs(1)
     music_once = benchmark.build_music_inputs(1)
 
@@ -24,7 +30,9 @@ def test_build_inputs_separates_video_and_music_domains():
 
 
 def test_configure_benchmark_runtime_injects_extensions_and_accelerator(monkeypatch):
-    """独立基准必须显式注入文件类型和 Rust 适配器，不能依赖应用启动副作用。"""
+    """
+    独立基准必须显式注入文件类型和 Rust 适配器，不能依赖应用启动副作用。
+    """
     configure_runtime = Mock()
     monkeypatch.setattr(benchmark, "configure_recognition_runtime", configure_runtime)
 
@@ -37,7 +45,9 @@ def test_configure_benchmark_runtime_injects_extensions_and_accelerator(monkeypa
 
 
 def test_parse_input_uses_public_production_entries(monkeypatch):
-    """输入分发应调用 MetaInfo、MetaInfoPath 和 MetaMusic.parse_query 公开入口。"""
+    """
+    输入分发应调用 MetaInfo、MetaInfoPath 和 MetaMusic.parse_query 公开入口。
+    """
     title_result = object()
     path_result = object()
     music_result = object()
@@ -61,7 +71,9 @@ def test_parse_input_uses_public_production_entries(monkeypatch):
 
 
 def test_selected_meta_parser_disables_and_restores_all_fast_paths(monkeypatch):
-    """Python 对照上下文应屏蔽影视和音乐 Rust 入口，并完整恢复原函数。"""
+    """
+    Python 对照上下文应屏蔽影视和音乐 Rust 入口，并完整恢复原函数。
+    """
     rust_accel = benchmark.rust_accel
     parser_names = (
         "parse_metainfo",
@@ -84,18 +96,24 @@ def test_selected_meta_parser_disables_and_restores_all_fast_paths(monkeypatch):
 
 
 def test_measure_switches_once_and_warms_up_outside_samples(monkeypatch):
-    """一次测量只应切换一次解析器，并额外执行一轮不计时预热。"""
+    """
+    一次测量只应切换一次解析器，并额外执行一轮不计时预热。
+    """
     context_calls = []
     parse_calls = []
 
     @contextmanager
     def fake_selected_meta_parser(use_rust: bool):
-        """记录测试中的解析器上下文进入次数。"""
+        """
+        记录测试中的解析器上下文进入次数。
+        """
         context_calls.append(use_rust)
         yield
 
     def fake_parse_all(inputs):
-        """记录测试中的每轮解析调用。"""
+        """
+        记录测试中的每轮解析调用。
+        """
         parse_calls.append(inputs)
         return [object()] * len(inputs)
 
@@ -116,7 +134,9 @@ def test_measure_switches_once_and_warms_up_outside_samples(monkeypatch):
 
 
 def test_assert_projected_results_equal_reports_first_field_difference():
-    """等价校验失败时应报告首个输入及稳定字段差异。"""
+    """
+    等价校验失败时应报告首个输入及稳定字段差异。
+    """
     inputs = [("music_query", "Artist - Track", None)]
     rust_result = SimpleNamespace(title="Track", artists=["Artist"])
     python_result = SimpleNamespace(title="Other", artists=["Artist"])
@@ -140,7 +160,9 @@ def test_assert_projected_results_equal_reports_first_field_difference():
 
 
 def test_video_projection_ignores_python_parser_internal_state():
-    """影视等价投影不应纳入 Python 解析器的临时私有字段。"""
+    """
+    影视等价投影不应纳入 Python 解析器的临时私有字段。
+    """
     rust_result = benchmark.MetaInfo("Marty Supreme 2025 2160p WEB-DL")
     python_result = benchmark.MetaInfo("Marty Supreme 2025 2160p WEB-DL")
     rust_result._index = 1
@@ -154,7 +176,9 @@ def test_video_projection_ignores_python_parser_internal_state():
 
 
 def test_video_projection_covers_stable_path_merge_fields():
-    """差异投影必须覆盖路径合并容易遗漏的平台、效果、位深和范围字段。"""
+    """
+    差异投影必须覆盖路径合并容易遗漏的平台、效果、位深和范围字段。
+    """
     result = benchmark.MetaInfo("Show S01E01 2026 2160p AMZN WEB-DL HDR H265 10bit")
     result.web_source = "Amazon"
     result.resource_team = "GROUP"
@@ -172,7 +196,9 @@ def test_video_projection_covers_stable_path_merge_fields():
 
 
 def test_validate_rust_runtime_rejects_disabled_and_old_extensions(monkeypatch):
-    """运行前检查应拒绝关闭的 Rust 和缺少音乐入口的旧扩展。"""
+    """
+    运行前检查应拒绝关闭的 Rust 和缺少音乐入口的旧扩展。
+    """
     rust_accel = benchmark.rust_accel
     monkeypatch.setattr(rust_accel, "is_enabled", Mock(return_value=False))
 
@@ -194,7 +220,9 @@ def test_validate_rust_runtime_rejects_disabled_and_old_extensions(monkeypatch):
 
 
 def test_validate_rust_runtime_requires_successful_music_probe(monkeypatch):
-    """音乐 Rust 入口存在但实际回退 Python 时也必须拒绝执行基准。"""
+    """
+    音乐 Rust 入口存在但实际回退 Python 时也必须拒绝执行基准。
+    """
     rust_accel = benchmark.rust_accel
     extension = SimpleNamespace(parse_metamusic_fast=Mock())
     monkeypatch.setattr(rust_accel, "is_enabled", Mock(return_value=True))
@@ -212,7 +240,9 @@ def test_validate_rust_runtime_requires_successful_music_probe(monkeypatch):
 
 
 def test_main_outputs_independent_video_and_music_metrics(monkeypatch, capsys):
-    """主程序应分别输出影视和音乐等价状态、耗时及性能提升。"""
+    """
+    主程序应分别输出影视和音乐等价状态、耗时及性能提升。
+    """
     monkeypatch.setattr(benchmark, "configure_benchmark_runtime", Mock())
     monkeypatch.setattr(benchmark, "validate_rust_runtime", Mock())
     monkeypatch.setattr(benchmark, "build_video_inputs", Mock(return_value=[("title", "V", None)]))
@@ -255,7 +285,9 @@ def test_main_outputs_independent_video_and_music_metrics(monkeypatch, capsys):
 
 
 def test_main_reports_runtime_failure_with_nonzero_exit(monkeypatch, capsys):
-    """Rust 未就绪时主程序应明确报错并返回非零状态。"""
+    """
+    Rust 未就绪时主程序应明确报错并返回非零状态。
+    """
     monkeypatch.setattr(benchmark, "configure_benchmark_runtime", Mock())
     monkeypatch.setattr(
         benchmark,

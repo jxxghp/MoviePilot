@@ -1,4 +1,6 @@
-"""订阅消息交互删除动作的应用边界测试。"""
+"""
+订阅消息交互删除动作的应用边界测试。
+"""
 
 from types import SimpleNamespace
 
@@ -6,19 +8,27 @@ from app.application.messaging.subscribe import SubscribeInteractionHandler
 
 
 class _Repository:
-    """只提供消息展示所需读取能力的订阅仓储替身。"""
+    """
+    只提供消息展示所需读取能力的订阅仓储替身。
+    """
 
     def __init__(self, subscribes):
-        """按订阅 ID 保存测试快照。"""
+        """
+        按订阅 ID 保存测试快照。
+        """
         self._subscribes = subscribes
 
     def get(self, subscribe_id):
-        """返回指定订阅快照。"""
+        """
+        返回指定订阅快照。
+        """
         return self._subscribes.get(subscribe_id)
 
 
 def test_interaction_delete_delegates_each_existing_id_to_application_action():
-    """消息层只负责解析和展示，删除必须委托统一 Application 动作。"""
+    """
+    消息层只负责解析和展示，删除必须委托统一 Application 动作。
+    """
     deleted_ids = []
     handler = SubscribeInteractionHandler(
         messenger=SimpleNamespace(),
@@ -38,7 +48,9 @@ def test_interaction_delete_delegates_each_existing_id_to_application_action():
 
 
 def test_interaction_delete_reports_transaction_race_as_missing():
-    """读取后事务内目标消失时不得误报已删除。"""
+    """
+    读取后事务内目标消失时不得误报已删除。
+    """
     handler = SubscribeInteractionHandler(
         messenger=SimpleNamespace(),
         actions=SimpleNamespace(),

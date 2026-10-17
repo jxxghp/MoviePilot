@@ -1,4 +1,6 @@
-"""缺失标准分类事实的可选跨来源补充服务。"""
+"""
+缺失标准分类事实的可选跨来源补充服务。
+"""
 
 from __future__ import annotations
 
@@ -38,7 +40,14 @@ _DEFAULT_MAX_CONCURRENCY = 3
 
 @dataclass(frozen=True, slots=True)
 class ClassificationEnrichmentProvider:
-    """绑定一个运行中模块的稳定身份、来源范围和补充方法。"""
+    """
+    绑定一个运行中模块的稳定身份、来源范围和补充方法。
+
+    :param provider_id: 提供方的稳定模块标识，用于缓存隔离和诊断
+    :param provider_name: 供诊断展示的提供方名称
+    :param media_sources: 该提供方支持的媒体来源标识
+    :param callback: 读取补充分类事实的模块回调
+    """
 
     provider_id: str
     provider_name: str
@@ -47,42 +56,71 @@ class ClassificationEnrichmentProvider:
 
 
 class ClassificationEnrichmentProviderCatalog(Protocol):
-    """按调用时运行状态返回补充 provider 快照。"""
+    """
+    按调用时运行状态返回补充提供方快照。
+    """
 
     def providers(self) -> tuple[ClassificationEnrichmentProvider, ...]:
-        """返回按稳定优先级排列的当前 provider。"""
+        """
+        返回按稳定优先级排列的当前提供方。
+
+        :return: 按稳定优先级排列的当前可用提供方快照
+        """
         ...
 
 
 @dataclass(frozen=True, slots=True)
 class ClassificationEnrichmentCacheEntry:
-    """区分缓存未命中、空响应和有效响应。"""
+    """
+    区分缓存未命中、空响应和有效响应。
+
+    :param response: 已校验的补充响应；None 表示已缓存的确定性空结果，区别于整个缓存项缺失
+    """
 
     response: ClassificationEnrichmentResponse | None
 
 
 class ClassificationEnrichmentCache(Protocol):
-    """补充结果 TTL 缓存的最小同步端口。"""
+    """
+    补充结果 TTL 缓存的最小同步端口。
+    """
 
     def get(self, key: str) -> ClassificationEnrichmentCacheEntry | None:
-        """读取缓存项；不存在时返回空值。"""
+        """
+        读取缓存项；不存在时返回空值。
+
+        :param key: 含提供方、媒体身份与请求字段的缓存键
+        :return: 缓存项；未命中时为 None，命中的空响应由项内 response=None 表示
+        """
         ...
 
     def set(self, key: str, entry: ClassificationEnrichmentCacheEntry) -> None:
-        """写入已校验响应或确定性空响应。"""
+        """
+        写入已校验响应或确定性空响应。
+
+        :param key: 含提供方、媒体身份与请求字段的缓存键
+        :param entry: 待缓存的已校验响应或确定性空结果
+        """
         ...
 
 
+# 向进程托管线程池提交同步 provider 的端口。
 ProviderSubmit: TypeAlias = Callable[..., Future[Any]]
-"""向进程托管线程池提交同步 provider 的端口。"""
 
+# 接收不会阻断分类流程的补充诊断。
 ClassificationEnrichmentLogger: TypeAlias = Callable[[str], None]
-"""接收不会阻断分类流程的补充诊断。"""
 
 
 @dataclass(frozen=True, slots=True)
 class _ProviderCall:
-    """保存一个 provider 的裁剪请求和缓存身份。"""
+    """
+    保存一个提供方的裁剪请求和缓存身份。
+
+    :param index: 提供方在本轮调用列表中的顺序，用于稳定合并结果
+    :param provider: 本次调用使用的提供方及回调
+    :param request: 按提供方能力裁剪后的缺失事实请求
+    :param cache_key: 由提供方、媒体身份和请求字段生成的缓存键
+    """
 
     index: int
     provider: ClassificationEnrichmentProvider
@@ -91,22 +129,30 @@ class _ProviderCall:
 
 
 class _NoopEnrichmentCache:
-    """未注入缓存时保持接口语义的空实现。"""
+    """
+    未注入缓存时保持接口语义的空实现。
+    """
 
     @staticmethod
     def get(key: str) -> None:
-        """始终返回未命中。"""
+        """
+        始终返回未命中。
+        """
         del key
         return None
 
     @staticmethod
     def set(key: str, entry: ClassificationEnrichmentCacheEntry) -> None:
-        """忽略写入。"""
+        """
+        忽略写入。
+        """
         del key, entry
 
 
 class ClassificationEnrichmentService:
-    """在有界预算内并发补充缺失事实，并保持主身份与已有事实不变。"""
+    """
+    在有界预算内并发补充缺失事实，并保持主身份与已有事实不变。
+    """
 
     def __init__(
         self,
@@ -118,7 +164,9 @@ class ClassificationEnrichmentService:
         max_concurrency: int = _DEFAULT_MAX_CONCURRENCY,
         logger: ClassificationEnrichmentLogger | None = None,
     ) -> None:
-        """保存延迟 provider 目录、线程端口和有界执行参数。"""
+        """
+        保存延迟提供方目录、线程端口和有界执行参数。
+        """
         if timeout_seconds <= 0:
             raise ValueError("分类事实补充总超时必须大于 0")
         if max_concurrency <= 0:
@@ -136,7 +184,9 @@ class ClassificationEnrichmentService:
         facts: ClassificationFacts,
         media: object,
     ) -> ClassificationFacts:
-        """同步执行补全；默认模式或没有缺失引用时不发现 provider。"""
+        """
+        同步执行补全；默认模式或没有缺失引用时不发现提供方。
+        """
         calls = self._build_calls(policy, facts, media)
         if not calls:
             return facts
@@ -149,7 +199,9 @@ class ClassificationEnrichmentService:
         facts: ClassificationFacts,
         media: object,
     ) -> ClassificationFacts:
-        """异步执行相同补全合同，同步 provider 在线程中有界并发运行。"""
+        """
+        异步执行相同补全合同，同步提供方在线程中有界并发运行。
+        """
         calls = self._build_calls(policy, facts, media)
         if not calls:
             return facts
@@ -162,7 +214,9 @@ class ClassificationEnrichmentService:
         facts: ClassificationFacts,
         media: object,
     ) -> tuple[_ProviderCall, ...]:
-        """按策略、缺失事实和 provider 来源能力裁剪独立请求。"""
+        """
+        按策略、缺失事实和提供方来源能力裁剪独立请求。
+        """
         if policy.enrichment_mode != "enrich_missing":
             return ()
         missing_fields = _referenced_missing_standard_fields(policy, facts)
@@ -205,7 +259,9 @@ class ClassificationEnrichmentService:
         self,
         calls: Sequence[_ProviderCall],
     ) -> dict[int, ClassificationEnrichmentResponse | None]:
-        """按并发上限滚动提交同步 provider，并在总预算到期时停止等待。"""
+        """
+        按并发上限滚动提交同步提供方，并在总预算到期时停止等待。
+        """
         responses: dict[int, ClassificationEnrichmentResponse | None] = {}
         queue: list[_ProviderCall] = []
         for call in calls:
@@ -222,7 +278,9 @@ class ClassificationEnrichmentService:
         next_index = 0
 
         def submit_next() -> None:
-            """在还有执行容量时提交下一个稳定顺序 provider。"""
+            """
+            在还有执行容量时提交下一个稳定顺序提供方。
+            """
             nonlocal next_index
             if next_index >= len(queue):
                 return
@@ -258,7 +316,9 @@ class ClassificationEnrichmentService:
         self,
         calls: Sequence[_ProviderCall],
     ) -> dict[int, ClassificationEnrichmentResponse | None]:
-        """包装宿主管理的线程 Future，并以 asyncio 总超时封口。"""
+        """
+        包装宿主管理的线程 Future，并以 asyncio 总超时封口。
+        """
         responses: dict[int, ClassificationEnrichmentResponse | None] = {}
         queue: list[_ProviderCall] = []
         for call in calls:
@@ -276,7 +336,9 @@ class ClassificationEnrichmentService:
         next_index = 0
 
         def submit_next() -> None:
-            """在宿主管理线程池还有执行容量时提交下一个 provider。"""
+            """
+            在宿主管理线程池还有执行容量时提交下一个提供方。
+            """
             nonlocal next_index
             if next_index >= len(queue):
                 return
@@ -316,7 +378,9 @@ class ClassificationEnrichmentService:
         call: _ProviderCall,
         deadline: float,
     ) -> ClassificationEnrichmentResponse | None:
-        """调用并严格校验一个同步 provider 响应。"""
+        """
+        调用并严格校验一个同步提供方响应。
+        """
         remaining = max(0.001, deadline - time.monotonic())
         request = call.request.model_copy(
             deep=True,
@@ -344,7 +408,9 @@ class ClassificationEnrichmentService:
         future: Future[Any],
         responses: dict[int, ClassificationEnrichmentResponse | None],
     ) -> None:
-        """隔离一个同步 Future 的错误并缓存已校验终态。"""
+        """
+        隔离一个同步 Future 的错误并缓存已校验终态。
+        """
         try:
             response = cast(ClassificationEnrichmentResponse | None, future.result())
         except Exception as error:  # noqa: BLE001  provider 故障必须隔离
@@ -364,7 +430,9 @@ class ClassificationEnrichmentService:
         future: asyncio.Future[Any],
         responses: dict[int, ClassificationEnrichmentResponse | None],
     ) -> None:
-        """隔离异步包装 Future 的错误并缓存已校验终态。"""
+        """
+        隔离异步包装 Future 的错误并缓存已校验终态。
+        """
         try:
             response = cast(ClassificationEnrichmentResponse | None, future.result())
         except Exception as error:  # noqa: BLE001  provider 故障必须隔离
@@ -384,7 +452,9 @@ class ClassificationEnrichmentService:
         calls: Sequence[_ProviderCall],
         responses: Mapping[int, ClassificationEnrichmentResponse | None],
     ) -> ClassificationFacts:
-        """按 provider 目录顺序只填充仍缺失的事实并记录提供来源。"""
+        """
+        按提供方目录顺序只填充仍缺失的事实并记录提供来源。
+        """
         merged = facts.model_copy(deep=True)
         for call in calls:
             response = responses.get(call.index)
@@ -404,12 +474,15 @@ class ClassificationEnrichmentService:
         return cast(ClassificationFacts, merged)
 
     def _warn(self, message: str) -> None:
-        """尽力记录诊断，日志端口失败也不得影响识别。"""
+        """
+        尽力记录诊断，日志端口失败也不得影响识别。
+        """
         if self._logger is None:
             return
         try:
             self._logger(message)
-        except Exception:  # noqa: BLE001  诊断不能成为分类硬依赖
+        # 诊断不能成为分类硬依赖
+        except Exception:  # noqa: BLE001
             return
 
 
@@ -417,7 +490,9 @@ def _referenced_missing_standard_fields(
     policy: ClassificationPolicy,
     facts: ClassificationFacts,
 ) -> tuple[str, ...]:
-    """返回当前媒体实际适用规则中引用且缺失的标准事实。"""
+    """
+    返回当前媒体实际适用规则中引用且缺失的标准事实。
+    """
     definitions = field_definition_map()
     media_type = facts.media.type
     media_source = facts.identity.media_source
@@ -446,7 +521,9 @@ def _provider_fields(
     *,
     primary_source: str,
 ) -> tuple[str, ...]:
-    """按 provider 来源能力过滤不能跨源提供的字段。"""
+    """
+    按提供方来源能力过滤不能跨源提供的字段。
+    """
     candidate_sources = tuple(
         source for source in provider.media_sources if source != primary_source
     )
@@ -471,7 +548,9 @@ def _validated_response(
     request: ClassificationEnrichmentRequest,
     response: ClassificationEnrichmentResponse,
 ) -> ClassificationEnrichmentResponse:
-    """验证来源所有权、同媒体证明、请求字段和值类型。"""
+    """
+    验证来源所有权、同媒体证明、请求字段和值类型。
+    """
     source_id = response.media_source.strip()
     if not source_id or source_id == request.identity.media_source:
         raise ValueError("补充 provider 必须返回不同于主身份的有效媒体来源")
@@ -507,7 +586,9 @@ def _validate_match(
     request: ClassificationEnrichmentRequest,
     response: ClassificationEnrichmentResponse,
 ) -> None:
-    """只接受已知外部 ID 或对主身份的明确映射证明。"""
+    """
+    只接受已知外部 ID 或对主身份的明确映射证明。
+    """
     match = response.match
     if match.kind == "external_id":
         expected = request.external_ids.get(match.media_source)
@@ -522,7 +603,9 @@ def _validate_match(
 
 
 def _external_identities(media: object) -> dict[str, str]:
-    """从标准媒体对象读取可独立验证的来源专用外部 ID。"""
+    """
+    从标准媒体对象读取可独立验证的来源专用外部 ID。
+    """
     fields = (
         (MediaSource.TMDB.value, "tmdb_id"),
         (MediaSource.IMDb.value, "imdb_id"),
@@ -547,7 +630,9 @@ def _set_standard_fact(
     field_id: str,
     value: object,
 ) -> bool:
-    """把已校验值写入 media 或 music 标准事实的一层字段。"""
+    """
+    把已校验值写入 media 或 music 标准事实的一层字段。
+    """
     namespace, separator, attribute = field_id.partition(".")
     if not separator or namespace not in {"media", "music"} or not attribute:
         return False
@@ -562,7 +647,9 @@ def _cache_key(
     provider: ClassificationEnrichmentProvider,
     request: ClassificationEnrichmentRequest,
 ) -> str:
-    """生成包含策略、身份、字段集合和 provider 的稳定缓存键。"""
+    """
+    生成包含策略、身份、字段集合和提供方的稳定缓存键。
+    """
     payload = {
         "provider_id": provider.provider_id,
         "identity": request.identity.model_dump(mode="json"),
@@ -581,14 +668,18 @@ def _cache_key(
 
 
 def _enum_text(value: object) -> str:
-    """把字符串枚举或普通值转换为稳定文本。"""
+    """
+    把字符串枚举或普通值转换为稳定文本。
+    """
     if isinstance(value, Enum):
         value = value.value
     return str(value or "").strip()
 
 
 def _consume_task_result(future: asyncio.Future[Any]) -> None:
-    """消费超时后线程 Future 包装的终态，避免未读取异常告警。"""
+    """
+    消费超时后线程 Future 包装的终态，避免未读取异常告警。
+    """
     if future.cancelled():
         return
     try:

@@ -1,3 +1,7 @@
+"""
+Telegram 通知模块的权限检查、入站解析和实例投递路由。
+"""
+
 import json
 import re
 from typing import Any, List, Optional, Tuple, Union
@@ -30,14 +34,14 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
     Telegram 通知模块，负责模块生命周期、消息解析和通知发送。
     """
 
-    # 管理员配置键，与渠道 resolver 保持一致
+    # 管理员配置键，与渠道管理员解析器保持一致
     _admin_config_key = "TELEGRAM_ADMINS"
     _notification_user_target_keys = ("telegram_userid",)
     _notification_admin_default_config_keys = ("TELEGRAM_CHAT_ID",)
 
     def init_module(self) -> None:
         """
-        初始化模块
+        加载 Telegram 通知实例并绑定渠道类型。
         """
         super().init_service(
             service_name=Telegram.__name__.lower(), service_type=Telegram
@@ -47,38 +51,50 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
     @staticmethod
     def get_name() -> str:
         """
-        获取模块名称
+        返回配置界面使用的渠道名称。
+
+        :return: 固定模块名称 Telegram
         """
         return "Telegram"
 
     @staticmethod
     def get_type() -> ModuleType:
         """
-        获取模块类型
+        声明模块属于通知服务。
+
+        :return: 通知模块类型
         """
         return ModuleType.Notification
 
     @staticmethod
     def get_subtype() -> NotificationChannel:
         """
-        获取模块子类型
+        声明模块使用 Telegram 通知渠道。
+
+        :return: 固定模块名称 Telegram 渠道枚举
         """
         return NotificationChannel.Telegram
 
     @staticmethod
     def get_priority() -> int:
         """
-        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效
+        返回同一接口的模块调度优先级。
+
+        :return: 固定为 0；数值越小越先调用
         """
         return 0
 
     def stop(self) -> bool:
-        """停止全部 Telegram 实例，并返回资源是否全部收敛。"""
+        """
+        停止全部 Telegram 实例并收尾轮询分发和输入状态任务。
+
+        :return: 所有实例均报告停止成功时返回 True，否则返回 False
+        """
         return self._stop_service_instances()
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         """
-        获取模块初始化配置项。
+        保留设置初始化钩子，实例配置由通知服务管理。
         """
         pass
 
@@ -86,51 +102,14 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         self, source: str, body: Any, form: Any, args: Any
     ) -> Optional[IncomingMessage]:
         """
-        解析消息内容，返回字典，注意以下约定值：
-        userid: 用户ID
-        username: 用户名
-        text: 内容
-        :param source: 消息来源
-        :param body: 请求体
-        :param form: 表单
-        :param args: 参数
-        :return: 渠道、消息体
-        """
-        """
-            普通消息格式：
-            {
-                'update_id': ,
-                'message': {
-                    'message_id': ,
-                    'from': {
-                        'id': ,
-                        'is_bot': False,
-                        'first_name': '',
-                        'username': '',
-                        'language_code': 'zh-hans'
-                    },
-                    'chat': {
-                        'id': ,
-                        'first_name': '',
-                        'username': '',
-                        'type': 'private'
-                    },
-                    'date': ,
-                    'text': ''
-                }
-            }
+        解析 Telegram 消息或按钮回调，并检查访问权限。
 
-            按钮回调格式：
-            {
-                'callback_query': {
-                    'id': '',
-                    'from': {...},
-                    'message': {...},
-                    'data': 'callback_data'
-                }
-            }
+        :param source: 通知实例名称
+        :param body: JSON 文本或字节；兼容再次编码的字符串及 Update 消息外壳
+        :param form: 兼容其他渠道的表单参数，当前不使用
+        :param args: 兼容其他渠道的查询参数，当前不使用
+        :return: 含发送者和附件的统一消息；来源缺失、报文无效或不满足接收条件时返回 None
         """
-        # 获取服务配置
         client_config = self.get_config(source)
         if not client_config:
             return None
@@ -152,11 +131,9 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
             message = message.get("message")
 
         if message:
-            # 处理按钮回调
             if "callback_query" in message:
                 return self._handle_callback_query(message, client_config, client)
 
-            # 处理普通消息
             return self._handle_text_message(message, client_config, client)
 
         return None
@@ -165,7 +142,12 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         self, message: dict, client_config: NotificationConf, client: Telegram
     ) -> Optional[IncomingMessage]:
         """
-        处理按钮回调查询
+        提取按钮回调并校验命令型回调的管理员身份。
+
+        :param message: 含 callback_query 的更新报文
+        :param client_config: 当前通知实例和管理员配置
+        :param client: 机器人客户端，用于回显权限不足提示
+        :return: 含 CALLBACK: 正文和原回调的统一消息；内容或用户缺失及命令未授权时返回 None
         """
         callback_query = message.get("callback_query", {})
         user_info = callback_query.get("from", {})
@@ -193,7 +175,6 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
             # 将callback_data作为特殊格式的text返回，以便主程序识别这是按钮回调
             callback_text = f"CALLBACK:{callback_data}"
 
-            # 创建包含完整回调信息的CommingMessage
             return IncomingMessage(
                 channel=NotificationChannel.Telegram,
                 source=client_config.name,
@@ -219,7 +200,14 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         self, msg: dict, client_config: NotificationConf, client: Telegram
     ) -> Optional[IncomingMessage]:
         """
-        处理普通文本消息
+        提取文本与附件，去除机器人提及并应用访问规则。
+
+        斜杠命令检查管理员规则；其他消息检查普通用户白名单。链接实体和按钮链接会合入正文。
+
+        :param msg: Bot API Message 字典
+        :param client_config: 当前实例、管理员和普通用户白名单配置
+        :param client: 提供机器人用户名并发送权限提示的客户端
+        :return: 通过检查的统一消息；无发送者、无内容或访问被拒绝时返回 None
         """
         text = msg.get("text") or msg.get("caption")
         message_id = msg.get("message_id")
@@ -298,7 +286,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
     @staticmethod
     def _extract_images(msg: dict) -> Optional[List[IncomingMessage.MessageImage]]:
         """
-        从Telegram消息中提取图片file_id
+        从Telegram消息中提取图片file_id。
         """
         images = []
         photo = msg.get("photo")
@@ -376,7 +364,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
     @staticmethod
     def _embed_entity_links(text: str, entities: Optional[List[dict]]) -> str:
         """
-        将 text_link 实体中的 URL 嵌入到文本中
+        将 text_link 实体中的 URL 嵌入到文本中。
 
         :param text: 原始文本
         :param entities: 消息实体列表
@@ -404,7 +392,7 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
     @staticmethod
     def _append_reply_markup_links(text: Optional[str], reply_markup: Optional[dict]) -> Optional[str]:
         """
-        将 reply_markup 中的 URL 按钮信息追加到文本末尾
+        将 reply_markup 中的 URL 按钮信息追加到文本末尾。
 
         :param text: 原始文本
         :param reply_markup: 消息的 reply_markup 字段
@@ -432,33 +420,32 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
     @staticmethod
     def _clean_bot_mention(text: str, bot_username: Optional[str]) -> str:
         """
-        清理消息中的@bot部分，确保文本处理一致性
-        :param text: 原始消息文本
-        :param bot_username: bot用户名
+        移除机器人提及，并把剩余空白折叠为单个空格。
+
+        :param text: 原消息正文
+        :param bot_username: 机器人用户名，不带 @；为空时保留原文本
         :return: 清理后的文本
         """
         if not text or not bot_username:
             return text
 
-        # Remove @bot_username from the beginning and any position in text
         cleaned = text
         mention_pattern = f"@{bot_username}"
 
-        # Remove mention at the beginning with optional following space
         if cleaned.startswith(mention_pattern):
             cleaned = cleaned[len(mention_pattern):].lstrip()
 
-        # Remove mention at any other position
         cleaned = cleaned.replace(mention_pattern, "").strip()
 
-        # Clean up multiple spaces
         cleaned = re.sub(r"\s+", " ", cleaned).strip()
 
         return cleaned
 
     @staticmethod
     def _notification_rich_message(message: Message) -> Optional[str]:
-        """渠道正文附上宿主详情入口；原有 Rich Message 调用仍保持完整正文语义。"""
+        """
+        渠道正文附上宿主详情入口；原有 Rich Message 调用仍保持完整正文语义。
+        """
         rich_text = message.channel_text(NotificationChannel.Telegram)
         if not rich_text:
             return message.rich_message
@@ -470,9 +457,14 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
 
     def post_message(self, message: Message, **kwargs) -> None:
         """
-        发送消息
-        :param message: 消息体
-        未确认发送时抛错，由普通模块派发记录错误，持久派发保留重试意图。
+        向符合通知规则的实例发送文件、语音或文本图文。
+
+        未确认发送的实例统一抛错，供持久派发保留重试意图。
+        普通通知保留原会话但不编辑原消息，带按钮或强制回复上下文时由客户端决定编辑或回复。
+
+        :param message: 通知内容及目标；文件优先于语音，其次为普通消息
+        :param kwargs: 兼容模块分发的附加参数，当前不使用
+        :raises RuntimeError: 一个或多个匹配实例缺失客户端或未确认发送成功
         """
         failures = []
         for conf in self.get_configs().values():
@@ -536,10 +528,10 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         self, message: Message, medias: List[MediaInfo]
     ) -> None:
         """
-        发送媒体信息选择列表
-        :param message: 消息体
-        :param medias: 媒体列表
-        :return: 成功或失败
+        向符合通知规则的实例发送或编辑媒体候选列表。
+
+        :param message: 标题、按钮、接收目标及原消息上下文
+        :param medias: 按原顺序展示的媒体候选项
         """
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
@@ -561,10 +553,10 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         self, message: Message, torrents: List[Context]
     ) -> None:
         """
-        发送种子信息选择列表
-        :param message: 消息体
-        :param torrents: 种子列表
-        :return: 成功或失败
+        向符合通知规则的实例发送或编辑种子候选列表。
+
+        :param message: 标题、按钮、接收目标及原消息上下文
+        :param torrents: 含种子和媒体信息的候选上下文
         """
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
@@ -590,12 +582,13 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         chat_id: Optional[int] = None,
     ) -> Optional[bool]:
         """
-        删除消息
-        :param channel: 消息渠道
-        :param source: 指定的消息源
-        :param message_id: 消息ID
-        :param chat_id: 聊天ID
-        :return: 删除是否成功
+        通过指定通知实例删除消息。
+
+        :param channel: 目标渠道；非 Telegram 时忽略
+        :param source: 通知实例名称
+        :param message_id: 目标消息标识
+        :param chat_id: 目标会话；为空时使用实例默认会话
+        :return: 删除成功返回 True，实例缺失或删除失败返回 False；渠道不匹配返回 None
         """
         if channel != self._channel:
             return None
@@ -623,7 +616,8 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
         parse_mode: Optional[str] = None,
     ) -> Optional[bool]:
         """
-        编辑消息
+        编辑消息。
+
         :param channel: 消息渠道
         :param source: 指定的消息源
         :param message_id: 消息ID
@@ -665,8 +659,15 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
             text: Optional[str] = None,
     ) -> Optional[dict]:
         """
-        标记 Telegram 消息正在处理。
-        Telegram typing 需要周期性续发，因此在模块接口中启动保活任务。
+        启动定期续发的“正在输入”状态任务。
+
+        :param channel: 来源渠道；非 Telegram 时忽略
+        :param source: 来源通知实例名称
+        :param userid: 无会话时用于解析最近会话或私聊目标的用户标识
+        :param message_id: 原消息标识，保存在状态中
+        :param chat_id: 显式原会话标识，优先于用户映射
+        :param text: 兼容统一接口的正文，当前不使用
+        :return: 含输入状态类型的处理状态；不适用、实例缺失或启动失败时返回 None
         """
         if channel != self._channel:
             return None
@@ -698,7 +699,15 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
             status: Optional[dict] = None,
     ) -> Optional[bool]:
         """
-        结束 Telegram typing 状态。
+        请求停止此前启动的输入状态任务。
+
+        :param channel: 来源渠道；非 Telegram 时忽略
+        :param source: 来源通知实例名称
+        :param userid: 状态中无用户时使用的用户标识
+        :param message_id: 兼容统一接口的原消息标识，当前不使用
+        :param chat_id: 状态中无会话时使用的会话标识
+        :param status: 可选起始处理状态，优先使用其中的会话和用户
+        :return: 找到目标并请求停止返回 True；实例或目标缺失返回 False；渠道不匹配返回 None
         """
         if channel != self._channel:
             return None
@@ -715,9 +724,10 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
 
     def send_direct_message(self, message: Message) -> Optional[MessageResponse]:
         """
-        直接发送消息并返回消息ID等信息
-        :param message: 消息体
-        :return: 消息响应（包含message_id, chat_id等）
+        发送新消息并返回首个成功实例的消息引用。
+
+        :param message: 待发送通知；语音单独处理，其他内容发送文本或图文，强制回复保留原消息关系
+        :return: 成功消息的标识和来源；没有成功结果或指定用户无 Telegram 目标时返回 None
         """
         for conf in self.get_configs().values():
             if not self.check_message(message, conf.name):
@@ -740,8 +750,8 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
                         parse_mode=message.parse_mode,
                     )
                 else:
-                    # direct message 只禁用编辑旧消息；仅 ForceReply 使用 original_chat_id
-                    # 发回原会话，并保留 original_message_id 让 client reply_to 原消息。
+                    # 直接发送不编辑旧消息；仅 ForceReply 使用 original_chat_id
+                    # 发回原会话，并保留 original_message_id 建立回复关系。
                     original_chat_id = message.original_chat_id if message.force_reply else None
                     original_message_id = message.original_message_id if message.force_reply else None
                     result = client.send_msg(
@@ -770,10 +780,11 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
 
     def download_telegram_file_to_base64(self, file_id: str, source: str) -> Optional[str]:
         """
-        下载Telegram文件并转为base64
-        :param file_id: Telegram文件ID
-        :param source: 来源名称
-        :return: base64编码的图片数据
+        通过指定实例下载文件并编码为 Base64 文本。
+
+        :param file_id: Telegram 文件标识
+        :param source: 通知实例名称
+        :return: 不含数据地址前缀的 Base64 文本；实例缺失或未下载到内容返回 None
         """
         config = self.get_config(source)
         if not config:
@@ -790,7 +801,11 @@ class TelegramModule(_MessageChannelModuleBase[Telegram]):
 
     def download_telegram_file_bytes(self, file_id: str, source: str) -> Optional[bytes]:
         """
-        下载Telegram文件并返回原始字节。
+        通过指定实例下载文件的原始内容。
+
+        :param file_id: Telegram 文件标识
+        :param source: 通知实例名称
+        :return: 文件字节；实例缺失或下载失败返回 None
         """
         config = self.get_config(source)
         if not config:

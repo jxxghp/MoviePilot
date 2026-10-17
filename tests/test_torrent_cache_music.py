@@ -1,4 +1,6 @@
-"""种子缓存音乐实体识别测试。"""
+"""
+种子缓存音乐实体识别测试。
+"""
 
 import asyncio
 from unittest.mock import AsyncMock, Mock, patch
@@ -11,7 +13,9 @@ from app.schemas.types import MediaType
 
 
 def _album_context() -> Context:
-    """构造带完整专辑身份的缓存上下文。"""
+    """
+    构造带完整专辑身份的缓存上下文。
+    """
     album = MusicInfo(
         media_source="musicbrainz",
         media_id="release-group-1",
@@ -32,7 +36,9 @@ def _album_context() -> Context:
 
 
 def _mock_torrents_chain(context: Context) -> Mock:
-    """构造可记录缓存读写的种子链替身。"""
+    """
+    构造可记录缓存读写的种子链替身。
+    """
     chain = Mock()
     chain.async_get_torrents = AsyncMock(return_value={"music.example": [context]})
     chain.split_cache_contexts.return_value = ({}, {"music.example": [context]})
@@ -42,7 +48,9 @@ def _mock_torrents_chain(context: Context) -> Mock:
 
 
 def test_torrent_cache_exposes_music_identity_namespace():
-    """缓存列表应返回重识别所需的数据源、原生 ID 和实体类型。"""
+    """
+    缓存列表应返回重识别所需的数据源、原生 ID 和实体类型。
+    """
     context = _album_context()
     torrents_chain = _mock_torrents_chain(context)
 
@@ -59,7 +67,9 @@ def test_torrent_cache_exposes_music_identity_namespace():
 
 
 def test_torrent_cache_exact_reidentify_forwards_album_namespace():
-    """缓存按专辑 ID 重识别时必须在进入 MediaChain 前绑定 album。"""
+    """
+    缓存按专辑 ID 重识别时必须在进入 MediaChain 前绑定 album。
+    """
     context = _album_context()
     torrents_chain = _mock_torrents_chain(context)
     media_chain = Mock()
@@ -91,7 +101,9 @@ def test_torrent_cache_exact_reidentify_forwards_album_namespace():
 
 
 def test_torrent_cache_auto_reidentify_keeps_music_meta_and_entity():
-    """不指定 ID 的专辑重识别应沿用 MetaMusic 和原有 album 命名空间。"""
+    """
+    不指定 ID 的专辑重识别应沿用 MetaMusic 和原有 album 命名空间。
+    """
     context = _album_context()
     torrents_chain = _mock_torrents_chain(context)
     media_chain = Mock()

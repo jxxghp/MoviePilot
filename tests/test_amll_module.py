@@ -1,4 +1,6 @@
-"""AMLL 原生歌词接口的严格匹配、请求隔离和缓存合同测试。"""
+"""
+AMLL 原生歌词接口的严格匹配、请求隔离和缓存合同测试。
+"""
 
 from collections import deque
 from collections.abc import Iterator
@@ -26,10 +28,14 @@ _TTML = """<tt xmlns="http://www.w3.org/ns/ttml" xml:lang="zh">
 
 
 class _Response:
-    """回放原生接口响应并记录连接关闭行为。"""
+    """
+    回放原生接口响应并记录连接关闭行为。
+    """
 
     def __init__(self, payload: Any, status: int = 200, headers=None) -> None:
-        """保存响应状态、正文及限流提示。"""
+        """
+        保存响应状态、正文及限流提示。
+        """
         self.payload = payload
         self.status_code = status
         self.headers = headers or {}
@@ -37,18 +43,24 @@ class _Response:
         self.closed = False
 
     def json(self) -> Any:
-        """返回预设原生响应，或模拟 JSON 解码失败。"""
+        """
+        返回预设原生响应，或模拟 JSON 解码失败。
+        """
         if isinstance(self.payload, Exception):
             raise self.payload
         return self.payload
 
     def close(self) -> None:
-        """记录请求完成后已释放响应连接。"""
+        """
+        记录请求完成后已释放响应连接。
+        """
         self.closed = True
 
 
 def _song(song_id: int = 1, **values: Any) -> dict:
-    """构造具有多值名称列表的 AMLL 歌曲记录。"""
+    """
+    构造具有多值名称列表的 AMLL 歌曲记录。
+    """
     return {
         "id": song_id,
         "filename": f"fixture-{song_id}.ttml",
@@ -62,7 +74,9 @@ def _song(song_id: int = 1, **values: Any) -> dict:
 
 
 def _search(*songs: dict, has_more: bool = False) -> _Response:
-    """回放搜索响应，保持搜索条目不包含完整歌词。"""
+    """
+    回放搜索响应，保持搜索条目不包含完整歌词。
+    """
     return _Response({"status": 200, "data": {
         "items": list(songs),
         "pagination": {
@@ -73,13 +87,17 @@ def _search(*songs: dict, has_more: bool = False) -> _Response:
 
 
 def _detail(song_id: int = 1, **values: Any) -> _Response:
-    """回放带完整逐词 TTML 的原生详情响应。"""
+    """
+    回放带完整逐词 TTML 的原生详情响应。
+    """
     return _Response({"status": 200, "data": _song(song_id, **{"lyrics": _TTML, **values})})
 
 
 @pytest.fixture
 def amll_runtime(monkeypatch) -> Iterator[SimpleNamespace]:
-    """隔离模块缓存、配置及 HTTP 出口，所有响应在内存中回放。"""
+    """
+    隔离模块缓存、配置及 HTTP 出口，所有响应在内存中回放。
+    """
     config = {"AMLL_BASE_URL": "https://api.amll.dev"}
     original_setting = amll.get_runtime_setting
     monkeypatch.setattr(
@@ -90,7 +108,9 @@ def amll_runtime(monkeypatch) -> Iterator[SimpleNamespace]:
     history = []
 
     def request(url: str, params=None, **_kwargs) -> Any:
-        """记录请求参数并禁止任何未声明的外部响应。"""
+        """
+        记录请求参数并禁止任何未声明的外部响应。
+        """
         history.append((url, params))
         assert responses, f"未声明的 AMLL 请求：{url} {params}"
         response = responses.popleft()
@@ -114,7 +134,9 @@ def amll_runtime(monkeypatch) -> Iterator[SimpleNamespace]:
 
 
 def test_capability_root_export_preserves_module_identity() -> None:
-    """宿主 manifest 使用的惰性包级入口必须返回同一个模块实现类。"""
+    """
+    宿主 manifest 使用的惰性包级入口必须返回同一个模块实现类。
+    """
     assert import_module("app.modules.amll").AmllModule is AmllModule
 
 
@@ -122,7 +144,9 @@ def test_capability_root_export_preserves_module_identity() -> None:
 def test_search_fetches_selected_native_detail_and_preserves_word_lyrics(
     amll_runtime, music_type: type,
 ) -> None:
-    """正确匹配后必须按 ID 取回 TTML，并转换为标准逐词候选。"""
+    """
+    正确匹配后必须按 ID 取回 TTML，并转换为标准逐词候选。
+    """
     search = _search(_song())
     detail = _detail()
     amll_runtime.responses.extend([search, detail])
@@ -156,7 +180,9 @@ def test_search_fetches_selected_native_detail_and_preserves_word_lyrics(
     {"isrc": "not-an-isrc"},
 ])
 def test_insufficient_identity_skips_network(amll_runtime, metadata: dict) -> None:
-    """无合法录音编码且曲名或艺术家缺失时不得模糊下载歌词。"""
+    """
+    无合法录音编码且曲名或艺术家缺失时不得模糊下载歌词。
+    """
     assert amll_runtime.module.music_lyrics_candidates(MusicInfo(**metadata)) == []
     assert amll_runtime.history == []
 
@@ -172,7 +198,9 @@ def test_insufficient_identity_skips_network(amll_runtime, metadata: dict) -> No
 def test_search_rejects_fuzzy_title_artist_album_and_versions(
     amll_runtime, metadata: dict,
 ) -> None:
-    """服务端包含匹配结果不得被误当作原曲、原唱或原专辑。"""
+    """
+    服务端包含匹配结果不得被误当作原曲、原唱或原专辑。
+    """
     amll_runtime.responses.append(_search(_song(**metadata)))
     assert amll_runtime.module.music_lyrics_candidates(MusicInfo(
         title="测试歌曲", artists=["测试歌手"], album="测试专辑",
@@ -181,7 +209,9 @@ def test_search_rejects_fuzzy_title_artist_album_and_versions(
 
 
 def test_alias_matching_normalizes_width_case_and_whitespace(amll_runtime) -> None:
-    """多值别名中的全半角、大小写及空白差异应允许同一音轨匹配。"""
+    """
+    多值别名中的全半角、大小写及空白差异应允许同一音轨匹配。
+    """
     metadata = {
         "musicNames": ["别名", "ＡＢＣ Song"],
         "artistNames": ["guest", "ＡＲＴＩＳＴ"],
@@ -195,7 +225,9 @@ def test_alias_matching_normalizes_width_case_and_whitespace(amll_runtime) -> No
 
 
 def test_search_requires_all_supplied_artists(amll_runtime) -> None:
-    """已知合作歌手时不得把缺少合作者的同名单人版本当作命中。"""
+    """
+    已知合作歌手时不得把缺少合作者的同名单人版本当作命中。
+    """
     amll_runtime.responses.append(_search(_song()))
     assert amll_runtime.module.music_lyrics_candidates(MusicInfo(
         title="测试歌曲", artists=["测试歌手", "合作歌手"], album="测试专辑",
@@ -211,7 +243,9 @@ def test_search_requires_all_supplied_artists(amll_runtime) -> None:
 def test_explicit_version_matches_only_corresponding_title(
     amll_runtime, title: str, studio_title: str, live_title: str,
 ) -> None:
-    """单独版本信息必须参加匹配，不能让原版候选覆盖现场版音轨。"""
+    """
+    单独版本信息必须参加匹配，不能让原版候选覆盖现场版音轨。
+    """
     live = {"musicNames": [live_title]}
     amll_runtime.responses.extend([
         _search(_song(musicNames=[studio_title]), _song(2, **live)), _detail(2, **live),
@@ -225,7 +259,9 @@ def test_explicit_version_matches_only_corresponding_title(
 
 
 def test_isrc_lookup_works_without_title_and_skips_search(amll_runtime) -> None:
-    """合法 ISRC 精确命中时无需曲名或搜索，规范化编码后直接读取完整歌词。"""
+    """
+    合法 ISRC 精确命中时无需曲名或搜索，规范化编码后直接读取完整歌词。
+    """
     amll_runtime.responses.append(_detail(isrcs=["USABC2300001"]))
     result = amll_runtime.module.music_lyrics_candidates(MusicInfo(isrc="us-abc-23-00001"))
     assert len(result) == 1
@@ -236,7 +272,9 @@ def test_isrc_lookup_works_without_title_and_skips_search(amll_runtime) -> None:
 
 @pytest.mark.parametrize("isrc_response", ["missing", "wrong-isrc"])
 def test_isrc_miss_falls_back_to_strict_search(amll_runtime, isrc_response: str) -> None:
-    """录音编码未找到或返回身份不符时必须回退严格元数据匹配。"""
+    """
+    录音编码未找到或返回身份不符时必须回退严格元数据匹配。
+    """
     response = (
         _Response({"status": 404}, status=404)
         if isrc_response == "missing" else _detail(isrcs=["USABC2300002"])
@@ -254,7 +292,9 @@ def test_isrc_miss_falls_back_to_strict_search(amll_runtime, isrc_response: str)
     {"albumNames": ["别的专辑"]},
 ])
 def test_detail_metadata_is_revalidated(amll_runtime, detail_values: dict) -> None:
-    """详情数据与候选身份不符时不得把歌词写入当前音轨。"""
+    """
+    详情数据与候选身份不符时不得把歌词写入当前音轨。
+    """
     amll_runtime.responses.extend([_search(_song()), _detail(**detail_values)])
     assert amll_runtime.module.music_lyrics_candidates(MusicInfo(
         title="测试歌曲", artists=["测试歌手"], album="测试专辑",
@@ -262,7 +302,9 @@ def test_detail_metadata_is_revalidated(amll_runtime, detail_values: dict) -> No
 
 
 def test_detail_id_must_match_selected_search_item(amll_runtime) -> None:
-    """选中歌词 ID 与详情 ID 不一致时必须拒绝该响应。"""
+    """
+    选中歌词 ID 与详情 ID 不一致时必须拒绝该响应。
+    """
     amll_runtime.responses.extend([_search(_song()), _detail(2)])
     assert amll_runtime.module.music_lyrics_candidates(MusicInfo(
         title="测试歌曲", artists=["测试歌手"], album="测试专辑",
@@ -271,7 +313,9 @@ def test_detail_id_must_match_selected_search_item(amll_runtime) -> None:
 
 @pytest.mark.parametrize("song_id", [0, -1, True, "1", 2 ** 53])
 def test_invalid_search_ids_are_not_downloaded(amll_runtime, song_id: Any) -> None:
-    """只允许官方合同中的有效整数 ID 进入详情下载，避免异常数据选错身份。"""
+    """
+    只允许官方合同中的有效整数 ID 进入详情下载，避免异常数据选错身份。
+    """
     amll_runtime.responses.append(_search(_song(song_id)))
     assert amll_runtime.module.music_lyrics_candidates(MusicInfo(
         title="测试歌曲", artists=["测试歌手"], album="测试专辑",
@@ -281,7 +325,9 @@ def test_invalid_search_ids_are_not_downloaded(amll_runtime, song_id: Any) -> No
 
 @pytest.mark.parametrize("metadata", [{"format": "lrc"}, {"lyrics": None}, {"lyrics": "<invalid"}])
 def test_invalid_detail_content_is_not_returned(amll_runtime, metadata: dict) -> None:
-    """缺失、损坏或不支持格式的歌词详情不能成为可落盘的候选。"""
+    """
+    缺失、损坏或不支持格式的歌词详情不能成为可落盘的候选。
+    """
     amll_runtime.responses.extend([_search(_song()), _detail(**metadata)])
     assert amll_runtime.module.music_lyrics_candidates(MusicInfo(
         title="测试歌曲", artists=["测试歌手"], album="测试专辑",
@@ -289,7 +335,9 @@ def test_invalid_detail_content_is_not_returned(amll_runtime, metadata: dict) ->
 
 
 def test_search_and_detail_requests_are_bounded(amll_runtime) -> None:
-    """即使服务端还有更多页或候选详情失败，也只能查询一页和最多三个详情。"""
+    """
+    即使服务端还有更多页或候选详情失败，也只能查询一页和最多三个详情。
+    """
     amll_runtime.responses.append(_search(*(_song(i) for i in range(1, 21)), has_more=True))
     amll_runtime.responses.extend(_Response({"status": 404}, status=404) for _ in range(3))
     assert amll_runtime.module.music_lyrics_candidates(MusicInfo(
@@ -300,7 +348,9 @@ def test_search_and_detail_requests_are_bounded(amll_runtime) -> None:
 
 @pytest.mark.parametrize("failure", ["server", "invalid-json", "timeout"])
 def test_transient_failure_is_not_cached_and_response_is_closed(amll_runtime, failure: str) -> None:
-    """网络或解析失败不能成为永久未匹配结果，下一次请求应能恢复。"""
+    """
+    网络或解析失败不能成为永久未匹配结果，下一次请求应能恢复。
+    """
     response = {
         "server": _Response({"status": 500}, status=500),
         "invalid-json": _Response(ValueError("invalid JSON")),
@@ -315,7 +365,9 @@ def test_transient_failure_is_not_cached_and_response_is_closed(amll_runtime, fa
 
 
 def test_success_cache_and_configured_base_url_are_isolated(amll_runtime, monkeypatch) -> None:
-    """同曲重复查询应复用缓存，切换歌词镜像后不能误用旧地址的响应。"""
+    """
+    同曲重复查询应复用缓存，切换歌词镜像后不能误用旧地址的响应。
+    """
     cache = Mock(wraps=amll.Cache(maxsize=1024, ttl=3600))
     monkeypatch.setattr(amll, "Cache", Mock(return_value=cache))
     amll_runtime.responses.extend([_search(_song()), _detail()])
@@ -334,7 +386,9 @@ def test_success_cache_and_configured_base_url_are_isolated(amll_runtime, monkey
 
 @pytest.mark.parametrize("status", [200, 404])
 def test_not_found_result_uses_negative_cache(amll_runtime, monkeypatch, status: int) -> None:
-    """搜索空列表和未找到响应都应仅缓存五分钟，不因分页信息非空而延长。"""
+    """
+    搜索空列表和未找到响应都应仅缓存五分钟，不因分页信息非空而延长。
+    """
     cache = Mock(wraps=amll.Cache(maxsize=1024, ttl=3600))
     monkeypatch.setattr(amll, "Cache", Mock(return_value=cache))
     response = _search() if status == 200 else _Response({"status": 404}, status=404)
@@ -349,7 +403,9 @@ def test_not_found_result_uses_negative_cache(amll_runtime, monkeypatch, status:
 
 
 def test_module_reload_clears_cached_lyrics_and_cooldown(amll_runtime) -> None:
-    """标准模块重载入口应正常执行并让下一次查询取得更新后的歌词。"""
+    """
+    标准模块重载入口应正常执行并让下一次查询取得更新后的歌词。
+    """
     amll_runtime.responses.extend([_search(_song()), _detail()])
     music = MusicInfo(title="测试歌曲", artists=["测试歌手"], album="测试专辑")
     assert len(amll_runtime.module.music_lyrics_candidates(music)) == 1
@@ -363,7 +419,9 @@ def test_module_reload_clears_cached_lyrics_and_cooldown(amll_runtime) -> None:
 
 
 def test_retry_after_http_date_is_supported(amll_runtime, monkeypatch) -> None:
-    """日期形式的限流提示应得到有限冷却时间。"""
+    """
+    日期形式的限流提示应得到有限冷却时间。
+    """
     now = datetime(2026, 1, 1, tzinfo=timezone.utc)
     monkeypatch.setattr(amll, "datetime", SimpleNamespace(now=lambda _timezone: now))
     retry_after = format_datetime(now + timedelta(seconds=60), usegmt=True)
@@ -374,7 +432,9 @@ def test_retry_after_http_date_is_supported(amll_runtime, monkeypatch) -> None:
 def test_amll_candidates_join_real_lyrics_dispatch_without_blocking_lrclib(
     amll_runtime, monkeypatch, available: bool,
 ) -> None:
-    """真实歌词调度应优先选择逐词候选，AMLL 失败时仍保留内置来源结果。"""
+    """
+    真实歌词调度应优先选择逐词候选，AMLL 失败时仍保留内置来源结果。
+    """
     builtin = LrclibModule()
     monkeypatch.setattr(builtin, "_request_json", Mock(return_value={
         "id": 100, "plainLyrics": "内置纯文本歌词", "instrumental": False,
@@ -386,7 +446,9 @@ def test_amll_candidates_join_real_lyrics_dispatch_without_blocking_lrclib(
     module_error = Mock()
 
     def running_modules(method: str) -> list:
-        """让真实调度器只看到实现了当前接口的宿主模块。"""
+        """
+        让真实调度器只看到实现了当前接口的宿主模块。
+        """
         return [module for module in modules if hasattr(module, method)]
 
     dispatcher = ModuleInvocationDispatcher(
@@ -418,7 +480,9 @@ def test_amll_candidates_join_real_lyrics_dispatch_without_blocking_lrclib(
 def test_rate_limit_uses_bounded_cooldown_without_sleep(
     amll_runtime, monkeypatch, status: int,
 ) -> None:
-    """限流立即回退且冷却期不再出站，超长等待提示不能阻塞刮削线程。"""
+    """
+    限流立即回退且冷却期不再出站，超长等待提示不能阻塞刮削线程。
+    """
     clock = [100.0]
     monkeypatch.setattr(amll.time, "monotonic", lambda: clock[0])
     sleep = Mock(side_effect=AssertionError("AMLL 不应主动等待"))

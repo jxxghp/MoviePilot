@@ -1,4 +1,6 @@
-"""主程序运行依赖的轻量可用性探针。"""
+"""
+主程序运行依赖的轻量可用性探针。
+"""
 
 import argparse
 import os
@@ -43,7 +45,9 @@ NATIVE_MODULES = (
 
 
 def _verify_text_capabilities() -> None:
-    """验证标准与 free-threaded profile 共同依赖的文本能力。"""
+    """
+    验证标准与 free-threaded profile 共同依赖的文本能力。
+    """
     moviepilot_rust = import_module("moviepilot_rust")
     if not moviepilot_rust.is_available() or not moviepilot_rust.jieba_cut("中文分词"):
         raise RuntimeError("中文分词运行依赖不可用")
@@ -54,7 +58,9 @@ def _verify_text_capabilities() -> None:
 
 
 def _verify_native_profile(*, free_threaded: bool) -> None:
-    """验证 ABI 敏感依赖提供预期的原生能力。"""
+    """
+    验证 ABI 敏感依赖提供预期的原生能力。
+    """
     warnings.filterwarnings(
         "ignore",
         message=r'"\\&" is an invalid escape sequence\..*',
@@ -78,7 +84,12 @@ def _verify_native_profile(*, free_threaded: bool) -> None:
 
 
 def main(*, full: bool = False) -> None:
-    """验证 Web 栈和启动关键能力可导入、可执行。"""
+    """
+    验证 Web 栈和启动关键能力可导入、可执行。
+
+    :param full: 是否额外检查原生依赖及数据库驱动，默认仅检查核心导入和文本能力
+    :raises RuntimeError: 必需能力不可用，或自由线程运行时导入后启用了 GIL
+    """
     free_threaded = sysconfig.get_config_var("Py_GIL_DISABLED") == 1
     for module_name in CORE_MODULES:
         import_module(module_name)

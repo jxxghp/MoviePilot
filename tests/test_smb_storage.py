@@ -1,4 +1,6 @@
-"""SMB 保存重连、服务端整理与远程快照恢复的回归测试。"""
+"""
+SMB 保存重连、服务端整理与远程快照恢复的回归测试。
+"""
 
 import errno
 from pathlib import Path
@@ -19,7 +21,9 @@ from app.schemas.file import FileItem
 
 @pytest.fixture
 def smb_storage(monkeypatch):
-    """隔离配置持久化与 SMB 网络边界，保留真实保存和初始化流程。"""
+    """
+    隔离配置持久化与 SMB 网络边界，保留真实保存和初始化流程。
+    """
     state = {"conf": {}}
     client = Mock()
     client.listdir.return_value = []
@@ -27,11 +31,15 @@ def smb_storage(monkeypatch):
         monkeypatch.setattr(smbclient, name, getattr(client, name))
 
     def get_conf(_self):
-        """读取最近一次保存的配置。"""
+        """
+        读取最近一次保存的配置。
+        """
         return state["conf"].copy()
 
     def set_storage(_self, storage, conf):
-        """记录配置，确保重连发生在新配置保存之后。"""
+        """
+        记录配置，确保重连发生在新配置保存之后。
+        """
         assert storage == "smb"
         state["conf"] = conf.copy()
 
@@ -49,7 +57,9 @@ def smb_storage(monkeypatch):
 
 @pytest.mark.parametrize("failure_stage", ["register_session", "listdir"])
 def test_save_retries_unchanged_config_until_connection_recovers(smb_storage, failure_stage):
-    """连接或共享访问失败后，每次保存相同配置都重连，网络恢复即可使用。"""
+    """
+    连接或共享访问失败后，每次保存相同配置都重连，网络恢复即可使用。
+    """
     conf = {"host": "smb.example", "share": "video", "username": "user", "password": "secret"}
     getattr(smb_storage.client, failure_stage).side_effect = [OSError("unreachable"), OSError("unreachable"), []]
 
@@ -75,7 +85,9 @@ def test_save_retries_unchanged_config_until_connection_recovers(smb_storage, fa
 
 @pytest.mark.parametrize("conf", [{}, {"host": "smb.example"}, {"share": "video"}])
 def test_save_incomplete_config_clears_previous_connection(smb_storage, conf):
-    """清空或保存不完整配置后，不得继续把旧共享标记为已连接。"""
+    """
+    清空或保存不完整配置后，不得继续把旧共享标记为已连接。
+    """
     smb_storage.module.storage_manage(
         storage="smb", action="save_config", conf={"host": "smb.example", "share": "video"},
     )
@@ -94,7 +106,9 @@ def test_save_incomplete_config_clears_previous_connection(smb_storage, conf):
 
 @pytest.fixture
 def server_transfer(smb_storage, monkeypatch):
-    """拦截 SMB 命令并禁止本地中转，保留真实存储传输分派。"""
+    """
+    拦截 SMB 命令并禁止本地中转，保留真实存储传输分派。
+    """
     storage = smb_storage.storage
     smb_storage.state["conf"] = {"host": "10.10.10.11", "share": "data"}
     storage.init_storage()
@@ -119,7 +133,9 @@ def server_transfer(smb_storage, monkeypatch):
 
 @pytest.mark.parametrize("mode, command", [("copy", "copyfile"), ("move", "rename"), ("link", "link")])
 def test_same_smb_storage_transfers_on_server(server_transfer, mode, command):
-    """真实整理执行器分派到 SMB 服务端命令，保留源、目标存储身份。"""
+    """
+    真实整理执行器分派到 SMB 服务端命令，保留源、目标存储身份。
+    """
     state = server_transfer
 
     result, error = TransHandler._TransHandler__transfer_command(
@@ -143,7 +159,9 @@ def test_same_smb_storage_transfers_on_server(server_transfer, mode, command):
 def test_safe_overwrite_preserves_old_smb_file_until_new_version_is_complete(
         server_transfer, monkeypatch, mode, fails,
 ):
-    """真实 SMB 复制和 rename 分派必须兼容目标已存在且拒绝覆盖的服务端。"""
+    """
+    真实 SMB 复制和 rename 分派必须兼容目标已存在且拒绝覆盖的服务端。
+    """
     storage = server_transfer.storage
     source = server_transfer.source
     target = Path(server_transfer.target.path)
@@ -152,13 +170,17 @@ def test_safe_overwrite_preserves_old_smb_file_until_new_version_is_complete(
     modified_times = {normalize(source.path): 200, normalize(target): 100}
 
     def stat_file(path):
-        """按 SMB SDK 契约提供真实长度和修改时间，缺失路径抛 ENOENT。"""
+        """
+        按 SMB SDK 契约提供真实长度和修改时间，缺失路径抛 ENOENT。
+        """
         if path not in files:
             raise FileNotFoundError(errno.ENOENT, "missing")
         return SimpleNamespace(st_size=len(files[path]), st_mtime=modified_times[path])
 
     def materialize(src, dst):
-        """在写入新版本时旧版本必须仍完整存在，失败也只留下暂存片段。"""
+        """
+        在写入新版本时旧版本必须仍完整存在，失败也只留下暂存片段。
+        """
         assert files[normalize(target)] == b"old"
         assert dst not in files
         files[dst] = b"partial" if fails else files[src]
@@ -167,13 +189,17 @@ def test_safe_overwrite_preserves_old_smb_file_until_new_version_is_complete(
             raise OSError(errno.ENOSPC, "server full")
 
     def rename(src, dst):
-        """模拟 SMB rename 拒绝任何已存在的目的路径。"""
+        """
+        模拟 SMB rename 拒绝任何已存在的目的路径。
+        """
         assert dst not in files
         files[dst] = files.pop(src)
         modified_times[dst] = modified_times.pop(src)
 
     def remove(path):
-        """只在最终新版本可见后允许清理旧备份或移动源文件。"""
+        """
+        只在最终新版本可见后允许清理旧备份或移动源文件。
+        """
         assert files[normalize(target)] == b"new"
         files.pop(path)
         modified_times.pop(path)
@@ -191,7 +217,8 @@ def test_safe_overwrite_preserves_old_smb_file_until_new_version_is_complete(
     source = storage.get_item_strict(Path(source.path))
     assert source.size == len(b"new")
     assert source.modify_time == 200
-    assert source.fileid is None  # 真实 SMB FileItem 当前不提供远端文件 ID。
+    # 真实 SMB FileItem 当前不提供远端文件 ID。
+    assert source.fileid is None
     kwargs = dict(
         step_runner=None, source_fileitem=source.model_dump(mode="json"),
         target_storage="smb", source_oper=storage, target_oper=storage,
@@ -214,7 +241,9 @@ def test_safe_overwrite_preserves_old_smb_file_until_new_version_is_complete(
 @pytest.mark.parametrize("mode, command", [("copy", "copyfile"), ("move", "rename"), ("link", "link")])
 @pytest.mark.parametrize("error_number", [errno.ENOTSUP, errno.EACCES, errno.ECONNRESET, errno.EXDEV, errno.EEXIST])
 def test_server_transfer_failure_never_falls_back_or_deletes_source(server_transfer, mode, command, error_number):
-    """不支持、拒绝访问及连接失败均保留源文件，不伪装成中转成功。"""
+    """
+    不支持、拒绝访问及连接失败均保留源文件，不伪装成中转成功。
+    """
     state = server_transfer
     getattr(state.client, command).side_effect = OSError(error_number, "SMB operation failed")
 
@@ -231,7 +260,9 @@ def test_server_transfer_failure_never_falls_back_or_deletes_source(server_trans
 
 
 def test_server_copy_rejects_same_file_without_truncation(server_transfer, monkeypatch):
-    """源目标实际为同一文件或硬链接时，不能让 CopyChunk 的写入打开截断源。"""
+    """
+    源目标实际为同一文件或硬链接时，不能让 CopyChunk 的写入打开截断源。
+    """
     monkeypatch.setattr(smbclient.path, "samefile", Mock(return_value=True))
     state = server_transfer
 
@@ -240,7 +271,9 @@ def test_server_copy_rejects_same_file_without_truncation(server_transfer, monke
 
 
 def test_server_copy_accepts_new_target(server_transfer, monkeypatch):
-    """目标尚不存在是正常复制场景，不把它当成查询故障。"""
+    """
+    目标尚不存在是正常复制场景，不把它当成查询故障。
+    """
     monkeypatch.setattr(smbclient.path, "samefile", Mock(side_effect=OSError(errno.ENOENT, "not found")))
     state = server_transfer
 
@@ -249,7 +282,9 @@ def test_server_copy_accepts_new_target(server_transfer, monkeypatch):
 
 
 def test_server_copy_query_failure_does_not_overwrite_target(server_transfer, monkeypatch):
-    """无法确认目标身份时不启动可能覆盖文件的复制。"""
+    """
+    无法确认目标身份时不启动可能覆盖文件的复制。
+    """
     monkeypatch.setattr(smbclient.path, "samefile", Mock(side_effect=PermissionError("denied")))
     state = server_transfer
 
@@ -259,7 +294,9 @@ def test_server_copy_query_failure_does_not_overwrite_target(server_transfer, mo
 
 @pytest.fixture
 def multi_share(server_transfer):
-    """在同一个 SMB 服务中挂载两个共享，拦截所有文件副作用。"""
+    """
+    在同一个 SMB 服务中挂载两个共享，拦截所有文件副作用。
+    """
     state = server_transfer
     state.storage._configure_shares({"shares": ["video", "downloads"]})
     state.source.path = "/downloads/Movie/movie.mkv"
@@ -268,7 +305,9 @@ def multi_share(server_transfer):
 
 
 def test_multiple_shares_share_one_session_and_virtual_root(smb_storage):
-    """保存多共享仅建立一次会话，根目录返回所有已配置共享。"""
+    """
+    保存多共享仅建立一次会话，根目录返回所有已配置共享。
+    """
     smb_storage.module.storage_manage(storage="smb", action="save_config", conf={
         "host": "10.10.10.11", "shares": ["video", "downloads"],
     })
@@ -288,7 +327,9 @@ def test_multiple_shares_share_one_session_and_virtual_root(smb_storage):
 
 @pytest.mark.parametrize("shares", [[], "video,downloads", ["../video"], ["video", "VIDEO"], [None], [""]])
 def test_invalid_share_config_clears_old_mounts(smb_storage, shares):
-    """非法多共享配置不能继续访问之前的共享，也不能退回旧 share 字段。"""
+    """
+    非法多共享配置不能继续访问之前的共享，也不能退回旧 share 字段。
+    """
     smb_storage.module.storage_manage(storage="smb", action="save_config", conf={"host": "host", "share": "old"})
     smb_storage.module.storage_manage(storage="smb", action="save_config", conf={"host": "host", "share": "old", "shares": shares})
     assert smb_storage.storage._connected is False
@@ -297,7 +338,9 @@ def test_invalid_share_config_clears_old_mounts(smb_storage, shares):
 
 
 def test_single_legacy_share_keeps_paths_and_multi_mode_survives_one_share(smb_storage):
-    """旧配置路径不变，多共享减至一项也不会重新解释已保存路径。"""
+    """
+    旧配置路径不变，多共享减至一项也不会重新解释已保存路径。
+    """
     storage = smb_storage.storage
     smb_storage.module.storage_manage(storage="smb", action="save_config", conf={"host": "host", "share": "video"})
     assert storage._normalize_path("/Movies/a.mkv") == r"\\host\video\Movies\a.mkv"
@@ -308,14 +351,18 @@ def test_single_legacy_share_keeps_paths_and_multi_mode_survives_one_share(smb_s
 
 @pytest.mark.parametrize("path", ["/unknown/a.mkv", "/downloads/../video/a.mkv", r"\downloads\..\video\a.mkv", "smb:/video/a"])
 def test_multi_share_rejects_unknown_or_escaping_paths(multi_share, path):
-    """共享选择受配置约束，不能通过路径跳转到未配置的共享。"""
+    """
+    共享选择受配置约束，不能通过路径跳转到未配置的共享。
+    """
     with pytest.raises(ValueError):
         multi_share.storage._normalize_path(path)
 
 
 @pytest.mark.parametrize("path", ["/", "/video/", "/downloads/"])
 def test_multi_share_roots_cannot_be_deleted_or_renamed(multi_share, path, monkeypatch):
-    """共享根是挂载入口，禁止把删除目录变成清空整个共享。"""
+    """
+    共享根是挂载入口，禁止把删除目录变成清空整个共享。
+    """
     storage = multi_share.storage
     remove = Mock()
     monkeypatch.setattr(smbclient, "rmdir", remove)
@@ -327,7 +374,9 @@ def test_multi_share_roots_cannot_be_deleted_or_renamed(multi_share, path, monke
 
 
 def test_multi_share_listing_and_strict_query_preserve_share_name(multi_share, monkeypatch):
-    """浏览和整理查询都返回包含共享名称的路径，不混淆同名文件。"""
+    """
+    浏览和整理查询都返回包含共享名称的路径，不混淆同名文件。
+    """
     monkeypatch.setattr(smbclient, "listdir", Mock(return_value=["movie.mkv"]))
     monkeypatch.setattr(smbclient, "stat", Mock(return_value=SimpleNamespace(st_size=1024, st_mtime=1)))
     monkeypatch.setattr(smbclient.path, "isdir", Mock(return_value=False))
@@ -338,7 +387,9 @@ def test_multi_share_listing_and_strict_query_preserve_share_name(multi_share, m
 
 @pytest.mark.parametrize("mode", ["copy", "move"])
 def test_cross_share_transfer_uses_copychunk_then_optional_delete(multi_share, monkeypatch, mode):
-    """跨共享只调用服务端 CopyChunk，移动严格在复制完成之后删除源。"""
+    """
+    跨共享只调用服务端 CopyChunk，移动严格在复制完成之后删除源。
+    """
     state = multi_share
     monkeypatch.setattr(smbclient, "stat", Mock(side_effect=FileNotFoundError(errno.ENOENT, "missing")))
     monkeypatch.setattr(smbclient, "remove", state.client.remove)
@@ -354,7 +405,9 @@ def test_cross_share_transfer_uses_copychunk_then_optional_delete(multi_share, m
 
 @pytest.mark.parametrize("failure", ["target_exists", "target_denied", "copy", "remove"])
 def test_cross_share_move_failure_is_conservative(multi_share, monkeypatch, failure):
-    """目标冲突、查询失败和复制失败不删源；删源失败报错并保留已复制结果。"""
+    """
+    目标冲突、查询失败和复制失败不删源；删源失败报错并保留已复制结果。
+    """
     state = multi_share
     stat = Mock(side_effect=FileNotFoundError(errno.ENOENT, "missing"))
     if failure == "target_exists":
@@ -373,7 +426,9 @@ def test_cross_share_move_failure_is_conservative(multi_share, monkeypatch, fail
 
 
 def test_cross_share_hardlink_fails_without_side_effects(multi_share):
-    """标准 SMB 不支持跨共享硬链接，不能偷偷改为复制或中转。"""
+    """
+    标准 SMB 不支持跨共享硬链接，不能偷偷改为复制或中转。
+    """
     assert multi_share.storage.link(multi_share.source, Path(multi_share.target.path)) is False
     multi_share.client.link.assert_not_called()
     multi_share.client.copyfile.assert_not_called()
@@ -387,7 +442,9 @@ def test_cross_share_hardlink_fails_without_side_effects(multi_share):
     ({"shares": ["downloads", "video"]}, "downloads"),
 ])
 def test_storage_usage_reports_first_share_without_double_counting(multi_share, monkeypatch, conf, share):
-    """单共享兼容旧容量合同，多共享按首项返回可用容量，不能重复累计卷空间。"""
+    """
+    单共享兼容旧容量合同，多共享按首项返回可用容量，不能重复累计卷空间。
+    """
     multi_share.storage._configure_shares(conf)
     stat_volume = Mock(return_value=SimpleNamespace(
         total_size=4096, caller_available_size=1024, actual_available_size=2048,
@@ -402,7 +459,9 @@ def test_storage_usage_reports_first_share_without_double_counting(multi_share, 
 
 
 def test_multi_share_usage_query_failure_remains_unavailable(multi_share, monkeypatch):
-    """首项不可查询时保留失败语义，不能悄悄改用另一共享的容量。"""
+    """
+    首项不可查询时保留失败语义，不能悄悄改用另一共享的容量。
+    """
     stat_volume = Mock(side_effect=PermissionError("denied"))
     monkeypatch.setattr(smbclient, "stat_volume", stat_volume)
     assert multi_share.storage.usage() is None
@@ -411,7 +470,9 @@ def test_multi_share_usage_query_failure_remains_unavailable(multi_share, monkey
 
 @pytest.fixture
 def snapshot_server(smb_storage, monkeypatch):
-    """仅替换 SMB SDK 的文件系统边界，保留真实目录映射、文件项构造和快照遍历。"""
+    """
+    仅替换 SMB SDK 的文件系统边界，保留真实目录映射、文件项构造和快照遍历。
+    """
     storage = smb_storage.storage
     smb_storage.state["conf"] = {"host": "smb.example", "share": "media"}
     storage.init_storage()
@@ -459,7 +520,9 @@ def snapshot_server(smb_storage, monkeypatch):
 @pytest.mark.parametrize("multiple_shares", [False, True])
 @pytest.mark.parametrize("change", ["added", "modified", "moved_old", "deleted"])
 def test_snapshot_detects_descendant_changes_without_parent_mtime(snapshot_server, multiple_shares, change):
-    """SMB 祖先目录时间不变时，单共享与多共享仍能发现后代新增、修改、旧文件移入和删除。"""
+    """
+    SMB 祖先目录时间不变时，单共享与多共享仍能发现后代新增、修改、旧文件移入和删除。
+    """
     state = snapshot_server
     if multiple_shares:
         state.storage._configure_shares({"shares": ["downloads", "library"]})
@@ -504,7 +567,9 @@ def test_snapshot_detects_descendant_changes_without_parent_mtime(snapshot_serve
     ],
 )
 def test_snapshot_query_failure_is_not_an_empty_or_partial_tree(snapshot_server, operation, path):
-    """根目录、子目录或文件元数据读取失败时，整个监控路径都不能提交为有效快照。"""
+    """
+    根目录、子目录或文件元数据读取失败时，整个监控路径都不能提交为有效快照。
+    """
     state = snapshot_server
     baseline = state.storage.snapshot(state.root)
     state.fault.update(operation=operation, path=path)
@@ -516,7 +581,9 @@ def test_snapshot_query_failure_is_not_an_empty_or_partial_tree(snapshot_server,
 
 
 def test_disconnected_snapshot_preserves_failure_semantics(snapshot_server):
-    """连接失效不能冒充目录已删除；普通文件浏览仍沿用空列表回退。"""
+    """
+    连接失效不能冒充目录已删除；普通文件浏览仍沿用空列表回退。
+    """
     state = snapshot_server
     state.storage._connected = False
 
@@ -526,7 +593,9 @@ def test_disconnected_snapshot_preserves_failure_semantics(snapshot_server):
 
 @pytest.mark.parametrize("root_missing", [False, True])
 def test_confirmed_empty_snapshot_is_success(snapshot_server, root_missing):
-    """确认目录已清空或根目录已删除时应返回空快照，而不是失败。"""
+    """
+    确认目录已清空或根目录已删除时应返回空快照，而不是失败。
+    """
     state = snapshot_server
     baseline = state.storage.snapshot(state.root)
     if root_missing:
@@ -540,7 +609,9 @@ def test_confirmed_empty_snapshot_is_success(snapshot_server, root_missing):
 
 
 def test_snapshot_keeps_depth_limit(snapshot_server):
-    """遍历不因 mtime 剪枝，但仍遵守调用方的递归深度预算。"""
+    """
+    遍历不因 mtime 剪枝，但仍遵守调用方的递归深度预算。
+    """
     state = snapshot_server
     state.client.listdir.reset_mock()
 
@@ -549,7 +620,9 @@ def test_snapshot_keeps_depth_limit(snapshot_server):
 
 
 def test_poll_retries_failed_smb_scan_without_losing_baseline(snapshot_server, monkeypatch):
-    """SMB 断线时保留旧基线，恢复后发现保留旧 mtime 的移入文件且只派发一次。"""
+    """
+    SMB 断线时保留旧基线，恢复后发现保留旧 mtime 的移入文件且只派发一次。
+    """
     state = snapshot_server
     records = {}
     cache = Mock()

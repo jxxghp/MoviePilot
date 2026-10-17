@@ -1,4 +1,6 @@
-"""下载器任务查询和控制 owner。"""
+"""
+下载器任务查询和控制 owner。
+"""
 
 from typing import Any, List, Optional, Union
 
@@ -19,7 +21,9 @@ from app.schemas.types import (
 
 
 class DownloadTaskOwner(_DownloadOwnerBase):
-    """下载器任务查询和控制 owner。"""
+    """
+    下载器任务查询和控制 owner。
+    """
 
     def remote_downloading(
         self,
@@ -42,7 +46,6 @@ class DownloadTaskOwner(_DownloadOwnerBase):
                 save_history=False,
             ))
             return
-        # 发送消息
         title = f"共 {len(torrents)} 个任务正在下载："
         messages = []
         index = 1
@@ -85,9 +88,13 @@ class DownloadTaskOwner(_DownloadOwnerBase):
         return self._download_task_service().remove_downloading(hash_str, name)
 
     def _download_task_service(self) -> DownloadTaskService:
-        """构造绑定当前下载器能力与历史仓储的任务服务。"""
+        """
+        构造绑定当前下载器能力与历史仓储的任务服务。
+        """
         def list_torrents(**kwargs: Any) -> List[DownloaderTorrent]:
-            """把下载器允许的空结果归一为应用服务要求的列表。"""
+            """
+            把下载器允许的空结果归一为应用服务要求的列表。
+            """
             return self.list_torrents(**kwargs) or []
 
         return DownloadTaskService(
@@ -110,7 +117,6 @@ class DownloadTaskOwner(_DownloadOwnerBase):
         if not hash_str:
             return
         logger.warn(f"检测到下载源文件被删除，删除下载任务（不含文件）：{hash_str}")
-        # 先查询种子
         torrents: List[_SchemaDownloaderTorrent] = self.list_torrents(hashs=[hash_str]) or []
         if torrents:
             downloaders = list(dict.fromkeys(

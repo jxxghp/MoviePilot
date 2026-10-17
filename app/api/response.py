@@ -1,3 +1,7 @@
+"""
+统一 REST 响应包装、错误模型与兼容分页的 OpenAPI 契约。
+"""
+
 import inspect
 import json
 from functools import wraps
@@ -54,8 +58,7 @@ CompatiblePageParam = Annotated[
     Query(
         ge=1,
         description=(
-            "Optional one-based page for a legacy full-list endpoint. Omit both page and "
-            "count to keep the original unpaginated full result."
+            "旧版完整列表接口的可选页码，从 1 开始；同时省略 page 和 count 时保留原有完整结果。"
         ),
     ),
 ]
@@ -65,8 +68,8 @@ CompatibleCountParam = Annotated[
         ge=1,
         le=COLLECTION_MAX_PAGE_SIZE,
         description=(
-            "Optional page size for a legacy full-list endpoint. Supplying page or count "
-            f"activates pagination; an omitted count then uses {COLLECTION_DEFAULT_PAGE_SIZE}."
+            "旧版完整列表接口的可选每页条数；提供 page 或 count 即启用分页，"
+            f"此时省略 count 使用 {COLLECTION_DEFAULT_PAGE_SIZE} 条。"
         ),
     ),
 ]
@@ -75,15 +78,15 @@ _COLLECTION_WINDOW_PARAMETERS = frozenset(
 )
 _COLLECTION_RESPONSE_HEADERS = {
     COLLECTION_RESULT_HEADER: {
-        "description": "Number of collection items serialized in this response body.",
+        "description": "本次响应正文实际序列化的集合条目数量。",
         "schema": {"type": "integer", "minimum": 0},
     },
     COLLECTION_PAGE_HEADER: {
-        "description": "Effective one-based page when request pagination is active.",
+        "description": "请求启用分页时实际生效的页码，从 1 开始。",
         "schema": {"type": "integer", "minimum": 1},
     },
     COLLECTION_PAGE_SIZE_HEADER: {
-        "description": "Effective page size when request pagination is active.",
+        "description": "请求启用分页时实际生效的每页条数。",
         "schema": {"type": "integer", "minimum": 1},
     },
 }
@@ -93,14 +96,18 @@ def resolve_compatible_pagination(
     page: Optional[int],
     count: Optional[int],
 ) -> tuple[Optional[int], Optional[int]]:
-    """解析兼容分页窗口；两项均省略时保留原全量查询语义。"""
+    """
+    解析兼容分页窗口；两项均省略时保留原全量查询语义。
+    """
     if page is None and count is None:
         return None, None
     return page or 1, count or COLLECTION_DEFAULT_PAGE_SIZE
 
 
 class ResponseAPIRoute(APIRoute):
-    """为普通 JSON 接口统一声明并生成 ``Response[T]`` 响应。"""
+    """
+    为普通 JSON 接口统一声明并生成 ``Response[T]`` 响应。
+    """
 
     def __init__(
         self,
@@ -108,7 +115,9 @@ class ResponseAPIRoute(APIRoute):
         endpoint: Callable[..., Any],
         **kwargs: Any,
     ) -> None:
-        """根据原始响应模型决定是否包装接口定义及运行时返回值。"""
+        """
+        根据原始响应模型决定是否包装接口定义及运行时返回值。
+        """
         response_model = kwargs.get("response_model")
         response_class = kwargs.get("response_class", JSONResponse)
         status_code = kwargs.get("status_code")
@@ -188,7 +197,9 @@ class ResponseAPIRoute(APIRoute):
     def get_route_handler(
         self,
     ) -> Callable[[Request], Coroutine[object, object, StarletteResponse]]:
-        """在标准端点序列化后附加兼容列表分页与数量元数据。"""
+        """
+        在标准端点序列化后附加兼容列表分页与数量元数据。
+        """
         original_handler = cast(
             Callable[[Request], Coroutine[object, object, StarletteResponse]],
             super().get_route_handler(),
@@ -197,7 +208,9 @@ class ResponseAPIRoute(APIRoute):
             return original_handler
 
         async def collection_handler(request: Request) -> StarletteResponse:
-            """保留列表响应体形状，并在显式请求时执行兼容切片。"""
+            """
+            保留列表响应体形状，并在显式请求时执行兼容切片。
+            """
             response = await original_handler(request)
             return self._apply_collection_contract(request, response)
 
@@ -210,7 +223,9 @@ class ResponseAPIRoute(APIRoute):
         status_code: int | None,
         force_raw: bool,
     ) -> bool:
-        """判断当前路由是否属于需要统一封装的普通 JSON 接口。"""
+        """
+        判断当前路由是否属于需要统一封装的普通 JSON 接口。
+        """
         if force_raw or response_model is None or status_code in {204, 304}:
             return False
 
@@ -229,7 +244,9 @@ class ResponseAPIRoute(APIRoute):
 
     @staticmethod
     def _is_response_model(response_model: Any) -> bool:
-        """判断声明模型是否已经是统一响应模型。"""
+        """
+        判断声明模型是否已经是统一响应模型。
+        """
         try:
             return issubclass(response_model, Response)
         except TypeError:
@@ -237,7 +254,9 @@ class ResponseAPIRoute(APIRoute):
 
     @staticmethod
     def _is_native_response_model(response_model: Any) -> bool:
-        """判断返回注解是否声明为 Starlette 原生响应。"""
+        """
+        判断返回注解是否声明为 Starlette 原生响应。
+        """
         try:
             return issubclass(response_model, StarletteResponse)
         except TypeError:
@@ -245,7 +264,9 @@ class ResponseAPIRoute(APIRoute):
 
     @staticmethod
     def _is_collection_response_model(response_model: Any) -> bool:
-        """判断响应模型的业务数据是否为列表。"""
+        """
+        判断响应模型的业务数据是否为列表。
+        """
         if response_model is None:
             return False
         generic_metadata = getattr(
@@ -271,7 +292,9 @@ class ResponseAPIRoute(APIRoute):
         endpoint: Callable[..., Any],
         parameter_names: set[str],
     ) -> dict[str, Any]:
-        """读取原生分页或限量参数的端点默认值，供响应元数据复用。"""
+        """
+        读取原生分页或限量参数的端点默认值，供响应元数据复用。
+        """
         signature = inspect.signature(endpoint)
         defaults: dict[str, Any] = {}
         for name in parameter_names:
@@ -287,7 +310,9 @@ class ResponseAPIRoute(APIRoute):
         *,
         include_total: bool,
     ) -> dict[int | str, dict[str, Any]]:
-        """为列表响应声明兼容数量头，并保留端点既有成功响应定义。"""
+        """
+        为列表响应声明兼容数量头，并保留端点既有成功响应定义。
+        """
         merged = dict(responses or {})
         success_key: int | str = 200 if "200" not in merged else "200"
         success_response = dict(merged.get(success_key) or {})
@@ -296,8 +321,7 @@ class ResponseAPIRoute(APIRoute):
         if include_total:
             headers[COLLECTION_TOTAL_HEADER] = {
                 "description": (
-                    "Exact collection size before optional compatibility pagination. This header "
-                    "is omitted when an upstream-native page or limit does not expose a total."
+                    "应用兼容分页前的精确集合总数；上游分页或条数限制未暴露总数时省略此响应头。"
                 ),
                 "schema": {"type": "integer", "minimum": 0},
             }
@@ -310,7 +334,9 @@ class ResponseAPIRoute(APIRoute):
         request: Request,
         response: StarletteResponse,
     ) -> StarletteResponse:
-        """对已序列化列表应用显式分页，同时通过响应头报告数量元数据。"""
+        """
+        对已序列化列表应用显式分页，同时通过响应头报告数量元数据。
+        """
         content_type = response.headers.get("content-type", "").lower()
         body = getattr(response, "body", None)
         if (
@@ -373,7 +399,9 @@ class ResponseAPIRoute(APIRoute):
         request: Request,
         name: str,
     ) -> Optional[int]:
-        """读取请求显式值或端点默认整数值，无法解释时不写分页头。"""
+        """
+        读取请求显式值或端点默认整数值，无法解释时不写分页头。
+        """
         raw_value: Any = request.query_params.get(name)
         if raw_value is None:
             raw_value = self._collection_parameter_defaults.get(name)
@@ -388,7 +416,8 @@ class ResponseAPIRoute(APIRoute):
     def _merge_error_responses(
         responses: dict[int | str, dict[str, Any]] | None,
     ) -> dict[int | str, dict[str, Any]]:
-        """补齐统一错误模型，并保留端点已经显式声明的响应。
+        """
+        补齐统一错误模型，并保留端点已经显式声明的响应。
 
         仍是默认声明的状态码换成不带 model 的副本，交给 ``_attach_shared_error_response_fields``
         在路由构造后接上共享字段；端点显式覆盖的响应原样保留，由 FastAPI 按原逻辑建字段。
@@ -405,7 +434,8 @@ class ResponseAPIRoute(APIRoute):
         }
 
     def _attach_shared_error_response_fields(self) -> None:
-        """把默认错误响应换回原声明并挂上共享字段。
+        """
+        把默认错误响应换回原声明并挂上共享字段。
 
         ``responses`` 保留完整声明，``include_router`` 用它重建路由时按对象身份再次走共享路径；
         FastAPI 生成 OpenAPI 时只从 ``response_fields`` 取 schema，字段名不进入输出。
@@ -417,12 +447,16 @@ class ResponseAPIRoute(APIRoute):
 
     @staticmethod
     def _wrap_endpoint(endpoint: Callable[..., Any]) -> Callable[..., Any]:
-        """包装端点返回值，同时保持原函数签名供 FastAPI 注入依赖。"""
+        """
+        包装端点返回值，同时保持原函数签名供 FastAPI 注入依赖。
+        """
         if inspect.iscoroutinefunction(endpoint):
 
             @wraps(endpoint)
             async def async_endpoint(*args: Any, **kwargs: Any) -> Any:
-                """异步调用端点并封装普通业务数据。"""
+                """
+                异步调用端点并封装普通业务数据。
+                """
                 result = await endpoint(*args, **kwargs)
                 return ResponseAPIRoute._wrap_result(result)
 
@@ -430,7 +464,9 @@ class ResponseAPIRoute(APIRoute):
 
         @wraps(endpoint)
         def sync_endpoint(*args: Any, **kwargs: Any) -> Any:
-            """同步调用端点并封装普通业务数据。"""
+            """
+            同步调用端点并封装普通业务数据。
+            """
             result = endpoint(*args, **kwargs)
             return ResponseAPIRoute._wrap_result(result)
 
@@ -438,16 +474,22 @@ class ResponseAPIRoute(APIRoute):
 
     @staticmethod
     def _wrap_result(result: Any) -> Any:
-        """保留已封装或原生响应，其余结果写入统一响应的数据区域。"""
+        """
+        保留已封装或原生响应，其余结果写入统一响应的数据区域。
+        """
         if isinstance(result, (Response, StarletteResponse)):
             return result
         return Response(success=True, data=result)
 
 
 class ResponseAPIRouter(APIRouter):
-    """默认使用统一响应路由类的 API 路由器。"""
+    """
+    默认使用统一响应路由类的 API 路由器。
+    """
 
     def __init__(self, **kwargs: Any) -> None:
-        """初始化路由器并允许调用方显式覆盖路由类。"""
+        """
+        初始化路由器并允许调用方显式覆盖路由类。
+        """
         kwargs.setdefault("route_class", ResponseAPIRoute)
         super().__init__(**kwargs)

@@ -1,3 +1,7 @@
+"""
+验证能力运行时的物化、激活、停止、故障恢复和并发状态转换。
+"""
+
 from __future__ import annotations
 
 import asyncio
@@ -57,6 +61,13 @@ def _registry(tmp_path: Path) -> CapabilityRegistry:
 
 @dataclass
 class _Candidate:
+    """
+    能力运行时生命周期测试中的候选实例。
+
+    :param generation: 创建该实例时的能力代次
+    :param started: 是否已进入启动步骤，默认尚未启动
+    :param stopped: 是否已进入停止或成功清理步骤，默认尚未停止
+    """
     generation: int
     started: bool = False
     stopped: bool = False
@@ -68,7 +79,9 @@ class _SampleCapability:
 
 @pytest.fixture(autouse=True)
 def isolate_sample_entrypoints() -> Iterator[None]:
-    """隔离合成 adapter 在 sys.modules 中公开的 canonical entrypoint。"""
+    """
+    隔离合成 adapter 在 sys.modules 中公开的 canonical entrypoint。
+    """
     module_names = ("sample_implementation", "other_implementation")
     previous = {name: sys.modules[name] for name in module_names if name in sys.modules}
     for name in module_names:
@@ -108,16 +121,28 @@ class _SyncAdapter:
         self.stop_release: Optional[threading.Event] = None
 
     def materialize(self, spec) -> object:
+        """
+        记录物化次数，并按故障开关返回合成实现或抛出错误。
+        """
         self.materialize_calls += 1
         if self.fail_materialize:
             raise RuntimeError("materialize failed")
         return _materialize_sample(spec)
 
     def create(self, spec, implementation: object, generation: int, previous: Any = None) -> _Candidate:
+        """
+        记录创建次数，返回属于指定代次的新候选实例。
+
+        :param generation: 新实例所属的能力代次
+        :return: 尚未启动或停止的候选实例
+        """
         self.create_calls += 1
         return _Candidate(generation=generation)
 
     def start(self, spec, candidate: _Candidate, generation: int) -> None:
+        """
+        等待测试释放启动屏障后标记实例已启动，并按开关模拟启动失败。
+        """
         self.start_calls += 1
         if self.start_entered:
             self.start_entered.set()
@@ -128,6 +153,9 @@ class _SyncAdapter:
             raise RuntimeError("start failed")
 
     def stop(self, spec, instance: _Candidate, generation: int) -> None:
+        """
+        记录待停止实例，等待可选屏障后标记已停止，并按开关模拟失败。
+        """
         self.stop_calls += 1
         self.stop_instances.append(instance)
         if self.stop_entered:
@@ -139,6 +167,9 @@ class _SyncAdapter:
             raise RuntimeError("stop failed")
 
     def cleanup(self, spec, candidate: _Candidate, generation: int, error: BaseException) -> None:
+        """
+        记录清理调用；故障开关开启时抛出错误，否则标记候选实例已停止。
+        """
         self.cleanup_calls += 1
         if self.fail_cleanup:
             raise RuntimeError("cleanup failed")
@@ -165,6 +196,9 @@ class _AsyncAdapter:
         self.stop_release: Optional[asyncio.Event] = None
 
     async def materialize(self, spec) -> object:
+        """
+        记录物化次数，并按故障开关返回合成实现或抛出错误。
+        """
         self.materialize_calls += 1
         await asyncio.sleep(0)
         if self.fail_materialize:
@@ -172,11 +206,20 @@ class _AsyncAdapter:
         return _materialize_sample(spec)
 
     async def create(self, spec, implementation: object, generation: int, previous: Any = None) -> _Candidate:
+        """
+        记录创建次数，返回属于指定代次的新候选实例。
+
+        :param generation: 新实例所属的能力代次
+        :return: 尚未启动或停止的候选实例
+        """
         self.create_calls += 1
         await asyncio.sleep(0)
         return _Candidate(generation=generation)
 
     async def start(self, spec, candidate: _Candidate, generation: int) -> None:
+        """
+        等待测试释放启动屏障后标记实例已启动，并按开关模拟启动失败。
+        """
         self.start_calls += 1
         self.start_entered.set()
         await self.start_release.wait()
@@ -185,6 +228,9 @@ class _AsyncAdapter:
             raise RuntimeError("async start failed")
 
     async def stop(self, spec, instance: _Candidate, generation: int) -> None:
+        """
+        记录待停止实例，等待可选屏障后标记已停止，并按开关模拟失败。
+        """
         self.stop_calls += 1
         self.stop_instances.append(instance)
         if self.stop_entered:
@@ -197,6 +243,9 @@ class _AsyncAdapter:
             raise RuntimeError("async stop failed")
 
     async def cleanup(self, spec, candidate: _Candidate, generation: int, error: BaseException) -> None:
+        """
+        记录清理调用；故障开关开启时抛出错误，否则标记候选实例已停止。
+        """
         self.cleanup_calls += 1
         await asyncio.sleep(0)
         if self.fail_cleanup:
@@ -205,7 +254,9 @@ class _AsyncAdapter:
 
 
 def test_materialize_and_start_have_independent_state_axes(tmp_path: Path) -> None:
-    """兼容查询只物化代码，资源必须等显式 activate 成功后才对外可见。"""
+    """
+    兼容查询只物化代码，资源必须等显式 activate 成功后才对外可见。
+    """
     adapter = _SyncAdapter()
     runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
 
@@ -228,7 +279,9 @@ def test_materialize_and_start_have_independent_state_axes(tmp_path: Path) -> No
 
 
 def test_materialize_failure_does_not_claim_resource_lifecycle_failure(tmp_path: Path) -> None:
-    """仅解析代码失败时，资源轴尚未启动，必须保持 DISCOVERED。"""
+    """
+    仅解析代码失败时，资源轴尚未启动，必须保持 DISCOVERED。
+    """
     adapter = _SyncAdapter()
     adapter.fail_materialize = True
     runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
@@ -245,7 +298,9 @@ def test_materialize_failure_does_not_claim_resource_lifecycle_failure(tmp_path:
 def test_materialize_rejects_missing_canonical_module(
     tmp_path: Path,
 ) -> None:
-    """adapter 未加载 manifest 指定模块时不得发布替代实现。"""
+    """
+    adapter 未加载 manifest 指定模块时不得发布替代实现。
+    """
     adapter = _SyncAdapter()
     runtime = CapabilityRuntime(
         _registry(tmp_path),
@@ -266,7 +321,9 @@ def test_materialize_rejects_missing_canonical_module(
 def test_materialize_rejects_missing_canonical_symbol(
     tmp_path: Path,
 ) -> None:
-    """adapter 未公开 manifest 指定符号时不得发布替代实现。"""
+    """
+    adapter 未公开 manifest 指定符号时不得发布替代实现。
+    """
     sys.modules["sample_implementation"] = types.ModuleType("sample_implementation")
     adapter = _SyncAdapter()
     runtime = CapabilityRuntime(
@@ -286,7 +343,9 @@ def test_materialize_rejects_missing_canonical_symbol(
 
 
 def test_activate_revalidates_missing_canonical_module_on_retry(tmp_path: Path) -> None:
-    """同步激活的物化合同失败不得被记为已解析并在重试时绕过。"""
+    """
+    同步激活的物化合同失败不得被记为已解析并在重试时绕过。
+    """
     adapter = _SyncAdapter()
     runtime = CapabilityRuntime(
         _registry(tmp_path),
@@ -318,7 +377,9 @@ def test_activate_revalidates_missing_canonical_module_on_retry(tmp_path: Path) 
 async def test_activate_async_revalidates_missing_canonical_module_on_retry(
     tmp_path: Path,
 ) -> None:
-    """异步激活的物化合同失败不得被记为已解析并在重试时绕过。"""
+    """
+    异步激活的物化合同失败不得被记为已解析并在重试时绕过。
+    """
     adapter = _AsyncAdapter()
     runtime = CapabilityRuntime(
         _registry(tmp_path),
@@ -344,7 +405,9 @@ async def test_activate_async_revalidates_missing_canonical_module_on_retry(
 
 
 def test_state_read_calibrates_consumer_import_without_importing_new_module(tmp_path: Path) -> None:
-    """显式旧导入存在时应复用 sys.modules 中的 canonical symbol。"""
+    """
+    显式旧导入存在时应复用 sys.modules 中的 canonical symbol。
+    """
     adapter = _SyncAdapter()
     runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
     module = types.ModuleType("sample_implementation")
@@ -366,7 +429,9 @@ def test_state_read_calibrates_consumer_import_without_importing_new_module(tmp_
 
 
 def test_state_read_does_not_invoke_module_level_lazy_export(tmp_path: Path) -> None:
-    """sys.modules 校准只能读模块字典，不能触发模块级 __getattr__。"""
+    """
+    sys.modules 校准只能读模块字典，不能触发模块级 __getattr__。
+    """
     runtime = CapabilityRuntime(
         _registry(tmp_path),
         adapters={"sample": _SyncAdapter()},
@@ -387,7 +452,9 @@ def test_state_read_does_not_invoke_module_level_lazy_export(tmp_path: Path) -> 
 
 
 def test_sync_activate_is_single_flight_and_publishes_only_after_start(tmp_path: Path) -> None:
-    """并发首启只能创建一个候选实例，start 返回前普通查询不可见。"""
+    """
+    并发首启只能创建一个候选实例，start 返回前普通查询不可见。
+    """
     adapter = _SyncAdapter()
     adapter.start_entered = threading.Event()
     adapter.start_release = threading.Event()
@@ -398,7 +465,8 @@ def test_sync_activate_is_single_flight_and_publishes_only_after_start(tmp_path:
     def activate() -> None:
         try:
             results.append(runtime.activate("sample.capability", reason="concurrent"))
-        except BaseException as error:  # pragma: no cover - diagnostic collection
+        # 仅收集并发工作线程的诊断异常，不要求该故障收集分支被覆盖。
+        except BaseException as error:  # pragma: no cover
             errors.append(error)
 
     first = threading.Thread(target=activate)
@@ -423,7 +491,9 @@ def test_sync_activate_is_single_flight_and_publishes_only_after_start(tmp_path:
 
 
 def test_failed_start_cleans_candidate_and_requires_explicit_retry(tmp_path: Path) -> None:
-    """半初始化候选必须清理；FAILED 不得被普通 activate 隐式重试。"""
+    """
+    半初始化候选必须清理；FAILED 不得被普通 activate 隐式重试。
+    """
     adapter = _SyncAdapter()
     adapter.fail_start = True
     runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
@@ -450,7 +520,9 @@ def test_failed_start_cleans_candidate_and_requires_explicit_retry(tmp_path: Pat
 
 
 def test_adapter_must_return_candidate_before_start(tmp_path: Path) -> None:
-    """create 没有候选对象时不得进入 start 或伪造 RUNNING 可见性。"""
+    """
+    create 没有候选对象时不得进入 start 或伪造 RUNNING 可见性。
+    """
     adapter = _SyncAdapter()
     runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
 
@@ -466,7 +538,9 @@ def test_adapter_must_return_candidate_before_start(tmp_path: Path) -> None:
 
 
 def test_stop_withdraws_visibility_before_adapter_callback(tmp_path: Path) -> None:
-    """释放外部资源可能阻塞，但运行实例必须在 stop 回调前撤销发布。"""
+    """
+    释放外部资源可能阻塞，但运行实例必须在 stop 回调前撤销发布。
+    """
     adapter = _SyncAdapter()
     runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
     instance = runtime.activate("sample.capability", reason="start")
@@ -489,7 +563,9 @@ def test_stop_withdraws_visibility_before_adapter_callback(tmp_path: Path) -> No
 
 
 def test_stop_failure_retains_ownership_until_same_instance_stops(tmp_path: Path) -> None:
-    """stop 失败后的隐藏资源必须保留所有权，禁止用 retry 绕过清理。"""
+    """
+    stop 失败后的隐藏资源必须保留所有权，禁止用 retry 绕过清理。
+    """
     adapter = _SyncAdapter()
     runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
     instance = runtime.activate("sample.capability", reason="start")
@@ -515,7 +591,9 @@ def test_stop_failure_retains_ownership_until_same_instance_stops(tmp_path: Path
 
 
 def test_reload_withdraws_old_instance_and_publishes_one_new_generation(tmp_path: Path) -> None:
-    """同步 reload 在 stop/start 回调期间不暴露旧实例或半初始化候选。"""
+    """
+    同步 reload 在 stop/start 回调期间不暴露旧实例或半初始化候选。
+    """
     adapter = _SyncAdapter()
     runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
     old_instance = runtime.activate("sample.capability", reason="initial")
@@ -541,7 +619,9 @@ def test_reload_withdraws_old_instance_and_publishes_one_new_generation(tmp_path
 
 
 def test_failed_reload_cleans_candidate_and_keeps_instance_invisible(tmp_path: Path) -> None:
-    """reload 新 generation 启动失败时不得恢复旧实例或发布候选。"""
+    """
+    reload 新 generation 启动失败时不得恢复旧实例或发布候选。
+    """
     adapter = _SyncAdapter()
     runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
     runtime.activate("sample.capability", reason="initial")
@@ -557,7 +637,9 @@ def test_failed_reload_cleans_candidate_and_keeps_instance_invisible(tmp_path: P
 
 
 def test_reload_stop_failure_does_not_create_or_reuse_live_previous(tmp_path: Path) -> None:
-    """reload 未释放旧资源时必须失败关闭，不能创建或复用同一活对象。"""
+    """
+    reload 未释放旧资源时必须失败关闭，不能创建或复用同一活对象。
+    """
     adapter = _SyncAdapter()
     runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
     old_instance = runtime.activate("sample.capability", reason="initial")
@@ -603,7 +685,9 @@ def test_reload_stop_failure_does_not_create_or_reuse_live_previous(tmp_path: Pa
 
 
 def test_shutdown_prevents_inflight_start_from_resurrecting_instance(tmp_path: Path) -> None:
-    """shutdown 与首启竞争时，候选只能清理，不能在关闭开始后重新发布。"""
+    """
+    shutdown 与首启竞争时，候选只能清理，不能在关闭开始后重新发布。
+    """
     adapter = _SyncAdapter()
     adapter.start_entered = threading.Event()
     adapter.start_release = threading.Event()
@@ -635,7 +719,9 @@ def test_shutdown_prevents_inflight_start_from_resurrecting_instance(tmp_path: P
 
 
 def test_shutdown_cannot_return_between_open_check_and_sync_claim(tmp_path: Path) -> None:
-    """open check 与 inflight claim 必须共享 barrier，关闭扫描不能漏过首启。"""
+    """
+    open check 与 inflight claim 必须共享 barrier，关闭扫描不能漏过首启。
+    """
     adapter = _SyncAdapter()
     adapter.start_entered = threading.Event()
     adapter.start_release = threading.Event()
@@ -696,7 +782,9 @@ def test_shutdown_cannot_return_between_open_check_and_sync_claim(tmp_path: Path
 async def test_shutdown_cannot_return_between_open_check_and_async_claim(
     tmp_path: Path,
 ) -> None:
-    """异步 activate 的同步 claim 区间也必须受同一关闭 barrier 保护。"""
+    """
+    异步 activate 的同步 claim 区间也必须受同一关闭 barrier 保护。
+    """
     adapter = _AsyncAdapter()
     runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
     check_entered = threading.Event()
@@ -753,7 +841,9 @@ async def test_shutdown_cannot_return_between_open_check_and_async_claim(
 
 @pytest.mark.asyncio
 async def test_async_adapter_uses_same_single_flight_state_machine(tmp_path: Path) -> None:
-    """异步回调等待不能阻塞事件循环，并发调用共享同一 generation。"""
+    """
+    异步回调等待不能阻塞事件循环，并发调用共享同一 generation。
+    """
     adapter = _AsyncAdapter()
     runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
     first = asyncio.create_task(runtime.activate_async("sample.capability", reason="first"))
@@ -773,7 +863,9 @@ async def test_async_adapter_uses_same_single_flight_state_machine(tmp_path: Pat
 
 @pytest.mark.asyncio
 async def test_stop_async_failure_retains_ownership_for_explicit_retry(tmp_path: Path) -> None:
-    """异步 stop 失败后只能重试释放同一实例，不能直接启动新实例。"""
+    """
+    异步 stop 失败后只能重试释放同一实例，不能直接启动新实例。
+    """
     adapter = _AsyncAdapter()
     runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
     initial = asyncio.create_task(runtime.activate_async("sample.capability", reason="initial"))
@@ -798,7 +890,9 @@ async def test_stop_async_failure_retains_ownership_for_explicit_retry(tmp_path:
 
 @pytest.mark.asyncio
 async def test_shutdown_async_reports_unreleased_owner_until_retry(tmp_path: Path) -> None:
-    """异步 shutdown 不得把 stop 失败伪装成整体成功。"""
+    """
+    异步 shutdown 不得把 stop 失败伪装成整体成功。
+    """
     adapter = _AsyncAdapter()
     runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
     activation = asyncio.create_task(
@@ -821,7 +915,9 @@ async def test_shutdown_async_reports_unreleased_owner_until_retry(tmp_path: Pat
 
 @pytest.mark.asyncio
 async def test_async_reload_uses_reloading_state_and_hides_candidate(tmp_path: Path) -> None:
-    """异步 reload 与同步入口遵守相同状态和发布边界。"""
+    """
+    异步 reload 与同步入口遵守相同状态和发布边界。
+    """
     adapter = _AsyncAdapter()
     runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
     initial = asyncio.create_task(runtime.activate_async("sample.capability", reason="initial"))
@@ -848,7 +944,9 @@ async def test_async_reload_uses_reloading_state_and_hides_candidate(tmp_path: P
 
 @pytest.mark.asyncio
 async def test_failed_async_reload_cleans_candidate_and_enters_failed(tmp_path: Path) -> None:
-    """异步 reload 失败与同步入口一致，不发布半初始化候选。"""
+    """
+    异步 reload 失败与同步入口一致，不发布半初始化候选。
+    """
     adapter = _AsyncAdapter()
     runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
     initial = asyncio.create_task(runtime.activate_async("sample.capability", reason="initial"))
@@ -878,7 +976,9 @@ async def test_failed_async_reload_cleans_candidate_and_enters_failed(tmp_path: 
 async def test_async_reload_stop_failure_retains_previous_without_new_create(
     tmp_path: Path,
 ) -> None:
-    """异步 reload 也必须保留未释放旧实例并禁止创建第二份资源。"""
+    """
+    异步 reload 也必须保留未释放旧实例并禁止创建第二份资源。
+    """
     adapter = _AsyncAdapter()
     runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
     initial = asyncio.create_task(runtime.activate_async("sample.capability", reason="initial"))
@@ -927,7 +1027,9 @@ async def test_async_reload_stop_failure_retains_previous_without_new_create(
 def test_one_failed_capability_does_not_remove_specs_or_block_other_capabilities(
     tmp_path: Path,
 ) -> None:
-    """单项失败只改变自身状态，Registry 中的其它声明仍可继续运行。"""
+    """
+    单项失败只改变自身状态，Registry 中的其它声明仍可继续运行。
+    """
     first_dir = tmp_path / "first"
     second_dir = tmp_path / "second"
     first_dir.mkdir()
@@ -964,7 +1066,9 @@ def test_one_failed_capability_does_not_remove_specs_or_block_other_capabilities
 
 @pytest.mark.asyncio
 async def test_sync_and_async_entrypoints_reject_wrong_adapter_mode(tmp_path: Path) -> None:
-    """入口与 adapter 执行模型不匹配时应在执行回调前失败。"""
+    """
+    入口与 adapter 执行模型不匹配时应在执行回调前失败。
+    """
     async_runtime = CapabilityRuntime(
         _registry(tmp_path / "async"),
         adapters={"sample": _AsyncAdapter()},
@@ -981,7 +1085,9 @@ async def test_sync_and_async_entrypoints_reject_wrong_adapter_mode(tmp_path: Pa
 
 
 def test_adapter_mode_requires_declared_enum_member(tmp_path: Path) -> None:
-    """并发模型必须显式声明 enum，不能依赖字符串相等的偶然兼容。"""
+    """
+    并发模型必须显式声明 enum，不能依赖字符串相等的偶然兼容。
+    """
     adapter = _SyncAdapter()
     adapter.execution_mode = "sync"
     runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
@@ -991,7 +1097,9 @@ def test_adapter_mode_requires_declared_enum_member(tmp_path: Path) -> None:
 
 
 def _snapshot_signature(runtime: CapabilityRuntime) -> tuple:
-    """提取忽略具体错误文本的生命周期状态签名。"""
+    """
+    提取忽略具体错误文本的生命周期状态签名。
+    """
     snapshot = runtime.snapshot("sample.capability")
     return (
         snapshot.materialization,
@@ -1003,7 +1111,9 @@ def _snapshot_signature(runtime: CapabilityRuntime) -> tuple:
 
 
 def _observation_signature(runtime: CapabilityRuntime) -> tuple:
-    """提取可比较的转换观测签名，排除耗时和具体错误文本。"""
+    """
+    提取可比较的转换观测签名，排除耗时和具体错误文本。
+    """
     return tuple(
         (
             item.generation,
@@ -1018,7 +1128,9 @@ def _observation_signature(runtime: CapabilityRuntime) -> tuple:
 
 
 def _sync_lifecycle_trace(tmp_path: Path) -> tuple[tuple, tuple]:
-    """执行同步双轴生命周期并返回状态和观测轨迹。"""
+    """
+    执行同步双轴生命周期并返回状态和观测轨迹。
+    """
     adapter = _SyncAdapter()
     runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
     snapshots = []
@@ -1036,7 +1148,9 @@ def _sync_lifecycle_trace(tmp_path: Path) -> tuple[tuple, tuple]:
 
 
 async def _async_lifecycle_trace(tmp_path: Path) -> tuple[tuple, tuple]:
-    """执行异步双轴生命周期并返回状态和观测轨迹。"""
+    """
+    执行异步双轴生命周期并返回状态和观测轨迹。
+    """
     adapter = _AsyncAdapter()
     adapter.start_release.set()
     runtime = CapabilityRuntime(_registry(tmp_path), adapters={"sample": adapter})
@@ -1057,7 +1171,9 @@ async def _async_lifecycle_trace(tmp_path: Path) -> tuple[tuple, tuple]:
 def test_sync_and_async_lifecycle_publish_identical_state_traces(
     tmp_path: Path,
 ) -> None:
-    """双 ABI 应共享完全一致的物化、启动、重载和停止状态决策。"""
+    """
+    双 ABI 应共享完全一致的物化、启动、重载和停止状态决策。
+    """
     sync_trace = _sync_lifecycle_trace(tmp_path / "sync")
     sys.modules.pop("sample_implementation", None)
     async_trace = asyncio.run(_async_lifecycle_trace(tmp_path / "async"))
@@ -1068,7 +1184,9 @@ def test_sync_and_async_lifecycle_publish_identical_state_traces(
 def test_sync_and_async_start_failures_publish_identical_state(
     tmp_path: Path,
 ) -> None:
-    """启动和候选清理的 I/O 不同，但失败后的状态提交必须一致。"""
+    """
+    启动和候选清理的 I/O 不同，但失败后的状态提交必须一致。
+    """
     sync_adapter = _SyncAdapter()
     sync_adapter.fail_start = True
     sync_runtime = CapabilityRuntime(
@@ -1088,7 +1206,9 @@ def test_sync_and_async_start_failures_publish_identical_state(
     )
 
     async def fail_async() -> None:
-        """触发异步启动失败并验证公开异常合同。"""
+        """
+        触发异步启动失败并验证公开异常合同。
+        """
         with pytest.raises(CapabilityOperationError, match="async start failed"):
             await async_runtime.activate_async(
                 "sample.capability",
@@ -1104,7 +1224,9 @@ def test_sync_and_async_start_failures_publish_identical_state(
 def test_sync_and_async_cleanup_retry_publish_identical_state(
     tmp_path: Path,
 ) -> None:
-    """候选清理失败后的 owner 归还与显式重试在双 ABI 下必须一致。"""
+    """
+    候选清理失败后的 owner 归还与显式重试在双 ABI 下必须一致。
+    """
     sync_adapter = _SyncAdapter()
     sync_adapter.fail_start = True
     sync_adapter.fail_cleanup = True
@@ -1137,7 +1259,9 @@ def test_sync_and_async_cleanup_retry_publish_identical_state(
     )
 
     async def exercise_async() -> None:
-        """触发异步清理失败后完成显式恢复。"""
+        """
+        触发异步清理失败后完成显式恢复。
+        """
         with pytest.raises(CapabilityOperationError, match="async cleanup failed"):
             await async_runtime.activate_async(
                 "sample.capability",

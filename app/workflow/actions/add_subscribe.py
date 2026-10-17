@@ -1,3 +1,7 @@
+"""
+根据工作流上下文创建媒体订阅。
+"""
+
 from app.application.configuration import get_chain_runtime_config_snapshot
 from app.chain.subscribe.facade import SubscribeChain
 from app.domain.context import MediaInfo
@@ -26,7 +30,9 @@ class AddSubscribeAction(BaseAction):
     }
 
     def __init__(self, action_id: str) -> None:
-        """初始化当前动作的结果集合与失败状态。"""
+        """
+        初始化当前动作的结果集合与失败状态。
+        """
         super().__init__(action_id)
         self._added_subscribes: list[int] = []
         self._has_error = False
@@ -37,7 +43,9 @@ class AddSubscribeAction(BaseAction):
 
     @property
     def success(self) -> bool:
-        """返回动作是否未遇到终止性的处理失败。"""
+        """
+        返回动作是否未遇到终止性的处理失败。
+        """
         return not self._has_error
 
     def execute(self, workflow_id: int, params: dict[str, object], context: ActionContext) -> ActionContext:

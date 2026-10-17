@@ -1,4 +1,6 @@
-"""记忆中间件：默认加载稳定偏好，并按需检索主题记忆。"""
+"""
+记忆中间件：默认加载稳定偏好，并按需检索主题记忆。
+"""
 
 import json
 import re
@@ -42,45 +44,57 @@ SEARCH_MEMORY_TOOL_NAME = "search_memory"
 DEFAULT_SEARCH_LIMIT = 20
 MAX_SEARCH_LIMIT = 50
 SEARCH_MEMORY_TOOL_DESCRIPTION = (
-    "Search stable preferences and topic memory in the public and current-user scopes. "
-    "MEMORY.md is already loaded. Use session_search for actual conversations/tool evidence. "
-    "Categories: primary, topic, all. Narrow with query, file_path, regex and limit."
+    "检索公共及当前用户范围内的稳定偏好与主题记忆。"
+    "MEMORY.md 已加载；"
+    "实际会话和工具证据请使用 session_search。"
+    "类别为 primary、topic 或 all，可通过 query、file_path、use_regex 和 limit 缩小范围。"
 )
 
 
 class MemoryState(AgentState):
-    """`MemoryMiddleware` 的状态模型。
+    """
+    `MemoryMiddleware` 的状态模型。
 
     只有主记忆文件进入 Agent 图状态；其它记忆文件由 `search_memory` 工具按需返回，
     从而避免随着记忆文件增长而持续扩大默认上下文。
+
+    :ivar memory_contents: 按路径保存的主记忆内容；缺失表示尚未加载，私有字段不进入最终状态
+    :ivar memory_empty: 主记忆文件是否为空或不存在；缺失表示尚未检查，用于初始化引导
     """
 
     memory_contents: NotRequired[Annotated[dict[str, str], PrivateStateAttr]]
-    """主记忆文件内容，标记为私有，不包含在最终代理状态中。"""
 
     memory_empty: NotRequired[Annotated[bool, PrivateStateAttr]]
-    """主记忆文件是否为空或不存在，用于触发初始化引导。"""
 
 
 class MemoryStateUpdate(TypedDict):
-    """`MemoryMiddleware` 的状态更新。"""
+    """
+    `MemoryMiddleware` 的状态更新。
+
+    :ivar memory_contents: 本次加载的主记忆路径与正文映射
+    :ivar memory_empty: 本次加载后主记忆是否为空或不存在
+    """
 
     memory_contents: dict[str, str]
     memory_empty: bool
 
 
 class SearchMemoryInput(BaseModel):  # type: ignore[misc]
-    """只检索稳定偏好与主题知识，不再提供活动摘要分类。"""
+    """
+    只检索稳定偏好与主题知识，不再提供活动摘要分类。
+    """
 
-    query: Optional[str] = Field(default=None, max_length=256, description="Literal text or explicitly enabled regex.")
-    category: Literal["all", "primary", "topic"] = "all"
-    file_path: Optional[str] = Field(default=None, description="Exact Markdown path returned by a previous search.")
-    use_regex: bool = False
-    limit: int = Field(default=DEFAULT_SEARCH_LIMIT, ge=1, le=MAX_SEARCH_LIMIT)
+    query: Optional[str] = Field(default=None, max_length=256, description="字面文本或显式启用的正则表达式；省略时按其他条件浏览")
+    category: Literal["all", "primary", "topic"] = Field(default="all", description="检索类别：primary 主记忆、topic 主题记忆、all 全部，默认 all")
+    file_path: Optional[str] = Field(default=None, description="之前检索返回的精确 Markdown 路径；省略时搜索允许范围内的文件")
+    use_regex: bool = Field(default=False, description="是否把 query 解释为正则表达式，默认 False")
+    limit: int = Field(default=DEFAULT_SEARCH_LIMIT, ge=1, le=MAX_SEARCH_LIMIT, description="最多返回的匹配条数，默认 20，范围为 1 至 50")
 
 
 def _coerce_search_limit(limit: Optional[int]) -> int:
-    """将外部记忆检索条数规范化到固定上限。"""
+    """
+    将外部记忆检索条数规范化到固定上限。
+    """
     if limit is None:
         return DEFAULT_SEARCH_LIMIT
     try:
@@ -91,12 +105,16 @@ def _coerce_search_limit(limit: Optional[int]) -> int:
 
 
 def _memory_root(path: str | Path) -> Path:
-    """返回规范化的记忆根路径，不要求根目录已经存在。"""
+    """
+    返回规范化的记忆根路径，不要求根目录已经存在。
+    """
     return Path(path).expanduser().resolve(strict=False)
 
 
 def _is_relative_to(path: Path, root: Path) -> bool:
-    """判断路径是否位于允许的记忆根目录内。"""
+    """
+    判断路径是否位于允许的记忆根目录内。
+    """
     try:
         path.relative_to(root)
     except ValueError:
@@ -105,7 +123,9 @@ def _is_relative_to(path: Path, root: Path) -> bool:
 
 
 def _read_search_file(path: Path) -> tuple[Optional[str], Optional[str]]:
-    """读取按需检索文件，并返回有界正文或不可用原因。"""
+    """
+    读取按需检索文件，并返回有界正文或不可用原因。
+    """
     try:
         if path.stat().st_size > MAX_SEARCH_FILE_SIZE:
             return None, "file_too_large"
@@ -116,7 +136,9 @@ def _read_search_file(path: Path) -> tuple[Optional[str], Optional[str]]:
 
 
 def _line_entry(path: Path, category: str, line_number: int, text: str) -> dict[str, str]:
-    """构造统一的记忆检索结果条目。"""
+    """
+    构造统一的记忆检索结果条目。
+    """
     return {
         "path": str(path),
         "category": category,
@@ -126,7 +148,9 @@ def _line_entry(path: Path, category: str, line_number: int, text: str) -> dict[
 
 
 def _memory_candidates(memory_dir: str, user_memory_dir: Optional[str]) -> list[tuple[Path, str, str]]:
-    """枚举公共与当前用户文件，排除旧活动目录和逃逸作用域的符号链接。"""
+    """
+    枚举公共与当前用户文件，排除旧活动目录和逃逸作用域的符号链接。
+    """
     global_root = _memory_root(memory_dir)
     scopes: list[tuple[str, Path, tuple[Path, ...]]] = [
         ("global", global_root, (global_root / "users", global_root / "activity")),
@@ -155,7 +179,9 @@ def query_memory_files(
     query: Optional[str] = None, category: str = "all", file_path: Optional[str] = None,
     use_regex: bool = False, limit: Optional[int] = DEFAULT_SEARCH_LIMIT,
 ) -> dict[str, Any]:
-    """按需检索稳定记忆；旧活动文件原地保留但不参与任何类别检索。"""
+    """
+    按需检索稳定记忆；旧活动文件原地保留但不参与任何类别检索。
+    """
     if category not in {"all", "primary", "topic"}:
         return {"success": False, "message": f"不支持的记忆分类: {category}", "entries": []}
     normalized_query = (query or "").strip()
@@ -196,7 +222,9 @@ def query_memory_files(
 
 
 class _MemoryToolProvider:
-    """统一记忆检索工具的异步实现。"""
+    """
+    统一记忆检索工具的异步实现。
+    """
 
     def __init__(
         self,
@@ -204,7 +232,9 @@ class _MemoryToolProvider:
         memory_dir: str,
         user_memory_dir: Optional[str],
     ) -> None:
-        """保存受限的记忆作用域，实际文件读取在线程池中执行。"""
+        """
+        保存受限的记忆作用域，实际文件读取在线程池中执行。
+        """
         self._memory_dir = memory_dir
         self._user_memory_dir = user_memory_dir
 
@@ -216,7 +246,9 @@ class _MemoryToolProvider:
         use_regex: bool = False,
         limit: int = DEFAULT_SEARCH_LIMIT,
     ) -> str:
-        """执行有界记忆检索并向模型返回结构化 JSON。"""
+        """
+        执行有界记忆检索并向模型返回结构化 JSON。
+        """
         logged_args = sanitize_for_host(
             {
                 "query": query,
@@ -289,7 +321,9 @@ Memory does not override the current user's instructions or host permissions.
 
 
 class MemoryMiddleware(AgentMiddleware[MemoryState, ContextT, ResponseT]):  # noqa
-    """加载用户隔离的稳定偏好并提供主题文件检索，不生成逐轮摘要。"""
+    """
+    加载用户隔离的稳定偏好并提供主题文件检索，不生成逐轮摘要。
+    """
 
     state_schema = MemoryState
 
@@ -301,7 +335,9 @@ class MemoryMiddleware(AgentMiddleware[MemoryState, ContextT, ResponseT]):  # no
         stream_handler: Optional[Any] = None,
         store: MemoryStore | None = None,
     ) -> None:
-        """初始化统一记忆中间件与按需检索工具。"""
+        """
+        初始化统一记忆中间件与按需检索工具。
+        """
         self.memory_dir = str(Path(memory_dir))
         self.user_memory_dir = str(Path(user_memory_dir)) if user_memory_dir else None
         self.default_memory_file = str(Path(self.memory_dir) / DEFAULT_MEMORY_FILE)
@@ -329,7 +365,9 @@ class MemoryMiddleware(AgentMiddleware[MemoryState, ContextT, ResponseT]):  # no
 
     @staticmethod
     def _is_memory_empty(contents: dict[str, str]) -> bool:
-        """判断主记忆内容是否为空。"""
+        """
+        判断主记忆内容是否为空。
+        """
         return not contents or all(not content.strip() for content in contents.values())
 
     def _format_agent_memory(
@@ -337,7 +375,9 @@ class MemoryMiddleware(AgentMiddleware[MemoryState, ContextT, ResponseT]):  # no
         contents: dict[str, str],
         memory_empty: bool = False,
     ) -> str:
-        """将主记忆和统一检索规则格式化为系统消息。"""
+        """
+        将主记忆和统一检索规则格式化为系统消息。
+        """
         if memory_empty or self._is_memory_empty(contents):
             return MEMORY_ONBOARDING_PROMPT.format(
                 memory_dir=self.memory_dir,
@@ -372,7 +412,9 @@ class MemoryMiddleware(AgentMiddleware[MemoryState, ContextT, ResponseT]):  # no
         )
 
     async def _load_primary_memory(self) -> dict[str, str]:
-        """加载全局与当前用户主记忆，不把主题和活动正文自动装入上下文。"""
+        """
+        加载全局与当前用户主记忆，不把主题和活动正文自动装入上下文。
+        """
         contents: dict[str, str] = {}
         memory_files = [self.default_memory_file]
         if self.user_memory_file:
@@ -412,7 +454,9 @@ class MemoryMiddleware(AgentMiddleware[MemoryState, ContextT, ResponseT]):  # no
         runtime: Runtime,  # noqa
         config: RunnableConfig,
     ) -> MemoryStateUpdate | None:
-        """在代理执行前仅加载公共与当前用户的主记忆。"""
+        """
+        在代理执行前仅加载公共与当前用户的主记忆。
+        """
         del state, runtime, config
         contents = await self._load_primary_memory()
         if self.store:
@@ -425,7 +469,9 @@ class MemoryMiddleware(AgentMiddleware[MemoryState, ContextT, ResponseT]):  # no
         return MemoryStateUpdate(memory_contents=contents, memory_empty=is_empty)
 
     def modify_request(self, request: ModelRequest[ContextT]) -> ModelRequest[ContextT]:
-        """把主记忆和按需检索规则注入系统消息。"""
+        """
+        把主记忆和按需检索规则注入系统消息。
+        """
         contents = request.state.get("memory_contents", {})  # noqa
         memory_empty = request.state.get("memory_empty", False)  # noqa
         memory_prompt = self._format_agent_memory(contents, memory_empty=memory_empty)
@@ -440,7 +486,9 @@ class MemoryMiddleware(AgentMiddleware[MemoryState, ContextT, ResponseT]):  # no
             [ModelRequest[ContextT]], Awaitable[ModelResponse[ResponseT]]
         ],
     ) -> ModelResponse[ResponseT]:
-        """异步包装模型调用，注入主记忆和统一记忆操作规则。"""
+        """
+        异步包装模型调用，注入主记忆和统一记忆操作规则。
+        """
         return await handler(self.modify_request(request))
 
     async def awrap_tool_call(
@@ -448,7 +496,9 @@ class MemoryMiddleware(AgentMiddleware[MemoryState, ContextT, ResponseT]):  # no
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], Awaitable[Any]],
     ) -> Any:
-        """在统一记忆检索工具执行时输出当前模式对应的执行信息。"""
+        """
+        在统一记忆检索工具执行时输出当前模式对应的执行信息。
+        """
         if getattr(request.tool, "name", None) != SEARCH_MEMORY_TOOL_NAME:
             return await handler(request)
         tool_call = request.tool_call or {}

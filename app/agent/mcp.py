@@ -1,4 +1,6 @@
-"""Agent 外部 MCP 客户端与配置管理。"""
+"""
+Agent 外部 MCP 客户端与配置管理。
+"""
 
 from __future__ import annotations
 
@@ -30,7 +32,15 @@ MCP_TOOL_NAME_PATTERN = re.compile(r"[^a-zA-Z0-9_]+")
 
 @dataclass(frozen=True)
 class AgentMcpToolSpec:
-    """已发现的外部 MCP 工具定义。"""
+    """
+    已发现的外部 MCP 工具定义。
+
+    :param server: 提供该工具的外部 MCP 服务器配置
+    :param name: 服务器公布的原始工具名称
+    :param agent_tool_name: 经规范化且包含服务器范围的 Agent 工具名称
+    :param description: 服务器返回的工具用途说明，作为外部元数据保留
+    :param input_schema: 服务器返回并规范化后的工具输入 JSON Schema
+    """
 
     server: AgentMcpServerConfig
     name: str
@@ -40,7 +50,9 @@ class AgentMcpToolSpec:
 
 
 def _normalize_identifier(value: str, fallback: str = "mcp") -> str:
-    """把服务器或工具名称转换为 Agent 工具可用的标识片段。"""
+    """
+    把服务器或工具名称转换为 Agent 工具可用的标识片段。
+    """
     normalized = MCP_TOOL_NAME_PATTERN.sub("_", str(value or "").strip())
     normalized = re.sub(r"_+", "_", normalized).strip("_").lower()
     if not normalized:
@@ -51,7 +63,9 @@ def _normalize_identifier(value: str, fallback: str = "mcp") -> str:
 
 
 def _normalize_timeout(value: Any) -> int:
-    """规范化 MCP 连接和调用超时时间。"""
+    """
+    规范化 MCP 连接和调用超时时间。
+    """
     try:
         timeout = int(value or DEFAULT_MCP_TIMEOUT)
     except (TypeError, ValueError):
@@ -60,7 +74,9 @@ def _normalize_timeout(value: Any) -> int:
 
 
 def _normalize_string_dict(value: Any) -> dict[str, str]:
-    """规范化请求头和环境变量字典，移除空键。"""
+    """
+    规范化请求头和环境变量字典，移除空键。
+    """
     if not isinstance(value, dict):
         return {}
     normalized: dict[str, str] = {}
@@ -73,7 +89,9 @@ def _normalize_string_dict(value: Any) -> dict[str, str]:
 
 
 def _normalize_input_schema(value: Any) -> dict[str, Any]:
-    """规范化 MCP 工具参数 Schema，保证至少是 object schema。"""
+    """
+    规范化 MCP 工具参数 Schema，保证至少是 object schema。
+    """
     if not isinstance(value, dict):
         return {"type": "object", "properties": {}, "required": []}
     schema = dict(value)
@@ -84,7 +102,9 @@ def _normalize_input_schema(value: Any) -> dict[str, Any]:
 
 
 def _build_agent_tool_name(server: AgentMcpServerConfig, tool_name: str) -> str:
-    """构造注入 Agent 的外部 MCP 工具名。"""
+    """
+    构造注入 Agent 的外部 MCP 工具名。
+    """
     prefix = server.tool_prefix or f"mcp_{server.name or server.id}"
     normalized_prefix = _normalize_identifier(prefix, fallback="mcp")
     normalized_tool_name = _normalize_identifier(tool_name, fallback="tool")
@@ -94,7 +114,9 @@ def _build_agent_tool_name(server: AgentMcpServerConfig, tool_name: str) -> str:
 
 
 def _jsonrpc_message(method: str, params: Optional[dict[str, Any]] = None, *, request_id: Optional[str] = None) -> dict:
-    """构造 JSON-RPC 2.0 消息。"""
+    """
+    构造 JSON-RPC 2.0 消息。
+    """
     payload = {"jsonrpc": "2.0", "method": method}
     if request_id is not None:
         payload["id"] = request_id
@@ -104,7 +126,9 @@ def _jsonrpc_message(method: str, params: Optional[dict[str, Any]] = None, *, re
 
 
 def _raise_for_jsonrpc_error(payload: Any) -> None:
-    """检查 JSON-RPC 响应错误并转换为运行时异常。"""
+    """
+    检查 JSON-RPC 响应错误并转换为运行时异常。
+    """
     if isinstance(payload, dict) and payload.get("error"):
         error = payload["error"]
         if isinstance(error, dict):
@@ -115,7 +139,9 @@ def _raise_for_jsonrpc_error(payload: Any) -> None:
 
 
 def _extract_jsonrpc_result(payload: Any, request_id: str) -> Any:
-    """从 JSON-RPC 响应中提取 result 字段。"""
+    """
+    从 JSON-RPC 响应中提取 result 字段。
+    """
     if not isinstance(payload, dict):
         raise RuntimeError("MCP 响应不是有效 JSON 对象")
     if payload.get("id") != request_id:
@@ -125,7 +151,9 @@ def _extract_jsonrpc_result(payload: Any, request_id: str) -> Any:
 
 
 async def _iter_sse_events(response) -> Any:
-    """按 SSE 事件格式迭代响应流。"""
+    """
+    按 SSE 事件格式迭代响应流。
+    """
     event_name = "message"
     data_lines: list[str] = []
     async for raw_line in response.aiter_lines():
@@ -150,7 +178,9 @@ async def _iter_sse_events(response) -> Any:
 
 
 def _parse_sse_text_response(text: str, request_id: str) -> Any:
-    """从非流式 SSE 文本响应中提取匹配请求的 JSON-RPC 结果。"""
+    """
+    从非流式 SSE 文本响应中提取匹配请求的 JSON-RPC 结果。
+    """
     event_name = "message"
     data_lines: list[str] = []
     for raw_line in str(text or "").splitlines():
@@ -180,7 +210,9 @@ def _parse_sse_text_response(text: str, request_id: str) -> Any:
 
 
 def _load_sse_json_payload(event_name: str, data: str) -> Optional[dict]:
-    """解析 SSE data 中的 JSON-RPC 消息。"""
+    """
+    解析 SSE data 中的 JSON-RPC 消息。
+    """
     if event_name not in {"message", "messages"}:
         return None
     try:
@@ -191,7 +223,9 @@ def _load_sse_json_payload(event_name: str, data: str) -> Optional[dict]:
 
 
 class _StdioMcpSession:
-    """stdio MCP 会话，按一次操作生命周期启动外部进程。"""
+    """
+    stdio MCP 会话，按一次操作生命周期启动外部进程。
+    """
 
     def __init__(self, server: AgentMcpServerConfig) -> None:
         self.server = server
@@ -199,7 +233,9 @@ class _StdioMcpSession:
         self.stderr_task: Optional[asyncio.Task] = None
 
     async def __aenter__(self) -> "_StdioMcpSession":
-        """启动 stdio MCP 子进程。"""
+        """
+        启动 stdio MCP 子进程。
+        """
         if not self.server.command:
             raise RuntimeError("stdio MCP 服务器缺少启动命令")
         env = build_agent_subprocess_env(self.server.env)
@@ -215,7 +251,9 @@ class _StdioMcpSession:
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
-        """结束 stdio MCP 子进程。"""
+        """
+        结束 stdio MCP 子进程。
+        """
         stderr_task = self.stderr_task
         self.stderr_task = None
         if stderr_task:
@@ -232,7 +270,9 @@ class _StdioMcpSession:
                 await self.process.wait()
 
     async def _drain_stderr(self) -> None:
-        """持续读取子进程 stderr，避免缓冲区阻塞。"""
+        """
+        持续读取子进程 stderr，避免缓冲区阻塞。
+        """
         if not self.process or not self.process.stderr:
             return
         try:
@@ -248,11 +288,15 @@ class _StdioMcpSession:
             return
 
     async def notify(self, method: str, params: Optional[dict[str, Any]] = None) -> None:
-        """发送不需要响应的 JSON-RPC 通知。"""
+        """
+        发送不需要响应的 JSON-RPC 通知。
+        """
         await self._write_json(_jsonrpc_message(method, params))
 
     async def request(self, method: str, params: Optional[dict[str, Any]] = None) -> Any:
-        """发送 JSON-RPC 请求并等待响应。"""
+        """
+        发送 JSON-RPC 请求并等待响应。
+        """
         request_id = uuid.uuid4().hex
         await self._write_json(_jsonrpc_message(method, params, request_id=request_id))
         while True:
@@ -261,7 +305,9 @@ class _StdioMcpSession:
                 return _extract_jsonrpc_result(payload, request_id)
 
     async def _write_json(self, payload: dict) -> None:
-        """写入一行 JSON-RPC 消息。"""
+        """
+        写入一行 JSON-RPC 消息。
+        """
         if not self.process or not self.process.stdin:
             raise RuntimeError("stdio MCP 进程未启动")
         data = json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
@@ -269,7 +315,9 @@ class _StdioMcpSession:
         await self.process.stdin.drain()
 
     async def _read_json(self) -> dict:
-        """从 stdout 读取一行 JSON-RPC 消息。"""
+        """
+        从 stdout 读取一行 JSON-RPC 消息。
+        """
         if not self.process or not self.process.stdout:
             raise RuntimeError("stdio MCP 进程未启动")
         timeout = _normalize_timeout(self.server.timeout)
@@ -287,26 +335,36 @@ class _StdioMcpSession:
 
 
 class _HttpMcpSession:
-    """Streamable HTTP MCP 会话。"""
+    """
+    Streamable HTTP MCP 会话。
+    """
 
     def __init__(self, server: AgentMcpServerConfig) -> None:
         self.server = server
         self.session_id: Optional[str] = None
 
     async def __aenter__(self) -> "_HttpMcpSession":
-        """进入 HTTP MCP 会话。"""
+        """
+        进入 HTTP MCP 会话。
+        """
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
-        """退出 HTTP MCP 会话。"""
+        """
+        退出 HTTP MCP 会话。
+        """
         return None
 
     async def notify(self, method: str, params: Optional[dict[str, Any]] = None) -> None:
-        """发送不需要响应的 JSON-RPC 通知。"""
+        """
+        发送不需要响应的 JSON-RPC 通知。
+        """
         await self._post(_jsonrpc_message(method, params), expect_response=False)
 
     async def request(self, method: str, params: Optional[dict[str, Any]] = None) -> Any:
-        """发送 JSON-RPC 请求并等待响应。"""
+        """
+        发送 JSON-RPC 请求并等待响应。
+        """
         request_id = uuid.uuid4().hex
         return await self._post(
             _jsonrpc_message(method, params, request_id=request_id),
@@ -321,7 +379,9 @@ class _HttpMcpSession:
         expect_response: bool,
         request_id: Optional[str] = None,
     ) -> Any:
-        """向 Streamable HTTP MCP 服务发送一条 JSON-RPC 消息。"""
+        """
+        向 Streamable HTTP MCP 服务发送一条 JSON-RPC 消息。
+        """
         if not self.server.url:
             raise RuntimeError("HTTP MCP 服务器缺少 URL")
         headers = {
@@ -358,7 +418,9 @@ class _HttpMcpSession:
 
 
 class _SseMcpSession:
-    """旧版 HTTP+SSE MCP 会话。"""
+    """
+    旧版 HTTP+SSE MCP 会话。
+    """
 
     def __init__(self, server: AgentMcpServerConfig) -> None:
         self.server = server
@@ -368,7 +430,9 @@ class _SseMcpSession:
         self._event_iterator = None
 
     async def __aenter__(self) -> "_SseMcpSession":
-        """打开 SSE 流并读取服务端回传的 POST endpoint。"""
+        """
+        打开 SSE 流并读取服务端回传的 POST endpoint。
+        """
         if not self.server.url:
             raise RuntimeError("SSE MCP 服务器缺少 URL")
         self._stream_manager = AsyncRequestUtils(
@@ -386,16 +450,22 @@ class _SseMcpSession:
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
-        """关闭 SSE 流。"""
+        """
+        关闭 SSE 流。
+        """
         if self._stream_manager:
             await self._stream_manager.__aexit__(exc_type, exc, tb)
 
     async def notify(self, method: str, params: Optional[dict[str, Any]] = None) -> None:
-        """发送不需要响应的 JSON-RPC 通知。"""
+        """
+        发送不需要响应的 JSON-RPC 通知。
+        """
         await self._post(_jsonrpc_message(method, params))
 
     async def request(self, method: str, params: Optional[dict[str, Any]] = None) -> Any:
-        """发送 JSON-RPC 请求并等待 SSE 流上的响应。"""
+        """
+        发送 JSON-RPC 请求并等待 SSE 流上的响应。
+        """
         request_id = uuid.uuid4().hex
         await self._post(_jsonrpc_message(method, params, request_id=request_id))
         timeout = _normalize_timeout(self.server.timeout)
@@ -406,7 +476,9 @@ class _SseMcpSession:
                 return _extract_jsonrpc_result(payload, request_id)
 
     async def _read_endpoint(self) -> str:
-        """读取 SSE endpoint 事件中的 POST 地址。"""
+        """
+        读取 SSE endpoint 事件中的 POST 地址。
+        """
         timeout = _normalize_timeout(self.server.timeout)
         while True:
             event = await asyncio.wait_for(self._event_iterator.__anext__(), timeout=timeout)
@@ -418,7 +490,9 @@ class _SseMcpSession:
             return urljoin(self.server.url, endpoint)
 
     async def _post(self, payload: dict) -> None:
-        """向 SSE 握手返回的 endpoint 发送 JSON-RPC 消息。"""
+        """
+        向 SSE 握手返回的 endpoint 发送 JSON-RPC 消息。
+        """
         if not self.endpoint:
             raise RuntimeError("SSE MCP endpoint 未初始化")
         response = await AsyncRequestUtils(
@@ -442,7 +516,9 @@ class _SseMcpSession:
 
 
 async def _open_mcp_session(server: AgentMcpServerConfig):
-    """根据配置创建对应的 MCP 传输会话。"""
+    """
+    根据配置创建对应的 MCP 传输会话。
+    """
     transport = "http" if server.transport == "streamable_http" else server.transport
     if transport == "stdio":
         return _StdioMcpSession(server)
@@ -454,10 +530,14 @@ async def _open_mcp_session(server: AgentMcpServerConfig):
 
 
 class AgentMcpManager:
-    """管理 Agent 外部 MCP 服务器配置、工具发现和工具调用。"""
+    """
+    管理 Agent 外部 MCP 服务器配置、工具发现和工具调用。
+    """
 
     def get_servers(self) -> list[AgentMcpServerConfig]:
-        """读取已保存的外部 MCP 服务器配置。"""
+        """
+        读取已保存的外部 MCP 服务器配置。
+        """
         raw_servers = get_configured_system_config().get(SystemConfigKey.AIAgentMcpServers) or []
         if not isinstance(raw_servers, list):
             return []
@@ -470,7 +550,9 @@ class AgentMcpManager:
         return servers
 
     async def save_servers(self, servers: list[AgentMcpServerConfig]) -> bool:
-        """保存外部 MCP 服务器配置。"""
+        """
+        保存外部 MCP 服务器配置。
+        """
         normalized_servers = [self.normalize_server(server).model_dump() for server in servers]
         return await get_configured_system_config().async_set(
             SystemConfigKey.AIAgentMcpServers,
@@ -478,7 +560,9 @@ class AgentMcpManager:
         )
 
     def normalize_server(self, value: Any) -> AgentMcpServerConfig:
-        """规范化单个 MCP 服务器配置。"""
+        """
+        规范化单个 MCP 服务器配置。
+        """
         if isinstance(value, AgentMcpServerConfig):
             raw_server = value.model_dump()
         elif isinstance(value, dict):
@@ -501,13 +585,17 @@ class AgentMcpManager:
         return AgentMcpServerConfig.model_validate(raw_server)
 
     def config_signature(self) -> str:
-        """生成外部 MCP 配置签名，用于 Agent 图缓存失效。"""
+        """
+        生成外部 MCP 配置签名，用于 Agent 图缓存失效。
+        """
         payload = [server.model_dump() for server in self.get_servers()]
         raw_text = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
         return hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
 
     async def initialize_session(self, session) -> None:
-        """完成 MCP initialize 和 initialized 通知流程。"""
+        """
+        完成 MCP initialize 和 initialized 通知流程。
+        """
         await session.request(
             "initialize",
             {
@@ -522,7 +610,9 @@ class AgentMcpManager:
         await session.notify("notifications/initialized")
 
     async def list_server_tools(self, server: AgentMcpServerConfig) -> list[AgentMcpToolSpec]:
-        """连接单个 MCP 服务器并读取工具列表。"""
+        """
+        连接单个 MCP 服务器并读取工具列表。
+        """
         normalized_server = self.normalize_server(server)
         session_manager = await _open_mcp_session(normalized_server)
         async with session_manager as session:
@@ -546,7 +636,9 @@ class AgentMcpManager:
         return tool_specs
 
     async def list_enabled_tool_specs(self) -> list[AgentMcpToolSpec]:
-        """读取所有启用 MCP 服务器暴露的工具定义并保留同名冲突。"""
+        """
+        读取所有启用 MCP 服务器暴露的工具定义并保留同名冲突。
+        """
         tool_specs: list[AgentMcpToolSpec] = []
         for server in self.get_servers():
             if not server.enabled:
@@ -564,7 +656,9 @@ class AgentMcpManager:
         tool_name: str,
         arguments: Optional[dict[str, Any]] = None,
     ) -> Any:
-        """调用单个 MCP 服务器上的指定工具。"""
+        """
+        调用单个 MCP 服务器上的指定工具。
+        """
         normalized_server = self.normalize_server(server)
         session_manager = await _open_mcp_session(normalized_server)
         async with session_manager as session:
@@ -578,7 +672,9 @@ class AgentMcpManager:
             )
 
     async def test_server(self, server: AgentMcpServerConfig) -> AgentMcpServerTestResult:
-        """测试 MCP 服务器连接并返回工具列表。"""
+        """
+        测试 MCP 服务器连接并返回工具列表。
+        """
         tool_specs = await self.list_server_tools(server)
         tools = [
             AgentMcpServerToolInfo(

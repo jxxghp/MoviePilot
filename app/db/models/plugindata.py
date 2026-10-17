@@ -1,3 +1,9 @@
+"""
+插件持久化数据的 ORM 模型与会话内数据操作。
+
+会话及事务由调用方管理，本模块不负责提交或回滚。
+"""
+
 from typing import Any, Optional, Self
 
 from sqlalchemy import JSON, Index, String, delete, select
@@ -22,14 +28,18 @@ class PluginData(Base):
 
     @classmethod
     def get_plugin_data(cls, db: Session, plugin_id: str) -> list[Self]:
-        """在调用方 Session 中读取插件全部数据。"""
+        """
+        在调用方 Session 中读取插件全部数据。
+        """
         return list(db.execute(select(cls).where(cls.plugin_id == plugin_id)).scalars().all())
 
     @classmethod
     async def async_get_plugin_data(
         cls, db: AsyncSession, plugin_id: str
     ) -> list[Self]:
-        """在调用方 AsyncSession 中读取插件全部数据。"""
+        """
+        在调用方 AsyncSession 中读取插件全部数据。
+        """
         result = await db.execute(select(cls).where(cls.plugin_id == plugin_id))
         return list(result.scalars().all())
 
@@ -37,7 +47,9 @@ class PluginData(Base):
     def get_plugin_data_by_key(
         cls, db: Session, plugin_id: str, key: str
     ) -> Optional[Self]:
-        """在调用方 Session 中按键读取插件数据。"""
+        """
+        在调用方 Session 中按键读取插件数据。
+        """
         data: Optional[Self] = db.execute(
             select(cls).where(cls.plugin_id == plugin_id, cls.key == key)
         ).scalars().first()
@@ -47,7 +59,9 @@ class PluginData(Base):
     async def async_get_plugin_data_by_key(
         cls, db: AsyncSession, plugin_id: str, key: str
     ) -> Optional[Self]:
-        """在调用方 AsyncSession 中按键读取插件数据。"""
+        """
+        在调用方 AsyncSession 中按键读取插件数据。
+        """
         result = await db.execute(
             select(cls).where(cls.plugin_id == plugin_id, cls.key == key)
         )
@@ -56,25 +70,33 @@ class PluginData(Base):
 
     @classmethod
     def del_plugin_data_by_key(cls, db: Session, plugin_id: str, key: str) -> None:
-        """在调用方事务中暂存单个插件键删除。"""
+        """
+        在调用方事务中暂存单个插件键删除。
+        """
         db.execute(delete(cls).where(cls.plugin_id == plugin_id, cls.key == key))
 
     @classmethod
     def del_plugin_data(cls, db: Session, plugin_id: str) -> None:
-        """在调用方事务中暂存插件全部数据删除。"""
+        """
+        在调用方事务中暂存插件全部数据删除。
+        """
         db.execute(delete(cls).where(cls.plugin_id == plugin_id))
 
     @classmethod
     def get_plugin_data_by_plugin_id(
         cls, db: Session, plugin_id: str
     ) -> list[Self]:
-        """在调用方 Session 中按插件 ID 读取数据。"""
+        """
+        在调用方 Session 中按插件 ID 读取数据。
+        """
         return list(db.execute(select(cls).where(cls.plugin_id == plugin_id)).scalars().all())
 
     @classmethod
     async def async_get_plugin_data_by_plugin_id(
         cls, db: AsyncSession, plugin_id: str
     ) -> list[Self]:
-        """在调用方 AsyncSession 中按插件 ID 读取数据。"""
+        """
+        在调用方 AsyncSession 中按插件 ID 读取数据。
+        """
         result = await db.execute(select(cls).where(cls.plugin_id == plugin_id))
         return list(result.scalars().all())

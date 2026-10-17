@@ -1,9 +1,9 @@
-"""2.2.1
+"""
+2.2.1 将 PostgreSQL 站点用户标识转换为文本。
 
-Revision ID: a946dae52526
-Revises: 5b3355c964bb
-Create Date: 2025-08-20 17:50:00.000000
-
+版本标识： a946dae52526
+前置版本： 5b3355c964bb
+创建时间： 2025-08-20 17:50:00.000000
 """
 import sqlalchemy as sa
 from alembic import op
@@ -11,7 +11,7 @@ from alembic import op
 from app.runtime.log import logger
 from app.runtime.config import settings
 
-# revision identifiers, used by Alembic.
+# Alembic 使用以下标识连接迁移版本链。
 revision = 'a946dae52526'
 down_revision = '5b3355c964bb'
 branch_labels = None
@@ -20,49 +20,47 @@ depends_on = None
 
 def upgrade() -> None:
     """
-    升级：将SiteUserData表的userid字段从Integer改为String
+    仅在 PostgreSQL 上将站点用户标识从整数列迁移为文本列。
     """
     connection = op.get_bind()
 
     if settings.DB_TYPE.lower() == "postgresql":
-        # PostgreSQL数据库迁移
         migrate_postgresql_userid(connection)
 
 
 def downgrade() -> None:
     """
-    降级：将SiteUserData表的userid字段从String改回Integer
+    本版本不执行类型回退，保留站点用户标识的文本值。
     """
     pass
 
 
 def migrate_postgresql_userid(connection):
     """
-    PostgreSQL数据库userid字段迁移
+    通过临时文本列转换站点用户标识，成功后替换旧列。
+
+    :param connection: Alembic 当前迁移事务连接
+    :raises Exception: 建列、转换或替换失败时记录错误并向上传播
     """
     try:
         logger.info("开始PostgreSQL数据库userid字段迁移...")
 
-        # 1. 创建临时列
         connection.execute(sa.text("""
             ALTER TABLE siteuserdata 
             ADD COLUMN userid_new VARCHAR
         """))
 
-        # 2. 将现有数据转换为字符串并复制到新列
         connection.execute(sa.text("""
             UPDATE siteuserdata 
             SET userid_new = CAST(userid AS VARCHAR)
             WHERE userid IS NOT NULL
         """))
 
-        # 3. 删除旧列
         connection.execute(sa.text("""
             ALTER TABLE siteuserdata 
             DROP COLUMN userid
         """))
 
-        # 4. 重命名新列
         connection.execute(sa.text("""
             ALTER TABLE siteuserdata 
             RENAME COLUMN userid_new TO userid

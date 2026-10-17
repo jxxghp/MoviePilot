@@ -1,4 +1,6 @@
-"""豆瓣短评与影评投影的同步异步一致性测试。"""
+"""
+豆瓣短评与影评投影的同步异步一致性测试。
+"""
 
 import asyncio
 from copy import deepcopy
@@ -10,7 +12,9 @@ from app.modules.douban import DoubanModule
 
 
 def _module() -> DoubanModule:
-    """构造只注入离线评论客户端的豆瓣模块。"""
+    """
+    构造只注入离线评论客户端的豆瓣模块。
+    """
     module = object.__new__(DoubanModule)
     module.doubanapi = Mock()
     for name in (
@@ -28,7 +32,9 @@ def _module() -> DoubanModule:
 
 
 def _interests_response() -> dict[str, object]:
-    """构造包含完整字段和缺失可选字段的短评响应。"""
+    """
+    构造包含完整字段和缺失可选字段的短评响应。
+    """
     return {
         "start": 0,
         "count": 2,
@@ -54,7 +60,9 @@ def _interests_response() -> dict[str, object]:
 
 
 def _reviews_response() -> dict[str, object]:
-    """构造包含完整字段和缺失可选字段的影评响应。"""
+    """
+    构造包含完整字段和缺失可选字段的影评响应。
+    """
     return {
         "start": 0,
         "count": 1,
@@ -77,7 +85,9 @@ def _reviews_response() -> dict[str, object]:
 
 
 def test_interests_projection_normalizes_fields_and_author() -> None:
-    """短评投影应归一评分为浮点、补齐作者并保留分页元数据。"""
+    """
+    短评投影应归一评分为浮点、补齐作者并保留分页元数据。
+    """
     module = _module()
 
     page = module._process_interests(_interests_response())
@@ -97,7 +107,9 @@ def test_interests_projection_normalizes_fields_and_author() -> None:
 
 
 def test_reviews_projection_normalizes_fields_and_author() -> None:
-    """影评投影应保留标题摘要、有用数并补齐作者。"""
+    """
+    影评投影应保留标题摘要、有用数并补齐作者。
+    """
     module = _module()
 
     page = module._process_reviews(_reviews_response())
@@ -118,7 +130,9 @@ def test_reviews_projection_normalizes_fields_and_author() -> None:
 
 @pytest.mark.parametrize("payload", [None, {}])
 def test_empty_response_yields_empty_page(payload: dict[str, object] | None) -> None:
-    """空响应或空字典必须返回空分页结果而不是抛错。"""
+    """
+    空响应或空字典必须返回空分页结果而不是抛错。
+    """
     module = _module()
 
     interests = module._process_interests(payload)
@@ -129,7 +143,9 @@ def test_empty_response_yields_empty_page(payload: dict[str, object] | None) -> 
 
 
 def test_projection_does_not_mutate_source_payload() -> None:
-    """投影必须保持源响应不变，避免污染豆瓣客户端缓存。"""
+    """
+    投影必须保持源响应不变，避免污染豆瓣客户端缓存。
+    """
     module = _module()
     source = _interests_response()
     original = deepcopy(source)
@@ -151,7 +167,9 @@ def test_projection_does_not_mutate_source_payload() -> None:
 def test_sync_and_async_entries_share_projection(
     kind: str, sync_method: str, async_method: str
 ) -> None:
-    """同步与异步入口应传递相同分页参数并产出相同结果。"""
+    """
+    同步与异步入口应传递相同分页参数并产出相同结果。
+    """
     module = _module()
     response = _interests_response() if kind == "interests" else _reviews_response()
     client_method = sync_method.removeprefix("douban_")

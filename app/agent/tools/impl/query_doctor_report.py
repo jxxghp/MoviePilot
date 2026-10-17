@@ -1,4 +1,6 @@
-"""查询 MoviePilot Doctor 诊断报告工具。"""
+"""
+查询 MoviePilot Doctor 诊断报告工具。
+"""
 
 import json
 from typing import Any, Optional, Type
@@ -12,21 +14,17 @@ from app.runtime.log import logger
 
 
 class QueryDoctorReportInput(BaseModel):
-    """查询 Doctor 诊断报告工具的输入参数模型。"""
+    """
+    查询 Doctor 诊断报告工具的输入参数模型。
+    """
 
     deep: Optional[bool] = Field(
         False,
-        description=(
-            "Whether to run deeper checks. When true, doctor may perform slower environment probes "
-            "such as PostgreSQL TCP connectivity checks."
-        ),
+        description="是否执行较深检查，启用时可能进行 PostgreSQL TCP 连通性等较慢的环境探测",
     )
     include_details: Optional[bool] = Field(
         True,
-        description=(
-            "Whether to include full doctor findings with details and context. Set false for a compact "
-            "summary when only overall status and finding titles are needed."
-        ),
+        description="是否包含完整诊断详情和上下文；只需总体状态和发现标题时可设为 False",
     )
 
 
@@ -35,31 +33,45 @@ class QueryDoctorReportTool(MoviePilotTool):
     Doctor 离线诊断报告查询工具。
     """
 
-    name: str = "query_doctor_report"
-    tags: list[str] = [
-        ToolTag.Read,
-        ToolTag.System,
-        ToolTag.Admin,
-    ]
-    description: str = (
-        "Run MoviePilot Doctor in read-only mode and return a structured diagnostic report for troubleshooting. "
-        "Use this tool when analyzing startup failures, Docker/runtime issues, port conflicts, dependency problems, "
-        "database health, frontend assets, safe mode, or recent log error clues. Plugin-only log findings remain "
-        "visible with affects_report_status=false and do not downgrade the overall status. This tool never applies "
-        "fixes."
+    name: str = Field(
+        default="query_doctor_report",
+        description="供模型调用的稳定工具名称",
     )
-    require_admin: bool = True
-    args_schema: Type[BaseModel] = QueryDoctorReportInput
+    tags: list[str] = Field(
+        default=[ToolTag.Read, ToolTag.System, ToolTag.Admin],
+        description="工具的能力和权限分类标签，初始化时会统一归一化",
+    )
+    description: str = Field(
+        default=(
+            "以只读模式运行 MoviePilot Doctor，返回用于排障的结构化报告。"
+            "适用于启动失败、Docker 或运行环境、端口冲突、依赖、数据库健康、前端资源、安全模式及近期日志错误线索。"
+            "仅涉及插件的日志发现仍会展示，并标记 affects_report_status=false，不降低总体状态。"
+            "本工具不执行修复。"
+        ),
+        description="供模型理解工具用途、输入约束和调用边界的说明",
+    )
+    require_admin: bool = Field(
+        default=True,
+        description="是否仅允许系统管理员调用",
+    )
+    args_schema: Type[BaseModel] = Field(
+        default=QueryDoctorReportInput,
+        description="工具输入参数的验证模型或 JSON Schema",
+    )
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
-        """根据查询参数生成友好的提示消息。"""
+        """
+        根据查询参数生成友好的提示消息。
+        """
         if kwargs.get("deep"):
             return "运行 Doctor 深度诊断"
         return "运行 Doctor 诊断"
 
     @staticmethod
     def _compact_report(report: dict[str, Any]) -> dict[str, Any]:
-        """压缩诊断报告，保留 Agent 判断问题所需的核心字段。"""
+        """
+        压缩诊断报告，保留 Agent 判断问题所需的核心字段。
+        """
         return {
             "schema_version": report.get("schema_version"),
             "status": report.get("status"),
@@ -84,7 +96,9 @@ class QueryDoctorReportTool(MoviePilotTool):
 
     @staticmethod
     def _run_doctor_report(deep: bool = False) -> dict[str, Any]:
-        """在线程池中运行只读 Doctor 诊断。"""
+        """
+        在线程池中运行只读 Doctor 诊断。
+        """
         return run_doctor(deep=bool(deep)).to_dict()
 
     async def run(

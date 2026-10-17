@@ -1,4 +1,6 @@
-"""插件运行时钩子契约。"""
+"""
+插件运行时钩子契约。
+"""
 
 from dataclasses import dataclass
 from typing import Any
@@ -7,20 +9,32 @@ from app.foundation.reflection import ObjectUtils
 
 
 class PluginRuntimeError(Exception):
-    """插件运行时调用失败的基础异常。"""
+    """
+    插件运行时调用失败的基础异常。
+    """
 
 
 class PluginNotFoundError(PluginRuntimeError):
-    """目标插件未加载。"""
+    """
+    目标插件未加载。
+    """
 
 
 class PluginDashboardError(PluginRuntimeError):
-    """插件仪表板返回值不符合宿主契约。"""
+    """
+    插件仪表板返回值不符合宿主契约。
+    """
 
 
 @dataclass(frozen=True)
 class PluginHookContract:
-    """描述宿主识别一个插件钩子时必须保持的运行语义。"""
+    """
+    描述宿主识别一个插件钩子时必须保持的运行语义。
+
+    :param name: 宿主识别的插件钩子方法名称
+    :param requires_enabled: 调用前是否要求插件已启用
+    :param isolates_errors: 钩子异常是否由宿主隔离，避免影响其他插件
+    """
 
     name: str
     requires_enabled: bool = False
@@ -50,6 +64,8 @@ PLUGIN_HOOK_CONTRACTS = {
 
 
 def supports_plugin_hook(plugin: Any, name: str) -> bool:
-    """按旧插件的方法判定规则检查实例是否实现指定钩子。"""
+    """
+    按旧插件的方法判定规则检查实例是否实现指定钩子。
+    """
     method = getattr(plugin, name, None)
     return bool(method and ObjectUtils.check_method(method))

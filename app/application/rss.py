@@ -1,3 +1,7 @@
+"""
+RSS 订阅获取、站点链接生成、浏览器回退与资源解析。
+"""
+
 import traceback
 from typing import Any, List, Optional, Protocol, Tuple, Union
 from urllib.parse import urljoin, urlparse
@@ -11,7 +15,14 @@ from app.runtime.log import logger
 
 
 class RssResponsePort(Protocol):
-    """声明 RSS 用例实际读取的 HTTP 响应字段。"""
+    """
+    声明 RSS 用例实际读取的 HTTP 响应字段。
+
+    :ivar status_code: HTTP 响应状态码
+    :ivar content: 响应原始字节，供受控的 XML 编码探测使用
+    :ivar text: 客户端解码后的响应文本
+    :ivar reason: HTTP 响应原因短语，用于失败诊断
+    """
 
     status_code: int
     content: bytes
@@ -20,34 +31,81 @@ class RssResponsePort(Protocol):
 
 
 class RssHttpPort(Protocol):
-    """声明 RSS 用例所需的同步 HTTP 与 XML 解码能力。"""
+    """
+    声明 RSS 用例所需的同步 HTTP 与 XML 解码能力。
+    """
 
     def get(self, *, url: str, ua: Optional[str], headers: Optional[dict[str, Any]],
             proxies: Optional[dict[str, Any]], timeout: int) -> Optional[RssResponsePort]:
-        """获取 RSS 响应。"""
+        """
+        获取 RSS 响应。
+
+        :param url: RSS 订阅地址或站点生成接口 URL
+        :param ua: 请求使用的 User-Agent
+        :param headers: 额外请求头，None 表示不提供额外头
+        :param proxies: 协议到代理连接参数的映射，None 表示不指定代理
+        :param timeout: HTTP 请求超时，单位为秒
+        :return: HTTP 响应；未取得响应时为 None
+        """
 
     def post(self, *, url: str, data: dict[str, Any], cookie: str, ua: str,
              proxies: Optional[dict[str, Any]], timeout: int) -> Optional[RssResponsePort]:
-        """提交 RSS 链接生成表单。"""
+        """
+        提交 RSS 链接生成表单。
+
+        :param url: RSS 订阅地址或站点生成接口 URL
+        :param data: 站点生成 RSS 链接所需的表单字段
+        :param cookie: 站点认证 Cookie 文本
+        :param ua: 请求使用的 User-Agent
+        :param proxies: 协议到代理连接参数的映射，None 表示不指定代理
+        :param timeout: HTTP 请求超时，单位为秒
+        :return: HTTP 响应；未取得响应时为 None
+        """
 
     def decode_xml(self, response: RssResponsePort, *, performance_mode: bool,
                    confidence_threshold: float) -> str:
-        """按宿主编码策略解码 XML 响应。"""
+        """
+        按宿主编码策略解码 XML 响应。
+
+        :param response: 待解码的原始 HTTP 响应
+        :param performance_mode: 是否采用减少编码探测开销的性能模式
+        :param confidence_threshold: 编码探测结果可接受的最低置信度
+        :return: 按宿主编码策略解码后的 XML 文本
+        """
 
 
 class RssBrowserPort(Protocol):
-    """声明 RSS 链接页面渲染能力。"""
+    """
+    声明 RSS 链接页面渲染能力。
+    """
 
     def render(self, *, url: str, cookie: str, ua: str,
                proxies: Optional[dict[str, Any]], timeout: int) -> Optional[str]:
-        """渲染页面并返回源码。"""
+        """
+        渲染页面并返回源码。
+
+        :param url: 需要浏览器执行并渲染的站点页面 URL
+        :param cookie: 站点认证 Cookie 文本
+        :param ua: 浏览器请求使用的 User-Agent
+        :param proxies: 浏览器代理连接参数，None 表示不指定代理
+        :param timeout: 浏览器页面获取的超时时间，单位为秒
+        :return: 渲染后的页面源码，获取失败时为 None
+        """
 
 
 class RssParserPort(Protocol):
-    """声明可选原生 RSS 解析加速能力。"""
+    """
+    声明可选原生 RSS 解析加速能力。
+    """
 
     def parse(self, content: str, max_items: int) -> Optional[List[dict[str, Any]]]:
-        """解析 RSS XML；不可用或失败时返回 None 触发 Python 兜底。"""
+        """
+        解析 RSS XML；不可用或失败时返回 None 触发 Python 兜底。
+
+        :param content: 待解析的 RSS XML 文本
+        :param max_items: 最多保留的资源条目数
+        :return: 解析后的资源条目；能力不可用或解析失败时为 None，成功但无资源时为空列表
+        """
 
 
 _rss_http_port: Optional[RssHttpPort] = None
@@ -57,7 +115,9 @@ _rss_parser_port: Optional[RssParserPort] = None
 
 def configure_rss_ports(*, http: RssHttpPort, browser: RssBrowserPort,
                         parser: RssParserPort) -> None:
-    """由组合根装配 RSS 用例依赖的技术端口。"""
+    """
+    由组合根装配 RSS 用例依赖的技术端口。
+    """
     global _rss_http_port, _rss_browser_port, _rss_parser_port
     _rss_http_port = http
     _rss_browser_port = browser
@@ -65,7 +125,9 @@ def configure_rss_ports(*, http: RssHttpPort, browser: RssBrowserPort,
 
 
 def reset_rss_ports() -> None:
-    """清除 RSS 端口，供生命周期退出与隔离测试使用。"""
+    """
+    清除 RSS 端口，供生命周期退出与隔离测试使用。
+    """
     global _rss_http_port, _rss_browser_port, _rss_parser_port
     _rss_http_port = None
     _rss_browser_port = None
@@ -73,7 +135,9 @@ def reset_rss_ports() -> None:
 
 
 def _require_rss_ports() -> Tuple[RssHttpPort, RssBrowserPort, RssParserPort]:
-    """返回已装配端口，缺失时明确拒绝隐式构造 Adapter。"""
+    """
+    返回已装配端口，缺失时明确拒绝隐式构造 Adapter。
+    """
     if _rss_http_port is None or _rss_browser_port is None or _rss_parser_port is None:
         raise RuntimeError("RSS 访问端口尚未由启动组合根装配")
     return _rss_http_port, _rss_browser_port, _rss_parser_port
@@ -85,8 +149,10 @@ class RssHelper:
     """
 
     # RSS解析限制配置
-    MAX_RSS_SIZE = 50 * 1024 * 1024  # 50MB最大RSS文件大小
-    MAX_RSS_ITEMS = 1000  # 最大解析条目数
+    # 50MB最大RSS文件大小
+    MAX_RSS_SIZE = 50 * 1024 * 1024
+    # 最大解析条目数
+    MAX_RSS_ITEMS = 1000
 
     # 各站点RSS链接获取配置
     rss_link_conf = {
@@ -295,7 +361,9 @@ class RssHelper:
 
     @classmethod
     def _get_site_domain(cls, url: str) -> str:
-        """按 RSS 站点配置匹配域名，未命中时回退到最后两级域名。"""
+        """
+        按 RSS 站点配置匹配域名，未命中时回退到最后两级域名。
+        """
         hostname = (urlparse(url).hostname or "").lower()
         for domain in cls.rss_link_conf:
             if domain == "default":
@@ -307,7 +375,9 @@ class RssHelper:
 
     @staticmethod
     def _parse_publish_time(value: str):
-        """将 RSS 常见日期表达解析为 datetime，无法解析时返回 None。"""
+        """
+        将 RSS 常见日期表达解析为 datetime，无法解析时返回 None。
+        """
         try:
             return dateutil.parser.parse(value)
         except dateutil.parser.ParserError:
@@ -332,7 +402,9 @@ class RssHelper:
 
     def parse(self, url, proxy: bool = False,
               timeout: Optional[int] = 15, headers: dict = None, ua: str = None) -> Union[List[dict], None, bool]:
-        """解析 RSS 地址并保留插件兼容的返回约定。"""
+        """
+        解析 RSS 地址并保留插件兼容的返回约定。
+        """
         url = UrlUtils.normalize_http_url(url)
         if url is None:
             return False
@@ -350,7 +422,6 @@ class RssHelper:
         :param ua: 自定义User-Agent
         :return: 种子信息列表，如为None代表Rss过期，如果为False则为错误
         """
-        # 开始处理
         ret_array: list = []
         http_port, _, _ = _require_rss_ports()
 
@@ -370,7 +441,6 @@ class RssHelper:
             return False
 
         if ret:
-            # 检查HTTP状态码
             if ret.status_code != 200:
                 logger.error(f"RSS请求失败，状态码: {ret.status_code}, URL: {url}")
                 return False
@@ -395,7 +465,6 @@ class RssHelper:
                 if not ret_xml:
                     ret_xml = ret.text
 
-                # 验证RSS内容是否有效
                 if not ret_xml or not ret_xml.strip():
                     logger.error("RSS内容为空")
                     return False
@@ -410,16 +479,20 @@ class RssHelper:
                 if rust_items is not None:
                     return rust_items
 
-                # 使用lxml.etree解析XML
                 parser = None
                 try:
                     # 创建解析器，禁用网络访问以提高安全性和性能
                     parser = etree.XMLParser(
-                        recover=True,  # 容错模式
-                        strip_cdata=False,  # 保留CDATA
-                        resolve_entities=False,  # 禁用外部实体解析
-                        no_network=True,  # 禁用网络访问
-                        huge_tree=False  # 禁用大文档解析，避免内存问题
+                        # 容错模式
+                        recover=True,
+                        # 保留CDATA
+                        strip_cdata=False,
+                        # 禁用外部实体解析
+                        resolve_entities=False,
+                        # 禁用网络访问
+                        no_network=True,
+                        # 禁用大文档解析，避免内存问题
+                        huge_tree=False
                     )
                     root = etree.fromstring(ret_xml.encode('utf-8'), parser=parser)
                 except etree.XMLSyntaxError as xml_error:
@@ -428,7 +501,6 @@ class RssHelper:
                     try:
                         root = etree.HTML(ret_xml)
                         if root is not None:
-                            # 查找RSS根节点
                             rss_root = root.xpath('//rss | //feed')
                             if rss_root:
                                 root = rss_root[0]
@@ -450,17 +522,14 @@ class RssHelper:
                     logger.error("无法解析RSS内容")
                     return False
 
-                # 查找所有item或entry节点
                 items = root.xpath('.//item | .//entry')
 
-                # 限制处理的条目数量
                 items_count = min(len(items), self.MAX_RSS_ITEMS)
                 if len(items) > self.MAX_RSS_ITEMS:
                     logger.warning(f"RSS条目过多: {len(items)}，仅处理前{self.MAX_RSS_ITEMS}个")
                 try:
                     for item in items[:items_count]:
                         try:
-                            # 使用xpath提取信息，更高效
                             title_nodes = item.xpath('.//title')
                             title = title_nodes[0].text if title_nodes and title_nodes[0].text else ""
                             if not title:
@@ -509,7 +578,6 @@ class RssHelper:
                             nickname_nodes = item.xpath('.//*[local-name()="creator"]')
                             nickname = nickname_nodes[0].text if nickname_nodes and nickname_nodes[0].text else ""
 
-                            # 返回对象
                             tmp_dict = {
                                 'title': title,
                                 'enclosure': enclosure,
@@ -561,15 +629,10 @@ class RssHelper:
         """
         try:
             http_port, browser_port, _ = _require_rss_ports()
-            # 获取站点域名
             domain = self._get_site_domain(url)
-            # 获取配置
             site_conf = self.rss_link_conf.get(domain) or self.rss_link_conf.get("default")
-            # RSS地址
             rss_url = urljoin(url, site_conf.get("url"))
-            # RSS请求参数
             rss_params = site_conf.get("params")
-            # 请求RSS页面
             if site_conf.get("render"):
                 html_text = browser_port.render(
                     url=rss_url,
@@ -594,7 +657,6 @@ class RssHelper:
                 else:
                     return "", f"获取RSS链接失败：无法连接 {url} "
 
-            # 解析HTML
             if html_text:
                 html = None
                 try:

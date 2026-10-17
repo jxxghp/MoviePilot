@@ -1,4 +1,6 @@
-"""统一数据维护对追加型历史表的安全清理测试。"""
+"""
+统一数据维护对追加型历史表的安全清理测试。
+"""
 
 from datetime import datetime
 
@@ -15,7 +17,9 @@ from app.db.models.subscribehistory import SubscribeHistory
 
 
 def _cleanup_policy() -> CleanupPolicy:
-    """只启用本组新增历史表的 30 天保留期。"""
+    """
+    只启用本组新增历史表的 30 天保留期。
+    """
     return CleanupPolicy(
         enabled=True,
         message_days=0,
@@ -32,7 +36,9 @@ def _cleanup_policy() -> CleanupPolicy:
 
 
 def test_growth_table_cleanup_preserves_live_agent_recovery_state() -> None:
-    """旧历史可回收，但任务引用会话、最后运行和运行中记录必须保留。"""
+    """
+    旧历史可回收，但任务引用会话、最后运行和运行中记录必须保留。
+    """
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)

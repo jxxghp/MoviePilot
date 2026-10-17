@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+解析 Rousi.pro PeerGo 站点的用户资料、流量和做种信息。
+"""
+
 import json
 from typing import Any, Optional, Tuple
 from urllib.parse import urljoin
@@ -22,7 +26,7 @@ class RousiSiteUserInfo(SiteParserBase):
 
     def _parse_site_page(self, html_text: SitePage) -> None:
         """
-        配置 API 请求地址和请求头
+        配置 API 请求地址和请求头。
         使用 PeerGo MoviePilot 兼容的 /profile 接口获取用户信息。
         """
         self._base_url = f"https://{site_rules.extract_domain(self._site_url)}"
@@ -43,14 +47,14 @@ class RousiSiteUserInfo(SiteParserBase):
 
     def _parse_logged_in(self, html_text: str) -> bool:
         """
-        判断是否登录成功
+        判断是否登录成功。
         API 认证模式下，通过 HTTP 状态码判断，此处始终返回 True
         """
         return True
 
     def _parse_user_base_info(self, html_text: SitePage) -> None:
         """
-        解析用户基本信息
+        解析用户基本信息。
         通过 API v1 接口获取用户完整信息，包括上传下载量、做种数据等
 
         API 响应示例：
@@ -136,21 +140,21 @@ class RousiSiteUserInfo(SiteParserBase):
 
     def _parse_user_traffic_info(self, html_text: str) -> None:
         """
-        解析用户流量信息
+        解析用户流量信息。
         Rousi.pro API v1 在 _parse_user_base_info 中已完成所有解析，此方法无需实现
         """
         pass
 
     def _parse_user_detail_info(self, html_text: str) -> None:
         """
-        解析用户详细信息
+        解析用户详细信息。
         Rousi.pro API v1 在 _parse_user_base_info 中已完成所有解析，此方法无需实现
         """
         pass
 
     def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: Optional[bool] = False) -> Optional[str]:
         """
-        解析用户做种信息
+        解析用户做种信息。
         Rousi.pro API v1 在 _parse_user_base_info 中已通过 seeding_leeching_data 获取做种数据
 
         :param html_text: 页面内容
@@ -161,7 +165,7 @@ class RousiSiteUserInfo(SiteParserBase):
 
     def _parse_message_unread_links(self, html_text: str, msg_links: list[str]) -> Optional[str]:
         """
-        解析未读消息链接
+        解析未读消息链接。
         Rousi.pro API v1 暂未提供消息相关接口
 
         :param html_text: 页面内容
@@ -172,7 +176,7 @@ class RousiSiteUserInfo(SiteParserBase):
 
     def _parse_message_content(self, html_text: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """
-        解析消息内容
+        解析消息内容。
         Rousi.pro API v1 暂未提供消息相关接口
 
         :param html_text: 页面内容
@@ -182,10 +186,8 @@ class RousiSiteUserInfo(SiteParserBase):
 
     def _pase_unread_msgs(self) -> None:
         """
-        解析所有未读消息标题和内容
+        解析所有未读消息标题和内容。
         Rousi.pro API v1 暂未提供消息相关接口，暂时以网页接口实现
-
-        :return:
         """
         if not self.token:
             logger.warn(f"{self._site_name} 站点未配置 Authorization 请求头，跳过消息解析")
@@ -198,7 +200,9 @@ class RousiSiteUserInfo(SiteParserBase):
         }
 
         def __get_message_list(page: int) -> dict[str, Any]:
-            """读取指定页未读消息，保留接口的分页数据结构。"""
+            """
+            读取指定页未读消息，保留接口的分页数据结构。
+            """
             params = {
                 "page": page,
                 "page_size": 100,

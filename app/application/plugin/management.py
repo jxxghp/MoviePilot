@@ -1,4 +1,6 @@
-"""插件目录、生命周期和数据投影应用能力。"""
+"""
+插件目录、生命周期和数据投影应用能力。
+"""
 
 from typing import Any, Optional
 
@@ -32,7 +34,9 @@ def get_plugin_snapshot(plugin_id: str) -> Optional[dict[str, Any]]:
 
 
 def refresh_plugin_registrations(plugin_id: str) -> None:
-    """重新注册插件的定时任务、命令和动态 API 路由。"""
+    """
+    重新注册插件的定时任务、命令和动态 API 路由。
+    """
     # 这些依赖只在真正执行重载时才导入，避免普通查询工具引入不必要的初始化开销。
     from app.application.commands import init_commands
     from app.application.plugin.routes import register_plugin_api
@@ -44,7 +48,8 @@ def refresh_plugin_registrations(plugin_id: str) -> None:
 
 
 def reload_plugin_runtime(plugin_id: str) -> PluginRuntimeStatus:
-    """重载插件实例树并重新注册其命令、定时任务和 API。
+    """
+    重载插件实例树并重新注册其命令、定时任务和 API。
 
     分身与本体共用同一份源码，只重载本体会让分身继续持有旧模块与旧类对象，改完源码
     点重载后新旧代码在同一进程内并存；分身的 API、调度与命令注册也不会刷新。文件监听
@@ -292,7 +297,9 @@ async def inspect_plugin_sources(
     *,
     force: bool = False,
 ) -> dict[str, Any]:
-    """返回 Agent 可展示的脱敏来源候选与当前准入状态。"""
+    """
+    返回 Agent 可展示的脱敏来源候选与当前准入状态。
+    """
     inspection = await get_plugin_install_service().inspect_source(
         plugin_id=plugin_id,
         force=force,

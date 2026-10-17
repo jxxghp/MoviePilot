@@ -1,3 +1,7 @@
+"""
+验证 Agent 进度提示与工具展示模式独立，并适配纯文本渠道。
+"""
+
 from unittest.mock import patch
 
 from app.agent.middleware.subagents import SUBAGENT_PARENT_PROMPT
@@ -8,7 +12,9 @@ from app.schemas.types import NotificationChannel
 
 
 def test_progress_prompt_is_independent_from_tool_display_mode() -> None:
-    """进度沟通规则不应随工具逐条或汇总展示模式变化。"""
+    """
+    进度沟通规则不应随工具逐条或汇总展示模式变化。
+    """
     with patch.object(settings, "AI_AGENT_VERBOSE", False):
         summary_mode_prompt = prompt_manager.get_agent_prompt(
             channel=NotificationChannel.WebAgent.value
@@ -40,7 +46,9 @@ def test_progress_prompt_is_independent_from_tool_display_mode() -> None:
 
 
 def test_plain_text_channel_uses_consistent_formatting() -> None:
-    """微信纯文本规则不再推荐已禁止的 Markdown 符号，且不影响网页渠道。"""
+    """
+    微信纯文本规则不再推荐已禁止的 Markdown 符号，且不影响网页渠道。
+    """
     caps = ChannelCapabilityManager.get_capabilities(NotificationChannel.Wechat)
     instructions = prompt_manager._generate_formatting_instructions(caps)
     plain_prompt = prompt_manager.get_agent_prompt(NotificationChannel.Wechat.value)

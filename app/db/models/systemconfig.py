@@ -1,3 +1,9 @@
+"""
+系统运行配置键值的 ORM 模型与会话内数据操作。
+
+会话及事务由调用方管理，本模块不负责提交或回滚。
+"""
+
 from typing import Any, Optional, Self, cast
 
 from sqlalchemy import JSON, Index, String, select
@@ -22,7 +28,9 @@ class SystemConfig(Base):
 
     @classmethod
     def get_by_key(cls, db: Session, key: str) -> Optional[Self]:
-        """在调用方 Session 中按配置键查询系统配置。"""
+        """
+        在调用方 Session 中按配置键查询系统配置。
+        """
         return cast(
             Optional[Self],
             db.execute(select(cls).where(cls.key == key)).scalars().first(),
@@ -34,12 +42,16 @@ class SystemConfig(Base):
         db: AsyncSession,
         key: str,
     ) -> Optional[Self]:
-        """在调用方 AsyncSession 中按配置键查询系统配置。"""
+        """
+        在调用方 AsyncSession 中按配置键查询系统配置。
+        """
         result = await db.execute(select(cls).where(cls.key == key))
         return cast(Optional[Self], result.scalar_one_or_none())
 
     def delete_by_key(self, db: Session, key: str) -> bool:
-        """在调用方持有的事务中暂存指定配置删除。"""
+        """
+        在调用方持有的事务中暂存指定配置删除。
+        """
         systemconfig = self.get_by_key(db, key)
         if systemconfig:
             db.delete(systemconfig)

@@ -1,4 +1,6 @@
-"""free-threaded（v3t）运行时插件依赖 resolve-only 预检与失败原因归类测试。"""
+"""
+free-threaded（v3t）运行时插件依赖 resolve-only 预检与失败原因归类测试。
+"""
 
 from __future__ import annotations
 
@@ -39,7 +41,9 @@ HEALTHY = {"uv check": (True, "ok"), "核心依赖导入检查": (True, "ok")}
 
 
 def test_describe_resolve_failure_keeps_free_threaded_hint():
-    """解析阶段的 ABI 不兼容归类为 v3t 不兼容，并保留 uv 的 cp314t 提示行。"""
+    """
+    解析阶段的 ABI 不兼容归类为 v3t 不兼容，并保留 uv 的 cp314t 提示行。
+    """
     reason = describe_free_threaded_install_failure(UV_FREE_THREADED_RESOLVE_FAILURE)
 
     assert reason is not None
@@ -49,7 +53,9 @@ def test_describe_resolve_failure_keeps_free_threaded_hint():
 
 
 def test_describe_source_build_failure_names_package():
-    """源码构建失败归类为缺编译工具链，并指出具体依赖。"""
+    """
+    源码构建失败归类为缺编译工具链，并指出具体依赖。
+    """
     reason = describe_free_threaded_install_failure(UV_SOURCE_BUILD_FAILURE)
 
     assert reason is not None
@@ -58,12 +64,16 @@ def test_describe_source_build_failure_names_package():
 
 
 def test_describe_unknown_failure_returns_none():
-    """网络等无法归类的失败不附加 v3t 原因。"""
+    """
+    网络等无法归类的失败不附加 v3t 原因。
+    """
     assert describe_free_threaded_install_failure("error: Request failed after 3 retries") is None
 
 
 def test_dry_run_strategies_share_install_inputs(tmp_path):
-    """预检命令与真实安装共用清单、约束、wheels 与网络矩阵，只多一个 --dry-run。"""
+    """
+    预检命令与真实安装共用清单、约束、wheels 与网络矩阵，只多一个 --dry-run。
+    """
     uv_bin = tmp_path / "uv"
     uv_bin.write_text("", encoding="utf-8")
     request = PackageInstallRequest(
@@ -93,7 +103,9 @@ def test_dry_run_strategies_share_install_inputs(tmp_path):
 
 @pytest.fixture
 def install_env(tmp_path, monkeypatch):
-    """构造可执行安装链路的最小环境：镜像+代理产生四个网络策略，健康检查恒为健康。"""
+    """
+    构造可执行安装链路的最小环境：镜像+代理产生四个网络策略，健康检查恒为健康。
+    """
     manifest = tmp_path / "requirements.txt"
     manifest.write_text("demo\n", encoding="utf-8")
     uv_bin = tmp_path / "uv"
@@ -131,7 +143,9 @@ def install_env(tmp_path, monkeypatch):
 
 
 def _patch_subprocess(monkeypatch, responder):
-    """同一应答函数同时替换同步与异步子进程执行，记录全部命令。"""
+    """
+    同一应答函数同时替换同步与异步子进程执行，记录全部命令。
+    """
     calls: list[list[str]] = []
 
     def execute(command, env=None, safe_command=None, timeout=None):
@@ -160,7 +174,9 @@ def _install(manifest: Path, use_async: bool):
 def test_preflight_blocks_when_every_strategy_reports_free_threaded_incompatibility(
     install_env, monkeypatch, use_async
 ):
-    """全部预检策略都给出 ABI 不兼容时直接拒绝，不进入真实安装。"""
+    """
+    全部预检策略都给出 ABI 不兼容时直接拒绝，不进入真实安装。
+    """
     monkeypatch.setattr(health_module, "is_free_threaded_runtime", lambda: True)
     calls = _patch_subprocess(monkeypatch, lambda _command: (False, UV_FREE_THREADED_RESOLVE_FAILURE))
 
@@ -174,7 +190,9 @@ def test_preflight_blocks_when_every_strategy_reports_free_threaded_incompatibil
 
 @pytest.mark.parametrize("use_async", [False, True])
 def test_preflight_passes_when_any_strategy_resolves(install_env, monkeypatch, use_async):
-    """镜像策略解析失败但后续代理策略能解析时放行，避免把单一网络路径的失败误判为不兼容。"""
+    """
+    镜像策略解析失败但后续代理策略能解析时放行，避免把单一网络路径的失败误判为不兼容。
+    """
     monkeypatch.setattr(health_module, "is_free_threaded_runtime", lambda: True)
 
     def responder(command):
@@ -196,7 +214,9 @@ def test_preflight_passes_when_any_strategy_resolves(install_env, monkeypatch, u
 
 @pytest.mark.parametrize("use_async", [False, True])
 def test_unclassified_preflight_failure_falls_through_to_install(install_env, monkeypatch, use_async):
-    """网络等无法归类的预检失败不拦截，交给真实安装按原有链路处理。"""
+    """
+    网络等无法归类的预检失败不拦截，交给真实安装按原有链路处理。
+    """
     monkeypatch.setattr(health_module, "is_free_threaded_runtime", lambda: True)
 
     def responder(command):
@@ -214,7 +234,9 @@ def test_unclassified_preflight_failure_falls_through_to_install(install_env, mo
 
 @pytest.mark.parametrize("use_async", [False, True])
 def test_standard_runtime_skips_preflight(install_env, monkeypatch, use_async):
-    """标准解释器不付预检成本，也不给失败附加 v3t 原因。"""
+    """
+    标准解释器不付预检成本，也不给失败附加 v3t 原因。
+    """
     monkeypatch.setattr(health_module, "is_free_threaded_runtime", lambda: False)
     calls = _patch_subprocess(
         monkeypatch,
@@ -230,7 +252,9 @@ def test_standard_runtime_skips_preflight(install_env, monkeypatch, use_async):
 
 @pytest.mark.parametrize("use_async", [False, True])
 def test_install_source_build_failure_gets_readable_reason(install_env, monkeypatch, use_async):
-    """解析通过但源码构建失败时，真实安装的错误前置可读原因并保留原始输出。"""
+    """
+    解析通过但源码构建失败时，真实安装的错误前置可读原因并保留原始输出。
+    """
     monkeypatch.setattr(health_module, "is_free_threaded_runtime", lambda: True)
 
     def responder(command):

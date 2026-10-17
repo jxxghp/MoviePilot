@@ -1,4 +1,6 @@
-"""音乐实体面向 API 和 Agent 的有界结果投影。"""
+"""
+音乐实体面向 API 和 Agent 的有界结果投影。
+"""
 
 from typing import Any
 
@@ -15,7 +17,9 @@ MUSIC_RELEASE_PREVIEW_LIMIT = 20
 
 
 def simplify_music_info(info: MusicInfo) -> dict[str, Any]:
-    """精简音乐列表项，同时保留订阅和下载所需的稳定身份。"""
+    """
+    精简音乐列表项，同时保留订阅和下载所需的稳定身份。
+    """
     payload = {
         **{key: value for key, value in music_credit_values(info).items() if value},
         "title": info.title,
@@ -63,7 +67,9 @@ def simplify_music_album(
     *,
     track_limit: int = MUSIC_TRACK_PREVIEW_LIMIT,
 ) -> dict[str, Any]:
-    """精简专辑详情并限制曲目和发行版本预览，避免撑大 Agent 上下文。"""
+    """
+    精简专辑详情并限制曲目和发行版本预览，避免撑大 Agent 上下文。
+    """
     normalized_track_limit = max(1, min(track_limit, MUSIC_TRACK_PREVIEW_LIMIT))
     tracks = list(info.tracks or [])
     releases = list(info.releases or [])
@@ -87,7 +93,9 @@ def simplify_music_album(
 
 
 def simplify_music_artist(info: MusicArtistInfo) -> dict[str, Any]:
-    """精简艺术家详情，明确其仅用于浏览而非订阅或下载。"""
+    """
+    精简艺术家详情，明确其仅用于浏览而非订阅或下载。
+    """
     payload = info.to_dict()
     payload.pop("raw_data", None)
     payload.pop("mediaid_prefix", None)

@@ -1,4 +1,6 @@
-"""Agent 管理器启动、关闭与空闲回收生命周期。"""
+"""
+Agent 管理器启动、关闭与空闲回收生命周期。
+"""
 
 import asyncio
 
@@ -8,10 +10,14 @@ from app.runtime.log import logger
 
 
 class AgentLifecycleOwner(AgentSessionOwner):
-    """管理 Agent 服务代际、接收门禁与有界关闭。"""
+    """
+    管理 Agent 服务代际、接收门禁与有界关闭。
+    """
 
     def configure_data_context(self, data: AgentDataContext) -> None:
-        """在服务启动前绑定唯一数据上下文并配置记忆服务。"""
+        """
+        在服务启动前绑定唯一数据上下文并配置记忆服务。
+        """
         if self._data is data:
             return
         if self._accepting_tasks or self.active_agents:
@@ -139,7 +145,9 @@ class AgentLifecycleOwner(AgentSessionOwner):
             self,
             workers: list[tuple[str, asyncio.Task[None]]],
     ) -> None:
-        """关闭超时后等待遗留 worker，再释放共享 Agent 资源。"""
+        """
+        关闭超时后等待遗留 worker，再释放共享 Agent 资源。
+        """
         try:
             await asyncio.gather(
                 *(worker for _, worker in workers),

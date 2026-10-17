@@ -1,10 +1,14 @@
-"""插件调度 SDK 的公开面测试。"""
+"""
+插件调度 SDK 的公开面测试。
+"""
 
 import app.sdk.scheduler as scheduler_sdk
 
 
 def test_scheduler_sdk_exposes_only_narrow_service_contracts() -> None:
-    """新插件 SDK 不得泄漏 concrete Scheduler 或其可变运行状态。"""
+    """
+    新插件 SDK 不得泄漏 concrete Scheduler 或其可变运行状态。
+    """
     assert set(scheduler_sdk.__all__) == {
         "ScheduleInfo",
         "ScheduleProgress",

@@ -1,3 +1,7 @@
+"""
+验证共享识别仅在二次识别成功后累计命中统计。
+"""
+
 import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -10,7 +14,9 @@ from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 
 
 def _build_meta(name: str) -> MetaBase:
-    """构造共享识别统计测试所需的媒体元数据。"""
+    """
+    构造共享识别统计测试所需的媒体元数据。
+    """
     meta = MetaBase(name)
     meta.name = name
     meta.type = MediaType.UNKNOWN
@@ -18,7 +24,9 @@ def _build_meta(name: str) -> MetaBase:
 
 
 def _shared_params(tmdb_id: int) -> dict:
-    """构造共享识别结果转换后的模块参数。"""
+    """
+    构造共享识别结果转换后的模块参数。
+    """
     return {
         "mtype": MediaType.MOVIE,
         "media_source": MediaSource.TMDB,
@@ -27,7 +35,9 @@ def _shared_params(tmdb_id: int) -> dict:
 
 
 def _mock_counter(monkeypatch) -> Mock:
-    """替换系统配置持久化入口并返回递增调用桩。"""
+    """
+    替换系统配置持久化入口并返回递增调用桩。
+    """
     increment = Mock()
     # 计数逻辑在识别 mixin 中，按 _recognition 模块命名空间解析 SystemConfigOper
     monkeypatch.setattr(
@@ -38,7 +48,9 @@ def _mock_counter(monkeypatch) -> Mock:
 
 
 def _bare_chain() -> ChainBase:
-    """构造不执行初始化的识别链实例，并挂上无插件响应的事件管理器桩。"""
+    """
+    构造不执行初始化的识别链实例，并挂上无插件响应的事件管理器桩。
+    """
     chain = object.__new__(ChainBase)
     chain.eventmanager = Mock(check=Mock(return_value=False))
     chain.runtime_config = SimpleNamespace(media_recognize_share=True)
@@ -46,7 +58,9 @@ def _bare_chain() -> ChainBase:
 
 
 def test_sync_shared_recognize_success_increments_persisted_count(monkeypatch):
-    """同步共享识别二次识别成功后应累计一次命中。"""
+    """
+    同步共享识别二次识别成功后应累计一次命中。
+    """
     chain = _bare_chain()
     meta = _build_meta("共享识别电影")
     media = MediaInfo(
@@ -82,7 +96,9 @@ def test_sync_shared_recognize_success_increments_persisted_count(monkeypatch):
 
 
 def test_sync_shared_result_without_local_match_does_not_increment(monkeypatch):
-    """共享接口返回数据但二次识别失败时不应累计命中。"""
+    """
+    共享接口返回数据但二次识别失败时不应累计命中。
+    """
     chain = _bare_chain()
     meta = _build_meta("共享识别失败电影")
     increment = _mock_counter(monkeypatch)
@@ -109,7 +125,9 @@ def test_sync_shared_result_without_local_match_does_not_increment(monkeypatch):
 
 
 def test_async_shared_recognize_success_increments_persisted_count(monkeypatch):
-    """异步共享识别二次识别成功后应累计一次命中。"""
+    """
+    异步共享识别二次识别成功后应累计一次命中。
+    """
     chain = _bare_chain()
     meta = _build_meta("异步共享识别电影")
     media = MediaInfo(

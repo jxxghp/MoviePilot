@@ -1,3 +1,7 @@
+"""
+提供消息历史、通知回调和浏览器 Web Push 订阅管理接口。
+"""
+
 from __future__ import annotations
 
 import json
@@ -37,17 +41,24 @@ from app.schemas.types import NotificationChannel, SystemConfigKey
 
 router = ResponseAPIRouter()
 
+# WNS 未指定有效期时按一天发送，单位为秒。
 _WNS_DEFAULT_TTL = 86400
 
 
 class WebPushError(Protocol):
-    """Web Push 订阅状态判断所需的最小异常协议。"""
+    """
+    Web Push 订阅状态判断所需的最小异常协议。
 
-    response: Any  # 推送服务 HTTP 响应，失败前未收到响应时为 None
+    :ivar response: 推送服务的 HTTP 响应；失败前未收到响应时为 None
+    """
+
+    response: Any
 
 
 def is_webpush_subscription_gone(error: WebPushError) -> bool:
-    """判断 Web Push 订阅是否已在浏览器或推送服务侧失效。"""
+    """
+    判断 Web Push 订阅是否已在浏览器或推送服务侧失效。
+    """
     response: Any = getattr(error, "response", None)
     status_code = getattr(response, "status_code", None) or getattr(
         response,
@@ -58,12 +69,16 @@ def is_webpush_subscription_gone(error: WebPushError) -> bool:
 
 
 def is_wns_endpoint(endpoint: str | None) -> bool:
-    """判断是否为 Microsoft WNS 推送端点。"""
+    """
+    判断是否为 Microsoft WNS 推送端点。
+    """
     return bool(endpoint and "notify.windows.com" in endpoint)
 
 
 def webpush_options_for_endpoint(endpoint: str | None) -> dict[str, Any]:
-    """返回指定推送端点需要的 Web Push 附加参数（ttl 与请求头）。"""
+    """
+    返回指定推送端点需要的 Web Push 附加参数（ttl 与请求头）。
+    """
     if not is_wns_endpoint(endpoint):
         return {}
     return {

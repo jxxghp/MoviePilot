@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+解析 TNode 站点的用户资料、流量和做种信息。
+"""
+
 import json
 import re
 from typing import Optional
@@ -9,15 +13,19 @@ from app.runtime.log import logger
 
 
 class TNodeSiteUserInfo(SiteParserBase):
-    """通过当前会话 API 获取 TNode 站点用户资料与做种信息。"""
+    """
+    通过当前会话 API 获取 TNode 站点用户资料与做种信息。
+    """
 
     schema = SiteSchema.TNode
 
     def _parse_site_page(self, html_text: SitePage) -> None:
-        """提取 CSRF 令牌，并配置用于取得用户 ID 的当前会话接口。"""
+        """
+        提取 CSRF 令牌，并配置用于取得用户 ID 的当前会话接口。
+        """
         html_text = self._prepare_html_text(html_text)
 
-        # <meta name="x-csrf-token" content="fd169876a7b4846f3a7a16fcd5cccf8d">
+        # 从名为 x-csrf-token 的 meta 标签读取请求所需的令牌。
         csrf_token = re.search(r'<meta name="x-csrf-token" content="(.+?)">', html_text)
         if csrf_token:
             self._addition_headers = {'X-CSRF-TOKEN': csrf_token.group(1)}
@@ -28,23 +36,29 @@ class TNodeSiteUserInfo(SiteParserBase):
 
     def _parse_logged_in(self, html_text: str) -> bool:
         """
-        判断是否登录成功, 通过判断是否存在用户信息
-        暂时跳过检测，待后续优化
-        :param html_text:
-        :return:
+        API 认证结果由请求响应判定，此入口不检查页面登录标记。
+
+        :param html_text: 未使用的页面文本
+        :return: 始终返回 True
         """
         return True
 
     def _parse_user_base_info(self, html_text: SitePage) -> None:
-        """首页不提供用户 ID，身份信息需在详情接口返回后补齐。"""
+        """
+        首页不提供用户 ID，身份信息需在详情接口返回后补齐。
+        """
         self.username = self.userid
 
     def _parse_user_traffic_info(self, html_text: str) -> None:
-        """流量信息已由当前用户接口返回，无需单独解析。"""
+        """
+        流量信息已由当前用户接口返回，无需单独解析。
+        """
         pass
 
     def _parse_user_detail_info(self, html_text: str) -> None:
-        """从当前用户接口一次解析身份、资料、流量及未读消息数量。"""
+        """
+        从当前用户接口一次解析身份、资料、流量及未读消息数量。
+        """
         try:
             detail = json.loads(html_text)
         except json.JSONDecodeError:
@@ -70,7 +84,7 @@ class TNodeSiteUserInfo(SiteParserBase):
 
     def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: Optional[bool] = False) -> Optional[str]:
         """
-        解析用户做种信息
+        解析用户做种信息。
         """
         try:
             seeding_info = json.loads(html_text)
@@ -106,15 +120,16 @@ class TNodeSiteUserInfo(SiteParserBase):
         return next_page
 
     def _parse_message_unread_links(self, html_text: str, msg_links: list[str]) -> Optional[str]:
-        """当前仅支持 API 返回的未读数量，不解析消息链接。"""
+        """
+        当前仅支持 API 返回的未读数量，不解析消息链接。
+        """
         return None
 
     def _parse_message_content(self, html_text: str) -> tuple[Optional[str], Optional[str], Optional[str]]:
         """
-        系统信息 api/message/listSystem?page=1&size=20
-        收件箱信息 api/message/listInbox?page=1&size=20
-        管理员信息 api/message/listAdmin?page=1&size=20
-        :param html_text:
-        :return:
+        当前仅提供未读消息数量，不解析消息详情。
+
+        :param html_text: 未使用的消息页面文本
+        :return: 标题、日期和正文均为 None 的三元组
         """
         return None, None, None

@@ -1,3 +1,7 @@
+"""
+验证整理处理器对特殊附属文件的命名与转移。
+"""
+
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -13,7 +17,9 @@ from app.schemas.types import MediaType
 
 
 def _transfer_without_episode(file_name: str) -> tuple[TransferInfo, MagicMock, MagicMock]:
-    """整理一个未识别出集数的剧集视频文件"""
+    """
+    整理一个未识别出集数的剧集视频文件
+    """
     fileitem = FileItem(
         storage="local",
         path=f"/downloads/{file_name}",
@@ -89,7 +95,9 @@ def _transfer_without_episode(file_name: str) -> tuple[TransferInfo, MagicMock, 
     ],
 )
 def test_tv_special_extra_without_episode_skips_transfer(file_name: str) -> None:
-    """未识别出集数的已知特典文件应静默跳过并返回成功"""
+    """
+    未识别出集数的已知特典文件应静默跳过并返回成功
+    """
     result, source_oper, target_oper = _transfer_without_episode(file_name)
 
     assert result.success is True
@@ -100,7 +108,9 @@ def test_tv_special_extra_without_episode_skips_transfer(file_name: str) -> None
 
 
 def test_regular_tv_file_without_episode_remains_failure() -> None:
-    """普通剧集视频未识别出集数时仍应返回失败并保留通知"""
+    """
+    普通剧集视频未识别出集数时仍应返回失败并保留通知
+    """
     result, source_oper, target_oper = _transfer_without_episode("Test.Show.Bonus.mkv")
 
     assert result.success is False

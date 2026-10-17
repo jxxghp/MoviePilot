@@ -1,4 +1,6 @@
-"""为当前会话保留有界工具结果，并按字符位置继续读取。"""
+"""
+为当前会话保留有界工具结果，并按字符位置继续读取。
+"""
 
 import json
 import threading
@@ -29,7 +31,16 @@ RESULT_TTL_SECONDS = 15 * 60
 
 @dataclass(frozen=True)
 class _StoredResult:
-    """内存中短期保留原始授权结果，不复制到日志、记忆或磁盘。"""
+    """
+    内存中短期保留原始授权结果，不复制到日志、记忆或磁盘。
+
+    :param thread_id: 允许读取该结果的会话线程标识
+    :param text: 保存供后续分段读取的完整结果文本
+    :param byte_size: 文本 UTF-8 编码后的字节数，用于限制存储容量
+    :param tool_name: 产生结果的工具名称
+    :param expires_at: 该缓存结果到期的单调时钟秒数
+    :param requires_admin: 读取该结果是否要求管理员身份
+    """
 
     thread_id: str
     text: str
@@ -41,10 +52,14 @@ class _StoredResult:
 
 # follow_imports=skip 不分析第三方基类，仅在框架继承边界忽略 misc。
 class ToolOutputMiddleware(AgentMiddleware):  # type: ignore[misc]
-    """包装当前图的工具结果；读取按会话与当前管理员身份双重隔离。"""
+    """
+    包装当前图的工具结果；读取按会话与当前管理员身份双重隔离。
+    """
 
     def __init__(self, context: ToolPolicyContext) -> None:
-        """注册内部续读工具，缓存容量和寿命均受固定上限约束。"""
+        """
+        注册内部续读工具，缓存容量和寿命均受固定上限约束。
+        """
         self.context = context
         self._results: OrderedDict[str, _StoredResult] = OrderedDict()
         self._lock = threading.RLock()
@@ -65,11 +80,15 @@ class ToolOutputMiddleware(AgentMiddleware):  # type: ignore[misc]
 
     @staticmethod
     def _thread_id(runtime: ToolRuntime) -> str:
-        """使用图的真实线程身份，避免同一中间件被不同图线程误复用。"""
+        """
+        使用图的真实线程身份，避免同一中间件被不同图线程误复用。
+        """
         return str(runtime.config.get("configurable", {}).get("thread_id") or "")
 
     def _prune(self) -> None:
-        """调用方持锁时删除到期结果，并按写入顺序执行 UTF-8 字节容量淘汰。"""
+        """
+        调用方持锁时删除到期结果，并按写入顺序执行 UTF-8 字节容量淘汰。
+        """
         now = time.monotonic()
         for result_id, result in list(self._results.items()):
             if result.expires_at <= now:
@@ -80,7 +99,9 @@ class ToolOutputMiddleware(AgentMiddleware):  # type: ignore[misc]
             size -= result.byte_size
 
     def _store(self, thread_id: str, tool_name: str, text: str, requires_admin: bool) -> dict[str, Any]:
-        """只保存完整的有界结果，超过容量时明确说明无法续读。"""
+        """
+        只保存完整的有界结果，超过容量时明确说明无法续读。
+        """
         if not thread_id:
             return {"result_unavailable": "thread_unavailable"}
         # 先用字符数下界拒绝超大文本，避免为明显无法归档的输出再分配编码副本。
@@ -108,7 +129,9 @@ class ToolOutputMiddleware(AgentMiddleware):  # type: ignore[misc]
         offset: Annotated[int, Field(ge=0)] = 0,
         limit: Annotated[int, Field(ge=1, le=16000)] = 4000,
     ) -> str:
-        """按显式游标续读；过期、越权和未知 ID 使用同一不可用响应。"""
+        """
+        按显式游标续读；过期、越权和未知 ID 使用同一不可用响应。
+        """
         with self._lock:
             self._prune()
             result = self._results.get(result_id)
@@ -129,7 +152,9 @@ class ToolOutputMiddleware(AgentMiddleware):  # type: ignore[misc]
     async def awrap_tool_call(
         self, request: ToolCallRequest, handler: Callable[[ToolCallRequest], Awaitable[Any]],
     ) -> Any:
-        """让内置工具在截断前归档，并覆盖返回大文本的外部 MCP 工具。"""
+        """
+        让内置工具在截断前归档，并覆盖返回大文本的外部 MCP 工具。
+        """
         if request.tool_call.get("name") == READ_TOOL_RESULT_NAME:
             return await handler(request)
         if request.tool_call.get('name') == 'execute_code' and getattr(request.tool, '_agent_tool_source', None) == 'builtin':
@@ -144,7 +169,9 @@ class ToolOutputMiddleware(AgentMiddleware):  # type: ignore[misc]
         thread_id = self._thread_id(request.runtime)
         requires_admin = bool(self.context.agent_context.get("is_admin"))
         def record(name: str, text: str) -> dict[str, Any]:
-            """Python 聚合读取完整结果，同时保持普通工具的有界展示和归档引用。"""
+            """
+            Python 聚合读取完整结果，同时保持普通工具的有界展示和归档引用。
+            """
             state = getattr(request, 'state', None)
             raw = state.get(RPC_RESULT_KEY) if isinstance(state, dict) else None
             if isinstance(raw, dict):

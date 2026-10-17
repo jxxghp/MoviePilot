@@ -1,4 +1,6 @@
-"""调度任务准入、执行、进度和事件循环桥接。"""
+"""
+调度任务准入、执行、进度和事件循环桥接。
+"""
 
 import asyncio
 import inspect
@@ -27,26 +29,38 @@ _message_helper_factory: Callable[[], MessageHelper] = MessageHelper
 
 
 class SchedulerExecutionOwner(_SchedulerOwnerBase):
-    """调度任务准入与函数执行语义。"""
+    """
+    调度任务准入与函数执行语义。
+    """
 
     def _accepting_submissions(self) -> bool:
-        """判断调度器是否仍允许提交新的运行实例。"""
+        """
+        判断调度器是否仍允许提交新的运行实例。
+        """
         return self._lifecycle_state in {"starting", "running"}
 
     def _next_job_generation(self, job_id: str) -> int:
-        """为同一 job 的下一次注册分配单调 generation。"""
+        """
+        为同一 job 的下一次注册分配单调 generation。
+        """
         return self._registry.next_generation(job_id)
 
     def _assign_job_generation(self, job_id: str, job: dict[str, Any]) -> None:
-        """把注册 generation 写入可变运行时状态。"""
+        """
+        把注册 generation 写入可变运行时状态。
+        """
         self._registry.assign_generation(job_id, job)
 
     def _is_job_active(self, job_id: str) -> bool:
-        """判断任一 generation 的同 ID 任务是否仍在真实执行。"""
+        """
+        判断任一 generation 的同 ID 任务是否仍在真实执行。
+        """
         return self._registry.is_active(job_id)
 
     def _release_job_generation(self, job_id: str, generation: int) -> None:
-        """在任务真实收尾后释放对应 generation 的运行所有权。"""
+        """
+        在任务真实收尾后释放对应 generation 的运行所有权。
+        """
         self._registry.release_generation(job_id, generation)
 
     def _prepare_job(self, job_id: str) -> Optional[dict[str, Any]]:
@@ -216,6 +230,9 @@ class SchedulerExecutionOwner(_SchedulerOwnerBase):
                 started = threading.Event()
 
                 async def run_owned_job() -> None:
+                    """
+                    在当前事件循环中执行已取得所有权的任务。
+                    """
                     started.set()
                     await self._run_coro_job(
                         coro_factory=coro_factory,
@@ -323,6 +340,9 @@ class SchedulerExecutionOwner(_SchedulerOwnerBase):
             if not deferred_finish:
 
                 def finish_without_loop() -> None:
+                    """
+                    事件循环未接受收尾任务时同步释放执行所有权。
+                    """
                     self._finish_unsubmitted_job(
                         job_id=job_id,
                         job=job,

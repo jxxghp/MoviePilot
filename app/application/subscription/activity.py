@@ -1,4 +1,6 @@
-"""订阅业务活动事实、限量轮次明细和持久化端口。"""
+"""
+订阅业务活动事实、限量轮次明细和持久化端口。
+"""
 
 from __future__ import annotations
 
@@ -29,24 +31,43 @@ DECISION_RANKS = {"related": 0, "rejected": 1, "qualified": 2, "failed": 3, "sub
 
 
 def _decision_rank(decision: str) -> int:
-    """按业务重要性排列资源摘要，普通相关和被拒绝项优先让出有界存储。"""
+    """
+    按业务重要性排列资源摘要，普通相关和被拒绝项优先让出有界存储。
+    """
     return DECISION_RANKS.get(decision, 0)
 
 
 def _detail_objects(details: Mapping[str, JsonData], field_name: str) -> list[dict[str, JsonData]]:
-    """恢复由当前服务写入的 JSON 对象列表，忽略旧记录中的不兼容值。"""
+    """
+    恢复由当前服务写入的 JSON 对象列表，忽略旧记录中的不兼容值。
+    """
     values = details.get(field_name)
     return [value for value in values if isinstance(value, dict)] if isinstance(values, list) else []
 
 
 def activity_time() -> str:
-    """返回可排序的 UTC 活动时间。"""
+    """
+    返回可排序的 UTC 活动时间。
+    """
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds")
 
 
 @dataclass(frozen=True, slots=True)
 class SubscriptionActivity:
-    """脱离数据库会话的单订阅业务事件快照。"""
+    """
+    脱离数据库会话的单订阅业务事件快照。
+
+    :param activity_key: 贯穿活动订阅与历史订阅的业务活动归属键
+    :param event_id: 同一业务轮次的稳定事件标识
+    :param kind: 业务活动类型，例如搜索、匹配或订阅变更
+    :param source: 触发本轮执行的入口，例如手工搜索或自动调度
+    :param status: 当前轮次的运行或结束状态
+    :param started_at: 活动开始的 UTC 时间文本
+    :param finished_at: 完成执行的时间文本；尚未完成时为 None
+    :param counts: 按业务分类聚合的数量
+    :param details: 供用户查看的有限量业务明细
+    :param tracking: 供恢复轮次使用的内部去重标识列表，按跟踪类型分组
+    """
 
     activity_key: str
     event_id: str
@@ -61,34 +82,69 @@ class SubscriptionActivity:
 
 
 class SubscriptionActivityRepository(Protocol):
-    """后台轮次写入与带订阅归属校验的分页读取端口。"""
+    """
+    后台轮次写入与带订阅归属校验的分页读取端口。
+    """
 
     def save(self, event: SubscriptionActivity) -> None:
-        """在独立短事务中新增或更新同一轮次。"""
+        """
+        在独立短事务中新增或更新同一轮次。
+
+        :param event: 要写入的单订阅业务活动快照
+        """
         ...
 
     def get(self, activity_key: str, event_id: str) -> SubscriptionActivity | None:
-        """读取同订阅同任务的已保存进度，恢复时继续累计同一轮次。"""
+        """
+        读取同订阅同任务的已保存进度，恢复时继续累计同一轮次。
+
+        :param activity_key: 活动订阅与历史订阅共用的活动归属键
+        :param event_id: 同一业务轮次的稳定事件标识
+        :return: 同一活动归属键和事件标识下的已保存快照；未保存时返回 None
+        """
         ...
 
     async def list_accessible(
         self, subscription_id: int, username: str, superuser: bool, *,
         history: bool, kind: str | None, since: str | None, before: str | None, limit: int,
     ) -> tuple[list[SubscriptionActivity], str | None] | None:
-        """先确认活动或历史订阅归属，再返回稳定游标分页。"""
+        """
+        先确认活动或历史订阅归属，再返回稳定游标分页。
+
+        :param subscription_id: 目标订阅或订阅历史的数据库主键
+        :param username: 发起读取的本地用户名，用于校验订阅归属
+        :param superuser: 当前用户是否具有跨用户访问权限
+        :param history: 是否按订阅历史记录校验归属
+        :param kind: 要筛选的活动类型；None 表示不限类型
+        :param since: 活动开始时间下界；None 表示不限制
+        :param before: 上一页返回的稳定游标；None 表示读取第一页
+        :param limit: 最多返回的记录数量
+        :return: 活动列表与下一页游标；无后续页时游标为 None，订阅不存在或无权访问时返回 None
+        """
         ...
 
     async def get_accessible(
         self, subscription_id: int, event_id: str, username: str, superuser: bool, *, history: bool,
     ) -> SubscriptionActivity | None:
-        """按订阅归属和事件身份读取单条完整详情。"""
+        """
+        按订阅归属和事件身份读取单条完整详情。
+
+        :param subscription_id: 目标订阅或订阅历史的数据库主键
+        :param event_id: 同一业务轮次的稳定事件标识
+        :param username: 发起读取的本地用户名，用于校验订阅归属
+        :param superuser: 当前用户是否具有跨用户访问权限
+        :param history: 是否按订阅历史记录校验归属
+        :return: 完整活动详情；订阅或活动不存在，或无权访问时返回 None
+        """
         ...
 
 
 def lifecycle_activity(
     snapshot: SubscriptionSnapshot | SubscriptionHistorySnapshot, kind: str, *, old: Mapping[str, JsonData] | None = None,
 ) -> SubscriptionActivity | None:
-    """构造创建、修改或完成事实；无可见字段变更不制造活动。"""
+    """
+    构造创建、修改或完成事实；无可见字段变更不制造活动。
+    """
     if not snapshot.activity_key:
         return None
     changes: list[JsonData] = []
@@ -112,7 +168,9 @@ def lifecycle_activity(
 
 def queued_activity(subscribe: SubscriptionSnapshot, task_id: str, source: str,
                     retry_at: str | None) -> SubscriptionActivity | None:
-    """在搜索请求入队时记录真实请求时间，与恢复执行共用任务事件身份。"""
+    """
+    在搜索请求入队时记录真实请求时间，与恢复执行共用任务事件身份。
+    """
     if not subscribe.activity_key:
         return None
     run = SubscriptionActivityRun(subscribe, "search", source, task_id)
@@ -125,7 +183,9 @@ def queued_activity(subscribe: SubscriptionSnapshot, task_id: str, source: str,
 
 
 def settled_activity(event: SubscriptionActivity, state: str, finished_at: str | None) -> SubscriptionActivity | None:
-    """以队列终态收口尚未进入处理的事件，不把取消和暂停跳过遗留为等待。"""
+    """
+    以队列终态收口尚未进入处理的事件，不把取消和暂停跳过遗留为等待。
+    """
     if event.status not in {"running", "waiting"} or state not in {"completed", "failed", "cancelled", "skipped"}:
         return None
     status = "cancelled" if state in {"cancelled", "skipped"} else state
@@ -136,10 +196,14 @@ def settled_activity(event: SubscriptionActivity, state: str, finished_at: str |
 
 
 class SubscriptionActivityRun:
-    """线程安全地累计一轮业务结果，只持久化安全且有上限的资源摘要。"""
+    """
+    线程安全地累计一轮业务结果，只持久化安全且有上限的资源摘要。
+    """
 
     def __init__(self, subscribe: SubscriptionSnapshot, kind: str, source: str, run_id: str | None = None) -> None:
-        """冻结本轮订阅条件并初始化各处理阶段的独立计数。"""
+        """
+        冻结本轮订阅条件并初始化各处理阶段的独立计数。
+        """
         self.subscribe = subscribe
         self.event_id = run_id or uuid4().hex
         self.kind = kind
@@ -163,7 +227,9 @@ class SubscriptionActivityRun:
         self._lock = RLock()
 
     def resource(self, context: object, decision: str, reason: str | None = None) -> None:
-        """按站点和资源稳定键去重，保留标题、阶段和用户可理解的原因。"""
+        """
+        按站点和资源稳定键去重，保留标题、阶段和用户可理解的原因。
+        """
         torrent = getattr(context, "torrent_info", context)
         site_id = getattr(torrent, "site", None)
         title = str(getattr(torrent, "title", ""))[:500]
@@ -198,7 +264,9 @@ class SubscriptionActivityRun:
             self.details["resources_omitted"] = max(0, len(self._related) - DETAIL_LIMIT)
 
     def _make_detail_room(self, key: str, decision: str) -> None:
-        """详情达到上限时优先保留提交、失败和符合条件资源，不能让拒绝项挤掉下载回执。"""
+        """
+        详情达到上限时优先保留提交、失败和符合条件资源，不能让拒绝项挤掉下载回执。
+        """
         if key in self._resources or len(self._resources) < DETAIL_LIMIT:
             return
         lowest = min(self._resources, key=lambda item: _decision_rank(str(self._resources[item]["decision"])))
@@ -206,18 +274,24 @@ class SubscriptionActivityRun:
             self._resources.pop(lowest)
 
     def plan_sites(self, site_ids: Iterable[int]) -> None:
-        """累计同轮实际计划过的站点，恢复只补查一个站点时保留原计划分母。"""
+        """
+        累计同轮实际计划过的站点，恢复只补查一个站点时保留原计划分母。
+        """
         with self._lock:
             self._planned_sites.update(site_ids)
             self.counts["sites"] = max(self.counts["sites"], len(self._planned_sites))
 
     def discover(self, candidates: int) -> None:
-        """累计插件等额外来源返回的候选项，与并发站点观察共用同一锁。"""
+        """
+        累计插件等额外来源返回的候选项，与并发站点观察共用同一锁。
+        """
         with self._lock:
             self.counts["discovered"] += candidates
 
     def site(self, site_id: int, *, name: str = "", candidates: int = 0, status: str = "completed", attempted: bool | None = None) -> None:
-        """累计站点请求结果，与本订阅相关资源计数分别保存。"""
+        """
+        累计站点请求结果，与本订阅相关资源计数分别保存。
+        """
         with self._lock:
             self._planned_sites.add(site_id)
             self.counts["sites"] = max(self.counts["sites"], len(self._planned_sites))
@@ -232,7 +306,9 @@ class SubscriptionActivityRun:
             self.details["sites"] = list(self._sites.values())
 
     def snapshot(self) -> SubscriptionActivity:
-        """复制当前计数和明细，避免持久化过程与工作线程共享可变容器。"""
+        """
+        复制当前计数和明细，避免持久化过程与工作线程共享可变容器。
+        """
         with self._lock:
             self.counts["failed_sites"] = sum(site["status"] in {"failed", "error"} for site in self._sites.values())
             self.counts["waiting_sites"] = sum(site["status"] in {"waiting", "deferred"} for site in self._sites.values())
@@ -245,7 +321,9 @@ class SubscriptionActivityRun:
             )
 
     def restore(self, event: SubscriptionActivity) -> None:
-        """恢复累计事实和有界资源摘要，重试不会重新计算已统计的候选。"""
+        """
+        恢复累计事实和有界资源摘要，重试不会重新计算已统计的候选。
+        """
         self.started_at = event.started_at
         self.counts.update(event.counts)
         self.details.update(copy.deepcopy(event.details))
@@ -273,19 +351,27 @@ _current_run: ContextVar[SubscriptionActivityRun | None] = ContextVar("subscript
 
 
 def current_activity_run() -> SubscriptionActivityRun | None:
-    """读取当前订阅作用域，普通搜索和下载不会生成订阅事件。"""
+    """
+    读取当前订阅作用域，普通搜索和下载不会生成订阅事件。
+    """
     return _current_run.get()
 
 
 class SubscriptionActivityService:
-    """在业务执行边界记录轮次，不把运行日志文本解释为用户事件。"""
+    """
+    在业务执行边界记录轮次，不把运行日志文本解释为用户事件。
+    """
 
     def __init__(self, repository: SubscriptionActivityRepository) -> None:
-        """注入结构化业务活动持久化端口。"""
+        """
+        注入结构化业务活动持久化端口。
+        """
         self.repository = repository
 
     def save(self, run: SubscriptionActivityRun) -> None:
-        """尽力保存后台观测事实，观测故障不重复已提交的下载副作用。"""
+        """
+        尽力保存后台观测事实，观测故障不重复已提交的下载副作用。
+        """
         if not run.subscribe.activity_key:
             return
         try:
@@ -295,7 +381,9 @@ class SubscriptionActivityService:
 
     @staticmethod
     def _finish_run(run: SubscriptionActivityRun) -> None:
-        """按下载回执与站点事实收口结果；部分失败不会被隐去或冒充全站点成功。"""
+        """
+        按下载回执与站点事实收口结果；部分失败不会被隐去或冒充全站点成功。
+        """
         if run.status != "running":
             return
         failures = run.snapshot().counts["failed_sites"]
@@ -314,7 +402,9 @@ class SubscriptionActivityService:
 
     @contextmanager
     def scope(self, subscribe: SubscriptionSnapshot, kind: str, source: str, run_id: str | None = None) -> Iterator[SubscriptionActivityRun]:
-        """保存开始与结束事实，等待和失败由具体业务结果明确设置。"""
+        """
+        保存开始与结束事实，等待和失败由具体业务结果明确设置。
+        """
         run = SubscriptionActivityRun(subscribe, kind, source, run_id)
         if run_id and subscribe.activity_key:
             try:
@@ -358,7 +448,9 @@ class SubscriptionActivityService:
 @contextmanager
 def subscription_activity_scope(service: SubscriptionActivityService | None, subscribe: SubscriptionSnapshot,
                                 kind: str, source: str, run_id: str | None = None) -> Iterator[SubscriptionActivityRun]:
-    """兼容显式注入的旧测试宿主；生产组合根始终提供持久化服务。"""
+    """
+    兼容显式注入的旧测试宿主；生产组合根始终提供持久化服务。
+    """
     if service is not None:
         with service.scope(subscribe, kind, source, run_id) as run:
             yield run

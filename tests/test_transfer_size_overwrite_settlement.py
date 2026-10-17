@@ -1,4 +1,6 @@
-"""贯通大小覆盖裁决与 durable 结算，防止重复整理降级成功历史。"""
+"""
+贯通大小覆盖裁决与 durable 结算，防止重复整理降级成功历史。
+"""
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,7 +22,9 @@ from tests.test_transfer_job_manager import (
 
 
 def _resolve_size_overwrite(task, target_size):
-    """调用真实大小覆盖分支，仅替换目标存储查询与插件事件边界。"""
+    """
+    调用真实大小覆盖分支，仅替换目标存储查询与插件事件边界。
+    """
     task.mediainfo = FakeMedia()
     target = make_fileitem("/library/Test.Show.S01E01.mkv", size=target_size)
     storage = MagicMock()
@@ -42,7 +46,9 @@ def _resolve_size_overwrite(task, target_size):
 
 @pytest.fixture
 def overwrite_event(monkeypatch):
-    """隔离插件覆盖事件，保留宿主大小策略的真实判断。"""
+    """
+    隔离插件覆盖事件，保留宿主大小策略的真实判断。
+    """
     event = MagicMock(return_value=None)
     monkeypatch.setattr(
         "app.modules.filemanager.transhandler.eventmanager.send_event", event
@@ -52,7 +58,9 @@ def overwrite_event(monkeypatch):
 
 @pytest.mark.parametrize("target_size", [512, 1024, 2048])
 def test_video_size_overwrite_marks_policy_decline(target_size, overwrite_event):
-    """仅更大的源文件允许升级，同大小与更小文件应携带明确覆盖跳过事实。"""
+    """
+    仅更大的源文件允许升级，同大小与更小文件应携带明确覆盖跳过事实。
+    """
     task = make_task(1)
     over_flag, latest, result = _resolve_size_overwrite(task, target_size)
 
@@ -73,7 +81,9 @@ def test_video_size_overwrite_marks_policy_decline(target_size, overwrite_event)
 def test_repeated_size_decline_preserves_successful_settlement(
     target_size, overwrite_event, monkeypatch,
 ):
-    """mtime 变化重送后的真实大小裁决必须保留成功历史并静默结算。"""
+    """
+    mtime 变化重送后的真实大小裁决必须保留成功历史并静默结算。
+    """
     task = make_task(1)
     task.fileitem.modify_time = 150.0
     history = SimpleNamespace(
@@ -112,7 +122,9 @@ def test_repeated_size_decline_preserves_successful_settlement(
     staging.get_success_by_src.return_value = history
 
     def settle(**kwargs):
-        """核实 writer 回读旧历史，并以无通知的成功终态结算。"""
+        """
+        核实 writer 回读旧历史，并以无通知的成功终态结算。
+        """
         assert kwargs["topic"] is None
         assert kwargs["publish"] is None
         assert kwargs["settlement"].outcome == "succeeded"
@@ -150,7 +162,9 @@ def test_repeated_size_decline_preserves_successful_settlement(
 def test_size_decline_without_success_history_keeps_failure(
     history_status, overwrite_event,
 ):
-    """目标来自其他源或只有失败历史时，大小拒绝仍按失败处理。"""
+    """
+    目标来自其他源或只有失败历史时，大小拒绝仍按失败处理。
+    """
     task = make_task(1)
     _, _, result = _resolve_size_overwrite(task, task.fileitem.size)
     overwrite_event.assert_called_once()

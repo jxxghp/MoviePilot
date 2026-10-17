@@ -1,3 +1,7 @@
+"""
+将目录变化转成整理任务并处理历史去重。
+"""
+
 import re
 import traceback
 from pathlib import Path
@@ -259,7 +263,9 @@ class TransferDispatcher:
         logger.warn(f"{reason}，已登记待重试: {key}")
 
     def _notify_retry_abandoned(self, storage: str, event_path: Path, reason: str) -> None:
-        """通知上层自动重试已停止；告警失败只记日志，不影响其他目录继续处理。"""
+        """
+        通知上层自动重试已停止；告警失败只记日志，不影响其他目录继续处理。
+        """
         if not self._retry_abandoned_callback:
             return
         try:

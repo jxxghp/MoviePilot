@@ -1,4 +1,6 @@
-"""Host Module Adapter 对 Capability Runtime 的兼容合同测试。"""
+"""
+Host Module Adapter 对 Capability Runtime 的兼容合同测试。
+"""
 
 from __future__ import annotations
 
@@ -121,7 +123,9 @@ class {class_name}:
 
 
 def _write_capability(root: Path, directory: str, manifest: str) -> None:
-    """写入一个合成 Host Module 声明。"""
+    """
+    写入一个合成 Host Module 声明。
+    """
     capability_dir = root / directory
     capability_dir.mkdir(parents=True)
     (capability_dir / "capability.toml").write_text(
@@ -131,7 +135,9 @@ def _write_capability(root: Path, directory: str, manifest: str) -> None:
 
 
 def _build_registry(root: Path) -> CapabilityRegistry:
-    """用生产 schema 构造只包含两个合成模块的 Registry。"""
+    """
+    用生产 schema 构造只包含两个合成模块的 Registry。
+    """
     _write_capability(root, "sample", _SAMPLE_MANIFEST)
     _write_capability(root, "other", _OTHER_MANIFEST)
     return CapabilityRegistry.discover(
@@ -154,13 +160,17 @@ def _build_registry(root: Path) -> CapabilityRegistry:
 
 
 def _config_changed_listeners() -> dict:
-    """读取 ConfigChanged 监听快照，用于验证全局测试状态完整恢复。"""
+    """
+    读取 ConfigChanged 监听快照，用于验证全局测试状态完整恢复。
+    """
     subscribers = getattr(eventmanager, "_EventManager__broadcast_subscribers")
     return dict(subscribers.get(EventType.ConfigChanged, {}))
 
 
 def _run_real_host_module_check(tmp_path: Path, body: str) -> None:
-    """在隔离后端和进程内网络守卫下执行真实 Host Module 合同检查。"""
+    """
+    在隔离后端和进程内网络守卫下执行真实 Host Module 合同检查。
+    """
     project_root = Path(__file__).parents[1]
     prelude = r"""
 import ipaddress
@@ -227,7 +237,9 @@ def module_manager_harness(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> Iterator[SimpleNamespace]:
-    """用合成声明和内存配置隔离 ModuleManager 单例。"""
+    """
+    用合成声明和内存配置隔离 ModuleManager 单例。
+    """
     source_root = tmp_path / "source"
     source_root.mkdir()
     (source_root / "fixture_sample_module.py").write_text(
@@ -272,7 +284,9 @@ def module_manager_harness(
     restored = False
 
     def restore() -> None:
-        """撤销 Manager 构造写入的单例、resolver 和事件监听器。"""
+        """
+        撤销 Manager 构造写入的单例、resolver 和事件监听器。
+        """
         nonlocal restored
         if restored:
             return
@@ -308,7 +322,9 @@ def module_manager_harness(
 
 
 def _enable_sample(config_values: dict) -> None:
-    """写入可通过 sample selector 的最小合法通知配置。"""
+    """
+    写入可通过 sample selector 的最小合法通知配置。
+    """
     config_values["Notifications"] = [
         {
             "name": "sample",
@@ -323,7 +339,9 @@ def _enable_sample(config_values: dict) -> None:
 def test_harness_restores_module_manager_config_listener(
     module_manager_harness,
 ) -> None:
-    """Fixture teardown 不能把临时 Manager 的 bound listener 留在全局事件总线。"""
+    """
+    Fixture teardown 不能把临时 Manager 的 bound listener 留在全局事件总线。
+    """
     manager = module_manager_harness.manager
     current_listeners = _config_changed_listeners()
 
@@ -345,7 +363,9 @@ def test_harness_restores_module_manager_config_listener(
 def test_specs_are_lightweight_and_do_not_materialize_modules(
     module_manager_harness,
 ) -> None:
-    """ModuleManager 的声明视图不能解析任何 Host Module 实现。"""
+    """
+    ModuleManager 的声明视图不能解析任何 Host Module 实现。
+    """
     manager = module_manager_harness.manager
 
     specs = manager.list_specs()
@@ -361,7 +381,9 @@ def test_specs_are_lightweight_and_do_not_materialize_modules(
 def test_list_enabled_specs_only_exposes_selector_enabled_modules(
     module_manager_harness,
 ) -> None:
-    """健康检查模块目录只应包含当前 selector 判定为启用的声明。"""
+    """
+    健康检查模块目录只应包含当前 selector 判定为启用的声明。
+    """
     manager = module_manager_harness.manager
 
     assert manager.list_enabled_specs() == ()
@@ -372,7 +394,9 @@ def test_list_enabled_specs_only_exposes_selector_enabled_modules(
 
 
 def test_bootstrap_module_switch_defaults_on_and_honors_explicit_disable() -> None:
-    """统一模块开关默认开启，显式 false 才会停止 Bootstrap 模块。"""
+    """
+    统一模块开关默认开启，显式 false 才会停止 Bootstrap 模块。
+    """
     spec = SimpleNamespace(id="BootstrapModule", activation=ActivationPolicy.BOOTSTRAP)
     enabled_snapshot = HostModuleConfigSnapshot(settings={}, services={})
     disabled_snapshot = HostModuleConfigSnapshot(
@@ -392,7 +416,9 @@ def test_when_configured_manifest_without_selector_is_rejected(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """when_configured 声明缺少 selector 时必须在宿主清单校验阶段失败。"""
+    """
+    when_configured 声明缺少 selector 时必须在宿主清单校验阶段失败。
+    """
     module_root = tmp_path / "modules"
     (module_root / "dingtalk").mkdir(parents=True)
     (module_root / "dingtalk" / "__init__.py").touch()
@@ -424,7 +450,9 @@ def test_when_configured_manifest_without_selector_is_rejected(
 def test_get_module_materializes_one_canonical_class_without_starting_it(
     module_manager_harness,
 ) -> None:
-    """兼容查询返回 canonical class，但不创建或启动资源。"""
+    """
+    兼容查询返回 canonical class，但不创建或启动资源。
+    """
     manager = module_manager_harness.manager
 
     module_class = manager.get_module("SampleModule")
@@ -442,7 +470,9 @@ def test_get_module_materializes_one_canonical_class_without_starting_it(
 def test_get_modules_materializes_all_real_classes_without_starting_them(
     module_manager_harness,
 ) -> None:
-    """旧 get_modules 合同保留真实 class 字典，不返回代理或隐式激活。"""
+    """
+    旧 get_modules 合同保留真实 class 字典，不返回代理或隐式激活。
+    """
     manager = module_manager_harness.manager
 
     modules = manager.get_modules()
@@ -463,7 +493,9 @@ def test_config_reconcile_reload_and_stop_preserve_manager_contract(
     module_manager_harness,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """配置激活、全量 reload 与可重启 stop 保持同步可观察顺序。"""
+    """
+    配置激活、全量 reload 与可重启 stop 保持同步可观察顺序。
+    """
     manager = module_manager_harness.manager
     _enable_sample(module_manager_harness.config_values)
 
@@ -503,7 +535,9 @@ def test_module_manager_lifecycle_keeps_monotonic_transition_generations(
     module_manager_harness,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Manager 的旧同步入口必须按共享状态机顺序提交每一代转换。"""
+    """
+    Manager 的旧同步入口必须按共享状态机顺序提交每一代转换。
+    """
     manager = module_manager_harness.manager
     _enable_sample(module_manager_harness.config_values)
     monkeypatch.setattr(eventmanager, "send_event", Mock())
@@ -542,7 +576,9 @@ def test_module_manager_lifecycle_keeps_monotonic_transition_generations(
 def test_config_event_reloads_same_instance_and_tracks_selector_changes(
     module_manager_harness,
 ) -> None:
-    """配置事件由 Host Adapter 唯一协调，并保留模块实例内的重载状态。"""
+    """
+    配置事件由 Host Adapter 唯一协调，并保留模块实例内的重载状态。
+    """
     manager = module_manager_harness.manager
     _enable_sample(module_manager_harness.config_values)
     manager.load_modules()
@@ -572,7 +608,9 @@ def test_config_event_reloads_same_instance_and_tracks_selector_changes(
 def test_registered_config_event_activates_newly_enabled_module(
     module_manager_harness,
 ) -> None:
-    """事件总线必须把配置变更绑定回当前 ModuleManager 实例。"""
+    """
+    事件总线必须把配置变更绑定回当前 ModuleManager 实例。
+    """
     manager = module_manager_harness.manager
     handler = next(
         listener
@@ -595,7 +633,9 @@ def test_registered_config_event_activates_newly_enabled_module(
 
 
 def test_shutdown_is_irreversible(module_manager_harness, monkeypatch) -> None:
-    """shutdown 撤销全部可见实例，并拒绝通过 load_modules 再次启动。"""
+    """
+    shutdown 撤销全部可见实例，并拒绝通过 load_modules 再次启动。
+    """
     manager = module_manager_harness.manager
     _enable_sample(module_manager_harness.config_values)
     manager.load_modules()
@@ -625,7 +665,9 @@ def test_shutdown_is_irreversible(module_manager_harness, monkeypatch) -> None:
 
 
 def test_shutdown_reports_unreleased_module_owner(module_manager_harness) -> None:
-    """Host Module 返回 False 时 Runtime 必须保留 owner 并向组合根报告。"""
+    """
+    Host Module 返回 False 时 Runtime 必须保留 owner 并向组合根报告。
+    """
     manager = module_manager_harness.manager
     _enable_sample(module_manager_harness.config_values)
     manager.load_modules()
@@ -644,7 +686,9 @@ def test_shutdown_reports_unreleased_module_owner(module_manager_harness) -> Non
 def test_all_real_host_modules_zero_arg_construct_without_starting_resources(
     tmp_path: Path,
 ) -> None:
-    """每份真实 manifest 都必须能解析 canonical class 并零参数构造且不启动资源。"""
+    """
+    每份真实 manifest 都必须能解析 canonical class 并零参数构造且不启动资源。
+    """
     body = r"""
 from app.runtime.extensions.module.adapter import (
     HostModuleAdapter,
@@ -686,7 +730,9 @@ assert lifecycle_events == []
 def test_real_manifest_inventory_drives_full_module_manager_lifecycle(
     tmp_path: Path,
 ) -> None:
-    """真实声明自动驱动全量激活、原实例重载、禁用停止和不可逆关闭门禁。"""
+    """
+    真实声明自动驱动全量激活、原实例重载、禁用停止和不可逆关闭门禁。
+    """
     body = r"""
 from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.capabilities.model import ActivationPolicy
@@ -860,7 +906,9 @@ assert set(spec_by_id) == set(events)
 def test_default_config_keeps_every_manifest_configured_entrypoint_unimported(
     tmp_path: Path,
 ) -> None:
-    """默认配置惰性边界由全部 when-configured manifest 自动生成。"""
+    """
+    默认配置惰性边界由全部 when-configured manifest 自动生成。
+    """
     body = r"""
 from app.db.oper.systemconfig import SystemConfigOper
 from app.runtime.capabilities.model import ActivationPolicy
@@ -918,7 +966,9 @@ assert configured_modules.isdisjoint(sys.modules)
 def test_event_resolver_uses_exact_class_and_blocks_stopped_owner_fallback(
     module_manager_harness, monkeypatch,
 ) -> None:
-    """同名 class 不能冒充 owner；已停止 owner 必须返回 Binding(None)。"""
+    """
+    同名 class 不能冒充 owner；已停止 owner 必须返回 Binding(None)。
+    """
     manager = module_manager_harness.manager
     _enable_sample(module_manager_harness.config_values)
     manager.load_modules()
@@ -953,7 +1003,9 @@ def test_event_resolver_uses_exact_class_and_blocks_stopped_owner_fallback(
 def test_default_modulelist_does_not_import_unconfigured_provider_sdks(
     tmp_path: Path,
 ) -> None:
-    """默认配置下构造 Manager 和查询模块列表都不能拉起重量 provider SDK。"""
+    """
+    默认配置下构造 Manager 和查询模块列表都不能拉起重量 provider SDK。
+    """
     project_root = Path(__file__).parents[1]
     code = """
 from app.testing.bootstrap import prepare_backend
@@ -1034,7 +1086,9 @@ manager.shutdown()
 def test_lazy_boundary_annotations_are_reflectable_without_provider_sdks(
     tmp_path: Path,
 ) -> None:
-    """宿主公共注解可被反射，且反射过程不加载可选 provider SDK。"""
+    """
+    宿主公共注解可被反射，且反射过程不加载可选 provider SDK。
+    """
     project_root = Path(__file__).parents[1]
     code = """
 from app.testing.bootstrap import prepare_backend
@@ -1085,7 +1139,9 @@ assert loaded_provider_modules() == []
 
 
 def test_manifest_metadata_matches_legacy_module_class_contract(tmp_path: Path) -> None:
-    """manifest 投影必须与插件仍可调用的模块类 metadata 完全一致。"""
+    """
+    manifest 投影必须与插件仍可调用的模块类 metadata 完全一致。
+    """
     project_root = Path(__file__).parents[1]
     code = """
 from app.testing.bootstrap import prepare_backend

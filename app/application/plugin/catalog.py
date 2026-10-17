@@ -1,4 +1,6 @@
-"""插件市场目录应用服务。"""
+"""
+插件市场目录应用服务。
+"""
 
 from __future__ import annotations
 
@@ -35,7 +37,13 @@ DEFAULT_MARKET_FETCH_CONCURRENCY = 5
 
 @dataclass(frozen=True, slots=True)
 class _CatalogLoadRequest:
-    """冻结同步与异步插件市场加载共用的仓库和代际参数。"""
+    """
+    冻结同步与异步插件市场加载共用的仓库和代际参数。
+
+    :param market: 本次读取的配置市场地址
+    :param package_version: 请求读取的插件包代际；None 使用入口默认代际
+    :param force: 是否忽略本次读取或安装的缓存与版本短路
+    """
 
     market: str
     package_version: Optional[str]
@@ -48,7 +56,8 @@ def apply_declared_metadata_fallback(
     *,
     free_threaded: bool = False,
 ) -> list[Plugin]:
-    """用已提交快照补齐加载失败插件，不覆盖真实运行态字段。
+    """
+    用已提交快照补齐加载失败插件，不覆盖真实运行态字段。
 
     :param free_threaded: 当前是否运行在 free-threaded 解释器；已安装卡片的运行时
         不兼容提示只能来自安装时提交的声明快照，市场候选那条标注路径要联网才有。
@@ -106,7 +115,9 @@ def apply_declared_metadata_fallback(
 
 
 class PluginCatalogService:
-    """负责插件市场索引映射、并发收集、代际合并和来源去重。"""
+    """
+    负责插件市场索引映射、并发收集、代际合并和来源去重。
+    """
 
     def __init__(
             self,
@@ -121,7 +132,9 @@ class PluginCatalogService:
             error: Callable[[str], Any],
             max_concurrency: int = DEFAULT_MARKET_FETCH_CONCURRENCY,
     ) -> None:
-        """保存市场读取、插件映射和版本比较端口。"""
+        """
+        保存市场读取、插件映射和版本比较端口。
+        """
         if max_concurrency < 1:
             raise ValueError("插件市场读取并发必须大于 0")
         self._market_loader = market_loader
@@ -140,7 +153,9 @@ class PluginCatalogService:
             package_version: Optional[str],
             force: bool,
     ) -> Optional[_CatalogLoadRequest]:
-        """统一拒绝空市场，并冻结一次目录加载的完整输入。"""
+        """
+        统一拒绝空市场，并冻结一次目录加载的完整输入。
+        """
         if not market:
             return None
         return _CatalogLoadRequest(
@@ -154,7 +169,9 @@ class PluginCatalogService:
             request: _CatalogLoadRequest,
             online_plugins: Optional[dict[str, dict[str, Any]]],
     ) -> list[Any]:
-        """统一加载失败告警与在线目录到插件 DTO 的投影。"""
+        """
+        统一加载失败告警与在线目录到插件 DTO 的投影。
+        """
         if online_plugins is None:
             self._warning(
                 f"获取{request.package_version if request.package_version else ''}插件库失败："
@@ -171,7 +188,9 @@ class PluginCatalogService:
             package_version: Optional[str] = None,
             force: bool = False,
     ) -> list[Any]:
-        """同步读取并映射指定市场和插件代际。"""
+        """
+        同步读取并映射指定市场和插件代际。
+        """
         request = PluginCatalogService._load_request(
             market, package_version, force
         )
@@ -190,7 +209,9 @@ class PluginCatalogService:
             package_version: Optional[str] = None,
             force: bool = False,
     ) -> list[Any]:
-        """异步读取并映射指定市场和插件代际。"""
+        """
+        异步读取并映射指定市场和插件代际。
+        """
         request = PluginCatalogService._load_request(
             market, package_version, force
         )
@@ -211,7 +232,9 @@ class PluginCatalogService:
             force: bool,
             loader: Callable[[str, Optional[str], bool], list[Any]],
     ) -> list[Any]:
-        """并发读取多个市场和代际，并按稳定优先级合并。"""
+        """
+        并发读取多个市场和代际，并按稳定优先级合并。
+        """
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=self._max_concurrency
         ) as executor:
@@ -234,7 +257,8 @@ class PluginCatalogService:
             for future in concurrent.futures.as_completed(futures_meta):
                 try:
                     plugins = future.result()
-                except Exception as error:  # noqa: BLE001 - 单个市场失败不能中断全量刷新
+                # 单个市场失败不能中断全量刷新
+                except Exception as error:  # noqa: BLE001
                     self._error(f"获取插件市场数据失败：{str(error)}")
                     plugins = []
                 market_index, is_higher, flag_priority = futures_meta[future]
@@ -265,7 +289,9 @@ class PluginCatalogService:
             preserve_sources: bool = False,
             progress_callback: Optional[ProgressCallback] = None,
     ) -> list[Any]:
-        """异步读取多个市场和代际，并按调用方需要合并或保留仓库候选。"""
+        """
+        异步读取多个市场和代际，并按调用方需要合并或保留仓库候选。
+        """
         semaphore = asyncio.Semaphore(self._max_concurrency)
 
         async def fetch(
@@ -274,7 +300,9 @@ class PluginCatalogService:
                 result_version: str,
                 task_index: int,
         ) -> tuple[int, str, list[Any]]:
-            """读取一个市场代际并保留创建时的稳定任务序号。"""
+            """
+            读取一个市场代际并保留创建时的稳定任务序号。
+            """
             async with semaphore:
                 plugins = await loader(market, package_version, force)
             return task_index, result_version, plugins or []
@@ -346,7 +374,9 @@ class PluginCatalogService:
             base_plugins: list[Any],
             markets: list[str],
     ) -> list[Any]:
-        """按代际、来源顺序和版本合并插件目录。"""
+        """
+        按代际、来源顺序和版本合并插件目录。
+        """
         all_plugins = list(higher_plugins)
         higher_keys = {
             (normalize_physical_plugin_id(plugin.id), plugin.plugin_version)
@@ -362,7 +392,9 @@ class PluginCatalogService:
         )
 
         def repo_order(plugin: Any) -> int:
-            """本地来源排在远程市场之后，远程来源保持配置顺序。"""
+            """
+            本地来源排在远程市场之后，远程来源保持配置顺序。
+            """
             if self._is_local_repo(plugin.repo_url):
                 return len(markets) + 1
             if plugin.repo_url in markets:
@@ -406,7 +438,9 @@ class PluginCatalogService:
             base_plugins: list[Any],
             markets: list[str],
     ) -> list[Any]:
-        """每个仓库和代际保留同一插件的最高版本，供来源准入继续决策。"""
+        """
+        每个仓库和代际保留同一插件的最高版本，供来源准入继续决策。
+        """
         higher_keys = {
             (
                 plugin.repo_url,
@@ -427,7 +461,9 @@ class PluginCatalogService:
         )
 
         def repo_order(plugin: Any) -> int:
-            """保留配置的仓库顺序，未配置来源排在末尾。"""
+            """
+            保留配置的仓库顺序，未配置来源排在末尾。
+            """
             if plugin.repo_url in markets:
                 return markets.index(plugin.repo_url)
             return len(markets)
@@ -454,7 +490,9 @@ class PluginCatalogService:
             market: str,
             package_version: Optional[str],
     ) -> list[Any]:
-        """把一个市场索引映射为宿主插件 DTO。"""
+        """
+        把一个市场索引映射为宿主插件 DTO。
+        """
         installed_plugins = self._installed_plugins_provider()
         result: list[Any] = []
         add_time = len(online_plugins)
@@ -474,7 +512,9 @@ class PluginCatalogService:
 
 
 class PluginCatalogQuery:
-    """组合运行态、来源身份和市场候选，生成插件页目录快照。"""
+    """
+    组合运行态、来源身份和市场候选，生成插件页目录快照。
+    """
 
     def __init__(
         self,
@@ -487,7 +527,9 @@ class PluginCatalogQuery:
         identities: Callable[[list[str]], Awaitable[list[PluginIdentity]]],
         free_threaded: Callable[[], bool],
     ) -> None:
-        """保存运行态目录、来源身份读取和解释器变体判定窄端口。"""
+        """
+        保存运行态目录、来源身份读取和解释器变体判定窄端口。
+        """
         self._installed_plugins = installed_plugins
         self._local_plugins = local_plugins
         self._local_repo_plugins = local_repo_plugins
@@ -499,7 +541,9 @@ class PluginCatalogQuery:
     async def query(
         self, *, state: str = "all", force: bool = False
     ) -> list[Plugin]:
-        """按 installed、market 或 all 返回插件页所需稳定目录。"""
+        """
+        按 installed、market 或 all 返回插件页所需稳定目录。
+        """
         installed_plugins = self._installed_plugins()
         if state == "installed":
             return await self._with_declared_metadata(installed_plugins)
@@ -544,7 +588,9 @@ class PluginCatalogQuery:
         plugins: list[Plugin],
         installed_ids: list[str],
     ) -> list[Plugin]:
-        """已绑定插件仅提示绑定仓库更新，并投影候选来源信息。"""
+        """
+        已绑定插件仅提示绑定仓库更新，并投影候选来源信息。
+        """
         identities = await self._identities(installed_ids)
         identity_by_id = {item.normalized_plugin_id: item for item in identities}
         installed_keys = {plugin_id.lower() for plugin_id in installed_ids}
@@ -565,7 +611,9 @@ class PluginCatalogQuery:
     async def _with_declared_metadata(
         self, plugins: list[Plugin]
     ) -> list[Plugin]:
-        """为未加载插件补齐已提交的展示声明。"""
+        """
+        为未加载插件补齐已提交的展示声明。
+        """
         identities = await self._identities(
             [plugin.id for plugin in plugins if plugin.id]
         )
@@ -581,7 +629,9 @@ class PluginCatalogQuery:
         online_plugins: list[Plugin],
         identity: PluginIdentity | None,
     ) -> Plugin:
-        """按绑定来源收敛更新标记，不修改共享的市场候选快照。"""
+        """
+        按绑定来源收敛更新标记，不修改共享的市场候选快照。
+        """
         if identity is None or not identity.trusted_source_key:
             return plugin
         bound_updates = [
@@ -599,20 +649,26 @@ _catalog_query: PluginCatalogQuery | None = None
 
 
 def configure_plugin_catalog_query(query: PluginCatalogQuery) -> None:
-    """由启动组合根发布当前 lifespan 的插件目录查询。"""
+    """
+    由启动组合根发布当前 lifespan 的插件目录查询。
+    """
     global _catalog_query
     _catalog_query = query
 
 
 def get_plugin_catalog_query() -> PluginCatalogQuery:
-    """返回已经由启动组合根装配的插件目录查询。"""
+    """
+    返回已经由启动组合根装配的插件目录查询。
+    """
     if _catalog_query is None:
         raise RuntimeError("插件目录查询尚未完成初始化")
     return _catalog_query
 
 
 def reset_plugin_catalog_query() -> None:
-    """清除当前 lifespan 的插件目录查询，供停机和隔离测试使用。"""
+    """
+    清除当前 lifespan 的插件目录查询，供停机和隔离测试使用。
+    """
     global _catalog_query
     _catalog_query = None
 
@@ -622,7 +678,9 @@ def _matches_trusted_source(
     plugin_id: str,
     trusted_source_key: str,
 ) -> bool:
-    """判断市场候选是否为指定插件的可信绑定仓库更新。"""
+    """
+    判断市场候选是否为指定插件的可信绑定仓库更新。
+    """
     if (
         not plugin.id
         or plugin.id.lower() != plugin_id.lower()
@@ -640,7 +698,9 @@ def _matches_trusted_source(
 def _project_update_candidate(
     plugin: Plugin, identity: PluginIdentity | None
 ) -> Plugin:
-    """在隔离副本上附加来源类型和绑定关系。"""
+    """
+    在隔离副本上附加来源类型和绑定关系。
+    """
     if not plugin.repo_url or not plugin.plugin_version:
         return plugin
     try:

@@ -1,4 +1,6 @@
-"""整理链稳定 Facade；实现职责由同名包内 owner 承担。"""
+"""
+整理链稳定门面；实现职责由同名包内的职责组件 承担。
+"""
 
 from app.chain.base import ChainBase
 from app.chain.media import MediaChain
@@ -37,23 +39,31 @@ class TransferChain(
         ConfigReloadMixin,
         metaclass=Singleton,
 ):
-    """保留文件整理处理链的稳定类型身份并组合单一职责 owner。"""
+    """
+    保留文件整理处理链的稳定类型身份并组合单一职责组件。
+    """
 
     @classmethod
     def _transfer_media_chain(cls):
-        """为整理 mixin 提供可替换的媒体识别构造点。"""
+        """
+        为整理 mixin 提供可替换的媒体识别构造点。
+        """
         from . import filter as transfer_filter
         return (transfer_filter.MediaChain or MediaChain)()
 
     @classmethod
     def _transfer_storage_chain(cls) -> StorageChain:
-        """为整理 mixin 提供可替换的存储构造点。"""
+        """
+        为整理 mixin 提供可替换的存储构造点。
+        """
         from . import records as transfer_records
         return (transfer_records.StorageChain or StorageChain)()
 
     @classmethod
     def _transfer_subscribe_chain(cls):
-        """为整理 mixin 提供可替换的订阅构造点。"""
+        """
+        为整理 mixin 提供可替换的订阅构造点。
+        """
         from app.chain.subscribe.facade import SubscribeChain as _SubscribeChain
         return _SubscribeChain()
 

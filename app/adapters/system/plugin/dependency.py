@@ -1,4 +1,6 @@
-"""插件 Python 依赖聚合和安装适配器。"""
+"""
+插件 Python 依赖聚合和安装适配器。
+"""
 
 from __future__ import annotations
 
@@ -29,42 +31,70 @@ from app.runtime.settings import get_runtime_setting
 
 @dataclass
 class _RequirementGroup:
-    """聚合同一包和安装来源的 extras 与版本约束。"""
+    """
+    聚合同一依赖包和同一来源的附加功能与版本约束。
 
-    name: str  # PEP 503 规范化后的包名
-    url: Optional[str]  # direct reference 来源；为空表示从索引安装
-    extras: set[str] = field(default_factory=set)  # 所有插件要求启用的 extras
-    specifiers: set[str] = field(default_factory=set)  # 待求交集的版本约束
+    :param name: 按 PEP 503 规范化后的包名
+    :param url: 显式依赖来源地址；None 表示从包索引安装
+    :param extras: 各插件要求启用的附加功能名集合，默认空集合
+    :param specifiers: 待求交集的版本约束集合，默认空集合
+    """
+
+    name: str
+    url: Optional[str]
+    extras: set[str] = field(default_factory=set)
+    specifiers: set[str] = field(default_factory=set)
 
 
 @dataclass(frozen=True, slots=True)
 class _DependencyInstallRequest:
-    """封装一次插件依赖安装所需的清单和本地 wheel 来源。"""
+    """
+    插件依赖安装所需的清单和本地 wheel 搜索目录。
+
+    :param manifest_paths: 本次需要合并的依赖清单路径列表
+    :param wheels_dirs: 安装时可搜索本地 wheel 的目录列表
+    """
 
     manifest_paths: list[Path]
     wheels_dirs: list[Path]
 
 
 class PluginDependencyPackagePort(Protocol):
-    """声明依赖聚合器所需的唯一 Python 包安装边界。"""
+    """
+    声明依赖聚合器所需的唯一 Python 包安装边界。
+    """
 
     def install_packages_with_fallback(
         self,
         dependency_files: list[Path],
         find_links_dirs: list[Path],
     ) -> tuple[bool, str]:
-        """同步安装已经聚合并准入的依赖清单。"""
+        """
+        按安装策略同步安装已经聚合并通过准入检查的依赖。
+
+        :param dependency_files: 本次安装使用的依赖清单路径列表
+        :param find_links_dirs: 本地 wheel 候选目录列表；为空时不附加目录
+        :return: 是否安装成功与结果说明；失败不承诺回滚安装器已经完成的环境修改
+        """
 
     async def async_install_packages_with_fallback(
         self,
         dependency_files: list[Path],
         find_links_dirs: list[Path],
     ) -> tuple[bool, str]:
-        """异步安装已经聚合并准入的依赖清单。"""
+        """
+        按安装策略异步等待已通过准入检查的依赖安装。
+
+        :param dependency_files: 本次安装使用的依赖清单路径列表
+        :param find_links_dirs: 本地 wheel 候选目录列表；为空时不附加目录
+        :return: 安装结束后的成功标志与结果说明；失败不承诺回滚已经完成的环境修改
+        """
 
 
 class PluginDependencyInstaller:
-    """独立负责插件依赖扫描、约束合并和安装。"""
+    """
+    独立负责插件依赖扫描、约束合并和安装。
+    """
 
     def __init__(
         self,
@@ -74,7 +104,9 @@ class PluginDependencyInstaller:
         enabled_plugins_provider: Optional[Callable[[], set[str]]] = None,
         plugin_dir: Optional[Path] = None,
     ) -> None:
-        """保存安装清单和启用源码读取器；旧调用方未提供启用位时保留安装集合。"""
+        """
+        保存安装清单和启用源码读取器；旧调用方未提供启用位时保留安装集合。
+        """
         if packages is None:
             packages = PluginRuntimeHealth()
         self._packages = packages
@@ -86,12 +118,16 @@ class PluginDependencyInstaller:
 
     @staticmethod
     def _standardize(name: str) -> str:
-        """按 PEP 503 兼容规则标准化依赖包名。"""
+        """
+        按 PEP 503 兼容规则标准化依赖包名。
+        """
         return (name or "").lower().replace("-", "_").replace(".", "_")
 
     @classmethod
     def _installed_packages(cls) -> dict[str, Version]:
-        """读取当前 Python 环境中可解析版本的已安装包。"""
+        """
+        读取当前 Python 环境中可解析版本的已安装包。
+        """
         installed: dict[str, Version] = {}
         try:
             for distribution in distributions():
@@ -119,7 +155,9 @@ class PluginDependencyInstaller:
 
     @classmethod
     def _installed_distribution(cls, package_name: str) -> Any | None:
-        """读取一个包的元数据，用于校验 extras 和 direct URL 来源。"""
+        """
+        读取一个包的元数据，用于校验 extras 和 direct URL 来源。
+        """
         try:
             return distribution(package_name)
         except PackageNotFoundError:
@@ -132,7 +170,9 @@ class PluginDependencyInstaller:
         *,
         seen: Optional[set[tuple[str, tuple[str, ...], Optional[str]]]] = None,
     ) -> bool:
-        """同时校验版本、extras 及 direct URL，不把同名包误认为同一制品。"""
+        """
+        同时校验版本、extras 及 direct URL，不把同名包误认为同一制品。
+        """
         package_name = self._standardize(requirement.name)
         installed_version = installed.get(package_name)
         try:
@@ -198,7 +238,9 @@ class PluginDependencyInstaller:
     def _marker_matches_for_extras(
         cls, requirement: Requirement, extras: set[str]
     ) -> bool:
-        """判断已安装发行版声明的可选依赖是否属于当前请求的 extra。"""
+        """
+        判断已安装发行版声明的可选依赖是否属于当前请求的 extra。
+        """
         if requirement.marker is None:
             return True
         environment = default_environment()
@@ -211,12 +253,16 @@ class PluginDependencyInstaller:
 
     @staticmethod
     def _standardize_extra(name: str) -> str:
-        """按 PEP 685 兼容规则标准化 extra 名称。"""
+        """
+        按 PEP 685 兼容规则标准化 extra 名称。
+        """
         return (name or "").lower().replace("-", "_").replace(".", "_")
 
     @staticmethod
     def _direct_url_matches(installed_distribution: Any, required_url: str) -> bool:
-        """校验安装发行版记录的 PEP 610 URL 与清单来源一致。"""
+        """
+        校验安装发行版记录的 PEP 610 URL 与清单来源一致。
+        """
         try:
             payload = installed_distribution.read_text("direct_url.json")
             if not payload:
@@ -232,7 +278,9 @@ class PluginDependencyInstaller:
 
     @staticmethod
     def _canonical_direct_url(value: str) -> tuple[str, str, str, str, str]:
-        """规范化来源 URL，同时保留 fragment 中可能存在的校验信息。"""
+        """
+        规范化来源 URL，同时保留 fragment 中可能存在的校验信息。
+        """
         parsed = urlsplit(value)
         netloc = parsed.netloc.rsplit("@", 1)[-1].lower()
         return (
@@ -245,7 +293,9 @@ class PluginDependencyInstaller:
 
     @classmethod
     def _merge(cls, dependencies: list[Requirement]) -> list[Requirement]:
-        """按包和安装来源合并 extras 与约束，保留完整安装目标。"""
+        """
+        按包和安装来源合并 extras 与约束，保留完整安装目标。
+        """
         groups: dict[tuple[str, Optional[str]], _RequirementGroup] = {}
         for requirement in dependencies:
             package_name = cls._standardize(requirement.name)
@@ -278,7 +328,9 @@ class PluginDependencyInstaller:
         return merged
 
     def _dependency_plugin_ids(self) -> set[str]:
-        """只为已安装且至少有一个启用实例的物理插件恢复依赖。"""
+        """
+        只为已安装且至少有一个启用实例的物理插件恢复依赖。
+        """
         installed = {
             plugin_id.lower()
             for plugin_id in self._installed_plugins_provider() or []
@@ -290,7 +342,9 @@ class PluginDependencyInstaller:
         }
 
     def _plugin_manifests(self) -> list[Any]:
-        """返回需要装载的已安装插件的原始依赖清单。"""
+        """
+        返回需要装载的已安装插件的原始依赖清单。
+        """
         manifests = []
         installed_plugins = self._dependency_plugin_ids()
         try:
@@ -310,7 +364,9 @@ class PluginDependencyInstaller:
         return manifests
 
     def _plugin_dependencies(self) -> list[Requirement]:
-        """扫描启用插件的生效依赖清单并合并版本约束。"""
+        """
+        扫描启用插件的生效依赖清单并合并版本约束。
+        """
         dependencies: list[Requirement] = []
         for manifest in self._plugin_manifests():
             for requirement in manifest.dependencies:
@@ -320,7 +376,9 @@ class PluginDependencyInstaller:
         return self._merge(dependencies)
 
     def find_missing(self) -> list[str]:
-        """返回当前插件集合缺失或不满足约束的依赖项。"""
+        """
+        返回当前插件集合缺失或不满足约束的依赖项。
+        """
         try:
             required = self._plugin_dependencies()
             installed = self._installed_packages()
@@ -336,7 +394,9 @@ class PluginDependencyInstaller:
             return []
 
     def classify_plugins(self) -> tuple[list[str], list[str], list[str]]:
-        """按源码和依赖状态划分已安装插件。"""
+        """
+        按源码和依赖状态划分已安装插件。
+        """
         ready: list[str] = []
         missing_dependencies: list[str] = []
         missing_source: list[str] = []
@@ -369,7 +429,9 @@ class PluginDependencyInstaller:
         return ready, missing_dependencies, missing_source
 
     def _wheels_dirs(self) -> list[Path]:
-        """收集启用插件附带的本地 wheels 目录。"""
+        """
+        收集启用插件附带的本地 wheels 目录。
+        """
         result = []
         for plugin_id in sorted(self._dependency_plugin_ids()):
             wheels_dir = self._plugin_dir / plugin_id / "wheels"
@@ -380,7 +442,9 @@ class PluginDependencyInstaller:
     def _prepare_install_request(
         self, dependencies: list[str]
     ) -> tuple[Optional[_DependencyInstallRequest], Optional[tuple[bool, str]]]:
-        """统一校验依赖安装请求，并在进入包 I/O 前构造规范输入。"""
+        """
+        统一校验依赖安装请求，并在进入包 I/O 前构造规范输入。
+        """
         if not dependencies:
             return None, (False, "没有传入需要安装的依赖项")
         try:
@@ -394,12 +458,15 @@ class PluginDependencyInstaller:
                 ),
                 None,
             )
-        except Exception as error:  # noqa: BLE001 - 统一映射为公开安装结果
+        # 统一映射为公开安装结果
+        except Exception as error:  # noqa: BLE001
             return None, self._dependency_install_failure(error)
 
     @staticmethod
     def _dependency_install_failure(error: Exception) -> tuple[bool, str]:
-        """统一记录同步与异步包安装异常，并保留既有错误文本合同。"""
+        """
+        统一记录同步与异步包安装异常，并保留既有错误文本合同。
+        """
         message = f"安装依赖项时发生错误：{error}"
         logger.error(message)
         return False, message
@@ -407,7 +474,8 @@ class PluginDependencyInstaller:
     def _fallback_plan(
         self, request: _DependencyInstallRequest
     ) -> tuple[list[Path], list[Path]]:
-        """批量失败后保留已满足清单的约束，逐个恢复其余插件。
+        """
+        批量失败后保留已满足清单的约束，逐个恢复其余插件。
 
         成功恢复的清单也会加入后续请求；互斥版本因而不能通过轮流覆盖环境假装成功。
         始终传递原始清单，保留 uv sources、索引、direct URL 和 extras 的语义。
@@ -432,7 +500,9 @@ class PluginDependencyInstaller:
         accepted: list[Path],
         failures: list[str],
     ) -> None:
-        """让成功清单保护后续安装，并记录失败插件而不中断其它组。"""
+        """
+        让成功清单保护后续安装，并记录失败插件而不中断其它组。
+        """
         success, message = result
         if success:
             accepted.append(path)
@@ -443,13 +513,17 @@ class PluginDependencyInstaller:
 
     @staticmethod
     def _fallback_result(failures: list[str]) -> tuple[bool, str]:
-        """部分恢复仍返回失败，使启动继续按实际环境分类和激活就绪插件。"""
+        """
+        部分恢复仍返回失败，使启动继续按实际环境分类和激活就绪插件。
+        """
         if failures:
             return False, "\n".join(failures)
         return True, "插件依赖已分组恢复"
 
     def install(self, dependencies: list[str]) -> tuple[bool, str]:
-        """先统一安装；失败后逐组恢复，并保护已就绪插件的约束。"""
+        """
+        先统一安装；失败后逐组恢复，并保护已就绪插件的约束。
+        """
         request, error_result = self._prepare_install_request(dependencies)
         if error_result is not None:
             return error_result
@@ -471,19 +545,25 @@ class PluginDependencyInstaller:
                     group_result = self._packages.install_packages_with_fallback(
                         [*accepted, path], request.wheels_dirs
                     )
-                except Exception as error:  # noqa: BLE001 - 单组失败不得中断其余组
+                # 单组失败不得中断其余组
+                except Exception as error:  # noqa: BLE001
                     group_result = self._dependency_install_failure(error)
                 self._record_group_result(path, group_result, accepted, failures)
             return self._fallback_result(failures)
-        except Exception as error:  # noqa: BLE001 - 统一映射为公开安装结果
+        # 统一映射为公开安装结果
+        except Exception as error:  # noqa: BLE001
             return self._dependency_install_failure(error)
 
     async def async_find_missing(self) -> list[str]:
-        """在线程池中扫描缺失依赖，避免阻塞事件循环。"""
+        """
+        在线程池中扫描缺失依赖，避免阻塞事件循环。
+        """
         return await asyncio.to_thread(self.find_missing)
 
     async def async_install(self, dependencies: list[str]) -> tuple[bool, str]:
-        """使用可取消子进程执行统一安装和受约束的逐组恢复。"""
+        """
+        使用可取消子进程执行统一安装和受约束的逐组恢复。
+        """
         prepared: tuple[
             Optional[_DependencyInstallRequest], Optional[tuple[bool, str]]
         ] = await run_in_threadpool_to_completion(
@@ -513,9 +593,11 @@ class PluginDependencyInstaller:
                     group_result = await self._packages.async_install_packages_with_fallback(
                         [*accepted, path], request.wheels_dirs
                     )
-                except Exception as error:  # noqa: BLE001 - CancelledError 必须向上传播
+                # CancelledError 必须向上传播
+                except Exception as error:  # noqa: BLE001
                     group_result = self._dependency_install_failure(error)
                 self._record_group_result(path, group_result, accepted, failures)
             return self._fallback_result(failures)
-        except Exception as error:  # noqa: BLE001 - 统一映射为公开安装结果
+        # 统一映射为公开安装结果
+        except Exception as error:  # noqa: BLE001
             return self._dependency_install_failure(error)

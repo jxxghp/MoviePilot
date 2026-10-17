@@ -1,3 +1,7 @@
+"""
+工作流的加载、调度、执行与结果通知编排。
+"""
+
 import ast
 import copy
 import inspect
@@ -35,14 +39,18 @@ CIRCULAR_REFERENCE_PLACEHOLDER = "[Circular]"
 
 
 def _serialize_workflow_key(key: Any) -> Any:
-    """将映射键转换为 JSON 安全值。"""
+    """
+    将映射键转换为 JSON 安全值。
+    """
     if key is None or isinstance(key, (str, int, float, bool)):
         return key
     return str(key)
 
 
 def _serialize_workflow_value(value: Any, stack: Optional[set[int]] = None) -> Any:
-    """把工作流上下文和值转换为可持久化的 JSON 结构。"""
+    """
+    把工作流上下文和值转换为可持久化的 JSON 结构。
+    """
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     if isinstance(value, (date, datetime)):
@@ -94,7 +102,9 @@ def _serialize_workflow_value(value: Any, stack: Optional[set[int]] = None) -> A
 
 
 def _serialize_workflow_context(context: ActionContext) -> dict:
-    """构建可写入数据库的工作流上下文字典。"""
+    """
+    构建可写入数据库的工作流上下文字典。
+    """
     serialized = _serialize_workflow_value(context)
     return serialized if isinstance(serialized, dict) else {}
 
@@ -111,8 +121,9 @@ class WorkflowCancelToken:
     ) -> None:
         """
         初始化取消令牌。
+
         :param workflow_id: 工作流ID
-        :param stop_event: 单次执行 owner 的本地停止信号
+        :param stop_event: 单次执行 任务持有者 的本地停止信号
         """
         self.workflow_id = workflow_id
         self.stop_event = stop_event
@@ -142,13 +153,13 @@ class WorkflowExecutor:
     ):
         """
         初始化工作流执行器
+
         :param workflow: 工作流对象
         :param step_callback: 步骤回调函数
         :param from_begin: 忽略历史节点和上下文，从头构建本次执行
         :param completion_callback: 节点真实终止后、释放同 ID 所有权前提交终态
         """
         validate_workflow_graph(workflow.actions, workflow.flows)
-        # 工作流数据
         self.workflow = workflow
         self._from_begin = from_begin
         self._completion_callback = completion_callback
@@ -198,25 +209,20 @@ class WorkflowExecutor:
         self.flow_satisfied = set()
         self.flow_failed = set()
 
-        # 工作流管理器
         self.workflowmanager = get_workflow_manager()
-        # 具体管理器登记活动执行；旧自定义 provider 不实现 owner 接口时保持原调用兼容。
+        # 具体管理器登记活动执行；旧自定义 能力提供方 不实现 任务持有者 接口时保持原调用兼容。
         self._execution_lock = threading.RLock()
         self._admission_state = "pending"
         self._registered_execution = False
         self._stop_event = threading.Event()
         self._execute_returned = threading.Event()
         self._stopped_event = threading.Event()
-        # 线程安全队列
         self.queue = deque()
         self.queued_actions = set()
         self.active_concurrency_keys = set()
-        # 锁用于保证线程安全
         self.lock = threading.Lock()
-        # 线程池
         self.executor = OwnedThreadPoolExecutor(max_workers=self.get_workflow_max_workers())
         self.cancel_token = WorkflowCancelToken(self.workflow.id, self._stop_event)
-        # 跟踪运行中的任务数
         self.running_tasks = 0
 
         # 构建出边与入边表，用于条件流转和多上游汇合。
@@ -228,7 +234,6 @@ class WorkflowExecutor:
             self.outgoing_flows[flow.source].append(flow)
             self.incoming_flows[flow.target].append(flow)
 
-        # 初始上下文
         self.context = self.restore_context()
         self.ensure_context_partitions()
 
@@ -244,7 +249,9 @@ class WorkflowExecutor:
                 self.enqueue_node(action_id)
 
     def admit(self) -> bool:
-        """向 concrete manager 登记本次执行，并保持旧 provider 可直接运行。"""
+        """
+        向 concrete manager 登记本次执行，并保持旧 能力提供方 可直接运行。
+        """
         with self._execution_lock:
             if self._admission_state == "admitted":
                 return True
@@ -268,15 +275,21 @@ class WorkflowExecutor:
 
     @property
     def workflow_id(self) -> int:
-        """返回执行 owner 互斥准入所使用的工作流 ID。"""
+        """
+        返回执行 任务持有者 互斥准入所使用的工作流 ID。
+        """
         return self.workflow.id
 
     def request_stop(self) -> None:
-        """停止调度新节点，并通过本地令牌通知支持取消的活动动作。"""
+        """
+        停止调度新节点，并通过本地令牌通知支持取消的活动动作。
+        """
         self._stop_event.set()
 
     def abort_before_execute(self) -> None:
-        """执行状态启动失败时释放尚未使用的节点池和 manager owner。"""
+        """
+        执行状态启动失败时释放尚未使用的节点池和 manager 任务持有者。
+        """
         self.request_stop()
         # reset/start 失败尚未真正执行，不提交误导性的成功或失败终态。
         self._completion_callback = None
@@ -286,7 +299,9 @@ class WorkflowExecutor:
             self._release_execution()
 
     def wait_stopped(self, timeout: float) -> bool:
-        """有限等待 execute 返回，并在需要时重试节点线程池收敛。"""
+        """
+        有限等待 execute 返回，并在需要时重试节点线程池收敛。
+        """
         deadline = monotonic() + max(0.0, timeout)
         if self._stopped_event.is_set():
             return True
@@ -304,7 +319,9 @@ class WorkflowExecutor:
         return self._stopped_event.is_set()
 
     def _release_execution(self) -> None:
-        """先完成终态事务，再释放已真实终止的执行 owner；事务失败允许重试。"""
+        """
+        先完成终态事务，再释放已真实终止的执行 任务持有者；事务失败允许重试。
+        """
         with self._execution_lock:
             if self._stopped_event.is_set():
                 return
@@ -319,7 +336,9 @@ class WorkflowExecutor:
             self._stopped_event.set()
 
     def _stop_requested(self) -> bool:
-        """判断本次执行或全局工作流是否已收到停止请求。"""
+        """
+        判断本次执行或全局工作流是否已收到停止请求。
+        """
         return bool(
             self._stop_event.is_set()
             or runtime_stop_state.is_workflow_stopped(self.workflow.id)
@@ -527,7 +546,7 @@ class WorkflowExecutor:
                 if converged:
                     self._release_execution()
             finally:
-                # 终态事务仍在进行时，停机等待不能把节点线程结束等同于 owner 已释放。
+                # 终态事务仍在进行时，停机等待不能把节点线程结束等同于 任务持有者 已释放。
                 self._execute_returned.set()
 
     def pop_dispatchable_node(self) -> Optional[str]:
@@ -587,7 +606,6 @@ class WorkflowExecutor:
 
                 self.finished_actions += 1
                 self.update_progress()
-                # 更新当前进度
                 self.context.execute_history.append(
                     ActionExecution(
                         action=action.name,
@@ -624,9 +642,7 @@ class WorkflowExecutor:
                 self.record_node_outputs(action.id, outputs)
                 self.completed_actions.add(action.id)
                 self.set_node_state(action.id, "success", message=message)
-                # 处理后继节点
                 self.release_successors(action.id, source_success=True)
-                # 回调
                 self.call_step_callback(action, completed=True)
         except Exception as err:
             logger.error(f"工作流节点执行回调失败: {str(err)}")
@@ -634,7 +650,6 @@ class WorkflowExecutor:
                 self.success = False
                 self.errmsg = str(err)
         finally:
-            # 标记任务完成
             with self.lock:
                 if action:
                     concurrency_key = self.get_action_concurrency_key(action)
@@ -1325,13 +1340,13 @@ class WorkflowChain(ChainBase):
     ) -> Tuple[bool, str]:
         """
         处理工作流
+
         :param workflow_id: 工作流ID
         :param from_begin: 是否从头开始，默认为True
         :param progress_callback: 定时服务进度更新回调
         """
         workflow_execution = get_configured_workflow_execution()
 
-        # 查询工作流数据
         workflow = get_configured_workflow_query().get_sync(workflow_id)
         if not workflow:
             logger.warn(f"工作流 {workflow_id} 不存在")
@@ -1350,7 +1365,9 @@ class WorkflowChain(ChainBase):
                 execution_state: dict,
                 completed: bool,
         ) -> None:
-            """保存动作上下文和结构化执行状态。"""
+            """
+            保存动作上下文和结构化执行状态。
+            """
             persisted_action_id = (action.id or "") if completed else ""
             workflow_execution.step(
                 workflow_id,
@@ -1377,7 +1394,9 @@ class WorkflowChain(ChainBase):
                 )
 
         def commit_terminal(execution: WorkflowExecutor) -> None:
-            """同 ID 所有权持有期间提交最后一次结果，避免覆盖后续执行的状态。"""
+            """
+            同 ID 所有权持有期间提交最后一次结果，避免覆盖后续执行的状态。
+            """
             if execution.stopped:
                 return
             if not execution.success or execution.has_failure:
@@ -1387,7 +1406,6 @@ class WorkflowChain(ChainBase):
             if not committed:
                 raise RuntimeError("工作流终态写入失败")
 
-        # 执行工作流
         executor = WorkflowExecutor(
             workflow, step_callback=save_step, from_begin=bool(from_begin), completion_callback=commit_terminal,
         )
@@ -1420,7 +1438,9 @@ class WorkflowChain(ChainBase):
         from_begin: bool,
         progress_callback: Optional[Callable[..., None]],
     ) -> Tuple[bool, str]:
-        """仅在获得同 ID 准入后重置并启动；事务拒绝或异常均释放未执行 owner。"""
+        """
+        仅在获得同 ID 准入后重置并启动；事务拒绝或异常均释放未执行 任务持有者。
+        """
         workflow = executor.workflow
         try:
             if from_begin and not execution.reset(workflow.id):

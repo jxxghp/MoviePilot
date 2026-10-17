@@ -1,4 +1,6 @@
-"""插件安装事务的单表持久化模型。"""
+"""
+插件安装事务的单表持久化模型。
+"""
 
 from typing import Optional
 
@@ -9,7 +11,9 @@ from app.db.base import Base, get_id_column
 
 
 class PluginInstallation(Base):
-    """保存单插件 membership、身份 CAS revision 和持久备份状态。"""
+    """
+    保存单插件 membership、身份 CAS revision 和持久备份状态。
+    """
 
     id = get_id_column()
     transaction_id: Mapped[str] = mapped_column(String(128), nullable=False)

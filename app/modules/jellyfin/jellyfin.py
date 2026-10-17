@@ -1,3 +1,7 @@
+"""
+Jellyfin 媒体服务器客户端，负责内容查询、图片、刷新及 Webhook 转换。
+"""
+
 import json
 import posixpath
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
@@ -20,7 +24,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 class Jellyfin:
-    """适配 Jellyfin 的媒体库查询、同步和播放接口。"""
+    """
+    适配 Jellyfin 的媒体库查询、同步和播放接口。
+    """
 
     _host: Optional[str] = None
     _apikey: Optional[str] = None
@@ -33,7 +39,15 @@ class Jellyfin:
 
     def __init__(self, host: Optional[str] = None, apikey: Optional[str] = None, play_host: Optional[str] = None,
                  sync_libraries: list = None, **kwargs):
-        """初始化服务器连接，解析查询用户并保存媒体库同步范围。"""
+        """
+        保存服务配置，并查询用户、服务器身份及必要的媒体库路径。
+
+        :param host: 服务根地址，缺少时不初始化连接
+        :param apikey: 服务 API 密钥，缺少时不初始化连接
+        :param play_host: 外网访问地址，用于播放跳转和远程图片链接
+        :param sync_libraries: 允许同步的媒体库标识列表；空列表不限制，具体筛选由各查询接口处理
+        :param kwargs: 兼容通用服务配置的额外参数，当前不读取
+        """
         if not host or not apikey:
             logger.error("Jellyfin服务器配置不完整！！")
             return
@@ -50,7 +64,9 @@ class Jellyfin:
 
     def is_inactive(self) -> bool:
         """
-        判断是否需要重连
+        判断完整服务配置是否尚未找到可用的查询用户。
+
+        :return: 地址及密钥均已配置但 user 为空时返回 True；配置缺失时返回 False
         """
         if not self._host or not self._apikey:
             return False
@@ -58,13 +74,15 @@ class Jellyfin:
 
     def reconnect(self):
         """
-        重连
+        重新查询用户并更新服务器标识。
         """
         self.user = self.get_user()
         self.serverid = self.get_server_id()
 
     def _request(self, headers: Optional[dict] = None, **kwargs: Any) -> RequestUtils:
-        """创建兼容不同 Jellyfin 版本鉴权方式的请求工具"""
+        """
+        创建兼容不同 Jellyfin 版本鉴权方式的请求工具。
+        """
         request_headers = dict(headers or {})
         if not any(str(name).lower() == "authorization" for name in request_headers):
             request_headers["Authorization"] = f'MediaBrowser Token="{self._apikey}"'
@@ -76,7 +94,9 @@ class Jellyfin:
 
     def get_jellyfin_folders(self) -> List[dict]:
         """
-        获取Jellyfin媒体库路径列表
+        读取服务端可选媒体库及其目录信息。
+
+        :return: 服务端返回的目录记录列表；配置不完整或查询失败时返回空列表
         """
         if not self._host or not self._apikey:
             return []
@@ -97,7 +117,9 @@ class Jellyfin:
 
     def get_jellyfin_virtual_folders(self) -> List[dict]:
         """
-        获取Jellyfin媒体库所有路径列表（包含共享路径）
+        读取虚拟媒体库及其全部目录，优先使用共享路径。
+
+        :return: 包含 Id、Name 和路径列表 Path 的字典列表；查询失败时返回空列表
         """
         if not self._host or not self._apikey:
             return []
@@ -138,7 +160,7 @@ class Jellyfin:
 
     def __get_jellyfin_librarys(self, username: Optional[str] = None) -> Optional[List[dict]]:
         """
-        获取Jellyfin媒体库的信息
+        获取Jellyfin媒体库的信息。
         """
         if not self._host or not self._apikey:
             return None
@@ -171,7 +193,11 @@ class Jellyfin:
         hidden: Optional[bool] = False,
     ) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
-        获取媒体服务器所有媒体库列表
+        读取用户可见媒体库，并转换为统一媒体库模型。
+
+        :param username: 用于限定可见内容的用户名，省略时使用当前实例的查询用户
+        :param hidden: 是否隐藏未选入同步范围的媒体库；默认返回全部可见库
+        :return: 媒体库列表；配置不完整、用户不可用或查询失败时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -219,7 +245,9 @@ class Jellyfin:
 
     def get_user_count(self) -> int:
         """
-        获得用户数量
+        查询媒体服务器的用户数量。
+
+        :return: 服务端用户数量；配置不完整或请求失败时返回 0
         """
         if not self._host or not self._apikey:
             return 0
@@ -240,7 +268,12 @@ class Jellyfin:
 
     def get_user(self, user_name: Optional[str] = None) -> Optional[Union[str, int]]:
         """
-        获得管理员用户
+        选择用于查询可见媒体内容的用户。
+
+        管理员优先选择可访问全部媒体库的账号；否则选择显式可访问媒体库最多的管理员。
+
+        :param user_name: 优先匹配的用户名；未匹配到时改选管理员
+        :return: 选中的用户标识；无可用用户或请求失败时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -263,7 +296,6 @@ class Jellyfin:
                         "将回退选择可用的超级管理员账号！"
                     )
                 # 查询管理员，优先选择同时具备全库访问能力的账号，再回退到普通管理员。
-                # 获取总媒体库数量
                 total_library_count = len(self.get_jellyfin_folders())
                 best_admin_id = None
                 best_admin_name = None
@@ -277,7 +309,6 @@ class Jellyfin:
                     else:
                         enabled_folders = policy.get('EnabledFolders') or []
                         current_count = len(enabled_folders)
-                        # 更新最佳管理员
                         if best_admin_id is None or current_count > best_admin_library_count:
                             best_admin_id = user.get("Id")
                             best_admin_name = user.get("Name")
@@ -299,10 +330,11 @@ class Jellyfin:
 
     def authenticate(self, username: str, password: str) -> Optional[str]:
         """
-        用户认证
-        :param username: 用户名
-        :param password: 密码
-        :return: 认证成功返回token，否则返回None
+        向媒体服务器验证指定用户的密码。
+
+        :param username: 待认证的用户名
+        :param password: 待认证的密码
+        :return: 成功时返回访问令牌；配置不完整或认证失败时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -336,7 +368,9 @@ class Jellyfin:
 
     def get_server_id(self) -> Optional[str]:
         """
-        获得服务器信息
+        查询媒体服务器的稳定标识。
+
+        :return: 服务器标识；配置不完整或查询失败时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -356,13 +390,14 @@ class Jellyfin:
 
     def get_medias_count(self) -> _SchemaStatistic:
         """
-        获得电影、电视剧、动漫媒体数量
+        获得电影、电视剧、动漫媒体数量。
 
         优先遍历用户媒体库视图逐库统计：全局 `Items/Counts` 按数据库原始条目
         计数，同一影片在库内有多个版本/多个文件夹拷贝时会重复累计（#5915），
         而用户级 `Users/{user}/Items` 查询会折叠版本，与 Jellyfin 页面显示一致。
         仅在用户视图不可用或没有可识别媒体库时回退到 `Items/Counts`。
-        :return: MovieCount SeriesCount EpisodeCount
+
+        :return: 电影、剧集、单集及音乐数量统计；未配置服务或查询失败时返回空统计
         """
         if not self._host or not self._apikey:
             return _SchemaStatistic()
@@ -393,10 +428,11 @@ class Jellyfin:
 
     def __count_medias_by_librarys(self) -> Optional[_SchemaStatistic]:
         """
-        遍历用户媒体库视图逐库统计媒体数量
+        遍历用户媒体库视图逐库统计媒体数量。
 
         `Users/{user}/Views` 每个媒体库仅返回一条记录（库包含多个文件夹时
         也不会重复），按 `CollectionType` 分桶后用用户级条目查询累计。
+
         :return: 统计结果；用户、媒体库视图不可用或没有可识别媒体库时返回None（由调用方回退）
         """
         if not self.user:
@@ -425,7 +461,7 @@ class Jellyfin:
 
     def __get_jellyfin_series_id_by_name(self, name: str, year: str) -> Optional[str]:
         """
-        根据名称查询Jellyfin中剧集的SeriesId
+        根据名称查询Jellyfin中剧集的SeriesId。
         """
         if not self._host or not self._apikey or not self.user:
             return None
@@ -457,12 +493,15 @@ class Jellyfin:
                    media_source: Optional[MediaSource] = None,
                    media_id: Optional[str] = None) -> Optional[List[_SchemaMediaServerItem]]:
         """
-        根据标题和年份，检查电影是否在Jellyfin中存在，存在则返回列表
-        :param title: 标题
-        :param year: 年份，为空则不过滤
-        :param media_source: 媒体来源
-        :param media_id: 媒体来源原生ID
-        :return: 匹配的电影条目列表，包含合集内的电影
+        搜索电影并核对标题、年份和来源身份。
+
+        只检查服务端搜索返回的前 10 个候选。查询时展开合集成员，避免合集折叠隐藏已有电影。
+
+        :param title: 必须精确匹配的电影标题
+        :param year: 可选年份，空值表示不限年份
+        :param media_source: 可选媒体来源，用于排除来源身份冲突
+        :param media_id: 来源内的媒体标识，与 media_source 配合使用
+        :return: 匹配的统一电影条目；候选均被过滤时可能为空列表，服务端无候选或查询失败时返回 None
         """
         if not self._host or not self._apikey or not self.user:
             return None
@@ -505,7 +544,16 @@ class Jellyfin:
         self, title: Optional[str] = None, artist: Optional[str] = None,
         album: Optional[str] = None,
     ) -> List[_SchemaMediaServerItem]:
-        """按歌曲、艺术家或专辑名称查询 Jellyfin 音乐条目。"""
+        """
+        按歌曲、艺术家和专辑关键词搜索音乐候选。
+
+        此方法负责候选搜索与统一模型转换，不执行歌曲或专辑名称的精确匹配。
+
+        :param title: 可选歌曲标题
+        :param artist: 可选艺术家名称
+        :param album: 可选专辑名称
+        :return: 最多 20 个专辑或歌曲候选；查询词为空、配置不完整或请求失败时返回空列表
+        """
         if not self._host or not self._apikey or not self.user:
             return []
         query = " ".join(filter(None, [title, artist, album])).strip()
@@ -537,19 +585,22 @@ class Jellyfin:
                         media_id: Optional[str] = None,
                         season: Optional[int] = None) -> Tuple[Optional[str], Optional[Dict[int, list]]]:
         """
-        根据标题和年份和季，返回Jellyfin中的剧集列表
-        :param item_id: Jellyfin中的Id
-        :param title: 标题
-        :param year: 年份
-        :param media_source: 媒体来源
-        :param media_id: 媒体来源原生ID
-        :param season: 季
-        :return: 集号的列表
+        查询电视剧身份及各季已经存在的集号。
+
+        已有缓存标识失效时按标题及年份重新查找；仅统计服务端实际存在且具有季号、集号的条目。
+
+        :param item_id: Jellyfin 条目标识
+        :param title: 缺少条目标识或缓存标识失效时用于回退搜索的剧名
+        :param year: 回退搜索时限定的年份，空值表示不限
+        :param media_source: 可选媒体来源，用于排除身份冲突
+        :param media_id: 对应来源的媒体标识
+        :param season: 目标季号；None 表示查询全部季
+        :return: 电视剧条目标识与“季号到集号列表”映射；配置缺失或异常返回两项 None，
+            未找到、身份不兼容或响应无可用数据时返回 None 和空映射
         """
         if not self._host or not self._apikey or not self.user:
             return None, None
         cached_item_id = item_id
-        # 查TVID
         if not item_id:
             item_id = self.__get_jellyfin_series_id_by_name(title, year)
             if item_id is None:
@@ -585,7 +636,6 @@ class Jellyfin:
             if res_json:
                 tv_info = res_json.json()
                 res_items = tv_info.get("Items")
-                # 返回的季集信息
                 season_episodes = {}
                 for res_item in res_items:
                     season_index = res_item.get("ParentIndexNumber")
@@ -607,10 +657,11 @@ class Jellyfin:
 
     def get_season_episode_ids(self, item_id: str, season: int) -> Dict[int, str]:
         """
-        获取指定季的集号到媒体服务器条目 ID 映射
-        :param item_id: 剧集在 Jellyfin 中的 ID
-        :param season: 季号
-        :return: {集号: episode_item_id}
+        读取指定季的分集条目标识。
+
+        :param item_id: Jellyfin 条目标识
+        :param season: 目标季号
+        :return: 集号到条目标识的映射；输入不完整、无分集或查询失败时返回空映射
         """
         if not item_id or not self._host or not self._apikey or not self.user:
             return {}
@@ -639,10 +690,13 @@ class Jellyfin:
 
     def get_remote_image_by_id(self, item_id: str, image_type: str) -> Optional[str]:
         """
-        根据ItemId从Jellyfin查询TMDB图片地址
-        :param item_id: 在Jellyfin中的ID
-        :param image_type: 图片的类弄地，poster或者backdrop等
-        :return: 图片对应在TMDB中的URL
+        优先查询指定类型的 TMDB 图片，必要时回退媒体服务器图片。
+
+        没有匹配图片时尝试外网媒体服务器地址。远程图片查询异常时仍尝试本地图片回退。
+
+        :param item_id: Jellyfin 条目标识
+        :param image_type: 服务端图片类型，如 Primary 或 Backdrop，需与响应中的 Type 一致
+        :return: 匹配的图片 URL；回退失败时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -665,9 +719,10 @@ class Jellyfin:
 
     def get_item_path_by_id(self, item_id: str) -> Optional[str]:
         """
-        根据ItemId查询所在的Path
-        :param item_id: 在Jellyfin中的ID
-        :return: Path
+        从条目的播放信息读取首个媒体源路径。
+
+        :param item_id: Jellyfin 条目标识
+        :return: 媒体路径；无媒体源、配置不完整或查询失败时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -688,7 +743,8 @@ class Jellyfin:
         return None
 
     def _get_webhook_item_path(self, message: dict[str, Any]) -> Optional[str]:
-        """优先读取负载路径；删除事件仅使用已知路径，不反查已删除条目。
+        """
+        优先读取负载路径；删除事件仅使用已知路径，不反查已删除条目。
 
         入库及播放等非删除事件刷新缓存，删除时消费对应条目缓存。
         缓存仅在进程内有效；重启、过期或未观察过的条目可能仍无路径。
@@ -712,16 +768,19 @@ class Jellyfin:
 
     def generate_image_link(self, item_id: str, image_type: str, host_type: bool) -> Optional[str]:
         """
-        根据ItemId和imageType查询本地对应图片
-        :param item_id: 在Jellyfin中的ID
-        :param image_type: 图片类型，如Backdrop、Primary
-        :param host_type: True为外网链接, False为内网链接
-        :return: 图片对应在host_type的播放器中的URL
+        探测条目或父剧集的本地图片 URL。
+
+        即使选择内网地址，也要求已经配置外网播放地址。
+        若祖先记录提供 ParentBackdropItemId，则改用父条目的图片。
+
+        :param item_id: Jellyfin 条目标识
+        :param image_type: 服务端图片类型，如 Backdrop 或 Primary
+        :param host_type: True 使用外网播放地址，False 使用内部服务地址
+        :return: 图片响应的最终 URL；缺少所需地址或请求失败时返回 None
         """
         if not self._playhost:
             logger.error("Jellyfin外网播放地址未能获取或为空")
             return None
-        # 检测是否为TV
         _parent_id = self.get_itemId_ancestors(item_id, 0, "ParentBackdropItemId")
         if _parent_id:
             item_id = _parent_id
@@ -744,11 +803,12 @@ class Jellyfin:
 
     def get_itemId_ancestors(self, item_id: str, index: int, key: str) -> Optional[Union[str, list, int, dict, bool]]:
         """
-        获得itemId的父item
-        :param item_id: 在Jellyfin中剧集的ID (S01E02的E02的item_id)
-        :param index: 第几个json对象
-        :param key: 需要得到父item中的键值对
-        :return key对应类型的值
+        读取指定祖先记录中的字段。
+
+        :param item_id: Jellyfin 条目标识
+        :param index: 服务端祖先列表中的索引
+        :param key: 需要读取的祖先字段名称
+        :return: 字段原始值；记录不存在、索引无效或请求失败时返回 None
         """
         url = f"{self._host}Items/{item_id}/Ancestors"
         params = {
@@ -767,7 +827,9 @@ class Jellyfin:
 
     def refresh_root_library(self) -> Optional[bool]:
         """
-        通知Jellyfin刷新整个媒体库
+        请求 Jellyfin 刷新整个媒体库。
+
+        :return: 请求被接受时返回 True；配置缺失或请求异常时返回 False，无有效响应时返回 None；不等待扫描完成
         """
         if not self._host or not self._apikey:
             return False
@@ -787,66 +849,13 @@ class Jellyfin:
 
     def get_webhook_message(self, body: Any) -> Optional[_SchemaWebhookEventInfo]:
         """
-        解析Jellyfin报文
-        {
-          "ServerId": "d79d3a6261614419a114595a585xxxxx",
-          "ServerName": "nyanmisaka-jellyfin1",
-          "ServerVersion": "10.8.10",
-          "ServerUrl": "http://xxxxxxxx:8098",
-          "NotificationType": "PlaybackStart",
-          "Timestamp": "2023-09-10T08:35:25.3996506+00:00",
-          "UtcTimestamp": "2023-09-10T08:35:25.3996527Z",
-          "Name": "慕灼华逃婚离开",
-          "Overview": "慕灼华假装在读书，她害怕大娘子说她不务正业。",
-          "Tagline": "",
-          "ItemId": "4b92551344f53b560fb55cd6700xxxxx",
-          "ItemType": "Episode",
-          "RunTimeTicks": 27074985984,
-          "RunTime": "00:45:07",
-          "Year": 2023,
-          "SeriesName": "灼灼风流",
-          "SeasonNumber": 1,
-          "SeasonNumber00": "01",
-          "SeasonNumber000": "001",
-          "EpisodeNumber": 1,
-          "EpisodeNumber00": "01",
-          "EpisodeNumber000": "001",
-          "Provider_tmdb": "229210",
-          "Video_0_Title": "4K HEVC SDR",
-          "Video_0_Type": "Video",
-          "Video_0_Codec": "hevc",
-          "Video_0_Profile": "Main",
-          "Video_0_Level": 150,
-          "Video_0_Height": 2160,
-          "Video_0_Width": 3840,
-          "Video_0_AspectRatio": "16:9",
-          "Video_0_Interlaced": false,
-          "Video_0_FrameRate": 25,
-          "Video_0_VideoRange": "SDR",
-          "Video_0_ColorSpace": "bt709",
-          "Video_0_ColorTransfer": "bt709",
-          "Video_0_ColorPrimaries": "bt709",
-          "Video_0_PixelFormat": "yuv420p",
-          "Video_0_RefFrames": 1,
-          "Audio_0_Title": "AAC - Stereo - Default",
-          "Audio_0_Type": "Audio",
-          "Audio_0_Language": "und",
-          "Audio_0_Codec": "aac",
-          "Audio_0_Channels": 2,
-          "Audio_0_Bitrate": 125360,
-          "Audio_0_SampleRate": 48000,
-          "Audio_0_Default": true,
-          "PlaybackPositionTicks": 1000000,
-          "PlaybackPosition": "00:00:00",
-          "MediaSourceId": "4b92551344f53b560fb55cd6700ebc86",
-          "IsPaused": false,
-          "IsAutomated": false,
-          "DeviceId": "TW96aWxsxxxxxjA",
-          "DeviceName": "Edge Chromium",
-          "ClientName": "Jellyfin Web",
-          "NotificationUsername": "Jeaven",
-          "UserId": "9783d2432b0d40a8a716b6aa46xxxxx"
-        }
+        解析 Jellyfin Webhook，并补全统一事件和媒体路径。
+
+        播放和入库事件可补查媒体路径并缓存。删除事件只读取负载或既有缓存，
+        不反查已删除条目，也不请求其图片。
+
+        :param body: 包含 NotificationType 等字段的 JSON 请求体
+        :return: 统一 Webhook 事件；请求体为空、JSON 无法解析或缺少事件类型时返回 None
         """
         if not body:
             return None
@@ -881,7 +890,6 @@ class Jellyfin:
         if message.get("ItemType") == "Episode" \
                 or message.get("ItemType") == "Series" \
                 or message.get("ItemType") == "Season":
-            # 剧集
             eventItem.item_type = "TV"
             eventItem.season_id = message.get('SeasonNumber')
             eventItem.episode_id = message.get('EpisodeNumber')
@@ -891,13 +899,11 @@ class Jellyfin:
                 "E" + str(eventItem.episode_id),
                 message.get('Name'))
         elif message.get("ItemType") == 'Audio':
-            # 音乐
             eventItem.item_type = "AUD"
             eventItem.item_name = message.get('Album')
             eventItem.overview = message.get('Name')
             eventItem.item_id = message.get('ItemId')
         else:
-            # 电影
             eventItem.item_type = "MOV"
             eventItem.item_name = "%s %s" % (
                 message.get('Name'), "(" + str(message.get('Year')) + ")")
@@ -907,9 +913,7 @@ class Jellyfin:
         if playback_position_ticks is not None and runtime_ticks:
             eventItem.percentage = playback_position_ticks / runtime_ticks * 100
 
-        # 获取消息图片
         if eventItem.item_id and eventType != "ItemDeleted":
-            # 根据返回的item_id去调用媒体服务器获取
             eventItem.image_url = self.get_remote_image_by_id(
                 item_id=eventItem.item_id,
                 image_type="Backdrop"
@@ -922,12 +926,17 @@ class Jellyfin:
 
     @staticmethod
     def __format_item_info(item) -> Optional[_SchemaMediaServerItem]:
-        """通过统一 Emby 系转换契约生成 Jellyfin 条目。"""
+        """
+        通过统一 Emby 系转换契约生成 Jellyfin 条目。
+        """
         return format_emby_family_item(item, server="jellyfin")
 
     def get_iteminfo(self, itemid: str) -> Optional[_SchemaMediaServerItem]:
         """
-        获取单个项目详情
+        查询单个条目并转换为统一媒体模型。
+
+        :param itemid: Jellyfin 条目标识
+        :return: 条目详情；标识为空、配置不完整、查询失败或类型无法转换时返回 None
         """
         if not itemid:
             return None
@@ -948,11 +957,11 @@ class Jellyfin:
     def get_items_count(self, parent: Union[str, int],
                         include_item_types: str = "Movie,Series") -> Optional[int]:
         """
-        获取指定媒体库可同步的媒体条目总数，合集内条目按媒体本身计数
+        递归统计指定媒体库内的可同步条目。
 
-        :param parent: 媒体库ID
-        :param include_item_types: 统计的条目类型，默认电影和剧集
-        :return: 媒体条目总数，查询失败时返回None
+        :param parent: 媒体库标识
+        :param include_item_types: 逗号分隔的服务端条目类型，默认 Movie,Series
+        :return: 条目总数；输入或配置不完整、响应缺少计数或查询失败时返回 None
         """
         if not parent or not self._host or not self._apikey or not self.user:
             return None
@@ -978,17 +987,17 @@ class Jellyfin:
     def get_items(self, parent: Union[str, int], start_index: Optional[int] = 0, limit: Optional[int] = -1) \
             -> Generator[MediaServerItem | None | Any, Any, None]:
         """
-        获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
+        读取媒体库条目并递归展开目录。
 
-        Folder 和 BoxSet 均递归读取成员，合集容器本身不作为媒体返回。
+        读取失败时向上抛出异常，防止同步调用方将失败误判为媒体库清空。
+        Folder 和 BoxSet 都展开为成员，容器本身不作为媒体返回。
 
-        :param parent: 媒体库ID，用于标识要获取的媒体库
-        :param start_index: 起始索引，用于分页获取数据。默认为 0，即从第一个项目开始获取
-        :param limit: 每次请求的最大项目数，用于分页。如果为 None 或 -1，则表示一次性获取所有数据，默认为 -1
-
-        :return: 返回一个生成器对象，用于逐步获取媒体服务器中的项目
-
-        读取失败时抛出异常中止同步，避免空结果被当作媒体库已清空而删除旧缓存。
+        :param parent: 媒体库标识，不接受空值
+        :param start_index: 分页起始索引；不限制数量时不发送此参数
+        :param limit: 本层请求数量；None 或 -1 不限制，递归子目录始终不分页
+        :yields: 转换后的统一媒体条目
+        :raises ValueError: 媒体库标识为空
+        :raises ConnectionError: 配置不完整或读取媒体库失败
         """
         if not parent:
             raise ValueError("Jellyfin 媒体库 ID 不能为空")
@@ -1028,8 +1037,10 @@ class Jellyfin:
 
     def get_data(self, url: str) -> Optional[Response]:
         """
-        自定义URL从媒体服务器获取数据，其中[HOST]、[APIKEY]、[USER]会被替换成实际的值
-        :param url: 请求地址
+        替换服务配置占位符后发送自定义 GET 请求。
+
+        :param url: 请求 URL，其中 [HOST]、[APIKEY]、[USER] 替换为当前服务配置
+        :return: 原始 HTTP 响应，由调用方读取和关闭；配置不完整或请求异常时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -1044,10 +1055,12 @@ class Jellyfin:
 
     def post_data(self, url: str, data: Optional[str] = None, headers: dict = None) -> Optional[Response]:
         """
-        自定义URL从媒体服务器获取数据，其中[HOST]、[APIKEY]、[USER]会被替换成实际的值
-        :param url: 请求地址
-        :param data: 请求数据
-        :param headers: 请求头
+        替换服务配置占位符后发送自定义 POST 请求。
+
+        :param url: 请求 URL，其中 [HOST]、[APIKEY]、[USER] 替换为当前服务配置
+        :param data: 发送的请求数据，原样传给请求工具
+        :param headers: 可选请求头
+        :return: 原始 HTTP 响应，由调用方读取和关闭；配置不完整或请求异常时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -1064,18 +1077,20 @@ class Jellyfin:
 
     def get_play_url(self, item_id: str) -> str:
         """
-        拼装媒体播放链接
-        :param item_id: 媒体的的ID
+        构造媒体服务器网页中的条目播放链接。
+
+        :param item_id: Jellyfin 条目标识
+        :return: 优先使用外网播放地址的网页链接；只构造链接，不验证条目存在
         """
         return f"{self._playhost or self._host}web/index.html#!" \
             f"/details?id={item_id}&serverId={self.serverid}"
 
     def __get_local_image_by_id(self, item_id: str) -> str:
         """
-        根据ItemId从媒体服务器查询有声书图片地址
-        :param: item_id: 在Jellyfin中的ID
-        :param: remote 是否远程使用，TG微信等客户端调用应为True
-        :param: inner 是否NT内部调用，为True是会使用NT中转
+        构造服务内网的主封面图片地址。
+
+        :param item_id: Jellyfin 条目标识
+        :return: 主封面地址；服务配置不完整时返回空字符串
         """
         if not self._host or not self._apikey:
             return ""
@@ -1083,10 +1098,12 @@ class Jellyfin:
 
     def get_backdrop_url(self, item_id: str, image_tag: str, remote: Optional[bool] = False) -> str:
         """
-        获取Backdrop图片地址
-        :param: item_id: 在Jellyfin中的ID
-        :param: image_tag: 图片的tag
-        :param: remote 是否远程使用，TG微信等客户端调用应为True
+        构造带 API 密钥和版本标签的背景图片地址。
+
+        :param item_id: Jellyfin 条目标识
+        :param image_tag: 图片版本标签，用于区分封面更新前后的缓存
+        :param remote: 是否优先使用外网播放地址；False 使用服务地址
+        :return: 图片 URL；配置、条目标识或图片标签缺失时返回空字符串
         """
         if not self._host or not self._apikey:
             return ""
@@ -1101,7 +1118,11 @@ class Jellyfin:
 
     def get_resume(self, num: Optional[int] = 12, username: Optional[str] = None) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
-        获得继续观看
+        查询用户的继续观看列表并按可同步媒体库路径筛选。
+
+        :param num: 最多保留的条目数量，默认 12
+        :param username: 用于限定可见内容的用户名，省略时使用当前实例的查询用户
+        :return: 电影或电视剧播放条目列表；配置不完整、用户不可用或请求失败时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -1171,7 +1192,11 @@ class Jellyfin:
 
     def get_latest(self, num=20, username: Optional[str] = None) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
-        获得最近更新
+        查询用户最近入库的媒体条目。
+
+        :param num: 最多保留的条目数量，默认 20；先查询 100 条再按库路径筛选
+        :param username: 用于限定可见内容的用户名，省略时使用当前实例的查询用户
+        :return: 转换后的最新媒体列表；配置不完整、用户不可用或请求失败时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -1226,7 +1251,9 @@ class Jellyfin:
 
     def get_user_library_folders(self):
         """
-        获取Jellyfin媒体库文件夹列表（排除黑名单）
+        收集允许同步的媒体库目录路径。
+
+        :return: 按同步库配置过滤后的路径列表；没有可用媒体库时返回空列表
         """
         if not self._host or not self._apikey:
             return []

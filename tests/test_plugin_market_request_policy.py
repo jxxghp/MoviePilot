@@ -1,4 +1,6 @@
-"""插件市场同步与异步 GitHub 请求降级策略测试。"""
+"""
+插件市场同步与异步 GitHub 请求降级策略测试。
+"""
 
 from types import SimpleNamespace
 
@@ -12,7 +14,9 @@ from app.adapters.external.plugin.client import PluginMarketTransport
 async def test_sync_and_async_github_requests_share_fallback_policy(
     monkeypatch,
 ) -> None:
-    """同步与异步请求必须使用相同镜像和单一出口顺序及参数。"""
+    """
+    同步与异步请求必须使用相同镜像和单一出口顺序及参数。
+    """
     proxy = {"all": "http://proxy.example:7890"}
     runtime_settings = SimpleNamespace(
         GITHUB_PROXY="https://mirror.example",
@@ -29,13 +33,17 @@ async def test_sync_and_async_github_requests_share_fallback_policy(
     response = object()
 
     class SyncRequest:
-        """记录同步请求，并让镜像策略失败以验证代理接管。"""
+        """
+        记录同步请求，并让镜像策略失败以验证代理接管。
+        """
 
         def __init__(self, **kwargs) -> None:
             self._kwargs = kwargs
 
         def get_res(self, *, url: str, raise_exception: bool):
-            """记录请求目标，第二次返回固定响应。"""
+            """
+            记录请求目标，第二次返回固定响应。
+            """
             assert raise_exception is True
             sync_requests.append((self._kwargs, url))
             if len(sync_requests) < 2:
@@ -43,13 +51,17 @@ async def test_sync_and_async_github_requests_share_fallback_policy(
             return response
 
     class AsyncRequest:
-        """记录异步请求，并采用与同步客户端相同的结果序列。"""
+        """
+        记录异步请求，并采用与同步客户端相同的结果序列。
+        """
 
         def __init__(self, **kwargs) -> None:
             self._kwargs = kwargs
 
         async def get_res(self, *, url: str, raise_exception: bool):
-            """记录请求目标，第二次返回固定响应。"""
+            """
+            记录请求目标，第二次返回固定响应。
+            """
             assert raise_exception is True
             async_requests.append((self._kwargs, url))
             if len(async_requests) < 2:
@@ -84,7 +96,9 @@ async def test_sync_and_async_github_requests_share_fallback_policy(
 
 
 def test_github_api_request_policy_skips_content_mirror(monkeypatch) -> None:
-    """GitHub API 请求必须跳过只用于 raw 内容的镜像站。"""
+    """
+    GitHub API 请求必须跳过只用于 raw 内容的镜像站。
+    """
     runtime_settings = SimpleNamespace(
         GITHUB_PROXY="https://mirror.example",
         PROXY_HOST=None,

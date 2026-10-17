@@ -1,3 +1,7 @@
+"""
+诊断本机配置、进程、日志和数据完整性，并按显式选项执行安全修复或深度探测。
+"""
+
 from __future__ import annotations
 
 import importlib.util
@@ -90,7 +94,11 @@ def _frontend_stdio_log_file() -> Path:
 
 class DoctorRunnerProtocol:
     """
-    诊断检查使用的 Runner 最小协议，避免检查项反向依赖具体实现细节。
+    诊断检查使用的运行器接口，避免检查项依赖具体运行器实现。
+
+    :ivar fix: 是否允许执行检查项明确支持的安全修复
+    :ivar deep: 是否允许执行深度检查，例如连接配置的数据库端口
+    :ivar report: 当前收集诊断发现的报告
     """
 
     fix: bool
@@ -131,7 +139,9 @@ class DoctorRunnerProtocol:
 
 def default_checks() -> list[CheckFunc]:
     """
-    返回默认离线诊断检查项列表。
+    返回按运行路径、配置、进程、依赖、数据及日志顺序排列的默认检查项。
+
+    :return: 检查函数列表；每个函数接收运行器并向其报告追加发现
     """
     return [
         _check_runtime_paths,
@@ -148,6 +158,9 @@ def default_checks() -> list[CheckFunc]:
 
 
 def _mask_text(text: str) -> str:
+    """
+    遮盖日志中的令牌、密码和 Cookie 等凭据，避免诊断报告泄露原文。
+    """
     masked = text
     for pattern in SENSITIVE_PATTERNS:
         if pattern.groups >= 2:
@@ -158,7 +171,9 @@ def _mask_text(text: str) -> str:
 
 
 def _check_process_topology(runner: DoctorRunnerProtocol) -> None:
-    """诊断 API worker 配置是否会复制全功能控制面。"""
+    """
+    诊断 API worker 配置是否会复制全功能控制面。
+    """
     issue = process_topology_issue(
         workers=get_runtime_setting('API_WORKERS'),
         safe_mode=get_runtime_setting('MOVIEPILOT_SAFE_MODE'),
@@ -201,6 +216,9 @@ def _check_process_topology(runner: DoctorRunnerProtocol) -> None:
 
 
 def _read_json(path: Path) -> Optional[dict[str, Any]]:
+    """
+    读取运行时 JSON 对象；文件缺失、无法读取、内容损坏或根值不是对象时返回 None。
+    """
     if not path.exists():
         return None
     try:
@@ -211,6 +229,11 @@ def _read_json(path: Path) -> Optional[dict[str, Any]]:
 
 
 def _runtime_process(runtime: Optional[dict[str, Any]]) -> Optional[psutil.Process]:
+    """
+    按进程号和创建时间核对运行时记录，防止复用的进程号被误认。
+
+    创建时间允许两秒偏差；记录不完整、进程终止或无权限查询时返回 None。
+    """
     runtime = runtime or {}
     pid = runtime.get("pid")
     create_time = runtime.get("create_time")
@@ -228,6 +251,9 @@ def _runtime_process(runtime: Optional[dict[str, Any]]) -> Optional[psutil.Proce
 
 
 def _process_description(process: psutil.Process) -> str:
+    """
+    生成包含进程号、名称及前四段命令行的描述；无权限读取的部分使用占位值。
+    """
     try:
         name = process.name()
     except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
@@ -241,6 +267,9 @@ def _process_description(process: psutil.Process) -> str:
 
 
 def _process_name_and_command(process: psutil.Process) -> tuple[str, str]:
+    """
+    读取小写进程名与完整命令行；进程消失或无权限读取的部分返回空字符串。
+    """
     try:
         name = process.name().lower()
     except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
@@ -253,6 +282,9 @@ def _process_name_and_command(process: psutil.Process) -> tuple[str, str]:
 
 
 def _is_expected_port_process(name: str, process: psutil.Process) -> bool:
+    """
+    通过命令行和进程名判断端口占用者是否符合前端或后端的启动特征。
+    """
     process_name, command = _process_name_and_command(process)
     if name == "backend":
         return "app/main.py" in command or "-m app.main" in command or "uvicorn" in command
@@ -266,6 +298,9 @@ def _is_expected_port_process(name: str, process: psutil.Process) -> bool:
 
 
 def _port_occupants(port: int) -> list[psutil.Process]:
+    """
+    列出监听指定网络端口的进程并按进程号去重；无权限枚举时返回空列表。
+    """
     occupants: dict[int, psutil.Process] = {}
     try:
         connections = psutil.net_connections(kind="inet")
@@ -287,11 +322,22 @@ def _port_occupants(port: int) -> list[psutil.Process]:
 
 
 def _client_host(host: Optional[str]) -> str:
+    """
+    把本机通配监听地址转换为 IPv4 回环地址，其他主机名保持去空白后的值。
+    """
     host = (host or "").strip()
     return "127.0.0.1" if host in LOCAL_HOSTS else host
 
 
 def _can_connect(host: str, port: int, timeout: float = 1.0) -> tuple[bool, str]:
+    """
+    尝试建立并立即关闭 TCP 连接，返回连通结果与失败原因。
+
+    :param host: 配置的主机名，本机通配地址按回环地址连接
+    :param port: 目标端口
+    :param timeout: 建立连接的超时秒数
+    :return: 是否连通及错误文本；成功时错误文本为空
+    """
     try:
         with socket.create_connection((_client_host(host), int(port)), timeout=timeout):
             return True, ""
@@ -336,6 +382,11 @@ def _backend_health_payload(port: int, timeout: float = BACKEND_HEALTH_TIMEOUT) 
 
 
 def _tail_lines(path: Path, max_lines: int = 120, max_bytes: int = 256 * 1024) -> list[str]:
+    """
+    在字节数和行数限制内读取日志尾部，并遮盖敏感信息。
+
+    文件无法读取时返回空列表；解码遇到非法字节时使用替代字符。
+    """
     try:
         size = path.stat().st_size
         with path.open("rb") as file_obj:
@@ -348,7 +399,9 @@ def _tail_lines(path: Path, max_lines: int = 120, max_bytes: int = 256 * 1024) -
 
 
 def _parse_log_timestamp(line: str) -> Optional[datetime]:
-    """解析日志行中的时间戳。"""
+    """
+    从日志行前 96 个字符提取秒级时间；未匹配或日期无效时返回 None。
+    """
     match = LOG_TIMESTAMP_PATTERN.search(line[:96])
     if not match:
         return None
@@ -362,7 +415,15 @@ def _recent_log_lines(
     lines: list[str],
     now: Optional[datetime] = None,
 ) -> list[str]:
-    """按日志记录边界保留诊断时间窗内的日志。"""
+    """
+    按日志记录边界保留诊断时间窗内的日志。
+
+    没有可识别时间戳时保留原始输入；有时间戳时，续行跟随上一条记录决定是否保留。
+
+    :param lines: 按原始顺序读取的日志行
+    :param now: 计算时间窗的当前时间；省略时使用本机当前时间
+    :return: 最近 24 小时记录及其续行，或无法识别时间时的完整输入
+    """
     if not lines:
         return []
     timestamps = [_parse_log_timestamp(line) for line in lines]
@@ -381,7 +442,9 @@ def _recent_log_lines(
 
 
 def _error_fingerprint(line: str) -> str:
-    """生成跨主日志、控制台镜像和插件独立日志可比较的错误指纹。"""
+    """
+    生成跨主日志、控制台镜像和插件独立日志可比较的错误指纹。
+    """
     normalized = LOG_TIMESTAMP_PATTERN.sub("<time>", line.strip())
     if " - " in normalized:
         normalized = normalized.rsplit(" - ", 1)[-1]
@@ -398,7 +461,9 @@ def _aggregate_log_entries(
     entries: list[tuple[Path, str]],
     max_matches: int = 12,
 ) -> tuple[list[str], list[str]]:
-    """合并跨日志的重复错误，并返回详情行和来源文件。"""
+    """
+    合并跨日志的重复错误，并返回详情行和来源文件。
+    """
     unique_entries: dict[str, dict[str, Any]] = {}
     log_files: list[str] = []
     for path, line in entries:
@@ -420,7 +485,9 @@ def _aggregate_log_entries(
 
 
 def _find_error_lines(lines: list[str], max_matches: int = 12) -> list[str]:
-    """从近期日志中提取错误关键词命中的行。"""
+    """
+    从近期日志中提取错误关键词命中的行。
+    """
     matches: list[str] = []
     for line in lines:
         if any(pattern.search(line) for pattern in LOG_ERROR_PATTERNS):
@@ -462,6 +529,9 @@ def _partition_error_lines(
 
 
 def _frontend_dir() -> Path:
+    """
+    优先使用程序目录下已存在的 public 目录，否则按绝对或相对配置解析前端路径。
+    """
     root_public = get_runtime_setting('ROOT_PATH') / "public"
     configured = Path(get_runtime_setting('FRONTEND_PATH'))
     if root_public.exists():
@@ -472,6 +542,9 @@ def _frontend_dir() -> Path:
 
 
 def _unlink_if_requested(runner: DoctorRunnerProtocol, path: Path) -> bool:
+    """
+    仅在启用修复时删除指定文件；未启用或删除失败均返回 False。
+    """
     if not runner.fix:
         return False
     try:
@@ -482,6 +555,9 @@ def _unlink_if_requested(runner: DoctorRunnerProtocol, path: Path) -> bool:
 
 
 def _check_runtime_paths(runner: DoctorRunnerProtocol) -> None:
+    """
+    记录当前程序、配置、日志和解释器路径，帮助定位配置目录选择错误。
+    """
     runner.add(
         finding_id="runtime.paths",
         severity=DoctorSeverity.Info,
@@ -502,6 +578,11 @@ def _check_runtime_paths(runner: DoctorRunnerProtocol) -> None:
 
 
 def _check_config(runner: DoctorRunnerProtocol) -> None:
+    """
+    检查令牌、端口和代理配置，仅在允许且没有环境变量覆盖时尝试修复令牌。
+
+    诊断详情不包含令牌原文；代理格式异常作为警告，不阻止其他检查。
+    """
     token = (get_runtime_setting('API_TOKEN') or "").strip()
     if len(token) < 16:
         fixed = False
@@ -572,6 +653,11 @@ def _check_runtime_file(
     path: Path,
     port: int,
 ) -> Optional[psutil.Process]:
+    """
+    核对运行时文件与进程身份，按修复选项清理过期文件并记录结果。
+
+    :return: 与记录匹配且仍在运行的进程；不存在或无法确认时返回 None
+    """
     runtime = _read_json(path)
     process = _runtime_process(runtime)
     if runtime and not process:
@@ -607,6 +693,11 @@ def _check_port(
     port: int,
     managed_process: Optional[psutil.Process],
 ) -> None:
+    """
+    区分受管服务、非命令行托管服务和其他端口占用者，并记录诊断发现。
+
+    无法从进程特征识别后端时，再通过本机健康接口确认，避免误报端口冲突。
+    """
     occupants = _port_occupants(port)
     if not occupants:
         runner.add(
@@ -676,6 +767,9 @@ def _check_port(
 
 
 def _check_processes_and_ports(runner: DoctorRunnerProtocol) -> None:
+    """
+    分别核对前后端运行时记录与监听端口，不启动或终止进程。
+    """
     backend_process = _check_runtime_file(
         runner,
         name="backend",
@@ -693,6 +787,9 @@ def _check_processes_and_ports(runner: DoctorRunnerProtocol) -> None:
 
 
 def _check_dependencies(runner: DoctorRunnerProtocol) -> None:
+    """
+    检查核心 Python 模块是否可被导入系统定位，并报告缺失项。
+    """
     missing = [name for name in CORE_DEPENDENCIES if importlib.util.find_spec(name) is None]
     if missing:
         runner.add(
@@ -716,6 +813,9 @@ def _check_dependencies(runner: DoctorRunnerProtocol) -> None:
 
 
 def _check_sqlite_database(runner: DoctorRunnerProtocol) -> None:
+    """
+    以只读连接执行 SQLite 完整性检查，不创建、修复或删除数据库。
+    """
     db_file = get_runtime_setting('CONFIG_PATH') / "user.db"
     if not db_file.exists():
         runner.add(
@@ -770,6 +870,11 @@ def _check_sqlite_database(runner: DoctorRunnerProtocol) -> None:
 
 
 def _check_postgresql_database(runner: DoctorRunnerProtocol) -> None:
+    """
+    检查 PostgreSQL 必需配置，仅在深度模式下探测 TCP 端口。
+
+    默认不连接数据库；套接字模式或未配置 TCP 端口时跳过探测，不核验账号权限。
+    """
     missing = []
     for key in ("DB_POSTGRESQL_HOST", "DB_POSTGRESQL_DATABASE", "DB_POSTGRESQL_USERNAME"):
         if not str(get_runtime_setting(key, "") or "").strip():
@@ -821,6 +926,9 @@ def _check_postgresql_database(runner: DoctorRunnerProtocol) -> None:
 
 
 def _check_database(runner: DoctorRunnerProtocol) -> None:
+    """
+    按当前数据库类型执行检查，再离线校验受管备份，不进行还原。
+    """
     if get_runtime_setting('DB_TYPE').lower() == "postgresql":
         _check_postgresql_database(runner)
     else:
@@ -829,7 +937,9 @@ def _check_database(runner: DoctorRunnerProtocol) -> None:
 
 
 def _check_database_backups(runner: DoctorRunnerProtocol) -> None:
-    """列举并离线校验与当前数据库类型匹配的受管备份。"""
+    """
+    列举并离线校验与当前数据库类型匹配的受管备份。
+    """
     db_type = "postgresql" if get_runtime_setting('DB_TYPE').lower() == "postgresql" else "sqlite"
     try:
         paths = BackupFiles(get_runtime_setting('DATABASE_BACKUP_PATH')).list()
@@ -937,6 +1047,9 @@ def _check_database_backups(runner: DoctorRunnerProtocol) -> None:
 
 
 def _check_frontend_assets(runner: DoctorRunnerProtocol) -> None:
+    """
+    检查前端版本文件与服务入口或静态首页是否存在，不下载安装资源。
+    """
     frontend_dir = _frontend_dir()
     required = [frontend_dir / "version.txt"]
     service_file = frontend_dir / "service.js"
@@ -975,7 +1088,9 @@ def _check_frontend_assets(runner: DoctorRunnerProtocol) -> None:
 
 
 def _check_logs(runner: DoctorRunnerProtocol) -> None:
-    """扫描近期日志，并区分核心运行异常与插件扩展异常。"""
+    """
+    扫描近期日志，并区分核心运行异常与插件扩展异常。
+    """
     log_files = [
         _backend_app_log_file(),
         _backend_stdio_log_file(),
@@ -1071,6 +1186,9 @@ def _check_logs(runner: DoctorRunnerProtocol) -> None:
 
 
 def _check_docker(runner: DoctorRunnerProtocol) -> None:
+    """
+    检查容器配置挂载、解释器及命令行入口是否齐备；非容器环境记录为跳过。
+    """
     if not SystemUtils.is_docker():
         runner.add(
             finding_id="docker.environment",
@@ -1117,6 +1235,9 @@ def _check_docker(runner: DoctorRunnerProtocol) -> None:
 
 
 def _check_safe_mode(runner: DoctorRunnerProtocol) -> None:
+    """
+    报告安全模式是否启用及后台能力的限制，不更改当前启动模式。
+    """
     if get_runtime_setting('MOVIEPILOT_SAFE_MODE'):
         runner.add(
             finding_id="startup.safe_mode",

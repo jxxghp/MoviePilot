@@ -1,4 +1,6 @@
-"""订阅业务活动的事务、隔离、计数与等待语义回归测试。"""
+"""
+订阅业务活动的事务、隔离、计数与等待语义回归测试。
+"""
 
 import asyncio
 from contextlib import contextmanager
@@ -32,12 +34,16 @@ from app.schemas.types import MediaSource
 
 
 def _snapshot(**values) -> SubscriptionSnapshot:
-    """创建拥有独立活动身份的测试订阅。"""
+    """
+    创建拥有独立活动身份的测试订阅。
+    """
     return SubscriptionSnapshot(id=1, name="Example", activity_key=uuid4().hex, resolution="2160p", **values)
 
 
 def _resource(title="Example.S01E09", site=1):
-    """生成含敏感下载地址的候选，验证活动摘要不会泄漏该地址。"""
+    """
+    生成含敏感下载地址的候选，验证活动摘要不会泄漏该地址。
+    """
     return SimpleNamespace(torrent_info=SimpleNamespace(
         title=title, site=site, site_name=f"Site {site}",
         enclosure="https://example.test/download?passkey=private", site_cookie="private",
@@ -45,7 +51,9 @@ def _resource(title="Example.S01E09", site=1):
 
 
 def test_creation_and_activity_rollback_together(db):
-    """未提交的订阅与创建活动必须一起回滚，重复创建不会重复记录。"""
+    """
+    未提交的订阅与创建活动必须一起回滚，重复创建不会重复记录。
+    """
     db.watermark(Subscribe, SubscribeActivity)
     repository = SessionSubscriptionRepository(db.session)
     identity = SubscriptionIdentity(media_source=MediaSource.TMDB, media_id="9916963", type="电视剧", season=1)
@@ -65,7 +73,9 @@ def test_creation_and_activity_rollback_together(db):
 
 
 def test_updates_freeze_rules_and_history_keeps_original_identity(db):
-    """人工修改保存前后值，自动时间更新不刷屏，完成历史关联原订阅。"""
+    """
+    人工修改保存前后值，自动时间更新不刷屏，完成历史关联原订阅。
+    """
     db.watermark(Subscribe, SubscribeHistory, SubscribeActivity)
     subscribe = Subscribe(name="Example", username="owner", media_source="tmdb", media_id="9916964", resolution="1080p")
     db.add(subscribe)
@@ -84,7 +94,9 @@ def test_updates_freeze_rules_and_history_keeps_original_identity(db):
     history_id, event_id = history.id, events[0].event_id
 
     async def verify_history_access():
-        """完成后仍可按历史 owner 读取原始活动和规则快照。"""
+        """
+        完成后仍可按历史 owner 读取原始活动和规则快照。
+        """
         page = await activity_repository.list_accessible(history_id, "owner", False, history=True,
                                                          kind=None, since=None, before=None, limit=30)
         assert page and len(page[0]) == 2
@@ -99,7 +111,9 @@ def test_updates_freeze_rules_and_history_keeps_original_identity(db):
 
 
 def test_round_counts_are_distinct_and_details_do_not_include_credentials():
-    """候选、符合条件和实际提交分别去重，重复筛选不会夸大计数。"""
+    """
+    候选、符合条件和实际提交分别去重，重复筛选不会夸大计数。
+    """
     run = SubscriptionActivityRun(_snapshot(), "search", "manual")
     resource = _resource()
     run.resource(resource, "related")
@@ -120,7 +134,9 @@ def test_round_counts_are_distinct_and_details_do_not_include_credentials():
 
 
 def test_waiting_is_not_failure_and_scope_is_released():
-    """暂时站点冲突保存继续时间，不伪装成失败或完成。"""
+    """
+    暂时站点冲突保存继续时间，不伪装成失败或完成。
+    """
     saved = []
     service = SubscriptionActivityService(SimpleNamespace(save=saved.append))
     with pytest.raises(SubscriptionSearchDeferred):
@@ -135,7 +151,9 @@ def test_waiting_is_not_failure_and_scope_is_released():
 
 
 def test_activity_details_are_limited_without_losing_summary_counts():
-    """大量资源只保留有限摘要，业务总数仍覆盖整轮。"""
+    """
+    大量资源只保留有限摘要，业务总数仍覆盖整轮。
+    """
     run = SubscriptionActivityRun(_snapshot(), "refresh", "automatic")
     for index in range(130):
         run.resource(_resource(f"Example.{index}"), "rejected", "不符合条件")
@@ -145,15 +163,21 @@ def test_activity_details_are_limited_without_losing_summary_counts():
 
 
 def test_search_retries_continue_the_same_event_without_duplicate_counts():
-    """自动恢复关联原搜索，并保留每次处理结果而不重复统计下载。"""
+    """
+    自动恢复关联原搜索，并保留每次处理结果而不重复统计下载。
+    """
     stored = {}
 
     def save(event):
-        """模拟固定事件身份的持久化更新。"""
+        """
+        模拟固定事件身份的持久化更新。
+        """
         stored[event.event_id] = event
 
     def get(activity_key, event_id):
-        """只返回当前订阅拥有的历史轮次。"""
+        """
+        只返回当前订阅拥有的历史轮次。
+        """
         event = stored.get(event_id)
         return event if event is not None and event.activity_key == activity_key else None
 
@@ -176,14 +200,18 @@ def test_search_retries_continue_the_same_event_without_duplicate_counts():
 
 
 def test_activity_query_enforces_owner_history_and_stable_pagination(db):
-    """普通用户不能跨订阅或游标读取，新增事件不会导致翻页重复。"""
+    """
+    普通用户不能跨订阅或游标读取，新增事件不会导致翻页重复。
+    """
     db.watermark(Subscribe, SubscribeHistory, SubscribeActivity)
     subscribe = Subscribe(name="Example", username="owner", media_source="tmdb", media_id="9916966")
     db.add(subscribe)
 
     @contextmanager
     def sync_scope():
-        """测试写入复用已隔离的数据库会话。"""
+        """
+        测试写入复用已隔离的数据库会话。
+        """
         yield db.session
 
     repository = TransactionalSubscriptionActivityRepository(sync_scope, async_session_scope)
@@ -193,7 +221,9 @@ def test_activity_query_enforces_owner_history_and_stable_pagination(db):
         repository.save(SubscriptionActivityRun(snapshot, "search", "manual").snapshot())
 
     async def query():
-        """执行授权与游标边界断言。"""
+        """
+        执行授权与游标边界断言。
+        """
         params = dict(history=False, kind=None, since=None, before=None, limit=2)
         assert await repository.list_accessible(subscribe.id, "other", False, **params) is None
         first, cursor = await repository.list_accessible(subscribe.id, "owner", False, **params)
@@ -208,7 +238,9 @@ def test_activity_query_enforces_owner_history_and_stable_pagination(db):
 
 
 def test_failed_submission_is_distinct_from_empty_and_recovery():
-    """下载器拒绝是真实失败，恢复成功后清除失败计数而不重复关联资源。"""
+    """
+    下载器拒绝是真实失败，恢复成功后清除失败计数而不重复关联资源。
+    """
     saved = []
     service = SubscriptionActivityService(SimpleNamespace(save=saved.append))
     with service.scope(_snapshot(), "refresh", "automatic") as run:
@@ -227,7 +259,9 @@ def test_failed_submission_is_distinct_from_empty_and_recovery():
 
 @pytest.mark.asyncio
 async def test_event_details_cannot_cross_subscription_or_owner(db):
-    """猜中事件 ID 也不能跨 owner、活动整数 ID 或历史整数 ID 读取详情。"""
+    """
+    猜中事件 ID 也不能跨 owner、活动整数 ID 或历史整数 ID 读取详情。
+    """
     db.watermark(Subscribe, SubscribeActivity)
     owned = Subscribe(name="Owned", username="owner")
     other = Subscribe(name="Other", username="other")
@@ -245,7 +279,9 @@ async def test_event_details_cannot_cross_subscription_or_owner(db):
 
 
 def test_all_failed_sites_are_not_reported_as_an_empty_success():
-    """全部站点失败与正常零结果分开，未发出的请求不进入实际请求计数。"""
+    """
+    全部站点失败与正常零结果分开，未发出的请求不进入实际请求计数。
+    """
     saved = []
     service = SubscriptionActivityService(SimpleNamespace(save=saved.append))
     with service.scope(_snapshot(), "search", "automatic") as run:
@@ -261,7 +297,9 @@ def test_all_failed_sites_are_not_reported_as_an_empty_success():
 
 
 def test_queued_rules_are_replaced_by_actual_execution_rules():
-    """入队和执行之间的编辑必须使用真正执行时的条件，原请求时间仍保留。"""
+    """
+    入队和执行之间的编辑必须使用真正执行时的条件，原请求时间仍保留。
+    """
     subscribe = _snapshot()
     queued = queued_activity(replace(subscribe, resolution="1080p"), "task-queued", "new", None)
     saved = []
@@ -274,7 +312,9 @@ def test_queued_rules_are_replaced_by_actual_execution_rules():
 
 
 def test_refresh_failure_is_visible_without_claiming_a_match(monkeypatch):
-    """候选刷新失败会记录业务失败，暂停和其他媒体类型不会被误记为已检查。"""
+    """
+    候选刷新失败会记录业务失败，暂停和其他媒体类型不会被误记为已检查。
+    """
     from app.chain.subscribe.refresh import SubscribeRefreshOwner
 
     saved = []
@@ -290,7 +330,9 @@ def test_refresh_failure_is_visible_without_claiming_a_match(monkeypatch):
     owner.has_music_subscribe = lambda _type: False
 
     def fail_refresh(*_args, **_kwargs):
-        """模拟刷新未完成，未调用外部站点。"""
+        """
+        模拟刷新未完成，未调用外部站点。
+        """
         raise RuntimeError("offline source failed")
 
     monkeypatch.setattr("app.chain.subscribe.refresh.TorrentsChain", lambda: SimpleNamespace(refresh=fail_refresh))
@@ -302,7 +344,9 @@ def test_refresh_failure_is_visible_without_claiming_a_match(monkeypatch):
 
 
 def test_bounded_details_keep_actual_download_receipts():
-    """大量拒绝候选不能挤掉后出现的下载回执，同时完整相关资源计数不丢失。"""
+    """
+    大量拒绝候选不能挤掉后出现的下载回执，同时完整相关资源计数不丢失。
+    """
     run = SubscriptionActivityRun(_snapshot(), "search", "manual")
     for index in range(130):
         run.resource(_resource(f"Rejected.{index}"), "rejected", "不符合条件")
@@ -315,11 +359,15 @@ def test_bounded_details_keep_actual_download_receipts():
 
 
 def test_resumed_site_request_keeps_the_original_planned_denominator():
-    """七站点已请求、一个等待的搜索恢复后变为八比八，不能变为八比一。"""
+    """
+    七站点已请求、一个等待的搜索恢复后变为八比八，不能变为八比一。
+    """
     stored = {}
 
     def save(event):
-        """按固定任务身份持久化当前快照。"""
+        """
+        按固定任务身份持久化当前快照。
+        """
         stored[event.event_id] = event
 
     subscribe = _snapshot()

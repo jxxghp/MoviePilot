@@ -1,3 +1,7 @@
+"""
+验证整理失败通知中的重试按钮与动作参数。
+"""
+
 import asyncio
 from collections.abc import Callable
 from dataclasses import replace
@@ -17,7 +21,9 @@ from app.schemas.types import NotificationChannel
 
 @pytest.fixture
 def replace_main_loop() -> Callable[[object], None]:
-    """临时替换主循环登记，并在用例结束后恢复原值。"""
+    """
+    临时替换主循环登记，并在用例结束后恢复原值。
+    """
     original = main_loop_registry.current
     try:
         yield main_loop_registry.replace_compat
@@ -26,7 +32,9 @@ def replace_main_loop() -> Callable[[object], None]:
 
 
 def test_build_failed_transfer_buttons():
-    """整理失败消息应提供重试、重新生成计划与智能助手接管按钮。"""
+    """
+    整理失败消息应提供重试、重新生成计划与智能助手接管按钮。
+    """
     buttons = TransferChain.build_failed_transfer_buttons(12)
 
     assert buttons == [[
@@ -40,7 +48,9 @@ def test_build_failed_transfer_buttons():
 
 
 def test_remote_transfer_supports_history_only_retry():
-    """远程整理入口应支持只按历史 ID 重试。"""
+    """
+    远程整理入口应支持只按历史 ID 重试。
+    """
     chain = TransferChain()
 
     with patch.object(chain, "redo_transfer_history", return_value=(True, "")) as redo:
@@ -57,7 +67,9 @@ def test_remote_transfer_supports_history_only_retry():
 
 
 def test_message_chain_routes_transfer_callback_to_transfer_chain():
-    """MessageChain 收到整理失败按钮回调时委托 TransferChain 处理。"""
+    """
+    MessageChain 收到整理失败按钮回调时委托 TransferChain 处理。
+    """
     chain = MessageChain()
 
     with patch("app.chain.message.TransferChain") as transfer_cls:
@@ -82,7 +94,9 @@ def test_message_chain_routes_transfer_callback_to_transfer_chain():
 
 
 def test_transfer_retry_callback_retries_history():
-    """重试回调应执行历史重整并发送开始、完成消息。"""
+    """
+    重试回调应执行历史重整并发送开始、完成消息。
+    """
     chain = TransferChain()
 
     with patch.object(chain, "redo_transfer_history", return_value=(True, "")) as redo:
@@ -103,7 +117,9 @@ def test_transfer_retry_callback_retries_history():
 
 
 def test_transfer_ai_retry_callback_schedules_agent_takeover(replace_main_loop):
-    """智能接管回调应向已登记主循环提交受管后台任务。"""
+    """
+    智能接管回调应向已登记主循环提交受管后台任务。
+    """
     chain = TransferChain()
     chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
     history = SimpleNamespace(
@@ -137,15 +153,21 @@ def test_transfer_ai_retry_callback_schedules_agent_takeover(replace_main_loop):
     async_messages = []
 
     def _run_pending_coro(coro, *args, **kwargs):
-        """在测试线程执行协程，避免提交真实后台任务。"""
+        """
+        在测试线程执行协程，避免提交真实后台任务。
+        """
         asyncio.run(coro)
 
     async def _capture_message(message):
-        """记录异步消息以核对接管反馈。"""
+        """
+        记录异步消息以核对接管反馈。
+        """
         async_messages.append(message)
 
     async def _finish_immediately(**kwargs):
-        """立即回调完成结果，避免启动真实 Agent。"""
+        """
+        立即回调完成结果，避免启动真实 Agent。
+        """
         kwargs["output_callback"]("ok")
 
     manager = SimpleNamespace(run_background_prompt=_finish_immediately)
@@ -181,7 +203,9 @@ def test_transfer_ai_retry_callback_schedules_agent_takeover(replace_main_loop):
 
 
 def test_transfer_ai_retry_callback_reports_closed_task_registry(replace_main_loop):
-    """宿主停止接收任务时，不得向用户报告智能助手已接管。"""
+    """
+    宿主停止接收任务时，不得向用户报告智能助手已接管。
+    """
     chain = TransferChain()
     chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
     history = SimpleNamespace(id=34)
@@ -218,7 +242,9 @@ def test_transfer_ai_retry_callback_reports_closed_task_registry(replace_main_lo
 
 
 def test_transfer_ai_retry_callback_reports_unavailable_event_loop(replace_main_loop):
-    """主循环不可用时，应在创建后台协程前返回明确失败提示。"""
+    """
+    主循环不可用时，应在创建后台协程前返回明确失败提示。
+    """
     chain = TransferChain()
     chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
     history = SimpleNamespace(id=34)
@@ -254,7 +280,9 @@ def test_transfer_ai_retry_callback_reports_unavailable_event_loop(replace_main_
 def test_transfer_ai_retry_callback_uses_successful_move_dest_as_source(
         replace_main_loop,
 ):
-    """移动成功历史应以目标文件作为智能接管的重做源路径。"""
+    """
+    移动成功历史应以目标文件作为智能接管的重做源路径。
+    """
     chain = TransferChain()
     chain.runtime_config = replace(chain.runtime_config, ai_agent_enable=True)
     captured = {}
@@ -292,19 +320,25 @@ def test_transfer_ai_retry_callback_uses_successful_move_dest_as_source(
     )
 
     def _run_pending_coro(coro, *args, **kwargs):
-        """同步执行协程并返回调度占位结果。"""
+        """
+        同步执行协程并返回调度占位结果。
+        """
         asyncio.run(coro)
         return SimpleNamespace()
 
     async def fake_run_background_prompt(**kwargs):
-        """记录接管提示并回调模拟完成结果。"""
+        """
+        记录接管提示并回调模拟完成结果。
+        """
         captured["message"] = kwargs["message"]
         output_callback = kwargs.get("output_callback")
         if output_callback:
             output_callback("ok")
 
     async def fake_async_post_message(*args, **kwargs):
-        """隔离通知发送，避免测试访问真实消息渠道。"""
+        """
+        隔离通知发送，避免测试访问真实消息渠道。
+        """
         return None
 
     from app.agent.prompt.transfer import build_manual_redo_prompt

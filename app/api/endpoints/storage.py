@@ -1,3 +1,7 @@
+"""
+提供存储配置及文件系统浏览、查询和操作接口。
+"""
+
 import fnmatch
 import math
 import re
@@ -62,7 +66,9 @@ def directory_settings(
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
 ) -> _SchemaResponse[Any]:
-    """按用途、存储类型和名称筛选目录配置。"""
+    """
+    按用途、存储类型和名称筛选目录配置。
+    """
     helper = DirectoryHelper()
     if directory_type == "download":
         directories = helper.get_download_dirs()
@@ -123,7 +129,9 @@ def storage_options(
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
 ) -> List[_SchemaStorageOption]:
-    """返回不包含连接配置和凭据的存储名称与类型。"""
+    """
+    返回不包含连接配置和凭据的存储名称与类型。
+    """
     return [
         _SchemaStorageOption(name=storage.name or storage.type or "", type=storage.type or "")
         for storage in StorageHelper.get_storagies()
@@ -141,7 +149,9 @@ def storage_catalog(
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
 ) -> List[_SchemaStorageCatalogOption]:
-    """返回所有可新增存储类型及其展示元数据，不包含连接配置和凭据。"""
+    """
+    返回所有可新增存储类型及其展示元数据，不包含连接配置和凭据。
+    """
     return [
         _SchemaStorageCatalogOption(
             type=storage_type,
@@ -193,10 +203,11 @@ def list_files(
 ) -> Any:
     """
     查询当前目录下所有目录和文件
+
     :param fileitem: 文件项
     :param sort: 排序方式，name:按名称排序，time:按修改时间排序
     :param keyword: 通配符过滤，支持 * 和 ?，如 *.mkv、movie?.*
-    :param _: token
+    :param _: 依赖注入的已登录管理身份，仅用于权限校验
     :return: 所有目录和文件
     """
     return _list_files(fileitem=fileitem, sort=sort, keyword=keyword)
@@ -208,7 +219,9 @@ def _list_files(
     sort: Optional[str],
     keyword: Optional[str],
 ) -> List[_SchemaFileItem]:
-    """执行目录查询、通配符过滤和稳定排序，供管理端与 Agent 安全入口复用。"""
+    """
+    执行目录查询、通配符过滤和稳定排序，供管理端与 Agent 安全入口复用。
+    """
     file_list = StorageChain().list_files(fileitem)
     if file_list:
         if keyword:
@@ -235,7 +248,9 @@ def list_agent_files(
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
 ) -> List[_SchemaFileItem]:
-    """保留旧 Agent 普通用户目录读取能力，不开放创建、改名或删除入口。"""
+    """
+    保留旧 Agent 普通用户目录读取能力，不开放创建、改名或删除入口。
+    """
     return _list_files(fileitem=fileitem, sort=sort, keyword=keyword)
 
 
@@ -247,9 +262,10 @@ def mkdir(
 ) -> Any:
     """
     创建目录
+
     :param fileitem: 文件项
     :param name: 目录名称
-    :param _: token
+    :param _: 依赖注入的已登录管理身份，仅用于权限校验
     """
     if not name:
         return _SchemaResponse(success=False)
@@ -263,8 +279,9 @@ def mkdir(
 def delete(fileitem: _SchemaFileItem, _: ApiPrincipal = Depends(get_current_active_manage_user)) -> Any:
     """
     删除文件或目录
+
     :param fileitem: 文件项
-    :param _: token
+    :param _: 依赖注入的已登录管理身份，仅用于权限校验
     """
     result = StorageChain().delete_file(fileitem)
     if result:
@@ -288,8 +305,9 @@ def delete(fileitem: _SchemaFileItem, _: ApiPrincipal = Depends(get_current_acti
 def download(fileitem: _SchemaFileItem, _: ApiPrincipal = Depends(get_current_active_manage_user)) -> Any:
     """
     下载文件或目录
+
     :param fileitem: 文件项
-    :param _: token
+    :param _: 依赖注入的已登录管理身份，仅用于权限校验
     """
     # 临时目录
     tmp_file = StorageChain().download_file(fileitem)
@@ -312,9 +330,10 @@ def download(fileitem: _SchemaFileItem, _: ApiPrincipal = Depends(get_current_ac
 )
 def image(fileitem: _SchemaFileItem, _: ApiPrincipal = Depends(get_current_active_manage_user)) -> Any:
     """
-    下载文件或目录
+    读取存储中的图片并作为 JPEG 响应返回。
+
     :param fileitem: 文件项
-    :param _: token
+    :param _: 依赖注入的已登录管理身份，仅用于权限校验
     """
     # 临时目录
     tmp_file = StorageChain().download_file(fileitem)
@@ -332,10 +351,11 @@ def rename(
 ) -> Any:
     """
     重命名文件或目录
+
     :param fileitem: 文件项
     :param new_name: 新名称
     :param recursive: 是否递归修改
-    :param _: token
+    :param _: 依赖注入的已登录管理身份，仅用于权限校验
     """
     if not new_name:
         return _SchemaResponse(success=False, message="新名称为空")

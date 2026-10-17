@@ -1,3 +1,7 @@
+"""
+验证字幕下载签名、权限和过期校验。
+"""
+
 import asyncio
 import json
 from types import SimpleNamespace
@@ -19,6 +23,9 @@ class _NeverDisconnectedRequest:
     """
 
     async def is_disconnected(self):
+        """
+        模拟客户端仍保持连接，避免字幕流因断开检测提前退出。
+        """
         return False
 
 
@@ -74,7 +81,13 @@ def test_subtitle_title_search_response_signs_enclosure(monkeypatch):
     """
 
     class FakeSearchChain:
+        """
+        提供固定字幕候选，验证响应链接签名而不查询真实来源。
+        """
         async def async_search_subtitles_by_title(self, **_kwargs):
+            """
+            返回固定站点的字幕候选，供服务端签名投影测试使用。
+            """
             return [
                 SubtitleInfo(
                     site=SUBTITLE_SITE_ID,
@@ -141,7 +154,13 @@ def test_subtitle_search_sse_events_sign_enclosures(monkeypatch):
     """
 
     class FakeSearchChain:
+        """
+        提供固定字幕候选，验证响应链接签名而不查询真实来源。
+        """
         def async_search_subtitles_by_title_stream(self, **_kwargs):
+            """
+            依次返回追加、替换和完成事件，验证字幕流各阶段都进行签名投影。
+            """
             async def source():
                 for event_type in ("append", "replace", "done"):
                     yield {
@@ -185,7 +204,13 @@ def test_download_subtitle_rejects_unsigned_enclosure(monkeypatch):
     """
 
     class FakeDownloadChain:
+        """
+        替代字幕下载链，隔离文件下载并记录接口调用。
+        """
         def download_subtitle(self, **_kwargs):
+            """
+            提供可观察的下载成功替身；无效请求应在调用此前被拦截。
+            """
             return True, "不应下载", ["unsafe.srt"]
 
     monkeypatch.setattr(download_endpoint, "DownloadChain", FakeDownloadChain)
@@ -207,7 +232,13 @@ def test_download_subtitle_rejects_other_purpose_signature(monkeypatch):
     """
 
     class FakeDownloadChain:
+        """
+        替代字幕下载链，隔离文件下载并记录接口调用。
+        """
         def download_subtitle(self, **_kwargs):
+            """
+            提供可观察的下载成功替身；未通过签名校验时不应到达该入口。
+            """
             return True, "不应下载", ["unsafe.srt"]
 
     signed_url = SecurityUtils.sign_url(SUBTITLE_URL, purpose="image-proxy")
@@ -232,15 +263,30 @@ def test_download_subtitle_cleans_url_and_uses_server_site_request_fields(monkey
     signed_url = SecurityUtils.sign_url(SUBTITLE_URL, purpose=SUBTITLE_PURPOSE)
 
     class FakeSiteQuery:
+        """
+        提供站点查询结果，验证签名下载的身份和权限边界。
+        """
         def get(self, site_id):
+            """
+            按预期站点标识返回服务端凭据，隔离真实站点配置查询。
+            """
             assert site_id == SUBTITLE_SITE_ID
             return SimpleNamespace(cookie="server-cookie=1", ua="ServerUA", proxy=True)
 
         def get_sync(self, site_id):
+            """
+            复用站点查询替身，供同步凭据读取路径使用。
+            """
             return self.get(site_id)
 
     class FakeDownloadChain:
+        """
+        替代字幕下载链，隔离文件下载并记录接口调用。
+        """
         def download_subtitle(self, **kwargs):
+            """
+            记录字幕下载参数，并返回固定的本地字幕文件路径。
+            """
             captured.update(kwargs)
             return True, "字幕下载成功", ["/downloads/Demo.Movie.2026.zh-cn.srt"]
 

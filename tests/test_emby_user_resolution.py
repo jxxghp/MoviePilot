@@ -1,3 +1,7 @@
+"""
+验证 Emby 指定用户、配置用户与管理员之间的选择优先级。
+"""
+
 from unittest.mock import Mock, patch
 
 from app.modules.emby.emby import Emby
@@ -17,7 +21,9 @@ def _resolve_user(users: list[dict], requested_username: str, configured_usernam
 
 
 def test_get_user_prefers_requested_username():
-    """指定用户名存在时应优先使用该用户。"""
+    """
+    指定用户名存在时应优先使用该用户。
+    """
     result = _resolve_user(
         users=[
             {"Id": "requested-id", "Name": "mp-user", "Policy": {}},
@@ -32,7 +38,9 @@ def test_get_user_prefers_requested_username():
 
 
 def test_get_user_falls_back_to_configured_username():
-    """指定用户名不存在时应回退媒体服务器配置用户。"""
+    """
+    指定用户名不存在时应回退媒体服务器配置用户。
+    """
     result = _resolve_user(
         users=[
             {"Id": "configured-id", "Name": "configured-user", "Policy": {}},
@@ -46,7 +54,9 @@ def test_get_user_falls_back_to_configured_username():
 
 
 def test_get_user_falls_back_to_administrator():
-    """指定用户和配置用户均不存在时应回退管理员。"""
+    """
+    指定用户和配置用户均不存在时应回退管理员。
+    """
     result = _resolve_user(
         users=[
             {"Id": "regular-id", "Name": "regular", "Policy": {}},

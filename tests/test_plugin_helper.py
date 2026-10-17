@@ -1,3 +1,7 @@
+"""
+验证插件市场查询、安装及版本兼容行为。
+"""
+
 import asyncio
 import io
 import os
@@ -30,7 +34,9 @@ REPO_URL = "https://github.com/demo/MoviePilot-Plugins"
 def _package_owner(
     transport, *, plugin_root: Path | None = None
 ) -> PluginPackageManager:
-    """按生产组合方式为安装测试构造系统包 owner。"""
+    """
+    按生产组合方式为安装测试构造系统包 owner。
+    """
     return PluginPackageManager(
         source=PluginPackageSourceClient(transport),
         plugin_root=plugin_root,
@@ -38,7 +44,9 @@ def _package_owner(
 
 
 def _patch_catalog_settings(monkeypatch, **values) -> None:
-    """通过只读端口注入插件目录测试需要的部署配置。"""
+    """
+    通过只读端口注入插件目录测试需要的部署配置。
+    """
     from app.runtime.extensions.plugin import catalog as catalog_module
 
     settings = SimpleNamespace(**values)
@@ -51,7 +59,9 @@ def _patch_catalog_settings(monkeypatch, **values) -> None:
 
 @pytest.fixture(autouse=True)
 def _configure_plugin_catalog_factory(monkeypatch):
-    """为直接构造 PluginManager 的测试注入真实目录用例和假持久化接缝。"""
+    """
+    为直接构造 PluginManager 的测试注入真实目录用例和假持久化接缝。
+    """
     from app.adapters.external.plugin.client import PluginMarketClient
     from app.application.plugin.catalog import PluginCatalogService
     from app.foundation.version import compare_version
@@ -61,7 +71,9 @@ def _configure_plugin_catalog_factory(monkeypatch):
     original_runtime_setting = plugin_client_module.get_runtime_setting
 
     class _SettingsStub(SimpleNamespace):
-        """允许存量用例覆盖尚未显式声明的配置键。"""
+        """
+        允许存量用例覆盖尚未显式声明的配置键。
+        """
 
         def __getattr__(self, _key):
             return None
@@ -88,7 +100,9 @@ def _configure_plugin_catalog_factory(monkeypatch):
     )
 
     def build_catalog(plugin_mapper):
-        """按生产组合方式连接目录服务，但保留测试可替换的依赖。"""
+        """
+        按生产组合方式连接目录服务，但保留测试可替换的依赖。
+        """
         client = PluginMarketClient()
         return PluginCatalogService(
             market_loader=client.get_plugins,
@@ -107,7 +121,9 @@ def _configure_plugin_catalog_factory(monkeypatch):
 
 
 class _FakeResponse:
-    """模拟 requests/httpx 响应对象，覆盖插件 release 安装分支读取的最小协议。"""
+    """
+    模拟 requests/httpx 响应对象，覆盖插件 release 安装分支读取的最小协议。
+    """
 
     def __init__(self, status_code: int, payload: dict | None = None):
         self.status_code = status_code
@@ -116,12 +132,16 @@ class _FakeResponse:
         self.text = self.reason
 
     def json(self):
-        """返回构造时注入的 JSON payload。"""
+        """
+        返回构造时注入的 JSON payload。
+        """
         return self._payload
 
 
 class _FakeContentResponse(_FakeResponse):
-    """带二进制正文的响应对象，用于模拟 GitHub release asset 下载。"""
+    """
+    带二进制正文的响应对象，用于模拟 GitHub release asset 下载。
+    """
 
     def __init__(self, status_code: int, content: bytes):
         super().__init__(status_code)
@@ -129,19 +149,25 @@ class _FakeContentResponse(_FakeResponse):
 
 
 class _FakeTextResponse(_FakeResponse):
-    """带文本正文的响应对象，用于模拟 GitHub release 列表响应。"""
+    """
+    带文本正文的响应对象，用于模拟 GitHub release 列表响应。
+    """
 
     def __init__(self, status_code: int, payload: list[dict] | dict):
         super().__init__(status_code, payload if isinstance(payload, dict) else {})
         self._payload = payload
 
     def json(self):
-        """返回构造时注入的 JSON payload。"""
+        """
+        返回构造时注入的 JSON payload。
+        """
         return self._payload
 
 
 def _build_zip(entries: dict[str, bytes]) -> bytes:
-    """构造内存 zip 包，键为包内路径、值为文件内容。"""
+    """
+    构造内存 zip 包，键为包内路径、值为文件内容。
+    """
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as zf:
         for name, content in entries.items():
@@ -150,7 +176,9 @@ def _build_zip(entries: dict[str, bytes]) -> bytes:
 
 
 def _build_release_zip_member(name: str, *, symlink: bool = False) -> bytes:
-    """构造单成员 release zip，用于覆盖成员路径与文件类型校验。"""
+    """
+    构造单成员 release zip，用于覆盖成员路径与文件类型校验。
+    """
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w") as zf:
         if symlink:
@@ -164,7 +192,9 @@ def _build_release_zip_member(name: str, *, symlink: bool = False) -> bytes:
 
 
 def _create_fake_uv(root: Path) -> Path:
-    """创建仅供命令构造测试定位的 uv 可执行文件。"""
+    """
+    创建仅供命令构造测试定位的 uv 可执行文件。
+    """
     uv_bin = root / "venv" / "bin" / "uv"
     uv_bin.parent.mkdir(parents=True, exist_ok=True)
     uv_bin.write_text("", encoding="utf-8")
@@ -172,7 +202,9 @@ def _create_fake_uv(root: Path) -> Path:
 
 
 def _patch_release_install_settings(monkeypatch, tmp_path: Path) -> None:
-    """隔离 release 安装根目录，并阻止测试误触真实根路径。"""
+    """
+    隔离 release 安装根目录，并阻止测试误触真实根路径。
+    """
     values = SimpleNamespace(
         ROOT_PATH=tmp_path,
         REPO_GITHUB_HEADERS=lambda repo=None: {},
@@ -198,7 +230,9 @@ def _patch_release_install_settings(monkeypatch, tmp_path: Path) -> None:
 def _patch_sync_remote_install(helper, monkeypatch, meta: dict,
                                release_result: tuple[bool, str],
                                filelist_result: tuple[bool, str] = (True, "")):
-    """隔离同步远端插件安装流程，只观察 release 与文件列表准备路径选择。"""
+    """
+    隔离同步远端插件安装流程，只观察 release 与文件列表准备路径选择。
+    """
     calls = []
     monkeypatch.setattr(helper, "get_plugin_package_version", lambda *_args: "v2")
     monkeypatch.setattr(helper, "_PluginPackageManager__get_plugin_meta", lambda *_args: meta)
@@ -228,7 +262,9 @@ def _patch_sync_remote_install(helper, monkeypatch, meta: dict,
 def _patch_async_remote_install(helper, monkeypatch, meta: dict,
                                 release_result: tuple[bool, str],
                                 filelist_result: tuple[bool, str] = (True, "")):
-    """隔离异步远端插件安装流程，只观察 release 与文件列表准备路径选择。"""
+    """
+    隔离异步远端插件安装流程，只观察 release 与文件列表准备路径选择。
+    """
     calls = []
 
     async def fake_package_version(*_args):
@@ -255,7 +291,9 @@ def _patch_async_remote_install(helper, monkeypatch, meta: dict,
         return filelist_result
 
     async def fake_swap(_staging_dir, _final_dir):
-        """内容准备被替身接管，换入同样替身化，避免测试写入真实运行目录。"""
+        """
+        内容准备被替身接管，换入同样替身化，避免测试写入真实运行目录。
+        """
 
     async def fake_to_thread(func, *args, **kwargs):
         calls.append(("to_thread", func, args, kwargs))
@@ -279,7 +317,9 @@ def _patch_async_remote_install(helper, monkeypatch, meta: dict,
 
 
 class TestPluginHelper:
-    """覆盖插件目录、安装流程和依赖运行环境的宿主合同。"""
+    """
+    覆盖插件目录、安装流程和依赖运行环境的宿主合同。
+    """
 
     def test_sanitize_plugin_repo_url_keeps_remote_url(self):
         """
@@ -586,7 +626,9 @@ class TestPluginHelper:
         assert [item["version"] for item in other_releases] == ["2.0.0"]
 
     def test_async_forced_release_refresh_does_not_reuse_normal_read_task(self, monkeypatch):
-        """强刷等待在途普通读取后再请求，最终缓存必须保留强刷结果。"""
+        """
+        强刷等待在途普通读取后再请求，最终缓存必须保留强刷结果。
+        """
         try:
             from app.adapters.external.plugin.client import PluginMarketTransport
             from app.runtime.cache import async_fresh
@@ -646,7 +688,9 @@ class TestPluginHelper:
         assert request_count == 2
 
     def test_async_release_read_follows_host_task_shutdown(self, monkeypatch):
-        """被 shield 的仓库级请求仍须登记 owner，并随宿主关停取消。"""
+        """
+        被 shield 的仓库级请求仍须登记 owner，并随宿主关停取消。
+        """
         try:
             from app.adapters.external.plugin.client import PluginMarketTransport
             from app.runtime.tasks import TaskRegistry
@@ -654,14 +698,18 @@ class TestPluginHelper:
             pytest.skip(f"missing dependency: {exc}")
 
         async def run_test():
-            """阻塞仓库读取后关闭登记器，返回 owner 与取消收敛状态。"""
+            """
+            阻塞仓库读取后关闭登记器，返回 owner 与取消收敛状态。
+            """
             transport = PluginMarketTransport()
             registry = TaskRegistry()
             started = asyncio.Event()
             cancelled = asyncio.Event()
 
             async def fake_request(*_args, **_kwargs):
-                """保持网络读取运行，直到登记器发出取消。"""
+                """
+                保持网络读取运行，直到登记器发出取消。
+                """
                 started.set()
                 try:
                     await asyncio.Event().wait()
@@ -699,7 +747,9 @@ class TestPluginHelper:
         assert release_tasks == {}
 
     def test_async_normal_release_read_does_not_wait_for_pending_force_refresh(self, monkeypatch):
-        """普通读取遇到后台强刷时仍优先返回已有缓存，避免页面响应被强刷阻塞。"""
+        """
+        普通读取遇到后台强刷时仍优先返回已有缓存，避免页面响应被强刷阻塞。
+        """
         try:
             from app.adapters.external.plugin.client import PluginMarketTransport
             from app.runtime.cache import async_fresh
@@ -773,7 +823,9 @@ class TestPluginHelper:
         assert request_count == 2
 
     def test_async_has_plugin_release_cache_reflects_repository_cache(self, monkeypatch):
-        """Release 缓存探针只判断仓库级缓存是否已经存在，不触发网络请求。"""
+        """
+        Release 缓存探针只判断仓库级缓存是否已经存在，不触发网络请求。
+        """
         try:
             from app.adapters.external.plugin.client import PluginMarketTransport
         except ModuleNotFoundError as exc:
@@ -810,7 +862,9 @@ class TestPluginHelper:
         assert request_count == 1
 
     def test_failed_forced_release_refresh_preserves_cached_repository_payload(self, monkeypatch):
-        """GitHub 强刷失败时不以空值覆盖该仓库已有 Release 缓存。"""
+        """
+        GitHub 强刷失败时不以空值覆盖该仓库已有 Release 缓存。
+        """
         try:
             from app.adapters.external.plugin.client import PluginMarketTransport
             from app.runtime.cache import fresh
@@ -1002,7 +1056,9 @@ class TestPluginHelper:
         assert transport.get_plugin_package_version("LegacyPlugin", REPO_URL) is None
 
     def test_explicit_v2_resolution_still_respects_v3_false(self, monkeypatch) -> None:
-        """V3 显式解析 V2 索引时也不得绕过专用副本的排除标志。"""
+        """
+        V3 显式解析 V2 索引时也不得绕过专用副本的排除标志。
+        """
         monkeypatch.setattr(
             plugin_client_module,
             "get_runtime_setting",
@@ -1026,7 +1082,9 @@ class TestPluginHelper:
         ) is None
 
     def test_async_resolution_matches_v2_default_compatibility(self, monkeypatch) -> None:
-        """异步安装解析应默认接纳 V2，并排除显式 v3:false 的旧实现。"""
+        """
+        异步安装解析应默认接纳 V2，并排除显式 v3:false 的旧实现。
+        """
         monkeypatch.setattr(
             plugin_client_module,
             "get_runtime_setting",
@@ -1035,7 +1093,9 @@ class TestPluginHelper:
         transport = PluginMarketTransport()
 
         async def fake_get_plugins(_repo, package_version=None):
-            """按索引版本返回异步解析测试数据。"""
+            """
+            按索引版本返回异步解析测试数据。
+            """
             if package_version == "v3":
                 return {}
             if package_version == "v2":
@@ -1058,7 +1118,9 @@ class TestPluginHelper:
         )) is None
 
     def test_v3_package_compatibility_defaults_v2_to_allowed(self, monkeypatch) -> None:
-        """V3 临时兼容 V2，显式 false 优先拒绝且纯 V1 不被带入。"""
+        """
+        V3 临时兼容 V2，显式 false 优先拒绝且纯 V1 不被带入。
+        """
         try:
             from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
@@ -1084,7 +1146,8 @@ class TestPluginHelper:
         self,
         monkeypatch,
     ) -> None:
-        """V3t 只把 package 中明确的 v3t:false 视为运行时不兼容。
+        """
+        V3t 只把 package 中明确的 v3t:false 视为运行时不兼容。
 
         代际判断保持通过，条目照常进入市场目录；不兼容只体现在运行时判据和标注上。
         """
@@ -1118,7 +1181,9 @@ class TestPluginHelper:
         self,
         monkeypatch,
     ) -> None:
-        """安装准入在 v3t 上先报运行时不兼容，不把它说成版本问题。"""
+        """
+        安装准入在 v3t 上先报运行时不兼容，不把它说成版本问题。
+        """
         from app.adapters.external.market import PluginHelper
 
         monkeypatch.setattr(plugin_client_module, "is_free_threaded_runtime", lambda: True)
@@ -1134,7 +1199,9 @@ class TestPluginHelper:
         self,
         monkeypatch,
     ) -> None:
-        """标准运行时下安装准入仍然只看主程序版本范围。"""
+        """
+        标准运行时下安装准入仍然只看主程序版本范围。
+        """
         from app.adapters.external.market import PluginHelper
 
         monkeypatch.setattr(plugin_client_module, "is_free_threaded_runtime", lambda: False)
@@ -1166,7 +1233,9 @@ class TestPluginHelper:
         assert clear_calls == []
 
     def test_async_get_online_plugins_force_keeps_release_cache_scoped(self, monkeypatch):
-        """异步全市场刷新同样不得清理其他仓库的 Release 缓存。"""
+        """
+        异步全市场刷新同样不得清理其他仓库的 Release 缓存。
+        """
         try:
             from app.runtime.extensions.plugin.manager import PluginManager
         except ModuleNotFoundError as exc:
@@ -1192,7 +1261,9 @@ class TestPluginHelper:
         assert clear_calls == []
 
     def test_get_local_plugin_version_reads_only_requested_installed_plugin(self, monkeypatch):
-        """单插件版本查询不构建全部本地插件信息。"""
+        """
+        单插件版本查询不构建全部本地插件信息。
+        """
         try:
             from app.runtime.extensions.plugin.manager import PluginManager
             from app.schemas.types import SystemConfigKey
@@ -1200,6 +1271,9 @@ class TestPluginHelper:
             pytest.skip(f"missing dependency: {exc}")
 
         class DemoPlugin:
+            """
+            只声明版本号，验证单插件查询不会遍历整个目录。
+            """
             plugin_version = "1.2.0"
 
         plugin_manager = PluginManager()
@@ -1322,7 +1396,9 @@ class TestPluginHelper:
         assert "user:pass" not in " ".join(safe_command)
 
     def test_uv_install_keeps_multiple_original_manifests_in_one_command(self):
-        """批量恢复必须让 uv 直接读取每个插件的原始生效清单。"""
+        """
+        批量恢复必须让 uv 直接读取每个插件的原始生效清单。
+        """
         try:
             from app.adapters.system.plugin.health import PluginRuntimeHealth
         except ModuleNotFoundError as exc:
@@ -1420,7 +1496,8 @@ demo = { index = "private" }
             try:
                 start_event.wait()
                 PluginRuntimeHealth.install_packages_with_fallback(requirements_file)
-            except Exception as err:  # pragma: no cover - 仅用于并发测试失败诊断
+            # 仅用于并发测试失败诊断。
+            except Exception as err:  # pragma: no cover
                 errors.append(err)
 
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1518,7 +1595,9 @@ demo = { index = "private" }
             installed_version,
             requirement,
     ):
-        """插件不得升级当前解释器 profile 中经过 ABI/GIL 验证的根包。"""
+        """
+        插件不得升级当前解释器 profile 中经过 ABI/GIL 验证的根包。
+        """
 
         with tempfile.TemporaryDirectory() as temp_dir:
             requirements_file = Path(temp_dir) / "requirements.txt"
@@ -1537,7 +1616,9 @@ demo = { index = "private" }
         assert installed_package in message
 
     def test_runtime_healthcheck_preserves_plugin_upgrade_semantics(self, tmp_path):
-        """运行环境诊断不应把允许的插件依赖升级强制还原到宿主锁版本。"""
+        """
+        运行环境诊断不应把允许的插件依赖升级强制还原到宿主锁版本。
+        """
 
         uv_bin = tmp_path / "uv"
         with patch("app.adapters.system.plugin.health.find_uv", return_value=uv_bin):
@@ -1552,7 +1633,9 @@ demo = { index = "private" }
         ]
 
     def test_plugin_runtime_healthcheck_uses_full_capability_probe(self, tmp_path):
-        """共享 venv 发生变更时必须验证 ABI 敏感原生能力。"""
+        """
+        共享 venv 发生变更时必须验证 ABI 敏感原生能力。
+        """
 
         uv_bin = tmp_path / "uv"
         commands = []
@@ -1592,6 +1675,9 @@ demo = { index = "private" }
             uv_bin = _create_fake_uv(root)
 
             def fake_execute(cmd, env=None, safe_command=None):
+                """
+                记录普通依赖安装命令，并确认未附加运行时依赖约束。
+                """
                 if cmd[:3] == [str(uv_bin), "pip", "install"]:
                     seen_install_commands.append(cmd)
                     assert "-c" not in cmd
@@ -1634,6 +1720,9 @@ demo = { index = "private" }
             uv_bin = _create_fake_uv(root)
 
             def fake_execute(cmd, env=None, safe_command=None):
+                """
+                检查安装命令引用的运行时约束文件已生成且包含锁定版本。
+                """
                 if cmd[:3] == [str(uv_bin), "pip", "install"]:
                     constraint_index = cmd.index("-c") + 1
                     constraint_file = Path(cmd[constraint_index])
@@ -1676,6 +1765,9 @@ demo = { index = "private" }
             uv_bin = _create_fake_uv(root)
 
             def fake_execute(cmd, env=None, safe_command=None):
+                """
+                模拟安装后健康检查失败，并记录后续无约束的运行时修复命令。
+                """
                 nonlocal uv_check_count
                 if cmd[:3] == [str(uv_bin), "pip", "install"]:
                     if "-c" not in cmd:
@@ -1813,7 +1905,9 @@ demo = { index = "private" }
         repair_mock.assert_called_once()
 
     def test_preexisting_uv_diagnostic_does_not_hide_new_package_error(self):
-        """既有第三方元数据告警不能遮蔽插件安装新增的依赖错误。"""
+        """
+        既有第三方元数据告警不能遮蔽插件安装新增的依赖错误。
+        """
 
         existing_error = "The package `oss2` requires `crcmod>=1.7`, but it's not installed"
         added_error = "The package `demo` requires `missing>=1`, but it's not installed"
@@ -1831,7 +1925,9 @@ demo = { index = "private" }
         assert existing_error not in message
 
     def test_expected_uv_diagnostic_does_not_create_baseline_warning(self):
-        """项目明确排除的传递依赖不得形成插件安装前告警。"""
+        """
+        项目明确排除的传递依赖不得形成插件安装前告警。
+        """
 
         expected_error = "The package `oss2` requires `crcmod>=1.7`, but it's not installed"
         with patch(
@@ -1846,7 +1942,9 @@ demo = { index = "private" }
         assert message == ""
 
     def test_uv_diagnostic_parser_handles_executor_prefix(self):
-        """执行器把首条错误拼在命令摘要后时仍应识别完整诊断项。"""
+        """
+        执行器把首条错误拼在命令摘要后时仍应识别完整诊断项。
+        """
 
         package_error = "The package `demo` requires `missing>=1`, but it's not installed"
         message = f"命令：uv pip check，执行失败，返回码：1，错误输出：{package_error}"
@@ -2011,7 +2109,9 @@ demo = { index = "private" }
         assert "user:pass" not in " ".join(safe_command)
 
     def test_async_package_install_uses_cancellable_subprocess(self):
-        """异步依赖安装应直接使用可取消的子进程执行器。"""
+        """
+        异步依赖安装应直接使用可取消的子进程执行器。
+        """
         try:
             from app.adapters.system.plugin.health import PluginRuntimeHealth
         except ModuleNotFoundError as exc:
@@ -2024,6 +2124,9 @@ demo = { index = "private" }
             find_links_dirs = [Path(temp_dir) / "wheels"]
 
             async def run_install():
+                """
+                等待异步依赖安装，供测试在子进程运行期间触发取消。
+                """
                 return await helper._PluginRuntimeHealth__async_install_packages_with_fallback(
                     requirements_file,
                     find_links_dirs,
@@ -2086,7 +2189,9 @@ demo = { index = "private" }
         )
 
     def test_async_package_install_cancellation_closes_full_lifecycle(self, tmp_path):
-        """取消真实安装进程后必须回收进程树、临时约束和安装锁。"""
+        """
+        取消真实安装进程后必须回收进程树、临时约束和安装锁。
+        """
         import psutil
 
         helper = PluginRuntimeHealth()
@@ -2116,12 +2221,16 @@ demo = { index = "private" }
         }
 
         def create_constraints(_protected_packages):
-            """生成临时约束文件以验证取消后的清理责任。"""
+            """
+            生成临时约束文件以验证取消后的清理责任。
+            """
             constraints_file.write_text("fastapi==0\n", encoding="utf-8")
             return constraints_file
 
         async def run_install():
-            """等安装父子进程就绪后取消，并检查全部生命周期资源已释放。"""
+            """
+            等安装父子进程就绪后取消，并检查全部生命周期资源已释放。
+            """
             task = asyncio.create_task(
                 helper.async_install_packages_with_fallback(requirements_file)
             )
@@ -2183,7 +2292,9 @@ demo = { index = "private" }
             asyncio.run(run_install())
 
     def test_constraints_created_during_cancellation_are_removed(self, tmp_path):
-        """约束文件创建线程收口后仍须响应取消并删除临时文件。"""
+        """
+        约束文件创建线程收口后仍须响应取消并删除临时文件。
+        """
 
         helper = PluginRuntimeHealth()
         requirements_file = tmp_path / "requirements.txt"
@@ -2230,7 +2341,9 @@ demo = { index = "private" }
         assert not constraints_file.exists()
 
     def test_constraints_cleanup_failure_preserves_cancellation(self, tmp_path):
-        """临时文件删除失败只记录日志，不得替换调用方的取消异常。"""
+        """
+        临时文件删除失败只记录日志，不得替换调用方的取消异常。
+        """
 
         constraints_file = tmp_path / "runtime-constraints.txt"
         created = threading.Event()
@@ -2871,7 +2984,9 @@ demo = { index = "private" }
         assert "DemoPlugin_v1.2.3 插件发布包不存在" == message
 
     def test_get_file_list_reports_missing_plugin_directory(self, monkeypatch):
-        """索引存在但源码目录缺失时不向用户暴露底层 HTTP 404。"""
+        """
+        索引存在但源码目录缺失时不向用户暴露底层 HTTP 404。
+        """
         try:
             from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
@@ -2945,10 +3060,14 @@ demo = { index = "private" }
             pytest.skip(f"missing dependency: {exc}")
 
         class BadResponse(_FakeResponse):
-            """json() 抛错的响应对象。"""
+            """
+            json() 抛错的响应对象。
+            """
 
             def json(self):
-                """模拟响应体不是合法 JSON。"""
+                """
+                模拟响应体不是合法 JSON。
+                """
                 raise ValueError("bad json")
 
         helper = _package_owner(PluginHelper())
@@ -3211,7 +3330,9 @@ demo = { index = "private" }
         assert ["swap", "restore"] == calls
 
     def test_install_flow_sync_restores_backup_for_invalid_modern_manifest(self, tmp_path, monkeypatch):
-        """现代清单无效时恢复旧插件目录。"""
+        """
+        现代清单无效时恢复旧插件目录。
+        """
         from app.adapters.external import market as market_module
 
         plugin_root = tmp_path / "plugins"
@@ -3243,7 +3364,9 @@ demo = { index = "private" }
         assert not (plugin_dir / "pyproject.toml").exists()
 
     def test_install_dependencies_prefers_plugin_pyproject(self, tmp_path, monkeypatch):
-        """同步安装入口只消费双清单中的 pyproject。"""
+        """
+        同步安装入口只消费双清单中的 pyproject。
+        """
         from app.adapters.external import market as market_module
 
         plugin_root = tmp_path / "plugins"
@@ -3272,7 +3395,9 @@ demo = { index = "private" }
         assert seen == [pyproject_file]
 
     def test_async_install_dependencies_prefers_plugin_pyproject(self, tmp_path, monkeypatch):
-        """异步安装入口只消费双清单中的 pyproject。"""
+        """
+        异步安装入口只消费双清单中的 pyproject。
+        """
         from app.adapters.external import market as market_module
 
         plugin_root = tmp_path / "plugins"
@@ -3308,7 +3433,9 @@ demo = { index = "private" }
         assert seen == [pyproject_file]
 
     def test_prepare_content_via_filelist_sync_downloads_dependency_manifests_once(self, monkeypatch):
-        """文件列表准备会完整下载内容，依赖由统一安装流程处理。"""
+        """
+        文件列表准备会完整下载内容，依赖由统一安装流程处理。
+        """
         try:
             from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
@@ -3357,7 +3484,9 @@ demo = { index = "private" }
         assert "list failed" == message
 
     def test_prepare_content_via_filelist_sync_names_missing_plugin(self, monkeypatch):
-        """同步文件列表层规范化路径 ID，并在源码目录缺失时保留原插件 ID。"""
+        """
+        同步文件列表层规范化路径 ID，并在源码目录缺失时保留原插件 ID。
+        """
         try:
             from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
@@ -3405,7 +3534,9 @@ demo = { index = "private" }
         assert "download failed" == message
 
     def test_async_prepare_content_via_filelist_downloads_dependency_manifests_once(self, monkeypatch):
-        """异步文件列表准备会完整下载内容，依赖由统一安装流程处理。"""
+        """
+        异步文件列表准备会完整下载内容，依赖由统一安装流程处理。
+        """
         try:
             from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
@@ -3461,7 +3592,9 @@ demo = { index = "private" }
         assert "list failed" == message
 
     def test_async_prepare_content_via_filelist_names_missing_plugin(self, monkeypatch):
-        """异步文件列表层规范化路径 ID，并在源码目录缺失时保留原插件 ID。"""
+        """
+        异步文件列表层规范化路径 ID，并在源码目录缺失时保留原插件 ID。
+        """
         try:
             from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:
@@ -3642,7 +3775,9 @@ demo = { index = "private" }
         assert "DemoPlugin_v1.2.3 插件发布包不存在" == message
 
     def test_async_get_file_list_reports_missing_plugin_directory(self, monkeypatch):
-        """异步源码目录读取将 HTTP 404 收敛为稳定业务语义。"""
+        """
+        异步源码目录读取将 HTTP 404 收敛为稳定业务语义。
+        """
         try:
             from app.adapters.external.market import PluginHelper
         except ModuleNotFoundError as exc:

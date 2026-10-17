@@ -1,4 +1,5 @@
-"""共享媒体识别链路测试。
+"""
+共享媒体识别链路测试。
 
 覆盖本地识别成功后上报共享识别、本地识别失败后回查共享识别并二次识别、
 共享识别成功后回填本地缓存、音乐识别上报/查询载荷，以及命中缓存不重复上报等场景。
@@ -18,7 +19,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def _build_meta(name: str, media_type: MediaType = MediaType.UNKNOWN) -> MetaBase:
-    """构造测试用元数据。"""
+    """
+    构造测试用元数据。
+    """
     meta = MetaBase(name)
     meta.name = name
     meta.type = media_type
@@ -31,7 +34,9 @@ def _tmdb_media(
         media_type: MediaType,
         **kwargs,
 ) -> MediaInfo:
-    """构造同时带规范主身份和 TMDB 辅助元数据的测试媒体。"""
+    """
+    构造同时带规范主身份和 TMDB 辅助元数据的测试媒体。
+    """
     return MediaInfo(
         media_source=MediaSource.TMDB,
         media_id=str(media_id),
@@ -43,7 +48,9 @@ def _tmdb_media(
 
 
 def _enable_media_recognize_share(chain: ChainBase) -> None:
-    """为单个链实例启用共享识别配置快照。"""
+    """
+    为单个链实例启用共享识别配置快照。
+    """
     chain.runtime_config = replace(
         chain.runtime_config,
         media_recognize_share=True,
@@ -51,7 +58,9 @@ def _enable_media_recognize_share(chain: ChainBase) -> None:
 
 
 def test_report_shared_result_after_local_recognize_success():
-    """本地识别成功后应上报共享识别结果。"""
+    """
+    本地识别成功后应上报共享识别结果。
+    """
     chain = ChainBase()
     meta = _build_meta("测试电影", MediaType.MOVIE)
     mediainfo = _tmdb_media("测试电影", 100, MediaType.MOVIE, year="2024")
@@ -71,7 +80,9 @@ def test_report_shared_result_after_local_recognize_success():
 
 
 def test_query_shared_result_when_local_recognize_failed():
-    """本地识别失败后应回查共享识别结果，并按共享ID再次识别。"""
+    """
+    本地识别失败后应回查共享识别结果，并按共享ID再次识别。
+    """
     chain = ChainBase()
     _enable_media_recognize_share(chain)
     meta = _build_meta("测试剧集")
@@ -117,7 +128,9 @@ def test_query_shared_result_when_local_recognize_failed():
 
 
 def test_async_query_shared_result_when_local_recognize_failed():
-    """异步识别失败后也应回查共享识别结果。"""
+    """
+    异步识别失败后也应回查共享识别结果。
+    """
     chain = ChainBase()
     _enable_media_recognize_share(chain)
     meta = _build_meta("测试异步剧集")
@@ -166,7 +179,9 @@ def test_async_query_shared_result_when_local_recognize_failed():
 
 
 def test_backfill_local_cache_after_shared_recognize_success():
-    """共享识别后二次本地识别成功时，应回填原始名称对应的本地识别缓存。"""
+    """
+    共享识别后二次本地识别成功时，应回填原始名称对应的本地识别缓存。
+    """
     chain = ChainBase()
     _enable_media_recognize_share(chain)
     meta = _build_meta("测试缓存回填", MediaType.MOVIE)
@@ -216,7 +231,9 @@ def test_backfill_local_cache_after_shared_recognize_success():
 
 
 def test_query_and_report_prefer_original_name_keyword():
-    """查询和上报共享识别时应优先使用未应用识别词的识别名称。"""
+    """
+    查询和上报共享识别时应优先使用未应用识别词的识别名称。
+    """
     meta = _build_meta("应用识别词后的名称", MediaType.TV)
     meta.original_name = "未应用识别词的名称"
     meta.year = "2024"
@@ -233,7 +250,9 @@ def test_query_and_report_prefer_original_name_keyword():
 
 
 def test_query_and_report_can_use_distinct_keyword_meta():
-    """共享识别应允许用原始关键字上报，同时保留辅助识别后的年份/季信息。"""
+    """
+    共享识别应允许用原始关键字上报，同时保留辅助识别后的年份/季信息。
+    """
     meta = _build_meta("辅助识别后的名称", MediaType.TV)
     meta.year = "2024"
     meta.begin_season = 2
@@ -265,7 +284,9 @@ def test_query_and_report_can_use_distinct_keyword_meta():
 
 
 def test_query_and_report_preserve_special_season_zero():
-    """共享识别查询和上报都必须保留显式特别季。"""
+    """
+    共享识别查询和上报都必须保留显式特别季。
+    """
     meta = _build_meta("测试剧特别篇", MediaType.TV)
     meta.begin_season = 0
     mediainfo = _tmdb_media("测试剧", 402, MediaType.TV, season=0)
@@ -281,7 +302,9 @@ def test_query_and_report_preserve_special_season_zero():
 
 
 def test_plugin_recognize_number_parser_preserves_zero():
-    """插件辅助识别应同时接受整数和字符串形式的季 0。"""
+    """
+    插件辅助识别应同时接受整数和字符串形式的季 0。
+    """
     media_chain = MediaChain()
     assert media_chain._parse_recognize_event_number(0) == 0
     assert media_chain._parse_recognize_event_number("0") == 0
@@ -290,7 +313,9 @@ def test_plugin_recognize_number_parser_preserves_zero():
 
 
 def test_report_shared_result_with_distinct_keyword_meta():
-    """辅助识别成功后应按辅助前名称上报共享结果。"""
+    """
+    辅助识别成功后应按辅助前名称上报共享结果。
+    """
     chain = ChainBase()
     meta = _build_meta("辅助识别后的名称", MediaType.TV)
     meta.year = "2024"
@@ -314,7 +339,9 @@ def test_report_shared_result_with_distinct_keyword_meta():
 
 
 def test_query_shared_result_with_distinct_keyword_meta():
-    """本地识别失败后应按辅助前名称回查共享结果。"""
+    """
+    本地识别失败后应按辅助前名称回查共享结果。
+    """
     chain = ChainBase()
     _enable_media_recognize_share(chain)
     meta = _build_meta("辅助识别后的名称", MediaType.TV)
@@ -365,7 +392,9 @@ def test_query_shared_result_with_distinct_keyword_meta():
 
 
 def test_skip_report_when_local_recognize_hits_cache():
-    """本地识别命中缓存时不应上报共享识别。"""
+    """
+    本地识别命中缓存时不应上报共享识别。
+    """
     chain = ChainBase()
     meta = _build_meta("缓存电影", MediaType.MOVIE)
     mediainfo = _tmdb_media("缓存电影", 500, MediaType.MOVIE, year="2024")
@@ -386,7 +415,9 @@ def test_skip_report_when_local_recognize_hits_cache():
 
 
 def test_async_skip_report_when_local_recognize_hits_cache():
-    """异步本地识别命中缓存时不应上报共享识别。"""
+    """
+    异步本地识别命中缓存时不应上报共享识别。
+    """
     chain = ChainBase()
     meta = _build_meta("缓存剧集", MediaType.TV)
     mediainfo = _tmdb_media("缓存剧集", 600, MediaType.TV, year="2025")
@@ -416,7 +447,9 @@ def test_async_skip_report_when_local_recognize_hits_cache():
 
 
 def test_recognize_by_meta_can_skip_obtain_images():
-    """标题识别可显式关闭图片拉取。"""
+    """
+    标题识别可显式关闭图片拉取。
+    """
     media_chain = MediaChain()
     meta = MetaInfo("测试电影")
     mediainfo = _tmdb_media("测试电影", 404, MediaType.MOVIE, year="2024")
@@ -437,7 +470,9 @@ def test_recognize_by_meta_can_skip_obtain_images():
 
 
 def test_recognize_by_meta_reports_with_original_keyword_after_plugin_help():
-    """辅助识别后应继续使用辅助前关键字进行共享上报。"""
+    """
+    辅助识别后应继续使用辅助前关键字进行共享上报。
+    """
     media_chain = MediaChain()
     meta = MetaInfo("辅助前名称")
     plugin_media = _tmdb_media("辅助后名称", 405, MediaType.TV, year="2024")
@@ -461,7 +496,9 @@ def test_recognize_by_meta_reports_with_original_keyword_after_plugin_help():
 
 
 def test_async_recognize_by_meta_can_skip_obtain_images():
-    """异步标题识别可显式关闭图片拉取。"""
+    """
+    异步标题识别可显式关闭图片拉取。
+    """
     media_chain = MediaChain()
     meta = MetaInfo("测试异步电影")
     mediainfo = _tmdb_media("测试异步电影", 406, MediaType.MOVIE, year="2025")
@@ -490,7 +527,9 @@ def test_async_recognize_by_meta_can_skip_obtain_images():
 
 
 def _music_info() -> MusicInfo:
-    """构造带远端身份的标准音乐信息。"""
+    """
+    构造带远端身份的标准音乐信息。
+    """
     return MusicInfo(
         media_source="musicbrainz",
         media_id="recording-1",
@@ -502,7 +541,9 @@ def _music_info() -> MusicInfo:
 
 
 def test_music_report_payload_includes_source_and_media_id():
-    """音乐上报载荷应只携带统一来源、原生身份和音乐实体类型。"""
+    """
+    音乐上报载荷应只携带统一来源、原生身份和音乐实体类型。
+    """
     meta = MetaMusic(title="晴天", artists=["周杰伦"], album="叶惠美", year=2003)
     payload = MoviePilotServerHelper._build_recognize_report_payload(
         meta=meta,
@@ -522,7 +563,9 @@ def test_music_report_payload_includes_source_and_media_id():
 
 
 def test_music_report_payload_skips_fallback_without_remote_identity():
-    """无远端身份的兜底音乐结果不应上报。"""
+    """
+    无远端身份的兜底音乐结果不应上报。
+    """
     meta = MetaMusic(title="未知曲目", artists=["未知艺术家"])
     fallback = MusicInfo(title="未知曲目", artists=["未知艺术家"])
     payload = MoviePilotServerHelper._build_recognize_report_payload(
@@ -534,7 +577,9 @@ def test_music_report_payload_skips_fallback_without_remote_identity():
 
 
 def test_music_query_params_build_for_music_type():
-    """音乐查询参数应携带 music 类型、年份且不包含季。"""
+    """
+    音乐查询参数应携带 music 类型、年份且不包含季。
+    """
     meta = MetaMusic(title="晴天", year=2003)
     keyword_meta = MetaMusic(title="晴天")
 
@@ -560,7 +605,9 @@ def test_music_query_params_build_for_music_type():
 
 
 def test_music_shared_identity_keeps_entity_type():
-    """共享专辑身份转回本地识别参数时必须保留专辑命名空间。"""
+    """
+    共享专辑身份转回本地识别参数时必须保留专辑命名空间。
+    """
     params = MoviePilotServerHelper.to_recognize_params({
         "type": "music",
         "media_source": "musicbrainz",
@@ -575,7 +622,9 @@ def test_music_shared_identity_keeps_entity_type():
 
 
 def test_legacy_music_shared_identity_defaults_to_recording():
-    """旧共享记录缺少实体字段时只按自动识别的 Recording 语义兼容。"""
+    """
+    旧共享记录缺少实体字段时只按自动识别的 Recording 语义兼容。
+    """
     params = MoviePilotServerHelper.to_recognize_params({
         "type": "music",
         "media_source": "musicbrainz",
@@ -586,7 +635,9 @@ def test_legacy_music_shared_identity_defaults_to_recording():
 
 
 def test_chain_recognize_media_reports_music_share_result():
-    """音乐识别成功且有远端身份时，应与影视一样走统一共享上报。"""
+    """
+    音乐识别成功且有远端身份时，应与影视一样走统一共享上报。
+    """
     chain = MediaChain()
     meta = MetaMusic(title="晴天", artists=["周杰伦"], year=2003)
     music = _music_info()
@@ -605,7 +656,9 @@ def test_chain_recognize_media_reports_music_share_result():
 
 
 def test_chain_recognize_media_queries_music_share_when_local_failed():
-    """音乐本地识别失败后应回查共享识别并按数据源原生 ID 二次识别。"""
+    """
+    音乐本地识别失败后应回查共享识别并按数据源原生 ID 二次识别。
+    """
     chain = MediaChain()
     _enable_media_recognize_share(chain)
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
@@ -653,7 +706,9 @@ def test_chain_recognize_media_queries_music_share_when_local_failed():
 
 
 def test_chain_recognize_media_queries_music_share_after_local_fallback():
-    """本地标签兜底没有远端身份时，仍应通过共享结果补成标准音乐身份。"""
+    """
+    本地标签兜底没有远端身份时，仍应通过共享结果补成标准音乐身份。
+    """
     chain = MediaChain()
     _enable_media_recognize_share(chain)
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
@@ -697,7 +752,9 @@ def test_chain_recognize_media_queries_music_share_after_local_fallback():
 
 
 def test_chain_recognize_media_rejects_conflicting_music_share_identity():
-    """共享同名曲目若属于另一艺人，应保留本地标签结果且不得计为共享命中。"""
+    """
+    共享同名曲目若属于另一艺人，应保留本地标签结果且不得计为共享命中。
+    """
     chain = MediaChain()
     _enable_media_recognize_share(chain)
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
@@ -745,7 +802,9 @@ def test_chain_recognize_media_rejects_conflicting_music_share_identity():
 
 
 def test_chain_async_recognize_media_queries_music_share_after_local_fallback():
-    """异步音乐识别也必须在返回本地兜底前尝试共享身份补全。"""
+    """
+    异步音乐识别也必须在返回本地兜底前尝试共享身份补全。
+    """
     chain = MediaChain()
     _enable_media_recognize_share(chain)
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
@@ -801,7 +860,9 @@ def test_chain_async_recognize_media_queries_music_share_after_local_fallback():
 
 
 def test_chain_recognize_media_skips_music_report_for_fallback_result():
-    """共享也未命中时保留音乐标签兜底，且不把无身份结果上报。"""
+    """
+    共享也未命中时保留音乐标签兜底，且不把无身份结果上报。
+    """
     chain = MediaChain()
     _enable_media_recognize_share(chain)
     meta = MetaMusic(title="未知曲目", artists=["未知艺术家"])

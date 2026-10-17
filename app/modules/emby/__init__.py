@@ -1,3 +1,7 @@
+"""
+Emby 模块，将媒体库查询和事件解析接入统一媒体服务器接口。
+"""
+
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 from app.modules._base.mediaserver import _MediaServerModuleBase
@@ -13,56 +17,68 @@ from app.schemas.types import MediaServerType, MediaType, ModuleType
 
 
 class EmbyModule(_MediaServerModuleBase[Emby]):
-    """Emby 媒体服务器模块。"""
+    """
+    Emby 媒体服务器模块。
+    """
 
     # 媒体库标识（ExistMediaInfo.server_type）
     _server_type_value = "emby"
 
     def init_module(self) -> None:
         """
-        初始化模块
+        初始化模块。
         """
         super().init_service(service_name=Emby.__name__.lower(),
                              service_type=lambda conf: Emby(**conf.config, sync_libraries=conf.sync_libraries))
 
     @staticmethod
     def get_name() -> str:
+        """
+        返回模块展示名称。
+        """
         return "Emby"
 
     @staticmethod
     def get_type() -> ModuleType:
         """
-        获取模块类型
+        获取模块类型。
         """
         return ModuleType.MediaServer
 
     @staticmethod
     def get_subtype() -> MediaServerType:
         """
-        获取模块子类型
+        获取模块子类型。
         """
         return MediaServerType.Emby
 
     @staticmethod
     def get_priority() -> int:
         """
-        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效
+        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效。
         """
         return 1
 
     def stop(self):
+        """
+        保留模块停止入口；本实现没有额外停止动作。
+        """
         pass
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
+        """
+        由媒体服务器实例配置控制启用，不声明独立模块开关。
+        """
         pass
 
     def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[_SchemaWebhookEventInfo]:
         """
-        解析Webhook报文体
-        :param body:  请求体
-        :param form:  请求表单
-        :param args:  请求参数
-        :return: 字典，解析为消息时需要包含：title、text、image
+        路由 Webhook 到来源服务器，并返回首个成功解析的事件。
+
+        :param body: 原始请求体，Emby 当前不使用
+        :param form: 表单数据，Emby 从 data 字段读取事件
+        :param args: 请求参数；source 指定实例，省略时尝试本类型全部实例
+        :return: 统一事件模型；指定实例不存在或所有实例均无法解析时返回 None
         """
         source = args.get("source")
         if source:
@@ -83,7 +99,10 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
 
     def media_statistic(self, server: Optional[str] = None) -> Optional[List[_SchemaStatistic]]:
         """
-        媒体数量统计
+        汇总指定实例或本类型全部实例的媒体与用户数量。
+
+        :param server: 服务器配置名称；省略时汇总全部实例
+        :return: 统计列表；指定实例不存在时返回 None，无法获取统计的实例被跳过
         """
         if server:
             server_obj: Emby = self.get_instance(server)
@@ -105,7 +124,12 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
                              username: Optional[str] = None,
                              hidden: Optional[bool] = False) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
-        媒体库列表
+        读取用户可见媒体库。
+
+        :param server: 服务器配置名称，空值使用默认实例
+        :param username: 用于限定可见内容的用户名，省略时使用当前实例的查询用户
+        :param hidden: 是否隐藏未选入同步配置的库
+        :return: 统一媒体库列表；实例不可用或查询失败时返回 None
         """
         server_obj: Emby = self.get_instance(server)
         if server_obj:
@@ -115,14 +139,13 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
     def mediaserver_items(self, server: str, library_id: Union[str, int], start_index: Optional[int] = 0,
                           limit: Optional[int] = -1) -> Optional[Generator]:
         """
-        获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
+        返回媒体库条目的迭代器，按需分页并递归展开目录。
 
-        :param server: 媒体服务器名称
-        :param library_id: 媒体库ID，用于标识要获取的媒体库
-        :param start_index: 起始索引，用于分页获取数据。默认为 0，即从第一个项目开始获取
-        :param limit: 每次请求的最大项目数，用于分页。如果为 None 或 -1，则表示一次性获取所有数据，默认为 -1
-
-        :return: 返回一个生成器对象，用于逐步获取媒体服务器中的项目
+        :param server: 服务器配置名称
+        :param library_id: 要读取的媒体库标识
+        :param start_index: 当前层分页起始索引，limit 不限制数量时不使用
+        :param limit: 当前层请求数量；None 或 -1 不限制，子目录递归读取全部条目
+        :return: 统一媒体条目的生成器；实例不存在时返回 None，迭代时的读取错误向调用方传播
         """
         server_obj: Emby = self.get_instance(server)
         if server_obj:
@@ -131,7 +154,7 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
 
     def mediaserver_items_count(self, server: str, library_id: Union[str, int]) -> Optional[int]:
         """
-        获取指定媒体库可同步的媒体条目总数
+        获取指定媒体库可同步的媒体条目总数。
 
         :param server: 媒体服务器名称
         :param library_id: 媒体库ID
@@ -144,7 +167,11 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
 
     def mediaserver_iteminfo(self, server: str, item_id: str) -> Optional[_SchemaMediaServerItem]:
         """
-        媒体库项目详情
+        查询单个媒体条目的详细信息。
+
+        :param server: 服务器配置名称，空值使用默认实例
+        :param item_id: Emby 条目标识
+        :return: 统一条目模型；实例、条目不存在或请求失败时返回 None
         """
         server_obj: Emby = self.get_instance(server)
         if server_obj:
@@ -154,7 +181,11 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
     def mediaserver_tv_episodes(self, server: str,
                                 item_id: Union[str, int]) -> Optional[List[_SchemaMediaServerSeasonInfo]]:
         """
-        获取剧集信息
+        查询电视剧中各季已经入库的集号。
+
+        :param server: 服务器配置名称，空值使用默认实例
+        :param item_id: Emby 条目标识
+        :return: 按季组织的集号列表；实例不存在时返回 None，无分集数据或查询失败时返回空列表
         """
         server_obj: Emby = self.get_instance(server)
         if not server_obj:
@@ -170,7 +201,12 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
     def mediaserver_playing(self, server: str, count: Optional[int] = 20,
                             username: Optional[str] = None) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
-        获取媒体服务器正在播放信息
+        查询用户可继续观看的媒体列表。
+
+        :param server: 服务器配置名称，空值使用默认实例
+        :param count: 最多保留的条目数，默认 20
+        :param username: 用于限定可见内容的用户名，省略时使用当前实例的查询用户
+        :return: 继续观看条目列表；实例不可用或查询失败时返回 None
         """
         server_obj: Emby = self.get_instance(server)
         if not server_obj:
@@ -179,7 +215,11 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
 
     def mediaserver_play_url(self, server: str, item_id: Union[str, int]) -> Optional[str]:
         """
-        获取媒体库播放地址
+        构造媒体条目的网页播放链接。
+
+        :param server: 服务器配置名称，空值使用默认实例
+        :param item_id: Emby 条目标识
+        :return: 播放 URL；实例不存在时返回 None
         """
         server_obj: Emby = self.get_instance(server)
         if not server_obj:
@@ -189,7 +229,7 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
     def mediaserver_season_episode_ids(self, server: str, item_id: Union[str, int],
                                        season: int) -> Optional[Dict[int, str]]:
         """
-        获取指定季的集号到条目 ID 映射
+        获取指定季的集号到条目 ID 映射。
 
         :param server: Emby 媒体服务器名称
         :param item_id: 剧集在 Emby 中的条目 ID
@@ -204,7 +244,12 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
     def mediaserver_latest(self, server: Optional[str] = None, count: Optional[int] = 20,
                            username: Optional[str] = None) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
-        获取媒体服务器最新入库条目
+        查询用户最近入库的媒体列表。
+
+        :param server: 服务器配置名称，空值使用默认实例
+        :param count: 最多查询的条目数，默认 20
+        :param username: 用于限定可见内容的用户名，省略时使用当前实例的查询用户
+        :return: 最新媒体列表；实例不可用或查询失败时返回 None
         """
         server_obj: Emby = self.get_instance(server)
         if not server_obj:
@@ -218,7 +263,7 @@ class EmbyModule(_MediaServerModuleBase[Emby]):
                                   remote: Optional[bool] = False
                                   ) -> List[str]:
         """
-        获取媒体服务器最新入库条目的图片
+        获取媒体服务器最新入库条目的图片。
 
         :param server: 媒体服务器名称
         :param count: 获取数量

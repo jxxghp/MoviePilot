@@ -1,4 +1,6 @@
-"""验证活动任务原子合并及非预期约束错误的事务边界。"""
+"""
+验证活动任务原子合并及非预期约束错误的事务边界。
+"""
 
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -19,7 +21,9 @@ from app.db.models.subscriptionsearch import SubscriptionSearchBatch, Subscripti
 
 @pytest.fixture
 def queue(tmp_path):
-    """默认使用隔离 SQLite；显式测试 URL 只允许指向可清空的专用数据库。"""
+    """
+    默认使用隔离 SQLite；显式测试 URL 只允许指向可清空的专用数据库。
+    """
     engine = create_engine(os.environ.get("MOVIEPILOT_TEST_UPSERT_URL", f"sqlite:///{tmp_path / 'queue.db'}"))
     # 队列入队记录订阅活动，任务终态结算活动并删除检查点，依赖表一起建立。
     tables = [Subscribe.__table__, SubscribeActivity.__table__, SubscriptionSearchBatch.__table__,
@@ -37,12 +41,16 @@ def queue(tmp_path):
 
 
 def test_concurrent_enqueue_keeps_one_task_without_driver_errors(queue):
-    """独立事务同时入队时只有一个创建者，其余请求关联原批次且无驱动异常。"""
+    """
+    独立事务同时入队时只有一个创建者，其余请求关联原批次且无驱动异常。
+    """
     repository, engine, errors = queue
     barrier = Barrier(4)
 
     def enqueue():
-        """让独立线程在同一时刻开始入队，验证真实驱动层的原子合并。"""
+        """
+        让独立线程在同一时刻开始入队，验证真实驱动层的原子合并。
+        """
         barrier.wait(timeout=10)
         return repository.enqueue(subscription_ids=(1,), source="fallback", priority=10)
 
@@ -58,7 +66,9 @@ def test_concurrent_enqueue_keeps_one_task_without_driver_errors(queue):
 
 
 def test_mixed_enqueue_preserves_batch_identity_and_terminal_reenqueue(queue):
-    """同批混合创建和合并保留批次关联，终态释放活动键后可再次创建任务。"""
+    """
+    同批混合创建和合并保留批次关联，终态释放活动键后可再次创建任务。
+    """
     repository, engine, errors = queue
     first = repository.enqueue(subscription_ids=(1,), source="fallback", priority=10)
     mixed = repository.enqueue(subscription_ids=(1, 2, 2), source="manual", priority=100)
@@ -77,7 +87,9 @@ def test_mixed_enqueue_preserves_batch_identity_and_terminal_reenqueue(queue):
 
 
 def test_unrelated_constraint_error_rolls_back_entire_batch(queue, monkeypatch):
-    """task_id 冲突必须传播，不能误计为活动键合并或留下半个批次。"""
+    """
+    task_id 冲突必须传播，不能误计为活动键合并或留下半个批次。
+    """
     repository, engine, errors = queue
     repository.enqueue(subscription_ids=(1,), source="fallback", priority=10)
     with Session(engine) as session:

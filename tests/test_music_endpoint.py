@@ -1,3 +1,7 @@
+"""
+验证音乐接口注册及搜索、识别和探索参数传递。
+"""
+
 import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -22,7 +26,9 @@ from app.schemas.types import MUSIC_ENTITY_ALBUM, MUSIC_ENTITY_RECORDING, MediaS
 
 
 def test_music_routes_are_registered():
-    """V1 API 应注册音乐详情识别、探索及艺术家专辑浏览路由。"""
+    """
+    V1 API 应注册音乐详情识别、探索及艺术家专辑浏览路由。
+    """
     from app.api.routers import API_V1_ROUTER_SPECS
 
     routes = {
@@ -68,7 +74,9 @@ def test_music_routes_are_registered():
 
 
 def test_media_search_routes_music_through_common_catalog_entry():
-    """音乐搜索应通过统一媒体链路调用音乐搜索入口。"""
+    """
+    音乐搜索应通过统一媒体链路调用音乐搜索入口。
+    """
 
     chain = Mock()
     chain.async_search_music = AsyncMock(
@@ -111,7 +119,9 @@ def test_media_search_routes_music_through_common_catalog_entry():
 
 
 def test_media_search_forwards_explicit_music_source():
-    """统一音乐搜索应把显式选择的可扩展音乐源转发给 MediaChain。"""
+    """
+    统一音乐搜索应把显式选择的可扩展音乐源转发给 MediaChain。
+    """
     chain = Mock()
     chain.async_search_music = AsyncMock(return_value=[])
 
@@ -136,7 +146,9 @@ def test_media_search_forwards_explicit_music_source():
 
 
 def test_recognize_music_returns_detail():
-    """音乐识别接口应按来源和 ID 经统一识别入口返回详情。"""
+    """
+    音乐识别接口应按来源和 ID 经统一识别入口返回详情。
+    """
 
     chain = Mock()
     chain.async_recognize_media = AsyncMock(
@@ -169,7 +181,9 @@ def test_recognize_music_returns_detail():
 
 
 def test_recognize_music_returns_404_for_unknown_item():
-    """音乐详情不存在时接口应返回 404。"""
+    """
+    音乐详情不存在时接口应返回 404。
+    """
 
     chain = Mock()
     chain.async_recognize_media = AsyncMock(return_value=None)
@@ -189,7 +203,9 @@ def test_recognize_music_returns_404_for_unknown_item():
 
 
 def test_explore_music_forwards_filters_and_serializes_chart():
-    """音乐探索接口应传递实体、周期、排序、热度和封面筛选条件。"""
+    """
+    音乐探索接口应传递实体、周期、排序、热度和封面筛选条件。
+    """
     chain = Mock()
     chain.async_music_chart = AsyncMock(
         return_value=[
@@ -229,7 +245,9 @@ def test_explore_music_forwards_filters_and_serializes_chart():
 
 
 def test_explore_music_supports_official_fresh_release_mode():
-    """新发行模式应按 ListenBrainz 官方排序和时间窗口请求探索数据。"""
+    """
+    新发行模式应按 ListenBrainz 官方排序和时间窗口请求探索数据。
+    """
     chain = Mock()
     chain.async_music_fresh_releases = AsyncMock(
         return_value=[
@@ -271,7 +289,9 @@ def test_explore_music_supports_official_fresh_release_mode():
 
 
 def test_explore_music_forces_douban_music_to_tag_browsing():
-    """豆瓣音乐探索即使收到榜单模式也应固定分类浏览，不与推荐页重复。"""
+    """
+    豆瓣音乐探索即使收到榜单模式也应固定分类浏览，不与推荐页重复。
+    """
     chain = Mock()
     chain.async_music_discover = AsyncMock(
         return_value=[
@@ -311,7 +331,9 @@ def test_explore_music_forces_douban_music_to_tag_browsing():
 
 
 def test_explore_music_filters_missing_covers_for_external_sources():
-    """外部音乐源选择仅有封面时应在统一响应层过滤无图条目。"""
+    """
+    外部音乐源选择仅有封面时应在统一响应层过滤无图条目。
+    """
     chain = Mock()
     chain.async_music_discover = AsyncMock(
         return_value=[
@@ -338,7 +360,9 @@ def test_explore_music_filters_missing_covers_for_external_sources():
 
 
 def test_music_album_returns_tracks_and_releases():
-    """专辑接口应返回专辑详情、曲目和发行版本。"""
+    """
+    专辑接口应返回专辑详情、曲目和发行版本。
+    """
     chain = Mock()
     chain.async_get_music_album = AsyncMock(
         return_value=MusicAlbumInfo(
@@ -368,7 +392,9 @@ def test_music_album_returns_tracks_and_releases():
 
 
 def test_music_album_returns_404_for_unknown_album():
-    """专辑不存在时接口应返回 404。"""
+    """
+    专辑不存在时接口应返回 404。
+    """
     chain = Mock()
     chain.async_get_music_album = AsyncMock(return_value=None)
 
@@ -382,7 +408,9 @@ def test_music_album_returns_404_for_unknown_album():
 
 
 def test_music_album_related_returns_source_results():
-    """专辑关联浏览接口应传递来源和数量并序列化结果。"""
+    """
+    专辑关联浏览接口应传递来源和数量并序列化结果。
+    """
     chain = Mock()
     chain.async_get_music_album_related = AsyncMock(
         return_value=[
@@ -414,7 +442,9 @@ def test_music_album_related_returns_source_results():
 
 
 def test_music_artist_returns_detail():
-    """艺术家接口应返回名称、类型和活跃时间。"""
+    """
+    艺术家接口应返回名称、类型和活跃时间。
+    """
     chain = Mock()
     chain.async_get_music_artist = AsyncMock(
         return_value=MusicArtistInfo(
@@ -438,7 +468,9 @@ def test_music_artist_returns_detail():
 
 
 def test_music_artist_albums_forwards_pagination_and_type():
-    """艺术家专辑接口应传递分页和专辑类型筛选。"""
+    """
+    艺术家专辑接口应传递分页和专辑类型筛选。
+    """
     chain = Mock()
     chain.async_get_music_artist_albums = AsyncMock(
         return_value=[
@@ -467,7 +499,9 @@ def test_music_artist_albums_forwards_pagination_and_type():
 
 
 def test_music_library_status_marks_existing_albums():
-    """批量状态接口应保留专辑身份，并根据入库检查返回状态。"""
+    """
+    批量状态接口应保留专辑身份，并根据入库检查返回状态。
+    """
     media_chain = Mock()
     media_chain.media_exists.side_effect = [
         ExistMediaInfo(type=MediaType.MUSIC, itemid="library-album-1"),
@@ -507,7 +541,9 @@ def test_music_library_status_marks_existing_albums():
 
 
 def test_music_library_status_treats_release_group_without_track_count_as_existing():
-    """Release Group 无曲数时应查询“是否存在”，而不是永久返回未入库。"""
+    """
+    Release Group 无曲数时应查询“是否存在”，而不是永久返回未入库。
+    """
     media_chain = Mock()
     media_chain.media_exists.return_value = ExistMediaInfo(
         type=MediaType.MUSIC,
@@ -534,7 +570,9 @@ def test_music_library_status_treats_release_group_without_track_count_as_existi
 
 
 def test_music_library_status_rejects_recordings():
-    """批量状态接口不得把单曲按专辑完整性规则查询。"""
+    """
+    批量状态接口不得把单曲按专辑完整性规则查询。
+    """
     with pytest.raises(ValueError, match="仅支持"):
         MusicLibraryStatusRequest(
             items=[
@@ -549,7 +587,9 @@ def test_music_library_status_rejects_recordings():
 
 
 def test_music_library_status_rejects_non_music_sources():
-    """批量状态接口不得接受影视等非音乐媒体身份。"""
+    """
+    批量状态接口不得接受影视等非音乐媒体身份。
+    """
     with pytest.raises(ValueError, match="稳定音乐来源"):
         MusicLibraryStatusRequest(
             items=[
@@ -564,7 +604,9 @@ def test_music_library_status_rejects_non_music_sources():
 
 
 def test_music_artist_related_returns_relationship_text():
-    """关联艺术家接口应返回关系说明，供详情页展示。"""
+    """
+    关联艺术家接口应返回关系说明，供详情页展示。
+    """
     chain = Mock()
     chain.async_get_music_artist_related = AsyncMock(
         return_value=[

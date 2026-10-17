@@ -1,3 +1,7 @@
+"""
+验证仪表盘运行环境、内存指标和媒体统计。
+"""
+
 from app.adapters.system import host as system_module
 from app.adapters.system.host import SystemUtils
 from app.db.models.transferhistory import TransferHistory
@@ -6,14 +10,20 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def test_dashboard_system_info_returns_runtime_environment(monkeypatch):
-    """系统摘要应返回主机、系统、进程运行时间和后端版本。"""
+    """
+    系统摘要应返回主机、系统、进程运行时间和后端版本。
+    """
 
     class FakeProcess:
-        """提供固定启动时间的进程桩。"""
+        """
+        提供固定启动时间的进程桩。
+        """
 
         @staticmethod
         def create_time() -> float:
-            """返回固定的进程启动时间。"""
+            """
+            返回固定的进程启动时间。
+            """
             return 400.0
 
     monkeypatch.setattr(system_module.socket, "gethostname", lambda: "moviepilot-host")
@@ -31,23 +41,33 @@ def test_dashboard_system_info_returns_runtime_environment(monkeypatch):
 
 
 def test_memory_usage_returns_used_cached_and_available(monkeypatch):
-    """内存统计应返回应用进程占用以及系统缓存、可用和总容量。"""
+    """
+    内存统计应返回应用进程占用以及系统缓存、可用和总容量。
+    """
 
     class FakeMemoryInfo:
-        """提供固定进程 RSS 的桩。"""
+        """
+        提供固定进程 RSS 的桩。
+        """
 
         rss = 2 * 1024**3
 
     class FakeProcess:
-        """提供固定进程内存信息的桩。"""
+        """
+        提供固定进程内存信息的桩。
+        """
 
         @staticmethod
         def memory_info() -> FakeMemoryInfo:
-            """返回固定进程内存信息。"""
+            """
+            返回固定进程内存信息。
+            """
             return FakeMemoryInfo()
 
     class FakeMemory:
-        """提供固定系统内存值的桩。"""
+        """
+        提供固定系统内存值的桩。
+        """
 
         total = 16 * 1024**3
         cached = 3 * 1024**3
@@ -67,7 +87,9 @@ def test_memory_usage_returns_used_cached_and_available(monkeypatch):
 
 
 def test_monthly_media_statistics_counts_successful_unique_media():
-    """本月新增统计应只计算成功记录，并按媒体去重。"""
+    """
+    本月新增统计应只计算成功记录，并按媒体去重。
+    """
     month = system_module.time.strftime("%Y-%m-", system_module.time.localtime())
     histories = [
         TransferHistory(status=True, date=f"{month}01 10:00:00", type=MediaType.MOVIE.value, media_source=MediaSource.TMDB.value, media_id="1", title="电影"),

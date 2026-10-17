@@ -1,3 +1,7 @@
+"""
+将工作流中的资源提交给下载链。
+"""
+
 from dataclasses import fields
 from typing import Any, Iterator, Optional
 
@@ -41,7 +45,9 @@ class AddDownloadAction(BaseAction):
     }
 
     def __init__(self, action_id: str) -> None:
-        """初始化下载结果集合和动作错误状态。"""
+        """
+        初始化下载结果集合和动作错误状态。
+        """
         super().__init__(action_id)
         self._added_downloads: list[str | tuple[Optional[str], Optional[str]]] = []
         self._has_error = False
@@ -52,7 +58,9 @@ class AddDownloadAction(BaseAction):
 
     @property
     def success(self) -> bool:
-        """返回本次动作是否未遇到下载失败。"""
+        """
+        返回本次动作是否未遇到下载失败。
+        """
         return not self._has_error
 
     def execute(self, workflow_id: int, params: dict[str, object], context: ActionContext) -> ActionContext:
@@ -135,7 +143,9 @@ class AddDownloadAction(BaseAction):
             title: Optional[str],
             subtitle: Optional[str],
     ) -> bool:
-        """在缓存检查后补齐资源的媒体信息，保留已有元数据及失败状态。"""
+        """
+        在缓存检查后补齐资源的媒体信息，保留已有元数据及失败状态。
+        """
         if not resource.meta_info:
             if title is None:
                 self._has_error = True
@@ -156,7 +166,9 @@ class AddDownloadAction(BaseAction):
     def _iter_resources(
             self, workflow_id: int, context: ActionContext,
     ) -> Iterator[WorkflowTorrentContext | DownloadContext]:
-        """恢复节点输出字典并保留实时领域对象；历史文本提示重跑并保留动作失败状态。"""
+        """
+        恢复节点输出字典并保留实时领域对象；历史文本提示重跑并保留动作失败状态。
+        """
         for resource in context.torrents or []:
             if runtime_stop_state.is_workflow_stopped(workflow_id):
                 break
@@ -173,7 +185,9 @@ class AddDownloadAction(BaseAction):
     def _to_domain_context(
             context: WorkflowTorrentContext | DownloadContext | dict[str, Any],
     ) -> DownloadContext:
-        """复用 RSS 领域上下文，或把恢复的节点输出字典及传输模型还原为下载链领域对象。"""
+        """
+        复用 RSS 领域上下文，或把恢复的节点输出字典及传输模型还原为下载链领域对象。
+        """
         if isinstance(context, dict):
             return AddDownloadAction._to_domain_context(WorkflowTorrentContext.model_validate(context))
         if context.media_info is None or context.torrent_info is None:

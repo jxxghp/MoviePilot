@@ -1,3 +1,7 @@
+"""
+站点连通性、用户数据、Cookie 同步与消息交互编排。
+"""
+
 import base64
 import re
 import threading
@@ -19,6 +23,8 @@ from app.application.site.contract import (
     SiteSnapshot,
     SiteUserDataMutation,
 )
+
+# 站点资源包在启动时加载，静态检查环境可能无法解析其实现。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.chain._interaction import InteractionChainMixin
 from app.chain.base import ChainBase
@@ -37,7 +43,14 @@ from app.schemas.types import EventType, MessageType
 
 
 class SiteResponsePort(Protocol):
-    """声明站点链在响应有效期内读取的最小 HTTP 字段。"""
+    """
+    声明站点链在响应有效期内读取的最小 HTTP 字段。
+
+    :ivar status_code: 站点 HTTP 响应状态码
+    :ivar reason: HTTP 状态原因短语，用于连接失败诊断
+    :ivar text: 解码后的站点页面或接口正文
+    :ivar content: 原始响应字节，用于图标等二进制资源
+    """
 
     status_code: int
     reason: str
@@ -45,16 +58,26 @@ class SiteResponsePort(Protocol):
     content: bytes
 
     def __bool__(self) -> bool:
-        """保留 requests.Response 对错误状态返回 False 的兼容语义。"""
+        """
+        保留 requests.Response 对错误状态返回 False 的兼容语义。
+
+        :return: HTTP 状态小于 400 时为 True，错误状态为 False
+        """
         ...
 
     def json(self) -> Any:
-        """解析响应 JSON，格式错误继续向调用方抛出。"""
+        """
+        解析响应 JSON，格式错误继续向调用方抛出。
+
+        :return: 解析后的 JSON 值，格式错误时传播解析异常
+        """
         ...
 
 
 class SiteHttpPort(Protocol):
-    """声明站点探测所需的同步 HTTP 上下文能力。"""
+    """
+    声明站点探测所需的同步 HTTP 上下文能力。
+    """
 
     def open(
         self,
@@ -67,12 +90,25 @@ class SiteHttpPort(Protocol):
         proxies: Optional[Mapping[str, Any]] = None,
         timeout: int = 20,
     ) -> AbstractContextManager[Optional[SiteResponsePort]]:
-        """打开有界响应上下文，退出时必须关闭底层响应。"""
+        """
+        打开有界响应上下文，退出时必须关闭底层响应。
+
+        :param method: HTTP 请求方法，如 GET 或 POST
+        :param url: 站点页面或接口的完整请求地址
+        :param headers: 额外请求头，None 表示未提供
+        :param cookie: 站点认证 Cookie 文本，None 表示未提供
+        :param ua: 本次使用的 User-Agent，None 时使用客户端默认值
+        :param proxies: 协议到代理地址的映射，None 表示未指定代理
+        :param timeout: 请求超时秒数，默认 20 秒
+        :return: 进入后提供响应或 None 的上下文管理器；退出时关闭底层响应
+        """
         ...
 
 
 class SiteBrowserPort(Protocol):
-    """声明站点连通性测试所需的浏览器渲染能力。"""
+    """
+    声明站点连通性测试所需的浏览器渲染能力。
+    """
 
     def render(
         self,
@@ -83,29 +119,59 @@ class SiteBrowserPort(Protocol):
         proxies: Optional[Mapping[str, Any]],
         timeout: int,
     ) -> Optional[str]:
-        """在受控浏览器会话内渲染页面并返回源码。"""
+        """
+        在受控浏览器会话内渲染页面并返回源码。
+
+        :param url: 需要浏览器渲染的完整站点地址
+        :param cookies: 站点认证 Cookie 文本
+        :param ua: 浏览器请求使用的 User-Agent
+        :param proxies: 协议到代理地址的映射，None 表示未指定代理
+        :param timeout: 浏览器页面访问超时秒数
+        :return: 渲染后的页面源码，未取得页面时为 None
+        """
         ...
 
 
 class SiteChallengePort(Protocol):
-    """声明站点页面挑战识别能力。"""
+    """
+    声明站点页面挑战识别能力。
+    """
 
     def detected(self, html_text: str) -> bool:
-        """返回页面是否命中 Cloudflare 等挑战特征。"""
+        """
+        返回页面是否命中 Cloudflare 等挑战特征。
+
+        :param html_text: 待检测的站点 HTML 页面源码
+        :return: 命中 Cloudflare 等浏览器挑战特征时为 True，否则为 False
+        """
         ...
 
 
 class SiteCookieCloudPort(Protocol):
-    """声明 CookieCloud 同步入口的最小能力。"""
+    """
+    声明 CookieCloud 同步入口的最小能力。
+    """
 
     def download(self) -> Tuple[Optional[dict[str, str]], str]:
-        """下载并解密按站点域名聚合的 Cookie。"""
+        """
+        下载并解密按站点域名聚合的 Cookie。
+
+        :return: 按站点域名聚合的 Cookie 映射与错误说明；配置或请求失败时映射为 None，
+            无数据或解密失败时可为空字典，成功时错误说明为空字符串
+        """
         ...
 
 
 @dataclass(frozen=True, slots=True)
 class _SiteAccessPorts:
-    """保存一次原子发布的站点链技术端口。"""
+    """
+    保存一次原子发布的站点链技术端口。
+
+    :param http: 有界 HTTP 响应访问端口
+    :param browser: 站点页面浏览器渲染端口
+    :param challenge: 站点页面挑战特征检测端口
+    :param cookiecloud: CookieCloud 下载和解密端口
+    """
 
     http: SiteHttpPort
     browser: SiteBrowserPort
@@ -115,7 +181,12 @@ class _SiteAccessPorts:
 
 @dataclass(frozen=True, slots=True)
 class _SiteConnectionResponse:
-    """保存 CookieCloud 新站点探测完成后的必要响应数据。"""
+    """
+    保存 CookieCloud 新站点探测完成后的必要响应数据。
+
+    :param status_code: 新站点探测得到的 HTTP 状态码
+    :param text: 已复制的页面正文，用于登录状态与站点数据识别
+    """
 
     status_code: int
     text: str
@@ -132,7 +203,9 @@ def configure_site_ports(
     challenge: SiteChallengePort,
     cookiecloud: SiteCookieCloudPort,
 ) -> None:
-    """由启动组合根一次发布站点链的全部技术端口。"""
+    """
+    由启动组合根一次发布站点链的全部技术端口。
+    """
     global _site_ports
     ports = _SiteAccessPorts(
         http=http,
@@ -145,14 +218,18 @@ def configure_site_ports(
 
 
 def reset_site_ports() -> None:
-    """原子清除站点链端口，支持重复关闭与失败回滚。"""
+    """
+    原子清除站点链端口，支持重复关闭与失败回滚。
+    """
     global _site_ports
     with _site_ports_lock:
         _site_ports = None
 
 
 def _site_ports_snapshot() -> _SiteAccessPorts:
-    """返回一致端口快照，未装配时稳定失败。"""
+    """
+    返回一致端口快照，未装配时稳定失败。
+    """
     with _site_ports_lock:
         ports = _site_ports
     if ports is None:
@@ -170,7 +247,9 @@ def _open_site_response(
     proxies: Optional[Mapping[str, Any]] = None,
     timeout: int = 20,
 ) -> AbstractContextManager[Optional[SiteResponsePort]]:
-    """通过当前 HTTP 端口打开一个必定有界关闭的响应上下文。"""
+    """
+    通过当前 HTTP 端口打开一个必定有界关闭的响应上下文。
+    """
     return _site_ports_snapshot().http.open(
         method=method,
         url=url,
@@ -191,7 +270,9 @@ class SiteChain(InteractionChainMixin, ChainBase):
     _interaction_handler_type = SiteInteractionHandler
 
     def __init__(self) -> None:
-        """初始化站点管理处理链及特殊站点测试器"""
+        """
+        初始化站点管理处理链及特殊站点测试器
+        """
         super().__init__()
 
         # 特殊站点登录验证
@@ -209,6 +290,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
     def refresh_userdata(self, site: dict = None) -> Optional[SiteUserData]:
         """
         刷新站点的用户数据
+
         :param site:  站点
         :return: 用户数据
         """
@@ -223,7 +305,6 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 name=name,
                 mutation=SiteUserDataMutation(userdata.model_dump()),
             )
-            # 发送事件
             self.eventmanager.send_event(EventType.SiteRefreshed, {
                 "site_id": site.get("id")
             })
@@ -331,7 +412,6 @@ class SiteChain(InteractionChainMixin, ChainBase):
         """
         判断站点是否已经登陆：zhuique
         """
-        # 获取token
         token = None
         user_agent = site.ua or self.runtime_config.user_agent
         with _open_site_response(
@@ -354,7 +434,6 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 return False, f"错误：{res.status_code} {res.reason}"
         if not token:
             return False, "无法获取Token"
-        # 调用查询用户信息接口
         with _open_site_response(
             method="GET",
             url=f"{site.url}api/user/getInfo",
@@ -560,11 +639,12 @@ class SiteChain(InteractionChainMixin, ChainBase):
     @staticmethod
     def __parse_favicon(url: str, cookie: str, ua: str) -> Tuple[str, Optional[str]]:
         """
-        解析站点favicon,返回base64 fav图标
+        解析站点图标地址，并读取其 Base64 编码内容。
+
         :param url: 站点地址
-        :param cookie: Cookie
-        :param ua: User-Agent
-        :return:
+        :param cookie: 站点认证 Cookie 文本
+        :param ua: 请求使用的 User-Agent
+        :return: 图标完整地址及 Base64 编码内容，读取失败时内容为 None
         """
         favicon_url = urljoin(url, "favicon.ico")
         with _open_site_response(
@@ -622,7 +702,6 @@ class SiteChain(InteractionChainMixin, ChainBase):
         total_num = len(cookies)
         update_count = add_count = fail_count = 0
         for index, (domain, cookie) in enumerate(cookies.items(), start=1):
-            # 检查系统是否停止
             if runtime_stop_state.is_system_stopped:
                 logger.info("系统正在停止，中断CookieCloud同步")
                 return False, "系统正在停止，同步被中断"
@@ -653,7 +732,6 @@ class SiteChain(InteractionChainMixin, ChainBase):
             if not should_finalize:
                 continue
 
-            # 通知站点更新
             if indexer:
                 self.eventmanager.send_event(EventType.SiteUpdated, {
                     "domain": domain,
@@ -664,7 +742,6 @@ class SiteChain(InteractionChainMixin, ChainBase):
                     text=f"CookieCloud 站点（{index}/{total_num}）同步完成",
                     data={"total": total_num, "finished": index},
                 )
-        # 处理完成
         ret_msg = f"更新了{update_count}个站点，新增了{add_count}个站点"
         if fail_count > 0:
             ret_msg += f"，{fail_count}个站点添加失败，下次同步时将重试，也可以手动添加"
@@ -684,7 +761,9 @@ class SiteChain(InteractionChainMixin, ChainBase):
             repository: SiteRepository,
             rsshelper: RssHelper,
     ) -> Tuple[int, int, int, bool]:
-        """处理单个域名，并返回计数与是否继续发送更新事件。"""
+        """
+        处理单个域名，并返回计数与是否继续发送更新事件。
+        """
         if site_info and site_info.is_active:
             status, _ = self.test(domain)
             if status:
@@ -740,7 +819,9 @@ class SiteChain(InteractionChainMixin, ChainBase):
         return 0, 1, 0, True
 
     def _cookiecloud_blacklisted(self, domain: str) -> bool:
-        """判断域名是否命中 CookieCloud 黑名单。"""
+        """
+        判断域名是否命中 CookieCloud 黑名单。
+        """
         blacklist = self.runtime_config.cookiecloud_blacklist
         return bool(blacklist) and any(
             site_rules.extract_domain(domain) == site_rules.extract_domain(item)
@@ -749,7 +830,9 @@ class SiteChain(InteractionChainMixin, ChainBase):
 
     @staticmethod
     def _cookiecloud_indexer_domain(indexer: dict, sub_domain: str) -> str:
-        """根据索引器主域名和扩展域名解析实际访问地址。"""
+        """
+        根据索引器主域名和扩展域名解析实际访问地址。
+        """
         if site_rules.extract_domain(indexer.get("domain")) == sub_domain:
             return indexer.get("domain")
         for ext_domain in indexer.get("ext_domains", []):
@@ -760,7 +843,9 @@ class SiteChain(InteractionChainMixin, ChainBase):
     def _cookiecloud_connect(
         self, domain_url: str, cookie: str, indexer: dict
     ) -> Tuple[bool, Optional[_SiteConnectionResponse]]:
-        """连接新站点，必要时通过已配置代理重试。"""
+        """
+        连接新站点，必要时通过已配置代理重试。
+        """
         with _open_site_response(
             method="GET",
             url=domain_url,
@@ -783,7 +868,9 @@ class SiteChain(InteractionChainMixin, ChainBase):
     def _site_connection_response(
         response: Optional[SiteResponsePort],
     ) -> Optional[_SiteConnectionResponse]:
-        """在关闭响应前投影 CookieCloud 新站点探测所需字段。"""
+        """
+        在关闭响应前投影 CookieCloud 新站点探测所需字段。
+        """
         if response is None:
             return None
         return _SiteConnectionResponse(
@@ -799,27 +886,22 @@ class SiteChain(InteractionChainMixin, ChainBase):
         if not event:
             return
         event_data = event.event_data or {}
-        # 主域名
         domain = event_data.get("domain")
         if not domain:
             return
         if str(domain).startswith("http"):
             domain = site_rules.extract_domain(domain)
-        # 站点信息
         repository = self.site_repository
         siteshelper = SitesHelper()
         siteinfo = repository.get_by_domain(domain)
         if not siteinfo:
             logger.warn(f"未维护站点 {domain} 信息！")
             return
-        # Cookie
         cookie = siteinfo.cookie
-        # 索引器
         indexer = siteshelper.get_indexer(domain)
         if not indexer:
             logger.warn(f"站点 {domain} 索引器不存在！")
             return
-        # 查询站点图标
         logger.info(f"开始缓存站点 {indexer.get('name')} 图标 ...")
         icon_domain = indexer.get("domain")
         icon_name = indexer.get("name")
@@ -846,11 +928,9 @@ class SiteChain(InteractionChainMixin, ChainBase):
         if not event:
             return
         event_data = event.event_data or {}
-        # 主域名
         domain = event_data.get("domain")
         if not domain:
             return
-        # 获取主域名中间那段
         domain_host = url_tools.host_label(domain)
         # 查询以"site.domain_host"开头的配置项，并清除
         # SystemConfigService 未提供 all()，无参 get() 经仓库返回全部配置字典
@@ -869,7 +949,6 @@ class SiteChain(InteractionChainMixin, ChainBase):
         if not event:
             return
         event_data = event.event_data or {}
-        # 主域名
         domain = event_data.get("domain")
         if not domain:
             return
@@ -878,27 +957,23 @@ class SiteChain(InteractionChainMixin, ChainBase):
         indexer = SitesHelper().get_indexer(domain)
         if not indexer:
             return
-        # 刷新站点用户数据
         self.refresh_userdata(site=indexer) or {}
 
     def test(self, url: str) -> Tuple[bool, str]:
         """
         测试站点是否可用
+
         :param url: 站点域名
         :return: (是否可用, 错误信息)
         """
-        # 检查域名是否可用
         domain = site_rules.extract_domain(url)
         repository = self.site_repository
         site_info = repository.get_by_domain(domain)
         if not site_info:
             return False, f"站点【{url}】不存在"
 
-        # 模拟登录
         try:
-            # 开始记时
             start_time = datetime.now()
-            # 特殊站点测试
             special_test = self.special_site_test.get(domain)
             if special_test:
                 state, message = special_test(site_info)
@@ -912,7 +987,6 @@ class SiteChain(InteractionChainMixin, ChainBase):
                         ),
                     )
                 )
-            # 统计
             seconds = (datetime.now() - start_time).seconds
             if state:
                 repository.success(domain=domain, seconds=seconds)
@@ -935,7 +1009,6 @@ class SiteChain(InteractionChainMixin, ChainBase):
         proxy_server = self.runtime_config.proxy_server if site_info.proxy else None
         timeout = site_info.timeout or 60
 
-        # 访问链接
         if render:
             ports = _site_ports_snapshot()
             page_source = ports.browser.render(
@@ -957,7 +1030,6 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 ua=ua,
                 proxies=proxies,
             ) as res:
-                # 判断登录状态
                 if res and res.status_code in [200, 500, 403]:
                     content = res.text
                     if not public and not SiteUtils.is_logged_in(content):
@@ -977,7 +1049,9 @@ class SiteChain(InteractionChainMixin, ChainBase):
         return True, "连接成功"
 
     def _interaction_handler(self) -> "SiteInteractionHandler":
-        """构造 /sites 交互处理器，Cookie 更新动作由本链提供。"""
+        """
+        构造 /sites 交互处理器，Cookie 更新动作由本链提供。
+        """
         return SiteInteractionHandler(
             messenger=self,
             cookie_updater=self.update_cookie,
@@ -1004,9 +1078,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 userid=userid,
                 save_history=False))
             return
-        # 禁用站点
         repository.update(site_id, SiteMutation({"is_active": False}))
-        # 重新发送消息
         self.remote_list(channel=channel, userid=userid, source=source)
 
     def remote_enable(self, arg_str: str, channel: NotificationChannel,
@@ -1031,22 +1103,20 @@ class SiteChain(InteractionChainMixin, ChainBase):
                     userid=userid,
                     save_history=False))
                 return
-            # 禁用站点
             repository.update(site_id, SiteMutation({"is_active": True}))
-        # 重新发送消息
         self.remote_list(channel=channel, userid=userid, source=source)
 
     def update_cookie(self, site_info: SiteSnapshot,
                       username: str, password: str, two_step_code: Optional[str] = None) -> Tuple[bool, str]:
         """
         根据用户名密码更新站点Cookie
+
         :param site_info: 站点信息
         :param username: 用户名
         :param password: 密码
         :param two_step_code: 二步验证码或密钥
         :return: (是否成功, 错误信息)
         """
-        # 更新站点Cookie
         result = CookieHelper().get_site_cookie_ua(
             url=site_info.url,
             username=username,
@@ -1083,7 +1153,6 @@ class SiteChain(InteractionChainMixin, ChainBase):
             return
         arg_str = str(arg_str).strip()
         args = arg_str.split()
-        # 二步验证码
         two_step_code = None
         if len(args) == 4:
             two_step_code = args[3]
@@ -1104,9 +1173,7 @@ class SiteChain(InteractionChainMixin, ChainBase):
                 userid=userid,
                 save_history=False))
             return
-        # 站点ID
         site_id = int(raw_site_id)
-        # 站点信息
         site_info = self.site_repository.get(site_id)
         if not site_info:
             self.post_message(Message(
@@ -1122,11 +1189,8 @@ class SiteChain(InteractionChainMixin, ChainBase):
             title=f"开始更新【{site_info.name}】Cookie&UA ...",
             userid=userid,
             save_history=False))
-        # 用户名
         username = args[1]
-        # 密码
         password = args[2]
-        # 更新Cookie
         status, msg = self.update_cookie(site_info=site_info,
                                          username=username,
                                          password=password,
@@ -1161,16 +1225,11 @@ class SiteChain(InteractionChainMixin, ChainBase):
             userid=userid,
             save_history=False,
         ))
-        # 刷新站点数据
         site_datas = self.refresh_userdatas()
         if site_datas:
-            # 发送消息
             messages = {}
-            # 总上传
             incUploads = 0
-            # 总下载
             incDownloads = 0
-            # 今天日期
             today_date = datetime.now().strftime("%Y-%m-%d")
 
             for rand, site in enumerate(site_datas.keys()):

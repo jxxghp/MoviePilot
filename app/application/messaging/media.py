@@ -1,3 +1,7 @@
+"""
+媒体搜索、下载与订阅交互的用户会话状态管理。
+"""
+
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -13,6 +17,26 @@ from app.schemas.types import NotificationChannel
 class PendingMediaInteraction:
     """
     记录一次搜索/下载/订阅交互的当前上下文。
+
+    :param request_id: 当前交互请求标识，用于校验按钮是否仍属于活动会话
+    :param user_id: 所属用户标识，用于隔离不同用户的交互状态
+    :param channel: 回复使用的通知渠道，None 表示未指定
+    :param source: 渠道实例标识，None 表示未指定实例
+    :param username: 用户显示名称，未知时为 None
+    :param action: 本次媒体交互的业务动作，如搜索、下载或订阅
+    :param keyword: 用户输入的媒体检索关键词
+    :param phase: 当前阶段：media 选择媒体、torrent 选择资源、download-dir 选择目录
+    :param page: 当前候选列表页索引，从 0 开始
+    :param title: 当前交互视图的展示标题
+    :param meta: 从输入解析出的媒体元信息，尚未识别时为 None
+    :param current_media: 用户当前选定的影视或音乐信息，尚未选择时为 None
+    :param items: 当前阶段供用户选择的候选对象
+    :param download_dirs: 可供选择的下载目录列表
+    :param pending_download_mode: 待目录选择完成后执行的下载模式，未等待下载时为 None
+    :param pending_download_context: 等待目录选择的资源下载上下文，未暂存时为 None
+    :param pending_no_exists: 待下载媒体的缺失集数映射，未提供时为 None
+    :param pending_torrent_page: 进入目录选择前的种子列表页索引，返回时恢复此页
+    :param created_at: 会话创建的本地时间，用于计算过期时间
     """
 
     request_id: str

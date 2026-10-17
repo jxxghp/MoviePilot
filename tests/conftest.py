@@ -1,7 +1,8 @@
-"""pytest 全局引导：隔离 CONFIG_DIR、补 sites 垫片、建表、装载网络守卫。
+"""
+pytest 全局引导、隔离装配、数据库测试载具与资源收尾。
 
-引导与网络守卫均复用 ``app/testing`` 的共享 harness（与插件仓 conftest 同源），
-引导逻辑只在 ``app/testing`` 维护一处。
+配置目录隔离及网络守卫复用 app.testing；当前模块在隔离数据库上装配应用端口，
+为测试提供配置替换、缓存重装配和精确数据清理能力，不执行完整应用启动流程。
 """
 
 import asyncio
@@ -22,32 +23,63 @@ from app.testing.bootstrap import prepare_backend
 
 prepare_backend()
 
-# 复用共享 autouse 网络守卫；同一实现亦供各插件仓 conftest import 复用，避免逐仓维护
+# 隔离配置后才导入自动启用的网络守卫；pytest 需要保留此未直接调用的导入。
 from app.testing.network import block_real_network  # noqa: E402,F401
 
 TResult = TypeVar("TResult")
 
 
 class _TestDatabaseExecutor:
-    """让绕过完整 lifespan 的测试仍通过线程执行同步数据库写入。"""
+    """
+    为未执行完整启动流程的测试提供同步数据库操作的线程入口。
+    """
 
     async def run(self, operation):
-        """在线程中执行测试事务。"""
+        """
+        在线程中执行一个同步数据库操作。
+
+        :param operation: 无需额外参数的同步回调，其事务边界由回调定义
+        :return: 回调结果；回调异常向上传播
+        """
         return await asyncio.to_thread(operation)
 
 
 class _TestRuntimeSettingsProxy:
-    """为仍需覆盖旧配置字段的测试提供局部桩，不回到宿主模块级代理。"""
+    """
+    把历史配置替换点转发到隔离测试使用的配置对象。
+
+    记录每个字段首次写入前的值；删除代理属性时恢复原值或删除新增字段。
+    直接赋值不会在代理销毁时自动恢复，测试仍需使用可撤销的替换工具。
+
+    :ivar _originals: 字段名到是否原先存在及原值的映射
+    """
 
     def __init__(self) -> None:
+        """
+        创建用于恢复被替换配置字段的记录表。
+        """
         self._originals: dict[str, tuple[bool, object]] = {}
 
     def __getattr__(self, key: str):
+        """
+        从隔离测试配置中读取字段。
+
+        :param key: 配置字段名
+        :return: 当前字段值；不存在时保留原 AttributeError
+        """
         from app.runtime.config import settings
 
         return getattr(settings, key)
 
     def __setattr__(self, key: str, value):
+        """
+        记录字段原值后写入隔离测试配置。
+
+        同一字段多次写入仍保留首次写入前的值。
+
+        :param key: 被替换的配置字段名；_originals 属于代理自身
+        :param value: 测试需要使用的临时字段值
+        """
         if key == "_originals":
             object.__setattr__(self, key, value)
             return
@@ -58,6 +90,12 @@ class _TestRuntimeSettingsProxy:
         setattr(settings, key, value)
 
     def __delattr__(self, key: str) -> None:
+        """
+        撤销一个已登记的配置字段替换。
+
+        :raises AttributeError: 字段没有可恢复的替换记录
+        :param key: 此前通过代理写入的字段名
+        """
         if key in self._originals:
             from app.runtime.config import settings
 
@@ -72,10 +110,12 @@ class _TestRuntimeSettingsProxy:
 
 @pytest.fixture
 def compose_cache_backend():
-    """按启动流程以指定缓存类型重新装配平台缓存，用例结束后恢复原设置与装配。
+    """
+    提供缓存后端重装配入口，并在用例结束时恢复原配置和装配。
 
-    缓存类型属于重启生效的设置，只在启动时由缓存组合根选定；测试直接改设置不会切换路由。
-    恢复不依赖 monkeypatch 的撤销顺序，避免在设置仍被替换时重新装配。
+    仅修改配置不会切换已创建的缓存路由，必须重新调用启动组合根。恢复不依赖其他夹具撤销顺序。
+
+    :yields: 接受缓存类型字符串的同步装配函数
     """
     from app.runtime.config import settings
     from app.startup.composition.cache import configure_cache_composition
@@ -83,6 +123,11 @@ def compose_cache_backend():
     original = settings.CACHE_BACKEND_TYPE
 
     def compose(backend_type: str) -> None:
+        """
+        设置缓存类型并立即重装配平台缓存。
+
+        :param backend_type: 运行配置支持的缓存类型标识
+        """
         settings.CACHE_BACKEND_TYPE = backend_type
         configure_cache_composition()
 
@@ -95,14 +140,28 @@ def compose_cache_backend():
 
 @pytest.fixture(autouse=True)
 def install_runtime_settings_test_proxies(monkeypatch):
-    """给历史测试 patch 点注入测试专用对象，生产代码不保留 settings 属性。"""
+    """
+    向已导入的历史配置替换点注入本用例专用代理。
+
+    配置字段本身仍由测试使用的替换工具恢复，代理不会在销毁时自动回滚全部字段。
+
+    :yields: 已安装配置代理的测试执行阶段，不提供额外值
+    :param monkeypatch: 负责用例结束时撤销模块属性注入的 pytest 夹具
+    """
     proxy = _TestRuntimeSettingsProxy()
     _install_runtime_settings_test_proxies(proxy, monkeypatch)
     yield
 
 
 def _install_runtime_settings_test_proxies(proxy, monkeypatch=None) -> None:
-    """把测试专用 patch 点补到当前已导入的 Agent/模块。"""
+    """
+    为已导入且使用运行配置接口的宿主模块补充测试替换点。
+
+    仅扫描模块、Agent、启动、适配器及主入口；已有 settings 属性时不覆盖。
+
+    :param proxy: 用于转发配置字段读写的测试对象
+    :param monkeypatch: 可选的属性撤销工具；None 时直接写模块属性并保留到后续清理
+    """
     for module_name, module in tuple(sys.modules.items()):
         if not (
             module_name.startswith("app.modules.")
@@ -120,13 +179,27 @@ def _install_runtime_settings_test_proxies(proxy, monkeypatch=None) -> None:
 
 
 def pytest_runtest_call(item):
-    """显式 fixture 期间才导入的模块也要拥有同一个测试 patch 点。"""
+    """
+    在用例执行前为显式夹具新导入的模块补充配置替换点。
+
+    直接注入代理，不使用自动撤销工具；配置字段的替换仍由测试自身负责恢复。
+
+    :param item: pytest 当前用例节点，当前实现不读取其内容
+    """
     _install_runtime_settings_test_proxies(_TestRuntimeSettingsProxy())
 
 
 @pytest.fixture(autouse=True)
 def configure_plugin_system_services():
-    """为绕过完整启动流程的单元测试装配真实插件系统适配器。"""
+    """
+    为单元测试装配应用、存储和插件端口，复用隔离数据库。
+
+    替换运行配置、事务、Chain、Agent 与插件服务的进程级提供方；不执行完整应用生命周期。
+    收尾显式重置 Chain 网络端口、Chain 端口、插件系统及插件运行时工厂；其他测试专用装配
+    由下一用例重装或会话结束清理，不承诺恢复到夹具调用前的全部全局状态。
+
+    :yields: 应用端口已装配的测试执行阶段，不提供额外值
+    """
     from app.adapters.web.security.access import configure_token_codec
     from app.api.data import configure_api_data_ports
     from app.application.configuration import (
@@ -260,7 +333,12 @@ def configure_plugin_system_services():
     )
 
     def build_test_plugin_runtime(host):
-        """在 pytest 组合根装配直接构造 Manager 所需的隔离 Runtime。"""
+        """
+        在测试组合根构造插件运行时及其依赖适配器。
+
+        :param host: 需要插件运行时的管理器实例，提供远端入口查询
+        :return: 绑定测试配置、存储及生命周期钩子的插件运行时
+        """
         return build_plugin_runtime(
             host,
             PluginRuntimeEnvironment(
@@ -349,7 +427,11 @@ def configure_plugin_system_services():
     from app.db.oper.workflow import WorkflowOper
 
     def create_sync_session() -> Session:
-        """为无显式会话的 Oper 测试入口创建独占同步 Session。"""
+        """
+        为无显式会话的持久化测试入口创建独占同步会话。
+
+        :return: 新的隔离数据库会话，由事务执行器负责关闭
+        """
         return SessionFactory()
 
     transaction_runner = TransactionalWriteRunner(
@@ -394,14 +476,22 @@ def configure_plugin_system_services():
     )
 
     def site_repository() -> TransactionalSiteRepository:
-        """按生产组合根方式创建显式事务站点仓储。"""
+        """
+        按生产组合方式构造显式事务站点仓储。
+
+        :return: 使用隔离同步、异步会话工厂的站点仓储
+        """
         return TransactionalSiteRepository(
             sync_session=SessionFactory,
             async_session=async_session_scope,
         )
 
     def user_repository() -> TransactionalUserRepository:
-        """按生产组合根方式创建用户短会话仓储。"""
+        """
+        按生产组合方式构造用户短会话仓储。
+
+        :return: 使用隔离同步、异步会话工厂的用户仓储
+        """
         return TransactionalUserRepository(
             sync_session=SessionFactory,
             async_session=async_session_scope,
@@ -564,24 +654,32 @@ def configure_plugin_system_services():
 
 
 class DbHarness:
-    """真实数据库会话的测试载具。
+    """
+    为隔离数据库测试记录新增行水位并在用例结束时回收。
 
-    ``prepare_backend`` 已把 CONFIG_DIR 指向临时目录并建好表，操作的是一次性数据库；
-    但同一次 pytest 会话内所有用例共用这一个库，因此清理必须精确到行——按主键水位回收
-    用例新增的数据，而不是 truncate 整表，否则会连带删掉其他用例依赖的数据。
+    同一 pytest 会话共用隔离库，只删除已登记表中主键大于初始水位的行。
+    不恢复原有行的修改或删除，也不回收未登记的表；这些操作需要测试另行隔离。
 
-    水位法同时覆盖「被测代码自己写入的行」：只要在写入前登记过该表，其后新增的行
-    都会被回收，测试不必持有每一个模型实例的句柄。
+    :ivar session: 供用例读写及清理使用的同步数据库会话
+    :ivar _watermarks: 已登记模型到初始最大主键的映射
     """
 
     def __init__(self, session):
+        """
+        绑定测试会话并创建空的表水位记录。
+
+        :param session: 由 db 夹具创建并负责关闭的同步会话
+        """
         self.session = session
         self._watermarks = {}
 
     def watermark(self, *models) -> None:
         """
-        登记若干表的当前最大主键，用例结束时删除其后新增的全部行。
-        :param models: 需要纳入回收的模型类
+        登记表的初始最大主键，重复登记不改变水位。
+
+        必须在被测操作新增数据之前登记；已有水位保留首次值。
+
+        :param models: 需要回收新增行且提供 id 字段的模型类
         """
         from sqlalchemy import func, select
 
@@ -593,10 +691,12 @@ class DbHarness:
 
     def add(self, *rows):
         """
-        写入若干行并提交，返回单行或行列表。
+        登记对应表水位后插入测试数据并提交事务。
 
-        写入前自动登记水位，因此这些行以及被测代码后续新增的同表行都会被回收。
-        :param rows: 待写入的模型实例
+        同表中随后由被测代码新增的较大主键行也会纳入清理。
+
+        :param rows: 要插入的模型实例
+        :return: 单个输入返回该实例，多个或零个输入返回列表
         """
         self.watermark(*{type(row) for row in rows})
         for row in rows:
@@ -608,25 +708,42 @@ class DbHarness:
         self,
         operation: Callable[[AsyncSession], Awaitable[TResult]],
     ) -> TResult:
-        """在临时数据库的显式 AsyncSession 中执行被测操作。"""
+        """
+        在新事件循环的异步会话中执行被测操作。
+
+        调用 asyncio.run，不适用于当前线程已有运行中事件循环的场景；会话在作用域结束时关闭。
+
+        :param operation: 接收异步会话的协程回调，提交或回滚由回调负责
+        :return: 等待回调后的结果
+        """
         from app.db.session import async_session_scope
 
         async def execute() -> TResult:
-            """打开异步会话并把事务所有权留在测试载具。"""
+            """
+            打开异步会话并等待测试回调，不代替回调提交事务。
+
+            :return: 回调返回值
+            """
             async with async_session_scope() as session:
                 return await operation(session)
 
         return asyncio.run(execute())
 
     def cleanup(self) -> None:
-        """按水位删除本用例新增的全部行。"""
+        """
+        尽力按主键水位回收已登记表中的新增行。
+
+        先回滚残留事务，再按外键依赖的反向顺序逐表删除和提交；单表清理失败会回滚该事务，
+        继续后续表，避免覆盖测试原有断言结果。
+        """
         from sqlalchemy import delete
 
         # 用例可能因约束冲突等原因让事务处于待回滚状态，此时任何语句都会被拒绝；
         # 先回滚再清理，否则清理会整体失效、数据泄漏到后续用例
         try:
             self.session.rollback()
-        except Exception:  # noqa: BLE001  会话已不可用时也要继续尝试清理
+        # 会话已不可用时仍继续尝试逐表清理，避免影响其他用例。
+        except Exception:  # noqa: BLE001
             pass
 
         from app.db.base import Base
@@ -642,18 +759,19 @@ class DbHarness:
             try:
                 self.session.execute(delete(model).where(model.id > mark))
                 self.session.commit()
-            except Exception:  # noqa: BLE001  清理失败不应掩盖用例本身的断言结果
+            # 清理失败不应掩盖用例本身的断言结果，回滚后继续其他表。
+            except Exception:  # noqa: BLE001
                 self.session.rollback()
 
 
 @pytest.fixture
 def db():
     """
-    提供真实数据库会话载具，用例结束按主键水位回收新增数据。
+    提供隔离数据库的同步测试载具，并在结束时清理新增行和关闭会话。
 
-    数据库查询方法的行为（过滤、排序、分页、去重）无法用替身验证——替身只能证明
-    「调用了什么」，证明不了「查回了什么」，而 1.x Query 到 2.0 select 的改写恰恰
-    只可能在后者上出偏差。
+    只有通过载具登记过水位的表会回收新增行；对旧行的修改或删除需由用例单独处理。
+
+    :yields: 绑定当前同步会话的 DbHarness
     """
     from app.db.session import ScopedSession
 
@@ -669,33 +787,53 @@ def db():
 @pytest.fixture
 def frozen_now(monkeypatch):
     """
-    冻结指定模块看到的 ``time.time()``，其余时间函数原样透传标准库。
+    提供只冻结指定模块 time.time 的局部时钟替换工具。
 
-    形如 ``date >= now - 86400 * days`` 的时间窗查询，窗口起点要到调用那一刻才算得出来，
-    不冻结就没法把数据精确摆在窗口起点上——而边界恰恰是 ``>=`` 与 ``>`` 唯一的分界，
-    数据不压在边界上，比较符写错也查不出来。
+    其他时间函数仍委托标准库，便于验证时间窗口包含或排除边界的行为。
 
-    :return: ``freeze(module) -> float``，冻结该模块的时钟并返回冻结时刻的时间戳
+    :param monkeypatch: 在用例结束时恢复模块 time 属性的 pytest 夹具
+    :return: freeze(module) 函数，安装冻结时钟并返回冻结的 Unix 秒数
     """
     import time as real_time
 
     class _FrozenClock:
-        """只冻结 ``time()``，``localtime``/``strftime`` 等仍走标准库。"""
+        """
+        固定时间戳并将其他时间能力透传给标准库。
+
+        :ivar now: 构造时保存的 Unix 时间戳，单位为秒
+        """
 
         def __init__(self, now: float):
+            """
+            保存本次冻结的时间点。
+
+            :param now: Unix 时间戳，单位为秒
+            """
             self.now = now
 
         def time(self) -> float:
+            """
+            读取固定的当前时间。
+
+            :return: 构造时记录的 Unix 秒数
+            """
             return self.now
 
         def __getattr__(self, name):
+            """
+            将未覆盖的时间属性委托给标准库 time。
+
+            :param name: 标准库时间属性或函数名
+            :return: 原始属性或函数，不改变其行为
+            """
             return getattr(real_time, name)
 
     def freeze(module) -> float:
         """
-        把模块内的 ``time`` 名字换成冻结时钟。
-        :param module: 被测代码所在模块（其内以 ``time.time()`` 取当前时刻）
-        :return: 冻结时刻的时间戳
+        以当前实际时间为基准冻结指定模块的时钟。
+
+        :param module: 使用 time.time 取当前时间的被测模块
+        :return: 冻结的 Unix 秒级时间戳
         """
         clock = _FrozenClock(real_time.time())
         monkeypatch.setattr(module, "time", clock)
@@ -705,14 +843,27 @@ def frozen_now(monkeypatch):
 
 
 def _report_session_cleanup_error(session, name: str, err: Exception) -> None:
-    """记录收尾错误；原测试绿色时将会话标记为失败。"""
+    """
+    记录资源收尾错误，并把原本成功的测试会话标为失败。
+
+    :param session: 可更新退出状态的 pytest 会话对象
+    :param name: 失败资源的诊断名称
+    :param err: 收尾过程中捕获的异常
+    """
     sys.stderr.write(f"\npytest session cleanup failed: {name}: {err!r}\n")
     if session.exitstatus == 0:
         session.exitstatus = 1
 
 
 def pytest_sessionfinish(session, exitstatus):
-    """释放测试过程中按需创建的全局后台资源，避免解释器退出时等待非 daemon worker。"""
+    """
+    在会话结束时关闭按需创建的后台执行器、消息服务和日志资源。
+
+    各资源分别尝试关闭，失败时记录错误并继续；原测试成功时，收尾失败使会话退出状态变为失败。
+
+    :param session: 当前 pytest 会话，收尾失败时可修改其退出状态
+    :param exitstatus: pytest 原始退出状态，当前实现直接读取 session.exitstatus
+    """
     try:
         from app.agent.tools.base import shutdown_blocking_executors
 
@@ -747,7 +898,11 @@ def pytest_sessionfinish(session, exitstatus):
 
 @pytest.fixture
 def terminal_scope():
-    """仅由终端合同测试显式选用的宿主身份，结束时还原上下文。"""
+    """
+    为终端契约测试绑定固定宿主身份，并在退出时恢复原上下文。
+
+    :yields: 用户 terminal-test-owner、任务 terminal-test 和 test 类型组成的终端作用域
+    """
     from app.agent.terminal.ownership import TerminalScope, bind_terminal_scope
 
     scope = TerminalScope(user_id="terminal-test-owner", task_id="terminal-test", kind="test")

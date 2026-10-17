@@ -1,4 +1,6 @@
-"""整理记录匹配、文件键与手动历史辅助能力。"""
+"""
+整理记录匹配、文件键与手动历史辅助能力。
+"""
 
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple, TypeVar, Union, cast
@@ -40,7 +42,9 @@ def apply_download_history_classification(
         media: TransferMediaT,
         history: DownloadHistorySnapshot,
 ) -> TransferMediaT:
-    """按下载发生时的分类标量恢复媒体，不读取或解析当前活动策略。"""
+    """
+    按下载发生时的分类标量恢复媒体，不读取或解析当前活动策略。
+    """
     snapshot = persisted_classification_snapshot(
         category_id=getattr(history, "media_category_id", None),
         category_path=getattr(history, "media_category", None),
@@ -96,7 +100,9 @@ SUBTITLE_STEM_TAGS = {
 
 
 class HistoryMatchMixin(_TransferOwnerBase):
-    """提供下载历史定位与媒体身份一致性判定。"""
+    """
+    提供下载历史定位与媒体身份一致性判定。
+    """
 
     __mixin_host_protocol__ = TransferMixinHost
 
@@ -283,7 +289,9 @@ class HistoryMatchMixin(_TransferOwnerBase):
 
 
 class FileKeyMixin(_TransferOwnerBase):
-    """提供文件、目录及同名旁挂文件的稳定匹配键。"""
+    """
+    提供文件、目录及同名旁挂文件的稳定匹配键。
+    """
 
     __mixin_host_protocol__ = TransferMixinHost
 
@@ -380,7 +388,9 @@ class FileKeyMixin(_TransferOwnerBase):
 
 
 class ManualHistoryMixin(_TransferOwnerBase):
-    """提供手动整理历史查询、清理及持久重试入口。"""
+    """
+    提供手动整理历史查询、清理及持久重试入口。
+    """
 
     __mixin_host_protocol__ = TransferMixinHost
 
@@ -418,7 +428,9 @@ class ManualHistoryMixin(_TransferOwnerBase):
     def _is_successful_move_history(
             history: Optional[TransferHistorySnapshot],
     ) -> bool:
-        """判断历史记录是否为已成功完成的移动类整理。"""
+        """
+        判断历史记录是否为已成功完成的移动类整理。
+        """
         return bool(
             history
             and history.status
@@ -432,7 +444,9 @@ class ManualHistoryMixin(_TransferOwnerBase):
             transfer_history_oper: TransferHistoryRepository,
             include_move_dest: bool = False,
     ) -> Optional[TransferHistorySnapshot]:
-        """查询文件源路径历史，并兼容从成功移动后的目标现址重新整理。"""
+        """
+        查询文件源路径历史，并兼容从成功移动后的目标现址重新整理。
+        """
         if not fileitem.path:
             return None
         # resolve_history 在命中失败记录时会再确认一次有无成功记录，
@@ -452,13 +466,17 @@ class ManualHistoryMixin(_TransferOwnerBase):
         return history if self._is_successful_move_history(history) else None
 
     def _has_successful_manual_transfer_history(self, fileitem: FileItem) -> bool:
-        """仅为跳过选项匹配同存储的成功历史，源失败记录不得遮蔽成功移动目标。"""
+        """
+        仅为跳过选项匹配同存储的成功历史，源失败记录不得遮蔽成功移动目标。
+        """
         return bool(self._get_successful_manual_transfer_histories(fileitem))
 
     def _get_successful_manual_transfer_histories(
             self, fileitem: FileItem, recursive: bool = False,
     ) -> List[TransferHistorySnapshot]:
-        """统一界面检测与候选过滤；候选目录本身按路径匹配，只有界面目录检测递归。"""
+        """
+        统一界面检测与候选过滤；候选目录本身按路径匹配，只有界面目录检测递归。
+        """
         if not fileitem.path:
             return []
         repository = self.transfer_history_repository
@@ -473,7 +491,9 @@ class ManualHistoryMixin(_TransferOwnerBase):
             skip_success: bool,
             record_skipped: Callable[[FileItem], None],
     ) -> List[Tuple[FileItem, bool]]:
-        """规划前过滤成功记录，预览和执行共用候选范围，保留失败项的既有重试规则。"""
+        """
+        规划前过滤成功记录，预览和执行共用候选范围，保留失败项的既有重试规则。
+        """
         if not skip_success:
             return fileitems
         pending = []
@@ -513,14 +533,15 @@ class ManualHistoryMixin(_TransferOwnerBase):
             *,
             requested_by: str,
     ) -> Optional[Tuple[bool, str]]:
-        """将 durable 历史重试交还持久调度器，旧历史返回 ``None``。
+        """
+        将 持久化 历史重试交还持久调度器，旧历史返回 ``None``。
 
         普通重试和 AI 接管只登记重试意图；显式重新整理由
         ``_delete_manual_transfer_history`` 先放弃无有效租约的旧任务，再重新准入。
 
         :param history: 整理历史
         :param requested_by: 发起重试的稳定入口身份
-        :return: durable 请求结果；旧历史返回 ``None`` 继续兼容流程
+        :return: 持久化 请求结果；旧历史返回 ``None`` 继续兼容流程
         """
         return _request_durable_transfer_retry(
             history,
@@ -533,7 +554,8 @@ class ManualHistoryMixin(_TransferOwnerBase):
             history: TransferHistorySnapshot,
             transfer_history_oper: TransferHistoryRepository,
     ) -> Tuple[bool, str]:
-        """显式重新规划先原子放弃无有效租约的旧任务，再清理历史和旧目标。
+        """
+        显式重新规划先原子放弃无有效租约的旧任务，再清理历史和旧目标。
 
         用户已明确重新整理，缺失结算版本或停在重试、人工复核态的旧记录也必须
         能放弃；普通重试仍由持久调度器沿原计划继续，有效租约拒绝任何清理。

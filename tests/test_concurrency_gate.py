@@ -1,4 +1,6 @@
-"""原生并发事实门禁回归测试。"""
+"""
+原生并发事实门禁回归测试。
+"""
 
 import textwrap
 from pathlib import Path
@@ -7,14 +9,18 @@ from scripts.architecture.concurrency import collect_concurrency, compare_concur
 
 
 def _write_source(root: Path, relative: str, source: str) -> None:
-    """写入临时宿主源码，供 AST collector 做结构性验证。"""
+    """
+    写入临时宿主源码，供 AST collector 做结构性验证。
+    """
     source_path = root / relative
     source_path.parent.mkdir(parents=True, exist_ok=True)
     source_path.write_text(textwrap.dedent(source), encoding="utf-8")
 
 
 def test_concurrency_gate_resolves_aliases_and_runtime_sources(tmp_path: Path) -> None:
-    """canonical 别名、TaskGroup、事件循环和 Executor 来源必须完整枚举。"""
+    """
+    canonical 别名、TaskGroup、事件循环和 Executor 来源必须完整枚举。
+    """
     _write_source(
         tmp_path,
         "app/doctor/sample.py",
@@ -67,7 +73,9 @@ def test_concurrency_gate_resolves_aliases_and_runtime_sources(tmp_path: Path) -
 
 
 def test_concurrency_gate_excludes_unproven_same_named_calls(tmp_path: Path) -> None:
-    """普通同名函数和对象方法没有 canonical 来源时不得误报。"""
+    """
+    普通同名函数和对象方法没有 canonical 来源时不得误报。
+    """
     _write_source(
         tmp_path,
         "app/testing/fakes.py",
@@ -90,7 +98,9 @@ def test_concurrency_gate_excludes_unproven_same_named_calls(tmp_path: Path) -> 
 
 
 def test_concurrency_facts_ignore_line_drift_and_preserve_counts(tmp_path: Path) -> None:
-    """空行漂移不得改变事实键，同一行多个调用必须保留精确计数。"""
+    """
+    空行漂移不得改变事实键，同一行多个调用必须保留精确计数。
+    """
     relative = "app/runtime/sample.py"
     _write_source(
         tmp_path,
@@ -122,7 +132,9 @@ def test_concurrency_facts_ignore_line_drift_and_preserve_counts(tmp_path: Path)
 def test_concurrency_gate_scans_complete_app_and_keeps_exact_exclusions(
     tmp_path: Path,
 ) -> None:
-    """默认扫描必须覆盖完整 app，同时排除 Plugin、SDK 和 Compat 表面。"""
+    """
+    默认扫描必须覆盖完整 app，同时排除 Plugin、SDK 和 Compat 表面。
+    """
     source = """
         import asyncio
         asyncio.create_task(job())
@@ -138,7 +150,9 @@ def test_concurrency_gate_scans_complete_app_and_keeps_exact_exclusions(
 
 
 def test_concurrency_ratchet_rejects_growth_and_stale_low_water() -> None:
-    """新增 owner、调用增长和未刷新的下降事实都必须阻断 ratchet。"""
+    """
+    新增 owner、调用增长和未刷新的下降事实都必须阻断 ratchet。
+    """
     baseline = {
         "app/runtime/tasks.py:asyncio.create_task": {
             "target": "asyncio.create_task",

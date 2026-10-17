@@ -1,4 +1,6 @@
-"""公开歌词插件合同从能力注册、候选调度到旁挂文件写入的回归测试。"""
+"""
+公开歌词插件合同从能力注册、候选调度到旁挂文件写入的回归测试。
+"""
 
 from collections.abc import Callable
 from pathlib import Path
@@ -21,32 +23,46 @@ from app.sdk.media import MetaMusic, MusicInfo, MusicLyrics
 
 
 class _LyricsPlugin:
-    """按插件公开注册协议声明歌词候选实现。"""
+    """
+    按插件公开注册协议声明歌词候选实现。
+    """
 
     def __init__(self, callback: Callable, enabled: bool = True) -> None:
-        """保存候选查询入口和启用状态。"""
+        """
+        保存候选查询入口和启用状态。
+        """
         self.callback = callback
         self.enabled = enabled
 
     def get_name(self) -> str:
-        """返回插件能力投影使用的展示名称。"""
+        """
+        返回插件能力投影使用的展示名称。
+        """
         return "测试歌词源"
 
     def get_state(self) -> bool:
-        """只允许启用状态的歌词源参与查询。"""
+        """
+        只允许启用状态的歌词源参与查询。
+        """
         return self.enabled
 
     def get_module(self) -> dict[str, Callable]:
-        """使用公开候选方法名注册查询实现。"""
+        """
+        使用公开候选方法名注册查询实现。
+        """
         return {"music_lyrics_candidates": self.callback}
 
 
 @pytest.fixture
 def lyrics_runtime(monkeypatch) -> Callable:
-    """构造真实插件投影和模块调度器，只回放 LRCLIB 的外部响应。"""
+    """
+    构造真实插件投影和模块调度器，只回放 LRCLIB 的外部响应。
+    """
 
     def build(plugins: dict[str, _LyricsPlugin]) -> SimpleNamespace:
-        """为给定插件建立隔离的歌词链及其宿主来源。"""
+        """
+        为给定插件建立隔离的歌词链及其宿主来源。
+        """
         builtin = LrclibModule()
         request = Mock(return_value={
             "id": 1,
@@ -82,7 +98,9 @@ def lyrics_runtime(monkeypatch) -> Callable:
 
 
 def test_lyrics_sdk_exports_preserve_canonical_identity() -> None:
-    """插件公开类型必须与宿主候选判断和音乐输入使用同一实现。"""
+    """
+    插件公开类型必须与宿主候选判断和音乐输入使用同一实现。
+    """
     assert MusicInfo is context.MusicInfo
     assert MusicLyrics is context.MusicLyrics
     assert {"MusicInfo", "MusicLyrics", "MetaMusic"} <= set(media.__all__)
@@ -94,7 +112,9 @@ def test_lyrics_sdk_exports_preserve_canonical_identity() -> None:
 async def test_registered_lyrics_plugins_merge_with_builtin_and_isolate_failures(
     lyrics_runtime: Callable, asynchronous: bool, music_type: type,
 ) -> None:
-    """新歌词接口应聚合多个启用插件和内置源，空值与异常不得阻断后续来源。"""
+    """
+    新歌词接口应聚合多个启用插件和内置源，空值与异常不得阻断后续来源。
+    """
     music = music_type(title="晴天", artists=["周杰伦"], album="叶惠美", duration=269)
     calls = []
     first_lyrics = MusicLyrics(provider="first", plain_lyrics="插件文本", match_score=100)
@@ -103,27 +123,37 @@ async def test_registered_lyrics_plugins_merge_with_builtin_and_isolate_failures
     )
 
     def empty(music: Any) -> list[MusicLyrics]:
-        """模拟插件未匹配到当前音轨。"""
+        """
+        模拟插件未匹配到当前音轨。
+        """
         calls.append(("empty", music))
         return []
 
     def broken(music: Any) -> list[MusicLyrics]:
-        """模拟单个歌词源下载失败。"""
+        """
+        模拟单个歌词源下载失败。
+        """
         calls.append(("broken", music))
         raise RuntimeError("歌词源不可用")
 
     def first(music: Any) -> list[MusicLyrics]:
-        """返回第一个同步插件的纯文本候选。"""
+        """
+        返回第一个同步插件的纯文本候选。
+        """
         calls.append(("first", music))
         return [first_lyrics]
 
     def second(music: Any) -> list[MusicLyrics]:
-        """返回第二个插件已下载的同步歌词内容。"""
+        """
+        返回第二个插件已下载的同步歌词内容。
+        """
         calls.append(("second", music))
         return [second_lyrics]
 
     async def async_second(music: Any) -> list[MusicLyrics]:
-        """验证异步入口可以混合同步与协程插件。"""
+        """
+        验证异步入口可以混合同步与协程插件。
+        """
         return second(music)
 
     disabled = Mock()
@@ -168,14 +198,18 @@ def test_registered_lyrics_plugin_writes_through_music_scraping(
     lyrics_runtime: Callable, monkeypatch, tmp_path: Path,
     storage: str, contents: dict, extension: str, expected: str,
 ) -> None:
-    """真实音乐刮削应把插件返回的最优歌词保存为本地旁挂文件或上传原存储目录。"""
+    """
+    真实音乐刮削应把插件返回的最优歌词保存为本地旁挂文件或上传原存储目录。
+    """
     music = MusicInfo(title="晴天", artists=["周杰伦"], music_type="recording")
     lyric = MusicLyrics(provider="example", match_score=100, provider_priority=30, **contents)
     callback = Mock(side_effect=lambda music: [lyric])
     runtime = lyrics_runtime({"Example": _LyricsPlugin(callback)})
 
     def create_lyrics_chain(deadline: float) -> LyricsChain:
-        """保留刮削创建的查询预算，并使用隔离注册的真实歌词链。"""
+        """
+        保留刮削创建的查询预算，并使用隔离注册的真实歌词链。
+        """
         runtime.chain.deadline = deadline
         return runtime.chain
 
@@ -192,7 +226,9 @@ def test_registered_lyrics_plugin_writes_through_music_scraping(
     uploaded = {}
 
     def upload(target: FileItem, path: Path, new_name: str) -> bool:
-        """在远端上传边界读取真实生成文件，保留目录和内容证据。"""
+        """
+        在远端上传边界读取真实生成文件，保留目录和内容证据。
+        """
         assert target is parent
         uploaded[new_name] = path.read_text(encoding="utf-8")
         return True

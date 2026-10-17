@@ -1,4 +1,6 @@
-"""逐页搜索的用例编排：每页先收集，再决定续页或提交就绪目标。"""
+"""
+逐页搜索的用例编排：每页先收集，再决定续页或提交就绪目标。
+"""
 
 import hashlib
 import json
@@ -46,14 +48,16 @@ SEARCH_SLICE_SECONDS = 60
 AUTOMATIC_REQUEST_INTERVAL = 10
 # 检查点超过该时长未更新就丢弃旧进度重新搜索，已提交的目标保留。
 RESTART_AFTER_SECONDS = 36 * 3600
-# 新检查点结构版本；兼容恢复 V2，无法识别的格式从第一页重新搜索。
+# 当前检查点结构版本；兼容恢复 V2，无法识别的格式从第一页重新搜索。
 _CHECKPOINT_FORMAT = 3
 # 重取临时下载票据所在原页连续失败达到该次数后放弃该候选，避免一个候选卡住整个订阅。
 RECOVERY_ATTEMPTS = 3
 
 
 def search_targets(plan: MediaSearchPlan) -> set[str]:
-    """空 episodes 表示整季；不能将占位集数或未来日期当成真实缺集范围。"""
+    """
+    空 episodes 表示整季；不能将占位集数或未来日期当成真实缺集范围。
+    """
     if plan.mediainfo.type == MediaType.MOVIE:
         return {"movie"}
     targets: set[str] = set()
@@ -71,7 +75,14 @@ def search_targets(plan: MediaSearchPlan) -> set[str]:
 
 @dataclass(frozen=True, slots=True)
 class ScanPage:
-    """原始页事实与临时等待独立，空列表本身不是末页证据。"""
+    """
+    原始页事实与临时等待独立，空列表本身不是末页证据。
+
+    :param torrents: 本页原始资源；空列表不单独证明已到末页
+    :param observation: 本次站点请求的成功、失败和分页观察事实
+    :param retry_at: 因预算或流控延迟时允许恢复的 UTC 时间字符串，None 表示未延迟
+    :param wait_reason: 需要暂缓本页请求的原因，None 表示未延迟
+    """
 
     torrents: list[TorrentInfo]
     observation: SiteSearchObservation
@@ -80,10 +91,14 @@ class ScanPage:
 
 
 class SearchSources:
-    """站点与实际关键词组成的搜索来源，以及单页请求；自动订阅与手动分页共用。"""
+    """
+    站点与实际关键词组成的搜索来源，以及单页请求；自动订阅与手动分页共用。
+    """
 
     def __init__(self, owner: ChainBase, plan: MediaSearchPlan) -> None:
-        """固定本轮站点与关键词，避免恢复分页时重新展开出重复查询。"""
+        """
+        固定本轮站点与关键词，避免恢复分页时重新展开出重复查询。
+        """
         self.activity = current_activity_run()
         self.owner = cast(_SearchOwnerBase, owner)
         self.media = cast(MediaInfo, plan.mediainfo)
@@ -98,7 +113,9 @@ class SearchSources:
         self.queries: dict[str, dict[str, Any]] = {}
 
     def add_keywords(self, *, all_names: bool = False) -> list[str]:
-        """加入下一个（或全部）名称对应的来源；返回新增来源键。"""
+        """
+        加入下一个（或全部）名称对应的来源；返回新增来源键。
+        """
         added: list[str] = []
         while self.keyword_index < len(self.keywords):
             keyword = self.keywords[self.keyword_index]
@@ -118,14 +135,18 @@ class SearchSources:
         return added
 
     def pageable(self, key: str) -> bool:
-        """站点搜索入口是否支持分页；插件只有一页。"""
+        """
+        站点搜索入口是否支持分页；插件只有一页。
+        """
         query = self.queries[key]
         if query["site"] == "plugin":
             return False
         return self.owner.get_search_page_size(site=self.sites[query["site"]], keyword=query["keyword"]) is not None
 
     def fetch(self, key: str, page: int, *, budget: Optional[SubscriptionSiteBudget] = None) -> ScanPage:
-        """请求一个来源的指定页；自动订阅经站点预算限流，手动沿用站点既有请求间隔。"""
+        """
+        请求一个来源的指定页；自动订阅经站点预算限流，手动沿用站点既有请求间隔。
+        """
         query = self.queries[key]
         # 标题搜索未指定类型时沿用 None；UNKNOWN 可能被站点解释为电影分区。
         media_type = None if self.media.type == MediaType.UNKNOWN else self.media.type
@@ -176,7 +197,9 @@ class SearchSources:
 
 
 class SearchScan:
-    """一轮订阅搜索持有的候选和来源游标，数据库在每页安全边界短暂使用。"""
+    """
+    一轮订阅搜索持有的候选和来源游标，数据库在每页安全边界短暂使用。
+    """
 
     def __init__(
         self, *, owner: ChainBase, plan: MediaSearchPlan, full: bool = False,
@@ -186,7 +209,9 @@ class SearchScan:
         target_scope: Optional[tuple[int, int]] = None,
         page_limit: Optional[int] = None,
     ) -> None:
-        """创建或恢复一轮搜索，候选与匹配前史由检查点一起持有。"""
+        """
+        创建或恢复一轮搜索，候选与匹配前史由检查点一起持有。
+        """
         if not isinstance(plan.mediainfo, MediaInfo):
             raise ValueError("分页影视搜索不适用于音乐")
         self.media = plan.mediainfo
@@ -236,11 +261,15 @@ class SearchScan:
 
     @property
     def queries(self) -> dict[str, dict[str, Any]]:
-        """来源键到站点和实际关键词。"""
+        """
+        来源键到站点和实际关键词。
+        """
         return self.sources.queries
 
     def _contract_signature(self, *, include_area: bool = True) -> str:
-        """影响候选或范围的条件；兼容读取旧签名时搜索范围另由保存的关键词核对。"""
+        """
+        影响候选或范围的条件；兼容读取旧签名时搜索范围另由保存的关键词核对。
+        """
         configuration = get_configured_system_config()
         media = self.media
         values = {"media": [media.media_source, media.media_id, media.type, media.title, media.season, media.episode_group],
@@ -261,14 +290,18 @@ class SearchScan:
         return hashlib.sha256(encode_search_state(values).encode()).hexdigest()
 
     def _add_sources(self, *, all_names: bool = False) -> bool:
-        """为新增名称查询创建独立游标，每个来源遵守同一页数预算。"""
+        """
+        为新增名称查询创建独立游标，每个来源遵守同一页数预算。
+        """
         added = self.sources.add_keywords(all_names=all_names)
         for key in added:
             self.collection.sources[key] = SearchSourceCursor(page_limit=self.page_limit)
         return bool(added)
 
     def _restore(self, data: dict[str, Any]) -> None:
-        """校验搜索合同并恢复候选、匹配前史和连续页进度，已提交目标仍受媒体身份约束。"""
+        """
+        校验搜索合同并恢复候选、匹配前史和连续页进度，已提交目标仍受媒体身份约束。
+        """
         # 搜索条件变化或进度太久未更新时重新搜索。
         contract_matches = data.get("contract") == self._contract
         if data.get("format") == 2 and data.get("contract") == self._contract_signature(include_area=False):
@@ -294,13 +327,17 @@ class SearchScan:
             self.sources.keywords = data.get("keywords", self.sources.keywords)
 
     def _legacy_query_area_matches(self, data: dict[str, Any]) -> bool:
-        """V2 签名未包含搜索范围，实际关键词必须与当前 IMDb/名称查询模式一致才能续搜。"""
+        """
+        V2 签名未包含搜索范围，实际关键词必须与当前 IMDb/名称查询模式一致才能续搜。
+        """
         keywords = {query["keyword"] for query in data["queries"].values() if query["site"] != "plugin"}
         was_imdb_query = bool(self.media.imdb_id) and keywords == {self.media.imdb_id}
         return was_imdb_query == (self.plan.area == "imdbid" and bool(self.media.imdb_id))
 
     def _restore_target_scope(self) -> None:
-        """新增必要目标复用已识别元数据，补查头部后继续历史；已提交目标仍不重复。"""
+        """
+        新增必要目标复用已识别元数据，补查头部后继续历史；已提交目标仍不重复。
+        """
         fresh = search_targets(self.plan) - self.collection.targets
         if not fresh:
             return
@@ -313,7 +350,8 @@ class SearchScan:
                 source.last_request_at = 0
 
     def state(self) -> dict[str, Any]:
-        """页候选、关闭状态及下一页作为同一检查点保存。
+        """
+        页候选、关闭状态及下一页作为同一检查点保存。
 
         只持久化仍覆盖剩余缺集的候选及其识别结果；不相关资源的识别缓存只留在本进程，
         恢复后再次遇到时重新识别，避免检查点随翻页无限增长。
@@ -331,7 +369,9 @@ class SearchScan:
                 "submitted": sorted(self.submitted), "saved_at": time.time()}
 
     def progress_text(self) -> str:
-        """写入日志的进度摘要：提交、仍缺集和本轮结束分开表达，不把分页结束叫作补齐。"""
+        """
+        写入日志的进度摘要：提交、仍缺集和本轮结束分开表达，不把分页结束叫作补齐。
+        """
         episodes = [int(target.split(":")[1]) for target in self.collection.remaining
                     if ":" in target and not target.endswith(":season")]
         remaining = format_ranges(episodes) or (("影片" if self.media.type == MediaType.MOVIE else "整季")
@@ -347,13 +387,17 @@ class SearchScan:
         return f"已搜索到第 {page} 页，已提交：{submitted}，仍缺：{remaining}{waiting}"
 
     def _lost_ownership(self) -> None:
-        """检查点写入被租约拒绝时立即交还执行，迟到 worker 不再提交候选。"""
+        """
+        检查点写入被租约拒绝时立即交还执行，迟到 worker 不再提交候选。
+        """
         if self.execution and self.execution.is_cancel_requested():
             raise SubscriptionSearchCancelled("搜索已停止")
         raise RuntimeError("搜索检查点所有权已失效")
 
     def checkpoint(self) -> None:
-        """任务租约失效后停止运行，不能继续副作用或跳过尚未持久化的页面。"""
+        """
+        任务租约失效后停止运行，不能继续副作用或跳过尚未持久化的页面。
+        """
         if not self.repository or not self.execution:
             return
         state = self.state()
@@ -373,17 +417,23 @@ class SearchScan:
         self._saved_body = body
 
     def _budget(self) -> Optional[SubscriptionSiteBudget]:
-        """读取宿主注入的自动订阅预算，普通搜索不借用站点队列配额。"""
+        """
+        读取宿主注入的自动订阅预算，普通搜索不借用站点队列配额。
+        """
         budget = getattr(self.owner, "_subscription_site_budget", None)
         return budget if isinstance(budget, SubscriptionSiteBudget) else None
 
     def _stop_unmatched_query(self, key: str) -> bool:
-        """仅普通 IMDb 精确查询启用异常来源早停，全量、整季和深度兜底保留分页策略。"""
+        """
+        仅普通 IMDb 精确查询启用异常来源早停，全量、整季和深度兜底保留分页策略。
+        """
         return (self.plan.area == "imdbid" and bool(self.media.imdb_id) and not self.full
                 and not self.collection.fallback and not key.startswith("plugin:"))
 
     def step(self, key: str) -> bool:
-        """执行来源的当前一页并先保存结果，再决定是否续页。"""
+        """
+        执行来源的当前一页并先保存结果，再决定是否续页。
+        """
         source = self.collection.sources[key]
         page = source.page_to_request(time.time())
         result = self.sources.fetch(key, page, budget=self._budget())
@@ -436,7 +486,9 @@ class SearchScan:
         return bool(accepted)
 
     def _candidate_context(self, key: str) -> Optional[Context]:
-        """取本进程的实时候选；重启后由站点模块按白名单快照恢复种子。"""
+        """
+        取本进程的实时候选；重启后由站点模块按白名单快照恢复种子。
+        """
         context = self.live.get(key)
         if context is None:
             saved = self.candidates[key]
@@ -458,11 +510,15 @@ class SearchScan:
         return context
 
     def _coverage(self, key: str) -> set[str]:
-        """只返回候选仍覆盖的未提交目标，不重复结算已有下载。"""
+        """
+        只返回候选仍覆盖的未提交目标，不重复结算已有下载。
+        """
         return set(self.identity[key]["targets"] or []) & self.collection.remaining
 
     def _contexts(self, ready: set[str]) -> tuple[list[Context], set[str]]:
-        """只恢复覆盖目标全部就绪的未尝试候选，整包不得绕过收集屏障。"""
+        """
+        只恢复覆盖目标全部就绪的未尝试候选，整包不得绕过收集屏障。
+        """
         contexts, keys = [], set()
         for key in self.candidates:
             coverage = self._coverage(key)
@@ -476,7 +532,9 @@ class SearchScan:
         return contexts, keys
 
     def _recover_candidate(self, key: str) -> Optional[Context]:
-        """只重取当前最优待提交候选的原页，避免凭据不可持久化时反复重取已提交页面。"""
+        """
+        只重取当前最优待提交候选的原页，避免凭据不可持久化时反复重取已提交页面。
+        """
         record = self.candidates[key]
         source, page = record["source"], record["page"]
         result = self.sources.fetch(source, page, budget=self._budget())
@@ -515,14 +573,18 @@ class SearchScan:
         return self.live.get(key) if key in self.candidates else None
 
     def _filter(self, contexts: list[Context]) -> list[Context]:
-        """按订阅规则、参数和候选校验过滤并排序。"""
+        """
+        按订阅规则、参数和候选校验过滤并排序。
+        """
         return SearchResultOwner._filter_identified_contexts(
             cast(Any, self.owner), contexts, self.media, self.plan.rule_groups or [], self.plan.filter_params or {},
             self.plan.candidate_filter, season_episodes=self.sources.season_episodes,
         )
 
     def _prepared_batch(self, contexts: list[Context], ready: set[str]) -> tuple[list[Context], set[str]]:
-        """保留排序优先级，先提交可用前缀，再刷新下一个临时票据所在原页。"""
+        """
+        保留排序优先级，先提交可用前缀，再刷新下一个临时票据所在原页。
+        """
         batch: list[Context] = []
         goals: set[str] = set()
         for context in contexts:
@@ -548,7 +610,9 @@ class SearchScan:
         return batch, goals
 
     def choose(self, ready: set[str], submit: Callable[[list[Context], set[str]], set[str]]) -> None:
-        """合集覆盖目标全就绪才提交；剩余缓存先于共享游标兜底。"""
+        """
+        合集覆盖目标全就绪才提交；剩余缓存先于共享游标兜底。
+        """
         contexts, keys = self._contexts(ready)
         contexts = self._filter(contexts)
         accepted = {cast(str, context.torrent_info.search_resource_id) for context in contexts}
@@ -564,13 +628,17 @@ class SearchScan:
         self.checkpoint()
 
     def _has_cached_ready(self) -> bool:
-        """末页后仍有分批未提交的就绪候选时，先处理缓存，不能提前结束整轮。"""
+        """
+        末页后仍有分批未提交的就绪候选时，先处理缓存，不能提前结束整轮。
+        """
         ready = self.collection.ready(full=self.full)
         return any(key not in self.attempted and bool(coverage := self._coverage(key)) and coverage <= ready
                    for key in self.candidates)
 
     def _reset_changed_contract(self) -> None:
-        """重搜仅保留经恢复时媒体身份校验的已提交目标。"""
+        """
+        重搜仅保留经恢复时媒体身份校验的已提交目标。
+        """
         self.collection = SearchCollection(search_targets(self.plan), settled=self.collection.settled)
         self.identity, self.candidates, self.live, self.retry, self.retry_reasons = {}, {}, {}, {}, {}
         self.recovery_failures = {}
@@ -582,7 +650,9 @@ class SearchScan:
         self.checkpoint()
 
     def _defer(self) -> None:
-        """按仍可搜索来源的有效冷却时间交还队列，避免过期检查点让任务立即重领。"""
+        """
+        按仍可搜索来源的有效冷却时间交还队列，避免过期检查点让任务立即重领。
+        """
         now = datetime.now(timezone.utc)
         now_at = now.isoformat(timespec="seconds")
         active_sources = self.collection.active_sources(full=self.full)
@@ -603,12 +673,16 @@ class SearchScan:
         raise SubscriptionSearchDeferred(retry_at=retry_at, site_ids=tuple(dict.fromkeys(site_ids)), wait_reason=reason)
 
     def _stopping(self) -> bool:
-        """在页面和提交边界检查系统停机或当前任务的取消要求。"""
+        """
+        在页面和提交边界检查系统停机或当前任务的取消要求。
+        """
         return runtime_stop_state.is_system_stopped or bool(self.execution and self.execution.should_stop())
 
     def _advance_sources(self, keys: list[str], submit: Callable[[list[Context], set[str]], set[str]],
                          started: float) -> bool:
-        """各来源执行当前一页，处理后才续页；时间片在安全边界交还队列。"""
+        """
+        各来源执行当前一页，处理后才续页；时间片在安全边界交还队列。
+        """
         advanced = False
         for key in keys:
             if self._stopping():
@@ -625,7 +699,9 @@ class SearchScan:
         return advanced
 
     def _finish_round(self) -> None:
-        """本轮结束：删除检查点，避免已完成任务的候选与识别缓存长期留存；没有任何成功来源时沿用任务失败语义。"""
+        """
+        本轮结束：删除检查点，避免已完成任务的候选与识别缓存长期留存；没有任何成功来源时沿用任务失败语义。
+        """
         self.ended = True
         logger.info(f"{self.media.title_year} {self.progress_text()}")
         if self.repository and self.execution and self.snapshot:
@@ -638,7 +714,9 @@ class SearchScan:
             raise SubscriptionSiteSearchFailed("；".join(dict.fromkeys(source.error or "站点搜索失败" for source in sites)))
 
     def run(self, submit: Callable[[list[Context], set[str]], set[str]]) -> None:
-        """运行约 60 秒时间片，网络等待交还现有持久队列。"""
+        """
+        运行约 60 秒时间片，网络等待交还现有持久队列。
+        """
         started = time.monotonic()
         if self.restart:
             self._reset_changed_contract()

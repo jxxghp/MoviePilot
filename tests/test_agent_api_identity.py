@@ -1,4 +1,6 @@
-"""Agent 公共资料访问、真实身份解析和授权范围的离线回归。"""
+"""
+Agent 公共资料访问、真实身份解析和授权范围的离线回归。
+"""
 
 import asyncio
 import json
@@ -55,7 +57,9 @@ PUBLIC_CASES = {
 @pytest.mark.parametrize("is_admin", [False, True])
 @pytest.mark.parametrize("user_state", ["unbound", "inactive", "active"])
 def test_public_queries_do_not_require_channel_binding(operation_id, arguments, channel, is_admin, user_state):
-    """所有公共操作通过真实宿主认证执行，绑定缺失或停用均不阻断公共结果。"""
+    """
+    所有公共操作通过真实宿主认证执行，绑定缺失或停用均不阻断公共结果。
+    """
     user = None if user_state == "unbound" else SimpleNamespace(is_active=user_state == "active")
     users = SimpleNamespace(async_get_by_name=AsyncMock(return_value=user), find_name_by_bindings=Mock())
     gateway = MoviePilotApiTool(session_id="session", user_id="channel-user", data=SimpleNamespace(users=users))
@@ -99,7 +103,9 @@ def test_public_queries_do_not_require_channel_binding(operation_id, arguments, 
 ])
 @pytest.mark.parametrize("user_state", ["unbound", "inactive"])
 def test_instance_and_user_operations_still_require_binding(operation_id, arguments, user_state):
-    """个人和实例数据不能借用公共查询身份，渠道管理员也保留绑定要求。"""
+    """
+    个人和实例数据不能借用公共查询身份，渠道管理员也保留绑定要求。
+    """
     user = None if user_state == "unbound" else SimpleNamespace(is_active=False)
     users = SimpleNamespace(
         async_get_by_name=AsyncMock(return_value=user),
@@ -120,7 +126,9 @@ def test_instance_and_user_operations_still_require_binding(operation_id, argume
 
 @pytest.mark.parametrize("operation_id", sorted(set(API_OPERATION_ROUTES) - set(PUBLIC_CASES)))
 def test_public_executor_rejects_every_nonpublic_operation(operation_id):
-    """持有宿主身份的公共执行器在发送前拒绝其余全部个人、实例和管理员操作。"""
+    """
+    持有宿主身份的公共执行器在发送前拒绝其余全部个人、实例和管理员操作。
+    """
     executor = MoviePilotApiExecutor(context=ApiExecutionContext(
         user_id="7", username="admin", is_admin=True, public_read_only=True,
     ))
@@ -131,7 +139,9 @@ def test_public_executor_rejects_every_nonpublic_operation(operation_id):
 
 
 def test_public_allowlist_only_contains_audited_metadata_queries():
-    """公共清单独立锁定，写入、私密结果和管理数据不能因只读标签被自动放行。"""
+    """
+    公共清单独立锁定，写入、私密结果和管理数据不能因只读标签被自动放行。
+    """
     assert API_UNBOUND_READ_OPERATIONS == set(PUBLIC_CASES)
     for operation_id in PUBLIC_CASES:
         spec = resolve_api_operation(operation_id)
@@ -150,7 +160,9 @@ def test_public_allowlist_only_contains_audited_metadata_queries():
     {"confirmation": ConfirmationMode.REQUIRED},
 ])
 def test_public_identity_cannot_be_declared_for_privileged_operations(changes):
-    """错误公共身份声明应在注册时失败，不能带着管理员或私密能力进入运行时。"""
+    """
+    错误公共身份声明应在注册时失败，不能带着管理员或私密能力进入运行时。
+    """
     with pytest.raises(ValueError, match="公共 API 身份"):
         replace(resolve_api_operation("recommendation.list"), **changes)
 
@@ -158,7 +170,9 @@ def test_public_identity_cannot_be_declared_for_privileged_operations(changes):
 @pytest.mark.parametrize("channel", [NotificationChannel.Telegram, NotificationChannel.WechatClawBot])
 @pytest.mark.parametrize("bound", [False, True])
 def test_channel_nickname_cannot_impersonate_moviepilot_user(db, channel, bound):
-    """渠道展示名与超级管理员同名时，仍只能使用稳定发送者 ID 的实际绑定。"""
+    """
+    渠道展示名与超级管理员同名时，仍只能使用稳定发送者 ID 的实际绑定。
+    """
     db.add(User(name="admin", is_active=True, is_superuser=True))
     user = db.add(User(
         name="alice", is_active=True, is_superuser=False,
@@ -176,7 +190,9 @@ def test_channel_nickname_cannot_impersonate_moviepilot_user(db, channel, bound)
 
 @pytest.mark.parametrize("channel", [NotificationChannel.Web, NotificationChannel.WebAgent])
 def test_web_identity_uses_authenticated_id_instead_of_stale_name(db, channel):
-    """旧会话用户名与另一个账号同名时，不能替换当前已登录账号身份。"""
+    """
+    旧会话用户名与另一个账号同名时，不能替换当前已登录账号身份。
+    """
     db.add(User(name="old-name", is_active=True, is_superuser=True))
     user = db.add(User(name="new-name", is_active=True, is_superuser=False))
     users = TransactionalUserRepository(sync_session=SessionFactory, async_session=async_session_scope)
@@ -187,7 +203,9 @@ def test_web_identity_uses_authenticated_id_instead_of_stale_name(db, channel):
 
 @pytest.mark.parametrize("state", ["inactive", "missing"])
 def test_web_identity_cannot_fall_back_after_account_disappears(db, state):
-    """停用或删除的 Web 用户不能依靠数字 ID 回退继续访问个人数据。"""
+    """
+    停用或删除的 Web 用户不能依靠数字 ID 回退继续访问个人数据。
+    """
     user = db.add(User(name="disabled", is_active=False, is_superuser=False))
     users = TransactionalUserRepository(sync_session=SessionFactory, async_session=async_session_scope)
     user_id = str(user.id) if state == "inactive" else "999999"
@@ -200,7 +218,9 @@ def test_web_identity_cannot_fall_back_after_account_disappears(db, state):
 @pytest.mark.parametrize("source", ["openai", "openai.responses", "anthropic"])
 @pytest.mark.parametrize("is_admin", [False, True])
 def test_api_token_integration_uses_host_identity_only_after_authentication(source, is_admin):
-    """兼容入口的会话 ID 不能当用户 ID，且仅可信管理员上下文可使用宿主身份。"""
+    """
+    兼容入口的会话 ID 不能当用户 ID，且仅可信管理员上下文可使用宿主身份。
+    """
     users = SimpleNamespace(async_get_by_id=AsyncMock(), async_get_by_name=AsyncMock())
     gateway = MoviePilotApiTool(session_id="session", user_id="client-session", data=SimpleNamespace(users=users))
     gateway.set_message_attr(channel=NotificationChannel.Web.value, source=source, username="admin")
@@ -231,7 +251,9 @@ def test_api_token_integration_uses_host_identity_only_after_authentication(sour
     (NotificationChannel.SynologyChat, "SynologyChat用户"),
 ])
 def test_binding_failure_contains_correct_profile_field_and_sender_id(channel, label):
-    """各通知渠道给出实际前端字段、当前发送者 ID 和唯一启用绑定要求。"""
+    """
+    各通知渠道给出实际前端字段、当前发送者 ID 和唯一启用绑定要求。
+    """
     users = SimpleNamespace(find_name_by_bindings=Mock(return_value=None))
     gateway = MoviePilotApiTool(session_id="session", user_id="actual-sender", data=SimpleNamespace(users=users))
     gateway.set_message_attr(channel=channel.value, source="bot", username="display-name")
@@ -247,7 +269,9 @@ def test_binding_failure_contains_correct_profile_field_and_sender_id(channel, l
 
 
 def test_background_task_keeps_host_persisted_identity(db):
-    """无渠道的可信后台任务仍按宿主持久化用户名执行，不误用渠道绑定规则。"""
+    """
+    无渠道的可信后台任务仍按宿主持久化用户名执行，不误用渠道绑定规则。
+    """
     user = db.add(User(name="task-owner", is_active=True, is_superuser=False))
     users = TransactionalUserRepository(sync_session=SessionFactory, async_session=async_session_scope)
     gateway = MoviePilotApiTool(session_id="session", user_id="system", data=SimpleNamespace(users=users))
@@ -262,7 +286,9 @@ def test_background_task_keeps_host_persisted_identity(db):
 ])
 @pytest.mark.parametrize("is_admin", [False, True])
 def test_plugin_rating_gateway_matches_rest_administrator_requirement(operation_id, arguments, is_admin):
-    """插件评分包含实例自己的记录，不能按普通公共统计放行。"""
+    """
+    插件评分包含实例自己的记录，不能按普通公共统计放行。
+    """
     user = SimpleNamespace(id=11, name="alice", is_active=True, is_superuser=False)
     users = SimpleNamespace(find_name_by_bindings=Mock(return_value=user.name), async_get_by_name=AsyncMock(return_value=user))
     gateway = MoviePilotApiTool(session_id="session", user_id="sender", data=SimpleNamespace(users=users))
@@ -288,7 +314,9 @@ def test_plugin_rating_gateway_matches_rest_administrator_requirement(operation_
 
 
 def test_identity_scopes_cover_every_operation_and_match_rest_dependencies():
-    """全部操作均有身份范围，公共端点不能依赖当前用户，超级用户端点不能声明普通角色。"""
+    """
+    全部操作均有身份范围，公共端点不能依赖当前用户，超级用户端点不能声明普通角色。
+    """
     from app.api.routers import API_V1_ROUTER_SPECS
 
     endpoints = {}

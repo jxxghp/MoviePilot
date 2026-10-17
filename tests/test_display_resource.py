@@ -1,4 +1,6 @@
-"""虚拟显示托管资源与旧 API 的兼容测试。"""
+"""
+虚拟显示托管资源与旧 API 的兼容测试。
+"""
 
 from __future__ import annotations
 
@@ -11,7 +13,9 @@ from app.foundation.singleton import Singleton
 
 
 def test_virtual_display_skips_host_process_outside_docker(monkeypatch) -> None:
-    """非容器环境启动资源时不得创建虚拟显示进程。"""
+    """
+    非容器环境启动资源时不得创建虚拟显示进程。
+    """
     monkeypatch.setattr(
         "app.adapters.system.display.resource.SystemUtils.is_docker",
         lambda: False,
@@ -25,19 +29,29 @@ def test_virtual_display_skips_host_process_outside_docker(monkeypatch) -> None:
 
 
 def test_virtual_display_starts_and_stops_owned_process(monkeypatch) -> None:
-    """容器环境只停止当前资源实际拥有的显示进程。"""
+    """
+    容器环境只停止当前资源实际拥有的显示进程。
+    """
     events: list[object] = []
 
     class FakeDisplay:
-        """记录 pyvirtualdisplay 的构造与生命周期。"""
+        """
+        记录 pyvirtualdisplay 的构造与生命周期。
+        """
 
         def __init__(self, **kwargs) -> None:
             events.append(("create", kwargs))
 
         def start(self) -> None:
+            """
+            记录虚拟显示启动调用，不创建实际显示进程。
+            """
             events.append("start")
 
         def stop(self) -> None:
+            """
+            记录虚拟显示停止调用，供资源所有权断言使用。
+            """
             events.append("stop")
 
     pyvirtualdisplay = ModuleType("pyvirtualdisplay")
@@ -70,7 +84,9 @@ def test_virtual_display_starts_and_stops_owned_process(monkeypatch) -> None:
 
 
 def test_display_helper_keeps_legacy_constructor_and_stop_contract(monkeypatch) -> None:
-    """旧构造入口显式激活 host.display，stop 只停止已配置 Runtime。"""
+    """
+    旧构造入口显式激活 host.display，stop 只停止已配置 Runtime。
+    """
     events: list[tuple[str, str]] = []
     singleton_key = (DisplayHelper, (), frozenset())
     previous = Singleton._instances.pop(singleton_key, None)

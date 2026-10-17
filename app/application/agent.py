@@ -1,4 +1,5 @@
-"""Agent 编排服务门面。
+"""
+Agent 编排服务门面。
 
 chain 层需要触发 Agent 后台任务、渲染提示词、查询模型能力时统一经本模块调用。
 具体实现由 startup 组合根注册，形成依赖倒置：
@@ -40,7 +41,26 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class AgentDataContext:
-    """由启动组合根构造并注入 Agent 运行面的类型化数据能力。"""
+    """
+    由启动组合根构造并注入 Agent 运行面的类型化数据能力。
+
+    :param chat: 会话历史查询、授权和删除服务
+    :param chat_persistence: 展示与恢复消息快照的受控持久化服务
+    :param tasks: 自主定时任务和运行记录仓储
+    :param users: 用户身份与权限查询仓储
+    :param sites: 站点配置和认证信息仓储
+    :param subscriptions: 订阅读写仓储
+    :param subscription_mutation_scope: 创建或修改订阅时使用的事务作用域
+    :param subscription_delete_scope: 删除订阅及关联数据时使用的事务作用域
+    :param async_rule_group_mutation_scope: 异步规则组定义与引用更新的事务作用域工厂
+    :param subscription_history: 订阅完成历史查询端口
+    :param transfer_history: 文件整理历史仓储
+    :param transfer_execution: 持久化整理任务及执行状态仓储
+    :param download_history: 资源下载历史仓储
+    :param plugin_data: 插件持久化数据查询端口
+    :param invocations: 写工具调用的幂等回执仓储，None 表示未装配该能力
+    :param recall: 独立原始消息归档与检索服务，None 表示未装配该能力
+    """
 
     chat: AgentChatService
     chat_persistence: AgentChatPersistenceService
@@ -82,7 +102,9 @@ def register_agent_service_providers(
     manual_redo_prompt_builder_provider: Provider,
     web_agent_type_provider: Provider,
 ) -> None:
-    """注册 Agent 服务 provider，保持组合根装配阶段零重量实现导入。"""
+    """
+    注册 Agent 服务 provider，保持组合根装配阶段零重量实现导入。
+    """
     global _agent_manager_provider, _running_agent_manager_provider
     global _prompt_manager_provider, _agent_capability_manager_provider
     global _llm_helper_provider, _manual_redo_prompt_builder_provider
@@ -97,7 +119,9 @@ def register_agent_service_providers(
 
 
 def reset_agent_service_providers() -> None:
-    """清除全部 Agent provider，防止 lifespan 重启复用旧运行时。"""
+    """
+    清除全部 Agent provider，防止 lifespan 重启复用旧运行时。
+    """
     global _agent_manager_provider, _running_agent_manager_provider
     global _prompt_manager_provider, _agent_capability_manager_provider
     global _llm_helper_provider, _manual_redo_prompt_builder_provider
@@ -118,7 +142,9 @@ def register_agent_services(
     llm_helper: Any,
     manual_redo_prompt_builder: Optional[Callable[[Any], str]] = None,
 ) -> None:
-    """兼容直接对象注入；生产组合根应注册惰性 provider。"""
+    """
+    兼容直接对象注入；生产组合根应注册惰性 provider。
+    """
     register_agent_service_providers(
         agent_manager_provider=lambda: agent_manager,
         running_agent_manager_provider=lambda: agent_manager,
@@ -131,26 +157,34 @@ def register_agent_services(
 
 
 def _resolve(provider: Optional[Provider], service_name: str) -> Any:
-    """解析已注册服务；缺少组合根装配时给出稳定错误。"""
+    """
+    解析已注册服务；缺少组合根装配时给出稳定错误。
+    """
     if provider is None:
         raise RuntimeError(f"Agent 服务 {service_name} 未注册：请先导入 app.startup.initializers.agent 完成组合根装配")
     return provider()
 
 
 def get_agent_manager() -> Any:
-    """返回 canonical AgentManager；调用可能触发实现物化。"""
+    """
+    返回 canonical AgentManager；调用可能触发实现物化。
+    """
     return _resolve(_agent_manager_provider, "agent_manager")
 
 
 def get_running_agent_manager() -> Any | None:
-    """返回已进入 RUNNING 的 AgentManager，不触发实现物化。"""
+    """
+    返回已进入 RUNNING 的 AgentManager，不触发实现物化。
+    """
     if _running_agent_manager_provider is None:
         return None
     return _resolve(_running_agent_manager_provider, "running_agent_manager")
 
 
 def get_prompt_manager() -> Any:
-    """按需返回提示词管理器。"""
+    """
+    按需返回提示词管理器。
+    """
     return _resolve(_prompt_manager_provider, "prompt_manager")
 
 
@@ -160,7 +194,9 @@ def supports_image_input(
     base_url: Optional[str] = None,
     base_url_preset: Optional[str] = None,
 ) -> bool:
-    """判断当前模型是否启用了图片输入能力。"""
+    """
+    判断当前模型是否启用了图片输入能力。
+    """
     llm_helper = _resolve(_llm_helper_provider, "llm_helper")
     supported: bool = llm_helper.supports_image_input(
         provider=provider,
@@ -172,7 +208,9 @@ def supports_image_input(
 
 
 def is_audio_input_available() -> bool:
-    """判断语音输入能力是否可用。"""
+    """
+    判断语音输入能力是否可用。
+    """
     capability_manager = _resolve(
         _agent_capability_manager_provider,
         "agent_capability_manager",
@@ -182,7 +220,9 @@ def is_audio_input_available() -> bool:
 
 
 def transcribe_audio(content: bytes, filename: str = "input.ogg") -> Optional[str]:
-    """把音频内容转写为文本。"""
+    """
+    把音频内容转写为文本。
+    """
     capability_manager = _resolve(
         _agent_capability_manager_provider,
         "agent_capability_manager",
@@ -192,7 +232,9 @@ def transcribe_audio(content: bytes, filename: str = "input.ogg") -> Optional[st
 
 
 def get_web_agent_type() -> type:
-    """返回由 Agent 实现层提供的 WebAgent 运行时类型。"""
+    """
+    返回由 Agent 实现层提供的 WebAgent 运行时类型。
+    """
     web_agent_type = _resolve(_web_agent_type_provider, "web_agent_type")
     if not isinstance(web_agent_type, type):
         raise RuntimeError("WebAgent 运行时类型尚未配置")
@@ -200,7 +242,9 @@ def get_web_agent_type() -> type:
 
 
 def build_manual_redo_prompt(history: Any) -> str:
-    """构造整理记录 AI 重新整理提示词（builder 由 agent 层注册）。"""
+    """
+    构造整理记录 AI 重新整理提示词（builder 由 agent 层注册）。
+    """
     builder = _resolve(
         _manual_redo_prompt_builder_provider,
         "manual_redo_prompt_builder",

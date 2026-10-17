@@ -1,4 +1,6 @@
-"""Docker 构建输入和镜像载荷分层合同。"""
+"""
+Docker 构建输入和镜像载荷分层合同。
+"""
 
 import shlex
 import subprocess
@@ -12,12 +14,16 @@ BETA_WORKFLOW = ROOT / ".github" / "workflows" / "beta.yml"
 
 
 def _read(path: Path) -> str:
-    """读取构建合同文件。"""
+    """
+    读取构建合同文件。
+    """
     return path.read_text(encoding="utf-8")
 
 
 def test_build_context_excludes_runtime_state_and_keeps_release_inputs() -> None:
-    """本地运行数据不得进入构建上下文，发布所需入口必须保留。"""
+    """
+    本地运行数据不得进入构建上下文，发布所需入口必须保留。
+    """
     dockerignore = _read(ROOT / ".dockerignore")
 
     for pattern in (
@@ -52,7 +58,9 @@ def test_build_context_excludes_runtime_state_and_keeps_release_inputs() -> None
 
 
 def test_dockerfile_assigns_each_payload_to_an_independent_stage() -> None:
-    """高频载荷必须由独立 stage 生成，并在 final 中分别写入目标目录。"""
+    """
+    高频载荷必须由独立 stage 生成，并在 final 中分别写入目标目录。
+    """
     dockerfile = _read(DOCKERFILE)
 
     for stage in (
@@ -92,7 +100,9 @@ def test_dockerfile_assigns_each_payload_to_an_independent_stage() -> None:
 
 
 def test_plugin_runtime_updates_preserve_host_entrypoint() -> None:
-    """更新载荷只迁移插件内容，不得覆盖新版宿主包根兼容入口。"""
+    """
+    更新载荷只迁移插件内容，不得覆盖新版宿主包根兼容入口。
+    """
     update_script = _read(ROOT / "docker" / "update.sh")
     perf_script = _read(ROOT / "scripts" / "perf" / "moviepilot_docker_ab.py")
 
@@ -105,7 +115,9 @@ def test_plugin_runtime_updates_preserve_host_entrypoint() -> None:
 
 
 def test_dev_update_marker_stays_with_container_payload() -> None:
-    """Dev 更新标记必须与容器载荷同层，避免持久化卷残留半完成事务。"""
+    """
+    Dev 更新标记必须与容器载荷同层，避免持久化卷残留半完成事务。
+    """
     marker = "/var/lib/moviepilot/update/__update_pending__"
     update_script = _read(ROOT / "docker" / "update.sh")
     launcher_script = _read(ROOT / "docker" / "launcher.sh")
@@ -119,7 +131,9 @@ def test_dev_update_marker_stays_with_container_payload() -> None:
 def test_update_script_keeps_new_host_entrypoint_during_runtime_migration(
     tmp_path: Path,
 ) -> None:
-    """Docker 更新脚本迁移旧插件时不得覆盖新归档中的宿主入口。"""
+    """
+    Docker 更新脚本迁移旧插件时不得覆盖新归档中的宿主入口。
+    """
     app_dir = tmp_path / "current"
     temp_dir = tmp_path / "temp"
     stage_app = temp_dir / "App"
@@ -168,7 +182,9 @@ test ! -e {shlex.quote(str(stage_plugins / 'stale'))}
 
 
 def test_release_workflows_pin_and_record_external_payload_identities() -> None:
-    """正式与 Beta 构建都必须以真实制品身份驱动缓存并写入镜像标签。"""
+    """
+    正式与 Beta 构建都必须以真实制品身份驱动缓存并写入镜像标签。
+    """
     for workflow_path in (RELEASE_WORKFLOW, BETA_WORKFLOW):
         workflow = _read(workflow_path)
 
@@ -199,7 +215,9 @@ def test_release_workflows_pin_and_record_external_payload_identities() -> None:
 
 
 def test_same_version_rebuild_identity_is_not_derived_from_image_tag() -> None:
-    """重复发布同一版本时，缓存身份必须来自源码和制品而不是镜像 Tag。"""
+    """
+    重复发布同一版本时，缓存身份必须来自源码和制品而不是镜像 Tag。
+    """
     release_workflow = _read(RELEASE_WORKFLOW)
 
     assert "SOURCE_COMMIT=$(git rev-parse HEAD)" in release_workflow
@@ -214,7 +232,9 @@ def test_same_version_rebuild_identity_is_not_derived_from_image_tag() -> None:
 
 
 def test_custom_frontend_directory_is_stable_but_artifacts_remain_untracked() -> None:
-    """干净 checkout 可直接构建，自定义前端产物仍保持本地状态。"""
+    """
+    干净 checkout 可直接构建，自定义前端产物仍保持本地状态。
+    """
     gitignore = _read(ROOT / ".gitignore")
     dockerfile = _read(DOCKERFILE)
 

@@ -1,4 +1,6 @@
-"""站点访问 Application Port 的装配与兼容回归。"""
+"""
+站点访问 Application Port 的装配与兼容回归。
+"""
 
 from types import SimpleNamespace
 
@@ -19,48 +21,68 @@ from app.startup.initializers import site as site_initializer
 
 
 class _UnusedPort:
-    """拒绝测试用例未声明的端口调用。"""
+    """
+    拒绝测试用例未声明的端口调用。
+    """
 
     def __getattr__(self, _name):
-        """让意外边界调用立即暴露。"""
+        """
+        让意外边界调用立即暴露。
+        """
         raise AssertionError("不应调用该测试端口")
 
 
 class _EmptyCache:
-    """隔离种子下载测试的文件缓存。"""
+    """
+    隔离种子下载测试的文件缓存。
+    """
 
     def __init__(self, **kwargs):
-        """种子是二进制载荷，必须按本地文件系统路由构造缓存。"""
+        """
+        种子是二进制载荷，必须按本地文件系统路由构造缓存。
+        """
         assert kwargs == {"local_only": True}
 
     @staticmethod
     def get(*_args, **_kwargs):
-        """固定返回未命中。"""
+        """
+        固定返回未命中。
+        """
         return None
 
     @staticmethod
     def set(*_args, **_kwargs):
-        """拒绝失败响应写入缓存。"""
+        """
+        拒绝失败响应写入缓存。
+        """
         raise AssertionError("失败响应不应写入缓存")
 
 
 @pytest.fixture(autouse=True)
 def reset_ports():
-    """保证每个用例前后均无跨测试端口状态。"""
+    """
+    保证每个用例前后均无跨测试端口状态。
+    """
     site_initializer.reset_site_access_ports()
     yield
     site_initializer.reset_site_access_ports()
 
 
 def test_rss_fake_ports_preserve_http_failure_tristate() -> None:
-    """RSS HTTP 非 200 仍返回 False，不把技术边迁移变成异常。"""
+    """
+    RSS HTTP 非 200 仍返回 False，不把技术边迁移变成异常。
+    """
 
     class HttpPort:
-        """返回站点限流响应的 RSS HTTP 假端口。"""
+        """
+        返回站点限流响应的 RSS HTTP 假端口。
+        """
 
         @staticmethod
         def get(**_kwargs):
-            """返回非成功响应。"""
+            """
+            返回非成功响应。
+            """
             return SimpleNamespace(status_code=429, content=b"", text="", reason="rate")
 
     configure_rss_ports(http=HttpPort(), browser=_UnusedPort(), parser=_UnusedPort())
@@ -70,15 +92,21 @@ def test_rss_fake_ports_preserve_http_failure_tristate() -> None:
 
 @pytest.mark.parametrize("render", [False, True])
 def test_rss_link_uses_selected_fake_access_port(render: bool) -> None:
-    """RSS 链接发现应按站点配置选择 HTTP 或浏览器窄端口。"""
+    """
+    RSS 链接发现应按站点配置选择 HTTP 或浏览器窄端口。
+    """
     calls: list[str] = []
 
     class HttpPort:
-        """返回包含 RSS 地址的配置页面。"""
+        """
+        返回包含 RSS 地址的配置页面。
+        """
 
         @staticmethod
         def post(**_kwargs):
-            """记录 HTTP 表单请求并返回页面。"""
+            """
+            记录 HTTP 表单请求并返回页面。
+            """
             calls.append("http")
             return SimpleNamespace(
                 status_code=200,
@@ -88,11 +116,15 @@ def test_rss_link_uses_selected_fake_access_port(render: bool) -> None:
             )
 
     class BrowserPort:
-        """返回包含 RSS 地址的渲染页面。"""
+        """
+        返回包含 RSS 地址的渲染页面。
+        """
 
         @staticmethod
         def render(**_kwargs):
-            """记录浏览器渲染并返回页面。"""
+            """
+            记录浏览器渲染并返回页面。
+            """
             calls.append("browser")
             return '<a href="https://feed.test/rss">rss</a>'
 
@@ -109,14 +141,20 @@ def test_rss_link_uses_selected_fake_access_port(render: bool) -> None:
 
 
 def test_torrent_fake_port_preserves_rate_limit_message(monkeypatch) -> None:
-    """种子下载限流分支继续保留旧五元组与中文错误。"""
+    """
+    种子下载限流分支继续保留旧五元组与中文错误。
+    """
 
     class HttpPort:
-        """返回 429 的种子 HTTP 假端口。"""
+        """
+        返回 429 的种子 HTTP 假端口。
+        """
 
         @staticmethod
         def request(**_kwargs):
-            """返回站点限流响应。"""
+            """
+            返回站点限流响应。
+            """
             return SimpleNamespace(
                 status_code=429, headers={}, content=b"", text="", reason="rate"
             )
@@ -130,7 +168,9 @@ def test_torrent_fake_port_preserves_rate_limit_message(monkeypatch) -> None:
 
 
 def test_torrent_binary_is_parsed_before_first_download_html_detection(monkeypatch) -> None:
-    """合法二进制种子包含首次下载提示文本时仍应按 torrent 解析。"""
+    """
+    合法二进制种子包含首次下载提示文本时仍应按 torrent 解析。
+    """
     marker = "下载种子文件".encode("utf-8")
     torrent_content = (
         b"d4:infod7:comment"
@@ -142,28 +182,40 @@ def test_torrent_binary_is_parsed_before_first_download_html_detection(monkeypat
     cached: list[bytes] = []
 
     class Cache:
-        """记录合法种子缓存写入，不接触真实缓存后端。"""
+        """
+        记录合法种子缓存写入，不接触真实缓存后端。
+        """
 
         def __init__(self, **kwargs):
-            """种子是二进制载荷，必须按本地文件系统路由构造缓存。"""
+            """
+            种子是二进制载荷，必须按本地文件系统路由构造缓存。
+            """
             assert kwargs == {"local_only": True}
 
         @staticmethod
         def get(*_args, **_kwargs):
-            """固定返回缓存未命中。"""
+            """
+            固定返回缓存未命中。
+            """
             return None
 
         @staticmethod
         def set(_key, value, **_kwargs):
-            """记录原始二进制种子内容。"""
+            """
+            记录原始二进制种子内容。
+            """
             cached.append(value)
 
     class HttpPort:
-        """返回包含提示文本的合法二进制种子响应。"""
+        """
+        返回包含提示文本的合法二进制种子响应。
+        """
 
         @staticmethod
         def request(**_kwargs):
-            """返回固定 torrent 响应。"""
+            """
+            返回固定 torrent 响应。
+            """
             return SimpleNamespace(
                 status_code=200,
                 headers={"Content-Type": "application/x-bittorrent"},
@@ -182,14 +234,20 @@ def test_torrent_binary_is_parsed_before_first_download_html_detection(monkeypat
 
 
 def test_torrent_invalid_http_200_body_is_rejected_before_downloader(monkeypatch) -> None:
-    """HTTP 200 返回非种子内容时应在下载层终止并避免缓存。"""
+    """
+    HTTP 200 返回非种子内容时应在下载层终止并避免缓存。
+    """
 
     class HttpPort:
-        """返回登录页面的种子 HTTP 假端口。"""
+        """
+        返回登录页面的种子 HTTP 假端口。
+        """
 
         @staticmethod
         def request(**_kwargs):
-            """返回固定 HTML 响应。"""
+            """
+            返回固定 HTML 响应。
+            """
             return SimpleNamespace(
                 status_code=200,
                 headers={"Content-Type": "text/html"},
@@ -207,7 +265,9 @@ def test_torrent_invalid_http_200_body_is_rejected_before_downloader(monkeypatch
 
 
 def test_cookie_invalid_parameters_keep_legacy_result_without_ports() -> None:
-    """参数错误属于 Application 语义，不应依赖浏览器端口已装配。"""
+    """
+    参数错误属于 Application 语义，不应依赖浏览器端口已装配。
+    """
     assert CookieHelper().get_site_cookie_ua("", "", "") == (
         None,
         None,
@@ -216,23 +276,33 @@ def test_cookie_invalid_parameters_keep_legacy_result_without_ports() -> None:
 
 
 def test_cookie_captcha_uses_http_and_ocr_fake_ports() -> None:
-    """验证码下载与识别只通过各自窄端口传递图片内容。"""
+    """
+    验证码下载与识别只通过各自窄端口传递图片内容。
+    """
     received: list[bytes] = []
 
     class HttpPort:
-        """返回固定验证码图片。"""
+        """
+        返回固定验证码图片。
+        """
 
         @staticmethod
         def fetch(**_kwargs):
-            """提供验证码图片字节。"""
+            """
+            提供验证码图片字节。
+            """
             return b"captcha-image"
 
     class OcrPort:
-        """记录 OCR 收到的原始图片字节。"""
+        """
+        记录 OCR 收到的原始图片字节。
+        """
 
         @staticmethod
         def recognize(image_data: bytes) -> str:
-            """记录输入并返回识别结果。"""
+            """
+            记录输入并返回识别结果。
+            """
             received.append(image_data)
             return "A1B2"
 
@@ -249,7 +319,9 @@ def test_cookie_captcha_uses_http_and_ocr_fake_ports() -> None:
 
 
 def test_reset_ports_make_real_access_fail_explicitly(monkeypatch) -> None:
-    """reset 后真实访问必须明确失败，不得在 Application 隐式回建 Adapter。"""
+    """
+    reset 后真实访问必须明确失败，不得在 Application 隐式回建 Adapter。
+    """
     monkeypatch.setattr(torrent_module, "FileCache", _EmptyCache)
 
     with pytest.raises(RuntimeError, match="RSS 访问端口"):
@@ -263,10 +335,14 @@ def test_reset_ports_make_real_access_fail_explicitly(monkeypatch) -> None:
 
 
 def test_initializer_rolls_back_partial_ports_on_failure(monkeypatch) -> None:
-    """中途装配失败时必须清除先前成功的 RSS Port。"""
+    """
+    中途装配失败时必须清除先前成功的 RSS Port。
+    """
 
     def fail_cookie_configuration(**_kwargs) -> None:
-        """模拟第二组端口装配失败。"""
+        """
+        模拟第二组端口装配失败。
+        """
         raise RuntimeError("injected failure")
 
     monkeypatch.setattr(
@@ -281,7 +357,9 @@ def test_initializer_rolls_back_partial_ports_on_failure(monkeypatch) -> None:
 
 
 def test_initializer_configures_and_reset_releases_all_ports() -> None:
-    """统一 initializer 应一次装配并一次释放全部站点访问 Port。"""
+    """
+    统一 initializer 应一次装配并一次释放全部站点访问 Port。
+    """
     site_initializer.init_site_access_ports()
 
     assert rss_module._require_rss_ports()

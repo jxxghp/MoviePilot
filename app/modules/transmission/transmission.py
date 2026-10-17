@@ -1,3 +1,7 @@
+"""
+Transmission 客户端连接与下载任务操作封装。
+"""
+
 from typing import List, Optional, Sequence, Tuple, Union
 
 import transmission_rpc
@@ -12,7 +16,7 @@ TorrentIds = Union[str, int, Sequence[Union[str, int]]]
 
 class Transmission:
     """
-    Transmission下载器
+    Transmission 下载器客户端，封装连接、任务查询和管理操作。
     """
     # 参考transmission web，仅查询需要的参数，加速种子搜索
     _trarg = ["id", "name", "status", "labels", "hashString", "totalSize", "percentDone", "addedDate", "trackerList",
@@ -25,7 +29,14 @@ class Transmission:
                  username: Optional[str] = None, password: Optional[str] = None,
                  rename_partial_files: Optional[bool] = True, **kwargs: object) -> None:
         """
-        若不设置参数，则创建配置文件设置的下载器
+        根据显式配置连接 Transmission，并同步未完成文件后缀开关。
+
+        :param host: 服务主机或完整 URL；缺少地址或解析失败时保留未连接状态
+        :param port: 服务端口，省略时从 host 解析
+        :param username: RPC 登录用户名
+        :param password: RPC 登录密码
+        :param rename_partial_files: 是否给未完成文件追加 .part 后缀，会同步到下载器全局设置
+        :param kwargs: 同时提供 host 和 port 时，protocol 指定协议，默认 http；其余参数当前不读取
         """
         self.trc: Optional[Client] = None
         self._host: Optional[str] = None
@@ -70,20 +81,21 @@ class Transmission:
 
     def __login_transmission(self) -> Optional[Client]:
         """
-        连接 Transmission；缩短 TCP 建连等待，同时保留原有 HTTP 响应读取时限。
-        :return: transmission对象
+        连接 Transmission，并分别限制建连和响应读取时间。
+
+        :return: 连接成功的客户端；缺少连接配置或发生异常时返回 None
         """
         if not self._host or not self._port:
             return None
         try:
-            # 登录
             logger.info(f"正在连接 transmission：{self._protocol}://{self._host}:{self._port}")
+            # 协议值沿用动态服务配置，保留客户端调用处既有的静态检查豁免。
             trt = transmission_rpc.Client(protocol=self._protocol, # noqa
                                           host=self._host,
                                           port=self._port,
                                           username=self._username,
                                           password=self._password,
-                                          # transmission-rpc supports Requests timeout tuples at runtime.
+                                          # transmission-rpc 运行时接受 Requests 的连接与读取超时二元组。
                                           timeout=(3, 60))
             self.__sync_incomplete_file_suffix(trt, enabled=bool(self._rename_partial_files))
             return trt
@@ -93,7 +105,9 @@ class Transmission:
 
     def is_inactive(self) -> bool:
         """
-        判断是否需要重连
+        判断已配置的下载器是否需要重新连接。
+
+        :return: 连接配置存在但客户端未建立时返回 True；缺少配置时返回 False
         """
         if not self._host or not self._port:
             return False
@@ -101,15 +115,19 @@ class Transmission:
 
     def reconnect(self) -> None:
         """
-        重连
+        按当前连接配置重建客户端；失败时保留未连接状态。
         """
         self.trc = self.__login_transmission()
 
     def get_torrents(self, ids: Optional[TorrentIds] = None, status: Optional[Union[str, list[str]]] = None,
                      tags: Optional[Union[str, list[str]]] = None) -> Tuple[List[Torrent], bool]:
         """
-        获取种子列表
-        返回结果 种子列表, 是否有错误
+        查询种子任务并按标识和标签筛选。
+
+        :param ids: 种子哈希或哈希列表，省略时查询全部任务
+        :param status: 下载器原生状态筛选条件，省略时不限状态
+        :param tags: 必须同时包含的标签；字符串按逗号分隔，省略时不按标签筛选
+        :return: 任务列表和错误标志；未连接或查询失败时返回空列表及 True，查询无匹配项时错误标志为 False
         """
         if not self.trc:
             return [], True
@@ -125,10 +143,8 @@ class Transmission:
         ret_torrents = []
         try:
             for torrent in torrents:
-                # 状态过滤
                 if status and torrent.status not in status:
                     continue
-                # 种子标签
                 labels = [str(tag).strip()
                           for tag in torrent.labels] if hasattr(torrent, "labels") else []
                 if tags and not set(tags).issubset(set(labels)):
@@ -142,8 +158,11 @@ class Transmission:
     def get_completed_torrents(self, ids: Optional[TorrentIds] = None,
                                tags: Optional[Union[str, list[str]]] = None) -> Optional[List[Torrent]]:
         """
-        获取已完成的种子列表
-        return 种子列表, 发生错误时返回None
+        获取已完成的种子任务。
+
+        :param ids: 种子哈希或哈希列表，省略时不限任务
+        :param tags: 必须同时包含的标签；字符串按逗号分隔，省略时不按标签筛选
+        :return: 匹配的任务列表；未连接或查询失败时返回 None，无匹配项时返回空列表
         """
         if not self.trc:
             return None
@@ -157,8 +176,11 @@ class Transmission:
     def get_downloading_torrents(self, ids: Optional[TorrentIds] = None,
                                  tags: Optional[Union[str, list[str]]] = None) -> Optional[List[Torrent]]:
         """
-        获取正在下载的种子列表
-        return 种子列表, 发生错误时返回None
+        获取下载中或等待下载的种子任务。
+
+        :param ids: 种子哈希或哈希列表，省略时不限任务
+        :param tags: 必须同时包含的标签；字符串按逗号分隔，省略时不按标签筛选
+        :return: 匹配的任务列表；未连接或查询失败时返回 None，无匹配项时返回空列表
         """
         if not self.trc:
             return None
@@ -173,7 +195,12 @@ class Transmission:
 
     def set_torrent_tag(self, ids: TorrentIds, tags: list[str], org_tags: Optional[list[str]] = None) -> bool:
         """
-        设置种子标签，注意TR默认会覆盖原有标签，如需追加需传入原有标签
+        写入任务标签，默认覆盖原有标签。
+
+        :param ids: 种子哈希或哈希列表
+        :param tags: 需要写入的非空标签列表
+        :param org_tags: 需要保留的原有标签；与新标签合并去重后统一写入
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self.trc:
             return False
@@ -188,7 +215,10 @@ class Transmission:
 
     def get_torrent_tags(self, ids: TorrentIds) -> List[str]:
         """
-        获取所有种子标签
+        读取匹配结果中第一个种子的标签。
+
+        :param ids: 种子哈希或哈希列表
+        :return: 首个任务的标签列表；未连接、无任务或查询失败时返回空列表
         """
         if not self.trc:
             return []
@@ -210,13 +240,14 @@ class Transmission:
                     labels: Optional[list[str]] = None,
                     cookie: Optional[str] = None) -> Optional[Torrent]:
         """
-        添加下载任务
-        :param content: 种子urls或文件内容
-        :param is_paused: 添加后暂停
-        :param download_dir: 下载路径
-        :param labels: 标签
-        :param cookie: 站点Cookie用于辅助下载种子
-        :return: Torrent
+        向 Transmission 添加下载任务。
+
+        :param content: 种子 URL、磁力链接或文件字节内容
+        :param is_paused: 是否以暂停状态添加
+        :param download_dir: 下载器保存目录，省略时使用下载器默认值
+        :param labels: 添加到任务的标签列表
+        :param cookie: 下载种子 URL 使用的站点 Cookie
+        :return: 客户端返回的种子对象；未连接或请求失败时返回 None
         """
         if not self.trc:
             return None
@@ -232,7 +263,10 @@ class Transmission:
 
     def start_torrents(self, ids: TorrentIds) -> bool:
         """
-        启动种子
+        启动指定种子任务。
+
+        :param ids: 种子哈希或哈希列表
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self.trc:
             return False
@@ -245,7 +279,10 @@ class Transmission:
 
     def stop_torrents(self, ids: TorrentIds) -> bool:
         """
-        停止种子
+        暂停指定种子任务。
+
+        :param ids: 种子哈希或哈希列表
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self.trc:
             return False
@@ -258,7 +295,11 @@ class Transmission:
 
     def delete_torrents(self, delete_file: Optional[bool], ids: TorrentIds) -> bool:
         """
-        删除种子
+        删除指定种子任务，并按选项删除下载文件。
+
+        :param delete_file: 是否同时删除下载文件
+        :param ids: 种子哈希或哈希列表
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self.trc:
             return False
@@ -273,7 +314,10 @@ class Transmission:
 
     def get_files(self, tid: str) -> Optional[List[File]]:
         """
-        获取种子文件列表
+        读取种子文件列表，兼容新旧 transmission-rpc 文件接口。
+
+        :param tid: 种子哈希
+        :return: 文件列表；哈希为空、任务不存在、未连接或查询失败时返回 None
         """
         if not self.trc:
             return None
@@ -299,7 +343,11 @@ class Transmission:
 
     def set_files(self, tid: str, file_ids: list[int]) -> bool:
         """
-        设置下载文件的状态
+        将选定文件设为需要下载。
+
+        :param tid: 种子哈希
+        :param file_ids: 种子内部的文件索引列表
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self.trc:
             return False
@@ -312,7 +360,11 @@ class Transmission:
 
     def set_unwanted_files(self, tid: str, file_ids: list[int]) -> bool:
         """
-        设置下载文件的状态
+        将选定文件设为不下载。
+
+        :param tid: 种子哈希
+        :param file_ids: 种子内部的文件索引列表
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self.trc:
             return False
@@ -325,7 +377,9 @@ class Transmission:
 
     def transfer_info(self) -> Optional[SessionStats]:
         """
-        获取传输信息
+        获取下载器当前传输速度和累计传输量。
+
+        :return: 客户端统计对象；未连接或查询失败时返回 None
         """
         if not self.trc:
             return None
@@ -337,10 +391,13 @@ class Transmission:
 
     def set_speed_limit(self, download_limit: Optional[float] = None, upload_limit: Optional[float] = None) -> bool:
         """
-        设置速度限制
-        :param download_limit: 下载速度限制，单位KB/s
-        :param upload_limit: 上传速度限制，单位kB/s
-        两个限速均需提供；缺少参数时沿用失败返回，不修改会话。
+        设置下载器全局下载和上传限速。
+
+        必须同时提供两项限速；缺少任意一项时返回 False 且不修改会话。
+
+        :param download_limit: 下载限速，单位 KB/s；0 表示不限速，不可省略
+        :param upload_limit: 上传限速，单位 KB/s；0 表示不限速，不可省略
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self.trc:
             return False
@@ -363,9 +420,9 @@ class Transmission:
 
     def get_speed_limit(self) -> Optional[Tuple[float, float]]:
         """
-        获取TR速度
-        :return: download_limit 下载速度 默认是0
-                 upload_limit 上传速度   默认是0
+        读取下载器全局下载和上传限速。
+
+        :return: 依次为下载、上传限速，单位 KB/s；未连接时返回 None，读取抛出异常的项保留初始化值 0
         """
         if not self.trc:
             return None
@@ -386,7 +443,10 @@ class Transmission:
 
     def recheck_torrents(self, ids: TorrentIds) -> bool:
         """
-        重新校验种子
+        请求重新校验指定任务的下载文件。
+
+        :param ids: 种子哈希或哈希列表
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self.trc:
             return False
@@ -404,13 +464,14 @@ class Transmission:
                        ratio_limit: Optional[float] = None,
                        seeding_time_limit: Optional[int] = None) -> bool:
         """
-        设置种子
-        :param hash_string: ID
-        :param upload_limit: 上传限速 Kb/s
-        :param download_limit: 下载限速 Kb/s
-        :param ratio_limit: 分享率限制
-        :param seeding_time_limit: 做种时间限制
-        :return: bool
+        修改单个种子的限速和做种停止条件。
+
+        :param hash_string: 种子哈希
+        :param upload_limit: 上传限速，单位 KB/s；0 关闭限速，None 不修改
+        :param download_limit: 下载限速，单位 KB/s；0 关闭限速，None 不修改
+        :param ratio_limit: 分享率阈值，0 关闭限制，None 不修改
+        :param seeding_time_limit: 空闲空闲做种时间限制，单位分钟；0 关闭限制，None 不修改
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not hash_string:
             return False
@@ -439,10 +500,13 @@ class Transmission:
 
     def set_torrent_location(self, hash_string: str, location: str) -> bool:
         """
-        修改种子保存目录。
-        :param hash_string: 种子Hash
-        :param location: 新保存目录
-        :return: 是否修改成功
+        修改种子任务的保存目录。
+
+        优先使用客户端的数据移动接口；旧客户端退回修改下载目录配置。
+
+        :param hash_string: 种子哈希
+        :param location: 下载器可访问的新目录路径，不接受空值
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self.trc or not hash_string or not location:
             return False
@@ -459,8 +523,15 @@ class Transmission:
 
     def update_tracker(self, hash_string: str, tracker_list: Optional[list[str]] = None) -> bool:
         """
-        tr4.0及以上弃用直接设置tracker 共用change方法
+        通过任务修改接口设置 Tracker 列表。
+
+        Transmission 4.0 及以上统一使用 change_torrent 接口修改 Tracker。
+        上游接口参考：
         https://github.com/trim21/transmission-rpc/blob/8eb82629492a0eeb0bb565f82c872bf9ccdcb313/transmission_rpc/client.py#L654
+
+        :param hash_string: 种子哈希
+        :param tracker_list: 要写入的 Tracker 地址列表，原样交给客户端
+        :return: 请求完成时返回 True；未连接或请求失败时返回 False，不代表任务已完成该动作
         """
         if not self.trc:
             return False
@@ -474,9 +545,10 @@ class Transmission:
 
     def get_trackers(self, hash_string: str) -> Optional[List[str]]:
         """
-        获取种子Tracker列表。
-        :param hash_string: 种子Hash
-        :return: Tracker URL列表
+        查询种子任务的 Tracker 地址列表。
+
+        :param hash_string: 种子哈希
+        :return: 地址列表；任务无 Tracker 时为空列表，未连接、哈希为空或请求失败时返回 None
         """
         if not self.trc or not hash_string:
             return None
@@ -502,8 +574,9 @@ class Transmission:
 
     def get_session(self) -> Optional[Session]:
         """
-        获取Transmission当前的会话信息和配置设置
-        :return dict
+        读取 Transmission 当前会话和全局配置。
+
+        :return: 客户端会话对象；未连接或查询失败时返回 None
         """
         if not self.trc:
             return None

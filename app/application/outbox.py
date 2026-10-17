@@ -1,4 +1,6 @@
-"""持久副作用 outbox 的应用契约与有限重试 dispatcher。"""
+"""
+持久化副作用的 Outbox 应用契约与有限重试派发器。
+"""
 
 from __future__ import annotations
 
@@ -54,7 +56,9 @@ REQUIRED_OUTBOX_TOPICS = frozenset(DURABLE_EVENT_TOPICS.values()) | {
 
 
 def durable_event_topic(event_type: EventType) -> str:
-    """返回 durable-required 事件唯一登记的 outbox topic。"""
+    """
+    返回必须持久化的事件所登记的唯一 Outbox 主题。
+    """
     try:
         return DURABLE_EVENT_TOPICS[event_type]
     except KeyError as error:
@@ -63,7 +67,14 @@ def durable_event_topic(event_type: EventType) -> str:
 
 @dataclass(frozen=True, slots=True)
 class OutboxIntent:
-    """与业务事务一起暂存的版本化副作用意图。"""
+    """
+    与业务事务一起暂存的版本化副作用意图。
+
+    :param event_key: 业务事件的稳定幂等键，用于避免重复暂存同一意图
+    :param topic: 已注册的副作用主题，用于选择派发处理器
+    :param payload: 可持久化的副作用业务载荷
+    :param payload_version: 载荷协议版本，处理器据此解释数据格式
+    """
 
     event_key: str
     topic: str
@@ -73,7 +84,12 @@ class OutboxIntent:
 
 @dataclass(frozen=True, slots=True)
 class DurableOutboxEffect:
-    """绑定持久 intent 与提交后可选的即时 I/O 外壳。"""
+    """
+    绑定持久化副作用意图与提交后可选的即时投递函数。
+
+    :param intent: 需要与业务事务一起提交的持久化副作用意图
+    :param deliver: 提交后可选的即时投递函数，None 表示仅由恢复流程投递
+    """
 
     intent: OutboxIntent
     deliver: Optional[Callable[[], object]] = None
@@ -81,7 +97,16 @@ class DurableOutboxEffect:
 
 @dataclass(frozen=True, slots=True)
 class ClaimedOutboxMessage:
-    """dispatcher 已获得 lease 的稳定消息投影。"""
+    """
+    派发器已取得租约的稳定消息投影。
+
+    :param message_id: Outbox 持久化消息主键
+    :param event_key: 业务事件的稳定幂等键，用于避免重复暂存同一意图
+    :param topic: 已注册的副作用主题，用于选择派发处理器
+    :param payload: 可持久化的副作用业务载荷
+    :param payload_version: 载荷协议版本，处理器据此解释数据格式
+    :param attempt: 本次认领序号，续租和结算必须携带同一序号以拒绝陈旧拥有者
+    """
 
     message_id: int
     event_key: str
@@ -92,13 +117,17 @@ class ClaimedOutboxMessage:
 
 
 class OutboxLeaseLostError(RuntimeError):
-    """当前派发 owner 的 attempt 已失效，禁止假报成功或覆盖新 owner。"""
+    """
+    当前派发者的认领序号已失效，禁止报告成功或覆盖后续认领者的状态。
+    """
 
 
 def validate_durable_event_handlers(
     handlers: Mapping[str, Callable[[ClaimedOutboxMessage], None]],
 ) -> None:
-    """拒绝缺少 durable 事件或正式具名效果 handler 的 dispatcher。"""
+    """
+    拒绝使用缺少持久化事件处理器或必需副作用处理器的派发器。
+    """
     missing = REQUIRED_OUTBOX_TOPICS - set(handlers)
     if missing:
         raise RuntimeError(
@@ -108,23 +137,47 @@ def validate_durable_event_handlers(
 
 
 class OutboxStager(Protocol):
-    """只在业务事务中暂存 durable intent 的最小端口。"""
+    """
+    只在业务事务中暂存持久化副作用意图的最小端口。
+    """
 
     def stage(self, intent: OutboxIntent, now: datetime) -> None:
-        """在调用方当前事务中暂存意图，不自行提交。"""
+        """
+        在调用方当前事务中暂存意图，不自行提交。
+
+        :param intent: 需要和业务数据一起持久化的版本化副作用意图
+        :param now: 意图创建时间，使用带时区的 UTC 时间
+        """
 
 
 class OutboxDispatchStore(Protocol):
-    """使用独立短事务认领和结算 durable intent 的最小端口。"""
+    """
+    使用独立短事务认领和结算持久化副作用的最小端口。
+    """
 
     def claim(
         self, now: datetime, lease_until: datetime, *,
         topic: Optional[str] = None, exclude_topics: tuple[str, ...] = (),
     ) -> Optional[ClaimedOutboxMessage]:
-        """原子认领到期消息，可限定 topic 或排除当前正在执行的 topic。"""
+        """
+        原子认领到期消息，可限定主题或排除当前正在执行的主题。
+
+        :param now: 当前带时区的 UTC 时间，用于判断是否到期
+        :param lease_until: 本次认领的租约截止时间，使用带时区的 UTC 时间
+        :param topic: 仅认领该主题，None 表示不限定主题
+        :param exclude_topics: 本轮已在执行或不应再次认领的主题
+        :return: 一条已取得租约的到期消息，没有可认领消息时为 None
+        """
 
     def renew(self, message_id: int, attempt: int, lease_until: datetime) -> bool:
-        """仅为仍属于当前 attempt 的 processing 消息续租。"""
+        """
+        仅为仍处于处理中且认领序号匹配的消息续租。
+
+        :param message_id: 已认领的持久化消息主键
+        :param attempt: 当前认领序号，必须与存储中的有效序号一致
+        :param lease_until: 本次认领的租约截止时间，使用带时区的 UTC 时间
+        :return: 消息仍在处理且认领序号一致时续租并返回 True，否则返回 False
+        """
 
     def claim_by_event_key(
         self,
@@ -132,7 +185,14 @@ class OutboxDispatchStore(Protocol):
         now: datetime,
         lease_until: datetime,
     ) -> Optional[ClaimedOutboxMessage]:
-        """按稳定事件键原子认领一条到期消息。"""
+        """
+        按稳定事件键原子认领一条到期消息。
+
+        :param event_key: 业务事件的稳定幂等键
+        :param now: 当前带时区的 UTC 时间，用于判断是否到期
+        :param lease_until: 本次认领的租约截止时间，使用带时区的 UTC 时间
+        :return: 已取得租约的消息；消息未到期、已完成或被其他执行者持有时为 None
+        """
 
     def complete(
         self,
@@ -140,7 +200,14 @@ class OutboxDispatchStore(Protocol):
         attempt: int,
         completed_at: datetime,
     ) -> bool:
-        """仅由当前 attempt 的 owner 标记完成。"""
+        """
+        仅允许持有当前认领序号的派发者标记完成。
+
+        :param message_id: 已认领的持久化消息主键
+        :param attempt: 当前认领序号，必须与存储中的有效序号一致
+        :param completed_at: 确认完成的带时区 UTC 时间
+        :return: 当前认领序号有效且完成状态已写入时为 True；陈旧拥有者返回 False
+        """
 
     def retry(
         self,
@@ -151,18 +218,36 @@ class OutboxDispatchStore(Protocol):
         last_error: str,
         dead: bool,
     ) -> bool:
-        """仅由当前 attempt 的 owner 记录退避或 dead-letter。"""
+        """
+        仅允许持有当前认领序号的派发者记录退避重试或死信。
+
+        :param message_id: 已认领的持久化消息主键
+        :param attempt: 当前认领序号，必须与存储中的有效序号一致
+        :param next_retry_at: 下次允许重试的带时区 UTC 时间
+        :param last_error: 本次失败原因摘要，持久化供排查
+        :param dead: 是否停止自动重试并将消息置为死信
+        :return: 当前认领序号有效且重试或死信状态已写入时为 True；陈旧拥有者返回 False
+        """
 
 
 class AsyncOutboxStager(Protocol):
-    """只在异步业务事务中暂存 durable intent 的最小端口。"""
+    """
+    只在异步业务事务中暂存持久化副作用意图的最小端口。
+    """
 
     async def stage(self, intent: OutboxIntent, now: datetime) -> None:
-        """把 intent 加入调用方当前事务，但不自行提交。"""
+        """
+        把副作用意图加入调用方当前事务，但不自行提交。
+
+        :param intent: 需要和业务数据一起持久化的版本化副作用意图
+        :param now: 意图创建时间，使用带时区的 UTC 时间
+        """
 
 
 class AsyncOutboxDispatchStore(Protocol):
-    """使用独立异步短事务认领和结算 intent 的最小端口。"""
+    """
+    使用独立异步短事务认领和结算副作用意图的最小端口。
+    """
 
     async def claim_by_event_key(
         self,
@@ -170,7 +255,14 @@ class AsyncOutboxDispatchStore(Protocol):
         now: datetime,
         lease_until: datetime,
     ) -> Optional[ClaimedOutboxMessage]:
-        """按稳定事件键原子认领一条到期消息。"""
+        """
+        按稳定事件键原子认领一条到期消息。
+
+        :param event_key: 业务事件的稳定幂等键
+        :param now: 当前带时区的 UTC 时间，用于判断是否到期
+        :param lease_until: 本次认领的租约截止时间，使用带时区的 UTC 时间
+        :return: 已取得租约的消息；消息未到期、已完成或被其他执行者持有时为 None
+        """
 
     async def complete(
         self,
@@ -178,7 +270,14 @@ class AsyncOutboxDispatchStore(Protocol):
         attempt: int,
         completed_at: datetime,
     ) -> bool:
-        """仅由当前 attempt 的 owner 标记完成。"""
+        """
+        仅允许持有当前认领序号的派发者标记完成。
+
+        :param message_id: 已认领的持久化消息主键
+        :param attempt: 当前认领序号，必须与存储中的有效序号一致
+        :param completed_at: 确认完成的带时区 UTC 时间
+        :return: 当前认领序号有效且完成状态已写入时为 True；陈旧拥有者返回 False
+        """
 
     async def retry(
         self,
@@ -189,22 +288,44 @@ class AsyncOutboxDispatchStore(Protocol):
         last_error: str,
         dead: bool,
     ) -> bool:
-        """仅由当前 attempt 的 owner 记录退避或 dead-letter。"""
+        """
+        仅允许持有当前认领序号的派发者记录退避重试或死信。
+
+        :param message_id: 已认领的持久化消息主键
+        :param attempt: 当前认领序号，必须与存储中的有效序号一致
+        :param next_retry_at: 下次允许重试的带时区 UTC 时间
+        :param last_error: 本次失败原因摘要，持久化供排查
+        :param dead: 是否停止自动重试并将消息置为死信
+        :return: 当前认领序号有效且重试或死信状态已写入时为 True；陈旧拥有者返回 False
+        """
 
 
 class SyncUnitOfWork(Protocol):
-    """同步 durable 业务切片的最小事务端口。"""
+    """
+    同步 durable 业务切片的最小事务端口。
+    """
 
     def commit(self) -> None:
-        """提交业务写入与 outbox intent。"""
+        """
+        提交业务写入与 Outbox 副作用意图。
+        """
 
     def rollback(self) -> None:
-        """回滚业务写入与 outbox intent。"""
+        """
+        回滚业务写入与 Outbox 副作用意图。
+        """
 
 
 @dataclass(frozen=True, slots=True)
 class PostCommitResult(Generic[T]):
-    """区分已提交业务结果与逐项完成或仍待恢复的后置效果。"""
+    """
+    区分已提交业务结果与逐项完成或仍待恢复的后置效果。
+
+    :param value: 业务操作产生的返回值
+    :param business_committed: 业务事务是否已经成功提交
+    :param completed_effects: 本次已完成的副作用名称或事件键
+    :param pending_effects: 仍需后续恢复执行的副作用名称或事件键
+    """
 
     value: T
     business_committed: bool
@@ -213,10 +334,14 @@ class PostCommitResult(Generic[T]):
 
 
 class PostCommitEffectError(RuntimeError):
-    """业务已提交但至少一个后置效果失败，并携带可检查的完成结果。"""
+    """
+    业务已提交但至少一个后置效果失败，并携带可检查的完成结果。
+    """
 
     def __init__(self, result: PostCommitResult[Any], errors: tuple[Exception, ...]):
-        """保存结构化完成状态及逐项原始异常。"""
+        """
+        保存结构化完成状态及逐项原始异常。
+        """
         self.result = result
         self.errors = errors
         super().__init__("提交后的相关处理未完成，系统将自动重试")
@@ -229,7 +354,9 @@ def deliver_outbox_effect(
     *,
     clock: Optional[Callable[[], datetime]] = None,
 ) -> bool:
-    """先认领再执行同步效果，并用同一 attempt fencing 结算结果。"""
+    """
+    先认领再执行同步副作用，并以同一认领序号校验结算权。
+    """
     now = (clock or (lambda: datetime.now(timezone.utc)))()
     claimed = store.claim_by_event_key(
         event_key,
@@ -270,7 +397,9 @@ async def deliver_async_outbox_effect(
     *,
     clock: Optional[Callable[[], datetime]] = None,
 ) -> bool:
-    """先认领再执行异步效果，并用同一 attempt fencing 结算结果。"""
+    """
+    先认领再执行异步副作用，并以同一认领序号校验结算权。
+    """
     now = (clock or (lambda: datetime.now(timezone.utc)))()
     claimed = await store.claim_by_event_key(
         event_key,
@@ -305,7 +434,9 @@ async def deliver_async_outbox_effect(
 
 
 class DurableEventCommand:
-    """把一次同步业务写入与可恢复事件 intent 原子提交。"""
+    """
+    把一次同步业务写入与可恢复事件意图原子提交。
+    """
 
     def __init__(
         self,
@@ -313,7 +444,9 @@ class DurableEventCommand:
         stager: OutboxStager,
         store: OutboxDispatchStore,
     ) -> None:
-        """注入业务事务内 stager 与独立短事务 dispatch store。"""
+        """
+        注入业务事务内 stager 与独立短事务 dispatch store。
+        """
         self._unit_of_work = unit_of_work
         self._stager = stager
         self._store = store
@@ -327,7 +460,9 @@ class DurableEventCommand:
         ],
         stage_business: Callable[[], T],
     ) -> PostCommitResult[T]:
-        """原子提交业务与多个命名 intent，再认领可即时执行的效果。"""
+        """
+        原子提交业务与多个具名副作用意图，再认领可即时执行的副作用。
+        """
         resolved_effects: tuple[DurableOutboxEffect, ...] = ()
         try:
             result = stage_business()
@@ -372,7 +507,9 @@ class DurableEventCommand:
 
 
 class OutboxDispatcher:
-    """认领并派发 outbox，按 event key 依赖 handler 幂等。"""
+    """
+    认领并派发 outbox，按 event key 依赖 handler 幂等。
+    """
 
     def __init__(
         self,
@@ -385,7 +522,9 @@ class OutboxDispatcher:
         close: Optional[Callable[[], None]] = None,
         failure_observer: Optional[Callable[[bool], None]] = None,
     ) -> None:
-        """注入持久端口、topic handler、有界重试策略与失败观测端口。"""
+        """
+        注入持久端口、topic handler、有界重试策略与失败观测端口。
+        """
         self._repository = repository
         self._handlers = handlers
         self._max_attempts = max_attempts
@@ -397,7 +536,9 @@ class OutboxDispatcher:
     def claim_one(
         self, *, topic: Optional[str] = None, exclude_topics: tuple[str, ...] = (),
     ) -> Optional[ClaimedOutboxMessage]:
-        """按 topic 准入约束认领消息；短事务结束后才允许执行外部效果。"""
+        """
+        按 topic 准入约束认领消息；短事务结束后才允许执行外部效果。
+        """
         now = self._clock()
         return self._repository.claim(
             now, now + timedelta(seconds=self._lease_seconds),
@@ -405,14 +546,18 @@ class OutboxDispatcher:
         )
 
     def renew(self, message: ClaimedOutboxMessage) -> None:
-        """恢复扫描期间续租在途效果；已完成或被接管的 attempt 不会被改写。"""
+        """
+        恢复扫描期间续租在途效果；已完成或被接管的 attempt 不会被改写。
+        """
         self._repository.renew(
             message.message_id, message.attempt,
             self._clock() + timedelta(seconds=self._lease_seconds),
         )
 
     def dispatch_one(self) -> bool:
-        """同步处理一条到期消息；无消息返回 False，失败留待持久化重试。"""
+        """
+        同步处理一条到期消息；无消息返回 False，失败留待持久化重试。
+        """
         message = self.claim_one()
         if message is None:
             return False
@@ -420,7 +565,9 @@ class OutboxDispatcher:
         return True
 
     def dispatch_claimed(self, message: ClaimedOutboxMessage) -> None:
-        """执行已认领效果，完成与重试时间均取真实结算时刻。"""
+        """
+        执行已认领效果，完成与重试时间均取真实结算时刻。
+        """
         try:
             self._handlers[message.topic](message)
         except OutboxLeaseLostError:
@@ -432,7 +579,9 @@ class OutboxDispatcher:
             raise OutboxLeaseLostError("Outbox 完成凭证已失效")
 
     def retry_claimed(self, message: ClaimedOutboxMessage, error: Exception) -> None:
-        """仅当前 owner 可写入有限退避或死信，并记录可定位的消息身份。"""
+        """
+        仅当前认领者可写入有限退避或死信，并记录可定位的消息身份。
+        """
         dead = message.attempt >= self._max_attempts
         delay = min(3600, 2 ** min(12, max(0, message.attempt - 1)))
         settled = self._repository.retry(
@@ -448,13 +597,21 @@ class OutboxDispatcher:
             self._failure_observer(dead)
 
     def close(self) -> None:
-        """释放 dispatcher 工厂创建的短生命周期持久化资源。"""
+        """
+        释放派发器工厂创建的短生命周期持久化资源。
+        """
         self._close()
 
 
 @dataclass(slots=True)
 class _OutboxFlight:
-    """持有一个 topic 的 dispatcher、当前 lease 和真实 worker 完成句柄。"""
+    """
+    持有一个主题的派发器、当前租约和实际工作线程的完成句柄。
+
+    :param dispatcher: 拥有本次派发规则和存储端口的派发器
+    :param message: 本次认领的消息及租约序号
+    :param future: 实际工作线程的完成句柄，尚未提交执行时为 None
+    """
 
     dispatcher: OutboxDispatcher
     message: ClaimedOutboxMessage
@@ -462,14 +619,18 @@ class _OutboxFlight:
 
 
 class OutboxRecovery:
-    """按 topic 串行、跨 topic 有界并行恢复，慢事件不占据通知的准入位置。"""
+    """
+    同主题串行、跨主题有界并行恢复，慢事件不占据通知的执行名额。
+    """
 
     def __init__(
         self, provider: Callable[[], OutboxDispatcher],
         submit: Callable[[Callable[[], None]], Future[None]],
         *, max_inflight: int = OUTBOX_MAX_INFLIGHT_TOPICS,
     ) -> None:
-        """注入短生命周期 dispatcher 工厂和宿主管理的线程提交端口。"""
+        """
+        注入短生命周期派发器工厂和宿主管理的线程提交端口。
+        """
         self._provider = provider
         self._submit = submit
         self._max_inflight = max_inflight
@@ -478,7 +639,9 @@ class OutboxRecovery:
         self._stopping = False
 
     def dispatch(self, limit: int) -> int:
-        """续租在途效果并启动空闲 topic；返回接收的 topic 数，每个最多处理 limit 条。"""
+        """
+        续租在途效果并启动空闲 topic；返回接收的 topic 数，每个最多处理 limit 条。
+        """
         with self._lock:
             if self._stopping:
                 return 0
@@ -502,7 +665,9 @@ class OutboxRecovery:
             return accepted
 
     def _start(self, flight: _OutboxFlight, limit: int) -> None:
-        """先登记 owner 再提交，提交失败回退 lease；所有回调完成后才释放 topic。"""
+        """
+        先登记主题持有者再提交执行，提交失败释放租约；所有回调完成后才释放主题。
+        """
         try:
             flight.future = self._submit(lambda: self._run(flight, limit))
         except Exception as error:
@@ -514,7 +679,9 @@ class OutboxRecovery:
         flight.future.add_done_callback(lambda future: self._done(flight, future))
 
     def _run(self, flight: _OutboxFlight, limit: int) -> None:
-        """同一 worker 顺序消化该 topic；租约即使到期也不启动第二个恢复 owner。"""
+        """
+        同一工作线程顺序处理该主题；租约即使到期也不启动第二个恢复执行者。
+        """
         for index in range(limit):
             flight.dispatcher.dispatch_claimed(flight.message)
             with self._lock:
@@ -526,7 +693,9 @@ class OutboxRecovery:
                 flight.message = message
 
     def _done(self, flight: _OutboxFlight, future: Future[None]) -> None:
-        """消费后台异常，未执行即取消的任务回到持久重试，资源收尾后再释放 owner。"""
+        """
+        消费后台异常，执行前被取消的任务回到持久化重试队列，资源收尾后再释放持有者。
+        """
         try:
             if future.cancelled():
                 flight.dispatcher.retry_claimed(flight.message, RuntimeError("Outbox worker 执行前已取消"))
@@ -538,7 +707,9 @@ class OutboxRecovery:
             self._finish(flight)
 
     def _finish(self, flight: _OutboxFlight) -> None:
-        """关闭当前 worker 的短生命周期资源，并在锁内撤销同一 topic owner。"""
+        """
+        关闭当前工作线程的短生命周期资源，并在锁内撤销同一主题的持有者。
+        """
         try:
             flight.dispatcher.close()
         finally:
@@ -547,7 +718,9 @@ class OutboxRecovery:
                 self._lock.notify_all()
 
     def stop(self, timeout: float = 10.0) -> bool:
-        """封口并有限等待真实终态；超时保留 owner，禁止重配或释放下游资源。"""
+        """
+        停止接收新任务并有限等待实际结束；超时保留持有者，禁止重配或释放下游资源。
+        """
         with self._lock:
             self._stopping = True
             return self._lock.wait_for(lambda: not self._active, timeout=max(0.0, timeout))
@@ -561,7 +734,9 @@ def configure_outbox_dispatcher(
     provider: Callable[[], OutboxDispatcher],
     *, submit: Optional[Callable[[Callable[[], None]], Future[None]]] = None,
 ) -> None:
-    """登记 dispatcher 工厂；生产环境注入托管 worker，未注入时保留同步入口。"""
+    """
+    登记派发器工厂；生产环境注入托管工作线程，未注入时保留同步入口。
+    """
     global _configured_dispatcher, _configured_recovery
     if not stop_outbox_recovery(timeout=0):
         raise RuntimeError("上一 Outbox 恢复 owner 尚未停止")
@@ -570,12 +745,16 @@ def configure_outbox_dispatcher(
 
 
 def stop_outbox_recovery(timeout: float = 10.0) -> bool:
-    """调度器停止后等待 Outbox worker，必须先于插件、模块和数据库释放。"""
+    """
+    调度器停止后等待 Outbox 工作线程，必须先于插件、模块和数据库释放。
+    """
     return _configured_recovery is None or _configured_recovery.stop(timeout)
 
 
 def reset_outbox_dispatcher() -> None:
-    """仅在全部在途效果收敛后撤销当前 lifespan 的工厂与恢复 owner。"""
+    """
+    仅在全部在途副作用结束后撤销当前生命周期的工厂与恢复执行者。
+    """
     global _configured_dispatcher, _configured_recovery
     if not stop_outbox_recovery(timeout=0):
         raise RuntimeError("Outbox 恢复 owner 尚未停止")
@@ -584,7 +763,9 @@ def reset_outbox_dispatcher() -> None:
 
 
 def dispatch_pending_outbox(limit: int = 20) -> int:
-    """生产恢复按 topic 提交有界批次；同步兼容入口返回实际处理的消息数。"""
+    """
+    生产恢复按 topic 提交有界批次；同步兼容入口返回实际处理的消息数。
+    """
     if _configured_dispatcher is None:
         raise RuntimeError("Outbox dispatcher 尚未配置")
     if _configured_recovery is not None:

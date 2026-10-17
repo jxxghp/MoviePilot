@@ -1,4 +1,6 @@
-"""暂停订阅中已接纳搜索的真实下载边界回归。"""
+"""
+暂停订阅中已接纳搜索的真实下载边界回归。
+"""
 
 from dataclasses import replace
 from types import SimpleNamespace
@@ -31,7 +33,9 @@ pytestmark = pytest.mark.usefixtures("_submission_dependencies")
 
 @pytest.fixture
 def download_scope(monkeypatch):
-    """保留订阅策略、候选选择与单资源提交，只隔离存储和外部下载器。"""
+    """
+    保留订阅策略、候选选择与单资源提交，只隔离存储和外部下载器。
+    """
     current = SubscriptionSnapshot(
         id=7,
         name="Demo Show",
@@ -68,7 +72,9 @@ def download_scope(monkeypatch):
 
 
 def _execution(operation="search", cancelled=lambda: False, allow_paused_search=True):
-    """固定执行时钟，保留真实租约、取消与副作用阶段信号。"""
+    """
+    固定执行时钟，保留真实租约、取消与副作用阶段信号。
+    """
     admission = SubscriptionExecutionAdmission(clock=lambda: 0)
     lease = admission.try_acquire(subscription_id=7, operation=operation, ttl_seconds=60)
     assert lease is not None
@@ -82,7 +88,9 @@ def _execution(operation="search", cancelled=lambda: False, allow_paused_search=
 
 
 def _submit(scope, prepared, execution_context):
-    """沿真实订阅下载策略提交候选，检查最终下载器副作用。"""
+    """
+    沿真实订阅下载策略提交候选，检查最终下载器副作用。
+    """
     return scope.chain._SubscribeChain__download_best_version_with_full_pack_first(
         contexts=[scope.context],
         no_exists={"tmdb:77": {1: NotExistMediaInfo(season=1, episodes=[1], total_episode=1)}},
@@ -94,7 +102,9 @@ def _submit(scope, prepared, execution_context):
 
 @pytest.mark.parametrize("prepared_state", ["R", "S"])
 def test_accepted_search_downloads_while_subscription_is_paused(download_scope, prepared_state):
-    """显式搜索中途暂停和指定暂停订阅补搜均能提交，不主动恢复订阅状态。"""
+    """
+    显式搜索中途暂停和指定暂停订阅补搜均能提交，不主动恢复订阅状态。
+    """
     scope = download_scope
     execution = _execution()
 
@@ -112,7 +122,9 @@ def test_accepted_search_downloads_while_subscription_is_paused(download_scope, 
 
 
 def test_automatic_search_cannot_download_after_subscription_is_paused(download_scope):
-    """自动搜索拿到候选后暂停，不能借已有执行上下文提交下载。"""
+    """
+    自动搜索拿到候选后暂停，不能借已有执行上下文提交下载。
+    """
     scope = download_scope
     execution = _execution(allow_paused_search=False)
 
@@ -127,7 +139,9 @@ def test_automatic_search_cannot_download_after_subscription_is_paused(download_
 
 
 def test_automatic_search_rechecks_pause_after_torrent_preparation(download_scope):
-    """暂停发生在种子准备期间时，真实下载器提交前的取消检查仍会拦住下载。"""
+    """
+    暂停发生在种子准备期间时，真实下载器提交前的取消检查仍会拦住下载。
+    """
     scope = download_scope
     active = replace(scope.current, state="N")
     scope.chain.subscription_repository.get.return_value = active
@@ -138,7 +152,9 @@ def test_automatic_search_rechecks_pause_after_torrent_preparation(download_scop
     )
 
     def prepare_torrent(_torrent, **_kwargs):
-        """在资源准备与下载器调用之间模拟用户暂停。"""
+        """
+        在资源准备与下载器调用之间模拟用户暂停。
+        """
         scope.chain.subscription_repository.get.return_value = scope.current
         return b"torrent", None, [1]
 
@@ -157,7 +173,9 @@ def test_automatic_search_rechecks_pause_after_torrent_preparation(download_scop
 
 @pytest.mark.parametrize("operation", [None, "match"])
 def test_paused_subscription_blocks_download_without_search_execution(download_scope, operation):
-    """无搜索上下文和自动匹配不能借暂停订阅创建下载任务。"""
+    """
+    无搜索上下文和自动匹配不能借暂停订阅创建下载任务。
+    """
     scope = download_scope
     execution = _execution(operation) if operation else None
 
@@ -174,13 +192,17 @@ def test_paused_subscription_blocks_download_without_search_execution(download_s
 
 
 def test_paused_search_still_honors_cancellation_at_downloader_boundary(download_scope):
-    """资源准备期间的取消仍在真实下载器调用前生效。"""
+    """
+    资源准备期间的取消仍在真实下载器调用前生效。
+    """
     scope = download_scope
     cancelled = [False]
     execution = _execution(cancelled=lambda: cancelled[0])
 
     def prepare_torrent(_torrent, **_kwargs):
-        """在准备种子后请求取消，验证最终提交边界。"""
+        """
+        在准备种子后请求取消，验证最终提交边界。
+        """
         cancelled[0] = True
         return b"torrent", None, [1]
 
@@ -200,7 +222,9 @@ def test_paused_search_still_honors_cancellation_at_downloader_boundary(download
 
 @pytest.mark.parametrize("change", ["deleted", "filter", "identity"])
 def test_paused_search_discards_invalidated_candidates(download_scope, change):
-    """暂停搜索的放行不能绕过删除、筛选或媒体身份变化。"""
+    """
+    暂停搜索的放行不能绕过删除、筛选或媒体身份变化。
+    """
     scope = download_scope
     prepared = replace(scope.current, state="R")
     current = {

@@ -1,4 +1,6 @@
-"""事件 payload、可见性、投递与可靠性契约清单。"""
+"""
+事件 payload、可见性、投递与可靠性契约清单。
+"""
 
 from __future__ import annotations
 
@@ -15,46 +17,87 @@ from app.schemas.workflow import ActionContext
 
 
 class EventDelivery(StrEnum):
-    """描述事件当前的交付保证。"""
+    """
+    描述事件当前的交付保证。
+    """
 
+    # 进程内即时交付，不保证重启后重放
     EPHEMERAL = "ephemeral"
+    # 发布前要求由持久化发件箱保障交付
     DURABLE_REQUIRED = "durable_required"
 
 
 class EventVisibility(StrEnum):
-    """描述事件是否属于插件公开扩展面。"""
+    """
+    描述事件是否属于插件公开扩展面。
+    """
 
+    # 仅供宿主内部消费者使用
     HOST_ONLY = "host_only"
+    # 允许插件订阅的公开事件
     PLUGIN_PUBLIC = "plugin_public"
+    # 仅投递给指定插件实例
     TARGET_PLUGIN = "target_plugin"
 
 
 class EventErrorBehavior(StrEnum):
-    """描述 handler 异常后的传播规则。"""
+    """
+    描述 handler 异常后的传播规则。
+    """
 
+    # 隔离当前处理器异常，继续其他处理器
     ISOLATE = "isolate"
+    # 遇到处理器异常时中断当前调用链
     STOP_CHAIN = "stop_chain"
+    # 将处理器失败交给通知策略处理
     NOTIFY = "notify"
 
 
 class EventPayloadMode(StrEnum):
-    """描述事件 payload 是运行时对象还是稳定快照。"""
+    """
+    描述事件 payload 是运行时对象还是稳定快照。
+    """
 
+    # 保留进程内运行时对象语义
     RUNTIME = "runtime"
+    # 使用可稳定校验的载荷快照
     SNAPSHOT = "snapshot"
+    # 保留扩展方定义的载荷结构
     EXTENSION = "extension"
 
 
 class EventValidationMode(StrEnum):
-    """描述契约校验失败后的兼容策略。"""
+    """
+    描述契约校验失败后的兼容策略。
+    """
 
+    # 校验失败只记录诊断，保留兼容调用
     DIAGNOSTIC = "diagnostic"
+    # 校验失败即拒绝继续投递
     STRICT = "strict"
 
 
 @dataclass(frozen=True, slots=True)
 class EventContract:
-    """冻结一个事件的 payload 与运行语义。"""
+    """
+    冻结一个事件的 payload 与运行语义。
+
+    :param event_name: 事件注册名称
+    :param payload_model: 完整载荷的校验模型；为 None 时不执行该模型校验
+    :param payload_contract: 面向消费者描述的载荷协议名称
+    :param mode: 事件的分发模式
+    :param visibility: 事件面向宿主、全部插件或指定插件的可见范围
+    :param delivery: 事件需要的交付保证
+    :param error_behavior: 处理器异常后的传播或隔离策略
+    :param ordering: 处理器调用顺序约束
+    :param input_model: 链式事件输入模型；未声明时为 None
+    :param output_model: 链式事件输出模型；未声明时为 None
+    :param schema_version: 载荷结构版本，默认从 1 开始
+    :param payload_mode: 载荷保留运行时对象、冻结快照或扩展对象的策略
+    :param validation_mode: 校验失败时记录诊断或严格拒绝的策略
+    :param sensitive_fields: 输出诊断时需要脱敏的字段路径集合
+    :param legacy_reason: 保留历史契约的原因；没有历史兼容说明时为 None
+    """
 
     event_name: str
     payload_model: type[BaseModel] | None
@@ -178,7 +221,9 @@ _SENSITIVE_FIELDS: dict[EventType | ChainEventType, tuple[str, ...]] = {
 
 
 def _build_contract(event_type: EventType | ChainEventType) -> EventContract:
-    """按 enum 类别和首批 model 映射构造完整契约。"""
+    """
+    按 enum 类别和首批 model 映射构造完整契约。
+    """
     payload_model = _PAYLOAD_MODELS.get(event_type)
     is_chain = isinstance(event_type, ChainEventType)
     visibility = EventVisibility.PLUGIN_PUBLIC
@@ -232,7 +277,9 @@ EVENT_CONTRACTS: dict[EventType | ChainEventType, EventContract] = {
 def normalize_event_type(
     event_type: EventType | ChainEventType | str,
 ) -> EventType | ChainEventType | str:
-    """把旧 SDK 传入的已知字符串恢复为 enum，未知扩展值保持原样。"""
+    """
+    把旧 SDK 传入的已知字符串恢复为 enum，未知扩展值保持原样。
+    """
     if not isinstance(event_type, str):
         return event_type
     for enum_type in (EventType, ChainEventType):
@@ -246,7 +293,9 @@ def normalize_event_type(
 def get_event_contract(
     event_type: EventType | ChainEventType | str,
 ) -> EventContract:
-    """返回已登记事件的完整契约，兼容传入 enum value 字符串。"""
+    """
+    返回已登记事件的完整契约，兼容传入 enum value 字符串。
+    """
     normalized = normalize_event_type(event_type)
     if isinstance(normalized, str):
         raise KeyError(normalized)
@@ -254,7 +303,9 @@ def get_event_contract(
 
 
 def describe_event_validation_error(model: type[BaseModel], error: Exception) -> str:
-    """只输出模型名和错误数量，避免校验输入、异常文本或动态字段名泄露凭据。"""
+    """
+    只输出模型名和错误数量，避免校验输入、异常文本或动态字段名泄露凭据。
+    """
     if isinstance(error, ValidationError):
         return f"{model.__name__}: {error.error_count()} validation error(s)"
     return f"{model.__name__}: {type(error).__name__}"
@@ -264,7 +315,9 @@ def validate_event_payload(
     event_type: EventType | ChainEventType | str,
     payload: Any,
 ) -> tuple[str, ...]:
-    """在发送边界诊断首批 typed payload，保持原对象和插件 dict 形状不变。"""
+    """
+    在发送边界诊断首批 typed payload，保持原对象和插件 dict 形状不变。
+    """
     try:
         contract = get_event_contract(event_type)
         models = tuple(

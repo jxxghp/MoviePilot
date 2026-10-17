@@ -1,4 +1,6 @@
-"""兼容旧 ``app.db.transferpending_oper`` 的无 Session 数据访问接口。"""
+"""
+兼容旧 ``app.db.transferpending_oper`` 的无 Session 数据访问接口。
+"""
 
 import hashlib
 import json
@@ -16,7 +18,9 @@ _TRANSFER_HISTORY = table("transferhistory", column("transfer_task_id"))
 
 
 def _legacy_planning_payload(storage: str, src_path: str) -> dict[str, Any]:
-    """只在旧登记 ABI 内构造可由新状态机保守重规划的最小输入。"""
+    """
+    只在旧登记 ABI 内构造可由新状态机保守重规划的最小输入。
+    """
     return {
         "schema_version": 1,
         "source_fileitem": {"storage": storage, "path": src_path},
@@ -40,7 +44,9 @@ def _legacy_planning_payload(storage: str, src_path: str) -> dict[str, Any]:
 
 
 def _planning_fingerprint(payload: dict[str, Any]) -> str:
-    """生成兼容登记输入与 canonical DTO 一致的规范指纹。"""
+    """
+    生成兼容登记输入与 canonical DTO 一致的规范指纹。
+    """
     canonical = json.dumps(
         payload,
         ensure_ascii=True,
@@ -52,7 +58,9 @@ def _planning_fingerprint(payload: dict[str, Any]) -> str:
 
 
 def _safe_legacy_delete_predicates() -> tuple[Any, ...]:
-    """只允许旧接口删除从未 claim、执行或结算的新鲜登记。"""
+    """
+    只允许旧接口删除从未 claim、执行或结算的新鲜登记。
+    """
     return (
         _TransferPending.lease_owner.is_(None),
         _TransferPending.lease_token.is_(None),

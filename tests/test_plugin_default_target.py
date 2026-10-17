@@ -1,4 +1,6 @@
-"""插件默认调用目标裁决与置位／清除测试。"""
+"""
+插件默认调用目标裁决与置位／清除测试。
+"""
 
 from __future__ import annotations
 
@@ -9,7 +11,9 @@ from app.schemas.plugin import PluginInstance
 
 
 class _Harness:
-    """组装 PluginDefaultTargetControl 依赖并记录调用轨迹的测试脚手架。"""
+    """
+    组装 PluginDefaultTargetControl 依赖并记录调用轨迹的测试脚手架。
+    """
 
     def __init__(
         self,
@@ -58,7 +62,9 @@ class _Harness:
         self.clear_calls.append(plugin_id)
 
     def build(self) -> PluginDefaultTargetControl:
-        """构造挂接本脚手架全部端口的裁决与置位控制器。"""
+        """
+        构造挂接本脚手架全部端口的裁决与置位控制器。
+        """
         return PluginDefaultTargetControl(
             plugin_exists=lambda _plugin_id: self.plugin_exists_flag,
             get_instance=self._get_instance,
@@ -72,7 +78,9 @@ class _Harness:
 
 
 def _clone(instance_id: str, source_plugin_id: str, *, default: bool = False) -> PluginInstance:
-    """构造一个分身实例描述。"""
+    """
+    构造一个分身实例描述。
+    """
     return PluginInstance(
         instance_id=instance_id,
         source_plugin_id=source_plugin_id,
@@ -81,7 +89,9 @@ def _clone(instance_id: str, source_plugin_id: str, *, default: bool = False) ->
 
 
 def _host(plugin_id: str, *, default: bool = False) -> PluginInstance:
-    """构造一个本体实例描述。"""
+    """
+    构造一个本体实例描述。
+    """
     return PluginInstance(
         instance_id=plugin_id,
         source_plugin_id=plugin_id,
@@ -95,7 +105,8 @@ def _host(plugin_id: str, *, default: bool = False) -> PluginInstance:
 
 
 def test_resolve_never_picks_the_first_instance_and_fails_deterministically():
-    """有分身却未设默认目标时，重复调用必须次次报同一个错，绝不挑出任何实例。
+    """
+    有分身却未设默认目标时，重复调用必须次次报同一个错，绝不挑出任何实例。
 
     这是本特性最核心的一条语义：随机挑或按登记顺序取第一个都会让同一次调用在
     不同时刻落到不同实例，用户既无法复现、也无从知道刚才是哪个实例执行的。
@@ -127,14 +138,18 @@ def test_resolve_never_picks_the_first_instance_and_fails_deterministically():
 
 
 def test_resolve_returns_plugin_id_when_no_clones_exist():
-    """只有本体、没有任何分身时直接返回插件 ID，不要求设置默认目标。"""
+    """
+    只有本体、没有任何分身时直接返回插件 ID，不要求设置默认目标。
+    """
     harness = _Harness(host_instance=_host("PluginA"), running_ids={"PluginA"})
 
     assert harness.build().resolve("PluginA") == "PluginA"
 
 
 def test_resolve_returns_argument_unchanged_when_it_is_already_a_clone_id():
-    """传入的标识本身就是某个分身的实例 ID 时原样返回，该分身没有自己的下级分身。"""
+    """
+    传入的标识本身就是某个分身的实例 ID 时原样返回，该分身没有自己的下级分身。
+    """
     harness = _Harness(
         host_instance=_host("PluginA"),
         clones=[_clone("PluginAx2", "PluginA")],
@@ -150,7 +165,9 @@ def test_resolve_returns_argument_unchanged_when_it_is_already_a_clone_id():
 
 
 def test_resolve_uses_enabled_default_target_among_clones():
-    """已有分身且默认目标已启用时，未指定实例的调用落到该默认目标。"""
+    """
+    已有分身且默认目标已启用时，未指定实例的调用落到该默认目标。
+    """
     harness = _Harness(
         host_instance=_host("PluginA"),
         clones=[
@@ -164,7 +181,9 @@ def test_resolve_uses_enabled_default_target_among_clones():
 
 
 def test_resolve_host_itself_can_be_default_target():
-    """本体同样可以被选为默认调用目标，与分身地位相同。"""
+    """
+    本体同样可以被选为默认调用目标，与分身地位相同。
+    """
     harness = _Harness(
         host_instance=_host("PluginA", default=True),
         clones=[_clone("PluginAx2", "PluginA")],
@@ -175,7 +194,9 @@ def test_resolve_host_itself_can_be_default_target():
 
 
 def test_resolve_raises_when_no_default_target_set():
-    """已有分身但未设置默认目标时报错，且不得回退到任何一个候选。"""
+    """
+    已有分身但未设置默认目标时报错，且不得回退到任何一个候选。
+    """
     harness = _Harness(
         host_instance=_host("PluginA"),
         clones=[_clone("PluginAx2", "PluginA"), _clone("PluginAx3", "PluginA")],
@@ -194,7 +215,9 @@ def test_resolve_raises_when_no_default_target_set():
 
 
 def test_resolve_raises_when_default_target_disabled_and_does_not_fall_back():
-    """默认目标已停用时必须报错，不得静默改走另一个正在运行的实例。"""
+    """
+    默认目标已停用时必须报错，不得静默改走另一个正在运行的实例。
+    """
     harness = _Harness(
         host_instance=_host("PluginA"),
         clones=[
@@ -213,7 +236,9 @@ def test_resolve_raises_when_default_target_disabled_and_does_not_fall_back():
 
 
 def test_resolve_candidate_description_orders_alphabetically():
-    """候选实例描述按实例 ID 升序排列，报错文案稳定可预期。"""
+    """
+    候选实例描述按实例 ID 升序排列，报错文案稳定可预期。
+    """
     harness = _Harness(
         host_instance=_host("PluginZ"),
         clones=[_clone("PluginZb", "PluginZ"), _clone("PluginZa", "PluginZ")],
@@ -229,7 +254,9 @@ def test_resolve_candidate_description_orders_alphabetically():
 
 
 def test_resolve_treats_never_persisted_host_as_a_candidate():
-    """本体从未被显式绑定过任何设置时，仍以默认视图参与候选而不是被略去。"""
+    """
+    本体从未被显式绑定过任何设置时，仍以默认视图参与候选而不是被略去。
+    """
     harness = _Harness(
         host_instance=None,
         clones=[_clone("PluginAx2", "PluginA")],
@@ -243,12 +270,13 @@ def test_resolve_treats_never_persisted_host_as_a_candidate():
 
 
 # --------------------------------------------------------------------------- #
-# set_target()
 # --------------------------------------------------------------------------- #
 
 
 def test_set_target_upserts_never_persisted_host_before_setting():
-    """本体从未落盘过时，设为默认目标前先落盘一条默认视图记录。"""
+    """
+    本体从未落盘过时，设为默认目标前先落盘一条默认视图记录。
+    """
     harness = _Harness(host_instance=None)
 
     result = harness.build().set_target("PluginA", "PluginA")
@@ -260,7 +288,9 @@ def test_set_target_upserts_never_persisted_host_before_setting():
 
 
 def test_set_target_does_not_resave_already_persisted_host():
-    """本体已经落盘过时不重复保存，只转发置位调用。"""
+    """
+    本体已经落盘过时不重复保存，只转发置位调用。
+    """
     harness = _Harness(host_instance=_host("PluginA"))
 
     harness.build().set_target("PluginA", "PluginA")
@@ -270,7 +300,9 @@ def test_set_target_does_not_resave_already_persisted_host():
 
 
 def test_set_target_delegates_clone_to_atomic_callable():
-    """目标是已归属该插件的分身时，直接转发给原子置位端口。"""
+    """
+    目标是已归属该插件的分身时，直接转发给原子置位端口。
+    """
     harness = _Harness(
         host_instance=_host("PluginA"),
         clones=[_clone("PluginAx2", "PluginA")],
@@ -283,7 +315,9 @@ def test_set_target_delegates_clone_to_atomic_callable():
 
 
 def test_set_target_rejects_instance_not_belonging_to_plugin():
-    """目标实例不存在或归属另一个插件时拒绝，且不下发到原子置位端口。"""
+    """
+    目标实例不存在或归属另一个插件时拒绝，且不下发到原子置位端口。
+    """
     harness = _Harness(
         host_instance=_host("PluginA"),
         clones=[_clone("PluginBx2", "PluginB")],
@@ -296,7 +330,9 @@ def test_set_target_rejects_instance_not_belonging_to_plugin():
 
 
 def test_set_target_propagates_atomic_callable_failure():
-    """原子置位端口报告目标不存在时如实透传，不伪装成功。"""
+    """
+    原子置位端口报告目标不存在时如实透传，不伪装成功。
+    """
     harness = _Harness(
         host_instance=_host("PluginA"),
         clones=[_clone("PluginAx2", "PluginA")],
@@ -307,7 +343,9 @@ def test_set_target_propagates_atomic_callable_failure():
 
 
 def test_set_target_raises_when_plugin_missing():
-    """插件本身不存在时拒绝设置默认目标。"""
+    """
+    插件本身不存在时拒绝设置默认目标。
+    """
     harness = _Harness(plugin_exists=False)
 
     with pytest.raises(LookupError):
@@ -315,12 +353,13 @@ def test_set_target_raises_when_plugin_missing():
 
 
 # --------------------------------------------------------------------------- #
-# clear_target()
 # --------------------------------------------------------------------------- #
 
 
 def test_clear_target_clears_when_matching_current_default():
-    """请求清除的实例正是当前默认目标时才真正清除。"""
+    """
+    请求清除的实例正是当前默认目标时才真正清除。
+    """
     harness = _Harness(
         host_instance=_host("PluginA"),
         clones=[_clone("PluginAx2", "PluginA", default=True)],
@@ -332,7 +371,9 @@ def test_clear_target_clears_when_matching_current_default():
 
 
 def test_clear_target_is_noop_when_nothing_is_set():
-    """插件当前没有任何默认目标置位时按空操作处理。"""
+    """
+    插件当前没有任何默认目标置位时按空操作处理。
+    """
     harness = _Harness(
         host_instance=_host("PluginA"),
         clones=[_clone("PluginAx2", "PluginA")],
@@ -344,7 +385,9 @@ def test_clear_target_is_noop_when_nothing_is_set():
 
 
 def test_clear_target_does_not_touch_a_different_current_default():
-    """请求清除的实例并非当前默认目标时，不得误清另一个实例的置位。"""
+    """
+    请求清除的实例并非当前默认目标时，不得误清另一个实例的置位。
+    """
     harness = _Harness(
         host_instance=_host("PluginA"),
         clones=[
@@ -359,7 +402,9 @@ def test_clear_target_does_not_touch_a_different_current_default():
 
 
 def test_clear_target_raises_when_plugin_missing():
-    """插件本身不存在时拒绝清除默认目标。"""
+    """
+    插件本身不存在时拒绝清除默认目标。
+    """
     harness = _Harness(plugin_exists=False)
 
     with pytest.raises(LookupError):
@@ -367,18 +412,23 @@ def test_clear_target_raises_when_plugin_missing():
 
 
 def test_resolve_treats_a_loaded_but_disabled_default_target_as_unavailable():
-    """默认目标已加载但被用户停用时按「已停用」处理，要求显式指定实例。
+    """
+    默认目标已加载但被用户停用时按「已停用」处理，要求显式指定实例。
 
     界面上关掉启用开关只会重新 init_plugin，实例仍留在运行表里；只看运行表会把
     停用实例当成可用目标选中，调用随后以「插件不存在」收场。
     """
 
     class _Disabled:
-        """模拟已加载但启用开关被关掉的实例。"""
+        """
+        模拟已加载但启用开关被关掉的实例。
+        """
 
         @staticmethod
         def get_state() -> bool:
-            """返回停用状态。"""
+            """
+            返回停用状态。
+            """
             return False
 
     harness = _Harness(
@@ -395,7 +445,9 @@ def test_resolve_treats_a_loaded_but_disabled_default_target_as_unavailable():
 
 
 def test_set_target_rejects_clone_own_id_as_plugin_id():
-    """用分身自身实例 ID 当源插件 ID 置位必须拒绝，否则会把该行改写成本体记录。"""
+    """
+    用分身自身实例 ID 当源插件 ID 置位必须拒绝，否则会把该行改写成本体记录。
+    """
     harness = _Harness(clones=[_clone("PluginAx2", "PluginA")])
 
     with pytest.raises(LookupError):
@@ -406,7 +458,9 @@ def test_set_target_rejects_clone_own_id_as_plugin_id():
 
 
 def test_clear_target_rejects_clone_own_id_as_plugin_id():
-    """清除置位同样拒绝分身自身实例 ID，避免落到本体分支。"""
+    """
+    清除置位同样拒绝分身自身实例 ID，避免落到本体分支。
+    """
     harness = _Harness(clones=[_clone("PluginAx2", "PluginA")])
 
     with pytest.raises(LookupError):

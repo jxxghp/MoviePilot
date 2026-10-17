@@ -1,4 +1,6 @@
-"""媒体服务器本地缓存短事务适配器的回归测试。"""
+"""
+媒体服务器本地缓存短事务适配器的回归测试。
+"""
 
 import json
 from dataclasses import FrozenInstanceError
@@ -18,7 +20,9 @@ from app.schemas.types import MediaSource
 
 @pytest.fixture
 def session_factory(tmp_path):
-    """创建隔离的媒体服务器缓存数据库与会话工厂。"""
+    """
+    创建隔离的媒体服务器缓存数据库与会话工厂。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'mediaserver-adapter.db'}")
     factory = sessionmaker(bind=engine)
     Base.metadata.create_all(bind=engine)
@@ -27,7 +31,9 @@ def session_factory(tmp_path):
 
 
 def _sync_item(*, title: str, sync_time: str) -> MediaServerSyncItem:
-    """构造一个可重复 upsert 的冻结媒体库条目。"""
+    """
+    构造一个可重复 upsert 的冻结媒体库条目。
+    """
     return MediaServerSyncItem(
         server="plex",
         library="movies",
@@ -49,7 +55,9 @@ def test_upsert_commits_insert_and_update_without_external_session(
     session_factory,
     monkeypatch,
 ) -> None:
-    """每次 upsert 应在单一短 Session 中完成查询、写入和提交。"""
+    """
+    每次 upsert 应在单一短 Session 中完成查询、写入和提交。
+    """
     from app.db import base as db_base
 
     monkeypatch.setattr(
@@ -78,7 +86,9 @@ def test_upsert_commits_insert_and_update_without_external_session(
 
 
 def test_get_item_id_returns_scalar_after_short_session_closes(session_factory) -> None:
-    """查询端口只返回标量 ID，不把 ORM 条目带出短 Session。"""
+    """
+    查询端口只返回标量 ID，不把 ORM 条目带出短 Session。
+    """
     repository = TransactionalMediaServerRepository(session_factory)
     repository.upsert(
         _sync_item(title="查询标题", sync_time="2026-08-28 10:00:00")
@@ -95,7 +105,9 @@ def test_get_item_id_returns_scalar_after_short_session_closes(session_factory) 
 
 
 def test_sync_item_deeply_detaches_mutable_remote_values() -> None:
-    """冻结 DTO 必须规范化季集并断开与远端 note 的可变引用。"""
+    """
+    冻结 DTO 必须规范化季集并断开与远端 note 的可变引用。
+    """
     note = {"nested": ["original"]}
     source = MediaServerItemSchema(
         server="plex",
@@ -121,7 +133,9 @@ def test_sync_item_deeply_detaches_mutable_remote_values() -> None:
 
 
 def test_upsert_rolls_back_and_preserves_original_error() -> None:
-    """单条写入异常时必须回滚短事务并继续抛出原始异常。"""
+    """
+    单条写入异常时必须回滚短事务并继续抛出原始异常。
+    """
     session = MagicMock()
     session.__enter__.return_value = session
     session.__exit__.return_value = False
@@ -140,7 +154,9 @@ def test_upsert_rolls_back_and_preserves_original_error() -> None:
 
 
 def test_upsert_rolls_back_commit_failure() -> None:
-    """提交阶段失败也必须回滚短事务并传播原始异常。"""
+    """
+    提交阶段失败也必须回滚短事务并传播原始异常。
+    """
     session = MagicMock()
     session.__enter__.return_value = session
     session.__exit__.return_value = False
@@ -161,7 +177,9 @@ def test_upsert_rolls_back_commit_failure() -> None:
 
 @pytest.mark.asyncio
 async def test_query_service_consumes_scalar_repository_result() -> None:
-    """Application 查询服务只消费标量 ID，不读取 ORM 属性。"""
+    """
+    Application 查询服务只消费标量 ID，不读取 ORM 属性。
+    """
     repository = MagicMock()
     repository.async_get_item_id = AsyncMock(return_value="item-1")
     service = MediaServerQueryService(repository)

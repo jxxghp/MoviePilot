@@ -1,4 +1,6 @@
-"""Agent 文件写入工具的共享辅助函数。"""
+"""
+Agent 文件写入工具的共享辅助函数。
+"""
 
 import hashlib
 import os
@@ -7,11 +9,15 @@ from pathlib import Path
 
 
 class FileVersionConflictError(RuntimeError):
-    """目标文件在准备写入期间发生变化。"""
+    """
+    目标文件在准备写入期间发生变化。
+    """
 
 
 def calculate_file_sha256(path: Path) -> str:
-    """计算文件原始字节的 SHA-256，用于检测陈旧写入。"""
+    """
+    计算文件原始字节的 SHA-256，用于检测陈旧写入。
+    """
     digest = hashlib.sha256()
     with path.open("rb") as file_handle:
         for chunk in iter(lambda: file_handle.read(64 * 1024), b""):
@@ -24,7 +30,9 @@ def atomic_write_text(
     content: str,
     expected_sha256: str | None = None,
 ) -> None:
-    """校验目标版本后，在同目录写入临时文件并原子替换文本。"""
+    """
+    校验目标版本后，在同目录写入临时文件并原子替换文本。
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temp_name = tempfile.mkstemp(
         dir=path.parent,

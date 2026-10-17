@@ -1,15 +1,21 @@
+"""
+验证提示词缓存键的稳定性、隐私边界和缓存用量统计。
+"""
+
 import pytest
 from langchain_core.messages import AIMessage
 
-from app.agent import MoviePilotAgent
 from app.agent.llm.helper import LLMHelper
 from app.agent.llm.provider import LLMProviderManager
 from app.agent.middleware.usage import UsageMiddleware
+from app.agent.orchestrator import MoviePilotAgent
 from app.chain.message import MessageChain
 
 
 def test_usage_extracts_normalized_cache_details() -> None:
-    """标准 usage_metadata 应解析缓存读取、写入和未命中 tokens。"""
+    """
+    标准 usage_metadata 应解析缓存读取、写入和未命中 tokens。
+    """
     usage = UsageMiddleware._extract_usage(
         AIMessage(
             content="ok",
@@ -34,7 +40,9 @@ def test_usage_extracts_normalized_cache_details() -> None:
 
 
 def test_usage_extracts_deepseek_cache_hit_and_miss_tokens() -> None:
-    """DeepSeek 原始 usage 应保留其显式缓存命中与未命中字段。"""
+    """
+    DeepSeek 原始 usage 应保留其显式缓存命中与未命中字段。
+    """
     usage = UsageMiddleware._extract_usage(
         AIMessage(
             content="ok",
@@ -58,7 +66,9 @@ def test_usage_extracts_deepseek_cache_hit_and_miss_tokens() -> None:
 
 
 def test_session_usage_aggregates_and_formats_cache_statistics() -> None:
-    """会话状态应聚合缓存统计并在状态文本中展示。"""
+    """
+    会话状态应聚合缓存统计并在状态文本中展示。
+    """
     agent = MoviePilotAgent(session_id="cache-session", user_id="user-1")
     agent._record_usage(
         {
@@ -99,7 +109,9 @@ def test_session_usage_aggregates_and_formats_cache_statistics() -> None:
 
 
 def test_prompt_cache_key_is_stable_and_private() -> None:
-    """提示词缓存键应在同一会话内稳定且不暴露原始标识。"""
+    """
+    提示词缓存键应在同一会话内稳定且不暴露原始标识。
+    """
     first = MoviePilotAgent(session_id="private-session", user_id="private-user")
     second = MoviePilotAgent(session_id="private-session", user_id="private-user")
     other = MoviePilotAgent(session_id="other-session", user_id="private-user")
@@ -113,7 +125,9 @@ def test_prompt_cache_key_is_stable_and_private() -> None:
 
 
 def test_openai_prompt_cache_options_only_target_official_endpoints() -> None:
-    """OpenAI 专属缓存参数不得泄露到第三方兼容端点。"""
+    """
+    OpenAI 专属缓存参数不得泄露到第三方兼容端点。
+    """
     headers, kwargs = LLMHelper._build_openai_prompt_cache_options(
         provider="openai",
         base_url="https://api.openai.com/v1",
@@ -140,7 +154,9 @@ def test_openai_prompt_cache_options_only_target_official_endpoints() -> None:
 
 
 def test_xai_chat_completions_uses_stable_conversation_header() -> None:
-    """xAI Chat Completions 应使用官方会话缓存路由请求头。"""
+    """
+    xAI Chat Completions 应使用官方会话缓存路由请求头。
+    """
     headers, kwargs = LLMHelper._build_openai_prompt_cache_options(
         provider="xai",
         base_url="https://api.x.ai/v1",
@@ -155,17 +171,25 @@ def test_xai_chat_completions_uses_stable_conversation_header() -> None:
 
 
 def test_prompt_cache_adapter_preserves_control_after_tool_binding() -> None:
-    """Provider 缓存参数应在 Agent 最终绑定工具时仍然存在。"""
+    """
+    Provider 缓存参数应在 Agent 最终绑定工具时仍然存在。
+    """
 
     class FakeModel:
-        """模拟通过 bind_tools 再调用 bind 的 LangChain 模型。"""
+        """
+        模拟通过 bind_tools 再调用 bind 的 LangChain 模型。
+        """
 
         def bind(self, **kwargs):
-            """返回最终绑定参数。"""
+            """
+            返回最终绑定参数。
+            """
             return kwargs
 
         def bind_tools(self, tools, **kwargs):
-            """模拟模型的工具绑定流程。"""
+            """
+            模拟模型的工具绑定流程。
+            """
             return self.bind(tools=tools, **kwargs)
 
     cached_model_cls = LLMHelper._with_prompt_cache_control(
@@ -180,7 +204,9 @@ def test_prompt_cache_adapter_preserves_control_after_tool_binding() -> None:
 
 
 def test_anthropic_cache_control_only_targets_official_endpoint() -> None:
-    """Anthropic 原生缓存控制不得发送到第三方兼容端点。"""
+    """
+    Anthropic 原生缓存控制不得发送到第三方兼容端点。
+    """
     official = LLMHelper._use_anthropic_prompt_cache(
         provider="anthropic",
         runtime={
@@ -203,7 +229,9 @@ def test_anthropic_cache_control_only_targets_official_endpoint() -> None:
 
 
 def test_provider_metadata_declares_prompt_cache_without_model_allowlist() -> None:
-    """Provider 应通过模型能力元数据判断缓存支持，不依赖模型 ID 白名单。"""
+    """
+    Provider 应通过模型能力元数据判断缓存支持，不依赖模型 ID 白名单。
+    """
     assert LLMProviderManager._metadata_supports_prompt_cache(
         {"cost": {"input": 1, "cache_read": 0.1}}
     )
@@ -216,7 +244,9 @@ def test_provider_metadata_declares_prompt_cache_without_model_allowlist() -> No
 
 
 def test_bedrock_model_metadata_candidates_remove_region_prefix() -> None:
-    """Bedrock 跨区域模型应自动回落到基础模型的能力元数据。"""
+    """
+    Bedrock 跨区域模型应自动回落到基础模型的能力元数据。
+    """
     candidates = LLMProviderManager._models_dev_model_candidates(
         "amazon-bedrock",
         "us.vendor.model-version",

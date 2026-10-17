@@ -1,11 +1,15 @@
-"""数据库备份所需 Docker 运行时工具合同。"""
+"""
+数据库备份所需 Docker 运行时工具合同。
+"""
 
 import re
 from pathlib import Path
 
 
 def test_runtime_image_installs_postgresql_18_client_from_pgdg() -> None:
-    """Trixie 镜像必须从签名的 PGDG 源安装固定主版本客户端。"""
+    """
+    Trixie 镜像必须从签名的 PGDG 源安装固定主版本客户端。
+    """
     dockerfile = (
         Path(__file__).resolve().parents[1] / "docker" / "Dockerfile"
     ).read_text(encoding="utf-8")
@@ -35,7 +39,9 @@ def test_runtime_image_installs_postgresql_18_client_from_pgdg() -> None:
 
 def test_runtime_image_keeps_pgdg_setup_architecture_neutral_and_cleans_apt_cache(
 ) -> None:
-    """PGDG 原生架构解析需同时适用于 amd64/arm64，且不得遗留 APT 索引。"""
+    """
+    PGDG 原生架构解析需同时适用于 amd64/arm64，且不得遗留 APT 索引。
+    """
     dockerfile = (
         Path(__file__).resolve().parents[1] / "docker" / "Dockerfile"
     ).read_text(encoding="utf-8")

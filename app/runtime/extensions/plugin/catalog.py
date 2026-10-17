@@ -1,4 +1,6 @@
-"""插件本地运行态和远程市场目录投影。"""
+"""
+插件本地运行态和远程市场目录投影。
+"""
 
 from __future__ import annotations
 
@@ -18,7 +20,9 @@ from app.schemas.types import SystemConfigKey
 
 
 class PluginCatalogFacade:
-    """把插件目录应用服务与运行态注册表连接起来。"""
+    """
+    把插件目录应用服务与运行态注册表连接起来。
+    """
 
     def __init__(
         self,
@@ -39,7 +43,9 @@ class PluginCatalogFacade:
         runtime_status: Callable[[str], Optional[PluginRuntimeStatus]],
         log: Any,
     ) -> None:
-        """保存注册表、目录服务和插件外部系统端口。"""
+        """
+        保存注册表、目录服务和插件外部系统端口。
+        """
         self._classes = classes
         self._running = running
         self._storage = storage
@@ -57,7 +63,9 @@ class PluginCatalogFacade:
         self._logger = log
 
     def online(self, force: bool = False) -> list[Plugin]:
-        """读取所有兼容代际的在线插件目录。"""
+        """
+        读取所有兼容代际的在线插件目录。
+        """
         plugin_market = get_runtime_setting('PLUGIN_MARKET')
         if not plugin_market:
             return []
@@ -74,7 +82,9 @@ class PluginCatalogFacade:
         return result
 
     def local(self) -> list[Plugin]:
-        """把已加载插件投影为本地插件目录 DTO。"""
+        """
+        把已加载插件投影为本地插件目录 DTO。
+        """
         installed = self._installed_ids()
         # 本体行一次取全：逐张卡片各查一次会让插件列表的查询次数随插件数线性增长
         host_instances = self._host_instances()
@@ -110,7 +120,9 @@ class PluginCatalogFacade:
         return plugins
 
     def installed(self) -> list[Plugin]:
-        """按安装清单投影插件，未加载项目仍返回可观察占位卡片。"""
+        """
+        按安装清单投影插件，未加载项目仍返回可观察占位卡片。
+        """
         installed_ids = self._installed_ids()
         local_by_id = {
             plugin.id: plugin
@@ -148,7 +160,8 @@ class PluginCatalogFacade:
         instance_id: str,
         record: Optional[PluginInstance],
     ) -> dict[str, Any]:
-        """把该实例的默认目标置位与日志等级覆盖投影为卡片列表的只读叠加字段。
+        """
+        把该实例的默认目标置位与日志等级覆盖投影为卡片列表的只读叠加字段。
 
         日志等级直接按实例 ID 查进程内覆盖缓存，不回表：本体与分身在覆盖表里共用
         同一个命名空间，而卡片的 ``plugin_id`` 本身就是运行实例的 ID，本体等于插件
@@ -170,7 +183,9 @@ class PluginCatalogFacade:
         }
 
     def local_version(self, plugin_id: str) -> Optional[str]:
-        """读取指定已安装插件版本，不触发全量目录投影。"""
+        """
+        读取指定已安装插件版本，不触发全量目录投影。
+        """
         installed = self._installed_ids()
         if plugin_id not in installed:
             return None
@@ -178,11 +193,14 @@ class PluginCatalogFacade:
         return getattr(plugin_class, "plugin_version", None)
 
     def local_repository(self, *, raise_errors: bool = False) -> list[Plugin]:
-        """读取本地插件仓候选并映射为目录 DTO。"""
+        """
+        读取本地插件仓候选并映射为目录 DTO。
+        """
         installed = self._storage().read(SystemConfigKey.UserInstalledPlugins) or []
         try:
             candidates = self._system().local_candidates()
-        except Exception as error:  # noqa: BLE001 - 展示失败不能阻断整个插件目录
+        # 展示失败不能阻断整个插件目录
+        except Exception as error:  # noqa: BLE001
             self._logger.warning(f"读取本地插件仓候选失败，已跳过本地目录展示：{error}")
             if raise_errors:
                 raise
@@ -213,7 +231,9 @@ class PluginCatalogFacade:
         return plugins
 
     def exists(self, plugin_id: str, version: Optional[str] = None) -> bool:
-        """判断插件包和已加载版本是否满足安装前置条件。"""
+        """
+        判断插件包和已加载版本是否满足安装前置条件。
+        """
         if not plugin_id:
             return False
         try:
@@ -245,7 +265,9 @@ class PluginCatalogFacade:
             return False
 
     def _installed_ids(self) -> list[str]:
-        """合并物理安装清单和虚拟实例清单并保持各自持久化顺序。"""
+        """
+        合并物理安装清单和虚拟实例清单并保持各自持久化顺序。
+        """
         installed = list(
             self._storage().read(SystemConfigKey.UserInstalledPlugins) or []
         )
@@ -260,7 +282,9 @@ class PluginCatalogFacade:
         package_version: Optional[str] = None,
         force: bool = False,
     ) -> list[Plugin]:
-        """读取并映射指定插件市场。"""
+        """
+        读取并映射指定插件市场。
+        """
         plugins: list[Plugin] = self._market_catalog().load(market, package_version, force)
         return plugins
 
@@ -269,7 +293,9 @@ class PluginCatalogFacade:
         force: bool = False,
         progress_callback: Optional[Callable[..., None]] = None,
     ) -> list[Plugin]:
-        """异步读取所有兼容代际的在线插件目录。"""
+        """
+        异步读取所有兼容代际的在线插件目录。
+        """
         plugin_market = get_runtime_setting('PLUGIN_MARKET')
         if not plugin_market:
             if progress_callback:
@@ -289,7 +315,9 @@ class PluginCatalogFacade:
         return result
 
     async def async_online_candidates(self, force: bool = False) -> list[Plugin]:
-        """读取在线目录并保留每个仓库的最高候选，供来源准入使用。"""
+        """
+        读取在线目录并保留每个仓库的最高候选，供来源准入使用。
+        """
         plugin_market = get_runtime_setting('PLUGIN_MARKET')
         if not plugin_market:
             return []
@@ -311,7 +339,9 @@ class PluginCatalogFacade:
         package_version: Optional[str] = None,
         force: bool = False,
     ) -> list[Plugin]:
-        """异步读取并映射指定插件市场。"""
+        """
+        异步读取并映射指定插件市场。
+        """
         plugins: list[Plugin] = await self._market_catalog().async_load(
             market,
             package_version,
@@ -320,14 +350,18 @@ class PluginCatalogFacade:
         return plugins
 
     def merge(self, higher: list[Plugin], base: list[Plugin]) -> list[Plugin]:
-        """合并不同代际插件目录并保留市场优先级。"""
+        """
+        合并不同代际插件目录并保留市场优先级。
+        """
         plugin_market = get_runtime_setting('PLUGIN_MARKET')
         markets = split_plugin_market_repo_urls(plugin_market)
         plugins: list[Plugin] = self._market_catalog().merge(higher, base, markets)
         return plugins
 
     def _safe_state(self, plugin_id: str, plugin: Any) -> bool:
-        """读取插件状态，单个插件异常不阻断整个本地目录。"""
+        """
+        读取插件状态，单个插件异常不阻断整个本地目录。
+        """
         if not plugin or not hasattr(plugin, "get_state"):
             return False
         try:

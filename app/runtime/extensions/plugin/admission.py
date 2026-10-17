@@ -1,4 +1,6 @@
-"""插件宿主可变事务的停机准入。"""
+"""
+插件宿主可变事务的停机准入。
+"""
 
 from __future__ import annotations
 
@@ -13,7 +15,13 @@ from app.schemas.exception import PluginMutationRejectedError
 
 @dataclass(slots=True)
 class _MutationContext:
-    """记录一个可跨协程和受控线程传播的事务上下文。"""
+    """
+    记录一个可跨协程和受控线程传播的事务上下文。
+
+    :param admission: 负责本次变更事务准入的控制器
+    :param holders: 持有该上下文的调用数，初始为 0
+    :param open: 上下文是否仍接受后续持有者，初始为 True
+    """
 
     admission: "PluginMutationAdmission"
     holders: int = 0
@@ -21,10 +29,14 @@ class _MutationContext:
 
 
 class PluginMutationAdmission:
-    """在停机封口与插件可变事务之间维护真实 owner 计数。"""
+    """
+    在停机封口与插件可变事务之间维护真实 owner 计数。
+    """
 
     def __init__(self) -> None:
-        """初始化开放准入、活动 owner 计数和事务上下文。"""
+        """
+        初始化开放准入、活动 owner 计数和事务上下文。
+        """
         self._condition = threading.Condition()
         self._accepting = True
         self._active_count = 0
@@ -35,18 +47,24 @@ class PluginMutationAdmission:
 
     @property
     def active_count(self) -> int:
-        """返回尚未退出的 lease 数量，用于停机诊断和严格卸载判断。"""
+        """
+        返回尚未退出的 lease 数量，用于停机诊断和严格卸载判断。
+        """
         with self._condition:
             return self._active_count
 
     @property
     def accepting(self) -> bool:
-        """返回当前生命周期是否仍接纳新的根事务。"""
+        """
+        返回当前生命周期是否仍接纳新的根事务。
+        """
         with self._condition:
             return self._accepting
 
     def is_held(self) -> bool:
-        """判断当前执行上下文是否持有仍有效的本 admission lease。"""
+        """
+        判断当前执行上下文是否持有仍有效的本 admission lease。
+        """
         context = self._current_context.get()
         with self._condition:
             return bool(
@@ -58,7 +76,9 @@ class PluginMutationAdmission:
 
     @contextmanager
     def hold(self, operation: str) -> Iterator[None]:
-        """取得可变事务 lease；封口后仅允许已获准事务的嵌套调用。"""
+        """
+        取得可变事务 lease；封口后仅允许已获准事务的嵌套调用。
+        """
         context = self._current_context.get()
         context_token = None
         acquired = False
@@ -94,19 +114,25 @@ class PluginMutationAdmission:
                 self._current_context.reset(context_token)
 
     def seal(self) -> int:
-        """原子停止接纳根事务，并返回封口瞬间的活动 lease 数量。"""
+        """
+        原子停止接纳根事务，并返回封口瞬间的活动 lease 数量。
+        """
         with self._condition:
             self._accepting = False
             return self._active_count
 
     def wait_until_idle(self) -> None:
-        """自然等待全部已获准 lease 退出，不取消或遗失其 owner。"""
+        """
+        自然等待全部已获准 lease 退出，不取消或遗失其 owner。
+        """
         with self._condition:
             while self._active_count:
                 self._condition.wait()
 
     def reopen(self) -> bool:
-        """仅在没有遗留 lease 时为新的应用生命周期重新开放准入。"""
+        """
+        仅在没有遗留 lease 时为新的应用生命周期重新开放准入。
+        """
         with self._condition:
             if self._active_count:
                 return False

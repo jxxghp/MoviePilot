@@ -1,10 +1,16 @@
+"""
+验证消息上下文的规范媒体身份与辅助展示标识。
+"""
+
 from app.application.messaging.message import TemplateContextBuilder
 from app.domain.context import MediaInfo
 from app.schemas.types import MediaSource, MediaType
 
 
 def test_message_context_contains_primary_and_auxiliary_media_fields() -> None:
-    """消息上下文应区分规范主身份与仅供展示的辅助来源 ID。"""
+    """
+    消息上下文应区分规范主身份与仅供展示的辅助来源 ID。
+    """
     context = {}
     media = MediaInfo(
         media_source=MediaSource.AniList,
@@ -30,7 +36,9 @@ def test_message_context_contains_primary_and_auxiliary_media_fields() -> None:
 
 
 def test_media_info_preserves_plugin_source_identity() -> None:
-    """核心媒体对象应保留格式合法的插件自定义来源。"""
+    """
+    核心媒体对象应保留格式合法的插件自定义来源。
+    """
     media = MediaInfo(
         media_source="plugin_source",
         media_id="custom-100",

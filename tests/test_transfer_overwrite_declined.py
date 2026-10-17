@@ -15,8 +15,8 @@ from app.application.transfer.execution import (
     TransferExecutionCheckpoint,
     TransferSettlementResult,
 )
-from app.chain.transfer import TransferChain
 from app.chain.transfer.execution import _DurableTransferStepRunner
+from app.chain.transfer.facade import TransferChain
 from app.schemas.transfer import TransferInfo
 from app.schemas.types import EventType
 from tests.test_transfer_job_manager import (
@@ -29,7 +29,9 @@ from tests.test_transfer_job_manager import (
 
 
 def make_history_oper(history=None, success_history=None, raise_on_query: bool = False):
-    """构造 __is_overwrite_declined 查询整理历史使用的替身。"""
+    """
+    构造 __is_overwrite_declined 查询整理历史使用的替身。
+    """
 
     def get_by_src(src, storage=None):
         if raise_on_query:
@@ -46,7 +48,9 @@ def make_history_oper(history=None, success_history=None, raise_on_query: bool =
 
 
 def make_fail_recorder(calls):
-    """替换整理链的失败历史写入函数：只记录调用，不做字段翻译也不落库。"""
+    """
+    替换整理链的失败历史写入函数：只记录调用，不做字段翻译也不落库。
+    """
 
     def add_transfer_fail(**kwargs):
         calls.append(kwargs)
@@ -56,12 +60,13 @@ def make_fail_recorder(calls):
 
 
 # ---------------------------------------------------------------------------
-# TransferChain.__is_overwrite_declined
 # ---------------------------------------------------------------------------
 
 
 def test_overwrite_declined_false_when_flag_not_set():
-    """overwrite_skipped 为假时直接判定为 False，且不应触发历史查询。"""
+    """
+    overwrite_skipped 为假时直接判定为 False，且不应触发历史查询。
+    """
     task = make_task(1)
     transferinfo = TransferInfo(success=False, overwrite_skipped=False)
     transferhis = make_history_oper(raise_on_query=True)
@@ -74,7 +79,9 @@ def test_overwrite_declined_false_when_flag_not_set():
 
 
 def test_overwrite_declined_true_when_success_history_exists():
-    """overwrite_skipped 为真且同源已有成功记录时，应判定为保护场景。"""
+    """
+    overwrite_skipped 为真且同源已有成功记录时，应判定为保护场景。
+    """
     task = make_task(1)
     success_history = SimpleNamespace(id=1, status=True)
     transferinfo = TransferInfo(success=False, overwrite_skipped=True)
@@ -88,7 +95,9 @@ def test_overwrite_declined_true_when_success_history_exists():
 
 
 def test_overwrite_declined_false_when_no_history():
-    """overwrite_skipped 为真但没有任何整理记录时，不应判定为保护场景。"""
+    """
+    overwrite_skipped 为真但没有任何整理记录时，不应判定为保护场景。
+    """
     task = make_task(1)
     transferinfo = TransferInfo(success=False, overwrite_skipped=True)
     transferhis = make_history_oper(history=None)
@@ -101,7 +110,9 @@ def test_overwrite_declined_false_when_no_history():
 
 
 def test_overwrite_declined_false_when_only_failed_history():
-    """overwrite_skipped 为真但只有失败记录时，不应判定为保护场景。"""
+    """
+    overwrite_skipped 为真但只有失败记录时，不应判定为保护场景。
+    """
     task = make_task(1)
     failed_history = SimpleNamespace(id=2, status=False)
     transferinfo = TransferInfo(success=False, overwrite_skipped=True)
@@ -115,7 +126,9 @@ def test_overwrite_declined_false_when_only_failed_history():
 
 
 def test_overwrite_declined_false_when_query_raises():
-    """查询整理历史异常时应保守返回 False，不阻断原有失败语义。"""
+    """
+    查询整理历史异常时应保守返回 False，不阻断原有失败语义。
+    """
     task = make_task(1)
     transferinfo = TransferInfo(success=False, overwrite_skipped=True)
     transferhis = make_history_oper(raise_on_query=True)
@@ -128,7 +141,9 @@ def test_overwrite_declined_false_when_query_raises():
 
 
 def test_overwrite_declined_uses_successful_durable_settlement():
-    """覆盖拒绝保留旧成功历史时，durable 终态必须按成功结算。"""
+    """
+    覆盖拒绝保留旧成功历史时，durable 终态必须按成功结算。
+    """
     task = make_task(1)
     task.bind_admission_task_id("task-overwrite-declined")
     task.bind_execution_lease(owner_id="worker", lease_token="lease")
@@ -158,7 +173,9 @@ def test_overwrite_declined_uses_successful_durable_settlement():
 
 
 def test_durable_step_runner_records_overwrite_skip_as_explicit_outcome():
-    """生产 runner 必须冻结覆盖跳过事实，不能提前把它记成普通失败。"""
+    """
+    生产 runner 必须冻结覆盖跳过事实，不能提前把它记成普通失败。
+    """
     runner = object.__new__(_DurableTransferStepRunner)
     runner._task_id = "task-overwrite-skipped"
     runner._lease_token = "lease"
@@ -179,7 +196,9 @@ def test_durable_step_runner_records_overwrite_skip_as_explicit_outcome():
 
 
 def test_overwrite_skip_without_success_history_uses_failed_settlement():
-    """未核实既有成功历史时，覆盖跳过标志不能伪造成功终态。"""
+    """
+    未核实既有成功历史时，覆盖跳过标志不能伪造成功终态。
+    """
     task = make_task(1)
     task.bind_admission_task_id("task-overwrite-missing-history")
     task.bind_execution_lease(owner_id="worker", lease_token="lease")
@@ -211,7 +230,9 @@ def test_overwrite_skip_without_success_history_uses_failed_settlement():
 
 
 def _make_failed_task():
-    """构造一个失败回调测试所需的最小整理任务。"""
+    """
+    构造一个失败回调测试所需的最小整理任务。
+    """
     task = make_task(1)
     task.mediainfo = FakeMedia()
     # __default_callback 失败通知路径需要读取海报图，FakeMedia 本身不提供该接口
@@ -313,7 +334,9 @@ def test_default_callback_keeps_original_failure_semantics_without_success_histo
 
 
 def test_durable_callback_settles_overwrite_skip_without_history_as_failed():
-    """durable 回调没有既有成功历史时必须原子提交失败历史和失败终态。"""
+    """
+    durable 回调没有既有成功历史时必须原子提交失败历史和失败终态。
+    """
     chain = make_transfer_chain()
     chain.eventmanager = MagicMock()
     chain.post_message = MagicMock()
@@ -338,7 +361,9 @@ def test_durable_callback_settles_overwrite_skip_without_history_as_failed():
     )
 
     def durable_transfer_result(**kwargs):
-        """执行失败历史暂存并返回 task-aware 结算回执。"""
+        """
+        执行失败历史暂存并返回 task-aware 结算回执。
+        """
         history = kwargs["stage_history"](SimpleNamespace())
         assert kwargs["settlement"].outcome == "failed"
         return TransferSettlementResult(
@@ -370,7 +395,9 @@ def test_durable_callback_settles_overwrite_skip_without_history_as_failed():
 
 
 def test_default_callback_delegates_primary_failure_to_durable_writer():
-    """正式上下文存在 writer 时，主要媒体失败历史和事件必须走同一事务端口。"""
+    """
+    正式上下文存在 writer 时，主要媒体失败历史和事件必须走同一事务端口。
+    """
     chain = make_transfer_chain()
     chain.eventmanager = MagicMock()
     chain.post_message = MagicMock()
@@ -388,7 +415,9 @@ def test_default_callback_delegates_primary_failure_to_durable_writer():
     bind_terminal_checkpoint(task, transferinfo)
 
     def durable_transfer_result(**kwargs):
-        """执行 writer 收到的历史暂存与提交后发布回调。"""
+        """
+        执行 writer 收到的历史暂存与提交后发布回调。
+        """
         history = kwargs["stage_history"](SimpleNamespace())
         payload = dict(kwargs["event_payload"])
         payload["transfer_history_id"] = history.id
@@ -457,7 +486,9 @@ def test_subtitle_and_audio_results_use_durable_topics(
     expected_topic: str,
     expected_event: EventType,
 ) -> None:
-    """字幕与音频结果必须和主要媒体结果共用 durable writer 分类。"""
+    """
+    字幕与音频结果必须和主要媒体结果共用 durable writer 分类。
+    """
     chain = make_transfer_chain()
     task = make_task(1)
     task.fileitem = make_fileitem(path)

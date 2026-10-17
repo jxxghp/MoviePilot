@@ -1,3 +1,7 @@
+"""
+验证音频标签解析、音质判定及音乐元数据序列化。
+"""
+
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -20,7 +24,9 @@ RECORDING_ID = "38035858-f990-4fbb-b3b2-f2f8b958eeba"
 
 
 def test_read_audio_metadata_maps_easy_tags(monkeypatch):
-    """音频标签和技术参数应映射为 MetaMusic。"""
+    """
+    音频标签和技术参数应映射为 MetaMusic。
+    """
     audio = SimpleNamespace(
         tags={
             "title": ["Get Lucky"],
@@ -60,7 +66,9 @@ def test_read_audio_metadata_maps_easy_tags(monkeypatch):
 
 
 def test_parse_declared_hires_audio_quality_from_resource_title():
-    """站点资源标题中的格式、位深和采样率应形成可筛选的统一音质参数。"""
+    """
+    站点资源标题中的格式、位深和采样率应形成可筛选的统一音质参数。
+    """
     specs = parse_audio_quality("周杰伦 - 叶惠美 FLAC 24bit 96kHz Hi-Res")
 
     assert specs == {
@@ -76,7 +84,9 @@ def test_parse_declared_hires_audio_quality_from_resource_title():
 
 
 def test_audio_quality_score_orders_lossy_lossless_and_terminal_hires():
-    """音乐洗版分数必须稳定满足有损、无损、顶级 Hi-Res 的递增关系。"""
+    """
+    音乐洗版分数必须稳定满足有损、无损、顶级 Hi-Res 的递增关系。
+    """
     mp3_score = audio_quality_score("MP3", bitrate=320000)
     flac_score = audio_quality_score("FLAC", bit_depth=16, sample_rate=44100)
     hires_score = audio_quality_score("FLAC", bit_depth=24, sample_rate=192000)
@@ -86,7 +96,9 @@ def test_audio_quality_score_orders_lossy_lossless_and_terminal_hires():
 
 
 def test_music_info_serialization_exposes_derived_audio_quality():
-    """音乐 REST 序列化应同时返回原始技术参数和规范化音质展示字段。"""
+    """
+    音乐 REST 序列化应同时返回原始技术参数和规范化音质展示字段。
+    """
     payload = MusicInfo(
         title="晴天",
         audio_format="FLAC",
@@ -101,7 +113,9 @@ def test_music_info_serialization_exposes_derived_audio_quality():
 
 
 def test_music_info_from_meta_preserves_track_and_audio_evidence():
-    """核心元数据转换应保留整理、刮削和通知依赖的曲序与实际音频参数。"""
+    """
+    核心元数据转换应保留整理、刮削和通知依赖的曲序与实际音频参数。
+    """
     from app.domain.meta.metamusic import MetaMusic
 
     info = MusicInfo.from_meta(MetaMusic(
@@ -131,7 +145,9 @@ def test_music_info_from_meta_preserves_track_and_audio_evidence():
 
 
 def test_parse_compact_audio_quality_tokens_without_false_sample_bitrate():
-    """紧凑资源命名中的 FLAC24bit 和 320K 应可识别，96kHz 不得误判为码率。"""
+    """
+    紧凑资源命名中的 FLAC24bit 和 320K 应可识别，96kHz 不得误判为码率。
+    """
     lossless = parse_audio_quality("Album.FLAC24bit.96kHz")
     lossy = parse_audio_quality("Album.MP3.320K")
 
@@ -143,7 +159,9 @@ def test_parse_compact_audio_quality_tokens_without_false_sample_bitrate():
 
 
 def test_read_audio_metadata_falls_back_to_filename(monkeypatch):
-    """无法读取标签时应保留可用于手动整理的文件名元数据。"""
+    """
+    无法读取标签时应保留可用于手动整理的文件名元数据。
+    """
     monkeypatch.setattr("app.application.audio.MutagenFile", lambda *_args, **_kwargs: None)
 
     meta = AudioMetadataHelper.read(Path("/music/Unknown Track.mp3"))
@@ -153,7 +171,9 @@ def test_read_audio_metadata_falls_back_to_filename(monkeypatch):
 
 
 def test_read_audio_tags_does_not_fill_from_filename(monkeypatch):
-    """标签识别层应只使用标签证据，避免把文件名线索提前混入。"""
+    """
+    标签识别层应只使用标签证据，避免把文件名线索提前混入。
+    """
     audio = SimpleNamespace(
         tags={"title": ["Tagged Title"]},
         info=SimpleNamespace(length=180),
@@ -168,7 +188,9 @@ def test_read_audio_tags_does_not_fill_from_filename(monkeypatch):
 
 
 def test_read_audio_tags_ignores_invalid_musicbrainz_id(monkeypatch):
-    """异常 MusicBrainz 标签不得进入 ID 详情路径。"""
+    """
+    异常 MusicBrainz 标签不得进入 ID 详情路径。
+    """
     audio = SimpleNamespace(
         tags={
             "title": ["Tagged Title"],
@@ -185,7 +207,9 @@ def test_read_audio_tags_ignores_invalid_musicbrainz_id(monkeypatch):
 
 
 def test_read_audio_tags_accepts_conventional_apev2_names(monkeypatch):
-    """APE 常见字段名应映射为标准专辑、曲序、碟号和年份。"""
+    """
+    APE 常见字段名应映射为标准专辑、曲序、碟号和年份。
+    """
     audio = SimpleNamespace(
         tags={
             "title": ["天下太平"],
@@ -211,7 +235,9 @@ def test_read_audio_tags_accepts_conventional_apev2_names(monkeypatch):
 
 
 def test_remote_path_meta_parses_track_prefix_once(tmp_path):
-    """远程或尚未落盘的音频路径应先剥离曲序，不能把 08 误识别成艺术家。"""
+    """
+    远程或尚未落盘的音频路径应先剥离曲序，不能把 08 误识别成艺术家。
+    """
     audio_path = tmp_path / "Daft Punk - Random Access Memories (2013)" / "08 - Get Lucky.flac"
 
     music_meta = MediaChain.read_path_meta(audio_path)
@@ -224,7 +250,9 @@ def test_remote_path_meta_parses_track_prefix_once(tmp_path):
 
 
 def test_read_audio_metadata_fallback_uses_dynamic_filename_parser(tmp_path, monkeypatch):
-    """标签不可读时应直接使用完整动态模式解析复杂音乐文件名。"""
+    """
+    标签不可读时应直接使用完整动态模式解析复杂音乐文件名。
+    """
     audio_path = tmp_path / (
         "S H E - S H E十七音乐会 2018 WEB-DL 1080P AVC AAC-FHDMv.flac"
     )
@@ -243,7 +271,9 @@ def test_read_audio_metadata_partial_tags_use_filename_for_missing_fields(
         tmp_path,
         monkeypatch,
 ):
-    """真实标签优先，缺失的艺术家和年份由完整文件名解析补齐。"""
+    """
+    真实标签优先，缺失的艺术家和年份由完整文件名解析补齐。
+    """
     audio_path = tmp_path / "Daft Punk - Get Lucky 2013 FLAC.flac"
     audio_path.write_bytes(b"fake-flac")
     audio = SimpleNamespace(
@@ -267,7 +297,9 @@ def test_read_audio_metadata_partial_tags_use_filename_for_missing_fields(
 
 
 def test_read_audio_metadata_distinguishes_alac_inside_m4a(monkeypatch):
-    """M4A 容器应依据实际流编码区分 ALAC 与 AAC，避免把无损音频降级。"""
+    """
+    M4A 容器应依据实际流编码区分 ALAC 与 AAC，避免把无损音频降级。
+    """
     audio = SimpleNamespace(
         tags={"title": ["Lossless Track"]},
         info=SimpleNamespace(
@@ -289,21 +321,31 @@ def test_read_audio_metadata_distinguishes_alac_inside_m4a(monkeypatch):
 
 
 def test_write_audio_metadata_maps_music_info_to_easy_tags(monkeypatch, tmp_path):
-    """音乐刮削应把标准歌曲、专辑和曲序字段写回音频标签。"""
+    """
+    音乐刮削应把标准歌曲、专辑和曲序字段写回音频标签。
+    """
     class FakeAudio:
-        """记录 Mutagen Easy 标签写入结果。"""
+        """
+        记录 Mutagen Easy 标签写入结果。
+        """
 
         def __init__(self):
-            """初始化测试标签及保存状态。"""
+            """
+            初始化测试标签及保存状态。
+            """
             self.tags = {}
             self.saved = False
 
         def __setitem__(self, key, value):
-            """记录标准标签写入。"""
+            """
+            记录标准标签写入。
+            """
             self.tags[key] = value
 
         def save(self, _path):
-            """记录已执行标签保存。"""
+            """
+            记录已执行标签保存。
+            """
             self.saved = True
 
     audio = FakeAudio()
@@ -337,20 +379,30 @@ def test_write_audio_metadata_maps_music_info_to_easy_tags(monkeypatch, tmp_path
 
 
 def test_write_audio_metadata_does_not_write_album_id_as_recording_tag(monkeypatch, tmp_path):
-    """MusicBrainz 专辑身份不得写入只接受 recording ID 的曲目标签。"""
+    """
+    MusicBrainz 专辑身份不得写入只接受 recording ID 的曲目标签。
+    """
     class FakeAudio:
-        """记录专辑元数据写入结果。"""
+        """
+        记录专辑元数据写入结果。
+        """
 
         def __init__(self):
-            """初始化空标签容器。"""
+            """
+            初始化空标签容器。
+            """
             self.tags = {}
 
         def __setitem__(self, key, value):
-            """记录 Easy 标签赋值。"""
+            """
+            记录 Easy 标签赋值。
+            """
             self.tags[key] = value
 
         def save(self, _path):
-            """模拟 Mutagen 保存。"""
+            """
+            模拟 Mutagen 保存。
+            """
 
     audio = FakeAudio()
     monkeypatch.setattr("app.application.audio.MutagenFile", lambda *_args, **_kwargs: audio)
@@ -373,7 +425,9 @@ def test_write_audio_metadata_does_not_write_album_id_as_recording_tag(monkeypat
 
 
 def test_write_audio_metadata_can_embed_cover_without_rewriting_tags(monkeypatch, tmp_path):
-    """音乐封面策略应能在标签策略关闭时独立执行。"""
+    """
+    音乐封面策略应能在标签策略关闭时独立执行。
+    """
     audio = SimpleNamespace(tags={"title": ["Original"]})
     monkeypatch.setattr("app.application.audio.MutagenFile", lambda *_args, **_kwargs: audio)
     write_cover = Mock()
@@ -401,17 +455,25 @@ def test_write_audio_metadata_can_embed_cover_without_rewriting_tags(monkeypatch
 
 
 def test_write_audio_metadata_embeds_apev2_front_cover(monkeypatch):
-    """APE 封面应按 APEv2 约定写入文件名、空字节和图片数据。"""
+    """
+    APE 封面应按 APEv2 约定写入文件名、空字节和图片数据。
+    """
     class FakeMonkeysAudio(MonkeysAudio):
-        """记录 Monkey's Audio 封面写入结果。"""
+        """
+        记录 Monkey's Audio 封面写入结果。
+        """
 
         def __init__(self):
-            """初始化标签及保存状态。"""
+            """
+            初始化标签及保存状态。
+            """
             self.tags = {}
             self.saved = False
 
         def save(self, *_args, **_kwargs):
-            """记录音频保存操作。"""
+            """
+            记录音频保存操作。
+            """
             self.saved = True
 
     audio = FakeMonkeysAudio()
@@ -431,19 +493,27 @@ def test_write_audio_metadata_embeds_apev2_front_cover(monkeypatch):
 
 
 def test_write_audio_metadata_preserves_existing_apev2_cover(monkeypatch):
-    """关闭覆盖时应保留已有 APEv2 正面封面。"""
+    """
+    关闭覆盖时应保留已有 APEv2 正面封面。
+    """
     class FakeMonkeysAudio(MonkeysAudio):
-        """记录 Monkey's Audio 封面覆盖行为。"""
+        """
+        记录 Monkey's Audio 封面覆盖行为。
+        """
 
         def __init__(self):
-            """预置已有封面并记录保存状态。"""
+            """
+            预置已有封面并记录保存状态。
+            """
             self.tags = {
                 "Cover Art (Front)": APEBinaryValue(b"old.jpg\x00old-data")
             }
             self.saved = False
 
         def save(self, *_args, **_kwargs):
-            """记录音频保存操作。"""
+            """
+            记录音频保存操作。
+            """
             self.saved = True
 
     audio = FakeMonkeysAudio()

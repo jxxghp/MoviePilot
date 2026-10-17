@@ -1,4 +1,6 @@
-"""失败与损坏整理任务的证据清理和历史解绑用例。"""
+"""
+失败与损坏整理任务的证据清理和历史解绑用例。
+"""
 
 from __future__ import annotations
 
@@ -19,7 +21,9 @@ if TYPE_CHECKING:
 
 
 def music_replanning_input(checkpoint: TransferPlanCheckpoint) -> Optional[TransferPlanningInput]:
-    """为零文件副作用的音乐拒绝重建输入，显式身份保留，仅刷新派生识别或分类。"""
+    """
+    为零文件副作用的音乐拒绝重建输入，显式身份保留，仅刷新派生识别或分类。
+    """
     planning = checkpoint.planning_input
     if (not checkpoint.rejection_error or checkpoint.items or checkpoint.provider_invocation
             or checkpoint.legacy_transfer_providers or checkpoint.resolved_meta_kind != "MetaMusic"):
@@ -46,10 +50,14 @@ def music_replanning_input(checkpoint: TransferPlanCheckpoint) -> Optional[Trans
 
 
 class TransferRecoveryCommand:
-    """把损坏任务恢复交给持久层原子清理，保留历史供重新规划。"""
+    """
+    把损坏任务恢复交给持久层原子清理，保留历史供重新规划。
+    """
 
     def __init__(self, repository: TransferExecutionRepository) -> None:
-        """保存拥有租约校验与事务的执行仓储。"""
+        """
+        保存拥有租约校验与事务的执行仓储。
+        """
         self._repository = repository
 
     def discard_corrupt_task(
@@ -59,7 +67,9 @@ class TransferRecoveryCommand:
             lease_token: str,
             error: str,
     ) -> bool:
-        """以当前租约清理损坏任务，避免恢复线程再次回放旧步骤。"""
+        """
+        以当前租约清理损坏任务，避免恢复线程再次回放旧步骤。
+        """
         if not task_id or not lease_token or not error:
             raise ValueError("损坏任务收口缺少任务、租约或错误原因")
         return self._repository.discard_corrupt_task(
@@ -72,7 +82,9 @@ class TransferRecoveryCommand:
             task_id: str,
             history_id: int,
     ) -> TransferFailureDiscardResult:
-        """放弃无法重试的损坏任务，保留历史记录供重新生成计划。"""
+        """
+        放弃无法重试的损坏任务，保留历史记录供重新生成计划。
+        """
         if not task_id or history_id <= 0:
             raise ValueError("放弃损坏任务缺少任务或历史")
         return self._repository.discard_corrupt_by_history(
@@ -82,7 +94,9 @@ class TransferRecoveryCommand:
     def discard_conflict(
         self, *, task_id: Optional[str], lease_token: Optional[str], error: object,
     ) -> bool:
-        """只清理有租约且无法恢复的规划冲突，普通执行错误仍保留重试证据。"""
+        """
+        只清理有租约且无法恢复的规划冲突，普通执行错误仍保留重试证据。
+        """
         if not isinstance(error, TransferExecutionConflictError) or not task_id or not lease_token:
             return False
         message = str(error)
@@ -99,7 +113,9 @@ class TransferRecoveryCommand:
             history_id: int,
             settlement_revision: int,
     ) -> TransferFailureDiscardResult:
-        """放弃确定失败任务，使对应历史恢复为普通可维护记录。"""
+        """
+        放弃确定失败任务，使对应历史恢复为普通可维护记录。
+        """
         if not task_id or history_id <= 0 or settlement_revision <= 0:
             raise ValueError("放弃失败整理任务缺少任务、历史或结算版本")
         return self._repository.discard_failed(

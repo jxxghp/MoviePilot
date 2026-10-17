@@ -1,4 +1,6 @@
-"""整理任务持久准入端口的 SQLAlchemy 适配器。"""
+"""
+整理任务持久准入端口的 SQLAlchemy 适配器。
+"""
 
 import logging
 from collections.abc import Callable
@@ -32,7 +34,9 @@ _diagnostic_logger = logging.getLogger(__name__)
 
 
 class TransactionalTransferAdmissionRepository:
-    """以短生命周期 Session 实现整理任务持久准入端口。"""
+    """
+    以短生命周期 Session 实现整理任务持久准入端口。
+    """
 
     _MAX_RECOVERY_SCAN_TASKS = 5000
     _REPLACEMENT_CONFLICT = (
@@ -40,27 +44,37 @@ class TransactionalTransferAdmissionRepository:
     )
 
     def __init__(self, session_factory: Callable[[], Session]) -> None:
-        """保存由组合根提供的同步会话工厂。"""
+        """
+        保存由组合根提供的同步会话工厂。
+        """
         self._session_factory = session_factory
 
     @staticmethod
     def _now() -> str:
-        """生成与历史登记时间可按字典序比较的当前时间。"""
+        """
+        生成与历史登记时间可按字典序比较的当前时间。
+        """
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     @staticmethod
     def _lease_now() -> datetime:
-        """生成不受宿主时区影响的当前 UTC 租约时间。"""
+        """
+        生成不受宿主时区影响的当前 UTC 租约时间。
+        """
         return datetime.now(timezone.utc)
 
     @staticmethod
     def _format_lease_time(value: datetime) -> str:
-        """把 UTC 时间编码为可稳定排序的固定宽度字符串。"""
+        """
+        把 UTC 时间编码为可稳定排序的固定宽度字符串。
+        """
         return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
 
     @staticmethod
     def _validate_claim_arguments(*, owner_id: str, lease_seconds: int) -> None:
-        """拒绝无法建立有效租约身份或正向期限的调用。"""
+        """
+        拒绝无法建立有效租约身份或正向期限的调用。
+        """
         if not owner_id:
             raise ValueError("整理任务 claim 缺少 owner_id")
         if lease_seconds <= 0:
@@ -68,7 +82,9 @@ class TransactionalTransferAdmissionRepository:
 
     @staticmethod
     def _recoverable_states() -> tuple[str, ...]:
-        """返回允许被 worker claim 的稳定业务状态。"""
+        """
+        返回允许被 worker claim 的稳定业务状态。
+        """
         return (
             TRANSFER_ADMISSION_ACCEPTED,
             TRANSFER_ADMISSION_PROVIDER_PENDING,
@@ -77,7 +93,9 @@ class TransactionalTransferAdmissionRepository:
 
     @staticmethod
     def _project(pending: TransferPending) -> TransferAdmission:
-        """在 Session 有效期内把 ORM 行冻结为应用层 DTO。"""
+        """
+        在 Session 有效期内把 ORM 行冻结为应用层 DTO。
+        """
         created_at = pending.created_at or pending.updated_at
         planning_input = TransferPlanningInput.from_payload(pending.planning_input)
         if pending.input_version != planning_input.schema_version:
@@ -136,7 +154,9 @@ class TransactionalTransferAdmissionRepository:
             pending: TransferPending,
             planning_input: TransferPlanningInput,
     ) -> None:
-        """拒绝同一源文件以不同规划输入复用既有任务身份。"""
+        """
+        拒绝同一源文件以不同规划输入复用既有任务身份。
+        """
         if pending.input_fingerprint != planning_input.fingerprint:
             raise TransferAdmissionConflictError(
                 f"整理源文件已按不同输入准入: {pending.storage}:{pending.src_path}"
@@ -150,7 +170,9 @@ class TransactionalTransferAdmissionRepository:
             planning_input: TransferPlanningInput,
             replace_inactive: bool = False,
     ) -> TransferAdmission:
-        """幂等持久化准入；显式重做可放弃无有效租约且无历史绑定的旧任务及步骤。"""
+        """
+        幂等持久化准入；显式重做可放弃无有效租约且无历史绑定的旧任务及步骤。
+        """
         if not storage or not src_path:
             raise ValueError("整理任务的存储与源路径不能为空")
         if (
@@ -213,7 +235,9 @@ class TransactionalTransferAdmissionRepository:
             storage: str,
             src_path: str,
     ) -> None:
-        """显式放弃失效旧任务及步骤，新身份准入失败时必须一起回滚。"""
+        """
+        显式放弃失效旧任务及步骤，新身份准入失败时必须一起回滚。
+        """
         oper = TransferPendingOper(db=session)
         task_id = oper.get_task_id_by_identity(storage=storage, src_path=src_path)
         if task_id is None:
@@ -236,7 +260,9 @@ class TransactionalTransferAdmissionRepository:
             owner_id: str,
             lease_seconds: int,
     ) -> Optional[TransferAdmission]:
-        """原子 claim 指定任务，任何已存在的有效租约都拒绝重复领取。"""
+        """
+        原子 claim 指定任务，任何已存在的有效租约都拒绝重复领取。
+        """
         self._validate_claim_arguments(
             owner_id=owner_id,
             lease_seconds=lease_seconds,
@@ -301,7 +327,9 @@ class TransactionalTransferAdmissionRepository:
             limit: int,
             lease_seconds: int,
     ) -> list[TransferAdmission]:
-        """按登记顺序逐条 CAS claim 未租用或租约已过期的恢复任务。"""
+        """
+        按登记顺序逐条 CAS claim 未租用或租约已过期的恢复任务。
+        """
         self._validate_claim_arguments(
             owner_id=owner_id,
             lease_seconds=lease_seconds,
@@ -355,7 +383,9 @@ class TransactionalTransferAdmissionRepository:
             task_id: str,
             error: TransferAdmissionProjectionError,
     ) -> bool:
-        """以独立 CAS 留存变化后的投影错误，并仅为新诊断记一次运行日志。"""
+        """
+        以独立 CAS 留存变化后的投影错误，并仅为新诊断记一次运行日志。
+        """
         diagnostic = f"恢复投影失败: {error}"
         with self._session_factory() as session:
             transaction = SqlAlchemyUnitOfWork(session)
@@ -386,7 +416,9 @@ class TransactionalTransferAdmissionRepository:
             lease_token: str,
             lease_seconds: int,
     ) -> Optional[TransferAdmission]:
-        """仅以当前且未过期的 token 续租，禁止陈旧 worker 复活租约。"""
+        """
+        仅以当前且未过期的 token 续租，禁止陈旧 worker 复活租约。
+        """
         if not task_id or not lease_token:
             raise ValueError("整理任务 heartbeat 缺少任务或租约身份")
         if lease_seconds <= 0:
@@ -425,7 +457,9 @@ class TransactionalTransferAdmissionRepository:
 
     def defer_planning(self, *, task_id: str, lease_token: str, error: str,
                        retry_after: int, max_retries: int) -> bool:
-        """退避未规划的任务，拒绝在任何既有文件计划或步骤上重新识别。"""
+        """
+        退避未规划的任务，拒绝在任何既有文件计划或步骤上重新识别。
+        """
         if not task_id or not lease_token or not error or retry_after < 1 or max_retries < 0:
             raise ValueError("规划退避参数无效")
         now = self._lease_now()
@@ -468,7 +502,9 @@ class TransactionalTransferAdmissionRepository:
             lease_token: str,
             error: Optional[str] = None,
     ) -> bool:
-        """仅以当前未过期 token 释放租约，陈旧 worker 不得改变任务。"""
+        """
+        仅以当前未过期 token 释放租约，陈旧 worker 不得改变任务。
+        """
         if not task_id or not lease_token:
             return False
         with self._session_factory() as session:
@@ -488,7 +524,9 @@ class TransactionalTransferAdmissionRepository:
                 raise
 
     def record_enqueue_failure(self, *, task_id: str, error: str) -> None:
-        """独立提交最近一次入队失败，保留准入记录供后续恢复。"""
+        """
+        独立提交最近一次入队失败，保留准入记录供后续恢复。
+        """
         with self._session_factory() as session:
             transaction = SqlAlchemyUnitOfWork(session)
             try:
@@ -510,7 +548,9 @@ class TransactionalTransferAdmissionRepository:
             input_fingerprint: str,
             checkpoint: TransferPlanCheckpoint,
     ) -> TransferAdmission:
-        """以输入指纹 CAS 保存 provider 调用快照或升级宿主计划。"""
+        """
+        以输入指纹 CAS 保存 provider 调用快照或升级宿主计划。
+        """
         if checkpoint.planning_input.fingerprint != input_fingerprint:
             raise TransferAdmissionConflictError("检查点输入与准入输入指纹不一致")
         checkpoint_payload = checkpoint.to_payload()
@@ -577,7 +617,9 @@ class TransactionalTransferAdmissionRepository:
             lease_token: str,
             error: str,
     ) -> None:
-        """独立提交规划错误并保持任务处于接纳态供恢复重试。"""
+        """
+        独立提交规划错误并保持任务处于接纳态供恢复重试。
+        """
         with self._session_factory() as session:
             transaction = SqlAlchemyUnitOfWork(session)
             try:
@@ -598,7 +640,9 @@ class TransactionalTransferAdmissionRepository:
                 raise
 
     def abandon_unstarted(self, *, task_id: str, lease_token: str) -> int:
-        """仅以当前 token 删除无执行证据的缺失源任务，拒绝陈旧 worker。"""
+        """
+        仅以当前 token 删除无执行证据的缺失源任务，拒绝陈旧 worker。
+        """
         if not task_id or not lease_token:
             return 0
         with self._session_factory() as session:

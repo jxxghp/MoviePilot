@@ -163,7 +163,8 @@ def test_fallback_slot_times_out_when_exhausted(monkeypatch):
     monkeypatch.setattr(db_module, "_fallback_slots", threading.BoundedSemaphore(1))
 
     async def run():
-        db_module._fallback_slots.acquire()  # 占满唯一名额
+        # 占满唯一名额
+        db_module._fallback_slots.acquire()
         with patch("app.db.session.record_metric") as record_metric:
             with pytest.raises(TimeoutError):
                 await db_module._acquire_fallback_slot()

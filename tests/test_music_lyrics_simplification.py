@@ -1,4 +1,6 @@
-"""歌词字形设置、格式保护及本地和远端写入回归。"""
+"""
+歌词字形设置、格式保护及本地和远端写入回归。
+"""
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,7 +22,9 @@ from app.schemas.file import FileItem
 @pytest.mark.parametrize("storage", ["local", "u115"])
 def test_lyrics_write_uses_independent_simplification_setting(
         tmp_path, monkeypatch, enabled, metadata_enabled, synced, storage):
-    """两种存储和歌词格式只受歌词开关控制，不修改候选、标签或时间轴。"""
+    """
+    两种存储和歌词格式只受歌词开关控制，不修改候选、标签或时间轴。
+    """
     monkeypatch.setattr(settings, "MUSIC_LYRICS_TO_SIMPLIFIED", enabled)
     monkeypatch.setattr(settings, "MUSIC_METADATA_TO_SIMPLIFIED", metadata_enabled)
     original = (
@@ -42,7 +46,9 @@ def test_lyrics_write_uses_independent_simplification_setting(
     uploaded: list[tuple[str, bytes]] = []
 
     def upload(_parent, path, new_name):
-        """在临时歌词被清理前读取真实上传内容。"""
+        """
+        在临时歌词被清理前读取真实上传内容。
+        """
         uploaded.append((new_name, path.read_bytes()))
         return True
 
@@ -63,7 +69,9 @@ def test_lyrics_write_uses_independent_simplification_setting(
 @pytest.mark.parametrize("storage", ["local", "u115"])
 def test_lyricsfile_original_is_preserved_while_compatible_lrc_is_simplified(
         tmp_path, monkeypatch, storage):
-    """AMLL 或插件提供的 Lyricsfile 原文保持不变，仅转换播放器兼容歌词。"""
+    """
+    AMLL 或插件提供的 Lyricsfile 原文保持不变，仅转换播放器兼容歌词。
+    """
     monkeypatch.setattr(settings, "MUSIC_LYRICS_TO_SIMPLIFIED", True)
     original = (
         "version: '1.0'\nmetadata: {title: 愛的樂章, artist: 周杰倫}\n"
@@ -76,7 +84,9 @@ def test_lyricsfile_original_is_preserved_while_compatible_lrc_is_simplified(
     uploaded: dict[str, bytes] = {}
 
     def upload(_parent, path, new_name):
-        """记录远端 LRC 和 Lyricsfile 的独立内容。"""
+        """
+        记录远端 LRC 和 Lyricsfile 的独立内容。
+        """
         uploaded[new_name] = path.read_bytes()
         return True
 
@@ -98,7 +108,9 @@ def test_lyricsfile_original_is_preserved_while_compatible_lrc_is_simplified(
 
 
 def test_lyrics_simplification_default_and_configuration_contract(monkeypatch):
-    """默认关闭，设置目录公开布尔字段，Chain 快照随更新读取独立值。"""
+    """
+    默认关闭，设置目录公开布尔字段，Chain 快照随更新读取独立值。
+    """
     assert ConfigModel.model_fields["MUSIC_LYRICS_TO_SIMPLIFIED"].default is False
     spec = ALL_SETTING_SPECS["MUSIC_LYRICS_TO_SIMPLIFIED"]
     assert spec.group == "music"
@@ -110,7 +122,9 @@ def test_lyrics_simplification_default_and_configuration_contract(monkeypatch):
 
 @pytest.mark.parametrize("enabled", [False, True])
 def test_lyrics_simplification_setting_persists_and_reloads(tmp_path, monkeypatch, enabled):
-    """设置页写入的布尔值可通过环境文件保存，重新加载仍保持独立开关。"""
+    """
+    设置页写入的布尔值可通过环境文件保存，重新加载仍保持独立开关。
+    """
     env_path = tmp_path / "app.env"
     env_path.touch()
     monkeypatch.delenv("MUSIC_LYRICS_TO_SIMPLIFIED", raising=False)
@@ -124,7 +138,9 @@ def test_lyrics_simplification_setting_persists_and_reloads(tmp_path, monkeypatc
 
 
 def test_enabling_simplification_still_respects_existing_lyrics_policy(tmp_path, monkeypatch):
-    """开启转换不能绕过仅缺失策略，擅自重写用户已有歌词。"""
+    """
+    开启转换不能绕过仅缺失策略，擅自重写用户已有歌词。
+    """
     monkeypatch.setattr(settings, "MUSIC_LYRICS_TO_SIMPLIFIED", True)
     audio = tmp_path / "track.flac"
     sidecar = audio.with_suffix(".lrc")
@@ -144,7 +160,9 @@ def test_enabling_simplification_still_respects_existing_lyrics_policy(tmp_path,
 @pytest.mark.parametrize("link_type", ["hardlink", "symlink"])
 def test_simplification_replaces_linked_library_lyrics_without_changing_seed(
         tmp_path, monkeypatch, link_type):
-    """对已有旁挂进行字形转换时，仅原子替换媒体库目录项，种源字节不变。"""
+    """
+    对已有旁挂进行字形转换时，仅原子替换媒体库目录项，种源字节不变。
+    """
     monkeypatch.setattr(settings, "MUSIC_LYRICS_TO_SIMPLIFIED", True)
     seed = tmp_path / "seed.lrc"
     original = "[00:01.00]愛與夢想\n"

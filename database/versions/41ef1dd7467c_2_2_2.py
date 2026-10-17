@@ -1,9 +1,9 @@
-"""2.2.2
+"""
+2.2.2 清理重复系统配置，每个配置键保留最大 ID 对应记录。
 
-Revision ID: 41ef1dd7467c
-Revises: a946dae52526
-Create Date: 2026-01-13 13:02:41.614029
-
+版本标识： 41ef1dd7467c
+前置版本： a946dae52526
+创建时间： 2026-01-13 13:02:41.614029
 """
 
 from alembic import op
@@ -11,7 +11,7 @@ from sqlalchemy import text
 
 from app.runtime.log import logger
 
-# revision identifiers, used by Alembic.
+# Alembic 使用以下标识连接迁移版本链。
 revision = "41ef1dd7467c"
 down_revision = "a946dae52526"
 branch_labels = None
@@ -19,7 +19,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # systemconfig表 去重
+    """
+    清理重复系统配置，每个配置键保留最大 ID 对应记录。
+    """
     connection = op.get_bind()
 
     select_stmt = text(
@@ -45,4 +47,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """
+    本版本不执行回退操作，保留升级后的结构与数据。
+    """
     pass

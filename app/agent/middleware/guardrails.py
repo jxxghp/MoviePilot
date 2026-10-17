@@ -1,4 +1,6 @@
-"""把每轮循环检测接入真实工具回执，不把重复读取变成缓存命中。"""
+"""
+把每轮循环检测接入真实工具回执，不把重复读取变成缓存命中。
+"""
 
 import asyncio
 import json
@@ -47,7 +49,14 @@ _BROWSER_ALIASES = {'goto': 'browser_navigate', 'open_tab': 'browser_navigate', 
 
 @dataclass
 class CallObservation:
-    """只在一个工具批次内保留原始回执，按模型发出顺序消费，避免并行完成乱序。"""
+    """
+    只在一个工具批次内保留原始回执，按模型发出顺序消费，避免并行完成乱序。
+
+    :param name: 实际执行的工具名称
+    :param arguments: 本次调用的规范化参数
+    :param content: 用于循环检测的结果文本；无文本结果时为 None
+    :param outcome: 宿主确认的执行结果状态
+    """
 
     name: str
     arguments: dict[str, Any]
@@ -57,7 +66,18 @@ class CallObservation:
 
 @dataclass
 class GuardRun:
-    """并行子任务共享编译图但不共享本轮计数，临时结果不写进 checkpoint。"""
+    """
+    并行子任务共享编译图但不共享本轮计数，临时结果不写进 checkpoint。
+
+    :param controller: 本轮使用的工具循环检测器
+    :param pending: 按调用标识保存的待处理观测，供工具与模型边界衔接
+    :param outcomes: 本轮已观测到的执行状态集合
+    :param continuations: 模型声称结束后宿主继续提示的次数
+    :param has_tools: 本轮是否已经出现工具调用
+    :param codex_mode: 本轮是否采用 Codex 专用调用处理
+    :param message_updates: 需要写回图状态的工具结果消息
+    :param identity: 标识本轮执行的宿主对象；尚未绑定时为 None
+    """
 
     controller: ToolCallGuardrailController
     pending: dict[str, CallObservation] = field(default_factory=dict)
@@ -70,10 +90,14 @@ class GuardRun:
 
 
 class ToolGuardrailsMiddleware(AgentMiddleware):  # type: ignore[misc]
-    """交互式 Web/API 默认警告，消息网关及后台默认有界停止；新用户轮次重置。"""
+    """
+    交互式 Web/API 默认警告，消息网关及后台默认有界停止；新用户轮次重置。
+    """
 
     def __init__(self, context: ToolPolicyContext) -> None:
-        """入口来自宿主认证信息，模型不能切换有人值守或后台策略。"""
+        """
+        入口来自宿主认证信息，模型不能切换有人值守或后台策略。
+        """
         self.context = context
         unattended = (context.origin not in {ToolOrigin.SUBAGENT, ToolOrigin.AGENT_API}
                       and (context.origin is ToolOrigin.BACKGROUND or context.auth_source is AuthSource.CHANNEL))
@@ -82,14 +106,18 @@ class ToolGuardrailsMiddleware(AgentMiddleware):  # type: ignore[misc]
 
     @staticmethod
     def _scope() -> str:
-        """LangGraph 宿主配置提供线程身份，不能由模型工具参数选择。"""
+        """
+        LangGraph 宿主配置提供线程身份，不能由模型工具参数选择。
+        """
         try:
             return str(get_config().get('configurable', {}).get('thread_id') or '')
         except RuntimeError:
             return ''
 
     def _run(self) -> GuardRun:
-        """按真实图线程隔离运行状态，异常遗留也不能使缓存无界增长。"""
+        """
+        按真实图线程隔离运行状态，异常遗留也不能使缓存无界增长。
+        """
         scope = self._scope()
         if scope not in self._runs:
             if len(self._runs) >= 64:
@@ -99,25 +127,35 @@ class ToolGuardrailsMiddleware(AgentMiddleware):  # type: ignore[misc]
 
     @property
     def controller(self) -> ToolCallGuardrailController:
-        """返回当前图线程自己的检测器。"""
+        """
+        返回当前图线程自己的检测器。
+        """
         return self._run().controller
 
     @property
     def pending(self) -> dict[str, CallObservation]:
-        """原始结果只归属当前运行，不能被并行子任务消费。"""
+        """
+        原始结果只归属当前运行，不能被并行子任务消费。
+        """
         return self._run().pending
 
     @property
     def outcomes(self) -> set[ExecutionOutcome]:
-        """保存本轮实际观察到的结果状态，未知不推断为成功。"""
+        """
+        保存本轮实际观察到的结果状态，未知不推断为成功。
+        """
         return self._run().outcomes
 
     def release(self, thread_id: str) -> None:
-        """宿主在取消或异常路径也释放该子任务的临时结果。"""
+        """
+        宿主在取消或异常路径也释放该子任务的临时结果。
+        """
         self._runs.pop(thread_id, None)
 
     def _begin(self, runtime: Any) -> GuardRun:
-        """以 LangGraph 每次运行的 control 身份重置，复用现有模型节点不增加预算开销。"""
+        """
+        以 LangGraph 每次运行的 control 身份重置，复用现有模型节点不增加预算开销。
+        """
         run = self._run()
         identity = getattr(runtime, 'control', None)
         if run.identity is not identity:
@@ -126,7 +164,9 @@ class ToolGuardrailsMiddleware(AgentMiddleware):  # type: ignore[misc]
         return run
 
     async def awrap_model_call(self, request: Any, handler: Callable[[Any], Awaitable[Any]]) -> Any:
-        """记录当前模型实际提供的工具及 Codex 协议，结束检查不能凭模型名称猜入口。"""
+        """
+        记录当前模型实际提供的工具及 Codex 协议，结束检查不能凭模型名称猜入口。
+        """
         run = self._begin(request.runtime)
         run.has_tools = bool(request.tools)
         run.codex_mode = bool(getattr(request.model, 'use_responses_api', False)
@@ -145,7 +185,9 @@ class ToolGuardrailsMiddleware(AgentMiddleware):  # type: ignore[misc]
             raise
 
     async def after_model_update(self, state: dict[str, Any], runtime: Any) -> dict[str, Any] | None:
-        """登记请求；只有短尾部行动或 Codex 特定碎片才最多追加两次继续提示。"""
+        """
+        登记请求；只有短尾部行动或 Codex 特定碎片才最多追加两次继续提示。
+        """
         del runtime
         messages = state.get('messages', [])
         if not messages or not isinstance(messages[-1], AIMessage):
@@ -166,7 +208,9 @@ class ToolGuardrailsMiddleware(AgentMiddleware):  # type: ignore[misc]
         return {'messages': updates} if updates else None
 
     def _continue(self, messages: list[Any], message: AIMessage) -> dict[str, Any] | None:
-        """合成提示不进入真实用户历史；预算耗尽仍报告部分完成，不伪造工具成果。"""
+        """
+        合成提示不进入真实用户历史；预算耗尽仍报告部分完成，不伪造工具成果。
+        """
         run = self._run()
         text = re.sub(r'<think>.*?(?:</think>|$)', '', message.text, flags=re.DOTALL).strip()
         user_text = next((item.text for item in reversed(messages) if isinstance(item, HumanMessage)
@@ -193,7 +237,9 @@ class ToolGuardrailsMiddleware(AgentMiddleware):  # type: ignore[misc]
         return {'messages': [nudge], 'jump_to': 'model'}
 
     def _name(self, request: ToolCallRequest) -> str:
-        """映射宿主多动作工具，轮询豁免不能扩大到启动、写入或终止动作。"""
+        """
+        映射宿主多动作工具，轮询豁免不能扩大到启动、写入或终止动作。
+        """
         name, arguments = request.tool_call['name'], request.tool_call.get('args') or {}
         if name == 'execute_command':
             return 'process_manage' if arguments.get('action') in {'read', 'wait', 'status', 'list'} else 'terminal'
@@ -218,7 +264,9 @@ class ToolGuardrailsMiddleware(AgentMiddleware):  # type: ignore[misc]
         return str(name)
 
     async def awrap_tool_call(self, request: ToolCallRequest, handler: Callable[[ToolCallRequest], Awaitable[Any]]) -> Any:
-        """执行前检查上轮证据和总预算，执行后暂存原文而不改变真实工具结果。"""
+        """
+        执行前检查上轮证据和总预算，执行后暂存原文而不改变真实工具结果。
+        """
         if isinstance(request.state, dict) and RPC_RESULT_KEY in request.state:
             return await handler(request)
         name = self._name(request)
@@ -235,7 +283,9 @@ class ToolGuardrailsMiddleware(AgentMiddleware):  # type: ignore[misc]
         previous = TOOL_RESULT_RECORDER.get()
 
         def record(tool_name: str, text: str) -> dict[str, Any]:
-            """在通用截断前观察原文，同时保留外层归档器的精确引用。"""
+            """
+            在通用截断前观察原文，同时保留外层归档器的精确引用。
+            """
             raw[tool_name] = text
             return previous(tool_name, text) if previous else {}
 
@@ -257,7 +307,9 @@ class ToolGuardrailsMiddleware(AgentMiddleware):  # type: ignore[misc]
         return result
 
     def _observe(self, message: ToolMessage, active_ids: set[str]) -> ToolMessage:
-        """在结果进入下一次模型请求前附加提示；被压缩掉的引用不能继续产生存根。"""
+        """
+        在结果进入下一次模型请求前附加提示；被压缩掉的引用不能继续产生存根。
+        """
         item = self.pending.pop(message.tool_call_id)
         if message.additional_kwargs.get(GUARDRAIL_KEY):
             return message
@@ -286,7 +338,9 @@ class ToolGuardrailsMiddleware(AgentMiddleware):  # type: ignore[misc]
 
     @staticmethod
     def _fresh_reference(content: str) -> str:
-        """大结果缓存会淘汰旧引用，重复存根指向这次实际执行刚保存的正文。"""
+        """
+        大结果缓存会淘汰旧引用，重复存根指向这次实际执行刚保存的正文。
+        """
         try:
             payload = json.loads(content)
         except (TypeError, ValueError):
@@ -296,7 +350,9 @@ class ToolGuardrailsMiddleware(AgentMiddleware):  # type: ignore[misc]
         return ''
 
     async def prepare_model(self, state: dict[str, Any], runtime: Any) -> dict[str, Any] | None:
-        """批次结果按请求顺序判定短循环；触发停止时保留计划和未知副作用证据。"""
+        """
+        批次结果按请求顺序判定短循环；触发停止时保留计划和未知副作用证据。
+        """
         del runtime
         messages = state.get('messages', [])
         active_ids = {message.tool_call_id for message in messages if isinstance(message, ToolMessage)}

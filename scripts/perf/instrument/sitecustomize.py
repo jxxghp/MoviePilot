@@ -1,4 +1,6 @@
-"""MoviePilot Docker 测量进程内使用的最小诊断探针。"""
+"""
+MoviePilot Docker 测量进程内使用的最小诊断探针。
+"""
 
 from __future__ import annotations
 
@@ -6,11 +8,12 @@ import os
 import signal
 import sys
 
-# 场景激活依赖只在收到信号后加载，避免改变 idle-default 的 import 基线。
+# 场景激活依赖只在收到信号后加载，避免改变 idle-default 的导入基线。
 # pylint: disable=import-outside-toplevel
 
 _OUTPUT_DIR = os.environ.get("MP_PERF_OUTPUT_DIR")
 _SCENARIO = os.environ.get("MP_PERF_SCENARIO", "idle-default")
+# 等待场景激活与线程协调的总时限，单位为秒，默认 120 秒。
 _ACTIVATION_TIMEOUT = float(os.environ.get("MP_PERF_ACTIVATION_TIMEOUT", "120"))
 _AGENT_SCENARIOS = {"agent-disabled-router", "agent-tool-catalog"}
 _AGENT_HEAVY_MODULE_PREFIXES = tuple(
@@ -32,14 +35,18 @@ _browser_resources: list[object] = []
 
 
 def _utc_now() -> str:
-    """返回稳定、可机器解析的 UTC 时间。"""
+    """
+    返回稳定、可机器解析的 UTC 时间。
+    """
     from datetime import datetime, timezone
 
     return datetime.now(timezone.utc).isoformat()
 
 
 def _atomic_write_json(path, payload: dict[str, object]) -> None:
-    """原子发布结果，避免采集端读取到半写 marker。"""
+    """
+    原子发布结果，避免采集端读取到未写完的标记文件。
+    """
     import json
 
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -53,7 +60,9 @@ def _atomic_write_json(path, payload: dict[str, object]) -> None:
 
 
 def _dump_modules(_signum, _frame) -> None:
-    """收到 SIGUSR1 时原子写出当前解释器已经导入的模块名称。"""
+    """
+    收到 SIGUSR1 时原子写出当前解释器已经导入的模块名称。
+    """
     global _snapshot_index
     if not _OUTPUT_DIR:
         return
@@ -81,7 +90,9 @@ def _launch_one_browser(
     launcher,
     start_gate,
 ) -> tuple[dict[str, object], list[object]]:
-    """启动一个本地 data URL 浏览器上下文并返回可序列化结果。"""
+    """
+    启动一个本地 data URL 浏览器上下文并返回可序列化结果。
+    """
     import time
 
     if start_gate is not None:
@@ -109,7 +120,8 @@ def _launch_one_browser(
         )
         if not result["success"]:
             result["error"] = "本地 data URL 标题校验失败"
-    except Exception as error:  # pragma: no cover - 真实浏览器错误由 marker 保存
+    # 真实浏览器错误由标记文件保存。
+    except Exception as error:  # pragma: no cover
         result.update(
             {
                 "success": False,
@@ -122,12 +134,16 @@ def _launch_one_browser(
 
 
 def _enum_value(value):
-    """把 runtime 枚举降为 JSON 标量。"""
+    """
+    把运行时枚举降为 JSON 标量。
+    """
     return getattr(value, "value", value)
 
 
 def _stable_digest(value: object) -> str:
-    """计算不依赖对象地址的 JSON 摘要。"""
+    """
+    计算不依赖对象地址的 JSON 摘要。
+    """
     import hashlib
     import json
 
@@ -142,7 +158,9 @@ def _stable_digest(value: object) -> str:
 
 
 def _agent_module_observation() -> dict[str, object]:
-    """记录 Agent 重模块在目标解释器中的精确加载状态。"""
+    """
+    记录 Agent 重模块在目标解释器中的精确加载状态。
+    """
     prefix_counts = {
         prefix: sum(
             1
@@ -168,7 +186,9 @@ def _agent_module_observation() -> dict[str, object]:
 
 
 def _read_agent_runtime() -> dict[str, object]:
-    """读取轻量 Agent loader 的公开只读状态，不触发 capability 首用。"""
+    """
+    读取轻量 Agent 加载器的公开只读状态，不触发能力首次使用。
+    """
     try:
         from app.agent.loader import is_tool_factory_materialized
 
@@ -176,7 +196,8 @@ def _read_agent_runtime() -> dict[str, object]:
             "available": True,
             "tool_factory_materialized": is_tool_factory_materialized(),
         }
-    except Exception as error:  # pragma: no cover - 候选未就绪或真实 runtime 错误
+    # 候选未就绪或真实运行时错误。
+    except Exception as error:  # pragma: no cover
         return {
             "available": False,
             "error_type": type(error).__name__,
@@ -185,7 +206,9 @@ def _read_agent_runtime() -> dict[str, object]:
 
 
 def _probe_router_openapi(app_instance=None, settings_object=None) -> dict[str, object]:
-    """在主进程中生成 OpenAPI，并验证禁用态 Agent 路由仍完整存在。"""
+    """
+    在主进程中生成 OpenAPI，并验证禁用态 Agent 路由仍完整存在。
+    """
     if app_instance is None:
         from app.factory import app as app_instance
     if settings_object is None:
@@ -232,7 +255,9 @@ def _probe_router_openapi(app_instance=None, settings_object=None) -> dict[str, 
 
 
 def _probe_tool_catalog(manager=None) -> dict[str, object]:
-    """通过稳定工具管理入口首次生成目录与 JSON Schema。"""
+    """
+    通过稳定工具管理入口首次生成目录与 JSON Schema。
+    """
     if manager is None:
         from app.agent.tools.manager import moviepilot_tool_manager
 
@@ -336,7 +361,9 @@ def _activate_agent_scenario(
     tool_manager=None,
     runtime_reader=None,
 ) -> dict[str, object]:
-    """执行 Agent 禁用态路由或首次工具目录的进程内场景。"""
+    """
+    执行 Agent 禁用态路由或首次工具目录的进程内场景。
+    """
     if scenario not in _AGENT_SCENARIOS:
         raise ValueError(f"场景不支持 Agent 激活：{scenario}")
     runtime_reader = runtime_reader or _read_agent_runtime
@@ -365,7 +392,9 @@ def _activate_agent_scenario(
 
 
 def _read_display_runtime() -> dict[str, object]:
-    """读取 host.display 的只读状态和观测，不触发资源激活。"""
+    """
+    读取 host.显示资源的只读状态和观测，不触发资源激活。
+    """
     try:
         from app.runtime.resources import (
             managed_resource_observations,
@@ -399,7 +428,8 @@ def _read_display_runtime() -> dict[str, object]:
                 for item in observations
             ],
         }
-    except Exception as error:  # pragma: no cover - 核心未就绪或真实 runtime 错误
+    # 核心未就绪或真实运行时错误。
+    except Exception as error:  # pragma: no cover
         return {
             "available": False,
             "error_type": type(error).__name__,
@@ -408,7 +438,9 @@ def _read_display_runtime() -> dict[str, object]:
 
 
 def _close_browser_resources(resources: list[object]) -> list[dict[str, str]]:
-    """逆序关闭一次探针创建的页面与上下文，并返回可序列化错误。"""
+    """
+    逆序关闭一次探针创建的页面与上下文，并返回可序列化错误。
+    """
     errors: list[dict[str, str]] = []
     for resource in reversed(resources):
         close = getattr(resource, "close", None)
@@ -416,7 +448,8 @@ def _close_browser_resources(resources: list[object]) -> list[dict[str, str]]:
             continue
         try:
             close()
-        except Exception as error:  # pragma: no cover - 真实浏览器错误由 marker 保存
+        # 真实浏览器错误由标记文件保存。
+        except Exception as error:  # pragma: no cover
             errors.append(
                 {
                     "resource_type": type(resource).__name__,
@@ -431,7 +464,9 @@ def _activate_browser_scenario(
     scenario: str,
     launcher=None,
 ) -> dict[str, object]:
-    """通过公开 SDK 执行真实浏览器激活，headed 使用并发冷启动探针。"""
+    """
+    通过公开 SDK 执行真实浏览器激活，有显示模式使用并发冷启动探针。
+    """
     import threading
     import time
 
@@ -454,6 +489,11 @@ def _activate_browser_scenario(
     completion_gate = None if headless else threading.Barrier(concurrency)
 
     def launch(index: int) -> None:
+        """
+        在启动线程内创建浏览器资源，按场景保留一个成功上下文并关闭其余资源。
+
+        有显示场景通过屏障协调清理，避免跨线程关闭 Playwright 同步对象。
+        """
         result, resources = _launch_one_browser(
             index=index,
             headless=headless,
@@ -490,12 +530,12 @@ def _activate_browser_scenario(
         ]
         retained_index = min(successful_indices) if successful_indices else None
         if index == retained_index:
-            # 保留对象不再跨线程使用；容器退出会回收浏览器及其 worker 进程。
+            # 保留对象不再跨线程使用；容器退出会回收浏览器及其工作进程。
             _browser_resources.extend(resources)
             result["retained"] = True
             retained_slots[index] = True
         else:
-            # Playwright sync/greenlet 对象必须在创建它的线程内关闭。
+            # Playwright 同步接口及 greenlet 对象必须在创建它的线程内关闭。
             cleanup_error_slots[index] = _close_browser_resources(resources)
 
     if headless:
@@ -576,7 +616,9 @@ def _activate_browser_scenario(
 
 
 def _run_activation() -> None:
-    """在目标解释器的工作线程中运行激活并发布完成 marker。"""
+    """
+    在目标解释器的工作线程中运行激活并发布完成标记。
+    """
     if not _OUTPUT_DIR:
         return
     import time
@@ -596,7 +638,8 @@ def _run_activation() -> None:
         else:
             result["browser"] = _activate_browser_scenario(_SCENARIO)
             result["success"] = bool(result["browser"]["success"])
-    except Exception as error:  # pragma: no cover - 真实集成错误由 marker 保存
+    # 真实集成错误由标记文件保存。
+    except Exception as error:  # pragma: no cover
         result.update(
             {
                 "success": False,
@@ -613,7 +656,9 @@ def _run_activation() -> None:
 
 
 def _request_activation(_signum, _frame) -> None:
-    """SIGUSR2 只调度一次工作线程，真实 import 与启动仍在目标进程内完成。"""
+    """
+    SIGUSR2 只调度一次工作线程，真实导入与启动仍在目标进程内完成。
+    """
     global _activation_started
     if not _OUTPUT_DIR or _activation_started:
         return

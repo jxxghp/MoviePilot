@@ -1,4 +1,6 @@
-"""历史非法实例残留清理的数据库与 API 装配回归。"""
+"""
+历史非法实例残留清理的数据库与 API 装配回归。
+"""
 
 from contextlib import nullcontext
 from types import SimpleNamespace
@@ -29,7 +31,9 @@ INVALID_ID = "Emby角色中文化"
 
 @pytest.fixture(name="sessions")
 def fixture_sessions():
-    """独立内存库跨 HTTP 测试工作线程共享，不触碰宿主配置或真实数据库。"""
+    """
+    独立内存库跨 HTTP 测试工作线程共享，不触碰宿主配置或真实数据库。
+    """
     engine = create_engine(
         "sqlite://", poolclass=StaticPool, connect_args={"check_same_thread": False},
     )
@@ -41,7 +45,9 @@ def fixture_sessions():
 
 
 def _insert(sessions, **overrides) -> None:
-    """写入与报告一致的历史空本体，允许用例覆盖需保护的列。"""
+    """
+    写入与报告一致的历史空本体，允许用例覆盖需保护的列。
+    """
     fields = {
         "instance_id": INVALID_ID,
         "source_plugin_id": INVALID_ID,
@@ -54,14 +60,18 @@ def _insert(sessions, **overrides) -> None:
 
 
 def _purge(sessions, instance_id: str) -> bool:
-    """在独立测试事务中调用现有实例 Oper 的历史清理端口。"""
+    """
+    在独立测试事务中调用现有实例 Oper 的历史清理端口。
+    """
     with sessions.begin() as session:
         return PluginInstanceOper(session).purge_invalid_empty_host(instance_id)
 
 
 @pytest.mark.parametrize("config_data", [None, null()])
 def test_purge_removes_only_empty_invalid_host_and_is_repeatable(sessions, config_data) -> None:
-    """SQL NULL 与 JSON null 均能回收，正常插件和不存在的记录不受影响。"""
+    """
+    SQL NULL 与 JSON null 均能回收，正常插件和不存在的记录不受影响。
+    """
     _insert(sessions, config_data=config_data, plugin_name="", log_level="")
     _insert(sessions, instance_id="Valid_Plugin", source_plugin_id="Valid_Plugin")
     assert _purge(sessions, INVALID_ID)
@@ -86,7 +96,9 @@ def test_purge_removes_only_empty_invalid_host_and_is_repeatable(sessions, confi
     {"source_plugin_id": "SourcePlugin"},
 ])
 def test_purge_preserves_every_setting_and_clone_identity(sessions, settings) -> None:
-    """每个设置列和分身身份都构成保留理由，空配置对象也不能误删。"""
+    """
+    每个设置列和分身身份都构成保留理由，空配置对象也不能误删。
+    """
     _insert(sessions, **settings)
     assert not _purge(sessions, INVALID_ID)
     with sessions() as session:
@@ -97,7 +109,9 @@ def test_purge_preserves_every_setting_and_clone_identity(sessions, settings) ->
 
 
 def test_purge_uses_bound_database_identity(sessions) -> None:
-    """含 SQL 和路径字符的旧 ID 仅作为数据库绑定值，不能扩大删除范围。"""
+    """
+    含 SQL 和路径字符的旧 ID 仅作为数据库绑定值，不能扩大删除范围。
+    """
     malicious_id = "../'; DELETE FROM plugininstance; --"
     _insert(sessions)
     _insert(sessions, instance_id=malicious_id, source_plugin_id=malicious_id)
@@ -107,10 +121,14 @@ def test_purge_uses_bound_database_identity(sessions) -> None:
 
 
 def test_http_purge_routes_invalid_empty_host_to_database_only(sessions, monkeypatch) -> None:
-    """真实依赖工厂与 Manager 端口能清掉中文残留，且不进入任何运行时删除操作。"""
+    """
+    真实依赖工厂与 Manager 端口能清掉中文残留，且不进入任何运行时删除操作。
+    """
     _insert(sessions)
     def purge(instance_id: str) -> bool:
-        """为 HTTP 测试打开一个独立事务并调用实例 Oper。"""
+        """
+        为 HTTP 测试打开一个独立事务并调用实例 Oper。
+        """
         return _purge(sessions, instance_id)
 
     directory = PluginInstanceDirectory(purge_invalid_empty_host=purge)

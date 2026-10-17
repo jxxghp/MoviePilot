@@ -1,4 +1,6 @@
-"""Agent 写工具持久认领、重启防重和会话清理边界测试。"""
+"""
+Agent 写工具持久认领、重启防重和会话清理边界测试。
+"""
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -25,7 +27,9 @@ IDENTITY = InvocationIdentity("user-1", "chat-1", "call-1")
 
 @pytest.fixture
 def invocation_store(tmp_path):
-    """用真实独立 SQLite 文件覆盖跨线程和重建适配器的持久行为。"""
+    """
+    用真实独立 SQLite 文件覆盖跨线程和重建适配器的持久行为。
+    """
     path = tmp_path / "invocations.db"
     engine = create_engine(f"sqlite:///{path}", connect_args={"timeout": 20})
     for model in (AgentInvocation, AgentChat, AgentTask):
@@ -36,17 +40,23 @@ def invocation_store(tmp_path):
 
 
 def _claim(store, identity=IDENTITY):
-    """为同一个宿主写工具生成稳定输入指纹。"""
+    """
+    为同一个宿主写工具生成稳定输入指纹。
+    """
     return store.claim(identity, tool_name="moviepilot_api", arguments_digest=DIGEST)
 
 
 def test_concurrent_claim_grants_exactly_one_execution(invocation_store):
-    """多个线程同时竞争同一身份时只有一个调用可以执行外部写入。"""
+    """
+    多个线程同时竞争同一身份时只有一个调用可以执行外部写入。
+    """
     store, _factory, _path = invocation_store
     barrier = Barrier(8)
 
     def compete():
-        """使多个数据库连接同时尝试插入唯一身份。"""
+        """
+        使多个数据库连接同时尝试插入唯一身份。
+        """
         barrier.wait(timeout=10)
         return _claim(store)
 
@@ -58,7 +68,9 @@ def test_concurrent_claim_grants_exactly_one_execution(invocation_store):
 
 
 def test_identity_and_argument_conflicts_are_isolated(invocation_store):
-    """同一调用不能换参数或工具，不同用户和会话可使用相同调用 ID。"""
+    """
+    同一调用不能换参数或工具，不同用户和会话可使用相同调用 ID。
+    """
     store, _factory, _path = invocation_store
     assert _claim(store).acquired
     assert not _claim(store).acquired
@@ -72,7 +84,9 @@ def test_identity_and_argument_conflicts_are_isolated(invocation_store):
 
 
 def test_restart_preserves_unknown_and_fences_previous_owner(invocation_store):
-    """重启不因时间过期重放写入，旧 owner 也不能收口新核验状态。"""
+    """
+    重启不因时间过期重放写入，旧 owner 也不能收口新核验状态。
+    """
     store, factory, _path = invocation_store
     original = _claim(store)
     restarted = TransactionalInvocationRepository(factory)
@@ -93,7 +107,9 @@ def test_restart_preserves_unknown_and_fences_previous_owner(invocation_store):
 
 
 def test_unknown_can_be_verified_but_never_reclaimed(invocation_store):
-    """执行超时只产生未知回执，核验成功前后均不能再次认领。"""
+    """
+    执行超时只产生未知回执，核验成功前后均不能再次认领。
+    """
     store, _factory, _path = invocation_store
     claim = _claim(store)
     assert store.finish(IDENTITY, claim_token=claim.record.claim_token, status="unknown")
@@ -103,7 +119,9 @@ def test_unknown_can_be_verified_but_never_reclaimed(invocation_store):
 
 
 def test_pending_submission_survives_restart_without_blocking_new_intent(invocation_store):
-    """已确认提交是历史回执，重启不改未知，同身份仍防重但新意图不受阻。"""
+    """
+    已确认提交是历史回执，重启不改未知，同身份仍防重但新意图不受阻。
+    """
     store, factory, _path = invocation_store
     original = _claim(store)
     assert store.finish(IDENTITY, claim_token=original.record.claim_token, status="pending")
@@ -119,7 +137,9 @@ def test_pending_submission_survives_restart_without_blocking_new_intent(invocat
 
 
 def test_find_unresolved_respects_scope_and_ignores_terminal_receipts(invocation_store):
-    """新一轮请求能查到最近旧副作用，但已收口和其他 owner 不能误阻塞。"""
+    """
+    新一轮请求能查到最近旧副作用，但已收口和其他 owner 不能误阻塞。
+    """
     store, _factory, _path = invocation_store
     first = _claim(store)
     later_identity = InvocationIdentity("user-1", "chat-1", "later-call")
@@ -141,11 +161,15 @@ def test_find_unresolved_respects_scope_and_ignores_terminal_receipts(invocation
 
 
 def test_claim_rollback_does_not_grant_execution(invocation_store, monkeypatch):
-    """认领事务未提交时不能返回 acquired，失败事务不会残留回执。"""
+    """
+    认领事务未提交时不能返回 acquired，失败事务不会残留回执。
+    """
     store, _factory, _path = invocation_store
 
     def fail_commit(_self):
-        """模拟落盘失败，使适配器退出时回滚 Session。"""
+        """
+        模拟落盘失败，使适配器退出时回滚 Session。
+        """
         raise RuntimeError("commit failed")
 
     monkeypatch.setattr("app.db.adapters.invocation.SqlAlchemyUnitOfWork.commit", fail_commit)
@@ -160,14 +184,18 @@ def test_claim_rollback_does_not_grant_execution(invocation_store, monkeypatch):
     InvocationIdentity("user-1", "chat-1", "x" * 256),
 ])
 def test_missing_or_unbounded_identity_is_rejected(invocation_store, identity):
-    """不允许匿名共享身份和无界工具调用 ID 落盘。"""
+    """
+    不允许匿名共享身份和无界工具调用 ID 落盘。
+    """
     store, _factory, _path = invocation_store
     with pytest.raises(ValueError):
         _claim(store, identity)
 
 
 def test_only_digest_and_fixed_host_summary_are_persisted(invocation_store):
-    """凭据原文无法通过参数指纹或自由结果摘要进入调用回执。"""
+    """
+    凭据原文无法通过参数指纹或自由结果摘要进入调用回执。
+    """
     store, factory, _path = invocation_store
     with pytest.raises(ValueError, match="SHA-256"):
         store.claim(IDENTITY, tool_name="moviepilot_api", arguments_digest="password=super-secret")
@@ -182,7 +210,9 @@ def test_only_digest_and_fixed_host_summary_are_persisted(invocation_store):
 
 
 def _save_chat(factory, session_id="chat-1"):
-    """创建可由生命周期清理的旧会话。"""
+    """
+    创建可由生命周期清理的旧会话。
+    """
     with factory() as session:
         chat = AgentChat(
             user_id="user-1", session_id=session_id, title="test",
@@ -195,7 +225,9 @@ def _save_chat(factory, session_id="chat-1"):
 
 @pytest.mark.parametrize("receipt_status", ["succeeded", "failed", "pending"])
 def test_explicit_chat_delete_removes_only_confirmed_receipts(invocation_store, receipt_status):
-    """用户删除会话可清理终态和已提交回执，未知状态仍保留恢复依据。"""
+    """
+    用户删除会话可清理终态和已提交回执，未知状态仍保留恢复依据。
+    """
     store, factory, _path = invocation_store
     chat_id = _save_chat(factory)
     terminal = _claim(store)
@@ -211,7 +243,9 @@ def test_explicit_chat_delete_removes_only_confirmed_receipts(invocation_store, 
 
 @pytest.mark.asyncio
 async def test_async_chat_deletion_shares_receipt_transaction(invocation_store):
-    """异步请求删除与回执回收共用事务，回滚时两者均还原。"""
+    """
+    异步请求删除与回执回收共用事务，回滚时两者均还原。
+    """
     store, factory, path = invocation_store
     _save_chat(factory)
     claim = _claim(store)
@@ -231,7 +265,9 @@ async def test_async_chat_deletion_shares_receipt_transaction(invocation_store):
 
 
 def test_retention_cleanup_preserves_recovery_chats_and_receipts(invocation_store):
-    """共享保留期回收已确认回执会话，未知和运行中记录不随年龄回收。"""
+    """
+    共享保留期回收已确认回执会话，未知和运行中记录不随年龄回收。
+    """
     store, factory, _path = invocation_store
     for name, status in (("done", "succeeded"), ("submitted", "pending"), ("unknown", "unknown"), ("running", "running")):
         _save_chat(factory, name)
@@ -254,7 +290,9 @@ def test_retention_cleanup_preserves_recovery_chats_and_receipts(invocation_stor
 def test_orphan_confirmed_receipts_follow_shared_retention(
     invocation_store, enabled, retention_days, expected_deleted,
 ):
-    """后台已确认提交和终态按会话保留期清理，恢复态、近期记录和禁用开关受保护。"""
+    """
+    后台已确认提交和终态按会话保留期清理，恢复态、近期记录和禁用开关受保护。
+    """
     store, factory, _path = invocation_store
     old = "2026-06-01T12:00:00+00:00"
     recent = "2026-08-20T12:00:00+00:00"

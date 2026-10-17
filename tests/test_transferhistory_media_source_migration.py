@@ -1,3 +1,7 @@
+"""
+验证整理历史媒体来源字段的迁移与旧记录兼容。
+"""
+
 import importlib
 from unittest.mock import Mock
 
@@ -18,14 +22,18 @@ from app.schemas.transfer import TransferInfo
 
 
 def _history_repository(src: str) -> Mock:
-    """构造接收类型化写入并返回冻结快照的测试仓储。"""
+    """
+    构造接收类型化写入并返回冻结快照的测试仓储。
+    """
     repository = Mock()
     repository.replace.return_value = TransferHistorySnapshot(id=1, src=src)
     return repository
 
 
 def test_transferhistory_migration_backfills_existing_source_ids(monkeypatch) -> None:
-    """迁移应把存量TMDB和豆瓣字段回填到统一来源字段。"""
+    """
+    迁移应把存量TMDB和豆瓣字段回填到统一来源字段。
+    """
     migration = importlib.import_module(
         "database.versions.e6a1c4b8d2f0_2_2_13"
     )
@@ -72,7 +80,9 @@ def test_transferhistory_migration_backfills_existing_source_ids(monkeypatch) ->
 
 
 def test_failed_transfer_history_preserves_explicit_media_source() -> None:
-    """识别失败记录也应保存文件名中显式指定的数据源ID。"""
+    """
+    识别失败记录也应保存文件名中显式指定的数据源ID。
+    """
     repository = _history_repository("/downloads/Frieren.mkv")
     meta = MetaBase("Frieren")
     meta.cn_name = "Frieren"
@@ -96,7 +106,9 @@ def test_failed_transfer_history_preserves_explicit_media_source() -> None:
 
 
 def test_failed_music_history_preserves_media_type_and_entity_namespace() -> None:
-    """未识别音乐的失败记录也应保留音乐类型和单曲实体命名空间。"""
+    """
+    未识别音乐的失败记录也应保留音乐类型和单曲实体命名空间。
+    """
     repository = _history_repository("/downloads/周杰伦 - 晴天.flac")
     meta = MetaMusic(
         title="晴天",
@@ -123,7 +135,9 @@ def test_failed_music_history_preserves_media_type_and_entity_namespace() -> Non
 
 
 def test_transferhistory_music_migration_is_idempotent(monkeypatch) -> None:
-    """整理历史音乐字段迁移应支持重复执行。"""
+    """
+    整理历史音乐字段迁移应支持重复执行。
+    """
     migration = importlib.import_module(
         "database.versions.d4f6a8c2e1b7_2_2_17"
     )
@@ -152,7 +166,9 @@ def test_transferhistory_music_migration_is_idempotent(monkeypatch) -> None:
 
 
 def test_music_audio_quality_migration_is_idempotent(monkeypatch) -> None:
-    """音乐音质字段迁移应可重复执行且不覆盖自定义通知模板。"""
+    """
+    音乐音质字段迁移应可重复执行且不覆盖自定义通知模板。
+    """
     migration = importlib.import_module(
         "database.versions.e8b1c4d7a2f9_2_2_18"
     )
@@ -230,7 +246,9 @@ def test_music_audio_quality_migration_is_idempotent(monkeypatch) -> None:
 
 
 def test_transfer_history_preserves_album_entity_context() -> None:
-    """整理成功记录应保存整专实体和预期曲目数供 Agent 重试。"""
+    """
+    整理成功记录应保存整专实体和预期曲目数供 Agent 重试。
+    """
     repository = _history_repository("/downloads/叶惠美/01.flac")
     media = MusicInfo(
         media_source="musicbrainz",

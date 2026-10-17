@@ -1,3 +1,7 @@
+"""
+验证飞书媒体通知的海报选择、下载、上传与临时文件清理。
+"""
+
 import json
 from pathlib import Path
 from typing import Optional
@@ -11,16 +15,25 @@ ensure_optional_stub("psutil")
 ensure_optional_stub("dateparser")
 ensure_optional_stub("Pinyin2Hanzi", is_pinyin=lambda value: False)
 
+# 先安装可选依赖占位，避免加载飞书媒体处理模块时缺少依赖。
 from app.domain.context import MediaInfo  # noqa: E402
+
+# 先安装可选依赖占位，避免加载飞书媒体处理模块时缺少依赖。
 from app.modules.feishu.feishu import Feishu  # noqa: E402
+
+# 先安装可选依赖占位，避免加载飞书媒体处理模块时缺少依赖。
 from app.modules.feishu.openapi import FeishuResponse  # noqa: E402
+
+# 先安装可选依赖占位，避免加载飞书媒体处理模块时缺少依赖。
 from app.schemas.message import Message  # noqa: E402
 
 _IMAGE_PROXY = {"http": "http://proxy.example:8080", "https": "http://proxy.example:8080"}
 
 
 def _build_feishu_client() -> Feishu:
-    """构造不会启动真实飞书长连接的测试客户端。"""
+    """
+    构造不会启动真实飞书长连接的测试客户端。
+    """
     with (
         patch.object(Feishu, "_build_api_client", return_value=MagicMock()),
         patch.object(Feishu, "_start_ws_client"),
@@ -33,7 +46,9 @@ def _build_feishu_client() -> Feishu:
 
 
 def test_send_medias_message_passes_first_available_image() -> None:
-    """飞书媒体列表应将首张可用媒体图片传入通知卡片。"""
+    """
+    飞书媒体列表应将首张可用媒体图片传入通知卡片。
+    """
     client = _build_feishu_client()
     first_media = MediaInfo()
     first_media.title = "无海报媒体"
@@ -83,13 +98,17 @@ def test_send_notification_downloads_image_with_source_policy(
     expected_referer: Optional[str],
     expected_proxy: Optional[dict[str, str]],
 ) -> None:
-    """海报下载遵守豆瓣防盗链、外网代理和内网直连策略，并正常上传和清理。"""
+    """
+    海报下载遵守豆瓣防盗链、外网代理和内网直连策略，并正常上传和清理。
+    """
     client = _build_feishu_client()
     uploaded = {}
     response = MagicMock(content=b"poster-bytes", headers={"Content-Type": "image/webp"})
 
     def upload_image(file_path: Path) -> FeishuResponse:
-        """在临时文件删除前读取载荷，模拟飞书返回图片标识。"""
+        """
+        在临时文件删除前读取载荷，模拟飞书返回图片标识。
+        """
         uploaded["path"] = file_path
         uploaded["content"] = file_path.read_bytes()
         return FeishuResponse(code=0, msg="success", data={"image_key": "img_poster"})

@@ -1,4 +1,6 @@
-"""通用站点没有服务端页码时，从完整响应中提取互不重叠的搜索页。"""
+"""
+通用站点没有服务端页码时，从完整响应中提取互不重叠的搜索页。
+"""
 
 import asyncio
 from unittest.mock import AsyncMock, Mock
@@ -14,7 +16,9 @@ from app.modules.indexer.spider import SiteSpider
 
 @pytest.fixture
 def indexer():
-    """按 MiKan 的搜索路径与表格选择器构造离线配置。"""
+    """
+    按 MiKan 的搜索路径与表格选择器构造离线配置。
+    """
     return {
         "id": "mikanani",
         "name": "MiKan",
@@ -36,14 +40,18 @@ def indexer():
 
 @pytest.fixture(params=["python", "rust"])
 def parser_engine(request, monkeypatch):
-    """分别验证 Python 回退和真实 Rust 引擎，避免开关掩盖原生路径。"""
+    """
+    分别验证 Python 回退和真实 Rust 引擎，避免开关掩盖原生路径。
+    """
     if request.param == "python":
         monkeypatch.setattr(spider_module.rust_accel, "parse_indexer_torrents", Mock(return_value=None))
         return
     native = pytest.importorskip("moviepilot_rust")
 
     def parse_native(**kwargs):
-        """将同一窗口交给已安装的 Rust 解析入口。"""
+        """
+        将同一窗口交给已安装的 Rust 解析入口。
+        """
         return native.parse_indexer_torrents_fast(
             kwargs["html_text"], kwargs["domain"], kwargs["list_config"],
             kwargs["fields"], kwargs["category"], kwargs["result_num"],
@@ -53,7 +61,9 @@ def parser_engine(request, monkeypatch):
 
 
 def _response(count: int = 250) -> Response:
-    """生成一次返回多页结果的响应，每条标题携带可断言的原始行号。"""
+    """
+    生成一次返回多页结果的响应，每条标题携带可断言的原始行号。
+    """
     rows = "".join(
         f'<tr class="js-search-results-row"><td>{i}</td><td>'
         f'<a class="magnet-link-wrap">番剧 {i:03d}</a>'
@@ -75,7 +85,9 @@ def _response(count: int = 250) -> Response:
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize("page, start, stop", [(0, 0, 100), (1, 100, 200), (2, 200, 250), (3, 250, 250)])
 def test_unpaged_keyword_search_returns_requested_window(indexer, monkeypatch, asynchronous, page, start, stop):
-    """相同响应在两种请求与解析路径中产生独立页、尾页和成功空页。"""
+    """
+    相同响应在两种请求与解析路径中产生独立页、尾页和成功空页。
+    """
     requester = AsyncMock(return_value=_response()) if asynchronous else Mock(return_value=_response())
     transport = spider_module.AsyncRequestUtils if asynchronous else spider_module.RequestUtils
     monkeypatch.setattr(transport, "get_res", requester)
@@ -92,7 +104,9 @@ def test_unpaged_keyword_search_returns_requested_window(indexer, monkeypatch, a
 
 @pytest.mark.usefixtures("parser_engine")
 def test_unpaged_search_uses_configured_page_size(indexer, monkeypatch):
-    """本地窗口使用站点 result_num，与搜索编排的单页容量一致。"""
+    """
+    本地窗口使用站点 result_num，与搜索编排的单页容量一致。
+    """
     indexer["result_num"] = 50
     monkeypatch.setattr(spider_module.RequestUtils, "get_res", Mock(return_value=_response()))
 
@@ -108,7 +122,9 @@ def test_unpaged_search_uses_configured_page_size(indexer, monkeypatch):
     {"paths": [{"path": "search"}], "params": {"q": "{keyword}"}},
 ])
 def test_server_paged_search_keeps_response_first_window(indexer, monkeypatch, search):
-    """路径占位符和通用查询参数已传递页码时，不再对返回页应用偏移。"""
+    """
+    路径占位符和通用查询参数已传递页码时，不再对返回页应用偏移。
+    """
     indexer["search"] = search
     requester = Mock(return_value=_response())
     monkeypatch.setattr(spider_module.RequestUtils, "get_res", requester)
@@ -121,7 +137,9 @@ def test_server_paged_search_keeps_response_first_window(indexer, monkeypatch, s
 
 @pytest.mark.usefixtures("parser_engine")
 def test_browse_with_server_page_keeps_response_first_window(indexer, monkeypatch):
-    """无关键词浏览仍按浏览路径的服务端页码处理响应。"""
+    """
+    无关键词浏览仍按浏览路径的服务端页码处理响应。
+    """
     indexer["browse"] = {"path": "Home/Classic/{page}", "start": 1}
     requester = Mock(return_value=_response())
     monkeypatch.setattr(spider_module.RequestUtils, "get_res", requester)

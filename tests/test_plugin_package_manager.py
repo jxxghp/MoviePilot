@@ -1,3 +1,7 @@
+"""
+验证插件包安装、替换和回滚事务。
+"""
+
 import errno
 import shutil
 from pathlib import Path
@@ -11,7 +15,9 @@ from app.runtime.dependencies.native import LoadedNativeDependencySnapshot
 
 
 def _manager(monkeypatch, tmp_path: Path) -> PluginPackageManager:
-    """构造使用隔离运行目录和事务目录的插件包管理器。"""
+    """
+    构造使用隔离运行目录和事务目录的插件包管理器。
+    """
     settings = SimpleNamespace(
         ROOT_PATH=tmp_path,
         TEMP_PATH=tmp_path / "temp",
@@ -29,7 +35,9 @@ def _manager(monkeypatch, tmp_path: Path) -> PluginPackageManager:
 
 
 def test_checkpoint_rollback_restores_existing_package(monkeypatch, tmp_path):
-    """已存在插件在后续阶段失败时应完整恢复原文件。"""
+    """
+    已存在插件在后续阶段失败时应完整恢复原文件。
+    """
     manager = _manager(monkeypatch, tmp_path)
     plugin_dir = tmp_path / "app" / "plugins" / "demoplugin"
     plugin_dir.mkdir(parents=True)
@@ -50,7 +58,9 @@ def test_checkpoint_rollback_handles_cross_device_plugin_directory(
     monkeypatch,
     tmp_path,
 ):
-    """overlayfs 拒绝目录 rename 时仍应恢复旧插件并清理事务。"""
+    """
+    overlayfs 拒绝目录 rename 时仍应恢复旧插件并清理事务。
+    """
     manager = _manager(monkeypatch, tmp_path)
     plugin_dir = tmp_path / "app" / "plugins" / "demoplugin"
     plugin_dir.mkdir(parents=True)
@@ -64,7 +74,9 @@ def test_checkpoint_rollback_handles_cross_device_plugin_directory(
     original_replace = Path.replace
 
     def replace(self: Path, target: Path) -> Path:
-        """只模拟运行目录跨设备 rename 失败，保留其他替换操作。"""
+        """
+        只模拟运行目录跨设备 rename 失败，保留其他替换操作。
+        """
         if self == plugin_dir and target.name.startswith(
             ".demoplugin.previous-"
         ):
@@ -80,7 +92,9 @@ def test_checkpoint_rollback_handles_cross_device_plugin_directory(
 
 
 def test_checkpoint_uses_injected_plugin_root(monkeypatch, tmp_path):
-    """显式装配的插件根目录必须覆盖全局运行目录设置。"""
+    """
+    显式装配的插件根目录必须覆盖全局运行目录设置。
+    """
     _manager(monkeypatch, tmp_path)
     plugin_root = tmp_path / "custom-plugins"
     plugin_dir = plugin_root / "demoplugin"
@@ -98,7 +112,9 @@ def test_checkpoint_uses_injected_plugin_root(monkeypatch, tmp_path):
 
 
 def test_remove_plugin_uses_package_owner_path_boundary(tmp_path):
-    """物理卸载只删除注入根目录内的目标插件。"""
+    """
+    物理卸载只删除注入根目录内的目标插件。
+    """
     plugin_root = tmp_path / "plugins"
     plugin_dir = plugin_root / "demoplugin"
     plugin_dir.mkdir(parents=True)
@@ -131,7 +147,9 @@ def test_file_list_download_rejects_paths_outside_plugin_root(
     remote_path,
     package_version,
 ):
-    """同步文件列表安装不得把远端路径写到当前插件目录之外。"""
+    """
+    同步文件列表安装不得把远端路径写到当前插件目录之外。
+    """
     plugin_root = tmp_path / "plugins"
     manager = PluginPackageManager(source=Mock(), plugin_root=plugin_root)
     request = Mock()
@@ -158,7 +176,9 @@ async def test_async_file_list_download_rejects_path_outside_plugin_root(
     monkeypatch,
     tmp_path,
 ):
-    """异步文件列表安装复用同一受控路径边界。"""
+    """
+    异步文件列表安装复用同一受控路径边界。
+    """
     manager = PluginPackageManager(source=Mock(), plugin_root=tmp_path / "plugins")
     request = AsyncMock()
     monkeypatch.setattr(
@@ -189,7 +209,9 @@ async def test_file_list_download_rejects_traversal_directory_names(
     monkeypatch,
     tmp_path,
 ):
-    """目录项名称不得扩大后续市场查询到当前插件树之外。"""
+    """
+    目录项名称不得扩大后续市场查询到当前插件树之外。
+    """
     manager = PluginPackageManager(source=Mock(), plugin_root=tmp_path / "plugins")
     sync_query = Mock()
     async_query = AsyncMock()
@@ -220,7 +242,9 @@ async def test_file_list_download_preserves_binary_payload_in_injected_plugin_ro
     monkeypatch,
     tmp_path,
 ):
-    """同步与异步文件列表都应在受控根目录内保留原始文件字节。"""
+    """
+    同步与异步文件列表都应在受控根目录内保留原始文件字节。
+    """
     plugin_root = tmp_path / "plugins"
     payload = b"\x00\xffwheel-payload"
     response = SimpleNamespace(status_code=200, content=payload, text="wrong-text")
@@ -250,7 +274,9 @@ async def test_file_list_download_preserves_binary_payload_in_injected_plugin_ro
 
 
 def test_checkpoint_does_not_scan_native_dependencies(monkeypatch, tmp_path):
-    """普通插件文件快照不应枚举宿主全部原生发行包。"""
+    """
+    普通插件文件快照不应枚举宿主全部原生发行包。
+    """
     manager = _manager(monkeypatch, tmp_path)
     capture = Mock()
     monkeypatch.setattr(
@@ -266,7 +292,9 @@ def test_checkpoint_does_not_scan_native_dependencies(monkeypatch, tmp_path):
 
 
 def test_checkpoint_rollback_removes_new_package(monkeypatch, tmp_path):
-    """首次安装失败时应删除安装过程创建的不完整目录。"""
+    """
+    首次安装失败时应删除安装过程创建的不完整目录。
+    """
     manager = _manager(monkeypatch, tmp_path)
     checkpoint = manager.checkpoint("DemoPlugin")
     plugin_dir = tmp_path / "app" / "plugins" / "demoplugin"
@@ -280,7 +308,9 @@ def test_checkpoint_rollback_removes_new_package(monkeypatch, tmp_path):
 
 
 def test_rollback_does_not_delete_package_when_snapshot_is_missing(monkeypatch, tmp_path):
-    """补偿快照损坏时先失败，不能先删除当前可用插件。"""
+    """
+    补偿快照损坏时先失败，不能先删除当前可用插件。
+    """
     manager = _manager(monkeypatch, tmp_path)
     plugin_dir = tmp_path / "app" / "plugins" / "demoplugin"
     plugin_dir.mkdir(parents=True)
@@ -300,7 +330,9 @@ def test_durable_checkpoint_stages_backup_without_overwriting_current_backup(
     monkeypatch,
     tmp_path,
 ):
-    """数据库提交前只准备新备份，现有容器恢复材料保持可用。"""
+    """
+    数据库提交前只准备新备份，现有容器恢复材料保持可用。
+    """
     manager = _manager(monkeypatch, tmp_path)
     monkeypatch.setattr(
         "app.adapters.system.plugin.package.SystemUtils.is_docker",
@@ -325,7 +357,9 @@ def test_durable_checkpoint_stages_backup_without_overwriting_current_backup(
 
 
 def test_activate_and_finalize_persistent_backup_are_retryable(monkeypatch, tmp_path):
-    """备份激活保留旧载荷，数据库提交后的清理可以重复执行。"""
+    """
+    备份激活保留旧载荷，数据库提交后的清理可以重复执行。
+    """
     manager = _manager(monkeypatch, tmp_path)
     monkeypatch.setattr(
         "app.adapters.system.plugin.package.SystemUtils.is_docker",
@@ -358,7 +392,9 @@ def test_activate_and_finalize_persistent_backup_are_retryable(monkeypatch, tmp_
 
 
 def test_rollback_removes_staging_but_preserves_current_backup(monkeypatch, tmp_path):
-    """提交前失败只恢复运行目录，不修改上一份容器恢复备份。"""
+    """
+    提交前失败只恢复运行目录，不修改上一份容器恢复备份。
+    """
     manager = _manager(monkeypatch, tmp_path)
     monkeypatch.setattr(
         "app.adapters.system.plugin.package.SystemUtils.is_docker",
@@ -386,7 +422,9 @@ def test_rollback_after_backup_activation_restores_previous_backup(
     monkeypatch,
     tmp_path,
 ):
-    """数据库提交前失败时，已激活的新备份必须回退到上一份载荷。"""
+    """
+    数据库提交前失败时，已激活的新备份必须回退到上一份载荷。
+    """
     manager = _manager(monkeypatch, tmp_path)
     monkeypatch.setattr(
         "app.adapters.system.plugin.package.SystemUtils.is_docker",
@@ -410,7 +448,9 @@ def test_rollback_after_backup_activation_restores_previous_backup(
 
 
 def test_restore_checkpoint_derives_only_controlled_paths(monkeypatch, tmp_path):
-    """崩溃回放只按事务 ID 在受控根目录内重建文件引用。"""
+    """
+    崩溃回放只按事务 ID 在受控根目录内重建文件引用。
+    """
     manager = _manager(monkeypatch, tmp_path)
     monkeypatch.setattr(
         "app.adapters.system.plugin.package.SystemUtils.is_docker",
@@ -436,7 +476,9 @@ def test_restore_checkpoint_derives_only_controlled_paths(monkeypatch, tmp_path)
 
 
 def test_local_sync_failure_restores_previous_runtime_copy(monkeypatch, tmp_path):
-    """本地来源不可复制时不得丢失已经运行的插件副本。"""
+    """
+    本地来源不可复制时不得丢失已经运行的插件副本。
+    """
     manager = _manager(monkeypatch, tmp_path)
     plugin_dir = tmp_path / "app" / "plugins" / "demoplugin"
     plugin_dir.mkdir(parents=True)

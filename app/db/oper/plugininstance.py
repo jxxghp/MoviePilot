@@ -1,4 +1,6 @@
-"""插件实例的数据访问原语。"""
+"""
+插件实例的数据访问原语。
+"""
 
 from __future__ import annotations
 
@@ -16,7 +18,9 @@ from app.schemas.plugin import validate_plugin_id
 
 
 def _now() -> str:
-    """返回实例行使用的 ISO-8601 时间戳。"""
+    """
+    返回实例行使用的 ISO-8601 时间戳。
+    """
     return datetime.now(timezone.utc).isoformat()
 
 
@@ -28,7 +32,8 @@ def _apply_config_data(
     source_plugin_id: str,
     config_data: Any,
 ) -> Optional[bool]:
-    """把业务参数写进已查出的行，行不存在则按本次身份建出一行。
+    """
+    把业务参数写进已查出的行，行不存在则按本次身份建出一行。
 
     同步与异步写入只有查询方式不同，落库决策共用这一份：两边各写一份会让
     「值未变化不写」和「建行用哪个源插件」在两条路径上悄悄分叉。
@@ -60,20 +65,25 @@ def _apply_config_data(
 
 
 class PluginInstanceOper(DbOper):
-    """在调用方 Session 或独占事务中查询并暂存插件实例。
+    """
+    在调用方 Session 或独占事务中查询并暂存插件实例。
 
     一行由 ``instance_id`` 唯一确定，``source_plugin_id`` 指向提供代码的源插件；
     两者相等即源插件本体，不等即共享其源码的分身。
     """
 
     def get(self, instance_id: str) -> Optional[PluginInstance]:
-        """按实例 ID 查询单行，分身与本体共用同一张表和同一个查询。"""
+        """
+        按实例 ID 查询单行，分身与本体共用同一张表和同一个查询。
+        """
         return self._execute_sync_query(
             lambda session: PluginInstance.get_by_instance_id(session, instance_id)
         )
 
     def list_by_source(self, source_plugin_id: str) -> list[PluginInstance]:
-        """按源插件 ID 列举其全部实例，含分身与本体。"""
+        """
+        按源插件 ID 列举其全部实例，含分身与本体。
+        """
         return list(
             self._execute_sync_query(
                 lambda session: PluginInstance.list_by_source_plugin_id(
@@ -84,7 +94,9 @@ class PluginInstanceOper(DbOper):
         )
 
     def list_all(self) -> list[PluginInstance]:
-        """列举全部实例，供目录投影与兜底导入判空使用。"""
+        """
+        列举全部实例，供目录投影与兜底导入判空使用。
+        """
         return list(
             self._execute_sync_query(
                 lambda session: session.execute(select(PluginInstance)).scalars().all()
@@ -92,7 +104,9 @@ class PluginInstanceOper(DbOper):
         )
 
     def list_enabled(self) -> list[PluginInstance]:
-        """列举应当被实例化并启动的实例，供运行期批量装载使用。"""
+        """
+        列举应当被实例化并启动的实例，供运行期批量装载使用。
+        """
         return list(
             self._execute_sync_query(
                 lambda session: session.execute(
@@ -102,7 +116,8 @@ class PluginInstanceOper(DbOper):
         )
 
     def save(self, **fields: Any) -> PluginInstance:
-        """按 ``instance_id`` 新增或更新一行，只写入本次给出的列。
+        """
+        按 ``instance_id`` 新增或更新一行，只写入本次给出的列。
 
         查询与写入收在同一事务内，避免两个并发的首次写入各自读到空、双双插入而
         撞上 ``instance_id`` 唯一键。
@@ -120,7 +135,9 @@ class PluginInstanceOper(DbOper):
         instance_id = fields["instance_id"]
 
         def stage(session: Session) -> PluginInstance:
-            """在同一事务内查询并新增或更新实例行。"""
+            """
+            在同一事务内查询并新增或更新实例行。
+            """
             existing = PluginInstance.get_by_instance_id(session, instance_id)
             if existing is None:
                 record = PluginInstance(**fields, created_at=now, updated_at=now)
@@ -139,14 +156,17 @@ class PluginInstanceOper(DbOper):
         return self._execute_sync_write(stage)
 
     def delete(self, instance_id: str) -> bool:
-        """按实例 ID 删除整行，返回删除前是否存在。
+        """
+        按实例 ID 删除整行，返回删除前是否存在。
 
         这会连同该实例的业务参数与展示信息一起清除：分身的存在本身就由这一行表达，
         删行即卸载分身。
         """
 
         def stage(session: Session) -> bool:
-            """在同一事务内查询并删除，避免读写跨两个独立事务。"""
+            """
+            在同一事务内查询并删除，避免读写跨两个独立事务。
+            """
             existing = PluginInstance.get_by_instance_id(session, instance_id)
             if existing is None:
                 return False
@@ -156,7 +176,8 @@ class PluginInstanceOper(DbOper):
         return bool(self._execute_sync_write(stage))
 
     def purge_invalid_empty_host(self, instance_id: str) -> bool:
-        """原子删除非法 ID 的空本体行，不接触插件文件或其它数据表。
+        """
+        原子删除非法 ID 的空本体行，不接触插件文件或其它数据表。
 
         该路径专门服务历史迁移残留：只有 ID 非法、行是未启用本体、没有展示或日志
         覆盖且配置为 SQL NULL/JSON null 时才删除。所有条件进入同一条 DELETE，避免
@@ -170,7 +191,9 @@ class PluginInstanceOper(DbOper):
             return False
 
         def stage(session: Session) -> bool:
-            """在调用方事务中删除满足历史空行条件的记录。"""
+            """
+            在调用方事务中删除满足历史空行条件的记录。
+            """
             result = session.execute(
                 delete(PluginInstance).where(
                     PluginInstance.instance_id == instance_id,
@@ -198,7 +221,8 @@ class PluginInstanceOper(DbOper):
         return bool(self._execute_sync_write(stage))
 
     def set_enabled(self, *, instance_id: str, is_enabled: bool) -> bool:
-        """写入启用位，它同时就是卸载与恢复的开关。
+        """
+        写入启用位，它同时就是卸载与恢复的开关。
 
         置假即卸载：业务参数与展示信息原样留在这一行等待再次启用，因而不需要另设
         一个卸载时间列。同时清掉两项只对在册实例才有意义的状态——默认调用目标置位，
@@ -212,7 +236,9 @@ class PluginInstanceOper(DbOper):
         """
 
         def stage(session: Session) -> bool:
-            """在同一事务内写入启用位，停用时一并清掉仅对在册实例有意义的状态。"""
+            """
+            在同一事务内写入启用位，停用时一并清掉仅对在册实例有意义的状态。
+            """
             record = PluginInstance.get_by_instance_id(session, instance_id)
             if record is None:
                 return False
@@ -227,7 +253,8 @@ class PluginInstanceOper(DbOper):
         return bool(self._execute_sync_write(stage))
 
     def set_default_target(self, source_plugin_id: str, instance_id: str) -> bool:
-        """原子地把某源插件的默认调用目标改为指定实例，同一事务内清旧置新。
+        """
+        原子地把某源插件的默认调用目标改为指定实例，同一事务内清旧置新。
 
         目标行须已经落盘：这里只按 ``instance_id`` 与 ``source_plugin_id`` 双重匹配
         定位目标行，不做隐式创建；命中失败原样返回，不动同插件原有的置位。命中时
@@ -240,7 +267,9 @@ class PluginInstanceOper(DbOper):
         """
 
         def stage(session: Session) -> bool:
-            """在同一事务内定位目标行、清除同插件其余置位、置位目标行。"""
+            """
+            在同一事务内定位目标行、清除同插件其余置位、置位目标行。
+            """
             target = session.execute(
                 select(PluginInstance).where(
                     PluginInstance.instance_id == instance_id,
@@ -265,14 +294,17 @@ class PluginInstanceOper(DbOper):
         return bool(self._execute_sync_write(stage))
 
     def clear_default_target(self, source_plugin_id: str) -> None:
-        """清除某源插件的默认调用目标置位，重复调用保持幂等。
+        """
+        清除某源插件的默认调用目标置位，重复调用保持幂等。
 
         置位被清掉后该行若已只剩身份列则不在这里回收：本体行的回收统一由清空业务
         参数与清除日志等级两处判定，多一处入口只会让「行何时消失」变得难以预期。
         """
 
         def stage(session: Session) -> None:
-            """在同一事务内清除该源插件全部置位的行。"""
+            """
+            在同一事务内清除该源插件全部置位的行。
+            """
             session.execute(
                 update(PluginInstance)
                 .where(
@@ -285,7 +317,8 @@ class PluginInstanceOper(DbOper):
         self._execute_sync_write(stage)
 
     def get_config_data(self, instance_id: str) -> Any:
-        """读取某实例的业务参数；该行不存在或从未存过参数都返回 None。
+        """
+        读取某实例的业务参数；该行不存在或从未存过参数都返回 None。
 
         返回深拷贝：调用方拿到的是一份独立副本，就地改动不会顺着 ORM 行漏进
         下一次写入的「值未变化」判定。
@@ -303,7 +336,8 @@ class PluginInstanceOper(DbOper):
         source_plugin_id: str,
         config_data: Any,
     ) -> Optional[bool]:
-        """写入业务参数，保留该行已有的身份与展示信息。
+        """
+        写入业务参数，保留该行已有的身份与展示信息。
 
         :param instance_id: 实例 ID
         :param source_plugin_id: 该行不存在时用于建行的源插件 ID
@@ -312,7 +346,9 @@ class PluginInstanceOper(DbOper):
         """
 
         def stage(session: Session) -> Optional[bool]:
-            """在同一事务内创建或更新业务参数。"""
+            """
+            在同一事务内创建或更新业务参数。
+            """
             return _apply_config_data(
                 session,
                 PluginInstance.get_by_instance_id(session, instance_id),
@@ -330,7 +366,8 @@ class PluginInstanceOper(DbOper):
         source_plugin_id: str,
         config_data: Any,
     ) -> Optional[bool]:
-        """在异步事务中写入业务参数，行为与同步写入一致。
+        """
+        在异步事务中写入业务参数，行为与同步写入一致。
 
         :param instance_id: 实例 ID
         :param source_plugin_id: 该行不存在时用于建行的源插件 ID
@@ -339,7 +376,9 @@ class PluginInstanceOper(DbOper):
         """
 
         async def stage(session: AsyncSession) -> Optional[bool]:
-            """在同一异步事务内创建或更新业务参数。"""
+            """
+            在同一异步事务内创建或更新业务参数。
+            """
             return _apply_config_data(
                 session,
                 await PluginInstance.async_get_by_instance_id(session, instance_id),
@@ -357,7 +396,8 @@ class PluginInstanceOper(DbOper):
         log_level: Optional[str],
         log_expires_at: Optional[str],
     ) -> bool:
-        """写入或清除该实例的日志等级覆盖，没有实例行时按本体建出。
+        """
+        写入或清除该实例的日志等级覆盖，没有实例行时按本体建出。
 
         只设过等级、从没存过参数的插件同样要有一行，否则覆盖无处落盘；反过来，
         清除覆盖后若该行是本体且各列皆空，整行一并回收，与清空业务参数同一规则，
@@ -370,7 +410,9 @@ class PluginInstanceOper(DbOper):
         """
 
         def stage(session: Session) -> bool:
-            """在同一事务内写入等级覆盖，并回收清空后只剩身份的本体行。"""
+            """
+            在同一事务内写入等级覆盖，并回收清空后只剩身份的本体行。
+            """
             record = PluginInstance.get_by_instance_id(session, instance_id)
             if record is None:
                 if log_level is None and log_expires_at is None:
@@ -397,7 +439,8 @@ class PluginInstanceOper(DbOper):
         return bool(self._execute_sync_write(stage))
 
     def clear_config_data(self, instance_id: str) -> bool:
-        """清空某实例的业务参数，保留其身份与展示信息。
+        """
+        清空某实例的业务参数，保留其身份与展示信息。
 
         清空后若该行是本体且各列皆空，整行一并移除，避免只剩一对身份列的空行堆积。
 
@@ -406,7 +449,9 @@ class PluginInstanceOper(DbOper):
         """
 
         def stage(session: Session) -> bool:
-            """在同一事务内清空业务参数并回收空的本体行。"""
+            """
+            在同一事务内清空业务参数并回收空的本体行。
+            """
             record = PluginInstance.get_by_instance_id(session, instance_id)
             if record is None:
                 return False

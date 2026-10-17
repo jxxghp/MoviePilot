@@ -1,3 +1,7 @@
+"""
+媒体、通知、存储、模块与事件使用的公共枚举和类型约束。
+"""
+
 import re
 from enum import Enum
 from typing import Literal, Optional, Tuple, Union
@@ -25,9 +29,13 @@ MUSIC_SUBSCRIBABLE_TYPES = frozenset({
 
 
 class ReplyMode(str, Enum):
-    """Agent 最终回复的投递策略，供编排层与调用层共享。"""
+    """
+    Agent 最终回复的投递策略，供编排层与调用层共享。
+    """
 
+    # 向配置的消息渠道投递最终回复
     DISPATCH = "dispatch"
+    # 仅返回最终回复，由调用方决定投递方式
     CAPTURE_ONLY = "capture_only"
 
 
@@ -56,15 +64,26 @@ LISTENBRAINZ_FRESH_MAX_DAYS = 90
 
 # 媒体类型
 class MediaType(Enum):
+    """
+    媒体条目的业务类型。
+    """
+
+    # 电影
     MOVIE = '电影'
+    # 电视剧
     TV = '电视剧'
+    # 音乐
     MUSIC = '音乐'
+    # 系列
     COLLECTION = '系列'
+    # 未知
     UNKNOWN = '未知'
 
     @staticmethod
     def from_agent(key: str) -> Optional["MediaType"]:
-        """将 Agent 媒体类型转换为 MediaType。"""
+        """
+        将 Agent 媒体类型转换为 MediaType。
+        """
         _map = {
             "movie": MediaType.MOVIE,
             "tv": MediaType.TV,
@@ -73,7 +92,9 @@ class MediaType(Enum):
         return _map.get(key.strip().lower() if key else "")
 
     def to_agent(self) -> str:
-        """将 MediaType 转换为 Agent 使用的媒体类型。"""
+        """
+        将 MediaType 转换为 Agent 使用的媒体类型。
+        """
         return {
             MediaType.MOVIE: "movie",
             MediaType.TV: "tv",
@@ -91,25 +112,40 @@ _MEDIA_SOURCE_VALUE_ALIASES = {
 
 
 class MediaSource(str, Enum):
-    """媒体主身份的数据来源，内置来源为常量，插件来源为动态扩展成员。"""
+    """
+    媒体主身份的数据来源，内置来源为常量，插件来源为动态扩展成员。
+    """
 
+    # TMDB 影视数据库
     TMDB = "themoviedb"
+    # 豆瓣影视数据
     Douban = "douban"
+    # Bangumi 动画数据
     Bangumi = "bangumi"
+    # AniList 动画数据
     AniList = "anilist"
+    # IMDb 影视数据库
     IMDb = "imdb"
+    # TVDB 剧集数据库
     TVDB = "tvdb"
+    # MusicBrainz 音乐数据库
     MusicBrainz = "musicbrainz"
+    # TheAudioDB 音乐数据
     TheAudioDB = "theaudiodb"
+    # 豆瓣音乐数据
     DoubanMusic = "doubanmusic"
 
     def __str__(self) -> str:
-        """返回可直接用于 API 和数据库的规范值。"""
+        """
+        返回可直接用于 API 和数据库的规范值。
+        """
         return self.value
 
     @classmethod
     def _missing_(cls, value: object) -> Optional["MediaSource"]:
-        """将合法插件来源标识解析为动态枚举成员，并规范化内置别名。"""
+        """
+        将合法插件来源标识解析为动态枚举成员，并规范化内置别名。
+        """
         if not isinstance(value, str):
             return None
         normalized = value.strip().casefold()
@@ -129,7 +165,9 @@ class MediaSource(str, Enum):
     def __get_pydantic_json_schema__(
             cls, core_schema: CoreSchema, handler: GetJsonSchemaHandler,
     ) -> dict:
-        """在 OpenAPI 中声明可扩展标识格式，避免把内置成员误写成完整白名单。"""
+        """
+        在 OpenAPI 中声明可扩展标识格式，避免把内置成员误写成完整白名单。
+        """
         schema = handler(core_schema)
         schema.pop("enum", None)
         schema["pattern"] = MEDIA_SOURCE_IDENTIFIER_PATTERN
@@ -142,7 +180,9 @@ MediaSourceSelection = Union[MediaSource, Tuple[MediaSource, ...]]
 
 
 def media_type_to_agent(value) -> Optional[str]:
-    """将枚举、Agent 键或数据库枚举值统一转换为 Agent 媒体类型。"""
+    """
+    将枚举、Agent 键或数据库枚举值统一转换为 Agent 媒体类型。
+    """
     if isinstance(value, MediaType):
         return value.to_agent()
     if isinstance(value, str):
@@ -158,35 +198,68 @@ def media_type_to_agent(value) -> Optional[str]:
 
 # 排序类型枚举
 class SortType(Enum):
-    TIME = "time"  # 按时间排序
-    COUNT = "count"  # 按人数排序
-    RATING = "rating"  # 按评分排序
+    """
+    列表排序依据。
+    """
+
+    # 按时间排序
+    TIME = "time"
+    # 按人数排序
+    COUNT = "count"
+    # 按评分排序
+    RATING = "rating"
 
 
 # 种子状态
 class TorrentStatus(Enum):
+    """
+    种子的下载或整理状态。
+    """
+
+    # 可转移
     TRANSFER = "可转移"
+    # 下载中
     DOWNLOADING = "下载中"
 
 
 # 下载器任务查询状态
 class TorrentQueryStatus(Enum):
+    """
+    下载器查询任务时支持的状态范围。
+    """
+
+    # 查询全部下载任务
     ALL = "all"
+    # 查询可整理任务
     TRANSFER = "transfer"
+    # 查询正在下载的任务
     DOWNLOADING = "downloading"
+    # 查询已完成下载的任务
     COMPLETED = "completed"
+    # 查询已暂停的任务
     PAUSED = "paused"
 
 
 # 下载器任务归一状态
 class DownloadTaskState(Enum):
+    """
+    跨下载器统一后的任务状态。
+    """
+
+    # 正在下载
     DOWNLOADING = "downloading"
+    # 已暂停
     PAUSED = "paused"
+    # 已完成下载
     COMPLETED = "completed"
 
 
 # 异步广播事件
 class EventType(Enum):
+    """
+    异步广播事件的名称。
+    """
+
     # 插件需要重载
     PluginReload = "plugin.reload"
     # 触发插件动作
@@ -289,6 +362,10 @@ EVENT_TYPE_NAMES = {
 
 # 同步链式事件
 class ChainEventType(Enum):
+    """
+    同步链式事件的名称。
+    """
+
     # 插件数据重置前
     PluginDataReset = "plugin.data.reset"
     # 名称识别
@@ -337,6 +414,10 @@ class ChainEventType(Enum):
 
 # 系统配置Key字典
 class SystemConfigKey(Enum):
+    """
+    系统配置持久化键。
+    """
+
     # 下载器配置
     Downloaders = "Downloaders"
     # 媒体服务器配置
@@ -430,6 +511,10 @@ class SystemConfigKey(Enum):
 
 # 处理进度Key字典
 class ProgressKey(Enum):
+    """
+    后台处理进度的分类键。
+    """
+
     # 搜索
     Search = "search"
     # 整理
@@ -440,12 +525,22 @@ class ProgressKey(Enum):
 
 # 媒体图片类型
 class MediaImageType(Enum):
+    """
+    媒体图片的用途。
+    """
+
+    # 媒体海报
     Poster = "poster_path"
+    # 媒体背景图
     Backdrop = "backdrop_path"
 
 
 # 消息类型
 class MessageType(Enum):
+    """
+    通知消息的业务场景。
+    """
+
     # 资源下载
     Download = "资源下载"
     # 整理入库
@@ -468,7 +563,7 @@ class MessageType(Enum):
 
 class ContentType(str, Enum):
     """
-    消息内容类型
+    消息内容类型。
     操作状态的通知消息类型标识
     """
     # 订阅添加成功
@@ -484,26 +579,39 @@ class ContentType(str, Enum):
 # 通知渠道
 class NotificationChannel(Enum):
     """
-    通知渠道
+    通知渠道。
     """
+    # 微信消息渠道
     Wechat = "微信"
+    # 飞书消息渠道
     Feishu = "飞书"
+    # 微信 ClawBot 消息渠道
     WechatClawBot = "微信ClawBot"
+    # Telegram 消息渠道
     Telegram = "Telegram"
+    # Slack 消息渠道
     Slack = "Slack"
+    # Discord 消息渠道
     Discord = "Discord"
+    # 钉钉消息渠道
     DingTalk = "钉钉"
+    # 群晖聊天消息渠道
     SynologyChat = "SynologyChat"
+    # VoceChat 消息渠道
     VoceChat = "VoceChat"
+    # 网页通知渠道
     Web = "Web"
+    # 网页智能体会话渠道
     WebAgent = "WebAgent"
+    # 浏览器推送渠道
     WebPush = "WebPush"
+    # QQ 消息渠道
     QQ = "QQ"
 
 
 class NotificationAction(str, Enum):
     """
-    通知渠道通用管理动作
+    通知渠道通用管理动作。
 
     作为渠道管理契约的公共词汇表，具体动作的支持范围与参数语义由渠道模块自行解释
     """
@@ -523,7 +631,7 @@ class NotificationAction(str, Enum):
 
 class StorageAction(str, Enum):
     """
-    网盘存储通用管理动作
+    网盘存储通用管理动作。
 
     作为存储管理契约的公共词汇表，具体动作的支持范围与参数语义由存储实现自行解释
     """
@@ -546,7 +654,7 @@ class StorageAction(str, Enum):
 # LLM 提供商通用管理动作
 class LlmProviderAction(str, Enum):
     """
-    LLM 提供商通用管理动作
+    LLM 提供商通用管理动作。
 
     作为提供商管理契约的公共词汇表，具体动作的支持范围与参数语义由提供商实现自行解释
     """
@@ -568,25 +676,31 @@ class LlmProviderAction(str, Enum):
 
 # 下载器类型
 class DownloaderType(Enum):
-    # Qbittorrent
+    """
+    支持的下载器产品。
+    """
+
+    # Qbittorrent 下载器
     Qbittorrent = "Qbittorrent"
-    # Transmission
+    # Transmission 下载器
     Transmission = "Transmission"
-    # Rtorrent
+    # Rtorrent 下载器
     Rtorrent = "Rtorrent"
-    # Aria2
-    # Aria2 = "Aria2"
 
 
 # 媒体服务器类型
 class MediaServerType(Enum):
-    # Emby
+    """
+    支持的媒体服务器产品。
+    """
+
+    # Emby 媒体服务器
     Emby = "Emby"
     # 极影视
     ZSpace = "ZSpace"
-    # Jellyfin
+    # Jellyfin 媒体服务器
     Jellyfin = "Jellyfin"
-    # Plex
+    # Plex 媒体服务器
     Plex = "Plex"
     # 飞牛影视
     TrimeMedia = "TrimeMedia"
@@ -600,26 +714,34 @@ class MediaServerType(Enum):
 
 # 识别器类型
 class MediaRecognizeType(Enum):
+    """
+    媒体识别数据源。
+    """
+
     # 豆瓣
     Douban = "豆瓣"
-    # TMDB
+    # TMDB 媒体识别数据源
     TMDB = "TheMovieDb"
-    # TVDB
+    # TVDB 媒体识别数据源
     TVDB = "TheTvDb"
-    # bangumi
+    # Bangumi 媒体识别数据源
     Bangumi = "Bangumi"
-    # AniList
+    # AniList 媒体识别数据源
     AniList = "AniList"
-    # IMDb
+    # IMDb 媒体识别数据源
     IMDb = "IMDb"
-    # MusicBrainz
+    # MusicBrainz 媒体识别数据源
     MusicBrainz = "MusicBrainz"
-    # TheAudioDB
+    # TheAudioDB 媒体识别数据源
     TheAudioDB = "TheAudioDB"
 
 
 # 用户配置Key字典
 class UserConfigKey(Enum):
+    """
+    用户个性化配置的持久化键。
+    """
+
     # 监控面板
     Dashboard = "Dashboard"
     # Agent 助手形象选择：{"plugin_id", "key"}、"builtin"（内置机器人）或 null（跟随 AI_AGENT_PET 默认）
@@ -628,18 +750,32 @@ class UserConfigKey(Enum):
 
 # 支持的存储类型
 class StorageSchema(Enum):
+    """
+    文件地址支持的存储协议。
+    """
+
     # 存储类型
     Local = "local"
+    # 阿里云盘
     Alipan = "alipan"
+    # 115 网盘
     U115 = "u115"
+    # Rclone 存储
     Rclone = "rclone"
+    # Alist 聚合存储
     Alist = "alist"
+    # AlistGo 聚合存储
     AlistGo = "alistgo"
+    # SMB 共享存储
     SMB = "smb"
 
 
 # 模块类型
 class ModuleType(Enum):
+    """
+    模块提供的主要服务类型。
+    """
+
     # 下载器
     Downloader = "downloader"
     # 媒体服务器
@@ -655,11 +791,13 @@ class ModuleType(Enum):
 
 
 class OtherModulesType(Enum):
-    """标识字幕、歌词等不属于专用服务分类的模块。"""
+    """
+    标识字幕、歌词等不属于专用服务分类的模块。
+    """
 
     # 字幕
     Subtitle = "站点字幕"
-    # Fanart
+    # Fanart 媒体艺术图片
     Fanart = "Fanart"
     # 文件整理
     FileManager = "文件整理"
@@ -667,11 +805,11 @@ class OtherModulesType(Enum):
     Filter = "过滤器"
     # 站点索引
     Indexer = "站点索引"
-    # PostgreSQL
+    # PostgreSQL 数据库服务
     PostgreSQL = "PostgreSQL"
-    # Redis
+    # Redis 缓存服务
     Redis = "Redis"
-    # ListenBrainz
+    # ListenBrainz 音乐推荐服务
     ListenBrainz = "ListenBrainz"
     # LRCLIB 歌词
     Lrclib = "LRCLIB"
@@ -682,10 +820,18 @@ class OtherModulesType(Enum):
 
 
 class NameValueEnum(Enum):
-    """支持通过 name 或 value 实例化的枚举基类"""
+    """
+    支持通过 name 或 value 实例化的枚举基类。
+    """
 
     @classmethod
     def _missing_(cls, value):
+        """
+        在直接按值查找失败后，尝试按忽略大小写的成员名称匹配。
+
+        :param value: 待匹配的枚举名称或值
+        :return: 匹配成员，非字符串或没有匹配项时返回 None
+        """
         if isinstance(value, str):
             for member in cls:
                 if member.name.lower() == value.lower() or member.value == value:
@@ -695,30 +841,61 @@ class NameValueEnum(Enum):
 
 # 刮削策略
 class ScrapingPolicy(NameValueEnum):
+    """
+    已有元数据的刮削处理策略。
+    """
+
+    # 仅缺失
     MISSINGONLY = "仅缺失"
+    # 跳过
     SKIP = "跳过"
+    # 覆盖
     OVERWRITE = "覆盖"
+    # 质量升级
     UPGRADE = "质量升级"
 
 
 # 刮削目标类型
 class ScrapingTarget(NameValueEnum):
+    """
+    刮削操作的目标层级。
+    """
+
+    # 电影
     MOVIE = "电影"
+    # 电视剧
     TV = "电视剧"
+    # 季
     SEASON = "季"
+    # 集
     EPISODE = "集"
+    # 音乐
     MUSIC = "音乐"
 
 
 # 刮削元数据类型
 class ScrapingMetadata(NameValueEnum):
+    """
+    可刮削的元数据和图片类型。
+    """
+
+    # 媒体元数据文件
     NFO = "NFO"
+    # 海报
     POSTER = "海报"
+    # 背景图
     BACKDROP = "背景图"
+    # 透明标志图片
     LOGO = "Logo"
+    # 横幅图
     BANNER = "横幅图"
+    # 缩略图
     THUMB = "缩略图"
+    # 光盘图
     DISC = "光盘图"
+    # 透明艺术图
     CLEARART = "透明艺术图"
+    # 横版缩略图
     LANDSCAPE = "横版缩略图"
+    # 歌词
     LYRICS = "歌词"

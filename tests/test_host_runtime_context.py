@@ -1,4 +1,6 @@
-"""类型化 HostRuntime 与 FastAPI AppState 注入测试。"""
+"""
+类型化 HostRuntime 与 FastAPI AppState 注入测试。
+"""
 
 import ast
 from dataclasses import FrozenInstanceError
@@ -41,97 +43,147 @@ PROJECT_ROOT = Path(__file__).parents[1]
 
 
 class _Repository:
-    """记录绑定会话的 Agent 会话仓储替身。"""
+    """
+    记录绑定会话的 Agent 会话仓储替身。
+    """
 
     def __init__(self, session: object) -> None:
-        """保存由类型化运行时提供的请求会话。"""
+        """
+        保存由类型化运行时提供的请求会话。
+        """
         self.session = session
 
 
 class _UnitOfWork:
-    """记录绑定会话的异步事务替身。"""
+    """
+    记录绑定会话的异步事务替身。
+    """
 
     def __init__(self, session: object) -> None:
-        """保存与仓储相同的请求会话。"""
+        """
+        保存与仓储相同的请求会话。
+        """
         self.session = session
 
     async def commit(self) -> None:
-        """模拟提交。"""
+        """
+        模拟提交。
+        """
 
     async def rollback(self) -> None:
-        """模拟回滚。"""
+        """
+        模拟回滚。
+        """
 
 
 class _AgentChatPersistence:
-    """提供 AgentChat 运行时所需的最小写端口。"""
+    """
+    提供 AgentChat 运行时所需的最小写端口。
+    """
 
 
 class _SyncUnitOfWork:
-    """记录绑定会话的同步事务替身。"""
+    """
+    记录绑定会话的同步事务替身。
+    """
 
     def __init__(self, session: object) -> None:
-        """保存与仓储相同的请求会话。"""
+        """
+        保存与仓储相同的请求会话。
+        """
         self.session = session
 
     def commit(self) -> None:
-        """模拟提交。"""
+        """
+        模拟提交。
+        """
 
     def rollback(self) -> None:
-        """模拟回滚。"""
+        """
+        模拟回滚。
+        """
 
 
 class _Outbox:
-    """记录绑定会话的异步 outbox 替身。"""
+    """
+    记录绑定会话的异步 outbox 替身。
+    """
 
     def __init__(self, session: object) -> None:
-        """保存与订阅仓储相同的请求会话。"""
+        """
+        保存与订阅仓储相同的请求会话。
+        """
         self.session = session
 
     async def stage(self, intent, now) -> None:
-        """模拟暂存 durable intent。"""
+        """
+        模拟暂存 durable intent。
+        """
 
 
 class _DispatchStore:
-    """提供订阅即时副作用所需的独立派发存储替身。"""
+    """
+    提供订阅即时副作用所需的独立派发存储替身。
+    """
 
     async def claim_by_event_key(self, event_key, now, lease_until):
-        """模拟未取得指定消息 lease。"""
+        """
+        模拟未取得指定消息 lease。
+        """
         return None
 
     async def complete(self, message_id, attempt, completed_at) -> bool:
-        """模拟按 attempt 完成消息。"""
+        """
+        模拟按 attempt 完成消息。
+        """
         return True
 
     async def retry(self, message_id, attempt, **kwargs) -> bool:
-        """模拟按 attempt 释放消息。"""
+        """
+        模拟按 attempt 释放消息。
+        """
         return True
 
 
 class _RuntimeSettings:
-    """提供 HostRuntime 设置服务所需的最小测试合同。"""
+    """
+    提供 HostRuntime 设置服务所需的最小测试合同。
+    """
 
     def model_dump(self, *, include=None, exclude=None):
-        """返回空设置快照。"""
+        """
+        返回空设置快照。
+        """
         return {}
 
     def update_settings(self, env):
-        """返回批量更新成功结果。"""
+        """
+        返回批量更新成功结果。
+        """
         return {key: (True, "") for key in env}
 
     def update_setting(self, key, value):
-        """返回单项更新成功结果。"""
+        """
+        返回单项更新成功结果。
+        """
         return True, ""
 
 
 def _runtime() -> HostRuntime:
-    """构造不加载数据库引擎或 PluginManager 的假宿主运行时。"""
+    """
+    构造不加载数据库引擎或 PluginManager 的假宿主运行时。
+    """
 
     async def async_session():
-        """生成一个可被 FastAPI 依赖缓存的会话标记。"""
+        """
+        生成一个可被 FastAPI 依赖缓存的会话标记。
+        """
         yield object()
 
     def sync_session():
-        """提供兼容 ApiDataPorts 所需的空同步生成器。"""
+        """
+        提供兼容 ApiDataPorts 所需的空同步生成器。
+        """
         if False:
             yield object()
 
@@ -237,7 +289,9 @@ def _runtime() -> HostRuntime:
 
 
 def test_host_runtime_is_frozen_slotted_and_covers_all_api_domains() -> None:
-    """运行时不可动态扩字段，且全部正式 API 领域都有命名能力。"""
+    """
+    运行时不可动态扩字段，且全部正式 API 领域都有命名能力。
+    """
     runtime = _runtime()
 
     assert not hasattr(runtime, "__dict__")
@@ -252,7 +306,9 @@ def test_host_runtime_is_frozen_slotted_and_covers_all_api_domains() -> None:
 
 
 def test_fastapi_dependencies_use_fake_runtime_without_real_services() -> None:
-    """请求依赖可只注入假 Runtime，且仓储与 UoW 共享同一请求会话。"""
+    """
+    请求依赖可只注入假 Runtime，且仓储与 UoW 共享同一请求会话。
+    """
     app = FastAPI()
     app.state.host_runtime = _runtime()
 
@@ -262,7 +318,9 @@ def test_fastapi_dependencies_use_fake_runtime_without_real_services() -> None:
         unit_of_work=Depends(get_agent_chat_transaction),
         persistence=Depends(get_agent_chat_persistence),
     ) -> dict[str, bool]:
-        """返回两个类型化能力是否绑定同一请求会话。"""
+        """
+        返回两个类型化能力是否绑定同一请求会话。
+        """
         return {
             "same_session": repository.session is unit_of_work.session,
             "has_persistence": persistence is app.state.host_runtime.agent_chat.persistence,
@@ -276,7 +334,9 @@ def test_fastapi_dependencies_use_fake_runtime_without_real_services() -> None:
 
 
 def test_string_api_data_locator_is_confined_to_compatibility_boundary() -> None:
-    """字符串数据注册表只能由 startup 注入并经旧 Facade 转发。"""
+    """
+    字符串数据注册表只能由 startup 注入并经旧 Facade 转发。
+    """
     importers = set()
     for path in (PROJECT_ROOT / "app").rglob("*.py"):
         if path.is_relative_to(PROJECT_ROOT / "app" / "plugins"):
@@ -294,12 +354,16 @@ def test_string_api_data_locator_is_confined_to_compatibility_boundary() -> None
 
 @pytest.mark.asyncio
 async def test_lifecycle_component_attaches_init_modules_result(monkeypatch) -> None:
-    """模块组件把 init_modules 的构建结果发布到当前 AppState。"""
+    """
+    模块组件把 init_modules 的构建结果发布到当前 AppState。
+    """
     runtime = _runtime()
     app = FastAPI()
 
     async def init_modules() -> HostRuntime:
-        """返回不触发真实启动副作用的假运行时。"""
+        """
+        返回不触发真实启动副作用的假运行时。
+        """
         return runtime
 
     monkeypatch.setattr(lifecycle, "init_modules", init_modules)
@@ -313,7 +377,9 @@ async def test_lifecycle_component_attaches_init_modules_result(monkeypatch) -> 
 async def test_lifecycle_component_revokes_host_runtime_after_converged_stop(
     monkeypatch,
 ) -> None:
-    """模块 owner 完整关闭后 AppState 不得继续暴露上一 lifespan 的运行时。"""
+    """
+    模块 owner 完整关闭后 AppState 不得继续暴露上一 lifespan 的运行时。
+    """
     app = FastAPI()
     runtime = _runtime()
     app.state.host_runtime = runtime
@@ -327,7 +393,9 @@ async def test_lifecycle_component_revokes_host_runtime_after_converged_stop(
 async def test_lifecycle_component_retains_host_runtime_after_failed_stop(
     monkeypatch,
 ) -> None:
-    """模块 owner 未收敛时保留 HostRuntime，供诊断与后续重试。"""
+    """
+    模块 owner 未收敛时保留 HostRuntime，供诊断与后续重试。
+    """
     app = FastAPI()
     runtime = _runtime()
     app.state.host_runtime = runtime
@@ -339,7 +407,9 @@ async def test_lifecycle_component_retains_host_runtime_after_failed_stop(
 
 @pytest.mark.asyncio
 async def test_init_modules_cleans_partial_message_owner_on_failure(monkeypatch) -> None:
-    """直接调用模块初始化时，中途失败也不得遗留消息缓存单例。"""
+    """
+    直接调用模块初始化时，中途失败也不得遗留消息缓存单例。
+    """
     from app.application.messaging.message import MessageHelper
     from app.foundation.singleton import Singleton, SingletonClass
     from app.startup.initializers import modules as modules_initializer
@@ -350,7 +420,9 @@ async def test_init_modules_cleans_partial_message_owner_on_failure(monkeypatch)
     startup_error = RuntimeError("module startup failed")
 
     async def failing_initialize_modules() -> HostRuntime:
-        """构造消息 owner 后模拟组合逻辑失败。"""
+        """
+        构造消息 owner 后模拟组合逻辑失败。
+        """
         helper = MessageHelper()
         monkeypatch.setattr(helper._recent_notification_keys, "close", close)
         raise startup_error

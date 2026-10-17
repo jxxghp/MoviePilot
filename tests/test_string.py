@@ -1,10 +1,14 @@
-"""媒体标题候选规则的有效和无效输入合同。"""
+"""
+媒体标题候选规则的有效和无效输入合同。
+"""
 
 from app.domain.title import is_media_title_like
 
 
 def test_is_media_title_like_true():
-    """中文与英文媒体标题、剧集和混合标题应被识别。"""
+    """
+    中文与英文媒体标题、剧集和混合标题应被识别。
+    """
     assert is_media_title_like('盗梦空间')
     assert is_media_title_like('The Lord of the Rings')
     assert is_media_title_like('庆余年 第2季')
@@ -14,7 +18,9 @@ def test_is_media_title_like_true():
 
 
 def test_is_media_title_like_false():
-    """空白、单独剧集号、对话和检索指令不应被识别为标题。"""
+    """
+    空白、单独剧集号、对话和检索指令不应被识别为标题。
+    """
     assert not is_media_title_like('')
     assert not is_media_title_like('   ')
     assert not is_media_title_like('a')

@@ -1,4 +1,6 @@
-"""系统后台更新状态机测试。"""
+"""
+系统后台更新状态机测试。
+"""
 
 import errno
 import json
@@ -15,7 +17,9 @@ from app.adapters.system import update as update_module
 
 
 def _manager(monkeypatch, tmp_path: Path):
-    """创建使用临时状态目录的更新管理器。"""
+    """
+    创建使用临时状态目录的更新管理器。
+    """
     # 固定升级起点，避免产品版本发布后与测试中的目标版本重合。
     monkeypatch.setattr(update_module, "get_app_version", lambda: "v3.0.0")
     monkeypatch.setattr(
@@ -31,7 +35,9 @@ def _manager(monkeypatch, tmp_path: Path):
 
 
 def _docker_manager(monkeypatch, tmp_path: Path):
-    """创建指向隔离 Docker 目录的更新管理器。"""
+    """
+    创建指向隔离 Docker 目录的更新管理器。
+    """
     runtime_settings = {
         "TEMP_PATH": tmp_path / "config" / "temp",
         "ROOT_PATH": tmp_path / "app",
@@ -57,12 +63,16 @@ def _docker_manager(monkeypatch, tmp_path: Path):
 
 
 def _response(payload, status_code=200):
-    """构造不访问外网的更新接口响应。"""
+    """
+    构造不访问外网的更新接口响应。
+    """
     return SimpleNamespace(status_code=status_code, json=lambda: payload)
 
 
 def test_status_reads_live_auto_update_setting_without_discarding_cached_update(monkeypatch, tmp_path):
-    """切换提醒设置立即反映到状态，缓存版本仍供手动升级使用。"""
+    """
+    切换提醒设置立即反映到状态，缓存版本仍供手动升级使用。
+    """
     manager = _manager(monkeypatch, tmp_path)
     manager._write_state(state="available", version="v3.1.0", can_update=True)
     for enabled in (True, False, True):
@@ -80,7 +90,9 @@ def test_status_reads_live_auto_update_setting_without_discarding_cached_update(
 def test_sync_docker_dependencies_freezes_lock_for_custom_package_index(
     monkeypatch, tmp_path
 ):
-    """自定义镜像源只替换下载地址，不应触发 uv 重新校验或更新锁文件。"""
+    """
+    自定义镜像源只替换下载地址，不应触发 uv 重新校验或更新锁文件。
+    """
     manager = _docker_manager(monkeypatch, tmp_path)
     settings = {
         "TEMP_PATH": tmp_path / "config" / "temp",
@@ -97,7 +109,9 @@ def test_sync_docker_dependencies_freezes_lock_for_custom_package_index(
     calls = []
 
     def run(command, **kwargs):
-        """记录 uv 调用并返回成功结果。"""
+        """
+        记录 uv 调用并返回成功结果。
+        """
         calls.append((command, kwargs))
         return SimpleNamespace(returncode=0)
 
@@ -116,7 +130,9 @@ def test_sync_docker_dependencies_freezes_lock_for_custom_package_index(
 def test_scheduled_check_respects_independent_switches(
     monkeypatch, tmp_path, auto_update, auto_update_resource
 ):
-    """自动检查只访问已开启的目标；手动检查仍可访问两类更新。"""
+    """
+    自动检查只访问已开启的目标；手动检查仍可访问两类更新。
+    """
     manager = _manager(monkeypatch, tmp_path)
     values = {
         "TEMP_PATH": tmp_path,
@@ -142,7 +158,9 @@ def test_scheduled_check_respects_independent_switches(
 
 
 def test_check_exposes_new_stable_release(monkeypatch, tmp_path):
-    """主程序更新应跳过最新采集器独立 Release 和后端预发布版本。"""
+    """
+    主程序更新应跳过最新采集器独立 Release 和后端预发布版本。
+    """
     manager = _manager(monkeypatch, tmp_path)
     logs = []
     releases = [
@@ -171,6 +189,9 @@ def test_check_exposes_new_stable_release(monkeypatch, tmp_path):
 
 
 def test_check_logs_when_application_is_current(monkeypatch, tmp_path):
+    """
+    手动检查确认已是最新版时记录结果，并保持不可更新的空闲状态。
+    """
     manager = _manager(monkeypatch, tmp_path)
     logs = []
     releases = [
@@ -193,7 +214,9 @@ def test_check_logs_when_application_is_current(monkeypatch, tmp_path):
 
 
 def test_status_refreshes_stale_application_version(monkeypatch, tmp_path):
-    """旧状态文件中的主程序版本应在读取时更新为当前运行版本。"""
+    """
+    旧状态文件中的主程序版本应在读取时更新为当前运行版本。
+    """
     manager = _manager(monkeypatch, tmp_path)
     monkeypatch.setattr(update_module, "get_app_version", lambda: "v3.0.0")
     manager._write_item("application", state="idle")
@@ -207,7 +230,9 @@ def test_status_refreshes_stale_application_version(monkeypatch, tmp_path):
 
 
 def test_public_download_request_omits_github_authorization(monkeypatch, tmp_path):
-    """公开归档下载不得复用 GitHub API 的认证请求头。"""
+    """
+    公开归档下载不得复用 GitHub API 的认证请求头。
+    """
     manager = _manager(monkeypatch, tmp_path)
     settings = {
         "TEMP_PATH": tmp_path,
@@ -247,6 +272,9 @@ def test_public_download_request_omits_github_authorization(monkeypatch, tmp_pat
 
 
 def test_scheduled_check_failure_stays_silent(monkeypatch, tmp_path):
+    """
+    定时检查失败时保留错误状态信息，但不输出主动通知日志。
+    """
     manager = _manager(monkeypatch, tmp_path)
     monkeypatch.setattr(
         manager,
@@ -261,6 +289,9 @@ def test_scheduled_check_failure_stays_silent(monkeypatch, tmp_path):
 
 
 def test_interrupted_download_becomes_retryable_failure(monkeypatch, tmp_path):
+    """
+    下载中断后进入可重试的失败状态。
+    """
     manager = _manager(monkeypatch, tmp_path)
     manager._write_state(state="downloading", version="v3.1.0")
 
@@ -274,7 +305,9 @@ def test_interrupted_download_becomes_retryable_failure(monkeypatch, tmp_path):
 def test_installing_application_update_converges_when_runtime_is_newer(
     monkeypatch, tmp_path
 ):
-    """当前主程序高于残留目标版本时应清理状态并恢复自动检查。"""
+    """
+    当前主程序高于残留目标版本时应清理状态并恢复自动检查。
+    """
     manager = _manager(monkeypatch, tmp_path)
     monkeypatch.setattr(update_module, "get_app_version", lambda: "v3.0.6")
     manager._write_item(
@@ -299,7 +332,9 @@ def test_installing_application_update_converges_when_runtime_is_newer(
 def test_ready_application_update_is_discarded_when_runtime_reaches_target(
     monkeypatch, tmp_path
 ):
-    """外部升级先于确认安装时应清理过期的主程序待安装包。"""
+    """
+    外部升级先于确认安装时应清理过期的主程序待安装包。
+    """
     manager = _manager(monkeypatch, tmp_path)
     monkeypatch.setattr(update_module, "get_app_version", lambda: "v3.1.0")
     manager._merge_prepared_manifest(
@@ -327,7 +362,9 @@ def test_ready_application_update_is_discarded_when_runtime_reaches_target(
 
 
 def test_failed_application_update_clears_after_external_upgrade(monkeypatch, tmp_path):
-    """旧版本安装失败后改用镜像升级，残留的失败记录和重试包应被清理。"""
+    """
+    旧版本安装失败后改用镜像升级，残留的失败记录和重试包应被清理。
+    """
     manager = _manager(monkeypatch, tmp_path)
     monkeypatch.setattr(update_module, "get_app_version", lambda: "v3.0.10-1")
     manager._merge_prepared_manifest(
@@ -359,7 +396,9 @@ def test_failed_application_update_clears_after_external_upgrade(monkeypatch, tm
 
 
 def test_available_application_update_clears_after_external_upgrade(monkeypatch, tmp_path):
-    """关闭自动检查时，外部升级后不应继续提示已低于当前版本的可用更新。"""
+    """
+    关闭自动检查时，外部升级后不应继续提示已低于当前版本的可用更新。
+    """
     manager = _manager(monkeypatch, tmp_path)
     monkeypatch.setattr(update_module, "get_app_version", lambda: "v3.0.10-1")
     manager._write_item(
@@ -378,7 +417,9 @@ def test_available_application_update_clears_after_external_upgrade(monkeypatch,
 
 
 def test_failed_application_update_is_kept_below_target(monkeypatch, tmp_path):
-    """当前版本仍低于目标时应保留失败原因和重试入口。"""
+    """
+    当前版本仍低于目标时应保留失败原因和重试入口。
+    """
     manager = _manager(monkeypatch, tmp_path)
     monkeypatch.setattr(update_module, "get_app_version", lambda: "v3.0.3")
     manager._write_item(
@@ -401,7 +442,9 @@ def test_ready_resource_update_clears_after_loaded_version_reaches_target(
     monkeypatch,
     tmp_path,
 ):
-    """运行资源已达到目标版本时应清除残留提示，并保留另一类待安装制品。"""
+    """
+    运行资源已达到目标版本时应清除残留提示，并保留另一类待安装制品。
+    """
     versions = ["3.0.1", "3.0.9"]
     monkeypatch.setattr(
         update_module,
@@ -449,6 +492,9 @@ def test_ready_resource_update_clears_after_loaded_version_reaches_target(
 
 
 def test_download_prepares_matching_backend_and_frontend_archives(monkeypatch, tmp_path):
+    """
+    更新下载准备相互匹配的后端与前端归档，完成后进入可安装状态。
+    """
     manager = _manager(monkeypatch, tmp_path)
     backend_fixture = tmp_path / "source-backend.zip"
     frontend_fixture = tmp_path / "source-frontend.zip"
@@ -503,7 +549,9 @@ def test_download_prepares_matching_backend_and_frontend_archives(monkeypatch, t
 
 
 def test_application_download_keeps_prepared_resource_package(monkeypatch, tmp_path):
-    """应用包重新下载时不得删除另一类已经准备好的资源包。"""
+    """
+    应用包重新下载时不得删除另一类已经准备好的资源包。
+    """
     manager = _manager(monkeypatch, tmp_path)
     resource_dir = manager._resource_dir
     resource_dir.mkdir(parents=True)
@@ -571,7 +619,9 @@ def test_application_download_keeps_prepared_resource_package(monkeypatch, tmp_p
 
 
 def test_resource_manifest_requires_complete_current_platform_package(monkeypatch, tmp_path):
-    """资源安装只能接受同时包含索引和当前平台认证文件的完整包。"""
+    """
+    资源安装只能接受同时包含索引和当前平台认证文件的完整包。
+    """
     manager = _manager(monkeypatch, tmp_path)
     monkeypatch.setattr(
         update_module.ResourceHelper,
@@ -597,6 +647,9 @@ def test_resource_manifest_requires_complete_current_platform_package(monkeypatc
 
 
 def test_request_install_rejects_modified_prepared_package(monkeypatch, tmp_path):
+    """
+    已准备的更新包被修改后，安装请求必须拒绝校验失败的内容。
+    """
     manager = _manager(monkeypatch, tmp_path)
     manager._root.mkdir(parents=True)
     manager._backend_archive.write_bytes(b"backend")
@@ -625,6 +678,9 @@ def test_request_install_rejects_modified_prepared_package(monkeypatch, tmp_path
 
 
 def test_cancel_install_returns_prepared_update_to_ready(monkeypatch, tmp_path):
+    """
+    取消安装等待后，已准备的更新恢复到可安装状态。
+    """
     manager = _manager(monkeypatch, tmp_path)
     manager._root.mkdir(parents=True)
     manager._install_file.write_text("{}", encoding="utf-8")
@@ -653,7 +709,9 @@ def test_cancel_install_returns_prepared_update_to_ready(monkeypatch, tmp_path):
 def test_apply_prepared_application_replaces_docker_payload_and_preserves_plugins(
     monkeypatch, tmp_path, exdev_target, failure
 ):
-    """Docker 更新应兼容 OverlayFS，并在备份或切换失败时保留旧载荷。"""
+    """
+    Docker 更新应兼容 OverlayFS，并在备份或切换失败时保留旧载荷。
+    """
     manager = _docker_manager(monkeypatch, tmp_path)
     app_dir = manager._docker_app_dir
     public_dir = manager._docker_public_dir
@@ -720,7 +778,9 @@ def test_apply_prepared_application_replaces_docker_payload_and_preserves_plugin
     original_copytree = update_module.shutil.copytree
 
     def replace(source, target):
-        """模拟 OverlayFS 目录重命名限制及新载荷切换失败。"""
+        """
+        模拟 OverlayFS 目录重命名限制及新载荷切换失败。
+        """
         if exdev_target == "app" and source == app_dir:
             raise OSError(errno.EXDEV, "Invalid cross-device link")
         if exdev_target == "public" and source == public_dir:
@@ -730,7 +790,9 @@ def test_apply_prepared_application_replaces_docker_payload_and_preserves_plugin
         return original_replace(source, target)
 
     def copytree(source, target, *args, **kwargs):
-        """模拟 OverlayFS 备份复制失败，确保旧目录未被删除。"""
+        """
+        模拟 OverlayFS 备份复制失败，确保旧目录未被删除。
+        """
         if failure == "backup" and Path(target).name.endswith(".__update_previous__"):
             raise OSError(errno.ENOSPC, "backup failed")
         return original_copytree(source, target, *args, **kwargs)
@@ -776,7 +838,9 @@ def test_apply_prepared_application_replaces_docker_payload_and_preserves_plugin
 def test_apply_prepared_resources_replaces_complete_docker_resource_package(
     monkeypatch, tmp_path, failure
 ):
-    """镜像层目录禁止重命名时仍能更新，备份或安装失败则保留旧资源。"""
+    """
+    镜像层目录禁止重命名时仍能更新，备份或安装失败则保留旧资源。
+    """
     manager = _docker_manager(monkeypatch, tmp_path)
     monkeypatch.setattr(
         update_module.ResourceHelper,
@@ -816,7 +880,9 @@ def test_apply_prepared_resources_replaces_complete_docker_resource_package(
     original_copytree = update_module.shutil.copytree
 
     def replace(source, target):
-        """模拟 OverlayFS 镜像层重命名限制及新资源提交失败。"""
+        """
+        模拟 OverlayFS 镜像层重命名限制及新资源提交失败。
+        """
         if source == resource_dir:
             raise OSError(errno.EXDEV, "Invalid cross-device link")
         if failure == "install" and source.parent.name.startswith(".moviepilot-resource-update-"):
@@ -824,7 +890,9 @@ def test_apply_prepared_resources_replaces_complete_docker_resource_package(
         return original_replace(source, target)
 
     def copytree(source, target, *args, **kwargs):
-        """模拟备份复制失败，确保尚未触碰运行目录。"""
+        """
+        模拟备份复制失败，确保尚未触碰运行目录。
+        """
         if failure == "backup" and Path(target).name.endswith(".__prepared_previous__"):
             raise OSError(errno.ENOSPC, "backup failed")
         return original_copytree(source, target, *args, **kwargs)
@@ -854,7 +922,9 @@ def test_apply_prepared_resources_replaces_complete_docker_resource_package(
     [("v3.0.10", "available"), ("v3.0.10-1", "idle")],
 )
 def test_check_accepts_hotfix_release_suffix(monkeypatch, tmp_path, current, expected_state):
-    """-N 后缀的临时修复版本视为稳定版，并按数字大于同号正式版。"""
+    """
+    -N 后缀的临时修复版本视为稳定版，并按数字大于同号正式版。
+    """
     manager = _manager(monkeypatch, tmp_path)
     releases = [
         {"tag_name": "v3.0.11-beta", "prerelease": True, "draft": False},

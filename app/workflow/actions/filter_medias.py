@@ -1,3 +1,7 @@
+"""
+根据动作参数筛选工作流中的媒体列表。
+"""
+
 from typing import Optional
 
 from pydantic import Field
@@ -29,7 +33,9 @@ class FilterMediasAction(BaseAction):
     }
 
     def __init__(self, action_id: str) -> None:
-        """初始化当前动作独立的执行状态。"""
+        """
+        初始化当前动作独立的执行状态。
+        """
         super().__init__(action_id)
         self._medias: list[MediaInfo] = []
 
@@ -39,7 +45,9 @@ class FilterMediasAction(BaseAction):
 
     @property
     def success(self) -> bool:
-        """返回当前动作是否已达到完成条件。"""
+        """
+        返回当前动作是否已达到完成条件。
+        """
         return self.done
 
     def execute(self, workflow_id: int, params: dict[str, object], context: ActionContext) -> ActionContext:

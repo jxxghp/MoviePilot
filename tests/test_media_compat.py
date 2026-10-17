@@ -1,4 +1,6 @@
-"""MediaChain 稳定插件 ABI 与同名包结构门禁。"""
+"""
+MediaChain 稳定插件 ABI 与同名包结构门禁。
+"""
 
 import ast
 import importlib
@@ -18,12 +20,16 @@ MEDIA_PACKAGE = PROJECT_ROOT / "app" / "chain" / "media"
 
 
 def _parameter_contract(method: object) -> tuple[tuple[str, object], ...]:
-    """提取插件 ABI 关心的参数顺序和默认值。"""
+    """
+    提取插件 ABI 关心的参数顺序和默认值。
+    """
     return tuple((name, parameter.default) for name, parameter in inspect.signature(method).parameters.items())
 
 
 def test_media_package_exposes_only_stable_chain_facade() -> None:
-    """包根只惰性暴露稳定 MediaChain，内部 owner 不得重复导出。"""
+    """
+    包根只惰性暴露稳定 MediaChain，内部 owner 不得重复导出。
+    """
     module = importlib.import_module("app.chain.media")
 
     assert module.__all__ == ["MediaChain"]
@@ -38,7 +44,9 @@ def test_media_package_exposes_only_stable_chain_facade() -> None:
 
 
 def test_media_package_root_keeps_facade_lazy_in_clean_interpreter() -> None:
-    """首次导入包根不得提前加载门面及其全部 owner 依赖。"""
+    """
+    首次导入包根不得提前加载门面及其全部 owner 依赖。
+    """
     result = subprocess.run(
         [
             sys.executable,
@@ -59,7 +67,9 @@ def test_media_package_root_keeps_facade_lazy_in_clean_interpreter() -> None:
 
 
 def test_media_chain_preserves_class_identity_mro_and_pickle_contract() -> None:
-    """拆包不得改变插件动态导入、Singleton、MRO 或 pickle 类身份。"""
+    """
+    拆包不得改变插件动态导入、Singleton、MRO 或 pickle 类身份。
+    """
     assert MediaChain.__module__ == "app.chain.media"
     assert MediaChain.__qualname__ == "MediaChain"
     assert MediaChain.__mro__ == (MediaChain, *ChainBase.__mro__)
@@ -72,14 +82,18 @@ def test_media_chain_preserves_class_identity_mro_and_pickle_contract() -> None:
 
 
 def test_media_chain_preserves_shared_facade_state_contract() -> None:
-    """跨 owner 共享状态必须仍由唯一稳定门面集中持有。"""
+    """
+    跨 owner 共享状态必须仍由唯一稳定门面集中持有。
+    """
     assert isinstance(MediaChain._album_dir_cache, AlbumDirectoryCache)
     assert MediaChain._album_dir_cache_max == 128
     assert MediaChain._album_match_min_files == 2
 
 
 def test_media_chain_preserves_official_plugin_method_contracts() -> None:
-    """锁定官方插件真实调用的同步、异步方法参数合同。"""
+    """
+    锁定官方插件真实调用的同步、异步方法参数合同。
+    """
     assert _parameter_contract(MediaChain.recognize_media) == (
         ("self", inspect.Parameter.empty),
         ("meta", None),
@@ -116,7 +130,9 @@ def test_media_chain_preserves_official_plugin_method_contracts() -> None:
 
 
 def test_media_chain_uses_named_owner_package_without_legacy_source() -> None:
-    """媒体能力使用单词职责文件，旧平铺单体不得复活。"""
+    """
+    媒体能力使用单词职责文件，旧平铺单体不得复活。
+    """
     assert not (PROJECT_ROOT / "app" / "chain" / "media.py").exists()
     assert {path.name for path in MEDIA_PACKAGE.glob("*.py")} == {
         "__init__.py",
@@ -135,7 +151,9 @@ def test_media_chain_uses_named_owner_package_without_legacy_source() -> None:
 
 
 def test_media_owner_modules_do_not_depend_on_package_root_or_facade() -> None:
-    """owner 只通过静态合同协作，不得反向导入包根或稳定门面。"""
+    """
+    owner 只通过静态合同协作，不得反向导入包根或稳定门面。
+    """
     forbidden = {"app.chain.media", "app.chain.media.facade"}
     violations = {}
     for path in MEDIA_PACKAGE.glob("*.py"):

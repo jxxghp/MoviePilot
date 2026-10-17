@@ -1,4 +1,6 @@
-"""Agent 多文件补丁应用工具测试。"""
+"""
+Agent 多文件补丁应用工具测试。
+"""
 
 import asyncio
 from unittest.mock import patch
@@ -8,14 +10,18 @@ from app.agent.tools.impl.apply_patch import ApplyPatchTool
 
 
 def _make_admin_tool(tool_class=ApplyPatchTool):
-    """创建带管理员上下文的补丁工具实例。"""
+    """
+    创建带管理员上下文的补丁工具实例。
+    """
     tool = tool_class(session_id="session-1", user_id="admin")
     tool.set_agent_context({"is_admin": True})
     return tool
 
 
 def test_apply_patch_supports_add_update_delete_in_one_call(tmp_path):
-    """单个补丁应能同时新增、更新和删除多个文件。"""
+    """
+    单个补丁应能同时新增、更新和删除多个文件。
+    """
     updated = tmp_path / "plugin.py"
     updated.write_text("enabled = False\nversion = 1\n", encoding="utf-8")
     deleted = tmp_path / "legacy.py"
@@ -43,7 +49,9 @@ def test_apply_patch_supports_add_update_delete_in_one_call(tmp_path):
 
 
 def test_apply_patch_applies_multiple_hunks_in_order(tmp_path):
-    """同一文件的多个替换片段应按顺序定位并依次生效。"""
+    """
+    同一文件的多个替换片段应按顺序定位并依次生效。
+    """
     file_path = tmp_path / "plugin.py"
     file_path.write_text("alpha\nbeta\ngamma\nbeta\n", encoding="utf-8")
     tool = _make_admin_tool()
@@ -68,7 +76,9 @@ def test_apply_patch_applies_multiple_hunks_in_order(tmp_path):
 
 
 def test_apply_patch_rejects_whole_patch_without_any_write_on_mismatch(tmp_path):
-    """上下文不匹配时应整体拒绝，已校验通过的文件也不应被写入。"""
+    """
+    上下文不匹配时应整体拒绝，已校验通过的文件也不应被写入。
+    """
     first = tmp_path / "first.py"
     first.write_text("keep me\n", encoding="utf-8")
     second = tmp_path / "second.py"
@@ -95,7 +105,9 @@ def test_apply_patch_rejects_whole_patch_without_any_write_on_mismatch(tmp_path)
 
 
 def test_apply_patch_rejects_invalid_patch_structure(tmp_path):
-    """缺失包裹标记、非法段落顺序和无锚点片段都应返回解析错误。"""
+    """
+    缺失包裹标记、非法段落顺序和无锚点片段都应返回解析错误。
+    """
     file_path = tmp_path / "plugin.py"
     file_path.write_text("content\n", encoding="utf-8")
     tool = _make_admin_tool()
@@ -123,7 +135,9 @@ def test_apply_patch_rejects_invalid_patch_structure(tmp_path):
 
 
 def test_apply_patch_rejects_add_existing_and_update_missing_file(tmp_path):
-    """Add 已存在文件或 Update 不存在文件应报错并指引正确操作。"""
+    """
+    Add 已存在文件或 Update 不存在文件应报错并指引正确操作。
+    """
     existing = tmp_path / "existing.py"
     existing.write_text("here\n", encoding="utf-8")
     missing = tmp_path / "missing.py"
@@ -157,7 +171,9 @@ def test_apply_patch_rejects_add_existing_and_update_missing_file(tmp_path):
 
 
 def test_apply_patch_enforces_non_admin_path_boundary(tmp_path):
-    """普通用户只能对 Agent 配置目录内的文件打补丁。"""
+    """
+    普通用户只能对 Agent 配置目录内的文件打补丁。
+    """
     file_path = tmp_path / "plugin.py"
     file_path.write_text("before\n", encoding="utf-8")
     tool = ApplyPatchTool(session_id="session-1", user_id="user")
@@ -179,7 +195,9 @@ def test_apply_patch_enforces_non_admin_path_boundary(tmp_path):
 
 
 def test_apply_patch_detects_version_conflict_during_write(tmp_path):
-    """写入阶段检测到文件被并发修改时应拒绝覆盖。"""
+    """
+    写入阶段检测到文件被并发修改时应拒绝覆盖。
+    """
     file_path = tmp_path / "plugin.py"
     file_path.write_text("before\n", encoding="utf-8")
     tool = _make_admin_tool()
@@ -207,7 +225,9 @@ def test_apply_patch_detects_version_conflict_during_write(tmp_path):
 
 
 def test_apply_patch_tool_message_counts_patch_files(tmp_path):
-    """工具消息应汇总补丁涉及的文件数量。"""
+    """
+    工具消息应汇总补丁涉及的文件数量。
+    """
     tool = _make_admin_tool()
 
     message = tool.get_tool_message(

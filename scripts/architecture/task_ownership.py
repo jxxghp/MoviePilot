@@ -1,4 +1,6 @@
-"""检查宿主 TaskRegistry 调用是否声明稳定的任务 owner。"""
+"""
+检查宿主 TaskRegistry 调用是否声明稳定的任务 owner。
+"""
 
 from __future__ import annotations
 
@@ -12,6 +14,7 @@ TASK_METHODS = frozenset(
 )
 TASK_MODULE = "app.runtime.tasks"
 CONTEXT_MODULE = "app.api.context"
+# 仅跟踪这些明确提供任务登记器的工厂，避免按对象短名称猜测来源。
 TASK_FACTORIES = frozenset(
     {
         "get_task_registry",
@@ -20,6 +23,7 @@ TASK_FACTORIES = frozenset(
         "resolve_background_task_registry",
     }
 )
+# 插件副本、SDK、兼容入口和测试支撑分别受其契约约束，不纳入宿主调用门禁。
 EXCLUDED_ROOTS = (
     "app/plugins",
     "app/runtime/compat",
@@ -30,7 +34,14 @@ EXCLUDED_ROOTS = (
 
 @dataclass(frozen=True, order=True, slots=True)
 class TaskOwnerViolation:
-    """描述一处缺少稳定字符串 owner 的 TaskRegistry 调用。"""
+    """
+    描述一处缺少稳定字符串 owner 的 TaskRegistry 调用。
+
+    :param path: 相对于仓库根目录的违规源码路径
+    :param line: 违规调用的源码行号，从 1 开始，仅用于定位
+    :param method: 被调用的 TaskRegistry 方法名
+    :param reason: 调用缺少稳定任务归属标识的具体原因
+    """
 
     path: str
     line: int
@@ -38,13 +49,22 @@ class TaskOwnerViolation:
     reason: str
 
     def render(self) -> str:
-        """返回适合 CI 输出的稳定诊断文本。"""
+        """
+        返回适合 CI 输出的稳定诊断文本。
+        """
         return f"{self.path}:{self.line}: TaskRegistry.{self.method} {self.reason}"
 
 
 @dataclass(slots=True)
 class _Scope:
-    """保存当前词法作用域内可确认来源的任务登记器符号。"""
+    """
+    保存当前词法作用域内可确认来源的任务登记器符号。
+
+    :param task_classes: 当前可见且确认指向 TaskRegistry 的类名或别名，默认空集合
+    :param task_factories: 当前可见且确认返回任务登记器的工厂别名，默认空集合
+    :param module_aliases: 当前可见模块别名到完整模块路径的映射，默认空映射
+    :param registry_names: 当前可见且确认指向任务登记器实例的名称，默认空集合
+    """
 
     task_classes: set[str] = field(default_factory=set)
     task_factories: set[str] = field(default_factory=set)
@@ -52,7 +72,9 @@ class _Scope:
     registry_names: set[str] = field(default_factory=set)
 
     def child(self) -> _Scope:
-        """复制父级可见绑定，供嵌套函数或类独立追踪局部赋值。"""
+        """
+        复制父级可见绑定，供嵌套函数或类独立追踪局部赋值。
+        """
         return _Scope(
             task_classes=set(self.task_classes),
             task_factories=set(self.task_factories),
@@ -62,17 +84,23 @@ class _Scope:
 
 
 class _TaskOwnershipVisitor(ast.NodeVisitor):
-    """仅跟踪可由 import、类型注解或工厂调用确认的 TaskRegistry。"""
+    """
+    仅跟踪可由导入、类型注解或工厂调用确认的 TaskRegistry。
+    """
 
     def __init__(self, relative_path: str) -> None:
-        """初始化源码位置、词法作用域和违规记录。"""
+        """
+        初始化源码位置、词法作用域和违规记录。
+        """
         self._relative_path = relative_path
         self._scopes = [_Scope()]
         self.violations: list[TaskOwnerViolation] = []
 
     @property
     def _scope(self) -> _Scope:
-        """返回当前词法作用域。"""
+        """
+        返回当前词法作用域。
+        """
         return self._scopes[-1]
 
     def _visit_nested_scope(
@@ -80,7 +108,9 @@ class _TaskOwnershipVisitor(ast.NodeVisitor):
         statements: list[ast.stmt],
         arguments: ast.arguments | None = None,
     ) -> None:
-        """在继承可见符号的新作用域中访问函数、类或 lambda 主体。"""
+        """
+        在继承可见符号的新作用域中访问函数、类或 lambda 主体。
+        """
         self._scopes.append(self._scope.child())
         try:
             if arguments is not None:
@@ -91,7 +121,9 @@ class _TaskOwnershipVisitor(ast.NodeVisitor):
             self._scopes.pop()
 
     def _bind_arguments(self, arguments: ast.arguments) -> None:
-        """把明确标注为 TaskRegistry 的函数参数加入当前作用域。"""
+        """
+        把明确标注为 TaskRegistry 的函数参数加入当前作用域。
+        """
         positional = (*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs)
         for argument in positional:
             self._bind_name(
@@ -110,14 +142,18 @@ class _TaskOwnershipVisitor(ast.NodeVisitor):
             )
 
     def _bind_name(self, name: str, is_registry: bool) -> None:
-        """更新局部名称的 TaskRegistry 绑定，显式重赋值会清除旧绑定。"""
+        """
+        更新局部名称的 TaskRegistry 绑定，显式重赋值会清除旧绑定。
+        """
         if is_registry:
             self._scope.registry_names.add(name)
         else:
             self._scope.registry_names.discard(name)
 
     def _bind_target(self, target: ast.expr, is_registry: bool) -> None:
-        """处理普通名称和解构赋值产生的局部绑定。"""
+        """
+        处理普通名称和解构赋值产生的局部绑定。
+        """
         if isinstance(target, ast.Name):
             self._bind_name(target.id, is_registry)
         elif isinstance(target, (ast.List, ast.Tuple)):
@@ -125,7 +161,9 @@ class _TaskOwnershipVisitor(ast.NodeVisitor):
                 self._bind_target(item, False)
 
     def _is_registry_annotation(self, annotation: ast.expr | None) -> bool:
-        """识别 TaskRegistry、联合类型和 Annotated 中的明确类型来源。"""
+        """
+        识别 TaskRegistry、联合类型和 Annotated 中的明确类型来源。
+        """
         if annotation is None:
             return False
         if isinstance(annotation, ast.Constant) and isinstance(annotation.value, str):
@@ -146,7 +184,9 @@ class _TaskOwnershipVisitor(ast.NodeVisitor):
         return False
 
     def _is_registry_factory(self, expression: ast.expr) -> bool:
-        """判断调用目标是否是明确导入的登记器构造器或解析工厂。"""
+        """
+        判断调用目标是否是明确导入的登记器构造器或解析工厂。
+        """
         if isinstance(expression, ast.Name):
             return expression.id in (
                 self._scope.task_classes | self._scope.task_factories
@@ -162,7 +202,9 @@ class _TaskOwnershipVisitor(ast.NodeVisitor):
         return False
 
     def _is_registry_expression(self, expression: ast.expr | None) -> bool:
-        """判断表达式是否确定返回或引用 TaskRegistry。"""
+        """
+        判断表达式是否确定返回或引用 TaskRegistry。
+        """
         if isinstance(expression, ast.Name):
             return expression.id in self._scope.registry_names
         if isinstance(expression, ast.Call):
@@ -174,7 +216,9 @@ class _TaskOwnershipVisitor(ast.NodeVisitor):
         return False
 
     def _check_owner(self, node: ast.Call, method: str) -> None:
-        """要求 owner 以显式、非空字符串字面量传入。"""
+        """
+        要求 owner 以显式、非空字符串字面量传入。
+        """
         owner = next(
             (keyword.value for keyword in node.keywords if keyword.arg == "owner"),
             None,
@@ -199,7 +243,9 @@ class _TaskOwnershipVisitor(ast.NodeVisitor):
         )
 
     def visit_Import(self, node: ast.Import) -> None:
-        """记录 TaskRegistry 与 API context 模块别名。"""
+        """
+        记录 TaskRegistry 与 API context 模块别名。
+        """
         for alias in node.names:
             if alias.name not in {TASK_MODULE, CONTEXT_MODULE}:
                 continue
@@ -207,7 +253,9 @@ class _TaskOwnershipVisitor(ast.NodeVisitor):
             self._scope.module_aliases[local_name] = alias.name
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
-        """记录明确导入的 TaskRegistry 类和登记器工厂别名。"""
+        """
+        记录明确导入的 TaskRegistry 类和登记器工厂别名。
+        """
         if node.module == TASK_MODULE:
             for alias in node.names:
                 local_name = alias.asname or alias.name
@@ -224,7 +272,9 @@ class _TaskOwnershipVisitor(ast.NodeVisitor):
         self,
         node: ast.FunctionDef | ast.AsyncFunctionDef,
     ) -> None:
-        """在隔离的函数作用域中追踪参数和局部登记器。"""
+        """
+        在隔离的函数作用域中追踪参数和局部登记器。
+        """
         for expression in (*node.decorator_list, *node.args.defaults):
             self.visit(expression)
         for default in node.args.kw_defaults:
@@ -233,28 +283,38 @@ class _TaskOwnershipVisitor(ast.NodeVisitor):
         self._visit_nested_scope(node.body, node.args)
 
     def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
-        """分析同步函数作用域。"""
+        """
+        分析同步函数作用域。
+        """
         self._visit_function(node)
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
-        """按与同步函数相同的规则追踪异步函数作用域。"""
+        """
+        按与同步函数相同的规则追踪异步函数作用域。
+        """
         self._visit_function(node)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
-        """隔离类体局部名称，同时保留模块导入的符号来源。"""
+        """
+        隔离类体局部名称，同时保留模块导入的符号来源。
+        """
         for expression in (*node.decorator_list, *node.bases, *node.keywords):
             self.visit(expression)
         self._visit_nested_scope(node.body)
 
     def visit_Assign(self, node: ast.Assign) -> None:
-        """传播由登记器构造或解析工厂建立的简单赋值。"""
+        """
+        传播由登记器构造或解析工厂建立的简单赋值。
+        """
         self.visit(node.value)
         is_registry = self._is_registry_expression(node.value)
         for target in node.targets:
             self._bind_target(target, is_registry)
 
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
-        """优先使用明确 TaskRegistry 注解，并兼容带初始值的赋值。"""
+        """
+        优先使用明确 TaskRegistry 注解，并兼容带初始值的赋值。
+        """
         if node.value is not None:
             self.visit(node.value)
         self._bind_target(
@@ -264,12 +324,16 @@ class _TaskOwnershipVisitor(ast.NodeVisitor):
         )
 
     def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
-        """传播海象表达式建立的登记器局部绑定。"""
+        """
+        传播海象表达式建立的登记器局部绑定。
+        """
         self.visit(node.value)
         self._bind_target(node.target, self._is_registry_expression(node.value))
 
     def visit_Call(self, node: ast.Call) -> None:
-        """只校验接收者已被证明为 TaskRegistry 的目标方法调用。"""
+        """
+        只校验接收者已被证明为 TaskRegistry 的目标方法调用。
+        """
         if (
             isinstance(node.func, ast.Attribute)
             and node.func.attr in TASK_METHODS
@@ -280,7 +344,9 @@ class _TaskOwnershipVisitor(ast.NodeVisitor):
 
 
 def _is_excluded(relative_path: str) -> bool:
-    """排除插件、SDK、兼容层与扫描器实现自身等非宿主调用面。"""
+    """
+    排除插件、SDK、兼容层与扫描器实现自身等非宿主调用面。
+    """
     if relative_path == "app/runtime/tasks.py":
         return True
     return any(
@@ -292,7 +358,9 @@ def _is_excluded(relative_path: str) -> bool:
 def collect_task_owner_violations(
     root: Path = PROJECT_ROOT,
 ) -> list[TaskOwnerViolation]:
-    """扫描 canonical 宿主源码并返回缺少稳定 owner 的调用。"""
+    """
+    扫描宿主规范源码并返回缺少稳定任务归属标识的调用。
+    """
     violations: list[TaskOwnerViolation] = []
     for path in sorted((root / "app").rglob("*.py")):
         relative_path = path.relative_to(root).as_posix()
@@ -306,7 +374,9 @@ def collect_task_owner_violations(
 
 
 def main() -> int:
-    """执行 TaskRegistry owner 零债务门禁。"""
+    """
+    检查 TaskRegistry 是否存在未声明稳定任务归属的调用。
+    """
     violations = collect_task_owner_violations()
     if violations:
         print("\n".join(violation.render() for violation in violations))

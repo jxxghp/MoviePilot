@@ -1,4 +1,6 @@
-"""站点资源与字幕搜索的统一逐页任务编排测试。"""
+"""
+站点资源与字幕搜索的统一逐页任务编排测试。
+"""
 
 import asyncio
 from types import SimpleNamespace
@@ -10,30 +12,44 @@ from app.chain.search import SearchChain
 
 
 class _Progress:
-    """提供不访问 Redis 的异步搜索进度替身。"""
+    """
+    提供不访问 Redis 的异步搜索进度替身。
+    """
 
     def __init__(self, *_args, **_kwargs) -> None:
-        """接受生产构造参数但不创建外部资源。"""
+        """
+        接受生产构造参数但不创建外部资源。
+        """
 
     async def start(self) -> None:
-        """模拟开始进度。"""
+        """
+        模拟开始进度。
+        """
 
     async def update(self, **_kwargs) -> None:
-        """模拟更新进度。"""
+        """
+        模拟更新进度。
+        """
 
     async def end(self) -> None:
-        """模拟结束进度。"""
+        """
+        模拟结束进度。
+        """
 
 
 def _make_chain() -> SearchChain:
-    """构造只包含逐页搜索所需运行时配置的 SearchChain。"""
+    """
+    构造只包含逐页搜索所需运行时配置的 SearchChain。
+    """
     chain = object.__new__(SearchChain)
     chain.runtime_config = SimpleNamespace(search_threadpool_size=2)
     return chain
 
 
 def test_format_site_durations_orders_sites_and_marks_slowest() -> None:
-    """站点耗时日志应按耗时倒序，并明确标出最慢站点。"""
+    """
+    站点耗时日志应按耗时倒序，并明确标出最慢站点。
+    """
     formatted = search_module._format_site_durations({
         "1": ("站点一", 1.2),
         "2": ("站点二", 3.4),
@@ -44,14 +60,18 @@ def test_format_site_durations_orders_sites_and_marks_slowest() -> None:
 
 @pytest.mark.asyncio
 async def test_site_page_iterator_cancels_and_waits_pending_requests() -> None:
-    """调用方提前关闭迭代器时，统一编排器必须收口其他站点请求。"""
+    """
+    调用方提前关闭迭代器时，统一编排器必须收口其他站点请求。
+    """
     chain = _make_chain()
     blocked_started = asyncio.Event()
     blocked_cancelled = asyncio.Event()
     task_names: list[str] = []
 
     async def search_page(site: dict, _page: int) -> list[str]:
-        """让一个站点立即完成，另一个停留到被编排器取消。"""
+        """
+        让一个站点立即完成，另一个停留到被编排器取消。
+        """
         task = asyncio.current_task()
         task_names.append(task.get_name() if task else "")
         if site["id"] == 1:
@@ -83,20 +103,28 @@ async def test_site_page_iterator_cancels_and_waits_pending_requests() -> None:
 
 @pytest.mark.asyncio
 async def test_subtitle_list_and_stream_share_page_continuation(monkeypatch) -> None:
-    """字幕列表与流式入口应复用同一续页规则、页序和停止条件。"""
+    """
+    字幕列表与流式入口应复用同一续页规则、页序和停止条件。
+    """
     chain = _make_chain()
     site = {"id": 7, "name": "SubtitleSite", "subtitles": {"page_size": 2}}
     calls: list[int] = []
 
     class _Sites:
-        """返回固定字幕站点的异步索引替身。"""
+        """
+        返回固定字幕站点的异步索引替身。
+        """
 
         async def async_get_indexers(self) -> list[dict]:
-            """返回唯一启用的字幕站点。"""
+            """
+            返回唯一启用的字幕站点。
+            """
             return [site]
 
     async def search_subtitles(*, page: int, **_kwargs) -> list[str]:
-        """第一页满页触发续页，第二页不足一页后停止。"""
+        """
+        第一页满页触发续页，第二页不足一页后停止。
+        """
         calls.append(page)
         return ["one", "two"] if page == 0 else ["three"]
 
@@ -129,26 +157,36 @@ async def test_subtitle_list_and_stream_share_page_continuation(monkeypatch) -> 
 
 @pytest.mark.asyncio
 async def test_torrent_list_and_stream_share_provider_facts(monkeypatch) -> None:
-    """列表与流式入口必须消费同一批 provider 事实并保持插件事件顺序。"""
+    """
+    列表与流式入口必须消费同一批 provider 事实并保持插件事件顺序。
+    """
     chain = _make_chain()
     site = {"id": 8, "name": "TorrentSite"}
     plugin_calls: list[dict] = []
     site_calls: list[dict] = []
 
     class _Sites:
-        """返回固定资源站点的异步索引替身。"""
+        """
+        返回固定资源站点的异步索引替身。
+        """
 
         async def async_get_indexers(self) -> list[dict]:
-            """返回唯一启用的资源站点。"""
+            """
+            返回唯一启用的资源站点。
+            """
             return [site]
 
     async def search_plugins(**kwargs) -> list[str]:
-        """记录插件搜索次数并返回稳定资源。"""
+        """
+        记录插件搜索次数并返回稳定资源。
+        """
         plugin_calls.append(kwargs)
         return ["plugin"]
 
     async def search_site(**kwargs) -> list[str]:
-        """记录站点搜索次数并返回稳定资源。"""
+        """
+        记录站点搜索次数并返回稳定资源。
+        """
         site_calls.append(kwargs)
         return ["site"]
 
@@ -191,21 +229,29 @@ async def test_torrent_list_and_stream_share_provider_facts(monkeypatch) -> None
 
 @pytest.mark.asyncio
 async def test_provider_stream_close_always_ends_progress(monkeypatch) -> None:
-    """调用方在初始进度后关闭流时也必须终结异步进度。"""
+    """
+    调用方在初始进度后关闭流时也必须终结异步进度。
+    """
     chain = _make_chain()
     ended: list[bool] = []
 
     class _TrackedProgress(_Progress):
-        """记录进度终结次数的替身。"""
+        """
+        记录进度终结次数的替身。
+        """
 
         async def end(self) -> None:
-            """记录进度已进入唯一终态。"""
+            """
+            记录进度已进入唯一终态。
+            """
             ended.append(True)
 
     monkeypatch.setattr(search_module, "AsyncProgressHelper", _TrackedProgress)
 
     async def search_page(_site: dict, _page: int) -> list[str]:
-        """关闭发生在首个站点请求前，本函数不应执行。"""
+        """
+        关闭发生在首个站点请求前，本函数不应执行。
+        """
         raise AssertionError("站点请求不应在初始进度消费前执行")
 
     iterator = chain._iter_provider_events(
@@ -228,21 +274,29 @@ async def test_provider_stream_close_always_ends_progress(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_provider_failure_always_ends_progress(monkeypatch) -> None:
-    """站点异常向调用方传播时必须先收口任务和异步进度。"""
+    """
+    站点异常向调用方传播时必须先收口任务和异步进度。
+    """
     chain = _make_chain()
     ended: list[bool] = []
 
     class _TrackedProgress(_Progress):
-        """记录异常路径进度终结次数的替身。"""
+        """
+        记录异常路径进度终结次数的替身。
+        """
 
         async def end(self) -> None:
-            """记录异常路径已进入唯一终态。"""
+            """
+            记录异常路径已进入唯一终态。
+            """
             ended.append(True)
 
     monkeypatch.setattr(search_module, "AsyncProgressHelper", _TrackedProgress)
 
     async def search_page(_site: dict, _page: int) -> list[str]:
-        """模拟 provider 边界异常。"""
+        """
+        模拟 provider 边界异常。
+        """
         raise RuntimeError("provider failed")
 
     iterator = chain._iter_provider_events(

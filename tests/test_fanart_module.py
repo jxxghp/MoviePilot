@@ -1,4 +1,6 @@
-"""Fanart 模块缓存清理生命周期测试。"""
+"""
+Fanart 模块缓存清理生命周期测试。
+"""
 
 import asyncio
 from types import SimpleNamespace
@@ -9,15 +11,21 @@ from app.runtime.tasks import TaskRegistry
 
 
 def test_fanart_clear_cache_registers_async_cleanup_in_running_loop() -> None:
-    """同步清缓存入口应复用宿主 owner，并保持立即返回的兼容约定。"""
+    """
+    同步清缓存入口应复用宿主 owner，并保持立即返回的兼容约定。
+    """
 
     async def scenario() -> None:
-        """验证异步缓存清理完成前始终由宿主登记器持有。"""
+        """
+        验证异步缓存清理完成前始终由宿主登记器持有。
+        """
         registry = TaskRegistry()
         release = asyncio.Event()
 
         async def clear_async_cache() -> None:
-            """等待测试释放，以便观察登记中的清理任务。"""
+            """
+            等待测试释放，以便观察登记中的清理任务。
+            """
             await release.wait()
 
         sync_cache = SimpleNamespace(cache_clear=Mock())
@@ -55,15 +63,21 @@ def test_fanart_clear_cache_registers_async_cleanup_in_running_loop() -> None:
 
 
 class _FakeFanartResponse:
-    """模拟成功的 Fanart HTTP 响应。"""
+    """
+    模拟成功的 Fanart HTTP 响应。
+    """
 
     def json(self) -> dict:
-        """返回最小图集载荷。"""
+        """
+        返回最小图集载荷。
+        """
         return {"name": "fanart"}
 
 
 def test_fanart_cache_key_follows_api_key(monkeypatch) -> None:
-    """同一媒体在 API Key 不变时命中缓存，换 Key 后重新请求而不依赖清空缓存。"""
+    """
+    同一媒体在 API Key 不变时命中缓存，换 Key 后重新请求而不依赖清空缓存。
+    """
     from app.domain.context import MediaInfo
     from app.runtime.config import settings
     from app.schemas.types import MediaType
@@ -71,12 +85,17 @@ def test_fanart_cache_key_follows_api_key(monkeypatch) -> None:
     requested_urls: list[str] = []
 
     class _FakeRequestUtils:
-        """记录请求地址的同步 HTTP 替身。"""
+        """
+        记录请求地址的同步 HTTP 替身。
+        """
 
         def __init__(self, **_kwargs) -> None:
             pass
 
         def get_res(self, url: str, **_kwargs) -> _FakeFanartResponse:
+            """
+            记录 Fanart 请求地址，并返回固定图集响应，不访问网络。
+            """
             requested_urls.append(url)
             return _FakeFanartResponse()
 
@@ -98,7 +117,9 @@ def test_fanart_cache_key_follows_api_key(monkeypatch) -> None:
 
 
 def test_fanart_init_module_keeps_request_cache() -> None:
-    """启动和重载不再清空请求缓存，Redis 缓存得以跨重启保留。"""
+    """
+    启动和重载不再清空请求缓存，Redis 缓存得以跨重启保留。
+    """
     module = FanartModule()
     with patch.object(FanartModule, "clear_cache") as clear_cache:
         module.init_module()

@@ -1,4 +1,6 @@
-"""插件市场技术依赖的唯一启动组合 owner。"""
+"""
+插件市场技术依赖的唯一启动组合 owner。
+"""
 
 from __future__ import annotations
 
@@ -19,7 +21,15 @@ from app.runtime.settings import get_runtime_setting
 
 @dataclass(frozen=True, slots=True)
 class PluginMarketComposition:
-    """保存插件市场相关 Transport、Client、Package 和 Dependency owner。"""
+    """
+    保存插件市场相关 Transport、Client、Package 和 Dependency owner。
+
+    :param transport: 插件市场的 GitHub 下载及降级传输
+    :param client: 插件目录和版本元数据客户端
+    :param package: 插件包安装与回滚管理器
+    :param health: 插件运行环境准入及健康检查
+    :param dependency: 插件依赖安装器
+    """
 
     transport: PluginMarketTransport
     client: PluginMarketClient
@@ -36,7 +46,9 @@ def compose_plugin_market(
     installed_plugins_provider: Callable[[], list[str]],
     enabled_plugins_provider: Optional[Callable[[], set[str]]] = None,
 ) -> PluginMarketComposition:
-    """一次性构造插件市场技术依赖，供同一 lifespan 内所有用例复用。"""
+    """
+    一次性构造插件市场技术依赖，供同一 lifespan 内所有用例复用。
+    """
     global _market_client
     root_path = Path(get_runtime_setting("ROOT_PATH"))
     plugin_root = root_path / "app" / "plugins"
@@ -63,13 +75,17 @@ def compose_plugin_market(
 
 
 def get_composed_plugin_market_client() -> PluginMarketClient:
-    """返回当前 lifespan 由组合根构造的唯一插件市场 Client。"""
+    """
+    返回当前 lifespan 由组合根构造的唯一插件市场 Client。
+    """
     if _market_client is None:
         raise RuntimeError("插件市场 Client 尚未由启动组合根装配")
     return _market_client
 
 
 def reset_plugin_market_composition() -> None:
-    """撤销当前 lifespan 的插件市场 Client 投影。"""
+    """
+    撤销当前 lifespan 的插件市场 Client 投影。
+    """
     global _market_client
     _market_client = None

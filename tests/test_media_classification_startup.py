@@ -1,4 +1,6 @@
-"""分类策略启动迁移、运行时回退和旧 API 发布测试。"""
+"""
+分类策略启动迁移、运行时回退和旧 API 发布测试。
+"""
 
 from __future__ import annotations
 
@@ -31,15 +33,21 @@ T = TypeVar("T")
 
 
 class _MemoryPolicyStore:
-    """模拟分类状态 CAS 存储并记录成功写入次数。"""
+    """
+    模拟分类状态 CAS 存储并记录成功写入次数。
+    """
 
     def __init__(self, state: ClassificationPolicyState | None = None) -> None:
-        """保存可选初始状态。"""
+        """
+        保存可选初始状态。
+        """
         self.state = state.model_copy(deep=True) if state else None
         self.write_count = 0
 
     def load(self) -> ClassificationPolicyState | None:
-        """返回隔离的状态快照。"""
+        """
+        返回隔离的状态快照。
+        """
         return self.state.model_copy(deep=True) if self.state else None
 
     def compare_and_set(
@@ -48,7 +56,9 @@ class _MemoryPolicyStore:
         expected_revision: int,
         state: ClassificationPolicyState,
     ) -> None:
-        """按活动 revision 原子替换状态。"""
+        """
+        按活动 revision 原子替换状态。
+        """
         current_revision = self.state.active.revision if self.state else 0
         if current_revision != expected_revision:
             raise ClassificationPolicyConflictError(
@@ -60,44 +70,62 @@ class _MemoryPolicyStore:
 
 
 class _InlineExecutor:
-    """直接执行启动阶段的同步操作。"""
+    """
+    直接执行启动阶段的同步操作。
+    """
 
     async def run(self, operation: Callable[[], T]) -> T:
-        """执行并返回操作结果。"""
+        """
+        执行并返回操作结果。
+        """
         return operation()
 
 
 class _SystemConfig:
-    """提供启动组合所需的只读配置键目录。"""
+    """
+    提供启动组合所需的只读配置键目录。
+    """
 
     def __init__(self, values: Mapping[str, Any]) -> None:
-        """保存配置快照。"""
+        """
+        保存配置快照。
+        """
         self._values = dict(values)
 
     def all(self) -> dict[str, Any]:
-        """返回隔离的配置快照。"""
+        """
+        返回隔离的配置快照。
+        """
         return dict(self._values)
 
     def get(self, key: object) -> Any:
-        """按枚举或字符串键返回启动测试配置值。"""
+        """
+        按枚举或字符串键返回启动测试配置值。
+        """
         normalized = getattr(key, "value", key)
         return self._values.get(str(normalized))
 
     def publish_many(self, values: Mapping[object, Any]) -> None:
-        """模拟提交后的系统配置快照发布。"""
+        """
+        模拟提交后的系统配置快照发布。
+        """
         for key, value in values.items():
             normalized = getattr(key, "value", key)
             self._values[str(normalized)] = value
 
 
 def _published_default_state() -> ClassificationPolicyState:
-    """构造已经持久化的 revision 1 默认策略状态。"""
+    """
+    构造已经持久化的 revision 1 默认策略状态。
+    """
     policy = build_default_classification_policy().model_copy(update={"revision": 1})
     return ClassificationPolicyState(active=policy)
 
 
 def _published_legacy_default_state() -> ClassificationPolicyState:
-    """构造旧版本仅含三个未分类兜底的 revision 1 状态。"""
+    """
+    构造旧版本仅含三个未分类兜底的 revision 1 状态。
+    """
     policy = build_default_classification_policy()
     policy.categories = [
         ClassificationCategory(
@@ -128,12 +156,15 @@ def _published_legacy_default_state() -> ClassificationPolicyState:
     return ClassificationPolicyState(active=policy.model_copy(update={"revision": 1}))
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.asyncio  # type: ignore[misc]
 async def test_existing_policy_never_reads_legacy_yaml(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """新配置键一旦存在，启动不得再让 category.yaml 影响事实源。"""
+    """
+    新配置键一旦存在，启动不得再让 category.yaml 影响事实源。
+    """
     state = _published_default_state()
     store = _MemoryPolicyStore(state)
     legacy_path = tmp_path / "category.yaml"
@@ -161,12 +192,15 @@ async def test_existing_policy_never_reads_legacy_yaml(
     assert store.write_count == 0
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.asyncio  # type: ignore[misc]
 async def test_deleted_legacy_rules_keep_validation_and_impact_analysis_working(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """重启加载只剩旧别名的策略后，校验和影响分析仍应可用。"""
+    """
+    重启加载只剩旧别名的策略后，校验和影响分析仍应可用。
+    """
     migrated = migrate_legacy_category_config(
         {
             "movie": {"中文电影": {"original_language": "zh"}},
@@ -211,12 +245,15 @@ async def test_deleted_legacy_rules_keep_validation_and_impact_analysis_working(
     assert impact.sample_count == 0
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.asyncio  # type: ignore[misc]
 async def test_untouched_legacy_default_policy_gains_music_rules_once(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """旧版未编辑默认策略应幂等升级，用户已发布的其它策略不得被误判。"""
+    """
+    旧版未编辑默认策略应幂等升级，用户已发布的其它策略不得被误判。
+    """
     state = _published_legacy_default_state()
     store = _MemoryPolicyStore(state)
     system_config = _SystemConfig(
@@ -279,12 +316,15 @@ async def test_untouched_legacy_default_policy_gains_music_rules_once(
     assert store.write_count == 1
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.asyncio  # type: ignore[misc]
 async def test_custom_movie_policy_with_legacy_music_fallback_gains_music_rules(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """其它媒体已自定义时，仍应只升级完全未编辑的旧版音乐兜底。"""
+    """
+    其它媒体已自定义时，仍应只升级完全未编辑的旧版音乐兜底。
+    """
     state = _published_legacy_default_state()
     categories = [
         category.model_copy(
@@ -339,12 +379,15 @@ async def test_custom_movie_policy_with_legacy_music_fallback_gains_music_rules(
     assert store.write_count == 1
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.asyncio  # type: ignore[misc]
 async def test_edited_legacy_default_policy_is_not_automatically_changed(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """即使仍是 revision 1，用户改过的默认策略也不得被启动升级覆盖。"""
+    """
+    即使仍是 revision 1，用户改过的默认策略也不得被启动升级覆盖。
+    """
     state = _published_legacy_default_state()
     categories = [
         category.model_copy(
@@ -386,12 +429,15 @@ async def test_edited_legacy_default_policy_is_not_automatically_changed(
     assert store.write_count == 0
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.asyncio  # type: ignore[misc]
 async def test_fresh_environment_initializes_builtin_default_policy(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """没有旧配置文件的新环境应持久化完整内置分类，而不是只有未分类兜底。"""
+    """
+    没有旧配置文件的新环境应持久化完整内置分类，而不是只有未分类兜底。
+    """
     store = _MemoryPolicyStore()
     monkeypatch.setattr(
         classification_composition,
@@ -457,12 +503,15 @@ async def test_fresh_environment_initializes_builtin_default_policy(
     assert store.write_count == 1
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.asyncio  # type: ignore[misc]
 async def test_absent_policy_migrates_yaml_once_without_rewriting_file(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """合法旧配置只发布 revision 1，原 YAML 内容保持不变。"""
+    """
+    合法旧配置只发布 revision 1，原 YAML 内容保持不变。
+    """
     content = """movie:\n  动画电影:\n    genre_ids: '16'\n  外语电影:\ntv:\n  未分类:\n"""
     legacy_path = tmp_path / "category.yaml"
     legacy_path.write_text(content, encoding="utf-8")
@@ -490,7 +539,9 @@ async def test_large_legacy_enumerations_migrate_and_reload_without_losing_value
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """复现 56/31 个旧枚举值的升级场景，验证首次发布、重启和旧接口均保留全部值。"""
+    """
+    复现 56/31 个旧枚举值的升级场景，验证首次发布、重启和旧接口均保留全部值。
+    """
     languages = ",".join(f"language{index}" for index in range(26))
     countries = ",".join(f"country{index}" for index in range(30))
     content = (
@@ -542,7 +593,9 @@ async def test_publish_validation_failure_preserves_legacy_runtime_without_write
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """真正超出叶子上限的不同字段保留错误诊断和旧配置，不得中断启动或写入新策略。"""
+    """
+    真正超出叶子上限的不同字段保留错误诊断和旧配置，不得中断启动或写入新策略。
+    """
     content = "movie:\n  复杂规则:\n" + "".join(f"    field{index}: 'X'\n" for index in range(31))
     legacy_path = tmp_path / "category.yaml"
     legacy_path.write_text(content, encoding="utf-8")
@@ -564,12 +617,15 @@ async def test_publish_validation_failure_preserves_legacy_runtime_without_write
     assert legacy_path.read_text(encoding="utf-8") == content
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.asyncio  # type: ignore[misc]
 async def test_invalid_legacy_config_keeps_runtime_uninitialized_and_writes_nothing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """无法无损表达的旧字段阻止自动发布，并保留结构化诊断。"""
+    """
+    无法无损表达的旧字段阻止自动发布，并保留结构化诊断。
+    """
     (tmp_path / "category.yaml").write_text(
         "movie:\n  错误规则:\n    Bad/Field: value\ntv:\n  未分类:\n",
         encoding="utf-8",
@@ -594,7 +650,9 @@ async def test_invalid_legacy_config_keeps_runtime_uninitialized_and_writes_noth
 
 
 def test_runtime_compat_projection_is_read_only_and_includes_music_categories() -> None:
-    """运行时兼容门面只投影旧结构，并让分类列表包含音乐。"""
+    """
+    运行时兼容门面只投影旧结构，并让分类列表包含音乐。
+    """
     store = _MemoryPolicyStore()
     service = ClassificationPolicyConfigurationService(store)
     service.initialize()
@@ -613,11 +671,14 @@ def test_runtime_compat_projection_is_read_only_and_includes_music_categories() 
     assert store.write_count == 1
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.asyncio  # type: ignore[misc]
 async def test_legacy_category_get_endpoints_use_classification_runtime_only(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """旧分类只读端点不得继续调度 TMDB 模块。"""
+    """
+    旧分类只读端点不得继续调度 TMDB 模块。
+    """
     store = _MemoryPolicyStore()
     service = ClassificationPolicyConfigurationService(store)
     service.initialize()
@@ -648,7 +709,9 @@ async def test_legacy_category_get_endpoints_use_classification_runtime_only(
 
 
 def test_legacy_category_config_route_has_no_write_method() -> None:
-    """旧分类配置端点只保留 GET 投影，不再暴露任何写方法。"""
+    """
+    旧分类配置端点只保留 GET 投影，不再暴露任何写方法。
+    """
     methods = {
         method
         for route in media_endpoint.router.routes

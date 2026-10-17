@@ -185,12 +185,14 @@ Python 内核继承宿主部署环境（含数据库配置与连接凭据），�
 
 这四个工具都要求管理员级 MCP 集成身份；`tools/list` 的可见性不等于绕过业务权限或写操作确认。下载器和媒体服务器工具会在一次调用内自动选择默认/唯一实例；实例不明确时，错误结果会列出可复用的精确实例名。数据库工具不接受任意连接串或凭据，脚本从 MoviePilot 运行时配置读取数据库连接。
 
-`app/agent/policy/resources/api_mcp_schema.json` 是 `moviepilot_api` 的生成制品，不是设置项或 API 参数的手工事实源。`scripts/generate_agent_api_mcp_schema.py` 从当前 FastAPI OpenAPI、固定 operation 路由和 Agent 专用英文参数说明生成该文件；运行时直接读取它响应外部 MCP `tools/list`，测试会校验生成结果没有漂移。修改 API、请求模型或 operation 后应重新生成并提交该文件，不应直接编辑 JSON。
+`app/agent/policy/resources/api_mcp_schema.json` 是 `moviepilot_api` 的生成制品，不是设置项或 API 参数的手工事实源。`scripts/generate_agent_api_mcp_schema.py` 从当前 FastAPI OpenAPI、固定 operation 路由和 Agent 专用中文参数说明生成该文件；运行时直接读取它响应外部 MCP `tools/list`，测试会校验生成结果没有漂移。修改 API、请求模型或 operation 后应重新生成并提交该文件，不应直接编辑 JSON。生成器保留端点已有的中文字段契约，缺少中文说明时使用已登记的中文兜底；紧凑投影同步改写中文分支引用，并兼容旧英文元数据输入。
+
+HTTP 接口的摘要、分页参数、数量响应头及认证请求字段使用中文说明；生成的 Skill 分类契约同步引用这些说明，操作标识、类型、默认值和权限规则保持各自原有含义。
 
 当前完整 FastAPI OpenAPI 包含 421 个 HTTP 操作，其中 231 个稳定业务操作进入
 `moviepilot_api`，使用 229 个固定路由模板：228 条 OpenAPI 路由直接匹配，另有 1 条只允许
 `tmdb`、`douban`、`bangumi`、`anilist` 四个来源的受限人物作品动态路由。每个 operation
-均同时具备固定 method/path、角色权限、副作用等级、确认与恢复策略、结果敏感性、英文用途说明，
+均同时具备固定 method/path、角色权限、副作用等级、确认与恢复策略、结果敏感性、中文用途说明，
 以及可直接提交的 path/query/body JSON Schema；Skill front matter、正文 operation 章节、运行时
 注册表和 MCP `tools/list` 的 231 个 `oneOf` 分支必须完全一致。
 

@@ -1,3 +1,7 @@
+"""
+验证音乐批量刮削的曲目字段、专辑信息及封面复用。
+"""
+
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -11,12 +15,16 @@ from app.schemas.types import EventType, ScrapingPolicy
 
 
 def _media_chain() -> ScrapingChain:
-    """构造不注册全局单例的音乐刮削链测试实例。"""
+    """
+    构造不注册全局单例的音乐刮削链测试实例。
+    """
     return object.__new__(ScrapingChain)
 
 
 def _album_info() -> MusicInfo:
-    """构造专辑批量刮削使用的标准目标。"""
+    """
+    构造专辑批量刮削使用的标准目标。
+    """
     return MusicInfo(
         media_source="musicbrainz",
         media_id="release-group-1",
@@ -32,7 +40,9 @@ def _album_info() -> MusicInfo:
 
 
 def test_album_scrape_merge_preserves_track_fields_and_applies_album_metadata() -> None:
-    """专辑批量刮削应保留每首歌自己的曲名和曲序，只统一专辑级字段。"""
+    """
+    专辑批量刮削应保留每首歌自己的曲名和曲序，只统一专辑级字段。
+    """
     local = MetaMusic(
         title="晴天",
         artists=["周杰伦"],
@@ -57,13 +67,17 @@ def test_album_scrape_merge_preserves_track_fields_and_applies_album_metadata() 
 
 
 def test_album_directory_scrape_processes_each_track_and_reuses_cover() -> None:
-    """显式选择专辑刮削目录时应逐曲写标签，并让整批文件共用一次封面下载。"""
+    """
+    显式选择专辑刮削目录时应逐曲写标签，并让整批文件共用一次封面下载。
+    """
     chain = _media_chain()
     chain.storagechain = Mock()
     chain.scraping_policies = Mock()
 
     def scraping_option(_target, metadata):
-        """保持原测试只验证标签和封面，歌词由独立用例覆盖。"""
+        """
+        保持原测试只验证标签和封面，歌词由独立用例覆盖。
+        """
         return SimpleNamespace(
             is_skip=metadata == "lyrics",
             is_overwrite=False,
@@ -110,7 +124,9 @@ def test_album_directory_scrape_processes_each_track_and_reuses_cover() -> None:
 
 
 def test_music_cover_download_uses_bounded_external_response_cache() -> None:
-    """重复刮削同一封面时应复用缓存内容，避免再次访问外部图片接口。"""
+    """
+    重复刮削同一封面时应复用缓存内容，避免再次访问外部图片接口。
+    """
     response = SimpleNamespace(
         status_code=200,
         headers={"Content-Type": "image/webp"},
@@ -138,7 +154,9 @@ def test_music_cover_download_uses_bounded_external_response_cache() -> None:
 
 
 def test_recording_identity_rejects_multi_track_directory_scrape() -> None:
-    """单曲身份不得覆盖整目录，否则会把同一首歌的标签写到专辑内所有文件。"""
+    """
+    单曲身份不得覆盖整目录，否则会把同一首歌的标签写到专辑内所有文件。
+    """
     chain = _media_chain()
     chain.storagechain = Mock()
     chain.storagechain.list_files.return_value = [
@@ -156,7 +174,9 @@ def test_recording_identity_rejects_multi_track_directory_scrape() -> None:
 
 
 def test_generic_scrape_dispatches_music_without_entering_video_handlers() -> None:
-    """统一刮削入口应直接分派音乐，不能因音频后缀过滤或落入电视剧分支。"""
+    """
+    统一刮削入口应直接分派音乐，不能因音频后缀过滤或落入电视剧分支。
+    """
     chain = _media_chain()
     chain.scrape_music_metadata = Mock(return_value=(True, "已刮削 1 个音频文件"))
     music = MusicInfo(
@@ -189,12 +209,16 @@ def test_generic_scrape_dispatches_music_without_entering_video_handlers() -> No
 
 
 def test_default_scraping_config_enables_music_lyrics_quality_upgrade() -> None:
-    """新安装和未保存过该字段的用户应默认升级歌词且不允许质量降级。"""
+    """
+    新安装和未保存过该字段的用户应默认升级歌词且不允许质量降级。
+    """
     assert ScrapingConfig.get_default_config()["music_lyrics"] == ScrapingPolicy.UPGRADE
 
 
 def test_album_track_match_uses_disc_track_title_and_duration() -> None:
-    """整张专辑刮削时应把本地音轨绑定到对应 Recording，不能复用专辑级身份。"""
+    """
+    整张专辑刮削时应把本地音轨绑定到对应 Recording，不能复用专辑级身份。
+    """
     album = MusicAlbumInfo(
         media_source="musicbrainz",
         media_id="album-1",
@@ -238,13 +262,17 @@ def test_album_track_match_uses_disc_track_title_and_duration() -> None:
 
 
 def test_music_scrape_can_run_lyrics_without_tags_or_cover() -> None:
-    """标签和封面关闭时，歌词开关仍应独立驱动逐曲处理。"""
+    """
+    标签和封面关闭时，歌词开关仍应独立驱动逐曲处理。
+    """
     chain = _media_chain()
     chain.storagechain = Mock()
     chain.scraping_policies = Mock()
 
     def scraping_option(_target, metadata):
-        """仅开启歌词的缺失刮削策略。"""
+        """
+        仅开启歌词的缺失刮削策略。
+        """
         return SimpleNamespace(
             is_skip=metadata != "lyrics",
             is_overwrite=False,
@@ -283,7 +311,9 @@ def test_music_scrape_can_run_lyrics_without_tags_or_cover() -> None:
 
 
 def test_write_music_lyrics_sidecar_creates_same_name_lrc(tmp_path) -> None:
-    """同步歌词应以 UTF-8 同名 LRC 文件写入音轨所在目录。"""
+    """
+    同步歌词应以 UTF-8 同名 LRC 文件写入音轨所在目录。
+    """
     chain = _media_chain()
     chain.storagechain = Mock()
     audio_path = tmp_path / "晴天.flac"
@@ -311,7 +341,9 @@ def test_write_music_lyrics_sidecar_creates_same_name_lrc(tmp_path) -> None:
 
 
 def test_missing_only_lyrics_skips_existing_sidecar(tmp_path) -> None:
-    """仅缺失策略发现同名歌词后不得再次请求歌词源。"""
+    """
+    仅缺失策略发现同名歌词后不得再次请求歌词源。
+    """
     chain = _media_chain()
     existing = FileItem(storage="local", path=(tmp_path / "晴天.lrc").as_posix(), type="file")
     chain.storagechain = Mock()
@@ -334,7 +366,9 @@ def test_missing_only_lyrics_skips_existing_sidecar(tmp_path) -> None:
 
 
 def test_write_music_lyrics_sidecar_uploads_to_remote_audio_directory(tmp_path) -> None:
-    """远端存储歌词应使用音轨父目录和同名文件上传。"""
+    """
+    远端存储歌词应使用音轨父目录和同名文件上传。
+    """
     chain = _media_chain()
     chain.storagechain = Mock()
     parent = FileItem(storage="u115", path="/Music/叶惠美", type="dir")
@@ -367,7 +401,9 @@ def test_write_music_lyrics_sidecar_uploads_to_remote_audio_directory(tmp_path) 
 
 
 def test_music_scrape_event_preserves_independent_policy_overwrite() -> None:
-    """标签覆盖策略不得升级为全局覆盖并误覆盖缺失模式下的歌词。"""
+    """
+    标签覆盖策略不得升级为全局覆盖并误覆盖缺失模式下的歌词。
+    """
     chain = _media_chain()
     chain.scrape_music_metadata = Mock(return_value=(True, "done"))
     fileitem = FileItem(storage="local", path="/music/叶惠美", type="dir")
@@ -397,7 +433,9 @@ def test_music_scrape_event_preserves_independent_policy_overwrite() -> None:
 
 
 def test_music_scrape_event_uses_only_batch_files_and_per_track_contexts() -> None:
-    """自动刮削必须按成功文件清单处理，并保留批次内每首歌各自的身份。"""
+    """
+    自动刮削必须按成功文件清单处理，并保留批次内每首歌各自的身份。
+    """
     chain = _media_chain()
     chain.storagechain = Mock()
     chain.scrape_music_metadata = Mock(return_value=(True, "done"))
@@ -443,7 +481,9 @@ def test_music_scrape_event_uses_only_batch_files_and_per_track_contexts() -> No
 
 
 def test_music_scrape_batch_applies_each_recording_to_its_own_file() -> None:
-    """多首单曲批次应逐文件使用对应身份，不触发单曲覆盖整目录保护。"""
+    """
+    多首单曲批次应逐文件使用对应身份，不触发单曲覆盖整目录保护。
+    """
     chain = _media_chain()
     chain.storagechain = Mock()
     chain.scraping_policies = Mock()
@@ -477,7 +517,9 @@ def test_music_scrape_batch_applies_each_recording_to_its_own_file() -> None:
 
 
 def test_music_download_failure_is_attributed_only_to_enabled_outputs() -> None:
-    """音频下载失败时只标记实际启用的标签、封面或歌词任务。"""
+    """
+    音频下载失败时只标记实际启用的标签、封面或歌词任务。
+    """
     chain = _media_chain()
     chain.storagechain = Mock()
     chain.storagechain.download_file.return_value = None

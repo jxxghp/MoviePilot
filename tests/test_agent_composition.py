@@ -1,4 +1,6 @@
-"""Agent 启动组合根的对象身份与装配时序测试。"""
+"""
+Agent 启动组合根的对象身份与装配时序测试。
+"""
 
 from __future__ import annotations
 
@@ -12,22 +14,30 @@ from app.startup.composition.runtime import RuntimeDependencies
 
 
 class _StartedWorker:
-    """仅允许在已启动状态读取容量的数据库 worker 桩。"""
+    """
+    仅允许在已启动状态读取容量的数据库 worker 桩。
+    """
 
     def __init__(self, events: list[str]) -> None:
-        """保存顺序记录并模拟已完成启动。"""
+        """
+        保存顺序记录并模拟已完成启动。
+        """
         self.started = True
         self.events = events
 
     def snapshot(self) -> SimpleNamespace:
-        """确认启动已完成后返回测试容量。"""
+        """
+        确认启动已完成后返回测试容量。
+        """
         assert self.started is True
         self.events.append("read-capacity")
         return SimpleNamespace(capacity=17)
 
 
 def _compose() -> tuple[agent_composition.AgentComposition, _StartedWorker]:
-    """构造一组无需真实数据库连接的 Agent composition。"""
+    """
+    构造一组无需真实数据库连接的 Agent composition。
+    """
     events = ["worker-started"]
     worker = _StartedWorker(events)
     runtime = SimpleNamespace(
@@ -54,7 +64,9 @@ def _compose() -> tuple[agent_composition.AgentComposition, _StartedWorker]:
 
 
 def test_agent_composition_reuses_shared_objects_and_started_worker() -> None:
-    """HostRuntime、Agent 数据与任务入口必须复用同一批对象。"""
+    """
+    HostRuntime、Agent 数据与任务入口必须复用同一批对象。
+    """
     composition, worker = _compose()
 
     assert composition.data.tasks is composition.tasks
@@ -66,7 +78,9 @@ def test_agent_composition_reuses_shared_objects_and_started_worker() -> None:
 
 
 def test_publish_agent_services_registers_composed_identity(monkeypatch) -> None:
-    """兼容 provider 与 Agent initializer 必须收到 composition 中的原对象。"""
+    """
+    兼容 provider 与 Agent initializer 必须收到 composition 中的原对象。
+    """
     composition, _worker = _compose()
     published: dict[str, object] = {}
 
@@ -100,7 +114,9 @@ def test_publish_agent_services_registers_composed_identity(monkeypatch) -> None
 
 
 def test_agent_composition_import_is_cold() -> None:
-    """导入 Agent composition 不得登记服务或加载 Agent 实现层。"""
+    """
+    导入 Agent composition 不得登记服务或加载 Agent 实现层。
+    """
     completed = subprocess.run(
         [
             sys.executable,

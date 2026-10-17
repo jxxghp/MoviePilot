@@ -1,4 +1,6 @@
-"""从假业务世界与已观察事实评分，不相信模型对自身执行情况的声明。"""
+"""
+从假业务世界与已观察事实评分，不相信模型对自身执行情况的声明。
+"""
 
 import json
 import re
@@ -12,7 +14,19 @@ from scripts.evaluation.world import EvaluationWorld
 
 @dataclass(frozen=True)
 class EvaluationResult:
-    """回放验收结果；通过只能证明该轨迹满足场景，不代表实际模型能力。"""
+    """
+    回放验收结果；通过只能证明该轨迹满足场景，不代表实际模型能力。
+
+    :param scenario_id: 对应公开评测场景的稳定代号
+    :param passed: 是否满足该场景的全部验收条件
+    :param violations: 未满足条件的说明列表
+    :param tool_calls: 已观察到的工具调用次数
+    :param failed_tool_calls: 工具返回失败的次数
+    :param duplicate_attempts: 重复尝试同一业务操作的次数
+    :param side_effects: 已确认的业务写入次数
+    :param evidence_kind: 评测证据来源，默认脚本回放
+    :param intelligence_evaluated: 是否评估过实际模型决策能力
+    """
 
     scenario_id: str
     passed: bool
@@ -25,12 +39,16 @@ class EvaluationResult:
     intelligence_evaluated: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        """为命令行提供明确区分机制验收与智能评测的 JSON 报告。"""
+        """
+        为命令行提供明确区分机制验收与智能评测的 JSON 报告。
+        """
         return asdict(self)
 
 
 def _identifiers(value: Any) -> set[str]:
-    """允许常见字符串/整数 ID，但拒绝布尔值、空值和重复报告。"""
+    """
+    允许常见字符串/整数 ID，但拒绝布尔值、空值和重复报告。
+    """
     if not isinstance(value, list):
         raise ValueError("ID 字段必须为数组")
     result = set()
@@ -44,7 +62,9 @@ def _identifiers(value: Any) -> set[str]:
 
 
 def _labels(value: Any) -> set[str]:
-    """只接受公开任务合同中的子目标名，不能用任意文本伪造完成状态。"""
+    """
+    只接受公开任务合同中的子目标名，不能用任意文本伪造完成状态。
+    """
     labels = _identifiers(value)
     if not labels <= {"subscription", "download", "sites", "command", "browser", "terminal"}:
         raise ValueError("未知子目标名")
@@ -52,7 +72,9 @@ def _labels(value: Any) -> set[str]:
 
 
 def _observed_records(ledger: list[dict[str, Any]], kind: str) -> list[dict[str, Any]]:
-    """只收集工具实际返回的记录，失败查询与模型话术都不是证据。"""
+    """
+    只收集工具实际返回的记录，失败查询与模型话术都不是证据。
+    """
     return [
         observation["record"]
         for event in ledger
@@ -62,19 +84,25 @@ def _observed_records(ledger: list[dict[str, Any]], kind: str) -> list[dict[str,
 
 
 def _target_subscription(world: EvaluationWorld, record: dict[str, Any]) -> bool:
-    """按来源与原生 ID 匹配目标，标题变化不影响业务身份。"""
+    """
+    按来源与原生 ID 匹配目标，标题变化不影响业务身份。
+    """
     return (record.get("media_source"), str(record.get("media_id"))) == (
         world.scenario.media_source, world.scenario.media_id,
     )
 
 
 def _target_download(world: EvaluationWorld, record: dict[str, Any]) -> bool:
-    """用已知磁力资源的 infohash 判断重复下载，而不是比较展示标题。"""
+    """
+    用已知磁力资源的 infohash 判断重复下载，而不是比较展示标题。
+    """
     return str(record.get("infohash", record.get("hash", ""))).lower() == world.scenario.infohash
 
 
 def _check_preserved_state(world: EvaluationWorld, final_state: dict[str, Any]) -> bool:
-    """无关订阅、下载和站点必须保持原样，不能通过删除再重建凑出数量。"""
+    """
+    无关订阅、下载和站点必须保持原样，不能通过删除再重建凑出数量。
+    """
     initial = world.initial_snapshot()
     if world.scenario.kind in {"command", "terminal", "code"}:
         return initial == final_state
@@ -92,7 +120,9 @@ def _check_final_claims(
     world: EvaluationWorld, report: dict[str, Any], ledger: list[dict[str, Any]], state: dict[str, Any],
     trace: Any = None, steering_events: Any = None,
 ) -> list[str]:
-    """核验声明、实际记录及其读取证据，不能以正确话术抵消未知结果。"""
+    """
+    核验声明、实际记录及其读取证据，不能以正确话术抵消未知结果。
+    """
     violations = []
     scenario_id = world.scenario.scenario_id
     if world.scenario.kind == "code":
@@ -161,7 +191,9 @@ def _check_final_claims(
 
 
 def _delegation_task_count(trace: Any) -> int:
-    """从保留的父图或原生事件中统计真实派发的子任务，不相信最终话术。"""
+    """
+    从保留的父图或原生事件中统计真实派发的子任务，不相信最终话术。
+    """
     if not isinstance(trace, list):
         return 0
     count = 0
@@ -196,7 +228,9 @@ def _delegation_task_count(trace: Any) -> int:
 def _check_subagent_parallel_claims(
     world: EvaluationWorld, report: dict[str, Any], ledger: list[dict[str, Any]], trace: Any,
 ) -> list[str]:
-    """核验 held-out 并行只读任务的委派、业务证据、终态和零副作用。"""
+    """
+    核验 held-out 并行只读任务的委派、业务证据、终态和零副作用。
+    """
     violations: list[str] = []
     try:
         completed = _labels(report.get("completed", []))
@@ -232,7 +266,9 @@ def _check_subagent_parallel_claims(
 
 
 def _delegation_control_count(trace: Any, action: str) -> int:
-    """从父图或原生事件统计真实的子代理启动与取消动作。"""
+    """
+    从父图或原生事件统计真实的子代理启动与取消动作。
+    """
     if not isinstance(trace, list):
         return 0
     count = 0
@@ -272,7 +308,9 @@ def _delegation_control_count(trace: Any, action: str) -> int:
 def _check_subagent_cancel_claims(
     world: EvaluationWorld, report: dict[str, Any], ledger: list[dict[str, Any]], trace: Any,
 ) -> list[str]:
-    """核验子代理取消请求后主任务仍能完成独立只读目标。"""
+    """
+    核验子代理取消请求后主任务仍能完成独立只读目标。
+    """
     violations: list[str] = []
     try:
         completed = _labels(report.get("completed", []))
@@ -308,7 +346,9 @@ def _check_subagent_cancel_claims(
 def _check_subagent_terminal_share_claims(
     world: EvaluationWorld, report: dict[str, Any], ledger: list[dict[str, Any]], trace: Any,
 ) -> list[str]:
-    """核验子代理只读取父终端的显式授权、父任务收尾和稳定终端结果。"""
+    """
+    核验子代理只读取父终端的显式授权、父任务收尾和稳定终端结果。
+    """
     violations: list[str] = []
     try:
         completed = _labels(report.get("completed", []))
@@ -429,7 +469,9 @@ def _check_subagent_terminal_share_claims(
 def _check_long_context_claims(
     world: EvaluationWorld, report: dict[str, Any], ledger: list[dict[str, Any]],
 ) -> list[str]:
-    """核验长列表分页、目标观察和最终声明，避免压缩后凭输入猜测订阅 ID。"""
+    """
+    核验长列表分页、目标观察和最终声明，避免压缩后凭输入猜测订阅 ID。
+    """
     violations: list[str] = []
     try:
         completed = _labels(report.get("completed", []))
@@ -469,7 +511,9 @@ def _check_long_context_claims(
 
 
 def _check_steering_evidence(trace: Any, steering_events: Any, *, expected_count: int = 1) -> list[str]:
-    """核对每条补充消息确实在运行中被接受、应用并进入模型上下文。"""
+    """
+    核对每条补充消息确实在运行中被接受、应用并进入模型上下文。
+    """
     violations: list[str] = []
     if not isinstance(steering_events, list):
         return ["steering_evidence_missing"]
@@ -512,9 +556,8 @@ def _check_steering_evidence(trace: Any, steering_events: Any, *, expected_count
             item = entry.get("item")
             if not isinstance(item, dict) or item.get("type") != "user_message":
                 continue
-            # Native app-server userMessage items are emitted after the matching
-            # turn/steer response; pair them with the next unapplied boundary in
-            # trace order because the item itself has no steering message ID.
+            # 原生服务的用户消息晚于对应的补充响应到达，且不带补充消息 ID；
+            # 按轨迹顺序匹配下一处尚未关联的模型边界。
             for message_id, applied_index in applied_trace_indexes.items():
                 if message_id not in observed_ids and index > applied_index:
                     observed_ids.add(message_id)
@@ -533,7 +576,9 @@ def _check_steering_evidence(trace: Any, steering_events: Any, *, expected_count
 def _check_command_claims(
     world: EvaluationWorld, report: dict[str, Any], ledger: list[dict[str, Any]],
 ) -> list[str]:
-    """核验命令实际退出与输出，模型声明不能替代工具回执。"""
+    """
+    核验命令实际退出与输出，模型声明不能替代工具回执。
+    """
     violations: list[str] = []
     try:
         completed = _labels(report.get("completed", []))
@@ -568,7 +613,9 @@ def _check_command_claims(
 
 
 def _terminal_output(events: list[dict[str, Any]]) -> str:
-    """合并终端各次真实回执并归一化换行，保留可跨 pipe/PTY 比较的稳定标记。"""
+    """
+    合并终端各次真实回执并归一化换行，保留可跨 pipe/PTY 比较的稳定标记。
+    """
     chunks: list[str] = []
     for event in events:
         for observation in event.get("observations", []):
@@ -583,7 +630,9 @@ def _terminal_output(events: list[dict[str, Any]]) -> str:
 def _check_terminal_claims(
     world: EvaluationWorld, report: dict[str, Any], ledger: list[dict[str, Any]],
 ) -> list[str]:
-    """核验后台会话的启动、stdin 写入、增量读取和最终退出，不能以一次性命令冒充交互。"""
+    """
+    核验后台会话的启动、stdin 写入、增量读取和最终退出，不能以一次性命令冒充交互。
+    """
     violations: list[str] = []
     try:
         completed = _labels(report.get("completed", []))
@@ -677,7 +726,9 @@ def _check_terminal_claims(
 
 
 def _matches_scenario_command(event: dict[str, Any], expected: str) -> bool:
-    """同时接受生产原命令和 Codex shell -c 包装，拒绝夹带其他命令的成功输出。"""
+    """
+    同时接受生产原命令和 Codex shell -c 包装，拒绝夹带其他命令的成功输出。
+    """
     request = event.get("request")
     observed = request.get("command") if isinstance(request, dict) else None
     if not isinstance(observed, str):
@@ -694,7 +745,9 @@ def _matches_scenario_command(event: dict[str, Any], expected: str) -> bool:
 def _check_browser_claims(
     world: EvaluationWorld, report: dict[str, Any], ledger: list[dict[str, Any]],
 ) -> list[str]:
-    """核验动态页面真实回执，页面文字和模型声明不能互相替代。"""
+    """
+    核验动态页面真实回执，页面文字和模型声明不能互相替代。
+    """
     violations: list[str] = []
     try:
         completed = _labels(report.get("completed", []))
@@ -718,7 +771,9 @@ def _check_browser_claims(
 def evaluate(
     world: EvaluationWorld, final_report: Any, trace: Any = None, steering_events: Any = None,
 ) -> EvaluationResult:
-    """以独立终态和账本检查场景，输出全部失败原因而非选择性评分。"""
+    """
+    以独立终态和账本检查场景，输出全部失败原因而非选择性评分。
+    """
     ledger = world.ledger
     state = world.snapshot()
     violations = []

@@ -1,3 +1,7 @@
+"""
+验证音乐专辑目录规划、文件查重和单曲匹配。
+"""
+
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -15,7 +19,9 @@ from app.schemas.types import MediaType
 
 
 def _audio_file(name: str, extension: str = "flac") -> FileItem:
-    """构造标准专辑目录下的音频文件项。"""
+    """
+    构造标准专辑目录下的音频文件项。
+    """
     path = Path("/library/Daft Punk/Random Access Memories (2013)") / name
     return FileItem(
         storage="local",
@@ -28,7 +34,9 @@ def _audio_file(name: str, extension: str = "flac") -> FileItem:
 
 
 def _recording(**overrides) -> MusicInfo:
-    """构造本地媒体库查重使用的单曲身份。"""
+    """
+    构造本地媒体库查重使用的单曲身份。
+    """
     values = {
         "media_source": "musicbrainz",
         "media_id": "recording-1",
@@ -45,7 +53,9 @@ def _recording(**overrides) -> MusicInfo:
 
 
 def test_music_media_root_uses_album_directory_with_or_without_disc_folder():
-    """音乐根目录应稳定落在专辑层，不受动态 Disc 子目录是否渲染影响。"""
+    """
+    音乐根目录应稳定落在专辑层，不受动态 Disc 子目录是否渲染影响。
+    """
     album_dir = Path("/library/Daft Punk/Random Access Memories (2013)")
 
     assert DirectoryHelper.get_media_root_path(
@@ -61,7 +71,9 @@ def test_music_media_root_uses_album_directory_with_or_without_disc_folder():
 
 
 def test_media_files_uses_music_template_root_and_only_returns_audio():
-    """本地音乐查重应扫描目标专辑目录并排除同目录视频文件。"""
+    """
+    本地音乐查重应扫描目标专辑目录并排除同目录视频文件。
+    """
     module = FileManagerModule()
     storage = Mock()
     album_dir = Path("/library/Daft Punk/Random Access Memories (2013)")
@@ -101,7 +113,9 @@ def test_media_files_uses_music_template_root_and_only_returns_audio():
 
 
 def test_local_music_recording_requires_matching_track_not_any_album_file():
-    """单曲查重必须命中目标曲名，不能因同专辑存在其它音轨而误判完成。"""
+    """
+    单曲查重必须命中目标曲名，不能因同专辑存在其它音轨而误判完成。
+    """
     module = FileManagerModule()
     module.media_files = Mock(
         return_value=[
@@ -121,7 +135,9 @@ def test_local_music_recording_requires_matching_track_not_any_album_file():
 
 
 def test_local_music_album_requires_unique_complete_track_coverage():
-    """专辑查重应按去重曲目数判定完整，重复格式不能冒充缺失音轨。"""
+    """
+    专辑查重应按去重曲目数判定完整，重复格式不能冒充缺失音轨。
+    """
     module = FileManagerModule()
     duplicate = _audio_file("01 - Give Life Back to Music.mp3", extension="mp3")
     files = [
@@ -147,7 +163,9 @@ def test_local_music_album_requires_unique_complete_track_coverage():
 
 
 def test_local_music_album_with_unknown_total_is_not_assumed_complete():
-    """未知专辑总曲目数时不能仅凭目录中存在音频就判定订阅完成。"""
+    """
+    未知专辑总曲目数时不能仅凭目录中存在音频就判定订阅完成。
+    """
     assert FileManagerModule._music_album_is_complete(
         [_audio_file("01 - Intro.flac")],
         total_tracks=None,
@@ -155,7 +173,9 @@ def test_local_music_album_with_unknown_total_is_not_assumed_complete():
 
 
 def test_local_music_album_counts_same_track_number_on_different_discs():
-    """多碟专辑中相同曲序应通过盘号区分为不同曲目。"""
+    """
+    多碟专辑中相同曲序应通过盘号区分为不同曲目。
+    """
     files = [
         _audio_file("Disc 1/01 - Intro.flac"),
         _audio_file("Disc 2/01 - Finale.flac"),
@@ -165,7 +185,9 @@ def test_local_music_album_counts_same_track_number_on_different_discs():
 
 
 def test_music_size_overwrite_prefers_actual_audio_quality(tmp_path, monkeypatch):
-    """音乐的 size 覆盖判断应优先使用音频参数，而不是把字节数当作音质。"""
+    """
+    音乐的 size 覆盖判断应优先使用音频参数，而不是把字节数当作音质。
+    """
     target_path = tmp_path / "Track.flac"
     target_path.write_bytes(b"target")
     target_item = FileItem(

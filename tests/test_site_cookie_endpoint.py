@@ -1,3 +1,7 @@
+"""
+验证站点 Cookie 接口的输入处理与更新。
+"""
+
 import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
@@ -63,7 +67,9 @@ def test_update_cookie_legacy_get_keeps_query_params():
 
 
 def test_set_cookie_by_body_persists_only_browser_cookie_fields():
-    """浏览器取得 Cookie 后的精细 API 不应要求或覆盖完整站点配置。"""
+    """
+    浏览器取得 Cookie 后的精细 API 不应要求或覆盖完整站点配置。
+    """
     command = Mock()
     command.set_cookie = AsyncMock(
         return_value=SimpleNamespace(success=True, message="saved")
@@ -89,7 +95,9 @@ def test_set_cookie_by_body_persists_only_browser_cookie_fields():
 
 
 def test_refresh_userdata_reports_parser_failure_instead_of_empty_success():
-    """用户解析未拿到身份时应返回业务失败，不能伪造空数据成功。"""
+    """
+    用户解析未拿到身份时应返回业务失败，不能伪造空数据成功。
+    """
     fake_site = SimpleNamespace(id=1, domain="www.musopia.vip")
     fake_chain = Mock()
     fake_chain.refresh_userdata.return_value = SiteUserData(

@@ -14,7 +14,9 @@ from app.runtime.log import logger
 
 
 def _database_error_metadata(error: BaseException) -> Optional[dict[str, Any]]:
-    """提取 SQLite 与 PostgreSQL 驱动提供的稳定错误分类字段。"""
+    """
+    提取 SQLite 与 PostgreSQL 驱动提供的稳定错误分类字段。
+    """
     metadata = {"error_type": type(error).__name__}
 
     # DBAPI 驱动字段并不共享统一类型，动态读取可同时兼容 sqlite3、psycopg2 与 asyncpg。
@@ -38,7 +40,9 @@ def _database_error_metadata(error: BaseException) -> Optional[dict[str, Any]]:
 
 
 def _log_database_error(exception_context: ExceptionContext) -> None:
-    """记录非敏感驱动错误码，并保持 SQLAlchemy 原有异常传播。"""
+    """
+    记录非敏感驱动错误码，并保持 SQLAlchemy 原有异常传播。
+    """
     metadata = _database_error_metadata(exception_context.original_exception)
     if not metadata:
         return
@@ -55,5 +59,7 @@ def _log_database_error(exception_context: ExceptionContext) -> None:
 
 
 def _register_database_error_logging(engine: SQLAlchemyEngine) -> None:
-    """为主程序 Engine 注册统一的底层驱动错误诊断。"""
+    """
+    为主程序 Engine 注册统一的底层驱动错误诊断。
+    """
     event.listen(engine, "handle_error", _log_database_error)

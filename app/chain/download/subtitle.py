@@ -1,4 +1,6 @@
-"""字幕获取、解压和存储 owner。"""
+"""
+字幕获取、解压和存储 owner。
+"""
 
 from __future__ import annotations
 
@@ -101,7 +103,9 @@ def _resolve_site_subtitle_target_dir(
     downloader: Optional[str],
     list_torrents: Callable[..., Optional[List[DownloaderTorrent]]],
 ) -> Tuple[Optional[str], Optional[Path]]:
-    """结合下载器当前内容路径解析字幕目录，避免已包含的种子目录名被重复追加。"""
+    """
+    结合下载器当前内容路径解析字幕目录，避免已包含的种子目录名被重复追加。
+    """
     file_uri = FileURI.from_uri(download_dir.as_posix())
     storage = file_uri.storage or "local"
     if not file_uri.path:
@@ -127,7 +131,9 @@ def _get_completed_transfer_histories(
     repository: Any,
     download_hash: Optional[str],
 ) -> Optional[List[TransferHistorySnapshot]]:
-    """读取同一下载任务已成功整理的源文件与目标文件对应关系。"""
+    """
+    读取同一下载任务已成功整理的源文件与目标文件对应关系。
+    """
     if not download_hash:
         return []
     try:
@@ -149,7 +155,9 @@ def _prepare_site_subtitle_directory(
     transfer_history_repository: Any,
     download_hash: Optional[str],
 ) -> Tuple[Optional[_SchemaFileItem], bool]:
-    """等待下载目录或为已整理任务恢复空目录，仅返回字幕落盘所需状态。"""
+    """
+    等待下载目录或为已整理任务恢复空目录，仅返回字幕落盘所需状态。
+    """
     working_dir_item = None
     video_already_transferred = False
     for attempt in range(30):
@@ -202,7 +210,9 @@ def _enqueue_completed_site_subtitles(
     downloader: Optional[str],
     is_subtitle_file: Callable[[str], bool],
 ) -> None:
-    """把已整理任务下载目录中的站点字幕送入标准整理队列。"""
+    """
+    把已整理任务下载目录中的站点字幕送入标准整理队列。
+    """
     try:
         subtitle_items = [
             item
@@ -240,7 +250,9 @@ def _enqueue_completed_site_subtitles(
 
 
 class DownloadSubtitleOwner(_DownloadOwnerBase):
-    """字幕获取、解压和存储 owner。"""
+    """
+    字幕获取、解压和存储 owner。
+    """
 
     _SUBTITLE_ARCHIVE_FORMATS = {
         ".zip": "zip",
@@ -616,7 +628,9 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
         storage: str,
         working_dir_item: _SchemaFileItem,
     ) -> None:
-        """保存站点详情页返回的单个字幕响应，响应所有权仍归调用方。"""
+        """
+        保存站点详情页返回的单个字幕响应，响应所有权仍归调用方。
+        """
         if response.status_code != 200:
             logger.error(f"下载字幕文件失败：{sublink}")
             return
@@ -691,17 +705,13 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
         if not self.runtime_config.download_subtitle:
             return
 
-        # 没有种子文件不处理
         if not torrent_content:
             return
 
-        # 没有详情页不处理
         torrent = context.torrent_info
         if not torrent.page_url:
             return
-        # 字幕下载目录
         logger.info("开始从站点下载字幕：%s" % torrent.page_url)
-        # 获取种子信息
         folder_name, _ = cast(Any, TorrentHelper)().get_fileinfo_from_torrent_content(
             torrent_content
         )
@@ -727,12 +737,10 @@ class DownloadSubtitleOwner(_DownloadOwnerBase):
         if not working_dir_item:
             logger.error(f"下载目录不存在，无法保存字幕：{target_dir}")
             return
-        # 解析字幕下载链接
         sublink_list = self._site_subtitle_links(context)
         if not sublink_list:
             logger.warn(f"{torrent.page_url} 页面未找到字幕下载链接")
             return
-        # 下载所有字幕文件
         try:
             http, archive_port = _download_ports_snapshot()
         except RuntimeError as err:

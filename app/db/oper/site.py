@@ -1,3 +1,7 @@
+"""
+站点配置与认证信息的数据访问入口，适配调用方会话及兼容事务执行器。
+"""
+
 from datetime import datetime
 from typing import Any, List, Mapping, Optional, Tuple
 
@@ -15,26 +19,34 @@ from app.db.oper.query import literal_contains
 
 
 async def _async_first(session: AsyncSession, statement: Any) -> Optional[Site]:
-    """执行异步站点查询并返回首条记录。"""
+    """
+    执行异步站点查询并返回首条记录。
+    """
     result = await session.execute(statement)
     site: Optional[Site] = result.scalars().first()
     return site
 
 
 async def _async_all(session: AsyncSession, statement: Any) -> list[Any]:
-    """执行异步列表查询并返回稳定 ORM 行。"""
+    """
+    执行异步列表查询并返回稳定 ORM 行。
+    """
     result = await session.execute(statement)
     return list(result.scalars().all())
 
 
 async def _async_scalar(session: AsyncSession, statement: Any) -> int:
-    """执行异步计数语句并返回整数。"""
+    """
+    执行异步计数语句并返回整数。
+    """
     result = await session.execute(statement)
     return int(result.scalar_one() or 0)
 
 
 def _apply_page(statement: Any, page: Optional[int], count: Optional[int]) -> Any:
-    """仅在分页窗口完整时向 SQL 语句追加 LIMIT/OFFSET。"""
+    """
+    仅在分页窗口完整时向 SQL 语句追加 LIMIT/OFFSET。
+    """
     if page is None or count is None:
         return statement
     return statement.offset((page - 1) * count).limit(count)
@@ -47,7 +59,9 @@ def _site_conditions(
     site_ids: Optional[list[int]] = None,
     domains: Optional[list[str]] = None,
 ) -> list[Any]:
-    """构造站点列表与计数共享的数据库筛选条件。"""
+    """
+    构造站点列表与计数共享的数据库筛选条件。
+    """
     conditions: list[Any] = []
     if is_active is not None:
         conditions.append(Site.is_active.is_(is_active))
@@ -69,7 +83,9 @@ def _userdata_conditions(
     domain: str,
     workdate: Optional[str],
 ) -> list[Any]:
-    """构造站点用户数据列表与计数共享的筛选条件。"""
+    """
+    构造站点用户数据列表与计数共享的筛选条件。
+    """
     conditions = [SiteUserData.domain == domain]
     if workdate:
         conditions.append(SiteUserData.updated_day == workdate)
@@ -77,7 +93,9 @@ def _userdata_conditions(
 
 
 def _latest_userdata_subquery() -> Any:
-    """构造各站点最新有效数据日期的共享子查询。"""
+    """
+    构造各站点最新有效数据日期的共享子查询。
+    """
     return (
         select(
             SiteUserData.domain,
@@ -90,7 +108,9 @@ def _latest_userdata_subquery() -> Any:
 
 
 def _latest_userdata_join(statement: Any, subquery: Any) -> Any:
-    """把最新用户数据日期子查询连接到目标查询语句。"""
+    """
+    把最新用户数据日期子查询连接到目标查询语句。
+    """
     return statement.join(
         subquery,
         (SiteUserData.domain == subquery.c.domain)
@@ -136,11 +156,15 @@ class SiteOper(DbOper):
         )
 
     async def get_by_id(self, site_id: int) -> Optional[Site]:
-        """读取站点写用例需要的目标站点。"""
+        """
+        读取站点写用例需要的目标站点。
+        """
         return await self.async_get(site_id)
 
     async def stage_create(self, payload: Mapping[str, Any]) -> None:
-        """暂存新增站点，不由仓储自行提交。"""
+        """
+        暂存新增站点，不由仓储自行提交。
+        """
         if not isinstance(self._db, AsyncSession):
             raise RuntimeError("站点事务新增需要调用方提供 AsyncSession")
         values = dict(payload)
@@ -152,7 +176,9 @@ class SiteOper(DbOper):
             site_id: int,
             payload: Mapping[str, Any],
     ) -> bool:
-        """暂存站点字段更新，事务由调用方统一提交。"""
+        """
+        暂存站点字段更新，事务由调用方统一提交。
+        """
         site = await self.async_get(site_id)
         if not site:
             return False
@@ -162,7 +188,9 @@ class SiteOper(DbOper):
         return True
 
     async def stage_delete(self, site_id: int) -> None:
-        """暂存站点删除，由请求级 UnitOfWork 统一提交。"""
+        """
+        暂存站点删除，由请求级 UnitOfWork 统一提交。
+        """
         if not isinstance(self._db, AsyncSession):
             raise RuntimeError("站点事务删除需要调用方提供 AsyncSession")
         await self._db.execute(
@@ -170,7 +198,9 @@ class SiteOper(DbOper):
         )
 
     async def stage_priorities(self, priorities: list[dict[str, Any]]) -> None:
-        """暂存批量优先级更新，避免逐行独立提交。"""
+        """
+        暂存批量优先级更新，避免逐行独立提交。
+        """
         for priority in priorities:
             site_id = priority.get("id")
             site = await self.async_get(site_id) if site_id else None
@@ -203,7 +233,9 @@ class SiteOper(DbOper):
         page: Optional[int] = None,
         count: Optional[int] = None,
     ) -> List[Site]:
-        """按筛选、优先级和可选分页窗口异步获取站点。"""
+        """
+        按筛选、优先级和可选分页窗口异步获取站点。
+        """
         statement = select(Site).where(
             *_site_conditions(
                 is_active=is_active,
@@ -227,7 +259,9 @@ class SiteOper(DbOper):
         site_ids: Optional[List[int]] = None,
         domains: Optional[List[str]] = None,
     ) -> int:
-        """按与站点列表一致的筛选条件异步统计数量。"""
+        """
+        按与站点列表一致的筛选条件异步统计数量。
+        """
         statement = select(func.count()).select_from(Site).where(
             *_site_conditions(
                 is_active=is_active,
@@ -280,11 +314,15 @@ class SiteOper(DbOper):
         self._stage_delete(Site, sid)
 
     def reset(self) -> None:
-        """清空站点表；兼容入口的事务由组合根统一持有。"""
+        """
+        清空站点表；兼容入口的事务由组合根统一持有。
+        """
         self._execute_sync_write(Site.reset)
 
     async def stage_reset(self) -> None:
-        """暂存清空站点表，由应用事务统一提交。"""
+        """
+        暂存清空站点表，由应用事务统一提交。
+        """
         if not isinstance(self._db, AsyncSession):
             raise RuntimeError("站点事务清空需要调用方提供 AsyncSession")
         await self._db.execute(sqlalchemy_delete(Site))
@@ -444,7 +482,9 @@ class SiteOper(DbOper):
         page: Optional[int] = None,
         count: Optional[int] = None,
     ) -> List[SiteUserData]:
-        """按可选分页窗口异步获取站点用户数据。"""
+        """
+        按可选分页窗口异步获取站点用户数据。
+        """
         statement = select(SiteUserData).where(
             *_userdata_conditions(domain, workdate)
         ).order_by(
@@ -464,7 +504,9 @@ class SiteOper(DbOper):
         domain: str,
         workdate: Optional[str] = None,
     ) -> int:
-        """异步统计指定站点和日期的用户数据数量。"""
+        """
+        异步统计指定站点和日期的用户数据数量。
+        """
         statement = select(func.count()).select_from(SiteUserData).where(
             *_userdata_conditions(domain, workdate)
         )
@@ -478,7 +520,9 @@ class SiteOper(DbOper):
         page: Optional[int] = None,
         count: Optional[int] = None,
     ) -> List[SiteUserData]:
-        """按可选分页窗口异步获取各站点最新用户数据。"""
+        """
+        按可选分页窗口异步获取各站点最新用户数据。
+        """
         subquery = _latest_userdata_subquery()
         statement = _latest_userdata_join(select(SiteUserData), subquery).order_by(
             SiteUserData.updated_time.desc(),
@@ -492,7 +536,9 @@ class SiteOper(DbOper):
         )
 
     async def async_count_userdata_latest(self) -> int:
-        """异步统计各站点最新用户数据查询的结果数量。"""
+        """
+        异步统计各站点最新用户数据查询的结果数量。
+        """
         subquery = _latest_userdata_subquery()
         statement = _latest_userdata_join(
             select(func.count()).select_from(SiteUserData),
@@ -503,7 +549,9 @@ class SiteOper(DbOper):
         )
 
     async def async_get_icon_by_domain(self, domain: str) -> Optional[SiteIcon]:
-        """异步按域名获取站点图标。"""
+        """
+        异步按域名获取站点图标。
+        """
         return await self._execute_async_query(
             lambda session: SiteIcon.async_get_by_domain(session, domain)
         )
@@ -512,7 +560,9 @@ class SiteOper(DbOper):
         self,
         domain: str,
     ) -> Optional[SiteStatistic]:
-        """异步按域名获取站点统计。"""
+        """
+        异步按域名获取站点统计。
+        """
         return await self._execute_async_query(
             lambda session: SiteStatistic.async_get_by_domain(session, domain)
         )
@@ -523,7 +573,9 @@ class SiteOper(DbOper):
         page: Optional[int] = None,
         count: Optional[int] = None,
     ) -> List[SiteStatistic]:
-        """按可选分页窗口异步获取站点统计。"""
+        """
+        按可选分页窗口异步获取站点统计。
+        """
         statement = select(SiteStatistic).order_by(SiteStatistic.id)
         return await self._execute_async_query(
             lambda session: _async_all(
@@ -533,7 +585,9 @@ class SiteOper(DbOper):
         )
 
     async def async_count_statistics(self) -> int:
-        """异步统计站点健康统计记录数量。"""
+        """
+        异步统计站点健康统计记录数量。
+        """
         statement = select(func.count()).select_from(SiteStatistic)
         return await self._execute_async_query(
             lambda session: _async_scalar(session, statement)
@@ -570,7 +624,9 @@ class SiteOper(DbOper):
         icon_base64 = f"data:image/ico;base64,{icon_base64}" if icon_base64 else ""
 
         def write(db: Session) -> None:
-            """在同一同步事务中查询并更新站点图标。"""
+            """
+            在同一同步事务中查询并更新站点图标。
+            """
             siteicon = SiteIcon.get_by_domain(db, domain)
             if not siteicon:
                 db.add(SiteIcon(
@@ -591,7 +647,9 @@ class SiteOper(DbOper):
         站点访问成功
         """
         def write(db: Session) -> None:
-            """在同一同步事务中读取并更新站点统计。"""
+            """
+            在同一同步事务中读取并更新站点统计。
+            """
             lst_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             sta = SiteStatistic.get_by_domain(db, domain)
             if sta:
@@ -635,7 +693,9 @@ class SiteOper(DbOper):
         站点访问失败
         """
         def write(db: Session) -> None:
-            """在同一同步事务中读取并更新站点失败统计。"""
+            """
+            在同一同步事务中读取并更新站点失败统计。
+            """
             lst_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             sta = SiteStatistic.get_by_domain(db, domain)
             if sta:
@@ -658,7 +718,9 @@ class SiteOper(DbOper):
         异步站点访问成功
         """
         async def write(session: AsyncSession) -> None:
-            """在同一异步事务中读取并更新站点成功统计。"""
+            """
+            在同一异步事务中读取并更新站点成功统计。
+            """
             lst_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             sta = await SiteStatistic.async_get_by_domain(session, domain)
             if sta:
@@ -696,7 +758,9 @@ class SiteOper(DbOper):
         异步站点访问失败
         """
         async def write(session: AsyncSession) -> None:
-            """在同一异步事务中读取并更新站点失败统计。"""
+            """
+            在同一异步事务中读取并更新站点失败统计。
+            """
             lst_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             sta = await SiteStatistic.async_get_by_domain(session, domain)
             if sta:

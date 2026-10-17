@@ -1,4 +1,6 @@
-"""原搜索接口的单页请求：只返回页事实，进度与重试由客户端拥有。"""
+"""
+原搜索接口的单页请求：只返回页事实，进度与重试由客户端拥有。
+"""
 
 import asyncio
 import base64
@@ -29,13 +31,17 @@ _PAGE_CACHE_REGION = "search.manual.pages"
 
 
 def encode_source(site: str, keyword: str, search_id: Optional[str] = None) -> str:
-    """来源标识携带本轮搜索编号，隔离不同搜索的页摘要；客户端只需原样回传。"""
+    """
+    来源标识携带本轮搜索编号，隔离不同搜索的页摘要；客户端只需原样回传。
+    """
     return base64.urlsafe_b64encode(json.dumps(
         [site, keyword, search_id or uuid4().hex], ensure_ascii=False).encode()).decode().rstrip("=")
 
 
 def decode_source(source: str) -> tuple[str, str, str]:
-    """还原来源标识；格式不正确时抛出 ValueError。"""
+    """
+    还原来源标识；格式不正确时抛出 ValueError。
+    """
     try:
         site, keyword, search_id = json.loads(base64.urlsafe_b64decode(source + "=" * (-len(source) % 4)))
     except (binascii.Error, ValueError, TypeError) as error:
@@ -47,7 +53,9 @@ def decode_source(source: str) -> tuple[str, str, str]:
 
 
 async def _offload(operation: Callable[..., _PageResult], *args: Any, **kwargs: Any) -> _PageResult:
-    """托管有限页任务，取消时等 worker 收尾，避免遗留请求。"""
+    """
+    托管有限页任务，取消时等 worker 收尾，避免遗留请求。
+    """
     task = get_task_registry().create_sync(partial(operation, *args, **kwargs), owner="search.manual")
     try:
         return cast(_PageResult, await asyncio.shield(task))
@@ -57,10 +65,14 @@ async def _offload(operation: Callable[..., _PageResult], *args: Any, **kwargs: 
 
 
 class _ManualPage:
-    """一次单页请求只收集原始资源，结果处理委托给原搜索业务。"""
+    """
+    一次单页请求只收集原始资源，结果处理委托给原搜索业务。
+    """
 
     def __init__(self, owner: _SearchOwnerBase, plan: MediaSearchPlan, raw_title: bool, search_id: str) -> None:
-        """持有本轮搜索计划和页摘要，候选只由事件编排层顺序收集。"""
+        """
+        持有本轮搜索计划和页摘要，候选只由事件编排层顺序收集。
+        """
         self.owner, self.plan, self.raw_title = owner, plan, raw_title
         self.media = cast(MediaInfo, plan.mediainfo)
         self.sources = SearchSources(owner, plan)
@@ -69,7 +81,9 @@ class _ManualPage:
         self.page_cache = Cache(ttl=RESTART_AFTER_SECONDS)
 
     def read(self, key: str, page: int) -> tuple[dict[str, Any], list[TorrentInfo]]:
-        """上一页摘要保留 36 小时；失效时先补上一页再取目标页，只有目标页交给原结果处理。"""
+        """
+        上一页摘要保留 36 小时；失效时先补上一页再取目标页，只有目标页交给原结果处理。
+        """
         query = self.sources.queries[key]
         pageable = self.sources.pageable(key)
         source = encode_source(query["site"], query["keyword"], self.search_id)
@@ -102,7 +116,9 @@ class _ManualPage:
         return facts, result.torrents
 
     def results(self, torrents: Optional[list[TorrentInfo]] = None) -> list[Context]:
-        """复用原搜索的识别、季集过滤和排序；显示过滤与分页能力无关。"""
+        """
+        复用原搜索的识别、季集过滤和排序；显示过滤与分页能力无关。
+        """
         torrents = self.torrents if torrents is None else torrents
         if self.raw_title:
             return SearchTitleOwner._resolve_title_request(cast(SearchTitleOwner, self.owner), _TitleSearchResolveRequest(
@@ -116,20 +132,26 @@ class _ManualPage:
         )
 
     def preview(self, torrents: list[TorrentInfo]) -> list[Context]:
-        """标题预览复用过滤，精确搜索先显示未匹配候选，最终整页统一校验。"""
+        """
+        标题预览复用过滤，精确搜索先显示未匹配候选，最终整页统一校验。
+        """
         return self.results(torrents) if self.raw_title else _candidate_contexts(self.media, torrents)
 
 
 async def _read_pages(
     manual: _ManualPage, keys: list[str], page: int,
 ) -> AsyncGenerator[tuple[str, dict[str, Any], list[TorrentInfo]], None]:
-    """复用有界并发和取消收口；同站点多个关键词按轮次串行，先完成的页立即交付。"""
+    """
+    复用有界并发和取消收口；同站点多个关键词按轮次串行，先完成的页立即交付。
+    """
     grouped: dict[str, list[str]] = {}
     for key in keys:
         grouped.setdefault(manual.sources.queries[key]["site"], []).append(key)
 
     async def read_source(site: dict[str, Any], requested_page: int) -> list[Any]:
-        """把指定来源的页事实适配到既有单页调度器。"""
+        """
+        把指定来源的页事实适配到既有单页调度器。
+        """
         return [await _offload(manual.read, site["key"], requested_page)]
 
     for index in range(max(map(len, grouped.values()), default=0)):
@@ -145,7 +167,9 @@ async def _read_pages(
 
 
 async def _prepare_page(owner: _SearchOwnerBase, params: dict[str, Any]) -> _ManualPage:
-    """只构造本次请求的识别/关键词计划，不读写任何搜索检查点。"""
+    """
+    只构造本次请求的识别/关键词计划，不读写任何搜索检查点。
+    """
     source, media_id = params.get("media_source"), params.get("media_id")
     raw_title = not (source and media_id)
     if raw_title:
@@ -170,7 +194,9 @@ async def _prepare_page(owner: _SearchOwnerBase, params: dict[str, Any]) -> _Man
 
 
 async def _page_events(manual: _ManualPage, params: dict[str, Any]) -> AsyncGenerator[dict[str, Any], None]:
-    """每个来源只返回指定页；只有首页请求才使用别名回退和插件来源。"""
+    """
+    每个来源只返回指定页；只有首页请求才使用别名回退和插件来源。
+    """
     page = max(0, int(params.get("page") or 0))
     initial = not params.get("source")
     if not initial:
@@ -222,11 +248,15 @@ async def _page_events(manual: _ManualPage, params: dict[str, Any]) -> AsyncGene
 
 
 class SearchManualOwner:
-    """Web 单页结果与后端页摘要缓存，沿用既有站点、别名和媒体识别策略。"""
+    """
+    Web 单页结果与后端页摘要缓存，沿用既有站点、别名和媒体识别策略。
+    """
 
     @staticmethod
     async def events(owner: _SearchOwnerBase, *, params: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
-        """原 API 显式单页模式；首次请求各来源第 0 页，续页按来源标识请求指定页。"""
+        """
+        原 API 显式单页模式；首次请求各来源第 0 页，续页按来源标识请求指定页。
+        """
         try:
             manual = await _prepare_page(owner, params)
         except ValueError as error:

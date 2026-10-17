@@ -1,3 +1,7 @@
+"""
+验证各消息渠道使用稳定用户标识判定管理员权限。
+"""
+
 import json
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -9,7 +13,9 @@ from app.application.messaging.channel.admin import (
     resolve_config_principal_ids,
 )
 from app.modules.discord import DiscordModule
-from app.modules.feishu.module import Feishu  # 经 module 导入以注册飞书管理员解析器
+
+# 经 module 导入以注册飞书管理员解析器
+from app.modules.feishu.module import Feishu
 from app.modules.qqbot.module import QQBotModule
 from app.modules.slack import SlackModule
 from app.modules.synologychat import SynologyChatModule
@@ -22,7 +28,9 @@ from app.schemas.types import NotificationChannel
 
 
 def _parse_module_message(module, *, config: dict, body, client=None, form=None):
-    """使用隔离的渠道配置调用消息解析器。"""
+    """
+    使用隔离的渠道配置调用消息解析器。
+    """
     client = client or SimpleNamespace()
     with patch.object(
         module,
@@ -47,7 +55,9 @@ def _parse_module_message(module, *, config: dict, body, client=None, form=None)
     ],
 )
 def test_resolve_config_principal_ids_uses_nonempty_stable_values(config, expected):
-    """渠道模块声明的配置值应统一转为非空字符串 ID。"""
+    """
+    渠道模块声明的配置值应统一转为非空字符串 ID。
+    """
     assert resolve_config_principal_ids(config, "ADMINS") == expected
 
 
@@ -124,17 +134,24 @@ def test_resolve_config_principal_ids_uses_nonempty_stable_values(config, expect
 def test_matches_channel_admin_includes_only_primary_user_ids(
     channel, config, principal_ids, expected
 ):
-    """渠道主用户 ID 默认授权，但群组或频道目标不能授权其成员。"""
+    """
+    渠道主用户 ID 默认授权，但群组或频道目标不能授权其成员。
+    """
     assert matches_channel_admin(channel, config, *principal_ids) is expected
 
 
 def test_matches_channel_admin_rejects_unregistered_channel():
-    """未注册管理员解析器的渠道不能获得管理员权限。"""
+    """
+    未注册管理员解析器的渠道不能获得管理员权限。
+    """
     assert not matches_channel_admin("unregistered", {"ADMINS": "owner"}, "owner")
 
 
 @pytest.mark.parametrize("message_kind", ["message", "callback"])
 def test_telegram_uses_user_id_not_same_named_username(message_kind):
+    """
+    Telegram 管理员校验使用用户 ID，不能凭同名用户名通过。
+    """
     module = TelegramModule()
     client = SimpleNamespace(bot_username=None, answer_callback_query=Mock())
     if message_kind == "message":
@@ -168,6 +185,9 @@ def test_telegram_uses_user_id_not_same_named_username(message_kind):
 
 @pytest.mark.parametrize("message_kind", ["message", "callback"])
 def test_telegram_uses_stable_user_id_for_admin(message_kind):
+    """
+    Telegram 管理员身份由稳定用户 ID 决定。
+    """
     module = TelegramModule()
     client = SimpleNamespace(bot_username=None, answer_callback_query=Mock())
     if message_kind == "message":
@@ -199,7 +219,9 @@ def test_telegram_uses_stable_user_id_for_admin(message_kind):
 
 
 def test_telegram_primary_user_id_is_admin_without_duplicate_admin_entry():
-    """Telegram 主用户 ID 无需重复加入管理员名单。"""
+    """
+    Telegram 主用户 ID 无需重复加入管理员名单。
+    """
     module = TelegramModule()
     client = SimpleNamespace(bot_username=None, send_msg=Mock())
     message = _parse_module_message(
@@ -224,7 +246,9 @@ def test_telegram_primary_user_id_is_admin_without_duplicate_admin_entry():
 
 
 def test_telegram_group_chat_id_does_not_authorize_group_member():
-    """Telegram 群组 Chat ID 不能使群内发送者默认成为管理员。"""
+    """
+    Telegram 群组 Chat ID 不能使群内发送者默认成为管理员。
+    """
     message = _parse_module_message(
         TelegramModule(),
         config={"TELEGRAM_CHAT_ID": "-10001", "TELEGRAM_ADMINS": "10002"},
@@ -243,7 +267,9 @@ def test_telegram_group_chat_id_does_not_authorize_group_member():
 
 
 def test_telegram_slash_does_not_accept_admin_display_username():
-    """Telegram 斜杠命令不得把可修改的 username 当作管理员 ID。"""
+    """
+    Telegram 斜杠命令不得把可修改的 username 当作管理员 ID。
+    """
     module = TelegramModule()
     client = SimpleNamespace(bot_username=None, send_msg=Mock())
     message = _parse_module_message(
@@ -265,7 +291,9 @@ def test_telegram_slash_does_not_accept_admin_display_username():
 
 
 def test_telegram_empty_admin_list_keeps_legacy_slash_without_agent_admin():
-    """空名单保持传统命令可用，但不能生成 Agent 管理员身份。"""
+    """
+    空名单保持传统命令可用，但不能生成 Agent 管理员身份。
+    """
     module = TelegramModule()
     client = SimpleNamespace(bot_username=None, send_msg=Mock())
     message = _parse_module_message(
@@ -300,6 +328,9 @@ def test_telegram_empty_admin_list_keeps_legacy_slash_without_agent_admin():
     ],
 )
 def test_slack_message_and_callback_use_stable_user_id(payload):
+    """
+    Slack 普通消息和交互回调统一使用稳定用户 ID。
+    """
     message = _parse_module_message(
         SlackModule(),
         config={"SLACK_ADMINS": "UADMIN"},
@@ -311,7 +342,9 @@ def test_slack_message_and_callback_use_stable_user_id(payload):
 
 
 def test_slack_slash_does_not_accept_admin_display_username():
-    """Slack 原生斜杠命令只接受稳定 user_id，不接受 user_name。"""
+    """
+    Slack 原生斜杠命令只接受稳定 user_id，不接受 user_name。
+    """
     client = SimpleNamespace(send_msg=Mock())
     message = _parse_module_message(
         SlackModule(),
@@ -332,7 +365,9 @@ def test_slack_slash_does_not_accept_admin_display_username():
 
 
 def test_slack_empty_admin_list_keeps_legacy_slash_without_agent_admin():
-    """Slack 空名单不预拦截命令，但 Agent 管理员事实仍为否。"""
+    """
+    Slack 空名单不预拦截命令，但 Agent 管理员事实仍为否。
+    """
     client = SimpleNamespace(send_msg=Mock())
     message = _parse_module_message(
         SlackModule(),
@@ -370,6 +405,9 @@ def test_slack_empty_admin_list_keeps_legacy_slash_without_agent_admin():
     ],
 )
 def test_discord_message_and_callback_use_stable_user_id(payload):
+    """
+    Discord 普通消息和交互回调统一使用稳定用户 ID。
+    """
     message = _parse_module_message(
         DiscordModule(),
         config={"DISCORD_ADMINS": "discord-admin-id"},
@@ -409,6 +447,9 @@ def test_discord_message_and_callback_use_stable_user_id(payload):
     ],
 )
 def test_feishu_message_and_card_callback_accept_open_id_or_user_id(payload, admins):
+    """
+    飞书消息和卡片回调支持配置中的 open_id 或 user_id。
+    """
     with patch.object(Feishu, "_build_api_client", return_value=Mock()), patch.object(
         Feishu, "_start_ws_client"
     ), patch(
@@ -428,7 +469,9 @@ def test_feishu_message_and_card_callback_accept_open_id_or_user_id(payload, adm
 
 
 def test_feishu_default_open_id_is_admin_without_duplicate_admin_entry():
-    """飞书默认用户 Open ID 无需重复加入管理员名单。"""
+    """
+    飞书默认用户 Open ID 无需重复加入管理员名单。
+    """
     with patch.object(Feishu, "_build_api_client", return_value=Mock()), patch.object(
         Feishu, "_start_ws_client"
     ), patch(
@@ -457,6 +500,9 @@ def test_feishu_default_open_id_is_admin_without_duplicate_admin_entry():
     [("wxid_admin", "renamed-user", True), ("wxid_user", "admin-name", False)],
 )
 def test_wechatclawbot_uses_channel_user_id_not_username(user_id, username, expected):
+    """
+    微信 ClawBot 使用渠道用户标识判定管理员，不使用展示名。
+    """
     message = _parse_module_message(
         WechatClawBotModule(),
         config={"WECHATCLAWBOT_ADMINS": "admin-name,wxid_admin"},
@@ -473,7 +519,9 @@ def test_wechatclawbot_uses_channel_user_id_not_username(user_id, username, expe
 
 
 def test_wechatclawbot_primary_user_id_is_admin_without_duplicate_admin_entry():
-    """微信 ClawBot 默认用户 ID 无需重复加入管理员名单。"""
+    """
+    微信 ClawBot 默认用户 ID 无需重复加入管理员名单。
+    """
     message = _parse_module_message(
         WechatClawBotModule(),
         config={
@@ -496,6 +544,9 @@ def test_wechatclawbot_primary_user_id_is_admin_without_duplicate_admin_entry():
     [("wechat-admin", "wechat-admin", True), ("wechat-user", "display-admin", False)],
 )
 def test_wechat_bot_uses_sender_userid(sender, admins, expected):
+    """
+    企业微信机器人使用消息发送者的 userid。
+    """
     message = _parse_module_message(
         WechatModule(),
         config={"WECHAT_MODE": "bot", "WECHAT_ADMINS": admins},
@@ -515,7 +566,9 @@ def test_wechat_bot_uses_sender_userid(sender, admins, expected):
 
 
 def test_wechat_bot_primary_user_id_is_admin_without_duplicate_admin_entry():
-    """企业微信机器人默认用户 ID 无需重复加入管理员名单。"""
+    """
+    企业微信机器人默认用户 ID 无需重复加入管理员名单。
+    """
     message = _parse_module_message(
         WechatModule(),
         config={
@@ -538,7 +591,9 @@ def test_wechat_bot_primary_user_id_is_admin_without_duplicate_admin_entry():
 
 
 def test_wechat_bot_client_allows_primary_user_command():
-    """企业微信机器人客户端不得在转发前拦截主用户 ID。"""
+    """
+    企业微信机器人客户端不得在转发前拦截主用户 ID。
+    """
     bot = WeChatBot.__new__(WeChatBot)
     bot._config_name = "wechat-bot-test"
     bot._admins = ["wechat-other"]
@@ -561,6 +616,9 @@ def test_wechat_bot_client_allows_primary_user_command():
 
 
 def test_qq_c2c_uses_user_openid_for_admin():
+    """
+    QQ 私聊使用 user_openid 判定管理员身份。
+    """
     message = _parse_module_message(
         QQBotModule(),
         config={"QQBOT_ADMINS": "qq-admin"},
@@ -576,7 +634,9 @@ def test_qq_c2c_uses_user_openid_for_admin():
 
 
 def test_qq_primary_user_openid_is_admin_without_duplicate_admin_entry():
-    """QQ 默认用户 OpenID 无需重复加入管理员名单。"""
+    """
+    QQ 默认用户 OpenID 无需重复加入管理员名单。
+    """
     message = _parse_module_message(
         QQBotModule(),
         config={"QQ_OPENID": "qq-owner", "QQBOT_ADMINS": "qq-other"},
@@ -595,6 +655,9 @@ def test_qq_primary_user_openid_is_admin_without_duplicate_admin_entry():
     [("member-admin", True), ("group:group-admin", False), ("group-admin", False)],
 )
 def test_qq_group_uses_only_member_openid_for_admin(admins, expected):
+    """
+    QQ 群消息仅使用成员 openid 判定管理员身份。
+    """
     message = _parse_module_message(
         QQBotModule(),
         config={"QQBOT_ADMINS": admins},
@@ -616,6 +679,9 @@ def test_qq_group_uses_only_member_openid_for_admin(admins, expected):
     [("7", True), ("UID#7", True), ("GID#2", False)],
 )
 def test_vocechat_group_uses_only_sender_uid_for_admin(admins, expected):
+    """
+    VoceChat 群消息仅使用发送者 uid 判定管理员身份。
+    """
     message = _parse_module_message(
         VoceChatModule(),
         config={"VOCECHAT_ADMINS": admins, "VOCECHAT_CHANNEL_ID": "2"},
@@ -642,6 +708,9 @@ def test_vocechat_group_uses_only_sender_uid_for_admin(admins, expected):
     [("42", True), ("display-admin", False)],
 )
 def test_synology_chat_uses_numeric_user_id_not_username(admins, expected):
+    """
+    群晖 Chat 使用数字用户 ID，不能以用户名替代。
+    """
     client = SimpleNamespace(check_token=Mock(return_value=True))
     message = _parse_module_message(
         SynologyChatModule(),

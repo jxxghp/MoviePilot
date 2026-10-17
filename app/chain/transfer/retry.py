@@ -1,4 +1,6 @@
-"""整理失败历史的人工、回调与 Agent 重试编排。"""
+"""
+整理失败历史的人工、回调与 Agent 重试编排。
+"""
 
 from pathlib import Path
 from typing import List, Optional, Tuple, Union, cast
@@ -37,7 +39,9 @@ def _request_durable_transfer_retry(
         requested_by: str,
         repository: TransferExecutionRepository,
 ) -> Optional[Tuple[bool, str]]:
-    """将 durable 历史重试交还持久调度器，旧历史返回 ``None``。"""
+    """
+    将 持久化 历史重试交还持久调度器，旧历史返回 ``None``。
+    """
     task_id = getattr(history, "transfer_task_id", None)
     if not task_id:
         return None
@@ -62,7 +66,9 @@ def _request_durable_transfer_retry(
 
 
 class FailedRetryMixin(_TransferOwnerBase):
-    """提供失败整理的按钮、回调和兼容重试流程。"""
+    """
+    提供失败整理的按钮、回调和兼容重试流程。
+    """
 
     __mixin_host_protocol__ = TransferMixinHost
 
@@ -362,17 +368,17 @@ class FailedRetryMixin(_TransferOwnerBase):
     ) -> Tuple[bool, str]:
         """
         根据历史记录，重新识别整理，只支持简单条件
+
         :param logid: 历史记录ID
         :param mtype: 媒体类型
         :param media_source: 媒体数据源
         :param media_id: 数据源原生 ID，必须与 media_source 成对提供
         """
-        # 查询历史记录
         history = self.transfer_history_repository.get(logid)
         if not history:
             logger.error(f"整理记录不存在，ID：{logid}")
             return False, "整理记录不存在"
-        # 显式媒体身份代表用户要求重新规划；普通 /redo 才复用原 durable 计划。
+        # 显式媒体身份代表用户要求重新规划；普通 /redo 才复用原 持久计划。
         explicit_identity = media_source is not None or media_id is not None
         if explicit_identity and (not media_source or not media_id):
             return False, "媒体重新识别需要同时提供 media_source 和 media_id"
@@ -388,7 +394,6 @@ class FailedRetryMixin(_TransferOwnerBase):
         src_path = Path(history.src)
         if not src_path.exists():
             return False, f"源目录不存在：{src_path}"
-        # 查询媒体信息
         if explicit_identity:
             mediainfo = MediaChain().recognize_media(
                 mtype=mtype,
@@ -402,7 +407,6 @@ class FailedRetryMixin(_TransferOwnerBase):
                 episode_group=history.episode_group,
             )
             if mediainfo and not isinstance(mediainfo, MusicInfo):
-                # 更新媒体图片
                 self.obtain_images(mediainfo=mediainfo)
         elif history.media_source and history.media_id:
             try:
@@ -437,7 +441,6 @@ class FailedRetryMixin(_TransferOwnerBase):
         # 音乐专辑目录允许无预识别信息，由整理链按音频后缀逐文件解析识别
         if not mediainfo and not (mtype == MediaType.MUSIC and src_path.is_dir()):
             return False, "未识别到媒体信息，请检查媒体来源和媒体 ID 后重试"
-        # 重新执行整理
         if mediainfo:
             logger.info(f"{src_path.name} 识别为：{mediainfo.title_year}")
 
@@ -452,11 +455,9 @@ class FailedRetryMixin(_TransferOwnerBase):
         elif history.dest_fileitem:
             if not isinstance(history.dest_fileitem, dict):
                 return False, "目标文件历史数据无效"
-            # 解析目标文件对象
             dest_fileitem = FileItem(**history.dest_fileitem)
             StorageChain().delete_file(dest_fileitem)
 
-        # 强制整理
         if history.src_fileitem:
             if not isinstance(history.src_fileitem, dict):
                 return False, "源文件历史数据无效"

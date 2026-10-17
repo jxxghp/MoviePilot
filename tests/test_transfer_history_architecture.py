@@ -1,4 +1,6 @@
-"""整理历史类型化边界与适配器布局门禁。"""
+"""
+整理历史类型化边界与适配器布局门禁。
+"""
 
 import ast
 import importlib
@@ -25,14 +27,18 @@ CANONICAL_CONSUMER_PATHS = (
 
 
 def _python_paths(root: Path) -> list[Path]:
-    """返回 canonical 消费边界内的 Python 源文件。"""
+    """
+    返回 canonical 消费边界内的 Python 源文件。
+    """
     if root.is_file():
         return [root]
     return sorted(root.rglob("*.py"))
 
 
 def _annotation_contains_any(annotation: ast.expr | None) -> bool:
-    """判断类型注解是否仍以 Any 隐藏跨层数据合同。"""
+    """
+    判断类型注解是否仍以 Any 隐藏跨层数据合同。
+    """
     return annotation is not None and any(
         isinstance(node, ast.Name) and node.id == "Any"
         for node in ast.walk(annotation)
@@ -40,7 +46,9 @@ def _annotation_contains_any(annotation: ast.expr | None) -> bool:
 
 
 def _is_frozen_slotted_dataclass(node: ast.ClassDef) -> bool:
-    """判断类是否声明为不可变且使用 slots 的数据类。"""
+    """
+    判断类是否声明为不可变且使用 slots 的数据类。
+    """
     for decorator in node.decorator_list:
         if not isinstance(decorator, ast.Call):
             continue
@@ -60,7 +68,9 @@ def _is_frozen_slotted_dataclass(node: ast.ClassDef) -> bool:
 
 
 def test_transfer_history_contract_is_typed_and_frozen() -> None:
-    """整理历史必须使用冻结 DTO 和明确 Query/Write/Repository 端口。"""
+    """
+    整理历史必须使用冻结 DTO 和明确 Query/Write/Repository 端口。
+    """
     tree = ast.parse(
         HISTORY_CONTRACTS_APPLICATION_PATH.read_text(encoding="utf-8-sig"),
         filename=str(HISTORY_CONTRACTS_APPLICATION_PATH),
@@ -110,7 +120,9 @@ def test_transfer_history_contract_is_typed_and_frozen() -> None:
 
 
 def test_transfer_history_contract_has_one_canonical_owner() -> None:
-    """整理历史契约只能在独立模块定义，旧入口必须保留对象级兼容导出。"""
+    """
+    整理历史契约只能在独立模块定义，旧入口必须保留对象级兼容导出。
+    """
     contract_names = {
         "TransferHistorySnapshot",
         "TransferHistoryWrite",
@@ -139,7 +151,9 @@ def test_transfer_history_contract_has_one_canonical_owner() -> None:
 
 
 def test_history_query_port_returns_explicit_snapshots() -> None:
-    """插件查询端口也必须声明冻结历史快照，不能以 object 隐藏合同。"""
+    """
+    插件查询端口也必须声明冻结历史快照，不能以 object 隐藏合同。
+    """
     tree = ast.parse(
         QUERY_APPLICATION_PATH.read_text(encoding="utf-8-sig"),
         filename=str(QUERY_APPLICATION_PATH),
@@ -164,7 +178,9 @@ def test_history_query_port_returns_explicit_snapshots() -> None:
 
 
 def test_transfer_history_retires_dynamic_writer_facade() -> None:
-    """类型化仓储启用后不得保留动态 getter、Facade 或 add_force 合同。"""
+    """
+    类型化仓储启用后不得保留动态 getter、Facade 或 add_force 合同。
+    """
     tree = ast.parse(
         HISTORY_APPLICATION_PATH.read_text(encoding="utf-8-sig"),
         filename=str(HISTORY_APPLICATION_PATH),
@@ -193,7 +209,9 @@ def test_transfer_history_retires_dynamic_writer_facade() -> None:
 
 
 def test_history_retry_policy_has_one_canonical_owner() -> None:
-    """失败重试与查重闸逻辑只能由独立模块实现，包入口不再转发。"""
+    """
+    失败重试与查重闸逻辑只能由独立模块实现，包入口不再转发。
+    """
     retry_tree = ast.parse(
         HISTORY_RETRY_APPLICATION_PATH.read_text(encoding="utf-8-sig"),
         filename=str(HISTORY_RETRY_APPLICATION_PATH),
@@ -244,7 +262,9 @@ def test_history_retry_policy_has_one_canonical_owner() -> None:
 
 
 def test_canonical_consumers_do_not_import_raw_transfer_history_persistence() -> None:
-    """宿主消费者不得导入整理历史 ORM、Oper 或旧动态 getter。"""
+    """
+    宿主消费者不得导入整理历史 ORM、Oper 或旧动态 getter。
+    """
     forbidden_from_imports = {
         ("app.db.models", "TransferHistory"),
         ("app.db.models.transferhistory", "TransferHistory"),
@@ -305,7 +325,9 @@ def test_canonical_consumers_do_not_import_raw_transfer_history_persistence() ->
 
 
 def test_add_force_is_owned_only_by_legacy_sdk_facade() -> None:
-    """旧无类型替换入口只能存在于私有 Legacy facade。"""
+    """
+    旧无类型替换入口只能存在于私有 Legacy facade。
+    """
     allowed = "app/sdk/_legacy/history.py"
     violations: list[str] = []
     for path in APP_ROOT.rglob("*.py"):
@@ -324,7 +346,9 @@ def test_add_force_is_owned_only_by_legacy_sdk_facade() -> None:
 
 
 def test_transfer_history_adapter_uses_topic_package_without_root_exports() -> None:
-    """整理历史适配器必须位于 history/transfer.py，包根不得复制宿主导出面。"""
+    """
+    整理历史适配器必须位于 history/transfer.py，包根不得复制宿主导出面。
+    """
     adapter_path = HISTORY_ADAPTER_PACKAGE / "transfer.py"
     package_path = HISTORY_ADAPTER_PACKAGE / "__init__.py"
 

@@ -1,3 +1,7 @@
+"""
+验证媒体推荐处理链的来源调用与结果组合。
+"""
+
 import asyncio
 from typing import Generator
 from unittest.mock import AsyncMock, Mock, patch
@@ -43,13 +47,17 @@ ASYNC_EMPTY_CACHE_CASES = [
 
 
 def clear_recommend_cache() -> None:
-    """清理推荐缓存，避免缓存装饰器状态影响用例。"""
+    """
+    清理推荐缓存，避免缓存装饰器状态影响用例。
+    """
     TTLCache(region=RecommendChain.recommend_cache_region).clear()
 
 
 @pytest.fixture(autouse=True)
 def isolated_recommend_cache() -> Generator[None, None, None]:
-    """每个用例前后都清空推荐缓存。"""
+    """
+    每个用例前后都清空推荐缓存。
+    """
     clear_recommend_cache()
     yield
     clear_recommend_cache()
@@ -64,7 +72,9 @@ def test_sync_recommend_methods_do_not_cache_empty_result(
     chain_target: str,
     backend_method: str,
 ) -> None:
-    """同步推荐来源返回空列表时不应缓存。"""
+    """
+    同步推荐来源返回空列表时不应缓存。
+    """
     chain = RecommendChain()
     recommend_method = getattr(chain, method_name)
 
@@ -83,7 +93,9 @@ def test_async_recommend_methods_do_not_cache_empty_result(
     method_name: str,
     chain_target: str,
 ) -> None:
-    """异步推荐来源返回空列表时不应缓存。"""
+    """
+    异步推荐来源返回空列表时不应缓存。
+    """
     chain = RecommendChain()
     recommend_method = getattr(chain, method_name)
 
@@ -97,7 +109,9 @@ def test_async_recommend_methods_do_not_cache_empty_result(
 
 
 def test_tmdb_discover_sync_async_share_request_and_projection() -> None:
-    """TMDB 推荐双入口应复用同一发现请求和结果投影。"""
+    """
+    TMDB 推荐双入口应复用同一发现请求和结果投影。
+    """
     chain = RecommendChain()
     candidate = Mock()
     candidate.to_dict.return_value = {"media_id": "tmdb-1"}
@@ -124,7 +138,9 @@ def test_tmdb_discover_sync_async_share_request_and_projection() -> None:
 
 
 def test_bangumi_calendar_sync_async_share_page_projection() -> None:
-    """Bangumi 日历双入口应复用同一分页与字典投影规则。"""
+    """
+    Bangumi 日历双入口应复用同一分页与字典投影规则。
+    """
     chain = RecommendChain()
     candidates = []
     for index in range(5):
@@ -146,7 +162,9 @@ def test_bangumi_calendar_sync_async_share_page_projection() -> None:
 
 
 def test_douban_discover_sync_async_share_request_and_projection() -> None:
-    """豆瓣推荐双入口应复用媒体类型、分页和结果投影。"""
+    """
+    豆瓣推荐双入口应复用媒体类型、分页和结果投影。
+    """
     chain = RecommendChain()
     candidate = Mock()
     candidate.to_dict.return_value = {"media_id": "douban-1"}
@@ -171,7 +189,9 @@ def test_douban_discover_sync_async_share_request_and_projection() -> None:
 
 
 def test_music_weekly_uses_music_chart():
-    """同步推荐缓存应从本周音乐榜单生成通用媒体字典。"""
+    """
+    同步推荐缓存应从本周音乐榜单生成通用媒体字典。
+    """
     chain = RecommendChain()
     with patch("app.chain.recommend.ListenBrainzChain") as source_chain:
         source_chain.return_value.music_chart.return_value = [
@@ -195,7 +215,9 @@ def test_music_weekly_uses_music_chart():
 
 
 def test_async_music_weekly_uses_music_chart():
-    """异步推荐接口应从本周音乐榜单返回统一媒体字典。"""
+    """
+    异步推荐接口应从本周音乐榜单返回统一媒体字典。
+    """
     chain = RecommendChain()
     with patch("app.chain.recommend.ListenBrainzChain") as source_chain:
         source_chain.return_value.async_music_chart = AsyncMock(
@@ -221,7 +243,9 @@ def test_async_music_weekly_uses_music_chart():
 
 
 def test_music_douban_recommendations_use_discover():
-    """豆瓣音乐推荐入口应保留来源与实体，并输出统一媒体字典。"""
+    """
+    豆瓣音乐推荐入口应保留来源与实体，并输出统一媒体字典。
+    """
     chain = RecommendChain()
     with patch("app.chain.recommend.DoubanChain") as source_chain:
         source_chain.return_value.music_discover.return_value = [
@@ -247,7 +271,9 @@ def test_music_douban_recommendations_use_discover():
 
 
 def test_async_music_douban_recommendations_use_discover():
-    """异步豆瓣音乐推荐入口应调用统一发现链并保留来源。"""
+    """
+    异步豆瓣音乐推荐入口应调用统一发现链并保留来源。
+    """
     chain = RecommendChain()
     with patch("app.chain.recommend.DoubanChain") as source_chain:
         source_chain.return_value.async_music_discover = AsyncMock(
@@ -270,7 +296,9 @@ def test_async_music_douban_recommendations_use_discover():
 
 
 def test_music_chart_applies_filter_and_sort() -> None:
-    """音乐榜单应在 RecommendChain 统一执行热度、封面和排序约束。"""
+    """
+    音乐榜单应在 RecommendChain 统一执行热度、封面和排序约束。
+    """
     chain = RecommendChain()
     candidates = [
         MusicInfo(
@@ -310,7 +338,9 @@ def test_music_chart_applies_filter_and_sort() -> None:
 
 
 def test_async_music_fresh_releases_uses_listenbrainz_source() -> None:
-    """新发行推荐应委派 ListenBrainz 来源链并保留分页参数。"""
+    """
+    新发行推荐应委派 ListenBrainz 来源链并保留分页参数。
+    """
     chain = RecommendChain()
     with patch("app.chain.recommend.ListenBrainzChain") as source_chain:
         source_chain.return_value.async_music_fresh_releases = AsyncMock(

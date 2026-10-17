@@ -1,4 +1,6 @@
-"""TMDB 详情到统一媒体字段的纯投影规则。"""
+"""
+TMDB 详情到统一媒体字段的纯投影规则。
+"""
 
 from __future__ import annotations
 
@@ -10,7 +12,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def _identity_image_url(path: str) -> Optional[str]:
-    """在启动组合根尚未注入图片策略时保留来源路径。"""
+    """
+    在启动组合根尚未注入图片策略时保留来源路径。
+    """
     return path
 
 
@@ -20,13 +24,17 @@ _image_url_builder: Callable[[str], Optional[str]] = _identity_image_url
 def configure_image_url_builder(
     builder: Callable[[str], Optional[str]],
 ) -> None:
-    """注入 TMDB 图片地址构造器，投影规则不直接读取平台配置。"""
+    """
+    注入 TMDB 图片地址构造器，投影规则不直接读取平台配置。
+    """
     global _image_url_builder
     _image_url_builder = builder
 
 
 def _media_type(info: Mapping[str, Any]) -> MediaType:
-    """按 TMDB 详情形态解析标准媒体类型。"""
+    """
+    按 TMDB 详情形态解析标准媒体类型。
+    """
     source_type = info.get("media_type")
     if isinstance(source_type, MediaType):
         return source_type
@@ -36,7 +44,9 @@ def _media_type(info: Mapping[str, Any]) -> MediaType:
 
 
 def _credits(info: Mapping[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """从 TMDB credits 中按历史部门规则提取导演和演员。"""
+    """
+    从 TMDB credits 中按历史部门规则提取导演和演员。
+    """
     credits = info.get("credits")
     if not isinstance(credits, Mapping):
         return [], []
@@ -54,7 +64,9 @@ def _credits(info: Mapping[str, Any]) -> tuple[list[dict[str, Any]], list[dict[s
 
 
 def _release_dates(info: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """把 TMDB 分地区上映日期压平为统一发行日期列表。"""
+    """
+    把 TMDB 分地区上映日期压平为统一发行日期列表。
+    """
     release_dates = info.get("release_dates")
     if not isinstance(release_dates, Mapping):
         return []
@@ -80,7 +92,9 @@ def _project_seasons(
     builder: ProjectionBuilder,
     seasons: object,
 ) -> None:
-    """投影 TMDB 电视剧季集清单和季首播年份。"""
+    """
+    投影 TMDB 电视剧季集清单和季首播年份。
+    """
     if (
         not seasons
         or not isinstance(seasons, Sequence)
@@ -112,7 +126,9 @@ def project(
     current: Mapping[str, Any],
     info: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """将只读 TMDB 详情投影为统一媒体字段，不修改输入。"""
+    """
+    将只读 TMDB 详情投影为统一媒体字段，不修改输入。
+    """
     if not info:
         return {}
     builder = ProjectionBuilder(current)

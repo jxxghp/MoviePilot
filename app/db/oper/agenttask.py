@@ -1,3 +1,7 @@
+"""
+Agent 定时任务定义和执行状态的数据访问入口，适配调用方会话及兼容事务执行器。
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -20,7 +24,13 @@ from app.db.models.agenttaskrun import AgentTaskRun
 
 @dataclass(frozen=True, slots=True)
 class AgentTaskFinishRecord:
-    """一次运行收口后由数据库事务确认的三个独立事实。"""
+    """
+    一次任务运行收口后由数据库事务确认的三个独立事实。
+
+    :param run_finalized: 是否成功把本次运行记录更新为终态
+    :param task_projection_updated: 是否同步更新任务当前状态，旧运行收口不会覆盖较新运行投影
+    :param date_task_disabled: 是否已禁用完成后不再调度的一次性任务
+    """
 
     run_finalized: bool
     task_projection_updated: bool
@@ -34,7 +44,9 @@ class AgentTaskOper(DbOper):
 
     @staticmethod
     def _now() -> str:
-        """生成当前数据库时间字符串。"""
+        """
+        生成当前数据库时间字符串。
+        """
         return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     def add(self, **kwargs: object) -> Optional[AgentTask]:
@@ -64,7 +76,9 @@ class AgentTaskOper(DbOper):
         查询单个 Agent 定时任务。
         """
         def query(session: Session) -> Optional[AgentTask]:
-            """在调用方会话中读取单个任务。"""
+            """
+            在调用方会话中读取单个任务。
+            """
             return cast(
                 Optional[AgentTask],
                 session.execute(
@@ -83,9 +97,13 @@ class AgentTaskOper(DbOper):
             task_id: int,
             user_id: Optional[str] = None,
     ) -> Optional[AgentTask]:
-        """通过异步会话查询单个 Agent 定时任务。"""
+        """
+        通过异步会话查询单个 Agent 定时任务。
+        """
         async def query(session: AsyncSession) -> Optional[AgentTask]:
-            """在调用方异步会话中执行与同步入口相同的查询语义。"""
+            """
+            在调用方异步会话中执行与同步入口相同的查询语义。
+            """
             result = await session.execute(
                 _get_for_user_statement(
                     AgentTask,
@@ -106,7 +124,9 @@ class AgentTaskOper(DbOper):
         查询 Agent 定时任务列表。
         """
         def query(session: Session) -> List[AgentTask]:
-            """在调用方会话中读取任务列表。"""
+            """
+            在调用方会话中读取任务列表。
+            """
             return list(session.execute(
                 _list_for_user_statement(
                     AgentTask,
@@ -191,7 +211,9 @@ class AgentTaskOper(DbOper):
         return self.get_run(created_run_id) if created_run_id else None
 
     def mark_running(self, task_id: int) -> bool:
-        """兼容既有调用并为该次执行创建运行记录。"""
+        """
+        兼容既有调用并为该次执行创建运行记录。
+        """
         return self.begin_run(task_id=task_id) is not None
 
     def mark_interrupted(self, task_id: int, result: str) -> bool:
@@ -210,7 +232,9 @@ class AgentTaskOper(DbOper):
         )
 
     def get_run(self, run_id: str) -> Optional[AgentTaskRun]:
-        """查询一次 Agent 任务运行。"""
+        """
+        查询一次 Agent 任务运行。
+        """
         return self._execute_sync_query(
             lambda session: AgentTaskRun.get_by_run_id(session, run_id=run_id)
         )
@@ -221,7 +245,9 @@ class AgentTaskOper(DbOper):
             user_id: Optional[str] = None,
             limit: int = 10,
     ) -> List[AgentTaskRun]:
-        """查询任务最近的有界运行历史。"""
+        """
+        查询任务最近的有界运行历史。
+        """
         return self._execute_sync_query(
             lambda session: AgentTaskRun.list_for_task(
                 session,
@@ -238,7 +264,9 @@ class AgentTaskOper(DbOper):
             result: str,
             disable_date_task: bool = False,
     ) -> bool:
-        """收口精确运行并更新仍匹配的任务投影。"""
+        """
+        收口精确运行并更新仍匹配的任务投影。
+        """
         finished_at = self._now()
         normalized_result = (result or "")[:20000]
         return self._execute_sync_write(
@@ -258,13 +286,17 @@ class AgentTaskOper(DbOper):
             success: bool,
             result: str,
     ) -> AgentTaskFinishRecord:
-        """收口运行，并返回当前事务实际更新的任务投影和停用事实。"""
+        """
+        收口运行，并返回当前事务实际更新的任务投影和停用事实。
+        """
         finished_at = self._now()
         normalized_result = (result or "")[:20000]
         expected_status = "success" if success else "failed"
 
         def finalize(session: Session) -> AgentTaskFinishRecord:
-            """使用列查询绕过 ORM identity-map，读取刚写入的真实投影。"""
+            """
+            使用列查询绕过 ORM identity-map，读取刚写入的真实投影。
+            """
             finalized = AgentTaskRun.finish_run(
                 session,
                 run_id=run_id,
@@ -358,7 +390,9 @@ class AgentTaskOper(DbOper):
 
     @staticmethod
     def run_to_dict(run: AgentTaskRun) -> dict[str, Any]:
-        """将一次 Agent 任务运行转换为工具返回结构。"""
+        """
+        将一次 Agent 任务运行转换为工具返回结构。
+        """
         return {
             "run_id": run.run_id,
             "task_id": run.task_id,

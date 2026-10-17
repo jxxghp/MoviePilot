@@ -1,8 +1,9 @@
-"""3.0.27 增加分类稳定引用和历史执行快照字段。
+"""
+3.0.27 增加分类稳定引用和历史执行快照字段。
 
-Revision ID: c9a4d7e2f1b6
-Revises: b6e1f8a3c9d2
-Create Date: 2026-09-03
+版本标识： c9a4d7e2f1b6
+前置版本： b6e1f8a3c9d2
+创建时间： 2026-09-03
 """
 
 # Alembic 的 op 是运行期代理，静态分析无法看到实际操作方法。
@@ -18,12 +19,14 @@ depends_on = None
 
 _STRING = "string"
 _INTEGER = "integer"
+# 历史记录保存分类规则与策略版本快照，避免后续策略变化改写历史含义。
 _HISTORY_COLUMN_SPECS = (
     ("media_category_id", _STRING),
     ("classification_rule_id", _STRING),
     ("classification_policy_revision", _INTEGER),
     ("classification_source", _STRING),
 )
+# 活动订阅保存稳定分类引用，完成和执行历史额外保存决策快照。
 _TABLE_COLUMN_SPECS = {
     "subscribe": (("media_category_id", _STRING),),
     "subscribehistory": _HISTORY_COLUMN_SPECS,
@@ -33,7 +36,9 @@ _TABLE_COLUMN_SPECS = {
 
 
 def _existing_columns(table_name: str) -> set[str] | None:
-    """返回现有字段集合；数据表不存在时返回空缺标记。"""
+    """
+    返回现有字段集合；数据表不存在时返回空缺标记。
+    """
     inspector = sa.inspect(op.get_bind())
     if table_name not in set(inspector.get_table_names()):
         return None
@@ -41,13 +46,17 @@ def _existing_columns(table_name: str) -> set[str] | None:
 
 
 def _column(column_name: str, kind: str) -> sa.Column:
-    """按稳定规格构造一次可空分类字段。"""
+    """
+    按稳定规格构造一次可空分类字段。
+    """
     column_type = sa.Integer() if kind == _INTEGER else sa.String()
     return sa.Column(column_name, column_type, nullable=True)
 
 
 def upgrade() -> None:
-    """为活动订阅和三类历史幂等增加分类持久化字段。"""
+    """
+    为活动订阅和三类历史幂等增加分类持久化字段。
+    """
     for table_name, specs in _TABLE_COLUMN_SPECS.items():
         existing = _existing_columns(table_name)
         if existing is None:
@@ -60,7 +69,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """幂等移除本版本增加的分类持久化字段。"""
+    """
+    幂等移除本版本增加的分类持久化字段。
+    """
     for table_name, specs in reversed(tuple(_TABLE_COLUMN_SPECS.items())):
         existing = _existing_columns(table_name)
         if existing is None:

@@ -1,3 +1,7 @@
+"""
+初始化 Agent 能力及其进程级生命周期。
+"""
+
 from typing import Any
 
 from app.agent.llm.gateway import register_llm_provider_runtime
@@ -36,14 +40,18 @@ AGENT_BLOCKING_EXECUTOR_SHUTDOWN_TIMEOUT_SECONDS = 10.0
 
 
 def _get_skill_catalog() -> Any:
-    """按需返回 Agent 技能目录实现，供消息应用层消费端口。"""
+    """
+    按需返回 Agent 技能目录实现，供消息应用层消费端口。
+    """
     from app.agent.skills.registry import SkillHelper
 
     return SkillHelper()
 
 
 def _get_llm_provider_runtime() -> Any:
-    """按需返回 LLM provider 运行时，实现只在真实调用边界加载。"""
+    """
+    按需返回 LLM provider 运行时，实现只在真实调用边界加载。
+    """
     from app.agent.llm.provider import LLMProviderManager
 
     return LLMProviderManager()
@@ -56,7 +64,9 @@ _injected_agent_manager: Any = None
 
 
 def configure_agent_data_context(context: AgentDataContext) -> None:
-    """登记组合根数据上下文，并丢弃未运行的旧 manager 缓存。"""
+    """
+    登记组合根数据上下文，并丢弃未运行的旧 manager 缓存。
+    """
     global _agent_data_context, _injected_agent_manager
     if _agent_data_context is context:
         return
@@ -70,14 +80,18 @@ def configure_agent_data_context(context: AgentDataContext) -> None:
 
 
 def reset_agent_data_context() -> None:
-    """清除当前 lifespan 的 Agent 数据上下文和未运行 manager 缓存。"""
+    """
+    清除当前 lifespan 的 Agent 数据上下文和未运行 manager 缓存。
+    """
     global _agent_data_context, _injected_agent_manager
     _agent_data_context = None
     _injected_agent_manager = None
 
 
 def _get_injected_agent_manager() -> Any:
-    """按需构造并缓存显式注入数据上下文的 AgentManager。"""
+    """
+    按需构造并缓存显式注入数据上下文的 AgentManager。
+    """
     global _injected_agent_manager
     if _agent_data_context is None:
         raise RuntimeError("Agent 数据上下文尚未由启动组合根装配")
@@ -89,7 +103,9 @@ def _get_injected_agent_manager() -> Any:
 
 
 def _event_changed_keys(event: Event | None) -> set[str]:
-    """兼容对象和 dict 两种配置事件载荷。"""
+    """
+    兼容对象和 dict 两种配置事件载荷。
+    """
     if event is None:
         return set()
     event_data = event.event_data
@@ -103,7 +119,9 @@ def _event_changed_keys(event: Event | None) -> set[str]:
 
 
 def _get_agent_manager() -> Any:
-    """兼容显式注入对象，否则按需解析 canonical manager。"""
+    """
+    兼容显式注入对象，否则按需解析 canonical manager。
+    """
     if agent_manager is not None:
         return agent_manager
     if _agent_data_context is not None:
@@ -112,42 +130,54 @@ def _get_agent_manager() -> Any:
 
 
 def _get_running_agent_manager() -> Any | None:
-    """只返回已运行实例，状态探测不得触发 Agent 物化。"""
+    """
+    只返回已运行实例，状态探测不得触发 Agent 物化。
+    """
     if agent_initializer._compat_injected:
         return agent_initializer._manager
     return get_runtime_running_agent_manager()
 
 
 def _get_prompt_manager() -> Any:
-    """首个提示词调用才导入模板管理器。"""
+    """
+    首个提示词调用才导入模板管理器。
+    """
     from app.agent.prompt import prompt_manager
 
     return prompt_manager
 
 
 def _get_capability_manager() -> Any:
-    """首个多模态调用才导入 Agent 能力管理器。"""
+    """
+    首个多模态调用才导入 Agent 能力管理器。
+    """
     from app.agent.llm.capability import AgentCapabilityManager
 
     return AgentCapabilityManager
 
 
 def _get_llm_helper() -> Any:
-    """首个模型能力查询才导入 LLM helper。"""
+    """
+    首个模型能力查询才导入 LLM helper。
+    """
     from app.agent.llm.helper import LLMHelper
 
     return LLMHelper
 
 
 def _get_manual_redo_prompt_builder() -> Any:
-    """首个整理接管请求才导入对应提示词构建器。"""
+    """
+    首个整理接管请求才导入对应提示词构建器。
+    """
     from app.agent.prompt.transfer import build_manual_redo_prompt
 
     return build_manual_redo_prompt
 
 
 def _get_web_agent_type() -> type:
-    """首个 Web 对话请求才解析 WebAgent 运行时类型。"""
+    """
+    首个 Web 对话请求才解析 WebAgent 运行时类型。
+    """
     from app.agent.web import _get_web_agent_type as get_web_agent_type
 
     web_agent_type: type = get_web_agent_type()
@@ -155,7 +185,9 @@ def _get_web_agent_type() -> type:
 
 
 def _handle_web_agent_message(**kwargs: Any) -> object:
-    """按请求构造消息链并执行传统 WebAgent 输入。"""
+    """
+    按请求构造消息链并执行传统 WebAgent 输入。
+    """
     from app.chain.message import MessageChain
 
     MessageChain().handle_message(**kwargs)
@@ -163,14 +195,18 @@ def _handle_web_agent_message(**kwargs: Any) -> object:
 
 
 def _bind_web_agent_user_session(user_id: str, session_id: str) -> None:
-    """把 Web 用户绑定到消息链的 Agent 会话。"""
+    """
+    把 Web 用户绑定到消息链的 Agent 会话。
+    """
     from app.chain.message import MessageChain
 
     MessageChain().bind_user_session(user_id, session_id)
 
 
 async def _handle_agent_config_changed(event: Event) -> None:
-    """把配置事件交给当前全局 initializer，避免监听器持有过期实例。"""
+    """
+    把配置事件交给当前全局 initializer，避免监听器持有过期实例。
+    """
     await agent_initializer.handle_config_changed(event)
 
 
@@ -180,7 +216,9 @@ class AgentInitializer:
     """
 
     def __init__(self) -> None:
-        """初始化启动关闭状态，并登记不持有实例的配置变更监听器。"""
+        """
+        初始化启动关闭状态，并登记不持有实例的配置变更监听器。
+        """
         self._initialized = False
         self._manager: Any = None
         self._compat_injected = False
@@ -220,7 +258,9 @@ class AgentInitializer:
             return False
 
     async def handle_config_changed(self, event: Event) -> None:
-        """仅在 manifest watch 命中时协调 service，关闭态保持 fail closed。"""
+        """
+        仅在 manifest watch 命中时协调 service，关闭态保持 fail closed。
+        """
         changed_keys = _event_changed_keys(event)
         if not changed_keys or self._compat_injected or self._shutdown_started or self._shutdown_complete:
             return
@@ -237,7 +277,9 @@ class AgentInitializer:
             logger.warning(f"配置变更协调AI智能体失败，当前保持未启用状态: {error}")
 
     async def cleanup(self) -> bool:
-        """清理 initializer 引用；未收敛的显式注入对象继续由本实例持有。"""
+        """
+        清理 initializer 引用；未收敛的显式注入对象继续由本实例持有。
+        """
         try:
             manager = self._manager
             compat_injected = self._compat_injected
@@ -262,7 +304,9 @@ agent_initializer = AgentInitializer()
 
 
 def configure_agent_ports() -> None:
-    """在 Agent 启动阶段原子登记全部 Application provider。"""
+    """
+    在 Agent 启动阶段原子登记全部 Application provider。
+    """
     reset_agent_ports()
     try:
         register_agent_service_providers(
@@ -286,7 +330,9 @@ def configure_agent_ports() -> None:
 
 
 def reset_agent_ports() -> None:
-    """清除 Agent、技能和 LLM provider，支持失败回滚与重复 lifespan。"""
+    """
+    清除 Agent、技能和 LLM provider，支持失败回滚与重复 lifespan。
+    """
     register_llm_provider_runtime(None)
     reset_skill_catalog_provider()
     reset_web_agent_message_runtime()

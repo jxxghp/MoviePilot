@@ -1,4 +1,6 @@
-"""插件媒体来源分类声明、事实过滤和动态 provider 契约测试。"""
+"""
+插件媒体来源分类声明、事实过滤和动态 provider 契约测试。
+"""
 
 from __future__ import annotations
 
@@ -51,19 +53,27 @@ FIELD_PREFIX = f"extensions.{SOURCE_ID}."
 
 
 class _Runtime:
-    """向分类执行服务提供固定活动策略和空 legacy 配置。"""
+    """
+    向分类执行服务提供固定活动策略和空 legacy 配置。
+    """
 
     def __init__(self, policy: ClassificationPolicy) -> None:
-        """保存与调用方隔离的活动策略。"""
+        """
+        保存与调用方隔离的活动策略。
+        """
         self._policy = policy.model_copy(deep=True)
 
     def active_policy(self) -> ClassificationPolicy:
-        """返回活动策略的深拷贝。"""
+        """
+        返回活动策略的深拷贝。
+        """
         return self._policy.model_copy(deep=True)
 
     @staticmethod
     def legacy_config() -> CategoryConfig:
-        """返回不包含旧分类规则的配置。"""
+        """
+        返回不包含旧分类规则的配置。
+        """
         return CategoryConfig()
 
 
@@ -77,7 +87,9 @@ def _field(
     allow_custom_values: bool = True,
     source_id: str = SOURCE_ID,
 ) -> dict[str, object]:
-    """构造一个插件来源扩展字段声明。"""
+    """
+    构造一个插件来源扩展字段声明。
+    """
     default_operators = {
         "string": ["equals", "exists"],
         "enum": ["equals", "in"],
@@ -104,7 +116,9 @@ def _source(
     media_types: list[str] | None = None,
     fields: list[dict[str, object]] | None = None,
 ) -> dict[str, object]:
-    """构造一个插件媒体来源声明。"""
+    """
+    构造一个插件媒体来源声明。
+    """
     return {
         "name": "Example Source",
         "media_source": source_id,
@@ -114,12 +128,16 @@ def _source(
 
 
 def _registry() -> PluginClassificationRegistry:
-    """构造使用隔离日志桩的插件分类注册表。"""
+    """
+    构造使用隔离日志桩的插件分类注册表。
+    """
     return PluginClassificationRegistry(Mock())
 
 
 def test_public_sdk_exposes_stable_protocol_version_and_schema_types() -> None:
-    """公开 SDK v2 应保留来源声明并增加富化请求响应模型。"""
+    """
+    公开 SDK v2 应保留来源声明并增加富化请求响应模型。
+    """
     assert MEDIA_SOURCE_CLASSIFICATION_PROTOCOL_VERSION == 2
     assert PublicClassificationFieldDefinition is ClassificationFieldDefinition
     assert PublicMediaSourceInfo is MediaSourceInfo
@@ -130,7 +148,9 @@ def test_public_sdk_exposes_stable_protocol_version_and_schema_types() -> None:
 def test_public_sdk_classify_media_returns_copy_before_runtime_composition(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """宿主尚未装配时公开分类调用应返回隔离副本，而不是修改插件对象。"""
+    """
+    宿主尚未装配时公开分类调用应返回隔离副本，而不是修改插件对象。
+    """
     media = MediaInfo(
         media_source=MediaSource(SOURCE_ID),
         media_id="native-1",
@@ -139,7 +159,9 @@ def test_public_sdk_classify_media_returns_copy_before_runtime_composition(
     )
 
     def unavailable_context() -> object:
-        """模拟插件在 lifespan 完成装配前调用 SDK。"""
+        """
+        模拟插件在 lifespan 完成装配前调用 SDK。
+        """
         raise RuntimeError("runtime unavailable")
 
     monkeypatch.setattr(
@@ -158,7 +180,9 @@ def test_public_sdk_classify_media_returns_copy_before_runtime_composition(
 def test_public_sdk_classify_media_uses_composed_service(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """宿主完成装配后公开分类调用应委托唯一分类执行服务。"""
+    """
+    宿主完成装配后公开分类调用应委托唯一分类执行服务。
+    """
     media = MediaInfo(
         media_source=MediaSource(SOURCE_ID),
         media_id="native-1",
@@ -181,7 +205,9 @@ def test_public_sdk_classify_media_uses_composed_service(
 
 
 def _all_value_type_source() -> dict[str, object]:
-    """构造覆盖全部扩展事实值类型的有效来源声明。"""
+    """
+    构造覆盖全部扩展事实值类型的有效来源声明。
+    """
     return _source(
         fields=[
             _field("region_group"),
@@ -211,7 +237,9 @@ def _media(
     *,
     media_type: MediaType = MediaType.MOVIE,
 ) -> MediaInfo:
-    """构造携带完整扩展字段路径和稳定来源身份的媒体对象。"""
+    """
+    构造携带完整扩展字段路径和稳定来源身份的媒体对象。
+    """
     return MediaInfo(
         media_source=MediaSource(SOURCE_ID),
         media_id="native-1",
@@ -222,7 +250,9 @@ def _media(
 
 
 def _extension_policy() -> ClassificationPolicy:
-    """构造由插件扩展字段命中分类、否则回退的活动策略。"""
+    """
+    构造由插件扩展字段命中分类、否则回退的活动策略。
+    """
     return ClassificationPolicy.model_validate(
         {
             "revision": 7,
@@ -265,7 +295,9 @@ def _extension_policy() -> ClassificationPolicy:
 
 
 def test_registry_accepts_valid_declaration_and_returns_deep_copies() -> None:
-    """有效声明应被规范化，输入和返回快照均不能污染注册表。"""
+    """
+    有效声明应被规范化，输入和返回快照均不能污染注册表。
+    """
     registry = _registry()
     declaration = _all_value_type_source()
 
@@ -290,7 +322,9 @@ def test_registry_accepts_valid_declaration_and_returns_deep_copies() -> None:
 
 
 def test_registry_rejects_builtin_duplicate_and_cross_plugin_sources() -> None:
-    """插件不得覆盖内置来源、重复声明来源或占用其他插件的来源。"""
+    """
+    插件不得覆盖内置来源、重复声明来源或占用其他插件的来源。
+    """
     registry = _registry()
 
     with pytest.raises(PluginClassificationDeclarationError, match="内置媒体来源"):
@@ -314,7 +348,9 @@ def test_plugin_owned_sources_follow_registration_lifecycle(
     media_source: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """无内置模块的来源由插件注册，API 和分类字段随插件启停增删。"""
+    """
+    无内置模块的来源由插件注册，API 和分类字段随插件启停增删。
+    """
     from app.api.endpoints.media import _registered_media_sources
     from app.application.classification.catalog import build_classification_field_catalog
     from app.domain.classification.sources import BUILTIN_CLASSIFICATION_SOURCES
@@ -376,7 +412,9 @@ def test_registry_rejects_invalid_namespace_operator_and_media_type(
     field: dict[str, object],
     error_text: str,
 ) -> None:
-    """字段命名空间、操作符和值适用媒体类型必须受来源声明约束。"""
+    """
+    字段命名空间、操作符和值适用媒体类型必须受来源声明约束。
+    """
     registry = _registry()
 
     with pytest.raises(PluginClassificationDeclarationError, match=error_text):
@@ -386,7 +424,9 @@ def test_registry_rejects_invalid_namespace_operator_and_media_type(
 
 
 def test_registry_replacement_is_atomic_and_remove_is_idempotent() -> None:
-    """无效替换保留旧快照，有效替换完整覆盖，移除可重复调用。"""
+    """
+    无效替换保留旧快照，有效替换完整覆盖，移除可重复调用。
+    """
     registry = _registry()
     registry.replace(PLUGIN_ID, [_source()])
 
@@ -405,7 +445,9 @@ def test_registry_replacement_is_atomic_and_remove_is_idempotent() -> None:
 
 
 def test_registry_accepts_complete_extension_paths_for_all_value_types() -> None:
-    """全部协议值类型应从完整字段路径转换为来源内局部事实。"""
+    """
+    全部协议值类型应从完整字段路径转换为来源内局部事实。
+    """
     registry = _registry()
     registry.replace(PLUGIN_ID, [_all_value_type_source()])
     media = _media(
@@ -444,7 +486,9 @@ def test_registry_accepts_complete_extension_paths_for_all_value_types() -> None
 
 @pytest.mark.parametrize("invalid_value", [float("inf"), float("-inf"), float("nan")])
 def test_registry_rejects_non_finite_json_numbers(invalid_value: float) -> None:
-    """扩展事实不得接受 JSON 无法稳定表达的非有限数值。"""
+    """
+    扩展事实不得接受 JSON 无法稳定表达的非有限数值。
+    """
     registry = _registry()
     registry.replace(PLUGIN_ID, [_all_value_type_source()])
 
@@ -489,7 +533,9 @@ def test_registry_ignores_unregistered_cross_source_and_type_mismatches(
     media_type: MediaType,
     expected: dict[str, dict[str, object]],
 ) -> None:
-    """无效事实按字段忽略，媒体类型不符时拒绝整批且不改写身份。"""
+    """
+    无效事实按字段忽略，媒体类型不符时拒绝整批且不改写身份。
+    """
     registry = _registry()
     registry.replace(PLUGIN_ID, [_source()])
     media = _media(facts, media_type=media_type)
@@ -505,7 +551,9 @@ def test_registry_ignores_unregistered_cross_source_and_type_mismatches(
 
 
 def test_configuration_service_reads_dynamic_fields_without_caching() -> None:
-    """动态 provider 的新增和撤销必须立即反映到配置服务字段目录。"""
+    """
+    动态 provider 的新增和撤销必须立即反映到配置服务字段目录。
+    """
     registry = _registry()
     service = ClassificationPolicyConfigurationService(
         Mock(),
@@ -520,7 +568,9 @@ def test_configuration_service_reads_dynamic_fields_without_caching() -> None:
 
 
 def test_policy_validation_immediately_rejects_removed_plugin_field() -> None:
-    """插件撤销后保留策略内容，但再次校验必须把旧扩展字段标记为不可用。"""
+    """
+    插件撤销后保留策略内容，但再次校验必须把旧扩展字段标记为不可用。
+    """
     registry = _registry()
     registry.replace(PLUGIN_ID, [_source()])
     service = ClassificationPolicyConfigurationService(
@@ -538,7 +588,9 @@ def test_policy_validation_immediately_rejects_removed_plugin_field() -> None:
 
 
 def test_execution_service_uses_registry_provider_and_revokes_old_facts() -> None:
-    """执行服务只使用当前登记事实，来源撤销后同一旧对象必须回退。"""
+    """
+    执行服务只使用当前登记事实，来源撤销后同一旧对象必须回退。
+    """
     registry = _registry()
     registry.replace(PLUGIN_ID, [_source()])
     service = ClassificationExecutionService(
@@ -565,7 +617,9 @@ def test_execution_service_uses_registry_provider_and_revokes_old_facts() -> Non
 
 
 def test_extension_facts_survive_cache_roundtrip_with_identical_result() -> None:
-    """插件事实经媒体缓存字典往返后应得到相同分类且保持来源身份。"""
+    """
+    插件事实经媒体缓存字典往返后应得到相同分类且保持来源身份。
+    """
     registry = _registry()
     registry.replace(PLUGIN_ID, [_source()])
     service = ClassificationExecutionService(
@@ -587,10 +641,14 @@ def test_extension_facts_survive_cache_roundtrip_with_identical_result() -> None
 
 
 def test_execution_service_isolates_extension_provider_failure() -> None:
-    """扩展事实端口异常不能导致识别失败，结果按缺失字段使用策略兜底。"""
+    """
+    扩展事实端口异常不能导致识别失败，结果按缺失字段使用策略兜底。
+    """
 
     def fail_provider(_media):
-        """模拟插件运行时在事实读取期间失效。"""
+        """
+        模拟插件运行时在事实读取期间失效。
+        """
         raise RuntimeError("registry unavailable")
 
     service = ClassificationExecutionService(

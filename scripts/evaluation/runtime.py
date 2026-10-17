@@ -1,4 +1,6 @@
-"""用完整生产 Agent 驱动隔离业务世界；工具目录受控，不代表真实部署配置。"""
+"""
+用完整生产 Agent 驱动隔离业务世界；工具目录受控，不代表真实部署配置。
+"""
 
 import asyncio
 import json
@@ -37,7 +39,9 @@ _OPERATIONS = (
 
 
 def _config_path() -> Path:
-    """拒绝未隔离或导入后才换目录的调用，不主动导入可能读取真实配置的模块。"""
+    """
+    拒绝未隔离或导入后才换目录的调用，不主动导入可能读取真实配置的模块。
+    """
     configured = os.environ.get("CONFIG_DIR")
     bootstrap = sys.modules.get("app.testing.bootstrap")
     config = sys.modules.get("app.runtime.config")
@@ -52,25 +56,35 @@ def _config_path() -> Path:
 
 
 class _Response:
-    """内存响应保留执行器真实的读取和关闭协议，不产生网络请求。"""
+    """
+    内存响应保留执行器真实的读取和关闭协议，不产生网络请求。
+    """
 
     status_code = 200
     headers: dict[str, str] = {}
 
     def __init__(self, payload: dict[str, Any]) -> None:
-        """保存世界返回的成功、失败或未知结果，不提升为成功。"""
+        """
+        保存世界返回的成功、失败或未知结果，不提升为成功。
+        """
         self._payload = payload
 
     def json(self) -> dict[str, Any]:
-        """仅返回此次 API 执行得到的可见响应。"""
+        """
+        仅返回此次 API 执行得到的可见响应。
+        """
         return self._payload
 
     async def aclose(self) -> None:
-        """满足生产响应的显式关闭协议。"""
+        """
+        满足生产响应的显式关闭协议。
+        """
 
 
 class _Transport:
-    """按生产固定路由反向匹配 operation，无法向任意主机发送请求。"""
+    """
+    按生产固定路由反向匹配 operation，无法向任意主机发送请求。
+    """
 
     def __init__(
         self,
@@ -79,7 +93,9 @@ class _Transport:
         after_operation: Optional[Callable[[str, dict[str, Any]], Awaitable[None]]] = None,
         **_kwargs: Any,
     ) -> None:
-        """绑定当前世界；执行器传来的认证头不记录、不使用。"""
+        """
+        绑定当前世界；执行器传来的认证头不记录、不使用。
+        """
         from app.agent.policy.api import resolve_api_route
 
         self._world = world
@@ -96,7 +112,9 @@ class _Transport:
     async def request(
         self, *, method: str, url: str, params: Optional[dict[str, Any]], json: Any, raise_exception: bool,
     ) -> _Response:
-        """解释执行器生成的 HTTP 请求，未纳入场景的真实 API 同样拒绝。"""
+        """
+        解释执行器生成的 HTTP 请求，未纳入场景的真实 API 同样拒绝。
+        """
         del raise_exception
         parsed = urlsplit(url)
         if parsed.netloc != "evaluation.invalid" or parsed.scheme != "http" or parsed.query or parsed.fragment:
@@ -129,44 +147,62 @@ class _Transport:
 
 
 class _MemoryPort:
-    """为真实 MemoryManager 提供一次运行独占的会话读取与持久化边界。"""
+    """
+    为真实 MemoryManager 提供一次运行独占的会话读取与持久化边界。
+    """
 
     def __init__(self) -> None:
-        """存储仅属于当前运行的消息快照。"""
+        """
+        存储仅属于当前运行的消息快照。
+        """
         self.messages: list[dict[str, Any]] = []
 
     async def get(self, **_kwargs: Any) -> None:
-        """新评测会话没有历史消息，不读取宿主会话表。"""
+        """
+        新评测会话没有历史消息，不读取宿主会话表。
+        """
 
     async def async_save_agent_messages(self, *, messages: list[dict[str, Any]], **_kwargs: Any) -> None:
-        """接收 MemoryManager 的序列化结果，不访问宿主全局持久化服务。"""
+        """
+        接收 MemoryManager 的序列化结果，不访问宿主全局持久化服务。
+        """
         self.messages = messages
 
 
 class _EvaluationReadFileTool(ReadFileTool):
-    """评测专用文件读取工具，只允许访问本次运行的临时 Agent 根目录。"""
+    """
+    评测专用文件读取工具，只允许访问本次运行的临时 Agent 根目录。
+    """
 
     _evaluation_allowed_root: Path = PrivateAttr()
 
     def __init__(self, *, allowed_root: Path, **kwargs: Any) -> None:
-        """绑定隔离根目录后复用生产文件读取、大小限制和行范围合同。"""
+        """
+        绑定隔离根目录后复用生产文件读取、大小限制和行范围合同。
+        """
         super().__init__(**kwargs)
         self._evaluation_allowed_root = allowed_root.resolve()
 
     def _get_non_admin_local_file_roots(self) -> list[Path]:
-        """返回评测临时 Agent 根，避免回退到宿主 CONFIG_PATH/agent。"""
+        """
+        返回评测临时 Agent 根，避免回退到宿主 CONFIG_PATH/agent。
+        """
         return [self._evaluation_allowed_root]
 
 
 class _EvaluationExecuteCommandTool(ExecuteCommandTool):
-    """在临时工作目录执行命令或交互终端并保留生产工具的真实回执合同。"""
+    """
+    在临时工作目录执行命令或交互终端并保留生产工具的真实回执合同。
+    """
 
     _evaluation_world: Any = PrivateAttr()
     _evaluation_allowed_root: Path = PrivateAttr()
     _evaluation_terminal_session_id: Optional[str] = PrivateAttr(default=None)
 
     def __init__(self, *, world: EvaluationWorld, allowed_root: Path, **kwargs: Any) -> None:
-        """绑定假世界与临时目录，拒绝环境覆盖和目录逃逸。"""
+        """
+        绑定假世界与临时目录，拒绝环境覆盖和目录逃逸。
+        """
         super().__init__(**kwargs)
         self._evaluation_world = world
         self._evaluation_allowed_root = allowed_root.resolve()
@@ -180,7 +216,9 @@ class _EvaluationExecuteCommandTool(ExecuteCommandTool):
         session_id: Optional[str] = None,
         input_text: Optional[str] = None,
     ) -> None:
-        """把当前宿主终端作用域附加到隔离账本，区分父任务和子任务读取。"""
+        """
+        把当前宿主终端作用域附加到隔离账本，区分父任务和子任务读取。
+        """
         scope = current_terminal_scope()
         self._evaluation_world.record_command(
             command,
@@ -201,7 +239,9 @@ class _EvaluationExecuteCommandTool(ExecuteCommandTool):
         session_id: Optional[str] = None,
         input_text: Optional[str] = None,
     ) -> str:
-        """返回带纠正提示的受控失败，供模型按评测合同修正输入。"""
+        """
+        返回带纠正提示的受控失败，供模型按评测合同修正输入。
+        """
         payload: dict[str, Any] = {
             "action": action, "success": False, "execution_outcome": "failed", "status": "error",
             "exit_code": None, "timed_out": False, "command": command,
@@ -215,7 +255,9 @@ class _EvaluationExecuteCommandTool(ExecuteCommandTool):
 
     @staticmethod
     def _payload(result: str) -> dict[str, Any]:
-        """解码生产命令工具的 JSON 回执，异常文本仍作为失败证据保留。"""
+        """
+        解码生产命令工具的 JSON 回执，异常文本仍作为失败证据保留。
+        """
         try:
             decoded = json.loads(result)
         except (TypeError, ValueError):
@@ -231,7 +273,9 @@ class _EvaluationExecuteCommandTool(ExecuteCommandTool):
         env: Optional[dict[str, Any]],
         kwargs: dict[str, Any],
     ) -> str:
-        """按固定顺序代理启动、读取、写入和等待动作，验证真实会话句柄不会被替换。"""
+        """
+        按固定顺序代理启动、读取、写入和等待动作，验证真实会话句柄不会被替换。
+        """
         command_text = (command or "").strip()
         session_id = kwargs.get("session_id")
         input_text = kwargs.get("input_text")
@@ -329,7 +373,9 @@ class _EvaluationExecuteCommandTool(ExecuteCommandTool):
 
     async def run(self, action: Optional[str] = "run", command: Optional[str] = None, cwd: Optional[str] = None,
                   env: Optional[dict[str, Any]] = None, **kwargs: Any) -> str:
-        """仅允许场景给定的短命令，执行路径仍经过生产命令安全、超时和作用域清理。"""
+        """
+        仅允许场景给定的短命令，执行路径仍经过生产命令安全、超时和作用域清理。
+        """
         scenario = self._evaluation_world.scenario
         normalized_action = (action or ("start" if scenario.kind == "terminal" else "run")).strip().lower()
         if scenario.kind == "terminal":
@@ -365,18 +411,24 @@ class _EvaluationExecuteCommandTool(ExecuteCommandTool):
 
 
 class _EvaluationBrowseWebpageTool(BrowseWebpageTool):
-    """在本地固定页面上复用生产 Playwright 工具，拒绝外部 URL 和任意脚本。"""
+    """
+    在本地固定页面上复用生产 Playwright 工具，拒绝外部 URL 和任意脚本。
+    """
 
     _evaluation_world: Any = PrivateAttr()
 
     def __init__(self, *, world: EvaluationWorld, **kwargs: Any) -> None:
-        """绑定本轮世界；浏览器会话归属仍由生产 TerminalScope 管理。"""
+        """
+        绑定本轮世界；浏览器会话归属仍由生产 TerminalScope 管理。
+        """
         super().__init__(**kwargs)
         self._evaluation_world = world
 
     @staticmethod
     def _failure(action: str, message: str) -> str:
-        """返回告诉模型正确动作或输入的结构化失败。"""
+        """
+        返回告诉模型正确动作或输入的结构化失败。
+        """
         return json.dumps({
             "action": action, "success": False, "execution_outcome": "failed",
             "error": "evaluation_browser_rejected", "message": message,
@@ -388,7 +440,9 @@ class _EvaluationBrowseWebpageTool(BrowseWebpageTool):
                   cookies: Optional[str] = None, user_agent: Optional[str] = None,
                   session_key: Optional[str] = None, tab_index: Optional[int] = None,
                   allow_private_network: bool = False, **kwargs: Any) -> Any:
-        """仅允许页面读取与按快照 ref 点击，执行仍走生产浏览器实现。"""
+        """
+        仅允许页面读取与按快照 ref 点击，执行仍走生产浏览器实现。
+        """
         allowed_actions = {"goto", "snapshot", "click_ref", "get_content", "close_session"}
         normalized_action = str(action or "").strip().lower()
         browser_url = self._evaluation_world.browser_url
@@ -429,12 +483,18 @@ class _EvaluationBrowseWebpageTool(BrowseWebpageTool):
 
 @contextmanager
 def _browser_fixture() -> Iterator[str]:
-    """启动只绑定回环地址的动态测试页，并在评测结束后等待线程退出。"""
+    """
+    启动只绑定回环地址的动态测试页，并在评测结束后等待线程退出。
+    """
     class _Handler(BaseHTTPRequestHandler):
-        """返回固定页面，不记录请求正文或客户端环境。"""
+        """
+        返回固定页面，不记录请求正文或客户端环境。
+        """
 
         def do_GET(self) -> None:  # noqa: N802 - 标准库处理器方法名
-            """仅提供固定路径和最小 HTML，其他请求返回 404。"""
+            """
+            仅提供固定路径和最小 HTML，其他请求返回 404。
+            """
             if self.path != "/fixture":
                 self.send_error(404)
                 return
@@ -454,7 +514,9 @@ def _browser_fixture() -> Iterator[str]:
             self.wfile.write(body)
 
         def log_message(self, _format: str, *_args: Any) -> None:
-            """禁止标准库把本地测试请求写入 stderr。"""
+            """
+            禁止标准库把本地测试请求写入 stderr。
+            """
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
     thread = Thread(target=server.serve_forever, name="moviepilot-evaluation-browser", daemon=True)
@@ -468,31 +530,43 @@ def _browser_fixture() -> Iterator[str]:
 
 
 class _McpDirectory:
-    """受控目录不配置任何外部 MCP，禁止发现阶段启动服务或联网。"""
+    """
+    受控目录不配置任何外部 MCP，禁止发现阶段启动服务或联网。
+    """
 
     @staticmethod
     def config_signature() -> str:
-        """提供明确区别于真实部署的空目录签名。"""
+        """
+        提供明确区别于真实部署的空目录签名。
+        """
         return "evaluation-empty-mcp"
 
     @staticmethod
     async def list_enabled_tool_specs() -> list[Any]:
-        """无须读取 SystemConfig 即可返回空外部工具目录。"""
+        """
+        无须读取 SystemConfig 即可返回空外部工具目录。
+        """
         return []
 
 
 def _agent_type() -> type:
-    """延迟加载宿主；只替换模型、目录和展示边界，继承完整生产执行图。"""
+    """
+    延迟加载宿主；只替换模型、目录和展示边界，继承完整生产执行图。
+    """
     from app.agent.middleware.selection import ToolSelectorMiddleware
     from app.agent.orchestrator import MoviePilotAgent
     from app.agent.tools.catalog import ToolCatalogSnapshot
 
     # 脚本单独严格检查时 follow_imports=skip 不展开宿主类型；运行合同由生产图测试验证。
     class EvaluationAgent(MoviePilotAgent):  # type: ignore[misc]
-        """在生产策略、中间件和生命周期内运行受控工具及外部注入模型。"""
+        """
+        在生产策略、中间件和生命周期内运行受控工具及外部注入模型。
+        """
 
         def __init__(self, *, model: Any, model_name: str, context_window: int, max_iterations: int, **kwargs: Any) -> None:
-            """隔离模型身份和预算，不解析宿主 LLM 设置或供应商选择事件。"""
+            """
+            隔离模型身份和预算，不解析宿主 LLM 设置或供应商选择事件。
+            """
             super().__init__(**kwargs)
             self.evaluation_model = model
             self.evaluation_model_name = model_name
@@ -506,32 +580,44 @@ def _agent_type() -> type:
             self.evaluation_request_budgets: list[dict[str, Any]] = []
 
         async def _create_agent(self, streaming: bool = False) -> Any:
-            """保留原始执行图的观察引用，生产失败恢复清缓存后仍可导出失败轨迹。"""
+            """
+            保留原始执行图的观察引用，生产失败恢复清缓存后仍可导出失败轨迹。
+            """
             graph = await super()._create_agent(streaming=streaming)
             self.evaluation_bundle = self._compiled_agent_bundle
             return graph
 
         async def _initialize_llm(self, streaming: bool = False) -> Any:
-            """直接使用调用方模型；内部总结和子代理仍由生产代码调用同一模型。"""
+            """
+            直接使用调用方模型；内部总结和子代理仍由生产代码调用同一模型。
+            """
             del streaming
             return self.evaluation_model
 
         async def _resolve_llm_runtime_config(self) -> dict[str, Any]:
-            """返回不含凭据的稳定模型描述，不加载供应商配置。"""
+            """
+            返回不含凭据的稳定模型描述，不加载供应商配置。
+            """
             return {"provider": "openai", "model": self.evaluation_model_name, "web_search_mode": "disabled"}
 
         def _sync_model_profile(self, model: Any) -> None:
-            """记录显式传入的模型预算，避免脚本模型缺失 profile 时丢失上下文上限。"""
+            """
+            记录显式传入的模型预算，避免脚本模型缺失 profile 时丢失上下文上限。
+            """
             super()._sync_model_profile(model)
             self._session_usage.model = self.evaluation_model_name
             self._session_usage.context_window_tokens = self.evaluation_context_window
 
         def _get_recursion_limit(self) -> int:
-            """将显式评测迭代预算交给真实 LangGraph 执行器。"""
+            """
+            将显式评测迭代预算交给真实 LangGraph 执行器。
+            """
             return self.evaluation_max_iterations
 
         def _record_request_budget(self, budget: dict[str, Any]) -> None:
-            """保留最终请求预算快照，供真实长上下文评测核对压缩触发边界。"""
+            """
+            保留最终请求预算快照，供真实长上下文评测核对压缩触发边界。
+            """
             super()._record_request_budget(budget)
             self.evaluation_request_budgets.append({
                 key: budget.get(key) for key in (
@@ -542,36 +628,50 @@ def _agent_type() -> type:
             })
 
         def _should_stream(self) -> bool:
-            """使用生产非流式分支，模型输出只进入评测捕获。"""
+            """
+            使用生产非流式分支，模型输出只进入评测捕获。
+            """
             return False
 
         def _initialize_local_tool_catalogs(self) -> tuple[Any, Any]:
-            """主图和子图使用不同工具实例，保持完整生产目录校验和子图只读策略。"""
+            """
+            主图和子图使用不同工具实例，保持完整生产目录校验和子图只读策略。
+            """
             return tuple(ToolCatalogSnapshot.from_tools(
                 tools, plugin_revision=0, factory_revision="evaluation-controlled-api",
             ).require_unique() for tools in (self.evaluation_tools, self.evaluation_child_tools))
 
         @staticmethod
         def _initialize_tool_selector(tools: list[Any], internal_tools: list[Any], model: Any) -> Any:
-            """保留生产发现中间件，同时避免加载实际插件工具工厂。"""
+            """
+            保留生产发现中间件，同时避免加载实际插件工具工厂。
+            """
             return ToolSelectorMiddleware(
                 model=model, selection_tools=[*tools, *internal_tools], max_tools=20,
                 always_include=[tool.name for tool in [*tools, *internal_tools]], enable_discovery=True,
             )
 
         async def prepare_chat_title(self, message: str) -> None:
-            """评测不额外生成会话标题，业务推理与总结调用仍按生产路径计费。"""
+            """
+            评测不额外生成会话标题，业务推理与总结调用仍按生产路径计费。
+            """
 
         async def _save_display_history_messages(self, messages: list[dict[str, Any]]) -> None:
-            """捕获真实 process 的展示历史，不注册通知或宿主会话服务。"""
+            """
+            捕获真实 process 的展示历史，不注册通知或宿主会话服务。
+            """
             self.display_messages.extend(messages)
 
         async def send_agent_message(self, message: str, title: str = "") -> None:
-            """意外进入发送边界时直接拒绝，不能把评测内容发送到真实渠道。"""
+            """
+            意外进入发送边界时直接拒绝，不能把评测内容发送到真实渠道。
+            """
             raise RuntimeError("评测禁止发送通知")
 
         def _send_agent_tokens_usage_event(self, *, success: bool, error: Optional[str] = None) -> None:
-            """只记录成功标志，不广播可被插件消费的真实运行事件。"""
+            """
+            只记录成功标志，不广播可被插件消费的真实运行事件。
+            """
             self.execution_success = success
 
     return EvaluationAgent
@@ -584,7 +684,9 @@ def _runtime_scope(
     *,
     after_operation: Optional[Callable[[str, dict[str, Any]], Awaitable[None]]] = None,
 ) -> Iterator[Any]:
-    """在独立 worker 中临时替换明确的外部边界，退出时恢复全部全局引用。"""
+    """
+    在独立 worker 中临时替换明确的外部边界，退出时恢复全部全局引用。
+    """
     from app.agent.api.executor import MoviePilotApiExecutor
     from app.agent.runtime import AgentRuntimeManager
 
@@ -602,7 +704,9 @@ def _runtime_scope(
 
 
 def _code_tool_scope(stack: ExitStack, directory: Path, agent: Any, world: EvaluationWorld) -> Any:
-    """只准入任务给定程序并使用临时工作目录，仍保留原生工具类型和完整生产 RPC 链。"""
+    """
+    只准入任务给定程序并使用临时工作目录，仍保留原生工具类型和完整生产 RPC 链。
+    """
     from app.agent.code.manager import CodeSessionManager
     from app.agent.tools.impl.execute_code import ExecuteCodeTool
 
@@ -610,7 +714,9 @@ def _code_tool_scope(stack: ExitStack, directory: Path, agent: Any, world: Evalu
     original_run = ExecuteCodeTool.run
 
     async def run(tool: Any, **kwargs: Any) -> str:
-        """评测拒绝程序改写，不能用拥有宿主权限的任意代码绕开假世界。"""
+        """
+        评测拒绝程序改写，不能用拥有宿主权限的任意代码绕开假世界。
+        """
         if str(kwargs.get('code') or '').strip() != world.scenario.command.strip():
             return json.dumps({'success': False, 'error': '评测仅允许原样执行任务给定的 Python 程序。'})
         return str(await original_run(tool, **kwargs))
@@ -630,7 +736,9 @@ async def run_moviepilot(
     world: EvaluationWorld, model: "BaseChatModel", *, model_name: str, context_window: int, max_iterations: int,
     invocation_repository: Optional[Any] = None,
 ) -> dict[str, Any]:
-    """调用真实 process 并捕获最终图；每个 live trial 应使用独立进程和 CONFIG_DIR。"""
+    """
+    调用真实 process 并捕获最终图；每个 live trial 应使用独立进程和 CONFIG_DIR。
+    """
     config_path = _config_path()
     if context_window < 1 or max_iterations < 1:
         raise ValueError("context_window 和 max_iterations 必须为正整数")
@@ -650,7 +758,9 @@ async def _run_isolated(
     world: EvaluationWorld, model: Any, *, directory: Path, model_name: str, context_window: int,
     max_iterations: int, invocation_repository: Optional[Any],
 ) -> dict[str, Any]:
-    """装配真实 API 执行器、独立回执库和会话端口，并在回收前保存执行证据。"""
+    """
+    装配真实 API 执行器、独立回执库和会话端口，并在回收前保存执行证据。
+    """
     from langchain_core.messages import messages_to_dict
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
@@ -681,7 +791,9 @@ async def _run_isolated(
         steering_sent: set[int] = set()
 
         async def after_operation(operation_id: str, response: dict[str, Any]) -> None:
-            """在计划的真实业务回执边界注入运行中补充消息。"""
+            """
+            在计划的真实业务回执边界注入运行中补充消息。
+            """
             nonlocal steering_operation_count
             if not steering_schedule:
                 return
@@ -703,13 +815,14 @@ async def _run_isolated(
                 })
 
         def steering_status_callback(message: Any, status: str) -> None:
-            """记录 inbox 在模型边界真正消费补充消息的状态。"""
+            """
+            记录 inbox 在模型边界真正消费补充消息的状态。
+            """
             steering_events.append({
                 "status": status,
                 "message_id": message.message_id,
-                # SteeringMiddleware consumes the message immediately before the
-                # model handler; this marks a real model-boundary injection even
-                # when later context compaction removes the HumanMessage snapshot.
+                # 补充消息在模型处理器运行前被消费；即使后续上下文压缩移除消息快照，
+                # 这里仍记录其确实进入模型边界。
                 "model_boundary": status == "applied",
             })
 

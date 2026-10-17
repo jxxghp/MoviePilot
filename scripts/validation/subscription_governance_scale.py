@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""运行订阅执行治理的确定性规模验收并输出 JSON 证据。"""
+"""
+运行订阅执行治理的确定性规模验收并输出 JSON 证据。
+"""
 
 from __future__ import annotations
 
@@ -28,40 +30,89 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+# 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.application.site.observation import report_site_search_outcome  # noqa: E402
+
+# 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.application.subscription.candidates import CandidateIndex  # noqa: E402
+
+# 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.application.subscription.contract import SubscriptionSnapshot  # noqa: E402
+
+# 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.application.subscription.execution import SubscriptionExecutionAdmission  # noqa: E402
+
+# 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.application.subscription.facts import FreshFactLease  # noqa: E402
+
+# 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.application.subscription.sitebudget import (  # noqa: E402
     SubscriptionSiteBudget as SubscriptionSiteBudgetController,
 )
+
+# 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.chain.download import batch as download_batch  # noqa: E402
+
+# 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.chain.download.facade import DownloadChain  # noqa: E402
+
+# 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.chain.search.facade import SearchChain  # noqa: E402
+
+# 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.chain.subscribe import match as subscribe_match  # noqa: E402
+
+# 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.chain.subscribe import policy as subscribe_policy  # noqa: E402
+
+# 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.chain.subscribe.facade import SubscribeChain  # noqa: E402
+
+# 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.db.adapters.subscriptionsearch import (  # noqa: E402
     TransactionalSubscriptionSearchRepository,
 )
+
+# 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.db.base import Base  # noqa: E402
+
+# 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.db.models.subscriptionsearch import (  # noqa: E402
     SubscriptionSearchTask,
 )
+
+# 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.db.models.subscriptionsearch import (  # noqa: E402
     SubscriptionSiteBudget as SubscriptionSiteBudgetRecord,
 )
+
+# 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.domain.context import Context, MediaInfo, TorrentInfo  # noqa: E402
+
+# 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.domain.metainfo import MetaInfo  # noqa: E402
+
+# 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.runtime.stop import ProcessStopState  # noqa: E402
+
+# 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.schemas.mediaserver import NotExistMediaInfo  # noqa: E402
+
+# 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.schemas.types import MediaSource, MediaType  # noqa: E402
 
 
 @dataclass(frozen=True, slots=True)
 class ScaleCase:
-    """声明一档订阅、站点、候选和唯一媒体规模。"""
+    """
+    声明一档订阅、站点、候选和唯一媒体规模。
+
+    :param name: 验收报告中的规模档位标识
+    :param subscription_count: 固定输入中的订阅总数
+    :param site_count: 固定输入中的站点总数
+    :param candidate_count: 索引对照场景中的候选总数
+    :param media_count: 候选所覆盖的唯一媒体身份数量
+    """
 
     name: str
     subscription_count: int
@@ -71,7 +122,9 @@ class ScaleCase:
 
 
 def _percentile(values: list[float], percentile: int) -> float:
-    """用 nearest-rank 计算稳定百分位，空集合返回零。"""
+    """
+    用 最近秩法 计算稳定百分位，空集合返回零。
+    """
     if not values:
         return 0.0
     ordered = sorted(values)
@@ -80,7 +133,9 @@ def _percentile(values: list[float], percentile: int) -> float:
 
 
 def _git_revision() -> str:
-    """返回当前工作树 HEAD，脚本失败时保留 unknown。"""
+    """
+    返回当前工作树 HEAD，脚本失败时保留 unknown。
+    """
     try:
         return subprocess.check_output(
             ["git", "rev-parse", "HEAD"],
@@ -92,7 +147,9 @@ def _git_revision() -> str:
 
 
 def _context(*, candidate_index: int, media_id: str, site_id: int) -> Context:
-    """构造同时携带 canonical 媒体身份和稳定资源身份的候选。"""
+    """
+    构造同时携带 规范媒体身份和稳定资源身份的候选。
+    """
     title = f"Governance Show {media_id} S01E01"
     meta = MetaInfo(title)
     meta.type = MediaType.TV
@@ -125,7 +182,9 @@ def _context(*, candidate_index: int, media_id: str, site_id: int) -> Context:
 
 
 def _subscription(subscription_id: int, media_id: str, site_count: int) -> SubscriptionSnapshot:
-    """构造覆盖全部受控站点的同季电视剧订阅。"""
+    """
+    构造覆盖全部受控站点的同季电视剧订阅。
+    """
     return SubscriptionSnapshot(
         id=subscription_id,
         name=f"Governance Show {media_id}",
@@ -144,7 +203,9 @@ def _subscription(subscription_id: int, media_id: str, site_count: int) -> Subsc
 
 
 def _candidate_key(context: Context) -> str:
-    """返回候选稳定资源键，用于集合与顺序对照。"""
+    """
+    返回候选稳定资源键，用于集合与顺序对照。
+    """
     return str(context.torrent_info.enclosure if context.torrent_info else "")
 
 
@@ -152,7 +213,9 @@ def _baseline_route(
     candidates: dict[str, list[Context]],
     subscribe: SubscriptionSnapshot,
 ) -> list[str]:
-    """用完整扫描实现受控显式身份样本的 canonical 参考集合。"""
+    """
+    用完整扫描实现受控显式身份样本的 规范参考集合。
+    """
     target = CandidateIndex.media_identity(subscribe)
     routed: list[str] = []
     for contexts in candidates.values():
@@ -170,7 +233,9 @@ def _baseline_route(
 def _build_match_inputs(
     case: ScaleCase,
 ) -> tuple[dict[str, list[Context]], list[SubscriptionSnapshot]]:
-    """为索引基线和实际 Match 构造彼此独立的固定输入快照。"""
+    """
+    为索引基线和实际 Match 构造彼此独立的固定输入快照。
+    """
     candidates = {
         f"site-{site_id}.example": []
         for site_id in range(1, case.site_count + 1)
@@ -197,13 +262,17 @@ def _build_match_inputs(
 
 
 def _collection_digest(values: list[str]) -> str:
-    """返回保留重复次数的稳定摘要，便于审计完整集合而不膨胀输出。"""
+    """
+    返回保留重复次数的稳定摘要，便于审计完整集合而不膨胀输出。
+    """
     payload = "\n".join(sorted(values)).encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 
 def _compare_collections(expected: set[str], actual: list[str]) -> dict[str, Any]:
-    """比较完整多重集合并保留计数、摘要、重复项和有限差异样本。"""
+    """
+    比较完整多重集合并保留计数、摘要、重复项和有限差异样本。
+    """
     expected_values = sorted(expected)
     actual_values = sorted(actual)
     expected_counts = Counter(expected_values)
@@ -224,46 +293,71 @@ def _compare_collections(expected: set[str], actual: list[str]) -> dict[str, Any
 
 
 class _ScaleSubscriptionRepository:
-    """为实际 Match 提供固定订阅列表和准入后的最新快照。"""
+    """
+    为实际 Match 提供固定订阅列表和准入后的最新快照。
+    """
 
     def __init__(self, subscribes: list[SubscriptionSnapshot]) -> None:
+        """
+        保存订阅快照，并建立按标识复读的索引。
+        """
         self._subscribes = list(subscribes)
         self._by_id = {subscribe.id: subscribe for subscribe in subscribes}
 
     def list(self, _state: str) -> list[SubscriptionSnapshot]:
-        """返回固定顺序的完整订阅快照。"""
+        """
+        返回固定顺序的完整订阅快照。
+        """
         return list(self._subscribes)
 
     def get(self, subscription_id: int) -> Optional[SubscriptionSnapshot]:
-        """返回准入和提交前复读使用的当前订阅快照。"""
+        """
+        返回准入和提交前复读使用的当前订阅快照。
+        """
         return self._by_id.get(subscription_id)
 
 
 class _ScaleSiteRepository:
-    """把受控站点 ID 映射为候选分组域名。"""
+    """
+    把受控站点 ID 映射为候选分组域名。
+    """
 
     @staticmethod
     def get_domains_by_ids(site_ids: list[int]) -> list[str]:
-        """返回固定快照内与站点 ID 一一对应的域名。"""
+        """
+        返回固定快照内与站点 ID 一一对应的域名。
+        """
         return [f"site-{site_id}.example" for site_id in site_ids]
 
 
 class _ScaleTorrentHelper:
-    """隔离实际 Match 的种子属性过滤外部依赖。"""
+    """
+    隔离实际 Match 的种子属性过滤外部依赖。
+    """
 
     @staticmethod
     def filter_torrent(**_kwargs: Any) -> bool:
-        """固定样本中的候选均通过订阅属性过滤。"""
+        """
+        固定样本中的候选均通过订阅属性过滤。
+        """
         return True
 
 
+# 线程同步最多等待 5 秒，避免验收异常时无限挂起。
 _SITE_PRESSURE_SYNC_TIMEOUT = 5.0
 
 
 class _ScaleSiteRequestBoundary:
-    """记录确定性站点请求替身的在途数量和请求结果。"""
+    """
+    记录确定性站点请求替身的在途数量和请求结果。
+    """
 
     def __init__(self, *, site_id: int) -> None:
+        """
+        初始化站点请求计数、线程同步信号和默认成功结果。
+
+        :param site_id: 本次压力场景中唯一的受控站点标识
+        """
         self.site_id = site_id
         self._lock = threading.Lock()
         self._active = 0
@@ -279,48 +373,64 @@ class _ScaleSiteRequestBoundary:
 
     @property
     def active(self) -> int:
-        """返回请求边界当前真实在途数量。"""
+        """
+        返回请求边界当前真实在途数量。
+        """
         with self._lock:
             return self._active
 
     @property
     def peak(self) -> int:
-        """返回请求边界观测到的最大在途数量。"""
+        """
+        返回请求边界观测到的最大在途数量。
+        """
         with self._lock:
             return self._peak
 
     @property
     def calls(self) -> int:
-        """返回请求边界实际进入次数。"""
+        """
+        返回请求边界实际进入次数。
+        """
         with self._lock:
             return self._calls
 
     @property
     def outcomes(self) -> tuple[str, ...]:
-        """返回请求边界按进入顺序记录的结果分类。"""
+        """
+        返回请求边界按进入顺序记录的结果分类。
+        """
         with self._lock:
             return tuple(self._outcomes)
 
     @property
     def active_at_rejection(self) -> int:
-        """返回预算拒绝发生时请求边界的在途数量。"""
+        """
+        返回预算拒绝发生时请求边界的在途数量。
+        """
         with self._lock:
             return self._active_at_rejection
 
     def set_outcome(self, outcome: str, error: Optional[str] = None) -> None:
-        """设置后续确定性请求要发布的站点观察结果。"""
+        """
+        设置后续确定性请求要发布的站点观察结果。
+        """
         with self._lock:
             self._outcome = outcome
             self._error = error
 
     def record_budget_rejection(self) -> None:
-        """记录 wrapper 拒绝时请求边界仍保持在途的事实。"""
+        """
+        记录 请求包装层拒绝时请求边界仍保持在途的事实。
+        """
         with self._lock:
             self._active_at_rejection = max(self._active_at_rejection, self._active)
         self.round_observed.set()
 
     def request(self, *, owner: str) -> list[str]:
-        """在真实请求边界更新 active/peak 并返回固定站点结果。"""
+        """
+        在真实请求边界更新 active/peak 并返回固定站点结果。
+        """
         with self._lock:
             call_index = self._calls
             self._calls += 1
@@ -353,7 +463,9 @@ def _site_budget_record(
     engine: Any,
     site_id: int,
 ) -> Optional[SubscriptionSiteBudgetRecord]:
-    """读取站点预算最终记录，核对 observation 是否实际持久化。"""
+    """
+    读取站点预算最终记录，核对 观察结果是否实际持久化。
+    """
     with Session(engine) as session:
         return session.execute(
             select(SubscriptionSiteBudgetRecord).where(
@@ -367,7 +479,9 @@ def _run_site_pressure_case(
     search: TransactionalSubscriptionSearchRepository,
     engine: Any,
 ) -> dict[str, Any]:
-    """让两个并发 SearchChain owner 通过 wrapper 验证每个站点的容量和冷却。"""
+    """
+    让两个并发 SearchChain 执行方通过请求包装层 验证每个站点的容量和冷却。
+    """
     site_observations: list[dict[str, Any]] = []
     duplicate_site_claims_blocked = 0
     error_cooldown_claims_blocked = 0
@@ -399,7 +513,9 @@ def _run_site_pressure_case(
                 original=original_record_deferred,
                 owner_name=owner,
             ) -> None:
-                """保留 wrapper 延后事实并同步压力轮次观测。"""
+                """
+                保留 请求包装层的延后事实并同步压力轮次观测。
+                """
                 original(deferral)
                 owner_deferrals[owner_name].append(deferral)
                 boundary.record_budget_rejection()
@@ -408,7 +524,9 @@ def _run_site_pressure_case(
             chain.record_subscription_site_budget_deferred = record_deferred
 
             def search_site_torrents(*, _owner=owner, **_kwargs: Any) -> list[str]:
-                """将 SearchChain 的真实站点请求委托给固定边界。"""
+                """
+                将 SearchChain 的真实站点请求委托给固定边界。
+                """
                 return boundary.request(owner=_owner)
 
             chain.search_site_torrents = search_site_torrents
@@ -420,7 +538,9 @@ def _run_site_pressure_case(
         result_lock = threading.Lock()
 
         def run_owner(owner: str) -> None:
-            """同步启动一个 owner，并保存 wrapper 的结果或异常。"""
+            """
+            同步启动一个执行方，并保存请求包装层 的结果或异常。
+            """
             try:
                 start_barrier.wait(timeout=_SITE_PRESSURE_SYNC_TIMEOUT)
                 # 租约取得不代表请求已经开始；竞争方必须在真实请求在途时验证拒绝。
@@ -428,6 +548,7 @@ def _run_site_pressure_case(
                     raise TimeoutError("首个站点请求未进入受控请求边界")
                 with result_lock:
                     owner_invocations[owner] += 1
+                # 验收需经过真实站点预算包装层，直接调用内部入口以隔离外部请求。
                 result = chains[owner]._search_site_torrents_with_budget(  # pylint: disable=protected-access
                     site={"id": site_id, "name": f"Site {site_id}"},
                     keyword="governance-pressure",
@@ -436,6 +557,7 @@ def _run_site_pressure_case(
                 )
                 with result_lock:
                     owner_results[owner] = result
+            # 汇总各线程的全部失败，让验收报告统一判定结果。
             except Exception as error:  # noqa: BLE001
                 with result_lock:
                     owner_errors[owner] = str(error)
@@ -505,6 +627,7 @@ def _run_site_pressure_case(
             if site_id != case.site_count:
                 boundary.set_outcome("success")
                 calls_before_reuse = boundary.calls
+                # 验收需经过真实站点预算包装层，直接调用内部入口以隔离外部请求。
                 reused = winner._search_site_torrents_with_budget(  # pylint: disable=protected-access
                     site={"id": site_id, "name": f"Site {site_id}"},
                     keyword="governance-pressure-reuse",
@@ -526,6 +649,7 @@ def _run_site_pressure_case(
             if site_id == case.site_count:
                 boundary.set_outcome("rate_limited", error="HTTP 429")
                 calls_before_error = boundary.calls
+                # 验收需经过真实站点预算包装层，直接调用内部入口以隔离外部请求。
                 error_result = winner._search_site_torrents_with_budget(  # pylint: disable=protected-access
                     site={"id": site_id, "name": f"Site {site_id}"},
                     keyword="governance-pressure-error",
@@ -543,6 +667,7 @@ def _run_site_pressure_case(
                 winner.consume_subscription_site_budget_failures()
 
                 calls_before_cooldown = boundary.calls
+                # 验收需经过真实站点预算包装层，直接调用内部入口以隔离外部请求。
                 cooldown_result = loser._search_site_torrents_with_budget(  # pylint: disable=protected-access
                     site={"id": site_id, "name": f"Site {site_id}"},
                     keyword="governance-pressure-cooldown",
@@ -637,9 +762,17 @@ def _run_site_pressure_case(
 
 
 class _ScaleDownloadBoundary(DownloadChain):
-    """运行 canonical 批量选择，并在实际下载器边界返回确定性成功。"""
+    """
+    运行 规范批量选择，并在实际下载器边界返回确定性成功。
+    """
 
     def __init__(self, matched: list[str], downloaded: list[str]) -> None:
+        """
+        记录匹配与下载输出容器，供批量选择后核对完整集合。
+
+        :param matched: 接收实际进入批量下载的候选键，调用期间原地追加
+        :param downloaded: 接收选择后模拟成功的候选键，调用期间原地追加
+        """
         self._matched = matched
         self._downloaded = downloaded
         self._subscription_id = 0
@@ -650,7 +783,9 @@ class _ScaleDownloadBoundary(DownloadChain):
         contexts: list[Context],
         **_kwargs: Any,
     ) -> tuple[list[Context], dict[str, Any]]:
-        """固定快照保持候选顺序且不读取历史失败冷却。"""
+        """
+        固定快照保持候选顺序且不读取历史失败冷却。
+        """
         return contexts, {}
 
     def batch_download(
@@ -662,7 +797,9 @@ class _ScaleDownloadBoundary(DownloadChain):
         governance: Any,
         **_kwargs: Any,
     ) -> tuple[list[Context], dict[Any, dict[int, NotExistMediaInfo]]]:
-        """记录 Match 提交集合后运行真实批量候选选择。"""
+        """
+        记录 Match 提交集合后运行真实批量候选选择。
+        """
         source_data = json.loads(source.removeprefix("Subscribe|"))
         self._subscription_id = int(source_data["id"])
         for context in contexts:
@@ -682,7 +819,9 @@ class _ScaleDownloadBoundary(DownloadChain):
         governance: Any,
         **_kwargs: Any,
     ) -> str:
-        """模拟下载器明确成功，并记录 canonical 选择出的资源。"""
+        """
+        模拟下载器明确成功，并记录 规范选择出的资源。
+        """
         if governance.cancelled and governance.cancelled():
             raise AssertionError("固定快照执行不应在下载前取消")
         if governance.mark_started:
@@ -692,7 +831,9 @@ class _ScaleDownloadBoundary(DownloadChain):
 
 
 def _run_match_case(case: ScaleCase) -> dict[str, Any]:
-    """比较完整扫描与无损索引，并记录单轮事实租约和本地等待分位。"""
+    """
+    比较完整扫描与无损索引，并记录单轮事实租约和本地等待分位。
+    """
     candidates, subscribes = _build_match_inputs(case)
 
     index = CandidateIndex(candidates)
@@ -751,7 +892,9 @@ def _run_match_case(case: ScaleCase) -> dict[str, Any]:
 
 
 def _run_match_execution_case(case: ScaleCase) -> dict[str, Any]:
-    """运行实际 SubscribeChain Match 并对照四类完整业务集合。"""
+    """
+    运行实际 SubscribeChain Match 并对照四类完整业务集合。
+    """
     candidates, subscribes = _build_match_inputs(case)
     expected_matched: set[str] = set()
     expected_downloaded: set[str] = set()
@@ -784,36 +927,52 @@ def _run_match_execution_case(case: ScaleCase) -> dict[str, Any]:
     started = time.perf_counter()
 
     class _ScaleMatchLogger:
-        """只收集 Match 模块 INFO，用于验证日志量不随候选乘积增长。"""
+        """
+        只收集 Match 模块 INFO，用于验证日志量不随候选乘积增长。
+        """
 
         @staticmethod
         def debug(*_args: Any, **_kwargs: Any) -> None:
-            """忽略受控样本的逐项诊断日志。"""
+            """
+            忽略受控样本的逐项诊断日志。
+            """
 
         @staticmethod
         def scoped_info(*_args: Any, **_kwargs: Any) -> None:
-            """独立订阅日志不计入主日志的批次 INFO 预算。"""
+            """
+            独立订阅日志不计入主日志的批次 INFO 预算。
+            """
 
         @staticmethod
         def warning(*_args: Any, **_kwargs: Any) -> None:
-            """忽略受控样本中预期不会出现的警告。"""
+            """
+            忽略受控样本中预期不会出现的警告。
+            """
 
         warn = warning
 
         @staticmethod
         def error(*_args: Any, **_kwargs: Any) -> None:
-            """错误仍由集合和终态门禁暴露，不污染 INFO 计数。"""
+            """
+            错误仍由集合和终态门禁暴露，不污染 INFO 计数。
+            """
 
         @staticmethod
         def info(message: Any, *_args: Any, **_kwargs: Any) -> None:
-            """保存开始和结束摘要。"""
+            """
+            保存开始和结束摘要。
+            """
             info_logs.append(str(message))
 
     class _ScaleMediaChain:
-        """用固定新鲜媒体事实替代目标规模下的真实 TMDB 请求。"""
+        """
+        用固定新鲜媒体事实替代目标规模下的真实 TMDB 请求。
+        """
 
         def recognize_media(self, **kwargs: Any) -> MediaInfo:
-            """按订阅身份返回两集电视剧的新鲜事实。"""
+            """
+            按订阅身份返回两集电视剧的新鲜事实。
+            """
             nonlocal recognition_calls
             recognition_calls += 1
             media_id = str(kwargs["media_id"])
@@ -829,12 +988,16 @@ def _run_match_execution_case(case: ScaleCase) -> dict[str, Any]:
 
         @staticmethod
         def recognize_by_meta(*_args: Any, **_kwargs: Any) -> MediaInfo:
-            """明确身份候选不应进入二次识别。"""
+            """
+            明确身份候选不应进入二次识别。
+            """
             raise AssertionError("明确身份候选不应重新识别")
 
         @staticmethod
         def supplement_media_info(mediainfo: MediaInfo) -> MediaInfo:
-            """固定样本无需访问其他元数据来源。"""
+            """
+            固定样本无需访问其他元数据来源。
+            """
             return mediainfo
 
     chain = object.__new__(SubscribeChain)
@@ -858,7 +1021,9 @@ def _run_match_execution_case(case: ScaleCase) -> dict[str, Any]:
         mediakey: Any,
         **_kwargs: Any,
     ) -> tuple[bool, dict[Any, dict[int, NotExistMediaInfo]]]:
-        """返回每条订阅固定的初始缺集快照。"""
+        """
+        返回每条订阅固定的初始缺集快照。
+        """
         return False, {
             mediakey: {
                 1: NotExistMediaInfo(
@@ -874,7 +1039,9 @@ def _run_match_execution_case(case: ScaleCase) -> dict[str, Any]:
         subscribe: SubscriptionSnapshot,
         **_kwargs: Any,
     ) -> dict[str, Any]:
-        """让完成判断消费下载边界结果，不引入持久化测试替身。"""
+        """
+        让完成判断消费下载边界结果，不引入持久化测试替身。
+        """
         return {
             "episodes": [1],
             "fields": [],
@@ -888,7 +1055,9 @@ def _run_match_execution_case(case: ScaleCase) -> dict[str, Any]:
         subscribe: SubscriptionSnapshot,
         **_kwargs: Any,
     ) -> None:
-        """记录实际完成判断收到的剩余缺集集合。"""
+        """
+        记录实际完成判断收到的剩余缺集集合。
+        """
         for seasons in no_exists.values():
             for missing in seasons.values():
                 actual_missing.extend(
@@ -905,7 +1074,9 @@ def _run_match_execution_case(case: ScaleCase) -> dict[str, Any]:
     original_finish = chain.finish_subscribe_or_not
 
     def finish_and_record(**kwargs: Any) -> None:
-        """运行 canonical 完成判断并记录每条订阅收口时间。"""
+        """
+        运行 规范完成判断并记录每条订阅收口时间。
+        """
         original_finish(**kwargs)
         settlement_ms.append((time.perf_counter() - started) * 1000)
 
@@ -913,7 +1084,9 @@ def _run_match_execution_case(case: ScaleCase) -> dict[str, Any]:
     download_boundary = _ScaleDownloadBoundary(actual_matched, actual_downloaded)
 
     def record_progress(**kwargs: Any) -> None:
-        """保存 Match 对外发布的真实批次聚合状态。"""
+        """
+        保存 Match 对外发布的真实批次聚合状态。
+        """
         if kwargs.get("data"):
             progress_snapshots.append(dict(kwargs["data"]))
 
@@ -978,7 +1151,9 @@ def _run_match_execution_case(case: ScaleCase) -> dict[str, Any]:
 
 
 def _run_durable_governance(case: ScaleCase, workdir: Path) -> dict[str, Any]:
-    """验证持久队列、站点预算、恢复、取消与订阅级准入。"""
+    """
+    验证持久队列、站点预算、恢复、取消与订阅级准入。
+    """
     engine = create_engine(
         f"sqlite:///{workdir / (case.name + '.db')}",
         connect_args={"check_same_thread": False},
@@ -1150,7 +1325,14 @@ def _run_durable_governance(case: ScaleCase, workdir: Path) -> dict[str, Any]:
 
 
 def run_acceptance() -> dict[str, Any]:
-    """运行两档最终矩阵并返回全部指标与门禁结论。"""
+    """
+    运行中、大两档固定矩阵，核对匹配集合、并发限制和持久化恢复。
+
+    外部服务使用固定边界，数据库只使用临时目录内的 SQLite；
+    结果衡量本地执行治理，不代表生产网络时延。
+
+    :return: 包含采样环境、各场景指标、逐项门禁和总体通过标记的报告
+    """
     cases = (
         ScaleCase("medium", 100, 10, 1000, 100),
         ScaleCase("large", 200, 20, 1200, 100),
@@ -1292,7 +1474,9 @@ def run_acceptance() -> dict[str, Any]:
 
 
 def main() -> int:
-    """解析输出路径，运行门禁并以进程状态反映验收结果。"""
+    """
+    解析输出路径，运行门禁并以进程状态反映验收结果。
+    """
     parser = argparse.ArgumentParser(
         description=(
             "运行 100/10/1000 与 200/20/1200 两档离线订阅治理验收；"

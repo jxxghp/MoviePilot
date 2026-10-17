@@ -1,4 +1,6 @@
-"""验证 AI 历史入口不会绕过 durable 整理任务的唯一重试权。"""
+"""
+验证 AI 历史入口不会绕过 durable 整理任务的唯一重试权。
+"""
 
 from __future__ import annotations
 
@@ -21,49 +23,67 @@ from app.schemas.history import BatchTransferHistoryRedoRequest, TransferHistory
 
 
 class _HistoryQuery:
-    """按测试输入返回脱离数据库的整理历史 DTO。"""
+    """
+    按测试输入返回脱离数据库的整理历史 DTO。
+    """
 
     def __init__(self, histories: list[TransferHistory]) -> None:
-        """保存按 ID 可查的测试历史。"""
+        """
+        保存按 ID 可查的测试历史。
+        """
         self._histories = {history.id: history for history in histories}
 
     async def get_transfer(self, history_id: int) -> TransferHistory | None:
-        """返回单条测试历史。"""
+        """
+        返回单条测试历史。
+        """
         return self._histories.get(history_id)
 
     async def get_transfers(
         self,
         history_ids: list[int],
     ) -> tuple[list[TransferHistory], list[int]]:
-        """按输入顺序返回存在和缺失的测试历史。"""
+        """
+        按输入顺序返回存在和缺失的测试历史。
+        """
         records = [self._histories[item] for item in history_ids if item in self._histories]
         missing = [item for item in history_ids if item not in self._histories]
         return records, missing
 
 
 class _RetryCommand:
-    """记录 execution 重试请求并返回逐任务测试结果。"""
+    """
+    记录 execution 重试请求并返回逐任务测试结果。
+    """
 
     calls: list[tuple[object, dict]] = []
     results: dict[str, TransferRetryRequestResult] = {}
 
     def __init__(self, repository: object) -> None:
-        """保存调用方取得的 execution 仓储。"""
+        """
+        保存调用方取得的 execution 仓储。
+        """
         self._repository = repository
 
     def request_retry(self, **kwargs) -> TransferRetryRequestResult:
-        """记录调用并返回任务对应结果。"""
+        """
+        记录调用并返回任务对应结果。
+        """
         self.calls.append((self._repository, kwargs))
         return self.results[kwargs["task_id"]]
 
 
 async def _record_async(target: list[dict], payload: dict) -> None:
-    """记录被 await 的异步边界调用。"""
+    """
+    记录被 await 的异步边界调用。
+    """
     target.append(payload)
 
 
 def _runtime(*, ai_enabled: bool = True) -> ApiRuntimeConfig:
-    """构造历史端点需要的最小稳定配置快照。"""
+    """
+    构造历史端点需要的最小稳定配置快照。
+    """
     return ApiRuntimeConfig(
         access_token_expire_minutes=30,
         btrfs_fsid_dedup=False,
@@ -77,7 +97,9 @@ def _retry_result(
     state: TransferExecutionState,
     message: str,
 ) -> TransferRetryRequestResult:
-    """构造 execution 重试登记结果。"""
+    """
+    构造 execution 重试登记结果。
+    """
     return TransferRetryRequestResult(
         accepted=accepted,
         state=state,
@@ -87,7 +109,9 @@ def _retry_result(
 
 
 def _install_retry_command(monkeypatch, results: dict[str, TransferRetryRequestResult]) -> object:
-    """构造不会接触真实数据库的 execution 端口并安装命令替身。"""
+    """
+    构造不会接触真实数据库的 execution 端口并安装命令替身。
+    """
     repository = object()
     _RetryCommand.calls = []
     _RetryCommand.results = results
@@ -96,7 +120,9 @@ def _install_retry_command(monkeypatch, results: dict[str, TransferRetryRequestR
 
 
 def test_transfer_history_task_id_is_internal_projection_only() -> None:
-    """durable 任务标识可供宿主读取，但不得扩展公开历史响应。"""
+    """
+    durable 任务标识可供宿主读取，但不得扩展公开历史响应。
+    """
     history = TransferHistory(id=7, transfer_task_id="task-7")
 
     assert history.transfer_task_id == "task-7"
@@ -104,10 +130,14 @@ def test_transfer_history_task_id_is_internal_projection_only() -> None:
 
 
 def test_durable_retry_progress_is_immediately_completed_for_existing_sse() -> None:
-    """durable 重试完成进度应让既有 SSE 客户端首次读取即可收口。"""
+    """
+    durable 重试完成进度应让既有 SSE 客户端首次读取即可收口。
+    """
 
     async def scenario() -> dict:
-        """写入并回读同一个测试进度键。"""
+        """
+        写入并回读同一个测试进度键。
+        """
         progress_key = "test_history_durable_retry_completed"
         await history_endpoint._complete_durable_retry_progress(
             progress_key=progress_key,
@@ -129,28 +159,40 @@ def test_durable_retry_progress_is_immediately_completed_for_existing_sse() -> N
 
 
 def test_durable_retry_progress_waits_for_real_success_history(monkeypatch) -> None:
-    """提供 durable 依赖后，进度应等终态历史落地再完成并保留逐项状态。"""
+    """
+    提供 durable 依赖后，进度应等终态历史落地再完成并保留逐项状态。
+    """
 
     class _ExecutionRepository:
-        """模拟任务终态提交后 pending 被删除。"""
+        """
+        模拟任务终态提交后 pending 被删除。
+        """
 
         @staticmethod
         async def async_get_snapshot(*, task_id: str):
-            """异步返回已删除的 pending 快照。"""
+            """
+            异步返回已删除的 pending 快照。
+            """
             assert task_id == "task-31"
             return None
 
     class _HistoryRepository:
-        """模拟 durable 成功结算写入的历史回执。"""
+        """
+        模拟 durable 成功结算写入的历史回执。
+        """
 
         @staticmethod
         async def async_get_by_transfer_task_id(*, task_id: str):
-            """异步返回指定任务的成功历史。"""
+            """
+            异步返回指定任务的成功历史。
+            """
             assert task_id == "task-31"
             return SimpleNamespace(status=True)
 
     async def scenario() -> dict:
-        """启动真实 watcher 并等后台任务完成。"""
+        """
+        启动真实 watcher 并等后台任务完成。
+        """
         progress_key = "test_history_durable_retry_real_success"
         registry = TaskRegistry()
         monkeypatch.setattr(
@@ -174,7 +216,9 @@ def test_durable_retry_progress_waits_for_real_success_history(monkeypatch) -> N
     original_sleep = asyncio.sleep
 
     async def no_wait(_seconds: float) -> None:
-        """让 watcher 立即进入下一次轮询，同时把执行权交回事件循环。"""
+        """
+        让 watcher 立即进入下一次轮询，同时把执行权交回事件循环。
+        """
         await original_sleep(0)
 
     monkeypatch.setattr(history_endpoint.asyncio, "sleep", no_wait)
@@ -194,14 +238,20 @@ def test_durable_retry_progress_waits_for_real_success_history(monkeypatch) -> N
 
 
 def test_durable_retry_progress_exposes_failed_item_state() -> None:
-    """durable 再次失败时，进度应以失败终态结束并暴露对应历史项。"""
+    """
+    durable 再次失败时，进度应以失败终态结束并暴露对应历史项。
+    """
 
     class _ExecutionRepository:
-        """返回已结算失败的 durable 任务。"""
+        """
+        返回已结算失败的 durable 任务。
+        """
 
         @staticmethod
         async def async_get_snapshot(*, task_id: str):
-            """异步返回失败快照和用户可读原因。"""
+            """
+            异步返回失败快照和用户可读原因。
+            """
             assert task_id == "task-32"
             return SimpleNamespace(
                 state=TransferExecutionState.FAILED,
@@ -209,7 +259,9 @@ def test_durable_retry_progress_exposes_failed_item_state() -> None:
             )
 
     async def scenario() -> dict:
-        """等待真实后台 watcher 结束并读取进度。"""
+        """
+        等待真实后台 watcher 结束并读取进度。
+        """
         progress_key = "test_history_durable_retry_real_failure"
         registry = TaskRegistry()
         await history_endpoint._complete_durable_retry_progress(
@@ -235,7 +287,9 @@ def test_durable_retry_progress_exposes_failed_item_state() -> None:
 
 
 def test_single_ai_redo_requests_durable_retry_without_agent(monkeypatch) -> None:
-    """单条 durable AI 重做只登记调度重试，即使 Agent 功能未启用。"""
+    """
+    单条 durable AI 重做只登记调度重试，即使 Agent 功能未启用。
+    """
     repository = _install_retry_command(
         monkeypatch,
         {
@@ -287,7 +341,9 @@ def test_single_ai_redo_requests_durable_retry_without_agent(monkeypatch) -> Non
 
 
 def test_single_ai_redo_reports_manual_review_rejection(monkeypatch) -> None:
-    """人工复核状态必须原样拒绝，且不得回退到破坏性 Agent 流程。"""
+    """
+    人工复核状态必须原样拒绝，且不得回退到破坏性 Agent 流程。
+    """
     repository = _install_retry_command(
         monkeypatch,
         {
@@ -320,7 +376,9 @@ def test_single_ai_redo_reports_manual_review_rejection(monkeypatch) -> None:
 
 
 def test_batch_ai_redo_returns_completed_progress_for_durable_tasks(monkeypatch) -> None:
-    """全 durable 批量接受后保留前端既有 progress_key 协议。"""
+    """
+    全 durable 批量接受后保留前端既有 progress_key 协议。
+    """
     repository = _install_retry_command(
         monkeypatch,
         {
@@ -374,7 +432,9 @@ def test_batch_ai_redo_returns_completed_progress_for_durable_tasks(monkeypatch)
 def test_batch_ai_redo_reports_each_rejection_without_starting_legacy_agent(
     monkeypatch,
 ) -> None:
-    """混合批量逐 task 返回拒绝，避免同时产生无人监听的旧 Agent 任务。"""
+    """
+    混合批量逐 task 返回拒绝，避免同时产生无人监听的旧 Agent 任务。
+    """
     repository = _install_retry_command(
         monkeypatch,
         {
@@ -435,7 +495,9 @@ def test_batch_ai_redo_reports_each_rejection_without_starting_legacy_agent(
 def test_batch_ai_redo_sends_only_legacy_records_after_durable_acceptance(
     monkeypatch,
 ) -> None:
-    """混合批量全接受时 durable 只登记重试，旧历史才进入 Agent。"""
+    """
+    混合批量全接受时 durable 只登记重试，旧历史才进入 Agent。
+    """
     repository = _install_retry_command(
         monkeypatch,
         {
@@ -484,7 +546,9 @@ def test_batch_ai_redo_sends_only_legacy_records_after_durable_acceptance(
 
 @pytest.mark.parametrize("discarded", [True, False])
 def test_discard_corrupt_history_returns_typed_result(discarded):
-    """清理端点保留历史 ID，并透传持久层的清理成功或拒绝结果。"""
+    """
+    清理端点保留历史 ID，并透传持久层的清理成功或拒绝结果。
+    """
     repository = Mock()
     repository.discard_corrupt_by_history.return_value = TransferFailureDiscardResult(
         discarded=discarded, state=None, message="清理结果",
@@ -503,7 +567,9 @@ def test_discard_corrupt_history_returns_typed_result(discarded):
 
 @pytest.mark.parametrize("exists", [True, False])
 def test_discard_corrupt_history_without_task_is_idempotent(exists):
-    """已清理历史返回同一结构，缺失历史返回失败且均不调用持久层清理。"""
+    """
+    已清理历史返回同一结构，缺失历史返回失败且均不调用持久层清理。
+    """
     repository = Mock()
     response = history_endpoint.discard_corrupt_transfer_history(
         history_id=7,
@@ -522,7 +588,9 @@ def test_discard_corrupt_history_without_task_is_idempotent(exists):
 
 
 def test_discard_corrupt_history_dependency_loads_dto():
-    """同步清理前通过异步依赖读取历史，避免在事件循环运行同步写事务。"""
+    """
+    同步清理前通过异步依赖读取历史，避免在事件循环运行同步写事务。
+    """
     result = asyncio.run(history_endpoint._get_discard_transfer_history(
         history_id=7, query=_HistoryQuery([TransferHistory(id=7)]),
     ))
@@ -531,7 +599,9 @@ def test_discard_corrupt_history_dependency_loads_dto():
 
 @pytest.mark.parametrize("success", [True, False])
 def test_resolve_transfer_cleanup_returns_command_result(success):
-    """下载器人工清理确认端点应透传命令结果且只操作指定历史。"""
+    """
+    下载器人工清理确认端点应透传命令结果且只操作指定历史。
+    """
     command = Mock()
     command.resolve_cleanup.return_value = SimpleNamespace(
         success=success,

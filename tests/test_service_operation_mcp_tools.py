@@ -1,4 +1,6 @@
-"""下载器与媒体服务器外部 MCP 工具合同测试。"""
+"""
+下载器与媒体服务器外部 MCP 工具合同测试。
+"""
 
 import asyncio
 import json
@@ -17,7 +19,9 @@ from app.agent.tools.manager import MoviePilotToolsManager
 
 
 def _branch(schema: dict, action: str) -> dict:
-    """从 MCP oneOf schema 中读取指定 action 分支。"""
+    """
+    从 MCP oneOf schema 中读取指定 action 分支。
+    """
     return next(
         branch
         for branch in schema["oneOf"]
@@ -26,7 +30,9 @@ def _branch(schema: dict, action: str) -> dict:
 
 
 def test_downloader_mcp_schema_exposes_every_action_argument_and_rule() -> None:
-    """外部 MCP Client 应在 tools/list 中直接看到下载器条件参数合同。"""
+    """
+    外部 MCP Client 应在 tools/list 中直接看到下载器条件参数合同。
+    """
     tool = DownloaderOperationTool(session_id="session", user_id="api_user")
     schema = tool.get_mcp_input_schema()
     branch = _branch(schema, "tasks.queue.move")
@@ -36,7 +42,7 @@ def test_downloader_mcp_schema_exposes_every_action_argument_and_rule() -> None:
     assert arguments["properties"]["task_ids"] == {
         "type": "array",
         "items": {"type": "string"},
-        "description": "Multiple provider-native task hashes or IDs; mutually exclusive with task_id.",
+        "description": "下载器自身返回的多个任务哈希或标识，与 task_id 互斥。",
         "minItems": 1,
     }
     assert arguments["properties"]["position"]["enum"] == ["top", "up", "down", "bottom"]
@@ -49,7 +55,9 @@ def test_downloader_mcp_schema_exposes_every_action_argument_and_rule() -> None:
 
 
 def test_mediaserver_mcp_schema_exposes_nested_refresh_item_fields() -> None:
-    """外部 MCP Client 应直接看到 metadata.refresh 的嵌套字段与枚举。"""
+    """
+    外部 MCP Client 应直接看到 metadata.refresh 的嵌套字段与枚举。
+    """
     tool = MediaServerOperationTool(session_id="session", user_id="api_user")
     schema = tool.get_mcp_input_schema()
     branch = _branch(schema, "metadata.refresh")
@@ -73,7 +81,9 @@ def test_mediaserver_mcp_schema_exposes_nested_refresh_item_fields() -> None:
 
 
 def test_database_mcp_schema_exposes_all_actions_and_sql_sources() -> None:
-    """数据库 MCP 工具应直接暴露四个 action 及 SQL/file 约束。"""
+    """
+    数据库 MCP 工具应直接暴露四个 action 及 SQL/file 约束。
+    """
     tool = DatabaseOperationTool(session_id="session", user_id="api_user")
     schema = tool.get_mcp_input_schema()
 
@@ -97,7 +107,9 @@ def test_database_mcp_schema_exposes_all_actions_and_sql_sources() -> None:
 
 
 def test_direct_manager_preserves_service_operation_mcp_schema() -> None:
-    """工具管理器不得把服务操作的 oneOf 和嵌套 schema 压平成普通对象。"""
+    """
+    工具管理器不得把服务操作的 oneOf 和嵌套 schema 压平成普通对象。
+    """
     manager = MoviePilotToolsManager(session_id="session", user_id="api_user")
     manager.tools = [DownloaderOperationTool(session_id="session", user_id="api_user")]
 
@@ -111,7 +123,9 @@ def test_direct_manager_preserves_service_operation_mcp_schema() -> None:
 
 
 def test_factory_only_adds_service_operation_tools_for_external_manager() -> None:
-    """内置 Agent 保持 Skill 按需加载，外部管理入口才增加两个常驻工具。"""
+    """
+    内置 Agent 保持 Skill 按需加载，外部管理入口才增加两个常驻工具。
+    """
     with (
         patch.object(MoviePilotToolFactory, "BUILTIN_TOOL_CLASSES", ()),
         patch("app.agent.tools.factory._get_plugin_agent_tools", return_value=[]),
@@ -138,7 +152,9 @@ def test_factory_only_adds_service_operation_tools_for_external_manager() -> Non
 
 
 def test_database_operation_tool_calls_fixed_script_once() -> None:
-    """数据库 MCP tools/call 应只执行一次固定脚本并返回 JSON envelope。"""
+    """
+    数据库 MCP tools/call 应只执行一次固定脚本并返回 JSON envelope。
+    """
     tool = DatabaseOperationTool(session_id="session", user_id="api_user")
     with patch(
         "app.agent.tools.impl.service._run_database_script",
@@ -155,7 +171,9 @@ def test_database_operation_tool_calls_fixed_script_once() -> None:
 
 
 def test_database_operation_rejects_invalid_nested_arguments_before_script() -> None:
-    """数据库工具应在连接数据库前一次性拒绝错误的嵌套参数。"""
+    """
+    数据库工具应在连接数据库前一次性拒绝错误的嵌套参数。
+    """
     tool = DatabaseOperationTool(session_id="session", user_id="api_user")
     with patch("app.agent.tools.impl.service.subprocess.run") as runner:
         with pytest.raises(ValueError, match="sql 与 file"):
@@ -170,7 +188,9 @@ def test_database_operation_rejects_invalid_nested_arguments_before_script() -> 
 
 
 def test_service_operation_tool_calls_fixed_script_once() -> None:
-    """一次 MCP tools/call 应只执行一次固定脚本并返回其 JSON envelope。"""
+    """
+    一次 MCP tools/call 应只执行一次固定脚本并返回其 JSON envelope。
+    """
     tool = DownloaderOperationTool(session_id="session", user_id="api_user")
     with patch(
         "app.agent.tools.impl.service._run_service_script",
@@ -195,18 +215,24 @@ def test_service_operation_tool_calls_fixed_script_once() -> None:
 
 
 def test_service_operation_sync_script_does_not_block_event_loop() -> None:
-    """同步 provider 脚本必须在分域线程池运行，不能阻塞 Agent event loop。"""
+    """
+    同步 provider 脚本必须在分域线程池运行，不能阻塞 Agent event loop。
+    """
     started = threading.Event()
     release = threading.Event()
 
     def slow_runner(**_kwargs) -> dict:
-        """模拟尚未返回的同步第三方 SDK 调用。"""
+        """
+        模拟尚未返回的同步第三方 SDK 调用。
+        """
         started.set()
         release.wait(timeout=1)
         return {"success": True, "data": {}}
 
     async def exercise() -> None:
-        """在同步脚本运行期间验证 loop 仍能调度其它协程。"""
+        """
+        在同步脚本运行期间验证 loop 仍能调度其它协程。
+        """
         tool = DownloaderOperationTool(session_id="session", user_id="api_user")
         with patch(
             "app.agent.tools.impl.service._run_service_script",

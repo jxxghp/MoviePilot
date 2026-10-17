@@ -1,4 +1,6 @@
-"""处理链模块分层约束测试。"""
+"""
+处理链模块分层约束测试。
+"""
 
 import ast
 from pathlib import Path
@@ -19,7 +21,9 @@ MUSIC_SOURCE_CHAIN_FILES = (
 
 
 def _imported_modules(path: Path) -> set[str]:
-    """解析源码中的导入模块，包含函数内部的延迟导入。"""
+    """
+    解析源码中的导入模块，包含函数内部的延迟导入。
+    """
     tree = ast.parse(path.read_text(encoding="utf-8-sig"))
     modules: set[str] = set()
     for node in ast.walk(tree):
@@ -31,7 +35,9 @@ def _imported_modules(path: Path) -> set[str]:
 
 
 def _inherited_recognize_calls(path: Path) -> list[tuple[int, str]]:
-    """查找业务链通过 self 隐式调用媒体识别入口的位置。"""
+    """
+    查找业务链通过 self 隐式调用媒体识别入口的位置。
+    """
     tree = ast.parse(path.read_text(encoding="utf-8"))
     calls: list[tuple[int, str]] = []
     for node in ast.walk(tree):
@@ -48,7 +54,9 @@ def _inherited_recognize_calls(path: Path) -> list[tuple[int, str]]:
 
 
 def _chain_sources(name: str) -> tuple[Path, ...]:
-    """返回单文件或同名职责包中的全部 Chain 源码。"""
+    """
+    返回单文件或同名职责包中的全部 Chain 源码。
+    """
     package = CHAIN_ROOT / name
     if package.is_dir():
         return tuple(sorted(package.rglob("*.py")))
@@ -56,7 +64,9 @@ def _chain_sources(name: str) -> tuple[Path, ...]:
 
 
 def test_chain_base_does_not_import_concrete_chains() -> None:
-    """基础链不得反向导入任何具体处理链。"""
+    """
+    基础链不得反向导入任何具体处理链。
+    """
     imports = _imported_modules(CHAIN_ROOT / "__init__.py")
 
     # 下划线前缀的内部模块（_messaging/_recognition 等）是 ChainBase 的
@@ -70,7 +80,9 @@ def test_chain_base_does_not_import_concrete_chains() -> None:
 
 
 def test_legacy_music_chain_is_removed() -> None:
-    """聚合全部音乐职责的旧 MusicChain 文件和导入不得重新出现。"""
+    """
+    聚合全部音乐职责的旧 MusicChain 文件和导入不得重新出现。
+    """
     assert not (CHAIN_ROOT / "music.py").exists()
     violations = {
         str(path.relative_to(PROJECT_ROOT)): sorted(
@@ -78,14 +90,17 @@ def test_legacy_music_chain_is_removed() -> None:
         )
         for root in LEGACY_MUSIC_SCAN_ROOTS
         for path in root.rglob("*.py")
-        if "plugins" not in path.parts  # 插件目录由插件仓自治，跳过
+        # 插件目录由插件仓自治，不纳入宿主导入检查
+        if "plugins" not in path.parts
         if "app.chain.music" in _imported_modules(path)
     }
     assert not violations
 
 
 def test_music_source_chains_do_not_depend_on_public_orchestration_chains() -> None:
-    """音乐数据源链不得反向依赖识别、刮削、搜索或推荐编排链。"""
+    """
+    音乐数据源链不得反向依赖识别、刮削、搜索或推荐编排链。
+    """
     forbidden = {
         "app.chain.media",
         "app.chain.recommend",
@@ -101,7 +116,9 @@ def test_music_source_chains_do_not_depend_on_public_orchestration_chains() -> N
 
 
 def test_chain_modules_do_not_import_private_contracts_across_owners() -> None:
-    """Chain owner 之间只能复用公开合同，同名职责包内部合同除外。"""
+    """
+    Chain owner 之间只能复用公开合同，同名职责包内部合同除外。
+    """
     violations = {}
     for path in CHAIN_ROOT.rglob("*.py"):
         relative = path.relative_to(CHAIN_ROOT)
@@ -128,7 +145,9 @@ def test_chain_modules_do_not_import_private_contracts_across_owners() -> None:
 
 
 def test_media_chain_excludes_scraping_and_music_exploration_methods() -> None:
-    """MediaChain 只保留公共识别与详情路由，不得重新承接刮削或音乐探索职责。"""
+    """
+    MediaChain 只保留公共识别与详情路由，不得重新承接刮削或音乐探索职责。
+    """
     paths = tuple((CHAIN_ROOT / "media").glob("*.py"))
     method_names = {
         node.name
@@ -162,7 +181,9 @@ def test_media_chain_excludes_scraping_and_music_exploration_methods() -> None:
 
 
 def test_business_chains_delegate_recognition_to_media_chain() -> None:
-    """搜索、订阅、下载和转移链必须显式委托媒体识别编排层。"""
+    """
+    搜索、订阅、下载和转移链必须显式委托媒体识别编排层。
+    """
     violations = {
         str(path.relative_to(CHAIN_ROOT)): calls
         for name in ("search", "subscribe", "download", "transfer")

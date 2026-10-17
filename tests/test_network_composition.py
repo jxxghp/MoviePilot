@@ -1,4 +1,6 @@
-"""网络应用端口组合根契约测试。"""
+"""
+网络应用端口组合根契约测试。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -11,19 +13,27 @@ from app.startup.composition import network as network_composition
 
 @pytest.mark.asyncio
 async def test_network_test_transport_enforces_safe_http_options(monkeypatch) -> None:
-    """网络探测适配器固定证书校验、超时和手动重定向策略。"""
+    """
+    网络探测适配器固定证书校验、超时和手动重定向策略。
+    """
     captured = {}
     response = SimpleNamespace(status_code=200, headers={}, text="ok")
 
     class _RequestUtils:
-        """捕获网络探测适配器使用的 HTTP 参数。"""
+        """
+        捕获网络探测适配器使用的 HTTP 参数。
+        """
 
         def __init__(self, **kwargs) -> None:
-            """记录通用请求工具的构造参数。"""
+            """
+            记录通用请求工具的构造参数。
+            """
             captured["options"] = kwargs
 
         async def get_res(self, url, allow_redirects=True):
-            """记录请求地址和重定向开关并返回固定响应。"""
+            """
+            记录请求地址和重定向开关并返回固定响应。
+            """
             captured["url"] = url
             captured["allow_redirects"] = allow_redirects
             return response
@@ -53,7 +63,9 @@ async def test_network_test_transport_enforces_safe_http_options(monkeypatch) ->
 
 
 def test_image_transport_forwards_sync_request_options(monkeypatch) -> None:
-    """同步图片适配器完整透传请求参数，并单独传递目标 URL。"""
+    """
+    同步图片适配器完整透传请求参数，并单独传递目标 URL。
+    """
     response = SimpleNamespace(status_code=200, content=b"image", headers={}, json=lambda: {"ok": True})
     request = MagicMock()
     request.get_res.return_value = response
@@ -81,7 +93,9 @@ def test_image_transport_forwards_sync_request_options(monkeypatch) -> None:
 
 @pytest.mark.asyncio
 async def test_image_transport_forwards_async_request_options(monkeypatch) -> None:
-    """异步图片适配器完整透传请求参数，并单独传递目标 URL。"""
+    """
+    异步图片适配器完整透传请求参数，并单独传递目标 URL。
+    """
     response = SimpleNamespace(status_code=200, content=b"image", headers={}, json=lambda: {"ok": True})
     request = MagicMock()
     request.get_res = AsyncMock(return_value=response)
@@ -109,7 +123,9 @@ async def test_image_transport_forwards_async_request_options(monkeypatch) -> No
 
 @pytest.mark.parametrize("response_kind", ["requests", "httpx"])
 def test_image_response_preserves_repeated_cookie_headers(response_kind) -> None:
-    """Set-Cookie 中的 Expires 逗号不能当分隔符，多条头必须保持独立。"""
+    """
+    Set-Cookie 中的 Expires 逗号不能当分隔符，多条头必须保持独立。
+    """
     cookies = ["expired=old; Expires=Thu, 01 Jan 1970 00:00:00 GMT", "session=new; Path=/"]
     if response_kind == "httpx":
         response = httpx2.Response(200, headers=[("Set-Cookie", value) for value in cookies], json={"ok": True})
@@ -124,7 +140,9 @@ def test_image_response_preserves_repeated_cookie_headers(response_kind) -> None
 
 
 def test_internal_address_adapter_delegates_to_ip_utility(monkeypatch) -> None:
-    """内部地址判断必须原样委托通用 IP 工具。"""
+    """
+    内部地址判断必须原样委托通用 IP 工具。
+    """
     probe = MagicMock(return_value=True)
     monkeypatch.setattr(network_composition.IpUtils, "is_internal", probe)
 
@@ -133,7 +151,9 @@ def test_internal_address_adapter_delegates_to_ip_utility(monkeypatch) -> None:
 
 
 def test_network_port_composition_does_not_read_settings_early(monkeypatch) -> None:
-    """端口装配只登记延迟 reader，不得在配置发布前读取 RuntimeSettings。"""
+    """
+    端口装配只登记延迟 reader，不得在配置发布前读取 RuntimeSettings。
+    """
     get_runtime_settings = MagicMock(side_effect=AssertionError("装配阶段不得读取 RuntimeSettings"))
     configured = {}
     monkeypatch.setattr(

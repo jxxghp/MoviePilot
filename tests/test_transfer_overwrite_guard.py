@@ -1,3 +1,7 @@
+"""
+验证整理覆盖操作的既有目标与安全前置检查。
+"""
+
 from pathlib import Path
 from threading import Lock
 from unittest.mock import MagicMock

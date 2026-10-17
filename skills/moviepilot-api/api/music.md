@@ -204,51 +204,51 @@ online confirmation; album corrections must preserve the returned source-file sc
 
 ### `music.album.get`
 `GET /api/v1/music/album/{album_id}`; policy effect: `safe_read`.
-Purpose: Read one album's details, tracks, releases, and aligned artist names and IDs.
+Purpose: 读取专辑详情、曲目、发行版本，以及按位置对应的艺术家名称和标识。
 Identity scope: `public`; required role: `user`.
 - Album and track text follows `MUSIC_METADATA_TO_SIMPLIFIED`, matching recognition and final transfer naming. Original aliases, source data, lyrics, and IDs remain unchanged. Recording selection does not override local album-edition evidence, and multi-artist credits remain complete.
-- `path_params`: `album_id*` (string): Source-native album ID returned by music search, exploration, or artist-album browsing.
-- `query`: `media_source` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `musicbrainz_release_id` (string|null): Optional exact MusicBrainz Release UUID belonging to the selected album Release Group; never use it as media_id.
+- `path_params`: `album_id*` (string): 音乐搜索、发现或艺术家专辑列表返回的来源原生专辑标识。
+- `query`: `media_source` (MediaSource): 元数据来源标识，保留与 media_id 一同返回的精确值。; `musicbrainz_release_id` (string|null): 选定专辑发行组下的精确 MusicBrainz Release UUID，可选；不得作为 media_id 使用。
 - `body`: none
 
 ### `music.album.related`
 `GET /api/v1/music/album/{album_id}/related`; policy effect: `safe_read`.
-Purpose: Browse albums related to one source-native album identity.
+Purpose: 按来源原生专辑标识浏览相关专辑。
 Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
-- `path_params`: `album_id*` (string): Source-native album ID returned by music search, exploration, or artist-album browsing.
-- `query`: `count` (integer; default `24`; minimum `1`; maximum `100`): Maximum number of records to return on the requested page.; `media_source` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.
+- `path_params`: `album_id*` (string): 音乐搜索、发现或艺术家专辑列表返回的来源原生专辑标识。
+- `query`: `count` (integer; default `24`; minimum `1`; maximum `100`): 当前页最多返回的记录数。; `media_source` (MediaSource): 元数据来源标识，保留与 media_id 一同返回的精确值。
 - `body`: none
 
 ### `music.artist.albums`
 `GET /api/v1/music/artist/{artist_id}/albums`; policy effect: `safe_read`.
-Purpose: Browse one artist's albums, singles, EPs, or another exact release-group type.
+Purpose: 浏览艺术家的专辑、单曲、EP 或其他精确发行组类型。
 Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
-- `path_params`: `artist_id*` (string): Source-native artist ID returned by music search or an album detail response.
-- `query`: `album_type` (string|null): Music album or release-group type used by classification rules.; `count` (integer; default `30`; minimum `1`; maximum `100`): Maximum number of records to return on the requested page.; `media_source` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `page` (integer; default `1`; minimum `1`): One-based result page number.
+- `path_params`: `artist_id*` (string): 音乐搜索或专辑详情返回的来源原生艺术家标识。
+- `query`: `album_type` (string|null): 音乐专辑或发行组类型；音乐发现可用 album、single、ep、broadcast、other、compilation、soundtrack、live、remix 筛选。; `count` (integer; default `30`; minimum `1`; maximum `100`): 当前页最多返回的记录数。; `media_source` (MediaSource): 元数据来源标识，保留与 media_id 一同返回的精确值。; `page` (integer; default `1`; minimum `1`): 从 1 开始的结果页码。
 - `body`: none
 
 ### `music.artist.get`
 `GET /api/v1/music/artist/{artist_id}`; policy effect: `safe_read`.
-Purpose: Read one artist's canonical details from the selected music metadata source.
+Purpose: 从选定音乐元数据来源读取艺术家的规范详情。
 Identity scope: `public`; required role: `user`.
-- `path_params`: `artist_id*` (string): Source-native artist ID returned by music search or an album detail response.
-- `query`: `media_source` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.
+- `path_params`: `artist_id*` (string): 音乐搜索或专辑详情返回的来源原生艺术家标识。
+- `query`: `media_source` (MediaSource): 元数据来源标识，保留与 media_id 一同返回的精确值。
 - `body`: none
 
 ### `music.artist.related`
 `GET /api/v1/music/artist/{artist_id}/related`; policy effect: `safe_read`.
-Purpose: Browse artists related to one source-native artist identity.
+Purpose: 按来源原生艺术家标识浏览相关艺术家。
 Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
-- `path_params`: `artist_id*` (string): Source-native artist ID returned by music search or an album detail response.
-- `query`: `count` (integer; default `24`; minimum `1`; maximum `100`): Maximum number of records to return on the requested page.; `media_source` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.
+- `path_params`: `artist_id*` (string): 音乐搜索或专辑详情返回的来源原生艺术家标识。
+- `query`: `count` (integer; default `24`; minimum `1`; maximum `100`): 当前页最多返回的记录数。; `media_source` (MediaSource): 元数据来源标识，保留与 media_id 一同返回的精确值。
 - `body`: none
 
 ### `music.cache.clear`
 `DELETE /api/v1/music/cache`; policy effect: `destructive_write`.
-Purpose: Clear the complete administrator-only MusicBrainz recognition cache.
+Purpose: 清空仅管理员可访问的 MusicBrainz 识别缓存。
 Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
@@ -256,15 +256,15 @@ Identity scope: `admin`; required role: `system_admin`.
 
 ### `music.cache.delete`
 `DELETE /api/v1/music/cache/{cache_key}`; policy effect: `destructive_write`.
-Purpose: Delete one administrator-only MusicBrainz recognition-cache entry by exact key.
+Purpose: 按精确键删除一条管理员可访问的 MusicBrainz 识别缓存。
 Identity scope: `admin`; required role: `system_admin`.
-- `path_params`: `cache_key*` (string): Exact recognition-cache key returned by the corresponding recognition-cache get operation.
+- `path_params`: `cache_key*` (string): 对应识别缓存查询操作返回的精确缓存键。
 - `query`: none
 - `body`: none
 
 ### `music.cache.get`
 `GET /api/v1/music/cache`; policy effect: `safe_read`.
-Purpose: Inspect the administrator-only MusicBrainz recognition cache and summary counts.
+Purpose: 查看仅管理员可访问的 MusicBrainz 识别缓存及统计数量。
 Identity scope: `admin`; required role: `system_admin`.
 - `path_params`: none
 - `query`: none
@@ -272,177 +272,177 @@ Identity scope: `admin`; required role: `system_admin`.
 
 ### `music.explore`
 `GET /api/v1/music/explore`; policy effect: `safe_read`.
-Purpose: Browse MusicBrainz charts or fresh releases, or Douban Music tag categories.
+Purpose: 浏览 MusicBrainz 榜单和新发行，或豆瓣音乐标签分类。
 Identity scope: `public`; required role: `user`.
 - `response`: `data` remains a list and `collection.result_count` reports the returned items. `collection.total_count` is omitted because this endpoint or its upstream source does not expose a total.
 - `path_params`: none
-- `query`: `count` (integer; default `30`; minimum `1`; maximum `100`): Maximum number of records to return on the requested page.; `days` (integer; default `14`; minimum `1`; maximum `90`): Fresh-release lookback/lookahead window, from 1 through the endpoint maximum.; `douban_sort` (string; default `U`): Douban Music order: U comprehensive, S rating, R newest, or O hottest.; `entity` (string; default `recording`): Chart entity: recording for tracks or album for release groups. Fresh results are albums.; `future` (boolean; default `True`): Include releases after today in fresh mode.; `media_source` (MediaSource): Music exploration source. Use musicbrainz for chart/fresh modes or doubanmusic for tag browsing.; `min_listen_count` (integer; default `0`; minimum `0`): Minimum ListenBrainz listen count in chart mode.; `mode` (string; default `chart`): MusicBrainz mode: chart reads listening charts; fresh reads new album releases.; `page` (integer; default `1`; minimum `1`): One-based result page number.; `past` (boolean; default `True`): Include releases before today in fresh mode.; `range_name` (string; default `this_month`): ListenBrainz chart range: this_week, this_month, this_year, week, month, or year.; `sort` (string; default `release_date`): Fresh-release order accepted by the current ListenBrainz implementation.; `sort_by` (string; default `listen_count.desc`): ListenBrainz chart order: listen_count.desc or listen_count.asc.; `tags` (string; default ``): Comma-separated Douban Music tags used only when media_source is doubanmusic.; `with_cover` (boolean; default `False`): Keep only results with cover artwork when true.
+- `query`: `count` (integer; default `30`; minimum `1`; maximum `100`): 当前页最多返回的记录数。; `days` (integer; default `14`; minimum `1`; maximum `90`): 新发行专辑的回溯或前瞻天数，最小为 1，最大值以端点限制为准。; `douban_sort` (string; default `U`): 豆瓣音乐排序：U 综合、S 评分、R 最新、O 最热。; `entity` (string; default `recording`): 榜单对象：recording 表示曲目，album 表示发行组；fresh 模式返回专辑。; `future` (boolean; default `True`): fresh 模式是否包含今天之后发行的专辑。; `media_source` (MediaSource): 音乐探索来源：musicbrainz 支持 chart 和 fresh 模式；doubanmusic 按标签浏览。; `min_listen_count` (integer; default `0`; minimum `0`): chart 模式的最低 ListenBrainz 收听次数。; `mode` (string; default `chart`): MusicBrainz 模式：chart 查询收听榜单，fresh 查询新发行专辑。; `page` (integer; default `1`; minimum `1`): 从 1 开始的结果页码。; `past` (boolean; default `True`): fresh 模式是否包含今天之前发行的专辑。; `range_name` (string; default `this_month`): ListenBrainz 榜单时间范围：this_week、this_month、this_year、week、month 或 year。; `sort` (string; default `release_date`): 当前 ListenBrainz 实现接受的新发行专辑排序方式。; `sort_by` (string; default `listen_count.desc`): ListenBrainz 榜单排序：listen_count.desc 按收听次数降序，listen_count.asc 按升序。; `tags` (string; default ``): 逗号分隔的豆瓣音乐标签，仅在 media_source 为 doubanmusic 时使用。; `with_cover` (boolean; default `False`): 为 True 时仅保留有封面图片的结果。
 - `body`: none
 
 ### `music.recognize`
 `POST /api/v1/music/recognize`; policy effect: `safe_read`.
-Purpose: Resolve one recording or album from an exact music source and source-native ID.
+Purpose: 按精确音乐来源及其原生标识解析一首录音或一张专辑。
 Identity scope: `public`; required role: `user`.
 - `path_params`: none
 - `query`: none
-- `body`: `media_id*` (string): Source-native media ID. Always pair it with the exact media_source returned by search.; `media_source*` (MediaSource): Metadata source identifier. Preserve the exact value returned with media_id.; `music_type` (string(recording,album)|null): Music identity level: recording, album, or artist where supported.
+- `body`: `media_id*` (string): 数据源原生 ID; `media_source*` (MediaSource): 元数据来源标识，保留与 media_id 一同返回的精确值。; `music_type` (string(recording,album)|null): 音乐实体类型：recording 单曲、album 专辑
 
 ## Body Models
 
 This category document is self-contained: the shared models below are included so the Agent does not need a second Skill document before calling the API.
 
 ### `ClassificationFacts`
-Normalized media facts evaluated by the automatic classification policy.
-- `extensions` (object): Additional normalized classification facts supplied by extensions.
-- `field_sources` (object): Source provenance for normalized classification facts.
-- `identity*` (ClassificationIdentityFacts): Stable source-native media identity used by classification facts.
-- `media*` (ClassificationMediaFacts): Media metadata input used for a classification preview.
-- `music` (ClassificationMusicFacts|null): Music-specific normalized facts used by classification rules.
+自动分类策略求值的规范化媒体事实。
+- `extensions` (object): 按数据源命名空间隔离的插件扩展事实
+- `field_sources` (object): 跨来源补充事实到实际 provider 的映射
+- `identity*` (ClassificationIdentityFacts): 分类事实使用的稳定来源原生媒体身份。
+- `media*` (ClassificationMediaFacts): 分类预览使用的媒体元数据输入。
+- `music` (ClassificationMusicFacts|null): 音乐专用事实
 
 ### `ClassificationFactsPreviewInput`
-Normalized facts supplied directly for a classification preview.
-- `facts*` (ClassificationFacts): Normalized media facts to evaluate during a classification preview.
-- `kind` (string=facts; default `facts`): Classification rule or preview-input kind selected by the request.
+直接提供给分类预览的规范化事实。
+- `facts*` (ClassificationFacts): 分类预览时求值的规范化媒体事实。
+- `kind` (string=facts; default `facts`): 预览输入类型
 
 ### `ClassificationIdentityFacts`
-Stable source-native identity used by classification evaluation.
-- `media_id*` (string): Source-native media ID. Always pair it with the exact media_source returned by search.
-- `media_source*` (string): Metadata source identifier. Preserve the exact value returned with media_id.
+分类求值使用的稳定来源原生身份。
+- `media_id*` (string): 当前数据源原生媒体 ID
+- `media_source*` (string): 当前主身份数据源
 
 ### `ClassificationMediaFacts`
-Normalized movie, TV, or shared media facts used by classification rules.
-- `adult` (boolean|null): Whether the media is marked as adult content.
-- `companies` (array<string>|null): Production companies or studios associated with the media.
-- `content_rating` (string|null): Content rating assigned to the media.
-- `countries` (array<string>|null): Normalized country or region codes used by classification rules.
-- `genre_keys` (array<string>|null): Normalized MoviePilot genre keys used by classification rules.
-- `genre_names` (array<string>|null): Source-provided genre names used as classification facts.
-- `language` (string|null): Normalized media language code used by classification rules.
-- `networks` (array<string>|null): Television networks or streaming platforms associated with the media.
-- `runtime` (integer|null): Persisted workflow runtime metadata used for safe resume.
-- `title` (string|null): Media, torrent, subscription, or history title used by the operation.
-- `type*` (string): MoviePilot media or storage item type required by the selected operation.
-- `year` (integer|null): Release or premiere year used to disambiguate the media title.
+分类规则使用的规范化电影、电视剧或共用媒体事实。
+- `adult` (boolean|null): 是否为成人内容
+- `companies` (array<string>|null): 出品公司或工作室名称
+- `content_rating` (string|null): 内容分级
+- `countries` (array<string>|null): 标准国家或地区代码
+- `genre_keys` (array<string>|null): MoviePilot 规范化类型键
+- `genre_names` (array<string>|null): 数据源提供的类型名称
+- `language` (string|null): 标准语言代码
+- `networks` (array<string>|null): 电视台或播出平台名称
+- `runtime` (integer|null): 影视时长，单位为分钟
+- `title` (string|null): 标准媒体标题
+- `type*` (string): 标准媒体类型
+- `year` (integer|null): 标准发行或首播年份
 
 ### `ClassificationMediaPreviewInput`
-A selected media search result supplied for classification preview.
-- `kind` (string=media; default `media`): Classification rule or preview-input kind selected by the request.
-- `media*` (object): Media metadata input used for a classification preview.
+提供给分类预览的选定媒体搜索结果。
+- `kind` (string=media; default `media`): 预览输入类型
+- `media*` (object): 从媒体搜索结果选择的媒体信息
 
 ### `ClassificationMusicFacts`
-Music-specific facts used by automatic classification rules.
-- `album_type` (string|null): Music album or release-group type used by classification rules.
-- `artist_country` (string|null): Country or region associated with the music artist.
-- `artists` (array<string>|null): Music artist names associated with the classified entity.
-- `entity_type` (string|null): Music entity type used by classification rules.
-- `genres` (array<string>|null): Normalized music genre values used by classification rules.
-- `release_status` (string|null): Music release status used by classification rules.
-- `secondary_types` (array<string>|null): Secondary music release-group types used by classification rules.
-- `tags` (array<string>|null): Comma-separated Douban Music category tags; use only with a Douban Music exploration source.
+自动分类规则使用的音乐专用事实。
+- `album_type` (string|null): 专辑主类型
+- `artist_country` (string|null): 艺术家国家或地区
+- `artists` (array<string>|null): 艺术家名称
+- `entity_type` (string|null): 音乐实体类型
+- `genres` (array<string>|null): 标准化音乐流派
+- `release_status` (string|null): 发行状态
+- `secondary_types` (array<string>|null): 专辑副类型
+- `tags` (array<string>|null): 数据源音乐标签
 
 ### `ClassificationPolicy-Input`
-Complete versioned automatic media-classification policy.
-- `categories` (array<ClassificationCategory>): Complete ordered media-category definitions in the classification policy.
-- `enrichment_mode` (string(primary_only,enrich_missing); default `primary_only`): Metadata enrichment mode used to populate classification facts.
-- `fallbacks` (object): Fallback category or label actions used when no classification rule matches.
-- `field_aliases` (object): Optional aliases mapping source-specific fields to normalized classification fields.
-- `mode` (string=first_match; default `first_match`): Operation mode; music.explore accepts chart or fresh, while transfer history records move, copy, link, or softlink.
-- `revision` (integer; default `0`; minimum `0.0`): Published classification policy revision or expected revision number.
-- `rules` (array<ClassificationRule-Input>): Ordered classification rules evaluated from highest priority to lowest.
-- `schema_version` (integer=2; default `2`): Classification policy schema version expected by the server.
-- `updated_at` (string|null): Timestamp when the persisted object or execution state was last updated.
+完整且带版本的自动媒体分类策略。
+- `categories` (array<ClassificationCategory>): 稳定分类定义列表
+- `enrichment_mode` (string(primary_only,enrich_missing); default `primary_only`): 缺失标准事实的跨来源补充模式
+- `fallbacks` (object): 各媒体类型的兜底分类 ID
+- `field_aliases` (object): 字段值别名到规范值的映射
+- `mode` (string=first_match; default `first_match`): 主分类规则求值模式
+- `revision` (integer; default `0`; minimum `0.0`): 已发布策略修订号
+- `rules` (array<ClassificationRule-Input>): 全局有序规则列表
+- `schema_version` (integer=2; default `2`): 分类策略结构版本
+- `updated_at` (string|null): 策略最后发布时间
 
 ### `FileItem-Input`
-One file or directory returned by a configured storage provider.
-- `basename` (string|null): Base filename without its parent path.
-- `children` (array<FileItem-Input>|null): Child storage items nested below this item.
-- `drive_id` (string|null): Provider-native storage drive identifier.
-- `extension` (string|null): Filename extension, including or excluding the leading dot as returned by storage.
-- `fileid` (string|null): Provider-native storage item identifier.
-- `modify_time` (number|null): Storage item modification timestamp.
-- `name` (string|null): Human-readable name of the site, storage item, subscription, or rule group.
-- `parent_fileid` (string|null): Provider-native identifier of the parent storage directory.
-- `path` (string|null; default `/`): Storage or history path represented by this record.
-- `pickcode` (string|null): 115 storage pickcode associated with the item.
-- `size` (integer|null): File or torrent size in bytes.
-- `storage` (string|null; default `local`): Configured storage name or storage type used by the operation.
-- `thumbnail` (string|null): Thumbnail URL returned by the storage provider.
-- `type` (string|null): MoviePilot media or storage item type required by the selected operation.
-- `url` (string|null): Site, storage, or torrent URL represented by this field.
+已配置存储提供方返回的一个文件或目录。
+- `basename` (string|null): 不含扩展名的文件基本名称
+- `children` (array<FileItem-Input>|null): 子节点
+- `drive_id` (string|null): 云盘驱动器标识
+- `extension` (string|null): 文件后缀
+- `fileid` (string|null): 存储服务分配的文件标识
+- `modify_time` (number|null): 文件修改时间的 Unix 时间戳
+- `name` (string|null): 文件名
+- `parent_fileid` (string|null): 父ID
+- `path` (string|null; default `/`): 文件路径
+- `pickcode` (string|null): 115 文件下载提取码
+- `size` (integer|null): 文件大小
+- `storage` (string|null; default `local`): 存储类型，默认 local 表示本地存储
+- `thumbnail` (string|null): 缩略图
+- `type` (string|null): 条目类型，dir 表示目录，file 表示文件
+- `url` (string|null): 访问地址
 
 ### `JsonData-Input`
-Arbitrary JSON-compatible auxiliary data.
+兼容 JSON 的任意辅助数据。
 This runtime model has no directly writable fields.
 
 ### `MediaSource`
-Canonical metadata source identifier paired with a source-native media ID.
+与来源原生媒体标识配对的规范元数据来源标识。
 This runtime model has no directly writable fields.
 
 ### `MediaType`
-MoviePilot media type.
+MoviePilot 媒体类型。
 This runtime model has no directly writable fields.
 
 ### `SubscriptionExecutionStatus`
-Subscription refresh execution status and progress summary.
-- `batch_id` (string|null): Stable subscription search batch identifier.
-- `can_cancel` (boolean; default `False`): Whether the current subscription execution can be cancelled.
-- `current_site_id` (integer|null): Configured site ID currently handling the subscription execution.
-- `error` (string|null): Human-readable workflow, provider, or execution error message.
-- `next_run_at` (string|null): Next scheduled subscription search time. Null when no future execution is planned.
-- `phase*` (string): Current phase of a subscription execution.
-- `source` (string|null): Exact metadata or recommendation source selected by the operation.
-- `state*` (string): Current site, subscription, marketplace, or transfer state filter.
-- `task_id` (string|null): Stable durable transfer task ID returned by transfer.manual_reviews.
-- `updated_at*` (string): Timestamp when the persisted object or execution state was last updated.
+订阅刷新执行状态和进度摘要。
+- `batch_id` (string|null): 所属批次标识
+- `can_cancel` (boolean; default `False`): 当前任务是否允许取消
+- `current_site_id` (integer|null): 正在处理的站点标识
+- `error` (string|null): 错误摘要
+- `next_run_at` (string|null): 下次计划执行时间
+- `phase*` (string): 当前执行阶段
+- `source` (string|null): 触发本轮订阅执行的入口或来源
+- `state*` (string): 当前业务状态
+- `task_id` (string|null): 任务标识
+- `updated_at*` (string): 更新时间
 
 ### `TorrentInfo`
-One torrent candidate returned by MoviePilot search.
-- `category` (string|null): MoviePilot media category or filter-group category, depending on the operation.
-- `date_elapsed` (string|null): Human-readable age of the torrent publication date.
-- `description` (string|null): Human-readable media, torrent, or subscription description.
-- `downloadvolumefactor` (number|null): Torrent download-volume multiplier reported by the site.
-- `enclosure` (string|null): Torrent download URL or enclosure supplied by the indexer result.
-- `freedate` (string|null): Torrent freeleech expiration timestamp reported by the site.
-- `freedate_diff` (string|null): Seconds remaining until the torrent freeleech period ends.
-- `grabs` (integer|null; default `0`): Number of completed downloads reported for the torrent.
-- `hit_and_run` (boolean|null; default `False`): Whether the torrent is subject to hit-and-run requirements.
-- `labels` (array<string>|null): Labels attached to the media, classification result, or torrent result.
-- `media_id` (string|null): Source-native media ID. Always pair it with the exact media_source returned by search.
-- `media_source` (MediaSource|null): Metadata source identifier. Preserve the exact value returned with media_id.
-- `page_url` (string|null): Public details page for the torrent result.
-- `peers` (integer|null; default `0`): Number of downloading peers reported for the torrent.
-- `pri_order` (integer|null; default `0`): Indexer priority order assigned to the torrent result.
-- `pubdate` (string|null): Torrent publication timestamp.
-- `seeders` (integer|null; default `0`): Minimum seeder expression for a filter rule, or the torrent's seeder count.
-- `site` (integer|null): Source site identifier associated with the torrent result.
-- `site_cookie` (string|null): Site cookie bundled with the torrent result. Treat this value as a secret.
-- `site_downloader` (string|null): Downloader instance selected by the source site.
-- `site_name` (string|null): Human-readable source site name.
-- `site_order` (integer|null; default `0`): Source site's configured search order.
-- `site_proxy` (boolean|null; default `False`): Whether the torrent's source site uses the configured proxy.
-- `site_ua` (string|null): User-Agent associated with the source site.
-- `size` (number|null; default `0.0`): File or torrent size in bytes.
-- `title` (string|null): Media, torrent, subscription, or history title used by the operation.
-- `uploadvolumefactor` (number|null): Torrent upload-volume multiplier reported by the site.
-- `volume_factor` (string|null): Combined upload/download volume-factor label shown for the torrent.
+搜索返回的一个候选种子。
+- `category` (string|null): 种子分类 电影/电视剧/音乐
+- `date_elapsed` (string|null): 已过时间
+- `description` (string|null): 种子副标题
+- `downloadvolumefactor` (number|null): 下载因子
+- `enclosure` (string|null): 种子链接
+- `freedate` (string|null): 免费截止时间
+- `freedate_diff` (string|null): 剩余免费时间
+- `grabs` (integer|null; default `0`): 完成者
+- `hit_and_run` (boolean|null; default `False`): 种子是否存在下载后做种义务
+- `labels` (array<string>|null): 种子标签
+- `media_id` (string|null): 数据源原生 ID
+- `media_source` (MediaSource|null): 种子页面声明的媒体身份
+- `page_url` (string|null): 详情页面
+- `peers` (integer|null; default `0`): 下载者
+- `pri_order` (integer|null; default `0`): 种子优先级
+- `pubdate` (string|null): 发布时间
+- `seeders` (integer|null; default `0`): 做种者
+- `site` (integer|null): 站点ID
+- `site_cookie` (string|null): 站点Cookie
+- `site_downloader` (string|null): 站点下载器
+- `site_name` (string|null): 站点名称
+- `site_order` (integer|null; default `0`): 站点优先级
+- `site_proxy` (boolean|null; default `False`): 站点是否使用代理
+- `site_ua` (string|null): 站点UA
+- `size` (number|null; default `0.0`): 种子大小
+- `title` (string|null): 种子名称
+- `uploadvolumefactor` (number|null): 上传因子
+- `volume_factor` (string|null): 促销
 
 ### `WorkflowExecutionConfig`
-Workflow concurrency, join, branch, and failure policies.
-- `max_workers` (integer|null): Maximum concurrent workflow actions allowed by the execution configuration.
+工作流并发、汇合、分支和失败策略。
+- `max_workers` (integer|null): 最大并发动作数
 
 ### `WorkflowExecutionState-Input`
-Persisted resumable workflow execution state.
-- `errors` (object): Workflow execution errors keyed or ordered by action identity.
-- `nodes` (object): Persisted workflow node runtime states keyed by action identity.
-- `outputs` (object): Named output mappings produced by this workflow action.
-- `runtime` (WorkflowRuntimeState): Persisted workflow runtime metadata used for safe resume.
-- `version` (integer; default `1`): Plugin release or schema version selected by the operation.
+可恢复的持久化工作流执行状态。
+- `errors` (object): 按动作标识保存的执行错误
+- `nodes` (object): 按动作标识组织的持久化执行快照
+- `outputs` (object): 按动作标识保存的输出数据
+- `runtime` (WorkflowRuntimeState): 用于安全恢复的持久化工作流运行时元数据。
+- `version` (integer; default `1`): 执行快照的数据结构版本
 
 ### `WorkflowRuntimeState`
-Complete persisted workflow runtime and progress state.
-- `attempts` (object): Attempt counters keyed by workflow node or operation identity.
-- `errors` (object): Workflow execution errors keyed or ordered by action identity.
-- `finished_actions` (integer; default `0`): Workflow action IDs already completed in the persisted execution state.
-- `node_states` (object): Persisted runtime states keyed by workflow node identity.
-- `progress` (integer; default `0`): Current numeric or structured workflow execution progress.
-- `running_tasks` (integer; default `0`): Workflow task IDs currently executing.
+完整的持久化工作流运行和进度状态。
+- `attempts` (object): 按动作标识记录的执行尝试次数
+- `errors` (object): 按动作标识组织的执行错误
+- `finished_actions` (integer; default `0`): 已完成的工作流动作数量
+- `node_states` (object): 按动作标识组织的运行状态
+- `progress` (integer; default `0`): 当前完成百分比
+- `running_tasks` (integer; default `0`): 当前运行中的工作流任务数量

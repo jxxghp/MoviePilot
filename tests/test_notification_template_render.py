@@ -53,7 +53,9 @@ MUSIC_CONTEXT = {
 
 @pytest.fixture()
 def notification_templates() -> SystemConfigOper:
-    """备份并还原通知模板配置，避免测试污染其它用例。"""
+    """
+    备份并还原通知模板配置，避免测试污染其它用例。
+    """
     config_oper = SystemConfigOper()
     original = config_oper.get(SystemConfigKey.NotificationTemplates)
     yield config_oper

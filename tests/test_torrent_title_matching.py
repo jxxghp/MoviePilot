@@ -1,4 +1,6 @@
-"""种子标题片段匹配回归，防止带标点的英文单词被当作完整作品名。"""
+"""
+种子标题片段匹配回归，防止带标点的英文单词被当作完整作品名。
+"""
 
 from unittest.mock import Mock
 
@@ -14,7 +16,9 @@ from app.schemas.types import MediaSource, MediaType
 
 @pytest.fixture
 def target() -> MediaInfo:
-    """构造与 Issue #7019 相同的待播剧身份及英文别名。"""
+    """
+    构造与 Issue #7019 相同的待播剧身份及英文别名。
+    """
     return MediaInfo(
         media_source=MediaSource.TMDB,
         media_id="279923",
@@ -32,7 +36,9 @@ def target() -> MediaInfo:
 @pytest.mark.parametrize("fragment", ["Dream!", "Dream！", "(Dream)", "Dream?", "Dream。", "Dream\u200b"])
 @pytest.mark.parametrize("field", ["title", "description"])
 def test_english_fragment_cannot_match_alias_after_punctuation(target, fragment, field):
-    """英文单词附带标点或零宽字符时仍不能成为标题片段证据。"""
+    """
+    英文单词附带标点或零宽字符时仍不能成为标题片段证据。
+    """
     if field == "title":
         target.original_title = "Dream"
     torrent = TorrentInfo(
@@ -49,7 +55,9 @@ def test_english_fragment_cannot_match_alias_after_punctuation(target, fragment,
 
 @pytest.mark.parametrize("description", ["BanG Dream! It's MyGO!!!!! | 01-13 日语+简繁字幕", "【】 | !!!"])
 def test_empty_normalized_alias_is_not_matching_evidence(target, description):
-    """空白或纯标点别名不能与副标题里的空片段相交。"""
+    """
+    空白或纯标点别名不能与副标题里的空片段相交。
+    """
     target.names = [" ", "!!!", "\u200b"]
     torrent = TorrentInfo(title="Unrelated S01 1080p WEB-DL", description=description)
 
@@ -67,7 +75,9 @@ def test_empty_normalized_alias_is_not_matching_evidence(target, description):
     ],
 )
 def test_complete_titles_and_chinese_fragments_still_match(target, title, description):
-    """完整英文别名和有效中文片段继续匹配，不受英文碎片过滤影响。"""
+    """
+    完整英文别名和有效中文片段继续匹配，不受英文碎片过滤影响。
+    """
     torrent = TorrentInfo(title=title, description=description)
     meta = MetaInfo(title=title, subtitle=description)
 
@@ -75,7 +85,9 @@ def test_complete_titles_and_chinese_fragments_still_match(target, title, descri
 
 
 def test_complete_multiword_alias_still_matches(target):
-    """英文多词别名仍按完整解析名称比较。"""
+    """
+    英文多词别名仍按完整解析名称比较。
+    """
     target.names = ["Drunken Dream!"]
     torrent = TorrentInfo(title="Drunken Dream S01 2026 1080p WEB-DL")
 
@@ -84,7 +96,9 @@ def test_complete_multiword_alias_still_matches(target):
 
 @pytest.mark.parametrize("year", ["", "2026 "])
 def test_subscription_search_drops_bang_dream_candidates(target, monkeypatch, year):
-    """搜索结果在产生可下载候选之前排除带标点的 Dream 误匹配。"""
+    """
+    搜索结果在产生可下载候选之前排除带标点的 Dream 误匹配。
+    """
     torrents = [
         TorrentInfo(
             title=f"BanG Dream YUME MITA S01 {year}1080p friDay WEB-DL AAC2.0 H.264-CHDWEB",

@@ -1,3 +1,7 @@
+"""
+验证工具结果与错误摘要的凭据脱敏、别名识别及资源预算。
+"""
+
 import asyncio
 import base64
 import json
@@ -21,7 +25,8 @@ from pydantic_core import PydanticCustomError
 
 import app.agent.policy.sanitizer as sanitizer_module
 
-# pylint: disable=no-name-in-module  # 策略包根通过 __getattr__ 惰性导出，Pylint 无法静态解析。
+# 策略包根通过 __getattr__ 惰性导出，Pylint 无法静态解析。
+# pylint: disable=no-name-in-module
 from app.agent.policy import sanitize_for_host, summarize_error, summarize_input, summarize_result
 from app.agent.tools.base import MoviePilotTool, serialize_tool_result_for_agent
 from app.agent.tools.manager import MoviePilotToolsManager
@@ -31,32 +36,42 @@ SECRET_MARKER = "nested-secret-marker-8472"
 
 
 class _SecretInput(BaseModel):
-    """日志脱敏测试工具的输入契约。"""
+    """
+    日志脱敏测试工具的输入契约。
+    """
 
     payload: dict = Field(description="包含嵌套值的测试载荷")
 
 
 class _InvalidSecretInput(BaseModel):
-    """用于验证 Pydantic 输入错误不会回显凭据原值。"""
+    """
+    用于验证 Pydantic 输入错误不会回显凭据原值。
+    """
 
-    api_key: int
+    api_key: int = Field(description="用于触发类型校验错误的凭据输入")
 
 
 class _DynamicSecretLocationInput(BaseModel):
-    """用于验证动态 Mapping key 不会通过错误位置泄漏。"""
+    """
+    用于验证动态 Mapping key 不会通过错误位置泄漏。
+    """
 
-    payload: dict[str, int]
+    payload: dict[str, int] = Field(description="键名可能包含凭据的动态映射，数值类型校验用于验证错误位置脱敏")
 
 
 class _CustomSecretValidationInput(BaseModel):
-    """用于验证自定义错误类型、消息和上下文不会进入宿主摘要。"""
+    """
+    用于验证自定义错误类型、消息和上下文不会进入宿主摘要。
+    """
 
-    value: str
+    value: str = Field(description="自定义校验器拒绝并写入错误详情的测试输入")
 
     @field_validator("value")
     @classmethod
     def reject_value(cls, value: str) -> str:
-        """构造携带输入值的第三方自定义校验错误。"""
+        """
+        构造携带输入值的第三方自定义校验错误。
+        """
         raise PydanticCustomError(
             f"custom_{value}",
             f"rejected {value}",
@@ -65,106 +80,153 @@ class _CustomSecretValidationInput(BaseModel):
 
 
 class _NamedTupleCredential(NamedTuple):
-    """模拟插件或第三方 SDK 返回的命名元组。"""
+    """
+    模拟插件或第三方 SDK 返回的命名元组。
+
+    :param api_key: 需要被脱敏的访问凭据
+    :param label: 应保留的普通展示标签
+    """
 
     api_key: str
     label: str
 
 
 class _AliasedCredentialResult(BaseModel):
-    """模拟外部凭据名与 Python 属性名不同的结构化结果。"""
+    """
+    模拟外部凭据名与 Python 属性名不同的结构化结果。
+    """
 
-    credential: str = Field(alias="apiKey")
+    credential: str = Field(alias="apiKey", description="通过外部 apiKey 名称接收的测试凭据")
 
 
 class _ValidationAliasedCredentialResult(BaseModel):
-    """模拟仅通过 validation alias 接受凭据的 Pydantic 字段。"""
+    """
+    模拟仅通过校验别名 接受凭据的 Pydantic 字段。
+    """
 
-    credential: str = Field(validation_alias="apiToken")
+    credential: str = Field(validation_alias="apiToken", description="仅在输入校验时通过 apiToken 别名接收的凭据")
 
 
 class _ChoiceAliasedCredentialResult(BaseModel):
-    """模拟敏感名称位于后续 choice 的 Pydantic 字段。"""
+    """
+    模拟敏感名称位于后续候选别名 的 Pydantic 字段。
+    """
 
-    credential: str = Field(validation_alias=AliasChoices("credentialLabel", "apiKey"))
+    credential: str = Field(
+        validation_alias=AliasChoices("credentialLabel", "apiKey"),
+        description="通过候选别名接收的凭据，其中后续 apiKey 名称需要脱敏",
+    )
 
 
 class _PathAliasedCredentialResult(BaseModel):
-    """模拟通过带整数索引的嵌套路径接收凭据的 Pydantic 字段。"""
+    """
+    模拟通过带整数索引的嵌套路径接收凭据的 Pydantic 字段。
+    """
 
-    credential: str = Field(validation_alias=AliasPath("payload", 0, "clientSecret"))
+    credential: str = Field(
+        validation_alias=AliasPath("payload", 0, "clientSecret"),
+        description="通过 payload 列表首项的 clientSecret 路径接收的凭据",
+    )
 
 
 class _ChoicePathAliasedCredentialResult(BaseModel):
-    """模拟后续 choice 使用嵌套路径的 Pydantic 凭据字段。"""
+    """
+    模拟后续候选别名 使用嵌套路径的 Pydantic 凭据字段。
+    """
 
     credential: str = Field(
         validation_alias=AliasChoices(
             "credentialLabel",
             AliasPath("payload", "refreshToken"),
-        )
+        ),
+        description="通过普通名称或嵌套 refreshToken 路径接收的凭据",
     )
 
 
 class _SerializationAliasedCredentialResult(BaseModel):
-    """模拟仅在序列化契约中使用凭据名称的结构化结果。"""
+    """
+    模拟仅在序列化契约中使用凭据名称的结构化结果。
+    """
 
-    credential: str = Field(serialization_alias="clientSecret")
+    credential: str = Field(serialization_alias="clientSecret", description="序列化时使用 clientSecret 名称的凭据")
 
 
 class _AliasedMetadataResult(BaseModel):
-    """模拟外部 metadata 名称与 Python 属性名不同的结构化结果。"""
+    """
+    模拟外部元数据名称与 Python 属性名不同的结构化结果。
+    """
 
-    count: int = Field(alias="tokenCount")
+    count: int = Field(alias="tokenCount", description="使用 tokenCount 外部名称的普通统计值，不属于凭据")
 
 
 class _DisguisedSecretAlias(str):
-    """保存敏感底层值但通过字符串协议伪装成 metadata 名称。"""
+    """
+    保存敏感底层值但通过字符串协议伪装成元数据名称。
+    """
 
     def __str__(self) -> str:
         return "tokenCount"
 
 
 class _HostileAliasedCredentialResult(BaseModel):
-    """模拟使用 hostile str 子类作为直接别名的 Pydantic 字段。"""
+    """
+    模拟使用 带有恶意行为的字符串子类作为直接别名的 Pydantic 字段。
+    """
 
-    credential: str = Field(alias=_DisguisedSecretAlias("apiKey"))
+    credential: str = Field(alias=_DisguisedSecretAlias("apiKey"), description="别名由伪装字符串子类提供的测试凭据")
 
 
 class _HostilePathAliasedCredentialResult(BaseModel):
-    """模拟 AliasPath 中包含 hostile str 子类的 Pydantic 字段。"""
+    """
+    模拟 AliasPath 中包含 带有恶意行为的字符串子类的 Pydantic 字段。
+    """
 
     credential: str = Field(
         validation_alias=AliasPath(
             "payload",
             _DisguisedSecretAlias("clientSecret"),
-        )
+        ),
+        description="嵌套别名路径包含伪装字符串子类的测试凭据",
     )
 
 
 @pydantic_dataclass
 class _AliasedCredentialDataclass:
-    """模拟通过赋值形式声明外部凭据名的 Pydantic dataclass。"""
+    """
+    模拟通过赋值形式声明外部凭据名的 Pydantic dataclass。
 
-    credential: str = Field(alias="apiKey")
+    :param credential: 通过 apiKey 别名接收的必填凭据
+    """
+
+    credential: str = Field(alias="apiKey", description="通过 apiKey 外部名称接收的必填凭据")
 
 
 @pydantic_dataclass
 class _AnnotatedAliasedCredentialDataclass:
-    """模拟通过 Annotated 声明外部凭据名的 Pydantic dataclass。"""
+    """
+    模拟通过 Annotated 声明外部凭据名的 Pydantic dataclass。
 
-    credential: Annotated[str, Field(alias="refreshToken")]
+    :param credential: 通过 refreshToken 别名接收的必填凭据
+    """
+
+    credential: Annotated[
+        str, Field(alias="refreshToken", description="通过 Annotated 中的 refreshToken 别名接收的必填凭据")
+    ]
 
 
 class _SecretResultTool(MoviePilotTool):
-    """返回嵌套敏感值的测试工具。"""
+    """
+    返回嵌套敏感值的测试工具。
+    """
 
-    name: str = "secret_result_tool"
-    description: str = "Return a nested secret test payload."
-    args_schema: type[BaseModel] = _SecretInput
+    name: str = Field(default="secret_result_tool", description="用于日志脱敏验证的工具名称")
+    description: str = Field(default="返回含嵌套敏感值的测试载荷。", description="供模型读取的工具用途说明")
+    args_schema: type[BaseModel] = Field(default=_SecretInput, description="定义嵌套敏感载荷输入结构的模型")
 
     async def run(self, payload: dict) -> dict:
-        """返回输入载荷，验证 shadow 模式不改变工具结果。"""
+        """
+        返回输入载荷，验证 shadow 模式不改变工具结果。
+        """
         return {
             "ok": True,
             "nested": [payload, {"authorization": f"Bearer {SECRET_MARKER}"}],
@@ -172,17 +234,23 @@ class _SecretResultTool(MoviePilotTool):
 
 
 class _SecretErrorTool(_SecretResultTool):
-    """抛出包含敏感值异常的测试工具。"""
+    """
+    抛出包含敏感值异常的测试工具。
+    """
 
-    name: str = "secret_error_tool"
+    name: str = Field(default="secret_error_tool", description="用于异常脱敏验证的工具名称")
 
     async def run(self, payload: dict) -> dict:
-        """抛出测试异常。"""
+        """
+        抛出测试异常。
+        """
         raise RuntimeError(f"api_key={SECRET_MARKER}")
 
 
 def _logged_text(mock_logger: MagicMock) -> str:
-    """汇总 mock logger 收到的全部消息文本。"""
+    """
+    汇总 mock logger 收到的全部消息文本。
+    """
     calls = []
     for method_name in ("debug", "info", "warning", "error"):
         method = getattr(mock_logger, method_name)
@@ -191,7 +259,9 @@ def _logged_text(mock_logger: MagicMock) -> str:
 
 
 def test_recursive_sanitizer_redacts_nested_structures_and_json_text() -> None:
-    """嵌套 mapping/sequence 与 JSON 字符串都不能保留 secret marker。"""
+    """
+    嵌套 mapping/sequence 与 JSON 字符串都不能保留 secret marker。
+    """
     payload = {
         "name": "normal-name",
         "items": [
@@ -215,7 +285,9 @@ def test_recursive_sanitizer_redacts_nested_structures_and_json_text() -> None:
 def test_recursive_sanitizer_redacts_values_identified_by_secret_setting_key(
     as_json_text: bool,
 ) -> None:
-    """设置项身份为凭据时，同一结构中的通用值字段也必须脱敏。"""
+    """
+    设置项身份为凭据时，同一结构中的通用值字段也必须脱敏。
+    """
     payload = {
         "settings": [
             {
@@ -242,7 +314,9 @@ def test_recursive_sanitizer_redacts_values_identified_by_secret_setting_key(
 
 
 def test_recursive_sanitizer_preserves_values_for_nonsecret_setting_key() -> None:
-    """普通设置的 value 字段仍应保留可诊断内容。"""
+    """
+    普通设置的 value 字段仍应保留可诊断内容。
+    """
     payload = {
         "setting_key": "PROJECT_NAME",
         "value": "MoviePilot",
@@ -272,7 +346,9 @@ def test_recursive_sanitizer_preserves_values_for_nonsecret_setting_key() -> Non
 def test_recursive_sanitizer_redacts_shared_secret_setting_identities(
     setting_key: str,
 ) -> None:
-    """宿主回执必须与系统设置工具共享敏感设置身份语义。"""
+    """
+    宿主回执必须与系统设置工具共享敏感设置身份语义。
+    """
     payload = {
         "setting_key": setting_key,
         "value": SECRET_MARKER,
@@ -297,7 +373,9 @@ def test_recursive_sanitizer_redacts_shared_secret_setting_identities(
 def test_recursive_sanitizer_preserves_shared_nonsecret_setting_identities(
     setting_key: str,
 ) -> None:
-    """名称中提及凭据概念的普通设置仍应保留诊断值。"""
+    """
+    名称中提及凭据概念的普通设置仍应保留诊断值。
+    """
     payload = {
         "setting_key": setting_key,
         "value": "visible-value",
@@ -308,7 +386,9 @@ def test_recursive_sanitizer_preserves_shared_nonsecret_setting_identities(
 
 
 def test_recursive_sanitizer_fails_closed_when_setting_identity_is_truncated() -> None:
-    """设置身份扫描不完整时，已捕获的通用值字段不能按明文放行。"""
+    """
+    设置身份扫描不完整时，已捕获的通用值字段不能按明文放行。
+    """
     payload = {"value": SECRET_MARKER}
     payload.update({f"padding_{index}": index for index in range(100)})
     payload["setting_key"] = "API_TOKEN"
@@ -335,7 +415,9 @@ def test_recursive_sanitizer_fails_closed_when_setting_identity_is_truncated() -
 def test_recursive_sanitizer_redacts_credential_containers(
     field_name: str,
 ) -> None:
-    """认证与凭据容器必须在读取内部用户名或密码前整体遮蔽。"""
+    """
+    认证与凭据容器必须在读取内部用户名或密码前整体遮蔽。
+    """
     payload = {
         field_name: ("alice", SECRET_MARKER),
         "authEnabled": True,
@@ -356,7 +438,9 @@ def test_recursive_sanitizer_redacts_credential_containers(
 def test_recursive_sanitizer_redacts_oauth_credential_containers(
     field_name: str,
 ) -> None:
-    """OAuth 容器判敏必须与字段大小写及数字分词无关。"""
+    """
+    OAuth 容器判敏必须与字段大小写及数字分词无关。
+    """
     payload = {
         field_name: ("alice", SECRET_MARKER),
         "oauthEnabled": True,
@@ -374,7 +458,9 @@ def test_recursive_sanitizer_redacts_oauth_credential_containers(
 
 
 def test_recursive_sanitizer_redacts_named_tuple_secret_fields() -> None:
-    """命名元组必须保留字段语义并按字段名脱敏。"""
+    """
+    命名元组必须保留字段语义并按字段名脱敏。
+    """
     payload = _NamedTupleCredential(
         api_key=SECRET_MARKER,
         label="visible-label",
@@ -387,7 +473,9 @@ def test_recursive_sanitizer_redacts_named_tuple_secret_fields() -> None:
 
 
 def test_sanitizer_rejects_hostile_named_tuple_metadata_without_protocols() -> None:
-    """伪造的 `_fields` 与 tuple 覆盖协议不得参与 named-tuple 分类。"""
+    """
+    伪造的 `_fields` 与 tuple 覆盖协议不得参与 named-tuple 分类。
+    """
     calls = []
 
     class _HostileFields(tuple):
@@ -432,7 +520,9 @@ def test_sanitizer_rejects_hostile_named_tuple_metadata_without_protocols() -> N
 def test_recursive_sanitizer_redacts_pydantic_secret_aliases(
     value: BaseModel,
 ) -> None:
-    """Pydantic 字段的输入、路径及输出别名均参与凭据判定。"""
+    """
+    Pydantic 字段的输入、路径及输出别名均参与凭据判定。
+    """
     sanitized = sanitize_for_host(value)
 
     assert sanitized == {"credential": "***"}
@@ -440,7 +530,9 @@ def test_recursive_sanitizer_redacts_pydantic_secret_aliases(
 
 
 def test_recursive_sanitizer_preserves_pydantic_metadata_alias() -> None:
-    """非敏感 Pydantic 外部别名不应遮蔽 metadata 值。"""
+    """
+    非敏感 Pydantic 外部别名不应遮蔽 metadata 值。
+    """
     assert sanitize_for_host(_AliasedMetadataResult(tokenCount=12)) == {"count": 12}
 
 
@@ -454,7 +546,9 @@ def test_recursive_sanitizer_preserves_pydantic_metadata_alias() -> None:
 def test_recursive_sanitizer_redacts_pydantic_dataclass_secret_aliases(
     value: object,
 ) -> None:
-    """Pydantic dataclass 的解析后别名元数据同样参与凭据判定。"""
+    """
+    Pydantic dataclass 的解析后别名元数据同样参与凭据判定。
+    """
     sanitized = sanitize_for_host(value)
 
     assert sanitized == {"credential": "***"}
@@ -462,10 +556,14 @@ def test_recursive_sanitizer_redacts_pydantic_dataclass_secret_aliases(
 
 
 def test_pydantic_alias_path_limit_applies_before_iteration() -> None:
-    """AliasPath 必须先验证长度边界，再读取或复制任何 path part。"""
+    """
+    AliasPath 必须先验证长度边界，再读取或复制任何 path part。
+    """
 
     class _TrackingPath(list):
-        """记录 alias path 实际向 sanitizer 交付的 part 数量。"""
+        """
+        记录 alias path 实际向 sanitizer 交付的 part 数量。
+        """
 
         yielded_parts = 0
 
@@ -482,7 +580,9 @@ def test_pydantic_alias_path_limit_applies_before_iteration() -> None:
 
 
 def test_pydantic_alias_choices_share_one_part_budget() -> None:
-    """AliasPath 与普通 choice 共用额度，耗尽后必须 fail-closed。"""
+    """
+    AliasPath 与普通 choice 共用额度，耗尽后必须 fail-closed。
+    """
     alias = AliasChoices(
         AliasPath(*(["metadata"] * sanitizer_module._MAX_ITEMS)),
         "metadataTail",
@@ -499,9 +599,11 @@ def test_pydantic_alias_choices_share_one_part_budget() -> None:
     assert budget == [0]
 
     class _OversizedAliasResult(BaseModel):
-        """模拟 alias part 总量超过宿主固定额度的第三方模型。"""
+        """
+        模拟 alias part 总量超过宿主固定额度的第三方模型。
+        """
 
-        credential: str = Field(validation_alias=alias)
+        credential: str = Field(validation_alias=alias, description="使用超长校验别名的凭据，用于验证别名遍历预算")
 
     sanitized = sanitize_for_host(_OversizedAliasResult.model_construct(credential=SECRET_MARKER))
 
@@ -533,7 +635,9 @@ def test_pydantic_alias_choices_share_one_part_budget() -> None:
 def test_recursive_sanitizer_redacts_camel_case_secret_fields(
     field_name: str,
 ) -> None:
-    """结构化第三方载荷的驼峰凭据字段必须脱敏，统计字段保持可见。"""
+    """
+    结构化第三方载荷的驼峰凭据字段必须脱敏，统计字段保持可见。
+    """
     payload = {
         field_name: SECRET_MARKER,
         "tokenCount": 12,
@@ -619,7 +723,9 @@ def test_sanitizer_redacts_secret_assignments(
     source: str,
     secret_parts: tuple[str, ...],
 ) -> None:
-    """常见字段拼写、业务前缀和多词凭据都必须完整脱敏。"""
+    """
+    常见字段拼写、业务前缀和多词凭据都必须完整脱敏。
+    """
     sanitized = str(sanitize_for_host(source))
 
     assert "***" in sanitized
@@ -645,7 +751,9 @@ def test_sanitizer_redacts_secret_assignments(
     ],
 )
 def test_sanitizer_preserves_metadata_assignments(source: str) -> None:
-    """带凭据词根但以 metadata 语义结尾的字段保持诊断价值。"""
+    """
+    带凭据词根但以 metadata 语义结尾的字段保持诊断价值。
+    """
     assert sanitize_for_host(source) == source
 
 
@@ -660,7 +768,9 @@ def test_sanitizer_redacts_escaped_quoted_secret_keys_with_spaces(
     quote: str,
     escape_layers: int,
 ) -> None:
-    """转义 JSON 片段中的空格分隔凭据名必须复用结构化判敏语义。"""
+    """
+    转义 JSON 片段中的空格分隔凭据名必须复用结构化判敏语义。
+    """
     wrapper = "\\" * escape_layers + quote
     source = f"payload={{{wrapper}{field_name}{wrapper}:{wrapper}{SECRET_MARKER}{wrapper}}}"
 
@@ -679,7 +789,9 @@ def test_sanitizer_redacts_quoted_secret_keys_with_leading_whitespace(
     escape_layers: int,
     leading_whitespace: str,
 ) -> None:
-    """quoted key 的前导横向空白不得绕过凭据名识别。"""
+    """
+    quoted key 的前导横向空白不得绕过凭据名识别。
+    """
     wrapper = "\\" * escape_layers + quote
     source = f"payload={{{wrapper}{leading_whitespace}api key{wrapper}:{wrapper}{SECRET_MARKER}{wrapper}}}"
 
@@ -695,7 +807,9 @@ def test_sanitizer_redacts_quoted_secret_keys_with_leading_whitespace(
 
 
 def test_sanitizer_preserves_escaped_quoted_metadata_key_with_spaces() -> None:
-    """空格分隔的 metadata key 不应因 quoted-key 支持而被误判。"""
+    """
+    空格分隔的 metadata key 不应因 quoted-key 支持而被误判。
+    """
     source = r"payload=\"{\\\"token count\\\":12}\""
 
     assert sanitize_for_host(source) == source
@@ -705,7 +819,9 @@ def test_sanitizer_preserves_escaped_quoted_metadata_key_with_spaces() -> None:
 def test_sanitizer_redacts_basic_auth_in_builtin_tuple_key(
     header: str,
 ) -> None:
-    """内建 tuple key 中的 Basic Auth 与 URI userinfo 都不得进入输出 key。"""
+    """
+    内建 tuple key 中的 Basic Auth 与 URI userinfo 都不得进入输出 key。
+    """
     basic_token = "YWxpY2U6c3ludGhldGljLXBhc3N3b3Jk"
     payload = {
         (
@@ -737,7 +853,9 @@ def test_sanitizer_redacts_basic_auth_across_host_summaries(
     scheme: str,
     basic_token: str,
 ) -> None:
-    """裸 Basic Auth token 在全部宿主摘要入口复用中央文本脱敏。"""
+    """
+    裸 Basic Auth token 在全部宿主摘要入口复用中央文本脱敏。
+    """
     source = f"upstream returned {scheme} {basic_token}. status=failed"
 
     outputs = (
@@ -760,12 +878,16 @@ def test_sanitizer_redacts_basic_auth_across_host_summaries(
     ],
 )
 def test_sanitizer_preserves_noncredential_basic_metadata(source: str) -> None:
-    """普通 basic 文案及不含 user:password 的 Base64 metadata 保持可见。"""
+    """
+    普通 basic 文案及不含 user:password 的 Base64 metadata 保持可见。
+    """
     assert sanitize_for_host(source) == source
 
 
 def test_sanitizer_fails_closed_for_truncated_basic_auth_token() -> None:
-    """Basic token 在文本上限内未闭合时遮蔽整个已保留前缀。"""
+    """
+    Basic token 在文本上限内未闭合时遮蔽整个已保留前缀。
+    """
     prefix = "log: Basic "
     token = base64.b64encode(b"alice:" + b"x" * sanitizer_module._MAX_TEXT_CHARS).decode()
     source = prefix + token
@@ -777,7 +899,9 @@ def test_sanitizer_fails_closed_for_truncated_basic_auth_token() -> None:
 
 
 def test_sanitizer_fails_closed_for_truncated_basic_auth_in_tuple_key() -> None:
-    """tuple renderer 的内部截断事实必须传给 Basic token 脱敏。"""
+    """
+    tuple renderer 的内部截断事实必须传给 Basic token 脱敏。
+    """
     token = base64.b64encode(b"alice:" + b"x" * sanitizer_module._MAX_TEXT_CHARS).decode()
     payload = {("Authorization", f"Basic {token}"): "ok"}
 
@@ -835,7 +959,9 @@ def test_sanitizer_preserves_nested_assignment_boundaries(
     source: str,
     expected: str,
 ) -> None:
-    """内层凭据脱敏后保留 URL 分段与外层引号结构。"""
+    """
+    内层凭据脱敏后保留 URL 分段与外层引号结构。
+    """
     assert sanitize_for_host(source) == expected
 
 
@@ -873,7 +999,9 @@ def test_sanitizer_preserves_nested_assignment_boundaries(
     ],
 )
 def test_sanitizer_redacts_uri_userinfo(source: str, expected: str) -> None:
-    """URI authority 中的 userinfo 不得进入宿主摘要。"""
+    """
+    URI authority 中的 userinfo 不得进入宿主摘要。
+    """
     assert sanitize_for_host(source) == expected
 
 
@@ -881,7 +1009,9 @@ def test_sanitizer_redacts_uri_userinfo(source: str, expected: str) -> None:
 def test_sanitizer_redacts_slash_escaped_uri_userinfo(
     escape_layers: int,
 ) -> None:
-    """嵌入诊断文本中的 slash-escaped URI 仍须清理 userinfo。"""
+    """
+    嵌入诊断文本中的 slash-escaped URI 仍须清理 userinfo。
+    """
     separator = ":" + "\\" * escape_layers + "/" + "\\" * escape_layers + "/"
     source = (
         r"payload={\"dsn\":\"postgresql"
@@ -896,14 +1026,18 @@ def test_sanitizer_redacts_slash_escaped_uri_userinfo(
 
 
 def test_sanitizer_preserves_slash_escaped_uri_without_userinfo() -> None:
-    """slash-escaped URI 没有 userinfo 时保持原始诊断文本。"""
+    """
+    slash-escaped URI 没有 userinfo 时保持原始诊断文本。
+    """
     source = r"url=https:\/\/example.invalid/path?email=user@example.invalid"
 
     assert sanitize_for_host(source) == source
 
 
 def test_sanitizer_redacts_truncated_uri_with_unresolved_userinfo() -> None:
-    """截断点前无法确认 authority 结束时按敏感内容处理。"""
+    """
+    截断点前无法确认 authority 结束时按敏感内容处理。
+    """
     source = f"dsn=postgresql://alice:{SECRET_MARKER}{'x' * (16 * 1024)}@example.invalid/media"
 
     summaries = (
@@ -918,7 +1052,9 @@ def test_sanitizer_redacts_truncated_uri_with_unresolved_userinfo() -> None:
 
 
 def test_sanitizer_redacts_truncated_uri_after_early_at_sign() -> None:
-    """截断 authority 内的早期 `@` 不能证明 userinfo 已完整结束。"""
+    """
+    截断 authority 内的早期 `@` 不能证明 userinfo 已完整结束。
+    """
     trailing_secret = "truncated-uri-tail-secret-5931"
     prefix = f"https://user:{SECRET_MARKER}@{trailing_secret}"
     source = prefix + "x" * (16 * 1024 - len(prefix)) + "@example.invalid/media"
@@ -943,7 +1079,9 @@ def test_sanitizer_redacts_truncated_uri_after_early_at_sign() -> None:
     ],
 )
 def test_sanitizer_redacts_escaped_json_secret_fields(source: str) -> None:
-    """普通文本内多层转义的 JSON 凭据字段仍须脱敏。"""
+    """
+    普通文本内多层转义的 JSON 凭据字段仍须脱敏。
+    """
     sanitized = str(sanitize_for_host(source))
 
     assert SECRET_MARKER not in sanitized
@@ -952,7 +1090,9 @@ def test_sanitizer_redacts_escaped_json_secret_fields(source: str) -> None:
 
 
 def test_sanitizer_preserves_tail_after_escaped_json_secret() -> None:
-    """转义 JSON 凭据中的分隔符不应截断脱敏或吞掉后续字段。"""
+    """
+    转义 JSON 凭据中的分隔符不应截断脱敏或吞掉后续字段。
+    """
     source = f'payload="{{\\"apiKey\\":\\"{SECRET_MARKER},still-secret\\",\\"status\\":\\"ok\\"}}"'
 
     sanitized = str(sanitize_for_host(source))
@@ -967,7 +1107,9 @@ def test_sanitizer_preserves_tail_after_escaped_json_secret() -> None:
 def test_sanitizer_handles_trailing_backslashes_before_secret_quote(
     escape_layers: int,
 ) -> None:
-    """凭据值末尾的 literal backslash 不得吞掉后续敏感字段。"""
+    """
+    凭据值末尾的 literal backslash 不得吞掉后续敏感字段。
+    """
     payload = '{"authToken":"first-secret\\\\","refreshToken":"second-secret","status":"ok"}'
     for _ in range(escape_layers):
         escaped_payload = payload.replace("\\", "\\\\").replace('"', '\\"')
@@ -984,14 +1126,18 @@ def test_sanitizer_handles_trailing_backslashes_before_secret_quote(
 
 
 def test_sanitizer_preserves_escaped_json_metadata_fields() -> None:
-    """转义 JSON 中的 metadata 字段保持诊断值。"""
+    """
+    转义 JSON 中的 metadata 字段保持诊断值。
+    """
     source = 'payload="{\\"apiKeyId\\":\\"public-id\\"}"'
 
     assert sanitize_for_host(source) == source
 
 
 def test_sanitizer_preserves_uri_without_userinfo() -> None:
-    """不含 userinfo 的 URL 及 query 邮箱保持原始诊断信息。"""
+    """
+    不含 userinfo 的 URL 及 query 邮箱保持原始诊断信息。
+    """
     source = "url=https://example.invalid/path?email=user@example.invalid"
 
     assert sanitize_for_host(source) == source
@@ -1002,7 +1148,9 @@ def test_sanitizer_preserves_uri_without_userinfo() -> None:
     ["a=", "a.", "a://host/", "\\", '\\"'],
 )
 def test_sanitizer_assignment_scan_scales_at_text_limit(unit: str) -> None:
-    """赋值链和无头字段链在宿主文本上限内保持近似线性扫描。"""
+    """
+    赋值链和无头字段链在宿主文本上限内保持近似线性扫描。
+    """
 
     def median_duration(size: int) -> float:
         source = (unit * (size // len(unit) + 1))[:size]
@@ -1021,7 +1169,9 @@ def test_sanitizer_assignment_scan_scales_at_text_limit(unit: str) -> None:
 
 
 def test_secret_assignment_slash_run_scales_at_text_limit() -> None:
-    """凭据值中的连续反斜杠必须单向扫描，不能重复遍历同一后缀。"""
+    """
+    凭据值中的连续反斜杠必须单向扫描，不能重复遍历同一后缀。
+    """
 
     def median_duration(slash_count: int) -> float:
         source = "password=" + "\\" * slash_count + "tail"
@@ -1041,16 +1191,23 @@ def test_secret_assignment_slash_run_scales_at_text_limit() -> None:
 
 
 def test_sanitizer_bounds_oversized_mapping_key_normalization() -> None:
-    """超长结构化字段只允许固定窗口进入凭据名规范化。"""
+    """
+    超长结构化字段只允许固定窗口进入凭据名规范化。
+    """
 
     class _TrackingPattern:
-        """记录正则收到的最大文本长度并复用真实匹配行为。"""
+        """
+        记录正则收到的最大文本长度并复用真实匹配行为。
+        """
 
         def __init__(self, pattern) -> None:
             self.pattern = pattern
             self.max_chars = 0
 
         def sub(self, replacement: str, value: str) -> str:
+            """
+            记录输入长度后执行真实正则替换，用于校验脱敏扫描上限。
+            """
             self.max_chars = max(self.max_chars, len(value))
             return self.pattern.sub(replacement, value)
 
@@ -1087,10 +1244,14 @@ def test_sanitizer_bounds_oversized_mapping_key_normalization() -> None:
 def test_sanitizer_does_not_stringify_dynamic_mapping_key(
     value: object,
 ) -> None:
-    """动态 Mapping key 不执行字符串协议，值按未知字段保守遮蔽。"""
+    """
+    动态 Mapping key 不执行字符串协议，值按未知字段保守遮蔽。
+    """
 
     class _StatefulKey:
-        """通过字符串协议伪装字段语义的第三方 key。"""
+        """
+        通过字符串协议伪装字段语义的第三方 key。
+        """
 
         def __init__(self) -> None:
             self.calls = 0
@@ -1109,10 +1270,14 @@ def test_sanitizer_does_not_stringify_dynamic_mapping_key(
 
 
 def test_sanitizer_redacts_value_for_uninspectable_mapping_key() -> None:
-    """无法取得稳定名称的 Mapping key 按敏感字段处理。"""
+    """
+    无法取得稳定名称的 Mapping key 按敏感字段处理。
+    """
 
     class _UninspectableKey:
-        """模拟字符串协议故障的第三方 key。"""
+        """
+        模拟字符串协议故障的第三方 key。
+        """
 
         def __str__(self) -> str:
             raise RuntimeError(f"unavailable key {SECRET_MARKER}")
@@ -1124,10 +1289,14 @@ def test_sanitizer_redacts_value_for_uninspectable_mapping_key() -> None:
 
 
 def test_sanitizer_bounds_shared_reference_expansion() -> None:
-    """整个净化调用共享工作预算，重复引用不能按分支指数展开。"""
+    """
+    整个净化调用共享工作预算，重复引用不能按分支指数展开。
+    """
 
     class _CountingValue:
-        """记录共享叶节点被字符串化的次数。"""
+        """
+        记录共享叶节点被字符串化的次数。
+        """
 
         def __init__(self) -> None:
             self.calls = 0
@@ -1148,20 +1317,29 @@ def test_sanitizer_bounds_shared_reference_expansion() -> None:
 
 
 def test_sanitizer_budget_bounds_container_item_expansion() -> None:
-    """共享 DAG 的容器读取和输出项总量必须受全调用预算约束。"""
+    """
+    共享 DAG 的容器读取和输出项总量必须受全调用预算约束。
+    """
 
     class _CountingMapping(dict):
-        """统计 Mapping iterator 实际交付给 sanitizer 的项数。"""
+        """
+        统计 Mapping iterator 实际交付给 sanitizer 的项数。
+        """
 
         yielded_items = 0
 
         def items(self):
+            """
+            每产出一个映射项累加计数，用于验证共享结构的遍历预算。
+            """
             for item in super().items():
                 type(self).yielded_items += 1
                 yield item
 
     def count_entries(value: object) -> int:
-        """统计 sanitizer 结果中实际生成的容器项数。"""
+        """
+        统计 sanitizer 结果中实际生成的容器项数。
+        """
         if isinstance(value, dict):
             return len(value) + sum(count_entries(item) for item in value.values())
         if isinstance(value, list):
@@ -1183,7 +1361,9 @@ def test_sanitizer_budget_bounds_container_item_expansion() -> None:
 
 
 def test_camel_case_secret_assignment_is_redacted_from_host_summaries() -> None:
-    """输入、结果和异常摘要共享非结构化凭据赋值的脱敏契约。"""
+    """
+    输入、结果和异常摘要共享非结构化凭据赋值的脱敏契约。
+    """
     source = f"authToken={SECRET_MARKER}"
 
     summaries = (
@@ -1207,7 +1387,9 @@ def test_camel_case_secret_assignment_is_redacted_from_host_summaries() -> None:
 def test_sanitizer_redacts_complete_unquoted_secret_container_assignment(
     container_value: str,
 ) -> None:
-    """未加引号的嵌套容器凭据值必须整体遮蔽并保留后续字段。"""
+    """
+    未加引号的嵌套容器凭据值必须整体遮蔽并保留后续字段。
+    """
     source = f"password={container_value}, operation=connect"
 
     sanitized = str(sanitize_for_host(source))
@@ -1218,7 +1400,9 @@ def test_sanitizer_redacts_complete_unquoted_secret_container_assignment(
 
 
 def test_sanitizer_fails_closed_for_unclosed_secret_container_assignment() -> None:
-    """未闭合的凭据容器无法确认边界时遮蔽剩余文本。"""
+    """
+    未闭合的凭据容器无法确认边界时遮蔽剩余文本。
+    """
     source = f"password=['{SECRET_MARKER}', 'unclosed-container-secret', operation=connect"
 
     sanitized = str(sanitize_for_host(source))
@@ -1229,7 +1413,9 @@ def test_sanitizer_fails_closed_for_unclosed_secret_container_assignment() -> No
 
 
 def test_sanitizer_redacts_secret_tail_after_closed_assignment_container() -> None:
-    """容器闭合符不代表凭据值结束，尾随内容也必须遮蔽。"""
+    """
+    容器闭合符不代表凭据值结束，尾随内容也必须遮蔽。
+    """
     source = f"password=['{SECRET_MARKER}']tail-container-secret, operation=connect"
 
     sanitized = str(sanitize_for_host(source))
@@ -1249,7 +1435,9 @@ def test_sanitizer_redacts_secret_tail_after_closed_assignment_container() -> No
 def test_sanitizer_ignores_escaped_assignment_container_closers(
     source: str,
 ) -> None:
-    """未引号容器中的转义闭合符不得提前结束凭据扫描。"""
+    """
+    未引号容器中的转义闭合符不得提前结束凭据扫描。
+    """
     sanitized = str(sanitize_for_host(source))
 
     assert sanitized == "password=***, status=ok"
@@ -1267,7 +1455,9 @@ def test_sanitizer_ignores_escaped_assignment_container_closers(
 def test_sanitizer_tracks_containers_after_unquoted_value_prefix(
     source: str,
 ) -> None:
-    """未引号值任意位置的容器均须屏蔽其内部字段分隔符。"""
+    """
+    未引号值任意位置的容器均须屏蔽其内部字段分隔符。
+    """
     sanitized = str(sanitize_for_host(source))
 
     assert sanitized == "password=***, status=ok"
@@ -1296,7 +1486,9 @@ def test_sanitizer_tracks_quoted_fragments_inside_unquoted_secret_value(
     source: str,
     expected: str,
 ) -> None:
-    """值中途的 quoted fragment 不得让内部逗号提前结束脱敏。"""
+    """
+    值中途的 quoted fragment 不得让内部逗号提前结束脱敏。
+    """
     sanitized = str(sanitize_for_host(source))
 
     assert sanitized == expected
@@ -1310,7 +1502,9 @@ def test_sanitizer_tracks_escaped_quoted_fragments_inside_secret_value(
     quote: str,
     escape_layers: int,
 ) -> None:
-    """多层 slash-escaped quoted fragment 的内部逗号仍属于凭据值。"""
+    """
+    多层 slash-escaped quoted fragment 的内部逗号仍属于凭据值。
+    """
     wrapper = "\\" * escape_layers + quote
     source = f"password=prefix{wrapper}{SECRET_MARKER}, second-escaped-secret{wrapper}, status=ok"
 
@@ -1322,7 +1516,9 @@ def test_sanitizer_tracks_escaped_quoted_fragments_inside_secret_value(
 
 
 def test_sanitizer_redacts_unquoted_multiword_secret_in_error_summary() -> None:
-    """异常中的无引号多词凭据必须净化到可靠分隔符。"""
+    """
+    异常中的无引号多词凭据必须净化到可靠分隔符。
+    """
     summary = summarize_error(RuntimeError("password=alpha beta; operation=connect"))
 
     assert "alpha" not in summary
@@ -1331,7 +1527,9 @@ def test_sanitizer_redacts_unquoted_multiword_secret_in_error_summary() -> None:
 
 
 def test_pydantic_validation_error_is_safe_across_host_entry_points() -> None:
-    """Pydantic 原始输入不得从递归 sanitizer 或任一摘要入口回显。"""
+    """
+    Pydantic 原始输入不得从递归 sanitizer 或任一摘要入口回显。
+    """
     with pytest.raises(ValidationError) as exc_info:
         _InvalidSecretInput(api_key=SECRET_MARKER)
 
@@ -1351,7 +1549,9 @@ def test_pydantic_validation_error_is_safe_across_host_entry_points() -> None:
 
 
 def test_pydantic_validation_error_excludes_dynamic_metadata() -> None:
-    """动态错误位置、类型、消息和上下文均不得成为宿主诊断文本。"""
+    """
+    动态错误位置、类型、消息和上下文均不得成为宿主诊断文本。
+    """
     with pytest.raises(ValidationError) as location_exc_info:
         _DynamicSecretLocationInput(payload={SECRET_MARKER: "not-an-integer"})
     with pytest.raises(ValidationError) as custom_exc_info:
@@ -1373,7 +1573,9 @@ def test_pydantic_validation_error_excludes_dynamic_metadata() -> None:
 
 
 def test_pydantic_validation_error_count_does_not_expand_details() -> None:
-    """校验错误计数不得构造完整 errors 明细。"""
+    """
+    校验错误计数不得构造完整 errors 明细。
+    """
     with pytest.raises(ValidationError) as exc_info:
         _InvalidSecretInput(api_key=SECRET_MARKER)
 
@@ -1389,7 +1591,9 @@ def test_pydantic_validation_error_count_does_not_expand_details() -> None:
 
 
 def test_sanitizer_type_fallback_ignores_hostile_metaclass() -> None:
-    """对象协议与类型名读取同时失败时仍应返回稳定占位。"""
+    """
+    对象协议与类型名读取同时失败时仍应返回稳定占位。
+    """
     secret_marker = "hostile-type-secret-4381"
 
     class _HostileMeta(type):
@@ -1415,10 +1619,14 @@ def test_sanitizer_type_fallback_ignores_hostile_metaclass() -> None:
 
 
 def test_sanitizer_does_not_stringify_unsupported_leaf_objects() -> None:
-    """未知叶对象只输出固定类型占位，不能执行无界字符串协议。"""
+    """
+    未知叶对象只输出固定类型占位，不能执行无界字符串协议。
+    """
 
     class _UnsupportedLeaf:
-        """记录 sanitizer 是否调用第三方字符串协议。"""
+        """
+        记录 sanitizer 是否调用第三方字符串协议。
+        """
 
         calls = 0
         class_reads = 0
@@ -1445,7 +1653,9 @@ def test_sanitizer_does_not_stringify_unsupported_leaf_objects() -> None:
 
 
 def test_sanitizer_does_not_query_hostile_metaclass_for_dataclass_marker() -> None:
-    """未知叶对象的 dataclass 分派不得执行自定义 metaclass 属性协议。"""
+    """
+    未知叶对象的 dataclass 分派不得执行自定义 metaclass 属性协议。
+    """
 
     class _HostileMeta(type):
         dataclass_reads = 0
@@ -1468,10 +1678,14 @@ def test_sanitizer_does_not_query_hostile_metaclass_for_dataclass_marker() -> No
 
 
 def test_sanitizer_reads_exception_args_without_custom_string_protocol() -> None:
-    """异常摘要保留安全参数，但不得调用异常子类的自定义字符串协议。"""
+    """
+    异常摘要保留安全参数，但不得调用异常子类的自定义字符串协议。
+    """
 
     class _HostileError(RuntimeError):
-        """通过字符串协议回显凭据的第三方异常。"""
+        """
+        通过字符串协议回显凭据的第三方异常。
+        """
 
         calls = 0
         class_reads = 0
@@ -1496,7 +1710,9 @@ def test_sanitizer_reads_exception_args_without_custom_string_protocol() -> None
 
 
 def test_sanitizer_bounds_json_shaped_text_before_parsing() -> None:
-    """超过文本上限的 JSON 外形输入不得触发完整解析。"""
+    """
+    超过文本上限的 JSON 外形输入不得触发完整解析。
+    """
     secret_marker = "oversized-json-secret-9056"
     source = '{"password":"' + secret_marker + '","padding":"' + "x" * 20000 + '"}'
 
@@ -1513,7 +1729,9 @@ def test_sanitizer_bounds_json_shaped_text_before_parsing() -> None:
 
 
 def test_sanitizer_fails_closed_for_oversized_json_identity_values() -> None:
-    """超长 JSON 无法确认对象身份时，窗口内通用值字段必须脱敏。"""
+    """
+    超长 JSON 无法确认对象身份时，窗口内通用值字段必须脱敏。
+    """
     secret_marker = "oversized-setting-secret-marker"
     source = json.dumps(
         {
@@ -1537,7 +1755,9 @@ def test_sanitizer_fails_closed_for_oversized_json_identity_values() -> None:
 
 
 def test_sanitizer_handles_cyclic_command_without_raising() -> None:
-    """循环 LangGraph Command 必须生成有界摘要而不是破坏工具成功结果。"""
+    """
+    循环 LangGraph Command 必须生成有界摘要而不是破坏工具成功结果。
+    """
     cycle = []
     command = Command(update={"state": cycle})
     cycle.append(command)
@@ -1549,7 +1769,9 @@ def test_sanitizer_handles_cyclic_command_without_raising() -> None:
 
 
 def test_tool_result_json_fallback_warning_is_sanitized() -> None:
-    """结果序列化 fallback 不能把第三方异常中的凭据写入 warning。"""
+    """
+    结果序列化 fallback 不能把第三方异常中的凭据写入 warning。
+    """
 
     class _FallbackResult:
         def __init__(self) -> None:
@@ -1572,7 +1794,9 @@ def test_tool_result_json_fallback_warning_is_sanitized() -> None:
 
 
 def test_summary_helpers_bound_output_without_losing_normal_context() -> None:
-    """输入、结果与异常摘要应有界且保留非敏感诊断上下文。"""
+    """
+    输入、结果与异常摘要应有界且保留非敏感诊断上下文。
+    """
     payload = {
         "query": "MoviePilot",
         "password": SECRET_MARKER,
@@ -1593,7 +1817,9 @@ def test_summary_helpers_bound_output_without_losing_normal_context() -> None:
 
 
 def test_agent_tool_logs_are_sanitized_but_shadow_result_is_unchanged() -> None:
-    """G1 只净化宿主日志，shadow 工具返回值仍保持兼容。"""
+    """
+    G1 只净化宿主日志，shadow 工具返回值仍保持兼容。
+    """
     tool = _SecretResultTool(session_id="session-1", user_id="user-1")
     payload = {"token": SECRET_MARKER, "label": "visible"}
     mock_logger = MagicMock()
@@ -1608,7 +1834,9 @@ def test_agent_tool_logs_are_sanitized_but_shadow_result_is_unchanged() -> None:
 
 
 def test_direct_manager_logs_are_sanitized_but_result_is_unchanged() -> None:
-    """HTTP/MCP/CLI manager 与 Agent 路径使用同一 secret-safe 日志语义。"""
+    """
+    HTTP/MCP/CLI manager 与 Agent 路径使用同一 secret-safe 日志语义。
+    """
     tool = _SecretResultTool(session_id="session-1", user_id="user-1")
     manager = MoviePilotToolsManager(is_admin=True)
     manager.tools = [tool]
@@ -1628,7 +1856,9 @@ def test_direct_manager_logs_are_sanitized_but_result_is_unchanged() -> None:
 
 
 def test_tool_error_does_not_echo_secret_to_logs_or_result() -> None:
-    """异常消息中的凭据既不能进日志，也不能回显给模型或 direct 调用方。"""
+    """
+    异常消息中的凭据既不能进日志，也不能回显给模型或 direct 调用方。
+    """
     tool = _SecretErrorTool(session_id="session-1", user_id="user-1")
     payload = {"token": SECRET_MARKER}
     mock_logger = MagicMock()

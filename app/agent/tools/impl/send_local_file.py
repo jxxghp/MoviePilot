@@ -1,4 +1,6 @@
-"""发送本地附件工具。"""
+"""
+发送本地附件工具。
+"""
 
 from pathlib import Path
 from typing import Optional, Type
@@ -14,48 +16,76 @@ from app.schemas.types import NotificationChannel
 
 
 class SendLocalFileInput(BaseModel):
-    """发送本地附件工具输入。"""
+    """
+    发送本地附件工具输入。
+    """
 
     file_path: str = Field(
         ...,
-        description="Absolute path to the local image or file to send to the user",
+        description="发送给当前用户的本地图片或文件绝对路径",
     )
     message: Optional[str] = Field(
         None,
-        description="Optional message or caption to send with the attachment",
+        description="随附件发送的可选说明或文字",
     )
     title: Optional[str] = Field(
         None,
-        description="Optional short title shown together with the attachment",
+        description="随附件展示的可选简短标题",
     )
     file_name: Optional[str] = Field(
         None,
-        description="Optional override filename presented to the user when downloading",
+        description="用户下载时展示的可选替代文件名",
     )
 
     @model_validator(mode="after")
     def validate_file_path(self):
+        """
+        拒绝空的附件路径。
+
+        :return: 通过检查的当前输入模型
+        :raises ValueError: file_path 为空
+        """
         if not self.file_path:
             raise ValueError("file_path 不能为空")
         return self
 
 
 class SendLocalFileTool(MoviePilotTool):
-    name: str = "send_local_file"
-    tags: list[str] = [
-        ToolTag.Write,
-        ToolTag.Message,
-        ToolTag.File,
-    ]
-    sends_message: bool = True
-    description: str = (
-        "Send a local image or file from the server filesystem to the current user. "
-        "Use this when you have generated or identified a local file the user should download."
+    """
+    在支持附件的渠道中向当前用户发送本地文件。
+    """
+    name: str = Field(
+        default="send_local_file",
+        description="供模型调用的稳定工具名称",
     )
-    args_schema: Type[BaseModel] = SendLocalFileInput
-    require_admin: bool = True
+    tags: list[str] = Field(
+        default=[ToolTag.Write, ToolTag.Message, ToolTag.File],
+        description="工具的能力和权限分类标签，初始化时会统一归一化",
+    )
+    sends_message: bool = Field(
+        default=True,
+        description="工具是否直接向当前用户发送消息",
+    )
+    description: str = Field(
+        default="将服务器文件系统中的本地图片或文件发送给当前用户。已生成或找到需要让用户下载的本地文件时使用。",
+        description="供模型理解工具用途、输入约束和调用边界的说明",
+    )
+    args_schema: Type[BaseModel] = Field(
+        default=SendLocalFileInput,
+        description="工具输入参数的验证模型或 JSON Schema",
+    )
+    require_admin: bool = Field(
+        default=True,
+        description="是否仅允许系统管理员调用",
+    )
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
+        """
+        根据本地附件路径生成发送进度提示。
+
+        :param kwargs: 工具输入参数，使用其中的 file_path
+        :return: 包含附件文件名的用户提示
+        """
         file_path = kwargs.get("file_path", "")
         file_name = Path(file_path).name if file_path else "未知文件"
         return f"发送本地附件: {file_name}"
@@ -68,6 +98,16 @@ class SendLocalFileTool(MoviePilotTool):
         file_name: Optional[str] = None,
         **kwargs,
     ) -> str:
+        """
+        通过当前会话渠道发送已有本地附件。
+
+        :param file_path: 附件路径，展开用户目录并将相对路径解析为绝对路径
+        :param message: 随附件发送的可选正文
+        :param title: 随附件展示的可选标题
+        :param file_name: 下载展示名称；未提供时使用实际文件名
+        :param kwargs: 工具调用框架传入的扩展参数
+        :return: 发送成功提示；渠道不支持、会话缺失或文件无效时返回原因
+        """
         if not self._channel or not self._source:
             return "当前不在可回传消息的会话中，无法发送附件"
 

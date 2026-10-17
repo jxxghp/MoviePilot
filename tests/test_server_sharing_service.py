@@ -1,3 +1,7 @@
+"""
+验证共享识别服务的查询、上报与缓存行为。
+"""
+
 import asyncio
 import json
 from types import SimpleNamespace
@@ -8,7 +12,9 @@ from app.application.workflow import WorkflowSnapshot
 
 
 def _workflow(*, actions=(), flows=()) -> WorkflowSnapshot:
-    """构造中心服务分享使用的真实工作流快照。"""
+    """
+    构造中心服务分享使用的真实工作流快照。
+    """
     return WorkflowSnapshot(
         id=1,
         name="Demo Workflow",
@@ -32,9 +38,13 @@ def _workflow(*, actions=(), flows=()) -> WorkflowSnapshot:
 
 
 def _service(**overrides) -> ServerSharingService:
-    """构造不依赖数据库和网络的中心服务分享用例。"""
+    """
+    构造不依赖数据库和网络的中心服务分享用例。
+    """
     def handle_response(response, clear):
-        """模拟旧 Helper 的成功响应和缓存失效顺序。"""
+        """
+        模拟旧 Helper 的成功响应和缓存失效顺序。
+        """
         clear()
         return response.status_code == 200, ""
 
@@ -57,7 +67,9 @@ def _service(**overrides) -> ServerSharingService:
 
 
 def test_subscribe_share_builds_public_payload_and_clears_cache_after_success():
-    """订阅分享隐藏本地字段，并在成功响应后触发缓存失效。"""
+    """
+    订阅分享隐藏本地字段，并在成功响应后触发缓存失效。
+    """
     sender = Mock(return_value=SimpleNamespace(status_code=200))
     clear = Mock()
     subscribe = SimpleNamespace(to_dict=lambda: {
@@ -90,7 +102,9 @@ def test_subscribe_share_builds_public_payload_and_clears_cache_after_success():
 
 
 def test_workflow_validation_stops_before_transport():
-    """缺少动作或流程的工作流不会进入中心服务传输。"""
+    """
+    缺少动作或流程的工作流不会进入中心服务传输。
+    """
     sender = Mock()
     workflow = _workflow(flows=({"id": 1},))
     service = _service(
@@ -111,7 +125,9 @@ def test_workflow_validation_stops_before_transport():
 
 
 def test_workflow_share_serializes_snapshot_without_local_fields():
-    """同步工作流分享从冻结快照生成兼容载荷并剔除本地上下文。"""
+    """
+    同步工作流分享从冻结快照生成兼容载荷并剔除本地上下文。
+    """
     sender = Mock(return_value=SimpleNamespace(status_code=200))
     workflow = _workflow(
         actions=({"id": "action-1"},),
@@ -141,7 +157,9 @@ def test_workflow_share_serializes_snapshot_without_local_fields():
 
 
 def test_async_subscribe_share_uses_async_reader_and_transport():
-    """异步分享路径不会回退到同步数据库或网络端口。"""
+    """
+    异步分享路径不会回退到同步数据库或网络端口。
+    """
     subscribe = SimpleNamespace(to_dict=lambda: {
         "name": "Demo",
         "type": "电影",
@@ -169,7 +187,9 @@ def test_async_subscribe_share_uses_async_reader_and_transport():
 
 
 def test_async_workflow_share_uses_snapshot_reader_and_transport():
-    """异步工作流分享复用同一快照契约且不回退同步端口。"""
+    """
+    异步工作流分享复用同一快照契约且不回退同步端口。
+    """
     workflow = _workflow(
         actions=({"id": "action-1"},),
         flows=({"source": "action-1", "target": "end"},),

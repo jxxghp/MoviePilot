@@ -1,3 +1,7 @@
+"""
+按站点配置抓取并解析种子或字幕，兼容 HTML、RSS 和 Rust 加速解析。
+"""
+
 import datetime
 import re
 import traceback
@@ -40,7 +44,8 @@ def _describe_unusable_response(response: Any) -> str:
     status_code = getattr(response, "status_code", None)
     try:
         body = str(response.text or "")
-    except Exception:  # noqa: BLE001 - 正文解码失败时只保留状态码
+    # 响应正文的解码错误可能来自不同客户端，此处统一回退到状态码。
+    except Exception:  # noqa: BLE001
         body = ""
     title = _HTML_TITLE_PATTERN.search(body[:_FAILURE_TITLE_SCAN_CHARS])
     source = title.group(1) if title else body[:_FAILURE_TITLE_SCAN_CHARS]
@@ -52,7 +57,13 @@ def _describe_unusable_response(response: Any) -> str:
 
 
 def select_media_categories(category: Optional[JsonDict], mtype: Optional[MediaType]) -> JsonList:
-    """根据媒体类型选择站点索引配置中的分类列表。"""
+    """
+    根据媒体类型选择站点索引配置中的分类列表。
+
+    :param category: 按 movie、tv、music 分组的站点分类配置
+    :param mtype: 目标媒体类型；未指定或未知时合并三类配置
+    :return: 匹配的分类项列表；无配置时返回空列表
+    """
     if not category:
         return []
     if mtype == MediaType.TV:
@@ -69,7 +80,13 @@ def select_media_categories(category: Optional[JsonDict], mtype: Optional[MediaT
 
 
 def resolve_category_media_type(category_value: Any, category: Optional[JsonDict]) -> MediaType:
-    """将站点分类 ID 映射为统一的电影、电视剧或音乐类型。"""
+    """
+    将站点分类 ID 映射为统一的电影、电视剧或音乐类型。
+
+    :param category_value: 从种子记录读取的分类 ID，比较时转换为字符串
+    :param category: 按媒体类型分组的站点分类配置
+    :return: 唯一匹配的媒体类型；分类缺失、未匹配或匹配多种类型时返回 UNKNOWN
+    """
     if category_value is None or not category:
         return MediaType.UNKNOWN
     category_id = str(category_value)
@@ -91,7 +108,7 @@ def resolve_category_media_type(category_value: Any, category: Optional[JsonDict
 
 class SiteSpider:
     """
-    站点爬虫
+    按站点资源中的路径、选择器和模板完成种子或字幕搜索解析。
     """
 
     _default_result_num = 100
@@ -104,19 +121,26 @@ class SiteSpider:
     domain: Optional[str]
     requested_result_media_type: Optional[MediaType]
 
+    # 用受控属性隐藏运行时类型，覆写内置特殊属性需要静态检查例外。
     @property  # type: ignore[misc]
     def __class__(self) -> type[object]:  # type: ignore[override]
-        """隐藏 Spider 的真实类型，避免模板或脚本读取内部实现。"""
+        """
+        隐藏 Spider 的真实类型，避免模板或脚本读取内部实现。
+        """
         return object
 
     @property
     def __dict__(self) -> JsonDict:  # type: ignore[override]
-        """隐藏 Spider 实例属性，避免外部枚举请求上下文。"""
+        """
+        隐藏 Spider 实例属性，避免外部枚举请求上下文。
+        """
         return {}
 
     @property
     def __dir__(self) -> Any:
-        """拒绝外部列举 Spider 的受保护属性。"""
+        """
+        拒绝外部列举 Spider 的受保护属性。
+        """
         raise AttributeError("Cannot read protected attribute!")
 
     def __init__(self,
@@ -128,13 +152,15 @@ class SiteSpider:
                  referer: Optional[str] = None,
                  search_type: Optional[str] = "torrents"):
         """
-        设置查询参数
-        :param indexer: 索引器
-        :param keyword: 搜索关键字，如果数组则为批量搜索
-        :param mtype: 媒体类型
-        :param cat: 搜索分类
-        :param page: 页码
-        :param referer: Referer
+        根据站点资源配置保存搜索参数、认证信息和字段解析规则。
+
+        :param indexer: 站点配置；为空时提前结束，不建立搜索上下文
+        :param keyword: 搜索关键词；开启批量模式的站点也可接收关键词数组
+        :param mtype: 目标媒体类型，未指定时使用通用搜索分类
+        :param cat: 用户显式选择的站点分类
+        :param page: 从 0 开始的页码
+        :param referer: 请求来源地址，用于需要来源校验的站点
+        :param search_type: subtitles 选择字幕配置，空值按 torrents 处理
         """
         if not indexer:
             return
@@ -184,7 +210,6 @@ class SiteSpider:
         self.proxy_server = get_runtime_setting('PROXY_SERVER') if indexer.get('proxy') else None
         self.cookie = indexer.get('cookie')
         self.referer = referer
-        # 初始化属性
         self.is_error = False
         # is_error 为真时的失败原因，供搜索失败提示展示
         self.error_detail: Optional[str] = None
@@ -213,7 +238,7 @@ class SiteSpider:
 
     def __get_search_url(self) -> str:
         """
-        获取搜索URL
+        获取搜索URL。
         """
         self._result_offset = 0
         search = self.search or {}
@@ -313,7 +338,7 @@ class SiteSpider:
                             if category_param:
                                 category_filter_selected = True
                                 # 某些站点（例如憨憨）使用重复的 cat[] 参数，字典值列表可由
-                                # UrlUtils.combine_url 以 doseq=True 正确展开。
+                                # URL 拼接函数以 doseq=True 正确展开。
                                 category_id = cat.get("value", cat.get("id"))
                                 current_value = params.get(category_param)
                                 if current_value is None:
@@ -389,14 +414,18 @@ class SiteSpider:
         return search_word
 
     def __can_search(self) -> bool:
-        """判断当前站点配置与请求媒体类型是否允许发起搜索。"""
+        """
+        判断当前站点配置与请求媒体类型是否允许发起搜索。
+        """
         if self.site_media_type and self.mtype and self.site_media_type != self.mtype:
             return False
         return bool(self.search and self.domain)
 
     @staticmethod
     def __decode_response(response: Any) -> Any:
-        """按统一编码策略将同步或异步响应投影为待解析文本。"""
+        """
+        按统一编码策略将同步或异步响应投影为待解析文本。
+        """
         return RequestUtils.get_decoded_html_content(
             response,
             performance_mode=get_runtime_setting('ENCODING_DETECTION_PERFORMANCE_MODE'),
@@ -405,17 +434,17 @@ class SiteSpider:
 
     def get_torrents(self) -> JsonList:
         """
-        开始请求
+        同步请求站点搜索页面并解析种子或字幕结果。
+
+        :return: 解析后的记录列表；不允许搜索或请求解析失败时为空，失败详情记录在实例中
         """
         if not self.__can_search():
             return []
 
-        # 获取搜索URL
         searchurl = self.__get_search_url()
 
         logger.info(f"开始请求：{searchurl}")
 
-        # requests请求
         ret = RequestUtils(
             ua=self.ua,
             cookies=self.cookie,
@@ -426,22 +455,21 @@ class SiteSpider:
         html_text = self.__decode_response(ret)
         if not html_text:
             self.error_detail = _describe_unusable_response(ret)
-        # 解析返回
         return self.parse(html_text)
 
     async def async_get_torrents(self) -> JsonList:
         """
-        异步请求
+        异步请求站点搜索页面，再在线程池中解析种子或字幕结果。
+
+        :return: 解析后的记录列表；不允许搜索或请求解析失败时为空，失败详情记录在实例中
         """
         if not self.__can_search():
             return []
 
-        # 获取搜索URL
         searchurl = self.__get_search_url()
 
         logger.info(f"开始异步请求：{searchurl}")
 
-        # httpx请求
         ret = await AsyncRequestUtils(
             ua=self.ua,
             cookies=self.cookie,
@@ -452,11 +480,12 @@ class SiteSpider:
         html_text = self.__decode_response(ret)
         if not html_text:
             self.error_detail = _describe_unusable_response(ret)
-        # 解析返回
         return cast(JsonList, await run_in_threadpool(self.parse, html_text))
 
     def __get_title(self, torrent: Any) -> None:
-        """按站点字段配置提取并清洗种子标题。"""
+        """
+        按站点字段配置提取并清洗种子标题。
+        """
         if 'title' not in self.fields:
             return
         selector = self.fields.get('title', {})
@@ -478,7 +507,9 @@ class SiteSpider:
                                                          selector.get('filters'))
 
     def __get_description(self, torrent: Any) -> None:
-        """按选择器或模板生成种子副标题。"""
+        """
+        按选择器或模板生成种子副标题。
+        """
         if 'description' not in self.fields:
             return
         selector = self.fields.get('description', {})
@@ -512,7 +543,9 @@ class SiteSpider:
                                                                selector.get('filters'))
 
     def __get_detail(self, torrent: Any) -> None:
-        """提取并规范化种子详情页地址。"""
+        """
+        提取并规范化种子详情页地址。
+        """
         if 'details' not in self.fields:
             return
         selector = self.fields.get('details', {})
@@ -530,7 +563,9 @@ class SiteSpider:
                 self.torrents_info['page_url'] = detail_link
 
     def __get_download(self, torrent: Any) -> None:
-        """提取并规范化种子下载地址。"""
+        """
+        提取并规范化种子下载地址。
+        """
         if 'download' not in self.fields:
             return
         selector = self.fields.get('download', {})
@@ -578,7 +613,9 @@ class SiteSpider:
             self.torrents_info['language_icon'] = self.__normalize_link(icon_link)
 
     def __get_imdbid(self, torrent: Any) -> None:
-        """提取种子关联的 IMDb 标识。"""
+        """
+        提取种子关联的 IMDb 标识。
+        """
         if "imdbid" not in self.fields:
             return
         selector = self.fields.get('imdbid', {})
@@ -586,7 +623,9 @@ class SiteSpider:
         self.torrents_info['imdbid'] = self.__filter_text(item, selector.get('filters'))
 
     def __get_size(self, torrent: Any) -> None:
-        """提取种子大小并转换为字节数。"""
+        """
+        提取种子大小并转换为字节数。
+        """
         if 'size' not in self.fields:
             return
         selector = self.fields.get('size', {})
@@ -600,7 +639,9 @@ class SiteSpider:
             self.torrents_info['size'] = 0
 
     def __get_leechers(self, torrent: Any) -> None:
-        """提取种子的下载人数。"""
+        """
+        提取种子的下载人数。
+        """
         if 'leechers' not in self.fields:
             return
         selector = self.fields.get('leechers', {})
@@ -614,7 +655,9 @@ class SiteSpider:
             self.torrents_info['peers'] = 0
 
     def __get_seeders(self, torrent: Any) -> None:
-        """提取种子的做种人数。"""
+        """
+        提取种子的做种人数。
+        """
         if 'seeders' not in self.fields:
             return
         selector = self.fields.get('seeders', {})
@@ -628,7 +671,9 @@ class SiteSpider:
             self.torrents_info['seeders'] = 0
 
     def __get_grabs(self, torrent: Any) -> None:
-        """提取种子的完成人数。"""
+        """
+        提取种子的完成人数。
+        """
         if 'grabs' not in self.fields:
             return
         selector = self.fields.get('grabs', {})
@@ -642,7 +687,9 @@ class SiteSpider:
             self.torrents_info['grabs'] = 0
 
     def __get_pubdate(self, torrent: Any) -> None:
-        """按站点日期配置提取并规范化发布时间。"""
+        """
+        按站点日期配置提取并规范化发布时间。
+        """
         if 'date_added' not in self.fields and 'date' not in self.fields:
             return
         selector = self.fields.get('date_added', {})
@@ -746,7 +793,9 @@ class SiteSpider:
             return True
 
     def __get_date_elapsed(self, torrent: Any) -> None:
-        """提取相对发布时间对应的已过秒数。"""
+        """
+        提取相对发布时间对应的已过秒数。
+        """
         if 'date_elapsed' not in self.fields:
             return
         selector = self.fields.get('date_elapsed', {})
@@ -754,7 +803,9 @@ class SiteSpider:
         self.torrents_info['date_elapsed'] = self.__filter_text(date_elapsed, selector.get('filters'))
 
     def __get_downloadvolumefactor(self, torrent: Any) -> None:
-        """按促销标签解析种子下载系数。"""
+        """
+        按促销标签解析种子下载系数。
+        """
         selector = self.fields.get('downloadvolumefactor', {})
         if not selector:
             return
@@ -778,7 +829,9 @@ class SiteSpider:
                     self.torrents_info['downloadvolumefactor'] = int(downloadvolumefactor.group(1))
 
     def __get_uploadvolumefactor(self, torrent: Any) -> None:
-        """按促销标签解析种子上传系数。"""
+        """
+        按促销标签解析种子上传系数。
+        """
         selector = self.fields.get('uploadvolumefactor', {})
         if not selector:
             return
@@ -802,7 +855,9 @@ class SiteSpider:
                     self.torrents_info['uploadvolumefactor'] = int(uploadvolumefactor.group(1))
 
     def __get_labels(self, torrent: Any) -> None:
-        """提取并清洗种子标签列表。"""
+        """
+        提取并清洗种子标签列表。
+        """
         if 'labels' not in self.fields:
             return
         selector = self.fields.get('labels', {})
@@ -824,7 +879,9 @@ class SiteSpider:
             del labels
 
     def __get_free_date(self, torrent: Any) -> None:
-        """提取种子免费促销截止时间。"""
+        """
+        提取种子免费促销截止时间。
+        """
         if 'freedate' not in self.fields:
             return
         selector = self.fields.get('freedate', {})
@@ -832,7 +889,9 @@ class SiteSpider:
         self.torrents_info['freedate'] = self.__filter_text(freedate, selector.get('filters'))
 
     def __get_hit_and_run(self, torrent: Any) -> None:
-        """判定种子是否带有 Hit and Run 要求。"""
+        """
+        判定种子是否带有 Hit and Run 要求。
+        """
         if 'hr' not in self.fields:
             return
         selector = self.fields.get('hr', {})
@@ -847,7 +906,9 @@ class SiteSpider:
             del hit_and_run
 
     def __get_category(self, torrent: Any) -> None:
-        """将站点分类字段投影为统一媒体类型。"""
+        """
+        将站点分类字段投影为统一媒体类型。
+        """
         if self.requested_result_media_type:
             self.torrents_info['category'] = self.requested_result_media_type.value
             return
@@ -935,7 +996,8 @@ class SiteSpider:
 
     def _safe_query(self, torrent: Any, selector_config: Optional[JsonDict]) -> Optional[str]:
         """
-        安全地执行PyQuery查询并自动清理资源
+        安全地执行PyQuery查询并自动清理资源。
+
         :param torrent: PyQuery对象
         :param selector_config: 选择器配置
         :return: 处理后的结果
@@ -958,44 +1020,30 @@ class SiteSpider:
 
     def get_info(self, torrent: Any) -> JsonDict:
         """
-        解析单条种子数据
+        按站点字段配置解析单条种子，并清理临时字段缓存。
+
+        :param torrent: 当前种子条目对应的页面查询对象
+        :return: 种子字段字典的副本；解析失败时返回空字典
         """
         # 每次调用时重新初始化，避免数据累积
         self.torrents_info = {}
         try:
-            # 标题
             self.__get_title(torrent)
-            # 描述
             self.__get_description(torrent)
-            # 详情页面
             self.__get_detail(torrent)
-            # 下载链接
             self.__get_download(torrent)
-            # 完成数
             self.__get_grabs(torrent)
-            # 下载数
             self.__get_leechers(torrent)
-            # 做种数
             self.__get_seeders(torrent)
-            # 大小
             self.__get_size(torrent)
-            # IMDBID
             self.__get_imdbid(torrent)
-            # 下载系数
             self.__get_downloadvolumefactor(torrent)
-            # 上传系数
             self.__get_uploadvolumefactor(torrent)
-            # 发布时间
             self.__get_pubdate(torrent)
-            # 已发布时间
             self.__get_date_elapsed(torrent)
-            # 免费载止时间
             self.__get_free_date(torrent)
-            # 标签
             self.__get_labels(torrent)
-            # HR
             self.__get_hit_and_run(torrent)
-            # 分类
             self.__get_category(torrent)
             # 返回当前种子信息的副本，而不是引用
             return self.torrents_info.copy() if self.torrents_info else {}
@@ -1007,7 +1055,10 @@ class SiteSpider:
 
     def get_subtitle_info(self, subtitle: Any) -> JsonDict:
         """
-        解析单条字幕数据。
+        按站点字段配置解析单条字幕，并补齐字幕和种子标识。
+
+        :param subtitle: 当前字幕条目对应的页面查询对象
+        :return: 字幕字段字典的副本；缺少标题、下载地址或解析失败时返回空字典
         """
         self.torrents_info = {}
         try:
@@ -1038,7 +1089,7 @@ class SiteSpider:
     @staticmethod
     def __filter_text(text: Optional[str], filters: Optional[List[JsonDict]]) -> Optional[str]:
         """
-        对文件进行处理
+        按字段配置依次执行文本过滤器。
         """
         if not text or not filters or not isinstance(filters, list):
             return text
@@ -1078,7 +1129,7 @@ class SiteSpider:
     @staticmethod
     def __remove(item: Any, selector: Optional[JsonDict]) -> None:
         """
-        移除元素
+        移除元素。
         """
         if selector and "remove" in selector:
             removelist = selector.get('remove', '').split(', ')
@@ -1140,7 +1191,9 @@ class SiteSpider:
         )
 
     def __slice_search_results(self, html_doc: Any, html_text: str) -> str:
-        """无服务端页码时先保留当前页原始行，确保 Python 与 Rust 使用相同窗口。"""
+        """
+        无服务端页码时先保留当前页原始行，确保 Python 与 Rust 使用相同窗口。
+        """
         if not self._result_offset:
             return html_text
         rows = html_doc(self.list.get('selector', ''))
@@ -1151,6 +1204,11 @@ class SiteSpider:
     def parse(self, html_text: str) -> JsonList:
         """
         解析页面或 RSS 索引，统一使用 HTML 选择器语义。
+
+        优先尝试 Rust 解析，不可用时使用 Python 选择器；读取结果后清理临时页面对象。
+
+        :param html_text: 已解码的站点响应正文
+        :return: 当前页的种子或字幕记录；空正文、登录提示页或解析失败时为空列表
         """
         if not html_text:
             self.is_error = True
@@ -1173,6 +1231,7 @@ class SiteSpider:
             return []
         finally:
             if 'status_doc' in locals():
+                # 解析前失败时可能尚未创建文档；上方检查保证此处已有可清理对象。
                 status_doc.clear()  # noqa
                 del status_doc
 

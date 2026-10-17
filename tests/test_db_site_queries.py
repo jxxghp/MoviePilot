@@ -20,12 +20,16 @@ from app.db.session import async_session_scope
 
 @pytest.fixture(autouse=True)
 def _track(db):
-    """把站点相关表纳入用例级回收。"""
+    """
+    把站点相关表纳入用例级回收。
+    """
     db.watermark(Site, SiteIcon, SiteStatistic, SiteUserData)
 
 
 def _site(name: str, domain: str, pri: int = 1, is_active: bool = True) -> Site:
-    """构造一条站点记录。"""
+    """
+    构造一条站点记录。
+    """
     return Site(name=name, domain=domain, url=f"https://{domain}/", pri=pri, is_active=is_active)
 
 
@@ -84,7 +88,9 @@ def test_site_list_order_by_pri_is_ascending(db):
 
 
 def test_site_oper_filters_paginates_and_counts_in_database(db):
-    """站点筛选必须在 LIMIT/OFFSET 前完成，计数使用同一组条件。"""
+    """
+    站点筛选必须在 LIMIT/OFFSET 前完成，计数使用同一组条件。
+    """
     first = db.add(_site("Agent分页一", "agent-page-1.test", pri=1))
     second = db.add(_site("Agent分页二", "agent-page-2.test", pri=2))
     db.add(
@@ -93,7 +99,9 @@ def test_site_oper_filters_paginates_and_counts_in_database(db):
     )
 
     async def query(session):
-        """在同一异步会话中执行筛选计数和第二页查询。"""
+        """
+        在同一异步会话中执行筛选计数和第二页查询。
+        """
         oper = SiteOper(session)
         total = await oper.async_count_sites(is_active=True, name="Agent分页")
         rows = await oper.async_list_order_by_pri(
@@ -146,7 +154,7 @@ def test_site_reset_empties_the_table(db):
 
 
 # --------------------------------------------------------------------------- #
-# SiteIcon / SiteStatistic
+# 站点图标与统计数据查询
 # --------------------------------------------------------------------------- #
 
 def test_siteicon_get_by_domain_matches_async_twin(db):
@@ -189,7 +197,9 @@ def test_sitestatistic_reset_empties_the_table(db):
 
 
 def test_site_statistics_oper_paginates_and_counts(db):
-    """站点统计列表在数据库中分页，并返回未分页前的精确总数。"""
+    """
+    站点统计列表在数据库中分页，并返回未分页前的精确总数。
+    """
     first = db.add(
         SiteStatistic(domain="stat-page-1.test", success=1, fail=0, seconds=1)
     )
@@ -198,7 +208,9 @@ def test_site_statistics_oper_paginates_and_counts(db):
     )
 
     async def query(session):
-        """读取统计总数和第二页。"""
+        """
+        读取统计总数和第二页。
+        """
         oper = SiteOper(session)
         total = await oper.async_count_statistics()
         rows = await oper.async_list_statistics(page=2, count=1)
@@ -217,7 +229,9 @@ def test_site_statistics_oper_paginates_and_counts(db):
 
 def _userdata(domain: str, day: str, time: str, upload: float = 0,
               err_msg: str = None) -> SiteUserData:
-    """构造一条站点用户数据快照。"""
+    """
+    构造一条站点用户数据快照。
+    """
     return SiteUserData(domain=domain, name=domain, username="u", upload=upload,
                         updated_day=day, updated_time=time, err_msg=err_msg)
 
@@ -256,7 +270,9 @@ def test_userdata_get_by_domain_matches_async_twin(db):
 
 
 def test_site_oper_reuses_explicit_userdata_query_sessions(db, monkeypatch):
-    """站点用户数据 Oper 必须复用调用方同步与异步会话。"""
+    """
+    站点用户数据 Oper 必须复用调用方同步与异步会话。
+    """
     db.add(_userdata("explicit-site.test", "2026-08-12", "10:00:00"))
     monkeypatch.setattr(
         db_base,
@@ -269,7 +285,9 @@ def test_site_oper_reuses_explicit_userdata_query_sessions(db, monkeypatch):
     assert SiteOper(db.session).get_userdata_by_domain("explicit-site.test")
 
     async def check() -> None:
-        """验证异步站点用户数据查询复用显式 AsyncSession。"""
+        """
+        验证异步站点用户数据查询复用显式 AsyncSession。
+        """
         async with async_session_scope() as session:
             monkeypatch.setattr(
                 db_base,

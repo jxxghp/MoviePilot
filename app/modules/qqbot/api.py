@@ -1,6 +1,7 @@
 """
-QQ Bot API - Python 实现
-参考 QQ 开放平台官方 API: https://bot.q.qq.com/wiki/develop/api/
+QQ 开放平台令牌缓存、消息发送和网关地址查询。
+
+接口参考：https://bot.q.qq.com/wiki/develop/api/
 """
 
 import time
@@ -12,13 +13,21 @@ from app.runtime.log import logger
 API_BASE = "https://api.sgroup.qq.com"
 TOKEN_URL = "https://bots.qq.com/app/getAppAccessToken"
 
-# Token 缓存
+# 进程仅保留一个应用的访问令牌与毫秒级过期时间。
 _cached_token: Optional[dict[str, Any]] = None
 
 
 def get_access_token(app_id: str, client_secret: str) -> str:
     """
-    获取 AccessToken（带缓存，提前 5 分钟刷新）
+    获取 QQ 访问令牌，复用尚未进入刷新窗口的缓存。
+
+    进程只保留一个应用的令牌；到期前 5 分钟重新获取，切换应用会清除旧缓存。
+    请求或响应解析失败时记录错误并继续抛出异常。
+
+    :param app_id: 机器人应用标识，用于区分缓存归属
+    :param client_secret: 机器人应用密钥
+    :return: 有效访问令牌字符串
+    :raises ValueError: 响应为空、格式无效或缺少有效令牌
     """
     global _cached_token
     now_ms = int(time.time() * 1000)
@@ -34,7 +43,8 @@ def get_access_token(app_id: str, client_secret: str) -> str:
     try:
         resp = RequestUtils(timeout=30).post_res(
             TOKEN_URL,
-            json={"appId": app_id, "clientSecret": client_secret},  # QQ API 使用 camelCase
+            # QQ API 要求此处使用驼峰命名的字段。
+            json={"appId": app_id, "clientSecret": client_secret},
             headers={"Content-Type": "application/json"},
         )
         if not resp or not resp.json():
@@ -65,7 +75,9 @@ def get_access_token(app_id: str, client_secret: str) -> str:
 
 
 def clear_token_cache() -> None:
-    """清除 Token 缓存"""
+    """
+    清除 Token 缓存。
+    """
     global _cached_token
     _cached_token = None
 
@@ -77,7 +89,17 @@ def _api_request(
     body: Optional[dict[str, Any]] = None,
     timeout: int = 30,
 ) -> dict[str, Any]:
-    """通用 API 请求"""
+    """
+    携带机器人令牌请求 QQ API，并要求返回对象响应。
+
+    :param access_token: 机器人访问令牌
+    :param method: GET 使用查询请求，其他值均使用 POST
+    :param path: 相对于 QQ API 根地址的接口路径
+    :param body: POST JSON 载荷；未提供时发送空对象
+    :param timeout: 请求超时时间，单位秒
+    :return: 原始响应对象
+    :raises ValueError: 响应为空、不是对象或 HTTP 状态表示失败
+    """
     url = f"{API_BASE}{path}"
     headers = {
         "Authorization": f"QQBot {access_token}",
@@ -112,13 +134,17 @@ def send_proactive_c2c_message(
     keyboard: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """
-    主动发送 C2C 单聊消息（不需要 msg_id）
-    注意：每月限 4 条/用户，且用户必须曾与机器人交互过
-    :param access_token: 访问令牌
-    :param openid: 用户 openid
-    :param content: 消息内容
-    :param use_markdown: 是否使用 Markdown 格式（需机器人开通 Markdown 能力）
-    :param keyboard: 键盘按钮配置
+    主动发送单聊消息。
+
+    配额和可发送对象由 QQ 平台校验；本地不记录配额，接口失败时抛出异常。
+
+    :param access_token: 机器人访问令牌
+    :param openid: 接收用户 openid
+    :param content: 待发送正文；主动发送时会去掉首尾空白
+    :param use_markdown: 是否使用已获授权的 Markdown 消息能力
+    :param keyboard: 可选按钮配置
+    :return: QQ API 返回的原始消息对象
+    :raises ValueError: 内容为空或请求响应无效
     """
     if not content or not content.strip():
         raise ValueError("主动消息内容不能为空")
@@ -139,13 +165,17 @@ def send_proactive_group_message(
     keyboard: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """
-    主动发送群聊消息（不需要 msg_id）
-    注意：每月限 4 条/群，且群必须曾与机器人交互过
-    :param access_token: 访问令牌
-    :param group_openid: 群聊 openid
-    :param content: 消息内容
-    :param use_markdown: 是否使用 Markdown 格式（需机器人开通 Markdown 能力）
-    :param keyboard: 键盘按钮配置
+    主动发送群聊消息。
+
+    配额和可发送对象由 QQ 平台校验；本地不记录配额，接口失败时抛出异常。
+
+    :param access_token: 机器人访问令牌
+    :param group_openid: 接收群聊 openid
+    :param content: 待发送正文；主动发送时会去掉首尾空白
+    :param use_markdown: 是否使用已获授权的 Markdown 消息能力
+    :param keyboard: 可选按钮配置
+    :return: QQ API 返回的原始消息对象
+    :raises ValueError: 内容为空或请求响应无效
     """
     if not content or not content.strip():
         raise ValueError("主动消息内容不能为空")
@@ -165,7 +195,19 @@ def send_c2c_message(
     msg_id: Optional[str] = None,
     keyboard: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    """被动回复 C2C 单聊消息（1 小时内最多 4 次）"""
+    """
+    被动回复单聊消息。
+
+    配额和可发送对象由 QQ 平台校验；本地不记录配额，接口失败时抛出异常。
+    当前固定使用 msg_seq=1；调用方仍需遵守平台的回复时限和次数限制。
+
+    :param access_token: 机器人访问令牌
+    :param openid: 接收用户 openid
+    :param content: 待发送正文；主动发送时会去掉首尾空白
+    :param msg_id: 原始消息标识；提供时随请求发送以关联被动回复
+    :param keyboard: 可选按钮配置
+    :return: QQ API 返回的原始消息对象
+    """
     body = {"content": content, "msg_type": 0, "msg_seq": 1}
     if msg_id:
         body["msg_id"] = msg_id
@@ -183,7 +225,19 @@ def send_group_message(
     msg_id: Optional[str] = None,
     keyboard: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    """被动回复群聊消息（1 小时内最多 4 次）"""
+    """
+    被动回复群聊消息。
+
+    配额和可发送对象由 QQ 平台校验；本地不记录配额，接口失败时抛出异常。
+    当前固定使用 msg_seq=1；调用方仍需遵守平台的回复时限和次数限制。
+
+    :param access_token: 机器人访问令牌
+    :param group_openid: 接收群聊 openid
+    :param content: 待发送正文；主动发送时会去掉首尾空白
+    :param msg_id: 原始消息标识；提供时随请求发送以关联被动回复
+    :param keyboard: 可选按钮配置
+    :return: QQ API 返回的原始消息对象
+    """
     body = {"content": content, "msg_type": 0, "msg_seq": 1}
     if msg_id:
         body["msg_id"] = msg_id
@@ -196,7 +250,11 @@ def send_group_message(
 
 def get_gateway_url(access_token: str) -> str:
     """
-    获取 WebSocket Gateway URL
+    查询用于接收入站消息的 WebSocket 网关地址。
+
+    :param access_token: 机器人访问令牌
+    :return: 服务端返回的非空网关地址
+    :raises ValueError: 请求失败或响应缺少有效网关地址
     """
     data = _api_request(access_token, "GET", "/gateway")
     url = data.get("url")
@@ -214,13 +272,17 @@ def send_message(
     keyboard: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """
-    统一发送接口
-    :param access_token: 访问令牌
-    :param target: openid（c2c）或 group_openid（group）
-    :param content: 消息内容
-    :param msg_type: c2c 单聊 / group 群聊
-    :param msg_id: 可选，被动回复时传入原消息 id
-    :param keyboard: 可选，键盘按钮配置
+    按是否携带原消息标识选择主动发送或被动回复接口。
+
+    内容、额度、权限或请求失败时由底层接口抛出异常；本函数不进行重试。
+
+    :param access_token: 机器人访问令牌
+    :param target: 单聊用户 openid 或群聊 group_openid
+    :param content: 待发送消息正文
+    :param msg_type: c2c 表示单聊，group 表示群聊
+    :param msg_id: 原始消息标识；非空时使用被动回复接口
+    :param keyboard: 可选按钮配置
+    :return: QQ API 返回的原始消息对象
     """
     if msg_id:
         if msg_type == "c2c":

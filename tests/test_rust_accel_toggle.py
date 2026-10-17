@@ -1,3 +1,7 @@
+"""
+验证Rust 加速开关与不可用时的回退行为。
+"""
+
 from app.adapters.system import rust as rust_accel
 from app.runtime.config import settings
 
@@ -36,7 +40,9 @@ def test_rust_accel_runtime_switch_disables_fast_paths(monkeypatch):
 
 
 def test_free_threaded_runtime_requires_rust_acceleration(monkeypatch):
-    """free-threaded 运行时不能通过配置关闭 Rust 快路径。"""
+    """
+    free-threaded 运行时不能通过配置关闭 Rust 快路径。
+    """
     monkeypatch.setattr(settings, "RUST_ACCEL", False)
     monkeypatch.setattr(rust_accel, "is_required", lambda: True)
     monkeypatch.setattr(rust_accel, "_moviepilot_rust", _DummyRustExtension())

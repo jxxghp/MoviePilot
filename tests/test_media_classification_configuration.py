@@ -1,4 +1,6 @@
-"""分类策略版本服务的发布、历史、回滚和快照隔离测试。"""
+"""
+分类策略版本服务的发布、历史、回滚和快照隔离测试。
+"""
 
 from __future__ import annotations
 
@@ -35,15 +37,21 @@ T = TypeVar("T")
 
 
 class _MemoryPolicyStore:
-    """以深拷贝模拟数据库事实源和原子 revision 比较。"""
+    """
+    以深拷贝模拟数据库事实源和原子 revision 比较。
+    """
 
     def __init__(self) -> None:
-        """初始化空状态和成功写入计数。"""
+        """
+        初始化空状态和成功写入计数。
+        """
         self.persisted: ClassificationPolicyState | None = None
         self.write_count = 0
 
     def load(self) -> ClassificationPolicyState | None:
-        """返回与内部状态隔离的持久化快照。"""
+        """
+        返回与内部状态隔离的持久化快照。
+        """
         if self.persisted is None:
             return None
         return cast(
@@ -57,7 +65,9 @@ class _MemoryPolicyStore:
         expected_revision: int,
         state: ClassificationPolicyState,
     ) -> None:
-        """按当前活动 revision 原子替换状态包。"""
+        """
+        按当前活动 revision 原子替换状态包。
+        """
         current_revision = self.persisted.active.revision if self.persisted else 0
         if current_revision != expected_revision:
             raise ClassificationPolicyConflictError(
@@ -72,10 +82,14 @@ class _MemoryPolicyStore:
 
 
 class _InlineDatabaseExecutor:
-    """在测试协程中直接执行同步短事务操作。"""
+    """
+    在测试协程中直接执行同步短事务操作。
+    """
 
     async def run(self, operation: Callable[[], T]) -> T:
-        """执行并返回同步操作结果。"""
+        """
+        执行并返回同步操作结果。
+        """
         return operation()
 
 
@@ -85,7 +99,9 @@ def _service(
     asynchronous: bool = False,
     directories: list[dict[str, object]] | None = None,
 ) -> ClassificationPolicyConfigurationService:
-    """构造使用固定时钟的分类策略服务。"""
+    """
+    构造使用固定时钟的分类策略服务。
+    """
     return ClassificationPolicyConfigurationService(
         store,
         clock=lambda: NOW,
@@ -99,7 +115,9 @@ def _service(
 
 
 def _custom_category() -> ClassificationCategory:
-    """构造不参与 fallback、可被目录独立引用的电视剧分类。"""
+    """
+    构造不参与 fallback、可被目录独立引用的电视剧分类。
+    """
     return ClassificationCategory(
         id="tv.anime.jp",
         media_type="电视剧",
@@ -109,7 +127,9 @@ def _custom_category() -> ClassificationCategory:
 
 
 def _renamed_draft(name: str) -> ClassificationPolicy:
-    """构造只改变电影兜底分类显示信息的合法草稿。"""
+    """
+    构造只改变电影兜底分类显示信息的合法草稿。
+    """
     draft = build_default_classification_policy()
     draft.categories[0].name = name
     draft.categories[0].path = [name]
@@ -117,7 +137,9 @@ def _renamed_draft(name: str) -> ClassificationPolicy:
 
 
 def test_uninitialized_service_rejects_snapshot_reads() -> None:
-    """组合根初始化完成前不得向消费者暴露半成品策略。"""
+    """
+    组合根初始化完成前不得向消费者暴露半成品策略。
+    """
     service = _service(_MemoryPolicyStore())
 
     with pytest.raises(ClassificationPolicyNotInitializedError):
@@ -125,7 +147,9 @@ def test_uninitialized_service_rejects_snapshot_reads() -> None:
 
 
 def test_policy_schema_rejects_unknown_version_and_negative_revision() -> None:
-    """持久化边界不得把未知结构版本或负 revision 当成当前策略。"""
+    """
+    持久化边界不得把未知结构版本或负 revision 当成当前策略。
+    """
     with pytest.raises(ValidationError):
         ClassificationPolicy.model_validate({"schema_version": 3})
     with pytest.raises(ValidationError):
@@ -133,7 +157,9 @@ def test_policy_schema_rejects_unknown_version_and_negative_revision() -> None:
 
 
 def test_initialize_publishes_valid_three_media_fallbacks() -> None:
-    """首次初始化发布 revision 1，且三种媒体类型都有稳定兜底。"""
+    """
+    首次初始化发布 revision 1，且三种媒体类型都有稳定兜底。
+    """
     store = _MemoryPolicyStore()
     service = _service(store)
 
@@ -149,7 +175,9 @@ def test_initialize_publishes_valid_three_media_fallbacks() -> None:
 
 
 def test_initialize_loads_existing_state_without_republishing() -> None:
-    """已存在状态时初始化只加载，不生成额外 revision。"""
+    """
+    已存在状态时初始化只加载，不生成额外 revision。
+    """
     store = _MemoryPolicyStore()
     first = _service(store)
     expected = first.initialize()
@@ -162,7 +190,9 @@ def test_initialize_loads_existing_state_without_republishing() -> None:
 
 
 def test_dynamic_extension_fields_can_be_registered_after_startup() -> None:
-    """兼容配置写入口可登记新 TMDB 字段，且返回快照不能篡改内部目录。"""
+    """
+    兼容配置写入口可登记新 TMDB 字段，且返回快照不能篡改内部目录。
+    """
     service = _service(_MemoryPolicyStore())
     service.initialize()
     field = ClassificationFieldDefinition(
@@ -182,7 +212,9 @@ def test_dynamic_extension_fields_can_be_registered_after_startup() -> None:
 
 
 def test_publish_overrides_client_revision_and_tracks_history() -> None:
-    """发布只信任 expected revision，并把旧活动版本放入历史。"""
+    """
+    发布只信任 expected revision，并把旧活动版本放入历史。
+    """
     store = _MemoryPolicyStore()
     service = _service(store)
     service.initialize()
@@ -199,7 +231,9 @@ def test_publish_overrides_client_revision_and_tracks_history() -> None:
 
 
 def test_history_is_bounded_and_sorted_newest_first() -> None:
-    """连续发布只保留最近十个历史 revision。"""
+    """
+    连续发布只保留最近十个历史 revision。
+    """
     store = _MemoryPolicyStore()
     service = _service(store)
     service.initialize()
@@ -217,7 +251,9 @@ def test_history_is_bounded_and_sorted_newest_first() -> None:
 
 
 def test_stale_local_revision_is_rejected_without_store_write() -> None:
-    """客户端 revision 早于本进程快照时立即冲突且不调用持久化写入。"""
+    """
+    客户端 revision 早于本进程快照时立即冲突且不调用持久化写入。
+    """
     store = _MemoryPolicyStore()
     service = _service(store)
     service.initialize()
@@ -231,7 +267,9 @@ def test_stale_local_revision_is_rejected_without_store_write() -> None:
 
 
 def test_store_conflict_reloads_database_fact_snapshot() -> None:
-    """其他实例先提交后，本服务冲突并刷新为数据库中的新活动版本。"""
+    """
+    其他实例先提交后，本服务冲突并刷新为数据库中的新活动版本。
+    """
     store = _MemoryPolicyStore()
     service = _service(store)
     revision_one = service.initialize()
@@ -253,7 +291,9 @@ def test_store_conflict_reloads_database_fact_snapshot() -> None:
 
 
 def test_invalid_policy_does_not_change_storage_or_memory() -> None:
-    """结构化校验错误在打开写事务前阻止发布。"""
+    """
+    结构化校验错误在打开写事务前阻止发布。
+    """
     store = _MemoryPolicyStore()
     service = _service(store)
     service.initialize()
@@ -280,7 +320,9 @@ def test_referenced_directory_category_cannot_be_broken(
     mutation: str,
     expected_code: str,
 ) -> None:
-    """发布必须阻止删除、禁用或改变仍被目录稳定引用的分类类型。"""
+    """
+    发布必须阻止删除、禁用或改变仍被目录稳定引用的分类类型。
+    """
     directories: list[dict[str, object]] = []
     store = _MemoryPolicyStore()
     service = _service(store, directories=directories)
@@ -316,7 +358,9 @@ def test_referenced_directory_category_cannot_be_broken(
 
 
 def test_referenced_directory_category_path_can_be_renamed() -> None:
-    """分类路径和名称变化不得破坏以稳定 ID 建立的目录引用。"""
+    """
+    分类路径和名称变化不得破坏以稳定 ID 建立的目录引用。
+    """
     directories: list[dict[str, object]] = []
     service = _service(_MemoryPolicyStore(), directories=directories)
     service.initialize()
@@ -343,7 +387,9 @@ def test_referenced_directory_category_path_can_be_renamed() -> None:
 
 
 def test_rollback_cannot_restore_policy_that_breaks_directory_reference() -> None:
-    """回滚也必须执行与普通发布相同的目录稳定引用约束。"""
+    """
+    回滚也必须执行与普通发布相同的目录稳定引用约束。
+    """
     directories: list[dict[str, object]] = []
     service = _service(_MemoryPolicyStore(), directories=directories)
     service.initialize()
@@ -368,7 +414,9 @@ def test_rollback_cannot_restore_policy_that_breaks_directory_reference() -> Non
 
 
 def test_rollback_republishes_history_content_with_new_revision() -> None:
-    """回滚复制目标内容，但 revision 继续单调递增。"""
+    """
+    回滚复制目标内容，但 revision 继续单调递增。
+    """
     store = _MemoryPolicyStore()
     service = _service(store)
     service.initialize()
@@ -383,7 +431,9 @@ def test_rollback_republishes_history_content_with_new_revision() -> None:
 
 
 def test_rollback_rejects_revision_outside_bounded_history() -> None:
-    """不存在的目标 revision 不得被解释为默认策略或当前版本。"""
+    """
+    不存在的目标 revision 不得被解释为默认策略或当前版本。
+    """
     service = _service(_MemoryPolicyStore())
     service.initialize()
 
@@ -392,7 +442,9 @@ def test_rollback_rejects_revision_outside_bounded_history() -> None:
 
 
 def test_returned_active_state_and_history_cannot_mutate_internal_snapshot() -> None:
-    """所有读取结果都必须与服务内部活动引用隔离。"""
+    """
+    所有读取结果都必须与服务内部活动引用隔离。
+    """
     service = _service(_MemoryPolicyStore())
     initialized = service.initialize()
     service.publish(_renamed_draft("第二版"), expected_revision=1)
@@ -408,9 +460,12 @@ def test_returned_active_state_and_history_cannot_mutate_internal_snapshot() -> 
     assert service.history()[0].categories[0].name == initialized.categories[0].name
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.asyncio  # type: ignore[misc]
 async def test_async_entrypoints_delegate_to_same_version_semantics() -> None:
-    """异步入口通过执行端口复用同一套同步 revision 逻辑。"""
+    """
+    异步入口通过执行端口复用同一套同步 revision 逻辑。
+    """
     service = _service(_MemoryPolicyStore(), asynchronous=True)
 
     initialized = await service.async_initialize()

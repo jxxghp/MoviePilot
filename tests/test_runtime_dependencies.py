@@ -1,3 +1,7 @@
+"""
+验证运行依赖清单、锁定版本与环境约束。
+"""
+
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,6 +15,9 @@ from scripts import verify_runtime_profile
 
 
 def test_free_threaded_runtime_tracks_interpreter_build(monkeypatch):
+    """
+    根据解释器编译标记识别自由线程运行时，避免与当前 GIL 开关混淆。
+    """
     monkeypatch.setattr(
         environment.sysconfig,
         "get_config_var",
@@ -21,12 +28,18 @@ def test_free_threaded_runtime_tracks_interpreter_build(monkeypatch):
 
 
 def test_gil_status_tracks_current_interpreter_state(monkeypatch):
+    """
+    查询解释器当前 GIL 状态，支持运行时已禁用 GIL 的情况。
+    """
     monkeypatch.setattr(environment.sys, "_is_gil_enabled", lambda: False)
 
     assert environment.is_gil_enabled() is False
 
 
 def test_runtime_dependency_group_tracks_interpreter_abi(monkeypatch):
+    """
+    按解释器 ABI 选择标准或自由线程运行依赖组。
+    """
     monkeypatch.setattr(dependencies, "is_free_threaded_runtime", lambda: False)
     assert dependencies.runtime_dependency_group() == "runtime-standard"
 
@@ -35,6 +48,9 @@ def test_runtime_dependency_group_tracks_interpreter_abi(monkeypatch):
 
 
 def test_runtime_requirements_include_project_and_active_group(tmp_path: Path, monkeypatch):
+    """
+    运行依赖同时包含项目公共依赖与当前 ABI 对应的依赖组。
+    """
     project_file = tmp_path / "pyproject.toml"
     project_file.write_text(
         """
@@ -63,6 +79,9 @@ runtime-free-threaded = ["free-threaded==3"]
 
 
 def test_runtime_profiles_share_gil_safe_crcmod_distribution():
+    """
+    两种运行配置共享支持 GIL 策略的 CRC 实现，排除旧间接依赖。
+    """
     project_file = Path(__file__).resolve().parents[1] / "pyproject.toml"
     with project_file.open("rb") as file:
         document = tomllib.load(file)
@@ -81,7 +100,9 @@ def test_runtime_profiles_share_gil_safe_crcmod_distribution():
 
 
 def test_windows_runtime_profiles_isolate_pywin32_dependency():
-    """标准 Windows 保留 named-pipe 依赖，free-threaded profile 不解析 pywin32。"""
+    """
+    标准 Windows 保留 named-pipe 依赖，free-threaded profile 不解析 pywin32。
+    """
     project_file = Path(__file__).resolve().parents[1] / "pyproject.toml"
     with project_file.open("rb") as file:
         document = tomllib.load(file)
@@ -101,7 +122,9 @@ def test_windows_runtime_profiles_isolate_pywin32_dependency():
 
 
 def test_standard_runtime_uses_shared_rust_text_capabilities(monkeypatch):
-    """标准镜像的文本能力不得重新引入 profile 专属实现。"""
+    """
+    标准镜像的文本能力不得重新引入 profile 专属实现。
+    """
     imported = []
     moviepilot_rust = SimpleNamespace(
         is_available=lambda: True,
@@ -122,7 +145,9 @@ def test_standard_runtime_uses_shared_rust_text_capabilities(monkeypatch):
 
 
 def test_runtime_excluded_dependency_pairs_reads_uv_policy(tmp_path: Path):
-    """运行时诊断应复用 uv 排除配置，不维护第二份包名特判。"""
+    """
+    运行时诊断应复用 uv 排除配置，不维护第二份包名特判。
+    """
     project_file = tmp_path / "pyproject.toml"
     project_file.write_text(
         """
@@ -140,7 +165,9 @@ exclude-dependencies = [
 
 
 def test_runtime_profile_probe_accepts_only_declared_uv_exclusions(tmp_path: Path):
-    """CI 健康检查只能忽略 uv 配置中明确排除的依赖边。"""
+    """
+    CI 健康检查只能忽略 uv 配置中明确排除的依赖边。
+    """
     project_file = tmp_path / "pyproject.toml"
     project_file.write_text(
         """
@@ -166,7 +193,9 @@ exclude-dependencies = [
 
 
 def test_full_dependency_probe_rejects_psycopg_python_fallback(monkeypatch):
-    """V3t 构建不得把 psycopg 纯 Python 实现误认为可发布能力。"""
+    """
+    V3t 构建不得把 psycopg 纯 Python 实现误认为可发布能力。
+    """
     modules = {
         "moviepilot_rust": SimpleNamespace(
             is_available=lambda: True,

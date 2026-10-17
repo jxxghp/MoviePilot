@@ -92,7 +92,9 @@ __all__ = [
 
 
 class TransferQueueService:
-    """协调整理任务登记、入队、移除和队列视图查询。"""
+    """
+    协调整理任务登记、入队、移除和队列视图查询。
+    """
 
     def __init__(
             self,
@@ -109,7 +111,9 @@ class TransferQueueService:
                 Callable[[int, int], Tuple[List[Any], int]]
             ] = None,
     ) -> None:
-        """保存队列用例依赖，避免 Application 服务绑定具体线程队列实现。"""
+        """
+        保存队列用例依赖，避免 Application 服务绑定具体线程队列实现。
+        """
         self._register_task = register_task
         self._admit_task = admit_task
         self._enqueue = enqueue
@@ -121,7 +125,9 @@ class TransferQueueService:
         self._list_tasks_page = list_tasks_page
 
     def put(self, task: TransferTask, callback: TransferCallback) -> bool:
-        """先持久化准入事实再入队；任何前置失败都撤销内存作业视图。"""
+        """
+        先持久化准入事实再入队；任何前置失败都撤销内存作业视图。
+        """
         if not task or not self._register_task(task):
             return False
         try:
@@ -142,17 +148,23 @@ class TransferQueueService:
         return True
 
     def remove(self, fileitem: FileItem) -> None:
-        """从整理任务视图移除指定文件。"""
+        """
+        从整理任务视图移除指定文件。
+        """
         if fileitem:
             self._remove_task(fileitem)
 
     def list(self) -> List[TransferJob]:
-        """先处理失活任务，再返回当前整理作业视图。"""
+        """
+        先处理失活任务，再返回当前整理作业视图。
+        """
         self._expire_tasks()
         return self._list_tasks()
 
     def list_page(self, page: int, count: int) -> Tuple[List[Any], int]:
-        """返回受限队列快照，避免前端请求触发全量 DTO 序列化。"""
+        """
+        返回受限队列快照，避免前端请求触发全量 DTO 序列化。
+        """
         if page < 1 or count < 1:
             raise ValueError("队列分页参数必须为正数")
 

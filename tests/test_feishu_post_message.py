@@ -1,3 +1,7 @@
+"""
+验证飞书富文本事件的标题、正文、链接和图片引用解析。
+"""
+
 import json
 from unittest.mock import MagicMock, patch
 
@@ -7,11 +11,14 @@ ensure_optional_stub("psutil")
 ensure_optional_stub("dateparser")
 ensure_optional_stub("Pinyin2Hanzi", is_pinyin=lambda value: False)
 
+# 先安装可选依赖占位，避免加载飞书富文本解析模块时缺少依赖。
 from app.modules.feishu.feishu import Feishu  # noqa: E402
 
 
 def _build_feishu_client() -> Feishu:
-    """构造不会启动飞书长连接的测试客户端。"""
+    """
+    构造不会启动飞书长连接的测试客户端。
+    """
     with (
         patch.object(Feishu, "_build_api_client", return_value=MagicMock()),
         patch.object(Feishu, "_start_ws_client"),
@@ -24,7 +31,9 @@ def _build_feishu_client() -> Feishu:
 
 
 def test_on_message_extracts_localized_post_text_and_images():
-    """飞书富文本事件应提取标题、正文、链接和图片引用。"""
+    """
+    飞书富文本事件应提取标题、正文、链接和图片引用。
+    """
     client = _build_feishu_client()
     message = {
         "message_id": "om_post_evt",
@@ -75,7 +84,9 @@ def test_on_message_extracts_localized_post_text_and_images():
 
 
 def test_parse_message_content_supports_direct_post_body():
-    """飞书富文本直接正文结构应被转换为普通文本。"""
+    """
+    飞书富文本直接正文结构应被转换为普通文本。
+    """
     message = {
         "message_id": "om_post_direct",
         "message_type": "post",

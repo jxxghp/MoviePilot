@@ -1,3 +1,7 @@
+"""
+验证媒体服务器回调中的媒体身份规范化。
+"""
+
 import json
 from unittest.mock import Mock
 
@@ -11,7 +15,9 @@ from app.schemas.types import MediaSource
 
 
 def test_webhook_event_migrates_legacy_tmdb_input_without_serializing_legacy_field() -> None:
-    """旧 tmdb_id 输入应迁移为统一身份，序列化时不再输出旧字段。"""
+    """
+    旧 tmdb_id 输入应迁移为统一身份，序列化时不再输出旧字段。
+    """
     event = WebhookEventInfo(tmdb_id="12345")
 
     assert event.media_source == MediaSource.TMDB
@@ -21,7 +27,9 @@ def test_webhook_event_migrates_legacy_tmdb_input_without_serializing_legacy_fie
 
 
 def test_webhook_event_legacy_tmdb_property_keeps_old_plugins_working() -> None:
-    """旧插件通过 tmdb_id 属性读写时也应同步到统一身份。"""
+    """
+    旧插件通过 tmdb_id 属性读写时也应同步到统一身份。
+    """
     event = WebhookEventInfo()
 
     event.tmdb_id = 67890
@@ -40,13 +48,17 @@ def test_webhook_event_legacy_tmdb_property_keeps_old_plugins_working() -> None:
     ],
 )
 def test_webhook_event_rejects_invalid_unified_identity(payload: dict) -> None:
-    """Webhook 事件不得携带半对身份或零值 ID。"""
+    """
+    Webhook 事件不得携带半对身份或零值 ID。
+    """
     with pytest.raises(ValueError):
         WebhookEventInfo(**payload)
 
 
 def test_jellyfin_webhook_uses_provider_identity_pair() -> None:
-    """Jellyfin webhook 应把 Provider 字段转换为统一身份。"""
+    """
+    Jellyfin webhook 应把 Provider 字段转换为统一身份。
+    """
     client = Jellyfin.__new__(Jellyfin)
     event = client.get_webhook_message(json.dumps({
         "NotificationType": "ItemAdded",
@@ -63,7 +75,9 @@ def test_jellyfin_webhook_uses_provider_identity_pair() -> None:
 
 @pytest.mark.parametrize("client_class", [Emby, ZSpace])
 def test_emby_family_webhook_uses_provider_identity_pair(client_class: type) -> None:
-    """Emby 系 webhook 应支持非 TMDB Provider 并输出统一身份。"""
+    """
+    Emby 系 webhook 应支持非 TMDB Provider 并输出统一身份。
+    """
     client = client_class.__new__(client_class)
     event = client.get_webhook_message({
         "data": json.dumps({
@@ -84,7 +98,9 @@ def test_emby_family_webhook_uses_provider_identity_pair(client_class: type) -> 
 
 @pytest.mark.parametrize("item_type", ["Episode", "Season"])
 def test_emby_tv_webhook_uses_series_provider_identity(monkeypatch, item_type: str) -> None:
-    """Episode 和 Season webhook 应使用 Series 条目的媒体主身份。"""
+    """
+    Episode 和 Season webhook 应使用 Series 条目的媒体主身份。
+    """
     client = Emby.__new__(Emby)
     get_series_identity = Mock(return_value=(MediaSource.TMDB, "286686"))
     monkeypatch.setattr(client, "_get_series_identity", get_series_identity, raising=False)
@@ -112,7 +128,9 @@ def test_emby_tv_webhook_uses_series_provider_identity(monkeypatch, item_type: s
 
 
 def test_emby_tv_webhook_keeps_identity_empty_when_series_lookup_fails(monkeypatch) -> None:
-    """Series 身份查询失败时不得回退为 Episode 或 Season 的 ProviderIds。"""
+    """
+    Series 身份查询失败时不得回退为 Episode 或 Season 的 ProviderIds。
+    """
     client = Emby.__new__(Emby)
     monkeypatch.setattr(client, "_get_series_identity", Mock(return_value=(None, None)), raising=False)
     monkeypatch.setattr(client, "get_remote_image_by_id", lambda **kwargs: None)
@@ -137,7 +155,9 @@ def test_emby_tv_webhook_keeps_identity_empty_when_series_lookup_fails(monkeypat
 
 
 def test_emby_series_identity_requests_provider_ids(monkeypatch) -> None:
-    """系列身份查询应只请求 Series 的 ProviderIds 并选择规范来源。"""
+    """
+    系列身份查询应只请求 Series 的 ProviderIds 并选择规范来源。
+    """
     client = Emby.__new__(Emby)
     client._host = "http://emby.local/"
     client._apikey = "test-key"
@@ -158,7 +178,9 @@ def test_emby_series_identity_requests_provider_ids(monkeypatch) -> None:
 
 
 def test_jellyfin_webhook_ignores_zero_runtime_percentage() -> None:
-    """时长为 0 的条目（如 strm）不应因计算播放进度而中断 webhook 解析。"""
+    """
+    时长为 0 的条目（如 strm）不应因计算播放进度而中断 webhook 解析。
+    """
     client = Jellyfin.__new__(Jellyfin)
     event = client.get_webhook_message(json.dumps({
         "NotificationType": "PlaybackStart",

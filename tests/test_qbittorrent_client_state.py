@@ -1,4 +1,6 @@
-"""qBittorrent 未配置状态和强制作种开关兼容性。"""
+"""
+qBittorrent 未配置状态和强制作种开关兼容性。
+"""
 
 from unittest.mock import Mock
 
@@ -11,7 +13,9 @@ from app.modules.qbittorrent.qbittorrent import Qbittorrent
 @pytest.mark.parametrize("host", [None, ""])
 @pytest.mark.parametrize("force_resume", [None, False, True])
 def test_missing_host_keeps_state_and_reconnect_safe(monkeypatch, host, force_resume):
-    """缺少地址时状态查询及重连不应崩溃或尝试网络连接。"""
+    """
+    缺少地址时状态查询及重连不应崩溃或尝试网络连接。
+    """
     factory = Mock()
     monkeypatch.setattr(client_module.qbittorrentapi, "Client", factory)
     client = Qbittorrent(host=host, force_resume=force_resume)
@@ -28,7 +32,9 @@ def test_missing_host_keeps_state_and_reconnect_safe(monkeypatch, host, force_re
 
 @pytest.mark.parametrize("force_resume", [None, False, True])
 def test_configured_force_resume_preserves_raw_flag(monkeypatch, force_resume):
-    """保留显式 None、False 和 True，不在类型收紧时隐式改变开关值。"""
+    """
+    保留显式 None、False 和 True，不在类型收紧时隐式改变开关值。
+    """
     sdk = Mock()
     monkeypatch.setattr(Qbittorrent, "_Qbittorrent__login_qbittorrent", lambda _self: sdk)
     client = Qbittorrent(host="https://qb.invalid", port=443, force_resume=force_resume)

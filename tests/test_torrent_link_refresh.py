@@ -1,4 +1,6 @@
-"""临时下载凭证更新与有界恢复的离线回归。"""
+"""
+临时下载凭证更新与有界恢复的离线回归。
+"""
 
 import base64
 import json
@@ -28,7 +30,9 @@ DOWNLOADED = (None, b"torrent-content", "Series", ["Series.mkv"], "")
 
 
 def _torrent(**kwargs) -> TorrentInfo:
-    """构造稳定种子身份与可轮换下载凭证。"""
+    """
+    构造稳定种子身份与可轮换下载凭证。
+    """
     fields = {
         "site": 1,
         "site_name": "测试站",
@@ -46,7 +50,9 @@ def _torrent(**kwargs) -> TorrentInfo:
 
 @pytest.fixture
 def refresh_chain(monkeypatch):
-    """隔离资源缓存、识别和索引器，仅执行真实刷新编排。"""
+    """
+    隔离资源缓存、识别和索引器，仅执行真实刷新编排。
+    """
     chain = object.__new__(TorrentsChain)
     chain.load_cache = Mock(return_value={})
     chain.save_cache = Mock()
@@ -63,7 +69,9 @@ def refresh_chain(monkeypatch):
 @pytest.mark.parametrize("stype", ["spider", "rss"])
 @pytest.mark.parametrize("category", [MediaType.TV.value, MediaType.MUSIC.value])
 def test_refresh_replaces_download_metadata_without_losing_recognition(refresh_chain, stype, category):
-    """无新资源时也保存最新链接和访问参数，保留媒体识别结果与缓存位置。"""
+    """
+    无新资源时也保存最新链接和访问参数，保留媒体识别结果与缓存位置。
+    """
     cached = Context(
         torrent_info=_torrent(category=category),
         meta_info=MetaInfo("Series S01E39"),
@@ -91,7 +99,9 @@ def test_refresh_replaces_download_metadata_without_losing_recognition(refresh_c
 
 
 def test_refresh_keeps_distinct_ids_with_identical_titles(refresh_chain):
-    """同标题的不同种子不能相互覆盖，抓取两页的同一种子只缓存一次。"""
+    """
+    同标题的不同种子不能相互覆盖，抓取两页的同一种子只缓存一次。
+    """
     cached = Context(torrent_info=_torrent())
     latest = _torrent(enclosure=NEW_URL)
     another = _torrent(enclosure="https://tracker.example/download.php?id=41",
@@ -106,7 +116,9 @@ def test_refresh_keeps_distinct_ids_with_identical_titles(refresh_chain):
 
 
 def test_refresh_rebuilds_changed_title_for_same_id(refresh_chain):
-    """同一种子的标题变化必须重新识别，并移除旧候选。"""
+    """
+    同一种子的标题变化必须重新识别，并移除旧候选。
+    """
     cached = Context(torrent_info=_torrent())
     latest = _torrent(title="Series S01E39-E40 2160p WEB-DL", enclosure=NEW_URL)
     cache = {"tracker.example": [cached]}
@@ -121,7 +133,9 @@ def test_refresh_rebuilds_changed_title_for_same_id(refresh_chain):
 
 @pytest.fixture
 def download_chain(monkeypatch):
-    """在下载文件和站点查询边界打桩，禁止真实网络和下载器提交。"""
+    """
+    在下载文件和站点查询边界打桩，禁止真实网络和下载器提交。
+    """
     chain = object.__new__(DownloadChain)
     chain.post_message = Mock()
     chain.search_site_torrents = Mock(return_value=[])
@@ -139,7 +153,9 @@ def download_chain(monkeypatch):
 
 
 def test_expired_signed_link_refreshes_same_resource_before_failure(download_chain):
-    """旧签名失败后只下载同站同 ID 的新链接，成功时不发失败通知。"""
+    """
+    旧签名失败后只下载同站同 ID 的新链接，成功时不发失败通知。
+    """
     chain, helper = download_chain
     torrent = _torrent()
     refreshed = _torrent(enclosure=NEW_URL, site_cookie="session=new", site_ua="NewAgent", site_proxy=True)
@@ -164,7 +180,9 @@ def test_expired_signed_link_refreshes_same_resource_before_failure(download_cha
 
 
 def test_signed_link_recovery_is_bounded_and_reports_final_error(download_chain):
-    """新链接仍失败时停止恢复，并只通知最终失败。"""
+    """
+    新链接仍失败时停止恢复，并只通知最终失败。
+    """
     chain, helper = download_chain
     chain.search_site_torrents.return_value = [_torrent(enclosure=NEW_URL)]
     helper.download_torrent.side_effect = [FAILED, (*FAILED[:4], "下载种子出错，状态码：403")]
@@ -184,7 +202,9 @@ def test_signed_link_recovery_is_bounded_and_reports_final_error(download_chain)
     (OLD_URL, "下载种子出错，状态码：500"),
 ])
 def test_recovery_does_not_repeat_ordinary_or_transient_failures(download_chain, enclosure, error):
-    """普通链接和流控、网络、服务端错误不触发额外搜索或重试。"""
+    """
+    普通链接和流控、网络、服务端错误不触发额外搜索或重试。
+    """
     chain, helper = download_chain
     helper.download_torrent.return_value = (*FAILED[:4], error)
 
@@ -197,7 +217,9 @@ def test_recovery_does_not_repeat_ordinary_or_transient_failures(download_chain,
 
 @pytest.mark.parametrize("fresh", [None, OLD_URL])
 def test_recovery_requires_new_link_for_exact_resource(download_chain, fresh):
-    """无匹配结果或仍为旧链接时不再下载，也不根据标题替换其他种子。"""
+    """
+    无匹配结果或仍为旧链接时不再下载，也不根据标题替换其他种子。
+    """
     chain, helper = download_chain
     chain.search_site_torrents.return_value = [_torrent(enclosure=fresh)] if fresh else []
 
@@ -208,7 +230,9 @@ def test_recovery_requires_new_link_for_exact_resource(download_chain, fresh):
 
 
 def test_valid_signed_link_does_not_search(download_chain):
-    """仍然有效的签名链接只执行原本的一次下载。"""
+    """
+    仍然有效的签名链接只执行原本的一次下载。
+    """
     chain, helper = download_chain
     helper.download_torrent.return_value = DOWNLOADED
 
@@ -219,7 +243,9 @@ def test_valid_signed_link_does_not_search(download_chain):
 
 
 def test_indirect_download_failure_does_not_use_signed_link_recovery(download_chain):
-    """已有换票流程失败时不再次搜索站点，继续不携带 Cookie 下载临时地址。"""
+    """
+    已有换票流程失败时不再次搜索站点，继续不携带 Cookie 下载临时地址。
+    """
     chain, helper = download_chain
     chain._resolve_indirect_download_url = Mock(return_value=OLD_URL)
 
@@ -233,7 +259,9 @@ def test_indirect_download_failure_does_not_use_signed_link_recovery(download_ch
 
 @pytest.mark.parametrize("enclosure", [None, "magnet:?xt=urn:btih:abc"])
 def test_missing_and_magnet_links_do_not_fetch(download_chain, enclosure):
-    """空地址与磁力地址沿用无需请求站点的原有返回契约。"""
+    """
+    空地址与磁力地址沿用无需请求站点的原有返回契约。
+    """
     chain, helper = download_chain
     assert chain.download_torrent(_torrent(enclosure=enclosure)) == (enclosure, "", [])
     chain.search_site_torrents.assert_not_called()
@@ -242,7 +270,9 @@ def test_missing_and_magnet_links_do_not_fetch(download_chain, enclosure):
 
 @pytest.mark.parametrize("failure", ["exception", "missing_site", "missing_id"])
 def test_unavailable_refresh_preserves_original_failure(download_chain, monkeypatch, failure):
-    """索引器不可用或身份缺失时保留原失败，不扩大搜索范围。"""
+    """
+    索引器不可用或身份缺失时保留原失败，不扩大搜索范围。
+    """
     chain, helper = download_chain
     torrent = _torrent()
     if failure == "exception":
@@ -264,7 +294,9 @@ def test_unavailable_refresh_preserves_original_failure(download_chain, monkeypa
 
 @pytest.mark.parametrize("final_status", [200, 404])
 def test_real_torrent_parse_and_cooldown_follow_final_attempt(monkeypatch, final_status):
-    """回放旧链接 404 与新链接响应，通过真实种子解析验证冷却只发生在最终失败后。"""
+    """
+    回放旧链接 404 与新链接响应，通过真实种子解析验证冷却只发生在最终失败后。
+    """
     chain = object.__new__(DownloadChain)
     chain.post_message = Mock()
     chain._record_download_failure = Mock()
@@ -317,7 +349,9 @@ def test_real_torrent_parse_and_cooldown_follow_final_attempt(monkeypatch, final
 
 
 def test_cache_without_stable_id_keeps_legacy_deduplication():
-    """没有稳定 ID 时继续按标题去重，但仍更新新的访问参数。"""
+    """
+    没有稳定 ID 时继续按标题去重，但仍更新新的访问参数。
+    """
     old = _torrent(page_url=None, enclosure="https://tracker.example/old.torrent")
     cached = [Context(torrent_info=old)]
     fresh = replace(old, enclosure="https://tracker.example/new.torrent")
@@ -329,7 +363,9 @@ def test_cache_without_stable_id_keeps_legacy_deduplication():
 
 
 def test_grouped_tracker_keeps_individual_torrents():
-    """GPW、DIC Music 等分组页面必须按 torrentid 区分组内不同资源。"""
+    """
+    GPW、DIC Music 等分组页面必须按 torrentid 区分组内不同资源。
+    """
     first = _torrent(page_url="https://tracker.example/torrents.php?id=12&torrentid=39")
     cached = [Context(torrent_info=first)]
     updated = replace(first, enclosure=NEW_URL)
@@ -343,7 +379,9 @@ def test_grouped_tracker_keeps_individual_torrents():
 
 
 def test_mteam_indirect_request_metadata_can_refresh_in_cache():
-    """馒头采用普通缓存时也会更新换票请求，同时保留媒体识别结果。"""
+    """
+    馒头采用普通缓存时也会更新换票请求，同时保留媒体识别结果。
+    """
     old = _torrent(page_url="https://kp.m-team.cc/detail/39",
                    enclosure="[old-params]https://api.m-team.cc/api/torrent/genDlToken")
     cached = [Context(torrent_info=old, media_info=MediaInfo(title="识别结果"))]
@@ -355,7 +393,9 @@ def test_mteam_indirect_request_metadata_can_refresh_in_cache():
 
 
 def test_mteam_default_refresh_keeps_existing_cache_and_recognition(refresh_chain, monkeypatch):
-    """馒头默认增量合并缓存，首页之外的旧资源和已有识别结果不会丢失。"""
+    """
+    馒头默认增量合并缓存，首页之外的旧资源和已有识别结果不会丢失。
+    """
     monkeypatch.setattr(settings, "NO_CACHE_SITE_KEY", ConfigModel.model_fields["NO_CACHE_SITE_KEY"].default)
     site = {**SITE, "domain": "https://kp.m-team.cc/"}
     torrents_module.SitesHelper().get_indexers.return_value = [site]
@@ -384,14 +424,18 @@ def test_mteam_default_refresh_keeps_existing_cache_and_recognition(refresh_chai
     (" m-team, ", "tracker.example", False),
 ])
 def test_no_cache_rule_only_matches_explicit_nonempty_keywords(monkeypatch, keys, domain, expected):
-    """空项不再匹配所有站点，显式例外规则继续生效。"""
+    """
+    空项不再匹配所有站点，显式例外规则继续生效。
+    """
     monkeypatch.setattr(settings, "NO_CACHE_SITE_KEY", keys)
     chain = object.__new__(TorrentsChain)
     assert chain._is_no_cache_site(domain) is expected
 
 
 def test_uncached_mteam_content_obtains_new_token_for_each_download(download_chain, monkeypatch):
-    """种子内容缓存未命中时，同一换票请求每次获取新链接，不复用旧签名。"""
+    """
+    种子内容缓存未命中时，同一换票请求每次获取新链接，不复用旧签名。
+    """
     chain, helper = download_chain
     request = {"method": "post", "params": {"id": "39"}, "result": "data"}
     encoded = base64.b64encode(json.dumps(request).encode()).decode()
@@ -418,7 +462,9 @@ def test_uncached_mteam_content_obtains_new_token_for_each_download(download_cha
 
 @pytest.mark.parametrize("field,prefix", [("torrent_id", "id"), ("info_hash", "hash")])
 def test_explicit_torrent_identity_is_stable(field, prefix):
-    """索引器提供的显式种子 ID 或 info hash 优先于 URL。"""
+    """
+    索引器提供的显式种子 ID 或 info hash 优先于 URL。
+    """
     torrent = _torrent()
     setattr(torrent, field, "stable")
     assert torrent_rules.resource_identity(torrent) == ("1", f"{prefix}=stable")
@@ -433,7 +479,9 @@ def test_explicit_torrent_identity_is_stable(field, prefix):
     (None, None),
 ])
 def test_resource_identity_requires_unambiguous_site_resource(url, expected):
-    """无站点 ID 时域名隔离身份，含糊或无身份的地址不能用于恢复匹配。"""
+    """
+    无站点 ID 时域名隔离身份，含糊或无身份的地址不能用于恢复匹配。
+    """
     torrent = _torrent(site=None, site_name=None, page_url=None, enclosure=url)
     assert torrent_rules.resource_identity(torrent) == expected
 
@@ -447,5 +495,7 @@ def test_resource_identity_requires_unambiguous_site_resource(url, expected):
     (None, False),
 ])
 def test_only_known_timestamp_signature_pattern_is_expiring(url, expected):
-    """签名模式判断不把空参数、普通链接或换票协议误认为时效链接。"""
+    """
+    签名模式判断不把空参数、普通链接或换票协议误认为时效链接。
+    """
     assert torrent_rules.is_expiring_download_url(url) is expected

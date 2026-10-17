@@ -1,10 +1,12 @@
-"""订阅文件统计相关测试"""
+"""
+订阅文件统计相关测试
+"""
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from app.application.subscription.contract import SubscriptionSnapshot
-from app.chain.subscribe import SubscribeChain
+from app.chain.subscribe.facade import SubscribeChain
 from app.modules.filemanager.module import FileManagerModule
 from app.schemas.mediaserver import ExistMediaInfo
 from app.schemas.types import MediaType
@@ -43,6 +45,9 @@ def _build_mediainfo():
 
 
 def test_filemanager_media_exists_skips_local_when_server_specified():
+    """
+    显式指定媒体服务器时不再检查本地文件。
+    """
     module = FileManagerModule()
     mediainfo = _build_mediainfo()
 
@@ -54,6 +59,9 @@ def test_filemanager_media_exists_skips_local_when_server_specified():
 
 
 def test_subscribe_files_info_merges_multiple_mediaservers():
+    """
+    订阅文件信息合并多个媒体服务器的库记录，并保留服务器来源。
+    """
     subscribe = _build_subscribe(season=1, total_episode=2)
     mediainfo = _build_mediainfo()
 
@@ -104,6 +112,9 @@ def test_subscribe_files_info_merges_multiple_mediaservers():
 
 
 def test_subscribe_files_info_uses_season_zero_for_tv():
+    """
+    电视剧特别篇按第零季查询和返回文件信息。
+    """
     subscribe = _build_subscribe(season=0, total_episode=1, start_episode=1)
     mediainfo = _build_mediainfo()
     captured_seasons = []

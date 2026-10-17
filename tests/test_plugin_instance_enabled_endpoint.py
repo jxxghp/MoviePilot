@@ -1,4 +1,6 @@
-"""插件实例启停接口与依赖分类装载过滤测试。"""
+"""
+插件实例启停接口与依赖分类装载过滤测试。
+"""
 
 from __future__ import annotations
 
@@ -14,18 +16,24 @@ from app.schemas.plugin import PluginInstance, PluginInstanceEnabledRequest
 
 
 def _manager(**methods):
-    """按方法名快速拼装一个鸭子类型的 Manager 替身。"""
+    """
+    按方法名快速拼装一个鸭子类型的 Manager 替身。
+    """
     return type("Manager", (), methods)()
 
 
 def test_endpoint_requires_superuser_dependency():
-    """启停端点要求超级管理员。"""
+    """
+    启停端点要求超级管理员。
+    """
     depends = inspect.signature(set_plugin_instance_enabled).parameters["_"].default
     assert depends.dependency is get_current_active_superuser
 
 
 def test_endpoint_delegates_to_manager_and_reports_success(monkeypatch):
-    """请求原样转交给 Manager，状态确实变化时返回成功。"""
+    """
+    请求原样转交给 Manager，状态确实变化时返回成功。
+    """
     calls: list = []
     manager = _manager(
         set_plugin_instance_enabled=lambda self, *a: (calls.append(a), True)[1]
@@ -41,7 +49,9 @@ def test_endpoint_delegates_to_manager_and_reports_success(monkeypatch):
 
 
 def test_endpoint_reports_unchanged_state_without_pretending_success(monkeypatch):
-    """实例不存在或已处于目标状态时如实回报失败，并给出完整句子而非中文片段。"""
+    """
+    实例不存在或已处于目标状态时如实回报失败，并给出完整句子而非中文片段。
+    """
     manager = _manager(set_plugin_instance_enabled=lambda self, *a: False)
     monkeypatch.setattr(plugintarget_endpoint, "get_plugin_manager", lambda: manager)
 
@@ -58,7 +68,9 @@ def test_endpoint_reports_unchanged_state_without_pretending_success(monkeypatch
 
 
 def test_endpoint_reports_mutation_rejection_as_a_failed_response(monkeypatch):
-    """处于停机准入窗口时返回失败响应而不是抛出。"""
+    """
+    处于停机准入窗口时返回失败响应而不是抛出。
+    """
 
     def _raise(*_a):
         raise PluginMutationRejectedError("插件正在停机")
@@ -75,7 +87,9 @@ def test_endpoint_reports_mutation_rejection_as_a_failed_response(monkeypatch):
 
 
 def test_router_registers_the_enabled_path():
-    """路由器暴露启停路径，注册在插件前缀下。"""
+    """
+    路由器暴露启停路径，注册在插件前缀下。
+    """
     paths = {route.path for route in plugintarget_endpoint.router.routes}
     assert "/instance/{instance_id}/enabled" in paths
 
@@ -86,7 +100,8 @@ def test_router_registers_the_enabled_path():
 
 
 def test_classification_drops_hosts_that_are_not_loadable():
-    """分类结果会被逐个 start()，停用的本体必须在这里就被剔除。
+    """
+    分类结果会被逐个 start()，停用的本体必须在这里就被剔除。
 
     物理插件那一层按安装清单划分，而安装清单只回答「包在不在磁盘上」；不过滤的话
     停用的插件会在开机与配置热重载时被重新拉起来，启用位形同虚设。
@@ -119,7 +134,9 @@ def test_classification_drops_hosts_that_are_not_loadable():
 
 
 def test_classification_without_a_loadable_port_keeps_every_plugin():
-    """未装配装载判据端口时保持原分类，测试与旧调用方不因此丢掉插件。"""
+    """
+    未装配装载判据端口时保持原分类，测试与旧调用方不因此丢掉插件。
+    """
     system = SimpleNamespace(
         dependency=SimpleNamespace(
             classify_plugins=lambda: (["PluginA"], ["PluginC"], ["PluginD"])
@@ -138,7 +155,9 @@ def test_classification_without_a_loadable_port_keeps_every_plugin():
 
 
 def test_enabled_clone_keeps_source_classification_when_host_is_disabled():
-    """停用本体只阻止本体启动，启用分身仍按共享源码和实际依赖分类。"""
+    """
+    停用本体只阻止本体启动，启用分身仍按共享源码和实际依赖分类。
+    """
     service = PluginDependencyService(
         system=lambda: SimpleNamespace(dependency=SimpleNamespace(
             classify_plugins=lambda: (["Ready"], ["Pending"], ["Missing"])

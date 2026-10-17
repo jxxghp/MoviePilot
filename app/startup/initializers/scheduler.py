@@ -1,4 +1,6 @@
-"""调度器业务能力装配与生命周期入口。"""
+"""
+调度器业务能力装配与生命周期入口。
+"""
 
 import asyncio
 from typing import Awaitable, Callable, Optional
@@ -24,17 +26,23 @@ from app.scheduler.services import SchedulerServices
 
 
 def configure_scheduler_runtime() -> None:
-    """在显式装配阶段登记 concrete Scheduler。"""
+    """
+    在显式装配阶段登记 concrete Scheduler。
+    """
     register_scheduler_class(Scheduler)
 
 
 def reset_scheduler_runtime() -> None:
-    """清除 concrete Scheduler 登记，支持重复 lifespan。"""
+    """
+    清除 concrete Scheduler 登记，支持重复 lifespan。
+    """
     reset_scheduler_class()
 
 
 def reset_scheduler_bindings() -> None:
-    """在 Scheduler 已停止后撤销当前 lifespan 的仓储、业务能力和类登记。"""
+    """
+    在 Scheduler 已停止后撤销当前 lifespan 的仓储、业务能力和类登记。
+    """
     existing_scheduler: Callable[[], Optional[Scheduler]] = Scheduler.get_existing_instance
     scheduler = existing_scheduler()
     if scheduler is not None:
@@ -43,13 +51,17 @@ def reset_scheduler_bindings() -> None:
 
 
 def configure_scheduler_agent_tasks(repository: AgentTaskRepository) -> None:
-    """在调度器启动前注入自主任务仓储。"""
+    """
+    在调度器启动前注入自主任务仓储。
+    """
     configure_scheduler_runtime()
     get_scheduler().configure_agent_tasks(repository)
 
 
 def configure_scheduler_services() -> None:
-    """构造一次调度任务能力，并在启动前注入 concrete Scheduler。"""
+    """
+    构造一次调度任务能力，并在启动前注入 concrete Scheduler。
+    """
     scheduler_chain = SchedulerChain()
     site_chain = SiteChain()
     mediaserver_chain = MediaServerChain()
@@ -111,7 +123,9 @@ def stop_scheduler() -> Optional[Awaitable[None]]:
         return None
 
     async def stop_and_reset() -> None:
-        """等待异步调度器收口后清除 provider。"""
+        """
+        等待异步调度器收口后清除 provider。
+        """
         await scheduler.stop_async()
         if not await run_in_threadpool_to_completion(stop_outbox_recovery):
             raise RuntimeError("Outbox 后台处理尚未停止")

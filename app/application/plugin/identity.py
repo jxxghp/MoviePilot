@@ -1,4 +1,6 @@
-"""已安装物理插件的来源身份合同与存量迁移决策。"""
+"""
+已安装物理插件的来源身份合同与存量迁移决策。
+"""
 
 from __future__ import annotations
 
@@ -20,53 +22,82 @@ OFFICIAL_PLUGIN_SOURCE_KEY = "github:jxxghp/moviepilot-plugins"
 
 
 class TrustedPluginSourceType(StrEnum):
-    """可被在线自动更新信任的来源类型。"""
+    """
+    可被在线自动更新信任的来源类型。
+    """
 
+    # 尚未绑定可信在线更新来源
     UNKNOWN = "unknown"
+    # 已绑定 MoviePilot 官方插件仓库
     OFFICIAL = "official"
+    # 已绑定明确的第三方插件仓库
     THIRD_PARTY = "third_party"
 
 
 class PluginPayloadSourceType(StrEnum):
-    """最近一次已提交插件载荷的来源类型。"""
+    """
+    最近一次已提交插件载荷的来源类型。
+    """
 
+    # 尚未确认实际载荷来源
     UNKNOWN = "unknown"
+    # 载荷来自官方插件仓库
     OFFICIAL = "official"
+    # 载荷来自第三方插件仓库
     THIRD_PARTY = "third_party"
+    # 载荷来自宿主本地仓库，不代表在线信任绑定
     LOCAL = "local"
 
 
 class PluginBindingBasis(StrEnum):
-    """物理插件来源身份的建立依据。"""
+    """
+    物理插件来源身份的建立依据。
+    """
 
+    # 存量插件尚无可靠来源证据，保持未绑定
     LEGACY_UNBOUND = "legacy_unbound"
+    # 只确认本地载荷，未建立在线来源信任
     LOCAL_ONLY = "local_only"
+    # 存量迁移根据官方仓库候选建立默认绑定
     OFFICIAL_DEFAULT = "official_default"
+    # 完整市场库存只有一个第三方来源，按首次使用信任绑定
     TOFU = "tofu"
+    # 用户显式选择来源进行安装
     EXPLICIT_INSTALL = "explicit_install"
+    # 用户显式确认从已有来源切换到另一来源
     EXPLICIT_SOURCE_CHANGE = "explicit_source_change"
 
 
 class PluginMarketAvailability(StrEnum):
-    """存量迁移观察市场候选时的可用状态。"""
+    """
+    存量迁移观察市场候选时的可用状态。
+    """
 
+    # 市场读取完整，可据候选判断唯一来源
     AVAILABLE = "available"
+    # 市场事实不足，不允许据缺失候选建立新信任
     UNAVAILABLE = "unavailable"
 
 
 class PluginIdentityConflictError(RuntimeError):
-    """来源身份的首次创建或 revision 条件更新已失去竞争。"""
+    """
+    来源身份的首次创建或版本号条件更新已失去竞争。
+    """
 
 
 def normalize_physical_plugin_id(plugin_id: str) -> str:
-    """校验可安全持久化的物理插件 ID，并返回大小写无关身份键。"""
+    """
+    校验可安全持久化的物理插件 ID，并返回大小写无关身份键。
+    """
     if not is_physical_plugin_id(plugin_id):
         raise ValueError("插件 ID 必须以字母开头且只能包含 ASCII 字母、数字或下划线")
     return plugin_id.lower()
 
 
 def validate_online_source_key(source_key: str) -> str:
-    """校验由市场边界生成的稳定 GitHub 仓库身份键。"""
+    """
+    校验由市场边界生成的稳定 GitHub 仓库身份键。
+    """
     value = source_key.strip().lower()
     if not _ONLINE_SOURCE_KEY_PATTERN.fullmatch(value):
         raise ValueError("在线插件来源必须使用 github:<owner>/<repository> 规范键")
@@ -77,7 +108,9 @@ def _validate_online_source_classification(
     source_key: str,
     source_type: TrustedPluginSourceType | PluginPayloadSourceType,
 ) -> None:
-    """保证官方仓库键与官方来源类型始终双向一致。"""
+    """
+    保证官方仓库键与官方来源类型始终双向一致。
+    """
     is_official_key = source_key == OFFICIAL_PLUGIN_SOURCE_KEY
     is_official_type = source_type.value == TrustedPluginSourceType.OFFICIAL.value
     if is_official_key != is_official_type:
@@ -90,13 +123,17 @@ def _validate_optional_text(
     field_name: str,
     max_length: int,
 ) -> None:
-    """让应用层字符串合同与跨数据库列长度保持一致。"""
+    """
+    让应用层字符串合同与跨数据库列长度保持一致。
+    """
     if value is not None and len(value) > max_length:
         raise ValueError(f"{field_name} 长度不能超过 {max_length}")
 
 
 def _validate_receipt(receipt: str | None) -> str | None:
-    """校验内容收据为带算法前缀的十六进制摘要。"""
+    """
+    校验内容收据为带算法前缀的十六进制摘要。
+    """
     if receipt is None:
         return None
     value = receipt.strip().lower()
@@ -107,7 +144,26 @@ def _validate_receipt(receipt: str | None) -> str | None:
 
 @dataclass(frozen=True, slots=True)
 class PluginIdentity:
-    """一份物理插件的可信更新来源与当前载荷审计事实。"""
+    """
+    一份物理插件的可信更新来源与当前载荷审计事实。
+
+    :param plugin_id: 物理插件标识，不使用分身实例标识
+    :param normalized_plugin_id: 按小写规范化的物理插件身份键
+    :param trusted_source_type: 自动更新信任的来源类型；未绑定时为 UNKNOWN
+    :param trusted_source_key: 已绑定的可信在线仓库键；未绑定时为 None
+    :param binding_basis: 建立或变更可信来源绑定的依据
+    :param payload_source_type: 最近一次已提交载荷的实际来源类型，允许本地来源
+    :param payload_source_key: 实际载荷的在线仓库键；本地或未知载荷为 None
+    :param declared_version: 当前载荷声明的插件业务版本；未知时为 None
+    :param package_generation: 当前载荷所属包代际；旧数据可能为 None
+    :param declared_metadata: 安装时保存的插件声明元数据；旧数据可能为 None
+    :param payload_receipt: 当前载荷的 sha256 内容收据；未确认载荷时为 None
+    :param revision: 身份乐观并发版本，从 1 开始
+    :param created_at: 审计事实首次创建时间，必须包含时区
+    :param updated_at: 审计事实最近更新时间，必须包含时区
+    :param bound_at: 可信来源建立绑定的带时区时间；未绑定时为 None
+    :param payload_applied_at: 当前载荷确认落盘的带时区时间；未确认时为 None
+    """
 
     plugin_id: str
     normalized_plugin_id: str
@@ -127,7 +183,9 @@ class PluginIdentity:
     payload_applied_at: datetime | None
 
     def __post_init__(self) -> None:
-        """拒绝不能作为后续来源门禁事实的矛盾状态。"""
+        """
+        拒绝不能作为后续来源门禁事实的矛盾状态。
+        """
         normalized_id = normalize_physical_plugin_id(self.plugin_id)
         if self.normalized_plugin_id != normalized_id:
             raise ValueError("normalized_plugin_id 必须是 plugin_id 的规范化物理身份")
@@ -241,13 +299,20 @@ class PluginIdentity:
 
 @dataclass(frozen=True, slots=True)
 class PluginSourceCandidate:
-    """存量迁移可观察到的一个在线候选来源。"""
+    """
+    存量迁移可观察到的一个在线候选来源。
+
+    :param source_type: 可信在线来源类型，区分官方与第三方
+    :param source_key: 经规范化的在线仓库身份键，格式为 github:所有者/仓库
+    """
 
     source_type: TrustedPluginSourceType
     source_key: str
 
     def __post_init__(self) -> None:
-        """候选只接受可绑定的规范在线来源。"""
+        """
+        候选只接受可绑定的规范在线来源。
+        """
         if self.source_type is TrustedPluginSourceType.UNKNOWN:
             raise ValueError("未知来源不能作为在线候选")
         object.__setattr__(self, "source_key", validate_online_source_key(self.source_key))
@@ -262,7 +327,9 @@ def plan_legacy_plugin_identity(
     is_virtual_instance: bool,
     now: datetime,
 ) -> PluginIdentity | None:
-    """为存量物理插件建立更新绑定，不冒充当前载荷来源。"""
+    """
+    为存量物理插件建立更新绑定，不冒充当前载荷来源。
+    """
     if is_virtual_instance:
         return None
     normalized_id = normalize_physical_plugin_id(plugin_id)
@@ -326,13 +393,24 @@ def plan_legacy_plugin_identity(
 
 
 class PluginIdentityRepository(Protocol):
-    """来源身份条件写命令使用的无提交仓储端口。"""
+    """
+    来源身份条件写命令使用的无提交仓储端口。
+    """
 
     def get(self, plugin_id: str) -> PluginIdentity | None:
-        """按规范化物理插件 ID 读取身份。"""
+        """
+        按规范化物理插件 ID 读取身份。
+
+        :param plugin_id: 目标插件的物理标识
+        :return: 该物理插件的来源身份；尚未建立时为 None
+        """
 
     def stage_create(self, identity: PluginIdentity) -> None:
-        """暂存首次身份；唯一键竞争时抛出冲突错误。"""
+        """
+        暂存首次身份；唯一键竞争时抛出冲突错误。
+
+        :param identity: 拟创建或替换的完整来源身份
+        """
 
     def stage_replace(
         self,
@@ -340,17 +418,35 @@ class PluginIdentityRepository(Protocol):
         *,
         expected_revision: int,
     ) -> bool:
-        """按 revision 条件暂存替换，并返回是否赢得竞争。"""
+        """
+        按版本号条件暂存替换，并返回是否赢得竞争。
+
+        :param identity: 拟创建或替换的完整来源身份
+        :param expected_revision: 当前已存在身份的预期版本，用于拒绝并发更新
+        :return: 当前版本匹配并已暂存替换时为 True；版本不匹配时为 False
+        """
 
 
 class PluginIdentityStore(Protocol):
-    """组合根注入的独立来源身份读取与存量迁移端口。"""
+    """
+    组合根注入的独立来源身份读取与存量迁移端口。
+    """
 
     def get(self, plugin_id: str) -> PluginIdentity | None:
-        """读取一个物理插件的来源身份。"""
+        """
+        读取一个物理插件的来源身份。
+
+        :param plugin_id: 目标插件的物理标识
+        :return: 该物理插件的来源身份；尚未建立时为 None
+        """
 
     def list(self, plugin_ids: Sequence[str]) -> list[PluginIdentity]:
-        """批量读取指定物理插件的来源身份。"""
+        """
+        批量读取指定物理插件的来源身份。
+
+        :param plugin_ids: 需要批量读取身份的物理插件标识
+        :return: 已存在的来源身份列表；未找到的插件不产生条目
+        """
 
     def compare_and_set(
         self,
@@ -358,28 +454,44 @@ class PluginIdentityStore(Protocol):
         *,
         expected_revision: int | None,
     ) -> PluginIdentity:
-        """首次创建或按 revision 更新身份。"""
+        """
+        首次创建或按版本号更新身份。
+
+        :param identity: 拟创建或替换的完整来源身份
+        :param expected_revision: 预期的当前身份版本；None 表示只允许首次创建
+        :return: 提交后的来源身份；版本竞争通过身份冲突异常报告
+        """
 
 
 class PluginIdentityUnitOfWork(Protocol):
-    """来源身份条件写使用的事务端口。"""
+    """
+    来源身份条件写使用的事务端口。
+    """
 
     def commit(self) -> None:
-        """提交当前条件写。"""
+        """
+        提交当前条件写。
+        """
 
     def rollback(self) -> None:
-        """回滚当前条件写。"""
+        """
+        回滚当前条件写。
+        """
 
 
 class WritePluginIdentityCommand:
-    """以数据库 revision 原子创建或替换一份插件来源身份。"""
+    """
+    以数据库版本号原子创建或替换一份插件来源身份。
+    """
 
     def __init__(
         self,
         repository: PluginIdentityRepository,
         unit_of_work: PluginIdentityUnitOfWork,
     ) -> None:
-        """保存仓储与事务所有者。"""
+        """
+        保存仓储与事务所有者。
+        """
         self._repository = repository
         self._unit_of_work = unit_of_work
 
@@ -389,7 +501,9 @@ class WritePluginIdentityCommand:
         *,
         expected_revision: int | None,
     ) -> PluginIdentity:
-        """首次写要求记录不存在，后续写要求 revision 精确匹配。"""
+        """
+        首次写要求记录不存在，后续写要求版本号精确匹配。
+        """
         candidate = replace(
             identity,
             normalized_plugin_id=normalize_physical_plugin_id(identity.plugin_id),
@@ -446,14 +560,18 @@ class WritePluginIdentityCommand:
 
 
 class ChangePluginIdentitySourceCommand:
-    """以独立 CAS 合同提交一次明确的在线插件来源转换。"""
+    """
+    以独立 CAS 合同提交一次明确的在线插件来源转换。
+    """
 
     def __init__(
         self,
         repository: PluginIdentityRepository,
         unit_of_work: PluginIdentityUnitOfWork,
     ) -> None:
-        """保存仓储与事务所有者。"""
+        """
+        保存仓储与事务所有者。
+        """
         self._repository = repository
         self._unit_of_work = unit_of_work
 
@@ -463,7 +581,9 @@ class ChangePluginIdentitySourceCommand:
         *,
         expected_revision: int,
     ) -> PluginIdentity:
-        """只允许已有身份按精确 revision 切换到不同在线来源。"""
+        """
+        只允许已有身份按精确版本号切换到不同在线来源。
+        """
         return _execute_identity_transition(
             self._repository,
             self._unit_of_work,
@@ -474,14 +594,18 @@ class ChangePluginIdentitySourceCommand:
 
 
 class BindOnlinePluginIdentityCommand:
-    """以独立 CAS 合同为未绑定身份建立在线可信来源。"""
+    """
+    以独立 CAS 合同为未绑定身份建立在线可信来源。
+    """
 
     def __init__(
         self,
         repository: PluginIdentityRepository,
         unit_of_work: PluginIdentityUnitOfWork,
     ) -> None:
-        """保存仓储与事务所有者。"""
+        """
+        保存仓储与事务所有者。
+        """
         self._repository = repository
         self._unit_of_work = unit_of_work
 
@@ -491,7 +615,9 @@ class BindOnlinePluginIdentityCommand:
         *,
         expected_revision: int,
     ) -> PluginIdentity:
-        """只允许未绑定身份按精确 revision 首次绑定在线来源。"""
+        """
+        只允许未绑定身份按精确版本号首次绑定在线来源。
+        """
         return _execute_identity_transition(
             self._repository,
             self._unit_of_work,
@@ -502,14 +628,18 @@ class BindOnlinePluginIdentityCommand:
 
 
 class BindLocalPluginIdentityCommand:
-    """以独立 CAS 合同把存量未绑定身份转换为本地专属身份。"""
+    """
+    以独立 CAS 合同把存量未绑定身份转换为本地专属身份。
+    """
 
     def __init__(
         self,
         repository: PluginIdentityRepository,
         unit_of_work: PluginIdentityUnitOfWork,
     ) -> None:
-        """保存仓储与事务所有者。"""
+        """
+        保存仓储与事务所有者。
+        """
         self._repository = repository
         self._unit_of_work = unit_of_work
 
@@ -519,7 +649,9 @@ class BindLocalPluginIdentityCommand:
         *,
         expected_revision: int,
     ) -> PluginIdentity:
-        """只允许 legacy_unbound 身份按精确 revision 绑定本地载荷。"""
+        """
+        只允许 legacy_unbound 身份按精确版本号绑定本地载荷。
+        """
         return _execute_identity_transition(
             self._repository,
             self._unit_of_work,
@@ -537,7 +669,9 @@ def _execute_identity_transition(
     expected_revision: int,
     validate: Callable[[PluginIdentity, PluginIdentity], None],
 ) -> PluginIdentity:
-    """在一个数据库事务中校验并提交专用身份转换。"""
+    """
+    在一个数据库事务中校验并提交专用身份转换。
+    """
     try:
         current = _prepare_identity_transition(
             repository,
@@ -569,7 +703,9 @@ def _prepare_identity_transition(
     *,
     expected_revision: int,
 ) -> PluginIdentity:
-    """读取转换基线并保证目标使用同一物理插件和精确 revision。"""
+    """
+    读取转换基线并保证目标使用同一物理插件和精确版本号。
+    """
     if expected_revision < 1:
         raise PluginIdentityConflictError("插件来源身份 expected_revision 必须从 1 开始")
     normalized_plugin_id = normalize_physical_plugin_id(identity.plugin_id)
@@ -600,7 +736,9 @@ def _validate_identity_source_change(
     current: PluginIdentity,
     candidate: PluginIdentity,
 ) -> None:
-    """校验显式换源的来源、载荷和实际变化边界。"""
+    """
+    校验显式换源的来源、载荷和实际变化边界。
+    """
     if candidate.binding_basis is not PluginBindingBasis.EXPLICIT_SOURCE_CHANGE:
         raise PluginIdentityConflictError(
             "显式换源目标必须使用 explicit_source_change 依据"
@@ -630,7 +768,9 @@ def _validate_online_binding(
     current: PluginIdentity,
     candidate: PluginIdentity,
 ) -> None:
-    """校验未绑定身份首次建立在线可信来源的转换边界。"""
+    """
+    校验未绑定身份首次建立在线可信来源的转换边界。
+    """
     if (
         current.trusted_source_type is not TrustedPluginSourceType.UNKNOWN
         or current.binding_basis not in {
@@ -681,7 +821,9 @@ def _validate_local_binding(
     current: PluginIdentity,
     candidate: PluginIdentity,
 ) -> None:
-    """校验存量未绑定身份到本地身份的唯一转换方向。"""
+    """
+    校验存量未绑定身份到本地身份的唯一转换方向。
+    """
     if (
         current.trusted_source_type is not TrustedPluginSourceType.UNKNOWN
         or current.binding_basis is not PluginBindingBasis.LEGACY_UNBOUND
@@ -706,7 +848,9 @@ def _stage_identity_transition(
     *,
     expected_revision: int,
 ) -> None:
-    """按数据库 revision 条件暂存转换并提交事务。"""
+    """
+    按数据库版本号条件暂存转换并提交事务。
+    """
     if not repository.stage_replace(
         candidate,
         expected_revision=expected_revision,

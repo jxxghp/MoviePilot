@@ -1,4 +1,6 @@
-"""ChainBase canonical、冷导入与旧插件符号边界。"""
+"""
+ChainBase canonical、冷导入与旧插件符号边界。
+"""
 
 import ast
 import itertools
@@ -10,7 +12,9 @@ PROJECT_ROOT = Path(__file__).parents[1]
 
 
 def test_chain_package_root_has_no_canonical_implementation_or_export() -> None:
-    """物理包根只能声明包用途，不得重新承载或导出 ChainBase。"""
+    """
+    物理包根只能声明包用途，不得重新承载或导出 ChainBase。
+    """
     path = PROJECT_ROOT / "app" / "chain" / "__init__.py"
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
 
@@ -23,7 +27,9 @@ def test_chain_package_root_has_no_canonical_implementation_or_export() -> None:
 
 
 def test_host_python_sources_do_not_import_chainbase_from_package_root() -> None:
-    """排除插件副本后，宿主和测试必须统一使用 canonical 子模块。"""
+    """
+    排除插件副本后，宿主和测试必须统一使用 canonical 子模块。
+    """
     violations: list[str] = []
     for root in (PROJECT_ROOT / "app", PROJECT_ROOT / "tests"):
         for path in root.rglob("*.py"):
@@ -40,7 +46,9 @@ def test_host_python_sources_do_not_import_chainbase_from_package_root() -> None
 
 
 def test_chain_modules_are_cold_importable_in_every_order() -> None:
-    """base 与两个 mixin 的任意导入顺序都不得依赖部分初始化包。"""
+    """
+    base 与两个 mixin 的任意导入顺序都不得依赖部分初始化包。
+    """
     modules = ("app.chain.base", "app.chain._messaging", "app.chain._recognition")
     for order in itertools.permutations(modules):
         code = (
@@ -61,7 +69,9 @@ def test_chain_modules_are_cold_importable_in_every_order() -> None:
 
 
 def test_chain_package_cold_import_does_not_load_children() -> None:
-    """只导入物理包根时不得急切加载 Chain 实现或 mixin。"""
+    """
+    只导入物理包根时不得急切加载 Chain 实现或 mixin。
+    """
     code = (
         "import sys; import app.chain; "
         "loaded=sorted(name for name in sys.modules if name.startswith('app.chain.')); "

@@ -1,3 +1,7 @@
+"""
+系统升级、重启、备份恢复及通知渠道管理入口。
+"""
+
 import asyncio
 import errno
 import json
@@ -24,19 +28,29 @@ if TYPE_CHECKING:
 
 
 class SystemResponsePort(Protocol):
-    """系统链查询发布版本所需的最小同步 HTTP 响应契约。"""
+    """
+    系统链查询发布版本所需的最小同步 HTTP 响应契约。
+    """
 
     def json(self) -> Any:
-        """返回响应 JSON 载荷。"""
+        """
+        返回响应 JSON 载荷。
+
+        :return: 解析后的 JSON 值，无效内容抛出解析异常
+        """
         ...
 
     def close(self) -> None:
-        """释放响应与连接资源。"""
+        """
+        释放响应与连接资源。
+        """
         ...
 
 
 class SystemHttpPort(Protocol):
-    """系统链查询发布版本所需的同步 GET 端口。"""
+    """
+    系统链查询发布版本所需的同步 GET 端口。
+    """
 
     def get(
         self,
@@ -45,15 +59,28 @@ class SystemHttpPort(Protocol):
         proxies: Optional[dict[str, str]],
         headers: Mapping[str, str],
     ) -> Optional[SystemResponsePort]:
-        """读取远端发布列表，并保留无响应与有响应两态。"""
+        """
+        读取远端发布列表，并保留无响应与有响应两态。
+
+        :param url: 远程发布版本接口的完整地址
+        :param proxies: 协议到代理地址的映射，None 表示未指定代理
+        :param headers: 版本接口请求头，包含鉴权或内容协商信息
+        :return: 发布接口响应，未取得响应时为 None；调用方解析后负责关闭
+        """
         ...
 
 
 class SystemEnvironmentPort(Protocol):
-    """系统链备份插件时所需的最小运行环境端口。"""
+    """
+    系统链备份插件时所需的最小运行环境端口。
+    """
 
     def is_docker(self) -> bool:
-        """返回当前进程是否运行在 Docker 容器中。"""
+        """
+        返回当前进程是否运行在 Docker 容器中。
+
+        :return: 当前进程位于 Docker 容器中时为 True，否则为 False
+        """
         ...
 
 
@@ -67,7 +94,9 @@ def configure_system_ports(
     http: SystemHttpPort,
     environment: SystemEnvironmentPort,
 ) -> tuple[Optional[SystemHttpPort], Optional[SystemEnvironmentPort]]:
-    """由启动组合根装配系统链技术端口，并返回旧快照。"""
+    """
+    由启动组合根装配系统链技术端口，并返回旧快照。
+    """
     global _system_http_port, _system_environment_port
     with _system_port_lock:
         previous = (_system_http_port, _system_environment_port)
@@ -80,7 +109,9 @@ def reset_system_ports(
     http: Optional[SystemHttpPort] = None,
     environment: Optional[SystemEnvironmentPort] = None,
 ) -> None:
-    """恢复指定系统链端口；省略参数时回到未装配状态。"""
+    """
+    恢复指定系统链端口；省略参数时回到未装配状态。
+    """
     global _system_http_port, _system_environment_port
     with _system_port_lock:
         _system_http_port = http
@@ -88,7 +119,9 @@ def reset_system_ports(
 
 
 def _system_ports_snapshot() -> tuple[SystemHttpPort, SystemEnvironmentPort]:
-    """读取一致的系统链端口快照，未装配时稳定失败。"""
+    """
+    读取一致的系统链端口快照，未装配时稳定失败。
+    """
     with _system_port_lock:
         http = _system_http_port
         environment = _system_environment_port
@@ -98,7 +131,9 @@ def _system_ports_snapshot() -> tuple[SystemHttpPort, SystemEnvironmentPort]:
 
 
 def _close_system_response(response: SystemResponsePort) -> None:
-    """释放版本响应；关闭失败只记录诊断，不覆盖解析结果。"""
+    """
+    释放版本响应；关闭失败只记录诊断，不覆盖解析结果。
+    """
     try:
         response.close()
     except Exception as err:
@@ -111,7 +146,9 @@ async def _run_update_operation(
     *args: Any,
     **kwargs: Any,
 ) -> Any:
-    """通过任务登记器在线程池执行同步更新操作并等待真实终态。"""
+    """
+    通过任务登记器在线程池执行同步更新操作并等待真实终态。
+    """
     task = get_task_registry().create_sync(
         function,
         *args,
@@ -122,12 +159,16 @@ async def _run_update_operation(
 
 
 class _SystemUpdateChain(ChainBase):
-    """提供通知渠道主程序升级交互的 Chain 入口。"""
+    """
+    提供通知渠道主程序升级交互的 Chain 入口。
+    """
 
     _update_restart_file = "__system_update_restart__"
 
     def _update_interaction_handler(self) -> "SystemUpdateInteractionHandler":
-        """构造复用当前消息网关和系统应用服务的更新交互控制器。"""
+        """
+        构造复用当前消息网关和系统应用服务的更新交互控制器。
+        """
         from app.application.messaging.update import SystemUpdateInteractionHandler
 
         if self.system_service is None:
@@ -143,7 +184,9 @@ class _SystemUpdateChain(ChainBase):
 
     @staticmethod
     def _submit_update_monitor(monitor: Coroutine[Any, Any, None]) -> None:
-        """把进度监视协程跨线程登记到宿主事件循环。"""
+        """
+        把进度监视协程跨线程登记到宿主事件循环。
+        """
         get_task_registry().submit_threadsafe(
             monitor,
             loop=main_loop_registry.require(),
@@ -156,14 +199,18 @@ class _SystemUpdateChain(ChainBase):
         userid: Union[int, str],
         source: Optional[str],
     ) -> None:
-        """记录升级重启的回复目标，供服务恢复后发送完成通知。"""
+        """
+        记录升级重启的回复目标，供服务恢复后发送完成通知。
+        """
         self.save_cache(
             {"channel": channel.value, "userid": userid, "source": source},
             self._update_restart_file,
         )
 
     def _clear_update_restart_marker(self) -> None:
-        """升级安装未能进入重启阶段时删除完成通知标记。"""
+        """
+        升级安装未能进入重启阶段时删除完成通知标记。
+        """
         self.remove_cache(self._update_restart_file)
 
     def remote_update(
@@ -173,7 +220,9 @@ class _SystemUpdateChain(ChainBase):
         userid: Optional[Union[int, str]] = None,
         source: Optional[str] = None,
     ) -> None:
-        """检查正式版本并启动通知渠道中的升级确认交互。"""
+        """
+        检查正式版本并启动通知渠道中的升级确认交互。
+        """
         self._update_interaction_handler().remote_update(
             arg_str=arg_str,
             channel=channel,
@@ -191,7 +240,9 @@ class _SystemUpdateChain(ChainBase):
         original_message_id: Optional[Union[str, int]] = None,
         original_chat_id: Optional[str] = None,
     ) -> bool:
-        """处理更新交互按钮并把原消息定位参数交给进度编辑器。"""
+        """
+        处理更新交互按钮并把原消息定位参数交给进度编辑器。
+        """
         return self._update_interaction_handler().handle_callback_interaction(
             callback_data=callback_data,
             channel=channel,
@@ -210,7 +261,9 @@ class _SystemUpdateChain(ChainBase):
         username: Optional[str],
         text: str,
     ) -> bool:
-        """处理不支持按钮渠道中的升级或重启确认文本。"""
+        """
+        处理不支持按钮渠道中的升级或重启确认文本。
+        """
         return self._update_interaction_handler().handle_text_interaction(
             channel=channel,
             source=source,
@@ -221,7 +274,9 @@ class _SystemUpdateChain(ChainBase):
 
 
 class SystemChain(_SystemUpdateChain):
-    """系统级处理链。"""
+    """
+    系统级处理链。
+    """
 
     _restart_file = "__system_restart__"
     _plugin_restore_pending_file = "__plugin_restore_pending__"
@@ -249,14 +304,11 @@ class SystemChain(_SystemUpdateChain):
                 title="系统正在重启，请耐心等候！",
                 userid=userid,
                 save_history=False))
-            # 保存重启信息
             self.save_cache({
                 "channel": channel.value,
                 "userid": userid
             }, self._restart_file)
-        # 主动备份一次插件
         self.backup_plugins()
-        # 重启
         SystemHelper.restart()
 
     @staticmethod
@@ -271,7 +323,6 @@ class SystemChain(_SystemUpdateChain):
             return
 
         try:
-            # 使用绝对路径确保准确性
             config = get_chain_runtime_config_snapshot()
             plugins_dir = config.root_path / "app" / "plugins"
             backup_dir = config.config_path / "plugins_backup"
@@ -280,7 +331,6 @@ class SystemChain(_SystemUpdateChain):
                 logger.info("插件目录不存在，跳过备份")
                 return
 
-            # 确保备份目录存在
             backup_dir.mkdir(parents=True, exist_ok=True)
             pending_file = backup_dir / SystemChain._plugin_restore_pending_file
             pending_items = (
@@ -288,12 +338,10 @@ class SystemChain(_SystemUpdateChain):
                 if pending_file.exists()
                 else None
             )
-            # 需要排除的文件和目录
             exclude_items = {"__init__.py", "__pycache__", ".DS_Store"}
 
             backup_failed = False
 
-            # 遍历插件目录，备份除排除项外的所有内容
             for item in plugins_dir.iterdir():
                 if item.name in exclude_items:
                     continue
@@ -337,7 +385,6 @@ class SystemChain(_SystemUpdateChain):
         if not environment.is_docker():
             return
 
-        # 使用绝对路径确保准确性
         config = get_chain_runtime_config_snapshot()
         plugins_dir = config.root_path / "app" / "plugins"
         backup_dir = config.config_path / "plugins_backup"
@@ -355,10 +402,8 @@ class SystemChain(_SystemUpdateChain):
             logger.info("当前不是系统重置，保留插件备份供后续重置使用")
             return
 
-        # 确保插件目录存在
         plugins_dir.mkdir(parents=True, exist_ok=True)
 
-        # 遍历备份目录，恢复所有内容
         restored_count = 0
         restore_failed = False
         failed_items: dict[str, bool] = {}
@@ -412,12 +457,16 @@ class SystemChain(_SystemUpdateChain):
 
     @staticmethod
     def __is_snapshot_artifact(name: str) -> bool:
-        """识别快照替换过程中生成的临时或旧快照条目。"""
+        """
+        识别快照替换过程中生成的临时或旧快照条目。
+        """
         return bool(re.fullmatch(r"\..+\.(?:tmp|old)-[0-9a-f]{32}", name))
 
     @staticmethod
     def __read_plugin_restore_pending(pending_file: Path) -> Optional[dict[str, bool]]:
-        """读取仍需恢复的插件项目；无效内容按全部项目重试。"""
+        """
+        读取仍需恢复的插件项目；无效内容按全部项目重试。
+        """
         try:
             payload = json.loads(pending_file.read_text(encoding="utf-8"))
             failed_items = payload.get("failed_items")
@@ -436,7 +485,9 @@ class SystemChain(_SystemUpdateChain):
         pending_file: Path,
         failed_items: dict[str, bool],
     ) -> bool:
-        """记录失败项目及其原目标状态，供普通重启继续未完成恢复。"""
+        """
+        记录失败项目及其原目标状态，供普通重启继续未完成恢复。
+        """
         try:
             pending_file.write_text(
                 json.dumps({"failed_items": failed_items}, ensure_ascii=False),
@@ -452,7 +503,9 @@ class SystemChain(_SystemUpdateChain):
         source: Path, target: Path, *,
         ignore: Callable[[str, list[str]], Iterable[str]] | None = None,
     ) -> None:
-        """复制到同级临时路径后替换目标，避免失败时丢失旧快照。"""
+        """
+        复制到同级临时路径后替换目标，避免失败时丢失旧快照。
+        """
         target.parent.mkdir(parents=True, exist_ok=True)
         suffix = uuid.uuid4().hex
         staging = target.with_name(f".{target.name}.tmp-{suffix}")
@@ -507,7 +560,9 @@ class SystemChain(_SystemUpdateChain):
 
     @staticmethod
     def __remove_snapshot_path(path: Path) -> None:
-        """删除待替换目标，保留失败回滚所需的旧快照副本。"""
+        """
+        删除待替换目标，保留失败回滚所需的旧快照副本。
+        """
         if path.is_dir() and not path.is_symlink():
             shutil.rmtree(path)
         elif path.exists() or path.is_symlink():
@@ -547,10 +602,8 @@ class SystemChain(_SystemUpdateChain):
         如通过交互命令重启，
         重启完发送msg
         """
-        # 重启消息
         restart_channel = self.load_cache(self._restart_file)
         if restart_channel:
-            # 发送重启完成msg
             if not isinstance(restart_channel, dict):
                 restart_channel = json.loads(restart_channel)
             channel = next(
@@ -558,7 +611,6 @@ class SystemChain(_SystemUpdateChain):
                  channel.value == restart_channel.get('channel')), None)
             userid = restart_channel.get('userid')
 
-            # 版本号
             title = self.__get_version_message()
             self.post_message(Message(
                 channel=channel,
@@ -602,7 +654,6 @@ class SystemChain(_SystemUpdateChain):
         获取后端V3最新版本
         """
         try:
-            # 获取所有发布的版本列表
             http, _ = _system_ports_snapshot()
             response = http.get(
                 "https://api.github.com/repos/jxxghp/MoviePilot/releases",
@@ -634,7 +685,6 @@ class SystemChain(_SystemUpdateChain):
         获取前端V3最新版本
         """
         try:
-            # 获取所有发布的版本列表
             http, _ = _system_ports_snapshot()
             response = http.get(
                 "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases",
@@ -662,10 +712,14 @@ class SystemChain(_SystemUpdateChain):
 
     @staticmethod
     def get_server_local_version() -> str:
-        """返回当前后端构建版本。"""
+        """
+        返回当前后端构建版本。
+        """
         return runtime_version.get_app_version()
 
     @staticmethod
     def get_frontend_version() -> str | None:
-        """返回当前部署的前端资源版本。"""
+        """
+        返回当前部署的前端资源版本。
+        """
         return runtime_version.get_frontend_version()

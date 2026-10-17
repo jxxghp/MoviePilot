@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+解析 HDDolby 站点的用户资料、流量和做种信息。
+"""
+
 import json
 from typing import Optional, Tuple
 
@@ -9,7 +13,9 @@ from app.runtime.log import logger
 
 
 class HDDolbySiteUserInfo(SiteParserBase):
-    """解析 HDDolby 站点的用户资料、流量与消息。"""
+    """
+    解析 HDDolby 站点的用户资料、流量与消息。
+    """
     schema = SiteSchema.HDDolby
     request_mode = "apikey"
 
@@ -42,7 +48,7 @@ class HDDolbySiteUserInfo(SiteParserBase):
 
     def _parse_site_page(self, html_text: SitePage) -> None:
         """
-        获取站点页面地址
+        获取站点页面地址。
         """
         # 更换api地址
         self._base_url = f"https://api.{site_rules.extract_domain(self._base_url)}"
@@ -69,16 +75,16 @@ class HDDolbySiteUserInfo(SiteParserBase):
 
     def _parse_logged_in(self, html_text: str) -> bool:
         """
-        判断是否登录成功, 通过判断是否存在用户信息
-        暂时跳过检测，待后续优化
-        :param html_text:
-        :return:
+        API 认证结果由请求响应判定，此入口不检查页面登录标记。
+
+        :param html_text: 未使用的页面文本
+        :return: 始终返回 True
         """
         return True
 
     def _parse_user_base_info(self, html_text: SitePage) -> None:
         """
-        解析用户基本信息，这里把_parse_user_traffic_info和_parse_user_detail_info合并到这里
+        解析用户基本信息，这里把_parse_user_traffic_info和_parse_user_detail_info合并到这里。
         """
         if not html_text:
             return None
@@ -116,19 +122,19 @@ class HDDolbySiteUserInfo(SiteParserBase):
 
     def _parse_user_traffic_info(self, html_text: str) -> None:
         """
-        解析用户流量信息
+        解析用户流量信息。
         """
         pass
 
     def _parse_user_detail_info(self, html_text: str) -> None:
         """
-        解析用户详细信息
+        解析用户详细信息。
         """
         pass
 
     def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: Optional[bool] = False) -> Optional[str]:
         """
-        解析用户做种信息
+        解析用户做种信息。
         """
         if not html_text:
             return None
@@ -151,14 +157,14 @@ class HDDolbySiteUserInfo(SiteParserBase):
 
     def _parse_message_unread_links(self, html_text: str, msg_links: list[str]) -> Optional[str]:
         """
-        解析未读消息链接
+        解析未读消息链接。
         HDDolby 使用 API 模式，消息正文通过 _pase_unread_msgs 走网页接口读取。
         """
         return None
 
     def _parse_message_content(self, html_text: str) -> Tuple[Optional[str], Optional[str], Optional[str]]:
         """
-        解析消息内容
+        解析消息内容。
         HDDolby 使用 API 模式，消息正文通过 _pase_unread_msgs 走网页接口读取。
         """
         return None, None, None

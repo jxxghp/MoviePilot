@@ -1,4 +1,6 @@
-"""StorageChain 严格查询的三态传播合同。"""
+"""
+StorageChain 严格查询的三态传播合同。
+"""
 
 from pathlib import Path
 from unittest.mock import Mock
@@ -11,7 +13,9 @@ from app.schemas.exception import StorageQueryError
 
 
 def test_storage_chain_strict_query_distinguishes_absent_and_failure() -> None:
-    """严格查询用 None 表示确认不存在，并原样传播 provider 查询失败。"""
+    """
+    严格查询用 None 表示确认不存在，并原样传播 provider 查询失败。
+    """
     chain = object.__new__(StorageChain)
     chain._module_dispatcher = Mock()
     chain._module_dispatcher.dispatch_strict.return_value = None
@@ -26,7 +30,9 @@ def test_storage_chain_strict_query_distinguishes_absent_and_failure() -> None:
 
 
 def test_filemanager_storage_query_uses_strict_storage_adapter(monkeypatch) -> None:
-    """宿主存储 provider 必须调用 get_item_strict，不能回退会吞错的 get_item。"""
+    """
+    宿主存储 provider 必须调用 get_item_strict，不能回退会吞错的 get_item。
+    """
     module = object.__new__(FileManagerModule)
     module._support_storages = ["local"]
     storage = Mock()

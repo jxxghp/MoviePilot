@@ -1,4 +1,6 @@
-"""统一插件安装 Gateway 测试。"""
+"""
+统一插件安装 Gateway 测试。
+"""
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -28,7 +30,9 @@ REPO_URL = "https://github.com/jxxghp/MoviePilot-Plugins"
 
 
 def _inventory() -> CandidateInventory:
-    """构造仅含官方候选的完整库存。"""
+    """
+    构造仅含官方候选的完整库存。
+    """
     return CandidateInventory((
         MarketRead.present(
             REPO_URL,
@@ -50,7 +54,9 @@ def _inventory() -> CandidateInventory:
 
 @pytest.mark.asyncio
 async def test_gateway_freezes_admission_before_executing_transaction() -> None:
-    """Gateway 只把已选中的候选交给事务执行器。"""
+    """
+    Gateway 只把已选中的候选交给事务执行器。
+    """
     executor = AsyncMock()
     executor.execute.return_value = type(
         "Result",
@@ -81,7 +87,9 @@ async def test_gateway_freezes_admission_before_executing_transaction() -> None:
 
 @pytest.mark.asyncio
 async def test_force_install_reuses_cached_candidate_inventory() -> None:
-    """强制覆盖载荷时不得连带强刷全部远程插件仓库。"""
+    """
+    强制覆盖载荷时不得连带强刷全部远程插件仓库。
+    """
     inventory = AsyncMock(return_value=_inventory())
     executor = AsyncMock()
     executor.execute.return_value = type(
@@ -113,7 +121,9 @@ async def test_force_install_reuses_cached_candidate_inventory() -> None:
 
 @pytest.mark.asyncio
 async def test_local_only_requires_explicit_online_binding() -> None:
-    """本地专属身份即使发现唯一在线来源，也只能由管理员显式绑定。"""
+    """
+    本地专属身份即使发现唯一在线来源，也只能由管理员显式绑定。
+    """
     online = PluginMarketCandidate(
         plugin_id="DemoPlugin",
         source_key="github:jxxghp/moviepilot-plugins",
@@ -213,7 +223,9 @@ async def test_local_only_requires_explicit_online_binding() -> None:
 
 @pytest.mark.asyncio
 async def test_explicit_local_sync_uses_local_candidate_and_execution_mode() -> None:
-    """文件监控明确指定本地候选时必须同步本地载荷。"""
+    """
+    文件监控明确指定本地候选时必须同步本地载荷。
+    """
     online = PluginMarketCandidate(
         plugin_id="DemoPlugin",
         source_key="github:jxxghp/moviepilot-plugins",
@@ -289,7 +301,9 @@ async def test_explicit_local_sync_uses_local_candidate_and_execution_mode() -> 
 
 @pytest.mark.asyncio
 async def test_gateway_rejects_source_conflict_before_package_execution() -> None:
-    """来源准入失败时不进入文件和数据库事务。"""
+    """
+    来源准入失败时不进入文件和数据库事务。
+    """
     other = PluginMarketCandidate(
         plugin_id="DemoPlugin",
         source_key="github:example/moviepilot-plugins",
@@ -325,7 +339,9 @@ async def test_gateway_rejects_source_conflict_before_package_execution() -> Non
 
 @pytest.mark.asyncio
 async def test_gateway_checks_compatibility_on_final_trusted_candidate() -> None:
-    """跨仓聚合不能替代最终可信候选的系统版本兼容门禁。"""
+    """
+    跨仓聚合不能替代最终可信候选的系统版本兼容门禁。
+    """
     official = PluginMarketCandidate(
         plugin_id="DemoPlugin",
         source_key="github:jxxghp/moviepilot-plugins",
@@ -397,7 +413,9 @@ async def test_gateway_checks_compatibility_on_final_trusted_candidate() -> None
 
 @pytest.mark.asyncio
 async def test_gateway_source_inspection_preserves_sources_without_local_path() -> None:
-    """来源查询按在线仓归并版本，但不返回本地仓库路径。"""
+    """
+    来源查询按在线仓归并版本，但不返回本地仓库路径。
+    """
     official_v3 = _inventory().online_candidates[0]
     official_v2 = PluginMarketCandidate(
         plugin_id="DemoPlugin",
@@ -461,7 +479,9 @@ async def test_gateway_source_inspection_preserves_sources_without_local_path() 
 
 @pytest.mark.asyncio
 async def test_gateway_forwards_explicit_source_change_revision() -> None:
-    """显式换源的目标来源和 revision 必须冻结到事务准入结果。"""
+    """
+    显式换源的目标来源和 revision 必须冻结到事务准入结果。
+    """
     current = PluginIdentity(
         plugin_id="DemoPlugin",
         normalized_plugin_id="demoplugin",
@@ -528,7 +548,9 @@ async def test_gateway_forwards_explicit_source_change_revision() -> None:
 
 @pytest.mark.asyncio
 async def test_inspect_source_resolves_clone_id_to_its_source_plugin() -> None:
-    """分身勘察来源必须先归一到源插件，否则查不到任何安装包。"""
+    """
+    分身勘察来源必须先归一到源插件，否则查不到任何安装包。
+    """
     identity = AsyncMock(return_value=None)
     gateway = PluginInstallGateway(
         inventory=AsyncMock(return_value=_inventory()),
@@ -553,7 +575,9 @@ async def test_inspect_source_resolves_clone_id_to_its_source_plugin() -> None:
 
 @pytest.mark.asyncio
 async def test_install_resolves_clone_id_to_its_source_plugin() -> None:
-    """分身安装必须先归一到源插件，否则准入阶段就找不到安装包。"""
+    """
+    分身安装必须先归一到源插件，否则准入阶段就找不到安装包。
+    """
     executor = AsyncMock()
     executor.execute.return_value = type(
         "Result",
@@ -587,12 +611,16 @@ async def test_install_resolves_clone_id_to_its_source_plugin() -> None:
 
 @pytest.mark.asyncio
 async def test_install_holds_lifecycle_on_the_source_plugin_for_clones() -> None:
-    """分身安装的生命周期占位必须落在源插件上，同源分身才不会并发改写同一份载荷。"""
+    """
+    分身安装的生命周期占位必须落在源插件上，同源分身才不会并发改写同一份载荷。
+    """
     held: list[str] = []
 
     @asynccontextmanager
     async def _record_hold(plugin_id: str, _startup_token=None):
-        """记录安装期间实际占位的插件 ID。"""
+        """
+        记录安装期间实际占位的插件 ID。
+        """
         held.append(plugin_id)
         yield
 

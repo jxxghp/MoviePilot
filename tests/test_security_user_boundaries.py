@@ -1,4 +1,6 @@
-"""下载管理与 Web Agent 会话的用户权限回归。"""
+"""
+下载管理与 Web Agent 会话的用户权限回归。
+"""
 
 import asyncio
 from types import SimpleNamespace
@@ -32,7 +34,9 @@ from app.db.models.agentchat import AgentChat
     ("DELETE", "/" + "a" * 40, None),
 ])
 def test_download_management_rejects_user_without_manage(monkeypatch, method, path, payload):
-    """没有管理权限的登录用户不能读取或控制全局下载器任务。"""
+    """
+    没有管理权限的登录用户不能读取或控制全局下载器任务。
+    """
     principal = SimpleNamespace(id=2, name="ordinary", is_superuser=False, permissions={})
     chain = Mock()
     chain.return_value.downloading.return_value = []
@@ -56,7 +60,9 @@ def test_download_management_rejects_user_without_manage(monkeypatch, method, pa
     SimpleNamespace(id=1, name="admin", is_superuser=True, permissions={}),
 ])
 def test_download_management_preserves_manage_and_superuser_access(monkeypatch, principal):
-    """管理用户和超级管理员仍可读取并删除下载任务。"""
+    """
+    管理用户和超级管理员仍可读取并删除下载任务。
+    """
     chain = Mock()
     chain.downloading.return_value = []
     chain.remove_downloading.return_value = True
@@ -74,7 +80,9 @@ def test_download_management_preserves_manage_and_superuser_access(monkeypatch, 
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_prefixed_web_session_rejects_foreign_owner(monkeypatch, asynchronous):
-    """已分配的 Web 会话 ID 也必须检查当前用户，不能由前缀跳过鉴权。"""
+    """
+    已分配的 Web 会话 ID 也必须检查当前用户，不能由前缀跳过鉴权。
+    """
     principal = SimpleNamespace(id=2, name="attacker", is_superuser=False)
     record = SimpleNamespace(user_id="1", username="victim")
     service = SimpleNamespace(get=AsyncMock(return_value=record), get_sync=Mock(return_value=record))
@@ -87,14 +95,18 @@ def test_prefixed_web_session_rejects_foreign_owner(monkeypatch, asynchronous):
 
 
 def test_stream_denies_foreign_session_before_starting_agent(monkeypatch):
-    """流入口在调度 Agent 前拒绝其他用户已有的会话。"""
+    """
+    流入口在调度 Agent 前拒绝其他用户已有的会话。
+    """
     principal = SimpleNamespace(id=2, name="attacker", is_superuser=False)
     service = SimpleNamespace(get=AsyncMock(return_value=SimpleNamespace(user_id="1", username="victim")))
     manager_lookup = Mock()
     monkeypatch.setattr(web_agent.agent_application, "get_running_agent_manager", manager_lookup)
 
     async def scenario():
-        """消费拒绝事件，证明不会启动后台模型或任务。"""
+        """
+        消费拒绝事件，证明不会启动后台模型或任务。
+        """
         result = await web_agent.build_web_agent_stream(
             web_agent.WebAgentStreamCommand(text="继续", session_id="web-agent:victim"),
             current_user=principal,
@@ -112,7 +124,9 @@ def test_stream_denies_foreign_session_before_starting_agent(monkeypatch):
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize("owner,allowed", [("1", False), (None, True), ("", True)])
 def test_memory_fallback_only_restores_unowned_legacy_sessions(asynchronous, owner, allowed):
-    """旧记录兜底只恢复无归属会话，不能恢复其他明确归属用户的上下文。"""
+    """
+    旧记录兜底只恢复无归属会话，不能恢复其他明确归属用户的上下文。
+    """
     record = SimpleNamespace(user_id=owner, agent_messages=messages_to_dict([HumanMessage(content="private")]))
     service = SimpleNamespace(get=AsyncMock(side_effect=[None, record]), get_sync=Mock(side_effect=[None, record]))
     memory = MemoryManager(chat=service)
@@ -124,7 +138,9 @@ def test_memory_fallback_only_restores_unowned_legacy_sessions(asynchronous, own
 
 
 def test_display_save_rechecks_owner_before_writing():
-    """即使调用方绕过流入口，展示快照写回也不能覆盖其他用户记录。"""
+    """
+    即使调用方绕过流入口，展示快照写回也不能覆盖其他用户记录。
+    """
     principal = SimpleNamespace(id=2, name="attacker", is_superuser=False)
     service = SimpleNamespace(get=AsyncMock(return_value=SimpleNamespace(user_id="1", username="victim")))
     persistence = SimpleNamespace(async_save_display_messages=AsyncMock())
@@ -137,7 +153,9 @@ def test_display_save_rechecks_owner_before_writing():
 
 
 def test_web_session_does_not_reuse_other_owner_with_recycled_name(monkeypatch):
-    """已有持久化用户 ID 时，重复用户名不能授予另一个账号会话访问权。"""
+    """
+    已有持久化用户 ID 时，重复用户名不能授予另一个账号会话访问权。
+    """
     principal = SimpleNamespace(id=2, name="same-name", is_superuser=False)
     record = SimpleNamespace(user_id="1", username="same-name")
     service = SimpleNamespace(get=AsyncMock(return_value=record))
@@ -147,7 +165,9 @@ def test_web_session_does_not_reuse_other_owner_with_recycled_name(monkeypatch):
 
 
 def test_new_web_session_uses_stable_user_id(monkeypatch):
-    """账号改名保持会话身份，复用旧用户名的新账号不能生成同一个会话 ID。"""
+    """
+    账号改名保持会话身份，复用旧用户名的新账号不能生成同一个会话 ID。
+    """
     service = SimpleNamespace(get_sync=Mock(return_value=None))
     monkeypatch.setattr(web_agent, "get_configured_agent_chat_service", lambda: service)
     before = SimpleNamespace(id=1, name="old", is_superuser=False)
@@ -160,7 +180,9 @@ def test_new_web_session_uses_stable_user_id(monkeypatch):
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_unpersisted_web_session_can_only_be_reused_in_its_user_namespace(monkeypatch, asynchronous):
-    """附件上传后尚未落库的会话可继续使用，其他用户不能占用其活动队列。"""
+    """
+    附件上传后尚未落库的会话可继续使用，其他用户不能占用其活动队列。
+    """
     service = SimpleNamespace(get_sync=Mock(return_value=None), get=AsyncMock(return_value=None))
     monkeypatch.setattr(web_agent, "get_configured_agent_chat_service", lambda: service)
     owner = SimpleNamespace(id=1, name="owner", is_superuser=False)
@@ -179,7 +201,9 @@ def test_unpersisted_web_session_can_only_be_reused_in_its_user_namespace(monkey
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize("username,expected", [(None, []), ("other", []), ("legacy-owner", ["private"])])
 def test_memory_legacy_username_requires_authorized_identity(asynchronous, username, expected):
-    """有用户名的旧记录也有归属，不能当作无主会话直接恢复或复用缓存。"""
+    """
+    有用户名的旧记录也有归属，不能当作无主会话直接恢复或复用缓存。
+    """
     record = SimpleNamespace(user_id=None, username="legacy-owner",
                              agent_messages=messages_to_dict([HumanMessage(content="private")]))
     service = SimpleNamespace(get=AsyncMock(side_effect=[None, record]), get_sync=Mock(side_effect=[None, record]))
@@ -196,14 +220,18 @@ def test_memory_legacy_username_requires_authorized_identity(asynchronous, usern
 
 
 def test_history_access_does_not_accept_recycled_username():
-    """详情和删除共用的授权规则只对无 ID 旧记录使用用户名。"""
+    """
+    详情和删除共用的授权规则只对无 ID 旧记录使用用户名。
+    """
     principal = SimpleNamespace(id=2, name="same-name", is_superuser=False)
     assert not AgentChatService.can_access(SimpleNamespace(user_id="1", username="same-name"), principal)
     assert AgentChatService.can_access(SimpleNamespace(user_id=None, username="same-name"), principal)
 
 
 def test_upload_denies_foreign_session_without_saving_file(monkeypatch):
-    """上传外部用户会话附件返回统一 404，且不读取或保存上传文件。"""
+    """
+    上传外部用户会话附件返回统一 404，且不读取或保存上传文件。
+    """
     principal = SimpleNamespace(id=2, name="attacker", is_superuser=False)
     service = SimpleNamespace(get=AsyncMock(return_value=SimpleNamespace(user_id="1", username="victim")))
     save = AsyncMock()
@@ -225,7 +253,9 @@ def test_upload_denies_foreign_session_without_saving_file(monkeypatch):
     ("POST", "/agent/sessions/web-agent:victim/stop"),
 ])
 def test_session_endpoints_deny_foreign_session_without_server_error(monkeypatch, method, path):
-    """读取或停止他人会话返回统一拒绝结果，不能抛出 500 或触达运行中的 Agent。"""
+    """
+    读取或停止他人会话返回统一拒绝结果，不能抛出 500 或触达运行中的 Agent。
+    """
     principal = SimpleNamespace(id=2, name="attacker", is_superuser=False)
     service = SimpleNamespace(
         get=AsyncMock(return_value=SimpleNamespace(user_id="1", username="victim")),
@@ -249,7 +279,9 @@ def test_session_endpoints_deny_foreign_session_without_server_error(monkeypatch
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_admin_memory_restore_requires_explicit_authorization_on_cache_reuse(asynchronous):
-    """管理员恢复其他归属后，未授权调用也不能通过该管理员的缓存读取。"""
+    """
+    管理员恢复其他归属后，未授权调用也不能通过该管理员的缓存读取。
+    """
     record = SimpleNamespace(user_id="1", agent_messages=messages_to_dict([HumanMessage(content="private")]))
     service = SimpleNamespace(get=AsyncMock(side_effect=[None, record]), get_sync=Mock(side_effect=[None, record]))
     memory = MemoryManager(chat=service)
@@ -266,7 +298,9 @@ def test_admin_memory_restore_requires_explicit_authorization_on_cache_reuse(asy
 
 @pytest.mark.parametrize("admin,expected", [(True, ["private"]), (False, [])])
 def test_web_agent_admin_continuation_keeps_acting_identity(monkeypatch, admin, expected):
-    """Web 续聊按真实管理员身份授权历史，执行人始终是当前用户。"""
+    """
+    Web 续聊按真实管理员身份授权历史，执行人始终是当前用户。
+    """
     record = SimpleNamespace(user_id="1", agent_messages=messages_to_dict([HumanMessage(content="private")]))
     memory = MemoryManager(chat=SimpleNamespace(get=AsyncMock(side_effect=[None, record])))
     agent = _get_web_agent_type()(session_id="web-agent:foreign", user_id="2", username="acting-user",
@@ -284,7 +318,9 @@ def test_web_agent_admin_continuation_keeps_acting_identity(monkeypatch, admin, 
 
 @pytest.mark.parametrize("channel,source", [(None, None), ("Web", "openai"), ("Telegram", "bot")])
 def test_implicit_admin_context_does_not_authorize_foreign_history(channel, source):
-    """后台和协议入口的工具管理员语义不能扩散成任意会话历史授权。"""
+    """
+    后台和协议入口的工具管理员语义不能扩散成任意会话历史授权。
+    """
     agent = MoviePilotAgent(session_id="foreign", user_id="2", channel=channel, source=source,
                            is_channel_admin=True)
     assert asyncio.run(agent._can_restore_cross_owner_history()) is False
@@ -292,7 +328,9 @@ def test_implicit_admin_context_does_not_authorize_foreign_history(channel, sour
 
 @pytest.mark.parametrize("asynchronous", [False, True])
 def test_history_pagination_excludes_foreign_owner_with_same_name(asynchronous):
-    """分页 SQL 在限制条数前排除同名异主记录，并兼容无 ID 的旧历史。"""
+    """
+    分页 SQL 在限制条数前排除同名异主记录，并兼容无 ID 的旧历史。
+    """
     engine = create_engine("sqlite://")
     AgentChat.__table__.create(engine)
     try:
@@ -316,7 +354,9 @@ def test_history_pagination_excludes_foreign_owner_with_same_name(asynchronous):
 
 
 def test_admin_display_save_preserves_original_owner():
-    """管理员续聊可写回原会话展示历史，但不会把原归属替换成管理员。"""
+    """
+    管理员续聊可写回原会话展示历史，但不会把原归属替换成管理员。
+    """
     principal = SimpleNamespace(id=2, name="acting-admin", is_superuser=True)
     record = SimpleNamespace(user_id="1", username="victim", channel="Telegram", source="bot",
                              original_chat_id="chat", client_session_id="client")
@@ -330,7 +370,9 @@ def test_admin_display_save_preserves_original_owner():
 
 
 def test_admin_title_generation_preserves_cross_channel_session_owner(monkeypatch):
-    """续聊首次生成标题时也必须保留原归属与渠道，不能通过 ensure_session 变更所有者。"""
+    """
+    续聊首次生成标题时也必须保留原归属与渠道，不能通过 ensure_session 变更所有者。
+    """
     record = SimpleNamespace(user_id="1", username="victim", channel="Telegram", source="bot",
                              original_chat_id="chat", title="新会话")
     service = SimpleNamespace(get=AsyncMock(side_effect=[None, record]))

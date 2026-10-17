@@ -1,4 +1,6 @@
-"""自定义识别词专用 API 合同测试。"""
+"""
+自定义识别词专用 API 合同测试。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -13,16 +15,22 @@ from app.schemas.types import SystemConfigKey
 
 
 class _RecordingSettingsService:
-    """记录专用接口传入设置服务的条件替换参数。"""
+    """
+    记录专用接口传入设置服务的条件替换参数。
+    """
 
     calls: list[dict] = []
     error: Exception | None = None
 
     def __init__(self, *_args) -> None:
-        """兼容真实设置服务的构造参数。"""
+        """
+        兼容真实设置服务的构造参数。
+        """
 
     async def update(self, **kwargs):
-        """记录调用，并按测试需要返回或抛出结果。"""
+        """
+        记录调用，并按测试需要返回或抛出结果。
+        """
         self.calls.append(kwargs)
         if self.error is not None:
             raise self.error
@@ -31,14 +39,18 @@ class _RecordingSettingsService:
 
 @pytest.fixture(autouse=True)
 def reset_recording_service() -> None:
-    """隔离每个接口测试的记录和异常状态。"""
+    """
+    隔离每个接口测试的记录和异常状态。
+    """
     _RecordingSettingsService.calls = []
     _RecordingSettingsService.error = None
 
 
 @pytest.mark.asyncio
 async def test_query_identifiers_returns_only_public_string_rules(monkeypatch) -> None:
-    """查询接口应过滤历史坏项，使返回值与字符串请求合同一致。"""
+    """
+    查询接口应过滤历史坏项，使返回值与字符串请求合同一致。
+    """
     config = MagicMock()
     config.get.return_value = ["A", None, 7, "B"]
     monkeypatch.setattr(system_endpoint, "get_configured_system_config", lambda: config)
@@ -50,7 +62,9 @@ async def test_query_identifiers_returns_only_public_string_rules(monkeypatch) -
 
 @pytest.mark.asyncio
 async def test_update_identifiers_forwards_expected_snapshot(monkeypatch) -> None:
-    """专用写接口应把前端基线作为原子条件传给设置服务。"""
+    """
+    专用写接口应把前端基线作为原子条件传给设置服务。
+    """
     monkeypatch.setattr(system_endpoint, "SystemSettingsService", _RecordingSettingsService)
     monkeypatch.setattr(system_endpoint, "get_runtime_settings", MagicMock())
     monkeypatch.setattr(system_endpoint, "get_configured_system_config", MagicMock())
@@ -80,7 +94,9 @@ async def test_update_identifiers_forwards_expected_snapshot(monkeypatch) -> Non
 
 @pytest.mark.asyncio
 async def test_update_identifiers_without_expected_snapshot_allows_managed_write(monkeypatch) -> None:
-    """未提供前端基线时，专用接口仍应获得托管设置写入权限。"""
+    """
+    未提供前端基线时，专用接口仍应获得托管设置写入权限。
+    """
     monkeypatch.setattr(system_endpoint, "SystemSettingsService", _RecordingSettingsService)
     monkeypatch.setattr(system_endpoint, "get_runtime_settings", MagicMock())
     monkeypatch.setattr(system_endpoint, "get_configured_system_config", MagicMock())
@@ -106,7 +122,9 @@ async def test_update_identifiers_without_expected_snapshot_allows_managed_write
 
 @pytest.mark.asyncio
 async def test_update_identifiers_maps_stale_snapshot_to_http_409(monkeypatch) -> None:
-    """过期识别词基线必须返回冲突，不能伪装为保存成功。"""
+    """
+    过期识别词基线必须返回冲突，不能伪装为保存成功。
+    """
     _RecordingSettingsService.error = SystemSettingConflictError("配置已被其他会话更新")
     monkeypatch.setattr(system_endpoint, "SystemSettingsService", _RecordingSettingsService)
     monkeypatch.setattr(system_endpoint, "get_runtime_settings", MagicMock())

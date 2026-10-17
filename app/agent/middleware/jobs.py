@@ -1,3 +1,7 @@
+"""
+加载任务定义并把有效任务摘要注入 Agent 上下文。
+"""
+
 import re
 from collections.abc import Awaitable, Callable
 from typing import Annotated, NotRequired, TypedDict
@@ -25,42 +29,51 @@ ACTIVE_JOB_STATUSES = ("pending", "in_progress")
 
 
 class JobMetadata(TypedDict):
-    """Job 元数据。"""
+    """
+    Job 元数据。
+
+    :ivar path: JOB.md 定义文件的本地路径
+    :ivar id: 任务标识，对应任务所在目录名
+    :ivar name: 任务展示名称
+    :ivar description: 任务目标及执行职责摘要
+    :ivar schedule: 调度类型：once 表示一次性，recurring 表示重复执行
+    :ivar status: 当前状态：pending 待处理、in_progress 执行中、completed 已完成或 cancelled 已取消
+    :ivar last_run: 上次执行时间文本；尚未执行时为 None
+    """
 
     path: str
-    """JOB.md 文件路径。"""
 
     id: str
-    """Job 标识符（目录名）。"""
 
     name: str
-    """Job 名称。"""
 
     description: str
-    """Job 描述。"""
 
     schedule: str
-    """调度类型: once（一次性）/ recurring（重复性）。"""
 
     status: str
-    """当前状态: pending / in_progress / completed / cancelled。"""
 
     last_run: str | None
-    """上次执行时间。"""
 
 
 class JobsState(AgentState):
-    """jobs 中间件状态。"""
+    """
+    jobs 中间件状态。
+
+    :ivar jobs_metadata: 已加载的任务元数据；缺失表示尚未加载，私有状态不传播给父智能体
+    """
 
     jobs_metadata: NotRequired[Annotated[list[JobMetadata], PrivateStateAttr]]
-    """已加载的 job 元数据列表，不传播给父 agent。"""
 
 
 class JobsStateUpdate(TypedDict):
-    """jobs 中间件状态更新项。"""
+    """
+    jobs 中间件状态更新项。
+
+    :ivar jobs_metadata: 待合并到图状态的任务元数据列表
+    """
 
     jobs_metadata: list[JobMetadata]
-    """待合并的 job 元数据列表。"""
 
 
 def _parse_job_metadata(
@@ -68,7 +81,9 @@ def _parse_job_metadata(
     job_path: str,
     job_id: str,
 ) -> JobMetadata | None:
-    """从 JOB.md 内容中解析 YAML 前言并验证元数据。"""
+    """
+    从 JOB.md 内容中解析 YAML 前言并验证元数据。
+    """
     if len(content) > MAX_JOB_FILE_SIZE:
         logger.warning("Skipping %s: content too large (%d bytes)", job_path, len(content))
         return None
@@ -124,7 +139,8 @@ def _parse_job_metadata(
 
 
 async def _alist_jobs(source_path: AsyncPath) -> list[JobMetadata]:
-    """异步列出指定路径下的所有任务。
+    """
+    异步列出指定路径下的所有任务。
 
     扫描包含 JOB.md 的目录并解析其元数据，遇到非法 UTF-8 字节时以替换字符兜底。
     """
@@ -167,7 +183,8 @@ async def _alist_jobs(source_path: AsyncPath) -> list[JobMetadata]:
 
 
 def filter_active_jobs(jobs_metadata: list[JobMetadata]) -> list[JobMetadata]:
-    """筛选需要参与心跳检查的活跃任务。
+    """
+    筛选需要参与心跳检查的活跃任务。
 
     这里严格以任务状态为准，只保留 `pending` / `in_progress`。
     `recurring` 任务执行完成后按约定应回写为 `pending`，因此无需再额外放宽
@@ -177,7 +194,9 @@ def filter_active_jobs(jobs_metadata: list[JobMetadata]) -> list[JobMetadata]:
 
 
 async def load_jobs_metadata(source_paths: list[str]) -> list[JobMetadata]:
-    """按顺序加载多个 jobs 目录下的任务元数据。"""
+    """
+    按顺序加载多个 jobs 目录下的任务元数据。
+    """
     all_jobs: list[JobMetadata] = []
     for source_path_str in source_paths:
         source_path = AsyncPath(source_path_str)
@@ -214,7 +233,8 @@ Rules:
 
 
 class JobsMiddleware(AgentMiddleware[JobsState, ContextT, ResponseT]):  # noqa
-    """加载并向系统提示词注入 Agent Jobs 的中间件。
+    """
+    加载并向系统提示词注入 Agent Jobs 的中间件。
 
     扫描 jobs 目录下的 JOB.md 文件，解析元数据并注入到系统提示词中，
     使智能体了解当前的长期任务及其状态。
@@ -223,13 +243,17 @@ class JobsMiddleware(AgentMiddleware[JobsState, ContextT, ResponseT]):  # noqa
     state_schema = JobsState
 
     def __init__(self, *, sources: list[str]) -> None:
-        """初始化 Jobs 中间件。"""
+        """
+        初始化 Jobs 中间件。
+        """
         self.sources = sources
         self.system_prompt_template = JOBS_SYSTEM_PROMPT
 
     @staticmethod
     def _format_jobs_list(jobs: list[JobMetadata]) -> str:
-        """格式化任务元数据列表用于系统提示词。"""
+        """
+        格式化任务元数据列表用于系统提示词。
+        """
         if not jobs:
             return "(No active legacy JOB.md tasks. Use agent_task action=create for new scheduled work.)"
 
@@ -252,7 +276,9 @@ class JobsMiddleware(AgentMiddleware[JobsState, ContextT, ResponseT]):  # noqa
         return "\n".join(lines)
 
     def modify_request(self, request: ModelRequest[ContextT]) -> ModelRequest[ContextT]:
-        """将任务文档注入模型请求的系统消息中。"""
+        """
+        将任务文档注入模型请求的系统消息中。
+        """
         jobs_metadata = request.state.get("jobs_metadata", [])  # noqa
 
         # 仅注入真正活跃的任务，避免把已完成任务继续塞进心跳上下文。
@@ -273,7 +299,9 @@ class JobsMiddleware(AgentMiddleware[JobsState, ContextT, ResponseT]):  # noqa
     async def abefore_agent(  # noqa
         self, state: JobsState, runtime: Runtime, config: RunnableConfig
     ) -> JobsStateUpdate | None:
-        """在 Agent 执行前异步加载任务元数据。"""
+        """
+        在 Agent 执行前异步加载任务元数据。
+        """
         return JobsStateUpdate(jobs_metadata=await load_jobs_metadata(self.sources))
 
     async def awrap_model_call(
@@ -281,7 +309,9 @@ class JobsMiddleware(AgentMiddleware[JobsState, ContextT, ResponseT]):  # noqa
         request: ModelRequest[ContextT],
         handler: Callable[[ModelRequest[ContextT]], Awaitable[ModelResponse[ResponseT]]],
     ) -> ModelResponse[ResponseT]:
-        """在模型调用时注入任务文档。"""
+        """
+        在模型调用时注入任务文档。
+        """
         modified_request = self.modify_request(request)
         return await handler(modified_request)
 

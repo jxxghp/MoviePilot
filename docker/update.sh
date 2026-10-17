@@ -1,6 +1,8 @@
 #!/bin/bash
 # shellcheck shell=bash
+# curl 选项与请求头保存在空格分隔的参数串中，调用时需要展开为多个参数。
 # shellcheck disable=SC2086
+# 归档按单个 MoviePilot-* 根目录处理；多个匹配项不在该条件表达式的支持范围。
 # shellcheck disable=SC2144
 
 Green="\033[32m"
@@ -64,7 +66,7 @@ function set_package_proxy_env() {
     fi
 }
 
-# 下载及解压
+# 下载归档到临时目录；失败最多尝试三次，成功后归一化后端根目录名称。
 function download_and_unzip() {
     local retries=0
     local max_retries=3
@@ -392,7 +394,6 @@ function swap_staged_payload() {
 
 # 下载程序资源，$1: 后端版本路径
 function install_backend_and_download_resources() {
-    # 更新后端程序
     if ! download_and_unzip "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot/archive/refs/${1}" "App"; then
         WARN "后端程序下载失败，继续使用旧的程序来启动..."
         return 1
@@ -416,13 +417,11 @@ function install_backend_and_download_resources() {
     # 如果是"heads/v3.zip"，则查找v3开头的最新版本号
     if [[ "${1}" == "heads/v3.zip" ]]; then
         INFO "→ 正在获取前端最新版本号..."
-        # 获取所有发布的版本列表，并筛选出以v3开头的版本号
         releases=$(curl ${CURL_OPTIONS} "https://api.github.com/repos/jxxghp/MoviePilot-Frontend/releases" ${CURL_HEADERS} | jq -r '.[].tag_name' | grep "^v3\.")
         if [ -z "$releases" ]; then
             WARN "未找到任何v3前端版本，继续启动..."
             return 1
         else
-            # 找到最新的v3版本
             frontend_version=$(echo "$releases" | sort -V | tail -n 1)
         fi
         INFO "前端最新版本号：${frontend_version}"
@@ -436,7 +435,6 @@ function install_backend_and_download_resources() {
         fi
         INFO "前端版本号：${frontend_version}"
     fi
-    # 更新前端程序
     if ! download_and_unzip "${GITHUB_PROXY}https://github.com/jxxghp/MoviePilot-Frontend/releases/download/${frontend_version}/dist.zip" "dist"; then
         WARN "前端程序下载失败，继续使用旧的程序来启动..."
         return 1
@@ -561,7 +559,7 @@ function test_connectivity_package() {
     esac
 }
 
-# 测试Github连通性
+# 按传入模式检测镜像或全局代理；直连模式仅配置参数，不额外探测。
 function test_connectivity_github() {
     case "$1" in
     0)

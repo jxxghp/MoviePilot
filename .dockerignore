@@ -1,14 +1,14 @@
-# Git
+# 版本控制文件
 .github
 .git
 .gitignore
 
-# Documentation
+# 项目文档
 docs/
 README.md
 LICENSE
 
-# Development files
+# 开发配置与解释器缓存
 .pylintrc
 **/*.pyc
 **/__pycache__/
@@ -29,7 +29,7 @@ htmlcov/
 .dmypy.json
 dmypy.json
 
-# Virtual environments
+# 本地虚拟环境
 .venv/
 .worktrees/
 venv/
@@ -38,7 +38,7 @@ ENV/
 env.bak/
 venv.bak/
 
-# Runtime state and locally synchronized payloads
+# 运行状态与本地同步的程序资源
 .build/
 .agent-work/
 .runtime/
@@ -55,14 +55,14 @@ app/plugins/**
 !app/plugins/__init__.py
 app/application/site/*.bin
 
-# IDE
+# 编辑器配置与临时文件
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS
+# 操作系统生成的文件
 .DS_Store
 .DS_Store?
 ._*
@@ -71,27 +71,27 @@ app/application/site/*.bin
 ehthumbs.db
 Thumbs.db
 
-# Logs
+# 运行日志
 *.log
 logs/
 
-# Temporary files
+# 临时文件
 *.tmp
 *.temp
 tmp/
 temp/
 
-# Database
+# 本地数据库
 *.db
 *.sqlite
 *.sqlite3
 
-# Test files
+# 测试文件
 tests/
 test_*
 *_test.py
 
-# Build artifacts
+# 构建产物
 .artifacts/
 build/
 .build/
@@ -99,11 +99,11 @@ dist/
 *.egg-info/
 rust/**/target/
 
-# Docker
+# 容器构建与编排配置
 Dockerfile*
 docker-compose*
 .dockerignore
 
-# Other
+# 桌面打包资源
 app.ico
 frozen.spec

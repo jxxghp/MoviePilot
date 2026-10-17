@@ -1,4 +1,6 @@
-"""订阅站点与规则组引用协调。"""
+"""
+订阅站点与规则组引用协调。
+"""
 
 from app.chain.subscribe.contract import _SubscribeOwnerBase
 from app.runtime.events import Event
@@ -8,7 +10,9 @@ from app.schemas.types import (
 
 
 class SubscribeReconciliationOwner(_SubscribeOwnerBase):
-    """集中清理订阅持久化中的站点和规则组悬空引用。"""
+    """
+    集中清理订阅持久化中的站点和规则组悬空引用。
+    """
 
     def _remove_site(self, event: Event) -> None:
         """
@@ -24,7 +28,9 @@ class SubscribeReconciliationOwner(_SubscribeOwnerBase):
             mutation.apply(site_id)
 
     def _reconcile_rule_group_references(self, event: Event) -> None:
-        """规则组定义保存后清理默认配置和已有订阅中的悬空引用。"""
+        """
+        规则组定义保存后清理默认配置和已有订阅中的悬空引用。
+        """
         if not event:
             return
         event_data = event.event_data

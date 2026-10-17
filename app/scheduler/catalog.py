@@ -1,4 +1,6 @@
-"""调度器静态任务目录与 APScheduler 投影。"""
+"""
+调度器静态任务目录与 APScheduler 投影。
+"""
 
 import hashlib
 from datetime import datetime, timedelta
@@ -29,7 +31,14 @@ from app.schemas.system import MediaServerConf as _SchemaMediaServerConf
 
 
 class _MediaServerSchedule(TypedDict):
-    """媒体服务器同步任务的内部投影。"""
+    """
+    媒体服务器同步任务的内部投影。
+
+    :ivar id: 媒体服务器配置标识
+    :ivar name: 任务列表中显示的服务器名称
+    :ivar server: 媒体服务器类型
+    :ivar interval: 两次同步之间的分钟数
+    """
 
     id: str
     name: str
@@ -40,7 +49,9 @@ class _MediaServerSchedule(TypedDict):
 def _subscription_search_job_specs(
     services: SchedulerServices, search_interval: int = 24,
 ) -> tuple[JobSpec, ...]:
-    """构造订阅搜索、新增搜索与持久队列恢复任务目录。"""
+    """
+    构造订阅搜索、新增搜索与持久队列恢复任务目录。
+    """
     return (
         JobSpec(
             "subscribe_search", "订阅搜索补全", services.search_subscribe, "subscription",
@@ -67,7 +78,9 @@ def _wallpaper_job_specs(
     services: SchedulerServices,
     wallpaper: str,
 ) -> tuple[JobSpec, ...]:
-    """仅在启用壁纸时返回壁纸缓存任务声明。"""
+    """
+    仅在启用壁纸时返回壁纸缓存任务声明。
+    """
     if not wallpaper:
         return ()
     return (JobSpec("random_wallpager", "壁纸缓存", services.get_wallpapers, "image"),)
@@ -75,15 +88,21 @@ def _wallpaper_job_specs(
 
 # APScheduler 未提供类型注解，基类在 mypy 中是 Any
 class _SchedulerThreadPoolExecutor(BasePoolExecutor):  # type: ignore[misc]
-    """APScheduler 线程池执行器：定时任务线程按需增长、不收缩，空闲时交还各自的分配器线程缓存。"""
+    """
+    APScheduler 线程池执行器：定时任务线程按需增长、不收缩，空闲时交还各自的分配器线程缓存。
+    """
 
     def __init__(self, max_workers: int) -> None:
-        """以空闲时刷新线程缓存的线程池作为 APScheduler 的底层池。"""
+        """
+        以空闲时刷新线程缓存的线程池作为 APScheduler 的底层池。
+        """
         super().__init__(IdleCacheReleasingThreadPoolExecutor(max_workers))
 
 
 class SchedulerCatalogOwner(_SchedulerOwnerBase):
-    """调度器静态任务目录与 APScheduler 投影。"""
+    """
+    调度器静态任务目录与 APScheduler 投影。
+    """
 
     @staticmethod
     def _get_mediaserver_sync_interval(
@@ -143,7 +162,9 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
         self,
         config: SchedulerRuntimeConfig,
     ) -> None:
-        """在共享调度器中按当前配置维护唯一的数据库备份作业。"""
+        """
+        在共享调度器中按当前配置维护唯一的数据库备份作业。
+        """
         if not config.db_backup_enable or not config.db_backup_cron.strip():
             return
 
@@ -171,12 +192,16 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
         )
 
     def _poll_subscription_search_queue(self) -> None:
-        """仅在消费者空闲时唤醒托管协程，轮询不等待搜索也不重复报告重入。"""
+        """
+        仅在消费者空闲时唤醒托管协程，轮询不等待搜索也不重复报告重入。
+        """
         if not self._is_job_active("subscribe_search_queue"):
             self.start("subscribe_search_queue")
 
     def _register_subscription_search_queue_job(self, config: SchedulerRuntimeConfig) -> None:
-        """注册轻量轮询；搜索协程的真实生命周期由 Scheduler 持有。"""
+        """
+        注册轻量轮询；搜索协程的真实生命周期由 Scheduler 持有。
+        """
         self._scheduler.add_job(
             self._poll_subscription_search_queue,
             "interval",
@@ -187,7 +212,9 @@ class SchedulerCatalogOwner(_SchedulerOwnerBase):
         )
 
     def _initialize_catalog(self, config: SchedulerRuntimeConfig) -> None:
-        """构建完整任务目录并投影到尚未启动的 APScheduler。"""
+        """
+        构建完整任务目录并投影到尚未启动的 APScheduler。
+        """
         services = self._scheduler_services()
         # 各服务的运行状态
         self._jobs = JobCatalog(

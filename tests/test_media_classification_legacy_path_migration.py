@@ -1,4 +1,6 @@
-"""旧分类斜杠路径迁移和已持久化策略修复测试。"""
+"""
+旧分类斜杠路径迁移和已持久化策略修复测试。
+"""
 
 import importlib
 from collections.abc import Mapping
@@ -17,21 +19,31 @@ _MIGRATION = "database.versions.e7f3a9c1d5b2_3_0_29"
 
 
 class _MigrationModule(Protocol):
-    """声明本测试调用的 Alembic 迁移模块接口。"""
+    """
+    声明本测试调用的 Alembic 迁移模块接口。
+
+    :ivar revision: 待验证迁移的版本标识
+    :ivar down_revision: 该迁移依赖的上一版本标识
+    :ivar op: 绑定测试数据库连接的 Alembic 操作入口
+    """
 
     revision: str
     down_revision: str
     op: Any
 
     def upgrade(self) -> None:
-        """执行升级迁移。"""
+        """
+        执行升级迁移。
+        """
 
 
 def _bind_migration(
     monkeypatch: pytest.MonkeyPatch,
     connection: Connection,
 ) -> _MigrationModule:
-    """把策略路径迁移绑定到隔离 SQLite 连接。"""
+    """
+    把策略路径迁移绑定到隔离 SQLite 连接。
+    """
     migration = cast(_MigrationModule, importlib.import_module(_MIGRATION))
     monkeypatch.setattr(
         migration,
@@ -42,7 +54,9 @@ def _bind_migration(
 
 
 def _policy_state_payload() -> dict[str, object]:
-    """构造包含活动和历史 legacy 斜杠路径的最小策略状态。"""
+    """
+    构造包含活动和历史 legacy 斜杠路径的最小策略状态。
+    """
     legacy_category = {
         "id": "legacy.movie.0123456789abcdef",
         "media_type": "电影",
@@ -74,7 +88,9 @@ def _policy_state_payload() -> dict[str, object]:
 
 
 def _create_system_config_table(connection: Connection) -> None:
-    """创建迁移所需的最小系统配置表。"""
+    """
+    创建迁移所需的最小系统配置表。
+    """
     metadata = sa.MetaData()
     sa.Table(
         "systemconfig",
@@ -87,7 +103,9 @@ def _create_system_config_table(connection: Connection) -> None:
 
 
 def _policy_value(connection: Connection) -> Mapping[str, object]:
-    """读取系统配置表中的分类策略 JSON。"""
+    """
+    读取系统配置表中的分类策略 JSON。
+    """
     table = sa.table(
         "systemconfig",
         sa.column("key", sa.String()),
@@ -98,7 +116,9 @@ def _policy_value(connection: Connection) -> Mapping[str, object]:
 
 
 def test_legacy_migration_splits_slash_names_into_safe_path_segments() -> None:
-    """新迁移应保留原分类名和稳定身份，仅把斜杠恢复为目录层级。"""
+    """
+    新迁移应保留原分类名和稳定身份，仅把斜杠恢复为目录层级。
+    """
     result = migrate_legacy_category_config(
         {
             "movie": {
@@ -122,7 +142,9 @@ def test_legacy_migration_splits_slash_names_into_safe_path_segments() -> None:
 def test_persisted_policy_migration_repairs_active_and_history_without_touching_other_categories(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """数据库迁移应修复活动和历史版本，并保留非 legacy 分类原值。"""
+    """
+    数据库迁移应修复活动和历史版本，并保留非 legacy 分类原值。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.begin() as connection:
         _create_system_config_table(connection)
@@ -158,7 +180,9 @@ def test_persisted_policy_migration_repairs_active_and_history_without_touching_
 
 
 def test_persisted_policy_migration_revision_chain() -> None:
-    """策略路径修复迁移应接在 3.0.28 检查点迁移之后。"""
+    """
+    策略路径修复迁移应接在 3.0.28 检查点迁移之后。
+    """
     migration = cast(_MigrationModule, importlib.import_module(_MIGRATION))
 
     assert migration.revision == "e7f3a9c1d5b2"

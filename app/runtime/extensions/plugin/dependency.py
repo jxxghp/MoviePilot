@@ -1,4 +1,6 @@
-"""插件依赖检查与安装运行时服务。"""
+"""
+插件依赖检查与安装运行时服务。
+"""
 
 import time
 from collections.abc import Callable
@@ -12,7 +14,12 @@ from app.schemas.plugin import PluginInstance, PluginRuntimeStatus
 
 @dataclass(frozen=True)
 class PluginDependencyInstallResult:
-    """记录插件依赖检查结果，区分无缺失、安装成功和安装失败。"""
+    """
+    记录插件依赖检查结果，区分无缺失、安装成功和安装失败。
+
+    :param missing: 检测到缺失或不满足版本约束的依赖声明
+    :param success: 依赖已满足或安装成功时为 True，安装失败时为 False
+    """
 
     missing: list[str]
     success: bool
@@ -20,7 +27,13 @@ class PluginDependencyInstallResult:
 
 @dataclass(frozen=True)
 class PluginDependencyClassification:
-    """按当前源码和 Python 环境划分已安装插件。"""
+    """
+    按当前源码和 Python 环境划分已安装插件。
+
+    :param ready: 源码存在且依赖满足的插件标识
+    :param missing_dependencies: 源码存在但依赖不满足的插件标识
+    :param missing_source: 缺少可加载源码的插件标识
+    """
 
     ready: tuple[str, ...]
     missing_dependencies: tuple[str, ...]
@@ -28,7 +41,9 @@ class PluginDependencyClassification:
 
 
 class PluginDependencyService:
-    """执行缺失插件依赖的发现和安装，不参与插件生命周期。"""
+    """
+    执行缺失插件依赖的发现和安装，不参与插件生命周期。
+    """
 
     def __init__(
         self,
@@ -39,7 +54,9 @@ class PluginDependencyService:
         registry: Optional[PluginRegistry] = None,
         log: Any,
     ) -> None:
-        """保存插件系统、应装载实例、应装载本体和运行状态端口。"""
+        """
+        保存插件系统、应装载实例、应装载本体和运行状态端口。
+        """
         self._system = system
         self._instances = instances or (lambda: {})
         self._loadable_hosts = loadable_hosts
@@ -47,7 +64,9 @@ class PluginDependencyService:
         self._logger = log
 
     def _begin_missing_install(self, missing: list[str]) -> Optional[float]:
-        """统一无缺失短路、安装清单日志和耗时起点。"""
+        """
+        统一无缺失短路、安装清单日志和耗时起点。
+        """
         if not missing:
             return None
         self._logger.debug(f"检测到缺失的依赖项: {missing}")
@@ -60,7 +79,9 @@ class PluginDependencyService:
         success: bool,
         started_at: float,
     ) -> PluginDependencyInstallResult:
-        """统一安装结果、耗时和成功或失败日志分类。"""
+        """
+        统一安装结果、耗时和成功或失败日志分类。
+        """
         elapsed = time.time() - started_at
         if success:
             self._logger.info(
@@ -73,7 +94,9 @@ class PluginDependencyService:
         return PluginDependencyInstallResult(missing=missing, success=success)
 
     def install_missing_with_status(self) -> PluginDependencyInstallResult:
-        """安装缺失依赖并返回安装器的明确结果。"""
+        """
+        安装缺失依赖并返回安装器的明确结果。
+        """
         installer = self._system().dependency
         missing = installer.find_missing()
         started_at = self._begin_missing_install(missing)
@@ -83,11 +106,15 @@ class PluginDependencyService:
         return self._complete_missing_install(missing, success, started_at)
 
     def install_missing(self) -> list[str]:
-        """安装当前环境缺失的插件依赖并保持历史列表返回合同。"""
+        """
+        安装当前环境缺失的插件依赖并保持历史列表返回合同。
+        """
         return self.install_missing_with_status().missing
 
     async def async_install_missing_with_status(self) -> PluginDependencyInstallResult:
-        """在异步启动链中恢复缺失依赖，确保安装子进程可取消。"""
+        """
+        在异步启动链中恢复缺失依赖，确保安装子进程可取消。
+        """
         installer = self._system().dependency
         missing = await installer.async_find_missing()
         started_at = self._begin_missing_install(missing)
@@ -97,7 +124,8 @@ class PluginDependencyService:
         return self._complete_missing_install(missing, success, started_at)
 
     def classify_plugins(self) -> PluginDependencyClassification:
-        """分类应当装载的物理插件，并把源码结论映射到应当装载的虚拟实例。
+        """
+        分类应当装载的物理插件，并把源码结论映射到应当装载的虚拟实例。
 
         物理插件那一层按安装清单划分，而安装清单只回答「包在不在磁盘上」；分类结果
         随后会被逐个 ``start()``，因此这里必须先按启用位过滤掉停用的本体，否则停用
@@ -140,7 +168,9 @@ class PluginDependencyService:
         self,
         classification: PluginDependencyClassification,
     ) -> None:
-        """把依赖分类写入唯一注册表，已激活插件保持当前状态。"""
+        """
+        把依赖分类写入唯一注册表，已激活插件保持当前状态。
+        """
         if self._registry is None:
             raise RuntimeError("插件依赖状态注册表尚未装配")
         running_ids = set(self._registry.running_ids())

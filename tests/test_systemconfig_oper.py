@@ -1,3 +1,7 @@
+"""
+验证系统配置数据访问、并发更新与类型转换。
+"""
+
 import json
 import threading
 import uuid
@@ -15,12 +19,16 @@ from app.schemas.types import SystemConfigKey
 
 
 def _unique_key() -> str:
-    """生成独立测试键，避免用例间相互污染。"""
+    """
+    生成独立测试键，避免用例间相互污染。
+    """
     return f"__test__{uuid.uuid4().hex}"
 
 
 def _fresh_oper() -> SystemConfigOper:
-    """重置单例并显式加载数据库配置快照。"""
+    """
+    重置单例并显式加载数据库配置快照。
+    """
     Singleton._instances.pop((SystemConfigOper, (), frozenset()), None)
     oper = SystemConfigOper()
     oper.load_snapshot()
@@ -28,13 +36,17 @@ def _fresh_oper() -> SystemConfigOper:
 
 
 def _stored_config(key: str) -> SystemConfig | None:
-    """使用显式短会话回读系统配置持久化结果。"""
+    """
+    使用显式短会话回读系统配置持久化结果。
+    """
     with SessionFactory() as session:
         return SystemConfig.get_by_key(session, key)
 
 
 def test_constructor_does_not_query_database(monkeypatch):
-    """构造配置对象时不打开数据库会话。"""
+    """
+    构造配置对象时不打开数据库会话。
+    """
     Singleton._instances.pop((SystemConfigOper, (), frozenset()), None)
     monkeypatch.setattr(
         SystemConfig,
@@ -49,7 +61,9 @@ def test_constructor_does_not_query_database(monkeypatch):
 
 
 def test_load_snapshot_publishes_complete_dictionary(monkeypatch):
-    """重新加载期间读取方只会看到完整旧快照或完整新快照。"""
+    """
+    重新加载期间读取方只会看到完整旧快照或完整新快照。
+    """
     Singleton._instances.pop((SystemConfigOper, (), frozenset()), None)
     oper = SystemConfigOper()
     entered = threading.Event()
@@ -59,7 +73,9 @@ def test_load_snapshot_publishes_complete_dictionary(monkeypatch):
     oper.load_snapshot()
 
     def load_new_snapshot(_db):
-        """阻塞新快照构造，供主线程确认旧快照仍可读取。"""
+        """
+        阻塞新快照构造，供主线程确认旧快照仍可读取。
+        """
         entered.set()
         release.wait(1)
         return {"key": "new"}
@@ -78,7 +94,9 @@ def test_load_snapshot_publishes_complete_dictionary(monkeypatch):
 
 
 def test_load_snapshot_repairs_malformed_json_and_allows_follow_up_write():
-    """启动加载遇到单条非法 JSON 时应修复该行，并允许随后覆盖配置。"""
+    """
+    启动加载遇到单条非法 JSON 时应修复该行，并允许随后覆盖配置。
+    """
     key = _unique_key()
     with SessionFactory() as session:
         session.execute(
@@ -103,7 +121,9 @@ def test_load_snapshot_repairs_malformed_json_and_allows_follow_up_write():
 
 
 def test_load_snapshot_preserves_postgresql_json_string_scalar():
-    """PostgreSQL JSON 字符串标量经文本投影后应只解码一次。"""
+    """
+    PostgreSQL JSON 字符串标量经文本投影后应只解码一次。
+    """
     key = _unique_key()
     session = MagicMock()
     session.get_bind.return_value.dialect.name = "postgresql"
@@ -122,7 +142,9 @@ def test_load_snapshot_preserves_postgresql_json_string_scalar():
 
 
 def test_read_does_not_wait_for_slow_write_transaction(monkeypatch):
-    """数据库写入期间，内存读取仍返回最近一次已提交值。"""
+    """
+    数据库写入期间，内存读取仍返回最近一次已提交值。
+    """
     oper = _fresh_oper()
     key = _unique_key()
     oper.set(key, "old")
@@ -148,7 +170,9 @@ def test_read_does_not_wait_for_slow_write_transaction(monkeypatch):
 
 
 def test_failed_write_keeps_committed_snapshot(monkeypatch):
-    """事务失败时内存快照保持最近一次已提交值。"""
+    """
+    事务失败时内存快照保持最近一次已提交值。
+    """
     oper = _fresh_oper()
     key = _unique_key()
     oper.set(key, "old")
@@ -164,7 +188,9 @@ def test_failed_write_keeps_committed_snapshot(monkeypatch):
 
 
 def test_update_atomically_commits_related_records_and_snapshot() -> None:
-    """关联记录与最终配置值必须在同一事务成功后一起可见。"""
+    """
+    关联记录与最终配置值必须在同一事务成功后一起可见。
+    """
     key = _unique_key()
     related_key = _unique_key()
     oper = _fresh_oper()
@@ -181,7 +207,9 @@ def test_update_atomically_commits_related_records_and_snapshot() -> None:
 
 
 def test_update_atomically_keeps_snapshot_when_related_write_fails() -> None:
-    """关联写失败时配置数据库值和内存快照都保持最近提交状态。"""
+    """
+    关联写失败时配置数据库值和内存快照都保持最近提交状态。
+    """
     key = _unique_key()
     related_key = _unique_key()
     oper = _fresh_oper()
@@ -200,7 +228,9 @@ def test_update_atomically_keeps_snapshot_when_related_write_fails() -> None:
 
 
 def test_increment_serializes_concurrent_counter_updates(monkeypatch):
-    """并发递增系统计数时不应丢失更新。"""
+    """
+    并发递增系统计数时不应丢失更新。
+    """
     oper = object.__new__(SystemConfigOper)
     oper._snapshot_lock = threading.RLock()
     oper._write_lock = threading.RLock()
@@ -229,7 +259,9 @@ def test_increment_serializes_concurrent_counter_updates(monkeypatch):
 
 
 def test_increment_supports_custom_step(monkeypatch):
-    """整数系统计数应支持指定递增步长。"""
+    """
+    整数系统计数应支持指定递增步长。
+    """
     oper = object.__new__(SystemConfigOper)
     oper._snapshot_lock = threading.RLock()
     oper._write_lock = threading.RLock()
@@ -250,7 +282,9 @@ def test_increment_supports_custom_step(monkeypatch):
 
 
 def test_set_creates_record_for_falsy_value():
-    """无记录时写入假值应创建记录，而不是丢弃配置。"""
+    """
+    无记录时写入假值应创建记录，而不是丢弃配置。
+    """
     key = _unique_key()
     oper = _fresh_oper()
 
@@ -260,7 +294,9 @@ def test_set_creates_record_for_falsy_value():
 
 
 def test_set_persists_falsy_value_on_existing_record():
-    """已存在记录时写入假值应更新记录，而不是删除记录回落默认值。"""
+    """
+    已存在记录时写入假值应更新记录，而不是删除记录回落默认值。
+    """
     key = _unique_key()
     oper = _fresh_oper()
 
@@ -272,7 +308,9 @@ def test_set_persists_falsy_value_on_existing_record():
 
 @pytest.mark.asyncio
 async def test_async_set_persists_falsy_value_on_existing_record():
-    """异步写入假值同样应更新记录而不是删除记录。"""
+    """
+    异步写入假值同样应更新记录而不是删除记录。
+    """
     key = _unique_key()
     oper = _fresh_oper()
 
@@ -281,6 +319,9 @@ async def test_async_set_persists_falsy_value_on_existing_record():
 
     class _InlineDatabaseExecutor:
         async def run(self, operation):
+            """
+            直接执行传入操作并返回结果，隔离真实后台执行器调度。
+            """
             return operation()
 
     service = SystemConfigService(
@@ -294,7 +335,9 @@ async def test_async_set_persists_falsy_value_on_existing_record():
 
 @pytest.mark.asyncio
 async def test_async_set_creates_record_for_falsy_value():
-    """异步写入假值且无记录时应创建记录。"""
+    """
+    异步写入假值且无记录时应创建记录。
+    """
     key = _unique_key()
     oper = _fresh_oper()
 
@@ -302,6 +345,9 @@ async def test_async_set_creates_record_for_falsy_value():
 
     class _InlineDatabaseExecutor:
         async def run(self, operation):
+            """
+            直接执行传入操作并返回结果，隔离真实后台执行器调度。
+            """
             return operation()
 
     service = SystemConfigService(
@@ -314,7 +360,9 @@ async def test_async_set_creates_record_for_falsy_value():
 
 
 def test_delete_removes_record_explicitly():
-    """显式 delete 仍是删除配置的唯一途径。"""
+    """
+    显式 delete 仍是删除配置的唯一途径。
+    """
     key = _unique_key()
     oper = _fresh_oper()
 
@@ -325,7 +373,9 @@ def test_delete_removes_record_explicitly():
 
 
 def test_mounted_local_disk_delete_empty_dirs_off_is_persisted():
-    """回归：挂载盘删除空目录开关关闭后，读取端不应回落默认开启（issue #6309）。"""
+    """
+    回归：挂载盘删除空目录开关关闭后，读取端不应回落默认开启（issue #6309）。
+    """
     key = SystemConfigKey.MountedLocalDiskDeleteEmptyDirs.value
     oper = _fresh_oper()
 

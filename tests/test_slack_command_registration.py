@@ -1,3 +1,7 @@
+"""
+验证Slack 命令注册及渠道能力声明。
+"""
+
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -7,7 +11,9 @@ from app.schemas.event import CommandRegisterEventData
 
 
 def test_slack_module_register_commands_filters_event_subset():
-    """Slack 模块注册命令时应复用渠道级 CommandRegister 事件过滤结果。"""
+    """
+    Slack 模块注册命令时应复用渠道级 CommandRegister 事件过滤结果。
+    """
     module = SlackModule()
     client = SimpleNamespace(register_commands=Mock(), delete_commands=Mock())
     original_commands = {
@@ -38,7 +44,9 @@ def test_slack_module_register_commands_filters_event_subset():
 
 
 def test_slack_manifest_update_preserves_foreign_commands():
-    """Slack Manifest 更新应只替换 MoviePilot 本次管理的 Slash Commands。"""
+    """
+    Slack Manifest 更新应只替换 MoviePilot 本次管理的 Slash Commands。
+    """
     client = Slack.__new__(Slack)
     manifest_client = SimpleNamespace(
         apps_manifest_export=Mock(
@@ -87,7 +95,9 @@ def test_slack_manifest_update_preserves_foreign_commands():
 
 
 def test_slack_command_registration_skips_without_manifest_credentials():
-    """未配置 Slack Manifest 凭据时不应尝试自动注册。"""
+    """
+    未配置 Slack Manifest 凭据时不应尝试自动注册。
+    """
     client = Slack.__new__(Slack)
     client._manifest_client = None
     client._app_id = ""
@@ -96,7 +106,9 @@ def test_slack_command_registration_skips_without_manifest_credentials():
 
 
 def test_slack_normalizes_slash_command_names():
-    """Slack 命令名称应符合平台 Slash Command 约束。"""
+    """
+    Slack 命令名称应符合平台 Slash Command 约束。
+    """
     assert Slack._normalize_slack_command("/sites") == "/sites"
     assert Slack._normalize_slack_command("CLEAR_CACHE") == "/clear_cache"
     assert Slack._normalize_slack_command("/中文") == ""
@@ -104,7 +116,9 @@ def test_slack_normalizes_slash_command_names():
 
 
 def test_slack_plain_text_interaction_buttons_render_and_clear_on_edit():
-    """纯文本交互必须显示按钮，后续无按钮编辑应清除旧操作区。"""
+    """
+    纯文本交互必须显示按钮，后续无按钮编辑应清除旧操作区。
+    """
     client = Slack.__new__(Slack)
     client._client = Mock()
     client._client.chat_postMessage.return_value = {"ok": True, "ts": "1", "channel": "C1"}

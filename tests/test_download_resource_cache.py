@@ -1,4 +1,6 @@
-"""换票资源跨批次复用内容与真实限流冷却的离线回归。"""
+"""
+换票资源跨批次复用内容与真实限流冷却的离线回归。
+"""
 
 import json
 from dataclasses import replace
@@ -20,13 +22,17 @@ from app.schemas.types import MediaType
 
 
 def _content(filename: str) -> bytes:
-    """构造可由真实解析器读取的单文件种子。"""
+    """
+    构造可由真实解析器读取的单文件种子。
+    """
     name = filename.encode()
     return b"d4:infod4:name" + str(len(name)).encode() + b":" + name + b"6:lengthi1eee"
 
 
 def _response(content: bytes) -> Response:
-    """构造 HTTP 成功响应，内容可以是种子或站点限流 JSON。"""
+    """
+    构造 HTTP 成功响应，内容可以是种子或站点限流 JSON。
+    """
     response = Response()
     response.status_code = 200
     response._content = content
@@ -35,7 +41,9 @@ def _response(content: bytes) -> Response:
 
 
 def _context(**fields) -> Context:
-    """构造同站同资源的多集包候选，识别结果保持空集数。"""
+    """
+    构造同站同资源的多集包候选，识别结果保持空集数。
+    """
     values = dict(
         site=1, site_name="馒头", title="Series S05",
         page_url="https://tracker.example/detail/793424",
@@ -50,7 +58,9 @@ def _context(**fields) -> Context:
 
 
 def _batch(chain) -> _BatchDownloadRun:
-    """每轮重新创建批次，验证复用不依赖上轮批次状态。"""
+    """
+    每轮重新创建批次，验证复用不依赖上轮批次状态。
+    """
     options = dict(
         save_path=None, channel=None, source="Subscribe|48", userid=None,
         username=None, downloader="test", custom_words=None, governance=None,
@@ -60,7 +70,9 @@ def _batch(chain) -> _BatchDownloadRun:
 
 @pytest.fixture
 def boundary(monkeypatch, tmp_path):
-    """仅替换 HTTP、换票与持久化边界，使用真实种子解析及临时文件缓存。"""
+    """
+    仅替换 HTTP、换票与持久化边界，使用真实种子解析及临时文件缓存。
+    """
     chain = object.__new__(DownloadChain)
     chain.post_message = Mock()
     chain.download_single = Mock(return_value="download-id")
@@ -81,7 +93,9 @@ def boundary(monkeypatch, tmp_path):
 
 @pytest.mark.parametrize("filename", ["Series.S05E001.mkv", "Series.mkv"])
 def test_repeated_partial_pack_rounds_fetch_content_once(boundary, filename):
-    """无需要集和无法识别集数均可跨十二轮复用，避免耗尽每日配额。"""
+    """
+    无需要集和无法识别集数均可跨十二轮复用，避免耗尽每日配额。
+    """
     boundary.port.request.return_value = _response(_content(filename))
     for _ in range(12):
         assert _batch(boundary.chain)._submit_partial_pack(_context(), {196, 197}) == set()
@@ -94,7 +108,9 @@ def test_repeated_partial_pack_rounds_fetch_content_once(boundary, filename):
 
 
 def test_new_missing_episode_uses_cached_content(boundary):
-    """缓存正向文件事实，缺集变化后立即选中需要的集，不记资源失败。"""
+    """
+    缓存正向文件事实，缺集变化后立即选中需要的集，不记资源失败。
+    """
     assert _batch(boundary.chain)._submit_partial_pack(_context(), {196}) == set()
     context = _context()
     assert _batch(boundary.chain)._submit_partial_pack(context, {1, 196}) == {1}
@@ -109,7 +125,9 @@ def test_new_missing_episode_uses_cached_content(boundary):
     {"site_cookie": "session=second"}, {"enclosure": "[other-key]https://tracker.example/token"},
 ])
 def test_resource_and_credentials_isolate_cached_content(boundary, fields):
-    """同种子 ID 的其他站点、其他种子与新换票凭据都必须重新取种子。"""
+    """
+    同种子 ID 的其他站点、其他种子与新换票凭据都必须重新取种子。
+    """
     first = _context().torrent_info
     boundary.chain.download_torrent(first)
     boundary.chain.download_torrent(replace(first, **fields))
@@ -118,7 +136,9 @@ def test_resource_and_credentials_isolate_cached_content(boundary, fields):
 
 
 def test_corrupt_or_cleared_resource_cache_refetches_content(boundary):
-    """损坏的资源缓存回退到换票，清理种子缓存后也不再复用。"""
+    """
+    损坏的资源缓存回退到换票，清理种子缓存后也不再复用。
+    """
     torrent = _context().torrent_info
     key = boundary.chain._indirect_torrent_cache_key(torrent)
     boundary.cache.set(key, b"invalid", region="torrents")
@@ -130,7 +150,9 @@ def test_corrupt_or_cleared_resource_cache_refetches_content(boundary):
 
 @pytest.mark.parametrize("partial", [False, True])
 def test_batch_keeps_daily_limit_reason_and_cooldown(boundary, partial):
-    """完整包和拆包均记录真实每日限流，交给既有策略冷却 24 小时。"""
+    """
+    完整包和拆包均记录真实每日限流，交给既有策略冷却 24 小时。
+    """
     reason = "相同種子當天最多下載10次"
     boundary.port.request.return_value = _response(json.dumps({"message": reason}).encode())
     context = _context()
@@ -146,7 +168,9 @@ def test_batch_keeps_daily_limit_reason_and_cooldown(boundary, partial):
 
 
 def test_resource_without_stable_identity_does_not_share_cache(boundary):
-    """无法确认种子身份时只保留既有 URL 缓存，不按标题共享资源内容。"""
+    """
+    无法确认种子身份时只保留既有 URL 缓存，不按标题共享资源内容。
+    """
     torrent = _context(page_url=None).torrent_info
     for _ in range(2):
         boundary.chain.download_torrent(torrent)

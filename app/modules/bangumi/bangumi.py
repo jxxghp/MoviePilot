@@ -1,3 +1,7 @@
+"""
+Bangumi 同步与异步客户端，统一代理地址、缓存身份与响应提取。
+"""
+
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional, cast
@@ -11,7 +15,13 @@ from app.runtime.settings import get_runtime_setting
 
 @dataclass(frozen=True, slots=True)
 class _BangumiRequestPlan:
-    """冻结 Bangumi 请求地址、参数和结果字段，供同步与异步传输共用。"""
+    """
+    Bangumi 同步与异步请求共用的地址、查询参数和响应字段选择。
+
+    :param url: 包含代理路径的完整请求地址
+    :param params: 发送到服务端的查询参数
+    :param key: 从响应映射提取的字段，None 表示保留完整响应
+    """
 
     url: str
     params: dict[str, Any]
@@ -19,7 +29,9 @@ class _BangumiRequestPlan:
 
 
 class BangumiApi:
-    """Bangumi API 客户端，统一同步与异步请求决策和结果投影。"""
+    """
+    Bangumi API 客户端，统一同步与异步请求决策和结果投影。
+    """
 
     _urls = {
         "discover": "v0/subjects",
@@ -38,7 +50,13 @@ class BangumiApi:
             self,
             base_url: Optional[str] = None,
     ) -> None:
-        """初始化同步与异步 Bangumi 请求客户端及其代理地址快照。"""
+        """
+        初始化同步会话、异步请求客户端和数据地址快照。
+
+        数据地址纳入缓存键，切换代理或域名不会复用旧来源的缓存。
+
+        :param base_url: 显式数据地址；None 读取代理设置，空值或无效地址回退官方接口
+        """
         configured_base_url = (
             base_url if base_url is not None else (
                 get_runtime_setting("BANGUMI_API_DOMAIN", "")
@@ -63,12 +81,18 @@ class BangumiApi:
 
     @property
     def base_url(self) -> str:
-        """返回当前客户端使用的 Bangumi 数据请求地址。"""
+        """
+        读取当前客户端固定使用的数据请求根地址。
+
+        :return: 规范化且带末尾斜杠的 HTTP 或 HTTPS 地址
+        """
         return self._base_url
 
     @staticmethod
     def _normalize_base_url(value: Any, default: str) -> str:
-        """归一化 Bangumi 数据地址，兼容域名、完整 URL 和代理路径。"""
+        """
+        归一化 Bangumi 数据地址，兼容域名、完整 URL 和代理路径。
+        """
         raw_value = str(value or "").strip()
         if not raw_value:
             return default
@@ -96,7 +120,9 @@ class BangumiApi:
             key: Optional[str] = None,
             **params: Any,
     ) -> _BangumiRequestPlan:
-        """构造同步与异步请求共同使用的不可变调用计划。"""
+        """
+        构造同步与异步请求共同使用的不可变调用计划。
+        """
         return _BangumiRequestPlan(
             url=f"{self._base_url}{path}",
             params=dict(params),
@@ -109,7 +135,9 @@ class BangumiApi:
             payload: Any,
             key: Optional[str],
     ) -> Any:
-        """按统一状态码与字段规则投影 Bangumi 响应。"""
+        """
+        按统一状态码与字段规则投影 Bangumi 响应。
+        """
         if status_code != 200:
             return None
         if key:
@@ -117,7 +145,9 @@ class BangumiApi:
         return payload
 
     def _decode_response(self, response: Any, key: Optional[str]) -> Any:
-        """解析 HTTP 响应，并把格式错误统一映射为空结果。"""
+        """
+        解析 HTTP 响应，并把格式错误统一映射为空结果。
+        """
         if response is None:
             return None
         try:
@@ -127,7 +157,8 @@ class BangumiApi:
             return None
         return self._project_response(response.status_code, payload, key)
 
-    @cached(  # type: ignore[misc]  # 缓存装饰器的运行时签名由宿主统一维护
+    # 缓存装饰器的运行时签名由宿主统一维护，静态检查无法完整推断。
+    @cached(  # type: ignore[misc]
         maxsize=get_runtime_setting('CONF').bangumi,
         ttl=get_runtime_setting('CONF').meta,
         shared_key="get",
@@ -139,7 +170,9 @@ class BangumiApi:
             _cache_token: str = "",
             **kwargs: Any,
     ) -> Any:
-        """执行带配置身份的同步 HTTP 请求，并复用统一响应解码。"""
+        """
+        执行带配置身份的同步 HTTP 请求，并复用统一响应解码。
+        """
         plan = self._request_plan(url, key=key, **kwargs)
         response = self._req.get_res(url=plan.url, params=plan.params)
         return self._decode_response(response, plan.key)
@@ -150,7 +183,9 @@ class BangumiApi:
             key: Optional[str] = None,
             **kwargs: Any,
     ) -> Any:
-        """执行同步 Bangumi 请求，并把当前代理配置纳入缓存键。"""
+        """
+        执行同步 Bangumi 请求，并把当前代理配置纳入缓存键。
+        """
         return self._cached_invoke(
             url,
             key=key,
@@ -158,7 +193,8 @@ class BangumiApi:
             **kwargs,
         )
 
-    @cached(  # type: ignore[misc]  # 缓存装饰器的运行时签名由宿主统一维护
+    # 缓存装饰器的运行时签名由宿主统一维护，静态检查无法完整推断。
+    @cached(  # type: ignore[misc]
         maxsize=get_runtime_setting('CONF').bangumi,
         ttl=get_runtime_setting('CONF').meta,
         shared_key="get",
@@ -170,7 +206,9 @@ class BangumiApi:
             _cache_token: str = "",
             **kwargs: Any,
     ) -> Any:
-        """执行带配置身份的异步 HTTP 请求，并复用统一响应解码。"""
+        """
+        执行带配置身份的异步 HTTP 请求，并复用统一响应解码。
+        """
         plan = self._request_plan(url, key=key, **kwargs)
         response = await self._async_req.get_res(url=plan.url, params=plan.params)
         return self._decode_response(response, plan.key)
@@ -181,7 +219,9 @@ class BangumiApi:
             key: Optional[str] = None,
             **kwargs: Any,
     ) -> Any:
-        """执行异步 Bangumi 请求，并把当前代理配置纳入缓存键。"""
+        """
+        执行异步 Bangumi 请求，并把当前代理配置纳入缓存键。
+        """
         return await self._cached_async_invoke(
             url,
             key=key,
@@ -191,7 +231,9 @@ class BangumiApi:
 
     @staticmethod
     def _dated_params(**params: Any) -> dict[str, Any]:
-        """为缓存键稳定附加当天日期，并保留调用方筛选参数。"""
+        """
+        为缓存键稳定附加当天日期，并保留调用方筛选参数。
+        """
         return {
             "_ts": datetime.strftime(datetime.now(), '%Y%m%d'),
             **params,
@@ -199,12 +241,16 @@ class BangumiApi:
 
     @staticmethod
     def _search_results(result: Any) -> list[dict[str, Any]]:
-        """从旧版搜索响应中提取条目列表。"""
+        """
+        从旧版搜索响应中提取条目列表。
+        """
         return result.get("list") or [] if isinstance(result, dict) else []
 
     @staticmethod
     def _calendar_items(result: Any) -> list[dict[str, Any]]:
-        """按星期顺序展开每日放送条目，并规范化其封面地址。"""
+        """
+        按星期顺序展开每日放送条目，并规范化其封面地址。
+        """
         items = [
             item
             for weekday in result or []
@@ -232,7 +278,9 @@ class BangumiApi:
 
     @staticmethod
     def _normalize_calendar_image_url(url: Any) -> Any:
-        """将 Bangumi 日历图片域名返回的 HTTP 地址升级为 HTTPS。"""
+        """
+        将 Bangumi 日历图片域名返回的 HTTP 地址升级为 HTTPS。
+        """
         if not isinstance(url, str):
             return url
         try:
@@ -245,7 +293,9 @@ class BangumiApi:
 
     @staticmethod
     def _credit_people(result: Any) -> list[dict[str, Any]]:
-        """把角色配音关系投影为带角色职业信息的人物列表。"""
+        """
+        把角色配音关系投影为带角色职业信息的人物列表。
+        """
         people: list[dict[str, Any]] = []
         for item in result or []:
             if not isinstance(item, dict) or not item.get("id"):
@@ -260,38 +310,68 @@ class BangumiApi:
 
     @staticmethod
     def _list_result(result: Any) -> list[dict[str, Any]]:
-        """把列表响应统一投影为空安全列表。"""
+        """
+        把列表响应统一投影为空安全列表。
+        """
         return list(result) if isinstance(result, list) else []
 
     def search(self, name: str) -> list[dict[str, Any]]:
-        """搜索媒体信息。"""
+        """
+        使用旧版搜索接口查询媒体条目。
+
+        :param name: 媒体名称，直接放入搜索路径
+        :return: 原始候选列表；请求失败或缺少结果列表时为空
+        """
         return self._search_results(self.__invoke(f"search/subject/{name}"))
 
     async def async_search(self, name: str) -> list[dict[str, Any]]:
-        """异步搜索媒体信息。"""
+        """
+        异步使用旧版搜索接口查询媒体条目。
+
+        :param name: 媒体名称，直接放入搜索路径
+        :return: 原始候选列表；请求失败或缺少结果列表时为空
+        """
         return self._search_results(await self.__async_invoke(f"search/subject/{name}"))
 
     def calendar(self) -> list[dict[str, Any]]:
-        """获取每日放送条目。"""
+        """
+        读取每日放送，并按响应顺序展开各星期的条目。
+
+        :return: 原始媒体条目列表，图片域名 lain.bgm.tv 的 HTTP 链接升级为 HTTPS；无结果时为空
+        """
         result = self.__invoke(self._urls["calendar"], **self._dated_params())
         return self._calendar_items(result)
 
     async def async_calendar(self) -> list[dict[str, Any]]:
-        """异步获取每日放送条目。"""
+        """
+        异步读取每日放送，并按响应顺序展开各星期的条目。
+
+        :return: 原始媒体条目列表，图片域名 lain.bgm.tv 的 HTTP 链接升级为 HTTPS；无结果时为空
+        """
         result = await self.__async_invoke(
             self._urls["calendar"], **self._dated_params()
         )
         return self._calendar_items(result)
 
     def detail(self, bid: int) -> Optional[dict[str, Any]]:
-        """获取番剧详情。"""
+        """
+        查询 Bangumi 条目详情。
+
+        :param bid: Bangumi 条目数字标识
+        :return: 原始详情映射；请求失败或响应不可解析时为 None
+        """
         return cast(
             Optional[dict[str, Any]],
             self.__invoke(self._urls["detail"] % bid, **self._dated_params()),
         )
 
     async def async_detail(self, bid: int) -> Optional[dict[str, Any]]:
-        """异步获取番剧详情。"""
+        """
+        异步查询 Bangumi 条目详情。
+
+        :param bid: Bangumi 条目数字标识
+        :return: 原始详情映射；请求失败或响应不可解析时为 None
+        """
         return cast(
             Optional[dict[str, Any]],
             await self.__async_invoke(
@@ -300,26 +380,46 @@ class BangumiApi:
         )
 
     def credits(self, bid: int) -> list[dict[str, Any]]:
-        """获取番剧配音人物。"""
+        """
+        读取角色列表并提取每个角色的首位配音人物。
+
+        :param bid: Bangumi 条目数字标识
+        :return: 人物列表，career 写入所配角色名称；无可用结果时为空
+        """
         result = self.__invoke(self._urls["characters"] % bid, **self._dated_params())
         return self._credit_people(result)
 
     async def async_credits(self, bid: int) -> list[dict[str, Any]]:
-        """异步获取番剧配音人物。"""
+        """
+        异步读取角色列表并提取每个角色的首位配音人物。
+
+        :param bid: Bangumi 条目数字标识
+        :return: 人物列表，career 写入所配角色名称；无可用结果时为空
+        """
         result = await self.__async_invoke(
             self._urls["characters"] % bid, **self._dated_params()
         )
         return self._credit_people(result)
 
     def subjects(self, bid: int) -> Optional[list[dict[str, Any]]]:
-        """获取关联条目信息。"""
+        """
+        查询条目的关联作品。
+
+        :param bid: Bangumi 条目数字标识
+        :return: 原始关联作品列表；请求失败时为 None
+        """
         return cast(
             Optional[list[dict[str, Any]]],
             self.__invoke(self._urls["subjects"] % bid, **self._dated_params()),
         )
 
     async def async_subjects(self, bid: int) -> Optional[list[dict[str, Any]]]:
-        """异步获取关联条目信息。"""
+        """
+        异步查询条目的关联作品。
+
+        :param bid: Bangumi 条目数字标识
+        :return: 原始关联作品列表；请求失败时为 None
+        """
         return cast(
             Optional[list[dict[str, Any]]],
             await self.__async_invoke(
@@ -328,7 +428,12 @@ class BangumiApi:
         )
 
     def person_detail(self, person_id: int) -> Optional[dict[str, Any]]:
-        """获取人物详细信息。"""
+        """
+        查询 Bangumi 人物详情。
+
+        :param person_id: Bangumi 人物数字标识
+        :return: 原始人物映射；请求失败或响应不可解析时为 None
+        """
         return cast(
             Optional[dict[str, Any]],
             self.__invoke(
@@ -339,7 +444,12 @@ class BangumiApi:
     async def async_person_detail(
             self, person_id: int
     ) -> Optional[dict[str, Any]]:
-        """异步获取人物详细信息。"""
+        """
+        异步查询 Bangumi 人物详情。
+
+        :param person_id: Bangumi 人物数字标识
+        :return: 原始人物映射；请求失败或响应不可解析时为 None
+        """
         return cast(
             Optional[dict[str, Any]],
             await self.__async_invoke(
@@ -348,21 +458,36 @@ class BangumiApi:
         )
 
     def person_credits(self, person_id: int) -> list[dict[str, Any]]:
-        """获取人物参演作品。"""
+        """
+        查询人物参与的作品。
+
+        :param person_id: Bangumi 人物数字标识
+        :return: 原始作品列表；请求失败或响应不是列表时为空
+        """
         result = self.__invoke(
             self._urls["person_credits"] % person_id, **self._dated_params()
         )
         return self._list_result(result)
 
     async def async_person_credits(self, person_id: int) -> list[dict[str, Any]]:
-        """异步获取人物参演作品。"""
+        """
+        异步查询人物参与的作品。
+
+        :param person_id: Bangumi 人物数字标识
+        :return: 原始作品列表；请求失败或响应不是列表时为空
+        """
         result = await self.__async_invoke(
             self._urls["person_credits"] % person_id, **self._dated_params()
         )
         return self._list_result(result)
 
     def discover(self, **kwargs: Any) -> Optional[list[dict[str, Any]]]:
-        """按筛选条件发现番剧。"""
+        """
+        按调用方筛选条件读取番剧列表。
+
+        :param kwargs: 原样传入的接口筛选与分页参数，如 type、limit、offset
+        :return: 响应 data 字段；请求失败或缺少该字段时为 None
+        """
         return cast(
             Optional[list[dict[str, Any]]],
             self.__invoke(
@@ -375,7 +500,12 @@ class BangumiApi:
     async def async_discover(
             self, **kwargs: Any
     ) -> Optional[list[dict[str, Any]]]:
-        """异步按筛选条件发现番剧。"""
+        """
+        异步按调用方筛选条件读取番剧列表。
+
+        :param kwargs: 原样传入的接口筛选与分页参数，如 type、limit、offset
+        :return: 响应 data 字段；请求失败或缺少该字段时为 None
+        """
         return cast(
             Optional[list[dict[str, Any]]],
             await self.__async_invoke(
@@ -386,9 +516,13 @@ class BangumiApi:
         )
 
     def clear_cache(self) -> None:
-        """清除 Bangumi 请求缓存。"""
+        """
+        清除 Bangumi 请求缓存。
+        """
         self._cached_invoke.cache_clear()
 
     def close(self) -> None:
-        """关闭 Bangumi 同步会话。"""
+        """
+        关闭 Bangumi 同步会话。
+        """
         self._req.close()

@@ -1,4 +1,6 @@
-"""Agent API 路由与禁用响应的延迟加载合同。"""
+"""
+Agent API 路由与禁用响应的延迟加载合同。
+"""
 
 from __future__ import annotations
 
@@ -10,7 +12,9 @@ from pathlib import Path
 
 
 def _run_isolated(script: str, config_dir: Path) -> dict:
-    """在隔离解释器中执行路由探针，并返回末行 JSON 结果。"""
+    """
+    在隔离解释器中执行路由探针，并返回末行 JSON 结果。
+    """
     env = os.environ.copy()
     env.update(
         {
@@ -32,7 +36,9 @@ def _run_isolated(script: str, config_dir: Path) -> dict:
 
 
 def test_full_api_openapi_keeps_agent_runtime_cold(tmp_path: Path) -> None:
-    """完整路由与 OpenAPI 注册不得物化 Agent、工具或模型运行时。"""
+    """
+    完整路由与 OpenAPI 注册不得物化 Agent、工具或模型运行时。
+    """
     result = _run_isolated(
         r"""
 import json
@@ -105,7 +111,9 @@ print(json.dumps({
 def test_disabled_protocol_requests_preserve_503_without_runtime_load(
     tmp_path: Path,
 ) -> None:
-    """禁用态兼容协议保持 503，并且不会因构造响应加载 Agent。"""
+    """
+    禁用态兼容协议保持 503，并且不会因构造响应加载 Agent。
+    """
     result = _run_isolated(
         r"""
 import asyncio
@@ -208,7 +216,9 @@ print(json.dumps({
 
 
 def test_runtime_agent_type_factories_are_single_flight(tmp_path: Path) -> None:
-    """并发首次解析必须返回同一 class，避免会话复用误判构造器已变化。"""
+    """
+    并发首次解析必须返回同一 class，避免会话复用误判构造器已变化。
+    """
     result = _run_isolated(
         r"""
 import json
@@ -285,7 +295,9 @@ print(json.dumps({
 def test_persistent_protocol_agent_rebinds_stream_queue_without_stale_output(
     tmp_path: Path,
 ) -> None:
-    """稳定协议会话复用 Agent 时必须保留 handler identity 并切换请求队列。"""
+    """
+    稳定协议会话复用 Agent 时必须保留 handler identity 并切换请求队列。
+    """
     result = _run_isolated(
         r"""
 import asyncio
@@ -351,7 +363,9 @@ print(json.dumps({
 
 
 def test_protocol_routes_follow_agent_service_lifecycle(tmp_path: Path) -> None:
-    """服务未运行时返回 503，运行态仍执行原有兼容协议响应流程。"""
+    """
+    服务未运行时返回 503，运行态仍执行原有兼容协议响应流程。
+    """
     result = _run_isolated(
         r"""
 import asyncio

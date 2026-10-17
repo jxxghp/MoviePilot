@@ -1,4 +1,6 @@
-"""整理规划检查点的事务顺序、恢复与无副作用边界合同。"""
+"""
+整理规划检查点的事务顺序、恢复与无副作用边界合同。
+"""
 
 import ast
 import inspect
@@ -42,7 +44,9 @@ from app.schemas.transfer import TransferInfo
 
 
 def _planning_contracts():
-    """延迟解析新合同，使未落地时每个 pytest 用例给出精确缺口。"""
+    """
+    延迟解析新合同，使未落地时每个 pytest 用例给出精确缺口。
+    """
     return (
         getattr(transfer_application, "TransferPlanningInput"),
         getattr(transfer_application, "TransferPlanItem"),
@@ -51,7 +55,9 @@ def _planning_contracts():
 
 
 def _source_snapshot() -> dict[str, object]:
-    """返回可独立跨重启还原的源文件快照。"""
+    """
+    返回可独立跨重启还原的源文件快照。
+    """
     return {
         "storage": "local",
         "path": "/downloads/Movie.2026.mkv",
@@ -66,7 +72,9 @@ def _source_snapshot() -> dict[str, object]:
 
 
 def _planning_input(*, preview: bool = False, target_path: str = "/library"):
-    """构造包含旧调用意图、媒体提示和目标配置的规划输入。"""
+    """
+    构造包含旧调用意图、媒体提示和目标配置的规划输入。
+    """
     TransferPlanningInput, _TransferPlanItem, _TransferPlanCheckpoint = (
         _planning_contracts()
     )
@@ -100,7 +108,9 @@ def _planning_input(*, preview: bool = False, target_path: str = "/library"):
 
 
 def _checkpoint(*, preview: bool = False, target_path: str = "/library/Movie (2026)/Movie.mkv"):
-    """构造带完整输入和有序执行项的冻结计划。"""
+    """
+    构造带完整输入和有序执行项的冻结计划。
+    """
     _TransferPlanningInput, TransferPlanItem, TransferPlanCheckpoint = (
         _planning_contracts()
     )
@@ -142,7 +152,9 @@ def _checkpoint(*, preview: bool = False, target_path: str = "/library/Movie (20
 
 
 def _resolved_checkpoint():
-    """构造包含在线识别完成后领域快照的 planned checkpoint。"""
+    """
+    构造包含在线识别完成后领域快照的 planned checkpoint。
+    """
     return replace(
         _checkpoint(),
         resolved_meta={
@@ -174,7 +186,9 @@ def _resolved_checkpoint():
 
 
 def _task(*, preview: bool = False) -> TransferTask:
-    """构造不触碰真实文件系统的规划任务。"""
+    """
+    构造不触碰真实文件系统的规划任务。
+    """
     return TransferTask(
         fileitem=FileItem(**_source_snapshot()),
         target_storage="local",
@@ -188,13 +202,17 @@ def _task(*, preview: bool = False) -> TransferTask:
 
 
 def _bind_planning_input(task: TransferTask, planning_input) -> None:
-    """通过正式绑定接口保存私有输入，禁止测试写入 Pydantic 内部字典。"""
+    """
+    通过正式绑定接口保存私有输入，禁止测试写入 Pydantic 内部字典。
+    """
     binder = getattr(task, "bind_planning_input")
     binder(planning_input)
 
 
 def _bind_checkpoint(task: TransferTask, checkpoint) -> None:
-    """通过正式绑定接口模拟 planned 任务的跨重启恢复。"""
+    """
+    通过正式绑定接口模拟 planned 任务的跨重启恢复。
+    """
     binder = getattr(task, "bind_plan_checkpoint")
     binder(checkpoint)
 
@@ -204,7 +222,9 @@ def _bind_checkpoint(task: TransferTask, checkpoint) -> None:
     [(None, True), (False, False), (True, True)],
 )
 def test_planning_input_freezes_effective_directory_scrape_setting(scrape, expected):
-    """旧 ABI 省略刮削参数时冻结目标目录开关，显式值仍保持原意。"""
+    """
+    旧 ABI 省略刮削参数时冻结目标目录开关，显式值仍保持原意。
+    """
     task = _task()
     task.target_directory = TransferDirectoryConf(
         name="library",
@@ -221,7 +241,9 @@ def test_planning_input_freezes_effective_directory_scrape_setting(scrape, expec
 
 
 def _planned_admission(task: TransferTask, checkpoint):
-    """构造仓储 checkpoint 提交后返回的冻结投影。"""
+    """
+    构造仓储 checkpoint 提交后返回的冻结投影。
+    """
     return SimpleNamespace(
         task_id=task.admission_task_id,
         state="planned",
@@ -231,16 +253,22 @@ def _planned_admission(task: TransferTask, checkpoint):
 
 
 class _ExecutionRepositoryStub:
-    """为规划编排测试提供严格但内存化的 execution repository。"""
+    """
+    为规划编排测试提供严格但内存化的 execution repository。
+    """
 
     def __init__(self) -> None:
-        """初始化空步骤集合与未启动执行态。"""
+        """
+        初始化空步骤集合与未启动执行态。
+        """
         self.steps = {}
         self.state = TransferExecutionState.NOT_STARTED
         self.checkpoint = None
 
     def get_snapshot(self, *, task_id):
-        """返回当前任务的类型化执行投影。"""
+        """
+        返回当前任务的类型化执行投影。
+        """
         return TransferExecutionSnapshot(
             task_id=task_id,
             state=self.state,
@@ -255,7 +283,9 @@ class _ExecutionRepositoryStub:
         )
 
     def prepare_step(self, *, task_id, lease_token, intent):
-        """幂等保存准备态步骤。"""
+        """
+        幂等保存准备态步骤。
+        """
         del lease_token
         existing = self.steps.get(intent.operation_id)
         if existing is not None:
@@ -289,7 +319,9 @@ class _ExecutionRepositoryStub:
             operation_id,
             attempt_token,
     ):
-        """把准备态步骤推进到已开始。"""
+        """
+        把准备态步骤推进到已开始。
+        """
         del task_id, lease_token
         step = replace(
             self.steps[operation_id],
@@ -311,7 +343,9 @@ class _ExecutionRepositoryStub:
             attempt_token,
             result,
     ):
-        """以当前 attempt 提交成功证据。"""
+        """
+        以当前 attempt 提交成功证据。
+        """
         del task_id, lease_token
         assert self.steps[operation_id].attempt_token == attempt_token
         step = replace(
@@ -324,7 +358,9 @@ class _ExecutionRepositoryStub:
         return step
 
     def checkpoint_execution(self, *, task_id, lease_token, checkpoint):
-        """保存可重放终态的聚合检查点。"""
+        """
+        保存可重放终态的聚合检查点。
+        """
         del lease_token
         self.state = TransferExecutionState.SETTLING
         self.checkpoint = checkpoint
@@ -340,7 +376,9 @@ class _ExecutionRepositoryStub:
             error,
             evidence,
     ):
-        """把执行结果不确定的步骤隔离到人工复核态。"""
+        """
+        把执行结果不确定的步骤隔离到人工复核态。
+        """
         del lease_token
         step = self.steps[operation_id]
         assert step.attempt_token == attempt_token
@@ -355,7 +393,9 @@ class _ExecutionRepositoryStub:
 
 
 def _chain(*, repository=None, checkpoint=None, result=None) -> TransferChain:
-    """构造只保留规划编排依赖的 TransferChain 骨架。"""
+    """
+    构造只保留规划编排依赖的 TransferChain 骨架。
+    """
     chain = object.__new__(TransferChain)
     chain.transfer_history_repository = Mock()
     chain.transfer_execution_repository = Mock()
@@ -371,7 +411,9 @@ def _chain(*, repository=None, checkpoint=None, result=None) -> TransferChain:
     chain._TransferChain__ensure_lease_heartbeat_owner = Mock()
 
     def claim_task(**kwargs):
-        """为规划测试返回与进程 owner 匹配的稳定 claim。"""
+        """
+        为规划测试返回与进程 owner 匹配的稳定 claim。
+        """
         return transfer_application.TransferAdmission(
             task_id=kwargs["task_id"],
             storage="local",
@@ -402,7 +444,9 @@ def _chain(*, repository=None, checkpoint=None, result=None) -> TransferChain:
     )
 
     def run_module(method, *args, **kwargs):
-        """让规划测试沿正式模块入口调用其可观察的宿主执行替身。"""
+        """
+        让规划测试沿正式模块入口调用其可观察的宿主执行替身。
+        """
         assert method == "execute_transfer_plan"
         checkpoint_arg = kwargs.pop("checkpoint")
         return chain.execute_transfer_plan(checkpoint_arg, *args, **kwargs)
@@ -412,7 +456,9 @@ def _chain(*, repository=None, checkpoint=None, result=None) -> TransferChain:
 
 
 def test_durable_host_execution_propagates_module_errors_to_transfer_boundary():
-    """持久执行通过 dispatcher 的异常传播开关，避免先被系统错误处理器吞掉。"""
+    """
+    持久执行通过 dispatcher 的异常传播开关，避免先被系统错误处理器吞掉。
+    """
     chain = _chain()
     chain.run_module.side_effect = RuntimeError("manual review")
 
@@ -430,7 +476,9 @@ def test_durable_host_execution_propagates_module_errors_to_transfer_boundary():
 
 
 def _replay_chain(repository) -> TransferChain:
-    """构造绑定固定恢复 owner 且不启动真实 heartbeat 线程的测试链。"""
+    """
+    构造绑定固定恢复 owner 且不启动真实 heartbeat 线程的测试链。
+    """
     chain = object.__new__(TransferChain)
     chain._transfer_admissions = repository
     chain._transfer_executions = Mock()
@@ -459,7 +507,9 @@ def _replay_chain(repository) -> TransferChain:
 
 
 def _real_dispatcher(plugins: dict) -> ModuleInvocationDispatcher:
-    """构造使用真实冻结解析与执行内核的内存插件调度器。"""
+    """
+    构造使用真实冻结解析与执行内核的内存插件调度器。
+    """
     plugin_catalog = Mock()
     plugin_catalog.get_plugin_modules.return_value = plugins
     return ModuleInvocationDispatcher(
@@ -472,7 +522,9 @@ def _real_dispatcher(plugins: dict) -> ModuleInvocationDispatcher:
 
 
 def test_non_preview_missing_durable_writer_stops_before_planning_or_execution():
-    """缺少原子 writer 时，持久任务取得租约后也不得开始任何外部流程。"""
+    """
+    缺少原子 writer 时，持久任务取得租约后也不得开始任何外部流程。
+    """
     task = _task()
     task.bind_admission_task_id("task-missing-writer")
     _bind_planning_input(task, _planning_input())
@@ -488,7 +540,9 @@ def test_non_preview_missing_durable_writer_stops_before_planning_or_execution()
 
 
 def test_non_preview_missing_execution_repository_stops_before_side_effects():
-    """缺少 execution repository 时不得调用 provider 或文件执行器。"""
+    """
+    缺少 execution repository 时不得调用 provider 或文件执行器。
+    """
     task = _task()
     task.bind_admission_task_id("task-missing-execution-repository")
     _bind_planning_input(task, _planning_input())
@@ -509,7 +563,9 @@ def test_non_preview_missing_execution_repository_stops_before_side_effects():
 
 
 def test_legacy_provider_runs_only_after_checkpoint_commit_and_short_circuits_host():
-    """旧插件 provider 必须随计划冻结，并在 CAS 提交后才能接管执行。"""
+    """
+    旧插件 provider 必须随计划冻结，并在 CAS 提交后才能接管执行。
+    """
     calls = []
     task = _task()
     task.meta = MetaBase("Movie.2026.mkv")
@@ -530,7 +586,9 @@ def test_legacy_provider_runs_only_after_checkpoint_commit_and_short_circuits_ho
     repository = Mock()
 
     def checkpoint_plan(**kwargs):
-        """记录 CAS 顺序并回读包含 provider 路由的持久检查点。"""
+        """
+        记录 CAS 顺序并回读包含 provider 路由的持久检查点。
+        """
         calls.append("checkpoint")
         persisted_checkpoint = kwargs["checkpoint"]
         assert persisted_checkpoint.legacy_transfer_providers[0].plugin_id == (
@@ -559,7 +617,9 @@ def test_legacy_provider_runs_only_after_checkpoint_commit_and_short_circuits_ho
 
 
 def test_legacy_provider_cleanup_runs_before_provider_without_duplicate_intercept():
-    """旧 provider 前只做 cleanup，不重复发送插件自行负责的真实目标拦截事件。"""
+    """
+    旧 provider 前只做 cleanup，不重复发送插件自行负责的真实目标拦截事件。
+    """
     calls = []
     cleanup_item = FileItem(
         storage="plugin-storage",
@@ -631,7 +691,9 @@ def test_legacy_provider_cleanup_runs_before_provider_without_duplicate_intercep
     )
 
     def execute_provider(*_args, **kwargs):
-        """记录 provider 文件副作用入口并核对旧 ABI 的原始 None 语义。"""
+        """
+        记录 provider 文件副作用入口并核对旧 ABI 的原始 None 语义。
+        """
         calls.append("provider")
         assert kwargs["target_storage"] is None
         assert kwargs["target_path"] is None
@@ -659,7 +721,9 @@ def test_legacy_provider_cleanup_runs_before_provider_without_duplicate_intercep
 
 
 def test_empty_frozen_legacy_providers_fall_back_to_host_checkpoint_executor():
-    """provider 空结果在已完成 cleanup 后持久提升宿主计划且只清理一次。"""
+    """
+    provider 空结果在已完成 cleanup 后持久提升宿主计划且只清理一次。
+    """
     calls = []
     task = _task()
     task.meta = MetaBase("Movie.2026.mkv")
@@ -689,7 +753,9 @@ def test_empty_frozen_legacy_providers_fall_back_to_host_checkpoint_executor():
     repository = Mock()
 
     def checkpoint_plan(**kwargs):
-        """记录宿主 fallback 前的 CAS 提交。"""
+        """
+        记录宿主 fallback 前的 CAS 提交。
+        """
         calls.append("checkpoint")
         if not kwargs["checkpoint"].is_provider_pending:
             assert kwargs["checkpoint"].pre_execution_cleanup_completed is True
@@ -740,7 +806,9 @@ def test_empty_frozen_legacy_providers_fall_back_to_host_checkpoint_executor():
 
 
 def test_missing_frozen_provider_keeps_pending_and_skips_cleanup() -> None:
-    """提交后任一冻结引用缺失时应保留 pending 且不得提前 cleanup。"""
+    """
+    提交后任一冻结引用缺失时应保留 pending 且不得提前 cleanup。
+    """
     calls = []
     task = _task()
     task.meta = MetaBase("Movie.2026.mkv")
@@ -769,7 +837,9 @@ def test_missing_frozen_provider_keeps_pending_and_skips_cleanup() -> None:
     repository = Mock()
 
     def checkpoint_plan(**kwargs):
-        """模拟提交后第二个 provider 被卸载的崩溃恢复窗口。"""
+        """
+        模拟提交后第二个 provider 被卸载的崩溃恢复窗口。
+        """
         calls.append("checkpoint")
         plugins.pop(("ProviderTwo", "插件二"))
         return _planned_admission(task, kwargs["checkpoint"])
@@ -799,7 +869,9 @@ def test_missing_frozen_provider_keeps_pending_and_skips_cleanup() -> None:
 
 
 def test_frozen_provider_failure_keeps_pending_without_host_fallback() -> None:
-    """真实冻结调度器必须传播 provider 异常并保留可重放检查点。"""
+    """
+    真实冻结调度器必须传播 provider 异常并保留可重放检查点。
+    """
     calls = []
     task = _task()
     task.meta = MetaBase("Movie.2026.mkv")
@@ -823,12 +895,16 @@ def test_frozen_provider_failure_keeps_pending_without_host_fallback() -> None:
     repository = Mock()
 
     def checkpoint_plan(**kwargs):
-        """记录 provider_pending 已在插件副作用前完成提交。"""
+        """
+        记录 provider_pending 已在插件副作用前完成提交。
+        """
         calls.append("checkpoint")
         return _planned_admission(task, kwargs["checkpoint"])
 
     def failed_provider(**_kwargs):
-        """模拟冻结旧插件在 cleanup 完成后的执行失败。"""
+        """
+        模拟冻结旧插件在 cleanup 完成后的执行失败。
+        """
         calls.append("provider")
         raise RuntimeError("legacy provider failed")
 
@@ -863,7 +939,9 @@ def test_frozen_provider_failure_keeps_pending_without_host_fallback() -> None:
 
 
 def test_auto_directory_provider_empty_preserves_legacy_none_values_for_fallback():
-    """自动目录 provider 与空结果后的宿主规划都必须保留旧 ABI 的可空原值。"""
+    """
+    自动目录 provider 与空结果后的宿主规划都必须保留旧 ABI 的可空原值。
+    """
     calls = []
     task = _task()
     task.meta = MetaBase("Movie.2026.mkv")
@@ -901,7 +979,9 @@ def test_auto_directory_provider_empty_preserves_legacy_none_values_for_fallback
     repository = Mock()
 
     def checkpoint_plan(**kwargs):
-        """回读每个阶段检查点并记录 provider_pending 到 planned 的顺序。"""
+        """
+        回读每个阶段检查点并记录 provider_pending 到 planned 的顺序。
+        """
         checkpoint = kwargs["checkpoint"]
         calls.append(
             "commit-provider" if checkpoint.is_provider_pending else "commit-host"
@@ -909,7 +989,9 @@ def test_auto_directory_provider_empty_preserves_legacy_none_values_for_fallback
         return _planned_admission(task, checkpoint)
 
     def execute_provider(*_args, **kwargs):
-        """核对自动目录只冻结解析目录，不改写旧 ABI 的可空参数。"""
+        """
+        核对自动目录只冻结解析目录，不改写旧 ABI 的可空参数。
+        """
         calls.append("provider")
         assert kwargs["target_directory"].name == "auto-library"
         assert kwargs["target_storage"] == "alist"
@@ -921,7 +1003,9 @@ def test_auto_directory_provider_empty_preserves_legacy_none_values_for_fallback
         return None
 
     def plan_host(**kwargs):
-        """核对 provider 重放恢复未用空宿主字段污染 fallback 参数。"""
+        """
+        核对 provider 重放恢复未用空宿主字段污染 fallback 参数。
+        """
         calls.append("plan-host")
         assert kwargs["target_directory"].name == "auto-library"
         assert kwargs["target_storage"] == "alist"
@@ -963,7 +1047,9 @@ def test_auto_directory_provider_empty_preserves_legacy_none_values_for_fallback
 
 
 def test_provider_empty_fallback_cas_failure_blocks_host_execution():
-    """provider 空结果后的 host checkpoint 升级失败时不得执行宿主副作用。"""
+    """
+    provider 空结果后的 host checkpoint 升级失败时不得执行宿主副作用。
+    """
     task = _task()
     task.meta = MetaBase("Movie.2026.mkv")
     task.mediainfo = MediaInfo(title="Movie")
@@ -980,7 +1066,9 @@ def test_provider_empty_fallback_cas_failure_blocks_host_execution():
     checkpoint_calls = []
 
     def checkpoint_plan(**kwargs):
-        """只允许 provider_pending 提交，模拟 host promotion CAS 竞争失败。"""
+        """
+        只允许 provider_pending 提交，模拟 host promotion CAS 竞争失败。
+        """
         checkpoint_calls.append(kwargs["checkpoint"])
         if len(checkpoint_calls) == 1:
             return _planned_admission(task, kwargs["checkpoint"])
@@ -1009,7 +1097,9 @@ def test_provider_empty_fallback_cas_failure_blocks_host_execution():
 
 
 def test_provider_pending_crash_replay_executes_snapshot_without_host_planning():
-    """provider 提交后崩溃重放必须直接执行冻结调用，不重新冻结或宿主规划。"""
+    """
+    provider 提交后崩溃重放必须直接执行冻结调用，不重新冻结或宿主规划。
+    """
     planning_input = _planning_input()
     provider = SimpleNamespace(
         plugin_id="CrashProvider",
@@ -1069,7 +1159,9 @@ def test_provider_pending_crash_replay_executes_snapshot_without_host_planning()
 
 
 def test_legacy_transfer_command_uses_durable_pipeline_and_settles_pending():
-    """旧同步调用必须经过 admission、checkpoint、执行和原子终态结算。"""
+    """
+    旧同步调用必须经过 admission、checkpoint、执行和原子终态结算。
+    """
     calls = []
     repository = Mock()
     repository.admit.side_effect = (
@@ -1078,7 +1170,9 @@ def test_legacy_transfer_command_uses_durable_pipeline_and_settles_pending():
     )
 
     def checkpoint_plan(**kwargs):
-        """回读刚提交的检查点并记录顺序。"""
+        """
+        回读刚提交的检查点并记录顺序。
+        """
         calls.append("checkpoint")
         return SimpleNamespace(checkpoint=kwargs["checkpoint"])
 
@@ -1105,7 +1199,9 @@ def test_legacy_transfer_command_uses_durable_pipeline_and_settles_pending():
     chain.durable_event_writer = Mock()
 
     def settle_result(**kwargs):
-        """执行历史暂存并模拟 writer 返回 task-aware 结算投影。"""
+        """
+        执行历史暂存并模拟 writer 返回 task-aware 结算投影。
+        """
         staging = Mock()
         staging.replace.return_value = TransferHistorySnapshot(
             id=31,
@@ -1147,7 +1243,9 @@ def test_legacy_transfer_command_uses_durable_pipeline_and_settles_pending():
 
 
 def test_cleanup_destination_is_idempotent_and_uses_storage_safety_policy():
-    """cleanup 不存在时成功，存在时必须委托 StorageChain 安全删除。"""
+    """
+    cleanup 不存在时成功，存在时必须委托 StorageChain 安全删除。
+    """
     cleanup_item = FileItem(**_source_snapshot())
     chain = object.__new__(TransferChain)
     storage_chain = Mock()
@@ -1166,7 +1264,9 @@ def test_cleanup_destination_is_idempotent_and_uses_storage_safety_policy():
 
 
 def test_cleanup_destination_propagates_strict_lookup_failure() -> None:
-    """cleanup 查询失败必须保留 planned，不能被投影成目标不存在。"""
+    """
+    cleanup 查询失败必须保留 planned，不能被投影成目标不存在。
+    """
     cleanup_item = FileItem(**_source_snapshot())
     chain = object.__new__(TransferChain)
     storage_chain = Mock()
@@ -1182,7 +1282,9 @@ def test_cleanup_destination_propagates_strict_lookup_failure() -> None:
 
 
 def test_planning_payload_round_trip_is_self_contained_and_stable():
-    """planned 行仅凭 checkpoint payload 即可还原输入、目标与有序动作。"""
+    """
+    planned 行仅凭 checkpoint payload 即可还原输入、目标与有序动作。
+    """
     TransferPlanningInput, _TransferPlanItem, TransferPlanCheckpoint = (
         _planning_contracts()
     )
@@ -1199,7 +1301,9 @@ def test_planning_payload_round_trip_is_self_contained_and_stable():
 
 
 def test_repository_rejects_checkpoint_with_mismatched_planning_fingerprint(tmp_path):
-    """checkpoint 内嵌输入与 accepted 指纹不一致时必须拒绝状态跃迁。"""
+    """
+    checkpoint 内嵌输入与 accepted 指纹不一致时必须拒绝状态跃迁。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'fingerprint.db'}")
     TransferHistory.__table__.create(engine)
     TransferPending.__table__.create(engine)
@@ -1243,7 +1347,9 @@ def test_repository_rejects_checkpoint_with_mismatched_planning_fingerprint(tmp_
 
 
 def test_repository_round_trips_accepted_and_planned_recovery_states(tmp_path):
-    """仓储必须同时恢复 accepted 输入和 planned 自包含 checkpoint。"""
+    """
+    仓储必须同时恢复 accepted 输入和 planned 自包含 checkpoint。
+    """
     engine = create_engine(f"sqlite:///{tmp_path / 'recoverable.db'}")
     TransferHistory.__table__.create(engine)
     TransferPending.__table__.create(engine)
@@ -1307,7 +1413,9 @@ def test_repository_round_trips_accepted_and_planned_recovery_states(tmp_path):
 
 
 def test_checkpoint_commit_precedes_executor_and_sync_task_is_admitted():
-    """同步非 preview 任务也必须按 admit、plan、commit、execute 顺序运行。"""
+    """
+    同步非 preview 任务也必须按 admit、plan、commit、execute 顺序运行。
+    """
     order = []
     repository = Mock()
     task = _task()
@@ -1317,7 +1425,9 @@ def test_checkpoint_commit_precedes_executor_and_sync_task_is_admitted():
     result = TransferInfo(success=True, fileitem=task.fileitem, transfer_type="copy")
 
     def admit(**_kwargs):
-        """记录同步任务首次持久准入。"""
+        """
+        记录同步任务首次持久准入。
+        """
         order.append("admit")
         return SimpleNamespace(
             task_id="task-sync",
@@ -1327,7 +1437,9 @@ def test_checkpoint_commit_precedes_executor_and_sync_task_is_admitted():
         )
 
     def checkpoint_plan(**_kwargs):
-        """记录 durable checkpoint 已经提交并返回 planned 投影。"""
+        """
+        记录 durable checkpoint 已经提交并返回 planned 投影。
+        """
         order.append("commit-checkpoint")
         return _planned_admission(task, checkpoint)
 
@@ -1362,7 +1474,9 @@ def test_checkpoint_commit_precedes_executor_and_sync_task_is_admitted():
 
 
 def test_checkpoint_commit_failure_blocks_executor_and_keeps_accepted():
-    """checkpoint 提交失败时不得产生文件副作用，错误留在 accepted 记录。"""
+    """
+    checkpoint 提交失败时不得产生文件副作用，错误留在 accepted 记录。
+    """
     repository = Mock()
     task = _task()
     planning_input = _planning_input()
@@ -1385,7 +1499,9 @@ def test_checkpoint_commit_failure_blocks_executor_and_keeps_accepted():
 
 
 def test_host_planning_value_error_commits_rejection_instead_of_retrying():
-    """确定性的宿主规划错误必须形成失败终态，不能留在 accepted 周期回放。"""
+    """
+    确定性的宿主规划错误必须形成失败终态，不能留在 accepted 周期回放。
+    """
     repository = Mock()
     task = _task()
     planning_input = _planning_input()
@@ -1412,7 +1528,9 @@ def test_host_planning_value_error_commits_rejection_instead_of_retrying():
 
 
 def test_missing_library_directory_commits_rejection_without_file_execution():
-    """真实目录匹配失败应提交业务拒绝检查点，无文件副作用或异常重试。"""
+    """
+    真实目录匹配失败应提交业务拒绝检查点，无文件副作用或异常重试。
+    """
     repository = Mock()
     task = _task()
     task.target_path = None
@@ -1442,7 +1560,9 @@ def test_missing_library_directory_commits_rejection_without_file_execution():
 
 
 def test_post_commit_crash_replays_frozen_plan_without_replanning():
-    """commit 后执行崩溃仍保留 planned checkpoint，重启后跳过 rename 规划。"""
+    """
+    commit 后执行崩溃仍保留 planned checkpoint，重启后跳过 rename 规划。
+    """
     repository = Mock()
     planning_input = _planning_input()
     checkpoint = _checkpoint()
@@ -1482,7 +1602,9 @@ def test_post_commit_crash_replays_frozen_plan_without_replanning():
 
 
 def test_first_execution_and_planned_replay_consume_identical_persisted_context():
-    """首次提交后执行与 planned 重放必须消费同一份持久领域上下文。"""
+    """
+    首次提交后执行与 planned 重放必须消费同一份持久领域上下文。
+    """
     _TransferPlanningInput, _TransferPlanItem, TransferPlanCheckpoint = (
         _planning_contracts()
     )
@@ -1535,7 +1657,9 @@ def test_first_execution_and_planned_replay_consume_identical_persisted_context(
 
 
 def test_accepted_recovery_replans_but_planned_recovery_does_not():
-    """accepted 可重新触发 rename 规划，planned 必须只读冻结计划。"""
+    """
+    accepted 可重新触发 rename 规划，planned 必须只读冻结计划。
+    """
     planning_input = _planning_input()
     checkpoint = _checkpoint()
 
@@ -1571,7 +1695,9 @@ def test_accepted_replay_restores_explicit_context_without_online_lookup(
         tmp_path,
         monkeypatch,
 ):
-    """accepted 重放必须恢复显式 meta/media/episodes，并可离线完成重新规划。"""
+    """
+    accepted 重放必须恢复显式 meta/media/episodes，并可离线完成重新规划。
+    """
     media_path = tmp_path / "Frozen.Show.S01E01.mkv"
     media_path.write_bytes(b"frozen")
     planning_input = replace(
@@ -1678,7 +1804,9 @@ def test_accepted_replay_with_explicit_empty_episodes_stays_offline(
         tmp_path,
         monkeypatch,
 ):
-    """显式媒体快照即使没有剧集明细，也不得在 accepted 重放时在线补查。"""
+    """
+    显式媒体快照即使没有剧集明细，也不得在 accepted 重放时在线补查。
+    """
     media_path = tmp_path / "Frozen.Show.S01.mkv"
     media_path.write_bytes(b"frozen")
     resolved = _resolved_checkpoint()
@@ -1768,7 +1896,9 @@ def test_accepted_replay_with_explicit_empty_episodes_stays_offline(
 
 
 def test_planned_execution_restores_resolved_context_without_online_recognition():
-    """planned 恢复必须从 checkpoint 还原 meta/media/episodes，不再访问识别服务。"""
+    """
+    planned 恢复必须从 checkpoint 还原 meta/media/episodes，不再访问识别服务。
+    """
     checkpoint = _resolved_checkpoint()
     task = _task()
     task.bind_admission_task_id("task-planned-context")
@@ -1804,7 +1934,9 @@ def test_planned_execution_restores_resolved_context_without_online_recognition(
 
 
 def test_filemanager_resolves_drifted_target_from_checkpoint(monkeypatch):
-    """运行时目录配置漂移后，executor 仍只按 checkpoint.target_storage 选适配器。"""
+    """
+    运行时目录配置漂移后，executor 仍只按 checkpoint.target_storage 选适配器。
+    """
     checkpoint = _checkpoint()
     frozen_target = object()
     drifted_target = object()
@@ -1813,7 +1945,9 @@ def test_filemanager_resolves_drifted_target_from_checkpoint(monkeypatch):
     module = object.__new__(FileManagerModule)
 
     def get_storage(storage: str):
-        """记录执行期选择的存储并为漂移配置提供错误适配器。"""
+        """
+        记录执行期选择的存储并为漂移配置提供错误适配器。
+        """
         requested_storages.append(storage)
         return frozen_target if storage == checkpoint.target_storage else drifted_target
 
@@ -1845,7 +1979,9 @@ def test_filemanager_resolves_drifted_target_from_checkpoint(monkeypatch):
 
 
 def test_pre_checkpoint_recognition_failure_records_retryable_error(monkeypatch):
-    """未识别拒绝必须先建立 plan/execution checkpoint，且不提前写终态副作用。"""
+    """
+    未识别拒绝必须先建立 plan/execution checkpoint，且不提前写终态副作用。
+    """
     task = _task()
     task.meta = MetaBase("Unrecognized.Movie.2026.mkv")
     task.bind_admission_task_id("task-before-checkpoint")
@@ -1894,7 +2030,9 @@ def test_pre_checkpoint_recognition_failure_records_retryable_error(monkeypatch)
 def test_recognition_rejection_without_writer_has_zero_terminal_side_effects(
         monkeypatch,
 ) -> None:
-    """缺 writer 时未识别拒绝不得提交计划、历史、通知或 AI 重试。"""
+    """
+    缺 writer 时未识别拒绝不得提交计划、历史、通知或 AI 重试。
+    """
     task = _task()
     task.meta = MetaBase("Unrecognized.Movie.2026.mkv")
     task.bind_admission_task_id("task-rejection-missing-writer")
@@ -1932,7 +2070,9 @@ def test_recognition_rejection_without_writer_has_zero_terminal_side_effects(
 
 
 def test_planning_rejection_checkpoint_round_trips_and_rejects_file_steps():
-    """拒绝原因必须稳定序列化，且不能与真实文件步骤同时存在。"""
+    """
+    拒绝原因必须稳定序列化，且不能与真实文件步骤同时存在。
+    """
     checkpoint = replace(
         _checkpoint(),
         items=(),
@@ -1950,7 +2090,9 @@ def test_planning_rejection_checkpoint_round_trips_and_rejects_file_steps():
 
 
 def test_preview_plans_without_persistence_or_file_side_effects():
-    """preview 只生成和投影计划，不得触碰准入仓储或存储执行器。"""
+    """
+    preview 只生成和投影计划，不得触碰准入仓储或存储执行器。
+    """
     repository = Mock()
     task = _task(preview=True)
     planning_input = _planning_input(preview=True)
@@ -1975,7 +2117,9 @@ def test_preview_plans_without_persistence_or_file_side_effects():
 
 
 def test_preview_executor_projects_result_without_touching_storage():
-    """FileManager 的 preview executor 不得查询、创建、复制或删除存储对象。"""
+    """
+    FileManager 的 preview executor 不得查询、创建、复制或删除存储对象。
+    """
     checkpoint = _checkpoint(preview=True)
     source_oper = Mock()
     target_oper = Mock()
@@ -1996,7 +2140,9 @@ def test_preview_executor_projects_result_without_touching_storage():
 
 
 def test_filemanager_explicit_plan_then_execute_uses_same_checkpoint():
-    """FileManager 的调用方必须显式把冻结计划交给唯一执行入口。"""
+    """
+    FileManager 的调用方必须显式把冻结计划交给唯一执行入口。
+    """
     module = object.__new__(FileManagerModule)
     checkpoint = _checkpoint()
     result = TransferInfo(success=True, fileitem=_task().fileitem, transfer_type="copy")
@@ -2027,7 +2173,9 @@ def test_filemanager_explicit_plan_then_execute_uses_same_checkpoint():
 
 
 def test_sync_and_worker_paths_share_checkpoint_orchestrator():
-    """同步直跑和后台 worker 必须汇入同一个检查点编排，不得旁路旧 transfer。"""
+    """
+    同步直跑和后台 worker 必须汇入同一个检查点编排，不得旁路旧 transfer。
+    """
     execution_module = ast.parse(
         inspect.getsource(inspect.getmodule(TransferChain._TransferChain__handle_transfer))
     )

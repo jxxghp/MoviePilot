@@ -156,179 +156,179 @@ A field name ending in `*` is required. Put every action parameter in the `argum
 
 | action | Purpose and argument summary |
 | :--- | :--- |
-| `capabilities.list` | List supported downloader actions and their complete argument contracts.; arguments: `action_name` |
-| `instances.list` | List configured downloader instances without connection secrets.; no arguments |
-| `session.content_layout` | Read qBittorrent's default torrent content layout.; no arguments |
-| `session.details` | Read Transmission session configuration and capacity details.; no arguments |
-| `session.speed_limits.get` | Read global speed limits.; no arguments |
-| `session.speed_limits.set` | Set global speed limits in KB/s.; arguments: `download_limit`, `upload_limit` |
-| `session.stats` | Read provider transfer/session statistics.; no arguments |
-| `tasks.add.direct` | Submit a magnet, URL, or local torrent file directly to the provider.; arguments: `content*`, `torrent_file`, `paused`, `download_dir`, `tags`, `category` |
-| `tasks.category.set` | Set qBittorrent category.; arguments: `task_id*`, `category*` |
-| `tasks.delete` | Delete tasks and optionally their data.; arguments: `task_id`, `task_ids`, `delete_files` |
-| `tasks.files` | List files and priorities for one task.; arguments: `task_id*`, `offset`, `limit` |
-| `tasks.files.selection.set` | Select wanted and unwanted files within one task.; arguments: `task_id*`, `wanted_file_ids`, `unwanted_file_ids` |
-| `tasks.force_start.set` | Enable or disable qBittorrent force-start for tasks.; arguments: `task_id`, `task_ids`, `enabled*` |
-| `tasks.list` | List and filter downloader tasks.; arguments: `task_id`, `task_ids`, `status`, `tags`, `offset`, `limit` |
-| `tasks.location.set` | Move or retarget one task to a provider-side path.; arguments: `task_id*`, `location*` |
-| `tasks.peers` | Read qBittorrent peer synchronization data.; arguments: `task_id*` |
-| `tasks.properties.set` | Set task speed, ratio, or seeding-time limits.; arguments: `task_id*`, `upload_limit`, `download_limit`, `ratio_limit`, `seeding_time_limit` |
-| `tasks.queue.move` | Move tasks to top, up, down, or bottom of the queue.; arguments: `task_id`, `task_ids`, `position*` |
-| `tasks.reannounce` | Force tracker reannounce.; arguments: `task_id`, `task_ids` |
-| `tasks.recheck` | Force data verification for tasks.; arguments: `task_id`, `task_ids` |
-| `tasks.start` | Start or resume one or more tasks.; arguments: `task_id`, `task_ids` |
-| `tasks.stop` | Pause one or more tasks.; arguments: `task_id`, `task_ids` |
-| `tasks.tags.get` | Read task tags or labels.; arguments: `task_id*` |
-| `tasks.tags.set` | Set or add task tags/labels.; arguments: `task_id`, `task_ids`, `tags*` |
-| `tasks.trackers` | List trackers for one task.; arguments: `task_id*` |
-| `tasks.trackers.update` | Add or replace task trackers.; arguments: `task_id*`, `trackers*` |
+| `capabilities.list` | 列出支持的下载器动作及完整参数契约。; arguments: `action_name` |
+| `instances.list` | 列出已配置的下载器实例，不返回连接凭据。; no arguments |
+| `session.content_layout` | 读取 qBittorrent 默认的种子内容布局。; no arguments |
+| `session.details` | 读取 Transmission 会话配置与容量详情。; no arguments |
+| `session.speed_limits.get` | 读取全局速率限制。; no arguments |
+| `session.speed_limits.set` | 设置全局速率限制，单位为 KB/s。; arguments: `download_limit`, `upload_limit` |
+| `session.stats` | 读取下载器传输或会话统计。; no arguments |
+| `tasks.add.direct` | 直接向下载器提交磁力链接、URL 或本地种子文件。; arguments: `content*`, `torrent_file`, `paused`, `download_dir`, `tags`, `category` |
+| `tasks.category.set` | 设置 qBittorrent 分类。; arguments: `task_id*`, `category*` |
+| `tasks.delete` | 删除任务，并可选删除对应数据。; arguments: `task_id`, `task_ids`, `delete_files` |
+| `tasks.files` | 列出单个任务的文件及下载优先级。; arguments: `task_id*`, `offset`, `limit` |
+| `tasks.files.selection.set` | 设置单个任务中需要下载或跳过的文件。; arguments: `task_id*`, `wanted_file_ids`, `unwanted_file_ids` |
+| `tasks.force_start.set` | 启用或关闭 qBittorrent 任务的强制启动。; arguments: `task_id`, `task_ids`, `enabled*` |
+| `tasks.list` | 查询并筛选下载器任务。; arguments: `task_id`, `task_ids`, `status`, `tags`, `offset`, `limit` |
+| `tasks.location.set` | 移动任务数据或将任务保存位置指向下载器端路径。; arguments: `task_id*`, `location*` |
+| `tasks.peers` | 读取 qBittorrent 的连接节点同步数据。; arguments: `task_id*` |
+| `tasks.properties.set` | 设置任务速率、分享率或做种时长限制。; arguments: `task_id*`, `upload_limit`, `download_limit`, `ratio_limit`, `seeding_time_limit` |
+| `tasks.queue.move` | 将任务移至队首、上移、下移或移至队尾。; arguments: `task_id`, `task_ids`, `position*` |
+| `tasks.reannounce` | 强制向 Tracker 重新汇报。; arguments: `task_id`, `task_ids` |
+| `tasks.recheck` | 强制校验任务数据。; arguments: `task_id`, `task_ids` |
+| `tasks.start` | 启动或恢复一个或多个任务。; arguments: `task_id`, `task_ids` |
+| `tasks.stop` | 暂停一个或多个任务。; arguments: `task_id`, `task_ids` |
+| `tasks.tags.get` | 读取任务标签。; arguments: `task_id*` |
+| `tasks.tags.set` | 设置或添加任务标签。; arguments: `task_id`, `task_ids`, `tags*` |
+| `tasks.trackers` | 列出单个任务的 Tracker。; arguments: `task_id*` |
+| `tasks.trackers.update` | 添加或替换任务 Tracker。; arguments: `task_id*`, `trackers*` |
 
 ### `capabilities.list`
-List supported downloader actions and their complete argument contracts. Effect: `safe_read`. Providers: `qbittorrent, transmission, rtorrent`.
-- `action_name` (string): Optional exact action name used to return one capability contract.
+列出支持的下载器动作及完整参数契约。 Effect: `safe_read`. Providers: `qbittorrent, transmission, rtorrent`.
+- `action_name` (string): 可选的精确动作名称，填写时只返回该动作的能力契约。
 
 ### `instances.list`
-List configured downloader instances without connection secrets. Effect: `safe_read`. Providers: `qbittorrent, transmission, rtorrent`.
+列出已配置的下载器实例，不返回连接凭据。 Effect: `safe_read`. Providers: `qbittorrent, transmission, rtorrent`.
 - `arguments`: `{}`
 
 ### `session.content_layout`
-Read qBittorrent's default torrent content layout. Effect: `safe_read`. Providers: `qbittorrent`.
+读取 qBittorrent 默认的种子内容布局。 Effect: `safe_read`. Providers: `qbittorrent`.
 - `arguments`: `{}`
 
 ### `session.details`
-Read Transmission session configuration and capacity details. Effect: `safe_read`. Providers: `transmission`.
+读取 Transmission 会话配置与容量详情。 Effect: `safe_read`. Providers: `transmission`.
 - `arguments`: `{}`
 
 ### `session.speed_limits.get`
-Read global speed limits. Effect: `safe_read`. Providers: `qbittorrent, transmission`.
+读取全局速率限制。 Effect: `safe_read`. Providers: `qbittorrent, transmission`.
 - `arguments`: `{}`
 
 ### `session.speed_limits.set`
-Set global speed limits in KB/s. Effect: `reversible_write`. Providers: `qbittorrent, transmission`.
-- `download_limit` (number): Global download limit in KB/s; 0 or omission means unlimited.
-- `upload_limit` (number): Global upload limit in KB/s; 0 or omission means unlimited.
+设置全局速率限制，单位为 KB/s。 Effect: `reversible_write`. Providers: `qbittorrent, transmission`.
+- `download_limit` (number): 全局下载上限，单位为 KB/s；0 或省略表示不限速。
+- `upload_limit` (number): 全局上传上限，单位为 KB/s；0 或省略表示不限速。
 
 ### `session.stats`
-Read provider transfer/session statistics. Effect: `safe_read`. Providers: `qbittorrent, transmission, rtorrent`.
+读取下载器传输或会话统计。 Effect: `safe_read`. Providers: `qbittorrent, transmission, rtorrent`.
 - `arguments`: `{}`
 
 ### `tasks.add.direct`
-Submit a magnet, URL, or local torrent file directly to the provider. Effect: `external_side_effect`. Providers: `qbittorrent, transmission, rtorrent`.
-- `content*` (string): Magnet URI, torrent URL, or a local torrent path when torrent_file=true.
-- `torrent_file` (boolean; default `False`): Interpret content as a local torrent-file path.
-- `paused` (boolean; default `False`): Add the task in a paused state.
-- `download_dir` (string): Provider-side save path.
-- `tags` (string[]): Tags to assign to the new task.
-- `category` (string): qBittorrent category; ignored by other providers.
+直接向下载器提交磁力链接、URL 或本地种子文件。 Effect: `external_side_effect`. Providers: `qbittorrent, transmission, rtorrent`.
+- `content*` (string): 磁力链接或种子 URL；torrent_file=true 时为本地种子路径。
+- `torrent_file` (boolean; default `False`): 是否将 content 解释为本地种子文件路径。
+- `paused` (boolean; default `False`): 以暂停状态添加任务。
+- `download_dir` (string): 下载器端的保存路径。
+- `tags` (string[]): 为新任务设置的标签。
+- `category` (string): qBittorrent 分类；其他下载器忽略此参数。
 
 ### `tasks.category.set`
-Set qBittorrent category. Effect: `reversible_write`. Providers: `qbittorrent`.
-- `task_id*` (string): One provider-native task hash or ID.
-- `category*` (string): Non-empty qBittorrent category name.
+设置 qBittorrent 分类。 Effect: `reversible_write`. Providers: `qbittorrent`.
+- `task_id*` (string): 下载器自身返回的单个任务哈希或标识。
+- `category*` (string): 非空的 qBittorrent 分类名称。
 
 ### `tasks.delete`
-Delete tasks and optionally their data. Effect: `destructive_write`. Providers: `qbittorrent, transmission, rtorrent`.
-- `task_id` (string): One provider-native task hash or ID.
-- `task_ids` (string[]): Multiple provider-native task hashes or IDs; mutually exclusive with task_id.
-- `delete_files` (boolean; default `False`): Also permanently delete the task data files.
-- Rule: Provide exactly one of task_id and task_ids.
+删除任务，并可选删除对应数据。 Effect: `destructive_write`. Providers: `qbittorrent, transmission, rtorrent`.
+- `task_id` (string): 下载器自身返回的单个任务哈希或标识。
+- `task_ids` (string[]): 下载器自身返回的多个任务哈希或标识，与 task_id 互斥。
+- `delete_files` (boolean; default `False`): 同时永久删除任务的数据文件。
+- Rule: task_id 和 task_ids 必须且只能提供一项。
 
 ### `tasks.files`
-List files and priorities for one task. Effect: `safe_read`. Providers: `qbittorrent, transmission, rtorrent`.
-- `task_id*` (string): One provider-native task hash or ID.
-- `offset` (integer; default `0`): Zero-based list offset.
-- `limit` (integer; default `50`): Number of items to return, from 1 to 200.
+列出单个任务的文件及下载优先级。 Effect: `safe_read`. Providers: `qbittorrent, transmission, rtorrent`.
+- `task_id*` (string): 下载器自身返回的单个任务哈希或标识。
+- `offset` (integer; default `0`): 列表偏移量，从 0 开始。
+- `limit` (integer; default `50`): 返回条目数量，范围为 1 至 200。
 
 ### `tasks.files.selection.set`
-Select wanted and unwanted files within one task. Effect: `reversible_write`. Providers: `qbittorrent, transmission, rtorrent`.
-- `task_id*` (string): One provider-native task hash or ID.
-- `wanted_file_ids` (integer[]): Provider file indexes to download; provide this or unwanted_file_ids.
-- `unwanted_file_ids` (integer[]): Provider file indexes to skip; provide this or wanted_file_ids.
-- Rule: Provide wanted_file_ids or unwanted_file_ids, and never place one index in both lists.
+设置单个任务中需要下载或跳过的文件。 Effect: `reversible_write`. Providers: `qbittorrent, transmission, rtorrent`.
+- `task_id*` (string): 下载器自身返回的单个任务哈希或标识。
+- `wanted_file_ids` (integer[]): 需要下载的文件在下载器中的索引；须提供本字段或 unwanted_file_ids。
+- `unwanted_file_ids` (integer[]): 需要跳过的文件在下载器中的索引；须提供本字段或 wanted_file_ids。
+- Rule: 须提供 wanted_file_ids 或 unwanted_file_ids，同一文件索引不得同时出现在两个列表中。
 
 ### `tasks.force_start.set`
-Enable or disable qBittorrent force-start for tasks. Effect: `reversible_write`. Providers: `qbittorrent`.
-- `task_id` (string): One provider-native task hash or ID.
-- `task_ids` (string[]): Multiple provider-native task hashes or IDs; mutually exclusive with task_id.
-- `enabled*` (boolean): Whether force-start is enabled.
-- Rule: Provide exactly one of task_id and task_ids.
+启用或关闭 qBittorrent 任务的强制启动。 Effect: `reversible_write`. Providers: `qbittorrent`.
+- `task_id` (string): 下载器自身返回的单个任务哈希或标识。
+- `task_ids` (string[]): 下载器自身返回的多个任务哈希或标识，与 task_id 互斥。
+- `enabled*` (boolean): 是否启用强制启动。
+- Rule: task_id 和 task_ids 必须且只能提供一项。
 
 ### `tasks.list`
-List and filter downloader tasks. Effect: `safe_read`. Providers: `qbittorrent, transmission, rtorrent`.
-- `task_id` (string): One provider-native task hash or ID.
-- `task_ids` (string[]): Multiple provider-native task hashes or IDs; mutually exclusive with task_id.
-- `status` (string): Filter by the provider-native task status.
-- `tags` (string|string[]): Return only tasks that contain all specified tags.
-- `offset` (integer; default `0`): Zero-based list offset.
-- `limit` (integer; default `50`): Number of items to return, from 1 to 200.
+查询并筛选下载器任务。 Effect: `safe_read`. Providers: `qbittorrent, transmission, rtorrent`.
+- `task_id` (string): 下载器自身返回的单个任务哈希或标识。
+- `task_ids` (string[]): 下载器自身返回的多个任务哈希或标识，与 task_id 互斥。
+- `status` (string): 按下载器原生任务状态筛选。
+- `tags` (string|string[]): 只返回包含全部指定标签的任务。
+- `offset` (integer; default `0`): 列表偏移量，从 0 开始。
+- `limit` (integer; default `50`): 返回条目数量，范围为 1 至 200。
 
 ### `tasks.location.set`
-Move or retarget one task to a provider-side path. Effect: `external_side_effect`. Providers: `qbittorrent, transmission, rtorrent`.
-- `task_id*` (string): One provider-native task hash or ID.
-- `location*` (string): New provider-side save path.
+移动任务数据或将任务保存位置指向下载器端路径。 Effect: `external_side_effect`. Providers: `qbittorrent, transmission, rtorrent`.
+- `task_id*` (string): 下载器自身返回的单个任务哈希或标识。
+- `location*` (string): 下载器端的新保存路径。
 
 ### `tasks.peers`
-Read qBittorrent peer synchronization data. Effect: `safe_read`. Providers: `qbittorrent`.
-- `task_id*` (string): One provider-native task hash or ID.
+读取 qBittorrent 的连接节点同步数据。 Effect: `safe_read`. Providers: `qbittorrent`.
+- `task_id*` (string): 下载器自身返回的单个任务哈希或标识。
 
 ### `tasks.properties.set`
-Set task speed, ratio, or seeding-time limits. Effect: `reversible_write`. Providers: `qbittorrent, transmission, rtorrent`.
-- `task_id*` (string): One provider-native task hash or ID.
-- `upload_limit` (number): Upload limit in KB/s; 0 means unlimited.
-- `download_limit` (number): Download limit in KB/s; 0 means unlimited.
-- `ratio_limit` (number): Share-ratio limit; unsupported by rTorrent.
-- `seeding_time_limit` (integer): Seeding-time limit in minutes; unsupported by rTorrent.
+设置任务速率、分享率或做种时长限制。 Effect: `reversible_write`. Providers: `qbittorrent, transmission, rtorrent`.
+- `task_id*` (string): 下载器自身返回的单个任务哈希或标识。
+- `upload_limit` (number): 上传上限，单位为 KB/s；0 表示不限速。
+- `download_limit` (number): 下载上限，单位为 KB/s；0 表示不限速。
+- `ratio_limit` (number): 分享率上限；rTorrent 不支持。
+- `seeding_time_limit` (integer): 做种时长上限，单位为分钟；rTorrent 不支持。
 
 ### `tasks.queue.move`
-Move tasks to top, up, down, or bottom of the queue. Effect: `reversible_write`. Providers: `qbittorrent, transmission`.
-- `task_id` (string): One provider-native task hash or ID.
-- `task_ids` (string[]): Multiple provider-native task hashes or IDs; mutually exclusive with task_id.
-- `position*` (string; allowed values `top,up,down,bottom`): Target queue position.
-- Rule: Provide exactly one of task_id and task_ids.
+将任务移至队首、上移、下移或移至队尾。 Effect: `reversible_write`. Providers: `qbittorrent, transmission`.
+- `task_id` (string): 下载器自身返回的单个任务哈希或标识。
+- `task_ids` (string[]): 下载器自身返回的多个任务哈希或标识，与 task_id 互斥。
+- `position*` (string; allowed values `top,up,down,bottom`): 目标队列位置。
+- Rule: task_id 和 task_ids 必须且只能提供一项。
 
 ### `tasks.reannounce`
-Force tracker reannounce. Effect: `external_side_effect`. Providers: `qbittorrent, transmission`.
-- `task_id` (string): One provider-native task hash or ID.
-- `task_ids` (string[]): Multiple provider-native task hashes or IDs; mutually exclusive with task_id.
-- Rule: Provide exactly one of task_id and task_ids.
+强制向 Tracker 重新汇报。 Effect: `external_side_effect`. Providers: `qbittorrent, transmission`.
+- `task_id` (string): 下载器自身返回的单个任务哈希或标识。
+- `task_ids` (string[]): 下载器自身返回的多个任务哈希或标识，与 task_id 互斥。
+- Rule: task_id 和 task_ids 必须且只能提供一项。
 
 ### `tasks.recheck`
-Force data verification for tasks. Effect: `external_side_effect`. Providers: `qbittorrent, transmission, rtorrent`.
-- `task_id` (string): One provider-native task hash or ID.
-- `task_ids` (string[]): Multiple provider-native task hashes or IDs; mutually exclusive with task_id.
-- Rule: Provide exactly one of task_id and task_ids.
+强制校验任务数据。 Effect: `external_side_effect`. Providers: `qbittorrent, transmission, rtorrent`.
+- `task_id` (string): 下载器自身返回的单个任务哈希或标识。
+- `task_ids` (string[]): 下载器自身返回的多个任务哈希或标识，与 task_id 互斥。
+- Rule: task_id 和 task_ids 必须且只能提供一项。
 
 ### `tasks.start`
-Start or resume one or more tasks. Effect: `reversible_write`. Providers: `qbittorrent, transmission, rtorrent`.
-- `task_id` (string): One provider-native task hash or ID.
-- `task_ids` (string[]): Multiple provider-native task hashes or IDs; mutually exclusive with task_id.
-- Rule: Provide exactly one of task_id and task_ids.
+启动或恢复一个或多个任务。 Effect: `reversible_write`. Providers: `qbittorrent, transmission, rtorrent`.
+- `task_id` (string): 下载器自身返回的单个任务哈希或标识。
+- `task_ids` (string[]): 下载器自身返回的多个任务哈希或标识，与 task_id 互斥。
+- Rule: task_id 和 task_ids 必须且只能提供一项。
 
 ### `tasks.stop`
-Pause one or more tasks. Effect: `reversible_write`. Providers: `qbittorrent, transmission, rtorrent`.
-- `task_id` (string): One provider-native task hash or ID.
-- `task_ids` (string[]): Multiple provider-native task hashes or IDs; mutually exclusive with task_id.
-- Rule: Provide exactly one of task_id and task_ids.
+暂停一个或多个任务。 Effect: `reversible_write`. Providers: `qbittorrent, transmission, rtorrent`.
+- `task_id` (string): 下载器自身返回的单个任务哈希或标识。
+- `task_ids` (string[]): 下载器自身返回的多个任务哈希或标识，与 task_id 互斥。
+- Rule: task_id 和 task_ids 必须且只能提供一项。
 
 ### `tasks.tags.get`
-Read task tags or labels. Effect: `safe_read`. Providers: `qbittorrent, transmission, rtorrent`.
-- `task_id*` (string): One provider-native task hash or ID.
+读取任务标签。 Effect: `safe_read`. Providers: `qbittorrent, transmission, rtorrent`.
+- `task_id*` (string): 下载器自身返回的单个任务哈希或标识。
 
 ### `tasks.tags.set`
-Set or add task tags/labels. Effect: `reversible_write`. Providers: `qbittorrent, transmission, rtorrent`.
-- `task_id` (string): One provider-native task hash or ID.
-- `task_ids` (string[]): Multiple provider-native task hashes or IDs; mutually exclusive with task_id.
-- `tags*` (string[]): Tags or labels to set or add.
-- Rule: Provide exactly one of task_id and task_ids.
+设置或添加任务标签。 Effect: `reversible_write`. Providers: `qbittorrent, transmission, rtorrent`.
+- `task_id` (string): 下载器自身返回的单个任务哈希或标识。
+- `task_ids` (string[]): 下载器自身返回的多个任务哈希或标识，与 task_id 互斥。
+- `tags*` (string[]): 需要设置或添加的标签。
+- Rule: task_id 和 task_ids 必须且只能提供一项。
 
 ### `tasks.trackers`
-List trackers for one task. Effect: `safe_read`. Providers: `qbittorrent, transmission`.
-- `task_id*` (string): One provider-native task hash or ID.
+列出单个任务的 Tracker。 Effect: `safe_read`. Providers: `qbittorrent, transmission`.
+- `task_id*` (string): 下载器自身返回的单个任务哈希或标识。
 
 ### `tasks.trackers.update`
-Add or replace task trackers. Effect: `reversible_write`. Providers: `qbittorrent, transmission`.
-- `task_id*` (string): One provider-native task hash or ID.
-- `trackers*` (string[]): Tracker URL list.
+添加或替换任务 Tracker。 Effect: `reversible_write`. Providers: `qbittorrent, transmission`.
+- `task_id*` (string): 下载器自身返回的单个任务哈希或标识。
+- `trackers*` (string[]): Tracker URL 列表。
 
 ## Verification
 

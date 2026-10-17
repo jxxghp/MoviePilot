@@ -1,3 +1,7 @@
+"""
+验证插件搜索来源发现与结果接入。
+"""
+
 import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -10,14 +14,18 @@ from app.runtime.correlation import CORRELATION_ID_HEADER, correlation_scope
 
 
 def make_chain() -> SearchChain:
-    """构造不触发完整启动流程的搜索链。"""
+    """
+    构造不触发完整启动流程的搜索链。
+    """
     chain = object.__new__(SearchChain)
     chain.get_search_page_size = IndexerModule.get_search_page_size
     return chain
 
 
 def test_search_returns_plugin_results_without_indexer_sites():
-    """未配置 PT 站点时，插件资源仍应进入原生资源搜索。"""
+    """
+    未配置 PT 站点时，插件资源仍应进入原生资源搜索。
+    """
     chain = make_chain()
     plugin_item = SimpleNamespace(title="Plugin Result", description="")
     calls = []
@@ -37,7 +45,9 @@ def test_search_returns_plugin_results_without_indexer_sites():
 
 
 def test_search_invokes_plugin_once_with_multiple_indexers():
-    """多个 PT 站点不应导致插件资源源被重复搜索。"""
+    """
+    多个 PT 站点不应导致插件资源源被重复搜索。
+    """
     chain = make_chain()
     plugin_calls = []
     site_calls = []
@@ -70,7 +80,9 @@ def test_search_invokes_plugin_once_with_multiple_indexers():
 
 
 def test_sync_site_search_propagates_request_context():
-    """同步站点 worker 的出站请求头应保留触发搜索的关联 ID。"""
+    """
+    同步站点 worker 的出站请求头应保留触发搜索的关联 ID。
+    """
     chain = make_chain()
     observed_headers = []
     chain.search_plugin_torrents = lambda **_kwargs: []
@@ -110,7 +122,9 @@ def test_sync_site_search_propagates_request_context():
 
 
 def test_async_search_returns_plugin_results_without_indexers():
-    """异步搜索应支持只有插件资源源的部署方式。"""
+    """
+    异步搜索应支持只有插件资源源的部署方式。
+    """
     chain = make_chain()
     plugin_item = SimpleNamespace(title="Plugin Result", description="")
     calls = []
@@ -137,7 +151,9 @@ def test_async_search_returns_plugin_results_without_indexers():
 
 
 def test_async_search_stream_emits_plugin_results_once_without_indexers():
-    """流式搜索完成事件不应重复发送插件资源。"""
+    """
+    流式搜索完成事件不应重复发送插件资源。
+    """
     chain = make_chain()
     plugin_item = SimpleNamespace(title="Plugin Result", description="")
 

@@ -1,4 +1,6 @@
-"""搜索处理链稳定 Facade。"""
+"""
+搜索处理链稳定 Facade。
+"""
 
 import threading
 from collections.abc import AsyncIterator, Callable
@@ -32,13 +34,17 @@ _Handler = TypeVar("_Handler", bound=Callable[..., Any])
 
 
 def _public_handler(handler: _Handler) -> _Handler:
-    """在事件注册前恢复插件可见的稳定模块身份。"""
+    """
+    在事件注册前恢复插件可见的稳定模块身份。
+    """
     handler.__module__ = _PUBLIC_MODULE
     return handler
 
 
 class SearchChain(ChainBase):
-    """组合搜索计划、provider、结果、音乐、字幕与推荐的稳定门面。"""
+    """
+    组合搜索计划、provider、结果、音乐、字幕与推荐的稳定门面。
+    """
 
     __module__ = _PUBLIC_MODULE
 
@@ -48,7 +54,9 @@ class SearchChain(ChainBase):
     _AI_INDICES_CACHE_KEY = "__ai_recommend_indices__"
 
     async def search_page_events(self, *, params: dict[str, Any]) -> AsyncIterator[dict[str, Any]]:
-        """执行客户端指定的单页请求，不持有客户端分页进度。"""
+        """
+        执行客户端指定的单页请求，不持有客户端分页进度。
+        """
         async for event in SearchManualOwner.events(cast(_SearchOwnerBase, self), params=params):
             yield event
 
@@ -56,14 +64,18 @@ class SearchChain(ChainBase):
         self,
         budget: Optional[SubscriptionSiteBudget],
     ) -> None:
-        """仅为订阅搜索启用或清除站点预算，不影响其它搜索入口。"""
+        """
+        仅为订阅搜索启用或清除站点预算，不影响其它搜索入口。
+        """
         self._subscription_site_budget = budget
         self._subscription_site_budget_failures: list[str] = []
         self._subscription_site_budget_deferrals: list[SubscriptionSiteBudgetDeferral] = []
         self._subscription_site_budget_failure_lock = threading.Lock()
 
     def record_subscription_site_budget_failure(self, error: str) -> None:
-        """线程安全地记录一个站点执行失败，供订阅任务判断轮次终态。"""
+        """
+        线程安全地记录一个站点执行失败，供订阅任务判断轮次终态。
+        """
         lock = getattr(self, "_subscription_site_budget_failure_lock", None)
         if lock is None:
             return
@@ -71,7 +83,9 @@ class SearchChain(ChainBase):
             self._subscription_site_budget_failures.append(error)
 
     def consume_subscription_site_budget_failures(self, *, has_results: bool = False) -> tuple[str, ...]:
-        """仅在没有成功搜索源时返回并清空本轮站点聚合失败。"""
+        """
+        仅在没有成功搜索源时返回并清空本轮站点聚合失败。
+        """
         lock = getattr(self, "_subscription_site_budget_failure_lock", None)
         if lock is None:
             return ()
@@ -86,7 +100,9 @@ class SearchChain(ChainBase):
         self,
         deferral: SubscriptionSiteBudgetDeferral,
     ) -> None:
-        """线程安全地记录临时站点冲突，供订阅任务重新入队。"""
+        """
+        线程安全地记录临时站点冲突，供订阅任务重新入队。
+        """
         lock = getattr(self, "_subscription_site_budget_failure_lock", None)
         if lock is None:
             return
@@ -94,7 +110,9 @@ class SearchChain(ChainBase):
             self._subscription_site_budget_deferrals.append(deferral)
 
     def consume_subscription_site_budget_deferrals(self) -> tuple[SubscriptionSiteBudgetDeferral, ...]:
-        """读取并清空当前订阅搜索积累的站点预算延后事实。"""
+        """
+        读取并清空当前订阅搜索积累的站点预算延后事实。
+        """
         lock = getattr(self, "_subscription_site_budget_failure_lock", None)
         if lock is None:
             return ()
@@ -103,18 +121,23 @@ class SearchChain(ChainBase):
             self._subscription_site_budget_deferrals.clear()
         return deferrals
 
-    # owner descriptor 经类访问后被 mypy 视为普通 Callable；运行时仍需取回原始
+    # 方法描述符经类访问后被 mypy 视为普通 Callable；运行时仍需取回原始
     # classmethod 函数，才能保持 SearchChain 的直接 MRO 与既有绑定语义。
     music_site_keywords = classmethod(  # type: ignore[var-annotated]
+        # 类型检查将类方法视为普通可调用对象，但运行时仍保留 __func__。
         SearchMusicOwner.music_site_keywords.__func__  # type: ignore[attr-defined]
     )
+    # 直接绑定原类方法，保留现有签名与方法解析顺序。
     matches_music_resource = classmethod(  # type: ignore[var-annotated]
+        # 从类方法描述符取回原函数，类型检查无法推导该属性。
         SearchMusicOwner.matches_music_resource.__func__  # type: ignore[attr-defined]
     )
     _normalize_music_match_text = staticmethod(SearchMusicOwner._normalize_music_match_text)
     _unique_music_texts = staticmethod(SearchMusicOwner._unique_music_texts)
     _get_search_resource_pages = staticmethod(SearchPaginationOwner._get_search_resource_pages)
+    # 直接绑定分页类方法，保留现有签名与方法解析顺序。
     _build_search_pages = classmethod(  # type: ignore[var-annotated]
+        # 从类方法描述符取回原函数，类型检查无法推导该属性。
         SearchPaginationOwner._build_search_pages.__func__  # type: ignore[attr-defined]
     )
     _should_continue_search_pages = SearchPaginationOwner._should_continue_search_pages
@@ -122,7 +145,9 @@ class SearchChain(ChainBase):
 
     @property
     def is_ai_recommend_enabled(self) -> bool:
-        """经推荐 owner 的原始描述符读取启用状态，避免 Facade 属性递归。"""
+        """
+        经推荐 owner 的原始描述符读取启用状态，避免 Facade 属性递归。
+        """
         descriptor = cast(
             property,
             SearchRecommendOwner.__dict__["is_ai_recommend_enabled"],
@@ -133,7 +158,9 @@ class SearchChain(ChainBase):
     _build_ai_recommend_status = SearchRecommendOwner._build_ai_recommend_status
 
     def get_current_recommend_status_only(self) -> dict[str, Any]:
-        """返回当前推荐状态，不改变推荐请求代际。"""
+        """
+        返回当前推荐状态，不改变推荐请求代际。
+        """
         return SearchRecommendOwner.get_current_recommend_status_only(
             cast(SearchRecommendOwner, self)
         )
@@ -143,7 +170,9 @@ class SearchChain(ChainBase):
         filtered_indices: Optional[list[int]],
         search_results_count: int,
     ) -> dict[str, Any]:
-        """按当前筛选条件返回推荐状态。"""
+        """
+        按当前筛选条件返回推荐状态。
+        """
         return SearchRecommendOwner.get_recommend_status(
             cast(SearchRecommendOwner, self),
             filtered_indices=filtered_indices,
@@ -151,7 +180,9 @@ class SearchChain(ChainBase):
         )
 
     def cancel_ai_recommend(self) -> None:
-        """委托推荐 owner 取消当前任务并清理推荐缓存。"""
+        """
+        委托推荐 owner 取消当前任务并清理推荐缓存。
+        """
         SearchRecommendOwner.cancel_ai_recommend(
             cast(SearchRecommendOwner, self)
         )
@@ -168,11 +199,15 @@ class SearchChain(ChainBase):
     async_save_last_search_params = SearchCacheOwner.async_save_last_search_params
 
     def last_search_params(self) -> Optional[dict[str, str]]:
-        """返回最近一次搜索参数。"""
+        """
+        返回最近一次搜索参数。
+        """
         return SearchCacheOwner.last_search_params(cast(SearchCacheOwner, self))
 
     async def async_last_search_params(self) -> Optional[dict[str, str]]:
-        """异步返回最近一次搜索参数。"""
+        """
+        异步返回最近一次搜索参数。
+        """
         return await SearchCacheOwner.async_last_search_params(
             cast(SearchCacheOwner, self)
         )
@@ -187,7 +222,9 @@ class SearchChain(ChainBase):
         search_results_count: int,
         results: list[Any],
     ) -> None:
-        """委托推荐 owner 启动受代际保护的推荐任务。"""
+        """
+        委托推荐 owner 启动受代际保护的推荐任务。
+        """
         SearchRecommendOwner.start_recommend_task(
             cast(SearchRecommendOwner, self),
             filtered_indices=filtered_indices,
@@ -207,7 +244,9 @@ class SearchChain(ChainBase):
         mtype: Optional[MediaType] = None,
         rule_groups: Optional[list[str]] = None,
     ) -> list[Context]:
-        """通过稳定 Facade 调用标题搜索 owner，保留精确的公开类型合同。"""
+        """
+        通过稳定 Facade 调用标题搜索 owner，保留精确的公开类型合同。
+        """
         return SearchTitleOwner.search_by_title(
             cast(SearchTitleOwner, self),
             title=title,
@@ -219,11 +258,15 @@ class SearchChain(ChainBase):
         )
 
     def last_search_results(self) -> Optional[list[Context]]:
-        """返回最近一次资源搜索结果。"""
+        """
+        返回最近一次资源搜索结果。
+        """
         return SearchCacheOwner.last_search_results(cast(SearchCacheOwner, self))
 
     async def async_last_search_results(self) -> Optional[list[Context]]:
-        """异步返回最近一次资源搜索结果。"""
+        """
+        异步返回最近一次资源搜索结果。
+        """
         return await SearchCacheOwner.async_last_search_results(
             cast(SearchCacheOwner, self)
         )
@@ -231,7 +274,9 @@ class SearchChain(ChainBase):
     async def async_last_subtitle_search_results(
         self,
     ) -> Optional[list[SubtitleInfo]]:
-        """异步返回最近一次字幕搜索结果。"""
+        """
+        异步返回最近一次字幕搜索结果。
+        """
         return await SearchCacheOwner.async_last_subtitle_search_results(
             cast(SearchCacheOwner, self)
         )
@@ -243,7 +288,9 @@ class SearchChain(ChainBase):
         sites: Optional[list[int]] = None,
         cache_local: Optional[bool] = False,
     ) -> list[SubtitleInfo]:
-        """通过稳定 Facade 执行异步标题字幕搜索。"""
+        """
+        通过稳定 Facade 执行异步标题字幕搜索。
+        """
         return await SearchSubtitleOwner.async_search_subtitles_by_title(
             cast(SearchSubtitleOwner, self),
             title=title,
@@ -259,7 +306,9 @@ class SearchChain(ChainBase):
         sites: Optional[list[int]] = None,
         cache_local: Optional[bool] = False,
     ) -> AsyncIterator[dict[str, Any]]:
-        """通过稳定 Facade 流式执行标题字幕搜索。"""
+        """
+        通过稳定 Facade 流式执行标题字幕搜索。
+        """
         async for event in SearchSubtitleOwner.async_search_subtitles_by_title_stream(
             cast(SearchSubtitleOwner, self),
             title=title,
@@ -279,7 +328,9 @@ class SearchChain(ChainBase):
         sites: Optional[list[int]] = None,
         cache_local: bool = False,
     ) -> list[SubtitleInfo]:
-        """通过稳定 Facade 执行异步精确字幕搜索。"""
+        """
+        通过稳定 Facade 执行异步精确字幕搜索。
+        """
         return await SearchSubtitleOwner.async_search_subtitles_by_id(
             cast(SearchSubtitleOwner, self),
             media_source=media_source,
@@ -301,7 +352,9 @@ class SearchChain(ChainBase):
         sites: Optional[list[int]] = None,
         cache_local: bool = False,
     ) -> AsyncIterator[dict[str, Any]]:
-        """通过稳定 Facade 流式执行精确字幕搜索。"""
+        """
+        通过稳定 Facade 流式执行精确字幕搜索。
+        """
         async for event in SearchSubtitleOwner.async_search_subtitles_by_id_stream(
             cast(SearchSubtitleOwner, self),
             media_source=media_source,
@@ -326,7 +379,9 @@ class SearchChain(ChainBase):
         music_type: Optional[str] = None,
         include_candidates: bool = False,
     ) -> list[Context]:
-        """通过稳定 Facade 执行异步精确媒体搜索。"""
+        """
+        通过稳定 Facade 执行异步精确媒体搜索。
+        """
         return await SearchMediaOwner.async_search_by_id(
             cast(SearchMediaOwner, self),
             media_source=media_source,
@@ -349,7 +404,9 @@ class SearchChain(ChainBase):
         mtype: Optional[MediaType] = None,
         rule_groups: Optional[list[str]] = None,
     ) -> list[Context]:
-        """通过稳定 Facade 执行异步标题资源搜索。"""
+        """
+        通过稳定 Facade 执行异步标题资源搜索。
+        """
         return await SearchTitleOwner.async_search_by_title(
             cast(SearchTitleOwner, self),
             title=title,
@@ -369,7 +426,9 @@ class SearchChain(ChainBase):
         mtype: Optional[MediaType] = None,
         rule_groups: Optional[list[str]] = None,
     ) -> AsyncIterator[dict[str, Any]]:
-        """通过稳定 Facade 流式执行标题资源搜索。"""
+        """
+        通过稳定 Facade 流式执行标题资源搜索。
+        """
         async for event in SearchTitleOwner.async_search_by_title_stream(
             cast(SearchTitleOwner, self),
             title=title,
@@ -395,7 +454,9 @@ class SearchChain(ChainBase):
         music_type: Optional[str] = None,
         include_candidates: bool = False,
     ) -> AsyncIterator[dict[str, Any]]:
-        """通过稳定 Facade 流式执行精确媒体搜索。"""
+        """
+        通过稳定 Facade 流式执行精确媒体搜索。
+        """
         async for event in SearchMediaOwner.async_search_by_id_stream(
             cast(SearchMediaOwner, self),
             media_source=media_source,
@@ -433,7 +494,9 @@ class SearchChain(ChainBase):
         include_candidates: bool = False,
         candidate_filter: Optional[Callable[[list[Context]], list[Context]]] = None,
     ) -> list[Context]:
-        """通过稳定 Facade 调用精确媒体搜索 owner，保留公开类型合同。"""
+        """
+        通过稳定 Facade 调用精确媒体搜索 owner，保留公开类型合同。
+        """
         return SearchMediaOwner.process(
             cast(SearchMediaOwner, self),
             mediainfo=mediainfo,
@@ -461,7 +524,9 @@ class SearchChain(ChainBase):
         include_candidates: bool = False,
         candidate_filter: Optional[Callable[[list[Context]], list[Context]]] = None,
     ) -> list[Context]:
-        """通过稳定 Facade 执行异步媒体搜索编排。"""
+        """
+        通过稳定 Facade 执行异步媒体搜索编排。
+        """
         return await SearchMediaOwner.async_process(
             cast(SearchMediaOwner, self),
             mediainfo=mediainfo,
@@ -489,7 +554,9 @@ class SearchChain(ChainBase):
         include_candidates: bool = False,
         candidate_filter: Optional[Callable[[list[Context]], list[Context]]] = None,
     ) -> AsyncIterator[dict[str, Any]]:
-        """通过稳定 Facade 流式执行媒体搜索编排。"""
+        """
+        通过稳定 Facade 流式执行媒体搜索编排。
+        """
         async for event in SearchMediaOwner.async_process_stream(
             cast(SearchMediaOwner, self),
             mediainfo=mediainfo,
@@ -535,5 +602,7 @@ class SearchChain(ChainBase):
     @eventmanager.register(EventType.SiteDeleted)
     @_public_handler
     def remove_site(self, event: Event) -> None:
-        """通过稳定 SearchChain 身份清理已删除站点的搜索配置。"""
+        """
+        通过稳定 SearchChain 身份清理已删除站点的搜索配置。
+        """
         SearchSiteOwner._remove_site(cast(SearchSiteOwner, self), event)

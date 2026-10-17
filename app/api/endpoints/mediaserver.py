@@ -1,3 +1,7 @@
+"""
+提供媒体服务器配置对应的媒体库、条目与播放信息查询接口。
+"""
+
 from typing import Any, List, Optional
 
 from fastapi import Depends, HTTPException, status

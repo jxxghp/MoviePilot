@@ -1,4 +1,6 @@
-"""真实 Agent 图中的子代理跨轮复用与上下文压缩回归。"""
+"""
+真实 Agent 图中的子代理跨轮复用与上下文压缩回归。
+"""
 
 import json
 from unittest.mock import AsyncMock
@@ -18,20 +20,28 @@ from app.agent.middleware.summarization import ContextPreservingSummarizationMid
 
 @pytest.fixture
 def anyio_backend():
-    """固定使用运行时支持的 asyncio 后端。"""
+    """
+    固定使用运行时支持的 asyncio 后端。
+    """
     return "asyncio"
 
 
 class _TaskModel(FakeMessagesListChatModel):
-    """提供确定的工具调用响应，避免测试访问真实模型。"""
+    """
+    提供确定的工具调用响应，避免测试访问真实模型。
+    """
 
     def bind_tools(self, tools, **kwargs):
-        """允许 LangChain 绑定工具并复用脚本响应。"""
+        """
+        允许 LangChain 绑定工具并复用脚本响应。
+        """
         return self
 
 
 def _task_call(call_id: str) -> AIMessage:
-    """生成需要子代理返回结果的委派调用。"""
+    """
+    生成需要子代理返回结果的委派调用。
+    """
     return AIMessage(content="", tool_calls=[{
         "name": "subagent_task",
         "args": {"action": "run", "description": "检查下载器状态", "timeout_ms": 1000},
@@ -42,7 +52,9 @@ def _task_call(call_id: str) -> AIMessage:
 
 @pytest.mark.anyio
 async def test_cached_graph_can_delegate_on_consecutive_turns(monkeypatch):
-    """正常结束仅回收本轮任务，缓存图下一轮仍能实际调用子代理。"""
+    """
+    正常结束仅回收本轮任务，缓存图下一轮仍能实际调用子代理。
+    """
     model = _TaskModel(responses=[_task_call("one"), AIMessage(content="检查完成"),
                                   _task_call("two"), AIMessage(content="再次完成")])
     middleware = SubAgentTaskControlMiddleware(
@@ -63,7 +75,9 @@ async def test_cached_graph_can_delegate_on_consecutive_turns(monkeypatch):
 
 @pytest.mark.anyio
 async def test_turn_cleanup_never_reopens_sealed_controller():
-    """永久关闭的 owner 不会因回合结束被重新开放。"""
+    """
+    永久关闭的 owner 不会因回合结束被重新开放。
+    """
     middleware = SubAgentTaskControlMiddleware(
         model=_TaskModel(responses=[AIMessage(content="完成")]),
         profiles=_builtin_subagent_profiles(), tools=[],
@@ -78,12 +92,16 @@ async def test_turn_cleanup_never_reopens_sealed_controller():
 
 @pytest.mark.anyio
 async def test_subagent_compacts_large_input_before_model_call(monkeypatch):
-    """独立子图也执行最终请求压缩，大量工具输出不会绕过预算边界。"""
+    """
+    独立子图也执行最终请求压缩，大量工具输出不会绕过预算边界。
+    """
     sequence = 0
 
     @tool
     def diagnostic() -> str:
-        """每次读取不同日志；重复内容现在会变为引用，不能用于触发压缩预算。"""
+        """
+        每次读取不同日志；重复内容现在会变为引用，不能用于触发压缩预算。
+        """
         nonlocal sequence
         sequence += 1
         return f"日志批次 {sequence}：" + "诊断日志中的连接信息。" * 450

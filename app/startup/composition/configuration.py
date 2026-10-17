@@ -1,4 +1,6 @@
-"""把可变部署设置转换成宿主各领域使用的类型化配置快照。"""
+"""
+把可变部署设置转换成宿主各领域使用的类型化配置快照。
+"""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,7 +48,15 @@ from app.schemas.types import MediaType
 
 @dataclass(frozen=True, slots=True)
 class ConfigurationComposition:
-    """保存启动阶段加载完成的配置服务与类型化快照门面。"""
+    """
+    保存启动阶段加载完成的配置服务与类型化快照门面。
+
+    :param system_config: 读写 SystemConfig 表的持久化访问对象，由组合根管理其会话
+    :param system_service: 处理系统配置值和变更通知的应用服务
+    :param user_service: 按用户管理配置的应用服务
+    :param runtime: 从进程环境解析的运行配置快照
+    :param settings: 查询和修改可见系统设置的服务
+    """
 
     system_config: SystemConfigOper
     system_service: SystemConfigService
@@ -60,7 +70,9 @@ async def compose_configuration(
     executor: AsyncDatabaseExecutor,
     settings: Settings,
 ) -> ConfigurationComposition:
-    """加载系统与用户配置快照，并在全部成功后发布配置服务。"""
+    """
+    加载系统与用户配置快照，并在全部成功后发布配置服务。
+    """
     system_config = cast(Callable[[], SystemConfigOper], SystemConfigOper)()
     user_config = TransactionalUserConfigurationRepository(SessionFactory)
     await executor.run(system_config.load_snapshot)
@@ -99,7 +111,9 @@ def publish_configuration(
     composition: ConfigurationComposition,
     settings: Settings,
 ) -> None:
-    """发布 HostRuntime 使用的同一配置对象及兼容设置入口。"""
+    """
+    发布 HostRuntime 使用的同一配置对象及兼容设置入口。
+    """
     configure_system_config(composition.system_service)
     # 统一接管直接 async_set() 写入，避免绕过管理 API 的配置保存没有运行时事件。
     from app.startup.composition.system import _ConfigurationEventAdapter
@@ -116,14 +130,18 @@ def publish_configuration(
 
 
 def reset_configuration() -> None:
-    """撤销当前 lifespan 发布的全部配置服务与 runtime 端口。"""
+    """
+    撤销当前 lifespan 发布的全部配置服务与 runtime 端口。
+    """
     reset_runtime_setting_ports()
     reset_user_configuration()
     reset_configuration_services()
 
 
 def normalize_subscribe_rss_interval(value: object) -> int:
-    """把无效或过小的 RSS 间隔收敛为兼容的安全值。"""
+    """
+    把无效或过小的 RSS 间隔收敛为兼容的安全值。
+    """
     try:
         if not isinstance(value, (str, bytes, bytearray, int, float)):
             return 30
@@ -133,7 +151,9 @@ def normalize_subscribe_rss_interval(value: object) -> int:
 
 
 def build_api_runtime_config(settings: Settings) -> ApiRuntimeConfig:
-    """从可热更新的部署设置构建一次 API 请求配置快照。"""
+    """
+    从可热更新的部署设置构建一次 API 请求配置快照。
+    """
     return ApiRuntimeConfig(
         access_token_expire_minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES,
         btrfs_fsid_dedup=settings.BTRFS_FSID_DEDUP,
@@ -163,7 +183,9 @@ def build_api_runtime_config(settings: Settings) -> ApiRuntimeConfig:
 
 
 def build_token_runtime_config(settings: Settings) -> TokenRuntimeConfig:
-    """从部署设置构建令牌编解码使用的安全配置快照。"""
+    """
+    从部署设置构建令牌编解码使用的安全配置快照。
+    """
     return TokenRuntimeConfig(
         secret_key=settings.SECRET_KEY,
         resource_secret_key=settings.RESOURCE_SECRET_KEY,
@@ -173,7 +195,9 @@ def build_token_runtime_config(settings: Settings) -> TokenRuntimeConfig:
 
 
 def _cookiecloud_configured(settings: Settings) -> bool:
-    """判断 CookieCloud 定时同步所需的来源和凭据是否完整。"""
+    """
+    判断 CookieCloud 定时同步所需的来源和凭据是否完整。
+    """
     return bool(
         (settings.COOKIECLOUD_KEY or "").strip()
         and (settings.COOKIECLOUD_PASSWORD or "").strip()
@@ -182,7 +206,9 @@ def _cookiecloud_configured(settings: Settings) -> bool:
 
 
 def build_scheduler_runtime_config(settings: Settings) -> SchedulerRuntimeConfig:
-    """从可热更新的部署设置构建一次 Scheduler 配置快照。"""
+    """
+    从可热更新的部署设置构建一次 Scheduler 配置快照。
+    """
     return SchedulerRuntimeConfig(
         dev=settings.DEV,
         timezone=settings.TZ,
@@ -212,7 +238,9 @@ def build_scheduler_runtime_config(settings: Settings) -> SchedulerRuntimeConfig
 
 
 def build_chain_runtime_config(settings: Settings) -> ChainRuntimeConfig:
-    """从部署设置构建 Chain 在本次实例生命周期使用的配置快照。"""
+    """
+    从部署设置构建 Chain 在本次实例生命周期使用的配置快照。
+    """
     return ChainRuntimeConfig(
         media_extensions=tuple(
             settings.RMT_MEDIAEXT

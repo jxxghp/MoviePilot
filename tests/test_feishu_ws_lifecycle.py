@@ -1,3 +1,7 @@
+"""
+验证飞书长连接启动、停止及事件循环资源释放。
+"""
+
 import threading
 import time
 from unittest.mock import MagicMock, patch
@@ -11,8 +15,13 @@ ensure_optional_stub("psutil")
 ensure_optional_stub("dateparser")
 ensure_optional_stub("Pinyin2Hanzi", is_pinyin=lambda value: False)
 
+# 先安装可选依赖占位，隔离长连接测试不需要的外部依赖。
 from app.adapters.network.feishu import FeishuLongConnection  # noqa: E402
+
+# 先安装可选依赖占位，隔离长连接测试不需要的外部依赖。
 from app.modules.feishu.feishu import Feishu  # noqa: E402
+
+# 先安装可选依赖占位，隔离长连接测试不需要的外部依赖。
 from app.modules.feishu.openapi import FeishuOpenApi  # noqa: E402
 
 # 停止单个配置实例的耗时上限；远小于 Feishu._ws_join_timeout_seconds，证明停止不是靠等待超时。
@@ -20,7 +29,9 @@ _STOP_BUDGET_SECONDS = 1.0
 
 
 class _OfflineRuns:
-    """记录离线长连接的运行情况：每个 FeishuLongConnection 在哪个线程运行、是否被请求停止。"""
+    """
+    记录离线长连接的运行情况：每个 FeishuLongConnection 在哪个线程运行、是否被请求停止。
+    """
 
     def __init__(self):
         self._lock = threading.Lock()
@@ -29,12 +40,16 @@ class _OfflineRuns:
         self.stopped = set()
 
     def released(self, connection) -> threading.Event:
-        """返回该长连接的释放信号。"""
+        """
+        返回该长连接的释放信号。
+        """
         with self._lock:
             return self._released.setdefault(id(connection), threading.Event())
 
     def running(self, connection, timeout: float = 2) -> bool:
-        """等待该长连接进入 run()。"""
+        """
+        等待该长连接进入 run()。
+        """
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             with self._lock:
@@ -44,7 +59,9 @@ class _OfflineRuns:
         return False
 
     def release_all(self) -> None:
-        """释放所有仍阻塞的 run()，避免用例失败时遗留线程。"""
+        """
+        释放所有仍阻塞的 run()，避免用例失败时遗留线程。
+        """
         with self._lock:
             events = list(self._released.values())
         for event in events:
@@ -80,7 +97,9 @@ def offline_runs():
 
 
 def _start_client(name: str) -> Feishu:
-    """按配置名启动一个飞书实例；OpenAPI 为桩，长连接线程真实启动。"""
+    """
+    按配置名启动一个飞书实例；OpenAPI 为桩，长连接线程真实启动。
+    """
     with patch.object(Feishu, "_build_api_client", return_value=MagicMock(spec=FeishuOpenApi)):
         return Feishu(
             FEISHU_APP_ID=f"cli_{name}",
@@ -90,7 +109,9 @@ def _start_client(name: str) -> Feishu:
 
 
 def test_config_instances_run_independent_long_connections(offline_runs):
-    """多个飞书配置各自持有独立长连接并在各自线程运行。"""
+    """
+    多个飞书配置各自持有独立长连接并在各自线程运行。
+    """
     first, second = _start_client("feishu-a"), _start_client("feishu-b")
     try:
         assert offline_runs.running(first._ws_client)
@@ -107,7 +128,9 @@ def test_config_instances_run_independent_long_connections(offline_runs):
 
 
 def test_stopping_one_instance_keeps_other_connected(offline_runs):
-    """停止一个配置实例只结束它自己的长连接，另一实例继续运行。"""
+    """
+    停止一个配置实例只结束它自己的长连接，另一实例继续运行。
+    """
     first, second = _start_client("feishu-a"), _start_client("feishu-b")
     try:
         assert offline_runs.running(first._ws_client)
@@ -130,7 +153,9 @@ def test_stopping_one_instance_keeps_other_connected(offline_runs):
 
 
 def test_concurrent_stop_of_all_instances_returns_quickly(offline_runs):
-    """关机时多个实例并发停止，均应在预算内确认线程退出。"""
+    """
+    关机时多个实例并发停止，均应在预算内确认线程退出。
+    """
     clients = [_start_client(f"feishu-{index}") for index in range(3)]
     for client in clients:
         assert offline_runs.running(client._ws_client)
@@ -153,7 +178,9 @@ def test_concurrent_stop_of_all_instances_returns_quickly(offline_runs):
 
 
 def test_restart_after_stop_uses_fresh_long_connection(offline_runs):
-    """停止后重新启动必须新建长连接：已停止的连接会立即退出，不能复用。"""
+    """
+    停止后重新启动必须新建长连接：已停止的连接会立即退出，不能复用。
+    """
     client = _start_client("feishu-a")
     try:
         stopped_connection = client._ws_client

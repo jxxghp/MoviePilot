@@ -1,4 +1,6 @@
-"""事件注册、绑定、调度和错误策略组件的独立测试。"""
+"""
+事件注册、绑定、调度和错误策略组件的独立测试。
+"""
 
 import sys
 import threading
@@ -27,33 +29,47 @@ from app.startup.initializers.modules import (
 
 
 class _UnmanagedHandler:
-    """记录构造次数，用于证明绑定未命中时不会被总线实例化。"""
+    """
+    记录构造次数，用于证明绑定未命中时不会被总线实例化。
+    """
 
     constructed = 0
 
     def __init__(self) -> None:
-        """记录任何非预期的隐式构造。"""
+        """
+        记录任何非预期的隐式构造。
+        """
         type(self).constructed += 1
 
     def handle(self, _event: Event) -> None:
-        """提供可解析的实例方法声明。"""
+        """
+        提供可解析的实例方法声明。
+        """
 
 
 class _PluginHandler:
-    """代表插件运行时登记的事件 owner。"""
+    """
+    代表插件运行时登记的事件 owner。
+    """
 
     @staticmethod
     def get_name() -> str:
-        """返回测试插件名称。"""
+        """
+        返回测试插件名称。
+        """
         return "测试插件"
 
 
 def _free_function_handler(_event: Event) -> None:
-    """模块级自由函数处理器，用于验证直调路径保持不变。"""
+    """
+    模块级自由函数处理器，用于验证直调路径保持不变。
+    """
 
 
 def test_binding_miss_does_not_construct_handler_owner() -> None:
-    """resolver 未命中时只记录诊断，不能调用 owner_class()。"""
+    """
+    resolver 未命中时只记录诊断，不能调用 owner_class()。
+    """
     resolvers = {}
     binding = EventBindingResolver(
         lock=threading.Lock(),
@@ -69,7 +85,9 @@ def test_binding_miss_does_not_construct_handler_owner() -> None:
 
 
 def test_unloaded_module_class_handler_is_skipped() -> None:
-    """模块缓存被清除后，残留的类方法声明必须跳过而非直调原始函数。"""
+    """
+    模块缓存被清除后，残留的类方法声明必须跳过而非直调原始函数。
+    """
     fake_name = "tests._fake_unloaded_plugin"
     fake_module = types.ModuleType(fake_name)
     sys.modules[fake_name] = fake_module
@@ -98,7 +116,9 @@ def test_unloaded_module_class_handler_is_skipped() -> None:
 
 
 def test_quiesced_handler_stays_disabled_after_module_unload() -> None:
-    """事件快照中的旧 handler 在模块卸载后仍应按已禁用状态跳过。"""
+    """
+    事件快照中的旧 handler 在模块卸载后仍应按已禁用状态跳过。
+    """
     fake_name = "tests._fake_quiesced_plugin"
     fake_module = types.ModuleType(fake_name)
     sys.modules[fake_name] = fake_module
@@ -154,7 +174,9 @@ def test_quiesced_handler_stays_disabled_after_module_unload() -> None:
 
 
 def test_unloaded_module_decorator_wrapped_method_is_skipped() -> None:
-    """装饰器包装的类方法限定名含 <locals>，模块卸载后也必须跳过而非直调。"""
+    """
+    装饰器包装的类方法限定名含 <locals>，模块卸载后也必须跳过而非直调。
+    """
     fake_name = "tests._fake_unloaded_decorated_plugin"
     fake_module = types.ModuleType(fake_name)
     sys.modules[fake_name] = fake_module
@@ -188,7 +210,9 @@ def test_unloaded_module_decorator_wrapped_method_is_skipped() -> None:
 
 
 def test_free_function_handler_still_invoked_directly() -> None:
-    """自由函数处理器不属于类声明，保持直调路径不被新跳过逻辑影响。"""
+    """
+    自由函数处理器不属于类声明，保持直调路径不被新跳过逻辑影响。
+    """
     assert EventRegistry.handler_class_identifier(_free_function_handler) is None
     binding = EventBindingResolver(
         lock=threading.Lock(),
@@ -206,7 +230,9 @@ def test_free_function_handler_still_invoked_directly() -> None:
 
 
 def test_binding_uses_explicit_resolver_instance() -> None:
-    """显式 resolver 应返回当前托管实例上的绑定方法。"""
+    """
+    显式 resolver 应返回当前托管实例上的绑定方法。
+    """
     instance = object.__new__(_UnmanagedHandler)
     resolvers = {
         "test": lambda owner: EventHandlerBinding(
@@ -232,7 +258,9 @@ def test_binding_uses_explicit_resolver_instance() -> None:
 
 
 def test_plugin_resolver_requires_exact_registered_class() -> None:
-    """同名宿主类不能被 plugins resolver 误识别为插件 owner。"""
+    """
+    同名宿主类不能被 plugins resolver 误识别为插件 owner。
+    """
     manager = object.__new__(PluginManager)
     plugin = _PluginHandler()
     manager._plugins = {_PluginHandler.__name__: _PluginHandler}
@@ -250,7 +278,9 @@ def test_plugin_resolver_requires_exact_registered_class() -> None:
 
 
 def test_plugin_resolver_does_not_materialize_manager(monkeypatch) -> None:
-    """残留 resolver 在管理器不存在时必须跳过，不能构造插件 Runtime。"""
+    """
+    残留 resolver 在管理器不存在时必须跳过，不能构造插件 Runtime。
+    """
     singleton_key = (PluginManager, (), frozenset())
     monkeypatch.delitem(Singleton._instances, singleton_key, raising=False)
     runtime_factory = Mock(side_effect=AssertionError("不得构造 PluginManager"))
@@ -267,7 +297,9 @@ def test_plugin_resolver_does_not_materialize_manager(monkeypatch) -> None:
 
 
 def test_system_error_failure_does_not_rebroadcast() -> None:
-    """SystemError 处理器自身失败时只能通知和日志降级，不能再次发送事件。"""
+    """
+    SystemError 处理器自身失败时只能通知和日志降级，不能再次发送事件。
+    """
     notifier = Mock()
     emit = Mock()
     policy = EventErrorPolicy(
@@ -288,7 +320,9 @@ def test_system_error_failure_does_not_rebroadcast() -> None:
 
 
 def test_regular_event_failure_emits_one_system_error() -> None:
-    """普通事件失败应生成一次结构稳定的 SystemError 载荷。"""
+    """
+    普通事件失败应生成一次结构稳定的 SystemError 载荷。
+    """
     emit = Mock()
     policy = EventErrorPolicy(
         notifier=lambda: None,
@@ -311,7 +345,9 @@ def test_regular_event_failure_emits_one_system_error() -> None:
 
 
 def test_all_decorated_host_handler_classes_have_explicit_factories() -> None:
-    """宿主中使用事件装饰器的类必须全部由组合根 resolver 白名单接管。"""
+    """
+    宿主中使用事件装饰器的类必须全部由组合根 resolver 白名单接管。
+    """
     factories = get_host_event_handler_factories()
 
     assert {owner.__name__ for owner in factories} == {
@@ -327,7 +363,9 @@ def test_all_decorated_host_handler_classes_have_explicit_factories() -> None:
 
 
 def test_plugin_classification_fields_skip_unmaterialized_manager(monkeypatch) -> None:
-    """插件管理器尚未创建时，分类字段 provider 应返回空快照。"""
+    """
+    插件管理器尚未创建时，分类字段 provider 应返回空快照。
+    """
     monkeypatch.setattr(
         modules_initializer,
         "get_existing_plugin_manager",
@@ -350,7 +388,8 @@ def test_all_unmanaged_config_reload_classes_have_explicit_providers(
     backend_type,
     redis_owners,
 ) -> None:
-    """专属 resolver 未覆盖的配置 owner 必须全部声明生命周期 Provider。
+    """
+    专属 resolver 未覆盖的配置 owner 必须全部声明生命周期 Provider。
 
     Redis 连接 owner 只在启动时选用 Redis 缓存后才有 Provider。
     """
@@ -375,7 +414,9 @@ def test_all_unmanaged_config_reload_classes_have_explicit_providers(
 
 
 def test_error_alert_dedup_preserves_distinct_events_handlers_and_errors():
-    """只合并同一持久事件同一处理器的相同错误，不压制新故障或普通事件。"""
+    """
+    只合并同一持久事件同一处理器的相同错误，不压制新故障或普通事件。
+    """
     notify, emit = Mock(), Mock()
     policy = EventErrorPolicy(notifier=lambda: notify, emit_system_error=emit)
     for event_key, handler, error in [
@@ -392,7 +433,9 @@ def test_error_alert_dedup_preserves_distinct_events_handlers_and_errors():
 
 
 def test_durable_error_alert_cache_is_bounded(monkeypatch):
-    """长时间运行只保留最近事件的提示记录，淘汰后允许重新提示。"""
+    """
+    长时间运行只保留最近事件的提示记录，淘汰后允许重新提示。
+    """
     from app.runtime.event import errors
 
     monkeypatch.setattr(errors, "_MAX_REPORTED_ERRORS", 2)

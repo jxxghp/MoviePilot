@@ -35,10 +35,10 @@ Models are SQLAlchemy declarative classes. Each model maps to one database table
 **Generating a migration:**
 
 ```bash
-# Auto-generate from model diff
+# 根据模型与数据库的差异生成迁移脚本
 alembic revision --autogenerate -m "describe the change"
 
-# Create a blank migration for manual SQL
+# 创建空迁移脚本，以便填写需要手工控制的 SQL
 alembic revision -m "describe the change"
 ```
 
@@ -252,9 +252,10 @@ with `--write-host`; never refresh it to accept newly introduced debt.
 ```python
 with SessionFactory() as session:
     oper = SubscribeOper(session)
-    subscribe = oper.get(sid=1)       # Query in caller-owned Session
-    subscribes = oper.list()          # List in caller-owned Session
-    oper.stage_add(Subscribe(...))    # Stage only; caller-owned UoW commits
+    # 查询复用调用方的会话，新增操作只暂存，由调用方的工作单元提交
+    subscribe = oper.get(sid=1)
+    subscribes = oper.list()
+    oper.stage_add(Subscribe(...))
 ```
 
 The following no-Session form is legacy plugin ABI only and must not be copied
@@ -262,11 +263,11 @@ into host code:
 
 ```python
 oper = SubscribeOper()
-subscribe = oper.get(sid=1)           # Get by primary key or filter
-subscribes = oper.list()              # List all
-oper.add(Subscribe(...))              # Insert
-oper.update(sid=1, name="New Name")   # Update by key
-oper.delete(sid=1)                    # Delete by key
+subscribe = oper.get(sid=1)
+subscribes = oper.list()
+oper.add(Subscribe(...))
+oper.update(sid=1, name="New Name")
+oper.delete(sid=1)
 ```
 
 ---
@@ -366,10 +367,8 @@ from app.schemas.types import SystemConfigKey
 
 configuration = get_configured_system_config()
 
-# Read
 rss_urls = configuration.get(SystemConfigKey.RssUrls)
 
-# Write
 configuration.set(SystemConfigKey.RssUrls, ["https://example.com/rss"])
 ```
 
@@ -449,6 +448,12 @@ cache = FileCache(cache_name="tmdb", ttl=3600)
 
 @fresh(cache=cache, key_func=lambda tmdb_id: f"movie_{tmdb_id}")
 def get_movie_detail(tmdb_id: int) -> dict:
+    """
+    查询电影详情，并由装饰器复用一小时内的文件缓存。
+
+    :param tmdb_id: 电影在 TMDB 中的原生标识，同时用于区分缓存项
+    :return: 缓存命中时返回已缓存的详情，否则返回客户端查询结果
+    """
     return self._tmdb_client.get_movie(tmdb_id)
 ```
 

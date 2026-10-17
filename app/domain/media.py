@@ -28,7 +28,9 @@ _search_source_provider: Callable[[], object] = lambda: None
 
 
 def music_recognition_sources(configured: str, primary: MediaSource = MediaSource.MusicBrainz) -> tuple[MediaSource, ...]:
-    """只从混合搜索配置中选择内置音乐来源，保留用户顺序；无音乐配置兼容原主来源。"""
+    """
+    只从混合搜索配置中选择内置音乐来源，保留用户顺序；无音乐配置兼容原主来源。
+    """
     sources: list[MediaSource] = []
     for value in str(configured or "").split(","):
         source = normalize_media_source(value)
@@ -38,7 +40,9 @@ def music_recognition_sources(configured: str, primary: MediaSource = MediaSourc
 
 
 def configure_search_source_provider(provider: Callable[[], object]) -> None:
-    """注入默认媒体来源配置，领域选择逻辑不直接依赖平台 settings。"""
+    """
+    注入默认媒体来源配置，领域选择逻辑不直接依赖平台 settings。
+    """
     global _search_source_provider
     _search_source_provider = provider
 
@@ -48,7 +52,9 @@ def normalize_music_type(
         *,
         allow_artist: bool = True,
 ) -> Optional[str]:
-    """规范化音乐实体类型，非法值返回 None。"""
+    """
+    规范化音乐实体类型，非法值返回 None。
+    """
     normalized = str(value or "").strip().lower()
     allowed = MUSIC_ENTITY_TYPES if allow_artist else MUSIC_SUBSCRIBABLE_TYPES
     return normalized if normalized in allowed else None
@@ -57,7 +63,9 @@ def normalize_music_type(
 def is_music_media_source(
         source: Optional[Union[MediaSource, str]],
 ) -> bool:
-    """判断单个请求级来源是否为内置音乐元数据源。"""
+    """
+    判断单个请求级来源是否为内置音乐元数据源。
+    """
     return normalize_media_source(source) in MUSIC_MEDIA_SOURCES
 
 

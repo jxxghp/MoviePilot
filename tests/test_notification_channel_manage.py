@@ -17,11 +17,16 @@ from app.schemas.types import NotificationAction, NotificationChannel
 
 @pytest.fixture
 def module():
+    """
+    为渠道管理测试创建独立的微信机器人模块实例。
+    """
     return WechatClawBotModule()
 
 
 def test_channel_manage_routes_only_matching_channel(module):
-    """非本渠道的管理请求返回 None，run_module 分发将继续执行其它模块。"""
+    """
+    非本渠道的管理请求返回 None，run_module 分发将继续执行其它模块。
+    """
     result = module.channel_manage(
         channel=NotificationChannel.Telegram,
         action=NotificationAction.STATUS,
@@ -30,7 +35,9 @@ def test_channel_manage_routes_only_matching_channel(module):
 
 
 def test_channel_manage_rejects_unknown_action(module):
-    """动作词汇表之外的请求返回统一错误结构。"""
+    """
+    动作词汇表之外的请求返回统一错误结构。
+    """
     result = module.channel_manage(
         channel=NotificationChannel.WechatClawBot,
         action="not_an_action",
@@ -40,7 +47,9 @@ def test_channel_manage_rejects_unknown_action(module):
 
 
 def test_channel_manage_requires_saved_config_without_form_params(module, monkeypatch):
-    """无任何配置且未提供表单参数时，返回提示保存配置的错误。"""
+    """
+    无任何配置且未提供表单参数时，返回提示保存配置的错误。
+    """
     monkeypatch.setattr(module, "get_instance", lambda name=None: None)
     result = module.channel_manage(
         channel=NotificationChannel.WechatClawBot,
@@ -51,13 +60,18 @@ def test_channel_manage_requires_saved_config_without_form_params(module, monkey
 
 
 def test_channel_manage_builds_temporary_client_from_form_params(module, monkeypatch):
-    """无已保存配置时基于表单参数构造临时客户端，实现未保存即预览。"""
+    """
+    无已保存配置时基于表单参数构造临时客户端，实现未保存即预览。
+    """
     monkeypatch.setattr(module, "get_instance", lambda name=None: None)
 
     captured = {}
 
     class _FakeClient:
         def test_connection(self):
+            """
+            记录临时客户端的连通性检查，并返回需要扫码绑定的失败结果。
+            """
             captured["called"] = True
             return False, "未登录，请先扫码完成绑定"
 
@@ -81,7 +95,9 @@ def test_channel_manage_builds_temporary_client_from_form_params(module, monkeyp
 
 
 def test_channel_manage_prefers_saved_instance(module, monkeypatch):
-    """存在已保存配置实例时优先使用，不构造临时客户端。"""
+    """
+    存在已保存配置实例时优先使用，不构造临时客户端。
+    """
     saved = SimpleNamespace()
     saved.get_status = lambda refresh_remote, auto_generate_qrcode: {
         "success": True,
@@ -100,7 +116,9 @@ def test_channel_manage_prefers_saved_instance(module, monkeypatch):
 
 
 def test_channel_manage_migrate_cache_dispatches_without_client(module, monkeypatch):
-    """缓存迁移动作不依赖客户端实例，直接走静态迁移逻辑。"""
+    """
+    缓存迁移动作不依赖客户端实例，直接走静态迁移逻辑。
+    """
 
     def _fake_migrate(old_name, new_name, cleanup_old, overwrite):
         assert old_name == "旧名"
@@ -122,7 +140,9 @@ def test_channel_manage_migrate_cache_dispatches_without_client(module, monkeypa
 
 
 def test_notification_chain_forwards_target_action_and_params(monkeypatch):
-    """链层接受字符串标识与透传参数，按 channel_manage 契约原样转发。"""
+    """
+    链层接受字符串标识与透传参数，按 channel_manage 契约原样转发。
+    """
     captured = {}
 
     def fake_run_module(self, method, **kwargs):
@@ -143,7 +163,9 @@ def test_notification_chain_forwards_target_action_and_params(monkeypatch):
 
 
 def test_notification_chain_reports_missing_module(monkeypatch):
-    """无模块实现 channel_manage 时返回统一失败结构。"""
+    """
+    无模块实现 channel_manage 时返回统一失败结构。
+    """
     monkeypatch.setattr(NotificationChain, "run_module", lambda self, method, **kwargs: None)
     chain = NotificationChain.__new__(NotificationChain)
     result = chain.manage_channel(channel="unknown", action="status")
@@ -152,7 +174,9 @@ def test_notification_chain_reports_missing_module(monkeypatch):
 
 
 def test_channel_manage_accepts_plain_string_identifiers(module, monkeypatch):
-    """端点层透传的原始字符串渠道名与动作名可被模块正确路由与解释。"""
+    """
+    端点层透传的原始字符串渠道名与动作名可被模块正确路由与解释。
+    """
     saved = SimpleNamespace()
     saved.test_connection = lambda: (True, None)
     monkeypatch.setattr(module, "get_instance", lambda name=None: saved)

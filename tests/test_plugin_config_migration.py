@@ -1,4 +1,6 @@
-"""插件配置迁入插件实例表的 Alembic 迁移测试。"""
+"""
+插件配置迁入插件实例表的 Alembic 迁移测试。
+"""
 
 from __future__ import annotations
 
@@ -13,7 +15,9 @@ MIGRATION_MODULE = "database.versions.c4e1a7b9d2f6_3_0_35"
 
 
 def _bind_migration(monkeypatch, connection):
-    """把迁移绑定到隔离数据库连接。"""
+    """
+    把迁移绑定到隔离数据库连接。
+    """
     migration = importlib.import_module(MIGRATION_MODULE)
     context = MigrationContext.configure(connection)
     monkeypatch.setattr(migration, "op", Operations(context))
@@ -21,7 +25,8 @@ def _bind_migration(monkeypatch, connection):
 
 
 def _create_legacy_schema(connection: sa.engine.Connection) -> None:
-    """建出迁移前的系统设置表与实例表，并写入两类数据各若干条。
+    """
+    建出迁移前的系统设置表与实例表，并写入两类数据各若干条。
 
     实例表按上一条迁移 281965691a20 建出的形状，不含业务参数列。
     """
@@ -64,7 +69,9 @@ def _create_legacy_schema(connection: sa.engine.Connection) -> None:
 
 
 def _instance_rows(connection: sa.engine.Connection) -> dict:
-    """读取实例表内容，兼容驱动把 JSON 列返回为字符串的情形。"""
+    """
+    读取实例表内容，兼容驱动把 JSON 列返回为字符串的情形。
+    """
     rows = connection.execute(
         sa.text(
             "SELECT instance_id, source_plugin_id, plugin_name, config_data "
@@ -82,7 +89,9 @@ def _instance_rows(connection: sa.engine.Connection) -> dict:
 
 
 def _system_keys(connection: sa.engine.Connection) -> set:
-    """读取系统设置表现存的键。"""
+    """
+    读取系统设置表现存的键。
+    """
     return {
         row[0]
         for row in connection.execute(sa.text("SELECT key FROM systemconfig")).fetchall()
@@ -90,12 +99,16 @@ def _system_keys(connection: sa.engine.Connection) -> set:
 
 
 def _columns(connection: sa.engine.Connection) -> set:
-    """读取实例表当前列名。"""
+    """
+    读取实例表当前列名。
+    """
     return {column["name"] for column in sa.inspect(connection).get_columns("plugininstance")}
 
 
 def test_migration_moves_plugin_config_onto_the_instance_rows(monkeypatch):
-    """插件配置搬到实例行上，原行一并删除，真·系统设置留在原地。"""
+    """
+    插件配置搬到实例行上，原行一并删除，真·系统设置留在原地。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.connect() as connection:
         _create_legacy_schema(connection)
@@ -115,7 +128,9 @@ def test_migration_moves_plugin_config_onto_the_instance_rows(monkeypatch):
 
 
 def test_migration_keeps_the_display_fields_already_on_the_instance(monkeypatch):
-    """展示信息本就长在实例行上，补列搬配置时不得把它丢掉。"""
+    """
+    展示信息本就长在实例行上，补列搬配置时不得把它丢掉。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.connect() as connection:
         _create_legacy_schema(connection)
@@ -127,7 +142,9 @@ def test_migration_keeps_the_display_fields_already_on_the_instance(monkeypatch)
 
 
 def test_migration_does_not_backfill_rows_for_plugins_without_config(monkeypatch):
-    """装了却从没存过配置的插件不该凭空多出一行：没有配置就没有要搬的东西。"""
+    """
+    装了却从没存过配置的插件不该凭空多出一行：没有配置就没有要搬的东西。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.connect() as connection:
         _create_legacy_schema(connection)
@@ -139,7 +156,9 @@ def test_migration_does_not_backfill_rows_for_plugins_without_config(monkeypatch
 
 
 def test_migration_is_idempotent_on_repeated_upgrade(monkeypatch):
-    """重复升级不得因唯一键撞车而失败，也不得把配置复制成两份。"""
+    """
+    重复升级不得因唯一键撞车而失败，也不得把配置复制成两份。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.connect() as connection:
         _create_legacy_schema(connection)
@@ -154,7 +173,9 @@ def test_migration_is_idempotent_on_repeated_upgrade(monkeypatch):
 
 
 def test_downgrade_puts_plugin_config_back_into_system_settings(monkeypatch):
-    """回滚把配置搬回原键并移除新增列，回退路径上不丢配置。"""
+    """
+    回滚把配置搬回原键并移除新增列，回退路径上不丢配置。
+    """
     engine = sa.create_engine("sqlite://")
     with engine.connect() as connection:
         _create_legacy_schema(connection)

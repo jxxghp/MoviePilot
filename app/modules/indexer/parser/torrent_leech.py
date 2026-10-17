@@ -1,4 +1,8 @@
 # -*- coding: utf-8 -*-
+"""
+解析 TorrentLeech 站点的用户资料、流量和做种信息。
+"""
+
 import re
 from typing import Optional
 
@@ -13,14 +17,14 @@ from app.modules.indexer.parser import SitePage, SiteParserBase, SiteSchema
 
 class TorrentLeechSiteUserInfo(SiteParserBase):
     """
-    TorrentLeech 站点用户信息解析器
+    TorrentLeech 站点用户信息解析器。
     """
 
     schema = SiteSchema.TorrentLeech
 
     def _parse_site_page(self, html_text: SitePage) -> None:
         """
-        解析当前用户 ID 并初始化用户资料页面地址
+        解析当前用户 ID 并初始化用户资料页面地址。
 
         :param html_text: 站点首页 HTML
         """
@@ -59,7 +63,7 @@ class TorrentLeechSiteUserInfo(SiteParserBase):
 
     def _parse_user_base_info(self, html_text: SitePage) -> None:
         """
-        使用用户 ID 初始化基础用户名
+        使用用户 ID 初始化基础用户名。
 
         :param html_text: 站点首页 HTML
         """
@@ -67,7 +71,7 @@ class TorrentLeechSiteUserInfo(SiteParserBase):
 
     def _parse_user_traffic_info(self, html_text: str) -> None:
         """
-        解析用户资料页中的用户名、流量、等级、注册时间和积分
+        解析用户资料页中的用户名、流量、等级、注册时间和积分。
 
         :param html_text: 用户资料页 HTML
         """
@@ -117,7 +121,7 @@ class TorrentLeechSiteUserInfo(SiteParserBase):
 
     def _parse_user_detail_info(self, html_text: str) -> None:
         """
-        解析包含流量和账户属性的用户资料页
+        解析包含流量和账户属性的用户资料页。
 
         :param html_text: 用户资料页 HTML
         """
@@ -125,8 +129,9 @@ class TorrentLeechSiteUserInfo(SiteParserBase):
 
     def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: Optional[bool] = False) -> Optional[str]:
         """
-        做种相关信息
-        :param html_text:
+        做种相关信息。
+
+        :param html_text: 当前页面或 API 响应文本
         :param multi_page: 是否多页数据
         :return: 下页地址
         """
@@ -167,7 +172,7 @@ class TorrentLeechSiteUserInfo(SiteParserBase):
 
     def _parse_message_unread_links(self, html_text: str, msg_links: list[str]) -> Optional[str]:
         """
-        TorrentLeech 暂不解析未读消息链接
+        TorrentLeech 暂不解析未读消息链接。
 
         :param html_text: 消息页面 HTML
         :param msg_links: 已解析的消息链接列表
@@ -177,7 +182,7 @@ class TorrentLeechSiteUserInfo(SiteParserBase):
 
     def _parse_message_content(self, html_text: str) -> tuple[None, None, None]:
         """
-        TorrentLeech 暂不解析消息正文
+        TorrentLeech 暂不解析消息正文。
 
         :param html_text: 消息正文页面 HTML
         :return: 空标题、时间和正文

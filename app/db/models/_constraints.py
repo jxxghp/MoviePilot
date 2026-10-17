@@ -1,4 +1,5 @@
-"""建表约束的共享片段——本模块不声明任何表，只被同包的模型模块拼进 ``__table_args__``。
+"""
+建表约束的共享片段——本模块不声明任何表，只被同包的模型模块拼进 ``__table_args__``。
 
 以下划线开头且不进 ``models/__init__.py`` 的再导出，是为了与同目录「一实体一文件」的
 模块区分开：叫 ``media_identity.py`` 时它看着就像一张 MediaIdentity 表。
@@ -19,7 +20,9 @@ MEDIA_IDENTITY_CHECK_SQL = (
 
 
 def media_identity_constraint(table_name: str) -> CheckConstraint:
-    """构造允许插件扩展来源且保证身份成对的数据库约束。"""
+    """
+    构造允许插件扩展来源且保证身份成对的数据库约束。
+    """
     return CheckConstraint(
         MEDIA_IDENTITY_CHECK_SQL,
         name=f"ck_{table_name}_media_identity",

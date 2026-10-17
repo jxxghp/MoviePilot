@@ -1,4 +1,9 @@
+# 本文件覆盖多个惰性公开入口，Pylint 无法静态解析其导出符号。
 # pylint: disable=no-name-in-module
+
+"""
+验证 Agent 定时任务的触发器校验、权限范围与持久化契约。
+"""
 
 import asyncio
 import json
@@ -38,48 +43,66 @@ from app.schemas import ScheduleInfo
 
 
 class _FakeAgentTaskScheduler:
-    """记录 Agent 定时任务工具触发的运行时调度变更。"""
+    """
+    记录 Agent 定时任务工具触发的运行时调度变更。
+    """
 
     def __init__(self) -> None:
-        """初始化运行时调度记录。"""
+        """
+        初始化运行时调度记录。
+        """
         self.updated = []
         self.removed = []
         self.started = []
 
     def update_agent_task_job(self, task_id: int) -> str:
-        """记录任务重载并返回固定的下一次执行时间。"""
+        """
+        记录任务重载并返回固定的下一次执行时间。
+        """
         self.updated.append(task_id)
         return "2099-01-01T00:00:00+08:00"
 
     def remove_agent_task_job(self, task_id: int) -> None:
-        """记录任务移除。"""
+        """
+        记录任务移除。
+        """
         self.removed.append(task_id)
 
     def get_agent_task_next_run(self, task_id: int) -> str:
-        """返回固定的下一次执行时间。"""
+        """
+        返回固定的下一次执行时间。
+        """
         return "2099-01-01T00:00:00+08:00"
 
     def start_agent_task(self, task_id: int) -> bool:
-        """记录 Agent 任务立即执行投递。"""
+        """
+        记录 Agent 任务立即执行投递。
+        """
         self.started.append(task_id)
         return True
 
 
 @pytest.fixture
 def anyio_backend() -> str:
-    """限定异步用例使用项目 Agent 运行时采用的 asyncio 后端。"""
+    """
+    限定异步用例使用项目 Agent 运行时采用的 asyncio 后端。
+    """
     return "asyncio"
 
 
 @pytest.fixture(autouse=True)
 def enable_ai_agent(monkeypatch) -> None:
-    """在当前测试模块中启用 Agent 调度能力并在用例后自动还原。"""
+    """
+    在当前测试模块中启用 Agent 调度能力并在用例后自动还原。
+    """
     monkeypatch.setattr(settings, "AI_AGENT_ENABLE", True)
 
 
 @pytest.fixture(autouse=True)
 def isolate_scheduler_main_loop() -> Generator[None, None, None]:
-    """隔离主循环登记，避免前序兼容层假循环改变 Scheduler 投递路径。"""
+    """
+    隔离主循环登记，避免前序兼容层假循环改变 Scheduler 投递路径。
+    """
     previous = main_loop_registry.current
     main_loop_registry.replace_compat(None)
     try:
@@ -89,24 +112,32 @@ def isolate_scheduler_main_loop() -> Generator[None, None, None]:
 
 
 def _future_time(minutes: int = 10) -> str:
-    """生成系统时区内的未来时间字符串。"""
+    """
+    生成系统时区内的未来时间字符串。
+    """
     timezone = pytz.timezone(settings.TZ)
     return (datetime.now(timezone) + timedelta(minutes=minutes)).isoformat(timespec="seconds")
 
 
 def _past_time(minutes: int = 10) -> str:
-    """生成系统时区内的过去时间字符串。"""
+    """
+    生成系统时区内的过去时间字符串。
+    """
     timezone = pytz.timezone(settings.TZ)
     return (datetime.now(timezone) - timedelta(minutes=minutes)).isoformat(timespec="seconds")
 
 
 def _invalid_time() -> str:
-    """返回无法构造自动触发器的遗留时间值。"""
+    """
+    返回无法构造自动触发器的遗留时间值。
+    """
     return "invalid-run-at"
 
 
 def _add_agent_task(trigger_type: str, trigger_value: str, prefix: str):
-    """创建带隔离用户上下文的 Agent 定时任务。"""
+    """
+    创建带隔离用户上下文的 Agent 定时任务。
+    """
     user_id = f"{prefix}-{uuid4().hex}"
     return AgentTaskOper().add(
         name=f"{prefix} 检查",
@@ -124,7 +155,9 @@ def _add_agent_task(trigger_type: str, trigger_value: str, prefix: str):
 
 
 def _build_agent_task_scheduler(reconcile: bool = False) -> Scheduler:
-    """构造不启动后台线程的 Agent 任务调度器。"""
+    """
+    构造不启动后台线程的 Agent 任务调度器。
+    """
     scheduler = object.__new__(Scheduler)
     scheduler._event = threading.Event()
     scheduler._lock = threading.RLock()
@@ -140,7 +173,9 @@ def _build_agent_task_scheduler(reconcile: bool = False) -> Scheduler:
 
 
 def _build_tool(tool_class, user_id: str):
-    """构造带当前用户消息上下文的 Agent 工具。"""
+    """
+    构造带当前用户消息上下文的 Agent 工具。
+    """
     tool = tool_class(
         session_id=f"session-{user_id}",
         user_id=user_id,
@@ -159,7 +194,9 @@ def _build_tool(tool_class, user_id: str):
 
 
 def test_timer_utils_validates_date_and_cron_triggers() -> None:
-    """自主任务时间工具应规范化单次时间并校验五段 cron。"""
+    """
+    自主任务时间工具应规范化单次时间并校验五段 cron。
+    """
     trigger_type, trigger = TimerUtils.normalize_schedule_trigger(
         trigger_type="date",
         trigger_value=_future_time(),
@@ -186,7 +223,9 @@ def test_timer_utils_validates_date_and_cron_triggers() -> None:
 
 
 def test_agent_task_tool_is_registered_with_action_schema() -> None:
-    """工具工厂应只公开一个带动作和相对分钟参数的任务工具。"""
+    """
+    工具工厂应只公开一个带动作和相对分钟参数的任务工具。
+    """
     tool_names = {tool_class.model_fields["name"].default for tool_class in MoviePilotToolFactory.BUILTIN_TOOL_CLASSES}
     assert "agent_task" in tool_names
     schema = AgentTaskInput.model_json_schema()["properties"]
@@ -206,7 +245,9 @@ def test_agent_task_tool_is_registered_with_action_schema() -> None:
 
 
 def test_agent_prompt_declares_scheduler_tool_boundaries() -> None:
-    """核心提示应明确自主任务与运行时调度服务的工具和 ID 边界。"""
+    """
+    核心提示应明确自主任务与运行时调度服务的工具和 ID 边界。
+    """
     project_root = Path(__file__).resolve().parents[1]
     core_prompt = (project_root / "app/agent/prompt/System Core Prompt.txt").read_text(encoding="utf-8")
 
@@ -219,7 +260,9 @@ def test_agent_prompt_declares_scheduler_tool_boundaries() -> None:
 
 
 def test_agent_task_oper_persists_and_scopes_tasks() -> None:
-    """AgentTaskOper 应持久化任务并按创建用户隔离查询和修改。"""
+    """
+    AgentTaskOper 应持久化任务并按创建用户隔离查询和修改。
+    """
     user_id = f"user-{uuid4().hex}"
     oper = AgentTaskOper()
     task = oper.add(
@@ -254,7 +297,9 @@ def test_agent_task_oper_persists_and_scopes_tasks() -> None:
 
 
 def test_scheduler_registers_and_removes_agent_task_job() -> None:
-    """Scheduler 应注册并完整列出 Agent 任务，供前端展示和动态移除。"""
+    """
+    Scheduler 应注册并完整列出 Agent 任务，供前端展示和动态移除。
+    """
     user_id = f"user-{uuid4().hex}"
     task = AgentTaskOper().add(
         name="定时检查",
@@ -298,7 +343,9 @@ def test_scheduler_registers_and_removes_agent_task_job() -> None:
 
 
 def test_stale_agent_task_generation_cannot_remove_replacement_job() -> None:
-    """旧执行收尾不得删除配置刷新后注册的新 generation。"""
+    """
+    旧执行收尾不得删除配置刷新后注册的新 generation。
+    """
     task = _add_agent_task("date", _future_time(), "generation-replace")
     scheduler = _build_agent_task_scheduler()
     scheduler.update_agent_task_job(task.id)
@@ -325,7 +372,9 @@ def test_stale_agent_task_generation_cannot_remove_replacement_job() -> None:
 async def test_date_task_reload_job_is_removed_after_run_finishes(
     monkeypatch,
 ) -> None:
-    """运行中重载生成的同一次任务副本必须随 date 终态一起移除。"""
+    """
+    运行中重载生成的同一次任务副本必须随 date 终态一起移除。
+    """
     task = _add_agent_task("date", _future_time(), "date-reload-active")
     scheduler = _build_agent_task_scheduler()
     scheduler.update_agent_task_job(task.id)
@@ -372,7 +421,9 @@ async def test_date_task_reload_job_is_removed_after_run_finishes(
 
 
 def test_finished_date_task_cannot_remove_reenabled_job() -> None:
-    """date 收口后重新启用的任务不再属于旧执行的运行时清理范围。"""
+    """
+    date 收口后重新启用的任务不再属于旧执行的运行时清理范围。
+    """
     task = _add_agent_task("date", _future_time(), "date-reenabled")
     scheduler = _build_agent_task_scheduler()
     scheduler.update_agent_task_job(task.id)
@@ -415,7 +466,9 @@ def test_finished_date_task_cannot_remove_reenabled_job() -> None:
 def test_scheduler_restart_keeps_interrupted_date_task_manual_only(
     run_time_factory,
 ) -> None:
-    """重启不得自动补跑结果未知的一次任务，但必须保留显式重跑入口。"""
+    """
+    重启不得自动补跑结果未知的一次任务，但必须保留显式重跑入口。
+    """
     task = _add_agent_task("date", run_time_factory(), "restart-date")
     assert AgentTaskOper().mark_running(task.id)
 
@@ -446,7 +499,9 @@ def test_scheduler_restart_keeps_interrupted_date_task_manual_only(
 async def test_interrupted_date_task_manual_run_disables_and_removes_job(
     monkeypatch,
 ) -> None:
-    """用户显式重跑中断的一次任务后，应按原有单次任务语义正常收口。"""
+    """
+    用户显式重跑中断的一次任务后，应按原有单次任务语义正常收口。
+    """
     task = _add_agent_task("date", _past_time(), "restart-date-manual")
     assert AgentTaskOper().mark_running(task.id)
 
@@ -484,7 +539,9 @@ async def test_interrupted_date_task_manual_run_disables_and_removes_job(
 
 @pytest.mark.anyio
 async def test_scheduler_propagates_scheduled_trigger_source(monkeypatch) -> None:
-    """自动调度入口应显式保持 scheduled 运行来源。"""
+    """
+    自动调度入口应显式保持 scheduled 运行来源。
+    """
     task = _add_agent_task("cron", "0 * * * *", "scheduled-source")
     scheduler = _build_agent_task_scheduler()
     execute = AsyncMock(return_value=(True, "执行完成"))
@@ -503,7 +560,9 @@ async def test_interrupted_date_task_enable_toggle_stays_manual_only(
     monkeypatch,
     run_time_factory,
 ) -> None:
-    """暂停或恢复中断的一次任务不得重新注册原自动触发。"""
+    """
+    暂停或恢复中断的一次任务不得重新注册原自动触发。
+    """
     task = _add_agent_task("date", run_time_factory(), "interrupted-toggle")
     oper = AgentTaskOper()
     assert oper.mark_running(task.id)
@@ -534,7 +593,9 @@ async def test_interrupted_date_task_enable_toggle_stays_manual_only(
 
 @pytest.mark.anyio
 async def test_interrupted_date_task_new_trigger_rearms_schedule(monkeypatch) -> None:
-    """用户明确重设触发时间时，可以清除中断状态并重新安排单次任务。"""
+    """
+    用户明确重设触发时间时，可以清除中断状态并重新安排单次任务。
+    """
     task = _add_agent_task("date", _future_time(), "interrupted-reschedule")
     oper = AgentTaskOper()
     assert oper.mark_running(task.id)
@@ -568,7 +629,9 @@ async def test_interrupted_date_task_new_trigger_rearms_schedule(monkeypatch) ->
 async def test_interrupted_date_task_rejects_past_trigger_while_pausing(
     monkeypatch,
 ) -> None:
-    """中断的一次任务即使同时暂停，也只能用新的未来时间离开中断状态。"""
+    """
+    中断的一次任务即使同时暂停，也只能用新的未来时间离开中断状态。
+    """
     task = _add_agent_task("date", _future_time(), "interrupted-past-reschedule")
     oper = AgentTaskOper()
     assert oper.mark_running(task.id)
@@ -599,7 +662,9 @@ async def test_interrupted_date_task_rejects_past_trigger_while_pausing(
 
 
 def test_interrupted_date_task_requires_explicit_reschedule_value() -> None:
-    """仅重复 date 类型不构成重新排期，必须同时提供新的触发值。"""
+    """
+    仅重复 date 类型不构成重新排期，必须同时提供新的触发值。
+    """
     with pytest.raises(ValueError, match="必须提供 trigger 或 delay_minutes"):
         AgentTaskInput(action="update", task_id=1, trigger_type="date")
 
@@ -608,7 +673,9 @@ def test_interrupted_date_task_requires_explicit_reschedule_value() -> None:
 async def test_expired_date_task_rejects_enable_without_reschedule(
     monkeypatch,
 ) -> None:
-    """普通单次任务恢复启用时仍需校验现有触发时间，避免过期补跑。"""
+    """
+    普通单次任务恢复启用时仍需校验现有触发时间，避免过期补跑。
+    """
     task = _add_agent_task("date", _past_time(), "expired-enable")
     oper = AgentTaskOper()
     assert oper.update(task_id=task.id, payload={"enabled": False})
@@ -635,7 +702,9 @@ async def test_expired_date_task_rejects_enable_without_reschedule(
 
 
 def test_agent_task_interruption_transition_preserves_execution_evidence() -> None:
-    """中断迁移只能消费 running 状态，并保留既有执行次数与开始时间。"""
+    """
+    中断迁移只能消费 running 状态，并保留既有执行次数与开始时间。
+    """
     task = _add_agent_task("cron", "0 * * * *", "interrupt-state")
     oper = AgentTaskOper()
     assert oper.mark_running(task.id)
@@ -653,7 +722,9 @@ def test_agent_task_interruption_transition_preserves_execution_evidence() -> No
 
 
 def test_scheduler_restart_keeps_unstarted_date_task_misfire_behavior() -> None:
-    """停机期间仅错过触发时间的一次任务仍应按原有语义补跑。"""
+    """
+    停机期间仅错过触发时间的一次任务仍应按原有语义补跑。
+    """
     task = _add_agent_task("date", _past_time(), "restart-waiting")
 
     scheduler = _build_agent_task_scheduler()
@@ -672,7 +743,9 @@ def test_scheduler_restart_keeps_unstarted_date_task_misfire_behavior() -> None:
 def test_scheduler_restart_keeps_finished_date_task_misfire_behavior(
     success: bool,
 ) -> None:
-    """已有单次任务终态仍沿用原调度语义，不被中断策略扩大影响。"""
+    """
+    已有单次任务终态仍沿用原调度语义，不被中断策略扩大影响。
+    """
     task = _add_agent_task("date", _past_time(), f"restart-finished-{success}")
     oper = AgentTaskOper()
     assert oper.mark_running(task.id)
@@ -691,7 +764,9 @@ def test_scheduler_restart_keeps_finished_date_task_misfire_behavior(
 
 @pytest.mark.anyio
 async def test_scheduler_config_reload_does_not_interrupt_running_agent_task() -> None:
-    """同进程重建调度时不得把仍在执行的任务误判为进程中断。"""
+    """
+    同进程重建调度时不得把仍在执行的任务误判为进程中断。
+    """
     scheduler = _build_agent_task_scheduler(reconcile=True)
 
     task = _add_agent_task("cron", "0 * * * *", "reload-running")
@@ -717,7 +792,9 @@ async def test_scheduler_config_reload_does_not_interrupt_running_agent_task() -
 async def test_scheduler_config_reload_preserves_active_agent_task(
     monkeypatch,
 ) -> None:
-    """配置热重载只替换后续计划，已开始的 AgentTask 仍按真实结果收口。"""
+    """
+    配置热重载只替换后续计划，已开始的 AgentTask 仍按真实结果收口。
+    """
     task = _add_agent_task("cron", "0 * * * *", "reload-active")
     scheduler = _build_agent_task_scheduler()
     scheduler.init_agent_task_jobs()
@@ -774,7 +851,9 @@ async def test_scheduler_config_reload_preserves_active_agent_task(
 
 
 def test_scheduler_restart_keeps_interrupted_cron_future_schedule() -> None:
-    """周期任务中断后只保留下次正常调度，不抹掉本轮中断事实。"""
+    """
+    周期任务中断后只保留下次正常调度，不抹掉本轮中断事实。
+    """
     task = _add_agent_task("cron", "0 * * * *", "restart-cron")
     assert AgentTaskOper().mark_running(task.id)
 
@@ -802,7 +881,9 @@ def test_scheduler_restart_keeps_interrupted_cron_future_schedule() -> None:
 
 
 def test_scheduler_restart_reconciles_disabled_running_agent_task() -> None:
-    """停用状态不应掩盖上个进程遗留的运行中事实。"""
+    """
+    停用状态不应掩盖上个进程遗留的运行中事实。
+    """
     task = _add_agent_task("cron", "0 * * * *", "restart-disabled")
     oper = AgentTaskOper()
     assert oper.mark_running(task.id)
@@ -821,7 +902,9 @@ def test_scheduler_restart_reconciles_disabled_running_agent_task() -> None:
 
 
 def test_scheduler_starts_registered_agent_task_without_waiting() -> None:
-    """Agent 任务立即执行入口应只调用运行时 start，并拒绝缺失或运行中的任务。"""
+    """
+    Agent 任务立即执行入口应只调用运行时 start，并拒绝缺失或运行中的任务。
+    """
     scheduler = object.__new__(Scheduler)
     scheduler._lock = threading.RLock()
     scheduler._jobs = {
@@ -848,7 +931,9 @@ def test_scheduler_starts_registered_agent_task_without_waiting() -> None:
 
 @pytest.mark.anyio
 async def test_dashboard_schedule_keeps_agent_tasks(monkeypatch) -> None:
-    """前端后台服务接口必须保留 Agent 自主任务。"""
+    """
+    前端后台服务接口必须保留 Agent 自主任务。
+    """
     from app.api.endpoints.dashboard import schedule
 
     scheduler_items = [
@@ -874,7 +959,9 @@ async def test_dashboard_schedule_keeps_agent_tasks(monkeypatch) -> None:
 
 @pytest.mark.anyio
 async def test_agent_task_tools_manage_persistent_schedule(monkeypatch) -> None:
-    """Agent 管理工具应完成创建、查询、暂停、修改和删除闭环。"""
+    """
+    Agent 管理工具应完成创建、查询、暂停、修改和删除闭环。
+    """
     user_id = f"user-{uuid4().hex}"
     fake_scheduler = _FakeAgentTaskScheduler()
     monkeypatch.setattr("app.scheduler.Scheduler", lambda: fake_scheduler)
@@ -950,7 +1037,9 @@ async def test_agent_task_tools_manage_persistent_schedule(monkeypatch) -> None:
 
 @pytest.mark.anyio
 async def test_run_agent_task_enforces_owner_and_enabled_state(monkeypatch) -> None:
-    """立即执行 Agent 任务时应校验当前用户归属和启用状态。"""
+    """
+    立即执行 Agent 任务时应校验当前用户归属和启用状态。
+    """
     owner_id = f"owner-{uuid4().hex}"
     task = AgentTaskOper().add(
         name="检查资源",
@@ -996,7 +1085,9 @@ async def test_run_agent_task_enforces_owner_and_enabled_state(monkeypatch) -> N
 async def test_agent_manager_executes_task_with_broadcast_delivery(
     monkeypatch,
 ) -> None:
-    """定时触发应复用原 Agent 会话、广播结果并在单次执行后停用任务。"""
+    """
+    定时触发应复用原 Agent 会话、广播结果并在单次执行后停用任务。
+    """
     user_id = f"user-{uuid4().hex}"
     task = AgentTaskOper().add(
         name="检查电影资源",
@@ -1066,7 +1157,9 @@ async def test_agent_manager_executes_task_with_broadcast_delivery(
 async def test_agent_manager_runs_contextless_task_in_broadcast_mode(
     monkeypatch,
 ) -> None:
-    """无原消息渠道的任务也应由 Agent 广播结果且不由调度器重复补发。"""
+    """
+    无原消息渠道的任务也应由 Agent 广播结果且不由调度器重复补发。
+    """
     user_id = f"api-{uuid4().hex}"
     task = AgentTaskOper().add(
         name="后台检查资源",
@@ -1100,7 +1193,9 @@ async def test_agent_manager_runs_contextless_task_in_broadcast_mode(
 
 @pytest.mark.anyio
 async def test_agent_manager_records_cancelled_scheduled_task_as_failed() -> None:
-    """被用户停止的定时 Agent 任务不得记录为成功完成。"""
+    """
+    被用户停止的定时 Agent 任务不得记录为成功完成。
+    """
     user_id = f"cancel-{uuid4().hex}"
     task = AgentTaskOper().add(
         name="取消中的后台检查",
@@ -1129,7 +1224,9 @@ async def test_agent_manager_records_cancelled_scheduled_task_as_failed() -> Non
 
 @pytest.mark.anyio
 async def test_agent_manager_close_finishes_active_and_queued_scheduled_tasks() -> None:
-    """正常关闭必须取消同会话中正在执行和排队的持久任务。"""
+    """
+    正常关闭必须取消同会话中正在执行和排队的持久任务。
+    """
     user_id = f"shutdown-{uuid4().hex}"
     session_id = f"session-{user_id}"
     tasks = [
@@ -1153,12 +1250,16 @@ async def test_agent_manager_close_finishes_active_and_queued_scheduled_tasks() 
     started = asyncio.Event()
 
     async def block_current_task(_task):
-        """阻塞当前会话 worker，保留另一任务的排队状态。"""
+        """
+        阻塞当前会话 worker，保留另一任务的排队状态。
+        """
         started.set()
         await asyncio.Event().wait()
 
     async def wait_until_all_tasks_running() -> None:
-        """按真实时间等待异步数据库 worker 完成两个任务的认领。"""
+        """
+        按真实时间等待异步数据库 worker 完成两个任务的认领。
+        """
         while not all(AgentTaskOper().get(task.id).last_status == "running" for task in tasks):
             await asyncio.sleep(0.01)
 
@@ -1181,7 +1282,9 @@ async def test_agent_manager_close_finishes_active_and_queued_scheduled_tasks() 
 
 @pytest.mark.anyio
 async def test_cached_agent_clears_channel_for_background_task() -> None:
-    """复用会话 Agent 时，后台任务必须覆盖上一轮保留的渠道信息。"""
+    """
+    复用会话 Agent 时，后台任务必须覆盖上一轮保留的渠道信息。
+    """
     manager = AgentManager()
     agent = MoviePilotAgent(
         session_id="scheduled-cached-session",
@@ -1217,7 +1320,9 @@ async def test_cached_agent_clears_channel_for_background_task() -> None:
 
 @pytest.mark.anyio
 async def test_cached_agent_overwrites_channel_admin_with_explicit_false(monkeypatch) -> None:
-    """同会话换用户必须清理旧实例，以新实例装配明确的非管理员身份。"""
+    """
+    同会话换用户必须清理旧实例，以新实例装配明确的非管理员身份。
+    """
     manager = AgentManager()
     agent = MoviePilotAgent(
         session_id="channel-admin-cached-session",
@@ -1254,7 +1359,9 @@ async def test_cached_agent_overwrites_channel_admin_with_explicit_false(monkeyp
 
 @pytest.mark.anyio
 async def test_background_agent_final_message_is_broadcast() -> None:
-    """后台 Agent 的最终消息应清空渠道及渠道用户定位后广播。"""
+    """
+    后台 Agent 的最终消息应清空渠道及渠道用户定位后广播。
+    """
     agent = MoviePilotAgent(
         session_id="scheduled-broadcast-session",
         user_id="telegram-user-id",
@@ -1282,7 +1389,9 @@ async def test_background_agent_final_message_is_broadcast() -> None:
 
 @pytest.mark.anyio
 async def test_background_send_message_tool_broadcasts() -> None:
-    """后台 send_message 工具应广播消息并记录本轮已经回复。"""
+    """
+    后台 send_message 工具应广播消息并记录本轮已经回复。
+    """
     tool = SendMessageTool(
         session_id="scheduled-tool-session",
         user_id="telegram-user-id",
@@ -1310,7 +1419,9 @@ async def test_background_send_message_tool_broadcasts() -> None:
 
 @pytest.mark.anyio
 async def test_background_agent_does_not_repeat_tool_message() -> None:
-    """消息工具已完成回复后，后台 Agent 不应再次发送最终文本。"""
+    """
+    消息工具已完成回复后，后台 Agent 不应再次发送最终文本。
+    """
     agent = MoviePilotAgent(
         session_id="scheduled-no-repeat-session",
         user_id="user-1",

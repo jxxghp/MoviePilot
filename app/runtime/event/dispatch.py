@@ -1,4 +1,6 @@
-"""链式和广播事件的独立调度算法。"""
+"""
+链式和广播事件的独立调度算法。
+"""
 
 from __future__ import annotations
 
@@ -18,7 +20,8 @@ from app.schemas.types import EventType
 
 
 def _instance_binding_scope(class_name: str) -> AbstractContextManager[None]:
-    """处理器归属某个类时绑定其插件实例日志上下文，自由函数处理器不绑定。
+    """
+    处理器归属某个类时绑定其插件实例日志上下文，自由函数处理器不绑定。
 
     ``class_name`` 就是声明该处理器的类的 ``__name__``；宿主类处理器同样会
     命中这里，但缓存里没有它们的等级覆盖记录，过滤时自然回落全局等级。
@@ -27,7 +30,9 @@ def _instance_binding_scope(class_name: str) -> AbstractContextManager[None]:
 
 
 class EventDispatcher:
-    """基于订阅快照执行链式或广播事件，不拥有注册和生命周期状态。"""
+    """
+    基于订阅快照执行链式或广播事件，不拥有注册和生命周期状态。
+    """
 
     def __init__(
         self,
@@ -42,7 +47,9 @@ class EventDispatcher:
             bool,
         ],
     ) -> None:
-        """注入注册表、绑定器、生命周期提交器和错误策略回调。"""
+        """
+        注入注册表、绑定器、生命周期提交器和错误策略回调。
+        """
         self._registry = registry
         self._binding_resolver = binding_resolver
         self._event_factory = event_factory
@@ -53,7 +60,9 @@ class EventDispatcher:
     def _begin_chain_dispatch(
         self, event: Any
     ) -> tuple[tuple[str, int, Callable[..., Any]], ...]:
-        """冻结启用处理器快照，并统一空快照与开始生命周期记录。"""
+        """
+        冻结启用处理器快照，并统一空快照与开始生命周期记录。
+        """
         handlers = self._registry.chain_snapshot(event.event_type)
         enabled = tuple(
             (handler_id, priority, handler)
@@ -73,7 +82,9 @@ class EventDispatcher:
         started_at: float,
         event: Any,
     ) -> None:
-        """统一记录同步与异步处理器完成耗时和优先级。"""
+        """
+        统一记录同步与异步处理器完成耗时和优先级。
+        """
         logger.debug(
             "%s (Priority: %s), completed in %.3fs for event: %s",
             EventRegistry.handler_identifier(handler),
@@ -83,12 +94,16 @@ class EventDispatcher:
         )
 
     def _complete_chain_dispatch(self, event: Any) -> bool:
-        """统一提交链式事件完成生命周期并返回已处理标识。"""
+        """
+        统一提交链式事件完成生命周期并返回已处理标识。
+        """
         self._log_lifecycle(event, "Completed")
         return True
 
     def dispatch_chain(self, event: Any) -> bool:
-        """同步按优先级顺序执行链式事件快照。"""
+        """
+        同步按优先级顺序执行链式事件快照。
+        """
         enabled = self._begin_chain_dispatch(event)
         if not enabled:
             return False
@@ -101,7 +116,9 @@ class EventDispatcher:
         return self._complete_chain_dispatch(event)
 
     async def async_dispatch_chain(self, event: Any) -> bool:
-        """异步按优先级顺序执行链式事件快照。"""
+        """
+        异步按优先级顺序执行链式事件快照。
+        """
         enabled = self._begin_chain_dispatch(event)
         if not enabled:
             return False
@@ -114,7 +131,9 @@ class EventDispatcher:
         return self._complete_chain_dispatch(event)
 
     def dispatch_broadcast(self, event: Any) -> None:
-        """按订阅快照把广播事件投递到线程池或主事件循环。"""
+        """
+        按订阅快照把广播事件投递到线程池或主事件循环。
+        """
         handlers = self._registry.broadcast_snapshot(event.event_type)
         if not handlers:
             logger.debug("No handlers found for broadcast event: %s", event)
@@ -157,7 +176,9 @@ class EventDispatcher:
         event: Any,
         async_runner: Callable[[Any], Any],
     ) -> None:
-        """串行执行广播处理器并等待完成，任一处理失败时向调用方抛出。"""
+        """
+        串行执行广播处理器并等待完成，任一处理失败时向调用方抛出。
+        """
         handlers = self._registry.broadcast_snapshot(event.event_type)
         target_plugin_id = None
         if event.event_type == EventType.MessageAction and isinstance(
@@ -191,7 +212,9 @@ class EventDispatcher:
                 self.invoke_sync_strict(handler, isolated)
 
     async def dispatch_broadcast_async_strict(self, event: Any) -> None:
-        """异步串行等待广播处理器完成，供实时配置重载入口使用。"""
+        """
+        异步串行等待广播处理器完成，供实时配置重载入口使用。
+        """
         handlers = self._registry.broadcast_snapshot(event.event_type)
         target_plugin_id = None
         if event.event_type == EventType.MessageAction and isinstance(
@@ -236,17 +259,23 @@ class EventDispatcher:
                 )
 
     def safe_invoke_sync(self, handler: Callable[..., object], event: Any) -> None:
-        """仅在处理器启用时执行同步调用。"""
+        """
+        仅在处理器启用时执行同步调用。
+        """
         if self._registry.is_handler_enabled(handler):
             self.invoke_sync(handler, event)
 
     async def safe_invoke_async(self, handler: Callable[..., object], event: Any) -> None:
-        """仅在处理器启用时执行异步调用。"""
+        """
+        仅在处理器启用时执行异步调用。
+        """
         if self._registry.is_handler_enabled(handler):
             await self.invoke_async(handler, event)
 
     def invoke_sync(self, handler: Callable[..., object], event: Any) -> None:
-        """解析实例绑定并同步调用处理器。"""
+        """
+        解析实例绑定并同步调用处理器。
+        """
         resolved = self._binding_resolver.resolve(handler)
         if not resolved:
             return
@@ -275,7 +304,9 @@ class EventDispatcher:
         *,
         skip_unresolved: bool = False,
     ) -> None:
-        """解析并执行同步处理器，按需跳过未激活 owner，实际错误向调用方传播。"""
+        """
+        解析并执行同步处理器，按需跳过未激活 owner，实际错误向调用方传播。
+        """
         resolved = self._binding_resolver.resolve(handler)
         if not resolved:
             if skip_unresolved:
@@ -301,7 +332,9 @@ class EventDispatcher:
                 raise
 
     async def invoke_async(self, handler: Callable[..., object], event: Any) -> None:
-        """解析实例绑定，并按处理器类型选择协程、线程池或同步调用。"""
+        """
+        解析实例绑定，并按处理器类型选择协程、线程池或同步调用。
+        """
         resolved = self._binding_resolver.resolve(handler)
         if not resolved:
             return
@@ -336,7 +369,9 @@ class EventDispatcher:
         skip_unresolved: bool = False,
         run_sync_in_threadpool: bool = False,
     ) -> None:
-        """解析并等待处理器完成，按需跳过未激活 owner 或移交同步处理器线程池。"""
+        """
+        解析并等待处理器完成，按需跳过未激活 owner 或移交同步处理器线程池。
+        """
         resolved = self._binding_resolver.resolve(handler)
         if not resolved:
             if skip_unresolved:
@@ -372,7 +407,8 @@ class EventDispatcher:
         handler_identifier: str,
         target_plugin_id: str,
     ) -> bool:
-        """只把定向输入事件投递给标识和声明均匹配的目标插件。
+        """
+        只把定向输入事件投递给标识和声明均匹配的目标插件。
 
         目标匹配按运行实例身份判断，不能只看处理器的限定名：分身共享源码，其
         ``__qualname__`` 保持源类名不变，只比类名会让定向到分身的事件全部落空，
@@ -393,5 +429,7 @@ class EventDispatcher:
 
     @staticmethod
     def _log_lifecycle(event: Any, stage: str) -> None:
-        """记录事件调度的开始和完成阶段。"""
+        """
+        记录事件调度的开始和完成阶段。
+        """
         logger.debug("%s - %s", stage, event)

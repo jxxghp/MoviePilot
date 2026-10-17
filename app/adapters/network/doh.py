@@ -1,6 +1,7 @@
 """
-doh函数的实现。
-author: https://github.com/C5H12O5/syno-videoinfo-plugin
+按配置为指定域名并行查询 DoH 服务，并管理系统 DNS 补丁的启停。
+
+原始实现来源：https://github.com/C5H12O5/syno-videoinfo-plugin
 """
 import base64
 import json
@@ -33,12 +34,16 @@ _orig_getaddrinfo = socket.getaddrinfo
 
 
 def _doh_setting(key: str):
-    """读取 DoH 热更新配置，组合根未装配时兼容旧 Settings。"""
+    """
+    读取 DoH 热更新配置，组合根未装配时兼容旧 Settings。
+    """
     return get_runtime_setting(key)
 
 
 def _get_executor_locked() -> OwnedThreadPoolExecutor:
-    """在持有执行器锁时按需获取 DoH 查询线程池。"""
+    """
+    在持有执行器锁时按需获取 DoH 查询线程池。
+    """
     global _executor
     if _executor is None:
         _executor = OwnedThreadPoolExecutor()
@@ -111,11 +116,15 @@ class DohHelper(ConfigReloadMixin, metaclass=Singleton):
     CONFIG_WATCH = {"DOH_ENABLE", "DOH_DOMAINS", "DOH_RESOLVERS"}
 
     def __init__(self) -> None:
-        """按当前配置安装或移除 DoH 解析器。"""
+        """
+        按当前配置安装或移除 DoH 解析器。
+        """
         enable_doh(_doh_setting("DOH_ENABLE"))
 
     def on_config_changed(self) -> None:
-        """配置变化时清理缓存并重新应用 DoH 状态。"""
+        """
+        配置变化时清理缓存并重新应用 DoH 状态。
+        """
         if not _doh_setting("DOH_ENABLE"):
             if not self.shutdown():
                 logger.error("DoH配置关闭后查询线程池未在预算内收敛")
@@ -127,7 +136,9 @@ class DohHelper(ConfigReloadMixin, metaclass=Singleton):
             logger.error("DoH查询线程池尚未收敛，暂不重新启用")
 
     def get_reload_name(self) -> str:
-        """返回 DoH 配置重载名称。"""
+        """
+        返回 DoH 配置重载名称。
+        """
         return 'DoH'
 
     def shutdown(
@@ -161,12 +172,18 @@ def _doh_query(resolver: str, host: str) -> Optional[str]:
     # 构造DNS查询消息（RFC 1035）
     header = b"".join(
         [
-            b"\x00\x00",  # ID: 0
-            b"\x01\x00",  # FLAGS: 标准递归查询
-            b"\x00\x01",  # QDCOUNT: 1
-            b"\x00\x00",  # ANCOUNT: 0
-            b"\x00\x00",  # NSCOUNT: 0
-            b"\x00\x00",  # ARCOUNT: 0
+            # 查询标识固定为 0
+            b"\x00\x00",
+            # 标志位：标准递归查询
+            b"\x01\x00",
+            # 问题记录数为 1
+            b"\x00\x01",
+            # 应答记录数为 0
+            b"\x00\x00",
+            # 授权记录数为 0
+            b"\x00\x00",
+            # 附加记录数为 0
+            b"\x00\x00",
         ]
     )
     question = b"".join(
@@ -177,9 +194,12 @@ def _doh_query(resolver: str, host: str) -> Optional[str]:
                     for item in host.split(".")
                 ]
             )
-            + b"\x00",  # QNAME: 域名序列
-            b"\x00\x01",  # QTYPE: A
-            b"\x00\x01",  # QCLASS: IN
+            # 查询域名，末尾添加零字节
+            + b"\x00",
+            # 查询类型为 IPv4 地址记录
+            b"\x00\x01",
+            # 查询类别为互联网
+            b"\x00\x01",
         ]
     )
     message = header + question

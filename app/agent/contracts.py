@@ -1,4 +1,6 @@
-"""Agent 轻量公共合同，不触发模型、工具或编排运行时加载。"""
+"""
+Agent 轻量公共合同，不触发模型、工具或编排运行时加载。
+"""
 
 import uuid
 from datetime import datetime
@@ -13,7 +15,8 @@ def build_display_message(
     attachments: Optional[Sequence[Mapping[str, object]]] = None,
     status: str = "done",
 ) -> dict[str, Any]:
-    """构造前后端共享的 Agent 会话展示消息。
+    """
+    构造前后端共享的 Agent 会话展示消息。
 
     附件只读且不复制非空输入，字段值可以保留嵌套展示数据。
     """

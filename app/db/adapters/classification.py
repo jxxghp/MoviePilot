@@ -1,4 +1,6 @@
-"""基于 SystemConfig 单行事务的分类策略状态适配器。"""
+"""
+基于 SystemConfig 单行事务的分类策略状态适配器。
+"""
 
 from __future__ import annotations
 
@@ -34,7 +36,8 @@ DirectoryConfigurationNormalizer = Callable[
 
 
 def discard_removed_source_fallbacks(value: Any) -> Any:
-    """读取旧持久化策略时兼容已移除的来源级兜底字段。
+    """
+    读取旧持久化策略时兼容已移除的来源级兜底字段。
 
     来源级兜底不能再直接写入新版策略模型，因此将其转换为策略末尾的
     来源限定 catch-all 分类规则。分类求值器会在已有分类命中后跳过后续
@@ -86,7 +89,9 @@ def _promote_source_fallback_rules(
     policy: dict[str, Any],
     source_fallbacks: Mapping[Any, Any],
 ) -> None:
-    """把旧来源兜底转换为末尾的来源限定分类规则。"""
+    """
+    把旧来源兜底转换为末尾的来源限定分类规则。
+    """
     raw_rules = policy.get("rules")
     rules = raw_rules if isinstance(raw_rules, list) else []
     if rules is not raw_rules:
@@ -138,7 +143,9 @@ def _promote_source_fallback_rules(
 
 
 def _safe_priority(value: Any, fallback: int) -> int:
-    """读取损坏旧策略中的优先级，异常值退回稳定列表位置。"""
+    """
+    读取损坏旧策略中的优先级，异常值退回稳定列表位置。
+    """
     return value if isinstance(value, int) and not isinstance(value, bool) else fallback
 
 
@@ -156,7 +163,9 @@ _configuration_mutation_lock = threading.RLock()
 
 
 def _lock_configuration_rows(session: Session) -> dict[str, SystemConfig]:
-    """按固定顺序锁定策略与目录行，避免跨事务形成反向等待。"""
+    """
+    按固定顺序锁定策略与目录行，避免跨事务形成反向等待。
+    """
     records: dict[str, SystemConfig] = {}
     for key in _CONFIGURATION_LOCK_KEYS:
         record = session.execute(
@@ -170,7 +179,9 @@ def _lock_configuration_rows(session: Session) -> dict[str, SystemConfig]:
 
 
 class SystemConfigClassificationPolicyStore:
-    """把分类策略状态包原子存入 MediaClassificationPolicy 配置键。"""
+    """
+    把分类策略状态包原子存入 MediaClassificationPolicy 配置键。
+    """
 
     def __init__(
         self,
@@ -178,13 +189,17 @@ class SystemConfigClassificationPolicyStore:
         publish: Callable[[Mapping[SystemConfigKey, Any]], None],
         reference_validator: ClassificationReferenceSnapshotValidator | None = None,
     ) -> None:
-        """绑定会话、快照发布端口及事务内外部引用复验函数。"""
+        """
+        绑定会话、快照发布端口及事务内外部引用复验函数。
+        """
         self._session_factory = session_factory
         self._publish = publish
         self._reference_validator = reference_validator
 
     def load(self) -> ClassificationPolicyState | None:
-        """使用独立只读会话从数据库事实源加载完整状态包。"""
+        """
+        使用独立只读会话从数据库事实源加载完整状态包。
+        """
         with self._session_factory() as session:
             value = session.execute(
                 select(SystemConfig.value).where(
@@ -200,7 +215,9 @@ class SystemConfigClassificationPolicyStore:
         expected_revision: int,
         state: ClassificationPolicyState,
     ) -> None:
-        """在 SystemConfig 行锁事务中检查 revision 并整体替换状态包。"""
+        """
+        在 SystemConfig 行锁事务中检查 revision 并整体替换状态包。
+        """
         if state.active.revision != expected_revision + 1:
             raise ValueError("待发布分类策略 revision 必须等于 expected_revision + 1")
 
@@ -253,7 +270,9 @@ class SystemConfigClassificationPolicyStore:
 
     @staticmethod
     def _decode(value: Any) -> ClassificationPolicyState | None:
-        """把 JSON 配置解析为独立状态对象，并标记损坏数据。"""
+        """
+        把 JSON 配置解析为独立状态对象，并标记损坏数据。
+        """
         if value is None:
             return None
         try:
@@ -270,7 +289,9 @@ class SystemConfigClassificationPolicyStore:
 
 
 class SystemConfigDirectoryConfigurationStore:
-    """在分类策略与目录配置共锁事务中保存规范化目录快照。"""
+    """
+    在分类策略与目录配置共锁事务中保存规范化目录快照。
+    """
 
     def __init__(
         self,
@@ -278,13 +299,17 @@ class SystemConfigDirectoryConfigurationStore:
         publish: Callable[[Mapping[SystemConfigKey, Any]], None],
         normalizer: DirectoryConfigurationNormalizer,
     ) -> None:
-        """绑定短会话、提交后快照发布器和 Application 规范化函数。"""
+        """
+        绑定短会话、提交后快照发布器和 Application 规范化函数。
+        """
         self._session_factory = session_factory
         self._publish = publish
         self._normalizer = normalizer
 
     def save(self, value: object) -> DirectoryConfigurationWriteResult:
-        """锁内读取活动策略、严格规范化目录，并原子写入当前路径快照。"""
+        """
+        锁内读取活动策略、严格规范化目录，并原子写入当前路径快照。
+        """
         with _configuration_mutation_lock:
             with self._session_factory() as session:
                 records_by_key = _lock_configuration_rows(session)

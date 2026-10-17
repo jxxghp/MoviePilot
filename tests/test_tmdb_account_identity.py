@@ -1,4 +1,6 @@
-"""账号身份缓存及无效 JSON 响应的兼容性验证。"""
+"""
+账号身份缓存及无效 JSON 响应的兼容性验证。
+"""
 
 import asyncio
 from unittest.mock import AsyncMock, Mock
@@ -9,7 +11,9 @@ from app.modules.themoviedb.tmdbv3api.objs.account import Account
 
 
 def test_account_id_uses_configured_identity_without_request(monkeypatch):
-    """已配置账号 ID 时不应再次查询账号详情。"""
+    """
+    已配置账号 ID 时不应再次查询账号详情。
+    """
     monkeypatch.setenv("TMDB_ACCOUNT_ID", "42")
     details = Mock()
     monkeypatch.setattr(Account, "details", details)
@@ -19,7 +23,9 @@ def test_account_id_uses_configured_identity_without_request(monkeypatch):
 
 
 def test_account_id_caches_numeric_identity_as_text(monkeypatch):
-    """初次读取将数字 ID 保存为文本，后续读取复用现有缓存。"""
+    """
+    初次读取将数字 ID 保存为文本，后续读取复用现有缓存。
+    """
     monkeypatch.setenv("TMDB_ACCOUNT_ID", "")
     details = Mock(return_value={"id": 42})
     monkeypatch.setattr(Account, "details", details)
@@ -31,7 +37,9 @@ def test_account_id_caches_numeric_identity_as_text(monkeypatch):
 
 @pytest.mark.parametrize("payload,error", [(None, TypeError), ([], TypeError), ("bad", TypeError), (1, TypeError), ({}, KeyError)])
 def test_invalid_account_identity_preserves_failure_without_caching(monkeypatch, payload, error):
-    """非对象响应仍抛 TypeError，缺失 ID 仍抛 KeyError，失败后不产生缓存。"""
+    """
+    非对象响应仍抛 TypeError，缺失 ID 仍抛 KeyError，失败后不产生缓存。
+    """
     monkeypatch.setenv("TMDB_ACCOUNT_ID", "")
     details = Mock(return_value=payload)
     monkeypatch.setattr(Account, "details", details)
@@ -46,7 +54,9 @@ def test_invalid_account_identity_preserves_failure_without_caching(monkeypatch,
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize("ascending", [False, True])
 def test_account_lists_keep_session_sort_and_page(monkeypatch, asynchronous, ascending):
-    """账号列表的双入口保留会话、页码及显式降序规则。"""
+    """
+    账号列表的双入口保留会话、页码及显式降序规则。
+    """
     monkeypatch.setenv("TMDB_ACCOUNT_ID", "42")
     payload = [{"id": 123}]
     request = (AsyncMock if asynchronous else Mock)(return_value=payload)

@@ -1,8 +1,9 @@
-"""3.0.13 为整理准入记录增加稳定身份与持久状态。
+"""
+3.0.13 为整理准入记录增加稳定身份与持久状态。
 
-Revision ID: b1e7d3f5a9c2
-Revises: 5f2a9c1e7b4d
-Create Date: 2026-08-27
+版本标识： b1e7d3f5a9c2
+前置版本： 5f2a9c1e7b4d
+创建时间： 2026-08-27
 """
 
 from datetime import datetime
@@ -23,7 +24,9 @@ _NEW_COLUMNS = {"task_id", "state", "updated_at", "last_error"}
 
 
 def _column_names() -> set[str]:
-    """返回当前待整理登记表的字段集合。"""
+    """
+    返回当前待整理登记表的字段集合。
+    """
     inspector = sa.inspect(op.get_bind())
     if _TABLE_NAME not in inspector.get_table_names():
         return set()
@@ -34,7 +37,9 @@ def _column_names() -> set[str]:
 
 
 def _repair_task_id_constraint() -> None:
-    """把稳定任务身份约束修复为 task_id 单列唯一约束。"""
+    """
+    把稳定任务身份约束修复为 task_id 单列唯一约束。
+    """
     constraints = {
         constraint.get("name"): tuple(constraint.get("column_names") or ())
         for constraint in sa.inspect(op.get_bind()).get_unique_constraints(
@@ -56,7 +61,9 @@ def _repair_task_id_constraint() -> None:
 
 
 def _repair_state_created_index() -> None:
-    """按列顺序和非唯一语义修复恢复扫描索引。"""
+    """
+    按列顺序和非唯一语义修复恢复扫描索引。
+    """
     indexes = {
         index.get("name"): index
         for index in sa.inspect(op.get_bind()).get_indexes(_TABLE_NAME)
@@ -79,7 +86,9 @@ def _repair_state_created_index() -> None:
 
 
 def _backfill_admission_state() -> None:
-    """为旧登记保守生成稳定身份、接纳状态与更新时间。"""
+    """
+    为旧登记保守生成稳定身份、接纳状态与更新时间。
+    """
     pending = sa.table(
         _TABLE_NAME,
         sa.column("id", sa.Integer()),
@@ -126,7 +135,9 @@ def _backfill_admission_state() -> None:
 
 
 def upgrade() -> None:
-    """增加准入状态字段，回填旧行并建立稳定任务标识约束。"""
+    """
+    增加准入状态字段，回填旧行并建立稳定任务标识约束。
+    """
     columns = _column_names()
     if not columns:
         return
@@ -167,7 +178,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """移除准入状态字段并保留旧版可识别的登记事实。"""
+    """
+    移除准入状态字段并保留旧版可识别的登记事实。
+    """
     columns = _column_names()
     if not columns or not (_NEW_COLUMNS & columns):
         return

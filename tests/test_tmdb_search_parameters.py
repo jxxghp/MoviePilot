@@ -1,4 +1,6 @@
-"""TMDb 成人内容开关须生成独立参数，不能损坏分页参数。"""
+"""
+TMDb 成人内容开关须生成独立参数，不能损坏分页参数。
+"""
 
 import asyncio
 from unittest.mock import AsyncMock, Mock
@@ -14,7 +16,9 @@ from app.modules.themoviedb.tmdbv3api.objs.search import Search
 @pytest.mark.parametrize("asynchronous", [False, True])
 @pytest.mark.parametrize("adult", [None, False, True])
 def test_adult_option_preserves_query_and_page(monkeypatch, method, asynchronous, adult):
-    """双入口保持查询和页码，显式 False 与未传开关分别对应 false 与省略。"""
+    """
+    双入口保持查询和页码，显式 False 与未传开关分别对应 false 与省略。
+    """
     payload = [{"id": 42}]
     request = (AsyncMock if asynchronous else Mock)(return_value=payload)
     monkeypatch.setattr(Search, "_async_request_obj" if asynchronous else "_request_obj", request)
@@ -42,7 +46,9 @@ def test_adult_option_preserves_query_and_page(monkeypatch, method, asynchronous
     ],
 )
 def test_discover_methods_preserve_typed_query_contract(monkeypatch, method, asynchronous, path):
-    """TMDb v3 的四个 discover 入口应将 tuple 查询交给对应请求端口。"""
+    """
+    TMDb v3 的四个 discover 入口应将 tuple 查询交给对应请求端口。
+    """
     request = (AsyncMock if asynchronous else Mock)(return_value={"id": 42})
     client = object.__new__(Discover)
     monkeypatch.setattr(client, "_async_request_obj" if asynchronous else "_request_obj", request)

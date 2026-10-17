@@ -1,3 +1,8 @@
+"""
+比较固定种子和规则下 Rust 与 Python 的完整过滤链路耗时。
+
+基准通过规则替身隔离配置查询，重复采样前清除上轮写入的优先级。
+"""
 import argparse
 import statistics
 import sys
@@ -11,17 +16,21 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.domain.context import MediaInfo, TorrentInfo
 from app.modules.filter import FilterModule
-from app.modules.filter.RuleParser import RuleParser
+from app.application.rules import RuleParser
 
 
 class StaticRuleHelper:
     """
-    为 benchmark 提供固定规则组，避免系统配置和数据库访问影响过滤链路测量。
+    为基准测试提供固定规则组，避免系统配置和数据库访问影响过滤链路测量。
     """
 
     def __init__(self, groups):
+        """
+        保存固定规则组，供重复采样沿用同一输入。
+        """
         self._groups = groups
 
+    # 保留真实规则查询签名，固定样本不需要根据媒体信息选择规则。
     def get_rule_group_by_media(self, media=None, group_names=None):  # noqa: ARG002
         """
         按规则名返回固定规则组。

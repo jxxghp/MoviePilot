@@ -1,4 +1,6 @@
-"""LLM Provider 远端目录发现和 SDK 客户端 I/O 的唯一 owner。"""
+"""
+LLM Provider 远端目录发现和 SDK 客户端 I/O 的唯一 owner。
+"""
 
 from __future__ import annotations
 
@@ -21,7 +23,9 @@ def attach_server_tool_capabilities(
     models: list[dict[str, Any]],
     base_url: Optional[str] = None,
 ) -> list[dict[str, Any]]:
-    """为 Provider 模型目录附加统一的服务端工具能力描述。"""
+    """
+    为 Provider 模型目录附加统一的服务端工具能力描述。
+    """
     from app.agent.llm.tools import ServerToolRegistry
 
     result = []
@@ -37,7 +41,9 @@ def attach_server_tool_capabilities(
 
 
 class _ProviderDiscovery:
-    """LLM Provider 远端目录发现和 SDK 客户端 I/O 的唯一 owner。"""
+    """
+    LLM Provider 远端目录发现和 SDK 客户端 I/O 的唯一 owner。
+    """
 
     _models_dev_lock: Any
     _models_dev_data: Optional[dict[str, Any]]
@@ -45,7 +51,9 @@ class _ProviderDiscovery:
     _models_dev_cache_path: Path
 
     def __getattr__(self, name: str) -> Any:
-        """将跨 owner 调用交给最终 Facade 的 MRO 解析。"""
+        """
+        将跨 owner 调用交给最终 Facade 的 MRO 解析。
+        """
         raise AttributeError(name)
 
     _MODELS_DEV_URL = "https://models.dev/api.json"
@@ -164,7 +172,9 @@ class _ProviderDiscovery:
         use_proxy: Optional[bool] = None,
         headers: Optional[dict[str, str]] = None,
     ) -> AsyncRequestUtils:
-        """按 LLM 代理策略构造统一异步 HTTP 请求客户端。"""
+        """
+        按 LLM 代理策略构造统一异步 HTTP 请求客户端。
+        """
         should_use_proxy = get_runtime_setting("LLM_USE_PROXY") if use_proxy is None else use_proxy
         proxy = get_runtime_setting("PROXY_HOST") if should_use_proxy else None
         proxies = {"http": proxy, "https": proxy} if proxy else None
@@ -177,7 +187,9 @@ class _ProviderDiscovery:
         )
 
     def _build_sdk_http_client(self, use_proxy: Optional[bool] = None) -> Any:
-        """为需要注入 transport 的第三方 SDK 构造统一异步客户端。"""
+        """
+        为需要注入 transport 的第三方 SDK 构造统一异步客户端。
+        """
         should_use_proxy = get_runtime_setting("LLM_USE_PROXY") if use_proxy is None else use_proxy
         proxy = get_runtime_setting("PROXY_HOST") if should_use_proxy else None
         return AsyncRequestUtils.create_sdk_client(
@@ -188,7 +200,9 @@ class _ProviderDiscovery:
         )
 
     async def _load_models_dev_from_disk(self) -> dict[str, Any] | None:
-        """从磁盘缓存加载 models.dev 数据。"""
+        """
+        从磁盘缓存加载 models.dev 数据。
+        """
         try:
             if not self._models_dev_cache_path.exists():
                 return None
@@ -204,7 +218,9 @@ class _ProviderDiscovery:
             return None
 
     def _load_bundled_models_dev_payload(self) -> dict[str, Any] | None:
-        """从随代码附带的离线文件加载 models.dev 数据。"""
+        """
+        从随代码附带的离线文件加载 models.dev 数据。
+        """
         try:
             if not self._MODELS_DEV_BUNDLED_PATH.exists():
                 return None
@@ -216,7 +232,9 @@ class _ProviderDiscovery:
         return payload if isinstance(payload, dict) else None
 
     async def _write_models_dev_to_disk(self, payload: dict[str, Any]) -> None:
-        """将 models.dev 数据写入磁盘缓存。"""
+        """
+        将 models.dev 数据写入磁盘缓存。
+        """
         try:
             self._models_dev_cache_path.parent.mkdir(parents=True, exist_ok=True)
             content = json.dumps(payload, ensure_ascii=False)
@@ -229,7 +247,9 @@ class _ProviderDiscovery:
             logger.warning(f"写入 models.dev 缓存失败: {err}")
 
     async def _fetch_models_dev(self, use_proxy: Optional[bool] = None) -> dict[str, Any]:
-        """通过网络请求获取最新 models.dev 数据。"""
+        """
+        通过网络请求获取最新 models.dev 数据。
+        """
         response = await self._build_async_request(
             use_proxy,
             headers={"User-Agent": get_runtime_setting("USER_AGENT")},
@@ -290,7 +310,9 @@ class _ProviderDiscovery:
                 raise LLMProviderError(f"获取 models.dev 数据失败: {err}") from err
 
     def _normalize_base_url_for_anthropic(self, base_url: str) -> str:
-        """对 Anthropic 的 Base URL 进行适配处理。"""
+        """
+        对 Anthropic 的 Base URL 进行适配处理。
+        """
         normalized = self._sanitize_base_url(base_url) or ""
         if normalized.endswith("/v1"):
             return normalized[:-3]
@@ -385,7 +407,9 @@ class _ProviderDiscovery:
         api_key: str,
         use_proxy: Optional[bool] = None,
     ) -> list[dict[str, Any]]:
-        """从 Google AI Studio 获取模型列表。"""
+        """
+        从 Google AI Studio 获取模型列表。
+        """
         from google import genai
         from google.genai.types import HttpOptions
 
@@ -448,7 +472,9 @@ class _ProviderDiscovery:
         default_headers: Optional[dict[str, str]] = None,
         use_proxy: Optional[bool] = None,
     ) -> list[dict[str, Any]]:
-        """通过 OpenAI 兼容接口获取模型列表。"""
+        """
+        通过 OpenAI 兼容接口获取模型列表。
+        """
         from openai import AsyncOpenAI
 
         async with AsyncOpenAI(
@@ -574,7 +600,7 @@ class _ProviderDiscovery:
         按解析后的凭证创建 Bedrock boto3 客户端，Bearer 方式注入 Authorization 头
 
         :param service_name: boto3 服务名（bedrock 或 bedrock-runtime）
-        :param region: AWS Region
+        :param region: AWS 服务区域标识，如 us-east-1
         :param credentials: `_parse_bedrock_credentials` 的解析结果
         :param base_url: 用户配置的 Base URL，非标准端点（PrivateLink/FIPS 等）时透传给 boto3
         :param use_proxy: 是否使用系统代理
@@ -762,7 +788,9 @@ class _ProviderDiscovery:
         token: str,
         use_proxy: Optional[bool] = None,
     ) -> list[dict[str, Any]]:
-        """从 GitHub Copilot 端点获取模型列表。"""
+        """
+        从 GitHub Copilot 端点获取模型列表。
+        """
         response = await self._build_async_request(
             use_proxy,
             headers=self._copilot_headers(token),
@@ -841,7 +869,9 @@ class _ProviderDiscovery:
         base_url_preset_id: Optional[str] = None,
         use_proxy: Optional[bool] = None,
     ) -> list[dict[str, Any]]:
-        """获取开启 OAuth 的 ChatGPT 模型列表。"""
+        """
+        获取开启 OAuth 的 ChatGPT 模型列表。
+        """
         # ChatGPT OAuth 仍然是 chatgpt provider 专属能力，但模型目录不再维护
         # 一份内部名单，直接跟随当前 provider 对应的 models.dev 数据。
         payload = await self._models_dev_provider_payload(
@@ -876,7 +906,9 @@ class _ProviderDiscovery:
         use_proxy: Optional[bool] = None,
         force_refresh: bool = False,
     ) -> list[dict[str, Any]]:
-        """返回标准化后的模型目录。"""
+        """
+        返回标准化后的模型目录。
+        """
         spec = await self._get_provider_async(
             provider_id,
             force_refresh=force_refresh,

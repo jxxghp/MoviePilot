@@ -1,4 +1,6 @@
-"""整理规划重构必须保持的旧调用与事件兼容合同。"""
+"""
+整理规划重构必须保持的旧调用与事件兼容合同。
+"""
 
 from inspect import Parameter, signature
 from pathlib import Path
@@ -17,7 +19,9 @@ from app.schemas.types import EventType
 
 
 def _assert_signature(callable_object, *parameters: tuple[str, object]) -> None:
-    """断言公开参数顺序和默认值，不把测试辅助哨兵泄漏到失败输出。"""
+    """
+    断言公开参数顺序和默认值，不把测试辅助哨兵泄漏到失败输出。
+    """
     actual = signature(callable_object).parameters
     assert tuple(actual) == tuple(name for name, _default in parameters)
     for name, expected_default in parameters:
@@ -29,7 +33,9 @@ def _assert_signature(callable_object, *parameters: tuple[str, object]) -> None:
 
 
 def _fileitem() -> FileItem:
-    """构造无需文件系统 I/O 的最小旧整理源对象。"""
+    """
+    构造无需文件系统 I/O 的最小旧整理源对象。
+    """
     return FileItem(
         storage="local",
         path="/downloads/Movie.2026.mkv",
@@ -44,7 +50,9 @@ def _fileitem() -> FileItem:
 
 
 def test_transfer_task_to_dict_keeps_exact_legacy_fields():
-    """内部准入和规划快照不得进入插件可见的旧任务字典。"""
+    """
+    内部准入和规划快照不得进入插件可见的旧任务字典。
+    """
     task = TransferTask(
         fileitem=_fileitem(),
         target_storage="local",
@@ -95,7 +103,9 @@ def test_transfer_task_to_dict_keeps_exact_legacy_fields():
 
 
 def test_transfer_chain_do_transfer_keeps_legacy_signature():
-    """公开整理入口必须继续接受原调用方的全部关键字参数。"""
+    """
+    公开整理入口必须继续接受原调用方的全部关键字参数。
+    """
     _assert_signature(
         TransferChain.do_transfer,
         ("self", ...),
@@ -131,7 +141,9 @@ def test_transfer_chain_do_transfer_keeps_legacy_signature():
 
 
 def test_chain_base_transfer_keeps_legacy_signature():
-    """仅 Chain 对外兼容层保留旧整理参数，宿主模块不再重复导出。"""
+    """
+    仅 Chain 对外兼容层保留旧整理参数，宿主模块不再重复导出。
+    """
     _assert_signature(
         ChainBase.transfer,
         ("self", ...),
@@ -153,7 +165,9 @@ def test_chain_base_transfer_keeps_legacy_signature():
 
 
 def test_chain_base_transfer_delegates_exactly_to_injected_command():
-    """旧 ABI 必须原样调用注入命令，不得再次进入动态模块调度。"""
+    """
+    旧 ABI 必须原样调用注入命令，不得再次进入动态模块调度。
+    """
     chain = object.__new__(ChainBase)
     result = TransferInfo(success=True, fileitem=_fileitem(), transfer_type="copy")
     command = Mock(return_value=result)
@@ -204,7 +218,9 @@ def test_chain_base_transfer_delegates_exactly_to_injected_command():
 
 
 def test_chain_base_plan_transfer_keeps_internal_dto_type_only():
-    """规划入口运行时只做内部调度，不要求导入或重复导出 DTO。"""
+    """
+    规划入口运行时只做内部调度，不要求导入或重复导出 DTO。
+    """
     chain = object.__new__(ChainBase)
     checkpoint = Mock(name="checkpoint")
     chain.run_module_strict = Mock(return_value=checkpoint)
@@ -238,7 +254,9 @@ def test_chain_base_plan_transfer_keeps_internal_dto_type_only():
 
 
 def test_filemanager_module_has_no_legacy_transfer_provider():
-    """FileManager 宿主只暴露规划与执行阶段，不再注册旧 transfer provider。"""
+    """
+    FileManager 宿主只暴露规划与执行阶段，不再注册旧 transfer provider。
+    """
     assert not hasattr(FileManagerModule, "transfer")
     assert not hasattr(TransHandler, "transfer_media")
     assert callable(FileManagerModule.plan_transfer)
@@ -253,7 +271,9 @@ def test_filemanager_module_has_no_legacy_transfer_provider():
     ],
 )
 def test_transfer_result_event_keeps_single_exact_legacy_payload(event_type, success):
-    """规划与回放不得重复发送结果事件或改变插件读取的 payload。"""
+    """
+    规划与回放不得重复发送结果事件或改变插件读取的 payload。
+    """
     chain = object.__new__(TransferChain)
     chain.eventmanager = Mock()
     task = TransferTask(

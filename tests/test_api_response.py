@@ -1,3 +1,7 @@
+"""
+验证统一 API 响应、错误本地化、分页和动态插件路由。
+"""
+
 import asyncio
 import inspect
 import threading
@@ -12,7 +16,7 @@ import pytest
 from fastapi import APIRouter, Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 from starlette.requests import Request
 from starlette.responses import Response as StarletteResponse
 from starlette.responses import StreamingResponse
@@ -49,13 +53,17 @@ pytestmark = pytest.mark.anyio
 
 
 class Item(BaseModel):
-    """统一响应测试使用的业务数据模型。"""
+    """
+    统一响应测试使用的业务数据模型。
+    """
 
-    id: int
+    id: int = Field(description="响应封装测试中的业务记录标识")
 
 
 def _v1_compat_routes() -> list[tuple[str, APIRoute]]:
-    """返回兼容 v1 导出的公开路由，不依赖 FastAPI 内部 include 包装器。"""
+    """
+    返回兼容 v1 导出的公开路由，不依赖 FastAPI 内部 include 包装器。
+    """
     from app.api.routers import API_V1_ROUTER_SPECS
 
     return [
@@ -68,13 +76,17 @@ def _v1_compat_routes() -> list[tuple[str, APIRoute]]:
 
 @pytest.fixture()
 def anyio_backend():
-    """使用 asyncio 运行异步接口测试。"""
+    """
+    使用 asyncio 运行异步接口测试。
+    """
     return "asyncio"
 
 
 @pytest.fixture()
 def api_app() -> FastAPI:
-    """构造使用统一响应路由的最小测试应用。"""
+    """
+    构造使用统一响应路由的最小测试应用。
+    """
     app = FastAPI()
     app.router.route_class = ResponseAPIRoute
     app.add_exception_handler(HTTPException, localized_http_exception_handler)
@@ -92,10 +104,10 @@ def api_app() -> FastAPI:
 
     @app.middleware("http")
     async def locale_middleware(request, call_next):
-        """在测试应用中模拟生产环境的请求语言上下文。"""
-        token = LocaleHelper.set_current_locale(
-            LocaleHelper.get_locale_from_request(request)
-        )
+        """
+        在测试应用中模拟生产环境的请求语言上下文。
+        """
+        token = LocaleHelper.set_current_locale(LocaleHelper.get_locale_from_request(request))
         try:
             return await call_next(request)
         finally:
@@ -103,7 +115,9 @@ def api_app() -> FastAPI:
 
     @app.get("/items", response_model=list[Item])
     async def get_items() -> list[Item]:
-        """返回需要自动封装的业务数据。"""
+        """
+        返回需要自动封装的业务数据。
+        """
         return [Item(id=1)]
 
     @app.get("/many-items", response_model=list[Item])
@@ -111,19 +125,25 @@ def api_app() -> FastAPI:
         page: CompatiblePageParam = None,
         count: CompatibleCountParam = None,
     ) -> list[Item]:
-        """返回用于验证兼容分页行为的完整业务列表。"""
+        """
+        返回用于验证兼容分页行为的完整业务列表。
+        """
         return [Item(id=index) for index in range(1, 6)]
 
     @app.get("/native-page", response_model=list[Item])
     async def get_native_page(page: int = 1, count: int = 2) -> list[Item]:
-        """模拟已经由端点自身执行分页的列表查询。"""
+        """
+        模拟已经由端点自身执行分页的列表查询。
+        """
         items = [Item(id=index) for index in range(1, 6)]
         start = (page - 1) * count
         return items[start : start + count]
 
     @app.get("/wrapped", response_model=Response[Item])
     async def get_wrapped_response() -> Response[Item]:
-        """返回已经封装的响应。"""
+        """
+        返回已经封装的响应。
+        """
         return Response(success=True, message="模块不支持测试", data=Item(id=2))
 
     @app.get(
@@ -132,50 +152,70 @@ def api_app() -> FastAPI:
         openapi_extra={RAW_RESPONSE_OPENAPI_KEY: True},
     )
     async def get_oauth_token() -> Item:
-        """模拟必须保持顶层字段的标准协议响应。"""
+        """
+        模拟必须保持顶层字段的标准协议响应。
+        """
         return Item(id=3)
 
     @app.get("/error")
     async def get_error() -> None:
-        """抛出需要统一处理的 HTTP 错误。"""
+        """
+        抛出需要统一处理的 HTTP 错误。
+        """
         raise HTTPException(status_code=400, detail="用户名或密码错误")
 
     @app.get("/validated/{item_id}", response_model=Item)
     async def get_validated_item(item_id: int) -> Item:
-        """返回带路径参数校验的业务数据。"""
+        """
+        返回带路径参数校验的业务数据。
+        """
         return Item(id=item_id)
 
     @app.get("/crash", response_model=Item)
     async def get_crash() -> Item:
-        """抛出需要隐藏内部细节的未捕获异常。"""
+        """
+        抛出需要隐藏内部细节的未捕获异常。
+        """
         raise RuntimeError("private failure detail")
 
     @app.get("/database-busy")
     async def get_database_busy() -> None:
-        """模拟数据库短事务容量耗尽。"""
+        """
+        模拟数据库短事务容量耗尽。
+        """
         raise DatabaseWorkerOverloadedError("worker full")
 
     @app.get("/database-closed")
     async def get_database_closed() -> None:
-        """模拟数据库 worker 在关闭态拒绝新任务。"""
+        """
+        模拟数据库 worker 在关闭态拒绝新任务。
+        """
         raise DatabaseWorkerClosedError("worker closed")
 
     @app.get("/agent-chat-persistence-unavailable")
     async def get_agent_chat_persistence_unavailable() -> None:
-        """模拟 AgentChat 自身 admission 拒绝新写入。"""
+        """
+        模拟 AgentChat 自身 admission 拒绝新写入。
+        """
         raise AgentChatPersistenceUnavailableError("agent persistence full")
 
     @app.get("/native", response_model=None)
     async def get_native_response() -> dict[str, bool]:
-        """返回显式旁路的原生 JSON 协议。"""
+        """
+        返回显式旁路的原生 JSON 协议。
+        """
         return {"native": True}
 
     @app.get("/events", response_model=None)
     async def get_events() -> StreamingResponse:
-        """返回不应封装的事件流。"""
+        """
+        返回不应封装的事件流。
+        """
 
         async def event_source():
-            """生成一条测试事件。"""
+            """
+            生成一条测试事件。
+            """
             yield "data: ok\n\n"
 
         return StreamingResponse(event_source(), media_type="text/event-stream")
@@ -184,7 +224,9 @@ def api_app() -> FastAPI:
 
 
 def make_client(app: FastAPI) -> httpx.AsyncClient:
-    """创建不访问真实网络的 ASGI 测试客户端。"""
+    """
+    创建不访问真实网络的 ASGI 测试客户端。
+    """
     return httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app),
         base_url="http://testserver",
@@ -192,7 +234,9 @@ def make_client(app: FastAPI) -> httpx.AsyncClient:
 
 
 async def test_route_wraps_data_and_keeps_existing_response(api_app: FastAPI):
-    """普通数据应自动封装，已经封装的响应不应重复套壳。"""
+    """
+    普通数据应自动封装，已经封装的响应不应重复套壳。
+    """
     async with make_client(api_app) as client:
         items_response = await client.get("/items")
         wrapped_response = await client.get("/wrapped")
@@ -210,7 +254,9 @@ async def test_route_wraps_data_and_keeps_existing_response(api_app: FastAPI):
 
 
 async def test_legacy_collection_defaults_to_complete_unpaginated_result(api_app: FastAPI):
-    """新增分页参数省略时必须保留原完整列表和精确总数。"""
+    """
+    新增分页参数省略时必须保留原完整列表和精确总数。
+    """
     async with make_client(api_app) as client:
         response = await client.get("/many-items")
 
@@ -228,7 +274,9 @@ async def test_legacy_collection_defaults_to_complete_unpaginated_result(api_app
 
 
 async def test_legacy_collection_paginates_only_when_explicitly_requested(api_app: FastAPI):
-    """显式传入任一兼容分页参数后才切片，并保持 data 仍为列表。"""
+    """
+    显式传入任一兼容分页参数后才切片，并保持 data 仍为列表。
+    """
     async with make_client(api_app) as client:
         page_response = await client.get("/many-items", params={"page": 2, "count": 2})
         count_response = await client.get("/many-items", params={"count": 3})
@@ -244,7 +292,9 @@ async def test_legacy_collection_paginates_only_when_explicitly_requested(api_ap
 
 
 async def test_native_pagination_is_not_double_sliced_or_given_a_fake_total(api_app: FastAPI):
-    """端点已有分页时只报告当前窗口，不再次切片或伪造全局总数。"""
+    """
+    端点已有分页时只报告当前窗口，不再次切片或伪造全局总数。
+    """
     async with make_client(api_app) as client:
         response = await client.get("/native-page", params={"page": 2, "count": 2})
 
@@ -256,7 +306,9 @@ async def test_native_pagination_is_not_double_sliced_or_given_a_fake_total(api_
 
 
 async def test_legacy_collection_pagination_validation_uses_standard_error_shape(api_app: FastAPI):
-    """兼容分页非法值必须复用标准 422 错误响应而不是静默修正。"""
+    """
+    兼容分页非法值必须复用标准 422 错误响应而不是静默修正。
+    """
     async with make_client(api_app) as client:
         response = await client.get("/many-items", params={"page": 0})
 
@@ -267,19 +319,17 @@ async def test_legacy_collection_pagination_validation_uses_standard_error_shape
 def test_collection_openapi_declares_optional_compatibility_parameters_and_headers(
     api_app: FastAPI,
 ):
-    """OpenAPI 必须区分缺省全量的新增参数与原生分页默认值。"""
+    """
+    OpenAPI 必须区分缺省全量的新增参数与原生分页默认值。
+    """
     openapi = api_app.openapi()
     legacy = openapi["paths"]["/many-items"]["get"]
     native = openapi["paths"]["/native-page"]["get"]
     legacy_query = {
-        parameter["name"]: parameter["schema"]
-        for parameter in legacy["parameters"]
-        if parameter["in"] == "query"
+        parameter["name"]: parameter["schema"] for parameter in legacy["parameters"] if parameter["in"] == "query"
     }
     native_query = {
-        parameter["name"]: parameter["schema"]
-        for parameter in native["parameters"]
-        if parameter["in"] == "query"
+        parameter["name"]: parameter["schema"] for parameter in native["parameters"] if parameter["in"] == "query"
     }
 
     assert "default" not in legacy_query["page"]
@@ -300,7 +350,9 @@ def test_collection_openapi_declares_optional_compatibility_parameters_and_heade
 
 
 def test_every_host_collection_route_declares_explicit_pagination_contract():
-    """所有宿主列表接口必须显式声明分页窗口并报告当前数量。"""
+    """
+    所有宿主列表接口必须显式声明分页窗口并报告当前数量。
+    """
     app = FastAPI()
     from app.api.apiv1 import api_router
 
@@ -320,13 +372,8 @@ def test_every_host_collection_route_declares_explicit_pagination_contract():
 
         endpoint_parameters = set(inspect.signature(route.endpoint).parameters)
         has_native_window = bool(endpoint_parameters & window_parameters)
-        compatible_method = (
-            "GET" in route.methods
-            or bool(
-                (route.openapi_extra or {}).get(
-                    COLLECTION_PAGINATION_OPENAPI_KEY
-                )
-            )
+        compatible_method = "GET" in route.methods or bool(
+            (route.openapi_extra or {}).get(COLLECTION_PAGINATION_OPENAPI_KEY)
         )
         if not compatible_method:
             continue
@@ -346,7 +393,9 @@ def test_every_host_collection_route_declares_explicit_pagination_contract():
 
 
 def test_database_collection_routes_expose_explicit_page_count_without_response_input():
-    """数据库列表接口只公开 page/count，框架 Response 不能泄漏成 Agent 输入。"""
+    """
+    数据库列表接口只公开 page/count，框架 Response 不能泄漏成 Agent 输入。
+    """
     app = FastAPI()
     from app.api.apiv1 import api_router
 
@@ -375,7 +424,9 @@ def test_database_collection_routes_expose_explicit_page_count_without_response_
 
 
 async def test_explicit_none_and_stream_keep_native_protocol(api_app: FastAPI):
-    """显式无响应模型和流式响应应保持原生协议。"""
+    """
+    显式无响应模型和流式响应应保持原生协议。
+    """
     async with make_client(api_app) as client:
         native_response = await client.get("/native")
         stream_response = await client.get("/events")
@@ -386,17 +437,13 @@ async def test_explicit_none_and_stream_keep_native_protocol(api_app: FastAPI):
 
 
 async def test_accept_language_localizes_success_and_http_error(api_app: FastAPI):
-    """Accept-Language 应直接决定成功与 HTTP 错误响应的 message。"""
+    """
+    Accept-Language 应直接决定成功与 HTTP 错误响应的 message。
+    """
     async with make_client(api_app) as client:
-        wrapped_response = await client.get(
-            "/wrapped", headers={"Accept-Language": "en-US"}
-        )
-        error_response = await client.get(
-            "/error", headers={"Accept-Language": "en-US"}
-        )
-        zh_error_response = await client.get(
-            "/error", headers={"Accept-Language": "zh-CN"}
-        )
+        wrapped_response = await client.get("/wrapped", headers={"Accept-Language": "en-US"})
+        error_response = await client.get("/error", headers={"Accept-Language": "en-US"})
+        zh_error_response = await client.get("/error", headers={"Accept-Language": "zh-CN"})
 
     assert wrapped_response.json()["message"] == "Module does not support testing"
     assert error_response.status_code == 400
@@ -409,9 +456,11 @@ async def test_accept_language_localizes_success_and_http_error(api_app: FastAPI
 
 
 async def test_database_worker_overload_is_retryable_service_unavailable(
-        api_app: FastAPI,
+    api_app: FastAPI,
 ):
-    """数据库 worker 背压应返回 503，而不是伪装成未知错误。"""
+    """
+    数据库 worker 背压应返回 503，而不是伪装成未知错误。
+    """
     async with make_client(api_app) as client:
         response = await client.get("/database-busy")
 
@@ -425,9 +474,11 @@ async def test_database_worker_overload_is_retryable_service_unavailable(
 
 
 async def test_database_worker_closed_is_retryable_service_unavailable(
-        api_app: FastAPI,
+    api_app: FastAPI,
 ):
-    """数据库 worker 关闭态应返回 503，而不是落入通用 500。"""
+    """
+    数据库 worker 关闭态应返回 503，而不是落入通用 500。
+    """
     async with make_client(api_app) as client:
         response = await client.get("/database-closed")
 
@@ -441,9 +492,11 @@ async def test_database_worker_closed_is_retryable_service_unavailable(
 
 
 async def test_agent_chat_persistence_rejection_is_retryable_service_unavailable(
-        api_app: FastAPI,
+    api_app: FastAPI,
 ) -> None:
-    """AgentChat 自身 admission 拒绝也应返回可重试的 503。"""
+    """
+    AgentChat 自身 admission 拒绝也应返回可重试的 503。
+    """
     async with make_client(api_app) as client:
         response = await client.get("/agent-chat-persistence-unavailable")
 
@@ -457,14 +510,14 @@ async def test_agent_chat_persistence_rejection_is_retryable_service_unavailable
 
 
 def test_create_app_registers_persistence_unavailable_handler() -> None:
-    """生产组合根必须为持久化暂不可用登记统一 503 处理器。"""
+    """
+    生产组合根必须为持久化暂不可用登记统一 503 处理器。
+    """
     from app.factory import create_app
 
     app = create_app()
 
-    assert app.exception_handlers[PersistenceUnavailableError] is (
-        persistence_unavailable_handler
-    )
+    assert app.exception_handlers[PersistenceUnavailableError] is (persistence_unavailable_handler)
 
 
 @pytest.mark.parametrize(
@@ -476,9 +529,11 @@ def test_create_app_registers_persistence_unavailable_handler() -> None:
     ],
 )
 async def test_database_worker_overload_preserves_retry_after_for_native_protocols(
-        path: str,
+    path: str,
 ):
-    """OpenAI、Anthropic 和 MCP 的原生 503 也必须保留重试提示。"""
+    """
+    OpenAI、Anthropic 和 MCP 的原生 503 也必须保留重试提示。
+    """
     scope = {
         "type": "http",
         "http_version": "1.1",
@@ -502,7 +557,9 @@ async def test_database_worker_overload_preserves_retry_after_for_native_protoco
 
 
 async def test_validation_error_uses_unified_model(api_app: FastAPI):
-    """请求参数校验失败应返回统一协议和明确的错误项结构。"""
+    """
+    请求参数校验失败应返回统一协议和明确的错误项结构。
+    """
     async with make_client(api_app) as client:
         response = await client.get(
             "/validated/not-an-integer",
@@ -528,7 +585,9 @@ async def test_validation_error_uses_unified_model(api_app: FastAPI):
 
 
 async def test_unhandled_exception_uses_localized_unified_response(api_app: FastAPI):
-    """未捕获异常应返回本地化统一响应且不泄露内部错误。"""
+    """
+    未捕获异常应返回本地化统一响应且不泄露内部错误。
+    """
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(
             app=api_app,
@@ -551,15 +610,13 @@ async def test_unhandled_exception_uses_localized_unified_response(api_app: Fast
 
 
 def test_openapi_declares_generic_success_and_error_models(api_app: FastAPI):
-    """OpenAPI 应展示业务数据类型及统一的 HTTP/422 错误响应结构。"""
+    """
+    OpenAPI 应展示业务数据类型及统一的 HTTP/422 错误响应结构。
+    """
     schema = api_app.openapi()
     operation = schema["paths"]["/items"]["get"]
-    success_ref = operation["responses"]["200"]["content"]["application/json"][
-        "schema"
-    ]["$ref"]
-    validation_ref = operation["responses"]["422"]["content"][
-        "application/json"
-    ]["schema"]["$ref"]
+    success_ref = operation["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+    validation_ref = operation["responses"]["422"]["content"]["application/json"]["schema"]["$ref"]
 
     assert success_ref.endswith("/Response_list_Item__")
     assert validation_ref.endswith("/Response_list_ValidationIssue__")
@@ -569,26 +626,26 @@ def test_openapi_declares_generic_success_and_error_models(api_app: FastAPI):
 
 
 async def test_openapi_marker_keeps_oauth_payload_at_top_level(api_app: FastAPI):
-    """显式原生标记应保留 OAuth 等标准协议的顶层字段及模型。"""
+    """
+    显式原生标记应保留 OAuth 等标准协议的顶层字段及模型。
+    """
     async with make_client(api_app) as client:
         response = await client.get("/oauth-token")
 
     operation = api_app.openapi()["paths"]["/oauth-token"]["get"]
-    schema_ref = operation["responses"]["200"]["content"]["application/json"][
-        "schema"
-    ]["$ref"]
+    schema_ref = operation["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
 
     assert response.json() == {"id": 3}
     assert schema_ref.endswith("/Item")
     assert operation[RAW_RESPONSE_OPENAPI_KEY] is True
-    validation_ref = operation["responses"]["422"]["content"][
-        "application/json"
-    ]["schema"]["$ref"]
+    validation_ref = operation["responses"]["422"]["content"]["application/json"]["schema"]["$ref"]
     assert validation_ref.endswith("/Response_list_ValidationIssue__")
 
 
 def test_response_localizes_zh_en_and_falls_back_to_source():
-    """Response 应支持中英文上下文，未知文案按原文回退。"""
+    """
+    Response 应支持中英文上下文，未知文案按原文回退。
+    """
     zh_token = LocaleHelper.set_current_locale("zh-CN")
     try:
         zh_response = Response[None](success=False, message="用户名或密码错误")
@@ -608,7 +665,9 @@ def test_response_localizes_zh_en_and_falls_back_to_source():
 
 
 def test_response_defaults_are_serialized_despite_required_openapi_fields():
-    """省略默认值构造仍应在序列化结果中完整输出三块结构。"""
+    """
+    省略默认值构造仍应在序列化结果中完整输出三块结构。
+    """
     response = Response[None](success=True)
 
     assert response.model_dump() == {
@@ -624,13 +683,17 @@ def test_response_defaults_are_serialized_despite_required_openapi_fields():
 
 
 def test_response_rejects_fields_outside_unified_protocol():
-    """统一响应顶层只允许 success、message、data 三个字段。"""
+    """
+    统一响应顶层只允许 success、message、data 三个字段。
+    """
     with pytest.raises(ValidationError):
         Response[None](success=True, message_i18n="unexpected")
 
 
 def test_v1_routes_use_response_route_except_native_protocols():
-    """v1 普通接口应使用统一路由，标准协议路由保持原生实现。"""
+    """
+    v1 普通接口应使用统一路由，标准协议路由保持原生实现。
+    """
     native_paths = {
         "/openai/v1/models",
         "/openai/v1/chat/completions",
@@ -638,14 +701,13 @@ def test_v1_routes_use_response_route_except_native_protocols():
         "/anthropic/v1/messages",
     }
 
-    assert all(
-        isinstance(route, ResponseAPIRoute) or path in native_paths
-        for path, route in _v1_compat_routes()
-    )
+    assert all(isinstance(route, ResponseAPIRoute) or path in native_paths for path, route in _v1_compat_routes())
 
 
 def test_v1_json_routes_have_concrete_data_models():
-    """普通 v1 JSON 路由禁止未参数化、Any 或通用 JSON 顶层输出模型。"""
+    """
+    普通 v1 JSON 路由禁止未参数化、Any 或通用 JSON 顶层输出模型。
+    """
     weak_routes = []
     for path, route in _v1_compat_routes():
         response_model = route.response_model
@@ -663,7 +725,9 @@ def test_v1_json_routes_have_concrete_data_models():
 
 
 def test_v1_model_free_routes_match_audited_native_allowlist():
-    """无响应模型仅允许固定的协议、流、文件、图片、HTML 与 204 路由。"""
+    """
+    无响应模型仅允许固定的协议、流、文件、图片、HTML 与 204 路由。
+    """
     expected_routes = {
         ("/message/", "incoming_verify"),
         ("/message/agent/file/{file_id}", "download_web_agent_file"),
@@ -703,7 +767,9 @@ def test_v1_model_free_routes_match_audited_native_allowlist():
 
 
 def test_native_protocol_openapi_has_explicit_response_schemas():
-    """OpenAI、Anthropic 与 MCP 原生协议响应必须在 OpenAPI 中明确建模。"""
+    """
+    OpenAI、Anthropic 与 MCP 原生协议响应必须在 OpenAPI 中明确建模。
+    """
     from app.factory import create_app
     from app.startup.initializers.routers import init_routers
 
@@ -718,38 +784,32 @@ def test_native_protocol_openapi_has_explicit_response_schemas():
     }
 
     for (path, method), error_model in operations.items():
-        success_content = schema["paths"][path][method]["responses"]["200"][
-            "content"
-        ]
+        success_content = schema["paths"][path][method]["responses"]["200"]["content"]
         response_schema = success_content["application/json"]["schema"]
         assert response_schema
         if path.endswith(("/chat/completions", "/messages")):
-            assert success_content["text/event-stream"]["schema"] == {
-                "type": "string"
-            }
+            assert success_content["text/event-stream"]["schema"] == {"type": "string"}
         for status_code in ("400", "401", "422", "500", "503"):
-            error_schema = schema["paths"][path][method]["responses"][status_code][
-                "content"
-            ]["application/json"]["schema"]
+            error_schema = schema["paths"][path][method]["responses"][status_code]["content"]["application/json"][
+                "schema"
+            ]
             assert error_schema["$ref"].endswith(f"/{error_model}")
 
-    mcp_schema = schema["paths"]["/api/v1/mcp"]["post"]["responses"]["200"][
-        "content"
-    ]["application/json"]["schema"]
+    mcp_schema = schema["paths"]["/api/v1/mcp"]["post"]["responses"]["200"]["content"]["application/json"]["schema"]
     assert len(mcp_schema["anyOf"]) == 2
     post_responses = schema["paths"]["/api/v1/mcp"]["post"]["responses"]
     delete_responses = schema["paths"]["/api/v1/mcp"]["delete"]["responses"]
     assert delete_responses["204"] == {"description": "MCP 会话已终止"}
     for status_code in ("400", "401", "403", "404", "409", "422", "500"):
         for responses in (post_responses, delete_responses):
-            error_ref = responses[status_code]["content"]["application/json"][
-                "schema"
-            ]["$ref"]
+            error_ref = responses[status_code]["content"]["application/json"]["schema"]["$ref"]
             assert error_ref.endswith("/McpJsonRpcError")
 
 
 async def test_native_protocol_validation_errors_keep_native_shapes():
-    """OpenAI 与 Anthropic 的请求校验错误应保持各自协议的错误结构。"""
+    """
+    OpenAI 与 Anthropic 的请求校验错误应保持各自协议的错误结构。
+    """
     from app.factory import create_app
     from app.startup.initializers.routers import init_routers
 
@@ -779,9 +839,7 @@ async def test_native_protocol_validation_errors_keep_native_shapes():
         }
     }
     assert openai_responses_response.status_code == 422
-    assert openai_responses_response.json()["error"]["type"] == (
-        "invalid_request_error"
-    )
+    assert openai_responses_response.json()["error"]["type"] == ("invalid_request_error")
     assert openai_responses_response.json()["error"]["param"] == "input"
     assert anthropic_response.status_code == 422
     assert anthropic_response.json() == {
@@ -794,7 +852,9 @@ async def test_native_protocol_validation_errors_keep_native_shapes():
 
 
 async def test_mcp_root_auth_error_keeps_jsonrpc_shape():
-    """MCP 根端点的依赖异常应保持 JSON-RPC，REST 子端点仍由统一协议处理。"""
+    """
+    MCP 根端点的依赖异常应保持 JSON-RPC，REST 子端点仍由统一协议处理。
+    """
     from app.factory import create_app
     from app.startup.initializers.routers import init_routers
 
@@ -815,11 +875,15 @@ async def test_mcp_root_auth_error_keeps_jsonrpc_shape():
 
 
 async def test_native_ai_http_and_unhandled_errors_keep_protocol_shapes():
-    """兼容协议的依赖异常与未捕获异常都应返回原生错误体。"""
+    """
+    兼容协议的依赖异常与未捕获异常都应返回原生错误体。
+    """
     from starlette.requests import Request
 
     def request_for(path: str) -> Request:
-        """构造直接调用异常处理器所需的最小请求对象。"""
+        """
+        构造直接调用异常处理器所需的最小请求对象。
+        """
         return Request(
             {
                 "type": "http",
@@ -869,41 +933,34 @@ async def test_native_ai_http_and_unhandled_errors_keep_protocol_shapes():
 
 
 def test_servarr_and_cookiecloud_openapi_has_explicit_models():
-    """兼容协议成功响应必须显式建模，错误响应必须声明统一结构。"""
+    """
+    兼容协议成功响应必须显式建模，错误响应必须声明统一结构。
+    """
     from app.factory import create_app
     from app.startup.initializers.routers import init_routers
 
     app = create_app()
     init_routers(app)
     schema = app.openapi()
-    compatible_paths = [
-        path
-        for path in schema["paths"]
-        if path.startswith(("/api/v3", "/cookiecloud"))
-    ]
+    compatible_paths = [path for path in schema["paths"] if path.startswith(("/api/v3", "/cookiecloud"))]
 
     assert compatible_paths
     for path in compatible_paths:
         for operation in schema["paths"][path].values():
             success_response = operation["responses"].get("200")
             if success_response:
-                success_schemas = [
-                    content["schema"]
-                    for content in success_response.get("content", {}).values()
-                ]
+                success_schemas = [content["schema"] for content in success_response.get("content", {}).values()]
                 assert success_schemas and all(success_schemas)
             for status_code in ("400", "401", "403", "404", "409", "422", "500"):
                 error_response = operation["responses"][status_code]
-                error_schema = next(iter(error_response["content"].values()))[
-                    "schema"
-                ]
-                assert error_schema["$ref"].startswith(
-                    "#/components/schemas/Response_"
-                )
+                error_schema = next(iter(error_response["content"].values()))["schema"]
+                assert error_schema["$ref"].startswith("#/components/schemas/Response_")
 
 
 def test_all_openapi_error_responses_use_json_schemas():
-    """所有普通与原生协议错误响应都应在文档中声明 JSON 媒体类型和结构。"""
+    """
+    所有普通与原生协议错误响应都应在文档中声明 JSON 媒体类型和结构。
+    """
     from app.factory import create_app
     from app.startup.initializers.routers import init_routers
 
@@ -920,9 +977,7 @@ def test_all_openapi_error_responses_use_json_schemas():
             for status_code, response in operation["responses"].items():
                 if not str(status_code).startswith(("4", "5")):
                     continue
-                json_schema = response.get("content", {}).get(
-                    "application/json", {}
-                ).get("schema")
+                json_schema = response.get("content", {}).get("application/json", {}).get("schema")
                 if not json_schema:
                     invalid_responses.append((path, method, status_code))
 
@@ -930,24 +985,22 @@ def test_all_openapi_error_responses_use_json_schemas():
 
 
 def test_host_routes_share_default_error_response_fields():
-    """全部统一响应路由的默认错误响应共用同一组字段，路由声明仍保留完整的错误模型。"""
-    routes = [
-        route
-        for _, route in _v1_compat_routes()
-        if isinstance(route, ResponseAPIRoute)
-    ]
+    """
+    全部统一响应路由的默认错误响应共用同一组字段，路由声明仍保留完整的错误模型。
+    """
+    routes = [route for _, route in _v1_compat_routes() if isinstance(route, ResponseAPIRoute)]
     assert len(routes) > 100
 
     for status, spec in ERROR_RESPONSES.items():
-        default_routes = [
-            route for route in routes if route.responses.get(status) is spec
-        ]
+        default_routes = [route for route in routes if route.responses.get(status) is spec]
         assert default_routes, status
         assert len({id(route.response_fields[status]) for route in default_routes}) == 1
 
 
 class _PerRouteErrorResponseRoute(ResponseAPIRoute):
-    """对照组：按 FastAPI 原生方式为每个路由单独创建错误响应字段。"""
+    """
+    对照组：按 FastAPI 原生方式为每个路由单独创建错误响应字段。
+    """
 
     @staticmethod
     def _merge_error_responses(responses):
@@ -960,7 +1013,9 @@ class _PerRouteErrorResponseRoute(ResponseAPIRoute):
 
 
 def _error_response_openapi(route_class: type[APIRoute]) -> dict[str, Any]:
-    """构造包含默认错误响应和端点自定义 404 的最小应用并返回 OpenAPI。"""
+    """
+    构造包含默认错误响应和端点自定义 404 的最小应用并返回 OpenAPI。
+    """
     app = FastAPI()
     app.router.route_class = route_class
     router = APIRouter(route_class=route_class)
@@ -982,7 +1037,9 @@ def _error_response_openapi(route_class: type[APIRoute]) -> dict[str, Any]:
 
 
 def test_shared_error_response_fields_keep_openapi_identical():
-    """共用错误响应字段后生成的 OpenAPI 与逐路由建字段完全一致，端点自定义响应不受影响。"""
+    """
+    共用错误响应字段后生成的 OpenAPI 与逐路由建字段完全一致，端点自定义响应不受影响。
+    """
     shared = _error_response_openapi(ResponseAPIRoute)
     per_route = _error_response_openapi(_PerRouteErrorResponseRoute)
 
@@ -992,7 +1049,9 @@ def test_shared_error_response_fields_keep_openapi_identical():
 
 
 def test_openapi_success_models_have_no_implicit_empty_nested_schemas():
-    """2xx 响应可达模型不得包含裸 Any、裸数组或未声明值类型的开放映射。"""
+    """
+    2xx 响应可达模型不得包含裸 Any、裸数组或未声明值类型的开放映射。
+    """
     from app.factory import create_app
     from app.startup.initializers.routers import init_routers
 
@@ -1025,21 +1084,16 @@ def test_openapi_success_models_have_no_implicit_empty_nested_schemas():
     violations = []
 
     def visit(node: Any, component: str, location: str) -> None:
-        """递归检查单个组件节点中的隐式弱类型。"""
+        """
+        递归检查单个组件节点中的隐式弱类型。
+        """
         if not isinstance(node, dict):
             return
         if node == {} and component not in allowed_empty_components:
             violations.append((component, location, "empty"))
-        if (
-            node.get("type") == "array"
-            and "items" not in node
-            and "prefixItems" not in node
-        ):
+        if node.get("type") == "array" and "items" not in node and "prefixItems" not in node:
             violations.append((component, location, "untyped-array"))
-        if (
-            node.get("additionalProperties") is True
-            and component not in allowed_open_components
-        ):
+        if node.get("additionalProperties") is True and component not in allowed_open_components:
             violations.append((component, location, "open-object"))
         if (
             node.get("type") == "object"
@@ -1064,11 +1118,15 @@ def test_openapi_success_models_have_no_implicit_empty_nested_schemas():
 
 
 def test_plugin_routes_only_register_v1(monkeypatch):
-    """插件动态路由只注册 v1 地址，并显式绕过主程序响应路由。"""
+    """
+    插件动态路由只注册 v1 地址，并显式绕过主程序响应路由。
+    """
     from app.application.plugin import routes as plugin_routes
 
     class FakeApp:
-        """记录动态注册路径的应用桩。"""
+        """
+        记录动态注册路径的应用桩。
+        """
 
         def __init__(self):
             self.routes = []
@@ -1077,18 +1135,26 @@ def test_plugin_routes_only_register_v1(monkeypatch):
             self.router = self
 
         def add_api_route(self, **kwargs):
-            """记录新增的路由路径。"""
+            """
+            记录新增的路由路径。
+            """
             self.routes.append(SimpleNamespace(path=kwargs["path"]))
             self.route_options.append(kwargs)
 
         def setup(self):
-            """模拟 FastAPI 路由重建。"""
+            """
+            模拟 FastAPI 路由重建。
+            """
 
     class FakePluginManager:
-        """返回单个测试插件 API 的管理器桩。"""
+        """
+        返回单个测试插件 API 的管理器桩。
+        """
 
         def get_plugin_apis(self, plugin_id):
-            """返回测试插件 API。"""
+            """
+            返回测试插件 API。
+            """
             assert plugin_id == "DemoPlugin"
             return [
                 {
@@ -1100,20 +1166,20 @@ def test_plugin_routes_only_register_v1(monkeypatch):
 
     fake_app = FakeApp()
     plugin_manager = FakePluginManager()
-    plugin_routes.configure_plugin_routes(FastAPIDynamicRouteRegistry(
-        app=fake_app,
-        plugin_ids=lambda: ["DemoPlugin"],
-        plugin_apis=plugin_manager.get_plugin_apis,
-        verify_token=lambda: None,
-        verify_apikey=lambda: None,
-        prefix="/api/v1/plugin",
-        log=SimpleNamespace(debug=lambda *_args: None, error=lambda *_args: None),
-    ))
+    plugin_routes.configure_plugin_routes(
+        FastAPIDynamicRouteRegistry(
+            app=fake_app,
+            plugin_ids=lambda: ["DemoPlugin"],
+            plugin_apis=plugin_manager.get_plugin_apis,
+            verify_token=lambda: None,
+            verify_apikey=lambda: None,
+            prefix="/api/v1/plugin",
+            log=SimpleNamespace(debug=lambda *_args: None, error=lambda *_args: None),
+        )
+    )
 
     plugin_routes.register_plugin_api("DemoPlugin")
-    assert [route.path for route in fake_app.routes] == [
-        "/api/v1/plugin/DemoPlugin/health"
-    ]
+    assert [route.path for route in fake_app.routes] == ["/api/v1/plugin/DemoPlugin/health"]
     assert fake_app.route_options[0]["route_class_override"] is APIRoute
 
     plugin_routes.remove_plugin_api("DemoPlugin")
@@ -1121,7 +1187,9 @@ def test_plugin_routes_only_register_v1(monkeypatch):
 
 
 async def test_plugin_routes_ignore_included_router_wrappers():
-    """动态插件路由更新应跳过 FastAPI include_router 的内部包装器。"""
+    """
+    动态插件路由更新应跳过 FastAPI include_router 的内部包装器。
+    """
     from app.application.plugin import routes as plugin_routes
 
     app = FastAPI()
@@ -1129,13 +1197,17 @@ async def test_plugin_routes_ignore_included_router_wrappers():
 
     @included_router.get("/health")
     def included_health() -> dict[str, bool]:
-        """返回被聚合路由的健康状态。"""
+        """
+        返回被聚合路由的健康状态。
+        """
         return {"ok": True}
 
     app.include_router(included_router)
 
     async def plugin_dependency() -> None:
-        """提供用于验证动态路由依赖隔离的测试依赖。"""
+        """
+        提供用于验证动态路由依赖隔离的测试依赖。
+        """
 
     source_dependencies = [Depends(plugin_dependency)]
     plugin_api = {
@@ -1145,25 +1217,23 @@ async def test_plugin_routes_ignore_included_router_wrappers():
         "allow_anonymous": True,
         "dependencies": source_dependencies,
     }
-    plugin_routes.configure_plugin_routes(FastAPIDynamicRouteRegistry(
-        app=app,
-        plugin_ids=lambda: ["DemoPlugin"],
-        plugin_apis=lambda _plugin_id: [plugin_api],
-        verify_token=lambda: None,
-        verify_apikey=lambda: None,
-        prefix="/api/v1/plugin",
-        log=SimpleNamespace(debug=lambda *_args: None, error=lambda *_args: None),
-    ))
+    plugin_routes.configure_plugin_routes(
+        FastAPIDynamicRouteRegistry(
+            app=app,
+            plugin_ids=lambda: ["DemoPlugin"],
+            plugin_apis=lambda _plugin_id: [plugin_api],
+            verify_token=lambda: None,
+            verify_apikey=lambda: None,
+            prefix="/api/v1/plugin",
+            log=SimpleNamespace(debug=lambda *_args: None, error=lambda *_args: None),
+        )
+    )
 
     plugin_routes.register_plugin_api("DemoPlugin")
     plugin_routes.register_plugin_api("DemoPlugin")
 
     registered_path = "/api/v1/plugin/DemoPlugin/health"
-    registered_routes = [
-        route
-        for route in app.routes
-        if getattr(route, "path", None) == registered_path
-    ]
+    registered_routes = [route for route in app.routes if getattr(route, "path", None) == registered_path]
     assert len(registered_routes) == 1
     assert registered_routes[0].dependencies == plugin_api["dependencies"]
     assert registered_routes[0].dependencies is not plugin_api["dependencies"]
@@ -1177,16 +1247,16 @@ async def test_plugin_routes_ignore_included_router_wrappers():
         assert response.json() == {"plugin": True}
 
         plugin_routes.remove_plugin_api("DemoPlugin")
-        assert not any(
-            getattr(route, "path", None) == registered_path for route in app.routes
-        )
+        assert not any(getattr(route, "path", None) == registered_path for route in app.routes)
         removed_response = await client.get(registered_path)
 
     assert removed_response.status_code == 404
 
 
 async def test_plugin_route_updates_run_on_application_event_loop() -> None:
-    """线程侧插件变更必须回投主 loop 后再修改 FastAPI 路由表。"""
+    """
+    线程侧插件变更必须回投主 loop 后再修改 FastAPI 路由表。
+    """
     app = FastAPI()
     main_thread = threading.get_ident()
     mutation_threads: list[int] = []
@@ -1201,12 +1271,14 @@ async def test_plugin_route_updates_run_on_application_event_loop() -> None:
     registry = FastAPIDynamicRouteRegistry(
         app=app,
         plugin_ids=lambda: ["DemoPlugin"],
-        plugin_apis=lambda _plugin_id: [{
-            "path": "/DemoPlugin/health",
-            "endpoint": lambda: {"ok": True},
-            "methods": ["GET"],
-            "allow_anonymous": True,
-        }],
+        plugin_apis=lambda _plugin_id: [
+            {
+                "path": "/DemoPlugin/health",
+                "endpoint": lambda: {"ok": True},
+                "methods": ["GET"],
+                "allow_anonymous": True,
+            }
+        ],
         verify_token=lambda: None,
         verify_apikey=lambda: None,
         prefix="/api/v1/plugin",
@@ -1218,14 +1290,13 @@ async def test_plugin_route_updates_run_on_application_event_loop() -> None:
 
     assert mutation_threads
     assert set(mutation_threads) == {main_thread}
-    assert any(
-        getattr(route, "path", None) == "/api/v1/plugin/DemoPlugin/health"
-        for route in app.routes
-    )
+    assert any(getattr(route, "path", None) == "/api/v1/plugin/DemoPlugin/health" for route in app.routes)
 
 
 def test_plugin_route_update_rejects_stopped_application_loop() -> None:
-    """生产 loop 已释放时不得退回调用线程修改路由。"""
+    """
+    生产 loop 已释放时不得退回调用线程修改路由。
+    """
     registry = FastAPIDynamicRouteRegistry(
         app=FastAPI(),
         plugin_ids=lambda: [],
@@ -1242,7 +1313,9 @@ def test_plugin_route_update_rejects_stopped_application_loop() -> None:
 
 
 async def test_plugin_route_update_abandons_late_application_loop_callback() -> None:
-    """超时前未开始的回调可以迟到执行，但不得再写入路由或污染事件循环。"""
+    """
+    超时前未开始的回调可以迟到执行，但不得再写入路由或污染事件循环。
+    """
     app = FastAPI()
     loop = asyncio.get_running_loop()
     plugin_apis = MagicMock(return_value=[])
@@ -1272,26 +1345,27 @@ async def test_plugin_route_update_abandons_late_application_loop_callback() -> 
         loop.set_exception_handler(previous_handler)
 
     plugin_apis.assert_not_called()
-    assert not any(
-        getattr(route, "path", None) == "/api/v1/plugin/DemoPlugin/health"
-        for route in app.routes
-    )
+    assert not any(getattr(route, "path", None) == "/api/v1/plugin/DemoPlugin/health" for route in app.routes)
     assert loop_errors == []
 
 
 async def test_started_plugin_route_update_waits_for_terminal_result() -> None:
-    """回调开始后即使超过 admission 预算，也不得先报失败再迟到写入。"""
+    """
+    回调开始后即使超过 admission 预算，也不得先报失败再迟到写入。
+    """
     app = FastAPI()
     loop = asyncio.get_running_loop()
 
     def delayed_plugin_apis(_plugin_id: str) -> list[dict]:
         time.sleep(0.05)
-        return [{
-            "path": "/DemoPlugin/health",
-            "endpoint": lambda: {"ok": True},
-            "methods": ["GET"],
-            "allow_anonymous": True,
-        }]
+        return [
+            {
+                "path": "/DemoPlugin/health",
+                "endpoint": lambda: {"ok": True},
+                "methods": ["GET"],
+                "allow_anonymous": True,
+            }
+        ]
 
     registry = FastAPIDynamicRouteRegistry(
         app=app,
@@ -1307,31 +1381,36 @@ async def test_started_plugin_route_update_waits_for_terminal_result() -> None:
 
     await asyncio.to_thread(registry.update, "DemoPlugin", "add")
 
-    assert sum(
-        getattr(route, "path", None) == "/api/v1/plugin/DemoPlugin/health"
-        for route in app.routes
-    ) == 1
+    assert sum(getattr(route, "path", None) == "/api/v1/plugin/DemoPlugin/health" for route in app.routes) == 1
 
 
 def test_response_router_uses_response_route_class():
-    """统一路由器应默认创建统一响应路由。"""
+    """
+    统一路由器应默认创建统一响应路由。
+    """
     router = ResponseAPIRouter()
 
     @router.get("/health", response_model=bool)
     def health() -> bool:
-        """返回测试健康状态。"""
+        """
+        返回测试健康状态。
+        """
         return True
 
     assert isinstance(router.routes[0], ResponseAPIRoute)
 
 
 def test_dynamic_host_route_without_annotation_uses_recursive_json_model():
-    """主应用动态路由未声明模型时仍应使用统一响应模型。"""
+    """
+    主应用动态路由未声明模型时仍应使用统一响应模型。
+    """
     app = FastAPI()
     app.router.route_class = ResponseAPIRoute
 
     def plugin_endpoint():
-        """模拟未声明返回注解的插件动态接口。"""
+        """
+        模拟未声明返回注解的插件动态接口。
+        """
         return {"ok": True}
 
     app.add_api_route("/plugin", plugin_endpoint, methods=["GET"])
@@ -1342,24 +1421,34 @@ def test_dynamic_host_route_without_annotation_uses_recursive_json_model():
 
 
 def build_plugin_api_app(monkeypatch) -> FastAPI:
-    """构造覆盖插件自由返回类型的动态路由测试应用。"""
+    """
+    构造覆盖插件自由返回类型的动态路由测试应用。
+    """
     from app.application.plugin import routes as plugin_routes
 
     class PluginPayload(BaseModel):
-        """插件自行声明的响应模型。"""
+        """
+        插件自行声明的响应模型。
+        """
 
-        ok: bool
+        ok: bool = Field(description="插件返回的业务成功标志")
 
     def dict_endpoint() -> dict[str, bool]:
-        """返回插件自定义字典。"""
+        """
+        返回插件自定义字典。
+        """
         return {"ok": True}
 
     def model_endpoint() -> PluginPayload:
-        """返回插件自定义模型。"""
+        """
+        返回插件自定义模型。
+        """
         return PluginPayload(ok=True)
 
     def response_endpoint() -> JSONResponse:
-        """返回插件自定义状态码和响应头。"""
+        """
+        返回插件自定义状态码和响应头。
+        """
         return JSONResponse(
             {"accepted": True},
             status_code=202,
@@ -1367,22 +1456,33 @@ def build_plugin_api_app(monkeypatch) -> FastAPI:
         )
 
     async def stream_endpoint() -> StreamingResponse:
-        """返回插件自定义事件流。"""
+        """
+        返回插件自定义事件流。
+        """
+
         async def stream_source():
-            """生成插件测试事件。"""
+            """
+            生成插件测试事件。
+            """
             yield "data: plugin\n\n"
 
         return StreamingResponse(stream_source(), media_type="text/event-stream")
 
     def empty_endpoint() -> StarletteResponse:
-        """返回插件自定义空响应。"""
+        """
+        返回插件自定义空响应。
+        """
         return StarletteResponse(status_code=204)
 
     class FakePluginManager:
-        """返回覆盖插件响应边界的路由声明。"""
+        """
+        返回覆盖插件响应边界的路由声明。
+        """
 
         def get_plugin_apis(self, plugin_id):
-            """返回测试插件 API。"""
+            """
+            返回测试插件 API。
+            """
             assert plugin_id == "DemoPlugin"
             common = {"methods": ["GET"], "allow_anonymous": True}
             return [
@@ -1420,21 +1520,25 @@ def build_plugin_api_app(monkeypatch) -> FastAPI:
     app = FastAPI()
     app.router.route_class = ResponseAPIRoute
     plugin_manager = FakePluginManager()
-    plugin_routes.configure_plugin_routes(FastAPIDynamicRouteRegistry(
-        app=app,
-        plugin_ids=lambda: ["DemoPlugin"],
-        plugin_apis=plugin_manager.get_plugin_apis,
-        verify_token=lambda: None,
-        verify_apikey=lambda: None,
-        prefix="/api/v1/plugin",
-        log=SimpleNamespace(debug=lambda *_args: None, error=lambda *_args: None),
-    ))
+    plugin_routes.configure_plugin_routes(
+        FastAPIDynamicRouteRegistry(
+            app=app,
+            plugin_ids=lambda: ["DemoPlugin"],
+            plugin_apis=plugin_manager.get_plugin_apis,
+            verify_token=lambda: None,
+            verify_apikey=lambda: None,
+            prefix="/api/v1/plugin",
+            log=SimpleNamespace(debug=lambda *_args: None, error=lambda *_args: None),
+        )
+    )
     plugin_routes.register_plugin_api("DemoPlugin")
     return app
 
 
 async def test_plugin_dynamic_routes_preserve_raw_runtime_responses(monkeypatch):
-    """插件动态 API 应完整保留自行选择的响应体、状态码和流。"""
+    """
+    插件动态 API 应完整保留自行选择的响应体、状态码和流。
+    """
     app = build_plugin_api_app(monkeypatch)
 
     async with make_client(app) as client:
@@ -1455,13 +1559,13 @@ async def test_plugin_dynamic_routes_preserve_raw_runtime_responses(monkeypatch)
 
 
 def test_plugin_dynamic_routes_keep_plugin_openapi_model_raw(monkeypatch):
-    """插件声明的模型应直接进入 OpenAPI，不得套入主程序 Response。"""
+    """
+    插件声明的模型应直接进入 OpenAPI，不得套入主程序 Response。
+    """
     app = build_plugin_api_app(monkeypatch)
 
     operation = app.openapi()["paths"]["/api/v1/plugin/DemoPlugin/model"]["get"]
-    response_schema = operation["responses"]["200"]["content"][
-        "application/json"
-    ]["schema"]
+    response_schema = operation["responses"]["200"]["content"]["application/json"]["schema"]
 
     assert response_schema == {
         "$ref": "#/components/schemas/PluginPayload",
@@ -1469,12 +1573,16 @@ def test_plugin_dynamic_routes_keep_plugin_openapi_model_raw(monkeypatch):
 
 
 def test_dynamic_bare_response_uses_recursive_json_without_double_wrapping():
-    """动态插件声明裸 Response 时应补齐递归 JSON 类型且不重复封装。"""
+    """
+    动态插件声明裸 Response 时应补齐递归 JSON 类型且不重复封装。
+    """
     router = ResponseAPIRouter()
 
     @router.get("/plugin", response_model=Response)
     def plugin_endpoint() -> Response:
-        """模拟返回统一响应但未参数化 data 的插件接口。"""
+        """
+        模拟返回统一响应但未参数化 data 的插件接口。
+        """
         return Response(success=True, data={"ok": True})
 
     route = router.routes[0]

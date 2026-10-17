@@ -1,4 +1,6 @@
-"""插件宿主运行时依赖聚合与构造。"""
+"""
+插件宿主运行时依赖聚合与构造。
+"""
 
 from __future__ import annotations
 
@@ -46,23 +48,43 @@ from app.schemas.types import SystemConfigKey
 
 
 class PluginRuntimeHost(Protocol):
-    """声明运行时 owner 回调宿主生命周期门面的最小合同。"""
+    """
+    声明运行时 owner 回调宿主生命周期门面的最小合同。
+    """
 
     def reload_plugin(self, plugin_id: str) -> Any:
-        """重载指定插件。"""
+        """
+        重载指定插件。
+
+        :param plugin_id: 需要操作的插件实例标识
+        :return: 宿主完成重载后报告的插件运行状态
+        """
         ...
 
     def remove_plugin(self, plugin_id: str) -> Any:
-        """移除指定插件运行实例。"""
+        """
+        移除指定插件运行实例。
+
+        :param plugin_id: 需要操作的插件实例标识
+        :return: 宿主移除调用的结果；当前宿主实现不返回业务数据
+        """
         ...
 
     @staticmethod
     def get_plugin_remote_entry(plugin_id: str, page: str) -> str:
-        """构造插件远程页面入口。"""
+        """
+        构造插件远程页面入口。
+
+        :param plugin_id: 需要操作的插件实例标识
+        :param page: 插件远程页面名称
+        :return: 面向该插件页面的远程入口地址
+        """
         ...
 
     def _run_file_watcher(self) -> None:
-        """运行插件文件监控循环。"""
+        """
+        运行插件文件监控循环。
+        """
         ...
 
     def get_plugins_from_market(
@@ -71,7 +93,14 @@ class PluginRuntimeHost(Protocol):
         package_version: Optional[str] = None,
         force: bool = False,
     ) -> Optional[list[Any]]:
-        """读取指定市场目录。"""
+        """
+        读取指定市场目录。
+
+        :param market: 插件市场地址
+        :param package_version: 限定的插件代际；为 None 时按当前主程序兼容范围读取
+        :param force: 是否跳过目录缓存并重新获取，默认使用缓存
+        :return: 可用的插件目录条目；获取失败或没有可用目录时可返回 None
+        """
         ...
 
     async def async_get_plugins_from_market(
@@ -80,7 +109,14 @@ class PluginRuntimeHost(Protocol):
         package_version: Optional[str] = None,
         force: bool = False,
     ) -> Optional[list[Any]]:
-        """异步读取指定市场目录。"""
+        """
+        异步读取指定市场目录。
+
+        :param market: 插件市场地址
+        :param package_version: 限定的插件代际；为 None 时按当前主程序兼容范围读取
+        :param force: 是否跳过目录缓存并重新获取，默认使用缓存
+        :return: 等待后取得插件目录条目；获取失败或没有可用目录时可返回 None
+        """
         ...
 
 
@@ -91,7 +127,25 @@ PluginRemoteEntryBuilder = Callable[[str, str], str]
 
 @dataclass(frozen=True, slots=True)
 class PluginRuntimeEnvironment:
-    """保存由组合根提供的插件运行时外部端口。"""
+    """
+    保存由组合根提供的插件运行时外部端口。
+
+    :param plugins_root: 插件源码根目录
+    :param storage: 取得插件配置和数据存储服务的工厂
+    :param instance_directory: 取得插件实例目录的工厂
+    :param system: 取得已注入系统服务的工厂
+    :param database: 取得插件持久化服务的工厂
+    :param catalog_factory: 按运行环境创建插件目录的工厂
+    :param import_preparer: 导入插件前准备依赖资源的回调
+    :param import_scanner: 扫描插件导入依赖的回调
+    :param auth_level: 读取当前授权级别的回调
+    :param remote_entry: 构造插件远程页面入口的回调
+    :param development: 读取是否启用开发模式的回调
+    :param logger: 组合根注入的日志门面
+    :param set_default_target: 设置插件默认调用实例的回调，返回是否发生变更
+    :param clear_default_target: 清除插件默认调用实例的回调
+    :param runtime_declaration: 读取插件运行时声明的回调
+    """
 
     plugins_root: Path
     storage: Callable[[], PluginStorage]
@@ -105,17 +159,39 @@ class PluginRuntimeEnvironment:
     remote_entry: PluginRemoteEntryBuilder
     development: Callable[[], bool]
     logger: Any
-    # 默认调用目标的置位与清除必须在库层一个事务内清旧置新，因而由组合根直接给出
-    # 原子写入端口，不经过按实例逐行读写的实例表端口
     set_default_target: Callable[[str, str], bool]
     clear_default_target: Callable[[str], None]
-    # 运行时兼容门禁的唯一判据来源：安装时随载荷提交的 package 运行时声明快照
     runtime_declaration: PluginRuntimeDeclarationReader
 
 
 @dataclass(frozen=True, slots=True)
 class PluginRuntime:
-    """聚合一个 PluginManager 生命周期内唯一的职责 owner。"""
+    """
+    聚合一个 PluginManager 生命周期内唯一的职责 owner。
+
+    :param registry: 当前生命周期的插件实例注册表
+    :param instances: 插件实例目录存储
+    :param configs: 插件配置存储
+    :param access: 插件访问权限策略
+    :param catalog: 本地与远程插件目录门面
+    :param paths: 插件路径解析服务
+    :param local_sync: 本地仓库源码同步服务
+    :param monitor: 源码变化监控控制器
+    :param admission: 插件变更的并发准入控制
+    :param dependencies: 插件依赖检查和安装服务
+    :param loader: 插件类加载与实例构造服务
+    :param tools: 插件工具目录
+    :param lifecycle: 插件启动、停止和重载服务
+    :param metadata: 插件元数据映射服务
+    :param sync: 插件目录与运行状态同步服务
+    :param clone: 插件分身创建和恢复服务
+    :param log_level: 插件实例日志等级控制
+    :param default_target: 插件默认调用目标控制
+    :param projection: 插件运行信息展示投影
+    :param classification: 插件媒体分类来源注册表
+    :param recent_local_sync: 各插件最近一次本地同步的时间记录
+    :param system: 取得已注入系统服务的工厂
+    """
 
     registry: PluginRegistry
     instances: PluginInstanceStore
@@ -147,7 +223,9 @@ def build_plugin_runtime(
     *,
     tool_build_max_attempts: int,
 ) -> PluginRuntime:
-    """按依赖顺序构造唯一插件运行时，各业务能力仍由对应 owner 实现。"""
+    """
+    按依赖顺序构造唯一插件运行时，各业务能力仍由对应 owner 实现。
+    """
     registry = PluginRegistry()
     instances = PluginInstanceStore(
         storage=environment.storage,
@@ -178,7 +256,9 @@ def build_plugin_runtime(
     classification = PluginClassificationRegistry(environment.logger)
 
     def refresh_classification(plugin_id: str, instance: Any) -> None:
-        """读取插件当前媒体来源声明并替换其分类扩展注册。"""
+        """
+        读取插件当前媒体来源声明并替换其分类扩展注册。
+        """
         classification.remove(plugin_id)
         declarations = (
             instance.get_media_source() or []
@@ -192,7 +272,8 @@ def build_plugin_runtime(
         loadable_plugins: list[str],
         validator: Callable[[Any], bool],
     ) -> list[Any]:
-        """加载物理插件或虚拟实例，并保持持久化实例顺序。
+        """
+        加载物理插件或虚拟实例，并保持持久化实例顺序。
 
         带具体实例 ID 的定向装载同样认启用位。实例存储的读取口刻意返回全部在册行
         （含停用的），加载器在收到具体插件 ID 时也只按这个 ID 找目录、不看可装载
@@ -218,7 +299,9 @@ def build_plugin_runtime(
         return plugins
 
     def runtime_compatible(plugin_id: str) -> bool:
-        """按分身归一到源插件目录后判断运行时兼容性。"""
+        """
+        按分身归一到源插件目录后判断运行时兼容性。
+        """
         instance = instances.get(plugin_id)
         source_id = instance.source_plugin_id if instance else plugin_id
         return loader.is_runtime_compatible(source_id)
@@ -348,12 +431,15 @@ def build_plugin_runtime(
     )
 
     def source_plugin_id(plugin_id: str) -> str:
-        """把虚拟实例归一到持久化的物理源码插件。"""
+        """
+        把虚拟实例归一到持久化的物理源码插件。
+        """
         instance = instances.get(plugin_id)
         return instance.source_plugin_id if instance else plugin_id
 
     def plugin_registered(plugin_id: str) -> bool:
-        """判断插件是否在册：装过（安装清单里有）或留有持久化的实例行。
+        """
+        判断插件是否在册：装过（安装清单里有）或留有持久化的实例行。
 
         默认调用目标与实例日志等级这两个管理接口问的都是「这个插件还在不在册、能不能
         被管理」，因此共用这一个判据，而不能绑在运行期类注册表上：启动只把启用中的
@@ -382,7 +468,8 @@ def build_plugin_runtime(
         *,
         ignore_instance_row: bool = False,
     ) -> bool:
-        """判断一个候选实例 ID 是否已被占用。
+        """
+        判断一个候选实例 ID 是否已被占用。
 
         创建分身的判存与自动分配后缀共用这一个判据，自动分配因此不可能挑中一个手填
         时会被拒绝的 ID。四条依据各自覆盖一类占用者，缺一条就会让新分身顶掉一个真实

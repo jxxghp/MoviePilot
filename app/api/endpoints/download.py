@@ -1,3 +1,7 @@
+"""
+提供下载任务查询、控制和手动添加接口，保留当前用户与媒体身份。
+"""
+
 from typing import Annotated, Any, List, Optional, Union
 
 import anyio
@@ -130,7 +134,9 @@ def _resolve_add_media(
     music_type: MusicTargetEntityType | None,
     allow_unrecognized: bool,
 ) -> tuple[MetaBase | None, MediaInfo | MusicInfo | None, _SchemaResponse | None]:
-    """校验媒体身份并为无媒体信息下载构建识别上下文。"""
+    """
+    校验媒体身份并为无媒体信息下载构建识别上下文。
+    """
     normalized_music_type = normalize_music_type(music_type, allow_artist=False)
     if music_type is not None and not normalized_music_type:
         return (
@@ -269,13 +275,20 @@ def download_artist_collection(
     save_path: Annotated[str | None, Body()] = None,
     current_user: ApiPrincipal = Depends(get_current_active_user),
 ) -> Any:
-    """Add one artist-wide torrent without pretending that it is one album.
+    """
+    按艺术家身份添加一个合集种子，不将其伪装为单张专辑。
 
-    The artist identity remains available for history and subsequent collection
-    organization.  ``library_category`` is an intentional download-directory
-    classification snapshot: when resource category folders are enabled the
-    task starts under ``Artist Collection`` and therefore never needs an
-    out-of-band filesystem move that could break seeding.
+    艺术家身份保留到下载历史和后续合集整理中。library_category 是下载目录分类快照；
+    启用资源分类子目录时，任务直接下载到 Artist Collection 下，避免事后移动文件破坏做种。
+
+    :param artist_name: 艺术家名称，会去除首尾空白
+    :param artist_id: 对应音乐来源中的艺术家标识
+    :param media_source: 提供艺术家身份的音乐元数据来源
+    :param torrent_in: 待下载的种子信息
+    :param downloader: 指定下载器，None 使用默认选择
+    :param save_path: 指定下载目录，None 使用配置目录
+    :param current_user: 经过认证的操作用户，作为下载历史归属
+    :return: 下载添加结果，成功时包含下载任务标识
     """
     name = artist_name.strip()
     identity = artist_id.strip()
@@ -438,7 +451,9 @@ async def update_task(
     payload: _SchemaDownloadTaskUpdateRequest,
     _: ApiPrincipal = Depends(get_current_active_manage_user),
 ) -> _SchemaResponse[Any]:
-    """由管理用户执行下载任务启停、标签、限速、Tracker 和保存位置修改。"""
+    """
+    由管理用户执行下载任务启停、标签、限速、Tracker 和保存位置修改。
+    """
     chain = DownloadChain()
     service = DownloadTaskMutationService(
         list_torrents=chain.list_torrents,
@@ -471,7 +486,9 @@ async def classify_source(
     payload: _SchemaDownloadSourceClassificationRequest,
     _: ApiPrincipal = Depends(get_current_active_manage_user),
 ) -> _SchemaResponse[Any]:
-    """复用媒体识别链生成资源目录和根目录名，确认后仅通过下载器执行。"""
+    """
+    复用媒体识别链生成资源目录和根目录名，确认后仅通过下载器执行。
+    """
     chain = DownloadChain()
     try:
         data = await anyio.to_thread.run_sync(

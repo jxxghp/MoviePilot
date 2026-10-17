@@ -7,12 +7,18 @@
 pytest 是唯一运行入口。`tests/conftest.py` 在收集前完成隔离引导，因此任何方式启动 pytest 都会自动隔离。
 
 ```bash
-uv run --locked --no-sync pytest tests                              # 串行全量
-uv run --locked --no-sync pytest tests/test_xxx.py                  # 单文件
-uv run --locked --no-sync pytest tests/test_xxx.py::SomeTest::test_y   # 单用例
-uv run --locked --no-sync python tests/run.py                       # 默认按文件预计耗时均衡为 4 片并行跑全量
-uv run --locked --no-sync python tests/run.py --serial              # 串行全量，便于调试或生成覆盖率
-uv run --locked --no-sync python tests/run.py --shard 1/4           # 只跑指定分片，供 CI 复用
+# 串行全量
+uv run --locked --no-sync pytest tests
+# 单文件
+uv run --locked --no-sync pytest tests/test_xxx.py
+# 单用例
+uv run --locked --no-sync pytest tests/test_xxx.py::SomeTest::test_y
+# 默认按文件预计耗时均衡为 4 片并行跑全量
+uv run --locked --no-sync python tests/run.py
+# 串行全量，便于调试或生成覆盖率
+uv run --locked --no-sync python tests/run.py --serial
+# 只跑指定分片，供 CI 复用
+uv run --locked --no-sync python tests/run.py --shard 1/4
 ```
 
 `tests/run.py` 的 runner 参数只有 `--serial`、`--shard N/TOTAL` 和 `--exclude-architecture-gate`；其余参数保持原顺序
@@ -199,11 +205,20 @@ from app.schemas.types import MediaSource
 
 @pytest.fixture
 def sample_meta():
-    """构造一条可复用的识别元数据。"""
+    """
+    构造一条可复用的识别元数据。
+
+    :return: 包含示例标题和年份的媒体识别输入
+    """
     return MetaInfo(title="示例 (2020)")
 
 def test_recognize_prefers_explicit_identity(sample_meta, monkeypatch):
-    """显式媒体来源与原生 ID 时应优先精确识别，而非回退标题搜索。"""
+    """
+    验证指定媒体来源与原生标识时优先精确识别。
+
+    :param sample_meta: 待识别的示例媒体输入
+    :param monkeypatch: 隔离外部查询并在用例结束后恢复的测试夹具
+    """
     monkeypatch.setattr(SomeClient, "fetch", lambda *a, **k: FAKE_MOVIE)
     result = recognize(
         sample_meta,
@@ -257,6 +272,16 @@ def test_recognize_prefers_explicit_identity(sample_meta, monkeypatch):
   _orig = socket.getaddrinfo
   hits = []
   def _spy(host, *a, **k):
+      """
+      记录非本地主机的地址解析请求。
+
+      此探针只记录请求，仍调用真实解析函数；运行用例前须完成外部依赖隔离。
+
+      :param host: 待解析的主机名或地址
+      :param a: 原样传给地址解析函数的位置参数
+      :param k: 原样传给地址解析函数的关键字参数
+      :return: 原始地址解析函数的返回值
+      """
       if host not in ("127.0.0.1", "localhost", "::1"):
           hits.append(str(host))
       return _orig(host, *a, **k)
@@ -276,5 +301,5 @@ def test_recognize_prefers_explicit_identity(sample_meta, monkeypatch):
 - **跨仓观察**：`.github/workflows/architecture-observe.yml` 每周或手工检出官方插件仓最新 `main`，使用 `--check-plugins` 比较公开导入、Hook 和动态 API 契约。它只上传 `official-plugin-architecture-report.json`，不会自动刷新 fixture；语义变化必须人工审查后显式执行 `--write-plugins`。
 - **静态检查**：`.github/workflows/pylint.yml` 对指向 `v3` 的 PR、推送和手工触发运行 Pylint。PR/推送改动到的 Python 文件是硬门禁；`app/` 全量扫描保留为建议性 JSON 构建工件，存量告警不会掩盖或阻塞本次增量治理。
 - **PR 本地验证**：按上文「验证范围与维护者安排」选择 contributor 默认检查或已记录的维护者安排，统一处理证据复用与失败归属；需要断点、输出顺序或测试污染诊断时使用 `--serial`。确认受影响路径与零真实出站，准确标注验证范围；本地执行安排不改变 CI 的全量验证与复用合同。
-- **覆盖率门禁**：`Unit Tests with Coverage` jobs 会在 `v3` 的 PR、push 和手工触发中通过 `tests/run.py --exclude-architecture-gate --shard N/6` 并行采集覆盖率数据，`Coverage Report` 再合并全部分片并只读检查除 `app/plugins` 外全部 `app` Python 文件的逐文件低水位；已有文件覆盖率只能保持或提升，新文件必须达到至少 80%，同时上传 JSON / XML 工件。macOS 本地报告只用于诊断，不直接作为可提交基线。
+- **覆盖率门禁**：`Unit Tests with Coverage` jobs 会在 `v3` 的 PR、push 和手工触发中通过 `tests/run.py --exclude-architecture-gate --shard N/6` 并行采集覆盖率数据，`Coverage Report` 再合并全部分片并只读检查除 `app/plugins` 外全部 `app` Python 文件的逐文件低水位；已有文件覆盖率只能保持或提升，若可执行语句数减少且未覆盖行数不增加，也允许由此产生的比例下降；未覆盖行数增加仍判为回退。单独一行的 `...` 与 `pass` 一样属于无操作占位，不计入覆盖率，其他包含 `...` 的真实语句仍需覆盖。新文件必须达到至少 80%，同时上传 JSON / XML 工件。macOS 本地报告只用于诊断，不直接作为可提交基线。
 - 复现 CI 使用 `uv sync --locked`；主程序运行依赖位于 `[project].dependencies`，pytest 与覆盖率工具位于默认 `dev` 依赖组。

@@ -1,3 +1,7 @@
+"""
+验证订阅接口的输入校验和服务委托。
+"""
+
 import asyncio
 from dataclasses import replace
 from types import SimpleNamespace
@@ -26,7 +30,9 @@ def _subscription_query(
     repository: "_SubscriptionRepositoryFake",
     history_repository: "_SubscriptionHistoryRepositoryFake | None" = None,
 ) -> SubscriptionQueryService:
-    """构造使用 typed 内存仓储的订阅查询服务。"""
+    """
+    构造使用 typed 内存仓储的订阅查询服务。
+    """
     return SubscriptionQueryService(
         repository=repository,
         async_repository=repository,
@@ -38,11 +44,15 @@ def _subscription_mutation(
     repository: "_SubscriptionRepositoryFake",
     history_repository: "_SubscriptionHistoryRepositoryFake | None" = None,
 ) -> SubscriptionMutationService:
-    """构造使用 typed 内存仓储的订阅写服务。"""
+    """
+    构造使用 typed 内存仓储的订阅写服务。
+    """
     outbox = _EndpointOutbox()
 
     async def publish_modified(payload: dict) -> None:
-        """把测试服务提交后的修改事件交给真实事件边界。"""
+        """
+        把测试服务提交后的修改事件交给真实事件边界。
+        """
         await eventmanager.async_send_event(EventType.SubscribeModified, payload)
 
     return SubscriptionMutationService(
@@ -56,23 +66,35 @@ def _subscription_mutation(
 
 
 class _EndpointUnitOfWork:
-    """为内存 endpoint 仓储提供无副作用的事务端口。"""
+    """
+    为内存 endpoint 仓储提供无副作用的事务端口。
+    """
 
     async def commit(self) -> None:
-        """确认内存更新。"""
+        """
+        确认内存更新。
+        """
 
     async def rollback(self) -> None:
-        """结束失败的内存更新。"""
+        """
+        结束失败的内存更新。
+        """
 
 
 class _EndpointOutbox:
-    """让 endpoint 测试观察服务层的一次即时 outbox 派发。"""
+    """
+    让 endpoint 测试观察服务层的一次即时 outbox 派发。
+    """
 
     async def stage(self, _intent, _now) -> None:
-        """接受内存 intent。"""
+        """
+        接受内存 intent。
+        """
 
     async def claim_by_event_key(self, event_key, _now, _lease_until):
-        """认领当前测试刚暂存的 intent。"""
+        """
+        认领当前测试刚暂存的 intent。
+        """
         return ClaimedOutboxMessage(
             message_id=1,
             event_key=event_key,
@@ -83,11 +105,15 @@ class _EndpointOutbox:
         )
 
     async def complete(self, _message_id, _attempt, _completed_at) -> bool:
-        """确认服务只完成一次事件派发。"""
+        """
+        确认服务只完成一次事件派发。
+        """
         return True
 
     async def retry(self, _message_id, _attempt, **_kwargs) -> bool:
-        """允许失败路径释放内存 lease。"""
+        """
+        允许失败路径释放内存 lease。
+        """
         return True
 
 
@@ -97,7 +123,9 @@ class TestSubscribeEndpoint:
     """
 
     def test_subscribe_fork_response_preserves_created_subscription_id(self):
-        """复用订阅的响应模型必须允许返回新建订阅 ID。"""
+        """
+        复用订阅的响应模型必须允许返回新建订阅 ID。
+        """
         from app.api.endpoints import subscribe as subscribe_endpoint
         from app.schemas.common import IdData
         from app.schemas.response import Response
@@ -173,7 +201,9 @@ class TestSubscribeEndpoint:
             assert getattr(result, "id", None) == expected_id
 
     def test_delete_subscribe_delegates_identity_without_database_access(self):
-        """按 ID 删除端点只映射用户身份，并返回已提交状态。"""
+        """
+        按 ID 删除端点只映射用户身份，并返回已提交状态。
+        """
         from app.api.endpoints.subscribe import delete_subscribe
 
         command = SimpleNamespace(execute_with_status=AsyncMock(return_value="deleted"))
@@ -198,7 +228,9 @@ class TestSubscribeEndpoint:
         [("not_found", 404), ("forbidden", 403)],
     )
     def test_delete_subscribe_exposes_missing_and_forbidden_status(self, status, expected_code):
-        """按 ID 删除端点必须让调用方区分目标不存在与无权访问。"""
+        """
+        按 ID 删除端点必须让调用方区分目标不存在与无权访问。
+        """
         from app.api.endpoints.subscribe import delete_subscribe
 
         command = SimpleNamespace(execute_with_status=AsyncMock(return_value=status))
@@ -350,7 +382,9 @@ class TestSubscribeEndpoint:
         assert payload["subscribe_info"]["username"] == "alice"
 
     def test_update_subscribe_preserves_existing_media_identity_when_omitted(self):
-        """普通字段更新未提交身份时，不得把已有媒体身份清空。"""
+        """
+        普通字段更新未提交身份时，不得把已有媒体身份清空。
+        """
         from app.api.endpoints.subscribe import update_subscribe
 
         subscribe = _EndpointSubscribe(
@@ -387,7 +421,9 @@ class TestSubscribeEndpoint:
         assert updated.media_id == "12345"
 
     def test_update_subscribe_clears_existing_media_identity_with_empty_pair(self):
-        """更新同时显式提交两个空身份字段时，应清空存量身份。"""
+        """
+        更新同时显式提交两个空身份字段时，应清空存量身份。
+        """
         from app.api.endpoints.subscribe import update_subscribe
 
         subscribe = _EndpointSubscribe(
@@ -429,12 +465,16 @@ class TestSubscribeEndpoint:
         assert updated.media_id is None
 
     def test_update_subscribe_rejects_partial_media_identity(self):
-        """更新媒体身份时只提交来源或 ID 之一应在 Schema 边界直接拒绝。"""
+        """
+        更新媒体身份时只提交来源或 ID 之一应在 Schema 边界直接拒绝。
+        """
         with pytest.raises(ValidationError):
             Subscribe(id=25, media_source=MediaSource.Douban)
 
     def test_update_subscribe_preserves_recognized_music_entity(self):
-        """普通编辑不得把专辑改为单曲或覆盖整专完成判定所需的曲目总数。"""
+        """
+        普通编辑不得把专辑改为单曲或覆盖整专完成判定所需的曲目总数。
+        """
         from app.api.endpoints.subscribe import update_subscribe
 
         subscribe = _EndpointSubscribe(
@@ -565,7 +605,9 @@ class TestSubscribeEndpoint:
         assert result.id == 14
 
     def test_subscribe_media_identity_distinguishes_recording_and_album_entities(self):
-        """同一来源身份下查询专辑时不能返回单曲订阅。"""
+        """
+        同一来源身份下查询专辑时不能返回单曲订阅。
+        """
         from app.api.endpoints.subscribe import subscribe_media_identity
 
         recording = _EndpointSubscribe(
@@ -600,7 +642,9 @@ class TestSubscribeEndpoint:
         assert repository.async_list_by_media_identity.await_args.kwargs["music_type"] == "album"
 
     def test_subscribe_media_identity_does_not_fallback_to_title(self):
-        """统一身份未命中时不得按标题串联其他来源的订阅。"""
+        """
+        统一身份未命中时不得按标题串联其他来源的订阅。
+        """
         from app.api.endpoints.subscribe import subscribe_media_identity
 
         repository = _SubscriptionRepositoryFake()
@@ -619,7 +663,9 @@ class TestSubscribeEndpoint:
         repository.async_list_by_title.assert_not_awaited()
 
     def test_subscribe_media_identity_falls_back_to_video_metadata(self):
-        """豆瓣身份未命中时，电影应按类型、标题和年份匹配已有订阅。"""
+        """
+        豆瓣身份未命中时，电影应按类型、标题和年份匹配已有订阅。
+        """
         from app.api.endpoints.subscribe import subscribe_media_identity
 
         other_year = _EndpointSubscribe(
@@ -670,7 +716,9 @@ class TestSubscribeEndpoint:
         )
 
     def test_subscribe_media_identity_falls_back_from_tmdb(self):
-        """TMDB 身份未命中时也应找到其它来源的同名同年订阅。"""
+        """
+        TMDB 身份未命中时也应找到其它来源的同名同年订阅。
+        """
         from app.api.endpoints.subscribe import subscribe_media_identity
 
         repository = _SubscriptionRepositoryFake(
@@ -711,7 +759,9 @@ class TestSubscribeEndpoint:
     def test_subscribe_media_identity_matches_unknown_subscription_year(
         self, card_source, subscription_source, card_year,
     ):
-        """跨源卡片的年份可有可无，但订阅无年份时仍能回显。"""
+        """
+        跨源卡片的年份可有可无，但订阅无年份时仍能回显。
+        """
         from app.api.endpoints.subscribe import subscribe_media_identity
 
         repository = _SubscriptionRepositoryFake(
@@ -746,7 +796,9 @@ class TestSubscribeEndpoint:
     def test_subscribe_media_identity_rejects_conflicting_known_year(
         self, card_year,
     ):
-        """无年份卡片不能串到已定档剧，已知年份也不能匹配冲突年份。"""
+        """
+        无年份卡片不能串到已定档剧，已知年份也不能匹配冲突年份。
+        """
         from app.api.endpoints.subscribe import subscribe_media_identity
 
         repository = _SubscriptionRepositoryFake(
@@ -775,7 +827,9 @@ class TestSubscribeEndpoint:
         assert result.id is None
 
     def test_subscribe_media_identity_prefers_matching_year_over_unknown_year(self):
-        """同名订阅同时含已知和未知年份时，优先返回确切年份。"""
+        """
+        同名订阅同时含已知和未知年份时，优先返回确切年份。
+        """
         from app.api.endpoints.subscribe import subscribe_media_identity
 
         repository = _SubscriptionRepositoryFake(
@@ -831,7 +885,9 @@ class TestSubscribeEndpoint:
         assert not actor.is_superuser
 
     def test_delete_subscribe_by_media_identity_forwards_music_entity(self):
-        """取消专辑订阅时必须把实体类型传给统一身份查询。"""
+        """
+        取消专辑订阅时必须把实体类型传给统一身份查询。
+        """
         from app.api.endpoints.subscribe import delete_subscribe_by_media_identity
 
         command = SimpleNamespace(execute=AsyncMock(return_value=0))
@@ -907,7 +963,9 @@ class TestSubscribeEndpoint:
         subscribe_chain.return_value.subscribe_files_info.assert_not_called()
 
     def test_subscribe_files_uses_sync_query_repository(self):
-        """文件统计使用绑定同步 Session 的查询仓储读取稳定快照。"""
+        """
+        文件统计使用绑定同步 Session 的查询仓储读取稳定快照。
+        """
         from app.api.endpoints.subscribe import subscribe_files
 
         own = _EndpointSubscribe(id=21, username="alice", name="自己的订阅")
@@ -1042,7 +1100,9 @@ class TestSubscribeEndpoint:
         history_repository.async_list_by_type_and_username.assert_not_awaited()
 
     def test_delete_subscribe_history_rejects_other_user(self):
-        """普通用户删除他人订阅历史时明确返回无权。"""
+        """
+        普通用户删除他人订阅历史时明确返回无权。
+        """
         from app.api.endpoints.subscribe import delete_subscribe_history
 
         other = _EndpointHistory(
@@ -1366,7 +1426,9 @@ class TestSubscribeEndpoint:
         assert payload["subscribe_info"]["name"] == "新标题"
 
     def test_update_subscribe_does_not_republish_pending_outbox_event(self):
-        """服务返回 pending 时 endpoint 仍只返回业务成功，不得直接二次发布。"""
+        """
+        服务返回 pending 时 endpoint 仍只返回业务成功，不得直接二次发布。
+        """
         from app.api.endpoints.subscribe import update_subscribe
 
         subscribe = _EndpointSubscribe(
@@ -1520,7 +1582,9 @@ class _EndpointUser(SimpleNamespace):
     """
 
     def __init__(self, name: str, is_superuser: bool, permissions: dict | None = None):
-        """保存 endpoint 权限判断依赖的最小用户字段。"""
+        """
+        保存 endpoint 权限判断依赖的最小用户字段。
+        """
         super().__init__(
             name=name,
             is_superuser=is_superuser,
@@ -1529,10 +1593,14 @@ class _EndpointUser(SimpleNamespace):
 
 
 class _SubscriptionRepositoryFake:
-    """以不可变订阅 DTO 模拟查询和修改仓储端口。"""
+    """
+    以不可变订阅 DTO 模拟查询和修改仓储端口。
+    """
 
     def __init__(self, *rows: SubscriptionSnapshot) -> None:
-        """保存初始快照并为调用断言暴露异步 mock。"""
+        """
+        保存初始快照并为调用断言暴露异步 mock。
+        """
         self.rows = {row.id: row for row in rows}
         self.async_get = AsyncMock(side_effect=self._async_get)
         self.async_list = AsyncMock(side_effect=self._async_list)
@@ -1543,15 +1611,21 @@ class _SubscriptionRepositoryFake:
         self.async_stage_update = AsyncMock(side_effect=self._async_update)
 
     def get(self, subscribe_id: int) -> SubscriptionSnapshot | None:
-        """同步按主键读取订阅快照。"""
+        """
+        同步按主键读取订阅快照。
+        """
         return self.rows.get(subscribe_id)
 
     async def _async_get(self, subscribe_id: int) -> SubscriptionSnapshot | None:
-        """异步按主键读取订阅快照。"""
+        """
+        异步按主键读取订阅快照。
+        """
         return self.get(subscribe_id)
 
     async def _async_list(self, state: str | None = None) -> list[SubscriptionSnapshot]:
-        """异步读取全部或指定状态的订阅快照。"""
+        """
+        异步读取全部或指定状态的订阅快照。
+        """
         rows = list(self.rows.values())
         return [row for row in rows if state is None or row.state in state]
 
@@ -1561,7 +1635,9 @@ class _SubscriptionRepositoryFake:
         state: str | None = None,
         mtype: str | None = None,
     ) -> list[SubscriptionSnapshot]:
-        """异步按用户及可选状态、类型读取订阅快照。"""
+        """
+        异步按用户及可选状态、类型读取订阅快照。
+        """
         return [
             row
             for row in self.rows.values()
@@ -1576,7 +1652,9 @@ class _SubscriptionRepositoryFake:
         media_id: str,
         music_type: str | None = None,
     ) -> list[SubscriptionSnapshot]:
-        """异步按规范媒体身份读取订阅快照。"""
+        """
+        异步按规范媒体身份读取订阅快照。
+        """
         del music_type
         return [row for row in self.rows.values() if row.media_source == media_source and row.media_id == media_id]
 
@@ -1585,7 +1663,9 @@ class _SubscriptionRepositoryFake:
         title: str,
         season: int | None = None,
     ) -> list[SubscriptionSnapshot]:
-        """异步按标题和季读取订阅快照。"""
+        """
+        异步按标题和季读取订阅快照。
+        """
         return [row for row in self.rows.values() if row.name == title and (season is None or row.season == season)]
 
     async def _async_update(
@@ -1593,7 +1673,9 @@ class _SubscriptionRepositoryFake:
         subscribe_id: int,
         patch: SubscriptionPatch,
     ) -> SubscriptionSnapshot | None:
-        """应用 typed patch 并保存新的不可变快照。"""
+        """
+        应用 typed patch 并保存新的不可变快照。
+        """
         row = self.rows.get(subscribe_id)
         if row is None:
             return None
@@ -1603,10 +1685,14 @@ class _SubscriptionRepositoryFake:
 
 
 class _SubscriptionHistoryRepositoryFake:
-    """以不可变历史 DTO 模拟历史查询和删除端口。"""
+    """
+    以不可变历史 DTO 模拟历史查询和删除端口。
+    """
 
     def __init__(self, *rows: SubscriptionHistorySnapshot) -> None:
-        """保存历史快照并为调用断言暴露异步 mock。"""
+        """
+        保存历史快照并为调用断言暴露异步 mock。
+        """
         self.rows = {row.id: row for row in rows}
         self.async_get = AsyncMock(side_effect=self._async_get)
         self.async_list_by_type = AsyncMock(side_effect=self._async_list_by_type)
@@ -1616,7 +1702,9 @@ class _SubscriptionHistoryRepositoryFake:
         self.stage_delete = AsyncMock(side_effect=self._stage_delete)
 
     async def _async_get(self, history_id: int) -> SubscriptionHistorySnapshot | None:
-        """异步按主键读取历史快照。"""
+        """
+        异步按主键读取历史快照。
+        """
         return self.rows.get(history_id)
 
     async def _async_list_by_type(
@@ -1625,7 +1713,9 @@ class _SubscriptionHistoryRepositoryFake:
         page: int = 1,
         count: int = 30,
     ) -> list[SubscriptionHistorySnapshot]:
-        """异步按类型分页读取历史快照。"""
+        """
+        异步按类型分页读取历史快照。
+        """
         rows = [row for row in self.rows.values() if row.type == mtype]
         start = (page - 1) * count
         return rows[start : start + count]
@@ -1637,13 +1727,17 @@ class _SubscriptionHistoryRepositoryFake:
         page: int = 1,
         count: int = 30,
     ) -> list[SubscriptionHistorySnapshot]:
-        """异步按类型和用户分页读取历史快照。"""
+        """
+        异步按类型和用户分页读取历史快照。
+        """
         rows = [row for row in self.rows.values() if row.type == mtype and row.username == username]
         start = (page - 1) * count
         return rows[start : start + count]
 
     async def _async_count_by_type(self, mtype: str) -> int:
-        """异步统计指定类型的历史快照。"""
+        """
+        异步统计指定类型的历史快照。
+        """
         return sum(row.type == mtype for row in self.rows.values())
 
     async def _async_count_by_type_and_username(
@@ -1651,11 +1745,15 @@ class _SubscriptionHistoryRepositoryFake:
         mtype: str,
         username: str,
     ) -> int:
-        """异步统计指定类型和 owner 的历史快照。"""
+        """
+        异步统计指定类型和 owner 的历史快照。
+        """
         return sum(row.type == mtype and row.username == username for row in self.rows.values())
 
     async def _stage_delete(self, history_id: int) -> None:
-        """暂存删除等价为从内存集合移除历史快照。"""
+        """
+        暂存删除等价为从内存集合移除历史快照。
+        """
         self.rows.pop(history_id, None)
 
 
@@ -1675,29 +1773,39 @@ class _EndpointMediaInfo:
 
     @staticmethod
     def get_poster_image():
-        """返回固定海报地址。"""
+        """
+        返回固定海报地址。
+        """
         return "poster.jpg"
 
     @staticmethod
     def get_backdrop_image():
-        """返回固定背景图地址。"""
+        """
+        返回固定背景图地址。
+        """
         return "backdrop.jpg"
 
 
 def _EndpointSubscribe(**kwargs: object) -> SubscriptionSnapshot:
-    """从精简测试字段构造规范订阅快照。"""
+    """
+    从精简测试字段构造规范订阅快照。
+    """
     values = {"name": "测试订阅", **kwargs}
     return SubscriptionSnapshot(**values)
 
 
 def _EndpointHistory(**kwargs: object) -> SubscriptionHistorySnapshot:
-    """从精简测试字段构造规范订阅历史快照。"""
+    """
+    从精简测试字段构造规范订阅历史快照。
+    """
     values = {"name": "测试历史", **kwargs}
     return SubscriptionHistorySnapshot(**values)
 
 
 def test_subscribe_accepts_empty_strings_for_numeric_fields():
-    """前端提交音乐订阅时常以空字符串填充数值字段，不应触发 422。"""
+    """
+    前端提交音乐订阅时常以空字符串填充数值字段，不应触发 422。
+    """
     subscribe = Subscribe(
         name="Random Access Memories",
         type=MediaType.MUSIC.value,
@@ -1732,7 +1840,9 @@ def test_subscribe_accepts_empty_strings_for_numeric_fields():
 
 
 def test_subscribe_preserves_explicit_zero_and_numeric_string_values():
-    """显式 0 和数字字符串应保持原有行为，不被空字符串归一化影响。"""
+    """
+    显式 0 和数字字符串应保持原有行为，不被空字符串归一化影响。
+    """
     subscribe = Subscribe(
         name="测试剧集",
         type=MediaType.TV.value,
@@ -1767,13 +1877,17 @@ def test_subscribe_preserves_explicit_zero_and_numeric_string_values():
     ],
 )
 def test_subscribe_schema_rejects_incomplete_or_invalid_media_identity(identity):
-    """订阅 Schema 自身必须拒绝半对、零值和空白 ID，不能只依赖端点兜底。"""
+    """
+    订阅 Schema 自身必须拒绝半对、零值和空白 ID，不能只依赖端点兜底。
+    """
     with pytest.raises(ValidationError):
         Subscribe(name="测试订阅", **identity)
 
 
 def test_subscribe_schema_distinguishes_omitted_and_explicit_empty_identity():
-    """省略和显式空对都合法，但必须保留字段是否由请求提交的信息。"""
+    """
+    省略和显式空对都合法，但必须保留字段是否由请求提交的信息。
+    """
     omitted = Subscribe(name="省略身份")
     explicit_empty = Subscribe(
         name="清空身份",
@@ -1790,7 +1904,9 @@ def test_subscribe_schema_distinguishes_omitted_and_explicit_empty_identity():
 
 
 def test_create_subscribe_accepts_music_payload_with_empty_strings():
-    """带空字符串的音乐订阅应能通过新增订阅接口，不返回 422。"""
+    """
+    带空字符串的音乐订阅应能通过新增订阅接口，不返回 422。
+    """
     subscribe_in = Subscribe(
         name="Random Access Memories",
         type=MediaType.MUSIC.value,
@@ -1828,32 +1944,46 @@ def test_create_subscribe_accepts_music_payload_with_empty_strings():
 
 
 class _LegacyNoteRow:
-    """携带历史字符串 note 的最小 ORM 替身。"""
+    """
+    携带历史字符串 note 的最小 ORM 替身。
+    """
 
     def __init__(self, note):
-        """保存待规范化的历史 note 原值。"""
+        """
+        保存待规范化的历史 note 原值。
+        """
         self.note = note
 
 
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
-        ("[1, 2, 3, 4]", [1, 2, 3, 4]),  # 双重 JSON 编码的整型数组
+        # 双重 JSON 编码的整型数组
+        ("[1, 2, 3, 4]", [1, 2, 3, 4]),
         ("[1, 2]", [1, 2]),
-        ("[]", []),  # 双重编码的空数组
-        ("null", None),  # 双重编码的 null
-        ("not json", None),  # 无法解析的历史脏数据
-        ([1, 2, 3], [1, 2, 3]),  # 正常列表原样保留
-        (None, None),  # 空值
+        # 双重编码的空数组
+        ("[]", []),
+        # 双重编码的 null
+        ("null", None),
+        # 无法解析的历史脏数据
+        ("not json", None),
+        # 正常列表原样保留
+        ([1, 2, 3], [1, 2, 3]),
+        # 空值
+        (None, None),
     ],
 )
 def test_subscribe_note_normalizes_legacy_json_string(raw, expected):
-    """历史字符串型 note 应被解析为整数列表，避免响应校验 500。"""
+    """
+    历史字符串型 note 应被解析为整数列表，避免响应校验 500。
+    """
     subscribe = Subscribe.model_validate(_LegacyNoteRow(note=raw))
     assert subscribe.note == expected
 
 
 def test_subscribe_note_strips_non_int_items_from_legacy_string():
-    """历史脏数据中混入非整数元素时只保留整数，不阻塞整个订阅列表接口。"""
+    """
+    历史脏数据中混入非整数元素时只保留整数，不阻塞整个订阅列表接口。
+    """
     subscribe = Subscribe.model_validate(_LegacyNoteRow(note='[1, 2, "x", 3]'))
     assert subscribe.note == [1, 2, 3]

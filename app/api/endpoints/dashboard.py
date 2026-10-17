@@ -1,3 +1,7 @@
+"""
+汇总仪表盘所需的服务统计、系统状态与活动数据。
+"""
+
 from pathlib import Path
 from typing import Annotated, Any, List, Optional
 

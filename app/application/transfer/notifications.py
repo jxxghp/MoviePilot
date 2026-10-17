@@ -1,4 +1,6 @@
-"""整理结果通知的分组、批次等待和短暂聚合。"""
+"""
+整理结果通知的分组、批次等待和短暂聚合。
+"""
 
 from __future__ import annotations
 
@@ -21,7 +23,9 @@ if TYPE_CHECKING:
 
 
 def build_transfer_failure_group_key(task: TransferTask) -> str:
-    """构造主程序和第三方整理路径可共同使用的失败通知分组键。"""
+    """
+    构造主程序和第三方整理路径可共同使用的失败通知分组键。
+    """
     media_source, media_id = resolve_media_identity(media=task.mediainfo)
     if not media_source or not media_id:
         media_source, media_id = resolve_media_identity(media=task)
@@ -38,7 +42,15 @@ def build_transfer_failure_group_key(task: TransferTask) -> str:
 
 @dataclass(frozen=True, slots=True)
 class TransferSuccessNotification:
-    """保存逐任务成功结果副本，避免后续作业统计修改已缓冲通知。"""
+    """
+    保存逐任务成功结果副本，避免后续作业统计修改已缓冲通知。
+
+    :param meta: 用于通知展示季集和发布名的已解析元数据
+    :param mediainfo: 用于标题、海报和来源链接的标准媒体信息
+    :param transferinfo: 文件整理结果，包括目录、大小与方式
+    :param episodes_info: 通知可使用的剧集详情；没有补充信息时为 None
+    :param username: 触发整理的本地用户名；未绑定时为 None
+    """
 
     meta: MetaBase
     mediainfo: MediaInfo | MusicInfo
@@ -48,7 +60,9 @@ class TransferSuccessNotification:
 
 
 def build_transfer_success_group_key(task: TransferTask, result: TransferInfo) -> str:
-    """按下载来源、媒体目录、季和用户隔离成功通知，避免跨专辑或用户混发。"""
+    """
+    按下载来源、媒体目录、季和用户隔离成功通知，避免跨专辑或用户混发。
+    """
     directory = result.target_diritem
     destination = (directory.storage, directory.path) if directory else (task.target_storage, str(task.target_path))
     source = (task.downloader, task.download_hash) if task.download_hash else (task.fileitem.storage, str(Path(task.fileitem.path or "").parent))
@@ -57,12 +71,16 @@ def build_transfer_success_group_key(task: TransferTask, result: TransferInfo) -
 
 
 class TransferNotificationAggregator[Notification]:
-    """在线程安全缓冲中等待明确批次结束，或按静默窗口合并通知。"""
+    """
+    在线程安全缓冲中等待明确批次结束，或按静默窗口合并通知。
+    """
 
     NOTIFICATION_DEBOUNCE_SECONDS = 30
 
     def __init__(self) -> None:
-        """初始化分组缓冲、回调、定时器与关闭状态。"""
+        """
+        初始化分组缓冲、回调、定时器与关闭状态。
+        """
         self._buffers: dict[str, list[Notification]] = {}
         self._callbacks: dict[
             str,
@@ -85,7 +103,9 @@ class TransferNotificationAggregator[Notification]:
             loop: Optional[asyncio.AbstractEventLoop] = None,
             defer_until: Optional[str] = None,
     ) -> None:
-        """先登记快照；明确批次等待完成信号，其余通知使用事件循环静默窗口。"""
+        """
+        先登记快照；明确批次等待完成信号，其余通知使用事件循环静默窗口。
+        """
         # 先在调用线程登记快照，关闭流程才能覆盖已接收但尚未进入事件循环的通知。
         with self._lock:
             if self._closed:
@@ -111,7 +131,9 @@ class TransferNotificationAggregator[Notification]:
             callback: Callable[[list[Notification]], None],
             loop: Optional[asyncio.AbstractEventLoop],
     ) -> None:
-        """统一投递静默窗口，事件循环不可用时回退为立即发送。"""
+        """
+        统一投递静默窗口，事件循环不可用时回退为立即发送。
+        """
         if loop is None:
             self.flush(group_key, generation, callback)
             return
@@ -137,7 +159,9 @@ class TransferNotificationAggregator[Notification]:
             callback: Callable[[list[Notification]], None],
             loop: asyncio.AbstractEventLoop,
     ) -> None:
-        """在所属事件循环中为已登记缓冲重置静默窗口。"""
+        """
+        在所属事件循环中为已登记缓冲重置静默窗口。
+        """
         schedule_error: Exception | None = None
         with self._lock:
             if (
@@ -173,7 +197,9 @@ class TransferNotificationAggregator[Notification]:
             generation: int,
             callback: Callable[[list[Notification]], None],
     ) -> None:
-        """发送一个分组内的聚合结果并释放缓冲。"""
+        """
+        发送一个分组内的聚合结果并释放缓冲。
+        """
         with self._lock:
             # 新通知已登记但 timer 重置回调尚未执行时，旧代不得提前发送新批次。
             if self._generations.get(group_key) != generation or self._waiting_batches.get(group_key):
@@ -191,7 +217,9 @@ class TransferNotificationAggregator[Notification]:
         self._deliver(group_key, notifications, callback)
 
     def release_batch(self, batch_id: str, *, loop: Optional[asyncio.AbstractEventLoop] = None) -> None:
-        """批次终结后释放等待；传入循环时合并后续文件，同组仍须等待其他批次。"""
+        """
+        批次终结后释放等待；传入循环时合并后续文件，同组仍须等待其他批次。
+        """
         with self._lock:
             ready = []
             for group_key, batches in self._waiting_batches.items():
@@ -212,14 +240,18 @@ class TransferNotificationAggregator[Notification]:
             notifications: list[Notification],
             callback: Callable[[list[Notification]], None],
     ) -> None:
-        """调用聚合通知回调，并统一观察发送异常。"""
+        """
+        调用聚合通知回调，并统一观察发送异常。
+        """
         try:
             callback(notifications)
         except Exception as err:
             logger.error(f"发送整理聚合通知失败 (group={group_key}): {err}")
 
     def close(self) -> None:
-        """停止接收新通知，取消定时器并同步发送全部已缓冲通知。"""
+        """
+        停止接收新通知，取消定时器并同步发送全部已缓冲通知。
+        """
         with self._lock:
             if self._closed and not self._buffers and not self._timers:
                 return
@@ -252,4 +284,6 @@ class TransferNotificationAggregator[Notification]:
 
 
 class TransferFailureNotificationAggregator(TransferNotificationAggregator[TransferFailureNotification]):
-    """保留失败通知已有入口及三十秒静默聚合行为。"""
+    """
+    保留失败通知已有入口及三十秒静默聚合行为。
+    """

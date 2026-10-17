@@ -1,4 +1,6 @@
-"""通过真实音频容器覆盖空标签、原生 ID3 和独立音轨总数的读取契约。"""
+"""
+通过真实音频容器覆盖空标签、原生 ID3 和独立音轨总数的读取契约。
+"""
 
 import hashlib
 import shutil
@@ -18,7 +20,9 @@ RECORDING_ID = "38035858-f990-4fbb-b3b2-f2f8b958eeba"
 
 
 def _write_wave(path: Path) -> Path:
-    """生成三秒双声道 PCM，避免测试依赖本机 ffmpeg。"""
+    """
+    生成三秒双声道 PCM，避免测试依赖本机 ffmpeg。
+    """
     with wave.open(str(path), "wb") as stream:
         stream.setnchannels(2)
         stream.setsampwidth(2)
@@ -28,7 +32,9 @@ def _write_wave(path: Path) -> Path:
 
 
 def _write_dsf(path: Path) -> Path:
-    """生成带单个双声道 DSD 数据块的合法 DSF，供实际 ID3 读写使用。"""
+    """
+    生成带单个双声道 DSD 数据块的合法 DSF，供实际 ID3 读写使用。
+    """
     payload = b"\x69" * 8192
     header = struct.pack("<4sQQQ", b"DSD ", 28, 92 + len(payload), 0)
     fmt = struct.pack("<4sQIIIIIIQII", b"fmt ", 52, 1, 0, 2, 2, 2822400, 1, 32768, 4096, 0)
@@ -37,7 +43,9 @@ def _write_dsf(path: Path) -> Path:
 
 
 def _write_aiff(path: Path) -> Path:
-    """标准FORM/COMM/SSND块生成三秒44.1kHz PCM，采样率使用AIFF扩展浮点格式。"""
+    """
+    标准FORM/COMM/SSND块生成三秒44.1kHz PCM，采样率使用AIFF扩展浮点格式。
+    """
     common = struct.pack(">hIh", 2, 44100 * 3, 16) + bytes.fromhex("400eac44000000000000")
     sound = b"\0" * (8 + 44100 * 4 * 3)
     chunks = b"COMM" + struct.pack(">I", len(common)) + common + b"SSND" + struct.pack(">I", len(sound)) + sound
@@ -46,9 +54,13 @@ def _write_aiff(path: Path) -> Path:
 
 
 def _write_dff(path: Path) -> Path:
-    """生成合法DSDIFF声道交织DSD数据及PROP，验证与DSF不同的原生ID3容器。"""
+    """
+    生成合法DSDIFF声道交织DSD数据及PROP，验证与DSF不同的原生ID3容器。
+    """
     def chunk(name: bytes, data: bytes) -> bytes:
-        """DSDIFF块以64位大端长度计数，奇数字节补齐不计入内容长度。"""
+        """
+        DSDIFF块以64位大端长度计数，奇数字节补齐不计入内容长度。
+        """
         return name + struct.pack(">Q", len(data)) + data + b"\0" * (len(data) % 2)
 
     properties = b"SND " + chunk(b"FS  ", struct.pack(">I", 2822400))
@@ -61,7 +73,9 @@ def _write_dff(path: Path) -> Path:
 
 @pytest.fixture
 def flac_path(tmp_path):
-    """复制无标签的三秒静音 FLAC，所有标签写入仅作用于测试临时文件。"""
+    """
+    复制无标签的三秒静音 FLAC，所有标签写入仅作用于测试临时文件。
+    """
     path = tmp_path / "03.flac"
     shutil.copyfile(Path(__file__).parent / "fixtures/audio/silence.flac", path)
     return path
@@ -69,7 +83,9 @@ def flac_path(tmp_path):
 
 @pytest.mark.parametrize("container", ["wav", "flac"])
 def test_untagged_audio_keeps_stream_and_path_evidence(container, tmp_path, flac_path):
-    """没有标签仍能读取时长和音质，并用路径补齐曲序而不改动文件。"""
+    """
+    没有标签仍能读取时长和音质，并用路径补齐曲序而不改动文件。
+    """
     path = _write_wave(tmp_path / "03.wav") if container == "wav" else flac_path
     before = hashlib.sha256(path.read_bytes()).digest()
 
@@ -86,7 +102,9 @@ def test_untagged_audio_keeps_stream_and_path_evidence(container, tmp_path, flac
 
 @pytest.mark.parametrize("container", ["wav", "dsf", "aiff", "dff"])
 def test_raw_id3_container_reads_track_identity(container, tmp_path):
-    """WAV/DSF/AIFF/DSDIFF原生ID3帧能提供曲目字段及Recording身份。"""
+    """
+    WAV/DSF/AIFF/DSDIFF原生ID3帧能提供曲目字段及Recording身份。
+    """
     path = tmp_path / f"03.{container}"
     factory = {"wav": _write_wave, "dsf": _write_dsf, "aiff": _write_aiff, "dff": _write_dff}
     audio = MutagenFile(factory[container](path))
@@ -127,7 +145,9 @@ def test_raw_id3_container_reads_track_identity(container, tmp_path):
     ("TRACKTOTAL", "DISCTOTAL"), ("TOTALTRACKS", "TOTALDISCS"),
 ])
 def test_flac_reads_separate_track_and_disc_totals(flac_path, track_total, disc_total):
-    """Vorbis 的独立总数字段与组合编号拥有同等语义。"""
+    """
+    Vorbis 的独立总数字段与组合编号拥有同等语义。
+    """
     audio = FLAC(flac_path)
     audio.update({"title": ["晴天"], "tracknumber": ["3"], "discnumber": ["1"],
                   track_total: ["11"], disc_total: ["2"]})
@@ -142,7 +162,9 @@ def test_flac_reads_separate_track_and_disc_totals(flac_path, track_total, disc_
 @pytest.mark.parametrize("position,expected", [("3/11", (3, 11)), ("3/0", (3, 12)),
                                                 ("0/0", (None, 12)), ("bad", (None, 12))])
 def test_combined_position_prefers_valid_total(flac_path, position, expected):
-    """有效组合总数优先，零或坏编号不能污染真实的独立总数。"""
+    """
+    有效组合总数优先，零或坏编号不能污染真实的独立总数。
+    """
     audio = FLAC(flac_path)
     audio.update({"tracknumber": [position], "tracktotal": ["12"]})
     audio.save()
@@ -153,7 +175,9 @@ def test_combined_position_prefers_valid_total(flac_path, position, expected):
 
 
 def test_id3_release_track_id_is_not_recording_identity(tmp_path):
-    """发行曲目 ID 不能被当作 Recording ID 传入指纹和单曲识别。"""
+    """
+    发行曲目 ID 不能被当作 Recording ID 传入指纹和单曲识别。
+    """
     path = _write_wave(tmp_path / "03.wav")
     audio = WAVE(path)
     audio.add_tags()

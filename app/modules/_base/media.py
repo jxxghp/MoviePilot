@@ -1,4 +1,6 @@
-"""影视识别模块共享的附加信息能力实现。"""
+"""
+影视识别模块共享的附加信息能力实现。
+"""
 
 from __future__ import annotations
 
@@ -13,7 +15,11 @@ from app.schemas.types import MediaSource, MediaSourceSelection, MediaType
 
 
 class MediaAuxiliaryProviderMixin:
-    """把现有识别接口适配为可聚合的影视附加信息能力。"""
+    """
+    把媒体识别接口适配为可聚合的影视附加信息能力。
+
+    :ivar auxiliary_media_source: 当前模块提供附加信息时使用的数据源
+    """
 
     auxiliary_media_source: MediaSource
 
@@ -22,7 +28,9 @@ class MediaAuxiliaryProviderMixin:
             mediainfo: MediaInfo,
             metainfo: Optional[MetaBase] = None,
     ) -> MetaBase:
-        """根据主识别结果构造不携带原来源身份的标题查询参数。"""
+        """
+        根据主识别结果构造不携带原来源身份的标题查询参数。
+        """
         # MetaInfo 是工厂函数，实际返回 MetaBase 及其子类实例
         meta = MetaInfo(mediainfo.title or getattr(metainfo, "name", None) or "")
         if not meta.en_name:
@@ -47,7 +55,9 @@ class MediaAuxiliaryProviderMixin:
             mediainfo: MediaInfo,
             metainfo: Optional[MetaBase] = None,
     ) -> dict[str, object]:
-        """构造当前来源的识别参数，同源媒体优先使用来源原生 ID。"""
+        """
+        构造当前来源的识别参数，同源媒体优先使用来源原生 ID。
+        """
         same_source = mediainfo.media_source == self.auxiliary_media_source
         return {
             "meta": self._build_auxiliary_meta(mediainfo, metainfo),
@@ -64,7 +74,14 @@ class MediaAuxiliaryProviderMixin:
             media_source: Optional[MediaSourceSelection] = None,
             metainfo: Optional[MetaBase] = None,
     ) -> list[MediaInfo]:
-        """使用当前来源同步获取影视别名等附加信息。"""
+        """
+        使用当前来源同步获取影视别名等附加信息。
+
+        :param mediainfo: 已识别的主媒体信息，仅处理电影和电视剧
+        :param media_source: 允许使用的数据源集合；不包含当前来源时不发起识别
+        :param metainfo: 可补充标题、年份和季号的名称解析结果
+        :return: 当前来源的单条补充结果；不适用或识别失败时返回空列表
+        """
         if (
                 not mediainfo
                 or mediainfo.type not in (MediaType.MOVIE, MediaType.TV)
@@ -81,7 +98,14 @@ class MediaAuxiliaryProviderMixin:
             media_source: Optional[MediaSourceSelection] = None,
             metainfo: Optional[MetaBase] = None,
     ) -> list[MediaInfo]:
-        """使用当前来源异步获取影视别名等附加信息。"""
+        """
+        使用当前来源异步获取影视别名等附加信息。
+
+        :param mediainfo: 已识别的主媒体信息，仅处理电影和电视剧
+        :param media_source: 允许使用的数据源集合；不包含当前来源时不发起识别
+        :param metainfo: 可补充标题、年份和季号的名称解析结果
+        :return: 等待识别后得到的单条补充结果；不适用或识别失败时返回空列表
+        """
         if (
                 not mediainfo
                 or mediainfo.type not in (MediaType.MOVIE, MediaType.TV)

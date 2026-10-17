@@ -1,4 +1,6 @@
-"""插件公开能力投影。"""
+"""
+插件公开能力投影。
+"""
 
 import inspect
 import posixpath
@@ -24,11 +26,15 @@ _AGENT_PET_ABSOLUTE_PREVIEW_PREFIXES = ("http://", "https://", "data:")
 
 
 class _InvalidAgentPet(ValueError):
-    """Agent 助手形象声明字段不符合宿主契约。"""
+    """
+    Agent 助手形象声明字段不符合宿主契约。
+    """
 
 
 class PluginProjection:
-    """把运行态插件投影为宿主命令、API、服务、模块和动作清单。"""
+    """
+    把运行态插件投影为宿主命令、API、服务、模块和动作清单。
+    """
 
     def __init__(
         self,
@@ -36,13 +42,17 @@ class PluginProjection:
         log: Any = default_logger,
         remote_entry_factory: Optional[Callable[[str, str], str]] = None,
     ) -> None:
-        """保存运行态插件映射和错误日志端口。"""
+        """
+        保存运行态插件映射和错误日志端口。
+        """
         self._running_plugins = running_plugins
         self._logger = log
         self._remote_entry_factory = remote_entry_factory
 
     def _items(self, pid: Optional[str]) -> list[tuple[str, Any]]:
-        """返回指定插件或运行态插件的稳定快照。"""
+        """
+        返回指定插件或运行态插件的稳定快照。
+        """
         snapshot = dict(self._running_plugins)
         if pid:
             plugin = snapshot.get(pid)
@@ -50,7 +60,9 @@ class PluginProjection:
         return list(snapshot.items())
 
     def commands(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
-        """聚合插件命令并补充插件 ID。"""
+        """
+        聚合插件命令并补充插件 ID。
+        """
         commands: list[dict] = []
         for plugin_id, plugin in self._items(pid):
             if not supports_plugin_hook(plugin, "get_command"):
@@ -66,7 +78,9 @@ class PluginProjection:
         return commands
 
     def apis(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
-        """聚合插件 API 并补充宿主路径和默认认证方式，端点绑定发起实例的日志上下文。"""
+        """
+        聚合插件 API 并补充宿主路径和默认认证方式，端点绑定发起实例的日志上下文。
+        """
         apis: list[dict] = []
         for plugin_id, plugin in self._items(pid):
             if not supports_plugin_hook(plugin, "get_api"):
@@ -86,7 +100,9 @@ class PluginProjection:
         return apis
 
     def services(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
-        """聚合启用插件的定时服务。"""
+        """
+        聚合启用插件的定时服务。
+        """
         services: list[dict] = []
         for plugin_id, plugin in self._items(pid):
             if not supports_plugin_hook(plugin, "get_service"):
@@ -99,7 +115,9 @@ class PluginProjection:
         return services
 
     def modules(self, pid: Optional[str] = None) -> Dict[tuple, Dict[str, Any]]:
-        """聚合启用插件的模块方法清单。"""
+        """
+        聚合启用插件的模块方法清单。
+        """
         modules: dict[tuple, dict] = {}
         for plugin_id, plugin in self._items(pid):
             if not supports_plugin_hook(plugin, "get_module"):
@@ -121,7 +139,9 @@ class PluginProjection:
         return modules
 
     def media_sources(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
-        """聚合启用插件声明的媒体数据源。"""
+        """
+        聚合启用插件声明的媒体数据源。
+        """
         sources: list[dict] = []
         for plugin_id, plugin in self._items(pid):
             if not supports_plugin_hook(plugin, "get_media_source"):
@@ -141,7 +161,9 @@ class PluginProjection:
 
     @staticmethod
     def _media_source_mapping(source: Any) -> dict[str, Any] | None:
-        """把旧字典或新 SDK 模型转换为隔离的 JSON 字典。"""
+        """
+        把旧字典或新 SDK 模型转换为隔离的 JSON 字典。
+        """
         if isinstance(source, Mapping):
             return dict(source)
         model_dump = getattr(source, "model_dump", None)
@@ -151,7 +173,9 @@ class PluginProjection:
         return dict(payload) if isinstance(payload, Mapping) else None
 
     def actions(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
-        """聚合启用插件的工作流动作。"""
+        """
+        聚合启用插件的工作流动作。
+        """
         actions: list[dict] = []
         for plugin_id, plugin in self._items(pid):
             if not supports_plugin_hook(plugin, "get_actions"):
@@ -171,7 +195,9 @@ class PluginProjection:
         return actions
 
     def remotes(self, pid: Optional[str] = None) -> List[Dict[str, Any]]:
-        """投影插件联邦远程入口，并保持旧渲染模式筛选语义。"""
+        """
+        投影插件联邦远程入口，并保持旧渲染模式筛选语义。
+        """
         remotes = []
         for plugin_id, plugin in self._items(pid):
             if not supports_plugin_hook(plugin, "get_render_mode"):
@@ -188,7 +214,8 @@ class PluginProjection:
         plugin: Any,
         dist_path: str,
     ) -> Dict[str, Any]:
-        """构造联邦远程入口描述，分身额外带出其源插件 ID。
+        """
+        构造联邦远程入口描述，分身额外带出其源插件 ID。
 
         分身与本体共享同一份前端产物，只有源插件名下才有产物目录；前端联邦加载器
         拿不到源插件 ID 就只能按分身 ID 去取，必然落空。入口 URL 同时带上插件版本，
@@ -211,7 +238,9 @@ class PluginProjection:
 
     @staticmethod
     def _versioned_url(url: str, plugin: Any) -> str:
-        """为插件静态资源 URL 附加插件版本，插件更新后得到新的缓存键。"""
+        """
+        为插件静态资源 URL 附加插件版本，插件更新后得到新的缓存键。
+        """
         plugin_version = getattr(plugin, "plugin_version", None)
         if not plugin_version:
             return url
@@ -219,7 +248,9 @@ class PluginProjection:
         return f"{url}{separator}{urlencode({'v': str(plugin_version)})}"
 
     def auth_providers(self) -> List[Dict[str, Any]]:
-        """投影启用插件声明的登录认证提供方。"""
+        """
+        投影启用插件声明的登录认证提供方。
+        """
         providers = []
         for plugin_id, plugin in self._items(None):
             if not plugin.get_state() or not supports_plugin_hook(
@@ -254,7 +285,9 @@ class PluginProjection:
         return providers
 
     def sidebar(self) -> List[Dict[str, Any]]:
-        """投影启用 Vue 插件的侧栏导航，并规整权限、分区和顺序。"""
+        """
+        投影启用 Vue 插件的侧栏导航，并规整权限、分区和顺序。
+        """
         valid_sections = {"start", "discovery", "subscribe", "organize", "system"}
         valid_permissions = {"subscribe", "discovery", "search", "manage", "admin"}
         items = []
@@ -322,7 +355,8 @@ class PluginProjection:
         return items
 
     def agent_pets(self) -> List[Dict[str, Any]]:
-        """投影启用 Vue 插件声明的 Agent 助手形象。
+        """
+        投影启用 Vue 插件声明的 Agent 助手形象。
 
         只收已启用、渲染模式为 vue 且实现 ``get_agent_pets`` 的插件；任一字段非法的
         声明整项丢弃并记录警告，同一插件内重复 key 只保留首项。分身沿用实例
@@ -358,7 +392,9 @@ class PluginProjection:
         dist_path: str,
         declared: Any,
     ) -> List[Dict[str, Any]]:
-        """规整单个插件的助手形象声明，丢弃非法项与重复 key。"""
+        """
+        规整单个插件的助手形象声明，丢弃非法项与重复 key。
+        """
         if not isinstance(declared, list):
             self._logger.warning(
                 f"插件[{plugin_id}]get_agent_pets() 必须返回列表，已忽略"
@@ -399,7 +435,9 @@ class PluginProjection:
 
     @staticmethod
     def _agent_pet_fields(raw: Any) -> Dict[str, Any]:
-        """校验并补齐单项助手形象声明的默认值，非法时抛出 ``_InvalidAgentPet``。"""
+        """
+        校验并补齐单项助手形象声明的默认值，非法时抛出 ``_InvalidAgentPet``。
+        """
         if not isinstance(raw, Mapping):
             raise _InvalidAgentPet(f"声明必须是字典：{raw!r}")
         key = raw.get("key")
@@ -447,7 +485,9 @@ class PluginProjection:
 
     @staticmethod
     def _agent_pet_random_actions(key: str, value: Any) -> Optional[List[str]]:
-        """校验 renderer 模式的随机动作候选，保持声明顺序去重；缺省表示宿主全集。"""
+        """
+        校验 renderer 模式的随机动作候选，保持声明顺序去重；缺省表示宿主全集。
+        """
         if value is None:
             return None
         if not isinstance(value, list) or not all(
@@ -458,7 +498,9 @@ class PluginProjection:
 
     @staticmethod
     def _agent_pet_image(key: str, field: str, value: Any) -> Optional[str]:
-        """校验预览图或头像声明：绝对地址仅允许 http(s) 与 data，相对路径不得越出联邦产物目录。"""
+        """
+        校验预览图或头像声明：绝对地址仅允许 http(s) 与 data，相对路径不得越出联邦产物目录。
+        """
         if value is None or value == "":
             return None
         if not isinstance(value, str):
@@ -482,7 +524,8 @@ class PluginProjection:
         dist_path: str,
         preview: str,
     ) -> str:
-        """把已校验的预览图或头像解析为可访问 URL。
+        """
+        把已校验的预览图或头像解析为可访问 URL。
 
         绝对地址原样透传；相对路径解析到 remoteEntry 所在目录，与 remoteEntry 共用
         插件静态文件接口、实例 ID 与版本缓存键，分身由静态文件接口映射回源插件目录。
@@ -495,7 +538,9 @@ class PluginProjection:
         return self._versioned_url(f"{entry_dir}/{preview}", plugin)
 
     def dashboard_metadata(self) -> List[Dict[str, str]]:
-        """投影启用插件的单仪表板或多仪表板元信息。"""
+        """
+        投影启用插件的单仪表板或多仪表板元信息。
+        """
         metadata = []
         for plugin_id, plugin in self._items(None):
             if not supports_plugin_hook(plugin, "get_dashboard"):
@@ -529,7 +574,9 @@ class PluginProjection:
         key: str,
         user_agent: Optional[str] = None,
     ) -> Optional[PluginDashboard]:
-        """调用插件仪表板钩子并返回稳定投影，不依赖 HTTP 异常。"""
+        """
+        调用插件仪表板钩子并返回稳定投影，不依赖 HTTP 异常。
+        """
         plugin = self._running_plugins.get(plugin_id)
         if not plugin:
             raise PluginNotFoundError(f"插件 {plugin_id} 不存在或未加载")
@@ -543,6 +590,7 @@ class PluginProjection:
                 dashboard = method(user_agent=user_agent)
             else:
                 dashboard = method()
+        # 第三方仪表盘钩子失败只影响当前面板，不能中断其他插件展示。
         except Exception as error:  # noqa: BLE001
             self._logger.error(f"插件 {plugin_id} 调用方法 get_dashboard 出错: {error}")
             raise PluginDashboardError(

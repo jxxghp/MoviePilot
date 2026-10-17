@@ -23,14 +23,18 @@ TMDB = str(MediaSource.TMDB)
 
 @pytest.fixture(autouse=True)
 def _track(db):
-    """把订阅与订阅历史表纳入用例级回收。"""
+    """
+    把订阅与订阅历史表纳入用例级回收。
+    """
     db.watermark(Subscribe, SubscribeHistory)
 
 
 def _sub(name: str, media_id: str = "9001", season: int = 1, episode_group: str = None,
          state: str = "N", username: str = "alice", mtype: str = None,
          music_type: str = None, date: str = "2026-08-13 10:00:00") -> Subscribe:
-    """构造一条订阅记录。"""
+    """
+    构造一条订阅记录。
+    """
     return Subscribe(name=name, type=mtype or MediaType.TV.value, state=state,
                      media_source=TMDB, media_id=media_id, season=season,
                      episode_group=episode_group, username=username,
@@ -78,7 +82,9 @@ def test_exists_matches_async_twin(db):
 
 
 def test_subscribe_oper_filters_paginates_and_counts_in_database(db):
-    """订阅 owner 与状态筛选必须先进入 SQL，再按同一条件计数和分页。"""
+    """
+    订阅 owner 与状态筛选必须先进入 SQL，再按同一条件计数和分页。
+    """
     first = db.add(_sub("分页一", media_id="page-1", username="alice", state="N"))
     second = db.add(_sub("分页二", media_id="page-2", username="alice", state="N"))
     db.add(
@@ -87,7 +93,9 @@ def test_subscribe_oper_filters_paginates_and_counts_in_database(db):
     )
 
     async def query(session):
-        """在同一异步会话中执行订阅计数和第二页查询。"""
+        """
+        在同一异步会话中执行订阅计数和第二页查询。
+        """
         oper = SubscribeOper(session)
         total = await oper.async_count(state="N", username="alice")
         rows = await oper.async_list_by_username(
@@ -106,7 +114,9 @@ def test_subscribe_oper_filters_paginates_and_counts_in_database(db):
 
 
 def test_history_queries_reuse_explicit_sessions(db, monkeypatch):
-    """订阅历史同步/异步查询必须复用调用方会话。"""
+    """
+    订阅历史同步/异步查询必须复用调用方会话。
+    """
     row = db.add(_history("显式历史", media_id="8501"))
     monkeypatch.setattr(
         db_base,
@@ -123,7 +133,9 @@ def test_history_queries_reuse_explicit_sessions(db, monkeypatch):
     ).id == row.id
 
     async def check() -> None:
-        """验证异步订阅历史查询复用显式 AsyncSession。"""
+        """
+        验证异步订阅历史查询复用显式 AsyncSession。
+        """
         async with async_session_scope() as session:
             monkeypatch.setattr(
                 db_base,
@@ -353,7 +365,9 @@ def test_list_by_type_includes_the_window_start_boundary(db, frozen_now):
 def _history(name: str, mtype: str = MediaType.TV.value, media_id: str = "8001",
              season: int = 1, episode_group: str = None,
              date: str = "2026-08-13 10:00:00", username: str = "alice") -> SubscribeHistory:
-    """构造一条订阅历史记录。"""
+    """
+    构造一条订阅历史记录。
+    """
     return SubscribeHistory(name=name, type=mtype, media_source=TMDB, media_id=media_id,
                             season=season, episode_group=episode_group, date=date,
                             username=username)

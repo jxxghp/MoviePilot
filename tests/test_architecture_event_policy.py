@@ -1,4 +1,6 @@
-"""宿主 Event consumer 人工政策测试。"""
+"""
+宿主 Event consumer 人工政策测试。
+"""
 
 import json
 from copy import deepcopy
@@ -30,7 +32,9 @@ def _fact(
     handler: str = "Sample.handle",
     line: int = 10,
 ) -> dict[str, Any]:
-    """构造一条与统一 collector 相同字段的 consumer fact。"""
+    """
+    构造一条与统一 collector 相同字段的 consumer fact。
+    """
     fact: dict[str, Any] = {
         "caller": caller,
         "line": line,
@@ -55,7 +59,9 @@ def _entry(
     owner: str | None = None,
     reason: str = "宿主显式注册并拥有该事件处理器。",
 ) -> dict[str, Any]:
-    """把 collector fact 转换为完整 line-free policy entry。"""
+    """
+    把 collector fact 转换为完整 line-free policy entry。
+    """
     entry = {key: value for key, value in fact.items() if key != "line"}
     entry.update({
         "classification": classification
@@ -71,7 +77,9 @@ def _entry(
 
 
 def _policy(entries: list[dict[str, Any]]) -> dict[str, Any]:
-    """构造 exact fingerprint set policy。"""
+    """
+    构造 exact fingerprint set policy。
+    """
     return {
         "schema_version": 1,
         "scope": dict(EVENT_CONSUMER_POLICY_SCOPE),
@@ -83,12 +91,16 @@ def _policy(entries: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _codes(result: EventPolicyCheck) -> list[str]:
-    """返回校验结果中的稳定错误码列表。"""
+    """
+    返回校验结果中的稳定错误码列表。
+    """
     return [violation.code for violation in result.violations]
 
 
 def test_event_policy_accepts_exact_static_and_dynamic_facts() -> None:
-    """静态注册和明确动态例外应按完整 fingerprint 精确匹配。"""
+    """
+    静态注册和明确动态例外应按完整 fingerprint 精确匹配。
+    """
     static = _fact()
     dynamic = _fact(
         caller="app.workflow",
@@ -111,7 +123,9 @@ def test_event_policy_accepts_exact_static_and_dynamic_facts() -> None:
 
 
 def test_current_event_consumer_policy_matches_exact_reviewed_set() -> None:
-    """当前 17 条宿主 consumer 必须逐条匹配人工政策且没有非法成员。"""
+    """
+    当前 17 条宿主 consumer 必须逐条匹配人工政策且没有非法成员。
+    """
     facts = current_event_facts()["consumers"]
     policy = json.loads(DEFAULT_EVENT_POLICY_PATH.read_text(encoding="utf-8"))
     entries = policy["event_consumers"]["entries"]
@@ -157,7 +171,9 @@ def test_current_event_consumer_policy_matches_exact_reviewed_set() -> None:
 
 
 def test_event_policy_reuses_line_free_event_fact_fingerprint() -> None:
-    """源码行移动不改变摘要，任一 line-free 语义字段变化都改变摘要。"""
+    """
+    源码行移动不改变摘要，任一 line-free 语义字段变化都改变摘要。
+    """
     fact = _fact()
     moved = {**fact, "line": 999}
     assert fingerprint_event_fact(fact) == fingerprint_event_fact(moved)
@@ -179,7 +195,9 @@ def test_event_policy_reuses_line_free_event_fact_fingerprint() -> None:
 
 
 def test_event_policy_rejects_add_remove_and_same_count_replacement() -> None:
-    """新增、陈旧和同计数替换都不能通过刷新事实集合隐藏。"""
+    """
+    新增、陈旧和同计数替换都不能通过刷新事实集合隐藏。
+    """
     original = _fact()
     added = _fact(handler="Sample.added", line=20)
     policy = _policy([_entry(original)])
@@ -196,7 +214,9 @@ def test_event_policy_rejects_add_remove_and_same_count_replacement() -> None:
 
 
 def test_event_policy_rejects_classification_and_owner_swaps() -> None:
-    """事实仍相同时也不得互换静态/动态分类或责任 owner。"""
+    """
+    事实仍相同时也不得互换静态/动态分类或责任 owner。
+    """
     fact = _fact()
     classification_swap = _entry(fact, classification=DYNAMIC_CLASSIFICATION)
     owner_swap = _entry(fact, owner="app.other")
@@ -210,7 +230,9 @@ def test_event_policy_rejects_classification_and_owner_swaps() -> None:
 
 
 def test_event_policy_rejects_invalid_schema_wildcards_and_reasons() -> None:
-    """人工 policy 必须保持精确 scope、字段和可审查理由。"""
+    """
+    人工 policy 必须保持精确 scope、字段和可审查理由。
+    """
     def schema_drift(policy: dict[str, Any]) -> None:
         policy["schema_version"] = 2
 
@@ -243,7 +265,9 @@ def test_event_policy_rejects_invalid_schema_wildcards_and_reasons() -> None:
 
 
 def test_event_policy_rejects_duplicate_policy_and_fact_fingerprints() -> None:
-    """重复 identity 不能被 exact set 的字典或集合投影吞掉。"""
+    """
+    重复 identity 不能被 exact set 的字典或集合投影吞掉。
+    """
     fact = _fact()
     entry = _entry(fact)
 
@@ -261,7 +285,9 @@ def test_event_policy_rejects_duplicate_policy_and_fact_fingerprints() -> None:
 
 
 def test_event_policy_rejects_invalid_and_plugin_consumers() -> None:
-    """非法事件成员与 app.plugins 副本均不得写入人工准入。"""
+    """
+    非法事件成员与 app.plugins 副本均不得写入人工准入。
+    """
     invalid = _fact(invalid=True)
     plugin = _fact(caller="app.plugins.demo")
 
@@ -279,7 +305,9 @@ def test_event_policy_rejects_invalid_and_plugin_consumers() -> None:
 
 
 def test_event_policy_rejects_tampered_fingerprint() -> None:
-    """policy 不得保留旧摘要同时篡改 receiver、method 或其他事实字段。"""
+    """
+    policy 不得保留旧摘要同时篡改 receiver、method 或其他事实字段。
+    """
     fact = _fact()
     entry = _entry(fact)
     entry["receiver_kind"] = "constructed_instance"
@@ -290,7 +318,9 @@ def test_event_policy_rejects_tampered_fingerprint() -> None:
 
 
 def test_event_policy_file_check_reports_invalid_json(tmp_path: Path) -> None:
-    """只读文件入口把缺失或损坏 policy 报告为结构化失败。"""
+    """
+    只读文件入口把缺失或损坏 policy 报告为结构化失败。
+    """
     path = tmp_path / "runtime-contract-policy.json"
     path.write_text("{", encoding="utf-8")
 
@@ -301,7 +331,9 @@ def test_event_policy_file_check_reports_invalid_json(tmp_path: Path) -> None:
 
 
 def test_event_policy_cli_has_no_write_mode() -> None:
-    """人工 policy CLI 永远不暴露自动写入入口。"""
+    """
+    人工 policy CLI 永远不暴露自动写入入口。
+    """
     with pytest.raises(SystemExit) as error:
         parse_args(["--write"])
 
@@ -309,7 +341,9 @@ def test_event_policy_cli_has_no_write_mode() -> None:
 
 
 def test_event_policy_violation_order_is_deterministic() -> None:
-    """CI 输出必须按错误码和 fingerprint 稳定排序。"""
+    """
+    CI 输出必须按错误码和 fingerprint 稳定排序。
+    """
     first = _fact(handler="Sample.first")
     second = _fact(handler="Sample.second")
 

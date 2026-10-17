@@ -1,3 +1,7 @@
+"""
+验证挂载磁盘整理后的路径与清理边界。
+"""
+
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -88,7 +92,9 @@ def test_disabled_cleanup_still_deletes_ordinary_local_source_directories():
 
 
 def test_missing_local_file_path_skips_filesystem_detection():
-    """本地任务缺少路径时应安全跳过挂载盘检测。"""
+    """
+    本地任务缺少路径时应安全跳过挂载盘检测。
+    """
     task = _make_task()
     task.fileitem.path = None
 
@@ -115,7 +121,9 @@ def test_disabled_cleanup_does_not_change_remote_storage_cleanup():
 
 
 def test_missing_local_source_path_skips_filesystem_detection():
-    """历史任务缺少源路径时直接采用清理默认值，不把 None 传给 Path。"""
+    """
+    历史任务缺少源路径时直接采用清理默认值，不把 None 传给 Path。
+    """
     task = _make_task()
     task.fileitem.path = None
 

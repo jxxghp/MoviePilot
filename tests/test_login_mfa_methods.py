@@ -1,3 +1,7 @@
+"""
+验证登录接口返回的多因素认证方式。
+"""
+
 import json
 from types import SimpleNamespace
 
@@ -13,7 +17,9 @@ from app.chain.user import MfaRequired, UserChain
 
 
 def _request() -> Request:
-    """构造登录接口所需的最小请求。"""
+    """
+    构造登录接口所需的最小请求。
+    """
     return Request(
         {
             "type": "http",
@@ -28,12 +34,16 @@ def _request() -> Request:
 
 
 def _form() -> SimpleNamespace:
-    """构造密码登录表单契约。"""
+    """
+    构造密码登录表单契约。
+    """
     return SimpleNamespace(username="user", password="password")
 
 
 def test_verify_mfa_requires_otp_when_enabled():
-    """密码通过后应返回账号已启用的 OTP 二次验证方式。"""
+    """
+    密码通过后应返回账号已启用的 OTP 二次验证方式。
+    """
     user = SimpleNamespace(id=1, name="user", is_otp=True, otp_secret="")
 
     result = UserChain._verify_mfa(user=user, mfa_code=None)
@@ -43,20 +53,28 @@ def test_verify_mfa_requires_otp_when_enabled():
 
 
 def test_verify_mfa_ignores_passkeys_when_otp_is_disabled():
-    """Passkey 独立登录能力不应改变密码登录结果。"""
+    """
+    Passkey 独立登录能力不应改变密码登录结果。
+    """
     user = SimpleNamespace(id=1, name="user", is_otp=False, otp_secret="")
 
     assert UserChain._verify_mfa(user=user, mfa_code=None) is True
 
 
 def test_login_mfa_response_contains_methods_after_password_verification(monkeypatch):
-    """MFA 响应应保持旧标记并补充结构化方法列表。"""
+    """
+    MFA 响应应保持旧标记并补充结构化方法列表。
+    """
 
     class FakeUserChain:
-        """返回已通过密码校验的 MFA 要求。"""
+        """
+        返回已通过密码校验的 MFA 要求。
+        """
 
         def user_authenticate(self, username, password, mfa_code=None):
-            """模拟账号启用了 OTP。"""
+            """
+            模拟账号启用了 OTP。
+            """
             return False, MfaRequired(methods=("otp",))
 
     monkeypatch.setattr(login_endpoint, "UserChain", FakeUserChain)
@@ -77,13 +95,19 @@ def test_login_mfa_response_contains_methods_after_password_verification(monkeyp
 
 
 def test_login_invalid_password_does_not_expose_mfa_methods(monkeypatch):
-    """密码未通过时不得返回账号的 MFA 能力。"""
+    """
+    密码未通过时不得返回账号的 MFA 能力。
+    """
 
     class FakeUserChain:
-        """返回普通认证失败。"""
+        """
+        返回普通认证失败。
+        """
 
         def user_authenticate(self, username, password, mfa_code=None):
-            """模拟错误密码。"""
+            """
+            模拟错误密码。
+            """
             return False, "用户名、密码或验证码错误"
 
     monkeypatch.setattr(login_endpoint, "UserChain", FakeUserChain)
@@ -101,13 +125,19 @@ def test_login_invalid_password_does_not_expose_mfa_methods(monkeypatch):
 
 
 def test_wallpaper_returns_url_in_data(monkeypatch):
-    """登录壁纸地址应放入 data，message 只保留消息文本。"""
+    """
+    登录壁纸地址应放入 data，message 只保留消息文本。
+    """
 
     class FakeWallpaperHelper:
-        """返回固定登录壁纸地址。"""
+        """
+        返回固定登录壁纸地址。
+        """
 
         def get_wallpaper(self):
-            """返回测试壁纸地址。"""
+            """
+            返回测试壁纸地址。
+            """
             return "https://images.example/wallpaper.jpg"
 
     monkeypatch.setattr(login_endpoint, "WallpaperHelper", FakeWallpaperHelper)
@@ -121,7 +151,9 @@ def test_wallpaper_returns_url_in_data(monkeypatch):
 
 
 def test_passkey_authentication_start_returns_object_options(monkeypatch):
-    """Passkey 认证选项应作为对象返回，避免统一响应模型校验失败。"""
+    """
+    Passkey 认证选项应作为对象返回，避免统一响应模型校验失败。
+    """
     monkeypatch.setattr(
         mfa_endpoint.PassKeyHelper,
         "generate_authentication_options",
@@ -146,7 +178,9 @@ def test_passkey_authentication_start_returns_object_options(monkeypatch):
 
 
 def test_passkey_registration_start_returns_object_options(monkeypatch):
-    """Passkey 注册选项应作为对象返回，避免统一响应模型校验失败。"""
+    """
+    Passkey 注册选项应作为对象返回，避免统一响应模型校验失败。
+    """
     monkeypatch.setattr(
         mfa_endpoint.PassKeyHelper,
         "generate_registration_options",
@@ -173,7 +207,9 @@ def test_passkey_registration_start_returns_object_options(monkeypatch):
 
 
 class _FakeThrottle:
-    """记录调用并按预设返回等待秒数的登录限流器替身。"""
+    """
+    记录调用并按预设返回等待秒数的登录限流器替身。
+    """
 
     def __init__(self, retry_after: int = 0) -> None:
         self._retry_after = retry_after
@@ -181,30 +217,42 @@ class _FakeThrottle:
         self.successes: list[tuple[str, str]] = []
 
     def retry_after(self, key):
-        """返回预设等待秒数。"""
+        """
+        返回预设等待秒数。
+        """
         return self._retry_after
 
     def record_failure(self, key):
-        """记录失败键。"""
+        """
+        记录失败键。
+        """
         self.failures.append(key)
         return 0
 
     def record_success(self, key):
-        """记录成功键。"""
+        """
+        记录成功键。
+        """
         self.successes.append(key)
 
 
 def test_login_rejects_with_429_while_throttled(monkeypatch):
-    """锁定期内直接返回 429 与 Retry-After，不触发凭据校验。"""
+    """
+    锁定期内直接返回 429 与 Retry-After，不触发凭据校验。
+    """
     throttle = _FakeThrottle(retry_after=42)
     monkeypatch.setattr(login_endpoint, "get_login_throttle", lambda: throttle)
     calls = []
 
     class FakeUserChain:
-        """记录是否被调用。"""
+        """
+        记录是否被调用。
+        """
 
         def user_authenticate(self, **kwargs):
-            """不应被调用。"""
+            """
+            不应被调用。
+            """
             calls.append(kwargs)
             return False, "unexpected"
 
@@ -224,15 +272,21 @@ def test_login_rejects_with_429_while_throttled(monkeypatch):
 
 
 def test_login_failure_records_throttle_key(monkeypatch):
-    """密码错误按 (客户端地址, 小写用户名) 记一次失败。"""
+    """
+    密码错误按 (客户端地址, 小写用户名) 记一次失败。
+    """
     throttle = _FakeThrottle()
     monkeypatch.setattr(login_endpoint, "get_login_throttle", lambda: throttle)
 
     class FakeUserChain:
-        """返回普通认证失败。"""
+        """
+        返回普通认证失败。
+        """
 
         def user_authenticate(self, username, password, mfa_code=None):
-            """模拟错误密码。"""
+            """
+            模拟错误密码。
+            """
             return False, "用户名、密码或验证码错误"
 
     monkeypatch.setattr(login_endpoint, "UserChain", FakeUserChain)
@@ -250,15 +304,21 @@ def test_login_failure_records_throttle_key(monkeypatch):
 
 
 def test_login_mfa_challenge_does_not_count_as_failure(monkeypatch):
-    """密码正确但需二次验证时不计入失败。"""
+    """
+    密码正确但需二次验证时不计入失败。
+    """
     throttle = _FakeThrottle()
     monkeypatch.setattr(login_endpoint, "get_login_throttle", lambda: throttle)
 
     class FakeUserChain:
-        """返回已通过密码校验的 MFA 要求。"""
+        """
+        返回已通过密码校验的 MFA 要求。
+        """
 
         def user_authenticate(self, username, password, mfa_code=None):
-            """模拟账号启用了 OTP。"""
+            """
+            模拟账号启用了 OTP。
+            """
             return False, MfaRequired(methods=("otp",))
 
     monkeypatch.setattr(login_endpoint, "UserChain", FakeUserChain)
@@ -275,7 +335,9 @@ def test_login_mfa_challenge_does_not_count_as_failure(monkeypatch):
 
 
 def test_login_success_clears_throttle(monkeypatch):
-    """登录成功后清除该键的失败记录。"""
+    """
+    登录成功后清除该键的失败记录。
+    """
     throttle = _FakeThrottle()
     monkeypatch.setattr(login_endpoint, "get_login_throttle", lambda: throttle)
     user = SimpleNamespace(
@@ -283,10 +345,14 @@ def test_login_success_clears_throttle(monkeypatch):
     )
 
     class FakeUserChain:
-        """返回认证成功的用户。"""
+        """
+        返回认证成功的用户。
+        """
 
         def user_authenticate(self, username, password, mfa_code=None):
-            """模拟认证成功。"""
+            """
+            模拟认证成功。
+            """
             return True, user
 
     monkeypatch.setattr(login_endpoint, "UserChain", FakeUserChain)

@@ -1,9 +1,9 @@
-"""3.0.5
-允许插件扩展媒体来源
+"""
+3.0.5 允许插件扩展媒体来源
 
-Revision ID: b3d7e9f1a2c4
-Revises: e3d9f4b7c806
-Create Date: 2026-08-13
+版本标识： b3d7e9f1a2c4
+前置版本： e3d9f4b7c806
+创建时间： 2026-08-13
 """
 
 from alembic import op
@@ -43,12 +43,16 @@ BUILTIN_IDENTITY_CHECK_SQL = (
 
 
 def _inspector() -> sa.Inspector:
-    """返回使用当前迁移连接的数据库检查器。"""
+    """
+    返回使用当前迁移连接的数据库检查器。
+    """
     return sa.inspect(op.get_bind())
 
 
 def _replace_constraints(check_sql: str) -> None:
-    """在现有媒体表上以批处理方式替换统一身份约束。"""
+    """
+    在现有媒体表上以批处理方式替换统一身份约束。
+    """
     table_names = set(_inspector().get_table_names())
     for table_name in MEDIA_TABLES:
         if table_name not in table_names:
@@ -65,10 +69,14 @@ def _replace_constraints(check_sql: str) -> None:
 
 
 def upgrade() -> None:
-    """把固定内置来源白名单替换为允许插件来源的格式约束。"""
+    """
+    把固定内置来源白名单替换为允许插件来源的格式约束。
+    """
     _replace_constraints(EXTENSIBLE_IDENTITY_CHECK_SQL)
 
 
 def downgrade() -> None:
-    """恢复只允许当前内置来源的旧约束。"""
+    """
+    恢复只允许当前内置来源的旧约束。
+    """
     _replace_constraints(BUILTIN_IDENTITY_CHECK_SQL)

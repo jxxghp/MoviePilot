@@ -1,4 +1,6 @@
-"""文件整理 worker 与 pending 回放的宿主生命周期测试。"""
+"""
+文件整理 worker 与 pending 回放的宿主生命周期测试。
+"""
 
 import asyncio
 import queue
@@ -17,6 +19,8 @@ from app.application.transfer.workflow import (
     TransferQueue,
     TransferTask,
 )
+
+# 此用例覆盖运行时惰性导出，静态检查无法解析该公开入口。
 from app.chain.transfer import TransferChain  # pylint: disable=no-name-in-module
 from app.chain.transfer.execution import _TransferManualReviewRequired
 from app.foundation.singleton import Singleton
@@ -28,7 +32,9 @@ from tests.test_transfer_job_manager import make_task
 
 
 def _planning_input(fileitem: FileItem) -> TransferPlanningInput:
-    """构造 worker 准入与 claim 投影使用的真实规划输入。"""
+    """
+    构造 worker 准入与 claim 投影使用的真实规划输入。
+    """
     return TransferPlanningInput(
         source_fileitem=fileitem.model_dump(mode="json"),
         meta=None,
@@ -37,7 +43,9 @@ def _planning_input(fileitem: FileItem) -> TransferPlanningInput:
 
 
 def _build_chain(*, transfer_threads: int = 0) -> TransferChain:
-    """构造只包含后台线程生命周期字段的 TransferChain 测试骨架。"""
+    """
+    构造只包含后台线程生命周期字段的 TransferChain 测试骨架。
+    """
     chain = object.__new__(TransferChain)
     chain.runtime_config = SimpleNamespace(
         transfer_threads=transfer_threads,
@@ -100,7 +108,9 @@ def _build_chain(*, transfer_threads: int = 0) -> TransferChain:
 
 
 def _claimed_admission(task: TransferTask, task_id: str) -> TransferAdmission:
-    """构造属于测试进程 owner 的有效 claim 投影。"""
+    """
+    构造属于测试进程 owner 的有效 claim 投影。
+    """
     return TransferAdmission(
         task_id=task_id,
         storage=task.fileitem.storage,
@@ -119,7 +129,9 @@ def _claimed_admission(task: TransferTask, task_id: str) -> TransferAdmission:
 
 @pytest.fixture
 def blocked_queue_admission(request: pytest.FixtureRequest) -> Iterator[SimpleNamespace]:
-    """在准入数据库边界暂停生产者，并保留可按事件触发的真实续租线程。"""
+    """
+    在准入数据库边界暂停生产者，并保留可按事件触发的真实续租线程。
+    """
     chain = _build_chain()
     chain.jobview = MagicMock()
     chain.jobview.add_task.return_value = True
@@ -142,20 +154,26 @@ def blocked_queue_admission(request: pytest.FixtureRequest) -> Iterator[SimpleNa
     original_operation = database_method.side_effect
 
     def block_database(**kwargs) -> TransferAdmission:
-        """保持仓储调用未返回，直到测试完成并发行为断言后显式放行。"""
+        """
+        保持仓储调用未返回，直到测试完成并发行为断言后显式放行。
+        """
         database_entered.set()
         release_database.wait()
         return original_operation(**kwargs)
 
     def enqueue_task() -> None:
-        """从独立生产者执行真实入队路径，并回传结果与异常。"""
+        """
+        从独立生产者执行真实入队路径，并回传结果与异常。
+        """
         try:
             producer_results.append(chain.put_to_queue(task))
         except Exception as error:
             failures.append(error)
 
     def renew_lease() -> None:
-        """收到事件后执行真实续租，再等待宿主关闭信号。"""
+        """
+        收到事件后执行真实续租，再等待宿主关闭信号。
+        """
         heartbeat_requested.wait()
         try:
             chain._TransferChain__heartbeat_owned_leases()
@@ -206,7 +224,9 @@ def blocked_queue_admission(request: pytest.FixtureRequest) -> Iterator[SimpleNa
 def test_slow_queue_admission_does_not_block_owned_lease_heartbeat(
         blocked_queue_admission: SimpleNamespace,
 ) -> None:
-    """新任务数据库阻塞期间，已有任务必须独立续租并刷新本地期限。"""
+    """
+    新任务数据库阻塞期间，已有任务必须独立续租并刷新本地期限。
+    """
     state = blocked_queue_admission
     state.heartbeat_requested.set()
 
@@ -226,13 +246,17 @@ def test_slow_queue_admission_does_not_block_owned_lease_heartbeat(
 def test_close_during_queue_admission_respects_budget_and_keeps_heartbeat(
         blocked_queue_admission: SimpleNamespace,
 ) -> None:
-    """关闭不得越过阻塞生产者释放租约，超时后续租和已接收的入队仍可完成。"""
+    """
+    关闭不得越过阻塞生产者释放租约，超时后续租和已接收的入队仍可完成。
+    """
     state = blocked_queue_admission
     close_finished = threading.Event()
     close_results: list[tuple[bool, float]] = []
 
     def close_chain() -> None:
-        """独立执行关闭，使旧实现无界等锁时测试仍能显式释放生产者。"""
+        """
+        独立执行关闭，使旧实现无界等锁时测试仍能显式释放生产者。
+        """
         started_at = time.monotonic()
         try:
             result = state.chain.close_workers(timeout_seconds=0.02)
@@ -262,7 +286,9 @@ def test_close_during_queue_admission_respects_budget_and_keeps_heartbeat(
 
 @pytest.mark.parametrize("owner", ["worker", "replay"])
 def test_closing_owner_rejects_enqueue_without_waiting_for_lifecycle_lock(owner: str) -> None:
-    """已经等待准入锁的 owner 必须察觉关闭并退出，不能与关闭的 join 反等。"""
+    """
+    已经等待准入锁的 owner 必须察觉关闭并退出，不能与关闭的 join 反等。
+    """
     chain = _build_chain()
     lifecycle_lock = threading.RLock()
     enqueue_waiting_for_lock = threading.Event()
@@ -270,13 +296,17 @@ def test_closing_owner_rejects_enqueue_without_waiting_for_lifecycle_lock(owner:
     enqueue_failures: list[Exception] = []
 
     def acquire_lifecycle_lock(*, timeout: float) -> bool:
-        """只观测 owner 已经开始等锁，实际竞争和主线程重入均交给真实 RLock。"""
+        """
+        只观测 owner 已经开始等锁，实际竞争和主线程重入均交给真实 RLock。
+        """
         if threading.current_thread() is thread:
             enqueue_waiting_for_lock.set()
         return lifecycle_lock.acquire(timeout=timeout)
 
     def enqueue_before_close() -> None:
-        """在关闭尚未开始时进入准入并阻塞于主线程持有的生命周期锁。"""
+        """
+        在关闭尚未开始时进入准入并阻塞于主线程持有的生命周期锁。
+        """
         try:
             enqueue_results.append(chain.put_to_queue(MagicMock()))
         except Exception as error:
@@ -311,12 +341,16 @@ def test_closing_owner_rejects_enqueue_without_waiting_for_lifecycle_lock(owner:
 
 
 def test_config_reload_replaces_worker_generation_and_keeps_accepting() -> None:
-    """热更新应等待旧 worker 收敛，再启动使用独立停止信号的新一代。"""
+    """
+    热更新应等待旧 worker 收敛，再启动使用独立停止信号的新一代。
+    """
     chain = _build_chain(transfer_threads=1)
     started_workers: queue.Queue = queue.Queue()
 
     def run_worker(stop_event: threading.Event) -> None:
-        """记录 worker 代际并等待该代专属停止信号。"""
+        """
+        记录 worker 代际并等待该代专属停止信号。
+        """
         started_workers.put((threading.current_thread(), stop_event))
         stop_event.wait()
 
@@ -345,7 +379,9 @@ def test_config_reload_replaces_worker_generation_and_keeps_accepting() -> None:
 
 
 def test_config_reload_hands_queue_to_new_generation_while_old_io_finishes() -> None:
-    """旧代同步 I/O 超时不应让后续队列永久失去 worker。"""
+    """
+    旧代同步 I/O 超时不应让后续队列永久失去 worker。
+    """
     chain = _build_chain(transfer_threads=1)
     chain._WORKER_RESTART_TIMEOUT_SECONDS = 0.01
     started_workers: queue.Queue = queue.Queue()
@@ -354,7 +390,9 @@ def test_config_reload_hands_queue_to_new_generation_while_old_io_finishes() -> 
     invocation_lock = threading.Lock()
 
     def run_worker(stop_event: threading.Event) -> None:
-        """首代模拟不可取消 I/O，后续代按各自停止信号正常收敛。"""
+        """
+        首代模拟不可取消 I/O，后续代按各自停止信号正常收敛。
+        """
         nonlocal invocation_count
         with invocation_lock:
             generation = invocation_count
@@ -385,7 +423,9 @@ def test_config_reload_hands_queue_to_new_generation_while_old_io_finishes() -> 
 
 
 def test_close_workers_is_bounded_and_retains_nonconverging_owner() -> None:
-    """同步 I/O 线程超时后应保留句柄并报告失败，不能伪装成已取消。"""
+    """
+    同步 I/O 线程超时后应保留句柄并报告失败，不能伪装成已取消。
+    """
     chain = _build_chain()
     release = threading.Event()
     thread = threading.Thread(
@@ -416,13 +456,17 @@ def test_close_workers_is_bounded_and_retains_nonconverging_owner() -> None:
 
 
 def test_close_workers_lock_wait_uses_the_same_timeout_budget() -> None:
-    """生命周期锁竞争必须耗用关闭预算，超时返回后不得延迟修改 worker 状态。"""
+    """
+    生命周期锁竞争必须耗用关闭预算，超时返回后不得延迟修改 worker 状态。
+    """
     chain = _build_chain()
     lock_acquired = threading.Event()
     release_lock = threading.Event()
 
     def hold_lifecycle_lock() -> None:
-        """在独立线程持锁，稳定制造无法重入的生命周期锁竞争。"""
+        """
+        在独立线程持锁，稳定制造无法重入的生命周期锁竞争。
+        """
         with chain._worker_lifecycle_lock:
             lock_acquired.set()
             assert release_lock.wait(timeout=1)
@@ -445,7 +489,9 @@ def test_close_workers_lock_wait_uses_the_same_timeout_budget() -> None:
 
 
 def test_close_keeps_failure_notification_when_workers_do_not_converge() -> None:
-    """活跃整理线程超时后，成功和失败通知 owner 必须继续供线程使用。"""
+    """
+    活跃整理线程超时后，成功和失败通知 owner 必须继续供线程使用。
+    """
     chain = _build_chain()
     chain.close_workers = MagicMock(return_value=False)
     chain.failure_notification_aggregator = MagicMock()
@@ -460,7 +506,9 @@ def test_close_keeps_failure_notification_when_workers_do_not_converge() -> None
 
 
 def test_close_releases_failure_notification_after_workers_converge() -> None:
-    """worker 和回放退出后，整理链应刷新并关闭成功和失败通知 owner。"""
+    """
+    worker 和回放退出后，整理链应刷新并关闭成功和失败通知 owner。
+    """
     chain = _build_chain()
     chain.close_workers = MagicMock(return_value=True)
     chain.failure_notification_aggregator = MagicMock()
@@ -474,7 +522,9 @@ def test_close_releases_failure_notification_after_workers_converge() -> None:
 
 
 def test_stop_transfer_runtime_does_not_construct_chain(monkeypatch) -> None:
-    """关闭入口在整理链从未使用时应直接成功，不能因关停而启动 worker。"""
+    """
+    关闭入口在整理链从未使用时应直接成功，不能因关停而启动 worker。
+    """
     get_existing_instance = MagicMock(return_value=None)
     monkeypatch.setattr(
         transfer_initializer.TransferChain,
@@ -491,7 +541,9 @@ def test_stop_transfer_runtime_does_not_construct_chain(monkeypatch) -> None:
 
 
 def test_stop_transfer_runtime_closes_existing_chain(monkeypatch) -> None:
-    """关闭入口应把超时预算和真实收敛结果原样传给既有整理链。"""
+    """
+    关闭入口应把超时预算和真实收敛结果原样传给既有整理链。
+    """
     chain = MagicMock(close=AsyncMock(return_value=False))
     monkeypatch.setattr(
         transfer_initializer.TransferChain,
@@ -508,7 +560,9 @@ def test_stop_transfer_runtime_closes_existing_chain(monkeypatch) -> None:
 
 
 def test_constructor_failure_publishes_started_worker_to_cleanup(monkeypatch) -> None:
-    """首个 worker 启动后构造失败时，stop-only 入口仍必须找到并等待它。"""
+    """
+    首个 worker 启动后构造失败时，stop-only 入口仍必须找到并等待它。
+    """
     instances = dict(Singleton._instances)
     instances.pop((TransferChain, (), frozenset()), None)
     monkeypatch.setattr(Singleton, "_instances", instances)
@@ -517,7 +571,9 @@ def test_constructor_failure_publishes_started_worker_to_cleanup(monkeypatch) ->
     workers: list[threading.Thread] = []
 
     def failing_init(chain: TransferChain) -> None:
-        """模拟第二个 owner 启动失败前已经成功启动一个整理线程。"""
+        """
+        模拟第二个 owner 启动失败前已经成功启动一个整理线程。
+        """
         worker = threading.Thread(
             target=lambda: (worker_started.set(), worker_release.wait()),
             name="transfer-partial-construction",
@@ -527,7 +583,9 @@ def test_constructor_failure_publishes_started_worker_to_cleanup(monkeypatch) ->
         worker.start()
 
         async def close(*, timeout_seconds: float) -> bool:
-            """模拟真实 close 释放并等待半构造实例已经发布的 worker。"""
+            """
+            模拟真实 close 释放并等待半构造实例已经发布的 worker。
+            """
             worker_release.set()
             worker.join(timeout=timeout_seconds)
             return not worker.is_alive()
@@ -550,7 +608,9 @@ def test_constructor_failure_publishes_started_worker_to_cleanup(monkeypatch) ->
 
 
 def test_worker_requeues_item_taken_during_shutdown(monkeypatch) -> None:
-    """停止信号与 queue.get 竞态时，未开始处理的任务必须原样放回队列。"""
+    """
+    停止信号与 queue.get 竞态时，未开始处理的任务必须原样放回队列。
+    """
     chain = _build_chain()
     work_queue = MagicMock()
     chain._queue = work_queue
@@ -559,7 +619,9 @@ def test_worker_requeues_item_taken_during_shutdown(monkeypatch) -> None:
     item = TransferQueue()
 
     def get_item(*_args, **_kwargs):
-        """让停止信号稳定落在阻塞取队列之后、任务处理之前。"""
+        """
+        让停止信号稳定落在阻塞取队列之后、任务处理之前。
+        """
         entered_get.set()
         assert release_get.wait(timeout=1)
         return item
@@ -585,7 +647,9 @@ def test_worker_requeues_item_taken_during_shutdown(monkeypatch) -> None:
 
 
 def test_worker_settles_progress_when_only_stop_sentinel_remains(monkeypatch) -> None:
-    """真实任务完成时仅剩停止哨兵，仍应结束进度并重置本批计数。"""
+    """
+    真实任务完成时仅剩停止哨兵，仍应结束进度并重置本批计数。
+    """
     chain = _build_chain()
     task = TransferTask(
         fileitem=FileItem(
@@ -608,7 +672,9 @@ def test_worker_settles_progress_when_only_stop_sentinel_remains(monkeypatch) ->
     release_task = threading.Event()
 
     def handle_transfer(*_args, **_kwargs):
-        """阻塞真实任务，让测试能在其完成前稳定插入停止哨兵。"""
+        """
+        阻塞真实任务，让测试能在其完成前稳定插入停止哨兵。
+        """
         task_started.set()
         assert release_task.wait(timeout=1)
         return True, ""
@@ -643,7 +709,9 @@ def test_worker_settles_progress_when_only_stop_sentinel_remains(monkeypatch) ->
 
 
 def test_durable_task_identity_flows_to_unsettled_terminal_claim_release(monkeypatch) -> None:
-    """终态无原子回执时稳定身份必须用于释放 claim，pending 保持可恢复。"""
+    """
+    终态无原子回执时稳定身份必须用于释放 claim，pending 保持可恢复。
+    """
     chain = _build_chain()
     chain.runtime_config.transfer_task_timeout = 0
     task = TransferTask(fileitem=FileItem(
@@ -685,7 +753,9 @@ def test_durable_task_identity_flows_to_unsettled_terminal_claim_release(monkeyp
     chain._total_num = 0
 
     def complete_with_checkpoint(*, task, callback):
-        """模拟真实 worker 只有提交 checkpoint 后才返回终态成功。"""
+        """
+        模拟真实 worker 只有提交 checkpoint 后才返回终态成功。
+        """
         task.bind_plan_checkpoint(MagicMock())
         return True, ""
 
@@ -724,7 +794,9 @@ def test_durable_task_identity_flows_to_unsettled_terminal_claim_release(monkeyp
 
 
 def test_claimed_task_prevents_progress_settlement_before_active_registration() -> None:
-    """其他 worker 已取走真实任务但尚未登记 active 时，当前批次不得提前结算。"""
+    """
+    其他 worker 已取走真实任务但尚未登记 active 时，当前批次不得提前结算。
+    """
     chain = _build_chain()
     task = TransferTask(
         fileitem=FileItem(
@@ -747,7 +819,9 @@ def test_claimed_task_prevents_progress_settlement_before_active_registration() 
     chain._queue.put(TransferQueue(task=task))
 
     def hold_claimed_task() -> None:
-        """模拟 worker 已完成 queue.get、尚未取得 task_lock 登记 active 的窗口。"""
+        """
+        模拟 worker 已完成 queue.get、尚未取得 task_lock 登记 active 的窗口。
+        """
         item = chain._queue.get(timeout=1)
         assert item.task is task
         claimed.set()
@@ -774,14 +848,18 @@ def test_claimed_task_prevents_progress_settlement_before_active_registration() 
 
 
 def test_replay_has_single_owner_and_close_waits_for_it() -> None:
-    """重复回放只保留一个线程，关闭会通知并等待该线程退出。"""
+    """
+    重复回放只保留一个线程，关闭会通知并等待该线程退出。
+    """
     chain = _build_chain()
     del chain._TransferChain__ensure_recovery_scheduler
     replay_started = threading.Event()
     replay_calls = []
 
     def replay(stop_event: threading.Event) -> None:
-        """模拟可由逐项检查点收敛的 pending 回放。"""
+        """
+        模拟可由逐项检查点收敛的 pending 回放。
+        """
         replay_calls.append(stop_event)
         replay_started.set()
         stop_event.wait()
@@ -803,7 +881,9 @@ def test_replay_has_single_owner_and_close_waits_for_it() -> None:
 def test_recovered_worker_reuses_claimed_token_without_second_claim(
         monkeypatch,
 ) -> None:
-    """恢复任务携带 token 入队后，普通 worker 必须直接执行而非二次 claim。"""
+    """
+    恢复任务携带 token 入队后，普通 worker 必须直接执行而非二次 claim。
+    """
     chain = _build_chain()
     task = TransferTask(fileitem=FileItem(
         storage="local",
@@ -833,7 +913,9 @@ def test_recovered_worker_reuses_claimed_token_without_second_claim(
     stop_event = threading.Event()
 
     def complete_recovery(*, task, callback):
-        """模拟恢复任务成功提交检查点并让 worker 在本项后退出。"""
+        """
+        模拟恢复任务成功提交检查点并让 worker 在本项后退出。
+        """
         del callback
         task.bind_plan_checkpoint(MagicMock())
         stop_event.set()
@@ -862,7 +944,9 @@ def test_recovered_worker_reuses_claimed_token_without_second_claim(
 
 
 def test_worker_manual_review_logs_queue_guidance_without_traceback(monkeypatch) -> None:
-    """后台 worker 遇到人工复核时只告警并释放内存执行状态，保留 durable 任务。"""
+    """
+    后台 worker 遇到人工复核时只告警并释放内存执行状态，保留 durable 任务。
+    """
     chain = _build_chain()
     task = TransferTask(fileitem=FileItem(
         storage="local",
@@ -930,7 +1014,9 @@ def test_worker_manual_review_logs_queue_guidance_without_traceback(monkeypatch)
 
 
 def test_worker_isolates_exception_from_plugin_replacement_finally(monkeypatch) -> None:
-    """插件替换整个执行方法并在 finally 抛异常时，worker 外层仍必须隔离持久任务。"""
+    """
+    插件替换整个执行方法并在 finally 抛异常时，worker 外层仍必须隔离持久任务。
+    """
     chain = _build_chain()
     task = make_task(1)
     task.bind_admission_task_id("plugin-task")
@@ -947,7 +1033,9 @@ def test_worker_isolates_exception_from_plugin_replacement_finally(monkeypatch) 
     stop_event = threading.Event()
 
     def plugin_replacement(*, task, callback):
-        """重现第三方补丁在 finally 调用已不存在的私有方法。"""
+        """
+        重现第三方补丁在 finally 调用已不存在的私有方法。
+        """
         del callback
         try:
             return True, ""
@@ -969,7 +1057,9 @@ def test_worker_isolates_exception_from_plugin_replacement_finally(monkeypatch) 
 
 
 def test_heartbeat_refreshes_current_token_and_forgets_lost_lease() -> None:
-    """heartbeat 成功应刷新本地期限，CAS 拒绝后必须立即停止本地推进资格。"""
+    """
+    heartbeat 成功应刷新本地期限，CAS 拒绝后必须立即停止本地推进资格。
+    """
     chain = _build_chain()
     task = TransferTask(fileitem=FileItem(
         storage="local",
@@ -994,7 +1084,9 @@ def test_heartbeat_refreshes_current_token_and_forgets_lost_lease() -> None:
 
 
 def test_close_timeout_keeps_heartbeat_alive_until_blocked_worker_converges() -> None:
-    """阻塞 worker 未退出时关闭不得停止 heartbeat 或允许租约过期接管。"""
+    """
+    阻塞 worker 未退出时关闭不得停止 heartbeat 或允许租约过期接管。
+    """
     chain = _build_chain()
     worker_release = threading.Event()
     worker = threading.Thread(
@@ -1033,7 +1125,9 @@ def test_close_timeout_keeps_heartbeat_alive_until_blocked_worker_converges() ->
 def test_worker_reports_failed_settlement_without_skipping_queue_bookkeeping(
         monkeypatch,
 ) -> None:
-    """终态 CAS=0 必须计为失败，同时仍完成 task_done 与 active 归零。"""
+    """
+    终态 CAS=0 必须计为失败，同时仍完成 task_done 与 active 归零。
+    """
     chain = _build_chain()
     task = TransferTask(fileitem=FileItem(
         storage="local",
@@ -1058,7 +1152,9 @@ def test_worker_reports_failed_settlement_without_skipping_queue_bookkeeping(
     stop_event = threading.Event()
 
     def complete_with_stale_lease(*, task, callback):
-        """模拟文件副作用完成后终态 token 已被新 owner 接管。"""
+        """
+        模拟文件副作用完成后终态 token 已被新 owner 接管。
+        """
         del callback
         task.bind_plan_checkpoint(MagicMock())
         stop_event.set()
@@ -1083,7 +1179,9 @@ def test_worker_reports_failed_settlement_without_skipping_queue_bookkeeping(
 
 
 def test_failed_claim_release_waits_for_fixed_recovery_poll() -> None:
-    """失败释放不得即时唤醒恢复线程，避免确定性错误形成热重试。"""
+    """
+    失败释放不得即时唤醒恢复线程，避免确定性错误形成热重试。
+    """
     chain = _build_chain()
     del chain._TransferChain__ensure_recovery_scheduler
     chain._RECOVERY_POLL_INTERVAL_SECONDS = 0.05
@@ -1129,7 +1227,9 @@ def test_failed_claim_release_waits_for_fixed_recovery_poll() -> None:
 def test_worker_fenced_releases_lost_lease_and_completes_queue_bookkeeping(
         monkeypatch,
 ) -> None:
-    """本地租约失效时仍尝试 token CAS release，并完整结算内存队列。"""
+    """
+    本地租约失效时仍尝试 token CAS release，并完整结算内存队列。
+    """
     chain = _build_chain()
     task = make_task(1)
     task.bind_admission_task_id("lost-lease")
@@ -1180,7 +1280,9 @@ def test_worker_fenced_releases_lost_lease_and_completes_queue_bookkeeping(
 def test_callback_without_terminal_settlement_releases_claim_and_counts_failure(
         monkeypatch,
 ) -> None:
-    """回调未给出原子结算回执时必须保留 pending、释放 claim 并计失败。"""
+    """
+    回调未给出原子结算回执时必须保留 pending、释放 claim 并计失败。
+    """
     chain = _build_chain()
     task = TransferTask(fileitem=FileItem(
         storage="local",
@@ -1205,7 +1307,9 @@ def test_callback_without_terminal_settlement_releases_claim_and_counts_failure(
     stop_event = threading.Event()
 
     def complete_with_success(*, task, callback):
-        """模拟文件成功后进入受 durable 终态保护的回调。"""
+        """
+        模拟文件成功后进入受 durable 终态保护的回调。
+        """
         task.bind_plan_checkpoint(MagicMock())
         stop_event.set()
         return callback(
@@ -1238,7 +1342,9 @@ def test_callback_without_terminal_settlement_releases_claim_and_counts_failure(
 
 
 def test_close_release_db_block_respects_deadline_and_keeps_heartbeat() -> None:
-    """关闭租约释放被数据库阻塞时应按预算返回，并继续 heartbeat。"""
+    """
+    关闭租约释放被数据库阻塞时应按预算返回，并继续 heartbeat。
+    """
     chain = _build_chain()
     release_started = threading.Event()
     release_db = threading.Event()
@@ -1253,7 +1359,9 @@ def test_close_release_db_block_respects_deadline_and_keeps_heartbeat() -> None:
     }
 
     def block_release(**_kwargs):
-        """模拟数据库锁住 release_claim，直到测试显式放行。"""
+        """
+        模拟数据库锁住 release_claim，直到测试显式放行。
+        """
         release_started.set()
         release_db.wait()
         return True

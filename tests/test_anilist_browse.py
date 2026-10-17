@@ -1,3 +1,7 @@
+"""
+验证 AniList 浏览筛选、中文代理回退及季节参数映射。
+"""
+
 import asyncio
 from datetime import date
 from unittest.mock import AsyncMock, Mock
@@ -34,7 +38,9 @@ def _media_info(anilist_id: int = 154587) -> dict:
 
 
 def test_anilist_client_uses_chinese_proxy_and_forwards_discover_filters() -> None:
-    """AniList 探索应通过中文代理并原样传递组合过滤条件。"""
+    """
+    AniList 探索应通过中文代理并原样传递组合过滤条件。
+    """
     client = AniListApi()
     client._invoke = Mock(return_value={"Page": {"media": [_media_info()]}})
 
@@ -71,7 +77,9 @@ def test_anilist_client_uses_chinese_proxy_and_forwards_discover_filters() -> No
 
 
 def test_anilist_client_falls_back_and_merges_chinese_dataset() -> None:
-    """中文代理不可用时应回退官方接口并合并项目中文数据。"""
+    """
+    中文代理不可用时应回退官方接口并合并项目中文数据。
+    """
     proxy_response = Mock(status_code=403)
     official_media = _media_info()
     official_media["title"].pop("chinese")
@@ -107,7 +115,9 @@ def test_anilist_client_falls_back_and_merges_chinese_dataset() -> None:
 
 
 def test_anilist_async_client_falls_back_without_real_network() -> None:
-    """异步中文代理失败时也应使用官方接口和同一中文数据集。"""
+    """
+    异步中文代理失败时也应使用官方接口和同一中文数据集。
+    """
     proxy_response = Mock(status_code=403)
     official_media = _media_info()
     official_media["title"].pop("chinese")
@@ -137,7 +147,9 @@ def test_anilist_async_client_falls_back_without_real_network() -> None:
 
 
 def test_anilist_current_season_maps_calendar_quarters() -> None:
-    """AniList 本季榜应按自然季度映射四季枚举。"""
+    """
+    AniList 本季榜应按自然季度映射四季枚举。
+    """
     assert AniListApi._current_season(date(2026, 1, 15)) == ("WINTER", 2026)
     assert AniListApi._current_season(date(2026, 4, 15)) == ("SPRING", 2026)
     assert AniListApi._current_season(date(2026, 7, 15)) == ("SUMMER", 2026)
@@ -145,7 +157,9 @@ def test_anilist_current_season_maps_calendar_quarters() -> None:
 
 
 def test_anilist_nested_media_relations_are_requeried_through_page() -> None:
-    """相关推荐和人物作品应通过根级 Page.media 回查以触发中文标题注入。"""
+    """
+    相关推荐和人物作品应通过根级 Page.media 回查以触发中文标题注入。
+    """
     recommendation_client = AniListApi()
     recommendation_client._invoke = Mock(
         side_effect=[
@@ -190,7 +204,9 @@ def test_anilist_nested_media_relations_are_requeried_through_page() -> None:
 
 
 def test_anilist_async_person_credits_uses_character_media() -> None:
-    """异步人物作品查询应读取配音角色关联，而不是制作岗位关联。"""
+    """
+    异步人物作品查询应读取配音角色关联，而不是制作岗位关联。
+    """
     client = AniListApi()
     client._async_invoke = AsyncMock(
         side_effect=[
@@ -209,7 +225,9 @@ def test_anilist_async_person_credits_uses_character_media() -> None:
 
 
 def test_anilist_credits_and_recommendations_use_separate_caches() -> None:
-    """相同分页参数的演员与推荐查询不得互相命中缓存。"""
+    """
+    相同分页参数的演员与推荐查询不得互相命中缓存。
+    """
     client = AniListApi()
     client._invoke = Mock(
         side_effect=[
@@ -234,7 +252,9 @@ def test_anilist_credits_and_recommendations_use_separate_caches() -> None:
 
 
 def test_anilist_module_normalizes_voice_actor_and_person_detail() -> None:
-    """AniList 模块应把配音关系和人物详情转换为前端通用人物结构。"""
+    """
+    AniList 模块应把配音关系和人物详情转换为前端通用人物结构。
+    """
     module = AniListModule()
     module.anilist_api = Mock()
     module.anilist_api.credits.return_value = [
@@ -282,7 +302,9 @@ def test_anilist_module_normalizes_voice_actor_and_person_detail() -> None:
 
 
 def test_anilist_discover_endpoint_forwards_all_filters(monkeypatch) -> None:
-    """AniList 独立探索端点应把全部过滤条件交给处理链。"""
+    """
+    AniList 独立探索端点应把全部过滤条件交给处理链。
+    """
     captured = {}
     chain = Mock()
     chain.async_discover = AsyncMock(
@@ -323,7 +345,9 @@ def test_anilist_discover_endpoint_forwards_all_filters(monkeypatch) -> None:
 
 
 def test_anilist_router_exposes_browse_and_deep_navigation_paths() -> None:
-    """AniList 独立路由应覆盖榜单、探索、作品、演员和相关推荐。"""
+    """
+    AniList 独立路由应覆盖榜单、探索、作品、演员和相关推荐。
+    """
     paths = {route.path for route in anilist_endpoint.router.routes}
 
     assert paths == {

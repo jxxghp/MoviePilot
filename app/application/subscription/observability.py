@@ -1,4 +1,6 @@
-"""订阅治理轮次日志的聚合与格式化。"""
+"""
+订阅治理轮次日志的聚合与格式化。
+"""
 
 from __future__ import annotations
 
@@ -49,22 +51,30 @@ _MATCH_STATE_NAMES = {
 
 
 def _search_source_name(source: str) -> str:
-    """返回搜索来源对应的可读名称。"""
+    """
+    返回搜索来源对应的可读名称。
+    """
     return _SEARCH_SOURCE_NAMES.get(source, "订阅搜索")
 
 
 def _search_state_name(state: str) -> str:
-    """返回搜索结束状态对应的可读说明。"""
+    """
+    返回搜索结束状态对应的可读说明。
+    """
     return _SEARCH_STATE_NAMES.get(state, "已结束")
 
 
 def _match_state_name(state: str) -> str:
-    """返回订阅资源检查状态对应的可读说明。"""
+    """
+    返回订阅资源检查状态对应的可读说明。
+    """
     return _MATCH_STATE_NAMES.get(state, "已结束")
 
 
 def batch_progress_text(batch: Optional[SearchBatchSnapshot]) -> str:
-    """把批次聚合终态转为兼容进度文案。"""
+    """
+    把批次聚合终态转为兼容进度文案。
+    """
     if batch is None:
         return "搜索已安排"
     if batch.state == "failed":
@@ -81,7 +91,9 @@ def batch_progress_text(batch: Optional[SearchBatchSnapshot]) -> str:
 
 
 def inline_search_result(total: int, finished: int) -> tuple[str, dict[str, int]]:
-    """返回兼容搜索的真实终态文案与计数。"""
+    """
+    返回兼容搜索的真实终态文案与计数。
+    """
     text = (
         "搜索完成"
         if finished == total
@@ -94,7 +106,9 @@ def batch_finished_count(
     batch: Optional[SearchBatchSnapshot],
     fallback: int,
 ) -> int:
-    """返回批次所有终态任务数；批次暂不可读时使用本轮实际完成数。"""
+    """
+    返回批次所有终态任务数；批次暂不可读时使用本轮实际完成数。
+    """
     if batch is None:
         return fallback
     return (
@@ -115,7 +129,9 @@ def finish_returned_search_task(
     system_stopped: bool,
     cancel_requested: bool,
 ) -> tuple[Optional[int], SearchTaskOutcome, Optional[str]]:
-    """按 TTL、停机和取消边界收口正常返回的搜索任务。"""
+    """
+    按 TTL、停机和取消边界收口正常返回的搜索任务。
+    """
     download_started = execution_context.download_started and (
         not execution_context.incremental_search or execution_context.scan_finished
     )
@@ -163,7 +179,22 @@ def finish_returned_search_task(
 
 @dataclass(slots=True)
 class MatchExecutionSummary:
-    """保存一次 Match 批次的实际订阅执行结果。"""
+    """
+    保存一次 Match 批次的实际订阅执行结果。
+
+    :param total: 本轮计划检查的订阅总数
+    :param candidate_count: 本轮看到的候选资源数量
+    :param site_count: 本轮涉及的不同站点数量
+    :param run_id: 本轮观测的随机标识，默认自动生成
+    :param started_at: 本轮开始时的性能计数器值，单位为秒，用于统计耗时
+    :param completed: 本轮成功完成的订阅数量
+    :param skipped: 本轮跳过的订阅数量
+    :param failed: 本轮失败的订阅数量
+    :param admission_conflicts: 因同订阅已有执行者而未获得准入的次数
+    :param cancelled: 本轮取消的订阅数量
+    :param ttl_timeouts: 超过协作执行截止时间的次数
+    :param release_failures: 释放订阅执行所有权失败的次数
+    """
 
     total: int = 0
     candidate_count: int = 0
@@ -183,7 +214,9 @@ class MatchExecutionSummary:
         cls,
         candidates: Mapping[str, Collection[object]],
     ) -> MatchExecutionSummary:
-        """按站点分组的完整候选快照初始化轮次计数。"""
+        """
+        按站点分组的完整候选快照初始化轮次计数。
+        """
         return cls(
             candidate_count=sum(len(contexts) for contexts in candidates.values()),
             site_count=len(candidates),
@@ -191,11 +224,15 @@ class MatchExecutionSummary:
 
     @property
     def finished(self) -> int:
-        """返回已经收口的订阅数量。"""
+        """
+        返回已经收口的订阅数量。
+        """
         return self.completed + self.skipped + self.failed
 
     def record(self, outcome: Optional[str], reason: Optional[str] = None) -> None:
-        """将单订阅结果归入稳定的完成、跳过或失败计数。"""
+        """
+        将单订阅结果归入稳定的完成、跳过或失败计数。
+        """
         if outcome == "completed":
             self.completed += 1
         elif outcome == "skipped":
@@ -211,7 +248,9 @@ class MatchExecutionSummary:
 
     @property
     def state(self) -> str:
-        """按已处理数量和任务终态生成轮次状态。"""
+        """
+        按已处理数量和任务终态生成轮次状态。
+        """
         if self.finished < self.total:
             return "stopped"
         if self.failed:
@@ -221,14 +260,18 @@ class MatchExecutionSummary:
         return "completed"
 
     def start_log(self) -> str:
-        """构造不暴露内部标记的资源检查开始日志。"""
+        """
+        构造不暴露内部标记的资源检查开始日志。
+        """
         return (
             f"开始检查订阅资源，共 {self.total} 个订阅、{self.candidate_count} 个资源，"
             f"来自 {self.site_count} 个站点。"
         )
 
     def finish_log(self) -> str:
-        """构造可直接阅读的资源检查结束日志。"""
+        """
+        构造可直接阅读的资源检查结束日志。
+        """
         elapsed_seconds = time.perf_counter() - self.started_at
         message = (
             f"订阅资源检查结束：{_match_state_name(self.state)}。"
@@ -248,7 +291,9 @@ class MatchExecutionSummary:
         return message
 
     def as_data(self, current: Optional[int] = None) -> dict[str, int]:
-        """构造供进度消费者读取的实际计数。"""
+        """
+        构造供进度消费者读取的实际计数。
+        """
         data = {
             "total": self.total,
             "finished": self.finished,
@@ -263,7 +308,28 @@ class MatchExecutionSummary:
 
 @dataclass(slots=True)
 class SearchExecutionSummary:
-    """聚合一次 Search 消费轮次的任务、站点与候选观测。"""
+    """
+    聚合一次 Search 消费轮次的任务、站点与候选观测。
+
+    :param source: 触发本轮执行的入口，例如手工搜索或自动调度
+    :param requested: 本次请求涉及的订阅数量
+    :param run_id: 本轮观测的随机标识，默认自动生成
+    :param batch_id: 持久搜索批次的稳定标识
+    :param coalesced: 已与现有任务合并的请求数量
+    :param started_at: 本轮开始时的性能计数器值，单位为秒，用于统计耗时
+    :param completed: 本轮成功完成的订阅数量
+    :param skipped: 本轮跳过的订阅数量
+    :param failed: 本轮失败的订阅数量
+    :param cancelled: 本轮取消的订阅数量
+    :param requeued: 本轮已退回队列等待后续处理的任务数
+    :param admission_conflicts: 因同订阅已有执行者而未获得准入的次数
+    :param ttl_timeouts: 超过协作执行截止时间的次数
+    :param release_failures: 释放订阅执行所有权失败的次数
+    :param consumer_conflicts: 已有搜索消费者运行导致本轮未取得消费权的次数
+    :param stopped: 本轮是否因系统停止而提前结束
+    :param round_failed: 本轮整体是否失败，用于确定汇总状态
+    :param site_metrics: 本轮共享的站点请求、冷却和候选统计器
+    """
 
     source: str
     requested: int
@@ -288,11 +354,15 @@ class SearchExecutionSummary:
 
     @property
     def processed(self) -> int:
-        """返回本轮实际取得并收口或退回队列的任务数。"""
+        """
+        返回本轮实际取得并收口或退回队列的任务数。
+        """
         return self.completed + self.skipped + self.failed + self.cancelled + self.requeued
 
     def record(self, outcome: SearchTaskOutcome, reason: Optional[str] = None) -> None:
-        """记录一个任务结果，并单独统计冲突、取消和 TTL。"""
+        """
+        记录一个任务结果，并单独统计冲突、取消和 TTL。
+        """
         if outcome == "completed":
             self.completed += 1
         elif outcome == "skipped":
@@ -309,14 +379,18 @@ class SearchExecutionSummary:
             self.ttl_timeouts += 1
 
     def start_log(self) -> str:
-        """构造不暴露内部术语的 Search 开始日志。"""
+        """
+        构造不暴露内部术语的 Search 开始日志。
+        """
         message = f"开始{_search_source_name(self.source)}，共 {self.requested} 个订阅"
         if self.coalesced:
             message += f"，其中 {self.coalesced} 个已经在处理中"
         return f"{message}。"
 
     def finish_log(self, batch: Optional[SearchBatchSnapshot] = None) -> str:
-        """构造可直接阅读的 Search 结束日志。"""
+        """
+        构造可直接阅读的 Search 结束日志。
+        """
         sites = self.site_metrics.snapshot()
         if self.round_failed:
             state = "failed"
@@ -355,7 +429,9 @@ def subscription_log_scope(
     source: str,
     operation_id: Optional[str] = None,
 ) -> Iterator[None]:
-    """隔离单订阅执行日志，并在所有退出路径汇总被限流的诊断详情。"""
+    """
+    隔离单订阅执行日志，并在所有退出路径汇总被限流的诊断详情。
+    """
     identity = operation_id or uuid4().hex
     with bind_log_scope("subscriptions", subscription_id, identity, source) as scope:
         before = scope.suppressed

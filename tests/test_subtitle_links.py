@@ -1,9 +1,16 @@
+"""
+验证字幕下载链接的解析与规范化。
+"""
+
 from lxml import etree
 
 from app.modules.subtitle import SubtitleModule
 
 
 def test_parse_subtitle_links_filters_detail_page_action_links():
+    """
+    字幕链接解析只保留下载地址，排除详情页中的其他操作链接。
+    """
     html_text = """
     <tr>
       <td class="rowhead" valign="top">字幕</td>

@@ -1,4 +1,6 @@
-"""将 Python 子进程的逐次调用接回当前 Agent 的真实工具链。"""
+"""
+将 Python 子进程的逐次调用接回当前 Agent 的真实工具链。
+"""
 
 import json
 import uuid
@@ -18,15 +20,21 @@ from app.agent.tools.result import inspect_tool_result
 
 
 class CodeExecutionMiddleware(AgentMiddleware):  # type: ignore[misc]
-    """外层绑定执行窗口；内层调用保留策略、Skill、日志和原始结果归档行为。"""
+    """
+    外层绑定执行窗口；内层调用保留策略、Skill、日志和原始结果归档行为。
+    """
 
     def __init__(self, policy: AgentPolicyMiddleware) -> None:
-        """共享同一个宿主策略实例，不复制权限或跳过当前身份事实源。"""
+        """
+        共享同一个宿主策略实例，不复制权限或跳过当前身份事实源。
+        """
         self.policy = policy
         self.selections: dict[TerminalScope, dict[str, dict[str, Any]]] = {}
 
     async def awrap_tool_call(self, request: ToolCallRequest, handler: Callable[[ToolCallRequest], Awaitable[Any]]) -> Any:
-        """只为模型真实请求中已启用的原生 execute_code 绑定当前窗口，默认直接执行。"""
+        """
+        只为模型真实请求中已启用的原生 execute_code 绑定当前窗口，默认直接执行。
+        """
         if type(request.tool) is not ExecuteCodeTool:
             return await handler(request)
         scope = current_terminal_scope()
@@ -37,7 +45,9 @@ class CodeExecutionMiddleware(AgentMiddleware):  # type: ignore[misc]
                                name='execute_code', tool_call_id=request.tool_call['id'], status='error')
 
         async def dispatch(tool: Any, arguments: dict[str, Any]) -> Any:
-            """重入当前 handler，逐次经过 Skill 和工具门禁，而不是直接调用工具方法。"""
+            """
+            重入当前 handler，逐次经过 Skill 和工具门禁，而不是直接调用工具方法。
+            """
             return await self._dispatch(request, handler, tool, arguments)
 
         authority = CellAuthority(scope, self.policy.context, tools, dispatch)
@@ -52,7 +62,9 @@ class CodeExecutionMiddleware(AgentMiddleware):  # type: ignore[misc]
 
     async def _dispatch(self, request: ToolCallRequest, handler: Callable[[ToolCallRequest], Awaitable[Any]],
                         tool: Any, arguments: dict[str, Any]) -> Any:
-        """每次内部调用使用独立回执 ID；原文只交给 Python，外层模型只接收程序输出。"""
+        """
+        每次内部调用使用独立回执 ID；原文只交给 Python，外层模型只接收程序输出。
+        """
         identifier = uuid.uuid4().hex
         raw: dict[str, str] = {}
         state = {**request.state, RPC_RESULT_KEY: raw}
@@ -82,14 +94,20 @@ class CodeExecutionMiddleware(AgentMiddleware):  # type: ignore[misc]
 
 
 class CodeCaptureMiddleware(AgentMiddleware):  # type: ignore[misc]
-    """筛选后、压缩前生成真实 helper 合同，新增说明必须计入最终请求预算。"""
+    """
+    筛选后、压缩前生成真实 helper 合同，新增说明必须计入最终请求预算。
+    """
 
     def __init__(self, execution: CodeExecutionMiddleware) -> None:
-        """捕获器与工具包装器共享短生命周期快照，不增加图节点或注册重复工具。"""
+        """
+        捕获器与工具包装器共享短生命周期快照，不增加图节点或注册重复工具。
+        """
         self.execution = execution
 
     async def awrap_model_call(self, request: Any, handler: Callable[[Any], Awaitable[Any]]) -> Any:
-        """只为本次模型实际发出的代码调用保存快照，下一次请求替换同 owner 的旧快照。"""
+        """
+        只为本次模型实际发出的代码调用保存快照，下一次请求替换同 owner 的旧快照。
+        """
         scope = current_terminal_scope()
         if scope is not None:
             self.execution.selections.pop(scope, None)

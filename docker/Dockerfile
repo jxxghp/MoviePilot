@@ -147,7 +147,7 @@ RUN mkdir -p /opt/python \
         --no-install-project
 
 
-# free-threaded 原生依赖需要 Rust 和 C 构建工具链。
+# 自由线程版 Python 的原生依赖需要 Rust 和 C 构建工具链。
 FROM prepare_venv_common AS prepare_venv_free-threaded
 
 ARG MOVIEPILOT_PYTHON_VERSION
@@ -294,7 +294,7 @@ RUN mkdir -p \
     && chmod 755 /bundle/rootfs/entrypoint.sh /bundle/rootfs/usr/local/bin/moviepilot \
     && chmod 500 /bundle/rootfs/usr/local/lib/moviepilot/control/*.sh
 
-# final 阶段: 安装运行时依赖和配置最终镜像
+# final 阶段安装运行时依赖并配置最终镜像
 FROM prepare_package AS final
 
 # jemalloc 默认按 CPU 数×4 建 arena，空闲 arena 的脏页会长期计入 RSS。脏页按 5 秒衰减归还
@@ -309,7 +309,7 @@ ENV LD_PRELOAD="/usr/local/lib/libjemalloc.so" \
 COPY --from=ffmpeg /ffmpeg /ffprobe /usr/local/bin/
 COPY --from=rclone /usr/local/bin/rclone /usr/bin/rclone
 
-# python 环境
+# Python 运行环境
 COPY --from=prepare_venv --chmod=777 ${VENV_PATH} ${VENV_PATH}
 COPY --from=prepare_venv /opt/python /opt/python
 COPY --from=uv /uv /usr/local/bin/uv

@@ -1,16 +1,16 @@
-"""2.1.8
+"""
+2.1.8 为工作流补齐触发方式、事件类型和事件条件字段。
 
-Revision ID: 4666ce24a443
-Revises: 3891a5e722a1
-Create Date: 2025-07-22 13:54:04.196126
-
+版本标识： 4666ce24a443
+前置版本： 3891a5e722a1
+创建时间： 2025-07-22 13:54:04.196126
 """
 import contextlib
 
 import sqlalchemy as sa
 from alembic import op
 
-# revision identifiers, used by Alembic.
+# Alembic 使用以下标识连接迁移版本链。
 revision = '4666ce24a443'
 down_revision = '3891a5e722a1'
 branch_labels = None
@@ -18,6 +18,9 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """
+    为工作流补齐触发方式、事件类型和事件条件字段。
+    """
     conn = op.get_bind()
     inspector = sa.inspect(conn)
     columns = inspector.get_columns('workflow')
@@ -33,4 +36,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """
+    本版本不执行回退操作，保留升级后的结构与数据。
+    """
     pass

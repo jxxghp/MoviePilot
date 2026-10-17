@@ -1,4 +1,6 @@
-"""通知渠道中的主程序更新检查、下载进度和重启确认交互。"""
+"""
+通知渠道中的主程序更新检查、下载进度和重启确认交互。
+"""
 
 from __future__ import annotations
 
@@ -29,22 +31,42 @@ _monitored_requests: set[str] = set()
 
 
 class SystemUpdateInteractionActions(Protocol):
-    """声明更新交互调用的主程序升级应用用例。"""
+    """
+    声明更新交互调用的主程序升级应用用例。
+    """
 
     def update_status(self) -> SystemUpdateStatus:
-        """读取当前后台更新状态。"""
+        """
+        读取当前后台更新状态。
+
+        :return: 主程序及资源更新项的当前状态和进度
+        """
         ...
 
     def check_update(self) -> SystemUpdateStatus:
-        """立即检查主程序正式版本更新。"""
+        """
+        立即检查主程序正式版本更新。
+
+        :return: 主程序及资源更新项的当前状态和进度
+        """
         ...
 
     def download_update(self, target: SystemUpdateType = "application") -> SystemOperationResult:
-        """启动主程序更新包下载。"""
+        """
+        启动主程序更新包下载。
+
+        :param target: 更新对象：application 为主程序，resources 为运行资源，默认主程序
+        :return: 操作是否受理及状态说明；后台进度由更新状态接口继续查询
+        """
         ...
 
     def install_update(self, target: SystemUpdateType = "application") -> SystemOperationResult:
-        """确认主程序更新包并请求重启安装。"""
+        """
+        确认主程序更新包并请求重启安装。
+
+        :param target: 更新对象：application 为主程序，resources 为运行资源，默认主程序
+        :return: 操作是否受理及状态说明；后台进度由更新状态接口继续查询
+        """
         ...
 
 
@@ -56,7 +78,13 @@ RestartMarkerClearer = Callable[[], None]
 
 @dataclass(frozen=True, slots=True)
 class SystemUpdateInteractionView:
-    """保存一次渠道无关的更新交互展示内容。"""
+    """
+    保存一次渠道无关的更新交互展示内容。
+
+    :param title: 更新状态消息的标题
+    :param text: 向用户展示的版本、进度或操作说明
+    :param buttons: 按行组织的操作按钮，None 表示不附带按钮
+    """
 
     title: str
     text: str
@@ -64,7 +92,9 @@ class SystemUpdateInteractionView:
 
 
 class SystemUpdateInteractionHandler:
-    """编排 `/update` 的检查、下载进度编辑和重启确认流程。"""
+    """
+    编排 `/update` 的检查、下载进度编辑和重启确认流程。
+    """
 
     _poll_interval_seconds = 3.0
 
@@ -79,7 +109,9 @@ class SystemUpdateInteractionHandler:
         clear_restart_marker: RestartMarkerClearer,
         poll_interval_seconds: float = _poll_interval_seconds,
     ) -> None:
-        """注入消息网关、系统更新用例和受管后台任务提交器。"""
+        """
+        注入消息网关、系统更新用例和受管后台任务提交器。
+        """
         self._messenger = messenger
         self._actions = actions
         self._mark_restart = mark_restart
@@ -98,7 +130,9 @@ class SystemUpdateInteractionHandler:
         userid: Optional[Union[str, int]] = None,
         source: Optional[str] = None,
     ) -> None:
-        """执行 `/update`，检查正式版本并创建后续确认会话。"""
+        """
+        执行 `/update`，检查正式版本并创建后续确认会话。
+        """
         if channel is None or userid is None:
             return
         request = update_interaction_manager.create_or_replace(
@@ -110,7 +144,8 @@ class SystemUpdateInteractionHandler:
         )
         try:
             status = self._actions.check_update()
-        except Exception as error:  # noqa: BLE001  交互入口必须回显稳定错误
+        # 交互入口必须回显稳定错误
+        except Exception as error:  # noqa: BLE001
             logger.warning(f"检查 MoviePilot 更新失败：{error}")
             self._renderer.render_check_failure(
                 request=request,
@@ -142,7 +177,9 @@ class SystemUpdateInteractionHandler:
 
     @staticmethod
     def parse_callback(callback_data: str) -> Optional[tuple[str, str]]:
-        """解析 `/update` 的按钮回调。"""
+        """
+        解析 `/update` 的按钮回调。
+        """
         if not str(callback_data or "").startswith("update:"):
             return None
         parts = str(callback_data).split(":")
@@ -160,7 +197,9 @@ class SystemUpdateInteractionHandler:
         original_message_id: Optional[Union[str, int]] = None,
         original_chat_id: Optional[str] = None,
     ) -> bool:
-        """消费 `/update` 按钮回调并保持原消息作为进度锚点。"""
+        """
+        消费 `/update` 按钮回调并保持原消息作为进度锚点。
+        """
         parsed = self.parse_callback(callback_data)
         if not parsed:
             return False
@@ -239,7 +278,9 @@ class SystemUpdateInteractionHandler:
         username: Optional[str],
         text: str,
     ) -> bool:
-        """消费不支持按钮渠道或用户主动输入的升级确认文本。"""
+        """
+        消费不支持按钮渠道或用户主动输入的升级确认文本。
+        """
         request = update_interaction_manager.get_by_user(userid)
         if request is None:
             return False
@@ -294,7 +335,8 @@ class SystemUpdateInteractionHandler:
 
         try:
             status = self._actions.update_status()
-        except Exception as error:  # noqa: BLE001  文本交互错误必须回显
+        # 文本交互错误必须回显
+        except Exception as error:  # noqa: BLE001
             self._renderer.render_check_failure(
                 request=request,
                 channel=channel,
@@ -325,10 +367,13 @@ class SystemUpdateInteractionHandler:
         original_message_id: Optional[Union[str, int]] = None,
         original_chat_id: Optional[str] = None,
     ) -> None:
-        """重新检查版本并在原交互消息中展示结果。"""
+        """
+        重新检查版本并在原交互消息中展示结果。
+        """
         try:
             status = self._actions.check_update()
-        except Exception as error:  # noqa: BLE001  交互入口必须回显稳定错误
+        # 交互入口必须回显稳定错误
+        except Exception as error:  # noqa: BLE001
             logger.warning(f"检查 MoviePilot 更新失败：{error}")
             self._renderer.render_check_failure(
                 request=request,
@@ -363,11 +408,14 @@ class SystemUpdateInteractionHandler:
         original_message_id: Optional[Union[str, int]] = None,
         original_chat_id: Optional[str] = None,
     ) -> None:
-        """启动主程序下载，立即展示状态并登记持续进度监视。"""
+        """
+        启动主程序下载，立即展示状态并登记持续进度监视。
+        """
         try:
             result = self._actions.download_update("application")
             status = result.data if isinstance(result.data, SystemUpdateStatus) else self._actions.update_status()
-        except Exception as error:  # noqa: BLE001  交互入口必须回显稳定错误
+        # 交互入口必须回显稳定错误
+        except Exception as error:  # noqa: BLE001
             logger.warning(f"启动 MoviePilot 更新下载失败：{error}")
             self._renderer.render_operation_failure(
                 request=request,
@@ -417,10 +465,13 @@ class SystemUpdateInteractionHandler:
         original_message_id: Optional[Union[str, int]] = None,
         original_chat_id: Optional[str] = None,
     ) -> None:
-        """先更新提示并记录重启目标，再确认安装和请求受管重启。"""
+        """
+        先更新提示并记录重启目标，再确认安装和请求受管重启。
+        """
         try:
             status = self._actions.update_status()
-        except Exception as error:  # noqa: BLE001  交互入口必须回显稳定错误
+        # 交互入口必须回显稳定错误
+        except Exception as error:  # noqa: BLE001
             self._renderer.render_operation_failure(
                 request=request,
                 channel=channel,
@@ -461,7 +512,8 @@ class SystemUpdateInteractionHandler:
         self._mark_restart(channel, userid, source)
         try:
             result = self._actions.install_update("application")
-        except Exception as error:  # noqa: BLE001  重启失败必须恢复交互
+        # 重启失败必须恢复交互
+        except Exception as error:  # noqa: BLE001
             self._clear_restart_marker()
             logger.warning(f"安装 MoviePilot 更新失败：{error}")
             self._renderer.render_operation_failure(
@@ -482,7 +534,8 @@ class SystemUpdateInteractionHandler:
         self._clear_restart_marker()
         try:
             status = self._actions.update_status()
-        except Exception:  # noqa: BLE001  优先保留安装用例的稳定错误
+        # 优先保留安装用例的稳定错误
+        except Exception:  # noqa: BLE001
             status = SystemUpdateStatus(
                 state="ready",
                 current_version=item.current_version or "unknown",
@@ -502,7 +555,9 @@ class SystemUpdateInteractionHandler:
 
 
 class _SystemUpdateProgressMonitor:
-    """管理主程序更新下载的后台轮询与消息刷新。"""
+    """
+    管理主程序更新下载的后台轮询与消息刷新。
+    """
 
     _terminal_download_states = {"idle", "available", "ready", "failed", "installing"}
 
@@ -512,7 +567,9 @@ class _SystemUpdateProgressMonitor:
         run_sync: UpdateOperationRunner,
         poll_interval_seconds: float,
     ) -> None:
-        """注入状态读取、消息渲染和后台任务提交能力。"""
+        """
+        注入状态读取、消息渲染和后台任务提交能力。
+        """
         self._actions = actions
         self._renderer = renderer
         self._submit_monitor = submit_monitor
@@ -525,7 +582,9 @@ class _SystemUpdateProgressMonitor:
         initial_item: SystemUpdateItemStatus,
         original_message_id: Optional[Union[str, int]], original_chat_id: Optional[str],
     ) -> None:
-        """确保同一交互只登记一个非阻塞下载进度监视任务。"""
+        """
+        确保同一交互只登记一个非阻塞下载进度监视任务。
+        """
         with _monitor_lock:
             if request.request_id in _monitored_requests:
                 return
@@ -542,7 +601,8 @@ class _SystemUpdateProgressMonitor:
         )
         try:
             self._submit_monitor(monitor)
-        except Exception as error:  # noqa: BLE001  下载继续运行，交互降级为手动刷新
+        # 下载继续运行，交互降级为手动刷新
+        except Exception as error:  # noqa: BLE001
             monitor.close()
             with _monitor_lock:
                 _monitored_requests.discard(request.request_id)
@@ -563,7 +623,9 @@ class _SystemUpdateProgressMonitor:
         initial_item: SystemUpdateItemStatus,
         original_message_id: Optional[Union[str, int]], original_chat_id: Optional[str],
     ) -> None:
-        """按 Web 端三秒节奏轮询状态，并持续编辑原消息直到下载终态。"""
+        """
+        按 Web 端三秒节奏轮询状态，并持续编辑原消息直到下载终态。
+        """
         last_fingerprint = self._renderer.item_fingerprint(initial_item)
         last_progress_bucket = initial_item.progress // 10
         edit_fallback_sent = False
@@ -623,7 +685,8 @@ class _SystemUpdateProgressMonitor:
                     if item.state == "idle":
                         update_interaction_manager.remove(request_id)
                     return
-        except Exception as error:  # noqa: BLE001  监视错误不能影响实际下载
+        # 监视错误不能影响实际下载
+        except Exception as error:  # noqa: BLE001
             logger.warning(f"监视 MoviePilot 更新下载进度失败：{error}")
             request = update_interaction_manager.get_by_id(request_id, userid)
             if request is not None:
@@ -644,12 +707,16 @@ class _SystemUpdateProgressMonitor:
 
 
 class _SystemUpdateRenderer:
-    """把主程序更新状态转换为渠道消息并负责发送或编辑。"""
+    """
+    把主程序更新状态转换为渠道消息并负责发送或编辑。
+    """
 
     def __init__(
         self, *, messenger: MessageGateway, actions: SystemUpdateInteractionActions,
     ) -> None:
-        """注入消息网关与更新状态读取用例。"""
+        """
+        注入消息网关与更新状态读取用例。
+        """
         self._messenger = messenger
         self._actions = actions
 
@@ -660,7 +727,9 @@ class _SystemUpdateRenderer:
         operation_error: Optional[str] = None,
         original_message_id: Optional[Union[str, int]] = None, original_chat_id: Optional[str] = None,
     ) -> None:
-        """从聚合更新快照提取主程序状态并更新交互消息。"""
+        """
+        从聚合更新快照提取主程序状态并更新交互消息。
+        """
         item = self.application_item(status)
         self.render_item(
             request=request,
@@ -683,7 +752,9 @@ class _SystemUpdateRenderer:
         operation_error: Optional[str] = None,
         original_message_id: Optional[Union[str, int]] = None, original_chat_id: Optional[str] = None,
     ) -> None:
-        """更新会话阶段并优先编辑原消息展示指定主程序状态。"""
+        """
+        更新会话阶段并优先编辑原消息展示指定主程序状态。
+        """
         request.awaiting_input = self.awaiting_input(item)
         view = self.build_view(
             request=request,
@@ -709,7 +780,9 @@ class _SystemUpdateRenderer:
         source: Optional[str], userid: Union[str, int], username: Optional[str], error: str,
         original_message_id: Optional[Union[str, int]] = None, original_chat_id: Optional[str] = None,
     ) -> None:
-        """展示版本检查失败并保留刷新入口。"""
+        """
+        展示版本检查失败并保留刷新入口。
+        """
         request.awaiting_input = "refresh"
         buttons = self._buttons(
             request=request,
@@ -737,10 +810,13 @@ class _SystemUpdateRenderer:
         source: Optional[str], userid: Union[str, int], username: Optional[str], error: str,
         original_message_id: Optional[Union[str, int]] = None, original_chat_id: Optional[str] = None,
     ) -> None:
-        """读取最新状态后展示下载或安装动作失败。"""
+        """
+        读取最新状态后展示下载或安装动作失败。
+        """
         try:
             status = self._actions.update_status()
-        except Exception:  # noqa: BLE001  保留原始动作错误
+        # 保留原始动作错误
+        except Exception:  # noqa: BLE001
             self.render_check_failure(
                 request=request,
                 channel=channel,
@@ -769,7 +845,9 @@ class _SystemUpdateRenderer:
         channel: NotificationChannel,
         operation_error: Optional[str] = None,
     ) -> SystemUpdateInteractionView:
-        """把主程序更新状态转换为与 Web 流程一致的渠道展示。"""
+        """
+        把主程序更新状态转换为与 Web 流程一致的渠道展示。
+        """
         actions: tuple[tuple[str, str], ...]
         if item.state == "available":
             title = "发现 MoviePilot 主程序更新"
@@ -839,7 +917,9 @@ class _SystemUpdateRenderer:
 
     @staticmethod
     def application_item(status: SystemUpdateStatus) -> SystemUpdateItemStatus:
-        """读取主程序明细，并兼容旧版只有聚合字段的状态。"""
+        """
+        读取主程序明细，并兼容旧版只有聚合字段的状态。
+        """
         item = next((value for value in status.updates if value.type == "application"), None)
         if item is not None:
             return item
@@ -863,7 +943,9 @@ class _SystemUpdateRenderer:
 
     @staticmethod
     def awaiting_input(item: SystemUpdateItemStatus) -> Optional[str]:
-        """把更新状态映射为文本渠道下一步输入阶段。"""
+        """
+        把更新状态映射为文本渠道下一步输入阶段。
+        """
         if item.state in {"available", "failed"}:
             return "download"
         if item.state == "ready":
@@ -874,7 +956,9 @@ class _SystemUpdateRenderer:
 
     @staticmethod
     def item_fingerprint(item: SystemUpdateItemStatus) -> tuple[Any, ...]:
-        """生成需要刷新消息的状态指纹。"""
+        """
+        生成需要刷新消息的状态指纹。
+        """
         return (
             item.state,
             item.version,
@@ -889,7 +973,9 @@ class _SystemUpdateRenderer:
 
     @staticmethod
     def _release_notes(notes: Optional[str], limit: int = 1200) -> str:
-        """限制发布说明长度，避免超过通知渠道单条消息上限。"""
+        """
+        限制发布说明长度，避免超过通知渠道单条消息上限。
+        """
         normalized = str(notes or "").strip()
         if len(normalized) <= limit:
             return normalized
@@ -897,13 +983,17 @@ class _SystemUpdateRenderer:
 
     @staticmethod
     def _format_bytes(value: int) -> str:
-        """使用与 Web 端相同的 MB 展示下载量。"""
+        """
+        使用与 Web 端相同的 MB 展示下载量。
+        """
         megabytes = max(0, int(value or 0)) / 1024 / 1024
         return f"{megabytes:.0f} MB" if megabytes >= 100 else f"{megabytes:.1f} MB"
 
     @classmethod
     def _progress_line(cls, item: SystemUpdateItemStatus) -> str:
-        """构造宽度稳定的文本进度条和下载量。"""
+        """
+        构造宽度稳定的文本进度条和下载量。
+        """
         progress = min(100, max(0, int(item.progress or 0)))
         filled = min(10, progress // 10)
         progress_bar = f"[{'=' * filled}{'.' * (10 - filled)}] {progress}%"
@@ -919,7 +1009,9 @@ class _SystemUpdateRenderer:
         channel: NotificationChannel,
         actions: tuple[tuple[str, str], ...],
     ) -> Optional[list[list[dict[str, str]]]]:
-        """为支持按钮回调的渠道构造单行操作按钮。"""
+        """
+        为支持按钮回调的渠道构造单行操作按钮。
+        """
         if not actions or not supports_interaction_buttons(channel):
             return None
         return [
@@ -938,7 +1030,9 @@ class _SystemUpdateRenderer:
         original_message_id: Union[str, int],
         original_chat_id: str,
     ) -> bool:
-        """直接编辑进度锚点，避免轮询阶段重复发送消息。"""
+        """
+        直接编辑进度锚点，避免轮询阶段重复发送消息。
+        """
         if not source:
             return False
         metadata = {"userid": userid} if channel == NotificationChannel.WebAgent else None
@@ -960,7 +1054,9 @@ class _SystemUpdateRenderer:
         source: Optional[str], userid: Union[str, int], username: Optional[str],
         original_message_id: Optional[Union[str, int]] = None, original_chat_id: Optional[str] = None,
     ) -> None:
-        """在无法编辑时发送一次进度或终态消息。"""
+        """
+        在无法编辑时发送一次进度或终态消息。
+        """
         self._messenger.post_message(
             Message(
                 channel=channel,

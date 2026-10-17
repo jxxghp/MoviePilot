@@ -1,4 +1,6 @@
-"""消息渠道使用的外部图片地址转换与签名能力。"""
+"""
+消息渠道使用的外部图片地址转换与签名能力。
+"""
 
 from __future__ import annotations
 
@@ -14,7 +16,9 @@ _WECHAT_IMAGE_PROXY_PATH = "/system/notification-image"
 
 
 def _is_douban_image_url(image_url: str) -> bool:
-    """判断地址是否来自豆瓣图片 CDN，避免公开代理暴露其他资源。"""
+    """
+    判断地址是否来自豆瓣图片 CDN，避免公开代理暴露其他资源。
+    """
     hostname = (urlparse(image_url).hostname or "").lower().rstrip(".")
     return hostname == "doubanio.com" or hostname.endswith(".doubanio.com")
 
@@ -57,7 +61,9 @@ def build_wechat_image_url(image_url: Optional[str]) -> Optional[str]:
 
 
 def verify_wechat_image_url(image_url: str) -> Optional[str]:
-    """验证企业微信豆瓣图片代理地址并返回去签名的原始图片地址。"""
+    """
+    验证企业微信豆瓣图片代理地址并返回去签名的原始图片地址。
+    """
     source_url = SecurityUtils.verify_signed_url(
         image_url,
         purpose=WECHAT_IMAGE_SIGNATURE_PURPOSE,

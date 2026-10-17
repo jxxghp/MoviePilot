@@ -1,3 +1,7 @@
+"""
+绿联媒体服务器客户端，协调内部加密接口、媒体库兼容接口及会话缓存。
+"""
+
 import hashlib
 from collections import deque
 from datetime import datetime
@@ -25,9 +29,13 @@ from app.schemas.types import MediaSource, MediaType, SystemConfigKey
 
 
 class Ugreen:
-    """绿联影视媒体服务器客户端。"""
+    """
+    绿联影视媒体服务器客户端。
+    """
 
+    # 目录索引最多读取 200 页，防止固件错误的分页标志导致无限循环。
     LIBRARY_PATH_PAGE_LIMIT = 200
+    # UGOS Pro 独立媒体库服务的固定 HTTPS 端口。
     MEDIA_SERVICE_PORT = 9443
     INTERNAL_CONNECTION_MODE = "internal"
     MEDIA_SERVICE_CONNECTION_MODE = "media_service"
@@ -62,7 +70,22 @@ class Ugreen:
         mode: Optional[str] = None,
         **kwargs,
     ):
-        """初始化绿联连接，并按地址端口或显式模式选择认证协议。"""
+        """
+        保存连接配置，并按端口或显式模式连接绿联影视服务。
+
+        地址或用户名密码缺失时不连接；内部接口优先复用持久化会话，媒体库服务重新认证。
+
+        :param host: 服务地址，9443 端口默认使用媒体库服务兼容接口
+        :param username: 登录用户名
+        :param password: 登录密码
+        :param play_host: 用于播放跳转和远程图片的外网地址
+        :param sync_libraries: 同步范围内的媒体库标识，空列表或包含 all 表示不限制
+        :param scan_mode: 扫描模式名称或编号，缺省使用补充缺失模式
+        :param scan_type: 显式扫描类型编号 1、2 或 3，优先于 scan_mode
+        :param verify_ssl: 是否验证证书；None 或无法识别的值默认启用
+        :param mode: 连接模式，支持 internal 和 media_service 及兼容别名；无有效显式值时按端口识别
+        :param kwargs: 通用服务配置的额外参数，当前不读取
+        """
         if not host or not username or not password:
             logger.error("绿联影视配置不完整！！")
             return
@@ -86,19 +109,29 @@ class Ugreen:
 
     @property
     def api(self) -> Optional[Api]:
-        """获取当前绿联影视 API 客户端"""
+        """
+        读取内部加密接口客户端。
+
+        :return: 内部接口客户端；媒体库服务模式或未连接时为 None
+        """
         return self._api
 
     def close(self):
-        """关闭绿联影视连接"""
+        """
+        关闭绿联影视连接。
+        """
         self.disconnect()
 
     def is_configured(self) -> bool:
-        """检查绿联影视连接配置是否完整"""
+        """
+        检查绿联影视连接配置是否完整。
+        """
         return bool(self._host and self._username and self._password)
 
     def is_authenticated(self) -> bool:
-        """检查绿联影视会话是否已认证"""
+        """
+        检查绿联影视会话是否已认证。
+        """
         if self.__is_media_service_mode():
             return bool(
                 self.is_configured()
@@ -114,7 +147,11 @@ class Ugreen:
         )
 
     def is_inactive(self) -> bool:
-        """检查绿联影视会话是否已失效"""
+        """
+        验证当前会话，并更新实例缓存的用户资料。
+
+        :return: 尚未认证或当前用户查询失败时返回 True；此检查会调用服务端接口
+        """
         if not self.is_authenticated():
             return True
         if self.__is_media_service_mode():
@@ -150,7 +187,9 @@ class Ugreen:
         return Ugreen.INTERNAL_CONNECTION_MODE
 
     def __is_media_service_mode(self) -> bool:
-        """判断当前实例是否使用媒体库服务 Emby 兼容接口。"""
+        """
+        判断当前实例是否使用媒体库服务 Emby 兼容接口。
+        """
         return getattr(self, "_connection_mode", self.INTERNAL_CONNECTION_MODE) == self.MEDIA_SERVICE_CONNECTION_MODE
 
     def __session_cache_key(self) -> str:
@@ -172,14 +211,27 @@ class Ugreen:
 
     @staticmethod
     def __load_all_session_cache() -> dict:
+        """
+        读取系统配置中保存的所有绿联会话。
+
+        :return: 会话缓存字典；配置不存在或不是字典时返回空字典
+        """
         sessions = get_configured_system_config().get(SystemConfigKey.UgreenSessionCache)
         return sessions if isinstance(sessions, dict) else {}
 
     @staticmethod
     def __save_all_session_cache(sessions: dict):
+        """
+        把所有绿联实例的会话字典写回系统配置。
+
+        :param sessions: 完整会话缓存映射；本方法替换该配置值，不只更新单个实例
+        """
         get_configured_system_config().set(SystemConfigKey.UgreenSessionCache, sessions)
 
     def __remove_persisted_session(self):
+        """
+        从持久化会话映射中删除当前地址和账号对应的记录。
+        """
         cache_key = self.__session_cache_key()
         sessions = self.__load_all_session_cache()
         if cache_key in sessions:
@@ -187,6 +239,11 @@ class Ugreen:
             self.__save_all_session_cache(sessions)
 
     def __save_persisted_session(self):
+        """
+        保存内部接口会话、Cookie、密码摘要和更新时间。
+
+        仅在内部 API 能导出有效会话时写入系统配置；其他实例的记录保留。
+        """
         if not self._api:
             return
         session_state = self._api.export_session_state()
@@ -205,6 +262,13 @@ class Ugreen:
         self.__save_all_session_cache(sessions)
 
     def __restore_persisted_session(self) -> bool:
+        """
+        验证缓存会话的密码摘要和服务端用户状态，成功后接管客户端。
+
+        密码变更或会话失效时删除旧记录；验证失败后关闭临时客户端，调用方可继续密码登录。
+
+        :return: 恢复并验证成功时返回 True；记录缺失、配置变更或会话失效时返回 False
+        """
         cache_key = self.__session_cache_key()
         sessions = self.__load_all_session_cache()
         cached = sessions.get(cache_key)
@@ -237,7 +301,14 @@ class Ugreen:
         return True
 
     def reconnect(self) -> bool:
-        """关闭旧连接并按当前连接模式重新认证绿联服务。"""
+        """
+        关闭旧客户端并按配置重新认证，重置媒体库与目录缓存。
+
+        关闭旧连接时不主动登出，以保留可复用会话。内部接口成功登录后保存新会话，
+        媒体库服务模式不使用内部接口的会话持久化流程。
+
+        :return: 认证并获取必要用户信息后返回 True；配置缺失或认证失败时返回 False
+        """
         if not self.is_configured():
             return False
 
@@ -289,7 +360,13 @@ class Ugreen:
         return True
 
     def disconnect(self, logout: bool = False):
-        """关闭当前绿联连接，并按需注销内部接口会话。"""
+        """
+        关闭客户端并清空内存中的用户、媒体库与路径状态。
+
+        媒体库服务模式只关闭 HTTP 会话，不调用服务端登出接口。
+
+        :param logout: 是否注销内部接口会话并删除持久化记录；默认保留供重连复用
+        """
         if self._media_api:
             self._media_api.close()
             self._media_api = None
@@ -309,6 +386,12 @@ class Ugreen:
 
     @staticmethod
     def __normalize_dir_path(path: Union[str, Path, None]) -> str:
+        """
+        将目录分隔符统一为斜杠，并去除尾部斜杠。
+
+        :param path: 字符串或路径对象；None 转为空字符串
+        :return: 用于字符串层级匹配的路径，不访问文件系统或解析符号链接
+        """
         if path is None:
             return ""
         value = str(path).replace("\\", "/").rstrip("/")
@@ -316,6 +399,13 @@ class Ugreen:
 
     @staticmethod
     def __is_subpath(path: Union[str, Path, None], parent: Union[str, Path, None]) -> bool:
+        """
+        按路径分隔符判断目标是否等于或位于父目录之下。
+
+        :param path: 待判断的目标路径
+        :param parent: 父目录路径
+        :return: 两个路径都非空且目标属于父目录时返回 True；比较区分大小写
+        """
         path_str = Ugreen.__normalize_dir_path(path)
         parent_str = Ugreen.__normalize_dir_path(parent)
         if not path_str or not parent_str:
@@ -350,6 +440,14 @@ class Ugreen:
         )
 
     def __resolve_image(self, path: Optional[str]) -> Optional[str]:
+        """
+        将图片地址转换为可用的外链或绿联图片中转地址。
+
+        scraper.ugnas.com 图片优先经本机 getImaStream 代理；普通外部 HTTP 地址保持原样。
+
+        :param path: 服务端原始图片地址或路径
+        :return: 可用 URL；过期签名且无法中转、相对路径或空值时返回 None
+        """
         if not path:
             return None
         if path.startswith("http://") or path.startswith("https://"):
@@ -391,6 +489,12 @@ class Ugreen:
 
     @staticmethod
     def __parse_year(video_info: dict) -> Optional[Union[str, int]]:
+        """
+        读取有效年份，缺失时从发行时间戳推断。
+
+        :param video_info: 内部接口的视频信息字典
+        :return: 正整数年份；只有正的发行秒时间戳时按本地时区取年，无法转换时返回 None
+        """
         year = video_info.get("year")
         if isinstance(year, int) and year > 0:
             return year
@@ -404,6 +508,12 @@ class Ugreen:
 
     @staticmethod
     def __map_item_type(video_type: Any) -> Optional[str]:
+        """
+        将绿联内部数值类型映射为统一条目类型。
+
+        :param video_type: 0 为目录，1 为电影，2 为剧集，3 为合集
+        :return: Folder、Movie、Series 或 Collection；其他值统一返回 Video
+        """
         if video_type == 2:
             return "Series"
         if video_type == 1:
@@ -416,6 +526,13 @@ class Ugreen:
 
     @staticmethod
     def __build_media_server_item(video_info: dict, play_status: Optional[dict] = None):
+        """
+        将内部视频信息和播放状态转换为统一媒体模型。
+
+        :param video_info: 含 ug_video_info_id、名称、类型及可选 TMDB 身份的视频信息
+        :param play_status: 可选播放状态，progress 为 0 至 1 的比例，watch_status=2 表示已看完
+        :return: 统一媒体条目；缺少 ug_video_info_id 时返回 None，仅正整数 tmdb_id 被接受为来源身份
+        """
         user_state = _SchemaMediaServerItemUserState()
         if isinstance(play_status, dict):
             progress = play_status.get("progress")
@@ -466,6 +583,14 @@ class Ugreen:
         return f"{host.rstrip('/')}/"
 
     def __build_play_url(self, item_id: Union[str, int], video_type: Any, media_lib_set_id: Any) -> str:
+        """
+        按连接模式生成播放跳转地址。
+
+        :param item_id: 媒体库服务的条目标识
+        :param video_type: 兼容内部调用的类型参数，当前不参与链接构造
+        :param media_lib_set_id: 兼容内部调用的媒体库标识，当前不参与链接构造
+        :return: 媒体库模式返回条目网页链接；内部模式因深链不稳定回退 NAS 根地址
+        """
         if self.__is_media_service_mode() and self._media_api:
             host = self._playhost or self._media_api.host
             server_id = self._media_api.server_id
@@ -478,7 +603,9 @@ class Ugreen:
         self,
         item: Mapping[str, Any],
     ) -> Optional[_SchemaMediaServerItem]:
-        """把媒体库服务返回的 Emby 条目转换为绿联媒体条目模型。"""
+        """
+        把媒体库服务返回的 Emby 条目转换为绿联媒体条目模型。
+        """
         if not isinstance(item, Mapping):
             return None
         media_item = format_emby_family_item(
@@ -492,7 +619,9 @@ class Ugreen:
 
     @staticmethod
     def __media_service_library_type(collection_type: Any) -> str:
-        """把 Emby 媒体库集合类型转换为 MoviePilot 媒体类型。"""
+        """
+        把 Emby 媒体库集合类型转换为 MoviePilot 媒体类型。
+        """
         normalized_type = str(collection_type or "").strip().lower()
         if normalized_type == "movies":
             return MediaType.MOVIE.value
@@ -503,7 +632,9 @@ class Ugreen:
         return MediaType.UNKNOWN.value
 
     def __build_media_service_library_link(self, library_id: Union[str, int]) -> str:
-        """生成媒体库服务媒体库视图的 Emby 网页链接。"""
+        """
+        生成媒体库服务媒体库视图的 Emby 网页链接。
+        """
         if not self._media_api:
             return self.__build_root_url()
         host = self._playhost or self._media_api.host
@@ -562,7 +693,9 @@ class Ugreen:
         return libraries
 
     def __build_media_service_play_item(self, item: Mapping[str, Any]) -> Optional[_SchemaMediaServerPlayItem]:
-        """把媒体库服务的继续观看或最近入库条目转换为播放模型。"""
+        """
+        把媒体库服务的继续观看或最近入库条目转换为播放模型。
+        """
         if not self._media_api or not isinstance(item, Mapping):
             return None
         item_id = item.get("Id")
@@ -605,7 +738,9 @@ class Ugreen:
         image_type: str = "Primary",
         remote: bool = False,
     ) -> Optional[str]:
-        """生成媒体库服务条目的图片地址，并在远程场景使用播放地址。"""
+        """
+        生成媒体库服务条目的图片地址，并在远程场景使用播放地址。
+        """
         if not self._media_api or not item_id:
             return None
         image_url = self._media_api.image_url(item_id, image_type)
@@ -618,6 +753,12 @@ class Ugreen:
         return image_url
 
     def __build_play_item_from_wrapper(self, wrapper: dict) -> Optional[_SchemaMediaServerPlayItem]:
+        """
+        将内部接口的视频与播放状态包装转换为仪表盘条目。
+
+        :param wrapper: 包含 video_info、play_status 的包装，或直接传入视频信息字典
+        :return: 播放条目；缺少视频标识时返回 None，进度转换并限制在 0 至 100 之间
+        """
         video_info = wrapper.get("video_info") if isinstance(wrapper.get("video_info"), dict) else wrapper
         if not isinstance(video_info, dict):
             return None
@@ -654,6 +795,13 @@ class Ugreen:
 
     @staticmethod
     def __infer_library_type(name: str, path: Optional[str]) -> str:
+        """
+        在接口缺少媒体库类型时按名称与目录关键词推断。
+
+        :param name: 媒体库名称
+        :param path: 可选媒体库目录
+        :return: 优先判定剧集，再判定电影与音乐；无匹配关键词时返回未知类型
+        """
         name = name or ""
         path = path or ""
         if "电视剧" in path or any(key in name for key in ["剧", "综艺", "动漫", "纪录片"]):
@@ -665,6 +813,12 @@ class Ugreen:
         return MediaType.UNKNOWN.value
 
     def __is_library_blocked(self, library_id: str) -> bool:
+        """
+        判断媒体库是否被当前同步范围排除。
+
+        :param library_id: 媒体库标识，比较时转换为字符串
+        :return: 非空同步列表不含 all 且未选中该库时返回 True
+        """
         return (
             True
             if (
@@ -691,6 +845,7 @@ class Ugreen:
         # 优先使用显式 scan_type 数值配置。
         for value in (scan_type, scan_mode):
             try:
+                # None 等非法输入由紧邻的异常分支处理，兼容旧配置值类型。
                 parsed = int(value)  # type: ignore[arg-type]
                 if parsed in (1, 2, 3):
                     return parsed
@@ -720,6 +875,12 @@ class Ugreen:
 
     @staticmethod
     def __resolve_verify_ssl(verify_ssl: Optional[Union[bool, str, int]]) -> bool:
+        """
+        解析证书验证开关，未知配置默认启用验证。
+
+        :param verify_ssl: 布尔值或 1/0、true/false、yes/no、on/off 文本
+        :return: 规范布尔开关，None 或无法识别的文本返回 True
+        """
         if isinstance(verify_ssl, bool):
             return verify_ssl
         if verify_ssl is None:
@@ -732,6 +893,13 @@ class Ugreen:
         return True
 
     def __scan_library(self, library_id: str, scan_type: Optional[int] = None) -> bool:
+        """
+        向内部接口发送单个媒体库的扫描请求。
+
+        :param library_id: 媒体库集合标识
+        :param scan_type: 扫描类型，空值使用实例配置
+        :return: 请求业务成功时返回 True；内部 API 不存在或请求失败时返回 False，不等待扫描完成
+        """
         if not self._api:
             return False
         return self._api.scan(
@@ -741,6 +909,11 @@ class Ugreen:
         )
 
     def __load_library_paths(self) -> dict[str, str]:
+        """
+        分页收集内部接口的媒体库目录，限制最多 200 页。
+
+        :return: 媒体库标识到路径的映射；接口失败保留此前结果，达到页数上限时记录警告并停止
+        """
         if not self._api:
             return {}
 
@@ -771,10 +944,10 @@ class Ugreen:
 
     def get_librarys(self, hidden: Optional[bool] = False) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
-        获取绿联影视媒体库列表
+        查询当前连接模式的媒体库，并刷新内存中的库及路径缓存。
 
-        :param hidden: 是否过滤未启用同步的媒体库
-        :return: 媒体库列表
+        :param hidden: 是否过滤同步范围外的媒体库，默认不过滤
+        :return: 统一媒体库列表；未认证或查询失败时返回 None
         """
         if self.__is_media_service_mode():
             return self.__get_media_service_librarys(hidden=hidden)
@@ -832,7 +1005,11 @@ class Ugreen:
         return libraries
 
     def get_user_count(self) -> int:
-        """获取绿联影视媒体库用户数量"""
+        """
+        查询媒体库用户数量。
+
+        :return: 内部模式返回接口用户数；媒体库服务不支持枚举，已认证时记 1、否则记 0
+        """
         if self.__is_media_service_mode():
             # 媒体库服务不开放用户枚举，当前实例只代表一个已认证媒体库账号。
             return 1 if self.is_authenticated() else 0
@@ -842,7 +1019,11 @@ class Ugreen:
         return len(users)
 
     def get_medias_count(self) -> _SchemaStatistic:
-        """获取绿联影视的电影和电视剧数量统计"""
+        """
+        查询电影、电视剧和音乐数量，按服务能力提供分集统计。
+
+        :return: 统一统计对象；未认证或查询失败时对应计数为空或零，内部模式的分集总数固定为 None
+        """
         if self.__is_media_service_mode():
             if not self.is_authenticated() or not self._media_api:
                 return _SchemaStatistic()
@@ -874,7 +1055,15 @@ class Ugreen:
         )
 
     def authenticate(self, username: str, password: str) -> Optional[str]:
-        """使用指定账号认证绿联内部接口或媒体库服务接口。"""
+        """
+        使用独立临时客户端验证账号，不替换当前实例会话。
+
+        媒体库模式验证后关闭临时连接；内部模式还会立即登出，因此返回令牌仅用于认证结果，不能据此长期复用该会话。
+
+        :param username: 待验证的登录用户名
+        :param password: 待验证的密码
+        :return: 成功时返回认证令牌，输入不完整或认证失败时返回 None
+        """
         host = self._host
         if not username or not password or not host:
             return None
@@ -896,6 +1085,12 @@ class Ugreen:
 
     @staticmethod
     def __extract_video_info_list(bucket: Any) -> list[dict]:
+        """
+        从搜索分类桶的 video_arr 中提取有效 video_info 字典。
+
+        :param bucket: 按媒体类型分组的搜索结果
+        :return: 视频信息字典列表；分组或列表形状不符时返回空列表
+        """
         if not isinstance(bucket, Mapping):
             return []
         video_arr = bucket.get("video_arr")
@@ -917,7 +1112,9 @@ class Ugreen:
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
     ) -> Optional[List[_SchemaMediaServerItem]]:
-        """通过媒体库服务用户条目接口查找电影。"""
+        """
+        通过媒体库服务用户条目接口查找电影。
+        """
         if not self.is_authenticated() or not self._media_api or not title:
             return None
         data = self._media_api.items(
@@ -947,7 +1144,9 @@ class Ugreen:
         artist: Optional[str] = None,
         album: Optional[str] = None,
     ) -> List[_SchemaMediaServerItem]:
-        """通过媒体库服务用户条目接口查找音乐。"""
+        """
+        通过媒体库服务用户条目接口查找音乐。
+        """
         if not self.is_authenticated() or not self._media_api:
             return []
         query = " ".join(filter(None, [title, artist, album])).strip()
@@ -978,7 +1177,9 @@ class Ugreen:
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
     ) -> Optional[_SchemaMediaServerItem]:
-        """通过媒体库服务用户条目接口查找电视剧。"""
+        """
+        通过媒体库服务用户条目接口查找电视剧。
+        """
         if not self.is_authenticated() or not self._media_api or not title:
             return None
         data = self._media_api.items(
@@ -1009,7 +1210,9 @@ class Ugreen:
         media_id: Optional[str] = None,
         season: Optional[int] = None,
     ) -> tuple[Optional[str], Optional[Dict[int, List[int]]]]:
-        """通过媒体库服务的 Shows/Episodes 接口查询已入库剧集。"""
+        """
+        通过媒体库服务的 Shows/Episodes 接口查询已入库剧集。
+        """
         if not self.is_authenticated() or not self._media_api:
             return None, None
         cached_item_id = item_id
@@ -1050,7 +1253,9 @@ class Ugreen:
         return item_id, season_episodes
 
     def __get_media_service_latest_items(self, num: int = 20) -> Optional[List[dict[str, Any]]]:
-        """按创建时间获取媒体库服务中的最近电影和剧集条目。"""
+        """
+        按创建时间获取媒体库服务中的最近电影和剧集条目。
+        """
         if not self.is_authenticated() or not self._media_api:
             return None
         page_size = max(1, num)
@@ -1073,6 +1278,15 @@ class Ugreen:
         media_source: Optional[MediaSource] = None,
         media_id: Optional[str] = None,
     ) -> Optional[List[_SchemaMediaServerItem]]:
+        """
+        按连接模式搜索电影，并核对名称、年份及来源身份。
+
+        :param title: 电影标题，内部模式同时匹配名称与原始名称
+        :param year: 可选年份，空值不限制年份
+        :param media_source: 用于排除身份冲突的来源
+        :param media_id: 对应来源内的媒体标识
+        :return: 匹配的统一电影列表；未认证或标题为空时返回 None，无结果时返回空列表
+        """
         if self.__is_media_service_mode():
             return self.__get_media_service_movies(title, year, media_source, media_id)
         if not self.is_authenticated() or not self._api or not title:
@@ -1108,7 +1322,14 @@ class Ugreen:
         artist: Optional[str] = None,
         album: Optional[str] = None,
     ) -> List[_SchemaMediaServerItem]:
-        """按歌曲、艺术家或专辑名称查询绿联影视音乐条目。"""
+        """
+        按专辑、歌曲或艺术家名称查询音乐候选。
+
+        :param title: 歌曲标题
+        :param artist: 艺术家名称
+        :param album: 专辑名称，内部模式优先作为搜索词
+        :return: 统一音乐候选列表；无查询词、未认证或请求失败时返回空列表
+        """
         if self.__is_media_service_mode():
             return self.__get_media_service_music(title, artist, album)
         if not self.is_authenticated() or not self._api:
@@ -1137,7 +1358,9 @@ class Ugreen:
             media_source: Optional[MediaSource] = None,
             media_id: Optional[str] = None,
     ) -> Optional[dict]:
-        """按标题、年份与统一媒体身份查找电视剧条目。"""
+        """
+        按标题、年份与统一媒体身份查找电视剧条目。
+        """
         if not self._api:
             return None
         data = self._api.search(title)
@@ -1172,6 +1395,7 @@ class Ugreen:
     ) -> tuple[Optional[str], Optional[Dict[int, list]]]:
         """
         根据标题、年份、媒体身份和季号查询绿联媒体库中的电视剧已入库集数。
+
         :param item_id: 绿联媒体库中的剧集ID，存在缓存ID时优先使用
         :param title: 标题
         :param year: 年份
@@ -1256,7 +1480,14 @@ class Ugreen:
         return item_id, season_episodes
 
     def refresh_root_library(self, scan_mode: Optional[Union[str, int]] = None) -> Optional[bool]:
-        """刷新绿联媒体库；媒体库服务模式暂未开放刷新接口。"""
+        """
+        请求刷新缓存中的全部媒体库；媒体库服务模式暂不支持。
+
+        未加载媒体库时先查询目录；只等待扫描请求被接受，不等待扫描结束。
+
+        :param scan_mode: 本次扫描模式，省略时使用实例配置
+        :return: 全部请求成功或没有媒体库时返回 True；未认证时返回 None，媒体库服务模式返回 False
+        """
         if self.__is_media_service_mode():
             if not self.is_authenticated():
                 return None
@@ -1283,6 +1514,12 @@ class Ugreen:
         return all(results) if results else True
 
     def __match_library_id_by_path(self, path: Optional[Path]) -> Optional[str]:
+        """
+        按目录层级查找目标路径所属的第一个媒体库。
+
+        :param path: 媒体整理后的目标路径
+        :return: 匹配的媒体库标识；路径为空或没有匹配时返回 None，路径缓存为空时先查询媒体库
+        """
         if path is None:
             return None
 
@@ -1300,7 +1537,15 @@ class Ugreen:
         items: List[_SchemaRefreshMediaItem],
         scan_mode: Optional[Union[str, int]] = None,
     ) -> Optional[bool]:
-        """按路径刷新绿联媒体库；媒体库服务模式暂未开放刷新接口。"""
+        """
+        合并媒体目标路径所属的库，并请求扫描。
+
+        无法定位任一目标或局部扫描失败时回退到刷新全部媒体库；空输入无需扫描并返回 True。
+
+        :param items: 包含目标路径的媒体刷新列表
+        :param scan_mode: 本次扫描模式，省略时使用实例配置
+        :return: 刷新结果；未认证时返回 None，媒体库服务模式不支持并返回 False
+        """
         if self.__is_media_service_mode():
             if not self.is_authenticated():
                 return None
@@ -1331,10 +1576,21 @@ class Ugreen:
 
     @staticmethod
     def get_webhook_message(body: Any) -> Optional[_SchemaWebhookEventInfo]:
+        """
+        保留统一 Webhook 解析入口，绿联当前不提供事件解析。
+
+        :param body: 兼容统一接口的请求体，当前不读取
+        :return: 始终返回 None
+        """
         return None
 
     def get_iteminfo(self, itemid: str) -> Optional[_SchemaMediaServerItem]:
-        """获取指定绿联媒体条目的统一详情模型。"""
+        """
+        按当前连接模式查询单个媒体条目。
+
+        :param itemid: 对应服务的条目标识
+        :return: 统一媒体详情；未认证、标识为空、查询失败或缺少视频身份时返回 None
+        """
         if self.__is_media_service_mode():
             if not self.is_authenticated() or not self._media_api or not itemid:
                 return None
@@ -1354,6 +1610,15 @@ class Ugreen:
         return self.__build_media_server_item(video_info, info.get("play_status"))
 
     def _iter_library_videos(self, root_path: str, page_size: int = 100):
+        """
+        广度优先分页遍历海报墙目录，最多访问 20000 个不同路径。
+
+        重复路径只访问一次。单个目录请求失败时结束该目录，继续已有队列，不抛出专门的同步失败异常。
+
+        :param root_path: 遍历起始目录
+        :param page_size: 每个目录的分页大小，默认 100
+        :yields: 服务端 video_arr 中的有效视频字典
+        """
         if not self._api or not root_path:
             return
 
@@ -1400,7 +1665,9 @@ class Ugreen:
         start_index: Optional[int] = 0,
         limit: Optional[int] = -1,
     ) -> Generator[_SchemaMediaServerItem, Any, None]:
-        """分页遍历媒体库服务用户可见的电影、剧集和音乐专辑。"""
+        """
+        分页遍历媒体库服务用户可见的电影、剧集和音乐专辑。
+        """
         if not self.is_authenticated() or not self._media_api or not parent or self.__is_library_blocked(str(parent)):
             return
 
@@ -1453,7 +1720,7 @@ class Ugreen:
 
     def get_items_count(self, parent: Union[str, int]) -> Optional[int]:
         """
-        获取指定媒体库可同步的媒体条目总数
+        获取指定媒体库可同步的媒体条目总数。
 
         :param parent: 媒体库ID
         :return: 媒体条目总数，查询失败时返回None
@@ -1496,12 +1763,16 @@ class Ugreen:
         limit: Optional[int] = -1,
     ) -> Generator[_SchemaMediaServerItem | None | Any, Any, None]:
         """
-        获取指定绿联影视媒体库的可同步条目
+        按连接模式逐项遍历媒体库中可同步的媒体。
 
-        :param parent: 媒体库ID
-        :param start_index: 起始条目索引
-        :param limit: 最大返回条目数，-1表示不限制
-        :return: 媒体条目生成器
+        内部模式按目录遍历并只返回电影、剧集，媒体库模式还支持音乐专辑。
+        当前内部模式对 limit=0 仍可能产生首个条目，媒体库模式不产生条目。
+        底层读取失败可能提前结束迭代并保留已经产出的部分结果。
+
+        :param parent: 媒体库标识
+        :param start_index: 跳过的条目数量，负值或空值按 0 处理
+        :param limit: 期望返回的条目上限，None 或 -1 表示不限；调用方应提供正数或不限标记
+        :yields: 统一媒体条目
         """
         if self.__is_media_service_mode():
             yield from self.__iter_media_service_items(parent, start_index, limit)
@@ -1540,7 +1811,12 @@ class Ugreen:
         return None
 
     def get_play_url(self, item_id: str) -> Optional[str]:
-        """获取指定绿联媒体条目的网页播放链接。"""
+        """
+        查询条目后生成当前连接模式的网页跳转链接。
+
+        :param item_id: 对应服务的媒体条目标识
+        :return: 媒体库模式返回条目链接，内部模式返回 NAS 根地址；未认证、条目无效或查询失败时返回 None
+        """
         if self.__is_media_service_mode():
             if not self.is_authenticated() or not self._media_api or not item_id:
                 return None
@@ -1570,7 +1846,12 @@ class Ugreen:
         )
 
     def get_resume(self, num: Optional[int] = 12) -> Optional[List[_SchemaMediaServerPlayItem]]:
-        """获取绿联媒体库账号的继续观看项目。"""
+        """
+        获取当前账号的继续观看条目。
+
+        :param num: 期望数量，空值或 0 使用 12，最少请求 1 条
+        :return: 播放条目列表；未认证或查询失败时返回 None，内部模式会排除同步范围外的媒体库
+        """
         if self.__is_media_service_mode():
             if not self.is_authenticated() or not self._media_api:
                 return None
@@ -1611,7 +1892,12 @@ class Ugreen:
         return ret_resume
 
     def get_latest(self, num: int = 20) -> Optional[List[_SchemaMediaServerPlayItem]]:
-        """获取绿联媒体库账号最近入库的电影和电视剧。"""
+        """
+        查询最近入库的电影和电视剧。
+
+        :param num: 期望条目数，最少请求 1 条
+        :return: 最新条目列表；未认证或查询失败时返回 None，内部模式会排除同步范围外的媒体库
+        """
         if self.__is_media_service_mode():
             items = self.__get_media_service_latest_items(num=num)
             if items is None:
@@ -1650,7 +1936,13 @@ class Ugreen:
         return latest
 
     def get_latest_backdrops(self, num: int = 20, remote: bool = False) -> Optional[List[str]]:
-        """获取最近入库电影、电视剧的壁纸图片。"""
+        """
+        查询最近入库媒体可用的背景图，缺少时回退主封面。
+
+        :param num: 期望图片数量，默认 20
+        :param remote: 媒体库服务模式是否优先使用外网地址；内部模式不使用此参数
+        :return: 图片 URL 列表；未认证或媒体库服务查询失败时返回 None，内部模式无查询结果时返回空列表
+        """
         if self.__is_media_service_mode():
             items = self.__get_media_service_latest_items(num=num)
             if items is None:
@@ -1700,4 +1992,10 @@ class Ugreen:
     @staticmethod
     def get_image_cookies(image_url: str):
         # 绿联图片流接口依赖加密鉴权头，当前图片代理仅支持Cookie注入。
+        """
+        保留图片 Cookie 接口；绿联图片认证不通过 Cookie 提供。
+
+        :param image_url: 兼容统一接口的图片地址，当前不读取
+        :return: 始终返回 None
+        """
         return None

@@ -1,4 +1,6 @@
-"""插件市场同步服务用例。"""
+"""
+插件市场同步服务用例。
+"""
 
 import asyncio
 from datetime import datetime, timezone
@@ -35,7 +37,9 @@ REPO_URL = "https://github.com/jxxghp/MoviePilot-Plugins"
 
 
 def _merge_catalog_plugins(higher, base, markets):
-    """通过生产目录服务合并启动同步候选。"""
+    """
+    通过生产目录服务合并启动同步候选。
+    """
     service = PluginCatalogService(
         market_loader=Mock(return_value={}),
         async_market_loader=AsyncMock(return_value={}),
@@ -52,7 +56,9 @@ def _merge_catalog_plugins(higher, base, markets):
 
 
 def test_market_sync_keeps_install_rollback_enabled() -> None:
-    """自动更新插件时保留旧版本，失败后可由安装器恢复。"""
+    """
+    自动更新插件时保留旧版本，失败后可由安装器恢复。
+    """
     plugin = SimpleNamespace(
         id="DemoPlugin",
         repo_url="https://example.com/plugins",
@@ -78,7 +84,9 @@ def test_market_sync_keeps_install_rollback_enabled() -> None:
 
 
 def test_market_sync_arbitrates_online_versions_before_local_overlay() -> None:
-    """在线候选先按版本仲裁，不能因输入顺序选择旧版本。"""
+    """
+    在线候选先按版本仲裁，不能因输入顺序选择旧版本。
+    """
     old = SimpleNamespace(
         id="DemoPlugin",
         repo_url="https://example.com/old",
@@ -116,7 +124,9 @@ def test_market_sync_arbitrates_online_versions_before_local_overlay() -> None:
 
 
 def test_market_sync_restores_trusted_online_payload_after_local_source_removed() -> None:
-    """本地高版本来源消失后，启动同步仍恢复已绑定的在线载荷。"""
+    """
+    本地高版本来源消失后，启动同步仍恢复已绑定的在线载荷。
+    """
     plugin = SimpleNamespace(
         id="DemoPlugin",
         repo_url=REPO_URL,
@@ -144,7 +154,8 @@ def test_market_sync_restores_trusted_online_payload_after_local_source_removed(
 
 
 def test_market_sync_excludes_runtime_incompatible_candidates() -> None:
-    """运行时声明不兼容的插件不得进入启动同步。
+    """
+    运行时声明不兼容的插件不得进入启动同步。
 
     这类插件装不上：安装准入必然拒绝，同步失败状态会覆盖加载器写下的不兼容状态，
     恢复集合还会把整个启动同步判为未完成，连带跳过依赖恢复与调度器初始化。
@@ -179,7 +190,9 @@ def test_market_sync_excludes_runtime_incompatible_candidates() -> None:
 
 
 def test_market_sync_excludes_runtime_incompatible_restore_targets() -> None:
-    """恢复分支同样排除：重装当前运行时装不上的插件不会有别的结果。"""
+    """
+    恢复分支同样排除：重装当前运行时装不上的插件不会有别的结果。
+    """
     plugin = SimpleNamespace(
         id="DemoPlugin",
         repo_url=REPO_URL,
@@ -206,7 +219,9 @@ def test_market_sync_excludes_runtime_incompatible_restore_targets() -> None:
 
 
 def test_market_sync_skips_existing_local_candidate() -> None:
-    """运行目录已有可用插件时，启动同步不因本地候选重复安装。"""
+    """
+    运行目录已有可用插件时，启动同步不因本地候选重复安装。
+    """
     online = SimpleNamespace(
         id="DemoPlugin",
         repo_url=REPO_URL,
@@ -240,7 +255,9 @@ def test_market_sync_skips_existing_local_candidate() -> None:
 
 
 def test_market_sync_defers_source_selection_to_gateway() -> None:
-    """启动目录只能决定同步目标，不能把本地候选升级为选源授权。"""
+    """
+    启动目录只能决定同步目标，不能把本地候选升级为选源授权。
+    """
     local = SimpleNamespace(
         id="DemoPlugin",
         repo_url="local://DemoPlugin?path=/private/plugins&version=v3",
@@ -266,7 +283,9 @@ def test_market_sync_defers_source_selection_to_gateway() -> None:
 
 
 def test_market_sync_isolates_local_install_failure() -> None:
-    """本地载荷恢复失败保留该插件状态，但不阻止其余启动编排。"""
+    """
+    本地载荷恢复失败保留该插件状态，但不阻止其余启动编排。
+    """
     local = SimpleNamespace(
         id="DemoPlugin",
         repo_url="local://DemoPlugin?path=/private/plugins&version=v3",
@@ -295,7 +314,9 @@ def test_market_sync_isolates_local_install_failure() -> None:
 
 
 def test_market_sync_continues_after_one_plugin_install_failure() -> None:
-    """一个恢复目标失败时仍完成其它插件的安装并返回其成功清单。"""
+    """
+    一个恢复目标失败时仍完成其它插件的安装并返回其成功清单。
+    """
     failed = SimpleNamespace(
         id="FailedPlugin",
         repo_url="local://FailedPlugin?version=v3",
@@ -341,7 +362,9 @@ def test_market_sync_continues_after_one_plugin_install_failure() -> None:
 
 
 def test_market_sync_stops_without_online_fallback_when_local_scan_fails() -> None:
-    """本地仓扫描失败时，启动同步不得退回在线候选。"""
+    """
+    本地仓扫描失败时，启动同步不得退回在线候选。
+    """
     statuses: list[tuple[str, object]] = []
     service = PluginSyncService(
         frozen=lambda: False,
@@ -361,7 +384,9 @@ def test_market_sync_stops_without_online_fallback_when_local_scan_fails() -> No
 
 
 def test_local_sync_matches_installed_plugin_id_case_insensitively() -> None:
-    """本地热同步应把大小写不同的索引 ID 识别为同一已安装插件。"""
+    """
+    本地热同步应把大小写不同的索引 ID 识别为同一已安装插件。
+    """
     candidate = {
         "repo_url": "local://downloadcenter?package_version=v3",
         "package_version": "v3",
@@ -394,7 +419,9 @@ def test_local_sync_matches_installed_plugin_id_case_insensitively() -> None:
 async def test_market_sync_preserves_generation_priority_through_gateway(
     monkeypatch,
 ) -> None:
-    """目录中的高版本 V2 不能绕过 Gateway 覆盖绑定仓库的 V3。"""
+    """
+    目录中的高版本 V2 不能绕过 Gateway 覆盖绑定仓库的 V3。
+    """
     online = PluginMarketCandidate(
         plugin_id="DownloadCenter",
         source_key="github:jxxghp/moviepilot-plugins",
@@ -460,7 +487,9 @@ async def test_market_sync_preserves_generation_priority_through_gateway(
         force: bool,
         startup_token: object | None,
     ) -> tuple[bool, str]:
-        """按生产兼容入口让 Gateway 完成最终来源准入。"""
+        """
+        按生产兼容入口让 Gateway 完成最终来源准入。
+        """
         return plugins_initializer._run_plugin_install_sync(
             gateway,
             plugin_id=plugin_id,
@@ -518,7 +547,9 @@ async def test_market_sync_preserves_generation_priority_through_gateway(
 async def test_market_sync_blocks_activation_when_gateway_selected_local_fails(
     monkeypatch,
 ) -> None:
-    """目录预选在线候选时，Gateway 改选本地失败仍必须阻止旧载荷激活。"""
+    """
+    目录预选在线候选时，Gateway 改选本地失败仍必须阻止旧载荷激活。
+    """
     competing_repo_url = "https://github.com/example/MoviePilot-Plugins"
     official = PluginMarketCandidate(
         plugin_id="DemoPlugin",
@@ -665,7 +696,9 @@ async def test_market_sync_blocks_activation_when_gateway_selected_local_fails(
 async def test_market_sync_reuses_startup_lease_through_real_gateway(
     monkeypatch,
 ) -> None:
-    """启动自动安装跨线程进入 Gateway 时必须复用同一个 startup lease。"""
+    """
+    启动自动安装跨线程进入 Gateway 时必须复用同一个 startup lease。
+    """
     competing_repo_url = "https://github.com/example/MoviePilot-Plugins"
     plugin = SimpleNamespace(
         id="DemoPlugin",
@@ -749,7 +782,9 @@ async def test_market_sync_reuses_startup_lease_through_real_gateway(
         force: bool,
         startup_token: object | None,
     ) -> tuple[bool, str]:
-        """复用生产同步包装层，把线程池安装提交回宿主事件循环。"""
+        """
+        复用生产同步包装层，把线程池安装提交回宿主事件循环。
+        """
         return plugins_initializer._run_plugin_install_sync(
             gateway,
             plugin_id=plugin_id,

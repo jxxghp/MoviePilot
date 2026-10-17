@@ -1,4 +1,6 @@
-"""插件来源身份的数据访问原语。"""
+"""
+插件来源身份的数据访问原语。
+"""
 
 from collections.abc import Sequence
 from typing import cast
@@ -11,10 +13,14 @@ from app.db.models.pluginidentity import PluginIdentity
 
 
 class PluginIdentityOper(DbOper):
-    """在调用方 Session 中查询并条件暂存插件来源身份。"""
+    """
+    在调用方 Session 中查询并条件暂存插件来源身份。
+    """
 
     def get_by_plugin_id(self, plugin_id: str) -> PluginIdentity | None:
-        """按规范化物理插件 ID 查询唯一身份。"""
+        """
+        按规范化物理插件 ID 查询唯一身份。
+        """
         return self._execute_sync_query(
             lambda session: cast(
                 PluginIdentity | None,
@@ -30,7 +36,9 @@ class PluginIdentityOper(DbOper):
         self,
         plugin_ids: Sequence[str],
     ) -> list[PluginIdentity]:
-        """批量读取规范化物理插件 ID 对应的身份。"""
+        """
+        批量读取规范化物理插件 ID 对应的身份。
+        """
         if not plugin_ids:
             return []
         # 无会话调用由组合根另开短事务，会话在 lambda 返回后立刻关闭；游标必须在事务
@@ -46,9 +54,13 @@ class PluginIdentityOper(DbOper):
         )
 
     def stage_create(self, identity: PluginIdentity) -> None:
-        """暂存首次身份并立即暴露数据库唯一键竞争。"""
+        """
+        暂存首次身份并立即暴露数据库唯一键竞争。
+        """
         def stage(session: Session) -> None:
-            """加入并 flush 当前调用方事务。"""
+            """
+            加入并 flush 当前调用方事务。
+            """
             session.add(identity)
             session.flush()
 
@@ -60,7 +72,9 @@ class PluginIdentityOper(DbOper):
         *,
         expected_revision: int,
     ) -> bool:
-        """仅在当前 revision 匹配时替换整份审计事实。"""
+        """
+        仅在当前 revision 匹配时替换整份审计事实。
+        """
         values = {
             column.name: getattr(identity, column.name)
             for column in PluginIdentity.__table__.columns

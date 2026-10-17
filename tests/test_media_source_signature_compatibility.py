@@ -1,9 +1,13 @@
+"""
+验证搜索、字幕和整理接口统一使用成对的规范媒体身份。
+"""
+
 import inspect
 
 from app.chain.download import DownloadChain
 from app.chain.search import SearchChain
-from app.chain.subscribe import SubscribeChain
-from app.chain.transfer import TransferChain
+from app.chain.subscribe.facade import SubscribeChain
+from app.chain.transfer.facade import TransferChain
 
 
 LEGACY_MEDIA_ID_PARAMETERS = {
@@ -18,7 +22,9 @@ LEGACY_MEDIA_ID_PARAMETERS = {
 
 
 def _assert_unified_media_identity(method, *, required: bool = True) -> None:
-    """断言通用媒体方法仅暴露成对的统一身份参数。"""
+    """
+    断言通用媒体方法仅暴露成对的统一身份参数。
+    """
     parameters = inspect.signature(method).parameters
     assert "media_source" in parameters
     assert "media_id" in parameters
@@ -29,7 +35,9 @@ def _assert_unified_media_identity(method, *, required: bool = True) -> None:
 
 
 def test_search_chain_uses_unified_media_identity() -> None:
-    """精确资源与字幕搜索必须只接收统一媒体身份。"""
+    """
+    精确资源与字幕搜索必须只接收统一媒体身份。
+    """
     for method in (
         SearchChain.search_by_id,
         SearchChain.async_search_by_id,
@@ -41,16 +49,22 @@ def test_search_chain_uses_unified_media_identity() -> None:
 
 
 def test_download_chain_uses_unified_media_identity() -> None:
-    """字幕下载必须只接收统一媒体身份。"""
+    """
+    字幕下载必须只接收统一媒体身份。
+    """
     _assert_unified_media_identity(DownloadChain.download_subtitle)
 
 
 def test_transfer_chain_uses_unified_media_identity() -> None:
-    """手动整理可选身份也必须使用成对的统一字段。"""
+    """
+    手动整理可选身份也必须使用成对的统一字段。
+    """
     _assert_unified_media_identity(TransferChain.manual_transfer, required=False)
 
 
 def test_subscribe_chain_uses_unified_media_identity() -> None:
-    """订阅入口可选身份也必须使用成对的统一字段。"""
+    """
+    订阅入口可选身份也必须使用成对的统一字段。
+    """
     _assert_unified_media_identity(SubscribeChain.add, required=False)
     _assert_unified_media_identity(SubscribeChain.async_add, required=False)

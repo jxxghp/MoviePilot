@@ -1,4 +1,6 @@
-"""durable side-effect outbox 原子性、认领、重试与稳定重放测试。"""
+"""
+durable side-effect outbox 原子性、认领、重试与稳定重放测试。
+"""
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -37,7 +39,9 @@ from app.schemas.types import MediaSource
 
 
 class _Staged:
-    """测试用新订阅暂存结果。"""
+    """
+    测试用新订阅暂存结果。
+    """
 
     subscribe_id = 42
     message = "ok"
@@ -45,7 +49,9 @@ class _Staged:
 
 
 def test_subscription_and_outbox_intent_commit_together() -> None:
-    """业务行与 intent 均 stage 成功后才允许同一次 commit。"""
+    """
+    业务行与 intent 均 stage 成功后才允许同一次 commit。
+    """
     calls = []
     repository = MagicMock()
     repository.stage_add.side_effect = lambda *_args: calls.append("subscription") or _Staged()
@@ -75,7 +81,9 @@ def test_subscription_and_outbox_intent_commit_together() -> None:
 
 
 def test_subscription_notification_snapshot_is_part_of_same_transaction() -> None:
-    """订阅新增通知快照与事件、统计意图一起暂存，便于崩溃恢复。"""
+    """
+    订阅新增通知快照与事件、统计意图一起暂存，便于崩溃恢复。
+    """
     calls = []
     repository = MagicMock()
     repository.stage_add.side_effect = lambda *_args: calls.append("subscription") or _Staged()
@@ -103,7 +111,9 @@ def test_subscription_notification_snapshot_is_part_of_same_transaction() -> Non
 
 
 def test_outbox_stage_failure_rolls_back_business_transaction() -> None:
-    """intent 无法持久化时订阅行不得单独提交。"""
+    """
+    intent 无法持久化时订阅行不得单独提交。
+    """
     repository = MagicMock()
     repository.stage_add.return_value = _Staged()
     outbox = MagicMock()
@@ -122,7 +132,9 @@ def test_outbox_stage_failure_rolls_back_business_transaction() -> None:
 
 
 def test_dispatcher_retries_then_dead_letters_with_stable_key() -> None:
-    """同一幂等键有限指数退避，达到上限后进入 dead letter。"""
+    """
+    同一幂等键有限指数退避，达到上限后进入 dead letter。
+    """
     now = datetime(2026, 8, 21, tzinfo=timezone.utc)
     repository = MagicMock()
     repository.claim.side_effect = [
@@ -154,7 +166,9 @@ def test_dispatcher_retries_then_dead_letters_with_stable_key() -> None:
 
 
 def test_dispatcher_marks_success_and_closes_owned_resource() -> None:
-    """成功 handler 收口消息，批次结束释放 Session 所有权。"""
+    """
+    成功 handler 收口消息，批次结束释放 Session 所有权。
+    """
     now = datetime(2026, 8, 21, tzinfo=timezone.utc)
     repository = MagicMock()
     message = ClaimedOutboxMessage(7, "key", "subscribe.added", {}, 1, 1)
@@ -174,7 +188,9 @@ def test_dispatcher_marks_success_and_closes_owned_resource() -> None:
 
 
 def test_dispatcher_raises_when_complete_loses_lease() -> None:
-    """handler 成功但 complete fencing 失败时必须明确报告 lease 丢失。"""
+    """
+    handler 成功但 complete fencing 失败时必须明确报告 lease 丢失。
+    """
     now = datetime(2026, 8, 28, tzinfo=timezone.utc)
     repository = MagicMock()
     message = ClaimedOutboxMessage(7, "key", "test", {}, 1, 1)
@@ -195,7 +211,9 @@ def test_dispatcher_raises_when_complete_loses_lease() -> None:
 
 
 def test_sync_outbox_claim_is_exclusive_for_event_key() -> None:
-    """同步投递与恢复投递竞争同一 intent 时只允许一个取得 lease。"""
+    """
+    同步投递与恢复投递竞争同一 intent 时只允许一个取得 lease。
+    """
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
@@ -226,7 +244,9 @@ def test_sync_outbox_claim_is_exclusive_for_event_key() -> None:
 
 
 def test_concurrent_claim_allows_exactly_one_owner(tmp_path) -> None:
-    """两个独立 dispatcher 并发竞争同一消息时只允许一个取得 lease。"""
+    """
+    两个独立 dispatcher 并发竞争同一消息时只允许一个取得 lease。
+    """
     engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'outbox.db'}")
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
@@ -240,7 +260,9 @@ def test_concurrent_claim_allows_exactly_one_owner(tmp_path) -> None:
     barrier = Barrier(2)
 
     def claim():
-        """同时开始一次独立短事务认领。"""
+        """
+        同时开始一次独立短事务认领。
+        """
         barrier.wait()
         return SqlAlchemyOutboxDispatchStore(factory).claim_by_event_key(
             "race:v1",
@@ -258,7 +280,9 @@ def test_concurrent_claim_allows_exactly_one_owner(tmp_path) -> None:
 
 
 def test_expired_owner_cannot_settle_new_attempt() -> None:
-    """lease 过期后的旧 owner 不得覆盖新 attempt 的完成或重试状态。"""
+    """
+    lease 过期后的旧 owner 不得覆盖新 attempt 的完成或重试状态。
+    """
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
@@ -297,7 +321,9 @@ def test_expired_owner_cannot_settle_new_attempt() -> None:
 
 
 def test_handler_replays_with_stable_key_after_success_before_complete_crash() -> None:
-    """外部成功后 complete 前崩溃会按稳定键至少再次投递一次。"""
+    """
+    外部成功后 complete 前崩溃会按稳定键至少再次投递一次。
+    """
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
@@ -315,7 +341,9 @@ def test_handler_replays_with_stable_key_after_success_before_complete_crash() -
     external_results: list[str] = []
 
     def handler(message: ClaimedOutboxMessage) -> None:
-        """记录 at-least-once 外部效果及其稳定幂等键。"""
+        """
+        记录 at-least-once 外部效果及其稳定幂等键。
+        """
         assert message.payload["idempotency_key"] == message.event_key
         external_results.append(message.event_key)
 
@@ -342,7 +370,9 @@ def test_startup_handler_replays_strict_boundary_with_stable_key(
     handler_kind,
     monkeypatch,
 ) -> None:
-    """真实 startup handler 等待执行边界，并以同一键诚实重放。"""
+    """
+    真实 startup handler 等待执行边界，并以同一键诚实重放。
+    """
     from app.command import CommandChain
     from app.runtime.correlation import get_correlation_id
     from app.runtime.events import EventManager
@@ -413,7 +443,9 @@ def test_startup_handler_replays_strict_boundary_with_stable_key(
 
 
 def test_download_writer_contract_has_no_anonymous_after_commit_path() -> None:
-    """下载 durable 写端口只接受可持久化具名效果，不再接受匿名回调。"""
+    """
+    下载 durable 写端口只接受可持久化具名效果，不再接受匿名回调。
+    """
     import inspect
 
     from app.application.chain.events import ChainDurableEventWriter
@@ -427,7 +459,9 @@ def test_download_writer_contract_has_no_anonymous_after_commit_path() -> None:
 
 
 def test_outbox_handler_builder_keeps_runtime_owners_lazy(monkeypatch) -> None:
-    """构造 handler 映射时先校验完整性，且不提前实例化运行 owner。"""
+    """
+    构造 handler 映射时先校验完整性，且不提前实例化运行 owner。
+    """
     import app.startup.composition.outbox as outbox_composition
 
     command_chain = MagicMock(side_effect=AssertionError("CommandChain 不应提前实例化"))
@@ -450,7 +484,9 @@ def test_outbox_handler_builder_keeps_runtime_owners_lazy(monkeypatch) -> None:
 
 
 def test_strict_notification_preserves_legacy_provider_signature(monkeypatch) -> None:
-    """durable 通知只传既有 message 参数，并在调用上下文携带稳定键。"""
+    """
+    durable 通知只传既有 message 参数，并在调用上下文携带稳定键。
+    """
     from app.command import CommandChain
     from app.runtime.correlation import get_correlation_id
     from app.schemas.message import Message
@@ -464,7 +500,9 @@ def test_strict_notification_preserves_legacy_provider_signature(monkeypatch) ->
         lambda _username: {"telegram_userid": "admin-1"},
     )
     def legacy_provider(message) -> None:
-        """模拟只接受旧式单参数签名的第三方通知 provider。"""
+        """
+        模拟只接受旧式单参数签名的第三方通知 provider。
+        """
         received.append((message, get_correlation_id()))
 
     monkeypatch.setattr(chain.eventmanager, "send_event", lambda *_args, **_kwargs: None)
@@ -485,7 +523,9 @@ def test_strict_notification_preserves_legacy_provider_signature(monkeypatch) ->
 
 
 def test_strict_notification_retry_writes_history_once(monkeypatch) -> None:
-    """provider 失败后按稳定键重试，历史只写一次而渠道继续 at-least-once。"""
+    """
+    provider 失败后按稳定键重试，历史只写一次而渠道继续 at-least-once。
+    """
     from app.command import CommandChain
     from app.schemas.message import Message
 
@@ -511,7 +551,9 @@ def test_strict_notification_retry_writes_history_once(monkeypatch) -> None:
     )
 
     def deliver(_method, *, message) -> None:
-        """第一次模拟外部失败，第二次成功，并记录 provider 实际路由 source。"""
+        """
+        第一次模拟外部失败，第二次成功，并记录 provider 实际路由 source。
+        """
         provider_sources.append(message.source)
         if len(provider_sources) == 1:
             raise RuntimeError("temporary")
@@ -528,7 +570,9 @@ def test_strict_notification_retry_writes_history_once(monkeypatch) -> None:
 
 
 def test_outbox_cleanup_removes_only_expired_terminal_history_in_batches() -> None:
-    """清理只删除超过各自保留期的终态记录，并按批次持续收口。"""
+    """
+    清理只删除超过各自保留期的终态记录，并按批次持续收口。
+    """
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine)
@@ -541,7 +585,9 @@ def test_outbox_cleanup_removes_only_expired_terminal_history_in_batches() -> No
         completed_at: datetime | None = None,
         next_retry_at: datetime | None = None,
     ) -> OutboxMessage:
-        """构造指定终态时间的最小 Outbox 测试记录。"""
+        """
+        构造指定终态时间的最小 Outbox 测试记录。
+        """
         return OutboxMessage(
             event_key=event_key,
             topic="test",

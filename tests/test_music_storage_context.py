@@ -1,4 +1,6 @@
-"""音乐整理的存储证据隔离、特殊包提示及显式影视上下文保护。"""
+"""
+音乐整理的存储证据隔离、特殊包提示及显式影视上下文保护。
+"""
 
 import shutil
 from pathlib import Path
@@ -20,7 +22,9 @@ from tests.test_transfer_sync_extra_files import bind_empty_history_repositories
 
 
 def _tagged_file(tmp_path):
-    """用真实 FLAC 构造与远端路径重名的本机干扰文件。"""
+    """
+    用真实 FLAC 构造与远端路径重名的本机干扰文件。
+    """
     path = tmp_path / "01 - Remote Song.flac"
     shutil.copyfile(Path(__file__).parent / "fixtures/audio/silence.flac", path)
     tags = FLAC(path)
@@ -30,7 +34,9 @@ def _tagged_file(tmp_path):
 
 
 def _setup_transfer(monkeypatch, items):
-    """隔离历史和存储枚举，保留实际候选规划及识别路径。"""
+    """
+    隔离历史和存储枚举，保留实际候选规划及识别路径。
+    """
     owner = make_transfer_chain()
     bind_empty_history_repositories(owner)
     owner.eventmanager = SimpleNamespace(send_event=lambda *_args, **_kwargs: None)
@@ -46,7 +52,9 @@ def _setup_transfer(monkeypatch, items):
 
 @pytest.mark.parametrize("storage", ["u115", "smb", None])
 def test_remote_path_never_reads_local_tags_or_cue(tmp_path, monkeypatch, storage):
-    """远端路径恰好在本机存在也只能读取名称，标签与流信息不能串用。"""
+    """
+    远端路径恰好在本机存在也只能读取名称，标签与流信息不能串用。
+    """
     path = _tagged_file(tmp_path)
     read = Mock(side_effect=AssertionError("远端不能读取本机文件"))
     monkeypatch.setattr(AudioMetadataHelper, "read", read)
@@ -62,7 +70,9 @@ def test_remote_path_never_reads_local_tags_or_cue(tmp_path, monkeypatch, storag
 
 @pytest.mark.parametrize("snapshot,discard", [(False, False), (True, False), (True, True)])
 def test_remote_download_context_uses_torrent_and_never_local_content(tmp_path, snapshot, discard):
-    """无快照、保留身份和丢弃身份三条路径均尊重存储来源。"""
+    """
+    无快照、保留身份和丢弃身份三条路径均尊重存储来源。
+    """
     path = _tagged_file(tmp_path)
     info = MusicInfo(media_source="musicbrainz", media_id="saved", title="Saved Song", album="Saved Album")
     history = _history(tmp_path, note={"music": {"version": 1, "media": info.to_dict()}} if snapshot else None)
@@ -79,7 +89,9 @@ def test_remote_download_context_uses_torrent_and_never_local_content(tmp_path, 
 
 @pytest.mark.parametrize("root_storage,item_storage", [("local", "u115"), ("u115", "local")])
 def test_batch_uses_each_files_storage_not_root(tmp_path, monkeypatch, root_storage, item_storage):
-    """混合存储的选择项按各自来源读取，根目录不能授予本地读取能力。"""
+    """
+    混合存储的选择项按各自来源读取，根目录不能授予本地读取能力。
+    """
     path = _tagged_file(tmp_path)
     item = make_fileitem(str(path)).model_copy(update={"storage": item_storage})
     root = make_fileitem(str(tmp_path)).model_copy(update={"type": "dir", "storage": root_storage})
@@ -87,7 +99,9 @@ def test_batch_uses_each_files_storage_not_root(tmp_path, monkeypatch, root_stor
     captured = []
 
     def collect(task, **_kwargs):
-        """在执行前观察真实工作流构造的元数据。"""
+        """
+        在执行前观察真实工作流构造的元数据。
+        """
         captured.append(task)
         return True, ""
 
@@ -103,7 +117,9 @@ def test_batch_uses_each_files_storage_not_root(tmp_path, monkeypatch, root_stor
 
 @pytest.mark.parametrize("extension,message", [("iso", "音乐镜像"), ("BIN", "音乐镜像"), ("zip", "音乐压缩包"), ("rar", "音乐压缩包"), ("7z.001", "音乐压缩包")])
 def test_music_package_has_actionable_failure_before_recognition(tmp_path, monkeypatch, extension, message):
-    """音乐整包保留原文件，返回具体处理方式而不是静默跳过或发起歌曲查询。"""
+    """
+    音乐整包保留原文件，返回具体处理方式而不是静默跳过或发起歌曲查询。
+    """
     path = tmp_path / f"Artist - Album.{extension}"
     path.write_bytes(b"not unpacked")
     item = make_fileitem(str(path))
@@ -128,7 +144,9 @@ def test_music_package_has_actionable_failure_before_recognition(tmp_path, monke
 
 @pytest.mark.parametrize("history_type", [None, MediaType.UNKNOWN.value, MediaType.MUSIC.value])
 def test_explicit_video_context_ignores_old_music_snapshot_and_identity(tmp_path, monkeypatch, history_type):
-    """影视附加音轨不能被旧音乐备注或身份改变类型，且不读取音频标签。"""
+    """
+    影视附加音轨不能被旧音乐备注或身份改变类型，且不读取音频标签。
+    """
     path = tmp_path / "Show.S01E02.flac"
     item = make_fileitem(str(path))
     owner = _setup_transfer(monkeypatch, [item])
@@ -147,7 +165,9 @@ def test_explicit_video_context_ignores_old_music_snapshot_and_identity(tmp_path
     plans = []
 
     def preview(task, **_kwargs):
-        """记录实际识别后的影视任务，文件写入不属于这个边界用例。"""
+        """
+        记录实际识别后的影视任务，文件写入不属于这个边界用例。
+        """
         plans.append(task)
         return TransferInfo(success=True)
 
@@ -165,7 +185,9 @@ def test_explicit_video_context_ignores_old_music_snapshot_and_identity(tmp_path
 
 
 def test_m4a_name_alone_does_not_claim_aac_or_lossless():
-    """M4A 是容器，只有实际编码证据才能区分 AAC 和 ALAC。"""
+    """
+    M4A 是容器，只有实际编码证据才能区分 AAC 和 ALAC。
+    """
     meta = AudioMetadataHelper.read_filename(Path("/music/Track.m4a"))
 
     assert meta.audio_format == "M4A"

@@ -1,3 +1,7 @@
+"""
+验证技能中间件暴露读取工具，并通过工具获取技能内容。
+"""
+
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,7 +27,9 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture
 def anyio_backend():
-    """使用 asyncio 后端运行 anyio 异步测试。"""
+    """
+    使用 asyncio 后端运行 anyio 异步测试。
+    """
     return "asyncio"
 
 
@@ -33,7 +39,9 @@ def _write_skill(
     name: str | None = None,
     allowed_api_operations: str = "",
 ) -> None:
-    """写入测试用 Skill 文件。"""
+    """
+    写入测试用 Skill 文件。
+    """
     skill_dir = root / skill_id
     skill_dir.mkdir()
     (skill_dir / "SKILL.md").write_text(
@@ -53,7 +61,9 @@ Use this skill carefully.
 
 @pytest.mark.anyio
 async def test_alist_skills_sorts_skill_directories_by_name(tmp_path):
-    """异步扫描技能目录时应按目录名稳定排序。"""
+    """
+    异步扫描技能目录时应按目录名稳定排序。
+    """
     for skill_id in ("z-skill", "a-skill", "m-skill"):
         _write_skill(tmp_path, skill_id)
 
@@ -63,7 +73,9 @@ async def test_alist_skills_sorts_skill_directories_by_name(tmp_path):
 
 
 def test_skills_middleware_exposes_read_skill_tool(tmp_path):
-    """SkillsMiddleware 应以中间件私有工具形式暴露 read_skill。"""
+    """
+    SkillsMiddleware 应以中间件私有工具形式暴露 read_skill。
+    """
     _write_skill(tmp_path, "moviepilot-api")
 
     middleware = SkillsMiddleware(sources=[str(tmp_path)])
@@ -78,7 +90,9 @@ def test_skills_middleware_exposes_read_skill_tool(tmp_path):
 @pytest.mark.anyio
 @pytest.mark.parametrize("body_arguments", [{}, {"file": None}], ids=["omitted", "null"])
 async def test_read_skill_loads_body_and_supporting_files_by_id_and_name(tmp_path, body_arguments):
-    """省略 file 或传 null 均按 id/name 加载主体，列出的路径则读取辅助文档。"""
+    """
+    省略 file 或传 null 均按 id/name 加载主体，列出的路径则读取辅助文档。
+    """
     _write_skill(tmp_path, "moviepilot-api", name="MoviePilot API")
     skill_dir = tmp_path / "moviepilot-api"
     (skill_dir / "references").mkdir()
@@ -119,7 +133,9 @@ async def test_read_skill_loads_body_and_supporting_files_by_id_and_name(tmp_pat
 @pytest.mark.anyio
 @pytest.mark.parametrize("file", ["", "SKILL.md", "../SKILL.md", "/SKILL.md", "references/missing.md"])
 async def test_read_skill_rejects_unlisted_supporting_files(tmp_path, file: str):
-    """空串、主体文件及未列出的路径仍须拒绝，不作为 null 的替代值。"""
+    """
+    空串、主体文件及未列出的路径仍须拒绝，不作为 null 的替代值。
+    """
     _write_skill(tmp_path, "moviepilot-api")
     middleware = SkillsMiddleware(sources=[str(tmp_path)])
 
@@ -134,7 +150,9 @@ async def test_read_skill_rejects_unlisted_supporting_files(tmp_path, file: str)
 
 @pytest.mark.anyio
 async def test_read_skill_caps_body_at_512_kib_without_global_64_kib_truncation(tmp_path):
-    """read_skill 应绕过普通裁剪，但将技能主体限制为 512 KiB。"""
+    """
+    read_skill 应绕过普通裁剪，但将技能主体限制为 512 KiB。
+    """
     _write_skill(tmp_path, "large-skill")
     skill_path = tmp_path / "large-skill" / "SKILL.md"
     final_marker = "END-OF-LARGE-SKILL"
@@ -157,7 +175,9 @@ async def test_read_skill_caps_body_at_512_kib_without_global_64_kib_truncation(
 
 @pytest.mark.anyio
 async def test_bundled_moviepilot_api_skill_loads_complete_contract() -> None:
-    """内置 API Skill 的完整 operation 合同必须在运行时上限内且不截断。"""
+    """
+    内置 API Skill 的完整 operation 合同必须在运行时上限内且不截断。
+    """
     middleware = SkillsMiddleware(sources=[str(PROJECT_ROOT / "skills")])
 
     result = await middleware.tools[0].ainvoke({"name": "moviepilot-api"})
@@ -187,7 +207,9 @@ async def test_bundled_moviepilot_api_skill_loads_complete_contract() -> None:
 
 @pytest.mark.anyio
 async def test_skill_tool_returns_not_found_for_unknown_skill(tmp_path):
-    """read_skill 找不到技能时应返回结构化失败信息。"""
+    """
+    read_skill 找不到技能时应返回结构化失败信息。
+    """
     middleware = SkillsMiddleware(sources=[str(tmp_path)])
     skill_tool = middleware.tools[0]
 
@@ -199,7 +221,9 @@ async def test_skill_tool_returns_not_found_for_unknown_skill(tmp_path):
 
 @pytest.mark.anyio
 async def test_skill_operation_scope_is_enforced_for_api_gateway(tmp_path):
-    """声明 API 操作范围的 Skill 只能调用联合授权范围内的 operation。"""
+    """
+    声明 API 操作范围的 Skill 只能调用联合授权范围内的 operation。
+    """
     _write_skill(
         tmp_path,
         "media-skill",
@@ -227,7 +251,9 @@ async def test_skill_operation_scope_is_enforced_for_api_gateway(tmp_path):
 
 @pytest.mark.anyio
 async def test_api_gateway_auto_loads_builtin_moviepilot_skill(tmp_path):
-    """直接调用 API 网关时应自动加载内置 MoviePilot API Skill。"""
+    """
+    直接调用 API 网关时应自动加载内置 MoviePilot API Skill。
+    """
     _write_skill(
         tmp_path,
         "moviepilot-api",
@@ -251,7 +277,9 @@ async def test_api_gateway_auto_loads_builtin_moviepilot_skill(tmp_path):
 
 @pytest.mark.anyio
 async def test_api_gateway_requires_skill_declared_operation(tmp_path):
-    """未加载声明 operation 的 Skill 时 API 网关必须默认拒绝。"""
+    """
+    未加载声明 operation 的 Skill 时 API 网关必须默认拒绝。
+    """
     _write_skill(tmp_path, "plain-skill")
     middleware = SkillsMiddleware(sources=[str(tmp_path)])
     await middleware.tools[0].ainvoke({"name": "plain-skill"})
@@ -272,7 +300,9 @@ async def test_api_gateway_requires_skill_declared_operation(tmp_path):
 
 @pytest.mark.anyio
 async def test_skill_operation_scope_allows_declared_api_operation(tmp_path):
-    """声明范围内的 API operation 应继续进入真实工具 handler。"""
+    """
+    声明范围内的 API operation 应继续进入真实工具 handler。
+    """
     _write_skill(
         tmp_path,
         "media-skill",
@@ -296,7 +326,9 @@ async def test_skill_operation_scope_allows_declared_api_operation(tmp_path):
 
 
 def test_modify_request_instructs_model_to_use_read_skill_without_paths(tmp_path):
-    """发现目录按需加载文档且不展开 API 清单，同时保留宿主使用的操作范围。"""
+    """
+    发现目录按需加载文档且不展开 API 清单，同时保留宿主使用的操作范围。
+    """
     _write_skill(tmp_path, "moviepilot-api", allowed_api_operations="media.search media.detail")
     middleware = SkillsMiddleware(sources=[str(tmp_path)])
     skills_metadata = middleware._load_skills_metadata()
@@ -328,7 +360,9 @@ def test_modify_request_instructs_model_to_use_read_skill_without_paths(tmp_path
 
 @pytest.mark.anyio
 async def test_read_skill_tool_call_reports_streaming_execution(tmp_path):
-    """read_skill 工具执行时应使用统一的工具显示策略。"""
+    """
+    read_skill 工具执行时应使用统一的工具显示策略。
+    """
     _write_skill(tmp_path, "moviepilot-api")
     calls = []
     stream_handler = SimpleNamespace(
@@ -349,7 +383,9 @@ async def test_read_skill_tool_call_reports_streaming_execution(tmp_path):
     )
 
     async def _fake_handler(_request):
-        """返回模拟工具结果。"""
+        """
+        返回模拟工具结果。
+        """
         return "ok"
 
     result = await middleware.awrap_tool_call(request, _fake_handler)
@@ -368,7 +404,9 @@ async def test_read_skill_tool_call_reports_streaming_execution(tmp_path):
 
 @pytest.mark.anyio
 async def test_read_skill_tool_call_emits_detail_in_verbose_mode(tmp_path):
-    """啰嗦模式下 read_skill 应逐条显示详情而不是生成技能汇总。"""
+    """
+    啰嗦模式下 read_skill 应逐条显示详情而不是生成技能汇总。
+    """
     _write_skill(tmp_path, "moviepilot-api")
     stream_handler = StreamingHandler()
     await stream_handler.start_streaming()
@@ -382,7 +420,9 @@ async def test_read_skill_tool_call_emits_detail_in_verbose_mode(tmp_path):
     )
 
     async def _fake_handler(_request):
-        """返回模拟工具结果。"""
+        """
+        返回模拟工具结果。
+        """
         return "ok"
 
     with patch("app.agent.callback.get_runtime_setting", return_value=True):
@@ -396,7 +436,9 @@ async def test_read_skill_tool_call_emits_detail_in_verbose_mode(tmp_path):
 
 @pytest.mark.anyio
 async def test_skill_middleware_sanitizes_its_own_logs(tmp_path):
-    """Skill 中间件读取参数和异常写日志时必须脱敏。"""
+    """
+    Skill 中间件读取参数和异常写日志时必须脱敏。
+    """
     secret_marker = "skill-secret-marker-2471"
     stream_handler = SimpleNamespace(
         is_streaming=True,
@@ -413,7 +455,9 @@ async def test_skill_middleware_sanitizes_its_own_logs(tmp_path):
     mock_logger = MagicMock()
 
     async def _failing_handler(_request):
-        """模拟含凭据的执行异常以验证中间件日志脱敏。"""
+        """
+        模拟含凭据的执行异常以验证中间件日志脱敏。
+        """
         raise RuntimeError(f"Authorization: Bearer {secret_marker}")
 
     with (
@@ -428,7 +472,9 @@ async def test_skill_middleware_sanitizes_its_own_logs(tmp_path):
 
 @pytest.mark.anyio
 async def test_skill_provider_error_does_not_echo_secret(tmp_path):
-    """Skill provider 内部捕获的异常不能进入日志或模型错误结果。"""
+    """
+    Skill provider 内部捕获的异常不能进入日志或模型错误结果。
+    """
     secret_marker = "skill-provider-secret-6518"
     middleware = SkillsMiddleware(sources=[str(tmp_path)])
     mock_logger = MagicMock()

@@ -1,4 +1,6 @@
-"""整理文件筛选、音乐上下文与源目录清理判定。"""
+"""
+整理文件筛选、音乐上下文与源目录清理判定。
+"""
 import threading
 from copy import deepcopy
 from pathlib import Path
@@ -51,7 +53,9 @@ from app.schemas.types import (
 
 
 class NetworkFilesystemPort(Protocol):
-    """整理链判断本地路径文件系统类型所需的最小端口。"""
+    """
+    整理链判断本地路径文件系统类型所需的最小端口。
+    """
 
     def is_network_filesystem(
             self,
@@ -59,7 +63,13 @@ class NetworkFilesystemPort(Protocol):
             *,
             include_local_fuse: bool = False,
     ) -> bool:
-        """判断路径是否位于网络或指定的本地 FUSE 文件系统。"""
+        """
+        判断路径是否位于网络或指定的本地 FUSE 文件系统。
+
+        :param path: 需要判断挂载类型的本地文件或目录路径
+        :param include_local_fuse: 是否也把本地 FUSE 挂载视为需保护的挂载文件系统，默认不包含
+        :return: 路径属于网络文件系统或启用的本地 FUSE 类型时为 True，否则为 False
+        """
         ...
 
 
@@ -70,7 +80,9 @@ _network_filesystem_port: Optional[NetworkFilesystemPort] = None
 def configure_network_filesystem_port(
         port: NetworkFilesystemPort,
 ) -> Optional[NetworkFilesystemPort]:
-    """装配文件系统判定端口，并返回旧实现供隔离环境恢复。"""
+    """
+    装配文件系统判定端口，并返回旧实现供隔离环境恢复。
+    """
     global _network_filesystem_port
     with _network_filesystem_lock:
         previous = _network_filesystem_port
@@ -81,14 +93,18 @@ def configure_network_filesystem_port(
 def reset_network_filesystem_port(
         port: Optional[NetworkFilesystemPort] = None,
 ) -> None:
-    """恢复指定文件系统判定端口；省略参数时回到未装配状态。"""
+    """
+    恢复指定文件系统判定端口；省略参数时回到未装配状态。
+    """
     global _network_filesystem_port
     with _network_filesystem_lock:
         _network_filesystem_port = port
 
 
 def _network_filesystem_snapshot() -> NetworkFilesystemPort:
-    """获取当前文件系统判定端口，未装配时稳定失败。"""
+    """
+    获取当前文件系统判定端口，未装配时稳定失败。
+    """
     with _network_filesystem_lock:
         port = _network_filesystem_port
     if port is None:
@@ -97,13 +113,17 @@ def _network_filesystem_snapshot() -> NetworkFilesystemPort:
 
 
 class _MusicFileFilterBase(_TransferOwnerBase):
-    """提供通用文件识别及 MusicBrainz 专辑、曲目匹配能力。"""
+    """
+    提供通用文件识别及 MusicBrainz 专辑、曲目匹配能力。
+    """
 
     __mixin_host_protocol__ = TransferMixinHost
 
     @classmethod
     def _transfer_validation_error(cls, task: TransferTask) -> Optional[str]:
-        """在产生文件副作用前拒绝损坏音乐结构或未满足的分类要求。"""
+        """
+        在产生文件副作用前拒绝损坏音乐结构或未满足的分类要求。
+        """
         if isinstance(task.meta, MetaMusic) and task.meta.organization_error:
             return task.meta.organization_error
         if isinstance(task.mediainfo, MusicInfo):
@@ -154,13 +174,17 @@ class _MusicFileFilterBase(_TransferOwnerBase):
 
     @staticmethod
     def _is_music_lyrics_file(fileitem: FileItem) -> bool:
-        """判断文件是否为可随同名音乐音轨迁移的歌词旁挂文件。"""
+        """
+        判断文件是否为可随同名音乐音轨迁移的歌词旁挂文件。
+        """
         path = str(fileitem.path or fileitem.name or "").casefold()
         return path.endswith((".lrc", ".txt", ".lyricsfile.yaml"))
 
     @staticmethod
     def _is_music_cover_file(fileitem: FileItem) -> bool:
-        """全局开关开启时接纳匹配的音乐封面，实际归属由音轨批次确认。"""
+        """
+        全局开关开启时接纳匹配的音乐封面，实际归属由音轨批次确认。
+        """
         return get_runtime_setting("MUSIC_LOCAL_COVER_ENABLE") and fileitem.type == "file" and music_cover_priority(
             str(fileitem.path or fileitem.name or ""), get_runtime_setting("MUSIC_COVER_FILE_PATTERNS")
         ) is not None
@@ -178,7 +202,6 @@ class _MusicFileFilterBase(_TransferOwnerBase):
                 return False
             return f".{fileitem.extension.lower()}" in self._audio_exts
         if fileitem.type == "dir":
-            # 蓝光原盘判断
             return StorageChain().is_bluray_folder(fileitem)
         if not fileitem.extension:
             return False
@@ -190,7 +213,9 @@ class _MusicFileFilterBase(_TransferOwnerBase):
             fileitem: FileItem,
             mediainfo: Optional[MediaInfo | MusicInfo],
     ) -> bool:
-        """判断文件在当前媒体上下文中是否属于主要媒体文件。"""
+        """
+        判断文件在当前媒体上下文中是否属于主要媒体文件。
+        """
         return self._is_media_file(
             fileitem,
             getattr(mediainfo, "type", None),
@@ -198,7 +223,9 @@ class _MusicFileFilterBase(_TransferOwnerBase):
 
     @staticmethod
     def _music_info_from_meta(meta: MetaMusic) -> MusicInfo:
-        """将音频文件标签解析结果转换为可整理的最小音乐信息。"""
+        """
+        将音频文件标签解析结果转换为可整理的最小音乐信息。
+        """
         return MusicInfo.from_meta(meta)
 
     @classmethod
@@ -211,7 +238,8 @@ class _MusicFileFilterBase(_TransferOwnerBase):
             music_release_scripts: Optional[list[str]] = None,
             release_group: Optional[MusicReleaseGroup] = None,
     ) -> tuple[MetaMusic, Optional[MusicInfo]]:
-        """为缺少远端身份的本地音频尝试目录级专辑匹配，命中后回填文件元数据。
+        """
+        为缺少远端身份的本地音频尝试目录级专辑匹配，命中后回填文件元数据。
 
         WAV 等无标签文件只能依靠目录结构和曲目特征识别；匹配结果由 MediaChain
         按目录缓存，同一专辑目录内的后续文件不会重复请求远端。
@@ -262,7 +290,9 @@ class _MusicFileFilterBase(_TransferOwnerBase):
             file_path: Path,
             file_meta: MetaMusic,
     ) -> tuple[MetaMusic, Optional[MusicInfo]]:
-        """专辑目录未命中时，以音频自身证据继续识别 MusicBrainz 曲目。"""
+        """
+        专辑目录未命中时，以音频自身证据继续识别 MusicBrainz 曲目。
+        """
         if getattr(file_item, "storage", "local") != "local":
             return file_meta, None
         try:
@@ -288,7 +318,9 @@ class _MusicFileFilterBase(_TransferOwnerBase):
             *,
             selected_release: bool = False,
     ) -> tuple[MetaMusic, MusicInfo]:
-        """合并曲目身份与实际音频；用户显式选发行时替换旧发行标识，自动识别只补缺。"""
+        """
+        合并曲目身份与实际音频；用户显式选发行时替换旧发行标识，自动识别只补缺。
+        """
         merged_meta = deepcopy(file_meta)
         # 保留本地音频的实际技术参数，仅回填身份和名称字段
         if info.title:
@@ -362,7 +394,9 @@ class _MusicFileFilterBase(_TransferOwnerBase):
 
 
 class FileFilterMixin(_TransferOwnerBase):
-    """提供整理文件筛选、音乐批次上下文和源目录清理判定。"""
+    """
+    提供整理文件筛选、音乐批次上下文和源目录清理判定。
+    """
 
     __mixin_host_protocol__ = TransferMixinHost
     _transfer_validation_error = cast(Any, classmethod(cast(Any, _MusicFileFilterBase._transfer_validation_error).__func__))
@@ -400,7 +434,9 @@ class FileFilterMixin(_TransferOwnerBase):
             file_items: list[tuple[FileItem, bool]],
             album: Optional[MusicAlbumInfo],
     ) -> tuple[dict[str, MusicInfo], Optional[str]]:
-        """对齐手选发行版的全部曲目，并拒绝混有重复版本的目录。"""
+        """
+        对齐手选发行版的全部曲目，并拒绝混有重复版本的目录。
+        """
         if not album:
             return {}, None
         audio_paths = [
@@ -433,7 +469,9 @@ class FileFilterMixin(_TransferOwnerBase):
             selected_tracks: dict[str, MusicInfo],
             fallback: Optional[Union[MediaInfo, MusicInfo]],
     ) -> tuple[Any, Optional[Union[MediaInfo, MusicInfo]]]:
-        """为当前任务应用手选发行版曲目，未命中时返回原上下文。"""
+        """
+        为当前任务应用手选发行版曲目，未命中时返回原上下文。
+        """
         selected = (
             selected_tracks.get(str(file_path.resolve()))
             if file_item.storage == "local"
@@ -450,7 +488,9 @@ class FileFilterMixin(_TransferOwnerBase):
     def _download_history_music_type(
             download_history: Optional[DownloadHistorySnapshot],
     ) -> Optional[str]:
-        """从下载历史字段或旧版音乐备注中恢复音乐实体类型。"""
+        """
+        从下载历史字段或旧版音乐备注中恢复音乐实体类型。
+        """
         music_type = normalize_music_type(
             getattr(download_history, "music_type", None),
             allow_artist=False,
@@ -478,7 +518,8 @@ class FileFilterMixin(_TransferOwnerBase):
             storage: Optional[str] = "local",
             batch_mtype: Optional[MediaType] = None,
     ) -> tuple[Optional[MetaMusic], Optional[MusicInfo]]:
-        """从下载历史恢复音乐上下文，并用当前音频标签覆盖曲目级字段。
+        """
+        从下载历史恢复音乐上下文，并用当前音频标签覆盖曲目级字段。
 
         种子未提供的语义字段由历史中已选媒体补缺；实体类型和来源身份始终
         沿用已选媒体，不根据专辑名或文件曲名在单曲与专辑之间转换。
@@ -724,6 +765,7 @@ class FileFilterMixin(_TransferOwnerBase):
         媒体库中的原有版本仍然在位，不应因一次不覆盖裁决把成功记录改写成失败记录。
         没有成功记录时（如目标同名文件来自其他源路径）保持原有失败语义，
         用户仍能在历史与通知中看到裁决结果。
+
         :param task: 整理任务
         :param transferinfo: 整理结果
         :param transferhis: 历史操作对象

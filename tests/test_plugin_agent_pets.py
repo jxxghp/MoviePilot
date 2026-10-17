@@ -1,4 +1,6 @@
-"""Agent 助手形象扩展契约的后端测试：投影规整、接口鉴权、默认值设置与用户私有数据上限。"""
+"""
+Agent 助手形象扩展契约的后端测试：投影规整、接口鉴权、默认值设置与用户私有数据上限。
+"""
 
 import asyncio
 import inspect
@@ -24,43 +26,61 @@ from app.schemas.plugin import PluginAgentPet
 
 
 class _Plugin(SimpleNamespace):
-    """提供可配置 hook 的最小运行态插件替身。"""
+    """
+    提供可配置 hook 的最小运行态插件替身。
+    """
 
     def __init__(self, enabled=True, render=("vue", "dist/assets"), **attrs):
-        """保存启用状态、渲染模式与 hook 实现。"""
+        """
+        保存启用状态、渲染模式与 hook 实现。
+        """
         attrs.setdefault("plugin_name", "形象插件")
         super().__init__(**attrs)
         self._enabled = enabled
         self._render = render
 
     def get_state(self):
-        """返回预设启用状态。"""
+        """
+        返回预设启用状态。
+        """
         return self._enabled
 
     def get_render_mode(self):
-        """返回预设渲染模式和联邦产物目录。"""
+        """
+        返回预设渲染模式和联邦产物目录。
+        """
         return self._render
 
 
 class _Log:
-    """收集投影日志，便于断言非法声明被记录。"""
+    """
+    收集投影日志，便于断言非法声明被记录。
+    """
 
     def __init__(self):
-        """初始化各级别日志列表。"""
+        """
+        初始化各级别日志列表。
+        """
         self.warnings: list[str] = []
         self.errors: list[str] = []
 
     def warning(self, message):
-        """记录警告。"""
+        """
+        记录警告。
+        """
         self.warnings.append(message)
 
     def error(self, message):
-        """记录错误。"""
+        """
+        记录错误。
+        """
         self.errors.append(message)
 
 
 def _projection(plugins, log=None):
-    """使用真实 remoteEntry 路径构造方式创建投影。"""
+    """
+    使用真实 remoteEntry 路径构造方式创建投影。
+    """
     return PluginProjection(
         plugins,
         log=log or _Log(),
@@ -69,7 +89,9 @@ def _projection(plugins, log=None):
 
 
 def test_agent_pets_projects_defaults_and_preview_url_next_to_remote_entry():
-    """合法声明补齐默认值，相对预览图与头像解析到与 remoteEntry 相同的静态目录并带版本，缺省为空。"""
+    """
+    合法声明补齐默认值，相对预览图与头像解析到与 remoteEntry 相同的静态目录并带版本，缺省为空。
+    """
     plugin = _Plugin(
         plugin_version="1.0.0",
         get_agent_pets=lambda: [
@@ -157,7 +179,10 @@ def test_agent_pets_projects_defaults_and_preview_url_next_to_remote_entry():
 
 
 def test_agent_pets_skips_disabled_non_vue_and_unimplemented_plugins():
-    """停用、非 Vue 渲染或未实现钩子的插件不出现在形象列表中。"""
+    """
+    停用、非 Vue 渲染或未实现钩子的插件不出现在形象列表中。
+    """
+    # 用匿名函数模拟运行时提供的能力声明。
     declared = lambda: [{"key": "pet", "name": "形象"}]  # noqa: E731
     projection = _projection({
         "Disabled": _Plugin(enabled=False, get_agent_pets=declared),
@@ -193,7 +218,9 @@ def test_agent_pets_skips_disabled_non_vue_and_unimplemented_plugins():
     ],
 )
 def test_agent_pets_drops_invalid_items_with_warning(item):
-    """任一字段非法的声明整项丢弃并记 warning，同插件其他合法项不受影响。"""
+    """
+    任一字段非法的声明整项丢弃并记 warning，同插件其他合法项不受影响。
+    """
     log = _Log()
     projection = _projection(
         {"Demo": _Plugin(get_agent_pets=lambda: [item, {"key": "ok", "name": "正常"}])},
@@ -205,7 +232,9 @@ def test_agent_pets_drops_invalid_items_with_warning(item):
 
 
 def test_agent_pets_deduplicates_keys_within_plugin_only():
-    """同一插件重复 key 只保留首项，不同插件可使用相同 key。"""
+    """
+    同一插件重复 key 只保留首项，不同插件可使用相同 key。
+    """
     log = _Log()
     projection = _projection(
         {
@@ -225,7 +254,9 @@ def test_agent_pets_deduplicates_keys_within_plugin_only():
 
 
 def test_agent_pets_instance_keeps_instance_id_and_source_identity():
-    """插件分身沿用实例 ID 作为 plugin_id 与预览 URL 路径，source_plugin_id 指向源插件。"""
+    """
+    插件分身沿用实例 ID 作为 plugin_id 与预览 URL 路径，source_plugin_id 指向源插件。
+    """
     plugin = _Plugin(
         plugin_source_id="PetDemo",
         get_agent_pets=lambda: [
@@ -245,10 +276,14 @@ def test_agent_pets_instance_keeps_instance_id_and_source_identity():
 
 
 def test_agent_pets_isolates_hook_failure_and_non_list_result():
-    """单个插件钩子抛错或返回非列表只记日志，不阻断其他插件。"""
+    """
+    单个插件钩子抛错或返回非列表只记日志，不阻断其他插件。
+    """
 
     def fail():
-        """模拟插件钩子异常。"""
+        """
+        模拟插件钩子异常。
+        """
         raise RuntimeError("broken")
 
     log = _Log()
@@ -267,7 +302,9 @@ def test_agent_pets_isolates_hook_failure_and_non_list_result():
 
 
 def test_agent_pets_endpoint_requires_token_and_precedes_dynamic_plugin_routes(monkeypatch):
-    """接口使用 verify_token 鉴权，且注册在 /{plugin_id} 动态路由之前，返回管理器投影。"""
+    """
+    接口使用 verify_token 鉴权，且注册在 /{plugin_id} 动态路由之前，返回管理器投影。
+    """
     signature = inspect.signature(plugin_endpoint.plugin_agent_pets)
     assert signature.parameters["_"].default.dependency is verify_token
 
@@ -284,7 +321,9 @@ def test_agent_pets_endpoint_requires_token_and_precedes_dynamic_plugin_routes(m
 
 
 def test_default_agent_pet_setting_is_declared_and_exposed_to_logged_in_users(monkeypatch):
-    """AI_AGENT_PET 进入设置模型与设置目录，并随登录用户全局设置下发给前端。"""
+    """
+    AI_AGENT_PET 进入设置模型与设置目录，并随登录用户全局设置下发给前端。
+    """
     from app.api.endpoints.system import get_user_global_setting
 
     assert Settings.model_fields["AI_AGENT_PET"].default == ""
@@ -300,33 +339,47 @@ def test_default_agent_pet_setting_is_declared_and_exposed_to_logged_in_users(mo
 
 
 class _Repository:
-    """记录写入的用户配置仓库替身。"""
+    """
+    记录写入的用户配置仓库替身。
+    """
 
     def __init__(self):
-        """初始化写入记录。"""
+        """
+        初始化写入记录。
+        """
         self.writes: list[tuple[str, str, object]] = []
 
     def set(self, username, key, value):
-        """记录写入。"""
+        """
+        记录写入。
+        """
         self.writes.append((username, key, value))
 
 
 class _Executor:
-    """同步执行数据库操作的异步执行端口替身。"""
+    """
+    同步执行数据库操作的异步执行端口替身。
+    """
 
     async def run(self, operation):
-        """直接执行操作。"""
+        """
+        直接执行操作。
+        """
         return operation()
 
 
 def _state_of_size(size: int) -> dict:
-    """构造紧凑 JSON 序列化后恰为指定字节数的形象数据。"""
+    """
+    构造紧凑 JSON 序列化后恰为指定字节数的形象数据。
+    """
     overhead = len(json.dumps({"p": ""}, separators=(",", ":")).encode("utf-8"))
     return {"p": "x" * (size - overhead)}
 
 
 def test_agent_pet_state_prefix_is_accepted_up_to_size_limit():
-    """AgentPetState.* 前缀在 16KB 以内允许写入，AgentPet 选择与其他 key 不受限制。"""
+    """
+    AgentPetState.* 前缀在 16KB 以内允许写入，AgentPet 选择与其他 key 不受限制。
+    """
     repository = _Repository()
     service = UserConfigurationService(repository, async_executor=_Executor())
     at_limit = _state_of_size(AGENT_PET_STATE_MAX_BYTES)
@@ -344,7 +397,9 @@ def test_agent_pet_state_prefix_is_accepted_up_to_size_limit():
 
 
 def test_agent_pet_state_over_limit_is_rejected_without_writing():
-    """AgentPetState.* 序列化超过 16KB 时同步与异步写入均被拒绝且不落库。"""
+    """
+    AgentPetState.* 序列化超过 16KB 时同步与异步写入均被拒绝且不落库。
+    """
     repository = _Repository()
     service = UserConfigurationService(repository, async_executor=_Executor())
     too_large = _state_of_size(AGENT_PET_STATE_MAX_BYTES + 1)
@@ -358,7 +413,9 @@ def test_agent_pet_state_over_limit_is_rejected_without_writing():
 
 
 def test_user_config_endpoint_reports_oversized_agent_pet_state(monkeypatch):
-    """用户配置接口把超限写入转换为失败响应，而不是 500。"""
+    """
+    用户配置接口把超限写入转换为失败响应，而不是 500。
+    """
     repository = _Repository()
     service = UserConfigurationService(repository, async_executor=_Executor())
     monkeypatch.setattr(user_endpoint, "get_configured_user_configuration", lambda: service)
@@ -378,7 +435,9 @@ def test_user_config_endpoint_reports_oversized_agent_pet_state(monkeypatch):
 
 
 def test_registry_advances_generation_on_enabled_state_change():
-    """启停切换推进前端刷新代次，前端据此重新读取形象声明。"""
+    """
+    启停切换推进前端刷新代次，前端据此重新读取形象声明。
+    """
     from app.runtime.extensions.plugin.registry import PluginRegistry
 
     registry = PluginRegistry()

@@ -1,9 +1,15 @@
+"""
+站点种子刷新、预识别缓存和订阅候选准备。
+"""
+
 import re
 import traceback
 from typing import Callable, Dict, List, Optional, Union, cast
 
 from app.application.configuration import get_configured_system_config
 from app.application.rss import RssHelper
+
+# 站点资源包在启动时加载，静态检查环境可能无法解析其实现。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.application.subscription.candidates import CandidateIndex
 from app.application.torrent.download import TorrentHelper
@@ -35,11 +41,15 @@ class TorrentsChain(ChainBase):
     _music_rss_file = "__rss_music_cache__"
 
     def _cache_type(self, stype: Optional[str]) -> str:
-        """把可选缓存类型统一为本次读取使用的明确订阅模式。"""
+        """
+        把可选缓存类型统一为本次读取使用的明确订阅模式。
+        """
         return stype or self.runtime_config.subscribe_mode
 
     def _cache_file_pair(self, stype: str) -> tuple[str, str]:
-        """返回指定订阅模式下影视与音乐缓存的唯一文件映射。"""
+        """
+        返回指定订阅模式下影视与音乐缓存的唯一文件映射。
+        """
         if stype == 'spider':
             return self._spider_file, self._music_spider_file
         return self._rss_file, self._music_rss_file
@@ -49,7 +59,9 @@ class TorrentsChain(ChainBase):
         torrents_cache: Dict[str, List[Context]],
         music_cache: Dict[str, List[Context]],
     ) -> Dict[str, List[Context]]:
-        """按站点稳定合并音乐独立缓存，空列表不创建无效站点键。"""
+        """
+        按站点稳定合并音乐独立缓存，空列表不创建无效站点键。
+        """
         for domain, contexts in music_cache.items():
             if contexts:
                 torrents_cache.setdefault(domain, []).extend(contexts)
@@ -83,6 +95,7 @@ class TorrentsChain(ChainBase):
     def get_torrents(self, stype: Optional[str] = None) -> Dict[str, List[Context]]:
         """
         获取当前缓存的种子，包含独立缓存的音乐资源
+
         :param stype: 强制指定缓存类型，spider:爬虫缓存，rss:rss缓存
         """
 
@@ -100,6 +113,7 @@ class TorrentsChain(ChainBase):
     def get_music_torrents(self, stype: Optional[str] = None) -> Dict[str, List[Context]]:
         """
         获取音乐独立缓存的种子
+
         :param stype: 强制指定缓存类型，spider:爬虫缓存，rss:rss缓存
         """
         stype = self._cache_type(stype)
@@ -112,6 +126,7 @@ class TorrentsChain(ChainBase):
     def cache_files(self, stype: Optional[str] = None) -> tuple:
         """
         返回影视与音乐缓存文件名，供按当前订阅模式回写各自缓存
+
         :param stype: 强制指定缓存类型，spider:爬虫缓存，rss:rss缓存
         """
         return self._cache_file_pair(self._cache_type(stype))
@@ -137,6 +152,7 @@ class TorrentsChain(ChainBase):
     async def async_get_torrents(self, stype: Optional[str] = None) -> Dict[str, List[Context]]:
         """
         异步获取当前缓存的种子，包含独立缓存的音乐资源
+
         :param stype: 强制指定缓存类型，spider:爬虫缓存，rss:rss缓存
         """
 
@@ -224,7 +240,9 @@ class TorrentsChain(ChainBase):
 
     @staticmethod
     def _context_media_identities(context: Context) -> set[tuple[str, str]]:
-        """提取候选媒体信息与标题标签中的通用媒体身份。"""
+        """
+        提取候选媒体信息与标题标签中的通用媒体身份。
+        """
         return CandidateIndex.context_identities(context)
 
     @staticmethod
@@ -275,6 +293,7 @@ class TorrentsChain(ChainBase):
                mtype: Optional[MediaType] = None) -> List[TorrentInfo]:
         """
         浏览站点首页内容，返回种子清单，TTL缓存5分钟
+
         :param domain: 站点域名
         :param keyword: 搜索标题
         :param cat: 搜索分类
@@ -295,6 +314,7 @@ class TorrentsChain(ChainBase):
                            mtype: Optional[MediaType] = None) -> List[TorrentInfo]:
         """
         异步浏览站点首页内容，返回种子清单，TTL缓存5分钟
+
         :param domain: 站点域名
         :param keyword: 搜索标题
         :param cat: 搜索分类
@@ -313,6 +333,7 @@ class TorrentsChain(ChainBase):
     def rss(self, domain: str) -> List[TorrentInfo]:
         """
         获取站点RSS内容，返回种子清单，TTL缓存3分钟
+
         :param domain: 站点域名
         """
         logger.info(f'开始获取站点 {domain} RSS ...')
@@ -324,7 +345,6 @@ class TorrentsChain(ChainBase):
         if rss_url is None:
             logger.warning(f'站点 {domain} RSS地址无效，跳过获取')
             return []
-        # 解析RSS
         rss_items = RssHelper().parse(rss_url, True if site.get("proxy") else False,
                                       timeout=int(site.get("timeout") or 30),
                                       ua=site.get("ua") if site.get("ua") else None)
@@ -337,7 +357,6 @@ class TorrentsChain(ChainBase):
             return []
         # 站点级媒体类型，用于给缺少分类信息的 RSS 种子补充分类
         site_media_type = MediaType.from_agent(site.get("media_type"))
-        # 组装种子
         ret_torrents: List[TorrentInfo] = []
         try:
             for item in rss_items:
@@ -425,7 +444,9 @@ class TorrentsChain(ChainBase):
             torrents_cache: Dict[str, List[Context]],
             music_cache: Dict[str, List[Context]],
     ) -> str:
-        """抓取并写入单个站点的影视、音乐资源缓存。"""
+        """
+        抓取并写入单个站点的影视、音乐资源缓存。
+        """
         domain = site_rules.extract_domain(indexer.get("domain"))
         if stype == "spider":
             torrents: List[TorrentInfo] = []
@@ -476,7 +497,9 @@ class TorrentsChain(ChainBase):
 
     @staticmethod
     def _torrent_cache_key(torrent: TorrentInfo) -> tuple[object, ...]:
-        """优先使用站点和种子 ID；缺少稳定身份的旧资源沿用标题、副标题去重。"""
+        """
+        优先使用站点和种子 ID；缺少稳定身份的旧资源沿用标题、副标题去重。
+        """
         identity = torrent_rules.resource_identity(torrent)
         if identity:
             return ("resource", *identity)
@@ -484,7 +507,9 @@ class TorrentsChain(ChainBase):
 
     @classmethod
     def _refresh_cached_torrents(cls, torrents: List[TorrentInfo], cached: List[Context]) -> List[TorrentInfo]:
-        """刷新已有资源信息，保留未变标题的识别结果；标题变化时替换旧候选。"""
+        """
+        刷新已有资源信息，保留未变标题的识别结果；标题变化时替换旧候选。
+        """
         contexts = {cls._torrent_cache_key(item.torrent_info): item for item in cached}
         new_torrents: dict[tuple[object, ...], TorrentInfo] = {}
         for torrent in torrents:
@@ -505,12 +530,16 @@ class TorrentsChain(ChainBase):
         return list(new_torrents.values())
 
     def _is_no_cache_site(self, domain: str) -> bool:
-        """判断站点是否配置为不缓存资源。"""
+        """
+        判断站点是否配置为不缓存资源。
+        """
         keys = (key.strip() for key in self.runtime_config.no_cache_site_key.split(","))
         return any(key and key in domain for key in keys)
 
     def _build_refresh_context(self, torrent: TorrentInfo, stype: str) -> Context:
-        """识别单个种子并构造缓存上下文。"""
+        """
+        识别单个种子并构造缓存上下文。
+        """
         logger.info(f'处理资源：{torrent.title} ...')
         meta: MetaBase
         mediainfo: MediaInfo | MusicInfo
@@ -567,11 +596,9 @@ class TorrentsChain(ChainBase):
         :param include_music: 是否额外抓取站点的音乐专用浏览入口，服务音乐订阅
         :param site_observer: 输出已检查站点和安全候选计数，不以空列表推断请求成功
         """
-        # 刷新类型
         if not stype:
             stype = self.runtime_config.subscribe_mode
 
-        # 刷新站点
         if not sites:
             sites = get_configured_system_config().get(SystemConfigKey.RssSites) or []
 
@@ -591,7 +618,6 @@ class TorrentsChain(ChainBase):
                 _cache[_domain] = [_torrent for _torrent in _torrents
                                    if not TorrentHelper().is_invalid(_torrent.torrent_info.enclosure)]
 
-        # 需要刷新的站点domain
         domains = []
         indexers = [
             indexer for indexer in SitesHelper().get_indexers()
@@ -604,7 +630,6 @@ class TorrentsChain(ChainBase):
                 text=f"开始刷新站点资源，共 {total_indexers} 个站点 ...",
                 data={"total": total_indexers, "finished": 0},
             )
-        # 遍历站点缓存资源
         for index, indexer in enumerate(indexers, start=1):
             if runtime_stop_state.is_system_stopped:
                 break
@@ -720,7 +745,6 @@ class TorrentsChain(ChainBase):
                     logger.info(f"更新站点 {domain} RSS地址 ...")
                     self.site_repository.update_rss(domain=domain, rss=new_rss)
                 else:
-                    # 发送消息
                     self.post_message(
                         Message(mtype=MessageType.SiteMessage, title=f"站点 {domain} RSS链接已过期",
                                 link=self.runtime_config.site_url)

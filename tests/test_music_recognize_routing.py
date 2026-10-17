@@ -1,4 +1,5 @@
-"""音乐识别统一入口路由测试。
+"""
+音乐识别统一入口路由测试。
 
 覆盖 MediaChain 同步/异步 ``recognize_by_meta`` 与 ``recognize_by_path`` 按
 ``MetaMusic`` 路由到音乐模块，以及 MusicBrainz 模块 ``recognize_media`` /
@@ -22,7 +23,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def _music_info() -> MusicInfo:
-    """构造带远端身份的标准音乐信息，用于断言路由返回值。"""
+    """
+    构造带远端身份的标准音乐信息，用于断言路由返回值。
+    """
     return MusicInfo(
         media_source="musicbrainz",
         media_id="recording-1",
@@ -34,7 +37,9 @@ def _music_info() -> MusicInfo:
 
 
 def test_media_chain_recognize_by_meta_routes_metamusic_to_module(monkeypatch):
-    """MetaMusic 应与影视共用选择流程，由统一模块分发直接响应。"""
+    """
+    MetaMusic 应与影视共用选择流程，由统一模块分发直接响应。
+    """
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
     expected = _music_info()
     chain = MediaChain()
@@ -54,13 +59,18 @@ def test_media_chain_recognize_by_meta_routes_metamusic_to_module(monkeypatch):
 
 
 def test_media_chain_async_recognize_by_meta_routes_metamusic_to_module(monkeypatch):
-    """异步识别同样应把 MetaMusic 路由到统一模块识别入口。"""
+    """
+    异步识别同样应把 MetaMusic 路由到统一模块识别入口。
+    """
     meta = MetaMusic(title="晴天", artists=["周杰伦"])
     expected = _music_info()
     chain = MediaChain()
     monkeypatch.setattr(chain, "async_recognize_media", AsyncMock(return_value=expected))
 
     async def runner():
+        """
+        在同一事件循环内完成本次异步音乐识别。
+        """
         return await chain.async_recognize_by_meta(
             meta, media_source="musicbrainz", mtype=MediaType.MUSIC
         )
@@ -75,7 +85,9 @@ def test_media_chain_async_recognize_by_meta_routes_metamusic_to_module(monkeypa
 
 
 def test_media_chain_recognize_by_path_routes_audio_file_to_music_chain(monkeypatch):
-    """音频文件路径应经统一入口分发到 MediaChain 的音乐路径识别实现。"""
+    """
+    音频文件路径应经统一入口分发到 MediaChain 的音乐路径识别实现。
+    """
     expected_meta = MetaMusic(title="晴天", artists=["周杰伦"])
     expected_info = _music_info()
     recognize_music = Mock(return_value=(expected_meta, expected_info))
@@ -90,7 +102,9 @@ def test_media_chain_recognize_by_path_routes_audio_file_to_music_chain(monkeypa
 
 
 def test_media_chain_recognize_by_path_routes_musicbrainz_source_to_music_chain(monkeypatch):
-    """显式指定 MusicBrainz 数据源的路径识别也应分发到音乐实现。"""
+    """
+    显式指定 MusicBrainz 数据源的路径识别也应分发到音乐实现。
+    """
     expected_meta = MetaMusic(title="晴天")
     expected_info = _music_info()
     recognize_music = Mock(return_value=(expected_meta, expected_info))
@@ -104,7 +118,9 @@ def test_media_chain_recognize_by_path_routes_musicbrainz_source_to_music_chain(
 
 
 def test_async_recognize_music_by_path_reads_local_audio_tags(tmp_path, monkeypatch):
-    """本地音频识别应使用内嵌标签补全艺术家、专辑并保留音频质量参数。"""
+    """
+    本地音频识别应使用内嵌标签补全艺术家、专辑并保留音频质量参数。
+    """
     audio_path = tmp_path / "02. 眼泪成诗.m4a"
     audio_path.write_bytes(b"audio")
     meta = MetaMusic(
@@ -143,7 +159,9 @@ def test_async_recognize_music_by_path_reads_local_audio_tags(tmp_path, monkeypa
 
 
 def test_recognize_music_by_path_fingerprint_mbid_skips_later_tiers(monkeypatch):
-    """AcoustID 命中后应按 MBID 直查，且不再执行标签和文件名匹配。"""
+    """
+    AcoustID 命中后应按 MBID 直查，且不再执行标签和文件名匹配。
+    """
     recording_id = "38035858-f990-4fbb-b3b2-f2f8b958eeba"
     merged = MetaMusic(title="Get Lucky", audio_format="FLAC")
     tag_meta = MetaMusic(title="Get Lucky", artists=["Daft Punk"])
@@ -178,7 +196,9 @@ def test_recognize_music_by_path_fingerprint_mbid_skips_later_tiers(monkeypatch)
 
 
 def test_recognize_music_by_path_tag_mbid_skips_multi_source_matching(monkeypatch):
-    """指纹未命中但标签含 MBID 时应直查详情，不进入多来源标题匹配。"""
+    """
+    指纹未命中但标签含 MBID 时应直查详情，不进入多来源标题匹配。
+    """
     recording_id = "38035858-f990-4fbb-b3b2-f2f8b958eeba"
     tag_meta = MetaMusic(
         title="Tagged Title",
@@ -218,7 +238,9 @@ def test_recognize_music_by_path_tag_mbid_skips_multi_source_matching(monkeypatc
 
 
 def test_recognize_music_by_path_falls_back_from_tags_to_filename(monkeypatch):
-    """标签层未获得远端身份时应继续使用文件名层，且顺序不可反转。"""
+    """
+    标签层未获得远端身份时应继续使用文件名层，且顺序不可反转。
+    """
     tag_meta = MetaMusic(
         title="Tagged Title",
         artists=["Taylor Swift"],
@@ -260,7 +282,9 @@ def test_recognize_music_by_path_falls_back_from_tags_to_filename(monkeypatch):
 
 
 def test_async_recognize_music_by_path_fingerprint_mbid_skips_later_tiers(monkeypatch):
-    """异步路径也应在 AcoustID 命中后直查 MBID 并停止后续层级。"""
+    """
+    异步路径也应在 AcoustID 命中后直查 MBID 并停止后续层级。
+    """
     recording_id = "38035858-f990-4fbb-b3b2-f2f8b958eeba"
     merged = MetaMusic(title="Get Lucky", artists=["Daft Punk"])
     expected = MusicInfo(
@@ -295,7 +319,9 @@ def test_async_recognize_music_by_path_fingerprint_mbid_skips_later_tiers(monkey
 
 
 def test_recognize_music_by_path_rejects_same_title_fingerprint_without_artist(monkeypatch):
-    """只有同名曲名不足以证明 AcoustID 候选属于正确艺人。"""
+    """
+    只有同名曲名不足以证明 AcoustID 候选属于正确艺人。
+    """
     wrong_id = "wrong-dear-john"
     merged = MetaMusic(title="Dear John")
     wrong = MusicInfo(
@@ -331,7 +357,9 @@ def test_recognize_music_by_path_rejects_same_title_fingerprint_without_artist(m
 
 
 def test_recognize_music_by_path_applies_context_artist_to_filename_fallback(monkeypatch):
-    """标签无曲名时，同目录艺人共识仍必须约束文件名搜索。"""
+    """
+    标签无曲名时，同目录艺人共识仍必须约束文件名搜索。
+    """
     merged = MetaMusic(title="Enchanted", year=2011)
     empty_tag = MetaMusic(year=2011)
     filename_meta = MetaMusic(title="Enchanted")
@@ -374,7 +402,9 @@ def test_recognize_music_by_path_applies_context_artist_to_filename_fallback(mon
 
 
 def test_recognize_music_by_path_rejects_fingerprint_text_mismatch(monkeypatch):
-    """A high-confidence but wrongly mapped AcoustID result must fall back."""
+    """
+    AcoustID 候选即使置信度很高，身份映射错误时仍必须回退。
+    """
     wrong_id = "f5ac0d7b-8540-4534-93cf-ac9642e43e4d"
     merged = MetaMusic(title="Christmas Tree Farm", artists=["Taylor Swift"])
     filename_meta = MetaMusic(title="Christmas Tree Farm", artists=["Taylor Swift"])
@@ -415,7 +445,9 @@ def test_recognize_music_by_path_rejects_fingerprint_text_mismatch(monkeypatch):
 
 
 def test_recognize_music_by_path_accepts_fingerprint_radio_version_suffix(monkeypatch):
-    """同艺人的 Radio Single Version 标签应接受正确的基础录音指纹。"""
+    """
+    同艺人的 Radio Single Version 标签应接受正确的基础录音指纹。
+    """
     recording_id = "08f535c5-b651-4cc2-a8a8-349aa6060b16"
     merged = MetaMusic(
         title="Our Song (Radio Single Version)",
@@ -448,7 +480,9 @@ def test_recognize_music_by_path_accepts_fingerprint_radio_version_suffix(monkey
 
 
 def test_recognize_music_by_path_accepts_minor_tag_typo_with_same_artist(monkeypatch):
-    """同艺人且高度相似的旧标签拼写差异不应丢失远端分类。"""
+    """
+    同艺人且高度相似的旧标签拼写差异不应丢失远端分类。
+    """
     recording_id = "25aa1b18-5e85-454e-a15b-145d5559d0fe"
     merged = MetaMusic(title="Cold As You Are", artists=["Taylor Swift"])
     expected = MusicInfo(
@@ -478,7 +512,9 @@ def test_recognize_music_by_path_accepts_minor_tag_typo_with_same_artist(monkeyp
 
 
 def test_recognize_music_by_path_accepts_equivalent_recording_qualifiers(monkeypatch):
-    """同艺人同基础曲名的 radio/pop 版本应保留指纹提供的实际录音身份。"""
+    """
+    同艺人同基础曲名的 radio/pop 版本应保留指纹提供的实际录音身份。
+    """
     recording_id = "teardrops-pop-version"
     merged = MetaMusic(
         title="Teardrops On My Guitar (Radio Single Version)",
@@ -511,7 +547,9 @@ def test_recognize_music_by_path_accepts_equivalent_recording_qualifiers(monkeyp
 
 
 def test_recognize_music_by_path_reconciles_standalone_single_release(monkeypatch):
-    """指纹录音属于多个发行版时，应尊重本地同名单曲标签。"""
+    """
+    指纹录音属于多个发行版时，应尊重本地同名单曲标签。
+    """
     recording_id = "131b296c-3533-4e55-9800-a6dd83b90737"
     single_title = 'Beautiful Ghosts (From The Motion Picture "Cats")'
     tagged = MetaMusic(
@@ -574,7 +612,9 @@ def test_recognize_music_by_path_reconciles_standalone_single_release(monkeypatc
 
 
 def test_recognize_music_by_path_ignores_single_content_rating_qualifier(monkeypatch):
-    """Explicit/Clean 只描述内容分级，不应阻止同名单曲发行证据。"""
+    """
+    Explicit/Clean 只描述内容分级，不应阻止同名单曲发行证据。
+    """
     recording_id = "7b35656c-5589-48d3-9a96-467a637e9bd2"
     title = "All Too Well (10 Minute Version) (Taylor's Version) (Live Acoustic|Explicit)"
     album = "All Too Well (10 Minute Version) [Taylor's Version] [Live Acoustic] [Explicit] - Single"
@@ -625,7 +665,9 @@ def test_recognize_music_by_path_ignores_single_content_rating_qualifier(monkeyp
 
 
 def test_musicbrainz_module_recognize_media_ignores_non_music():
-    """非音乐请求应直接返回 None，不占用影视识别管线。"""
+    """
+    非音乐请求应直接返回 None，不占用影视识别管线。
+    """
     result = MusicBrainzModule().recognize_media(
         meta=None,
         mtype=MediaType.MOVIE,
@@ -636,7 +678,9 @@ def test_musicbrainz_module_recognize_media_ignores_non_music():
 
 
 def test_chain_explicit_music_source_bypasses_generic_module_dispatch(monkeypatch):
-    """显式音乐类型和来源应只调用对应音乐模块，不遍历通用影视模块。"""
+    """
+    显式音乐类型和来源应只调用对应音乐模块，不遍历通用影视模块。
+    """
     expected = _music_info()
     chain = MediaChain()
     recognize_source = Mock(return_value=expected)
@@ -665,7 +709,9 @@ def test_chain_explicit_music_source_bypasses_generic_module_dispatch(monkeypatc
 
 
 def test_media_chain_rejects_cross_entity_detail_result(monkeypatch):
-    """指定专辑实体时，即使来源返回同 ID 的单曲也不得采信。"""
+    """
+    指定专辑实体时，即使来源返回同 ID 的单曲也不得采信。
+    """
     chain = MediaChain()
     source_chain = Mock()
     source_chain.recognize_music.return_value = _music_info()
@@ -682,7 +728,9 @@ def test_media_chain_rejects_cross_entity_detail_result(monkeypatch):
 
 
 def test_default_music_source_preserves_explicit_album_intent(monkeypatch):
-    """没有原生 ID 或显式来源时，用户选择的专辑实体不能被默认单曲模式覆盖。"""
+    """
+    没有原生 ID 或显式来源时，用户选择的专辑实体不能被默认单曲模式覆盖。
+    """
     chain = MediaChain()
     expected = MusicInfo(media_source=MediaSource.MusicBrainz, media_id="album-1",
                          music_type=MUSIC_ENTITY_ALBUM, title="Album", artists=["Artist"])
@@ -698,18 +746,24 @@ def test_default_music_source_preserves_explicit_album_intent(monkeypatch):
 
 
 def test_music_metadata_simplified_conversion_defaults_to_enabled():
-    """音乐识别结果转简体开关应默认开启。"""
+    """
+    音乐识别结果转简体开关应默认开启。
+    """
     assert ConfigModel.model_fields["MUSIC_METADATA_TO_SIMPLIFIED"].default is True
 
 
 def test_music_release_preference_defaults_favor_mainland_simplified():
-    """默认发行排序应先大陆、再台港，并优先简体字形。"""
+    """
+    默认发行排序应先大陆、再台港，并优先简体字形。
+    """
     assert ConfigModel.model_fields["MUSIC_RELEASE_REGION_PRIORITY"].default == "CN,TW,HK"
     assert ConfigModel.model_fields["MUSIC_RELEASE_SCRIPT_PRIORITY"].default == "Hans,Hant,Latn"
 
 
 def test_media_chain_converts_recognized_music_metadata_without_mutating_source(monkeypatch):
-    """开启开关时应转换标准音乐字段，并保留模块缓存对象和歌词原文。"""
+    """
+    开启开关时应转换标准音乐字段，并保留模块缓存对象和歌词原文。
+    """
     source_info = MusicInfo(
         media_source="musicbrainz",
         media_id="recording-1",
@@ -752,7 +806,9 @@ def test_media_chain_converts_recognized_music_metadata_without_mutating_source(
 
 
 def test_media_chain_preserves_original_music_metadata_when_conversion_disabled(monkeypatch):
-    """关闭开关时识别结果应保持来源提供的原始繁简写法。"""
+    """
+    关闭开关时识别结果应保持来源提供的原始繁简写法。
+    """
     source_info = MusicInfo(
         media_source="musicbrainz",
         media_id="recording-1",
@@ -778,7 +834,9 @@ def test_media_chain_preserves_original_music_metadata_when_conversion_disabled(
 
 
 def test_music_path_fallback_converts_local_tag_metadata(monkeypatch):
-    """远端未命中时，本地标签生成的音乐信息也应按开关转换为简体。"""
+    """
+    远端未命中时，本地标签生成的音乐信息也应按开关转换为简体。
+    """
     meta = MetaMusic(
         title="後來的我們",
         artists=["張學友"],
@@ -808,7 +866,9 @@ def test_music_path_fallback_converts_local_tag_metadata(monkeypatch):
 
 
 def test_media_chain_rejects_replaced_explicit_identity(monkeypatch):
-    """显式 ID 识别不得用标题搜索得到的另一 ID 替换请求目标。"""
+    """
+    显式 ID 识别不得用标题搜索得到的另一 ID 替换请求目标。
+    """
     chain = MediaChain()
     replaced = _music_info()
     replaced.media_id = "recording-other"
@@ -826,7 +886,9 @@ def test_media_chain_rejects_replaced_explicit_identity(monkeypatch):
 
 
 def test_chain_music_type_rejects_video_source_before_module_dispatch(monkeypatch):
-    """音乐状态即使携带错误影视来源，也不得调用 TMDB 等通用识别模块。"""
+    """
+    音乐状态即使携带错误影视来源，也不得调用 TMDB 等通用识别模块。
+    """
     chain = MediaChain()
     generic_dispatch = Mock()
     async_generic_dispatch = AsyncMock()
@@ -852,7 +914,9 @@ def test_chain_music_type_rejects_video_source_before_module_dispatch(monkeypatc
 
 
 def test_themoviedb_module_recognize_media_ignores_music(monkeypatch):
-    """音乐模块未响应时 TMDB 的同步和异步入口均不得接管音乐请求。"""
+    """
+    音乐模块未响应时 TMDB 的同步和异步入口均不得接管音乐请求。
+    """
     module = TheMovieDbModule()
     tmdb = Mock()
     monkeypatch.setattr(module, "tmdb", tmdb)
@@ -870,7 +934,9 @@ def test_themoviedb_module_recognize_media_ignores_music(monkeypatch):
 
 
 def test_bangumi_module_recognize_media_ignores_music(monkeypatch):
-    """Bangumi 的同步和异步入口不得把音乐请求识别为动画影视。"""
+    """
+    Bangumi 的同步和异步入口不得把音乐请求识别为动画影视。
+    """
     module = BangumiModule()
     api = Mock()
     monkeypatch.setattr(module, "bangumiapi", api)
@@ -896,7 +962,9 @@ def test_bangumi_module_recognize_media_ignores_music(monkeypatch):
 
 
 def test_anilist_module_recognize_media_ignores_music(monkeypatch):
-    """AniList 的同步和异步入口不得把音乐请求识别为动画影视。"""
+    """
+    AniList 的同步和异步入口不得把音乐请求识别为动画影视。
+    """
     module = AniListModule()
     api = Mock()
     monkeypatch.setattr(module, "anilist_api", api)
@@ -922,7 +990,9 @@ def test_anilist_module_recognize_media_ignores_music(monkeypatch):
 
 
 def test_chain_obtain_images_skips_music_modules(monkeypatch):
-    """音乐封面来自音乐元数据链，同步和异步补图入口均不得调用影视模块。"""
+    """
+    音乐封面来自音乐元数据链，同步和异步补图入口均不得调用影视模块。
+    """
     chain = MediaChain()
     run_module = Mock()
     async_run_module = AsyncMock()
@@ -940,7 +1010,9 @@ def test_chain_obtain_images_skips_music_modules(monkeypatch):
 
 
 def test_musicbrainz_module_recognize_media_uses_detail_when_meta_has_identity(monkeypatch):
-    """meta 携带 source+media_id 时应走详情分支，不再触发搜索。"""
+    """
+    meta 携带 source+media_id 时应走详情分支，不再触发搜索。
+    """
     module = MusicBrainzModule()
     meta = MetaMusic(title="晴天", media_source="musicbrainz", media_id="recording-1")
     expected = _music_info()
@@ -956,7 +1028,9 @@ def test_musicbrainz_module_recognize_media_uses_detail_when_meta_has_identity(m
 
 
 def test_musicbrainz_module_recognize_media_matches_search_candidate(monkeypatch):
-    """无身份时应从 Recording 搜索中选择匹配候选。"""
+    """
+    无身份时应从 Recording 搜索中选择匹配候选。
+    """
     module = MusicBrainzModule()
     meta = MetaMusic(title="晴天", artists=["周杰伦"], album="叶惠美")
     candidate = _music_info()
@@ -968,7 +1042,9 @@ def test_musicbrainz_module_recognize_media_matches_search_candidate(monkeypatch
 
 
 def test_musicbrainz_module_recognize_media_falls_back_to_offline_when_no_match(monkeypatch):
-    """搜索无候选时应返回元数据兜底，且兜底结果不带远端身份。"""
+    """
+    搜索无候选时应返回元数据兜底，且兜底结果不带远端身份。
+    """
     module = MusicBrainzModule()
     meta = MetaMusic(title="未知曲目", artists=["未知艺术家"])
     monkeypatch.setattr(module, "_search_recordings", Mock(return_value=[]))
@@ -982,7 +1058,9 @@ def test_musicbrainz_module_recognize_media_falls_back_to_offline_when_no_match(
 
 
 def test_musicbrainz_module_recognize_media_by_music_type_and_media_id(monkeypatch):
-    """mtype 为音乐且指定数据源原生 ID 时应直接按音乐详情识别。"""
+    """
+    mtype 为音乐且指定数据源原生 ID 时应直接按音乐详情识别。
+    """
     module = MusicBrainzModule()
     expected = _music_info()
     monkeypatch.setattr(module, "recognize_music", Mock(return_value=expected))
@@ -998,7 +1076,9 @@ def test_musicbrainz_module_recognize_media_by_music_type_and_media_id(monkeypat
 
 
 def test_musicbrainz_module_async_recognize_media(monkeypatch):
-    """异步 MusicBrainz 识别应直接调用异步检索而不进入同步入口。"""
+    """
+    异步 MusicBrainz 识别应直接调用异步检索而不进入同步入口。
+    """
     module = MusicBrainzModule()
     expected = _music_info()
     async_search = AsyncMock(return_value=[expected])
@@ -1016,7 +1096,9 @@ def test_musicbrainz_module_async_recognize_media(monkeypatch):
 
 
 def test_theaudiodb_module_async_recognize_media(monkeypatch):
-    """异步 TheAudioDB 识别应直接调用异步检索而不进入同步入口。"""
+    """
+    异步 TheAudioDB 识别应直接调用异步检索而不进入同步入口。
+    """
     module = TheAudioDbModule()
     expected = MusicInfo(
         media_source="theaudiodb",
@@ -1040,7 +1122,9 @@ def test_theaudiodb_module_async_recognize_media(monkeypatch):
 
 
 def test_chain_recognize_media_returns_musicinfo_and_reports_share():
-    """MusicBrainz 自动识别返回的 MusicInfo 应只上报一次共享识别。"""
+    """
+    MusicBrainz 自动识别返回的 MusicInfo 应只上报一次共享识别。
+    """
     expected = _music_info()
     chain = MediaChain()
     with patch.object(
@@ -1056,7 +1140,9 @@ def test_chain_recognize_media_returns_musicinfo_and_reports_share():
 
 
 def test_chain_async_recognize_media_returns_musicinfo_and_reports_share():
-    """异步 MusicBrainz 自动识别结果应只上报一次共享识别。"""
+    """
+    异步 MusicBrainz 自动识别结果应只上报一次共享识别。
+    """
     expected = _music_info()
     chain = MediaChain()
     with patch.object(
@@ -1068,6 +1154,9 @@ def test_chain_async_recognize_media_returns_musicinfo_and_reports_share():
         AsyncMock(),
     ) as report_mock:
         async def runner():
+            """
+            在同一事件循环内完成本次异步音乐识别。
+            """
             return await chain.async_recognize_media(meta=MetaMusic(title="晴天"))
 
         result = asyncio.run(runner())

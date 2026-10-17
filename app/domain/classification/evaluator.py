@@ -1,3 +1,7 @@
+"""
+媒体分类条件与策略求值，只消费调用方提供的事实，不执行外部查询。
+"""
+
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -23,6 +27,14 @@ _MISSING = object()
 
 @dataclass(frozen=True)
 class _ConditionOutcome:
+    """
+    保存一次分类条件的匹配结论、缺失事实和解释记录。
+
+    :param matched: 当前条件是否匹配
+    :param missing_fields: 尚缺少的分类事实字段标识
+    :param traces: 本次条件计算产生的解释记录
+    """
+
     matched: bool
     missing_fields: frozenset[str]
     traces: tuple[ClassificationConditionTrace, ...]
@@ -30,7 +42,7 @@ class _ConditionOutcome:
 
 def read_fact(facts: ClassificationFacts, path: str) -> tuple[Any, bool]:
     """
-    按点路径读取分类事实
+    按点路径读取分类事实。
 
     :param facts: 标准化分类事实
     :param path: 例如 ``media.year`` 的字段路径
@@ -52,7 +64,9 @@ def _read_extension_fact(
     facts: ClassificationFacts,
     path: str,
 ) -> tuple[Any, bool]:
-    """按已登记来源键读取扁平扩展事实，来源和局部字段均允许包含点号。"""
+    """
+    按已登记来源键读取扁平扩展事实，来源和局部字段均允许包含点号。
+    """
     remainder = path.removeprefix("extensions.")
     for source in sorted(facts.extensions, key=len, reverse=True):
         prefix = f"{source}."
@@ -68,7 +82,7 @@ def _read_extension_fact(
 
 class ClassificationEvaluator:
     """
-    媒体分类策略纯求值器
+    媒体分类策略纯求值器。
 
     求值器不读取配置或外部数据，只基于策略快照和标准化事实生成确定性结果。
     """
@@ -81,7 +95,7 @@ class ClassificationEvaluator:
         trace: bool = False,
     ) -> ClassificationEvaluation:
         """
-        对事实执行有序分类和标签规则
+        对事实执行有序分类和标签规则。
 
         :param policy: 已通过发布校验的分类策略
         :param facts: 当前媒体的标准化分类事实
@@ -179,7 +193,9 @@ class ClassificationEvaluator:
         condition: ClassificationConditionNode,
         facts: ClassificationFacts,
     ) -> bool:
-        """返回单个条件树是否匹配，不构造解释轨迹。"""
+        """
+        返回单个条件树是否匹配，不构造解释轨迹。
+        """
         return cls._evaluate_node(condition, facts, {}, {}, False, []).matched
 
     @classmethod
@@ -188,7 +204,9 @@ class ClassificationEvaluator:
         condition: ClassificationConditionNode,
         facts: ClassificationFacts,
     ) -> list[ClassificationConditionTrace]:
-        """执行单个条件树并返回短路后实际求值到的叶子轨迹。"""
+        """
+        执行单个条件树并返回短路后实际求值到的叶子轨迹。
+        """
         return list(cls._evaluate_node(condition, facts, {}, {}, True, []).traces)
 
     @classmethod
@@ -201,7 +219,9 @@ class ClassificationEvaluator:
         trace: bool,
         path: list[str | int],
     ) -> _ConditionOutcome:
-        """递归求值条件叶子或条件组。"""
+        """
+        递归求值条件叶子或条件组。
+        """
         if isinstance(node, ClassificationCondition):
             return cls._evaluate_leaf(
                 node, facts, field_aliases, fact_cache, trace, path
@@ -219,7 +239,9 @@ class ClassificationEvaluator:
         trace: bool,
         path: list[str | int],
     ) -> _ConditionOutcome:
-        """执行叶子条件并应用统一缺失值语义。"""
+        """
+        执行叶子条件并应用统一缺失值语义。
+        """
         fact = fact_cache.get(condition.field)
         if fact is None:
             fact = read_fact(facts, condition.field)
@@ -272,7 +294,9 @@ class ClassificationEvaluator:
         trace: bool,
         path: list[str | int],
     ) -> _ConditionOutcome:
-        """按 all、any、not 语义递归执行条件组并保留短路边界。"""
+        """
+        按 all、any、not 语义递归执行条件组并保留短路边界。
+        """
         group_kind, children = _group_children(group)
         traces: list[ClassificationConditionTrace] = []
         missing_fields: set[str] = set()
@@ -331,7 +355,9 @@ class ClassificationEvaluator:
 
 
 def _read_segment(value: Any, segment: str) -> Any:
-    """读取映射或模型属性，禁止把对象私有属性暴露为分类事实。"""
+    """
+    读取映射或模型属性，禁止把对象私有属性暴露为分类事实。
+    """
     if segment.startswith("_"):
         return _MISSING
     if isinstance(value, Mapping):
@@ -340,7 +366,9 @@ def _read_segment(value: Any, segment: str) -> Any:
 
 
 def _matches_operator(operator: str, actual: Any, expected: Any) -> bool:
-    """执行单个非缺失字段操作符。"""
+    """
+    执行单个非缺失字段操作符。
+    """
     actual = _comparable_value(actual)
     expected = _comparable_value(expected)
     if operator == "equals":
@@ -371,7 +399,9 @@ def _matches_operator(operator: str, actual: Any, expected: Any) -> bool:
 
 
 def _compare_order(operator: str, actual: Any, expected: Any) -> bool:
-    """执行可比较标量的大小关系，类型不兼容时按不匹配处理。"""
+    """
+    执行可比较标量的大小关系，类型不兼容时按不匹配处理。
+    """
     if isinstance(actual, bool) or isinstance(expected, bool):
         return False
     try:
@@ -387,7 +417,9 @@ def _compare_order(operator: str, actual: Any, expected: Any) -> bool:
 
 
 def _between(actual: Any, expected: Any) -> bool:
-    """判断标量是否位于闭区间。"""
+    """
+    判断标量是否位于闭区间。
+    """
     if isinstance(actual, bool) or not _is_collection(expected) or len(expected) != 2:
         return False
     lower, upper = expected
@@ -400,7 +432,9 @@ def _between(actual: Any, expected: Any) -> bool:
 
 
 def _compare_collection(operator: str, actual: Any, expected: Any) -> bool:
-    """按成员相等语义执行列表包含操作符。"""
+    """
+    按成员相等语义执行列表包含操作符。
+    """
     if not _is_collection(actual) or not _is_collection(expected):
         return False
     actual_values = list(actual)
@@ -414,17 +448,23 @@ def _compare_collection(operator: str, actual: Any, expected: Any) -> bool:
 
 
 def _contains_value(container: Any, value: Any) -> bool:
-    """只允许显式集合执行 in/not_in，避免字符串被误当成字符集合。"""
+    """
+    只允许显式集合执行 in/not_in，避免字符串被误当成字符集合。
+    """
     return _is_collection(container) and value in container
 
 
 def _is_collection(value: Any) -> bool:
-    """判断值是否为规则支持的非字符串序列或集合。"""
+    """
+    判断值是否为规则支持的非字符串序列或集合。
+    """
     return isinstance(value, (list, tuple, set, frozenset))
 
 
 def _comparable_value(value: Any) -> Any:
-    """递归展开枚举值，保留列表结构用于集合操作。"""
+    """
+    递归展开枚举值，保留列表结构用于集合操作。
+    """
     if isinstance(value, Enum):
         return value.value
     if _is_collection(value):
@@ -433,7 +473,9 @@ def _comparable_value(value: Any) -> Any:
 
 
 def _apply_aliases(value: Any, aliases: Mapping[str, str]) -> Any:
-    """递归将字段别名投影为策略声明的规范值。"""
+    """
+    递归将字段别名投影为策略声明的规范值。
+    """
     if _is_collection(value):
         return [_apply_aliases(item, aliases) for item in value]
     if isinstance(value, str):
@@ -444,7 +486,9 @@ def _apply_aliases(value: Any, aliases: Mapping[str, str]) -> Any:
 def _group_children(
     group: ClassificationConditionGroup,
 ) -> tuple[str, list[ClassificationConditionNode]]:
-    """读取已经通过 schema 保证互斥的条件组操作符和子节点。"""
+    """
+    读取已经通过 schema 保证互斥的条件组操作符和子节点。
+    """
     if group.all is not None:
         return "all", group.all
     if group.any is not None:
@@ -455,12 +499,16 @@ def _group_children(
 
 
 def _scalar_value(value: Any) -> Any:
-    """将枚举标量规范为其持久化值。"""
+    """
+    将枚举标量规范为其持久化值。
+    """
     return value.value if isinstance(value, Enum) else value
 
 
 def _stable_unique(values: Sequence[str]) -> list[str]:
-    """按首次出现顺序去重标签。"""
+    """
+    按首次出现顺序去重标签。
+    """
     result: list[str] = []
     seen: set[str] = set()
     for value in values:

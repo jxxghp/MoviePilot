@@ -1,4 +1,6 @@
-"""TMDB 模块同步与异步公开能力的业务决策一致性测试。"""
+"""
+TMDB 模块同步与异步公开能力的业务决策一致性测试。
+"""
 
 import asyncio
 from typing import Optional
@@ -10,11 +12,14 @@ from app.domain.context import MediaInfo
 from app.domain.meta.metabase import MetaBase
 from app.modules.themoviedb import TheMovieDbModule
 from app.modules.themoviedb.tmdbv3api.exceptions import TMDbConnectionError
+from app.schemas.category import ClassificationEnrichmentRequest, ClassificationIdentityFacts
 from app.schemas.types import MediaSource, MediaType
 
 
 def _module_with_clients() -> TheMovieDbModule:
-    """构造不触发模块生命周期、只注入测试客户端的 TMDB 模块。"""
+    """
+    构造不触发模块生命周期、只注入测试客户端的 TMDB 模块。
+    """
     module = object.__new__(TheMovieDbModule)
     module.tmdb = Mock()
     module.cache = Mock()
@@ -23,7 +28,9 @@ def _module_with_clients() -> TheMovieDbModule:
 
 
 def _movie_info(tmdbid: int = 10) -> dict:
-    """构造可投影为 MediaInfo 的最小电影详情。"""
+    """
+    构造可投影为 MediaInfo 的最小电影详情。
+    """
     return {
         "id": tmdbid,
         "media_type": MediaType.MOVIE,
@@ -33,8 +40,80 @@ def _movie_info(tmdbid: int = 10) -> dict:
     }
 
 
+@pytest.mark.parametrize(
+    ("status_code", "expected"),
+    [
+        (200, (True, "")),
+        (503, (False, "无法连接 tmdb.example，错误码：503")),
+        (None, (False, "tmdb.example 网络连接失败")),
+    ],
+)
+def test_tmdb_connection_check_reports_http_and_network_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    status_code: Optional[int],
+    expected: tuple[bool, str],
+) -> None:
+    """
+    连接检查应区分认证成功、服务端错误和没有 HTTP 响应。
+    """
+    response = Mock(status_code=status_code) if status_code is not None else None
+    request = Mock()
+    request.get_res.return_value = response
+    request_factory = Mock(return_value=request)
+    settings = {
+        "NORMAL_USER_AGENT": "test-agent",
+        "PROXY": None,
+        "TMDB_API_DOMAIN": "tmdb.example",
+        "TMDB_API_KEY": "test-key",
+    }
+    monkeypatch.setattr("app.modules.themoviedb.RequestUtils", request_factory)
+    monkeypatch.setattr("app.modules.themoviedb.get_runtime_setting", settings.__getitem__)
+
+    assert _module_with_clients().test() == expected
+    request_factory.assert_called_once_with(ua="test-agent", proxies=None)
+    request.get_res.assert_called_once_with(
+        "https://tmdb.example/3/movie/550?api_key=test-key"
+    )
+
+
+@pytest.mark.parametrize(
+    ("tmdb_id", "expected_calls"),
+    [
+        ("invalid-id", 0),
+        ("129", 1),
+    ],
+)
+def test_tmdb_enrichment_rejects_invalid_or_missing_details(
+    tmdb_id: str,
+    expected_calls: int,
+) -> None:
+    """
+    非数字身份或未取得详情时不能向分类规则提供推测的事实。
+    """
+    module = _module_with_clients()
+    module.tmdb_info = Mock(return_value=None)
+    request = ClassificationEnrichmentRequest(
+        identity=ClassificationIdentityFacts(
+            media_source=MediaSource.Douban.value,
+            media_id="1291561",
+        ),
+        media_type=MediaType.MOVIE.value,
+        missing_fields=["media.countries"],
+        external_ids={MediaSource.TMDB.value: tmdb_id},
+        policy_revision=3,
+        timeout_seconds=2.5,
+    )
+
+    assert module.get_media_classification_facts(request) is None
+    assert module.tmdb_info.call_count == expected_calls
+    if expected_calls:
+        module.tmdb_info.assert_called_once_with(tmdbid=129, mtype=MediaType.MOVIE)
+
+
 def test_recognize_sync_async_share_identity_cache_and_result_decisions() -> None:
-    """显式 TMDB 身份在双入口应产生相同查询、缓存写入和媒体结果。"""
+    """
+    显式 TMDB 身份在双入口应产生相同查询、缓存写入和媒体结果。
+    """
     module = _module_with_clients()
     info = _movie_info()
     module.tmdb.get_info.return_value = info
@@ -92,7 +171,9 @@ def test_recognize_sync_async_share_identity_cache_and_result_decisions() -> Non
 
 
 def test_recognize_sync_async_pass_episode_group_as_group_id() -> None:
-    """剧集组 ID 应按 TmdbApi 的 group_id 参数在双入口转发。"""
+    """
+    剧集组 ID 应按 TmdbApi 的 group_id 参数在双入口转发。
+    """
     module = _module_with_clients()
     info = _movie_info()
     group_id = "5ad0ec240e0a26303f00d84d"
@@ -126,7 +207,9 @@ def test_recognize_sync_async_pass_episode_group_as_group_id() -> None:
 
 
 def test_recognize_sync_async_share_negative_cache_short_circuit() -> None:
-    """负缓存命中时双入口都不得继续访问 TMDB 客户端。"""
+    """
+    负缓存命中时双入口都不得继续访问 TMDB 客户端。
+    """
     module = _module_with_clients()
     module.tmdb.async_get_info = AsyncMock()
     module.tmdb.async_match = AsyncMock()
@@ -159,7 +242,9 @@ def test_recognize_sync_async_share_negative_cache_short_circuit() -> None:
 
 
 def test_recognize_sync_async_share_identity_connection_failure() -> None:
-    """显式身份查询连接失败时双入口都应失败且不得写入负缓存。"""
+    """
+    显式身份查询连接失败时双入口都应失败且不得写入负缓存。
+    """
     module = _module_with_clients()
     sync_lookup = Mock(side_effect=TMDbConnectionError("offline"))
     async_lookup = AsyncMock(side_effect=TMDbConnectionError("offline"))
@@ -197,7 +282,9 @@ def test_recognize_sync_async_share_identity_connection_failure() -> None:
 
 
 def test_name_match_sync_async_share_ordered_fallback_plan() -> None:
-    """电视剧名称识别的带季查询与无年份回退在双入口应完全同序。"""
+    """
+    电视剧名称识别的带季查询与无年份回退在双入口应完全同序。
+    """
     module = _module_with_clients()
     meta = MetaBase("测试剧 S02 2024")
     meta.name = "测试剧"
@@ -231,7 +318,9 @@ def test_name_match_sync_async_share_ordered_fallback_plan() -> None:
 
 
 def test_media_search_sync_async_share_combination_and_sorting() -> None:
-    """未知类型且有年份时，双入口应合并电影和电视剧并按日期倒序。"""
+    """
+    未知类型且有年份时，双入口应合并电影和电视剧并按日期倒序。
+    """
     module = _module_with_clients()
     meta = MetaBase("同名作品 2024")
     meta.name = "同名作品"
@@ -273,7 +362,9 @@ def test_media_search_sync_async_share_combination_and_sorting() -> None:
 def test_obtain_images_sync_async_share_query_and_mapping(
     monkeypatch: pytest.MonkeyPatch, media_source: str, recognize_source: str, media_type: MediaType,
 ) -> None:
-    """图片补全双入口应选择同一接口、语言参数和最佳图片映射。"""
+    """
+    图片补全双入口应选择同一接口、语言参数和最佳图片映射。
+    """
     module = _module_with_clients()
     monkeypatch.setattr("app.modules.themoviedb.get_runtime_setting", lambda key: (
         recognize_source if key == "RECOGNIZE_SOURCE" else lambda path: f"https://images.test{path}"
@@ -324,7 +415,9 @@ def test_obtain_images_sync_async_skip_ineligible_media(
     monkeypatch: pytest.MonkeyPatch, media_source: str, recognize_source: str,
     tmdb_id: Optional[int], complete_images: bool,
 ) -> None:
-    """不适用来源、缺少 TMDB ID 或图片齐全时，双入口原样返回且不查询图片。"""
+    """
+    不适用来源、缺少 TMDB ID 或图片齐全时，双入口原样返回且不查询图片。
+    """
     monkeypatch.setattr("app.modules.themoviedb.get_runtime_setting", lambda _key: recognize_source)
     module = _module_with_clients()
     media = MediaInfo()

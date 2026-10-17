@@ -1,3 +1,7 @@
+"""
+Emby 媒体服务器客户端，负责内容查询、图片、刷新及 Webhook 转换。
+"""
+
 import json
 import re
 import traceback
@@ -22,7 +26,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 class Emby:
-    """Emby媒体服务器客户端。"""
+    """
+    Emby媒体服务器客户端。
+    """
 
     _host: Optional[str] = None
     _playhost: Optional[str] = None
@@ -33,6 +39,16 @@ class Emby:
 
     def __init__(self, host: Optional[str] = None, apikey: Optional[str] = None, play_host: Optional[str] = None,
                  username: Optional[str] = None, sync_libraries: list = None, **kwargs):
+        """
+        保存服务配置，并查询用户、服务器身份及必要的媒体库路径。
+
+        :param host: 服务根地址，缺少时不初始化连接
+        :param apikey: 服务 API 密钥，缺少时不初始化连接
+        :param play_host: 外网访问地址，用于播放跳转和远程图片链接
+        :param username: 优先使用的查询用户名；省略时先匹配 MoviePilot 管理员用户名
+        :param sync_libraries: 允许同步的媒体库标识列表；空列表不限制，具体筛选由各查询接口处理
+        :param kwargs: 兼容通用服务配置的额外参数，当前不读取
+        """
         if not host or not apikey:
             logger.error("Emby服务器配置不完整！")
             return
@@ -51,7 +67,9 @@ class Emby:
 
     def is_inactive(self) -> bool:
         """
-        判断是否需要重连
+        判断完整服务配置是否尚未找到可用的查询用户。
+
+        :return: 地址及密钥均已配置但 user 为空时返回 True；配置缺失时返回 False
         """
         if not self._host or not self._apikey:
             return False
@@ -59,14 +77,16 @@ class Emby:
 
     def reconnect(self):
         """
-        重连
+        重新查询用户并更新媒体库路径缓存。
         """
         self.user = self.get_user()
         self.folders = self.get_emby_folders()
 
     def get_emby_folders(self) -> List[dict]:
         """
-        获取Emby媒体库路径列表
+        读取服务端可选媒体库及其目录信息。
+
+        :return: 服务端返回的目录记录列表；配置不完整或查询失败时返回空列表
         """
         if not self._host or not self._apikey:
             return []
@@ -87,7 +107,9 @@ class Emby:
 
     def get_emby_virtual_folders(self) -> List[dict]:
         """
-        获取Emby媒体库所有路径列表（包含共享路径）
+        读取虚拟媒体库及其全部目录，优先使用共享路径。
+
+        :return: 包含 Id、Name 和路径列表 Path 的字典列表；查询失败时返回空列表
         """
         if not self._host or not self._apikey:
             return []
@@ -127,7 +149,7 @@ class Emby:
 
     def __get_emby_librarys(self, username: Optional[str] = None) -> Optional[List[dict]]:
         """
-        获取Emby媒体库列表
+        获取Emby媒体库列表。
         """
         if not self._host or not self._apikey:
             return None
@@ -157,7 +179,11 @@ class Emby:
         hidden: Optional[bool] = False,
     ) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
-        获取媒体服务器所有媒体库列表
+        读取用户可见媒体库，并转换为统一媒体库模型。
+
+        :param username: 用于限定可见内容的用户名，省略时使用当前实例的查询用户
+        :param hidden: 是否隐藏未选入同步范围的媒体库；默认返回全部可见库
+        :return: 媒体库列表；配置不完整、用户不可用或查询失败时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -206,7 +232,7 @@ class Emby:
 
     def get_user(self, user_name: Optional[str] = None) -> Optional[Union[str, int]]:
         """
-        获取用于查询用户范围数据的用户ID
+        获取用于查询用户范围数据的用户ID。
 
         优先匹配指定用户名，其次匹配媒体服务器配置用户名，最后回退管理员。
 
@@ -231,7 +257,6 @@ class Emby:
                     for emby_user in users:
                         if emby_user.get("Name") == candidate_username:
                             return emby_user.get("Id")
-                # 查询管理员
                 for emby_user in users:
                     if emby_user.get("Policy", {}).get("IsAdministrator"):
                         return emby_user.get("Id")
@@ -243,10 +268,11 @@ class Emby:
 
     def authenticate(self, username: str, password: str) -> Optional[str]:
         """
-        用户认证
-        :param username: 用户名
-        :param password: 密码
-        :return: 认证token
+        向媒体服务器验证指定用户的密码。
+
+        :param username: 待认证的用户名
+        :param password: 待认证的密码
+        :return: 成功时返回访问令牌；配置不完整或认证失败时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -280,7 +306,9 @@ class Emby:
 
     def get_server_id(self) -> Optional[str]:
         """
-        获得服务器信息
+        查询媒体服务器的稳定标识。
+
+        :return: 服务器标识；配置不完整或查询失败时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -304,7 +332,9 @@ class Emby:
 
     def get_user_count(self) -> int:
         """
-        获得用户数量
+        查询媒体服务器的用户数量。
+
+        :return: 服务端用户数量；配置不完整或请求失败时返回 0
         """
         if not self._host or not self._apikey:
             return 0
@@ -325,8 +355,9 @@ class Emby:
 
     def get_medias_count(self) -> _SchemaStatistic:
         """
-        获得电影、电视剧、动漫媒体数量
-        :return: MovieCount SeriesCount SongCount
+        统计电影、剧集、分集和音乐数量。
+
+        :return: 统一统计对象；查询失败时返回空统计，音乐优先采用专辑数，再回退到歌曲数
         """
         if not self._host or not self._apikey:
             return _SchemaStatistic()
@@ -354,7 +385,8 @@ class Emby:
 
     def __get_emby_series_id_by_name(self, name: str, year: str) -> Optional[str]:
         """
-        根据名称查询Emby中剧集的SeriesId
+        根据名称查询Emby中剧集的SeriesId。
+
         :param name: 标题
         :param year: 年份
         :return: None 表示连不通，""表示未找到，找到返回ID
@@ -392,12 +424,15 @@ class Emby:
                    media_source: Optional[MediaSource] = None,
                    media_id: Optional[str] = None) -> Optional[List[_SchemaMediaServerItem]]:
         """
-        根据标题和年份，检查电影是否在Emby中存在，存在则返回列表
-        :param title: 标题
-        :param year: 年份，可以为空，为空时不按年份过滤
-        :param media_source: 媒体来源
-        :param media_id: 媒体来源原生ID
-        :return: 含title、year属性的字典列表
+        搜索电影并核对标题、年份和来源身份。
+
+        只检查服务端搜索返回的前 10 个候选。
+
+        :param title: 必须精确匹配的电影标题
+        :param year: 可选年份，空值表示不限年份
+        :param media_source: 可选媒体来源，用于排除来源身份冲突
+        :param media_id: 来源内的媒体标识，与 media_source 配合使用
+        :return: 匹配的统一电影条目；候选均被过滤时可能为空列表，服务端无候选或查询失败时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -439,7 +474,16 @@ class Emby:
         self, title: Optional[str] = None, artist: Optional[str] = None,
         album: Optional[str] = None,
     ) -> List[_SchemaMediaServerItem]:
-        """按歌曲、艺术家或专辑名称查询 Emby 音乐条目。"""
+        """
+        按歌曲、艺术家和专辑关键词搜索音乐候选。
+
+        此方法负责候选搜索与统一模型转换，不执行歌曲或专辑名称的精确匹配。
+
+        :param title: 可选歌曲标题
+        :param artist: 可选艺术家名称
+        :param album: 可选专辑名称
+        :return: 最多 20 个专辑或歌曲候选；查询词为空、配置不完整或请求失败时返回空列表
+        """
         if not self._host or not self._apikey or not self.user:
             return []
         query = " ".join(filter(None, [title, artist, album])).strip()
@@ -472,19 +516,22 @@ class Emby:
                         season: Optional[int] = None
                         ) -> Tuple[Optional[str], Optional[Dict[int, List[int]]]]:
         """
-        根据标题和年份和季，返回Emby中的剧集列表
-        :param item_id: Emby中的ID
-        :param title: 标题
-        :param year: 年份
-        :param media_source: 媒体来源
-        :param media_id: 媒体来源原生ID
-        :param season: 季
-        :return: 每一季的已有集数
+        查询电视剧身份及各季已经存在的集号。
+
+        已有缓存标识失效时按标题及年份重新查找；仅统计服务端实际存在且具有季号、集号的条目。
+
+        :param item_id: Emby 条目标识
+        :param title: 缺少条目标识或缓存标识失效时用于回退搜索的剧名
+        :param year: 回退搜索时限定的年份，空值表示不限
+        :param media_source: 可选媒体来源，用于排除身份冲突
+        :param media_id: 对应来源的媒体标识
+        :param season: 目标季号；None 表示查询全部季
+        :return: 电视剧条目标识与“季号到集号列表”映射；配置缺失或异常返回两项 None，
+            未找到、身份不兼容或响应无可用数据时返回 None 和空映射
         """
         if not self._host or not self._apikey:
             return None, None
         cached_item_id = item_id
-        # 电视剧
         if not item_id:
             item_id = self.__get_emby_series_id_by_name(title, year)
             if item_id is None:
@@ -506,7 +553,6 @@ class Emby:
             return None, {}
         if not MediaServerIdentityHelper.is_compatible(item_info, media_source, media_id):
             return None, {}
-        # 查集的信息
         if season is None:
             season = None
         try:
@@ -533,7 +579,6 @@ class Emby:
                     if season_index not in season_episodes:
                         season_episodes[season_index] = []
                     season_episodes[season_index].append(episode_index)
-                # 返回
                 return item_id, season_episodes
         except Exception as e:
             logger.error("连接Shows/Id/Episodes出错：" + str(e))
@@ -542,10 +587,11 @@ class Emby:
 
     def get_season_episode_ids(self, item_id: str, season: int) -> Dict[int, str]:
         """
-        获取指定季的集号到媒体服务器条目 ID 映射
-        :param item_id: 剧集在 Emby 中的 ID
-        :param season: 季号
-        :return: {集号: episode_item_id}
+        读取指定季的分集条目标识。
+
+        :param item_id: Emby 条目标识
+        :param season: 目标季号
+        :return: 集号到条目标识的映射；输入不完整、无分集或查询失败时返回空映射
         """
         if not item_id or not self._host or not self._apikey:
             return {}
@@ -573,10 +619,13 @@ class Emby:
 
     def get_remote_image_by_id(self, item_id: str, image_type: str) -> Optional[str]:
         """
-        根据ItemId从Emby查询TMDB的图片地址
-        :param item_id: 在Emby中的ID
-        :param image_type: 图片的类弄地，poster或者backdrop等
-        :return: 图片对应在TMDB中的URL
+        优先查询指定类型的 TMDB 图片，必要时回退媒体服务器图片。
+
+        没有匹配图片时尝试外网媒体服务器地址。远程图片查询发生异常时直接返回 None。
+
+        :param item_id: Emby 条目标识
+        :param image_type: 服务端图片类型，如 Primary 或 Backdrop，需与响应中的 Type 一致
+        :return: 匹配的图片 URL；回退失败时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -592,7 +641,6 @@ class Emby:
                     for image in images:
                         if image.get("ProviderName") == "TheMovieDb" and image.get("Type") == image_type:
                             return image.get("Url")
-            # 数据为空
             logger.info("Items/RemoteImages 未获取到返回数据，采用本地图片")
             return self.generate_external_image_link(item_id, image_type)
         except Exception as e:
@@ -601,10 +649,11 @@ class Emby:
 
     def generate_external_image_link(self, item_id: str, image_type: str) -> Optional[str]:
         """
-        根据ItemId和imageType查询本地对应图片
-        :param item_id: 在Emby中的ID
-        :param image_type: 图片类型，如Backdrop、Primary
-        :return: 图片对应在外网播放器中的URL
+        探测外网播放地址下的条目图片。
+
+        :param item_id: Emby 条目标识
+        :param image_type: 服务端图片类型，如 Backdrop 或 Primary
+        :return: 可访问响应的最终 URL；外网地址缺失、图片不存在或请求失败时返回 None
         """
         if not self._playhost:
             logger.error("Emby外网播放地址未能获取或为空")
@@ -625,7 +674,7 @@ class Emby:
 
     def __refresh_emby_library_by_id(self, item_id: str) -> bool:
         """
-        通知Emby刷新一个项目的媒体库
+        通知Emby刷新一个项目的媒体库。
         """
         if not self._host or not self._apikey:
             return False
@@ -647,7 +696,9 @@ class Emby:
 
     def refresh_root_library(self) -> bool:
         """
-        通知Emby刷新整个媒体库
+        请求 Emby 刷新整个媒体库。
+
+        :return: 刷新请求被接受时返回 True，配置不完整或请求失败时返回 False；不等待扫描完成
         """
         if not self._host or not self._apikey:
             return False
@@ -668,8 +719,12 @@ class Emby:
 
     def refresh_library_by_items(self, items: List[_SchemaRefreshMediaItem]) -> Optional[bool]:
         """
-        按类型、名称、年份来刷新媒体库
-        :param items: 已识别的需要刷新媒体库的媒体信息列表
+        按媒体身份和目标路径合并刷新范围，并逐项请求刷新。
+
+        已有电视剧仅刷新对应剧集，已有电影不重复刷新。不能定位媒体库时刷新整个根库。
+
+        :param items: 包含媒体类型、标题、年份及目标路径的刷新请求列表
+        :return: 输入为空时返回 False；有任一刷新请求失败时返回 False，无需刷新或全部请求成功时返回 True
         """
         if not items:
             return False
@@ -680,7 +735,6 @@ class Emby:
             library_id = self.__get_emby_library_id_by_item(item)
             if library_id and library_id not in library_ids:
                 library_ids.append(library_id)
-        # 开始刷新媒体库
         if "/" in library_ids:
             return self.refresh_root_library()
         success = True
@@ -693,8 +747,10 @@ class Emby:
 
     def __get_emby_library_id_by_item(self, item: _SchemaRefreshMediaItem) -> Optional[str]:
         """
-        根据媒体信息查询在哪个媒体库，返回要刷新的位置的ID
-        :param item: {title, year, type, category, target_path}
+        根据媒体身份、路径及分类确定需要刷新的位置。
+
+        :param item: 待刷新的媒体信息及目标路径
+        :return: 电视剧或媒体库标识；无法定位时返回 / 表示根库，缺少必要信息或电影已存在时返回 None
         """
         if not item.type or not item.target_path:
             return None
@@ -709,11 +765,9 @@ class Emby:
                 return None
         # 查找需要刷新的媒体库ID
         item_path = Path(item.target_path)
-        # 匹配子目录
         for folder in self.folders:
             for subfolder in folder.get("SubFolders") or []:
                 try:
-                    # 匹配子目录
                     subfolder_path = Path(subfolder.get("Path"))
                     if item_path.is_relative_to(subfolder_path):
                         return folder.get("Id")
@@ -727,12 +781,13 @@ class Emby:
                             r"[/\\]%s" % re.escape(item.category), subfolder.get("Path")
                     ):
                         return folder.get("Id")
-        # 刷新根目录
         return "/"
 
     @staticmethod
     def __format_item_info(item) -> Optional[_SchemaMediaServerItem]:
-        """通过统一 Emby 系转换契约生成条目，并保留 Emby 的服务器 ID。"""
+        """
+        通过统一 Emby 系转换契约生成条目，并保留 Emby 的服务器 ID。
+        """
         return format_emby_family_item(
             item,
             server="emby",
@@ -741,7 +796,10 @@ class Emby:
 
     def get_iteminfo(self, itemid: str) -> Optional[_SchemaMediaServerItem]:
         """
-        获取单个项目详情
+        查询单个条目并转换为统一媒体模型。
+
+        :param itemid: Emby 条目标识
+        :return: 条目详情；标识为空、配置不完整、查询失败或类型无法转换时返回 None
         """
         if not itemid:
             return None
@@ -764,7 +822,9 @@ class Emby:
         self,
         series_id: Optional[str],
     ) -> Tuple[Optional[MediaSource], Optional[str]]:
-        """查询 Emby Series 条目的规范身份，查询失败时返回空身份。"""
+        """
+        查询 Emby Series 条目的规范身份，查询失败时返回空身份。
+        """
         if not series_id or not self._host or not self._apikey or not self.user:
             return None, None
         url = f"{self._host}emby/Users/{self.user}/Items/{series_id}"
@@ -782,10 +842,11 @@ class Emby:
 
     def get_items_count(self, parent: Union[str, int], include_item_types: str = "Movie,Series") -> Optional[int]:
         """
-        获取指定媒体库可同步的电影和剧集总数
+        递归统计指定媒体库内的可同步条目。
 
-        :param parent: 媒体库ID
-        :return: 媒体条目总数，查询失败时返回None
+        :param parent: 媒体库标识
+        :param include_item_types: 逗号分隔的服务端条目类型，默认 Movie,Series
+        :return: 条目总数；输入或配置不完整、响应缺少计数或查询失败时返回 None
         """
         if not parent or not self._host or not self._apikey:
             return None
@@ -810,15 +871,17 @@ class Emby:
     def get_items(self, parent: Union[str, int], start_index: Optional[int] = 0,
                   limit: Optional[int] = -1) -> Generator[MediaServerItem | None | Any, Any, None]:
         """
-        获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
+        读取媒体库条目并递归展开目录。
 
-        :param parent: 媒体库ID，用于标识要获取的媒体库
-        :param start_index: 起始索引，用于分页获取数据。默认为 0，即从第一个项目开始获取
-        :param limit: 每次请求的最大项目数，用于分页。如果为 None 或 -1，则表示一次性获取所有数据，默认为 -1
+        读取失败时向上抛出异常，防止同步调用方将失败误判为媒体库清空。
+        Folder 展开为成员，只返回电影、电视剧和音乐专辑。
 
-        :return: 返回一个生成器对象，用于逐步获取媒体服务器中的项目
-
-        读取失败时抛出异常中止同步，避免空结果被当作媒体库已清空而删除旧缓存。
+        :param parent: 媒体库标识，不接受空值
+        :param start_index: 分页起始索引；不限制数量时不发送此参数
+        :param limit: 本层请求数量；None 或 -1 不限制，递归子目录始终不分页
+        :yields: 转换后的统一媒体条目
+        :raises ValueError: 媒体库标识为空
+        :raises ConnectionError: 配置不完整或读取媒体库失败
         """
         if not parent:
             raise ValueError("Emby 媒体库 ID 不能为空")
@@ -858,243 +921,14 @@ class Emby:
 
     def get_webhook_message(self, form: Any, args: dict) -> Optional[_SchemaWebhookEventInfo]:
         """
-        解析Emby Webhook报文
-        电影：
-        {
-          "Title": "admin 在 Microsoft Edge Windows 上停止播放 蜘蛛侠：纵横宇宙",
-          "Date": "2023-08-19T00:49:07.8523469Z",
-          "Event": "playback.stop",
-          "User": {
-            "Name": "admin",
-            "Id": "e6a9dd89fd954d689870e7e0e3e72947"
-          },
-          "Item": {
-            "Name": "蜘蛛侠：纵横宇宙",
-            "OriginalTitle": "Spider-Man: Across the Spider-Verse",
-            "ServerId": "f40a5bd0c6b64051bdbed00580fa1118",
-            "Id": "240270",
-            "DateCreated": "2023-06-21T21:01:27.0000000Z",
-            "Container": "mp4",
-            "SortName": "蜘蛛侠：纵横宇宙",
-            "PremiereDate": "2023-05-30T16:00:00.0000000Z",
-            "ExternalUrls": [
-              {
-                "Name": "IMDb",
-                "Url": "https://www.imdb.com/title/tt9362722"
-              },
-              {
-                "Name": "TheMovieDb",
-                "Url": "https://www.themoviedb.org/movie/569094"
-              },
-              {
-                "Name": "Trakt",
-                "Url": "https://trakt.tv/search/tmdb/569094?id_type=movie"
-              }
-            ],
-            "Path": "\\\\10.10.10.10\\Video\\电影\\动画电影\\蜘蛛侠：纵横宇宙 (2023)\\蜘蛛侠：纵横宇宙 (2023).mp4",
-            "OfficialRating": "PG",
-            "Overview": "讲述了新生代蜘蛛侠迈尔斯（沙梅克·摩尔 Shameik Moore 配音）携手蜘蛛格温（海莉·斯坦菲尔德 Hailee Steinfeld 配音），穿越多元宇宙踏上更宏大的冒险征程的故事。面临每个蜘蛛侠都会失去至亲的宿命，迈尔斯誓言打破命运魔咒，找到属于自己的英雄之路。而这个决定和蜘蛛侠2099（奥斯卡·伊萨克 Oscar Is aac 配音）所领军的蜘蛛联盟产生了极大冲突，一场以一敌百的蜘蛛侠大内战即将拉响！",
-            "Taglines": [],
-            "Genres": [
-              "动作",
-              "冒险",
-              "动画",
-              "科幻"
-            ],
-            "CommunityRating": 8.7,
-            "RunTimeTicks": 80439590000,
-            "Size": 3170164641,
-            "FileName": "蜘蛛侠：纵横宇宙 (2023).mp4",
-            "Bitrate": 3152840,
-            "PlayAccess": "Full",
-            "ProductionYear": 2023,
-            "RemoteTrailers": [
-              {
-                "Url": "https://www.youtube.com/watch?v=BbXJ3_AQE_o"
-              },
-              {
-                "Url": "https://www.youtube.com/watch?v=cqGjhVJWtEg"
-              },
-              {
-                "Url": "https://www.youtube.com/watch?v=shW9i6k8cB0"
-              },
-              {
-                "Url": "https://www.youtube.com/watch?v=Etv-L2JKCWk"
-              },
-              {
-                "Url": "https://www.youtube.com/watch?v=yFrxzaBLDQM"
-              }
-            ],
-            "ProviderIds": {
-              "Tmdb": "569094",
-              "Imdb": "tt9362722"
-            },
-            "IsFolder": false,
-            "ParentId": "240253",
-            "Type": "Movie",
-            "Studios": [
-              {
-                "Name": "Columbia Pictures",
-                "Id": 1252
-              },
-              {
-                "Name": "Sony Pictures Animation",
-                "Id": 1814
-              },
-              {
-                "Name": "Lord Miller",
-                "Id": 240307
-              },
-              {
-                "Name": "Pascal Pictures",
-                "Id": 60101
-              },
-              {
-                "Name": "Arad Productions",
-                "Id": 67372
-              }
-            ],
-            "GenreItems": [
-              {
-                "Name": "动作",
-                "Id": 767
-              },
-              {
-                "Name": "冒险",
-                "Id": 818
-              },
-              {
-                "Name": "动画",
-                "Id": 1382
-              },
-              {
-                "Name": "科幻",
-                "Id": 709
-              }
-            ],
-            "TagItems": [],
-            "PrimaryImageAspectRatio": 0.7012622720897616,
-            "ImageTags": {
-              "Primary": "c080830ff3c964a775dd0b011b675a29",
-              "Art": "a418b990ca0df95838884b5951883ad5",
-              "Logo": "1782310274c108e85d02d2b0b1c7249c",
-              "Thumb": "29d499a96b7da07cd1cf37edb58507a8",
-              "Banner": "bec236365d57f7f646d8fda16fce2ecb",
-              "Disc": "3e32d87be8655f52bcf43bd34ee94c2b"
-            },
-            "BackdropImageTags": [
-              "13acab1246c95a6fbdee22cf65edf3f0"
-            ],
-            "MediaType": "Video",
-            "Width": 1920,
-            "Height": 820
-          },
-          "Server": {
-            "Name": "PN41",
-            "Id": "f40a5bd0c6b64051bdbed00580fa1118",
-            "Version": "4.7.13.0"
-          },
-          "Session": {
-            "RemoteEndPoint": "10.10.10.253",
-            "Client": "Emby Web",
-            "DeviceName": "Microsoft Edge Windows",
-            "DeviceId": "30239450-1748-4855-9799-de3544fc2744",
-            "ApplicationVersion": "4.7.13.0",
-            "Id": "c336b028b893558b333d1a49238b7db1"
-          },
-          "PlaybackInfo": {
-            "PlayedToCompletion": false,
-            "PositionTicks": 17431791950,
-            "PlaylistIndex": 0,
-            "PlaylistLength": 1
-          }
-        }
+        解析 Emby Webhook，并补全统一事件中的媒体身份与图片。
 
-        电视剧：
-        {
-          "Title": "admin 在 Microsoft Edge Windows 上开始播放 长风渡 - S1, Ep11 - 第 11 集",
-          "Date": "2023-08-19T00:52:20.5200050Z",
-          "Event": "playback.start",
-          "User": {
-            "Name": "admin",
-            "Id": "e6a9dd89fd954d689870e7e0e3e72947"
-          },
-          "Item": {
-            "Name": "第 11 集",
-            "ServerId": "f40a5bd0c6b64051bdbed00580fa1118",
-            "Id": "240252",
-            "DateCreated": "2023-06-21T10:51:06.0000000Z",
-            "Container": "mp4",
-            "SortName": "第 11 集",
-            "PremiereDate": "2023-06-20T16:00:00.0000000Z",
-            "ExternalUrls": [
-              {
-                "Name": "Trakt",
-                "Url": "https://trakt.tv/search/tmdb/4533239?id_type=episode"
-              }
-            ],
-            "Path": "\\\\10.10.10.10\\Video\\电视剧\\国产剧\\长风渡 (2023)\\Season 1\\长风渡 - S01E11 - 第 11 集.mp4",
-            "Taglines": [],
-            "Genres": [],
-            "RunTimeTicks": 28021450000,
-            "Size": 707122056,
-            "FileName": "长风渡 - S01E11 - 第 11 集.mp4",
-            "Bitrate": 2018802,
-            "PlayAccess": "Full",
-            "ProductionYear": 2023,
-            "IndexNumber": 11,
-            "ParentIndexNumber": 1,
-            "RemoteTrailers": [],
-            "ProviderIds": {
-              "Tmdb": "4533239"
-            },
-            "IsFolder": false,
-            "ParentId": "240203",
-            "Type": "Episode",
-            "Studios": [],
-            "GenreItems": [],
-            "TagItems": [],
-            "ParentLogoItemId": "240202",
-            "ParentBackdropItemId": "240202",
-            "ParentBackdropImageTags": [
-              "7dd568c67721c1f184b281001ced2f8e"
-            ],
-            "SeriesName": "长风渡",
-            "SeriesId": "240202",
-            "SeasonId": "240203",
-            "PrimaryImageAspectRatio": 2.4,
-            "SeriesPrimaryImageTag": "e91c822173e9bcbf7a0efa7d1c16f6bd",
-            "SeasonName": "季 1",
-            "ImageTags": {
-              "Primary": "d6bf1d76150cd86fdff746e4353569ee"
-            },
-            "BackdropImageTags": [],
-            "ParentLogoImageTag": "51cf6b2661c3c9cef3796abafd6a1694",
-            "MediaType": "Video",
-            "Width": 1920,
-            "Height": 800
-          },
-          "Server": {
-            "Name": "PN41",
-            "Id": "f40a5bd0c6b64051bdbed00580fa1118",
-            "Version": "4.7.13.0"
-          },
-          "Session": {
-            "RemoteEndPoint": "10.10.10.253",
-            "Client": "Emby Web",
-            "DeviceName": "Microsoft Edge Windows",
-            "DeviceId": "30239450-1748-4855-9799-de3544fc2744",
-            "ApplicationVersion": "4.7.13.0",
-            "Id": "c336b028b893558b333d1a49238b7db1"
-          },
-          "PlaybackInfo": {
-            "PositionTicks": 14256663550,
-            "PlaylistIndex": 10,
-            "PlaylistLength": 40
-          }
-        }
+        Episode 和 Season 的 ProviderIds 可能指向单集或季，电视剧身份从 SeriesId 对应条目读取。
+        处理事件可能查询媒体服务器获取剧集身份及背景图片。
 
-        Episode 和 Season 的 ProviderIds 可能标识单集或季；统一媒体身份应从 SeriesId 对应的剧集条目读取。
+        :param form: 表单数据；优先解析 data 字段中的 JSON
+        :param args: 表单无 data 时作为事件字段来源的查询参数
+        :return: 统一 Webhook 事件；输入为空、JSON 无法解析或缺少 Event 时返回 None
         """
         if not form and not args:
             return None
@@ -1181,9 +1015,7 @@ class Emby:
             eventItem.season_id = message.get("season_id")
             eventItem.episode_id = message.get("episode_id")
 
-        # 获取消息图片
         if eventItem.item_id:
-            # 根据返回的item_id去调用媒体服务器获取
             eventItem.image_url = self.get_remote_image_by_id(item_id=eventItem.item_id,
                                                               image_type="Backdrop")
 
@@ -1193,8 +1025,10 @@ class Emby:
 
     def get_data(self, url: str) -> Optional[Response]:
         """
-        自定义URL从媒体服务器获取数据，其中[HOST]、[APIKEY]、[USER]会被替换成实际的值
-        :param url: 请求地址
+        替换服务配置占位符后发送自定义 GET 请求。
+
+        :param url: 请求 URL，其中 [HOST]、[APIKEY]、[USER] 替换为当前服务配置
+        :return: 原始 HTTP 响应，由调用方读取和关闭；配置不完整或请求异常时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -1209,10 +1043,12 @@ class Emby:
 
     def post_data(self, url: str, data: Optional[str] = None, headers: dict = None) -> Optional[Response]:
         """
-        自定义URL从媒体服务器获取数据，其中[HOST]、[APIKEY]、[USER]会被替换成实际的值
-        :param url: 请求地址
-        :param data: 请求数据
-        :param headers: 请求头
+        替换服务配置占位符后发送自定义 POST 请求。
+
+        :param url: 请求 URL，其中 [HOST]、[APIKEY]、[USER] 替换为当前服务配置
+        :param data: 发送的请求数据，原样传给请求工具
+        :param headers: 可选请求头
+        :return: 原始 HTTP 响应，由调用方读取和关闭；配置不完整或请求异常时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -1229,9 +1065,11 @@ class Emby:
 
     def get_play_url(self, item_id: str, server_id: Optional[str] = None) -> str:
         """
-        拼装媒体播放链接
-        :param item_id: 媒体的的ID
-        :param server_id: 媒体服务器ID
+        构造媒体服务器网页中的条目播放链接。
+
+        :param item_id: Emby 条目标识
+        :param server_id: 链接使用的服务器标识，省略时采用当前实例标识
+        :return: 优先使用外网播放地址的网页链接；只构造链接，不验证条目存在
         """
         server_id = server_id or self.serverid
         server_query = f"&serverId={server_id}" if server_id else ""
@@ -1240,10 +1078,12 @@ class Emby:
 
     def get_backdrop_url(self, item_id: str, image_tag: str, remote: Optional[bool] = False) -> str:
         """
-        获取Emby的Backdrop图片地址
-        :param: item_id: 在Emby中的ID
-        :param: image_tag: 图片的tag
-        :param: remote 是否远程使用，TG微信等客户端调用应为True
+        构造带 API 密钥和版本标签的背景图片地址。
+
+        :param item_id: Emby 条目标识
+        :param image_tag: 图片版本标签，用于区分封面更新前后的缓存
+        :param remote: 是否优先使用外网播放地址；False 使用服务地址
+        :return: 图片 URL；配置、条目标识或图片标签缺失时返回空字符串
         """
         if not self._host or not self._apikey:
             return ""
@@ -1258,9 +1098,11 @@ class Emby:
 
     def __get_local_image_by_id(self, item_id: str, image_tag: Optional[str] = None) -> str:
         """
-        根据ItemId从媒体服务器查询本地图片地址
-        :param: item_id: 在Emby中的ID
-        :param: image_tag: Emby图片版本标签，用于使图片缓存随封面更新失效
+        构造服务内网的主封面图片地址。
+
+        :param item_id: Emby 条目标识
+        :param image_tag: 可选图片版本标签，用于更新缓存键
+        :return: 主封面地址；服务配置不完整时返回空字符串
         """
         if not self._host or not self._apikey:
             return ""
@@ -1270,7 +1112,11 @@ class Emby:
     def get_resume(self, num: Optional[int] = 12, username: Optional[str] = None) -> Optional[
             List[_SchemaMediaServerPlayItem]]:
         """
-        获得继续观看
+        查询用户的继续观看列表并按可同步媒体库路径筛选。
+
+        :param num: 最多保留的条目数量，默认 12
+        :param username: 用于限定可见内容的用户名，省略时使用当前实例的查询用户
+        :return: 电影或电视剧播放条目列表；配置不完整、用户不可用或请求失败时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -1351,7 +1197,11 @@ class Emby:
     def get_latest(self, num: Optional[int] = 20, username: Optional[str] = None) -> Optional[
             List[_SchemaMediaServerPlayItem]]:
         """
-        获得最近更新
+        查询用户最近入库的媒体条目。
+
+        :param num: 最多保留的条目数量，默认 20；先查询 100 条再按库路径筛选
+        :param username: 用于限定可见内容的用户名，省略时使用当前实例的查询用户
+        :return: 转换后的最新媒体列表；配置不完整、用户不可用或请求失败时返回 None
         """
         if not self._host or not self._apikey:
             return None
@@ -1412,7 +1262,9 @@ class Emby:
 
     def get_user_library_folders(self):
         """
-        获取Emby媒体库文件夹列表（排除黑名单）
+        收集允许同步的媒体库目录路径。
+
+        :return: 按同步库配置过滤后的路径列表；没有可用媒体库时返回空列表
         """
         if not self._host or not self._apikey:
             return []

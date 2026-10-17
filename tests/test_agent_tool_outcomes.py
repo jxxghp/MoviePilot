@@ -1,4 +1,6 @@
-"""工具业务结果、异常和异步提交必须通过统一的执行状态进入模型与宿主回执。"""
+"""
+工具业务结果、异常和异步提交必须通过统一的执行状态进入模型与宿主回执。
+"""
 
 import asyncio
 import json
@@ -24,7 +26,9 @@ from app.agent.tools.result import EXECUTION_OUTCOME_KEY, ToolExecutionError, in
 
 
 def _context() -> ToolPolicyContext:
-    """创建不访问外部服务的工具宿主上下文。"""
+    """
+    创建不访问外部服务的工具宿主上下文。
+    """
     return ToolPolicyContext(
         session_id="outcome-test", user_id="owner", origin=ToolOrigin.AGENT_INTERACTIVE,
         principal_type=PrincipalType.HUMAN, auth_source=AuthSource.INTERNAL,
@@ -52,7 +56,9 @@ def _context() -> ToolPolicyContext:
     ({"task_id": "task-1", "status": {"arbitrary": "data"}}, ExecutionOutcome.SUCCEEDED),
 ])
 def test_explicit_protocol_outcomes_preserve_business_data(payload, expected):
-    """仅解析已知协议，业务数据和自由文本不会被错误识别为执行失败。"""
+    """
+    仅解析已知协议，业务数据和自由文本不会被错误识别为执行失败。
+    """
     assert inspect_tool_result(payload) is expected
     if not isinstance(payload, str):
         assert inspect_tool_result(json.dumps(payload)) is expected
@@ -60,7 +66,9 @@ def test_explicit_protocol_outcomes_preserve_business_data(payload, expected):
 
 @pytest.mark.parametrize("outcome", list(ExecutionOutcome))
 def test_receipt_retains_each_explicit_outcome(outcome):
-    """回执必须区分所有四类结果，未知状态明确要求核验。"""
+    """
+    回执必须区分所有四类结果，未知状态明确要求核验。
+    """
     orchestrator = AgentToolPolicyOrchestrator()
     tool = SimpleNamespace(name="plugin_write", args_schema=None)
     observation = orchestrator.start(context=_context(), tool=tool, arguments={})
@@ -70,29 +78,39 @@ def test_receipt_retains_each_explicit_outcome(outcome):
 
 
 class _ResultTool(MoviePilotTool):
-    """提供成功、业务失败及运行异常三种离线工具行为。"""
+    """
+    提供成功、业务失败及运行异常三种离线工具行为。
+    """
 
     name: str = "outcome_tool"
     description: str = "Validate tool outcomes."
 
     async def run(self, **kwargs):
-        """根据测试输入返回业务载荷或抛出故障。"""
+        """
+        根据测试输入返回业务载荷或抛出故障。
+        """
         if kwargs.get("fail"):
             raise RuntimeError("private-provider-payload")
         return {"success": False, "message": "目标记录不存在"}
 
 
 class _TaskModel(FakeMessagesListChatModel):
-    """生成固定工具调用来验证真实图遇到故障后仍会继续。"""
+    """
+    生成固定工具调用来验证真实图遇到故障后仍会继续。
+    """
 
     def bind_tools(self, _tools, **_kwargs):
-        """接受工具绑定，无需真实模型调用。"""
+        """
+        接受工具绑定，无需真实模型调用。
+        """
         return self
 
 
 @pytest.mark.asyncio
 async def test_base_exception_becomes_typed_safe_failure():
-    """基类异常不能以普通成功字符串返回，也不能暴露供应商正文。"""
+    """
+    基类异常不能以普通成功字符串返回，也不能暴露供应商正文。
+    """
     tool = _ResultTool(session_id="outcome-test", user_id="owner")
     with pytest.raises(ToolExecutionError) as failure:
         await tool._arun(fail=True)
@@ -103,7 +121,9 @@ async def test_base_exception_becomes_typed_safe_failure():
 @pytest.mark.asyncio
 @pytest.mark.parametrize("raises", [False, True])
 async def test_real_graph_continues_after_business_failure(monkeypatch, raises):
-    """业务失败和执行异常都成为 error 工具消息，真实图继续完成下一模型回合。"""
+    """
+    业务失败和执行异常都成为 error 工具消息，真实图继续完成下一模型回合。
+    """
     tool = _ResultTool(session_id="outcome-test", user_id="owner")
     if raises:
         monkeypatch.setattr(_ResultTool, "run", AsyncMock(side_effect=RuntimeError("private-provider-payload")))
@@ -127,7 +147,9 @@ async def test_real_graph_continues_after_business_failure(monkeypatch, raises):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("error", [ValueError("private-provider-payload"), TimeoutError("private-timeout-body")])
 async def test_external_errors_are_safe_and_write_timeouts_unknown(error):
-    """故障不会崩溃整张图，外部写超时必须保留未知状态。"""
+    """
+    故障不会崩溃整张图，外部写超时必须保留未知状态。
+    """
     middleware = AgentPolicyMiddleware(context=_context())
     request = SimpleNamespace(tool=SimpleNamespace(name="plugin_write", args_schema=None),
                               tool_call={"id": "write", "args": {}})
@@ -140,7 +162,9 @@ async def test_external_errors_are_safe_and_write_timeouts_unknown(error):
 
 @pytest.mark.asyncio
 async def test_cancellation_propagates_without_converting_to_tool_success():
-    """用户取消必须继续传播给会话生命周期，不被故障转换吞掉。"""
+    """
+    用户取消必须继续传播给会话生命周期，不被故障转换吞掉。
+    """
     middleware = AgentPolicyMiddleware(context=_context())
     request = SimpleNamespace(tool=SimpleNamespace(name="plugin_write", args_schema=None),
                               tool_call={"id": "write", "args": {}})
@@ -150,7 +174,9 @@ async def test_cancellation_propagates_without_converting_to_tool_success():
 
 @pytest.mark.asyncio
 async def test_command_receipt_and_direct_manager_keep_original_payload():
-    """Command 和 direct manager 复用解析规则，正常业务载荷无需增加包装。"""
+    """
+    Command 和 direct manager 复用解析规则，正常业务载荷无需增加包装。
+    """
     message = ToolMessage(content='{"success":false}', tool_call_id="plan", status="error")
     command = Command(update={"messages": [message], "custom_state": "unchanged"})
     assert inspect_tool_result(command) is ExecutionOutcome.FAILED
@@ -162,7 +188,9 @@ async def test_command_receipt_and_direct_manager_keep_original_payload():
 
 @pytest.mark.asyncio
 async def test_direct_manager_failure_exposes_recovery_contract(monkeypatch):
-    """直调工具异常必须把失败状态和下一步纠正提示交给模型。"""
+    """
+    直调工具异常必须把失败状态和下一步纠正提示交给模型。
+    """
     tool = _ResultTool(session_id="outcome-error-test", user_id="owner")
     monkeypatch.setattr(type(tool), "run_with_timeout", AsyncMock(side_effect=ValueError("bad argument")))
     manager = MoviePilotToolsManager(is_admin=True)
@@ -174,7 +202,9 @@ async def test_direct_manager_failure_exposes_recovery_contract(monkeypatch):
 
 
 def test_mcp_error_with_text_content_does_not_lose_error_flag():
-    """外部 MCP 的文本内容不能覆盖 isError 标识，正常文本格式保持兼容。"""
+    """
+    外部 MCP 的文本内容不能覆盖 isError 标识，正常文本格式保持兼容。
+    """
     payload = {"isError": True, "content": [{"type": "text", "text": "operation rejected"}]}
     result = McpExternalTool._format_mcp_result(payload)
     assert json.loads(result) == payload
@@ -183,7 +213,9 @@ def test_mcp_error_with_text_content_does_not_lose_error_flag():
 
 
 def test_legacy_tool_error_text_gets_structured_recovery_contract():
-    """旧浏览器、文件和命令工具的裸错误在 Agent 入口统一可恢复。"""
+    """
+    旧浏览器、文件和命令工具的裸错误在 Agent 入口统一可恢复。
+    """
     payload = json.loads(normalize_tool_failure_for_agent("错误：文件不存在", tool_name="read_file"))
     assert payload["execution_outcome"] == "failed"
     assert payload["tool"] == "read_file"
@@ -191,7 +223,9 @@ def test_legacy_tool_error_text_gets_structured_recovery_contract():
 
 
 def _api_tool(request: AsyncMock) -> MoviePilotApiTool:
-    """把内存 HTTP 请求替身接到真实 API 工具，覆盖异常映射全链路。"""
+    """
+    把内存 HTTP 请求替身接到真实 API 工具，覆盖异常映射全链路。
+    """
     executor = MoviePilotApiExecutor(
         context=ApiExecutionContext(user_id="1", username="admin", is_admin=True),
         request_factory=lambda **_kwargs: SimpleNamespace(request=request),
@@ -202,7 +236,9 @@ def _api_tool(request: AsyncMock) -> MoviePilotApiTool:
 
 
 def _valid_api_arguments(operation: str) -> dict:
-    """为传输层测试提供每个 operation 的最小合法输入。"""
+    """
+    为传输层测试提供每个 operation 的最小合法输入。
+    """
     return {
         "download.add": {"body": {"torrent_in": {
             "title": "Test Movie", "enclosure": "https://example.invalid/test.torrent",
@@ -223,7 +259,9 @@ def _valid_api_arguments(operation: str) -> dict:
     ("storage.list", ExecutionOutcome.FAILED),
 ])
 async def test_api_transport_failure_preserves_unknown_mutations(monkeypatch, operation, expected):
-    """API 传输异常对写操作保留未知结果，包含副作用 GET 及只读 POST 的策略区分。"""
+    """
+    API 传输异常对写操作保留未知结果，包含副作用 GET 及只读 POST 的策略区分。
+    """
     monkeypatch.setattr("app.agent.api.executor.create_access_token", lambda **_kwargs: "test-token")
     request = AsyncMock(side_effect=httpx2.ReadError("private-api-response-body"))
     result = await _api_tool(request).run(
@@ -237,7 +275,9 @@ async def test_api_transport_failure_preserves_unknown_mutations(monkeypatch, op
 
 @pytest.mark.asyncio
 async def test_api_preflight_validation_and_http_rejection_are_definite_failures(monkeypatch):
-    """未发送的参数错误和明确 HTTP 4xx 拒绝不能被误记为未知外部写。"""
+    """
+    未发送的参数错误和明确 HTTP 4xx 拒绝不能被误记为未知外部写。
+    """
     monkeypatch.setattr("app.agent.api.executor.create_access_token", lambda **_kwargs: "test-token")
     response = SimpleNamespace(status_code=403, headers={}, json=lambda: {"detail": "denied"}, aclose=AsyncMock())
     request = AsyncMock(return_value=response)
@@ -257,11 +297,15 @@ async def test_api_preflight_validation_and_http_rejection_are_definite_failures
 @pytest.mark.asyncio
 @pytest.mark.parametrize(("status_code", "expected"), [(200, ExecutionOutcome.UNKNOWN), (403, ExecutionOutcome.FAILED)])
 async def test_api_unreadable_response_retains_observed_http_status(monkeypatch, status_code, expected):
-    """成功 HTTP 状态但结果不可读时禁止重放写操作，明确拒绝则保持失败。"""
+    """
+    成功 HTTP 状态但结果不可读时禁止重放写操作，明确拒绝则保持失败。
+    """
     monkeypatch.setattr("app.agent.api.executor.create_access_token", lambda **_kwargs: "test-token")
 
     def unreadable():
-        """模拟 HTTP 请求完成但正文无法解码。"""
+        """
+        模拟 HTTP 请求完成但正文无法解码。
+        """
         raise ValueError("private-response-body")
 
     response = SimpleNamespace(status_code=status_code, headers={}, json=unreadable, aclose=AsyncMock())
@@ -276,7 +320,9 @@ async def test_api_unreadable_response_retains_observed_http_status(monkeypatch,
 
 @pytest.mark.asyncio
 async def test_scheduler_endpoint_submission_remains_pending_in_agent(monkeypatch):
-    """真实 API 端点返回已提交时，Agent 必须保留 pending，不能声称后台服务完成。"""
+    """
+    真实 API 端点返回已提交时，Agent 必须保留 pending，不能声称后台服务完成。
+    """
     from app.api.endpoints import system
 
     finished = asyncio.Event()
@@ -284,18 +330,24 @@ async def test_scheduler_endpoint_submission_remains_pending_in_agent(monkeypatc
     jobs = []
 
     async def execute_job():
-        """模拟已接受但仍等待外部结果的定时服务。"""
+        """
+        模拟已接受但仍等待外部结果的定时服务。
+        """
         await release.wait()
         finished.set()
 
     def start(job_id):
-        """复现 Scheduler.start 的异步提交合同，不等待任务结束。"""
+        """
+        复现 Scheduler.start 的异步提交合同，不等待任务结束。
+        """
         assert job_id == "test-job"
         jobs.append(asyncio.create_task(execute_job()))
         return True
 
     async def request(**kwargs):
-        """用实际 runscheduler 端点响应接通真实 Agent API 执行器。"""
+        """
+        用实际 runscheduler 端点响应接通真实 Agent API 执行器。
+        """
         assert kwargs["method"] == "GET"
         response = system.run_scheduler(kwargs["params"]["jobid"], _=None)
         payload = response.model_dump()
@@ -321,7 +373,9 @@ async def test_scheduler_endpoint_submission_remains_pending_in_agent(monkeypatc
     ("workflow.run", True, ExecutionOutcome.SUCCEEDED),
 ])
 async def test_api_submission_annotation_preserves_failure_and_synchronous_workflow(monkeypatch, operation, success, expected):
-    """明确服务拒绝仍为失败，同步完成的工作流保留原返回载荷。"""
+    """
+    明确服务拒绝仍为失败，同步完成的工作流保留原返回载荷。
+    """
     monkeypatch.setattr("app.agent.api.executor.create_access_token", lambda **_kwargs: "test-token")
     payload = {"success": success, "message": "original", "data": None}
     response = SimpleNamespace(status_code=200, headers={}, json=lambda: payload, aclose=AsyncMock())

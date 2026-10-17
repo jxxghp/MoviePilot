@@ -1,5 +1,5 @@
 """
-MoviePilot 中心服务的传输适配、响应解析与兼容入口。
+封装 MoviePilot 中心服务请求、响应解析，以及供旧调用方使用的上报和分享入口。
 """
 
 import asyncio
@@ -163,7 +163,7 @@ def configure_server_application_services(
 
 def reset_server_application_services() -> None:
     """
-    清除当前 lifespan 的中心服务上报与分享用例。
+    清除当前应用生命周期的中心服务上报与分享用例。
     """
     global _server_report_service, _server_sharing_service
     _server_report_service = None

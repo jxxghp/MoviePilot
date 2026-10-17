@@ -1,3 +1,7 @@
+"""
+按业务键保存并查询进度快照，支持同步与异步调用。
+"""
+
 from collections.abc import Mapping
 from enum import Enum
 from typing import Optional, TypedDict, Union
@@ -8,7 +12,15 @@ from app.schemas.types import ProgressKey
 
 
 class ProgressSnapshot(TypedDict, total=False):
-    """进度缓存的已声明字段；允许历史或部分快照缺少键。"""
+    """
+    进度缓存的已声明字段；允许历史或部分快照缺少键。
+
+    :ivar enable: 进度显示是否启用；未提供时由读取方按缺省值处理
+    :ivar value: 当前进度百分比；键缺失表示尚无该项快照
+    :ivar text: 当前步骤的中文说明；键缺失表示尚无文本
+    :ivar text_i18n: 供前端翻译的步骤说明；键缺失时使用普通文本
+    :ivar data: 步骤携带的附加业务数据；允许缺失
+    """
 
     enable: bool
     value: float
@@ -19,11 +31,13 @@ class ProgressSnapshot(TypedDict, total=False):
 
 class ProgressHelper:
     """
-    处理进度辅助类
+    按业务键维护进度快照，供同步工作流和前端进度查询共享。
     """
 
     def __init__(self, key: Union[ProgressKey, str]) -> None:
-        """为指定业务键绑定独立的进度缓存区域。"""
+        """
+        为指定业务键绑定独立的进度缓存区域。
+        """
         if isinstance(key, Enum):
             key = key.value
         self._key = key
@@ -31,7 +45,7 @@ class ProgressHelper:
 
     def __reset(self) -> None:
         """
-        重置进度
+        重置业务键对应的进度为停用、零百分比和空附加数据。
         """
         self._progress[self._key] = {
             "enable": False,
@@ -42,7 +56,7 @@ class ProgressHelper:
 
     def start(self) -> None:
         """
-        开始进度
+        清空上一轮进度并启用当前业务键的进度显示。
         """
         self.__reset()
         current = self._progress.get(self._key)
@@ -58,7 +72,13 @@ class ProgressHelper:
             value: Optional[Union[float, int]] = 100,
     ) -> None:
         """
-        结束进度
+        关闭进度显示，并写入最终说明与附加数据。
+
+        尚无进度快照时直接返回。
+
+        :param text: 最终步骤说明；None 或空字符串表示清空文本
+        :param data: 合并到原快照的附加数据；None 表示保留原数据
+        :param value: 最终百分比，限制在 0 至 100；默认为 100，None 表示保留原进度
         """
         current = self._progress.get(self._key)
         if not current:
@@ -80,7 +100,11 @@ class ProgressHelper:
             data: Optional[Mapping[str, object]] = None,
     ) -> None:
         """
-        更新进度
+        更新已启用的进度快照，未开始或已结束的进度不作修改。
+
+        :param value: 新百分比，限制在 0 至 100；None 表示保留原进度
+        :param text: 新步骤说明；None 表示保留原文本
+        :param data: 合并到原快照的附加数据；None 表示保留原数据
         """
         current = self._progress.get(self._key)
         if not current or not current.get('enable'):
@@ -130,15 +154,15 @@ class ProgressHelper:
 
 class AsyncProgressHelper:
     """
-    处理进度辅助类（异步）
+    按业务键异步维护进度快照，与同步进度服务共享同一缓存区域。
 
-    与 ProgressHelper 共用同一个进度 region：内存后端共享进程内存储，
-    Redis 后端共享同一键空间，因此同步写入、异步读取（或反之）均互通。
-    供事件循环上的异步调用方使用，避免同步缓存后端阻塞事件循环。
+    内存后端共享进程内存储，Redis 后端共享键空间；异步入口避免同步缓存 I/O 阻塞事件循环。
     """
 
     def __init__(self, key: Union[ProgressKey, str]) -> None:
-        """为指定业务键绑定独立的异步进度缓存区域。"""
+        """
+        为指定业务键绑定独立的异步进度缓存区域。
+        """
         if isinstance(key, Enum):
             key = key.value
         self._key = key
@@ -146,7 +170,7 @@ class AsyncProgressHelper:
 
     async def __reset(self) -> None:
         """
-        重置进度
+        重置业务键对应的进度为停用、零百分比和空附加数据。
         """
         await self._progress.set(self._key, {
             "enable": False,
@@ -157,7 +181,7 @@ class AsyncProgressHelper:
 
     async def start(self) -> None:
         """
-        开始进度
+        清空上一轮进度并启用当前业务键的进度显示。
         """
         await self.__reset()
         current = await self._progress.get(self._key)
@@ -173,7 +197,13 @@ class AsyncProgressHelper:
             value: Optional[Union[float, int]] = 100,
     ) -> None:
         """
-        结束进度
+        关闭进度显示，并写入最终说明与附加数据。
+
+        即使原快照读取失败也创建终态快照，避免任务持续显示运行中。
+
+        :param text: 最终步骤说明；None 或空字符串表示清空文本
+        :param data: 合并到原快照的附加数据；None 表示保留原数据
+        :param value: 最终百分比，限制在 0 至 100；默认为 100，None 表示保留原进度
         """
         current = await self._progress.get(self._key)
         if not current:
@@ -201,7 +231,11 @@ class AsyncProgressHelper:
             data: Optional[Mapping[str, object]] = None,
     ) -> None:
         """
-        更新进度
+        更新已启用的进度快照，未开始或已结束的进度不作修改。
+
+        :param value: 新百分比，限制在 0 至 100；None 表示保留原进度
+        :param text: 新步骤说明；None 表示保留原文本
+        :param data: 合并到原快照的附加数据；None 表示保留原数据
         """
         current = await self._progress.get(self._key)
         if not current or not current.get('enable'):

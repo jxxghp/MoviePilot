@@ -1,10 +1,16 @@
+"""
+验证Servarr 兼容接口的 OpenAPI 描述与请求结构。
+"""
+
 from fastapi import FastAPI
 
 from app.api.servarr import arr_router
 
 
 def test_servarr_openapi_declares_native_success_models() -> None:
-    """Servarr 原生兼容端点必须在 OpenAPI 中暴露具体成功响应模型。"""
+    """
+    Servarr 原生兼容端点必须在 OpenAPI 中暴露具体成功响应模型。
+    """
     app = FastAPI()
     app.include_router(arr_router, prefix="/api/v3")
     schema = app.openapi()

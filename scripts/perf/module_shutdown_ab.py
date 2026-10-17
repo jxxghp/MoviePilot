@@ -1,4 +1,6 @@
-"""测量同步资源关闭期间的事件循环响应与关闭总耗时。"""
+"""
+测量同步资源关闭期间的事件循环响应与关闭总耗时。
+"""
 
 from __future__ import annotations
 
@@ -26,17 +28,26 @@ from app.startup.initializers import modules as modules_initializer
 
 
 async def _noop_async() -> None:
-    """提供不产生外部副作用的异步关闭替身。"""
+    """
+    提供不产生外部副作用的异步关闭替身。
+    """
 
 
 def _noop_sync() -> None:
-    """提供不产生外部副作用的同步关闭替身。"""
+    """
+    提供不产生外部副作用的同步关闭替身。
+    """
 
 
 def configure_module_probe(block_seconds: float) -> None:
-    """把模块关闭依赖替换为隔离 owner，仅保留一个固定同步等待。"""
+    """
+    把模块关闭依赖替换为隔离替身，仅保留一个固定同步等待。
+    """
 
     def blocking_module_shutdown() -> bool:
+        """
+        通过固定同步等待模拟模块关闭占用，返回成功状态。
+        """
         time.sleep(block_seconds)
         return True
 
@@ -62,6 +73,9 @@ def configure_module_probe(block_seconds: float) -> None:
     )
 
     async def stop_database_worker() -> None:
+        """
+        清除探针中的数据库工作器引用，不连接或关闭真实数据库。
+        """
         modules_initializer._database_worker = None
 
     modules_initializer.stop_database_worker = stop_database_worker
@@ -76,12 +90,17 @@ async def sample(
     *,
     heartbeat_seconds: float,
 ) -> dict[str, float | bool]:
-    """执行一次关闭并测量同期心跳的实际唤醒延迟。"""
+    """
+    执行一次关闭并测量同期心跳的实际唤醒延迟。
+    """
     loop = asyncio.get_running_loop()
     started_at = loop.time()
     heartbeat_at: float | None = None
 
     async def heartbeat() -> None:
+        """
+        等待指定间隔并记录事件循环实际恢复执行的时刻。
+        """
         nonlocal heartbeat_at
         await asyncio.sleep(heartbeat_seconds)
         heartbeat_at = loop.time()
@@ -105,7 +124,9 @@ async def run_samples(
     heartbeat_seconds: float,
     samples: int,
 ) -> dict[str, object]:
-    """顺序采集模块内部和生命周期总入口两类同步关闭样本。"""
+    """
+    顺序采集模块内部和生命周期总入口两类同步关闭样本。
+    """
     configure_module_probe(block_seconds)
     module_samples = [
         await sample(
@@ -129,6 +150,9 @@ async def run_samples(
     ]
 
     def summarize(values: list[dict[str, float | bool]]) -> dict[str, object]:
+        """
+        保留原始关闭样本，并汇总心跳延迟、关闭耗时及完成先后关系。
+        """
         return {
             "samples": values,
             "heartbeat_delay_median_ms": statistics.median(
@@ -152,7 +176,9 @@ async def run_samples(
 
 
 def parse_args() -> argparse.Namespace:
-    """解析固定阻塞、心跳间隔和样本数。"""
+    """
+    解析固定阻塞、心跳间隔和样本数。
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--block-ms", type=float, default=50.0)
     parser.add_argument("--heartbeat-ms", type=float, default=10.0)
@@ -161,7 +187,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """运行隔离样本并输出 JSON。"""
+    """
+    运行隔离样本并输出 JSON。
+    """
     args = parse_args()
     if args.block_ms <= 0 or args.heartbeat_ms <= 0 or args.samples < 1:
         raise SystemExit("block-ms、heartbeat-ms 和 samples 必须大于 0")

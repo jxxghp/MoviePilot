@@ -1,4 +1,6 @@
-"""Agent 结构化 MoviePilot API 操作与固定路由注册表。"""
+"""
+Agent 结构化 MoviePilot API 操作与固定路由注册表。
+"""
 
 from dataclasses import dataclass
 from enum import Enum
@@ -14,16 +16,31 @@ from app.agent.policy.contracts import (
 
 
 class ApiIdentityScope(str, Enum):
-    """区分公共资料、绑定用户数据和受保护的实例管理身份。"""
+    """
+    区分公共资料、绑定用户数据和受保护的实例管理身份。
+    """
 
+    # 无需绑定用户的公共资料查询
     PUBLIC = "public"
+    # 使用可信入口绑定的用户身份
     BOUND_USER = "bound_user"
+    # 使用经过授权的实例管理身份
     ADMIN = "admin"
 
 
 @dataclass(frozen=True)
 class ApiOperationSpec:
-    """描述一个可由 Agent API 网关调用的稳定业务操作。"""
+    """
+    描述一个可由 Agent API 网关调用的稳定业务操作。
+
+    :param operation_id: 稳定业务操作标识，与固定路由表对应
+    :param effect: 该操作的实际副作用类别
+    :param required_role: 执行操作所需的最低授权角色
+    :param confirmation: 授权通过后需要的确认方式
+    :param recovery: 该操作提供的恢复或结果核对机制
+    :param result_sensitivity: 操作结果的敏感等级
+    :param identity_scope: API 应使用的身份范围，默认绑定当前用户
+    """
 
     operation_id: str
     effect: ActionEffect
@@ -34,7 +51,9 @@ class ApiOperationSpec:
     identity_scope: ApiIdentityScope = ApiIdentityScope.BOUND_USER
 
     def __post_init__(self) -> None:
-        """公共身份只接受无需确认、无私密结果的普通用户级安全查询。"""
+        """
+        公共身份只接受无需确认、无私密结果的普通用户级安全查询。
+        """
         if self.identity_scope is ApiIdentityScope.PUBLIC and (
             self.effect is not ActionEffect.SAFE_READ
             or self.required_role is not PrincipalRole.USER
@@ -46,7 +65,12 @@ class ApiOperationSpec:
 
 @dataclass(frozen=True)
 class ApiOperationRoute:
-    """描述一个固定 API 路由，禁止调用方注入任意 URL 或 HTTP 方法。"""
+    """
+    描述一个固定 API 路由，禁止调用方注入任意 URL 或 HTTP 方法。
+
+    :param method: 宿主登记的固定 HTTP 方法
+    :param path: 宿主登记的 API 路径模板，只允许替换声明的路径参数
+    """
 
     method: str
     path: str
@@ -68,7 +92,9 @@ def _spec(
     result_sensitivity: ResultSensitivity = ResultSensitivity.NORMAL,
     identity_scope: Optional[ApiIdentityScope] = None,
 ) -> ApiOperationSpec:
-    """构造不可变 API 操作描述。"""
+    """
+    构造不可变 API 操作描述。
+    """
     return ApiOperationSpec(
         operation_id=operation_id,
         effect=effect,
@@ -83,7 +109,9 @@ def _spec(
 
 
 def _public_read(operation_id: str) -> ApiOperationSpec:
-    """仅为已审计、不读取本地用户数据的公共资料声明无绑定查询。"""
+    """
+    仅为已审计、不读取本地用户数据的公共资料声明无绑定查询。
+    """
     return _spec(operation_id, identity_scope=ApiIdentityScope.PUBLIC)
 
 
@@ -94,7 +122,9 @@ def _write(
     recovery: RecoveryMode = _IDEMPOTENT,
     sensitivity: ResultSensitivity = ResultSensitivity.NORMAL,
 ) -> ApiOperationSpec:
-    """构造管理员确认写操作。"""
+    """
+    构造管理员确认写操作。
+    """
     return _spec(
         operation_id,
         effect=effect,
@@ -110,7 +140,9 @@ def _admin_read(
     *,
     sensitivity: ResultSensitivity = ResultSensitivity.NORMAL,
 ) -> ApiOperationSpec:
-    """构造管理员读取操作。"""
+    """
+    构造管理员读取操作。
+    """
     return _spec(operation_id, required_role=_ADMIN, result_sensitivity=sensitivity)
 
 
@@ -121,7 +153,9 @@ def _user_write(
     recovery: RecoveryMode = _IDEMPOTENT,
     sensitivity: ResultSensitivity = ResultSensitivity.NORMAL,
 ) -> ApiOperationSpec:
-    """构造保留普通用户 API 权限的确认写操作。"""
+    """
+    构造保留普通用户 API 权限的确认写操作。
+    """
     return _spec(
         operation_id,
         effect=effect,
@@ -894,17 +928,23 @@ API_OPERATION_ROUTES: dict[str, ApiOperationRoute] = {
 
 
 def resolve_api_operation(operation_id: str) -> Optional[ApiOperationSpec]:
-    """按稳定 operation ID 查找 API 操作。"""
+    """
+    按稳定 operation ID 查找 API 操作。
+    """
     return API_OPERATION_BY_ID.get(operation_id)
 
 
 def resolve_api_route(operation_id: str) -> Optional[ApiOperationRoute]:
-    """按稳定 operation ID 查找固定 API 路由。"""
+    """
+    按稳定 operation ID 查找固定 API 路由。
+    """
     return API_OPERATION_ROUTES.get(operation_id)
 
 
 def list_api_operation_ids() -> tuple[str, ...]:
-    """返回按注册顺序排列的 API 操作 ID。"""
+    """
+    返回按注册顺序排列的 API 操作 ID。
+    """
     return tuple(spec.operation_id for spec in API_OPERATION_SPECS)
 
 

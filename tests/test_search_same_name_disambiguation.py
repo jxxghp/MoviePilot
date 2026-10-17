@@ -1,3 +1,7 @@
+"""
+验证同名媒体搜索结果的身份消歧。
+"""
+
 from unittest.mock import Mock
 
 from app.chain.search import SearchChain
@@ -8,7 +12,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def test_exact_search_rejects_no_year_alias_recognized_as_different_work(monkeypatch):
-    """精确搜索中的无年份别名候选识别为不同作品时应拒绝。"""
+    """
+    精确搜索中的无年份别名候选识别为不同作品时应拒绝。
+    """
     target = MediaInfo(
         media_source=MediaSource.TMDB,
         media_id="236356",
@@ -57,7 +63,9 @@ def test_exact_search_rejects_no_year_alias_recognized_as_different_work(monkeyp
 
 
 def test_exact_search_reuses_disambiguation_for_same_parsed_title(monkeypatch):
-    """同一解析标题的多条资源应复用一次候选识别，避免重复外部查询。"""
+    """
+    同一解析标题的多条资源应复用一次候选识别，避免重复外部查询。
+    """
     target = MediaInfo(
         media_source=MediaSource.TMDB,
         media_id="236356",
@@ -106,7 +114,9 @@ def test_exact_search_reuses_disambiguation_for_same_parsed_title(monkeypatch):
 
 
 def test_parallel_filter_propagates_request_context(monkeypatch):
-    """按站点并行过滤时，每个 worker 都应保留触发解析的关联 ID。"""
+    """
+    按站点并行过滤时，每个 worker 都应保留触发解析的关联 ID。
+    """
     target = MediaInfo(
         media_source=MediaSource.TMDB,
         media_id="1",

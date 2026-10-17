@@ -1,9 +1,9 @@
-"""3.0.6
-新增 Agent 自主任务逐次执行记录
+"""
+3.0.6 新增 Agent 自主任务逐次执行记录
 
-Revision ID: f4c8d2a7b1e6
-Revises: b3d7e9f1a2c4
-Create Date: 2026-08-13
+版本标识： f4c8d2a7b1e6
+前置版本： b3d7e9f1a2c4
+创建时间： 2026-08-13
 """
 
 from alembic import op
@@ -17,17 +17,23 @@ depends_on = None
 
 
 def _inspector() -> sa.Inspector:
-    """返回使用当前迁移连接的数据库检查器。"""
+    """
+    返回使用当前迁移连接的数据库检查器。
+    """
     return sa.inspect(op.get_bind())
 
 
 def _has_table(table_name: str) -> bool:
-    """检查表是否存在。"""
+    """
+    检查表是否存在。
+    """
     return table_name in _inspector().get_table_names()
 
 
 def _has_column(table_name: str, column_name: str) -> bool:
-    """检查表字段是否存在。"""
+    """
+    检查表字段是否存在。
+    """
     if not _has_table(table_name):
         return False
     return column_name in {
@@ -36,7 +42,9 @@ def _has_column(table_name: str, column_name: str) -> bool:
 
 
 def _has_index(table_name: str, index_name: str) -> bool:
-    """检查表索引或唯一约束是否存在。"""
+    """
+    检查表索引或唯一约束是否存在。
+    """
     if not _has_table(table_name):
         return False
     inspector = _inspector()
@@ -49,7 +57,9 @@ def _has_index(table_name: str, index_name: str) -> bool:
 
 
 def _id_column(dialect_name: str) -> sa.Column:
-    """生成与当前 ORM 一致的自增主键定义。"""
+    """
+    生成与当前 ORM 一致的自增主键定义。
+    """
     if dialect_name == "postgresql":
         return sa.Column(
             "id",
@@ -61,7 +71,9 @@ def _id_column(dialect_name: str) -> sa.Column:
 
 
 def upgrade() -> None:
-    """建立运行历史表及 AgentTask 最新运行指针。"""
+    """
+    建立运行历史表及 AgentTask 最新运行指针。
+    """
     if _has_table("agenttask") and not _has_column("agenttask", "last_run_id"):
         with op.batch_alter_table("agenttask") as batch_op:
             batch_op.add_column(sa.Column("last_run_id", sa.String(), nullable=True))
@@ -106,7 +118,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """删除运行历史并移除 AgentTask 最新运行指针。"""
+    """
+    删除运行历史并移除 AgentTask 最新运行指针。
+    """
     if _has_table("agenttaskrun"):
         if _has_index("agenttaskrun", "ix_agenttaskrun_task_started"):
             op.drop_index("ix_agenttaskrun_task_started", table_name="agenttaskrun")

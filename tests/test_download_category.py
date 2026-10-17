@@ -1,4 +1,6 @@
-"""下载链到 qBittorrent SDK 的分类与自动管理参数回归。"""
+"""
+下载链到 qBittorrent SDK 的分类与自动管理参数回归。
+"""
 
 from pathlib import Path
 from types import SimpleNamespace
@@ -15,7 +17,9 @@ from app.schemas.types import MediaType
 
 @pytest.fixture
 def qb_download():
-    """执行真实下载链、模块和客户端逻辑，仅替换 SDK 与提交后的结算。"""
+    """
+    执行真实下载链、模块和客户端逻辑，仅替换 SDK 与提交后的结算。
+    """
     torrent_hash = "a" * 40
     server = Qbittorrent.__new__(Qbittorrent)
     server.qbc = Mock()
@@ -53,7 +57,9 @@ def qb_download():
 def test_download_category_reaches_qbittorrent_sdk(
     qb_download, auto_manage, media_type, media_source, music_type, category, expected_category,
 ):
-    """音乐缺分类时兜底，已有分类优先，自动管理关闭时仍显式使用指定路径。"""
+    """
+    音乐缺分类时兜底，已有分类优先，自动管理关闭时仍显式使用指定路径。
+    """
     chain, server, torrent_hash = qb_download
     server._category = auto_manage
     if media_type == MediaType.MUSIC:

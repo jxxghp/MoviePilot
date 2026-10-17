@@ -1,3 +1,7 @@
+"""
+验证 Agent 工具结果、语音消息及流式输出的交互契约。
+"""
+
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
@@ -23,7 +27,9 @@ from app.schemas.types import MessageType, NotificationChannel
 
 
 def test_think_tag_stripper_waits_for_partial_open_tag():
-    """普通文本后出现不完整 think 开始标签时不应进入死循环。"""
+    """
+    普通文本后出现不完整 think 开始标签时不应进入死循环。
+    """
     stripper = _ThinkTagStripper()
     outputs = []
 
@@ -36,7 +42,9 @@ def test_think_tag_stripper_waits_for_partial_open_tag():
 
 
 def test_think_tag_stripper_hides_split_think_tag_content():
-    """think 标签被拆分到多个 token 时应继续隐藏思考内容。"""
+    """
+    think 标签被拆分到多个 token 时应继续隐藏思考内容。
+    """
     stripper = _ThinkTagStripper()
     outputs = []
 
@@ -48,7 +56,9 @@ def test_think_tag_stripper_hides_split_think_tag_content():
 
 
 def test_think_tag_stripper_ignores_orphan_closing_tag():
-    """模型单独输出 think 结束标签时不应把协议标记展示给用户。"""
+    """
+    模型单独输出 think 结束标签时不应把协议标记展示给用户。
+    """
     stripper = _ThinkTagStripper()
     outputs = []
 
@@ -60,7 +70,9 @@ def test_think_tag_stripper_ignores_orphan_closing_tag():
 
 
 def test_think_tag_stripper_hides_split_orphan_closing_tag():
-    """孤立结束标签跨 token 到达时仍应被过滤并保留前后正文。"""
+    """
+    孤立结束标签跨 token 到达时仍应被过滤并保留前后正文。
+    """
     stripper = _ThinkTagStripper()
     outputs = []
 
@@ -71,15 +83,23 @@ def test_think_tag_stripper_hides_split_orphan_closing_tag():
 
 
 def test_stream_keeps_message_channel_thinking_during_hidden_think_tags():
-    """隐藏的 think 标签内容不能提前结束消息渠道的思考状态。"""
+    """
+    隐藏的 think 标签内容不能提前结束消息渠道的思考状态。
+    """
 
     class FakeAgent:
-        """按顺序产生思考标签和最终正文的流式 Agent。"""
+        """
+        按顺序产生思考标签和最终正文的流式 Agent。
+        """
 
         async def astream(self, *_args, **_kwargs):
-            """依次产生隐藏思考片段和可见答案。"""
+            """
+            依次产生隐藏思考片段和可见答案。
+            """
             def token(content):
-                """构造一个最小的文本流 token。"""
+                """
+                构造一个最小的文本流 token。
+                """
                 return SimpleNamespace(
                     tool_call_chunks=[],
                     additional_kwargs={},
@@ -114,13 +134,19 @@ def test_stream_keeps_message_channel_thinking_during_hidden_think_tags():
 
 
 def test_stream_does_not_mark_plain_model_output_as_thinking():
-    """模型没有输出 reasoning 协议时，流式处理不应创建 thinking 状态。"""
+    """
+    模型没有输出 reasoning 协议时，流式处理不应创建 thinking 状态。
+    """
 
     class FakeAgent:
-        """只输出普通文本的流式 Agent。"""
+        """
+        只输出普通文本的流式 Agent。
+        """
 
         async def astream(self, *_args, **_kwargs):
-            """返回不带思考标记的普通答案。"""
+            """
+            返回不带思考标记的普通答案。
+            """
             token = SimpleNamespace(
                 tool_call_chunks=[],
                 additional_kwargs={},
@@ -149,13 +175,19 @@ def test_stream_does_not_mark_plain_model_output_as_thinking():
 
 
 def test_stream_marks_reasoning_content_as_thinking():
-    """模型通过 reasoning_content 输出推理时，应进入 thinking 生命周期。"""
+    """
+    模型通过 reasoning_content 输出推理时，应进入 thinking 生命周期。
+    """
 
     class FakeAgent:
-        """输出 reasoning_content 后再输出普通答案的流式 Agent。"""
+        """
+        输出 reasoning_content 后再输出普通答案的流式 Agent。
+        """
 
         async def astream(self, *_args, **_kwargs):
-            """返回推理 token 和最终答案 token。"""
+            """
+            返回推理 token 和最终答案 token。
+            """
             yield {
                 "type": "messages",
                 "data": (
@@ -200,13 +232,19 @@ def test_stream_marks_reasoning_content_as_thinking():
 
 
 def test_stream_marks_reasoning_content_when_tool_chunks_share_the_token():
-    """工具调用分片携带 reasoning_content 时，思考状态不能被工具过滤提前吞掉。"""
+    """
+    工具调用分片携带 reasoning_content 时，思考状态不能被工具过滤提前吞掉。
+    """
 
     class FakeAgent:
-        """输出带工具调用分片和 reasoning_content 的流式 Agent。"""
+        """
+        输出带工具调用分片和 reasoning_content 的流式 Agent。
+        """
 
         async def astream(self, *_args, **_kwargs):
-            """返回同一 token 中的推理协议和工具调用分片。"""
+            """
+            返回同一 token 中的推理协议和工具调用分片。
+            """
             yield {
                 "type": "messages",
                 "data": (
@@ -244,13 +282,19 @@ def test_stream_marks_reasoning_content_when_tool_chunks_share_the_token():
     [[{"type": "thinking", "thinking": "分析"}], {"type": "thought", "thought": "分析"}],
 )
 def test_stream_marks_thinking_content_blocks(thinking_content):
-    """内容块协议也必须开启 thinking，且不能把隐藏内容转成正文。"""
+    """
+    内容块协议也必须开启 thinking，且不能把隐藏内容转成正文。
+    """
 
     class FakeAgent:
-        """输出隐藏思考内容块和普通答案的流式 Agent。"""
+        """
+        输出隐藏思考内容块和普通答案的流式 Agent。
+        """
 
         async def astream(self, *_args, **_kwargs):
-            """返回思考内容块和最终答案。"""
+            """
+            返回思考内容块和最终答案。
+            """
             for content in (thinking_content, "最终答案"):
                 yield {
                     "type": "messages",
@@ -285,41 +329,57 @@ def test_stream_marks_thinking_content_blocks(thinking_content):
 
 
 class DummyTool(MoviePilotTool):
-    """用于流式输出测试的固定结果工具。"""
+    """
+    用于流式输出测试的固定结果工具。
+    """
 
     name: str = "dummy_tool"
     description: str = "Dummy tool for streaming tests."
 
     def get_tool_message(self, **kwargs) -> str:
-        """返回固定工具执行提示。"""
+        """
+        返回固定工具执行提示。
+        """
         return "run test tool"
 
     async def run(self, **kwargs) -> str:
-        """返回固定工具执行结果。"""
+        """
+        返回固定工具执行结果。
+        """
         return "ok"
 
 
 class AdminOnlyDummyTool(MoviePilotTool):
-    """仅管理员可用的工具，用于权限拦截场景的流式输出测试。"""
+    """
+    仅管理员可用的工具，用于权限拦截场景的流式输出测试。
+    """
 
     name: str = "admin_only_tool"
     description: str = "Admin-only tool for streaming tests."
     require_admin: bool = True
 
     def get_tool_message(self, **kwargs) -> str:
-        """返回固定工具执行提示。"""
+        """
+        返回固定工具执行提示。
+        """
         return "run admin only tool"
 
     async def run(self, **kwargs) -> str:
-        """返回固定工具执行结果。"""
+        """
+        返回固定工具执行结果。
+        """
         return "ok"
 
 
 class TestAgentToolStreaming:
-    """Agent 工具流式输出测试。"""
+    """
+    Agent 工具流式输出测试。
+    """
 
     def test_web_message_callback_can_await_async_delivery(self):
-        """WebAgent 通知回调支持异步附件准备并保持发送顺序。"""
+        """
+        WebAgent 通知回调支持异步附件准备并保持发送顺序。
+        """
         received = []
 
         async def scenario():
@@ -344,7 +404,9 @@ class TestAgentToolStreaming:
         assert received == ["异步通知"]
 
     async def _run_tool(self, initial_buffer: str) -> tuple[str, str]:
-        """运行测试工具并返回工具结果与缓冲内容。"""
+        """
+        运行测试工具并返回工具结果与缓冲内容。
+        """
         tool = DummyTool(session_id="session-1", user_id="10001")
         handler = StreamingHandler()
         await handler.start_streaming()
@@ -359,14 +421,18 @@ class TestAgentToolStreaming:
         return result, buffered_message
 
     def test_non_verbose_tool_call_flushes_summary_on_take(self):
-        """校验非详细模式在读取时补充工具调用摘要。"""
+        """
+        校验非详细模式在读取时补充工具调用摘要。
+        """
         result, buffered_message = asyncio.run(self._run_tool("prefix"))
 
         assert result == "ok"
         assert buffered_message == "prefix\n\n（调用了 1 次工具）\n\n"
 
     def test_report_tool_call_switches_between_detail_and_summary(self):
-        """中间件工具报告入口应按详细模式选择逐条展示或汇总。"""
+        """
+        中间件工具报告入口应按详细模式选择逐条展示或汇总。
+        """
 
         async def _run(verbose: bool):
             handler = StreamingHandler()
@@ -386,7 +452,9 @@ class TestAgentToolStreaming:
         assert summary_message == "（查询了 1 个技能说明）\n\n"
 
     def test_permission_failure_adds_boundary_newline(self):
-        """校验权限拦截时在流式缓冲中补齐工具边界换行。"""
+        """
+        校验权限拦截时在流式缓冲中补齐工具边界换行。
+        """
 
         async def _run():
             tool = AdminOnlyDummyTool(session_id="session-1", user_id="10001")
@@ -408,7 +476,9 @@ class TestAgentToolStreaming:
         assert buffered_message == "好的，我来帮您执行\n抱歉，您没有执行此工具的权限"
 
     def test_permission_failure_skips_newline_when_buffer_empty(self):
-        """校验缓冲为空时权限拦截不会补多余的换行。"""
+        """
+        校验缓冲为空时权限拦截不会补多余的换行。
+        """
 
         async def _run():
             tool = AdminOnlyDummyTool(session_id="session-1", user_id="10001")
@@ -425,7 +495,9 @@ class TestAgentToolStreaming:
         assert buffered_message == ""
 
     def test_permission_failure_reuses_existing_newline(self):
-        """校验缓冲已以换行结尾时权限拦截不再补换行。"""
+        """
+        校验缓冲已以换行结尾时权限拦截不再补换行。
+        """
 
         async def _run():
             tool = AdminOnlyDummyTool(session_id="session-1", user_id="10001")
@@ -444,28 +516,36 @@ class TestAgentToolStreaming:
         assert buffered_message == "好的，我来帮您执行\n抱歉，您没有执行此工具的权限"
 
     def test_non_verbose_tool_call_completes_blank_line_before_summary(self):
-        """校验非详细模式在摘要前补足空行，保证工具摘要独立成段。"""
+        """
+        校验非详细模式在摘要前补足空行，保证工具摘要独立成段。
+        """
         result, buffered_message = asyncio.run(self._run_tool("prefix\n"))
 
         assert result == "ok"
         assert buffered_message == "prefix\n\n（调用了 1 次工具）\n\n"
 
     def test_non_verbose_tool_call_keeps_existing_blank_line_before_summary(self):
-        """校验缓冲区已有空行时摘要不再追加多余换行。"""
+        """
+        校验缓冲区已有空行时摘要不再追加多余换行。
+        """
         result, buffered_message = asyncio.run(self._run_tool("prefix\n\n"))
 
         assert result == "ok"
         assert buffered_message == "prefix\n\n（调用了 1 次工具）\n\n"
 
     def test_non_verbose_tool_call_emits_summary_even_when_buffer_was_empty(self):
-        """校验空缓冲区仍会输出工具调用摘要。"""
+        """
+        校验空缓冲区仍会输出工具调用摘要。
+        """
         result, buffered_message = asyncio.run(self._run_tool(""))
 
         assert result == "ok"
         assert buffered_message == "（调用了 1 次工具）\n\n"
 
     def test_non_verbose_tool_summary_is_inserted_before_next_text(self):
-        """校验工具摘要插入在后续文本之前。"""
+        """
+        校验工具摘要插入在后续文本之前。
+        """
 
         async def _run():
             tool = DummyTool(session_id="session-1", user_id="10001")
@@ -485,7 +565,9 @@ class TestAgentToolStreaming:
         assert buffered_message == "让我来检查一下：\n\n（调用了 1 次工具）\n\n已经拿到结果"
 
     def test_non_verbose_tool_summary_aggregates_multiple_categories(self):
-        """校验非详细模式按工具类别聚合摘要。"""
+        """
+        校验非详细模式按工具类别聚合摘要。
+        """
 
         async def _run():
             handler = StreamingHandler()
@@ -519,7 +601,9 @@ class TestAgentToolStreaming:
         assert buffered_message == "处理中：\n\n（执行了 2 次搜索，读取了 2 个文件）\n\n继续分析"
 
     def test_tool_summary_does_not_retain_secret_arguments(self):
-        """流式聚合状态只能保留递归脱敏后的工具参数。"""
+        """
+        流式聚合状态只能保留递归脱敏后的工具参数。
+        """
         secret_marker = "stream-secret-marker-1947"
         handler = StreamingHandler()
 
@@ -537,7 +621,9 @@ class TestAgentToolStreaming:
         assert "***" in pending_state
 
     def test_non_verbose_tool_summary_counts_subagents(self):
-        """校验非详细模式统计子代理调用次数。"""
+        """
+        校验非详细模式统计子代理调用次数。
+        """
 
         async def _run():
             handler = StreamingHandler()
@@ -560,7 +646,9 @@ class TestAgentToolStreaming:
         assert buffered_message == "处理中：\n\n（已调用 2 个子代理）\n\n"
 
     def test_non_verbose_tool_summary_describes_skill_lookup(self):
-        """校验非详细模式单独描述 Skill 说明查询。"""
+        """
+        校验非详细模式单独描述 Skill 说明查询。
+        """
 
         async def _run():
             handler = StreamingHandler()
@@ -588,7 +676,9 @@ class TestAgentToolStreaming:
         assert buffered_message == "处理中：\n\n（查询了 1 个技能说明，检索了 1 次记忆）\n\n"
 
     def test_non_verbose_tool_summary_counts_subagent_batch_tasks(self):
-        """校验批量子代理控制工具按子任务数统计。"""
+        """
+        校验批量子代理控制工具按子任务数统计。
+        """
 
         async def _run():
             handler = StreamingHandler()
@@ -612,13 +702,17 @@ class TestAgentToolStreaming:
         assert buffered_message == "处理中：\n\n（已调用 2 个子代理）\n\n"
 
     def test_subagent_stream_metadata_is_suppressed(self):
-        """校验子代理流式元数据会被识别并抑制。"""
+        """
+        校验子代理流式元数据会被识别并抑制。
+        """
         assert is_subagent_stream_metadata({"metadata": {"ls_agent_type": "subagent"}})
         assert is_subagent_stream_metadata({"lc_agent_name": "general-purpose"})
         assert not is_subagent_stream_metadata({"lc_agent_name": "main"})
 
     def test_openai_streaming_handler_flushes_pending_summary_to_queue(self):
-        """校验 OpenAI 流式处理器将待发送摘要推入队列。"""
+        """
+        校验 OpenAI 流式处理器将待发送摘要推入队列。
+        """
 
         async def _run():
             handler = _get_openai_streaming_handler_type()()
@@ -642,7 +736,9 @@ class TestAgentToolStreaming:
         assert buffered_message == emitted
 
     def test_flush_sends_direct_message_via_threadpool(self):
-        """校验刷新时通过线程池发送首条直连消息。"""
+        """
+        校验刷新时通过线程池发送首条直连消息。
+        """
         handler = StreamingHandler()
         handler._channel = NotificationChannel.Telegram.value
         handler._source = "telegram"
@@ -670,7 +766,9 @@ class TestAgentToolStreaming:
         assert handler.has_sent_message
 
     def test_rich_message_quotes_tool_summary_lines_for_telegram(self):
-        """校验 Telegram 富文本将工具摘要行转换为引用块，与正文视觉分隔。"""
+        """
+        校验 Telegram 富文本将工具摘要行转换为引用块，与正文视觉分隔。
+        """
         handler = StreamingHandler()
         handler._channel = NotificationChannel.Telegram.value
         handler._source = "telegram"
@@ -691,7 +789,9 @@ class TestAgentToolStreaming:
         assert rich_message == "> （查看了 1 个目录）\n\n"
 
     def test_verbose_tool_message_is_quoted_for_telegram(self):
-        """校验 Telegram 啰嗦模式逐条工具提示也使用引用块。"""
+        """
+        校验 Telegram 啰嗦模式逐条工具提示也使用引用块。
+        """
 
         async def _run():
             tool = DummyTool(session_id="session-1", user_id="10001")
@@ -719,7 +819,9 @@ class TestAgentToolStreaming:
         assert rich_message == "前置内容\n\n> ⚙️ => run test tool\n\n"
 
     def test_verbose_web_api_tool_message_includes_major_parameters(self):
-        """Web Agent 啰嗦模式应实时输出 API operation 及其主要参数。"""
+        """
+        Web Agent 啰嗦模式应实时输出 API operation 及其主要参数。
+        """
 
         async def _run():
             emitted = []
@@ -755,7 +857,9 @@ class TestAgentToolStreaming:
         assert buffered == expected
 
     def test_web_streaming_handler_emits_structured_tool_lifecycle(self):
-        """Web 流式处理器应发布稳定调用 ID 的开始与完成事件，避免重复文本提示。"""
+        """
+        Web 流式处理器应发布稳定调用 ID 的开始与完成事件，避免重复文本提示。
+        """
 
         async def _run():
             emitted = []
@@ -797,7 +901,9 @@ class TestAgentToolStreaming:
         ]
 
     def test_web_streaming_handler_updates_tool_summary_when_not_verbose(self):
-        """WebAgent 关闭啰嗦模式时应逐次推送最新的工具计数摘要。"""
+        """
+        WebAgent 关闭啰嗦模式时应逐次推送最新的工具计数摘要。
+        """
 
         async def _run():
             emitted = []
@@ -837,7 +943,9 @@ class TestAgentToolStreaming:
         ]
 
     def test_web_streaming_handler_updates_normal_tool_when_not_verbose(self):
-        """普通工具在 WebAgent 非啰嗦模式下也应立即推送计数摘要。"""
+        """
+        普通工具在 WebAgent 非啰嗦模式下也应立即推送计数摘要。
+        """
 
         async def _run():
             emitted = []
@@ -874,7 +982,9 @@ class TestAgentToolStreaming:
         ],
     )
     def test_editable_channels_update_tool_summary_in_place(self, channel):
-        """所有支持消息编辑的通知渠道都应在原消息上更新工具统计。"""
+        """
+        所有支持消息编辑的通知渠道都应在原消息上更新工具统计。
+        """
         handler = StreamingHandler()
         handler._channel = channel.value
         handler._source = f"{channel.value}-source"
@@ -924,7 +1034,9 @@ class TestAgentToolStreaming:
         assert handler._buffer == f"{updated_text}第一批完成\n\n（执行了 1 次搜索）\n\n"
 
     def test_rich_message_keeps_body_text_unquoted_for_telegram(self):
-        """校验 Telegram 富文本只转换工具摘要行，正文保持原样。"""
+        """
+        校验 Telegram 富文本只转换工具摘要行，正文保持原样。
+        """
         handler = StreamingHandler()
         handler._channel = NotificationChannel.Telegram.value
         handler.emit("正文内容\n\n")
@@ -940,7 +1052,9 @@ class TestAgentToolStreaming:
         assert rich_message == "正文内容\n\n> （执行了 1 条命令）\n\n后续结论"
 
     def test_rich_message_keeps_previous_tool_summaries_styled_after_edits(self):
-        """Telegram 后续编辑时，重复文案的历史工具摘要仍应保持引用样式。"""
+        """
+        Telegram 后续编辑时，重复文案的历史工具摘要仍应保持引用样式。
+        """
         handler = StreamingHandler()
         handler._channel = NotificationChannel.Telegram.value
         handler._streaming_enabled = True
@@ -966,7 +1080,9 @@ class TestAgentToolStreaming:
         assert "> （执行了 4 条命令）" in rich_message
 
     def test_rich_message_returns_none_for_non_telegram_channels(self):
-        """校验非 Telegram 渠道不启用富文本，摘要保持原有纯文本格式。"""
+        """
+        校验非 Telegram 渠道不启用富文本，摘要保持原有纯文本格式。
+        """
         handler = StreamingHandler()
         handler._channel = NotificationChannel.Feishu.value
         handler._source = "feishu-main"
@@ -981,7 +1097,9 @@ class TestAgentToolStreaming:
         assert handler._buffer == "（执行了 1 条命令）\n\n"
 
     def test_flush_edits_message_via_threadpool(self):
-        """校验刷新时通过线程池编辑已有消息。"""
+        """
+        校验刷新时通过线程池编辑已有消息。
+        """
         handler = StreamingHandler()
         handler._channel = NotificationChannel.Telegram.value
         handler._source = "telegram"
@@ -1006,7 +1124,9 @@ class TestAgentToolStreaming:
         assert handler._sent_text == "hello world"
 
     def test_stop_streaming_waits_inflight_initial_flush_before_final_edit(self):
-        """校验停止流式输出会等待首条消息发送完成再编辑。"""
+        """
+        校验停止流式输出会等待首条消息发送完成再编辑。
+        """
 
         async def _run():
             handler = StreamingHandler()
@@ -1066,7 +1186,9 @@ class TestAgentToolStreaming:
         assert edit_kwargs["text"] == "hello world"
 
     def test_stop_streaming_uses_generic_finalize_message(self):
-        """校验停止流式输出会调用通用消息完成接口。"""
+        """
+        校验停止流式输出会调用通用消息完成接口。
+        """
         handler = StreamingHandler()
         handler._message_response = MessageResponse(
             message_id="om_stream",
@@ -1092,7 +1214,9 @@ class TestAgentToolStreaming:
         assert run_in_threadpool_mock.await_args.args[1].message_id == "om_stream"
 
     def test_flush_without_channel_context_does_not_send_direct_message(self):
-        """校验缺少渠道上下文时不会发送直连消息。"""
+        """
+        校验缺少渠道上下文时不会发送直连消息。
+        """
         handler = StreamingHandler()
         handler._streaming_enabled = True
         handler.emit("hello")
@@ -1104,7 +1228,9 @@ class TestAgentToolStreaming:
         assert not handler.has_sent_message
 
     def test_flush_without_channel_context_dispatch_allowed_sends_direct_message(self):
-        """校验允许后台派发时缺少渠道上下文也能发送消息。"""
+        """
+        校验允许后台派发时缺少渠道上下文也能发送消息。
+        """
         handler = StreamingHandler()
         handler._user_id = "10001"
         handler._username = "tester"
@@ -1127,7 +1253,9 @@ class TestAgentToolStreaming:
         assert handler.has_sent_message
 
     def test_flush_passes_original_message_context_to_send_direct_message(self):
-        """校验刷新发送时保留原始消息上下文。"""
+        """
+        校验刷新发送时保留原始消息上下文。
+        """
         handler = StreamingHandler()
         handler._channel = NotificationChannel.Feishu.value
         handler._source = "feishu-main"
@@ -1153,7 +1281,9 @@ class TestAgentToolStreaming:
         assert notification.original_chat_id == "oc_origin"
 
     def test_verbose_background_tool_call_does_not_post_message(self):
-        """校验详细模式后台工具调用不会主动发送工具消息。"""
+        """
+        校验详细模式后台工具调用不会主动发送工具消息。
+        """
 
         async def _run():
             tool = DummyTool(session_id="session-1", user_id="10001")
@@ -1177,7 +1307,9 @@ class TestAgentToolStreaming:
         assert buffered_message == "（调用了 1 次工具）\n\n"
 
     def test_verbose_background_dispatch_tool_call_can_post_message(self):
-        """校验允许后台派发时详细模式工具调用可以发送消息。"""
+        """
+        校验允许后台派发时详细模式工具调用可以发送消息。
+        """
 
         async def _run():
             tool = DummyTool(session_id="session-1", user_id="10001")
@@ -1203,10 +1335,14 @@ class TestAgentToolStreaming:
         assert buffered_message == ""
 
     def test_send_voice_message_uses_native_voice_for_supported_channels(self):
-        """校验支持语音输出的渠道会发送原生语音消息。"""
+        """
+        校验支持语音输出的渠道会发送原生语音消息。
+        """
 
         async def _run(channel: NotificationChannel):
-            """运行指定渠道的语音发送工具。"""
+            """
+            运行指定渠道的语音发送工具。
+            """
             tool = SendVoiceMessageTool(session_id="session-1", user_id="10001")
             tool.set_message_attr(
                 channel=channel.value,
@@ -1246,13 +1382,17 @@ class TestAgentToolStreaming:
             assert notification.voice_caption == "你好"
             voice_tool = SendVoiceMessageTool(session_id="session-1", user_id="10001")
             assert voice_tool.return_direct
-            assert "terminal response tool" in voice_tool.description
+            assert "本工具直接完成用户回复" in voice_tool.description
 
     def test_send_voice_message_falls_back_for_unsupported_channels(self):
-        """校验不支持语音输出的渠道继续回退为文字消息。"""
+        """
+        校验不支持语音输出的渠道继续回退为文字消息。
+        """
 
         async def _run():
-            """运行不支持语音输出渠道的语音发送工具。"""
+            """
+            运行不支持语音输出渠道的语音发送工具。
+            """
             tool = SendVoiceMessageTool(session_id="session-1", user_id="10001")
             tool.set_message_attr(channel=NotificationChannel.Slack.value, source="slack-main", username="tester")
 

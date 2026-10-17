@@ -1,3 +1,7 @@
+"""
+从文件路径逐级提取媒体名称、季集和资源信息。
+"""
+
 import regex as re
 
 from app.domain.meta.metabase import MetaBase
@@ -19,7 +23,7 @@ def should_use_parent_title_for_file_stem(
     文件名（无后缀）是否仅为简繁体/字幕/特效等辅助说明，应改用父目录标题识别。
     要求：
     - stem 纯中文且能被辅助关键词完全覆盖（无残留有意义汉字）
-    - 父目录含拉丁字母，避免纯中文资源目录误把正片中文名当标签清空
+    - 父目录含拉丁字母，避免纯中文资源目录误把正片中文名当标签清空。
     """
     if not file_meta.isfile or not stem or not parent_dir_name:
         return False
@@ -39,7 +43,9 @@ def should_use_parent_title_for_file_stem(
 
 
 def clear_parsed_title_for_parent_merge(meta: MetaBase) -> None:
-    """在父目录合并前清理会干扰二次识别的标题字段。"""
+    """
+    在父目录合并前清理会干扰二次识别的标题字段。
+    """
     meta.cn_name = None
     meta.en_name = None
     meta.original_name = None

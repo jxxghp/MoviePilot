@@ -1,4 +1,6 @@
-"""整理批次的元数据刮削事件聚合。"""
+"""
+整理批次的元数据刮削事件聚合。
+"""
 
 from typing import Any, Optional
 
@@ -15,7 +17,9 @@ from app.schemas.workflow import FileItem
 
 
 class ScrapeBatchMixin(_TransferOwnerBase):
-    """聚合同批整理结果并仅在批次完成后发送刮削事件。"""
+    """
+    聚合同批整理结果并仅在批次完成后发送刮削事件。
+    """
 
     __mixin_host_protocol__ = TransferMixinHost
 
@@ -54,7 +58,9 @@ class ScrapeBatchMixin(_TransferOwnerBase):
             file_list: Optional[list[str]],
             overwrite: bool,
     ) -> dict[str, Any]:
-        """构造刮削事件载荷，并为音乐批次保留逐文件身份上下文。"""
+        """
+        构造刮削事件载荷，并为音乐批次保留逐文件身份上下文。
+        """
         paths = list(dict.fromkeys(file_list or []))
         payload: dict[str, Any] = {
             "meta": task.meta,

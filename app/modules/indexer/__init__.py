@@ -1,3 +1,7 @@
+"""
+组合站点搜索爬虫和用户资料解析器，提供索引模块的同步、异步搜索入口。
+"""
+
 from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
@@ -7,6 +11,8 @@ from urllib.parse import urljoin
 from app.application.site.health import get_configured_site_health_service
 from app.application.site.observation import report_site_search_outcome, report_site_search_page
 from app.application.site.query import get_configured_site_query_service
+
+# 站点目录由外部资源在运行时提供，静态检查环境不包含其实体模块。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.domain import site as site_rules
 from app.domain import torrent as torrent_rules
@@ -31,6 +37,7 @@ from app.schemas.media import resolve_media_identity
 from app.schemas.site import SiteUserData
 from app.schemas.types import MediaSource, MediaType, ModuleType, OtherModulesType
 
+# 站点资源声明的解析器名称到宿主专站爬虫的精确映射。
 SPIDER_PARSER_CLASSES = {
     "TNodeSpider": TNodeSpider,
     "TorrentLeech": TorrentLeech,
@@ -43,6 +50,7 @@ SPIDER_PARSER_CLASSES = {
     "Milkie": MilkieSpider,
 }
 
+# 仅传递各专站搜索入口支持的参数，避免同步与异步调用契约分叉。
 _SPECIALIZED_SEARCH_ARGUMENTS = {
     "TNodeSpider": ("keyword", "page"),
     "TorrentLeech": ("keyword", "mtype", "page"),
@@ -55,6 +63,7 @@ _SPECIALIZED_SEARCH_ARGUMENTS = {
     "Milkie": ("keyword", "mtype", "page"),
 }
 
+# 专站字幕入口支持的参数顺序，其余站点使用通用页面解析。
 _SPECIALIZED_SUBTITLE_SEARCH_ARGUMENTS = {
     "mTorrent": ("keyword", "page", "search_type"),
 }
@@ -72,7 +81,12 @@ _COMMON_SITE_USERDATA_FALLBACK_SCHEMAS = frozenset({
 
 @dataclass(frozen=True)
 class _IndexerSearchRequest:
-    """一次站点搜索的解析器选择与不可变调用参数"""
+    """
+    一次站点搜索的解析器选择与调用参数。
+
+    :param parser_class: 专站爬虫构造器；为 None 时使用配置驱动的通用爬虫
+    :param arguments: 已通过准入检查的搜索参数，由请求构建流程封装为只读映射
+    """
 
     parser_class: Optional[Callable[[dict[str, Any]], Any]]
     arguments: Mapping[str, Any]
@@ -80,18 +94,27 @@ class _IndexerSearchRequest:
 
 @dataclass(frozen=True)
 class _IndexerSearchOutcome:
-    """一次站点搜索完成后的错误状态、原始结果与耗时"""
+    """
+    一次站点搜索完成后的结果与失败信息。
+
+    :param error_flag: 爬虫或请求是否判定本次搜索失败
+    :param result: 原始种子或字幕记录列表，未获得结果时为空
+    :param seconds: 搜索耗时的整数秒部分，用于统计和日志
+    :param error: 执行时捕获的异常；没有异常时为 None
+    :param failure_detail: 爬虫提供的状态码或页面摘要；默认 None，仅用于展示，不参与冷却分类
+    """
 
     error_flag: bool
     result: List[dict[str, Any]]
     seconds: int
     error: Optional[Exception] = None
-    # 爬虫判定失败时给出的原因（状态码、页面标题等），只用于展示，不参与冷却分类
     failure_detail: Optional[str] = None
 
 
 def _classify_search_failure(error: Optional[Exception]) -> str:
-    """把索引器异常归一为站点预算可执行的冷却类别。"""
+    """
+    把索引器异常归一为站点预算可执行的冷却类别。
+    """
     if error is None:
         return "error"
     status_code = getattr(error, "status_code", None)
@@ -108,7 +131,9 @@ def _classify_search_failure(error: Optional[Exception]) -> str:
 
 
 def _search_failure_message(outcome: _IndexerSearchOutcome) -> Optional[str]:
-    """返回供站点预算持久化和任务聚合展示的失败原因。"""
+    """
+    返回供站点预算持久化和任务聚合展示的失败原因。
+    """
     if outcome.error is not None:
         return str(outcome.error)
     if outcome.error_flag and outcome.failure_detail:
@@ -120,14 +145,15 @@ def _search_failure_message(outcome: _IndexerSearchOutcome) -> Optional[str]:
 
 class IndexerModule(_ModuleBase):
     """
-    索引模块
+    提供站点种子、字幕搜索及用户数据刷新，按站点类型选择对应解析器。
     """
 
     _site_schemas = []
 
     def init_module(self) -> None:
-        """加载站点用户数据解析器"""
-        # 加载模块
+        """
+        加载站点用户数据解析器。
+        """
         self._site_schemas = ModuleHelper.load(
             'app.modules.indexer.parser',
             filter_func=lambda _, obj: hasattr(obj, 'schema') and getattr(obj, 'schema') is not None)
@@ -135,37 +161,43 @@ class IndexerModule(_ModuleBase):
 
     @staticmethod
     def get_name() -> str:
-        """获取模块名称"""
+        """
+        获取模块名称。
+        """
         return "站点索引"
 
     @staticmethod
     def get_type() -> ModuleType:
         """
-        获取模块类型
+        获取模块类型。
         """
         return ModuleType.Indexer
 
     @staticmethod
     def get_subtype() -> OtherModulesType:
         """
-        获取模块子类型
+        获取模块子类型。
         """
         return OtherModulesType.Indexer
 
     @staticmethod
     def get_priority() -> int:
         """
-        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效
+        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效。
         """
         return 0
 
     def stop(self):
-        """停止索引模块"""
+        """
+        索引模块没有独立后台资源，此入口不执行额外停止操作。
+        """
         pass
 
     def test(self) -> Tuple[bool, str]:
         """
-        测试模块连接性
+        检查是否存在已配置并通过用户认证的索引站点，不发起网络探测。
+
+        :return: 是否可用及失败原因；可用时原因为空字符串
         """
         sites = SitesHelper().get_indexers()
         if not sites:
@@ -173,12 +205,15 @@ class IndexerModule(_ModuleBase):
         return True, ""
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        """索引模块无需独立开关配置"""
+        """
+        索引模块无需独立开关配置。
+        """
         pass
 
     def site_subtitle_links(self, context: Context) -> Optional[List[str]]:
         """
-        解析采用API访问的站点的字幕下载链接，非API站点返回None交由页面解析模块处理
+        解析采用API访问的站点的字幕下载链接，非API站点返回None交由页面解析模块处理。
+
         :param context: 上下文，包括识别信息、媒体信息、种子信息
         :return: 字幕下载链接列表，不适用时返回None
         """
@@ -195,13 +230,13 @@ class IndexerModule(_ModuleBase):
             return MTorrentSpider(indexer).get_subtitle_links(
                 torrent.page_url
             )
-        # TODO 其它采用API访问的站点
+        # 其他站点尚无专用字幕接口适配，返回 None 交给页面解析流程处理。
         return None
 
     @staticmethod
     def __search_check(site: dict, search_word: Optional[str] = None) -> bool:
         """
-        检查是否可以执行搜索
+        检查是否可以执行搜索。
         """
         # 可能为关键字或ttxxxx
         if search_word \
@@ -223,7 +258,8 @@ class IndexerModule(_ModuleBase):
     @staticmethod
     def __clear_search_text(text: Optional[str]) -> Optional[str]:
         """
-        清理搜索文本
+        清理搜索文本。
+
         :param text: 需要清理的文本
         :return: 清理后的文本
         """
@@ -235,7 +271,7 @@ class IndexerModule(_ModuleBase):
     @staticmethod
     def __indexer_statistic(site: dict, error_flag: bool = False, seconds: int = 0) -> None:
         """
-        索引器统计
+        索引器统计。
         """
         domain = site_rules.extract_domain(site.get("domain"))
         if error_flag:
@@ -249,7 +285,7 @@ class IndexerModule(_ModuleBase):
     @staticmethod
     async def __async_indexer_statistic(site: dict, error_flag: bool = False, seconds: int = 0) -> None:
         """
-        异步索引器统计
+        异步索引器统计。
         """
         domain = site_rules.extract_domain(site.get("domain"))
         if error_flag:
@@ -263,7 +299,7 @@ class IndexerModule(_ModuleBase):
     @staticmethod
     def __parse_result(site: dict, result_array: list, seconds: int) -> TorrentInfo:
         """
-        解析搜索结果为 TorrentInfo 对象
+        解析搜索结果为 TorrentInfo 对象。
         """
         report_site_search_page(raw_count=len(result_array or []))
         if not result_array or len(result_array) == 0:
@@ -314,7 +350,11 @@ class IndexerModule(_ModuleBase):
     @staticmethod
     def get_search_page_size(site: dict, keyword: Optional[str] = None) -> Optional[int]:
         """
-        获取站点搜索单页容量；None 表示当前搜索入口不支持可靠翻页。
+        获取站点搜索入口的单页容量。
+
+        :param site: 站点索引配置，包含解析器类型和可选单页数量
+        :param keyword: 当前搜索关键词，供专站爬虫判断能否分页
+        :return: 单页记录数；专站入口没有可靠分页能力时返回 None
         """
         site = site or {}
         site_parser = site.get("parser")
@@ -328,7 +368,16 @@ class IndexerModule(_ModuleBase):
 
     @staticmethod
     def restore_search_torrent(site: dict[str, Any], record: dict[str, Any], allow_missing: bool = False) -> Optional[TorrentInfo]:
-        """用当前站点凭据恢复候选；无法安全重建的临时下载票据由调用方重取原页。"""
+        """
+        用当前站点凭据恢复候选下载信息。
+
+        M-Team 可从详情页中的站内 ID 重建下载配方；其他无法重建的临时票据需重新查询。
+
+        :param site: 当前站点配置及有效凭据
+        :param record: 检查点保存的种子记录
+        :param allow_missing: 是否允许返回仍缺少下载地址的候选，默认不允许
+        :return: 已刷新凭据的候选；缺少下载地址且不允许保留时返回 None
+        """
         torrent = TorrentInfo()
         torrent.from_dict(record)
         # M-Team 下载链接含 API Key 不入检查点，按详情页链接中的站内 ID 用当前凭据重建。
@@ -352,7 +401,9 @@ class IndexerModule(_ModuleBase):
         page: Optional[int] = 0,
         search_type: str = "torrents",
     ) -> Optional[_IndexerSearchRequest]:
-        """校验搜索条件并生成同步、异步共用的解析器调用请求"""
+        """
+        校验搜索条件并生成同步、异步共用的解析器调用请求。
+        """
         if search_type == "subtitles" and not site.get("subtitles"):
             return None
         if not IndexerModule.__search_check(site, keyword):
@@ -418,7 +469,9 @@ class IndexerModule(_ModuleBase):
         site: dict[str, Any],
         request: _IndexerSearchRequest,
     ) -> Tuple[bool, List[dict[str, Any]], Optional[str]]:
-        """通过同步解析器执行已冻结的搜索请求，返回错误标志、结果与失败原因"""
+        """
+        通过同步解析器执行已冻结的搜索请求，返回错误标志、结果与失败原因。
+        """
         if request.parser_class:
             spider = request.parser_class(site)
             error_flag, result = cast(
@@ -433,7 +486,9 @@ class IndexerModule(_ModuleBase):
         site: dict[str, Any],
         request: _IndexerSearchRequest,
     ) -> Tuple[bool, List[dict[str, Any]], Optional[str]]:
-        """通过异步解析器执行已冻结的搜索请求，返回错误标志、结果与失败原因"""
+        """
+        通过异步解析器执行已冻结的搜索请求，返回错误标志、结果与失败原因。
+        """
         if request.parser_class:
             spider = request.parser_class(site)
             error_flag, result = cast(
@@ -451,7 +506,9 @@ class IndexerModule(_ModuleBase):
         error: Optional[Exception] = None,
         failure_detail: Optional[str] = None,
     ) -> _IndexerSearchOutcome:
-        """把同步、异步 I/O 结果整理为共用的搜索完成状态"""
+        """
+        把同步、异步 I/O 结果整理为共用的搜索完成状态。
+        """
         return _IndexerSearchOutcome(
             error_flag=error_flag,
             result=result,
@@ -462,7 +519,9 @@ class IndexerModule(_ModuleBase):
 
     @staticmethod
     def __log_search_error(site: dict[str, Any], search_type: str, error: Exception) -> None:
-        """按搜索类型记录同步、异步共用的操作失败信息"""
+        """
+        按搜索类型记录同步、异步共用的操作失败信息。
+        """
         resource_name = "字幕" if search_type == "subtitles" else ""
         logger.error(f"{site.get('name')} {resource_name}搜索出错：{str(error)}")
 
@@ -472,20 +531,18 @@ class IndexerModule(_ModuleBase):
                         cat: Optional[str] = None,
                         page: Optional[int] = 0) -> List[TorrentInfo]:
         """
-        搜索一个站点
-        :param site:  站点
-        :param keyword:  搜索关键词
-        :param mtype:  媒体类型
-        :param cat:  分类
-        :param page:  页码
+        搜索一个站点。
+
+        :param site: 站点
+        :param keyword: 搜索关键词
+        :param mtype: 媒体类型
+        :param cat: 分类
+        :param page: 页码
         :return: 资源列表
         """
 
-        # 索引结果
         result = []
-        # 开始计时
         start_time = datetime.now()
-        # 错误标志
         error_flag = False
 
         request = self.__create_search_request(
@@ -499,7 +556,6 @@ class IndexerModule(_ModuleBase):
             report_site_search_outcome(attempted=False, outcome="skipped")
             return []
 
-        # 开始搜索
         error: Optional[Exception] = None
         failure_detail: Optional[str] = None
         try:
@@ -510,7 +566,6 @@ class IndexerModule(_ModuleBase):
 
         outcome = self.__create_search_outcome(start_time, error_flag, result, error, failure_detail)
 
-        # 统计索引情况
         self.__indexer_statistic(
             site=site,
             error_flag=outcome.error_flag,
@@ -526,7 +581,6 @@ class IndexerModule(_ModuleBase):
             error=_search_failure_message(outcome),
         )
 
-        # 返回结果
         return self.__parse_result(
             site=site,
             result_array=outcome.result,
@@ -538,6 +592,7 @@ class IndexerModule(_ModuleBase):
                          page: Optional[int] = 0) -> List[SubtitleInfo]:
         """
         搜索一个站点的字幕资源。
+
         :param site: 站点
         :param keyword: 搜索关键词
         :param page: 页码
@@ -598,20 +653,18 @@ class IndexerModule(_ModuleBase):
                                     cat: Optional[str] = None,
                                     page: Optional[int] = 0) -> List[TorrentInfo]:
         """
-        异步搜索一个站点
-        :param site:  站点
-        :param keyword:  搜索关键词
-        :param mtype:  媒体类型
-        :param cat:  分类
-        :param page:  页码
+        异步搜索一个站点。
+
+        :param site: 站点
+        :param keyword: 搜索关键词
+        :param mtype: 媒体类型
+        :param cat: 分类
+        :param page: 页码
         :return: 资源列表
         """
 
-        # 索引结果
         result = []
-        # 开始计时
         start_time = datetime.now()
-        # 错误标志
         error_flag = False
 
         request = self.__create_search_request(
@@ -625,7 +678,6 @@ class IndexerModule(_ModuleBase):
             report_site_search_outcome(attempted=False, outcome="skipped")
             return []
 
-        # 开始搜索
         error: Optional[Exception] = None
         failure_detail: Optional[str] = None
         try:
@@ -636,7 +688,6 @@ class IndexerModule(_ModuleBase):
 
         outcome = self.__create_search_outcome(start_time, error_flag, result, error, failure_detail)
 
-        # 统计索引情况
         await self.__async_indexer_statistic(
             site=site,
             error_flag=outcome.error_flag,
@@ -652,7 +703,6 @@ class IndexerModule(_ModuleBase):
             error=_search_failure_message(outcome),
         )
 
-        # 返回结果
         return self.__parse_result(
             site=site,
             result_array=outcome.result,
@@ -664,6 +714,7 @@ class IndexerModule(_ModuleBase):
                                      page: Optional[int] = 0) -> List[SubtitleInfo]:
         """
         异步搜索一个站点的字幕资源。
+
         :param site: 站点
         :param keyword: 搜索关键词
         :param page: 页码
@@ -726,13 +777,13 @@ class IndexerModule(_ModuleBase):
                         page: Optional[int] = 0,
                         search_type: Optional[str] = "torrents") -> Tuple[bool, List[dict], Optional[str]]:
         """
-        根据关键字搜索单个站点
-        :param: indexer: 站点配置
-        :param: search_word: 关键字
-        :param: cat: 分类
-        :param: page: 页码
-        :param: mtype: 媒体类型
-        :param: timeout: 超时时间
+        根据关键字搜索单个站点。
+
+        :param indexer: 站点配置
+        :param search_word: 关键字
+        :param cat: 分类
+        :param page: 页码
+        :param mtype: 媒体类型
         :return: 是否发生错误, 种子列表, 失败原因
         """
         _spider = SiteSpider(indexer=indexer,
@@ -756,13 +807,13 @@ class IndexerModule(_ModuleBase):
                                     page: Optional[int] = 0,
                                     search_type: Optional[str] = "torrents") -> Tuple[bool, List[dict], Optional[str]]:
         """
-        异步根据关键字搜索单个站点
-        :param: indexer: 站点配置
-        :param: search_word: 关键字
-        :param: cat: 分类
-        :param: page: 页码
-        :param: mtype: 媒体类型
-        :param: timeout: 超时时间
+        异步根据关键字搜索单个站点。
+
+        :param indexer: 站点配置
+        :param search_word: 关键字
+        :param cat: 分类
+        :param page: 页码
+        :param mtype: 媒体类型
         :return: 是否发生错误, 种子列表, 失败原因
         """
         _spider = SiteSpider(indexer=indexer,
@@ -784,13 +835,14 @@ class IndexerModule(_ModuleBase):
                          page: Optional[int] = 0,
                          mtype: Optional[MediaType] = None) -> Optional[List[TorrentInfo]]:
         """
-        获取站点最新一页的种子，多个站点需要多线程处理
-        :param site:  站点
-        :param keyword:  关键字
-        :param cat:  分类
-        :param page:  页码
+        获取站点最新一页的种子，多个站点需要多线程处理。
+
+        :param site: 站点
+        :param keyword: 关键字
+        :param cat: 分类
+        :param page: 页码
         :param mtype: 媒体类型
-        :reutrn: 种子资源列表
+        :return: 种子资源列表
         """
         return self.search_torrents(
             site=site, keyword=keyword, cat=cat, page=page, mtype=mtype
@@ -802,13 +854,14 @@ class IndexerModule(_ModuleBase):
                                      page: Optional[int] = 0,
                                      mtype: Optional[MediaType] = None) -> Optional[List[TorrentInfo]]:
         """
-        异步获取站点最新一页的种子，多个站点需要多线程处理
-        :param site:  站点
-        :param keyword:  关键字
-        :param cat:  分类
-        :param page:  页码
+        异步获取站点最新一页的种子，多个站点需要多线程处理。
+
+        :param site: 站点
+        :param keyword: 关键字
+        :param cat: 分类
+        :param page: 页码
         :param mtype: 媒体类型
-        :reutrn: 种子资源列表
+        :return: 种子资源列表
         """
         return await self.async_search_torrents(
             site=site, keyword=keyword, cat=cat, page=page, mtype=mtype
@@ -816,14 +869,16 @@ class IndexerModule(_ModuleBase):
 
     def refresh_userdata(self, site: dict) -> Optional[SiteUserData]:
         """
-        刷新站点的用户数据
-        :param site:  站点
+        刷新站点的用户数据。
+
+        :param site: 站点
         :return: 用户数据
         """
 
         def __get_site_obj(schema_value: Optional[str] = None) -> Optional[SiteParserBase]:
             """
-            获取站点解析器
+            获取站点解析器。
+
             :param schema_value: 指定 schema, 默认取站点声明的 schema
             """
             schema_value = schema_value or site.get("schema")
@@ -857,7 +912,6 @@ class IndexerModule(_ModuleBase):
                 logger.warn(f"站点  {site.get('name')} 未找到站点解析器，schema：{site.get('schema')}")
             return None
 
-        # 获取用户数据
         try:
             logger.info(f"站点 {site.get('name')} 开始以 {site.get('schema')} 模型解析数据...")
             site_obj.parse()

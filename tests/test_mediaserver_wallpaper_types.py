@@ -1,4 +1,6 @@
-"""媒体服务器壁纸媒体类型白名单回归测试。"""
+"""
+媒体服务器壁纸媒体类型白名单回归测试。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -18,7 +20,9 @@ from app.schemas.types import MediaType
 
 
 def _mixed_play_items() -> list[MediaServerPlayItem]:
-    """构造包含影视、音乐和未知类型的最近入库条目。"""
+    """
+    构造包含影视、音乐和未知类型的最近入库条目。
+    """
     return [
         MediaServerPlayItem(
             id="movie",
@@ -49,7 +53,9 @@ def _mixed_play_items() -> list[MediaServerPlayItem]:
 
 @pytest.mark.parametrize("module_class", [EmbyModule, JellyfinModule, ZSpaceModule])
 def test_emby_family_wallpapers_only_use_movie_and_tv(monkeypatch, module_class):
-    """Emby 系壁纸生成即使收到混合条目，也只能处理电影和电视剧。"""
+    """
+    Emby 系壁纸生成即使收到混合条目，也只能处理电影和电视剧。
+    """
     module = module_class()
     service = Mock()
     service.get_backdrop_url.side_effect = lambda item_id, image_tag, remote: f"{item_id}-{image_tag}-{remote}"
@@ -63,7 +69,9 @@ def test_emby_family_wallpapers_only_use_movie_and_tv(monkeypatch, module_class)
 
 
 def test_plex_wallpapers_only_request_movie_and_tv_images(monkeypatch):
-    """Plex 混合媒体库中的音乐和未知条目不得触发壁纸图片请求。"""
+    """
+    Plex 混合媒体库中的音乐和未知条目不得触发壁纸图片请求。
+    """
     module = PlexModule()
     service = Mock()
     service.get_remote_image_by_id.side_effect = lambda item_id, **_kwargs: f"https://plex.example/{item_id}.jpg"
@@ -83,7 +91,9 @@ def test_plex_wallpapers_only_request_movie_and_tv_images(monkeypatch):
 
 
 def test_navidrome_music_covers_are_not_wallpapers(monkeypatch):
-    """Navidrome 只提供音乐条目，因此媒体库壁纸接口必须返回空列表。"""
+    """
+    Navidrome 只提供音乐条目，因此媒体库壁纸接口必须返回空列表。
+    """
     module = NavidromeModule()
     service = Mock()
     service.get_latest.return_value = [
@@ -99,7 +109,9 @@ def test_navidrome_music_covers_are_not_wallpapers(monkeypatch):
 
 
 def test_ugreen_wallpapers_ignore_non_movie_tv_payloads(monkeypatch):
-    """绿联服务端返回其它视频类型时，不得把其图片当作影视壁纸。"""
+    """
+    绿联服务端返回其它视频类型时，不得把其图片当作影视壁纸。
+    """
     client = Ugreen.__new__(Ugreen)
     client._api = SimpleNamespace(
         recently_updated=Mock(
@@ -120,7 +132,9 @@ def test_ugreen_wallpapers_ignore_non_movie_tv_payloads(monkeypatch):
 
 
 def test_trimemedia_wallpapers_defend_against_ignored_type_filter(monkeypatch):
-    """飞牛接口即使忽略查询类型条件，返回的其它视频也不能成为壁纸。"""
+    """
+    飞牛接口即使忽略查询类型条件，返回的其它视频也不能成为壁纸。
+    """
     client = TrimeMedia.__new__(TrimeMedia)
     items = [
         SimpleNamespace(guid="movie", ancestor_guid="", type=trimemedia_api.Type.MOVIE),

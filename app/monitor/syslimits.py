@@ -1,3 +1,7 @@
+"""
+检查系统目录监控限制并给出配置提示。
+"""
+
 import platform
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -58,7 +62,7 @@ def check_system_limits() -> Dict[str, Any]:
                     limits['max_user_watches'] = int(f.read().strip())
             except Exception as e:
                 logger.debug(f"读取 inotify 限制失败: {e}")
-                limits['max_user_watches'] = 8192  # 默认值
+                limits['max_user_watches'] = 8192
 
             try:
                 with open('/proc/sys/fs/inotify/max_user_instances', 'r', encoding='utf-8', errors='replace') as f:

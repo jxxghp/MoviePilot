@@ -1,3 +1,7 @@
+"""
+验证歌词载荷解析、同步质量、候选排序和不可信结构拒绝。
+"""
+
 import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -13,7 +17,9 @@ from app.schemas.workflow import FileItem
 
 
 def test_lyricsfile_derives_lrc_plain_language_and_word_quality() -> None:
-    """Lyricsfile 应保留原文，并派生播放器兼容内容和逐字同步质量。"""
+    """
+    Lyricsfile 应保留原文，并派生播放器兼容内容和逐字同步质量。
+    """
     lyrics = MusicLyrics(
         provider="lrclib",
         lyricsfile="""
@@ -38,7 +44,9 @@ lines:
 
 
 def test_lyricsfile_rejects_yaml_aliases() -> None:
-    """外部 Lyricsfile 不得通过 YAML 锚点别名制造共享或膨胀结构。"""
+    """
+    外部 Lyricsfile 不得通过 YAML 锚点别名制造共享或膨胀结构。
+    """
     lyrics = MusicLyrics(
         provider="lrclib",
         lyricsfile="""
@@ -54,7 +62,9 @@ lines: [*line]
 
 
 def test_lyrics_chain_prefers_synced_candidate_over_exact_plain_fallback(monkeypatch) -> None:
-    """可信候选中应优先同步质量，再以匹配度和来源优先级打破平局。"""
+    """
+    可信候选中应优先同步质量，再以匹配度和来源优先级打破平局。
+    """
     chain = LyricsChain()
     responses = iter([
         MusicLyrics(provider="legacy", plain_lyrics="plain", match_score=100),
@@ -69,7 +79,9 @@ def test_lyrics_chain_prefers_synced_candidate_over_exact_plain_fallback(monkeyp
 
 
 def test_lyrics_chain_selects_async_candidates(monkeypatch) -> None:
-    """通用歌词链异步入口应返回候选中的最优结果。"""
+    """
+    通用歌词链异步入口应返回候选中的最优结果。
+    """
     chain = LyricsChain()
     run_module = AsyncMock(side_effect=[
         MusicLyrics(provider="legacy", plain_lyrics="plain", match_score=100),
@@ -86,7 +98,9 @@ def test_lyrics_chain_selects_async_candidates(monkeypatch) -> None:
 
 
 def test_audio_helper_reads_id3_synced_and_plain_lyrics(monkeypatch, tmp_path) -> None:
-    """ID3 SYLT 和 USLT 应转换为本地高置信歌词候选。"""
+    """
+    ID3 SYLT 和 USLT 应转换为本地高置信歌词候选。
+    """
     tags = Mock()
     tags.getall.side_effect = lambda name: {
         "SYLT": [SYLT(encoding=3, lang="zho", format=2, type=1, text=[("晴天", 1250)])],
@@ -104,7 +118,9 @@ def test_audio_helper_reads_id3_synced_and_plain_lyrics(monkeypatch, tmp_path) -
 
 
 def test_scrape_never_downgrades_existing_lrc_to_plain_text(monkeypatch, tmp_path) -> None:
-    """即使调用方要求覆盖，也不能用纯文本替换已有同步歌词。"""
+    """
+    即使调用方要求覆盖，也不能用纯文本替换已有同步歌词。
+    """
     chain = object.__new__(ScrapingChain)
     chain.storagechain = Mock()
     existing = FileItem(storage="local", path=(tmp_path / "track.lrc").as_posix(), type="file")
@@ -137,7 +153,9 @@ def test_scrape_never_downgrades_existing_lrc_to_plain_text(monkeypatch, tmp_pat
 
 
 def test_music_lyrics_sidecars_match_only_same_stem_audio() -> None:
-    """整理链只关联同目录同主干名歌词，Lyricsfile 双扩展名也应正确剥离。"""
+    """
+    整理链只关联同目录同主干名歌词，Lyricsfile 双扩展名也应正确剥离。
+    """
     audio = FileItem(storage="local", path="/music/Track.flac", name="Track.flac", type="file", extension="flac")
     lrc = FileItem(storage="local", path="/music/Track.lrc", name="Track.lrc", type="file", extension="lrc")
     lyricsfile = FileItem(
@@ -149,7 +167,7 @@ def test_music_lyrics_sidecars_match_only_same_stem_audio() -> None:
     )
     other = FileItem(storage="local", path="/music/Notes.txt", name="Notes.txt", type="file", extension="txt")
 
-    from app.chain.transfer import TransferChain
+    from app.chain.transfer.facade import TransferChain
 
     transfer_chain = object.__new__(TransferChain)
     transfer_chain._subtitle_exts = ()

@@ -266,6 +266,10 @@ Agent operation. It clears corrupt task state while retaining the history record
 
 ## Calling Contract
 
+MCP operation and field descriptions are written in Chinese; operation IDs, field names,
+enum values, and request shapes retain their exact documented spelling. The compact schema
+rewrites descriptions that refer to omitted branches; use the full schema for precise inputs.
+
 Setting a subscription to state `S` stops queued and running automatic searches at safe
 boundaries, including new-subscription and site-retry tasks. An explicit subscription search
 can still search and download once while paused; cancel its execution batch to stop that run.

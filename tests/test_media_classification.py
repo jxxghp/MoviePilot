@@ -1,4 +1,6 @@
-"""多媒体、多数据源分类领域能力的 A1 验收测试。"""
+"""
+多媒体、多数据源分类领域能力的 A1 验收测试。
+"""
 
 import copy
 import gc
@@ -32,7 +34,9 @@ def _category(
     name: str,
     path: list[str],
 ) -> dict[str, Any]:
-    """构造指定媒体类型的可用分类目录。"""
+    """
+    构造指定媒体类型的可用分类目录。
+    """
     return {
         "id": category_id,
         "media_type": media_type,
@@ -44,7 +48,9 @@ def _category(
 
 
 def _base_policy_payload() -> dict[str, Any]:
-    """创建涵盖三类媒体兜底的最小合法策略载荷。"""
+    """
+    创建涵盖三类媒体兜底的最小合法策略载荷。
+    """
     return {
         "schema_version": 2,
         "revision": 1,
@@ -77,7 +83,9 @@ def _category_rule(
     sources: list[str] | None = None,
     labels: list[str] | None = None,
 ) -> dict[str, Any]:
-    """构造带媒体范围与目标分类的条件规则。"""
+    """
+    构造带媒体范围与目标分类的条件规则。
+    """
     return {
         "id": rule_id,
         "name": rule_id,
@@ -99,7 +107,9 @@ def _label_rule(
     when: dict[str, Any],
     labels: list[str],
 ) -> dict[str, Any]:
-    """构造仅累积标签、不改变分类的规则。"""
+    """
+    构造仅累积标签、不改变分类的规则。
+    """
     return {
         "id": rule_id,
         "name": rule_id,
@@ -114,14 +124,18 @@ def _label_rule(
 
 
 def _policy(*rules: dict[str, Any]) -> ClassificationPolicy:
-    """将规则载荷组装为经过结构校验的策略。"""
+    """
+    将规则载荷组装为经过结构校验的策略。
+    """
     payload = _base_policy_payload()
     payload["rules"] = list(rules)
     return ClassificationPolicy.model_validate(payload)
 
 
 def _set_nested(payload: dict[str, Any], field: str, value: Any) -> None:
-    """按点分字段路径写入测试事实。"""
+    """
+    按点分字段路径写入测试事实。
+    """
     parent = payload
     parts = field.split(".")
     for part in parts[:-1]:
@@ -138,7 +152,9 @@ def _facts(
     media_source: str = "themoviedb",
     values: dict[str, Any] | None = None,
 ) -> ClassificationFacts:
-    """创建稳定身份和可选字段的标准分类事实。"""
+    """
+    创建稳定身份和可选字段的标准分类事实。
+    """
     payload: dict[str, Any] = {
         "identity": {
             "media_source": media_source,
@@ -181,7 +197,9 @@ def _evaluate(
     *,
     trace: bool = False,
 ) -> ClassificationEvaluation:
-    """使用默认或指定策略对标准事实执行纯求值。"""
+    """
+    使用默认或指定策略对标准事实执行纯求值。
+    """
     return ClassificationEvaluator().evaluate(
         policy=policy,
         facts=facts or _facts(),
@@ -190,13 +208,16 @@ def _evaluate(
 
 
 def _leaf(field: str, operator: str, value: Any = _MISSING) -> dict[str, Any]:
-    """构造具有可选值的叶子条件载荷。"""
+    """
+    构造具有可选值的叶子条件载荷。
+    """
     condition = {"field": field, "operator": operator}
     if value is not _MISSING:
         condition["value"] = value
     return condition
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.parametrize(  # type: ignore[misc]
     ("album_type", "secondary_types", "category_id", "category_path"),
     [
@@ -212,7 +233,9 @@ def test_default_music_policy_uses_structured_album_categories(
     category_id: str,
     category_path: list[str],
 ) -> None:
-    """默认音乐规则应优先识别精选集，并生成不带空白的安全路径段。"""
+    """
+    默认音乐规则应优先识别精选集，并生成不带空白的安全路径段。
+    """
     policy = build_default_classification_policy().model_copy(update={"revision": 1})
     result = _evaluate(
         policy,
@@ -231,6 +254,7 @@ def test_default_music_policy_uses_structured_album_categories(
     assert result.result.effective.category_path == category_path
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.parametrize(  # type: ignore[misc]
     ("media_type", "values", "category_id"),
     [
@@ -246,7 +270,9 @@ def test_default_music_policy_uses_structured_album_categories(
 def test_default_policy_distinguishes_unknown_information_and_region_categories(
     media_type: str, values: dict[str, Any], category_id: str,
 ) -> None:
-    """默认模板区分缺失语言与外语，并为地区、其他动画提供准确分类。"""
+    """
+    默认模板区分缺失语言与外语，并为地区、其他动画提供准确分类。
+    """
     policy = build_default_classification_policy()
     result = _evaluate(policy, _facts(media_type=media_type, values=values))
     assert result.result.recommended.category_id == category_id
@@ -254,6 +280,7 @@ def test_default_policy_distinguishes_unknown_information_and_region_categories(
     assert [rule.priority for rule in policy.rules] == list(range(len(policy.rules)))
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.parametrize(  # type: ignore[misc]
     ("condition", "fact_values"),
     [
@@ -303,7 +330,9 @@ def test_all_operators_have_a_representative_match(
     condition: dict[str, Any],
     fact_values: dict[str, Any],
 ) -> None:
-    """逐项验证支持的操作符能够匹配代表性值。"""
+    """
+    逐项验证支持的操作符能够匹配代表性值。
+    """
     evaluation = _evaluate(
         _policy(_category_rule("rule.operator", condition)),
         _facts(values=fact_values),
@@ -313,7 +342,9 @@ def test_all_operators_have_a_representative_match(
     assert evaluation.result.recommended.rule_id == "rule.operator"
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.parametrize("missing_value", [_MISSING, None], ids=["missing", "null"])  # type: ignore[misc]
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.parametrize(  # type: ignore[misc]
     ("field", "operator", "expected"),
     [
@@ -328,7 +359,9 @@ def test_negative_operators_do_not_match_missing_or_null_values(
     operator: str,
     expected: Any,
 ) -> None:
-    """字段缺失或为空时，否定操作符不能误命中。"""
+    """
+    字段缺失或为空时，否定操作符不能误命中。
+    """
     evaluation = _evaluate(
         _policy(_category_rule("rule.negative", _leaf(field, operator, expected))),
         _facts(values={field: missing_value}),
@@ -338,9 +371,12 @@ def test_negative_operators_do_not_match_missing_or_null_values(
     assert evaluation.result.recommended.rule_id is None
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.parametrize("missing_value", [_MISSING, None], ids=["missing", "null"])  # type: ignore[misc]
 def test_not_exists_matches_missing_and_null_values(missing_value: Any) -> None:
-    """不存在操作符应匹配缺失及空字段。"""
+    """
+    不存在操作符应匹配缺失及空字段。
+    """
     evaluation = _evaluate(
         _policy(
             _category_rule(
@@ -355,7 +391,9 @@ def test_not_exists_matches_missing_and_null_values(missing_value: Any) -> None:
 
 
 def test_all_any_and_not_groups_can_be_nested() -> None:
-    """嵌套的且、或、排除组合保留逻辑语义。"""
+    """
+    嵌套的且、或、排除组合保留逻辑语义。
+    """
     condition = {
         "all": [
             _leaf("media.year", "gte", 2000),
@@ -376,7 +414,9 @@ def test_all_any_and_not_groups_can_be_nested() -> None:
 
 
 def test_first_matching_category_rule_wins() -> None:
-    """分类只使用按顺序最先命中的规则。"""
+    """
+    分类只使用按顺序最先命中的规则。
+    """
     always = _leaf("media.type", "equals", "电影")
     evaluation = _evaluate(
         _policy(
@@ -391,7 +431,9 @@ def test_first_matching_category_rule_wins() -> None:
 
 
 def test_matching_label_rules_accumulate_with_stable_deduplication() -> None:
-    """标签规则累积结果并稳定去重。"""
+    """
+    标签规则累积结果并稳定去重。
+    """
     always = _leaf("media.type", "equals", "电影")
     evaluation = _evaluate(
         _policy(
@@ -409,7 +451,9 @@ def test_matching_label_rules_accumulate_with_stable_deduplication() -> None:
 
 
 def test_media_type_fallback_is_used_when_no_category_rule_matches() -> None:
-    """无规则命中时使用对应媒体类型的兜底分类。"""
+    """
+    无规则命中时使用对应媒体类型的兜底分类。
+    """
     evaluation = _evaluate(
         _policy(
             _category_rule(
@@ -425,6 +469,7 @@ def test_media_type_fallback_is_used_when_no_category_rule_matches() -> None:
     assert evaluation.result.effective.source == "fallback"
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.parametrize(  # type: ignore[misc]
     ("media_type", "media_source", "expected_category"),
     [
@@ -438,7 +483,9 @@ def test_rule_source_and_media_type_restrictions_are_applied_before_conditions(
     media_source: str,
     expected_category: str,
 ) -> None:
-    """来源与媒体类型范围先于条件求值。"""
+    """
+    来源与媒体类型范围先于条件求值。
+    """
     rule = _category_rule(
         "rule.restricted",
         _leaf("media.year", "gte", 2000),
@@ -455,7 +502,9 @@ def test_rule_source_and_media_type_restrictions_are_applied_before_conditions(
 
 
 def test_unavailable_source_field_is_rejected() -> None:
-    """限定到完全不支持字段的来源时，策略不得发布。"""
+    """
+    限定到完全不支持字段的来源时，策略不得发布。
+    """
     result = _validation_report(
         _policy(
             _category_rule(
@@ -472,7 +521,9 @@ def test_unavailable_source_field_is_rejected() -> None:
 
 
 def test_trace_reports_actual_values_and_match_decisions() -> None:
-    """匹配轨迹保留实际字段值和判断结果。"""
+    """
+    匹配轨迹保留实际字段值和判断结果。
+    """
     evaluation = _evaluate(
         _policy(
             _category_rule(
@@ -495,7 +546,9 @@ def _validation_report(
     *,
     fields: Sequence[ClassificationFieldDefinition] | None = None,
 ) -> ClassificationValidationResult:
-    """收集策略结构和语义校验结果。"""
+    """
+    收集策略结构和语义校验结果。
+    """
     standard_fields = get_standard_classification_fields()
     extra_fields = tuple(fields or ())
     if extra_fields[:len(standard_fields)] == standard_fields:
@@ -512,7 +565,9 @@ def _assert_validation_error(
     *,
     fields: Sequence[ClassificationFieldDefinition] | None = None,
 ) -> None:
-    """断言无效策略产生指定错误代码。"""
+    """
+    断言无效策略产生指定错误代码。
+    """
     report = _validation_report(payload, fields=fields)
     error_codes = {
         issue.code for issue in report.issues if issue.severity == "error"
@@ -522,7 +577,9 @@ def _assert_validation_error(
 
 
 def test_valid_policy_has_no_validation_errors() -> None:
-    """合法策略不产生阻断发布的校验错误。"""
+    """
+    合法策略不产生阻断发布的校验错误。
+    """
     payload = _base_policy_payload()
     payload["rules"] = [
         _category_rule(
@@ -538,6 +595,7 @@ def test_valid_policy_has_no_validation_errors() -> None:
     assert report.issues == []
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.parametrize(  # type: ignore[misc]
     ("mutate", "expected_code"),
     [
@@ -560,7 +618,9 @@ def test_duplicate_ids_are_rejected(
     mutate: Callable[[dict[str, Any]], None],
     expected_code: str,
 ) -> None:
-    """重复分类或规则编号应被拒绝。"""
+    """
+    重复分类或规则编号应被拒绝。
+    """
     payload = _base_policy_payload()
     payload["rules"] = [
         _category_rule("rule.duplicate", _leaf("media.year", "gte", 2000))
@@ -570,6 +630,7 @@ def test_duplicate_ids_are_rejected(
     _assert_validation_error(payload, expected_code)
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.parametrize(  # type: ignore[misc]
     "path",
     [
@@ -585,7 +646,9 @@ def test_duplicate_ids_are_rejected(
     ],
 )
 def test_invalid_category_paths_are_rejected(path: list[str]) -> None:
-    """非法目录路径应在发布前被拒绝。"""
+    """
+    非法目录路径应在发布前被拒绝。
+    """
     payload = _base_policy_payload()
     payload["categories"][0]["path"] = path
 
@@ -593,13 +656,16 @@ def test_invalid_category_paths_are_rejected(path: list[str]) -> None:
 
 
 def test_duplicate_paths_are_rejected_within_the_same_media_type() -> None:
-    """同一媒体类型不允许重复分类路径。"""
+    """
+    同一媒体类型不允许重复分类路径。
+    """
     payload = _base_policy_payload()
     payload["categories"][1]["path"] = payload["categories"][0]["path"]
 
     _assert_validation_error(payload, "duplicate_category_path")
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.parametrize(  # type: ignore[misc]
     ("target", "expected_code"),
     [
@@ -612,7 +678,9 @@ def test_category_rule_targets_must_exist_and_match_the_rule_media_type(
     target: str,
     expected_code: str,
 ) -> None:
-    """规则目标必须存在且与媒体范围兼容。"""
+    """
+    规则目标必须存在且与媒体范围兼容。
+    """
     payload = _base_policy_payload()
     payload["rules"] = [
         _category_rule(
@@ -625,6 +693,7 @@ def test_category_rule_targets_must_exist_and_match_the_rule_media_type(
     _assert_validation_error(payload, expected_code)
 
 
+# pytest 动态装饰器的类型无法由当前检查配置完整推断。
 @pytest.mark.parametrize(  # type: ignore[misc]
     ("condition", "expected_code"),
     [
@@ -646,7 +715,9 @@ def test_condition_contract_errors_are_rejected(
     condition: dict[str, Any],
     expected_code: str,
 ) -> None:
-    """条件字段、操作符及值的契约错误应被拒绝。"""
+    """
+    条件字段、操作符及值的契约错误应被拒绝。
+    """
     payload = _base_policy_payload()
     payload["rules"] = [_category_rule("rule.invalid-condition", condition)]
 
@@ -654,7 +725,9 @@ def test_condition_contract_errors_are_rejected(
 
 
 def test_condition_tree_depth_limit_is_enforced() -> None:
-    """条件树不能超过深度上限。"""
+    """
+    条件树不能超过深度上限。
+    """
     condition: dict[str, Any] = _leaf("media.year", "gte", 2000)
     for _ in range(4):
         condition = {"not": condition}
@@ -665,7 +738,9 @@ def test_condition_tree_depth_limit_is_enforced() -> None:
 
 
 def test_policy_rule_count_limit_is_enforced() -> None:
-    """策略规则数量不能超过上限。"""
+    """
+    策略规则数量不能超过上限。
+    """
     payload = _base_policy_payload()
     payload["rules"] = [
         _category_rule(
@@ -679,7 +754,9 @@ def test_policy_rule_count_limit_is_enforced() -> None:
 
 
 def test_per_rule_leaf_condition_limit_is_enforced() -> None:
-    """单条规则的叶子条件数量不能超过上限。"""
+    """
+    单条规则的叶子条件数量不能超过上限。
+    """
     payload = _base_policy_payload()
     payload["rules"] = [
         _category_rule(
@@ -697,7 +774,9 @@ def test_per_rule_leaf_condition_limit_is_enforced() -> None:
 
 
 def test_every_enabled_media_type_requires_a_fallback() -> None:
-    """每种启用媒体类型都必须配置可用兜底。"""
+    """
+    每种启用媒体类型都必须配置可用兜底。
+    """
     payload = _base_policy_payload()
     payload["fallbacks"].pop("音乐")
 
@@ -705,7 +784,9 @@ def test_every_enabled_media_type_requires_a_fallback() -> None:
 
 
 def test_extension_field_namespace_must_match_the_restricted_source() -> None:
-    """扩展字段的命名空间必须与来源限制一致。"""
+    """
+    扩展字段的命名空间必须与来源限制一致。
+    """
     standard_fields = list(get_standard_classification_fields())
     field_model = type(standard_fields[0])
     extension_field = field_model.model_validate(
@@ -740,7 +821,9 @@ def test_extension_field_namespace_must_match_the_restricted_source() -> None:
 
 
 def test_standard_field_catalog_is_unique_and_exposes_operator_contracts() -> None:
-    """标准字段目录保持唯一并声明操作符合同。"""
+    """
+    标准字段目录保持唯一并声明操作符合同。
+    """
     fields = get_standard_classification_fields()
     field_map = {field.id: field for field in fields}
 
@@ -754,13 +837,17 @@ def test_standard_field_catalog_is_unique_and_exposes_operator_contracts() -> No
 
 
 def _percentile_95(samples: list[float]) -> float:
-    """从样本耗时中计算第九十五百分位。"""
+    """
+    从样本耗时中计算第九十五百分位。
+    """
     ordered = sorted(samples)
     return ordered[max(0, int(len(ordered) * 0.95) - 1)]
 
 
 def test_two_hundred_rules_with_six_conditions_evaluate_under_five_ms_p95() -> None:
-    """验证二百条六条件规则的纯求值性能预算。"""
+    """
+    验证二百条六条件规则的纯求值性能预算。
+    """
     rules = []
     for index in range(200):
         rules.append(

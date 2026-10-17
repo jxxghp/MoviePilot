@@ -1,6 +1,11 @@
+"""
+影视和音乐推荐聚合、分页缓存与定期刷新。
+"""
+
 from typing import Any, Callable, List, Optional, Protocol, Sequence, TypeVar, cast
 
-import pillow_avif  # noqa: F401  # pylint: disable=unused-import  # AVIF 注册副作用
+# 导入时为 Pillow 注册 AVIF 解码能力，因此需要保留未直接引用的模块。
+import pillow_avif  # noqa: F401  # pylint: disable=unused-import
 
 from app.application.image import ImageHelper
 from app.chain.bangumi import BangumiChain
@@ -26,10 +31,14 @@ _RecommendationFunction = TypeVar("_RecommendationFunction", bound=Callable[...,
 
 
 def _cached_recommendation(ttl: int, region: str) -> Callable[[_RecommendationFunction], _RecommendationFunction]:
-    """保留推荐方法签名，按既有区域和有效期缓存非空结果。"""
+    """
+    保留推荐方法签名，按既有区域和有效期缓存非空结果。
+    """
 
     def decorate(function: _RecommendationFunction) -> _RecommendationFunction:
-        """应用同步或异步缓存，保留原始函数身份与返回载荷。"""
+        """
+        应用同步或异步缓存，保留原始函数身份与返回载荷。
+        """
         return cast(_RecommendationFunction, cached(
             ttl=ttl, region=region, skip_empty=True,
         )(function))
@@ -38,15 +47,26 @@ def _cached_recommendation(ttl: int, region: str) -> Callable[[_RecommendationFu
 
 
 class _RecommendationPage(Protocol):
-    """推荐刷新按页调用的公共方法合同。"""
+    """
+    推荐刷新按页调用的公共方法合同。
+    """
 
     @property
     def __name__(self) -> str:
-        """返回进度与日志中展示的来源方法名称。"""
+        """
+        返回进度与日志中展示的来源方法名称。
+
+        :return: 用于展示推荐刷新来源的可调用方法名称
+        """
         ...
 
     def __call__(self, *, page: int) -> list[dict[str, Any]]:
-        """按默认筛选条件读取指定页的推荐媒体。"""
+        """
+        按默认筛选条件读取指定页的推荐媒体。
+
+        :param page: 需要读取的推荐页码，按来源接口的分页规则传递
+        :return: 该页的推荐媒体字典列表，无结果时为空列表
+        """
         ...
 
 
@@ -55,7 +75,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
     推荐处理链，单例运行
     """
 
-    # 推荐缓存时间
+    # 推荐结果缓存有效期，单位为秒。
     recommend_ttl = 24 * 3600
     # 推荐缓存页数
     cache_max_pages = 5
@@ -69,7 +89,9 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             count: int,
             entity: str,
     ) -> dict[str, Any]:
-        """构造同步和异步榜单入口共用的 ListenBrainz 请求。"""
+        """
+        构造同步和异步榜单入口共用的 ListenBrainz 请求。
+        """
         return {
             "range_name": range_name,
             "page": page,
@@ -86,7 +108,9 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             tags: str,
             sort: str,
     ) -> dict[str, Any]:
-        """构造同步和异步豆瓣音乐发现入口共用的请求。"""
+        """
+        构造同步和异步豆瓣音乐发现入口共用的请求。
+        """
         return {
             "page": page,
             "count": count,
@@ -109,7 +133,9 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             release_date: Optional[str],
             page: Optional[int],
     ) -> dict[str, Any]:
-        """构造同步和异步 TMDB 发现入口共用的业务请求。"""
+        """
+        构造同步和异步 TMDB 发现入口共用的业务请求。
+        """
         return {
             "mtype": mtype,
             "sort_by": sort_by,
@@ -131,7 +157,9 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             page: Optional[int],
             count: Optional[int],
     ) -> dict[str, Any]:
-        """构造同步和异步豆瓣影视发现入口共用的业务请求。"""
+        """
+        构造同步和异步豆瓣影视发现入口共用的业务请求。
+        """
         return {
             "mtype": mtype,
             "sort": sort,
@@ -142,14 +170,18 @@ class RecommendChain(ChainBase, metaclass=Singleton):
 
     @staticmethod
     def _supports_music_source(media_source: MediaSource) -> bool:
-        """判断推荐发现是否支持请求中的音乐数据源。"""
+        """
+        判断推荐发现是否支持请求中的音乐数据源。
+        """
         return normalize_media_source(media_source) == MediaSource.DoubanMusic
 
     @staticmethod
     def _serialize_medias(
             medias: Optional[Sequence[Any]],
     ) -> list[dict[str, Any]]:
-        """把来源媒体对象统一投影为推荐缓存使用的字典。"""
+        """
+        把来源媒体对象统一投影为推荐缓存使用的字典。
+        """
         return [media.to_dict() for media in medias] if medias else []
 
     @classmethod
@@ -159,7 +191,9 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             page: Optional[int],
             count: Optional[int],
     ) -> list[dict[str, Any]]:
-        """按规范化页码截取来源媒体，并统一投影为推荐字典。"""
+        """
+        按规范化页码截取来源媒体，并统一投影为推荐字典。
+        """
         if not medias:
             return []
         normalized_page = page or 1
@@ -177,7 +211,9 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             with_cover: bool = False,
             entity: str = MUSIC_ENTITY_RECORDING,
     ) -> list[MusicInfo]:
-        """读取 ListenBrainz 音乐榜单并应用推荐筛选与排序。"""
+        """
+        读取 ListenBrainz 音乐榜单并应用推荐筛选与排序。
+        """
         request = self._music_chart_request(range_name, page, count, entity)
         results = ListenBrainzChain().music_chart(**request)
         return self._filter_music_candidates(
@@ -198,7 +234,9 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             with_cover: bool = False,
             entity: str = MUSIC_ENTITY_RECORDING,
     ) -> list[MusicInfo]:
-        """异步读取 ListenBrainz 音乐榜单并应用推荐筛选与排序。"""
+        """
+        异步读取 ListenBrainz 音乐榜单并应用推荐筛选与排序。
+        """
         request = self._music_chart_request(range_name, page, count, entity)
         results = await ListenBrainzChain().async_music_chart(**request)
         return self._filter_music_candidates(
@@ -219,7 +257,9 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             count: int = 30,
             with_cover: bool = False,
     ) -> list[MusicInfo]:
-        """异步读取 ListenBrainz 新发行专辑并应用封面筛选。"""
+        """
+        异步读取 ListenBrainz 新发行专辑并应用封面筛选。
+        """
         results = await ListenBrainzChain().async_music_fresh_releases(
             days=days,
             sort=sort,
@@ -244,7 +284,9 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             tags: str = "",
             sort: str = "U",
     ) -> list[MusicInfo]:
-        """按固定音乐来源读取发现内容，当前支持豆瓣音乐。"""
+        """
+        按固定音乐来源读取发现内容，当前支持豆瓣音乐。
+        """
         if not self._supports_music_source(media_source):
             return []
         request = self._music_discover_request(page, count, entity, mode, tags, sort)
@@ -260,7 +302,9 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             tags: str = "",
             sort: str = "U",
     ) -> list[MusicInfo]:
-        """异步按固定音乐来源读取发现内容，当前支持豆瓣音乐。"""
+        """
+        异步按固定音乐来源读取发现内容，当前支持豆瓣音乐。
+        """
         if not self._supports_music_source(media_source):
             return []
         request = self._music_discover_request(page, count, entity, mode, tags, sort)
@@ -274,7 +318,9 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             min_listen_count: int = 0,
             with_cover: bool = False,
     ) -> list[MusicInfo]:
-        """按热度和封面条件筛选音乐推荐，并限制返回数量。"""
+        """
+        按热度和封面条件筛选音乐推荐，并限制返回数量。
+        """
         results = [
             info for info in candidates
             if (info.listen_count or 0) >= max(0, min_listen_count)
@@ -300,7 +346,6 @@ class RecommendChain(ChainBase, metaclass=Singleton):
         """
         logger.debug("Starting to refresh Recommend data.")
 
-        # 推荐来源方法
         recommend_methods: list[_RecommendationPage] = [
             self.tmdb_movies,
             self.tmdb_tvs,
@@ -319,9 +364,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             self.music_douban,
         ]
 
-        # 缓存并刷新所有推荐数据
         recommends = []
-        # 记录哪些方法已完成
         methods_finished = set()
         total_requests = len(recommend_methods) * self.cache_max_pages
         finished_requests = 0
@@ -366,7 +409,6 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             if len(methods_finished) == len(recommend_methods):
                 break
 
-        # 缓存收集到的海报
         if progress_callback:
             progress_callback(value=90, text="推荐数据刷新完成，正在缓存海报 ...")
         self.__cache_posters(recommends, progress_callback=progress_callback)
@@ -381,6 +423,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
     ) -> None:
         """
         提取 poster_path 并缓存图片
+
         :param datas: 数据列表
         :param progress_callback: 定时服务进度更新回调
         """
@@ -406,6 +449,7 @@ class RecommendChain(ChainBase, metaclass=Singleton):
     def __fetch_and_save_image(url: str) -> None:
         """
         请求并保存图片
+
         :param url: 图片路径
         """
         ImageHelper().fetch_image(url=url)
@@ -434,7 +478,9 @@ class RecommendChain(ChainBase, metaclass=Singleton):
     @log_execution_time(logger=logger)
     @_cached_recommendation(ttl=recommend_ttl, region=recommend_cache_region)
     def music_weekly(self, page: Optional[int] = 1, count: Optional[int] = 30) -> List[dict[str, Any]]:
-        """返回 ListenBrainz 本周全站热门音乐。"""
+        """
+        返回 ListenBrainz 本周全站热门音乐。
+        """
         medias = self.music_chart(
             range_name="this_week",
             page=page or 1,
@@ -450,7 +496,9 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             page: Optional[int] = 1,
             count: Optional[int] = 30,
     ) -> List[dict[str, Any]]:
-        """返回豆瓣音乐官方新碟榜。"""
+        """
+        返回豆瓣音乐官方新碟榜。
+        """
         medias = self.music_discover(
             media_source=MediaSource.DoubanMusic,
             page=page or 1,
@@ -674,7 +722,9 @@ class RecommendChain(ChainBase, metaclass=Singleton):
     @log_execution_time(logger=logger)
     @_cached_recommendation(ttl=recommend_ttl, region=recommend_cache_region)
     async def async_music_weekly(self, page: Optional[int] = 1, count: Optional[int] = 30) -> List[dict[str, Any]]:
-        """异步返回 ListenBrainz 本周全站热门音乐。"""
+        """
+        异步返回 ListenBrainz 本周全站热门音乐。
+        """
         medias = await self.async_music_chart(
             range_name="this_week",
             page=page or 1,
@@ -690,7 +740,9 @@ class RecommendChain(ChainBase, metaclass=Singleton):
             page: Optional[int] = 1,
             count: Optional[int] = 30,
     ) -> List[dict[str, Any]]:
-        """异步返回豆瓣音乐官方新碟榜。"""
+        """
+        异步返回豆瓣音乐官方新碟榜。
+        """
         medias = await self.async_music_discover(
             media_source=MediaSource.DoubanMusic,
             page=page or 1,

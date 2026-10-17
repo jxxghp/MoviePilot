@@ -1,8 +1,9 @@
-"""3.0.37 插件实例描述符增加默认调用目标标记。
+"""
+3.0.37 插件实例描述符增加默认调用目标标记。
 
-Revision ID: e0e68cbd5756
-Revises: 487f7e681955
-Create Date: 2026-09-13
+版本标识： e0e68cbd5756
+前置版本： 487f7e681955
+创建时间： 2026-09-13
 """
 
 import sqlalchemy as sa
@@ -18,17 +19,22 @@ _DEFAULT_TARGET_INDEX = "ux_plugininstance_default_target"
 
 
 def _column_names() -> set[str]:
-    """读取当前表已有列名，兼容重复升级和已由 create_all 建出当前模型的场景。"""
+    """
+    读取当前表已有列名，兼容重复升级和已由 create_all 建出当前模型的场景。
+    """
     return {column["name"] for column in sa.inspect(op.get_bind()).get_columns(_TABLE)}
 
 
 def _index_names() -> set[str]:
-    """读取当前表已有索引名，兼容重复升级和已由 create_all 建出当前模型的场景。"""
+    """
+    读取当前表已有索引名，兼容重复升级和已由 create_all 建出当前模型的场景。
+    """
     return {index["name"] for index in sa.inspect(op.get_bind()).get_indexes(_TABLE)}
 
 
 def upgrade() -> None:
-    """增加默认调用目标标记列，并建出「同一源插件至多一个默认调用目标」的条件唯一索引。
+    """
+    增加默认调用目标标记列，并建出「同一源插件至多一个默认调用目标」的条件唯一索引。
 
     条件谓词按方言分别给出：布尔列与 ``True`` 比较，SQLite 编译为 ``IS 1``，
     PostgreSQL 编译为 ``IS true``；谓词整个丢失会退化成「每个源插件只能有一行
@@ -57,7 +63,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    """删除条件唯一索引与默认调用目标标记列。"""
+    """
+    删除条件唯一索引与默认调用目标标记列。
+    """
     if _DEFAULT_TARGET_INDEX in _index_names():
         op.drop_index(_DEFAULT_TARGET_INDEX, table_name=_TABLE)
     if "is_default_target" in _column_names():

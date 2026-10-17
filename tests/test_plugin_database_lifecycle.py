@@ -1,4 +1,6 @@
-"""插件自有数据库的运行时端口、生命周期时机与组合根接线。"""
+"""
+插件自有数据库的运行时端口、生命周期时机与组合根接线。
+"""
 
 from __future__ import annotations
 
@@ -28,19 +30,25 @@ from app.schemas.types import SystemConfigKey
 
 
 class ModelA:
-    """充当声明模型占位符的哨兵类，仅用于校验实参透传。"""
+    """
+    充当声明模型占位符的哨兵类，仅用于校验实参透传。
+    """
 
 
 @pytest.fixture
 def restore_plugin_database_port():
-    """还原全局插件数据库端口，避免测试间相互污染。"""
+    """
+    还原全局插件数据库端口，避免测试间相互污染。
+    """
     original = database_module.get_plugin_database()
     yield
     database_module.configure_plugin_database(original)
 
 
 def _recording_database(calls: list[tuple]) -> PluginDatabase:
-    """构造把 ensure/release/destroy 三个操作依次记录到同一列表的插件数据库端口。"""
+    """
+    构造把 ensure/release/destroy 三个操作依次记录到同一列表的插件数据库端口。
+    """
     return PluginDatabase(
         ensure=lambda plugin_id, models, migrations: calls.append(
             ("ensure", plugin_id, models, migrations)
@@ -72,7 +80,9 @@ def _make_plugin_class(
     """
 
     def init_plugin(self, _config):
-        """记录初始化调用，供顺序断言使用。"""
+        """
+        记录初始化调用，供顺序断言使用。
+        """
         if calls is not None:
             calls.append(("init", name))
 
@@ -92,7 +102,9 @@ def _make_plugin_class(
 
 
 def _build_lifecycle(**overrides: Any) -> PluginLifecycle:
-    """构造直接可用的生命周期实例，默认端口全为空操作，测试按需覆盖。"""
+    """
+    构造直接可用的生命周期实例，默认端口全为空操作，测试按需覆盖。
+    """
     defaults: dict[str, Any] = dict(
         classes={},
         running={},
@@ -115,7 +127,9 @@ def _build_lifecycle(**overrides: Any) -> PluginLifecycle:
 
 
 def test_default_plugin_database_ports_are_safe_noops(restore_plugin_database_port):
-    """未装配组合根时，三个端口方法均是安全的 no-op。"""
+    """
+    未装配组合根时，三个端口方法均是安全的 no-op。
+    """
     database_module.configure_plugin_database(PluginDatabase())
     database = database_module.get_plugin_database()
     assert database.ensure("demo", (), None) is None
@@ -124,7 +138,9 @@ def test_default_plugin_database_ports_are_safe_noops(restore_plugin_database_po
 
 
 def test_configure_plugin_database_replaces_the_process_port(restore_plugin_database_port):
-    """组合根替换端口后，三次调用按序进入替身记录的调用列表。"""
+    """
+    组合根替换端口后，三次调用按序进入替身记录的调用列表。
+    """
     calls: list[tuple] = []
     database_module.configure_plugin_database(_recording_database(calls))
 
@@ -137,7 +153,9 @@ def test_configure_plugin_database_replaces_the_process_port(restore_plugin_data
 
 
 def test_start_ensures_the_database_after_init_plugin():
-    """建库发生在 init_plugin 之后，插件桩把两者记到同一 calls 列表验证顺序。"""
+    """
+    建库发生在 init_plugin 之后，插件桩把两者记到同一 calls 列表验证顺序。
+    """
     calls: list[tuple] = []
     plugin_cls = _make_plugin_class("DemoPlugin", calls=calls)
     lifecycle = _build_lifecycle(
@@ -153,7 +171,9 @@ def test_start_ensures_the_database_after_init_plugin():
 
 
 def test_start_passes_the_declared_models_and_migration_directory():
-    """声明的模型与字符串迁移目录原样透传给 ensure，字符串被转换为 Path。"""
+    """
+    声明的模型与字符串迁移目录原样透传给 ensure，字符串被转换为 Path。
+    """
     calls: list[tuple] = []
     plugin_cls = _make_plugin_class("DemoPlugin", models=(ModelA,), migrations="m")
     lifecycle = _build_lifecycle(
@@ -169,7 +189,9 @@ def test_start_passes_the_declared_models_and_migration_directory():
 
 
 def test_start_reports_empty_declarations_for_plugins_without_a_database():
-    """未实现数据库钩子的插件仍触发 ensure，实参为空元组和 None。"""
+    """
+    未实现数据库钩子的插件仍触发 ensure，实参为空元组和 None。
+    """
     calls: list[tuple] = []
     plugin_cls = _make_plugin_class("DemoPlugin", declare_hooks=False)
     lifecycle = _build_lifecycle(
@@ -185,11 +207,15 @@ def test_start_reports_empty_declarations_for_plugins_without_a_database():
 
 
 def test_plugin_failing_to_ensure_is_not_registered_as_running():
-    """建库失败与 init_plugin 抛错同构：进入 load_failed，不进入运行态。"""
+    """
+    建库失败与 init_plugin 抛错同构：进入 load_failed，不进入运行态。
+    """
     plugin_cls = _make_plugin_class("DemoPlugin")
 
     def _raise_ensure(_plugin_id, _models, _migrations):
-        """模拟建库失败。"""
+        """
+        模拟建库失败。
+        """
         raise RuntimeError("ensure failed")
 
     lifecycle = _build_lifecycle(
@@ -205,7 +231,9 @@ def test_plugin_failing_to_ensure_is_not_registered_as_running():
 
 
 def test_stop_releases_the_database_and_never_destroys_it():
-    """停止单个插件只释放连接，不出现任何 destroy 调用。"""
+    """
+    停止单个插件只释放连接，不出现任何 destroy 调用。
+    """
     calls: list[tuple] = []
     plugin_cls = _make_plugin_class("DemoPlugin")
     lifecycle = _build_lifecycle(
@@ -222,7 +250,9 @@ def test_stop_releases_the_database_and_never_destroys_it():
 
 
 def test_stop_without_plugin_id_releases_every_running_plugin():
-    """整体停止时，每个运行中的插件都收到一次 release。"""
+    """
+    整体停止时，每个运行中的插件都收到一次 release。
+    """
     calls: list[tuple] = []
     plugin_a = _make_plugin_class("PluginA")
     plugin_b = _make_plugin_class("PluginB")
@@ -240,7 +270,9 @@ def test_stop_without_plugin_id_releases_every_running_plugin():
 
 
 def test_reload_releases_then_ensures_again():
-    """热重载先释放旧连接再重新建库，全程不出现 destroy。"""
+    """
+    热重载先释放旧连接再重新建库，全程不出现 destroy。
+    """
     calls: list[tuple] = []
     plugin_cls = _make_plugin_class("DemoPlugin")
     lifecycle = _build_lifecycle(
@@ -259,11 +291,15 @@ def test_reload_releases_then_ensures_again():
 
 
 def test_release_failure_does_not_block_unloading():
-    """release 抛异常时卸载仍收敛完成，插件从运行态移出。"""
+    """
+    release 抛异常时卸载仍收敛完成，插件从运行态移出。
+    """
     plugin_cls = _make_plugin_class("DemoPlugin")
 
     def _raise_release(_plugin_id):
-        """模拟释放连接失败。"""
+        """
+        模拟释放连接失败。
+        """
         raise RuntimeError("release failed")
 
     lifecycle = _build_lifecycle(
@@ -279,7 +315,9 @@ def test_release_failure_does_not_block_unloading():
 
 
 def test_delete_plugin_data_destroys_the_plugin_database():
-    """重置数据先删宿主业务数据行，再销毁插件自有库。"""
+    """
+    重置数据先删宿主业务数据行，再销毁插件自有库。
+    """
     calls: list[tuple] = []
     store = PluginConfigStore(
         storage=lambda: PluginStorage(
@@ -298,7 +336,9 @@ def test_delete_plugin_data_destroys_the_plugin_database():
 
 
 def test_delete_plugin_data_without_force_refuses_unknown_plugin():
-    """未知插件且非强制删除时拒绝执行，不触发销毁。"""
+    """
+    未知插件且非强制删除时拒绝执行，不触发销毁。
+    """
     calls: list[tuple] = []
     store = PluginConfigStore(
         storage=lambda: PluginStorage(
@@ -315,7 +355,9 @@ def test_delete_plugin_data_without_force_refuses_unknown_plugin():
 
 
 def test_clone_uninstall_destroys_only_the_clone_database():
-    """分身卸载只销毁分身自己的库，单键语义下与源插件互不影响。"""
+    """
+    分身卸载只销毁分身自己的库，单键语义下与源插件互不影响。
+    """
     calls: list[tuple] = []
     store = PluginConfigStore(
         storage=lambda: PluginStorage(
@@ -332,7 +374,9 @@ def test_clone_uninstall_destroys_only_the_clone_database():
 
 
 def test_close_database_releases_plugin_databases_before_the_host_engine(monkeypatch):
-    """进程关停时先释放插件库，再释放宿主同步引擎。"""
+    """
+    进程关停时先释放插件库，再释放宿主同步引擎。
+    """
     calls: list[str] = []
     monkeypatch.setattr(session_module, "release_all_databases", lambda: calls.append("plugins"))
     fake_sync_engine = MagicMock()
@@ -347,7 +391,9 @@ def test_close_database_releases_plugin_databases_before_the_host_engine(monkeyp
 
 
 def test_startup_composition_binds_the_plugin_database_to_the_db_framework(monkeypatch):
-    """组合根把插件数据库端口装配到 db 层的建库、释放与销毁实现。"""
+    """
+    组合根把插件数据库端口装配到 db 层的建库、释放与销毁实现。
+    """
     calls: list[tuple] = []
     monkeypatch.setattr(
         plugins_initializer,
@@ -374,7 +420,9 @@ def test_startup_composition_binds_the_plugin_database_to_the_db_framework(monke
 
 
 def test_plugin_runtime_database_port_does_not_import_the_database_layer():
-    """端口模块的 import 语句里不含任何 app.db 前缀，保证运行时不依赖数据库实现。"""
+    """
+    端口模块的 import 语句里不含任何 app.db 前缀，保证运行时不依赖数据库实现。
+    """
     source_path = (
         Path(__file__).resolve().parent.parent
         / "app"
@@ -395,12 +443,16 @@ def test_plugin_runtime_database_port_does_not_import_the_database_layer():
 
 
 def test_start_releases_the_database_of_a_plugin_that_failed_to_load():
-    """建库失败的插件不会进入运行态，其句柄在失败分支就地释放。"""
+    """
+    建库失败的插件不会进入运行态，其句柄在失败分支就地释放。
+    """
     calls: list[tuple] = []
     plugin_cls = _make_plugin_class("DemoPlugin")
 
     def _raise_ensure(plugin_id, _models, _migrations):
-        """模拟建库失败，但句柄可能已经建立。"""
+        """
+        模拟建库失败，但句柄可能已经建立。
+        """
         calls.append(("ensure", plugin_id))
         raise RuntimeError("ensure failed")
 
@@ -420,12 +472,16 @@ def test_start_releases_the_database_of_a_plugin_that_failed_to_load():
 
 
 def test_stop_all_releases_plugins_that_never_reached_the_running_registry():
-    """整体停止会释放启动中途失败、只登记在类注册表里的插件。"""
+    """
+    整体停止会释放启动中途失败、只登记在类注册表里的插件。
+    """
     calls: list[tuple] = []
     plugin_cls = _make_plugin_class("DemoPlugin")
 
     def _raise_ensure(_plugin_id, _models, _migrations):
-        """模拟建库失败。"""
+        """
+        模拟建库失败。
+        """
         raise RuntimeError("ensure failed")
 
     lifecycle = _build_lifecycle(
@@ -447,7 +503,9 @@ def test_stop_all_releases_plugins_that_never_reached_the_running_registry():
 
 
 def test_stopping_an_already_stopped_plugin_stays_idempotent():
-    """卸载编排先停后删，删除之后的 remove_plugin 会再停一次，二次停止必须无害。"""
+    """
+    卸载编排先停后删，删除之后的 remove_plugin 会再停一次，二次停止必须无害。
+    """
     calls: list[tuple] = []
     plugin_cls = _make_plugin_class("DemoPlugin")
     lifecycle = _build_lifecycle(
@@ -467,7 +525,9 @@ def test_stopping_an_already_stopped_plugin_stays_idempotent():
 
 
 def _uninstall_manager() -> MagicMock:
-    """构造卸载分身所需的插件管理器替身，按调用顺序记录全部方法调用。"""
+    """
+    构造卸载分身所需的插件管理器替身，按调用顺序记录全部方法调用。
+    """
     plugin_manager = MagicMock()
     plugin_manager.get_plugin_instance.return_value = None
     plugin_manager.get_plugin_source_instances.return_value = []
@@ -477,7 +537,9 @@ def _uninstall_manager() -> MagicMock:
 
 
 def _assert_stop_precedes_deletion(plugin_manager: MagicMock) -> None:
-    """断言插件先停止再删除数据，且删除按 force 执行。"""
+    """
+    断言插件先停止再删除数据，且删除按 force 执行。
+    """
     method_names = [name for name, _args, _kwargs in plugin_manager.mock_calls]
     assert method_names.index("stop") < method_names.index("delete_plugin_config")
     assert method_names.index("stop") < method_names.index("delete_plugin_data")
@@ -493,7 +555,9 @@ def _assert_stop_precedes_deletion(plugin_manager: MagicMock) -> None:
 
 
 def test_http_uninstall_stops_the_plugin_before_deleting_its_data(monkeypatch):
-    """HTTP 卸载先停插件再删数据，停机钩子因此无法重建刚销毁的自有库。"""
+    """
+    HTTP 卸载先停插件再删数据，停机钩子因此无法重建刚销毁的自有库。
+    """
     plugin_manager = _uninstall_manager()
     config = MagicMock()
     config.get.return_value = ["DemoPluginwork"]
@@ -510,7 +574,9 @@ def test_http_uninstall_stops_the_plugin_before_deleting_its_data(monkeypatch):
 
 
 def test_runtime_uninstall_stops_the_plugin_before_deleting_its_data(monkeypatch):
-    """运行态卸载编排同样先停后删，两条卸载路径的数据删除时机保持一致。"""
+    """
+    运行态卸载编排同样先停后删，两条卸载路径的数据删除时机保持一致。
+    """
     plugin_manager = _uninstall_manager()
     config = MagicMock()
     config.get.return_value = ["DemoPluginwork"]
@@ -532,7 +598,9 @@ def test_runtime_uninstall_stops_the_plugin_before_deleting_its_data(monkeypatch
 
 
 def test_uninstall_virtual_instance_also_stops_before_deleting(monkeypatch):
-    """虚拟实例卸载同样先停后删，force 删除不受插件类注销影响。"""
+    """
+    虚拟实例卸载同样先停后删，force 删除不受插件类注销影响。
+    """
     plugin_manager = MagicMock()
     plugin_manager.get_plugin_instance.return_value = PluginInstance(
         instance_id="DemoPluginwork",

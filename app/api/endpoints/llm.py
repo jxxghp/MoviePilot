@@ -1,3 +1,7 @@
+"""
+提供语言模型配置、能力和服务连通性查询接口。
+"""
+
 from typing import Any, Dict, List, Optional, Union
 
 from fastapi import Depends, Request, Response

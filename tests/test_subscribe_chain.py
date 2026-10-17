@@ -1,3 +1,7 @@
+"""
+验证订阅处理链中的检索、下载和完成判定。
+"""
+
 import asyncio
 import sys
 import types
@@ -19,7 +23,9 @@ from app.schemas.types import MUSIC_ENTITY_ALBUM, MediaSource, MediaType
 
 
 def _load_subscribe_chain_class():
-    """隔离加载 SubscribeChain，避免测试依赖完整运行时环境。"""
+    """
+    隔离加载 SubscribeChain，避免测试依赖完整运行时环境。
+    """
     module_name = "_test_subscribe_chain"
     if module_name in sys.modules:
         module = sys.modules[module_name]
@@ -33,7 +39,9 @@ def _load_subscribe_chain_class():
     stub_deps = {}
 
     def ensure_module(name: str, module: types.ModuleType):
-        """登记一个加载期临时替换模块；实际替换与精确还原由 stub_modules 在加载时统一处理。"""
+        """
+        登记一个加载期临时替换模块；实际替换与精确还原由 stub_modules 在加载时统一处理。
+        """
         stub_deps[name] = module
         return module
 
@@ -44,14 +52,18 @@ def _load_subscribe_chain_class():
         subscription_repository = SimpleNamespace()
 
         def __init__(self):
-            """装配隔离链依赖和显式同步订阅修改作用域。"""
+            """
+            装配隔离链依赖和显式同步订阅修改作用域。
+            """
             self.messagehelper = SimpleNamespace(put=lambda *args, **kwargs: None)
             self.subscription_repository = type(self).subscription_repository
             self.sync_subscription_mutation_scope = self._subscription_mutation_scope
 
         @contextmanager
         def _subscription_mutation_scope(self):
-            """提供委托当前测试 repository 的同步修改命令。"""
+            """
+            提供委托当前测试 repository 的同步修改命令。
+            """
             yield SimpleNamespace(update=self._update_subscription)
 
         def _update_subscription(
@@ -62,7 +74,9 @@ def _load_subscribe_chain_class():
             existing=None,
             scene="update",
         ):
-            """记录测试写入并返回与生产命令一致的前后快照。"""
+            """
+            记录测试写入并返回与生产命令一致的前后快照。
+            """
             updated = self.subscription_repository.update(
                 subscribe_id,
                 SubscriptionPatch(payload),
@@ -76,12 +90,23 @@ def _load_subscribe_chain_class():
             )
 
         def post_message(self, *args, **kwargs):
+            """
+            忽略测试中的通知发送，避免触达真实消息渠道。
+            """
             return None
 
         async def async_post_message(self, *args, **kwargs):
+            """
+            忽略测试中的异步通知发送，避免触达真实消息渠道。
+            """
             return None
 
         def recognize_media(self, *args, **kwargs):
+            """
+            模拟媒体未识别成功，不调用外部媒体服务。
+
+            :return: 固定返回 None
+            """
             return None
 
     chain_base_module = ensure_module(
@@ -97,26 +122,38 @@ def _load_subscribe_chain_class():
     music_mixin_module.MusicSubscribeMixin = type("MusicSubscribeMixin", (), {})
 
     class _MediaChain:
-        """提供订阅链隔离测试所需的统一媒体识别接口。"""
+        """
+        提供订阅链隔离测试所需的统一媒体识别接口。
+        """
 
         def recognize_media(self, *args, **kwargs):
-            """同步识别默认返回空结果，由具体用例显式替换。"""
+            """
+            同步识别默认返回空结果，由具体用例显式替换。
+            """
             return None
 
         async def async_recognize_media(self, *args, **kwargs):
-            """异步识别默认返回空结果，由具体用例显式替换。"""
+            """
+            异步识别默认返回空结果，由具体用例显式替换。
+            """
             return None
 
         def recognize_by_meta(self, *args, **kwargs):
-            """同步按元数据识别默认返回空结果。"""
+            """
+            同步按元数据识别默认返回空结果。
+            """
             return None
 
         async def async_recognize_by_meta(self, *args, **kwargs):
-            """异步按元数据识别默认返回空结果。"""
+            """
+            异步按元数据识别默认返回空结果。
+            """
             return None
 
         def supplement_media_info(self, mediainfo, *args, **kwargs):
-            """隔离测试不访问外部附加信息源，原样返回识别结果。"""
+            """
+            隔离测试不访问外部附加信息源，原样返回识别结果。
+            """
             return mediainfo
 
     interaction_module = ensure_module(
@@ -125,15 +162,33 @@ def _load_subscribe_chain_class():
 
     class _SlashInteractionManager:
         def create_or_replace(self, *args, **kwargs):
+            """
+            返回固定请求标识，避免访问真实请求存储。
+
+            :return: 测试请求标识
+            """
             return SimpleNamespace(request_id="request-id")
 
         def get_by_id(self, *args, **kwargs):
+            """
+            模拟按标识查询时请求不存在。
+
+            :return: 固定返回 None
+            """
             return None
 
         def get_by_user(self, *args, **kwargs):
+            """
+            模拟用户没有等待处理的请求。
+
+            :return: 固定返回 None
+            """
             return None
 
         def remove(self, *args, **kwargs):
+            """
+            忽略测试请求删除，不修改真实存储。
+            """
             return None
 
     # 真实导入 app.application.messaging.subscribe 需要 MessageGateway 类型符号
@@ -166,14 +221,25 @@ def _load_subscribe_chain_class():
     class _EventManager:
         @staticmethod
         def send_event(*args, **kwargs):
+            """
+            忽略测试事件，避免触发真实订阅者。
+            """
             return None
 
         @staticmethod
         async def async_send_event(*args, **kwargs):
+            """
+            忽略异步测试事件，避免触发真实订阅者。
+            """
             return None
 
         @staticmethod
         def register(*args, **kwargs):
+            """
+            保留被装饰的处理函数，但不注册真实事件监听器。
+
+            :return: 原样返回处理函数的装饰器
+            """
             def decorator(func):
                 return func
 
@@ -181,7 +247,9 @@ def _load_subscribe_chain_class():
 
         @staticmethod
         def add_event_listener(*args, **kwargs):
-            """兼容模块导入时注册配置变更监听。"""
+            """
+            兼容模块导入时注册配置变更监听。
+            """
             return None
 
     event_module.eventmanager = _EventManager()
@@ -194,13 +262,20 @@ def _load_subscribe_chain_class():
     metainfo_module = ensure_module("app.domain.metainfo", types.ModuleType("app.domain.metainfo"))
 
     class _MetaInfo(SimpleNamespace):
-        """提供订阅刷新测试需要的 MetaInfo 核心字段。"""
+        """
+        提供订阅刷新测试需要的 MetaInfo 核心字段。
+        """
 
         def __init__(self, title="", *args, **kwargs):
             super().__init__(name=title, episode_list=[])
 
         @property
         def season_seq(self):
+            """
+            生成识别季序号；电视剧未指定起始季时默认第一季。
+
+            :return: 季序号文本；非电视剧且未指定季时为空文本
+            """
             if getattr(self, "begin_season", None) is not None:
                 return str(self.begin_season)
             if getattr(self, "type", None) == MediaType.TV:
@@ -209,6 +284,11 @@ def _load_subscribe_chain_class():
 
         @property
         def season(self):
+            """
+            生成带 S 前缀的季标识；电视剧未指定季时默认 S01。
+
+            :return: 格式化季标识；非电视剧且未指定季时为空文本
+            """
             if getattr(self, "begin_season", None) is not None:
                 return f"S{str(self.begin_season).rjust(2, '0')}"
             if getattr(self, "type", None) == MediaType.TV:
@@ -221,6 +301,11 @@ def _load_subscribe_chain_class():
 
     class _WordsMatcher:
         def prepare(self, title, custom_words=None):
+            """
+            保留输入标题并返回空替换结果，隔离自定义识别词处理。
+
+            :return: 原标题和空替换列表
+            """
             return title, []
 
     words_module.WordsMatcher = _WordsMatcher
@@ -306,10 +391,14 @@ def _load_subscribe_chain_class():
             self.__dict__.update(kwargs)
 
     class _SubscribeDeletedEventData:
-        """提供订阅删除应用服务在隔离加载时需要的事件快照。"""
+        """
+        提供订阅删除应用服务在隔离加载时需要的事件快照。
+        """
 
         def __init__(self, **kwargs):
-            """保存事件字段，行为与测试所需的 schema 投影一致。"""
+            """
+            保存事件字段，行为与测试所需的 schema 投影一致。
+            """
             self.__dict__.update(kwargs)
 
     mediaserver_schema_module = ensure_module(
@@ -344,18 +433,33 @@ def _load_subscribe_chain_class():
 
     class _Logger:
         def info(self, *args, **kwargs):
+            """
+            忽略普通日志，避免测试向真实日志设施输出。
+            """
             return None
 
         def debug(self, *args, **kwargs):
+            """
+            忽略调试日志，避免测试向真实日志设施输出。
+            """
             return None
 
         def warning(self, *args, **kwargs):
+            """
+            忽略警告日志，避免测试向真实日志设施输出。
+            """
             return None
 
         def warn(self, *args, **kwargs):
+            """
+            兼容旧警告方法并忽略输出，避免访问真实日志设施。
+            """
             return None
 
         def error(self, *args, **kwargs):
+            """
+            忽略错误日志，避免测试向真实日志设施输出。
+            """
             return None
 
     logger_module.logger = _Logger()
@@ -423,6 +527,11 @@ def _load_subscribe_chain_class():
                 setattr(self, key, value)
 
         def to_dict(self):
+            """
+            导出测试对象的当前属性快照。
+
+            :return: 实例属性字典的浅拷贝
+            """
             return dict(self.__dict__)
 
     db_model_module.Subscribe = _SubscribeModel
@@ -431,18 +540,37 @@ def _load_subscribe_chain_class():
 
     class _SubscribeOper:
         def update(self, *args, **kwargs):
+            """
+            忽略订阅更新，避免测试访问真实数据库。
+            """
             return None
 
         def get(self, *args, **kwargs):
+            """
+            模拟订阅记录不存在。
+
+            :return: 固定返回 None
+            """
             return None
 
         def list(self, *args, **kwargs):
+            """
+            模拟数据库中没有订阅记录。
+
+            :return: 空订阅列表
+            """
             return []
 
         def delete(self, *args, **kwargs):
+            """
+            忽略订阅删除，避免修改真实数据库。
+            """
             return None
 
         def add_history(self, *args, **kwargs):
+            """
+            忽略历史记录写入，避免修改真实数据库。
+            """
             return None
 
     subscribe_oper_module.SubscribeOper = _SubscribeOper
@@ -458,9 +586,17 @@ def _load_subscribe_chain_class():
 
             class _SystemConfigOper:
                 def get(self, *args, **kwargs):
+                    """
+                    模拟尚未保存系统配置。
+
+                    :return: 固定返回 None
+                    """
                     return None
 
                 def set(self, *args, **kwargs):
+                    """
+                    忽略系统配置写入，避免修改真实数据库。
+                    """
                     return None
 
             setattr(module, class_name, _SystemConfigOper)
@@ -497,19 +633,25 @@ def _load_subscribe_chain_class():
     from app.chain.subscribe.facade import SubscribeChain as ProductionSubscribeChain
 
     class SubscribeChain(ProductionSubscribeChain):
-        """保留存量单元测试按调用时替换 repository 的隔离接缝。"""
+        """
+        保留存量单元测试按调用时替换 repository 的隔离接缝。
+        """
 
         subscription_repository = SimpleNamespace()
 
         def __init__(self):
-            """复用真实运行时依赖，只把同步修改 scope 改为动态读取测试 repository。"""
+            """
+            复用真实运行时依赖，只把同步修改 scope 改为动态读取测试 repository。
+            """
             super().__init__()
             self.subscription_repository = type(self).subscription_repository
             self.sync_subscription_mutation_scope = self._subscription_mutation_scope
 
         @contextmanager
         def _subscription_mutation_scope(self):
-            """为当前测试 repository 提供同步修改命令。"""
+            """
+            为当前测试 repository 提供同步修改命令。
+            """
             yield SimpleNamespace(update=self._update_subscription)
 
         def _update_subscription(
@@ -520,7 +662,9 @@ def _load_subscribe_chain_class():
             existing=None,
             scene="update",
         ):
-            """记录测试写入并返回与生产命令一致的前后快照。"""
+            """
+            记录测试写入并返回与生产命令一致的前后快照。
+            """
             updated = self.subscription_repository.update(
                 subscribe_id,
                 SubscriptionPatch(payload),
@@ -534,10 +678,14 @@ def _load_subscribe_chain_class():
             )
 
     class _SubscribeOwnerPatchSurface:
-        """把旧单文件测试接缝转发到拆包后的唯一实现 owner。"""
+        """
+        把旧单文件测试接缝转发到拆包后的唯一实现 owner。
+        """
 
         def __init__(self):
-            """登记实现依赖的真实所属模块，不向生产包根增加重复导出。"""
+            """
+            登记实现依赖的真实所属模块，不向生产包根增加重复导出。
+            """
             object.__setattr__(self, "SubscribeChain", SubscribeChain)
             object.__setattr__(self, "SubscribeInteractionHandler", SubscribeInteractionHandler)
             object.__setattr__(self, "SubscriptionSnapshot", SubscriptionSnapshot)
@@ -582,14 +730,18 @@ def _load_subscribe_chain_class():
             )
 
         def __getattr__(self, name):
-            """读取首个 owner 的依赖，供 unittest.mock 保存并恢复原值。"""
+            """
+            读取首个 owner 的依赖，供 unittest.mock 保存并恢复原值。
+            """
             targets = object.__getattribute__(self, "_targets")
             if name not in targets:
                 raise AttributeError(name)
             return getattr(targets[name][0], name)
 
         def __setattr__(self, name, value):
-            """把测试替身同步设置到声明该依赖的所有 owner。"""
+            """
+            把测试替身同步设置到声明该依赖的所有 owner。
+            """
             targets = object.__getattribute__(self, "_targets")
             if name not in targets:
                 object.__setattr__(self, name, value)
@@ -598,7 +750,9 @@ def _load_subscribe_chain_class():
                 setattr(target, name, value)
 
         def __delattr__(self, name):
-            """兼容 patch.object 对临时新增属性的清理协议。"""
+            """
+            兼容 patch.object 对临时新增属性的清理协议。
+            """
             targets = object.__getattribute__(self, "_targets")
             if name not in targets:
                 object.__delattr__(self, name)
@@ -616,7 +770,9 @@ SubscribeInteractionHandler = SUBSCRIBE_CHAIN_MODULE.SubscribeInteractionHandler
 
 
 def _patch_media_recognize(module, result):
-    """将隔离测试中的统一媒体识别入口替换为指定结果或回调。"""
+    """
+    将隔离测试中的统一媒体识别入口替换为指定结果或回调。
+    """
     recognizer = result if callable(result) else lambda **_kwargs: result
     media_chain = SimpleNamespace(
         recognize_media=recognizer,
@@ -626,6 +782,9 @@ def _patch_media_recognize(module, result):
 
 
 class TestSubscribeChain:
+    """
+    验证订阅缺失范围、资源质量目标和下载完成判定。
+    """
     def _build_subscribe(self, **overrides):
         data = {
             "id": 1,
@@ -667,7 +826,9 @@ class TestSubscribeChain:
         )
 
     def test_default_kwargs_respects_explicit_zero_best_version(self):
-        """显式关闭洗版时必须保留 0，仅未传值才应用默认订阅规则。"""
+        """
+        显式关闭洗版时必须保留 0，仅未传值才应用默认订阅规则。
+        """
 
         def _default_config(_mtype, key):
             return 1 if key in {"best_version", "best_version_full"} else None
@@ -686,7 +847,9 @@ class TestSubscribeChain:
         assert omitted["best_version_full"] == 1
 
     def test_format_subscribe_progress_preserves_special_season_zero(self):
-        """订阅列表展示必须把 S0 当作合法季号，而不是回退到第 1 季。"""
+        """
+        订阅列表展示必须把 S0 当作合法季号，而不是回退到第 1 季。
+        """
         subscribe = self._build_subscribe(season=0, total_episode=5, lack_episode=2)
 
         progress = SubscribeInteractionHandler._format_subscribe_progress(subscribe)
@@ -694,7 +857,9 @@ class TestSubscribeChain:
         assert progress == "第0季 [3/5]"
 
     def test_format_subscribe_progress_preserves_special_season_zero_without_total(self):
-        """S0 没有总集数时仍显示特别季季号。"""
+        """
+        S0 没有总集数时仍显示特别季季号。
+        """
         subscribe = self._build_subscribe(season=0, total_episode=None, lack_episode=None)
 
         progress = SubscribeInteractionHandler._format_subscribe_progress(subscribe)
@@ -702,7 +867,9 @@ class TestSubscribeChain:
         assert progress == "第0季"
 
     def test_format_subscribe_progress_shows_accumulated_album_tracks(self):
-        """消息订阅列表应像电视剧一样显示专辑已累计曲目进度。"""
+        """
+        消息订阅列表应像电视剧一样显示专辑已累计曲目进度。
+        """
         subscribe = self._build_subscribe(
             type=MediaType.MUSIC.value,
             music_type=MUSIC_ENTITY_ALBUM,
@@ -715,19 +882,27 @@ class TestSubscribeChain:
         assert progress == "专辑 [2/11]"
 
     def test_match_title_fallback_calls_torrent_match_from_class(self):
-        """确保标题兜底匹配不依赖 TorrentHelper 实例绑定。"""
+        """
+        确保标题兜底匹配不依赖 TorrentHelper 实例绑定。
+        """
         reached = []
 
         class _PlainTorrentHelper:
-            """模拟需要按类调用的 TorrentHelper 形态。"""
+            """
+            模拟需要按类调用的 TorrentHelper 形态。
+            """
 
             def match_torrent(mediainfo, torrent_meta, torrent):
-                """标记类级调用已经正确进入匹配逻辑。"""
+                """
+                标记类级调用已经正确进入匹配逻辑。
+                """
                 reached.append((mediainfo, torrent_meta, torrent))
                 return False
 
             def filter_torrent(self, *args, **kwargs):
-                """保持订阅匹配后续过滤流程可继续执行。"""
+                """
+                保持订阅匹配后续过滤流程可继续执行。
+                """
                 return True
 
         subscribe = self._build_subscribe(
@@ -761,14 +936,20 @@ class TestSubscribeChain:
         )
 
         class _SubscribeOper:
-            """提供单条订阅，避免依赖真实数据库。"""
+            """
+            提供单条订阅，避免依赖真实数据库。
+            """
 
             def list(self, *args, **kwargs):
-                """返回当前测试构造的订阅列表。"""
+                """
+                返回当前测试构造的订阅列表。
+                """
                 return [subscribe]
 
             def get(self, subscribe_id):
-                """返回取得订阅准入后的最新快照。"""
+                """
+                返回取得订阅准入后的最新快照。
+                """
                 return subscribe if subscribe_id == subscribe.id else None
 
         chain = SubscribeChain()
@@ -793,10 +974,17 @@ class TestSubscribeChain:
         assert actual_torrent is context.torrent_info
 
     def test_match_accepts_special_season_zero_candidate(self):
-        """S0 订阅应允许 S00 候选资源进入下载候选，不能按未指定季处理。"""
+        """
+        S0 订阅应允许 S00 候选资源进入下载候选，不能按未指定季处理。
+        """
 
         class _TorrentHelper:
             def filter_torrent(self, *args, **kwargs):
+                """
+                允许测试种子通过筛选，将断言集中在下载和进度处理。
+
+                :return: 固定返回 True
+                """
                 return True
 
         subscribe = self._build_subscribe(
@@ -847,14 +1035,20 @@ class TestSubscribeChain:
         download_calls = []
 
         class _SubscribeOper:
-            """提供单条订阅，避免依赖真实数据库。"""
+            """
+            提供单条订阅，避免依赖真实数据库。
+            """
 
             def list(self, *args, **kwargs):
-                """返回当前测试构造的订阅列表。"""
+                """
+                返回当前测试构造的订阅列表。
+                """
                 return [subscribe]
 
             def get(self, *args, **kwargs):
-                """下载后仍返回当前订阅。"""
+                """
+                下载后仍返回当前订阅。
+                """
                 return subscribe
 
         def _download(self, **kwargs):
@@ -898,11 +1092,17 @@ class TestSubscribeChain:
         assert chain._subscription_execution_admission.release(replacement) is True
 
     def test_get_episode_priority_falls_back_to_current_priority(self):
+        """
+        旧订阅没有分集优先级时，将整体优先级应用到目标集数。
+        """
         subscribe = self._build_subscribe(current_priority=80, episode_priority=None)
 
         assert SubscribeChain.get_episode_priority(subscribe) == {"1": 80, "2": 80, "3": 80}
 
     def test_full_best_version_does_not_materialize_episode_priority_from_baseline(self):
+        """
+        整季洗版保留整体优先级基准，不据此生成分集优先级。
+        """
         subscribe = self._build_subscribe(
             best_version_full=1,
             current_priority=82,
@@ -913,6 +1113,9 @@ class TestSubscribeChain:
         assert SubscribeChain.get_best_version_current_priority(subscribe) == 82
 
     def test_get_pending_best_version_episodes_uses_per_episode_status(self):
+        """
+        待洗版集数包含低于目标优先级和尚无优先级记录的集。
+        """
         subscribe = self._build_subscribe(
             total_episode=5,
             episode_priority={"1": 100, "2": 80, "4": 100},
@@ -921,6 +1124,9 @@ class TestSubscribeChain:
         assert SubscribeChain._get_pending_best_version_episodes(subscribe) == [2, 3, 5]
 
     def test_best_version_progress_helpers_return_remaining_priority(self):
+        """
+        部分目标集尚未达到最高优先级时，整体进度不能标记完成。
+        """
         subscribe = self._build_subscribe(
             total_episode=5,
             episode_priority={"1": 100, "2": 80, "4": 100, "5": 70},
@@ -931,11 +1137,17 @@ class TestSubscribeChain:
         assert not (SubscribeChain.is_best_version_complete(subscribe))
 
     def test_best_version_current_priority_uses_legacy_fallback_when_episode_priority_empty(self):
+        """
+        分集记录为空的历史订阅继续使用整体优先级展示进度。
+        """
         subscribe = self._build_subscribe(total_episode=3, current_priority=80, episode_priority=None)
 
         assert SubscribeChain.get_best_version_current_priority(subscribe) == 80
 
     def test_best_version_progress_helpers_mark_complete_when_all_target_episodes_done(self):
+        """
+        所有目标集均达到最高优先级后，整体优先级和完成状态同步更新。
+        """
         subscribe = self._build_subscribe(
             total_episode=3,
             episode_priority={"1": 100, "2": 100, "3": 100},
@@ -946,7 +1158,9 @@ class TestSubscribeChain:
         assert SubscribeChain.is_best_version_complete(subscribe)
 
     def test_get_subscribe_no_exists_expands_whole_missing_when_custom_start_skips_existing_range(self):
-        """自定义开始集跳过季初集数时，缺失整季需要转成显式目标集。"""
+        """
+        自定义开始集跳过季初集数时，缺失整季需要转成显式目标集。
+        """
         no_exists = {
             "media-key": {
                 1: SimpleNamespace(
@@ -974,7 +1188,9 @@ class TestSubscribeChain:
         assert result["media-key"][1].total_episode == 48
 
     def test_get_subscribe_no_exists_keeps_whole_missing_when_custom_start_matches_original_start(self):
-        """自定义开始集没有缩小范围时，仍保留空集列表表示整季缺失。"""
+        """
+        自定义开始集没有缩小范围时，仍保留空集列表表示整季缺失。
+        """
         no_exists = {
             "media-key": {
                 1: SimpleNamespace(
@@ -1002,7 +1218,9 @@ class TestSubscribeChain:
         assert result["media-key"][1].total_episode == 48
 
     def test_resolve_subscribe_missing_uses_subscription_season_when_meta_has_none(self):
-        """搜索词未携带季号时，开始集数裁剪必须覆盖原缺失季键。"""
+        """
+        搜索词未携带季号时，开始集数裁剪必须覆盖原缺失季键。
+        """
         subscribe = self._build_subscribe(
             best_version=0,
             start_episode=239,
@@ -1029,6 +1247,11 @@ class TestSubscribeChain:
 
         class _DownloadChain:
             def get_no_exists_info(self, **_kwargs):
+                """
+                返回预设媒体库缺集，隔离真实媒体服务器查询。
+
+                :return: 未全部存在的标志和测试缺集结构
+                """
                 return False, library_missing
 
         with patch.object(SUBSCRIBE_CHAIN_MODULE, "DownloadChain", _DownloadChain):
@@ -1044,7 +1267,9 @@ class TestSubscribeChain:
         assert set(no_exists[1][1].episodes) == {239, 240}
 
     def test_resolve_subscribe_missing_combines_library_gap_and_download_history_without_side_effects(self):
-        """目标满足查询应复用主程序媒体库缺集与订阅下载历史的合并口径，且不推进订阅状态。"""
+        """
+        目标满足查询应复用主程序媒体库缺集与订阅下载历史的合并口径，且不推进订阅状态。
+        """
         subscribe = self._build_subscribe(
             best_version=0,
             total_episode=20,
@@ -1072,11 +1297,23 @@ class TestSubscribeChain:
 
         class _DownloadChain:
             def get_no_exists_info(self, **kwargs):
+                """
+                记录缺集查询参数，并返回预设媒体库缺集。
+
+                :return: 未全部存在的标志和测试缺集结构
+                """
                 self.kwargs = kwargs
                 return False, library_missing
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append((subscribe_id, payload.to_payload()))
                 return replace(subscribe, **payload.to_payload())
 
@@ -1104,7 +1341,9 @@ class TestSubscribeChain:
         assert updates == []
 
     def test_resolve_subscribe_missing_keeps_library_gap_when_download_history_does_not_cover_it(self):
-        """订阅前媒体库已有部分剧集时，目标满足查询应保留仍需下载的媒体库缺口。"""
+        """
+        订阅前媒体库已有部分剧集时，目标满足查询应保留仍需下载的媒体库缺口。
+        """
         subscribe = self._build_subscribe(
             best_version=0,
             total_episode=20,
@@ -1131,6 +1370,11 @@ class TestSubscribeChain:
 
         class _DownloadChain:
             def get_no_exists_info(self, **_kwargs):
+                """
+                返回预设媒体库缺集，隔离真实媒体服务器查询。
+
+                :return: 未全部存在的标志和测试缺集结构
+                """
                 return False, library_missing
 
         with patch.object(SUBSCRIBE_CHAIN_MODULE, "DownloadChain", _DownloadChain):
@@ -1147,7 +1391,9 @@ class TestSubscribeChain:
         assert no_exists[1][1].total_episode == 20
 
     def test_resolve_subscribe_missing_uses_readonly_effective_total_from_mediainfo(self):
-        """只读目标查询应使用最新媒体信息扩大有效总集数，但不能写回订阅或发送刷新事件。"""
+        """
+        只读目标查询应使用最新媒体信息扩大有效总集数，但不能写回订阅或发送刷新事件。
+        """
         subscribe = self._build_subscribe(
             best_version=0,
             total_episode=10,
@@ -1164,6 +1410,11 @@ class TestSubscribeChain:
 
         class _DownloadChain:
             def get_no_exists_info(self, **kwargs):
+                """
+                记录查询使用的总集数，并模拟共二十集且尚缺第十一至二十集。
+
+                :return: 未全部存在的标志和十集缺失信息
+                """
                 captured_totals.append(kwargs["totals"])
                 return False, {
                     1: {
@@ -1179,6 +1430,11 @@ class TestSubscribeChain:
 
         class _EventManager:
             def send_event(self, *_args, **_kwargs):
+                """
+                阻止缺集查询触发集数刷新事件。
+
+                :raises AssertionError: 测试路径意外发送事件
+                """
                 raise AssertionError("resolve_subscribe_missing must not send refresh events")
 
         with (
@@ -1204,7 +1460,9 @@ class TestSubscribeChain:
         assert subscribe.note == list(range(1, 11))
 
     def test_resolve_subscribe_missing_preserves_special_season_zero_totals(self):
-        """特别季 S0 是合法订阅季，目标满足查询必须按订阅总集数裁剪媒体库缺集。"""
+        """
+        特别季 S0 是合法订阅季，目标满足查询必须按订阅总集数裁剪媒体库缺集。
+        """
         subscribe = self._build_subscribe(
             best_version=0,
             season=0,
@@ -1222,6 +1480,11 @@ class TestSubscribeChain:
 
         class _DownloadChain:
             def get_no_exists_info(self, **kwargs):
+                """
+                仅在特别篇总集数为五集时报告第四、五集缺失，检验查询范围。
+
+                :return: 对应查询范围的存在状态和缺集结构
+                """
                 captured_totals.append(kwargs["totals"])
                 if kwargs["totals"] == {0: 5}:
                     return False, {
@@ -1250,7 +1513,9 @@ class TestSubscribeChain:
         assert no_exists[1][0].episodes == [4, 5]
 
     def test_build_subscribe_meta_preserves_special_season_zero(self):
-        """订阅构造 MetaInfo 的统一入口必须保留 S0。"""
+        """
+        订阅构造 MetaInfo 的统一入口必须保留 S0。
+        """
         subscribe = self._build_subscribe(season=0)
 
         meta = SUBSCRIBE_CHAIN_MODULE.build_subscribe_meta(subscribe)
@@ -1259,33 +1524,61 @@ class TestSubscribeChain:
         assert meta.type == MediaType.TV
 
     def test_follow_preserves_shared_special_season_and_episode_group(self):
-        """Follow 分享必须保留合法 S0 与自定义剧集组的完整订阅范围。"""
+        """
+        Follow 分享必须保留合法 S0 与自定义剧集组的完整订阅范围。
+        """
         added_calls = []
         exists_calls = []
         history_calls = []
 
         class _SubscribeOper:
-            """提供订阅存在性查询，避免依赖真实数据库。"""
+            """
+            提供订阅存在性查询，避免依赖真实数据库。
+            """
 
             def exists(self, identity):
+                """
+                记录订阅查重条件并模拟尚无重复订阅。
+
+                :return: 固定返回 False
+                """
                 exists_calls.append(identity)
                 return False
 
             def history_exists(self, identity):
+                """
+                记录历史查重条件并模拟尚无重复记录。
+
+                :return: 固定返回 False
+                """
                 history_calls.append(identity)
                 return False
 
         class _SystemConfigOper:
-            """提供 follow 用户配置。"""
+            """
+            提供 follow 用户配置。
+            """
 
             def get(self, *args, **kwargs):
+                """
+                返回预设关注用户，隔离真实系统配置查询。
+
+                :return: 测试关注用户列表
+                """
                 return ["follow-user"]
 
         class _MoviePilotServerHelper:
-            """提供单条 S0 分享订阅。"""
+            """
+            提供单条 S0 分享订阅。
+            """
 
             @staticmethod
             def get_subscribe_shares():
+                """
+                提供带剧集组的豆瓣特别篇共享订阅，检验媒体身份传递。
+
+                :return: 预设共享订阅列表
+                """
                 return [
                     {
                         "share_uid": "follow-user",
@@ -1344,7 +1637,9 @@ class TestSubscribeChain:
         assert history_calls[0].episode_group == "eg-special"
 
     def test_resolve_subscribe_missing_accepts_downloaded_episode_best_version_targets(self):
-        """外部完成守卫可按任意已下载版本判定分集洗版目标已满足。"""
+        """
+        外部完成守卫可按任意已下载版本判定分集洗版目标已满足。
+        """
         subscribe = self._build_subscribe(
             best_version=1,
             best_version_full=0,
@@ -1371,6 +1666,9 @@ class TestSubscribeChain:
         assert no_exists == {}
 
     def test_total_episode_decrease_rejects_invalid_missing_scope(self):
+        """
+        缺集范围无效时不据此推断已下载集数下限，保留候选总集数。
+        """
         subscribe = self._build_subscribe(best_version=0, total_episode=100, note=[])
         missing_info = SimpleNamespace(
             episodes=list(range(91, 101)),
@@ -1390,7 +1688,9 @@ class TestSubscribeChain:
         assert total_episode == 1
 
     def test_resolve_subscribe_missing_accepts_downloaded_legacy_current_priority_targets(self):
-        """外部完成守卫读取按集事实时，应保留 current_priority 整体快照兼容。"""
+        """
+        外部完成守卫读取按集事实时，应保留 current_priority 整体快照兼容。
+        """
         subscribe = self._build_subscribe(
             best_version=1,
             best_version_full=0,
@@ -1418,7 +1718,9 @@ class TestSubscribeChain:
         assert no_exists == {}
 
     def test_resolve_subscribe_missing_default_best_version_requires_top_priority(self):
-        """主程序洗版完成口径默认仍要求目标分集达到最高优先级。"""
+        """
+        主程序洗版完成口径默认仍要求目标分集达到最高优先级。
+        """
         subscribe = self._build_subscribe(
             best_version=1,
             best_version_full=0,
@@ -1445,7 +1747,9 @@ class TestSubscribeChain:
         assert no_exists[1][1].total_episode == 3
 
     def test_resolve_subscribe_missing_default_best_version_uses_readonly_effective_total(self):
-        """只读目标查询扩大有效总集数时，默认洗版口径应把新增集纳入待洗范围。"""
+        """
+        只读目标查询扩大有效总集数时，默认洗版口径应把新增集纳入待洗范围。
+        """
         subscribe = self._build_subscribe(
             best_version=1,
             best_version_full=0,
@@ -1472,7 +1776,9 @@ class TestSubscribeChain:
         assert subscribe.total_episode == 3
 
     def test_resolve_subscribe_missing_accept_downloaded_keeps_best_version_gap(self):
-        """任意版本满足口径仍应保留从未下载过的目标分集。"""
+        """
+        任意版本满足口径仍应保留从未下载过的目标分集。
+        """
         subscribe = self._build_subscribe(
             best_version=1,
             best_version_full=0,
@@ -1500,7 +1806,9 @@ class TestSubscribeChain:
         assert no_exists[1][1].total_episode == 3
 
     def test_get_subscribe_no_exists_preserves_complete_coverage_requirement(self):
-        """缺集裁剪重建 NotExistMediaInfo 时必须保留全集洗版完整覆盖约束。"""
+        """
+        缺集裁剪重建 NotExistMediaInfo 时必须保留全集洗版完整覆盖约束。
+        """
         no_exists = {
             "media-key": {
                 1: SimpleNamespace(
@@ -1528,19 +1836,25 @@ class TestSubscribeChain:
         assert result["media-key"][1].episodes == list(range(4, 13))
 
     def test_check_existing_media_refreshes_total_before_resolving_missing(self):
-        """主流程应先执行完成前总集数刷新，再复用无副作用缺集查询口径。"""
+        """
+        主流程应先执行完成前总集数刷新，再复用无副作用缺集查询口径。
+        """
         subscribe = self._build_subscribe(best_version=0, total_episode=10, lack_episode=0)
         meta = SimpleNamespace(type=MediaType.TV, begin_season=1, season=1)
         mediainfo = SimpleNamespace(type=MediaType.TV, title_year="Test Show (2026)")
         calls = []
 
         def fake_refresh(_self, subscribe, mediainfo, meta=None, mediakey=None):
-            """隔离总集数写入并记录执行顺序。"""
+            """
+            隔离总集数写入并记录执行顺序。
+            """
             calls.append(("refresh", subscribe.total_episode))
             return replace(subscribe, total_episode=20)
 
         def fake_resolve(_self, subscribe, meta, mediainfo, mediakey=None):
-            """返回尚未完成的缺集结果。"""
+            """
+            返回尚未完成的缺集结果。
+            """
             calls.append(("resolve", subscribe.total_episode))
             return False, {"media-key": {1: SimpleNamespace(episodes=[11], total_episode=20, start_episode=1)}}
 
@@ -1578,7 +1892,9 @@ class TestSubscribeChain:
         )
 
     def test_best_version_full_pack_first_keeps_whole_missing_for_custom_start_episode(self):
-        """分集洗版优先全集时，空集列表仍表示下载链按整季资源处理。"""
+        """
+        分集洗版优先全集时，空集列表仍表示下载链按整季资源处理。
+        """
         subscribe = self._build_subscribe(
             best_version=1,
             best_version_full=0,
@@ -1598,6 +1914,9 @@ class TestSubscribeChain:
         assert result["media-key"][1].require_complete_coverage
 
     def test_is_episode_range_covered_matches_pending_episodes(self):
+        """
+        资源须覆盖待处理集数；没有分集列表的整包仍可进入后续检查。
+        """
         subscribe = self._build_subscribe(
             total_episode=12,
             episode_priority={
@@ -1622,6 +1941,9 @@ class TestSubscribeChain:
         )
 
     def test_full_best_version_rejects_episode_resource(self):
+        """
+        整季洗版排除只覆盖单集的资源。
+        """
         subscribe = self._build_subscribe(best_version_full=1, total_episode=3)
 
         assert not (
@@ -1632,6 +1954,9 @@ class TestSubscribeChain:
         )
 
     def test_full_best_version_accepts_full_pack_resource(self):
+        """
+        整季洗版接受没有分集列表的整包及覆盖全部目标集的资源。
+        """
         subscribe = self._build_subscribe(best_version_full=1, total_episode=3)
 
         assert SubscribeChain._SubscribeChain__is_full_season_best_version_resource(
@@ -1644,6 +1969,9 @@ class TestSubscribeChain:
         )
 
     def test_episode_best_version_downloads_full_pack_before_episode_fallback(self):
+        """
+        分集洗版先尝试整季包，下载成功后不再尝试单集，并保留自定义识别词。
+        """
         subscribe = self._build_subscribe(
             best_version_full=0,
             total_episode=3,
@@ -1673,9 +2001,16 @@ class TestSubscribeChain:
         calls = []
 
         class _FakeDownloadChain:
-            """记录批量下载调用，用于验证分集洗版会先尝试全集资源。"""
+            """
+            记录批量下载调用，用于验证分集洗版会先尝试全集资源。
+            """
 
             def batch_download(self, **kwargs):
+                """
+                记录下载参数并模拟整季包成功下载。
+
+                :return: 整包下载结果和空剩余缺集
+                """
                 calls.append(kwargs)
                 return [full_pack_context], {}
 
@@ -1700,6 +2035,9 @@ class TestSubscribeChain:
         assert calls[0]["custom_words"] == "S04 => S01\n第 <> 集 >> EP+66"
 
     def test_episode_best_version_falls_back_when_full_pack_not_downloaded(self):
+        """
+        整季包未下载成功时，使用原始缺集信息继续尝试单集资源。
+        """
         subscribe = self._build_subscribe(best_version_full=0, total_episode=3)
         full_pack_context = SimpleNamespace(
             torrent_info=SimpleNamespace(pri_order=90),
@@ -1725,9 +2063,16 @@ class TestSubscribeChain:
         calls = []
 
         class _FakeDownloadChain:
-            """模拟全集下载失败，验证后续会回退到按集下载。"""
+            """
+            模拟全集下载失败，验证后续会回退到按集下载。
+            """
 
             def batch_download(self, **kwargs):
+                """
+                记录下载尝试；首次整包失败，随后单集下载成功。
+
+                :return: 当前尝试的下载结果和剩余缺集
+                """
                 calls.append(kwargs)
                 if len(calls) == 1:
                     return [], kwargs["no_exists"]
@@ -1748,7 +2093,9 @@ class TestSubscribeChain:
         assert calls[1]["no_exists"] is no_exists
 
     def test_episode_best_version_skips_full_pack_first_when_pack_priority_equals_existing_episode(self):
-        """验证全集优先级等于目标分集时回退到分集下载。"""
+        """
+        验证全集优先级等于目标分集时回退到分集下载。
+        """
         subscribe = self._build_subscribe(
             best_version_full=0,
             total_episode=3,
@@ -1779,9 +2126,16 @@ class TestSubscribeChain:
         calls = []
 
         class _FakeDownloadChain:
-            """记录回退下载调用，确保全集候选仍可参与拆包匹配。"""
+            """
+            记录回退下载调用，确保全集候选仍可参与拆包匹配。
+            """
 
             def batch_download(self, **kwargs):
+                """
+                记录下载参数并模拟单集资源下载成功。
+
+                :return: 单集下载结果和空剩余缺集
+                """
                 calls.append(kwargs)
                 return [episode_context], {}
 
@@ -1800,7 +2154,9 @@ class TestSubscribeChain:
         assert calls[0]["no_exists"] is no_exists
 
     def test_episode_best_version_falls_back_when_full_pack_does_not_exceed_every_target(self):
-        """整包候选未严格高于每个目标集时，应回退到按集下载。"""
+        """
+        整包候选未严格高于每个目标集时，应回退到按集下载。
+        """
         subscribe = self._build_subscribe(
             best_version_full=0,
             total_episode=3,
@@ -1826,9 +2182,16 @@ class TestSubscribeChain:
         calls = []
 
         class _FakeDownloadChain:
-            """记录整包优先和回退调用，验证整体门槛口径。"""
+            """
+            记录整包优先和回退调用，验证整体门槛口径。
+            """
 
             def batch_download(self, **kwargs):
+                """
+                记录下载参数并模拟下载未成功，完整保留原缺集信息。
+
+                :return: 空下载结果和原缺集结构
+                """
                 calls.append(kwargs)
                 return [], kwargs["no_exists"]
 
@@ -1847,7 +2210,9 @@ class TestSubscribeChain:
         assert calls[0]["no_exists"] is no_exists
 
     def test_episode_full_pack_priority_must_strictly_exceed_all_targets(self):
-        """缺失集按 0 参与比较，且候选与任一目标集相等时也不优先整包。"""
+        """
+        缺失集按 0 参与比较，且候选与任一目标集相等时也不优先整包。
+        """
         subscribe = self._build_subscribe(
             best_version_full=0,
             total_episode=3,
@@ -1873,7 +2238,9 @@ class TestSubscribeChain:
         )
 
     def test_full_pack_priority_check_uses_current_priority_fallback(self):
-        """没有按集优先级状态时使用 current_priority 兜底判断。"""
+        """
+        没有按集优先级状态时使用 current_priority 兜底判断。
+        """
         subscribe = self._build_subscribe(total_episode=3, current_priority=80, episode_priority=None)
 
         assert not (
@@ -1884,7 +2251,9 @@ class TestSubscribeChain:
         )
 
     def test_full_best_version_completion_uses_baseline_priority(self):
-        """全集洗版完成只认整包准入基线，不受保留的按集事实影响。"""
+        """
+        全集洗版完成只认整包准入基线，不受保留的按集事实影响。
+        """
         subscribe = self._build_subscribe(
             best_version_full=1,
             current_priority=82,
@@ -1900,7 +2269,9 @@ class TestSubscribeChain:
         assert SubscribeChain.is_best_version_complete(completed)
 
     def test_full_best_version_candidate_uses_baseline_without_allowed_episodes(self):
-        """全集候选只比较整包准入基线，不进入按集 interested/allowed_episodes 路径。"""
+        """
+        全集候选只比较整包准入基线，不进入按集 interested/allowed_episodes 路径。
+        """
         subscribe = self._build_subscribe(
             best_version_full=1,
             current_priority=82,
@@ -1933,7 +2304,9 @@ class TestSubscribeChain:
         assert context.allowed_episodes is None
 
     def test_episode_best_version_candidate_sets_allowed_episodes(self):
-        """分集候选继续把实际可提升剧集下传到下载层。"""
+        """
+        分集候选继续把实际可提升剧集下传到下载层。
+        """
         subscribe = self._build_subscribe(
             best_version_full=0,
             current_priority=80,
@@ -1954,6 +2327,9 @@ class TestSubscribeChain:
         assert context.allowed_episodes == {2, 3}
 
     def test_record_download_facts_uses_selected_episodes(self):
+        """
+        下载事实只更新实际选中集的优先级和记录，不提前重算整体进度。
+        """
         subscribe = self._build_subscribe(
             total_episode=4,
             episode_priority={"1": 100, "2": 80, "3": 70, "4": 60},
@@ -1990,6 +2366,9 @@ class TestSubscribeChain:
         assert subscribe.lack_episode == 3
 
     def test_record_download_facts_updates_all_target_episodes_without_finishing(self):
+        """
+        下载覆盖全部目标集也只记录事实，由后续进度流程判断是否完成。
+        """
         subscribe = self._build_subscribe(
             total_episode=3,
             episode_priority={"1": 100, "2": 90, "3": 80},
@@ -2024,6 +2403,9 @@ class TestSubscribeChain:
         assert not ([call for call in logger_mock.info.call_args_list if "洗版完成" in call.args[0]])
 
     def test_download_facts_require_full_coverage_confirmation_when_pack_has_no_episode_metadata(self):
+        """
+        整包没有分集元数据且未确认完整覆盖时，不能推断已下载集数。
+        """
         subscribe = self._build_subscribe(
             best_version_full=1,
             total_episode=3,
@@ -2050,6 +2432,9 @@ class TestSubscribeChain:
         assert subscribe.episode_priority == {"1": 80, "2": 80, "3": 80}
 
     def test_download_facts_write_all_targets_when_full_coverage_is_confirmed(self):
+        """
+        确认整包完整覆盖后，将全部目标集记入下载事实而不直接更新整体进度。
+        """
         subscribe = self._build_subscribe(
             best_version_full=0,
             total_episode=3,
@@ -2079,7 +2464,9 @@ class TestSubscribeChain:
         assert "lack_episode" not in payload
 
     def test_finish_subscribe_or_not_does_not_finish_best_version_twice_after_download_completion(self):
-        """洗版订阅本轮下载已触发完成时，流程尾部不应对同一订阅再次完成。"""
+        """
+        洗版订阅本轮下载已触发完成时，流程尾部不应对同一订阅再次完成。
+        """
         subscribe = self._build_subscribe(
             total_episode=3,
             episode_priority={"1": 100, "2": 90, "3": 90},
@@ -2120,6 +2507,9 @@ class TestSubscribeChain:
         assert finish_mock.call_args.kwargs["mediainfo"] is mediainfo
 
     def test_check_keeps_sparse_priority_when_new_episodes_expand_target_range(self):
+        """
+        新增目标集保持无优先级记录，巡检据此增加缺集数并撤销完成状态。
+        """
         subscribe = self._build_subscribe(
             total_episode=3,
             episode_priority={"1": 100, "2": 100, "3": 100},
@@ -2166,7 +2556,8 @@ class TestSubscribeChain:
         assert subscribe.current_priority == 100
 
     def test_best_version_interested_episodes_excludes_same_priority(self):
-        """同 pri_order 的候选不应再把已达到该优先级的集列为可升级集。
+        """
+        同 pri_order 的候选不应再把已达到该优先级的集列为可升级集。
 
         回归场景：E2 已记录在 episode_priority 中为 99，候选种子标题覆盖 E2/E3 且
         其 pri_order=99；E2 不应进入 interested 集合，E3（None）则应进入。这是
@@ -2191,7 +2582,8 @@ class TestSubscribeChain:
         assert interested == [3]
 
     def test_best_version_interested_episodes_uses_title_episode_list_for_full_pack(self):
-        """整包候选（标题展开的集列表）只把仍可提升优先级的集纳入 interested。
+        """
+        整包候选（标题展开的集列表）只把仍可提升优先级的集纳入 interested。
 
         标题显示"第53-104集"，实际目标范围只有 1..92，episode_priority
         已经把 1..82 升到 100，E83 已经记到 99。同 pri_order=99 的同一资源再来时，
@@ -2220,7 +2612,8 @@ class TestSubscribeChain:
 
 
 class TestSubscribeFilterAllowedEpisodes:
-    """验证洗版过滤循环会把 interested 集合落到 context.allowed_episodes 上。
+    """
+    验证洗版过滤循环会把 interested 集合落到 context.allowed_episodes 上。
 
     这条用例直接覆盖回归点：当 __get_best_version_interested_episodes 返回非空
     集合时，候选必须带着允许集进入下载层，下游 batch_download 才能在标题元数据
@@ -2231,6 +2624,9 @@ class TestSubscribeFilterAllowedEpisodes:
         return TestSubscribeChain()._build_subscribe(**overrides)
 
     def test_filter_writes_allowed_episodes_to_context(self):
+        """
+        筛选结果将允许下载的集数写入上下文，并排除目标范围之前的集。
+        """
         subscribe = self._build_subscribe(
             total_episode=92,
             episode_priority={
@@ -2258,8 +2654,10 @@ class TestSubscribeFilterAllowedEpisodes:
         assert 83 not in context.allowed_episodes
 
     def test_filter_leaves_allowed_episodes_none_when_no_upgrade(self):
-        """同 pri_order 且目标集均已达到该优先级时，候选不应被放行，
-        相应地也不会有 allowed_episodes 被写入。"""
+        """
+        同 pri_order 且目标集均已达到该优先级时，候选不应被放行，
+        相应地也不会有 allowed_episodes 被写入。
+        """
         subscribe = self._build_subscribe(
             total_episode=3,
             episode_priority={"1": 100, "2": 99, "3": 99},
@@ -2279,7 +2677,8 @@ class TestSubscribeFilterAllowedEpisodes:
         assert interested == []
 
     def test_filter_writes_allowed_episodes_in_match_path(self):
-        """RSS/订阅刷新分支 match() 需要与 search() 对称地写入 allowed_episodes。
+        """
+        RSS/订阅刷新分支 match() 需要与 search() 对称地写入 allowed_episodes。
 
         match() 路径下候选是 `_context = copy.copy(context)`，再走 best_version
         判定。此用例复刻 match() 的过滤序列，验证浅拷贝后的 _context 在写入
@@ -2319,7 +2718,8 @@ class TestSubscribeFilterAllowedEpisodes:
 
 
 class TestSubscribeNoteTracking:
-    """覆盖洗版与非洗版下 subscribe.note 的下载历史追踪。
+    """
+    覆盖洗版与非洗版下 subscribe.note 的下载历史追踪。
 
     finish_subscribe_or_not 有下载事实时必须追加 note；__get_downloaded 在洗版
     分支只返回 priority==100 的完成集，普通订阅分支继续读取 note。
@@ -2330,7 +2730,9 @@ class TestSubscribeNoteTracking:
 
     @staticmethod
     def _build_download_context(episodes):
-        """构造一个最小化下载 context：只携带 finish_subscribe_or_not / __update_subscribe_note 路径会读到的字段。"""
+        """
+        构造一个最小化下载 context：只携带 finish_subscribe_or_not / __update_subscribe_note 路径会读到的字段。
+        """
         return SimpleNamespace(
             meta_info=SimpleNamespace(season_list=[1], episode_list=list(episodes)),
             media_info=SimpleNamespace(
@@ -2343,7 +2745,9 @@ class TestSubscribeNoteTracking:
         )
 
     def test_finish_subscribe_writes_note_for_best_version_downloads(self):
-        """洗版分支若产生 downloads，subscribe.note 必须被追加。"""
+        """
+        洗版分支若产生 downloads，subscribe.note 必须被追加。
+        """
         subscribe = self._build_subscribe(
             best_version=1,
             total_episode=92,
@@ -2357,10 +2761,22 @@ class TestSubscribeNoteTracking:
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 captured_updates.append((subscribe_id, payload.to_payload()))
                 return replace(subscribe, **payload.to_payload())
 
             def get(self, *args, **kwargs):
+                """
+                返回当前测试订阅快照，隔离真实数据库读取。
+
+                :return: 预设订阅快照
+                """
                 return subscribe
 
         chain.subscription_repository = _SubscribeOper()
@@ -2391,10 +2807,13 @@ class TestSubscribeNoteTracking:
         note_writes = [payload["note"] for _, payload in captured_updates if "note" in payload]
         assert note_writes
         assert 83 in note_writes[-1]
-        assert 1 in note_writes[-1]  # 既有 note 保留
+        # 既有 note 保留
+        assert 1 in note_writes[-1]
 
     def test_finish_subscribe_skips_note_when_no_downloads(self):
-        """没有 downloads 时不应触碰 note，避免空写入或误清除。"""
+        """
+        没有 downloads 时不应触碰 note，避免空写入或误清除。
+        """
         subscribe = self._build_subscribe(best_version=1, total_episode=92, note=[1, 2])
         chain = SubscribeChain()
 
@@ -2402,10 +2821,22 @@ class TestSubscribeNoteTracking:
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 captured_updates.append((subscribe_id, payload.to_payload()))
                 return replace(subscribe, **payload.to_payload())
 
             def get(self, *args, **kwargs):
+                """
+                返回当前测试订阅快照，隔离真实数据库读取。
+
+                :return: 预设订阅快照
+                """
                 return subscribe
 
         chain.subscription_repository = _SubscribeOper()
@@ -2432,7 +2863,8 @@ class TestSubscribeNoteTracking:
         assert not ([payload for _, payload in captured_updates if "note" in payload])
 
     def test_get_downloaded_best_version_returns_only_completed_episodes(self):
-        """洗版分支不得把 note 合并进 __get_downloaded 返回值。
+        """
+        洗版分支不得把 note 合并进 __get_downloaded 返回值。
 
         否则 check_and_handle_existing_media → __get_subscribe_no_exits 会把
         priority<100 但已下载的集从 pending no_exists 中减掉，配合 force=True 但
@@ -2454,11 +2886,14 @@ class TestSubscribeNoteTracking:
         assert 3 not in downloaded
 
     def test_get_downloaded_non_best_version_reads_note_after_wash_migration(self):
-        """订阅切回普通模式时 __get_downloaded 从非洗版分支读取 note。"""
+        """
+        订阅切回普通模式时 __get_downloaded 从非洗版分支读取 note。
+        """
         subscribe = self._build_subscribe(
             best_version=0,
             total_episode=5,
-            episode_priority={"1": 100, "2": 99},  # 普通分支不读取按集洗版优先级。
+            # 普通分支不读取按集洗版优先级。
+            episode_priority={"1": 100, "2": 99},
             note=[1, 2, 3],
         )
 
@@ -2468,7 +2903,13 @@ class TestSubscribeNoteTracking:
 
 
 class TestSubscribeProgressEntrypoint:
+    """
+    验证统一进度入口对下载事实和媒体库缺集的解释。
+    """
     def setup_method(self):
+        """
+        为每个用例加载隔离的订阅链模块，避免测试状态相互影响。
+        """
         self.module, self.SubscribeChain = _load_subscribe_chain_class()
 
     def _build_subscribe(self, **overrides):
@@ -2495,6 +2936,9 @@ class TestSubscribeProgressEntrypoint:
         return self.module.SubscriptionSnapshot(**values)
 
     def test_compute_lack_episode_counts_best_version_note_and_positive_priority(self):
+        """
+        缺集统计合并已有集记录和正优先级分集，忽略非法记录及零优先级。
+        """
         subscribe = self._build_subscribe(
             note=[1, "bad"],
             episode_priority={"2": 80, "3": 0, "4": 100},
@@ -2505,6 +2949,9 @@ class TestSubscribeProgressEntrypoint:
         assert lack == 2
 
     def test_compute_lack_episode_normal_tv_no_exists_boundaries(self):
+        """
+        普通订阅分别处理无缺集、整季缺失和部分缺失，避免把无关媒体计入。
+        """
         subscribe = self._build_subscribe(best_version=0, note=[1])
         missing_all = {"tmdb:10001": {1: NotExistMediaInfo(season=1, episodes=[], total_episode=5, start_episode=1)}}
         missing_some = {
@@ -2517,11 +2964,17 @@ class TestSubscribeProgressEntrypoint:
         assert self.SubscribeChain.compute_lack_episode(subscribe, no_exists=missing_some) == 2
 
     def test_compute_lack_episode_defaults_empty_no_exists_for_normal_tv(self):
+        """
+        普通订阅省略缺集信息时按无缺集计算。
+        """
         subscribe = self._build_subscribe(best_version=0, note=[1])
 
         assert self.SubscribeChain.compute_lack_episode(subscribe) == 0
 
     def test_note_only_backfill_does_not_satisfy_best_version_quality_target(self):
+        """
+        仅补录已有集数可减少缺集数，但不能证明这些集已达到洗版质量目标。
+        """
         subscribe = self._build_subscribe(
             total_episode=3,
             note=[1],
@@ -2533,11 +2986,21 @@ class TestSubscribeProgressEntrypoint:
         assert self.SubscribeChain._get_pending_best_version_episodes(subscribe) == [1, 2, 3]
 
     def test_backfill_existing_episodes_writes_note_only_without_priority(self):
+        """
+        补录已有集数时过滤重复、越界和非法输入，不凭空添加分集优先级。
+        """
         subscribe = self._build_subscribe(note=[1], episode_priority={"2": 80}, lack_episode=4)
         updates = []
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append((subscribe_id, payload.to_payload()))
                 return replace(subscribe, **payload.to_payload())
 
@@ -2561,11 +3024,21 @@ class TestSubscribeProgressEntrypoint:
         assert updates[-1][1]["lack_episode"] == 2
 
     def test_backfill_existing_episodes_writes_priority_only_upwards(self):
+        """
+        补录时可提高分集优先级，但目标范围尚未全部完成时不能标记整体完成。
+        """
         subscribe = self._build_subscribe(note=[], episode_priority={"1": 90, "2": 100}, lack_episode=5)
         updates = []
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append(payload.to_payload())
                 return replace(subscribe, **payload.to_payload())
 
@@ -2584,11 +3057,21 @@ class TestSubscribeProgressEntrypoint:
         assert updates[-1]["current_priority"] == 0
 
     def test_backfill_existing_episodes_ignores_invalid_priority_and_does_not_downgrade(self):
+        """
+        补录忽略超范围和布尔优先级，已有更高优先级不得被较低输入覆盖。
+        """
         subscribe = self._build_subscribe(note=[], episode_priority={"1": 90}, lack_episode=5)
         updates = []
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append(payload.to_payload())
                 return replace(subscribe, **payload.to_payload())
 
@@ -2632,11 +3115,21 @@ class TestSubscribeProgressEntrypoint:
         assert summary["subscribe"].episode_priority == {"1": 90, "2": 80}
 
     def test_backfill_existing_episodes_accepts_note_without_downgrading_priority(self):
+        """
+        新增已有集记录与质量提升分别处理，较低优先级不妨碍记录该集已存在。
+        """
         subscribe = self._build_subscribe(note=[], episode_priority={"1": 90}, lack_episode=5)
         updates = []
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append(payload.to_payload())
                 return replace(subscribe, **payload.to_payload())
 
@@ -2655,11 +3148,21 @@ class TestSubscribeProgressEntrypoint:
         assert "episode_priority" not in updates[-1]
 
     def test_backfill_existing_episodes_updates_priority_for_existing_note(self):
+        """
+        已记录的集仍可提升优先级，无须再次加入已有集列表。
+        """
         subscribe = self._build_subscribe(note=[1], episode_priority={}, lack_episode=4)
         updates = []
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append(payload.to_payload())
                 return replace(subscribe, **payload.to_payload())
 
@@ -2679,11 +3182,21 @@ class TestSubscribeProgressEntrypoint:
         assert updates[-1]["episode_priority"] == {"1": 100}
 
     def test_backfill_existing_episodes_marks_current_priority_complete_only_when_all_targets_are_top(self):
+        """
+        补录覆盖全部目标集且均达到最高优先级时，整体优先级才标记完成。
+        """
         subscribe = self._build_subscribe(note=[], episode_priority={"1": 90}, lack_episode=5)
         updates = []
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append(payload.to_payload())
                 return replace(subscribe, **payload.to_payload())
 
@@ -2700,6 +3213,9 @@ class TestSubscribeProgressEntrypoint:
         assert updates[-1]["current_priority"] == 100
 
     def test_backfill_materializes_legacy_current_priority_before_partial_write(self):
+        """
+        局部补录前先展开历史整体优先级，保留其他目标集的原有质量记录。
+        """
         subscribe = self._build_subscribe(
             total_episode=3,
             current_priority=80,
@@ -2711,6 +3227,13 @@ class TestSubscribeProgressEntrypoint:
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append(payload.to_payload())
                 return replace(subscribe, **payload.to_payload())
 
@@ -2728,12 +3251,22 @@ class TestSubscribeProgressEntrypoint:
         assert updates[-1]["episode_priority"] == {"1": 80, "2": 80, "3": 100}
 
     def test_backfill_existing_episodes_refreshes_normal_tv_with_public_progress_entrypoint(self):
+        """
+        普通订阅补录后通过公开进度入口重算缺集数，首次写入只保存已有集记录。
+        """
         subscribe = self._build_subscribe(best_version=0, note=[], lack_episode=5)
         progress_calls = []
         updates = []
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append(payload.to_payload())
                 return replace(subscribe, **payload.to_payload())
 
@@ -2770,6 +3303,9 @@ class TestSubscribeProgressEntrypoint:
         assert progress_calls
 
     def test_refresh_subscribe_progress_lowers_current_priority_for_partial_historical_episode_priority(self):
+        """
+        历史分集优先级只覆盖部分目标集时，刷新进度须撤销整体完成状态。
+        """
         subscribe = self._build_subscribe(
             total_episode=3,
             current_priority=80,
@@ -2780,6 +3316,13 @@ class TestSubscribeProgressEntrypoint:
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append(payload.to_payload())
                 return replace(subscribe, **payload.to_payload())
 
@@ -2795,7 +3338,9 @@ class TestSubscribeProgressEntrypoint:
         assert updates[-1]["current_priority"] == 0
 
     def test_refresh_full_best_version_progress_preserves_baseline_priority(self):
-        """全集洗版刷新缺集进度时，不从按集事实覆盖整包准入基线。"""
+        """
+        全集洗版刷新缺集进度时，不从按集事实覆盖整包准入基线。
+        """
         subscribe = self._build_subscribe(
             best_version_full=1,
             total_episode=3,
@@ -2807,6 +3352,13 @@ class TestSubscribeProgressEntrypoint:
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append(payload.to_payload())
                 return replace(subscribe, **payload.to_payload())
 
@@ -2821,6 +3373,9 @@ class TestSubscribeProgressEntrypoint:
         assert "current_priority" not in updates[-1]
 
     def test_refresh_subscribe_progress_normal_tv_uses_resolve_missing_successfully(self):
+        """
+        普通订阅刷新进度时传入识别信息和规范媒体标识，并保存解析出的缺集数。
+        """
         subscribe = self._build_subscribe(best_version=0, lack_episode=5)
         mediainfo = SimpleNamespace(
             type=MediaType.TV,
@@ -2834,6 +3389,13 @@ class TestSubscribeProgressEntrypoint:
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append(payload.to_payload())
                 return replace(subscribe, **payload.to_payload())
 
@@ -2861,6 +3423,9 @@ class TestSubscribeProgressEntrypoint:
         assert updates[-1]["lack_episode"] == 2
 
     def test_refresh_subscribe_progress_normal_tv_resolve_failure_does_not_write_zero(self):
+        """
+        缺集解析失败时保留原有缺集数，不将失败误写为零缺集。
+        """
         subscribe = self._build_subscribe(best_version=0, lack_episode=5)
         mediainfo = SimpleNamespace(
             type=MediaType.TV,
@@ -2872,6 +3437,11 @@ class TestSubscribeProgressEntrypoint:
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                阻止缺集解析失败后写入进度。
+
+                :raises AssertionError: 失败路径意外更新订阅
+                """
                 raise AssertionError("resolve failure must not write progress")
 
         with (
@@ -2886,10 +3456,18 @@ class TestSubscribeProgressEntrypoint:
         assert subscribe.lack_episode == 5
 
     def test_refresh_subscribe_progress_normal_tv_recognition_failure_does_not_write_zero(self):
+        """
+        媒体识别失败时保留原有缺集数，不继续写入进度。
+        """
         subscribe = self._build_subscribe(best_version=0, lack_episode=5)
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                阻止媒体识别失败后写入进度。
+
+                :raises AssertionError: 失败路径意外更新订阅
+                """
                 raise AssertionError("recognition failure must not write progress")
 
         with (
@@ -2903,17 +3481,30 @@ class TestSubscribeProgressEntrypoint:
         assert subscribe.lack_episode == 5
 
     def test_refresh_subscribe_progress_rejects_raw_no_exists_for_public_signature(self):
+        """
+        公开进度入口拒绝直接传入底层缺集结构，避免绕过解析流程。
+        """
         subscribe = self._build_subscribe(best_version=0, lack_episode=5)
 
         with pytest.raises(TypeError):
             self.SubscribeChain().refresh_subscribe_progress(subscribe, no_exists={})
 
     def test_finish_subscribe_progress_writer_keeps_empty_lefts_as_zero_for_normal_tv(self):
+        """
+        普通订阅下载后没有剩余缺集时，将缺集数写为零。
+        """
         subscribe = self._build_subscribe(best_version=0, lack_episode=5)
         updates = []
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append(payload.to_payload())
                 return replace(subscribe, **payload.to_payload())
 
@@ -2933,10 +3524,14 @@ class TestSubscribeProgressEntrypoint:
 
 
 class TestSubscribeProgressConsolidation:
-    """验证订阅创建、季集刷新及下载进度汇总的字段一致性。"""
+    """
+    验证订阅创建、季集刷新及下载进度汇总的字段一致性。
+    """
 
     def _mediainfo(self, total_episode=5):
-        """构造具有统一影视身份和季集信息的识别结果。"""
+        """
+        构造具有统一影视身份和季集信息的识别结果。
+        """
         return SimpleNamespace(
             type=MediaType.TV,
             seasons={1: [object() for _ in range(total_episode)]},
@@ -2957,11 +3552,15 @@ class TestSubscribeProgressConsolidation:
 
     @staticmethod
     def _event_manager(total_episode=None, *, updated=True):
-        """记录订阅事件，并模拟外部集数刷新结果。"""
+        """
+        记录订阅事件，并模拟外部集数刷新结果。
+        """
         captured = []
 
         def _apply(event_type, event_data):
-            """仅在集数刷新事件中填充扩展结果。"""
+            """
+            仅在集数刷新事件中填充扩展结果。
+            """
             captured.append((event_type, event_data))
             if hasattr(event_data, "current_total_episode"):
                 event_data.updated = updated
@@ -2971,19 +3570,28 @@ class TestSubscribeProgressConsolidation:
             return SimpleNamespace(event_data=event_data)
 
         class _EventManager:
-            """提供同步和异步一致的隔离事件入口。"""
+            """
+            提供同步和异步一致的隔离事件入口。
+            """
 
             def send_event(self, event_type, event_data):
-                """记录同步事件并返回刷新结果。"""
+                """
+                记录同步事件并返回刷新结果。
+                """
                 return _apply(event_type, event_data)
 
             async def async_send_event(self, event_type, event_data):
-                """记录异步事件并返回刷新结果。"""
+                """
+                记录异步事件并返回刷新结果。
+                """
                 return _apply(event_type, event_data)
 
         return _EventManager(), captured
 
     def test_apply_episodes_refresh_clamps_external_total_to_current_total(self):
+        """
+        同步集数刷新不接受低于当前识别总集数的外部结果。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
         eventmanager, captured = self._event_manager(5)
 
@@ -3003,6 +3611,9 @@ class TestSubscribeProgressConsolidation:
         assert captured[0][1].total_episode == 10
 
     def test_async_apply_episodes_refresh_clamps_external_total_to_current_total(self):
+        """
+        异步集数刷新同样不接受低于当前识别总集数的外部结果。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
         eventmanager, captured = self._event_manager(5)
 
@@ -3024,6 +3635,9 @@ class TestSubscribeProgressConsolidation:
         assert captured[0][1].total_episode == 10
 
     def test_refresh_total_episode_before_completion_reuses_progress_priority_snapshot(self):
+        """
+        完成前总集数增长时沿用已有分集质量快照，为新增集保留缺口。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
         subscribe = module.SubscriptionSnapshot(
             id=31,
@@ -3047,6 +3661,13 @@ class TestSubscribeProgressConsolidation:
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append((subscribe_id, payload.to_payload()))
                 return replace(subscribe, **payload.to_payload())
 
@@ -3064,6 +3685,9 @@ class TestSubscribeProgressConsolidation:
         assert updates[-1][1]["current_priority"] == 0
 
     def test_refresh_total_episode_before_completion_keeps_downloaded_best_version_floor(self):
+        """
+        总集数回落不能丢弃已确认下载的洗版集数，必要时保持原总集数且不写库。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
         subscribe = module.SubscriptionSnapshot(
             id=34,
@@ -3087,6 +3711,13 @@ class TestSubscribeProgressConsolidation:
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append((subscribe_id, payload.to_payload()))
                 return replace(subscribe, **payload.to_payload())
 
@@ -3120,6 +3751,9 @@ class TestSubscribeProgressConsolidation:
         assert resolve_calls[0]["best_version_accept_downloaded"]
 
     def test_refresh_total_episode_before_completion_filters_best_version_priority_on_decrease(self):
+        """
+        总集数缩减时移除目标范围外的分集优先级，并按剩余目标重算完成状态。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
         subscribe = module.SubscriptionSnapshot(
             id=40,
@@ -3143,6 +3777,13 @@ class TestSubscribeProgressConsolidation:
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append((subscribe_id, payload.to_payload()))
                 return replace(subscribe, **payload.to_payload())
 
@@ -3169,6 +3810,9 @@ class TestSubscribeProgressConsolidation:
         assert SubscribeChain._SubscribeChain__get_best_version_completed_episodes(updated) == list(range(1, 11))
 
     def test_full_best_version_total_expansion_resets_baseline_priority(self):
+        """
+        整季洗版扩展目标集数时清除整体质量基准，同时保留已有分集记录。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
         subscribe = module.SubscriptionSnapshot(
             id=41,
@@ -3198,6 +3842,9 @@ class TestSubscribeProgressConsolidation:
         assert payload["episode_priority"] == {"1": 90, "2": 80, "3": 82}
 
     def test_full_best_version_total_expansion_does_not_derive_episode_map_from_baseline(self):
+        """
+        整季洗版扩集时不能把旧整体质量基准展开成分集质量记录。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
         subscribe = module.SubscriptionSnapshot(
             id=45,
@@ -3226,6 +3873,9 @@ class TestSubscribeProgressConsolidation:
         assert payload["episode_priority"] == {}
 
     def test_full_best_version_total_shrink_preserves_baseline_priority(self):
+        """
+        整季洗版缩减目标集数时保留仍有效的整体质量基准和分集记录。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
         subscribe = module.SubscriptionSnapshot(
             id=43,
@@ -3255,6 +3905,9 @@ class TestSubscribeProgressConsolidation:
         assert payload["episode_priority"] == {"1": 90, "2": 80, "3": 82}
 
     def test_refresh_total_episode_before_completion_resets_legacy_current_priority_when_filtered_empty(self):
+        """
+        缩集后分集记录全部被过滤时，清除旧整体优先级并将目标集重新计为缺失。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
         subscribe = module.SubscriptionSnapshot(
             id=42,
@@ -3278,6 +3931,13 @@ class TestSubscribeProgressConsolidation:
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append((subscribe_id, payload.to_payload()))
                 return replace(subscribe, **payload.to_payload())
 
@@ -3305,6 +3965,9 @@ class TestSubscribeProgressConsolidation:
         assert SubscribeChain._SubscribeChain__get_best_version_completed_episodes(updated) == []
 
     def test_refresh_total_episode_before_completion_resets_priority_when_target_range_empty(self):
+        """
+        缩集后目标区间为空时，清除优先级记录且缺集数归零。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
         subscribe = module.SubscriptionSnapshot(
             id=44,
@@ -3328,6 +3991,13 @@ class TestSubscribeProgressConsolidation:
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append((subscribe_id, payload.to_payload()))
                 return replace(subscribe, **payload.to_payload())
 
@@ -3355,6 +4025,9 @@ class TestSubscribeProgressConsolidation:
         assert SubscribeChain._SubscribeChain__get_best_version_completed_episodes(updated) == []
 
     def test_refresh_total_episode_before_completion_clamps_lower_event_total_to_recognized_total(self):
+        """
+        完成前刷新收到偏低的外部总集数时，以识别出的总集数为下限。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
         subscribe = module.SubscriptionSnapshot(
             id=35,
@@ -3378,6 +4051,13 @@ class TestSubscribeProgressConsolidation:
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append((subscribe_id, payload.to_payload()))
                 return replace(subscribe, **payload.to_payload())
 
@@ -3400,6 +4080,9 @@ class TestSubscribeProgressConsolidation:
         assert updates[-1][1]["lack_episode"] == 10
 
     def test_refresh_total_episode_before_completion_rejects_manual_total_decrease(self):
+        """
+        手工指定的总集数不参与自动缩集，也不触发外部集数刷新。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
         subscribe = module.SubscriptionSnapshot(
             id=37,
@@ -3421,10 +4104,20 @@ class TestSubscribeProgressConsolidation:
 
         class _EventManager:
             def send_event(self, *_args, **_kwargs):
+                """
+                阻止手工指定集数的订阅触发自动集数刷新。
+
+                :raises AssertionError: 手工集数路径意外发送事件
+                """
                 raise AssertionError("manual total episode must not ask external refresh")
 
         class _SubscribeOper:
             def update(self, *_args, **_kwargs):
+                """
+                阻止自动刷新覆盖手工指定的总集数。
+
+                :raises AssertionError: 手工集数路径意外更新订阅
+                """
                 raise AssertionError("manual total episode must not be updated")
 
         with (
@@ -3444,6 +4137,9 @@ class TestSubscribeProgressConsolidation:
         assert updated.lack_episode == 100
 
     def test_refresh_total_episode_before_completion_rejects_non_tv_decrease(self):
+        """
+        非电视剧订阅不参与自动缩集，也不修改原有缺集数。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
         subscribe = module.SubscriptionSnapshot(
             id=38,
@@ -3465,10 +4161,20 @@ class TestSubscribeProgressConsolidation:
 
         class _EventManager:
             def send_event(self, *_args, **_kwargs):
+                """
+                阻止非电视剧订阅触发电视剧集数刷新。
+
+                :raises AssertionError: 非电视剧路径意外发送事件
+                """
                 raise AssertionError("non-tv subscribe must not ask external refresh")
 
         class _SubscribeOper:
             def update(self, *_args, **_kwargs):
+                """
+                阻止非电视剧订阅进入自动缩集写入。
+
+                :raises AssertionError: 非电视剧路径意外更新订阅
+                """
                 raise AssertionError("non-tv subscribe must not be updated")
 
         with (
@@ -3488,6 +4194,9 @@ class TestSubscribeProgressConsolidation:
         assert updated.lack_episode == 100
 
     def test_check_total_growth_reuses_progress_priority_snapshot(self):
+        """
+        巡检扩集时沿用已有质量快照，新增集数形成缺口并撤销整体完成状态。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
         subscribe = module.SubscriptionSnapshot(
             id=33,
@@ -3512,9 +4221,21 @@ class TestSubscribeProgressConsolidation:
 
         class _SubscribeOper:
             def list(self):
+                """
+                仅提供当前用例的订阅，隔离真实订阅列表读取。
+
+                :return: 包含预设订阅的单项列表
+                """
                 return [subscribe]
 
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append((subscribe_id, payload.to_payload()))
                 return replace(subscribe, **payload.to_payload())
 
@@ -3533,6 +4254,9 @@ class TestSubscribeProgressConsolidation:
         assert payload["current_priority"] == 0
 
     def test_check_total_growth_still_uses_larger_event_total(self):
+        """
+        巡检允许外部事件提供更大的总集数，并按扩展后的范围刷新缺集数。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
         subscribe = module.SubscriptionSnapshot(
             id=39,
@@ -3558,9 +4282,21 @@ class TestSubscribeProgressConsolidation:
 
         class _SubscribeOper:
             def list(self):
+                """
+                仅提供当前用例的订阅，隔离真实订阅列表读取。
+
+                :return: 包含预设订阅的单项列表
+                """
                 return [subscribe]
 
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append((subscribe_id, payload.to_payload()))
                 return replace(subscribe, **payload.to_payload())
 
@@ -3583,6 +4319,9 @@ class TestSubscribeProgressConsolidation:
         assert payload["lack_episode"] == 120
 
     def test_check_total_refresh_uses_confirmed_episode_floor(self):
+        """
+        巡检缩集以已确认存在的最大集数为下限，避免被偏低的识别总集数截断。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
         subscribe = module.SubscriptionSnapshot(
             id=43,
@@ -3608,9 +4347,21 @@ class TestSubscribeProgressConsolidation:
 
         class _SubscribeOper:
             def list(self):
+                """
+                仅提供当前用例的订阅，隔离真实订阅列表读取。
+
+                :return: 包含预设订阅的单项列表
+                """
                 return [subscribe]
 
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append((subscribe_id, payload.to_payload()))
                 return replace(subscribe, **payload.to_payload())
 
@@ -3647,6 +4398,9 @@ class TestSubscribeProgressConsolidation:
         assert payload["lack_episode"] == 90
 
     def test_check_total_refresh_skips_non_tv_even_when_mediainfo_has_seasons(self):
+        """
+        非电视剧即使带有季信息，也不能进入电视剧的集数刷新分支。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
         subscribe = module.SubscriptionSnapshot(
             id=45,
@@ -3673,14 +4427,31 @@ class TestSubscribeProgressConsolidation:
 
         class _SubscribeOper:
             def list(self):
+                """
+                仅提供当前用例的订阅，隔离真实订阅列表读取。
+
+                :return: 包含预设订阅的单项列表
+                """
                 return [subscribe]
 
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append((subscribe_id, payload.to_payload()))
                 return replace(subscribe, **payload.to_payload())
 
         class _EventManager:
             def send_event(self, *_args, **_kwargs):
+                """
+                阻止带季信息的非电视剧订阅触发集数刷新。
+
+                :raises AssertionError: 非电视剧路径意外发送事件
+                """
                 raise AssertionError("non-tv subscribe must not ask external refresh")
 
         chain = SubscribeChain()
@@ -3700,6 +4471,9 @@ class TestSubscribeProgressConsolidation:
         assert updates[-1][1]["lack_episode"] == 100
 
     def test_add_create_clamps_event_decrease_to_recognized_total(self):
+        """
+        创建订阅时外部事件给出的较小集数不能低于识别总集数。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
         added = []
         eventmanager, captured = self._event_manager(5)
@@ -3740,7 +4514,9 @@ class TestSubscribeProgressConsolidation:
         assert added[-1]["lack_episode"] == 10
 
     def _identity_mediainfo(self, media_source, media_id, title, year, seasons=(1,), total_episode=9):
-        """按来源构造识别结果，季集结构与 TMDB 整剧或豆瓣季条目保持一致。"""
+        """
+        按来源构造识别结果，季集结构与 TMDB 整剧或豆瓣季条目保持一致。
+        """
         mediainfo = self._mediainfo(total_episode=total_episode)
         mediainfo.media_source = media_source
         mediainfo.media_id = media_id
@@ -3751,30 +4527,40 @@ class TestSubscribeProgressConsolidation:
         return mediainfo
 
     def _conversion_media_chain(self, module, tmdbinfo, *, allow_convert=True, tmdb_available=True):
-        """按请求来源分发识别结果，并记录身份转换调用，供订阅创建的转换用例复用。"""
+        """
+        按请求来源分发识别结果，并记录身份转换调用，供订阅创建的转换用例复用。
+        """
         douban = self._identity_mediainfo("douban", "35932853", "绝望写手 第三季", "2024", seasons=(1,))
         tmdb = self._identity_mediainfo("themoviedb", "124101", "绝望写手", "2021", seasons=(1, 2, 3, 4, 5))
         calls = {"convert": [], "recognize": []}
 
         def _recognize(**kwargs):
-            """根据目标来源返回原身份或 TMDB 二次识别结果。"""
+            """
+            根据目标来源返回原身份或 TMDB 二次识别结果。
+            """
             calls["recognize"].append(kwargs)
             if kwargs.get("media_source") == MediaSource.TMDB:
                 return tmdb if tmdb_available else None
             return douban
 
         def _convert(**kwargs):
-            """记录身份投影参数，禁止无需转换的目标触发调用。"""
+            """
+            记录身份投影参数，禁止无需转换的目标触发调用。
+            """
             assert allow_convert, "recognize source is not TMDB, identity must not be converted"
             calls["convert"].append(kwargs)
             return tmdbinfo
 
         async def _async_recognize(**kwargs):
-            """以相同规则模拟异步识别。"""
+            """
+            以相同规则模拟异步识别。
+            """
             return _recognize(**kwargs)
 
         async def _async_convert(**kwargs):
-            """以相同规则模拟异步身份投影。"""
+            """
+            以相同规则模拟异步身份投影。
+            """
             return _convert(**kwargs)
 
         media_chain = SimpleNamespace(
@@ -3790,7 +4576,9 @@ class TestSubscribeProgressConsolidation:
         self, module, SubscribeChain, tmdbinfo, recognize_source="themoviedb", allow_convert=True,
         *, tmdb_available=True, season=None, async_mode=False,
     ):
-        """以豆瓣季条目创建电视剧订阅，返回落库字段和媒体链调用记录。"""
+        """
+        以豆瓣季条目创建电视剧订阅，返回落库字段和媒体链调用记录。
+        """
         added = []
         eventmanager, _ = self._event_manager(9)
         chain = SubscribeChain()
@@ -3798,7 +4586,9 @@ class TestSubscribeProgressConsolidation:
         chain.async_obtain_images = AsyncMock(return_value=None)
 
         def _add_subscribe(**kwargs):
-            """记录最终订阅写入字段。"""
+            """
+            记录最终订阅写入字段。
+            """
             added.append(kwargs)
             return 51, None
 
@@ -3828,7 +4618,9 @@ class TestSubscribeProgressConsolidation:
         return added[-1], calls
 
     def test_add_converts_douban_season_identity_to_tmdb_series(self):
-        """识别源为 TMDB 时，豆瓣季条目订阅必须落为 TMDB 整剧身份并保留季号。"""
+        """
+        识别源为 TMDB 时，豆瓣季条目订阅必须落为 TMDB 整剧身份并保留季号。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
 
         added, calls = self._add_douban_season(module, SubscribeChain, {"id": 124101, "media_type": "tv", "season": 3})
@@ -3845,7 +4637,9 @@ class TestSubscribeProgressConsolidation:
         assert calls["recognize"][-1]["media_id"] == "124101"
 
     def test_add_keeps_douban_identity_when_tmdb_conversion_fails(self):
-        """转换失败时沿用原身份，保持历史行为而不是拒绝订阅。"""
+        """
+        转换失败时沿用原身份，保持历史行为而不是拒绝订阅。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
 
         added, calls = self._add_douban_season(module, SubscribeChain, None)
@@ -3858,7 +4652,9 @@ class TestSubscribeProgressConsolidation:
         assert all(call.get("media_source") != MediaSource.TMDB for call in calls["recognize"])
 
     def test_add_skips_tmdb_conversion_when_recognize_source_is_not_tmdb(self):
-        """识别源不是 TMDB 时沿用用户选定的来源身份，不触发转换。"""
+        """
+        识别源不是 TMDB 时沿用用户选定的来源身份，不触发转换。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
 
         added, calls = self._add_douban_season(
@@ -3875,7 +4671,9 @@ class TestSubscribeProgressConsolidation:
 
     @pytest.mark.parametrize("async_mode", [False, True])
     def test_add_keeps_original_identity_when_converted_tmdb_cannot_be_recognized(self, async_mode):
-        """TMDB 投影命中但二次识别失败时，同步和异步创建都保留原身份及季号。"""
+        """
+        TMDB 投影命中但二次识别失败时，同步和异步创建都保留原身份及季号。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
 
         added, calls = self._add_douban_season(
@@ -3891,7 +4689,9 @@ class TestSubscribeProgressConsolidation:
 
     @pytest.mark.parametrize("async_mode", [False, True])
     def test_add_preserves_explicit_season_during_tmdb_conversion(self, async_mode):
-        """显式季号优先于标题和投影季号，配置的 TMDB 别名也应触发转换。"""
+        """
+        显式季号优先于标题和投影季号，配置的 TMDB 别名也应触发转换。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
 
         added, calls = self._add_douban_season(
@@ -3909,7 +4709,9 @@ class TestSubscribeProgressConsolidation:
     @pytest.mark.parametrize("async_mode", [False, True])
     @pytest.mark.parametrize("target", ["missing", "tmdb", "music"])
     def test_tmdb_conversion_skips_missing_tmdb_and_music_targets(self, target, async_mode):
-        """无识别结果、已有 TMDB 身份及音乐目标均不得调用影视身份转换。"""
+        """
+        无识别结果、已有 TMDB 身份及音乐目标均不得调用影视身份转换。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
         chain = SubscribeChain()
         mediainfo = None
@@ -3935,7 +4737,9 @@ class TestSubscribeProgressConsolidation:
         assert calls == {"convert": [], "recognize": []}
 
     def test_async_convert_subscribe_media_to_tmdb_replaces_identity_and_fills_season(self):
-        """异步入口同样换成 TMDB 身份；季号缺失时采用投影结果给出的季。"""
+        """
+        异步入口同样换成 TMDB 身份；季号缺失时采用投影结果给出的季。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
         chain = SubscribeChain()
         context, error = chain._SubscribeChain__build_subscribe_create_context(
@@ -3970,6 +4774,9 @@ class TestSubscribeProgressConsolidation:
         assert calls["convert"][0]["season"] is None
 
     def test_completed_episode_uses_schema_function_directly_for_best_version(self):
+        """
+        洗版完成集数直接复用模型层计算入口，避免链层维护重复算法。
+        """
         module, SubscribeChain = _load_subscribe_chain_class()
         values = {
             "id": 32,
@@ -3989,6 +4796,9 @@ class TestSubscribeProgressConsolidation:
         assert schema_subscribe.completed_episode == schemas.compute_subscribe_completed_episode(chain_subscribe)
 
     def test_completed_episode_uses_current_priority_when_episode_priority_empty(self):
+        """
+        历史洗版订阅没有分集记录时，完成集数按整体优先级兼容计算。
+        """
         module, _ = _load_subscribe_chain_class()
         values = {
             "id": 33,
@@ -4010,6 +4820,9 @@ class TestSubscribeProgressConsolidation:
         assert schemas.compute_subscribe_completed_episode(chain_subscribe) == 3
 
     def test_full_best_version_completed_episode_uses_baseline_not_episode_map(self):
+        """
+        整季洗版按整体质量基准计算完成集数，不以分集优先级代替该基准。
+        """
         data = {
             "name": "全集洗版响应剧",
             "type": MediaType.TV.value,
@@ -4028,7 +4841,13 @@ class TestSubscribeProgressConsolidation:
 
 
 class TestSubscribeDownloadFacts:
+    """
+    验证成功下载事实写入的季集范围与优先级。
+    """
     def setup_method(self):
+        """
+        为每个下载事实用例加载隔离的订阅链模块。
+        """
         self.module, self.SubscribeChain = _load_subscribe_chain_class()
 
     def _build_subscribe(self, **overrides):
@@ -4066,11 +4885,21 @@ class TestSubscribeDownloadFacts:
         )
 
     def test_normal_tv_download_records_note_and_episode_priority_without_current_priority(self):
+        """
+        普通电视剧下载记录已有集数和分集质量，不写洗版整体优先级。
+        """
         subscribe = self._build_subscribe(best_version=0)
         updates = []
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append(payload.to_payload())
                 return replace(subscribe, **payload.to_payload())
 
@@ -4088,11 +4917,21 @@ class TestSubscribeDownloadFacts:
         assert "current_priority" not in updates[-1]
 
     def test_normal_tv_download_records_full_pack_confirmed_coverage_episode_priority(self):
+        """
+        普通电视剧整包确认完整覆盖后，为全部目标集记录下载质量。
+        """
         subscribe = self._build_subscribe(best_version=0, best_version_full=0, total_episode=3, episode_priority={})
         updates = []
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append(payload.to_payload())
                 return replace(subscribe, **payload.to_payload())
 
@@ -4116,11 +4955,21 @@ class TestSubscribeDownloadFacts:
         assert "current_priority" not in updates[-1]
 
     def test_full_resource_without_episode_list_does_not_fallback_without_download_confirmation(self):
+        """
+        无分集列表的整包尚未确认覆盖时，不补写已有集数或质量记录。
+        """
         subscribe = self._build_subscribe(best_version=1, best_version_full=1, episode_priority={"1": 60})
         updates = []
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append(payload.to_payload())
                 return replace(subscribe, **payload.to_payload())
 
@@ -4137,11 +4986,21 @@ class TestSubscribeDownloadFacts:
         assert updates == []
 
     def test_full_resource_without_episode_list_uses_target_range_only_when_confirmed(self):
+        """
+        整包确认覆盖后才使用完整目标区间补写集数，并更新洗版整体优先级。
+        """
         subscribe = self._build_subscribe(best_version=1, best_version_full=1, episode_priority={"1": 60})
         updates = []
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append(payload.to_payload())
                 return replace(subscribe, **payload.to_payload())
 
@@ -4166,6 +5025,9 @@ class TestSubscribeDownloadFacts:
         assert updates[-1]["current_priority"] == 90
 
     def test_full_best_version_does_not_write_baseline_without_confirmed_full_coverage(self):
+        """
+        整季洗版未确认完整覆盖时保留原整体质量基准。
+        """
         subscribe = self._build_subscribe(
             best_version=1,
             best_version_full=1,
@@ -4185,11 +5047,21 @@ class TestSubscribeDownloadFacts:
         assert "current_priority" not in payload
 
     def test_normal_subscription_without_episode_list_does_not_use_target_range_without_download_confirmation(self):
+        """
+        普通订阅的资源没有分集列表且未确认覆盖时，不用目标区间推断下载事实。
+        """
         subscribe = self._build_subscribe(best_version=0, best_version_full=0)
         updates = []
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append(payload.to_payload())
                 return replace(subscribe, **payload.to_payload())
 
@@ -4213,6 +5085,9 @@ class TestSubscribeDownloadFacts:
         assert updates == []
 
     def test_movie_best_version_download_keeps_current_priority_without_episode_priority(self):
+        """
+        电影洗版记录整体优先级和更新时间，不生成电视剧的分集优先级。
+        """
         subscribe = self._build_subscribe(
             type=MediaType.MOVIE.value,
             best_version=1,
@@ -4238,6 +5113,13 @@ class TestSubscribeDownloadFacts:
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append(payload.to_payload())
                 return replace(subscribe, **payload.to_payload())
 
@@ -4259,6 +5141,9 @@ class TestSubscribeDownloadFacts:
         assert subscribe.episode_priority == {}
 
     def test_movie_best_version_download_does_not_call_tv_progress_writer(self):
+        """
+        电影洗版完成处理跳过电视剧专用的缺集进度写入入口。
+        """
         subscribe = self._build_subscribe(
             type=MediaType.MOVIE.value,
             best_version=1,
@@ -4301,6 +5186,9 @@ class TestSubscribeDownloadFacts:
         refresh_mock.assert_not_called()
 
     def test_movie_normal_download_does_not_call_tv_progress_writer(self):
+        """
+        普通电影完成处理同样跳过电视剧专用的缺集进度写入入口。
+        """
         subscribe = self._build_subscribe(
             type=MediaType.MOVIE.value,
             best_version=0,
@@ -4343,6 +5231,9 @@ class TestSubscribeDownloadFacts:
         refresh_mock.assert_not_called()
 
     def test_movie_normal_download_records_current_priority_before_completion(self):
+        """
+        普通电影须先保存本次下载优先级和时间，再执行订阅完成处理。
+        """
         subscribe = self._build_subscribe(
             type=MediaType.MOVIE.value,
             best_version=0,
@@ -4369,6 +5260,13 @@ class TestSubscribeDownloadFacts:
 
         class _SubscribeOper:
             def update(self, subscribe_id, payload):
+                """
+                记录订阅更新载荷，并返回应用这些字段的新订阅快照。
+
+                :param subscribe_id: 本次更新的订阅标识
+                :param payload: 待应用的订阅字段变更
+                :return: 合并字段变更后的订阅快照
+                """
                 updates.append(payload.to_payload())
                 return replace(subscribe, **payload.to_payload())
 
@@ -4396,12 +5294,16 @@ class TestSubscribeDownloadFacts:
 
 
 def test_async_add_batch_reuses_prepared_defaults_notifications_and_effects():
-    """批量新增把 Chain 准备好的默认字段、通知和原提交后回调逐季交给 writer。"""
+    """
+    批量新增把 Chain 准备好的默认字段、通知和原提交后回调逐季交给 writer。
+    """
     module, subscribe_chain = _load_subscribe_chain_class()
     chain = subscribe_chain()
 
     def context(season: int):
-        """构造已完成识别、季集补齐和默认参数处理的一季上下文。"""
+        """
+        构造已完成识别、季集补齐和默认参数处理的一季上下文。
+        """
         mediainfo = SimpleNamespace(
             title="批量剧集",
             year="2026",
@@ -4453,7 +5355,9 @@ def test_async_add_batch_reuses_prepared_defaults_notifications_and_effects():
     batch_writer = MagicMock()
 
     async def persist(requests):
-        """模拟数据库批量 writer，并在提交点后调用冻结的逐季副作用。"""
+        """
+        模拟数据库批量 writer，并在提交点后调用冻结的逐季副作用。
+        """
         for subscribe_id, request in zip((31, 32), requests):
             assert request.after_commit is not None
             await request.after_commit(subscribe_id)

@@ -1,3 +1,7 @@
+"""
+插件持久化数据的数据访问入口，适配调用方会话及兼容事务执行器。
+"""
+
 from typing import Any, Optional
 
 from sqlalchemy import delete
@@ -15,6 +19,7 @@ class PluginDataOper(DbOper):
     def save(self, plugin_id: str, key: str, value: Any) -> None:
         """
         保存插件数据
+
         :param plugin_id: 插件id
         :param key: 数据key
         :param value: 数据值
@@ -54,6 +59,7 @@ class PluginDataOper(DbOper):
     def get_data(self, plugin_id: str, key: Optional[str] = None) -> Any:
         """
         获取插件数据
+
         :param plugin_id: 插件id
         :param key: 数据key
         """
@@ -74,6 +80,7 @@ class PluginDataOper(DbOper):
     async def async_get_data(self, plugin_id: str, key: Optional[str] = None) -> Any:
         """
         异步获取插件数据。
+
         :param plugin_id: 插件id
         :param key: 数据key
         """
@@ -93,11 +100,14 @@ class PluginDataOper(DbOper):
     def del_data(self, plugin_id: str, key: Optional[str] = None) -> Any:
         """
         删除插件数据
+
         :param plugin_id: 插件id
         :param key: 数据key
         """
         def stage(session: Session) -> None:
-            """把删除入口映射到调用方或组合根持有的事务。"""
+            """
+            把删除入口映射到调用方或组合根持有的事务。
+            """
             if key:
                 PluginData.del_plugin_data_by_key(session, plugin_id, key)
             else:
@@ -106,7 +116,9 @@ class PluginDataOper(DbOper):
         self._execute_sync_write(stage)
 
     def stage_delete(self, plugin_id: str) -> None:
-        """暂存目标插件全部数据删除并 flush，不提交调用方事务。"""
+        """
+        暂存目标插件全部数据删除并 flush，不提交调用方事务。
+        """
         if not isinstance(self._db, Session):
             raise RuntimeError("插件数据暂存删除需要调用方提供 Session")
         self._db.execute(
@@ -123,6 +135,7 @@ class PluginDataOper(DbOper):
     def get_data_all(self, plugin_id: str) -> Any:
         """
         获取插件所有数据
+
         :param plugin_id: 插件id
         """
         return self._execute_sync_query(
@@ -134,6 +147,7 @@ class PluginDataOper(DbOper):
     async def async_get_data_all(self, plugin_id: str) -> Any:
         """
         异步获取插件所有数据。
+
         :param plugin_id: 插件id
         """
         return await self._execute_async_query(

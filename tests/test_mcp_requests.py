@@ -1,4 +1,6 @@
-"""MCP JSON-RPC 请求格式错误的协议回归。"""
+"""
+MCP JSON-RPC 请求格式错误的协议回归。
+"""
 
 import json
 
@@ -23,7 +25,9 @@ from app.api.endpoints import mcp
     ],
 )
 def test_invalid_request_returns_jsonrpc_error(body: object, request_id: object) -> None:
-    """非对象及错误版本的请求须返回 400 协议错误，不能在取 id 时崩溃。"""
+    """
+    非对象及错误版本的请求须返回 400 协议错误，不能在取 id 时崩溃。
+    """
     app = FastAPI()
     app.include_router(mcp.router, prefix="/mcp")
     app.dependency_overrides[mcp.verify_apikey] = lambda: "test-api-key"

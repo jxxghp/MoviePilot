@@ -1,3 +1,7 @@
+"""
+提供站点配置、认证、数据查询和状态管理接口。
+"""
+
 from typing import Annotated, Any, Dict, List, Literal, Optional
 
 from fastapi import Depends, HTTPException, Response
@@ -33,6 +37,8 @@ from app.application.scheduling import get_scheduler
 from app.application.site.auth import normalize_site_auth_params
 from app.application.site.mutation import SiteMutationCommand
 from app.application.site.query import SiteQueryService
+
+# 站点目录由外部资源加载，静态检查无法解析其动态导出。
 from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 from app.chain.site import SiteChain
 from app.chain.torrents import TorrentsChain
@@ -60,7 +66,9 @@ router = ResponseAPIRouter()
 
 
 def _project_agent_site(site: Any, *, include_secrets: bool) -> dict[str, JsonData]:
-    """构造旧 Agent 查询语义的站点安全投影，普通用户不返回认证凭据。"""
+    """
+    构造旧 Agent 查询语义的站点安全投影，普通用户不返回认证凭据。
+    """
     projected: dict[str, JsonData] = {
         "id": site.id,
         "name": site.name,
@@ -95,7 +103,9 @@ def _project_agent_site(site: Any, *, include_secrets: bool) -> dict[str, JsonDa
 def _project_readable_site(
     site: _SchemaSite, token_payload: _SchemaTokenPayload
 ) -> _SchemaSite | dict[str, JsonData]:
-    """普通登录用户可读的站点信息不返回认证凭据，超级管理员保持完整字段。"""
+    """
+    普通登录用户可读的站点信息不返回认证凭据，超级管理员保持完整字段。
+    """
     if token_payload.super_user:
         return site
     return _project_agent_site(site, include_secrets=False)
@@ -138,7 +148,9 @@ def _indexer_supports_media_type(indexer: dict, media_type: MediaType) -> bool:
 
 
 def _normalize_site_ids(values: Any) -> list[int]:
-    """把配置或索引器中的站点标识归一为可查询的整数主键。"""
+    """
+    把配置或索引器中的站点标识归一为可查询的整数主键。
+    """
     normalized: list[int] = []
     for value in values or []:
         try:
@@ -187,7 +199,9 @@ async def read_agent_sites(
     page: CompatiblePageParam = None,
     count: CompatibleCountParam = None,
 ) -> List[dict[str, JsonData]]:
-    """按旧 Agent 过滤语义返回站点，非超级管理员自动剔除认证字段。"""
+    """
+    按旧 Agent 过滤语义返回站点，非超级管理员自动剔除认证字段。
+    """
     active_filter = None
     if status == "active":
         active_filter = True
@@ -442,7 +456,9 @@ async def set_cookie_by_body(
     command: SiteMutationCommand = Depends(get_site_mutation_command),
     _: ApiPrincipal = Depends(get_current_active_manage_user_async),
 ) -> Any:
-    """保存受信任浏览器会话取得的 Cookie，不改写站点其他配置。"""
+    """
+    保存受信任浏览器会话取得的 Cookie，不改写站点其他配置。
+    """
     result = await command.set_cookie(
         site_id=site_id,
         cookie=site_cookie_set.cookie,

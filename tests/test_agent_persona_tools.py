@@ -1,4 +1,6 @@
-"""Agent 统一人格工具测试。"""
+"""
+Agent 统一人格工具测试。
+"""
 
 import json
 from pathlib import Path
@@ -11,13 +13,17 @@ from app.agent.tools.impl.persona import PersonaTool
 
 @pytest.fixture
 def anyio_backend() -> str:
-    """限定异步用例使用 asyncio 后端。"""
+    """
+    限定异步用例使用 asyncio 后端。
+    """
     return "asyncio"
 
 
 @pytest.fixture
 def runtime_manager(tmp_path: Path) -> AgentRuntimeManager:
-    """构造与真实 Agent 配置隔离的人格运行时。"""
+    """
+    构造与真实 Agent 配置隔离的人格运行时。
+    """
     defaults_root = Path(__file__).resolve().parents[1] / "app" / "agent" / "defaults"
     manager = AgentRuntimeManager(
         agent_root_dir=tmp_path / "agent",
@@ -28,7 +34,9 @@ def runtime_manager(tmp_path: Path) -> AgentRuntimeManager:
 
 
 def _tool(*, is_admin: bool = False) -> PersonaTool:
-    """构造带可信管理员事实的人格工具。"""
+    """
+    构造带可信管理员事实的人格工具。
+    """
     tool = PersonaTool(session_id="session-1", user_id="10001")
     tool.set_agent_context({"is_admin": is_admin})
     return tool
@@ -39,7 +47,9 @@ async def test_persona_list_returns_available_and_active_state(
     monkeypatch,
     runtime_manager: AgentRuntimeManager,
 ) -> None:
-    """list 动作应返回可用人格和当前激活状态。"""
+    """
+    list 动作应返回可用人格和当前激活状态。
+    """
     monkeypatch.setattr(
         "app.agent.tools.impl.persona.agent_runtime_manager",
         runtime_manager,
@@ -59,7 +69,9 @@ async def test_persona_switch_updates_runtime_by_alias(
     monkeypatch,
     runtime_manager: AgentRuntimeManager,
 ) -> None:
-    """switch 动作应接受别名并持久化激活人格。"""
+    """
+    switch 动作应接受别名并持久化激活人格。
+    """
     monkeypatch.setattr(
         "app.agent.tools.impl.persona.agent_runtime_manager",
         runtime_manager,
@@ -77,7 +89,9 @@ async def test_persona_switch_requires_admin(
     monkeypatch,
     runtime_manager: AgentRuntimeManager,
 ) -> None:
-    """普通用户不能切换所有用户共享的全局人格。"""
+    """
+    普通用户不能切换所有用户共享的全局人格。
+    """
     monkeypatch.setattr(
         "app.agent.tools.impl.persona.agent_runtime_manager",
         runtime_manager,
@@ -95,7 +109,9 @@ async def test_persona_update_changes_existing_definition(
     monkeypatch,
     runtime_manager: AgentRuntimeManager,
 ) -> None:
-    """管理员 update 动作应更新既有人格定义。"""
+    """
+    管理员 update 动作应更新既有人格定义。
+    """
     monkeypatch.setattr(
         "app.agent.tools.impl.persona.agent_runtime_manager",
         runtime_manager,
@@ -124,7 +140,9 @@ async def test_persona_update_can_create_new_definition(
     monkeypatch,
     runtime_manager: AgentRuntimeManager,
 ) -> None:
-    """管理员 update 动作应能显式创建新人格。"""
+    """
+    管理员 update 动作应能显式创建新人格。
+    """
     monkeypatch.setattr(
         "app.agent.tools.impl.persona.agent_runtime_manager",
         runtime_manager,
@@ -157,7 +175,9 @@ async def test_persona_update_requires_admin(
     monkeypatch,
     runtime_manager: AgentRuntimeManager,
 ) -> None:
-    """普通用户可以查询，但不能更新或切换全局人格定义。"""
+    """
+    普通用户可以查询，但不能更新或切换全局人格定义。
+    """
     monkeypatch.setattr(
         "app.agent.tools.impl.persona.agent_runtime_manager",
         runtime_manager,

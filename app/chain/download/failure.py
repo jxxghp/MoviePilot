@@ -1,4 +1,6 @@
-"""下载失败指纹、冷却和持久化 owner。"""
+"""
+下载失败指纹、冷却和持久化 owner。
+"""
 
 import hashlib
 import json
@@ -41,7 +43,9 @@ DOWNLOAD_FAILURE_RESOURCE_ERROR_KEYWORDS = (
 
 
 class DownloadFailureOwner(_DownloadOwnerBase):
-    """下载失败指纹、冷却和持久化 owner。"""
+    """
+    下载失败指纹、冷却和持久化 owner。
+    """
 
     @staticmethod
     def _is_subscribe_source(source: Optional[str]) -> bool:
@@ -243,7 +247,9 @@ class DownloadFailureOwner(_DownloadOwnerBase):
             context: Context,
             failure: Optional[DownloadFailureSnapshot],
     ) -> None:
-        """记录候选资源处于失败冷却期时的跳过原因和下次重试时间。"""
+        """
+        记录候选资源处于失败冷却期时的跳过原因和下次重试时间。
+        """
         reason = getattr(failure, "error_message", None) or "未知原因"
         retry_at = getattr(failure, "next_retry_at", None)
         if retry_at:

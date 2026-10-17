@@ -111,7 +111,7 @@ jobs:
             --connect-timeout 10 --max-time 120 \
             "https://models.dev/api.json" -o "$temp_file"
           jq -e 'type == "object"' "$temp_file" >/dev/null
-          # Git keeps only a small placeholder; the release image receives the current catalog.
+          # 仓库仅保留少量占位数据，发布镜像构建时下载最新模型清单。
           chmod 644 "$temp_file"
           mv "$temp_file" app/agent/llm/resources/models.json
           echo "digest=sha256:$(sha256sum app/agent/llm/resources/models.json | awk '{print $1}')" >> "$GITHUB_OUTPUT"

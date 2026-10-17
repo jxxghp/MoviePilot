@@ -99,12 +99,10 @@ function configure_cert_renewal() {
     fi
 }
 
-# 核心条件验证
 if [ "${ENABLE_SSL}" = "true" ] && \
    [ "${AUTO_ISSUE_CERT}" = "true" ] && \
    [ -n "${SSL_DOMAIN}" ]; then
 
-    # 创建证书目录
     mkdir -p "${ACME_CERT_DIR}"
     if id moviepilot >/dev/null 2>&1; then
         chown moviepilot:moviepilot "${CERT_DIR}" -R
@@ -114,7 +112,7 @@ if [ "${ENABLE_SSL}" = "true" ] && \
     if [ ! -f "${ACME_HOME}/acme.sh" ]; then
         INFO "→ 安装acme.sh..."
 
-        # 执行官方安装命令（添加错误处理）
+        # 安装命令失败时退出签发流程，避免继续调用不存在的 acme.sh。
         INFO "正在下载并安装 acme.sh..."
         
         install_args=("--install-online")
@@ -132,7 +130,6 @@ if [ "${ENABLE_SSL}" = "true" ] && \
             exit_with_error "acme.sh 安装失败"
         fi
 
-        # 验证安装是否成功
         if [ ! -f "${ACME_HOME}/acme.sh" ]; then
             exit_with_error "acme.sh 安装后文件不存在，安装可能失败"
         fi
@@ -142,7 +139,6 @@ if [ "${ENABLE_SSL}" = "true" ] && \
 
     # 签发证书（仅当证书不存在时）
     if [ ! -f "${ACME_CERT_DIR}/fullchain.pem" ] || [ ! -f "${ACME_CERT_DIR}/privkey.pem" ]; then
-        # 必要参数检查
         REQUIRED_VARS=("DNS_PROVIDER")
         for var in "${REQUIRED_VARS[@]}"; do
             eval "value=\${${var}}"
@@ -178,7 +174,7 @@ if [ "${ENABLE_SSL}" = "true" ] && \
             fi
         done < <(compgen -A variable ACME_ENV_ || true)
 
-        # 签发证书（添加错误处理）
+        # 签发失败时恢复调用方的 shell 选项，再向入口返回失败。
         INFO "正在签发证书..."
         if ! run_acme --issue \
             --dns "${DNS_PROVIDER}" \
@@ -205,7 +201,6 @@ if [ "${ENABLE_SSL}" = "true" ] && \
             fi
         done
 
-        # 创建稳定符号链接
         link_latest_cert_dir
         INFO "证书签发成功"
     else
@@ -213,7 +208,6 @@ if [ "${ENABLE_SSL}" = "true" ] && \
         INFO "证书已存在，跳过签发步骤"
     fi
 
-    # 配置自动更新任务
     INFO "→ 配置cron自动更新..."
     configure_cert_renewal
 
@@ -221,7 +215,6 @@ elif [ "${ENABLE_SSL}" = "true" ] && [ "${AUTO_ISSUE_CERT}" = "true" ] && [ -z "
     exit_with_error "已启用自动签发证书但未设置 SSL_DOMAIN，无法生成 HTTPS 证书"
 elif [ "${ENABLE_SSL}" = "true" ] && [ "${AUTO_ISSUE_CERT}" = "false" ]; then
     INFO "SSL已启用但自动签发证书已禁用，将使用手动配置的证书"
-    # 检查证书文件是否存在
     if [ -f "${ACME_LATEST_CERT_DIR}/fullchain.pem" ] && [ -f "${ACME_LATEST_CERT_DIR}/privkey.pem" ]; then
         INFO "检测到证书文件，SSL配置正常"
     else

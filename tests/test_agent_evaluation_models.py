@@ -1,4 +1,6 @@
-"""真实模型评测的凭据边界、调用限额及用量可信度。"""
+"""
+真实模型评测的凭据边界、调用限额及用量可信度。
+"""
 
 import json
 import os
@@ -15,7 +17,9 @@ from scripts.evaluation.models import ModelCallLimitError, ModelSettings, ModelU
 
 
 def _config(tmp_path, credential='experimental_bearer_token = "private-test-key"'):
-    """创建仅用于测试的用户明确配置，不读取任何真实凭据。"""
+    """
+    创建仅用于测试的用户明确配置，不读取任何真实凭据。
+    """
     path = tmp_path / "config.toml"
     path.write_text('model = "test-model"\nmodel_provider = "selected"\nmodel_reasoning_effort = "high"\n'
                     '[model_providers.selected]\nbase_url = "https://model.invalid/v1"\nwire_api = "responses"\n'
@@ -24,7 +28,9 @@ def _config(tmp_path, credential='experimental_bearer_token = "private-test-key"
 
 
 def test_model_settings_do_not_expose_explicit_credential(tmp_path):
-    """凭据只用于连接，repr 和用户可见元数据不得包含它。"""
+    """
+    凭据只用于连接，repr 和用户可见元数据不得包含它。
+    """
     settings = load_codex_model_settings(_config(tmp_path))
     assert settings.api_key == "private-test-key"
     assert "private-test-key" not in repr(settings)
@@ -34,7 +40,9 @@ def test_model_settings_do_not_expose_explicit_credential(tmp_path):
 
 
 def test_chat_completions_provider_is_supported(tmp_path):
-    """Google 等 OpenAI 兼容 provider 可以明确选择 Chat Completions 协议。"""
+    """
+    Google 等 OpenAI 兼容 provider 可以明确选择 Chat Completions 协议。
+    """
     path = _config(tmp_path).read_text(encoding="utf-8").replace('wire_api = "responses"',
                                                                  'wire_api = "chat_completions"')
     config = tmp_path / "chat-completions.toml"
@@ -45,7 +53,9 @@ def test_chat_completions_provider_is_supported(tmp_path):
 
 
 def test_native_probe_accepts_oauth_only_provider_without_endpoint_or_key(tmp_path):
-    """原生探针不发模型请求，因此可以检查仅有 OAuth 的官方 provider。"""
+    """
+    原生探针不发模型请求，因此可以检查仅有 OAuth 的官方 provider。
+    """
     path = tmp_path / "oauth-only.toml"
     path.write_text(
         'model = "gpt-test"\nmodel_provider = "selected"\n'
@@ -58,7 +68,9 @@ def test_native_probe_accepts_oauth_only_provider_without_endpoint_or_key(tmp_pa
 
 
 def test_real_run_still_rejects_provider_without_explicit_endpoint_or_key(tmp_path):
-    """真实评测不能把本地登录态或探针占位值当成供应商凭据。"""
+    """
+    真实评测不能把本地登录态或探针占位值当成供应商凭据。
+    """
     path = tmp_path / "oauth-only.toml"
     path.write_text(
         'model = "gpt-test"\nmodel_provider = "selected"\n'
@@ -70,7 +82,9 @@ def test_real_run_still_rejects_provider_without_explicit_endpoint_or_key(tmp_pa
 
 
 def test_codex_oauth_is_opt_in_and_keeps_token_out_of_public_metadata(tmp_path, monkeypatch):
-    """配对评测显式启用本机 OAuth 后只向控制进程传递令牌和账户头。"""
+    """
+    配对评测显式启用本机 OAuth 后只向控制进程传递令牌和账户头。
+    """
     path = tmp_path / "oauth-only.toml"
     path.write_text(
         'model = "gpt-test"\nmodel_provider = "selected"\n'
@@ -95,7 +109,9 @@ def test_codex_oauth_is_opt_in_and_keeps_token_out_of_public_metadata(tmp_path, 
 
 
 def test_only_named_provider_environment_key_is_used(tmp_path, monkeypatch):
-    """仅使用配置明确指定的环境变量，不回退到其他账户或服务的凭据。"""
+    """
+    仅使用配置明确指定的环境变量，不回退到其他账户或服务的凭据。
+    """
     path = _config(tmp_path, 'env_key = "MOVIEPILOT_EVALUATION_TEST_KEY"')
     monkeypatch.setenv("MOVIEPILOT_EVALUATION_TEST_KEY", "named-key")
     assert load_codex_model_settings(path).api_key == "named-key"
@@ -107,17 +123,23 @@ def test_only_named_provider_environment_key_is_used(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("budget", [0, -1, 65])
 def test_invalid_call_budget_is_rejected_before_live_request(tmp_path, budget):
-    """无效预算不能退化成无限调用。"""
+    """
+    无效预算不能退化成无限调用。
+    """
     with pytest.raises(ValueError, match="预算"):
         load_codex_model_settings(_config(tmp_path), max_model_calls=budget)
 
 
 def test_parallel_model_calls_cannot_exceed_shared_limit():
-    """父模型和多个子模型并发开始时，也必须共享同一个硬限额。"""
+    """
+    父模型和多个子模型并发开始时，也必须共享同一个硬限额。
+    """
     tracker = ModelUsageTracker(3)
 
     def start():
-        """模拟一次尚未发出 HTTP 的模型调用起点。"""
+        """
+        模拟一次尚未发出 HTTP 的模型调用起点。
+        """
         try:
             tracker.on_chat_model_start({}, [], run_id=uuid4())
         except ModelCallLimitError:
@@ -133,7 +155,9 @@ def test_parallel_model_calls_cannot_exceed_shared_limit():
 
 
 def test_usage_includes_all_calls_and_marks_unknown_usage():
-    """失败或没有 usage 的请求不能被报告成完整的零成本运行。"""
+    """
+    失败或没有 usage 的请求不能被报告成完整的零成本运行。
+    """
     tracker = ModelUsageTracker(4)
     first, second = uuid4(), uuid4()
     tracker.on_chat_model_start({}, [], run_id=first)
@@ -154,7 +178,9 @@ def test_usage_includes_all_calls_and_marks_unknown_usage():
 
 
 def test_empty_or_partial_usage_does_not_break_response_handling():
-    """统计器不能因不完整响应而打断本来可继续处理的模型结果。"""
+    """
+    统计器不能因不完整响应而打断本来可继续处理的模型结果。
+    """
     tracker = ModelUsageTracker(2)
     run_id = uuid4()
     tracker.on_chat_model_start({}, [], run_id=run_id)
@@ -180,7 +206,9 @@ def test_empty_or_partial_usage_does_not_break_response_handling():
     ("context_window", 0), ("context_window", -1), ("context_window", True),
 ])
 def test_direct_settings_reject_invalid_worker_input(field, value):
-    """stdin 直接构造设置也必须执行同一校验，布尔值不能冒充整数预算。"""
+    """
+    stdin 直接构造设置也必须执行同一校验，布尔值不能冒充整数预算。
+    """
     values = {"model": "test-model", "base_url": "https://model.invalid/v1", "api_key": "private-test-key"}
     values[field] = value
     with pytest.raises(ValueError):
@@ -192,7 +220,9 @@ def test_direct_settings_reject_invalid_worker_input(field, value):
     'experimental_bearer_token = "line\\nfeed"', 'experimental_bearer_token = false',
 ])
 def test_invalid_explicit_credential_does_not_fallback_to_other_provider(tmp_path, monkeypatch, credential):
-    """无效的选中凭据应明确失败，不能改用环境内其他账户的密钥。"""
+    """
+    无效的选中凭据应明确失败，不能改用环境内其他账户的密钥。
+    """
     monkeypatch.setenv("OPENAI_API_KEY", "unrelated-account-secret")
     with pytest.raises(ValueError) as failure:
         load_codex_model_settings(_config(tmp_path, credential))
@@ -200,7 +230,9 @@ def test_invalid_explicit_credential_does_not_fallback_to_other_provider(tmp_pat
 
 
 def test_duplicate_callbacks_preserve_single_usage_record():
-    """相同 run_id 的重复开始与完成通知不能重复耗用预算或累计 token。"""
+    """
+    相同 run_id 的重复开始与完成通知不能重复耗用预算或累计 token。
+    """
     tracker = ModelUsageTracker(1)
     run_id = uuid4()
     tracker.on_chat_model_start({}, [], run_id=run_id)
@@ -222,7 +254,9 @@ def test_duplicate_callbacks_preserve_single_usage_record():
     {"input_tokens": 1.5, "output_tokens": 2, "total_tokens": 3.5},
 ])
 def test_invalid_usage_remains_unknown(usage):
-    """不完整或类型错误的 usage 不能出现在完整成本报告里。"""
+    """
+    不完整或类型错误的 usage 不能出现在完整成本报告里。
+    """
     tracker = ModelUsageTracker(1)
     run_id = uuid4()
     tracker.on_chat_model_start({}, [], run_id=run_id)
@@ -234,19 +268,25 @@ def test_invalid_usage_remains_unknown(usage):
 
 
 class _CountingModel(FakeMessagesListChatModel):
-    """在实际 LangChain 调用中验证 callback 限额确实早于模型执行。"""
+    """
+    在实际 LangChain 调用中验证 callback 限额确实早于模型执行。
+    """
 
     executed: int = Field(default=0)
 
     async def _agenerate(self, messages, stop=None, run_manager=None, **kwargs):
-        """记录真正到达模型实现的请求数，不模拟 callback 调度。"""
+        """
+        记录真正到达模型实现的请求数，不模拟 callback 调度。
+        """
         self.executed += 1
         return await super()._agenerate(messages, stop=stop, run_manager=run_manager, **kwargs)
 
 
 @pytest.mark.asyncio
 async def test_sdk_call_limit_prevents_next_model_execution():
-    """SDK 必须传播限额异常，第二次调用不能到达模型实现。"""
+    """
+    SDK 必须传播限额异常，第二次调用不能到达模型实现。
+    """
     tracker = ModelUsageTracker(1)
     model = _CountingModel(responses=[AIMessage(content="离线结果")], callbacks=[tracker])
     assert (await model.ainvoke("第一次请求")).content == "离线结果"
@@ -259,7 +299,9 @@ async def test_sdk_call_limit_prevents_next_model_execution():
 
 
 def test_failed_request_records_type_status_without_private_error():
-    """HTTP 失败可诊断为类型和状态码，私有请求内容不能进入公开统计。"""
+    """
+    HTTP 失败可诊断为类型和状态码，私有请求内容不能进入公开统计。
+    """
     tracker = ModelUsageTracker(1)
     run_id = uuid4()
     tracker.on_chat_model_start({}, [], run_id=run_id)

@@ -1,4 +1,6 @@
-"""下载历史分类快照在整理识别后的冻结恢复测试。"""
+"""
+下载历史分类快照在整理识别后的冻结恢复测试。
+"""
 
 from app.application.history import DownloadHistorySnapshot
 from app.chain.transfer.records import apply_download_history_classification
@@ -8,7 +10,9 @@ from app.schemas.types import MediaSource, MediaType
 
 
 def _recognized_media() -> MediaInfo:
-    """构造已由当前策略完成自动分类的媒体识别结果。"""
+    """
+    构造已由当前策略完成自动分类的媒体识别结果。
+    """
     return MediaInfo(
         media_source=MediaSource.TMDB,
         media_id="1001",
@@ -36,7 +40,9 @@ def _recognized_media() -> MediaInfo:
 
 
 def _history(**classification: object) -> DownloadHistorySnapshot:
-    """构造只关注分类持久化标量的下载历史快照。"""
+    """
+    构造只关注分类持久化标量的下载历史快照。
+    """
     return DownloadHistorySnapshot(
         id=1,
         path="/downloads/example.mkv",
@@ -47,7 +53,9 @@ def _history(**classification: object) -> DownloadHistorySnapshot:
 
 
 def test_full_snapshot_overrides_current_automatic_classification() -> None:
-    """完整历史快照必须冻结覆盖当前策略重新识别出的自动分类。"""
+    """
+    完整历史快照必须冻结覆盖当前策略重新识别出的自动分类。
+    """
     current = _recognized_media()
     history = _history(
         media_category_id="movie.historical",
@@ -76,7 +84,9 @@ def test_full_snapshot_overrides_current_automatic_classification() -> None:
 
 
 def test_legacy_media_category_path_is_restored_and_marked_legacy() -> None:
-    """仅保存旧 media_category 的历史仍可读取，并显式标记为 legacy。"""
+    """
+    仅保存旧 media_category 的历史仍可读取，并显式标记为 legacy。
+    """
     current = _recognized_media()
 
     restored = apply_download_history_classification(
@@ -96,7 +106,9 @@ def test_legacy_media_category_path_is_restored_and_marked_legacy() -> None:
 
 
 def test_empty_history_keeps_recognized_classification_unchanged() -> None:
-    """没有分类标量的旧历史不得覆盖本次识别出的有效分类。"""
+    """
+    没有分类标量的旧历史不得覆盖本次识别出的有效分类。
+    """
     current = _recognized_media()
 
     restored = apply_download_history_classification(current, _history())
@@ -110,7 +122,9 @@ def test_empty_history_keeps_recognized_classification_unchanged() -> None:
 
 
 def test_unsafe_history_path_does_not_pollute_recognized_classification() -> None:
-    """包含目录逃逸的历史路径必须被丢弃，不得污染识别分类。"""
+    """
+    包含目录逃逸的历史路径必须被丢弃，不得污染识别分类。
+    """
     current = _recognized_media()
 
     restored = apply_download_history_classification(

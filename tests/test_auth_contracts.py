@@ -1,4 +1,6 @@
-"""认证、授权和当前用户自助更新契约测试。"""
+"""
+认证、授权和当前用户自助更新契约测试。
+"""
 
 import inspect
 from http.cookies import SimpleCookie
@@ -31,7 +33,9 @@ from app.schemas.user import CurrentUserUpdate
 
 
 def _request() -> Request:
-    """构造认证端点所需的最小请求。"""
+    """
+    构造认证端点所需的最小请求。
+    """
     return Request(
         {
             "type": "http",
@@ -46,7 +50,9 @@ def _request() -> Request:
 
 
 def _user(*, active: bool = True, superuser: bool = False) -> SimpleNamespace:
-    """构造认证依赖所需的最小用户投影。"""
+    """
+    构造认证依赖所需的最小用户投影。
+    """
     return SimpleNamespace(
         id=7,
         name="tester",
@@ -60,7 +66,9 @@ def _user(*, active: bool = True, superuser: bool = False) -> SimpleNamespace:
 @pytest.mark.asyncio
 @pytest.mark.parametrize("async_request", [False, True])
 async def test_current_user_rejects_missing_subject(async_request: bool) -> None:
-    """同步及异步用户依赖都须拒绝缺少主体 ID 的令牌，不向仓库传递空 ID。"""
+    """
+    同步及异步用户依赖都须拒绝缺少主体 ID 的令牌，不向仓库传递空 ID。
+    """
     repository = SimpleNamespace(get_by_id=Mock(), async_get_by_id=AsyncMock())
     runtime = SimpleNamespace(authentication=SimpleNamespace(user_repository=lambda _db: repository))
 
@@ -82,7 +90,9 @@ async def test_current_user_rejects_missing_subject(async_request: bool) -> None
 
 
 def test_current_user_update_rejects_admin_fields():
-    """自助资料模型必须拒绝用户名、状态和权限等管理字段。"""
+    """
+    自助资料模型必须拒绝用户名、状态和权限等管理字段。
+    """
     assert set(CurrentUserUpdate.model_fields) == {
         "email",
         "avatar",
@@ -95,7 +105,9 @@ def test_current_user_update_rejects_admin_fields():
 
 @pytest.mark.asyncio
 async def test_update_current_user_uses_id_and_returns_updated_snapshot():
-    """自助更新必须按当前用户 ID 写入白名单字段并返回新快照。"""
+    """
+    自助更新必须按当前用户 ID 写入白名单字段并返回新快照。
+    """
     updated_user = _user()
     service = SimpleNamespace(update=AsyncMock(return_value=updated_user))
     user_input = CurrentUserUpdate(
@@ -124,7 +136,9 @@ async def test_update_current_user_uses_id_and_returns_updated_snapshot():
 
 @pytest.mark.asyncio
 async def test_update_current_user_does_not_overwrite_password_with_empty_value():
-    """空密码只表示不修改密码，不能作为持久化字段传入服务。"""
+    """
+    空密码只表示不修改密码，不能作为持久化字段传入服务。
+    """
     updated_user = _user()
     service = SimpleNamespace(update=AsyncMock(return_value=updated_user))
 
@@ -140,7 +154,9 @@ async def test_update_current_user_does_not_overwrite_password_with_empty_value(
 
 @pytest.mark.asyncio
 async def test_update_current_user_returns_http_error_for_invalid_password():
-    """自助更新密码失败时必须返回与 User 响应模型一致的 HTTP 错误。"""
+    """
+    自助更新密码失败时必须返回与 User 响应模型一致的 HTTP 错误。
+    """
     service = SimpleNamespace(update=AsyncMock())
 
     with pytest.raises(HTTPException) as exc_info:
@@ -157,7 +173,9 @@ async def test_update_current_user_returns_http_error_for_invalid_password():
 
 @pytest.mark.asyncio
 async def test_update_current_user_treats_missing_target_as_expired_authentication():
-    """当前用户在写入前消失时必须提示令牌失效，而不是伪报成功。"""
+    """
+    当前用户在写入前消失时必须提示令牌失效，而不是伪报成功。
+    """
     service = SimpleNamespace(update=AsyncMock(return_value=None))
 
     with pytest.raises(HTTPException) as exc_info:
@@ -172,7 +190,9 @@ async def test_update_current_user_treats_missing_target_as_expired_authenticati
 
 
 def test_current_user_dependency_uses_active_user_before_superuser_check():
-    """超级管理员依赖必须先经过激活状态校验。"""
+    """
+    超级管理员依赖必须先经过激活状态校验。
+    """
     assert (
         inspect.signature(auth_dependencies.get_current_active_superuser)
         .parameters["current_user"]
@@ -188,7 +208,9 @@ def test_current_user_dependency_uses_active_user_before_superuser_check():
 
 
 def test_current_user_update_requires_active_user_dependency():
-    """自助资料写入必须使用激活用户依赖，不能接受裸令牌。"""
+    """
+    自助资料写入必须使用激活用户依赖，不能接受裸令牌。
+    """
     assert (
         inspect.signature(user_endpoint.update_current_user)
         .parameters["current_user"]
@@ -204,7 +226,9 @@ def test_current_user_update_requires_active_user_dependency():
     ],
 )
 def test_inactive_user_is_unauthorized_for_sync_dependencies(dependency):
-    """停用用户的既有令牌在同步依赖路径上必须立即失效。"""
+    """
+    停用用户的既有令牌在同步依赖路径上必须立即失效。
+    """
     with pytest.raises(HTTPException) as exc_info:
         dependency(current_user=_user(active=False, superuser=True))
 
@@ -220,7 +244,9 @@ def test_inactive_user_is_unauthorized_for_sync_dependencies(dependency):
     ],
 )
 async def test_inactive_user_is_unauthorized_for_async_dependencies(dependency):
-    """停用用户的既有令牌在异步依赖路径上必须立即失效。"""
+    """
+    停用用户的既有令牌在异步依赖路径上必须立即失效。
+    """
     with pytest.raises(HTTPException) as exc_info:
         await dependency(current_user=_user(active=False, superuser=True))
 
@@ -229,7 +255,9 @@ async def test_inactive_user_is_unauthorized_for_async_dependencies(dependency):
 
 
 def test_regular_user_is_forbidden_for_superuser_dependency():
-    """已认证但无超级管理员权限的用户必须得到 403。"""
+    """
+    已认证但无超级管理员权限的用户必须得到 403。
+    """
     with pytest.raises(HTTPException) as exc_info:
         auth_dependencies.get_current_active_superuser(
             current_user=_user(active=True, superuser=False)
@@ -241,7 +269,9 @@ def test_regular_user_is_forbidden_for_superuser_dependency():
 
 @pytest.mark.asyncio
 async def test_reading_other_user_is_forbidden_for_regular_user():
-    """普通用户不能通过用户名读取其他账号资料。"""
+    """
+    普通用户不能通过用户名读取其他账号资料。
+    """
     service = SimpleNamespace(
         get_by_name=AsyncMock(return_value=_user()),
     )
@@ -262,7 +292,9 @@ async def test_reading_other_user_is_forbidden_for_regular_user():
 
 
 def test_missing_current_user_is_unauthorized():
-    """令牌对应用户不存在时应按认证失败返回 401。"""
+    """
+    令牌对应用户不存在时应按认证失败返回 401。
+    """
     repository = SimpleNamespace(get_by_id=Mock(return_value=None))
     runtime = SimpleNamespace(
         authentication=SimpleNamespace(user_repository=lambda _db: repository)
@@ -280,7 +312,9 @@ def test_missing_current_user_is_unauthorized():
 
 
 def test_invalid_jwt_is_unauthorized_with_bearer_challenge():
-    """JWT 解码失败不得被误报为授权不足。"""
+    """
+    JWT 解码失败不得被误报为授权不足。
+    """
     with patch.object(access, "_decode_token", side_effect=ValueError("invalid token")):
         with pytest.raises(HTTPException) as exc_info:
             access._decode_or_http_error("invalid", "authentication")
@@ -291,7 +325,9 @@ def test_invalid_jwt_is_unauthorized_with_bearer_challenge():
 
 @pytest.mark.parametrize("state", ["inactive", "renamed", "demoted"])
 def test_verify_token_revalidates_current_user_state(monkeypatch, state):
-    """裸 JWT 依赖必须在每次请求重新确认账号状态与身份声明。"""
+    """
+    裸 JWT 依赖必须在每次请求重新确认账号状态与身份声明。
+    """
     current_user = _user(superuser=True)
     if state == "inactive":
         current_user.is_active = False
@@ -301,7 +337,9 @@ def test_verify_token_revalidates_current_user_state(monkeypatch, state):
         current_user.is_superuser = False
 
     def validate(payload):
-        """模拟组合根提供的当前用户身份校验端口。"""
+        """
+        模拟组合根提供的当前用户身份校验端口。
+        """
         if not current_user.is_active:
             raise PermissionError("用户不存在或已禁用")
         if (
@@ -325,11 +363,15 @@ def test_verify_token_revalidates_current_user_state(monkeypatch, state):
 
 
 def test_verify_resource_token_revalidates_current_user_state(monkeypatch):
-    """资源 Cookie 不能绕过账号停用检查。"""
+    """
+    资源 Cookie 不能绕过账号停用检查。
+    """
     current_user = _user(active=False)
 
     def validate(_payload):
-        """模拟组合根提供的当前用户身份校验端口。"""
+        """
+        模拟组合根提供的当前用户身份校验端口。
+        """
         if not current_user.is_active:
             raise PermissionError("用户不存在或已禁用")
 
@@ -350,7 +392,9 @@ def test_verify_resource_token_revalidates_current_user_state(monkeypatch):
 
 @pytest.mark.parametrize("credential", ["api_key", "api_token"])
 def test_verify_token_revalidates_api_credential_identity(monkeypatch, credential):
-    """API Key 与 API Token 映射的超级管理员停用后必须立即失效。"""
+    """
+    API Key 与 API Token 映射的超级管理员停用后必须立即失效。
+    """
     monkeypatch.setattr(access, "get_runtime_setting", lambda key: "api-secret")
     monkeypatch.setattr(
         access,
@@ -369,7 +413,9 @@ def test_verify_token_revalidates_api_credential_identity(monkeypatch, credentia
 
 @pytest.mark.parametrize("dependency", [access.verify_apikey, access.verify_apitoken])
 def test_standalone_api_credential_revalidates_current_identity(monkeypatch, dependency):
-    """独立 API 凭据依赖也必须执行当前用户状态校验。"""
+    """
+    独立 API 凭据依赖也必须执行当前用户状态校验。
+    """
     monkeypatch.setattr(access, "get_runtime_setting", lambda key: "api-secret")
     monkeypatch.setattr(
         access,
@@ -385,7 +431,9 @@ def test_standalone_api_credential_revalidates_current_identity(monkeypatch, dep
 
 
 def test_api_token_reader_prefers_header_and_preserves_query_compatibility():
-    """兼容 Token 依赖应优先使用请求头，同时继续接受旧查询参数。"""
+    """
+    兼容 Token 依赖应优先使用请求头，同时继续接受旧查询参数。
+    """
     assert access._get_api_token("query-token", "header-token") == "header-token"
     assert access._get_api_token("query-token", None) == "query-token"
 
@@ -406,7 +454,9 @@ async def test_agent_protocol_api_credentials_revalidate_current_identity(
     endpoint,
     credential,
 ):
-    """Agent 兼容协议必须保留各自错误结构并拒绝停用账号的 API 凭据。"""
+    """
+    Agent 兼容协议必须保留各自错误结构并拒绝停用账号的 API 凭据。
+    """
     monkeypatch.setattr(
         endpoint,
         "get_api_runtime_config_snapshot",
@@ -427,7 +477,9 @@ async def test_agent_protocol_api_credentials_revalidate_current_identity(
 
 @pytest.mark.asyncio
 async def test_seerr_api_credential_revalidates_before_reading_payload(monkeypatch):
-    """Seerr 管理员级 Webhook 必须在处理报文前拒绝停用账号身份。"""
+    """
+    Seerr 管理员级 Webhook 必须在处理报文前拒绝停用账号身份。
+    """
     request = SimpleNamespace(json=AsyncMock())
     monkeypatch.setattr(
         subscribe_endpoint,
@@ -452,7 +504,9 @@ async def test_seerr_api_credential_revalidates_before_reading_payload(monkeypat
 
 
 def test_api_credential_provider_does_not_cache_identity(monkeypatch):
-    """API 凭据每次都应重新解析超级管理员绑定，不能锁定旧身份。"""
+    """
+    API 凭据每次都应重新解析超级管理员绑定，不能锁定旧身份。
+    """
     first = auth_endpoint._SchemaTokenPayload(
         sub=7,
         username="first",
@@ -471,7 +525,9 @@ def test_api_credential_provider_does_not_cache_identity(monkeypatch):
     calls = []
 
     def provider():
-        """返回当前配置绑定的超级管理员载荷。"""
+        """
+        返回当前配置绑定的超级管理员载荷。
+        """
         calls.append(True)
         return next(payloads)
 
@@ -488,7 +544,9 @@ def test_api_credential_provider_does_not_cache_identity(monkeypatch):
 
 
 def test_superuser_payload_provider_rejects_inactive_user(monkeypatch):
-    """超级管理员 API 凭据载荷提供器不能为停用账号签发身份。"""
+    """
+    超级管理员 API 凭据载荷提供器不能为停用账号签发身份。
+    """
     user = _user(active=False, superuser=True)
     service = AuthService(
         users=SimpleNamespace(get_by_name=Mock(return_value=user)),
@@ -506,7 +564,9 @@ def test_superuser_payload_provider_rejects_inactive_user(monkeypatch):
 
 
 def test_superuser_payload_provider_falls_back_to_database_admin(monkeypatch):
-    """V2 升级后 SUPERUSER 为空时，API 凭据应绑定现有启用管理员。"""
+    """
+    V2 升级后 SUPERUSER 为空时，API 凭据应绑定现有启用管理员。
+    """
     user = _user(active=True, superuser=True)
     users = SimpleNamespace(
         get_by_name=Mock(),
@@ -532,7 +592,9 @@ def test_superuser_payload_provider_falls_back_to_database_admin(monkeypatch):
 
 
 def test_superuser_payload_provider_explains_missing_binding(monkeypatch):
-    """配置和数据库都没有管理员时，应返回可操作的认证失败原因。"""
+    """
+    配置和数据库都没有管理员时，应返回可操作的认证失败原因。
+    """
     service = AuthService(
         users=SimpleNamespace(get_active_superuser=Mock(return_value=None)),
         config=SimpleNamespace(),
@@ -552,7 +614,9 @@ def test_superuser_payload_provider_explains_missing_binding(monkeypatch):
 
 
 def test_auth_service_reads_user_by_id_and_accepts_current_token_identity():
-    """认证服务按稳定用户 ID 查询，并接受与当前账号一致的令牌声明。"""
+    """
+    认证服务按稳定用户 ID 查询，并接受与当前账号一致的令牌声明。
+    """
     user = _user()
     users = SimpleNamespace(get_by_id=Mock(return_value=user))
     service = AuthService(
@@ -576,7 +640,9 @@ def test_auth_service_reads_user_by_id_and_accepts_current_token_identity():
 
 
 def test_superuser_payload_provider_follows_stable_id_after_admin_rename(monkeypatch):
-    """管理员改名后，API 凭据应继续绑定原用户而非旧配置用户名。"""
+    """
+    管理员改名后，API 凭据应继续绑定原用户而非旧配置用户名。
+    """
     original = _user(superuser=True)
     renamed = _user(superuser=True)
     renamed.name = "renamed"
@@ -605,11 +671,15 @@ def test_superuser_payload_provider_follows_stable_id_after_admin_rename(monkeyp
 
 
 def test_bare_verify_token_rejects_inactive_user_on_real_history_route(monkeypatch):
-    """真实历史直达路由不能仅凭停用用户的旧 JWT 通过。"""
+    """
+    真实历史直达路由不能仅凭停用用户的旧 JWT 通过。
+    """
     current_user = _user(active=False)
 
     def validate(_payload):
-        """模拟组合根提供的当前用户身份校验端口。"""
+        """
+        模拟组合根提供的当前用户身份校验端口。
+        """
         if not current_user.is_active:
             raise PermissionError("用户不存在或已禁用")
 
@@ -636,13 +706,17 @@ def test_bare_verify_token_rejects_inactive_user_on_real_history_route(monkeypat
 
 
 def test_anonymous_mfa_status_contract_is_removed():
-    """匿名 MFA 用户名状态查询不再属于公开路由或 schema 契约。"""
+    """
+    匿名 MFA 用户名状态查询不再属于公开路由或 schema 契约。
+    """
     assert not hasattr(mfa_endpoint, "mfa_status")
     assert not any(route.path == "/status/{username}" for route in mfa_endpoint.router.routes)
 
 
 def test_auth_exchange_sets_resource_cookie():
-    """插件票据兑换必须和密码登录一样建立资源令牌 Cookie。"""
+    """
+    插件票据兑换必须和密码登录一样建立资源令牌 Cookie。
+    """
     user = _user()
     token = Token(
         access_token="access-token",
@@ -689,7 +763,9 @@ def test_auth_exchange_sets_resource_cookie():
 
 @pytest.mark.parametrize("user", [None, _user(active=False)])
 def test_auth_exchange_rejects_missing_or_disabled_user(user):
-    """票据对应账号不存在或停用时不得签发 Token。"""
+    """
+    票据对应账号不存在或停用时不得签发 Token。
+    """
     service = SimpleNamespace(
         get_user_by_id=Mock(return_value=user),
         build_token_response=Mock(),
@@ -715,7 +791,8 @@ def test_auth_exchange_rejects_missing_or_disabled_user(user):
 
 
 def test_auth_providers_response_model_keeps_plugin_clone_source_id():
-    """分身登录入口经 response_model 序列化后必须仍带源插件 ID。
+    """
+    分身登录入口经 response_model 序列化后必须仍带源插件 ID。
 
     端点声明了 response_model，schema 未声明的键会被 pydantic 静默丢弃，投影层写
     进去也到不了前端联邦加载器；这条用例走一遍真实的响应序列化来锁住该字段。

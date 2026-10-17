@@ -1,3 +1,7 @@
+"""
+事件总线消息、链式调用和插件交互的输入输出契约。
+"""
+
 from collections.abc import Mapping as _Mapping
 from enum import Enum as _Enum
 from pathlib import Path
@@ -22,11 +26,13 @@ from app.schemas.transfer import TransferInfo
 from app.schemas.types import MediaSource, MediaType, NotificationChannel
 
 JsonValue = JsonData
-"""事件扩展字段允许的 JSON 值类型。"""
-
-
+"""
+事件扩展字段允许的 JSON 值类型。
+"""
 def _coerce_event_snapshot(value: Any) -> Any:
-    """把旧运行时对象转换为只用于契约校验的可读取快照。"""
+    """
+    把旧运行时对象转换为只用于契约校验的可读取快照。
+    """
     if isinstance(value, BaseModel):
         value = value.model_dump(mode="python")
     elif hasattr(value, "to_dict") and callable(value.to_dict):
@@ -54,9 +60,11 @@ MetaSnapshot = _Annotated[
 
 
 class ContextSnapshot(_ContextSnapshotBase):
-    """资源上下文的稳定事件快照，不替换链路中的运行时 Context。"""
+    """
+    资源上下文的稳定事件快照，不替换链路中的运行时 Context。
+    """
 
-    allowed_episodes: Optional[Set[int]] = None
+    allowed_episodes: Optional[Set[int]] = Field(default=None, description="限定允许下载的集号集合，为空时不额外限定")
 
     model_config = ConfigDict(
         extra="allow",
@@ -64,32 +72,41 @@ class ContextSnapshot(_ContextSnapshotBase):
         arbitrary_types_allowed=True,
     )
 
+    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
     @model_validator(mode="before")  # type: ignore[misc]
     @classmethod
     def coerce_runtime_context(cls, value: Any) -> Any:
-        """允许旧 Context/dataclass 进入校验，同时保持原对象继续投递。"""
+        """
+        允许旧 Context/dataclass 进入校验，同时保持原对象继续投递。
+        """
         return _coerce_event_snapshot(value)
 
 
+# Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
 class FileContextSnapshot(BaseModel):  # type: ignore[misc]
-    """音乐批次中单个文件的元数据上下文快照。"""
+    """
+    音乐批次中单个文件的元数据上下文快照。
+    """
 
-    path: str
-    meta: Optional[MetaSnapshot] = None
-    mediainfo: Optional[MediaSnapshot] = None
+    path: str = Field(description="文件或目录路径")
+    meta: Optional[MetaSnapshot] = Field(default=None, description="文件名解析对象")
+    mediainfo: Optional[MediaSnapshot] = Field(default=None, description="媒体信息快照")
 
     model_config = ConfigDict(extra="allow", from_attributes=True)
 
+    # Pydantic 动态类型无法由当前检查配置完整推断，保留既有类型检查豁免。
     @model_validator(mode="before")  # type: ignore[misc]
     @classmethod
     def coerce_runtime_context(cls, value: Any) -> Any:
-        """把旧文件上下文对象转换成可验证的字典。"""
+        """
+        把旧文件上下文对象转换成可验证的字典。
+        """
         return _coerce_event_snapshot(value)
 
 
 class Event(BaseModel):
     """
-    事件模型
+    事件模型。
     """
 
     event_type: str = Field(..., description="事件类型")
@@ -99,30 +116,38 @@ class Event(BaseModel):
 
 class BaseEventData(BaseModel):
     """
-    事件数据的基类，所有具体事件数据类应继承自此类
+    事件数据的基类，所有具体事件数据类应继承自此类。
     """
 
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
 
 class ExtensibleEventData(BaseEventData):
-    """允许第三方插件附加字段的类型化事件载荷基类。"""
+    """
+    允许第三方插件附加字段的类型化事件载荷基类。
+    """
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
 class EmptyEventData(ExtensibleEventData):
-    """当前没有固定字段、但仍需进入 typed registry 的事件载荷。"""
+    """
+    当前没有固定字段、但仍需进入 typed registry 的事件载荷。
+    """
 
 
 class PluginReloadEventData(ExtensibleEventData):
-    """插件重载广播事件载荷。"""
+    """
+    插件重载广播事件载荷。
+    """
 
     plugin_id: str = Field(description="重载的插件 ID")
 
 
 class PluginActionEventData(ExtensibleEventData):
-    """插件命令动作载荷；具体动作参数由目标插件扩展。"""
+    """
+    插件命令动作载荷；具体动作参数由目标插件扩展。
+    """
 
     plugin_id: Optional[str] = Field(default=None, description="目标插件 ID")
     action: Optional[str] = Field(default=None, description="插件动作名称")
@@ -132,7 +157,9 @@ class PluginActionEventData(ExtensibleEventData):
 
 
 class PluginTriggeredEventData(ExtensibleEventData):
-    """插件主动发布的跨插件事件载荷。"""
+    """
+    插件主动发布的跨插件事件载荷。
+    """
 
     plugin_id: str = Field(description="发布事件的插件 ID")
     event_name: str = Field(description="插件定义的稳定事件名")
@@ -140,7 +167,9 @@ class PluginTriggeredEventData(ExtensibleEventData):
 
 
 class CommandExecuteEventData(ExtensibleEventData):
-    """斜杠命令执行事件载荷。"""
+    """
+    斜杠命令执行事件载荷。
+    """
 
     cmd: str = Field(description="包含参数的完整命令文本")
     user: Optional[Any] = Field(default=None, description="发起用户")
@@ -150,7 +179,9 @@ class CommandExecuteEventData(ExtensibleEventData):
 
 
 class SiteEventData(ExtensibleEventData):
-    """站点新增、更新、删除或数据刷新事件载荷。"""
+    """
+    站点新增、更新、删除或数据刷新事件载荷。
+    """
 
     site_id: Optional[int | str] = Field(default=None, description="站点 ID 或通配符")
     domain: Optional[str] = Field(default=None, description="站点域名")
@@ -159,28 +190,36 @@ class SiteEventData(ExtensibleEventData):
 
 
 class HistoryDeletedEventData(ExtensibleEventData):
-    """历史记录删除事件的兼容载荷。"""
+    """
+    历史记录删除事件的兼容载荷。
+    """
 
     history_id: Optional[int] = Field(default=None, description="历史记录 ID")
     src: Optional[str] = Field(default=None, description="关联源路径")
 
 
 class DownloadFileDeletedEventData(ExtensibleEventData):
-    """下载源文件删除事件载荷。"""
+    """
+    下载源文件删除事件载荷。
+    """
 
     src: Optional[str] = Field(default=None, description="已删除的下载源路径")
     hash: Optional[str] = Field(default=None, description="下载任务 hash")
 
 
 class DownloadDeletedEventData(ExtensibleEventData):
-    """下载任务删除事件载荷。"""
+    """
+    下载任务删除事件载荷。
+    """
 
     hash: str = Field(description="下载任务 hash")
     torrents: List[Dict[str, Any]] = Field(default_factory=list, description="删除前任务快照")
 
 
 class UserMessageEventData(ExtensibleEventData):
-    """未被宿主命令或交互消费的用户文本消息载荷。"""
+    """
+    未被宿主命令或交互消费的用户文本消息载荷。
+    """
 
     text: str = Field(description="用户文本")
     userid: Optional[Any] = Field(default=None, description="用户 ID")
@@ -191,7 +230,9 @@ class UserMessageEventData(ExtensibleEventData):
 
 
 class NoticeMessageEventData(ExtensibleEventData):
-    """宿主向消息模块发送的通知事件载荷。"""
+    """
+    宿主向消息模块发送的通知事件载荷。
+    """
 
     type: Optional[Any] = Field(default=None, description="兼容消息类型")
     title: Optional[str] = Field(default=None, description="消息标题")
@@ -202,7 +243,9 @@ class NoticeMessageEventData(ExtensibleEventData):
 
 
 class SubscribeCompleteEventData(ExtensibleEventData):
-    """订阅完成广播事件载荷。"""
+    """
+    订阅完成广播事件载荷。
+    """
 
     subscribe_id: int = Field(description="已完成订阅 ID")
     subscribe_info: Dict[str, Any] = Field(default_factory=dict, description="订阅快照")
@@ -210,7 +253,9 @@ class SubscribeCompleteEventData(ExtensibleEventData):
 
 
 class SystemErrorEventData(ExtensibleEventData):
-    """事件、模块、插件或调度器错误的宿主诊断载荷。"""
+    """
+    事件、模块、插件或调度器错误的宿主诊断载荷。
+    """
 
     type: str = Field(description="错误来源类别")
     error: str = Field(description="错误摘要")
@@ -218,7 +263,9 @@ class SystemErrorEventData(ExtensibleEventData):
 
 
 class MetadataScrapeEventData(ExtensibleEventData):
-    """媒体文件元数据刮削事件载荷。"""
+    """
+    媒体文件元数据刮削事件载荷。
+    """
 
     fileitem: FileItem = Field(description="待刮削目录或文件项")
     file_list: List[str] = Field(default_factory=list, description="待刮削文件清单")
@@ -229,7 +276,9 @@ class MetadataScrapeEventData(ExtensibleEventData):
 
 
 class MessageActionEventData(ExtensibleEventData):
-    """定向插件消息交互动作载荷。"""
+    """
+    定向插件消息交互动作载荷。
+    """
 
     plugin_id: Optional[str] = Field(default=None, description="目标插件 ID")
     text: Optional[str] = Field(default=None, description="兼容动作文本")
@@ -242,13 +291,17 @@ class MessageActionEventData(ExtensibleEventData):
 
 
 class WorkflowExecuteEventData(ExtensibleEventData):
-    """请求执行指定工作流的事件载荷。"""
+    """
+    请求执行指定工作流的事件载荷。
+    """
 
     workflow_id: int = Field(description="工作流 ID")
 
 
 class NameRecognizeEventData(ExtensibleEventData):
-    """影视名称辅助识别的输入和插件回写字段。"""
+    """
+    影视名称辅助识别的输入和插件回写字段。
+    """
 
     title: str = Field(description="待识别标题")
     name: Optional[str] = Field(default=None, description="插件识别后的名称")
@@ -258,18 +311,22 @@ class NameRecognizeEventData(ExtensibleEventData):
 
 
 class MusicNameRecognizeEventData(ExtensibleEventData):
-    """音乐名称辅助识别的输入和插件回写字段。"""
+    """
+    音乐名称辅助识别的输入和插件回写字段。
+    """
 
     title: str = Field(description="待识别曲名")
     artist: Optional[str] = Field(default=None, description="艺术家")
     album: Optional[str] = Field(default=None, description="专辑")
     year: Optional[Any] = Field(default=None, description="年份")
-    duration: Optional[Any] = Field(default=None, description="时长")
+    duration: Optional[Any] = Field(default=None, description="音轨时长，单位为秒；未提供时为 None")
     name: Optional[str] = Field(default=None, description="插件识别后的曲名")
 
 
 class MediaRecognizeEventData(ExtensibleEventData):
-    """影视媒体身份补充识别的输入和插件回写字段。"""
+    """
+    影视媒体身份补充识别的输入和插件回写字段。
+    """
 
     title: Optional[str] = Field(default=None, description="待识别标题")
     year: Optional[Any] = Field(default=None, description="年份")
@@ -281,17 +338,19 @@ class MediaRecognizeEventData(ExtensibleEventData):
 
 
 class MusicMediaRecognizeEventData(MediaRecognizeEventData):
-    """音乐媒体身份补充识别的输入和插件回写字段。"""
+    """
+    音乐媒体身份补充识别的输入和插件回写字段。
+    """
 
     artists: List[str] = Field(default_factory=list, description="艺术家列表")
     album: Optional[str] = Field(default=None, description="专辑")
-    isrc: Optional[str] = Field(default=None, description="ISRC")
+    isrc: Optional[str] = Field(default=None, description="国际标准录音制品编码")
     music_type: Optional[str] = Field(default=None, description="音乐实体类型")
 
 
 class ConfigChangeEventData(BaseEventData):
     """
-    ConfigChange 事件的数据模型
+    ConfigChange 事件的数据模型。
     """
 
     key: set[str] = Field(..., description="配置项的键（集合类型）")
@@ -303,9 +362,13 @@ class ConfigChangeEventData(BaseEventData):
     @field_validator("key", mode="before")
     @classmethod
     def convert_to_set(cls, v):
-        """将输入的 str、list、dict.keys() 等转为 set"""
+        """
+        将输入的 str、list、dict.keys() 等转为 set。
+        """
         def normalize(item: Any) -> str:
-            """把枚举键转换为其持久化值，其余键保持字符串兼容。"""
+            """
+            把枚举键转换为其持久化值，其余键保持字符串兼容。
+            """
             return str(item.value) if isinstance(item, _Enum) else str(item)
 
         if v is None:
@@ -328,133 +391,157 @@ class ConfigChangeEventData(BaseEventData):
 
 class ChainEventData(BaseEventData):
     """
-    链式事件数据的基类，所有具体事件数据类应继承自此类
+    链式事件数据的基类，所有具体事件数据类应继承自此类。
     """
 
     model_config = ConfigDict(from_attributes=True, arbitrary_types_allowed=True)
 
 
 class ResourceSelectionContractData(ChainEventData):
-    """ResourceSelection 的稳定输入/输出契约。"""
+    """
+    ResourceSelection 的稳定输入/输出契约。
+    """
 
-    contexts: List[ContextSnapshot] = Field(default_factory=list)
-    downloader: Optional[str] = None
-    origin: Optional[str] = None
-    updated: bool = False
-    updated_contexts: Optional[List[ContextSnapshot]] = None
-    source: Optional[str] = "未知拦截源"
+    contexts: List[ContextSnapshot] = Field(default_factory=list, description="待选择的资源上下文列表")
+    downloader: Optional[str] = Field(default=None, description="下载器")
+    origin: Optional[str] = Field(default=None, description="操作来源")
+    updated: bool = Field(default=False, description="是否已更新")
+    updated_contexts: Optional[List[ContextSnapshot]] = Field(default=None, description="已更新的资源上下文列表")
+    source: Optional[str] = Field(default="未知拦截源", description="数据来源")
 
 
 class ResourceSelectionInputContractData(ChainEventData):
-    """ResourceSelection 事件输入字段。"""
+    """
+    ResourceSelection 事件输入字段。
+    """
 
-    contexts: List[ContextSnapshot] = Field(default_factory=list)
-    downloader: Optional[str] = None
-    origin: Optional[str] = None
+    contexts: List[ContextSnapshot] = Field(default_factory=list, description="待选择的资源上下文列表")
+    downloader: Optional[str] = Field(default=None, description="下载器")
+    origin: Optional[str] = Field(default=None, description="操作来源")
 
 
 class ResourceSelectionOutputContractData(ChainEventData):
-    """ResourceSelection 事件插件回写字段。"""
+    """
+    ResourceSelection 事件插件回写字段。
+    """
 
-    updated: bool = False
-    updated_contexts: Optional[List[ContextSnapshot]] = None
-    source: Optional[str] = "未知拦截源"
+    updated: bool = Field(default=False, description="是否已更新")
+    updated_contexts: Optional[List[ContextSnapshot]] = Field(default=None, description="已更新的资源上下文列表")
+    source: Optional[str] = Field(default="未知拦截源", description="数据来源")
 
 
 class ResourceDownloadContractData(ChainEventData):
-    """ResourceDownload 的稳定输入/输出契约。"""
+    """
+    ResourceDownload 的稳定输入/输出契约。
+    """
 
-    context: Optional[ContextSnapshot] = None
-    episodes: Optional[Set[int]] = None
-    channel: Optional[NotificationChannel] = None
-    origin: Optional[str] = None
-    downloader: Optional[str] = None
-    options: Optional[Dict[str, EventJsonValue]] = None
-    cancel: bool = False
-    source: str = "未知拦截源"
-    reason: str = ""
+    context: Optional[ContextSnapshot] = Field(default=None, description="当前资源上下文")
+    episodes: Optional[Set[int]] = Field(default=None, description="剧集信息")
+    channel: Optional[NotificationChannel] = Field(default=None, description="消息渠道标识")
+    origin: Optional[str] = Field(default=None, description="操作来源")
+    downloader: Optional[str] = Field(default=None, description="下载器")
+    options: Optional[Dict[str, EventJsonValue]] = Field(default=None, description="下载选项")
+    cancel: bool = Field(default=False, description="是否取消当前操作")
+    source: str = Field(default="未知拦截源", description="数据来源")
+    reason: str = Field(default="", description="拦截原因")
 
 
 class ResourceDownloadInputContractData(ChainEventData):
-    """ResourceDownload 事件输入字段。"""
+    """
+    ResourceDownload 事件输入字段。
+    """
 
-    context: Optional[ContextSnapshot] = None
-    episodes: Optional[Set[int]] = None
-    channel: Optional[NotificationChannel] = None
-    origin: Optional[str] = None
-    downloader: Optional[str] = None
-    options: Optional[Dict[str, EventJsonValue]] = None
+    context: Optional[ContextSnapshot] = Field(default=None, description="当前资源上下文")
+    episodes: Optional[Set[int]] = Field(default=None, description="剧集信息")
+    channel: Optional[NotificationChannel] = Field(default=None, description="消息渠道标识")
+    origin: Optional[str] = Field(default=None, description="操作来源")
+    downloader: Optional[str] = Field(default=None, description="下载器")
+    options: Optional[Dict[str, EventJsonValue]] = Field(default=None, description="下载选项")
 
 
 class ResourceDownloadOutputContractData(ChainEventData):
-    """ResourceDownload 事件插件回写字段。"""
+    """
+    ResourceDownload 事件插件回写字段。
+    """
 
-    cancel: bool = False
-    source: str = "未知拦截源"
-    reason: str = ""
+    cancel: bool = Field(default=False, description="是否取消当前操作")
+    source: str = Field(default="未知拦截源", description="数据来源")
+    reason: str = Field(default="", description="拦截原因")
 
 
 class DownloadAddedContractData(BaseEventData):
-    """DownloadAdded 的稳定下载上下文契约。"""
+    """
+    DownloadAdded 的稳定下载上下文契约。
+    """
 
-    hash: str
-    context: ContextSnapshot
-    username: Optional[str] = None
-    downloader: Optional[str] = None
-    episodes: List[int] = Field(default_factory=list)
-    source: Optional[str] = None
-    idempotency_key: Optional[str] = None
+    hash: str = Field(description="下载任务 hash")
+    context: ContextSnapshot = Field(description="当前资源上下文")
+    username: Optional[str] = Field(default=None, description="用户名")
+    downloader: Optional[str] = Field(default=None, description="下载器")
+    episodes: List[int] = Field(default_factory=list, description="剧集信息")
+    source: Optional[str] = Field(default=None, description="数据来源")
+    idempotency_key: Optional[str] = Field(default=None, description="宿主生成的幂等键")
 
 
 class TransferResultContractData(BaseEventData):
-    """整理结果事件的稳定媒体与元数据契约。"""
+    """
+    整理结果事件的稳定媒体与元数据契约。
+    """
 
-    fileitem: Optional[FileItem] = None
-    meta: Optional[MetaSnapshot] = None
-    mediainfo: Optional[MediaSnapshot] = None
-    transferinfo: Optional[TransferInfo] = None
-    downloader: Optional[str] = None
-    download_hash: Optional[str] = None
-    transfer_history_id: Optional[int] = None
-    idempotency_key: Optional[str] = None
+    fileitem: Optional[FileItem] = Field(default=None, description="待刮削目录或文件项")
+    meta: Optional[MetaSnapshot] = Field(default=None, description="文件名解析对象")
+    mediainfo: Optional[MediaSnapshot] = Field(default=None, description="媒体信息快照")
+    transferinfo: Optional[TransferInfo] = Field(default=None, description="整理结果")
+    downloader: Optional[str] = Field(default=None, description="下载器")
+    download_hash: Optional[str] = Field(default=None, description="下载任务 hash")
+    transfer_history_id: Optional[int] = Field(default=None, description="整理历史 ID")
+    idempotency_key: Optional[str] = Field(default=None, description="宿主生成的幂等键")
 
 
 class MetadataScrapeContractData(ExtensibleEventData):
-    """MetadataScrape 的稳定媒体刮削契约。"""
+    """
+    MetadataScrape 的稳定媒体刮削契约。
+    """
 
-    fileitem: FileItem
-    file_list: List[str] = Field(default_factory=list)
-    meta: Optional[MetaSnapshot] = None
-    mediainfo: Optional[MediaSnapshot] = None
-    overwrite: bool = False
-    file_contexts: List[FileContextSnapshot] = Field(default_factory=list)
+    fileitem: FileItem = Field(description="待刮削目录或文件项")
+    file_list: List[str] = Field(default_factory=list, description="待刮削文件清单")
+    meta: Optional[MetaSnapshot] = Field(default=None, description="文件名解析对象")
+    mediainfo: Optional[MediaSnapshot] = Field(default=None, description="媒体信息快照")
+    overwrite: bool = Field(default=False, description="是否覆盖已有元数据")
+    file_contexts: List[FileContextSnapshot] = Field(default_factory=list, description="逐文件上下文")
 
 
 class SubscribeCompletionCheckContractData(ChainEventData):
-    """订阅完成判定的稳定订阅、媒体和元数据契约。"""
+    """
+    订阅完成判定的稳定订阅、媒体和元数据契约。
+    """
 
-    subscribe: Optional[_SubscribeSnapshot] = None
-    mediainfo: Optional[MediaSnapshot] = None
-    meta: Optional[MetaSnapshot] = None
-    cancel: bool = False
-    source: str = "未知来源"
-    reason: str = ""
+    subscribe: Optional[_SubscribeSnapshot] = Field(default=None, description="订阅信息")
+    mediainfo: Optional[MediaSnapshot] = Field(default=None, description="媒体信息快照")
+    meta: Optional[MetaSnapshot] = Field(default=None, description="文件名解析对象")
+    cancel: bool = Field(default=False, description="是否取消当前操作")
+    source: str = Field(default="未知来源", description="数据来源")
+    reason: str = Field(default="", description="拦截原因")
 
 
 class SubscribeCompletionCheckInputContractData(ChainEventData):
-    """SubscribeCompletionCheck 事件输入字段。"""
+    """
+    SubscribeCompletionCheck 事件输入字段。
+    """
 
-    subscribe: Optional[_SubscribeSnapshot] = None
-    mediainfo: Optional[MediaSnapshot] = None
-    meta: Optional[MetaSnapshot] = None
+    subscribe: Optional[_SubscribeSnapshot] = Field(default=None, description="订阅信息")
+    mediainfo: Optional[MediaSnapshot] = Field(default=None, description="媒体信息快照")
+    meta: Optional[MetaSnapshot] = Field(default=None, description="文件名解析对象")
 
 
 class SubscribeCompletionCheckOutputContractData(ChainEventData):
-    """SubscribeCompletionCheck 事件插件回写字段。"""
+    """
+    SubscribeCompletionCheck 事件插件回写字段。
+    """
 
-    cancel: bool = False
-    source: str = "未知来源"
-    reason: str = ""
+    cancel: bool = Field(default=False, description="是否取消当前操作")
+    source: str = Field(default="未知来源", description="数据来源")
+    reason: str = Field(default="", description="拦截原因")
 
 
 class PluginDataResetEventData(ChainEventData):
@@ -479,9 +566,9 @@ class AgentLLMProviderEventData(ChainEventData):
     后续用量事件精确回写到同一个配额条目。
     """
 
-    provider: Optional[str] = Field(default=None, description="LLM provider ID")
-    base_url: Optional[str] = Field(default=None, description="API Base URL")
-    api_key: Optional[str] = Field(default=None, description="API Key")
+    provider: Optional[str] = Field(default=None, description="模型提供商标识")
+    base_url: Optional[str] = Field(default=None, description="服务接口的基础地址")
+    api_key: Optional[str] = Field(default=None, description="接口访问密钥")
     model: Optional[str] = Field(default=None, description="模型名称")
     base_url_preset: Optional[str] = Field(default=None, description="Base URL 预设ID")
     user_agent: Optional[str] = Field(default=None, description="OpenAI兼容接口User-Agent")
@@ -500,22 +587,22 @@ class AgentTokensUsageEventData(BaseEventData):
     Agent Tokens 用量广播事件数据。
 
     用量事件不携带 API Key，只携带选择事件返回的 selected_provider_id 以及
-    聚合后的 token 统计，避免把密钥扩散给广播订阅者。
+    聚合后的 令牌统计，避免把密钥扩散给广播订阅者。
     """
 
     session_id: str = Field(..., description="Agent 会话ID")
     selected_provider_id: Optional[str] = Field(default=None, description="插件侧供应商ID")
     selected_provider_name: Optional[str] = Field(default=None, description="插件侧供应商名称")
     provider: Optional[str] = Field(default=None, description="实际 LLM provider ID")
-    base_url: Optional[str] = Field(default=None, description="API Base URL")
+    base_url: Optional[str] = Field(default=None, description="服务接口的基础地址")
     model: Optional[str] = Field(default=None, description="模型名称")
-    input_tokens: int = Field(default=0, description="输入 tokens")
-    output_tokens: int = Field(default=0, description="输出 tokens")
-    total_tokens: int = Field(default=0, description="总 tokens")
-    cache_read_input_tokens: int = Field(default=0, description="从提示词缓存读取的输入 tokens")
-    cache_write_input_tokens: int = Field(default=0, description="写入提示词缓存的输入 tokens")
-    uncached_input_tokens: int = Field(default=0, description="未命中缓存的输入 tokens")
-    cache_hit_ratio: Optional[float] = Field(default=None, description="提示词缓存命中率")
+    input_tokens: int = Field(default=0, description="输入令牌数")
+    output_tokens: int = Field(default=0, description="输出令牌数")
+    total_tokens: int = Field(default=0, description="输入和输出的令牌总数")
+    cache_read_input_tokens: int = Field(default=0, description="从提示词缓存读取的输入令牌数")
+    cache_write_input_tokens: int = Field(default=0, description="写入提示词缓存的输入令牌数")
+    uncached_input_tokens: int = Field(default=0, description="未命中提示词缓存的输入令牌数")
+    cache_hit_ratio: Optional[float] = Field(default=None, description="从缓存读取的输入令牌数占总输入令牌数的比例；缓存明细不可用或输入为 0 时为 None")
     cache_usage_available: bool = Field(default=False, description="供应商是否返回缓存用量明细")
     model_call_count: int = Field(default=0, description="模型调用次数")
     success: bool = Field(default=False, description="Agent 执行是否成功")
@@ -528,38 +615,26 @@ class AgentTokensUsageEventData(BaseEventData):
 
 class AuthCredentials(ChainEventData):
     """
-    AuthVerification 事件的数据模型
-
-    Attributes:
-        username (Optional[str]): 用户名，适用于 "password" grant_type
-        password (Optional[str]): 用户密码，适用于 "password" grant_type
-        mfa_code (Optional[str]): 一次性密码，目前仅适用于 "password" 认证类型
-        code (Optional[str]): 授权码，适用于 "authorization_code" grant_type
-        grant_type (str): 认证类型，如 "password", "authorization_code", "client_credentials"
-        # scope (List[str]): 权限范围，如 ["read", "write"]
-        token (Optional[str]): 认证令牌
-        channel (Optional[str]): 认证渠道
-        service (Optional[str]): 服务名称
+    AuthVerification 事件的数据模型。
     """
 
     # 输入参数
     username: Optional[str] = Field(
-        None, description="用户名，适用于 'password' 认证类型"
+        None, description="用户名，适用于 \"password\" grant_type"
     )
     password: Optional[str] = Field(
-        None, description="用户密码，适用于 'password' 认证类型"
+        None, description="用户密码，适用于 \"password\" grant_type"
     )
     mfa_code: Optional[str] = Field(
-        None, description="一次性密码，目前仅适用于 'password' 认证类型"
+        None, description="一次性密码，目前仅适用于 \"password\" 认证类型"
     )
     code: Optional[str] = Field(
-        None, description="授权码，适用于 'authorization_code' 认证类型"
+        None, description="授权码，适用于 \"authorization_code\" grant_type"
     )
     grant_type: str = Field(
         ...,
-        description="认证类型，如 'password', 'authorization_code', 'client_credentials'",
+        description="认证类型，如 \"password\", \"authorization_code\", \"client_credentials\"",
     )
-    # scope: List[str] = Field(default_factory=list, description="权限范围，如 ['read', 'write']")
 
     # 输出参数
     # grant_type 为 authorization_code 时，输出参数包括 username、token、channel、service
@@ -569,7 +644,15 @@ class AuthCredentials(ChainEventData):
 
     @model_validator(mode="before")
     @classmethod
+    # 保留既有校验器的参数签名，由 Pydantic 在验证前传入原始凭据映射。
     def check_fields_based_on_grant_type(cls, values):  # noqa
+        """
+        补齐默认密码认证类型，并检查对应凭据是否齐全。
+
+        :param values: 待验证的凭据映射，缺少认证类型时原地补为 password
+        :return: 补齐认证类型的凭据映射
+        :raises ValueError: 密码认证缺少用户名或密码，或授权码认证缺少授权码
+        """
         grant_type = values.get("grant_type")
         if not grant_type:
             values["grant_type"] = "password"
@@ -590,19 +673,7 @@ class AuthCredentials(ChainEventData):
 
 class AuthInterceptCredentials(ChainEventData):
     """
-    AuthIntercept 事件的数据模型
-
-    Attributes:
-        # 输入参数
-        username (str): 用户名
-        channel (str): 认证渠道
-        service (str): 服务名称
-        token (str): 认证令牌
-        status (str): 认证状态，"triggered" 和 "completed" 两个状态
-
-        # 输出参数
-        source (str): 拦截源，默认值为 "未知拦截源"
-        cancel (bool): 是否取消认证，默认值为 False
+    AuthIntercept 事件的数据模型。
     """
 
     # 输入参数
@@ -611,43 +682,33 @@ class AuthInterceptCredentials(ChainEventData):
     service: str = Field(..., description="服务名称")
     status: str = Field(
         ...,
-        description="认证状态, 包含 'triggered' 表示认证触发，'completed' 表示认证成功",
+        description="认证状态，\"triggered\" 和 \"completed\" 两个状态",
     )
     token: Optional[str] = Field(default=None, description="认证令牌")
 
     # 输出参数
-    source: str = Field(default="未知拦截源", description="拦截源")
-    cancel: bool = Field(default=False, description="是否取消认证")
+    source: str = Field(default="未知拦截源", description="拦截源，默认值为 \"未知拦截源\"")
+    cancel: bool = Field(default=False, description="是否取消认证，默认值为 False")
 
 
 class CommandRegisterEventData(ChainEventData):
     """
-    CommandRegister 事件的数据模型
-
-    Attributes:
-        # 输入参数
-        commands (dict): 菜单命令
-        origin (str): 事件源，可以是 Chain 或具体的模块名称
-        service (str): 服务名称
-
-        # 输出参数
-        source (str): 拦截源，默认值为 "未知拦截源"
-        cancel (bool): 是否取消认证，默认值为 False
+    CommandRegister 事件的数据模型。
     """
 
     # 输入参数
     commands: Dict[str, dict] = Field(..., description="菜单命令")
-    origin: str = Field(..., description="事件源")
+    origin: str = Field(..., description="事件源，可以是 Chain 或具体的模块名称")
     service: Optional[str] = Field(..., description="服务名称")
 
     # 输出参数
-    cancel: bool = Field(default=False, description="是否取消注册")
-    source: str = Field(default="未知拦截源", description="拦截源")
+    cancel: bool = Field(default=False, description="是否取消认证，默认值为 False")
+    source: str = Field(default="未知拦截源", description="拦截源，默认值为 \"未知拦截源\"")
 
 
 class TransferRenameBuildEventData(ChainEventData):
     """
-    TransferRenameBuild 事件的数据模型
+    TransferRenameBuild 事件的数据模型。
 
     在 ``transhandler.get_rename_path`` 渲染文件名之前发出，给插件一次往
     ``rename_dict`` 写字段的机会。典型用法是通过 ffprobe 或外部接口探测源文件，
@@ -665,16 +726,10 @@ class TransferRenameBuildEventData(ChainEventData):
       才能工作的插件请直接 return；
     - ``rename_dict`` 中以双下划线开头的键（``__meta__`` / ``__mediainfo__`` 等）
       存放的是原始对象引用，只读使用，不要修改这些对象本身。
-
-    Attributes:
-        template_string (str): Jinja2 模板字符串
-        rename_dict (Dict[str, Any]): 渲染上下文，可直接修改
-        source_path (Optional[str]): 源文件路径，即待整理的文件路径
-        source_item (Optional[FileItem]): 源文件信息，即待整理的文件信息
     """
 
-    template_string: str = Field(..., description="模板字符串")
-    rename_dict: Dict[str, Any] = Field(..., description="渲染上下文")
+    template_string: str = Field(..., description="Jinja2 模板字符串")
+    rename_dict: Dict[str, Any] = Field(..., description="渲染上下文，可直接修改")
     source_path: Optional[str] = Field(
         None, description="源文件路径，即待整理的文件路径"
     )
@@ -685,27 +740,13 @@ class TransferRenameBuildEventData(ChainEventData):
 
 class TransferRenameEventData(ChainEventData):
     """
-    TransferRename 事件的数据模型
-
-    Attributes:
-        # 输入参数
-        template_string (str): Jinja2 模板字符串
-        rename_dict (dict): 渲染上下文
-        render_str (str): 渲染生成的字符串
-        path (Optional[Path]): 当前文件的目标路径
-        source_path (Optional[str]): 源文件路径，即待整理的文件路径
-        source_item (Optional[FileItem]): 源文件信息，即待整理的文件信息
-
-        # 输出参数
-        updated (bool): 是否已更新，默认值为 False
-        updated_str (str): 更新后的字符串
-        source (str): 拦截源，默认值为 "未知拦截源"
+    TransferRename 事件的数据模型。
     """
 
     # 输入参数
-    template_string: str = Field(..., description="模板字符串")
+    template_string: str = Field(..., description="Jinja2 模板字符串")
     rename_dict: Dict[str, Any] = Field(..., description="渲染上下文")
-    path: Optional[Path] = Field(None, description="文件的目标路径")
+    path: Optional[Path] = Field(None, description="当前文件的目标路径")
     render_str: str = Field(..., description="渲染生成的字符串")
     source_path: Optional[str] = Field(
         None, description="源文件路径，即待整理的文件路径"
@@ -715,89 +756,51 @@ class TransferRenameEventData(ChainEventData):
     )
 
     # 输出参数
-    updated: bool = Field(default=False, description="是否已更新")
+    updated: bool = Field(default=False, description="是否已更新，默认值为 False")
     updated_str: Optional[str] = Field(default=None, description="更新后的字符串")
-    source: Optional[str] = Field(default="未知拦截源", description="拦截源")
+    source: Optional[str] = Field(default="未知拦截源", description="拦截源，默认值为 \"未知拦截源\"")
 
 
 class ResourceSelectionEventData(BaseModel):
     """
-    ResourceSelection 事件的数据模型
-
-    Attributes:
-        # 输入参数
-        contexts (List[Context]): 当前待选择的资源上下文列表
-        source (str): 事件源，指示事件的触发来源
-
-        # 输出参数
-        updated (bool): 是否已更新，默认值为 False
-        updated_contexts (Optional[List[Context]]): 已更新的资源上下文列表，默认值为 None
-        source (str): 更新源，默认值为 "未知更新源"
+    ResourceSelection 事件的数据模型。
     """
 
     # 输入参数
-    contexts: Any = Field(None, description="待选择的资源上下文列表")
+    contexts: Any = Field(None, description="当前待选择的资源上下文列表")
     downloader: Optional[str] = Field(None, description="下载器")
     origin: Optional[str] = Field(None, description="来源")
 
     # 输出参数
-    updated: bool = Field(default=False, description="是否已更新")
+    updated: bool = Field(default=False, description="是否已更新，默认值为 False")
     updated_contexts: Optional[List[Any]] = Field(
-        default=None, description="已更新的资源上下文列表"
+        default=None, description="已更新的资源上下文列表，默认值为 None"
     )
-    source: Optional[str] = Field(default="未知拦截源", description="拦截源")
+    source: Optional[str] = Field(default="未知拦截源", description="更新源，默认值为 \"未知更新源\"")
 
 
 class ResourceDownloadEventData(ChainEventData):
     """
-    ResourceDownload 事件的数据模型
-
-    Attributes:
-        # 输入参数
-        context (Context): 当前资源上下文
-        episodes (Set[int]): 需要下载的集数
-        channel (NotificationChannel): 通知渠道
-        origin (str): 来源（消息通知、Subscribe、Manual等）
-        downloader (str): 下载器
-        options (dict): 其他参数
-
-        # 输出参数
-        cancel (bool): 是否取消下载，默认值为 False
-        source (str): 拦截源，默认值为 "未知拦截源"
-        reason (str): 拦截原因，描述拦截的具体原因
+    ResourceDownload 事件的数据模型。
     """
 
     # 输入参数
     context: Any = Field(None, description="当前资源上下文")
     episodes: Optional[Set[int]] = Field(None, description="需要下载的集数")
     channel: Optional[NotificationChannel] = Field(None, description="通知渠道")
-    origin: Optional[str] = Field(None, description="来源")
+    origin: Optional[str] = Field(None, description="来源（消息通知、Subscribe、Manual等）")
     downloader: Optional[str] = Field(None, description="下载器")
     options: Optional[dict] = Field(default={}, description="其他参数")
 
     # 输出参数
-    cancel: bool = Field(default=False, description="是否取消下载")
-    source: str = Field(default="未知拦截源", description="拦截源")
-    reason: str = Field(default="", description="拦截原因")
+    cancel: bool = Field(default=False, description="是否取消下载，默认值为 False")
+    source: str = Field(default="未知拦截源", description="拦截源，默认值为 \"未知拦截源\"")
+    reason: str = Field(default="", description="拦截原因，描述拦截的具体原因")
 
 
 class TransferInterceptEventData(ChainEventData):
     """
-    TransferIntercept 事件的数据模型
-
-    Attributes:
-        # 输入参数
-        fileitem (FileItem): 源文件
-        meta (Any): 元数据
-        target_storage (str): 目标存储
-        target_path (Path): 目标路径
-        transfer_type (str): 整理方式（copy、move、link、softlink等）
-        options (dict): 其他参数
-
-        # 输出参数
-        cancel (bool): 是否取消下载，默认值为 False
-        source (str): 拦截源，默认值为 "未知拦截源"
-        reason (str): 拦截原因，描述拦截的具体原因
+    TransferIntercept 事件的数据模型。
     """
 
     # 输入参数
@@ -806,65 +809,45 @@ class TransferInterceptEventData(ChainEventData):
     mediainfo: Any = Field(..., description="媒体信息")
     target_storage: str = Field(..., description="目标存储")
     target_path: Path = Field(..., description="目标路径")
-    transfer_type: str = Field(..., description="整理方式")
+    transfer_type: str = Field(..., description="整理方式（copy、move、link、softlink等）")
     options: Optional[dict] = Field(default=None, description="其他参数")
 
     # 输出参数
-    cancel: bool = Field(default=False, description="是否取消整理")
-    source: str = Field(default="未知拦截源", description="拦截源")
-    reason: str = Field(default="", description="拦截原因")
+    cancel: bool = Field(default=False, description="是否取消下载，默认值为 False")
+    source: str = Field(default="未知拦截源", description="拦截源，默认值为 \"未知拦截源\"")
+    reason: str = Field(default="", description="拦截原因，描述拦截的具体原因")
 
 
 class TransferOverwriteCheckEventData(ChainEventData):
     """
-    TransferOverwriteCheck 事件的数据模型
+    TransferOverwriteCheck 事件的数据模型。
 
     在覆盖模式判断（如按文件大小覆盖）执行之前触发，允许插件提供源文件与
     目标文件的真实大小（例如本地 .strm 文件指向的网盘原始文件大小），或者
     直接给出覆盖决策。
-
-    Attributes:
-        # 输入参数
-        fileitem (FileItem): 源文件
-        target_item (FileItem): 目标文件（已存在）
-        target_storage (str): 目标存储
-        target_path (Path): 目标文件路径
-        overwrite_mode (str): 覆盖模式（always、size、never、latest）
-        transfer_type (str): 整理方式
-        options (dict): 其他参数
-
-        # 输出参数
-        source_size (Optional[int]): 由插件提供的源文件真实大小，覆盖
-            fileitem.size 用于 size 模式比较；为 None 时表示不修改
-        target_size (Optional[int]): 由插件提供的目标文件真实大小，覆盖
-            target_item.size 用于 size 模式比较；为 None 时表示不修改
-        overwrite (Optional[bool]): 由插件直接给出的覆盖决策，非 None 时
-            将完全跳过 MoviePilot 内置的 size/never/latest 等比较逻辑
-        source (str): 处理来源
-        reason (str): 处理原因，描述插件做出决策或修改的原因
     """
 
     # 输入参数
     fileitem: FileItem = Field(..., description="源文件")
-    target_item: FileItem = Field(..., description="目标已存在文件")
+    target_item: FileItem = Field(..., description="目标文件（已存在）")
     target_storage: str = Field(..., description="目标存储")
     target_path: Path = Field(..., description="目标文件路径")
-    overwrite_mode: str = Field(..., description="覆盖模式")
+    overwrite_mode: str = Field(..., description="覆盖模式（always、size、never、latest）")
     transfer_type: str = Field(..., description="整理方式")
     options: Optional[dict] = Field(default=None, description="其他参数")
 
     # 输出参数
     source_size: Optional[int] = Field(
-        default=None, description="插件提供的源文件真实大小"
+        default=None, description="插件提供的源文件真实大小，单位为字节；用于 size 模式比较，None 表示不修改"
     )
     target_size: Optional[int] = Field(
-        default=None, description="插件提供的目标文件真实大小"
+        default=None, description="插件提供的目标文件真实大小，单位为字节；用于 size 模式比较，None 表示不修改"
     )
     overwrite: Optional[bool] = Field(
-        default=None, description="插件直接给出的覆盖决策"
+        default=None, description="由插件直接给出的覆盖决策，非 None 时 将完全跳过 MoviePilot 内置的 size/never/latest 等比较逻辑"
     )
     source: str = Field(default="未知处理源", description="处理来源")
-    reason: str = Field(default="", description="处理原因")
+    reason: str = Field(default="", description="处理原因，描述插件做出决策或修改的原因")
 
 
 class DiscoverMediaSource(BaseModel):
@@ -891,7 +874,9 @@ class DiscoverMediaSource(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def normalize_media_identity(cls, value: Any) -> Any:
-        """在旧前缀与规范媒体来源之间双向补齐发现源身份。"""
+        """
+        在旧前缀与规范媒体来源之间双向补齐发现源身份。
+        """
         if not isinstance(value, dict):
             return value
         normalized = dict(value)
@@ -926,11 +911,7 @@ class MediaSourceInfo(BaseModel):
 
 class DiscoverSourceEventData(ChainEventData):
     """
-    DiscoverSource 事件的数据模型
-
-    Attributes:
-        # 输出参数
-        extra_sources (List[DiscoverMediaSource]): 额外媒体数据源
+    DiscoverSource 事件的数据模型。
     """
 
     # 输出参数
@@ -941,7 +922,7 @@ class DiscoverSourceEventData(ChainEventData):
 
 class RecommendMediaSource(BaseModel):
     """
-    推荐媒体数据源的基类
+    推荐媒体数据源的基类。
     """
 
     name: str = Field(..., description="数据源名称")
@@ -951,11 +932,7 @@ class RecommendMediaSource(BaseModel):
 
 class RecommendSourceEventData(ChainEventData):
     """
-    RecommendSource 事件的数据模型
-
-    Attributes:
-        # 输出参数
-        extra_sources (List[RecommendMediaSource]): 额外媒体数据源
+    RecommendSource 事件的数据模型。
     """
 
     # 输出参数
@@ -966,39 +943,23 @@ class RecommendSourceEventData(ChainEventData):
 
 class MediaRecognizeConvertEventData(RequiredMediaIdentityMixin, ChainEventData):
     """
-    MediaRecognizeConvert 事件的数据模型
-
-    Attributes:
-        # 输入参数
-        media_source (MediaSource): 输入内置或插件扩展媒体来源
-        media_id (str): 数据源原生 ID
-        target_media_source (MediaSource): 需要转换到的内置或插件扩展媒体来源
-
-        # 输出参数
-        media_dict (dict): TheMovieDb/豆瓣的媒体数据
+    MediaRecognizeConvert 事件的数据模型。
     """
 
     # 输入参数
-    media_source: MediaSource = Field(..., description="媒体来源")
+    media_source: MediaSource = Field(..., description="输入内置或插件扩展媒体来源")
     media_id: str = Field(..., description="数据源原生 ID")
-    target_media_source: MediaSource = Field(..., description="目标媒体来源")
+    target_media_source: MediaSource = Field(..., description="需要转换到的内置或插件扩展媒体来源")
 
     # 输出参数
     media_dict: dict = Field(
-        default_factory=dict, description="转换后的媒体信息"
+        default_factory=dict, description="TheMovieDb/豆瓣的媒体数据"
     )
 
 
 class StorageOperSelectionEventData(ChainEventData):
     """
-    StorageOperSelect 事件的数据模型
-
-    Attributes:
-        # 输入参数
-        storage (str): 存储类型
-
-        # 输出参数
-        storage_oper (Callable): 存储操作对象
+    StorageOperSelect 事件的数据模型。
     """
 
     # 输入参数
@@ -1010,40 +971,27 @@ class StorageOperSelectionEventData(ChainEventData):
 
 class SubscribeEpisodesRefreshEventData(OptionalMediaIdentityMixin, ChainEventData):
     """
-    SubscribeEpisodesRefresh 事件的数据模型
+    SubscribeEpisodesRefresh 事件的数据模型。
 
     主程序在推算订阅某季总集数时发出，携带主程序本次识别到的 TMDB 当前季总集数；
     外部可据自身策略向上覆盖 total_episode（如待定集数），低于 current_total_episode 的覆盖值会被主程序钳制。
-
-    Attributes:
-        # 输入参数
-        media_source (Optional[MediaSource]): 媒体来源
-        media_id (Optional[str]): 数据源原生 ID
-        season (Optional[int]): 季号
-        mediainfo (Any): 媒体信息
-        current_total_episode (int): 主程序本次识别到的 TMDB 当前季总集数
-        subscribe_id (Optional[int]): 订阅 ID；订阅创建场景下尚未入库，为空
-        scene (Optional[str]): 触发场景，create/refresh/precheck
-
-        # 输出参数
-        updated (bool): 外部是否覆盖了总集数，默认 False
-        total_episode (Optional[int]): 覆盖后的总集数，仅在 updated=True 时生效；低于 current_total_episode 时由主程序钳制
-        source (str): 覆盖来源
-        reason (str): 覆盖原因
     """
 
     # 输入参数
-    media_source: Optional[MediaSource] = Field(default=None, description="媒体数据源")
+    media_source: Optional[MediaSource] = Field(default=None, description="媒体来源")
     media_id: Optional[str] = Field(default=None, description="数据源原生 ID")
     season: Optional[int] = Field(default=None, description="季号")
     mediainfo: Any = Field(default=None, description="媒体信息")
     current_total_episode: int = Field(default=0, description="主程序本次识别到的 TMDB 当前季总集数")
-    subscribe_id: Optional[int] = Field(default=None, description="订阅 ID；创建场景为空")
-    scene: Optional[str] = Field(default=None, description="触发场景：create/refresh/precheck")
+    subscribe_id: Optional[int] = Field(default=None, description="订阅 ID；订阅创建场景下尚未入库，为空")
+    scene: Optional[str] = Field(default=None, description="触发场景，create/refresh/precheck")
 
     # 输出参数
-    updated: bool = Field(default=False, description="外部是否覆盖了总集数")
-    total_episode: Optional[int] = Field(default=None, description="覆盖后的总集数；低于主程序本次识别到的 TMDB 当前季总集数时由主程序钳制")
+    updated: bool = Field(default=False, description="外部是否覆盖了总集数，默认 False")
+    total_episode: Optional[int] = Field(
+        default=None,
+        description="覆盖后的总集数，仅在 updated=True 时生效；低于 current_total_episode 时由主程序钳制",
+    )
     source: str = Field(default="未知来源", description="覆盖来源")
     reason: str = Field(default="", description="覆盖原因")
 
@@ -1065,6 +1013,11 @@ class SubscribeModifiedEventData(BaseEventData):
 
     @model_validator(mode="after")
     def compute_fields(self):
+        """
+        比较新旧订阅快照，将真实变更字段写入事件。
+
+        :return: 已更新变更字段列表的事件对象
+        """
         self.fields = self._diff_fields(self.old_subscribe_info, self.subscribe_info)
         return self
 
@@ -1095,7 +1048,9 @@ class SubscribeModifiedEventData(BaseEventData):
 
 
 class SubscribeAddedEventData(BaseEventData):
-    """SubscribeAdded 广播事件的可恢复公开 payload。"""
+    """
+    SubscribeAdded 广播事件的可恢复公开 payload。
+    """
 
     subscribe_id: int = Field(description="订阅 ID")
     username: Optional[str] = Field(default=None, description="发起订阅的用户")
@@ -1104,7 +1059,9 @@ class SubscribeAddedEventData(BaseEventData):
 
 
 class SubscribeDeletedEventData(BaseEventData):
-    """SubscribeDeleted 广播事件的可恢复公开 payload。"""
+    """
+    SubscribeDeleted 广播事件的可恢复公开 payload。
+    """
 
     subscribe_id: int = Field(description="订阅 ID")
     subscribe_info: Dict[str, Any] = Field(default_factory=dict, description="删除前订阅快照")
@@ -1112,7 +1069,9 @@ class SubscribeDeletedEventData(BaseEventData):
 
 
 class DownloadAddedEventData(BaseEventData):
-    """DownloadAdded 广播事件的插件兼容 payload。"""
+    """
+    DownloadAdded 广播事件的插件兼容 payload。
+    """
 
     hash: str = Field(description="下载任务 hash")
     context: Any = Field(description="下载上下文对象")
@@ -1124,7 +1083,9 @@ class DownloadAddedEventData(BaseEventData):
 
 
 class TransferResultEventData(BaseEventData):
-    """TransferComplete/Failed 共用的插件兼容 payload。"""
+    """
+    TransferComplete/Failed 共用的插件兼容 payload。
+    """
 
     fileitem: Optional[FileItem] = Field(default=None, description="源文件项")
     meta: Any = Field(default=None, description="文件名解析对象")
@@ -1138,20 +1099,9 @@ class TransferResultEventData(BaseEventData):
 
 class SubscribeCompletionCheckEventData(ChainEventData):
     """
-    SubscribeCompletionCheck 事件的数据模型
+    SubscribeCompletionCheck 事件的数据模型。
 
     在订阅被自动判定完成、即将收口（写历史并删除）之前发出，允许外部据完结策略否决本次完成
-
-    Attributes:
-        # 输入参数
-        subscribe (Any): 订阅对象
-        mediainfo (Any): 媒体信息
-        meta (Any): 元数据
-
-        # 输出参数
-        cancel (bool): 是否否决本次完成，默认 False
-        source (str): 否决来源
-        reason (str): 否决原因
     """
 
     # 输入参数
@@ -1160,6 +1110,6 @@ class SubscribeCompletionCheckEventData(ChainEventData):
     meta: Any = Field(default=None, description="元数据")
 
     # 输出参数
-    cancel: bool = Field(default=False, description="是否否决本次完成")
+    cancel: bool = Field(default=False, description="是否否决本次完成，默认 False")
     source: str = Field(default="未知来源", description="否决来源")
     reason: str = Field(default="", description="否决原因")

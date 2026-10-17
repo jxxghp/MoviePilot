@@ -1,4 +1,6 @@
-"""企业微信豆瓣图片代理的签名、取图和消息载荷测试。"""
+"""
+企业微信豆瓣图片代理的签名、取图和消息载荷测试。
+"""
 
 from __future__ import annotations
 
@@ -15,7 +17,9 @@ from app.modules.wechat.wechat import WeChat
 
 
 def _settings_with_domain(key: str) -> Any:
-    """提供企业微信图片 URL 构造所需的最小运行配置。"""
+    """
+    提供企业微信图片 URL 构造所需的最小运行配置。
+    """
     return {
         "APP_DOMAIN": "https://moviepilot.example",
         "API_V1_STR": "/api/v1",
@@ -23,7 +27,9 @@ def _settings_with_domain(key: str) -> Any:
 
 
 def test_build_wechat_image_url_signs_only_douban_images(monkeypatch: pytest.MonkeyPatch) -> None:
-    """只为豆瓣图片生成公开代理地址，其他图片保持原始 URL。"""
+    """
+    只为豆瓣图片生成公开代理地址，其他图片保持原始 URL。
+    """
     monkeypatch.setattr(image_urls, "get_runtime_setting", _settings_with_domain)
     source_url = "https://img9.doubanio.com/view/photo/l/public/p2932615136.webp"
 
@@ -43,7 +49,9 @@ def test_build_wechat_image_url_signs_only_douban_images(monkeypatch: pytest.Mon
 def test_build_wechat_image_url_keeps_original_without_public_domain(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """未配置对外域名时不生成微信无法访问的本地地址。"""
+    """
+    未配置对外域名时不生成微信无法访问的本地地址。
+    """
     monkeypatch.setattr(
         image_urls,
         "get_runtime_setting",
@@ -56,7 +64,9 @@ def test_build_wechat_image_url_keeps_original_without_public_domain(
 
 @pytest.mark.asyncio
 async def test_notification_image_rejects_wrong_signature_and_domain() -> None:
-    """公开入口拒绝错误用途签名及非豆瓣来源，避免退化为通用代理。"""
+    """
+    公开入口拒绝错误用途签名及非豆瓣来源，避免退化为通用代理。
+    """
     from app.application.security.url import SecurityUtils
 
     signed_tmdb_url = SecurityUtils.sign_url(
@@ -72,7 +82,9 @@ async def test_notification_image_rejects_wrong_signature_and_domain() -> None:
 
 @pytest.mark.asyncio
 async def test_notification_image_fetches_verified_source(monkeypatch: pytest.MonkeyPatch) -> None:
-    """验证通过后复用统一图片代理，并保留全局缓存和 ETag 参数。"""
+    """
+    验证通过后复用统一图片代理，并保留全局缓存和 ETag 参数。
+    """
     from app.application.security.url import SecurityUtils
 
     source_url = "https://img9.doubanio.com/view/photo/l/public/p2932615136.webp"
@@ -105,7 +117,9 @@ async def test_notification_image_fetches_verified_source(monkeypatch: pytest.Mo
 def test_wechat_news_payload_uses_signed_douban_proxy(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """企业微信图文载荷应把豆瓣图片替换为可公开取图的地址。"""
+    """
+    企业微信图文载荷应把豆瓣图片替换为可公开取图的地址。
+    """
     monkeypatch.setattr(image_urls, "get_runtime_setting", _settings_with_domain)
     captured: dict[str, Any] = {}
     client = WeChat.__new__(WeChat)

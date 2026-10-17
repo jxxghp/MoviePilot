@@ -1,4 +1,6 @@
-"""插件载荷来源准入与目标身份规划。"""
+"""
+插件载荷来源准入与目标身份规划。
+"""
 
 from __future__ import annotations
 
@@ -27,12 +29,23 @@ from app.domain.plugin import (
 
 
 class PluginSourceAdmissionError(RuntimeError):
-    """插件来源冲突、库存不完整或换源授权无效。"""
+    """
+    插件来源冲突、库存不完整或换源授权无效。
+    """
 
 
 @dataclass(frozen=True, slots=True)
 class PluginInstallAdmissionRequest:
-    """一次安装调用中会影响来源选择的显式业务参数。"""
+    """
+    一次安装调用中会影响来源选择的显式业务参数。
+
+    :param plugin_id: 物理插件标识，不使用分身实例标识
+    :param generations: 本次来源选择允许的包代际，按调用方优先级排列
+    :param requested_repo_url: 显式请求的仓库地址；None 表示由当前身份和候选策略选择
+    :param explicit_source: 调用方是否明确指定了来源
+    :param source_change: 本次是否为显式更换可信来源
+    :param expected_revision: 调用方预期的身份版本；None 表示预期身份尚不存在
+    """
 
     plugin_id: str
     generations: Sequence[str]
@@ -44,7 +57,16 @@ class PluginInstallAdmissionRequest:
 
 @dataclass(frozen=True, slots=True)
 class PluginInstallAdmission:
-    """下载前冻结的候选与身份转换决策。"""
+    """
+    下载前冻结的候选与身份转换决策。
+
+    :param candidate: 已通过来源准入的唯一载荷候选
+    :param identity_before: 本次安装前的身份快照；首次安装时为 None
+    :param binding_basis: 建立或变更可信来源绑定的依据
+    :param trusted_source_type: 自动更新信任的来源类型；未绑定时为 UNKNOWN
+    :param trusted_source_key: 已绑定的可信在线仓库键；未绑定时为 None
+    :param bound_at: 可信来源建立绑定的带时区时间；未绑定时为 None
+    """
 
     candidate: Candidate
     identity_before: PluginIdentity | None
@@ -55,7 +77,9 @@ class PluginInstallAdmission:
 
     @property
     def expected_revision(self) -> int | None:
-        """返回最终数据库提交必须匹配的身份 revision。"""
+        """
+        返回最终数据库提交必须匹配的身份版本号。
+        """
         return self.identity_before.revision if self.identity_before else None
 
     def build_identity(
@@ -66,7 +90,9 @@ class PluginInstallAdmission:
         declared_version: str | None = None,
         manifest_matches_payload: bool = True,
     ) -> PluginIdentity:
-        """在载荷落盘并生成收据后构造唯一数据库提交目标。"""
+        """
+        在载荷落盘并生成收据后构造唯一数据库提交目标。
+        """
         current = self.identity_before
         plugin_id = current.plugin_id if current else self.candidate.plugin_id
         metadata = self.candidate.dto if isinstance(self.candidate.dto, Mapping) else {}
@@ -115,7 +141,9 @@ def admit_plugin_install(
     identity: PluginIdentity | None,
     now: datetime,
 ) -> PluginInstallAdmission:
-    """选择唯一允许载荷，并冻结最终身份转换的可信来源边界。"""
+    """
+    选择唯一允许载荷，并冻结最终身份转换的可信来源边界。
+    """
     if now.tzinfo is None:
         raise PluginSourceAdmissionError("插件安装准入时间必须包含时区")
     if identity is not None and now < identity.updated_at:

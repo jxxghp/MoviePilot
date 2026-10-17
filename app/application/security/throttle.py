@@ -1,4 +1,6 @@
-"""密码登录的连续失败计数与指数退避锁定策略。"""
+"""
+密码登录的连续失败计数与指数退避锁定策略。
+"""
 
 import math
 import threading
@@ -36,7 +38,13 @@ def build_login_throttle_key(client_host: Optional[str], username: Optional[str]
 
 @dataclass
 class _Entry:
-    """单个键的失败计数与锁定状态。"""
+    """
+    单个键的失败计数与锁定状态。
+
+    :param failures: 该客户端与用户名组合累计的连续失败次数
+    :param locked_until: 锁定结束的单调时钟时间，单位为秒，默认 0 表示未锁定
+    :param updated_at: 最近失败时的单调时钟时间，单位为秒，用于过期和淘汰
+    """
 
     failures: int = 0
     locked_until: float = 0.0
@@ -49,7 +57,7 @@ class LoginThrottle:
 
     连续失败达到 ``max_failures`` 后锁定 ``base_lock_seconds``，之后每再失败一次
     锁定时长翻倍直到 ``max_lock_seconds``；登录成功清除记录。状态只在当前进程
-    内存中，多 worker 进程之间不共享。
+    内存中，多个工作进程之间不共享。
     """
 
     def __init__(
@@ -62,6 +70,11 @@ class LoginThrottle:
         max_items: int = LOGIN_THROTTLE_MAX_ITEMS,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
+        """
+        配置失败锁定阈值与单调时钟，初始化受锁保护的进程内记录。
+
+        时间和记录数量至少为 1；锁定上限不得低于首次锁定时长。
+        """
         self._max_failures = max(1, int(max_failures))
         self._base_lock_seconds = max(1, int(base_lock_seconds))
         self._max_lock_seconds = max(self._base_lock_seconds, int(max_lock_seconds))
@@ -72,7 +85,9 @@ class LoginThrottle:
         self._lock = threading.RLock()
 
     def retry_after(self, key: LoginThrottleKey) -> int:
-        """返回该键仍需等待的秒数（向上取整），0 表示允许尝试。"""
+        """
+        返回该键仍需等待的秒数（向上取整），0 表示允许尝试。
+        """
         now = self._clock()
         with self._lock:
             entry = self._entries.get(key)
@@ -82,7 +97,9 @@ class LoginThrottle:
             return math.ceil(remaining) if remaining > 0 else 0
 
     def record_failure(self, key: LoginThrottleKey) -> int:
-        """记录一次失败，返回本次施加的锁定秒数，0 表示尚未达到锁定阈值。"""
+        """
+        记录一次失败，返回本次施加的锁定秒数，0 表示尚未达到锁定阈值。
+        """
         now = self._clock()
         with self._lock:
             entry = self._entries.setdefault(key, _Entry())
@@ -97,12 +114,16 @@ class LoginThrottle:
             return lock_seconds
 
     def record_success(self, key: LoginThrottleKey) -> None:
-        """登录成功后清除该键的失败记录。"""
+        """
+        登录成功后清除该键的失败记录。
+        """
         with self._lock:
             self._entries.pop(key, None)
 
     def _cleanup(self, now: float) -> None:
-        """清理过期记录，并在超出容量时淘汰最久未更新的记录。"""
+        """
+        清理过期记录，并在超出容量时淘汰最久未更新的记录。
+        """
         expired = [
             key
             for key, entry in self._entries.items()
@@ -122,5 +143,7 @@ _default_throttle = LoginThrottle()
 
 
 def get_login_throttle() -> LoginThrottle:
-    """返回进程内共享的登录限流器。"""
+    """
+    返回进程内共享的登录限流器。
+    """
     return _default_throttle

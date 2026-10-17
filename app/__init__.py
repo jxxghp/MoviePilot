@@ -1,3 +1,7 @@
+"""
+配置应用包的导入兼容行为与进程环境。
+"""
+
 import os
 import warnings
 from pathlib import Path
@@ -12,7 +16,9 @@ _windows_dll_directory_handles: list[object] = []
 
 
 def _configure_free_threaded_windows_native_dependencies() -> None:
-    """为 Windows free-threaded 运行时注册外部原生依赖目录。"""
+    """
+    为 Windows free-threaded 运行时注册外部原生依赖目录。
+    """
     if not is_windows() or not is_free_threaded_runtime():
         return
     configured_path = os.getenv("PGBIN")

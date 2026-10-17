@@ -1,4 +1,6 @@
-"""跨来源同名不同年份作品不得被缺集检查判定为已存在。"""
+"""
+跨来源同名不同年份作品不得被缺集检查判定为已存在。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -16,12 +18,16 @@ from app.schemas.types import MediaSource, MediaType
 
 @pytest.fixture(autouse=True)
 def _track(db):
-    """把媒体服务器条目表纳入用例级回收。"""
+    """
+    把媒体服务器条目表纳入用例级回收。
+    """
     db.watermark(MediaServerItem)
 
 
 def _no_exists_info(db, year: str):
-    """在媒体库已有同名 2024 年动画时，检查豆瓣真人剧第一季的缺集情况。"""
+    """
+    在媒体库已有同名 2024 年动画时，检查豆瓣真人剧第一季的缺集情况。
+    """
     db.add(
         MediaServerItem(
             server="emby",
@@ -39,7 +45,9 @@ def _no_exists_info(db, year: str):
     chain.media_server_repository = MediaServerOper(db.session)
 
     def media_exists(mediainfo, itemid=None, server=None):
-        """模拟媒体服务器按缓存条目返回动画已有的 26 集。"""
+        """
+        模拟媒体服务器按缓存条目返回动画已有的 26 集。
+        """
         if itemid != "anime-2024":
             return None
         return ExistMediaInfo(
@@ -70,7 +78,9 @@ def _no_exists_info(db, year: str):
 
 
 def test_cross_source_same_title_other_year_is_not_complete(db):
-    """豆瓣 2026 真人剧不得借用同名 2024 动画的集数而被判定完整。"""
+    """
+    豆瓣 2026 真人剧不得借用同名 2024 动画的集数而被判定完整。
+    """
     exist_flag, no_exists = _no_exists_info(db, year="2026")
 
     assert exist_flag is False
@@ -80,7 +90,9 @@ def test_cross_source_same_title_other_year_is_not_complete(db):
 
 
 def test_cross_source_same_title_same_year_still_matches(db):
-    """同年份的跨来源同名条目仍应配对，保留豆瓣订阅与 TMDB 媒体库的兼容。"""
+    """
+    同年份的跨来源同名条目仍应配对，保留豆瓣订阅与 TMDB 媒体库的兼容。
+    """
     exist_flag, no_exists = _no_exists_info(db, year="2024")
 
     assert exist_flag is True

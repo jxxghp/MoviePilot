@@ -1,9 +1,13 @@
 #
 # 极速之星 https://bitpt.cn/
-# author: ThedoRap
-# time: 2025-10-02
+# 作者： ThedoRap
+# 日期： 2025-10-02
 #
 # -*- coding: utf-8 -*-
+"""
+解析极速之星站点的用户资料、流量和做种信息。
+"""
+
 import re
 from typing import Optional, Tuple
 from urllib.parse import urlencode, urljoin
@@ -16,11 +20,15 @@ from app.modules.indexer.parser import SitePage, SiteParserBase, SiteSchema
 
 
 class BitptSiteUserInfo(SiteParserBase):
-    """解析 Bitpt 站点的用户资料、流量与消息。"""
+    """
+    解析 Bitpt 站点的用户资料、流量与消息。
+    """
     schema = SiteSchema.Bitpt
 
     def _parse_site_page(self, html_text: SitePage) -> None:
-        """识别并配置站点数据页面与请求参数。"""
+        """
+        识别并配置站点数据页面与请求参数。
+        """
         self._user_basic_page = "userdetails.php?uid={uid}"
         self._user_detail_page = None
         self._user_basic_params = {}
@@ -34,12 +42,16 @@ class BitptSiteUserInfo(SiteParserBase):
         self._addition_headers = {}
 
     def _parse_logged_in(self, html_text: str) -> bool:
-        """根据当前页面的用户入口判断登录状态。"""
+        """
+        根据当前页面的用户入口判断登录状态。
+        """
         soup = BeautifulSoup(html_text, 'html.parser')
         return bool(soup.find(id='userinfotop'))
 
     def _parse_user_base_info(self, html_text: SitePage) -> None:
-        """解析站点用户身份和页面提供的基础统计。"""
+        """
+        解析站点用户身份和页面提供的基础统计。
+        """
         if not html_text:
             return None
         soup = BeautifulSoup(html_text, 'html.parser')
@@ -85,15 +97,21 @@ class BitptSiteUserInfo(SiteParserBase):
                     self.seeding_size = 0
 
     def _parse_user_traffic_info(self, html_text: str) -> None:
-        """该站点在其他解析入口处理此数据，本入口不追加操作。"""
+        """
+        该站点在其他解析入口处理此数据，本入口不追加操作。
+        """
         pass
 
     def _parse_user_detail_info(self, html_text: str) -> None:
-        """该站点在其他解析入口处理此数据，本入口不追加操作。"""
+        """
+        该站点在其他解析入口处理此数据，本入口不追加操作。
+        """
         pass
 
     def _parse_user_torrent_seeding_page_info(self, html_text: str) -> Tuple[int, int]:
-        """统计当前页做种条目数及其真实容量。"""
+        """
+        统计当前页做种条目数及其真实容量。
+        """
         if not html_text:
             return 0, 0
         soup = BeautifulSoup(html_text, 'html.parser')
@@ -117,19 +135,27 @@ class BitptSiteUserInfo(SiteParserBase):
         return page_seeding, page_seeding_size
 
     def _parse_message_unread_links(self, html_text: str, msg_links: list[str]) -> Optional[str]:
-        """该站点在其他解析入口处理此数据，本入口不追加操作。"""
+        """
+        该站点在其他解析入口处理此数据，本入口不追加操作。
+        """
         pass
 
     def _parse_message_content(self, html_text: str) -> None:
-        """该站点在其他解析入口处理此数据，本入口不追加操作。"""
+        """
+        该站点在其他解析入口处理此数据，本入口不追加操作。
+        """
         pass
 
     def _parse_user_torrent_seeding_info(self, html_text: str, multi_page: bool = False) -> Optional[str]:
-        """该站点在其他解析入口处理此数据，本入口不追加操作。"""
+        """
+        该站点在其他解析入口处理此数据，本入口不追加操作。
+        """
         pass
 
     def parse(self) -> None:
-        """执行通用解析后补齐本站页面数据，保留原有对外字段格式。"""
+        """
+        执行通用解析后补齐本站页面数据，保留原有对外字段格式。
+        """
         super().parse()
         if self._index_html:
             soup = BeautifulSoup(self._index_html, 'html.parser')

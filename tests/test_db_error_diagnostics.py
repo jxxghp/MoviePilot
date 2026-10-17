@@ -1,3 +1,7 @@
+"""
+验证数据库错误诊断提取驱动错误码且不记录 SQL 参数。
+"""
+
 import asyncio
 
 import pytest
@@ -13,20 +17,26 @@ from app.db.engine import get_global_async_engine
 
 
 class _SqliteError(Exception):
-    """模拟 sqlite3 异常暴露的扩展错误字段。"""
+    """
+    模拟 sqlite3 异常暴露的扩展错误字段。
+    """
 
     sqlite_errorcode = 266
     sqlite_errorname = "SQLITE_IOERR_READ"
 
 
 class _PsycopgError(Exception):
-    """模拟 psycopg2 异常暴露的 SQLSTATE 字段。"""
+    """
+    模拟 psycopg2 异常暴露的 SQLSTATE 字段。
+    """
 
     pgcode = "40001"
 
 
 class _AsyncpgError(Exception):
-    """模拟 asyncpg 适配异常暴露的 SQLSTATE 字段。"""
+    """
+    模拟 asyncpg 适配异常暴露的 SQLSTATE 字段。
+    """
 
     sqlstate = "23505"
 
@@ -59,12 +69,16 @@ class _AsyncpgError(Exception):
     ],
 )
 def test_database_error_metadata_extracts_driver_codes(error, expected) -> None:
-    """诊断元数据应兼容 SQLite、psycopg2 与 asyncpg 的稳定错误字段。"""
+    """
+    诊断元数据应兼容 SQLite、psycopg2 与 asyncpg 的稳定错误字段。
+    """
     assert db_module._database_error_metadata(error) == expected
 
 
 def test_database_error_listener_omits_statement_and_parameters(monkeypatch) -> None:
-    """数据库错误日志不得包含 SQL、参数或驱动返回的原始消息。"""
+    """
+    数据库错误日志不得包含 SQL、参数或驱动返回的原始消息。
+    """
     messages = []
     engine = create_engine("sqlite:///:memory:")
     monkeypatch.setattr("app.db.diagnostics.logger.error", messages.append)
@@ -87,7 +101,9 @@ def test_database_error_listener_omits_statement_and_parameters(monkeypatch) -> 
 
 
 def test_async_database_engine_logs_driver_error_metadata(monkeypatch) -> None:
-    """异步 Engine 应通过底层 sync engine 记录驱动错误码。"""
+    """
+    异步 Engine 应通过底层 sync engine 记录驱动错误码。
+    """
     messages = []
     monkeypatch.setattr("app.db.diagnostics.logger.error", messages.append)
 
@@ -107,5 +123,7 @@ def test_async_database_engine_logs_driver_error_metadata(monkeypatch) -> None:
 
 
 def test_database_error_metadata_ignores_unclassified_errors() -> None:
-    """没有驱动错误码时不应制造无效诊断日志。"""
+    """
+    没有驱动错误码时不应制造无效诊断日志。
+    """
     assert db_module._database_error_metadata(RuntimeError("plain failure")) is None

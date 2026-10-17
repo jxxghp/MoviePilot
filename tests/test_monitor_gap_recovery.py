@@ -1,3 +1,7 @@
+"""
+验证目录监控遗漏补偿、候选上限及重启窗口恢复。
+"""
+
 import os
 import threading
 import time
@@ -85,7 +89,9 @@ def test_compensation_scan_covers_files_with_old_mtime(tmp_path):
 
 
 def test_compensation_scan_limits_single_batch(tmp_path, monkeypatch):
-    """候选文件超过上限时只处理最新的一批，避免大目录把整理链与数据库压垮。"""
+    """
+    候选文件超过上限时只处理最新的一批，避免大目录把整理链与数据库压垮。
+    """
     monkeypatch.setattr(Monitor, "MAX_COMPENSATION_FILES", 2)
     now = time.time()
     files = []
@@ -131,7 +137,9 @@ def test_watchdog_compensates_after_internal_restart(tmp_path, monkeypatch):
 
 
 def test_compensation_scan_skips_non_candidate_files(tmp_path):
-    """补偿扫描应跳过不属于监控扩展名的文件。"""
+    """
+    补偿扫描应跳过不属于监控扩展名的文件。
+    """
     other = tmp_path / "note.txt"
     other.write_bytes(b"x")
     handled = MagicMock(return_value=True)
@@ -143,7 +151,9 @@ def test_compensation_scan_skips_non_candidate_files(tmp_path):
 
 
 def test_compensation_skipped_without_activity_record(tmp_path, monkeypatch):
-    """没有活动记录就没有可靠的停摆起点，应跳过补偿扫描。"""
+    """
+    没有活动记录就没有可靠的停摆起点，应跳过补偿扫描。
+    """
     monitor, _ = _build_monitor(handle_file=MagicMock())
     started = []
     monkeypatch.setattr("app.monitor.monitor.Thread",
@@ -157,7 +167,9 @@ def test_compensation_skipped_without_activity_record(tmp_path, monkeypatch):
 
 
 def test_unreadable_event_is_queued_instead_of_dropped(tmp_path, monkeypatch):
-    """读取文件大小失败的事件应登记待重试，而不是被静默丢弃。"""
+    """
+    读取文件大小失败的事件应登记待重试，而不是被静默丢弃。
+    """
     target = tmp_path / "a.mkv"
     target.write_bytes(b"x")
     monitor, dispatcher = _build_monitor(handle_file=MagicMock(return_value=True))
@@ -172,7 +184,9 @@ def test_unreadable_event_is_queued_instead_of_dropped(tmp_path, monkeypatch):
 
 
 def test_retry_pending_reresolves_missing_file_size(tmp_path):
-    """重试时要重新读取文件大小，再把文件送入整理链。"""
+    """
+    重试时要重新读取文件大小，再把文件送入整理链。
+    """
     target = tmp_path / "a.mkv"
     target.write_bytes(b"12345")
     handled = MagicMock(return_value=True)
@@ -185,7 +199,9 @@ def test_retry_pending_reresolves_missing_file_size(tmp_path):
 
 
 def test_retry_pending_drops_vanished_file(tmp_path):
-    """待重试文件已经消失时应放弃登记，不再无谓重试。"""
+    """
+    待重试文件已经消失时应放弃登记，不再无谓重试。
+    """
     target = tmp_path / "gone.mkv"
     handled = MagicMock(return_value=True)
     _, dispatcher = _build_monitor(handle_file=handled)
@@ -198,18 +214,24 @@ def test_retry_pending_drops_vanished_file(tmp_path):
 
 
 def test_transfer_failure_invalidates_dedup_cache(tmp_path, monkeypatch):
-    """整理抛异常时去重缓存必须失效，否则 TTL 窗口内的后续事件会被吞掉。"""
+    """
+    整理抛异常时去重缓存必须失效，否则 TTL 窗口内的后续事件会被吞掉。
+    """
     target = tmp_path / "a.mkv"
     target.write_bytes(b"x")
     dispatcher = TransferDispatcher(all_exts=[".mkv"], cache={})
     monkeypatch.setattr(dispatcher, "_should_skip_by_history", lambda **kwargs: False)
 
     class _FailingChain:
-        """整理时固定抛异常的整理链替身。"""
+        """
+        整理时固定抛异常的整理链替身。
+        """
 
         @staticmethod
         def do_transfer(**kwargs):
-            """模拟整理过程抛出异常。"""
+            """
+            模拟整理过程抛出异常。
+            """
             raise RuntimeError("整理失败")
 
     monkeypatch.setattr("app.monitor.dispatcher.TransferChain", _FailingChain)
@@ -219,7 +241,9 @@ def test_transfer_failure_invalidates_dedup_cache(tmp_path, monkeypatch):
 
 
 def test_delayed_rescan_picks_up_late_visible_files(tmp_path, monkeypatch):
-    """新增目录首次展开时不可见的文件，应由延迟重扫补回。"""
+    """
+    新增目录首次展开时不可见的文件，应由延迟重扫补回。
+    """
     monkeypatch.setattr(LocalDirectoryWatcher, "DIRECTORY_RESCAN_DELAYS", (0,))
     new_dir = tmp_path / "season"
     new_dir.mkdir()
@@ -244,7 +268,9 @@ def test_delayed_rescan_picks_up_late_visible_files(tmp_path, monkeypatch):
 
 
 def test_network_filesystem_forces_polling_by_default(tmp_path, monkeypatch):
-    """默认情况下网络文件系统仍应强制兼容模式。"""
+    """
+    默认情况下网络文件系统仍应强制兼容模式。
+    """
     monkeypatch.setattr(SystemUtils, "is_network_filesystem", staticmethod(lambda _d: True))
     monkeypatch.setattr(settings, "MONITOR_NETWORK_FAST_MODE", False)
 
@@ -254,7 +280,9 @@ def test_network_filesystem_forces_polling_by_default(tmp_path, monkeypatch):
 
 
 def test_network_filesystem_can_opt_into_fast_mode(tmp_path, monkeypatch):
-    """用户确认挂载支持 inotify 后应允许快速模式。"""
+    """
+    用户确认挂载支持 inotify 后应允许快速模式。
+    """
     monkeypatch.setattr(SystemUtils, "is_network_filesystem", staticmethod(lambda _d: True))
     monkeypatch.setattr(settings, "MONITOR_NETWORK_FAST_MODE", True)
 
@@ -264,7 +292,9 @@ def test_network_filesystem_can_opt_into_fast_mode(tmp_path, monkeypatch):
 
 
 def test_compatibility_mode_still_wins_over_fast_mode_override(tmp_path, monkeypatch):
-    """用户显式配置兼容模式时，快速模式开关不得反向覆盖。"""
+    """
+    用户显式配置兼容模式时，快速模式开关不得反向覆盖。
+    """
     monkeypatch.setattr(SystemUtils, "is_network_filesystem", staticmethod(lambda _d: True))
     monkeypatch.setattr(settings, "MONITOR_NETWORK_FAST_MODE", True)
 

@@ -1,3 +1,7 @@
+"""
+验证整理完成后下载器任务完成标记的更新。
+"""
+
 # -*- coding: utf-8 -*-
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -23,7 +27,9 @@ class _FakeMeta(MetaBase):
     season_episode = None
 
     def __init__(self, episode: int, season: int = 1):
-        """初始化剧集编号相关字段。"""
+        """
+        初始化剧集编号相关字段。
+        """
         super().__init__(title=f"Test Show S{season:02d}E{episode:02d}")
         self.name = "Test Show"
         self.title = f"Test Show S{season:02d}E{episode:02d}"
@@ -41,16 +47,22 @@ class _FakeMeta(MetaBase):
 
     @property
     def season(self):
-        """返回季字符串。"""
+        """
+        返回季字符串。
+        """
         return f"S{self.begin_season:02d}"
 
     @property
     def episode(self):
-        """返回集字符串。"""
+        """
+        返回集字符串。
+        """
         return f"E{self.begin_episode:02d}"
 
     def to_dict(self):
-        """返回元数据字典。"""
+        """
+        返回元数据字典。
+        """
         return {
             "title": self.title,
             "name": self.name,
@@ -69,7 +81,9 @@ class _FakeMeta(MetaBase):
 
 
 def _make_chain() -> TransferChain:
-    """构造跳过初始化的 TransferChain，仅带作业视图。"""
+    """
+    构造跳过初始化的 TransferChain，仅带作业视图。
+    """
     chain = object.__new__(TransferChain)
     chain.jobview = JobManager()
     chain._media_exts = settings.RMT_MEDIAEXT
@@ -84,7 +98,9 @@ def _make_chain() -> TransferChain:
 
 
 def _make_task(episode: int, download_hash: str, downloader: str) -> TransferTask:
-    """构造带下载器信息的整理任务。"""
+    """
+    构造带下载器信息的整理任务。
+    """
     name = f"Test.Show.S01E{episode:02d}.mkv"
     task = TransferTask(
         fileitem=FileItem(
@@ -104,19 +120,25 @@ def _make_task(episode: int, download_hash: str, downloader: str) -> TransferTas
 
 
 def _mark(chain: TransferChain, download_hash: str, downloader: str):
-    """调用私有的打标签方法。"""
+    """
+    调用私有的打标签方法。
+    """
     chain._TransferChain__mark_torrent_completed_if_done(download_hash, downloader)
 
 
 def _finish_task(chain: TransferChain, task: TransferTask):
-    """将任务登记并流转到完成状态。"""
+    """
+    将任务登记并流转到完成状态。
+    """
     assert chain.jobview.add_task(task)
     chain.jobview.running_task(task)
     chain.jobview.finish_task(task)
 
 
 def test_mark_skips_tag_when_torrent_still_downloading():
-    """种子未下载完成时（多集种子先完成单集），不得设置已整理标签（#6009）。"""
+    """
+    种子未下载完成时（多集种子先完成单集），不得设置已整理标签（#6009）。
+    """
     chain = _make_chain()
     completed = []
     chain.transfer_completed = lambda **kwargs: completed.append(kwargs)
@@ -129,7 +151,9 @@ def test_mark_skips_tag_when_torrent_still_downloading():
 
 
 def test_mark_tags_when_torrent_completed():
-    """种子已下载完成且任务全部结束时，正常设置已整理标签。"""
+    """
+    种子已下载完成且任务全部结束时，正常设置已整理标签。
+    """
     chain = _make_chain()
     completed = []
     chain.transfer_completed = lambda **kwargs: completed.append(kwargs)
@@ -142,7 +166,9 @@ def test_mark_tags_when_torrent_completed():
 
 
 def test_mark_queries_torrent_by_hash_regardless_of_builtin_tag():
-    """按 Hash 回写时不得受 TORRENT_TAG 过滤，否则工作流自定义标签的任务永远无法打上已整理标签。"""
+    """
+    按 Hash 回写时不得受 TORRENT_TAG 过滤，否则工作流自定义标签的任务永远无法打上已整理标签。
+    """
     chain = _make_chain()
     completed = []
     queries = []
@@ -159,7 +185,9 @@ def test_mark_queries_torrent_by_hash_regardless_of_builtin_tag():
 
 
 def test_mark_short_circuits_downloader_query_when_jobview_not_done():
-    """作业视图还有未结束任务时，不应产生任何下载器查询。"""
+    """
+    作业视图还有未结束任务时，不应产生任何下载器查询。
+    """
     chain = _make_chain()
     queries = []
     chain.transfer_completed = lambda **kwargs: None
@@ -174,7 +202,9 @@ def test_mark_short_circuits_downloader_query_when_jobview_not_done():
 
 
 def test_mark_skips_tag_when_torrent_not_found(monkeypatch):
-    """查不到种子时不打标签，并告警提供下载器与 hash 供排查关联。"""
+    """
+    查不到种子时不打标签，并告警提供下载器与 hash 供排查关联。
+    """
     warning = MagicMock()
     monkeypatch.setattr("app.chain.transfer.settlement.logger.warning", warning)
     chain = _make_chain()
@@ -194,13 +224,17 @@ def test_mark_skips_tag_when_torrent_not_found(monkeypatch):
 
 
 def test_mark_skips_tag_when_list_torrents_raises():
-    """查询下载器异常时不打标签且不向上抛出。"""
+    """
+    查询下载器异常时不打标签且不向上抛出。
+    """
     chain = _make_chain()
     completed = []
     chain.transfer_completed = lambda **kwargs: completed.append(kwargs)
 
     def _raise(**_kwargs):
-        """模拟下载器查询失败。"""
+        """
+        模拟下载器查询失败。
+        """
         raise RuntimeError("downloader unreachable")
 
     chain.list_torrents = _raise
@@ -212,7 +246,9 @@ def test_mark_skips_tag_when_list_torrents_raises():
 
 
 def test_multi_episode_torrent_tags_only_after_last_episode():
-    """#6009 回归：E01 先整理完不打标签，种子整体下载完成后才打标签。"""
+    """
+    #6009 回归：E01 先整理完不打标签，种子整体下载完成后才打标签。
+    """
     chain = _make_chain()
     completed = []
     chain.transfer_completed = lambda **kwargs: completed.append(kwargs)

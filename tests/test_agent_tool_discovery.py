@@ -1,4 +1,6 @@
-"""工具按需发现的真实图执行与目录边界回归测试。"""
+"""
+工具按需发现的真实图执行与目录边界回归测试。
+"""
 
 import asyncio
 import json
@@ -27,28 +29,38 @@ from app.agent.tools.catalog import ToolCatalogSnapshot
 
 
 class _RecordingModel(FakeMessagesListChatModel):
-    """记录实际绑定工具的离线模型，驱动真实模型和工具循环。"""
+    """
+    记录实际绑定工具的离线模型，驱动真实模型和工具循环。
+    """
 
     tool_history: list[list[Any]] = Field(default_factory=list)
     message_history: list[list[Any]] = Field(default_factory=list)
     invocation_count: int = 0
 
     def bind_tools(self, tools: list[Any], **kwargs: Any) -> "_RecordingModel":
-        """记录每轮精确工具实例，便于核实发现后的完整参数契约。"""
+        """
+        记录每轮精确工具实例，便于核实发现后的完整参数契约。
+        """
         self.tool_history.append(list(tools))
         return self
 
     def _generate(self, messages: list[Any], stop: Optional[list[str]] = None, run_manager: Any = None, **kwargs: Any) -> Any:
-        """统计真实模型调用次数，确认发现工具不会增加额外筛选模型请求。"""
+        """
+        统计真实模型调用次数，确认发现工具不会增加额外筛选模型请求。
+        """
         self.invocation_count += 1
         self.message_history.append(list(messages))
         return super()._generate(messages, stop=stop, run_manager=run_manager, **kwargs)
 
 
 def _make_tool(name: str, description: str, tags: Optional[list[str]] = None) -> StructuredTool:
-    """创建完全离线的测试能力，携带真实结构化输入参数。"""
+    """
+    创建完全离线的测试能力，携带真实结构化输入参数。
+    """
     def invoke(record_id: int) -> str:
-        """用传入标识生成观察结果，验证发现后可以实际调用工具。"""
+        """
+        用传入标识生成观察结果，验证发现后可以实际调用工具。
+        """
         return f"{name}:{record_id}"
 
     return StructuredTool.from_function(
@@ -60,12 +72,16 @@ def _make_tool(name: str, description: str, tags: Optional[list[str]] = None) ->
 
 
 def _tool_call(name: str, arguments: dict[str, Any], call_id: str) -> dict[str, Any]:
-    """构造模型发出的标准工具调用。"""
+    """
+    构造模型发出的标准工具调用。
+    """
     return {"name": name, "args": arguments, "id": call_id, "type": "tool_call"}
 
 
 def test_discovery_enables_exact_schemas_merges_parallel_calls_and_resets_turns():
-    """真实图并行发现遗漏能力后可调用，且同会话新请求与其他会话均重新筛选。"""
+    """
+    真实图并行发现遗漏能力后可调用，且同会话新请求与其他会话均重新筛选。
+    """
     status = _make_tool("status", "运行状态")
     transfer = _make_tool("transfer_history", "Inspect organization history", ["transfer"])
     subscribe = _make_tool("subscribe_media", "管理媒体订阅", ["subscription"])
@@ -99,7 +115,9 @@ def test_discovery_enables_exact_schemas_merges_parallel_calls_and_resets_turns(
     )
 
     async def execute() -> None:
-        """串行执行多个用户请求并读取持久化图状态。"""
+        """
+        串行执行多个用户请求并读取持久化图状态。
+        """
         first_config = {"configurable": {"thread_id": "first-session"}}
         result = await graph.ainvoke({"messages": [HumanMessage(content="检查系统")]}, first_config)
         assert any(message.content == "transfer_history:42" for message in result["messages"])
@@ -131,7 +149,9 @@ def test_discovery_enables_exact_schemas_merges_parallel_calls_and_resets_turns(
 
 
 def test_discovery_catalog_is_bounded_and_matches_name_description_and_tags():
-    """发现仅返回已授权目录的有界说明，并支持名称、中文说明和能力标签检索。"""
+    """
+    发现仅返回已授权目录的有界说明，并支持名称、中文说明和能力标签检索。
+    """
     exact = _make_tool("transfer_history", "查询失败整理历史", ["transfer"])
     subscriptions = [
         _make_tool(f"subscription_{index}", "媒体订阅" * 300, ["subscription"])
@@ -141,7 +161,9 @@ def test_discovery_catalog_is_bounded_and_matches_name_description_and_tags():
     discovery = middleware.tools[0]
 
     async def search(query: str, limit: int = TOOL_DISCOVERY_MAX_RESULTS) -> Any:
-        """直接调用已注册工具以覆盖参数校验和状态增量结果。"""
+        """
+        直接调用已注册工具以覆盖参数校验和状态增量结果。
+        """
         return await discovery.ainvoke({
             "search": query,
             "limit": limit,
@@ -162,14 +184,18 @@ def test_discovery_catalog_is_bounded_and_matches_name_description_and_tags():
 
 @pytest.mark.parametrize("arguments", [{"search": ""}, {"search": "x" * 161}, {"search": "media", "limit": 9}])
 def test_discovery_rejects_unbounded_queries(arguments: dict[str, Any]):
-    """超界请求被明确拒绝，避免模型通过参数扩大目录输出。"""
+    """
+    超界请求被明确拒绝，避免模型通过参数扩大目录输出。
+    """
     middleware = ToolSelectorMiddleware(enable_discovery=True)
     with pytest.raises(ValidationError):
         middleware.tools[0].args_schema.model_validate(arguments)
 
 
 def test_discovery_preserves_provider_and_mandatory_tools_without_fabricating_unknown_tools():
-    """按需启用与首轮工具上限独立，保留强制工具和 provider 字典且拒绝不存在的名称。"""
+    """
+    按需启用与首轮工具上限独立，保留强制工具和 provider 字典且拒绝不存在的名称。
+    """
     selected = _make_tool("status", "运行状态")
     mandatory = _make_tool("read_skill", "读取技能")
     discovered = _make_tool("transfer_history", "整理历史")
@@ -189,7 +215,9 @@ def test_discovery_preserves_provider_and_mandatory_tools_without_fabricating_un
     )
 
     async def handler(updated: ModelRequest) -> ModelRequest:
-        """捕获最终模型绑定请求。"""
+        """
+        捕获最终模型绑定请求。
+        """
         return updated
 
     result = asyncio.run(middleware.awrap_model_call(request, handler))
@@ -197,7 +225,9 @@ def test_discovery_preserves_provider_and_mandatory_tools_without_fabricating_un
 
 
 def test_discovery_has_serializable_private_catalog_identity_and_injected_runtime():
-    """严格目录可以稳定签名发现工具，模型参数中不暴露宿主运行时状态。"""
+    """
+    严格目录可以稳定签名发现工具，模型参数中不暴露宿主运行时状态。
+    """
     middleware = ToolSelectorMiddleware(selection_tools=[], enable_discovery=True)
     catalog = ToolCatalogSnapshot.from_tools(middleware.tools, plugin_revision=1, factory_revision="test")
     assert catalog.require_unique() is catalog
@@ -206,7 +236,9 @@ def test_discovery_has_serializable_private_catalog_identity_and_injected_runtim
 
 
 def test_discovery_exact_names_outrank_aliases_and_english_substrings_do_not_match():
-    """精确名称始终优先，有限别名支持双语能力检索且不把英文子串当单词。"""
+    """
+    精确名称始终优先，有限别名支持双语能力检索且不把英文子串当单词。
+    """
     exact = _make_tool("subscription", "Exact legacy capability")
     tagged = _make_tool("follow_series", "维护追剧任务", ["subscription"])
     unrelated = _make_tool("generate_art", "Generate artwork")
@@ -218,7 +250,9 @@ def test_discovery_exact_names_outrank_aliases_and_english_substrings_do_not_mat
 
 
 def test_discovery_real_graph_evicts_oldest_and_refreshes_recent_tools():
-    """真实图累计发现受窗口约束，重新发现可恢复已淘汰工具并刷新最近顺序。"""
+    """
+    真实图累计发现受窗口约束，重新发现可恢复已淘汰工具并刷新最近顺序。
+    """
     tools = [_make_tool(f"{group}_{index:02}", "Inspect records") for group in ("alpha", "beta", "gamma") for index in range(8)]
     selector = _RecordingModel(responses=[AIMessage(content='{"tools": []}')])
     model = _RecordingModel(responses=[
@@ -231,7 +265,9 @@ def test_discovery_real_graph_evicts_oldest_and_refreshes_recent_tools():
     graph = create_agent(model=model, tools=tools, middleware=[middleware], checkpointer=InMemorySaver())
 
     async def execute() -> Any:
-        """执行多次发现并读取最终有界状态。"""
+        """
+        执行多次发现并读取最终有界状态。
+        """
         config = {"configurable": {"thread_id": "window"}}
         await graph.ainvoke({"messages": [HumanMessage(content="连续查询不同记录")]}, config)
         return await graph.aget_state(config)
@@ -251,7 +287,9 @@ def test_discovery_real_graph_evicts_oldest_and_refreshes_recent_tools():
 
 @pytest.mark.parametrize("window,expected_enabled", [(4000, False), (64000, True), (None, True)])
 def test_discovery_real_graph_limits_schema_budget_by_model_window(window: Optional[int], expected_enabled: bool):
-    """额外 schema 使用模型窗口比例预算，无窗口元数据时仍有固定成本上限。"""
+    """
+    额外 schema 使用模型窗口比例预算，无窗口元数据时仍有固定成本上限。
+    """
     medium = _make_tool("medium_transfer", "contract " * 500, ["transfer"])
     huge = _make_tool("huge_transfer", "contract " * 5000, ["transfer"])
     mandatory = _make_tool("status", "运行状态")
@@ -279,7 +317,9 @@ def test_discovery_real_graph_limits_schema_budget_by_model_window(window: Optio
 
 
 def test_discovery_real_graph_preserves_initial_tools_when_context_is_full():
-    """上下文不足只禁用新增 schema，保留初选和强制工具并明确说明原因。"""
+    """
+    上下文不足只禁用新增 schema，保留初选和强制工具并明确说明原因。
+    """
     extra = _make_tool("inspect_transfer", "Inspect records", ["transfer"])
     initial = _make_tool("status", "运行状态")
     model = _RecordingModel(responses=[
@@ -295,7 +335,9 @@ def test_discovery_real_graph_preserves_initial_tools_when_context_is_full():
 
 
 def test_discovery_parallel_requests_share_one_cumulative_schema_budget():
-    """并行发现合并后统一计算累计 schema 成本，不能分别消耗整份预算。"""
+    """
+    并行发现合并后统一计算累计 schema 成本，不能分别消耗整份预算。
+    """
     tools = [_make_tool(f"{group}_{index:02}", "contract " * 400) for group in ("alpha", "beta") for index in range(8)]
     model = _RecordingModel(responses=[
         AIMessage(content="", tool_calls=[

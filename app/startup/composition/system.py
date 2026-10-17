@@ -1,4 +1,6 @@
-"""System API 外部能力的唯一启动组合根。"""
+"""
+System API 外部能力的唯一启动组合根。
+"""
 
 from __future__ import annotations
 
@@ -59,14 +61,20 @@ _RUST_METAINFO_OPTION_SETTING_KEYS = frozenset({
 
 
 class _FileLogAdapter(SystemLogPort):
-    """以受限日志根实现文件读取、尾随和归档数据源。"""
+    """
+    以受限日志根实现文件读取、尾随和归档数据源。
+    """
 
     def __init__(self, settings: RuntimeSettingsService) -> None:
-        """保存日志根设置提供器。"""
+        """
+        保存日志根设置提供器。
+        """
         self._settings = settings
 
     async def read(self, logfile: str) -> str:
-        """校验路径后异步读取完整日志文本。"""
+        """
+        校验路径后异步读取完整日志文本。
+        """
         path = await self._resolve_logfile(logfile)
         async with aiofiles.open(path, mode="r", encoding="utf-8", errors="replace") as file:
             return cast(str, await file.read())
@@ -77,7 +85,9 @@ class _FileLogAdapter(SystemLogPort):
         length: int,
         disconnected: Callable[[], Awaitable[bool]],
     ) -> AsyncIterator[str]:
-        """先返回历史尾部，再轮询并返回新增日志行。"""
+        """
+        先返回历史尾部，再轮询并返回新增日志行。
+        """
         if re.fullmatch(r"subscriptions/[1-9][0-9]*\.log", logfile):
             path = Path(self._settings.get("LOG_PATH")) / logfile
             return self._follow_path(path, length, disconnected)
@@ -85,11 +95,15 @@ class _FileLogAdapter(SystemLogPort):
         return self._follow_path(path, length, disconnected)
 
     async def collect(self, name: str) -> list[LogFileData]:
-        """在线程中发现并读取允许归档的日志文件。"""
+        """
+        在线程中发现并读取允许归档的日志文件。
+        """
         return await asyncio.to_thread(self._collect_sync, name)
 
     async def _resolve_logfile(self, logfile: str) -> Path:
-        """把相对日志名解析为日志根内的现存 .log 文件。"""
+        """
+        把相对日志名解析为日志根内的现存 .log 文件。
+        """
         root = Path(self._settings.get("LOG_PATH"))
         path = root / str(logfile or "")
         safe = await SecurityUtils.async_is_safe_path(
@@ -108,7 +122,9 @@ class _FileLogAdapter(SystemLogPort):
         length: int,
         disconnected: Callable[[], Awaitable[bool]],
     ) -> AsyncIterator[str]:
-        """有界读取尾部及完整新增行；重开文件以追踪滚动，并等待订阅首次产生日志。"""
+        """
+        有界读取尾部及完整新增行；重开文件以追踪滚动，并等待订阅首次产生日志。
+        """
         cursor: tuple[int, int] | None = None
         initial = True
         while not runtime_stop_state.is_system_stopped and not await disconnected():
@@ -127,7 +143,9 @@ class _FileLogAdapter(SystemLogPort):
         cursor: tuple[int, int] | None,
         length: int,
     ) -> tuple[list[str], tuple[int, int] | None]:
-        """在一个工作线程内校验路径并读取完整行，保留末尾未写完的行供下次读取。"""
+        """
+        在一个工作线程内校验路径并读取完整行，保留末尾未写完的行供下次读取。
+        """
         root = Path(self._settings.get("LOG_PATH"))
         subscription = path.parent.name == "subscriptions"
         if (subscription and (path.is_symlink() or path.parent.is_symlink())) or not SecurityUtils.is_safe_path(root, path, {".log"}):
@@ -149,7 +167,9 @@ class _FileLogAdapter(SystemLogPort):
             return [], None
 
     def _collect_sync(self, name: str) -> list[LogFileData]:
-        """同步发现并读取最多十个主程序或指定插件日志。"""
+        """
+        同步发现并读取最多十个主程序或指定插件日志。
+        """
         normalized = str(name or "").strip().lower()
         subscription = re.fullmatch(r"subscriptions/([1-9][0-9]*)", normalized)
         if not normalized or not (subscription or _LOG_DOWNLOAD_NAME_PATTERN.fullmatch(normalized)):
@@ -178,14 +198,20 @@ class _FileLogAdapter(SystemLogPort):
 
 
 class _PluginMarketAdapter(PluginMarketPort):
-    """通过统一异步 HTTP 客户端读取并解析 Wiki 市场清单。"""
+    """
+    通过统一异步 HTTP 客户端读取并解析 Wiki 市场清单。
+    """
 
     def __init__(self, settings: RuntimeSettingsService) -> None:
-        """保存代理与 User-Agent 设置提供器。"""
+        """
+        保存代理与 User-Agent 设置提供器。
+        """
         self._settings = settings
 
     async def fetch(self, url: str) -> MarketFetchResult:
-        """读取 Wiki 文本并把解析异常收敛为空仓库列表。"""
+        """
+        读取 Wiki 文本并把解析异常收敛为空仓库列表。
+        """
         response = await AsyncRequestUtils(
             ua=self._settings.get("USER_AGENT"),
             proxies=self._settings.get("PROXY"),
@@ -203,10 +229,14 @@ class _PluginMarketAdapter(PluginMarketPort):
 
 
 class _ConfigurationEventAdapter(ConfigurationEventPort):
-    """把已提交设置变更发布到宿主事件总线。"""
+    """
+    把已提交设置变更发布到宿主事件总线。
+    """
 
     async def publish(self, key: Any, value: Any = None) -> None:
-        """同步失效派生缓存并等待全部配置重载处理器完成。"""
+        """
+        同步失效派生缓存并等待全部配置重载处理器完成。
+        """
         payload = ConfigChangeEventData(key=key, value=value, change_type="update")
         if payload.key.intersection(_RUST_METAINFO_OPTION_SETTING_KEYS):
             # 必须在写入入口返回前失效缓存，避免下一次识别读取旧配置。
@@ -218,14 +248,20 @@ class _ConfigurationEventAdapter(ConfigurationEventPort):
 
 
 class _ServerInfoAdapter(ServerInfoPort):
-    """适配 MoviePilot Server 的用户权限与统计接口。"""
+    """
+    适配 MoviePilot Server 的用户权限与统计接口。
+    """
 
     def __init__(self, settings: RuntimeSettingsService) -> None:
-        """保存运行设置提供器，用于读取本机社区勋章开关。"""
+        """
+        保存运行设置提供器，用于读取本机社区勋章开关。
+        """
         self._settings = settings
 
     async def user_global(self) -> dict[str, Any]:
-        """合并用户 UUID、两项共享管理权限与社区勋章有效开关。"""
+        """
+        合并用户 UUID、两项共享管理权限与社区勋章有效开关。
+        """
         is_admin = await MoviePilotServerHelper.async_is_admin_user()
         return {
             "USER_UNIQUE_ID": MoviePilotServerHelper.get_user_uuid(),
@@ -235,7 +271,8 @@ class _ServerInfoAdapter(ServerInfoPort):
         }
 
     async def community_medals_enabled(self) -> bool:
-        """社区勋章有效开关。
+        """
+        社区勋章有效开关。
 
         有效 = 本机 COMMUNITY_MEDALS_ENABLE 且（服务端 ``/user/features`` 的 community_medals
         或已登录 GitHub 用户在服务端预览名单中，即权限的 community_medals_preview）。
@@ -252,19 +289,27 @@ class _ServerInfoAdapter(ServerInfoPort):
         return permissions.get("community_medals_preview") is True
 
     async def usage(self) -> dict[str, Any]:
-        """读取安装版本统计。"""
+        """
+        读取安装版本统计。
+        """
         return await MoviePilotServerHelper.async_get_usage_statistic()
 
 
 class _ReleaseCatalogAdapter(ReleaseCatalogPort):
-    """通过 GitHub API 读取主程序 Release 列表。"""
+    """
+    通过 GitHub API 读取主程序 Release 列表。
+    """
 
     def __init__(self, settings: RuntimeSettingsService) -> None:
-        """保存 GitHub 代理与请求头设置提供器。"""
+        """
+        保存 GitHub 代理与请求头设置提供器。
+        """
         self._settings = settings
 
     async def list(self) -> list[dict[str, Any]] | None:
-        """读取有效 JSON 列表，失败时返回空值。"""
+        """
+        读取有效 JSON 列表，失败时返回空值。
+        """
         response = await AsyncRequestUtils(
             proxies=self._settings.get("PROXY"),
             headers=self._settings.get("GITHUB_HEADERS"),
@@ -276,10 +321,14 @@ class _ReleaseCatalogAdapter(ReleaseCatalogPort):
 
 
 class _RuntimeFeatureAdapter(RuntimeFeaturePort):
-    """适配本机 Rust 加速能力探测。"""
+    """
+    适配本机 Rust 加速能力探测。
+    """
 
     def snapshot(self) -> dict[str, bool]:
-        """返回现有环境接口使用的四项 Rust 状态。"""
+        """
+        返回现有环境接口使用的四项 Rust 状态。
+        """
         return {
             "RUST_ACCEL": rust_accel.is_config_enabled(),
             "RUST_ACCEL_AVAILABLE": rust_accel.is_available(),
@@ -289,50 +338,74 @@ class _RuntimeFeatureAdapter(RuntimeFeaturePort):
 
 
 class _SystemControlAdapter(SystemControlPort):
-    """适配宿主进程的重启与开发分支更新控制。"""
+    """
+    适配宿主进程的重启与开发分支更新控制。
+    """
 
     def can_restart(self) -> bool:
-        """查询部署环境重启能力。"""
+        """
+        查询部署环境重启能力。
+        """
         return SystemHelper.can_restart()
 
     def restart(self) -> tuple[bool, str]:
-        """请求宿主重启。"""
+        """
+        请求宿主重启。
+        """
         return SystemHelper.restart()
 
     def upgrade_dev(self) -> tuple[bool, str]:
-        """执行开发分支更新。"""
+        """
+        执行开发分支更新。
+        """
         return SystemHelper.upgrade_dev()
 
 
 class _SystemUpdateAdapter(SystemUpdatePort):
-    """适配后台 Release 更新状态机。"""
+    """
+    适配后台 Release 更新状态机。
+    """
 
     def status(self) -> SystemUpdateStatus:
-        """读取当前更新状态。"""
+        """
+        读取当前更新状态。
+        """
         return system_update_manager.get_status()
 
     def check(self) -> SystemUpdateStatus:
-        """管理员主动检查可用更高版本替换旧待安装目标，失败时保留原包。"""
+        """
+        管理员主动检查可用更高版本替换旧待安装目标，失败时保留原包。
+        """
         return system_update_manager.check(refresh_ready=True)
 
     def download(self, target: SystemUpdateTarget = "application") -> SystemUpdateStatus:
-        """启动指定升级类型的后台下载。"""
+        """
+        启动指定升级类型的后台下载。
+        """
         return system_update_manager.start_download(target)
 
     def prepare_install(self, target: SystemUpdateTarget = "application") -> tuple[bool, str]:
-        """确认指定升级类型的安装准备。"""
+        """
+        确认指定升级类型的安装准备。
+        """
         return system_update_manager.request_install(target)
 
     def cancel_install(self, message: str) -> None:
-        """撤销失败的安装请求。"""
+        """
+        撤销失败的安装请求。
+        """
         system_update_manager.cancel_install(message)
 
 
 class _LlmCapabilityAdapter(LlmCapabilityPort):
-    """适配 Agent 目录中的服务端工具能力注册表。"""
+    """
+    适配 Agent 目录中的服务端工具能力注册表。
+    """
 
     def validate(self, env: dict[str, Any], settings: RuntimeSettingsService) -> str | None:
-        """拒绝所选模型不支持的强制内建联网搜索。"""
+        """
+        拒绝所选模型不支持的强制内建联网搜索。
+        """
         from app.agent.llm.tools import ServerToolRegistry, ServerToolUnavailableError
 
         mode = ServerToolRegistry.normalize_web_search_mode(
@@ -359,7 +432,9 @@ def compose_system_service(
     system_config: SystemConfigService,
     rule_group_mutation: Callable[[], Any],
 ) -> SystemService:
-    """构造 System API 应用服务并注入全部具体外部能力。"""
+    """
+    构造 System API 应用服务并注入全部具体外部能力。
+    """
     github_client = GithubAuthClient(settings)
     github_auth = GithubAuthService(
         settings=settings,

@@ -1,4 +1,6 @@
-"""GitHub Token 授权接口及首次初始化专用授权接口。"""
+"""
+GitHub Token 授权接口及首次初始化专用授权接口。
+"""
 
 from dataclasses import asdict
 
@@ -39,13 +41,17 @@ async def get_community_profile(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     community: CommunityMedalService = Depends(get_community_medal_service),
 ) -> _SchemaResponse[GithubCommunityProfile]:
-    """仅向管理此实例凭据的超级管理员展示其 GitHub 身份的勋章，不继承给普通用户。"""
+    """
+    仅向管理此实例凭据的超级管理员展示其 GitHub 身份的勋章，不继承给普通用户。
+    """
     profile = await community.profile(refresh=refresh)
     return _SchemaResponse(success=True, data=GithubCommunityProfile.model_validate(asdict(profile)))
 
 
 def _status_model(status: GithubAuthStatus) -> GithubTokenStatus:
-    """将应用层状态投影为不含 Token 原文的 API 模型。"""
+    """
+    将应用层状态投影为不含 Token 原文的 API 模型。
+    """
     return GithubTokenStatus(
         configured=status.configured,
         valid=status.valid,
@@ -58,12 +64,16 @@ def _status_model(status: GithubAuthStatus) -> GithubTokenStatus:
 
 
 def _raise_auth_error(error: GithubAuthError) -> None:
-    """把授权应用错误转换为稳定的客户端错误，不返回外部响应原文。"""
+    """
+    把授权应用错误转换为稳定的客户端错误，不返回外部响应原文。
+    """
     raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 async def _ensure_initialization_open(service: UserService) -> None:
-    """限制未认证授权接口只能在首次初始化窗口内使用。"""
+    """
+    限制未认证授权接口只能在首次初始化窗口内使用。
+    """
     if await service.is_initialized():
         raise HTTPException(status_code=409, detail="系统已经完成初始化")
 
@@ -77,7 +87,9 @@ async def get_auth_status(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     github_auth: GithubAuthService = Depends(get_github_auth_service),
 ) -> _SchemaResponse[GithubTokenStatus]:
-    """返回当前管理员可见的 GitHub Token 脱敏状态。"""
+    """
+    返回当前管理员可见的 GitHub Token 脱敏状态。
+    """
     return _SchemaResponse(success=True, data=_status_model(await github_auth.status()))
 
 
@@ -90,7 +102,9 @@ async def start_auth(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     github_auth: GithubAuthService = Depends(get_github_auth_service),
 ) -> _SchemaResponse[GithubDeviceAuthStart]:
-    """为已登录管理员申请 GitHub Device Flow 设备码。"""
+    """
+    为已登录管理员申请 GitHub Device Flow 设备码。
+    """
     try:
         result = await github_auth.start_device_auth()
     except GithubAuthError as error:
@@ -117,7 +131,9 @@ async def poll_auth(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     github_auth: GithubAuthService = Depends(get_github_auth_service),
 ) -> _SchemaResponse[GithubDeviceAuthPoll]:
-    """轮询管理员发起的 GitHub Device Flow。"""
+    """
+    轮询管理员发起的 GitHub Device Flow。
+    """
     try:
         result = await github_auth.poll_device_auth(payload.session_id)
     except GithubAuthError as error:
@@ -144,7 +160,9 @@ async def save_manual_token(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     github_auth: GithubAuthService = Depends(get_github_auth_service),
 ) -> _SchemaResponse[GithubTokenStatus]:
-    """保存兼容 PAT 的手动 GitHub Token，并返回脱敏状态。"""
+    """
+    保存兼容 PAT 的手动 GitHub Token，并返回脱敏状态。
+    """
     try:
         status = await github_auth.set_manual_token(payload.token)
     except GithubAuthError as error:
@@ -161,7 +179,9 @@ async def clear_token(
     _: ApiPrincipal = Depends(get_current_active_superuser_async),
     github_auth: GithubAuthService = Depends(get_github_auth_service),
 ) -> _SchemaResponse[None]:
-    """清除管理员配置的 GitHub Token。"""
+    """
+    清除管理员配置的 GitHub Token。
+    """
     try:
         await github_auth.clear_token()
     except GithubAuthError as error:
@@ -178,7 +198,9 @@ async def get_initialization_auth_status(
     service: UserService = Depends(get_user_service),
     github_auth: GithubAuthService = Depends(get_github_auth_service),
 ) -> _SchemaResponse[GithubTokenStatus]:
-    """在实例尚未初始化时返回 GitHub Token 脱敏状态。"""
+    """
+    在实例尚未初始化时返回 GitHub Token 脱敏状态。
+    """
     await _ensure_initialization_open(service)
     return _SchemaResponse(success=True, data=_status_model(await github_auth.status()))
 
@@ -192,7 +214,9 @@ async def start_initialization_auth(
     service: UserService = Depends(get_user_service),
     github_auth: GithubAuthService = Depends(get_github_auth_service),
 ) -> _SchemaResponse[GithubDeviceAuthStart]:
-    """限制在首次初始化窗口内启动 GitHub Device Flow。"""
+    """
+    限制在首次初始化窗口内启动 GitHub Device Flow。
+    """
     await _ensure_initialization_open(service)
     try:
         result = await github_auth.start_device_auth()
@@ -220,7 +244,9 @@ async def poll_initialization_auth(
     service: UserService = Depends(get_user_service),
     github_auth: GithubAuthService = Depends(get_github_auth_service),
 ) -> _SchemaResponse[GithubDeviceAuthPoll]:
-    """限制在首次初始化窗口内轮询 GitHub Device Flow。"""
+    """
+    限制在首次初始化窗口内轮询 GitHub Device Flow。
+    """
     await _ensure_initialization_open(service)
     try:
         result = await github_auth.poll_device_auth(payload.session_id)
@@ -248,7 +274,9 @@ async def save_initialization_manual_token(
     service: UserService = Depends(get_user_service),
     github_auth: GithubAuthService = Depends(get_github_auth_service),
 ) -> _SchemaResponse[GithubTokenStatus]:
-    """限制在首次初始化窗口内保存兼容 PAT 的手动 Token。"""
+    """
+    限制在首次初始化窗口内保存兼容 PAT 的手动 Token。
+    """
     await _ensure_initialization_open(service)
     try:
         status = await github_auth.set_manual_token(payload.token)
@@ -266,7 +294,9 @@ async def clear_initialization_token(
     service: UserService = Depends(get_user_service),
     github_auth: GithubAuthService = Depends(get_github_auth_service),
 ) -> _SchemaResponse[None]:
-    """限制在首次初始化窗口内清除 GitHub Token。"""
+    """
+    限制在首次初始化窗口内清除 GitHub Token。
+    """
     await _ensure_initialization_open(service)
     try:
         await github_auth.clear_token()

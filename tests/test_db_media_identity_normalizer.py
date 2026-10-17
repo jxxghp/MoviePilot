@@ -19,12 +19,16 @@ from app.schemas.types import MediaSource
 
 @pytest.fixture(autouse=True)
 def _track(db):
-    """把两张表纳入用例级回收。"""
+    """
+    把两张表纳入用例级回收。
+    """
     db.watermark(TransferHistory, TransferPending)
 
 
 def _history(**identity) -> TransferHistory:
-    """构造一条最小可写的整理历史，只有身份字段按用例变化。"""
+    """
+    构造一条最小可写的整理历史，只有身份字段按用例变化。
+    """
     return TransferHistory(src="/downloads/x.mkv", src_storage="local",
                            dest="/media/x.mkv", dest_storage="local",
                            mode="link", title="身份用例", status=1, files=[],
@@ -32,7 +36,9 @@ def _history(**identity) -> TransferHistory:
 
 
 def _write(db, row):
-    """落库并重新读回，确保拿到的是写入后的值而非内存里的原值。"""
+    """
+    落库并重新读回，确保拿到的是写入后的值而非内存里的原值。
+    """
     db.add(row)
     db.session.expire_all()
     return TransferHistory.get(db.session, row.id)
