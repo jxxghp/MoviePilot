@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import json
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 from urllib.parse import urljoin
 
 from app.adapters.network.http import RequestUtils
@@ -180,7 +180,7 @@ class RousiSiteUserInfo(SiteParserBase):
         """
         return None, None, None
 
-    def _pase_unread_msgs(self):
+    def _pase_unread_msgs(self) -> None:
         """
         解析所有未读消息标题和内容
         Rousi.pro API v1 暂未提供消息相关接口，暂时以网页接口实现
@@ -197,7 +197,7 @@ class RousiSiteUserInfo(SiteParserBase):
             "Authorization": self.token if self.token.startswith("Bearer ") else f"Bearer {self.token}"
         }
 
-        def __get_message_list(page: int):
+        def __get_message_list(page: int) -> dict[str, Any]:
             """读取指定页未读消息，保留接口的分页数据结构。"""
             params = {
                 "page": page,
@@ -218,7 +218,8 @@ class RousiSiteUserInfo(SiteParserBase):
                     "messages": [],
                     "total_pages": 0
                 }
-            return res.json().get("data")
+            data = res.json().get("data")
+            return data if isinstance(data, dict) else {"messages": [], "total_pages": 0}
 
         # 分页获取所有未读消息
         page = 0
