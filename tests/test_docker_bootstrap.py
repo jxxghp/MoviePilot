@@ -1,3 +1,7 @@
+"""
+验证容器启动控制脚本的可信选择、更新事务、恢复和代理边界。
+"""
+
 import os
 import shlex
 import subprocess
@@ -26,6 +30,9 @@ def _write_bundle(path: Path, label: str, *, extra_files: tuple[str, ...] = ()) 
 
 
 def test_dockerfile_control_bundle_build_checks_fail_closed() -> None:
+    """
+    镜像构建必须校验全部控制脚本，任一检查失败都应中止构建。
+    """
     dockerfile = (ROOT / "docker" / "Dockerfile").read_text(encoding="utf-8")
 
     assert "FROM ghcr.io/astral-sh/uv:latest AS uv" in dockerfile
@@ -62,6 +69,9 @@ def test_dockerfile_control_bundle_build_checks_fail_closed() -> None:
 
 
 def test_update_sync_selects_target_interpreter_runtime_group(tmp_path: Path) -> None:
+    """
+    依赖同步根据目标解释器选择自由线程运行依赖组。
+    """
     project = tmp_path / "project"
     project.mkdir()
     (project / "pyproject.toml").write_text(
@@ -130,7 +140,9 @@ runtime-free-threaded = ["free-threaded"]
 def test_update_sync_supports_legacy_runtime_selector_during_rollback(
     tmp_path: Path,
 ) -> None:
-    """更新回滚必须能读取改名前旧快照中的依赖 profile 选择器。"""
+    """
+    更新回滚必须能读取改名前旧快照中的依赖 profile 选择器。
+    """
     project = tmp_path / "legacy-project"
     project.mkdir()
     (project / "pyproject.toml").write_text(
@@ -200,7 +212,9 @@ runtime-free-threaded = ["free-threaded"]
 
 
 def test_build_profiles_use_full_runtime_capability_probe() -> None:
-    """两套依赖 profile 必须经过统一的完整运行能力验证。"""
+    """
+    两套依赖 profile 必须经过统一的完整运行能力验证。
+    """
     dockerfile = (ROOT / "docker" / "Dockerfile").read_text(encoding="utf-8")
 
     assert dockerfile.count(
@@ -249,6 +263,9 @@ def _run_launcher(
 
 
 def test_launcher_prefers_complete_trusted_source_bundle(tmp_path: Path) -> None:
+    """
+    启动器优先使用完整且可信的源码控制脚本。
+    """
     source = tmp_path / "source"
     image = tmp_path / "image"
     _write_bundle(source, "source")
@@ -267,6 +284,9 @@ def test_launcher_prefers_complete_trusted_source_bundle(tmp_path: Path) -> None
 def test_launcher_isolates_control_generation_during_pending_recovery(
     tmp_path: Path, previous_bundle_state: str, expected_output: str
 ) -> None:
+    """
+    存在待恢复更新时，启动器按恢复阶段隔离控制脚本代次。
+    """
     source = tmp_path / "source"
     image = tmp_path / "image"
     previous = tmp_path / "previous-app"
@@ -324,6 +344,9 @@ def test_launcher_isolates_control_generation_during_pending_recovery(
 def test_launcher_falls_back_when_source_bundle_is_incomplete(
     tmp_path: Path, missing_file: str
 ) -> None:
+    """
+    源码控制脚本不完整时回退到镜像内置版本。
+    """
     source = tmp_path / "source"
     image = tmp_path / "image"
     _write_bundle(source, "source")
@@ -337,6 +360,9 @@ def test_launcher_falls_back_when_source_bundle_is_incomplete(
 
 
 def test_launcher_falls_back_when_source_bundle_has_invalid_shell(tmp_path: Path) -> None:
+    """
+    源码控制脚本语法无效时回退到镜像内置版本。
+    """
     source = tmp_path / "source"
     image = tmp_path / "image"
     _write_bundle(source, "source")
@@ -350,6 +376,9 @@ def test_launcher_falls_back_when_source_bundle_has_invalid_shell(tmp_path: Path
 
 
 def test_launcher_falls_back_when_source_permissions_are_untrusted(tmp_path: Path) -> None:
+    """
+    源码控制脚本权限不可信时回退到镜像内置版本。
+    """
     source = tmp_path / "source"
     image = tmp_path / "image"
     _write_bundle(source, "source")
@@ -362,6 +391,9 @@ def test_launcher_falls_back_when_source_permissions_are_untrusted(tmp_path: Pat
 
 
 def test_launcher_rejects_invalid_source_and_image_bundles(tmp_path: Path) -> None:
+    """
+    源码与镜像控制脚本均无效时，启动器拒绝启动。
+    """
     source = tmp_path / "source"
     image = tmp_path / "image"
     _write_bundle(source, "source")
@@ -376,6 +408,9 @@ def test_launcher_rejects_invalid_source_and_image_bundles(tmp_path: Path) -> No
 
 
 def test_direct_fallback_never_bypasses_invalid_image_bundle(tmp_path: Path) -> None:
+    """
+    直接回退路径也必须拒绝无效的镜像控制脚本。
+    """
     source = tmp_path / "source"
     image = tmp_path / "image"
     marker = tmp_path / "image-entrypoint-started"
@@ -395,6 +430,9 @@ def test_direct_fallback_never_bypasses_invalid_image_bundle(tmp_path: Path) -> 
 
 
 def test_launcher_path_cannot_be_hijacked_by_writable_venv(tmp_path: Path) -> None:
+    """
+    可写虚拟环境中的同名工具不能劫持启动器校验流程。
+    """
     source = tmp_path / "source"
     image = tmp_path / "image"
     fake_bin = tmp_path / "venv-bin"
@@ -425,6 +463,9 @@ def test_launcher_path_cannot_be_hijacked_by_writable_venv(tmp_path: Path) -> No
 def test_launcher_preserves_inherited_path_and_system_tools_for_entrypoint(
     tmp_path: Path,
 ) -> None:
+    """
+    入口脚本继承原 PATH，并补齐标准系统工具目录。
+    """
     source = tmp_path / "source"
     image = tmp_path / "image"
     inherited_path = "/custom/bin:/usr/local/bin:/usr/bin:/bin"
@@ -450,6 +491,9 @@ def test_launcher_preserves_inherited_path_and_system_tools_for_entrypoint(
 
 
 def test_launcher_invalid_inherited_path_does_not_block_entrypoint(tmp_path: Path) -> None:
+    """
+    继承的 PATH 无效时仍可通过系统工具启动入口脚本。
+    """
     source = tmp_path / "source"
     image = tmp_path / "image"
     _write_bundle(source, "unused")
@@ -471,6 +515,9 @@ def test_launcher_invalid_inherited_path_does_not_block_entrypoint(tmp_path: Pat
 
 
 def test_required_control_script_symlink_forces_bundle_fallback(tmp_path: Path) -> None:
+    """
+    必要控制脚本是符号链接时拒绝源码脚本集并回退。
+    """
     source = tmp_path / "source"
     image = tmp_path / "image"
     _write_bundle(source, "source", extra_files=("future.sh",))
@@ -485,6 +532,9 @@ def test_required_control_script_symlink_forces_bundle_fallback(tmp_path: Path) 
 
 
 def test_future_control_script_symlink_forces_bundle_fallback(tmp_path: Path) -> None:
+    """
+    新增控制脚本是符号链接时同样拒绝源码脚本集并回退。
+    """
     source = tmp_path / "source"
     image = tmp_path / "image"
     _write_bundle(source, "source")
@@ -498,6 +548,9 @@ def test_future_control_script_symlink_forces_bundle_fallback(tmp_path: Path) ->
 
 
 def test_materialized_bundle_must_match_selected_generation(tmp_path: Path) -> None:
+    """
+    物化后的脚本集必须匹配已选代次，否则停止执行。
+    """
     source = tmp_path / "source"
     _write_bundle(source, "source")
     script = textwrap.dedent(
@@ -520,6 +573,9 @@ def test_materialized_bundle_must_match_selected_generation(tmp_path: Path) -> N
 
 
 def test_launcher_operational_failure_runs_image_entrypoint_directly(tmp_path: Path) -> None:
+    """
+    启动器运行操作失败时，可直接使用已校验的镜像入口。
+    """
     source = tmp_path / "source"
     image = tmp_path / "image"
     _write_bundle(source, "source")
@@ -549,6 +605,9 @@ def test_launcher_operational_failure_runs_image_entrypoint_directly(tmp_path: P
 
 
 def test_source_generation_probe_failure_never_starts_image_entrypoint(tmp_path: Path) -> None:
+    """
+    源码代次探测失败时不得意外执行镜像入口脚本。
+    """
     source = tmp_path / "source"
     image = tmp_path / "image"
     marker = tmp_path / "image-entrypoint-started"
@@ -579,6 +638,9 @@ def test_source_generation_probe_failure_never_starts_image_entrypoint(tmp_path:
 
 
 def test_source_generation_probe_propagates_generation_failure(tmp_path: Path) -> None:
+    """
+    源码代次探测向调用方传播代次生成失败。
+    """
     script = textwrap.dedent(
         f"""\
         source {LAUNCHER!s}
@@ -599,6 +661,9 @@ def test_source_generation_probe_propagates_generation_failure(tmp_path: Path) -
 
 
 def test_control_generation_automatically_covers_future_shell_files(tmp_path: Path) -> None:
+    """
+    新增控制脚本自动计入代次摘要，避免遗漏未来文件。
+    """
     source = tmp_path / "source"
     _write_bundle(source, "source")
     script = textwrap.dedent(
@@ -625,6 +690,9 @@ def test_control_generation_automatically_covers_future_shell_files(tmp_path: Pa
 
 
 def test_control_generation_does_not_depend_on_bundle_directory(tmp_path: Path) -> None:
+    """
+    内容相同的脚本集在不同目录下生成相同代次。
+    """
     first = tmp_path / "first"
     second = tmp_path / "second"
     _write_bundle(first, "same")
@@ -656,6 +724,9 @@ def test_control_generation_does_not_depend_on_bundle_directory(tmp_path: Path) 
 def test_control_generation_rejects_hash_failures(
     tmp_path: Path, fake_sha256sum: str
 ) -> None:
+    """
+    哈希工具失败时拒绝输出有效代次。
+    """
     source = tmp_path / "source"
     _write_bundle(source, "source")
     script = textwrap.dedent(
@@ -678,6 +749,9 @@ def test_control_generation_rejects_hash_failures(
 
 
 def test_launcher_does_not_promote_proxy_host_to_process_proxy_env(tmp_path: Path) -> None:
+    """
+    业务代理地址不得自动变成启动进程的全局代理环境。
+    """
     source = tmp_path / "source"
     image = tmp_path / "image"
     _write_bundle(source, "unused")
@@ -699,6 +773,9 @@ def test_launcher_does_not_promote_proxy_host_to_process_proxy_env(tmp_path: Pat
 
 
 def test_launcher_preserves_explicit_standard_proxy_env(tmp_path: Path) -> None:
+    """
+    启动器保留用户显式设置的标准代理环境变量。
+    """
     source = tmp_path / "source"
     image = tmp_path / "image"
     _write_bundle(source, "unused")
@@ -729,6 +806,9 @@ def test_launcher_preserves_explicit_standard_proxy_env(tmp_path: Path) -> None:
 def test_launcher_owns_and_consumes_reexec_guard_state(
     tmp_path: Path, launcher_args: tuple[str, ...], expected: str
 ) -> None:
+    """
+    启动器按预期创建和消费重执行保护状态。
+    """
     source = tmp_path / "source"
     image = tmp_path / "image"
     _write_bundle(source, "unused")
@@ -766,6 +846,9 @@ def test_launcher_owns_and_consumes_reexec_guard_state(
 
 
 def test_updater_package_proxy_stays_command_scoped(tmp_path: Path) -> None:
+    """
+    包下载代理只注入包管理命令，不污染外围进程环境。
+    """
     script = textwrap.dedent(
         f"""\
         CONFIG_DIR="$1"
@@ -809,7 +892,9 @@ def test_updater_package_proxy_stays_command_scoped(tmp_path: Path) -> None:
 def test_updater_exposes_explicit_result(
     tmp_path: Path, mode: str, dev_update: str, install_result: str, expected: str
 ) -> None:
-    """Docker 由独立 Dev 开关决定启动更新，并兼容首次迁移的旧模式。"""
+    """
+    Docker 由独立 Dev 开关决定启动更新，并兼容首次迁移的旧模式。
+    """
     script = textwrap.dedent(
         f"""\
         CONFIG_DIR="$1"
@@ -848,7 +933,9 @@ def test_updater_exposes_explicit_result(
 def test_release_mode_no_longer_checks_or_installs_during_restart(
     tmp_path: Path,
 ) -> None:
-    """非 Dev 模式不再由 update.sh 查版本或替换已下载程序。"""
+    """
+    非 Dev 模式不再由 update.sh 查版本或替换已下载程序。
+    """
     updater = UPDATER.read_text(encoding="utf-8")
     assert "install.json" not in updater
     assert "MOVIEPILOT_PREPARED_UPDATE" not in updater
@@ -905,14 +992,18 @@ def test_release_mode_no_longer_checks_or_installs_during_restart(
 
 
 def test_entrypoint_does_not_keep_retired_package_command_wrapper() -> None:
-    """依赖恢复统一走 updater 的受控路由后，不再保留旧代理包装器。"""
+    """
+    依赖恢复统一走 updater 的受控路由后，不再保留旧代理包装器。
+    """
     entrypoint = (ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
 
     assert "function run_package_command()" not in entrypoint
 
 
 def test_entrypoint_delegates_restart_to_external_supervisor() -> None:
-    """容器入口使用内部 supervisor 托管前后端且不包含 Docker 控制面。"""
+    """
+    容器入口使用内部 supervisor 托管前后端且不包含 Docker 控制面。
+    """
     entrypoint = (ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
     dockerfile = (ROOT / "docker" / "Dockerfile").read_text(encoding="utf-8")
     supervisor = (ROOT / "docker" / "supervisord.conf").read_text(encoding="utf-8")
@@ -935,7 +1026,9 @@ def test_entrypoint_delegates_restart_to_external_supervisor() -> None:
 
 
 def test_release_update_worker_applies_before_supervisor_shutdown() -> None:
-    """Release worker 必须先调用后端安装器，再关闭 supervisor 触发入口重载。"""
+    """
+    Release worker 必须先调用后端安装器，再关闭 supervisor 触发入口重载。
+    """
     worker = (ROOT / "docker" / "update-worker.sh").read_text(encoding="utf-8")
 
     assert "-m app.cli apply-prepared-update" in worker
@@ -944,7 +1037,9 @@ def test_release_update_worker_applies_before_supervisor_shutdown() -> None:
 
 
 def test_release_update_worker_skips_without_install_manifest(tmp_path: Path) -> None:
-    """普通 supervisor 重启误启动 worker 时，无安装清单应安全跳过。"""
+    """
+    普通 supervisor 重启误启动 worker 时，无安装清单应安全跳过。
+    """
     python_bin = tmp_path / "venv" / "bin" / "python3"
     python_bin.parent.mkdir(parents=True)
     python_bin.write_text("#!/bin/bash\nexit 99\n", encoding="utf-8")
@@ -970,7 +1065,9 @@ def test_release_update_worker_skips_without_install_manifest(tmp_path: Path) ->
 
 
 def test_update_reexec_uses_stable_working_directory() -> None:
-    """更新替换 /app 后，入口重入和 worker 控制面调用必须离开旧工作目录。"""
+    """
+    更新替换 /app 后，入口重入和 worker 控制面调用必须离开旧工作目录。
+    """
     entrypoint = (ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
     worker = (ROOT / "docker" / "update-worker.sh").read_text(encoding="utf-8")
 
@@ -1003,6 +1100,9 @@ def test_package_route_is_only_configured_for_changed_dependencies(
     expected_route_calls: int,
     expected_sync_calls: int,
 ) -> None:
+    """
+    只有依赖变化时才配置包下载路由并同步锁定依赖。
+    """
     uv_bin = tmp_path / "bin" / "uv"
     uv_bin.parent.mkdir(parents=True)
     uv_log = tmp_path / "uv.log"
@@ -1088,6 +1188,9 @@ def test_dependency_update_requires_complete_uv_manifests(
     tmp_path: Path,
     missing_manifest: str,
 ) -> None:
+    """
+    缺少完整 uv 项目与锁文件时，不配置包路由或替换程序文件。
+    """
     update_tree = tmp_path / "update" / "App"
     update_tree.mkdir(parents=True)
     (update_tree / "pyproject.toml").write_text("[project]\n", encoding="utf-8")
@@ -1134,6 +1237,9 @@ def test_dependency_update_requires_complete_uv_manifests(
 
 
 def test_failed_dependency_sync_does_not_replace_program_files(tmp_path: Path) -> None:
+    """
+    依赖同步失败时保留现有程序与前端，并恢复旧依赖环境。
+    """
     uv_bin = tmp_path / "bin" / "uv"
     uv_bin.parent.mkdir(parents=True)
     uv_bin.write_text(
@@ -1254,6 +1360,9 @@ def test_failed_dependency_sync_does_not_replace_program_files(tmp_path: Path) -
 
 
 def test_pending_update_recovers_previous_payload_on_next_start(tmp_path: Path) -> None:
+    """
+    下次启动检测到未完成更新时恢复旧程序和前端，并清除待更新标记。
+    """
     live_app = tmp_path / "app"
     live_public = tmp_path / "public"
     previous_app = tmp_path / "previous-app"
@@ -1328,7 +1437,9 @@ def test_pending_update_recovers_previous_payload_on_next_start(tmp_path: Path) 
 def test_pending_dependency_update_keeps_current_payload_for_database_safety(
     tmp_path: Path,
 ) -> None:
-    """依赖阶段中断时保留当前载荷，避免新数据库回退到旧迁移链。"""
+    """
+    依赖阶段中断时保留当前载荷，避免新数据库回退到旧迁移链。
+    """
     live_app = tmp_path / "app"
     live_public = tmp_path / "public"
     previous_app = tmp_path / "previous-app"
@@ -1390,7 +1501,9 @@ def test_pending_dependency_update_keeps_current_payload_for_database_safety(
 def test_launcher_uses_current_control_for_dependency_recovery(
     tmp_path: Path,
 ) -> None:
-    """依赖阶段 pending 不得先选旧代控制脚本触发回退。"""
+    """
+    依赖阶段 pending 不得先选旧代控制脚本触发回退。
+    """
     source = tmp_path / "source"
     image = tmp_path / "image"
     previous = tmp_path / "previous-app"
@@ -1434,6 +1547,9 @@ def test_launcher_uses_current_control_for_dependency_recovery(
 
 
 def test_update_transaction_keeps_marker_when_backup_cleanup_fails(tmp_path: Path) -> None:
+    """
+    旧版本备份清理失败时保留事务标记，供后续恢复使用。
+    """
     config_dir = tmp_path / "config"
     log_file = tmp_path / "cleanup.log"
     script = textwrap.dedent(
@@ -1475,6 +1591,9 @@ def test_update_transaction_keeps_marker_when_backup_cleanup_fails(tmp_path: Pat
 
 
 def test_restore_does_not_nest_previous_app_when_current_removal_fails(tmp_path: Path) -> None:
+    """
+    当前程序无法移除时，恢复操作不得将旧程序嵌套复制进去。
+    """
     live_app = tmp_path / "app"
     live_public = tmp_path / "public"
     previous_app = tmp_path / "previous-app"
@@ -1533,6 +1652,9 @@ def test_restore_does_not_nest_previous_app_when_current_removal_fails(tmp_path:
 def test_staged_resource_download_rejects_empty_response_and_keeps_fallback(
     tmp_path: Path,
 ) -> None:
+    """
+    暂存资源下载为空时拒绝新内容，保留旧资源回退。
+    """
     destination = tmp_path / "stage" / "sites.bin"
     fallback = tmp_path / "live" / "sites.bin"
     destination.parent.mkdir()
@@ -1568,6 +1690,9 @@ def test_staged_resource_download_rejects_empty_response_and_keeps_fallback(
 
 
 def test_staged_payload_swap_failure_restores_previous_generation(tmp_path: Path) -> None:
+    """
+    暂存程序切换失败后恢复上一代程序和前端。
+    """
     live_app = tmp_path / "app"
     live_public = tmp_path / "public"
     stage_app = tmp_path / "stage" / "App"
@@ -1627,6 +1752,9 @@ def test_staged_payload_swap_failure_restores_previous_generation(tmp_path: Path
 
 
 def test_package_index_probe_is_cacheless_and_bounded(tmp_path: Path) -> None:
+    """
+    包索引探测禁用缓存和重试，限制超时并清理临时目录。
+    """
     timeout_log = tmp_path / "timeout.log"
     script = textwrap.dedent(
         f"""\
@@ -1689,6 +1817,9 @@ def test_control_bundle_reexec_decision(
     guard: str,
     expected: int,
 ) -> None:
+    """
+    控制脚本代次变化按预期决定是否需要重新执行入口。
+    """
     entrypoint = (ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
     functions = entrypoint.split("# 使用env配置", 1)[0]
     script = f'{functions}\ncontrol_bundle_reexec_decision "$1" "$2" "$3" "$4"\n'
@@ -1702,6 +1833,9 @@ def test_control_bundle_reexec_decision(
 
 
 def test_failed_generation_probe_keeps_current_control_snapshot(tmp_path: Path) -> None:
+    """
+    代次探测失败时继续使用当前快照，不触发重执行。
+    """
     marker = tmp_path / "reexec-decision-called"
     entrypoint = (ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
     functions = entrypoint.split("# 使用env配置", 1)[0]

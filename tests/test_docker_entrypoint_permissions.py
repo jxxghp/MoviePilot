@@ -1,3 +1,7 @@
+"""
+验证容器启动时的浏览器缓存选择、安装及目录权限修复范围。
+"""
+
 import os
 import subprocess
 import textwrap
@@ -132,7 +136,9 @@ def _resolve_browser_cache_case(
     legacy_ready: bool = False,
     legacy_mounted: bool = False,
 ) -> str:
-    """在隔离目录中执行浏览器缓存路径选择合同。"""
+    """
+    在隔离目录中执行浏览器缓存路径选择合同。
+    """
     config_dir = tmp_path / "config"
     home_dir = tmp_path / "moviepilot"
     canonical = config_dir / ".browser" / "cloakbrowser"
@@ -163,6 +169,9 @@ def _resolve_browser_cache_case(
 
 
 def test_browser_cache_explicit_directory_has_highest_priority(tmp_path: Path) -> None:
+    """
+    显式指定的浏览器缓存目录具有最高选择优先级。
+    """
     explicit = tmp_path / "custom-cache"
 
     selected = _resolve_browser_cache_case(
@@ -176,6 +185,9 @@ def test_browser_cache_explicit_directory_has_highest_priority(tmp_path: Path) -
 
 
 def test_browser_cache_rejects_relative_explicit_directory(tmp_path: Path) -> None:
+    """
+    显式浏览器缓存目录必须是独立的绝对路径。
+    """
     output = _run_entrypoint_case(
         tmp_path,
         """
@@ -190,6 +202,9 @@ def test_browser_cache_rejects_relative_explicit_directory(tmp_path: Path) -> No
 
 
 def test_browser_cache_normalizes_explicit_directory(tmp_path: Path) -> None:
+    """
+    显式浏览器缓存目录在使用前进行路径规范化。
+    """
     explicit = tmp_path / "cache" / ".." / "browser-cache"
 
     selected = _resolve_browser_cache_case(tmp_path, explicit=explicit)
@@ -198,6 +213,9 @@ def test_browser_cache_normalizes_explicit_directory(tmp_path: Path) -> None:
 
 
 def test_browser_cache_rejects_managed_root_directory(tmp_path: Path) -> None:
+    """
+    显式浏览器缓存不得占用程序受管根目录。
+    """
     config_dir = tmp_path / "config"
     output = _run_entrypoint_case(
         tmp_path,
@@ -215,6 +233,9 @@ def test_browser_cache_rejects_managed_root_directory(tmp_path: Path) -> None:
 
 
 def test_browser_cache_prefers_valid_config_cache(tmp_path: Path) -> None:
+    """
+    已有有效配置目录缓存时优先复用该缓存。
+    """
     selected = _resolve_browser_cache_case(
         tmp_path,
         canonical_ready=True,
@@ -225,24 +246,36 @@ def test_browser_cache_prefers_valid_config_cache(tmp_path: Path) -> None:
 
 
 def test_browser_cache_reuses_valid_prerelease_v3_cache(tmp_path: Path) -> None:
+    """
+    已有有效的 v3 预发行版浏览器缓存时继续复用。
+    """
     selected = _resolve_browser_cache_case(tmp_path, legacy_ready=True)
 
     assert selected == str(tmp_path / "moviepilot" / ".cloakbrowser")
 
 
 def test_browser_cache_reuses_empty_prerelease_v3_mount(tmp_path: Path) -> None:
+    """
+    预发行版缓存挂载目录为空时仍保留该挂载位置。
+    """
     selected = _resolve_browser_cache_case(tmp_path, legacy_mounted=True)
 
     assert selected == str(tmp_path / "moviepilot" / ".cloakbrowser")
 
 
 def test_browser_cache_new_install_uses_config_cache(tmp_path: Path) -> None:
+    """
+    全新安装默认将浏览器缓存放在配置目录内。
+    """
     selected = _resolve_browser_cache_case(tmp_path)
 
     assert selected == str(tmp_path / "config" / ".browser" / "cloakbrowser")
 
 
 def test_browser_install_preserves_upstream_auto_update_default(tmp_path: Path) -> None:
+    """
+    浏览器安装不覆盖上游自动更新默认设置，并使用指定缓存目录。
+    """
     selected = tmp_path / "cache"
     output = _run_entrypoint_case(
         tmp_path,
@@ -265,6 +298,9 @@ def test_browser_install_preserves_upstream_auto_update_default(tmp_path: Path) 
 
 
 def test_browser_install_failure_does_not_block_startup(tmp_path: Path) -> None:
+    """
+    浏览器内核安装失败只记录重试提示，不阻止主程序启动。
+    """
     output = _run_entrypoint_case(
         tmp_path,
         """
@@ -281,6 +317,9 @@ def test_browser_install_failure_does_not_block_startup(tmp_path: Path) -> None:
 
 
 def test_ready_browser_cache_skips_startup_install(tmp_path: Path) -> None:
+    """
+    浏览器缓存已就绪时跳过启动安装。
+    """
     output = _run_entrypoint_case(
         tmp_path,
         """
@@ -296,6 +335,9 @@ def test_ready_browser_cache_skips_startup_install(tmp_path: Path) -> None:
 
 
 def test_missing_browser_cache_runs_startup_install(tmp_path: Path) -> None:
+    """
+    浏览器缓存缺失时执行启动安装。
+    """
     output = _run_entrypoint_case(
         tmp_path,
         """
@@ -310,6 +352,9 @@ def test_missing_browser_cache_runs_startup_install(tmp_path: Path) -> None:
 
 
 def test_browser_install_is_centralized_in_startup() -> None:
+    """
+    浏览器安装集中在启动流程，并在更新流程之后执行。
+    """
     entrypoint = (ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
     browser = (ROOT / "docker" / "browser.sh").read_text(encoding="utf-8")
     updater = (ROOT / "docker" / "update.sh").read_text(encoding="utf-8")
@@ -328,6 +373,9 @@ def test_browser_install_is_centralized_in_startup() -> None:
 
 
 def test_image_paths_are_not_chowned_by_default_regardless_of_owner(tmp_path: Path) -> None:
+    """
+    默认不递归修改镜像程序与前端目录的所有者。
+    """
     log = _run_permission_case(
         tmp_path,
         'force_chown_image_paths_if_requested "${APP_DIR}" "${PUBLIC_DIR}"',
@@ -338,6 +386,9 @@ def test_image_paths_are_not_chowned_by_default_regardless_of_owner(tmp_path: Pa
 
 
 def test_image_paths_force_chown_uses_recursive_repair(tmp_path: Path) -> None:
+    """
+    显式强制修复时递归调整程序与前端目录所有者。
+    """
     log = _run_permission_case(
         tmp_path,
         'MOVIEPILOT_FORCE_CHOWN=true force_chown_image_paths_if_requested "${APP_DIR}" "${PUBLIC_DIR}"',
@@ -349,6 +400,9 @@ def test_image_paths_force_chown_uses_recursive_repair(tmp_path: Path) -> None:
 
 
 def test_force_chown_keeps_source_control_directory_root_owned(tmp_path: Path) -> None:
+    """
+    强制修复仍保留源码控制目录的 root 所有权。
+    """
     app_dir = tmp_path / "app"
 
     log = _run_permission_case(
@@ -368,6 +422,9 @@ def test_force_chown_keeps_source_control_directory_root_owned(tmp_path: Path) -
 
 
 def test_image_paths_force_chown_accepts_numeric_and_yes_values(tmp_path: Path) -> None:
+    """
+    强制权限修复开关接受数字和 yes 形式的真值。
+    """
     for force_value in ("1", "YES"):
         case_path = tmp_path / force_value.lower()
         case_path.mkdir()
@@ -382,6 +439,9 @@ def test_image_paths_force_chown_accepts_numeric_and_yes_values(tmp_path: Path) 
 
 
 def test_plugin_directory_skips_chown_when_owner_matches(tmp_path: Path) -> None:
+    """
+    插件目录所有者已匹配时跳过所有权修改。
+    """
     log = _run_permission_case(
         tmp_path,
         'chown_plugin_runtime_path "${APP_DIR}/app/plugins"',
@@ -391,6 +451,9 @@ def test_plugin_directory_skips_chown_when_owner_matches(tmp_path: Path) -> None
 
 
 def test_plugin_directory_chowns_only_root_directory_when_owner_mismatches(tmp_path: Path) -> None:
+    """
+    插件目录所有者不匹配时只调整目录自身，不递归处理内容。
+    """
     log = _run_permission_case(
         tmp_path,
         'chown_plugin_runtime_path "${APP_DIR}/app/plugins"',
@@ -401,6 +464,9 @@ def test_plugin_directory_chowns_only_root_directory_when_owner_mismatches(tmp_p
 
 
 def test_home_permissions_skip_cloakbrowser_cache_by_default(tmp_path: Path) -> None:
+    """
+    默认只调整用户目录下浏览器缓存根目录，不递归扫描缓存。
+    """
     log = _run_permission_case(
         tmp_path,
         'HOME="${HOME_DIR}" correct_home_permissions',
@@ -414,6 +480,9 @@ def test_home_permissions_skip_cloakbrowser_cache_by_default(tmp_path: Path) -> 
 
 
 def test_home_permissions_force_chown_repairs_cloakbrowser_cache(tmp_path: Path) -> None:
+    """
+    显式强制修复时递归处理用户目录下的浏览器缓存。
+    """
     log = _run_permission_case(
         tmp_path,
         'MOVIEPILOT_FORCE_CHOWN=yes HOME="${HOME_DIR}" correct_home_permissions',
@@ -423,6 +492,9 @@ def test_home_permissions_force_chown_repairs_cloakbrowser_cache(tmp_path: Path)
 
 
 def test_runtime_writable_paths_are_still_corrected(tmp_path: Path) -> None:
+    """
+    运行时必须可写的目录仍修复权限，同时保留浏览器缓存排除规则。
+    """
     log = _run_permission_case(
         tmp_path,
         'HOME="${HOME_DIR}" correct_file_permissions',
@@ -447,6 +519,9 @@ def test_runtime_writable_paths_are_still_corrected(tmp_path: Path) -> None:
 def test_external_package_cache_is_repaired_without_chowning_parent(
     tmp_path: Path,
 ) -> None:
+    """
+    外部包缓存只修复自身目录，不修改父目录所有权。
+    """
     external_cache = tmp_path / "package-cache" / "uv"
     log = _run_permission_case(
         tmp_path,
@@ -464,6 +539,9 @@ def test_external_package_cache_is_repaired_without_chowning_parent(
 
 
 def test_external_package_cache_write_probe_failure_is_fatal(tmp_path: Path) -> None:
+    """
+    外部包缓存写入探测失败时中止启动准备。
+    """
     output = _run_entrypoint_case(
         tmp_path,
         """
@@ -493,6 +571,9 @@ def test_external_package_cache_write_probe_failure_is_fatal(tmp_path: Path) -> 
 def test_explicit_browser_cache_subtree_is_not_scanned_by_permission_repair(
     tmp_path: Path,
 ) -> None:
+    """
+    权限修复排除显式浏览器缓存子树，同时处理其他运行时目录。
+    """
     explicit_cache = tmp_path / "config" / "runtime" / "browser-cache"
     explicit_cache.mkdir(parents=True)
     (explicit_cache / "chromium").write_text("payload\n", encoding="utf-8")
@@ -512,6 +593,9 @@ def test_explicit_browser_cache_subtree_is_not_scanned_by_permission_repair(
 def test_explicit_top_level_browser_cache_is_not_scanned_by_permission_repair(
     tmp_path: Path,
 ) -> None:
+    """
+    显式顶层浏览器缓存仅修复目录自身，不递归扫描。
+    """
     explicit_cache = tmp_path / "config" / "browser-cache"
     log = _run_permission_case(
         tmp_path,
@@ -528,6 +612,9 @@ def test_explicit_top_level_browser_cache_is_not_scanned_by_permission_repair(
 
 
 def test_site_resource_permissions_are_repaired_even_when_owner_matches(tmp_path: Path) -> None:
+    """
+    站点资源目录即使所有者匹配也需修复内部权限，不扩大到整个程序目录。
+    """
     log = _run_permission_case(
         tmp_path,
         'correct_site_resource_permissions',
@@ -540,7 +627,9 @@ def test_site_resource_permissions_are_repaired_even_when_owner_matches(tmp_path
 
 
 def test_backend_dependency_recovery_uses_runtime_profile_sync(tmp_path: Path) -> None:
-    """启动自愈必须复用按当前解释器选择依赖组的同步入口。"""
+    """
+    启动自愈必须复用按当前解释器选择依赖组的同步入口。
+    """
     venv_bin = tmp_path / "venv" / "bin"
     venv_bin.mkdir(parents=True)
     python_bin = venv_bin / "python3"
@@ -580,7 +669,9 @@ def test_backend_dependency_recovery_uses_runtime_profile_sync(tmp_path: Path) -
 
 
 def test_supervisor_manages_backend_and_nginx() -> None:
-    """后端异常恢复和应用重启都由容器内 supervisor 托管。"""
+    """
+    后端异常恢复和应用重启都由容器内 supervisor 托管。
+    """
     entrypoint = (ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
     supervisor = (ROOT / "docker" / "supervisord.conf").read_text(encoding="utf-8")
 
