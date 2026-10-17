@@ -109,7 +109,11 @@ def _best_version_target_episodes(
     target: SubscriptionSearchTarget,
 ) -> set[int]:
     """返回本轮洗版搜索覆盖的目标集数，用于区分首次下载与升级候选。"""
-    season_info = (target.missing.get(target.media_key) or {}).get(subscribe.season)
+    media_key = str(target.media_key) if target.media_key is not None else ""
+    season_info = (
+        (target.missing.get(media_key) or {}).get(subscribe.season)
+        if subscribe.season is not None else None
+    )
     if season_info and season_info.episodes:
         return set(season_info.episodes)
     start_episode = subscribe.start_episode or 1
@@ -126,8 +130,9 @@ def _build_subscription_candidate_filter(
     """按资源覆盖范围选择普通规则或洗版规则，再执行订阅候选校验。"""
     normal_groups, best_groups = _subscription_rule_groups(subscribe)
     if not subscribe.best_version or target.media.type != MediaType.TV:
-        return partial(owner._filter_search_contexts, subscribe)
+        return partial(cast(Any, owner)._filter_search_contexts, subscribe)
 
+    media = cast(MediaInfo, target.media)
     target_episodes = _best_version_target_episodes(subscribe, target)
     downloaded_episodes = set(
         owner._SubscribeChain__get_downloaded_best_version_episodes(
@@ -156,15 +161,15 @@ def _build_subscription_candidate_filter(
             if not candidates:
                 continue
             candidates = SearchResultOwner._filter_identified_contexts(
-                searchchain,
+                cast(Any, searchchain),
                 candidates,
-                target.media,
+                media,
                 groups,
                 {},
                 None,
             )
             filtered.extend(
-                owner._filter_search_contexts(
+                cast(Any, owner)._filter_search_contexts(
                     subscribe,
                     candidates,
                     apply_best_version=apply_best_version,
