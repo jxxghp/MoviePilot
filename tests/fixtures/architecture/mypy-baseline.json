@@ -267,9 +267,6 @@
     "arg-type": 3,
     "redundant-cast": 2
   },
-  "app/api/endpoints/anilist.py": {
-    "attr-defined": 1
-  },
   "app/api/endpoints/bangumi.py": {
     "attr-defined": 1,
     "operator": 12
