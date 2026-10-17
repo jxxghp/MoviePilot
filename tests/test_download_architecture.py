@@ -1,4 +1,6 @@
-"""DownloadChain 同名包职责、组合方式与宿主导入边界门禁。"""
+"""
+DownloadChain 同名包职责、组合方式与宿主导入边界门禁。
+"""
 
 import ast
 from pathlib import Path
@@ -16,12 +18,16 @@ DOWNLOAD_PACKAGE = CHAIN_ROOT / "download"
 
 
 def _tree(path: Path) -> ast.Module:
-    """解析指定 Python 文件。"""
+    """
+    解析指定 Python 文件。
+    """
     return ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
 
 
 def _class_methods(path: Path, class_name: str) -> set[str]:
-    """返回指定类直接定义的方法名。"""
+    """
+    返回指定类直接定义的方法名。
+    """
     class_node = next(
         node
         for node in _tree(path).body
@@ -35,7 +41,9 @@ def _class_methods(path: Path, class_name: str) -> set[str]:
 
 
 def test_download_monolith_is_retired_and_package_owners_are_complete() -> None:
-    """旧单体不得复活，下载职责必须完整收口到同名包。"""
+    """
+    旧单体不得复活，下载职责必须完整收口到同名包。
+    """
     assert not (CHAIN_ROOT / "download.py").exists()
     assert {path.name for path in DOWNLOAD_PACKAGE.glob("*.py")} == {
         "__init__.py",
@@ -55,7 +63,9 @@ def test_download_monolith_is_retired_and_package_owners_are_complete() -> None:
 
 
 def test_download_package_root_only_declares_lazy_stable_export() -> None:
-    """包根只能惰性解析 DownloadChain，不得复制实现或内部端口。"""
+    """
+    包根只能惰性解析 DownloadChain，不得复制实现或内部端口。
+    """
     package_tree = _tree(DOWNLOAD_PACKAGE / "__init__.py")
     app_imports = [
         node
@@ -79,7 +89,9 @@ def test_download_package_root_only_declares_lazy_stable_export() -> None:
 
 
 def test_download_facade_is_thin_and_has_one_chain_base() -> None:
-    """Facade 只组合 owner 和稳定事件代理，继承图只有一个 ChainBase。"""
+    """
+    Facade 只组合 owner 和稳定事件代理，继承图只有一个 ChainBase。
+    """
     facade_path = DOWNLOAD_PACKAGE / "facade.py"
     facade_tree = _tree(facade_path)
     facade_class = next(
@@ -119,7 +131,9 @@ def test_download_facade_is_thin_and_has_one_chain_base() -> None:
 
 
 def test_download_public_workflows_have_unique_owners() -> None:
-    """公开下载流程必须各由一个 owner 定义，避免 MRO 遮蔽重复实现。"""
+    """
+    公开下载流程必须各由一个 owner 定义，避免 MRO 遮蔽重复实现。
+    """
     expected_owners = {
         "batch_download": "batch.py",
         "download_single": "submission.py",
@@ -138,7 +152,9 @@ def test_download_public_workflows_have_unique_owners() -> None:
 
 
 def test_host_does_not_import_download_internals_from_package_root() -> None:
-    """宿主和测试可使用稳定类型，但不得从包根取得内部实现。"""
+    """
+    宿主和测试可使用稳定类型，但不得从包根取得内部实现。
+    """
     violations: list[str] = []
     for source_root in (APP_ROOT, TEST_ROOT):
         for path in source_root.rglob("*.py"):

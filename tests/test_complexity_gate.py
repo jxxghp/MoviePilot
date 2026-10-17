@@ -1,4 +1,6 @@
-"""结构复杂度门禁、行数观察与基线写保护的回归测试。"""
+"""
+结构复杂度门禁、行数观察与基线写保护的回归测试。
+"""
 
 import json
 import subprocess
@@ -12,7 +14,9 @@ from scripts.architecture import complexity
 
 
 def _write_source(root: Path, relative: str, source: str) -> Path:
-    """写入隔离源码树，避免对真实宿主文件做变异。"""
+    """
+    写入隔离源码树，避免对真实宿主文件做变异。
+    """
     path = root / relative
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(source, encoding="utf-8")
@@ -20,21 +24,27 @@ def _write_source(root: Path, relative: str, source: str) -> Path:
 
 
 def _branches(count: int, name: str = "dispatch") -> str:
-    """构造分支数可控的函数，以真实 Ruff 验证阈值边界。"""
+    """
+    构造分支数可控的函数，以真实 Ruff 验证阈值边界。
+    """
     return f"def {name}(value):\n" + "".join(
         f"    if value == {index}:\n        return {index}\n" for index in range(count)
     )
 
 
 def _nested(depth: int) -> str:
-    """构造独立于物理行数的深层条件控制流。"""
+    """
+    构造独立于物理行数的深层条件控制流。
+    """
     return "def nested(value):\n" + "".join(
         f"{'    ' * level}if value:\n" for level in range(1, depth + 1)
     ) + f"{'    ' * (depth + 1)}return value\n"
 
 
 def test_structural_metrics_cover_all_host_packages_and_ignore_only_plugins(tmp_path: Path) -> None:
-    """原来未受治的宿主目录同样拦截短而多分支的函数；插件副本除外。"""
+    """
+    原来未受治的宿主目录同样拦截短而多分支的函数；插件副本除外。
+    """
     packages = (
         "adapters", "agent", "api/endpoints", "application", "chain", "db", "domain",
         "foundation", "modules", "runtime", "scheduler", "startup", "workflow", "sdk",
@@ -51,7 +61,9 @@ def test_structural_metrics_cover_all_host_packages_and_ignore_only_plugins(tmp_
 
 
 def test_complexity_limits_are_inclusive_and_nested_depth_is_independent(tmp_path: Path) -> None:
-    """圈复杂度 15、嵌套 5 层允许，跨过任一阈值必须报告。"""
+    """
+    圈复杂度 15、嵌套 5 层允许，跨过任一阈值必须报告。
+    """
     path = _write_source(tmp_path, "app/sample.py", _branches(14) + _nested(5))
     assert complexity.collect_complexity(tmp_path) == {"C901": {}, "PLR1702": {}}
     path.write_text(_branches(15) + _nested(6), encoding="utf-8")
@@ -62,7 +74,9 @@ def test_complexity_limits_are_inclusive_and_nested_depth_is_independent(tmp_pat
 
 
 def test_formatting_comments_and_docstrings_only_affect_advisory_size(tmp_path: Path) -> None:
-    """增加文档、空行或换行不消耗结构预算，但仍可观察源码规模变化。"""
+    """
+    增加文档、空行或换行不消耗结构预算，但仍可观察源码规模变化。
+    """
     path = _write_source(tmp_path, "app/sample.py", _branches(15))
     before = complexity.collect_complexity(tmp_path)
     formatted = _branches(15).replace("(value):", "(\n    value,\n):").replace(
@@ -78,7 +92,9 @@ def test_formatting_comments_and_docstrings_only_affect_advisory_size(tmp_path: 
 
 
 def test_nested_owners_and_redefinitions_do_not_share_budgets(tmp_path: Path) -> None:
-    """Match、TryStar 内嵌套函数与同名重定义必须保留独立身份。"""
+    """
+    Match、TryStar 内嵌套函数与同名重定义必须保留独立身份。
+    """
     source = (
         "class Runner:\n" + indent(_branches(15, "__hidden"), "    ")
         + "\ndef outer(value):\n    match value:\n        case 1:\n"
@@ -99,7 +115,9 @@ def test_nested_owners_and_redefinitions_do_not_share_budgets(tmp_path: Path) ->
 
 
 def test_noqa_gitignore_and_local_ruff_config_cannot_hide_metrics(tmp_path: Path) -> None:
-    """noqa、忽略文件或局部 Ruff 排除项不能绕过宿主复杂度门禁。"""
+    """
+    noqa、忽略文件或局部 Ruff 排除项不能绕过宿主复杂度门禁。
+    """
     _write_source(tmp_path, "app/sample.py", _branches(15).replace(
         "def dispatch(value):", "def dispatch(value):  # noqa: C901",
     ))
@@ -110,7 +128,9 @@ def test_noqa_gitignore_and_local_ruff_config_cannot_hide_metrics(tmp_path: Path
 
 
 def test_multiple_deep_blocks_use_the_functions_maximum_depth(tmp_path: Path) -> None:
-    """同函数多个深层块取最大深度，嵌套函数的指标归属自己。"""
+    """
+    同函数多个深层块取最大深度，嵌套函数的指标归属自己。
+    """
     source = _nested(6) + _nested(7).split("\n", 1)[1]
     source += "\ndef outer():\n" + indent(_nested(8), "    ")
     _write_source(tmp_path, "app/sample.py", source)
@@ -120,7 +140,9 @@ def test_multiple_deep_blocks_use_the_functions_maximum_depth(tmp_path: Path) ->
 
 
 def test_growth_cannot_be_offset_by_reduction_or_renaming() -> None:
-    """同文件中删除旧热点不能抵消另一个函数变复杂或搬走后的新热点。"""
+    """
+    同文件中删除旧热点不能抵消另一个函数变复杂或搬走后的新热点。
+    """
     baseline = {"C901": {"app/a.py:old": 20, "app/a.py:growing": 18}, "PLR1702": {}}
     current = {"C901": {"app/b.py:moved": 20, "app/a.py:growing": 19}, "PLR1702": {}}
     regressions, stale = complexity.classify_complexity(baseline, current)
@@ -134,7 +156,9 @@ def test_growth_cannot_be_offset_by_reduction_or_renaming() -> None:
 def test_cli_requires_and_writes_lower_watermark(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, current: dict,
 ) -> None:
-    """降低到阈值内或删除热点后必须收紧基线，后续检查才能通过。"""
+    """
+    降低到阈值内或删除热点后必须收紧基线，后续检查才能通过。
+    """
     baseline = tmp_path / "baseline.json"
     baseline.write_text(json.dumps(complexity.baseline_payload({"C901": {"app/a.py:f": 20}, "PLR1702": {}})))
     monkeypatch.setattr(complexity, "collect_complexity", lambda: current)
@@ -150,7 +174,9 @@ def test_cli_requires_and_writes_lower_watermark(
 def test_cli_refuses_to_overwrite_growth_and_keeps_diagnostic_report(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """失败时保存审查报告，但 write 绝不能把回退洗入已有基线。"""
+    """
+    失败时保存审查报告，但 write 绝不能把回退洗入已有基线。
+    """
     baseline, report = tmp_path / "baseline.json", tmp_path / "report.json"
     original = json.dumps(complexity.baseline_payload({"C901": {}, "PLR1702": {}}))
     baseline.write_text(original, encoding="utf-8")
@@ -167,7 +193,9 @@ def test_cli_refuses_to_overwrite_growth_and_keeps_diagnostic_report(
 
 
 def test_cli_missing_baseline_requires_explicit_initialization(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """缺失基线不能默认为成功，首次建账必须显式执行 write。"""
+    """
+    缺失基线不能默认为成功，首次建账必须显式执行 write。
+    """
     baseline = tmp_path / "new.json"
     monkeypatch.setattr(complexity, "collect_complexity", lambda: {"C901": {}, "PLR1702": {}})
     monkeypatch.setattr(sys, "argv", ["complexity.py", "--baseline", str(baseline)])
@@ -186,7 +214,9 @@ def test_cli_missing_baseline_requires_explicit_initialization(tmp_path: Path, m
     complexity.baseline_payload({"C901": {}}),
 ])
 def test_baseline_rejects_legacy_malformed_or_changed_policy(tmp_path: Path, payload: dict) -> None:
-    """格式、范围和阈值异常必须失败，不能静默接受旧口径。"""
+    """
+    格式、范围和阈值异常必须失败，不能静默接受旧口径。
+    """
     path = tmp_path / "baseline.json"
     path.write_text(json.dumps(payload), encoding="utf-8")
     with pytest.raises(ValueError):
@@ -200,7 +230,9 @@ def test_baseline_rejects_legacy_malformed_or_changed_policy(tmp_path: Path, pay
 def test_ruff_failures_never_become_zero_debt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: int, stdout: str, stderr: str,
 ) -> None:
-    """工具异常、输出丢失和退出状态不一致均必须阻断。"""
+    """
+    工具异常、输出丢失和退出状态不一致均必须阻断。
+    """
     result = subprocess.CompletedProcess([], status, stdout, stderr)
     monkeypatch.setattr(complexity.subprocess, "run", lambda *args, **kwargs: result)
     with pytest.raises(ValueError):
@@ -214,7 +246,9 @@ def test_ruff_failures_never_become_zero_debt(
 def test_unrecognized_diagnostics_fail_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, changes: dict,
 ) -> None:
-    """Ruff 升级改变输出或无法定位 owner 时不能漏记债务。"""
+    """
+    Ruff 升级改变输出或无法定位 owner 时不能漏记债务。
+    """
     path = _write_source(tmp_path, "app/sample.py", _branches(15))
     diagnostic = {
         "code": "C901", "message": "metric (16 > 15)",
@@ -226,7 +260,9 @@ def test_unrecognized_diagnostics_fail_closed(
 
 
 def test_missing_or_invalid_source_cannot_shrink_baseline(tmp_path: Path) -> None:
-    """扫描根消失或源码损坏不能被当成复杂度下降。"""
+    """
+    扫描根消失或源码损坏不能被当成复杂度下降。
+    """
     with pytest.raises(ValueError, match="未找到"):
         complexity.collect_complexity(tmp_path)
     _write_source(tmp_path, "app/sample.py", "invalid syntax !")
