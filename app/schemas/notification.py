@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from app.schemas.types import NotificationChannel
 
 
-class WechatClawBotKnownTarget(BaseModel):
+class WechatClawBotKnownTarget(BaseModel):  # type: ignore[misc]
     """微信 ClawBot 已知消息目标。"""
 
     userid: str
@@ -17,7 +17,7 @@ class WechatClawBotKnownTarget(BaseModel):
     last_active: Optional[int | float] = None
 
 
-class WechatClawBotData(BaseModel):
+class WechatClawBotData(BaseModel):  # type: ignore[misc]
     """微信 ClawBot 登录状态或操作结果。"""
 
     success: bool
