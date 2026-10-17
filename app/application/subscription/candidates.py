@@ -1,4 +1,6 @@
-"""订阅候选的无损路由合同。"""
+"""
+订阅候选的无损路由合同。
+"""
 
 import copy
 from typing import Any, Dict, List, Optional, cast
@@ -13,10 +15,14 @@ CandidateGroups = Dict[str, List[Context]]
 
 
 class CandidateIndex:
-    """一次构建并保持原顺序的订阅候选身份索引。"""
+    """
+    一次构建并保持原顺序的订阅候选身份索引。
+    """
 
     def __init__(self, candidates: CandidateGroups) -> None:
-        """记录候选顺序、明确身份和必须保守处理的候选集合。"""
+        """
+        记录候选顺序、明确身份和必须保守处理的候选集合。
+        """
         self._ordered: list[tuple[str, Context]] = []
         self._by_identity: dict[tuple[str, str], set[int]] = {}
         self._unknown: set[int] = set()
@@ -47,7 +53,9 @@ class CandidateIndex:
         *,
         allow_title_match: bool = False,
     ) -> List[Context]:
-        """返回严格身份候选，并按需附加显式标记的标题兜底副本。"""
+        """
+        返回严格身份候选，并按需附加显式标记的标题兜底副本。
+        """
         results: List[Context] = []
         for _domain, context in self._ordered:
             copied = copy.deepcopy(context)
@@ -66,7 +74,9 @@ class CandidateIndex:
         domains: Optional[set[str]] = None,
         site_ids: Optional[set[int]] = None,
     ) -> CandidateGroups:
-        """保守路由可能命中的候选，并在外部事实查询前应用站点范围。"""
+        """
+        保守路由可能命中的候选，并在外部事实查询前应用站点范围。
+        """
         if subscribe.custom_words:
             positions = set(range(len(self._ordered)))
         else:
@@ -101,7 +111,9 @@ class CandidateIndex:
 
     @classmethod
     def strict_matches(cls, context: Context, subscribe: SubscriptionSnapshot) -> bool:
-        """判断候选自身明确身份、类型和季是否严格命中订阅。"""
+        """
+        判断候选自身明确身份、类型和季是否严格命中订阅。
+        """
         if not cls.media_type_matches(context, subscribe):
             return False
         if not cls.season_matches(context, subscribe):
@@ -111,7 +123,9 @@ class CandidateIndex:
 
     @classmethod
     def title_matches(cls, context: Context, subscribe: SubscriptionSnapshot) -> bool:
-        """仅允许身份缺失候选按标题进入低置信诊断兜底。"""
+        """
+        仅允许身份缺失候选按标题进入低置信诊断兜底。
+        """
         if cls.context_identities(context):
             return False
         if not cls.media_type_matches(context, subscribe):
@@ -136,7 +150,9 @@ class CandidateIndex:
 
     @staticmethod
     def mark_title_candidate(context: Context, subscribe: SubscriptionSnapshot) -> None:
-        """把标题兜底副本标记为目标回填，避免伪装成候选自身识别结果。"""
+        """
+        把标题兜底副本标记为目标回填，避免伪装成候选自身识别结果。
+        """
         context.match_source = "title"
         context.candidate_recognized = False
         context.media_info_is_target = True
@@ -150,7 +166,9 @@ class CandidateIndex:
 
     @classmethod
     def media_type_matches(cls, context: Context, subscribe: SubscriptionSnapshot) -> bool:
-        """类型已知且冲突时拒绝，缺失类型保持保守候选。"""
+        """
+        类型已知且冲突时拒绝，缺失类型保持保守候选。
+        """
         subscribe_type = cls.normalize_media_type(subscribe.type)
         media_info = getattr(context, "media_info", None)
         meta_info = getattr(context, "meta_info", None)
@@ -168,7 +186,9 @@ class CandidateIndex:
 
     @classmethod
     def season_matches(cls, context: Context, subscribe: SubscriptionSnapshot) -> bool:
-        """仅在资源季信息明确排除目标季时拒绝。"""
+        """
+        仅在资源季信息明确排除目标季时拒绝。
+        """
         target_season = cls.normalize_int(subscribe.season)
         if target_season is None:
             return True
@@ -182,7 +202,9 @@ class CandidateIndex:
 
     @classmethod
     def meta_seasons(cls, meta_info: Any) -> set[int]:
-        """提取标题解析出的显式季范围。"""
+        """
+        提取标题解析出的显式季范围。
+        """
         meta_fields = vars(meta_info) if meta_info else {}
         if "season_list" in meta_fields:
             season_list = {
@@ -208,7 +230,9 @@ class CandidateIndex:
 
     @classmethod
     def context_identities(cls, context: Context) -> set[tuple[str, str]]:
-        """提取候选媒体信息与标题标签中的通用媒体身份。"""
+        """
+        提取候选媒体信息与标题标签中的通用媒体身份。
+        """
         identities = {
             cls.media_identity(getattr(context, "media_info", None)),
             cls.media_identity(getattr(context, "meta_info", None)),
@@ -217,7 +241,9 @@ class CandidateIndex:
 
     @staticmethod
     def media_identity(media: Any) -> Optional[tuple[str, str]]:
-        """把动态媒体对象的身份归一为可索引键。"""
+        """
+        把动态媒体对象的身份归一为可索引键。
+        """
         source, media_id = resolve_media_identity(media=media)
         if not source or not media_id:
             return None
@@ -225,7 +251,9 @@ class CandidateIndex:
 
     @staticmethod
     def normalize_int(value: Any) -> Optional[int]:
-        """将季号等动态字段转为整数。"""
+        """
+        将季号等动态字段转为整数。
+        """
         if value is None:
             return None
         try:
@@ -235,7 +263,9 @@ class CandidateIndex:
 
     @staticmethod
     def normalize_media_type(value: Any) -> Optional[str]:
-        """统一媒体类型枚举与字符串形态。"""
+        """
+        统一媒体类型枚举与字符串形态。
+        """
         if isinstance(value, MediaType):
             value = value.value
         if value == MediaType.UNKNOWN.value:
@@ -244,5 +274,7 @@ class CandidateIndex:
 
     @staticmethod
     def normalize_title(value: Any) -> str:
-        """归一标题用于低置信标题匹配。"""
+        """
+        归一标题用于低置信标题匹配。
+        """
         return (text_tools.normalize_upper(value or "") or "").strip()

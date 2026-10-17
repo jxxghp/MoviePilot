@@ -1,4 +1,5 @@
-"""订阅洗版优先级与缺失集计算的领域规则。
+"""
+订阅洗版优先级与缺失集计算的领域规则。
 
 本模块是订阅按集事实（note / episode_priority）、洗版准入基线
 （current_priority）和目标范围推导的唯一算法来源；链层只保留薄委托，
@@ -578,7 +579,8 @@ def should_prefer_full_pack_for_initial_download(
     mediakey: Union[int, str],
     no_exists: Optional[Dict[Union[int, str], Dict[int, NotExistMediaInfo]]],
 ) -> bool:
-    """普通电视剧尚无下载记录且媒体库缺少全部目标集时，允许首轮优先整包。
+    """
+    普通电视剧尚无下载记录且媒体库缺少全部目标集时，允许首轮优先整包。
 
     缺集事实优先于缓存的 lack_episode；已有任意下载记录或媒体库已有目标集时保留补集行为。
     """

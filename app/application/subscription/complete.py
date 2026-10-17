@@ -1,4 +1,6 @@
-"""订阅完成应用命令及其同步事务端口。"""
+"""
+订阅完成应用命令及其同步事务端口。
+"""
 
 from __future__ import annotations
 
@@ -29,7 +31,9 @@ CompletionReporter = Callable[[Mapping[str, JsonData]], object]
 
 
 class CompleteSubscriptionCommand:
-    """原子完成订阅，并按通知、事件、统计顺序执行提交后副作用。"""
+    """
+    原子完成订阅，并按通知、事件、统计顺序执行提交后副作用。
+    """
 
     def __init__(
         self,
@@ -39,7 +43,9 @@ class CompleteSubscriptionCommand:
         dispatch_store: Optional[OutboxDispatchStore],
         publish: Callable[[dict[str, JsonData]], None],
     ) -> None:
-        """注入共享同步会话、事件发布端口和可选 durable outbox。"""
+        """
+        注入共享同步会话、事件发布端口和可选 durable outbox。
+        """
         self._repository = repository
         self._unit_of_work = unit_of_work
         self._outbox = outbox
@@ -56,7 +62,9 @@ class CompleteSubscriptionCommand:
         notification: Mapping[str, JsonData] | None = None,
         classification_snapshot: EffectiveClassificationSnapshot | None = None,
     ) -> None:
-        """在同一事务中写历史、删订阅并暂存完成事件、通知与统计意图。"""
+        """
+        在同一事务中写历史、删订阅并暂存完成事件、通知与统计意图。
+        """
         info = dict(subscribe_info)
         if classification_snapshot is not None:
             info.update(
@@ -174,7 +182,9 @@ def completion_event_key(
     *,
     occurrence_id: Optional[str] = None,
 ) -> str:
-    """由订阅身份和本次完成事实构造跨重试稳定且不复用的幂等键。"""
+    """
+    由订阅身份和本次完成事实构造跨重试稳定且不复用的幂等键。
+    """
     resolved_occurrence_id = occurrence_id or uuid4().hex
     return (
         f"subscribe.complete:{subscribe_id}:"
@@ -189,7 +199,9 @@ def completion_report_key(
     *,
     occurrence_id: Optional[str] = None,
 ) -> str:
-    """构造可独立重试的订阅完成统计幂等键。"""
+    """
+    构造可独立重试的订阅完成统计幂等键。
+    """
     event_key = completion_event_key(
         subscribe_id,
         subscribe_info,
@@ -204,7 +216,9 @@ def completion_notification_key(
     *,
     occurrence_id: Optional[str] = None,
 ) -> str:
-    """构造订阅完成通知的稳定幂等键，避免恢复时重复生成不同消息。"""
+    """
+    构造订阅完成通知的稳定幂等键，避免恢复时重复生成不同消息。
+    """
     event_key = completion_event_key(
         subscribe_id,
         subscribe_info,
@@ -217,7 +231,9 @@ def _completion_report_payload(
     subscribe_info: Mapping[str, JsonData],
     report_key: str,
 ) -> dict[str, JsonData]:
-    """保留旧统计接口字段，同时为恢复 handler 固化幂等键。"""
+    """
+    保留旧统计接口字段，同时为恢复 handler 固化幂等键。
+    """
     return {
         "media_source": subscribe_info.get("media_source"),
         "media_id": subscribe_info.get("media_id"),

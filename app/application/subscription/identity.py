@@ -1,4 +1,6 @@
-"""按媒体身份批量删除订阅的应用用例。"""
+"""
+按媒体身份批量删除订阅的应用用例。
+"""
 
 from datetime import datetime, timezone
 from typing import Callable, Optional, cast
@@ -28,7 +30,9 @@ SubscribeDeletionEventErrorHandler = Callable[[int, Exception], None]
 
 
 class DeleteSubscriptionsByIdentityCommand:
-    """按媒体身份删除当前用户可访问的全部订阅。"""
+    """
+    按媒体身份删除当前用户可访问的全部订阅。
+    """
 
     def __init__(
         self,
@@ -39,7 +43,9 @@ class DeleteSubscriptionsByIdentityCommand:
         outbox: Optional[AsyncOutboxStager] = None,
         dispatch_store: Optional[AsyncOutboxDispatchStore] = None,
     ) -> None:
-        """注入数据访问、事务、事件和事件错误处理端口。"""
+        """
+        注入数据访问、事务、事件和事件错误处理端口。
+        """
         self._repository = repository
         self._unit_of_work = unit_of_work
         self._publish_deleted = publish_deleted
@@ -55,7 +61,9 @@ class DeleteSubscriptionsByIdentityCommand:
         music_type: str | None,
         actor: SubscribeDeletionActor,
     ) -> int:
-        """删除匹配订阅，并在提交后逐条发送兼容事件。"""
+        """
+        删除匹配订阅，并在提交后逐条发送兼容事件。
+        """
         candidates = await self._repository.list_candidates_by_identity(
             SubscriptionIdentity(
                 media_source=media_source,
@@ -100,7 +108,9 @@ class DeleteSubscriptionsByIdentityCommand:
                     async def publish_event(
                         payload: dict[str, JsonData] = event_payload,
                     ) -> None:
-                        """发布当前删除候选对应的稳定事件快照。"""
+                        """
+                        发布当前删除候选对应的稳定事件快照。
+                        """
                         await self._publish_deleted(payload)
 
                     await deliver_async_outbox_effect(
@@ -119,7 +129,9 @@ class DeleteSubscriptionsByIdentityCommand:
         candidate: SubscribeDeletionCandidate,
         actor: SubscribeDeletionActor,
     ) -> bool:
-        """判断用户是否拥有候选订阅的删除权限。"""
+        """
+        判断用户是否拥有候选订阅的删除权限。
+        """
         if actor.is_superuser:
             return True
         return bool(candidate.username) and candidate.username == actor.username
