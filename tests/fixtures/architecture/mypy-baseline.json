@@ -1222,24 +1222,13 @@
     "type-arg": 10
   },
   "app/modules/rtorrent/__init__.py": {
-    "arg-type": 10,
+    "arg-type": 5,
     "assignment": 16,
     "empty-body": 1,
     "no-redef": 1,
     "no-untyped-def": 1,
-    "operator": 1,
     "str-bytes-safe": 2,
-    "type-arg": 9
-  },
-  "app/modules/rtorrent/rtorrent.py": {
-    "arg-type": 15,
-    "assignment": 6,
-    "index": 28,
-    "misc": 1,
-    "no-untyped-def": 6,
-    "operator": 62,
-    "type-arg": 16,
-    "union-attr": 48
+    "type-arg": 7
   },
   "app/modules/slack/__init__.py": {
     "arg-type": 8,
