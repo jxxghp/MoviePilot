@@ -1,3 +1,7 @@
+"""
+验证异步 HTTP 请求在 HTTP/2 故障时的降级、熔断和恢复。
+"""
+
 import asyncio
 import ssl
 import time
@@ -15,7 +19,9 @@ URL = "https://raw.githubusercontent.com/demo/repo/main/package.json"
 
 @pytest.fixture(autouse=True)
 def _reset_h2_proxy_breaker():
-    """每个用例前后清空熔断状态，避免跨用例污染进程级熔断字典。"""
+    """
+    每个用例前后清空熔断状态，避免跨用例污染进程级熔断字典。
+    """
     http_module._h2_proxy_retry_at.clear()
     yield
     http_module._h2_proxy_retry_at.clear()
@@ -127,7 +133,9 @@ def test_timeout_still_raises_when_raise_exception_enabled(monkeypatch):
 
 
 def test_proxy_connect_error_retries_with_tls12(monkeypatch):
-    """代理 TLS 握手连接错误时，幂等请求应只回退一次 TLS 1.2。"""
+    """
+    代理 TLS 握手连接错误时，幂等请求应只回退一次 TLS 1.2。
+    """
     calls = []
 
     async def fake(
@@ -160,7 +168,9 @@ def test_proxy_connect_error_retries_with_tls12(monkeypatch):
 
 
 def test_stream_proxy_connect_error_retries_with_tls12(monkeypatch):
-    """流式代理 HTTPS 请求也应在握手连接错误后回退 TLS 1.2。"""
+    """
+    流式代理 HTTPS 请求也应在握手连接错误后回退 TLS 1.2。
+    """
     seen_verifies = []
 
     def fake_transport(**kwargs):
@@ -224,7 +234,9 @@ def test_no_proxy_configured_skips_breaker_logic(monkeypatch):
 
 
 def test_internal_client_uses_httpx2_transport(monkeypatch):
-    """宿主自建客户端使用 HTTPX2，并返回对应响应对象。"""
+    """
+    宿主自建客户端使用 HTTPX2，并返回对应响应对象。
+    """
 
     async def respond(request: httpx2.Request) -> httpx2.Response:
         return httpx2.Response(200, json={"client": "httpx2"}, request=request)
@@ -244,7 +256,9 @@ def test_internal_client_uses_httpx2_transport(monkeypatch):
 
 
 def test_plugin_sdk_uses_httpx2_by_default(monkeypatch):
-    """插件 SDK 默认复用宿主 HTTPX2 客户端合同。"""
+    """
+    插件 SDK 默认复用宿主 HTTPX2 客户端合同。
+    """
 
     async def respond(request: httpx2.Request) -> httpx2.Response:
         return httpx2.Response(200, request=request)
@@ -266,7 +280,9 @@ def test_plugin_sdk_uses_httpx2_by_default(monkeypatch):
 
 
 def test_legacy_http_module_uses_httpx2_by_default(monkeypatch):
-    """旧插件 HTTP 导入入口随宿主默认客户端迁移到 HTTPX2。"""
+    """
+    旧插件 HTTP 导入入口随宿主默认客户端迁移到 HTTPX2。
+    """
     import importlib
 
     legacy_http = importlib.import_module("app.utils.http")

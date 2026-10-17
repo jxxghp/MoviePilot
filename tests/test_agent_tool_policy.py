@@ -1,3 +1,7 @@
+"""
+验证内置工具策略覆盖、只读例外和敏感操作权限。
+"""
+
 import asyncio
 import json
 from types import SimpleNamespace
@@ -39,37 +43,49 @@ from app.schemas.types import NotificationChannel
 
 
 class _EchoInput(BaseModel):
-    """策略测试工具的输入契约。"""
+    """
+    策略测试工具的输入契约。
+    """
 
     query: str = Field(description="待回显文本")
 
 
 class _AgentFactoryLLM:
-    """满足 Agent 构建与摘要中间件所需合同的测试模型。"""
+    """
+    满足 Agent 构建与摘要中间件所需合同的测试模型。
+    """
 
     _llm_type = "openai-chat"
     model = "fake"
     profile = {"max_input_tokens": 64000}
 
     def with_retry(self):
-        """返回可供摘要中间件调用的 Runnable。"""
+        """
+        返回可供摘要中间件调用的 Runnable。
+        """
         return self
 
 
 class _EchoTool(MoviePilotTool):
-    """返回输入文本的测试工具。"""
+    """
+    返回输入文本的测试工具。
+    """
 
     name: str = "policy_echo"
     description: str = "Echo policy test input."
     args_schema: type[BaseModel] = _EchoInput
 
     async def run(self, query: str) -> str:
-        """返回输入文本。"""
+        """
+        返回输入文本。
+        """
         return query
 
 
 class _OverrideArunTool(_EchoTool):
-    """模拟插件覆盖宿主工具基类 `_arun` 的实现。"""
+    """
+    模拟插件覆盖宿主工具基类 `_arun` 的实现。
+    """
 
     name: str = "plugin_override_arun"
 
@@ -78,23 +94,31 @@ class _OverrideArunTool(_EchoTool):
         self._events = events
 
     async def _arun(self, *args, **kwargs) -> str:
-        """绕过基类实现并记录真实执行顺序。"""
+        """
+        绕过基类实现并记录真实执行顺序。
+        """
         self._events.append("tool")
         return str(kwargs.get("query") or "ok")
 
 
 class _FailingTool(_EchoTool):
-    """抛出固定异常以验证 direct manager 的 observation fail-open。"""
+    """
+    抛出固定异常以验证 direct manager 的 observation fail-open。
+    """
 
     name: str = "policy_failure"
 
     async def run(self, query: str) -> str:
-        """模拟真实工具失败。"""
+        """
+        模拟真实工具失败。
+        """
         raise ValueError(f"tool-error:{query}")
 
 
 class _AdminSafeReadTool(_EchoTool):
-    """声明管理员门禁的动态测试工具。"""
+    """
+    声明管理员门禁的动态测试工具。
+    """
 
     name: str = "admin_test_tool"
     require_admin: bool = True
@@ -104,18 +128,24 @@ class _AdminSafeReadTool(_EchoTool):
         self._events = events
 
     async def run(self, query: str) -> str:
-        """记录实际执行，区分旧门禁放行与拒绝。"""
+        """
+        记录实际执行，区分旧门禁放行与拒绝。
+        """
         self._events.append("run")
         return query
 
 
 def _tool_class_name(tool_class: type[MoviePilotTool]) -> str:
-    """从 Pydantic 字段默认值读取工具类的稳定名称。"""
+    """
+    从 Pydantic 字段默认值读取工具类的稳定名称。
+    """
     return str(tool_class.model_fields["name"].default)
 
 
 def _interactive_context(*, is_admin: bool = True) -> ToolPolicyContext:
-    """构造会随本轮管理员上下文刷新的交互式策略上下文。"""
+    """
+    构造会随本轮管理员上下文刷新的交互式策略上下文。
+    """
     return ToolPolicyContext(
         session_id="session-1",
         user_id="user-1",
@@ -129,7 +159,9 @@ def _interactive_context(*, is_admin: bool = True) -> ToolPolicyContext:
 
 
 def test_builtin_policy_inventory_covers_every_fixed_tool() -> None:
-    """固定内置工具 inventory 必须随工厂入口同步。"""
+    """
+    固定内置工具 inventory 必须随工厂入口同步。
+    """
     fixed_tool_names = {_tool_class_name(tool_class) for tool_class in MoviePilotToolFactory.BUILTIN_TOOL_CLASSES}
     fixed_tool_names.update(
         {
@@ -148,7 +180,9 @@ def test_builtin_policy_inventory_covers_every_fixed_tool() -> None:
 
 
 def test_registry_applies_safe_read_exceptions_and_defaults_to_shadow() -> None:
-    """SAFE_READ 仅用于明确例外，其他固定和动态工具默认 shadow。"""
+    """
+    SAFE_READ 仅用于明确例外，其他固定和动态工具默认 shadow。
+    """
     safe_policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
         tool_name="persona",
         arguments={"action": "list"},
@@ -197,7 +231,9 @@ def test_registry_applies_safe_read_exceptions_and_defaults_to_shadow() -> None:
 def test_system_settings_without_secret_values_is_enforced_read(
     show_secrets,
 ) -> None:
-    """普通设置读取维持既有兼容路径，不增加确认。"""
+    """
+    普通设置读取维持既有兼容路径，不增加确认。
+    """
     policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
         tool_name="moviepilot_api",
         arguments={
@@ -212,7 +248,9 @@ def test_system_settings_without_secret_values_is_enforced_read(
 
 
 def test_system_settings_secret_read_has_enforced_sensitive_policy() -> None:
-    """显式读取密钥只能进入宿主强制确认策略。"""
+    """
+    显式读取密钥只能进入宿主强制确认策略。
+    """
     policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
         tool_name="moviepilot_api",
         arguments={
@@ -232,7 +270,9 @@ def test_system_settings_secret_read_has_enforced_sensitive_policy() -> None:
 
 
 def test_system_settings_secret_read_query_cannot_bypass_confirmation() -> None:
-    """GET 查询参数不能绕过敏感设置读取的确认策略。"""
+    """
+    GET 查询参数不能绕过敏感设置读取的确认策略。
+    """
     policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
         tool_name="moviepilot_api",
         arguments={
@@ -249,7 +289,9 @@ def test_system_settings_secret_read_query_cannot_bypass_confirmation() -> None:
 
 
 def test_system_settings_describe_secret_read_has_the_same_confirmation_boundary() -> None:
-    """新的精确设置读取入口不能绕过旧入口的明文敏感值确认。"""
+    """
+    新的精确设置读取入口不能绕过旧入口的明文敏感值确认。
+    """
     policy = DEFAULT_TOOL_POLICY_REGISTRY.resolve(
         tool_name="moviepilot_api",
         arguments={
@@ -266,7 +308,9 @@ def test_system_settings_describe_secret_read_has_the_same_confirmation_boundary
 
 
 def test_legacy_shadow_decision_allows_without_claiming_enforcement() -> None:
-    """shadow 决策只能观测，不能拒绝或要求确认。"""
+    """
+    shadow 决策只能观测，不能拒绝或要求确认。
+    """
     context = _interactive_context()
     tool = _EchoTool(session_id="session-1", user_id="user-1")
 
@@ -282,7 +326,9 @@ def test_legacy_shadow_decision_allows_without_claiming_enforcement() -> None:
 
 
 def test_sensitive_policy_stays_shadow_in_generic_orchestrator() -> None:
-    """API 敏感读取在通用编排器中等待交互入口完成确认。"""
+    """
+    API 敏感读取在通用编排器中等待交互入口完成确认。
+    """
     tool = MoviePilotApiTool(session_id="session-1", user_id="1")
     tool.set_agent_context({"is_admin": True})
 
@@ -303,7 +349,9 @@ def test_sensitive_policy_stays_shadow_in_generic_orchestrator() -> None:
 
 
 def test_policy_context_reads_mutable_admin_state_without_model_fields() -> None:
-    """缓存图复用时权限取当前宿主状态，模型参数不能伪造 principal。"""
+    """
+    缓存图复用时权限取当前宿主状态，模型参数不能伪造 principal。
+    """
     context = _interactive_context(is_admin=False)
     forged_arguments = {
         "query": "hello",
@@ -320,7 +368,9 @@ def test_policy_context_reads_mutable_admin_state_without_model_fields() -> None
 
 
 def test_policy_context_maps_trusted_host_origins() -> None:
-    """各入口必须由宿主稳定映射 origin、主体类型和认证来源。"""
+    """
+    各入口必须由宿主稳定映射 origin、主体类型和认证来源。
+    """
     cases = [
         (
             {"channel": NotificationChannel.Web.value, "source": "openai"},
@@ -399,7 +449,9 @@ def test_policy_context_maps_trusted_host_origins() -> None:
 
 
 def test_host_middleware_observes_plugin_before_overridden_arun() -> None:
-    """插件覆盖 `_arun` 时，宿主 middleware 仍必须先执行策略。"""
+    """
+    插件覆盖 `_arun` 时，宿主 middleware 仍必须先执行策略。
+    """
     events: list[str] = []
     tool = _OverrideArunTool(
         events,
@@ -440,7 +492,9 @@ def test_host_middleware_observes_plugin_before_overridden_arun() -> None:
 def test_middleware_observation_failure_does_not_replace_success(
     failed_phase: str,
 ) -> None:
-    """shadow start/finish 故障不能阻止 handler 或替换成功结果。"""
+    """
+    shadow start/finish 故障不能阻止 handler 或替换成功结果。
+    """
     orchestrator = MagicMock()
     orchestrator.start.return_value = SimpleNamespace(decision=SimpleNamespace(allowed=True))
     getattr(orchestrator, failed_phase).side_effect = RuntimeError(f"policy-{failed_phase}-failure")
@@ -467,7 +521,9 @@ def test_middleware_observation_failure_does_not_replace_success(
 
 
 def test_middleware_fail_observation_does_not_mask_tool_error() -> None:
-    """shadow fail hook 故障后仍返回真实工具故障，模型可以继续处理。"""
+    """
+    shadow fail hook 故障后仍返回真实工具故障，模型可以继续处理。
+    """
     orchestrator = MagicMock()
     orchestrator.start.return_value = SimpleNamespace(decision=SimpleNamespace(allowed=True))
     orchestrator.fail.side_effect = RuntimeError("policy-fail-hook-failure")
@@ -493,7 +549,9 @@ def test_middleware_fail_observation_does_not_mask_tool_error() -> None:
 
 
 def test_middleware_keeps_shadow_observation_without_enforcing_decision() -> None:
-    """普通 ToolNode 不得因 shadow 观测决策改变既有行为。"""
+    """
+    普通 ToolNode 不得因 shadow 观测决策改变既有行为。
+    """
     orchestrator = MagicMock()
     orchestrator.start.return_value = SimpleNamespace(decision=SimpleNamespace(allowed=False))
     middleware = AgentPolicyMiddleware(
@@ -515,7 +573,9 @@ def test_middleware_keeps_shadow_observation_without_enforcing_decision() -> Non
 
 
 def test_enforced_policy_start_failure_blocks_handler() -> None:
-    """强制策略无法形成决定时不得继续执行受保护工具。"""
+    """
+    强制策略无法形成决定时不得继续执行受保护工具。
+    """
     orchestrator = MagicMock()
     orchestrator.start.side_effect = RuntimeError("policy-start-failure")
     middleware = AgentPolicyMiddleware(
@@ -540,7 +600,9 @@ def test_enforced_policy_start_failure_blocks_handler() -> None:
 
 
 def test_policy_hook_failure_logs_only_stable_type_information() -> None:
-    """fail-open 诊断只记录阶段和异常类型，不读取可能含凭据的异常文本。"""
+    """
+    fail-open 诊断只记录阶段和异常类型，不读取可能含凭据的异常文本。
+    """
     mock_logger = MagicMock()
 
     def _fail() -> None:
@@ -557,7 +619,9 @@ def test_policy_hook_failure_logs_only_stable_type_information() -> None:
 
 
 def test_policy_hook_hostile_error_type_is_fail_open() -> None:
-    """异常类型名协议不可信时，观测故障仍不得逃出 fail-open 边界。"""
+    """
+    异常类型名协议不可信时，观测故障仍不得逃出 fail-open 边界。
+    """
     secret_marker = "hostile-policy-type-secret-6274"
 
     class _HostileMeta(type):
@@ -610,7 +674,9 @@ def test_agent_admin_dynamic_tool_keeps_existing_authorization_authority(
     expected_result: str,
     expected_run_count: int,
 ) -> None:
-    """动态工具仍由既有管理员门禁决定是否进入 handler。"""
+    """
+    动态工具仍由既有管理员门禁决定是否进入 handler。
+    """
     events: list[str] = []
     observations = []
     original_start = DEFAULT_TOOL_POLICY_ORCHESTRATOR.start
@@ -670,7 +736,9 @@ def test_agent_admin_dynamic_tool_keeps_existing_authorization_authority(
 
 
 def test_direct_non_admin_safe_read_rejects_before_policy_or_schema() -> None:
-    """direct 未授权请求保持原 JSON 拒绝格式且不提前触发 policy/schema。"""
+    """
+    direct 未授权请求保持原 JSON 拒绝格式且不提前触发 policy/schema。
+    """
     events: list[str] = []
     orchestrator = MagicMock()
     tool = _AdminSafeReadTool(
@@ -699,7 +767,9 @@ def test_direct_non_admin_safe_read_rejects_before_policy_or_schema() -> None:
 def test_direct_manager_observation_failure_does_not_replace_success(
     failed_phase: str,
 ) -> None:
-    """direct manager 的 shadow start/finish 故障不能改写真实返回值。"""
+    """
+    direct manager 的 shadow start/finish 故障不能改写真实返回值。
+    """
     orchestrator = MagicMock()
     orchestrator.start.return_value = object()
     getattr(orchestrator, failed_phase).side_effect = RuntimeError(f"policy-{failed_phase}-failure")
@@ -716,7 +786,9 @@ def test_direct_manager_observation_failure_does_not_replace_success(
 
 
 def test_direct_manager_fail_observation_does_not_mask_tool_error() -> None:
-    """direct manager 的 fail hook 故障不能替换既有工具错误格式。"""
+    """
+    direct manager 的 fail hook 故障不能替换既有工具错误格式。
+    """
     orchestrator = MagicMock()
     orchestrator.start.return_value = object()
     orchestrator.fail.side_effect = RuntimeError("policy-fail-hook-failure")
@@ -735,7 +807,9 @@ def test_direct_manager_fail_observation_does_not_mask_tool_error() -> None:
 
 
 def test_direct_manager_and_agent_middleware_share_policy_resolution() -> None:
-    """相同工具参数在 Agent 与 direct 入口应获得相同动作策略。"""
+    """
+    相同工具参数在 Agent 与 direct 入口应获得相同动作策略。
+    """
     observations = []
     original_start = DEFAULT_TOOL_POLICY_ORCHESTRATOR.start
 
@@ -786,7 +860,9 @@ def test_direct_manager_and_agent_middleware_share_policy_resolution() -> None:
 
 
 def test_agent_middleware_secret_setting_result_stays_out_of_receipt_logs() -> None:
-    """Agent ToolNode 可接收管理员请求的原值，但策略回执不得记录该值。"""
+    """
+    Agent ToolNode 可接收管理员请求的原值，但策略回执不得记录该值。
+    """
     secret_marker = "middleware-secret-setting-marker"
     executor = AsyncMock()
     executor.execute.return_value = json.dumps(
@@ -833,7 +909,9 @@ def test_agent_middleware_secret_setting_result_stays_out_of_receipt_logs() -> N
 
 
 def test_main_agent_registers_policy_middleware_as_outermost() -> None:
-    """主 Agent 必须把宿主策略中间件放在 middleware 链最外层。"""
+    """
+    主 Agent 必须把宿主策略中间件放在 middleware 链最外层。
+    """
     agent = agent_module.MoviePilotAgent(session_id="session-1", user_id="user-1")
     fake_llm = _AgentFactoryLLM()
     captured = {}
@@ -856,7 +934,9 @@ def test_main_agent_registers_policy_middleware_as_outermost() -> None:
 
 
 def test_main_agent_preserves_memory_middleware_order() -> None:
-    """策略层加入后，统一 MemoryMiddleware 仍位于摘要压缩之前。"""
+    """
+    策略层加入后，统一 MemoryMiddleware 仍位于摘要压缩之前。
+    """
     agent = agent_module.MoviePilotAgent(
         session_id="session-1",
         user_id="user-1",

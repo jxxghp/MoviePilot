@@ -1,3 +1,7 @@
+"""
+验证验证码识别工具的注册、图像输入和 OCR 请求配置。
+"""
+
 import asyncio
 import base64
 import json
@@ -13,24 +17,34 @@ from app.agent.tools.manager import MoviePilotToolsManager
 
 
 class _FakeResponse:
-    """测试用响应对象，模拟 requests.Response 的最小行为。"""
+    """
+    测试用响应对象，模拟 requests.Response 的最小行为。
+    """
 
     def __init__(self, content: bytes = b"", payload: dict = None):
-        """初始化响应内容与 JSON 载荷。"""
+        """
+        初始化响应内容与 JSON 载荷。
+        """
         self.content = content
         self.payload = payload or {}
 
     def json(self) -> dict:
-        """返回测试预设 JSON 内容。"""
+        """
+        返回测试预设 JSON 内容。
+        """
         return self.payload
 
     def __bool__(self) -> bool:
-        """模拟 requests.Response 在成功状态下为真。"""
+        """
+        模拟 requests.Response 在成功状态下为真。
+        """
         return True
 
 
 def test_factory_registers_recognize_captcha_tool():
-    """工具工厂应注册图形验证码识别工具。"""
+    """
+    工具工厂应注册图形验证码识别工具。
+    """
     with patch(
         "app.agent.tools.factory._get_plugin_agent_tools",
         return_value=[],
@@ -46,7 +60,9 @@ def test_factory_registers_recognize_captcha_tool():
 
 
 def test_mcp_tool_manager_exposes_recognize_captcha_schema():
-    """MCP 工具管理器应暴露验证码识别工具参数。"""
+    """
+    MCP 工具管理器应暴露验证码识别工具参数。
+    """
     tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
     catalog = ToolCatalogSnapshot.from_tools(
         [tool], plugin_revision=0, factory_revision="test"
@@ -73,7 +89,9 @@ def test_mcp_tool_manager_exposes_recognize_captcha_schema():
 
 
 def test_ocr_helper_extracts_data_url_as_raw_image_without_downloading_image():
-    """data:image 地址应解码为原始字节并提交给 OCR 二进制接口。"""
+    """
+    data:image 地址应解码为原始字节并提交给 OCR 二进制接口。
+    """
     image_b64 = base64.b64encode(b"captcha-image").decode()
     image_url = f"data:image/png;base64,{image_b64}"
 
@@ -91,7 +109,9 @@ def test_ocr_helper_extracts_data_url_as_raw_image_without_downloading_image():
 
 
 def test_ocr_helper_accepts_injected_runtime_base_url():
-    """OCR 地址支持由组合根显式注入，并统一补齐接口路径。"""
+    """
+    OCR 地址支持由组合根显式注入，并统一补齐接口路径。
+    """
     helper = OcrHelper(ocr_base_url="https://ocr.example.test/")
 
     assert helper._ocr_b64_url == "https://ocr.example.test/captcha/base64"
@@ -99,7 +119,9 @@ def test_ocr_helper_accepts_injected_runtime_base_url():
 
 
 def test_ocr_helper_normalizes_data_url_base64_padding():
-    """data:image 地址缺少 padding 时应补齐后提交给 OCR 服务。"""
+    """
+    data:image 地址缺少 padding 时应补齐后提交给 OCR 服务。
+    """
     image_url = "data:image/jpeg;base64,YWJjZA"
 
     with patch("app.adapters.external.ocr.RequestUtils") as request_utils:
@@ -115,7 +137,9 @@ def test_ocr_helper_normalizes_data_url_base64_padding():
 
 
 def test_ocr_helper_downloads_http_image_and_posts_raw_bytes():
-    """HTTP 图片地址应由 Agent 端下载后以原始字节提交给 OCR。"""
+    """
+    HTTP 图片地址应由 Agent 端下载后以原始字节提交给 OCR。
+    """
     image_url = "https://example.com/captcha.png"
 
     with patch("app.adapters.external.ocr.RequestUtils") as request_utils:
@@ -145,7 +169,9 @@ def test_ocr_helper_downloads_http_image_and_posts_raw_bytes():
 
 
 def test_ocr_helper_accepts_raw_image_data_without_base64_encoding():
-    """直接图片字节应使用二进制 OCR 接口。"""
+    """
+    直接图片字节应使用二进制 OCR 接口。
+    """
     with patch("app.adapters.external.ocr.RequestUtils") as request_utils:
         request_utils.return_value.post_res.return_value = _FakeResponse(
             payload={"result": "z9k2"}
@@ -159,7 +185,9 @@ def test_ocr_helper_accepts_raw_image_data_without_base64_encoding():
 
 
 def test_ocr_helper_prefers_raw_image_data_when_both_sources_are_given():
-    """同时提供地址和原始图片时应避免二次下载并保持原始字节优先。"""
+    """
+    同时提供地址和原始图片时应避免二次下载并保持原始字节优先。
+    """
     with patch("app.adapters.external.ocr.RequestUtils") as request_utils:
         request_utils.return_value.post_res.return_value = _FakeResponse(
             payload={"result": "z9k2"}
@@ -176,7 +204,9 @@ def test_ocr_helper_prefers_raw_image_data_when_both_sources_are_given():
 
 
 def test_recognize_captcha_tool_formats_data_url_for_log():
-    """验证码工具日志应隐藏 data:image 的完整图片内容。"""
+    """
+    验证码工具日志应隐藏 data:image 的完整图片内容。
+    """
     image_b64 = base64.b64encode(b"captcha-image").decode()
     image_url = f"data:image/jpeg;base64,{image_b64}"
 
@@ -187,11 +217,15 @@ def test_recognize_captcha_tool_formats_data_url_for_log():
 
 
 def test_recognize_captcha_tool_returns_captcha_text_from_ocr_helper():
-    """验证码工具应返回结构化识别结果，便于 Agent 继续填写表单。"""
+    """
+    验证码工具应返回结构化识别结果，便于 Agent 继续填写表单。
+    """
     tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
 
     async def _run_tool():
-        """执行一次带 mock OCR 的工具调用。"""
+        """
+        执行一次带 mock OCR 的工具调用。
+        """
         with patch(
             "app.agent.tools.impl.recognize_captcha.OcrHelper.get_captcha_text",
             return_value="x7p9",
@@ -219,11 +253,15 @@ def test_recognize_captcha_tool_returns_captcha_text_from_ocr_helper():
 
 
 def test_recognize_captcha_tool_passes_raw_image_data_to_ocr():
-    """验证码工具收到原始图片时不得先转成 Base64 或发起二次下载。"""
+    """
+    验证码工具收到原始图片时不得先转成 Base64 或发起二次下载。
+    """
     tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
 
     async def _run_tool():
-        """执行一次带原始图片字节的工具调用。"""
+        """
+        执行一次带原始图片字节的工具调用。
+        """
         with patch(
             "app.agent.tools.impl.recognize_captcha.OcrHelper.get_captcha_text",
             return_value="x7p9",
@@ -241,7 +279,9 @@ def test_recognize_captcha_tool_passes_raw_image_data_to_ocr():
 
 
 def test_recognize_captcha_tool_blocks_private_network_by_default():
-    """验证码工具默认应拒绝本机和私网图片地址。"""
+    """
+    验证码工具默认应拒绝本机和私网图片地址。
+    """
     tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
 
     with patch(
@@ -262,7 +302,9 @@ def test_recognize_captcha_tool_blocks_private_network_by_default():
 
 
 def test_recognize_captcha_tool_private_network_is_admin_only(monkeypatch):
-    """普通调用方设置 allow_private_network 时收到明确原因，且不会下载图片。"""
+    """
+    普通调用方设置 allow_private_network 时收到明确原因，且不会下载图片。
+    """
     tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
     monkeypatch.setattr(RecognizeCaptchaTool, "is_admin_user", AsyncMock(return_value=False))
 
@@ -284,7 +326,9 @@ def test_recognize_captcha_tool_private_network_is_admin_only(monkeypatch):
 
 
 def test_recognize_captcha_tool_admin_can_allow_private_network(monkeypatch):
-    """管理员仍可显式识别本机或私网地址上的验证码图片。"""
+    """
+    管理员仍可显式识别本机或私网地址上的验证码图片。
+    """
     tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
     monkeypatch.setattr(RecognizeCaptchaTool, "is_admin_user", AsyncMock(return_value=True))
 
@@ -307,7 +351,9 @@ def test_recognize_captcha_tool_admin_can_allow_private_network(monkeypatch):
 @pytest.mark.parametrize("error", [None, RuntimeError("offline OCR"), ValueError("invalid OCR JSON")])
 @pytest.mark.asyncio
 async def test_ocr_failure_directs_agent_to_current_browser_image(error):
-    """OCR 无结果或服务异常应引导同会话看图，同时保持识别失败事实且不自行重试。"""
+    """
+    OCR 无结果或服务异常应引导同会话看图，同时保持识别失败事实且不自行重试。
+    """
     tool = RecognizeCaptchaTool(session_id="captcha-session", user_id="10001")
     with patch.object(OcrHelper, "get_captcha_text", return_value="", side_effect=error) as recognize:
         result = await tool._arun(image_url="https://example.com/captcha.png")

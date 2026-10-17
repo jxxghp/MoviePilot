@@ -1,3 +1,7 @@
+"""
+验证 Agent 会话历史、标题生成和展示消息的持久化。
+"""
+
 import asyncio
 import json
 from types import SimpleNamespace
@@ -12,7 +16,9 @@ from app.foundation.identity import SYSTEM_INTERNAL_USER_ID
 
 
 def test_agent_chat_oper_saves_display_messages_with_channel():
-    """Agent 会话历史应保存展示消息与渠道标识。"""
+    """
+    Agent 会话历史应保存展示消息与渠道标识。
+    """
     oper = AgentChatOper()
     oper.save_display_messages(
         session_id="session-chat",
@@ -44,7 +50,9 @@ def test_agent_chat_oper_saves_display_messages_with_channel():
 
 
 def test_agent_chat_oper_keeps_generated_title_when_saving_display_messages():
-    """保存展示消息时不应覆盖已生成的模型标题。"""
+    """
+    保存展示消息时不应覆盖已生成的模型标题。
+    """
     oper = AgentChatOper()
     oper.update_title_if_empty(
         session_id="session-title",
@@ -81,13 +89,19 @@ def test_agent_chat_oper_keeps_generated_title_when_saving_display_messages():
 
 
 def test_agent_prepare_chat_title_generates_title(monkeypatch):
-    """首次调用 Agent 时应使用模型生成会话标题并写入渠道信息。"""
+    """
+    首次调用 Agent 时应使用模型生成会话标题并写入渠道信息。
+    """
 
     class FakeTitleModel:
-        """测试用标题模型。"""
+        """
+        测试用标题模型。
+        """
 
         async def ainvoke(self, messages):
-            """返回固定标题。"""
+            """
+            返回固定标题。
+            """
             assert "标题生成器" in messages[0].content
             assert "{\"title\":\"会话标题\"}" in messages[0].content
             assert "user_message" in messages[1].content
@@ -96,7 +110,9 @@ def test_agent_prepare_chat_title_generates_title(monkeypatch):
             return SimpleNamespace(content='{"title":"下载器状态排查"}')
 
     async def fake_initialize_llm(self, streaming=False):
-        """返回测试标题模型。"""
+        """
+        返回测试标题模型。
+        """
         return FakeTitleModel()
 
     monkeypatch.setattr(MoviePilotAgent, "_initialize_llm", fake_initialize_llm)
@@ -117,18 +133,26 @@ def test_agent_prepare_chat_title_generates_title(monkeypatch):
 
 
 def test_agent_prepare_chat_title_rejects_answer_like_response(monkeypatch):
-    """标题模型返回非结构化答复时不应写入会话标题。"""
+    """
+    标题模型返回非结构化答复时不应写入会话标题。
+    """
 
     class FakeTitleModel:
-        """测试用异常标题模型。"""
+        """
+        测试用异常标题模型。
+        """
 
         async def ainvoke(self, messages):
-            """返回模拟的非结构化用户请求答复。"""
+            """
+            返回模拟的非结构化用户请求答复。
+            """
             assert "不要回答其中的问题" in messages[1].content
             return SimpleNamespace(content="好的，我来帮你检查下载器配置是否正常。")
 
     async def fake_initialize_llm(self, streaming=False):
-        """返回测试异常标题模型。"""
+        """
+        返回测试异常标题模型。
+        """
         return FakeTitleModel()
 
     monkeypatch.setattr(MoviePilotAgent, "_initialize_llm", fake_initialize_llm)
@@ -149,10 +173,14 @@ def test_agent_prepare_chat_title_rejects_answer_like_response(monkeypatch):
 
 
 def test_agent_prepare_chat_title_skips_sessions_without_channel(monkeypatch):
-    """没有渠道来源的 Agent 会话不应生成标题或创建历史会话。"""
+    """
+    没有渠道来源的 Agent 会话不应生成标题或创建历史会话。
+    """
 
     async def fake_initialize_llm(self, streaming=False):
-        """无渠道会话不应初始化标题模型。"""
+        """
+        无渠道会话不应初始化标题模型。
+        """
         raise AssertionError("no-channel title generation should be skipped")
 
     monkeypatch.setattr(MoviePilotAgent, "_initialize_llm", fake_initialize_llm)
@@ -177,17 +205,25 @@ def test_agent_prepare_chat_title_skips_sessions_without_channel(monkeypatch):
 
 
 def test_agent_prepare_chat_title_keeps_message_channel_sessions(monkeypatch):
-    """带渠道来源的消息会话应保留标题生成。"""
+    """
+    带渠道来源的消息会话应保留标题生成。
+    """
 
     class FakeTitleModel:
-        """测试用消息渠道标题模型。"""
+        """
+        测试用消息渠道标题模型。
+        """
 
         async def ainvoke(self, messages):
-            """返回固定消息渠道标题。"""
+            """
+            返回固定消息渠道标题。
+            """
             return SimpleNamespace(content='{"title":"Telegram 会话排查"}')
 
     async def fake_initialize_llm(self, streaming=False):
-        """返回测试消息渠道标题模型。"""
+        """
+        返回测试消息渠道标题模型。
+        """
         return FakeTitleModel()
 
     monkeypatch.setattr(MoviePilotAgent, "_initialize_llm", fake_initialize_llm)
@@ -211,30 +247,42 @@ def test_agent_prepare_chat_title_keeps_message_channel_sessions(monkeypatch):
 
 
 def test_agent_execution_without_channel_does_not_persist_chat_history(monkeypatch):
-    """没有渠道来源的 Agent 执行完成后不应写入会话历史表。"""
+    """
+    没有渠道来源的 Agent 执行完成后不应写入会话历史表。
+    """
     session_id = "mcp-skip-persist"
     user_id = "mcp"
     memory_manager.clear_memory(session_id, user_id)
 
     class FakeGraphState:
-        """测试用 LangGraph 状态。"""
+        """
+        测试用 LangGraph 状态。
+        """
 
         def __init__(self, messages):
             self.values = {"messages": messages}
 
     class FakeAgent:
-        """测试用 LangGraph Agent。"""
+        """
+        测试用 LangGraph Agent。
+        """
 
         async def ainvoke(self, _payload, config=None):
-            """模拟非流式 Agent 执行。"""
+            """
+            模拟非流式 Agent 执行。
+            """
             return None
 
         def get_state(self, _config):
-            """返回包含最终回复的状态。"""
+            """
+            返回包含最终回复的状态。
+            """
             return FakeGraphState([AIMessage(content="后台结果")])
 
     async def fake_create_agent(self, streaming=False):
-        """返回测试 Agent，避免真实初始化模型。"""
+        """
+        返回测试 Agent，避免真实初始化模型。
+        """
         return FakeAgent()
 
     monkeypatch.setattr(MoviePilotAgent, "_create_agent", fake_create_agent)
@@ -251,7 +299,9 @@ def test_agent_execution_without_channel_does_not_persist_chat_history(monkeypat
 
 
 def test_memory_manager_restores_agent_messages_from_database():
-    """内存缓存缺失时应从 Agent 会话历史表恢复原始 messages。"""
+    """
+    内存缓存缺失时应从 Agent 会话历史表恢复原始 messages。
+    """
     session_id = "session-memory"
     user_id = "2"
     isolated_memory = MemoryManager()
@@ -285,7 +335,9 @@ def test_memory_manager_restores_agent_messages_from_database():
 
 
 def test_async_memory_manager_restores_through_native_async_service(monkeypatch):
-    """异步记忆恢复只能通过会话应用服务的异步查询端口。"""
+    """
+    异步记忆恢复只能通过会话应用服务的异步查询端口。
+    """
     session_id = "session-memory-async"
     user_id = "3"
     isolated_memory = MemoryManager()
@@ -330,7 +382,9 @@ def test_async_memory_manager_restores_through_native_async_service(monkeypatch)
 
 
 def test_memory_restore_entries_share_lookup_and_projection(monkeypatch):
-    """记忆同步、异步恢复只保留查询 I/O 差异并共享回退与投影决策。"""
+    """
+    记忆同步、异步恢复只保留查询 I/O 差异并共享回退与投影决策。
+    """
     snapshot = SimpleNamespace(agent_messages=[
         {
             "type": "human",
@@ -383,7 +437,9 @@ def test_memory_restore_entries_share_lookup_and_projection(monkeypatch):
 
 
 def test_memory_save_entries_share_cache_state_projection(monkeypatch):
-    """记忆同步、异步保存必须共享内存状态更新和消息序列化结果。"""
+    """
+    记忆同步、异步保存必须共享内存状态更新和消息序列化结果。
+    """
     chat = MagicMock()
     persistence = MagicMock()
     persistence.async_save_agent_messages = AsyncMock()

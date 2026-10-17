@@ -1,3 +1,7 @@
+"""
+验证流式会话的摘要模型选择，以及摘要失败时的上下文保留。
+"""
+
 import asyncio
 import uuid
 from types import SimpleNamespace
@@ -46,116 +50,164 @@ class _FakeLLM:
         self.profile = {"max_input_tokens": 64000}
 
     def with_retry(self):
-        """满足新版 LangChain 摘要模型的 Runnable 合同。"""
+        """
+        满足新版 LangChain 摘要模型的 Runnable 合同。
+        """
         return self
 
 
 class _FailingSummaryLLM(_FakeLLM):
-    """模拟摘要模型暂时不可用。"""
+    """
+    模拟摘要模型暂时不可用。
+    """
 
     async def ainvoke(self, *_args, **_kwargs):
-        """摘要请求始终超时。"""
+        """
+        摘要请求始终超时。
+        """
         raise TimeoutError("summary provider unavailable")
 
     def invoke(self, *_args, **_kwargs):
-        """同步摘要请求始终超时。"""
+        """
+        同步摘要请求始终超时。
+        """
         raise TimeoutError("summary provider unavailable")
 
 
 class _SuccessfulSummaryLLM(_FakeLLM):
-    """提供稳定摘要结果。"""
+    """
+    提供稳定摘要结果。
+    """
 
     async def ainvoke(self, *_args, **_kwargs):
-        """返回异步摘要。"""
+        """
+        返回异步摘要。
+        """
         return AIMessage(content="保留旧事实的摘要")
 
     def invoke(self, *_args, **_kwargs):
-        """返回同步摘要。"""
+        """
+        返回同步摘要。
+        """
         return AIMessage(content="保留旧事实的摘要")
 
 
 class _CountingSummaryLLM(_SuccessfulSummaryLLM):
-    """记录真实 Agent 图触发的摘要次数。"""
+    """
+    记录真实 Agent 图触发的摘要次数。
+    """
 
     def __init__(self, model: str):
         super().__init__(model)
         self.calls = 0
 
     async def ainvoke(self, *_args, **_kwargs):
-        """记录异步摘要请求。"""
+        """
+        记录异步摘要请求。
+        """
         self.calls += 1
         return AIMessage(content="保留旧事实的摘要")
 
     def invoke(self, *_args, **_kwargs):
-        """记录同步摘要请求。"""
+        """
+        记录同步摘要请求。
+        """
         self.calls += 1
         return AIMessage(content="保留旧事实的摘要")
 
 
 class _LongSummaryLLM(_SuccessfulSummaryLLM):
-    """返回本身无法装入主模型窗口的摘要。"""
+    """
+    返回本身无法装入主模型窗口的摘要。
+    """
 
     async def ainvoke(self, *_args, **_kwargs):
-        """返回异常超长摘要。"""
+        """
+        返回异常超长摘要。
+        """
         return AIMessage(content="异常冗长摘要 " * 2000)
 
     def invoke(self, *_args, **_kwargs):
-        """返回异常超长摘要。"""
+        """
+        返回异常超长摘要。
+        """
         return AIMessage(content="异常冗长摘要 " * 2000)
 
 
 class _MetadataRecordingSummaryLLM(_SuccessfulSummaryLLM):
-    """记录摘要内部模型调用使用的 metadata。"""
+    """
+    记录摘要内部模型调用使用的 metadata。
+    """
 
     def __init__(self, model: str):
         super().__init__(model)
         self.configs = []
 
     async def ainvoke(self, *_args, **kwargs):
-        """记录异步摘要调用配置。"""
+        """
+        记录异步摘要调用配置。
+        """
         self.configs.append(kwargs.get("config"))
         return AIMessage(content="保留旧事实的摘要")
 
     def invoke(self, *_args, **kwargs):
-        """记录同步摘要调用配置。"""
+        """
+        记录同步摘要调用配置。
+        """
         self.configs.append(kwargs.get("config"))
         return AIMessage(content="保留旧事实的摘要")
 
 
 class _RecordingChatModel(FakeMessagesListChatModel):
-    """记录主模型实际收到的最终请求。"""
+    """
+    记录主模型实际收到的最终请求。
+    """
 
     seen_messages: list[list[AnyMessage]] = Field(default_factory=list)
 
     def bind_tools(self, _tools, **_kwargs):
-        """保留测试模型，同时满足工具绑定契约。"""
+        """
+        保留测试模型，同时满足工具绑定契约。
+        """
         return self
 
     def _generate(self, messages, *args, **kwargs):
-        """记录包含 system 的最终消息序列。"""
+        """
+        记录包含 system 的最终消息序列。
+        """
         self.seen_messages.append(list(messages))
         return super()._generate(messages, *args, **kwargs)
 
 
 class _FailingMainModel(_RecordingChatModel):
-    """模拟最终请求进入主模型后失败。"""
+    """
+    模拟最终请求进入主模型后失败。
+    """
 
     def _generate(self, messages, *_args, **_kwargs):
-        """记录请求后终止模型调用。"""
+        """
+        记录请求后终止模型调用。
+        """
         self.seen_messages.append(list(messages))
         raise TimeoutError("main provider unavailable")
 
 
 class _DynamicSystemMiddleware(AgentMiddleware):
-    """模拟运行时中间件追加的大型 system prompt。"""
+    """
+    模拟运行时中间件追加的大型 system prompt。
+    """
 
     async def awrap_model_call(self, request, handler):
-        """在最终压缩器之前补充动态 system prompt。"""
+        """
+        在最终压缩器之前补充动态 system prompt。
+        """
         return await handler(request.override(system_message=SystemMessage(content="动态系统约束 " * 250)))
 
 
 def _final_request(*, messages, system_message=None, tools=None) -> ModelRequest:
-    """构造包含最终系统提示词和工具目录的模型请求。"""
+    """
+    构造包含最终系统提示词和工具目录的模型请求。
+    """
     return ModelRequest(
         model=SimpleNamespace(
             model="small-model",
@@ -170,7 +222,9 @@ def _final_request(*, messages, system_message=None, tools=None) -> ModelRequest
 
 
 def _real_compaction_graph(*, model, summarizer, tools=None, checkpointer=None):
-    """构造包含真实 LangChain 状态归并路径的最小 Agent 图。"""
+    """
+    构造包含真实 LangChain 状态归并路径的最小 Agent 图。
+    """
     summary_middleware = ContextPreservingSummarizationMiddleware(
         model=summarizer,
         trigger=("fraction", 0.85),
@@ -188,27 +242,37 @@ def _real_compaction_graph(*, model, summarizer, tools=None, checkpointer=None):
 
 
 def _oversized_final_request_history() -> list[HumanMessage]:
-    """生成历史本身未达阈值、叠加动态 system 后超阈值的消息。"""
+    """
+    生成历史本身未达阈值、叠加动态 system 后超阈值的消息。
+    """
     return [HumanMessage(content=(f"必须保留的历史事实 {index} " * 80)) for index in range(6)]
 
 
 class _FailingGraph:
-    """模拟上下文压缩阶段失败的 Agent 图。"""
+    """
+    模拟上下文压缩阶段失败的 Agent 图。
+    """
 
     async def ainvoke(self, _payload, config=None):
-        """在提交图状态前终止执行。"""
+        """
+        在提交图状态前终止执行。
+        """
         raise ContextSummarizationError("会话上下文压缩失败，原有上下文已保留，请稍后重试")
 
 
 def test_streaming_agent_uses_non_streaming_llm_for_summary():
-    """流式 Agent 的摘要中间件应使用非流式 LLM。"""
+    """
+    流式 Agent 的摘要中间件应使用非流式 LLM。
+    """
     agent = agent_module.MoviePilotAgent(session_id="session-1", user_id="10001")
     main_llm = _FakeLLM("main")
     non_streaming_llm = _FakeLLM("non-streaming")
     captured: dict = {}
 
     def _fake_create_agent(**kwargs):
-        """捕获 create_agent 参数。"""
+        """
+        捕获 create_agent 参数。
+        """
         captured.update(kwargs)
         return object()
 
@@ -235,7 +299,9 @@ def test_streaming_agent_uses_non_streaming_llm_for_summary():
 
 @pytest.mark.parametrize("with_invocations", [False, True])
 def test_streaming_agent_uses_non_streaming_llm_for_model_middlewares(with_invocations):
-    """流式图保持非流式筛选与压缩，并按持久端口正确装配内部常驻工具。"""
+    """
+    流式图保持非流式筛选与压缩，并按持久端口正确装配内部常驻工具。
+    """
     repository = object() if with_invocations else None
     data = SimpleNamespace(invocations=repository) if with_invocations else None
     agent = agent_module.MoviePilotAgent(session_id="session-1", user_id="10001", data=data)
@@ -244,24 +310,34 @@ def test_streaming_agent_uses_non_streaming_llm_for_model_middlewares(with_invoc
     captured: dict = {}
 
     class _FakeToolSelectorMiddleware(ToolSelectorMiddleware):
-        """保留工具选择和发现目录，仅替换无需调用的测试模型。"""
+        """
+        保留工具选择和发现目录，仅替换无需调用的测试模型。
+        """
 
         def __init__(self, **kwargs):
-            """通过真实构造函数校验启用发现后的工具与状态合同。"""
+            """
+            通过真实构造函数校验启用发现后的工具与状态合同。
+            """
             model = kwargs.pop("model")
             super().__init__(model=None, **kwargs)
             self.model = model
 
     def _fake_create_agent(**kwargs):
-        """捕获 create_agent 参数。"""
+        """
+        捕获 create_agent 参数。
+        """
         captured.update(kwargs)
         return object()
 
     class _FakeTool:
-        """测试用工具占位对象。"""
+        """
+        测试用工具占位对象。
+        """
 
         def __init__(self, name: str):
-            """保存工具名。"""
+            """
+            保存工具名。
+            """
             self.name = name
 
     fake_tools = [
@@ -358,13 +434,17 @@ def test_streaming_agent_uses_non_streaming_llm_for_model_middlewares(with_invoc
 
 
 def test_non_streaming_agent_reuses_main_llm_for_summary():
-    """非流式 Agent 的摘要中间件应复用主 LLM。"""
+    """
+    非流式 Agent 的摘要中间件应复用主 LLM。
+    """
     agent = agent_module.MoviePilotAgent(session_id="session-1", user_id="10001")
     main_llm = _FakeLLM("main")
     captured: dict = {}
 
     def _fake_create_agent(**kwargs):
-        """捕获 create_agent 参数。"""
+        """
+        捕获 create_agent 参数。
+        """
         captured.update(kwargs)
         return object()
 
@@ -390,13 +470,17 @@ def test_non_streaming_agent_reuses_main_llm_for_summary():
 
 
 def test_summary_failure_does_not_replace_existing_context():
-    """摘要模型失败时应中止压缩，避免错误文本替换既有上下文。"""
+    """
+    摘要模型失败时应中止压缩，避免错误文本替换既有上下文。
+    """
     agent = agent_module.MoviePilotAgent(session_id="session-1", user_id="10001")
     failing_llm = _FailingSummaryLLM("summary")
     captured: dict = {}
 
     def _fake_create_agent(**kwargs):
-        """捕获 create_agent 参数。"""
+        """
+        捕获 create_agent 参数。
+        """
         captured.update(kwargs)
         return object()
 
@@ -427,7 +511,9 @@ def test_summary_failure_does_not_replace_existing_context():
 
 
 def test_summary_success_still_replaces_old_context():
-    """摘要成功时仍应保留上游的压缩行为。"""
+    """
+    摘要成功时仍应保留上游的压缩行为。
+    """
     middleware = ContextPreservingSummarizationMiddleware(
         model=_SuccessfulSummaryLLM("summary"),
         trigger=("messages", 25),
@@ -442,7 +528,9 @@ def test_summary_success_still_replaces_old_context():
 
 
 def test_final_request_compaction_includes_dynamic_system_and_tools():
-    """最终 system 和工具预算达到阈值时，应在同轮压缩历史。"""
+    """
+    最终 system 和工具预算达到阈值时，应在同轮压缩历史。
+    """
     summarizer = ContextPreservingSummarizationMiddleware(
         model=_SuccessfulSummaryLLM("summary"),
         trigger=("fraction", 0.85),
@@ -484,7 +572,9 @@ def test_final_request_compaction_includes_dynamic_system_and_tools():
 
 
 def test_final_request_compaction_uses_serialization_safety_margin():
-    """大型 provider 序列化可能高估近似窗口，低于原阈值也应提前压缩。"""
+    """
+    大型 provider 序列化可能高估近似窗口，低于原阈值也应提前压缩。
+    """
     summarizer = ContextPreservingSummarizationMiddleware(
         model=_SuccessfulSummaryLLM("summary"),
         trigger=("fraction", 0.85),
@@ -503,7 +593,9 @@ def test_final_request_compaction_uses_serialization_safety_margin():
 
 
 def test_final_request_compaction_preserves_history_when_summary_fails():
-    """动态压缩失败时中止本轮，不提交摘要或调用主模型。"""
+    """
+    动态压缩失败时中止本轮，不提交摘要或调用主模型。
+    """
     summarizer = ContextPreservingSummarizationMiddleware(
         model=_FailingSummaryLLM("summary"),
         trigger=("fraction", 0.85),
@@ -539,7 +631,9 @@ def test_final_request_compaction_preserves_history_when_summary_fails():
 
 @pytest.mark.parametrize("failure", ["fixed-overhead", "long-summary"])
 def test_final_request_compaction_rejects_known_overflow_before_main_model(failure):
-    """压缩后仍已知超窗时不得把请求发送给主模型。"""
+    """
+    压缩后仍已知超窗时不得把请求发送给主模型。
+    """
     summary_model = _LongSummaryLLM("summary") if failure == "long-summary" else _SuccessfulSummaryLLM("summary")
     summarizer = ContextPreservingSummarizationMiddleware(
         model=summary_model,
@@ -566,7 +660,9 @@ def test_final_request_compaction_rejects_known_overflow_before_main_model(failu
 
 
 def test_uncompactable_request_below_window_still_calls_main_model():
-    """主动压缩线不是硬拒绝线，窗口内请求应保持可用。"""
+    """
+    主动压缩线不是硬拒绝线，窗口内请求应保持可用。
+    """
     summarizer = ContextPreservingSummarizationMiddleware(
         model=_SuccessfulSummaryLLM("summary"),
         trigger=("fraction", 0.85),
@@ -592,7 +688,9 @@ def test_uncompactable_request_below_window_still_calls_main_model():
 
 
 def test_overflow_with_small_history_compacts_to_hard_window():
-    """历史低于常规保留量时，超窗请求仍应尝试压缩而不是直接拒绝。"""
+    """
+    历史低于常规保留量时，超窗请求仍应尝试压缩而不是直接拒绝。
+    """
     summarizer = ContextPreservingSummarizationMiddleware(
         model=_SuccessfulSummaryLLM("summary"),
         trigger=("fraction", 0.85),
@@ -624,7 +722,9 @@ def test_overflow_with_small_history_compacts_to_hard_window():
 
 
 def test_compaction_uses_hard_window_when_soft_target_is_unreachable():
-    """固定开销超过软线时，应缩小近期历史直到完整窗口可承载。"""
+    """
+    固定开销超过软线时，应缩小近期历史直到完整窗口可承载。
+    """
     summarizer = ContextPreservingSummarizationMiddleware(
         model=_SuccessfulSummaryLLM("summary"),
         trigger=("fraction", 0.85),
@@ -654,7 +754,9 @@ def test_compaction_uses_hard_window_when_soft_target_is_unreachable():
 
 
 def test_forced_compaction_advances_beyond_existing_summary():
-    """超窗时应继续压缩旧事实，不能因首条已有摘要而误判无进展。"""
+    """
+    超窗时应继续压缩旧事实，不能因首条已有摘要而误判无进展。
+    """
     summarizer = ContextPreservingSummarizationMiddleware(
         model=_SuccessfulSummaryLLM("summary"),
         trigger=("fraction", 0.85),
@@ -698,7 +800,9 @@ def test_forced_compaction_advances_beyond_existing_summary():
 
 
 def test_forced_compaction_keeps_only_current_message_instead_of_summarizing_it():
-    """唯一当前消息不可被强制摘要，无法装入窗口时应保留历史并拒绝。"""
+    """
+    唯一当前消息不可被强制摘要，无法装入窗口时应保留历史并拒绝。
+    """
     summarizer = ContextPreservingSummarizationMiddleware(
         model=_SuccessfulSummaryLLM("summary"),
         trigger=("fraction", 0.85),
@@ -727,7 +831,9 @@ def test_forced_compaction_keeps_only_current_message_instead_of_summarizing_it(
 
 
 def test_forced_compaction_rejects_single_long_current_message():
-    """当前消息超过保留预算时也不可被整体摘要。"""
+    """
+    当前消息超过保留预算时也不可被整体摘要。
+    """
     summarizer = ContextPreservingSummarizationMiddleware(
         model=_SuccessfulSummaryLLM("summary"),
         trigger=("fraction", 0.85),
@@ -762,7 +868,9 @@ def test_forced_compaction_rejects_single_long_current_message():
 
 
 def test_repartition_advances_past_complete_old_tool_transaction():
-    """二次分区应整体摘要旧工具事务，而不是停在相同安全边界。"""
+    """
+    二次分区应整体摘要旧工具事务，而不是停在相同安全边界。
+    """
     summarizer = ContextPreservingSummarizationMiddleware(
         model=_SuccessfulSummaryLLM("summary"),
         trigger=("fraction", 0.85),
@@ -806,7 +914,9 @@ def test_repartition_advances_past_complete_old_tool_transaction():
 
 
 def test_summary_calls_include_version_compatible_internal_metadata():
-    """摘要调用应合并当前 LangChain 提供的内部流式过滤标记。"""
+    """
+    摘要调用应合并当前 LangChain 提供的内部流式过滤标记。
+    """
     summary_model = _MetadataRecordingSummaryLLM("summary")
     middleware = ContextPreservingSummarizationMiddleware(
         model=summary_model,
@@ -829,7 +939,9 @@ def test_summary_calls_include_version_compatible_internal_metadata():
 
 @pytest.mark.parametrize("execution", ["ainvoke", "astream"])
 def test_real_agent_commits_final_request_compaction(execution):
-    """真实图在普通和流式执行中应提交相同的压缩后最终状态。"""
+    """
+    真实图在普通和流式执行中应提交相同的压缩后最终状态。
+    """
     summarizer = _CountingSummaryLLM("summary")
     model = _RecordingChatModel(
         responses=[AIMessage(content="继续完成")],
@@ -867,7 +979,9 @@ def test_real_agent_commits_final_request_compaction(execution):
 
 
 def test_real_agent_does_not_compact_request_below_threshold():
-    """最终请求低于主模型阈值时不得调用摘要模型。"""
+    """
+    最终请求低于主模型阈值时不得调用摘要模型。
+    """
     summarizer = _CountingSummaryLLM("summary")
     model = _RecordingChatModel(
         responses=[AIMessage(content="直接完成")],
@@ -884,12 +998,16 @@ def test_real_agent_does_not_compact_request_below_threshold():
 
 
 def test_real_agent_executes_compacted_tool_call_once():
-    """压缩只执行一次工具事务，小工具结果也不得触发同轮二次压缩。"""
+    """
+    压缩只执行一次工具事务，小工具结果也不得触发同轮二次压缩。
+    """
     calls = []
 
     @tool
     def record_value(value: str) -> str:
-        """记录工具调用次数。"""
+        """
+        记录工具调用次数。
+        """
         calls.append(value)
         return value
 
@@ -919,12 +1037,16 @@ def test_real_agent_executes_compacted_tool_call_once():
 
 
 def test_large_tool_result_allows_same_turn_recompaction():
-    """新工具结果使请求超窗时，同轮 anchor 不得阻止再次压缩。"""
+    """
+    新工具结果使请求超窗时，同轮 anchor 不得阻止再次压缩。
+    """
     calls = []
 
     @tool
     def large_result() -> str:
-        """返回足以再次耗尽主模型窗口的工具结果。"""
+        """
+        返回足以再次耗尽主模型窗口的工具结果。
+        """
         calls.append("once")
         return "超长工具结果 " * 800
 
@@ -958,7 +1080,9 @@ def test_large_tool_result_allows_same_turn_recompaction():
 
 
 def test_real_agent_can_compact_again_after_new_user_message():
-    """同轮保护不得阻止后续用户轮次继续滚动压缩。"""
+    """
+    同轮保护不得阻止后续用户轮次继续滚动压缩。
+    """
     summarizer = _CountingSummaryLLM("summary")
     model = _RecordingChatModel(
         responses=[AIMessage(content="第一轮完成"), AIMessage(content="第二轮完成")],
@@ -990,7 +1114,9 @@ def test_real_agent_can_compact_again_after_new_user_message():
 
 
 def test_real_agent_does_not_resummarize_existing_summary_only():
-    """可移除历史只有既有摘要时，不应反复摘要同一内容。"""
+    """
+    可移除历史只有既有摘要时，不应反复摘要同一内容。
+    """
     summarizer = _CountingSummaryLLM("summary")
     model = _RecordingChatModel(
         responses=[AIMessage(content="继续完成")],
@@ -1014,7 +1140,9 @@ def test_real_agent_does_not_resummarize_existing_summary_only():
 
 @pytest.mark.parametrize("failure", ["summary", "main"])
 def test_real_agent_failure_does_not_commit_compacted_history(failure):
-    """摘要或主模型失败时，checkpoint 只保留原始历史。"""
+    """
+    摘要或主模型失败时，checkpoint 只保留原始历史。
+    """
     checkpointer = InMemorySaver()
     summarizer = _FailingSummaryLLM("summary") if failure == "summary" else _CountingSummaryLLM("summary")
     model = (
@@ -1052,7 +1180,9 @@ def test_real_agent_failure_does_not_commit_compacted_history(failure):
 
 
 def test_history_triggered_compaction_waits_for_main_model_success():
-    """历史本身触发压缩时，主模型失败也不得提前提交摘要状态。"""
+    """
+    历史本身触发压缩时，主模型失败也不得提前提交摘要状态。
+    """
     checkpointer = InMemorySaver()
     summarizer = _CountingSummaryLLM("summary")
     summarizer.profile = {"max_input_tokens": 2048}
@@ -1087,7 +1217,9 @@ def test_history_triggered_compaction_waits_for_main_model_success():
 
 
 def test_history_triggered_compaction_commits_after_main_model_success():
-    """历史本身触发压缩时，摘要与模型结果应在成功后一次性提交。"""
+    """
+    历史本身触发压缩时，摘要与模型结果应在成功后一次性提交。
+    """
     checkpointer = InMemorySaver()
     summarizer = _CountingSummaryLLM("summary")
     summarizer.profile = {"max_input_tokens": 2048}
@@ -1120,7 +1252,9 @@ def test_history_triggered_compaction_commits_after_main_model_success():
 
 
 def test_unsummarizable_message_requires_new_context_instead_of_retry():
-    """确定性不可裁剪的消息应给出可前进路径，而非建议无效重试。"""
+    """
+    确定性不可裁剪的消息应给出可前进路径，而非建议无效重试。
+    """
     middleware = ContextPreservingSummarizationMiddleware(
         model=_SuccessfulSummaryLLM("summary"),
         trigger=("messages", 21),
@@ -1144,7 +1278,9 @@ def test_unsummarizable_message_requires_new_context_instead_of_retry():
 
 
 def test_summary_trim_falls_back_when_history_tail_has_no_human_message():
-    """工具结果尾部没有 HumanMessage 时也应保留可摘要的后缀。"""
+    """
+    工具结果尾部没有 HumanMessage 时也应保留可摘要的后缀。
+    """
     middleware = ContextPreservingSummarizationMiddleware(
         model=_SuccessfulSummaryLLM("summary"),
         trim_tokens_to_summarize=32_000,
@@ -1184,7 +1320,9 @@ def test_summary_trim_falls_back_when_history_tail_has_no_human_message():
 
 
 def test_summary_failure_preserves_database_history():
-    """上下文压缩失败时不得覆盖数据库中的上一轮消息。"""
+    """
+    上下文压缩失败时不得覆盖数据库中的上一轮消息。
+    """
     session_id = f"summary-failure-{uuid.uuid4().hex}"
     user_id = "10001"
     isolated_memory = MemoryManager()
@@ -1221,13 +1359,17 @@ def test_summary_failure_preserves_database_history():
 
 
 def test_agent_uses_runtime_config_middleware_instead_of_hooks():
-    """Agent 应使用运行时配置中间件而不是旧 hooks。"""
+    """
+    Agent 应使用运行时配置中间件而不是旧 hooks。
+    """
     agent = agent_module.MoviePilotAgent(session_id="session-1", user_id="10001")
     main_llm = _FakeLLM("main")
     captured: dict = {}
 
     def _fake_create_agent(**kwargs):
-        """捕获 create_agent 参数。"""
+        """
+        捕获 create_agent 参数。
+        """
         captured.update(kwargs)
         return object()
 

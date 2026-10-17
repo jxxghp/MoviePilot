@@ -1,8 +1,12 @@
+"""
+验证 Alist 删除目录直接调用移除接口，不额外探测目录内容。
+"""
+
 from unittest.mock import MagicMock, patch
 
 from app.modules.filemanager.storages import alist as alist_module
 from app.modules.filemanager.storages.alist import Alist
-from app.schemas import FileItem
+from app.schemas.file import FileItem
 
 
 def test_delete_directory_uses_remove_api_without_empty_directory_probe():

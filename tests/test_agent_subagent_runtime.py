@@ -1,3 +1,7 @@
+"""
+验证子 Agent 定义的加载、版本更新和自定义配置保留。
+"""
+
 import textwrap
 from pathlib import Path
 
@@ -6,7 +10,9 @@ from app.agent.runtime import AgentRuntimeManager
 
 
 def _write_current_persona(defaults_root: Path) -> None:
-    """写入最小可用的人格激活配置。"""
+    """
+    写入最小可用的人格激活配置。
+    """
     defaults_root.mkdir(parents=True, exist_ok=True)
     (defaults_root / "CURRENT_PERSONA.md").write_text(
         textwrap.dedent(
@@ -51,7 +57,9 @@ def _write_subagent(
     description: str = "测试子代理",
     body: str = "测试子代理提示。",
 ) -> Path:
-    """写入一个子代理定义文件。"""
+    """
+    写入一个子代理定义文件。
+    """
     subagent_dir = root / "subagents" / subagent_id
     subagent_dir.mkdir(parents=True, exist_ok=True)
     path = subagent_dir / "SUBAGENT.md"
@@ -81,7 +89,9 @@ def _write_subagent(
 
 
 def test_runtime_syncs_and_parses_subagent_definitions(tmp_path):
-    """运行时应同步并解析 defaults/subagents 下的子代理定义。"""
+    """
+    运行时应同步并解析 defaults/subagents 下的子代理定义。
+    """
     defaults_root = tmp_path / "defaults"
     _write_current_persona(defaults_root)
     _write_subagent(
@@ -115,7 +125,9 @@ def test_runtime_syncs_and_parses_subagent_definitions(tmp_path):
 
 
 def test_runtime_updates_bundled_subagent_when_version_increases(tmp_path):
-    """内置子代理版本升高时应覆盖用户目录里的旧版副本。"""
+    """
+    内置子代理版本升高时应覆盖用户目录里的旧版副本。
+    """
     defaults_root = tmp_path / "defaults"
     _write_current_persona(defaults_root)
     _write_subagent(
@@ -146,7 +158,9 @@ def test_runtime_updates_bundled_subagent_when_version_increases(tmp_path):
 
 
 def test_runtime_removes_removed_bundled_subagents_and_keeps_custom_definitions(tmp_path):
-    """内置子代理删除后应清理旧副本，同时保留未知的用户定义。"""
+    """
+    内置子代理删除后应清理旧副本，同时保留未知的用户定义。
+    """
     defaults_root = tmp_path / "defaults"
     _write_current_persona(defaults_root)
     _write_subagent(defaults_root, "general-purpose")
@@ -175,7 +189,9 @@ def test_runtime_removes_removed_bundled_subagents_and_keeps_custom_definitions(
 
 
 def test_middleware_profiles_are_loaded_from_runtime_config(monkeypatch, tmp_path):
-    """子代理中间件应从运行时 YAML 定义生成 profile。"""
+    """
+    子代理中间件应从运行时 YAML 定义生成 profile。
+    """
     defaults_root = tmp_path / "defaults"
     _write_current_persona(defaults_root)
     _write_subagent(
