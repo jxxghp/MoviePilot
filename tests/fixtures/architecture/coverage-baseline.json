@@ -71,9 +71,9 @@
       "statements": 949
     },
     "app/adapters/external/wechat.py": {
-      "covered_lines": 153,
-      "percent": 92.17,
-      "statements": 166
+      "statements": 165,
+      "covered_lines": 152,
+      "percent": 92.12
     },
     "app/adapters/network/__init__.py": {
       "covered_lines": 0,
@@ -316,9 +316,9 @@
       "statements": 0
     },
     "app/agent/api/arguments.py": {
-      "covered_lines": 195,
-      "percent": 92.42,
-      "statements": 211
+      "statements": 211,
+      "covered_lines": 194,
+      "percent": 91.94
     },
     "app/agent/api/executor.py": {
       "covered_lines": 126,
@@ -591,9 +591,9 @@
       "statements": 153
     },
     "app/agent/middleware/jobs.py": {
-      "covered_lines": 92,
-      "percent": 77.97,
-      "statements": 118
+      "statements": 109,
+      "covered_lines": 83,
+      "percent": 76.15
     },
     "app/agent/middleware/learning.py": {
       "covered_lines": 29,
@@ -601,9 +601,9 @@
       "statements": 33
     },
     "app/agent/middleware/memory.py": {
-      "covered_lines": 206,
-      "percent": 91.15,
-      "statements": 226
+      "statements": 224,
+      "covered_lines": 204,
+      "percent": 91.07
     },
     "app/agent/middleware/output.py": {
       "covered_lines": 91,
@@ -631,14 +631,14 @@
       "statements": 119
     },
     "app/agent/middleware/selection.py": {
-      "covered_lines": 351,
-      "percent": 92.61,
-      "statements": 379
+      "statements": 377,
+      "covered_lines": 349,
+      "percent": 92.57
     },
     "app/agent/middleware/skills.py": {
-      "covered_lines": 282,
-      "percent": 87.04,
-      "statements": 324
+      "statements": 323,
+      "covered_lines": 281,
+      "percent": 87.0
     },
     "app/agent/middleware/steering.py": {
       "covered_lines": 38,
@@ -751,9 +751,9 @@
       "statements": 61
     },
     "app/agent/skills/registry.py": {
-      "covered_lines": 364,
-      "percent": 56.17,
-      "statements": 648
+      "statements": 648,
+      "covered_lines": 359,
+      "percent": 55.4
     },
     "app/agent/steering.py": {
       "covered_lines": 88,
@@ -1391,14 +1391,14 @@
       "statements": 3
     },
     "app/application/classification/migration.py": {
-      "covered_lines": 325,
-      "percent": 89.29,
-      "statements": 364
+      "statements": 361,
+      "covered_lines": 322,
+      "percent": 89.2
     },
     "app/application/classification/projection.py": {
-      "covered_lines": 201,
-      "percent": 77.01,
-      "statements": 261
+      "statements": 260,
+      "covered_lines": 200,
+      "percent": 76.92
     },
     "app/application/classification/reference.py": {
       "covered_lines": 278,
@@ -2186,9 +2186,9 @@
       "statements": 54
     },
     "app/chain/_interaction.py": {
-      "covered_lines": 15,
-      "percent": 88.24,
-      "statements": 17
+      "statements": 16,
+      "covered_lines": 14,
+      "percent": 87.5
     },
     "app/chain/_messaging.py": {
       "covered_lines": 182,
@@ -3321,9 +3321,9 @@
       "statements": 238
     },
     "app/domain/classification/facts.py": {
-      "covered_lines": 124,
-      "percent": 96.88,
-      "statements": 128
+      "statements": 127,
+      "covered_lines": 123,
+      "percent": 96.85
     },
     "app/domain/classification/fields.py": {
       "covered_lines": 57,
@@ -4051,9 +4051,9 @@
       "statements": 307
     },
     "app/modules/slack/__init__.py": {
-      "covered_lines": 180,
-      "percent": 57.32,
-      "statements": 314
+      "statements": 313,
+      "covered_lines": 179,
+      "percent": 57.19
     },
     "app/modules/slack/slack.py": {
       "covered_lines": 156,
@@ -4336,9 +4336,9 @@
       "statements": 995
     },
     "app/modules/vocechat/__init__.py": {
-      "covered_lines": 126,
-      "percent": 70.0,
-      "statements": 180
+      "statements": 179,
+      "covered_lines": 125,
+      "percent": 69.83
     },
     "app/modules/vocechat/vocechat.py": {
       "covered_lines": 69,
@@ -4371,9 +4371,9 @@
       "statements": 62
     },
     "app/modules/wechat/__init__.py": {
-      "covered_lines": 143,
-      "percent": 59.34,
-      "statements": 241
+      "statements": 240,
+      "covered_lines": 142,
+      "percent": 59.17
     },
     "app/modules/wechat/wechat.py": {
       "covered_lines": 62,
@@ -5221,9 +5221,9 @@
       "statements": 2
     },
     "app/sdk/classification.py": {
-      "covered_lines": 17,
-      "percent": 94.44,
-      "statements": 18
+      "statements": 17,
+      "covered_lines": 16,
+      "percent": 94.12
     },
     "app/sdk/config.py": {
       "covered_lines": 2,
@@ -5613,99 +5613,99 @@
   },
   "packages": {
     "__root__": {
+      "statements": 1363,
       "covered_lines": 779,
-      "percent": 57.15,
-      "statements": 1363
+      "percent": 57.15
     },
     "adapters": {
-      "covered_lines": 7960,
-      "percent": 74.2,
-      "statements": 10728
+      "statements": 10727,
+      "covered_lines": 7959,
+      "percent": 74.2
     },
     "agent": {
-      "covered_lines": 16681,
-      "percent": 82.87,
-      "statements": 20128
+      "statements": 20114,
+      "covered_lines": 16661,
+      "percent": 82.83
     },
     "api": {
+      "statements": 7085,
       "covered_lines": 5270,
-      "percent": 74.38,
-      "statements": 7085
+      "percent": 74.38
     },
     "application": {
-      "covered_lines": 20812,
-      "percent": 85.23,
-      "statements": 24419
+      "statements": 24415,
+      "covered_lines": 20808,
+      "percent": 85.23
     },
     "chain": {
-      "covered_lines": 16165,
-      "percent": 80.62,
-      "statements": 20052
+      "statements": 20051,
+      "covered_lines": 16164,
+      "percent": 80.61
     },
     "db": {
+      "statements": 9360,
       "covered_lines": 8361,
-      "percent": 89.33,
-      "statements": 9360
+      "percent": 89.33
     },
     "doctor": {
+      "statements": 662,
       "covered_lines": 503,
-      "percent": 75.98,
-      "statements": 662
+      "percent": 75.98
     },
     "domain": {
-      "covered_lines": 6270,
-      "percent": 88.22,
-      "statements": 7107
+      "statements": 7106,
+      "covered_lines": 6269,
+      "percent": 88.22
     },
     "foundation": {
+      "statements": 984,
       "covered_lines": 680,
-      "percent": 69.11,
-      "statements": 984
+      "percent": 69.11
     },
     "modules": {
-      "covered_lines": 22551,
-      "percent": 60.46,
-      "statements": 37298
+      "statements": 37295,
+      "covered_lines": 22548,
+      "percent": 60.46
     },
     "monitor": {
+      "statements": 1696,
       "covered_lines": 1247,
-      "percent": 73.53,
-      "statements": 1696
+      "percent": 73.53
     },
     "runtime": {
+      "statements": 11062,
       "covered_lines": 9436,
-      "percent": 85.3,
-      "statements": 11062
+      "percent": 85.3
     },
     "scheduler": {
+      "statements": 1272,
       "covered_lines": 1067,
-      "percent": 83.88,
-      "statements": 1272
+      "percent": 83.88
     },
     "schemas": {
+      "statements": 5081,
       "covered_lines": 4915,
-      "percent": 96.73,
-      "statements": 5081
+      "percent": 96.73
     },
     "sdk": {
-      "covered_lines": 472,
-      "percent": 88.72,
-      "statements": 532
+      "statements": 531,
+      "covered_lines": 471,
+      "percent": 88.7
     },
     "startup": {
+      "statements": 3021,
       "covered_lines": 2537,
-      "percent": 83.98,
-      "statements": 3021
+      "percent": 83.98
     },
     "testing": {
+      "statements": 187,
       "covered_lines": 163,
-      "percent": 87.17,
-      "statements": 187
+      "percent": 87.17
     },
     "workflow": {
+      "statements": 1310,
       "covered_lines": 1017,
-      "percent": 77.63,
-      "statements": 1310
+      "percent": 77.63
     }
   },
   "schema_version": 2,
@@ -5716,8 +5716,8 @@
     "root": "app"
   },
   "total": {
-    "covered_lines": 126886,
-    "percent": 77.68,
-    "statements": 163347
+    "statements": 163322,
+    "covered_lines": 126855,
+    "percent": 77.67
   }
 }
