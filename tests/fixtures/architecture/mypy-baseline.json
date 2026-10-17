@@ -576,9 +576,6 @@
     "no-untyped-call": 1,
     "union-attr": 7
   },
-  "app/chain/subscribe/notify.py": {
-    "union-attr": 6
-  },
   "app/chain/subscribe/query.py": {
     "arg-type": 5,
     "assignment": 1,

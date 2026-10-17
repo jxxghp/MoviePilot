@@ -9,6 +9,7 @@
 | `app/api/endpoints/anilist.py` | `attr-defined` 1 | `MediaInfo` 改从定义模块 `app.schemas.context` 导入；运行时对象身份不变。 |
 | `app/api/endpoints/douban.py` | `attr-defined` 1 | 豆瓣响应模型改从同一定义模块导入，保留原模型对象。 |
 | `app/api/endpoints/recommend.py` | `attr-defined` 2、`no-redef` 1 | 响应模型直接从定义模块导入；推荐来源事件结果按登记的载荷模型校验。 |
+| `app/chain/subscribe/notify.py` | `union-attr` 6 | 通知构造和失败反馈使用已识别媒体的既有阶段不变量；识别失败在调用前返回。 |
 
 ## 需单独设计或外部条件
 

@@ -248,6 +248,7 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
         """
         if not context.message:
             return None
+        assert context.mediainfo is not None
         message = _SchemaMessage(
             channel=context.channel,
             source=context.source,
@@ -277,6 +278,7 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
         """
         同步记录持久化失败，并按旧规则向原用户反馈。
         """
+        assert context.mediainfo is not None
         logger.error(f"{context.mediainfo.title_year} {err_msg}")
         if context.exist_ok or not context.message:
             return
@@ -290,6 +292,7 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
         """
         异步记录持久化失败，并按旧规则向原用户反馈。
         """
+        assert context.mediainfo is not None
         logger.error(f"{context.mediainfo.title_year} {err_msg}")
         if context.exist_ok or not context.message:
             return
@@ -303,6 +306,7 @@ class SubscribeNotificationOwner(_SubscribeOwnerBase):
         """
         构造保持旧标题、图片和接收人字段的订阅失败消息。
         """
+        assert context.mediainfo is not None
         return _SchemaMessage(
             channel=context.channel,
             source=context.source,
