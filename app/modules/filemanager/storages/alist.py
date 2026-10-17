@@ -18,9 +18,9 @@ from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.runtime.stop import runtime_stop_state
 from app.schemas.exception import OperationInterrupted, StorageQueryError
+from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.types import StorageSchema
-from app.schemas.workflow import FileItem as _SchemaFileItem
 
 # OpenList/AList 在 per_page<=0 时会退回后端默认 200，显式指定最大页大小避免大目录被截断。
 OPENLIST_MAX_LIST_PAGE_SIZE = 500
@@ -601,6 +601,8 @@ class Alist(StorageBase, metaclass=WeakSingleton):
         request_utils = RequestUtils(headers=self.__get_header_with_token())
         try:
             with request_utils.get_stream(download_url, raise_exception=True) as r:
+                if r is None:
+                    return None
                 r.raise_for_status()
                 with open(local_path, "wb") as f:
                     for chunk in r.iter_content(chunk_size=8192):

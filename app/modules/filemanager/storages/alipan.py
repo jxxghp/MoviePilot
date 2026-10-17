@@ -18,9 +18,9 @@ from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.runtime.stop import runtime_stop_state
 from app.schemas.exception import StorageQueryError
+from app.schemas.file import FileItem as _SchemaFileItem
 from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.types import StorageSchema
-from app.schemas.workflow import FileItem as _SchemaFileItem
 
 lock = threading.Lock()
 
@@ -887,6 +887,8 @@ class AliPan(StorageBase, metaclass=WeakSingleton):
 
             request_utils = RequestUtils(headers=headers)
             with request_utils.get_stream(download_url, raise_exception=True) as r:
+                if r is None:
+                    return None
                 r.raise_for_status()
                 downloaded_size = 0
                 with open(local_path, "wb") as f:

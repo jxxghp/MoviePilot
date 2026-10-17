@@ -242,7 +242,7 @@ class _RecognitionShareAdapter:
             keyword_meta=keyword_meta,
             **({"music_type": music_type} if music_type is not None else {}),
         )
-        return cast(Optional[dict[str, Any]], result)
+        return result
 
     async def async_query_recognize_share(
             self,
@@ -260,7 +260,7 @@ class _RecognitionShareAdapter:
             keyword_meta=keyword_meta,
             **({"music_type": music_type} if music_type is not None else {}),
         )
-        return cast(Optional[dict[str, Any]], result)
+        return result
 
     def to_recognize_params(
             self,
@@ -269,10 +269,7 @@ class _RecognitionShareAdapter:
         """
         把服务端结果转换为本地识别参数。
         """
-        return cast(
-            Optional[dict[str, Any]],
-            MoviePilotServerHelper.to_recognize_params(item),
-        )
+        return MoviePilotServerHelper.to_recognize_params(item)
 
 
 class _SubscriptionShareAdapter:
@@ -296,7 +293,7 @@ class _SubscriptionShareAdapter:
         """
         读取当前用户可见的订阅分享。
         """
-        return cast(list[dict[str, Any]], MoviePilotServerHelper.get_subscribe_shares())
+        return MoviePilotServerHelper.get_subscribe_shares()
 
     def report_completed(self, payload: Mapping[str, JsonData]) -> bool:
         """

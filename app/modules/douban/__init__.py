@@ -954,7 +954,10 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
                 continue
             if meta.name not in item_obj.get("target", {}).get("title"):
                 continue
-            ret_medias.append(MediaInfo(douban_info=item_obj.get("target")))
+            target = item_obj.get("target")
+            if not isinstance(target, dict):
+                continue
+            ret_medias.append(MediaInfo(douban_info=target))
         # 将搜索词中的季写入标题中
         if ret_medias and meta.begin_season is not None:
             # 小写数据转大写
@@ -1711,7 +1714,9 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         return persons
 
     @staticmethod
-    def _process_imdbid_result(result: dict, imdbid: str) -> Optional[dict]:
+    def _process_imdbid_result(
+            result: Optional[dict[str, Any]], imdbid: str,
+    ) -> Optional[dict[str, Any]]:
         """
         处理IMDBID查询结果。
 
@@ -1723,7 +1728,10 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             doubanid = result.get("id")
             if doubanid:
                 if not str(doubanid).isdigit():
-                    doubanid = re.search(r"\d+", doubanid).group(0)
+                    match = re.search(r"\d+", str(doubanid))
+                    if not match:
+                        return None
+                    doubanid = match.group(0)
                     result["id"] = doubanid
                 logger.info(f"{imdbid} 查询到豆瓣信息：{result.get('title')}")
                 return result
@@ -1731,8 +1739,11 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         return None
 
     @staticmethod
-    def _process_search_results(result: dict, name: str, mtype: MediaType = None,
-                                year: str = None, season: int = None) -> dict:
+    def _process_search_results(
+            result: Optional[dict[str, Any]], name: str,
+            mtype: Optional[MediaType] = None, year: Optional[str] = None,
+            season: Optional[int] = None,
+    ) -> dict[str, Any]:
         """
         处理搜索结果并进行匹配。
 
@@ -1757,7 +1768,7 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
             logger.warn(f"未找到 {name} 的豆瓣信息")
             return {}
 
-        for item_obj in result.get("items"):
+        for item_obj in result.get("items") or []:
             type_name = item_obj.get("type_name")
             if type_name not in [MediaType.TV.value, MediaType.MOVIE.value]:
                 continue
@@ -1909,7 +1920,9 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         return None
 
     @staticmethod
-    def _process_douban_images(mediainfo: MediaInfo, info: dict) -> MediaInfo:
+    def _process_douban_images(
+            mediainfo: MediaInfo, info: Optional[dict[str, Any]],
+    ) -> MediaInfo:
         """
         处理豆瓣图片数据。
 
@@ -2003,7 +2016,8 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         recommend = self.doubanapi.movie_recommendations(subject_id=doubanid)
         if recommend:
-            return [MediaInfo(douban_info=info) for info in recommend]
+            items = recommend.get("items") or []
+            return [MediaInfo(douban_info=info) for info in items if isinstance(info, dict)]
         return []
 
     def douban_tv_recommend(self, doubanid: str) -> List[MediaInfo]:
@@ -2015,7 +2029,8 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         recommend = self.doubanapi.tv_recommendations(subject_id=doubanid)
         if recommend:
-            return [MediaInfo(douban_info=info) for info in recommend]
+            items = recommend.get("items") or []
+            return [MediaInfo(douban_info=info) for info in items if isinstance(info, dict)]
         return []
 
     @staticmethod
@@ -2193,18 +2208,20 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         if not personinfo:
             return []
         collection_id = None
-        for module in personinfo.get("modules"):
+        for module in personinfo.get("modules") or []:
             if module.get("type") == "work_collections":
                 collection_id = module.get("payload", {}).get("id")
         if collection_id:
             collections = self.doubanapi.person_work(subject_id=collection_id, start=(page - 1) * 20, count=20)
             if collections:
-                works = collections.get("works")
+                works = collections.get("works") or []
                 return [MediaInfo(douban_info=work.get("subject")) for work in works]
         return []
 
     @staticmethod
-    def _process_celebrity_data(result: dict) -> List[_SchemaMediaPerson]:
+    def _process_celebrity_data(
+            result: Optional[dict[str, Any]],
+    ) -> List[_SchemaMediaPerson]:
         """
         处理演职员表数据的公共方法。
 
@@ -2254,7 +2271,8 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         recommend = await self.doubanapi.async_movie_recommendations(subject_id=doubanid)
         if recommend:
-            return [MediaInfo(douban_info=info) for info in recommend]
+            items = recommend.get("items") or []
+            return [MediaInfo(douban_info=info) for info in items if isinstance(info, dict)]
         return []
 
     async def async_douban_tv_recommend(self, doubanid: str) -> List[MediaInfo]:
@@ -2266,7 +2284,8 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         """
         recommend = await self.doubanapi.async_tv_recommendations(subject_id=doubanid)
         if recommend:
-            return [MediaInfo(douban_info=info) for info in recommend]
+            items = recommend.get("items") or []
+            return [MediaInfo(douban_info=info) for info in items if isinstance(info, dict)]
         return []
 
     async def async_douban_movie_interests(self, doubanid: str, start: int = 0,
@@ -2360,13 +2379,13 @@ class DoubanModule(MediaAuxiliaryProviderMixin, _ModuleBase):
         if not personinfo:
             return []
         collection_id = None
-        for module in personinfo.get("modules"):
+        for module in personinfo.get("modules") or []:
             if module.get("type") == "work_collections":
                 collection_id = module.get("payload", {}).get("id")
         if collection_id:
             collections = await self.doubanapi.async_person_work(subject_id=collection_id, start=(page - 1) * 20,
                                                                  count=20)
             if collections:
-                works = collections.get("works")
+                works = collections.get("works") or []
                 return [MediaInfo(douban_info=work.get("subject")) for work in works]
         return []

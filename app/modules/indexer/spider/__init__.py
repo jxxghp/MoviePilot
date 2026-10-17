@@ -5,7 +5,7 @@
 import datetime
 import re
 import traceback
-from typing import Any, List, Optional
+from typing import Any, List, Optional, cast
 from urllib.parse import parse_qs, quote, urlparse
 
 from jinja2 import Template
@@ -27,6 +27,9 @@ _FAILURE_SUMMARY_MAX_CHARS = 80
 _FAILURE_TITLE_SCAN_CHARS = 4096
 _HTML_TITLE_PATTERN = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 _HTML_TAG_PATTERN = re.compile(r"<[^>]+>")
+
+JsonDict = dict[str, Any]
+JsonList = list[JsonDict]
 
 
 def _describe_unusable_response(response: Any) -> str:
@@ -53,7 +56,7 @@ def _describe_unusable_response(response: Any) -> str:
     return f"HTTP {status_code}，{label}：{summary}"
 
 
-def select_media_categories(category: Optional[dict], mtype: Optional[MediaType]) -> list[dict]:
+def select_media_categories(category: Optional[JsonDict], mtype: Optional[MediaType]) -> JsonList:
     """
     根据媒体类型选择站点索引配置中的分类列表。
 
@@ -76,7 +79,7 @@ def select_media_categories(category: Optional[dict], mtype: Optional[MediaType]
     )
 
 
-def resolve_category_media_type(category_value: Any, category: Optional[dict]) -> MediaType:
+def resolve_category_media_type(category_value: Any, category: Optional[JsonDict]) -> MediaType:
     """
     将站点分类 ID 映射为统一的电影、电视剧或音乐类型。
 
@@ -109,32 +112,41 @@ class SiteSpider:
     """
 
     _default_result_num = 100
+    search: Optional[JsonDict]
+    batch: Optional[JsonDict]
+    browse: Optional[JsonDict]
+    category: Optional[JsonDict]
+    list: JsonDict
+    fields: JsonDict
+    domain: Optional[str]
+    requested_result_media_type: Optional[MediaType]
 
-    @property
-    def __class__(self):
+    # 用受控属性隐藏运行时类型，覆写内置特殊属性需要静态检查例外。
+    @property  # type: ignore[misc]
+    def __class__(self) -> type[object]:  # type: ignore[override]
         """
         隐藏 Spider 的真实类型，避免模板或脚本读取内部实现。
         """
         return object
 
     @property
-    def __dict__(self):
+    def __dict__(self) -> JsonDict:  # type: ignore[override]
         """
         隐藏 Spider 实例属性，避免外部枚举请求上下文。
         """
         return {}
 
     @property
-    def __dir__(self):
+    def __dir__(self) -> Any:
         """
         拒绝外部列举 Spider 的受保护属性。
         """
         raise AttributeError("Cannot read protected attribute!")
 
     def __init__(self,
-                 indexer: dict,
+                 indexer: JsonDict,
                  keyword: Optional[str] = None,
-                 mtype: MediaType = None,
+                 mtype: Optional[MediaType] = None,
                  cat: Optional[str] = None,
                  page: Optional[int] = 0,
                  referer: Optional[str] = None,
@@ -158,7 +170,8 @@ class SiteSpider:
         self.search_type = search_type or "torrents"
         self.indexerid = indexer.get('id')
         self.indexername = indexer.get('name')
-        self.site_media_type = MediaType.from_agent(indexer.get('media_type'))
+        media_type = indexer.get('media_type')
+        self.site_media_type = MediaType.from_agent(str(media_type)) if media_type else None
         if self.search_type == "subtitles":
             subtitle_conf = indexer.get('subtitles') or {}
             self.search = subtitle_conf.get('search')
@@ -184,7 +197,8 @@ class SiteSpider:
         )
         self.requested_result_media_type = None
         self._field_templates = self.__build_field_templates()
-        self.domain = indexer.get('domain')
+        domain = indexer.get('domain')
+        self.domain = str(domain) if domain else None
         self.result_num = int(result_num or self.default_result_num())
         self._timeout = int(indexer.get('timeout') or 15)
         self.page = page
@@ -199,10 +213,10 @@ class SiteSpider:
         self.is_error = False
         # is_error 为真时的失败原因，供搜索失败提示展示
         self.error_detail: Optional[str] = None
-        self.torrents_info = {}
-        self.torrents_info_array = []
+        self.torrents_info: JsonDict = {}
+        self.torrents_info_array: JsonList = []
 
-    def __build_field_templates(self) -> dict:
+    def __build_field_templates(self) -> dict[str, Template]:
         """
         预编译字段模板，避免按每条种子重复构造 Jinja Template。
         """
@@ -222,13 +236,16 @@ class SiteSpider:
         """
         return cls._default_result_num
 
-    def __get_search_url(self):
+    def __get_search_url(self) -> str:
         """
         获取搜索URL。
         """
         self._result_offset = 0
+        search = self.search or {}
+        domain = self.domain or ""
+        category = self.category or {}
         # 种子搜索相对路径
-        paths = self.search.get('paths', [])
+        paths = search.get('paths', [])
         torrentspath = ""
         # 是否选中了媒体类型专用路径，浏览模式下专用路径优先于 browse 配置
         typed_path_selected = False
@@ -242,7 +259,7 @@ class SiteSpider:
                 MediaType.MOVIE: "movie",
                 MediaType.TV: "tv",
                 MediaType.MUSIC: "music",
-            }.get(self.mtype)
+            }.get(self.mtype or MediaType.UNKNOWN)
             for path in paths:
                 path_type = path.get("type")
                 if path_type == "all" and not fallback_path:
@@ -278,7 +295,7 @@ class SiteSpider:
             search_word = self.__format_search_word(search_word)
 
             # 搜索URL
-            indexer_params = self.search.get("params", {}).copy()
+            indexer_params = search.get("params", {}).copy()
             if indexer_params:
                 search_area = indexer_params.get('search_area')
                 # search_area非0表示支持imdbid搜索
@@ -302,21 +319,22 @@ class SiteSpider:
                         "%s" % key: str(value).format(**inputs_dict)
                     })
                 # 分类条件
-                if self.category:
-                    cats = select_media_categories(self.category, self.mtype)
+                if category:
+                    cats = select_media_categories(category, self.mtype)
                     allowed_cats = set(self.cat.split(',')) if self.cat else None
                     for cat in cats:
                         if allowed_cats and str(cat.get('id')) not in allowed_cats:
                             continue
-                        if self.category.get("field"):
+                        if category.get("field"):
                             category_filter_selected = True
-                            value = params.get(self.category.get("field"), "")
+                            value = params.get(str(category.get("field")), "")
                             params.update({
-                                "%s" % self.category.get("field"): value + self.category.get("delimiter",
-                                                                                             ' ') + cat.get("id")
+                                "%s" % category.get("field"): str(value)
+                                + str(category.get("delimiter", ' '))
+                                + str(cat.get("id", ""))
                             })
                         else:
-                            category_param = cat.get("param") or self.category.get("param")
+                            category_param = cat.get("param") or category.get("param")
                             if category_param:
                                 category_filter_selected = True
                                 # 某些站点（例如憨憨）使用重复的 cat[] 参数，字典值列表可由
@@ -336,16 +354,16 @@ class SiteSpider:
                                 })
                         # 分类项可以附带站点要求的额外开关，例如音乐专用展示模式。
                         if isinstance(cat, dict) and cat.get("params"):
-                            params.update(cat.get("params"))
-                searchurl = UrlUtils.combine_url(self.domain, torrentspath, params)
+                            params.update(cast(JsonDict, cat.get("params")))
+                searchurl = UrlUtils.combine_url(domain, torrentspath, params)
             else:
                 # 变量字典
                 inputs_dict = {
                     "keyword": quote(search_word),
-                    "page": self.page or 0
+                    "page": str(self.page or 0)
                 }
                 # 无额外参数
-                searchurl = self.domain + str(torrentspath).format(**inputs_dict)
+                searchurl = domain + str(torrentspath).format(**inputs_dict)
                 # 没有页码入口的搜索一次返回完整列表，需在解析前按原始行分页。
                 self._result_offset = 0 if "{page}" in str(torrentspath) else int(self.page or 0) * self.result_num
 
@@ -353,23 +371,23 @@ class SiteSpider:
         else:
             # 变量字典
             inputs_dict = {
-                "page": self.page or 0,
+                "page": str(self.page or 0),
                 "keyword": ""
             }
             # 有单独浏览路径；指定了媒体类型专用路径时不覆盖，确保音乐等专用入口可达
             if self.browse and not typed_path_selected:
-                torrentspath = self.browse.get("path")
+                torrentspath = str(self.browse.get("path") or "")
                 if self.browse.get("start"):
-                    start_page = int(self.browse.get("start")) + int(self.page or 0)
+                    start_page = int(self.browse.get("start") or 0) + int(self.page or 0)
                     inputs_dict.update({
-                        "page": start_page
+                        "page": str(start_page)
                     })
             elif self.page and "{page}" not in str(torrentspath):
                 # 按路径是否已带查询参数选择连接符，避免拼出两个问号的非法地址
                 separator = "&" if "?" in str(torrentspath) else "?"
                 torrentspath = torrentspath + f"{separator}page={self.page}"
             # 搜索Url
-            searchurl = self.domain + str(torrentspath).format(**inputs_dict)
+            searchurl = domain + str(torrentspath).format(**inputs_dict)
 
         if self.result_media_type_from_request \
                 and self.mtype \
@@ -377,7 +395,7 @@ class SiteSpider:
             self.requested_result_media_type = self.mtype
         else:
             self.requested_result_media_type = None
-        return searchurl
+        return str(searchurl)
 
     def __format_search_word(self, search_word: str) -> str:
         """
@@ -386,7 +404,7 @@ class SiteSpider:
         if not search_word or not isinstance(search_word, str):
             return search_word
         if re.fullmatch(r"tt\d+", search_word):
-            imdbid_format = self.search.get("imdbid_format")
+            imdbid_format = (self.search or {}).get("imdbid_format")
             if imdbid_format:
                 return str(imdbid_format).format(
                     keyword=search_word,
@@ -414,7 +432,7 @@ class SiteSpider:
             confidence_threshold=get_runtime_setting('ENCODING_DETECTION_MIN_CONFIDENCE')
         )
 
-    def get_torrents(self) -> List[dict]:
+    def get_torrents(self) -> JsonList:
         """
         同步请求站点搜索页面并解析种子或字幕结果。
 
@@ -439,7 +457,7 @@ class SiteSpider:
             self.error_detail = _describe_unusable_response(ret)
         return self.parse(html_text)
 
-    async def async_get_torrents(self) -> List[dict]:
+    async def async_get_torrents(self) -> JsonList:
         """
         异步请求站点搜索页面，再在线程池中解析种子或字幕结果。
 
@@ -462,9 +480,9 @@ class SiteSpider:
         html_text = self.__decode_response(ret)
         if not html_text:
             self.error_detail = _describe_unusable_response(ret)
-        return await run_in_threadpool(self.parse, html_text)
+        return cast(JsonList, await run_in_threadpool(self.parse, html_text))
 
-    def __get_title(self, torrent: Any):
+    def __get_title(self, torrent: Any) -> None:
         """
         按站点字段配置提取并清洗种子标题。
         """
@@ -488,7 +506,7 @@ class SiteSpider:
         self.torrents_info['title'] = self.__filter_text(self.torrents_info.get('title'),
                                                          selector.get('filters'))
 
-    def __get_description(self, torrent: Any):
+    def __get_description(self, torrent: Any) -> None:
         """
         按选择器或模板生成种子副标题。
         """
@@ -524,7 +542,7 @@ class SiteSpider:
         self.torrents_info['description'] = self.__filter_text(self.torrents_info.get('description'),
                                                                selector.get('filters'))
 
-    def __get_detail(self, torrent: Any):
+    def __get_detail(self, torrent: Any) -> None:
         """
         提取并规范化种子详情页地址。
         """
@@ -536,15 +554,15 @@ class SiteSpider:
         if detail_link:
             if not detail_link.startswith("http"):
                 if detail_link.startswith("//"):
-                    self.torrents_info['page_url'] = self.domain.split(":")[0] + ":" + detail_link
+                    self.torrents_info['page_url'] = (self.domain or "").split(":")[0] + ":" + detail_link
                 elif detail_link.startswith("/"):
-                    self.torrents_info['page_url'] = self.domain + detail_link[1:]
+                    self.torrents_info['page_url'] = (self.domain or "") + detail_link[1:]
                 else:
-                    self.torrents_info['page_url'] = self.domain + detail_link
+                    self.torrents_info['page_url'] = (self.domain or "") + detail_link
             else:
                 self.torrents_info['page_url'] = detail_link
 
-    def __get_download(self, torrent: Any):
+    def __get_download(self, torrent: Any) -> None:
         """
         提取并规范化种子下载地址。
         """
@@ -556,7 +574,7 @@ class SiteSpider:
         if download_link:
             if not download_link.startswith("http") \
                     and not download_link.startswith("magnet"):
-                _scheme, _domain = url_tools.split_netloc(self.domain)
+                _scheme, _domain = url_tools.split_netloc(self.domain or "")
                 if _domain in download_link:
                     if download_link.startswith("/"):
                         self.torrents_info['enclosure'] = f"{_scheme}:{download_link}"
@@ -570,7 +588,7 @@ class SiteSpider:
             else:
                 self.torrents_info['enclosure'] = download_link
 
-    def __get_report_url(self, torrent: Any):
+    def __get_report_url(self, torrent: Any) -> None:
         """
         获取字幕举报页面链接。
         """
@@ -582,7 +600,7 @@ class SiteSpider:
         if report_link:
             self.torrents_info['report_url'] = self.__normalize_link(report_link)
 
-    def __get_language_icon(self, torrent: Any):
+    def __get_language_icon(self, torrent: Any) -> None:
         """
         获取字幕语言图标链接。
         """
@@ -594,7 +612,7 @@ class SiteSpider:
         if icon_link:
             self.torrents_info['language_icon'] = self.__normalize_link(icon_link)
 
-    def __get_imdbid(self, torrent: Any):
+    def __get_imdbid(self, torrent: Any) -> None:
         """
         提取种子关联的 IMDb 标识。
         """
@@ -604,7 +622,7 @@ class SiteSpider:
         item = self._safe_query(torrent, selector)
         self.torrents_info['imdbid'] = self.__filter_text(item, selector.get('filters'))
 
-    def __get_size(self, torrent: Any):
+    def __get_size(self, torrent: Any) -> None:
         """
         提取种子大小并转换为字节数。
         """
@@ -615,12 +633,12 @@ class SiteSpider:
         if item is not None and item != "":
             size_val = item.replace("\n", "").strip()
             size_val = self.__filter_text(size_val,
-                                          selector.get('filters'))
+                                          selector.get('filters')) or ""
             self.torrents_info['size'] = size_tools.parse_size(size_val)
         else:
             self.torrents_info['size'] = 0
 
-    def __get_leechers(self, torrent: Any):
+    def __get_leechers(self, torrent: Any) -> None:
         """
         提取种子的下载人数。
         """
@@ -631,12 +649,12 @@ class SiteSpider:
         if item:
             peers_val = item.split("/")[0]
             peers_val = peers_val.replace(",", "")
-            peers_val = self.__filter_text(peers_val, selector.get('filters'))
+            peers_val = self.__filter_text(peers_val, selector.get('filters')) or ""
             self.torrents_info['peers'] = int(peers_val) if peers_val and peers_val.isdigit() else 0
         else:
             self.torrents_info['peers'] = 0
 
-    def __get_seeders(self, torrent: Any):
+    def __get_seeders(self, torrent: Any) -> None:
         """
         提取种子的做种人数。
         """
@@ -647,12 +665,12 @@ class SiteSpider:
         if item:
             seeders_val = item.split("/")[0]
             seeders_val = seeders_val.replace(",", "")
-            seeders_val = self.__filter_text(seeders_val, selector.get('filters'))
+            seeders_val = self.__filter_text(seeders_val, selector.get('filters')) or ""
             self.torrents_info['seeders'] = int(seeders_val) if seeders_val and seeders_val.isdigit() else 0
         else:
             self.torrents_info['seeders'] = 0
 
-    def __get_grabs(self, torrent: Any):
+    def __get_grabs(self, torrent: Any) -> None:
         """
         提取种子的完成人数。
         """
@@ -663,12 +681,12 @@ class SiteSpider:
         if item is not None and item != "":
             grabs_val = item.split("/")[0]
             grabs_val = grabs_val.replace(",", "")
-            grabs_val = self.__filter_text(grabs_val, selector.get('filters'))
+            grabs_val = self.__filter_text(grabs_val, selector.get('filters')) or ""
             self.torrents_info['grabs'] = int(grabs_val) if grabs_val and grabs_val.isdigit() else 0
         else:
             self.torrents_info['grabs'] = 0
 
-    def __get_pubdate(self, torrent: Any):
+    def __get_pubdate(self, torrent: Any) -> None:
         """
         按站点日期配置提取并规范化发布时间。
         """
@@ -693,7 +711,7 @@ class SiteSpider:
             if self.__is_invalid_pubdate_text(self.torrents_info.get('pubdate')):
                 self.torrents_info.pop('pubdate', None)
 
-    def __get_date(self, torrent: Any, selector: dict) -> Optional[str]:
+    def __get_date(self, torrent: Any, selector: JsonDict) -> Optional[str]:
         """
         从 date 模板解析发布时间。
         """
@@ -719,9 +737,9 @@ class SiteSpider:
         pubdate_str = template.render(fields=render_dict)
         if pubdate_str == "now" or self.__is_relative_pubdate_text(pubdate_str):
             return None
-        return pubdate_str
+        return str(pubdate_str)
 
-    def __get_date_from_cell(self, torrent: Any, selector: dict) -> Optional[str]:
+    def __get_date_from_cell(self, torrent: Any, selector: JsonDict) -> Optional[str]:
         """
         兼容 NexusPHP 发生时间模式下不再渲染 span 的时间单元格。
         """
@@ -774,7 +792,7 @@ class SiteSpider:
         except (ValueError, TypeError):
             return True
 
-    def __get_date_elapsed(self, torrent: Any):
+    def __get_date_elapsed(self, torrent: Any) -> None:
         """
         提取相对发布时间对应的已过秒数。
         """
@@ -784,7 +802,7 @@ class SiteSpider:
         date_elapsed = self._safe_query(torrent, selector)
         self.torrents_info['date_elapsed'] = self.__filter_text(date_elapsed, selector.get('filters'))
 
-    def __get_downloadvolumefactor(self, torrent: Any):
+    def __get_downloadvolumefactor(self, torrent: Any) -> None:
         """
         按促销标签解析种子下载系数。
         """
@@ -810,7 +828,7 @@ class SiteSpider:
                 if downloadvolumefactor:
                     self.torrents_info['downloadvolumefactor'] = int(downloadvolumefactor.group(1))
 
-    def __get_uploadvolumefactor(self, torrent: Any):
+    def __get_uploadvolumefactor(self, torrent: Any) -> None:
         """
         按促销标签解析种子上传系数。
         """
@@ -836,7 +854,7 @@ class SiteSpider:
                 if uploadvolumefactor:
                     self.torrents_info['uploadvolumefactor'] = int(uploadvolumefactor.group(1))
 
-    def __get_labels(self, torrent: Any):
+    def __get_labels(self, torrent: Any) -> None:
         """
         提取并清洗种子标签列表。
         """
@@ -860,7 +878,7 @@ class SiteSpider:
             labels.clear()
             del labels
 
-    def __get_free_date(self, torrent: Any):
+    def __get_free_date(self, torrent: Any) -> None:
         """
         提取种子免费促销截止时间。
         """
@@ -870,7 +888,7 @@ class SiteSpider:
         freedate = self._safe_query(torrent, selector)
         self.torrents_info['freedate'] = self.__filter_text(freedate, selector.get('filters'))
 
-    def __get_hit_and_run(self, torrent: Any):
+    def __get_hit_and_run(self, torrent: Any) -> None:
         """
         判定种子是否带有 Hit and Run 要求。
         """
@@ -887,7 +905,7 @@ class SiteSpider:
             hit_and_run.clear()
             del hit_and_run
 
-    def __get_category(self, torrent: Any):
+    def __get_category(self, torrent: Any) -> None:
         """
         将站点分类字段投影为统一媒体类型。
         """
@@ -906,7 +924,7 @@ class SiteSpider:
             resolved_type = self.site_media_type
         self.torrents_info['category'] = resolved_type.value
 
-    def __apply_result_media_type(self, torrents: Optional[List[dict]]) -> List[dict]:
+    def __apply_result_media_type(self, torrents: Optional[JsonList]) -> JsonList:
         """
         为解析结果补充统一媒体类型。
 
@@ -930,7 +948,7 @@ class SiteSpider:
                 torrent["category"] = self.site_media_type.value
         return results
 
-    def __get_subtitle_field(self, torrent: Any, field_name: str):
+    def __get_subtitle_field(self, torrent: Any, field_name: str) -> None:
         """
         按配置读取字幕字段。
         """
@@ -942,7 +960,7 @@ class SiteSpider:
         if value is not None:
             self.torrents_info[field_name] = value
 
-    def __fill_subtitle_ids(self):
+    def __fill_subtitle_ids(self) -> None:
         """
         从字幕下载链接中补充站点种子ID和字幕ID。
         """
@@ -970,13 +988,13 @@ class SiteSpider:
             return link
         if not link.startswith("http"):
             if link.startswith("//"):
-                return self.domain.split(":")[0] + ":" + link
+                return (self.domain or "").split(":")[0] + ":" + link
             if link.startswith("/"):
-                return self.domain + link[1:]
-            return self.domain + link
+                return (self.domain or "") + link[1:]
+            return (self.domain or "") + link
         return link
 
-    def _safe_query(self, torrent: Any, selector_config: Optional[dict]) -> Optional[str]:
+    def _safe_query(self, torrent: Any, selector_config: Optional[JsonDict]) -> Optional[str]:
         """
         安全地执行PyQuery查询并自动清理资源。
 
@@ -1000,7 +1018,7 @@ class SiteSpider:
                 query_obj.clear()
             del query_obj
 
-    def get_info(self, torrent: Any) -> dict:
+    def get_info(self, torrent: Any) -> JsonDict:
         """
         按站点字段配置解析单条种子，并清理临时字段缓存。
 
@@ -1035,7 +1053,7 @@ class SiteSpider:
         finally:
             self.torrents_info.clear()
 
-    def get_subtitle_info(self, subtitle: Any) -> dict:
+    def get_subtitle_info(self, subtitle: Any) -> JsonDict:
         """
         按站点字段配置解析单条字幕，并补齐字幕和种子标识。
 
@@ -1069,46 +1087,47 @@ class SiteSpider:
             self.torrents_info.clear()
 
     @staticmethod
-    def __filter_text(text: Optional[str], filters: Optional[List[dict]]) -> str:
+    def __filter_text(text: Optional[str], filters: Optional[List[JsonDict]]) -> Optional[str]:
         """
         按字段配置依次执行文本过滤器。
         """
         if not text or not filters or not isinstance(filters, list):
             return text
+        filtered_text: Any = text
         if not isinstance(text, str):
-            text = str(text)
+            filtered_text = str(text)
         for filter_item in filters:
-            if not text:
+            if not filtered_text:
                 break
             method_name = filter_item.get("name")
             try:
                 args = filter_item.get("args")
                 if method_name == "re_search" and isinstance(args, list):
-                    rematch = re.search(r"%s" % args[0], text)
+                    rematch = re.search(r"%s" % args[0], filtered_text)
                     if rematch:
-                        text = rematch.group(args[-1])
+                        filtered_text = rematch.group(args[-1])
                 elif method_name == "split" and isinstance(args, list):
-                    text = text.split(r"%s" % args[0])[args[-1]]
+                    filtered_text = filtered_text.split(r"%s" % args[0])[args[-1]]
                 elif method_name == "replace" and isinstance(args, list):
-                    text = text.replace(r"%s" % args[0], r"%s" % args[-1])
+                    filtered_text = filtered_text.replace(r"%s" % args[0], r"%s" % args[-1])
                 elif method_name == "dateparse" and isinstance(args, str):
-                    text = text.replace("\n", " ").strip()
-                    text = datetime.datetime.strptime(text, r"%s" % args)
+                    filtered_text = filtered_text.replace("\n", " ").strip()
+                    filtered_text = datetime.datetime.strptime(filtered_text, r"%s" % args)
                 elif method_name == "strip":
-                    text = text.strip()
+                    filtered_text = filtered_text.strip()
                 elif method_name == "appendleft":
-                    text = f"{args}{text}"
+                    filtered_text = f"{args}{filtered_text}"
                 elif method_name == "querystring":
                     parsed_url = urlparse(str(text))
                     query_params = parse_qs(parsed_url.query)
-                    param_value = query_params.get(args)
-                    text = param_value[0] if param_value else ''
+                    param_value = query_params.get(str(args))
+                    filtered_text = param_value[0] if param_value else ''
             except Exception as err:
                 logger.debug(f'过滤器 {method_name} 处理失败：{str(err)} - {traceback.format_exc()}')
-        return text.strip() if isinstance(text, str) else text
+        return filtered_text.strip() if isinstance(filtered_text, str) else str(filtered_text)
 
     @staticmethod
-    def __remove(item: Any, selector: Optional[dict]):
+    def __remove(item: Any, selector: Optional[JsonDict]) -> None:
         """
         移除元素。
         """
@@ -1118,12 +1137,12 @@ class SiteSpider:
                 item.remove(v)
 
     @staticmethod
-    def __attribute_or_text(item: Any, selector: Optional[dict]) -> list:
+    def __attribute_or_text(item: Any, selector: Optional[JsonDict]) -> List[Any]:
         """
         获取查询结果的属性或文本列表。
         """
         if not selector:
-            return item
+            return cast(List[Any], item)
         if not item:
             return []
         if 'attribute' in selector:
@@ -1133,7 +1152,7 @@ class SiteSpider:
         return items
 
     @staticmethod
-    def __index(items: Optional[list], selector: Optional[dict]) -> Optional[str]:
+    def __index(items: Optional[List[str]], selector: Optional[JsonDict]) -> Optional[str]:
         """
         按配置下标读取查询结果。
         """
@@ -1141,11 +1160,11 @@ class SiteSpider:
             return None
         if selector:
             if "contents" in selector \
-                    and len(items) > int(selector.get("contents")):
-                item = items[0].split("\n")[selector.get("contents")]
+                    and len(items) > int(selector.get("contents") or 0):
+                item = items[0].split("\n")[int(selector.get("contents") or 0)]
             elif "index" in selector \
-                    and len(items) > int(selector.get("index")):
-                item = items[int(selector.get("index"))]
+                    and len(items) > int(selector.get("index") or 0):
+                item = items[int(selector.get("index") or 0)]
             else:
                 item = items[0]
         else:
@@ -1182,7 +1201,7 @@ class SiteSpider:
         PyQuery(rows[self._result_offset + self.result_num:]).remove()
         return str(html_doc)
 
-    def parse(self, html_text: str) -> List[dict]:
+    def parse(self, html_text: str) -> JsonList:
         """
         解析页面或 RSS 索引，统一使用 HTML 选择器语义。
 
@@ -1219,7 +1238,7 @@ class SiteSpider:
         if self.search_type == "subtitles":
             rust_subtitles = rust_accel.parse_indexer_subtitles(
                 html_text=html_text,
-                domain=self.domain,
+                domain=self.domain or "",
                 list_config=self.list,
                 fields=self.fields,
                 result_num=self.result_num
@@ -1229,7 +1248,7 @@ class SiteSpider:
         else:
             rust_torrents = rust_accel.parse_indexer_torrents(
                 html_text=html_text,
-                domain=self.domain,
+                domain=self.domain or "",
                 list_config=self.list,
                 fields=self.fields,
                 category=self.category,

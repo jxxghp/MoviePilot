@@ -1,5 +1,5 @@
 """
-标准媒体、音乐和种子上下文，以及来源元数据的兼容投影入口。
+聚合媒体、音乐、种子和字幕的领域上下文、序列化契约及来源元数据投影入口。
 """
 
 import re
@@ -1713,13 +1713,13 @@ class TorrentInfo:
         """
         self.media_source, self.media_id = resolve_media_identity(media=self)
 
-    def __setattr__(self, name: str, value: Any):
+    def __setattr__(self, name: str, value: Any) -> None:
         """
         直接写入种子运行时字段，保留历史动态属性行为。
         """
         self.__dict__[name] = value
 
-    def __get_properties(self):
+    def __get_properties(self) -> list[str]:
         """
         获取属性列表。
         """
@@ -1730,7 +1730,7 @@ class TorrentInfo:
                 property_names.append(member_name)
         return property_names
 
-    def from_dict(self, data: dict):
+    def from_dict(self, data: dict[str, Any]) -> None:
         """
         将字典字段写入当前种子对象，跳过只读属性后规范化媒体身份。
 
@@ -1771,14 +1771,14 @@ class TorrentInfo:
         return free_strs.get('%.2f %.2f' % (upload_volume_factor, download_volume_factor), "未知")
 
     @property
-    def volume_factor(self):
+    def volume_factor(self) -> str:
         """
         返回促销信息。
         """
         return self.get_free_string(self.uploadvolumefactor, self.downloadvolumefactor)
 
     @property
-    def freedate_diff(self):
+    def freedate_diff(self) -> str:
         """
         返回免费剩余时间。
         """
@@ -1867,7 +1867,7 @@ class SubtitleInfo:
     subtitle_id: str = None
     file_name: str = None
 
-    def __build_meta_info(self) -> Optional[dict]:
+    def __build_meta_info(self) -> Optional[dict[str, Any]]:
         """
         从字幕标题、文件名和描述中识别可展示的季集信息。
         """
@@ -1875,20 +1875,20 @@ class SubtitleInfo:
             if not title:
                 continue
             try:
-                meta_dict = MetaInfo(title=title, subtitle=self.description).to_dict()
+                meta_dict: dict[str, Any] = MetaInfo(title=title, subtitle=self.description).to_dict()
             except Exception:
                 continue
             if meta_dict.get("season_episode") or meta_dict.get("episode_list"):
                 return meta_dict
         return None
 
-    def __setattr__(self, name: str, value: Any):
+    def __setattr__(self, name: str, value: Any) -> None:
         """
         直接写入字幕运行时字段，保留历史动态属性行为。
         """
         self.__dict__[name] = value
 
-    def from_dict(self, data: dict):
+    def from_dict(self, data: dict[str, Any]) -> None:
         """
         将字典字段写入当前种子对象，跳过只读属性后规范化媒体身份。
 
@@ -1926,7 +1926,7 @@ class MediaInfo:
     :param sg_title: 新加坡标题
     :param year: 年份
     :param season: 季
-    :param tmdb_id: 来源返回的 TMDB 辅助标识，不替代媒体主身份
+    :param tmdb_id: 来源返回的 TMDB 辅助标识，不参与通用身份传递或持久化
     :param imdb_id: 来源返回的 IMDb 辅助标识
     :param tvdb_id: 来源返回的 TVDB 辅助标识
     :param tvdb_slug: TVDB 详情页的可读路径标识
@@ -1951,7 +1951,7 @@ class MediaInfo:
     :param category: 兼容字段，过渡期始终与 library_category 同步
     :param library_category: 自动分类或人工覆盖后的媒体库相对目录分类
     :param metadata_category: 数据源提供的描述性分类
-    :param classification: 分类规则的判定结果；未执行分类时为 None
+    :param classification: 分类规则计算及人工覆盖的结果；未执行分类时为 None
     :param classification_facts: 插件来源提交的受控扩展分类事实，统一收口时由宿主注册表校验
     :param tmdb_info: TMDB 原始详情，用于来源字段投影
     :param douban_info: 豆瓣原始详情，用于来源字段投影
@@ -2061,7 +2061,7 @@ class MediaInfo:
     episode_groups: List[dict] = field(default_factory=list)
     episode_group: str = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """
         规范化媒体来源、来源投影和新旧分类字段。
         """
@@ -2086,7 +2086,7 @@ class MediaInfo:
         )
         self.__dict__["_category_semantics_ready"] = True
 
-    def __setattr__(self, name: str, value: Any):
+    def __setattr__(self, name: str, value: Any) -> None:
         """
         写入动态字段，并兼容旧调用方直接覆盖 category。
         """
@@ -2100,7 +2100,7 @@ class MediaInfo:
             return
         self.__dict__[name] = value
 
-    def __get_properties(self):
+    def __get_properties(self) -> list[str]:
         """
         获取属性列表。
         """
@@ -2111,7 +2111,7 @@ class MediaInfo:
                 property_names.append(member_name)
         return property_names
 
-    def from_dict(self, data: dict):
+    def from_dict(self, data: dict[str, Any]) -> None:
         """
         将字典字段写入当前种子对象，跳过只读属性后规范化媒体身份。
 
@@ -2140,7 +2140,7 @@ class MediaInfo:
         if isinstance(self.type, str):
             self.type = MediaType(self.type)
 
-    def set_category(self, cat: str):
+    def set_category(self, cat: str) -> None:
         """
         兼容旧入口，委托统一媒体库分类写入方法。
         """
@@ -2159,20 +2159,20 @@ class MediaInfo:
         for name, value in values.items():
             setattr(self, name, value)
 
-    def set_tmdb_info(self, info: dict):
+    def set_tmdb_info(self, info: dict[str, Any]) -> None:
         """
         通过 TMDB 来源 owner 初始化统一媒体字段。
         """
         self._apply_source_projection(_project_tmdb(vars(self), info))
 
-    def set_douban_info(self, info: dict):
+    def set_douban_info(self, info: dict[str, Any]) -> None:
         """
         通过豆瓣来源 owner 初始化统一媒体字段。
         """
         self._apply_source_projection(_project_douban(vars(self), info))
 
     @staticmethod
-    def get_bangumi_media_type(info: dict) -> MediaType:
+    def get_bangumi_media_type(info: dict[str, Any]) -> MediaType:
         """
         兼容旧方法，委托 Bangumi 来源 owner 解析媒体类型。
         """
@@ -2180,14 +2180,14 @@ class MediaInfo:
 
         return resolve_media_type(info)
 
-    def set_bangumi_info(self, info: dict) -> None:
+    def set_bangumi_info(self, info: dict[str, Any]) -> None:
         """
         通过 Bangumi 来源 owner 初始化统一媒体字段。
         """
         self._apply_source_projection(_project_bangumi(vars(self), info))
 
     @staticmethod
-    def get_anilist_media_type(info: dict) -> MediaType:
+    def get_anilist_media_type(info: dict[str, Any]) -> MediaType:
         """
         兼容旧方法，委托 AniList 来源 owner 解析媒体类型。
         """
@@ -2196,7 +2196,7 @@ class MediaInfo:
         return resolve_media_type(info)
 
     @staticmethod
-    def _anilist_date(date_info: dict) -> Optional[str]:
+    def _anilist_date(date_info: dict[str, Any]) -> Optional[str]:
         """
         兼容旧私有补丁点，委托 AniList owner 格式化模糊日期。
         """
@@ -2205,7 +2205,7 @@ class MediaInfo:
         return format_date(date_info)
 
     @staticmethod
-    def _anilist_chinese_title(info: dict) -> Optional[str]:
+    def _anilist_chinese_title(info: dict[str, Any]) -> Optional[str]:
         """
         兼容旧私有补丁点，委托 AniList owner 选择中文标题。
         """
@@ -2213,14 +2213,14 @@ class MediaInfo:
 
         return select_chinese_title(info)
 
-    def set_anilist_info(self, info: dict) -> None:
+    def set_anilist_info(self, info: dict[str, Any]) -> None:
         """
         通过 AniList 来源 owner 初始化统一媒体字段。
         """
         self._apply_source_projection(_project_anilist(vars(self), info))
 
     @property
-    def title_year(self):
+    def title_year(self) -> str:
         """
         返回带年份的媒体标题。
         """
@@ -2229,7 +2229,7 @@ class MediaInfo:
         return ""
 
     @property
-    def detail_link(self):
+    def detail_link(self) -> str:
         """
         返回当前媒体主身份对应的来源详情页地址。
 
@@ -2253,7 +2253,7 @@ class MediaInfo:
         return ""
 
     @property
-    def stars(self):
+    def stars(self) -> str:
         """
         返回评分星星个数。
         """
@@ -2262,7 +2262,7 @@ class MediaInfo:
         return "".rjust(int(self.vote_average), "★")
 
     @property
-    def vote_star(self):
+    def vote_star(self) -> str:
         """
         返回适合消息展示的评分星级文本。
         """
@@ -2307,7 +2307,7 @@ class MediaInfo:
         overview = (overview[:max_len] + placeholder) if len(overview) > max_len else overview
         return overview
 
-    def to_dict(self):
+    def to_dict(self) -> dict[str, Any]:
         """
         返回字典。
         """

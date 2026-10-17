@@ -141,7 +141,7 @@ class TmdbApi:
         tvs = self.search.tv_shows(**self._search_kwargs(title, year, MediaType.TV)) or []
         return self._project_search_results(title, tvs, MediaType.TV)
 
-    def search_persons(self, name: str) -> List[dict]:
+    def search_persons(self, name: str) -> List[_MediaRecord]:
         """
         查询模糊匹配的当前页的人物TMDB信息。
 
@@ -168,7 +168,7 @@ class TmdbApi:
         collections = self.search.collections(term=name) or []
         return self._project_collections(collections)
 
-    def get_collection(self, collection_id: int) -> List[dict]:
+    def get_collection(self, collection_id: int) -> List[_MediaRecord]:
         """
         根据合集ID查询合集详情。
 
@@ -1032,7 +1032,7 @@ class TmdbApi:
         return self._project_info(tmdb_info)
 
     @staticmethod
-    def __get_content_rating(tmdb_info: dict) -> Optional[str]:
+    def __get_content_rating(tmdb_info: _MediaRecord) -> Optional[str]:
         """
         获得tmdb中的内容评级。
 
@@ -1094,12 +1094,12 @@ class TmdbApi:
         return ratings.get("CN") or ratings.get("US")
 
     @staticmethod
-    def __update_tmdbinfo_cn_title(tmdb_info: dict):
+    def __update_tmdbinfo_cn_title(tmdb_info: _MediaRecord) -> None:
         """
         更新TMDB信息中的中文名称。
         """
 
-        def __get_tmdb_chinese_title(tmdbinfo) -> Optional[str]:
+        def __get_tmdb_chinese_title(tmdbinfo: _MediaRecord) -> Optional[str]:
             """
             从别名中获取中文标题。
             """
@@ -1113,15 +1113,16 @@ class TmdbApi:
                 iso_3166_1 = alternative_title.get("iso_3166_1")
                 if iso_3166_1 == "CN":
                     title = alternative_title.get("title")
-                    if title and text_tools.contains_chinese(title) \
+                    if isinstance(title, str) and text_tools.contains_chinese(title) \
                             and zhconv_convert(title, "zh-hans") == title:
                         return title
-            return tmdbinfo.get("title") if tmdbinfo.get("media_type") == MediaType.MOVIE else tmdbinfo.get("name")
+            title = tmdbinfo.get("title") if tmdbinfo.get("media_type") == MediaType.MOVIE else tmdbinfo.get("name")
+            return title if isinstance(title, str) else None
 
         org_title = tmdb_info.get("title") \
             if tmdb_info.get("media_type") == MediaType.MOVIE \
             else tmdb_info.get("name")
-        if not text_tools.contains_chinese(org_title):
+        if not text_tools.contains_chinese(org_title if isinstance(org_title, str) else ""):
             cn_title = __get_tmdb_chinese_title(tmdb_info)
             if cn_title and cn_title != org_title:
                 if tmdb_info.get("media_type") == MediaType.MOVIE:
@@ -1137,12 +1138,12 @@ class TmdbApi:
                         tmdb_info['name'] = sg_title
 
     @staticmethod
-    def __update_tmdbinfo_extra_title(tmdb_info: dict):
+    def __update_tmdbinfo_extra_title(tmdb_info: _MediaRecord) -> None:
         """
         更新TMDB信息中的其它语种名称。
         """
 
-        def __get_tmdb_lang_title(tmdbinfo: dict, lang: Optional[str] = "US") -> Optional[str]:
+        def __get_tmdb_lang_title(tmdbinfo: _MediaRecord, lang: Optional[str] = "US") -> Optional[str]:
             """
             从译名中获取其它语种标题。
             """
@@ -1151,8 +1152,9 @@ class TmdbApi:
             translations = tmdb_info.get("translations", {}).get("translations", [])
             for translation in translations:
                 if translation.get("iso_3166_1") == lang:
-                    return translation.get("data", {}).get("title") if tmdbinfo.get("media_type") == MediaType.MOVIE \
+                    title = translation.get("data", {}).get("title") if tmdbinfo.get("media_type") == MediaType.MOVIE \
                         else translation.get("data", {}).get("name")
+                    return title if isinstance(title, str) else None
             return None
 
         org_title = (
@@ -1180,7 +1182,7 @@ class TmdbApi:
                                                                "translations,"
                                                                "release_dates,"
                                                                "external_ids",
-                           raise_on_connection_error: bool = False) -> Optional[dict]:
+                           raise_on_connection_error: bool = False) -> Optional[_MediaRecord]:
         """
         查询电影或电视剧详情，保留连接失败与空结果的区别。
 
@@ -1216,7 +1218,7 @@ class TmdbApi:
                                                             "content_ratings,"
                                                             "external_ids,"
                                                             "episode_groups",
-                        raise_on_connection_error: bool = False) -> Optional[dict]:
+                        raise_on_connection_error: bool = False) -> Optional[_MediaRecord]:
         """
         查询电影或电视剧详情，保留连接失败与空结果的区别。
 
@@ -1243,7 +1245,7 @@ class TmdbApi:
             logger.error(str(e))
             return None
 
-    def get_tv_season_detail(self, tmdbid: int, season: int):
+    def get_tv_season_detail(self, tmdbid: int, season: int) -> _MediaRecord:
         """
         获取电视剧季的详情。
 
@@ -1261,7 +1263,7 @@ class TmdbApi:
             logger.error(str(e))
             return {}
 
-    def get_tv_episode_detail(self, tmdbid: int, season: int, episode: int) -> dict:
+    def get_tv_episode_detail(self, tmdbid: int, season: int, episode: int) -> _MediaRecord:
         """
         获取电视剧集的详情。
 
@@ -1280,7 +1282,7 @@ class TmdbApi:
             logger.error(str(e))
             return {}
 
-    def discover_movies(self, params: dict) -> List[dict]:
+    def discover_movies(self, params: _MediaRecord) -> List[_MediaRecord]:
         """
         发现电影。
 
@@ -1300,7 +1302,7 @@ class TmdbApi:
             logger.error(str(e))
             return []
 
-    def discover_tvs(self, params: dict) -> List[dict]:
+    def discover_tvs(self, params: _MediaRecord) -> List[_MediaRecord]:
         """
         发现电视剧。
 
@@ -1321,7 +1323,7 @@ class TmdbApi:
             return []
 
     @staticmethod
-    def _normalize_trending_infos(infos: Optional[List[dict]]) -> List[dict]:
+    def _normalize_trending_infos(infos: Optional[List[_MediaRecord]]) -> List[_MediaRecord]:
         """
         过滤流行趋势中的人物等非媒体项，并统一电影、电视剧的媒体类型。
         """
@@ -1340,7 +1342,7 @@ class TmdbApi:
             ret_infos.append(info)
         return ret_infos
 
-    def discover_trending(self, page: Optional[int] = 1) -> List[dict]:
+    def discover_trending(self, page: Optional[int] = 1) -> List[_MediaRecord]:
         """
         查询周趋势榜中的电影和电视剧。
 
@@ -1374,7 +1376,7 @@ class TmdbApi:
                 languages.append(language)
         return ",".join(languages)
 
-    def get_movie_images(self, tmdbid: int, original_language: Optional[str] = None) -> dict:
+    def get_movie_images(self, tmdbid: int, original_language: Optional[str] = None) -> _MediaRecord:
         """
         获取电影的图片。
 
@@ -1396,7 +1398,7 @@ class TmdbApi:
             logger.error(str(e))
             return {}
 
-    def get_tv_images(self, tmdbid: int, original_language: Optional[str] = None) -> dict:
+    def get_tv_images(self, tmdbid: int, original_language: Optional[str] = None) -> _MediaRecord:
         """
         获取电视剧的图片。
 
@@ -1418,7 +1420,7 @@ class TmdbApi:
             logger.error(str(e))
             return {}
 
-    def get_movie_similar(self, tmdbid: int) -> List[dict]:
+    def get_movie_similar(self, tmdbid: int) -> List[_MediaRecord]:
         """
         获取电影的相似电影。
 
@@ -1434,7 +1436,7 @@ class TmdbApi:
             logger.error(str(e))
             return []
 
-    def get_tv_similar(self, tmdbid: int) -> List[dict]:
+    def get_tv_similar(self, tmdbid: int) -> List[_MediaRecord]:
         """
         获取电视剧的相似电视剧。
 
@@ -1450,7 +1452,7 @@ class TmdbApi:
             logger.error(str(e))
             return []
 
-    def get_movie_recommend(self, tmdbid: int) -> List[dict]:
+    def get_movie_recommend(self, tmdbid: int) -> List[_MediaRecord]:
         """
         获取电影的推荐电影。
 
@@ -1466,7 +1468,7 @@ class TmdbApi:
             logger.error(str(e))
             return []
 
-    def get_tv_recommend(self, tmdbid: int) -> List[dict]:
+    def get_tv_recommend(self, tmdbid: int) -> List[_MediaRecord]:
         """
         获取电视剧的推荐电视剧。
 
@@ -1482,7 +1484,7 @@ class TmdbApi:
             logger.error(str(e))
             return []
 
-    def get_movie_credits(self, tmdbid: int, page: Optional[int] = 1, count: Optional[int] = 24) -> List[dict]:
+    def get_movie_credits(self, tmdbid: int, page: Optional[int] = 1, count: Optional[int] = 24) -> List[_MediaRecord]:
         """
         获取电影的演员列表。
 
@@ -1500,13 +1502,13 @@ class TmdbApi:
             info = self.movie.credits(movie_id=tmdbid) or {}
             cast = info.get('cast') or []
             if cast:
-                return cast[(page - 1) * count: page * count]
+                return cast[((1 if page is None else page) - 1) * (24 if count is None else count): (1 if page is None else page) * (24 if count is None else count)]
             return []
         except Exception as e:
             logger.error(str(e))
             return []
 
-    def get_tv_credits(self, tmdbid: int, page: Optional[int] = 1, count: Optional[int] = 24) -> List[dict]:
+    def get_tv_credits(self, tmdbid: int, page: Optional[int] = 1, count: Optional[int] = 24) -> List[_MediaRecord]:
         """
         获取电视剧的演员列表。
 
@@ -1524,13 +1526,13 @@ class TmdbApi:
             info = self.tv.credits(tv_id=tmdbid) or {}
             cast = info.get('cast') or []
             if cast:
-                return cast[(page - 1) * count: page * count]
+                return cast[((1 if page is None else page) - 1) * (24 if count is None else count): (1 if page is None else page) * (24 if count is None else count)]
             return []
         except Exception as e:
             logger.error(str(e))
             return []
 
-    def get_tv_group_seasons(self, group_id: str) -> List[dict]:
+    def get_tv_group_seasons(self, group_id: str) -> List[_MediaRecord]:
         """
         获取电视剧剧集组季集列表。
 
@@ -1559,7 +1561,7 @@ class TmdbApi:
             logger.error(str(e))
             return []
 
-    def get_tv_group_detail(self, group_id: str, season: int) -> dict:
+    def get_tv_group_detail(self, group_id: str, season: int) -> _MediaRecord:
         """
         获取剧集组某个季的信息。
 
@@ -1575,7 +1577,7 @@ class TmdbApi:
                 return group_season
         return {}
 
-    def get_person_detail(self, person_id: int) -> dict:
+    def get_person_detail(self, person_id: int) -> _MediaRecord:
         """
         查询人物详情。
 
@@ -1591,7 +1593,7 @@ class TmdbApi:
             logger.error(str(e))
             return {}
 
-    def get_person_credits(self, person_id: int, page: Optional[int] = 1, count: Optional[int] = 24) -> List[dict]:
+    def get_person_credits(self, person_id: int, page: Optional[int] = 1, count: Optional[int] = 24) -> List[_MediaRecord]:
         """
         获取人物参演作品。
 
@@ -1612,18 +1614,18 @@ class TmdbApi:
             if cast:
                 cast = sorted(cast, key=lambda x: x.get('release_date') or x.get('first_air_date') or '1900-01-01',
                               reverse=True)
-                return cast[(page - 1) * count: page * count]
+                return cast[((1 if page is None else page) - 1) * (24 if count is None else count): (1 if page is None else page) * (24 if count is None else count)]
             return []
         except Exception as e:
             logger.error(str(e))
             return []
 
-    def clear_cache(self):
+    def clear_cache(self) -> None:
         """
         清理发现结果缓存和同步 HTTP 响应缓存。
         """
-        self.discover.discover_movies.cache_clear()
-        self.discover.discover_tv_shows.cache_clear()
+        getattr(self.discover.discover_movies, "cache_clear", lambda: None)()
+        getattr(self.discover.discover_tv_shows, "cache_clear", lambda: None)()
         self.tmdb.cache_clear()
 
     async def __async_search_movie_by_name(self, name: str, year: Optional[str]) -> Optional[_MediaRecord]:
@@ -1720,7 +1722,7 @@ class TmdbApi:
                                                                            "translations,"
                                                                            "release_dates,"
                                                                            "external_ids",
-                                       raise_on_connection_error: bool = False) -> Optional[dict]:
+                                       raise_on_connection_error: bool = False) -> Optional[_MediaRecord]:
         """
         查询电影或电视剧详情，保留连接失败与空结果的区别。
 
@@ -1756,7 +1758,7 @@ class TmdbApi:
                                                                         "content_ratings,"
                                                                         "external_ids,"
                                                                         "episode_groups",
-                                    raise_on_connection_error: bool = False) -> Optional[dict]:
+                                    raise_on_connection_error: bool = False) -> Optional[_MediaRecord]:
         """
         查询电影或电视剧详情，保留连接失败与空结果的区别。
 
@@ -1828,8 +1830,8 @@ class TmdbApi:
         return self._project_search_results(title, tvs, MediaType.TV)
 
     async def async_discover_movies(
-            self, params: dict, raise_exception: bool = False
-    ) -> List[dict]:
+            self, params: _MediaRecord, raise_exception: bool = False
+    ) -> List[_MediaRecord]:
         """
         发现电影（异步版本）。
 
@@ -1852,8 +1854,8 @@ class TmdbApi:
             return []
 
     async def async_discover_tvs(
-            self, params: dict, raise_exception: bool = False
-    ) -> List[dict]:
+            self, params: _MediaRecord, raise_exception: bool = False
+    ) -> List[_MediaRecord]:
         """
         发现电视剧（异步版本）。
 
@@ -1875,7 +1877,7 @@ class TmdbApi:
                 raise
             return []
 
-    async def async_search_persons(self, name: str) -> List[dict]:
+    async def async_search_persons(self, name: str) -> List[_MediaRecord]:
         """
         查询模糊匹配的当前页的人物TMDB信息（异步版本）。
 
@@ -1902,7 +1904,7 @@ class TmdbApi:
         collections = await self.search.async_collections(term=name) or []
         return self._project_collections(collections)
 
-    async def async_get_collection(self, collection_id: int) -> List[dict]:
+    async def async_get_collection(self, collection_id: int) -> List[_MediaRecord]:
         """
         根据合集ID查询合集详情（异步版本）。
 
@@ -2001,7 +2003,7 @@ class TmdbApi:
         )
         return self._project_info(tmdb_info)
 
-    async def async_get_tv_season_detail(self, tmdbid: int, season: int):
+    async def async_get_tv_season_detail(self, tmdbid: int, season: int) -> _MediaRecord:
         """
         获取电视剧季的详情（异步版本）。
 
@@ -2019,7 +2021,7 @@ class TmdbApi:
             logger.error(str(e))
             return {}
 
-    async def async_get_tv_episode_detail(self, tmdbid: int, season: int, episode: int) -> dict:
+    async def async_get_tv_episode_detail(self, tmdbid: int, season: int, episode: int) -> _MediaRecord:
         """
         获取电视剧集的详情（异步版本）。
 
@@ -2040,7 +2042,7 @@ class TmdbApi:
 
     async def async_discover_trending(
             self, page: Optional[int] = 1, raise_exception: bool = False
-    ) -> List[dict]:
+    ) -> List[_MediaRecord]:
         """
         查询周趋势榜中的电影和电视剧。
 
@@ -2063,7 +2065,7 @@ class TmdbApi:
 
     async def async_get_movie_images(
             self, tmdbid: int, original_language: Optional[str] = None
-    ) -> dict:
+    ) -> _MediaRecord:
         """
         获取电影的图片（异步版本）。
 
@@ -2087,7 +2089,7 @@ class TmdbApi:
 
     async def async_get_tv_images(
             self, tmdbid: int, original_language: Optional[str] = None
-    ) -> dict:
+    ) -> _MediaRecord:
         """
         获取电视剧的图片（异步版本）。
 
@@ -2109,7 +2111,7 @@ class TmdbApi:
             logger.error(str(e))
             return {}
 
-    async def async_get_movie_similar(self, tmdbid: int) -> List[dict]:
+    async def async_get_movie_similar(self, tmdbid: int) -> List[_MediaRecord]:
         """
         获取电影的相似电影（异步版本）。
 
@@ -2125,7 +2127,7 @@ class TmdbApi:
             logger.error(str(e))
             return []
 
-    async def async_get_tv_similar(self, tmdbid: int) -> List[dict]:
+    async def async_get_tv_similar(self, tmdbid: int) -> List[_MediaRecord]:
         """
         获取电视剧的相似电视剧（异步版本）。
 
@@ -2141,7 +2143,7 @@ class TmdbApi:
             logger.error(str(e))
             return []
 
-    async def async_get_movie_recommend(self, tmdbid: int) -> List[dict]:
+    async def async_get_movie_recommend(self, tmdbid: int) -> List[_MediaRecord]:
         """
         获取电影的推荐电影（异步版本）。
 
@@ -2157,7 +2159,7 @@ class TmdbApi:
             logger.error(str(e))
             return []
 
-    async def async_get_tv_recommend(self, tmdbid: int) -> List[dict]:
+    async def async_get_tv_recommend(self, tmdbid: int) -> List[_MediaRecord]:
         """
         获取电视剧的推荐电视剧（异步版本）。
 
@@ -2174,7 +2176,7 @@ class TmdbApi:
             return []
 
     async def async_get_movie_credits(self, tmdbid: int,
-                                      page: Optional[int] = 1, count: Optional[int] = 24) -> List[dict]:
+                                      page: Optional[int] = 1, count: Optional[int] = 24) -> List[_MediaRecord]:
         """
         获取电影的演员列表（异步版本）。
 
@@ -2192,13 +2194,13 @@ class TmdbApi:
             info = await self.movie.async_credits(movie_id=tmdbid) or {}
             cast = info.get('cast') or []
             if cast:
-                return cast[(page - 1) * count: page * count]
+                return cast[((1 if page is None else page) - 1) * (24 if count is None else count): (1 if page is None else page) * (24 if count is None else count)]
             return []
         except Exception as e:
             logger.error(str(e))
             return []
 
-    async def async_get_tv_credits(self, tmdbid: int, page: Optional[int] = 1, count: Optional[int] = 24) -> List[dict]:
+    async def async_get_tv_credits(self, tmdbid: int, page: Optional[int] = 1, count: Optional[int] = 24) -> List[_MediaRecord]:
         """
         获取电视剧的演员列表（异步版本）。
 
@@ -2216,13 +2218,13 @@ class TmdbApi:
             info = await self.tv.async_credits(tv_id=tmdbid) or {}
             cast = info.get('cast') or []
             if cast:
-                return cast[(page - 1) * count: page * count]
+                return cast[((1 if page is None else page) - 1) * (24 if count is None else count): (1 if page is None else page) * (24 if count is None else count)]
             return []
         except Exception as e:
             logger.error(str(e))
             return []
 
-    async def async_get_tv_group_seasons(self, group_id: str) -> List[dict]:
+    async def async_get_tv_group_seasons(self, group_id: str) -> List[_MediaRecord]:
         """
         获取电视剧剧集组季集列表（异步版本）。
 
@@ -2251,7 +2253,7 @@ class TmdbApi:
             logger.error(str(e))
             return []
 
-    async def async_get_tv_group_detail(self, group_id: str, season: int) -> dict:
+    async def async_get_tv_group_detail(self, group_id: str, season: int) -> _MediaRecord:
         """
         获取剧集组某个季的信息（异步版本）。
 
@@ -2267,7 +2269,7 @@ class TmdbApi:
                 return group_season
         return {}
 
-    async def async_get_person_detail(self, person_id: int) -> dict:
+    async def async_get_person_detail(self, person_id: int) -> _MediaRecord:
         """
         查询人物详情。
 
@@ -2284,7 +2286,7 @@ class TmdbApi:
             return {}
 
     async def async_get_person_credits(self, person_id: int,
-                                       page: Optional[int] = 1, count: Optional[int] = 24) -> List[dict]:
+                                       page: Optional[int] = 1, count: Optional[int] = 24) -> List[_MediaRecord]:
         """
         获取人物参演作品（异步版本）。
 
@@ -2305,13 +2307,13 @@ class TmdbApi:
             if cast:
                 cast = sorted(cast, key=lambda x: x.get('release_date') or x.get('first_air_date') or '1900-01-01',
                               reverse=True)
-                return cast[(page - 1) * count: page * count]
+                return cast[((1 if page is None else page) - 1) * (24 if count is None else count): (1 if page is None else page) * (24 if count is None else count)]
             return []
         except Exception as e:
             logger.error(str(e))
             return []
 
-    def close(self):
+    def close(self) -> None:
         """
         依次关闭各 TMDB 客户端的同步会话。
         """

@@ -95,3 +95,28 @@ async def test_database_failure_preserves_safe_http_error(captured_logs, monkeyp
     assert caught.value.__cause__ is failure
     assert caplog.records[-1].levelno == logging.ERROR
     assert caplog.records[-1].exc_info[1] is failure
+
+
+def test_critical_logs_keep_level_and_file_route(captured_logs):
+    """
+    严重错误入口应将相同内容以 CRITICAL 等级交给控制台和文件。
+    """
+    caplog, writer = captured_logs
+    logger.critical("critical failure")
+    record = caplog.records[-1]
+    assert record.levelno == logging.CRITICAL
+    assert record.getMessage().endswith("critical failure")
+    assert writer.call_args.args == ("CRITICAL", record.getMessage(), LoggerManager._default_log_file)
+
+
+@pytest.mark.parametrize("category,resource_id", [("../invalid", 1), ("plugin", 0)])
+def test_invalid_resource_log_scope_preserves_context(category, resource_id):
+    """
+    资源标识非法时拒绝绑定，避免污染原有日志上下文。
+    """
+    with log_module.bind_log_scope("plugin", 1, "operation", "test") as scope:
+        with pytest.raises(ValueError, match="日志资源标识无效"):
+            with log_module.bind_log_scope(category, resource_id, "bad", "test"):
+                pytest.fail("invalid resource scope must not be entered")
+        with log_module.bind_log_scope("plugin", 1, "nested", "test") as nested:
+            assert nested is scope

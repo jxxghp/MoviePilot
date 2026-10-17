@@ -1,5 +1,5 @@
 """
-Rtorrent 下载模块，负责实例路由、任务投影与下载文件选择。
+rTorrent 下载模块，负责实例路由、任务投影与下载文件选择。
 """
 
 from pathlib import Path
@@ -10,7 +10,7 @@ from app.foundation import size as size_tools
 from app.foundation import temporal as time_tools
 from app.foundation import text as text_tools
 from app.modules._base.downloader import _DownloaderModuleBase
-from app.modules.rtorrent.rtorrent import Rtorrent
+from app.modules.rtorrent.rtorrent import Rtorrent, TorrentData
 from app.runtime.log import logger
 from app.runtime.settings import get_runtime_setting
 from app.schemas.dashboard import DownloaderInfo as _SchemaDownloaderInfo
@@ -67,13 +67,13 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
 
     def stop(self):
         """
-        保留模块停止入口；本实现没有额外的停止动作。
+        下载器客户端由服务基类管理，本模块无额外停止动作。
         """
         pass
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
         """
-        由下载器实例配置控制启用状态，不声明独立的模块开关。
+        下载器实例由系统配置管理，不声明独立模块开关。
         """
         pass
 
@@ -215,8 +215,8 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
                     sucess_epidised = set()
                     try:
                         for torrent_file in torrent_files:
-                            file_id = torrent_file.get("id")
-                            file_name = torrent_file.get("name")
+                            file_id = torrent_file["id"]
+                            file_name = torrent_file["name"]
                             meta_info = MetaInfo(file_name)
                             if not meta_info.episode_list or not set(
                                 meta_info.episode_list
@@ -275,20 +275,20 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
         query_status = self._normalize_query_status(status)
         query_tags = None if include_all_tags else get_runtime_setting('TORRENT_TAG')
 
-        def __get_torrent_path(torrent_data: dict) -> Path:
+        def __get_torrent_path(torrent_data: TorrentData) -> Path:
             """
             获取种子内容路径。
             """
             content_path = torrent_data.get("content_path")
             if content_path:
                 return Path(content_path)
-            return Path(torrent_data.get("save_path")) / torrent_data.get("name")
+            return Path(torrent_data["save_path"]) / torrent_data["name"]
 
-        def __build_torrent(downloader_name: str, torrent_data: dict) -> DownloaderTorrent:
+        def __build_torrent(downloader_name: str, torrent_data: TorrentData) -> DownloaderTorrent:
             """
             构造统一下载器任务对象。
             """
-            meta = MetaInfo(torrent_data.get("name"))
+            meta = MetaInfo(torrent_data["name"])
             dlspeed = torrent_data.get("dlspeed") or 0
             upspeed = torrent_data.get("upspeed") or 0
             total_size = torrent_data.get("total_size") or 0
@@ -386,8 +386,8 @@ class RtorrentModule(_DownloaderModuleBase[Rtorrent]):
 
     @staticmethod
     def __normalize_torrent_state(
-            state: Optional[Union[int, str]],
-            complete: Optional[Union[int, str]],
+            state: Optional[Union[int, float, str]],
+            complete: Optional[Union[int, float, str]],
     ) -> str:
         """
         归一 rTorrent 原始任务状态。

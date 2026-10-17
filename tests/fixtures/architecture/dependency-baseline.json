@@ -43,11 +43,11 @@
       "app.application": 0,
       "app.chain": 0
     },
-    "count": 49,
+    "count": 51,
     "counts_by_kind": {
       "network_sdk": 22,
       "protocol_operation": 7,
-      "raw_transport": 20
+      "raw_transport": 22
     },
     "entries": [
       {
@@ -115,6 +115,26 @@
         "fingerprint": "b5239e7eee9c23569b7fec66791e56bcc226db86a8d09ee7fc58d3ba8bc14f09",
         "kind": "raw_transport",
         "source": "app.adapters.external.plugin.client",
+        "target": "requests",
+        "uses": []
+      },
+      {
+        "bindings": [
+          "from:httpx2.Response as AsyncResponse"
+        ],
+        "fingerprint": "e9aeb562213af38c644c457850853bba9f3043c56e710c3adde98adc6a4b9dba",
+        "kind": "raw_transport",
+        "source": "app.adapters.external.server",
+        "target": "httpx2",
+        "uses": []
+      },
+      {
+        "bindings": [
+          "from:requests.Response as Response"
+        ],
+        "fingerprint": "e8c747a7a4e96c3b1dc102bf49a37881cc674bcfb17b98693cac966afc3c3037",
+        "kind": "raw_transport",
+        "source": "app.adapters.external.server",
         "target": "requests",
         "uses": []
       },
@@ -943,8 +963,8 @@
       "runtime_only": true
     }
   },
-  "edge_count": 9586,
-  "edge_sha256": "1c1cd133e201b6e67da7a81b5872875401bc7b8e61d2f51a459e6e0925dca679",
+  "edge_count": 9584,
+  "edge_sha256": "fc5c745bb4d0a28cd0c7e5536d74e92cd122acee1dda876ce8cc1a46771a2f23",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -7345,7 +7365,6 @@
     "app.modules.filemanager.storages.alipan -> app.schemas.exception",
     "app.modules.filemanager.storages.alipan -> app.schemas.file",
     "app.modules.filemanager.storages.alipan -> app.schemas.types",
-    "app.modules.filemanager.storages.alipan -> app.schemas.workflow",
     "app.modules.filemanager.storages.alist -> app.adapters",
     "app.modules.filemanager.storages.alist -> app.adapters.network",
     "app.modules.filemanager.storages.alist -> app.adapters.network.http",
@@ -7364,7 +7383,6 @@
     "app.modules.filemanager.storages.alist -> app.schemas.exception",
     "app.modules.filemanager.storages.alist -> app.schemas.file",
     "app.modules.filemanager.storages.alist -> app.schemas.types",
-    "app.modules.filemanager.storages.alist -> app.schemas.workflow",
     "app.modules.filemanager.storages.alistgo -> app.modules",
     "app.modules.filemanager.storages.alistgo -> app.modules.filemanager",
     "app.modules.filemanager.storages.alistgo -> app.modules.filemanager.storages",

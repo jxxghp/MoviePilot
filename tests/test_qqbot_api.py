@@ -10,12 +10,23 @@ import pytest
 from app.modules.qqbot import api
 
 
+@pytest.fixture(autouse=True)
+def isolated_token_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    """
+    每个用例使用独立缓存，并由 monkeypatch 恢复原进程状态。
+    """
+    monkeypatch.setattr(api, "_cached_token", None)
+
+
 class _RequestClient:
     """
     提供可控的 QQ API HTTP 响应。
     """
 
     def __init__(self, response: object) -> None:
+        """
+        保存本次测试的模拟响应。
+        """
         self.response = response
 
     def post_res(self, *_args: object, **_kwargs: object) -> object:
