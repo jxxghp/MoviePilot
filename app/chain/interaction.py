@@ -1,3 +1,7 @@
+"""
+消息渠道的媒体搜索、资源选择、下载和订阅交互编排。
+"""
+
 import math
 import re
 from typing import Any, Dict, List, Optional, Tuple, Union

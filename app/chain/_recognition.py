@@ -1,4 +1,5 @@
-"""媒体识别管线 mixin。
+"""
+媒体识别管线 混入类。
 
 从 ChainBase 拆出的识别域：原生模块识别路由、识别缓存回填、共享识别、
 插件补充识别。方法经 MRO 解析，依赖 ChainBase 实例的 run_module/eventmanager
@@ -46,7 +47,9 @@ _ClassificationSubjectT = TypeVar(
 
 
 class RecognitionSharePort(Protocol):
-    """媒体识别链访问共享识别服务所需的最小端口。"""
+    """
+    媒体识别链访问共享识别服务所需的最小端口。
+    """
 
     def report_recognize_share(
             self,
@@ -54,7 +57,14 @@ class RecognitionSharePort(Protocol):
             mediainfo: Optional[MediaInfo | MusicInfo],
             keyword_meta: Optional[MetaBase] = None,
     ) -> bool:
-        """同步上报共享识别结果。"""
+        """
+        同步上报共享识别结果。
+
+        :param meta: 本地解析元数据，None 时由实现判断是否足够形成共享请求
+        :param mediainfo: 准备上报的识别结果，None 或缺少有效身份时不形成有效上报
+        :param keyword_meta: 原始标题线索，None 时使用 meta 中的线索
+        :return: 服务端确认上报成功时为 True，无有效载荷或上报未成功时为 False
+        """
         ...
 
     async def async_report_recognize_share(
@@ -63,7 +73,14 @@ class RecognitionSharePort(Protocol):
             mediainfo: Optional[MediaInfo | MusicInfo],
             keyword_meta: Optional[MetaBase] = None,
     ) -> bool:
-        """异步上报共享识别结果。"""
+        """
+        异步上报共享识别结果。
+
+        :param meta: 本地解析元数据，None 时由实现判断是否足够形成共享请求
+        :param mediainfo: 准备上报的识别结果，None 或缺少有效身份时不形成有效上报
+        :param keyword_meta: 原始标题线索，None 时使用 meta 中的线索
+        :return: 服务端确认上报成功时为 True，无有效载荷或上报未成功时为 False
+        """
         ...
 
     def query_recognize_share(
@@ -73,7 +90,15 @@ class RecognitionSharePort(Protocol):
             keyword_meta: Optional[MetaBase] = None,
             music_type: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
-        """同步查询共享识别结果。"""
+        """
+        同步查询共享识别结果。
+
+        :param meta: 用于构造查询线索的本地元数据，None 表示未提供
+        :param mtype: 限定的媒体类型，None 时由元数据推断
+        :param keyword_meta: 未被本地修正覆盖的原始标题线索，None 时使用 meta
+        :param music_type: 限定音乐实体类型，None 时按元数据或服务默认规则选择
+        :return: 共享服务返回的媒体身份字典，查询无有效结果时为 None
+        """
         ...
 
     async def async_query_recognize_share(
@@ -83,22 +108,43 @@ class RecognitionSharePort(Protocol):
             keyword_meta: Optional[MetaBase] = None,
             music_type: Optional[str] = None,
     ) -> Optional[dict[str, Any]]:
-        """异步查询共享识别结果。"""
+        """
+        异步查询共享识别结果。
+
+        :param meta: 用于构造查询线索的本地元数据，None 表示未提供
+        :param mtype: 限定的媒体类型，None 时由元数据推断
+        :param keyword_meta: 未被本地修正覆盖的原始标题线索，None 时使用 meta
+        :param music_type: 限定音乐实体类型，None 时按元数据或服务默认规则选择
+        :return: 共享服务返回的媒体身份字典，查询无有效结果时为 None
+        """
         ...
 
     def to_recognize_params(
             self,
             item: Optional[dict[str, Any]],
     ) -> Optional[dict[str, Any]]:
-        """把共享结果转换为本地识别参数。"""
+        """
+        把共享结果转换为本地识别参数。
+
+        :param item: 共享服务返回的媒体身份字典，允许为 None
+        :return: 包含类型、来源、媒体标识与季号的本地参数，无有效来源或标识时为 None
+        """
         ...
 
 
 class _SystemConfigCounter(Protocol):
-    """共享识别命中统计所需的最小原子计数端口。"""
+    """
+    共享识别命中统计所需的最小原子计数端口。
+    """
 
     def increment(self, key: SystemConfigKey, step: int = 1) -> int:
-        """原子递增指定系统配置计数。"""
+        """
+        原子递增指定系统配置计数。
+
+        :param key: 需要原子更新的系统配置计数键
+        :param step: 本次增加的计数值，默认加一
+        :return: 递增后的最新计数
+        """
         ...
 
 
@@ -109,7 +155,9 @@ _recognition_share_port: Optional[RecognitionSharePort] = None
 def configure_recognition_share_port(
         port: RecognitionSharePort,
 ) -> Optional[RecognitionSharePort]:
-    """装配共享识别端口，并返回旧实现供隔离环境恢复。"""
+    """
+    装配共享识别端口，并返回旧实现供隔离环境恢复。
+    """
     global _recognition_share_port
     with _recognition_share_lock:
         previous = _recognition_share_port
@@ -120,14 +168,18 @@ def configure_recognition_share_port(
 def reset_recognition_share_port(
         port: Optional[RecognitionSharePort] = None,
 ) -> None:
-    """恢复指定共享识别端口；省略参数时回到未装配状态。"""
+    """
+    恢复指定共享识别端口；省略参数时回到未装配状态。
+    """
     global _recognition_share_port
     with _recognition_share_lock:
         _recognition_share_port = port
 
 
 def _recognition_share_snapshot() -> RecognitionSharePort:
-    """获取当前共享识别端口，未装配时稳定失败。"""
+    """
+    获取当前共享识别端口，未装配时稳定失败。
+    """
     with _recognition_share_lock:
         port = _recognition_share_port
     if port is None:
@@ -137,7 +189,19 @@ def _recognition_share_snapshot() -> RecognitionSharePort:
 
 @dataclass(frozen=True, slots=True)
 class _RecognitionPlan:
-    """冻结一次媒体识别请求的规范身份、模块参数和共享查询上下文。"""
+    """
+    冻结一次媒体识别请求的规范身份、模块参数和共享查询上下文。
+
+    :param meta: 实际交给识别模块的解析元数据，None 表示未提供
+    :param mtype: 限定的媒体类型，None 时由识别输入决定
+    :param media_source: 规范化的媒体来源，None 表示未指定
+    :param media_id: 对应来源的原生媒体标识，None 表示未指定
+    :param episode_group: 电视剧剧集组标识，None 表示未指定
+    :param cache: 是否允许复用识别缓存
+    :param share_meta: 保留原始查询线索的共享识别元数据，None 时未单独提供
+    :param music_type: 音乐实体类型，None 时沿用模块默认规则
+    :param identity_valid: 显式媒体身份是否完整有效，无效时拒绝继续识别
+    """
 
     meta: Optional[MetaBase]
     mtype: Optional[MediaType]
@@ -150,7 +214,9 @@ class _RecognitionPlan:
     identity_valid: bool
 
     def module_kwargs(self) -> dict[str, Any]:
-        """生成原生模块识别所需的稳定参数。"""
+        """
+        生成原生模块识别所需的稳定参数。
+        """
         kwargs: dict[str, Any] = {
             "meta": self.meta,
             "mtype": self.mtype,
@@ -164,7 +230,9 @@ class _RecognitionPlan:
         return kwargs
 
     def share_query_kwargs(self) -> dict[str, Any]:
-        """生成共享识别查询参数，保持原始关键字与规范媒体类型。"""
+        """
+        生成共享识别查询参数，保持原始关键字与规范媒体类型。
+        """
         kwargs: dict[str, Any] = {
             "meta": self.meta,
             "mtype": self.mtype,
@@ -178,7 +246,9 @@ class _RecognitionPlan:
             self,
             shared_params: dict[str, Any],
     ) -> dict[str, Any]:
-        """把共享识别身份投影为第二次原生模块识别参数。"""
+        """
+        把共享识别身份投影为第二次原生模块识别参数。
+        """
         kwargs: dict[str, Any] = {
             "meta": self.meta,
             "mtype": shared_params.get("mtype") or self.mtype,
@@ -195,7 +265,13 @@ class _RecognitionPlan:
 
 @dataclass(frozen=True, slots=True)
 class _RecognitionOutcome:
-    """表达候选结果是否终结识别，以及应保留的无身份回退结果。"""
+    """
+    表达候选结果是否终结识别，以及应保留的无身份回退结果。
+
+    :param candidate: 本次识别候选，未获得结果时为 None
+    :param fallback: 最早保留的无完整远端身份结果，无可用回退时为 None
+    :param has_identity: 当前候选是否具备规范化来源和媒体标识
+    """
 
     candidate: Optional[MediaInfo | MusicInfo]
     fallback: Optional[MediaInfo | MusicInfo]
@@ -207,7 +283,9 @@ class _RecognitionOutcome:
             candidate: Optional[MediaInfo | MusicInfo],
             fallback: Optional[MediaInfo | MusicInfo] = None,
     ) -> "_RecognitionOutcome":
-        """按规范媒体身份决定终态，并稳定保留最早的有效回退结果。"""
+        """
+        按规范媒体身份决定终态，并稳定保留最早的有效回退结果。
+        """
         media_source, media_id = resolve_media_identity(media=candidate)
         has_identity = bool(media_source and media_id)
         return cls(
@@ -218,12 +296,16 @@ class _RecognitionOutcome:
 
     @property
     def result(self) -> Optional[MediaInfo | MusicInfo]:
-        """返回已识别终态，未命中远端身份时返回保留的回退结果。"""
+        """
+        返回已识别终态，未命中远端身份时返回保留的回退结果。
+        """
         return self.candidate if self.has_identity else self.fallback
 
     @property
     def should_report(self) -> bool:
-        """判断原生或插件终态是否需要上报共享识别。"""
+        """
+        判断原生或插件终态是否需要上报共享识别。
+        """
         return bool(
             self.has_identity
             and self.candidate
@@ -235,7 +317,8 @@ def _shared_music_candidate_matches(
         plan: _RecognitionPlan,
         candidate: Optional[MediaInfo | MusicInfo],
 ) -> bool:
-    """共享音乐身份必须与本地文本证据一致，避免同名曲目跨艺人污染。
+    """
+    共享音乐身份必须与本地文本证据一致，避免同名曲目跨艺人污染。
 
     共享服务只提供远端身份，第二次原生查询能够证明这个身份存在，却不能
     证明它属于当前文件。影视共享命中仍保持原有行为；音乐录音则至少核验
@@ -256,7 +339,9 @@ def _validate_shared_music_candidate(
         plan: _RecognitionPlan,
         candidate: Optional[MediaInfo | MusicInfo],
 ) -> Optional[MediaInfo | MusicInfo]:
-    """校验共享音乐候选；冲突时记录原因并回退到本地识别结果。"""
+    """
+    校验共享音乐候选；冲突时记录原因并回退到本地识别结果。
+    """
     if _shared_music_candidate_matches(plan, candidate):
         return candidate
     logger.warning(
@@ -267,19 +352,33 @@ def _validate_shared_music_candidate(
 
 
 class _RecognitionAction(Enum):
-    """标识媒体识别纯状态机请求同步或异步外壳执行的 I/O 动作。"""
+    """
+    标识媒体识别纯状态机请求同步或异步外壳执行的 I/O 动作。
+    """
 
+    # 调用内置模块识别媒体。
     NATIVE = auto()
+    # 通过插件辅助事件补充识别。
     SUPPLEMENT = auto()
+    # 向共享服务上报有效识别结果。
     REPORT = auto()
+    # 查询共享服务中的媒体身份线索。
     QUERY_SHARE = auto()
+    # 回填已确认的识别结果缓存。
     UPDATE_CACHE = auto()
+    # 累计共享识别命中次数。
     RECORD_SHARE_HIT = auto()
 
 
 @dataclass(frozen=True, slots=True)
 class _RecognitionStep:
-    """描述媒体识别状态机的一次 I/O 请求及其稳定调用参数。"""
+    """
+    描述媒体识别状态机的一次 I/O 请求及其稳定调用参数。
+
+    :param action: 需要同步或异步执行的识别、上报或缓存动作
+    :param kwargs: 对应动作的命名调用参数
+    :param cache: 调用原生识别时是否复用缓存，默认启用
+    """
 
     action: _RecognitionAction
     kwargs: dict[str, Any]
@@ -288,7 +387,15 @@ class _RecognitionStep:
 
 @dataclass(frozen=True, slots=True)
 class _PluginRecognitionPlan:
-    """冻结插件补充识别的事件类型、载荷与结果解析上下文。"""
+    """
+    冻结插件补充识别的事件类型、载荷与结果解析上下文。
+
+    :param payload: 交给插件辅助识别事件的媒体上下文
+    :param fallback: 插件未产生有效身份时保留的原始候选，允许为 None
+    :param is_music: 是否按音乐事件和结果协议解析
+    :param mtype: 原始请求限定的媒体类型，None 表示未限定
+    :param music_type: 音乐实体类型，None 表示未指定
+    """
 
     payload: dict[str, Any]
     fallback: Optional[MediaInfo | MusicInfo]
@@ -298,7 +405,9 @@ class _PluginRecognitionPlan:
 
 
 class _RecognitionFinalizationOwner:
-    """隔离完整识别结果的同步与异步分类收口。"""
+    """
+    隔离完整识别结果的同步与异步分类收口。
+    """
 
     def _finalize_recognition_result(
         self,
@@ -308,7 +417,9 @@ class _RecognitionFinalizationOwner:
         refresh: bool = False,
         allow_enrichment: bool = True,
     ) -> Optional[_ClassificationSubjectT]:
-        """统一复制并分类结果，离线整理可禁止外部补充而不绕过用户分类规则。"""
+        """
+        统一复制并分类结果，离线整理可禁止外部补充而不绕过用户分类规则。
+        """
         if mediainfo is None:
             return None
         service = getattr(cast(ChainRuntimeMixinHost, self), "classification_service", None)
@@ -332,7 +443,9 @@ class _RecognitionFinalizationOwner:
         refresh: bool = False,
         allow_enrichment: bool = True,
     ) -> Optional[_ClassificationSubjectT]:
-        """异步复制并分类结果，保留调用方禁止外部补充的离线约束。"""
+        """
+        异步复制并分类结果，保留调用方禁止外部补充的离线约束。
+        """
         if mediainfo is None:
             return None
         service = getattr(cast(ChainRuntimeMixinHost, self), "classification_service", None)
@@ -350,7 +463,9 @@ class _RecognitionFinalizationOwner:
 
 
 class _RecognitionPlanningMixin:
-    """封装识别计划构建及宿主协议收窄。"""
+    """
+    封装识别计划构建及宿主协议收窄。
+    """
 
     __mixin_host_protocol__ = ChainRuntimeMixinHost
     eventmanager: Any
@@ -358,7 +473,9 @@ class _RecognitionPlanningMixin:
     _async_finalize_recognition_result = cast(Any, _RecognitionFinalizationOwner._async_finalize_recognition_result)
 
     def _runtime_host(self) -> ChainRuntimeMixinHost:
-        """把 MRO 注入的宿主能力收窄为识别 mixin 的静态协议。"""
+        """
+        把 MRO 注入的宿主能力收窄为识别混入类的静态协议。
+        """
         return cast(ChainRuntimeMixinHost, self)
 
     @staticmethod
@@ -372,7 +489,9 @@ class _RecognitionPlanningMixin:
             share_meta: Optional[MetaBase],
             music_type: Optional[str],
     ) -> _RecognitionPlan:
-        """规范请求级来源和显式身份，并生成同步、异步共用的识别计划。"""
+        """
+        规范请求级来源和显式身份，并生成同步、异步共用的识别计划。
+        """
         explicit_identity = media_id is not None
         requested_source = normalize_media_source(media_source) or media_source
         resolved_source, resolved_id = resolve_media_identity(
@@ -412,7 +531,9 @@ class _RecognitionPlanningMixin:
 
 
 class RecognitionMixin:
-    """为媒体 Chain 提供本地识别、共享识别和插件补充识别流程。"""
+    """
+    为媒体 Chain 提供本地识别、共享识别和插件补充识别流程。
+    """
 
     __mixin_host_protocol__ = ChainRuntimeMixinHost
     eventmanager: Any
@@ -480,7 +601,9 @@ class RecognitionMixin:
 
     @staticmethod
     def _record_media_recognize_share_hit() -> None:
-        """记录一次共享媒体识别成功命中，统计失败不影响识别结果。"""
+        """
+        记录一次共享媒体识别成功命中，统计失败不影响识别结果。
+        """
         try:
             counter = cast(_SystemConfigCounter, get_configured_system_config())
             counter.increment(SystemConfigKey.MediaRecognizeShareCount)
@@ -492,7 +615,9 @@ class RecognitionMixin:
             module_kwargs: dict[str, Any],
             cache: bool,
     ) -> Optional[MediaInfo]:
-        """执行同步原生媒体模块识别，具体媒体领域可覆写该路由钩子。"""
+        """
+        执行同步原生媒体模块识别，具体媒体领域可覆写该路由钩子。
+        """
         with fresh(not cache):
             return cast(
                 Optional[MediaInfo],
@@ -504,7 +629,9 @@ class RecognitionMixin:
             module_kwargs: dict[str, Any],
             cache: bool,
     ) -> Optional[MediaInfo]:
-        """执行异步原生媒体模块识别，具体媒体领域可覆写该路由钩子。"""
+        """
+        执行异步原生媒体模块识别，具体媒体领域可覆写该路由钩子。
+        """
         async with async_fresh(not cache):
             return cast(
                 Optional[MediaInfo],
@@ -521,7 +648,9 @@ class RecognitionMixin:
     ) -> Generator[
         _RecognitionStep, Any, Optional[MediaInfo | MusicInfo]
     ]:
-        """生成双 ABI 共用的识别状态机，仅把实际 I/O 留给入口外壳。"""
+        """
+        生成双 ABI 共用的识别状态机，仅把实际 I/O 留给入口外壳。
+        """
         mediainfo = yield _RecognitionStep(
             action=_RecognitionAction.NATIVE,
             kwargs=plan.module_kwargs(),
@@ -582,7 +711,9 @@ class RecognitionMixin:
         return outcome.result
 
     def _run_recognition_steps(self, plan: _RecognitionPlan) -> Optional[MediaInfo]:
-        """用同步端口驱动共享识别状态机。"""
+        """
+        用同步端口驱动共享识别状态机。
+        """
         steps = self._recognition_steps(
             plan,
             self._can_use_media_recognize_share(
@@ -616,7 +747,9 @@ class RecognitionMixin:
     async def _async_run_recognition_steps(
             self, plan: _RecognitionPlan
     ) -> Optional[MediaInfo]:
-        """用异步端口驱动共享识别状态机，不在线程间复用模块对象。"""
+        """
+        用异步端口驱动共享识别状态机，不在线程间复用模块对象。
+        """
         steps = self._recognition_steps(
             plan,
             self._can_use_media_recognize_share(
@@ -666,6 +799,7 @@ class RecognitionMixin:
     ) -> Optional[MediaInfo]:
         """
         识别媒体信息，不含Fanart图片
+
         :param meta:     识别的元数据
         :param share_meta: 共享识别查询/上报使用的原始元数据
         :param mtype:    识别的媒体类型
@@ -704,6 +838,7 @@ class RecognitionMixin:
     ) -> Optional[MediaInfo]:
         """
         识别媒体信息，不含Fanart图片（异步版本）
+
         :param meta:     识别的元数据
         :param share_meta: 共享识别查询/上报使用的原始元数据
         :param mtype:    识别的媒体类型
@@ -815,7 +950,9 @@ class RecognitionMixin:
     def _media_info_has_identity(
             mediainfo: Optional[MediaInfo | MusicInfo],
     ) -> bool:
-        """判断媒体信息是否具备完整的规范媒体身份。"""
+        """
+        判断媒体信息是否具备完整的规范媒体身份。
+        """
         return _RecognitionOutcome.decide(mediainfo).has_identity
 
     def _build_plugin_recognition_plan(
@@ -827,7 +964,9 @@ class RecognitionMixin:
             mediainfo: Optional[MediaInfo | MusicInfo],
             music_type: Optional[str],
     ) -> Optional[_PluginRecognitionPlan]:
-        """为缺少规范身份的候选结果生成插件补充识别计划。"""
+        """
+        为缺少规范身份的候选结果生成插件补充识别计划。
+        """
         if _RecognitionOutcome.decide(mediainfo).has_identity or music_recognition_needs_confirmation(mediainfo):
             return None
         is_music = (
@@ -850,7 +989,9 @@ class RecognitionMixin:
             plan: _PluginRecognitionPlan,
             result: Optional[Event],
     ) -> Optional[MediaInfo | MusicInfo]:
-        """解析插件事件结果；无响应或非法身份时稳定保留原候选。"""
+        """
+        解析插件事件结果；无响应或非法身份时稳定保留原候选。
+        """
         if not result:
             return plan.fallback
         plugin_info = self._media_info_from_plugin(
@@ -910,7 +1051,9 @@ class RecognitionMixin:
             mediainfo: Optional[MediaInfo | MusicInfo],
             music_type: Optional[str] = None,
     ) -> Optional[MediaInfo | MusicInfo]:
-        """媒体识别插件补充的异步版本，影视与音乐统一流程"""
+        """
+        媒体识别插件补充的异步版本，影视与音乐统一流程
+        """
         plan = self._build_plugin_recognition_plan(
             meta=meta,
             mtype=mtype,

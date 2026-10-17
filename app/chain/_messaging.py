@@ -1,4 +1,5 @@
-"""消息处理与通知发送 mixin。
+"""
+消息处理与通知发送 混入类。
 
 从 ChainBase 拆出的消息域：渠道输入状态机、通知派发规范化、消息渲染、
 隔离路由与队列发送。方法经 MRO 解析，依赖 ChainBase 实例的 run_module、
@@ -27,7 +28,12 @@ from app.schemas.types import EventType, NotificationChannel
 
 @dataclass(frozen=True, slots=True)
 class _NotificationRouteLookup:
-    """通知路由状态机请求读取指定用户的渠道设置。"""
+    """
+    通知路由状态机请求读取指定用户的渠道设置。
+
+    :param username: 需要查询个人通知设置的 MoviePilot 用户名
+    :param log_message: 执行本次路由查询前记录的中文诊断说明
+    """
 
     username: str
     log_message: str
@@ -35,7 +41,12 @@ class _NotificationRouteLookup:
 
 @dataclass(frozen=True, slots=True)
 class _NotificationRouteDelivery:
-    """通知路由状态机产出的单次投递决策。"""
+    """
+    通知路由状态机产出的单次投递决策。
+
+    :param message: 已确定目标和用户范围的待投递消息
+    :param immediately: 是否立即发送，False 时进入消息队列
+    """
 
     message: Message
     immediately: bool
@@ -43,7 +54,11 @@ class _NotificationRouteDelivery:
 
 @dataclass(frozen=True, slots=True)
 class _NotificationRouteLog:
-    """通知路由状态机产出的无投递日志决策。"""
+    """
+    通知路由状态机产出的无投递日志决策。
+
+    :param message: 本次不投递或回退决策需要记录的中文说明
+    """
 
     message: str
 
@@ -178,7 +193,9 @@ def _render_notification_message(
     transferinfo: Optional[TransferInfo],
     kwargs: dict[str, Any],
 ) -> Optional[Message]:
-    """使用同步和异步入口共用的上下文规范化并渲染通知。"""
+    """
+    使用同步和异步入口共用的上下文规范化并渲染通知。
+    """
     kwargs.setdefault("current_time", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
     return MessageTemplateHelper.render(
         message=message,
@@ -191,7 +208,9 @@ def _render_notification_message(
 
 
 def _notification_route_action(message: Message) -> Optional[str]:
-    """为未绑定真实用户的通知确定隔离路由，缺少类型时默认仅管理员。"""
+    """
+    为未绑定真实用户的通知确定隔离路由，缺少类型时默认仅管理员。
+    """
     if message.userid:
         return None
     if not message.mtype:
@@ -200,7 +219,9 @@ def _notification_route_action(message: Message) -> Optional[str]:
 
 
 class MessageProcessingMixin:
-    """消息输入/处理状态机与通知派发规范化。"""
+    """
+    消息输入/处理状态机与通知派发规范化。
+    """
 
     __mixin_host_protocol__ = ChainRuntimeMixinHost
 
@@ -296,7 +317,9 @@ class MessageProcessingMixin:
 
 
 class NotificationMixin:
-    """通知消息发送域：渲染、隔离路由、队列发送与消息编辑。"""
+    """
+    通知消息发送域：渲染、隔离路由、队列发送与消息编辑。
+    """
 
     __mixin_host_protocol__ = ChainRuntimeMixinHost
     user_repository: ChainUserRepository
@@ -312,13 +335,13 @@ class NotificationMixin:
     ) -> None:
         """
         发送消息
-        :param message:  Notification实例
+
+        :param message: 待投递的通知消息实例
         :param meta:  元数据
         :param mediainfo:  媒体信息
         :param torrentinfo:  种子信息
         :param transferinfo:  文件整理信息
         :param kwargs:  其他参数(覆盖业务对象属性值)
-        :return: 成功或失败
         """
         strict_delivery = bool(kwargs.pop("_strict_delivery", False))
         strict_source = kwargs.pop("_strict_source", None)
@@ -348,7 +371,9 @@ class NotificationMixin:
         )
 
     def post_message_strict(self, message: Message, *, event_key: str) -> None:
-        """同步执行真实通知 provider，并通过调用上下文携带稳定事件键。"""
+        """
+        同步执行真实通知 能力提供方，并通过调用上下文携带稳定事件键。
+        """
         durable_message = message.model_copy(deep=True)
         strict_source = None
         if not durable_message.source:
@@ -369,7 +394,9 @@ class NotificationMixin:
         immediately: bool,
         kwargs: dict[str, object],
     ) -> None:
-        """普通通知使用调度队列；durable 恢复同步执行并传播 provider 错误。"""
+        """
+        普通通知使用调度队列；durable 恢复同步执行并传播 能力提供方 错误。
+        """
         if strict_delivery:
             host = cast(ChainRuntimeMixinHost, self)
             host.run_module_strict(
@@ -391,7 +418,9 @@ class NotificationMixin:
         strict_delivery: bool,
         kwargs: dict[str, object],
     ) -> None:
-        """执行通知路由状态机，并在同步边界完成查询、事件和投递。"""
+        """
+        执行通知路由状态机，并在同步边界完成查询、事件和投递。
+        """
         steps = _notification_route_steps(
             message,
             action=_notification_route_action(message),
@@ -438,13 +467,13 @@ class NotificationMixin:
     ) -> None:
         """
         异步发送消息
-        :param message:  Notification实例
+
+        :param message: 待投递的通知消息实例
         :param meta:  元数据
         :param mediainfo:  媒体信息
         :param torrentinfo:  种子信息
         :param transferinfo:  文件整理信息
         :param kwargs:  其他参数(覆盖业务对象属性值)
-        :return: 成功或失败
         """
         message = _render_notification_message(
             message=message,
@@ -471,7 +500,9 @@ class NotificationMixin:
         *,
         kwargs: dict[str, object],
     ) -> None:
-        """执行通知路由状态机，并在异步边界完成查询、事件和投递。"""
+        """
+        执行通知路由状态机，并在异步边界完成查询、事件和投递。
+        """
         steps = _notification_route_steps(
             message,
             action=_notification_route_action(message),
@@ -514,9 +545,9 @@ class NotificationMixin:
     ) -> None:
         """
         发送媒体信息选择列表
+
         :param message:  消息体
         :param medias:  媒体列表
-        :return: 成功或失败
         """
         note_list = [media.to_dict() for media in medias]
         if message.save_history:
@@ -534,9 +565,9 @@ class NotificationMixin:
     ) -> None:
         """
         发送种子信息选择列表
+
         :param message:  消息体
         :param torrents:  种子列表
-        :return: 成功或失败
         """
         note_list = [torrent.torrent_info.to_dict() for torrent in torrents]
         if message.save_history:
@@ -558,6 +589,7 @@ class NotificationMixin:
     ) -> bool:
         """
         删除消息
+
         :param channel: 消息渠道
         :param source: 消息源（指定特定的消息模块）
         :param message_id: 消息ID
@@ -585,6 +617,7 @@ class NotificationMixin:
     ) -> bool:
         """
         编辑已发送的消息
+
         :param channel: 消息渠道
         :param source: 消息源（指定特定的消息模块）
         :param message_id: 消息ID
@@ -628,6 +661,7 @@ class NotificationMixin:
         """
         直接发送消息并返回消息ID等信息（用于后续编辑消息的场景）
         不经过消息队列、不保存消息历史
+
         :param message: 消息体
         :return: 消息响应（包含message_id, chat_id等）
         """

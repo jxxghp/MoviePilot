@@ -1,3 +1,7 @@
+"""
+AniList 动漫详情、发现、推荐与演职人员能力的模块调度入口。
+"""
+
 from typing import Optional
 
 from app.chain.base import ChainBase
