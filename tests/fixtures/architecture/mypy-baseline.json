@@ -282,15 +282,9 @@
     "attr-defined": 2,
     "type-arg": 1
   },
-  "app/api/dependencies/agent.py": {
-    "arg-type": 1
-  },
   "app/api/dependencies/history.py": {
     "arg-type": 7,
     "attr-defined": 1
-  },
-  "app/api/dependencies/site.py": {
-    "arg-type": 2
   },
   "app/api/dependencies/workflow.py": {
     "arg-type": 3,
@@ -432,19 +426,10 @@
     "operator": 4,
     "type-arg": 3
   },
-  "app/api/endpoints/torrent.py": {
-    "no-untyped-call": 1,
-    "no-untyped-def": 5
-  },
   "app/api/endpoints/transfer.py": {
     "arg-type": 9,
     "attr-defined": 2,
     "operator": 3,
-    "type-arg": 3
-  },
-  "app/api/endpoints/user.py": {
-    "no-untyped-def": 2,
-    "str-bytes-safe": 1,
     "type-arg": 3
   },
   "app/api/servarr.py": {
@@ -468,12 +453,6 @@
     "assignment": 2,
     "return-value": 2,
     "type-arg": 1
-  },
-  "app/application/history/__init__.py": {
-    "no-any-return": 1
-  },
-  "app/application/messaging/agent.py": {
-    "arg-type": 1
   },
   "app/application/messaging/interaction/__init__.py": {
     "no-untyped-def": 1,
@@ -596,9 +575,6 @@
     "no-untyped-def": 7,
     "type-arg": 30
   },
-  "app/chain/dashboard.py": {
-    "no-any-return": 2
-  },
   "app/chain/douban.py": {
     "no-any-return": 28
   },
@@ -620,9 +596,6 @@
     "type-arg": 2,
     "union-attr": 1,
     "var-annotated": 1
-  },
-  "app/chain/musicbrainz.py": {
-    "type-arg": 2
   },
   "app/chain/scraping.py": {
     "arg-type": 30,
@@ -700,9 +673,6 @@
     "no-redef": 1,
     "var-annotated": 2
   },
-  "app/chain/subscribe/search.py": {
-    "assignment": 1
-  },
   "app/chain/tmdb.py": {
     "no-any-return": 28,
     "type-arg": 2
@@ -711,7 +681,7 @@
     "arg-type": 21,
     "assignment": 2,
     "no-untyped-call": 1,
-    "no-untyped-def": 15,
+    "no-untyped-def": 14,
     "type-arg": 5,
     "union-attr": 2
   },
@@ -812,9 +782,6 @@
   "app/doctor/checks.py": {
     "no-any-return": 7
   },
-  "app/doctor/runner.py": {
-    "arg-type": 1
-  },
   "app/domain/context.py": {
     "assignment": 86,
     "no-any-return": 1,
@@ -890,10 +857,6 @@
     "assignment": 1,
     "no-untyped-def": 3,
     "type-arg": 5
-  },
-  "app/modules/acoustid/__init__.py": {
-    "arg-type": 1,
-    "list-item": 1
   },
   "app/modules/anilist/__init__.py": {
     "assignment": 4,
@@ -1400,9 +1363,9 @@
   },
   "app/modules/themoviedb/tmdbapi.py": {
     "arg-type": 1,
-    "attr-defined": 10,
-    "no-any-return": 5,
-    "no-untyped-call": 58,
+    "attr-defined": 2,
+    "no-any-return": 3,
+    "no-untyped-call": 56,
     "no-untyped-def": 7,
     "operator": 24,
     "type-arg": 47
@@ -1411,13 +1374,6 @@
     "assignment": 1,
     "no-untyped-call": 17,
     "no-untyped-def": 23
-  },
-  "app/modules/themoviedb/tmdbv3api/objs/collection.py": {
-    "no-untyped-def": 6
-  },
-  "app/modules/themoviedb/tmdbv3api/objs/discover.py": {
-    "attr-defined": 1,
-    "no-untyped-def": 4
   },
   "app/modules/themoviedb/tmdbv3api/objs/episode.py": {
     "no-untyped-def": 20
@@ -1477,9 +1433,6 @@
     "no-any-return": 2,
     "return-value": 7,
     "type-arg": 21
-  },
-  "app/modules/ugreen/crypto.py": {
-    "no-any-return": 1
   },
   "app/modules/ugreen/module.py": {
     "arg-type": 3,
@@ -1797,16 +1750,11 @@
   "app/startup/composition/cache.py": {
     "no-untyped-call": 1
   },
-  "app/startup/composition/database.py": {
-    "assignment": 1
-  },
   "app/startup/composition/subscription.py": {
     "arg-type": 2
   },
   "app/startup/initializers/command.py": {
-    "no-untyped-call": 2,
-    "no-untyped-def": 1,
-    "type-arg": 1
+    "no-untyped-call": 2
   },
   "app/startup/initializers/modules.py": {
     "arg-type": 2,
