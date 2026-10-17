@@ -506,13 +506,6 @@
   "app/application/site/sites.pyi": {
     "type-arg": 7
   },
-  "app/application/subscription/contract.py": {
-    "arg-type": 1,
-    "misc": 1
-  },
-  "app/application/subscription/write.py": {
-    "arg-type": 2
-  },
   "app/application/torrent/download.py": {
     "arg-type": 2,
     "assignment": 3,
@@ -630,9 +623,6 @@
   "app/chain/subscribe/facade.py": {
     "misc": 4
   },
-  "app/chain/subscribe/interaction.py": {
-    "arg-type": 2
-  },
   "app/chain/subscribe/match.py": {
     "arg-type": 4,
     "assignment": 1,
@@ -678,10 +668,6 @@
     "attr-defined": 2,
     "no-untyped-def": 2,
     "truthy-function": 2
-  },
-  "app/chain/transfer/filter.py": {
-    "arg-type": 1,
-    "attr-defined": 1
   },
   "app/chain/transfer/history.py": {
     "assignment": 1,
@@ -1724,9 +1710,6 @@
   "app/startup/composition/cache.py": {
     "no-untyped-call": 1
   },
-  "app/startup/composition/subscription.py": {
-    "arg-type": 2
-  },
   "app/startup/initializers/command.py": {
     "no-untyped-call": 2
   },
@@ -1794,18 +1777,11 @@
     "union-attr": 1,
     "var-annotated": 1
   },
-  "app/workflow/actions/invoke_plugin.py": {
-    "type-arg": 2
-  },
   "app/workflow/actions/scrape_file.py": {
     "arg-type": 1,
     "no-untyped-call": 1,
     "type-arg": 1,
     "union-attr": 1,
     "var-annotated": 1
-  },
-  "app/workflow/actions/send_event.py": {
-    "assignment": 1,
-    "type-arg": 1
   }
 }
