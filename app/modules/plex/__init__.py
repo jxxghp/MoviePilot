@@ -1,3 +1,7 @@
+"""
+Plex 模块，将认证、媒体库查询和播放事件接入统一媒体服务器接口。
+"""
+
 from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 from app.application.mediaserver import MusicMediaServerHelper
@@ -18,46 +22,52 @@ from app.schemas.types import ChainEventType, MediaServerType, MediaType, Module
 
 
 class PlexModule(_MediaServerModuleBase[Plex]):
-    """Plex 媒体服务器模块。"""
+    """
+    Plex 媒体服务器模块。
+    """
 
     # 媒体库标识（ExistMediaInfo.server_type）
     _server_type_value = "plex"
 
     def init_module(self) -> None:
         """
-        初始化模块
+        初始化模块。
         """
         super().init_service(service_name=Plex.__name__.lower(),
                              service_type=lambda conf: Plex(**conf.config, sync_libraries=conf.sync_libraries))
 
     @staticmethod
     def get_name() -> str:
-        """返回媒体服务器模块名称。"""
+        """
+        返回媒体服务器模块名称。
+        """
         return "Plex"
 
     @staticmethod
     def get_type() -> ModuleType:
         """
-        获取模块类型
+        获取模块类型。
         """
         return ModuleType.MediaServer
 
     @staticmethod
     def get_subtype() -> MediaServerType:
         """
-        获取模块子类型
+        获取模块子类型。
         """
         return MediaServerType.Plex
 
     @staticmethod
     def get_priority() -> int:
         """
-        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效
+        获取模块优先级，数字越小优先级越高，只有同一接口下优先级才生效。
         """
         return 3
 
     def stop(self) -> None:
-        """停止模块"""
+        """
+        关闭各实例的自定义 HTTP 会话，单个关闭失败不阻止其余实例清理。
+        """
         for server in self.get_instances().values():
             try:
                 if server:
@@ -66,7 +76,9 @@ class PlexModule(_MediaServerModuleBase[Plex]):
                 logger.error(f"停止Plex模块实例失败：{err}")
 
     def _test_server(self, server, name: Optional[str]) -> Optional[str]:
-        """Plex 用媒体库列表探测连接状态。"""
+        """
+        Plex 用媒体库列表探测连接状态。
+        """
         if server.is_inactive():
             server.reconnect()
         if not server.get_librarys():
@@ -74,16 +86,21 @@ class PlexModule(_MediaServerModuleBase[Plex]):
         return None
 
     def init_setting(self) -> Tuple[str, Union[str, bool]]:
-        """模块不提供额外的初始化开关。"""
+        """
+        模块不提供额外的初始化开关。
+        """
         pass
 
     def user_authenticate(self, credentials: AuthCredentials, service_name: Optional[str] = None) \
             -> Optional[AuthCredentials]:
         """
-        使用Plex用户辅助完成用户认证
-        :param credentials: 认证数据
-        :param service_name: 指定要认证的媒体服务器名称，若为 None 则认证所有服务
-        :return: 认证数据
+        通过 Plex 账号完成辅助认证，并验证服务器访问能力。
+
+        每次尝试前发送认证拦截事件；被取消的实例不认证。邮箱登录成功后用户名替换为 Plex 规范用户名。
+
+        :param credentials: 密码授权凭据；成功后原地更新令牌、渠道、服务名和规范用户名
+        :param service_name: 要认证的实例名称；省略时依次尝试全部实例
+        :return: 成功时返回修改后的原凭据；不支持的授权类型、无可用实例或认证失败时返回 None
         """
         # Plex认证
         if not credentials or credentials.grant_type != "password":
@@ -120,11 +137,12 @@ class PlexModule(_MediaServerModuleBase[Plex]):
 
     def webhook_parser(self, body: Any, form: Any, args: Any) -> Optional[_SchemaWebhookEventInfo]:
         """
-        解析Webhook报文体
-        :param body:  请求体
-        :param form:  请求表单
-        :param args:  请求参数
-        :return: 字典，解析为消息时需要包含：title、text、image
+        路由 Plex Webhook 到对应服务器。
+
+        :param body: 为统一接口保留的请求体，Plex 使用表单 payload
+        :param form: 包含 payload JSON 字符串的表单
+        :param args: 查询参数；source 指定实例，省略时尝试所有实例
+        :return: 首个成功解析的统一事件；指定实例不存在或所有实例均解析失败时返回 None
         """
         source = args.get("source")
         if source:
@@ -146,11 +164,12 @@ class PlexModule(_MediaServerModuleBase[Plex]):
     def media_exists(self, mediainfo: MediaInfo, itemid: Optional[str] = None,
                      server: Optional[str] = None) -> Optional[_SchemaExistMediaInfo]:
         """
-        判断媒体文件是否存在
-        :param mediainfo:  识别的媒体信息
-        :param itemid:  媒体服务器ItemID
-        :param server:  媒体服务器名称
-        :return: 如不存在返回None，存在时返回信息，包括每季已存在所有集{type: movie/tv, seasons: {season: [episodes]}}
+        按媒体类型查询首个匹配的入库记录。
+
+        :param mediainfo: 识别后的媒体信息，用于名称、年份和来源身份匹配
+        :param itemid: 缓存条目标识；电影优先直接查详情，剧集失效后可回退搜索
+        :param server: 指定实例名称，省略时依次查询全部实例
+        :return: 存在信息，电视剧结果包含季集映射；没有匹配记录时返回 None
         """
         if server:
             servers = [(server, self.get_instance(server))]
@@ -220,7 +239,10 @@ class PlexModule(_MediaServerModuleBase[Plex]):
 
     def media_statistic(self, server: Optional[str] = None) -> Optional[List[_SchemaStatistic]]:
         """
-        媒体数量统计
+        汇总指定实例或全部实例的媒体数量。
+
+        :param server: 实例名称，省略时查询全部实例
+        :return: 统计列表；指定实例不存在时返回 None，每个有效统计的用户数固定记为 1
         """
         if server:
             server_obj: Plex = self.get_instance(server)
@@ -241,7 +263,12 @@ class PlexModule(_MediaServerModuleBase[Plex]):
     def mediaserver_librarys(self, server: Optional[str] = None, hidden: Optional[bool] = False,
                              **kwargs) -> Optional[List[_SchemaMediaServerLibrary]]:
         """
-        媒体库列表
+        查询可用的电影、剧集和音乐库。
+
+        :param server: 服务器配置名称，空值使用默认实例
+        :param hidden: 是否隐藏同步范围外的媒体库
+        :param kwargs: 兼容其他媒体服务器的额外参数，当前不使用
+        :return: 统一媒体库列表；实例不可用或库目录查询失败时返回 None
         """
         server_obj: Plex = self.get_instance(server)
         if server_obj:
@@ -251,14 +278,13 @@ class PlexModule(_MediaServerModuleBase[Plex]):
     def mediaserver_items(self, server: str, library_id: Union[str, int], start_index: Optional[int] = 0,
                           limit: Optional[int] = -1) -> Optional[Generator]:
         """
-        获取媒体服务器项目列表，支持分页和不分页逻辑，默认不分页获取所有数据
+        返回媒体库同步条目的生成器。
 
-        :param server: 媒体服务器名称
-        :param library_id: 媒体库ID，用于标识要获取的媒体库
-        :param start_index: 起始索引，用于分页获取数据。默认为 0，即从第一个项目开始获取
-        :param limit: 每次请求的最大项目数，用于分页。如果为 None 或 -1，则表示一次性获取所有数据，默认为 -1
-
-        :return: 返回一个生成器对象，用于逐步获取媒体服务器中的项目
+        :param server: 服务器配置名称，空值使用默认实例
+        :param library_id: Plex 媒体库数字标识
+        :param start_index: 起始条目索引，空值或负值按 0 处理
+        :param limit: 本次最多读取条目数；None 或 -1 表示分页读取剩余全部条目
+        :return: 统一条目生成器；实例不存在时返回 None，迭代中的查询错误向上传播
         """
         server_obj: Plex = self.get_instance(server)
         if server_obj:
@@ -267,7 +293,7 @@ class PlexModule(_MediaServerModuleBase[Plex]):
 
     def mediaserver_items_count(self, server: str, library_id: Union[str, int]) -> Optional[int]:
         """
-        获取指定媒体库可同步的媒体条目总数
+        获取指定媒体库可同步的媒体条目总数。
 
         :param server: 媒体服务器名称
         :param library_id: 媒体库ID
@@ -280,7 +306,11 @@ class PlexModule(_MediaServerModuleBase[Plex]):
 
     def mediaserver_iteminfo(self, server: str, item_id: str) -> Optional[_SchemaMediaServerItem]:
         """
-        媒体库项目详情
+        读取单个 Plex 条目详情。
+
+        :param server: 服务器配置名称，空值使用默认实例
+        :param item_id: Plex 条目标识，可以是数字标识或 /library/metadata/ 路径
+        :return: 统一媒体模型；实例不存在、条目无效或查询失败时返回 None
         """
         server_obj: Plex = self.get_instance(server)
         if server_obj:
@@ -290,7 +320,11 @@ class PlexModule(_MediaServerModuleBase[Plex]):
     def mediaserver_tv_episodes(self, server: str,
                                 item_id: Union[str, int]) -> Optional[List[_SchemaMediaServerSeasonInfo]]:
         """
-        获取剧集信息
+        读取电视剧中各季已存在的分集编号。
+
+        :param server: 服务器配置名称，空值使用默认实例
+        :param item_id: Plex 条目标识，可以是数字标识或 /library/metadata/ 路径
+        :return: 季集列表；实例不存在时返回 None，无可用季集时返回空列表
         """
         server_obj: Plex = self.get_instance(server)
         if not server_obj:
@@ -306,7 +340,12 @@ class PlexModule(_MediaServerModuleBase[Plex]):
     def mediaserver_playing(self, server: str, count: Optional[int] = 20,
                             **kwargs) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
-        获取媒体服务器正在播放信息
+        查询同步范围内的继续观看列表。
+
+        :param server: 服务器配置名称，空值使用默认实例
+        :param count: 最多返回的条目数量，默认 20
+        :param kwargs: 兼容其他媒体服务器的额外参数，当前不使用
+        :return: 继续观看条目列表；实例不可用或无法读取媒体库范围时返回 None
         """
         server_obj: Plex = self.get_instance(server)
         if not server_obj:
@@ -316,7 +355,12 @@ class PlexModule(_MediaServerModuleBase[Plex]):
     def mediaserver_latest(self, server: Optional[str] = None, count: Optional[int] = 20,
                            **kwargs) -> Optional[List[_SchemaMediaServerPlayItem]]:
         """
-        获取媒体服务器最新入库条目
+        查询同步范围内最近新增的媒体。
+
+        :param server: 服务器配置名称，空值使用默认实例
+        :param count: 最多返回的条目数量，默认 20
+        :param kwargs: 兼容其他媒体服务器的额外参数，当前不使用
+        :return: 最新媒体列表；实例不可用或无法读取媒体库范围时返回 None
         """
         server_obj: Plex = self.get_instance(server)
         if not server_obj:
@@ -330,12 +374,13 @@ class PlexModule(_MediaServerModuleBase[Plex]):
                                   **kwargs
                                   ) -> List[str]:
         """
-        获取媒体服务器最新入库条目的图片
+        为最新电影和电视剧查找可直接访问的外部背景图。
 
-        :param server: 媒体服务器名称
-        :param count: 获取数量
-        :param username: 用户名
-        :return: 图片链接列表
+        :param server: 服务器配置名称，空值使用默认实例
+        :param count: 最多检查的最新媒体数量，默认 20
+        :param username: 兼容统一接口的用户名，当前不参与用户筛选
+        :param kwargs: 兼容其他媒体服务器的额外参数，当前不使用
+        :return: 外部图片 URL 列表；不回退含 Plex 访问令牌的本地图片，无可用图片时返回空列表
         """
         server_obj: Plex = self.get_instance(server)
         if not server_obj:
@@ -355,7 +400,11 @@ class PlexModule(_MediaServerModuleBase[Plex]):
 
     def mediaserver_play_url(self, server: str, item_id: Union[str, int]) -> Optional[str]:
         """
-        获取媒体库播放地址
+        构造带 Plex 访问令牌的网页播放链接。
+
+        :param server: 服务器配置名称，空值使用默认实例
+        :param item_id: Plex 条目标识，可以是数字标识或 /library/metadata/ 路径
+        :return: 条目播放 URL；实例不存在时返回 None
         """
         server_obj: Plex = self.get_instance(server)
         if not server_obj:
@@ -365,12 +414,12 @@ class PlexModule(_MediaServerModuleBase[Plex]):
     def mediaserver_season_episode_ids(self, server: str, item_id: Union[str, int],
                                        season: int) -> Optional[Dict[int, str]]:
         """
-        获取指定季的集号到条目 ID 映射
+        读取指定季的集号到条目路径映射。
 
-        :param server: Plex 媒体服务器名称
-        :param item_id: 剧集在 Plex 中的条目 ID / key
-        :param season: 季号
-        :return: 集号到条目 ID 的映射，服务器不可用或无数据时返回 None
+        :param server: 服务器配置名称，空值使用默认实例
+        :param item_id: Plex 条目标识，可以是数字标识或 /library/metadata/ 路径
+        :param season: 目标季号
+        :return: 集号到 Plex 条目路径的映射；实例不存在时返回 None，无分集或查询失败时返回空映射
         """
         server_obj: Plex = self.get_instance(server)
         if not server_obj:
