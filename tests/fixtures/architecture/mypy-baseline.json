@@ -1289,8 +1289,7 @@
     "union-attr": 1
   },
   "app/modules/telegram/telegram.py": {
-    "arg-type": 1,
-    "assignment": 2,
+    "assignment": 1,
     "no-any-return": 8,
     "no-untyped-def": 13,
     "return-value": 1,

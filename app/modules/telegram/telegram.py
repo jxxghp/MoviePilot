@@ -947,7 +947,7 @@ class Telegram:
             *,
             chat_id: Union[str, int],
             text: Optional[str],
-            buttons: Optional[List[List[dict]]],
+            buttons: Optional[List[List[Dict[str, Any]]]],
             force_reply: bool,
             original_message_id: Optional[int],
             original_chat_id: Optional[str],
