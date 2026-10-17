@@ -1305,17 +1305,6 @@
     "no-untyped-def": 2,
     "type-arg": 1
   },
-  "app/modules/zspace/zspace.py": {
-    "arg-type": 9,
-    "assignment": 3,
-    "no-any-return": 12,
-    "no-untyped-call": 2,
-    "no-untyped-def": 3,
-    "operator": 1,
-    "type-arg": 8,
-    "union-attr": 1,
-    "var-annotated": 4
-  },
   "app/monitor/monitor.py": {
     "arg-type": 8,
     "assignment": 1,

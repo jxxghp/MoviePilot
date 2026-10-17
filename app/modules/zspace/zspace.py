@@ -6,7 +6,7 @@ import json
 import re
 import traceback
 from pathlib import Path
-from typing import Any, Dict, Generator, List, Optional, Tuple, Union
+from typing import Any, Dict, Generator, List, Mapping, Optional, Tuple, Union
 
 from requests import Response
 
@@ -27,6 +27,24 @@ from app.schemas.types import MediaSource, MediaType
 DEFAULT_ITEMS_PAGE_SIZE = 100
 
 
+def _optional_text(value: object) -> Optional[str]:
+    """
+    读取服务端可空文本字段，不将非法类型隐式转成文本。
+    """
+    if value is None or isinstance(value, str):
+        return value
+    raise TypeError("极影视文本字段格式错误")
+
+
+def _user_id(value: object) -> Optional[Union[str, int]]:
+    """
+    读取兼容字符串和整数的用户标识，保留空值。
+    """
+    if value is None or isinstance(value, (str, int)):
+        return value
+    raise TypeError("极影视用户标识格式错误")
+
+
 class ZSpace:
     """
     通过极影视的 Emby 兼容接口提供媒体检索、登录和播放信息。
@@ -43,7 +61,7 @@ class ZSpace:
 
     def __init__(self, host: Optional[str] = None, username: Optional[str] = None,
                  password: Optional[str] = None, play_host: Optional[str] = None,
-                 sync_libraries: list = None, **kwargs):
+                 sync_libraries: Optional[list[str]] = None, **kwargs: object) -> None:
         """
         保存连接配置并登录，随后缓存媒体库路径和服务器标识。
 
@@ -69,8 +87,8 @@ class ZSpace:
         self._password = password
         self._sync_libraries = sync_libraries or []
         self.user = None
-        self.folders = []
-        self.serverid = None
+        self.folders: List[dict[str, Any]] = []
+        self.serverid: Optional[str] = None
         if not self.reconnect():
             logger.error(f"请检查极影视服务端地址 {host}")
 
@@ -98,7 +116,7 @@ class ZSpace:
     def __request_utils(self,
                         timeout: Optional[int] = None,
                         include_token: bool = True,
-                        headers: Optional[dict] = None) -> RequestUtils:
+                        headers: Optional[dict[str, str]] = None) -> RequestUtils:
         """
         统一构造极影视请求客户端。
 
@@ -156,7 +174,7 @@ class ZSpace:
         self.serverid = self.get_server_id()
         return True
 
-    def get_library_folders(self) -> List[dict]:
+    def get_library_folders(self) -> List[dict[str, Any]]:
         """
         获取极影视媒体库路径列表。
 
@@ -172,13 +190,16 @@ class ZSpace:
         try:
             res = self.__request_utils().get_res(url)
             if res:
-                return res.json()
+                folders: object = res.json()
+                if not isinstance(folders, list) or not all(isinstance(folder, dict) for folder in folders):
+                    raise TypeError("极影视媒体库目录响应格式错误")
+                return folders
             logger.debug("Library/SelectableMediaFolders 未获取到返回数据，回退到 Users/{uid}/Views")
         except Exception as e:
             logger.debug(f"连接Library/SelectableMediaFolders 出错：{e}，回退到 Users/{{uid}}/Views")
         return self.__get_library_views() or []
 
-    def get_virtual_folders(self) -> List[dict]:
+    def get_virtual_folders(self) -> List[dict[str, Any]]:
         """
         获取极影视媒体库所有路径列表（包含共享路径）。
 
@@ -230,7 +251,7 @@ class ZSpace:
                 })
         return libraries
 
-    def __get_library_views(self, username: Optional[str] = None) -> Optional[List[dict]]:
+    def __get_library_views(self, username: Optional[str] = None) -> Optional[List[dict[str, Any]]]:
         """
         获取极影视媒体库列表。
         """
@@ -322,13 +343,13 @@ class ZSpace:
                     if user_name:
                         for user in users:
                             if user.get("Name") == user_name:
-                                return user.get("Id")
+                                return _user_id(user.get("Id"))
                     for user in users:
                         if user.get("Policy", {}).get("IsAdministrator"):
-                            return user.get("Id")
+                            return _user_id(user.get("Id"))
                     for user in users:
                         if user.get("Id"):
-                            return user.get("Id")
+                            return _user_id(user.get("Id"))
                 else:
                     logger.debug("Users 返回数据格式错误，回退到当前登录用户")
             else:
@@ -363,7 +384,7 @@ class ZSpace:
         try:
             res = self.__request_utils().get_res(url)
             if res:
-                return res.json().get("Id")
+                return _optional_text(res.json().get("Id"))
             else:
                 logger.error("System/Info 未获取到返回数据")
         except Exception as e:
@@ -387,6 +408,8 @@ class ZSpace:
             if res:
                 count = res.json().get("TotalRecordCount")
                 if count:
+                    if not isinstance(count, int):
+                        raise TypeError("极影视用户数量格式错误")
                     return count
             else:
                 # 极影视未实现该端点会走到这里，降为 debug 避免主日志误报
@@ -497,7 +520,7 @@ class ZSpace:
             return total, "tvshows"
         return total, None
 
-    def __get_series_id_by_name(self, name: str, year: str) -> Optional[str]:
+    def __get_series_id_by_name(self, name: Optional[str], year: Optional[Union[str, int]]) -> Optional[str]:
         """
         在最多 10 条电视剧搜索结果中匹配标题和年份。
 
@@ -525,7 +548,7 @@ class ZSpace:
                     for res_item in res_items:
                         if res_item.get('Name') == name and (
                                 not year or str(res_item.get('ProductionYear')) == str(year)):
-                            return res_item.get('Id')
+                            return _optional_text(res_item.get('Id'))
         except Exception as e:
             logger.error(f"连接Items出错：{e}")
             return None
@@ -533,7 +556,7 @@ class ZSpace:
 
     def get_movies(self,
                    title: str,
-                   year: Optional[str] = None,
+                   year: Optional[Union[str, int]] = None,
                    media_source: Optional[MediaSource] = None,
                    media_id: Optional[str] = None) -> Optional[List[_SchemaMediaServerItem]]:
         """
@@ -619,7 +642,7 @@ class ZSpace:
     def get_tv_episodes(self,
                         item_id: Optional[str] = None,
                         title: Optional[str] = None,
-                        year: Optional[str] = None,
+                        year: Optional[Union[str, int]] = None,
                         media_source: Optional[MediaSource] = None,
                         media_id: Optional[str] = None,
                         season: Optional[int] = None
@@ -670,7 +693,7 @@ class ZSpace:
             if res_json:
                 tv_item = res_json.json()
                 res_items = tv_item.get("Items")
-                season_episodes = {}
+                season_episodes: Dict[int, List[int]] = {}
                 for res_item in res_items or []:
                     season_index = res_item.get("ParentIndexNumber")
                     if season_index is None:
@@ -707,7 +730,7 @@ class ZSpace:
                 if images:
                     for image in images:
                         if image.get("ProviderName") == "TheMovieDb" and image.get("Type") == image_type:
-                            return image.get("Url")
+                            return _optional_text(image.get("Url"))
             logger.info("Items/RemoteImages 未获取到返回数据，采用本地图片")
             return self.generate_external_image_link(item_id, image_type)
         except Exception as e:
@@ -731,7 +754,7 @@ class ZSpace:
             res = self.__request_utils().get_res(url)
             if res and res.status_code != 404:
                 logger.info(f"影片图片链接:{res.url}")
-                return res.url
+                return _optional_text(res.url)
             else:
                 logger.info(f"Items/Id/Images 未获取到返回数据或无该影片{image_type}图片")
                 return None
@@ -834,7 +857,7 @@ class ZSpace:
                 try:
                     subfolder_path = Path(subfolder.get("Path"))
                     if item_path.is_relative_to(subfolder_path):
-                        return folder.get("Id")
+                        return _optional_text(folder.get("Id"))
                 except Exception as err:
                     logger.debug(f"匹配子目录出错：{err} - {traceback.format_exc()}")
         if item.category:
@@ -843,11 +866,11 @@ class ZSpace:
                     if subfolder.get("Path") and re.search(
                             r"[/\\]%s" % re.escape(item.category), subfolder.get("Path")
                     ):
-                        return folder.get("Id")
+                        return _optional_text(folder.get("Id"))
         return "/"
 
     @staticmethod
-    def __format_item_info(item) -> Optional[_SchemaMediaServerItem]:
+    def __format_item_info(item: Mapping[str, object]) -> Optional[_SchemaMediaServerItem]:
         """
         通过统一 Emby 系转换契约生成极影视条目。
         """
@@ -874,7 +897,7 @@ class ZSpace:
             logger.error(f"连接/Users/{self.user}/Items/{itemid}出错：{e}")
         return None
 
-    def get_items_count(self, parent: Union[str, int]) -> Optional[int]:
+    def get_items_count(self, parent: Optional[Union[str, int]]) -> Optional[int]:
         """
         获取指定媒体库的媒体条目总数。
 
@@ -901,7 +924,7 @@ class ZSpace:
             return None
 
     def get_items(self, parent: Union[str, int], start_index: Optional[int] = 0,
-                  limit: Optional[int] = -1) -> Generator[MediaServerItem | None | Any, Any, None]:
+                  limit: Optional[int] = -1) -> Generator[MediaServerItem | None, None, None]:
         """
         分页遍历媒体库，展开合集并补查缺少身份或路径的条目。
 
@@ -917,7 +940,7 @@ class ZSpace:
             return None
         url = f"{self._host}emby/Users/{self.user}/Items"
         fetch_all = limit is None or limit == -1
-        page_size = DEFAULT_ITEMS_PAGE_SIZE if fetch_all else limit
+        page_size = DEFAULT_ITEMS_PAGE_SIZE if limit is None or limit == -1 else limit
         current_start_index = max(start_index or 0, 0)
         while True:
             params = {
@@ -976,7 +999,7 @@ class ZSpace:
                 break
         return None
 
-    def get_webhook_message(self, form: Any, args: dict) -> Optional[_SchemaWebhookEventInfo]:
+    def get_webhook_message(self, form: Any, args: Mapping[str, object]) -> Optional[_SchemaWebhookEventInfo]:
         """
         解析兼容 Emby 的极影视通知，并补充媒体身份和图片。
 
@@ -1085,16 +1108,19 @@ class ZSpace:
         """
         if not self._host or not self._apikey:
             return None
+        user = self.user or ''
+        if not isinstance(user, str):
+            raise TypeError(f"replace() argument 2 must be str, not {type(user).__name__}")
         url = url.replace("[HOST]", self._host or '') \
             .replace("[APIKEY]", self._apikey or '') \
-            .replace("[USER]", self.user or '')
+            .replace("[USER]", user)
         try:
             return self.__request_utils(headers={"Content-Type": "application/json"}).get_res(url=url)
         except Exception as e:
             logger.error(f"连接极影视出错：{e}")
             return None
 
-    def post_data(self, url: str, data: Optional[str] = None, headers: dict = None) -> Optional[Response]:
+    def post_data(self, url: str, data: Optional[str] = None, headers: Optional[dict[str, str]] = None) -> Optional[Response]:
         """
         替换连接占位符并发送自定义 POST 请求。
 
@@ -1107,9 +1133,12 @@ class ZSpace:
         """
         if not self._host or not self._apikey:
             return None
+        user = self.user or ''
+        if not isinstance(user, str):
+            raise TypeError(f"replace() argument 2 must be str, not {type(user).__name__}")
         url = url.replace("[HOST]", self._host or '') \
             .replace("[APIKEY]", self._apikey or '') \
-            .replace("[USER]", self.user or '')
+            .replace("[USER]", user)
         try:
             return self.__request_utils(headers=headers).post_res(url=url, data=data)
         except Exception as e:
@@ -1146,7 +1175,7 @@ class ZSpace:
         return f"{host_url}emby/Items/{item_id}/" \
             f"Images/Backdrop?tag={image_tag}&api_key={self._apikey}"
 
-    def __get_local_image_by_id(self, item_id: str) -> str:
+    def __get_local_image_by_id(self, item_id: object) -> str:
         """
         根据ItemId从媒体服务器查询本地图片地址。
 
@@ -1186,7 +1215,7 @@ class ZSpace:
             res = self.__request_utils().get_res(url, params=params)
             if res:
                 result = res.json().get("Items") or []
-                ret_resume = []
+                ret_resume: List[_SchemaMediaServerPlayItem] = []
                 library_folders = self.get_user_library_folders()
                 for item in result:
                     if len(ret_resume) == num:
@@ -1271,7 +1300,7 @@ class ZSpace:
                     result = payload.get("Items") or []
                 else:
                     result = payload or []
-                ret_latest = []
+                ret_latest: List[_SchemaMediaServerPlayItem] = []
                 library_folders = self.get_user_library_folders()
                 for item in result:
                     if len(ret_latest) == num:
@@ -1302,7 +1331,7 @@ class ZSpace:
             logger.error(f"连接 Users/Items（DateCreated 排序）出错：{e}")
         return None
 
-    def get_user_library_folders(self):
+    def get_user_library_folders(self) -> List[str]:
         """
         汇总同步列表中明确选中的媒体库路径。
 
@@ -1316,7 +1345,10 @@ class ZSpace:
         for library in self.get_virtual_folders() or []:
             if self._sync_libraries and library.get("Id") not in self._sync_libraries:
                 continue
-            library_folders += [folder for folder in library.get("Path")]
+            paths = library.get("Path")
+            if paths is None:
+                raise TypeError("'NoneType' object is not iterable")
+            library_folders += [folder for folder in paths]
         return library_folders
 
     def __login(self, username: Optional[str], password: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
@@ -1352,7 +1384,7 @@ class ZSpace:
             logger.error(f"连接Users/AuthenticateByName出错：{e}")
         return None, None
 
-    def __get_current_user(self) -> Optional[dict]:
+    def __get_current_user(self) -> Optional[dict[str, Any]]:
         """
         获取当前登录用户信息。
 
@@ -1374,13 +1406,13 @@ class ZSpace:
             logger.error(f"连接 {url} 出错：{e}")
         return None
 
-    def __get_current_user_id(self) -> Optional[str]:
+    def __get_current_user_id(self) -> Optional[Union[str, int]]:
         """
         获取当前登录用户ID。
         """
         current_user = self.__get_current_user()
         if current_user:
-            current_user_id = current_user.get("Id")
+            current_user_id = _user_id(current_user.get("Id"))
             if current_user_id:
                 self.user = current_user_id
                 return current_user_id
