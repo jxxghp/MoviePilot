@@ -1,3 +1,7 @@
+"""
+解析站点登录输入中的验证码或共享密钥，并按需生成 TOTP 验证码。
+"""
+
 import base64
 import hashlib
 import hmac
@@ -9,10 +13,14 @@ from app.runtime.log import logger
 
 
 class TwoFactorAuth:
-    """解析已有验证码或根据共享密钥生成 TOTP 验证码。"""
+    """
+    解析已有验证码或根据共享密钥生成 TOTP 验证码。
+    """
 
     def __init__(self, code_or_secret: str | None) -> None:
-        """按长度区分用户验证码和 TOTP 共享密钥。"""
+        """
+        按长度区分用户验证码和 TOTP 共享密钥。
+        """
         if code_or_secret and len(code_or_secret) >= 16:
             self.code: str | None = None
             self.secret: str | None = code_or_secret
@@ -22,7 +30,9 @@ class TwoFactorAuth:
 
     @staticmethod
     def __calc(secret_key: str | None) -> str:
-        """按 30 秒时间窗计算六位 TOTP 验证码。"""
+        """
+        按 30 秒时间窗计算六位 TOTP 验证码。
+        """
         if not secret_key:
             return ""
         try:
@@ -44,5 +54,7 @@ class TwoFactorAuth:
             return ""
 
     def get_code(self) -> str:
-        """返回显式验证码，或从共享密钥实时计算。"""
+        """
+        返回显式验证码，或从共享密钥实时计算。
+        """
         return self.code or self.__calc(self.secret)

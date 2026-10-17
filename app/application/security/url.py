@@ -1,3 +1,7 @@
+"""
+执行 URL、路径和签名安全策略，维护受控 DNS 解析缓存。
+"""
+
 import asyncio
 import hmac
 import importlib
@@ -38,7 +42,7 @@ _dns_negative_cache: "TTLCache[str, bool]" = TTLCache(
 # 同步路径下保护 TTLCache 读写：`cachetools.TTLCache` 本身非线程安全。
 # 锁只覆盖缓存读写，不包 DNS Port 调用，避免把解析本身串行化。
 _dns_cache_lock = threading.Lock()
-# 同一事件循环内按 hostname 合并并发异步解析；asyncio 原语不能跨 loop 共享。
+# 同一事件循环内按 hostname 合并并发异步解析；asyncio 原语不能跨事件循环 共享。
 _DnsInflightKey = tuple[asyncio.AbstractEventLoop, str]
 _dns_inflight_locks: Dict[_DnsInflightKey, asyncio.Lock] = {}
 _dns_inflight_meta_lock = threading.Lock()
@@ -48,19 +52,33 @@ _dns_resolver_generation = 0
 
 
 class DnsResolver(Protocol):
-    """安全 URL 校验所需的最小 DNS 解析端口。"""
+    """
+    安全 URL 校验所需的最小 DNS 解析端口。
+    """
 
     def resolve(self, hostname: str) -> Optional[Sequence[str]]:
-        """同步返回主机名的全部 IP；解析失败时返回 None。"""
+        """
+        同步返回主机名的全部 IP；解析失败时返回 None。
+
+        :param hostname: 待解析的主机名，不包含协议、端口或路径
+        :return: 主机名解析到的全部 IP 地址文本；解析失败时返回 None
+        """
         ...
 
     async def async_resolve(self, hostname: str) -> Optional[Sequence[str]]:
-        """异步返回主机名的全部 IP；解析失败时返回 None。"""
+        """
+        异步返回主机名的全部 IP；解析失败时返回 None。
+
+        :param hostname: 待解析的主机名，不包含协议、端口或路径
+        :return: 主机名解析到的全部 IP 地址文本；解析失败时返回 None
+        """
         ...
 
 
 def _clear_dns_runtime_state() -> None:
-    """清除 resolver 变更前的缓存与异步去重状态。"""
+    """
+    清除 resolver 变更前的缓存与异步去重状态。
+    """
     with _dns_cache_lock:
         _dns_positive_cache.clear()
         _dns_negative_cache.clear()
@@ -69,7 +87,9 @@ def _clear_dns_runtime_state() -> None:
 
 
 def configure_dns_resolver(resolver: DnsResolver) -> Optional[DnsResolver]:
-    """由启动组合根装配 DNS 端口，并返回先前实现供隔离环境恢复。"""
+    """
+    由启动组合根装配 DNS 端口，并返回先前实现供隔离环境恢复。
+    """
     global _dns_resolver, _dns_resolver_generation
     with _dns_resolver_lock:
         previous = _dns_resolver
@@ -80,7 +100,9 @@ def configure_dns_resolver(resolver: DnsResolver) -> Optional[DnsResolver]:
 
 
 def reset_dns_resolver(resolver: Optional[DnsResolver] = None) -> None:
-    """恢复指定 DNS 实现；省略参数时回到未装配状态。"""
+    """
+    恢复指定 DNS 实现；省略参数时回到未装配状态。
+    """
     global _dns_resolver, _dns_resolver_generation
     with _dns_resolver_lock:
         _dns_resolver = resolver
@@ -89,7 +111,9 @@ def reset_dns_resolver(resolver: Optional[DnsResolver] = None) -> None:
 
 
 def _dns_resolver_snapshot() -> tuple[DnsResolver, int]:
-    """返回 resolver 与绑定代际，未装配时稳定失败。"""
+    """
+    返回 resolver 与绑定代际，未装配时稳定失败。
+    """
     with _dns_resolver_lock:
         resolver = _dns_resolver
         generation = _dns_resolver_generation
@@ -99,7 +123,9 @@ def _dns_resolver_snapshot() -> tuple[DnsResolver, int]:
 
 
 def _resource_secret_key() -> str:
-    """读取 URL 签名密钥快照，并保留旧插件直接导入模块的兼容路径。"""
+    """
+    读取 URL 签名密钥快照，并保留旧插件直接导入模块的兼容路径。
+    """
     try:
         return get_token_runtime_config().resource_secret_key
     except RuntimeError:
@@ -119,7 +145,7 @@ class UrlSafetyReason(str, Enum):
     ALLOWED = "allowed"
     # 协议非 http/https，或 netloc 无效，或域名不在允许列表内
     DOMAIN_NOT_ALLOWED = "domain_not_allowed"
-    # 已通过域名 allowlist，但 DNS 解析失败（无返回或抛错）
+    # 已通过域名白名单，但 DNS 解析失败（无返回或抛错）
     DNS_RESOLUTION_FAILED = "dns_resolution_failed"
     # DNS 解析到至少一个非公网地址，且未配置 `allowed_private_ranges`
     NON_GLOBAL_DNS_RESULT = "non_global_dns_result"
@@ -133,21 +159,19 @@ class UrlSafetyDiagnosis:
     URL 安全校验的结构化诊断结果，由 `evaluate_url_safety(_async)` 返回。
 
     `is_safe_url` 仅使用 `allowed` 字段；日志、告警、运维诊断需要细分原因或
-    解析 IP 时通过本对象消费。字段约束：
-    - `host` 仅在通过域名 allowlist 后才被填充；DOMAIN_NOT_ALLOWED 场景为 None。
-    - `ips` 仅在执行过 DNS 阶段后才可能非空；不含纯字符串协议失败场景。
-    - `matched_private_ranges` 仅在通过 `allowed_private_ranges` 放行时填充。
+    解析 IP 时通过本对象消费。
+
+    :param allowed: 是否通过本次 URL 安全策略
+    :param reason: 稳定的允许或拒绝原因代码
+    :param host: 通过域名白名单检查的主机名；域名未获准时为 None
+    :param ips: DNS 阶段得到的地址文本；未执行解析或无结果时为空列表
+    :param matched_private_ranges: 本次放行命中的私网地址范围；未通过例外范围放行时为空列表
     """
 
-    # 是否放行
     allowed: bool
-    # 放行/拦截的具体原因
     reason: UrlSafetyReason
-    # 通过 allowlist 后从 URL 解析出的 hostname，未通过时为 None
     host: Optional[str] = None
-    # DNS 解析结果（含命中或未命中私网放行的 IP），格式化为字符串
     ips: List[str] = field(default_factory=list)
-    # 命中允许放行的非公网网段，仅 `ALLOWED` 且走私网放行分支时非空
     matched_private_ranges: List[str] = field(default_factory=list)
 
 
@@ -172,7 +196,9 @@ def _resolve_addresses_to_ips(
 
 
 class SecurityUtils:
-    """提供路径、URL、签名和网络目标安全校验能力。"""
+    """
+    提供路径、URL、签名和网络目标安全校验能力。
+    """
 
     _SIGNED_URL_PURPOSE = "image-proxy"
     _SUBTITLE_DOWNLOAD_PURPOSE_PREFIX = "subtitle-download"
@@ -184,7 +210,9 @@ class SecurityUtils:
         user_suffix: str,
         allowed_suffixes: Optional[Union[Set[str], List[str]]],
     ) -> bool:
-        """统一解析后路径 containment 与后缀白名单判定。"""
+        """
+        统一检查解析后路径是否位于基准目录内，以及后缀是否在白名单中。
+        """
         if base_path != user_path and base_path not in user_path.parents:
             return False
         if allowed_suffixes is None:
@@ -193,7 +221,9 @@ class SecurityUtils:
 
     @staticmethod
     def _path_validation_failed(error: Exception) -> bool:
-        """统一记录路径解析异常并按默认拒绝策略返回。"""
+        """
+        统一记录路径解析异常并按默认拒绝策略返回。
+        """
         logger.debug(f"Error occurred while validating paths: {error}")
         return False
 
@@ -201,13 +231,14 @@ class SecurityUtils:
     def is_safe_path(base_path: Path, user_path: Path,
                      allowed_suffixes: Optional[Union[Set[str], List[str]]] = None) -> bool:
         """
-        验证用户提供的路径是否在基准目录内，并检查文件类型是否合法，防止目录遍历攻击
+        验证用户提供的路径是否在基准目录内，并检查文件类型是否合法，防止目录遍历攻击。
+
+        路径解析失败会记录诊断日志并返回 False，不向调用方传播解析异常。
 
         :param base_path: 基准目录，允许访问的根目录
         :param user_path: 用户提供的路径，需检查其是否位于基准目录内
         :param allowed_suffixes: 允许的文件后缀名集合，用于验证文件类型
         :return: 如果用户路径安全且位于基准目录内，且文件类型合法，返回 True；否则返回 False
-        :raises Exception: 如果解析路径时发生错误，则捕获并记录异常
         """
         try:
             # resolve() 将相对路径转换为绝对路径，并处理符号链接和'..'
@@ -227,13 +258,14 @@ class SecurityUtils:
     async def async_is_safe_path(base_path: AsyncPath, user_path: AsyncPath,
                                  allowed_suffixes: Optional[Union[Set[str], List[str]]] = None) -> bool:
         """
-        异步验证用户提供的路径是否在基准目录内，并检查文件类型是否合法，防止目录遍历攻击
+        异步验证用户提供的路径是否在基准目录内，并检查文件类型是否合法，防止目录遍历攻击。
+
+        路径解析失败会记录诊断日志并返回 False，不向调用方传播解析异常。
 
         :param base_path: 基准目录，允许访问的根目录
         :param user_path: 用户提供的路径，需检查其是否位于基准目录内
         :param allowed_suffixes: 允许的文件后缀名集合，用于验证文件类型
         :return: 如果用户路径安全且位于基准目录内，且文件类型合法，返回 True；否则返回 False
-        :raises Exception: 如果解析路径时发生错误，则捕获并记录异常
         """
         try:
             # resolve() 将相对路径转换为绝对路径，并处理符号链接和'..'
@@ -328,7 +360,7 @@ class SecurityUtils:
         hostname: str,
     ) -> tuple[_DnsInflightKey, asyncio.Lock]:
         """
-        取得当前事件循环内 hostname 对应的 in-flight 锁。
+        取得当前事件循环内 hostname 对应的并发请求锁。
 
         `asyncio.Lock` 只能由创建它的事件循环驱动，因此键必须包含 loop；模块级
         `threading.Lock` 只保护索引本身，不能把 asyncio 原语变成跨线程锁。
@@ -347,7 +379,7 @@ class SecurityUtils:
         lock: asyncio.Lock,
     ) -> None:
         """
-        请求结束后清理 in-flight 锁，避免长期持有大量已闲置的 `asyncio.Lock`。
+        请求结束后清理并发请求锁，避免长期持有大量已闲置的 `asyncio.Lock`。
 
         仅当字典中登记的仍是当前 lock，且 `lock.locked()` 为 False 时才删除。
         `asyncio.Lock` 公平 FIFO：持有者释放后若仍有等待者，锁会立刻被下一个
@@ -367,7 +399,7 @@ class SecurityUtils:
         异步解析主机名并返回全部 IP 地址，与同步版本共用同一份 TTL 缓存。
 
         通过注入的异步 DNS Port 解析，不阻塞 asyncio 事件循环；同 hostname 的
-        并发未命中请求通过 in-flight 锁去重，只发起一次 DNS 查询。
+        并发未命中请求通过并发请求锁去重，只发起一次 DNS 查询。
         """
         if not hostname:
             return None
@@ -484,7 +516,7 @@ class SecurityUtils:
         返回主机名命中的显式允许非公网地址和网段（同步版本）。
 
         该能力只用于图片代理的受控例外，例如 TUN fake-ip 或内网 CDN。必须由
-        `is_safe_url` 先完成域名 allowlist 校验后再调用，避免把任意用户 URL
+        `is_safe_url` 先完成域名白名单校验后再调用，避免把任意用户 URL
         变成 SSRF 绕过入口。
         """
         networks = SecurityUtils._parse_ip_networks(allowed_private_ranges)
@@ -625,23 +657,20 @@ class SecurityUtils:
         """
         try:
             parsed_url = urlparse(url)
-        except Exception as e:  # noqa: BLE001 - 任何解析异常都视为不安全 URL
+        # 任何解析异常都视为不安全 URL
+        except Exception as e:  # noqa: BLE001
             logger.debug(f"Error occurred while validating URL: {e}")
             return None
 
-        # 如果 URL 没有包含有效的 scheme，或者无法从中提取到有效的 netloc，则认为该 URL 是无效的
         if not parsed_url.scheme or not parsed_url.netloc:
             return None
-        # 仅允许 http 或 https 协议
         if parsed_url.scheme not in {"http", "https"}:
             return None
 
-        # 获取完整的 netloc（包括 IP 和端口）并转换为小写
         netloc = parsed_url.netloc.lower()
         if not netloc:
             return None
 
-        # 检查每个允许的域名
         normalized_allowed = {d.lower() for d in allowed_domains}
         domain_allowed = False
         for domain in normalized_allowed:
@@ -739,7 +768,9 @@ class SecurityUtils:
         strict: bool,
         block_private: bool,
     ) -> tuple[Optional[str], Optional["UrlSafetyDiagnosis"]]:
-        """统一协议/域名白名单与无需 DNS 场景的终态诊断。"""
+        """
+        统一协议/域名白名单与无需 DNS 场景的终态诊断。
+        """
         hostname = SecurityUtils._check_url_allowlist(url, allowed_domains, strict)
         if hostname is None:
             return None, UrlSafetyDiagnosis(
@@ -756,7 +787,9 @@ class SecurityUtils:
 
     @staticmethod
     def _url_safety_failed(error: Exception) -> "UrlSafetyDiagnosis":
-        """统一记录 URL 校验异常并返回默认拒绝诊断。"""
+        """
+        统一记录 URL 校验异常并返回默认拒绝诊断。
+        """
         logger.debug(f"Error occurred while validating URL: {error}")
         return UrlSafetyDiagnosis(
             allowed=False,
@@ -774,7 +807,7 @@ class SecurityUtils:
         """
         在 `is_safe_url` 的判定路径上输出结构化诊断结果（同步版本）。
 
-        与 `is_safe_url` 共用同一套校验顺序：协议/域名 allowlist → 可选 DNS 解析
+        与 `is_safe_url` 共用同一套校验顺序：协议/域名白名单 → 可选 DNS 解析
         → 可选非公网放行匹配；本方法额外返回失败原因、解析到的 IP 列表和命中的
         私网网段，供日志与告警渲染消费。校验中遇到未预期异常时按默认拒绝原则
         归类为 `DOMAIN_NOT_ALLOWED`，避免任何解析路径漏过 SSRF 校验。
@@ -790,7 +823,8 @@ class SecurityUtils:
             return SecurityUtils._diagnose_resolved_addresses(
                 url, hostname, addresses, allowed_private_ranges
             )
-        except Exception as e:  # noqa: BLE001 - 默认拒绝，避免漏过 SSRF 校验
+        # 默认拒绝，避免漏过 SSRF 校验
+        except Exception as e:  # noqa: BLE001
             return SecurityUtils._url_safety_failed(e)
 
     @staticmethod
@@ -818,7 +852,8 @@ class SecurityUtils:
             return SecurityUtils._diagnose_resolved_addresses(
                 url, hostname, addresses, allowed_private_ranges
             )
-        except Exception as e:  # noqa: BLE001 - 默认拒绝，避免漏过 SSRF 校验
+        # 默认拒绝，避免漏过 SSRF 校验
+        except Exception as e:  # noqa: BLE001
             return SecurityUtils._url_safety_failed(e)
 
     @staticmethod
@@ -828,7 +863,8 @@ class SecurityUtils:
         allowed_private_ranges: Optional[Iterable[str]] = None,
         trusted_hosts: Optional[Iterable[str]] = None,
     ) -> bool:
-        """先执行 DNS SSRF 校验，再允许精确匹配的受信主机或有效签名 URL。
+        """
+        先执行 DNS SSRF 校验，再允许精确匹配的受信主机或有效签名 URL。
 
         其余目标拒绝并输出限频阻断日志，日志不记录 cookies、签名串、token 或请求头。
         """
@@ -859,7 +895,9 @@ class SecurityUtils:
         allowed_private_ranges: Optional[Iterable[str]] = None,
         trusted_hosts: Optional[Iterable[str]] = None,
     ) -> bool:
-        """允许公网 CDN 跳转；私网例外仅属于配置主机，原图签名不会授权重定向目标。"""
+        """
+        允许公网 CDN 跳转；私网例外仅属于配置主机，原图签名不会授权重定向目标。
+        """
         if trusted_hosts and url_matches_trusted_hosts(url, trusted_hosts):
             return True
         configured_target = SecurityUtils.is_safe_url(url, allowed_domains)
@@ -933,20 +971,17 @@ class SecurityUtils:
     @staticmethod
     def sanitize_url_path(url: str, max_length: int = 120) -> str:
         """
-        将 URL 的路径部分进行编码，确保合法字符，并对路径长度进行压缩处理（如果超出最大长度）
+        将 URL 的路径部分进行编码，确保合法字符，并对路径长度进行压缩处理（如果超出最大长度）。
 
         :param url: 需要处理的 URL
         :param max_length: 路径允许的最大长度，超出时进行压缩
         :return: 处理后的路径字符串
         """
-        # 解析 URL，获取路径部分
         parsed_url = urlparse(url)
         path = parsed_url.path.lstrip("/")
 
-        # 对路径中的特殊字符进行编码
         safe_path = quote(path)
 
-        # 如果路径过长，进行压缩处理
         if len(safe_path) > max_length:
             # 使用 SHA-256 对路径进行哈希，取前 16 位作为压缩后的路径
             hash_value = sha256(safe_path.encode()).hexdigest()[:16]
@@ -1046,7 +1081,9 @@ _image_proxy_block_log_coalescer = EventCoalescer(
 
 
 async def close_image_proxy_block_log_coalescer() -> None:
-    """刷新图片代理阻断摘要，并等待已经启动的窗口 flush 任务。"""
+    """
+    刷新图片代理阻断摘要，并等待已经启动的窗口 flush 任务。
+    """
     await _image_proxy_block_log_coalescer.close()
 
 
