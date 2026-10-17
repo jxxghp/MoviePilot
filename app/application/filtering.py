@@ -1,4 +1,6 @@
-"""过滤规则查询、校验、序列化和引用处理应用服务。"""
+"""
+过滤规则查询、校验、序列化和引用处理应用服务。
+"""
 
 import copy
 import re
@@ -66,7 +68,9 @@ RULE_STRING_SYNTAX = {
 
 
 def normalize_optional_text(value: Optional[str]) -> Optional[str]:
-    """把空白字符串折叠为 None，避免保存无意义的空值。"""
+    """
+    把空白字符串折叠为 None，避免保存无意义的空值。
+    """
     if value is None:
         return None
     value = str(value).strip()
@@ -74,7 +78,9 @@ def normalize_optional_text(value: Optional[str]) -> Optional[str]:
 
 
 def normalize_media_type(value: Optional[str]) -> Optional[str]:
-    """兼容英中文媒体类型输入，最终统一为后端实际使用的中文值。"""
+    """
+    兼容英中文媒体类型输入，最终统一为后端实际使用的中文值。
+    """
     value = normalize_optional_text(value)
     if not value:
         return None
@@ -85,7 +91,9 @@ def normalize_media_type(value: Optional[str]) -> Optional[str]:
 
 
 def validate_numeric_range(field_name: str, value: Optional[str]) -> Optional[str]:
-    """校验 size_range / publish_time 这类单值或区间值。"""
+    """
+    校验 size_range / publish_time 这类单值或区间值。
+    """
     value = normalize_optional_text(value)
     if not value:
         return None
@@ -99,7 +107,9 @@ def validate_numeric_range(field_name: str, value: Optional[str]) -> Optional[st
 
 
 def validate_seeders(value: Optional[str]) -> Optional[str]:
-    """做种人数最终会被 int() 解析，这里提前拦住非法值。"""
+    """
+    做种人数最终会被 int() 解析，这里提前拦住非法值。
+    """
     value = normalize_optional_text(value)
     if not value:
         return None
@@ -109,32 +119,46 @@ def validate_seeders(value: Optional[str]) -> Optional[str]:
 
 
 def get_builtin_rules() -> Dict[str, dict[str, Any]]:
-    """返回内置规则的深拷贝，避免调用方误改共享常量。"""
+    """
+    返回内置规则的深拷贝，避免调用方误改共享常量。
+    """
     return copy.deepcopy(BUILTIN_RULE_SET)
 
 
 def get_custom_rules() -> list[CustomRule]:
-    """读取当前配置中的自定义规则。"""
+    """
+    读取当前配置中的自定义规则。
+    """
     return RuleHelper().get_custom_rules()
 
 
 def get_rule_groups() -> list[FilterRuleGroup]:
-    """读取当前配置中的过滤规则组。"""
+    """
+    读取当前配置中的过滤规则组。
+    """
     return RuleHelper().get_rule_groups()
 
 
 def build_custom_rule_map(rules: Optional[Iterable[CustomRule]] = None) -> Dict[str, CustomRule]:
+    """
+    按非空规则标识构建自定义规则索引，未提供有效列表时读取当前配置。
+    """
     return {rule.id: rule for rule in (rules or get_custom_rules()) if rule.id}
 
 
 def build_rule_group_map(
     groups: Optional[Iterable[FilterRuleGroup]] = None,
 ) -> Dict[str, FilterRuleGroup]:
+    """
+    按非空组名构建规则组索引，未提供有效列表时读取当前配置。
+    """
     return {group.name: group for group in (groups or get_rule_groups()) if group.name}
 
 
 def extract_rule_tokens(rule_string: Optional[str]) -> list[str]:
-    """从规则串里提取规则 ID，用于引用分析和未知规则校验。"""
+    """
+    从规则串里提取规则 ID，用于引用分析和未知规则校验。
+    """
     if not rule_string:
         return []
     # dict.fromkeys 用来在保留顺序的同时去重，便于展示和报错。
@@ -142,7 +166,9 @@ def extract_rule_tokens(rule_string: Optional[str]) -> list[str]:
 
 
 def parse_rule_string(rule_string: str) -> dict[str, Any]:
-    """使用后端同款 RuleParser 解析规则串，并拆出每一层的元数据。"""
+    """
+    使用后端同款 RuleParser 解析规则串，并拆出每一层的元数据。
+    """
     normalized = normalize_optional_text(rule_string)
     if not normalized:
         raise ValueError("rule_string 不能为空")
@@ -156,7 +182,8 @@ def parse_rule_string(rule_string: str) -> dict[str, Any]:
     for index, level in enumerate(levels, start=1):
         try:
             parser.parse(level)
-        except Exception as exc:  # pragma: no cover - 依赖 pyparsing 的具体异常
+        # 依赖 pyparsing 的具体异常
+        except Exception as exc:  # pragma: no cover
             raise ValueError(f"规则串第 {index} 层语法错误: {exc}") from exc
 
         parsed_levels.append(
@@ -175,7 +202,9 @@ def parse_rule_string(rule_string: str) -> dict[str, Any]:
 
 
 def validate_rule_string(rule_string: str, available_rule_ids: Iterable[str]) -> dict[str, Any]:
-    """校验规则串语法和引用规则是否都存在。"""
+    """
+    校验规则串语法和引用规则是否都存在。
+    """
     parsed = parse_rule_string(rule_string)
     available_ids = set(available_rule_ids)
     unknown_rules = sorted({rule_id for rule_id in parsed["referenced_rules"] if rule_id not in available_ids})
@@ -185,7 +214,9 @@ def validate_rule_string(rule_string: str, available_rule_ids: Iterable[str]) ->
 
 
 def serialize_builtin_rule(rule_id: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """把内置规则整理成适合 Agent 阅读的结构。"""
+    """
+    把内置规则整理成适合 Agent 阅读的结构。
+    """
     data = copy.deepcopy(payload)
     data["id"] = rule_id
     data["source"] = "builtin"
@@ -196,6 +227,9 @@ def serialize_custom_rule(
     rule: CustomRule,
     group_refs: Optional[list[str]] = None,
 ) -> dict[str, Any]:
+    """
+    导出自定义规则并附带规则组引用，省略值为 None 的模型字段。
+    """
     data = cast(dict[str, Any], rule.model_dump(exclude_none=True))
     data["source"] = "custom"
     data["referenced_by_rule_groups"] = group_refs or []
@@ -206,7 +240,9 @@ def serialize_rule_group(
     group: FilterRuleGroup,
     usage: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    """查询时尽量附带解析结果，便于 Agent 理解优先级层级。"""
+    """
+    查询时尽量附带解析结果，便于 Agent 理解优先级层级。
+    """
     data = cast(dict[str, Any], group.model_dump(exclude_none=True))
     if group.rule_string:
         try:
@@ -227,6 +263,9 @@ def serialize_rule_group(
 
 
 def default_rule_group_usage() -> dict[str, Any]:
+    """
+    创建尚无全局使用标记和订阅引用的独立规则组用量结构。
+    """
     return {
         "used_in_global_search": False,
         "used_in_global_subscribe": False,
@@ -239,7 +278,9 @@ async def collect_rule_group_usages(
     repository: SubscriptionRepository,
     group_names: Optional[Iterable[str]] = None,
 ) -> Dict[str, dict[str, Any]]:
-    """收集规则组在全局配置和订阅上的引用情况。"""
+    """
+    收集规则组在全局配置和订阅上的引用情况。
+    """
     target_names = set(group_names or [])
     search_groups = set(get_configured_system_config().get(SystemConfigKey.SearchFilterRuleGroups) or [])
     subscribe_groups = set(get_configured_system_config().get(SystemConfigKey.SubscribeFilterRuleGroups) or [])
@@ -293,7 +334,9 @@ def collect_custom_rule_group_refs(
     rule_groups: Iterable[FilterRuleGroup],
     rule_ids: Optional[Iterable[str]] = None,
 ) -> Dict[str, list[str]]:
-    """收集自定义规则被哪些规则组引用。"""
+    """
+    收集自定义规则被哪些规则组引用。
+    """
     target_rule_ids = set(rule_ids or [])
     refs: Dict[str, list[str]] = {rule_id: [] for rule_id in target_rule_ids}
 
@@ -322,7 +365,9 @@ def normalize_custom_rule(
     existing_rules: Iterable[CustomRule],
     original_rule_id: Optional[str] = None,
 ) -> CustomRule:
-    """新增/更新自定义规则时统一走这里，避免多处散落校验逻辑。"""
+    """
+    新增/更新自定义规则时统一走这里，避免多处散落校验逻辑。
+    """
     normalized_rule_id = normalize_optional_text(rule_id)
     normalized_name = normalize_optional_text(name)
     if not normalized_rule_id:
@@ -360,7 +405,9 @@ def normalize_rule_group(
     available_rule_ids: Iterable[str],
     original_name: Optional[str] = None,
 ) -> tuple[FilterRuleGroup, dict[str, Any]]:
-    """新增/更新规则组时统一校验名字、适用范围和规则串。"""
+    """
+    新增/更新规则组时统一校验名字、适用范围和规则串。
+    """
     normalized_name = normalize_optional_text(name)
     if not normalized_name:
         raise ValueError("规则组名称不能为空")
@@ -390,7 +437,9 @@ async def save_system_config(
     key: SystemConfigKey,
     value: Any,
 ) -> Optional[bool]:
-    """通过统一异步配置入口保存配置并等待运行时重载。"""
+    """
+    通过统一异步配置入口保存配置并等待运行时重载。
+    """
     normalized_value = value
     if isinstance(normalized_value, list):
         normalized_value = [item for item in normalized_value if item is not None and item != ""]
@@ -400,13 +449,17 @@ async def save_system_config(
 
 
 def replace_rule_id_in_rule_string(rule_string: str, old_rule_id: str, new_rule_id: str) -> str:
-    """只替换完整 token，避免误伤其他规则名。"""
+    """
+    只替换完整 token，避免误伤其他规则名。
+    """
     pattern = re.compile(rf"(?<![A-Za-z0-9]){re.escape(old_rule_id)}(?![A-Za-z0-9])")
     return pattern.sub(new_rule_id, rule_string)
 
 
 class FilterRuleService:
-    """提供过滤规则和规则组的查询与事务化修改用例。"""
+    """
+    提供过滤规则和规则组的查询与事务化修改用例。
+    """
 
     def __init__(
         self,
@@ -414,14 +467,18 @@ class FilterRuleService:
         mutation_scope: Callable[[], AbstractAsyncContextManager[AsyncRuleGroupMutationService]],
         publish_config_changed: RuleConfigPublisher,
     ) -> None:
-        """注入订阅端口、规则组事务作用域和配置事件发布端口。"""
+        """
+        注入订阅端口、规则组事务作用域和配置事件发布端口。
+        """
         self._subscriptions = subscriptions
         self._mutation_scope = mutation_scope
         self._publish_config_changed = publish_config_changed
 
     @staticmethod
     def query_builtin(rule_ids: Optional[list[str]] = None) -> dict[str, Any]:
-        """查询内置过滤规则及规则串语法。"""
+        """
+        查询内置过滤规则及规则串语法。
+        """
         rules = get_builtin_rules()
         if rule_ids:
             target_ids = set(rule_ids)
@@ -439,7 +496,9 @@ class FilterRuleService:
         *,
         include_group_refs: bool = True,
     ) -> dict[str, Any]:
-        """查询自定义过滤规则及规则组引用。"""
+        """
+        查询自定义过滤规则及规则组引用。
+        """
         rules = get_custom_rules()
         if rule_ids:
             target_ids = set(rule_ids)
@@ -465,7 +524,9 @@ class FilterRuleService:
         *,
         include_usage: bool = True,
     ) -> dict[str, Any]:
-        """查询规则组、解析层级和可选引用位置。"""
+        """
+        查询规则组、解析层级和可选引用位置。
+        """
         groups = get_rule_groups()
         if group_names:
             target_names = set(group_names)
@@ -488,7 +549,9 @@ class FilterRuleService:
         }
 
     async def add_custom(self, **values: Any) -> dict[str, Any]:
-        """校验并新增一条自定义过滤规则。"""
+        """
+        校验并新增一条自定义过滤规则。
+        """
         rules = get_custom_rules()
         new_rule = normalize_custom_rule(existing_rules=rules, **values)
         rules.append(new_rule)
@@ -508,7 +571,9 @@ class FilterRuleService:
         *,
         expected_rule_ids: Optional[list[str]] = None,
     ) -> dict[str, Any]:
-        """按完整 ID 列表重排规则，并用事务快照拒绝并发覆盖。"""
+        """
+        按完整 ID 列表重排规则，并用事务快照拒绝并发覆盖。
+        """
         rules = get_custom_rules()
         current_ids = [str(rule.id) for rule in rules if rule.id]
         if len(current_ids) != len(rules):
@@ -551,7 +616,9 @@ class FilterRuleService:
         seeders: Optional[str] = None,
         publish_time: Optional[str] = None,
     ) -> dict[str, Any]:
-        """更新自定义规则，并在改名时原子重写规则组引用。"""
+        """
+        更新自定义规则，并在改名时原子重写规则组引用。
+        """
         rules = get_custom_rules()
         current = next((rule for rule in rules if rule.id == current_rule_id), None)
         if current is None:
@@ -613,7 +680,9 @@ class FilterRuleService:
         }
 
     async def delete_custom(self, rule_id: str) -> dict[str, Any]:
-        """删除未被规则组引用的自定义过滤规则。"""
+        """
+        删除未被规则组引用的自定义过滤规则。
+        """
         rules = get_custom_rules()
         if not any(rule.id == rule_id for rule in rules):
             raise ValueError(f"自定义过滤规则 '{rule_id}' 不存在")
@@ -638,7 +707,9 @@ class FilterRuleService:
         media_type: Optional[str] = None,
         category: Optional[str] = None,
     ) -> dict[str, Any]:
-        """校验并新增规则组。"""
+        """
+        校验并新增规则组。
+        """
         groups = get_rule_groups()
         available_ids = set(get_builtin_rules()) | set(build_custom_rule_map())
         new_group, parsed = normalize_rule_group(
@@ -670,7 +741,9 @@ class FilterRuleService:
         *,
         expected_group_names: Optional[list[str]] = None,
     ) -> dict[str, Any]:
-        """按完整名称列表重排规则组，并复用原子修改作用域。"""
+        """
+        按完整名称列表重排规则组，并复用原子修改作用域。
+        """
         groups = get_rule_groups()
         current_names = [str(group.name) for group in groups if group.name]
         if len(current_names) != len(groups):
@@ -703,7 +776,9 @@ class FilterRuleService:
         media_type: Optional[str] = None,
         category: Optional[str] = None,
     ) -> dict[str, Any]:
-        """更新规则组并原子重写全局配置和订阅引用。"""
+        """
+        更新规则组并原子重写全局配置和订阅引用。
+        """
         groups = get_rule_groups()
         current = next((group for group in groups if group.name == current_name), None)
         if current is None:
@@ -743,7 +818,9 @@ class FilterRuleService:
         }
 
     async def delete_group(self, name: str) -> dict[str, Any]:
-        """删除规则组并原子清理全部引用。"""
+        """
+        删除规则组并原子清理全部引用。
+        """
         groups = get_rule_groups()
         if not any(group.name == name for group in groups):
             raise ValueError(f"规则组 '{name}' 不存在")
@@ -770,7 +847,9 @@ class FilterRuleService:
         requested_names: list[str],
         expected_names: Optional[list[str]],
     ) -> None:
-        """验证重排列表完整、唯一且基于未过期的名称集合。"""
+        """
+        验证重排列表完整、唯一且基于未过期的名称集合。
+        """
         if any(not name.strip() for name in requested_names):
             raise ValueError(f"{item_label}顺序不能包含空名称")
         if len(set(requested_names)) != len(requested_names):

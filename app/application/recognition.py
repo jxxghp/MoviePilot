@@ -1,3 +1,7 @@
+"""
+读取用户持久化的识别规则，供启动层注入纯领域匹配器。
+"""
+
 from typing import Any, Optional
 
 from app.application.configuration import get_configured_system_config
@@ -5,26 +9,38 @@ from app.schemas.types import SystemConfigKey
 
 
 class RecognitionRuleService:
-    """集中读取用户持久化的媒体识别规则，供启动层注入纯领域匹配器。"""
+    """
+    集中读取用户持久化的媒体识别规则，供启动层注入纯领域匹配器。
+    """
 
     def __init__(self, systemconfig: Optional[Any] = None) -> None:
-        """绑定系统配置访问器，测试可传入隔离替身。"""
+        """
+        绑定系统配置访问器，测试可传入隔离替身。
+        """
         self._systemconfig = systemconfig
 
     def _config(self) -> Any:
-        """惰性获取配置服务，避免引导阶段早于组合根装配。"""
+        """
+        惰性获取配置服务，避免引导阶段早于组合根装配。
+        """
         return self._systemconfig or get_configured_system_config()
 
     def get_customization(self) -> list[str] | str | None:
-        """按配置合同返回自定义占位符列表、历史文本值或空值。"""
+        """
+        按配置合同返回自定义占位符列表、历史文本值或空值。
+        """
         customization: list[str] | str | None = self._config().get(SystemConfigKey.Customization)
         return customization
 
     def get_release_groups(self) -> list[str] | str | None:
-        """按配置合同返回制作组列表、历史文本值或空值。"""
+        """
+        按配置合同返回制作组列表、历史文本值或空值。
+        """
         groups: list[str] | str | None = self._config().get(SystemConfigKey.CustomReleaseGroups)
         return groups
 
     def get_custom_words(self) -> object:
-        """返回当前自定义识别词配置。"""
+        """
+        返回当前自定义识别词配置。
+        """
         return self._config().get(SystemConfigKey.CustomIdentifiers)

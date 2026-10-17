@@ -1,3 +1,7 @@
+"""
+已配置下载服务的发现、实例管理与能力选择。
+"""
+
 from typing import Optional
 
 from app.application.service import ServiceBaseHelper
@@ -11,7 +15,9 @@ class DownloaderHelper(ServiceBaseHelper[DownloaderConf]):
     """
 
     def __init__(self) -> None:
-        """绑定下载器配置和下载器模块类型。"""
+        """
+        绑定下载器配置和下载器模块类型。
+        """
         super().__init__(
             config_key=SystemConfigKey.Downloaders,
             conf_type=DownloaderConf,
@@ -31,8 +37,6 @@ class DownloaderHelper(ServiceBaseHelper[DownloaderConf]):
         :param name: 服务的名称
         :return: 如果服务类型或实例为指定类型，返回 True；否则返回 False
         """
-        # 如果未提供 service 则通过 name 获取服务
         service = service or self.get_service(name=name)
 
-        # 判断服务类型是否为指定类型
         return bool(service and service.type == service_type)

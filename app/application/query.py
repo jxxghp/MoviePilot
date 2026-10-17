@@ -1,4 +1,6 @@
-"""插件只读数据查询的应用服务与领域端口。"""
+"""
+插件只读数据查询的应用服务与领域端口。
+"""
 
 from __future__ import annotations
 
@@ -30,14 +32,21 @@ ResultT = TypeVar("ResultT")
 
 @dataclass(frozen=True, slots=True)
 class QueryRows(Generic[RecordT]):
-    """查询端口返回的短生命周期结果，不跨越应用服务边界。"""
+    """
+    查询端口返回的短生命周期结果，不跨越应用服务边界。
+
+    :param items: 当前分页内的记录序列，由应用服务及时投影后释放
+    :param total: 相同筛选条件下的总记录数，不受当前分页大小限制
+    """
 
     items: Sequence[RecordT]
     total: int
 
 
 class SubscriptionQueryPort(Protocol):
-    """订阅领域查询端口，包含订阅和订阅完成历史两个只读切片。"""
+    """
+    订阅领域查询端口，包含订阅和订阅完成历史两个只读切片。
+    """
 
     def list_subscriptions(
         self,
@@ -45,11 +54,22 @@ class SubscriptionQueryPort(Protocol):
         filters: SubscriptionFilter,
         page: QueryPageRequest,
     ) -> QueryRows[object]:
-        """按组合筛选和稳定分页读取订阅记录。"""
+        """
+        按组合筛选和稳定分页读取订阅记录。
+
+        :param filters: 已校验的订阅组合筛选条件
+        :param page: 已校验的分页窗口与稳定排序请求
+        :return: 当前分页的订阅记录以及相同筛选条件下的总数
+        """
         ...
 
     def get_subscription(self, subscription_id: int) -> object | None:
-        """按 ID 读取一条订阅记录。"""
+        """
+        按 ID 读取一条订阅记录。
+
+        :param subscription_id: 订阅记录主键
+        :return: 匹配的订阅记录，不存在时为 None
+        """
         ...
 
     def list_subscription_history(
@@ -58,16 +78,29 @@ class SubscriptionQueryPort(Protocol):
         filters: SubscriptionHistoryFilter,
         page: QueryPageRequest,
     ) -> QueryRows[object]:
-        """按组合筛选和稳定分页读取订阅完成历史。"""
+        """
+        按组合筛选和稳定分页读取订阅完成历史。
+
+        :param filters: 已校验的订阅完成历史组合筛选条件
+        :param page: 已校验的分页窗口与稳定排序请求
+        :return: 当前分页的订阅完成历史记录以及相同筛选条件下的总数
+        """
         ...
 
     def get_subscription_history(self, history_id: int) -> object | None:
-        """按 ID 读取一条订阅完成历史。"""
+        """
+        按 ID 读取一条订阅完成历史。
+
+        :param history_id: 订阅完成历史记录主键
+        :return: 匹配的订阅完成历史记录，不存在时为 None
+        """
         ...
 
 
 class HistoryQueryPort(Protocol):
-    """下载与整理历史查询端口。"""
+    """
+    下载与整理历史查询端口。
+    """
 
     def list_download_history(
         self,
@@ -75,14 +108,25 @@ class HistoryQueryPort(Protocol):
         filters: DownloadHistoryFilter,
         page: QueryPageRequest,
     ) -> QueryRows[DownloadHistorySnapshot]:
-        """按组合筛选和稳定分页读取下载历史。"""
+        """
+        按组合筛选和稳定分页读取下载历史。
+
+        :param filters: 已校验的下载历史组合筛选条件
+        :param page: 已校验的分页窗口与稳定排序请求
+        :return: 当前分页的下载历史记录以及相同筛选条件下的总数
+        """
         ...
 
     def get_download_history(
         self,
         history_id: int,
     ) -> DownloadHistorySnapshot | None:
-        """按 ID 读取一条下载历史。"""
+        """
+        按 ID 读取一条下载历史。
+
+        :param history_id: 下载历史记录主键
+        :return: 匹配的下载历史记录，不存在时为 None
+        """
         ...
 
     def list_transfer_history(
@@ -91,19 +135,32 @@ class HistoryQueryPort(Protocol):
         filters: TransferHistoryFilter,
         page: QueryPageRequest,
     ) -> QueryRows[TransferHistorySnapshot]:
-        """按组合筛选和稳定分页读取整理历史。"""
+        """
+        按组合筛选和稳定分页读取整理历史。
+
+        :param filters: 已校验的整理历史组合筛选条件
+        :param page: 已校验的分页窗口与稳定排序请求
+        :return: 当前分页的整理历史记录以及相同筛选条件下的总数
+        """
         ...
 
     def get_transfer_history(
         self,
         history_id: int,
     ) -> TransferHistorySnapshot | None:
-        """按 ID 读取一条整理历史。"""
+        """
+        按 ID 读取一条整理历史。
+
+        :param history_id: 整理历史记录主键
+        :return: 匹配的整理历史记录，不存在时为 None
+        """
         ...
 
 
 class DataQueryService:
-    """把订阅和历史查询统一投影为不含持久化实现的 DTO。"""
+    """
+    把订阅和历史查询统一投影为不含持久化实现的 DTO。
+    """
 
     def __init__(
         self,
@@ -112,14 +169,18 @@ class DataQueryService:
         histories: HistoryQueryPort,
         async_executor: AsyncDatabaseExecutor,
     ) -> None:
-        """保存两个领域查询端口和异步数据库执行边界。"""
+        """
+        保存两个领域查询端口和异步数据库执行边界。
+        """
         self._subscriptions = subscriptions
         self._histories = histories
         self._async_executor = async_executor
 
     @staticmethod
     def _page_request(page: QueryPageRequest | dict[str, Any] | None) -> QueryPageRequest:
-        """把调用方输入规范化为有界分页合同。"""
+        """
+        把调用方输入规范化为有界分页合同。
+        """
         if page is None:
             return QueryPageRequest()
         if isinstance(page, QueryPageRequest):
@@ -134,7 +195,9 @@ class DataQueryService:
         | type[DownloadHistoryFilter]
         | type[TransferHistoryFilter],
     ) -> Any:
-        """把字典筛选条件转换为带媒体身份校验的模型。"""
+        """
+        把字典筛选条件转换为带媒体身份校验的模型。
+        """
         if value is None:
             return filter_type()
         if isinstance(value, filter_type):
@@ -143,7 +206,9 @@ class DataQueryService:
 
     @staticmethod
     def _rows(value: QueryRows[object]) -> QueryRows[object]:
-        """校验端口结果的总数，避免负数污染分页合同。"""
+        """
+        校验端口结果的总数，避免负数污染分页合同。
+        """
         if not isinstance(value, QueryRows):
             raise TypeError("查询端口必须返回 QueryRows")
         return QueryRows(
@@ -158,7 +223,9 @@ class DataQueryService:
         page: QueryPageRequest,
         rows: QueryRows[object],
     ) -> QueryPage[DtoT]:
-        """在查询端口结果离开应用层前完成 DTO 投影。"""
+        """
+        在查询端口结果离开应用层前完成 DTO 投影。
+        """
         normalized_rows = cls._rows(rows)
         return cast(
             QueryPage[DtoT],
@@ -172,11 +239,15 @@ class DataQueryService:
 
     @staticmethod
     def _to_item(dto_type: type[DtoT], item: object | None) -> DtoT | None:
-        """把单条端口记录投影为稳定 DTO。"""
+        """
+        把单条端口记录投影为稳定 DTO。
+        """
         return dto_type.model_validate(item) if item is not None else None
 
     async def _async_run(self, operation: Callable[[], ResultT]) -> ResultT:
-        """通过统一数据库执行器运行一个同步查询用例。"""
+        """
+        通过统一数据库执行器运行一个同步查询用例。
+        """
         return cast(ResultT, await self._async_executor.run(operation))
 
     def list_subscriptions(
@@ -184,7 +255,9 @@ class DataQueryService:
         filters: SubscriptionFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
     ) -> QueryPage[SubscriptionSnapshot]:
-        """同步分页查询订阅。"""
+        """
+        同步分页查询订阅。
+        """
         normalized_page = self._page_request(page)
         normalized_filters = self._filter(filters, SubscriptionFilter)
         rows = self._subscriptions.list_subscriptions(
@@ -198,11 +271,15 @@ class DataQueryService:
         filters: SubscriptionFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
     ) -> QueryPage[SubscriptionSnapshot]:
-        """异步分页查询订阅，业务规则在数据库 worker 中复用同步入口。"""
+        """
+        异步分页查询订阅，业务规则在数据库 worker 中复用同步入口。
+        """
         return await self._async_run(partial(self.list_subscriptions, filters, page))
 
     def get_subscription(self, subscription_id: int) -> SubscriptionSnapshot | None:
-        """同步按 ID 查询订阅。"""
+        """
+        同步按 ID 查询订阅。
+        """
         return self._to_item(
             SubscriptionSnapshot,
             self._subscriptions.get_subscription(subscription_id),
@@ -212,7 +289,9 @@ class DataQueryService:
         self,
         subscription_id: int,
     ) -> SubscriptionSnapshot | None:
-        """异步按 ID 查询订阅。"""
+        """
+        异步按 ID 查询订阅。
+        """
         return await self._async_run(partial(self.get_subscription, subscription_id))
 
     def list_subscription_history(
@@ -220,7 +299,9 @@ class DataQueryService:
         filters: SubscriptionHistoryFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
     ) -> QueryPage[SubscriptionHistorySnapshot]:
-        """同步分页查询订阅完成历史。"""
+        """
+        同步分页查询订阅完成历史。
+        """
         normalized_page = self._page_request(page)
         normalized_filters = self._filter(filters, SubscriptionHistoryFilter)
         rows = self._subscriptions.list_subscription_history(
@@ -234,14 +315,18 @@ class DataQueryService:
         filters: SubscriptionHistoryFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
     ) -> QueryPage[SubscriptionHistorySnapshot]:
-        """异步分页查询订阅完成历史。"""
+        """
+        异步分页查询订阅完成历史。
+        """
         return await self._async_run(partial(self.list_subscription_history, filters, page))
 
     def get_subscription_history(
         self,
         history_id: int,
     ) -> SubscriptionHistorySnapshot | None:
-        """同步按 ID 查询订阅完成历史。"""
+        """
+        同步按 ID 查询订阅完成历史。
+        """
         return self._to_item(
             SubscriptionHistorySnapshot,
             self._subscriptions.get_subscription_history(history_id),
@@ -251,7 +336,9 @@ class DataQueryService:
         self,
         history_id: int,
     ) -> SubscriptionHistorySnapshot | None:
-        """异步按 ID 查询订阅完成历史。"""
+        """
+        异步按 ID 查询订阅完成历史。
+        """
         return await self._async_run(partial(self.get_subscription_history, history_id))
 
     def list_download_history(
@@ -259,7 +346,9 @@ class DataQueryService:
         filters: DownloadHistoryFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
     ) -> QueryPage[DownloadHistorySnapshot]:
-        """同步分页查询下载历史。"""
+        """
+        同步分页查询下载历史。
+        """
         normalized_page = self._page_request(page)
         normalized_filters = self._filter(filters, DownloadHistoryFilter)
         rows = self._histories.list_download_history(
@@ -273,11 +362,15 @@ class DataQueryService:
         filters: DownloadHistoryFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
     ) -> QueryPage[DownloadHistorySnapshot]:
-        """异步分页查询下载历史。"""
+        """
+        异步分页查询下载历史。
+        """
         return await self._async_run(partial(self.list_download_history, filters, page))
 
     def get_download_history(self, history_id: int) -> DownloadHistorySnapshot | None:
-        """同步按 ID 查询下载历史。"""
+        """
+        同步按 ID 查询下载历史。
+        """
         return self._to_item(
             DownloadHistorySnapshot,
             self._histories.get_download_history(history_id),
@@ -287,7 +380,9 @@ class DataQueryService:
         self,
         history_id: int,
     ) -> DownloadHistorySnapshot | None:
-        """异步按 ID 查询下载历史。"""
+        """
+        异步按 ID 查询下载历史。
+        """
         return await self._async_run(partial(self.get_download_history, history_id))
 
     def list_transfer_history(
@@ -295,7 +390,9 @@ class DataQueryService:
         filters: TransferHistoryFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
     ) -> QueryPage[TransferHistorySnapshot]:
-        """同步分页查询整理历史。"""
+        """
+        同步分页查询整理历史。
+        """
         normalized_page = self._page_request(page)
         normalized_filters = self._filter(filters, TransferHistoryFilter)
         rows = self._histories.list_transfer_history(
@@ -309,11 +406,15 @@ class DataQueryService:
         filters: TransferHistoryFilter | dict[str, Any] | None = None,
         page: QueryPageRequest | dict[str, Any] | None = None,
     ) -> QueryPage[TransferHistorySnapshot]:
-        """异步分页查询整理历史。"""
+        """
+        异步分页查询整理历史。
+        """
         return await self._async_run(partial(self.list_transfer_history, filters, page))
 
     def get_transfer_history(self, history_id: int) -> TransferHistorySnapshot | None:
-        """同步按 ID 查询整理历史。"""
+        """
+        同步按 ID 查询整理历史。
+        """
         return self._to_item(
             TransferHistorySnapshot,
             self._histories.get_transfer_history(history_id),
@@ -323,7 +424,9 @@ class DataQueryService:
         self,
         history_id: int,
     ) -> TransferHistorySnapshot | None:
-        """异步按 ID 查询整理历史。"""
+        """
+        异步按 ID 查询整理历史。
+        """
         return await self._async_run(partial(self.get_transfer_history, history_id))
 
 
@@ -331,19 +434,25 @@ _configured_data_query_service: DataQueryService | None = None
 
 
 def configure_data_query_service(service: DataQueryService) -> None:
-    """由启动组合根登记插件数据查询服务。"""
+    """
+    由启动组合根登记插件数据查询服务。
+    """
     global _configured_data_query_service
     _configured_data_query_service = service
 
 
 def reset_data_query_service() -> None:
-    """清除当前 lifespan 的插件数据查询服务。"""
+    """
+    清除当前 lifespan 的插件数据查询服务。
+    """
     global _configured_data_query_service
     _configured_data_query_service = None
 
 
 def get_configured_data_query_service() -> DataQueryService:
-    """返回启动阶段登记的插件数据查询服务。"""
+    """
+    返回启动阶段登记的插件数据查询服务。
+    """
     if _configured_data_query_service is None:
         raise RuntimeError("插件数据查询服务尚未配置")
     return _configured_data_query_service
