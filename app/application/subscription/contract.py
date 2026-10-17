@@ -694,10 +694,16 @@ def build_subscribe_meta(subscribe: SubscriptionSnapshot) -> MetaBase:
     """按订阅快照构造主程序链路共用的媒体元数据。"""
     if subscribe.type == MediaType.MUSIC.value:
         is_album = subscribe.music_type == MUSIC_ENTITY_ALBUM
+        music_year: Optional[int] = None
+        if subscribe.year:
+            try:
+                music_year = int(subscribe.year)
+            except ValueError:
+                pass
         return MetaMusic(
             title=subscribe.name,
             album=subscribe.name if is_album else None,
-            year=subscribe.year,
+            year=music_year,
             total_tracks=subscribe.total_tracks if is_album else None,
             media_source=subscribe.media_source,
             media_id=subscribe.media_id,
@@ -722,4 +728,8 @@ def subscribe_media_keys(subscribe: SubscriptionSnapshot) -> builtins.list[str |
     """返回缺失集缓存可识别的规范媒体键与旧纯 ID 键。"""
     media_source, media_id = resolve_media_identity(media=subscribe)
     candidates = [build_media_key(media_source, media_id), media_id]
-    return [candidate for candidate in candidates if candidate not in (None, "")]
+    return [
+        candidate
+        for candidate in candidates
+        if isinstance(candidate, (str, int)) and candidate != ""
+    ]
