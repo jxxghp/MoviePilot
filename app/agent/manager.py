@@ -1,4 +1,6 @@
-"""AgentManager 稳定门面。"""
+"""
+AgentManager 稳定门面。
+"""
 
 from typing import Optional
 
@@ -20,7 +22,9 @@ class AgentManager(AgentTaskOwner):
         data: Optional[AgentDataContext] = None,
         memory: Optional[MemoryManager] = None,
     ) -> None:
-        """创建稳定门面并初始化会话 owner。"""
+        """
+        创建稳定门面并初始化会话 owner。
+        """
         super().__init__(data=data, memory=memory)
 
 

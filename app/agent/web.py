@@ -1,4 +1,6 @@
-"""WebAgent 运行时类型适配，不包含 HTTP 或 SSE 编码。"""
+"""
+WebAgent 运行时类型适配，不包含 HTTP 或 SSE 编码。
+"""
 
 import time
 import uuid
@@ -21,7 +23,9 @@ class _WebAgentStreamingHandlerMixin:
     _pending_tool_stats: dict[str, int]
 
     def _should_buffer_thinking_status(self) -> bool:
-        """WebAgent 通过结构化 SSE 展示思考状态，不把它写入正文。"""
+        """
+        WebAgent 通过结构化 SSE 展示思考状态，不把它写入正文。
+        """
         return False
 
     def __init__(
@@ -29,7 +33,9 @@ class _WebAgentStreamingHandlerMixin:
         on_emit: Callable[[str], None],
         on_tool_event: Optional[Callable[[dict[str, Any]], None]] = None,
     ) -> None:
-        """绑定当前 Web 请求的输出回调。"""
+        """
+        绑定当前 Web 请求的输出回调。
+        """
         super().__init__()
         self._on_emit = on_emit
         self._on_tool_event = on_tool_event
@@ -46,16 +52,22 @@ class _WebAgentStreamingHandlerMixin:
         self,
         on_tool_event: Optional[Callable[[dict[str, Any]], None]],
     ) -> None:
-        """更新当前 Web 请求的结构化工具生命周期回调。"""
+        """
+        更新当前 Web 请求的结构化工具生命周期回调。
+        """
         self._on_tool_event = on_tool_event
 
     def _uses_structured_tool_events(self) -> bool:
-        """仅在啰嗦模式下使用 WebAgent 的逐条工具生命周期事件。"""
+        """
+        仅在啰嗦模式下使用 WebAgent 的逐条工具生命周期事件。
+        """
         # ``StreamingHandler`` 是运行时组合进当前 MRO 的基础实现。
         return bool(self._on_tool_event and super()._is_verbose_mode())  # type: ignore[misc]
 
     def _publish_tool_event(self, event: dict[str, Any]) -> None:
-        """向 Web SSE 发布结构化工具生命周期事件，并隔离回调异常。"""
+        """
+        向 Web SSE 发布结构化工具生命周期事件，并隔离回调异常。
+        """
         if not self._on_tool_event:
             return
         try:
@@ -64,14 +76,18 @@ class _WebAgentStreamingHandlerMixin:
             logger.debug(f"Web工具生命周期回调失败: {error}")
 
     def thinking_started(self) -> None:
-        """发布 Web SSE 的模型思考开始事件，由前端负责持续计时。"""
+        """
+        发布 Web SSE 的模型思考开始事件，由前端负责持续计时。
+        """
         was_active = bool(getattr(self, "_thinking_active", False))
         super().thinking_started()  # type: ignore[misc]
         if not was_active and self._thinking_active:
             self._publish_tool_event({"type": "thinking", "status": "running", "started_at": int(time.time() * 1000)})
 
     def thinking_finished(self) -> None:
-        """发布 Web SSE 的模型思考结束事件，并清理基础流式状态。"""
+        """
+        发布 Web SSE 的模型思考结束事件，并清理基础流式状态。
+        """
         was_active = bool(getattr(self, "_thinking_active", False))
         super().thinking_finished()  # type: ignore[misc]
         if was_active:
@@ -82,7 +98,9 @@ class _WebAgentStreamingHandlerMixin:
         tool_name: str,
         tool_message: Optional[str] = None,
     ) -> str:
-        """发布真实工具开始事件，调用方随后用同一 ID 收口结果。"""
+        """
+        发布真实工具开始事件，调用方随后用同一 ID 收口结果。
+        """
         super().tool_call_started(tool_name, tool_message)  # type: ignore[misc]
         if not self._uses_structured_tool_events():
             return ""
@@ -99,7 +117,9 @@ class _WebAgentStreamingHandlerMixin:
         return tool_id
 
     def tool_call_finished(self, tool_id: str, status: str = "done") -> None:
-        """发布真实工具完成或失败事件，保持与开始事件的 ID 对应。"""
+        """
+        发布真实工具完成或失败事件，保持与开始事件的 ID 对应。
+        """
         normalized_status = status if status in {"done", "error"} else "done"
         if tool_id and self._uses_structured_tool_events():
             self._publish_tool_event(
@@ -117,7 +137,9 @@ class _WebAgentStreamingHandlerMixin:
         tool_message: Optional[str] = None,
         tool_kwargs: Optional[dict[str, Any]] = None,
     ) -> str:
-        """为没有 MoviePilotTool 包装层的内部工具建立完整生命周期。"""
+        """
+        为没有 MoviePilotTool 包装层的内部工具建立完整生命周期。
+        """
         if self._uses_structured_tool_events():
             del tool_kwargs
             return self.tool_call_started(tool_name, tool_message)
@@ -133,7 +155,9 @@ class _WebAgentStreamingHandlerMixin:
         tool_message: Optional[str] = None,
         tool_kwargs: Optional[dict[str, Any]] = None,
     ) -> None:
-        """记录 Web 工具调用；详细模式使用生命周期事件，其他模式保留计数汇总。"""
+        """
+        记录 Web 工具调用；详细模式使用生命周期事件，其他模式保留计数汇总。
+        """
         if self._uses_structured_tool_events():
             return
         # 该方法由运行时组合进 MRO 的 StreamingHandler 提供。
@@ -144,7 +168,9 @@ class _WebAgentStreamingHandlerMixin:
         )
 
     def _on_tool_stats_recorded(self) -> None:
-        """WebAgent 非啰嗦模式在每次工具开始时立即发布最新摘要。"""
+        """
+        WebAgent 非啰嗦模式在每次工具开始时立即发布最新摘要。
+        """
         if self._uses_structured_tool_events():
             return
         if self._streaming_enabled:
@@ -156,7 +182,8 @@ class _WebAgentStreamingHandlerMixin:
             self.flush_pending_tool_summary()
 
     def emit_tool_message(self, message: str) -> str:
-        """将工具摘要压成一行，防止多行参数被 SSE 文本解析器拆入正文。
+        """
+        将工具摘要压成一行，防止多行参数被 SSE 文本解析器拆入正文。
 
         仅处理展示文案；实际工具参数保持原样，由前端在工具提示条内自动折行。
         """
@@ -169,7 +196,9 @@ class _WebAgentStreamingHandlerMixin:
         return emitted
 
     def emit(self, token: str) -> str:
-        """追加 token 并同步通知 SSE 生产者。"""
+        """
+        追加 token 并同步通知 SSE 生产者。
+        """
         # 该方法由运行时组合进 MRO 的 StreamingHandler 提供。
         emitted = super().emit(token)  # type: ignore[misc]
         if emitted:
@@ -177,7 +206,9 @@ class _WebAgentStreamingHandlerMixin:
         return str(emitted)
 
     def flush_pending_tool_summary(self) -> str:
-        """输出延迟聚合的工具摘要。"""
+        """
+        输出延迟聚合的工具摘要。
+        """
         if self._uses_structured_tool_events():
             return ""
         # 该方法由运行时组合进 MRO 的 StreamingHandler 提供。
@@ -196,7 +227,9 @@ class _WebAgentStreamingHandlerMixin:
         original_chat_id: Optional[str] = None,
         title: str = "",
     ) -> None:
-        """Web SSE 自身负责外发，不启动消息模块编辑循环。"""
+        """
+        Web SSE 自身负责外发，不启动消息模块编辑循环。
+        """
         self._channel = channel
         self._source = source
         self._user_id = user_id
@@ -215,7 +248,9 @@ class _WebAgentStreamingHandlerMixin:
         self._thinking_status_text = ""
 
     async def stop_streaming(self) -> tuple[bool, str]:
-        """停止 Web SSE 流式状态，保留缓冲区给 Agent 收口逻辑去重。"""
+        """
+        停止 Web SSE 流式状态，保留缓冲区给 Agent 收口逻辑去重。
+        """
         if not self._streaming_enabled:
             return False, ""
         self.thinking_finished()
@@ -231,12 +266,16 @@ class _WebAgentStreamingHandlerMixin:
 
     @property
     def is_auto_flushing(self) -> bool:
-        """让工具执行提示进入缓冲区，由 SSE 回调负责外发。"""
+        """
+        让工具执行提示进入缓冲区，由 SSE 回调负责外发。
+        """
         return True
 
 
 def _get_web_agent_streaming_handler_type() -> type:
-    """首次构造 Web Agent 时才解析完整流式处理器实现。"""
+    """
+    首次构造 Web Agent 时才解析完整流式处理器实现。
+    """
     global _WEB_AGENT_STREAMING_HANDLER_TYPE
     if _WEB_AGENT_STREAMING_HANDLER_TYPE is not None:
         return _WEB_AGENT_STREAMING_HANDLER_TYPE
@@ -275,7 +314,9 @@ class _WebAgentMoviePilotAgentMixin:
         message_callback: Optional[Callable[[Message], Awaitable[None] | None]] = None,
         **kwargs: Any,
     ) -> None:
-        """绑定当前 Web 消息回调，并装配支持结构化事件的流式处理器。"""
+        """
+        绑定当前 Web 消息回调，并装配支持结构化事件的流式处理器。
+        """
         tool_event_callback = kwargs.pop("tool_event_callback", None)
         super().__init__(*args, **kwargs)
         self._message_callback = message_callback
@@ -285,7 +326,9 @@ class _WebAgentMoviePilotAgentMixin:
         )
 
     def _should_stream(self) -> bool:
-        """Web 对话实时输出，复用会话执行后台任务时改用非流式广播。"""
+        """
+        Web 对话实时输出，复用会话执行后台任务时改用非流式广播。
+        """
         if self.is_background:
             return False
         return True
@@ -315,12 +358,16 @@ class _WebAgentMoviePilotAgentMixin:
         self,
         tool_event_callback: Optional[Callable[[dict[str, Any]], None]],
     ) -> None:
-        """更新当前 Web SSE 结构化工具生命周期回调。"""
+        """
+        更新当前 Web SSE 结构化工具生命周期回调。
+        """
         if isinstance(self.stream_handler, _WebAgentStreamingHandlerMixin):
             self.stream_handler.set_tool_event_callback(tool_event_callback)
 
     async def _is_system_admin_context(self) -> bool:
-        """Web Agent 根据当前登录用户 ID 判断工具管理员上下文。"""
+        """
+        Web Agent 根据当前登录用户 ID 判断工具管理员上下文。
+        """
         if not self.user_id:
             return False
         try:
@@ -333,7 +380,9 @@ class _WebAgentMoviePilotAgentMixin:
         return bool(user and user.is_superuser)
 
     async def _build_tool_context(self, should_dispatch_reply: bool) -> dict[str, object]:
-        """向工具上下文注入 Web SSE 通知回调。"""
+        """
+        向工具上下文注入 Web SSE 通知回调。
+        """
         # 该方法由运行时组合进 MRO 的 MoviePilotAgent 提供。
         context = await super()._build_tool_context(  # type: ignore[misc]
             should_dispatch_reply
@@ -342,7 +391,9 @@ class _WebAgentMoviePilotAgentMixin:
         return dict(context)
 
     async def _can_restore_cross_owner_history(self) -> bool:
-        """仅真实 Web 登录管理员可续聊已授权历史，不把后台复用扩展为全局读取。"""
+        """
+        仅真实 Web 登录管理员可续聊已授权历史，不把后台复用扩展为全局读取。
+        """
         return (
             self.channel == NotificationChannel.WebAgent.value
             and self.source == "web-agent"
@@ -350,11 +401,15 @@ class _WebAgentMoviePilotAgentMixin:
         )
 
     def _handle_stream_text(self, text: str) -> None:
-        """文本输出交由 Web 流式处理器统一回调，避免重复增量。"""
+        """
+        文本输出交由 Web 流式处理器统一回调，避免重复增量。
+        """
         self.stream_handler.emit(text)
 
     def _emit_output(self, text: str) -> None:
-        """保留完整输出状态，同时只把本次增量交给 Web SSE 回调。"""
+        """
+        保留完整输出状态，同时只把本次增量交给 Web SSE 回调。
+        """
         if not text:
             return
         self._streamed_output += text
@@ -367,7 +422,9 @@ class _WebAgentMoviePilotAgentMixin:
 
 
 def _build_web_agent_type(agent_base_type: type) -> type:
-    """为 Web 通道组合唯一的运行时 Agent 类型。"""
+    """
+    为 Web 通道组合唯一的运行时 Agent 类型。
+    """
     return type(
         "_RuntimeWebAgentMoviePilotAgent",
         (_WebAgentMoviePilotAgentMixin, agent_base_type),
@@ -380,7 +437,9 @@ _WEB_AGENT_TYPE: Optional[type] = None
 
 
 def _get_web_agent_type() -> type:
-    """在真实 Web Agent 调用边界 single-flight 解析运行时类型。"""
+    """
+    在真实 Web Agent 调用边界 single-flight 解析运行时类型。
+    """
     global _WEB_AGENT_TYPE
     if _WEB_AGENT_TYPE is not None:
         return _WEB_AGENT_TYPE
