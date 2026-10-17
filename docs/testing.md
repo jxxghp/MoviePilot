@@ -7,12 +7,18 @@
 pytest 是唯一运行入口。`tests/conftest.py` 在收集前完成隔离引导，因此任何方式启动 pytest 都会自动隔离。
 
 ```bash
-uv run --locked --no-sync pytest tests                              # 串行全量
-uv run --locked --no-sync pytest tests/test_xxx.py                  # 单文件
-uv run --locked --no-sync pytest tests/test_xxx.py::SomeTest::test_y   # 单用例
-uv run --locked --no-sync python tests/run.py                       # 默认按文件预计耗时均衡为 4 片并行跑全量
-uv run --locked --no-sync python tests/run.py --serial              # 串行全量，便于调试或生成覆盖率
-uv run --locked --no-sync python tests/run.py --shard 1/4           # 只跑指定分片，供 CI 复用
+# 串行全量
+uv run --locked --no-sync pytest tests
+# 单文件
+uv run --locked --no-sync pytest tests/test_xxx.py
+# 单用例
+uv run --locked --no-sync pytest tests/test_xxx.py::SomeTest::test_y
+# 默认按文件预计耗时均衡为 4 片并行跑全量
+uv run --locked --no-sync python tests/run.py
+# 串行全量，便于调试或生成覆盖率
+uv run --locked --no-sync python tests/run.py --serial
+# 只跑指定分片，供 CI 复用
+uv run --locked --no-sync python tests/run.py --shard 1/4
 ```
 
 `tests/run.py` 的 runner 参数只有 `--serial`、`--shard N/TOTAL` 和 `--exclude-architecture-gate`；其余参数保持原顺序
@@ -199,11 +205,20 @@ from app.schemas.types import MediaSource
 
 @pytest.fixture
 def sample_meta():
-    """构造一条可复用的识别元数据。"""
+    """
+    构造一条可复用的识别元数据。
+
+    :return: 包含示例标题和年份的媒体识别输入
+    """
     return MetaInfo(title="示例 (2020)")
 
 def test_recognize_prefers_explicit_identity(sample_meta, monkeypatch):
-    """显式媒体来源与原生 ID 时应优先精确识别，而非回退标题搜索。"""
+    """
+    验证指定媒体来源与原生标识时优先精确识别。
+
+    :param sample_meta: 待识别的示例媒体输入
+    :param monkeypatch: 隔离外部查询并在用例结束后恢复的测试夹具
+    """
     monkeypatch.setattr(SomeClient, "fetch", lambda *a, **k: FAKE_MOVIE)
     result = recognize(
         sample_meta,
@@ -257,6 +272,16 @@ def test_recognize_prefers_explicit_identity(sample_meta, monkeypatch):
   _orig = socket.getaddrinfo
   hits = []
   def _spy(host, *a, **k):
+      """
+      记录非本地主机的地址解析请求。
+
+      此探针只记录请求，仍调用真实解析函数；运行用例前须完成外部依赖隔离。
+
+      :param host: 待解析的主机名或地址
+      :param a: 原样传给地址解析函数的位置参数
+      :param k: 原样传给地址解析函数的关键字参数
+      :return: 原始地址解析函数的返回值
+      """
       if host not in ("127.0.0.1", "localhost", "::1"):
           hits.append(str(host))
       return _orig(host, *a, **k)

@@ -24,7 +24,7 @@ are forbidden.
 - Retry logic
 
 ```python
-# Adapter implementation example; Application/Chain consume an injected Port instead.
+# 此处展示适配器实现；应用服务和业务链通过注入的接口访问网络能力
 from app.adapters.network.http import RequestUtils
 
 res = RequestUtils(
@@ -46,15 +46,15 @@ All REST API responses use Pydantic schema models from `app/schemas/`. Do not re
 ### Standard Response Patterns
 
 ```python
-# Success with data
+# 成功响应携带业务结果
 from app.schemas.response import Response
 
 return Response(success=True, message="", data=result)
 
-# Success without data
+# 无业务结果时只返回成功状态和说明
 return Response(success=True, message="操作成功")
 
-# Error
+# 失败响应保留可向调用方展示的原因
 return Response(success=False, message="错误原因描述")
 ```
 
@@ -86,9 +86,12 @@ Do not raise `HTTPException` in chain or module code. Chains and modules return 
 | Endpoint | Translate `None` or failure result into a `Response(success=False, ...)` or `HTTPException` |
 
 ```python
-# Module layer
 def test(self) -> Optional[Tuple[bool, str]]:
-    """测试模块连通性"""
+    """
+    在模块层检查客户端连通性并归一化失败结果。
+
+    :return: 连接状态与说明组成的二元组；客户端异常会记录日志并转换为失败结果
+    """
     try:
         ok = self.client.ping()
         return (True, "连接成功") if ok else (False, "连接失败")

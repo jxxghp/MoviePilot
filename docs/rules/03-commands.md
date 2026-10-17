@@ -7,10 +7,10 @@ This document is the project command reference, not an exhaustive shell allowlis
 ## Development Environment Setup
 
 ```bash
-# Create the locked development/test environment (standalone checkout)
+# 在独立检出目录中创建与锁文件一致的开发和测试环境
 uv sync --locked
 
-# Create a runtime-only environment
+# 创建仅包含运行依赖的环境
 uv sync --locked --no-dev --no-install-project
 ```
 
@@ -21,13 +21,13 @@ Shared workspaces may map the environment to an explicit absolute path as docume
 ## Dependency Management
 
 ```bash
-# Verify that project metadata and lock agree
+# 检查项目依赖声明与锁文件是否一致
 uv lock --check
 
-# Update the lock after editing pyproject.toml
+# 修改 pyproject.toml 后更新锁文件
 uv lock
 
-# Verify the installed environment against the locked project
+# 按锁文件检查当前环境中已安装的依赖
 uv sync --locked --offline --inexact --no-dev --check
 ```
 
@@ -43,16 +43,16 @@ uv sync --locked --offline --inexact --no-dev --check
 ## Testing
 
 ```bash
-# Run a specific test file
+# 运行指定测试文件
 uv run --locked --no-sync pytest tests/test_xxx.py
 
-# Run all tests
+# 运行全部测试
 uv run --locked --no-sync pytest
 
-# Run tests with verbose output
+# 运行测试并显示详细结果
 uv run --locked --no-sync pytest -v tests/test_xxx.py
 
-# Run a specific test function
+# 运行指定测试函数
 uv run --locked --no-sync pytest tests/test_xxx.py::test_function_name
 ```
 
@@ -65,10 +65,10 @@ uv run --locked --no-sync pytest tests/test_xxx.py::test_function_name
 ## Static Analysis
 
 ```bash
-# Run pylint on the application package
+# 检查整个应用包的代码质量
 uv run --locked --no-sync pylint app/
 
-# Run pylint on a specific module
+# 检查指定模块的代码质量
 uv run --locked --no-sync pylint app/chain/download.py
 ```
 
@@ -128,36 +128,36 @@ moviepilot logs --stdio --follow
 ## Local CLI — Installation and Setup
 
 ```bash
-# One-line bootstrap installer
+# 下载并运行本地安装引导脚本
 curl -fsSL https://raw.githubusercontent.com/jxxghp/MoviePilot/v3/scripts/bootstrap-local.sh | bash
 
-# Install backend dependencies
+# 安装后端依赖
 moviepilot install deps
 moviepilot install deps --python python3.12
 moviepilot install deps --venv /path/to/venv
 moviepilot install deps --recreate
 
-# Install frontend release
+# 安装前端发布包
 moviepilot install frontend
 moviepilot install frontend --version latest
 moviepilot install frontend --version v3.0.0
 
-# Install resource files
+# 安装运行所需的资源文件
 moviepilot install resources
 
-# Initialize local config
+# 初始化本地配置
 moviepilot init
 moviepilot init --wizard
 moviepilot init --force-token
 moviepilot init --superuser admin --superuser-password 'ChangeMe123!'
 
-# All-in-one setup
+# 完成依赖、资源和配置的一体化安装
 moviepilot setup
 moviepilot setup --wizard
 moviepilot setup --recreate
 moviepilot setup --superuser admin --superuser-password 'ChangeMe123!'
 
-# Uninstall
+# 卸载本地安装
 moviepilot uninstall
 ```
 
@@ -213,21 +213,21 @@ moviepilot config describe API_TOKEN --show-secrets
 ## Local CLI — Tools and Scheduler
 
 ```bash
-# List all MCP tools
+# 列出全部 MCP 工具
 moviepilot tool list
 
-# Show tool parameters
+# 查看工具参数
 moviepilot tool show moviepilot_api
 moviepilot tool show agent_task
 
-# Run a tool directly
+# 直接调用工具
 moviepilot tool run moviepilot_api operation_id=scheduler.list
 moviepilot tool run moviepilot_api operation_id=media.search 'query={"title":"流浪地球","type":"media"}'
 
-# List scheduled tasks
+# 列出定时任务
 moviepilot scheduler list
 
-# Immediately run a scheduled task
+# 立即执行指定定时任务
 moviepilot scheduler run subscribe_refresh
 ```
 
@@ -286,7 +286,7 @@ moviepilot help scheduler
 ## Site Adapter Capture — macOS / Linux
 
 ```bash
-# Run from the independent MoviePilot-Site-Collector checkout and reuse its virtual environment
+# 在独立的 MoviePilot-Site-Collector 检出目录中运行，复用其虚拟环境
 cd /path/to/MoviePilot-Site-Collector
 bash scripts/collect-site-adapter.sh
 ```
@@ -303,7 +303,7 @@ bash scripts/collect-site-adapter.sh
 ## Plugin Market Release Default
 
 ```bash
-# Run after activating the project virtual environment
+# 激活项目虚拟环境后运行
 python -m scripts.generate_plugin_market_default \
   --wiki-file /path/to/MoviePilot-Wiki/plugin.md \
   --config-file app/runtime/config.py

@@ -7,10 +7,10 @@ Verification preparation below is the contributor default. Confirmed maintainers
 ### What to Run
 
 ```bash
-# Minimum: run tests directly related to the change
+# 至少运行与本次改动直接相关的测试
 uv run --locked --no-sync pytest tests/test_<domain>.py
 
-# If the change affects common modules, startup flow, CLI, or agent runtime
+# 改动影响公共模块、启动流程、CLI 或智能体运行行为时扩大测试范围
 uv run --locked --no-sync pytest
 ```
 
@@ -44,7 +44,7 @@ Use the following as likely shared-impact boundaries. Run the full test suite wh
 ## Static Analysis
 
 ```bash
-# Full application report; use the AGENTS.md selector for changed-file checks
+# 生成全应用检查报告；改动文件检查按 AGENTS.md 规定选择路径
 uv run --locked --no-sync pylint app/
 ```
 
