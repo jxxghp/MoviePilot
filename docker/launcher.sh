@@ -3,7 +3,7 @@
 
 set -u
 
-# root bootstrap 只使用镜像系统工具；业务入口保留用户 PATH 优先级，同时确保镜像系统工具可用。
+# 管理员引导阶段只使用镜像系统工具；业务入口保留用户 PATH 优先级，同时确保镜像系统工具可用。
 LAUNCHER_INHERITED_PATH="${PATH:-}"
 LAUNCHER_ENTRYPOINT_PATH="${LAUNCHER_INHERITED_PATH:+${LAUNCHER_INHERITED_PATH}:}/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 PATH="/usr/sbin:/usr/bin:/sbin:/bin"
