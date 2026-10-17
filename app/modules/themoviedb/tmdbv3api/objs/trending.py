@@ -1,10 +1,13 @@
+from typing import Any
+
 from ..tmdb import TMDb
 
 
 class Trending(TMDb):
+    """提供 TMDB 趋势接口的同步与异步封装。"""
     _urls = {"trending": "/trending/%s/%s"}
 
-    def _trending(self, media_type="all", time_window="day", page=1):
+    def _trending(self, media_type: str="all", time_window: str="day", page: int=1) -> Any:
         """
         Get trending, TTLCache 12 hours
         """
@@ -15,7 +18,7 @@ class Trending(TMDb):
             call_cached=False
         )
 
-    def all_day(self, page=1):
+    def all_day(self, page: int=1) -> Any:
         """
         Get all daily trending
         :param page: int
@@ -23,7 +26,7 @@ class Trending(TMDb):
         """
         return self._trending(media_type="all", time_window="day", page=page)
 
-    def all_week(self, page=1):
+    def all_week(self, page: int=1) -> Any:
         """
         Get all weekly trending
         :param page: int
@@ -31,7 +34,7 @@ class Trending(TMDb):
         """
         return self._trending(media_type="all", time_window="week", page=page)
 
-    def movie_day(self, page=1):
+    def movie_day(self, page: int=1) -> Any:
         """
         Get movie daily trending
         :param page: int
@@ -39,7 +42,7 @@ class Trending(TMDb):
         """
         return self._trending(media_type="movie", time_window="day", page=page)
 
-    def movie_week(self, page=1):
+    def movie_week(self, page: int=1) -> Any:
         """
         Get movie weekly trending
         :param page: int
@@ -47,7 +50,7 @@ class Trending(TMDb):
         """
         return self._trending(media_type="movie", time_window="week", page=page)
 
-    def tv_day(self, page=1):
+    def tv_day(self, page: int=1) -> Any:
         """
         Get tv daily trending
         :param page: int
@@ -55,7 +58,7 @@ class Trending(TMDb):
         """
         return self._trending(media_type="tv", time_window="day", page=page)
 
-    def tv_week(self, page=1):
+    def tv_week(self, page: int=1) -> Any:
         """
         Get tv weekly trending
         :param page: int
@@ -63,7 +66,7 @@ class Trending(TMDb):
         """
         return self._trending(media_type="tv", time_window="week", page=page)
 
-    def person_day(self, page=1):
+    def person_day(self, page: int=1) -> Any:
         """
         Get person daily trending
         :param page: int
@@ -71,7 +74,7 @@ class Trending(TMDb):
         """
         return self._trending(media_type="person", time_window="day", page=page)
 
-    def person_week(self, page=1):
+    def person_week(self, page: int=1) -> Any:
         """
         Get person weekly trending
         :param page: int
@@ -80,7 +83,7 @@ class Trending(TMDb):
         return self._trending(media_type="person", time_window="week", page=page)
 
     # 异步版本方法
-    async def _async_trending(self, media_type="all", time_window="day", page=1):
+    async def _async_trending(self, media_type: str="all", time_window: str="day", page: int=1) -> Any:
         """
         Get trending, TTLCache 12 hours（异步版本）
         """
@@ -91,7 +94,7 @@ class Trending(TMDb):
             call_cached=False
         )
 
-    async def async_all_day(self, page=1):
+    async def async_all_day(self, page: int=1) -> Any:
         """
         Get all daily trending（异步版本）
         :param page: int
@@ -99,7 +102,7 @@ class Trending(TMDb):
         """
         return await self._async_trending(media_type="all", time_window="day", page=page)
 
-    async def async_all_week(self, page=1):
+    async def async_all_week(self, page: int=1) -> Any:
         """
         Get all weekly trending（异步版本）
         :param page: int
@@ -107,7 +110,7 @@ class Trending(TMDb):
         """
         return await self._async_trending(media_type="all", time_window="week", page=page)
 
-    async def async_movie_day(self, page=1):
+    async def async_movie_day(self, page: int=1) -> Any:
         """
         Get movie daily trending（异步版本）
         :param page: int
@@ -115,7 +118,7 @@ class Trending(TMDb):
         """
         return await self._async_trending(media_type="movie", time_window="day", page=page)
 
-    async def async_movie_week(self, page=1):
+    async def async_movie_week(self, page: int=1) -> Any:
         """
         Get movie weekly trending（异步版本）
         :param page: int
@@ -123,7 +126,7 @@ class Trending(TMDb):
         """
         return await self._async_trending(media_type="movie", time_window="week", page=page)
 
-    async def async_tv_day(self, page=1):
+    async def async_tv_day(self, page: int=1) -> Any:
         """
         Get tv daily trending（异步版本）
         :param page: int
@@ -131,7 +134,7 @@ class Trending(TMDb):
         """
         return await self._async_trending(media_type="tv", time_window="day", page=page)
 
-    async def async_tv_week(self, page=1):
+    async def async_tv_week(self, page: int=1) -> Any:
         """
         Get tv weekly trending（异步版本）
         :param page: int
@@ -139,7 +142,7 @@ class Trending(TMDb):
         """
         return await self._async_trending(media_type="tv", time_window="week", page=page)
 
-    async def async_person_day(self, page=1):
+    async def async_person_day(self, page: int=1) -> Any:
         """
         Get person daily trending（异步版本）
         :param page: int
@@ -147,7 +150,7 @@ class Trending(TMDb):
         """
         return await self._async_trending(media_type="person", time_window="day", page=page)
 
-    async def async_person_week(self, page=1):
+    async def async_person_week(self, page: int=1) -> Any:
         """
         Get person weekly trending（异步版本）
         :param page: int
