@@ -2972,6 +2972,7 @@ def _apply_local_system_config_inner(config_payload: dict[str, Any]) -> None:
     ):
         try:
             from app.application.site.auth import normalize_site_auth_params
+
             # 站点扩展由运行资源提供，源码静态检查时不一定已经安装。
             from app.application.site.sites import SitesHelper  # pylint: disable=import-error,no-name-in-module
 

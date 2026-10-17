@@ -19,6 +19,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 # 独立脚本先加入项目根目录，再加载宿主模块。
 from app.agent.policy.api import API_OPERATION_ROUTES, API_OPERATION_SPECS  # noqa: E402
+
 # 独立脚本先加入项目根目录，再加载宿主模块。
 from app.api.apiv1 import api_router  # noqa: E402
 

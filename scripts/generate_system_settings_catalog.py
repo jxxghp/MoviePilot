@@ -18,6 +18,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 # 直接执行生成脚本时需先把仓库根目录加入导入路径。
 from app.runtime.config import Settings  # noqa: E402
+
 # 直接执行生成脚本时需先把仓库根目录加入导入路径。
 from app.schemas.types import SystemConfigKey  # noqa: E402
 

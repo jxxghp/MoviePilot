@@ -32,52 +32,72 @@ if str(PROJECT_ROOT) not in sys.path:
 
 # 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.application.site.observation import report_site_search_outcome  # noqa: E402
+
 # 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.application.subscription.candidates import CandidateIndex  # noqa: E402
+
 # 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.application.subscription.contract import SubscriptionSnapshot  # noqa: E402
+
 # 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.application.subscription.execution import SubscriptionExecutionAdmission  # noqa: E402
+
 # 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.application.subscription.facts import FreshFactLease  # noqa: E402
+
 # 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.application.subscription.sitebudget import (  # noqa: E402
     SubscriptionSiteBudget as SubscriptionSiteBudgetController,
 )
+
 # 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.chain.download import batch as download_batch  # noqa: E402
+
 # 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.chain.download.facade import DownloadChain  # noqa: E402
+
 # 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.chain.search.facade import SearchChain  # noqa: E402
+
 # 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.chain.subscribe import match as subscribe_match  # noqa: E402
+
 # 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.chain.subscribe import policy as subscribe_policy  # noqa: E402
+
 # 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.chain.subscribe.facade import SubscribeChain  # noqa: E402
+
 # 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.db.adapters.subscriptionsearch import (  # noqa: E402
     TransactionalSubscriptionSearchRepository,
 )
+
 # 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.db.base import Base  # noqa: E402
+
 # 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.db.models.subscriptionsearch import (  # noqa: E402
     SubscriptionSearchTask,
 )
+
 # 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.db.models.subscriptionsearch import (  # noqa: E402
     SubscriptionSiteBudget as SubscriptionSiteBudgetRecord,
 )
+
 # 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.domain.context import Context, MediaInfo, TorrentInfo  # noqa: E402
+
 # 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.domain.metainfo import MetaInfo  # noqa: E402
+
 # 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.runtime.stop import ProcessStopState  # noqa: E402
+
 # 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.schemas.mediaserver import NotExistMediaInfo  # noqa: E402
+
 # 直接执行脚本时需先把仓库根目录加入导入路径。
 from app.schemas.types import MediaSource, MediaType  # noqa: E402
 
