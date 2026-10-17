@@ -1201,10 +1201,6 @@
     "union-attr": 4,
     "var-annotated": 3
   },
-  "app/modules/qqbot/api.py": {
-    "no-any-return": 4,
-    "type-arg": 13
-  },
   "app/modules/qqbot/gateway.py": {
     "no-untyped-def": 3,
     "type-arg": 2
