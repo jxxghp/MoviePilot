@@ -1,4 +1,6 @@
-"""submit-pull-request Skill 的 Git、GitHub 和路径安全共享逻辑。"""
+"""
+submit-pull-request Skill 的 Git、GitHub 和路径安全共享逻辑。
+"""
 
 from __future__ import annotations
 
@@ -19,7 +21,9 @@ from typing import Any, Iterator, Optional
 
 
 def _find_repo_root() -> Path:
-    """从当前工作目录或 Skill 路径定位 MoviePilot 源码根目录。"""
+    """
+    从当前工作目录或 Skill 路径定位 MoviePilot 源码根目录。
+    """
     script_path = Path(__file__).resolve()
     candidates = []
     configured_root = os.environ.get("MOVIEPILOT_ROOT", "").strip()
@@ -40,8 +44,11 @@ SCRIPT_ROOT = _find_repo_root()
 if str(SCRIPT_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPT_ROOT))
 
+# 脚本先补充本地模块或项目根目录，再导入对应依赖。
 from app.adapters.network.http import RequestUtils  # noqa: E402
+# 脚本先补充本地模块或项目根目录，再导入对应依赖。
 from app.runtime.config import settings  # noqa: E402
+# 脚本先补充本地模块或项目根目录，再导入对应依赖。
 from app.runtime.settings import get_runtime_setting  # noqa: E402
 
 GITHUB_API_BASE = "https://api.github.com"
@@ -83,10 +90,14 @@ _REJECTED_SUFFIXES = {
 
 
 class PullRequestError(RuntimeError):
-    """PR 发布流程遇到的可向 Agent 返回的稳定错误。"""
+    """
+    PR 发布流程遇到的可向 Agent 返回的稳定错误。
+    """
 
     def __init__(self, reason: str, message: str, *, status: int = 0) -> None:
-        """保存机器可判断的原因、用户可读消息和可选 HTTP 状态。"""
+        """
+        保存机器可判断的原因、用户可读消息和可选 HTTP 状态。
+        """
         super().__init__(message)
         self.reason = reason
         self.message = message
@@ -94,12 +105,24 @@ class PullRequestError(RuntimeError):
 
 
 class GitHubApiError(PullRequestError):
-    """GitHub API 返回非成功状态或无法解析响应。"""
+    """
+    GitHub API 返回非成功状态或无法解析响应。
+    """
 
 
 @dataclass(frozen=True)
 class Change:
-    """表示一个待提交文件的最终内容和 Git 工作树摘要。"""
+    """
+    表示一个待提交文件的最终内容和 Git 工作树摘要。
+
+    :param path: 目标仓库内的相对路径
+    :param source_path: 本地待提交内容的绝对路径
+    :param operation: 文件操作类型：create 创建、update 更新、delete 删除
+    :param before_sha256: 本地克隆仓库 HEAD 中文件内容的摘要；新建或无法读取时为 None
+    :param after_sha256: 本地最终内容摘要；删除时为 None
+    :param size_bytes: 本地最终内容的字节数；删除时为 0
+    :param mode: Git 文件模式，普通文件为 100644，可执行文件为 100755；删除项使用 100644
+    """
 
     path: str
     source_path: Path
@@ -111,18 +134,24 @@ class Change:
 
 
 def result_payload(**payload: Any) -> str:
-    """将脚本结果序列化为稳定 JSON，供 Agent 解析。"""
+    """
+    将脚本结果序列化为稳定 JSON，供 Agent 解析。
+    """
     return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
 
 
 def redact_text(value: Any) -> str:
-    """去除错误信息中可能出现的 Authorization 凭据。"""
+    """
+    去除错误信息中可能出现的 Authorization 凭据。
+    """
     text = str(value or "")
     return _TOKEN_PATTERN.sub(r"\1 <REDACTED>", text)
 
 
 def normalize_repo(repo: str) -> str:
-    """规范化并校验 GitHub owner/repo 标识。"""
+    """
+    规范化并校验 GitHub owner/repo 标识。
+    """
     value = (repo or "").strip().removesuffix(".git")
     if value.startswith(("http://", "https://")):
         parsed = urllib.parse.urlparse(value)
@@ -137,7 +166,9 @@ def normalize_repo(repo: str) -> str:
 
 
 def normalize_branch(branch: str) -> str:
-    """校验分支名，拒绝 ref 前缀、空段和路径穿越。"""
+    """
+    校验分支名，拒绝 ref 前缀、空段和路径穿越。
+    """
     value = (branch or "").strip()
     if value.startswith("refs/") or not _BRANCH_PATTERN.fullmatch(value):
         raise ValueError("分支名包含不支持的字符")
@@ -147,7 +178,9 @@ def normalize_branch(branch: str) -> str:
 
 
 def normalize_relative_path(path: str) -> str:
-    """将文件路径规范化为仓库内 POSIX 相对路径。"""
+    """
+    将文件路径规范化为仓库内 POSIX 相对路径。
+    """
     raw_value = str(path or "").replace("\\", "/")
     if not raw_value or raw_value.startswith("/") or re.match(r"^[A-Za-z]:/", raw_value):
         raise ValueError(f"文件路径不在源目录内: {path}")
@@ -159,7 +192,9 @@ def normalize_relative_path(path: str) -> str:
 
 
 def is_rejected_path(path: str) -> bool:
-    """判断路径是否指向运行时状态、缓存或明显敏感文件。"""
+    """
+    判断路径是否指向运行时状态、缓存或明显敏感文件。
+    """
     normalized = normalize_relative_path(path)
     parts = set(PurePosixPath(normalized).parts)
     if parts & _REJECTED_PATH_PARTS:
@@ -168,12 +203,16 @@ def is_rejected_path(path: str) -> bool:
 
 
 def sha256_bytes(content: bytes) -> str:
-    """返回原始字节的 SHA-256 摘要。"""
+    """
+    返回原始字节的 SHA-256 摘要。
+    """
     return hashlib.sha256(content).hexdigest()
 
 
 def sha256_file(path: Path) -> str:
-    """按块计算文件摘要，避免把大文件一次性载入内存。"""
+    """
+    按块计算文件摘要，避免把大文件一次性载入内存。
+    """
     digest = hashlib.sha256()
     with path.open("rb") as file_handle:
         for chunk in iter(lambda: file_handle.read(64 * 1024), b""):
@@ -182,14 +221,18 @@ def sha256_file(path: Path) -> str:
 
 
 def runtime_dir() -> Path:
-    """返回普通 Agent 用户可读写的 Skill 工作目录，不把草稿写入源码仓库。"""
+    """
+    返回普通 Agent 用户可读写的 Skill 工作目录，不把草稿写入源码仓库。
+    """
     directory = Path(get_runtime_setting("CONFIG_PATH")) / "agent" / "submit-pull-request"
     directory.mkdir(parents=True, exist_ok=True)
     return directory
 
 
 def write_json_file(path: Path, payload: dict[str, Any]) -> None:
-    """以原子替换方式写入 Skill 运行状态 JSON。"""
+    """
+    以原子替换方式写入 Skill 运行状态 JSON。
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(4)}.tmp")
     try:
@@ -204,7 +247,9 @@ def write_json_file(path: Path, payload: dict[str, Any]) -> None:
 
 
 def read_json_file(path: Path, *, reason: str = "invalid_state") -> dict[str, Any]:
-    """读取并校验 Skill 运行状态 JSON。"""
+    """
+    读取并校验 Skill 运行状态 JSON。
+    """
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
@@ -219,7 +264,9 @@ def _run_git(
     *arguments: str,
     env: Optional[dict[str, str]] = None,
 ) -> subprocess.CompletedProcess[bytes]:
-    """运行不经过 shell 的 Git 命令，避免用户输入触发命令注入。"""
+    """
+    运行不经过 shell 的 Git 命令，避免用户输入触发命令注入。
+    """
     try:
         return subprocess.run(
             ["git", *arguments],
@@ -234,7 +281,9 @@ def _run_git(
 
 
 def _git_output(root: Path, *arguments: str, env: Optional[dict[str, str]] = None) -> bytes:
-    """运行 Git 并在失败时返回不含凭据的稳定错误。"""
+    """
+    运行 Git 并在失败时返回不含凭据的稳定错误。
+    """
     result = _run_git(root, *arguments, env=env)
     if result.returncode != 0:
         detail = redact_text(result.stderr.decode("utf-8", errors="replace"))[:500]
@@ -250,17 +299,23 @@ def run_git(
     *arguments: str,
     env: Optional[dict[str, str]] = None,
 ) -> subprocess.CompletedProcess[bytes]:
-    """运行 Git 并返回完整结果，供 clone、提交和推送脚本复用。"""
+    """
+    运行 Git 并返回完整结果，供克隆、提交和推送脚本复用。
+    """
     return _run_git(root, *arguments, env=env)
 
 
 def git_output(root: Path, *arguments: str, env: Optional[dict[str, str]] = None) -> bytes:
-    """运行 Git 并要求命令成功，供需要稳定失败原因的脚本复用。"""
+    """
+    运行 Git 并要求命令成功，供需要稳定失败原因的脚本复用。
+    """
     return _git_output(root, *arguments, env=env)
 
 
 def find_git_root(source_root: Path) -> Optional[Path]:
-    """返回源目录对应的 Git 根目录；没有仓库时返回 None。"""
+    """
+    返回源目录对应的 Git 根目录；没有仓库时返回 None。
+    """
     result = _run_git(source_root, "rev-parse", "--show-toplevel")
     if result.returncode != 0:
         return None
@@ -272,7 +327,9 @@ def find_git_root(source_root: Path) -> Optional[Path]:
 
 
 def require_git_root(source_root: Path) -> Path:
-    """要求源目录本身是 clone 的 Git 根目录。"""
+    """
+    要求源目录本身是克隆的 Git 根目录。
+    """
     source_root = source_root.expanduser().resolve()
     if not source_root.is_dir():
         raise PullRequestError("invalid_source_root", f"源目录不存在或不是目录: {source_root}")
@@ -288,7 +345,9 @@ def require_git_root(source_root: Path) -> Path:
 
 
 def _git_sha256(root: Path, path: str) -> Optional[str]:
-    """读取 HEAD 中的文件内容并计算摘要，用于记录变更前版本。"""
+    """
+    读取 HEAD 中的文件内容并计算摘要，用于记录变更前版本。
+    """
     result = _run_git(root, "show", f"HEAD:{path}")
     if result.returncode != 0:
         return None
@@ -296,12 +355,16 @@ def _git_sha256(root: Path, path: str) -> Optional[str]:
 
 
 def _file_mode(path: Path) -> str:
-    """返回普通文件或可执行文件对应的 Git tree mode。"""
+    """
+    返回普通文件或可执行文件对应的 Git 文件模式。
+    """
     return "100755" if path.is_file() and path.stat().st_mode & 0o111 else "100644"
 
 
 def _git_changes(root: Path) -> list[dict[str, Any]]:
-    """收集 HEAD 到当前工作树的变更，包括未跟踪文件。"""
+    """
+    收集 HEAD 到当前工作树的变更，包括未跟踪文件。
+    """
     result = _run_git(root, "diff", "--name-status", "--no-renames", "-z", "HEAD", "--")
     if result.returncode != 0:
         raise PullRequestError("git_status_failed", "无法读取当前 Git 工作树变更。")
@@ -354,7 +417,9 @@ def _git_changes(root: Path) -> list[dict[str, Any]]:
 
 
 def _is_within(path: Path, root: Path) -> bool:
-    """判断解析后的路径是否仍位于指定根目录。"""
+    """
+    判断解析后的路径是否仍位于指定根目录。
+    """
     try:
         path.relative_to(root)
         return True
@@ -363,7 +428,9 @@ def _is_within(path: Path, root: Path) -> bool:
 
 
 def git_current_branch(root: Path) -> str:
-    """读取当前 clone 的分支名，拒绝 detached HEAD。"""
+    """
+    读取当前克隆的分支名，拒绝 detached HEAD。
+    """
     branch = _git_output(root, "symbolic-ref", "--quiet", "--short", "HEAD").decode().strip()
     if not branch:
         raise PullRequestError("detached_head", "当前 clone 处于 detached HEAD，不能安全提交 PR。")
@@ -374,12 +441,16 @@ def git_current_branch(root: Path) -> str:
 
 
 def git_remote_url(root: Path, remote: str = "origin") -> str:
-    """读取指定 Git remote URL。"""
+    """
+    读取指定 Git 远端地址。
+    """
     return _git_output(root, "remote", "get-url", remote).decode().strip()
 
 
 def remote_repo_from_url(remote_url: str) -> str:
-    """从 HTTPS、SSH 或 scp 风格 remote URL 提取 GitHub 仓库名。"""
+    """
+    从 HTTPS、SSH 或 scp 风格远端地址提取 GitHub 仓库名。
+    """
     value = (remote_url or "").strip()
     if value.startswith(("http://", "https://", "ssh://")):
         parsed = urllib.parse.urlparse(value)
@@ -393,7 +464,9 @@ def remote_repo_from_url(remote_url: str) -> str:
 
 
 def collect_changes(source_root: Path) -> tuple[str, list[dict[str, Any]]]:
-    """只从先前 clone 的 Git 工作树收集代码变更。"""
+    """
+    只从先前克隆的 Git 工作树收集代码变更。
+    """
     git_root = require_git_root(source_root)
     changes = _git_changes(git_root)
     if not changes:
@@ -404,7 +477,9 @@ def collect_changes(source_root: Path) -> tuple[str, list[dict[str, Any]]]:
 
 
 def change_fingerprint(changes: list[dict[str, Any]]) -> str:
-    """根据路径、操作、最终摘要和文件模式生成幂等变更指纹。"""
+    """
+    根据路径、操作、最终摘要和文件模式生成幂等变更指纹。
+    """
     stable = [
         {
             "path": item["path"],
@@ -420,13 +495,19 @@ def change_fingerprint(changes: list[dict[str, Any]]) -> str:
 
 
 def build_branch_name(target_repo: str, base: str) -> str:
-    """生成不会覆盖远端已有分支的 Agent 工作分支名。"""
+    """
+    生成含时间与随机摘要的 Agent 工作分支名，降低与已有分支重名的概率。
+    """
     seed = f"{target_repo}:{base}:{time.time_ns()}:{secrets.token_hex(8)}".encode()
     return normalize_branch(f"agent/moviepilot/{hashlib.sha256(seed).hexdigest()[:16]}")
 
 
 def load_github_headers(repo: str) -> tuple[dict[str, str], Any]:
-    """读取仓库专属或全局 GitHub 请求头，不返回明文 Token。"""
+    """
+    读取仓库专属或全局 GitHub 请求头及代理配置。
+
+    返回的请求头可能包含认证令牌，只供内部请求使用，不得直接写入日志或公开结果。
+    """
     headers: dict[str, str] = {}
     proxy: Any = None
     try:
@@ -455,12 +536,16 @@ def load_github_headers(repo: str) -> tuple[dict[str, str], Any]:
 
 
 def has_github_auth(headers: dict[str, str]) -> bool:
-    """判断请求头是否包含认证信息，不解析或输出 Token。"""
+    """
+    判断请求头是否包含认证信息，不解析或输出 Token。
+    """
     return any(key.lower() == "authorization" and value for key, value in headers.items())
 
 
 def github_token_from_headers(headers: dict[str, str]) -> str:
-    """从内部 GitHub Authorization 请求头提取 Git HTTPS 所需的令牌。"""
+    """
+    从内部 GitHub Authorization 请求头提取 Git HTTPS 所需的令牌。
+    """
     authorization = next(
         (value for key, value in headers.items() if key.lower() == "authorization"),
         "",
@@ -473,7 +558,9 @@ def github_token_from_headers(headers: dict[str, str]) -> str:
 
 @contextmanager
 def git_auth_environment(headers: dict[str, str]) -> Iterator[dict[str, str]]:
-    """通过临时 askpass 和进程环境向 Git 提供令牌，避免令牌出现在命令行。"""
+    """
+    通过临时 askpass 和进程环境向 Git 提供令牌，避免令牌出现在命令行。
+    """
     token = github_token_from_headers(headers)
     with tempfile.TemporaryDirectory(prefix="git-askpass-", dir=runtime_dir()) as directory:
         askpass = Path(directory) / "askpass.sh"
@@ -498,17 +585,23 @@ def git_auth_environment(headers: dict[str, str]) -> Iterator[dict[str, str]]:
 
 
 def github_clone_url(repo: str) -> str:
-    """返回不嵌入令牌的 GitHub HTTPS clone URL。"""
+    """
+    返回不嵌入令牌的 GitHub HTTPS 克隆 URL。
+    """
     return f"https://github.com/{normalize_repo(repo)}.git"
 
 
 def _quote_path(value: str) -> str:
-    """编码 GitHub API 路径中的单个或多个层级。"""
+    """
+    编码 GitHub API 路径中的单个或多个层级。
+    """
     return "/".join(urllib.parse.quote(part, safe="") for part in value.split("/"))
 
 
 class GitHubClient:
-    """通过 MoviePilot RequestUtils 调用 GitHub REST API。"""
+    """
+    通过 MoviePilot RequestUtils 调用 GitHub REST API。
+    """
 
     def __init__(
         self,
@@ -517,13 +610,17 @@ class GitHubClient:
         proxies: Any = None,
         timeout: int = DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
-        """保存 HTTP 配置；Token 仅保留在请求头内。"""
+        """
+        保存 HTTP 配置；Token 仅保留在请求头内。
+        """
         self.headers = headers
         self.proxies = proxies
         self.timeout = timeout
 
     def request(self, method: str, path: str, payload: Optional[dict[str, Any]] = None) -> Any:
-        """发起一次 JSON 请求并将 GitHub 错误转换为稳定异常。"""
+        """
+        发起一次 JSON 请求并将 GitHub 错误转换为稳定异常。
+        """
         body = None
         headers = dict(self.headers)
         if payload is not None:
@@ -566,21 +663,27 @@ class GitHubClient:
                 response.close()
 
     def get_user(self) -> dict[str, Any]:
-        """读取当前 Token 对应的 GitHub 用户。"""
+        """
+        读取当前 Token 对应的 GitHub 用户。
+        """
         data = self.request("GET", "/user")
         if not isinstance(data, dict) or not data.get("login"):
             raise GitHubApiError("invalid_github_user", "无法确定 GitHub Token 对应的用户。")
         return data
 
     def get_repo(self, repo: str) -> dict[str, Any]:
-        """读取仓库详情。"""
+        """
+        读取仓库详情。
+        """
         data = self.request("GET", f"/repos/{normalize_repo(repo)}")
         if not isinstance(data, dict):
             raise GitHubApiError("invalid_github_repo", f"GitHub 仓库响应无效: {repo}")
         return data
 
     def get_ref(self, repo: str, branch: str) -> dict[str, Any]:
-        """读取分支引用。"""
+        """
+        读取分支引用。
+        """
         branch = normalize_branch(branch)
         data = self.request(
             "GET",
@@ -591,20 +694,26 @@ class GitHubClient:
         return data
 
     def create_fork(self, repo: str) -> dict[str, Any]:
-        """请求为当前认证用户创建 Fork。"""
+        """
+        请求为当前认证用户创建 Fork。
+        """
         data = self.request("POST", f"/repos/{normalize_repo(repo)}/forks", {"default_branch_only": True})
         if not isinstance(data, dict):
             raise GitHubApiError("invalid_fork_response", "GitHub Fork 响应无效。")
         return data
 
     def list_open_pulls(self, repo: str, *, head: str, base: str) -> list[dict[str, Any]]:
-        """列出指定 head/base 的开放 PR，用于幂等重试。"""
+        """
+        列出指定 head/base 的开放 PR，用于幂等重试。
+        """
         query = urllib.parse.urlencode({"state": "open", "head": head, "base": base, "per_page": "20"})
         data = self.request("GET", f"/repos/{normalize_repo(repo)}/pulls?{query}")
         return data if isinstance(data, list) else []
 
     def create_pull(self, repo: str, payload: dict[str, Any]) -> dict[str, Any]:
-        """创建上游 Pull Request。"""
+        """
+        创建上游 Pull Request。
+        """
         data = self.request("POST", f"/repos/{normalize_repo(repo)}/pulls", payload)
         if not isinstance(data, dict) or not data.get("html_url"):
             raise GitHubApiError("invalid_pull_response", "GitHub PR 响应缺少 URL。")
@@ -612,7 +721,9 @@ class GitHubClient:
 
 
 def ensure_fork(client: GitHubClient, upstream_repo: str, login: str) -> tuple[str, bool]:
-    """复用当前用户对目标仓库的已有 Fork，否则创建并等待可读。"""
+    """
+    复用当前用户对目标仓库的已有 Fork，否则创建并等待可读。
+    """
     upstream = normalize_repo(upstream_repo)
     owner, name = upstream.split("/", 1)
     if owner.lower() == login.lower():
@@ -657,14 +768,18 @@ def ensure_fork(client: GitHubClient, upstream_repo: str, login: str) -> tuple[s
 
 
 def pull_head(target_repo: str, fork_repo: str, login: str, branch: str) -> str:
-    """返回 GitHub 创建 PR 所需的 head 表达式。"""
+    """
+    返回 GitHub 创建 PR 所需的 head 表达式。
+    """
     if normalize_repo(target_repo).lower() == normalize_repo(fork_repo).lower():
         return normalize_branch(branch)
     return f"{login}:{normalize_branch(branch)}"
 
 
 def changes_from_payload(payload: dict[str, Any]) -> list[Change]:
-    """读取并验证预览中的变更，确认 Git 工作树仍与预览一致。"""
+    """
+    读取并验证预览中的变更，确认 Git 工作树仍与预览一致。
+    """
     source_root = Path(str(payload.get("source_root") or "")).expanduser().resolve()
     changes_file = Path(str(payload.get("changes_file") or "")).expanduser().resolve()
     require_git_root(source_root)

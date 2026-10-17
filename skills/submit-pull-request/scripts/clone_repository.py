@@ -1,4 +1,6 @@
-"""为 PR 工作流确保 Fork，并从 Fork 创建一个隔离的 Git clone。"""
+"""
+为 PR 工作流确保 Fork，并从 Fork 创建一个隔离的 Git 克隆。
+"""
 
 from __future__ import annotations
 
@@ -13,6 +15,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+# 脚本先补充本地模块或项目根目录，再导入对应依赖。
 from pr_common import (  # noqa: E402
     GitHubApiError,
     GitHubClient,
@@ -35,13 +38,17 @@ from pr_common import (  # noqa: E402
 
 
 def _default_state_file(target_repo: str, destination: Path) -> Path:
-    """为本次 clone 生成运行状态文件路径。"""
+    """
+    为本次克隆生成运行状态文件路径。
+    """
     digest = hashlib.sha256(f"{target_repo}:{destination}".encode("utf-8")).hexdigest()[:16]
     return runtime_dir() / "states" / f"{digest}.json"
 
 
 def _resolve_destination(target_repo: str, destination: Optional[str]) -> Path:
-    """解析并检查 clone 目标，拒绝覆盖已有非空目录。"""
+    """
+    解析并检查克隆目标，拒绝覆盖已有非空目录。
+    """
     if destination:
         path = Path(destination).expanduser().resolve()
         if path.exists() and (not path.is_dir() or any(path.iterdir())):
@@ -55,7 +62,9 @@ def _resolve_destination(target_repo: str, destination: Optional[str]) -> Path:
 
 
 def _run_checked_git(root: Path, *arguments: str, env: dict[str, str]) -> None:
-    """运行 clone 流程中的 Git 命令并隐藏可能的凭据。"""
+    """
+    运行克隆流程中的 Git 命令并隐藏可能的凭据。
+    """
     result = run_git(root, *arguments, env=env)
     if result.returncode != 0:
         detail = redact_text(result.stderr.decode("utf-8", errors="replace"))[:500]
@@ -70,7 +79,9 @@ def clone_repository(
     branch: Optional[str] = None,
     state_file: Optional[str] = None,
 ) -> dict[str, Any]:
-    """确保目标 Fork 存在，按上游基线创建隔离工作分支和状态文件。"""
+    """
+    确保目标 Fork 存在，按上游基线创建隔离工作分支和状态文件。
+    """
     target = normalize_repo(target_repo)
     headers, proxies = load_github_headers(target)
     if not has_github_auth(headers):
@@ -169,7 +180,9 @@ def clone_repository(
 
 
 def _parse_args() -> argparse.Namespace:
-    """解析 clone 脚本命令行参数。"""
+    """
+    解析克隆脚本命令行参数。
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--target-repo", required=True, help="上游 GitHub owner/repo")
     parser.add_argument("--destination", help="clone 目标目录；必须不存在或为空")
@@ -180,7 +193,9 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
-    """执行 clone 入口并输出机器可解析 JSON。"""
+    """
+    执行克隆入口并输出机器可解析 JSON。
+    """
     try:
         arguments = _parse_args()
         result = clone_repository(

@@ -1,4 +1,6 @@
-"""在用户确认后通过本地 Git 推送分支并创建 Pull Request。"""
+"""
+在用户确认后通过本地 Git 推送分支并创建 Pull Request。
+"""
 
 from __future__ import annotations
 
@@ -11,6 +13,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+# 脚本先补充本地模块或项目根目录，再导入对应依赖。
 from pr_common import (  # noqa: E402
     GitHubApiError,
     GitHubClient,
@@ -35,13 +38,17 @@ from pr_common import (  # noqa: E402
 
 
 def _git_failure(result: Any, command: str, reason: str = "git_command_failed") -> PullRequestError:
-    """将 Git 命令结果转换为不含凭据的 PR 错误。"""
+    """
+    将 Git 命令结果转换为不含凭据的 PR 错误。
+    """
     detail = result.stderr.decode("utf-8", errors="replace")[:500]
     return PullRequestError(reason, f"Git {command} 失败: {detail}")
 
 
 def _status_clean(source_root: Path) -> bool:
-    """判断本地 clone 是否没有未提交的工作树变更。"""
+    """
+    判断本地克隆是否没有未提交的工作树变更。
+    """
     result = run_git(source_root, "status", "--porcelain=v1", "--untracked-files=all")
     if result.returncode != 0:
         raise _git_failure(result, "status")
@@ -53,7 +60,9 @@ def _commit_changes(
     changes: list[Any],
     commit_message: str,
 ) -> str:
-    """只暂存预览中的文件并创建一个本地 Git Commit。"""
+    """
+    只暂存预览中的文件并创建一个本地 Git Commit。
+    """
     paths = [change.path for change in changes]
     add_result = run_git(source_root, "add", "-A", "--", *paths)
     if add_result.returncode != 0:
@@ -69,7 +78,9 @@ def _reuse_or_commit(
     payload: dict[str, Any],
     source_root: Path,
 ) -> str:
-    """支持推送中断后的安全重试，不重复创建 Commit。"""
+    """
+    支持推送中断后的安全重试，不重复创建 Commit。
+    """
     existing_commit = str(payload.get("local_commit_sha") or "").strip()
     current_head = git_output(source_root, "rev-parse", "HEAD").decode().strip()
     if existing_commit:
@@ -98,7 +109,9 @@ def _success_existing_pull(
     base: str,
     commit_sha: str = "",
 ) -> dict[str, Any]:
-    """统一构造已有 PR 的幂等成功结果。"""
+    """
+    统一构造已有 PR 的幂等成功结果。
+    """
     return {
         "success": True,
         "execution_outcome": "already_exists",
@@ -115,7 +128,9 @@ def _success_existing_pull(
 
 
 def submit_pull_request(payload_file: str, confirmation: str) -> dict[str, Any]:
-    """重新校验预览后提交 Git Commit、推送分支并创建 PR。"""
+    """
+    重新校验预览后提交 Git Commit、推送分支并创建 PR。
+    """
     if confirmation != "CONFIRM":
         raise PullRequestError("confirmation_required", "提交 PR 必须传入精确确认标记 CONFIRM。")
     payload_path = Path(payload_file).expanduser().resolve()
@@ -246,7 +261,9 @@ def submit_pull_request(payload_file: str, confirmation: str) -> dict[str, Any]:
 
 
 def _parse_args() -> argparse.Namespace:
-    """解析 PR 提交脚本命令行参数。"""
+    """
+    解析 PR 提交脚本命令行参数。
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--payload-file", required=True, help="prepare_pull_request.py 输出的 payload JSON")
     parser.add_argument("--confirm", required=True, help="必须是精确字符串 CONFIRM")
@@ -254,7 +271,9 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
-    """执行 PR 提交入口并输出机器可解析 JSON。"""
+    """
+    执行 PR 提交入口并输出机器可解析 JSON。
+    """
     try:
         arguments = _parse_args()
         result = submit_pull_request(arguments.payload_file, arguments.confirm)

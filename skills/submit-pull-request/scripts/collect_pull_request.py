@@ -1,4 +1,6 @@
-"""从隔离 Git clone 收集 PR 预览所需的变更摘要。"""
+"""
+从隔离 Git 克隆收集 PR 预览所需的变更摘要。
+"""
 
 from __future__ import annotations
 
@@ -12,6 +14,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+# 脚本先补充本地模块或项目根目录，再导入对应依赖。
 from pr_common import (  # noqa: E402
     PullRequestError,
     change_fingerprint,
@@ -25,7 +28,9 @@ from pr_common import (  # noqa: E402
 
 
 def collect_pull_request(source_root: str, *, state_file: Optional[str] = None) -> dict[str, Any]:
-    """收集当前 clone 的 Git 变更，并保存不含源码正文的摘要文件。"""
+    """
+    收集当前克隆的 Git 变更，并保存不含源码正文的摘要文件。
+    """
     root = Path(source_root).expanduser().resolve()
     mode, changes = collect_changes(root)
     branch = git_current_branch(root)
@@ -79,7 +84,9 @@ def collect_pull_request(source_root: str, *, state_file: Optional[str] = None) 
 
 
 def _parse_args() -> argparse.Namespace:
-    """解析变更采集脚本命令行参数。"""
+    """
+    解析变更采集脚本命令行参数。
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-root", required=True, help="先前 git clone 的仓库根目录")
     parser.add_argument("--state-file", help="clone_repository.py 输出的状态文件")
@@ -87,7 +94,9 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
-    """执行变更采集入口并输出机器可解析 JSON。"""
+    """
+    执行变更采集入口并输出机器可解析 JSON。
+    """
     try:
         arguments = _parse_args()
         result = collect_pull_request(arguments.source_root, state_file=arguments.state_file)
