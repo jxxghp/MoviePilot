@@ -41,10 +41,16 @@ class _DemoPlugin:
         self.done = threading.Event()
 
     def run_once(self, **kwargs) -> None:
+        """
+        记录一次性任务参数与当前插件实例标识，并通知测试执行已完成。
+        """
         self.calls.append({"kwargs": kwargs, "instance_id": current_plugin_instance_id()})
         self.done.set()
 
     def periodic(self) -> None:
+        """
+        保留周期任务入口供调度注册检查，不执行任何业务副作用。
+        """
         return None
 
 

@@ -72,10 +72,16 @@ def test_lifecycle_start_binds_instance_during_construct_and_init_plugin():
             seen.append(("construct", current_plugin_instance_id()))
 
         def init_plugin(self, _config: dict) -> None:
+            """
+            记录首次初始化时绑定的插件实例标识，供日志上下文断言。
+            """
             seen.append(("init", current_plugin_instance_id()))
 
         @staticmethod
         def get_state() -> bool:
+            """
+            声明测试插件已启用，使生命周期流程继续执行。
+            """
             return True
 
     _Plugin.__name__ = "DemoPluginWork"
@@ -98,10 +104,16 @@ def test_lifecycle_initialize_binds_instance_during_reinit():
 
     class _Plugin:
         def init_plugin(self, _config: dict) -> None:
+            """
+            记录重新初始化期间的插件实例标识，检查上下文是否正确绑定。
+            """
             seen.append(current_plugin_instance_id())
 
         @staticmethod
         def get_state() -> bool:
+            """
+            保持测试插件启用，避免状态过滤跳过重新初始化流程。
+            """
             return True
 
     lifecycle, _classes, _running = _lifecycle(
@@ -394,9 +406,15 @@ def test_lifecycle_initialize_records_enabled_state_change():
         enabled = True
 
         def init_plugin(self, config: dict) -> None:
+            """
+            从新配置更新启用状态，模拟重新初始化改变插件开关。
+            """
             self.enabled = bool(config.get("enabled"))
 
         def get_state(self) -> bool:
+            """
+            返回当前插件开关，供生命周期服务记录启用状态变化。
+            """
             return self.enabled
 
     plugin = _Plugin()

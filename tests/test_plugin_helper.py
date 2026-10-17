@@ -1675,6 +1675,9 @@ demo = { index = "private" }
             uv_bin = _create_fake_uv(root)
 
             def fake_execute(cmd, env=None, safe_command=None):
+                """
+                记录普通依赖安装命令，并确认未附加运行时依赖约束。
+                """
                 if cmd[:3] == [str(uv_bin), "pip", "install"]:
                     seen_install_commands.append(cmd)
                     assert "-c" not in cmd
@@ -1717,6 +1720,9 @@ demo = { index = "private" }
             uv_bin = _create_fake_uv(root)
 
             def fake_execute(cmd, env=None, safe_command=None):
+                """
+                检查安装命令引用的运行时约束文件已生成且包含锁定版本。
+                """
                 if cmd[:3] == [str(uv_bin), "pip", "install"]:
                     constraint_index = cmd.index("-c") + 1
                     constraint_file = Path(cmd[constraint_index])
@@ -1759,6 +1765,9 @@ demo = { index = "private" }
             uv_bin = _create_fake_uv(root)
 
             def fake_execute(cmd, env=None, safe_command=None):
+                """
+                模拟安装后健康检查失败，并记录后续无约束的运行时修复命令。
+                """
                 nonlocal uv_check_count
                 if cmd[:3] == [str(uv_bin), "pip", "install"]:
                     if "-c" not in cmd:
@@ -2115,6 +2124,9 @@ demo = { index = "private" }
             find_links_dirs = [Path(temp_dir) / "wheels"]
 
             async def run_install():
+                """
+                等待异步依赖安装，供测试在子进程运行期间触发取消。
+                """
                 return await helper._PluginRuntimeHealth__async_install_packages_with_fallback(
                     requirements_file,
                     find_links_dirs,

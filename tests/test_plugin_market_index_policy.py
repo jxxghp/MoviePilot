@@ -107,6 +107,12 @@ class _SyncStreamResponse:
         self._content = content
 
     def iter_content(self, chunk_size: int):
+        """
+        按请求的字节块大小迭代索引内容，模拟同步流式响应。
+
+        :param chunk_size: 每个内容块的最大字节数
+        :yields: 本次读取的索引字节块
+        """
         for offset in range(0, len(self._content), chunk_size):
             yield self._content[offset:offset + chunk_size]
 
@@ -124,6 +130,12 @@ class _AsyncStreamResponse:
         self._content = content
 
     async def aiter_bytes(self, chunk_size: int):
+        """
+        按请求的字节块大小异步迭代索引内容，模拟异步流式响应。
+
+        :param chunk_size: 每个内容块的最大字节数
+        :yields: 本次读取的索引字节块
+        """
         for offset in range(0, len(self._content), chunk_size):
             yield self._content[offset:offset + chunk_size]
 
@@ -143,6 +155,9 @@ def test_plugin_index_request_uses_sync_stream_transport(monkeypatch) -> None:
 
         @contextmanager
         def get_stream(self, url: str, raise_exception: bool):
+            """
+            记录同步索引请求的地址与异常策略，返回固定索引流。
+            """
             calls.append((self._kwargs, url, raise_exception))
             yield _SyncStreamResponse(b'{"DemoPlugin":{"version":"1.0.0"}}')
 
@@ -177,6 +192,9 @@ async def test_plugin_index_request_uses_async_stream_transport(monkeypatch) -> 
 
         @asynccontextmanager
         async def get_stream(self, url: str, raise_exception: bool):
+            """
+            记录异步索引请求的地址与异常策略，返回固定索引流。
+            """
             calls.append((self._kwargs, url, raise_exception))
             yield _AsyncStreamResponse(b'{"DemoPlugin":{"version":"1.0.0"}}')
 
@@ -956,6 +974,9 @@ def test_plugin_market_client_exposes_index_result_port() -> None:
         提供固定插件索引结果，隔离市场查询与状态消费。
         """
         def get_plugin_index_result(self, repo_url: str, package_version: str | None):
+            """
+            返回预设的索引结果对象，检查客户端是否保留端口结果。
+            """
             return expected
 
     client = PluginMarketClient(FakeHelper())

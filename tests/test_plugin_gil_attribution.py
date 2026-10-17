@@ -28,6 +28,9 @@ class _GilState:
         self.enabled = False
 
     def enable(self) -> None:
+        """
+        模拟原生扩展导入后重新启用 GIL 的状态变化。
+        """
         self.enabled = True
 
 
@@ -150,10 +153,16 @@ def test_lifecycle_attributes_init_plugin_import(gil_state):
         plugin_version = "1.0.0"
 
         def init_plugin(self, _config):
+            """
+            在插件初始化阶段触发模拟的 GIL 启用，供归因逻辑记录责任阶段。
+            """
             gil_state.enable()
 
         @staticmethod
         def get_state():
+            """
+            将测试插件保持为启用状态，使初始化归因流程完整执行。
+            """
             return True
 
     recorded: list[str] = []

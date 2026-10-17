@@ -21,11 +21,17 @@ def _plugin_class(*, init_error: Exception | None = None):
         plugin_version = "1.0.0"
 
         def init_plugin(self, _config):
+            """
+            初始化时按测试配置抛出异常，模拟插件启动失败。
+            """
             if init_error:
                 raise init_error
 
         @staticmethod
         def get_state():
+            """
+            固定返回启用状态，隔离插件自身开关对生命周期状态的影响。
+            """
             return True
 
     return DemoPlugin
