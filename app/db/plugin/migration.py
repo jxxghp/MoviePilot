@@ -1,4 +1,6 @@
-"""插件自有库的 Alembic 迁移执行。"""
+"""
+插件自有库的 Alembic 迁移执行。
+"""
 
 from __future__ import annotations
 
@@ -17,7 +19,9 @@ __all__ = ["PluginMigrationCompatibilityError", "run_migrations"]
 
 
 class PluginMigrationCompatibilityError(RuntimeError):
-    """插件库里存在随包迁移树无法识别的 revision，不能按当前版本继续升级。"""
+    """
+    插件库里存在随包迁移树无法识别的 revision，不能按当前版本继续升级。
+    """
 
 
 def _reject_unknown_revisions(
@@ -33,6 +37,7 @@ def _reject_unknown_revisions(
     排障得靠猜是哪个插件、哪个库。这里在同一批连接上先把这个事实查清楚，换成指名道姓
     的拒绝：宁可拒绝建库，也绝不自动 ``downgrade``——降级脚本通常只负责删表删列，自动
     执行等于把用户在新版本里产生的数据直接抹掉，且没有回头路。
+
     :param connection: 已指向插件库（PostgreSQL 下已限定 schema）的连接
     :param config: 已设定 script_location 的 Alembic 配置
     :param directory: 插件随包提供的迁移脚本目录
@@ -64,6 +69,7 @@ def run_migrations(handle: PluginDatabaseHandle, directory: Path) -> None:
     SQLite 按库文件 URL 起独立连接；PostgreSQL 复用句柄已被 ``schema_translate_map``
     限定过的连接，迁移脚本的 env.py 必须从 ``context.config.attributes["connection"]``
     取用它，否则迁移会落在 public schema 而不是该插件的 schema。
+
     :param handle: 插件数据库句柄
     :param directory: 迁移脚本目录，须符合 Alembic script_location 布局
     :raise PluginMigrationCompatibilityError: 库里存在迁移树不认识的 revision
