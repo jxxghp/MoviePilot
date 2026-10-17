@@ -1,4 +1,6 @@
-"""验证真实 Agent 与会话 worker 的终端归属装配；模型、外部服务均停在调用边界。"""
+"""
+验证真实 Agent 与会话 worker 的终端归属装配；模型、外部服务均停在调用边界。
+"""
 
 import asyncio
 import os
@@ -28,11 +30,15 @@ from app.agent.terminal.ownership import (
 
 @pytest.fixture
 def closed_scopes(monkeypatch) -> list[TerminalScope]:
-    """只替换进程收口边界，保留真实的宿主 scope 和 worker 生命周期。"""
+    """
+    只替换进程收口边界，保留真实的宿主 scope 和 worker 生命周期。
+    """
     closed = []
 
     async def close(scope: TerminalScope) -> bool:
-        """记录真实对象的封口，避免测试触及其他测试持有的全局终端。"""
+        """
+        记录真实对象的封口，避免测试触及其他测试持有的全局终端。
+        """
         scope.seal()
         closed.append(scope)
         return True
@@ -44,7 +50,9 @@ def closed_scopes(monkeypatch) -> list[TerminalScope]:
 
 @pytest_asyncio.fixture
 async def manager(closed_scopes) -> AsyncIterator[AgentManager]:
-    """使用真实消息队列并为每个用例独立收口 worker，记忆边界保持无 I/O。"""
+    """
+    使用真实消息队列并为每个用例独立收口 worker，记忆边界保持无 I/O。
+    """
     memory = AsyncMock()
     memory.clear_memory = Mock()
     owner = AgentManager(memory=memory)
@@ -57,12 +65,16 @@ async def manager(closed_scopes) -> AsyncIterator[AgentManager]:
 
 @pytest.mark.asyncio
 async def test_conversation_scope_survives_turn_and_graph_rebuild(monkeypatch, closed_scopes) -> None:
-    """正常多轮、图失效均复用同一身份，调用结束恢复上层异步上下文。"""
+    """
+    正常多轮、图失效均复用同一身份，调用结束恢复上层异步上下文。
+    """
     agent = MoviePilotAgent("conversation", user_id="alice")
     seen = []
 
     async def process(_message: str, **_kwargs) -> str:
-        """在推理入口读取实际 ContextVar，并使出执行权检验异步传播。"""
+        """
+        在推理入口读取实际 ContextVar，并使出执行权检验异步传播。
+        """
         seen.append(require_terminal_scope())
         await asyncio.sleep(0)
         assert require_terminal_scope() is seen[-1]
@@ -85,11 +97,15 @@ async def test_conversation_scope_survives_turn_and_graph_rebuild(monkeypatch, c
 
 @pytest.mark.asyncio
 async def test_no_user_agent_can_reason_but_cannot_enter_terminal(monkeypatch) -> None:
-    """无可信用户的内部 Agent 可执行非终端逻辑，不能获得默认 api_user 身份。"""
+    """
+    无可信用户的内部 Agent 可执行非终端逻辑，不能获得默认 api_user 身份。
+    """
     agent = MoviePilotAgent("anonymous")
 
     async def process(_message: str, **_kwargs) -> str:
-        """在真正的 wrapper 中验证缺身份拒绝点。"""
+        """
+        在真正的 wrapper 中验证缺身份拒绝点。
+        """
         assert current_terminal_scope().user_id == ""
         with pytest.raises(TerminalAccessError):
             require_terminal_scope()
@@ -103,7 +119,9 @@ async def test_no_user_agent_can_reason_but_cannot_enter_terminal(monkeypatch) -
 
 @pytest.mark.asyncio
 async def test_cleanup_seals_all_scopes_and_retries_both_resource_owners(monkeypatch) -> None:
-    """子代理清理失败不能跳过终端；终端未收敛则保持精确归属对象供重试。"""
+    """
+    子代理清理失败不能跳过终端；终端未收敛则保持精确归属对象供重试。
+    """
     agent = MoviePilotAgent("conversation", user_id="alice")
     scheduled = TerminalScope("alice", "run-1", "scheduled")
     agent._scheduled_terminal_scopes.add(scheduled)
@@ -112,7 +130,9 @@ async def test_cleanup_seals_all_scopes_and_retries_both_resource_owners(monkeyp
     calls = []
 
     async def close(scope: TerminalScope) -> bool:
-        """检查任何第一次异步清理前全部身份均已同步封口。"""
+        """
+        检查任何第一次异步清理前全部身份均已同步封口。
+        """
         assert agent._terminal_scope.closed and scheduled.closed
         calls.append(scope)
         return scope is agent._terminal_scope or children.await_count == 3
@@ -130,11 +150,15 @@ async def test_cleanup_seals_all_scopes_and_retries_both_resource_owners(monkeyp
 async def test_worker_keeps_conversation_and_distinguishes_scheduled_runs(
     manager, monkeypatch, closed_scopes,
 ) -> None:
-    """真实队列相同会话的交互轮次共享 owner，两次 scheduled run 各自独立收口。"""
+    """
+    真实队列相同会话的交互轮次共享 owner，两次 scheduled run 各自独立收口。
+    """
     seen = []
 
     async def process(_self, message: str, **_kwargs) -> str:
-        """在生产 process wrapper 内记录当前实际任务身份。"""
+        """
+        在生产 process wrapper 内记录当前实际任务身份。
+        """
         seen.append(require_terminal_scope())
         return message
 
@@ -156,13 +180,17 @@ async def test_worker_keeps_conversation_and_distinguishes_scheduled_runs(
 
 @pytest.mark.asyncio
 async def test_cancelled_queued_run_is_sealed_and_never_enters_reasoning(manager, monkeypatch) -> None:
-    """取消等待中的定时 run 不影响当前交互推理，也不能稍后从队列复活。"""
+    """
+    取消等待中的定时 run 不影响当前交互推理，也不能稍后从队列复活。
+    """
     started = asyncio.Event()
     release = asyncio.Event()
     messages = []
 
     async def process(_self, message: str, **_kwargs) -> str:
-        """仅阻塞第一条交互请求，保留后续定时请求的真实排队窗口。"""
+        """
+        仅阻塞第一条交互请求，保留后续定时请求的真实排队窗口。
+        """
         messages.append(message)
         if message == "交互":
             started.set()
@@ -195,14 +223,18 @@ async def test_cancelled_queued_run_is_sealed_and_never_enters_reasoning(manager
 async def test_cancel_active_wait_closes_same_scope_and_retains_failed_cleanup(
     manager, monkeypatch,
 ) -> None:
-    """等待者取消先封活动 scope；不收敛时对象留在 Agent，worker 最终再尝试回收。"""
+    """
+    等待者取消先封活动 scope；不收敛时对象留在 Agent，worker 最终再尝试回收。
+    """
     started = asyncio.Event()
     release = asyncio.Event()
     seen = []
     closes = []
 
     async def process(_self, _message: str, **_kwargs) -> str:
-        """模拟已进入模型且稍后才结束的执行，不让 caller 取消传播到会话 worker。"""
+        """
+        模拟已进入模型且稍后才结束的执行，不让 caller 取消传播到会话 worker。
+        """
         seen.append(require_terminal_scope())
         started.set()
         await release.wait()
@@ -211,7 +243,9 @@ async def test_cancel_active_wait_closes_same_scope_and_retains_failed_cleanup(
         return "收尾"
 
     async def close(scope: TerminalScope) -> bool:
-        """第一次终端收口失败，实际 worker 结束后再报告已收敛。"""
+        """
+        第一次终端收口失败，实际 worker 结束后再报告已收敛。
+        """
         scope.seal()
         closes.append(scope)
         return release.is_set()
@@ -239,7 +273,9 @@ async def test_cancel_active_wait_closes_same_scope_and_retains_failed_cleanup(
 
 @pytest.mark.asyncio
 async def test_switch_user_retains_old_agent_until_cleanup_converges(manager, monkeypatch) -> None:
-    """同 session 换主体必须等待旧资源收口，不能只修改旧 Agent 的 user_id。"""
+    """
+    同 session 换主体必须等待旧资源收口，不能只修改旧 Agent 的 user_id。
+    """
     old = MoviePilotAgent("shared", user_id="alice")
     manager.active_agents["shared"] = old
     cleanup = AsyncMock(side_effect=[False, True])
@@ -260,7 +296,9 @@ async def test_switch_user_retains_old_agent_until_cleanup_converges(manager, mo
 
 @pytest.mark.asyncio
 async def test_real_worker_terminal_survives_stop_and_other_user_cleanup(monkeypatch) -> None:
-    """真实 pipe 经生产 worker 装配 owner，停止推理保留进程，换主体清理才回收。"""
+    """
+    真实 pipe 经生产 worker 装配 owner，停止推理保留进程，换主体清理才回收。
+    """
     terminals = _TerminalSessionManager()
     monkeypatch.setattr(terminal, "terminal_session_manager", terminals)
     memory = AsyncMock()
@@ -273,7 +311,9 @@ async def test_real_worker_terminal_survives_stop_and_other_user_cleanup(monkeyp
     command = subprocess.list2cmdline(argv) if os.name == "nt" else "exec " + shlex.join(argv)
 
     async def process(_self, message: str, **_kwargs) -> str:
-        """模型边界使用本地固定程序，其余执行、授权和资源回收均为真实实现。"""
+        """
+        模型边界使用本地固定程序，其余执行、授权和资源回收均为真实实现。
+        """
         if message == "启动并继续推理":
             payload = await terminals.start(
                 command=command, use_pty=False, yield_time_ms=1000, since_offset=0,

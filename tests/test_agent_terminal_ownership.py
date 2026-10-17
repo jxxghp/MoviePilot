@@ -1,4 +1,6 @@
-"""终端句柄归属、明确共享和关闭竞态的真实进程验收。"""
+"""
+终端句柄归属、明确共享和关闭竞态的真实进程验收。
+"""
 
 import asyncio
 import os
@@ -26,7 +28,9 @@ from app.agent.terminal.ownership import (
 
 @pytest_asyncio.fixture
 async def manager() -> AsyncIterator[_TerminalSessionManager]:
-    """每例仅拥有自己创建的进程；断言失败同样回收测试资源。"""
+    """
+    每例仅拥有自己创建的进程；断言失败同样回收测试资源。
+    """
     instance = _TerminalSessionManager()
     try:
         yield instance
@@ -35,12 +39,16 @@ async def manager() -> AsyncIterator[_TerminalSessionManager]:
 
 
 def _scope(user: str = "alice", task: str = "task") -> TerminalScope:
-    """相同可见字段仍创建不同的宿主任务代次。"""
+    """
+    相同可见字段仍创建不同的宿主任务代次。
+    """
     return TerminalScope(user_id=user, task_id=task, kind="test")
 
 
 async def _start(manager: _TerminalSessionManager, owner: TerminalScope, *, use_pty: bool = False) -> dict[str, Any]:
-    """启动受控程序，以真实输出 READY 确认它正在等待唯一输入。"""
+    """
+    启动受控程序，以真实输出 READY 确认它正在等待唯一输入。
+    """
     code = (
         "import sys\n"
         + ("import tty;tty.setraw(0)\n" if use_pty else "")
@@ -57,7 +65,9 @@ async def _start(manager: _TerminalSessionManager, owner: TerminalScope, *, use_
 
 
 async def _finish(manager: _TerminalSessionManager, owner: TerminalScope, handle: str) -> str:
-    """只消费工具交付游标，确认真实进程读取字节后退出。"""
+    """
+    只消费工具交付游标，确认真实进程读取字节后退出。
+    """
     with bind_terminal_scope(owner):
         payload = await manager.write(session_id=handle, input_text="Z")
         output = payload["output"]
@@ -76,7 +86,9 @@ async def _finish(manager: _TerminalSessionManager, owner: TerminalScope, handle
 @pytest.mark.parametrize("use_pty", [False, pytest.param(True, marks=pytest.mark.skipif(os.name != "posix", reason="PTY 仅 POSIX"))])
 @pytest.mark.parametrize("other_user", ["alice", "bob"])
 async def test_real_handle_is_not_authority(manager: _TerminalSessionManager, use_pty: bool, other_user: str) -> None:
-    """同名任务的新代次和另一用户均不能通过真实句柄读取、投递输入或控制进程。"""
+    """
+    同名任务的新代次和另一用户均不能通过真实句柄读取、投递输入或控制进程。
+    """
     owner, outsider = _scope(), _scope(other_user)
     payload = await _start(manager, owner, use_pty=use_pty)
     handle = payload["session_id"]
@@ -100,7 +112,9 @@ async def test_real_handle_is_not_authority(manager: _TerminalSessionManager, us
 
 @pytest.mark.asyncio
 async def test_identity_and_empty_scope_are_explicit(manager: _TerminalSessionManager) -> None:
-    """绑定空上下文允许非终端调用，终端要求可信用户、任务和未封口代次。"""
+    """
+    绑定空上下文允许非终端调用，终端要求可信用户、任务和未封口代次。
+    """
     outer = _scope()
     with bind_terminal_scope(outer):
         with bind_terminal_scope(None):
@@ -118,7 +132,9 @@ async def test_identity_and_empty_scope_are_explicit(manager: _TerminalSessionMa
 
 @pytest.mark.asyncio
 async def test_share_is_atomic_specific_and_not_transitive(manager: _TerminalSessionManager) -> None:
-    """被授予子任务只可读取明确句柄，无效批量不产生部分授权且不能转授给兄弟。"""
+    """
+    被授予子任务只可读取明确句柄，无效批量不产生部分授权且不能转授给兄弟。
+    """
     owner, child, sibling = _scope(), _scope(task="child"), _scope(task="sibling")
     handle = (await _start(manager, owner))["session_id"]
     with bind_terminal_scope(owner), pytest.raises(TerminalAccessError):
@@ -144,7 +160,9 @@ async def test_share_is_atomic_specific_and_not_transitive(manager: _TerminalSes
 @pytest.mark.asyncio
 @pytest.mark.parametrize("close_parent", [False, True])
 async def test_long_wait_wakes_when_either_scope_seals(manager: _TerminalSessionManager, close_parent: bool) -> None:
-    """等待无输出时封住任一端，不必等满一分钟才反馈授权失效。"""
+    """
+    等待无输出时封住任一端，不必等满一分钟才反馈授权失效。
+    """
     owner, child = _scope(), _scope(task="child")
     payload = await _start(manager, owner)
     with bind_terminal_scope(owner):
@@ -162,7 +180,9 @@ async def test_long_wait_wakes_when_either_scope_seals(manager: _TerminalSession
 
 @pytest.mark.asyncio
 async def test_queued_input_rechecks_grant_after_lock(manager: _TerminalSessionManager) -> None:
-    """排队写入在取得输入锁之前已撤销时，不向父进程投递任何字节。"""
+    """
+    排队写入在取得输入锁之前已撤销时，不向父进程投递任何字节。
+    """
     owner, child = _scope(), _scope(task="child")
     handle = (await _start(manager, owner))["session_id"]
     session = manager._sessions[handle]
@@ -181,14 +201,18 @@ async def test_queued_input_rechecks_grant_after_lock(manager: _TerminalSessionM
 
 @pytest.mark.asyncio
 async def test_close_owner_during_start_retains_other_owner(manager: _TerminalSessionManager, monkeypatch: pytest.MonkeyPatch) -> None:
-    """启动已预留但尚未登记时关闭任务，迟到进程被回收且另一个任务仍可继续。"""
+    """
+    启动已预留但尚未登记时关闭任务，迟到进程被回收且另一个任务仍可继续。
+    """
     owner, other = _scope(), _scope(task="other")
     other_handle = (await _start(manager, other))["session_id"]
     entered, release = asyncio.Event(), asyncio.Event()
     original = manager._start_pipe_session
 
     async def delayed(*args: Any, **kwargs: Any) -> Any:
-        """把真实进程创建卡在预留之后，提供确定性的关闭交错。"""
+        """
+        把真实进程创建卡在预留之后，提供确定性的关闭交错。
+        """
         entered.set()
         await release.wait()
         return await original(*args, **kwargs)
@@ -210,14 +234,18 @@ async def test_close_owner_during_start_retains_other_owner(manager: _TerminalSe
 
 @pytest.mark.asyncio
 async def test_cancelled_start_keeps_reservation_until_process_reaped(manager: _TerminalSessionManager, monkeypatch: pytest.MonkeyPatch) -> None:
-    """两次取消首次等待也不会丢失尚未返回的进程，清理等待启动完成后才释放预留。"""
+    """
+    两次取消首次等待也不会丢失尚未返回的进程，清理等待启动完成后才释放预留。
+    """
     owner = _scope()
     entered, release = asyncio.Event(), asyncio.Event()
     original = manager._start_pipe_session
     created = []
 
     async def delayed(*args: Any, **kwargs: Any) -> Any:
-        """记录实际已创建的子进程后，阻止句柄提前返回给 start。"""
+        """
+        记录实际已创建的子进程后，阻止句柄提前返回给 start。
+        """
         session = await original(*args, **kwargs)
         created.append(session)
         entered.set()
@@ -241,7 +269,9 @@ async def test_cancelled_start_keeps_reservation_until_process_reaped(manager: _
 
 @pytest.mark.asyncio
 async def test_close_nonconvergence_preserves_record_for_retry(manager: _TerminalSessionManager, monkeypatch: pytest.MonkeyPatch) -> None:
-    """收尾任务尚未结束不能抹除 owner；重试在进程真实收尾后才确认完成。"""
+    """
+    收尾任务尚未结束不能抹除 owner；重试在进程真实收尾后才确认完成。
+    """
     owner = _scope()
     handle = (await _start(manager, owner))["session_id"]
     session = manager._sessions[handle]
@@ -257,7 +287,9 @@ async def test_close_nonconvergence_preserves_record_for_retry(manager: _Termina
 
 @pytest.mark.asyncio
 async def test_scope_cleanup_is_lazy_and_new_manager_rejects_old_handle(manager: _TerminalSessionManager, monkeypatch: pytest.MonkeyPatch) -> None:
-    """无终端作用域清理不加载实现，重建后的管理器不会凭旧句柄接管或重跑进程。"""
+    """
+    无终端作用域清理不加载实现，重建后的管理器不会凭旧句柄接管或重跑进程。
+    """
     unused = _scope(task="unused")
     with monkeypatch.context() as patch:
         patch.delitem(sys.modules, "app.agent.terminal.manager")

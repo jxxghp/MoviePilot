@@ -1,4 +1,6 @@
-"""用确定性模型核对隔离复盘、缓存前缀、执行白名单与生命周期。"""
+"""
+用确定性模型核对隔离复盘、缓存前缀、执行白名单与生命周期。
+"""
 
 import asyncio
 import json
@@ -24,7 +26,9 @@ from app.runtime.tasks import TaskRegistry
 
 
 class ReviewModel(BaseChatModel):
-    """固定响应模型记录实际绑定 schema 和消息，测试不发任何网络请求。"""
+    """
+    固定响应模型记录实际绑定 schema 和消息，测试不发任何网络请求。
+    """
 
     responses: list[AIMessage] = Field(default_factory=list)
     requests: list[Any] = Field(default_factory=list)
@@ -32,16 +36,22 @@ class ReviewModel(BaseChatModel):
 
     @property
     def _llm_type(self):
-        """返回测试模型类型。"""
+        """
+        返回测试模型类型。
+        """
         return 'learning-test'
 
     def bind_tools(self, tools, *, tool_choice=None, **kwargs):
-        """保持真实 LangChain 工具绑定路径，记录双方广告 schema。"""
+        """
+        保持真实 LangChain 工具绑定路径，记录双方广告 schema。
+        """
         from langchain_core.utils.function_calling import convert_to_openai_tool
         return self.bind(tools=[convert_to_openai_tool(tool) for tool in tools], tool_choice=tool_choice, **kwargs)
 
     def _generate(self, messages, stop=None, run_manager=None, **kwargs):
-        """同步假模型只返回预录制工具调用及 usage。"""
+        """
+        同步假模型只返回预录制工具调用及 usage。
+        """
         del stop, run_manager
         self.requests.append((deepcopy(messages), deepcopy(kwargs)))
         message = self.responses[min(self.index, len(self.responses) - 1)].model_copy(deep=True)
@@ -51,26 +61,36 @@ class ReviewModel(BaseChatModel):
 
 
 def session(tmp_path, on_usage=lambda _usage: None):
-    """为测试构造隔离目录中的已认证用户会话。"""
+    """
+    为测试构造隔离目录中的已认证用户会话。
+    """
     return LearningSession(session_id='alice-session', skill_root=tmp_path / 'skills', memory_root=tmp_path / 'memory',
                            public_roots=(), on_usage=on_usage)
 
 
 def response(name, arguments, identifier='call'):
-    """生成供应商返回形态的工具调用。"""
+    """
+    生成供应商返回形态的工具调用。
+    """
     return AIMessage(content='', tool_calls=[dict(name=name, args=arguments, id=identifier)])
 
 
 def test_review_keeps_prefix_schema_and_denies_business_tools(tmp_path):
-    """广告保持一致，派发不会执行业务写；记忆成果来自新工具回执且主快照不变。"""
+    """
+    广告保持一致，派发不会执行业务写；记忆成果来自新工具回执且主快照不变。
+    """
     async def scenario():
-        """完整跑过复盘的拒绝、合法记忆写及最终响应。"""
+        """
+        完整跑过复盘的拒绝、合法记忆写及最终响应。
+        """
         usage = []
         owner = session(tmp_path, usage.append)
         called = []
 
         async def forbidden():
-            """任何误派发都会在断言中暴露。"""
+            """
+            任何误派发都会在断言中暴露。
+            """
             called.append(True)
             return '业务已执行'
 
@@ -104,9 +124,13 @@ def test_review_keeps_prefix_schema_and_denies_business_tools(tmp_path):
     (True, True, 'memory and personal skill maintenance'),
 ])
 def test_review_without_new_evidence_is_a_noop(tmp_path, review_memory, review_skills, scope):
-    """三种复盘均允许无成果结束，传入的提示词明确维护范围且不要求凑学习记录。"""
+    """
+    三种复盘均允许无成果结束，传入的提示词明确维护范围且不要求凑学习记录。
+    """
     async def scenario():
-        """检查实际发送的复盘指令及无工具写入的终态。"""
+        """
+        检查实际发送的复盘指令及无工具写入的终态。
+        """
         owner = session(tmp_path)
         model = ReviewModel(responses=[AIMessage(content='Nothing to save.')])
         snapshot = ReviewSnapshot.capture(
@@ -129,9 +153,13 @@ def test_review_without_new_evidence_is_a_noop(tmp_path, review_memory, review_s
 
 
 def test_real_graph_capture_is_final_and_does_not_share_state(tmp_path):
-    """真实 LangChain 图的返回快照包含动态 system 和最终回复，复盘改动不回写图。"""
+    """
+    真实 LangChain 图的返回快照包含动态 system 和最终回复，复盘改动不回写图。
+    """
     async def scenario():
-        """构造真实图并验证实例解耦。"""
+        """
+        构造真实图并验证实例解耦。
+        """
         owner = session(tmp_path)
         model = ReviewModel(responses=[AIMessage(content='完成')])
         graph = create_agent(model=model, middleware=[LearningMiddleware(owner), LearningCaptureMiddleware(owner)], system_prompt='基础')
@@ -146,9 +174,13 @@ def test_real_graph_capture_is_final_and_does_not_share_state(tmp_path):
 
 
 def test_delivered_graph_review_is_consumed_by_next_user_session(tmp_path, monkeypatch):
-    """真实工具迭代触发隔离复盘，落盘成果由下一会话读取且不会泄漏给另一用户。"""
+    """
+    真实工具迭代触发隔离复盘，落盘成果由下一会话读取且不会泄漏给另一用户。
+    """
     async def scenario():
-        """只脚本化模型决定；图、计数、复盘、存储与下一轮加载都使用实际实现。"""
+        """
+        只脚本化模型决定；图、计数、复盘、存储与下一轮加载都使用实际实现。
+        """
         registry = TaskRegistry()
         monkeypatch.setattr('app.agent.learning.session.get_task_registry', lambda: registry)
         owner = session(tmp_path / 'alice')
@@ -157,7 +189,9 @@ def test_delivered_graph_review_is_consumed_by_next_user_session(tmp_path, monke
         observed = []
 
         async def inspect_subscription(index: int) -> str:
-            """返回隔离业务快照，十次真实工具回合不能直接伪造计数。"""
+            """
+            返回隔离业务快照，十次真实工具回合不能直接伪造计数。
+            """
             observed.append(index)
             return json.dumps({'success': True, 'media_source': 'themoviedb', 'media_id': str(index)})
 
@@ -205,9 +239,13 @@ def test_delivered_graph_review_is_consumed_by_next_user_session(tmp_path, monke
 
 
 def test_budget_iteration_limit_and_skill_only_memory_gate(tmp_path):
-    """重复拒绝也消耗迭代预算，技能复盘不能借广告中的 memory 自动改记忆。"""
+    """
+    重复拒绝也消耗迭代预算，技能复盘不能借广告中的 memory 自动改记忆。
+    """
     async def scenario():
-        """使用每次都发 memory 的假模型触达两种独立预算。"""
+        """
+        使用每次都发 memory 的假模型触达两种独立预算。
+        """
         owner = session(tmp_path)
         model = ReviewModel(responses=[response('memory', dict(action='add', content='不应写入'))])
         snapshot = ReviewSnapshot.capture(ModelRequest(model=model, messages=[], tools=owner.tools.tools), ModelResponse(result=[AIMessage(content='任务结束')]))
@@ -225,9 +263,13 @@ def test_budget_iteration_limit_and_skill_only_memory_gate(tmp_path):
 
 
 def test_cancel_before_start_clears_owner_and_no_unrequested_review(tmp_path, monkeypatch):
-    """阈值、完成状态和取消前封门都由宿主判定，取消未启动任务不留下 owner。"""
+    """
+    阈值、完成状态和取消前封门都由宿主判定，取消未启动任务不留下 owner。
+    """
     async def scenario():
-        """使用真实 TaskRegistry 观察取消与回调清理。"""
+        """
+        使用真实 TaskRegistry 观察取消与回调清理。
+        """
         owner = session(tmp_path)
         registry = TaskRegistry()
         monkeypatch.setattr('app.agent.learning.session.get_task_registry', lambda: registry)
@@ -252,9 +294,13 @@ def test_cancel_before_start_clears_owner_and_no_unrequested_review(tmp_path, mo
 
 
 def test_memory_interval_resume_counter_and_native_tools_skip(tmp_path):
-    """恢复轮次按历史用户数初始化；技能维护重置工具计数，原生工具不冒充可控派发。"""
+    """
+    恢复轮次按历史用户数初始化；技能维护重置工具计数，原生工具不冒充可控派发。
+    """
     async def scenario():
-        """核对记忆和技能复盘的默认触发计数边界。"""
+        """
+        核对记忆和技能复盘的默认触发计数边界。
+        """
         owner = session(tmp_path)
         await owner.begin([HumanMessage(content=str(index)) for index in range(10)])
         assert owner.memory_due
@@ -273,9 +319,13 @@ def test_memory_interval_resume_counter_and_native_tools_skip(tmp_path):
 
 
 def test_control_commands_are_host_only_and_reject_quoted_requests(tmp_path):
-    """确认入口不在工具 schema 中；只有完整用户命令可以应用指定提案。"""
+    """
+    确认入口不在工具 schema 中；只有完整用户命令可以应用指定提案。
+    """
     async def scenario():
-        """模拟后台提出删除及前台用户的拒绝/确认过程。"""
+        """
+        模拟后台提出删除及前台用户的拒绝/确认过程。
+        """
         from app.agent.learning.memory import MemoryStore
         from app.agent.learning.schema import MemoryInput
         owner = session(tmp_path)
@@ -292,9 +342,13 @@ def test_control_commands_are_host_only_and_reject_quoted_requests(tmp_path):
 
 
 def test_review_cancellation_fences_running_model_and_preserves_parent(tmp_path, monkeypatch):
-    """模型请求在运行时取消，任务退出后不会发生学习写入或覆盖主快照。"""
+    """
+    模型请求在运行时取消，任务退出后不会发生学习写入或覆盖主快照。
+    """
     async def scenario():
-        """借真实 Registry 发起可取消模型等待，观察终态与存储。"""
+        """
+        借真实 Registry 发起可取消模型等待，观察终态与存储。
+        """
         registry = TaskRegistry()
         monkeypatch.setattr('app.agent.learning.session.get_task_registry', lambda: registry)
         started = asyncio.Event()
@@ -304,7 +358,9 @@ def test_review_cancellation_fences_running_model_and_preserves_parent(tmp_path,
         before = deepcopy(owner.snapshot.messages)
 
         async def block(_self):
-            """等待取消前不产生副作用。"""
+            """
+            等待取消前不产生副作用。
+            """
             started.set()
             await asyncio.Event().wait()
 

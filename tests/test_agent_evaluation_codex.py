@@ -1,4 +1,6 @@
-"""原生适配器只运行假进程或控制边界，核验生命周期、目录隔离和独立评分真实性。"""
+"""
+原生适配器只运行假进程或控制边界，核验生命周期、目录隔离和独立评分真实性。
+"""
 
 import asyncio
 import json
@@ -24,26 +26,34 @@ from scripts.evaluation.world import EvaluationWorld
 
 
 def _program(tmp_path: Path, code: str) -> list[str]:
-    """把无害 Python 假程序放在测试目录，不调用真实 Codex 或模型。"""
+    """
+    把无害 Python 假程序放在测试目录，不调用真实 Codex 或模型。
+    """
     script = tmp_path / "fake_native.py"
     script.write_text(code, encoding="utf-8")
     return [sys.executable, "-u", str(script)]
 
 
 def _jsonl(events: list[dict[str, Any]]) -> str:
-    """构造与原生客户端 stdout 相同的一行一个事件格式。"""
+    """
+    构造与原生客户端 stdout 相同的一行一个事件格式。
+    """
     return "\n".join(json.dumps(event, ensure_ascii=False) for event in events) + "\n"
 
 
 def _completed_events(final: dict[str, Any]) -> list[dict[str, Any]]:
-    """完成证据来自终态事件，最终业务报告仍交给真实 oracle。"""
+    """
+    完成证据来自终态事件，最终业务报告仍交给真实 oracle。
+    """
     return [{"type": "turn.started"}, {"type": "item.completed", "item": {
         "type": "agent_message", "text": json.dumps(final),
     }}, {"type": "turn.completed"}]
 
 
 def test_new_turn_cannot_reuse_previous_completion_or_final_text() -> None:
-    """上一轮成功后开始了新轮但尚未完成，不能继续标成已完成。"""
+    """
+    上一轮成功后开始了新轮但尚未完成，不能继续标成已完成。
+    """
     events, final, completed = codex._events(_jsonl([*_completed_events({"status": "completed"}), {"type": "turn.started"}]))
     assert len(events) == 4
     assert completed is False
@@ -51,7 +61,9 @@ def test_new_turn_cannot_reuse_previous_completion_or_final_text() -> None:
 
 
 def test_invalid_jsonl_preserves_valid_events_without_claiming_completion() -> None:
-    """损坏日志用摘要保留诊断，不泄露非事件正文，也不能被后续 completed 抹平。"""
+    """
+    损坏日志用摘要保留诊断，不泄露非事件正文，也不能被后续 completed 抹平。
+    """
     text = _jsonl(_completed_events({"status": "completed"})) + "private-broken-event\n"
     events, final, completed = codex._events(text)
     assert completed is False
@@ -62,7 +74,9 @@ def test_invalid_jsonl_preserves_valid_events_without_claiming_completion() -> N
 
 
 def test_normalize_app_server_preserves_collaboration_scope_and_action() -> None:
-    """原生协作事件要保留动作、线程和授权提示，便于独立验收子代理行为。"""
+    """
+    原生协作事件要保留动作、线程和授权提示，便于独立验收子代理行为。
+    """
     item = codex._normalize_app_server_item({
         "type": "collabAgentToolCall", "id": "collab-1", "tool": "spawnAgent",
         "status": "inProgress", "prompt": '{"terminal_sessions":[{"session_id":"123","actions":["read"]}]}',
@@ -96,7 +110,9 @@ def test_normalize_app_server_preserves_collaboration_scope_and_action() -> None
 
 
 def test_append_thread_history_events_preserves_child_scope() -> None:
-    """thread/read 的历史命令应保留子代理线程和轮次身份。"""
+    """
+    thread/read 的历史命令应保留子代理线程和轮次身份。
+    """
     events: list[dict[str, Any]] = []
     codex._append_thread_history_events(events, {
         "id": "child", "turns": [{"id": "turn-child", "items": [{
@@ -116,7 +132,9 @@ def test_append_thread_history_events_preserves_child_scope() -> None:
 
 @pytest.mark.asyncio
 async def test_execute_sends_exact_prompt_and_preserves_nonzero_exit_output(tmp_path: Path) -> None:
-    """真实假程序从 stdin 接收公开输入，非零退出与两路输出不得被丢弃。"""
+    """
+    真实假程序从 stdin 接收公开输入，非零退出与两路输出不得被丢弃。
+    """
     command = _program(tmp_path, "import sys\ntext=sys.stdin.read()\nprint(text)\nprint('stderr-marker',file=sys.stderr)\nraise SystemExit(7)\n")
     result = await codex._execute(command, "公开任务：保持原样 $HOME `echo no`", codex._worker_environment(), tmp_path, 5)
     assert result["returncode"] == 7
@@ -129,9 +147,13 @@ async def test_execute_sends_exact_prompt_and_preserves_nonzero_exit_output(tmp_
 async def test_execute_app_server_preserves_streamed_terminal_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """app-server 的终端增量和同一进程输入事件应归一化为可评分的原生轨迹。"""
+    """
+    app-server 的终端增量和同一进程输入事件应归一化为可评分的原生轨迹。
+    """
     async def hold_stderr_reader(stream: asyncio.StreamReader, result: bytearray) -> None:
-        """让测试覆盖正常收尾时主动取消 stderr 读取任务的路径。"""
+        """
+        让测试覆盖正常收尾时主动取消 stderr 读取任务的路径。
+        """
         del stream, result
         await asyncio.Future()
 
@@ -191,7 +213,9 @@ for line in sys.stdin:
 
 @pytest.mark.asyncio
 async def test_execute_app_server_steers_after_business_tool_boundary(tmp_path: Path) -> None:
-    """中途追加必须在业务工具完成后携带当前轮次 ID 注入，并保留排队到应用的顺序。"""
+    """
+    中途追加必须在业务工具完成后携带当前轮次 ID 注入，并保留排队到应用的顺序。
+    """
     command = _program(tmp_path, """
 import json
 import sys
@@ -245,7 +269,9 @@ for line in sys.stdin:
 
 @pytest.mark.asyncio
 async def test_execute_app_server_preserves_multiple_steering_boundaries(tmp_path: Path) -> None:
-    """原生 app-server 的多条 steering 应按业务回执次数逐条排队和应用。"""
+    """
+    原生 app-server 的多条 steering 应按业务回执次数逐条排队和应用。
+    """
     command = _program(tmp_path, """
 import json
 import sys
@@ -319,7 +345,9 @@ for line in sys.stdin:
 async def test_execute_timeout_or_cancellation_closes_descendant_pipes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cancel: bool, parent_exits: bool,
 ) -> None:
-    """继承 stdout 的后代不关闭管道就不会出现 EOF，用真实 EOF 验证整组回收。"""
+    """
+    继承 stdout 的后代不关闭管道就不会出现 EOF，用真实 EOF 验证整组回收。
+    """
     command = _program(tmp_path, (
         "import subprocess,sys,time\n"
         "sys.stdin.read()\n"
@@ -332,13 +360,17 @@ async def test_execute_timeout_or_cancellation_closes_descendant_pipes(
     original_create = asyncio.create_subprocess_exec
 
     async def capture(*args: Any, **kwargs: Any) -> asyncio.subprocess.Process:
-        """在真实 stdout 读取边界发布握手，取消测试不依靠固定休眠。"""
+        """
+        在真实 stdout 读取边界发布握手，取消测试不依靠固定休眠。
+        """
         process = await original_create(*args, **kwargs)
         captured.append(process)
         original_read = process.stdout.read
 
         async def read(size: int = -1) -> bytes:
-            """确认父进程已创建后代并输出 READY 后才允许测试发起取消。"""
+            """
+            确认父进程已创建后代并输出 READY 后才允许测试发起取消。
+            """
             data = await original_read(size)
             if b"READY" in data:
                 ready.set()
@@ -373,7 +405,9 @@ async def test_execute_timeout_or_cancellation_closes_descendant_pipes(
 
 @pytest.mark.asyncio
 async def test_output_limit_preserves_bounded_prefix_and_stops_process(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """超过输出预算时保留已取得的前缀，记录控制器失败并终止假进程。"""
+    """
+    超过输出预算时保留已取得的前缀，记录控制器失败并终止假进程。
+    """
     monkeypatch.setattr(codex, "MAX_PROCESS_OUTPUT_BYTES", 128)
     command = _program(tmp_path, "import sys,time\nsys.stdout.write('x'*4096)\nsys.stdout.flush()\ntime.sleep(30)\n")
     result = await codex._execute(command, "", codex._worker_environment(), tmp_path, 5)
@@ -384,14 +418,18 @@ async def test_output_limit_preserves_bounded_prefix_and_stops_process(tmp_path:
 
 @pytest.mark.asyncio
 async def test_cleanup_failure_still_cancels_and_joins_output_readers(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """组终止失败不能跳过其他读取器的 finally 回收。"""
+    """
+    组终止失败不能跳过其他读取器的 finally 回收。
+    """
     stdout, stderr = object(), object()
     readers: list[asyncio.Task[Any]] = []
     process = SimpleNamespace(stdin=SimpleNamespace(write=lambda _data: None, drain=AsyncMock(), close=lambda: None),
                               stdout=stdout, stderr=stderr, returncode=None)
 
     async def read(stream: Any, _buffer: bytearray) -> None:
-        """一条读取器失败，另一条保持挂起以验证 gather 不会自动替控制器清理。"""
+        """
+        一条读取器失败，另一条保持挂起以验证 gather 不会自动替控制器清理。
+        """
         readers.append(asyncio.current_task())
         if stream is stdout:
             raise RuntimeError("read failed")
@@ -412,14 +450,18 @@ async def test_cleanup_failure_still_cancels_and_joins_output_readers(tmp_path: 
 
 
 def _model_catalog() -> dict[str, Any]:
-    """模拟二进制自带的模型记录，保留与工具模式无关的嵌套原生配置。"""
+    """
+    模拟二进制自带的模型记录，保留与工具模式无关的嵌套原生配置。
+    """
     return {"models": [{"slug": "gpt-test", "tool_mode": "code_mode_only", "base_instructions": "native instructions",
                         "model_messages": {"instructions_template": "native message template"}, "limits": [1, 2]},
                        {"slug": "unrelated", "tool_mode": "direct"}]}
 
 
 def test_catalog_projection_changes_only_selected_tool_mode_and_is_independent() -> None:
-    """控制条件投影不能替换模型提示词，也不能原地改写从二进制取得的目录。"""
+    """
+    控制条件投影不能替换模型提示词，也不能原地改写从二进制取得的目录。
+    """
     original = _model_catalog()
     before = deepcopy(original)
     projected, metadata = codex._catalog(original, "gpt-test")
@@ -432,7 +474,9 @@ def test_catalog_projection_changes_only_selected_tool_mode_and_is_independent()
 
 
 def test_native_app_server_stream_timeout_follows_evaluation_budget() -> None:
-    """原生 app-server 的流式空闲上限必须与真实评测墙钟预算一致。"""
+    """
+    原生 app-server 的流式空闲上限必须与真实评测墙钟预算一致。
+    """
     settings = ModelSettings(
         "gpt-test",
         "https://provider.invalid/v1",
@@ -453,7 +497,9 @@ def test_native_app_server_stream_timeout_follows_evaluation_budget() -> None:
 
 def test_browser_runtime_expands_portable_skill_root_in_private_instruction_copy(tmp_path: Path,
                                                                                  monkeypatch: pytest.MonkeyPatch) -> None:
-    """独立 CLI 没有桌面插件上下文时，浏览器 Skill 的根路径仍必须可执行且不改写安装文件。"""
+    """
+    独立 CLI 没有桌面插件上下文时，浏览器 Skill 的根路径仍必须可执行且不改写安装文件。
+    """
     codex_home = tmp_path / "codex-home"
     plugin_root = codex_home / ".tmp" / "bundled-marketplaces" / "openai-bundled" / "plugins" / "browser"
     node_repl = tmp_path / "node" / "node_repl"
@@ -483,7 +529,9 @@ def test_browser_runtime_expands_portable_skill_root_in_private_instruction_copy
 
 
 def test_native_browser_fixture_records_only_loopback_click_callback() -> None:
-    """原生浏览器插件绕过评测 MCP 时，回环页面回调仍能作为独立点击证据。"""
+    """
+    原生浏览器插件绕过评测 MCP 时，回环页面回调仍能作为独立点击证据。
+    """
     with codex._native_browser_fixture() as (url, state):
         page = urllib.request.urlopen(url, timeout=2).read().decode("utf-8")
         assert "BROWSER_OK" in page and state["clicked"] is False
@@ -493,19 +541,25 @@ def test_native_browser_fixture_records_only_loopback_click_callback() -> None:
 
 @pytest.mark.parametrize("catalog", [{}, {"models": []}, {"models": [{"slug": "gpt-test"}, {"slug": "gpt-test"}]}])
 def test_missing_or_ambiguous_selected_model_never_falls_back(catalog: dict[str, Any]) -> None:
-    """模型元数据缺失或重复时必须中止，不能换另一模型制造成功对照。"""
+    """
+    模型元数据缺失或重复时必须中止，不能换另一模型制造成功对照。
+    """
     with pytest.raises(ValueError):
         codex._catalog(catalog, "gpt-test")
 
 
 async def _run_case(monkeypatch: pytest.MonkeyPatch, *, returncode: int = 0, completed: bool = True,
                     error_type: Optional[str] = None, echo_tokens: bool = False) -> dict[str, Any]:
-    """只替换原生进程与模型边界，业务状态和 oracle 仍使用真正内存世界。"""
+    """
+    只替换原生进程与模型边界，业务状态和 oracle 仍使用真正内存世界。
+    """
     worlds = []
     settings = ModelSettings("gpt-test", "https://provider.invalid/v1", "private-provider-test-key")
 
     class Server:
-        """捕获同一世界，等价模拟真实 MCP 已读取的独立业务事实。"""
+        """
+        捕获同一世界，等价模拟真实 MCP 已读取的独立业务事实。
+        """
 
         endpoint = "http://127.0.0.1:49997/mcp"
         bearer_token = "local-mcp-test-token"
@@ -513,38 +567,54 @@ async def _run_case(monkeypatch: pytest.MonkeyPatch, *, returncode: int = 0, com
         stats: dict[str, Any] = {}
 
         def __init__(self, world: Any) -> None:
-            """保留控制器传入的真实世界，模拟器不能替换 oracle。"""
+            """
+            保留控制器传入的真实世界，模拟器不能替换 oracle。
+            """
             worlds.append(world)
 
         async def __aenter__(self) -> "Server":
-            """不启动服务，所有验证都在本进程的模拟边界内。"""
+            """
+            不启动服务，所有验证都在本进程的模拟边界内。
+            """
             return self
 
         async def __aexit__(self, *_args: Any) -> None:
-            """没有外部监听或进程需要清理。"""
+            """
+            没有外部监听或进程需要清理。
+            """
 
     class Proxy(Server):
-        """模型调用统计由模拟控制边界给出，不产生真实请求。"""
+        """
+        模型调用统计由模拟控制边界给出，不产生真实请求。
+        """
 
         endpoint = "http://127.0.0.1:49998/v1"
         bearer_token = "local-model-test-token"
 
         def __init__(self, _settings: ModelSettings, **_kwargs: Any) -> None:
-            """接受真实控制器参数，但不把连接凭据送到子进程。"""
+            """
+            接受真实控制器参数，但不把连接凭据送到子进程。
+            """
             self.closed = False
 
         async def __aexit__(self, *_args: Any) -> None:
-            """模拟客户端断开后的最终资源收敛，统计必须在此之后取得。"""
+            """
+            模拟客户端断开后的最终资源收敛，统计必须在此之后取得。
+            """
             self.closed = True
 
         def snapshot(self) -> dict[str, Any]:
-            """返回最终模拟用量，关闭前不能冻结仍可能变化的完成/取消状态。"""
+            """
+            返回最终模拟用量，关闭前不能冻结仍可能变化的完成/取消状态。
+            """
             assert self.closed
             return {"model_calls": 1, "completed_model_calls": 1, "probe_requests": 0, "model_requests": [],
                     "tokens": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2}}
 
     async def execute(command: list[str], prompt: str, environment: dict[str, str], work_dir: Path, _timeout: int) -> dict[str, Any]:
-        """检查 argv、私有环境与中立目录，然后生成原生 JSONL 事件。"""
+        """
+        检查 argv、私有环境与中立目录，然后生成原生 JSONL 事件。
+        """
         assert settings.api_key not in json.dumps(environment)
         assert "OPENAI_API_KEY" not in environment and "CONFIG_DIR" not in environment
         assert list(work_dir.iterdir()) == []
@@ -593,7 +663,9 @@ async def _run_case(monkeypatch: pytest.MonkeyPatch, *, returncode: int = 0, com
 @pytest.mark.parametrize(("returncode", "completed", "error_type"), [(7, True, None), (0, False, None), (0, True, "TimeoutError"), (0, True, None)])
 async def test_native_success_is_required_even_when_real_oracle_passes(monkeypatch: pytest.MonkeyPatch, returncode: int,
                                                                        completed: bool, error_type: Optional[str]) -> None:
-    """真实状态和读取证据正确也不能掩盖原生退出、未完成或控制器异常。"""
+    """
+    真实状态和读取证据正确也不能掩盖原生退出、未完成或控制器异常。
+    """
     report = await _run_case(monkeypatch, returncode=returncode, completed=completed, error_type=error_type)
     assert report["task_passed"] is True
     assert report["passed"] is (returncode == 0 and completed and error_type is None)
@@ -603,7 +675,9 @@ async def test_native_success_is_required_even_when_real_oracle_passes(monkeypat
 
 @pytest.mark.asyncio
 async def test_local_tokens_are_removed_after_native_json_unicode_decoding(monkeypatch: pytest.MonkeyPatch) -> None:
-    """JSON Unicode 转义不能绕过本地代理和 MCP 令牌的最终报告脱敏。"""
+    """
+    JSON Unicode 转义不能绕过本地代理和 MCP 令牌的最终报告脱敏。
+    """
     report = await _run_case(monkeypatch, echo_tokens=True)
     serialized = json.dumps(report)
     assert "local-mcp-test-token" not in serialized
@@ -620,7 +694,9 @@ async def test_local_tokens_are_removed_after_native_json_unicode_decoding(monke
 def test_probe_requires_fixture_discovery_without_model_or_world_execution(names: list[str], calls: int,
                                                                            rejected: list[Any], world_calls: int,
                                                                            ready: bool) -> None:
-    """空目录和仅计划目录不能被作为可执行对照入口，探针也不能消耗真实预算。"""
+    """
+    空目录和仅计划目录不能被作为可执行对照入口，探针也不能消耗真实预算。
+    """
     usage = {"probe_requests": 1, "model_calls": calls, "rejected_requests": rejected,
              "model_requests": [{"retained_tools": names}]}
     assert codex._probe_ready(usage, {"world_calls": world_calls}) is ready
@@ -628,11 +704,15 @@ def test_probe_requires_fixture_discovery_without_model_or_world_execution(names
 
 @pytest.mark.parametrize("version", ["codex-cli 0.153.3", codex.SUPPORTED_CLI_VERSION])
 def test_cli_version_gate_uses_isolated_environment_before_any_execution(monkeypatch: pytest.MonkeyPatch, version: str) -> None:
-    """只在已核对版本上进入适配器；版本查询本身也不继承真实模型凭据。"""
+    """
+    只在已核对版本上进入适配器；版本查询本身也不继承真实模型凭据。
+    """
     calls = []
 
     def check(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        """模拟真实 --version 响应，不运行原生客户端。"""
+        """
+        模拟真实 --version 响应，不运行原生客户端。
+        """
         calls.append((command, kwargs))
         return subprocess.CompletedProcess(command, 0, stdout=version + "\n", stderr="")
 
@@ -654,13 +734,17 @@ def test_cli_version_gate_uses_isolated_environment_before_any_execution(monkeyp
 
 
 def test_toml_arguments_preserve_literals_without_shell_interpretation() -> None:
-    """带引号、换行和 shell 字符的模型配置仍是单个正确 TOML 值。"""
+    """
+    带引号、换行和 shell 字符的模型配置仍是单个正确 TOML 值。
+    """
     value = {"name": "引号\"与换行\n以及$(command)", "enabled": False, "budget": 12}
     assert tomllib.loads("value=" + codex._toml(value))["value"] == value
 
 
 def test_command_scenario_enables_only_native_shell_controls() -> None:
-    """命令场景显式开启原生终端开关，普通 API 场景继续关闭。"""
+    """
+    命令场景显式开启原生终端开关，普通 API 场景继续关闭。
+    """
     settings = ModelSettings("gpt-test", "https://provider.invalid/v1", "provider-key")
     proxy = SimpleNamespace(endpoint="http://model.invalid/v1")
     server = SimpleNamespace(endpoint="http://mcp.invalid/mcp", bearer_token="token")
@@ -684,7 +768,9 @@ def test_command_scenario_enables_only_native_shell_controls() -> None:
 
 
 def test_native_terminal_output_cannot_fake_stdin_evidence() -> None:
-    """原生 command_execution 聚合输出即使包含输入标记，也不能伪造 stdin 证据。"""
+    """
+    原生 command_execution 聚合输出即使包含输入标记，也不能伪造 stdin 证据。
+    """
     world = EvaluationWorld("terminal_session")
     codex._record_native_command_events(world, [{"type": "item.completed", "item": {
         "id": "cmd-1", "type": "command_execution", "command": "/bin/zsh -lc " + shlex.quote(world.scenario.command),
@@ -696,7 +782,9 @@ def test_native_terminal_output_cannot_fake_stdin_evidence() -> None:
 
 
 def test_native_command_events_infer_subagent_scope_from_spawn_thread() -> None:
-    """子代理线程中的原生命令回执应进入独立 scope，不能冒充父任务操作。"""
+    """
+    子代理线程中的原生命令回执应进入独立 scope，不能冒充父任务操作。
+    """
     world = EvaluationWorld("subagent_terminal_share")
     command = world.scenario.command
     events = [

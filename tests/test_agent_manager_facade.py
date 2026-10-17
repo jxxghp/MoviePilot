@@ -1,4 +1,6 @@
-"""AgentManager 门面、职责 owner 与兼容路径合同。"""
+"""
+AgentManager 门面、职责 owner 与兼容路径合同。
+"""
 
 import json
 import subprocess
@@ -13,7 +15,9 @@ from app.agent.tasks import AgentTaskOwner
 
 
 def _run_isolated(script: str) -> dict:
-    """在干净解释器中执行包根延迟加载探针。"""
+    """
+    在干净解释器中执行包根延迟加载探针。
+    """
     completed = subprocess.run(
         [sys.executable, "-c", script],
         check=True,
@@ -24,7 +28,9 @@ def _run_isolated(script: str) -> dict:
 
 
 def test_agent_package_root_uses_precise_lazy_contracts() -> None:
-    """包根不得加载完整编排器，也不得转发白名单外名称。"""
+    """
+    包根不得加载完整编排器，也不得转发白名单外名称。
+    """
     result = _run_isolated(
         """
 import json
@@ -62,7 +68,9 @@ print(json.dumps({
 
 
 def test_agent_manager_methods_have_single_owners() -> None:
-    """稳定门面只继承 owner 方法，不复制会话、生命周期或任务实现。"""
+    """
+    稳定门面只继承 owner 方法，不复制会话、生命周期或任务实现。
+    """
     assert AgentManager.__dict__.keys() >= {"__init__"}
     assert "process_message" not in AgentManager.__dict__
     assert "initialize" not in AgentManager.__dict__
@@ -79,7 +87,9 @@ def test_agent_manager_methods_have_single_owners() -> None:
 
 
 def test_legacy_orchestrator_manager_path_resolves_to_canonical_facade() -> None:
-    """历史编排器导入只经精确 Compat 指向 canonical 门面。"""
+    """
+    历史编排器导入只经精确 Compat 指向 canonical 门面。
+    """
     from importlib import import_module
 
     LegacyAgentManager = getattr(import_module("app.agent.orchestrator"), "AgentManager")
@@ -88,7 +98,9 @@ def test_legacy_orchestrator_manager_path_resolves_to_canonical_facade() -> None
 
 
 def test_agent_manager_facade_keeps_public_method_set() -> None:
-    """重构后继续提供宿主和插件已使用的稳定公开方法。"""
+    """
+    重构后继续提供宿主和插件已使用的稳定公开方法。
+    """
     expected = {
         "clear_session",
         "close",
@@ -109,6 +121,8 @@ def test_agent_manager_facade_keeps_public_method_set() -> None:
 
 
 def test_agent_manager_constructor_rejects_unknown_arguments() -> None:
-    """稳定构造门面不得静默接收未定义依赖。"""
+    """
+    稳定构造门面不得静默接收未定义依赖。
+    """
     with pytest.raises(TypeError):
         AgentManager(unknown=True)

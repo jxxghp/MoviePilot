@@ -1,4 +1,6 @@
-"""进程组回收兼容 macOS 僵尸状态，同时保留真实权限失败。"""
+"""
+进程组回收兼容 macOS 僵尸状态，同时保留真实权限失败。
+"""
 
 import errno
 import os
@@ -15,7 +17,9 @@ pytestmark = pytest.mark.skipif(os.name == 'nt', reason='仅验证 POSIX 进程�
 @pytest.mark.asyncio
 @pytest.mark.parametrize('retry_error', [None, ProcessLookupError(errno.ESRCH, 'group gone')])
 async def test_macos_reaps_root_then_signals_remaining_group(monkeypatch, retry_error):
-    """根回收后仍须发送组信号，兼顾存活后代和已消失的进程组。"""
+    """
+    根回收后仍须发送组信号，兼顾存活后代和已消失的进程组。
+    """
     process = SimpleNamespace(pid=12345, wait=AsyncMock(return_value=-9))
     denied = PermissionError(errno.EPERM, 'zombie group')
 
@@ -37,7 +41,9 @@ async def test_macos_reaps_root_then_signals_remaining_group(monkeypatch, retry_
 
 @pytest.mark.asyncio
 async def test_macos_repeated_permission_error_is_not_swallowed(monkeypatch):
-    """即使根已退出，组内其他进程的权限失败仍必须交回调用方。"""
+    """
+    即使根已退出，组内其他进程的权限失败仍必须交回调用方。
+    """
     process = SimpleNamespace(pid=12345, wait=AsyncMock(return_value=0))
     denied = PermissionError(errno.EPERM, 'live descendant denied')
     signal = Mock(side_effect=denied)
@@ -53,7 +59,9 @@ async def test_macos_repeated_permission_error_is_not_swallowed(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_macos_unreaped_root_keeps_original_permission_error(monkeypatch):
-    """根无法回收时不能把清理权限失败伪装成脚本执行超时。"""
+    """
+    根无法回收时不能把清理权限失败伪装成脚本执行超时。
+    """
     process = SimpleNamespace(pid=12345, wait=AsyncMock(side_effect=TimeoutError))
     denied = PermissionError(errno.EPERM, 'live root denied')
     signal = Mock(side_effect=denied)
@@ -69,7 +77,9 @@ async def test_macos_unreaped_root_keeps_original_permission_error(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_other_platform_permission_error_is_not_retried(monkeypatch):
-    """macOS 兼容分支不改变其他 POSIX 平台的权限错误处理。"""
+    """
+    macOS 兼容分支不改变其他 POSIX 平台的权限错误处理。
+    """
     process = SimpleNamespace(pid=12345, wait=AsyncMock())
     denied = PermissionError(errno.EPERM, 'permission denied')
     signal = Mock(side_effect=denied)

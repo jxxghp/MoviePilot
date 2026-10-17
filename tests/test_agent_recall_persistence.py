@@ -1,4 +1,6 @@
-"""验证独立数据库、真实消息、检索语义、压缩和输出预算。"""
+"""
+验证独立数据库、真实消息、检索语义、压缩和输出预算。
+"""
 
 import asyncio
 import json
@@ -16,25 +18,35 @@ from app.application.messaging.recall import RecallMessage, RecallQuery, RecallS
 
 @pytest.fixture
 def repository(tmp_path):
-    """全部消息写入临时独立库，不连接业务主库或外部服务。"""
+    """
+    全部消息写入临时独立库，不连接业务主库或外部服务。
+    """
     return SqliteRecallRepository(tmp_path / 'runtime')
 
 
 def _append(repository, session, content, *, user='alice', role='user', message='m', **meta):
-    """为行为场景追加一条带明确身份的原始消息。"""
+    """
+    为行为场景追加一条带明确身份的原始消息。
+    """
     repository.append(user, RecallSession(session, **meta), (RecallMessage(message, role, content),))
 
 
 class _Executor:
-    """测试只模拟宿主 worker 调度，不启动生产数据服务。"""
+    """
+    测试只模拟宿主 worker 调度，不启动生产数据服务。
+    """
 
     async def run(self, function):
-        """在独立线程运行同步数据库操作。"""
+        """
+        在独立线程运行同步数据库操作。
+        """
         return await asyncio.to_thread(function)
 
 
 def test_independent_store_idempotence_and_user_isolation(repository):
-    """同名会话位于不同用户文件；重试保留首份证据而不覆盖。"""
+    """
+    同名会话位于不同用户文件；重试保留首份证据而不覆盖。
+    """
     _append(repository, 'same', 'alpha original')
     _append(repository, 'same', 'replacement')
     _append(repository, 'same', 'bob secret', user='bob')
@@ -47,11 +59,15 @@ def test_independent_store_idempotence_and_user_isolation(repository):
 
 
 def test_fts_boolean_phrase_prefix_and_relaxation(repository):
-    """普通全文支持布尔、短语和前缀；多词无交集才进行 OR 放宽。"""
+    """
+    普通全文支持布尔、短语和前缀；多词无交集才进行 OR 放宽。
+    """
     for sid, text in [('a', 'docker networking fixed'), ('b', 'docker broken tls'), ('c', 'resolved networking')]:
         _append(repository, sid, text)
     def query(text):
-        """以一致预算执行本测试的不同 FTS 表达式。"""
+        """
+        以一致预算执行本测试的不同 FTS 表达式。
+        """
         return repository.search('alice', RecallQuery(query=text, limit=10))
     assert {item['session_id'] for item in query('docker NOT broken')['results']} == {'a'}
     assert query('"docker networking"')['count'] == 1
@@ -63,7 +79,9 @@ def test_fts_boolean_phrase_prefix_and_relaxation(repository):
 
 
 def test_adaptive_discovery_and_read_scroll_budgets(repository):
-    """首命中给窗口和书挡，后续紧凑；长会话阅读只返回首20尾10。"""
+    """
+    首命中给窗口和书挡，后续紧凑；长会话阅读只返回首20尾10。
+    """
     for sid in ('first', 'second'):
         messages = tuple(RecallMessage(str(index), 'user', ('needle ' if index == 25 else '') + 'x' * 8000)
                          for index in range(40))
@@ -85,7 +103,9 @@ def test_adaptive_discovery_and_read_scroll_budgets(repository):
 
 
 def test_current_compacted_rewind_and_lineage(repository):
-    """压缩历史可查；活动本会话和 rewind 丢弃行不得伪装成历史。"""
+    """
+    压缩历史可查；活动本会话和 rewind 丢弃行不得伪装成历史。
+    """
     _append(repository, 'root', 'needle root')
     _append(repository, 'child', 'needle child', parent_session_id='root')
     assert repository.search('alice', RecallQuery(query='needle'))['count'] == 1
@@ -101,7 +121,9 @@ def test_current_compacted_rewind_and_lineage(repository):
 
 
 def test_hidden_sources_cron_demotion_and_time_bounds(repository):
-    """后台隐藏来源不进入用户历史；cron 保留可达性但不会压住人工会话。"""
+    """
+    后台隐藏来源不进入用户历史；cron 保留可达性但不会压住人工会话。
+    """
     _append(repository, 'cron', 'needle', source='cron', started_at=100)
     _append(repository, 'chat', 'needle and some context', started_at=200)
     _append(repository, 'hidden', 'needle', source='subagent', started_at=150)
@@ -113,7 +135,9 @@ def test_hidden_sources_cron_demotion_and_time_bounds(repository):
 
 
 def test_tool_prefix_index_full_body_recall_and_redaction(repository):
-    """仅缩小工具索引而不丢弃原文，显式 tool 查询能召回8192字符后的证据。"""
+    """
+    仅缩小工具索引而不丢弃原文，显式 tool 查询能召回8192字符后的证据。
+    """
     text = 'ordinary ' * 3000 + ' deepneedle password=verysecret '
     _append(repository, 'tool', text, role='tool')
     assert repository.search('alice', RecallQuery(query='deepneedle'))['count'] == 0
@@ -126,7 +150,9 @@ def test_tool_prefix_index_full_body_recall_and_redaction(repository):
 
 
 def test_cjk_trigram_and_short_term_fallback(repository):
-    """未安装可选 CJK tokenizer 时，三字走 trigram、两字诚实回退。"""
+    """
+    未安装可选 CJK tokenizer 时，三字走 trigram、两字诚实回退。
+    """
     _append(repository, 'zh', '昨天修复了下载订阅失败的问题')
     result = repository.search('alice', RecallQuery(query='下载订阅'))
     assert result['count'] == 1 and result['search_path'] == 'trigram'
@@ -135,7 +161,9 @@ def test_cjk_trigram_and_short_term_fallback(repository):
 
 
 def test_delete_removes_fts_and_blocks_inflight_resurrection(repository):
-    """显式删除同步移除索引，晚到的消息批次不能让旧会话重新出现。"""
+    """
+    显式删除同步移除索引，晚到的消息批次不能让旧会话重新出现。
+    """
     _append(repository, 'old', 'needle')
     repository.delete('alice', 'old')
     _append(repository, 'old', 'needle late', message='late')
@@ -147,7 +175,9 @@ def test_delete_removes_fts_and_blocks_inflight_resurrection(repository):
 
 
 def test_concurrent_writers_keep_message_and_index_atomic(repository):
-    """多个独立连接并发重试仍然只有一份原文和有效索引。"""
+    """
+    多个独立连接并发重试仍然只有一份原文和有效索引。
+    """
     _append(repository, 'init', 'initialize')
     with ThreadPoolExecutor(max_workers=4) as pool:
         list(pool.map(lambda _: _append(repository, 'same', 'concurrent needle'), range(20)))
@@ -156,7 +186,9 @@ def test_concurrent_writers_keep_message_and_index_atomic(repository):
 
 
 def test_query_deadline_reports_unavailable_not_no_matches(tmp_path):
-    """SQL 扫描实际超时必须返回未完成，不能把性能保护伪装成没有历史。"""
+    """
+    SQL 扫描实际超时必须返回未完成，不能把性能保护伪装成没有历史。
+    """
     repository = SqliteRecallRepository(tmp_path, query_timeout=0.000001)
     _append(repository, 'old', 'x' * 50000)
     for index in range(100):
@@ -167,7 +199,9 @@ def test_query_deadline_reports_unavailable_not_no_matches(tmp_path):
 
 @pytest.mark.asyncio
 async def test_capture_raw_messages_without_summary_or_image(repository):
-    """中间件保存真实消息并隔离合成摘要、图像和不同用户。"""
+    """
+    中间件保存真实消息并隔离合成摘要、图像和不同用户。
+    """
     middleware = RecallMiddleware(RecallService(repository, _Executor()), 'alice', RecallSession('old'))
     messages = [HumanMessage(id='human', content=[{'type': 'text', 'text': 'needle user'},
                                                 {'type': 'image_url', 'image_url': {'url': 'pixels'}}]),
@@ -185,14 +219,18 @@ async def test_capture_raw_messages_without_summary_or_image(repository):
 @pytest.mark.parametrize('kwargs', [{'around_message_id': 1}, {'window': 21}, {'role_filter': 'system'},
                                    {'after': '2026-09-30', 'before': '2026-09-01'}])
 def test_invalid_query_rejected(kwargs):
-    """无效查询必须在存储前拒绝，不能降级为更宽的读取。"""
+    """
+    无效查询必须在存储前拒绝，不能降级为更宽的读取。
+    """
     with pytest.raises(ValueError):
         SearchHistoryInput(**kwargs)
 
 
 @pytest.fixture(scope='session')
 def cjk_extension(tmp_path_factory):
-    """只编译一次随仓库提供的 CJK tokenizer；不安装到用户运行目录。"""
+    """
+    只编译一次随仓库提供的 CJK tokenizer；不安装到用户运行目录。
+    """
     import shutil
     import subprocess
     compiler = shutil.which('cc')
@@ -206,7 +244,9 @@ def cjk_extension(tmp_path_factory):
 
 
 def test_native_cjk_rebuild_preserves_insert_delete_and_integrity(tmp_path, cjk_extension):
-    """安装中文分词器后分批回填，回填中的新增和未回填删除不损坏索引。"""
+    """
+    安装中文分词器后分批回填，回填中的新增和未回填删除不损坏索引。
+    """
     import shutil
     repository = SqliteRecallRepository(tmp_path)
     for index in range(12):
@@ -237,7 +277,9 @@ def test_native_cjk_rebuild_preserves_insert_delete_and_integrity(tmp_path, cjk_
 
 
 def test_title_match_time_bounds_and_latest_continuation(repository):
-    """标题不在正文也可定位，优先最新同名续篇，时间条件仍必须生效。"""
+    """
+    标题不在正文也可定位，优先最新同名续篇，时间条件仍必须生效。
+    """
     _append(repository, 'first', 'unrelated', title='TLS repair', started_at=100)
     _append(repository, 'second', 'unrelated', title='TLS repair #2', started_at=200)
     result = repository.search('alice', RecallQuery(query='TLS repair'))
@@ -247,18 +289,24 @@ def test_title_match_time_bounds_and_latest_continuation(repository):
 
 
 def test_legacy_import_resumable_identity_and_main_store_independence(tmp_path):
-    """后台搬迁保留可用快照，完成后查询不再依赖主库在线。"""
+    """
+    后台搬迁保留可用快照，完成后查询不再依赖主库在线。
+    """
     from langchain_core.messages import messages_to_dict
 
     from app.application.messaging.recall import RecallLegacyRecord
 
     class Legacy:
-        """模拟只有一次导出可用的旧主库。"""
+        """
+        模拟只有一次导出可用的旧主库。
+        """
 
         calls = 0
 
         def page(self, user_id, after, limit):
-            """提供一次快照，后续访问视为不必要的主库依赖。"""
+            """
+            提供一次快照，后续访问视为不必要的主库依赖。
+            """
             self.calls += 1
             assert self.calls == 1 and user_id == 'alice' and after == 0 and limit == 20
             return (RecallLegacyRecord(1, RecallSession('legacy', started_at=100),
@@ -278,7 +326,9 @@ def test_legacy_import_resumable_identity_and_main_store_independence(tmp_path):
 @pytest.mark.asyncio
 @pytest.mark.parametrize('message_name', ['inspect', None])
 async def test_full_tool_capture_before_output_truncation(repository, message_name):
-    """内置工具的 recorder 原文进入独立库，模型收到的结果仍维持既有引用。"""
+    """
+    内置工具的 recorder 原文进入独立库，模型收到的结果仍维持既有引用。
+    """
     from types import SimpleNamespace
 
     from app.agent.tools.base import TOOL_RESULT_RECORDER
@@ -286,7 +336,9 @@ async def test_full_tool_capture_before_output_truncation(repository, message_na
     raw = 'tool prefix ' * 3000 + ' tailneedle'
 
     async def handler(_request):
-        """模拟工具在格式化裁剪前发送完整结果给宿主 recorder。"""
+        """
+        模拟工具在格式化裁剪前发送完整结果给宿主 recorder。
+        """
         TOOL_RESULT_RECORDER.get()('inspect', raw)
         return ToolMessage(id='tool1', name=message_name, tool_call_id='call1', content='truncated reference')
 
@@ -299,7 +351,9 @@ async def test_full_tool_capture_before_output_truncation(repository, message_na
 
 
 def test_index_query_plan_uses_fts_and_session_seek(repository):
-    """大历史的检索入口必须走 FTS 虚表与主键回表，窗口按会话索引定位。"""
+    """
+    大历史的检索入口必须走 FTS 虚表与主键回表，窗口按会话索引定位。
+    """
     _append(repository, 'old', 'needle')
     with sqlite3.connect(repository.database_path('alice')) as connection:
         plan = ' '.join(row[3] for row in connection.execute('''EXPLAIN QUERY PLAN
@@ -312,7 +366,9 @@ def test_index_query_plan_uses_fts_and_session_seek(repository):
 
 
 def test_independent_retention_uses_shared_cutoff_and_disable(tmp_path):
-    """清理使用独立库活动时间，不需要主库行；关闭或零天由组合根返回 None。"""
+    """
+    清理使用独立库活动时间，不需要主库行；关闭或零天由组合根返回 None。
+    """
     cutoff = [None]
     repository = SqliteRecallRepository(tmp_path, retention_cutoff=lambda: cutoff[0])
     repository.append('alice', RecallSession('old', started_at=100, last_active=100),
@@ -328,7 +384,9 @@ def test_independent_retention_uses_shared_cutoff_and_disable(tmp_path):
 @pytest.mark.parametrize('streaming', [False, True])
 @pytest.mark.parametrize('fail_first', [False, True])
 async def test_compaction_success_preserves_same_session_recall(repository, monkeypatch, streaming, fail_first):
-    """真实图提交压缩后，被移出的原文在同会话可查，活动尾部与摘要不冒充历史。"""
+    """
+    真实图提交压缩后，被移出的原文在同会话可查，活动尾部与摘要不冒充历史。
+    """
     from unittest.mock import AsyncMock
 
     from langchain.agents import create_agent
@@ -343,14 +401,20 @@ async def test_compaction_success_preserves_same_session_recall(repository, monk
     failure_pending = [fail_first]
 
     class Model(FakeMessagesListChatModel):
-        """固定主模型响应，只验证生产图的压缩提交与归档边界。"""
+        """
+        固定主模型响应，只验证生产图的压缩提交与归档边界。
+        """
 
         def bind_tools(self, _tools, **_kwargs):
-            """保留真实工具绑定路径而不访问模型服务。"""
+            """
+            保留真实工具绑定路径而不访问模型服务。
+            """
             return self
 
         async def _agenerate(self, messages, **kwargs):
-            """故障只发生在摘要完成后的主模型调用，验证失败不会提交压缩。"""
+            """
+            故障只发生在摘要完成后的主模型调用，验证失败不会提交压缩。
+            """
             if failure_pending[0]:
                 failure_pending[0] = False
                 raise TimeoutError('main model unavailable')
@@ -391,21 +455,29 @@ async def test_compaction_success_preserves_same_session_recall(repository, monk
 
 @pytest.mark.asyncio
 async def test_graph_tool_evidence_recalled_in_next_session(repository):
-    """真实 LangChain 图产生工具回执与最终回复，下一会话能够定位并展开。"""
+    """
+    真实 LangChain 图产生工具回执与最终回复，下一会话能够定位并展开。
+    """
     from langchain.agents import create_agent
     from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
     from langchain_core.tools import tool
 
     class Model(FakeMessagesListChatModel):
-        """确定性模型只验证执行链，不把它当作真实智能提升评测。"""
+        """
+        确定性模型只验证执行链，不把它当作真实智能提升评测。
+        """
 
         def bind_tools(self, _tools, **_kwargs):
-            """测试模型接受工具绑定而不访问供应商。"""
+            """
+            测试模型接受工具绑定而不访问供应商。
+            """
             return self
 
     @tool
     def inspect_subscription() -> str:
-        """返回受控订阅失败证据，不调用业务服务。"""
+        """
+        返回受控订阅失败证据，不调用业务服务。
+        """
         return json.dumps({'success': False, 'reason': 'site authentication failed', 'id': 42})
 
     service = RecallService(repository, _Executor())
@@ -424,7 +496,9 @@ async def test_graph_tool_evidence_recalled_in_next_session(repository):
 
 @pytest.mark.asyncio
 async def test_history_output_keeps_its_own_bounded_structure(repository):
-    """已按窗口预算裁剪的历史不能再变成通用预览，丢失锚点和书挡。"""
+    """
+    已按窗口预算裁剪的历史不能再变成通用预览，丢失锚点和书挡。
+    """
     from types import SimpleNamespace
 
     from app.agent.middleware.output import ToolOutputMiddleware
@@ -434,7 +508,9 @@ async def test_history_output_keeps_its_own_bounded_structure(repository):
     output = ToolOutputMiddleware(SimpleNamespace(agent_context={}))
 
     async def handler(_request):
-        """返回具有明确窗口预算的历史响应。"""
+        """
+        返回具有明确窗口预算的历史响应。
+        """
         return ToolMessage(content=payload, tool_call_id='history1')
 
     result = await output.awrap_tool_call(request, handler)
@@ -444,7 +520,9 @@ async def test_history_output_keeps_its_own_bounded_structure(repository):
 
 @pytest.mark.asyncio
 async def test_managed_maintenance_drains_and_shutdown_cancels(tmp_path, monkeypatch):
-    """后台维护只登记一个用户任务，退出后清除 owner；取消保留可恢复进度。"""
+    """
+    后台维护只登记一个用户任务，退出后清除 owner；取消保留可恢复进度。
+    """
     from app.runtime.tasks import TaskRegistry
     registry = TaskRegistry()
     repository = SqliteRecallRepository(tmp_path)
@@ -460,7 +538,9 @@ async def test_managed_maintenance_drains_and_shutdown_cancels(tmp_path, monkeyp
     blocked = asyncio.Event()
 
     async def pending_maintenance(_user_id):
-        """固定取消场景的任务状态，避免真实 SQLite 工作先于 shutdown 完成。"""
+        """
+        固定取消场景的任务状态，避免真实 SQLite 工作先于 shutdown 完成。
+        """
         started.set()
         await blocked.wait()
 
@@ -475,7 +555,9 @@ async def test_managed_maintenance_drains_and_shutdown_cancels(tmp_path, monkeyp
 
 @pytest.mark.asyncio
 async def test_maintenance_cancelled_before_first_execution_releases_slot(tmp_path):
-    """立即取消尚未进入协程的任务也必须释放维护名额，允许后续重试。"""
+    """
+    立即取消尚未进入协程的任务也必须释放维护名额，允许后续重试。
+    """
     from app.runtime.tasks import TaskRegistry
     registry = TaskRegistry()
     service = RecallService(SqliteRecallRepository(tmp_path), _Executor(), registry)
@@ -487,7 +569,9 @@ async def test_maintenance_cancelled_before_first_execution_releases_slot(tmp_pa
 
 @pytest.mark.asyncio
 async def test_archive_failure_does_not_replay_completed_tool(repository):
-    """归档错误不重分类实际工具结果，避免模型误以为未执行而重复副作用。"""
+    """
+    归档错误不重分类实际工具结果，避免模型误以为未执行而重复副作用。
+    """
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
     service = RecallService(repository, _Executor())
@@ -496,7 +580,9 @@ async def test_archive_failure_does_not_replay_completed_tool(repository):
     result = ToolMessage(content='{"success": true}', tool_call_id='c1', name='write_once')
 
     async def handler(_request):
-        """模拟已经完成的真实工具效果。"""
+        """
+        模拟已经完成的真实工具效果。
+        """
         return result
 
     assert await middleware.awrap_tool_call(SimpleNamespace(), handler) is result
@@ -504,7 +590,9 @@ async def test_archive_failure_does_not_replay_completed_tool(repository):
 
 
 def test_confirmed_fts_corruption_detaches_only_derived_indexes(repository):
-    """SQLite 明确定位 FTS 虚表损坏后可重建；原文和新写始终保留。"""
+    """
+    SQLite 明确定位 FTS 虚表损坏后可重建；原文和新写始终保留。
+    """
     _append(repository, 'old', 'needle original')
     with sqlite3.connect(repository.database_path('alice')) as connection:
         connection.execute("UPDATE messages_fts_data SET block=x'00' WHERE id>10")

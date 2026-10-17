@@ -325,13 +325,13 @@ def test_local_api_schema_forbids_flattened_arguments_and_examples_match_contrac
     with pytest.raises(ValueError):
         MoviePilotApiInput.model_validate({"operation_id": "site.rss", "page": 1})
 
-    examples = tool.description.split("Examples (replace sample IDs with IDs from prior results): ")[1]
+    examples = tool.description.split("示例中的标识须替换为此前结果中的实际标识：")[1]
     decoder = json.JSONDecoder()
     operations = []
     for _ in range(3):
         example, end = decoder.raw_decode(examples)
         operations.append(tool.canonical_arguments(example)["operation_id"])
-        examples = examples[end:].lstrip("; ")
+        examples = examples[end:].lstrip("； ")
     assert operations == ["media.detail", "subscription.execution.list", "site.rss"]
 
 

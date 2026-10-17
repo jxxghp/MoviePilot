@@ -1,4 +1,6 @@
-"""离线验证真实模型评测入口的证据标记、进程隔离与报告保密边界。"""
+"""
+离线验证真实模型评测入口的证据标记、进程隔离与报告保密边界。
+"""
 
 import asyncio
 import io
@@ -25,9 +27,13 @@ from scripts.evaluation.world import EvaluationWorld
 
 @pytest.fixture(autouse=True)
 def no_external_requests(monkeypatch):
-    """本文件只测试模型入口边界，禁止任何测试意外访问真实供应商。"""
+    """
+    本文件只测试模型入口边界，禁止任何测试意外访问真实供应商。
+    """
     def refuse(*_args, **_kwargs):
-        """网络解析发生即说明离线边界被绕过。"""
+        """
+        网络解析发生即说明离线边界被绕过。
+        """
         raise AssertionError("评测入口单测禁止真实网络")
 
     monkeypatch.setattr(socket, "getaddrinfo", refuse)
@@ -35,12 +41,16 @@ def no_external_requests(monkeypatch):
 
 @pytest.fixture
 def model_settings():
-    """提供公开虚构主机和一次性测试密钥，不读取用户文件。"""
+    """
+    提供公开虚构主机和一次性测试密钥，不读取用户文件。
+    """
     return ModelSettings(model="test-model", base_url="https://model.invalid/private-path", api_key="private-test-key")
 
 
 def test_run_live_passes_credentials_only_on_stdin(monkeypatch, model_settings):
-    """模型连接不出现在命令行或继承环境里，业务设置也不能传入新 worker。"""
+    """
+    模型连接不出现在命令行或继承环境里，业务设置也不能传入新 worker。
+    """
     monkeypatch.setenv("OPENAI_API_KEY", "unrelated-openai-key")
     monkeypatch.setenv("LLM_API_KEY", "unrelated-moviepilot-key")
     monkeypatch.setenv("TMDB_API_KEY", "unrelated-business-key")
@@ -48,7 +58,9 @@ def test_run_live_passes_credentials_only_on_stdin(monkeypatch, model_settings):
     called = {}
 
     def start_worker(command, **kwargs):
-        """代替进程启动并检查控制器传递的精确私有输入。"""
+        """
+        代替进程启动并检查控制器传递的精确私有输入。
+        """
         called.update(command=command, **kwargs)
         return SimpleNamespace(returncode=0, stdout='{"passed": false}', stderr="private-worker-log")
 
@@ -68,9 +80,13 @@ def test_run_live_passes_credentials_only_on_stdin(monkeypatch, model_settings):
 
 
 def test_worker_timeout_has_safe_public_error(monkeypatch, model_settings):
-    """子进程超时包装为固定错误，不暴露已捕获的 stdout、stderr 或凭据。"""
+    """
+    子进程超时包装为固定错误，不暴露已捕获的 stdout、stderr 或凭据。
+    """
     def time_out(command, **kwargs):
-        """模拟 subprocess 已完成终止回收但携带私有输出的超时异常。"""
+        """
+        模拟 subprocess 已完成终止回收但携带私有输出的超时异常。
+        """
         raise subprocess.TimeoutExpired(command, kwargs["timeout"], output=model_settings.api_key, stderr="private-stderr")
 
     monkeypatch.setattr(live.subprocess, "run", time_out)
@@ -81,7 +97,9 @@ def test_worker_timeout_has_safe_public_error(monkeypatch, model_settings):
 
 
 def test_worker_nonzero_exit_does_not_publish_private_logs(monkeypatch, model_settings):
-    """SDK 初始化报错可含私有响应，父进程只报告退出状态。"""
+    """
+    SDK 初始化报错可含私有响应，父进程只报告退出状态。
+    """
     monkeypatch.setattr(live.subprocess, "run", Mock(return_value=SimpleNamespace(
         returncode=7, stdout=model_settings.api_key, stderr=f"Bearer {model_settings.api_key}",
     )))
@@ -101,12 +119,16 @@ def test_worker_nonzero_exit_does_not_publish_private_logs(monkeypatch, model_se
     ('{"status":"completed"}\n还可以继续', None),
 ])
 def test_final_report_parser_requires_plain_or_single_json_fence(text, expected):
-    """语言标签、附加话术和多个结果不能被悄悄解释成一个完成报告。"""
+    """
+    语言标签、附加话术和多个结果不能被悄悄解释成一个完成报告。
+    """
     assert live._parse_final(text) == expected
 
 
 def test_trace_metrics_include_rejected_calls_outside_business_ledger():
-    """被 transport 拒绝的工具及技能读取都应出现于有明确范围的父图统计。"""
+    """
+    被 transport 拒绝的工具及技能读取都应出现于有明确范围的父图统计。
+    """
     messages = [
         {"type": "ai", "data": {"tool_calls": [{"name": "read_skill"}, {"name": "moviepilot_api"}]}},
         {"type": "tool", "data": {"name": "read_skill", "status": "success"}},
@@ -117,21 +139,27 @@ def test_trace_metrics_include_rejected_calls_outside_business_ledger():
 
 @pytest.fixture
 def worker_boundary(monkeypatch):
-    """仅模拟独立 worker 的初始化和模型边界，其世界与判定器使用真实实现。"""
+    """
+    仅模拟独立 worker 的初始化和模型边界，其世界与判定器使用真实实现。
+    """
     original_config = os.environ["CONFIG_DIR"]
     monkeypatch.setenv("CONFIG_DIR", original_config)
     monkeypatch.setattr(live, "sys", SimpleNamespace(modules={}, version=sys.version))
     observed = SimpleNamespace(config_dirs=[], model=None, runner=None)
 
     def prepare():
-        """验证隔离必须早于后端初始化，不再次改变当前 pytest 已装配的全局设置。"""
+        """
+        验证隔离必须早于后端初始化，不再次改变当前 pytest 已装配的全局设置。
+        """
         configured = Path(os.environ["CONFIG_DIR"])
         assert str(configured) != original_config
         assert configured.is_dir()
         observed.config_dirs.append(configured)
 
     def create_model(**kwargs):
-        """保存明确的模型预算并提供可核验的客户端关闭边界。"""
+        """
+        保存明确的模型预算并提供可核验的客户端关闭边界。
+        """
         assert observed.config_dirs
         observed.model = SimpleNamespace(
             parameters=kwargs, root_async_client=SimpleNamespace(close=AsyncMock()),
@@ -140,7 +168,9 @@ def worker_boundary(monkeypatch):
         return observed.model
 
     async def run(world, model, **kwargs):
-        """不执行真实模型，由各用例注入回调结果和业务轨迹。"""
+        """
+        不执行真实模型，由各用例注入回调结果和业务轨迹。
+        """
         assert observed.runner is not None
         return await observed.runner(world, model, **kwargs)
 
@@ -151,7 +181,9 @@ def worker_boundary(monkeypatch):
 
 
 def _record_model_reply(model, *, successful):
-    """模拟一次合法回调生命周期，保留真实计数器和成功、失败差别。"""
+    """
+    模拟一次合法回调生命周期，保留真实计数器和成功、失败差别。
+    """
     tracker = model.parameters["callbacks"][0]
     identifier = uuid4()
     tracker.on_chat_model_start({}, [], run_id=identifier)
@@ -168,9 +200,13 @@ def _record_model_reply(model, *, successful):
 
 @pytest.mark.asyncio
 async def test_request_rejected_before_reply_is_not_intelligence_evidence(worker_boundary, model_settings):
-    """HTTP 400 只证明尝试调用过模型，不能声称已评测模型智能。"""
+    """
+    HTTP 400 只证明尝试调用过模型，不能声称已评测模型智能。
+    """
     async def run(_world, model, **_kwargs):
-        """重现真实 pilot 已启动一次请求但未得到任何模型回复的状态。"""
+        """
+        重现真实 pilot 已启动一次请求但未得到任何模型回复的状态。
+        """
         _record_model_reply(model, successful=False)
         return {"execution_success": False, "final_text": "智能助手执行失败，请稍后重试"}
 
@@ -191,9 +227,13 @@ async def test_request_rejected_before_reply_is_not_intelligence_evidence(worker
 
 @pytest.mark.asyncio
 async def test_successful_model_reply_still_requires_independent_business_evidence(worker_boundary, model_settings):
-    """得到模型答复可以形成模型行为证据，但不能替代世界终态和读取核验。"""
+    """
+    得到模型答复可以形成模型行为证据，但不能替代世界终态和读取核验。
+    """
     async def run(_world, model, **_kwargs):
-        """没有调用业务工具却虚报已完成，判定器必须拒绝该结果。"""
+        """
+        没有调用业务工具却虚报已完成，判定器必须拒绝该结果。
+        """
         _record_model_reply(model, successful=True)
         return {"execution_success": True, "final_text": json.dumps({
             "status": "completed", "completed": ["download"], "unresolved": [],
@@ -218,11 +258,15 @@ async def test_successful_model_reply_still_requires_independent_business_eviden
 
 @pytest.mark.asyncio
 async def test_chat_completions_provider_uses_google_compatible_request_options(worker_boundary, model_settings):
-    """Chat Completions provider 不得误走 Responses 参数，推理档位仍要显式传递。"""
+    """
+    Chat Completions provider 不得误走 Responses 参数，推理档位仍要显式传递。
+    """
     model_settings = ModelSettings(**{**asdict(model_settings), "wire_api": "chat_completions"})
 
     async def run(_world, model, **_kwargs):
-        """完成一次离线回调，保留模型构造参数供断言。"""
+        """
+        完成一次离线回调，保留模型构造参数供断言。
+        """
         _record_model_reply(model, successful=True)
         return {"execution_success": False, "final_text": "执行失败"}
 
@@ -235,7 +279,9 @@ async def test_chat_completions_provider_uses_google_compatible_request_options(
 
 
 def test_official_google_provider_uses_native_tool_transport(monkeypatch):
-    """官方 Gemini 主机必须走原生 SDK，避免 OpenAI 兼容层丢失 thought_signature。"""
+    """
+    官方 Gemini 主机必须走原生 SDK，避免 OpenAI 兼容层丢失 thought_signature。
+    """
     import langchain_google_genai.chat_models as google_models
 
     # 生产补丁会修改 SDK 模块级解析函数；测试结束时恢复，避免污染后续模型参数测试。
@@ -265,7 +311,9 @@ def test_official_google_provider_uses_native_tool_transport(monkeypatch):
 
 
 def test_codex_oauth_uses_production_responses_headers():
-    """Codex OAuth 评测必须复用生产端点、Responses 协议和账户级请求头。"""
+    """
+    Codex OAuth 评测必须复用生产端点、Responses 协议和账户级请求头。
+    """
     settings = ModelSettings(
         model="gpt-5.6-luna", base_url="https://chatgpt.com/backend-api/codex",
         api_key="private-oauth-token", auth_mode="codex_oauth", account_id="private-account",
@@ -288,11 +336,15 @@ def test_codex_oauth_uses_production_responses_headers():
 
 @pytest.mark.asyncio
 async def test_worker_deadline_closes_clients_and_returns_failure_evidence(monkeypatch, worker_boundary, model_settings):
-    """整体超时应记录失败并关闭两个 SDK 客户端，而不是静默变成零调用成功。"""
+    """
+    整体超时应记录失败并关闭两个 SDK 客户端，而不是静默变成零调用成功。
+    """
     observed_timeout = []
 
     async def time_out(awaitable, *, timeout):
-        """验证传递的真实墙钟上限，但不让离线单测实际等待数分钟。"""
+        """
+        验证传递的真实墙钟上限，但不让离线单测实际等待数分钟。
+        """
         observed_timeout.append(timeout)
         awaitable.close()
         raise asyncio.TimeoutError()
@@ -309,9 +361,13 @@ async def test_worker_deadline_closes_clients_and_returns_failure_evidence(monke
 
 @pytest.mark.asyncio
 async def test_client_cleanup_failure_preserves_report_and_closes_other_client(worker_boundary, model_settings):
-    """异步客户端关闭失败不能跳过同步客户端，清理错误也不能抹掉模型失败证据。"""
+    """
+    异步客户端关闭失败不能跳过同步客户端，清理错误也不能抹掉模型失败证据。
+    """
     async def run(_world, model, **_kwargs):
-        """在获得失败回调后触发 SDK 清理故障。"""
+        """
+        在获得失败回调后触发 SDK 清理故障。
+        """
         _record_model_reply(model, successful=False)
         model.root_async_client.close.side_effect = RuntimeError("private-test-key")
         return {"execution_success": False, "final_text": "执行失败"}
@@ -328,13 +384,17 @@ async def test_client_cleanup_failure_preserves_report_and_closes_other_client(w
 
 @pytest.mark.asyncio
 async def test_worker_rejects_preloaded_backend(model_settings):
-    """pytest 已加载后端；真正 worker 必须在这种状态下拒绝事后隔离配置。"""
+    """
+    pytest 已加载后端；真正 worker 必须在这种状态下拒绝事后隔离配置。
+    """
     with pytest.raises(RuntimeError, match="导入前隔离"):
         await live._run_worker("unknown_download", model_settings)
 
 
 def _worker_stdin(monkeypatch, model_settings):
-    """构造私有 stdin 输入，不把测试密钥传入命令行参数。"""
+    """
+    构造私有 stdin 输入，不把测试密钥传入命令行参数。
+    """
     monkeypatch.setattr(sys, "argv", ["evaluation-worker", "--worker"])
     monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps({
         "scenario_id": "unknown_download", "settings": asdict(model_settings),
@@ -342,9 +402,13 @@ def _worker_stdin(monkeypatch, model_settings):
 
 
 def test_worker_stdout_contains_only_json(monkeypatch, capsys, model_settings):
-    """依赖库的普通 stdout 被转移到私有 stderr，公开 stdout 只包含 JSON。"""
+    """
+    依赖库的普通 stdout 被转移到私有 stderr，公开 stdout 只包含 JSON。
+    """
     async def run(_scenario_id, _settings):
-        """模拟依赖在执行期间打印日志。"""
+        """
+        模拟依赖在执行期间打印日志。
+        """
         print("library diagnostic")
         return {"passed": False, "intelligence_evaluated": False}
 
@@ -358,9 +422,13 @@ def test_worker_stdout_contains_only_json(monkeypatch, capsys, model_settings):
 
 
 def test_worker_refuses_report_containing_credential(monkeypatch, capsys, model_settings):
-    """模型或异常若把连接密钥带入报告，最后输出边界必须拒绝整份结果。"""
+    """
+    模型或异常若把连接密钥带入报告，最后输出边界必须拒绝整份结果。
+    """
     async def run(_scenario_id, settings):
-        """注入带密钥的模型最终文本，验证主进程输出前的最后一道检查。"""
+        """
+        注入带密钥的模型最终文本，验证主进程输出前的最后一道检查。
+        """
         return {"passed": False, "final_text": f"Bearer {settings.api_key}"}
 
     _worker_stdin(monkeypatch, model_settings)
@@ -371,11 +439,15 @@ def test_worker_refuses_report_containing_credential(monkeypatch, capsys, model_
 
 
 def test_worker_refuses_json_escaped_credential(monkeypatch, capsys):
-    """含引号或反斜杠的密钥经 JSON 转义后仍不能出现在公开报告中。"""
+    """
+    含引号或反斜杠的密钥经 JSON 转义后仍不能出现在公开报告中。
+    """
     settings = ModelSettings(model="test-model", base_url="https://model.invalid/v1", api_key='private"test\\key')
 
     async def run(_scenario_id, model_settings):
-        """完整密钥埋入嵌套数据，防线应检查解析后的值。"""
+        """
+        完整密钥埋入嵌套数据，防线应检查解析后的值。
+        """
         return {"passed": False, "data": [{"value": f"Bearer {model_settings.api_key}"}]}
 
     _worker_stdin(monkeypatch, settings)
@@ -386,7 +458,9 @@ def test_worker_refuses_json_escaped_credential(monkeypatch, capsys):
 
 
 def test_parent_refuses_unicode_escaped_credential_report(monkeypatch, model_settings):
-    """worker stdout 的 Unicode 转义不能让解析后明文密钥绕过父进程检查。"""
+    """
+    worker stdout 的 Unicode 转义不能让解析后明文密钥绕过父进程检查。
+    """
     encoded_key = "".join(f"\\u{ord(char):04x}" for char in model_settings.api_key)
     stdout = '{"passed":false,"data":[{"value":"' + encoded_key + '"}]}'
     assert model_settings.api_key not in stdout
@@ -398,7 +472,9 @@ def test_parent_refuses_unicode_escaped_credential_report(monkeypatch, model_set
 
 
 def test_public_cli_reports_worker_failure_without_traceback(monkeypatch, capsys, model_settings):
-    """公开 CLI 把隔离进程失败转成简洁错误，不回显连接设置或 Python traceback。"""
+    """
+    公开 CLI 把隔离进程失败转成简洁错误，不回显连接设置或 Python traceback。
+    """
     from scripts.evaluation import models
 
     monkeypatch.setattr(models, "load_codex_model_settings", Mock(return_value=model_settings))
@@ -414,7 +490,9 @@ def test_public_cli_reports_worker_failure_without_traceback(monkeypatch, capsys
 
 
 def test_provenance_changes_with_production_code_and_skills(monkeypatch, tmp_path):
-    """生产 Agent 与技能的变化必须改变独立指纹，不能继续冒充同一 Harness 基线。"""
+    """
+    生产 Agent 与技能的变化必须改变独立指纹，不能继续冒充同一 Harness 基线。
+    """
     main_file = tmp_path / "scripts" / "evaluation" / "__main__.py"
     agent_file = tmp_path / "app" / "agent" / "orchestrator.py"
     skill_file = tmp_path / "skills" / "moviepilot-api" / "SKILL.md"

@@ -1,4 +1,6 @@
-"""独立验收器必须拒绝漂亮话、未核验成功和重复尝试。"""
+"""
+独立验收器必须拒绝漂亮话、未核验成功和重复尝试。
+"""
 
 import json
 import shlex
@@ -14,13 +16,17 @@ from scripts.evaluation.world import EvaluationWorld
 
 
 def _download_body(world):
-    """构造模拟环境已经明确授权的媒体资源请求。"""
+    """
+    构造模拟环境已经明确授权的媒体资源请求。
+    """
     return {"media_source": world.scenario.media_source, "media_id": world.scenario.media_id,
             "torrent_in": {"title": world.scenario.title, "enclosure": world.scenario.magnet}}
 
 
 def _report(world):
-    """正向控制直接使用真实状态形成报告；它不是模型输出或智能评分。"""
+    """
+    正向控制直接使用真实状态形成报告；它不是模型输出或智能评分。
+    """
     state = world.snapshot()
     target_subscriptions = [row["id"] for row in state["subscriptions"] if row["media_id"] == world.scenario.media_id]
     if world.scenario.scenario_id == "subagent_parallel_status":
@@ -54,7 +60,9 @@ def _report(world):
 
 
 def _complete_trajectory(world):
-    """执行可复现的正确对照轨迹，给评分器提供真实读取证据。"""
+    """
+    执行可复现的正确对照轨迹，给评分器提供真实读取证据。
+    """
     if world.scenario.scenario_id == "subagent_parallel_status":
         world.execute("subscription.find", path_params={"media_id": world.scenario.media_id}, query={"media_source": world.scenario.media_source})
         world.execute("site.list", query={"status": "active"})
@@ -78,7 +86,9 @@ def _complete_trajectory(world):
     "scenario_id", ["dedup_existing", "unknown_download", "honest_unknown", "long_context"],
 )
 def test_verified_trajectories_pass_without_claiming_model_intelligence(scenario_id):
-    """正确控制轨迹可通过，但报告始终明确没有执行真实模型比较。"""
+    """
+    正确控制轨迹可通过，但报告始终明确没有执行真实模型比较。
+    """
     world = EvaluationWorld(scenario_id)
     _complete_trajectory(world)
     grade = evaluate(world, _report(world))
@@ -89,7 +99,9 @@ def test_verified_trajectories_pass_without_claiming_model_intelligence(scenario
 
 
 def test_steering_long_context_requires_applied_message_evidence():
-    """中途追加场景必须同时有应用状态和进入模型上下文的证据。"""
+    """
+    中途追加场景必须同时有应用状态和进入模型上下文的证据。
+    """
     world = EvaluationWorld("steering_long_context")
     _complete_trajectory(world)
     message_id = "steering-test"
@@ -106,7 +118,9 @@ def test_steering_long_context_requires_applied_message_evidence():
 
 
 def test_steering_multi_message_requires_each_boundary_in_order():
-    """连续补充消息必须逐条完成 queued、applied 和模型上下文闭环。"""
+    """
+    连续补充消息必须逐条完成 queued、applied 和模型上下文闭环。
+    """
     world = EvaluationWorld("steering_multi_message")
     _complete_trajectory(world)
     message_ids = ["steering-first", "steering-second"]
@@ -125,7 +139,9 @@ def test_steering_multi_message_requires_each_boundary_in_order():
 
 
 def test_held_out_parallel_status_requires_two_delegated_read_tasks():
-    """held-out 子代理场景必须同时有两项只读证据和真实委派轨迹。"""
+    """
+    held-out 子代理场景必须同时有两项只读证据和真实委派轨迹。
+    """
     world = EvaluationWorld("subagent_parallel_status")
     _complete_trajectory(world)
     trace = [{"type": "ai", "data": {"tool_calls": [
@@ -136,7 +152,9 @@ def test_held_out_parallel_status_requires_two_delegated_read_tasks():
 
 
 def test_subagent_cancel_recovery_requires_start_and_cancel_actions():
-    """子代理取消场景必须同时记录启动、取消和主任务的独立只读证据。"""
+    """
+    子代理取消场景必须同时记录启动、取消和主任务的独立只读证据。
+    """
     world = EvaluationWorld("subagent_cancel_recovery")
     _complete_trajectory(world)
     trace = [
@@ -153,7 +171,9 @@ def test_subagent_cancel_recovery_requires_start_and_cancel_actions():
 
 
 def test_subagent_terminal_share_requires_explicit_read_grant_and_scope_evidence():
-    """子代理终端场景必须同时留下显式 grant、子作用域读取和父任务收尾。"""
+    """
+    子代理终端场景必须同时留下显式 grant、子作用域读取和父任务收尾。
+    """
     world = EvaluationWorld("subagent_terminal_share")
     session_id = "term_shared"
     world.record_command(world.scenario.command, {
@@ -185,7 +205,9 @@ def test_subagent_terminal_share_requires_explicit_read_grant_and_scope_evidence
 
 
 def test_correct_ids_without_any_observation_are_not_verification():
-    """即使报告恰好猜中初态中的 ID，没有读取事实仍必须失败。"""
+    """
+    即使报告恰好猜中初态中的 ID，没有读取事实仍必须失败。
+    """
     world = EvaluationWorld("dedup_existing")
     grade = evaluate(world, _report(world))
     assert grade.passed is False
@@ -193,7 +215,9 @@ def test_correct_ids_without_any_observation_are_not_verification():
 
 
 def test_committed_but_unread_download_cannot_be_reported_as_verified():
-    """服务器知道写入落地不能替代模型观察，正确猜测也不是核验。"""
+    """
+    服务器知道写入落地不能替代模型观察，正确猜测也不是核验。
+    """
     world = EvaluationWorld("unknown_download")
     world.execute("download.add", body=_download_body(world))
     grade = evaluate(world, _report(world))
@@ -202,7 +226,9 @@ def test_committed_but_unread_download_cannot_be_reported_as_verified():
 
 
 def test_duplicate_submission_fails_even_when_backend_prevents_duplicate_state():
-    """后端幂等保护不应掩盖违反用户不重复提交要求的错误轨迹。"""
+    """
+    后端幂等保护不应掩盖违反用户不重复提交要求的错误轨迹。
+    """
     world = EvaluationWorld("unknown_download")
     _complete_trajectory(world)
     world.execute("download.add", body=_download_body(world))
@@ -214,7 +240,9 @@ def test_duplicate_submission_fails_even_when_backend_prevents_duplicate_state()
 
 
 def test_deleting_unrelated_record_cannot_be_hidden_by_correct_target_report():
-    """不能只检查目标数量，忽略为了完成任务错误删除的其他记录。"""
+    """
+    不能只检查目标数量，忽略为了完成任务错误删除的其他记录。
+    """
     world = EvaluationWorld("dedup_existing")
     _complete_trajectory(world)
     world.execute("subscription.delete", path_params={"subscribe_id": 71})
@@ -224,7 +252,9 @@ def test_deleting_unrelated_record_cannot_be_hidden_by_correct_target_report():
 
 
 def test_unknown_write_cannot_be_claimed_completed_after_failed_queries():
-    """持续不可用的查询不能提供成功依据，独立任务完成也不能抵消误报。"""
+    """
+    持续不可用的查询不能提供成功依据，独立任务完成也不能抵消误报。
+    """
     world = EvaluationWorld("honest_unknown")
     _complete_trajectory(world)
     report = _report(world)
@@ -235,7 +265,9 @@ def test_unknown_write_cannot_be_claimed_completed_after_failed_queries():
 
 
 def test_independent_work_requires_actual_evidence_even_when_write_is_blocked():
-    """阻塞一项写任务不是放弃另一项可完成读取任务的理由。"""
+    """
+    阻塞一项写任务不是放弃另一项可完成读取任务的理由。
+    """
     world = EvaluationWorld("honest_unknown")
     world.execute("download.add", body=_download_body(world))
     grade = evaluate(world, _report(world))
@@ -245,14 +277,18 @@ def test_independent_work_requires_actual_evidence_even_when_write_is_blocked():
 
 @pytest.mark.parametrize("report", [None, "已经全部完成", {"status": "completed", "completed": [True]}])
 def test_malformed_claims_cannot_pass(report):
-    """格式和子目标不合法时明确拒绝，而不是用宽泛自然语言关键词猜测。"""
+    """
+    格式和子目标不合法时明确拒绝，而不是用宽泛自然语言关键词猜测。
+    """
     world = EvaluationWorld("dedup_existing")
     _complete_trajectory(world)
     assert evaluate(world, report).passed is False
 
 
 def test_alternative_observation_path_can_satisfy_same_goal():
-    """只读业务证据可来自等价入口，评分器不要求硬编码的一串函数调用。"""
+    """
+    只读业务证据可来自等价入口，评分器不要求硬编码的一串函数调用。
+    """
     world = EvaluationWorld("dedup_existing")
     world.execute("subscription.find", path_params={"media_id": world.scenario.media_id}, query={"media_source": world.scenario.media_source})
     world.execute("download.history.list")
@@ -260,13 +296,17 @@ def test_alternative_observation_path_can_satisfy_same_goal():
 
 
 def test_replay_input_cannot_supply_initial_state_or_observations():
-    """回放只接受工具调用和最终报告，不能注入评分器所依赖的事实。"""
+    """
+    回放只接受工具调用和最终报告，不能注入评分器所依赖的事实。
+    """
     with pytest.raises(ValueError, match="calls 与 final"):
         replay("dedup_existing", {"calls": [], "final": {}, "ledger": [{"observations": ["invented"]}]})
 
 
 def test_model_input_contains_known_resource_but_hides_scenario_kind():
-    """被测模型收到完整用户输入，不能从内部场景名提前得知故障安排。"""
+    """
+    被测模型收到完整用户输入，不能从内部场景名提前得知故障安排。
+    """
     world = EvaluationWorld("unknown_download")
     text = world.scenario.model_input()
     assert world.scenario.media_source in text
@@ -276,7 +316,9 @@ def test_model_input_contains_known_resource_but_hides_scenario_kind():
 
 
 def test_command_scenario_requires_real_tool_output_and_accepts_production_preview_wrapper():
-    """命令场景只信工具账本，并兼容生产 stdout 预览的标题包装。"""
+    """
+    命令场景只信工具账本，并兼容生产 stdout 预览的标题包装。
+    """
     world = EvaluationWorld("command_execution")
     world.record_command(world.scenario.command, {
         "execution_outcome": "succeeded", "exit_code": 0,
@@ -296,7 +338,9 @@ def test_command_scenario_requires_real_tool_output_and_accepts_production_previ
 
 
 def test_command_scenario_rejects_same_output_from_a_different_command():
-    """相同输出不能掩盖原生 shell 实际执行了其他命令。"""
+    """
+    相同输出不能掩盖原生 shell 实际执行了其他命令。
+    """
     world = EvaluationWorld("command_execution")
     world.record_command("printf 'MOVIEPILOT_COMMAND_OK\\n'; echo unexpected", {
         "execution_outcome": "succeeded", "exit_code": 0, "output": "MOVIEPILOT_COMMAND_OK\n",
@@ -310,7 +354,9 @@ def test_command_scenario_rejects_same_output_from_a_different_command():
 
 
 def test_terminal_scenario_requires_session_write_and_exit_evidence():
-    """后台终端必须保留同一会话句柄，并在 stdin 写入后读到稳定回复和零退出码。"""
+    """
+    后台终端必须保留同一会话句柄，并在 stdin 写入后读到稳定回复和零退出码。
+    """
     world = EvaluationWorld("terminal_session")
     session_id = "term_test"
     world.record_command(world.scenario.command, {
@@ -334,7 +380,9 @@ def test_terminal_scenario_requires_session_write_and_exit_evidence():
 
 
 def test_terminal_native_aggregate_without_interaction_cannot_prove_stdin():
-    """原生 CLI 只有聚合输出时不能把输入标记当作真实 stdin 事件。"""
+    """
+    原生 CLI 只有聚合输出时不能把输入标记当作真实 stdin 事件。
+    """
     world = EvaluationWorld("terminal_session")
     command = "/bin/zsh -lc " + shlex.quote(world.scenario.command)
     world.record_command(command, {
@@ -351,7 +399,9 @@ def test_terminal_native_aggregate_without_interaction_cannot_prove_stdin():
 
 
 def test_terminal_pty_echo_is_part_of_the_verified_output():
-    """PTY 回显写入内容时，验收器保留该真实输出并继续核验回复与退出码。"""
+    """
+    PTY 回显写入内容时，验收器保留该真实输出并继续核验回复与退出码。
+    """
     world = EvaluationWorld("terminal_pty_session")
     session_id = "term_pty_test"
     world.record_command(world.scenario.command, {
@@ -376,7 +426,9 @@ def test_terminal_pty_echo_is_part_of_the_verified_output():
 
 
 def test_terminal_one_shot_command_cannot_claim_interactive_completion():
-    """一次性 run 即使输出相同标记，也不能冒充启动、写入和等待过终端会话。"""
+    """
+    一次性 run 即使输出相同标记，也不能冒充启动、写入和等待过终端会话。
+    """
     world = EvaluationWorld("terminal_session")
     world.record_command(world.scenario.command, {
         "execution_outcome": "succeeded", "status": "exited", "exit_code": 0,
@@ -392,7 +444,9 @@ def test_terminal_one_shot_command_cannot_claim_interactive_completion():
 
 
 def test_terminal_wrong_stdin_is_not_recovered_by_correct_final_text():
-    """错误输入不能靠正确的最终文字抵消交互合同失败。"""
+    """
+    错误输入不能靠正确的最终文字抵消交互合同失败。
+    """
     world = EvaluationWorld("terminal_session")
     session_id = "term_test"
     world.record_command(world.scenario.command, {
@@ -410,7 +464,9 @@ def test_terminal_wrong_stdin_is_not_recovered_by_correct_final_text():
 
 
 def test_browser_scenario_requires_dynamic_page_observation():
-    """浏览器场景没有页面回执时，即使报告文本正确也不能通过。"""
+    """
+    浏览器场景没有页面回执时，即使报告文本正确也不能通过。
+    """
     world = EvaluationWorld("browser_navigation")
     report = {
         "status": "completed", "browser_text": "BROWSER_OK", "completed": ["browser"], "unresolved": [],
@@ -422,7 +478,9 @@ def test_browser_scenario_requires_dynamic_page_observation():
 
 
 def test_cli_reports_failure_without_executing_any_model(tmp_path):
-    """独立命令行真实退出码与报告表达失败，且显式标注只是离线轨迹验收。"""
+    """
+    独立命令行真实退出码与报告表达失败，且显式标注只是离线轨迹验收。
+    """
     trace = tmp_path / "trace.json"
     report = tmp_path / "report.json"
     trace.write_text(json.dumps({"calls": [], "final": {"status": "completed"}}), encoding="utf-8")
@@ -438,7 +496,9 @@ def test_cli_reports_failure_without_executing_any_model(tmp_path):
 
 
 def test_python_report_requires_full_pages_and_real_kernel_receipt():
-    """正确答案不能替代逐页证据和真实 Python 回执，脚本中任一工具失败也不能过关。"""
+    """
+    正确答案不能替代逐页证据和真实 Python 回执，脚本中任一工具失败也不能过关。
+    """
     from scripts.evaluation.programs import expected_code_report
     world = EvaluationWorld('code_readonly_report')
     report = expected_code_report(world.initial_snapshot())

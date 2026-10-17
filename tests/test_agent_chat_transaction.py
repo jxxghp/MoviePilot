@@ -1,4 +1,6 @@
-"""Agent 会话删除的请求级事务边界测试。"""
+"""
+Agent 会话删除的请求级事务边界测试。
+"""
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -9,12 +11,16 @@ from app.application.messaging.chat import AgentChatService
 
 
 def _principal() -> SimpleNamespace:
-    """构造拥有目标会话的普通用户。"""
+    """
+    构造拥有目标会话的普通用户。
+    """
     return SimpleNamespace(id=1, name="alice", is_superuser=False)
 
 
 def _chat() -> SimpleNamespace:
-    """构造应用服务投影所需的最小会话记录。"""
+    """
+    构造应用服务投影所需的最小会话记录。
+    """
     return SimpleNamespace(
         id=9,
         session_id="session-9",
@@ -35,7 +41,9 @@ def _chat() -> SimpleNamespace:
 
 @pytest.mark.asyncio
 async def test_delete_stages_then_commits_once() -> None:
-    """有权限的会话删除只能由 Service 在暂存成功后提交一次。"""
+    """
+    有权限的会话删除只能由 Service 在暂存成功后提交一次。
+    """
     calls: list[str] = []
     repository = Mock()
     repository.async_get = AsyncMock(return_value=_chat())
@@ -57,7 +65,9 @@ async def test_delete_stages_then_commits_once() -> None:
 
 @pytest.mark.asyncio
 async def test_delete_rolls_back_flush_failure() -> None:
-    """暂存删除失败必须回滚并传播原异常。"""
+    """
+    暂存删除失败必须回滚并传播原异常。
+    """
     error = RuntimeError("flush failed")
     repository = Mock()
     repository.async_get = AsyncMock(return_value=_chat())
@@ -77,7 +87,9 @@ async def test_delete_rolls_back_flush_failure() -> None:
 
 @pytest.mark.asyncio
 async def test_delete_missing_chat_does_not_open_write_transaction() -> None:
-    """会话不存在时保持旧 False 返回，且不执行 stage 或 commit。"""
+    """
+    会话不存在时保持旧 False 返回，且不执行 stage 或 commit。
+    """
     repository = Mock()
     repository.async_get = AsyncMock(return_value=None)
     repository.async_stage_delete = AsyncMock()
@@ -95,7 +107,9 @@ async def test_delete_missing_chat_does_not_open_write_transaction() -> None:
 
 @pytest.mark.asyncio
 async def test_explicit_delete_revokes_independent_history_before_main_commit() -> None:
-    """跨库删除先收回证据，主库提交失败重试也不能让私人历史继续可读。"""
+    """
+    跨库删除先收回证据，主库提交失败重试也不能让私人历史继续可读。
+    """
     calls: list[str] = []
     repository = Mock()
     repository.async_get = AsyncMock(return_value=_chat())
@@ -115,7 +129,9 @@ async def test_explicit_delete_revokes_independent_history_before_main_commit() 
 
 @pytest.mark.asyncio
 async def test_delete_does_not_claim_success_when_evidence_cannot_be_revoked() -> None:
-    """独立库未删除成功时保留主库入口并报告失败，允许用户重试。"""
+    """
+    独立库未删除成功时保留主库入口并报告失败，允许用户重试。
+    """
     repository = Mock()
     repository.async_get = AsyncMock(return_value=_chat())
     repository.async_stage_delete = AsyncMock()
