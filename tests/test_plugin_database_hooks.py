@@ -15,7 +15,9 @@ import app.db.plugin.registry as registry_module
 import app.runtime.extensions.plugin.datadir as datadir_module
 from app.db.decorators import db_query, db_update
 from app.db.plugin.base import plugin_declarative_base
-from app.sdk.plugin import _PluginBase
+
+# 插件 SDK 在运行时动态导出基类，此导入保留插件公开入口的兼容测试。
+from app.sdk.plugin import _PluginBase  # pylint: disable=no-name-in-module
 
 
 class _SamplePlugin(_PluginBase):

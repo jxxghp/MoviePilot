@@ -6,8 +6,10 @@ from app.foundation.singleton import Singleton
 from app.runtime.events import EventManager, eventmanager
 from app.runtime.extensions.module.manager import ModuleManager
 from app.runtime.extensions.plugin.manager import PluginManager
-from app.sdk.plugin import ModuleManager as SdkModuleManager
-from app.sdk.plugin import PluginManager as SdkPluginManager
+
+# 插件 SDK 动态导出管理器，必须从公开入口导入才能比较单例身份。
+from app.sdk.plugin import ModuleManager as SdkModuleManager  # pylint: disable=no-name-in-module
+from app.sdk.plugin import PluginManager as SdkPluginManager  # pylint: disable=no-name-in-module
 
 
 def _singleton_key(manager_type: type) -> tuple:

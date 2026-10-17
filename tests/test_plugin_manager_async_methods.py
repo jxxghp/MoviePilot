@@ -9,7 +9,9 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.foundation.singleton import Singleton
-from app.sdk.plugin import PluginManager
+
+# 插件 SDK 在运行时动态导出管理器，此导入验证公开入口的异步合同。
+from app.sdk.plugin import PluginManager  # pylint: disable=no-name-in-module
 
 
 @pytest.fixture

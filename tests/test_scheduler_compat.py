@@ -7,7 +7,8 @@ import inspect
 
 import pytest
 
-from app.scheduler import Scheduler, SchedulerChain
+# 调度器旧包根在运行时动态导出类型，此导入用于验证插件兼容入口。
+from app.scheduler import Scheduler, SchedulerChain  # pylint: disable=no-name-in-module
 from app.scheduler.facade import Scheduler as ConcreteScheduler
 
 
