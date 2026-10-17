@@ -19,7 +19,9 @@ PLUGIN_MARKET_REPO_PATTERN = re.compile(
 
 
 def _parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
-    """解析独立构建脚本需要的 Wiki 和配置文件路径。"""
+    """
+    解析独立构建脚本需要的 Wiki 和配置文件路径。
+    """
     parser = argparse.ArgumentParser(description="生成插件市场发版默认值")
     parser.add_argument("--wiki-file", type=Path, required=True)
     parser.add_argument("--config-file", type=Path, required=True)
@@ -27,7 +29,9 @@ def _parse_args(args: Optional[list[str]] = None) -> argparse.Namespace:
 
 
 def _normalize_plugin_market_repo_url(repo_url: str) -> Optional[str]:
-    """规范化 GitHub 插件仓库地址，供清单解析阶段去重。"""
+    """
+    规范化 GitHub 插件仓库地址，供清单解析阶段去重。
+    """
     repo_url = (repo_url or "").strip().rstrip("/").removesuffix(".git")
     if not repo_url:
         return None
@@ -43,7 +47,9 @@ def _normalize_plugin_market_repo_url(repo_url: str) -> Optional[str]:
 
 
 def _extract_plugin_market_repos_from_wiki(markdown: str) -> list[str]:
-    """从唯一且有序的 Wiki 标记区域读取插件仓库清单。"""
+    """
+    从唯一且有序的 Wiki 标记区域读取插件仓库清单。
+    """
     start_count = markdown.count(PLUGIN_MARKET_WIKI_START)
     end_count = markdown.count(PLUGIN_MARKET_WIKI_END)
     start_index = markdown.find(PLUGIN_MARKET_WIKI_START)
@@ -67,7 +73,9 @@ def _extract_plugin_market_repos_from_wiki(markdown: str) -> list[str]:
 
 
 def _find_plugin_market_assignment(source: str) -> tuple[int, int, str]:
-    """定位 ConfigModel 中插件市场默认值对应的源码范围。"""
+    """
+    定位 ConfigModel 中插件市场默认值对应的源码范围。
+    """
     tree = ast.parse(source)
     source_lines = source.splitlines(keepends=True)
     for node in tree.body:
@@ -88,7 +96,9 @@ def _find_plugin_market_assignment(source: str) -> tuple[int, int, str]:
 
 
 def _format_plugin_market_assignment(repos: list[str], indent: str) -> str:
-    """按配置文件现有缩进格式生成插件市场默认值源码。"""
+    """
+    按配置文件现有缩进格式生成插件市场默认值源码。
+    """
     lines = [f"{indent}PLUGIN_MARKET: str = (\n"]
     for index, repo in enumerate(repos):
         suffix = "," if index < len(repos) - 1 else ""
@@ -98,7 +108,9 @@ def _format_plugin_market_assignment(repos: list[str], indent: str) -> str:
 
 
 def _generate_plugin_market_default(wiki_file: Path, config_file: Path) -> list[str]:
-    """读取 Wiki 清单并原地更新配置文件中的插件市场默认值。"""
+    """
+    读取 Wiki 清单并原地更新配置文件中的插件市场默认值。
+    """
     markdown = wiki_file.read_text(encoding="utf-8")
     repos = _extract_plugin_market_repos_from_wiki(markdown)
     if not repos:

@@ -1,4 +1,6 @@
-"""测量 TaskRegistry 跨线程 pending submission 的关停终态与提交吞吐。"""
+"""
+测量 TaskRegistry 跨线程待分发提交的关停终态与提交吞吐。
+"""
 
 from __future__ import annotations
 
@@ -19,12 +21,16 @@ from app.runtime.tasks import TaskRegistry
 
 
 async def _value(value: int) -> int:
-    """返回输入值，提供最小可完成协程。"""
+    """
+    返回输入值，提供最小可完成协程。
+    """
     return value
 
 
 def pending_shutdown_probe() -> dict[str, object]:
-    """在目标 loop 尚未分发 callback 时关闭 Registry，并报告提交终态。"""
+    """
+    在目标事件循环尚未分发回调时关闭任务登记器，并报告提交终态。
+    """
     registry = TaskRegistry()
     target_loop = asyncio.new_event_loop()
     coroutine = _value(1)
@@ -47,13 +53,17 @@ def pending_shutdown_probe() -> dict[str, object]:
 
 
 async def throughput_sample(iterations: int) -> dict[str, float]:
-    """从工作线程提交一组最小协程，并测量提交和完整完成时间。"""
+    """
+    从工作线程提交一组最小协程，并测量提交和完整完成时间。
+    """
     registry = TaskRegistry()
     loop = asyncio.get_running_loop()
     started = time.perf_counter()
 
     def submit_all():
-        """在同一宿主线程连续提交，保持各轮工作负载一致。"""
+        """
+        在同一宿主线程连续提交，保持各轮工作负载一致。
+        """
         return [
             registry.submit_threadsafe(
                 _value(index),
@@ -78,12 +88,16 @@ async def throughput_sample(iterations: int) -> dict[str, float]:
 
 
 async def run_samples(iterations: int, samples: int) -> list[dict[str, float]]:
-    """顺序执行多轮样本，避免并行样本互相争抢事件循环。"""
+    """
+    顺序执行多轮样本，避免并行样本互相争抢事件循环。
+    """
     return [await throughput_sample(iterations) for _ in range(samples)]
 
 
 def parse_args() -> argparse.Namespace:
-    """解析探针负载规模。"""
+    """
+    解析探针负载规模。
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--iterations", type=int, default=2000)
     parser.add_argument("--samples", type=int, default=7)
@@ -91,7 +105,9 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """运行终态探针和吞吐样本并输出 JSON。"""
+    """
+    运行终态探针和吞吐样本并输出 JSON。
+    """
     args = parse_args()
     if args.iterations < 1 or args.samples < 1:
         raise SystemExit("iterations 和 samples 必须大于 0")

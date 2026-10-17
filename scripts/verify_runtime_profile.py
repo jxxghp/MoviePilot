@@ -1,4 +1,6 @@
-"""跨平台 CI 使用的运行依赖 profile 验证入口。"""
+"""
+跨平台 CI 使用的运行依赖配置 验证入口。
+"""
 
 from __future__ import annotations
 
@@ -30,7 +32,9 @@ _UV_PIP_CHECK_SUMMARY_PATTERNS = (
 
 
 def _uv_health_errors(message: str, project_file: Path) -> set[str]:
-    """返回未被项目 uv 排除策略覆盖的依赖健康诊断。"""
+    """
+    返回未被项目 uv 排除策略覆盖的依赖健康诊断。
+    """
     excluded_pairs = runtime_excluded_dependency_pairs(project_file)
     errors: set[str] = set()
     for line in {item.strip() for item in message.splitlines() if item.strip()}:
@@ -55,7 +59,9 @@ def _uv_health_errors(message: str, project_file: Path) -> set[str]:
 
 
 def verify_uv_environment(project_file: Path = Path("pyproject.toml")) -> None:
-    """执行 uv 元数据健康检查，仅接受项目显式声明的排除边。"""
+    """
+    执行 uv 元数据健康检查，仅接受项目显式声明的排除边。
+    """
     uv = shutil.which("uv")
     if not uv:
         raise RuntimeError("未找到 uv 可执行文件")
@@ -81,7 +87,9 @@ def verify_platform_profile(
         expected_system: str,
         expected_machine: str,
 ) -> None:
-    """验证运行平台和解释器 ABI。"""
+    """
+    验证运行平台和解释器 ABI。
+    """
     current_system = platform.system()
     current_machine = platform.machine()
     if current_system != expected_system:
@@ -101,7 +109,9 @@ def verify_platform_profile(
 
 
 def verify_application_lifecycle() -> None:
-    """在隔离配置下运行 FastAPI lifespan 并验证 readiness。"""
+    """
+    在隔离配置下运行 FastAPI lifespan 并验证就绪状态。
+    """
     from app.testing.bootstrap import ensure_sites_stub, isolate_config_dir
 
     isolate_config_dir()
@@ -124,7 +134,9 @@ def main(
         expected_system: str,
         expected_machine: str,
 ) -> None:
-    """验证锁定环境、原生能力和应用生命周期。"""
+    """
+    验证锁定环境、原生能力和应用生命周期。
+    """
     verify_platform_profile(
         expected_profile=expected_profile,
         expected_system=expected_system,

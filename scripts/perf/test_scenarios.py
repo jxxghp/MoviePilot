@@ -1,4 +1,6 @@
-"""PERF Docker harness 场景协议的无 Docker fake 测试。"""
+"""
+PERF Docker 测量工具场景协议的无需 Docker 的替身测试。
+"""
 
 from __future__ import annotations
 
@@ -18,7 +20,9 @@ PERF_DIR = Path(__file__).resolve().parent
 
 
 def load_module(name: str, path: Path):
-    """从脚本路径加载模块，避免要求 scripts 变成运行时 Python package。"""
+    """
+    从脚本路径加载模块，避免要求 scripts 变成运行时 Python 包。
+    """
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -27,7 +31,9 @@ def load_module(name: str, path: Path):
 
 
 def snapshot(xvfb_count: int, xvfb_pss_kib: int = 0) -> dict:
-    """构造只包含验收字段的进程快照。"""
+    """
+    构造只包含验收字段的进程快照。
+    """
     return {
         "processes": {
             "xvfb": {"count": xvfb_count, "pss_kib": xvfb_pss_kib},
@@ -36,7 +42,9 @@ def snapshot(xvfb_count: int, xvfb_pss_kib: int = 0) -> dict:
 
 
 def agent_snapshot(prefix_counts: dict[str, int], xvfb_count: int = 0) -> dict:
-    """构造包含 Agent 模块哨兵的场景边界快照。"""
+    """
+    构造包含 Agent 模块哨兵的场景边界快照。
+    """
     return {
         "engine": {
             "working_set_bytes": 500 * 1024 * 1024,
@@ -59,7 +67,9 @@ def agent_snapshot(prefix_counts: dict[str, int], xvfb_count: int = 0) -> dict:
 
 
 def managed_resource(before_generation: int, after_generation: int) -> dict:
-    """构造 host.display single-flight 观测。"""
+    """
+    构造 host.display 的并发初始化去重观测。
+    """
     observations = []
     if after_generation > before_generation:
         observations = [
@@ -90,34 +100,56 @@ def managed_resource(before_generation: int, after_generation: int) -> dict:
 
 
 class FakePage:
-    """验证本地 data URL 的同步页面替身。"""
+    """
+    验证本地 data URL 的同步页面替身。
+    """
 
     def __init__(self) -> None:
+        """
+        初始化尚未导航的页面地址。
+        """
         self.url = ""
 
     def goto(self, url: str) -> None:
+        """
+        记录目标地址，不执行浏览器导航或网络请求。
+        """
         self.url = url
 
     def title(self) -> str:
+        """
+        确认页面使用本地数据地址后返回固定探针标题。
+        """
         assert self.url.startswith("data:text/html,")
         return "MoviePilot Browser Probe"
 
     def close(self) -> None:
-        """模拟 Playwright page 对称关闭。"""
+        """
+        模拟 Playwright 页面对称关闭。
+        """
 
 
 class FakeContext:
-    """浏览器上下文替身。"""
+    """
+    浏览器上下文替身。
+    """
 
     def new_page(self) -> FakePage:
+        """
+        返回独立的内存页面替身。
+        """
         return FakePage()
 
     def close(self) -> None:
-        """模拟 CloakBrowser context 对称关闭。"""
+        """
+        模拟 CloakBrowser 上下文对称关闭。
+        """
 
 
 def test_default_cli_and_paths_keep_idle_contract(tmp_path: Path) -> None:
-    """未指定 scenario 时保持既有 idle 命令和资源路径。"""
+    """
+    未指定场景时保持既有空载命令和资源路径。
+    """
     harness = load_module("moviepilot_perf_cli", PERF_DIR / "moviepilot_docker_ab.py")
     args = harness.build_parser().parse_args(
         [
@@ -146,7 +178,9 @@ def test_default_cli_and_paths_keep_idle_contract(tmp_path: Path) -> None:
 def test_browser_scenario_uses_isolated_resource_and_result_names(
     tmp_path: Path,
 ) -> None:
-    """不同激活场景不会覆盖 idle 样本或彼此复用可写卷。"""
+    """
+    不同激活场景不会覆盖空载样本或彼此复用可写卷。
+    """
     harness = load_module("moviepilot_perf_paths", PERF_DIR / "moviepilot_docker_ab.py")
     args = argparse.Namespace(
         campaign="fake",
@@ -164,7 +198,9 @@ def test_browser_scenario_uses_isolated_resource_and_result_names(
 
 
 def test_agent_scenarios_are_explicit_and_keep_idle_prefix_contract() -> None:
-    """PERF-003 暴露完整哨兵，并把 Schema 基线排除在归零门禁外。"""
+    """
+    PERF-003 暴露完整哨兵，并把 Schema 基线排除在归零门禁外。
+    """
     harness = load_module(
         "moviepilot_perf_agent_cli",
         PERF_DIR / "moviepilot_docker_ab.py",
@@ -206,7 +242,9 @@ def test_agent_scenarios_are_explicit_and_keep_idle_prefix_contract() -> None:
 def test_non_default_scenario_rejects_before_without_touching_docker(
     scenario: str,
 ) -> None:
-    """旧基线不具备候选公共合同，所有非默认场景只接受 After。"""
+    """
+    旧基线不具备候选公共合同，所有非默认场景只接受 After。
+    """
     harness = load_module(
         "moviepilot_perf_after_only", PERF_DIR / "moviepilot_docker_ab.py"
     )
@@ -217,7 +255,9 @@ def test_non_default_scenario_rejects_before_without_touching_docker(
 
 
 def test_activation_validation_enforces_headless_and_headed_invariants() -> None:
-    """headless 保持无 Xvfb，headed 两调用只能产生一个 Xvfb。"""
+    """
+    无显示模式保持无 Xvfb，有显示模式的两次调用只能产生一个 Xvfb。
+    """
     harness = load_module(
         "moviepilot_perf_validation",
         PERF_DIR / "moviepilot_docker_ab.py",
@@ -287,7 +327,9 @@ def test_activation_validation_enforces_headless_and_headed_invariants() -> None
 
 
 def test_agent_activation_validation_enforces_lazy_boundaries() -> None:
-    """禁用态延迟重 Agent 域，首次目录只允许工具域物化。"""
+    """
+    禁用态延迟重 Agent 域，首次目录只允许工具域物化。
+    """
     harness = load_module(
         "moviepilot_perf_agent_validation",
         PERF_DIR / "moviepilot_docker_ab.py",
@@ -413,7 +455,9 @@ def test_agent_activation_validation_enforces_lazy_boundaries() -> None:
 
 
 def test_sitecustomize_acquires_headed_display_concurrently_in_same_process() -> None:
-    """headed probe 并发走公开 SDK 冷启动，并只保留一个上下文。"""
+    """
+    有显示模式探针并发走公开 SDK 冷启动，并只保留一个上下文。
+    """
     probe = load_module(
         "moviepilot_perf_sitecustomize",
         PERF_DIR / "instrument" / "sitecustomize.py",
@@ -423,12 +467,20 @@ def test_sitecustomize_acquires_headed_display_concurrently_in_same_process() ->
     lock = threading.Lock()
 
     class TrackedContext(FakeContext):
-        """记录并发探针关闭的额外浏览器上下文。"""
+        """
+        记录并发探针关闭的额外浏览器上下文。
+        """
 
         def __init__(self, index: int) -> None:
+            """
+            保存并发启动序号，供关闭记录关联对应上下文。
+            """
             self.index = index
 
         def close(self) -> None:
+            """
+            记录被关闭上下文的序号与当前线程，验证资源在所属线程释放。
+            """
             closed_contexts.append((self.index, threading.get_ident()))
 
     def launcher(*, headless: bool) -> FakeContext:
@@ -455,7 +507,9 @@ def test_sitecustomize_acquires_headed_display_concurrently_in_same_process() ->
 
 
 def test_sitecustomize_headless_uses_one_headless_context() -> None:
-    """headless probe 只启动一个无显示上下文。"""
+    """
+    无显示模式探针只启动一个无显示上下文。
+    """
     probe = load_module(
         "moviepilot_perf_sitecustomize_headless",
         PERF_DIR / "instrument" / "sitecustomize.py",
@@ -474,7 +528,9 @@ def test_sitecustomize_headless_uses_one_headless_context() -> None:
 
 
 def test_sitecustomize_router_probe_generates_complete_openapi_without_http() -> None:
-    """禁用态探针直接读取主进程 app，不发起 HTTP 或外部请求。"""
+    """
+    禁用态探针直接读取主进程应用，不发起 HTTP 或外部请求。
+    """
     probe = load_module(
         "moviepilot_perf_sitecustomize_router",
         PERF_DIR / "instrument" / "sitecustomize.py",
@@ -491,12 +547,17 @@ def test_sitecustomize_router_probe_generates_complete_openapi_without_http() ->
     ]
 
     class FakeApp:
-        """只实现 Router/OpenAPI 探针使用的 FastAPI 合同。"""
+        """
+        只实现 Router/OpenAPI 探针使用的 FastAPI 合同。
+        """
 
         routes = [SimpleNamespace(path=path) for path in required_paths]
 
         @staticmethod
         def openapi() -> dict:
+            """
+            返回包含测试要求路由的固定 OpenAPI 文档，不启动 HTTP 服务。
+            """
             return {
                 "info": {"title": "MoviePilot", "version": "v3"},
                 "paths": {path: {"get": {}} for path in required_paths},
@@ -515,7 +576,9 @@ def test_sitecustomize_router_probe_generates_complete_openapi_without_http() ->
 
 
 def test_sitecustomize_tool_catalog_probe_records_schema_and_revisions() -> None:
-    """首次目录探针保留工具数、Schema 摘要和双 revision。"""
+    """
+    首次目录探针保留工具数、Schema 摘要和双版本标识。
+    """
     probe = load_module(
         "moviepilot_perf_sitecustomize_catalog",
         PERF_DIR / "instrument" / "sitecustomize.py",
@@ -549,12 +612,20 @@ def test_sitecustomize_tool_catalog_probe_records_schema_and_revisions() -> None
     )
 
     class FakeManager:
-        """按真实管理器合同在 list_tools 后发布 catalog。"""
+        """
+        按真实管理器合同在 list_tools 后发布工具目录。
+        """
 
         def __init__(self) -> None:
+            """
+            初始化尚未物化的工具目录。
+            """
             self.catalog = None
 
         def list_tools(self):
+            """
+            发布固定工具目录快照并返回工具定义，模拟首次目录生成。
+            """
             self.catalog = catalog
             return definitions
 
@@ -577,7 +648,9 @@ def test_sitecustomize_tool_catalog_probe_records_schema_and_revisions() -> None
 def test_sitecustomize_agent_scenario_records_before_and_after_observations(
     monkeypatch,
 ) -> None:
-    """Agent 场景在同一目标解释器内记录模块与 materialization 边界。"""
+    """
+    Agent 场景在同一目标解释器内记录模块与物化边界。
+    """
     probe = load_module(
         "moviepilot_perf_sitecustomize_agent",
         PERF_DIR / "instrument" / "sitecustomize.py",
@@ -629,7 +702,9 @@ def test_sitecustomize_agent_scenario_records_before_and_after_observations(
 
 
 def test_sitecustomize_serializes_managed_resource_facade(monkeypatch) -> None:
-    """进程探针按公开只读 facade 记录 generation 与 activate observation。"""
+    """
+    进程探针按公开只读门面记录代次与激活观测。
+    """
     observation = SimpleNamespace(
         capability_id="host.display",
         generation=1,
@@ -677,7 +752,9 @@ def test_sitecustomize_serializes_managed_resource_facade(monkeypatch) -> None:
 
 
 def test_sitecustomize_signal_worker_publishes_atomic_marker(tmp_path: Path) -> None:
-    """信号回调只调度目标进程工作线程，并发布带 PID 的完成 marker。"""
+    """
+    信号回调只调度目标进程工作线程，并发布带 PID 的完成标记。
+    """
     probe = load_module(
         "moviepilot_perf_sitecustomize_marker",
         PERF_DIR / "instrument" / "sitecustomize.py",
@@ -703,7 +780,9 @@ def test_sitecustomize_signal_worker_publishes_atomic_marker(tmp_path: Path) -> 
 
 
 def test_sitecustomize_signal_worker_dispatches_agent_scenario(tmp_path: Path) -> None:
-    """SIGUSR2 worker 对 Agent 场景也在当前 PID 发布完整 marker。"""
+    """
+    SIGUSR2 工作线程对 Agent 场景也在当前 PID 发布完整标记。
+    """
     probe = load_module(
         "moviepilot_perf_sitecustomize_agent_marker",
         PERF_DIR / "instrument" / "sitecustomize.py",
@@ -725,7 +804,9 @@ def test_sitecustomize_signal_worker_dispatches_agent_scenario(tmp_path: Path) -
 
 
 def test_markdown_reports_activation_and_keeps_scenario_medians_separate() -> None:
-    """非默认场景报告包含激活证据，并按场景隔离中位数。"""
+    """
+    非默认场景报告包含激活证据，并按场景隔离中位数。
+    """
     harness = load_module(
         "moviepilot_perf_report", PERF_DIR / "moviepilot_docker_ab.py"
     )
@@ -798,7 +879,9 @@ def test_markdown_reports_activation_and_keeps_scenario_medians_separate() -> No
 
 
 def test_markdown_reports_agent_observation_revision_and_sentinel() -> None:
-    """Agent 场景报告展示物化边界、revision 与定时哨兵峰值。"""
+    """
+    Agent 场景报告展示物化边界、版本标识与定时哨兵峰值。
+    """
     harness = load_module(
         "moviepilot_perf_agent_report",
         PERF_DIR / "moviepilot_docker_ab.py",

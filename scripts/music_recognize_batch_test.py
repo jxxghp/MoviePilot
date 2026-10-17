@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""多站点音乐种子批量识别测试工具。
+"""
+多站点音乐种子批量识别测试工具。
 
 用途：
 1. fetch  - 用生产数据库中的站点 Cookie 抓取多个站点音乐分区种子标题
@@ -9,7 +10,7 @@
 约束：
 - 生产库仅以只读 URI 模式打开，不做任何写入
 - 识别仅调用 MusicBrainz 公共 API，遵守模块内置限流与退避重试
-- 抓取仅请求各站点音乐分区浏览页若干页，对站点无压力
+- 抓取仅请求各站点音乐分区浏览页若干页，控制抓取数量，不代表对站点完全没有负载
 
 用法：
     .venv/bin/python scripts/music_recognize_batch_test.py --fetch          # 抓取并测试
@@ -69,7 +70,9 @@ SITES = [
 
 
 def load_site_credentials(domains: list[str], config_dir: Optional[Path] = None) -> dict[str, dict]:
-    """只读取得 Cookie 与 UA；显式配置目录支持当前 PostgreSQL，旧 SQLite 路径仍兼容。"""
+    """
+    只读取得 Cookie 与 UA；显式配置目录支持当前 PostgreSQL，旧 SQLite 路径仍兼容。
+    """
     from app.domain.site import extract_domain
 
     config = dotenv_values(config_dir / "app.env") if config_dir else {}
@@ -95,7 +98,9 @@ def load_site_credentials(domains: list[str], config_dir: Optional[Path] = None)
 
 
 def load_postgresql_credentials(domains: list[str], config: dict) -> dict[str, dict]:
-    """连接时强制只读事务；仅在内存中持有站点认证材料，不输出连接串或密码。"""
+    """
+    连接时强制只读事务；仅在内存中持有站点认证材料，不输出连接串或密码。
+    """
     import psycopg2
 
     from app.domain.site import extract_domain
@@ -122,7 +127,8 @@ def load_postgresql_credentials(domains: list[str], config: dict) -> dict[str, d
 
 
 def build_indexer(site: dict, credential: dict) -> dict:
-    """加载站点索引配置并注入凭据，补充无关键词浏览所需的 browse 配置。
+    """
+    加载站点索引配置并注入凭据，补充无关键词浏览所需的 browse 配置。
 
     索引 yml 没有 browse 节，这里按站点音乐分区构造浏览路径，
     列表与字段解析复用 yml 中 torrents 节的现有选择器，不改动配置文件。
@@ -138,7 +144,9 @@ def build_indexer(site: dict, credential: dict) -> dict:
 
 
 def fetch_site_titles(site: dict, indexer: dict, max_pages: int) -> list[tuple[str, str]]:
-    """翻页抓取单个站点音乐分区种子标题，按标题去重并保留出现顺序。"""
+    """
+    翻页抓取单个站点音乐分区种子标题，按标题去重并保留出现顺序。
+    """
     from app.modules.indexer.spider import SiteSpider
     from app.schemas.types import MediaType
 
@@ -166,7 +174,9 @@ def fetch_site_titles(site: dict, indexer: dict, max_pages: int) -> list[tuple[s
 
 def fetch_titles(site_keys: list[str], max_pages: int, *, config_dir: Optional[Path] = None,
                  samples_per_site: int = 30) -> list[tuple[str, str, str]]:
-    """按配置抓取多个站点音乐分区标题，返回 (站点名, 标题, 副标题) 列表。"""
+    """
+    按配置抓取多个站点音乐分区标题，返回 (站点名, 标题, 副标题) 列表。
+    """
     sites = [dict(site, limit=samples_per_site) for site in SITES if not site_keys or site["key"] in site_keys]
     unknown = set(site_keys) - {site["key"] for site in sites}
     if unknown:
@@ -192,7 +202,9 @@ def fetch_titles(site_keys: list[str], max_pages: int, *, config_dir: Optional[P
 
 
 def recognize_one(module, title: str, description: str = "", music_type: str | None = None) -> dict:
-    """复用生产模块的完整识别入口；没有远端 ID 的展示兜底不能计为命中。"""
+    """
+    复用生产模块的完整识别入口；没有远端 ID 的展示兜底不能计为命中。
+    """
     from app.domain.meta.metamusic import MetaMusic
     from app.schemas.types import MediaSource, MediaType
 
@@ -221,13 +233,16 @@ def recognize_one(module, title: str, description: str = "", music_type: str | N
             })
         else:
             row["status"] = "未命中" if meta.title else "解析失败"
+    # 单条识别失败保留为报告记录，避免中断其他站点和标题的采样。
     except Exception as err:  # pylint: disable=broad-exception-caught
         row.update({"status": "异常", "matched_title": type(err).__name__})
     return row
 
 
 def run_batch(entries: list[tuple[str, str, str]], music_type: str | None = None) -> list[dict]:
-    """批量执行识别并写出 CSV 报告，打印命中率汇总。"""
+    """
+    批量执行识别并写出 CSV 报告，打印命中率汇总。
+    """
     from app.modules.musicbrainz import MusicBrainzModule
 
     module = MusicBrainzModule()
@@ -268,7 +283,9 @@ def run_batch(entries: list[tuple[str, str, str]], music_type: str | None = None
 
 
 def read_titles_file() -> list[tuple[str, str, str]]:
-    """读取 TSV 主副标题，兼容历史二列 TSV 和纯标题文件。"""
+    """
+    读取 TSV 主副标题，兼容历史二列 TSV 和纯标题文件。
+    """
     entries: list[tuple[str, str, str]] = []
     with TITLES_FILE.open(encoding="utf-8", newline="") as stream:
         for fields in csv.reader(stream, delimiter="\t"):
@@ -282,7 +299,9 @@ def read_titles_file() -> list[tuple[str, str, str]]:
 
 
 def main() -> None:
-    """在独立配置目录执行采样或重测，禁止识别缓存写入生产配置。"""
+    """
+    在独立配置目录执行采样或重测，禁止识别缓存写入生产配置。
+    """
     parser = argparse.ArgumentParser(description="多站点音乐种子批量识别测试")
     parser.add_argument("--fetch", action="store_true", help="重新抓取种子标题（默认复用已保存列表）")
     parser.add_argument("--sites", default="", help="指定站点 key 逗号分隔，缺省抓取全部配置站点")

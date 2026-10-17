@@ -1,4 +1,6 @@
-"""对同一版本的标准与 free-threaded MoviePilot 镜像执行本地 A/B 验收。"""
+"""
+对同一版本的标准与自由线程 MoviePilot 镜像执行本地 A/B 验收。
+"""
 
 from __future__ import annotations
 
@@ -18,16 +20,24 @@ from typing import Any, Optional
 
 try:
     import docker
-except ImportError:  # pragma: no cover - 保留无 Docker SDK 环境下的 --help
+# 保留无 Docker SDK 环境下的 --help。
+except ImportError:  # pragma: no cover
     docker = None
 
 
+# 第 2 版报告同时包含预检、启动、热点和数据库证据。
 SCHEMA_VERSION = 2
+# 所有采样契约和性能阈值均满足时的退出状态。
 EXIT_PASS = 0
+# 样本有效但性能指标越过回退阈值时的退出状态。
 EXIT_REGRESSION = 1
+# 输入、制品或样本契约不成立时的退出状态，不能解释为性能回退。
 EXIT_INVALID = 2
+# 固定随机种子使两种解释器使用完全相同的标题序列。
 FIXTURE_SEED = 314159
+# 固定样本的已审查摘要，防止输入漂移后继续沿用旧对照。
 EXPECTED_FIXTURE_SHA256 = "2560135ffe9501b4d1230c973da237143c94c32d623153c2b4dabcefd1d055a1"
+# 三轮交替采样顺序，降低先后执行造成的系统性偏差。
 SAMPLE_ORDER = (
     ("v3", 1),
     ("v3t", 1),
@@ -36,6 +46,7 @@ SAMPLE_ORDER = (
     ("v3", 3),
     ("v3t", 3),
 )
+# 两种镜像都必须能导入的原生能力，用于拒绝缺依赖或静默回退的样本。
 COMMON_PREFLIGHT_IMPORTS = frozenset({
     "asyncpg",
     "bcrypt",
@@ -53,6 +64,7 @@ COMMON_PREFLIGHT_IMPORTS = frozenset({
     "site-resource",
     "zstandard",
 })
+# 两种解释器使用不同 PostgreSQL 驱动，按各自运行配置核验。
 PROFILE_PREFLIGHT_IMPORTS = {
     "v3": frozenset({"psycopg2-binary"}),
     "v3t": frozenset({"psycopg"}),
@@ -63,6 +75,7 @@ REQUIRED_API_ENDPOINTS = (
     "subscribe_list",
     "system_env",
 )
+# 使用固定实验室凭据并关闭外部服务入口，不读取用户配置。
 LAB_ENVIRONMENT = {
     "TZ": "Asia/Shanghai",
     "PUID": "0",
@@ -103,16 +116,22 @@ LAB_ENVIRONMENT = {
 
 
 class HarnessInvalid(RuntimeError):
-    """表示输入、制品或采样合同不成立，结果不能用于性能判断。"""
+    """
+    表示输入、制品或采样合同不成立，结果不能用于性能判断。
+    """
 
 
 def utc_now() -> str:
-    """返回 JSON 使用的 UTC 时间。"""
+    """
+    返回 JSON 使用的 UTC 时间。
+    """
     return datetime.now(timezone.utc).isoformat()
 
 
 def build_fixture(seed: int = FIXTURE_SEED) -> list[str]:
-    """生成稳定且不含用户数据的媒体标题 fixture。"""
+    """
+    生成稳定且不含用户数据的媒体标题样本。
+    """
     randomizer = random.Random(seed)
     names = ("流浪地球", "繁花", "三体", "庆余年", "长安十二时辰", "琅琊榜")
     sources = ("WEB-DL", "BluRay", "HDTV")
@@ -136,23 +155,30 @@ def build_fixture(seed: int = FIXTURE_SEED) -> list[str]:
 
 
 def canonical_json(value: Any) -> str:
-    """返回跨进程稳定的紧凑 JSON。"""
+    """
+    返回跨进程稳定的紧凑 JSON。
+    """
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
 def fixture_hash(fixture: list[str]) -> str:
-    """计算 fixture 内容身份。"""
+    """
+    计算固定样本内容身份。
+    """
     return hashlib.sha256(canonical_json(fixture).encode("utf-8")).hexdigest()
 
 
 FIXTURE = build_fixture()
 FIXTURE_SHA256 = fixture_hash(FIXTURE)
-if FIXTURE_SHA256 != EXPECTED_FIXTURE_SHA256:  # pragma: no cover - import 期固定合同
+# 导入期固定合同。
+if FIXTURE_SHA256 != EXPECTED_FIXTURE_SHA256:  # pragma: no cover
     raise RuntimeError("free-threaded A/B fixture 内容发生未审计变化")
 
 
 def normalize_campaign(value: str) -> str:
-    """限制 campaign，使本地结果和 Docker 资源名称可安全复用。"""
+    """
+    限制实验标识，使本地结果和 Docker 资源名称可安全复用。
+    """
     normalized = value.strip().lower()
     if not re.fullmatch(r"[a-z0-9][a-z0-9_.-]{0,39}", normalized):
         raise argparse.ArgumentTypeError(
@@ -162,7 +188,9 @@ def normalize_campaign(value: str) -> str:
 
 
 def immutable_image(value: str) -> str:
-    """只接受带完整 sha256 digest 的镜像引用。"""
+    """
+    只接受带完整 SHA256 摘要的镜像引用。
+    """
     reference = value.strip()
     if not re.fullmatch(r"[^\s@]+@sha256:[0-9a-f]{64}", reference):
         raise argparse.ArgumentTypeError("镜像必须使用 repository@sha256:<64 hex> 不可变引用")
@@ -170,14 +198,18 @@ def immutable_image(value: str) -> str:
 
 
 def assert_expected_repository(reference: str, expected: str) -> None:
-    """防止标准与 free-threaded 镜像参数传反或使用旧命名。"""
+    """
+    防止标准与自由线程镜像参数传反或使用旧命名。
+    """
     repository = reference.split("@", 1)[0].rsplit("/", 1)[-1].split(":", 1)[0].lower()
     if repository != expected:
         raise HarnessInvalid(f"{reference} 的仓库名必须为 {expected}")
 
 
 def parse_workers(value: str) -> tuple[int, ...]:
-    """解析并发线程档位。"""
+    """
+    解析并发线程档位。
+    """
     try:
         workers = tuple(dict.fromkeys(int(item.strip()) for item in value.split(",")))
     except ValueError as error:
@@ -188,7 +220,9 @@ def parse_workers(value: str) -> tuple[int, ...]:
 
 
 def atomic_write_json(path: Path, payload: Any) -> None:
-    """原子写入 JSON，避免长采样中断留下半个文档。"""
+    """
+    原子写入 JSON，避免长采样中断留下不完整文档。
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(f"{path.suffix}.tmp")
     temporary.write_text(
@@ -199,7 +233,9 @@ def atomic_write_json(path: Path, payload: Any) -> None:
 
 
 def require_docker_client():
-    """连接本机 Docker Engine。"""
+    """
+    连接本机 Docker Engine。
+    """
     if docker is None:
         raise HarnessInvalid("缺少 docker Python SDK，请使用 MoviePilot 工作区环境执行")
     try:
@@ -232,7 +268,9 @@ def require_docker_client():
 
 
 def image_identity(client, reference: str, pull: bool) -> dict[str, Any]:
-    """解析镜像本地身份与发布标签，不把可变 tag 当成事实源。"""
+    """
+    解析镜像本地身份与发布标签，不把可变标签当成事实源。
+    """
     runtime_reference = reference
     try:
         if pull:
@@ -271,7 +309,7 @@ def image_identity(client, reference: str, pull: bool) -> dict[str, Any]:
     }
 
 
-PREFLIGHT_SCRIPT = r"""
+PREFLIGHT_SCRIPT = r'''
 import hashlib
 import importlib
 import importlib.metadata
@@ -283,12 +321,18 @@ import sys
 import sysconfig
 
 def version(name):
+    """
+    读取已安装发行版版本；未安装时返回 None。
+    """
     try:
         return importlib.metadata.version(name)
     except importlib.metadata.PackageNotFoundError:
         return None
 
 def canonical_name(distribution):
+    """
+    按探针口径归一发行版名称，供跨镜像包列表比较。
+    """
     return (distribution.metadata.get("Name") or "").strip().lower().replace("_", "-")
 
 packages = sorted(
@@ -319,6 +363,11 @@ native_distributions.sort(key=lambda item: (item["name"], item["version"]))
 
 imports = {}
 def probe(name, module_name):
+    """
+    尝试导入原生能力，并记录导入前后的 GIL 状态与错误。
+
+    :return: 成功导入的模块；失败时返回 None，同时保留诊断事实
+    """
     before = sys._is_gil_enabled()
     try:
         module = importlib.import_module(module_name)
@@ -435,10 +484,10 @@ print(json.dumps({
     },
     "gil_enabled_after_imports": sys._is_gil_enabled(),
 }, sort_keys=True))
-"""
+'''
 
 
-HOTSPOT_SCRIPT = r"""
+HOTSPOT_SCRIPT = r'''
 import concurrent.futures
 import hashlib
 import json
@@ -464,11 +513,17 @@ from app.domain.metainfo import MetaInfo
 from app.runtime.config import settings
 
 def digest_rows(rows):
+    """
+    对有序解析结果计算稳定摘要，验证多轮执行语义一致。
+    """
     return hashlib.sha256(
         json.dumps(rows, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
 
 def run_application(accelerator):
+    """
+    切换识别加速器并测量固定输入的生产识别入口，返回吞吐与结果摘要。
+    """
     configure_recognition_runtime(
         media_extensions_provider=lambda: (),
         audio_extensions_provider=lambda: (),
@@ -499,6 +554,9 @@ sample_words = moviepilot_rust.jieba_cut("MoviePilot中文分词性能验证", h
 assert sample_words
 
 def parse(index):
+    """
+    循环选取固定标题，通过 Rust 解析后提取稳定字段。
+    """
     result = moviepilot_rust.parse_metainfo_fast(fixture[index % len(fixture)], "", {})
     return (result.get("name"), result.get("begin_season"), result.get("begin_episode"), result.get("resource_pix"))
 
@@ -518,6 +576,9 @@ for worker in workers:
 from app.foundation.text import contains_chinese, remove_punctuation
 
 def python_cpu(index):
+    """
+    对固定标题执行文本清理和重复字符计算，构造可比较的纯 Python 负载。
+    """
     value = fixture[index % len(fixture)]
     cleaned = remove_punctuation(value, replacement=" ", allow_space=True)
     score = 0
@@ -547,7 +608,7 @@ print(json.dumps({
     "jieba_cut": {"words": sample_words, "available": True},
     "gil_enabled_after_hotspots": sys._is_gil_enabled(),
 }, ensure_ascii=False, sort_keys=True))
-"""
+'''
 
 
 POSTGRESQL_SCRIPT = r"""
@@ -561,7 +622,7 @@ print(json.dumps({"driver": driver, "scheme": scheme}, sort_keys=True))
 """
 
 
-SQLITE_SCRIPT = r"""
+SQLITE_SCRIPT = r'''
 import asyncio
 import hashlib
 import json
@@ -597,6 +658,9 @@ sync_seconds = time.perf_counter() - started
 connection.close()
 
 async def run_async():
+    """
+    使用异步 SQLite 连接读取固定序列，返回有序结果与耗时秒数。
+    """
     values = []
     async with aiosqlite.connect(path) as database:
         started_at = time.perf_counter()
@@ -611,6 +675,9 @@ async_values, async_seconds = asyncio.run(run_async())
 os.unlink(path)
 
 def checksum(values):
+    """
+    对有序查询结果计算摘要，以核对同步和异步读取结果一致。
+    """
     return hashlib.sha256(json.dumps(values, sort_keys=True).encode()).hexdigest()
 
 print(json.dumps({
@@ -628,10 +695,10 @@ print(json.dumps({
         "checksum": checksum(async_values),
     },
 }, sort_keys=True))
-"""
+'''
 
 
-API_SCRIPT = r"""
+API_SCRIPT = r'''
 import hashlib
 import json
 import os
@@ -649,6 +716,9 @@ endpoints = {
 }
 
 def percentile(values, fraction):
+    """
+    按当前探针的排序下标规则读取分位值；输入必须非空。
+    """
     ordered = sorted(values)
     index = max(0, min(len(ordered) - 1, int(len(ordered) * fraction + 0.999999) - 1))
     return ordered[index]
@@ -682,7 +752,7 @@ for name, path in endpoints.items():
         }
 
 print(json.dumps(results, sort_keys=True))
-"""
+'''
 
 
 def run_json_command(
@@ -692,7 +762,9 @@ def run_json_command(
     *,
     environment: Optional[dict[str, str]] = None,
 ) -> dict[str, Any]:
-    """在无网络临时容器中执行 JSON 探针。"""
+    """
+    在无网络临时容器中执行 JSON 探针。
+    """
     try:
         output = client.containers.run(
             image,
@@ -716,7 +788,9 @@ def exec_json_in_container(
     *,
     environment: Optional[dict[str, str]] = None,
 ) -> dict[str, Any]:
-    """在已经启动的候选容器中执行 JSON 探针。"""
+    """
+    在已经启动的候选容器中执行 JSON 探针。
+    """
     command = ["/usr/bin/env"]
     command.extend(f"{key}={value}" for key, value in (environment or {}).items())
     command.extend(["/opt/venv/bin/python", "-c", script])
@@ -728,10 +802,13 @@ def exec_json_in_container(
 
 
 def capture_engine_stats(container) -> dict[str, int]:
-    """读取容器 cgroup 内存与网络累计值。"""
+    """
+    读取容器 cgroup 内存与网络累计值。
+    """
     try:
         stats = container.stats(stream=False, one_shot=True)
-    except TypeError:  # pragma: no cover - 旧 Docker SDK 兼容
+    # 旧 Docker SDK 兼容。
+    except TypeError:  # pragma: no cover
         stats = container.stats(stream=False)
     memory = stats.get("memory_stats") or {}
     detail = memory.get("stats") or {}
@@ -748,7 +825,9 @@ def capture_engine_stats(container) -> dict[str, int]:
 
 
 def capture_processes(container) -> dict[str, Any]:
-    """读取容器进程的 RSS、PSS、USS 与线程数。"""
+    """
+    读取容器进程的 RSS、PSS、USS 与线程数。
+    """
     result = container.exec_run(["/bin/bash", "/app/scripts/perf/instrument/collect_proc.sh"])
     output = result.output.decode("utf-8", errors="replace")
     if result.exit_code != 0:
@@ -792,7 +871,9 @@ def capture_processes(container) -> dict[str, Any]:
 
 
 def capture_runtime_measurement(container) -> dict[str, Any]:
-    """采集同一时点的 cgroup 与进程内存。"""
+    """
+    采集同一时点的 cgroup 与进程内存。
+    """
     return {
         "captured_at": utc_now(),
         "engine": capture_engine_stats(container),
@@ -801,7 +882,9 @@ def capture_runtime_measurement(container) -> dict[str, Any]:
 
 
 def validate_preflight(variant: str, payload: dict[str, Any]) -> list[str]:
-    """验证解释器、GIL、Rust 与互斥原生依赖合同。"""
+    """
+    验证解释器、GIL、Rust 与互斥原生依赖合同。
+    """
     errors = []
     packages = payload.get("packages") or {}
     native = payload.get("native") or {}
@@ -912,7 +995,9 @@ def validate_preflight(variant: str, payload: dict[str, Any]) -> list[str]:
 
 
 def startup_sample(client, args: argparse.Namespace, image: str, variant: str, index: int) -> dict[str, Any]:
-    """用空白配置卷完成 readiness、API 与资源采样。"""
+    """
+    用空白配置卷完成就绪状态、API 与资源采样。
+    """
     name = f"mpftab-{args.campaign}-{variant}-{index}"
     volume_name = f"{name}-config"
     labels = {"org.moviepilot.perf.campaign": args.campaign, "org.moviepilot.perf.role": "ft-ab"}
@@ -992,7 +1077,9 @@ def startup_sample(client, args: argparse.Namespace, image: str, variant: str, i
 
 
 def execute_sample(client, args: argparse.Namespace, variant: str, index: int, image: str) -> dict[str, Any]:
-    """执行单个启动、热点与 PostgreSQL 驱动样本。"""
+    """
+    执行单个启动、热点与 PostgreSQL 驱动样本。
+    """
     hotspot_environment = {
         "MP_FT_FIXTURE": canonical_json(FIXTURE),
         "MP_FT_FIXTURE_SHA256": FIXTURE_SHA256,
@@ -1032,7 +1119,9 @@ def execute_sample(client, args: argparse.Namespace, variant: str, index: int, i
 
 
 def median_metric(samples: list[dict[str, Any]], variant: str, path: tuple[str, ...]) -> float:
-    """读取某一变体的数值路径并返回中位数。"""
+    """
+    读取某一变体的数值路径并返回中位数。
+    """
     values = []
     for sample in samples:
         if sample["variant"] != variant:
@@ -1047,7 +1136,9 @@ def median_metric(samples: list[dict[str, Any]], variant: str, path: tuple[str, 
 
 
 def evaluate_samples(result: dict[str, Any]) -> tuple[dict[str, Any], list[str], list[str]]:
-    """验证样本语义并根据显式阈值区分 pass 与 regression。"""
+    """
+    验证样本语义并根据显式阈值区分通过与性能回退。
+    """
     samples = result["samples"]
     invalid = []
     regressions = []
@@ -1290,7 +1381,9 @@ def evaluate_samples(result: dict[str, Any]) -> tuple[dict[str, Any], list[str],
 
 
 def build_markdown(result: dict[str, Any]) -> str:
-    """生成不包含本机路径、凭据或用户数据的审核报告。"""
+    """
+    生成不包含本机路径、凭据或用户数据的审核报告。
+    """
     lines = [
         "# MoviePilot free-threaded A/B",
         "",
@@ -1393,12 +1486,16 @@ def build_markdown(result: dict[str, Any]) -> str:
 
 
 def campaign_directory(args: argparse.Namespace) -> Path:
-    """返回 campaign 输出目录。"""
+    """
+    返回实验输出目录。
+    """
     return args.output_dir.expanduser().resolve() / args.campaign
 
 
 def write_results(args: argparse.Namespace, result: dict[str, Any]) -> None:
-    """写入聚合 JSON、Markdown 与单样本 JSON。"""
+    """
+    写入聚合 JSON、Markdown 与单样本 JSON。
+    """
     output = campaign_directory(args)
     for sample in result.get("samples") or []:
         atomic_write_json(
@@ -1412,7 +1509,9 @@ def write_results(args: argparse.Namespace, result: dict[str, Any]) -> None:
 
 
 def execute_campaign(args: argparse.Namespace) -> dict[str, Any]:
-    """执行完整 preflight 和三组平衡 A/B，并始终生成可判定结果。"""
+    """
+    执行完整预检和三组平衡 A/B，并始终生成可判定结果。
+    """
     result: dict[str, Any] = {
         "schema_version": SCHEMA_VERSION,
         "campaign": args.campaign,
@@ -1488,7 +1587,8 @@ def execute_campaign(args: argparse.Namespace) -> dict[str, Any]:
         if str(error) not in result["invalid_reasons"]:
             result["invalid_reasons"].append(str(error))
         result["verdict"] = "invalid"
-    except Exception as error:  # pragma: no cover - Docker 实机异常兜底
+    # Docker 实机异常兜底。
+    except Exception as error:  # pragma: no cover
         result["invalid_reasons"].append(
             f"未预期的 harness 失败：{type(error).__name__}: {error}"
         )
@@ -1499,7 +1599,9 @@ def execute_campaign(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """构建本地 A/B 命令行。"""
+    """
+    构建本地 A/B 命令行。
+    """
     parser = argparse.ArgumentParser(
         description="MoviePilot moviepilot-v3 vs moviepilot-v3t local A/B harness"
     )
@@ -1533,7 +1635,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    """执行 harness，并以 0/1/2 区分 pass/regression/invalid。"""
+    """
+    执行测量工具，并以 0/1/2 区分通过、性能回退和样本无效。
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
     if (
