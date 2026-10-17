@@ -821,17 +821,6 @@
     "no-untyped-def": 1,
     "type-arg": 1
   },
-  "app/modules/emby/emby.py": {
-    "arg-type": 9,
-    "assignment": 2,
-    "dict-item": 1,
-    "no-any-return": 9,
-    "no-untyped-call": 2,
-    "no-untyped-def": 4,
-    "type-arg": 6,
-    "union-attr": 1,
-    "var-annotated": 3
-  },
   "app/modules/fanart/__init__.py": {
     "misc": 2,
     "no-any-return": 1,

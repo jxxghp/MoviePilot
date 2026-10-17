@@ -25,6 +25,24 @@ from app.schemas.mediaserver import WebhookEventInfo as _SchemaWebhookEventInfo
 from app.schemas.types import MediaSource, MediaType
 
 
+def _optional_text(value: object) -> Optional[str]:
+    """
+    读取服务端可空文本字段，拒绝非文本值而不隐式转换标识或路径。
+    """
+    if value is None or isinstance(value, str):
+        return value
+    raise TypeError("Emby 文本字段格式错误")
+
+
+def _user_id(value: object) -> Optional[Union[str, int]]:
+    """
+    读取兼容字符串或整数的服务端用户标识，保留空值。
+    """
+    if value is None or isinstance(value, (str, int)):
+        return value
+    raise TypeError("Emby 用户标识格式错误")
+
+
 class Emby:
     """
     Emby媒体服务器客户端。
@@ -38,7 +56,7 @@ class Emby:
     _username: Optional[str] = None
 
     def __init__(self, host: Optional[str] = None, apikey: Optional[str] = None, play_host: Optional[str] = None,
-                 username: Optional[str] = None, sync_libraries: list = None, **kwargs):
+                 username: Optional[str] = None, sync_libraries: Optional[list[str]] = None, **kwargs: object) -> None:
         """
         保存服务配置，并查询用户、服务器身份及必要的媒体库路径。
 
@@ -75,14 +93,14 @@ class Emby:
             return False
         return True if not self.user else False
 
-    def reconnect(self):
+    def reconnect(self) -> None:
         """
         重新查询用户并更新媒体库路径缓存。
         """
         self.user = self.get_user()
         self.folders = self.get_emby_folders()
 
-    def get_emby_folders(self) -> List[dict]:
+    def get_emby_folders(self) -> List[dict[str, Any]]:
         """
         读取服务端可选媒体库及其目录信息。
 
@@ -97,7 +115,10 @@ class Emby:
         try:
             res = RequestUtils().get_res(url, params)
             if res:
-                return res.json()
+                folders: object = res.json()
+                if not isinstance(folders, list) or not all(isinstance(folder, dict) for folder in folders):
+                    raise TypeError("Emby 媒体库目录响应格式错误")
+                return folders
             else:
                 logger.error("Library/SelectableMediaFolders 未获取到返回数据")
                 return []
@@ -105,7 +126,7 @@ class Emby:
             logger.error("连接Library/SelectableMediaFolders 出错：" + str(e))
             return []
 
-    def get_emby_virtual_folders(self) -> List[dict]:
+    def get_emby_virtual_folders(self) -> List[dict[str, Any]]:
         """
         读取虚拟媒体库及其全部目录，优先使用共享路径。
 
@@ -147,7 +168,7 @@ class Emby:
             logger.error("连接Library/VirtualFolders/Query 出错：" + str(e))
             return []
 
-    def __get_emby_librarys(self, username: Optional[str] = None) -> Optional[List[dict]]:
+    def __get_emby_librarys(self, username: Optional[str] = None) -> Optional[List[dict[str, Any]]]:
         """
         获取Emby媒体库列表。
         """
@@ -256,10 +277,10 @@ class Emby:
                 for candidate_username in candidate_usernames:
                     for emby_user in users:
                         if emby_user.get("Name") == candidate_username:
-                            return emby_user.get("Id")
+                            return _user_id(emby_user.get("Id"))
                 for emby_user in users:
                     if emby_user.get("Policy", {}).get("IsAdministrator"):
-                        return emby_user.get("Id")
+                        return _user_id(emby_user.get("Id"))
             else:
                 logger.error("Users 未获取到返回数据")
         except Exception as e:
@@ -297,7 +318,7 @@ class Emby:
                 auth_token = res.json().get("AccessToken")
                 if auth_token:
                     logger.info(f"用户 {username} Emby认证成功")
-                    return auth_token
+                    return _optional_text(auth_token)
             else:
                 logger.error("Users/AuthenticateByName 未获取到返回数据")
         except Exception as e:
@@ -323,14 +344,14 @@ class Emby:
                     result = res.json() or {}
                     server_id = result.get("Id") or result.get("ServerId")
                     if server_id:
-                        return server_id
+                        return _optional_text(server_id)
                 else:
                     logger.error(f"{path} 未获取到返回数据")
             except Exception as e:
                 logger.error(f"连接{path}出错：" + str(e))
         return None
 
-    def get_user_count(self) -> int:
+    def get_user_count(self) -> Optional[int]:
         """
         查询媒体服务器的用户数量。
 
@@ -345,7 +366,10 @@ class Emby:
         try:
             res = RequestUtils().get_res(url, params)
             if res:
-                return res.json().get("TotalRecordCount")
+                count: object = res.json().get("TotalRecordCount")
+                if count is None or isinstance(count, int):
+                    return count
+                raise TypeError("Emby 用户数量格式错误")
             else:
                 logger.error("Users/Query 未获取到返回数据")
                 return 0
@@ -383,7 +407,7 @@ class Emby:
             logger.error("连接Items/Counts出错：" + str(e))
             return _SchemaStatistic()
 
-    def __get_emby_series_id_by_name(self, name: str, year: str) -> Optional[str]:
+    def __get_emby_series_id_by_name(self, name: Optional[str], year: Optional[Union[str, int]]) -> Optional[str]:
         """
         根据名称查询Emby中剧集的SeriesId。
 
@@ -412,7 +436,7 @@ class Emby:
                     for res_item in res_items:
                         if res_item.get('Name') == name and (
                                 not year or str(res_item.get('ProductionYear')) == str(year)):
-                            return res_item.get('Id')
+                            return _optional_text(res_item.get('Id'))
         except Exception as e:
             logger.error("连接Items出错：" + str(e))
             return None
@@ -420,7 +444,7 @@ class Emby:
 
     def get_movies(self,
                    title: str,
-                   year: Optional[str] = None,
+                   year: Optional[Union[str, int]] = None,
                    media_source: Optional[MediaSource] = None,
                    media_id: Optional[str] = None) -> Optional[List[_SchemaMediaServerItem]]:
         """
@@ -510,7 +534,7 @@ class Emby:
     def get_tv_episodes(self,
                         item_id: Optional[str] = None,
                         title: Optional[str] = None,
-                        year: Optional[str] = None,
+                        year: Optional[Union[str, int]] = None,
                         media_source: Optional[MediaSource] = None,
                         media_id: Optional[str] = None,
                         season: Optional[int] = None
@@ -566,7 +590,7 @@ class Emby:
             if res_json:
                 tv_item = res_json.json()
                 res_items = tv_item.get("Items")
-                season_episodes = {}
+                season_episodes: dict[int, list[int]] = {}
                 for res_item in res_items:
                     season_index = res_item.get("ParentIndexNumber")
                     if season_index is None:
@@ -640,7 +664,7 @@ class Emby:
                 if images:
                     for image in images:
                         if image.get("ProviderName") == "TheMovieDb" and image.get("Type") == image_type:
-                            return image.get("Url")
+                            return _optional_text(image.get("Url"))
             logger.info("Items/RemoteImages 未获取到返回数据，采用本地图片")
             return self.generate_external_image_link(item_id, image_type)
         except Exception as e:
@@ -664,7 +688,7 @@ class Emby:
             res = RequestUtils().get_res(url)
             if res and res.status_code != 404:
                 logger.info(f"影片图片链接:{res.url}")
-                return res.url
+                return _optional_text(res.url)
             else:
                 logger.info("Items/Id/Images 未获取到返回数据或无该影片{}图片".format(image_type))
                 return None
@@ -784,7 +808,7 @@ class Emby:
         return "/"
 
     @staticmethod
-    def __format_item_info(item) -> Optional[_SchemaMediaServerItem]:
+    def __format_item_info(item: dict[str, Any]) -> Optional[_SchemaMediaServerItem]:
         """
         通过统一 Emby 系转换契约生成条目，并保留 Emby 的服务器 ID。
         """
@@ -840,7 +864,7 @@ class Emby:
             logger.error(f"获取 Emby 剧集身份出错：{str(e)}")
         return None, None
 
-    def get_items_count(self, parent: Union[str, int], include_item_types: str = "Movie,Series") -> Optional[int]:
+    def get_items_count(self, parent: Optional[Union[str, int]], include_item_types: str = "Movie,Series") -> Optional[int]:
         """
         递归统计指定媒体库内的可同步条目。
 
@@ -869,7 +893,7 @@ class Emby:
             return None
 
     def get_items(self, parent: Union[str, int], start_index: Optional[int] = 0,
-                  limit: Optional[int] = -1) -> Generator[MediaServerItem | None | Any, Any, None]:
+                  limit: Optional[int] = -1) -> Generator[Optional[MediaServerItem], None, None]:
         """
         读取媒体库条目并递归展开目录。
 
@@ -888,7 +912,7 @@ class Emby:
         if not self._host or not self._apikey:
             raise ConnectionError("Emby 服务器未连接")
         url = f"{self._host}emby/Users/{self.user}/Items"
-        params = {
+        params: dict[str, Union[str, int, None]] = {
             "ParentId": parent,
             "api_key": self._apikey,
             "Fields": "Album,AlbumArtist,AlbumArtists,Artists,ArtistItems,ChildCount,"
@@ -919,7 +943,7 @@ class Emby:
             logger.error(f"同步读取 Emby 媒体库 {parent} 出错：{str(e)}")
             raise
 
-    def get_webhook_message(self, form: Any, args: dict) -> Optional[_SchemaWebhookEventInfo]:
+    def get_webhook_message(self, form: Any, args: dict[str, object]) -> Optional[_SchemaWebhookEventInfo]:
         """
         解析 Emby Webhook，并补全统一事件中的媒体身份与图片。
 
@@ -1034,14 +1058,14 @@ class Emby:
             return None
         url = url.replace("[HOST]", self._host or '') \
             .replace("[APIKEY]", self._apikey or '') \
-            .replace("[USER]", self.user or '')
+            .replace("[USER]", _optional_text(self.user or '') or '')
         try:
             return RequestUtils(content_type="application/json").get_res(url=url)
         except Exception as e:
             logger.error("连接Emby出错：" + str(e))
             return None
 
-    def post_data(self, url: str, data: Optional[str] = None, headers: dict = None) -> Optional[Response]:
+    def post_data(self, url: str, data: Optional[str] = None, headers: Optional[dict[str, str]] = None) -> Optional[Response]:
         """
         替换服务配置占位符后发送自定义 POST 请求。
 
@@ -1054,7 +1078,7 @@ class Emby:
             return None
         url = url.replace("[HOST]", self._host or '') \
             .replace("[APIKEY]", self._apikey or '') \
-            .replace("[USER]", self.user or '')
+            .replace("[USER]", _optional_text(self.user or '') or '')
         try:
             return RequestUtils(
                 headers=headers,
@@ -1096,7 +1120,7 @@ class Emby:
         return f"{host_url}Items/{item_id}/" \
             f"Images/Backdrop?tag={image_tag}&api_key={self._apikey}"
 
-    def __get_local_image_by_id(self, item_id: str, image_tag: Optional[str] = None) -> str:
+    def __get_local_image_by_id(self, item_id: Optional[Union[str, int]], image_tag: Optional[str] = None) -> str:
         """
         构造服务内网的主封面图片地址。
 
@@ -1137,7 +1161,7 @@ class Emby:
             res = RequestUtils().get_res(url, params)
             if res:
                 result = res.json().get("Items") or []
-                ret_resume = []
+                ret_resume: list[_SchemaMediaServerPlayItem] = []
                 # 用户媒体库文件夹列表（排除黑名单）
                 library_folders = self.get_user_library_folders()
                 for item in result:
@@ -1222,7 +1246,7 @@ class Emby:
             res = RequestUtils().get_res(url, params)
             if res:
                 result = res.json() or []
-                ret_latest = []
+                ret_latest: list[_SchemaMediaServerPlayItem] = []
                 # 用户媒体库文件夹列表（排除黑名单）
                 library_folders = self.get_user_library_folders()
                 for item in result:
@@ -1260,7 +1284,7 @@ class Emby:
             logger.error("连接Users/Items/Latest出错：" + str(e))
         return None
 
-    def get_user_library_folders(self):
+    def get_user_library_folders(self) -> list[str]:
         """
         收集允许同步的媒体库目录路径。
 
@@ -1272,5 +1296,8 @@ class Emby:
         for library in self.get_emby_virtual_folders() or []:
             if self._sync_libraries and library.get("Id") not in self._sync_libraries:
                 continue
-            library_folders += [folder for folder in library.get("Path")]
+            paths = library.get("Path")
+            if paths is None:
+                raise TypeError("Emby 媒体库路径列表为空")
+            library_folders += [folder for folder in paths]
         return library_folders
