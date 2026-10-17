@@ -1324,7 +1324,6 @@
     "arg-type": 1,
     "attr-defined": 2,
     "no-any-return": 3,
-    "no-untyped-call": 34,
     "no-untyped-def": 7,
     "operator": 24,
     "type-arg": 47
@@ -1333,22 +1332,6 @@
     "assignment": 1,
     "no-untyped-call": 17,
     "no-untyped-def": 23
-  },
-  "app/modules/themoviedb/tmdbv3api/objs/episode.py": {
-    "no-untyped-def": 20
-  },
-  "app/modules/themoviedb/tmdbv3api/objs/person.py": {
-    "no-untyped-def": 22
-  },
-  "app/modules/themoviedb/tmdbv3api/objs/search.py": {
-    "no-untyped-def": 14
-  },
-  "app/modules/themoviedb/tmdbv3api/objs/season.py": {
-    "no-untyped-def": 18
-  },
-  "app/modules/themoviedb/tmdbv3api/objs/trending.py": {
-    "no-untyped-call": 16,
-    "no-untyped-def": 18
   },
   "app/modules/thetvdb/__init__.py": {
     "empty-body": 1,
