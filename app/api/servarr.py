@@ -446,10 +446,12 @@ async def arr_add_movie(
     )
     if subscribes:
         return _SchemaServarrIdResponse(id=subscribes[0].id)
+    if not movie.title or movie.year is None:
+        raise HTTPException(status_code=422, detail="电影标题和年份不能为空")
     # 添加订阅
     sid, message = await SubscribeChain().async_add(
         title=movie.title,
-        year=movie.year,
+        year=str(movie.year),
         mtype=MediaType.MOVIE,
         media_source=MediaSource.TMDB,
         media_id=str(movie.tmdbId),
