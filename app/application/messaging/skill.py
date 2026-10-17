@@ -1,3 +1,7 @@
+"""
+技能目录浏览、市场来源管理与安装删除交互。
+"""
+
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -17,31 +21,72 @@ from app.schemas.types import NotificationChannel
 
 
 class SkillCatalogPort(Protocol):
-    """消息层使用的技能目录能力端口，由启动组合根注入具体实现。"""
+    """
+    消息层使用的技能目录能力端口，由启动组合根注入具体实现。
+    """
 
     def add_custom_market_source(self, source: str) -> Tuple[bool, str]:
-        """添加一个自定义技能市场来源。"""
+        """
+        添加一个自定义技能市场来源。
+
+        :param source: 用户输入的技能市场来源地址
+        :return: 是否添加成功及可向用户展示的结果说明
+        """
 
     def remove_custom_market_source(self, source: str) -> Tuple[bool, str]:
-        """移除一个自定义技能市场来源。"""
+        """
+        移除一个自定义技能市场来源。
+
+        :param source: 待移除的自定义市场来源地址
+        :return: 是否移除成功及可向用户展示的结果说明
+        """
 
     def install_market_skill(self, skill: Any) -> Tuple[bool, str]:
-        """安装指定的市场技能。"""
+        """
+        安装指定的市场技能。
+
+        :param skill: 从市场目录选出的技能条目，包含安装所需来源信息
+        :return: 是否安装成功及可向用户展示的结果说明
+        """
 
     def list_local_skills(self) -> List[Any]:
-        """列出本地技能。"""
+        """
+        列出本地技能。
+
+        :return: 当前已安装的本地技能条目列表
+        """
 
     def remove_local_skill(self, skill_id: str) -> Tuple[bool, str]:
-        """移除指定的本地技能。"""
+        """
+        移除指定的本地技能。
+
+        :param skill_id: 待删除的本地技能标识
+        :return: 是否删除成功及可向用户展示的结果说明
+        """
 
     def list_market_source_entries(self) -> List[Any]:
-        """列出技能市场来源。"""
+        """
+        列出技能市场来源。
+
+        :return: 包含来源地址及展示信息的市场来源条目列表
+        """
 
     def list_market_skills(self, force: bool = False) -> List[Any]:
-        """列出市场技能。"""
+        """
+        列出市场技能。
+
+        :param force: 是否强制刷新市场目录，默认允许使用缓存
+        :return: 已配置市场提供的技能条目列表
+        """
 
     def filter_market_skills(self, skills: List[Any], query: str) -> List[Any]:
-        """按查询词过滤市场技能。"""
+        """
+        按查询词过滤市场技能。
+
+        :param skills: 待筛选的市场技能条目
+        :param query: 用户输入的筛选关键词，空值保留全部条目
+        :return: 与关键词匹配的技能条目列表
+        """
 
 
 SkillCatalogProvider = Callable[[], SkillCatalogPort]
@@ -51,7 +96,9 @@ _skill_catalog_provider: Optional[SkillCatalogProvider] = None
 def register_skill_catalog_provider(
     provider: Optional[SkillCatalogProvider],
 ) -> Optional[SkillCatalogProvider]:
-    """注册技能目录 provider，并返回先前 provider 供失败回滚。"""
+    """
+    注册技能目录 provider，并返回先前 provider 供失败回滚。
+    """
     global _skill_catalog_provider
     previous = _skill_catalog_provider
     _skill_catalog_provider = provider
@@ -59,12 +106,16 @@ def register_skill_catalog_provider(
 
 
 def reset_skill_catalog_provider() -> None:
-    """清除技能目录 provider，避免跨 lifespan 持有旧 Agent 实现。"""
+    """
+    清除技能目录 provider，避免跨 lifespan 持有旧 Agent 实现。
+    """
     register_skill_catalog_provider(None)
 
 
 def _resolve_skill_catalog() -> SkillCatalogPort:
-    """解析已注入的技能目录；缺少组合根装配时给出明确错误。"""
+    """
+    解析已注入的技能目录；缺少组合根装配时给出明确错误。
+    """
     if _skill_catalog_provider is None:
         raise RuntimeError(
             "技能目录服务未注册：请先导入 app.startup.initializers.agent "
@@ -77,6 +128,18 @@ def _resolve_skill_catalog() -> SkillCatalogPort:
 class PendingSkillInteraction:
     """
     记录一次 /skills 会话的上下文，便于按钮和文本回复共用同一状态。
+
+    :param request_id: 当前交互请求标识，用于校验按钮是否仍属于活动会话
+    :param user_id: 所属用户标识，用于隔离不同用户的交互状态
+    :param channel: 回复使用的通知渠道，None 表示未指定
+    :param source: 渠道实例标识，None 表示未指定实例
+    :param username: 用户显示名称，未知时为 None
+    :param view: 当前视图：root、installed、market 或 sources，默认主菜单
+    :param local_page: 本地技能列表页索引，从 0 开始
+    :param market_page: 市场技能列表页索引，从 0 开始
+    :param market_query: 市场筛选词，空字符串表示不按关键词筛选
+    :param awaiting_input: 等待的输入用途：market-search、source-add 或 None
+    :param created_at: 会话创建的本地时间，用于计算过期时间
     """
 
     request_id: str
@@ -143,7 +206,9 @@ class SkillInteractionHandler:
             skill_catalog: Optional[SkillCatalogPort] = None,
             skill_helper: Optional[SkillCatalogPort] = None,
     ) -> None:
-        """注入消息接口和技能目录端口，保留旧 ``skill_helper`` 关键字。"""
+        """
+        注入消息接口和技能目录端口，保留旧 ``skill_helper`` 关键字。
+        """
         self._messenger = messenger
         self.skillhelper = skill_catalog or skill_helper or _resolve_skill_catalog()
 
@@ -209,7 +274,9 @@ class SkillInteractionHandler:
             original_message_id: Optional[Union[str, int]] = None,
             original_chat_id: Optional[str] = None,
     ) -> bool:
-        """处理 /skills 回调并保持消息链公开 ABI。"""
+        """
+        处理 /skills 回调并保持消息链公开 ABI。
+        """
         return self._handle_callback_interaction(
             callback_data,
             channel,
@@ -387,7 +454,9 @@ class SkillInteractionHandler:
             username: str,
             text: str,
     ) -> bool:
-        """处理 /skills 文本交互并保持消息链公开 ABI。"""
+        """
+        处理 /skills 文本交互并保持消息链公开 ABI。
+        """
         return self._handle_text_interaction(channel, source, userid, username, text)
 
     def _handle_text_interaction(

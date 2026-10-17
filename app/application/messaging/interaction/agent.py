@@ -1,4 +1,6 @@
-"""Agent 按钮选择交互契约与进程内待处理请求管理。"""
+"""
+Agent 按钮选择交互契约与进程内待处理请求管理。
+"""
 
 import re
 import uuid
@@ -13,19 +15,25 @@ LEGACY_AGENT_CHOICE_PREFIX = "agent_choice:"
 
 
 def is_agent_learning_command(text: str | None) -> bool:
-    """仅识别专用学习命令前缀；把它们交给 Agent 用户控制入口而非传统管理员命令。"""
+    """
+    仅识别专用学习命令前缀；把它们交给 Agent 用户控制入口而非传统管理员命令。
+    """
     return bool(re.match(r'^/(?:memory(?:\s|$)|skills\s+(?:adopt|pin|unpin|restore)(?:\s|$))', str(text or '').strip()))
 
 
 def build_agent_choice_callback(request_id: str, option_index: int) -> str:
-    """构造 Agent 选择按钮回调数据。"""
+    """
+    构造 Agent 选择按钮回调数据。
+    """
     return f"{AGENT_CHOICE_PREFIX}{request_id}:{option_index}"
 
 
 def parse_agent_choice_callback(
     callback_data: str,
 ) -> Optional[tuple[str, int]]:
-    """解析新旧两种 Agent 选择回调，格式无效时返回 None。"""
+    """
+    解析新旧两种 Agent 选择回调，格式无效时返回 None。
+    """
     if callback_data.startswith(AGENT_CHOICE_PREFIX):
         try:
             _, _, request_id, option_index = callback_data.split(":", 3)
@@ -46,7 +54,13 @@ def parse_agent_choice_callback(
 
 @dataclass(frozen=True)
 class AgentInteractionOption:
-    """Agent 交互选项。"""
+    """
+    Agent 交互选项。
+
+    :param label: 按钮向用户展示的选项名称
+    :param value: 选中后传回 Agent 的实际值
+    :param description: 选项的补充说明，None 表示没有说明
+    """
 
     label: str
     value: str
@@ -55,7 +69,20 @@ class AgentInteractionOption:
 
 @dataclass
 class PendingAgentInteraction:
-    """待处理的 Agent 客户端交互请求。"""
+    """
+    待处理的 Agent 客户端交互请求。
+
+    :param request_id: 当前交互请求标识，用于校验按钮是否仍属于活动会话
+    :param session_id: 等待用户选择的 Agent 会话标识
+    :param user_id: 所属用户标识，用于隔离不同用户的交互状态
+    :param channel: 回复使用的通知渠道，None 表示未指定
+    :param source: 渠道实例标识，None 表示未指定实例
+    :param username: 用户显示名称，未知时为 None
+    :param title: 交互展示标题，None 表示不单独显示标题
+    :param prompt: 向用户说明选择目的的提示正文
+    :param options: 按展示顺序排列的可选项
+    :param created_at: 会话创建的本地时间，用于计算过期时间
+    """
 
     request_id: str
     session_id: str
@@ -72,7 +99,9 @@ class PendingAgentInteraction:
 def build_agent_choice_button_rows(
     request: PendingAgentInteraction,
 ) -> tuple[list[dict[str, Any]], list[list[dict[str, Any]]]]:
-    """根据待选择请求构造 WebAgent 和消息渠道共用的按钮。"""
+    """
+    根据待选择请求构造 WebAgent 和消息渠道共用的按钮。
+    """
     buttons = [
         {
             "label": option.label,
@@ -86,17 +115,23 @@ def build_agent_choice_button_rows(
 
 
 class AgentInteractionManager:
-    """管理 Agent 发起的客户端交互请求。"""
+    """
+    管理 Agent 发起的客户端交互请求。
+    """
 
     _ttl = timedelta(hours=24)
 
     def __init__(self) -> None:
-        """初始化待处理的 Agent 交互请求表。"""
+        """
+        初始化待处理的 Agent 交互请求表。
+        """
         self._pending_interactions: dict[str, PendingAgentInteraction] = {}
         self._lock = Lock()
 
     def _cleanup_locked(self) -> None:
-        """在持锁状态下移除过期 Agent 交互。"""
+        """
+        在持锁状态下移除过期 Agent 交互。
+        """
         expire_before = datetime.now() - self._ttl
         expired_ids = [
             request_id
@@ -117,7 +152,9 @@ class AgentInteractionManager:
         prompt: str,
         options: list[AgentInteractionOption],
     ) -> PendingAgentInteraction:
-        """创建一条待用户确认的 Agent 交互请求。"""
+        """
+        创建一条待用户确认的 Agent 交互请求。
+        """
         with self._lock:
             self._cleanup_locked()
             request_id = uuid.uuid4().hex[:12]
@@ -143,7 +180,9 @@ class AgentInteractionManager:
         option_index: int,
         user_id: Optional[str] = None,
     ) -> Optional[tuple[PendingAgentInteraction, AgentInteractionOption]]:
-        """消费一条 Agent 交互请求，并返回选中的选项。"""
+        """
+        消费一条 Agent 交互请求，并返回选中的选项。
+        """
         with self._lock:
             self._cleanup_locked()
             request = self._pending_interactions.get(request_id)
@@ -158,7 +197,9 @@ class AgentInteractionManager:
             return request, option
 
     def clear(self) -> None:
-        """清空所有 Agent 交互请求。"""
+        """
+        清空所有 Agent 交互请求。
+        """
         with self._lock:
             self._pending_interactions.clear()
 

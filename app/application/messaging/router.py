@@ -20,35 +20,45 @@ from app.application.messaging.subscribe import subscribe_interaction_manager
 
 @dataclass(frozen=True, slots=True)
 class SessionRoute:
-    """描述一种可继续接收文本的交互会话。"""
+    """
+    描述一种可继续接收文本的交互会话。
 
-    # 会话名称，与对应 Slash 命令一致
+    :param name: 会话路由名称，与对应斜杠命令保持一致
+    :param get_pending: 按用户标识取得含 created_at 的待处理会话，无会话时返回 None
+    :param handle_text: 接收交互上下文和文本，返回是否已消费该文本
+    """
+
     name: str
-    # 返回用户当前待处理会话对象（含 created_at），无会话返回 None
     get_pending: Callable[[Union[str, int]], Optional[Any]]
-    # 将一条文本派发给该会话，返回是否已消费
     handle_text: Callable[[InteractionContext, str], bool]
 
 
 @dataclass(frozen=True, slots=True)
 class CallbackRoute:
-    """描述一种按钮回调的匹配和处理方式。"""
+    """
+    描述一种按钮回调的匹配和处理方式。
 
-    # 路由名称，用于日志和排查
+    :param name: 供日志和排查使用的回调路由名称
+    :param matches: 按按钮回调字符串判断本路由是否匹配
+    :param dispatch: 接收回调字符串和交互上下文，返回是否命中及处理状态结束方式
+    """
+
     name: str
-    # 按回调内容判断是否归本路由处理
     matches: Callable[[str], bool]
-    # 执行回调处理并返回派发结果
     dispatch: Callable[[str, InteractionContext], InteractionDispatch]
 
 
 def adapt_session_text_handler(
     handle: Callable[..., Any],
 ) -> Callable[[InteractionContext, str], bool]:
-    """把传统关键字参数入口适配为文本会话路由处理器。"""
+    """
+    把传统关键字参数入口适配为文本会话路由处理器。
+    """
 
     def _handle(context: InteractionContext, text: str) -> bool:
-        """使用统一交互上下文调用传统文本入口。"""
+        """
+        使用统一交互上下文调用传统文本入口。
+        """
         return bool(
             handle(
                 channel=context.channel,
@@ -65,13 +75,17 @@ def adapt_session_text_handler(
 def adapt_callback_handler(
     handle: Callable[..., Any],
 ) -> Callable[[str, InteractionContext], InteractionDispatch]:
-    """把传统关键字参数入口适配为按钮回调路由处理器。"""
+    """
+    把传统关键字参数入口适配为按钮回调路由处理器。
+    """
 
     def _dispatch(
         callback_data: str,
         context: InteractionContext,
     ) -> InteractionDispatch:
-        """使用统一交互上下文调用传统回调入口。"""
+        """
+        使用统一交互上下文调用传统回调入口。
+        """
         return InteractionDispatch(
             handled=bool(
                 handle(
@@ -90,19 +104,25 @@ def adapt_callback_handler(
 
 
 class InteractionRouter:
-    """统一选择活动文本会话并按顺序派发按钮回调。"""
+    """
+    统一选择活动文本会话并按顺序派发按钮回调。
+    """
 
     def __init__(
             self,
             session_routes: Sequence[SessionRoute],
             callback_routes: Sequence[CallbackRoute],
     ):
-        """按注册顺序保存会话路由和回调路由，回调顺序即优先级。"""
+        """
+        按注册顺序保存会话路由和回调路由，回调顺序即优先级。
+        """
         self._session_routes = list(session_routes)
         self._callback_routes = list(callback_routes)
 
     def latest_session(self, user_id: Union[str, int]) -> Optional[SessionRoute]:
-        """返回最近创建的待处理文本会话路由，无会话返回 None。"""
+        """
+        返回最近创建的待处理文本会话路由，无会话返回 None。
+        """
         best_route: Optional[SessionRoute] = None
         best_created_at = None
         for route in self._session_routes:
@@ -120,7 +140,9 @@ class InteractionRouter:
         return best_route
 
     def has_pending(self, user_id: Union[str, int]) -> bool:
-        """判断用户是否存在任意待处理文本会话。"""
+        """
+        判断用户是否存在任意待处理文本会话。
+        """
         return any(
             route.get_pending(user_id) is not None
             for route in self._session_routes
@@ -131,7 +153,9 @@ class InteractionRouter:
             context: InteractionContext,
             text: str,
     ) -> bool:
-        """把文本派发给最近活动的会话，返回是否被消费。"""
+        """
+        把文本派发给最近活动的会话，返回是否被消费。
+        """
         route = self.latest_session(context.user_id)
         if route is None:
             return False
@@ -142,7 +166,8 @@ class InteractionRouter:
             context: InteractionContext,
             callback_data: str,
     ) -> InteractionDispatch:
-        """按注册顺序匹配并派发按钮回调，均不匹配时返回未处理。
+        """
+        按注册顺序匹配并派发按钮回调，均不匹配时返回未处理。
 
         匹配到的路由未消费回调（handled=False）时继续尝试后续路由，
         与既有顺序式派发的行为保持一致。
@@ -156,7 +181,9 @@ class InteractionRouter:
 
 
 def has_pending_interaction(user_id: Union[str, int]) -> bool:
-    """供 WebAgent 判断用户是否处于传统交互会话。"""
+    """
+    供 WebAgent 判断用户是否处于传统交互会话。
+    """
     from app.application.messaging.update import update_interaction_manager
 
     return any(
