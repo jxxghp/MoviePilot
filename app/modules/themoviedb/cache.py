@@ -1,7 +1,3 @@
-"""
-TMDB 媒体识别缓存、类型冲突校验与本地快照迁移。
-"""
-
 import pickle
 import traceback
 from math import ceil
@@ -17,7 +13,6 @@ from app.runtime.settings import get_runtime_setting
 from app.schemas.types import MediaSource, MediaType
 
 lock = RLock()
-# 包含独立过期时间的本地缓存快照版本。
 PERSISTENCE_VERSION = 1
 PERSISTENCE_REGION = "recognize"
 PERSISTENCE_KEY = "tmdb"
@@ -25,16 +20,17 @@ PERSISTENCE_KEY = "tmdb"
 
 class TmdbCache(metaclass=WeakSingleton):
     """
-    管理 TMDB 识别结果、短期未命中缓存及本地持久化。
-
-    缓存值记录媒体标识、类型、标题、年份和主图片路径。Redis 后端自行持久化；
-    本地后端保存未过期的有效识别结果，不保存未命中条目。
+    TMDB缓存数据
+    {
+        "id": '',
+        "title": '',
+        "year": '',
+        "type": MediaType
+    }
     """
 
-    def __init__(self):
-        """
-        初始化 TMDB 识别缓存并恢复未过期的持久化数据。
-        """
+    def __init__(self) -> None:
+        """初始化 TMDB 识别缓存并恢复未过期的持久化数据。"""
         self.maxsize = get_runtime_setting('CONF').tmdb
         self.ttl = get_runtime_setting('CONF').meta
         self.region = "__tmdb_cache__"
@@ -50,9 +46,7 @@ class TmdbCache(metaclass=WeakSingleton):
             self._restore()
 
     def _restore(self) -> None:
-        """
-        从统一文件缓存恢复仍在有效期内的 TMDB 识别数据。
-        """
+        """从统一文件缓存恢复仍在有效期内的 TMDB 识别数据。"""
         try:
             content = self._file_cache.get(PERSISTENCE_KEY, region=PERSISTENCE_REGION)
             if not content:
@@ -102,18 +96,16 @@ class TmdbCache(metaclass=WeakSingleton):
             logger.error(f"加载TMDB识别缓存失败：{str(err)} - {traceback.format_exc()}")
 
     def _set(self, key: str, value: dict, ttl: Optional[int] = None) -> None:
-        """
-        写入单条 TMDB 识别缓存并记录其独立过期时间，未指定 ttl 时用默认有效期。
-        """
+        """写入单条 TMDB 识别缓存并记录其独立过期时间，未指定 ttl 时用默认有效期。"""
         ttl = self.ttl if ttl is None else ttl
         self._cache.set(key, value, ttl=ttl)
         if not self._cache.is_redis():
             self._expires_at[key] = time() + ttl
             self._dirty = True
 
-    def clear(self):
+    def clear(self) -> None:
         """
-        清空识别缓存和过期记录，并立即同步到本地持久化。
+        清空所有TMDB缓存
         """
         with lock:
             self._cache.clear()
@@ -123,9 +115,7 @@ class TmdbCache(metaclass=WeakSingleton):
 
     def list_items(self) -> list[dict]:
         """
-        生成按缓存键排序的管理界面条目列表。
-
-        :return: 包含媒体标识、标题、年份、类型和图片地址的字典列表；无效类型标为 unknown
+        返回可供管理界面展示的 TMDB 识别缓存列表。
         """
         with lock:
             cache_items = []
@@ -152,7 +142,7 @@ class TmdbCache(metaclass=WeakSingleton):
     @staticmethod
     def __get_key(meta: MetaBase) -> str:
         """
-        按媒体类型、语言、TMDB 标识或名称、年份及起始季生成识别缓存键。
+        获取缓存KEY
         """
         media_id = meta.media_id if meta.media_source == MediaSource.TMDB else None
         return f"[{meta.type.value if meta.type else '未知'}][{get_runtime_setting('TMDB_LOCALE')}]{media_id or meta.name}-{meta.year}-{meta.begin_season}"
@@ -167,7 +157,6 @@ class TmdbCache(metaclass=WeakSingleton):
         一律要求 key 与 value 类型一致会让这类条目每次都被丢弃、反复回源。而电视
         剧分支恒定写入电视剧类型，`[电视剧]` 键下出现电影只可能来自 tmdbid 消歧
         或共享识别回填的脏写，会让整季剧集被当成电影反复整理失败。
-
         :param meta: 元数据
         :param media_type: 待校验的媒体类型
         :param tmdb_id: 对应的 TMDB ID，为空表示负缓存，不带类型信息
@@ -184,10 +173,7 @@ class TmdbCache(metaclass=WeakSingleton):
 
     def get(self, meta: MetaBase):
         """
-        读取元数据对应的有效识别缓存，并剔除类型冲突条目。
-
-        :param meta: 待识别媒体元数据，用于生成与当前语言相关的缓存键
-        :return: 缓存条目，id 为 0 表示短期未命中；缺失、无效或冲突时返回空字典
+        根据KEY值获取缓存值
         """
         key = self.__get_key(meta)
 
@@ -209,10 +195,9 @@ class TmdbCache(metaclass=WeakSingleton):
 
     def delete(self, key: str) -> dict:
         """
-        删除指定识别缓存并立即保存本地持久化状态。
-
-        :param key: 管理列表提供的完整缓存键
-        :return: 被删除的条目；不存在时返回空字典
+        删除缓存信息
+        @param key: 缓存key
+        @return: 被删除的缓存内容
         """
         with lock:
             redis_data = self._cache.get(key)
@@ -226,11 +211,10 @@ class TmdbCache(metaclass=WeakSingleton):
 
     def modify(self, key: str, title: str) -> dict:
         """
-        修改已有缓存标题，并重置该条目的默认有效期。
-
-        :param key: 管理列表提供的完整缓存键
-        :param title: 替换后的展示标题
-        :return: 更新后的条目；不存在时返回空字典
+        修改缓存信息
+        @param key: 缓存key
+        @param title: 标题
+        @return: 被修改后缓存内容
         """
         with lock:
             redis_data = self._cache.get(key)
@@ -240,14 +224,9 @@ class TmdbCache(metaclass=WeakSingleton):
                 return redis_data
             return {}
 
-    def update(self, meta: MetaBase, info: dict) -> None:
+    def update(self, meta: MetaBase, info: Optional[dict[str, Any]]) -> None:
         """
-        从 TMDB 结果更新识别缓存，区分未命中和网络失败。
-
-        拒绝把电影结果写入已判定为电视剧的键；电影元数据回退识别为电视剧时允许缓存。
-
-        :param meta: 用于生成缓存键和检查媒体类型的元数据
-        :param info: TMDB 识别结果；空字典记录短期未命中，None 表示失败且不缓存
+        新增或更新缓存条目
         """
         key = self.__get_key(meta)
         if info:
@@ -256,14 +235,17 @@ class TmdbCache(metaclass=WeakSingleton):
                 logger.warn(f"识别结果类型与元数据冲突，不写入识别缓存：{key} -> "
                             f"{info.get('title')}({info.get('media_type')})")
                 return
+            # 缓存标题
             cache_title = info.get("title") \
                 if info.get("media_type") == MediaType.MOVIE else info.get("name")
+            # 缓存年份
             cache_year = info.get('release_date') \
                 if info.get("media_type") == MediaType.MOVIE else info.get('first_air_date')
             if cache_year:
                 cache_year = cache_year[:4]
 
             with lock:
+                # 缓存数据
                 cache_data = {
                     "id": info.get("id"),
                     "type": info.get("media_type"),
@@ -284,11 +266,7 @@ class TmdbCache(metaclass=WeakSingleton):
 
     def save(self, force: bool = False) -> None:
         """
-        把本地后端仍有效且有媒体标识的缓存写入统一文件区域。
-
-        Redis 后端直接返回；保存成功后移除已发现的旧版缓存。文件操作失败仅记录日志。
-
-        :param force: True 时即使未标记变更也执行保存
+        使用统一文件缓存保存未过期的 TMDB 识别数据。
         """
         if self._cache.is_redis():
             return
@@ -343,7 +321,5 @@ class TmdbCache(metaclass=WeakSingleton):
                 logger.error(f"保存TMDB识别缓存失败：{str(err)} - {traceback.format_exc()}")
 
     def __del__(self):
-        """
-        实例释放前保存非 Redis 缓存。
-        """
+        """实例释放前保存非 Redis 缓存。"""
         self.save()
