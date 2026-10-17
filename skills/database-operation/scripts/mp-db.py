@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Controlled MoviePilot database helper used by the database-operation Skill."""
+"""
+为 database-operation 技能提供受控的 MoviePilot 数据库检查和显式写入入口。
+"""
 
 import argparse
 import json
@@ -18,7 +20,9 @@ SCRIPT_PATH = Path(__file__).resolve()
 
 
 def _find_project_root() -> Optional[Path]:
-    """从运行环境或目录标记定位 MoviePilot 程序目录。"""
+    """
+    从运行环境或目录标记定位 MoviePilot 程序目录。
+    """
     candidates = []
     configured_root = os.environ.get("MOVIEPILOT_ROOT", "").strip()
     if configured_root:
@@ -45,7 +49,16 @@ SELECT_STATEMENT_RE = re.compile(r"^\s*(select|with|explain)\b", re.IGNORECASE)
 
 @dataclass(frozen=True, slots=True)
 class ArgumentSpec:
-    """Describe one public database action argument."""
+    """
+    单个动作参数的公开调用契约。
+
+    :param name: 动作调用中的精确参数名称
+    :param type: 公开模式使用的类型表达式，支持联合类型及数组
+    :param description: 供调用方理解参数用途、限制和单位的中文说明
+    :param required: 该参数是否必填，默认 False
+    :param default: 参数默认值；仅在明确声明默认值时向调用方公开
+    :param has_default: 是否将 default 写入公开契约，用于区分未设置和显式 None
+    """
 
     name: str
     type: str
@@ -55,7 +68,9 @@ class ArgumentSpec:
     has_default: bool = False
 
     def to_dict(self) -> dict[str, Any]:
-        """Return the public argument contract used by the MCP schema generator."""
+        """
+        返回 MCP 模式生成器使用的公开参数契约。
+        """
         result = {
             "name": self.name,
             "type": self.type,
@@ -69,7 +84,14 @@ class ArgumentSpec:
 
 @dataclass(frozen=True, slots=True)
 class ActionSpec:
-    """Describe one stable database helper action."""
+    """
+    单个允许执行动作的能力、影响范围及参数契约。
+
+    :param description: 公开动作的用途与操作边界说明
+    :param effect: 策略分类标识，例如 safe_read、reversible_write 或 destructive_write；保持机器可读原值
+    :param arguments: 按声明顺序排列的参数契约，默认无参数
+    :param argument_rules: 参数间的组合约束与安全要求，默认无附加规则
+    """
 
     description: str
     effect: str
@@ -78,11 +100,15 @@ class ActionSpec:
 
     @property
     def required(self) -> tuple[str, ...]:
-        """Return required argument names for this action."""
+        """
+        返回此动作要求的必填参数名称。
+        """
         return tuple(argument.name for argument in self.arguments if argument.required)
 
     def to_dict(self, name: str) -> dict[str, Any]:
-        """Return the implementation-independent public action contract."""
+        """
+        返回不包含实现细节的公开动作契约。
+        """
         return {
             "action": name,
             "description": self.description,
@@ -96,64 +122,66 @@ class ActionSpec:
 
 ACTIONS: dict[str, ActionSpec] = {
     "tables": ActionSpec(
-        "List all tables visible to the configured MoviePilot database.",
+        "列出已配置 MoviePilot 数据库中的所有可见表。",
         "safe_read",
     ),
     "schema": ActionSpec(
-        "Show columns and nullability for one database table.",
+        "显示指定数据库表的列及是否允许空值。",
         "safe_read",
         arguments=(
             ArgumentSpec(
                 "table_name",
                 "string",
-                "Exact database table name returned by the tables action.",
+                "tables 动作返回的精确数据库表名。",
                 required=True,
             ),
         ),
     ),
     "query": ActionSpec(
-        "Run one bounded SQL query, optionally enabling the explicit write mode.",
+        "执行一条有结果数量限制的 SQL 查询，可显式启用写入模式。",
         "safe_read",
         arguments=(
-            ArgumentSpec("sql", "string", "One SQL statement; mutually exclusive with file."),
-            ArgumentSpec("file", "string", "Local SQL file path; mutually exclusive with sql."),
+            ArgumentSpec("sql", "string", "单条 SQL 语句，与 file 互斥。"),
+            ArgumentSpec("file", "string", "本地 SQL 文件路径，与 sql 互斥。"),
             ArgumentSpec(
                 "limit",
                 "integer",
-                "Maximum row count appended to a plain SELECT that has no LIMIT.",
+                "为不含 LIMIT 的普通 SELECT 追加的返回行数上限。",
                 default=100,
                 has_default=True,
             ),
             ArgumentSpec(
                 "write",
                 "boolean",
-                "Allow query to execute a write statement; use true only with explicit authorization.",
+                "是否允许 query 执行写入语句；只有获得明确授权时才可设为 true。",
                 default=False,
                 has_default=True,
             ),
         ),
         argument_rules=(
-            "Provide exactly one of sql and file.",
-            "Only SELECT, WITH, and EXPLAIN are allowed unless write=true.",
+            "sql 和 file 必须且只能提供一项。",
+            "仅允许 SELECT、WITH 和 EXPLAIN；write=true 时才允许写入语句。",
         ),
     ),
     "write": ActionSpec(
-        "Run one explicitly authorized SQL write or schema statement.",
+        "执行一条经明确授权的 SQL 数据写入或结构变更语句。",
         "destructive_write",
         arguments=(
-            ArgumentSpec("sql", "string", "One data-write or schema-change statement; mutually exclusive with file."),
-            ArgumentSpec("file", "string", "Local SQL file path; mutually exclusive with sql."),
+            ArgumentSpec("sql", "string", "单条数据写入或结构变更语句，与 file 互斥。"),
+            ArgumentSpec("file", "string", "本地 SQL 文件路径，与 sql 互斥。"),
         ),
         argument_rules=(
-            "Provide exactly one of sql and file.",
-            "Multiple SQL statements in one call are rejected.",
+            "sql 和 file 必须且只能提供一项。",
+            "拒绝在一次调用中执行多条 SQL 语句。",
         ),
     ),
 }
 
 
 def _ensure_project_import() -> None:
-    """确保脚本可以从任意工作目录导入 MoviePilot 项目模块。"""
+    """
+    确保脚本可以从任意工作目录导入 MoviePilot 项目模块。
+    """
     if PROJECT_ROOT is None:
         raise RuntimeError(
             "无法定位 MoviePilot 程序目录；请在程序目录执行，或设置 MOVIEPILOT_ROOT="
@@ -165,15 +193,20 @@ def _ensure_project_import() -> None:
 
 
 def _load_settings() -> Any:
-    """读取 MoviePilot 运行配置。"""
+    """
+    读取 MoviePilot 运行配置。
+    """
     _ensure_project_import()
+    # 先定位项目并补充导入路径，再读取配置，保证脚本可从任意工作目录启动。
     from app.runtime.config import settings  # pylint: disable=import-outside-toplevel
 
     return settings
 
 
 def _build_engine() -> Engine:
-    """根据 MoviePilot 配置创建同步数据库引擎。"""
+    """
+    根据 MoviePilot 配置创建同步数据库引擎。
+    """
     settings = _load_settings()
     if str(settings.DB_TYPE).lower() == "postgresql":
         return create_engine(
@@ -190,22 +223,30 @@ def _build_engine() -> Engine:
 
 
 def _normalize_sql(sql: str) -> str:
-    """去除 SQL 首尾空白和末尾分号。"""
+    """
+    去除 SQL 首尾空白和末尾分号。
+    """
     return sql.strip().rstrip(";")
 
 
 def _contains_multiple_statements(sql: str) -> bool:
-    """判断 SQL 是否包含多语句分隔符。"""
+    """
+    判断 SQL 是否包含多语句分隔符。
+    """
     return ";" in sql
 
 
 def _is_write_statement(sql: str) -> bool:
-    """判断 SQL 是否为写操作或结构变更操作。"""
+    """
+    判断 SQL 是否为写操作或结构变更操作。
+    """
     return bool(WRITE_STATEMENT_RE.match(sql))
 
 
 def _is_supported_statement(sql: str, allow_write: bool) -> bool:
-    """判断 SQL 是否在当前权限模式下允许执行。"""
+    """
+    判断 SQL 是否在当前权限模式下允许执行。
+    """
     if _contains_multiple_statements(sql):
         return False
     if allow_write:
@@ -214,7 +255,9 @@ def _is_supported_statement(sql: str, allow_write: bool) -> bool:
 
 
 def _append_limit(sql: str, limit: int) -> str:
-    """为普通 SELECT 查询追加默认 LIMIT，避免输出过大。"""
+    """
+    为普通 SELECT 查询追加默认 LIMIT，避免输出过大。
+    """
     if limit <= 0:
         return sql
     lowered = sql.lower()
@@ -226,17 +269,23 @@ def _append_limit(sql: str, limit: int) -> str:
 
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
-    """将 SQLAlchemy 行对象转为普通字典。"""
+    """
+    将 SQLAlchemy 行对象转为普通字典。
+    """
     return dict(row._mapping)
 
 
 def _print_json(payload: Any) -> None:
-    """输出 JSON 结果。"""
+    """
+    输出 JSON 结果。
+    """
     print(json.dumps(payload, ensure_ascii=False, indent=2, default=str))
 
 
 def list_tables() -> int:
-    """列出当前数据库中的数据表。"""
+    """
+    列出当前数据库中的数据表。
+    """
     engine = _build_engine()
     inspector = inspect(engine)
     _print_json({"tables": sorted(inspector.get_table_names())})
@@ -244,7 +293,9 @@ def list_tables() -> int:
 
 
 def show_schema(table_name: str) -> int:
-    """显示指定数据表的字段结构。"""
+    """
+    显示指定数据表的字段结构。
+    """
     engine = _build_engine()
     inspector = inspect(engine)
     columns = [
@@ -295,7 +346,9 @@ def run_query(sql: str, *, limit: int = 100, allow_write: bool = False) -> int:
 
 
 def _read_sql(sql: Optional[str], sql_file: Optional[str]) -> str:
-    """从参数或文件读取 SQL 文本。"""
+    """
+    从参数或文件读取 SQL 文本。
+    """
     if sql:
         return sql
     if sql_file:
@@ -306,30 +359,34 @@ def _read_sql(sql: Optional[str], sql_file: Optional[str]) -> str:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    """构建命令行参数解析器。"""
-    parser = argparse.ArgumentParser(description="MoviePilot database operation helper")
+    """
+    构建命令行参数解析器。
+    """
+    parser = argparse.ArgumentParser(description="MoviePilot 数据库操作工具")
     subparsers = parser.add_subparsers(dest="command")
 
-    query_parser = subparsers.add_parser("query", help="execute a SQL statement")
-    query_parser.add_argument("sql", nargs="?", help="SQL statement")
-    query_parser.add_argument("--file", dest="sql_file", help="read SQL from file")
-    query_parser.add_argument("--limit", type=int, default=100, help="default SELECT row limit")
-    query_parser.add_argument("--write", action="store_true", help="allow write statements")
+    query_parser = subparsers.add_parser("query", help="执行一条 SQL 语句")
+    query_parser.add_argument("sql", nargs="?", help="SQL 语句")
+    query_parser.add_argument("--file", dest="sql_file", help="从文件读取 SQL")
+    query_parser.add_argument("--limit", type=int, default=100, help="SELECT 默认返回行数上限")
+    query_parser.add_argument("--write", action="store_true", help="允许写入语句")
 
-    write_parser = subparsers.add_parser("write", help="execute a write statement")
-    write_parser.add_argument("sql", nargs="?", help="SQL statement")
-    write_parser.add_argument("--file", dest="sql_file", help="read SQL from file")
+    write_parser = subparsers.add_parser("write", help="执行一条写入语句")
+    write_parser.add_argument("sql", nargs="?", help="SQL 语句")
+    write_parser.add_argument("--file", dest="sql_file", help="从文件读取 SQL")
 
-    subparsers.add_parser("tables", help="list tables")
+    subparsers.add_parser("tables", help="列出数据库表")
 
-    schema_parser = subparsers.add_parser("schema", help="show table schema")
-    schema_parser.add_argument("table_name", help="table name")
+    schema_parser = subparsers.add_parser("schema", help="显示表结构")
+    schema_parser.add_argument("table_name", help="数据库表名")
 
     return parser
 
 
 def main() -> int:
-    """执行命令行入口。"""
+    """
+    执行命令行入口。
+    """
     parser = _build_parser()
     args = parser.parse_args()
 

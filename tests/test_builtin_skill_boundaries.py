@@ -294,7 +294,7 @@ def test_api_skill_uses_runtime_system_setting_discovery() -> None:
 
 def test_refactored_agent_skills_use_english_guidance() -> None:
     """
-    重构 Skill 的指导正文保持英文，API 参考可包含中文 Schema 描述。
+    Skill 指导正文保持英文，生成的能力契约保留中文源说明。
     """
     for skill_name in (
         "moviepilot-api",
@@ -304,7 +304,19 @@ def test_refactored_agent_skills_use_english_guidance() -> None:
         "moviepilot-update",
     ):
         content = _read_skill(skill_name)
-        assert not re.search(r"[\u3400-\u9fff]", content), skill_name
+        guidance = content
+        if skill_name in {"downloader-operation", "mediaserver-operation"}:
+            before, contract_marker, contract_and_after = content.partition("## Complete Action Contract\n")
+            assert contract_marker, skill_name
+            next_heading = (
+                "## Verification\n" if skill_name == "downloader-operation"
+                else "## Safety And Verification\n"
+            )
+            contract, verification_marker, after = contract_and_after.partition(next_heading)
+            assert verification_marker, skill_name
+            assert re.search(r"[\u3400-\u9fff]", contract), skill_name
+            guidance = before + verification_marker + after
+        assert not re.search(r"[\u3400-\u9fff]", guidance), skill_name
         assert "按接口模型语义传值" not in content
 
 

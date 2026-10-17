@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""通过 MoviePilot 本机配置调用媒体服务器自身 API 的受控命令行工具。"""
+"""
+通过 MoviePilot 本机配置调用媒体服务器自身 API 的受控命令行工具。
+"""
 
 from __future__ import annotations
 
@@ -18,7 +20,9 @@ SCRIPT_PATH = Path(__file__).resolve()
 
 
 def _find_project_root() -> Optional[Path]:
-    """从运行环境或目录标记定位 MoviePilot 程序目录。"""
+    """
+    从运行环境或目录标记定位 MoviePilot 程序目录。
+    """
     candidates = []
     configured_root = os.environ.get("MOVIEPILOT_ROOT", "").strip()
     if configured_root:
@@ -58,12 +62,23 @@ _UNSET = object()
 
 
 class OperationError(RuntimeError):
-    """可安全返回给 Agent 的媒体服务器操作错误。"""
+    """
+    可安全返回给 Agent 的媒体服务器操作错误。
+    """
 
 
 @dataclass(frozen=True, slots=True)
 class ArgumentSpec:
-    """描述一个 action 参数的公开调用合同。"""
+    """
+    单个动作参数的公开调用契约。
+
+    :param name: 动作调用中的精确参数名称
+    :param type: 公开模式使用的类型表达式，支持联合类型及数组
+    :param description: 供调用方理解参数用途、限制和单位的中文说明
+    :param required: 该参数是否必填，默认 False
+    :param default: 参数默认值；仅在明确声明默认值时向调用方公开
+    :param enum: 允许的参数值集合；空元组表示不限制枚举
+    """
 
     name: str
     type: str
@@ -73,7 +88,9 @@ class ArgumentSpec:
     enum: tuple[Any, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
-        """返回可直接交给 Agent 的参数 schema。"""
+        """
+        返回可直接交给 Agent 的参数模式。
+        """
         result: dict[str, Any] = {
             "name": self.name,
             "type": self.type,
@@ -89,7 +106,15 @@ class ArgumentSpec:
 
 @dataclass(frozen=True, slots=True)
 class ActionSpec:
-    """描述一个允许调用的媒体服务器 action。"""
+    """
+    单个允许执行动作的能力、影响范围及参数契约。
+
+    :param description: 公开动作的用途与操作边界说明
+    :param effect: 策略分类标识，例如 safe_read、reversible_write 或 destructive_write；保持机器可读原值
+    :param providers: 支持该动作的服务标识，默认包括本脚本支持的全部服务
+    :param arguments: 按声明顺序排列的参数契约，默认无参数
+    :param argument_rules: 参数间的组合约束与安全要求，默认无附加规则
+    """
 
     description: str
     effect: str
@@ -99,11 +124,15 @@ class ActionSpec:
 
     @property
     def required(self) -> tuple[str, ...]:
-        """返回保持旧能力合同兼容的必填参数名。"""
+        """
+        返回保持旧能力合同兼容的必填参数名。
+        """
         return tuple(argument.name for argument in self.arguments if argument.required)
 
     def to_dict(self, name: str) -> dict[str, Any]:
-        """返回不包含实现对象的公开能力描述。"""
+        """
+        返回不包含实现对象的公开能力描述。
+        """
         return {
             "action": name,
             "description": self.description,
@@ -115,137 +144,137 @@ class ActionSpec:
         }
 
 
-ITEM_ID = ArgumentSpec("item_id", "string", "Provider-native item ID returned by the selected media server.")
-PARENT = ArgumentSpec("parent", "string|integer", "Library or parent item ID; Navidrome may omit it and use music.")
-OFFSET = ArgumentSpec("offset", "integer", "Zero-based list offset.", default=0)
-LIMIT = ArgumentSpec("limit", "integer", "Number of items to return, from 1 to 200.", default=DEFAULT_LIMIT)
+ITEM_ID = ArgumentSpec("item_id", "string", "所选媒体服务器返回的原生条目标识。")
+PARENT = ArgumentSpec("parent", "string|integer", "媒体库或父条目标识；Navidrome 可省略并使用 music。")
+OFFSET = ArgumentSpec("offset", "integer", "列表偏移量，从 0 开始。", default=0)
+LIMIT = ArgumentSpec("limit", "integer", "返回条目数量，范围为 1 至 200。", default=DEFAULT_LIMIT)
 
 
 ACTIONS: dict[str, ActionSpec] = {
     "instances.list": ActionSpec(
-        "List configured media-server instances without connection secrets.",
+        "列出已配置的媒体服务器实例，不返回连接凭据。",
         "safe_read",
     ),
     "capabilities.list": ActionSpec(
-        "List supported media-server actions and their complete argument contracts.",
+        "列出支持的媒体服务器动作及完整参数契约。",
         "safe_read",
         arguments=(
             ArgumentSpec(
                 "action_name",
                 "string",
-                "Optional exact action name used to return one capability contract.",
+                "可选的精确动作名称，填写时只返回该动作的能力契约。",
             ),
         ),
     ),
-    "server.statistics": ActionSpec("Read media counts and provider statistics.", "safe_read"),
+    "server.statistics": ActionSpec("读取媒体数量及服务统计。", "safe_read"),
     "server.users.count": ActionSpec(
-        "Read provider user count.",
+        "读取服务用户数量。",
         "safe_read",
         ("emby", "jellyfin", "zspace", "ugreen", "trimemedia", "navidrome", "mediavault"),
     ),
     "server.user.library_folders": ActionSpec(
-        "Read the current user's visible library folders.",
+        "读取当前用户可见的媒体库目录。",
         "safe_read",
         ("emby", "jellyfin", "zspace"),
     ),
     "libraries.list": ActionSpec(
-        "List visible provider libraries.",
+        "列出可见媒体库。",
         "safe_read",
         arguments=(
-            ArgumentSpec("hidden", "boolean", "Return only libraries configured for synchronization.", default=False),
-            ArgumentSpec("username", "string", "Read libraries visible to this username; supported by Emby, Jellyfin, and ZSpace."),
+            ArgumentSpec("hidden", "boolean", "只返回已配置为同步的媒体库。", default=False),
+            ArgumentSpec("username", "string", "读取该用户名可见的媒体库；Emby、Jellyfin 和 ZSpace 支持。"),
         ),
     ),
     "items.list": ActionSpec(
-        "Page items below one library or parent.",
+        "分页读取指定媒体库或父条目下的内容。",
         "safe_read",
         arguments=(PARENT, OFFSET, LIMIT),
-        argument_rules=("parent is required except for Navidrome, which ignores it.",),
+        argument_rules=("除 Navidrome 外必须提供 parent；Navidrome 忽略该参数。",),
     ),
     "items.count": ActionSpec(
-        "Count items below one library or parent.",
+        "统计指定媒体库或父条目下的内容数量。",
         "safe_read",
         arguments=(PARENT,),
-        argument_rules=("parent is required except for Navidrome, which defaults to music.",),
+        argument_rules=("除 Navidrome 外必须提供 parent；Navidrome 默认使用 music。",),
     ),
     "items.detail": ActionSpec(
-        "Read one provider item by native ID.",
+        "按服务原生标识读取单个媒体条目。",
         "safe_read",
         arguments=(ArgumentSpec("item_id", "string", ITEM_ID.description, required=True),),
     ),
     "items.movies.search": ActionSpec(
-        "Search provider-native movie items by title and optional year.",
+        "按标题及可选年份搜索服务中的电影条目。",
         "safe_read",
         ("emby", "jellyfin", "plex", "zspace", "ugreen", "trimemedia", "mediavault"),
         (
-            ArgumentSpec("title", "string", "Movie title.", required=True),
-            ArgumentSpec("year", "string|integer", "Optional release year."),
+            ArgumentSpec("title", "string", "电影标题。", required=True),
+            ArgumentSpec("year", "string|integer", "可选的发行年份。"),
         ),
     ),
     "items.music.search": ActionSpec(
-        "Search provider-native music by title, artist, or album.",
+        "按标题、艺术家或专辑搜索服务中的音乐。",
         "safe_read",
         ("emby", "jellyfin", "plex", "zspace", "ugreen", "navidrome"),
         (
-            ArgumentSpec("title", "string", "Track, album, or music-item title."),
-            ArgumentSpec("artist", "string", "Artist name."),
-            ArgumentSpec("album", "string", "Album name; provide title, artist, or album."),
+            ArgumentSpec("title", "string", "曲目、专辑或音乐条目标题。"),
+            ArgumentSpec("artist", "string", "艺术家名称。"),
+            ArgumentSpec("album", "string", "专辑名称；须提供 title、artist 或 album。"),
         ),
         ("Provide at least one of title, artist, and album.",),
     ),
     "items.season_episodes": ActionSpec(
-        "Read native episode coverage for one series and optional season.",
+        "读取指定剧集及可选季的现有分集信息。",
         "safe_read",
         ("emby", "jellyfin", "plex", "zspace", "ugreen", "trimemedia", "mediavault"),
         (
             ITEM_ID,
-            ArgumentSpec("title", "string", "Series title; provide it or item_id."),
-            ArgumentSpec("year", "string|integer", "Optional premiere year."),
-            ArgumentSpec("season", "integer", "Optional season number."),
+            ArgumentSpec("title", "string", "剧集标题；须提供本字段或 item_id。"),
+            ArgumentSpec("year", "string|integer", "可选的首播年份。"),
+            ArgumentSpec("season", "integer", "可选的季编号。"),
         ),
         ("Provide at least one of item_id and title.",),
     ),
     "activity.latest": ActionSpec(
-        "Read recently added provider items.",
+        "读取服务最近添加的媒体条目。",
         "safe_read",
-        arguments=(LIMIT, ArgumentSpec("username", "string", "Read for this username; supported by Emby, Jellyfin, and ZSpace.")),
+        arguments=(LIMIT, ArgumentSpec("username", "string", "按该用户名读取；Emby、Jellyfin 和 ZSpace 支持。")),
     ),
     "activity.resume": ActionSpec(
-        "Read in-progress/resumable provider items.",
+        "读取服务中正在观看或可继续播放的媒体条目。",
         "safe_read",
-        arguments=(LIMIT, ArgumentSpec("username", "string", "Read for this username; supported by Emby, Jellyfin, and ZSpace.")),
+        arguments=(LIMIT, ArgumentSpec("username", "string", "按该用户名读取；Emby、Jellyfin 和 ZSpace 支持。")),
     ),
     "activity.backdrops": ActionSpec(
-        "Read recent provider backdrop images.",
+        "读取服务近期媒体的背景图。",
         "safe_read",
         ("ugreen", "trimemedia", "mediavault"),
         (
             LIMIT,
-            ArgumentSpec("remote", "boolean", "Return provider URLs that are remotely accessible.", default=False),
+            ArgumentSpec("remote", "boolean", "是否返回可远程访问的服务 URL。", default=False),
         ),
     ),
-    "playback.sessions": ActionSpec("Read active playback sessions.", "safe_read", ("emby", "jellyfin", "plex")),
+    "playback.sessions": ActionSpec("读取正在进行的播放会话。", "safe_read", ("emby", "jellyfin", "plex")),
     "playback.url": ActionSpec(
-        "Build the provider play URL for one item.",
+        "生成单个条目的服务播放链接。",
         "safe_read",
         arguments=(ArgumentSpec("item_id", "string", ITEM_ID.description, required=True),),
     ),
     "library.scan": ActionSpec(
-        "Trigger a provider library scan.",
+        "触发媒体库扫描。",
         "external_side_effect",
         arguments=(
-            ArgumentSpec("scan_mode", "string|integer", "UGREEN-native scan mode; omit it for every other provider."),
+            ArgumentSpec("scan_mode", "string|integer", "UGREEN 原生扫描模式；其他服务必须省略。"),
         ),
     ),
     "metadata.refresh": ActionSpec(
-        "Refresh provider metadata for mapped items.",
+        "刷新匹配条目的服务端元数据。",
         "external_side_effect",
         ("emby", "plex", "zspace", "ugreen", "trimemedia"),
         (
             ArgumentSpec(
                 "items",
                 "object[]",
-                "Items to refresh. Each item supports title:string, year:string|integer, type using the exact MoviePilot media-type value, category:string, and target_path:string.",
+                "待刷新的条目。每项支持 title 字符串、year 字符串或整数、type 精确 MoviePilot 媒体类型值、category 字符串及 target_path 字符串。",
                 required=True,
             ),
         ),
@@ -254,7 +283,9 @@ ACTIONS: dict[str, ActionSpec] = {
 
 
 def _ensure_project_import() -> None:
-    """确保脚本从任意工作目录都可导入 MoviePilot。"""
+    """
+    确保脚本从任意工作目录都可导入 MoviePilot。
+    """
     if PROJECT_ROOT is None:
         raise RuntimeError(
             "无法定位 MoviePilot 程序目录；请在程序目录执行，或设置 MOVIEPILOT_ROOT="
@@ -266,7 +297,9 @@ def _ensure_project_import() -> None:
 
 
 def _load_configs() -> list[Any]:
-    """通过独立短会话读取并校验本机媒体服务器配置。"""
+    """
+    通过独立短会话读取并校验本机媒体服务器配置。
+    """
     _ensure_project_import()
     from app.db.oper.systemconfig import SystemConfigOper
     from app.db.session import SessionFactory
@@ -281,13 +314,17 @@ def _load_configs() -> list[Any]:
 
 
 def _import_symbol(reference: str) -> type[Any]:
-    """按审核过的模块引用惰性导入 provider client。"""
+    """
+    按审核过的模块引用惰性导入服务客户端。
+    """
     module_name, symbol_name = reference.split(":", 1)
     return getattr(importlib.import_module(module_name), symbol_name)
 
 
 def _select_config(server_name: Optional[str]) -> Any:
-    """按实例名选择启用配置，省略名称时只接受唯一实例。"""
+    """
+    按实例名选择启用配置，省略名称时只接受唯一实例。
+    """
     enabled = [config for config in _load_configs() if config.enabled]
     if server_name:
         for config in enabled:
@@ -303,7 +340,9 @@ def _select_config(server_name: Optional[str]) -> Any:
 
 
 def _build_client(config: Any) -> Any:
-    """使用本机私有配置构造具体媒体服务器 API client。"""
+    """
+    使用本机私有配置构造具体媒体服务器 API client。
+    """
     provider = str(config.type or "").strip().lower()
     reference = PROVIDER_CLASSES.get(provider)
     if not reference:
@@ -320,7 +359,9 @@ def _build_client(config: Any) -> Any:
 
 
 def _jsonable(value: Any, *, depth: int = 0) -> Any:
-    """将 provider DTO 转成有界、无私有字段的 JSON 值。"""
+    """
+    将服务返回的数据对象转成有界、无私有字段的 JSON 值。
+    """
     if depth > 6:
         return str(value)
     if value is None or isinstance(value, (str, int, float, bool)):
@@ -348,7 +389,9 @@ def _jsonable(value: Any, *, depth: int = 0) -> Any:
 
 
 def _is_sensitive_key(key: str) -> bool:
-    """识别 provider 结果中的凭据、会话和认证字段。"""
+    """
+    识别服务实现结果中的凭据、会话和认证字段。
+    """
     normalized = "".join(character for character in key.lower() if character.isalnum())
     return any(
         marker in normalized
@@ -366,7 +409,9 @@ def _is_sensitive_key(key: str) -> bool:
 
 
 def _require(arguments: Mapping[str, Any], name: str) -> Any:
-    """读取必填 action 参数。"""
+    """
+    读取必填动作参数。
+    """
     value = arguments.get(name)
     if value is None or value == "" or value == []:
         raise ValueError(f"缺少必填参数: {name}")
@@ -374,7 +419,9 @@ def _require(arguments: Mapping[str, Any], name: str) -> Any:
 
 
 def _matches_argument_type(value: Any, declared_type: str) -> bool:
-    """判断 JSON 值是否符合公开参数合同中的紧凑类型表达式。"""
+    """
+    判断 JSON 值是否符合公开参数合同中的紧凑类型表达式。
+    """
     for candidate in declared_type.split("|"):
         if candidate.endswith("[]"):
             if isinstance(value, list) and all(
@@ -394,7 +441,9 @@ def _matches_argument_type(value: Any, declared_type: str) -> bool:
 
 
 def _validate_refresh_items(items: Any) -> list[str]:
-    """校验 metadata.refresh 的嵌套条目并返回全部错误。"""
+    """
+    校验 metadata.refresh 的嵌套条目并返回全部错误。
+    """
     if not isinstance(items, list):
         return []
     errors: list[str] = []
@@ -420,7 +469,9 @@ def _validate_refresh_items(items: Any) -> list[str]:
 
 
 def _validate_action_arguments(action: str, spec: ActionSpec, arguments: Mapping[str, Any]) -> None:
-    """一次性校验 action 的全部参数，避免 Agent 按单个错误反复试调用。"""
+    """
+    一次性校验动作的全部参数，避免 Agent 按单个错误反复试调用。
+    """
     errors: list[str] = []
     argument_specs = {argument.name: argument for argument in spec.arguments}
     unknown = sorted(set(arguments) - set(argument_specs))
@@ -451,7 +502,9 @@ def _validate_action_arguments(action: str, spec: ActionSpec, arguments: Mapping
 
 
 def _validate_provider_arguments(action: str, provider: str, arguments: Mapping[str, Any]) -> None:
-    """校验需要知道 provider 后才能确定的条件参数。"""
+    """
+    校验需要知道服务实现后才能确定的条件参数。
+    """
     errors: list[str] = []
     if action in {"items.list", "items.count"} and provider != "navidrome" and not arguments.get("parent"):
         errors.append(f"{provider} 的 {action} 必须提供 parent")
@@ -469,19 +522,25 @@ def _validate_provider_arguments(action: str, provider: str, arguments: Mapping[
 
 
 def _limit(arguments: Mapping[str, Any]) -> int:
-    """读取安全的分页条数。"""
+    """
+    读取安全的分页条数。
+    """
     return min(MAX_LIMIT, max(1, int(arguments.get("limit", DEFAULT_LIMIT))))
 
 
 def _call_supported(method: Any, **kwargs: Any) -> Any:
-    """仅向 provider 公共方法传递其显式支持的关键字参数。"""
+    """
+    仅向服务实现公共方法传递其显式支持的关键字参数。
+    """
     parameters = inspect.signature(method).parameters
     supported = {key: value for key, value in kwargs.items() if key in parameters}
     return method(**supported)
 
 
 def _items_list(client: Any, provider: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
-    """按 provider 签名列出媒体条目。"""
+    """
+    按服务实现签名列出媒体条目。
+    """
     start = max(0, int(arguments.get("offset", 0)))
     limit = _limit(arguments)
     if provider == "navidrome":
@@ -494,14 +553,18 @@ def _items_list(client: Any, provider: str, arguments: Mapping[str, Any]) -> dic
 
 
 def _items_count(client: Any, provider: str, arguments: Mapping[str, Any]) -> Any:
-    """按 provider 签名统计媒体条目。"""
+    """
+    按服务实现签名统计媒体条目。
+    """
     if provider == "navidrome":
         return client.get_items_count(str(arguments.get("parent") or "music"))
     return client.get_items_count(_require(arguments, "parent"))
 
 
 def _activity(client: Any, action: str, arguments: Mapping[str, Any]) -> Any:
-    """读取最近入库或继续播放条目。"""
+    """
+    读取最近入库或继续播放条目。
+    """
     method = client.get_latest if action == "activity.latest" else client.get_resume
     limit = _limit(arguments)
     return _call_supported(
@@ -513,7 +576,9 @@ def _activity(client: Any, action: str, arguments: Mapping[str, Any]) -> Any:
 
 
 def _search_music(client: Any, provider: str, arguments: Mapping[str, Any]) -> Any:
-    """按 provider 公共接口查询原生音乐条目。"""
+    """
+    按服务实现公共接口查询原生音乐条目。
+    """
     title = arguments.get("title")
     artist = arguments.get("artist")
     album = arguments.get("album")
@@ -524,7 +589,9 @@ def _search_music(client: Any, provider: str, arguments: Mapping[str, Any]) -> A
 
 
 def _season_episodes(client: Any, arguments: Mapping[str, Any]) -> Any:
-    """查询一个 provider 原生剧集的已入库集数。"""
+    """
+    查询一个服务实现原生剧集的已入库集数。
+    """
     if not arguments.get("item_id") and not arguments.get("title"):
         raise ValueError("item_id 与 title 至少提供一项")
     return _call_supported(
@@ -537,7 +604,9 @@ def _season_episodes(client: Any, arguments: Mapping[str, Any]) -> Any:
 
 
 def _playback_sessions(client: Any, provider: str) -> Any:
-    """通过固定 provider 端点读取活动播放会话。"""
+    """
+    通过固定服务实现端点读取活动播放会话。
+    """
     if provider == "plex":
         plex = client.get_plex()
         return plex.sessions() if plex else []
@@ -554,7 +623,9 @@ def _playback_sessions(client: Any, provider: str) -> Any:
 
 
 def _refresh_metadata(client: Any, arguments: Mapping[str, Any]) -> Any:
-    """把结构化刷新条目转换为宿主 DTO 后调用 provider。"""
+    """
+    把结构化刷新条目转换为宿主 DTO 后调用服务实现。
+    """
     _ensure_project_import()
     from app.schemas.mediaserver import RefreshMediaItem
 
@@ -563,7 +634,9 @@ def _refresh_metadata(client: Any, arguments: Mapping[str, Any]) -> Any:
 
 
 def _dispatch(client: Any, provider: str, action: str, arguments: Mapping[str, Any]) -> Any:
-    """执行 action 注册表中允许的媒体服务器调用。"""
+    """
+    执行动作注册表中允许的媒体服务器调用。
+    """
     if action == "server.statistics":
         return client.get_medias_count()
     if action == "server.users.count":
@@ -613,7 +686,9 @@ def _dispatch(client: Any, provider: str, action: str, arguments: Mapping[str, A
 
 
 def list_instances() -> dict[str, Any]:
-    """列出媒体服务器实例的非敏感投影。"""
+    """
+    列出媒体服务器实例的非敏感投影。
+    """
     instances = [
         {
             "name": config.name,
@@ -627,7 +702,9 @@ def list_instances() -> dict[str, Any]:
 
 
 def list_capabilities(server_name: Optional[str], action: Optional[str] = None) -> dict[str, Any]:
-    """返回全部或指定实例支持的 action 及完整参数合同。"""
+    """
+    返回全部或指定实例支持的动作及完整参数合同。
+    """
     provider = None
     if server_name:
         provider = str(_select_config(server_name).type or "").lower()
@@ -649,7 +726,9 @@ def list_capabilities(server_name: Optional[str], action: Optional[str] = None) 
 
 
 def call_action(server_name: Optional[str], action: str, arguments: Mapping[str, Any]) -> dict[str, Any]:
-    """校验 action/provider 合同并执行一次受控调用。"""
+    """
+    校验动作与服务实现合同并执行一次受控调用。
+    """
     spec = ACTIONS.get(action)
     if spec is None:
         raise ValueError(f"未知 media server action: {action}")
@@ -692,7 +771,9 @@ def call_action(server_name: Optional[str], action: str, arguments: Mapping[str,
 
 
 def _parse_arguments(raw: str) -> dict[str, Any]:
-    """解析并限制调用参数为单个 JSON 对象。"""
+    """
+    解析并限制调用参数为单个 JSON 对象。
+    """
     value = json.loads(raw or "{}")
     if not isinstance(value, dict):
         raise ValueError("--arguments 必须是 JSON 对象")
@@ -700,14 +781,16 @@ def _parse_arguments(raw: str) -> dict[str, Any]:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    """构建固定命令和参数解析器。"""
-    parser = argparse.ArgumentParser(description="MoviePilot media server API helper")
+    """
+    构建固定命令和参数解析器。
+    """
+    parser = argparse.ArgumentParser(description="MoviePilot 媒体服务器 API 操作工具")
     subparsers = parser.add_subparsers(dest="command")
-    subparsers.add_parser("instances", help="list configured instances")
-    capabilities = subparsers.add_parser("capabilities", help="list allowed actions")
+    subparsers.add_parser("instances", help="列出已配置实例")
+    capabilities = subparsers.add_parser("capabilities", help="列出允许的动作")
     capabilities.add_argument("--server")
     capabilities.add_argument("--action")
-    call = subparsers.add_parser("call", help="call one allowed action")
+    call = subparsers.add_parser("call", help="调用一个允许的动作")
     call.add_argument("--server")
     call.add_argument("--action", required=True)
     call.add_argument("--arguments", default="{}")
@@ -715,7 +798,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    """执行 CLI 并以稳定 JSON envelope 返回结果。"""
+    """
+    执行 CLI 并以稳定 JSON 封装返回结果。
+    """
     parser = _build_parser()
     args = parser.parse_args()
     try:
@@ -728,6 +813,7 @@ def main() -> int:
         else:
             parser.print_help()
             return 0
+    # 命令行边界统一转换底层异常，维持调用方可解析的 JSON 错误格式。
     except Exception as error:  # noqa: BLE001
         payload = {
             "success": False,
