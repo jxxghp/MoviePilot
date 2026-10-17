@@ -1,4 +1,6 @@
-"""订阅候选准备、身份复核与资源匹配"""
+"""
+订阅候选准备、身份复核与资源匹配
+"""
 
 import copy
 from datetime import datetime
@@ -45,21 +47,27 @@ _MatchOutcome = Literal["completed", "skipped", "failed"]
 
 
 def _record_match_resource(context: Context, decision: str, reason: Optional[str] = None) -> None:
-    """在已关联的业务候选边界记录判断，普通调用没有活动作用域时直接返回。"""
+    """
+    在已关联的业务候选边界记录判断，普通调用没有活动作用域时直接返回。
+    """
     activity = current_activity_run()
     if activity:
         activity.resource(context, decision, reason)
 
 
 def _record_filter_rejection(helper: TorrentHelper, context: Context, params: Dict[str, Any]) -> None:
-    """由筛选 owner 提供未满足条件的解释，兼容旧插件和测试替身。"""
+    """
+    由筛选组件 提供未满足条件的解释，兼容旧插件和测试替身。
+    """
     explain = getattr(helper, "filter_torrent_reason", None)
     if explain:
         _record_match_resource(context, "rejected", explain(context.torrent_info, params))
 
 
 def _record_match_downloads(downloads: Optional[List[Context]]) -> None:
-    """仅累计下载链确认提交的资源，提交数量不代表下载或入库完成。"""
+    """
+    仅累计下载链确认提交的资源，提交数量不代表下载或入库完成。
+    """
     for download in downloads or []:
         _record_match_resource(download, "submitted")
 
@@ -73,7 +81,9 @@ def _report_match_progress(
     text: str,
     current: Optional[int] = None,
 ) -> None:
-    """发布 Match 进度，并始终携带真实的完成、跳过和失败计数。"""
+    """
+    发布 Match 进度，并始终携带真实的完成、跳过和失败计数。
+    """
     if progress_callback:
         progress_callback(
             value=value,
@@ -83,7 +93,9 @@ def _report_match_progress(
 
 
 def _match_stop_reason(context: SubscriptionExecutionContext) -> Optional[str]:
-    """区分 Match 安全停止来自 TTL 还是取消请求。"""
+    """
+    区分 Match 安全停止来自 TTL 还是取消请求。
+    """
     if context.is_expired():
         return "ttl_timeout"
     if context.is_cancel_requested():
@@ -95,7 +107,9 @@ def _match_result_reason(
     outcome: Optional[str],
     context: SubscriptionExecutionContext,
 ) -> Optional[str]:
-    """为跳过结果补充停止边界或业务原因。"""
+    """
+    为跳过结果补充停止边界或业务原因。
+    """
     if outcome != "skipped":
         return None
     return _match_stop_reason(context) or "business_skip"
@@ -107,7 +121,9 @@ def _release_match_admission(
     subscription_id: int,
     summary: MatchExecutionSummary,
 ) -> None:
-    """结束当前订阅资源检查，并记录未能恢复的状态。"""
+    """
+    结束当前订阅资源检查，并记录未能恢复的状态。
+    """
     if admission.release(lease):
         return
     summary.release_failures += 1
@@ -118,7 +134,9 @@ def _report_match_finished(
     progress_callback: Optional[Callable[..., None]],
     summary: MatchExecutionSummary,
 ) -> None:
-    """按实际计数发布 Match 最终进度。"""
+    """
+    按实际计数发布 Match 最终进度。
+    """
     if not progress_callback:
         return
     final_text = "订阅资源检查完成"
@@ -136,7 +154,9 @@ def _is_title_match_allowed(
     torrent_meta: MetaBase,
     torrent_info: TorrentInfo,
 ) -> bool:
-    """判断资源是否可以通过标题兜底匹配订阅目标。"""
+    """
+    判断资源是否可以通过标题兜底匹配订阅目标。
+    """
     if not TorrentHelper.match_torrent(
         mediainfo=mediainfo,
         torrent_meta=torrent_meta,
@@ -155,7 +175,9 @@ def _is_title_match_allowed(
 
 
 def _get_media_id_match_source(mediainfo: Optional[MediaInfo]) -> str:
-    """返回候选自身识别命中的明确媒体 ID 类型。"""
+    """
+    返回候选自身识别命中的明确媒体 ID 类型。
+    """
     media_source, media_id = resolve_media_identity(media=mediainfo)
     if media_source and media_id:
         return str(media_source)
@@ -249,7 +271,9 @@ def _prepare_subscription_match(
 ) -> Optional[
     tuple[MetaBase, MediaInfo, Dict[str, List[Context]], List[str], List[int]]
 ]:
-    """为单个订阅路由候选，并在本轮新鲜事实租约中加载媒体信息。"""
+    """
+    为单个订阅路由候选，并在本轮新鲜事实租约中加载媒体信息。
+    """
     try:
         meta = build_subscribe_meta(subscribe)
     except ValueError:
@@ -288,7 +312,9 @@ def _prepare_subscription_match(
 def _prepare_match_torrents(
     torrents: Dict[str, List[Context]],
 ) -> Dict[str, List[Context]]:
-    """预识别待匹配资源，并保留原上下文供后续订阅复用。"""
+    """
+    预识别待匹配资源，并保留原上下文供后续订阅复用。
+    """
     processed_torrents: Dict[str, List[Context]] = {}
     for domain, contexts in torrents.items():
         if runtime_stop_state.is_system_stopped:
@@ -336,13 +362,17 @@ def _prepare_match_torrents(
 
 
 class SubscribeMatchOwner(_SubscribeOwnerBase):
-    """订阅候选准备、身份复核与资源匹配 owner。"""
+    """
+    订阅候选准备、身份复核与资源匹配组件。
+    """
 
     def _prepare_match_torrents(
         self,
         torrents: Dict[str, List[Context]],
     ) -> Dict[str, List[Context]]:
-        """保留既有实例入口，并委托模块级实现执行资源预识别。"""
+        """
+        保留既有实例入口，并委托模块级实现执行资源预识别。
+        """
         return _prepare_match_torrents(torrents)
 
     def match(
@@ -420,7 +450,6 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
             processed_torrents = self._prepare_match_torrents(torrents)
             candidate_index, fresh_fact_lease = CandidateIndex(processed_torrents), FreshFactLease()
 
-            # 所有订阅
             subscribes = self.subscription_repository.list(self.get_states_for_search("R"))
             if mtype is not None:
                 subscribes = [subscribe for subscribe in subscribes if subscribe.type == mtype]
@@ -476,7 +505,9 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
         site_facts: tuple[dict[str, object], ...] = (),
         source: str = "automatic",
     ) -> None:
-        """在独立日志作用域内检查一个订阅并收口准入、异常和进度。"""
+        """
+        在独立日志作用域内检查一个订阅并收口准入、异常和进度。
+        """
         with subscription_log_scope(listed_subscribe.id, "rss", summary.run_id):
             logger.scoped_info(f"开始 RSS 资源检查：{listed_subscribe.name}，本轮共享候选 {summary.candidate_count} 个")
             outcome: Optional[str] = "skipped"
@@ -553,7 +584,9 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
         fresh_fact_lease: FreshFactLease,
         execution_context: SubscriptionExecutionContext,
     ) -> _MatchOutcome:
-        """在订阅准入边界调用单订阅 Match 执行。"""
+        """
+        在订阅准入边界调用单订阅 Match 执行。
+        """
         with subscription_activity_scope(getattr(self, "subscription_activity", None), subscribe, "refresh", execution_context.source) as activity:
             activity.counts["discovered"] = execution_context.refresh_candidates or sum(len(items) for items in processed_torrents.values())
             activity.counts["sites"] = len(execution_context.refresh_sites) or len(processed_torrents)
@@ -577,7 +610,9 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
         fresh_fact_lease: FreshFactLease,
         execution_context: SubscriptionExecutionContext,
     ) -> _MatchOutcome:
-        """在单条订阅准入期间完成匹配、下载和完成判定。"""
+        """
+        在单条订阅准入期间完成匹配、下载和完成判定。
+        """
         if execution_context.should_stop():
             return "skipped"
         logger.debug(f"开始匹配订阅，标题：{subscribe.name} ...")
@@ -615,13 +650,11 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
         mediainfo.clear()
         mediainfo.names = auxiliary_names
 
-        # 订阅识别词
         if subscribe.custom_words:
             custom_words_list = subscribe.custom_words.split("\n")
         else:
             custom_words_list = None
 
-        # 遍历预识别后的种子
         _match_context = []
         torrenthelper = TorrentHelper()
         systemconfig = get_configured_system_config()
@@ -636,7 +669,6 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
             for context in contexts:
                 if runtime_stop_state.is_system_stopped or execution_context.should_stop():
                     break
-                # 提取信息
                 _context = copy.copy(context)
                 torrent_meta = _context.meta_info
                 torrent_mediainfo = _context.media_info
@@ -649,7 +681,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
 
                 # 有自定义识别词时，需要判断是否需要重新识别
                 if custom_words_list:
-                    # 使用org_string，应用一次后理论上不能再次应用
+                    # 从原始标题重新应用识别词，避免对已改写文本重复替换。
                     _, apply_words = wordsmatcher.prepare(
                         torrent_meta.org_string, custom_words=custom_words_list
                     )
@@ -657,24 +689,19 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                         logger.debug(
                             f"{torrent_info.site_name} - {torrent_info.title} 因订阅存在自定义识别词，重新识别元数据..."
                         )
-                        # 重新识别元数据
                         torrent_meta = MetaInfo(
                             title=torrent_info.title,
                             subtitle=torrent_info.description,
                             custom_words=custom_words_list,
                         )
-                        # 更新元数据缓存
                         _context.meta_info = torrent_meta
-                        # 重新识别媒体信息
                         torrent_mediainfo = MediaChain().recognize_by_meta(
                             torrent_meta,
                             episode_group=subscribe.episode_group,
                             obtain_images=False,
                         )
                         if torrent_mediainfo:
-                            # 清理多余信息
                             torrent_mediainfo.clear()
-                            # 更新种子缓存
                             _context.media_info = torrent_mediainfo
                             _context.match_source = _get_media_id_match_source(
                                 torrent_mediainfo
@@ -695,18 +722,15 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                         torrent_info=torrent_info,
                     ):
                         continue
-                    # 匹配成功
                     logger.debug(
                         f"{mediainfo.title_year} 通过标题匹配到可选资源：{torrent_info.site_name} - {torrent_info.title}"
                     )
                     torrent_mediainfo = mediainfo
-                    # 更新种子缓存
                     _context.media_info = mediainfo
                     _context.match_source = "title"
                     _context.candidate_recognized = False
                     _context.media_info_is_target = True
 
-                # 直接比对媒体信息
                 if torrent_mediainfo and resolve_media_identity(media=torrent_mediainfo)[1]:
                     if torrent_mediainfo.type != mediainfo.type:
                         continue
@@ -744,13 +768,11 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                     continue
 
                 _record_match_resource(_context, "rejected", "季、集范围不符合订阅")
-                # 如果是电视剧
                 if torrent_mediainfo.type == MediaType.TV:
                     # 有多季的不要
                     if len(torrent_meta.season_list) > 1:
                         logger.debug(f"{torrent_info.title} 有多季，不处理")
                         continue
-                    # 比对季
                     if torrent_meta.begin_season is not None:
                         if meta.begin_season != torrent_meta.begin_season:
                             logger.debug(f"{torrent_info.title} 季不匹配")
@@ -758,14 +780,11 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                     elif meta.begin_season != 1:
                         logger.debug(f"{torrent_info.title} 季不匹配")
                         continue
-                    # 非洗版
                     if not subscribe.best_version:
                         # 不是缺失的剧集不要
                         if no_exists and no_exists.get(mediakey):
-                            # 缺失集
                             no_exists_info = no_exists.get(mediakey).get(subscribe.season)
                             if no_exists_info:
-                                # 是否有交集
                                 if (
                                     no_exists_info.episodes
                                     and torrent_meta.episode_list
@@ -798,7 +817,6 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                             continue
 
                 _record_match_resource(_context, "rejected", "不符合订阅筛选条件")
-                # 匹配订阅附加参数
                 if not torrenthelper.filter_torrent(
                     torrent_info=torrent_info, filter_params=self.get_params(subscribe)
                 ):
@@ -806,7 +824,6 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                     continue
 
                 _record_match_resource(_context, "rejected", "不符合优先级过滤规则")
-                # 优先级过滤规则
                 if subscribe.best_version:
                     rule_groups = subscribe.filter_groups or systemconfig.get(
                         SystemConfigKey.BestVersionFilterRuleGroups
@@ -819,7 +836,6 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                     rule_groups=rule_groups, torrent_list=[torrent_info], mediainfo=torrent_mediainfo
                 )
                 if result is not None and not result:
-                    # 不符合过滤规则
                     logger.debug(f"{torrent_info.title} 不匹配过滤规则")
                     continue
 
@@ -846,9 +862,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
                         )
                         continue
 
-                # 匹配成功
                 logger.debug(f"{mediainfo.title_year} 匹配成功：{torrent_info.title}")
-                # 自定义属性
                 torrent_mediainfo = apply_subscription_classification(
                     torrent_mediainfo,
                     subscribe,
@@ -863,7 +877,6 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
             return "skipped"
 
         if not _match_context:
-            # 未匹配到资源
             logger.debug(f"{mediainfo.title_year} 未匹配到符合条件的资源")
             self.finish_subscribe_or_not(
                 subscribe=subscribe, meta=meta, mediainfo=mediainfo, lefts=no_exists
@@ -873,7 +886,6 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
         if execution_context.should_stop():
             return "skipped"
 
-        # 开始批量择优下载
         logger.debug(f"{mediainfo.title_year} 匹配完成，共匹配到{len(_match_context)}个资源")
         downloads, lefts = self._SubscribeChain__download_best_version_with_full_pack_first(
             contexts=_match_context,
@@ -889,10 +901,8 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
 
         _record_match_downloads(downloads)
         logger.scoped_info(f"本轮新增下载 {len(downloads or [])} 个")
-        # 同步外部修改，更新订阅信息
         updated_subscribe = self.subscription_repository.get(subscribe.id)
 
-        # 判断是否要完成订阅
         if updated_subscribe:
             self.finish_subscribe_or_not(
                 subscribe=updated_subscribe,
@@ -911,7 +921,9 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
         torrent_info: TorrentInfo,
         context: Context,
     ) -> Optional[MediaInfo]:
-        """保留组合宿主的稳定私有调用入口。"""
+        """
+        保留组合宿主的稳定私有调用入口。
+        """
         return _reconcile_candidate_media(
             target_mediainfo=target_mediainfo,
             candidate_mediainfo=candidate_mediainfo,
@@ -924,5 +936,7 @@ class SubscribeMatchOwner(_SubscribeOwnerBase):
     def _SubscribeChain__get_media_id_match_source(
         mediainfo: Optional[MediaInfo],
     ) -> str:
-        """保留组合宿主解析媒体 ID 匹配来源的稳定入口。"""
+        """
+        保留组合宿主解析媒体 ID 匹配来源的稳定入口。
+        """
         return _get_media_id_match_source(mediainfo)

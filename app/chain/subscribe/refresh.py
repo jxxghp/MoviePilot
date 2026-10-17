@@ -1,4 +1,6 @@
-"""订阅元数据、进度与剧集范围刷新"""
+"""
+订阅元数据、进度与剧集范围刷新
+"""
 
 from dataclasses import replace
 from datetime import datetime
@@ -37,7 +39,9 @@ from app.schemas.types import (
 
 
 class SubscribeRefreshOwner(SubscribeMetadataOwner):
-    """订阅元数据、进度与剧集范围刷新，作为 SubscribeChain 的单一职责实现 owner。"""
+    """
+    订阅元数据、进度与剧集范围刷新，作为 SubscribeChain 的单一职责组件。
+    """
 
     def refresh(
         self,
@@ -65,7 +69,9 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
             text: Optional[str] = None,
             data: Optional[dict[str, Any]] = None,
         ) -> None:
-            """将站点刷新进度映射到订阅刷新的前半阶段。"""
+            """
+            将站点刷新进度映射到订阅刷新的前半阶段。
+            """
             if progress_callback:
                 progress_callback(
                     value=(value or 0) * 0.6,
@@ -78,7 +84,9 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
             text: Optional[str] = None,
             data: Optional[dict[str, Any]] = None,
         ) -> None:
-            """将订阅匹配进度映射到订阅刷新的后半阶段。"""
+            """
+            将订阅匹配进度映射到订阅刷新的后半阶段。
+            """
             if progress_callback:
                 progress_callback(
                     value=60 + (value or 0) * 0.4,
@@ -115,7 +123,9 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
 
     def _record_refresh_failure(self, site_facts: list[dict[str, object]], started_at: str,
                                 mtype: Optional[str], source: str) -> None:
-        """上游候选刷新失败时记录未进入匹配的事实，不伪造资源判断或下载结果。"""
+        """
+        上游候选刷新失败时记录未进入匹配的事实，不伪造资源判断或下载结果。
+        """
         for subscribe in self.subscription_repository.list():
             if subscribe.state not in {"R", "P"} or (mtype and subscribe.type != mtype):
                 continue
@@ -141,7 +151,6 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
         :param reconcile_completion: 是否复用本次新鲜媒体事实执行独立完成对账
         :param mtype: 可选媒体类型，省略时检查所有类型
         """
-        # 查询所有订阅
         repository = self.subscription_repository
         subscribes = repository.list()
         if mtype is not None:
@@ -154,7 +163,6 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
                 text=f"开始更新订阅元数据，共 {total_num} 个订阅 ...",
                 data={"total": total_num, "finished": 0},
             )
-        # 遍历订阅
         for index, subscribe in enumerate(subscribes, start=1):
             if runtime_stop_state.is_system_stopped:
                 break
@@ -195,7 +203,9 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
         *,
         mtype: Optional[str] = None,
     ) -> None:
-        """刷新指定媒体类型的元数据，并复用同一轮新鲜事实执行完成对账。"""
+        """
+        刷新指定媒体类型的元数据，并复用同一轮新鲜事实执行完成对账。
+        """
         return self.check(
             progress_callback=progress_callback,
             reconcile_completion=True,
@@ -384,7 +394,9 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
         mediainfo: MediaInfo,
         mediakey: Optional[Union[str, int]] = None,
     ) -> int:
-        """以旧目标范围内已确认存在的最高集号限制总集数回落。"""
+        """
+        以旧目标范围内已确认存在的最高集号限制总集数回落。
+        """
         old_total = subscribe.total_episode or 0
         if candidate_total >= old_total or not old_total:
             return candidate_total
@@ -483,6 +495,7 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
 
         用途：插件在"待定集数"等场景经事件注入 total_episode
         无监听者或外部未覆盖时返回入参原值，保证零行为变更。
+
         :param current_total: 主程序本次识别到的当前季总集数
         :param season: 季号
         :return: 最终采用的总集数
@@ -602,7 +615,9 @@ class SubscribeRefreshOwner(SubscribeMetadataOwner):
         no_exists: Optional[Dict[Union[int, str], Dict[int, _SchemaNotExistMediaInfo]]] = None,
         touch_last_update: Optional[bool] = False,
     ) -> Dict[str, Any]:
-        """准备订阅进度持久化字段；算法见 application.subscription.priority。"""
+        """
+        准备订阅进度持久化字段；算法见 application.subscription.priority。
+        """
         return cast(
             Dict[str, Any],
             _priority.prepare_subscribe_progress_fields(

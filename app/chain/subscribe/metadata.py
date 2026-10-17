@@ -1,4 +1,6 @@
-"""订阅单条元数据刷新与完成对账协作者。"""
+"""
+订阅单条元数据刷新与完成对账协作者。
+"""
 
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -28,7 +30,15 @@ SubscriptionMediaT = TypeVar("SubscriptionMediaT", MediaInfo, MusicInfo)
 
 @dataclass(frozen=True, slots=True)
 class SubscriptionSearchTarget:
-    """所有媒体订阅进入同一搜索编排前的目标和缺失范围快照。"""
+    """
+    所有媒体订阅进入同一搜索编排前的目标和缺失范围快照。
+
+    :param subscribe: 准备阶段刷新后的订阅持久化快照
+    :param meta: 用于资源检索和匹配的标题解析元数据
+    :param media: 已识别并应用订阅分类覆盖的媒体目标
+    :param missing: 按媒体键和季号组织的缺集范围，音乐目标使用空映射
+    :param media_key: 用于查询缺失范围与完成对账的媒体键，无法确定时为 None
+    """
 
     subscribe: SubscriptionSnapshot
     meta: MetaBase
@@ -39,7 +49,9 @@ class SubscriptionSearchTarget:
 
 def prepare_search_target(owner: _SubscribeOwnerBase, subscribe: SubscriptionSnapshot,
                           media_chain: MediaChain, ensure_active: Callable[[], None]) -> Optional[SubscriptionSearchTarget]:
-    """在准备阶段保留实体差异，之后统一复用搜索、预算和交付流程。"""
+    """
+    在准备阶段保留实体差异，之后统一复用搜索、预算和交付流程。
+    """
     if subscribe.type == MediaType.MUSIC.value:
         target = owner._prepare_music_subscribe(subscribe)
         if not target:
@@ -72,7 +84,9 @@ def apply_subscription_classification(
     media: SubscriptionMediaT,
     subscribe: SubscriptionSnapshot,
 ) -> SubscriptionMediaT:
-    """把稳定订阅分类覆盖应用到媒体副本，并兼容缺少新字段的旧快照。"""
+    """
+    把稳定订阅分类覆盖应用到媒体副本，并兼容缺少新字段的旧快照。
+    """
     override = subscription_classification_override(
         category_id=getattr(subscribe, "media_category_id", None),
         path_snapshot=getattr(subscribe, "media_category", None),
@@ -88,7 +102,9 @@ def apply_subscription_classification(
 
 
 class SubscribeMetadataOwner(_SubscribeOwnerBase):
-    """刷新一条订阅的新鲜媒体事实、持久字段与可选完成状态。"""
+    """
+    刷新一条订阅的新鲜媒体事实、持久字段与可选完成状态。
+    """
 
     def _check_subscription(
         self,
@@ -98,7 +114,9 @@ class SubscribeMetadataOwner(_SubscribeOwnerBase):
         reconcile_completion: bool,
         media_chain_factory: Callable[[], Any],
     ) -> Optional[SubscriptionSnapshot]:
-        """刷新单条订阅元数据，并按需复用同一事实执行完成对账。"""
+        """
+        刷新单条订阅元数据，并按需复用同一事实执行完成对账。
+        """
         try:
             meta = build_subscribe_meta(subscribe)
         except ValueError:
