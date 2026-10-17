@@ -9,7 +9,7 @@
 """
 import sys
 from contextlib import contextmanager
-from typing import Any, Dict, Iterator, Optional
+from typing import Any, Callable, Dict, Iterator, Optional
 
 
 @contextmanager
@@ -63,6 +63,7 @@ def restore_modules(snapshot: Dict[str, Any], prefix: Optional[str] = None) -> N
     :param snapshot: :func:`snapshot_modules` 返回的快照。
     :param prefix: 还原范围前缀；须与取快照时一致。为 ``None`` 时按全量还原。
     """
+    in_scope: Callable[[str], bool]
     if prefix is None:
         in_scope = lambda name: True  # noqa: E731
     else:
