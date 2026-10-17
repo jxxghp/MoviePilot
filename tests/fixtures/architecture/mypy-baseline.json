@@ -1364,12 +1364,6 @@
     "union-attr": 32,
     "var-annotated": 4
   },
-  "app/modules/ugreen/api.py": {
-    "arg-type": 1,
-    "no-any-return": 2,
-    "return-value": 7,
-    "type-arg": 21
-  },
   "app/modules/ugreen/module.py": {
     "arg-type": 3,
     "assignment": 1,
