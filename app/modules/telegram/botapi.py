@@ -50,7 +50,14 @@ class TelegramApiError(Exception):
             error_code: Optional[int] = None,
             parameters: Optional[JsonDict] = None,
     ):
-        """保留 API 错误码和描述，供调用方区分业务拒绝与网络失败。"""
+        """
+        保留业务错误码及附加参数，构造可诊断的异常说明。
+
+        :param method: 失败的 Bot API 方法名
+        :param description: Telegram 返回的业务错误描述
+        :param error_code: 业务错误码；未知时为 None
+        :param parameters: 可选重试秒数或迁移目标等响应参数；缺失时用空字典
+        """
         self.method = method
         self.description = description
         self.error_code = error_code
@@ -69,7 +76,12 @@ class TelegramNetworkError(Exception):
     """
 
     def __init__(self, method: str, description: str):
-        """封装请求层已经脱敏的网络错误描述。"""
+        """
+        封装已经脱敏的网络错误说明。
+
+        :param method: 失败的 Bot API 方法名
+        :param description: 调用方已移除机器人令牌的错误描述
+        """
         self.method = method
         self.description = description
         super().__init__(f"Telegram API {method} 请求失败：{description}")
@@ -77,11 +89,10 @@ class TelegramNetworkError(Exception):
 
 class TelegramBotApi:
     """
-    单个 Bot token 的 Bot API 客户端，持有一个复用连接的 HTTP 会话。
+    管理单个机器人令牌的 Bot API 请求与长轮询会话。
 
-    发送线程和 typing 线程共享一个会话，轮询线程使用独立会话。requests 连接池本身
-    线程安全；轮询请求虽然也是 POST，但只读取更新且不会自动重放，避免网络抖动时
-    重复发送消息。轮询连接断开后可以单独重建，不影响正在发送的消息。
+    发送和输入状态使用共用会话，轮询使用独立会话以便连接故障后单独重建。
+    调用方负责停止更新分发后关闭会话；普通请求失败不会在本客户端内自动重放。
     """
 
     def __init__(
@@ -92,10 +103,12 @@ class TelegramBotApi:
             parse_mode: Optional[str] = None,
     ):
         """
-        :param token: Bot token
-        :param api_url: 自建 Bot API 服务地址，为空时使用官方地址
-        :param proxy: requests 代理配置，仅在使用官方地址时生效
-        :param parse_mode: parse_mode 参数为 None 时使用的默认格式
+        创建启用证书校验的发送会话和轮询停止状态。
+
+        :param token: 机器人访问令牌，用于构造 API 和文件地址
+        :param api_url: 可选自建服务地址，只取协议与主机；为空时使用官方地址
+        :param proxy: requests 代理配置，仅对官方服务地址生效
+        :param parse_mode: 调用时 parse_mode 为 None 所使用的默认解析格式
         """
         self._token = token
         base_url = api_url or DEFAULT_API_URL
@@ -113,15 +126,26 @@ class TelegramBotApi:
 
     @property
     def proxy(self) -> Optional[JsonDict]:
-        """本客户端实际使用的代理配置。"""
+        """
+        提供当前客户端实际使用的代理配置。
+
+        :return: 官方接口使用的代理字典；自建服务或未配置代理时为 None
+        """
         return self._proxy
 
     def file_url(self, file_path: str) -> str:
-        """拼接 getFile 返回路径对应的下载地址（包含 token，不可写入日志）。"""
+        """
+        构造文件下载地址，地址包含令牌，不得直接记录日志。
+
+        :param file_path: getFile 返回的相对文件路径
+        :return: 包含机器人令牌的完整下载地址
+        """
         return f"{self._file_base}{file_path}"
 
     def _create_http(self) -> RequestUtils:
-        """创建一个 Bot API 专用 HTTP 会话。"""
+        """
+        创建一个 Bot API 专用 HTTP 会话。
+        """
         return RequestUtils(
             headers={"Accept": "application/json"},
             proxies=self._proxy,
@@ -131,13 +155,17 @@ class TelegramBotApi:
         )
 
     def _get_polling_http(self) -> RequestUtils:
-        """按需取得轮询专用会话，避免长轮询故障影响出站消息。"""
+        """
+        按需取得轮询专用会话，避免长轮询故障影响出站消息。
+        """
         if self._polling_http is None:
             self._polling_http = self._create_http()
         return self._polling_http
 
     def _reset_polling_http(self) -> None:
-        """重建轮询连接池；只由轮询线程调用。"""
+        """
+        重建轮询连接池；只由轮询线程调用。
+        """
         old_http = self._polling_http
         new_http = self._create_http()
         self._polling_http = new_http
@@ -145,17 +173,20 @@ class TelegramBotApi:
             old_http.close()
 
     def close(self) -> None:
-        """关闭 HTTP 会话。"""
+        """
+        关闭发送与轮询 HTTP 会话；调用方应先停止更新分发。
+        """
         self._http.close()
         if self._polling_http is not None:
             self._polling_http.close()
             self._polling_http = None
 
-    # ---------------------------------------------------------------- 请求层
 
     @staticmethod
     def _encode_params(params: Dict[str, Any]) -> Dict[str, Any]:
-        """丢弃 None 值，并按 Bot API 约定把嵌套结构编码为 JSON 字符串。"""
+        """
+        丢弃 None 值，并按 Bot API 约定把嵌套结构编码为 JSON 字符串。
+        """
         encoded: Dict[str, Any] = {}
         for key, value in params.items():
             if value is None:
@@ -177,10 +208,16 @@ class TelegramBotApi:
             _http: Optional[RequestUtils] = None,
     ) -> Any:
         """
-        调用 Bot API 方法并返回 ``result``。
+        提交 Bot API 请求并提取原始 result 字段。
 
-        :raises TelegramApiError: Telegram 返回 ok=false 或非 JSON 响应
-        :raises TelegramNetworkError: 网络失败，描述已去除 token
+        :param method: Bot API 方法名，如 sendMessage
+        :param params: 普通请求参数；None 值会移除，嵌套结构会编码为 JSON
+        :param files: 可选 multipart 文件字段
+        :param read_timeout: 响应读取超时，单位为秒，默认 30
+        :param _http: 可选独立请求会话，轮询时使用；为空时使用发送会话
+        :return: 原始 result 值，具体结构由 Bot API 方法决定
+        :raises TelegramApiError: API 返回失败标记或无法解析为 JSON
+        :raises TelegramNetworkError: 请求失败或无响应，异常描述已移除机器人令牌
         """
         request_http = _http or self._http
         try:
@@ -191,7 +228,8 @@ class TelegramBotApi:
                 timeout=(_CONNECT_TIMEOUT_SECONDS, read_timeout),
                 raise_exception=True,
             )
-        except Exception as err:  # RequestUtils 在 raise_exception=True 时抛出 requests 异常
+        except Exception as err:
+            # 请求异常可能带有包含令牌的 URL，先脱敏再向上报告
             description = f"{type(err).__name__}: {err}".replace(self._token, "<token>")
             raise TelegramNetworkError(method, description) from None
         if response is None:
@@ -212,32 +250,44 @@ class TelegramBotApi:
         return payload.get("result")
 
     def _call_dict(self, method: str, *args: Any, **kwargs: Any) -> JsonDict:
-        """调用返回对象（Message、User、File 等）的方法。"""
+        """
+        调用返回对象（Message、User、File 等）的方法。
+        """
         return cast(JsonDict, self.call(method, *args, **kwargs))
 
     def _call_bool(self, method: str, *args: Any, **kwargs: Any) -> bool:
-        """调用返回 True 的方法。"""
+        """
+        调用返回 True 的方法。
+        """
         return bool(self.call(method, *args, **kwargs))
 
     def _call_list(self, method: str, *args: Any, **kwargs: Any) -> List[JsonDict]:
-        """调用返回对象数组的方法。"""
+        """
+        调用返回对象数组的方法。
+        """
         return cast(List[JsonDict], self.call(method, *args, **kwargs) or [])
 
     def _parse_mode(self, parse_mode: Optional[str]) -> Optional[str]:
-        """None 使用默认格式，空字符串表示纯文本，不传 parse_mode。"""
+        """
+        None 使用默认格式，空字符串表示纯文本，不传 parse_mode。
+        """
         resolved = self._default_parse_mode if parse_mode is None else parse_mode
         return resolved or None
 
     @staticmethod
     def _reply_parameters(reply_to_message_id: Optional[int]) -> Optional[JsonDict]:
-        """旧式 reply_to_message_id 转为 Bot API 7.0 起的 reply_parameters。"""
+        """
+        旧式 reply_to_message_id 转为 Bot API 7.0 起的 reply_parameters。
+        """
         if not reply_to_message_id:
             return None
         return {"message_id": int(reply_to_message_id)}
 
     @staticmethod
     def _link_preview_options(disable_web_page_preview: Optional[bool]) -> Optional[JsonDict]:
-        """旧式 disable_web_page_preview 转为 link_preview_options。"""
+        """
+        旧式 disable_web_page_preview 转为 link_preview_options。
+        """
         if disable_web_page_preview is None:
             return None
         return {"is_disabled": disable_web_page_preview}
@@ -257,14 +307,22 @@ class TelegramBotApi:
         else:
             files[field] = value
 
-    # ------------------------------------------------------------- Bot API 方法
 
     def get_me(self) -> JsonDict:
-        """获取 Bot 自身信息。"""
+        """
+        查询机器人自身身份。
+
+        :return: Bot API User 字典
+        """
         return self._call_dict("getMe")
 
     def get_file(self, file_id: str) -> JsonDict:
-        """获取文件信息，返回值含 file_path。"""
+        """
+        查询资源下载所需的文件信息。
+
+        :param file_id: Telegram 分配的文件标识
+        :return: 包含 file_path 等元数据的原始 File 字典
+        """
         return self._call_dict("getFile", {"file_id": file_id})
 
     def send_message(
@@ -277,7 +335,18 @@ class TelegramBotApi:
             reply_to_message_id: Optional[int] = None,
             message_thread_id: Optional[int] = None,
     ) -> JsonDict:
-        """发送文本消息。"""
+        """
+        发送文本及可选键盘、回复和话题信息。
+
+        :param chat_id: 目标用户或会话标识，可为数字或 Telegram 支持的公开会话名称
+        :param text: 待发送正文
+        :param parse_mode: 正文解析格式；None 使用客户端默认值，空字符串表示纯文本
+        :param reply_markup: 可选内联键盘或其他 Bot API 键盘结构
+        :param disable_web_page_preview: 是否关闭网页预览；None 时不发送该配置
+        :param reply_to_message_id: 可选被回复消息标识，会转换为 reply_parameters
+        :param message_thread_id: 论坛群组中的可选话题标识
+        :return: Telegram 返回的原始消息字典；API 拒绝或网络失败时抛出统一异常
+        """
         return self._call_dict("sendMessage", {
             "chat_id": chat_id,
             "text": text,
@@ -300,7 +369,20 @@ class TelegramBotApi:
             reply_to_message_id: Optional[int] = None,
             message_thread_id: Optional[int] = None,
     ) -> JsonDict:
-        """发送单个图片、文件或语音，按类型选择 URL/file_id 或 multipart 上传。"""
+        """
+        根据资源类型发送媒体引用或上传本地内容。
+
+        :param method: 具体媒体发送 API 方法
+        :param field: photo、document 或 voice 等请求字段名
+        :param chat_id: 目标用户或会话标识，可为数字或 Telegram 支持的公开会话名称
+        :param media: file_id、URL、字节、文件对象或文件名与内容的二元组
+        :param caption: 可选媒体说明
+        :param parse_mode: 正文解析格式；None 使用客户端默认值，空字符串表示纯文本
+        :param reply_markup: 可选内联键盘或其他 Bot API 键盘结构
+        :param reply_to_message_id: 可选被回复消息标识，会转换为 reply_parameters
+        :param message_thread_id: 论坛群组中的可选话题标识
+        :return: Telegram 返回的原始消息字典；API 拒绝或网络失败时抛出统一异常
+        """
         params: Dict[str, Any] = {
             "chat_id": chat_id,
             "caption": caption,
@@ -314,15 +396,36 @@ class TelegramBotApi:
         return self._call_dict(method, params, files=files or None)
 
     def send_photo(self, chat_id: ChatId, photo: Any, **kwargs: Any) -> JsonDict:
-        """发送图片，参数见 ``_send_media``。"""
+        """
+        发送图片资源。
+
+        :param chat_id: 目标用户或会话标识，可为数字或 Telegram 支持的公开会话名称
+        :param photo: 资源 file_id、URL、字节、文件对象或文件名与内容的二元组
+        :param kwargs: 传给 _send_media 的说明、格式、键盘、回复和话题参数
+        :return: Telegram 返回的原始消息字典；API 拒绝或网络失败时抛出统一异常
+        """
         return self._send_media("sendPhoto", "photo", chat_id, photo, **kwargs)
 
     def send_document(self, chat_id: ChatId, document: Any, **kwargs: Any) -> JsonDict:
-        """发送文件，参数见 ``_send_media``。"""
+        """
+        发送文件资源。
+
+        :param chat_id: 目标用户或会话标识，可为数字或 Telegram 支持的公开会话名称
+        :param document: 资源 file_id、URL、字节、文件对象或文件名与内容的二元组
+        :param kwargs: 传给 _send_media 的说明、格式、键盘、回复和话题参数
+        :return: Telegram 返回的原始消息字典；API 拒绝或网络失败时抛出统一异常
+        """
         return self._send_media("sendDocument", "document", chat_id, document, **kwargs)
 
     def send_voice(self, chat_id: ChatId, voice: Any, **kwargs: Any) -> JsonDict:
-        """发送语音，参数见 ``_send_media``。"""
+        """
+        发送语音资源。
+
+        :param chat_id: 目标用户或会话标识，可为数字或 Telegram 支持的公开会话名称
+        :param voice: 资源 file_id、URL、字节、文件对象或文件名与内容的二元组
+        :param kwargs: 传给 _send_media 的说明、格式、键盘、回复和话题参数
+        :return: Telegram 返回的原始消息字典；API 拒绝或网络失败时抛出统一异常
+        """
         return self._send_media("sendVoice", "voice", chat_id, voice, **kwargs)
 
     def send_rich_message(
@@ -333,7 +436,16 @@ class TelegramBotApi:
             reply_parameters: Optional[JsonDict] = None,
             message_thread_id: Optional[int] = None,
     ) -> JsonDict:
-        """发送 Rich Message，rich_message 为 InputRichMessage 的 JSON 结构。"""
+        """
+        发送结构化富文本消息。
+
+        :param chat_id: 目标用户或会话标识，可为数字或 Telegram 支持的公开会话名称
+        :param rich_message: InputRichMessage 字典，包含 HTML 或 Markdown 正文
+        :param reply_markup: 可选内联键盘或其他 Bot API 键盘结构
+        :param reply_parameters: 可选原消息回复参数，直接透传 Bot API
+        :param message_thread_id: 论坛群组中的可选话题标识
+        :return: Telegram 返回的原始消息字典；API 拒绝或网络失败时抛出统一异常
+        """
         return self._call_dict("sendRichMessage", {
             "chat_id": chat_id,
             "rich_message": rich_message,
@@ -343,7 +455,13 @@ class TelegramBotApi:
         })
 
     def send_chat_action(self, chat_id: ChatId, action: str) -> bool:
-        """发送 typing 等聊天状态。"""
+        """
+        发送输入、上传等临时会话状态。
+
+        :param chat_id: 目标用户或会话标识，可为数字或 Telegram 支持的公开会话名称
+        :param action: Bot API 状态名称，如 typing
+        :return: API 返回结果转换后的布尔值；调用失败时抛出统一异常
+        """
         return self._call_bool("sendChatAction", {"chat_id": chat_id, "action": action})
 
     def edit_message_text(
@@ -356,7 +474,18 @@ class TelegramBotApi:
             disable_web_page_preview: Optional[bool] = None,
             rich_message: Optional[JsonDict] = None,
     ) -> Any:
-        """编辑文本消息；传 rich_message 时替换为 Rich Message 且不带 parse_mode。"""
+        """
+        修改文本消息，可替换为结构化富文本。
+
+        :param chat_id: 目标用户或会话标识，可为数字或 Telegram 支持的公开会话名称
+        :param message_id: 目标会话中的原消息标识
+        :param text: 新的普通正文
+        :param parse_mode: 正文解析格式；None 使用客户端默认值，空字符串表示纯文本
+        :param reply_markup: 可选内联键盘或其他 Bot API 键盘结构
+        :param disable_web_page_preview: 是否关闭网页预览；None 时不发送该配置
+        :param rich_message: 可选 InputRichMessage；非空时不发送 parse_mode
+        :return: Telegram 返回的更新后消息或成功标记；API 拒绝或网络失败时抛出统一异常
+        """
         return self.call("editMessageText", {
             "chat_id": chat_id,
             "message_id": message_id,
@@ -375,7 +504,16 @@ class TelegramBotApi:
             parse_mode: Optional[str] = None,
             reply_markup: Optional[JsonDict] = None,
     ) -> Any:
-        """编辑媒体消息的说明文字。"""
+        """
+        修改媒体消息的说明文字。
+
+        :param chat_id: 目标用户或会话标识，可为数字或 Telegram 支持的公开会话名称
+        :param message_id: 目标会话中的原消息标识
+        :param caption: 新的媒体说明
+        :param parse_mode: 正文解析格式；None 使用客户端默认值，空字符串表示纯文本
+        :param reply_markup: 可选内联键盘或其他 Bot API 键盘结构
+        :return: Telegram 返回的更新后消息或成功标记；API 拒绝或网络失败时抛出统一异常
+        """
         return self.call("editMessageCaption", {
             "chat_id": chat_id,
             "message_id": message_id,
@@ -391,7 +529,15 @@ class TelegramBotApi:
             media: JsonDict,
             reply_markup: Optional[JsonDict] = None,
     ) -> Any:
-        """替换消息媒体，media 为 InputMedia 的 JSON 结构（媒体须为 URL 或 file_id）。"""
+        """
+        替换消息中的媒体引用。
+
+        :param chat_id: 目标用户或会话标识，可为数字或 Telegram 支持的公开会话名称
+        :param message_id: 目标会话中的原消息标识
+        :param media: InputMedia 字典；资源必须是 URL 或 file_id，不在此方法上传文件
+        :param reply_markup: 可选内联键盘或其他 Bot API 键盘结构
+        :return: Telegram 返回的更新后消息或成功标记；API 拒绝或网络失败时抛出统一异常
+        """
         return self.call("editMessageMedia", {
             "chat_id": chat_id,
             "message_id": message_id,
@@ -400,7 +546,13 @@ class TelegramBotApi:
         })
 
     def delete_message(self, chat_id: ChatId, message_id: int) -> bool:
-        """删除消息。"""
+        """
+        删除目标会话中的消息。
+
+        :param chat_id: 目标用户或会话标识，可为数字或 Telegram 支持的公开会话名称
+        :param message_id: 目标会话中的原消息标识
+        :return: API 返回结果转换后的布尔值；调用失败时抛出统一异常
+        """
         return self._call_bool("deleteMessage", {"chat_id": chat_id, "message_id": message_id})
 
     def answer_callback_query(
@@ -409,7 +561,14 @@ class TelegramBotApi:
             text: Optional[str] = None,
             show_alert: Optional[bool] = None,
     ) -> bool:
-        """回应按钮回调，结束客户端的加载状态。"""
+        """
+        确认按钮回调并结束客户端加载状态。
+
+        :param callback_query_id: 按钮回调标识
+        :param text: 可选提示文字
+        :param show_alert: 是否使用弹窗提示；None 时不发送该参数
+        :return: API 返回结果转换后的布尔值；调用失败时抛出统一异常
+        """
         return self._call_bool("answerCallbackQuery", {
             "callback_query_id": callback_query_id,
             "text": text,
@@ -417,17 +576,31 @@ class TelegramBotApi:
         })
 
     def set_my_commands(self, commands: List[JsonDict]) -> bool:
-        """设置菜单命令，元素为 ``{"command": ..., "description": ...}``。"""
+        """
+        替换机器人菜单命令。
+
+        :param commands: 含 command 和 description 的命令字典列表，命令名不带斜杠
+        :return: API 返回结果转换后的布尔值；调用失败时抛出统一异常
+        """
         return self._call_bool("setMyCommands", {"commands": commands})
 
     def delete_my_commands(self) -> bool:
-        """清除菜单命令。"""
+        """
+        清除机器人菜单命令。
+
+        :return: API 返回结果转换后的布尔值；调用失败时抛出统一异常
+        """
         return self._call_bool("deleteMyCommands")
 
-    # ------------------------------------------------------------------ 轮询
 
     def get_updates(self, offset: Optional[int], timeout: int) -> List[JsonDict]:
-        """长轮询获取更新，读取超时比服务端等待时间多留出网络余量。"""
+        """
+        长轮询读取消息和按钮回调，其他更新类型不请求。
+
+        :param offset: 下一条需要的更新标识；服务端会确认比它更早的更新，None 表示尚无本地进度
+        :param timeout: 服务端等待时长，单位为秒；读取超时额外增加 15 秒
+        :return: 原始 Update 字典列表；没有更新时返回空列表
+        """
         return self._call_list(
             "getUpdates",
             {"offset": offset, "timeout": timeout, "allowed_updates": _ALLOWED_UPDATES},
@@ -442,15 +615,14 @@ class TelegramBotApi:
             retry_max_seconds: int = 60,
     ) -> None:
         """
-        在当前线程循环拉取更新并逐条交给 handler，直到 ``stop_polling`` 被调用。
+        在当前线程拉取更新并按返回顺序串行分发，直到请求停止。
 
-        更新按 update_id 顺序串行处理；handler 抛错只记录日志，仍确认该更新，
-        避免同一条坏消息被反复投递。网络或 API 失败按指数退避重试，首次失败立即
-        警告，持续失败每分钟再警告一次；恢复时记录失败次数和持续时间。
+        请求失败从 3 秒开始指数退避，网络异常会重建轮询会话；持续失败每分钟警告一次。
+        停止后返回的长轮询结果会丢弃，不推进更新进度，供下一个轮询者重新接收。
 
-        停止后仍在进行的 getUpdates 返回时，结果直接丢弃且不确认 offset，Telegram
-        会把这些更新重新投递给下一个轮询者；新轮询者的 getUpdates 也会让 Telegram
-        立即结束旧请求。
+        :param handler: 每条更新的同步处理函数；抛错只记录日志，该更新仍推进本地进度
+        :param long_polling_timeout: 每次服务端长轮询等待秒数
+        :param retry_max_seconds: 连续请求失败的最大退避秒数，默认 60
         """
         offset: Optional[int] = None
         failures = 0
