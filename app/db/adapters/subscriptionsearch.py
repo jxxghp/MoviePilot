@@ -1,4 +1,6 @@
-"""订阅搜索持久队列的 SQLAlchemy 适配器。"""
+"""
+订阅搜索持久队列的 SQLAlchemy 适配器。
+"""
 
 from collections.abc import Callable, Mapping
 from contextlib import AbstractAsyncContextManager
@@ -35,7 +37,9 @@ _BUSY_SITE_RETRY_SECONDS = 10
 
 
 def _batch(record: SubscriptionSearchBatch) -> SearchBatchSnapshot:
-    """在 Session 内投影不可变搜索批次快照。"""
+    """
+    在 Session 内投影不可变搜索批次快照。
+    """
     return SearchBatchSnapshot(
         batch_id=record.batch_id,
         source=record.source,
@@ -56,7 +60,9 @@ def _batch(record: SubscriptionSearchBatch) -> SearchBatchSnapshot:
 
 
 def _task(record: SubscriptionSearchTask) -> SearchTaskSnapshot:
-    """在 Session 内投影不可变搜索任务快照。"""
+    """
+    在 Session 内投影不可变搜索任务快照。
+    """
     return SearchTaskSnapshot(
         task_id=record.task_id,
         batch_id=record.batch_id,
@@ -89,7 +95,9 @@ def _enqueue_result(
     available_at_by_subscription: Optional[Mapping[int, str]],
     refresh_pending: bool,
 ) -> SearchEnqueueResult:
-    """在当前事务中创建搜索批次并投影返回结果。"""
+    """
+    在当前事务中创建搜索批次并投影返回结果。
+    """
     record, created, coalesced, active_batch_ids = repository.enqueue(
         subscription_ids=subscription_ids,
         source=source,
@@ -106,7 +114,9 @@ def _enqueue_result(
 
 
 def _stage_enqueued_activity(session: Session, result: SearchEnqueueResult) -> None:
-    """入队时记录请求；合并只更新原等待计划，保留原事件和请求时间。"""
+    """
+    入队时记录请求；合并只更新原等待计划，保留原事件和请求时间。
+    """
     try:
         with session.begin_nested():
             subscriptions = SessionSubscriptionRepository(session)
@@ -135,7 +145,9 @@ def _stage_enqueued_activity(session: Session, result: SearchEnqueueResult) -> N
 
 def _settle_task_activity(session: Session, changed: bool, *, batch_id: Optional[str] = None,
                           task_id: Optional[str] = None) -> None:
-    """结算已停止的排队活动；保存点失败不撤销已确认的下载或任务终态。"""
+    """
+    结算已停止的排队活动；保存点失败不撤销已确认的下载或任务终态。
+    """
     if not changed:
         return
     try:
@@ -152,7 +164,9 @@ def _settle_task_activity(session: Session, changed: bool, *, batch_id: Optional
 
 
 class TransactionalSubscriptionSearchRepository:
-    """使用同步或异步短事务实现订阅搜索队列端口。"""
+    """
+    使用同步或异步短事务实现订阅搜索队列端口。
+    """
 
     def __init__(
         self,
@@ -161,19 +175,25 @@ class TransactionalSubscriptionSearchRepository:
             Callable[[], AbstractAsyncContextManager[AsyncSession]]
         ] = None,
     ) -> None:
-        """保存由组合根注入的同步和异步 Session 工厂。"""
+        """
+        保存由组合根注入的同步和异步 Session 工厂。
+        """
         self._session_factory = session_factory
         self.sessions: SearchSessionRepository = TransactionalSearchSessionRepository(session_factory)
         self._async_session_factory = async_session_factory
 
     def _read(self, operation: Callable[[SubscriptionSearchOper], T]) -> T:
-        """在短 Session 中执行一次只读查询。"""
+        """
+        在短 Session 中执行一次只读查询。
+        """
         with self._session_factory() as session:
             return operation(SubscriptionSearchOper(session))
 
     def _write(self, operation: Callable[[SubscriptionSearchOper], T],
                after_stage: Optional[Callable[[Session, T], None]] = None) -> T:
-        """在短事务中执行一次队列状态变更。"""
+        """
+        在短事务中执行一次队列状态变更。
+        """
         with self._session_factory() as session:
             unit_of_work = SqlAlchemyUnitOfWork(session)
             try:
@@ -188,14 +208,18 @@ class TransactionalSubscriptionSearchRepository:
 
     async def _async_write(self, operation: Callable[[SubscriptionSearchOper], T],
                            after_stage: Optional[Callable[[Session, T], None]] = None) -> T:
-        """在短异步事务中执行一次队列状态变更。"""
+        """
+        在短异步事务中执行一次队列状态变更。
+        """
         if self._async_session_factory is None:
             raise RuntimeError("订阅搜索异步写入尚未配置")
         async with self._async_session_factory() as session:
             unit_of_work = SqlAlchemyAsyncUnitOfWork(session)
             try:
                 def stage(sync_session: Session) -> T:
-                    """复用异步事务的同步视图，原子暂存任务和业务活动。"""
+                    """
+                    复用异步事务的同步视图，原子暂存任务和业务活动。
+                    """
                     result = operation(SubscriptionSearchOper(sync_session))
                     if after_stage:
                         after_stage(sync_session, result)
@@ -217,7 +241,9 @@ class TransactionalSubscriptionSearchRepository:
         available_at_by_subscription: Optional[Mapping[int, str]] = None,
         refresh_pending: bool = False,
     ) -> SearchEnqueueResult:
-        """创建批次并返回 single-flight 合并计数。"""
+        """
+        创建批次并返回 single-flight 合并计数。
+        """
         return self._write(
             lambda repository: _enqueue_result(
                 repository,
@@ -239,7 +265,9 @@ class TransactionalSubscriptionSearchRepository:
         available_at_by_subscription: Optional[Mapping[int, str]] = None,
         refresh_pending: bool = False,
     ) -> SearchEnqueueResult:
-        """在短异步事务中创建批次并返回合并计数。"""
+        """
+        在短异步事务中创建批次并返回合并计数。
+        """
         return await self._async_write(
             lambda repository: _enqueue_result(
                 repository,
@@ -253,7 +281,9 @@ class TransactionalSubscriptionSearchRepository:
         )
 
     def claim_next(self, *, owner: str, lease_seconds: int = 900) -> Optional[SearchTaskSnapshot]:
-        """认领下一任务并返回脱离 Session 的快照。"""
+        """
+        认领下一任务并返回脱离 Session 的快照。
+        """
         return self._write(
             lambda repository: (
                 _task(record)
@@ -270,7 +300,9 @@ class TransactionalSubscriptionSearchRepository:
         state: str,
         error: Optional[str] = None,
     ) -> bool:
-        """以租约令牌收口任务。"""
+        """
+        以租约令牌收口任务。
+        """
         return self._write(
             lambda repository: repository.finish_task(
                 task_id=task_id,
@@ -289,7 +321,9 @@ class TransactionalSubscriptionSearchRepository:
         phase: str,
         current_site_id: Optional[int] = None,
     ) -> bool:
-        """以当前租约更新任务阶段。"""
+        """
+        以当前租约更新任务阶段。
+        """
         return self._write(
             lambda repository: repository.update_task_phase(
                 task_id=task_id,
@@ -306,7 +340,9 @@ class TransactionalSubscriptionSearchRepository:
         lease_token: str,
         cancelled: bool = False,
     ) -> bool:
-        """释放执行租约或收口取消。"""
+        """
+        释放执行租约或收口取消。
+        """
         return self._write(
             lambda repository: repository.release_task(
                 task_id=task_id,
@@ -326,7 +362,9 @@ class TransactionalSubscriptionSearchRepository:
         message: Optional[str] = None,
         pending_site_ids: Optional[tuple[int, ...]] = None,
     ) -> bool:
-        """重新排队并保存待搜站点；未提供站点时保留原游标。"""
+        """
+        重新排队并保存待搜站点；未提供站点时保留原游标。
+        """
         return self._write(
             lambda repository: repository.defer_task(
                 task_id=task_id,
@@ -339,16 +377,22 @@ class TransactionalSubscriptionSearchRepository:
         )
 
     def is_cancel_requested(self, task_id: str) -> bool:
-        """查询任务或批次的取消请求。"""
+        """
+        查询任务或批次的取消请求。
+        """
         return self._read(lambda repository: repository.is_cancel_requested(task_id))
 
     def request_cancel(self, batch_id: str) -> bool:
-        """请求取消批次。"""
+        """
+        请求取消批次。
+        """
         return self._write(lambda repository: repository.request_cancel(batch_id),
                            after_stage=cast(Callable[[Session, bool], None], partial(_settle_task_activity, batch_id=batch_id)))
 
     def get_batch(self, batch_id: str) -> Optional[SearchBatchSnapshot]:
-        """查询批次聚合快照。"""
+        """
+        查询批次聚合快照。
+        """
         return self._read(
             lambda repository: (
                 _batch(record) if (record := repository.get_batch(batch_id)) is not None else None
@@ -363,9 +407,13 @@ class TransactionalSubscriptionSearchRepository:
         lease_seconds: int,
         minimum_interval: float = 0,
     ) -> SiteBudgetClaim:
-        """认领单站点预算并投影等待或租约事实。"""
+        """
+        认领单站点预算并投影等待或租约事实。
+        """
         def operation(repository: SubscriptionSearchOper) -> SiteBudgetClaim:
-            """在短事务中认领并复制站点预算状态。"""
+            """
+            在短事务中认领并复制站点预算状态。
+            """
             record, acquired = repository.claim_site(
                 site_id=site_id,
                 owner=owner,
@@ -412,7 +460,9 @@ class TransactionalSubscriptionSearchRepository:
         next_allowed_at: str,
         error: Optional[str] = None,
     ) -> bool:
-        """释放站点租约并持久化错误冷却或立即恢复。"""
+        """
+        释放站点租约并持久化错误冷却或立即恢复。
+        """
         return self._write(
             lambda repository: repository.finish_site(
                 site_id=site_id,

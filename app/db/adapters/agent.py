@@ -1,4 +1,6 @@
-"""Agent 自主任务与插件数据的类型化持久化适配器。"""
+"""
+Agent 自主任务与插件数据的类型化持久化适配器。
+"""
 
 from __future__ import annotations
 
@@ -24,7 +26,9 @@ ResultT = TypeVar("ResultT")
 
 
 def _project_task(record: object) -> AgentTaskSnapshot:
-    """在 Session 内把自主任务 ORM 记录投影为冻结快照。"""
+    """
+    在 Session 内把自主任务 ORM 记录投影为冻结快照。
+    """
     task_id = getattr(record, "id", None)
     name = getattr(record, "name", None)
     content = getattr(record, "content", None)
@@ -69,7 +73,9 @@ def _project_task(record: object) -> AgentTaskSnapshot:
 
 
 def _project_run(record: object) -> AgentTaskRunSnapshot:
-    """在 Session 内把自主任务运行 ORM 记录投影为冻结快照。"""
+    """
+    在 Session 内把自主任务运行 ORM 记录投影为冻结快照。
+    """
     run_id = getattr(record, "run_id", None)
     task_id = getattr(record, "task_id", None)
     trigger_source = getattr(record, "trigger_source", None)
@@ -116,14 +122,20 @@ def _project_run(record: object) -> AgentTaskRunSnapshot:
 
 
 class SessionAgentTaskRepository:
-    """把调用方同步 Session 适配为类型化自主任务仓储。"""
+    """
+    把调用方同步 Session 适配为类型化自主任务仓储。
+    """
 
     def __init__(self, session: Session) -> None:
-        """保存调用方独占的同步 Session。"""
+        """
+        保存调用方独占的同步 Session。
+        """
         self._repository = AgentTaskOper(session)
 
     def add(self, **values: object) -> AgentTaskSnapshot | None:
-        """暂存新增任务并返回冻结快照。"""
+        """
+        暂存新增任务并返回冻结快照。
+        """
         record = self._repository.add(**values)
         return _project_task(record) if record is not None else None
 
@@ -132,7 +144,9 @@ class SessionAgentTaskRepository:
         task_id: int,
         user_id: Optional[str] = None,
     ) -> AgentTaskSnapshot | None:
-        """读取一条任务并在 Session 内投影。"""
+        """
+        读取一条任务并在 Session 内投影。
+        """
         record = self._repository.get(task_id=task_id, user_id=user_id)
         return _project_task(record) if record is not None else None
 
@@ -141,7 +155,9 @@ class SessionAgentTaskRepository:
         user_id: Optional[str] = None,
         enabled: Optional[bool] = None,
     ) -> list[AgentTaskSnapshot]:
-        """读取任务列表并在 Session 内投影。"""
+        """
+        读取任务列表并在 Session 内投影。
+        """
         return [
             _project_task(record)
             for record in self._repository.list(user_id=user_id, enabled=enabled)
@@ -153,15 +169,21 @@ class SessionAgentTaskRepository:
         payload: dict[str, object],
         user_id: Optional[str] = None,
     ) -> bool:
-        """暂存任务更新。"""
+        """
+        暂存任务更新。
+        """
         return self._repository.update(task_id, payload, user_id)
 
     def delete(self, task_id: int, user_id: Optional[str] = None) -> bool:
-        """暂存任务及运行记录删除。"""
+        """
+        暂存任务及运行记录删除。
+        """
         return self._repository.delete(task_id, user_id)
 
     def mark_interrupted(self, task_id: int, result: str) -> bool:
-        """暂存遗留运行态收口。"""
+        """
+        暂存遗留运行态收口。
+        """
         return self._repository.mark_interrupted(task_id, result)
 
     def begin_run(
@@ -171,7 +193,9 @@ class SessionAgentTaskRepository:
         *,
         run_id: str | None = None,
     ) -> AgentTaskRunSnapshot | None:
-        """原子认领任务并返回运行快照。"""
+        """
+        原子认领任务并返回运行快照。
+        """
         record = self._repository.begin_run(
             task_id,
             trigger_source,
@@ -185,7 +209,9 @@ class SessionAgentTaskRepository:
         user_id: Optional[str] = None,
         limit: int = 10,
     ) -> List[AgentTaskRunSnapshot]:
-        """读取最近运行并在 Session 内投影。"""
+        """
+        读取最近运行并在 Session 内投影。
+        """
         return [
             _project_run(record)
             for record in self._repository.list_runs(task_id, user_id, limit)
@@ -197,7 +223,9 @@ class SessionAgentTaskRepository:
         success: bool,
         result: str,
     ) -> AgentTaskFinishOutcome:
-        """暂存精确运行收口并返回结构化事实。"""
+        """
+        暂存精确运行收口并返回结构化事实。
+        """
         outcome = self._repository.finish_run_outcome(run_id, success, result)
         return AgentTaskFinishOutcome(
             run_finalized=outcome.run_finalized,
@@ -207,17 +235,23 @@ class SessionAgentTaskRepository:
 
 
 class TransactionalAgentTaskRepository:
-    """为 Scheduler 和 Agent 工具创建短生命周期自主任务事务。"""
+    """
+    为 Scheduler 和 Agent 工具创建短生命周期自主任务事务。
+    """
 
     def __init__(self, session: Callable[[], Session]) -> None:
-        """保存由启动组合根提供的同步 Session 工厂。"""
+        """
+        保存由启动组合根提供的同步 Session 工厂。
+        """
         self._session = session
 
     def _read(
         self,
         operation: Callable[[SessionAgentTaskRepository], ResultT],
     ) -> ResultT:
-        """在独立 Session 内执行一次查询并完成投影。"""
+        """
+        在独立 Session 内执行一次查询并完成投影。
+        """
         session = self._session()
         try:
             return operation(SessionAgentTaskRepository(session))
@@ -228,7 +262,9 @@ class TransactionalAgentTaskRepository:
         self,
         operation: Callable[[SessionAgentTaskRepository], ResultT],
     ) -> ResultT:
-        """在独立短事务中执行一次写入。"""
+        """
+        在独立短事务中执行一次写入。
+        """
         session = self._session()
         unit_of_work = SqlAlchemyUnitOfWork(session)
         try:
@@ -242,7 +278,9 @@ class TransactionalAgentTaskRepository:
             session.close()
 
     def add(self, **values: object) -> AgentTaskSnapshot | None:
-        """新增任务并提交短事务。"""
+        """
+        新增任务并提交短事务。
+        """
         return self._write(lambda repository: repository.add(**values))
 
     def get(
@@ -250,7 +288,9 @@ class TransactionalAgentTaskRepository:
         task_id: int,
         user_id: Optional[str] = None,
     ) -> AgentTaskSnapshot | None:
-        """读取任务冻结快照。"""
+        """
+        读取任务冻结快照。
+        """
         return self._read(lambda repository: repository.get(task_id, user_id))
 
     def list(
@@ -258,7 +298,9 @@ class TransactionalAgentTaskRepository:
         user_id: Optional[str] = None,
         enabled: Optional[bool] = None,
     ) -> list[AgentTaskSnapshot]:
-        """读取任务冻结快照列表。"""
+        """
+        读取任务冻结快照列表。
+        """
         return self._read(lambda repository: repository.list(user_id, enabled))
 
     def update(
@@ -267,17 +309,23 @@ class TransactionalAgentTaskRepository:
         payload: dict[str, object],
         user_id: Optional[str] = None,
     ) -> bool:
-        """更新任务并提交短事务。"""
+        """
+        更新任务并提交短事务。
+        """
         return self._write(
             lambda repository: repository.update(task_id, payload, user_id)
         )
 
     def delete(self, task_id: int, user_id: Optional[str] = None) -> bool:
-        """删除任务并提交短事务。"""
+        """
+        删除任务并提交短事务。
+        """
         return self._write(lambda repository: repository.delete(task_id, user_id))
 
     def mark_interrupted(self, task_id: int, result: str) -> bool:
-        """收口遗留运行态并提交短事务。"""
+        """
+        收口遗留运行态并提交短事务。
+        """
         return self._write(
             lambda repository: repository.mark_interrupted(task_id, result)
         )
@@ -289,7 +337,9 @@ class TransactionalAgentTaskRepository:
         *,
         run_id: str | None = None,
     ) -> AgentTaskRunSnapshot | None:
-        """认领任务并提交短事务。"""
+        """
+        认领任务并提交短事务。
+        """
         return self._write(
             lambda repository: repository.begin_run(
                 task_id,
@@ -304,7 +354,9 @@ class TransactionalAgentTaskRepository:
         user_id: Optional[str] = None,
         limit: int = 10,
     ) -> List[AgentTaskRunSnapshot]:
-        """读取任务最近运行快照。"""
+        """
+        读取任务最近运行快照。
+        """
         return self._read(
             lambda repository: repository.list_runs(task_id, user_id, limit)
         )
@@ -315,7 +367,9 @@ class TransactionalAgentTaskRepository:
         success: bool,
         result: str,
     ) -> AgentTaskFinishOutcome:
-        """收口运行并提交短事务。"""
+        """
+        收口运行并提交短事务。
+        """
         return self._write(
             lambda repository: repository.finish_run_outcome(
                 run_id,
@@ -326,23 +380,31 @@ class TransactionalAgentTaskRepository:
 
 
 class TransactionalPluginDataRepository:
-    """为 Agent 插件数据读取创建短生命周期异步 Session。"""
+    """
+    为 Agent 插件数据读取创建短生命周期异步 Session。
+    """
 
     def __init__(
         self,
         async_session: Callable[[], AbstractAsyncContextManager[AsyncSession]],
     ) -> None:
-        """保存由启动组合根提供的异步 Session 工厂。"""
+        """
+        保存由启动组合根提供的异步 Session 工厂。
+        """
         self._async_session = async_session
 
     async def get(self, plugin_id: str, key: str) -> JsonData:
-        """读取单个键并复制 JSON 值。"""
+        """
+        读取单个键并复制 JSON 值。
+        """
         async with self._async_session() as session:
             value = await PluginDataOper(session).async_get_data(plugin_id, key)
             return cast(JsonData, deepcopy(value))
 
     async def list(self, plugin_id: str) -> dict[str, JsonData]:
-        """读取全部键值并在 Session 内投影为普通字典。"""
+        """
+        读取全部键值并在 Session 内投影为普通字典。
+        """
         async with self._async_session() as session:
             rows = await PluginDataOper(session).async_get_data_all(plugin_id) or []
             return {

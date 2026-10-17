@@ -1,4 +1,6 @@
-"""订阅执行状态的请求级异步 SQLAlchemy 适配器。"""
+"""
+订阅执行状态的请求级异步 SQLAlchemy 适配器。
+"""
 
 from typing import Optional
 
@@ -10,7 +12,9 @@ from app.db.models.subscriptionsearch import SubscriptionSearchBatch, Subscripti
 
 
 def _task(record: SubscriptionSearchTask) -> SearchTaskSnapshot:
-    """复制可脱离 AsyncSession 使用的搜索任务快照。"""
+    """
+    复制可脱离 AsyncSession 使用的搜索任务快照。
+    """
     return SearchTaskSnapshot(
         task_id=record.task_id,
         batch_id=record.batch_id,
@@ -34,7 +38,9 @@ def _task(record: SubscriptionSearchTask) -> SearchTaskSnapshot:
 
 
 def _batch(record: SubscriptionSearchBatch) -> SearchBatchSnapshot:
-    """复制可脱离 AsyncSession 使用的搜索批次快照。"""
+    """
+    复制可脱离 AsyncSession 使用的搜索批次快照。
+    """
     return SearchBatchSnapshot(
         batch_id=record.batch_id,
         source=record.source,
@@ -55,17 +61,23 @@ def _batch(record: SubscriptionSearchBatch) -> SearchBatchSnapshot:
 
 
 class SessionSubscriptionExecutionStatusRepository:
-    """复用请求 AsyncSession 批量读取搜索执行事实。"""
+    """
+    复用请求 AsyncSession 批量读取搜索执行事实。
+    """
 
     def __init__(self, session: AsyncSession) -> None:
-        """绑定请求持有的异步会话。"""
+        """
+        绑定请求持有的异步会话。
+        """
         self._session = session
 
     async def latest_search_tasks(
         self,
         subscription_ids: tuple[int, ...],
     ) -> dict[int, SearchTaskSnapshot]:
-        """按更新时间倒序读取并在内存中保留每条订阅首项。"""
+        """
+        按更新时间倒序读取并在内存中保留每条订阅首项。
+        """
         result = await self._session.execute(
             select(SubscriptionSearchTask)
             .where(SubscriptionSearchTask.subscription_id.in_(subscription_ids))
@@ -80,7 +92,9 @@ class SessionSubscriptionExecutionStatusRepository:
         return snapshots
 
     async def list_batches(self, *, limit: int) -> list[SearchBatchSnapshot]:
-        """返回最近更新的批次，访问范围由应用服务依据任务校验。"""
+        """
+        返回最近更新的批次，访问范围由应用服务依据任务校验。
+        """
         result = await self._session.execute(
             select(SubscriptionSearchBatch)
             .where(SubscriptionSearchBatch.total_count > 0)
@@ -93,7 +107,9 @@ class SessionSubscriptionExecutionStatusRepository:
         return [_batch(record) for record in result.scalars().all()]
 
     async def get_batch(self, batch_id: str) -> Optional[SearchBatchSnapshot]:
-        """按稳定批次 ID 返回状态快照。"""
+        """
+        按稳定批次 ID 返回状态快照。
+        """
         result = await self._session.execute(
             select(SubscriptionSearchBatch).where(
                 SubscriptionSearchBatch.batch_id == batch_id
@@ -103,7 +119,9 @@ class SessionSubscriptionExecutionStatusRepository:
         return _batch(record) if record else None
 
     async def list_batch_tasks(self, batch_id: str) -> list[SearchTaskSnapshot]:
-        """按持久位置返回批次任务，供访问校验和当前阶段投影。"""
+        """
+        按持久位置返回批次任务，供访问校验和当前阶段投影。
+        """
         result = await self._session.execute(
             select(SubscriptionSearchTask)
             .where(SubscriptionSearchTask.batch_id == batch_id)
