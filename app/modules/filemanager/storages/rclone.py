@@ -1,3 +1,7 @@
+"""
+基于 rclone MP 远端的文件存储实现与命令进度适配。
+"""
+
 import json
 import subprocess
 import threading
@@ -16,6 +20,7 @@ from app.schemas.file import StorageUsage as _SchemaStorageUsage
 from app.schemas.types import StorageSchema
 from app.schemas.workflow import FileItem as _SchemaFileItem
 
+# 路径锁缓存的软容量上限；全部锁都被占用时允许暂时超过
 _MAX_FOLDER_LOCKS = 4096
 _folder_locks: OrderedDict[str, threading.Lock] = OrderedDict()
 _folder_locks_guard = threading.Lock()
@@ -36,7 +41,7 @@ def _evict_unused_folder_locks_locked() -> None:
 
 class Rclone(StorageBase):
     """
-    rclone相关操作
+    通过 rclone 命令行操作 MP 远端存储并解析传输进度。
     """
 
     # 存储类型
@@ -50,18 +55,26 @@ class Rclone(StorageBase):
 
     @property
     def snapshot_check_folder_modtime(self) -> bool:
-        """读取当前 Rclone 目录时间检查开关，支持配置保存后立即生效。"""
+        """
+        读取当前目录修改时间检查开关，配置保存后立即生效。
+
+        :return: RCLONE_SNAPSHOT_CHECK_FOLDER_MODTIME 的布尔值
+        """
         return bool(get_runtime_setting('RCLONE_SNAPSHOT_CHECK_FOLDER_MODTIME'))
 
     def init_storage(self):
         """
-        初始化
+        保留初始化钩子；rclone 进程按每次操作启动。
         """
         pass
 
     def set_config(self, conf: dict):
         """
-        设置配置
+        先持久化存储配置，再将配置内容写入指定本地文件。
+
+        写入异常向上传播，此时存储配置可能已经保存。
+
+        :param conf: 配置字典，filepath 指定文件路径，content 指定完整文本；父目录不存在时创建
         """
         super().set_config(conf)
         filepath = conf.get("filepath")
@@ -86,28 +99,24 @@ class Rclone(StorageBase):
     @staticmethod
     def __parse_rclone_progress(line: str) -> Optional[float]:
         """
-        解析rclone进度输出
+        解析rclone进度输出。
         """
         if not line:
             return None
 
         line = line.strip()
 
-        # 检查是否包含百分比
         if '%' not in line:
             return None
 
         try:
-            # 尝试多种进度输出格式
             if 'ETA' in line:
                 # 格式: "Transferred: 1.234M / 5.678M, 22%, 1.234MB/s, ETA 2m3s"
                 percent_str = line.split('%')[0].split()[-1]
                 return float(percent_str)
             elif 'Transferred:' in line and '100%' in line:
-                # 传输完成
                 return 100.0
             else:
-                # 其他包含百分比的格式
                 parts = line.split()
                 for part in parts:
                     if '%' in part:
@@ -120,7 +129,7 @@ class Rclone(StorageBase):
 
     def __get_rcloneitem(self, item: dict, parent: Optional[str] = "/") -> _SchemaFileItem:
         """
-        获取rclone文件项
+        获取rclone文件项。
         """
         if not item:
             return _SchemaFileItem()
@@ -189,7 +198,9 @@ class Rclone(StorageBase):
 
     def check(self) -> bool:
         """
-        检查存储是否可用
+        执行 rclone lsf MP: 检查远端是否可访问。
+
+        :return: 命令退出码为 0 时返回 True，执行异常或非零退出返回 False
         """
         try:
             retcode = subprocess.run(
@@ -204,7 +215,10 @@ class Rclone(StorageBase):
 
     def list(self, fileitem: _SchemaFileItem) -> List[_SchemaFileItem]:
         """
-        浏览文件
+        通过 lsjson 列举远端直接子项，文件项则直接原样返回。
+
+        :param fileitem: MP 远端目录或文件项；目录路径应保留末尾斜杠以便拼接子项
+        :return: 直接子项列表；命令或解析失败返回空列表，不能据此区分空目录
         """
         if fileitem.type == "file":
             return [fileitem]
@@ -226,9 +240,11 @@ class Rclone(StorageBase):
 
     def create_folder(self, fileitem: _SchemaFileItem, name: str) -> Optional[_SchemaFileItem]:
         """
-        创建目录
-        :param fileitem: 父目录
-        :param name: 目录名
+        请求创建远端目录，并短暂重查以兼容可见性延迟。
+
+        :param fileitem: 父目录项
+        :param name: 目标子目录名称
+        :return: 查询到的目标项；创建或确认失败返回 None，即使创建命令已成功但目标暂不可见
         """
         path = Path(self.__normalize_remote_path(Path(fileitem.path) / name))
         try:
@@ -259,15 +275,16 @@ class Rclone(StorageBase):
 
     def get_folder(self, path: Path) -> Optional[_SchemaFileItem]:
         """
-        根据文件路程获取目录，不存在则创建
+        逐级取得或创建远端目录，在进程内按路径串行处理。
+
+        :param path: 目标远端目录路径，自动规范化为以斜杠开头的路径
+        :return: 最终路径项；任一级创建或确认失败返回 None
         """
         normalized = Path(self.__normalize_remote_path(path))
 
-        # 是否已存在
         folder = self.get_item(normalized)
         if folder:
             return folder
-        # 逐级查找和创建目录
         fileitem = _SchemaFileItem(storage=self.schema.value, type="dir", path="/")
         for part in normalized.parts[1:]:
             current_path = Path(self.__normalize_remote_path(Path(fileitem.path) / part))
@@ -283,7 +300,10 @@ class Rclone(StorageBase):
 
     def get_item(self, path: Path) -> Optional[_SchemaFileItem]:
         """
-        获取文件或目录，不存在返回None
+        列举父目录并按文件名查找远端项。
+
+        :param path: MP 远端的目标路径
+        :return: 匹配的文件或目录项；未找到、命令失败或解析失败返回 None
         """
         try:
             ret = subprocess.run(
@@ -306,9 +326,11 @@ class Rclone(StorageBase):
 
     def get_item_strict(self, path: Path) -> Optional[_SchemaFileItem]:
         """
-        获取文件或目录，确认不存在返回None；无法确认状态时抛出 StorageQueryError。
-        rclone 用退出码 3/4 表示目录/文件不存在，其余非零退出无法区分
-        「不存在」与「查询失败」，必须保守失败以免覆盖保护被绕过。
+        列举父目录并区分远端项缺失与查询故障。
+
+        :param path: 需要确认状态的 MP 远端路径
+        :return: 匹配的文件或目录项；列表无匹配项或退出码为 3、4 时返回 None
+        :raises StorageQueryError: 命令无法执行、其他非零退出或响应 JSON 无法解析
         """
         try:
             ret = subprocess.run(
@@ -338,7 +360,10 @@ class Rclone(StorageBase):
 
     def delete(self, fileitem: _SchemaFileItem) -> bool:
         """
-        删除文件
+        调用 deletefile 删除远端文件。
+
+        :param fileitem: 需要删除的文件项；此方法不递归删除目录
+        :return: 命令退出码为 0 时返回 True，否则返回 False
         """
         try:
             retcode = subprocess.run(
@@ -356,7 +381,11 @@ class Rclone(StorageBase):
 
     def rename(self, fileitem: _SchemaFileItem, name: str) -> bool:
         """
-        重命名文件
+        调用 moveto 在原目录内改名。
+
+        :param fileitem: 源存储项
+        :param name: 目标名称，已存在目标的处理由 rclone 决定
+        :return: 命令退出码为 0 时返回 True，否则返回 False
         """
         try:
             retcode = subprocess.run(
@@ -375,23 +404,27 @@ class Rclone(StorageBase):
 
     def download(self, fileitem: _SchemaFileItem, path: Path = None) -> Optional[Path]:
         """
-        带实时进度显示的下载
+        调用 copyto 下载远端文件并回调进度。
+
+        捕获异常时尝试删除部分文件；命令正常退出但退出码非零时不清理残留文件。
+
+        :param fileitem: 源远端文件，文件名会提取为安全的本地名称
+        :param path: 本地保存目录；为空时使用 TEMP_PATH
+        :return: 成功下载的本地路径；路径无效或传输失败返回 None
         """
         local_path = self._build_download_path(fileitem, path or get_runtime_setting('TEMP_PATH'))
         if not local_path:
             return None
 
-        # 初始化进度条
         logger.info(f"【rclone】开始下载: {fileitem.name} -> {local_path}")
         progress_callback = transfer_process(Path(fileitem.path).as_posix())
 
         try:
-            # 使用rclone的进度显示功能
             process = subprocess.Popen(
                 [
                     'rclone', 'copyto',
-                    '--progress',  # 启用进度显示
-                    '--stats', '1s',  # 每秒更新一次统计信息
+                    '--progress',
+                    '--stats', '1s',
                     f'MP:{fileitem.path}',
                     f'{local_path}'
                 ],
@@ -402,11 +435,9 @@ class Rclone(StorageBase):
                 bufsize=1
             )
 
-            # 监控进度输出
             last_progress = 0
             for line in process.stdout:
                 if line:
-                    # 解析rclone的进度输出
                     progress = self.__parse_rclone_progress(line)
                     if progress is not None and progress > last_progress:
                         progress_callback(progress)
@@ -414,7 +445,6 @@ class Rclone(StorageBase):
                         if progress >= 100:
                             break
 
-            # 等待进程完成
             retcode = process.wait()
             if retcode == 0:
                 logger.info(f"【rclone】下载完成: {fileitem.name}")
@@ -433,25 +463,25 @@ class Rclone(StorageBase):
     def upload(self, fileitem: _SchemaFileItem, path: Path,
                new_name: Optional[str] = None) -> Optional[_SchemaFileItem]:
         """
-        带实时进度显示的上传
-        :param fileitem: 上传目录项
-        :param path: 本地文件路径
-        :param new_name: 上传后文件名
+        调用 copyto 上传本地文件，完成后查询目标项。
+
+        :param fileitem: 远端目标目录
+        :param path: 本地源文件路径；成功后仍保留
+        :param new_name: 远端目标名称；为空时使用源文件名
+        :return: 上传后查询到的目标项；传输或后续查询失败返回 None
         """
         target_name = new_name or path.name
         new_path = Path(fileitem.path) / target_name
 
-        # 初始化进度条
         logger.info(f"【rclone】开始上传: {path} -> {new_path}")
         progress_callback = transfer_process(path.as_posix())
 
         try:
-            # 使用rclone的进度显示功能
             process = subprocess.Popen(
                 [
                     'rclone', 'copyto',
-                    '--progress',  # 启用进度显示
-                    '--stats', '1s',  # 每秒更新一次统计信息
+                    '--progress',
+                    '--stats', '1s',
                     path.as_posix(),
                     f'MP:{new_path}'
                 ],
@@ -462,11 +492,9 @@ class Rclone(StorageBase):
                 bufsize=1
             )
 
-            # 监控进度输出
             last_progress = 0
             for line in process.stdout:
                 if line:
-                    # 解析rclone的进度输出
                     progress = self.__parse_rclone_progress(line)
                     if progress is not None and progress > last_progress:
                         progress_callback(progress)
@@ -474,7 +502,6 @@ class Rclone(StorageBase):
                         if progress >= 100:
                             break
 
-            # 等待进程完成
             retcode = process.wait()
             if retcode == 0:
                 logger.info(f"【rclone】上传完成: {target_name}")
@@ -489,7 +516,12 @@ class Rclone(StorageBase):
 
     def detail(self, fileitem: _SchemaFileItem) -> Optional[_SchemaFileItem]:
         """
-        获取文件详情
+        调用 lsjson 查询给定路径并取首个结果。
+
+        目录输入会取其首个子项，返回路径按根目录拼接，调用方不应据此假设保留原路径。
+
+        :param fileitem: 待查询的远端项
+        :return: 首个结果构造的文件项；执行、解析或无结果时返回 None
         """
         try:
             ret = subprocess.run(
@@ -509,24 +541,24 @@ class Rclone(StorageBase):
 
     def move(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
         """
-        移动文件
-        :param fileitem: 文件项
-        :param path: 目标目录
-        :param new_name: 新文件名
+        调用 moveto 在 MP 远端内移动文件并回调进度。
+
+        :param fileitem: 源远端文件项
+        :param path: 远端目标目录
+        :param new_name: 目标文件名
+        :return: 命令退出码为 0 时返回 True，否则返回 False；具体移动语义由 rclone 后端决定
         """
         target_path = path / new_name
 
-        # 初始化进度条
         logger.info(f"【rclone】开始移动: {fileitem.path} -> {target_path}")
         progress_callback = transfer_process(Path(fileitem.path).as_posix())
 
         try:
-            # 使用rclone的进度显示功能
             process = subprocess.Popen(
                 [
                     'rclone', 'moveto',
-                    '--progress',  # 启用进度显示
-                    '--stats', '1s',  # 每秒更新一次统计信息
+                    '--progress',
+                    '--stats', '1s',
                     f'MP:{fileitem.path}',
                     f'MP:{target_path}'
                 ],
@@ -537,11 +569,9 @@ class Rclone(StorageBase):
                 bufsize=1
             )
 
-            # 监控进度输出
             last_progress = 0
             for line in process.stdout:
                 if line:
-                    # 解析rclone的进度输出
                     progress = self.__parse_rclone_progress(line)
                     if progress is not None and progress > last_progress:
                         progress_callback(progress)
@@ -549,7 +579,6 @@ class Rclone(StorageBase):
                         if progress >= 100:
                             break
 
-            # 等待进程完成
             retcode = process.wait()
             if retcode == 0:
                 logger.info(f"【rclone】移动完成: {fileitem.name}")
@@ -564,24 +593,24 @@ class Rclone(StorageBase):
 
     def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
         """
-        复制文件
-        :param fileitem: 文件项
-        :param path: 目标目录
-        :param new_name: 新文件名
+        调用 copyto 在 MP 远端内复制文件并回调进度。
+
+        :param fileitem: 源远端文件项
+        :param path: 远端目标目录
+        :param new_name: 目标文件名
+        :return: 命令退出码为 0 时返回 True，否则返回 False；失败时不撤销已写入内容
         """
         target_path = path / new_name
 
-        # 初始化进度条
         logger.info(f"【rclone】开始复制: {fileitem.path} -> {target_path}")
         progress_callback = transfer_process(Path(fileitem.path).as_posix())
 
         try:
-            # 使用rclone的进度显示功能
             process = subprocess.Popen(
                 [
                     'rclone', 'copyto',
-                    '--progress',  # 启用进度显示
-                    '--stats', '1s',  # 每秒更新一次统计信息
+                    '--progress',
+                    '--stats', '1s',
                     f'MP:{fileitem.path}',
                     f'MP:{target_path}'
                 ],
@@ -592,11 +621,9 @@ class Rclone(StorageBase):
                 bufsize=1
             )
 
-            # 监控进度输出
             last_progress = 0
             for line in process.stdout:
                 if line:
-                    # 解析rclone的进度输出
                     progress = self.__parse_rclone_progress(line)
                     if progress is not None and progress > last_progress:
                         progress_callback(progress)
@@ -604,7 +631,6 @@ class Rclone(StorageBase):
                         if progress >= 100:
                             break
 
-            # 等待进程完成
             retcode = process.wait()
             if retcode == 0:
                 logger.info(f"【rclone】复制完成: {fileitem.name}")
@@ -618,14 +644,30 @@ class Rclone(StorageBase):
             return False
 
     def link(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
+        """
+        保留硬链接接口；rclone 存储当前不支持此操作。
+
+        :param fileitem: 兼容接口的源文件项，当前忽略
+        :param target_file: 兼容接口的目标路径，当前忽略
+        :return: 固定返回 None，不创建链接
+        """
         pass
 
     def softlink(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
+        """
+        保留符号链接接口；rclone 存储当前不支持此操作。
+
+        :param fileitem: 兼容接口的源文件项，当前忽略
+        :param target_file: 兼容接口的目标路径，当前忽略
+        :return: 固定返回 None，不创建链接
+        """
         pass
 
     def usage(self) -> Optional[_SchemaStorageUsage]:
         """
-        存储使用情况
+        确认配置含 MP 远端后，通过 about 查询容量。
+
+        :return: 以字节为单位的总容量与可用容量；配置缺失、没有 MP 节或查询失败返回 None
         """
         conf = self.get_config()
         if not conf:

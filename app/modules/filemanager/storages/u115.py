@@ -1,3 +1,7 @@
+"""
+115 云盘开放接口授权、文件管理与 OSS 上传适配。
+"""
+
 import base64
 import secrets
 import time
@@ -24,10 +28,15 @@ from app.schemas.workflow import FileItem as _SchemaFileItem
 lock = Lock()
 
 
+# 上传分片目标的最低字节数为 1 MiB；实际大小还需向上匹配预设档位。
 MIN_U115_UPLOAD_PART_SIZE = 1 * 1024 * 1024
+# 按约 96 片估算分片大小，以控制大文件的上传请求数量。
 U115_UPLOAD_PART_COUNT_TARGET = 96
+# 一般接口允许调用方处理成功码 0 和记录已存在或不存在相关码 20004。
 U115_DEFAULT_ACCEPTED_CODES = (0, 20004)
+# 路径详情额外接受 430004，使明确不存在可与请求失败区分。
 U115_GET_INFO_ACCEPTED_CODES = (*U115_DEFAULT_ACCEPTED_CODES, 430004)
+# 可选分片大小按字节递增，从 10 MiB 到 1 GiB。
 U115_UPLOAD_PART_SIZE_STEPS = (
     10 * 1024 * 1024,
     16 * 1024 * 1024,
@@ -41,31 +50,38 @@ U115_UPLOAD_PART_SIZE_STEPS = (
 
 
 class NoCheckInException(Exception):
+    """
+    115 存储没有可用于开放接口的登录凭据。
+    """
     pass
 
 
 class U115Pan(StorageBase, metaclass=WeakSingleton):
     """
-    115相关操作
+    管理 115 开放接口授权、文件操作和 OSS 分片上传。
+
+    下载地址接口与其他文件接口分别限流，风控冷却状态由本实例的所有请求共享。
+    普通文件操作经开放接口调用，上传数据使用按需加载的 OSS SDK。
     """
 
-    # 存储类型
     schema = StorageSchema.U115
 
-    # 支持的整理方式
     transtype = {"move": "移动", "copy": "复制"}
-    # 基础url
     base_url = "https://proapi.115.com"
 
-    # 文件块大小，默认10MB
+    # 下载流每次读取 10 MiB，避免一次载入整个文件。
     chunk_size = 10 * 1024 * 1024
 
-    # 下载接口单独限流
     download_endpoint = "/open/ufile/downurl"
     # 风控触发后休眠时间（秒）
     limit_sleep_seconds = 3600
 
     def __init__(self):
+        """
+        初始化复用会话、内存授权状态和共享限流统计。
+
+        下载地址接口限速为每秒 1 次，其他文件接口为每秒 3 次；授权接口直接使用会话。
+        """
         super().__init__()
         self._auth_state = {}
         self._request_utils = RequestUtils(
@@ -74,17 +90,15 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             verify=True,
         )
         self._init_session()
-        # 接口限流
         self._download_limiter = QpsRateLimiter(1)
         self._api_limiter = QpsRateLimiter(3)
         self._limit_until = 0.0
         self._limit_lock = Lock()
-        # 总体 QPS/QPM/QPH 统计
         self._rate_stats = RateStats(source="115")
 
     def _init_session(self):
         """
-        初始化带速率限制的会话
+        设置 115 开放接口使用的客户端标识及表单请求头。
         """
         self._request_utils.update_headers(
             {
@@ -95,12 +109,16 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         )
 
     def close(self) -> None:
-        """关闭 115 HTTP 客户端。"""
+        """
+        关闭 115 HTTP 客户端。
+        """
         self._request_utils.close()
 
     def _check_session(self):
         """
-        检查会话是否过期
+        按需刷新令牌并检查当前是否有可用凭据。
+
+        :raises NoCheckInException: 无法取得有效的访问令牌
         """
         if not self.access_token:
             raise NoCheckInException("【115】请先扫码登录！")
@@ -108,7 +126,11 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
     @property
     def access_token(self) -> Optional[str]:
         """
-        访问token
+        串行读取令牌，过期时刷新配置并更新会话请求头。
+
+        令牌过期时间由刷新时间的 Unix 秒数与有效秒数相加得到。
+
+        :return: 访问令牌；缺少刷新令牌、刷新失败或没有访问令牌时返回 None
         """
         with lock:
             tokens = self.get_conf()
@@ -132,7 +154,11 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
     def generate_auth_url(self) -> Tuple[dict, str]:
         """
-        生成 OAuth2 授权 URL
+        向配置的授权服务申请 OAuth2 登录地址。
+
+        state 仅保存在当前实例内存，后续登录轮询依赖同一实例。
+
+        :return: 包含 authUrl 和 state 的字典及空错误文本；失败时返回空字典和原因
         """
         try:
             resp = self._request_utils.get_res(
@@ -161,14 +187,16 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
     def generate_qrcode(self) -> Tuple[dict, str]:
         """
-        实现PKCE规范的设备授权二维码生成
+        使用 SHA256 校验值申请设备授权二维码。
+
+        校验值使用 SHA256 摘要的 Base64 编码；设备标识、签名和校验原文仅保存在内存。
+
+        :return: 包含 codeContent 的字典及空错误文本；失败时返回空字典和原因
         """
-        # 生成PKCE参数
         code_verifier = secrets.token_urlsafe(96)[:128]
         code_challenge = base64.b64encode(
             sha256(code_verifier.encode("utf-8")).digest()
         ).decode("utf-8")
-        # 请求设备码
         resp = self._request_utils.post_res(
             "https://passportapi.115.com/open/authDeviceCode",
             data={
@@ -182,7 +210,6 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         result = resp.json()
         if result.get("code") != 0:
             return {}, result.get("message")
-        # 持久化验证参数
         self._auth_state = {
             "code_verifier": code_verifier,
             "uid": result["data"]["uid"],
@@ -190,12 +217,15 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             "sign": result["data"]["sign"],
         }
 
-        # 生成二维码内容
         return {"codeContent": result["data"]["qrcode"]}, ""
 
     def check_login(self) -> Optional[Tuple[dict, str]]:
         """
-        检查授权状态
+        按当前授权方式轮询登录状态，并在成功时保存令牌。
+
+        存在 OAuth2 state 时调用授权服务，否则查询二维码状态；二维码令牌交换异常可能向上传播。
+
+        :return: 状态与提示字典及空错误文本；缺少授权或请求失败时返回空字典和原因
         """
         if self._auth_state and self._auth_state.get("state"):
             return self.__check_oauth_login()
@@ -228,7 +258,11 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
     def __check_oauth_login(self) -> Tuple[dict, str]:
         """
-        检查 OAuth2 授权状态
+        查询授权服务并转换为统一的数字登录状态。
+
+        成功时持久化访问令牌、刷新令牌和有效时间；成功或过期后清除内存授权状态。
+
+        :return: 状态 2 表示成功、-1 表示过期、0 表示等待；失败时返回空字典和错误文本
         """
         state = self._auth_state.get("state")
         if not state:
@@ -269,7 +303,10 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
     def __get_access_token(self) -> dict:
         """
-        确认登录后，获取相关token
+        使用已确认的设备码和校验原文换取访问令牌。
+
+        :raises Exception: 设备授权状态缺失、请求无响应或接口返回业务错误
+        :return: 授权响应中的令牌数据
         """
         if not self._auth_state:
             raise Exception("【115】请先生成二维码")
@@ -289,7 +326,10 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
     def __refresh_access_token(self, refresh_token: str) -> Optional[dict]:
         """
-        刷新access_token
+        使用刷新令牌申请新的访问凭据。
+
+        :param refresh_token: 上次授权或刷新返回的刷新令牌
+        :return: 新的令牌数据；无响应、业务失败或无数据时返回 None
         """
         resp = self._request_utils.post_res(
             "https://passportapi.115.com/open/refreshToken",
@@ -318,19 +358,23 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         **kwargs,
     ) -> Optional[Union[dict, list]]:
         """
-        带错误处理和速率限制的API请求
+        执行带限流、共享冷却和有限重试的开放接口请求。
 
-        :param accepted_codes: 当前接口可确认处理的业务码
+        HTTP 429 或访问上限错误触发共享风控冷却；其他 HTTP 错误按指数间隔重试。
+        网络调用直接抛出的异常不重试；登录检查异常向上传播。
+
+        :param method: HTTP 方法
+        :param endpoint: 以斜杠开头的开放接口相对路径
+        :param result_key: 需要提取的响应字段；为空时返回整个响应
+        :param accepted_codes: 当前接口可由调用方继续处理的业务码
+        :param kwargs: HTTP 请求参数；no_error_log 控制业务错误日志，retry_limit 默认允许重试 3 次
+        :return: 响应或指定字段；网络错误、未接受的业务码或重试用尽时返回 None
         """
-        # 检查会话
         self._check_session()
 
-        # 错误日志标志
         no_error_log = kwargs.pop("no_error_log", False)
-        # 重试次数
         retry_times = kwargs.pop("retry_limit", 3)
 
-        # 按接口类型限流
         if endpoint == self.download_endpoint:
             self._download_limiter.acquire()
         else:
@@ -390,7 +434,6 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 **kwargs,
             )
 
-        # 处理请求错误
         try:
             resp.raise_for_status()
         except Exception as e:
@@ -414,7 +457,6 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 **kwargs,
             )
 
-        # 返回数据
         ret_data = resp.json()
         if ret_data.get("code") not in accepted_codes:
             error_msg = ret_data.get("message", "")
@@ -454,8 +496,11 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
     @staticmethod
     def _calc_sha1(filepath: Path, size: Optional[int] = None) -> str:
         """
-        计算文件SHA1（符合115规范）
-        size: 前多少字节
+        计算上传校验所需的完整文件或前缀 SHA1。
+
+        :param filepath: 本地源文件
+        :param size: 前缀字节数；None 或 0 表示读取整个文件
+        :return: 十六进制摘要
         """
         sha1 = hashes.Hash(hashes.SHA1())
         with open(filepath, "rb") as f:
@@ -470,7 +515,12 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
     @staticmethod
     def __get_upload_part_size(file_size: int) -> int:
         """
-        根据文件大小获取 115 OSS 上传分片大小。
+        按约 96 个分片的目标选择上传分片档位。
+
+        向上选择预设档位，超过最大档位时截为 1 GiB；后续 OSS SDK 仍可调整实际分片大小。
+
+        :param file_size: 文件总字节数；非正数使用最小档位
+        :return: 10 MiB 至 1 GiB 的分片字节数
         """
         if file_size <= 0:
             return U115_UPLOAD_PART_SIZE_STEPS[0]
@@ -486,11 +536,19 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         return U115_UPLOAD_PART_SIZE_STEPS[-1]
 
     def init_storage(self):
+        """
+        保留存储初始化入口；本后端无需额外初始化。
+        """
         pass
 
     def list(self, fileitem: _SchemaFileItem) -> List[_SchemaFileItem]:
         """
-        目录遍历实现
+        分页列出目录直接子项，文件输入则刷新其详情。
+
+        每页读取最多 1000 项，以短页结束；目录列表请求失败时抛出 FileNotFoundError。
+
+        :param fileitem: 待查询文件或目录；目录缺少标识时先按路径补查
+        :return: 文件项列表；文件详情或目录标识查询失败时返回空列表
         """
 
         if fileitem.type == "file":
@@ -530,7 +588,7 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             if not resp:
                 break
             for item in resp:
-                parent_path = Path(fileitem.path)  # noqa
+                parent_path = Path(fileitem.path)
                 item_name = item["fn"]
                 full_path = parent_path / item_name
                 items.append(
@@ -559,7 +617,11 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         self, parent_item: _SchemaFileItem, name: str
     ) -> Optional[_SchemaFileItem]:
         """
-        创建目录
+        在指定父目录下创建目录，同名已存在时重新查询。
+
+        :param parent_item: 父目录；根路径或缺少标识时使用目录标识 0
+        :param name: 要创建的直接子目录名
+        :return: 新目录或已存在的目录项；失败时返回 None
         """
         new_path = Path(parent_item.path) / name
         resp = self._request_api(
@@ -574,7 +636,6 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             return None
         if not resp.get("state"):
             if resp.get("code") == 20004:
-                # 目录已存在
                 return self.get_item(new_path)
             logger.warn(f"【115】创建目录失败: {resp.get('error')}")
             return None
@@ -595,7 +656,17 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         new_name: Optional[str] = None,
     ) -> Optional[_SchemaFileItem]:
         """
-        实现带秒传、断点续传和二次认证的文件上传
+        上传本地文件，支持秒传校验和 OSS 分片传输。
+
+        二次校验使用服务端指定的闭区间内容摘要；秒传后优先按远端标识查询。
+        普通上传会创建新的 OSS 分片任务，凭据过期时对当前分片或完成请求最多刷新重试 5 次。
+        取消不主动中止远端分片任务；分片阶段的其他异常向上传播。
+        成功后若索引尚不可见，按目标路径合成文件项，不保证此时已有远端文件标识。
+
+        :param target_dir: 带文件标识的目标目录
+        :param local_path: 本地源文件，完成后保留
+        :param new_name: 目标文件名；为空时沿用源文件名
+        :return: 上传或已存在的目标项；初始化、完成回调失败或取消时返回 None
         """
         # oss2 连同阿里云 SDK 约 19MB，存储发现会导入全部存储实现，上传时才按需导入
         import oss2
@@ -604,22 +675,22 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
         def encode_callback(cb: str) -> str:
             """
-            编码 115 OSS 回调参数。
+            将 OSS 回调参数编码为请求头需要的 Base64 文本。
+
+            :param cb: 回调参数原文
+            :return: OSS SDK 生成的 Base64 字符串
             """
             return oss2.utils.b64encode_as_string(cb)
 
         target_name = new_name or local_path.name
         target_path = Path(target_dir.path) / target_name
-        # 计算文件特征值
         file_size = local_path.stat().st_size
         file_sha1 = self._calc_sha1(local_path)
         file_preid = self._calc_sha1(local_path, 128 * 1024 * 1024)
 
-        # 获取目标目录CID
         target_cid = target_dir.fileid
         target_param = f"U_1_{target_cid}"
 
-        # Step 1: 初始化上传
         init_data = {
             "file_name": target_name,
             "file_size": file_size,
@@ -633,34 +704,26 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         if not init_resp.get("state"):
             logger.warn(f"【115】初始化上传失败: {init_resp.get('error')}")
             return None
-        # 结果
         init_result = init_resp.get("data")
         logger.debug(f"【115】上传 Step 1 初始化结果: {init_result}")
-        # 回调信息
         bucket_name = init_result.get("bucket")
         object_name = init_result.get("object")
         callback = init_result.get("callback")
-        # 二次认证信息
         sign_check = init_result.get("sign_check")
         pick_code = init_result.get("pick_code")
         sign_key = init_result.get("sign_key")
 
-        # Step 2: 处理二次认证
         if init_result.get("code") in [700, 701] and sign_check:
+            # 校验区间以连字符分隔，首尾字节都计入内容摘要。
             sign_checks = sign_check.split("-")
             start = int(sign_checks[0])
             end = int(sign_checks[1])
-            # 计算指定区间的SHA1
-            # sign_check （用下划线隔开,截取上传文内容的sha1）(单位是byte): "2392148-2392298"
             with open(local_path, "rb") as f:
-                # 取2392148-2392298之间的内容(包含2392148、2392298)的sha1
                 f.seek(start)
                 chunk = f.read(end - start + 1)
                 sha1 = hashes.Hash(hashes.SHA1())
                 sha1.update(chunk)
                 sign_val = sha1.finalize().hex().upper()
-            # 重新初始化请求
-            # sign_key，sign_val(根据sign_check计算的值大写的sha1值)
             init_data.update(
                 {"pick_code": pick_code, "sign_key": sign_key, "sign_val": sign_val}
             )
@@ -670,7 +733,6 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             if not init_resp.get("state"):
                 logger.warn(f"【115】上传二次认证失败: {init_resp.get('error')}")
                 return None
-            # 二次认证结果
             init_result = init_resp.get("data")
             logger.debug(f"【115】上传 Step 2 二次认证结果: {init_result}")
             if not pick_code:
@@ -682,7 +744,6 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             if not callback:
                 callback = init_result.get("callback")
 
-        # Step 3: 秒传
         if init_result.get("status") == 2:
             logger.info(f"【115】{target_name} 秒传成功")
             file_id = init_result.get("file_id", None)
@@ -718,19 +779,16 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 target_path, local_path, file_size
             )
 
-        # Step 4: 获取上传凭证
         token_resp = self._request_api("GET", "/open/upload/get_token", "data")
         if not token_resp:
             logger.warn("【115】获取上传凭证失败")
             return None
         logger.debug(f"【115】上传 Step 4 获取上传凭证结果: {token_resp}")
-        # 上传凭证
         endpoint = token_resp.get("endpoint")
         AccessKeyId = token_resp.get("AccessKeyId")
         AccessKeySecret = token_resp.get("AccessKeySecret")
         SecurityToken = token_resp.get("SecurityToken")
 
-        # Step 5: 断点续传
         resume_resp = self._request_api(
             "POST",
             "/open/upload/resume",
@@ -747,24 +805,21 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
             if resume_resp.get("callback"):
                 callback = resume_resp["callback"]
 
-        # Step 6: 对象存储上传
         auth = oss2.StsAuth(
             access_key_id=AccessKeyId,
             access_key_secret=AccessKeySecret,
             security_token=SecurityToken,
         )
-        bucket = oss2.Bucket(auth, endpoint, bucket_name)  # noqa
+        bucket = oss2.Bucket(auth, endpoint, bucket_name)
         part_size = determine_part_size(
             file_size, preferred_size=self.__get_upload_part_size(file_size)
         )
 
-        # 初始化进度条
         logger.info(
             f"【115】开始上传: {local_path} -> {target_path}，分片大小：{size_tools.format_compact_size(part_size)}"
         )
         progress_callback = transfer_process(local_path.as_posix())
 
-        # 初始化分片
         upload_id = bucket.init_multipart_upload(
             object_name, params={"encoding-type": "url", "sequential": ""}
         ).upload_id
@@ -772,7 +827,10 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
         def refresh_upload_bucket() -> oss2.Bucket:
             """
-            上传凭证过期时重新获取 115 上传凭证并重建 OSS Bucket。
+            刷新临时上传凭据并重建同一存储桶的 OSS 客户端。
+
+            :raises Exception: 无法取得新的临时上传凭据
+            :return: 使用新凭据的存储桶客户端
             """
             token_resp = self._request_api("GET", "/open/upload/get_token", "data")
             if not token_resp:
@@ -788,7 +846,6 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 bucket_name,
             )
 
-        # 逐个上传分片
         with open(local_path, "rb") as fileobj:
             part_number = 1
             offset = 0
@@ -797,7 +854,6 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                     logger.info(f"【115】{local_path} 上传已取消！")
                     return None
                 num_to_upload = min(part_size, file_size - offset)
-                # 调用SizedFileAdapter(fileobj, size)方法会生成一个新的文件对象，重新计算起始追加位置。
                 logger.info(
                     f"【115】开始上传 {target_name} 分片 {part_number}: {offset} -> {offset + num_to_upload}"
                 )
@@ -827,14 +883,11 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                 logger.info(f"【115】{target_name} 分片 {part_number} 上传完成")
                 offset += num_to_upload
                 part_number += 1
-                # 更新进度
                 progress = (offset * 100) / file_size
                 progress_callback(progress)
 
-        # 完成上传
         progress_callback(100)
 
-        # 请求头
         headers = {
             "X-oss-callback": encode_callback(callback["callback"]),
             "x-oss-callback-var": encode_callback(callback["callback_var"]),
@@ -879,7 +932,6 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                     f"【115】{target_name} 上传失败: {e.status}, 错误码: {e.code}, 详情: {e.message}"
                 )
                 return None
-        # 返回结果
         uploaded_item = self.get_item(target_path)
         if uploaded_item:
             return uploaded_item
@@ -892,7 +944,12 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         self, target_path: Path, local_path: Path, file_size: int
     ) -> _SchemaFileItem:
         """
-        构造已上传文件项，用于兼容 115 上传成功后目录索引延迟刷新。
+        为上传成功但目录索引尚不可见的文件构造临时元数据。
+
+        :param target_path: 最终目标文件路径
+        :param local_path: 本地源文件，存在时读取其修改时间
+        :param file_size: 已上传文件的字节数
+        :return: 不带远端文件标识的目标文件项
         """
         return _SchemaFileItem(
             storage=self.schema.value,
@@ -907,7 +964,13 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
     def download(self, fileitem: _SchemaFileItem, path: Path = None) -> Optional[Path]:
         """
-        带实时进度显示的下载
+        查询下载地址后将云端文件写入本地目录并报告进度。
+
+        同名目标会被覆盖；取消时保留部分文件，异常时尝试删除部分文件。
+
+        :param fileitem: 提供源文件路径和名称的文件项
+        :param path: 本地目标目录；为空时使用临时目录，目录需已存在
+        :return: 下载完成的本地路径；查询失败、取消或传输异常时返回 None
         """
         detail = self.get_item(Path(fileitem.path))
         if not detail:
@@ -930,10 +993,8 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         if not local_path:
             return None
 
-        # 获取文件大小
         file_size = detail.size
 
-        # 初始化进度条
         logger.info(f"【115】开始下载: {fileitem.name} -> {local_path}")
         progress_callback = transfer_process(Path(fileitem.path).as_posix())
 
@@ -956,18 +1017,15 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                             progress = (downloaded_size * 100) / file_size
                             progress_callback(progress)
 
-                # 完成下载
                 progress_callback(100)
                 logger.info(f"【115】下载完成: {fileitem.name}")
         except HttpRequestError as e:
             logger.error(f"【115】下载网络错误: {fileitem.name} - {str(e)}")
-            # 删除可能部分下载的文件
             if local_path.exists():
                 local_path.unlink()
             return None
         except Exception as e:
             logger.error(f"【115】下载失败: {fileitem.name} - {str(e)}")
-            # 删除可能部分下载的文件
             if local_path.exists():
                 local_path.unlink()
             return None
@@ -975,11 +1033,21 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         return local_path
 
     def check(self) -> bool:
+        """
+        检查本地凭据是否能提供访问令牌。
+
+        :return: 存在访问令牌时返回 True；不代表已执行远端权限检查
+        """
         return self.access_token is not None
 
     def delete(self, fileitem: _SchemaFileItem) -> bool:
         """
-        删除文件/目录
+        向 115 提交文件或目录删除请求。
+
+        当前实现未检查空响应或业务错误，因此 True 不保证目标已经删除。
+
+        :param fileitem: 带远端文件标识的待删除项
+        :return: 没有抛出 HTTP 请求异常时为 True，否则为 False
         """
         try:
             self._request_api(
@@ -991,7 +1059,11 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
     def rename(self, fileitem: _SchemaFileItem, name: str) -> bool:
         """
-        重命名文件/目录
+        修改远端文件或目录名称。
+
+        :param fileitem: 带远端文件标识的目标项
+        :param name: 新的名称
+        :return: 响应中的 state 为真时返回 True；无响应或失败时返回 False
         """
         resp = self._request_api(
             "POST",
@@ -1006,10 +1078,13 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
     def __get_info_item(self, path: Path) -> Optional[_SchemaFileItem]:
         """
-        查询指定路径的文件/目录项，无法确认状态时抛出 StorageQueryError。
-        接口业务码 20004（记录不存在）、430004（路径不存在）与 0 一样
-        视为确认结果，其余错误（网络失败、限流重试用尽、未知业务错误）
-        均无法确认目标状态。
+        查询路径详情并区分目标不存在与状态无法确认。
+
+        业务码 20004 和 430004 分别表示记录、路径不存在。
+
+        :raises StorageQueryError: 请求失败或业务码不属于可确认的结果
+        :param path: 云盘内的绝对路径
+        :return: 文件或目录项；可接受响应缺少数据或文件标识时返回 None
         """
         resp = self._request_api(
             "POST",
@@ -1041,7 +1116,10 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
     def get_item(self, path: Path) -> Optional[_SchemaFileItem]:
         """
-        获取指定路径的文件/目录项
+        宽松查询路径，将查询异常转换为未找到。
+
+        :param path: 云盘内的绝对路径
+        :return: 文件或目录项；不存在或查询异常时返回 None
         """
         try:
             return self.__get_info_item(path)
@@ -1051,7 +1129,11 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
     def get_item_strict(self, path: Path) -> Optional[_SchemaFileItem]:
         """
-        获取指定路径的文件/目录项，无法确认状态时抛出 StorageQueryError。
+        严格查询路径，保留状态无法确认的错误。
+
+        :raises StorageQueryError: 网络、授权或其他错误导致状态无法确认
+        :param path: 云盘内的绝对路径
+        :return: 文件或目录项；明确不存在时返回 None
         """
         try:
             return self.__get_info_item(path)
@@ -1062,14 +1144,23 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
     def get_folder(self, path: Path) -> Optional[_SchemaFileItem]:
         """
-        获取指定路径的文件夹，如不存在则创建
+        查询目标路径，缺失时从根目录逐级查找或创建。
+
+        已存在的目标直接返回，不额外验证其是否为目录。
+
+        :param path: 云盘内的绝对目录路径
+        :return: 已存在的项或创建后的目录；创建失败时返回 None
         """
 
         def __find_dir(
             _fileitem: _SchemaFileItem, _name: str
         ) -> Optional[_SchemaFileItem]:
             """
-            查找下级目录中匹配名称的目录
+            在父目录直接子项中查找精确同名的目录。
+
+            :param _fileitem: 待列举的父目录
+            :param _name: 目标子目录名称
+            :return: 匹配目录；不存在时返回 None
             """
             for sub_folder in self.list(_fileitem):
                 if sub_folder.type != "dir":
@@ -1078,11 +1169,9 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
                     return sub_folder
             return None
 
-        # 是否已存在
         folder = self.get_item(path)
         if folder:
             return folder
-        # 逐级查找和创建目录
         fileitem = _SchemaFileItem(storage=self.schema.value, path="/")
         for part in path.parts[1:]:
             dir_file = __find_dir(fileitem, part)
@@ -1098,13 +1187,23 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
     def detail(self, fileitem: _SchemaFileItem) -> Optional[_SchemaFileItem]:
         """
-        获取文件/目录详细信息
+        按文件项路径刷新远端元数据。
+
+        :param fileitem: 提供查询路径的文件或目录项
+        :return: 查到的项；不存在或查询失败时返回 None
         """
         return self.get_item(Path(fileitem.path))
 
     def copy(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
         """
-        复制
+        复制到已存在的目录，再重命名为目标名称。
+
+        源标识补查失败的日志分支仍可能抛出异常；返回 False 也可能已经完成复制。
+
+        :param fileitem: 源文件项；缺少远端标识时先按路径查询
+        :param path: 已存在的目标目录路径
+        :param new_name: 复制后的名称
+        :return: 复制、查询新文件和重命名均成功时为 True，否则为 False
         """
         if fileitem.fileid is None:
             fileitem = self.get_item(Path(fileitem.path))
@@ -1137,7 +1236,14 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
 
     def move(self, fileitem: _SchemaFileItem, path: Path, new_name: str) -> bool:
         """
-        移动
+        移动到已存在的目录，再重命名为目标名称。
+
+        源标识补查失败的日志分支仍可能抛出异常；返回 False 也可能已经完成移动。
+
+        :param fileitem: 源文件项；缺少远端标识时先按路径查询
+        :param path: 已存在的目标目录路径
+        :param new_name: 移动后的名称
+        :return: 移动、查询新文件和重命名均成功时为 True，否则为 False
         """
         if fileitem.fileid is None:
             fileitem = self.get_item(Path(fileitem.path))
@@ -1168,14 +1274,30 @@ class U115Pan(StorageBase, metaclass=WeakSingleton):
         return False
 
     def link(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
+        """
+        保留硬链接入口；115 云盘不支持此操作。
+
+        :param fileitem: 源文件项，当前不使用
+        :param target_file: 链接目标路径，当前不使用
+        :return: 固定返回 None，不创建链接
+        """
         pass
 
     def softlink(self, fileitem: _SchemaFileItem, target_file: Path) -> bool:
+        """
+        保留软链接入口；115 云盘不支持此操作。
+
+        :param fileitem: 源文件项，当前不使用
+        :param target_file: 链接目标路径，当前不使用
+        :return: 固定返回 None，不创建链接
+        """
         pass
 
     def usage(self) -> Optional[_SchemaStorageUsage]:
         """
-        存储使用情况
+        查询账号空间的总容量与可用容量。
+
+        :return: 以字节计的容量信息；未登录或接口无数据时返回 None
         """
         try:
             resp = self._request_api("GET", "/open/user/info", "data")
