@@ -1,3 +1,7 @@
+"""
+验证同步与异步缓存的过期、隔离、原子领取和后端资源生命周期。
+"""
+
 import asyncio
 import os
 import threading
@@ -328,7 +332,9 @@ def test_cached_zero_ttl_does_not_cache_async_result():
 
 
 def test_cached_ttl_provider_resolves_current_value_for_each_write():
-    """动态 TTL 工厂应在每次写入时读取新快照，而不是在导入期固化。"""
+    """
+    动态 TTL 工厂应在每次写入时读取新快照，而不是在导入期固化。
+    """
     state = {"ttl": 10}
     calls = 0
 
@@ -352,11 +358,16 @@ def test_cached_ttl_provider_resolves_current_value_for_each_write():
 
 
 def test_cached_rejects_fixed_and_dynamic_ttl_together():
-    """固定 TTL 与动态 TTL 同时存在时应在装饰阶段明确拒绝。"""
+    """
+    固定 TTL 与动态 TTL 同时存在时应在装饰阶段明确拒绝。
+    """
     with pytest.raises(ValueError, match="不能同时设置"):
 
         @cached(ttl=10, ttl_provider=lambda: 20)
         def load_value():
+            """
+            返回固定值，触发装饰阶段的互斥过期配置校验。
+            """
             return 1
 
 
@@ -582,7 +593,9 @@ def test_memory_backend_uses_zero_default_ttl():
 
 
 def test_redis_backend_close_keeps_shared_pool(monkeypatch):
-    """关闭单个 Redis 缓存不得关闭全部缓存共享的连接池，连接池由关闭流程统一收口。"""
+    """
+    关闭单个 Redis 缓存不得关闭全部缓存共享的连接池，连接池由关闭流程统一收口。
+    """
     helper = MagicMock()
     async_helper = MagicMock()
     async_helper.close = AsyncMock()
@@ -600,13 +613,22 @@ def test_redis_backend_treats_zero_ttl_as_expired():
     Redis backend 应删除 ttl=0 的同名 key，避免向 Redis 发送无效 EX 0。
     """
     class RedisHelperStub:
+        """
+        记录同步 Redis 写入和删除调用，不访问真实缓存。
+        """
         deleted = None
         set_called = False
 
         def set(self, key, value, ttl, region, **kwargs):
+            """
+            记录是否尝试写入缓存，供零过期时间的删除语义断言使用。
+            """
             self.set_called = True
 
         def delete(self, key, region):
+            """
+            记录被删除的缓存键和区域。
+            """
             self.deleted = (key, region)
 
     cache = object.__new__(RedisBackend)
@@ -624,13 +646,22 @@ def test_async_redis_backend_treats_zero_ttl_as_expired():
     异步 Redis backend 应删除 ttl=0 的同名 key，不发送无效 EX 0。
     """
     class AsyncRedisHelperStub:
+        """
+        记录异步 Redis 写入和删除调用，不访问真实缓存。
+        """
         deleted = None
         set_called = False
 
         async def set(self, key, value, ttl, region, **kwargs):
+            """
+            记录是否尝试写入缓存，供零过期时间的删除语义断言使用。
+            """
             self.set_called = True
 
         async def delete(self, key, region):
+            """
+            记录被删除的缓存键和区域。
+            """
             self.deleted = (key, region)
 
     async def run_test():
@@ -648,7 +679,9 @@ def test_async_redis_backend_treats_zero_ttl_as_expired():
 
 @pytest.fixture
 def redis_composed(compose_cache_backend):
-    """以 Redis 缓存装配平台缓存。"""
+    """
+    以 Redis 缓存装配平台缓存。
+    """
     compose_cache_backend("redis")
 
 def test_file_cache_preserves_zero_ttl_in_redis_mode(redis_composed):
@@ -691,7 +724,9 @@ def test_redis_helper_uses_blocking_pool_settings(monkeypatch):
     calls = {}
 
     class FakeClient:
-        """模拟同步 Redis 客户端。"""
+        """
+        模拟同步 Redis 客户端。
+        """
 
         def __init__(self, connection_pool):
             self.connection_pool = connection_pool
@@ -699,19 +734,27 @@ def test_redis_helper_uses_blocking_pool_settings(monkeypatch):
             self.closed = False
 
         def ping(self):
-            """模拟 Redis ping。"""
+            """
+            模拟 Redis ping。
+            """
             calls["ping"] = True
 
         def config_set(self, key, value):
-            """记录 Redis 配置写入。"""
+            """
+            记录 Redis 配置写入。
+            """
             self.config_calls.append((key, value))
 
         def close(self):
-            """标记客户端已关闭。"""
+            """
+            标记客户端已关闭。
+            """
             self.closed = True
 
     def fake_from_url(url, **kwargs):
-        """记录连接池构造参数。"""
+        """
+        记录连接池构造参数。
+        """
         calls["pool"] = {"url": url, **kwargs}
         return "pool"
 
@@ -736,11 +779,19 @@ def test_redis_helper_uses_blocking_pool_settings(monkeypatch):
 
 
 def test_redis_helper_pop_uses_atomic_getdel():
-    """Redis 缓存领取必须通过单条 GETDEL 命令完成。"""
+    """
+    Redis 缓存领取必须通过单条 GETDEL 命令完成。
+    """
     calls = []
 
     class FakeClient:
+        """
+        记录原子领取命令并返回序列化的挑战数据。
+        """
         def getdel(self, key):
+            """
+            记录领取的缓存键，返回预设的序列化挑战内容。
+            """
             calls.append(key)
             return serialize({"challenge": "value"})
 
@@ -756,12 +807,18 @@ def test_redis_helper_pop_uses_atomic_getdel():
 
 
 def test_redis_helper_strict_consume_propagates_backend_failure():
-    """严格领取必须区分 Redis 故障与键不存在，旧 pop 仍保持兼容返回值。"""
+    """
+    严格领取必须区分 Redis 故障与键不存在，旧 pop 仍保持兼容返回值。
+    """
     class FailingClient:
-        """模拟 GETDEL 连接故障。"""
+        """
+        模拟 GETDEL 连接故障。
+        """
 
         def getdel(self, _key):
-            """报告 Redis 命令失败。"""
+            """
+            报告 Redis 命令失败。
+            """
             raise ConnectionError("redis unavailable")
 
     helper = RedisHelper()
@@ -775,12 +832,18 @@ def test_redis_helper_strict_consume_propagates_backend_failure():
 
 
 def test_redis_helper_strict_store_requires_backend_acknowledgement():
-    """严格写入不得把 Redis 未确认写入当成成功签发。"""
+    """
+    严格写入不得把 Redis 未确认写入当成成功签发。
+    """
     class RejectingClient:
-        """模拟 Redis 拒绝确认 SET。"""
+        """
+        模拟 Redis 拒绝确认 SET。
+        """
 
         def set(self, *_args, **_kwargs):
-            """返回未写入状态。"""
+            """
+            返回未写入状态。
+            """
             return False
 
     helper = RedisHelper()
@@ -794,7 +857,9 @@ def test_redis_helper_strict_store_requires_backend_acknowledgement():
 
 
 def test_memory_atomic_cache_consume_has_single_winner_and_honors_ttl():
-    """内存原子缓存与 Redis 一样只允许一次领取并服从 TTL。"""
+    """
+    内存原子缓存与 Redis 一样只允许一次领取并服从 TTL。
+    """
     cache = MemoryBackend(ttl=60)
     region = "atomic_memory_contract"
     cache.clear(region=region)
@@ -814,13 +879,17 @@ def test_memory_atomic_cache_consume_has_single_winner_and_honors_ttl():
 
 
 def test_ttl_cache_legacy_pop_uses_atomic_consume_contract():
-    """插件既有 TTLCache.pop 入口保持可用并获得原子领取语义。"""
+    """
+    插件既有 TTLCache.pop 入口保持可用并获得原子领取语义。
+    """
     cache = TTLCache(region="legacy_atomic_pop", maxsize=8, ttl=60)
     cache.clear()
     cache.set("token", "challenge")
 
     def pop_token(_index):
-        """兼容入口不存在时返回空值，便于汇总并发结果。"""
+        """
+        兼容入口不存在时返回空值，便于汇总并发结果。
+        """
         try:
             return cache.pop("token")
         except KeyError:
@@ -834,18 +903,26 @@ def test_ttl_cache_legacy_pop_uses_atomic_consume_contract():
 
 
 def test_redis_backend_strict_store_and_consume_use_atomic_helper():
-    """Redis 适配器将严格缓存契约完整委托给底层原子实现。"""
+    """
+    Redis 适配器将严格缓存契约完整委托给底层原子实现。
+    """
     calls = []
 
     class FakeHelper:
-        """记录严格 Redis 缓存调用。"""
+        """
+        记录严格 Redis 缓存调用。
+        """
 
         def store(self, key, value, ttl=None, region=None, **kwargs):
-            """记录严格写入。"""
+            """
+            记录严格写入。
+            """
             calls.append(("store", key, value, ttl, region, kwargs))
 
         def consume(self, key, region=None):
-            """记录原子领取。"""
+            """
+            记录原子领取。
+            """
             calls.append(("consume", key, region))
             return "challenge"
 
@@ -868,7 +945,9 @@ def test_async_redis_helper_uses_blocking_pool_settings(monkeypatch):
     calls = {}
 
     class FakeAsyncClient:
-        """模拟异步 Redis 客户端。"""
+        """
+        模拟异步 Redis 客户端。
+        """
 
         def __init__(self, connection_pool):
             self.connection_pool = connection_pool
@@ -876,19 +955,27 @@ def test_async_redis_helper_uses_blocking_pool_settings(monkeypatch):
             self.closed = False
 
         async def ping(self):
-            """模拟 Redis ping。"""
+            """
+            模拟 Redis ping。
+            """
             calls["ping"] = True
 
         async def config_set(self, key, value):
-            """记录 Redis 配置写入。"""
+            """
+            记录 Redis 配置写入。
+            """
             self.config_calls.append((key, value))
 
         async def close(self):
-            """标记客户端已关闭。"""
+            """
+            标记客户端已关闭。
+            """
             self.closed = True
 
     def fake_from_url(url, **kwargs):
-        """记录连接池构造参数。"""
+        """
+        记录连接池构造参数。
+        """
         calls["pool"] = {"url": url, **kwargs}
         return "async_pool"
 
@@ -925,20 +1012,26 @@ def test_async_redis_helper_does_not_close_client_from_foreign_loop(monkeypatch)
     clients = []
 
     class FakePool:
-        """记录连接池所属事件循环。"""
+        """
+        记录连接池所属事件循环。
+        """
 
         def __init__(self):
             self.loop = asyncio.get_running_loop()
             self.wrong_loop_close = False
 
         async def aclose(self):
-            """模拟连接池关闭并校验事件循环归属。"""
+            """
+            模拟连接池关闭并校验事件循环归属。
+            """
             if asyncio.get_running_loop() is not self.loop:
                 self.wrong_loop_close = True
                 raise RuntimeError("pool belongs to a different event loop")
 
     class FakeClient:
-        """模拟带事件循环归属的异步 Redis 客户端。"""
+        """
+        模拟带事件循环归属的异步 Redis 客户端。
+        """
 
         def __init__(self, connection_pool):
             self.connection_pool = connection_pool
@@ -947,19 +1040,27 @@ def test_async_redis_helper_does_not_close_client_from_foreign_loop(monkeypatch)
             clients.append(self)
 
         async def ping(self):
-            """模拟 Redis ping。"""
+            """
+            模拟 Redis ping。
+            """
 
         async def config_set(self, _key, _value):
-            """模拟 Redis 配置写入。"""
+            """
+            模拟 Redis 配置写入。
+            """
 
         async def close(self):
-            """模拟客户端关闭并校验事件循环归属。"""
+            """
+            模拟客户端关闭并校验事件循环归属。
+            """
             if asyncio.get_running_loop() is not self.loop:
                 self.wrong_loop_close = True
                 raise RuntimeError("client belongs to a different event loop")
 
     def fake_from_url(_url, **_kwargs):
-        """为当前事件循环创建独立连接池。"""
+        """
+        为当前事件循环创建独立连接池。
+        """
         return FakePool()
 
     monkeypatch.setattr(
@@ -969,7 +1070,9 @@ def test_async_redis_helper_does_not_close_client_from_foreign_loop(monkeypatch)
     monkeypatch.setattr("app.adapters.cache.redis.Redis", FakeClient)
 
     async def connect():
-        """在当前事件循环建立异步 Redis 客户端。"""
+        """
+        在当前事件循环建立异步 Redis 客户端。
+        """
         return await AsyncRedisHelper()._connect()
 
     first = asyncio.run(connect())
@@ -995,7 +1098,9 @@ def test_redis_helpers_watch_pool_settings():
 
 
 def test_redis_pool_defaults_cover_startup_concurrency():
-    """Redis 默认连接池应为启动期并发读写留出容量和等待时间。"""
+    """
+    Redis 默认连接池应为启动期并发读写留出容量和等待时间。
+    """
     config = ConfigModel()
 
     assert config.CACHE_REDIS_MAX_CONNECTIONS == 512
