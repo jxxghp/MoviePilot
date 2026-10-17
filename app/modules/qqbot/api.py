@@ -4,7 +4,7 @@ QQ Bot API - Python 实现
 """
 
 import time
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from app.adapters.network.http import RequestUtils
 from app.runtime.log import logger
@@ -13,7 +13,7 @@ API_BASE = "https://api.sgroup.qq.com"
 TOKEN_URL = "https://bots.qq.com/app/getAppAccessToken"
 
 # Token 缓存
-_cached_token: Optional[dict] = None
+_cached_token: Optional[dict[str, Any]] = None
 
 
 def get_access_token(app_id: str, client_secret: str) -> str:
@@ -23,7 +23,10 @@ def get_access_token(app_id: str, client_secret: str) -> str:
     global _cached_token
     now_ms = int(time.time() * 1000)
     if _cached_token and now_ms < _cached_token["expires_at"] - 5 * 60 * 1000 and _cached_token["app_id"] == app_id:
-        return _cached_token["token"]
+        token = _cached_token.get("token")
+        if isinstance(token, str):
+            return token
+        _cached_token = None
 
     if _cached_token and _cached_token["app_id"] != app_id:
         _cached_token = None
@@ -37,6 +40,8 @@ def get_access_token(app_id: str, client_secret: str) -> str:
         if not resp or not resp.json():
             raise ValueError("Failed to get access_token: empty response")
         data = resp.json()
+        if not isinstance(data, dict):
+            raise ValueError(f"Failed to get access_token: invalid response {data!r}")
         token = data.get("access_token")
         expires_in = data.get("expires_in", 7200)
         if not token:
@@ -51,6 +56,8 @@ def get_access_token(app_id: str, client_secret: str) -> str:
             "app_id": app_id,
         }
         logger.debug(f"QQ API: Token cached for app_id={app_id}")
+        if not isinstance(token, str):
+            raise ValueError("Invalid access_token response")
         return token
     except Exception as e:
         logger.error(f"QQ API: get_access_token failed: {e}")
@@ -67,9 +74,9 @@ def _api_request(
     access_token: str,
     method: str,
     path: str,
-    body: Optional[dict] = None,
+    body: Optional[dict[str, Any]] = None,
     timeout: int = 30,
-) -> dict:
+) -> dict[str, Any]:
     """通用 API 请求"""
     url = f"{API_BASE}{path}"
     headers = {
@@ -86,6 +93,8 @@ def _api_request(
         if not resp:
             raise ValueError("Empty response")
         data = resp.json()
+        if not isinstance(data, dict):
+            raise ValueError(f"API Error [{path}]: invalid response {data!r}")
         status = getattr(resp, "status_code", 0)
         if status and status >= 400:
             raise ValueError(f"API Error [{path}]: {data.get('message', data)}")
@@ -100,8 +109,8 @@ def send_proactive_c2c_message(
     openid: str,
     content: str,
     use_markdown: bool = False,
-    keyboard: Optional[dict] = None,
-) -> dict:
+    keyboard: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
     """
     主动发送 C2C 单聊消息（不需要 msg_id）
     注意：每月限 4 条/用户，且用户必须曾与机器人交互过
@@ -127,8 +136,8 @@ def send_proactive_group_message(
     group_openid: str,
     content: str,
     use_markdown: bool = False,
-    keyboard: Optional[dict] = None,
-) -> dict:
+    keyboard: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
     """
     主动发送群聊消息（不需要 msg_id）
     注意：每月限 4 条/群，且群必须曾与机器人交互过
@@ -154,8 +163,8 @@ def send_c2c_message(
     openid: str,
     content: str,
     msg_id: Optional[str] = None,
-    keyboard: Optional[dict] = None,
-) -> dict:
+    keyboard: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
     """被动回复 C2C 单聊消息（1 小时内最多 4 次）"""
     body = {"content": content, "msg_type": 0, "msg_seq": 1}
     if msg_id:
@@ -172,8 +181,8 @@ def send_group_message(
     group_openid: str,
     content: str,
     msg_id: Optional[str] = None,
-    keyboard: Optional[dict] = None,
-) -> dict:
+    keyboard: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
     """被动回复群聊消息（1 小时内最多 4 次）"""
     body = {"content": content, "msg_type": 0, "msg_seq": 1}
     if msg_id:
@@ -191,7 +200,7 @@ def get_gateway_url(access_token: str) -> str:
     """
     data = _api_request(access_token, "GET", "/gateway")
     url = data.get("url")
-    if not url:
+    if not isinstance(url, str) or not url:
         raise ValueError("Gateway URL not found in response")
     return url
 
@@ -202,8 +211,8 @@ def send_message(
     content: str,
     msg_type: Literal["c2c", "group"] = "c2c",
     msg_id: Optional[str] = None,
-    keyboard: Optional[dict] = None,
-) -> dict:
+    keyboard: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
     """
     统一发送接口
     :param access_token: 访问令牌
