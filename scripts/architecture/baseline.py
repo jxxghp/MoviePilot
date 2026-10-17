@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""生成并校验 MoviePilot 后端架构与插件兼容契约基线。"""
+"""
+生成并校验 MoviePilot 后端架构与插件兼容契约基线。
+"""
 
 import argparse
 import ast
@@ -32,6 +34,7 @@ RUNTIME_BASELINE_PATH = BASELINE_ROOT / "runtime-contract-baseline.json"
 TRANSACTION_BASELINE_PATH = BASELINE_ROOT / "transaction-debt-baseline.json"
 CONFIGURATION_BASELINE_PATH = BASELINE_ROOT / "configuration-debt-baseline.json"
 PLUGIN_BASELINE_PATH = BASELINE_ROOT / "official-plugin-baseline.json"
+# 公开插件挂载点纳入兼容快照；变动需要审查宿主与插件之间的契约。
 PLUGIN_HOOKS = (
     "get_actions",
     "get_agent_tools",
@@ -49,12 +52,14 @@ PLUGIN_HOOKS = (
     "init_plugin",
     "stop_service",
 )
+# 这些模型装饰器隐式持有事务，按调用点记录待收缩的事务债务。
 MODEL_TRANSACTION_DECORATORS = {
     "async_db_query",
     "async_db_update",
     "db_query",
     "db_update",
 }
+# 通过这些已知名称创建会话的调用纳入 Oper 会话所有权检查。
 SESSION_FACTORY_NAMES = {
     "AsyncSession",
     "AsyncSessionFactory",
@@ -75,11 +80,13 @@ CONFIGURATION_EXCLUDED_ROOTS = (
     APP_ROOT / "runtime" / "compat",
     APP_ROOT / "testing",
 )
+# 底层数据库组件在配置服务装配前的必要读取单独列明，不混入可消减债务。
 FOUNDATIONAL_SETTINGS_BOUNDARIES = {
     "app/db/base.py": "模型声明阶段必须在运行时配置服务装配前确定数据库主键类型",
     "app/db/engine.py": "数据库引擎是运行时配置服务的底层依赖，不能通过兼容代理自递归",
     "app/db/session.py": "数据库会话与连接配额必须在应用组合根装配前可用",
 }
+# 允许配置组合根直接构造配置数据库适配器，不能推广到普通业务调用。
 COMPOSITION_ROOT_OPER_BOUNDARIES = {
     ("app/startup/composition/configuration.py", "SystemConfigOper"):
         "配置组合 owner 负责构造唯一的系统配置数据库适配器",
@@ -87,7 +94,9 @@ COMPOSITION_ROOT_OPER_BOUNDARIES = {
 
 
 def discover_modules() -> dict[str, Path]:
-    """返回宿主 Python 模块与源码路径，排除运行时插件副本。"""
+    """
+    返回宿主 Python 模块与源码路径，排除运行时插件副本。
+    """
     modules: dict[str, Path] = {}
     for path in APP_ROOT.rglob("*.py"):
         relative = path.relative_to(PROJECT_ROOT).with_suffix("")
@@ -101,12 +110,16 @@ def discover_modules() -> dict[str, Path]:
 
 
 def parse_source(path: Path) -> ast.Module:
-    """以仓库统一编码解析 Python 源码。"""
+    """
+    以仓库统一编码解析 Python 源码。
+    """
     return ast.parse(path.read_text(encoding="utf-8-sig"), filename=str(path))
 
 
 def _is_type_checking_test(test: ast.expr) -> bool:
-    """判断条件是否只在静态类型检查阶段成立。"""
+    """
+    判断条件是否只在静态类型检查阶段成立。
+    """
     return (
         isinstance(test, ast.Name)
         and test.id == "TYPE_CHECKING"
@@ -119,7 +132,9 @@ def _is_type_checking_test(test: ast.expr) -> bool:
 
 
 def iter_runtime_import_nodes(tree: ast.AST):
-    """遍历运行期导入，排除 ``if TYPE_CHECKING`` 内的仅类型依赖。"""
+    """
+    遍历运行期导入，排除 ``if TYPE_CHECKING`` 内的仅类型依赖。
+    """
     parents: dict[ast.AST, ast.AST] = {}
     for parent in ast.walk(tree):
         for child in ast.iter_child_nodes(parent):
@@ -137,7 +152,9 @@ def iter_runtime_import_nodes(tree: ast.AST):
 
 
 def collect_configuration_debt_baseline() -> dict[str, Any]:
-    """分离配置债务与数据库基础设施、组合根的固定批准边界。"""
+    """
+    分离配置债务与数据库基础设施、组合根的固定批准边界。
+    """
     settings_files: list[str] = []
     foundational_settings: list[dict[str, str]] = []
     oper_calls: list[dict[str, Any]] = []
@@ -212,7 +229,9 @@ def iter_import_candidates(
     module_name: str,
     path: Path,
 ) -> list[tuple[str, Optional[str]]]:
-    """提取模块导入候选，第二项记录 from-import 的具体符号。"""
+    """
+    提取模块导入候选，第二项记录 from-import 的具体符号。
+    """
     package = module_name if path.name == "__init__.py" else module_name.rpartition(".")[0]
     candidates: list[tuple[str, Optional[str]]] = []
     for node in iter_runtime_import_nodes(parse_source(path)):
@@ -244,7 +263,9 @@ def resolve_imports(
     path: Path,
     known_modules: set[str],
 ) -> set[str]:
-    """解析宿主内部静态导入，并计入 Python 必然初始化的父包。"""
+    """
+    解析宿主内部静态导入，并计入 Python 必然初始化的父包。
+    """
     dependencies: set[str] = set()
     for imported_module, imported_name in iter_import_candidates(module_name, path):
         candidates = [imported_module]
@@ -264,7 +285,9 @@ def resolve_imports(
 
 
 def _is_module_or_child(module_name: str, root: str) -> bool:
-    """判断模块是否等于指定根或位于其点分子树内。"""
+    """
+    判断模块是否等于指定根或位于其点分子树内。
+    """
     return module_name == root or module_name.startswith(f"{root}.")
 
 
@@ -273,7 +296,9 @@ def _resolve_import_from_module(
     path: Path,
     node: ast.ImportFrom,
 ) -> str:
-    """把 from-import 的相对模块解析为绝对模块名，非法越顶时返回空串。"""
+    """
+    把 from-import 的相对模块解析为绝对模块名，非法越顶时返回空串。
+    """
     if not node.level:
         return node.module or ""
     package = module_name if path.name == "__init__.py" else module_name.rpartition(".")[0]
@@ -288,7 +313,9 @@ def _resolve_import_from_module(
 def collect_direct_adapter_imports(
     modules: dict[str, Path],
 ) -> list[dict[str, str]]:
-    """收集 Application/Chain 对 Adapter 的原始运行期 import，不展开父包。"""
+    """
+    收集 Application/Chain 对 Adapter 的原始运行期导入，不展开父包。
+    """
     source_roots = ("app.application", "app.chain")
     target_root = "app.adapters"
     edges: set[tuple[str, str]] = set()
@@ -322,7 +349,9 @@ def collect_direct_adapter_imports(
 def strongly_connected_components(
     graph: dict[str, set[str]],
 ) -> list[list[str]]:
-    """使用 Tarjan 算法返回稳定排序的非平凡强连通分量。"""
+    """
+    使用 Tarjan 算法返回稳定排序的非平凡强连通分量。
+    """
     indices: dict[str, int] = {}
     low_links: dict[str, int] = {}
     stack: list[str] = []
@@ -330,7 +359,9 @@ def strongly_connected_components(
     components: list[list[str]] = []
 
     def visit(module_name: str) -> None:
-        """深度遍历模块并在根节点收集强连通分量。"""
+        """
+        深度遍历模块并在根节点收集强连通分量。
+        """
         indices[module_name] = len(indices)
         low_links[module_name] = indices[module_name]
         stack.append(module_name)
@@ -367,7 +398,9 @@ def collect_boundary_edges(
     graph: dict[str, set[str]],
     modules: dict[str, Path],
 ) -> dict[str, list[str]]:
-    """收集治理文档指定的当前越层边，供后续阶段逐项收缩。"""
+    """
+    收集治理文档指定的当前越层边，供后续阶段逐项收缩。
+    """
     boundaries: dict[str, list[str]] = {
         "adapters_to_db": [],
         "agent_to_db": [],
@@ -430,7 +463,9 @@ def collect_boundary_edges(
 
 
 def collect_dependency_baseline() -> dict[str, Any]:
-    """生成宿主模块、依赖边、SCC 和越层边的完整基线。"""
+    """
+    生成宿主模块、依赖边、SCC 和越层边的完整基线。
+    """
     modules = discover_modules()
     known_modules = set(modules)
     graph = {
@@ -490,7 +525,9 @@ def collect_dependency_baseline() -> dict[str, Any]:
 
 
 def _expression_name(node: ast.AST) -> str:
-    """返回调用或装饰器表达式的点分名称，无法静态解析时返回空串。"""
+    """
+    返回调用或装饰器表达式的点分名称，无法静态解析时返回空串。
+    """
     if isinstance(node, ast.Name):
         return node.id
     if isinstance(node, ast.Attribute):
@@ -502,11 +539,15 @@ def _expression_name(node: ast.AST) -> str:
 
 
 def _iter_owned_functions(tree: ast.Module) -> list[tuple[str, ast.AST]]:
-    """收集模块函数与类方法的稳定限定名，不记录易漂移源码行号。"""
+    """
+    收集模块函数与类方法的稳定限定名，不记录易漂移源码行号。
+    """
     methods: list[tuple[str, ast.AST]] = []
 
     def visit_class(node: ast.ClassDef, parents: tuple[str, ...]) -> None:
-        """递归访问嵌套类，并收集直接定义的方法。"""
+        """
+        递归访问嵌套类，并收集直接定义的方法。
+        """
         class_path = (*parents, node.name)
         for child in node.body:
             if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
@@ -527,7 +568,9 @@ def _collect_method_calls(
     *,
     operations: set[str],
 ) -> list[dict[str, str]]:
-    """按文件、方法和操作收集指定调用，作为只降不增的事务债务清单。"""
+    """
+    按文件、方法和操作收集指定调用，作为只降不增的事务债务清单。
+    """
     calls: list[dict[str, str]] = []
     for path in sorted(root.rglob("*.py")):
         relative = path.relative_to(PROJECT_ROOT).as_posix()
@@ -552,7 +595,9 @@ def _collect_method_calls(
 
 
 def collect_transaction_debt_baseline() -> dict[str, Any]:
-    """记录 Model 自动事务和 Oper 会话所有权债务，供 CI 执行单向 ratchet。"""
+    """
+    记录 Model 自动事务和 Oper 会话所有权债务，供 CI 执行只降不增检查。
+    """
     model_root = APP_ROOT / "db" / "models"
     oper_root = APP_ROOT / "db" / "oper"
     decorated_methods: list[dict[str, str]] = []
@@ -626,7 +671,9 @@ def _collect_run_module_locations() -> tuple[
     dict[str, list[dict[str, Any]]],
     list[dict[str, Any]],
 ]:
-    """扫描模块调度调用及其当前源码位置。"""
+    """
+    扫描模块调度调用及其当前源码位置。
+    """
     calls: dict[str, list[dict[str, Any]]] = defaultdict(list)
     dynamic_calls: list[dict[str, Any]] = []
     for module_name, path in discover_modules().items():
@@ -656,7 +703,9 @@ def _aggregate_locations(
     locations: list[dict[str, Any]],
     fields: tuple[str, ...],
 ) -> list[dict[str, Any]]:
-    """按稳定字段聚合调用位置，排除行号但保留调用次数。"""
+    """
+    按稳定字段聚合调用位置，排除行号但保留调用次数。
+    """
     counts: dict[tuple[Any, ...], int] = defaultdict(int)
     for location in locations:
         counts[tuple(location[field] for field in fields)] += 1
@@ -670,7 +719,9 @@ def _aggregate_locations(
 
 
 def collect_run_module_contracts() -> dict[str, Any]:
-    """收集不受源码行号变化影响的模块调度语义契约。"""
+    """
+    收集不受源码行号变化影响的模块调度语义契约。
+    """
     calls, dynamic_calls = _collect_run_module_locations()
     stable_calls = {
         method: _aggregate_locations(locations, ("caller", "mode"))
@@ -686,7 +737,9 @@ def collect_run_module_contracts() -> dict[str, Any]:
 
 
 def collect_run_module_diagnostics() -> dict[str, Any]:
-    """收集模块调度调用的当前源码位置，仅用于人工诊断。"""
+    """
+    收集模块调度调用的当前源码位置，仅用于人工诊断。
+    """
     calls, dynamic_calls = _collect_run_module_locations()
     return {
         "methods": {
@@ -704,7 +757,9 @@ def collect_run_module_diagnostics() -> dict[str, Any]:
 
 
 def _event_enum_members(enum_name: str) -> tuple[str, ...]:
-    """从 schema 源码读取事件枚举成员，避免基线脚本导入宿主运行时。"""
+    """
+    从模型源码读取事件枚举成员，避免基线脚本导入宿主运行时。
+    """
     tree = parse_source(APP_ROOT / "schemas" / "types.py")
     enum_class = next(
         (
@@ -730,7 +785,9 @@ def _event_enum_members(enum_name: str) -> tuple[str, ...]:
 
 
 def collect_current_event_facts() -> dict[str, list[dict[str, Any]]]:
-    """收集排除插件副本的当前宿主 Event producer/consumer 事实。"""
+    """
+    收集排除插件副本的当前宿主事件发布/事件消费事实。
+    """
     event_members = _event_enum_members("EventType")
     chain_event_members = _event_enum_members("ChainEventType")
     return collect_event_facts(
@@ -743,12 +800,16 @@ def collect_current_event_facts() -> dict[str, list[dict[str, Any]]]:
 
 
 def _line_free_event_fact(fact: dict[str, Any]) -> dict[str, Any]:
-    """移除只用于诊断的源码行号，保留完整稳定事件身份。"""
+    """
+    移除只用于诊断的源码行号，保留完整稳定事件身份。
+    """
     return {key: value for key, value in fact.items() if key != "line"}
 
 
 def collect_event_fact_contract() -> dict[str, Any]:
-    """生成逐调用事实与按 fingerprint 索引的宿主事件契约。"""
+    """
+    生成逐调用事实与按 fingerprint 索引的宿主事件契约。
+    """
     event_names = sorted([
         *(
             f"EventType.{member}"
@@ -812,12 +873,16 @@ def collect_event_fact_contract() -> dict[str, Any]:
 
 
 def collect_event_fact_diagnostics() -> dict[str, list[dict[str, Any]]]:
-    """返回带源码行号的逐调用事件事实，仅用于人工诊断。"""
+    """
+    返回带源码行号的逐调用事件事实，仅用于人工诊断。
+    """
     return collect_current_event_facts()
 
 
 def _sdk_all_names(tree: ast.Module, path: Path) -> tuple[str, ...]:
-    """读取 SDK 模块显式声明的 ``__all__``，未声明时不推断公开合同。"""
+    """
+    读取 SDK 模块显式声明的 ``__all__``，未声明时不推断公开合同。
+    """
     value_node: Optional[ast.expr] = None
     for node in tree.body:
         if isinstance(node, ast.Assign) and any(
@@ -850,7 +915,9 @@ def _sdk_alias_target(
     value: ast.expr,
     imported_targets: dict[str, str],
 ) -> str:
-    """把顶层别名赋值解析为稳定目标，保留其真实 canonical 来源。"""
+    """
+    把顶层别名赋值解析为稳定目标，保留其真实规范来源。
+    """
     if isinstance(value, ast.Name):
         return imported_targets.get(value.id, value.id)
     if isinstance(value, ast.Attribute):
@@ -859,7 +926,9 @@ def _sdk_alias_target(
 
 
 def _collect_sdk_module_exports(path: Path) -> list[dict[str, str]]:
-    """按单个 SDK 模块的显式 ``__all__`` 生成可比较的符号合同。"""
+    """
+    按单个 SDK 模块的显式 ``__all__`` 生成可比较的符号合同。
+    """
     tree = parse_source(path)
     export_names = _sdk_all_names(tree, path)
     imported_targets: dict[str, str] = {}
@@ -926,7 +995,9 @@ def _collect_sdk_module_exports(path: Path) -> list[dict[str, str]]:
 
 
 def collect_sdk_exports() -> dict[str, list[dict[str, str]]]:
-    """按显式 ``__all__`` 收集 SDK 合同，避免导入时物化运行资源。"""
+    """
+    按显式 ``__all__`` 收集 SDK 合同，避免导入时物化运行资源。
+    """
     result: dict[str, list[dict[str, str]]] = {}
     for path in sorted((APP_ROOT / "sdk").glob("*.py")):
         module_name = f"app.sdk.{path.stem}" if path.stem != "__init__" else "app.sdk"
@@ -935,7 +1006,9 @@ def collect_sdk_exports() -> dict[str, list[dict[str, str]]]:
 
 
 def json_compatible(value: Any) -> Any:
-    """把兼容清单中的 dataclass、集合和映射转换为稳定 JSON 数据。"""
+    """
+    把兼容清单中的 dataclass、集合和映射转换为稳定 JSON 数据。
+    """
     if dataclasses.is_dataclass(value):
         return {
             field.name: json_compatible(getattr(value, field.name))
@@ -956,7 +1029,9 @@ def json_compatible(value: Any) -> Any:
 
 
 def collect_compat_manifest() -> dict[str, Any]:
-    """加载仅依赖标准库的兼容清单并序列化公开映射。"""
+    """
+    加载仅依赖标准库的兼容清单并序列化公开映射。
+    """
     path = APP_ROOT / "runtime" / "compat" / "manifest.py"
     spec = importlib.util.spec_from_file_location("architecture_compat_manifest", path)
     if spec is None or spec.loader is None:
@@ -981,7 +1056,9 @@ def collect_compat_manifest() -> dict[str, Any]:
 
 
 def collect_runtime_baseline() -> dict[str, Any]:
-    """生成模块调度、SDK 和兼容层公开契约基线。"""
+    """
+    生成模块调度、SDK 和兼容层公开契约基线。
+    """
     return {
         "schema_version": 3,
         "scope": {
@@ -999,7 +1076,9 @@ def collect_runtime_baseline() -> dict[str, Any]:
 
 
 def collect_module_method_specs() -> dict[str, Any]:
-    """加载无运行资源副作用的 Module Contract V2 清单。"""
+    """
+    加载无运行资源副作用的 Module Contract V2 清单。
+    """
     path = APP_ROOT / "runtime" / "extensions" / "module" / "contracts.py"
     spec = importlib.util.spec_from_file_location("architecture_module_contracts", path)
     if spec is None or spec.loader is None:
@@ -1015,7 +1094,9 @@ def collect_module_method_specs() -> dict[str, Any]:
 
 
 def collect_event_specs() -> dict[str, Any]:
-    """收集全部 enum 事件的稳定 payload、可见性与可靠性登记。"""
+    """
+    收集全部枚举事件的稳定 payload、可见性与可靠性登记。
+    """
     project_root = str(PROJECT_ROOT)
     inserted = project_root not in sys.path
     if inserted:
@@ -1051,7 +1132,9 @@ def collect_event_specs() -> dict[str, Any]:
 
 
 def collect_runtime_diagnostics() -> dict[str, Any]:
-    """生成带当前源码行号的运行契约诊断视图，不写入语义 fixture。"""
+    """
+    生成带当前源码行号的运行契约诊断视图，不写入语义快照。
+    """
     return {
         "run_module": collect_run_module_diagnostics(),
         "event_facts": collect_event_fact_diagnostics(),
@@ -1059,7 +1142,9 @@ def collect_runtime_diagnostics() -> dict[str, Any]:
 
 
 def git_head(repository: Path) -> str:
-    """读取外部插件仓当前提交，失败时返回可诊断占位值。"""
+    """
+    读取外部插件仓当前提交，失败时返回可诊断占位值。
+    """
     result = subprocess.run(
         ["git", "-C", str(repository), "rev-parse", "HEAD"],
         capture_output=True,
@@ -1070,7 +1155,9 @@ def git_head(repository: Path) -> str:
 
 
 def _plugin_attribute_parts(node: ast.AST) -> tuple[str, ...]:
-    """把插件属性表达式拆成点分片段，动态下标等无法证明的表达式返回空。"""
+    """
+    把插件属性表达式拆成点分片段，动态下标等无法证明的表达式返回空。
+    """
     if isinstance(node, ast.Name):
         return (node.id,)
     if isinstance(node, ast.Attribute):
@@ -1082,7 +1169,9 @@ def _plugin_attribute_parts(node: ast.AST) -> tuple[str, ...]:
 def collect_plugin_import_contracts(
     path: Path,
 ) -> tuple[set[str], set[str], Counter[str]]:
-    """收集插件模块、from-import 符号及可证明的导入对象属性调用。"""
+    """
+    收集插件模块、from-import 符号及可证明的导入对象属性调用。
+    """
     tree = parse_source(path)
     imports: set[str] = set()
     from_imports: set[str] = set()
@@ -1137,13 +1226,17 @@ def collect_plugin_import_contracts(
 
 
 def collect_plugin_imports(path: Path) -> set[str]:
-    """收集单个插件文件静态声明及字面量动态加载的 app 模块。"""
+    """
+    收集单个插件文件静态声明及字面量动态加载的 app 模块。
+    """
     imports, _, _ = collect_plugin_import_contracts(path)
     return imports
 
 
 def collect_plugin_api_contracts(path: Path) -> list[dict[str, Any]]:
-    """收集插件 ``get_api`` 中可静态解析的路由与响应模型声明。"""
+    """
+    收集插件 ``get_api`` 中可静态解析的路由与响应模型声明。
+    """
     tree = parse_source(path)
     functions = {
         node.name: node
@@ -1206,7 +1299,9 @@ def collect_plugin_api_contracts(path: Path) -> list[dict[str, Any]]:
 
 
 def _read_plugin_index(path: Path) -> dict[str, Any]:
-    """读取插件索引；缺失索引按该代没有候选处理。"""
+    """
+    读取插件索引；缺失索引按该代没有候选处理。
+    """
     if not path.is_file():
         return {}
     value = json.loads(path.read_text(encoding="utf-8"))
@@ -1216,7 +1311,9 @@ def _read_plugin_index(path: Path) -> dict[str, Any]:
 
 
 def _v3_default_plugin_roots(plugin_repo: Path) -> dict[str, Path]:
-    """返回 V3/V2 专用索引均未接管时可回退的默认插件源码目录。"""
+    """
+    返回 V3/V2 专用索引均未接管时可回退的默认插件源码目录。
+    """
     default_index = _read_plugin_index(plugin_repo / "package.json")
     v2_index = _read_plugin_index(plugin_repo / "package.v2.json")
     v3_index = _read_plugin_index(plugin_repo / "package.v3.json")
@@ -1239,7 +1336,9 @@ def _v3_default_plugin_roots(plugin_repo: Path) -> dict[str, Path]:
 
 
 def collect_official_plugin_baseline(plugin_repo: Path) -> dict[str, Any]:
-    """扫描独立官方插件仓中 V3 可见实现的导入面、Hook 和动态 API 契约。"""
+    """
+    扫描独立官方插件仓中 V3 可见实现的导入面、Hook 和动态 API 契约。
+    """
     versioned_roots = [plugin_repo / "plugins.v2", plugin_repo / "plugins.v3"]
     default_roots = _v3_default_plugin_roots(plugin_repo)
     paths = sorted(
@@ -1331,7 +1430,9 @@ def collect_official_plugin_baseline(plugin_repo: Path) -> dict[str, Any]:
 
 
 def write_json(path: Path, value: dict[str, Any]) -> None:
-    """以稳定格式写入生成基线。"""
+    """
+    以稳定格式写入生成基线。
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -1340,7 +1441,9 @@ def write_json(path: Path, value: dict[str, Any]) -> None:
 
 
 def _display_path(path: Path) -> Path:
-    """优先返回仓库相对路径，便于 CLI 输出稳定可读。"""
+    """
+    优先返回仓库相对路径，便于 CLI 输出稳定可读。
+    """
     try:
         return path.relative_to(PROJECT_ROOT)
     except ValueError:
@@ -1348,7 +1451,9 @@ def _display_path(path: Path) -> Path:
 
 
 def _migrate_runtime_v1_to_v2(value: dict[str, Any]) -> dict[str, Any]:
-    """把包含源码行号的 v1 运行契约转换为 v2 聚合语义。"""
+    """
+    把包含源码行号的 v1 运行契约转换为 v2 聚合语义。
+    """
     run_module = value["run_module"]
     events = value["events"]
     return {
@@ -1400,7 +1505,9 @@ def _migrate_runtime_v1_to_v2(value: dict[str, Any]) -> dict[str, Any]:
 
 
 def _migrate_runtime_v2_to_v3(value: dict[str, Any]) -> dict[str, Any]:
-    """把 v2 聚合事件投影为显式待刷新的 v3 兼容视图。"""
+    """
+    把 v2 聚合事件投影为显式待刷新的 v3 兼容视图。
+    """
     return {
         "schema_version": 3,
         "scope": {
@@ -1421,7 +1528,9 @@ def _migrate_runtime_v2_to_v3(value: dict[str, Any]) -> dict[str, Any]:
 
 
 def _migrate_runtime_baseline(value: dict[str, Any]) -> dict[str, Any]:
-    """链式迁移旧运行契约，保证检查只报告语义变化而不崩溃。"""
+    """
+    链式迁移旧运行契约，保证检查只报告语义变化而不崩溃。
+    """
     migrated = value
     if migrated.get("schema_version") == 1:
         migrated = _migrate_runtime_v1_to_v2(migrated)
@@ -1431,7 +1540,9 @@ def _migrate_runtime_baseline(value: dict[str, Any]) -> dict[str, Any]:
 
 
 def _migrate_plugin_baseline(value: dict[str, Any]) -> dict[str, Any]:
-    """链式迁移旧插件基线，并为空缺的符号/调用合同建立显式空快照。"""
+    """
+    链式迁移旧插件基线，并为空缺的符号/调用合同建立显式空快照。
+    """
     migrated = value
     if migrated.get("schema_version") == 2:
         source = migrated["source"]
@@ -1461,7 +1572,9 @@ def _migrate_plugin_baseline(value: dict[str, Any]) -> dict[str, Any]:
 
 
 def semantic_baseline(path: Path, value: dict[str, Any]) -> dict[str, Any]:
-    """返回参与门禁比较的稳定语义视图，并兼容读取旧 fixture。"""
+    """
+    返回参与门禁比较的稳定语义视图，并兼容读取旧快照。
+    """
     if path.name == RUNTIME_BASELINE_PATH.name:
         return _migrate_runtime_baseline(value)
     if path.name == PLUGIN_BASELINE_PATH.name:
@@ -1478,7 +1591,9 @@ def transaction_ratchet_matches(
     expected: dict[str, Any],
     actual: dict[str, Any],
 ) -> bool:
-    """事务债务只允许删除既有条目，不允许新增或提高任一分类计数。"""
+    """
+    事务债务只允许删除既有条目，不允许新增或提高任一分类计数。
+    """
     if expected.get("schema_version") != actual.get("schema_version"):
         return False
     if expected.get("scope") != actual.get("scope"):
@@ -1517,7 +1632,9 @@ def configuration_ratchet_matches(
     expected: dict[str, Any],
     actual: dict[str, Any],
 ) -> bool:
-    """配置债务只允许删除既有文件或构造点，不允许新增直接依赖。"""
+    """
+    配置债务只允许删除既有文件或构造点，不允许新增直接依赖。
+    """
     if expected.get("schema_version") != actual.get("schema_version"):
         return False
     if expected.get("scope") != actual.get("scope"):
@@ -1552,7 +1669,9 @@ def _compare_semantic_values(
     path: str,
     report: dict[str, list[dict[str, Any]]],
 ) -> None:
-    """递归比较语义 JSON，把增删改记录为可审查条目。"""
+    """
+    递归比较语义 JSON，把增删改记录为可审查条目。
+    """
     if isinstance(expected, dict) and isinstance(actual, dict):
         expected_keys = set(expected)
         actual_keys = set(actual)
@@ -1595,7 +1714,9 @@ def _compare_semantic_values(
 
 
 def build_comparison_report(path: Path, actual: dict[str, Any]) -> dict[str, Any]:
-    """生成包含语义增删改和 provenance 的机器可读审查报告。"""
+    """
+    生成包含语义增删改和来源信息的机器可读审查报告。
+    """
     expected = json.loads(path.read_text(encoding="utf-8"))
     expected_semantic = semantic_baseline(path, expected)
     actual_semantic = semantic_baseline(path, actual)
@@ -1625,7 +1746,9 @@ def check_json(
     *,
     write_hint: str,
 ) -> bool:
-    """比较当前扫描结果和已提交基线并输出限定范围的更新提示。"""
+    """
+    比较当前扫描结果和已提交基线并输出限定范围的更新提示。
+    """
     expected = json.loads(path.read_text(encoding="utf-8"))
     if path.name == TRANSACTION_BASELINE_PATH.name:
         if transaction_ratchet_matches(expected, actual):
@@ -1675,7 +1798,9 @@ def check_json(
 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
-    """解析限定宿主或插件范围的基线操作参数。"""
+    """
+    解析限定宿主或插件范围的基线操作参数。
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     action = parser.add_mutually_exclusive_group(required=True)
     action.add_argument("--check-host", action="store_true", help="校验宿主架构基线")
@@ -1730,7 +1855,9 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
-    """只对显式选择的宿主或插件基线执行检查或写入。"""
+    """
+    只对显式选择的宿主或插件基线执行检查或写入。
+    """
     args = parse_args(argv)
     host_action = args.check_host or args.write_host
     if host_action:

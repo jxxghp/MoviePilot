@@ -1,4 +1,6 @@
-"""按函数维护圈复杂度与嵌套深度低水位；源码行数仅用于热点报告。"""
+"""
+按函数维护圈复杂度与嵌套深度低水位；源码行数仅用于热点报告。
+"""
 
 from __future__ import annotations
 
@@ -15,13 +17,17 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BASELINE = PROJECT_ROOT / "tests/fixtures/architecture/complexity-baseline.json"
+# 圈复杂度最多允许 15，控制块嵌套最多允许 5 层；超限部分按函数维护低水位。
 THRESHOLDS = {"C901": 15, "PLR1702": 5}
+# 第 3 版基线按函数记录结构指标，不再用物理行数作为阻断依据。
 SCHEMA_VERSION = 3
 _METRIC = re.compile(r"\((\d+) > (\d+)\)$")
 
 
 def _iter_python_files(root: Path) -> list[Path]:
-    """完整扫描宿主 Python 源码，插件副本由插件仓治理。"""
+    """
+    完整扫描宿主 Python 源码，插件副本由插件仓治理。
+    """
     paths = [
         path for path in sorted((root / "app").rglob("*.py"))
         if not path.relative_to(root).as_posix().startswith("app/plugins/")
@@ -34,7 +40,9 @@ def _iter_python_files(root: Path) -> list[Path]:
 def _walk_owned_nodes(
     nodes: Iterable[ast.AST], prefix: str = "",
 ) -> Iterable[tuple[str, ast.AST]]:
-    """遍历任意控制流下的类和函数，保留私有、dunder 与嵌套词法归属。"""
+    """
+    遍历任意控制流下的类和函数，保留私有、双下划线特殊方法与嵌套词法归属。
+    """
     for node in nodes:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             qualname = f"{prefix}.{node.name}" if prefix else node.name
@@ -45,7 +53,9 @@ def _walk_owned_nodes(
 
 
 def _owned_nodes(tree: ast.Module) -> Iterable[tuple[str, ast.AST]]:
-    """为条件重定义和 property 同名定义分配序号，避免相互覆盖预算。"""
+    """
+    为条件重定义和属性的同名定义分配序号，避免相互覆盖预算。
+    """
     nodes = list(_walk_owned_nodes(tree.body))
     totals = Counter(name for name, _ in nodes)
     seen: Counter[str] = Counter()
@@ -55,7 +65,9 @@ def _owned_nodes(tree: ast.Module) -> Iterable[tuple[str, ast.AST]]:
 
 
 def run_ruff(root: Path) -> list[dict[str, Any]]:
-    """使用锁定的 Ruff 计算指标；配置、noqa 与 gitignore 不能隐藏新增复杂度。"""
+    """
+    使用锁定的 Ruff 计算指标；配置、noqa 与 gitignore 不能隐藏新增复杂度。
+    """
     result = subprocess.run(
         [
             sys.executable, "-m", "ruff", "check", "app",
@@ -77,7 +89,9 @@ def run_ruff(root: Path) -> list[dict[str, Any]]:
 
 
 def collect_complexity(root: Path = PROJECT_ROOT) -> dict[str, dict[str, int]]:
-    """把 Ruff 诊断映射为规则、文件和词法 owner，不使用易变行号作为基线身份。"""
+    """
+    把 Ruff 诊断映射为规则、文件和词法归属，不使用易变行号作为基线身份。
+    """
     root = root.resolve()
     owners = {}
     for path in _iter_python_files(root):
@@ -112,7 +126,9 @@ def collect_complexity(root: Path = PROJECT_ROOT) -> dict[str, dict[str, int]]:
 
 
 def collect_source_size(root: Path = PROJECT_ROOT) -> dict[str, dict[str, int]]:
-    """记录方法超过 150、类超过 500、文件超过 1000 行的观察项，不参与阻断。"""
+    """
+    记录方法超过 150、类超过 500、文件超过 1000 行的观察项，不参与阻断。
+    """
     report: dict[str, dict[str, int]] = {"method": {}, "class": {}, "file": {}}
     for path in _iter_python_files(root):
         relative = path.relative_to(root).as_posix()
@@ -128,12 +144,16 @@ def collect_source_size(root: Path = PROJECT_ROOT) -> dict[str, dict[str, int]]:
 
 
 def baseline_payload(metrics: dict[str, dict[str, int]]) -> dict[str, Any]:
-    """把指标与算法版本、阈值一起持久化，避免静默改变门禁口径。"""
+    """
+    把指标与算法版本、阈值一起持久化，避免静默改变门禁口径。
+    """
     return {"schema_version": SCHEMA_VERSION, "thresholds": THRESHOLDS, "metrics": metrics}
 
 
 def read_baseline(path: Path) -> dict[str, dict[str, int]]:
-    """严格校验基线格式，旧行数基线与策略变更必须显式迁移。"""
+    """
+    严格校验基线格式，旧行数基线与策略变更必须显式迁移。
+    """
     payload = json.loads(path.read_text(encoding="utf-8"))
     if (
         not isinstance(payload, dict)
@@ -163,7 +183,13 @@ def read_baseline(path: Path) -> dict[str, dict[str, int]]:
 def classify_complexity(
     baseline: dict[str, dict[str, int]], current: dict[str, dict[str, int]],
 ) -> tuple[list[str], list[str]]:
-    """分别返回逐函数新增/增长与待固化下降，函数之间不能抵消债务。"""
+    """
+    分别返回逐函数新增/增长与待固化下降，函数之间不能抵消债务。
+
+    :param baseline: 已审查的逐规则、逐函数指标上限
+    :param current: 当前源码的逐函数结构指标
+    :return: 新增或增长的回退列表，以及需要固化的下降列表
+    """
     regressions: list[str] = []
     stale: list[str] = []
     for code, threshold in THRESHOLDS.items():
@@ -179,13 +205,17 @@ def classify_complexity(
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    """以稳定排序写入可审查的 JSON 基线或观察报告。"""
+    """
+    以稳定排序写入可审查的 JSON 基线或观察报告。
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def main() -> int:
-    """检查结构复杂度；显式写入只接受首次建账或已证明的低水位下降。"""
+    """
+    检查结构复杂度；显式写入只接受首次建账或已证明的低水位下降。
+    """
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--write", action="store_true", help="首次建账或固化下降后的低水位")
     parser.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
