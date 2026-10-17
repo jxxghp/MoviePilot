@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.db import Base
+from app.db import Base  # pylint: disable=no-name-in-module
 from app.db.models.downloadhistory import DownloadHistory
 from app.db.models.transferhistory import TransferHistory
 

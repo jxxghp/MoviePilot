@@ -9,7 +9,7 @@ from sqlalchemy import pool
 
 from alembic import context
 
-from app.db import Base
+from app.db import Base  # pylint: disable=no-name-in-module
 from app.startup.initializers.cache import configure_cache_dependencies
 
 # 历史迁移会调用使用 FileCache 的业务清理链，Alembic 自身也是组合入口。

@@ -179,6 +179,17 @@ def test_literal_template_skips_music_fields_for_video() -> None:
     assert "类别：国产剧" in rendered["text"]
 
 
+def test_template_helper_supports_string_cache_keys_and_rejects_invalid_literal() -> None:
+    """
+    字符串模板缓存应可读回；显式 literal 模板解析失败时应给出明确错误。
+    """
+    helper = TemplateHelper()
+    helper.set_cache_context("template-key", {"title": "Demo"})
+
+    assert helper.get_cache_context("template-key") == {"title": "Demo"}
+    assert helper.parse_template_content("{'title':", "literal") is None
+
+
 def test_message_renders_from_db_config(notification_templates: SystemConfigOper) -> None:
     """
     MessageTemplateHelper 应使用数据库配置的模板渲染消息，
