@@ -16,9 +16,15 @@ import pytest
 from app.db.oper.systemconfig import SystemConfigOper
 from app.foundation.singleton import Singleton
 from app.runtime.capabilities.errors import CapabilityRuntimeClosedError
-from app.runtime.capabilities.model import ActivationPolicy, CapabilityLifecycleState, SelectorSchema
+from app.runtime.capabilities.model import (
+    ActivationPolicy,
+    CapabilityLifecycleState,
+    CapabilitySpec,
+    SelectorSchema,
+)
 from app.runtime.capabilities.registry import CapabilityRegistry
 from app.runtime.events import Event, EventHandlerBinding, eventmanager
+from app.runtime.extensions.module import adapter as module_adapter
 from app.runtime.extensions.module import manager as module_manager_extension
 from app.runtime.extensions.module.adapter import HostModuleConfigSnapshot, should_run_host_module
 from app.runtime.extensions.module.manager import ModuleManager
@@ -380,6 +386,39 @@ def test_bootstrap_module_switch_defaults_on_and_honors_explicit_disable() -> No
     for module_id in ("FileManagerModule", "MusicBrainzModule", "SubtitleModule"):
         protected_spec = SimpleNamespace(id=module_id, activation=ActivationPolicy.BOOTSTRAP)
         assert should_run_host_module(protected_spec, disabled_snapshot) is True
+
+
+def test_when_configured_manifest_without_selector_is_rejected(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """when_configured 声明缺少 selector 时必须在宿主清单校验阶段失败。"""
+    module_root = tmp_path / "modules"
+    (module_root / "dingtalk").mkdir(parents=True)
+    (module_root / "dingtalk" / "__init__.py").touch()
+    monkeypatch.setattr(module_adapter, "_MODULE_ROOT", module_root)
+    spec = CapabilitySpec(
+        schema_version=1,
+        id="DingTalkModule",
+        kind="host_module",
+        entrypoint="app.modules.dingtalk:DingTalkModule",
+        activation=ActivationPolicy.WHEN_CONFIGURED,
+        metadata={
+            "name": "DingTalk",
+            "type": "notification",
+            "subtype": "DingTalk",
+            "priority": 11,
+        },
+        selector=None,
+        watch=("Notifications",),
+        depends_on=(),
+        source=module_root / "dingtalk" / "capability.toml",
+    )
+
+    with pytest.raises(ValueError, match="必须声明 selector"):
+        module_adapter._validate_manifest_inventory(
+            SimpleNamespace(list_specs=lambda: (spec,))
+        )
 
 
 def test_get_module_materializes_one_canonical_class_without_starting_it(
