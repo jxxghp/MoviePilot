@@ -944,7 +944,7 @@
     }
   },
   "edge_count": 9577,
-  "edge_sha256": "c8f41e2115ccb775b850c378dd98fe0506372cbef34c762b9ff56dd5159dd972",
+  "edge_sha256": "b1cfcf12ea107d56fd487eded370ea8c0f6247b82de2b40b1c5fa0f7f0c56c8f",
   "edges": [
     "app -> app.foundation",
     "app -> app.foundation.environment",
@@ -3033,11 +3033,11 @@
     "app.api.endpoints.storage -> app.runtime.progress",
     "app.api.endpoints.storage -> app.schemas",
     "app.api.endpoints.storage -> app.schemas.common",
+    "app.api.endpoints.storage -> app.schemas.file",
     "app.api.endpoints.storage -> app.schemas.response",
     "app.api.endpoints.storage -> app.schemas.storage",
     "app.api.endpoints.storage -> app.schemas.system",
     "app.api.endpoints.storage -> app.schemas.types",
-    "app.api.endpoints.storage -> app.schemas.workflow",
     "app.api.endpoints.subexecution -> app.adapters",
     "app.api.endpoints.subexecution -> app.adapters.web",
     "app.api.endpoints.subexecution -> app.adapters.web.security",
