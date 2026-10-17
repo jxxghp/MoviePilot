@@ -170,7 +170,9 @@ PLUGINS_PACKAGE = "app.plugins"
 PLUGINS_PACKAGE_ROOT_BACKUP_SUFFIX = ".legacy-bak"
 # 必须与 app/plugins/__init__.py 完全一致，tests/test_legacy_import_compat.py 校验同步
 PLUGINS_PACKAGE_ROOT_SOURCE = (
-    '"""插件安装命名空间；契约基类由 app.sdk.plugin 拥有，旧包根符号由 Compat 惰性解析。"""\n'
+    '"""\n'
+    '插件安装命名空间；契约基类由 app.sdk.plugin 拥有，旧包根符号由 Compat 惰性解析。\n'
+    '"""\n'
 )
 
 
