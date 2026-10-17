@@ -1,3 +1,7 @@
+"""
+封装 MoviePilot 中心服务请求，以及供旧调用方使用的上报和分享入口。
+"""
+
 import asyncio
 import json
 import platform
@@ -37,7 +41,8 @@ def _cached_server_lookup(
     [Callable[_LookupParams, Awaitable[Dict[str, Any]]]],
     Callable[_LookupParams, Awaitable[Dict[str, Any]]],
 ]:
-    """为中心服务开关与权限查询提供保留签名的短时进程内缓存。
+    """
+    为中心服务开关与权限查询提供保留签名的短时进程内缓存。
 
     成功结果缓存 60 秒，使服务端开关与名单变更在一分钟内生效；不可达或非 200 得到的
     空结果只缓存 15 秒，故障恢复后尽快重新判定。结果随本实例身份变化，不共享到 Redis。
@@ -46,7 +51,9 @@ def _cached_server_lookup(
     def decorator(
         function: Callable[_LookupParams, Awaitable[Dict[str, Any]]],
     ) -> Callable[_LookupParams, Awaitable[Dict[str, Any]]]:
-        """包装单个查询函数，缓存层本身未标注类型，这里显式恢复原签名。"""
+        """
+        包装单个查询函数，缓存层本身未标注类型，这里显式恢复原签名。
+        """
         return cast(
             Callable[_LookupParams, Awaitable[Dict[str, Any]]],
             cached(maxsize=maxsize, ttl=60, empty_ttl=15, local_only=True)(function),
@@ -64,14 +71,18 @@ def configure_server_application_services(
         report_service: Any,
         sharing_service: Any,
 ) -> None:
-    """由启动组合根注入分享和存量上报应用服务。"""
+    """
+    由启动组合根注入分享和存量上报应用服务。
+    """
     global _server_report_service, _server_sharing_service
     _server_report_service = report_service
     _server_sharing_service = sharing_service
 
 
 def reset_server_application_services() -> None:
-    """清除当前 lifespan 的中心服务上报与分享用例。"""
+    """
+    清除当前应用生命周期的中心服务上报与分享用例。
+    """
     global _server_report_service, _server_sharing_service
     _server_report_service = None
     _server_sharing_service = None
@@ -111,14 +122,18 @@ class MoviePilotServerHelper:
 
     @classmethod
     def _report_service(cls) -> Any:
-        """返回启动组合根注入的存量上报应用服务。"""
+        """
+        返回启动组合根注入的存量上报应用服务。
+        """
         if _server_report_service is None:
             raise RuntimeError("中心服务上报用例尚未由启动组合根装配")
         return _server_report_service
 
     @classmethod
     def _sharing_service(cls) -> Any:
-        """返回启动组合根注入的订阅和工作流分享应用服务。"""
+        """
+        返回启动组合根注入的订阅和工作流分享应用服务。
+        """
         if _server_sharing_service is None:
             raise RuntimeError("中心服务分享用例尚未由启动组合根装配")
         return _server_sharing_service
@@ -216,7 +231,9 @@ class MoviePilotServerHelper:
 
     @classmethod
     def _build_github_user_request(cls) -> Optional[Dict[str, Any]]:
-        """生成 GitHub 当前用户查询计划，已有缓存或未配置凭据时不发请求。"""
+        """
+        生成 GitHub 当前用户查询计划，已有缓存或未配置凭据时不发请求。
+        """
         headers = get_runtime_setting('GITHUB_HEADERS')
         if cls._github_user is not None or not headers:
             return None
@@ -228,7 +245,9 @@ class MoviePilotServerHelper:
 
     @classmethod
     def _remember_github_user(cls, response: Any) -> None:
-        """统一解释 GitHub 用户响应并更新同步异步共享的用户名缓存。"""
+        """
+        统一解释 GitHub 用户响应并更新同步异步共享的用户名缓存。
+        """
         if response:
             cls._github_user = response.json().get("login")
             logger.info(f"当前Github用户: {cls._github_user}")
@@ -345,7 +364,9 @@ class MoviePilotServerHelper:
 
     @staticmethod
     def _permissions_allow_sharing(permissions: Dict[str, Any]) -> bool:
-        """按统一权限字段判断当前用户是否可管理共享内容。"""
+        """
+        按统一权限字段判断当前用户是否可管理共享内容。
+        """
         return bool(
             permissions.get("is_admin")
             or permissions.get("subscribe_share_manage")
@@ -396,7 +417,9 @@ class MoviePilotServerHelper:
 
     @classmethod
     def _build_usage_report_plan(cls) -> Optional[Dict[str, Any]]:
-        """在统计已启用且实例身份有效时生成版本统计载荷。"""
+        """
+        在统计已启用且实例身份有效时生成版本统计载荷。
+        """
         if not get_runtime_setting('USAGE_STATISTIC_SHARE'):
             return None
         payload = cls.build_usage_payload()
@@ -428,7 +451,9 @@ class MoviePilotServerHelper:
 
     @classmethod
     async def async_init_subscribe_report(cls) -> None:
-        """异步初始化订阅统计标记。"""
+        """
+        异步初始化订阅统计标记。
+        """
         await cls._report_service().async_init_report(
             enabled=get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'),
             state_key=SystemConfigKey.SubscribeReport,
@@ -448,7 +473,9 @@ class MoviePilotServerHelper:
 
     @classmethod
     async def async_init_plugin_report(cls) -> None:
-        """异步初始化插件统计标记。"""
+        """
+        异步初始化插件统计标记。
+        """
         await cls._report_service().async_init_report(
             enabled=get_runtime_setting('PLUGIN_STATISTIC_SHARE'),
             state_key=SystemConfigKey.PluginInstallReport,
@@ -466,14 +493,18 @@ class MoviePilotServerHelper:
 
     @staticmethod
     def _handle_mapping_response(res: Any) -> Dict[str, Any]:
-        """处理服务端返回的对象响应，非成功状态统一映射为空对象。"""
+        """
+        处理服务端返回的对象响应，非成功状态统一映射为空对象。
+        """
         if res is not None and res.status_code == 200:
             return res.json()
         return {}
 
     @staticmethod
     def _response_succeeded(res: Any) -> bool:
-        """把同步与异步传输响应统一映射为服务端成功状态。"""
+        """
+        把同步与异步传输响应统一映射为服务端成功状态。
+        """
         return bool(res is not None and res.status_code == 200)
 
     @staticmethod
@@ -702,7 +733,9 @@ class MoviePilotServerHelper:
             plugin_id: str,
             repo_url: Optional[str],
     ) -> Optional[Dict[str, Any]]:
-        """在插件统计已启用且插件身份有效时生成单次安装上报载荷。"""
+        """
+        在插件统计已启用且插件身份有效时生成单次安装上报载荷。
+        """
         if not get_runtime_setting('PLUGIN_STATISTIC_SHARE') or not plugin_id:
             return None
         return {
@@ -767,7 +800,9 @@ class MoviePilotServerHelper:
 
     @classmethod
     async def async_subscribe_done(cls, payload: Dict[str, Any]):
-        """异步完成订阅统计，并返回可检查 HTTP 状态的响应对象。"""
+        """
+        异步完成订阅统计，并返回可检查 HTTP 状态的响应对象。
+        """
         return await cls._async_post_json(
             cls._server_url(cls._SUBSCRIBE_DONE_PATH),
             payload,
@@ -776,7 +811,9 @@ class MoviePilotServerHelper:
 
     @classmethod
     async def async_subscribe_report(cls, subscribes: List[Dict[str, Any]]):
-        """异步批量上报存量订阅统计。"""
+        """
+        异步批量上报存量订阅统计。
+        """
         return await cls._async_post_json(
             cls._server_url(cls._SUBSCRIBE_REPORT_PATH),
             {"subscribes": subscribes},
@@ -905,7 +942,9 @@ class MoviePilotServerHelper:
             cls,
             **kwargs: Any,
     ) -> Optional[Dict[str, Any]]:
-        """在订阅统计已启用时生成统计或分享列表查询计划。"""
+        """
+        在订阅统计已启用时生成统计或分享列表查询计划。
+        """
         if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
             return None
         return cls._build_subscribe_query_params(**kwargs)
@@ -915,7 +954,9 @@ class MoviePilotServerHelper:
             cls,
             item: Dict[str, Any],
     ) -> Optional[Dict[str, Any]]:
-        """在订阅统计已启用且载荷有效时生成新增或完成上报计划。"""
+        """
+        在订阅统计已启用且载荷有效时生成新增或完成上报计划。
+        """
         if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
             return None
         return cls._build_subscribe_statistic_payload(item)
@@ -925,7 +966,9 @@ class MoviePilotServerHelper:
             setting_key: str,
             message: str,
     ) -> Optional[Tuple[bool, str]]:
-        """将分享功能开关统一映射为可直接返回的禁用结果。"""
+        """
+        将分享功能开关统一映射为可直接返回的禁用结果。
+        """
         if not get_runtime_setting(setting_key):
             return False, message
         return None
@@ -1008,14 +1051,18 @@ class MoviePilotServerHelper:
 
     @classmethod
     def sub_reg_durable(cls, sub: dict) -> bool:
-        """同步上报新增统计；明确禁用时视为无需投递。"""
+        """
+        同步上报新增统计；明确禁用时视为无需投递。
+        """
         if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
             return True
         return cls.sub_reg(sub)
 
     @classmethod
     async def async_sub_reg_durable(cls, sub: dict) -> bool:
-        """异步上报新增统计；明确禁用时视为无需投递。"""
+        """
+        异步上报新增统计；明确禁用时视为无需投递。
+        """
         if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
             return True
         return await cls.async_sub_reg(sub)
@@ -1032,7 +1079,9 @@ class MoviePilotServerHelper:
 
     @classmethod
     async def async_sub_done(cls, sub: dict) -> bool:
-        """异步完成订阅统计，并仅在服务端确认成功时返回 True。"""
+        """
+        异步完成订阅统计，并仅在服务端确认成功时返回 True。
+        """
         payload = cls._build_subscribe_statistic_plan(sub)
         if not payload:
             return False
@@ -1040,14 +1089,18 @@ class MoviePilotServerHelper:
 
     @classmethod
     def sub_done_durable(cls, sub: dict) -> bool:
-        """同步上报完成统计；明确禁用时视为无需投递。"""
+        """
+        同步上报完成统计；明确禁用时视为无需投递。
+        """
         if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
             return True
         return cls.sub_done(sub)
 
     @classmethod
     async def async_sub_done_durable(cls, sub: dict) -> bool:
-        """异步上报完成统计；明确禁用时视为无需投递。"""
+        """
+        异步上报完成统计；明确禁用时视为无需投递。
+        """
         if not get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'):
             return True
         return await cls.async_sub_done(sub)
@@ -1059,7 +1112,9 @@ class MoviePilotServerHelper:
             submit: Callable[[Coroutine[Any, Any, Any]], object],
             action: str,
     ) -> bool:
-        """提交兼容统计上报，并在宿主不再接收任务时关闭未执行协程。"""
+        """
+        提交兼容统计上报，并在宿主不再接收任务时关闭未执行协程。
+        """
         try:
             submit(coroutine)
             return True
@@ -1070,7 +1125,9 @@ class MoviePilotServerHelper:
 
     @classmethod
     def sub_reg_async(cls, sub: dict) -> bool:
-        """兼容旧同步入口，在宿主任务登记器中提交新增订阅统计。"""
+        """
+        兼容旧同步入口，在宿主任务登记器中提交新增订阅统计。
+        """
         return cls._submit_statistic_report(
             asyncio.to_thread(cls.sub_reg, sub),
             submit=lambda coroutine: get_task_registry().submit_threadsafe(
@@ -1084,7 +1141,9 @@ class MoviePilotServerHelper:
 
     @classmethod
     def sub_done_async(cls, sub: dict) -> bool:
-        """兼容旧同步入口，在宿主任务登记器中提交订阅完成统计。"""
+        """
+        兼容旧同步入口，在宿主任务登记器中提交订阅完成统计。
+        """
         return cls._submit_statistic_report(
             asyncio.to_thread(cls.sub_done, sub),
             submit=lambda coroutine: get_task_registry().submit_threadsafe(
@@ -1107,7 +1166,9 @@ class MoviePilotServerHelper:
 
     @classmethod
     async def async_sub_report(cls) -> bool:
-        """异步上报存量订阅统计。"""
+        """
+        异步上报存量订阅统计。
+        """
         return await cls._report_service().async_report_subscribes(
             enabled=get_runtime_setting('SUBSCRIBE_STATISTIC_SHARE'),
         )
@@ -1154,14 +1215,18 @@ class MoviePilotServerHelper:
     def _build_subscribe_statistic_payload(
             cls, item: Optional[dict]
     ) -> Optional[dict]:
-        """构造中心服务订阅统计载荷，只保留统一身份和公开统计字段。"""
+        """
+        构造中心服务订阅统计载荷，只保留统一身份和公开统计字段。
+        """
         return cls._report_service().build_subscribe_payload(item)
 
     @classmethod
     def _build_subscribe_share_payload(
             cls, item: Optional[dict]
     ) -> Optional[dict]:
-        """构造中心服务订阅分享载荷，隔离本地运行字段和旧专用 ID。"""
+        """
+        构造中心服务订阅分享载荷，隔离本地运行字段和旧专用 ID。
+        """
         return cls._sharing_service().build_subscribe_payload(item)
 
     @classmethod
@@ -1375,7 +1440,9 @@ class MoviePilotServerHelper:
             page: Optional[int],
             count: Optional[int],
     ) -> Optional[Dict[str, Any]]:
-        """在工作流分享已启用时生成列表查询计划。"""
+        """
+        在工作流分享已启用时生成列表查询计划。
+        """
         if not get_runtime_setting('WORKFLOW_STATISTIC_SHARE'):
             return None
         return {"name": name, "page": page, "count": count}
@@ -1533,7 +1600,9 @@ class MoviePilotServerHelper:
             cls,
             data: Dict[str, Any],
     ) -> Optional[Tuple[str, Dict[str, Any]]]:
-        """把共享识别地址与已验证请求数据组合成纯传输计划。"""
+        """
+        把共享识别地址与已验证请求数据组合成纯传输计划。
+        """
         api_url = cls.recognize_share_url()
         if not api_url:
             return None
@@ -1547,7 +1616,9 @@ class MoviePilotServerHelper:
             keyword_meta: Optional[MetaBase] = None,
             music_type: Optional[str] = None,
     ) -> Optional[Tuple[Dict[str, Any], Optional[str]]]:
-        """在共享识别已启用且关键字有效时生成查询计划。"""
+        """
+        在共享识别已启用且关键字有效时生成查询计划。
+        """
         if not get_runtime_setting('MEDIA_RECOGNIZE_SHARE'):
             return None
         params = cls._build_recognize_query_params(
@@ -1567,7 +1638,9 @@ class MoviePilotServerHelper:
             mediainfo: Optional[Union[MediaInfo, MusicInfo]],
             keyword_meta: Optional[MetaBase] = None,
     ) -> Optional[Dict[str, Any]]:
-        """在共享识别已启用且统一媒体身份完整时生成上报载荷。"""
+        """
+        在共享识别已启用且统一媒体身份完整时生成上报载荷。
+        """
         if not get_runtime_setting('MEDIA_RECOGNIZE_SHARE'):
             return None
         return cls._build_recognize_report_payload(

@@ -1,4 +1,6 @@
-"""插件市场查询客户端。"""
+"""
+插件市场查询客户端。
+"""
 
 from __future__ import annotations
 
@@ -82,11 +84,15 @@ _PLUGIN_INDEX_FETCH_GATE = threading.BoundedSemaphore(
 
 
 class _PluginIndexTooLargeError(RuntimeError):
-    """插件索引的声明长度或实际读取字节超过资源边界。"""
+    """
+    插件索引的声明长度或实际读取字节超过资源边界。
+    """
 
 
 def _format_request_error(error: Exception) -> str:
-    """保留异常类型，避免无消息异常在运行日志中显示为空白。"""
+    """
+    保留异常类型，避免无消息异常在运行日志中显示为空白。
+    """
     detail = str(error).strip()
     return f"{type(error).__name__}: {detail}" if detail else type(error).__name__
 
@@ -97,7 +103,9 @@ def build_local_repo_url(
     repo_path: Optional[Path] = None,
     package_version: Optional[str] = None,
 ) -> str:
-    """生成兼容插件 API 使用的本地仓库来源标识。"""
+    """
+    生成兼容插件 API 使用的本地仓库来源标识。
+    """
     return build_local_plugin_source(
         plugin_id,
         repo_path=str(repo_path) if repo_path is not None else None,
@@ -106,12 +114,16 @@ def build_local_repo_url(
 
 
 def is_local_repo_url(repo_url: Optional[str]) -> bool:
-    """判断插件来源是否为本地仓库标识。"""
+    """
+    判断插件来源是否为本地仓库标识。
+    """
     return is_local_plugin_source(repo_url)
 
 
 def parse_local_repo_plugin_id(repo_url: str) -> Optional[str]:
-    """从本地仓库来源标识提取插件 ID。"""
+    """
+    从本地仓库来源标识提取插件 ID。
+    """
     return parse_local_plugin_reference(repo_url)
 
 
@@ -120,7 +132,9 @@ def parse_local_repo_path(
     *,
     root_path: Optional[Path] = None,
 ) -> Optional[Path]:
-    """解析本地来源中的仓库路径，并相对宿主根目录完成定位。"""
+    """
+    解析本地来源中的仓库路径，并相对宿主根目录完成定位。
+    """
     try:
         raw_path = parse_local_plugin_path(repo_url)
         if not raw_path:
@@ -136,7 +150,9 @@ def parse_local_repo_path(
 
 
 def parse_local_repo_generation(repo_url: str) -> Optional[str]:
-    """解析本地来源标识中的 package 代际参数。"""
+    """
+    解析本地来源标识中的 package 代际参数。
+    """
     return parse_local_plugin_generation(repo_url)
 
 
@@ -196,7 +212,9 @@ def extract_plugin_market_repos_from_wiki(
 def merge_plugin_market_repos(
     local_repos: list[str], wiki_repos: list[str]
 ) -> list[str]:
-    """合并本地与 Wiki 插件仓库地址，并保持来源中的既有顺序。"""
+    """
+    合并本地与 Wiki 插件仓库地址，并保持来源中的既有顺序。
+    """
     merged_repos: list[str] = []
     seen_repos = set()
     for repo in local_repos + wiki_repos:
@@ -209,7 +227,9 @@ def merge_plugin_market_repos(
 
 
 class PluginMarketTransport(metaclass=WeakSingleton):
-    """负责插件市场、本地仓库和 GitHub 元数据读取。"""
+    """
+    负责插件市场、本地仓库和 GitHub 元数据读取。
+    """
 
     _base_url = "https://raw.githubusercontent.com/{user}/{repo}/main/"
     _index_future_lock = threading.Lock()
@@ -352,7 +372,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
     def _package_version_candidates(
             package_version: Optional[str],
     ) -> tuple[str, ...]:
-        """返回插件安装唯一的代际候选顺序，并去除重复的基础索引。"""
+        """
+        返回插件安装唯一的代际候选顺序，并去除重复的基础索引。
+        """
         preferred_version = package_version or get_runtime_setting('VERSION_FLAG')
         candidates = [preferred_version]
         candidates.extend(
@@ -368,7 +390,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             package_version: str,
             plugins: Optional[PluginIndex],
     ) -> Optional[str]:
-        """从一个索引结果选择目标插件，并复用统一的代际兼容判定。"""
+        """
+        从一个索引结果选择目标插件，并复用统一的代际兼容判定。
+        """
         plugin = (plugins or {}).get(pid)
         if plugin and cls.is_package_plugin_compatible(plugin, package_version):
             return package_version
@@ -520,7 +544,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
 
     @staticmethod
     def __get_local_plugin_dir(repo_path: Path, pid: str, package_version: Optional[str]) -> Path:
-        """按插件包版本计算本地插件源码目录。"""
+        """
+        按插件包版本计算本地插件源码目录。
+        """
         plugin_root = f"plugins.{package_version}" if package_version else "plugins"
         return repo_path / plugin_root / pid.lower()
 
@@ -596,6 +622,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                                    strict_system_version: bool = True) -> Optional[PluginPayload]:
         """
         获取指定插件ID的本地插件候选
+
         :param strict_system_version: 是否将主系统版本范围不匹配视为不可用候选
         """
         if not pid:
@@ -694,14 +721,18 @@ class PluginMarketTransport(metaclass=WeakSingleton):
 
     @staticmethod
     def __safe_plugin_id(plugin_id: object) -> str:
-        """生成适合日志展示的有界插件 ID，不回显完整外部载荷。"""
+        """
+        生成适合日志展示的有界插件 ID，不回显完整外部载荷。
+        """
         if not isinstance(plugin_id, str):
             return f"<{type(plugin_id).__name__}>"
         return json.dumps(plugin_id[:64], ensure_ascii=True)
 
     @staticmethod
     def __plugin_index_nesting_is_valid(payload: object) -> bool:
-        """限制外部 JSON 的容器深度，避免后续序列化递归耗尽调用栈。"""
+        """
+        限制外部 JSON 的容器深度，避免后续序列化递归耗尽调用栈。
+        """
         pending = [(payload, 0)]
         while pending:
             value, depth = pending.pop()
@@ -719,7 +750,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         plugin_id: object,
         plugin_info: object,
     ) -> tuple[Optional[PluginPayload], Optional[str], list[str]]:
-        """校验影响安装决策的字段，并宽容丢弃异常展示字段。"""
+        """
+        校验影响安装决策的字段，并宽容丢弃异常展示字段。
+        """
         if not isinstance(plugin_id, str) or not is_physical_plugin_id(plugin_id):
             return None, "插件 ID 非法", []
         if not isinstance(plugin_info, dict):
@@ -807,7 +840,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
 
     @classmethod
     def __parse_plugin_index_response(cls, content: str) -> Optional[PluginIndex]:
-        """解析并规范化插件索引，兼容 BOM 与 plugins 列表包装格式。"""
+        """
+        解析并规范化插件索引，兼容 BOM 与 plugins 列表包装格式。
+        """
         try:
             payload = json.loads(content.lstrip("\ufeff"))
         except (ValueError, RecursionError):
@@ -887,7 +922,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
 
     @staticmethod
     def __declared_plugin_index_too_large(headers: Any) -> bool:
-        """仅把合法的 Content-Length 用作流式读取前的快速拒绝依据。"""
+        """
+        仅把合法的 Content-Length 用作流式读取前的快速拒绝依据。
+        """
         try:
             value = headers.get("Content-Length")
             return value is not None and int(value) > PLUGIN_INDEX_MAX_BYTES
@@ -896,7 +933,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
 
     @classmethod
     def __read_plugin_index_response(cls, response: Response) -> tuple[int, str]:
-        """从同步流式响应读取有界的解压后索引文本。"""
+        """
+        从同步流式响应读取有界的解压后索引文本。
+        """
         status_code = response.status_code
         if status_code != 200:
             return status_code, ""
@@ -920,7 +959,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         cls,
         response: httpx2.Response,
     ) -> tuple[int, str]:
-        """从异步流式响应读取有界的解压后索引文本。"""
+        """
+        从异步流式响应读取有界的解压后索引文本。
+        """
         status_code = response.status_code
         if status_code != 200:
             return status_code, ""
@@ -947,7 +988,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             repo_url: str,
             package_version: Optional[str] = None,
     ) -> Optional[tuple[str, PluginRequestOptions]]:
-        """构造插件索引请求，统一仓库解析、代际文件名和鉴权请求头。"""
+        """
+        构造插件索引请求，统一仓库解析、代际文件名和鉴权请求头。
+        """
         if not repo_url:
             return None
 
@@ -974,7 +1017,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         headers: Optional[dict[str, str]] = None,
         timeout: Optional[int] = PLUGIN_INDEX_REQUEST_TIMEOUT,
     ) -> Optional[tuple[int, str]]:
-        """按 GitHub 降级顺序流式读取同步插件索引，并限制解压后字节数。"""
+        """
+        按 GitHub 降级顺序流式读取同步插件索引，并限制解压后字节数。
+        """
         strategies = cls._build_github_request_strategies(
             url=url,
             headers=headers,
@@ -995,7 +1040,8 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                     return cls.__read_plugin_index_response(response)
             except _PluginIndexTooLargeError:
                 raise
-            except Exception as error:  # noqa: BLE001 - 失败后尝试下一传输策略
+            # 失败后尝试下一传输策略
+            except Exception as error:  # noqa: BLE001
                 logger.error(
                     f"[GitHub] 插件索引请求失败，策略：{strategy_name}，"
                     f"URL：{target_url}，错误：{_format_request_error(error)}"
@@ -1010,7 +1056,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         headers: Optional[dict[str, str]] = None,
         timeout: Optional[int] = PLUGIN_INDEX_REQUEST_TIMEOUT,
     ) -> Optional[tuple[int, str]]:
-        """按 GitHub 降级顺序流式读取异步插件索引，并限制解压后字节数。"""
+        """
+        按 GitHub 降级顺序流式读取异步插件索引，并限制解压后字节数。
+        """
         strategies = cls._build_github_request_strategies(
             url=url,
             headers=headers,
@@ -1031,7 +1079,8 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                     return await cls.__async_read_plugin_index_response(response)
             except _PluginIndexTooLargeError:
                 raise
-            except Exception as error:  # noqa: BLE001 - 失败后尝试下一传输策略
+            # 失败后尝试下一传输策略
+            except Exception as error:  # noqa: BLE001
                 logger.error(
                     f"[GitHub] 插件索引请求失败，策略：{strategy_name}，"
                     f"URL：{target_url}，错误：{_format_request_error(error)}"
@@ -1045,7 +1094,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             status_code: int,
             content: str,
     ) -> Optional[PluginIndex]:
-        """统一解释插件索引 HTTP 响应，保留不存在、失败和有效索引三态。"""
+        """
+        统一解释插件索引 HTTP 响应，保留不存在、失败和有效索引三态。
+        """
         try:
             payload = cls._resolve_plugin_index_result((status_code, content))
         except RuntimeError:
@@ -1133,7 +1184,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
     def __normalize_plugin_release_response(
         payload: object,
     ) -> PluginReleaseList:
-        """仅保留版本展示和资产匹配所需字段，控制仓库级缓存体积。"""
+        """
+        仅保留版本展示和资产匹配所需字段，控制仓库级缓存体积。
+        """
         if not isinstance(payload, list):
             return []
         return [
@@ -1157,7 +1210,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             cls,
             repo_url: str,
     ) -> Iterator[tuple[str, PluginRequestOptions]]:
-        """按需生成仓库 Release 分页请求，统一仓库解析、请求头和页数上限。"""
+        """
+        按需生成仓库 Release 分页请求，统一仓库解析、请求头和页数上限。
+        """
         if not repo_url:
             return
 
@@ -1181,7 +1236,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             response: Any,
             releases: PluginReleaseList,
     ) -> Optional[bool]:
-        """合并一页 Release 响应；返回真继续、假结束，None 表示整次读取失败。"""
+        """
+        合并一页 Release 响应；返回真继续、假结束，None 表示整次读取失败。
+        """
         if response is None or response.status_code != 200:
             return None
 
@@ -1204,7 +1261,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         repo_url: str,
         package_version: Optional[str],
     ) -> tuple[str, str]:
-        """生成跨 URL 表示形式稳定的插件索引请求键。"""
+        """
+        生成跨 URL 表示形式稳定的插件索引请求键。
+        """
         normalized_repo = normalize_plugin_market_repo_url(repo_url)
         return (
             (normalized_repo or str(repo_url).strip().rstrip("/")).lower(),
@@ -1217,7 +1276,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         key: tuple[str, str],
         future: Future[Optional[PluginIndex]],
     ) -> None:
-        """同步索引请求结束后释放 single-flight 占位。"""
+        """
+        同步索引请求结束后释放 single-flight 占位。
+        """
         with cls._index_future_lock:
             if cls._index_futures.get(key) is future:
                 cls._index_futures.pop(key, None)
@@ -1228,7 +1289,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         key: tuple[asyncio.AbstractEventLoop, str, str],
         task: asyncio.Future[PluginIndexTaskResult],
     ) -> None:
-        """异步索引请求结束后释放事件循环和仓库引用。"""
+        """
+        异步索引请求结束后释放事件循环和仓库引用。
+        """
         with cls._index_task_lock:
             if cls._index_tasks.get(key) is task:
                 cls._index_tasks.pop(key, None)
@@ -1236,12 +1299,15 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         # 不影响其他仍在等待同一个任务的调用方取得原始异常。
         try:
             task.exception()
-        except BaseException:  # noqa: BLE001 - 仅消费已完成任务的异常
+        # 仅消费已完成任务的异常
+        except BaseException:  # noqa: BLE001
             pass
 
     @staticmethod
     async def _acquire_index_fetch_slot() -> None:
-        """以可取消方式等待跨同步/异步调用共享的索引请求闸门。"""
+        """
+        以可取消方式等待跨同步/异步调用共享的索引请求闸门。
+        """
         while not _PLUGIN_INDEX_FETCH_GATE.acquire(blocking=False):
             await asyncio.sleep(0.01)
 
@@ -1250,7 +1316,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         package_url: str,
         headers: Optional[dict[str, str]],
     ) -> Optional[PluginIndex]:
-        """在共享进程级闸门内完成一次同步索引读取。"""
+        """
+        在共享进程级闸门内完成一次同步索引读取。
+        """
         with _PLUGIN_INDEX_FETCH_GATE:
             response = self.__request_plugin_index_with_fallback(
                 package_url,
@@ -1263,7 +1331,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         package_url: str,
         headers: Optional[dict[str, str]],
     ) -> Optional[PluginIndex]:
-        """在共享进程级闸门内完成一次异步索引读取。"""
+        """
+        在共享进程级闸门内完成一次异步索引读取。
+        """
         await self._acquire_index_fetch_slot()
         try:
             response = await self.__async_request_plugin_index_with_fallback(
@@ -1279,19 +1349,25 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         package_url: str,
         headers: Optional[dict[str, str]],
     ) -> PluginIndexTaskResult:
-        """把预期的索引读取失败转成共享任务结果，交由调用方记录仓库失败。"""
+        """
+        把预期的索引读取失败转成共享任务结果，交由调用方记录仓库失败。
+        """
         try:
             return await self._fetch_plugin_index_async(package_url, headers), None
-        except Exception as error:  # noqa: BLE001 - 结果由读取调用方统一转换
+        # 结果由读取调用方统一转换
+        except Exception as error:  # noqa: BLE001
             return None, error
 
+    # 缓存装饰器的动态包装未保留静态类型，保留既有类型豁免。
     @cached(maxsize=1024, ttl=1800, skip_none=False)  # type: ignore[misc]
     def get_plugin_index_result(
             self,
             repo_url: str,
             package_version: Optional[str] = None,
     ) -> Optional[PluginIndex]:
-        """读取插件索引；404 返回 None，读取失败由调用方记录。"""
+        """
+        读取插件索引；404 返回 None，读取失败由调用方记录。
+        """
         request = self._build_plugin_index_request(repo_url, package_version)
         if request is None:
             raise ValueError("插件仓库地址无效")
@@ -1313,7 +1389,8 @@ class PluginMarketTransport(metaclass=WeakSingleton):
 
         try:
             result = self._fetch_plugin_index_sync(package_url, headers)
-        except BaseException as error:  # noqa: BLE001 - 共享结果必须传播原始异常
+        # 共享结果必须传播原始异常
+        except BaseException as error:  # noqa: BLE001
             future.set_exception(error)
             future.exception()
             raise
@@ -1327,6 +1404,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                     package_version: Optional[str] = None) -> Optional[PluginIndex]:
         """
         获取 Github 插件列表，保留旧的 dict/{}/None 兼容返回。
+
         :param repo_url: Github仓库地址
         :param package_version: 首选插件版本 (如 "v2", "v3")，如果不指定则获取 v1 版本
         """
@@ -1336,6 +1414,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             return None
         return payload if payload is not None else {}
 
+    # 缓存装饰器的动态包装未保留静态类型，保留既有类型豁免。
     @cached(maxsize=256, ttl=1800, shared_key="get_plugin_repo_releases")  # type: ignore[misc]
     def _get_plugin_repo_releases(
         self, repo_url: str
@@ -1385,6 +1464,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         3. 检查更低版本的 package 文件，并应用版本兼容标志
         4. 检查 `package.json` 文件，并应用共享实现兼容标志
         5. 如果插件不存在或不兼容指定版本，返回 `None`
+
         :param pid: 插件 ID，用于在插件列表中查找
         :param repo_url: 插件仓库的 URL，指定用于获取插件信息的 GitHub 仓库地址
         :param package_version: 首选插件版本 (如 "v2", "v3")，如不指定则默认使用系统配置的版本
@@ -1427,7 +1507,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             timeout: Optional[int] = 60,
             is_api: bool = False,
     ) -> list[tuple[str, str, PluginRequestOptions]]:
-        """构造同步与异步 GitHub 请求共用的镜像和单一出口顺序。"""
+        """
+        构造同步与异步 GitHub 请求共用的镜像和单一出口顺序。
+        """
         strategies: list[tuple[str, str, PluginRequestOptions]] = []
         if not is_api and get_runtime_setting('GITHUB_PROXY'):
             proxy_url = (
@@ -1462,6 +1544,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         """
         使用自动降级策略，请求资源：可选镜像站后只使用一个出口；
         显式配置代理时不再追加无效直连。
+
         :param url: 目标URL
         :param headers: 请求头信息
         :param timeout: 请求超时时间
@@ -1500,7 +1583,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         timeout: Optional[int] = 60,
         is_api: bool = False,
     ) -> Optional[Response]:
-        """向包来源客户端公开既有同步 GitHub 降级传输。"""
+        """
+        向包来源客户端公开既有同步 GitHub 降级传输。
+        """
         return PluginMarketTransport.__request_with_fallback(
             url, headers=headers, timeout=timeout, is_api=is_api
         )
@@ -1508,7 +1593,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
     def __get_plugin_meta(
         self, pid: str, repo_url: str, package_version: Optional[str]
     ) -> PluginPayload:
-        """读取远端插件元数据，供兼容性查询保留旧私有入口。"""
+        """
+        读取远端插件元数据，供兼容性查询保留旧私有入口。
+        """
         try:
             plugins = self.get_plugins(repo_url, package_version or None) or {}
             meta = plugins.get(pid)
@@ -1587,6 +1674,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         """
         使用自动降级策略，异步请求资源：可选镜像站后只使用一个出口；
         显式配置代理时不再追加无效直连。
+
         :param url: 目标URL
         :param headers: 请求头信息
         :param timeout: 请求超时时间
@@ -1625,7 +1713,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         timeout: Optional[int] = 60,
         is_api: bool = False,
     ) -> Optional[httpx2.Response]:
-        """向包来源客户端公开既有异步 GitHub 降级传输。"""
+        """
+        向包来源客户端公开既有异步 GitHub 降级传输。
+        """
         return await PluginMarketTransport.__async_request_with_fallback(
             url, headers=headers, timeout=timeout, is_api=is_api
         )
@@ -1633,7 +1723,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
     async def __async_get_plugin_meta(
         self, pid: str, repo_url: str, package_version: Optional[str]
     ) -> PluginPayload:
-        """异步读取远端插件元数据，供兼容性查询保留旧私有入口。"""
+        """
+        异步读取远端插件元数据，供兼容性查询保留旧私有入口。
+        """
         try:
             plugins = await self.async_get_plugins(
                 repo_url, package_version or None
@@ -1644,13 +1736,16 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             logger.warning(f"获取插件 {pid} 元数据失败：{error}")
             return {}
 
+    # 缓存装饰器的动态包装未保留静态类型，保留既有类型豁免。
     @cached(maxsize=1024, ttl=1800, skip_none=False)  # type: ignore[misc]
     async def async_get_plugin_index_result(
             self,
             repo_url: str,
             package_version: Optional[str] = None,
     ) -> Optional[PluginIndex]:
-        """异步读取插件索引；404 返回 None，读取失败由调用方记录。"""
+        """
+        异步读取插件索引；404 返回 None，读取失败由调用方记录。
+        """
         request = self._build_plugin_index_request(repo_url, package_version)
         if request is None:
             raise ValueError("插件仓库地址无效")
@@ -1679,6 +1774,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                 def on_index_task_done(
                     completed_task: asyncio.Future[PluginIndexTaskResult],
                 ) -> None:
+                    """
+                    共享索引请求结束后移除对应任务登记，避免保留已完成任务。
+                    """
                     self._remove_index_task(task_key, completed_task)
 
                 task.add_done_callback(on_index_task_done)
@@ -1693,6 +1791,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
                                 package_version: Optional[str] = None) -> Optional[PluginIndex]:
         """
         异步获取 Github 插件列表，保留旧的 dict/{}/None 兼容返回。
+
         :param repo_url: Github仓库地址
         :param package_version: 首选插件版本 (如 "v2", "v3")，如果不指定则获取 v1 版本
         """
@@ -1705,6 +1804,7 @@ class PluginMarketTransport(metaclass=WeakSingleton):
             return None
         return payload if payload is not None else {}
 
+    # 缓存装饰器的动态包装未保留静态类型，保留既有类型豁免。
     @cached(maxsize=256, ttl=1800, shared_key="get_plugin_repo_releases")  # type: ignore[misc]
     async def _async_get_plugin_repo_releases(
         self, repo_url: str
@@ -1805,7 +1905,9 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         repo_url: str,
         pending_normal_task: Optional[PluginReleaseTask],
     ) -> Optional[PluginReleaseList]:
-        """等待在途普通读取落盘后执行强刷，确保旧结果不会覆盖强刷缓存。"""
+        """
+        等待在途普通读取落盘后执行强刷，确保旧结果不会覆盖强刷缓存。
+        """
         if pending_normal_task:
             try:
                 await asyncio.shield(pending_normal_task)
@@ -1822,17 +1924,23 @@ class PluginMarketTransport(metaclass=WeakSingleton):
         task_key: tuple[asyncio.AbstractEventLoop, str, bool],
         task: PluginReleaseTask,
     ) -> None:
-        """请求任务完成后释放事件循环和仓库引用。"""
+        """
+        请求任务完成后释放事件循环和仓库引用。
+        """
         with cls._release_task_lock:
             if cls._release_tasks.get(task_key) is task:
                 cls._release_tasks.pop(task_key, None)
 
 
 class PluginMarketClient:
-    """把插件市场、版本元数据和本地仓库查询隔离为只读客户端。"""
+    """
+    把插件市场、版本元数据和本地仓库查询隔离为只读客户端。
+    """
 
     def __init__(self, transport: Optional[PluginMarketTransport] = None) -> None:
-        """保存索引传输端口；默认实现必须先由兼容市场模块显式注册。"""
+        """
+        保存索引传输端口；默认实现必须先由兼容市场模块显式注册。
+        """
         self._transport = transport or PluginMarketTransport()
 
     def get_plugins(
@@ -1841,7 +1949,9 @@ class PluginMarketClient:
         package_version: Optional[str] = None,
         force: bool = False,
     ) -> Optional[PluginIndex]:
-        """同步读取指定仓库和代际的插件索引。"""
+        """
+        同步读取指定仓库和代际的插件索引。
+        """
         with fresh(force):
             return self._transport.get_plugins(repo_url, package_version)
 
@@ -1851,7 +1961,9 @@ class PluginMarketClient:
         package_version: Optional[str] = None,
         force: bool = False,
     ) -> Optional[PluginIndex]:
-        """异步读取指定仓库和代际的插件索引。"""
+        """
+        异步读取指定仓库和代际的插件索引。
+        """
         async with async_fresh(force):
             return await self._transport.async_get_plugins(repo_url, package_version)
 
@@ -1861,7 +1973,9 @@ class PluginMarketClient:
         package_version: Optional[str] = None,
         force: bool = False,
     ) -> Optional[PluginIndex]:
-        """读取插件索引的三态结果，供库存读取保留失败事实。"""
+        """
+        读取插件索引的三态结果，供库存读取保留失败事实。
+        """
         with fresh(force):
             return cast(
                 Optional[PluginIndex],
@@ -1874,7 +1988,9 @@ class PluginMarketClient:
         package_version: Optional[str] = None,
         force: bool = False,
     ) -> Optional[PluginIndex]:
-        """异步读取插件索引的三态结果，供库存读取保留失败事实。"""
+        """
+        异步读取插件索引的三态结果，供库存读取保留失败事实。
+        """
         async with async_fresh(force):
             return cast(
                 Optional[PluginIndex],
@@ -1885,7 +2001,9 @@ class PluginMarketClient:
             )
 
     def get_local_candidates(self) -> PluginIndex:
-        """返回全部本地插件仓库候选。"""
+        """
+        返回全部本地插件仓库候选。
+        """
         return self._transport.get_local_plugin_candidates()
 
     def get_local_candidate(
@@ -1895,7 +2013,9 @@ class PluginMarketClient:
         repo_path: Optional[Path] = None,
         **kwargs: Any,
     ) -> Optional[PluginPayload]:
-        """返回指定插件的本地仓库候选。"""
+        """
+        返回指定插件的本地仓库候选。
+        """
         return self._transport.get_local_plugin_candidate(
             pid=plugin_id,
             package_version=package_version,
@@ -1905,7 +2025,9 @@ class PluginMarketClient:
 
     @staticmethod
     def get_local_repo_paths() -> list[Path]:
-        """返回配置中有效的本地插件仓库目录。"""
+        """
+        返回配置中有效的本地插件仓库目录。
+        """
         value = get_runtime_setting('PLUGIN_LOCAL_REPO_PATHS')
         if not value:
             return []
@@ -1927,7 +2049,9 @@ class PluginMarketClient:
         repo_path: Optional[object] = None,
         package_version: Optional[str] = None,
     ) -> str:
-        """生成兼容旧入口的本地插件来源标识。"""
+        """
+        生成兼容旧入口的本地插件来源标识。
+        """
         return build_local_repo_url(
             plugin_id,
             repo_path=cast(Optional[Path], repo_path),
@@ -1936,12 +2060,16 @@ class PluginMarketClient:
 
     @staticmethod
     def is_local_repo_url(repo_url: Optional[str]) -> bool:
-        """判断插件来源是否为本地仓库标识。"""
+        """
+        判断插件来源是否为本地仓库标识。
+        """
         return is_local_plugin_source(repo_url)
 
     @staticmethod
     def annotate_system_version(plugin_info: PluginPayload) -> PluginPayload:
-        """补充插件所需 MoviePilot 版本兼容状态。"""
+        """
+        补充插件所需 MoviePilot 版本兼容状态。
+        """
         compatible, message = check_plugin_system_version(
             plugin_info,
             current_version=get_app_version(),
@@ -1952,7 +2080,9 @@ class PluginMarketClient:
 
     @staticmethod
     def annotate_runtime_compatibility(plugin_info: PluginPayload) -> PluginPayload:
-        """补充插件声明的运行时兼容状态。"""
+        """
+        补充插件声明的运行时兼容状态。
+        """
         compatible, message = check_plugin_runtime_compatibility(
             plugin_info,
             free_threaded=is_free_threaded_runtime(),
@@ -1966,7 +2096,9 @@ class PluginMarketClient:
         plugin_info: PluginPayload,
         package_version: Optional[str],
     ) -> bool:
-        """判断插件条目是否兼容目标插件包代际。"""
+        """
+        判断插件条目是否兼容目标插件包代际。
+        """
         return is_plugin_generation_compatible(
             plugin_info,
             package_version,
@@ -1975,25 +2107,35 @@ class PluginMarketClient:
 
 
 class PluginPackageSourceClient:
-    """为系统包 owner 提供只读市场元数据和远端制品传输。"""
+    """
+    为系统包 owner 提供只读市场元数据和远端制品传输。
+    """
 
     def __init__(self, transport: Optional[PluginMarketTransport] = None) -> None:
-        """保存由组合根注入的市场传输，不导入兼容 Helper 实现。"""
+        """
+        保存由组合根注入的市场传输，不导入兼容 Helper 实现。
+        """
         self._transport = transport or PluginMarketTransport()
 
     @staticmethod
     def is_local_repo_url(repo_url: Optional[str]) -> bool:
-        """判断来源是否为本地仓库标识。"""
+        """
+        判断来源是否为本地仓库标识。
+        """
         return is_local_repo_url(repo_url)
 
     @staticmethod
     def parse_local_repo_url(repo_url: str) -> Optional[str]:
-        """解析本地仓库来源中的插件标识。"""
+        """
+        解析本地仓库来源中的插件标识。
+        """
         return parse_local_repo_plugin_id(repo_url)
 
     @staticmethod
     def parse_local_repo_path(repo_url: str) -> Optional[Path]:
-        """解析本地仓库来源中的物理路径。"""
+        """
+        解析本地仓库来源中的物理路径。
+        """
         root = get_runtime_setting('ROOT_PATH')
         return parse_local_repo_path(
             repo_url,
@@ -2002,7 +2144,9 @@ class PluginPackageSourceClient:
 
     @staticmethod
     def parse_local_repo_package_version(repo_url: str) -> Optional[str]:
-        """解析本地仓库来源中的包代际。"""
+        """
+        解析本地仓库来源中的包代际。
+        """
         return parse_local_repo_generation(repo_url)
 
     @staticmethod
@@ -2011,7 +2155,9 @@ class PluginPackageSourceClient:
         repo_path: Optional[Path] = None,
         package_version: Optional[str] = None,
     ) -> str:
-        """生成本地仓库来源标识。"""
+        """
+        生成本地仓库来源标识。
+        """
         return build_local_repo_url(
             plugin_id,
             repo_path=repo_path,
@@ -2026,7 +2172,9 @@ class PluginPackageSourceClient:
         strict_compat: bool = True,
         strict_system_version: bool = True,
     ) -> Optional[PluginPayload]:
-        """读取一个本地插件候选。"""
+        """
+        读取一个本地插件候选。
+        """
         return self._transport.get_local_plugin_candidate(
             pid=pid,
             package_version=package_version,
@@ -2039,7 +2187,9 @@ class PluginPackageSourceClient:
     def check_plugin_system_version(
         plugin_info: PluginPayload,
     ) -> tuple[bool, str]:
-        """校验插件声明的宿主版本约束。"""
+        """
+        校验插件声明的宿主版本约束。
+        """
         return check_plugin_system_version(
             plugin_info, current_version=get_app_version()
         )
@@ -2048,7 +2198,9 @@ class PluginPackageSourceClient:
     def check_plugin_install_compatibility(
         plugin_info: PluginPayload,
     ) -> tuple[bool, str]:
-        """安装准入的唯一兼容判据：先判运行时，再判宿主版本。"""
+        """
+        安装准入的唯一兼容判据：先判运行时，再判宿主版本。
+        """
         compatible, message = check_plugin_runtime_compatibility(
             plugin_info,
             free_threaded=is_free_threaded_runtime(),
@@ -2065,7 +2217,9 @@ class PluginPackageSourceClient:
         repo_url: str,
         package_version: Optional[str],
     ) -> Optional[str]:
-        """选择适用于当前宿主的远端索引代际。"""
+        """
+        选择适用于当前宿主的远端索引代际。
+        """
         return self._transport.get_plugin_package_version(
             plugin_id, repo_url, package_version
         )
@@ -2076,7 +2230,9 @@ class PluginPackageSourceClient:
         repo_url: str,
         package_version: Optional[str],
     ) -> Optional[str]:
-        """异步选择适用于当前宿主的远端索引代际。"""
+        """
+        异步选择适用于当前宿主的远端索引代际。
+        """
         return await self._transport.async_get_plugin_package_version(
             plugin_id, repo_url, package_version
         )
@@ -2084,32 +2240,42 @@ class PluginPackageSourceClient:
     def get_plugins(
         self, repo_url: str, package_version: Optional[str] = None
     ) -> Optional[PluginIndex]:
-        """读取远端插件索引。"""
+        """
+        读取远端插件索引。
+        """
         return self._transport.get_plugins(repo_url, package_version)
 
     async def async_get_plugins(
         self, repo_url: str, package_version: Optional[str] = None
     ) -> Optional[PluginIndex]:
-        """异步读取远端插件索引。"""
+        """
+        异步读取远端插件索引。
+        """
         return await self._transport.async_get_plugins(repo_url, package_version)
 
     def get_plugin_release_versions(
         self, plugin_id: str, repo_url: str
     ) -> list[dict[str, Any]]:
-        """读取插件可安装 Release。"""
+        """
+        读取插件可安装 Release。
+        """
         return self._transport.get_plugin_release_versions(plugin_id, repo_url)
 
     async def async_get_plugin_release_versions(
         self, plugin_id: str, repo_url: str
     ) -> list[dict[str, Any]]:
-        """异步读取插件可安装 Release。"""
+        """
+        异步读取插件可安装 Release。
+        """
         return await self._transport.async_get_plugin_release_versions(
             plugin_id, repo_url
         )
 
     @staticmethod
     def get_repo_info(repo_url: str) -> tuple[Optional[str], Optional[str]]:
-        """解析 GitHub 仓库所有者和仓库名。"""
+        """
+        解析 GitHub 仓库所有者和仓库名。
+        """
         if not repo_url:
             return None, None
         parts = repo_url.rstrip("/").split("/")
@@ -2125,7 +2291,9 @@ class PluginPackageSourceClient:
         timeout: Optional[int] = 60,
         is_api: bool = False,
     ) -> Any:
-        """同步读取 GitHub 元数据或制品。"""
+        """
+        同步读取 GitHub 元数据或制品。
+        """
         return self._transport.request_with_fallback(
             url, headers=headers, timeout=timeout, is_api=is_api
         )
@@ -2138,7 +2306,9 @@ class PluginPackageSourceClient:
         timeout: Optional[int] = 60,
         is_api: bool = False,
     ) -> Any:
-        """异步读取 GitHub 元数据或制品。"""
+        """
+        异步读取 GitHub 元数据或制品。
+        """
         return await self._transport.async_request_with_fallback(
             url, headers=headers, timeout=timeout, is_api=is_api
         )
