@@ -1,4 +1,6 @@
-"""解析工具明确的结果协议，保持正常业务载荷和自然语言原样。"""
+"""
+解析工具明确的结果协议，保持正常业务载荷和自然语言原样。
+"""
 
 import json
 from collections.abc import Mapping
@@ -20,17 +22,24 @@ _ERROR_ENVELOPE_KEYS = frozenset({
 
 
 # follow_imports=skip 下第三方异常基类按 Any 处理，仅忽略 SDK 边界。
+# 工具异常继承第三方动态基类，当前类型检查环境缺少完整基类信息。
 class ToolExecutionError(ToolException):  # type: ignore[misc]
-    """携带宿主已脱敏说明的可恢复工具故障，避免伪装为成功字符串。"""
+    """
+    携带宿主已脱敏说明的可恢复工具故障，避免伪装为成功字符串。
+    """
 
 
 def is_image_content_block(value: Any) -> bool:
-    """识别已声明的图像块类别；此分类不代替视觉发送前的 MIME 和载荷校验。"""
+    """
+    识别已声明的图像块类别；此分类不代替视觉发送前的 MIME 和载荷校验。
+    """
     return type(value) is dict and type(value.get("type")) is str and value["type"] in ("image", "image_url", "input_image")
 
 
 def sanitize_tool_image_message(message: BaseMessage) -> BaseMessage:
-    """持久化工具图像的无像素副本，保留文本、调用归属和状态，不修改运行图或用户附件。"""
+    """
+    持久化工具图像的无像素副本，保留文本、调用归属和状态，不修改运行图或用户附件。
+    """
     if not isinstance(message, ToolMessage) or not isinstance(message.content, list):
         return message
     if not any(is_image_content_block(block) for block in message.content):
@@ -45,7 +54,9 @@ def sanitize_tool_image_message(message: BaseMessage) -> BaseMessage:
 
 
 def messages_for_persistence(messages: list[BaseMessage]) -> list[BaseMessage]:
-    """仅过滤宿主明确标记的临时观察消息，再移除工具图像；真实用户消息原样保留。"""
+    """
+    仅过滤宿主明确标记的临时观察消息，再移除工具图像；真实用户消息原样保留。
+    """
     return [
         sanitize_tool_image_message(message)
         for message in messages
@@ -54,7 +65,9 @@ def messages_for_persistence(messages: list[BaseMessage]) -> list[BaseMessage]:
 
 
 def _aggregate_outcomes(outcomes: list[ExecutionOutcome]) -> ExecutionOutcome:
-    """未知副作用优先于失败，未完成任务优先于纯成功回执。"""
+    """
+    未知副作用优先于失败，未完成任务优先于纯成功回执。
+    """
     for outcome in (ExecutionOutcome.UNKNOWN, ExecutionOutcome.FAILED, ExecutionOutcome.PENDING):
         if outcome in outcomes:
             return outcome
@@ -62,7 +75,9 @@ def _aggregate_outcomes(outcomes: list[ExecutionOutcome]) -> ExecutionOutcome:
 
 
 def _task_outcome(payload: Mapping[str, Any]) -> ExecutionOutcome:
-    """只解析执行任务和终端会话的状态，不把下载器资源状态当成工具终态。"""
+    """
+    只解析执行任务和终端会话的状态，不把下载器资源状态当成工具终态。
+    """
     state = payload.get("status", payload.get("state"))
     state = state if isinstance(state, str) else ""
     if state in {"pending", "queued", "running", "accepted", "in_progress", "starting"}:
@@ -78,7 +93,9 @@ def _task_outcome(payload: Mapping[str, Any]) -> ExecutionOutcome:
 
 
 def _mapping_outcome(payload: Mapping[str, Any]) -> ExecutionOutcome:
-    """识别明确错误 envelope 和既有任务协议，业务数据中的可选 error 不算失败。"""
+    """
+    识别明确错误 envelope 和既有任务协议，业务数据中的可选 error 不算失败。
+    """
     explicit = payload.get(EXECUTION_OUTCOME_KEY, payload.get("execution_outcome"))
     if isinstance(explicit, str) and explicit in ExecutionOutcome._value2member_map_:
         return ExecutionOutcome(explicit)
@@ -103,7 +120,9 @@ def _mapping_outcome(payload: Mapping[str, Any]) -> ExecutionOutcome:
 
 
 def inspect_tool_result(result: Any) -> ExecutionOutcome:
-    """从工具消息、Command 或 JSON 提取明确执行状态，不依据自然语言猜测。"""
+    """
+    从工具消息、Command 或 JSON 提取明确执行状态，不依据自然语言猜测。
+    """
     if isinstance(result, ToolMessage):
         explicit = result.additional_kwargs.get(EXECUTION_OUTCOME_KEY)
         if isinstance(explicit, str) and explicit in ExecutionOutcome._value2member_map_:
@@ -135,7 +154,9 @@ def inspect_tool_result(result: Any) -> ExecutionOutcome:
 
 
 def annotate_tool_result(result: Any) -> Any:
-    """将已识别状态附到工具协议元数据，成功载荷及 Command 状态更新保持不变。"""
+    """
+    将已识别状态附到工具协议元数据，成功载荷及 Command 状态更新保持不变。
+    """
     if isinstance(result, ToolMessage):
         outcome = inspect_tool_result(result)
         result.additional_kwargs[EXECUTION_OUTCOME_KEY] = outcome.value

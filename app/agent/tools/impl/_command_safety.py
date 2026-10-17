@@ -1,4 +1,6 @@
-"""Agent 命令工具的安全校验逻辑。"""
+"""
+Agent 命令工具的安全校验逻辑。
+"""
 
 from __future__ import annotations
 
@@ -27,7 +29,9 @@ COMMAND_DANGEROUS_PATTERNS = (
 
 
 def _command_tokens(command: str) -> list[str]:
-    """尽力解析 shell 命令 token，解析失败时退回空白分割。"""
+    """
+    尽力解析 shell 命令 token，解析失败时退回空白分割。
+    """
     try:
         lexer = shlex.shlex(command, posix=True, punctuation_chars=_SHELL_PUNCTUATION)
         lexer.whitespace_split = True
@@ -37,7 +41,9 @@ def _command_tokens(command: str) -> list[str]:
 
 
 def _command_segments(command: str) -> list[list[str]]:
-    """按 shell 控制运算符拆分命令，避免跨命令误关联参数。"""
+    """
+    按 shell 控制运算符拆分命令，避免跨命令误关联参数。
+    """
     segments: list[list[str]] = []
     current: list[str] = []
     for token in _command_tokens(command):
@@ -53,7 +59,9 @@ def _command_segments(command: str) -> list[list[str]]:
 
 
 def _contains_recursive_root_delete(command: str) -> bool:
-    """识别递归删除根目录或一级目录的 rm 命令。"""
+    """
+    识别递归删除根目录或一级目录的 rm 命令。
+    """
     for tokens in _command_segments(command):
         rm_indexes = [
             index
@@ -80,7 +88,9 @@ def _contains_recursive_root_delete(command: str) -> bool:
 
 
 def detect_dangerous_command(command: str) -> str:
-    """返回危险命令原因，安全时返回空字符串。"""
+    """
+    返回危险命令原因，安全时返回空字符串。
+    """
     normalized = str(command or "").strip()
     if not normalized:
         return "命令不能为空"

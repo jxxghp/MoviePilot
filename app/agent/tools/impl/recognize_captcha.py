@@ -1,4 +1,6 @@
-"""识别图形验证码工具。"""
+"""
+识别图形验证码工具。
+"""
 
 import json
 from typing import Optional, Type
@@ -13,48 +15,43 @@ from app.runtime.log import logger
 
 
 class CaptchaUrlError(ValueError):
-    """图片地址被安全校验拒绝，不能建议改用其他工具绕过该边界。"""
+    """
+    图片地址被安全校验拒绝，不能建议改用其他工具绕过该边界。
+    """
 
 
 class RecognizeCaptchaInput(BaseModel):
-    """识别图形验证码工具的输入参数模型。"""
+    """
+    识别图形验证码工具的输入参数模型。
+    """
 
     image_url: Optional[str] = Field(
         None,
-        description=(
-            "Captcha image URL obtained from the browser page, usually an img.src value. "
-            "Supports http/https URLs and data:image/...;base64,... URLs."
-        ),
+        description="从浏览器页面获得的验证码图片地址，通常为 img.src；支持 HTTP(S) 和 data:image/...;base64,...",
     )
     image_data: Optional[bytes] = Field(
         None,
-        description=(
-            "Raw image bytes already obtained by the caller. Prefer this when the browser "
-            "or another tool provides binary image data; it is sent to OCR without a Base64 conversion."
-        ),
+        description="调用方已取得的原始图片字节；浏览器或其他工具已返回二进制数据时优先使用，直接提交 OCR 而不先转 Base64",
     )
     cookie: Optional[str] = Field(
         None,
-        description=(
-            "Optional Cookie header used to download the captcha image when the image URL "
-            "requires the same authenticated browser session."
-        ),
+        description="下载验证码需要同一已登录浏览器会话时使用的可选 Cookie 请求头",
     )
     user_agent: Optional[str] = Field(
         None,
-        description="Optional User-Agent used when downloading the captcha image.",
+        description="下载验证码图片时使用的可选 User-Agent",
     )
     allow_private_network: bool = Field(
         False,
-        description=(
-            "Allow captcha image URLs on localhost, loopback, private, or link-local addresses "
-            "(administrator only; other callers receive an admin_required error)."
-        ),
+        description="是否允许本机、回环、私网或链路本地验证码地址；仅管理员可启用，其他调用者返回 admin_required",
     )
 
+    # Pydantic 校验器由运行时注册，保留第三方装饰器所需的动态类型兼容。
     @model_validator(mode="after")  # type: ignore[misc]
     def require_image_source(self) -> "RecognizeCaptchaInput":
-        """确保验证码工具至少收到图片地址或原始图片字节。"""
+        """
+        确保验证码工具至少收到图片地址或原始图片字节。
+        """
         if not self.image_url and not self.image_data:
             raise ValueError("image_url or image_data is required")
         return self
@@ -65,28 +62,36 @@ class RecognizeCaptchaTool(MoviePilotTool):
     图形验证码识别工具，供 Agent 在浏览器自动化登录时读取验证码文本。
     """
 
-    name: str = "recognize_captcha"
-    tags: list[str] = [
-        ToolTag.Read,
-        ToolTag.Web,
-        ToolTag.Site,
-    ]
-    description: str = (
-        "Recognize a graphic captcha image and return the captcha text. "
-        "Use this after browser automation extracts a captcha img.src from the page. "
-        "It also accepts raw image_data bytes and sends them directly to OCR without Base64 conversion. "
-        "Pass cookie and user_agent when the image URL requires the current browser session. "
-        "Supports http/https image URLs and data:image/...;base64,... URLs. "
-        "This tool uses the configured OCR service, not the multimodal model. If OCR fails, "
-        "inspect the current browser captcha with browse_webpage(action='screenshot', selector=...) "
-        "before refreshing it or asking the user to read it. "
-        "Localhost and private network URLs are blocked by default. "
-        "Only administrators may set allow_private_network to true."
+    name: str = Field(
+        default="recognize_captcha",
+        description="供模型调用的稳定工具名称",
     )
-    args_schema: Type[BaseModel] = RecognizeCaptchaInput
+    tags: list[str] = Field(
+        default=[ToolTag.Read, ToolTag.Web, ToolTag.Site],
+        description="工具的能力和权限分类标签，初始化时会统一归一化",
+    )
+    description: str = Field(
+        default=(
+            "识别图片验证码并返回文字。"
+            "浏览器取得页面验证码 img.src 后可调用；"
+            "也接受原始 image_data 字节，直接提交 OCR 而不转为 Base64。"
+            "图片地址依赖当前浏览器会话时应传 cookie 和 user_agent。"
+            "支持 HTTP(S) 及 data:image/...;base64,... 地址。"
+            "使用已配置的 OCR 服务，不使用多模态模型。"
+            "OCR 失败时，应先用 browse_webpage(action='screenshot', selector=...) 查看浏览器当前验证码，再决定刷新或请用户识别。"
+            "默认禁止本机与私网 URL，只有管理员可将 allow_private_network 设为 true。"
+        ),
+        description="供模型理解工具用途、输入约束和调用边界的说明",
+    )
+    args_schema: Type[BaseModel] = Field(
+        default=RecognizeCaptchaInput,
+        description="工具输入参数的验证模型或 JSON Schema",
+    )
 
     def get_tool_message(self, **kwargs) -> Optional[str]:
-        """根据验证码图片参数生成友好的提示消息。"""
+        """
+        根据验证码图片参数生成友好的提示消息。
+        """
         image_url = str(kwargs.get("image_url") or "")
         image_data = kwargs.get("image_data")
         if image_data:
@@ -97,7 +102,9 @@ class RecognizeCaptchaTool(MoviePilotTool):
 
     @staticmethod
     def _format_image_url_for_log(image_url: str) -> str:
-        """生成验证码图片地址的安全日志摘要，避免 data URL 图片刷屏。"""
+        """
+        生成验证码图片地址的安全日志摘要，避免 data URL 图片刷屏。
+        """
         clean_url = (image_url or "").strip()
         if not clean_url:
             return ""
@@ -149,7 +156,9 @@ class RecognizeCaptchaTool(MoviePilotTool):
 
     @staticmethod
     def _recognition_failure(message: str) -> str:
-        """OCR 失败仍保留失败状态，并引导模型先观察同一浏览器验证码而非立即刷新。"""
+        """
+        OCR 失败仍保留失败状态，并引导模型先观察同一浏览器验证码而非立即刷新。
+        """
         return json.dumps(
             {
                 "success": False,

@@ -1,4 +1,6 @@
-"""Agent 本地工具目录的不可变快照与严格解析。"""
+"""
+Agent 本地工具目录的不可变快照与严格解析。
+"""
 
 import hashlib
 import json
@@ -12,15 +14,21 @@ from app.agent.policy.contracts import ToolRevision
 
 
 class ToolCatalogError(RuntimeError):
-    """工具目录无法建立可信当前视图时的稳定失败。"""
+    """
+    工具目录无法建立可信当前视图时的稳定失败。
+    """
 
 
 class ToolIdentityAmbiguousError(ToolCatalogError):
-    """同一工具名对应多个实现，无法进行严格解析。"""
+    """
+    同一工具名对应多个实现，无法进行严格解析。
+    """
 
 
 def _stable_json(value: Any) -> str:
-    """生成工具身份摘要使用的稳定 JSON。"""
+    """
+    生成工具身份摘要使用的稳定 JSON。
+    """
     return json.dumps(
         value,
         ensure_ascii=False,
@@ -31,7 +39,9 @@ def _stable_json(value: Any) -> str:
 
 
 def _schema_digest(tool: Any) -> str:
-    """计算工具当前 Pydantic 参数契约摘要。"""
+    """
+    计算工具当前 Pydantic 参数契约摘要。
+    """
     args_schema = getattr(tool, "args_schema", None)
     if isinstance(args_schema, type) and issubclass(args_schema, BaseModel):
         schema_model = cast(type[BaseModel], args_schema)
@@ -44,7 +54,9 @@ def _schema_digest(tool: Any) -> str:
 
 
 def _implementation_identity(tool: Any) -> str:
-    """返回不依赖对象地址、可区分动态绑定的工具实现身份。"""
+    """
+    返回不依赖对象地址、可区分动态绑定的工具实现身份。
+    """
     tool_class = type(tool)
     implementation = f"{tool_class.__module__}.{tool_class.__qualname__}"
     binding = str(getattr(tool, "_agent_tool_binding", "") or "")
@@ -53,7 +65,17 @@ def _implementation_identity(tool: Any) -> str:
 
 @dataclass(frozen=True)
 class ToolCatalogEntry:
-    """绑定一次目录构造中精确工具实例的身份记录。"""
+    """
+    绑定一次目录构造中精确工具实例的身份记录。
+
+    :param name: 用于严格解析和碰撞检测的工具名称
+    :param source: 工具来源类别，未显式声明时为 builtin
+    :param identity: 来源、实现身份和参数 schema 摘要组成的稳定身份
+    :param description_digest: 工具说明文本的 SHA-256 摘要，用于识别说明变更
+    :param schema_digest: 参数 JSON Schema 的 SHA-256 摘要
+    :param revision: 实现、工厂及插件修订信息
+    :param tool: 本次目录构造绑定的精确工具实例，不参与相等比较
+    """
 
     name: str
     source: str
@@ -66,7 +88,14 @@ class ToolCatalogEntry:
 
 @dataclass(frozen=True)
 class ToolCatalogSnapshot:
-    """图构造、缓存签名和身份碰撞审计共享的本地工具事实源。"""
+    """
+    图构造、缓存签名和身份碰撞审计共享的本地工具事实源。
+
+    :param entries: 按构造顺序保存的不可变工具记录
+    :param plugin_revision: 构造目录时的插件工具修订号
+    :param factory_revision: 构造目录时的工具工厂修订标识
+    :ivar _by_name: 初始化时建立的只读名称索引，同名冲突项全部保留
+    """
 
     entries: tuple[ToolCatalogEntry, ...]
     plugin_revision: int
@@ -78,7 +107,9 @@ class ToolCatalogSnapshot:
     )
 
     def __post_init__(self) -> None:
-        """建立只读名称索引并保留所有冲突项。"""
+        """
+        建立只读名称索引并保留所有冲突项。
+        """
         by_name: dict[str, list[ToolCatalogEntry]] = {}
         for entry in self.entries:
             by_name.setdefault(entry.name, []).append(entry)
@@ -96,7 +127,9 @@ class ToolCatalogSnapshot:
         plugin_revision: int,
         factory_revision: str,
     ) -> "ToolCatalogSnapshot":
-        """从已完成上下文注入的精确实例建立不可变目录。"""
+        """
+        从已完成上下文注入的精确实例建立不可变目录。
+        """
         entries = []
         for tool in tools:
             name = str(getattr(tool, "name", "") or "")
@@ -130,17 +163,23 @@ class ToolCatalogSnapshot:
 
     @property
     def tools(self) -> list[Any]:
-        """按目录顺序返回精确工具实例。"""
+        """
+        按目录顺序返回精确工具实例。
+        """
         return [entry.tool for entry in self.entries]
 
     @property
     def collisions(self) -> Mapping[str, tuple[ToolCatalogEntry, ...]]:
-        """返回所有同名工具，不按注册顺序隐式选胜者。"""
+        """
+        返回所有同名工具，不按注册顺序隐式选胜者。
+        """
         return MappingProxyType({name: entries for name, entries in self._by_name.items() if len(entries) > 1})
 
     @property
     def signature(self) -> tuple[Any, ...]:
-        """返回可参与 Agent 图缓存的完整目录签名。"""
+        """
+        返回可参与 Agent 图缓存的完整目录签名。
+        """
         return (
             self.factory_revision,
             self.plugin_revision,
@@ -156,7 +195,9 @@ class ToolCatalogSnapshot:
         )
 
     def audit_payload(self) -> dict[str, Any]:
-        """返回不含工具对象的目录快照，供评测比较实现、schema 和版本差异。"""
+        """
+        返回不含工具对象的目录快照，供评测比较实现、schema 和版本差异。
+        """
         signature_sha256 = hashlib.sha256(_stable_json(self.signature).encode("utf-8")).hexdigest()
         entries = [
             {
@@ -181,21 +222,27 @@ class ToolCatalogSnapshot:
         }
 
     def resolve_unique(self, name: str) -> Optional[ToolCatalogEntry]:
-        """严格解析当前唯一实现；重名时拒绝继承 first/last-wins。"""
+        """
+        严格解析当前唯一实现；重名时拒绝继承 first/last-wins。
+        """
         entries = self._by_name.get(name, ())
         if len(entries) > 1:
             raise ToolIdentityAmbiguousError("TOOL_IDENTITY_AMBIGUOUS")
         return entries[0] if entries else None
 
     def require_unique(self) -> "ToolCatalogSnapshot":
-        """拒绝任何同名身份，保证目录可直接交给执行图。"""
+        """
+        拒绝任何同名身份，保证目录可直接交给执行图。
+        """
         if self.collisions:
             names = ", ".join(sorted(self.collisions))
             raise ToolIdentityAmbiguousError(f"TOOL_IDENTITY_AMBIGUOUS: {names}")
         return self
 
     def select(self, tools: list[Any]) -> "ToolCatalogSnapshot":
-        """为子图保留所选工具名的全部候选身份与 revision 语义。"""
+        """
+        为子图保留所选工具名的全部候选身份与 revision 语义。
+        """
         selected_names = {str(getattr(tool, "name", "") or "") for tool in tools}
         return ToolCatalogSnapshot(
             entries=tuple(entry for entry in self.entries if entry.name in selected_names),
