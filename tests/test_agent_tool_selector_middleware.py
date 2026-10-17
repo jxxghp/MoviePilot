@@ -1,3 +1,7 @@
+"""
+验证工具选择中间件的模型调用、绑定参数和请求投影。
+"""
+
 import asyncio
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -14,10 +18,16 @@ class _FakeBoundModel:
         self.messages = None
 
     def invoke(self, messages):
+        """
+        保存同步调用消息并返回预设的模型文本。
+        """
         self.messages = messages
         return SimpleNamespace(content=self.content)
 
     async def ainvoke(self, messages):
+        """
+        保存异步调用消息并返回预设的模型文本。
+        """
         self.messages = messages
         return SimpleNamespace(content=self.content)
 
@@ -44,10 +54,16 @@ class _FakeModel:
         self.bound_model = _FakeBoundModel(content)
 
     def bind(self, **kwargs):
+        """
+        记录模型绑定参数并返回预设的绑定模型。
+        """
         self.bind_calls.append(kwargs)
         return self.bound_model
 
     async def ainvoke(self, messages):
+        """
+        保存异步调用消息并返回预设的模型文本。
+        """
         self.messages = messages
         self.ainvoke_calls.append(messages)
         return SimpleNamespace(content=self.bound_model.content)
@@ -62,6 +78,9 @@ class _FakeRequest:
         self.runtime = runtime
 
     def override(self, **kwargs):
+        """
+        合并覆盖参数并返回新的请求替身，保留未覆盖的上下文。
+        """
         data = {
             "tools": self.tools,
             "messages": self.messages,
@@ -74,12 +93,16 @@ class _FakeRequest:
 
 
 def _tool(name, description, tags=None):
-    """构造测试用工具对象。"""
+    """
+    构造测试用工具对象。
+    """
     return SimpleNamespace(name=name, description=description, tags=tags or [])
 
 
 def test_awrap_model_call_uses_json_prompt_for_all_models():
-    """工具筛选应统一使用 JSON 提示，不绑定 provider 专属参数。"""
+    """
+    工具筛选应统一使用 JSON 提示，不绑定 provider 专属参数。
+    """
     tools = [
         SimpleNamespace(name="search", description="Search for information"),
         SimpleNamespace(name="calendar", description="Manage events"),
@@ -122,7 +145,9 @@ def test_awrap_model_call_uses_json_prompt_for_all_models():
 
 
 def test_awrap_model_call_uses_same_json_prompt_for_minimax():
-    """MiniMax 工具筛选也应复用同一套 JSON 提示路径。"""
+    """
+    MiniMax 工具筛选也应复用同一套 JSON 提示路径。
+    """
     tools = [
         SimpleNamespace(name="search", description="Search for information"),
         SimpleNamespace(name="calendar", description="Manage events"),
@@ -156,7 +181,9 @@ def test_awrap_model_call_uses_same_json_prompt_for_minimax():
 
 
 def test_awrap_model_call_uses_prompt_json_for_anthropic_runtime():
-    """Anthropic-compatible runtime 不应触发额外 provider 分支。"""
+    """
+    Anthropic-compatible runtime 不应触发额外 provider 分支。
+    """
     tools = [
         SimpleNamespace(name="search", description="Search for information"),
         SimpleNamespace(name="calendar", description="Manage events"),
@@ -190,7 +217,9 @@ def test_awrap_model_call_uses_prompt_json_for_anthropic_runtime():
 
 
 def test_awrap_model_call_reuses_first_selection_for_later_model_rounds():
-    """多轮模型回合应复用首轮筛选出的工具集合。"""
+    """
+    多轮模型回合应复用首轮筛选出的工具集合。
+    """
     tools = [
         SimpleNamespace(name="search", description="Search for information"),
         SimpleNamespace(name="calendar", description="Manage events"),
@@ -229,7 +258,9 @@ def test_awrap_model_call_reuses_first_selection_for_later_model_rounds():
 
 
 def test_awrap_model_call_caches_plain_json_prompt_selection_too():
-    """普通模型也应只调用一次 JSON 提示筛选并缓存结果。"""
+    """
+    普通模型也应只调用一次 JSON 提示筛选并缓存结果。
+    """
     tools = [
         SimpleNamespace(name="search", description="Search for information"),
         SimpleNamespace(name="calendar", description="Manage events"),
@@ -268,7 +299,9 @@ def test_awrap_model_call_caches_plain_json_prompt_selection_too():
 
 
 def test_tool_selection_failure_falls_back_to_all_tools():
-    """筛选模型返回空响应时不应中断 Agent 请求。"""
+    """
+    筛选模型返回空响应时不应中断 Agent 请求。
+    """
     tools = [
         SimpleNamespace(name="search", description="Search for information"),
         SimpleNamespace(name="calendar", description="Manage events"),
@@ -293,7 +326,9 @@ def test_tool_selection_failure_falls_back_to_all_tools():
 
 
 def test_empty_tool_selection_keeps_empty_tool_list():
-    """工具筛选返回空数组时应保持空工具列表。"""
+    """
+    工具筛选返回空数组时应保持空工具列表。
+    """
     tools = [
         SimpleNamespace(name="search", description="Search for information"),
         SimpleNamespace(name="calendar", description="Manage events"),
@@ -328,7 +363,9 @@ def test_empty_tool_selection_keeps_empty_tool_list():
 
 
 def test_empty_tool_selection_keeps_always_included_tools():
-    """工具筛选返回空数组时仍应保留必须包括的工具。"""
+    """
+    工具筛选返回空数组时仍应保留必须包括的工具。
+    """
     tools = [
         SimpleNamespace(name="search", description="Search for information"),
         SimpleNamespace(name="skill", description="Run skill"),
@@ -360,7 +397,9 @@ def test_empty_tool_selection_keeps_always_included_tools():
 
 
 def test_abefore_agent_logs_selected_tools():
-    """工具筛选返回有效工具时应记录最终生效的工具名。"""
+    """
+    工具筛选返回有效工具时应记录最终生效的工具名。
+    """
     tools = [
         SimpleNamespace(name="search", description="Search for information"),
         SimpleNamespace(name="calendar", description="Manage events"),
@@ -387,7 +426,9 @@ def test_abefore_agent_logs_selected_tools():
 
 
 def test_abefore_agent_logs_skipped_selection():
-    """工具筛选未启用时也应记录跳过原因。"""
+    """
+    工具筛选未启用时也应记录跳过原因。
+    """
     middleware = tool_selector_module.ToolSelectorMiddleware(selection_tools=[])
     request_state = {"messages": [HumanMessage(content="帮我安排明天的行程")]}
 
@@ -401,7 +442,9 @@ def test_abefore_agent_logs_skipped_selection():
 
 
 def test_normalize_selection_response_accepts_code_fence_json():
-    """工具筛选响应应兼容 Markdown 代码围栏包裹的 JSON。"""
+    """
+    工具筛选响应应兼容 Markdown 代码围栏包裹的 JSON。
+    """
     middleware = tool_selector_module.ToolSelectorMiddleware()
     response = SimpleNamespace(
         content=[
@@ -418,7 +461,9 @@ def test_normalize_selection_response_accepts_code_fence_json():
 
 
 def test_json_prompt_selection_uses_recent_conversation_context():
-    """多轮追问时工具筛选应看到上一轮用户需求和助手回复。"""
+    """
+    多轮追问时工具筛选应看到上一轮用户需求和助手回复。
+    """
     tools = [
         _tool(
             "query_plugin_config",
@@ -472,7 +517,9 @@ def test_json_prompt_selection_uses_recent_conversation_context():
 
 
 def test_single_turn_selection_keeps_original_user_message():
-    """单轮对话不应额外包裹上下文提示。"""
+    """
+    单轮对话不应额外包裹上下文提示。
+    """
     tools = [
         _tool("search", "Search for information", [ToolTag.Read, ToolTag.Web]),
         _tool("calendar", "Manage events", [ToolTag.Write]),
@@ -498,7 +545,9 @@ def test_single_turn_selection_keeps_original_user_message():
 
 
 def test_process_selection_response_completes_low_count_tool_group_by_tags():
-    """筛选结果过少时应按已命中的工具标签组补齐同组工具。"""
+    """
+    筛选结果过少时应按已命中的工具标签组补齐同组工具。
+    """
     tools = [
         _tool(
             "search_media",
@@ -553,7 +602,9 @@ def test_process_selection_response_completes_low_count_tool_group_by_tags():
 
 
 def test_process_selection_response_keeps_high_count_selection():
-    """筛选结果数量足够时不应额外补齐工具。"""
+    """
+    筛选结果数量足够时不应额外补齐工具。
+    """
     tools = [
         SimpleNamespace(name="search_media", description="Search media"),
         SimpleNamespace(name="search_torrents", description="Search torrents"),
@@ -593,7 +644,9 @@ def test_process_selection_response_keeps_high_count_selection():
 
 
 def test_process_selection_response_respects_max_tools_when_completing():
-    """标签组补齐不应突破 max_tools 上限。"""
+    """
+    标签组补齐不应突破 max_tools 上限。
+    """
     tools = [
         _tool(
             "list_directory",
@@ -638,7 +691,9 @@ def test_process_selection_response_respects_max_tools_when_completing():
 
 
 def test_process_selection_response_ignores_generic_tags_when_completing():
-    """通用权限标签不应被当作工具组使用。"""
+    """
+    通用权限标签不应被当作工具组使用。
+    """
     tools = [
         _tool("read_one", "Read one", [ToolTag.Read]),
         _tool("read_two", "Read two", [ToolTag.Read]),
