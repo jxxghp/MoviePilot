@@ -185,6 +185,9 @@ def test_search_stream_response_disables_proxy_buffering(monkeypatch):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("media_search", [False, True])
 async def test_manual_routes_forward_source_and_page_without_client_signature(monkeypatch, media_search):
+    """
+    手动搜索路由传递来源和页码，不要求客户端生成搜索签名。
+    """
     captured = []
 
     class FakeSearchChain:
@@ -192,6 +195,9 @@ async def test_manual_routes_forward_source_and_page_without_client_signature(mo
         按测试约定产出搜索分页事件，隔离站点请求。
         """
         async def search_page_events(self, *, params):
+            """
+            记录路由传入的搜索参数，并返回空来源的完成事件。
+            """
             captured.append(params)
             yield {"type": "done", "sources": []}
 

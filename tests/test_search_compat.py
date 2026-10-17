@@ -196,12 +196,18 @@ def _replacement_for(function: Callable[..., Any]) -> Callable[..., Any]:
     if inspect.isasyncgenfunction(function):
 
         async def async_generator(*args, **kwargs):
+            """
+            以异步生成器回传接收的参数，验证兼容包装保持生成器语义。
+            """
             yield args, kwargs
 
         return async_generator
     if inspect.iscoroutinefunction(function):
 
         async def coroutine(*args, **kwargs):
+            """
+            在等待后回传接收的参数，验证兼容包装保持协程语义。
+            """
             return args, kwargs
 
         return coroutine

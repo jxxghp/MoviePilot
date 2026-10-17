@@ -225,6 +225,9 @@ async def test_closing_preview_waits_for_inflight_workers_without_committing_pag
 @pytest.mark.parametrize("requested,expected", [(None, None), (MediaType.UNKNOWN, None),
                                                (MediaType.TV, MediaType.TV), (MediaType.MOVIE, MediaType.MOVIE)])
 async def test_title_search_keeps_unrestricted_mteam_categories_and_explicit_type(manual_owner, monkeypatch, requested, expected):
+    """
+    标题搜索保留馒头站点的不限分类请求，并按显式媒体类型筛选结果。
+    """
     from app.modules.indexer import IndexerModule
     from app.modules.indexer.spider import mtorrent as mtorrent_module
     from app.modules.indexer.spider.mtorrent import MTorrentSpider
@@ -310,6 +313,9 @@ async def test_first_request_loads_page_zero_of_every_source_and_saves_last_sear
 
 @pytest.mark.asyncio
 async def test_continuation_restores_previous_page_and_keeps_last_search(manual_owner):
+    """
+    继续搜索恢复前页状态，保持上次实际搜索条件。
+    """
     owner, calls, (_, saved) = manual_owner
     result = await events(SearchManualOwner.events(owner, params={
         "keyword": "Show", "page": 1, "source": encode_source("2", "Show")}))
@@ -343,6 +349,9 @@ async def test_failed_source_keeps_its_page_for_retry_without_hiding_other_sourc
 
 @pytest.mark.asyncio
 async def test_alias_fallback_only_on_first_page_and_source_keeps_actual_keyword(manual_owner, monkeypatch):
+    """
+    别名回退仅发生在首页，后续分页使用最终命中的关键词。
+    """
     owner, calls, (failures, _) = manual_owner
     monkeypatch.setattr(owner, "_prepare_params", lambda **_params: (None, ["AliasA", "AliasB"]))
     failures.update({(1, 0), (2, 0)})
@@ -372,6 +381,9 @@ async def test_zero_display_rows_still_have_more(manual_owner, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_empty_raw_page_has_no_more(manual_owner, monkeypatch):
+    """
+    原始页面为空时标记该来源不能继续分页。
+    """
     owner, _, _ = manual_owner
     def request(**_params):
         report_site_search_outcome(attempted=True, outcome="success")
@@ -385,6 +397,9 @@ async def test_empty_raw_page_has_no_more(manual_owner, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_unidentifiable_resource_does_not_fail_the_page(manual_owner, monkeypatch):
+    """
+    单个资源无法识别不应使整页被标记为失败。
+    """
     owner, _, _ = manual_owner
     def request(**params):
         report_site_search_outcome(attempted=True, outcome="success")
@@ -398,6 +413,9 @@ async def test_unidentifiable_resource_does_not_fail_the_page(manual_owner, monk
 
 @pytest.mark.asyncio
 async def test_site_without_pagination_has_only_the_first_page(manual_owner, monkeypatch):
+    """
+    不支持分页的站点只请求首页，后续继续请求不访问站点。
+    """
     owner, calls, _ = manual_owner
     monkeypatch.setattr(owner, "get_search_page_size", lambda **_params: None)
     first = await events(SearchManualOwner.events(owner, params={"keyword": "Show", "sites": [1]}))
@@ -465,6 +483,9 @@ async def test_pages_beyond_the_cap_are_not_requested(manual_owner):
 
 @pytest.mark.asyncio
 async def test_invalid_source_is_rejected(manual_owner):
+    """
+    来源标识无效时返回明确错误，不发起搜索请求。
+    """
     owner, calls, _ = manual_owner
     result = await events(SearchManualOwner.events(owner, params={"keyword": "Show", "page": 1, "source": "bad!"}))
     assert result == [{"type": "error", "message": "搜索来源无效，请重新搜索"}]
@@ -506,6 +527,9 @@ async def test_media_page_keeps_original_season_filter(manual_owner, monkeypatch
 @pytest.mark.asyncio
 @pytest.mark.parametrize("elapsed,expected", [(36 * 3600 - 1, [3]), (36 * 3600 + 1, [2, 3])])
 async def test_previous_page_cache_expires_after_thirty_six_hours(manual_owner, page_clock, elapsed, expected):
+    """
+    前页缓存超过三十六小时后，继续搜索前需恢复前页状态。
+    """
     owner, calls, (_, saved) = manual_owner
     source = encode_source("1", "Show")
     await events(SearchManualOwner.events(owner, params={"keyword": "Show", "page": 2, "source": source}))
@@ -522,6 +546,9 @@ async def test_previous_page_cache_expires_after_thirty_six_hours(manual_owner, 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failed_page,retried_pages", [(2, [2, 3]), (3, [3])])
 async def test_expired_page_recovery_keeps_target_on_timeout(manual_owner, failed_page, retried_pages):
+    """
+    过期前页恢复超时时保留目标页，允许后续重试。
+    """
     owner, calls, (failures, _) = manual_owner
     source = encode_source("1", "Show")
     failures.add((1, failed_page))
@@ -539,6 +566,9 @@ async def test_expired_page_recovery_keeps_target_on_timeout(manual_owner, faile
 
 @pytest.mark.asyncio
 async def test_refreshed_previous_page_drives_duplicate_detection(manual_owner, monkeypatch, page_clock):
+    """
+    继续搜索以刷新后的前页内容判定重复页面。
+    """
     owner, calls, _ = manual_owner
     source = encode_source("1", "Show")
     await events(SearchManualOwner.events(owner, params={"keyword": "Show", "page": 2, "source": source}))
@@ -558,6 +588,9 @@ async def test_refreshed_previous_page_drives_duplicate_detection(manual_owner, 
 
 @pytest.mark.asyncio
 async def test_same_page_retry_compares_with_previous_page_not_itself(manual_owner):
+    """
+    同页重试与真正的前页比较，不能误判为重复末页。
+    """
     owner, calls, _ = manual_owner
     first = await events(SearchManualOwner.events(owner, params={"keyword": "Show", "sites": [1]}))
     source = site_facts(first)[0]["source"]
@@ -572,6 +605,9 @@ async def test_same_page_retry_compares_with_previous_page_not_itself(manual_own
 
 @pytest.mark.asyncio
 async def test_search_rounds_do_not_share_previous_page(manual_owner, monkeypatch):
+    """
+    独立搜索轮次不共享前页缓存，避免跨轮误判重复。
+    """
     owner, _, _ = manual_owner
     first_pages = iter(["A", "B"])
     def request(**params):
@@ -593,6 +629,9 @@ async def test_search_rounds_do_not_share_previous_page(manual_owner, monkeypatc
 
 @pytest.mark.asyncio
 async def test_recovery_requests_both_pages_through_existing_site_interval(manual_owner, monkeypatch, page_clock):
+    """
+    恢复前页与请求目标页共用已有站点请求间隔。
+    """
     from app.chain.search import provider
 
     owner, calls, _ = manual_owner

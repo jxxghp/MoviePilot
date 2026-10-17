@@ -20,10 +20,16 @@ def reset_site_request_schedule():
 
 
 def test_site_without_interval_does_not_wait():
+    """
+    未配置请求间隔的站点不需要等待。
+    """
     assert provider._reserve_site_request({"id": 1, "name": "普通站点"}) == 0
 
 
 def test_configured_requests_are_reserved_twenty_seconds_apart(monkeypatch):
+    """
+    配置二十秒间隔后，连续站点请求按该间隔预留执行时间。
+    """
     monkeypatch.setattr(provider.time, "monotonic", lambda: 100.0)
     site = {"id": 6, "name": "观众", "limit_seconds": 20}
 
@@ -33,6 +39,9 @@ def test_configured_requests_are_reserved_twenty_seconds_apart(monkeypatch):
 
 
 def test_invalid_interval_does_not_throttle(monkeypatch):
+    """
+    无效请求间隔不启用站点限速。
+    """
     monkeypatch.setattr(provider.time, "monotonic", lambda: 100.0)
     site = {"id": 6, "name": "观众", "limit_seconds": "invalid"}
 
@@ -41,6 +50,9 @@ def test_invalid_interval_does_not_throttle(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_async_wait_only_sleeps_for_throttled_site(monkeypatch):
+    """
+    异步入口只为受限站点等待预留间隔。
+    """
     delays = []
 
     async def fake_sleep(delay):
