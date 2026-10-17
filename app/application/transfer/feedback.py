@@ -1,4 +1,6 @@
-"""整理失败的用户反馈、阶段识别和恢复动作投影。"""
+"""
+整理失败的用户反馈、阶段识别和恢复动作投影。
+"""
 
 from collections import Counter
 from dataclasses import dataclass
@@ -7,22 +9,40 @@ from typing import Optional
 
 
 class TransferFailureStage(StrEnum):
-    """整理失败所在的可操作阶段。"""
+    """
+    整理失败所在的可操作阶段。
+    """
 
+    # 无法访问或读取源文件
     SOURCE_ACCESS = "source_access"
+    # 无法确定正确的媒体身份
     RECOGNITION = "recognition"
+    # 无法构造可执行整理计划
     PLANNING = "planning"
+    # 目标存储、权限或空间不可用
     DESTINATION_ACCESS = "destination_access"
+    # 文件转移执行失败
     TRANSFER = "transfer"
+    # 覆盖现有目标的策略或操作失败
     OVERWRITE = "overwrite"
+    # 媒体已入库，但下载器清理未完成
     DOWNLOADER_CLEANUP = "downloader_cleanup"
+    # 租约、执行状态或检查点冲突
     EXECUTION = "execution"
+    # 尚不能归入已知业务阶段的失败
     UNKNOWN = "unknown"
 
 
 @dataclass(frozen=True, slots=True)
 class TransferFailureFeedback:
-    """整理失败的公开阶段、动作和自动处理状态。"""
+    """
+    整理失败的公开阶段、动作和自动处理状态。
+
+    :param stage: 本次失败所在的可操作业务阶段
+    :param action: 推荐用户执行的修复操作说明
+    :param retryable: 是否仍允许自动或用户发起重试，默认 True
+    :param auto_paused: 是否因失败策略暂停自动恢复
+    """
 
     stage: TransferFailureStage
     action: str
@@ -105,7 +125,9 @@ _STAGE_LABELS: dict[TransferFailureStage, str] = {
 
 
 def transfer_failure_stage_label(stage: Optional[str | TransferFailureStage]) -> str:
-    """把稳定失败阶段编码转换为后端通知使用的中文标签。"""
+    """
+    把稳定失败阶段编码转换为后端通知使用的中文标签。
+    """
     try:
         normalized = TransferFailureStage(stage or TransferFailureStage.UNKNOWN)
     except ValueError:
@@ -119,7 +141,9 @@ def classify_transfer_failure(
         overwrite_skipped: bool = False,
         auto_paused: bool = False,
 ) -> TransferFailureFeedback:
-    """根据稳定业务关键词生成用户可执行的失败阶段和恢复动作。"""
+    """
+    根据稳定业务关键词生成用户可执行的失败阶段和恢复动作。
+    """
     if overwrite_skipped:
         stage = TransferFailureStage.OVERWRITE
     else:
@@ -151,7 +175,9 @@ def format_transfer_failure_message(
         max_retries: Optional[int] = None,
         auto_paused: bool = False,
 ) -> str:
-    """把整理失败转换为包含原因、阶段和下一步动作的公开文案。"""
+    """
+    把整理失败转换为包含原因、阶段和下一步动作的公开文案。
+    """
     feedback = classify_transfer_failure(error, auto_paused=auto_paused)
     lines = [
         f"失败阶段：{transfer_failure_stage_label(stage or feedback.stage)}",
@@ -171,7 +197,27 @@ def format_transfer_failure_message(
 
 @dataclass(frozen=True, slots=True)
 class TransferFailureNotification:
-    """整理失败聚合器保存的单条通知快照。"""
+    """
+    整理失败聚合器保存的单条通知快照。
+
+    :param media_title: 通知中展示的媒体标题
+    :param season_episode: 通知中展示的季集范围
+    :param reason: 整理失败的具体可读原因
+    :param history_id: 关联整理历史的数据库主键
+    :param image: 通知展示图片地址；未取得时为 None
+    :param username: 触发整理的本地用户名；未绑定时为 None
+    :param manual_identity: 媒体身份是否由用户手动指定
+    :param task_id: 持久整理任务的稳定标识
+    :param source_path: 失败任务的源路径；未记录时为 None
+    :param target_path: 计划目标路径；规划前失败时可为 None
+    :param failure_stage: 失败所在的业务阶段
+    :param recovery_action: 允许执行或推荐执行的恢复动作
+    :param retry_count: 当前恢复周期已经消耗的重试次数
+    :param max_retries: 当前策略允许的最大重试次数；不适用时为 None
+    :param auto_paused: 是否因失败策略暂停自动恢复
+    :param cleanup_status: 媒体入库后下载器清理的状态
+    :param cleanup_error: 下载器清理失败原因；无错误时为 None
+    """
 
     media_title: str
     season_episode: str
@@ -195,7 +241,9 @@ class TransferFailureNotification:
 def render_transfer_failure_notification(
     notifications: list[TransferFailureNotification],
 ) -> tuple[str, str]:
-    """把非空失败分组投影为标题和正文，按钮及消息派发仍由整理链处理。"""
+    """
+    把非空失败分组投影为标题和正文，按钮及消息派发仍由整理链处理。
+    """
     first = notifications[0]
     history_ids = [item.history_id for item in notifications if item.history_id]
     if len(notifications) == 1:
@@ -263,7 +311,9 @@ def render_transfer_failure_notification(
 def cleanup_update_fields(
     cleanup_status: str, cleanup_error: Optional[str] = None,
 ) -> dict[str, Optional[str]]:
-    """投影清理状态的业务字段，数据库层只暂存最终标量更新。"""
+    """
+    投影清理状态的业务字段，数据库层只暂存最终标量更新。
+    """
     values = {
         "cleanup_status": cleanup_status,
         "cleanup_error": cleanup_error,
