@@ -1,6 +1,7 @@
 """Chain 外部服务与系统技术端口的装配和隔离测试。"""
 
 from pathlib import Path
+from types import MappingProxyType
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -9,6 +10,7 @@ from app.chain import _recognition as recognition
 from app.chain.subscribe import notify as subscription
 from app.chain.transfer import filter as transfer
 from app.startup.composition import chain as chain_composition
+from app.startup.composition import subscription as subscription_composition
 from app.startup.initializers import chain as chain_initializer
 
 
@@ -99,6 +101,22 @@ async def test_chain_adapters_preserve_sync_and_async_behavior(monkeypatch) -> N
         Path("/media"), include_local_fuse=True
     ) is True
     filesystem.assert_called_once_with(Path("/media"), include_local_fuse=True)
+
+
+@pytest.mark.asyncio
+async def test_subscription_delete_reporting_ports_copy_readonly_payload(monkeypatch) -> None:
+    """删除统计端口应把只读映射转换为普通字典后再交给服务端适配器。"""
+    async_report = AsyncMock(return_value=True)
+    sync_report = Mock(return_value=True)
+    helper = subscription_composition.MoviePilotServerHelper
+    monkeypatch.setattr(helper, "async_sub_done_durable", async_report)
+    monkeypatch.setattr(helper, "sub_done_durable", sync_report)
+    payload = MappingProxyType({"subscribe_id": 7})
+
+    assert await subscription_composition._report_deleted(payload) is True  # pylint: disable=protected-access
+    assert subscription_composition._report_deleted_sync(payload) is True  # pylint: disable=protected-access
+    async_report.assert_awaited_once_with({"subscribe_id": 7})
+    sync_report.assert_called_once_with({"subscribe_id": 7})
 
 
 def test_chain_port_initializer_rolls_back_partial_failure(monkeypatch) -> None:

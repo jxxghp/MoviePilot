@@ -11,6 +11,7 @@ from app.application.subscription.contract import (
     SubscriptionPatch,
     SubscriptionSnapshot,
     build_subscribe_meta,
+    subscribe_media_keys,
 )
 from app.application.subscription.execution import (
     SubscriptionExecutionAdmission,
@@ -177,6 +178,31 @@ def test_build_subscribe_meta_returns_music_meta():
     assert meta.type == MediaType.MUSIC
     assert meta.media_id == "recording-1"
     assert meta.original_name == "晴天"
+    assert meta.year == 2003
+
+
+def test_build_subscribe_meta_ignores_non_numeric_music_year():
+    """历史脏年份不能阻断音乐订阅元数据构造。"""
+    meta = build_subscribe_meta(_subscribe(year="unknown"))
+
+    assert isinstance(meta, MetaMusic)
+    assert meta.year is None
+
+
+def test_subscribe_media_keys_returns_canonical_and_legacy_keys():
+    """音乐订阅缺集缓存同时保留来源键和旧纯 ID 键。"""
+    assert subscribe_media_keys(_subscribe()) == [
+        "musicbrainz:recording-1",
+        "recording-1",
+    ]
+
+
+def test_build_subscribe_meta_ignores_invalid_music_year():
+    """音乐订阅的非数字年份应被安全忽略，不能阻断订阅流程。"""
+    meta = build_subscribe_meta(_subscribe(year="unknown"))
+
+    assert isinstance(meta, MetaMusic)
+    assert meta.year is None
 
 
 def test_music_subscribe_recovers_completion_from_persisted_download_note():

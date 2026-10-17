@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from app.adapters.system.host import SystemUtils
 from app.application.transfer.workflow import TransferTask
-from app.chain.transfer import TransferChain
+from app.chain.transfer.facade import TransferChain
 from app.schemas.file import FileItem
 from app.schemas.system import TransferDirectoryConf
 
@@ -87,6 +87,14 @@ def test_disabled_cleanup_still_deletes_ordinary_local_source_directories():
     assert should_delete is True
 
 
+def test_missing_local_file_path_skips_filesystem_detection():
+    """本地任务缺少路径时应安全跳过挂载盘检测。"""
+    task = _make_task()
+    task.fileitem.path = None
+
+    assert TransferChain._should_delete_empty_source_directories(task, False, {}) is True
+
+
 def test_disabled_cleanup_does_not_change_remote_storage_cleanup():
     """
     开关关闭时非本地存储仍应执行原有空目录清理。
@@ -100,6 +108,24 @@ def test_disabled_cleanup_does_not_change_remote_storage_cleanup():
                 False,
                 {},
             )
+        )
+
+    assert should_delete is True
+    is_network_filesystem.assert_not_called()
+
+
+def test_missing_local_source_path_skips_filesystem_detection():
+    """历史任务缺少源路径时直接采用清理默认值，不把 None 传给 Path。"""
+    task = _make_task()
+    task.fileitem.path = None
+
+    with patch(
+            "app.startup.composition.chain.SystemUtils.is_network_filesystem"
+    ) as is_network_filesystem:
+        should_delete = TransferChain._should_delete_empty_source_directories(
+            task,
+            False,
+            {},
         )
 
     assert should_delete is True

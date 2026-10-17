@@ -1,6 +1,7 @@
 """订阅删除应用用例的事务、权限与副作用时序测试。"""
 
-from unittest.mock import AsyncMock, MagicMock
+from types import MappingProxyType
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +16,7 @@ from app.application.subscription.delete import (
 )
 from app.db.models.subscribe import Subscribe
 from app.db.oper.subscribe import SubscribeOper
+from app.startup.composition import subscription as subscription_composition
 
 
 class _Repository:
@@ -266,6 +268,39 @@ def _sync_command(
         outbox=outbox,
         dispatch_store=outbox,
     )
+
+
+@pytest.mark.asyncio
+async def test_composition_async_report_adapts_read_only_mapping():
+    """异步组合根把只读统计映射复制为服务端兼容字典。"""
+    reporter = AsyncMock(return_value=True)
+    with patch.object(
+            subscription_composition.MoviePilotServerHelper,
+            "async_sub_done_durable",
+            reporter,
+    ):
+        result = await subscription_composition._report_deleted(
+            MappingProxyType({"id": 7})
+        )
+
+    assert result is True
+    reporter.assert_awaited_once_with({"id": 7})
+
+
+def test_composition_sync_report_adapts_read_only_mapping():
+    """同步组合根把只读统计映射复制为服务端兼容字典。"""
+    reporter = Mock(return_value=True)
+    with patch.object(
+            subscription_composition.MoviePilotServerHelper,
+            "sub_done_durable",
+            reporter,
+    ):
+        result = subscription_composition._report_deleted_sync(
+            MappingProxyType({"id": 7})
+        )
+
+    assert result is True
+    reporter.assert_called_once_with({"id": 7})
 
 
 @pytest.mark.asyncio
